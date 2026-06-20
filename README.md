@@ -27,10 +27,10 @@ Le projet est composé de deux grandes parties :
    - passes ;
    - courses ;
    - plaquages ;
-   - rucks et mêlées ;
-   - essais ;
-   - score ;
-   - arbitrage des règles (passe en avant, en-avant, hors-jeu au ruck) ;
+   - rucks, mêlées et touches ;
+   - essais, transformations, pénalités au but ;
+   - score conforme aux règles du rugby (essai 5 pts, transformation +2, pénalité +3) ;
+   - arbitrage des règles (passe en avant, en-avant, hors-jeu au ruck, ballon en touche) ;
    - intelligence artificielle par rôle.
 
 ### Démo jouable
@@ -41,7 +41,7 @@ Le projet est composé de deux grandes parties :
 ### Architecture du moteur
 
 - `engine/rugby-engine.js` — moteur de match, source unique, sans dépendance au DOM. Exposé en module Node (`require`) et en variable globale `RugbyEngine` (`<script>`).
-- `server/simulate.js` — harnais de test headless (Node) : fait tourner le moteur sur une longue durée et vérifie des invariants réels (positions valides, score multiple de 5, essais et mêlées effectivement déclenchés). Usage : `node server/simulate.js [seed] [secondes]`.
+- `server/simulate.js` — harnais de test headless (Node) : fait tourner le moteur sur une longue durée et vérifie des invariants réels (positions valides, score cohérent, essais, mêlées, transformations et pénalités au but effectivement déclenchés). Usage : `node server/simulate.js [seed] [secondes]`.
 - `client/index.html` — rendu Canvas du moteur dans le navigateur, avec contrôles (lecture/pause, vitesse, réinitialisation).
 - `docs/index.html` — copie publiée sur GitHub Pages (la copie de `engine/rugby-engine.js` qu'elle utilise est synchronisée automatiquement par le pipeline de déploiement).
 

@@ -116,8 +116,9 @@
   <div class="legende-item"><span class="puce" style="background:#c62828"></span> Équipe B</div>
   <div class="legende-item"><span class="puce" style="background:#1565c0; border: 3px solid #ffeb3b"></span> Porteur du ballon (entouré de jaune)</div>
   <div class="legende-item"><span class="puce" style="background:#212121; border: 2px solid #f9a825"></span> Arbitre — toujours visible près de l'action, en noir et jaune</div>
-  <p>La pastille « phase » en haut indique ce qui se passe : <b>En jeu</b> (le ballon avance), <b>Ruck</b> (plaquage, lutte pour le ballon), <b>Mêlée</b> (l'arbitre vient de siffler une passe en avant ou un en-avant), <b>ESSAI !</b>, ou <b>Terminé</b>.</p>
-  <p>Chaque décision de l'arbitre (pénalité, mêlée, essai) s'affiche en grand au centre de l'écran pendant 2 secondes, et reste dans le fil d'événements sous le score.</p>
+  <p>La pastille « phase » en haut indique ce qui se passe : <b>En jeu</b> (le ballon avance), <b>Ruck</b> (plaquage, lutte pour le ballon), <b>Mêlée</b> (passe en avant ou en-avant sifflé), <b>Touche</b> (ballon porté en touche, lancer pour l'équipe adverse), <b>Pénalité au but</b> (tir aux poteaux après une faute, 3 points si réussi), <b>ESSAI !</b> puis <b>Transformation</b> (tir aux poteaux après l'essai, 2 points si réussi), ou <b>Terminé</b>.</p>
+  <p>Score réel du rugby : essai = 5 points, transformation réussie = +2, pénalité au but réussie = 3. Selon la distance aux poteaux, une pénalité peut aussi être jouée rapidement (avantage) plutôt que tirée.</p>
+  <p>Chaque décision de l'arbitre (pénalité, mêlée, touche, essai, transformation) s'affiche en grand au centre de l'écran pendant 2 secondes, et reste dans le fil d'événements sous le score.</p>
   <p>La barre en dessous du terrain permet de rejouer le match à n'importe quel instant : faites-la glisser pour avancer ou reculer dans le temps, le résultat est toujours identique (le match est déterministe à partir de sa « graine » aléatoire).</p>
   <button class="fermer alt" id="fermerLegende">Fermer</button>
 </div>
@@ -134,16 +135,24 @@ const CLE_HISTORIQUE = 'rugbyManager.historique';
 
 const ICONES = {
   COUP_ENVOI: '▶️', ESSAI: '🏉', MELEE_AVANT: '🔄', MELEE_ENAVANT: '🔄',
-  PENALITE: '🟨', TURNOVER: '🔁', FIN_MATCH: '🏁',
+  PENALITE: '🟨', PENALITE_REUSSIE: '🥅', PENALITE_RATEE: '❌',
+  TRANSFORMATION_REUSSIE: '🥅', TRANSFORMATION_RATEE: '❌',
+  TOUCHE: '👉', TURNOVER: '🔁', FIN_MATCH: '🏁',
 };
 const PHASES = {
   PORTE: { label: 'En jeu', couleur: '#2e7d32' },
   RUCK: { label: 'Ruck', couleur: '#ef6c00' },
   MELEE: { label: 'Mêlée', couleur: '#1565c0' },
+  TOUCHE: { label: 'Touche', couleur: '#6a1b9a' },
   ESSAI: { label: 'ESSAI !', couleur: '#f9a825' },
+  TRANSFORMATION: { label: 'Transformation', couleur: '#00838f' },
+  PENALITE_TIR: { label: 'Pénalité au but', couleur: '#ad1457' },
   TERMINE: { label: 'Terminé', couleur: '#616161' },
 };
-const TYPES_BANNIERE = new Set(['PENALITE', 'MELEE_AVANT', 'MELEE_ENAVANT', 'ESSAI', 'FIN_MATCH']);
+const TYPES_BANNIERE = new Set([
+  'PENALITE', 'MELEE_AVANT', 'MELEE_ENAVANT', 'TOUCHE', 'ESSAI', 'FIN_MATCH',
+  'TRANSFORMATION_REUSSIE', 'TRANSFORMATION_RATEE', 'PENALITE_REUSSIE', 'PENALITE_RATEE',
+]);
 
 function formaterTemps(s) {
   const m = Math.floor(s / 60), sec = Math.floor(s % 60);

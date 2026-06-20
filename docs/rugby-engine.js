@@ -26,6 +26,15 @@
 
   function distance(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
 
+  // Probabilité de réussite d'un coup de pied au but (transformation ou pénalité),
+  // fonction de la distance perpendiculaire aux poteaux et de l'angle d'attaque :
+  // un tir long ou très excentré est nettement moins fiable, conformément à la réalité.
+  function probaReussiteTir(distanceM, offsetLateralM) {
+    const distanceReelle = Math.hypot(distanceM, offsetLateralM);
+    const angleDeg = Math.abs(Math.atan2(offsetLateralM, Math.max(distanceM, 0.01))) * 180 / Math.PI;
+    return Math.max(0.05, Math.min(0.92, 0.97 - distanceReelle / 90 - angleDeg / 110));
+  }
+
   // --- Profils d'attributs par numéro de maillot (1-15) ---
   // tendance : tendance de proximité au ballon (suiveur de jeu vs tenant de station).
   const PROFILS = {
@@ -156,8 +165,14 @@
     // Position affichable de l'arbitre : suit le point de ruck/mêlée pendant les
     // phases statiques, sinon reste juste derrière le porteur du ballon.
     _positionArbitre() {
-      if (this.phase === 'RUCK' || this.phase === 'MELEE') {
+      if (this.phase === 'RUCK' || this.phase === 'MELEE' || this.phase === 'TOUCHE') {
         return { x: this.ruckPoint.x, y: Math.max(0, Math.min(LARGEUR, this.ruckPoint.y - 5)) };
+      }
+      if (this.phase === 'PENALITE_TIR' && this.positionTir) {
+        return { x: this.positionTir.x, y: Math.max(0, Math.min(LARGEUR, this.positionTir.y + 5)) };
+      }
+      if (this.phase === 'TRANSFORMATION') {
+        return { x: this.essaiX, y: Math.max(0, Math.min(LARGEUR, this.essaiY)) };
       }
       const p = this.porteur;
       return { x: p.x, y: Math.max(0, Math.min(LARGEUR, p.y - 6)) };
@@ -166,14 +181,52 @@
     attaquants() { return this.possession === 'A' ? this.equipeA : this.equipeB; }
     defenseurs() { return this.possession === 'A' ? this.equipeB : this.equipeA; }
 
-    // --- Mêlée suite à infraction : avantage + relance pour l'équipe non fautive ---
+    // --- Mêlée suite à infraction (passe en avant / en-avant) : avantage + relance
+    // pour l'équipe non fautive, conformément à la loi (knock-on / forward pass). ---
     _accorderMelee(equipeFautive, position) {
       this.possession = equipeFautive === 'A' ? 'B' : 'A';
       const equipe = this.possession === 'A' ? this.equipeA : this.equipeB;
       this.porteur = equipe[8];
       this.porteur.x = Math.max(5, Math.min(LONGUEUR - 5, position.x));
       this.porteur.y = Math.max(5, Math.min(LARGEUR - 5, position.y));
+      this.ruckPoint = { x: this.porteur.x, y: this.porteur.y };
       this.phase = 'MELEE';
+      this.timerPhase = 0;
+    }
+
+    // --- Touche : un ballon porté en touche donne une touche (lancer) à l'équipe
+    // adverse de celle qui l'a porté en touche, à l'endroit où il a franchi la ligne. ---
+    _accorderTouche(equipeQuiSort, position) {
+      this.log('TOUCHE', equipeQuiSort, `Ballon porte en touche par l'equipe ${equipeQuiSort}, touche pour l'equipe adverse`);
+      this.ruckPoint = { x: position.x, y: position.y };
+      this.possession = equipeQuiSort === 'A' ? 'B' : 'A';
+      const equipe = this.possession === 'A' ? this.equipeA : this.equipeB;
+      this.porteur = equipe[8];
+      this.porteur.x = Math.max(5, Math.min(LONGUEUR - 5, position.x));
+      this.porteur.y = position.y <= LARGEUR / 2 ? 5 : LARGEUR - 5;
+      this.phase = 'TOUCHE';
+      this.timerPhase = 0;
+    }
+
+    // --- Pénalité : selon la distance aux poteaux, l'équipe non fautive tente un
+    // coup de pied au but (3 points) ou joue rapidement et avance (touche de pénalité
+    // simplifiée), conformément aux options réelles de la loi sur les pénalités. ---
+    _traiterPenalite(equipeBeneficiaire, position) {
+      const sensAttaque = equipeBeneficiaire === 'A' ? 1 : -1;
+      const distanceButs = sensAttaque > 0 ? (LONGUEUR - position.x) : position.x;
+      const enZoneDeTir = distanceButs >= 5 && distanceButs <= 45;
+      if (enZoneDeTir && this.rng() < 0.55) {
+        this.equipeAuTir = equipeBeneficiaire;
+        this.positionTir = { x: position.x, y: position.y, distanceButs };
+        this.phase = 'PENALITE_TIR';
+        this.timerPhase = 0;
+        this.log('PENALITE', equipeBeneficiaire, `Penalite, equipe ${equipeBeneficiaire} tente un coup de pied au but`);
+        return;
+      }
+      this.log('PENALITE', equipeBeneficiaire, `Penalite, equipe ${equipeBeneficiaire} joue rapidement et avance`);
+      this.porteur.x += sensAttaque * 8;
+      this.porteur.x = Math.max(0, Math.min(LONGUEUR, this.porteur.x));
+      this.phase = 'PORTE';
       this.timerPhase = 0;
     }
 
@@ -185,6 +238,12 @@
       const dx = porteur.sensAttaque * 6;
       const evite = (porteur.y - defenseurProche.y) > 0 ? 2.5 : -2.5;
       avancer(porteur, dx, evite, dt, vitesseMs(porteur));
+
+      // Touche : le ballon porté au-delà de la ligne de touche est mort, jeu arrêté.
+      if (porteur.y <= 0.01 || porteur.y >= LARGEUR - 0.01) {
+        this._accorderTouche(this.possession, porteur);
+        return;
+      }
 
       const att = this.attaquants();
       for (const j of att) {
@@ -219,6 +278,9 @@
       if ((porteur.sensAttaque > 0 && porteur.x >= LONGUEUR) || (porteur.sensAttaque < 0 && porteur.x <= 0)) {
         porteur.x = porteur.sensAttaque > 0 ? LONGUEUR : 0;
         this.score[this.possession] += 5;
+        this.essaiX = porteur.x;
+        this.essaiY = porteur.y;
+        this.essaiEquipe = this.possession;
         this.log('ESSAI', this.possession, `Essai equipe ${this.possession} !`);
         this.phase = 'ESSAI';
         this.timerPhase = 0;
@@ -279,11 +341,7 @@
 
         if (j.team !== this.possession && !estContestant) {
           if (Referee.horsJeuRuck(j, pt, sensAttaque)) {
-            this.log('PENALITE', this.possession, `Penalite hors-jeu, equipe ${this.possession} avance`);
-            this.porteur.x += sensAttaque * 8;
-            this.porteur.x = Math.max(0, Math.min(LONGUEUR, this.porteur.x));
-            this.phase = 'PORTE';
-            this.timerPhase = 0;
+            this._traiterPenalite(this.possession, { x: this.porteur.x, y: this.porteur.y });
             return;
           }
         }
@@ -312,11 +370,56 @@
       }
     }
 
+    _tickTouche(dt) {
+      this.timerPhase += dt;
+      if (this.timerPhase >= 2.5) {
+        this.phase = 'PORTE';
+        this.timerPhase = 0;
+      }
+    }
+
     _tickEssai(dt) {
       this.timerPhase += dt;
       if (this.timerPhase >= 1.5) {
-        const prochainPossesseur = this.possession === 'A' ? 'B' : 'A';
-        this._nouvelleManche(prochainPossesseur);
+        this.phase = 'TRANSFORMATION';
+        this.timerPhase = 0;
+      }
+    }
+
+    // Transformation : tentative de coup de pied au but (+2) depuis l'alignement
+    // de l'essai, conformément à la loi (le botteur peut reculer mais pas changer d'axe).
+    _tickTransformation(dt) {
+      this.timerPhase += dt;
+      if (this.timerPhase >= 2.0) {
+        const equipe = this.essaiEquipe;
+        const offsetLateral = Math.abs(this.essaiY - LARGEUR / 2);
+        if (this.rng() < probaReussiteTir(10, offsetLateral)) {
+          this.score[equipe] += 2;
+          this.log('TRANSFORMATION_REUSSIE', equipe, `Transformation reussie, equipe ${equipe} +2`);
+        } else {
+          this.log('TRANSFORMATION_RATEE', equipe, `Transformation ratee, equipe ${equipe}`);
+        }
+        const adversaire = equipe === 'A' ? 'B' : 'A';
+        this._nouvelleManche(adversaire);
+      }
+    }
+
+    // Coup de pied de pénalité au but (+3), résolu après un court temps d'arrêt
+    // pour que l'interface puisse afficher la tentative avant le résultat.
+    _tickPenaliteTir(dt) {
+      this.timerPhase += dt;
+      if (this.timerPhase >= 2.0) {
+        const equipe = this.equipeAuTir;
+        const { y, distanceButs } = this.positionTir;
+        const offsetLateral = Math.abs(y - LARGEUR / 2);
+        if (this.rng() < probaReussiteTir(distanceButs, offsetLateral)) {
+          this.score[equipe] += 3;
+          this.log('PENALITE_REUSSIE', equipe, `Coup de pied au but reussi, equipe ${equipe} +3`);
+        } else {
+          this.log('PENALITE_RATEE', equipe, `Coup de pied au but rate, equipe ${equipe}`);
+        }
+        const adversaire = equipe === 'A' ? 'B' : 'A';
+        this._nouvelleManche(adversaire);
       }
     }
 
@@ -334,7 +437,10 @@
       if (this.phase === 'PORTE') this._tickPorte(dt);
       else if (this.phase === 'RUCK') this._tickRuck(dt);
       else if (this.phase === 'MELEE') this._tickMelee(dt);
+      else if (this.phase === 'TOUCHE') this._tickTouche(dt);
       else if (this.phase === 'ESSAI') this._tickEssai(dt);
+      else if (this.phase === 'TRANSFORMATION') this._tickTransformation(dt);
+      else if (this.phase === 'PENALITE_TIR') this._tickPenaliteTir(dt);
     }
 
     getState() {

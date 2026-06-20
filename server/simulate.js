@@ -11,11 +11,8 @@ const dt = 0.2;
 
 const match = new MatchEngine(seed);
 let erreurs = 0;
-let nbEssais = 0;
-let nbPasses = 0;
-let nbMelees = 0;
-let nbPenalites = 0;
-let dernierePhase = match.phase;
+const idsVus = new Set();
+const compteurs = {};
 
 function verifierInvariants(t) {
   for (const j of [...match.equipeA, ...match.equipeB]) {
@@ -28,8 +25,10 @@ function verifierInvariants(t) {
       erreurs++;
     }
   }
-  if (match.score.A % 5 !== 0 || match.score.B % 5 !== 0) {
-    console.error(`t=${t.toFixed(1)}s score non multiple de 5 : A=${match.score.A} B=${match.score.B}`);
+  // Le score n'est plus forcément multiple de 5 : essai (5), transformation (+2),
+  // pénalité au but (+3) s'additionnent, comme dans les vraies règles du rugby.
+  if (!Number.isInteger(match.score.A) || !Number.isInteger(match.score.B) || match.score.A < 0 || match.score.B < 0) {
+    console.error(`t=${t.toFixed(1)}s score invalide : A=${match.score.A} B=${match.score.B}`);
     erreurs++;
   }
 }
@@ -38,21 +37,24 @@ for (let t = 0; t < dureeSecondes; t += dt) {
   match.tick(dt);
   verifierInvariants(t);
 
-  if (match.phase !== dernierePhase) {
-    if (match.phase === 'ESSAI') nbEssais++;
-    if (match.phase === 'MELEE') nbMelees++;
-    dernierePhase = match.phase;
-  }
   for (const e of match.events) {
-    if (e.type === 'PENALITE') nbPenalites++;
+    if (idsVus.has(e.id)) continue;
+    idsVus.add(e.id);
+    compteurs[e.type] = (compteurs[e.type] || 0) + 1;
   }
 }
+
+const nbEssais = compteurs.ESSAI || 0;
+const nbMelees = (compteurs.MELEE_AVANT || 0) + (compteurs.MELEE_ENAVANT || 0);
+const nbTouches = compteurs.TOUCHE || 0;
+const nbTransformationsTentees = (compteurs.TRANSFORMATION_REUSSIE || 0) + (compteurs.TRANSFORMATION_RATEE || 0);
+const nbPenalitesAuButTentees = (compteurs.PENALITE_REUSSIE || 0) + (compteurs.PENALITE_RATEE || 0);
 
 const state = match.getState();
 console.log('--- Résultat simulation ---');
 console.log(`Score final : Equipe A ${state.score.A} - ${state.score.B} Equipe B`);
-console.log(`Transitions vers ESSAI : ${nbEssais}`);
-console.log(`Transitions vers MELEE (passe en avant / en-avant) : ${nbMelees}`);
+console.log(`Essais : ${nbEssais} | Transformations tentées : ${nbTransformationsTentees} | Pénalités au but tentées : ${nbPenalitesAuButTentees}`);
+console.log(`Mêlées (passe en avant / en-avant) : ${nbMelees} | Touches (ballon porté en touche) : ${nbTouches}`);
 console.log(`Derniers événements : ${state.events.map(e => e.message).join(' | ')}`);
 
 if (erreurs > 0) {
@@ -67,4 +69,12 @@ if (nbMelees === 0) {
   console.error("ECHEC : aucune mêlée déclenchée (passe en avant / en-avant), l'arbitre ne semble jamais intervenir.");
   process.exit(1);
 }
-console.log('OK : invariants respectés, essais et mêlées observés.');
+if (nbTransformationsTentees === 0) {
+  console.error('ECHEC : aucune transformation tentée après un essai, la règle ne semble pas appliquée.');
+  process.exit(1);
+}
+if (nbPenalitesAuButTentees === 0) {
+  console.error("ECHEC : aucun coup de pied de pénalité au but tenté, la règle ne semble pas appliquée.");
+  process.exit(1);
+}
+console.log('OK : invariants respectés, essais, mêlées, transformations et pénalités au but observés.');
