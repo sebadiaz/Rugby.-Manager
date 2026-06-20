@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Rugby Manager 2D — Démo de simulation</title>
+<style>
+  html, body {
+    margin: 0; padding: 0; height: 100%; overflow: hidden;
+    background: #0b1a0f; color: #eee;
+    font-family: system-ui, -apple-system, sans-serif;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #hud {
+    position: absolute; top: 0; left: 0; right: 0;
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 8px 12px; font-size: 14px; background: rgba(0,0,0,0.45);
+    z-index: 2;
+  }
+  #hud .score { font-weight: bold; font-size: 16px; }
+  #hud .phase { opacity: 0.85; }
+  #pitch { display: block; margin: 0 auto; background: #2e7d32; }
+  #controls {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    display: flex; gap: 8px; padding: 10px; justify-content: center;
+    background: rgba(0,0,0,0.45); z-index: 2; flex-wrap: wrap;
+  }
+  button {
+    flex: 1 1 auto; min-width: 64px; padding: 12px 10px; font-size: 14px;
+    border: none; border-radius: 8px; background: #1565c0; color: white;
+    font-weight: 600;
+  }
+  button.alt { background: #455a64; }
+  button:active { filter: brightness(1.3); }
+</style>
+</head>
+<body>
+<div id="hud">
+  <div class="score" id="score">Equipe A 0 — 0 Equipe B</div>
+  <div class="phase" id="phase">Coup d'envoi</div>
+</div>
+<canvas id="pitch"></canvas>
+<div id="controls">
+  <button id="btnPlay">Pause</button>
+  <button id="btnSpeed" class="alt">Vitesse x1</button>
+  <button id="btnReset" class="alt">Réinitialiser</button>
+</div>
+<script>
+'use strict';
+
+// --- Terrain : x = 0..100 (en-but à en-but), y = 0..70 (touche à touche) ---
+const LONGUEUR = 100, LARGEUR = 70;
+
+const canvas = document.getElementById('pitch');
+const ctx = canvas.getContext('2d');
+let scale = 1, offsetX = 0;
+
+function redimensionner() {
+  const hudH = document.getElementById('hud').offsetHeight;
+  const ctrlH = document.getElementById('controls').offsetHeight;
+  const w = window.innerWidth;
+  const h = window.innerHeight - hudH - ctrlH;
+  canvas.width = w;
+  canvas.height = h;
+  canvas.style.marginTop = hudH + 'px';
+  scale = Math.min(w / LARGEUR, h / LONGUEUR);
+  offsetX = w / 2;
+}
+window.addEventListener('resize', redimensionner);
+
+function versCanvas(x, y) {
+  return { px: offsetX + (y - LARGEUR / 2) * scale, py: x * scale };
+}
+
+// --- Génération des effectifs : numéros 1-15 par équipe, rôles dérivés ---
+// tendanceProximite : forte = suit le ballon (avants/9), faible = tient sa station (ailes/15).
+function profilParPoste(numero) {
+  const profils = {
+    1:  { vitesse: 45, plaquage: 70, tendance: 85, label: 'P' },
+    2:  { vitesse: 48, plaquage: 70, tendance: 85, label: 'T' },
+    3:  { vitesse: 45, plaquage: 70, tendance: 85, label: 'P' },
+    4:  { vitesse: 50, plaquage: 65, tendance: 80, label: '2L' },
+    5:  { vitesse: 50, plaquage: 65, tendance: 80, label: '2L' },
+    6:  { vitesse: 60, plaquage: 75, tendance: 75, label: '3L' },
+    7:  { vitesse: 62, plaquage: 78, tendance: 75, label: '3L' },
+    8:  { vitesse: 60, plaquage: 72, tendance: 75, label: '3L' },
+    9:  { vitesse: 65, plaquage: 55, tendance: 90, label: 'DM' },
+    10: { vitesse: 70, plaquage: 50, tendance: 55, label: 'OV' },
+    11: { vitesse: 90, plaquage: 45, tendance: 15, label: 'AI' },
+    12: { vitesse: 72, plaquage: 65, tendance: 45, label: 'CE' },
+    13: { vitesse: 74, plaquage: 60, tendance: 45, label: 'CE' },
+    14: { vitesse: 90, plaquage: 45, tendance: 15, label: 'AI' },
+    15: { vitesse: 80, plaquage: 50, tendance: 20, label: 'AR' },
+  };
+  return profils[numero];
+}
+
+function creerEquipe(team, xDepart, senscourse) {
+  const joueurs = [];
+  for (let n = 1; n <= 15; n++) {
+    const p = profilParPoste(n);
+    const channelY = (n - 0.5) / 15 * LARGEUR;
+    joueurs.push({
+      team, numero: n, label: p.label,
+      vitesse: p.vitesse + (Math.random() * 10 - 5),
+      plaquage: p.plaquage + (Math.random() * 10 - 5),
+      tendance: p.tendance,
+      channelY,
+      x: xDepart, y: channelY,
+      auSol: 0,
+      senscourse,
+    });
+  }
+  return joueurs;
+}
+
+let etat = null;
+
+function nouvelleManche(possessionTeam) {
+  const sens = { A: 1, B: -1 };
+  const equipeA = creerEquipe('A', 45, sens.A);
+  const equipeB = creerEquipe('B', 55, sens.B);
+  for (const j of [...equipeA, ...equipeB]) {
+    if (j.numero <= 8) j.y = j.channelY * 0.5 + LARGEUR * 0.25;
+  }
+  const porteur = possessionTeam === 'A' ? equipeA[8] : equipeB[8];
+  return {
+    equipeA, equipeB,
+    possession: possessionTeam,
+    porteurId: porteur,
+    phase: 'PORTE',
+    timerPhase: 0,
+    pointRuck: { x: porteur.x, y: porteur.y },
+    score: etat ? etat.score : { A: 0, B: 0 },
+  };
+}
+
+function reinitialiserMatch() {
+  etat = nouvelleManche('A');
+  etat.score = { A: 0, B: 0 };
+  document.getElementById('score').textContent = 'Equipe A 0 — 0 Equipe B';
+}
+
+function attaquants() { return etat.possession === 'A' ? etat.equipeA : etat.equipeB; }
+function defenseurs() { return etat.possession === 'A' ? etat.equipeB : etat.equipeA; }
+
+function vitesseMs(j) { return 3.0 + (Math.max(0, Math.min(100, j.vitesse)) / 100) * 5.0; }
+
+function avancer(j, dx, dy, dt, vmax) {
+  const d = Math.hypot(dx, dy);
+  if (d < 0.01) return;
+  const pas = Math.min(d, vmax * dt);
+  j.x += (dx / d) * pas;
+  j.y += (dy / d) * pas;
+  j.y = Math.max(0, Math.min(LARGEUR, j.y));
+}
+
+function joueurLePlusProche(liste, x, y) {
+  let meilleur = null, meilleureDist = Infinity;
+  for (const j of liste) {
+    const d = Math.hypot(j.x - x, j.y - y);
+    if (d < meilleureDist) { meilleureDist = d; meilleur = j; }
+  }
+  return { joueur: meilleur, distance: meilleureDist };
+}
+
+function ligneAvantage() { return etat.porteurId.x; }
+
+function tickPorte(dt) {
+  const porteur = etat.porteurId;
+  const def = defenseurs();
+  const { joueur: defenseurProche, distance } = joueurLePlusProche(def, porteur.x, porteur.y);
+
+  // Le porteur avance vers l'en-but adverse en évitant le défenseur le plus proche.
+  const dx = porteur.senscourse * 6;
+  const evite = (porteur.y - defenseurProche.y) > 0 ? 2.5 : -2.5;
+  avancer(porteur, dx, evite, dt, vitesseMs(porteur));
+
+  for (const j of attaquants()) {
+    if (j === porteur) continue;
+    if (j.tendance >= 70) {
+      // suiveur de jeu : converge près du ballon (soutien)
+      const angle = (j.numero % 5) - 2;
+      avancer(j, (porteur.x - j.x) + angle, (porteur.y - j.y) + angle * 0.5, dt, vitesseMs(j) * 0.9);
+    } else if (j.tendance >= 30) {
+      const cibleY = j.channelY * 0.4 + porteur.y * 0.6;
+      const cibleX = porteur.x - porteur.senscourse * 4;
+      avancer(j, cibleX - j.x, cibleY - j.y, dt, vitesseMs(j) * 0.8);
+    } else {
+      // tenant de station : reprend et garde sa position large
+      const cibleY = j.channelY;
+      const cibleX = porteur.x - porteur.senscourse * 7;
+      avancer(j, cibleX - j.x, cibleY - j.y, dt, vitesseMs(j) * 0.6);
+    }
+  }
+
+  for (const j of def) {
+    if (j === defenseurProche) {
+      avancer(j, porteur.x - j.x, porteur.y - j.y, dt, vitesseMs(j));
+      continue;
+    }
+    const estAvant = j.numero <= 8;
+    const reculDefensif = porteur.senscourse > 0 ? -(estAvant ? 1 : 3) : (estAvant ? 1 : 3);
+    const cibleX = porteur.x + reculDefensif;
+    const cibleY = j.channelY * 0.6 + porteur.y * 0.4;
+    avancer(j, cibleX - j.x, cibleY - j.y, dt, vitesseMs(j) * 0.85);
+  }
+
+  // Essai
+  if ((porteur.senscourse > 0 && porteur.x >= LONGUEUR) || (porteur.senscourse < 0 && porteur.x <= 0)) {
+    etat.score[etat.possession] += 5;
+    document.getElementById('score').textContent =
+      `Equipe A ${etat.score.A} — ${etat.score.B} Equipe B`;
+    etat.phase = 'ESSAI';
+    etat.timerPhase = 0;
+    return;
+  }
+
+  // Plaquage
+  if (distance < 1.4) {
+    const probaPlaquage = Math.max(0.1, Math.min(0.9,
+      0.5 + (defenseurProche.plaquage - porteur.vitesse) / 150));
+    if (Math.random() < probaPlaquage) {
+      porteur.auSol = 1.5;
+      etat.pointRuck = { x: porteur.x, y: porteur.y };
+      etat.phase = 'RUCK';
+      etat.timerPhase = 0;
+    }
+  }
+}
+
+function tickRuck(dt) {
+  etat.timerPhase += dt;
+  const pt = etat.pointRuck;
+  for (const j of [...attaquants(), ...defenseurs()]) {
+    const estPorteur = j === etat.porteurId;
+    if (estPorteur) continue;
+    const proche = Math.hypot(j.x - pt.x, j.y - pt.y) < 8;
+    if (proche) avancer(j, pt.x - j.x, pt.y - j.y, dt, vitesseMs(j) * 0.7);
+  }
+  if (etat.timerPhase >= 1.8) {
+    const turnover = Math.random() < 0.12;
+    if (turnover) etat.possession = etat.possession === 'A' ? 'B' : 'A';
+    const att = attaquants();
+    const { joueur: relayeur } = joueurLePlusProche(
+      att.filter(j => j.tendance >= 50), pt.x, pt.y);
+    etat.porteurId = relayeur || att[8];
+    etat.porteurId.x = pt.x;
+    etat.porteurId.y = pt.y;
+    etat.phase = 'PORTE';
+    etat.timerPhase = 0;
+  }
+}
+
+function tickEssai(dt) {
+  etat.timerPhase += dt;
+  if (etat.timerPhase >= 1.5) {
+    const prochainPossesseur = etat.possession === 'A' ? 'B' : 'A';
+    etat = nouvelleManche(prochainPossesseur);
+  }
+}
+
+function tick(dt) {
+  if (etat.phase === 'PORTE') tickPorte(dt);
+  else if (etat.phase === 'RUCK') tickRuck(dt);
+  else if (etat.phase === 'ESSAI') tickEssai(dt);
+  document.getElementById('phase').textContent =
+    { PORTE: 'En jeu', RUCK: 'Ruck', ESSAI: 'Essai !' }[etat.phase] +
+    ` — possession ${etat.possession}`;
+}
+
+function dessinerTerrain() {
+  ctx.fillStyle = '#2e7d32';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 2;
+  const lignesX = [0, 5, 22, 50, 78, 95, 100];
+  for (const x of lignesX) {
+    const a = versCanvas(x, 0), b = versCanvas(x, LARGEUR);
+    ctx.globalAlpha = (x === 0 || x === 100) ? 1 : 0.5;
+    ctx.beginPath();
+    ctx.moveTo(a.px, a.py);
+    ctx.lineTo(b.px, b.py);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function dessinerJoueur(j, estPorteur) {
+  const { px, py } = versCanvas(j.x, j.y);
+  ctx.beginPath();
+  ctx.arc(px, py, 10, 0, Math.PI * 2);
+  ctx.fillStyle = j.team === 'A' ? '#1565c0' : '#c62828';
+  if (j.auSol > 0) ctx.fillStyle = j.team === 'A' ? '#5c7fa3' : '#a36a6a';
+  ctx.fill();
+  if (estPorteur) {
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = '#ffeb3b';
+    ctx.stroke();
+  }
+  ctx.fillStyle = '#fff';
+  ctx.font = '10px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(j.numero, px, py);
+}
+
+function dessinerBallon() {
+  const j = etat.porteurId;
+  const { px, py } = versCanvas(j.x, j.y);
+  ctx.beginPath();
+  ctx.ellipse(px + 12, py - 8, 5, 3.2, Math.PI / 4, 0, Math.PI * 2);
+  ctx.fillStyle = '#8d5524';
+  ctx.fill();
+}
+
+function dessiner() {
+  dessinerTerrain();
+  for (const j of etat.equipeA) dessinerJoueur(j, j === etat.porteurId);
+  for (const j of etat.equipeB) dessinerJoueur(j, j === etat.porteurId);
+  dessinerBallon();
+}
+
+let enCours = true;
+let vitesseSim = 1;
+let dernierTs = null;
+
+function boucle(ts) {
+  if (dernierTs === null) dernierTs = ts;
+  const dtReel = Math.min(0.05, (ts - dernierTs) / 1000);
+  dernierTs = ts;
+  if (enCours) {
+    for (const j of [...etat.equipeA, ...etat.equipeB]) {
+      if (j.auSol > 0) j.auSol = Math.max(0, j.auSol - dtReel);
+    }
+    tick(dtReel * vitesseSim);
+  }
+  dessiner();
+  requestAnimationFrame(boucle);
+}
+
+document.getElementById('btnPlay').addEventListener('click', (e) => {
+  enCours = !enCours;
+  e.target.textContent = enCours ? 'Pause' : 'Lecture';
+});
+document.getElementById('btnSpeed').addEventListener('click', (e) => {
+  vitesseSim = vitesseSim === 1 ? 2 : (vitesseSim === 2 ? 4 : 1);
+  e.target.textContent = `Vitesse x${vitesseSim}`;
+});
+document.getElementById('btnReset').addEventListener('click', reinitialiserMatch);
+
+redimensionner();
+reinitialiserMatch();
+requestAnimationFrame(boucle);
+</script>
+</body>
+</html>
