@@ -138,7 +138,8 @@ const ICONES = {
   COUP_ENVOI: '▶️', CONTRE_COUP_ENVOI: '✋', ESSAI: '🏉', MELEE_AVANT: '🔄', MELEE_ENAVANT: '🔄',
   PENALITE: '🟨', PENALITE_REUSSIE: '🥅', PENALITE_RATEE: '❌',
   TRANSFORMATION_REUSSIE: '🥅', TRANSFORMATION_RATEE: '❌',
-  TOUCHE: '👉', TURNOVER: '🔁', MAUL: '🧱', MI_TEMPS: '⏸️', COUP_ENVOI_COURT: '📏', FIN_MATCH: '🏁',
+  TOUCHE: '👉', TURNOVER: '🔁', MAUL: '🧱', MAUL_ARRETE: '🛑', MI_TEMPS: '⏸️', COUP_ENVOI_COURT: '📏',
+  DROP_GOAL_REUSSI: '🎯', DROP_GOAL_RATE: '😬', ESSAI_PENALITE: '🏉', COUP_FRANC: '🙌', FIN_MATCH: '🏁',
 };
 const PHASES = {
   COUP_ENVOI: { label: "Coup d'envoi", couleur: '#37474f' },
@@ -156,7 +157,8 @@ const PHASES = {
 const TYPES_BANNIERE = new Set([
   'PENALITE', 'MELEE_AVANT', 'MELEE_ENAVANT', 'TOUCHE', 'ESSAI', 'FIN_MATCH',
   'TRANSFORMATION_REUSSIE', 'TRANSFORMATION_RATEE', 'PENALITE_REUSSIE', 'PENALITE_RATEE',
-  'CONTRE_COUP_ENVOI', 'MAUL', 'MI_TEMPS', 'COUP_ENVOI_COURT',
+  'CONTRE_COUP_ENVOI', 'MAUL', 'MAUL_ARRETE', 'MI_TEMPS', 'COUP_ENVOI_COURT',
+  'DROP_GOAL_REUSSI', 'DROP_GOAL_RATE', 'ESSAI_PENALITE', 'COUP_FRANC',
 ]);
 
 function formaterTemps(s) {
@@ -242,14 +244,20 @@ function majAffichage(state, forcerFeedComplet) {
     feed.appendChild(li);
   }
 
-  // Bannière de décision arbitrale : se déclenche une seule fois par événement neuf.
-  const dernier = state.events[state.events.length - 1];
-  if (dernier && dernier.id > dernierIdEvenementAffiche && TYPES_BANNIERE.has(dernier.type)) {
+  // Bannière de décision arbitrale : se déclenche une seule fois par événement
+  // neuf. On retient le dernier événement NEUF qui mérite une bannière, et non
+  // strictement le tout dernier événement : un essai/drop-goal/transformation
+  // est immédiatement suivi dans le même tick d'un COUP_ENVOI (remise en jeu),
+  // qui sinon masquerait la bannière de l'action marquante.
+  const nouveaux = state.events.filter(e => e.id > dernierIdEvenementAffiche);
+  const aAfficher = [...nouveaux].reverse().find(e => TYPES_BANNIERE.has(e.type));
+  if (aAfficher) {
     const banner = document.getElementById('banner');
-    banner.textContent = `🟨 ARBITRE — ${dernier.message}`;
+    banner.textContent = `🟨 ARBITRE — ${aAfficher.message}`;
     banner.classList.add('visible');
     banniereJusqua = performance.now() + 2200;
   }
+  const dernier = state.events[state.events.length - 1];
   if (dernier) dernierIdEvenementAffiche = dernier.id;
 
   if (performance.now() > banniereJusqua) {

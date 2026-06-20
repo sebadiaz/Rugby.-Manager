@@ -185,9 +185,16 @@
       // 10m est sanctionné par une mêlée au centre pour l'équipe qui n'a pas
       // botté (cf. _tickCoupEnvoi). Simplifié : pas d'option de retaper.
       this.coupEnvoiCourt = this.rng() < 0.06;
+      // Coup d'envoi profond : botté loin vers les 22 m adverses pour mettre la
+      // pression sur la réception (au prix d'une chasse plus difficile). C'est
+      // le seul cas où le receveur capte le ballon dans son propre en-deçà des
+      // 22 m et peut donc demander une marque (loi 11).
+      this.coupEnvoiProfond = !this.coupEnvoiCourt && this.rng() < 0.18;
       this.ballonCibleX = this.coupEnvoiCourt
         ? Math.max(0, Math.min(LONGUEUR, xCentre + dirKick * (3 + this.rng() * 6)))
-        : Math.max(0, Math.min(LONGUEUR, xCentre + dirKick * (12 + this.rng() * 15)));
+        : this.coupEnvoiProfond
+          ? Math.max(0, Math.min(LONGUEUR, xCentre + dirKick * (28 + this.rng() * 9)))
+          : Math.max(0, Math.min(LONGUEUR, xCentre + dirKick * (12 + this.rng() * 15)));
       this.ballonCibleY = Math.max(5, Math.min(LARGEUR - 5, LARGEUR / 2 + (this.rng() * 30 - 15)));
       this.phase = 'COUP_ENVOI';
       this.timerPhase = 0;
@@ -245,12 +252,40 @@
         this.porteur = joueur;
         this.possession = joueur.team;
         this.ruckPoint = { x: joueur.x, y: joueur.y };
+        if (joueur.team !== this.equipeReceptriceAttendue) {
+          this.phase = 'PORTE';
+          this.timerPhase = 0;
+          this.log('CONTRE_COUP_ENVOI', joueur.team, `Coup d'envoi contre, equipe ${joueur.team} recupere le ballon`);
+          return;
+        }
+        // Marque (loi 11) : un joueur qui réceptionne proprement le ballon dans
+        // son propre en-deçà des 22 m peut crier « marque » et obtenir un coup
+        // franc (pas de tir au but possible), pour dégager la pression.
+        const sensReceveur = joueur.team === 'A' ? 1 : -1;
+        const distPropreLigne = sensReceveur > 0 ? joueur.x : (LONGUEUR - joueur.x);
+        if (distPropreLigne <= 22 && this.rng() < 0.5) {
+          this._traiterCoupFranc(joueur.team, { x: joueur.x, y: joueur.y });
+          return;
+        }
         this.phase = 'PORTE';
         this.timerPhase = 0;
-        if (joueur.team !== this.equipeReceptriceAttendue) {
-          this.log('CONTRE_COUP_ENVOI', joueur.team, `Coup d'envoi contre, equipe ${joueur.team} recupere le ballon`);
-        }
       }
+    }
+
+    // Coup franc (loi 11/20) : sanction plus légère qu'une pénalité, sans
+    // possibilité de tir au but ni de touche directe avec gain de terrain par
+    // le pied. L'équipe joue rapidement à la main et avance un peu.
+    _traiterCoupFranc(equipe, position) {
+      this.possession = equipe;
+      const sensAttaque = equipe === 'A' ? 1 : -1;
+      const eq = equipe === 'A' ? this.equipeA : this.equipeB;
+      const { joueur } = joueurLePlusProche(eq, position.x, position.y);
+      this.porteur = joueur;
+      this.porteur.x = Math.max(0, Math.min(LONGUEUR, position.x + sensAttaque * 5));
+      this.porteur.y = Math.max(2, Math.min(LARGEUR - 2, position.y));
+      this.log('COUP_FRANC', equipe, `Marque, equipe ${equipe} obtient un coup franc et joue rapidement`);
+      this.phase = 'PORTE';
+      this.timerPhase = 0;
     }
 
     // Position affichable de l'arbitre : suit le point de ruck/mêlée pendant les
@@ -305,6 +340,15 @@
     _traiterPenalite(equipeBeneficiaire, position) {
       const sensAttaque = equipeBeneficiaire === 'A' ? 1 : -1;
       const distanceButs = sensAttaque > 0 ? (LONGUEUR - position.x) : position.x;
+      // Essai de pénalité : quand la faute est commise tout près de la ligne
+      // d'en-but adverse, elle a empêché un essai quasi certain. L'équipe non
+      // fautive marque directement 7 points, sans tir ni jeu rapide.
+      if (distanceButs <= 5 && this.rng() < 0.25) {
+        this.score[equipeBeneficiaire] += 7;
+        this.log('ESSAI_PENALITE', equipeBeneficiaire, `Essai de penalite, equipe ${equipeBeneficiaire} +7`);
+        this._nouvelleManche(equipeBeneficiaire);
+        return;
+      }
       const enZoneDeTir = distanceButs >= 5 && distanceButs <= 45;
       if (enZoneDeTir && this.rng() < 0.55) {
         this.equipeAuTir = equipeBeneficiaire;
@@ -408,6 +452,33 @@
           }
         }
         this.timerPhase = 0;
+      }
+
+      // Drop-goal (loi 9.A) : l'ouvreur peut tenter un drop-goal en jeu courant
+      // (ballon qui rebondit au sol puis botté entre les poteaux), rare et
+      // seulement avec un peu d'espace, dans la zone de tir réaliste.
+      if (porteur.numero === 10 && distDef > 2) {
+        const sensAttaqueDrop = porteur.sensAttaque;
+        const distanceButsDrop = sensAttaqueDrop > 0 ? (LONGUEUR - porteur.x) : porteur.x;
+        if (distanceButsDrop >= 5 && distanceButsDrop <= 40 && this.rng() < 0.15 * dt) {
+          const offsetLateralDrop = Math.abs(porteur.y - LARGEUR / 2);
+          const equipe = this.possession;
+          if (this.rng() < probaReussiteTir(distanceButsDrop, offsetLateralDrop) * 0.75) {
+            this.score[equipe] += 3;
+            this.log('DROP_GOAL_REUSSI', equipe, `Drop-goal reussi, equipe ${equipe} +3`);
+            this._nouvelleManche(equipe);
+          } else {
+            this.log('DROP_GOAL_RATE', equipe, `Drop-goal rate, equipe ${equipe}`);
+            // Comme une pénalité au but ratée : le ballon part au-delà de la
+            // ligne d'en-but adverse, remise en 22m pour l'équipe défenseure.
+            const sens = { A: 1, B: -1 };
+            const sensEquipe = sens[equipe];
+            const ligneEssaiAdverse = sensEquipe > 0 ? LONGUEUR : 0;
+            const x22 = ligneEssaiAdverse - sensEquipe * 22;
+            this._nouvelleManche(equipe, x22);
+          }
+          return;
+        }
       }
 
       // Plaquage
@@ -526,10 +597,15 @@
       }
 
       if (this.timerPhase >= 1.8) {
-        const turnover = this.rng() < 0.12;
-        if (turnover) {
-          this.possession = this.possession === 'A' ? 'B' : 'A';
-          this.log('TURNOVER', this.possession, `Maul retenu, equipe ${this.possession} recupere sur melee`);
+        // Maul arrêté (loi 17) : si le maul cesse d'avancer et que le ballon ne
+        // ressort pas, l'arbitre siffle et accorde une mêlée à l'équipe qui
+        // n'avait pas la possession (celle qui a stoppé le maul), comme dans les
+        // vraies règles — et non un simple turnover joué à la main.
+        const maulArrete = this.rng() < 0.12;
+        if (maulArrete) {
+          this.log('MAUL_ARRETE', this.possession, `Maul arrete, equipe ${this.possession} ne sort pas le ballon, melee adverse`);
+          this._accorderMelee(this.possession, pt);
+          return;
         }
         const att = this.attaquants();
         const { joueur: relayeur } = joueurLePlusProche(att.filter(j => j.tendance >= 50), pt.x, pt.y);

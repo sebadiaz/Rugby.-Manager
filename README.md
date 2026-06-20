@@ -28,9 +28,11 @@ Le projet est composé de deux grandes parties :
    - courses ;
    - plaquages ;
    - rucks, mauls, mêlées et touches ;
-   - coup d'envoi et remises en jeu réellement bottés et disputés en l'air (loi 12 : l'équipe qui a marqué reçoit, remise aux 22 m après une pénalité ratée, coup d'envoi de la 2e période donné par l'équipe adverse de celle qui a ouvert le match, mêlée au centre en cas de coup d'envoi trop court) ;
-   - essais, transformations, pénalités au but ;
-   - score conforme aux règles du rugby (essai 5 pts, transformation +2, pénalité +3) ;
+   - coup d'envoi et remises en jeu réellement bottés et disputés en l'air (loi 12 : l'équipe qui a marqué reçoit, remise aux 22 m après une pénalité ratée, coup d'envoi de la 2e période donné par l'équipe adverse de celle qui a ouvert le match, mêlée au centre en cas de coup d'envoi trop court, coup d'envoi profond vers les 22 m) ;
+   - marque sur réception dans son propre en-deçà des 22 m (loi 11) donnant un coup franc ;
+   - maul arrêté qui ne sort pas le ballon sanctionné par une mêlée pour la défense (loi 17) ;
+   - essais, transformations, pénalités au but, drop-goals en jeu courant et essais de pénalité ;
+   - score conforme aux règles du rugby (essai 5 pts, transformation +2, pénalité +3, drop-goal +3, essai de pénalité +7) ;
    - arbitrage des règles (passe en avant, en-avant, hors-jeu au ruck, ballon en touche) ;
    - intelligence artificielle par rôle.
 

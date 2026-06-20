@@ -16,7 +16,8 @@ Numérotation des lois selon World Rugby (« Laws of the Game »).
 | Essai | 5 | ✅ `ESSAI`, +5 |
 | Transformation réussie | 2 | ✅ `TRANSFORMATION_REUSSIE`, +2 |
 | Pénalité au but réussie | 3 | ✅ `PENALITE_REUSSIE`, +3 |
-| Drop-goal | 3 | ❌ non modélisé (pas de tentative de drop-goal en jeu courant) |
+| Drop-goal | 3 | ✅ `DROP_GOAL_REUSSI`, +3 (tenté par l'ouvreur n°10 en jeu courant, zone de tir 5–40 m, cf. `_tickPorte`) |
+| Essai de pénalité | 7 | ✅ `ESSAI_PENALITE`, +7 (faute à ≤ 5 m de la ligne d'en-but empêchant un essai probable, sans transformation, cf. `_traiterPenalite`) |
 
 ## 2. Coup d'envoi et remises en jeu (Law 12 — Kick-off and restart kicks)
 
@@ -56,6 +57,11 @@ Implémenté (`_nouvelleManche`, `_tickCoupEnvoi`, phase `COUP_ENVOI`) :
   10 m, événement `COUP_ENVOI_COURT`, ~6 % des coups d'envoi/remises en jeu) :
   mêlée au centre pour l'équipe qui n'a pas botté (`_accorderMelee`), comme le
   prévoit la loi.
+- ✅ Coup d'envoi profond (`coupEnvoiProfond`, ~18 % des coups d'envoi) : botté
+  loin vers les 22 m adverses ; c'est le seul cas où le receveur capte le
+  ballon dans son propre en-deçà des 22 m et peut alors demander une **marque**
+  (loi 11) → coup franc `COUP_FRANC` (cf. `_traiterCoupFranc`), jeu rapide à la
+  main sans option de tir au but.
 - ⚠️ Simplifié : pas d'option de retaper en cas de coup d'envoi trop court ou
   envoyé directement en touche (seule la conséquence « mêlée au centre » est
   modélisée, pas le choix entre les deux), pas de cas spécifique pour un
@@ -106,14 +112,19 @@ Implémenté (`_tickMaul`, déclenché depuis `_tickPorte`) :
   contrairement au ruck où il est posé au sol.
 - ✅ Même ligne de hors-jeu et même logique de repli/pénalité que le ruck
   (réutilise `Referee.horsJeuRuck`).
-- ⚠️ Volontairement sans avancée de terrain automatique ni taux de turnover
-  différent du ruck : une première version donnait au maul une avancée nette
-  garantie (≈2.6 m) à faible risque, ce qui en faisait un raccourci vers
-  l'essai et faisait presque tripler le nombre d'essais sur une simulation de
-  test — ce comportement a été retiré. Sans modéliser la poussée comparée des
-  deux paquets (forces, nombre de joueurs liés), le maul est donc, en net,
-  équivalent au ruck en termes de risque/possession ; seule sa représentation
-  (ballon en main, pas au sol) et son déclenchement diffèrent.
+- ✅ Maul arrêté (loi 17) : si le maul cesse d'avancer et que le ballon ne
+  ressort pas (~12 % des résolutions de maul), l'arbitre siffle et accorde une
+  **mêlée à l'équipe qui n'avait pas la possession** (`MAUL_ARRETE`,
+  `_accorderMelee`), comme dans les vraies règles — et non un simple ballon
+  rejoué à la main par l'adversaire.
+- ⚠️ Volontairement sans avancée de terrain automatique : une première version
+  donnait au maul une avancée nette garantie (≈2.6 m) à faible risque, ce qui en
+  faisait un raccourci vers l'essai et faisait presque tripler le nombre
+  d'essais sur une simulation de test — ce comportement a été retiré. Sans
+  modéliser la poussée comparée des deux paquets (forces, nombre de joueurs
+  liés), le gain de terrain du maul n'est pas simulé ; seuls sa représentation
+  (ballon en main, pas au sol), son déclenchement et sa résolution (sortie du
+  ballon ou mêlée si arrêté) diffèrent du ruck.
 
 ## 5. Options sur pénalité (Law 19–21 — Penalty and free kick options)
 
@@ -127,6 +138,9 @@ Règle réelle : l'équipe qui obtient une pénalité a le choix entre :
 4. Jeu rapide à la main ou au pied (tap-and-go / quick tap).
 
 Implémenté (`_traiterPenalite`) :
+- ✅ Essai de pénalité : si la faute est commise à ≤ 5 m de la ligne d'en-but
+  (essai probable empêché), 7 points sont accordés directement
+  (`ESSAI_PENALITE`), sans tir ni transformation, puis coup d'envoi adverse.
 - ✅ Tir au but si la position est dans la zone de tir réaliste (`enZoneDeTir`,
   5–45 m) avec une probabilité de tenter (`0.55`).
 - ✅ Sinon, jeu rapide à la main (tap-and-go), le porteur avance de 8 m.
@@ -158,7 +172,6 @@ pas de contestation de mêlée joueur par joueur (résolution agrégée).
 
 ## 8. Hors scope explicite (non modélisé du tout)
 
-- Drop-goals.
 - Cartons (jaune/rouge), exclusions temporaires.
 - 50:22, jeu au pied tactique avancé (chandelles, grubber).
 - Avantage prolongé (l'avantage n'est pas modélisé comme une fenêtre

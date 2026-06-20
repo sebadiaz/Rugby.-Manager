@@ -57,12 +57,17 @@ const nbCoupsEnvoi = compteurs.COUP_ENVOI || 0;
 const nbMauls = compteurs.MAUL || 0;
 const nbMiTemps = compteurs.MI_TEMPS || 0;
 const nbCoupsEnvoiCourts = compteurs.COUP_ENVOI_COURT || 0;
+const nbDropGoals = (compteurs.DROP_GOAL_REUSSI || 0) + (compteurs.DROP_GOAL_RATE || 0);
+const nbEssaisPenalite = compteurs.ESSAI_PENALITE || 0;
+const nbMaulsArretes = compteurs.MAUL_ARRETE || 0;
+const nbCoupsFrancs = compteurs.COUP_FRANC || 0;
 
 const state = match.getState();
 console.log('--- Résultat simulation ---');
 console.log(`Score final : Equipe A ${state.score.A} - ${state.score.B} Equipe B`);
 console.log(`Essais : ${nbEssais} | Transformations tentées : ${nbTransformationsTentees} | Pénalités au but tentées : ${nbPenalitesAuButTentees}`);
 console.log(`Mêlées (passe en avant / en-avant) : ${nbMelees} | Touches (ballon porté en touche) : ${nbTouches} | Mauls : ${nbMauls} | Mi-temps : ${nbMiTemps} | Coups d'envoi trop courts : ${nbCoupsEnvoiCourts}`);
+console.log(`Drop-goals tentés : ${nbDropGoals} | Essais de pénalité : ${nbEssaisPenalite} | Mauls arrêtés (mêlée) : ${nbMaulsArretes} | Marques / coups francs : ${nbCoupsFrancs}`);
 console.log(`Derniers événements : ${state.events.map(e => e.message).join(' | ')}`);
 
 if (erreurs > 0) {
