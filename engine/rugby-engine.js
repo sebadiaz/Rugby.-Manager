@@ -135,6 +135,13 @@
       // d'envoi en début de match donnent le coup d'envoi de la 2e période."
       this.dureeMiTemps = dureeMatch / 2;
       this.miTempsJouee = false;
+      // Ballon en vol : pendant un coup d'envoi/une remise en jeu, le ballon est
+      // botté en cloche et vole seul vers sa zone de chute (personne ne le
+      // "porte"). En dehors de ces phases, il est tenu par le porteur.
+      this.ballonEnVol = false;
+      this.ballonVolX = LONGUEUR / 2;
+      this.ballonVolY = LARGEUR / 2;
+      this.ballonVolHauteur = 0;
       this._sequenceEvenement = 0;
       this._nouvelleManche('A');
       this.equipeKickPremiereMiTemps = this._dernierEquipeKick;
@@ -200,6 +207,12 @@
       this.timerPhase = 0;
       this.ruckPoint = { x: xCentre, y: LARGEUR / 2 };
       this.contestants = [];
+      // Le ballon part en cloche depuis le point de coup d'envoi : il vole seul,
+      // le botteur reste sur place (suivi de jeu), il n'est pas "porté".
+      this.ballonEnVol = true;
+      this.ballonVolX = xCentre;
+      this.ballonVolY = LARGEUR / 2;
+      this.ballonVolHauteur = 0;
       this.log('COUP_ENVOI', equipeKick, `Coup d'envoi botte par l'equipe ${equipeKick}, l'equipe ${equipeReceptrice} doit rester a 10m`);
     }
 
@@ -211,8 +224,11 @@
       this.timerPhase += dt;
       const duree = 2.2;
       const t = Math.min(1, this.timerPhase / duree);
-      this.porteur.x = this.xCoupEnvoi + (this.ballonCibleX - this.xCoupEnvoi) * t;
-      this.porteur.y = LARGEUR / 2 + (this.ballonCibleY - LARGEUR / 2) * t;
+      // Le ballon vole seul du point de coup d'envoi vers sa cible, en cloche :
+      // hauteur en sinus (0 au départ, maximale à mi-parcours, 0 à la chute).
+      this.ballonVolX = this.xCoupEnvoi + (this.ballonCibleX - this.xCoupEnvoi) * t;
+      this.ballonVolY = LARGEUR / 2 + (this.ballonCibleY - LARGEUR / 2) * t;
+      this.ballonVolHauteur = Math.sin(Math.PI * t);
 
       for (const j of [...this.equipeA, ...this.equipeB]) {
         if (j === this.porteur) continue;
@@ -230,6 +246,10 @@
       }
 
       if (this.timerPhase >= duree) {
+        // Le ballon retombe et est capté (ou contré) : fin du vol, il est de
+        // nouveau tenu par un joueur.
+        this.ballonEnVol = false;
+        this.ballonVolHauteur = 0;
         // Coup d'envoi trop court (loi 12) : le ballon n'a pas franchi la
         // ligne des 10m adverses -> mêlée au centre pour l'équipe qui n'a pas
         // botté, qu'il ait été repris ou non par un chasseur.
@@ -454,16 +474,18 @@
         this.timerPhase = 0;
       }
 
-      // Drop-goal (loi 9.A) : l'ouvreur peut tenter un drop-goal en jeu courant
-      // (ballon qui rebondit au sol puis botté entre les poteaux), rare et
-      // seulement avec un peu d'espace, dans la zone de tir réaliste.
-      if (porteur.numero === 10 && distDef > 2) {
+      // Drop-goal (loi 9.A) : dans la zone de tir (8–38 m), l'équipe en
+      // possession peut choisir de travailler le ballon pour son ouvreur, qui
+      // tente un drop en jeu courant (ballon lâché qui rebondit puis botté entre
+      // les poteaux). Choix tactique rare ; la réussite est calculée comme un
+      // tir au but mais minorée, car botté en pleine action et sous pression.
+      {
         const sensAttaqueDrop = porteur.sensAttaque;
         const distanceButsDrop = sensAttaqueDrop > 0 ? (LONGUEUR - porteur.x) : porteur.x;
-        if (distanceButsDrop >= 5 && distanceButsDrop <= 40 && this.rng() < 0.15 * dt) {
+        if (distanceButsDrop >= 8 && distanceButsDrop <= 38 && this.rng() < 0.012 * dt) {
           const offsetLateralDrop = Math.abs(porteur.y - LARGEUR / 2);
           const equipe = this.possession;
-          if (this.rng() < probaReussiteTir(distanceButsDrop, offsetLateralDrop) * 0.75) {
+          if (this.rng() < probaReussiteTir(distanceButsDrop, offsetLateralDrop) * 0.7) {
             this.score[equipe] += 3;
             this.log('DROP_GOAL_REUSSI', equipe, `Drop-goal reussi, equipe ${equipe} +3`);
             this._nouvelleManche(equipe);
@@ -730,6 +752,11 @@
         equipeA: this.equipeA.map(j => ({ ...j })),
         equipeB: this.equipeB.map(j => ({ ...j })),
         porteur: { team: this.porteur.team, numero: this.porteur.numero, x: this.porteur.x, y: this.porteur.y },
+        // Position réelle du ballon : en vol pendant un coup d'envoi (avec une
+        // hauteur 0..1 pour figurer la cloche), sinon dans les mains du porteur.
+        ballon: this.ballonEnVol
+          ? { x: this.ballonVolX, y: this.ballonVolY, enVol: true, hauteur: this.ballonVolHauteur }
+          : { x: this.porteur.x, y: this.porteur.y, enVol: false, hauteur: 0 },
         arbitre: this._positionArbitre(),
         possession: this.possession,
         phase: this.phase,

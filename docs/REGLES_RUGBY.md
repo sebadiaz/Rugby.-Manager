@@ -16,7 +16,7 @@ Numérotation des lois selon World Rugby (« Laws of the Game »).
 | Essai | 5 | ✅ `ESSAI`, +5 |
 | Transformation réussie | 2 | ✅ `TRANSFORMATION_REUSSIE`, +2 |
 | Pénalité au but réussie | 3 | ✅ `PENALITE_REUSSIE`, +3 |
-| Drop-goal | 3 | ✅ `DROP_GOAL_REUSSI`, +3 (tenté par l'ouvreur n°10 en jeu courant, zone de tir 5–40 m, cf. `_tickPorte`) |
+| Drop-goal | 3 | ✅ `DROP_GOAL_REUSSI`, +3 (l'équipe en possession dans la zone de tir 8–38 m travaille le ballon pour son ouvreur qui tente un drop en jeu courant, ~1,4 tentative/match, cf. `_tickPorte`) |
 | Essai de pénalité | 7 | ✅ `ESSAI_PENALITE`, +7 (faute à ≤ 5 m de la ligne d'en-but empêchant un essai probable, sans transformation, cf. `_traiterPenalite`) |
 
 ## 2. Coup d'envoi et remises en jeu (Law 12 — Kick-off and restart kicks)
@@ -51,8 +51,17 @@ Implémenté (`_nouvelleManche`, `_tickCoupEnvoi`, phase `COUP_ENVOI`) :
   donné le coup d'envoi du match (`equipeKickPremiereMiTemps`, mémorisée à la
   construction du match).
 - ✅ Positionnement : équipe qui botte derrière le ballon, équipe receveuse
-  au-delà de 10 m, ballon réellement animé en vol vers une cible aléatoire
-  (12 à 27 m), contesté à la réception.
+  au-delà de 10 m.
+- ✅ Le ballon est réellement **botté en cloche** : il vole seul depuis le point
+  de coup d'envoi vers sa cible (trajectoire paramétrée, hauteur en sinus pour
+  figurer la chandelle), le botteur reste sur place ; ce n'est pas un joueur qui
+  court avec le ballon. À la retombée, un joueur le capte (`ballonEnVol`,
+  `ballonVolHauteur`, exposés par `getState().ballon` pour le rendu).
+- ✅ Réception : l'équipe receveuse, déjà placée sous la chandelle, récupère
+  quasiment toujours le ballon ; une reprise par les chasseurs reste possible
+  uniquement si l'un d'eux arrive réellement au point de chute (charge-down),
+  ce qui est rare — l'équipe qui botte ne « gagne » donc plus son propre coup
+  d'envoi par défaut.
 - ✅ Coup d'envoi/remise en jeu trop court (ballon qui ne franchit pas les
   10 m, événement `COUP_ENVOI_COURT`, ~6 % des coups d'envoi/remises en jeu) :
   mêlée au centre pour l'équipe qui n'a pas botté (`_accorderMelee`), comme le
@@ -65,10 +74,7 @@ Implémenté (`_nouvelleManche`, `_tickCoupEnvoi`, phase `COUP_ENVOI`) :
 - ⚠️ Simplifié : pas d'option de retaper en cas de coup d'envoi trop court ou
   envoyé directement en touche (seule la conséquence « mêlée au centre » est
   modélisée, pas le choix entre les deux), pas de cas spécifique pour un
-  coup d'envoi qui atterrit directement dans l'en-but. La réception favorise
-  l'équipe receveuse (≈ 12 % de récupération par l'équipe qui a botté),
-  calibré pour rester réaliste sans modéliser le détail des courses de
-  couverture.
+  coup d'envoi qui atterrit directement dans l'en-but.
 - ❌ **Non implémenté : le « goal-line drop-out »**, remise en jeu depuis la
   ligne d'en-but (distincte du 22 m drop-out) après certaines actions
   d'attaque bloquées dans l'en-but adverse. Écart connu, non traité ici.

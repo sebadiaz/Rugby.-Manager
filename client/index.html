@@ -172,7 +172,12 @@ function graineAleatoire() {
 
 const canvas = document.getElementById('pitch');
 const ctx = canvas.getContext('2d');
-let scale = 1, offsetX = 0;
+let scale = 1, offsetX = 0, offsetY = 0;
+// Profondeur d'en-but (de la ligne d'essai à la ligne de ballon mort) et marge
+// au-delà des lignes de touche, en mètres : réservées pour dessiner l'en-but et
+// les touches sans coller au bord de l'écran. La zone de jeu reste x∈[0,100].
+const PROF_EN_BUT = 8;
+const MARGE_TOUCHE = 4;
 
 function redimensionner() {
   const hudH = document.getElementById('hud').offsetHeight;
@@ -183,13 +188,16 @@ function redimensionner() {
   canvas.width = w;
   canvas.height = h;
   canvas.style.marginTop = hudH + 'px';
-  scale = Math.min(w / LARGEUR, h / LONGUEUR);
+  const longueurTotale = LONGUEUR + 2 * PROF_EN_BUT;
+  const largeurTotale = LARGEUR + 2 * MARGE_TOUCHE;
+  scale = Math.min(w / largeurTotale, h / longueurTotale);
   offsetX = w / 2;
+  offsetY = (h - longueurTotale * scale) / 2 + PROF_EN_BUT * scale;
 }
 window.addEventListener('resize', redimensionner);
 
 function versCanvas(x, y) {
-  return { px: offsetX + (y - LARGEUR / 2) * scale, py: x * scale };
+  return { px: offsetX + (y - LARGEUR / 2) * scale, py: offsetY + x * scale };
 }
 
 let match = null;
@@ -267,21 +275,76 @@ function majAffichage(state, forcerFeedComplet) {
   document.getElementById('btnSauver').disabled = state.phase !== 'TERMINE';
 }
 
-function dessinerTerrain() {
-  ctx.fillStyle = '#2e7d32';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.strokeStyle = '#ffffff';
-  ctx.lineWidth = 2;
-  const lignesX = [0, 5, 22, 50, 78, 95, 100];
-  for (const x of lignesX) {
-    const a = versCanvas(x, 0), b = versCanvas(x, LARGEUR);
-    ctx.globalAlpha = (x === 0 || x === 100) ? 1 : 0.5;
+// Trace une ligne du terrain entre deux points exprimés en mètres (x = longueur
+// d'en-but à en-but, y = largeur de touche à touche).
+function ligneTerrain(x1, y1, x2, y2, { couleur = '#ffffff', largeur = 2, alpha = 1, dash = null } = {}) {
+  const a = versCanvas(x1, y1), b = versCanvas(x2, y2);
+  ctx.save();
+  ctx.setLineDash(dash || []);
+  ctx.globalAlpha = alpha;
+  ctx.lineWidth = largeur;
+  ctx.strokeStyle = couleur;
+  ctx.beginPath();
+  ctx.moveTo(a.px, a.py);
+  ctx.lineTo(b.px, b.py);
+  ctx.stroke();
+  ctx.restore();
+}
+
+// Remplit un rectangle du terrain (coordonnées terrain en mètres).
+function zoneTerrain(x1, y1, x2, y2, couleur) {
+  const a = versCanvas(x1, y1), b = versCanvas(x2, y2);
+  ctx.fillStyle = couleur;
+  ctx.fillRect(Math.min(a.px, b.px), Math.min(a.py, b.py), Math.abs(b.px - a.px), Math.abs(b.py - a.py));
+}
+
+// Poteaux en H sur la ligne d'essai : deux montants espacés de 5,6 m reliés par
+// la barre transversale (vue de dessus, la barre apparaît le long de la largeur).
+function dessinerPoteaux(xLigne) {
+  const demiEcart = 2.8;
+  const cy = LARGEUR / 2;
+  ligneTerrain(xLigne, cy - demiEcart, xLigne, cy + demiEcart, { couleur: '#f5f5f5', largeur: 3 });
+  for (const dy of [-demiEcart, demiEcart]) {
+    const p = versCanvas(xLigne, cy + dy);
     ctx.beginPath();
-    ctx.moveTo(a.px, a.py);
-    ctx.lineTo(b.px, b.py);
+    ctx.arc(p.px, p.py, 4, 0, Math.PI * 2);
+    ctx.fillStyle = '#fdfdfd';
+    ctx.fill();
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = '#9e9e9e';
     ctx.stroke();
   }
-  ctx.globalAlpha = 1;
+}
+
+function dessinerTerrain() {
+  // Pelouse + zones d'en-but légèrement plus sombres.
+  ctx.fillStyle = '#2e7d32';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  zoneTerrain(-PROF_EN_BUT, 0, 0, LARGEUR, '#256528');
+  zoneTerrain(LONGUEUR, 0, LONGUEUR + PROF_EN_BUT, LARGEUR, '#256528');
+
+  // Lignes de touche (les deux grands côtés) et lignes de ballon mort, sur toute
+  // la longueur en-but compris.
+  ligneTerrain(-PROF_EN_BUT, 0, LONGUEUR + PROF_EN_BUT, 0, { largeur: 2 });
+  ligneTerrain(-PROF_EN_BUT, LARGEUR, LONGUEUR + PROF_EN_BUT, LARGEUR, { largeur: 2 });
+  ligneTerrain(-PROF_EN_BUT, 0, -PROF_EN_BUT, LARGEUR, { largeur: 2 });
+  ligneTerrain(LONGUEUR + PROF_EN_BUT, 0, LONGUEUR + PROF_EN_BUT, LARGEUR, { largeur: 2 });
+
+  // Lignes d'essai (pleines, marquées) et lignes médiane / 22 m (pleines, fines).
+  ligneTerrain(0, 0, 0, LARGEUR, { largeur: 3 });
+  ligneTerrain(LONGUEUR, 0, LONGUEUR, LARGEUR, { largeur: 3 });
+  for (const x of [22, 50, 78]) ligneTerrain(x, 0, x, LARGEUR, { largeur: 2, alpha: 0.85 });
+
+  // Lignes des 10 m et des 5 m (pointillées), de touche à touche.
+  for (const x of [40, 60, 5, 95]) ligneTerrain(x, 0, x, LARGEUR, { largeur: 2, alpha: 0.6, dash: [10, 8] });
+
+  // Lignes des 5 m et 15 m parallèles aux touches, sur toute la longueur.
+  for (const y of [5, 15, LARGEUR - 15, LARGEUR - 5]) {
+    ligneTerrain(0, y, LONGUEUR, y, { largeur: 1, alpha: 0.35, dash: [4, 10] });
+  }
+
+  dessinerPoteaux(0);
+  dessinerPoteaux(LONGUEUR);
 }
 
 function dessinerJoueur(j, estPorteur) {
@@ -304,9 +367,33 @@ function dessinerJoueur(j, estPorteur) {
 }
 
 function dessinerBallon(state) {
-  const { px, py } = versCanvas(state.porteur.x, state.porteur.y);
+  const ballon = state.ballon || { x: state.porteur.x, y: state.porteur.y, enVol: false, hauteur: 0 };
+  const sol = versCanvas(ballon.x, ballon.y);
+  if (ballon.enVol) {
+    // Coup d'envoi en cloche : ombre au sol + ballon décalé vers le haut selon
+    // la hauteur (0..1), agrandi à l'apogée, pour figurer un ballon botté haut.
+    const lift = ballon.hauteur * 46;
+    ctx.save();
+    ctx.globalAlpha = 0.25;
+    ctx.beginPath();
+    ctx.ellipse(sol.px, sol.py, 6, 3, 0, 0, Math.PI * 2);
+    ctx.fillStyle = '#000';
+    ctx.fill();
+    ctx.restore();
+    const taille = 5 + ballon.hauteur * 2.5;
+    ctx.beginPath();
+    ctx.ellipse(sol.px, sol.py - lift, taille, taille * 0.62, Math.PI / 4, 0, Math.PI * 2);
+    ctx.fillStyle = '#8d5524';
+    ctx.fill();
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = '#5d3a1a';
+    ctx.stroke();
+    return;
+  }
+  // Ballon tenu : dessiné dans les mains du porteur, légèrement décalé.
+  const main = versCanvas(state.porteur.x, state.porteur.y);
   ctx.beginPath();
-  ctx.ellipse(px + 12, py - 8, 5, 3.2, Math.PI / 4, 0, Math.PI * 2);
+  ctx.ellipse(main.px + 12, main.py - 8, 5, 3.2, Math.PI / 4, 0, Math.PI * 2);
   ctx.fillStyle = '#8d5524';
   ctx.fill();
 }
@@ -334,8 +421,12 @@ function dessinerArbitre(state) {
 
 function dessiner(state) {
   dessinerTerrain();
-  for (const j of state.equipeA) dessinerJoueur(j, j.team === state.porteur.team && j.numero === state.porteur.numero);
-  for (const j of state.equipeB) dessinerJoueur(j, j.team === state.porteur.team && j.numero === state.porteur.numero);
+  // Pendant que le ballon est en vol (coup d'envoi), personne ne le porte : on
+  // ne met aucun joueur en surbrillance.
+  const enVol = state.ballon && state.ballon.enVol;
+  const estPorteur = j => !enVol && j.team === state.porteur.team && j.numero === state.porteur.numero;
+  for (const j of state.equipeA) dessinerJoueur(j, estPorteur(j));
+  for (const j of state.equipeB) dessinerJoueur(j, estPorteur(j));
   dessinerArbitre(state);
   dessinerBallon(state);
 }
