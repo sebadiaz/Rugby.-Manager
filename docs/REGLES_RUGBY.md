@@ -104,33 +104,53 @@ Implémenté (`Referee.horsJeuRuck`, `_tickRuck`) :
 
 ## 4. Maul (Law 17 — Maul)
 
-Règle réelle : un maul se forme quand le porteur du ballon est plaqué/contesté
-mais **reste sur ses appuis** (pas amené au sol) et qu'au moins un partenaire
-se lie à lui — à la différence du ruck, où le ballon est au sol. Même ligne de
-hors-jeu que le ruck (point le plus reculé). Le maul est l'une des quatre
-phases de regroupement citées dans la plupart des présentations grand public
-du jeu (avec touche, mêlée et ruck).
+Règle réelle : un maul se forme quand le porteur du ballon est tenu/contesté
+mais **reste sur ses appuis** (pas amené au sol), qu'au moins un adversaire est
+lié à lui et qu'au moins un coéquipier se lie — à la différence du ruck, où le
+ballon est au sol. Ligne de hors-jeu au dernier pied de chaque équipe. Un maul
+peut avancer, s'arrêter, repartir ; s'il s'arrête durablement, l'arbitre
+annonce « use it » et l'équipe doit jouer le ballon sous 5 s, sinon mêlée. Les
+écroulements volontaires, entrées sur le côté et hors-jeu sont sanctionnés
+(pénalité, carton, voire essai de pénalité près de la ligne).
 
-Implémenté (`_tickMaul`, déclenché depuis `_tickPorte`) :
-- ✅ Sur un plaquage réussi, si un soutien attaquant est déjà à moins de 3 m,
-  il y a une chance (30 %) que le jeu forme un maul (`phase = 'MAUL'`) plutôt
-  qu'un ruck — le ballon reste en main (`porteur.auSol` n'est pas activé),
-  contrairement au ruck où il est posé au sol.
-- ✅ Même ligne de hors-jeu et même logique de repli/pénalité que le ruck
-  (réutilise `Referee.horsJeuRuck`).
-- ✅ Maul arrêté (loi 17) : si le maul cesse d'avancer et que le ballon ne
-  ressort pas (~12 % des résolutions de maul), l'arbitre siffle et accorde une
-  **mêlée à l'équipe qui n'avait pas la possession** (`MAUL_ARRETE`,
-  `_accorderMelee`), comme dans les vraies règles — et non un simple ballon
-  rejoué à la main par l'adversaire.
-- ⚠️ Volontairement sans avancée de terrain automatique : une première version
-  donnait au maul une avancée nette garantie (≈2.6 m) à faible risque, ce qui en
-  faisait un raccourci vers l'essai et faisait presque tripler le nombre
-  d'essais sur une simulation de test — ce comportement a été retiré. Sans
-  modéliser la poussée comparée des deux paquets (forces, nombre de joueurs
-  liés), le gain de terrain du maul n'est pas simulé ; seuls sa représentation
-  (ballon en main, pas au sol), son déclenchement et sa résolution (sortie du
-  ballon ou mêlée si arrêté) diffèrent du ruck.
+Implémenté comme une **machine à états complète** (`_formerMaul`, `_tickMaul` et
+ses fonctions dédiées ; états dans `ETATS_MAUL`) :
+- ✅ **Formation (loi 17)** : sur un plaquage où le porteur reste debout avec un
+  soutien lié, `Referee.maulForme(...)` vérifie les conditions (porteur debout,
+  adversaire lié et debout, coéquipier lié, ballon en main, dans le champ de
+  jeu) avant de créer le maul. Volontairement occasionnel (≈3,5 % des plaquages,
+  ~20 mauls/match) : un maul est une action plus rare qu'un ruck.
+- ✅ **États** : `MAUL_FORMING → MAUL_ACTIVE → MAUL_MOVING`, puis selon le jeu
+  `MAUL_FIRST_STOP` (annonce « use it once », 5 s pour repartir, une relance
+  autorisée) → `MAUL_SECOND_STOP` → `MAUL_USE_IT` (compteur 5 s) →
+  `MAUL_ENDED` (ballon sorti) ou `MAUL_UNPLAYABLE` (mêlée). Événements visibles :
+  `MAUL`, `MAUL_ARRET_UN`, `MAUL_ARRET_DEUX`, `MAUL_USE_IT`, `MAUL_BALLON_SORTI`,
+  `MAUL_INJOUABLE`.
+- ✅ **Poussée collective** (`_maulCalculerPoussee`) : avancée nette issue du
+  déséquilibre des forces des deux paquets liés (`forceMaul`, avants > arrières),
+  bornée et bruitée — jamais un gain garanti. Le ballon est transféré à l'arrière
+  du maul ; un maul réellement pénétrant peut marquer un essai (`_maulEssai`),
+  mais c'est rare car la défense le stoppe le plus souvent.
+- ✅ **Liaisons / IA** (`_maulGererLiaisons`) : les avants liés poussent dans
+  l'axe (attaque derrière le ballon, défense devant), les joueurs non engagés se
+  replient derrière leur ligne de hors-jeu.
+- ✅ **Use it / ballon injouable (loi 8)** : après « use it », le demi de mêlée
+  sort le ballon (retour au jeu courant) ; s'il reste bloqué plus de 5 s →
+  **mêlée à l'équipe qui n'avait pas le ballon au début du maul**, *sauf* si le
+  maul a suivi une réception directe d'un coup de pied adverse (`_receptionDirecte`),
+  auquel cas la mêlée revient au réceptionneur.
+- ✅ **Fautes et sanctions** (`_maulDetecterHorsJeu`, `_maulDetecterFautes`,
+  `_maulSanctionner`) : écroulement volontaire, entrée sur le côté, joueur non
+  lié qui pousse, saut sur le maul, obstruction, détachement illégal, joueur au
+  sol, hors-jeu (défenseur qui contourne). Taux faibles en jeu courant, plus
+  élevés près de la ligne (écroulement cynique). Décision graduée : pénalité
+  simple ; **carton jaune** (`CARTON_JAUNE`) si la faute délibérée est commise
+  près de la ligne ou répétée ; **essai de pénalité** (`ESSAI_PENALITE`, +7) si
+  une faute délibérée empêche un maul lancé qui allait probablement marquer.
+- ⚠️ Simplifié : le carton jaune est annoncé mais **sans exclusion temporaire
+  réelle** (le joueur n'est pas retiré 10 min — l'effectif est recréé à chaque
+  remise en jeu, la persistance d'un carton n'est pas modélisée). Les liaisons
+  sont gérées de façon agrégée (5 avants par camp), sans modéliser chaque bras.
 
 ## 5. Options sur pénalité (Law 19–21 — Penalty and free kick options)
 
@@ -178,7 +198,9 @@ pas de contestation de mêlée joueur par joueur (résolution agrégée).
 
 ## 8. Hors scope explicite (non modélisé du tout)
 
-- Cartons (jaune/rouge), exclusions temporaires.
+- Exclusion temporaire réelle (sin-bin de 10 min) : le **carton jaune** est
+  désormais décidé et annoncé sur faute de maul (cf. section 4), mais le joueur
+  n'est pas physiquement retiré du terrain ; le carton rouge n'est pas modélisé.
 - 50:22, jeu au pied tactique avancé (chandelles, grubber).
 - Avantage prolongé (l'avantage n'est pas modélisé comme une fenêtre
   temporelle distincte ; cf. tap-and-go immédiat dans `_traiterPenalite`).

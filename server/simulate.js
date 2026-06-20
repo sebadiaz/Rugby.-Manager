@@ -59,15 +59,23 @@ const nbMiTemps = compteurs.MI_TEMPS || 0;
 const nbCoupsEnvoiCourts = compteurs.COUP_ENVOI_COURT || 0;
 const nbDropGoals = (compteurs.DROP_GOAL_REUSSI || 0) + (compteurs.DROP_GOAL_RATE || 0);
 const nbEssaisPenalite = compteurs.ESSAI_PENALITE || 0;
-const nbMaulsArretes = compteurs.MAUL_ARRETE || 0;
 const nbCoupsFrancs = compteurs.COUP_FRANC || 0;
+// Maul (loi 17) : déroulé de la machine à états.
+const nbMaulsBallonSorti = compteurs.MAUL_BALLON_SORTI || 0;
+const nbMaulsInjouables = compteurs.MAUL_INJOUABLE || 0;
+const nbMaulsArretUn = compteurs.MAUL_ARRET_UN || 0;
+const nbMaulsUseIt = compteurs.MAUL_USE_IT || 0;
+const nbMaulsPenalites = (compteurs.MAUL_PEN_ECROULEMENT || 0) + (compteurs.MAUL_PEN_HORSJEU || 0)
+  + (compteurs.MAUL_PEN_ENTREE_COTE || 0) + (compteurs.MAUL_PEN_TECHNIQUE || 0);
+const nbCartonsJaunes = compteurs.CARTON_JAUNE || 0;
 
 const state = match.getState();
 console.log('--- Résultat simulation ---');
 console.log(`Score final : Equipe A ${state.score.A} - ${state.score.B} Equipe B`);
 console.log(`Essais : ${nbEssais} | Transformations tentées : ${nbTransformationsTentees} | Pénalités au but tentées : ${nbPenalitesAuButTentees}`);
 console.log(`Mêlées (passe en avant / en-avant) : ${nbMelees} | Touches (ballon porté en touche) : ${nbTouches} | Mauls : ${nbMauls} | Mi-temps : ${nbMiTemps} | Coups d'envoi trop courts : ${nbCoupsEnvoiCourts}`);
-console.log(`Drop-goals tentés : ${nbDropGoals} | Essais de pénalité : ${nbEssaisPenalite} | Mauls arrêtés (mêlée) : ${nbMaulsArretes} | Marques / coups francs : ${nbCoupsFrancs}`);
+console.log(`Drop-goals tentés : ${nbDropGoals} | Essais de pénalité : ${nbEssaisPenalite} | Marques / coups francs : ${nbCoupsFrancs}`);
+console.log(`Maul (loi 17) : arrêtés 1x ${nbMaulsArretUn} | "use it" ${nbMaulsUseIt} | ballon sorti ${nbMaulsBallonSorti} | injouables→mêlée ${nbMaulsInjouables} | pénalités ${nbMaulsPenalites} | cartons jaunes ${nbCartonsJaunes}`);
 console.log(`Derniers événements : ${state.events.map(e => e.message).join(' | ')}`);
 
 if (erreurs > 0) {

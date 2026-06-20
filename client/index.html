@@ -138,8 +138,16 @@ const ICONES = {
   COUP_ENVOI: '▶️', CONTRE_COUP_ENVOI: '✋', ESSAI: '🏉', MELEE_AVANT: '🔄', MELEE_ENAVANT: '🔄',
   PENALITE: '🟨', PENALITE_REUSSIE: '🥅', PENALITE_RATEE: '❌',
   TRANSFORMATION_REUSSIE: '🥅', TRANSFORMATION_RATEE: '❌',
-  TOUCHE: '👉', TURNOVER: '🔁', MAUL: '🧱', MAUL_ARRETE: '🛑', MI_TEMPS: '⏸️', COUP_ENVOI_COURT: '📏',
+  TOUCHE: '👉', TURNOVER: '🔁', MAUL: '🧱', MI_TEMPS: '⏸️', COUP_ENVOI_COURT: '📏',
   DROP_GOAL_REUSSI: '🎯', DROP_GOAL_RATE: '😬', ESSAI_PENALITE: '🏉', COUP_FRANC: '🙌', FIN_MATCH: '🏁',
+  MAUL_ARRET_UN: '🅰️', MAUL_ARRET_DEUX: '✋', MAUL_USE_IT: '⏱️', MAUL_BALLON_SORTI: '➡️', MAUL_INJOUABLE: '🔒',
+  MAUL_PEN_ECROULEMENT: '🟨', MAUL_PEN_HORSJEU: '🟨', MAUL_PEN_ENTREE_COTE: '🟨', MAUL_PEN_TECHNIQUE: '🟨', CARTON_JAUNE: '🟡',
+};
+// Libellés lisibles des états du maul (loi 17) pour l'affichage de la phase.
+const ETATS_MAUL_LABEL = {
+  MAUL_FORMING: 'Maul (formation)', MAUL_ACTIVE: 'Maul', MAUL_MOVING: 'Maul (avance)',
+  MAUL_FIRST_STOP: 'Maul (arrêt 1 — use it once)', MAUL_SECOND_STOP: 'Maul (arrêt 2)',
+  MAUL_USE_IT: 'Maul (use it !)', MAUL_UNPLAYABLE: 'Maul (injouable)',
 };
 const PHASES = {
   COUP_ENVOI: { label: "Coup d'envoi", couleur: '#37474f' },
@@ -157,8 +165,10 @@ const PHASES = {
 const TYPES_BANNIERE = new Set([
   'PENALITE', 'MELEE_AVANT', 'MELEE_ENAVANT', 'TOUCHE', 'ESSAI', 'FIN_MATCH',
   'TRANSFORMATION_REUSSIE', 'TRANSFORMATION_RATEE', 'PENALITE_REUSSIE', 'PENALITE_RATEE',
-  'CONTRE_COUP_ENVOI', 'MAUL', 'MAUL_ARRETE', 'MI_TEMPS', 'COUP_ENVOI_COURT',
+  'CONTRE_COUP_ENVOI', 'MAUL', 'MI_TEMPS', 'COUP_ENVOI_COURT',
   'DROP_GOAL_REUSSI', 'DROP_GOAL_RATE', 'ESSAI_PENALITE', 'COUP_FRANC',
+  'MAUL_ARRET_UN', 'MAUL_ARRET_DEUX', 'MAUL_USE_IT', 'MAUL_INJOUABLE',
+  'MAUL_PEN_ECROULEMENT', 'MAUL_PEN_HORSJEU', 'MAUL_PEN_ENTREE_COTE', 'MAUL_PEN_TECHNIQUE', 'CARTON_JAUNE',
 ]);
 
 function formaterTemps(s) {
@@ -232,7 +242,10 @@ function majAffichage(state, forcerFeedComplet) {
     `Equipe A ${state.score.A} — ${state.score.B} Equipe B`;
   const infosPhase = PHASES[state.phase] || { label: state.phase, couleur: '#455a64' };
   const phaseEl = document.getElementById('phase');
-  phaseEl.textContent = infosPhase.label;
+  // Pendant un maul, afficher l'état détaillé de la machine à états (loi 17).
+  phaseEl.textContent = (state.phase === 'MAUL' && state.maul && ETATS_MAUL_LABEL[state.maul.etat])
+    ? ETATS_MAUL_LABEL[state.maul.etat]
+    : infosPhase.label;
   phaseEl.style.background = infosPhase.couleur;
   document.getElementById('horloge').textContent =
     `${formaterTemps(state.tempsMatch)} / ${formaterTemps(state.dureeMatch === Infinity ? DUREE_MATCH : state.dureeMatch)} · ${state.periode === 2 ? '2e pér.' : '1ère pér.'}`;

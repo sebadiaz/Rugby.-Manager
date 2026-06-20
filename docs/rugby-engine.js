@@ -99,6 +99,32 @@
     return { joueur: meilleur, distance: meilleureDist };
   }
 
+  // --- Maul (loi 17) : machine à états ---------------------------------------
+  // Le maul traverse une suite d'états bien définis, de sa formation à sa fin,
+  // exactement comme l'arbitrage réel d'un maul (formation, avancée, arrêts
+  // successifs, « use it », ballon injouable, écroulement). L'état est porté par
+  // `engine.maul.etat`, la phase moteur restant 'MAUL'.
+  const ETATS_MAUL = {
+    AUCUN: 'NO_MAUL',
+    FORMATION: 'MAUL_FORMING',
+    ACTIF: 'MAUL_ACTIVE',
+    AVANCE: 'MAUL_MOVING',
+    PREMIER_ARRET: 'MAUL_FIRST_STOP',
+    SECOND_ARRET: 'MAUL_SECOND_STOP',
+    USE_IT: 'MAUL_USE_IT',
+    ECROULE: 'MAUL_COLLAPSED',
+    INJOUABLE: 'MAUL_UNPLAYABLE',
+    TERMINE: 'MAUL_ENDED',
+  };
+
+  // Force de poussée d'un joueur dans le maul : les avants (1-8) poussent
+  // nettement plus fort que les arrières ; modulée par l'attribut de plaquage
+  // (proxy de puissance physique).
+  function forceMaul(j) {
+    const base = j.numero <= 8 ? 80 : 40;
+    return base + (j.plaquage - 60) * 0.3;
+  }
+
   // --- Arbitre : applique de vraies règles plutôt que de laisser le jeu continuer
   // sans contrainte. Chaque méthode renvoie une infraction ou null. ---
   const Referee = {
@@ -119,6 +145,27 @@
       const marge = 0.5;
       if (sensAttaqueAdverse > 0) return defenseur.x < ruckPoint.x - marge;
       return defenseur.x > ruckPoint.x + marge;
+    },
+    // Décision : un maul est-il valablement formé (loi 17) ? Il faut le porteur
+    // debout, au moins un adversaire lié et debout, au moins un coéquipier lié,
+    // le ballon en main (pas au sol) et l'action dans le champ de jeu.
+    maulForme(porteur, adversaireLie, coequipierLie) {
+      if (!porteur || porteur.auSol > 0) return false;
+      if (!coequipierLie) return false;
+      if (!adversaireLie || adversaireLie.auSol > 0) return false;
+      if (porteur.x <= 0 || porteur.x >= LONGUEUR) return false;
+      if (porteur.y <= 0 || porteur.y >= LARGEUR) return false;
+      return true;
+    },
+    // Hors-jeu au maul : la ligne de hors-jeu passe par le dernier pied de
+    // chaque équipe engagée dans le maul. Un défenseur NON lié qui se retrouve
+    // du côté de la sortie du ballon (derrière le maul dans le sens d'attaque)
+    // est hors-jeu — typiquement le défenseur qui contourne pour bloquer le
+    // ballon. `sensAttaque` est celui de l'équipe en possession.
+    horsJeuMaul(defenseur, centreMaul, sensAttaque) {
+      const marge = 1.2;
+      if (sensAttaque > 0) return defenseur.x < centreMaul.x - marge;
+      return defenseur.x > centreMaul.x + marge;
     },
   };
 
@@ -142,6 +189,15 @@
       this.ballonVolX = LONGUEUR / 2;
       this.ballonVolY = LARGEUR / 2;
       this.ballonVolHauteur = 0;
+      // Maul (loi 17) : objet d'état courant (null hors maul), et indicateur
+      // « le ballon vient d'une réception directe d'un coup de pied adverse »
+      // (exception loi 8 sur l'attribution de la mêlée en cas de ballon injouable).
+      this.maul = null;
+      this._receptionDirecte = false;
+      // Compteur d'infractions de maul par équipe sur l'ensemble du match
+      // (persiste d'un maul à l'autre) : sert à siffler un carton jaune pour
+      // fautes répétées, comme l'arbitrage réel.
+      this._maulPenalitesMatch = { A: 0, B: 0 };
       this._sequenceEvenement = 0;
       this._nouvelleManche('A');
       this.equipeKickPremiereMiTemps = this._dernierEquipeKick;
@@ -165,6 +221,8 @@
     // le ballon est donc réellement botté et contestable, pas remis en main.
     _nouvelleManche(equipeReceptrice, xCentre = LONGUEUR / 2) {
       const sens = { A: 1, B: -1 };
+      this.maul = null;
+      this._receptionDirecte = false;
       this.equipeA = creerEquipe('A', sens.A, this.rng);
       this.equipeB = creerEquipe('B', sens.B, this.rng);
       const equipeKick = equipeReceptrice === 'A' ? 'B' : 'A';
@@ -300,6 +358,10 @@
           this._traiterCoupFranc(joueur.team, { x: joueur.x, y: joueur.y });
           return;
         }
+        // Réception directe d'un coup de pied adverse : si un maul se forme dans
+        // la foulée, l'exception de la loi 8 attribuera la mêlée (ballon
+        // injouable) à l'équipe du réceptionneur, pas à la défense.
+        this._receptionDirecte = true;
         this.phase = 'PORTE';
         this.timerPhase = 0;
       }
@@ -478,6 +540,7 @@
           const probaReussite = Math.max(0.3, Math.min(0.95, 0.9 - distancePasse / 40));
           if (this.rng() < probaReussite) {
             this.porteur = meilleur;
+            this._receptionDirecte = false;
           } else {
             this.log('MELEE_ENAVANT', this.possession, `En-avant, equipe ${this.possession} - melee adverse`);
             this._accorderMelee(this.possession, meilleur);
@@ -523,17 +586,18 @@
           this.ruckPoint = { x: this.porteur.x, y: this.porteur.y };
           this.contestants = [defenseurProche.numero];
           this.timerPhase = 0;
-          // Maul (loi 17) : si le porteur reste debout (pas plaqué au sol) et qu'un
-          // soutien est déjà à portée pour se lier, le ballon reste en main et le
-          // jeu forme un maul plutôt qu'un ruck (ballon au sol). Sinon, plaquage
-          // classique → ruck.
+          // Maul (loi 17) : si le porteur reste debout (pas plaqué au sol), qu'un
+          // soutien est déjà lié et que les conditions de formation sont réunies,
+          // le ballon reste en main et le jeu forme un maul plutôt qu'un ruck.
+          // Volontairement plus rare qu'un ruck : un maul est une action
+          // occasionnelle, désormais simulée en profondeur (machine à états).
           const soutienProche = att.some(j => j !== porteur && distance(j, porteur) < 3);
-          if (soutienProche && this.rng() < 0.3) {
-            this.phase = 'MAUL';
-            this.log('MAUL', this.possession, `Maul, equipe ${this.possession} maintient le ballon en jeu`);
+          if (soutienProche && this.rng() < 0.035 && Referee.maulForme(porteur, defenseurProche, soutienProche)) {
+            this._formerMaul(porteur, defenseurProche);
           } else {
             this.porteur.auSol = 1.5;
             this.phase = 'RUCK';
+            this._receptionDirecte = false;
           }
         }
       }
@@ -597,59 +661,341 @@
       }
     }
 
-    // Maul (loi 17) : le ballon reste en main (pas au sol comme au ruck), le
-    // porteur est lié à ses soutiens au point de regroupement. Même ligne de
-    // hors-jeu que le ruck (hindmost point). Volontairement sans avancée nette
-    // automatique ni risque de turnover différent du ruck : sans modéliser la
-    // poussée comparée des deux paquets, donner au maul un gain de terrain
-    // garanti et peu risqué en ferait un raccourci vers l'essai qui casse
-    // l'équilibre du match (constaté : essais quasi triplés en test).
+    // === Maul (loi 17) : machine à états complète ============================
+    // Initialise l'objet maul et bascule la phase moteur sur 'MAUL'. À partir de
+    // là, _tickMaul fait avancer la machine à états jusqu'à la sortie du ballon,
+    // la mêlée (ballon injouable) ou une pénalité.
+    _formerMaul(porteur, defenseur) {
+      const poss = this.possession;
+      const sens = porteur.sensAttaque;
+      this.maul = {
+        etat: ETATS_MAUL.FORMATION,
+        equipePossession: poss,
+        equipeNonPossession: poss === 'A' ? 'B' : 'A',
+        // Loi 8 : si le ballon est injouable, mêlée à l'équipe qui n'avait pas le
+        // ballon au début du maul — sauf si le maul a suivi une réception directe
+        // d'un coup de pied adverse, auquel cas la mêlée revient au réceptionneur.
+        equipeMeleeSiInjouable: this._receptionDirecte ? poss : (poss === 'A' ? 'B' : 'A'),
+        x: porteur.x, y: porteur.y, sens,
+        timer: 0, timerGlobal: 0, timerUseIt: -1,
+        nbArrets: 0, tempsImmobile: 0, tempsMouvement: 0,
+        timerHorsJeu: 0, vitesse: 0,
+      };
+      this._receptionDirecte = false;
+      this.ruckPoint = { x: porteur.x, y: porteur.y };
+      this.contestants = [defenseur.numero];
+      this.phase = 'MAUL';
+      this.timerPhase = 0;
+      this.log('MAUL', poss, `Maul forme, l'equipe ${poss} garde le ballon debout avec ses soutiens`);
+    }
+
+    // Orchestrateur : exécute un pas de la machine à états du maul.
     _tickMaul(dt) {
-      this.timerPhase += dt;
-      const pt = this.ruckPoint;
-      const sensAttaque = this.porteur.sensAttaque;
-      const margeRecul = 1.5;
-      const delaiGrace = 1.5;
+      const m = this.maul;
+      if (!m) { this.phase = 'PORTE'; this.timerPhase = 0; return; }
+      m.timer += dt;
+      m.timerGlobal += dt;
+      this.ruckPoint = { x: m.x, y: m.y };
 
-      for (const j of [...this.equipeA, ...this.equipeB]) {
-        if (j === this.porteur) continue;
-        const estContestant = this.contestants.includes(j.numero) && j.team !== this.possession;
-        const estSoutienAttaque = j.team === this.possession && distance(j, pt) < 8;
+      // 1) IA des joueurs : liaisons, poussée dans l'axe, repli des non-engagés.
+      this._maulGererLiaisons(dt);
 
-        if (estContestant || estSoutienAttaque) {
-          avancer(j, pt.x - j.x, pt.y - j.y, dt, vitesseMs(j) * 0.7);
-          continue;
+      // 2) Arbitrage permanent : hors-jeu, puis fautes techniques/volontaires.
+      const horsJeu = this._maulDetecterHorsJeu(dt);
+      if (horsJeu) return this._maulSanctionner(horsJeu);
+      const faute = this._maulDetecterFautes(dt);
+      if (faute) return this._maulSanctionner(faute);
+
+      // 3) Poussée collective + classification avance/arrêt (états « jouables »).
+      const etatsPoussee = [ETATS_MAUL.FORMATION, ETATS_MAUL.ACTIF, ETATS_MAUL.AVANCE, ETATS_MAUL.PREMIER_ARRET];
+      if (etatsPoussee.includes(m.etat)) {
+        const avance = this._maulCalculerPoussee(dt);
+        m.x = Math.max(0, Math.min(LONGUEUR, m.x + avance * m.sens));
+        // Le ballon est transféré vers l'arrière du maul (côté de son propre camp).
+        this.porteur.x = Math.max(0, Math.min(LONGUEUR, m.x - m.sens * 0.8));
+        this.porteur.y = m.y;
+        const enMouvement = avance >= 0.04;
+        if (enMouvement) { m.tempsMouvement += dt; m.tempsImmobile = 0; }
+        else { m.tempsImmobile += dt; m.tempsMouvement = 0; }
+        // Essai sur maul pénétrant : seulement s'il avance réellement jusqu'à la
+        // ligne d'en-but adverse (rare, car la défense le stoppe le plus souvent).
+        if (enMouvement && ((m.sens > 0 && m.x >= LONGUEUR - 0.3) || (m.sens < 0 && m.x <= 0.3))) {
+          return this._maulEssai();
         }
+      }
 
-        if (j.team !== this.possession && Referee.horsJeuRuck(j, pt, sensAttaque)) {
-          const cibleX = sensAttaque > 0 ? pt.x + margeRecul : pt.x - margeRecul;
-          avancer(j, cibleX - j.x, pt.y - j.y, dt, vitesseMs(j));
-          if (this.timerPhase > delaiGrace && Referee.horsJeuRuck(j, pt, sensAttaque)) {
-            this._traiterPenalite(this.possession, { x: this.porteur.x, y: this.porteur.y });
-            return;
+      // 4) Transitions de la machine à états.
+      const poss = m.equipePossession;
+      switch (m.etat) {
+        case ETATS_MAUL.FORMATION:
+          if (m.timer >= 0.5) { m.etat = ETATS_MAUL.ACTIF; m.timer = 0; }
+          break;
+        case ETATS_MAUL.ACTIF:
+        case ETATS_MAUL.AVANCE:
+          m.etat = m.tempsMouvement > 0 ? ETATS_MAUL.AVANCE : m.etat;
+          if (m.tempsImmobile >= 1.0) {
+            if (m.nbArrets === 0) {
+              m.nbArrets = 1; m.etat = ETATS_MAUL.PREMIER_ARRET; m.timer = 0;
+              this.log('MAUL_ARRET_UN', poss, `Maul arrete une fois : l'arbitre annonce "use it once" a l'equipe ${poss}`);
+            } else {
+              m.nbArrets = 2; m.etat = ETATS_MAUL.SECOND_ARRET; m.timer = 0;
+            }
           }
-        }
+          break;
+        case ETATS_MAUL.PREMIER_ARRET:
+          // Une seule relance autorisée : s'il repart clairement, on laisse jouer.
+          if (m.tempsMouvement >= 0.4) { m.etat = ETATS_MAUL.AVANCE; }
+          else if (m.timer >= 5) {
+            m.nbArrets = 2; m.etat = ETATS_MAUL.SECOND_ARRET; m.timer = 0;
+          }
+          break;
+        case ETATS_MAUL.SECOND_ARRET:
+          this.log('MAUL_ARRET_DEUX', poss, `Maul arrete une deuxieme fois, equipe ${poss}`);
+          m.etat = ETATS_MAUL.USE_IT; m.timerUseIt = 5; m.timer = 0;
+          this.log('MAUL_USE_IT', poss, `"Use it" : l'equipe ${poss} doit sortir ou jouer le ballon sous 5 secondes`);
+          break;
+        case ETATS_MAUL.USE_IT:
+          m.timerUseIt -= dt;
+          // Le demi de mêlée sort/joue le ballon, avec une probabilité croissante.
+          if (this.rng() < 0.6 * dt) return this._maulSortieBallon();
+          if (m.timerUseIt <= 0) return this._maulMeleeInjouable();
+          break;
       }
+    }
 
-      if (this.timerPhase >= 1.8) {
-        // Maul arrêté (loi 17) : si le maul cesse d'avancer et que le ballon ne
-        // ressort pas, l'arbitre siffle et accorde une mêlée à l'équipe qui
-        // n'avait pas la possession (celle qui a stoppé le maul), comme dans les
-        // vraies règles — et non un simple turnover joué à la main.
-        const maulArrete = this.rng() < 0.12;
-        if (maulArrete) {
-          this.log('MAUL_ARRETE', this.possession, `Maul arrete, equipe ${this.possession} ne sort pas le ballon, melee adverse`);
-          this._accorderMelee(this.possession, pt);
-          return;
+    // Gestion des liaisons et de l'IA des joueurs autour du maul.
+    _maulGererLiaisons(dt) {
+      const m = this.maul;
+      const att = m.equipePossession === 'A' ? this.equipeA : this.equipeB;
+      const def = m.equipeNonPossession === 'A' ? this.equipeA : this.equipeB;
+      const liesAtt = this._maulJoueursLies(att);
+      const liesDef = this._maulJoueursLies(def);
+      // Attaque : avants liés DERRIÈRE le ballon (côté de leur camp), poussent
+      // dans l'axe ; le porteur est maintenu au cœur du maul.
+      liesAtt.forEach((j, i) => {
+        const cx = m.x - m.sens * (0.6 + (i % 3) * 0.5);
+        const cy = m.y + ((i % 2) ? -1 : 1) * Math.ceil((i + 1) / 2) * 0.7;
+        avancer(j, cx - j.x, cy - j.y, dt, vitesseMs(j));
+      });
+      // Défense : avants liés DEVANT, debout, contestent la progression.
+      liesDef.forEach((j, i) => {
+        const cx = m.x + m.sens * (0.6 + (i % 3) * 0.5);
+        const cy = m.y + ((i % 2) ? -1 : 1) * Math.ceil((i + 1) / 2) * 0.7;
+        avancer(j, cx - j.x, cy - j.y, dt, vitesseMs(j));
+      });
+      // Joueurs non liés : rester en-deçà de leur ligne de hors-jeu (onside).
+      const cibleAtt = m.x - m.sens * 3;
+      for (const j of att) {
+        if (liesAtt.includes(j) || j === this.porteur) continue;
+        if ((m.sens > 0 && j.x > cibleAtt) || (m.sens < 0 && j.x < cibleAtt)) {
+          avancer(j, cibleAtt - j.x, 0, dt, vitesseMs(j) * 0.6);
         }
-        const att = this.attaquants();
-        const { joueur: relayeur } = joueurLePlusProche(att.filter(j => j.tendance >= 50), pt.x, pt.y);
-        this.porteur = relayeur || att[8];
-        this.porteur.x = pt.x;
-        this.porteur.y = pt.y;
-        this.phase = 'PORTE';
-        this.timerPhase = 0;
       }
+      const cibleDef = m.x + m.sens * 3;
+      for (const j of def) {
+        if (liesDef.includes(j)) continue;
+        if ((m.sens > 0 && j.x < cibleDef) || (m.sens < 0 && j.x > cibleDef)) {
+          avancer(j, cibleDef - j.x, 0, dt, vitesseMs(j) * 0.6);
+        }
+      }
+    }
+
+    // Les (jusqu'à 5) avants d'une équipe les plus proches du maul et debout.
+    _maulJoueursLies(equipe) {
+      const m = this.maul;
+      return equipe
+        .filter(j => j.numero <= 8 && j.auSol === 0)
+        .sort((a, b) => Math.hypot(a.x - m.x, a.y - m.y) - Math.hypot(b.x - m.x, b.y - m.y))
+        .slice(0, 5);
+    }
+
+    // Calcul de la poussée : déséquilibre des forces des deux paquets liés, borné
+    // et bruité — un maul ne garantit jamais une avancée nette. Renvoie l'avancée
+    // (mètres ce tick, positive = vers la ligne adverse).
+    _maulCalculerPoussee(dt) {
+      const m = this.maul;
+      const att = m.equipePossession === 'A' ? this.equipeA : this.equipeB;
+      const def = m.equipeNonPossession === 'A' ? this.equipeA : this.equipeB;
+      let fAtt = 0, fDef = 0;
+      for (const j of att) if (j.auSol === 0 && Math.hypot(j.x - m.x, j.y - m.y) < 4) fAtt += forceMaul(j);
+      for (const j of def) if (j.auSol === 0 && Math.hypot(j.x - m.x, j.y - m.y) < 4) fDef += forceMaul(j);
+      const net = (fAtt - fDef) / 200 + (this.rng() - 0.5) * 0.5;
+      m.vitesse = Math.max(-0.5, Math.min(0.8, net));
+      return m.vitesse * dt;
+    }
+
+    // Hors-jeu au maul : un défenseur non lié, debout, passé du côté de la sortie
+    // du ballon (contournement), au-delà d'un délai de grâce → pénalité.
+    _maulDetecterHorsJeu(dt) {
+      const m = this.maul;
+      if (m.etat === ETATS_MAUL.FORMATION) return null;
+      const def = m.equipeNonPossession === 'A' ? this.equipeA : this.equipeB;
+      let fautif = false;
+      for (const j of def) {
+        if (j.auSol > 0) continue;
+        if (Math.hypot(j.x - m.x, j.y - m.y) < 4) continue; // lié, donc légal
+        if (Referee.horsJeuMaul(j, m, m.sens)) { fautif = true; break; }
+      }
+      m.timerHorsJeu = fautif ? m.timerHorsJeu + dt : 0;
+      if (m.timerHorsJeu >= 1.2) {
+        return { type: 'HORS_JEU', equipeFautive: m.equipeNonPossession, message: 'hors-jeu au maul (defenseur qui contourne)', delibere: false };
+      }
+      return null;
+    }
+
+    // Détection probabiliste des fautes de maul, pondérée par la situation. Les
+    // taux sont volontairement faibles : la plupart des mauls ne sont pas
+    // sanctionnés, comme dans la réalité (sinon l'équilibre du match casse).
+    _maulDetecterFautes(dt) {
+      const m = this.maul;
+      const r = this.rng();
+      if (m.etat === ETATS_MAUL.FORMATION) {
+        if (r < 0.012 * dt) {
+          const eqF = this.rng() < 0.5 ? m.equipePossession : m.equipeNonPossession;
+          return { type: 'ENTREE_COTE', equipeFautive: eqF, message: 'entree sur le cote a la formation du maul', delibere: false };
+        }
+        return null;
+      }
+      const distLigneDef = m.sens > 0 ? (LONGUEUR - m.x) : m.x;
+      const avance = m.etat === ETATS_MAUL.AVANCE;
+      // Écroulement volontaire de la défense. Taux faibles en milieu de terrain
+      // (la plupart des mauls ne sont pas sanctionnés), mais nettement plus élevés
+      // tout près de la ligne d'en-but : c'est l'acte cynique typique pour
+      // empêcher un essai sur maul lancé, qui vaut souvent carton/essai de pénalité.
+      const tauxEcroulement = avance && distLigneDef < 5 ? 0.04
+        : avance && distLigneDef < 18 ? 0.010
+          : 0.003;
+      let seuil = tauxEcroulement * dt;
+      if (r < seuil) {
+        return { type: 'ECROULEMENT', equipeFautive: m.equipeNonPossession, message: 'ecroulement volontaire du maul', delibere: true };
+      }
+      // Autres fautes techniques (joueur non lié qui pousse, saut sur le maul,
+      // tirer un adversaire, obstruction, détachement illégal, joueur au sol).
+      const techniques = [
+        { p: 0.0015, cible: 'def', msg: 'entree sur le cote', del: false, type: 'ENTREE_COTE' },
+        { p: 0.0010, cible: 'att', msg: 'obstruction devant le porteur', del: false, type: 'TECHNIQUE' },
+        { p: 0.0010, cible: 'def', msg: 'joueur non lie qui pousse', del: false, type: 'TECHNIQUE' },
+        { p: 0.0008, cible: 'def', msg: 'joueur qui saute sur le maul', del: true, type: 'TECHNIQUE' },
+        { p: 0.0008, cible: 'att', msg: 'porteur qui se detache illegalement', del: false, type: 'TECHNIQUE' },
+        { p: 0.0008, cible: 'def', msg: 'joueur au sol qui empeche la sortie', del: false, type: 'TECHNIQUE' },
+      ];
+      for (const f of techniques) {
+        seuil += f.p * dt;
+        if (r < seuil) {
+          const eqF = f.cible === 'att' ? m.equipePossession : m.equipeNonPossession;
+          return { type: f.type, equipeFautive: eqF, message: f.msg, delibere: f.del };
+        }
+      }
+      return null;
+    }
+
+    // Décision d'arbitrage sur une faute de maul : essai de pénalité, carton
+    // jaune, ou pénalité simple, selon le caractère délibéré, la répétition et la
+    // proximité de la ligne d'en-but.
+    _maulSanctionner(faute) {
+      const m = this.maul;
+      const fautive = faute.equipeFautive;
+      const benef = fautive === 'A' ? 'B' : 'A';
+      const pos = { x: m.x, y: m.y };
+      // Infractions de maul répétées par cette équipe sur le match (≥ 3 → carton).
+      this._maulPenalitesMatch[fautive] = (this._maulPenalitesMatch[fautive] || 0) + 1;
+      const repetee = this._maulPenalitesMatch[fautive] >= 3;
+      const sensBenef = benef === 'A' ? 1 : -1;
+      const distLigne = sensBenef > 0 ? (LONGUEUR - pos.x) : pos.x;
+      const presDeLigne = distLigne <= 5;
+      const maulLance = m.etat === ETATS_MAUL.AVANCE;
+      // Essai de pénalité : faute délibérée empêchant un maul lancé qui allait
+      // probablement marquer.
+      const empecheEssai = faute.delibere && faute.type === 'ECROULEMENT' && presDeLigne && maulLance;
+      this._finMaul();
+
+      if (faute.delibere && (presDeLigne || repetee)) {
+        this.log('CARTON_JAUNE', fautive, `Carton jaune pour l'equipe ${fautive} : ${faute.message}`);
+      }
+      if (empecheEssai) {
+        this.score[benef] += 7;
+        this.log('ESSAI_PENALITE', benef, `Essai de penalite : ${faute.message} sur maul lance, equipe ${benef} +7`);
+        this._nouvelleManche(benef);
+        return;
+      }
+      const evt = faute.type === 'ECROULEMENT' ? 'MAUL_PEN_ECROULEMENT'
+        : faute.type === 'HORS_JEU' ? 'MAUL_PEN_HORSJEU'
+          : faute.type === 'ENTREE_COTE' ? 'MAUL_PEN_ENTREE_COTE'
+            : 'MAUL_PEN_TECHNIQUE';
+      this.log(evt, fautive, `Penalite maul : ${faute.message} (equipe ${fautive}), penalite pour l'equipe ${benef}`);
+      // Préparer le porteur bénéficiaire puis appliquer la pénalité (tir/jeu rapide).
+      this.possession = benef;
+      const eqB = benef === 'A' ? this.equipeA : this.equipeB;
+      const { joueur } = joueurLePlusProche(eqB, pos.x, pos.y);
+      this.porteur = joueur;
+      this.porteur.x = Math.max(0, Math.min(LONGUEUR, pos.x));
+      this.porteur.y = Math.max(0, Math.min(LARGEUR, pos.y));
+      this._traiterPenalite(benef, pos);
+    }
+
+    // Sortie du ballon après « use it » : le demi de mêlée (n°9) joue le ballon,
+    // le jeu reprend à la main au pied du maul.
+    _maulSortieBallon() {
+      const m = this.maul;
+      const poss = m.equipePossession;
+      const x = Math.max(0, Math.min(LONGUEUR, m.x - m.sens * 1.5));
+      const y = m.y;
+      this.log('MAUL_BALLON_SORTI', poss, `Ballon sorti du maul par le demi de melee, l'equipe ${poss} relance`);
+      this._finMaul();
+      this.possession = poss;
+      this.porteur = (poss === 'A' ? this.equipeA : this.equipeB)[8];
+      this.porteur.x = x;
+      this.porteur.y = y;
+      this.phase = 'PORTE';
+      this.timerPhase = 0;
+    }
+
+    // Ballon injouable : mêlée à l'équipe désignée par la loi 8 (défense, ou
+    // réceptionneur si le maul a suivi une réception directe).
+    _maulMeleeInjouable() {
+      const m = this.maul;
+      const equipe = m.equipeMeleeSiInjouable;
+      const pos = { x: m.x, y: m.y };
+      this.log('MAUL_INJOUABLE', m.equipePossession, `Ballon injouable dans le maul, melee pour l'equipe ${equipe}`);
+      this._finMaul();
+      this._accorderMeleeA(equipe, pos);
+    }
+
+    // Essai inscrit par un maul pénétrant qui franchit la ligne adverse.
+    _maulEssai() {
+      const m = this.maul;
+      const poss = m.equipePossession;
+      const x = m.sens > 0 ? LONGUEUR : 0;
+      this.score[poss] += 5;
+      this.essaiX = x;
+      this.essaiY = m.y;
+      this.essaiEquipe = poss;
+      this.log('ESSAI', poss, `Essai sur maul penetrant, equipe ${poss} !`);
+      this._finMaul();
+      this.possession = poss;
+      this.porteur = (poss === 'A' ? this.equipeA : this.equipeB)[7];
+      this.porteur.x = x;
+      this.porteur.y = m.y;
+      this.phase = 'ESSAI';
+      this.timerPhase = 0;
+    }
+
+    // Mêlée accordée à une équipe précise (utilisée par le maul injouable, où le
+    // bénéficiaire n'est pas forcément l'adversaire du porteur).
+    _accorderMeleeA(equipe, position) {
+      this.possession = equipe;
+      const eq = equipe === 'A' ? this.equipeA : this.equipeB;
+      this.porteur = eq[8];
+      this.porteur.x = Math.max(5, Math.min(LONGUEUR - 5, position.x));
+      this.porteur.y = Math.max(5, Math.min(LARGEUR - 5, position.y));
+      this.ruckPoint = { x: this.porteur.x, y: this.porteur.y };
+      this.phase = 'MELEE';
+      this.timerPhase = 0;
+    }
+
+    _finMaul() {
+      this.maul = null;
+      this.contestants = [];
     }
 
     _tickMelee(dt) {
@@ -773,6 +1119,8 @@
         arbitre: this._positionArbitre(),
         possession: this.possession,
         phase: this.phase,
+        // État détaillé du maul en cours (null hors maul), pour l'affichage.
+        maul: this.maul ? { etat: this.maul.etat, x: this.maul.x, y: this.maul.y } : null,
         score: { ...this.score },
         tempsMatch: this.tempsMatch,
         dureeMatch: this.dureeMatch,
