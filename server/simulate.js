@@ -44,7 +44,7 @@ for (let t = 0; t < dureeSecondes; t += dt) {
     dernierePhase = match.phase;
   }
   for (const e of match.events) {
-    if (e.includes('Penalite')) nbPenalites++;
+    if (e.type === 'PENALITE') nbPenalites++;
   }
 }
 
@@ -53,7 +53,7 @@ console.log('--- Résultat simulation ---');
 console.log(`Score final : Equipe A ${state.score.A} - ${state.score.B} Equipe B`);
 console.log(`Transitions vers ESSAI : ${nbEssais}`);
 console.log(`Transitions vers MELEE (passe en avant / en-avant) : ${nbMelees}`);
-console.log(`Derniers événements : ${state.events.join(' | ')}`);
+console.log(`Derniers événements : ${state.events.map(e => e.message).join(' | ')}`);
 
 if (erreurs > 0) {
   console.error(`ECHEC : ${erreurs} invariant(s) violé(s).`);

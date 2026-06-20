@@ -114,16 +114,25 @@
   };
 
   class MatchEngine {
-    constructor(seed) {
+    // dureeMatch (secondes de jeu simulées) optionnel : Infinity par défaut pour ne
+    // pas casser les usages existants (tests headless, qui veulent un flux continu).
+    constructor(seed, dureeMatch = Infinity) {
       this.rng = creerRng(seed >>> 0 || 1);
       this.score = { A: 0, B: 0 };
       this.events = [];
+      this.tempsMatch = 0;
+      this.dureeMatch = dureeMatch;
+      this._sequenceEvenement = 0;
       this._nouvelleManche('A');
     }
 
-    log(message) {
-      this.events.push(message);
-      if (this.events.length > 8) this.events.shift();
+    // type : catégorie machine-lisible de l'événement (ESSAI, PENALITE, ...) pour que
+    // l'interface puisse réagir (icône, bannière) sans reparser le message en français.
+    // id : identifiant croissant, pour détecter côté client "un nouvel événement vient
+    // d'arriver" même après que le tableau ait été tronqué (shift) à 30 entrées.
+    log(type, team, message) {
+      this.events.push({ id: ++this._sequenceEvenement, type, team, message, t: this.tempsMatch });
+      if (this.events.length > 30) this.events.shift();
     }
 
     _nouvelleManche(possessionTeam) {
@@ -141,6 +150,17 @@
       this.timerPhase = 0;
       this.ruckPoint = { x: this.porteur.x, y: this.porteur.y };
       this.contestants = [];
+      this.log('COUP_ENVOI', possessionTeam, `Coup d'envoi, equipe ${possessionTeam}`);
+    }
+
+    // Position affichable de l'arbitre : suit le point de ruck/mêlée pendant les
+    // phases statiques, sinon reste juste derrière le porteur du ballon.
+    _positionArbitre() {
+      if (this.phase === 'RUCK' || this.phase === 'MELEE') {
+        return { x: this.ruckPoint.x, y: Math.max(0, Math.min(LARGEUR, this.ruckPoint.y - 5)) };
+      }
+      const p = this.porteur;
+      return { x: p.x, y: Math.max(0, Math.min(LARGEUR, p.y - 6)) };
     }
 
     attaquants() { return this.possession === 'A' ? this.equipeA : this.equipeB; }
@@ -199,7 +219,7 @@
       if ((porteur.sensAttaque > 0 && porteur.x >= LONGUEUR) || (porteur.sensAttaque < 0 && porteur.x <= 0)) {
         porteur.x = porteur.sensAttaque > 0 ? LONGUEUR : 0;
         this.score[this.possession] += 5;
-        this.log(`Essai equipe ${this.possession} !`);
+        this.log('ESSAI', this.possession, `Essai equipe ${this.possession} !`);
         this.phase = 'ESSAI';
         this.timerPhase = 0;
         return;
@@ -217,7 +237,7 @@
             if (score > meilleurScore) { meilleurScore = score; meilleur = c; }
           }
           if (Referee.passeEnAvant(porteur.sensAttaque, porteur, meilleur)) {
-            this.log(`Passe en avant, equipe ${this.possession} - melee adverse`);
+            this.log('MELEE_AVANT', this.possession, `Passe en avant, equipe ${this.possession} - melee adverse`);
             this._accorderMelee(this.possession, porteur);
             return;
           }
@@ -226,7 +246,7 @@
           if (this.rng() < probaReussite) {
             this.porteur = meilleur;
           } else {
-            this.log(`En-avant, equipe ${this.possession} - melee adverse`);
+            this.log('MELEE_ENAVANT', this.possession, `En-avant, equipe ${this.possession} - melee adverse`);
             this._accorderMelee(this.possession, meilleur);
             return;
           }
@@ -259,7 +279,7 @@
 
         if (j.team !== this.possession && !estContestant) {
           if (Referee.horsJeuRuck(j, pt, sensAttaque)) {
-            this.log(`Penalite hors-jeu, equipe ${this.possession} avance`);
+            this.log('PENALITE', this.possession, `Penalite hors-jeu, equipe ${this.possession} avance`);
             this.porteur.x += sensAttaque * 8;
             this.porteur.x = Math.max(0, Math.min(LONGUEUR, this.porteur.x));
             this.phase = 'PORTE';
@@ -272,7 +292,7 @@
         const turnover = this.rng() < 0.12;
         if (turnover) {
           this.possession = this.possession === 'A' ? 'B' : 'A';
-          this.log(`Ballon gratte au ruck, equipe ${this.possession} recupere`);
+          this.log('TURNOVER', this.possession, `Ballon gratte au ruck, equipe ${this.possession} recupere`);
         }
         const att = this.attaquants();
         const { joueur: relayeur } = joueurLePlusProche(att.filter(j => j.tendance >= 50), pt.x, pt.y);
@@ -301,8 +321,15 @@
     }
 
     tick(dt) {
+      if (this.phase === 'TERMINE') return;
       for (const j of [...this.equipeA, ...this.equipeB]) {
         if (j.auSol > 0) j.auSol = Math.max(0, j.auSol - dt);
+      }
+      this.tempsMatch += dt;
+      if (this.tempsMatch >= this.dureeMatch) {
+        this.phase = 'TERMINE';
+        this.log('FIN_MATCH', null, `Fin du match : equipe A ${this.score.A} - ${this.score.B} equipe B`);
+        return;
       }
       if (this.phase === 'PORTE') this._tickPorte(dt);
       else if (this.phase === 'RUCK') this._tickRuck(dt);
@@ -315,9 +342,12 @@
         equipeA: this.equipeA.map(j => ({ ...j })),
         equipeB: this.equipeB.map(j => ({ ...j })),
         porteur: { team: this.porteur.team, numero: this.porteur.numero, x: this.porteur.x, y: this.porteur.y },
+        arbitre: this._positionArbitre(),
         possession: this.possession,
         phase: this.phase,
         score: { ...this.score },
+        tempsMatch: this.tempsMatch,
+        dureeMatch: this.dureeMatch,
         events: this.events.slice(),
       };
     }
