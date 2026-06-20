@@ -19,18 +19,31 @@ Le projet est composé de deux grandes parties :
    - historique des saisons.
 
 2. **Un moteur de simulation de match en 2D**
-   - écrit en C++ ;
-   - affichage en 2D ;
+   - écrit entièrement en JavaScript (aucune dépendance), partagé entre le serveur et le navigateur ;
+   - affichage en 2D (Canvas) ;
    - terrain de rugby réaliste ;
    - 30 joueurs autonomes ;
    - ballon ;
    - passes ;
    - courses ;
    - plaquages ;
-   - rucks ;
+   - rucks et mêlées ;
    - essais ;
    - score ;
+   - arbitrage des règles (passe en avant, en-avant, hors-jeu au ruck) ;
    - intelligence artificielle par rôle.
+
+### Démo jouable
+
+- En ligne : https://sebadiaz.github.io/Rugby.-Manager/
+- En local : ouvrir `client/index.html` dans un navigateur (aucune installation requise).
+
+### Architecture du moteur
+
+- `engine/rugby-engine.js` — moteur de match, source unique, sans dépendance au DOM. Exposé en module Node (`require`) et en variable globale `RugbyEngine` (`<script>`).
+- `server/simulate.js` — harnais de test headless (Node) : fait tourner le moteur sur une longue durée et vérifie des invariants réels (positions valides, score multiple de 5, essais et mêlées effectivement déclenchés). Usage : `node server/simulate.js [seed] [secondes]`.
+- `client/index.html` — rendu Canvas du moteur dans le navigateur, avec contrôles (lecture/pause, vitesse, réinitialisation).
+- `docs/index.html` — copie publiée sur GitHub Pages (la copie de `engine/rugby-engine.js` qu'elle utilise est synchronisée automatiquement par le pipeline de déploiement).
 
 L’objectif n’est pas seulement d’afficher des joueurs qui bougent, mais de créer une vraie simulation de rugby où chaque joueur prend des décisions selon son poste, ses statistiques, la situation de jeu, la tactique de l’équipe et la position du ballon.
 
