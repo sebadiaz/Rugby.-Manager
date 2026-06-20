@@ -222,12 +222,20 @@
     // réellement disputé en l'air, pas une simple remise en main.
     _tickCoupEnvoi(dt) {
       this.timerPhase += dt;
-      const duree = 2.2;
+      // Le ballon est botté : il file nettement plus vite qu'un joueur ne court
+      // (~18 m/s contre ~7-9 m/s), c'est tout l'intérêt du coup de pied. La durée
+      // de vol découle donc de la distance bottée et d'une vitesse de ballon
+      // élevée (bornée pour garder un minimum de temps de chandelle visible).
+      const dxVol = this.ballonCibleX - this.xCoupEnvoi;
+      const dyVol = this.ballonCibleY - LARGEUR / 2;
+      const distVol = Math.hypot(dxVol, dyVol);
+      const VITESSE_BALLON = 18;
+      const duree = Math.max(0.9, Math.min(2.0, distVol / VITESSE_BALLON));
       const t = Math.min(1, this.timerPhase / duree);
       // Le ballon vole seul du point de coup d'envoi vers sa cible, en cloche :
       // hauteur en sinus (0 au départ, maximale à mi-parcours, 0 à la chute).
-      this.ballonVolX = this.xCoupEnvoi + (this.ballonCibleX - this.xCoupEnvoi) * t;
-      this.ballonVolY = LARGEUR / 2 + (this.ballonCibleY - LARGEUR / 2) * t;
+      this.ballonVolX = this.xCoupEnvoi + dxVol * t;
+      this.ballonVolY = LARGEUR / 2 + dyVol * t;
       this.ballonVolHauteur = Math.sin(Math.PI * t);
 
       for (const j of [...this.equipeA, ...this.equipeB]) {
@@ -269,6 +277,11 @@
         const { joueur: chasseurProche, distance: distChasseur } = joueurLePlusProche(chasseurs, this.ballonCibleX, this.ballonCibleY);
         const chasseurGagne = distChasseur < 3 && this.rng() < 0.15;
         const joueur = chasseurGagne ? chasseurProche : receveurProche;
+        // Le réceptionneur capte le ballon là où il retombe : on le place au
+        // point de chute (sinon, avec un vol court et rapide, il pourrait ne pas
+        // l'avoir encore rejoint, ce qui fausserait notamment la zone de marque).
+        joueur.x = this.ballonCibleX;
+        joueur.y = this.ballonCibleY;
         this.porteur = joueur;
         this.possession = joueur.team;
         this.ruckPoint = { x: joueur.x, y: joueur.y };
