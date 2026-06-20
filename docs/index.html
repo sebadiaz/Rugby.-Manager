@@ -138,7 +138,7 @@ const ICONES = {
   COUP_ENVOI: '▶️', CONTRE_COUP_ENVOI: '✋', ESSAI: '🏉', MELEE_AVANT: '🔄', MELEE_ENAVANT: '🔄',
   PENALITE: '🟨', PENALITE_REUSSIE: '🥅', PENALITE_RATEE: '❌',
   TRANSFORMATION_REUSSIE: '🥅', TRANSFORMATION_RATEE: '❌',
-  TOUCHE: '👉', TURNOVER: '🔁', MAUL: '🧱', FIN_MATCH: '🏁',
+  TOUCHE: '👉', TURNOVER: '🔁', MAUL: '🧱', MI_TEMPS: '⏸️', FIN_MATCH: '🏁',
 };
 const PHASES = {
   COUP_ENVOI: { label: "Coup d'envoi", couleur: '#37474f' },
@@ -155,7 +155,7 @@ const PHASES = {
 const TYPES_BANNIERE = new Set([
   'PENALITE', 'MELEE_AVANT', 'MELEE_ENAVANT', 'TOUCHE', 'ESSAI', 'FIN_MATCH',
   'TRANSFORMATION_REUSSIE', 'TRANSFORMATION_RATEE', 'PENALITE_REUSSIE', 'PENALITE_RATEE',
-  'CONTRE_COUP_ENVOI', 'MAUL',
+  'CONTRE_COUP_ENVOI', 'MAUL', 'MI_TEMPS',
 ]);
 
 function formaterTemps(s) {
@@ -224,7 +224,7 @@ function majAffichage(state, forcerFeedComplet) {
   phaseEl.textContent = infosPhase.label;
   phaseEl.style.background = infosPhase.couleur;
   document.getElementById('horloge').textContent =
-    `${formaterTemps(state.tempsMatch)} / ${formaterTemps(state.dureeMatch === Infinity ? DUREE_MATCH : state.dureeMatch)}`;
+    `${formaterTemps(state.tempsMatch)} / ${formaterTemps(state.dureeMatch === Infinity ? DUREE_MATCH : state.dureeMatch)} · ${state.periode === 2 ? '2e pér.' : '1ère pér.'}`;
 
   const seekEl = document.getElementById('seek');
   if (document.activeElement !== seekEl) seekEl.value = Math.round(state.tempsMatch);

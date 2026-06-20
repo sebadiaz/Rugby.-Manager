@@ -13,7 +13,7 @@ const seed = Number(process.argv[2]) || 42;
 const dureeSecondes = Number(process.argv[3]) || 1800;
 const dt = 0.2;
 
-const match = new MatchEngine(seed);
+const match = new MatchEngine(seed, dureeSecondes);
 let erreurs = 0;
 const idsVus = new Set();
 const compteurs = {};
@@ -55,12 +55,13 @@ const nbTransformationsTentees = (compteurs.TRANSFORMATION_REUSSIE || 0) + (comp
 const nbPenalitesAuButTentees = (compteurs.PENALITE_REUSSIE || 0) + (compteurs.PENALITE_RATEE || 0);
 const nbCoupsEnvoi = compteurs.COUP_ENVOI || 0;
 const nbMauls = compteurs.MAUL || 0;
+const nbMiTemps = compteurs.MI_TEMPS || 0;
 
 const state = match.getState();
 console.log('--- Résultat simulation ---');
 console.log(`Score final : Equipe A ${state.score.A} - ${state.score.B} Equipe B`);
 console.log(`Essais : ${nbEssais} | Transformations tentées : ${nbTransformationsTentees} | Pénalités au but tentées : ${nbPenalitesAuButTentees}`);
-console.log(`Mêlées (passe en avant / en-avant) : ${nbMelees} | Touches (ballon porté en touche) : ${nbTouches} | Mauls : ${nbMauls}`);
+console.log(`Mêlées (passe en avant / en-avant) : ${nbMelees} | Touches (ballon porté en touche) : ${nbTouches} | Mauls : ${nbMauls} | Mi-temps : ${nbMiTemps}`);
 console.log(`Derniers événements : ${state.events.map(e => e.message).join(' | ')}`);
 
 if (erreurs > 0) {
@@ -91,4 +92,8 @@ if (nbMauls === 0) {
   console.error('ECHEC : aucun maul formé (loi 17, porteur plaqué mais resté debout avec soutien), comportement suspect.');
   process.exit(1);
 }
-console.log('OK : invariants respectés, essais, mêlées, transformations, pénalités au but, coups d\'envoi et mauls observés.');
+if (nbMiTemps === 0) {
+  console.error("ECHEC : aucune mi-temps déclenchée (loi 12, coup d'envoi de la 2e période par l'équipe adverse), comportement suspect.");
+  process.exit(1);
+}
+console.log('OK : invariants respectés, essais, mêlées, transformations, pénalités au but, coups d\'envoi, mauls et mi-temps observés.');

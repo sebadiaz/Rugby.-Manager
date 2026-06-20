@@ -131,8 +131,13 @@
       this.events = [];
       this.tempsMatch = 0;
       this.dureeMatch = dureeMatch;
+      // Mi-temps (loi 12) : "les adversaires de l'équipe qui a donné le coup
+      // d'envoi en début de match donnent le coup d'envoi de la 2e période."
+      this.dureeMiTemps = dureeMatch / 2;
+      this.miTempsJouee = false;
       this._sequenceEvenement = 0;
       this._nouvelleManche('A');
+      this.equipeKickPremiereMiTemps = this._dernierEquipeKick;
     }
 
     // type : catégorie machine-lisible de l'événement (ESSAI, PENALITE, ...) pour que
@@ -156,6 +161,7 @@
       this.equipeA = creerEquipe('A', sens.A, this.rng);
       this.equipeB = creerEquipe('B', sens.B, this.rng);
       const equipeKick = equipeReceptrice === 'A' ? 'B' : 'A';
+      this._dernierEquipeKick = equipeKick;
       const dirKick = sens[equipeKick];
       for (const j of [...this.equipeA, ...this.equipeB]) {
         if (j.team === equipeKick) {
@@ -412,6 +418,16 @@
       }
     }
 
+    // Pause de mi-temps (loi 12) : courte pause avant le coup d'envoi de la 2e
+    // période, le temps que l'interface affiche l'événement MI_TEMPS avant
+    // qu'il ne soit remplacé par le COUP_ENVOI suivant.
+    _tickMiTemps(dt) {
+      this.timerPhase += dt;
+      if (this.timerPhase >= 1) {
+        this._nouvelleManche(this.equipeKickPremiereMiTemps);
+      }
+    }
+
     _tickRuck(dt) {
       this.timerPhase += dt;
       const pt = this.ruckPoint;
@@ -593,7 +609,21 @@
         this.log('FIN_MATCH', null, `Fin du match : equipe A ${this.score.A} - ${this.score.B} equipe B`);
         return;
       }
-      if (this.phase === 'PORTE') this._tickPorte(dt);
+      // Coup d'envoi de la 2e période (loi 12) : ce sont les adversaires de
+      // l'équipe qui a donné le coup d'envoi du match qui le donnent en 2e
+      // période, depuis le centre, comme en début de match. Le coup d'envoi
+      // est différé d'une seconde de jeu (phase MI_TEMPS) plutôt que déclenché
+      // dans le même tick que l'événement MI_TEMPS, sinon l'événement COUP_ENVOI
+      // qui suit immédiatement masque la bannière de mi-temps dans l'interface.
+      if (!this.miTempsJouee && this.tempsMatch >= this.dureeMiTemps) {
+        this.miTempsJouee = true;
+        this.log('MI_TEMPS', null, `Mi-temps : equipe A ${this.score.A} - ${this.score.B} equipe B`);
+        this.phase = 'MI_TEMPS';
+        this.timerPhase = 0;
+        return;
+      }
+      if (this.phase === 'MI_TEMPS') this._tickMiTemps(dt);
+      else if (this.phase === 'PORTE') this._tickPorte(dt);
       else if (this.phase === 'COUP_ENVOI') this._tickCoupEnvoi(dt);
       else if (this.phase === 'RUCK') this._tickRuck(dt);
       else if (this.phase === 'MAUL') this._tickMaul(dt);
@@ -615,6 +645,7 @@
         score: { ...this.score },
         tempsMatch: this.tempsMatch,
         dureeMatch: this.dureeMatch,
+        periode: this.miTempsJouee ? 2 : 1,
         events: this.events.slice(),
       };
     }

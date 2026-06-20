@@ -21,7 +21,10 @@ Numérotation des lois selon World Rugby (« Laws of the Game »).
 ## 2. Coup d'envoi et remises en jeu (Law 12 — Kick-off and restart kicks)
 
 Règles réelles :
-- En début de match/mi-temps : coup d'envoi depuis le centre du terrain.
+- En début de match : coup d'envoi depuis le centre du terrain.
+- **Mi-temps : les adversaires de l'équipe qui a donné le coup d'envoi en
+  début de match donnent le coup d'envoi de la 2e période**, à nouveau depuis
+  le centre du terrain.
 - **Après un essai/une transformation (réussie ou pas) ou une pénalité au but
   réussie : c'est l'équipe qui VIENT DE SUBIR les points qui botte** (donc
   l'équipe qui a marqué récupère le jeu en réception, pas l'inverse).
@@ -41,6 +44,11 @@ Implémenté (`_nouvelleManche`, `_tickCoupEnvoi`, phase `COUP_ENVOI`) :
 - ✅ Pénalité ratée → remise en 22 m bottée par l'équipe qui défendait
   (`x22 = ligneEssaiAdverse - sensEquipe * 22`), distincte du coup d'envoi
   central.
+- ✅ Mi-temps : `dureeMiTemps` (= durée du match / 2) déclenche un événement
+  `MI_TEMPS`, suivi d'une courte pause (phase `MI_TEMPS`, `_tickMiTemps`) puis
+  d'un coup d'envoi central donné par l'équipe adverse de celle qui avait
+  donné le coup d'envoi du match (`equipeKickPremiereMiTemps`, mémorisée à la
+  construction du match).
 - ✅ Positionnement : équipe qui botte derrière le ballon, équipe receveuse
   au-delà de 10 m, ballon réellement animé en vol vers une cible aléatoire
   (12 à 27 m), contesté à la réception.
@@ -49,6 +57,13 @@ Implémenté (`_nouvelleManche`, `_tickCoupEnvoi`, phase `COUP_ENVOI`) :
   cas de coup d'envoi raté/non réglementaire. La réception favorise l'équipe
   receveuse (≈ 12 % de récupération par l'équipe qui a botté), calibré pour
   rester réaliste sans modéliser le détail des courses de couverture.
+- ❌ **Non implémenté : le « goal-line drop-out »**, remise en jeu depuis la
+  ligne d'en-but (distincte du 22 m drop-out) après certaines actions
+  d'attaque bloquées dans l'en-but adverse. Écart connu, non traité ici.
+- ⚠️ Changement de camp à la mi-temps : non modélisé (les deux équipes
+  continuent d'attaquer dans le même sens après la pause), volontairement
+  hors du périmètre de cette correction centrée sur la loi 12 (qui régit le
+  coup d'envoi, pas le choix de camp).
 
 ## 3. Ruck et hors-jeu (Law 15 — Ruck)
 
