@@ -235,7 +235,7 @@
     // Position affichable de l'arbitre : suit le point de ruck/mêlée pendant les
     // phases statiques, sinon reste juste derrière le porteur du ballon.
     _positionArbitre() {
-      if (this.phase === 'RUCK' || this.phase === 'MELEE' || this.phase === 'TOUCHE') {
+      if (this.phase === 'RUCK' || this.phase === 'MAUL' || this.phase === 'MELEE' || this.phase === 'TOUCHE') {
         return { x: this.ruckPoint.x, y: Math.max(0, Math.min(LARGEUR, this.ruckPoint.y - 5)) };
       }
       if (this.phase === 'PENALITE_TIR' && this.positionTir) {
@@ -393,11 +393,21 @@
       if (distDef < 1.4) {
         const probaPlaquage = Math.max(0.1, Math.min(0.9, 0.5 + (defenseurProche.plaquage - this.porteur.vitesse) / 150));
         if (this.rng() < probaPlaquage) {
-          this.porteur.auSol = 1.5;
           this.ruckPoint = { x: this.porteur.x, y: this.porteur.y };
           this.contestants = [defenseurProche.numero];
-          this.phase = 'RUCK';
           this.timerPhase = 0;
+          // Maul (loi 17) : si le porteur reste debout (pas plaqué au sol) et qu'un
+          // soutien est déjà à portée pour se lier, le ballon reste en main et le
+          // jeu forme un maul plutôt qu'un ruck (ballon au sol). Sinon, plaquage
+          // classique → ruck.
+          const soutienProche = att.some(j => j !== porteur && distance(j, porteur) < 3);
+          if (soutienProche && this.rng() < 0.3) {
+            this.phase = 'MAUL';
+            this.log('MAUL', this.possession, `Maul, equipe ${this.possession} maintient le ballon en jeu`);
+          } else {
+            this.porteur.auSol = 1.5;
+            this.phase = 'RUCK';
+          }
         }
       }
     }
@@ -439,6 +449,56 @@
         if (turnover) {
           this.possession = this.possession === 'A' ? 'B' : 'A';
           this.log('TURNOVER', this.possession, `Ballon gratte au ruck, equipe ${this.possession} recupere`);
+        }
+        const att = this.attaquants();
+        const { joueur: relayeur } = joueurLePlusProche(att.filter(j => j.tendance >= 50), pt.x, pt.y);
+        this.porteur = relayeur || att[8];
+        this.porteur.x = pt.x;
+        this.porteur.y = pt.y;
+        this.phase = 'PORTE';
+        this.timerPhase = 0;
+      }
+    }
+
+    // Maul (loi 17) : le ballon reste en main (pas au sol comme au ruck), le
+    // porteur est lié à ses soutiens au point de regroupement. Même ligne de
+    // hors-jeu que le ruck (hindmost point). Volontairement sans avancée nette
+    // automatique ni risque de turnover différent du ruck : sans modéliser la
+    // poussée comparée des deux paquets, donner au maul un gain de terrain
+    // garanti et peu risqué en ferait un raccourci vers l'essai qui casse
+    // l'équilibre du match (constaté : essais quasi triplés en test).
+    _tickMaul(dt) {
+      this.timerPhase += dt;
+      const pt = this.ruckPoint;
+      const sensAttaque = this.porteur.sensAttaque;
+      const margeRecul = 1.5;
+      const delaiGrace = 1.5;
+
+      for (const j of [...this.equipeA, ...this.equipeB]) {
+        if (j === this.porteur) continue;
+        const estContestant = this.contestants.includes(j.numero) && j.team !== this.possession;
+        const estSoutienAttaque = j.team === this.possession && distance(j, pt) < 8;
+
+        if (estContestant || estSoutienAttaque) {
+          avancer(j, pt.x - j.x, pt.y - j.y, dt, vitesseMs(j) * 0.7);
+          continue;
+        }
+
+        if (j.team !== this.possession && Referee.horsJeuRuck(j, pt, sensAttaque)) {
+          const cibleX = sensAttaque > 0 ? pt.x + margeRecul : pt.x - margeRecul;
+          avancer(j, cibleX - j.x, pt.y - j.y, dt, vitesseMs(j));
+          if (this.timerPhase > delaiGrace && Referee.horsJeuRuck(j, pt, sensAttaque)) {
+            this._traiterPenalite(this.possession, { x: this.porteur.x, y: this.porteur.y });
+            return;
+          }
+        }
+      }
+
+      if (this.timerPhase >= 1.8) {
+        const turnover = this.rng() < 0.12;
+        if (turnover) {
+          this.possession = this.possession === 'A' ? 'B' : 'A';
+          this.log('TURNOVER', this.possession, `Maul retenu, equipe ${this.possession} recupere sur melee`);
         }
         const att = this.attaquants();
         const { joueur: relayeur } = joueurLePlusProche(att.filter(j => j.tendance >= 50), pt.x, pt.y);
@@ -536,6 +596,7 @@
       if (this.phase === 'PORTE') this._tickPorte(dt);
       else if (this.phase === 'COUP_ENVOI') this._tickCoupEnvoi(dt);
       else if (this.phase === 'RUCK') this._tickRuck(dt);
+      else if (this.phase === 'MAUL') this._tickMaul(dt);
       else if (this.phase === 'MELEE') this._tickMelee(dt);
       else if (this.phase === 'TOUCHE') this._tickTouche(dt);
       else if (this.phase === 'ESSAI') this._tickEssai(dt);

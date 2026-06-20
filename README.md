@@ -27,7 +27,7 @@ Le projet est composé de deux grandes parties :
    - passes ;
    - courses ;
    - plaquages ;
-   - rucks, mêlées et touches ;
+   - rucks, mauls, mêlées et touches ;
    - coup d'envoi et remises en jeu réellement bottés et disputés en l'air (loi 12 : l'équipe qui a marqué reçoit, remise aux 22 m après une pénalité ratée) ;
    - essais, transformations, pénalités au but ;
    - score conforme aux règles du rugby (essai 5 pts, transformation +2, pénalité +3) ;

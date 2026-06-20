@@ -69,7 +69,32 @@ Implémenté (`Referee.horsJeuRuck`, `_tickRuck`) :
   côtés), pas de ruck prolongé/jackal différencié — résolu de façon agrégée
   après 1.8 s (`timerPhase >= 1.8`).
 
-## 4. Options sur pénalité (Law 19–21 — Penalty and free kick options)
+## 4. Maul (Law 17 — Maul)
+
+Règle réelle : un maul se forme quand le porteur du ballon est plaqué/contesté
+mais **reste sur ses appuis** (pas amené au sol) et qu'au moins un partenaire
+se lie à lui — à la différence du ruck, où le ballon est au sol. Même ligne de
+hors-jeu que le ruck (point le plus reculé). Le maul est l'une des quatre
+phases de regroupement citées dans la plupart des présentations grand public
+du jeu (avec touche, mêlée et ruck).
+
+Implémenté (`_tickMaul`, déclenché depuis `_tickPorte`) :
+- ✅ Sur un plaquage réussi, si un soutien attaquant est déjà à moins de 3 m,
+  il y a une chance (30 %) que le jeu forme un maul (`phase = 'MAUL'`) plutôt
+  qu'un ruck — le ballon reste en main (`porteur.auSol` n'est pas activé),
+  contrairement au ruck où il est posé au sol.
+- ✅ Même ligne de hors-jeu et même logique de repli/pénalité que le ruck
+  (réutilise `Referee.horsJeuRuck`).
+- ⚠️ Volontairement sans avancée de terrain automatique ni taux de turnover
+  différent du ruck : une première version donnait au maul une avancée nette
+  garantie (≈2.6 m) à faible risque, ce qui en faisait un raccourci vers
+  l'essai et faisait presque tripler le nombre d'essais sur une simulation de
+  test — ce comportement a été retiré. Sans modéliser la poussée comparée des
+  deux paquets (forces, nombre de joueurs liés), le maul est donc, en net,
+  équivalent au ruck en termes de risque/possession ; seule sa représentation
+  (ballon en main, pas au sol) et son déclenchement diffèrent.
+
+## 5. Options sur pénalité (Law 19–21 — Penalty and free kick options)
 
 Règle réelle : l'équipe qui obtient une pénalité a le choix entre :
 1. Tir au but (3 points si réussi).
@@ -90,7 +115,7 @@ Implémenté (`_traiterPenalite`) :
   tactique plus réaliste (actuellement, hors tir au but, le seul choix
   modélisé est le jeu à la main).
 
-## 5. Touche en jeu courant (Law 18/19 — Touch and Line-out)
+## 6. Touche en jeu courant (Law 18/19 — Touch and Line-out)
 
 Règle réelle : quand le ballon (ou le porteur) sort en touche en jeu courant,
 le lancer est pour l'équipe qui N'A PAS fait sortir le ballon.
@@ -101,7 +126,7 @@ Implémenté (`_accorderTouche`) :
 - ⚠️ Simplifié : pas de contestation du lancer (saut, soutien), le ballon est
   remis directement en jeu.
 
-## 6. Mêlée sur faute de jeu (Law 19 — Forward pass / Knock-on)
+## 7. Mêlée sur faute de jeu (Law 19 — Forward pass / Knock-on)
 
 Règle réelle : passe en avant ou en-avant (ballon qui part vers l'avant
 depuis les mains ou touché en avant) → mêlée pour l'équipe non fautive à
@@ -110,7 +135,7 @@ l'endroit de la faute (sauf avantage).
 Implémenté (`MELEE_AVANT`, `MELEE_ENAVANT`) : ✅ mêlée simplifiée déclenchée,
 pas de contestation de mêlée joueur par joueur (résolution agrégée).
 
-## 7. Hors scope explicite (non modélisé du tout)
+## 8. Hors scope explicite (non modélisé du tout)
 
 - Drop-goals.
 - Cartons (jaune/rouge), exclusions temporaires.
