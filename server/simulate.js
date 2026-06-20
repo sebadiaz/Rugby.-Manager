@@ -6,7 +6,11 @@
 const { MatchEngine, LONGUEUR, LARGEUR } = require('../engine/rugby-engine.js');
 
 const seed = Number(process.argv[2]) || 42;
-const dureeSecondes = Number(process.argv[3]) || 600;
+// 1800s (30 min simulées) par défaut : avec des fréquences d'événements désormais
+// réalistes (pénalités/essais bien plus rares qu'avant la mise en conformité aux
+// règles), une fenêtre de 600s ne suffit plus à garantir l'observation de chaque
+// type d'événement sur tous les seeds.
+const dureeSecondes = Number(process.argv[3]) || 1800;
 const dt = 0.2;
 
 const match = new MatchEngine(seed);
@@ -49,6 +53,7 @@ const nbMelees = (compteurs.MELEE_AVANT || 0) + (compteurs.MELEE_ENAVANT || 0);
 const nbTouches = compteurs.TOUCHE || 0;
 const nbTransformationsTentees = (compteurs.TRANSFORMATION_REUSSIE || 0) + (compteurs.TRANSFORMATION_RATEE || 0);
 const nbPenalitesAuButTentees = (compteurs.PENALITE_REUSSIE || 0) + (compteurs.PENALITE_RATEE || 0);
+const nbCoupsEnvoi = compteurs.COUP_ENVOI || 0;
 
 const state = match.getState();
 console.log('--- Résultat simulation ---');
@@ -77,4 +82,8 @@ if (nbPenalitesAuButTentees === 0) {
   console.error("ECHEC : aucun coup de pied de pénalité au but tenté, la règle ne semble pas appliquée.");
   process.exit(1);
 }
-console.log('OK : invariants respectés, essais, mêlées, transformations et pénalités au but observés.');
+if (nbCoupsEnvoi < 2) {
+  console.error('ECHEC : pas assez de coups d\'envoi/remises en jeu réellement bottés (loi 12), comportement suspect.');
+  process.exit(1);
+}
+console.log('OK : invariants respectés, essais, mêlées, transformations, pénalités au but et coups d\'envoi observés.');

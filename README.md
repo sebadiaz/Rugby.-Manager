@@ -28,6 +28,7 @@ Le projet est composé de deux grandes parties :
    - courses ;
    - plaquages ;
    - rucks, mêlées et touches ;
+   - coup d'envoi et remises en jeu réellement bottés et disputés en l'air (loi 12 : l'équipe qui a marqué reçoit, remise aux 22 m après une pénalité ratée) ;
    - essais, transformations, pénalités au but ;
    - score conforme aux règles du rugby (essai 5 pts, transformation +2, pénalité +3) ;
    - arbitrage des règles (passe en avant, en-avant, hors-jeu au ruck, ballon en touche) ;
@@ -41,9 +42,10 @@ Le projet est composé de deux grandes parties :
 ### Architecture du moteur
 
 - `engine/rugby-engine.js` — moteur de match, source unique, sans dépendance au DOM. Exposé en module Node (`require`) et en variable globale `RugbyEngine` (`<script>`).
-- `server/simulate.js` — harnais de test headless (Node) : fait tourner le moteur sur une longue durée et vérifie des invariants réels (positions valides, score cohérent, essais, mêlées, transformations et pénalités au but effectivement déclenchés). Usage : `node server/simulate.js [seed] [secondes]`.
+- `server/simulate.js` — harnais de test headless (Node) : fait tourner le moteur sur une longue durée et vérifie des invariants réels (positions valides, score cohérent, essais, mêlées, transformations, pénalités au but et coups d'envoi effectivement déclenchés). Usage : `node server/simulate.js [seed] [secondes]`.
 - `client/index.html` — rendu Canvas du moteur dans le navigateur, avec contrôles (lecture/pause, vitesse, réinitialisation).
 - `docs/index.html` — copie publiée sur GitHub Pages (la copie de `engine/rugby-engine.js` qu'elle utilise est synchronisée automatiquement par le pipeline de déploiement).
+- `docs/REGLES_RUGBY.md` — référence des règles du rugby (coup d'envoi, hors-jeu au ruck, options sur pénalité, etc.) avec, pour chacune, ce que le moteur implémente réellement et les simplifications/écarts connus.
 
 L’objectif n’est pas seulement d’afficher des joueurs qui bougent, mais de créer une vraie simulation de rugby où chaque joueur prend des décisions selon son poste, ses statistiques, la situation de jeu, la tactique de l’équipe et la position du ballon.
 

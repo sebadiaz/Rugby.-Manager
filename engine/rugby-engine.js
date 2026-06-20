@@ -144,22 +144,92 @@
       if (this.events.length > 30) this.events.shift();
     }
 
-    _nouvelleManche(possessionTeam) {
+    // Coup d'envoi / remise en jeu (loi 12) : l'équipe "equipeReceptrice" est
+    // celle qui RECOIT le coup de pied (par ex. l'équipe qui vient de marquer,
+    // ou qui vient de rater une pénalité au but) ; l'adversaire (equipeKick)
+    // est celle qui botte depuis xCentre (50 = mi-terrain, ou la ligne des 22m
+    // défendue par l'équipe qui botte pour une remise en 22m). L'équipe qui
+    // botte doit rester derrière le ballon, l'équipe receptrice à 10m minimum :
+    // le ballon est donc réellement botté et contestable, pas remis en main.
+    _nouvelleManche(equipeReceptrice, xCentre = LONGUEUR / 2) {
       const sens = { A: 1, B: -1 };
       this.equipeA = creerEquipe('A', sens.A, this.rng);
       this.equipeB = creerEquipe('B', sens.B, this.rng);
+      const equipeKick = equipeReceptrice === 'A' ? 'B' : 'A';
+      const dirKick = sens[equipeKick];
       for (const j of [...this.equipeA, ...this.equipeB]) {
-        j.x = 50;
-        if (j.numero <= 8) j.y = j.channelY * 0.5 + LARGEUR * 0.25;
+        if (j.team === equipeKick) {
+          j.x = Math.max(0, Math.min(LONGUEUR, xCentre - dirKick * (j.numero <= 8 ? 2 : 6)));
+        } else {
+          j.x = Math.max(0, Math.min(LONGUEUR, xCentre + dirKick * (10 + (j.numero <= 8 ? 0 : 6))));
+        }
+        j.y = j.channelY;
       }
-      this.possession = possessionTeam;
-      const equipe = possessionTeam === 'A' ? this.equipeA : this.equipeB;
-      this.porteur = equipe[8]; // demi de mêlée, numéro 9
-      this.phase = 'PORTE';
+      const kickeur = (equipeKick === 'A' ? this.equipeA : this.equipeB)[9]; // ouvreur, n.10
+      kickeur.x = xCentre;
+      kickeur.y = LARGEUR / 2;
+      this.possession = equipeKick;
+      this.porteur = kickeur;
+      this.equipeReceptriceAttendue = equipeReceptrice;
+      this.xCoupEnvoi = xCentre;
+      this.dirCoupEnvoi = dirKick;
+      // Cible : au-delà de la ligne des 10m adverses (obligation légale), assez
+      // loin pour rendre le ballon réellement contestable à la réception.
+      this.ballonCibleX = Math.max(0, Math.min(LONGUEUR, xCentre + dirKick * (12 + this.rng() * 15)));
+      this.ballonCibleY = Math.max(5, Math.min(LARGEUR - 5, LARGEUR / 2 + (this.rng() * 30 - 15)));
+      this.phase = 'COUP_ENVOI';
       this.timerPhase = 0;
-      this.ruckPoint = { x: this.porteur.x, y: this.porteur.y };
+      this.ruckPoint = { x: xCentre, y: LARGEUR / 2 };
       this.contestants = [];
-      this.log('COUP_ENVOI', possessionTeam, `Coup d'envoi, equipe ${possessionTeam}`);
+      this.log('COUP_ENVOI', equipeKick, `Coup d'envoi botte par l'equipe ${equipeKick}, l'equipe ${equipeReceptrice} doit rester a 10m`);
+    }
+
+    // Réception du coup d'envoi : le ballon, en l'air pendant le vol, peut être
+    // récupéré par l'une ou l'autre équipe (contest aérien), pas systématiquement
+    // par l'équipe "attendue" — conformément au fait qu'un coup d'envoi est
+    // réellement disputé en l'air, pas une simple remise en main.
+    _tickCoupEnvoi(dt) {
+      this.timerPhase += dt;
+      const duree = 2.2;
+      const t = Math.min(1, this.timerPhase / duree);
+      this.porteur.x = this.xCoupEnvoi + (this.ballonCibleX - this.xCoupEnvoi) * t;
+      this.porteur.y = LARGEUR / 2 + (this.ballonCibleY - LARGEUR / 2) * t;
+
+      for (const j of [...this.equipeA, ...this.equipeB]) {
+        if (j === this.porteur) continue;
+        if (j.team === this.possession) {
+          // L'équipe qui botte chasse en remontant le terrain : elle part de
+          // derrière le ballon et n'a pas une course directe, d'où une vitesse
+          // de poursuite réduite (elle arrive rarement la première en pratique).
+          avancer(j, this.ballonCibleX - j.x, this.ballonCibleY - j.y, dt, vitesseMs(j) * 0.75);
+        } else {
+          // L'équipe receveuse part déjà positionnée dans sa zone de réception
+          // (au-delà de sa ligne des 10m) : elle converge à pleine vitesse sur
+          // le point de chute pour s'organiser et capter le ballon.
+          avancer(j, this.ballonCibleX - j.x, this.ballonCibleY - j.y, dt, vitesseMs(j));
+        }
+      }
+
+      if (this.timerPhase >= duree) {
+        // En pratique, l'équipe receveuse contrôle l'immense majorité des
+        // coups d'envoi (elle est déjà positionnée pour réceptionner) ; un
+        // ballon contré par les chasseurs (charge-down, erreur de réception)
+        // reste l'exception, pas une course à égalité de chances.
+        const receveurs = this.equipeReceptriceAttendue === 'A' ? this.equipeA : this.equipeB;
+        const chasseurs = this.equipeReceptriceAttendue === 'A' ? this.equipeB : this.equipeA;
+        const { joueur: receveurProche } = joueurLePlusProche(receveurs, this.ballonCibleX, this.ballonCibleY);
+        const { joueur: chasseurProche, distance: distChasseur } = joueurLePlusProche(chasseurs, this.ballonCibleX, this.ballonCibleY);
+        const chasseurGagne = distChasseur < 3 && this.rng() < 0.15;
+        const joueur = chasseurGagne ? chasseurProche : receveurProche;
+        this.porteur = joueur;
+        this.possession = joueur.team;
+        this.ruckPoint = { x: joueur.x, y: joueur.y };
+        this.phase = 'PORTE';
+        this.timerPhase = 0;
+        if (joueur.team !== this.equipeReceptriceAttendue) {
+          this.log('CONTRE_COUP_ENVOI', joueur.team, `Coup d'envoi contre, equipe ${joueur.team} recupere le ballon`);
+        }
+      }
     }
 
     // Position affichable de l'arbitre : suit le point de ruck/mêlée pendant les
@@ -267,9 +337,12 @@
           avancer(j, porteur.x - j.x, porteur.y - j.y, dt, vitesseMs(j));
           continue;
         }
+        // Les défenseurs hors plaqueur direct doivent se placer ENTRE le porteur
+        // et leur propre ligne d'en-but (donc dans le sens d'attaque du porteur),
+        // pas derrière lui : sinon le couloir vers l'essai reste grand ouvert.
         const estAvant = j.numero <= 8;
-        const recul = porteur.sensAttaque > 0 ? -(estAvant ? 1 : 3) : (estAvant ? 1 : 3);
-        const cibleX = porteur.x + recul;
+        const avance = porteur.sensAttaque > 0 ? (estAvant ? 1 : 3) : -(estAvant ? 1 : 3);
+        const cibleX = porteur.x + avance;
         const cibleY = j.channelY * 0.6 + porteur.y * 0.4;
         avancer(j, cibleX - j.x, cibleY - j.y, dt, vitesseMs(j) * 0.85);
       }
@@ -333,14 +406,29 @@
       this.timerPhase += dt;
       const pt = this.ruckPoint;
       const sensAttaque = this.porteur.sensAttaque;
+      // Marge de repli et délai de grâce : au moment du plaquage, des défenseurs
+      // non-contestants se trouvent souvent déjà tout près du point de ruck (ils
+      // suivaient le porteur en jeu ouvert). La loi sanctionne le hors-jeu, mais un
+      // défenseur a le temps de courir se replier derrière la ligne avant d'être
+      // sifflé ; sans ce délai, quasi tout plaquage dégénérait en pénalité.
+      const margeRecul = 1.5;
+      const delaiGrace = 1.5;
       for (const j of [...this.equipeA, ...this.equipeB]) {
         if (j === this.porteur) continue;
         const estContestant = this.contestants.includes(j.numero) && j.team !== this.possession;
-        const estProche = distance(j, pt) < 8;
-        if (estProche || estContestant) avancer(j, pt.x - j.x, pt.y - j.y, dt, vitesseMs(j) * 0.7);
+        const estSoutienAttaque = j.team === this.possession && distance(j, pt) < 8;
 
-        if (j.team !== this.possession && !estContestant) {
-          if (Referee.horsJeuRuck(j, pt, sensAttaque)) {
+        if (estContestant || estSoutienAttaque) {
+          avancer(j, pt.x - j.x, pt.y - j.y, dt, vitesseMs(j) * 0.7);
+          continue;
+        }
+
+        if (j.team !== this.possession && Referee.horsJeuRuck(j, pt, sensAttaque)) {
+          // Se replier vers la zone ONSIDE (au-delà du point de ruck, côté de
+          // son propre en-but), pas plus profondément dans la zone hors-jeu.
+          const cibleX = sensAttaque > 0 ? pt.x + margeRecul : pt.x - margeRecul;
+          avancer(j, cibleX - j.x, pt.y - j.y, dt, vitesseMs(j));
+          if (this.timerPhase > delaiGrace && Referee.horsJeuRuck(j, pt, sensAttaque)) {
             this._traiterPenalite(this.possession, { x: this.porteur.x, y: this.porteur.y });
             return;
           }
@@ -399,8 +487,10 @@
         } else {
           this.log('TRANSFORMATION_RATEE', equipe, `Transformation ratee, equipe ${equipe}`);
         }
-        const adversaire = equipe === 'A' ? 'B' : 'A';
-        this._nouvelleManche(adversaire);
+        // Loi 12 : qu'elle soit réussie ou ratée, la transformation est suivie
+        // d'un coup d'envoi à la mi-terrain, botté par l'équipe qui vient
+        // d'encaisser l'essai (l'équipe qui a marqué le reçoit).
+        this._nouvelleManche(equipe);
       }
     }
 
@@ -412,14 +502,23 @@
         const equipe = this.equipeAuTir;
         const { y, distanceButs } = this.positionTir;
         const offsetLateral = Math.abs(y - LARGEUR / 2);
+        const sens = { A: 1, B: -1 };
         if (this.rng() < probaReussiteTir(distanceButs, offsetLateral)) {
           this.score[equipe] += 3;
           this.log('PENALITE_REUSSIE', equipe, `Coup de pied au but reussi, equipe ${equipe} +3`);
+          // Comme après un essai : coup d'envoi à la mi-terrain, botté par
+          // l'équipe qui vient d'encaisser la pénalité.
+          this._nouvelleManche(equipe);
         } else {
           this.log('PENALITE_RATEE', equipe, `Coup de pied au but rate, equipe ${equipe}`);
+          // Un tir manqué part en général au-delà de la ligne d'en-but adverse
+          // et y meurt : remise en jeu en 22m (loi 13), botté par l'équipe
+          // défenseure depuis SA ligne des 22m, pas un coup d'envoi à mi-terrain.
+          const sensEquipe = sens[equipe];
+          const ligneEssaiAdverse = sensEquipe > 0 ? LONGUEUR : 0;
+          const x22 = ligneEssaiAdverse - sensEquipe * 22;
+          this._nouvelleManche(equipe, x22);
         }
-        const adversaire = equipe === 'A' ? 'B' : 'A';
-        this._nouvelleManche(adversaire);
       }
     }
 
@@ -435,6 +534,7 @@
         return;
       }
       if (this.phase === 'PORTE') this._tickPorte(dt);
+      else if (this.phase === 'COUP_ENVOI') this._tickCoupEnvoi(dt);
       else if (this.phase === 'RUCK') this._tickRuck(dt);
       else if (this.phase === 'MELEE') this._tickMelee(dt);
       else if (this.phase === 'TOUCHE') this._tickTouche(dt);

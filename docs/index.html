@@ -116,8 +116,9 @@
   <div class="legende-item"><span class="puce" style="background:#c62828"></span> Équipe B</div>
   <div class="legende-item"><span class="puce" style="background:#1565c0; border: 3px solid #ffeb3b"></span> Porteur du ballon (entouré de jaune)</div>
   <div class="legende-item"><span class="puce" style="background:#212121; border: 2px solid #f9a825"></span> Arbitre — toujours visible près de l'action, en noir et jaune</div>
-  <p>La pastille « phase » en haut indique ce qui se passe : <b>En jeu</b> (le ballon avance), <b>Ruck</b> (plaquage, lutte pour le ballon), <b>Mêlée</b> (passe en avant ou en-avant sifflé), <b>Touche</b> (ballon porté en touche, lancer pour l'équipe adverse), <b>Pénalité au but</b> (tir aux poteaux après une faute, 3 points si réussi), <b>ESSAI !</b> puis <b>Transformation</b> (tir aux poteaux après l'essai, 2 points si réussi), ou <b>Terminé</b>.</p>
+  <p>La pastille « phase » en haut indique ce qui se passe : <b>Coup d'envoi</b> (ballon réellement botté depuis la mi-terrain ou les 22m, l'équipe adverse doit rester à 10m puis le dispute en l'air), <b>En jeu</b> (le ballon avance), <b>Ruck</b> (plaquage, lutte pour le ballon), <b>Mêlée</b> (passe en avant ou en-avant sifflé), <b>Touche</b> (ballon porté en touche, lancer pour l'équipe adverse), <b>Pénalité au but</b> (tir aux poteaux après une faute, 3 points si réussi), <b>ESSAI !</b> puis <b>Transformation</b> (tir aux poteaux après l'essai, 2 points si réussi), ou <b>Terminé</b>.</p>
   <p>Score réel du rugby : essai = 5 points, transformation réussie = +2, pénalité au but réussie = 3. Selon la distance aux poteaux, une pénalité peut aussi être jouée rapidement (avantage) plutôt que tirée.</p>
+  <p>Coup d'envoi/remise en jeu (loi 12) : après un essai ou une pénalité réussie, c'est l'équipe qui vient d'encaisser les points qui botte depuis la mi-terrain — l'équipe qui a marqué reçoit. Après une pénalité ratée, c'est une remise en jeu aux 22m bottée par l'équipe qui défendait. Dans les deux cas le ballon est réellement disputé en l'air à la réception (icône ✋ si l'équipe qui a botté le récupère elle-même).</p>
   <p>Chaque décision de l'arbitre (pénalité, mêlée, touche, essai, transformation) s'affiche en grand au centre de l'écran pendant 2 secondes, et reste dans le fil d'événements sous le score.</p>
   <p>La barre en dessous du terrain permet de rejouer le match à n'importe quel instant : faites-la glisser pour avancer ou reculer dans le temps, le résultat est toujours identique (le match est déterministe à partir de sa « graine » aléatoire).</p>
   <button class="fermer alt" id="fermerLegende">Fermer</button>
@@ -134,12 +135,13 @@ const PAS_FIXE = 0.1;    // pas de simulation fixe : condition de la rejouabilit
 const CLE_HISTORIQUE = 'rugbyManager.historique';
 
 const ICONES = {
-  COUP_ENVOI: '▶️', ESSAI: '🏉', MELEE_AVANT: '🔄', MELEE_ENAVANT: '🔄',
+  COUP_ENVOI: '▶️', CONTRE_COUP_ENVOI: '✋', ESSAI: '🏉', MELEE_AVANT: '🔄', MELEE_ENAVANT: '🔄',
   PENALITE: '🟨', PENALITE_REUSSIE: '🥅', PENALITE_RATEE: '❌',
   TRANSFORMATION_REUSSIE: '🥅', TRANSFORMATION_RATEE: '❌',
   TOUCHE: '👉', TURNOVER: '🔁', FIN_MATCH: '🏁',
 };
 const PHASES = {
+  COUP_ENVOI: { label: "Coup d'envoi", couleur: '#37474f' },
   PORTE: { label: 'En jeu', couleur: '#2e7d32' },
   RUCK: { label: 'Ruck', couleur: '#ef6c00' },
   MELEE: { label: 'Mêlée', couleur: '#1565c0' },
@@ -152,6 +154,7 @@ const PHASES = {
 const TYPES_BANNIERE = new Set([
   'PENALITE', 'MELEE_AVANT', 'MELEE_ENAVANT', 'TOUCHE', 'ESSAI', 'FIN_MATCH',
   'TRANSFORMATION_REUSSIE', 'TRANSFORMATION_RATEE', 'PENALITE_REUSSIE', 'PENALITE_RATEE',
+  'CONTRE_COUP_ENVOI',
 ]);
 
 function formaterTemps(s) {
