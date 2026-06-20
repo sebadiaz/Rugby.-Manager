@@ -56,12 +56,13 @@ const nbPenalitesAuButTentees = (compteurs.PENALITE_REUSSIE || 0) + (compteurs.P
 const nbCoupsEnvoi = compteurs.COUP_ENVOI || 0;
 const nbMauls = compteurs.MAUL || 0;
 const nbMiTemps = compteurs.MI_TEMPS || 0;
+const nbCoupsEnvoiCourts = compteurs.COUP_ENVOI_COURT || 0;
 
 const state = match.getState();
 console.log('--- Résultat simulation ---');
 console.log(`Score final : Equipe A ${state.score.A} - ${state.score.B} Equipe B`);
 console.log(`Essais : ${nbEssais} | Transformations tentées : ${nbTransformationsTentees} | Pénalités au but tentées : ${nbPenalitesAuButTentees}`);
-console.log(`Mêlées (passe en avant / en-avant) : ${nbMelees} | Touches (ballon porté en touche) : ${nbTouches} | Mauls : ${nbMauls} | Mi-temps : ${nbMiTemps}`);
+console.log(`Mêlées (passe en avant / en-avant) : ${nbMelees} | Touches (ballon porté en touche) : ${nbTouches} | Mauls : ${nbMauls} | Mi-temps : ${nbMiTemps} | Coups d'envoi trop courts : ${nbCoupsEnvoiCourts}`);
 console.log(`Derniers événements : ${state.events.map(e => e.message).join(' | ')}`);
 
 if (erreurs > 0) {
@@ -96,4 +97,7 @@ if (nbMiTemps === 0) {
   console.error("ECHEC : aucune mi-temps déclenchée (loi 12, coup d'envoi de la 2e période par l'équipe adverse), comportement suspect.");
   process.exit(1);
 }
+// Pas d'assertion stricte sur nbCoupsEnvoiCourts : événement volontairement
+// rare (6% par coup d'envoi/remise en jeu, comme dans la réalité), donc pas
+// garanti sur une seule graine en 1800s — affiché à titre informatif seulement.
 console.log('OK : invariants respectés, essais, mêlées, transformations, pénalités au but, coups d\'envoi, mauls et mi-temps observés.');

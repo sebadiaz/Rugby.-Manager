@@ -52,11 +52,17 @@ Implémenté (`_nouvelleManche`, `_tickCoupEnvoi`, phase `COUP_ENVOI`) :
 - ✅ Positionnement : équipe qui botte derrière le ballon, équipe receveuse
   au-delà de 10 m, ballon réellement animé en vol vers une cible aléatoire
   (12 à 27 m), contesté à la réception.
-- ⚠️ Simplifié : pas de règle « ballon qui ne parcourt pas 10 m » (le ballon
-  va toujours au-delà), pas d'option de retaper, pas de mêlée au centre en
-  cas de coup d'envoi raté/non réglementaire. La réception favorise l'équipe
-  receveuse (≈ 12 % de récupération par l'équipe qui a botté), calibré pour
-  rester réaliste sans modéliser le détail des courses de couverture.
+- ✅ Coup d'envoi/remise en jeu trop court (ballon qui ne franchit pas les
+  10 m, événement `COUP_ENVOI_COURT`, ~6 % des coups d'envoi/remises en jeu) :
+  mêlée au centre pour l'équipe qui n'a pas botté (`_accorderMelee`), comme le
+  prévoit la loi.
+- ⚠️ Simplifié : pas d'option de retaper en cas de coup d'envoi trop court ou
+  envoyé directement en touche (seule la conséquence « mêlée au centre » est
+  modélisée, pas le choix entre les deux), pas de cas spécifique pour un
+  coup d'envoi qui atterrit directement dans l'en-but. La réception favorise
+  l'équipe receveuse (≈ 12 % de récupération par l'équipe qui a botté),
+  calibré pour rester réaliste sans modéliser le détail des courses de
+  couverture.
 - ❌ **Non implémenté : le « goal-line drop-out »**, remise en jeu depuis la
   ligne d'en-but (distincte du 22 m drop-out) après certaines actions
   d'attaque bloquées dans l'en-but adverse. Écart connu, non traité ici.

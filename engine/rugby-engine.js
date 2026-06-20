@@ -181,7 +181,13 @@
       this.dirCoupEnvoi = dirKick;
       // Cible : au-delà de la ligne des 10m adverses (obligation légale), assez
       // loin pour rendre le ballon réellement contestable à la réception.
-      this.ballonCibleX = Math.max(0, Math.min(LONGUEUR, xCentre + dirKick * (12 + this.rng() * 15)));
+      // Exception (loi 12) : un coup d'envoi mal frappé qui ne franchit pas les
+      // 10m est sanctionné par une mêlée au centre pour l'équipe qui n'a pas
+      // botté (cf. _tickCoupEnvoi). Simplifié : pas d'option de retaper.
+      this.coupEnvoiCourt = this.rng() < 0.06;
+      this.ballonCibleX = this.coupEnvoiCourt
+        ? Math.max(0, Math.min(LONGUEUR, xCentre + dirKick * (3 + this.rng() * 6)))
+        : Math.max(0, Math.min(LONGUEUR, xCentre + dirKick * (12 + this.rng() * 15)));
       this.ballonCibleY = Math.max(5, Math.min(LARGEUR - 5, LARGEUR / 2 + (this.rng() * 30 - 15)));
       this.phase = 'COUP_ENVOI';
       this.timerPhase = 0;
@@ -217,6 +223,15 @@
       }
 
       if (this.timerPhase >= duree) {
+        // Coup d'envoi trop court (loi 12) : le ballon n'a pas franchi la
+        // ligne des 10m adverses -> mêlée au centre pour l'équipe qui n'a pas
+        // botté, qu'il ait été repris ou non par un chasseur.
+        if (this.coupEnvoiCourt) {
+          const equipeKick = this._dernierEquipeKick;
+          this.log('COUP_ENVOI_COURT', equipeKick, `Coup d'envoi trop court par l'equipe ${equipeKick}, melee au centre pour l'equipe adverse`);
+          this._accorderMelee(equipeKick, { x: this.xCoupEnvoi, y: LARGEUR / 2 });
+          return;
+        }
         // En pratique, l'équipe receveuse contrôle l'immense majorité des
         // coups d'envoi (elle est déjà positionnée pour réceptionner) ; un
         // ballon contré par les chasseurs (charge-down, erreur de réception)

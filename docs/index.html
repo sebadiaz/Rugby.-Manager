@@ -138,7 +138,7 @@ const ICONES = {
   COUP_ENVOI: '▶️', CONTRE_COUP_ENVOI: '✋', ESSAI: '🏉', MELEE_AVANT: '🔄', MELEE_ENAVANT: '🔄',
   PENALITE: '🟨', PENALITE_REUSSIE: '🥅', PENALITE_RATEE: '❌',
   TRANSFORMATION_REUSSIE: '🥅', TRANSFORMATION_RATEE: '❌',
-  TOUCHE: '👉', TURNOVER: '🔁', MAUL: '🧱', MI_TEMPS: '⏸️', FIN_MATCH: '🏁',
+  TOUCHE: '👉', TURNOVER: '🔁', MAUL: '🧱', MI_TEMPS: '⏸️', COUP_ENVOI_COURT: '📏', FIN_MATCH: '🏁',
 };
 const PHASES = {
   COUP_ENVOI: { label: "Coup d'envoi", couleur: '#37474f' },
@@ -150,12 +150,13 @@ const PHASES = {
   ESSAI: { label: 'ESSAI !', couleur: '#f9a825' },
   TRANSFORMATION: { label: 'Transformation', couleur: '#00838f' },
   PENALITE_TIR: { label: 'Pénalité au but', couleur: '#ad1457' },
+  MI_TEMPS: { label: 'Mi-temps', couleur: '#455a64' },
   TERMINE: { label: 'Terminé', couleur: '#616161' },
 };
 const TYPES_BANNIERE = new Set([
   'PENALITE', 'MELEE_AVANT', 'MELEE_ENAVANT', 'TOUCHE', 'ESSAI', 'FIN_MATCH',
   'TRANSFORMATION_REUSSIE', 'TRANSFORMATION_RATEE', 'PENALITE_REUSSIE', 'PENALITE_RATEE',
-  'CONTRE_COUP_ENVOI', 'MAUL', 'MI_TEMPS',
+  'CONTRE_COUP_ENVOI', 'MAUL', 'MI_TEMPS', 'COUP_ENVOI_COURT',
 ]);
 
 function formaterTemps(s) {
