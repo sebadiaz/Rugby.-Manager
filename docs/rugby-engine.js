@@ -1065,9 +1065,66 @@
       this.contestants = [];
     }
 
+    // Mêlée (lois 19/20) : les avants se regroupent réellement (première ligne
+    // contre première ligne) plutôt que de figer le jeu courant, les lignes
+    // arrières défensives doivent respecter les 5 m de hors-jeu jusqu'à la
+    // sortie du ballon, et le paquet le plus puissant peut faire gratter le
+    // ballon contre le sens de l'introduction (jamais garanti, comme au ruck).
     _tickMelee(dt) {
       this.timerPhase += dt;
-      if (this.timerPhase >= 2.5) {
+      const pt = this.ruckPoint;
+      const sensAttaque = this.porteur.sensAttaque;
+      const equipeAtt = this.possession === 'A' ? this.equipeA : this.equipeB;
+      const equipeDef = this.possession === 'A' ? this.equipeB : this.equipeA;
+
+      const placerPaquet = (equipe, recul) => {
+        const avants = equipe.filter(j => j.numero <= 8);
+        avants.forEach((j, i) => {
+          const cx = pt.x - sensAttaque * recul * (0.5 + (i % 3) * 0.4);
+          const cy = pt.y + ((i % 2) ? -1 : 1) * Math.ceil((i + 1) / 2) * 0.6;
+          avancer(j, cx - j.x, cy - j.y, dt, vitesseMs(j) * 0.7);
+        });
+      };
+      placerPaquet(equipeAtt, -1);
+      placerPaquet(equipeDef, 1);
+
+      // Hors-jeu (loi 19/20) : les arrières défenseurs doivent rester à 5 m du
+      // point d'introduction jusqu'à la sortie du ballon ; un délai de grâce
+      // leur laisse le temps de se replier avant d'être sifflés (même logique
+      // qu'au ruck).
+      const margeBacks = 5;
+      const delaiGrace = 1.5;
+      for (const j of equipeDef) {
+        if (j.numero <= 8) continue;
+        const limite = sensAttaque > 0 ? pt.x - margeBacks : pt.x + margeBacks;
+        const enInfraction = sensAttaque > 0 ? j.x < limite : j.x > limite;
+        if (enInfraction) {
+          avancer(j, limite - j.x, pt.y - j.y, dt, vitesseMs(j));
+          const toujoursEnInfraction = sensAttaque > 0 ? j.x < limite : j.x > limite;
+          if (this.timerPhase > delaiGrace && toujoursEnInfraction) {
+            this._traiterPenalite(this.possession, { x: pt.x, y: pt.y });
+            return;
+          }
+        }
+      }
+
+      if (this.timerPhase >= 3) {
+        // Poussée des paquets (même proxy de force que le ruck/maul,
+        // forceMaul), sur les 8 avants de chaque équipe : un paquet plus
+        // puissant fait gratter le ballon plus souvent côté défense, sans
+        // jamais rendre l'issue certaine.
+        let forceAtt = 0, forceDef = 0;
+        for (const j of equipeAtt) if (j.numero <= 8) forceAtt += forceMaul(j);
+        for (const j of equipeDef) if (j.numero <= 8) forceDef += forceMaul(j);
+        const probaTurnover = Math.max(0.03, Math.min(0.25, 0.08 + (forceDef - forceAtt) / 900));
+        if (this.rng() < probaTurnover) {
+          this.possession = this.possession === 'A' ? 'B' : 'A';
+          this.log('TURNOVER', this.possession, `Ballon talonne contre le sens de l'introduction, equipe ${this.possession} recupere a la melee`);
+          const eqNouv = this.possession === 'A' ? this.equipeA : this.equipeB;
+          this.porteur = this._neufVersDix(eqNouv, eqNouv[8]);
+        }
+        this.porteur.x = pt.x;
+        this.porteur.y = pt.y;
         this.phase = 'PORTE';
         this.timerPhase = 0;
       }
