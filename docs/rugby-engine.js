@@ -55,9 +55,19 @@
     15: { vitesse: 80, plaquage: 50, tendance: 20, label: 'AR' },
   };
 
+  // Couloir latéral "au repos" par numéro de maillot : forme un vrai plan de
+  // jeu (avants groupés au centre, 9/8 au cœur du ballon, 10 légèrement
+  // excentré, centres écartés de part et d'autre, ailiers sur les couloirs,
+  // arrière au centre en couverture) plutôt qu'une répartition linéaire par
+  // numéro (qui plaçait à tort le n°1 et le n°15 près des touches).
+  const COULOIR_BASE = {
+    1: 26, 2: 32, 3: 38, 4: 24, 5: 42, 6: 20, 7: 48, 8: 35,
+    9: 35, 10: 31, 11: 7, 12: 26, 13: 44, 14: 63, 15: 35,
+  };
+
   function creerJoueur(numero, team, sensAttaque, rng) {
     const p = PROFILS[numero];
-    const channelY = (numero - 0.5) / 15 * LARGEUR;
+    const channelY = COULOIR_BASE[numero] * (LARGEUR / 70);
     return {
       team, numero, label: p.label,
       vitesse: p.vitesse + (rng() * 10 - 5),
@@ -646,7 +656,18 @@
         }
       }
       if (this.timerPhase >= 1.8) {
-        const turnover = this.rng() < 0.12;
+        // Contest au ruck pondéré par les avants réellement engagés autour du
+        // point de ruck (même proxy de force que le maul, forceMaul), plutôt
+        // qu'un taux de turnover fixe : un paquet adverse plus nombreux ou
+        // plus puissant fait gratter le ballon plus souvent, sans jamais
+        // rendre l'issue certaine (bruit aléatoire conservé).
+        const equipeAtt = this.possession === 'A' ? this.equipeA : this.equipeB;
+        const equipeDef = this.possession === 'A' ? this.equipeB : this.equipeA;
+        let forceAtt = 0, forceDef = 0;
+        for (const j of equipeAtt) if (j.numero <= 8 && j.auSol === 0 && distance(j, pt) < 8) forceAtt += forceMaul(j);
+        for (const j of equipeDef) if (j.numero <= 8 && j.auSol === 0 && distance(j, pt) < 8) forceDef += forceMaul(j);
+        const probaTurnover = Math.max(0.04, Math.min(0.35, 0.12 + (forceDef - forceAtt) / 700));
+        const turnover = this.rng() < probaTurnover;
         if (turnover) {
           this.possession = this.possession === 'A' ? 'B' : 'A';
           this.log('TURNOVER', this.possession, `Ballon gratte au ruck, equipe ${this.possession} recupere`);
