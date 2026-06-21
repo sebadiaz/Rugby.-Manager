@@ -634,15 +634,24 @@
       // sifflé ; sans ce délai, quasi tout plaquage dégénérait en pénalité.
       const margeRecul = 1.5;
       const delaiGrace = 1.5;
+
+      // Joueurs qui convergent vers le point de ruck (le(s) contestant(s)
+      // défensif(s) et les soutiens d'attaque) : chacun garde une position
+      // décalée en rosette autour du point plutôt que de viser la même
+      // coordonnée — deux joueurs ne peuvent pas occuper la même place.
+      const placerEnRosette = (j, recul, i) => {
+        const cx = pt.x - sensAttaque * recul * (0.5 + (i % 2) * 0.5);
+        const cy = pt.y + ((i % 2) ? -1 : 1) * Math.ceil((i + 1) / 2) * 0.7;
+        avancer(j, cx - j.x, cy - j.y, dt, vitesseMs(j) * 0.7);
+      };
+      let iContestants = 0, iSoutien = 0;
       for (const j of [...this.equipeA, ...this.equipeB]) {
         if (j === this.porteur) continue;
         const estContestant = this.contestants.includes(j.numero) && j.team !== this.possession;
         const estSoutienAttaque = j.team === this.possession && distance(j, pt) < 8;
 
-        if (estContestant || estSoutienAttaque) {
-          avancer(j, pt.x - j.x, pt.y - j.y, dt, vitesseMs(j) * 0.7);
-          continue;
-        }
+        if (estContestant) { placerEnRosette(j, 1, iContestants++); continue; }
+        if (estSoutienAttaque) { placerEnRosette(j, -1, iSoutien++); continue; }
 
         if (j.team !== this.possession && Referee.horsJeuRuck(j, pt, sensAttaque)) {
           // Se replier vers la zone ONSIDE (au-delà du point de ruck, côté de
@@ -1205,7 +1214,8 @@
           defendingTeam: this.possession === 'A' ? 'B' : 'A',
           attackersCommitted: [...this.equipeA, ...this.equipeB]
             .filter(j => j.team === this.possession && j !== this.porteur && distance(j, this.ruckPoint) < 8).length,
-          defendersCommitted: this.contestants.length,
+          defendersCommitted: [...this.equipeA, ...this.equipeB]
+            .filter(j => j.team !== this.possession && j.auSol === 0 && distance(j, this.ruckPoint) < 8).length,
           timer: this.timerPhase,
           ballAvailable: this.timerPhase >= 1.2,
         } : null,
