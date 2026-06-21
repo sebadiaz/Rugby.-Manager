@@ -1,5 +1,7 @@
 # Spécification — Placement tactique réaliste des joueurs (v3)
 
+> **Statut : cible future, pas encore implémentée.** Le moteur actuel (`engine/rugby-engine.js`, en JavaScript) implémente une version simplifiée du modèle Suiveur/Tenant (section 2) mais pas encore les rideaux défensifs multiples ni la distinction poste naturel/postes maîtrisés décrits ici. Les références `Joueur::...`/`JoueurAgent::...` ci-dessous datent de la conception C++ abandonnée ; à lire comme `Joueur.../JoueurAgent...` (notation objet générique), peu importe le langage d'implémentation final.
+
 Révision de `docs/SPEC_PLACEMENT_TACTIQUE.md` (v2). La v2 corrigeait les distances et ajoutait la dimension temporelle, mais restait **stéréotypée** sur trois points :
 
 1. elle associait directement `Poste → comportement`, comme si un pilier ne pouvait jamais se comporter autrement qu'un pilier-type, et qu'un joueur ne pouvait pas changer de poste ni en maîtriser plusieurs ;

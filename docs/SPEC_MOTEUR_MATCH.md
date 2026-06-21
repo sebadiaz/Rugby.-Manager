@@ -1,4 +1,6 @@
-# Spécification — Moteur de simulation de match 2D (C++)
+# Spécification — Moteur de simulation de match 2D (historique, C++)
+
+> **Obsolète : le moteur a été réécrit en JavaScript.** Ce document décrit la conception initiale envisagée en C++ (structs, classes, build CMake) et n'a pas été tenu à jour après la réécriture. Il reste utile pour comprendre l'intention de conception (objectifs, modèle de décision par poste, déroulé d'un tick), mais le modèle de données réel et le code qui font foi sont dans `engine/rugby-engine.js` (testé par `server/simulate.js`), pas dans les blocs de code C++ ci-dessous.
 
 Ce document détaille la conception du moteur de simulation de match, qui constitue la priorité absolue du projet (voir README.md). Il sert de référence avant l'implémentation. Aucun rendu graphique n'est traité ici : le moteur doit fonctionner en pur calcul (state + logique), le rendu sera branché plus tard sur l'état exposé.
 

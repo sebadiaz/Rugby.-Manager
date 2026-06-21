@@ -1,25 +1,8 @@
-# Spécification — Modèle de joueur (agent autonome)
+# Spécification — Modèle de joueur (agent autonome) (historique, C++)
+
+> **Obsolète : le moteur a été réécrit en JavaScript.** Ce document décrit le modèle de joueur tel qu'envisagé initialement en C++ (fichiers `.hpp`/`.cpp`, build CMake listés ci-dessous, tous supprimés du dépôt). Le modèle de décision par poste qu'il décrit reste une référence conceptuelle utile, mais l'implémentation qui fait foi est `engine/rugby-engine.js` (profils par numéro de maillot, fonctions `creerJoueur`/`_tickPorte`/`_tickRuck`), testée par `server/simulate.js`.
 
 Ce document détaille le modèle de joueur utilisé par le moteur de simulation de match (voir aussi `docs/SPEC_MOTEUR_MATCH.md`). Il complète ce dernier avec une spécification complète, directement exploitable en code, d'un joueur en tant qu'agent autonome.
-
-Code source correspondant :
-
-```
-engine/core/Vector2.hpp        Vecteur 2D (position, vitesse)
-engine/core/Rng.hpp             RNG seedé pour les tirages aléatoires
-engine/model/Joueur.hpp          Enums + structs de données (Poste, EtatJoueur, ActionJoueur, Physique, Technique, Mental, Tactique, EtatMatch, Perception, Joueur)
-engine/simulation/ContexteMatch.hpp  Vue locale du match transmise à un agent pour un tick
-engine/ai/JoueurAgent.hpp/.cpp        Comportement : perception, décision, exécution
-examples/exemple_joueur.cpp           Exemple compilable : création de joueurs + boucle de ticks
-CMakeLists.txt                          Build (bibliothèque `rugby_engine` + exécutable `exemple_joueur`)
-```
-
-Compiler et exécuter l'exemple :
-
-```
-cmake -S . -B build && cmake --build build
-./build/exemple_joueur
-```
 
 ## 1. Vue d'ensemble du modèle
 

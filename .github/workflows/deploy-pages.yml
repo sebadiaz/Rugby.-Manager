@@ -7,6 +7,7 @@ on:
       - claude/readme-details-6aj3jt
     paths:
       - "docs/**"
+      - "engine/**"
       - ".github/workflows/deploy-pages.yml"
   workflow_dispatch:
 
@@ -30,6 +31,8 @@ jobs:
         uses: actions/checkout@v4
       - name: Configure Pages
         uses: actions/configure-pages@v5
+      - name: Synchroniser le moteur partagé vers docs/
+        run: cp engine/rugby-engine.js docs/rugby-engine.js
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
