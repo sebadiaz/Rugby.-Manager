@@ -661,11 +661,24 @@
         // qu'un taux de turnover fixe : un paquet adverse plus nombreux ou
         // plus puissant fait gratter le ballon plus souvent, sans jamais
         // rendre l'issue certaine (bruit aléatoire conservé).
-        const equipeAtt = this.possession === 'A' ? this.equipeA : this.equipeB;
-        const equipeDef = this.possession === 'A' ? this.equipeB : this.equipeA;
+        const equipeOriginale = this.possession;
+        const equipeAtt = equipeOriginale === 'A' ? this.equipeA : this.equipeB;
+        const equipeDef = equipeOriginale === 'A' ? this.equipeB : this.equipeA;
         let forceAtt = 0, forceDef = 0;
         for (const j of equipeAtt) if (j.numero <= 8 && j.auSol === 0 && distance(j, pt) < 8) forceAtt += forceMaul(j);
         for (const j of equipeDef) if (j.numero <= 8 && j.auSol === 0 && distance(j, pt) < 8) forceDef += forceMaul(j);
+
+        // Ruck très disputé des deux côtés et quasiment à l'équilibre : le
+        // ballon ne sort franchement pour personne, l'arbitre rend une mêlée
+        // plutôt que de trancher arbitrairement un gagnant.
+        const ecartForces = Math.abs(forceDef - forceAtt);
+        const engagementTotal = forceAtt + forceDef;
+        if (engagementTotal > 80 && ecartForces < 35 && this.rng() < 0.10) {
+          this.log('MELEE_RUCK_INJOUABLE', equipeOriginale, `Ballon injouable au ruck, melee pour l'equipe ${equipeOriginale}`);
+          this._accorderMeleeA(equipeOriginale, pt);
+          return;
+        }
+
         const probaTurnover = Math.max(0.04, Math.min(0.35, 0.12 + (forceDef - forceAtt) / 700));
         const turnover = this.rng() < probaTurnover;
         if (turnover) {
