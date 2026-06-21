@@ -412,12 +412,23 @@
     attaquants() { return this.possession === 'A' ? this.equipeA : this.equipeB; }
     defenseurs() { return this.possession === 'A' ? this.equipeB : this.equipeA; }
 
+    // À la sortie d'un regroupement (mêlée, touche, ruck, maul), le 9
+    // introduit ou récupère le ballon mais le transmet presque toujours
+    // immédiatement à l'ouvreur (n°10), qui prend la décision tactique
+    // (jouer au contact, écarter au large, botter) plutôt que de la
+    // prendre lui-même. Si le 10 est indisponible (plaqué, hors du jeu),
+    // le 9 garde le ballon.
+    _neufVersDix(equipe, neuf) {
+      const dix = equipe[9];
+      return (dix && dix.auSol === 0) ? dix : neuf;
+    }
+
     // --- Mêlée suite à infraction (passe en avant / en-avant) : avantage + relance
     // pour l'équipe non fautive, conformément à la loi (knock-on / forward pass). ---
     _accorderMelee(equipeFautive, position) {
       this.possession = equipeFautive === 'A' ? 'B' : 'A';
       const equipe = this.possession === 'A' ? this.equipeA : this.equipeB;
-      this.porteur = equipe[8];
+      this.porteur = this._neufVersDix(equipe, equipe[8]);
       this.porteur.x = Math.max(5, Math.min(LONGUEUR - 5, position.x));
       this.porteur.y = Math.max(5, Math.min(LARGEUR - 5, position.y));
       this.ruckPoint = { x: this.porteur.x, y: this.porteur.y };
@@ -432,7 +443,7 @@
       this.ruckPoint = { x: position.x, y: position.y };
       this.possession = equipeQuiSort === 'A' ? 'B' : 'A';
       const equipe = this.possession === 'A' ? this.equipeA : this.equipeB;
-      this.porteur = equipe[8];
+      this.porteur = this._neufVersDix(equipe, equipe[8]);
       this.porteur.x = Math.max(5, Math.min(LONGUEUR - 5, position.x));
       this.porteur.y = position.y <= LARGEUR / 2 ? 5 : LARGEUR - 5;
       this.phase = 'TOUCHE';
@@ -703,6 +714,10 @@
         let relayeur = neuf;
         if (!relayeur) {
           ({ joueur: relayeur } = joueurLePlusProche(att.filter(j => j.tendance >= 50), pt.x, pt.y));
+        } else {
+          // Sortie nette (le 9 a bien récupéré le ballon) : il le transmet
+          // presque toujours immédiatement à l'ouvreur, qui décide du jeu.
+          relayeur = this._neufVersDix(att, neuf);
         }
         this.porteur = relayeur || att[8];
         this.porteur.x = pt.x;
@@ -994,7 +1009,8 @@
       this.log('MAUL_BALLON_SORTI', poss, `Ballon sorti du maul par le demi de melee, l'equipe ${poss} relance`);
       this._finMaul();
       this.possession = poss;
-      this.porteur = (poss === 'A' ? this.equipeA : this.equipeB)[8];
+      const eqMaul = poss === 'A' ? this.equipeA : this.equipeB;
+      this.porteur = this._neufVersDix(eqMaul, eqMaul[8]);
       this.porteur.x = x;
       this.porteur.y = y;
       this.phase = 'PORTE';
@@ -1036,7 +1052,7 @@
     _accorderMeleeA(equipe, position) {
       this.possession = equipe;
       const eq = equipe === 'A' ? this.equipeA : this.equipeB;
-      this.porteur = eq[8];
+      this.porteur = this._neufVersDix(eq, eq[8]);
       this.porteur.x = Math.max(5, Math.min(LONGUEUR - 5, position.x));
       this.porteur.y = Math.max(5, Math.min(LARGEUR - 5, position.y));
       this.ruckPoint = { x: this.porteur.x, y: this.porteur.y };
