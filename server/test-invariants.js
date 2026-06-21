@@ -94,7 +94,10 @@ test('un ruck se termine toujours (jamais bloqué indéfiniment)', () => {
       tempsEnRuckContinu = 0;
     }
   }
-  assert.ok(maxTempsEnRuck < 5, `un ruck est resté bloqué ${maxTempsEnRuck.toFixed(1)}s (devrait toujours se résoudre en ~1.8s)`);
+  // Ruck à résolution variable (rucks rapides 2-4s, moyens 4-7s, lents
+  // 7-11s, cf. _tickPorte/_tickRuck) : la borne haute correspond donc au tiers
+  // lent (11s) plus une marge pour le délai de grâce de hors-jeu (1.5s).
+  assert.ok(maxTempsEnRuck < 13, `un ruck est resté bloqué ${maxTempsEnRuck.toFixed(1)}s (devrait toujours se résoudre sous ~12.5s avec la résolution à trois paliers)`);
 });
 
 test('un maul bloqué déclenche bien "use it"', () => {
