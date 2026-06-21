@@ -1106,21 +1106,67 @@
       else if (this.phase === 'PENALITE_TIR') this._tickPenaliteTir(dt);
     }
 
+    // Forme normalisée du ballon (cf. docs/index.html refonte modulaire) :
+    // un objet indépendant du porteur, avec un état explicite plutôt qu'une
+    // simple référence d'objet joueur. Vitesse en m/s, dérivée de la cible et
+    // de la durée de vol pendant un coup d'envoi ; nulle sinon (le ballon
+    // "tenu" n'a pas de vitesse propre, il suit le porteur).
+    _etatBallon() {
+      if (this.ballonEnVol) return 'AIR';
+      if (this.phase === 'RUCK') return 'RUCK';
+      if (this.phase === 'MAUL') return 'MAUL';
+      if (this.phase === 'TOUCHE') return 'OUT';
+      return 'CARRIED';
+    }
+
     getState() {
+      const enVol = this.ballonEnVol;
+      let bvx = 0, bvy = 0;
+      if (enVol) {
+        const dxVol = this.ballonCibleX - this.xCoupEnvoi;
+        const dyVol = this.ballonCibleY - LARGEUR / 2;
+        const duree = Math.max(0.9, Math.min(2.0, Math.hypot(dxVol, dyVol) / 18));
+        bvx = dxVol / duree;
+        bvy = dyVol / duree;
+      }
       return {
         equipeA: this.equipeA.map(j => ({ ...j })),
         equipeB: this.equipeB.map(j => ({ ...j })),
         porteur: { team: this.porteur.team, numero: this.porteur.numero, x: this.porteur.x, y: this.porteur.y },
         // Position réelle du ballon : en vol pendant un coup d'envoi (avec une
         // hauteur 0..1 pour figurer la cloche), sinon dans les mains du porteur.
-        ballon: this.ballonEnVol
+        // Conservé pour compatibilité avec le rendu existant.
+        ballon: enVol
           ? { x: this.ballonVolX, y: this.ballonVolY, enVol: true, hauteur: this.ballonVolHauteur }
           : { x: this.porteur.x, y: this.porteur.y, enVol: false, hauteur: 0 },
+        // Objet ballon normalisé : { x, y, vx, vy, state, carrierTeam, carrierNumber }.
+        // À terme, c'est cette forme qui doit devenir la source de vérité côté
+        // rendu (docs/js/renderer.js) ; `ballon`/`porteur` restent en place tant
+        // que la migration du rendu n'est pas terminée.
+        ball: {
+          x: enVol ? this.ballonVolX : this.porteur.x,
+          y: enVol ? this.ballonVolY : this.porteur.y,
+          vx: bvx, vy: bvy,
+          state: this._etatBallon(),
+          carrierTeam: enVol ? null : this.porteur.team,
+          carrierNumber: enVol ? null : this.porteur.numero,
+        },
         arbitre: this._positionArbitre(),
         possession: this.possession,
         phase: this.phase,
         // État détaillé du maul en cours (null hors maul), pour l'affichage.
         maul: this.maul ? { etat: this.maul.etat, x: this.maul.x, y: this.maul.y } : null,
+        // État du ruck en cours (null hors ruck), pour l'affichage/les tests.
+        ruck: this.phase === 'RUCK' ? {
+          x: this.ruckPoint.x, y: this.ruckPoint.y,
+          attackingTeam: this.possession,
+          defendingTeam: this.possession === 'A' ? 'B' : 'A',
+          attackersCommitted: [...this.equipeA, ...this.equipeB]
+            .filter(j => j.team === this.possession && j !== this.porteur && distance(j, this.ruckPoint) < 8).length,
+          defendersCommitted: this.contestants.length,
+          timer: this.timerPhase,
+          ballAvailable: this.timerPhase >= 1.2,
+        } : null,
         score: { ...this.score },
         tempsMatch: this.tempsMatch,
         dureeMatch: this.dureeMatch,

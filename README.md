@@ -41,12 +41,21 @@ Le projet est composé de deux grandes parties :
 - En ligne : https://sebadiaz.github.io/Rugby.-Manager/
 - En local : ouvrir `client/index.html` dans un navigateur (aucune installation requise).
 
-### Architecture du moteur
+### État actuel du projet
 
-- `engine/rugby-engine.js` — moteur de match, source unique, sans dépendance au DOM. Exposé en module Node (`require`) et en variable globale `RugbyEngine` (`<script>`).
+- **La démo jouable est entièrement en JavaScript.** Moteur de règles : `engine/rugby-engine.js`. Interface (HUD, rendu Canvas, contrôles) : `docs/css/style.css` + `docs/js/*.js`, chargés depuis `docs/index.html` (et, via les mêmes fichiers, depuis `client/index.html`).
+- **Il n'y a plus aucun code C++ dans ce dépôt.** Un moteur C++ a existé tout au début du projet (voir la conception dans `docs/SPEC_JOUEUR.md` / `docs/SPEC_MOTEUR_MATCH.md`), mais il a été intégralement remplacé par le moteur JS actuel et supprimé du dépôt — `engine/` ne contient que du JS, et ni `examples/` ni `CMakeLists.txt` n'existent. Il n'y a donc rien à débrancher ni à effacer : pas de moteur C++ legacy à ménager.
+- Les documents `docs/SPEC_*.md` restent en place comme référence de conception historique ; chacun est annoté en tête de fichier (« historique, obsolète » ou « cible future ») pour ne pas laisser croire qu'ils décrivent le code actuel. Le code qui fait foi est `engine/rugby-engine.js`, vérifié par `server/simulate.js` et `server/test-invariants.js`.
+- Priorité actuelle : continuer à fiabiliser et structurer ce moteur JS et son interface (objet ballon normalisé, RNG seedé documenté, séparation rendu/HUD/règles) — pas de réécriture en C++, pas de nouveau moteur parallèle.
+
+### Architecture
+
+- `engine/rugby-engine.js` — moteur de match (règles, IA, RNG seedé), source unique, sans dépendance au DOM. Exposé en module Node (`require`) et en variable globale `RugbyEngine` (`<script>`).
+- `docs/css/style.css`, `docs/js/constants.js`, `docs/js/rng.js`, `docs/js/matchState.js`, `docs/js/renderer.js`, `docs/js/ui.js`, `docs/js/main.js` — interface modulaire (constantes d'affichage, RNG côté UI, adaptateur d'état de match, rendu Canvas, HUD/historique, orchestration). Chargés en scripts classiques (`<script src="...">`, pas de modules ES) pour pouvoir s'ouvrir directement en `file://` sans serveur ni étape de build.
+- `docs/index.html` — démo publiée sur GitHub Pages : HUD, canvas, contrôles, et les imports des fichiers ci-dessus (la copie de `engine/rugby-engine.js` qu'elle utilise est synchronisée automatiquement par le pipeline de déploiement).
+- `client/index.html` — la même démo ouverte en local : référence les mêmes `docs/js/*.js` / `docs/css/style.css` / `engine/rugby-engine.js` par chemin relatif, pas de copie dupliquée à maintenir.
 - `server/simulate.js` — harnais de test headless (Node) : fait tourner le moteur sur une longue durée et vérifie des invariants réels (positions valides, score cohérent, essais, mêlées, transformations, pénalités au but et coups d'envoi effectivement déclenchés). Usage : `node server/simulate.js [seed] [secondes]`.
-- `client/index.html` — rendu Canvas du moteur dans le navigateur, avec contrôles (lecture/pause, vitesse, réinitialisation).
-- `docs/index.html` — copie publiée sur GitHub Pages (la copie de `engine/rugby-engine.js` qu'elle utilise est synchronisée automatiquement par le pipeline de déploiement).
+- `server/test-invariants.js` — tests d'invariants ciblés : déterminisme à graine égale, un seul porteur de balle à la fois, essai = +5, transformation = +2, un ruck se termine toujours, un maul bloqué déclenche bien « use it », le ballon ne disparaît jamais, les joueurs restent dans le terrain. Usage : `node server/test-invariants.js`.
 - `docs/REGLES_RUGBY.md` — référence des règles du rugby (coup d'envoi, hors-jeu au ruck, options sur pénalité, etc.) avec, pour chacune, ce que le moteur implémente réellement et les simplifications/écarts connus.
 
 L’objectif n’est pas seulement d’afficher des joueurs qui bougent, mais de créer une vraie simulation de rugby où chaque joueur prend des décisions selon son poste, ses statistiques, la situation de jeu, la tactique de l’équipe et la position du ballon.
