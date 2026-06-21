@@ -457,6 +457,7 @@
     _accorderMelee(equipeFautive, position) {
       this.possession = equipeFautive === 'A' ? 'B' : 'A';
       this.stats[this.possession].scrums++;
+      this.log('MELEE', this.possession, `Melee, introduction pour l'equipe ${this.possession}`);
       const equipe = this.possession === 'A' ? this.equipeA : this.equipeB;
       this.porteur = this._neufVersDix(equipe, equipe[8]);
       this.porteur.x = Math.max(5, Math.min(LONGUEUR - 5, position.x));
@@ -566,9 +567,15 @@
       );
       this.timerPhase += dt;
 
-      // Décision tactique de botter en jeu courant : dépend de la zone et de la
-      // pression défensive immédiate, pas d'un tirage uniforme (cf. _zoneTerrain).
-      if (this.timerPhase > 0.6 && this._decisionCoupDePiedJeu(porteur, distDef, dt)) return;
+      // Décision tactique du porteur (botter, passer, jouer au large, foncer au
+      // contact) : tranchée AVANT la résolution du plaquage ci-dessous, sur la
+      // base de la zone, de la pression défensive, du soutien disponible, du
+      // numéro du porteur et du score (cf. choisirActionPorteur). Le coup de
+      // pied peut survenir même défenseur tout proche (dégagement sous
+      // pression) ; la passe suppose de ne pas être déjà au contact.
+      const action = this.choisirActionPorteur(porteur, defenseurProche, distDef, dt);
+      if (action === 'KICK') { this._executerCoupDePiedJeu(porteur); return; }
+      if (distDef >= 2.2 && (action === 'PASS' || action === 'JEU_LARGE') && this._tenterPasse(porteur, action === 'JEU_LARGE')) return;
 
       // Plaquage / contact : résolu AVANT le déplacement de ce tick, sur la
       // base de la distance déjà mesurée. Sinon, un porteur déjà à portée de
@@ -742,37 +749,6 @@
         return;
       }
 
-      // Tentative de passe périodique vers le meilleur soutien
-      if (this.timerPhase > 1.5 && this.rng() < 0.35 * dt) {
-        const candidats = att.filter(j => j !== porteur && distance(j, porteur) <= 25);
-        if (candidats.length > 0) {
-          let meilleur = candidats[0], meilleurScore = -Infinity;
-          for (const c of candidats) {
-            const d = distance(c, porteur);
-            const score = (100 - d) + c.tendance * 0.1;
-            if (score > meilleurScore) { meilleurScore = score; meilleur = c; }
-          }
-          if (Referee.passeEnAvant(porteur.sensAttaque, porteur, meilleur)) {
-            this.log('MELEE_AVANT', this.possession, `Passe en avant, equipe ${this.possession} - melee adverse`);
-            this._accorderMelee(this.possession, porteur);
-            return;
-          }
-          const distancePasse = distance(porteur, meilleur);
-          const probaReussite = Math.max(0.3, Math.min(0.95, 0.9 - distancePasse / 40));
-          if (this.rng() < probaReussite) {
-            this.stats[this.possession].passes++;
-            this.porteur = meilleur;
-            this._receptionDirecte = false;
-          } else {
-            this.stats[this.possession].knockOns++;
-            this.log('MELEE_ENAVANT', this.possession, `En-avant, equipe ${this.possession} - melee adverse`);
-            this._accorderMelee(this.possession, meilleur);
-            return;
-          }
-        }
-        this.timerPhase = 0;
-      }
-
       // Drop-goal (loi 9.A) : dans la zone de tir (8–38 m), l'équipe en
       // possession peut choisir de travailler le ballon pour son ouvreur, qui
       // tente un drop en jeu courant (ballon lâché qui rebondit puis botté entre
@@ -807,18 +783,104 @@
     // Botte en jeu courant : choix du type et de la cible selon la zone et la
     // pression. Renvoie true si un coup de pied a été déclenché ce tick (dans
     // ce cas, _tickPorte ne fait rien d'autre pour ce tick).
-    _decisionCoupDePiedJeu(porteur, distDef, dt) {
+    // Décision tactique centrale du porteur, prise AVANT toute résolution de
+    // plaquage : zone du terrain, pression défensive immédiate, numéro du
+    // porteur (avants vs demi de mêlée/ouvreur vs trois-quarts/arrières),
+    // soutien disponible et score au tableau. Ne fait que choisir l'intention
+    // (aucun effet de bord) ; c'est _tickPorte qui exécute l'action retournée.
+    choisirActionPorteur(porteur, defenseurProche, distDef, dt) {
       const zone = this._zoneTerrain(porteur);
-      if (zone === 'CINQ_M') return false;
-      const pression = distDef < 5 ? 1 : 0;
-      let pParSeconde;
-      if (zone === 'OWN_22') pParSeconde = 0.30 + pression * 0.18;
-      else if (zone === 'OWN_HALF') pParSeconde = 0.07 + pression * 0.05;
-      else if (zone === 'OPP_HALF') pParSeconde = 0.015 + pression * 0.01;
-      else pParSeconde = 0.008; // OPP_22 : on privilégie le jeu au sol/pick-and-go.
+      const pression = distDef < 5;
+      const att = this.attaquants();
+      const soutiens = att.filter(j => j !== porteur && j.auSol === 0 && distance(j, porteur) < 15)
+        .sort((a, b) => distance(a, porteur) - distance(b, porteur));
+      const soutienDisponible = soutiens.length > 0;
+      const avant = porteur.numero <= 8;
+      const enMene = this.score[porteur.team] > this.score[porteur.team === 'A' ? 'B' : 'A'];
 
-      if (this.rng() >= pParSeconde * dt) return false;
+      // 1. Botter en jeu courant : très fréquent dans son propre 22 (surtout
+      // sous pression), de plus en plus rare en remontant le terrain. Une
+      // équipe qui mène botte un peu plus pour la touche/le territoire.
+      if (this.timerPhase > 0.6 && zone !== 'CINQ_M') {
+        let pParSeconde;
+        if (zone === 'OWN_22') pParSeconde = 0.30 + (pression ? 0.18 : 0);
+        else if (zone === 'OWN_HALF') pParSeconde = 0.07 + (pression ? 0.05 : 0);
+        else if (zone === 'OPP_HALF') pParSeconde = 0.015 + (pression ? 0.01 : 0);
+        else pParSeconde = 0.008; // OPP_22 : on privilégie le jeu au sol/pick-and-go.
+        if (enMene) pParSeconde *= 1.15; else pParSeconde *= 0.9;
+        if (this.rng() < pParSeconde * dt) return 'KICK';
+      }
 
+      // 2. Pick-and-go : un avant tout près de la ligne adverse sous pression
+      // préfère relancer au contact plutôt que chercher le large.
+      if (avant && (zone === 'CINQ_M' || zone === 'OPP_22') && pression && this.rng() < 0.55 * dt) {
+        return 'PICK_GO';
+      }
+
+      // 3. Passe avant contact : défenseur qui se rapproche mais pas encore au
+      // plaquage, avec un soutien à proximité immédiate — l'attaque transmet
+      // le ballon plutôt que d'attendre le choc.
+      if (distDef < 5.5 && soutienDisponible && this.rng() < 0.35 * dt) {
+        return 'PASS';
+      }
+
+      // 4. Jeu au large : occasionnellement, même sans pression immédiate,
+      // l'attaque écarte délibérément vers un trois-quarts/arrière (numéro
+      // de tendance basse) plutôt que de jouer le ballon près du regroupement.
+      if (!pression && zone !== 'CINQ_M' && this.timerPhase > 1.0) {
+        const soutienLarge = soutiens.find(j => j.tendance <= 50);
+        if (soutienLarge && this.rng() < 0.06 * dt) return 'JEU_LARGE';
+      }
+
+      // 5. Hors de portée de plaquage et aucune décision ci-dessus : on
+      // continue de courir (cf. logique d'évitement existante).
+      if (distDef >= 2.2) return 'RUN';
+      return 'CONTACT';
+    }
+
+    // Exécute une passe (courte ou jeu au large) vers le meilleur soutien
+    // disponible. Retourne true si la tentative a consommé le tick (passe
+    // réussie, en-avant ou passe ratée -> mêlée), false s'il n'y avait aucun
+    // candidat valable (le tick retombe alors sur la logique de course/contact).
+    _tenterPasse(porteur, jeuLarge) {
+      const att = this.attaquants();
+      let candidats = att.filter(j => j !== porteur && j.auSol === 0 && distance(j, porteur) <= 25);
+      if (jeuLarge) candidats = candidats.filter(j => j.tendance <= 50);
+      if (candidats.length === 0) return false;
+
+      let cible = candidats[0], meilleurScore = -Infinity;
+      for (const c of candidats) {
+        const d = distance(c, porteur);
+        const score = jeuLarge
+          ? Math.abs(c.channelY - LARGEUR / 2) - d * 0.3
+          : (100 - d) + c.tendance * 0.1;
+        if (score > meilleurScore) { meilleurScore = score; cible = c; }
+      }
+
+      if (Referee.passeEnAvant(porteur.sensAttaque, porteur, cible)) {
+        this.log('MELEE_AVANT', this.possession, `Passe en avant, equipe ${this.possession} - melee adverse`);
+        this._accorderMelee(this.possession, porteur);
+        return true;
+      }
+      const distancePasse = distance(porteur, cible);
+      const probaReussite = Math.max(0.65, Math.min(0.97, 0.97 - distancePasse / 70));
+      if (this.rng() < probaReussite) {
+        this.stats[this.possession].passes++;
+        this.log(jeuLarge ? 'JEU_LARGE' : 'PASSE', this.possession, `${jeuLarge ? 'Jeu au large' : 'Passe'} de l'equipe ${this.possession}`);
+        this.porteur = cible;
+        this._receptionDirecte = false;
+      } else {
+        this.stats[this.possession].knockOns++;
+        this.log('PASSE_RATEE', this.possession, `Passe ratee, equipe ${this.possession} - melee adverse`);
+        this._accorderMelee(this.possession, cible);
+      }
+      return true;
+    }
+
+    // Sélectionne le type de coup de pied tactique selon la zone (déjà
+    // décidé par choisirActionPorteur) puis l'exécute via _tenterCoupDePiedJeu.
+    _executerCoupDePiedJeu(porteur) {
+      const zone = this._zoneTerrain(porteur);
       let type;
       const r = this.rng();
       if (zone === 'OWN_22') {
@@ -831,7 +893,6 @@
         type = 'CHIP';
       }
       this._tenterCoupDePiedJeu(porteur, type);
-      return true;
     }
 
     // Lance le ballon en vol pour un coup de pied tactique en jeu courant
@@ -1053,6 +1114,7 @@
         } else {
           // Sortie nette (le 9 a bien récupéré le ballon) : il le transmet
           // presque toujours immédiatement à l'ouvreur, qui décide du jeu.
+          this.log('RUCK_SORTIE_9', this.possession, `Sortie de ruck par le 9, transmission a l'ouvreur`);
           relayeur = this._neufVersDix(att, neuf);
         }
         this.porteur = relayeur || att[8];
@@ -1393,6 +1455,7 @@
     _accorderMeleeA(equipe, position) {
       this.possession = equipe;
       this.stats[equipe].scrums++;
+      this.log('MELEE', this.possession, `Melee, introduction pour l'equipe ${this.possession}`);
       const eq = equipe === 'A' ? this.equipeA : this.equipeB;
       this.porteur = this._neufVersDix(eq, eq[8]);
       this.porteur.x = Math.max(5, Math.min(LONGUEUR - 5, position.x));
