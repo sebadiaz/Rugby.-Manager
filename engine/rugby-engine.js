@@ -199,6 +199,15 @@
       this.events = [];
       this.tempsMatch = 0;
       this.dureeMatch = dureeMatch;
+      // Échelle des temps d'arrêt (essai/transformation/pénalité au but) : ces
+      // durées sont calibrées sur un vrai match (80 min = 4800 s). Appliquées
+      // telles quelles à un format démo très raccourci (5 min), elles
+      // dévorent l'essentiel du temps de jeu visible (placement, recul,
+      // frappe...) et laissent trop peu de place au jeu courant (passes,
+      // coups de pied, mêlées) — ce qui donne l'impression d'une simulation
+      // morte. On les compresse proportionnellement à la durée du match,
+      // sans jamais descendre sous un minimum qui resterait lisible à l'écran.
+      this._echelleArret = Math.max(0.15, Math.min(1, dureeMatch / 4800));
       // Mi-temps (loi 12) : "les adversaires de l'équipe qui a donné le coup
       // d'envoi en début de match donnent le coup d'envoi de la 2e période."
       this.dureeMiTemps = dureeMatch / 2;
@@ -801,12 +810,12 @@
       // 1. Botter en jeu courant : très fréquent dans son propre 22 (surtout
       // sous pression), de plus en plus rare en remontant le terrain. Une
       // équipe qui mène botte un peu plus pour la touche/le territoire.
-      if (this.timerPhase > 0.6 && zone !== 'CINQ_M') {
+      if (this.timerPhase > 0.4 && zone !== 'CINQ_M') {
         let pParSeconde;
-        if (zone === 'OWN_22') pParSeconde = 0.30 + (pression ? 0.18 : 0);
-        else if (zone === 'OWN_HALF') pParSeconde = 0.07 + (pression ? 0.05 : 0);
-        else if (zone === 'OPP_HALF') pParSeconde = 0.015 + (pression ? 0.01 : 0);
-        else pParSeconde = 0.008; // OPP_22 : on privilégie le jeu au sol/pick-and-go.
+        if (zone === 'OWN_22') pParSeconde = 0.40 + (pression ? 0.22 : 0);
+        else if (zone === 'OWN_HALF') pParSeconde = 0.12 + (pression ? 0.08 : 0);
+        else if (zone === 'OPP_HALF') pParSeconde = 0.03 + (pression ? 0.02 : 0);
+        else pParSeconde = 0.015; // OPP_22 : on privilégie le jeu au sol/pick-and-go.
         if (enMene) pParSeconde *= 1.15; else pParSeconde *= 0.9;
         if (this.rng() < pParSeconde * dt) return 'KICK';
       }
@@ -820,7 +829,7 @@
       // 3. Passe avant contact : défenseur qui se rapproche mais pas encore au
       // plaquage, avec un soutien à proximité immédiate — l'attaque transmet
       // le ballon plutôt que d'attendre le choc.
-      if (distDef < 5.5 && soutienDisponible && this.rng() < 0.35 * dt) {
+      if (distDef < 5.5 && soutienDisponible && this.rng() < 0.7 * dt) {
         return 'PASS';
       }
 
@@ -829,7 +838,7 @@
       // de tendance basse) plutôt que de jouer le ballon près du regroupement.
       if (!pression && zone !== 'CINQ_M' && this.timerPhase > 1.0) {
         const soutienLarge = soutiens.find(j => j.tendance <= 50);
-        if (soutienLarge && this.rng() < 0.06 * dt) return 'JEU_LARGE';
+        if (soutienLarge && this.rng() < 0.12 * dt) return 'JEU_LARGE';
       }
 
       // 5. Hors de portée de plaquage et aucune décision ci-dessus : on
@@ -1516,7 +1525,9 @@
       // Durée totale de la mêlée (formation, liaison, poussée, sortie du
       // ballon) : un vrai engagement de mêlée prend bien plus que quelques
       // secondes en match réel (~10-15 s entre l'introduction et la sortie).
-      if (this.timerPhase >= 12) {
+      // Compressée comme les autres temps d'arrêt sur un format démo court
+      // (cf. _echelleArret) pour laisser plus de place au jeu courant.
+      if (this.timerPhase >= 12 * this._echelleArret) {
         // Poussée des paquets (même proxy de force que le ruck/maul,
         // forceMaul), sur les 8 avants de chaque équipe : un paquet plus
         // puissant fait gratter le ballon plus souvent côté défense, sans
@@ -1549,8 +1560,10 @@
       this.timerPhase += dt;
       // Alignement, lancer et contestation au saut pris dans leur ensemble :
       // une touche réelle prend bien plus que 2 s entre l'arrêt de jeu et la
-      // remise en mouvement du ballon (~10-15 s en match réel).
-      if (this.timerPhase < 12) return;
+      // remise en mouvement du ballon (~10-15 s en match réel). Compressée
+      // comme les autres temps d'arrêt sur un format démo court (cf.
+      // _echelleArret) pour laisser plus de place au jeu courant.
+      if (this.timerPhase < 12 * this._echelleArret) return;
       const lanceur = this.possession;
       const adversaire = lanceur === 'A' ? 'B' : 'A';
       const eqLanceur = lanceur === 'A' ? this.equipeA : this.equipeB;
@@ -1597,7 +1610,7 @@
     // sol, replacement) avant que le botteur ne s'installe.
     _tickEssai(dt) {
       this.timerPhase += dt;
-      if (this.timerPhase >= 8) {
+      if (this.timerPhase >= 8 * this._echelleArret) {
         this.phase = 'TRANSFORMATION';
         this.timerPhase = 0;
       }
@@ -1609,7 +1622,7 @@
     // frappe prennent ~20-25 s en match réel, pas 2 s.
     _tickTransformation(dt) {
       this.timerPhase += dt;
-      if (this.timerPhase >= 25) {
+      if (this.timerPhase >= 25 * this._echelleArret) {
         const equipe = this.essaiEquipe;
         const offsetLateral = Math.abs(this.essaiY - LARGEUR / 2);
         if (this.rng() < probaReussiteTir(10, offsetLateral)) {
@@ -1629,7 +1642,7 @@
     // réaliste (placement, recul, course d'élan, frappe : ~20-25 s en match réel).
     _tickPenaliteTir(dt) {
       this.timerPhase += dt;
-      if (this.timerPhase >= 25) {
+      if (this.timerPhase >= 25 * this._echelleArret) {
         const equipe = this.equipeAuTir;
         const { y, distanceButs } = this.positionTir;
         const offsetLateral = Math.abs(y - LARGEUR / 2);
