@@ -672,8 +672,16 @@
           this.possession = this.possession === 'A' ? 'B' : 'A';
           this.log('TURNOVER', this.possession, `Ballon gratte au ruck, equipe ${this.possession} recupere`);
         }
+        // Sortie de ruck : c'est le demi de mêlée (n°9) qui joue le ballon au
+        // pied du regroupement, comme à la mêlée, à la touche et à la sortie
+        // de maul — pas simplement l'avant le plus proche du point de ruck.
+        // S'il est lui-même au sol (rare, juste plaqué), un autre avant relaie.
         const att = this.attaquants();
-        const { joueur: relayeur } = joueurLePlusProche(att.filter(j => j.tendance >= 50), pt.x, pt.y);
+        const neuf = att.find(j => j.numero === 9 && j.auSol === 0);
+        let relayeur = neuf;
+        if (!relayeur) {
+          ({ joueur: relayeur } = joueurLePlusProche(att.filter(j => j.tendance >= 50), pt.x, pt.y));
+        }
         this.porteur = relayeur || att[8];
         this.porteur.x = pt.x;
         this.porteur.y = pt.y;
