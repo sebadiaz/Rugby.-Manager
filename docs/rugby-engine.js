@@ -837,8 +837,15 @@
       // l'attaque écarte délibérément vers un trois-quarts/arrière (numéro
       // de tendance basse) plutôt que de jouer le ballon près du regroupement.
       if (!pression && zone !== 'CINQ_M' && this.timerPhase > 1.0) {
-        const soutienLarge = soutiens.find(j => j.tendance <= 50);
-        if (soutienLarge && this.rng() < 0.12 * dt) return 'JEU_LARGE';
+        // Les ailiers/arrière tiennent leur couloir, donc à 20-30 m du
+        // regroupement la plupart du temps : chercher l'option large dans le
+        // même rayon de 15 m que le soutien rapproché ne trouve quasiment
+        // jamais qu'un centre, jamais un ailier. D'où un rayon dédié, plus
+        // large, pour cette détection (la passe elle-même reste risquée sur
+        // la distance via probaReussite dans _tenterPasse).
+        const soutienLarge = att.find(j => j !== porteur && j.auSol === 0
+          && j.tendance <= 50 && distance(j, porteur) < 45);
+        if (soutienLarge && this.rng() < 0.22 * dt) return 'JEU_LARGE';
       }
 
       // 5. Hors de portée de plaquage et aucune décision ci-dessus : on
@@ -853,7 +860,12 @@
     // candidat valable (le tick retombe alors sur la logique de course/contact).
     _tenterPasse(porteur, jeuLarge) {
       const att = this.attaquants();
-      let candidats = att.filter(j => j !== porteur && j.auSol === 0 && distance(j, porteur) <= 25);
+      // Rayon de recherche du destinataire : un jeu au large vise précisément
+      // un ailier/arrière qui tient son couloir à 20-30 m du regroupement, le
+      // plafond de 25 m utilisé pour la passe courte l'exclurait presque
+      // toujours — la distance reste pénalisée via probaReussite ci-dessous.
+      const rayon = jeuLarge ? 45 : 25;
+      let candidats = att.filter(j => j !== porteur && j.auSol === 0 && distance(j, porteur) <= rayon);
       if (jeuLarge) candidats = candidats.filter(j => j.tendance <= 50);
       if (candidats.length === 0) return false;
 
