@@ -515,6 +515,13 @@
       if (enZoneDeTir && this.rng() < 0.55) {
         this.equipeAuTir = equipeBeneficiaire;
         this.positionTir = { x: position.x, y: position.y, distanceButs };
+        // Place le buteur (l'ouvreur) sur le point de pénalité : sans ça, le
+        // porteur reste figé là où la faute a été commise et rien ne montre
+        // visuellement qu'un coup de pied au but va être tenté.
+        const eqTir = equipeBeneficiaire === 'A' ? this.equipeA : this.equipeB;
+        this.porteur = eqTir[9];
+        this.porteur.x = position.x;
+        this.porteur.y = position.y;
         this.phase = 'PENALITE_TIR';
         this.timerPhase = 0;
         this.log('PENALITE', equipeBeneficiaire, `Penalite, equipe ${equipeBeneficiaire} tente un coup de pied au but`);
@@ -680,12 +687,17 @@
           const angle = (j.numero % 5) - 2;
           avancer(j, (porteur.x - j.x) + angle, (porteur.y - j.y) + angle * 0.5, dt, vitesseMs(j) * 0.9);
         } else if (j.tendance >= 30) {
-          const cibleY = j.channelY * 0.4 + porteur.y * 0.6;
-          const cibleX = porteur.x - porteur.sensAttaque * 4;
+          // Ouvreur/centres tiennent surtout leur couloir (ligne d'attaque
+          // écartée, options de passe disponibles) avec juste une légère
+          // dérive vers le ballon ; avec un poids majoritaire donné au ballon
+          // (l'ancien 0.6), toute la ligne se compactait sur un seul point
+          // au lieu de garder une vraie largeur de jeu.
+          const cibleY = j.channelY * 0.75 + porteur.y * 0.25;
+          const cibleX = porteur.x - porteur.sensAttaque * (6 + Math.abs(j.channelY - porteur.y) * 0.2);
           avancer(j, cibleX - j.x, cibleY - j.y, dt, vitesseMs(j) * 0.8);
         } else {
           const cibleY = j.channelY;
-          const cibleX = porteur.x - porteur.sensAttaque * 7;
+          const cibleX = porteur.x - porteur.sensAttaque * 10;
           avancer(j, cibleX - j.x, cibleY - j.y, dt, vitesseMs(j) * 0.6);
         }
       }
@@ -837,8 +849,15 @@
       // l'attaque écarte délibérément vers un trois-quarts/arrière (numéro
       // de tendance basse) plutôt que de jouer le ballon près du regroupement.
       if (!pression && zone !== 'CINQ_M' && this.timerPhase > 1.0) {
-        const soutienLarge = soutiens.find(j => j.tendance <= 50);
-        if (soutienLarge && this.rng() < 0.12 * dt) return 'JEU_LARGE';
+        // Les ailiers/arrière tiennent leur couloir, donc à 20-30 m du
+        // regroupement la plupart du temps : chercher l'option large dans le
+        // même rayon de 15 m que le soutien rapproché ne trouve quasiment
+        // jamais qu'un centre, jamais un ailier. D'où un rayon dédié, plus
+        // large, pour cette détection (la passe elle-même reste risquée sur
+        // la distance via probaReussite dans _tenterPasse).
+        const soutienLarge = att.find(j => j !== porteur && j.auSol === 0
+          && j.tendance <= 50 && distance(j, porteur) < 45);
+        if (soutienLarge && this.rng() < 0.22 * dt) return 'JEU_LARGE';
       }
 
       // 5. Hors de portée de plaquage et aucune décision ci-dessus : on
@@ -853,7 +872,12 @@
     // candidat valable (le tick retombe alors sur la logique de course/contact).
     _tenterPasse(porteur, jeuLarge) {
       const att = this.attaquants();
-      let candidats = att.filter(j => j !== porteur && j.auSol === 0 && distance(j, porteur) <= 25);
+      // Rayon de recherche du destinataire : un jeu au large vise précisément
+      // un ailier/arrière qui tient son couloir à 20-30 m du regroupement, le
+      // plafond de 25 m utilisé pour la passe courte l'exclurait presque
+      // toujours — la distance reste pénalisée via probaReussite ci-dessous.
+      const rayon = jeuLarge ? 45 : 25;
+      let candidats = att.filter(j => j !== porteur && j.auSol === 0 && distance(j, porteur) <= rayon);
       if (jeuLarge) candidats = candidats.filter(j => j.tendance <= 50);
       if (candidats.length === 0) return false;
 
@@ -1611,6 +1635,15 @@
     _tickEssai(dt) {
       this.timerPhase += dt;
       if (this.timerPhase >= 8 * this._echelleArret) {
+        // Place le buteur (l'ouvreur) dans l'alignement de l'essai : sinon
+        // tous les joueurs restent figés là où l'essai a été marqué et rien
+        // n'indique qu'une transformation va être tentée.
+        const eq = this.essaiEquipe === 'A' ? this.equipeA : this.equipeB;
+        const sens = this.essaiEquipe === 'A' ? 1 : -1;
+        const kicker = eq[9];
+        kicker.x = Math.max(0, Math.min(LONGUEUR, this.essaiX - sens * 10));
+        kicker.y = this.essaiY;
+        this.porteur = kicker;
         this.phase = 'TRANSFORMATION';
         this.timerPhase = 0;
       }
@@ -1622,7 +1655,23 @@
     // frappe prennent ~20-25 s en match réel, pas 2 s.
     _tickTransformation(dt) {
       this.timerPhase += dt;
-      if (this.timerPhase >= 25 * this._echelleArret) {
+      const duree = 25 * this._echelleArret;
+      // Le ballon s'envole vers les poteaux pendant la dernière fraction du
+      // temps d'arrêt (le reste, c'est le placement et la course d'élan) :
+      // réutilise le mécanisme de vol du coup d'envoi pour rendre la frappe
+      // visible à l'écran, au lieu de 25 s où rien ne bouge.
+      const dureeVol = Math.min(1.4, duree * 0.3);
+      const debutVol = duree - dureeVol;
+      if (this.timerPhase >= debutVol && this.timerPhase < duree) {
+        const t = Math.min(1, (this.timerPhase - debutVol) / dureeVol);
+        this.ballonEnVol = true;
+        this.ballonVolX = this.porteur.x + (this.essaiX - this.porteur.x) * t;
+        this.ballonVolY = this.porteur.y + (LARGEUR / 2 - this.porteur.y) * t;
+        this.ballonVolHauteur = Math.sin(Math.PI * t);
+      }
+      if (this.timerPhase >= duree) {
+        this.ballonEnVol = false;
+        this.ballonVolHauteur = 0;
         const equipe = this.essaiEquipe;
         const offsetLateral = Math.abs(this.essaiY - LARGEUR / 2);
         if (this.rng() < probaReussiteTir(10, offsetLateral)) {
@@ -1642,7 +1691,23 @@
     // réaliste (placement, recul, course d'élan, frappe : ~20-25 s en match réel).
     _tickPenaliteTir(dt) {
       this.timerPhase += dt;
-      if (this.timerPhase >= 25 * this._echelleArret) {
+      const duree = 25 * this._echelleArret;
+      // Même principe que pour la transformation : le ballon vole vers les
+      // poteaux pendant la dernière fraction du temps d'arrêt.
+      const dureeVol = Math.min(1.4, duree * 0.3);
+      const debutVol = duree - dureeVol;
+      if (this.timerPhase >= debutVol && this.timerPhase < duree) {
+        const sensVol = this.equipeAuTir === 'A' ? 1 : -1;
+        const cibleX = sensVol > 0 ? LONGUEUR : 0;
+        const t = Math.min(1, (this.timerPhase - debutVol) / dureeVol);
+        this.ballonEnVol = true;
+        this.ballonVolX = this.porteur.x + (cibleX - this.porteur.x) * t;
+        this.ballonVolY = this.porteur.y + (LARGEUR / 2 - this.porteur.y) * t;
+        this.ballonVolHauteur = Math.sin(Math.PI * t);
+      }
+      if (this.timerPhase >= duree) {
+        this.ballonEnVol = false;
+        this.ballonVolHauteur = 0;
         const equipe = this.equipeAuTir;
         const { y, distanceButs } = this.positionTir;
         const offsetLateral = Math.abs(y - LARGEUR / 2);

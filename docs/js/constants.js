@@ -27,6 +27,7 @@
     MAUL_ARRET_UN: '🅰️', MAUL_ARRET_DEUX: '✋', MAUL_USE_IT: '⏱️', MAUL_BALLON_SORTI: '➡️', MAUL_INJOUABLE: '🔒',
     MELEE_RUCK_INJOUABLE: '🔒',
     MAUL_PEN_ECROULEMENT: '🟨', MAUL_PEN_HORSJEU: '🟨', MAUL_PEN_ENTREE_COTE: '🟨', MAUL_PEN_TECHNIQUE: '🟨', CARTON_JAUNE: '🟡',
+    JEU_LARGE: '↔️', PASSE: '👐', PASSE_RATEE: '💥',
   };
 
   // Libellés lisibles des états du maul (loi 17) pour l'affichage de la phase.
@@ -57,6 +58,10 @@
     'DROP_GOAL_REUSSI', 'DROP_GOAL_RATE', 'ESSAI_PENALITE', 'COUP_FRANC',
     'MAUL_ARRET_UN', 'MAUL_ARRET_DEUX', 'MAUL_USE_IT', 'MAUL_INJOUABLE', 'MELEE_RUCK_INJOUABLE',
     'MAUL_PEN_ECROULEMENT', 'MAUL_PEN_HORSJEU', 'MAUL_PEN_ENTREE_COTE', 'MAUL_PEN_TECHNIQUE', 'CARTON_JAUNE',
+    // Jeu au large : assez rare (quelques fois par match) pour mériter une
+    // bannière — sinon il est noyé en quelques secondes par les rucks dans
+    // le fil d'événements (5 lignes affichées, écrasées en permanence).
+    'JEU_LARGE',
   ]);
 
   global.RMConstants = {
