@@ -515,6 +515,13 @@
       if (enZoneDeTir && this.rng() < 0.55) {
         this.equipeAuTir = equipeBeneficiaire;
         this.positionTir = { x: position.x, y: position.y, distanceButs };
+        // Place le buteur (l'ouvreur) sur le point de pénalité : sans ça, le
+        // porteur reste figé là où la faute a été commise et rien ne montre
+        // visuellement qu'un coup de pied au but va être tenté.
+        const eqTir = equipeBeneficiaire === 'A' ? this.equipeA : this.equipeB;
+        this.porteur = eqTir[9];
+        this.porteur.x = position.x;
+        this.porteur.y = position.y;
         this.phase = 'PENALITE_TIR';
         this.timerPhase = 0;
         this.log('PENALITE', equipeBeneficiaire, `Penalite, equipe ${equipeBeneficiaire} tente un coup de pied au but`);
@@ -680,12 +687,17 @@
           const angle = (j.numero % 5) - 2;
           avancer(j, (porteur.x - j.x) + angle, (porteur.y - j.y) + angle * 0.5, dt, vitesseMs(j) * 0.9);
         } else if (j.tendance >= 30) {
-          const cibleY = j.channelY * 0.4 + porteur.y * 0.6;
-          const cibleX = porteur.x - porteur.sensAttaque * 4;
+          // Ouvreur/centres tiennent surtout leur couloir (ligne d'attaque
+          // écartée, options de passe disponibles) avec juste une légère
+          // dérive vers le ballon ; avec un poids majoritaire donné au ballon
+          // (l'ancien 0.6), toute la ligne se compactait sur un seul point
+          // au lieu de garder une vraie largeur de jeu.
+          const cibleY = j.channelY * 0.75 + porteur.y * 0.25;
+          const cibleX = porteur.x - porteur.sensAttaque * (6 + Math.abs(j.channelY - porteur.y) * 0.2);
           avancer(j, cibleX - j.x, cibleY - j.y, dt, vitesseMs(j) * 0.8);
         } else {
           const cibleY = j.channelY;
-          const cibleX = porteur.x - porteur.sensAttaque * 7;
+          const cibleX = porteur.x - porteur.sensAttaque * 10;
           avancer(j, cibleX - j.x, cibleY - j.y, dt, vitesseMs(j) * 0.6);
         }
       }
@@ -1623,6 +1635,15 @@
     _tickEssai(dt) {
       this.timerPhase += dt;
       if (this.timerPhase >= 8 * this._echelleArret) {
+        // Place le buteur (l'ouvreur) dans l'alignement de l'essai : sinon
+        // tous les joueurs restent figés là où l'essai a été marqué et rien
+        // n'indique qu'une transformation va être tentée.
+        const eq = this.essaiEquipe === 'A' ? this.equipeA : this.equipeB;
+        const sens = this.essaiEquipe === 'A' ? 1 : -1;
+        const kicker = eq[9];
+        kicker.x = Math.max(0, Math.min(LONGUEUR, this.essaiX - sens * 10));
+        kicker.y = this.essaiY;
+        this.porteur = kicker;
         this.phase = 'TRANSFORMATION';
         this.timerPhase = 0;
       }
@@ -1634,7 +1655,23 @@
     // frappe prennent ~20-25 s en match réel, pas 2 s.
     _tickTransformation(dt) {
       this.timerPhase += dt;
-      if (this.timerPhase >= 25 * this._echelleArret) {
+      const duree = 25 * this._echelleArret;
+      // Le ballon s'envole vers les poteaux pendant la dernière fraction du
+      // temps d'arrêt (le reste, c'est le placement et la course d'élan) :
+      // réutilise le mécanisme de vol du coup d'envoi pour rendre la frappe
+      // visible à l'écran, au lieu de 25 s où rien ne bouge.
+      const dureeVol = Math.min(1.4, duree * 0.3);
+      const debutVol = duree - dureeVol;
+      if (this.timerPhase >= debutVol && this.timerPhase < duree) {
+        const t = Math.min(1, (this.timerPhase - debutVol) / dureeVol);
+        this.ballonEnVol = true;
+        this.ballonVolX = this.porteur.x + (this.essaiX - this.porteur.x) * t;
+        this.ballonVolY = this.porteur.y + (LARGEUR / 2 - this.porteur.y) * t;
+        this.ballonVolHauteur = Math.sin(Math.PI * t);
+      }
+      if (this.timerPhase >= duree) {
+        this.ballonEnVol = false;
+        this.ballonVolHauteur = 0;
         const equipe = this.essaiEquipe;
         const offsetLateral = Math.abs(this.essaiY - LARGEUR / 2);
         if (this.rng() < probaReussiteTir(10, offsetLateral)) {
@@ -1654,7 +1691,23 @@
     // réaliste (placement, recul, course d'élan, frappe : ~20-25 s en match réel).
     _tickPenaliteTir(dt) {
       this.timerPhase += dt;
-      if (this.timerPhase >= 25 * this._echelleArret) {
+      const duree = 25 * this._echelleArret;
+      // Même principe que pour la transformation : le ballon vole vers les
+      // poteaux pendant la dernière fraction du temps d'arrêt.
+      const dureeVol = Math.min(1.4, duree * 0.3);
+      const debutVol = duree - dureeVol;
+      if (this.timerPhase >= debutVol && this.timerPhase < duree) {
+        const sensVol = this.equipeAuTir === 'A' ? 1 : -1;
+        const cibleX = sensVol > 0 ? LONGUEUR : 0;
+        const t = Math.min(1, (this.timerPhase - debutVol) / dureeVol);
+        this.ballonEnVol = true;
+        this.ballonVolX = this.porteur.x + (cibleX - this.porteur.x) * t;
+        this.ballonVolY = this.porteur.y + (LARGEUR / 2 - this.porteur.y) * t;
+        this.ballonVolHauteur = Math.sin(Math.PI * t);
+      }
+      if (this.timerPhase >= duree) {
+        this.ballonEnVol = false;
+        this.ballonVolHauteur = 0;
         const equipe = this.equipeAuTir;
         const { y, distanceButs } = this.positionTir;
         const offsetLateral = Math.abs(y - LARGEUR / 2);
