@@ -168,17 +168,20 @@ Règle réelle : l'équipe qui obtient une pénalité a le choix entre :
 3. Mêlée à l'endroit de la faute.
 4. Jeu rapide à la main ou au pied (tap-and-go / quick tap).
 
-Implémenté (`_traiterPenalite`) :
+Implémenté (`_traiterPenalite`, `_accorderPenaliteTouche`) :
 - ✅ Essai de pénalité : si la faute est commise à ≤ 5 m de la ligne d'en-but
   (essai probable empêché), 7 points sont accordés directement
   (`ESSAI_PENALITE`), sans tir ni transformation, puis coup d'envoi adverse.
+- ✅ **Pénalité en touche**, avec conservation du lancer par l'équipe qui a
+  botté (contrairement à une touche en jeu courant) : choisie quand le but est
+  hors de portée de tir réaliste (> 45 m, probabilité `0.35`), ou pour chercher
+  un maul tout près de la ligne adverse (5–22 m, probabilité `0.15`) plutôt que
+  les 3 points. Réutilise le contest de touche normal (cf. section 6).
 - ✅ Tir au but si la position est dans la zone de tir réaliste (`enZoneDeTir`,
   5–45 m) avec une probabilité de tenter (`0.55`).
 - ✅ Sinon, jeu rapide à la main (tap-and-go), le porteur avance de 8 m.
-- ❌ **Non implémenté : option « pénalité en touche »** avec conservation du
-  lancer par l'équipe qui a botté, et option « mêlée sur pénalité ». C'est un
-  écart connu et volontairement différé : à ajouter si on veut un jeu au pied
-  tactique plus réaliste (actuellement, hors tir au but, le seul choix
+- ❌ **Non implémenté : option « mêlée sur pénalité »**. Écart connu et
+  volontairement différé (hors tir au but/touche, le seul autre choix
   modélisé est le jeu à la main).
 
 ## 6. Touche en jeu courant (Law 18/19 — Touch and Line-out)
@@ -186,11 +189,17 @@ Implémenté (`_traiterPenalite`) :
 Règle réelle : quand le ballon (ou le porteur) sort en touche en jeu courant,
 le lancer est pour l'équipe qui N'A PAS fait sortir le ballon.
 
-Implémenté (`_accorderTouche`) :
+Implémenté (`_accorderTouche`, `_tickTouche`) :
 - ✅ Touche accordée à l'équipe adverse de celle qui a porté le ballon en
-  touche (`event.message` : « touche pour l'équipe adverse »).
-- ⚠️ Simplifié : pas de contestation du lancer (saut, soutien), le ballon est
-  remis directement en jeu.
+  touche (`event.message` : « touche pour l'équipe adverse »), sauf sur
+  pénalité jouée en touche où le lancer reste à l'équipe qui a botté
+  (cf. section 5, `_accorderPenaliteTouche`).
+- ✅ **Contestation réelle du lancer** (`_tickTouche`) : un contest au saut est
+  résolu selon la force des avants engagés de chaque équipe (`forceMaul`,
+  même proxy que ruck/maul/mêlée) — le lanceur ne conserve pas
+  systématiquement son propre lancer ; une touche volée par la défense
+  compte en `turnovers`. ⚠️ Simplifié : pas de modélisation individuelle du
+  sauteur/lanceur/soutien, juste une probabilité agrégée par paquet.
 
 ## 7. Mêlée sur faute de jeu (Law 19 — Forward pass / Knock-on)
 
