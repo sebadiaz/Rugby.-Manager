@@ -92,7 +92,7 @@
     conteneur.innerHTML =
       ligneStat('Possession', `${pct.A}%`, `${pct.B}%`) +
       ligneStat('Essais', s.A.essais, s.B.essais) +
-      ligneStat('Passes réussies', s.A.passes, s.B.passes) +
+      ligneStat('Passes réussies', `${s.A.passes}/${s.A.passesTentees}`, `${s.B.passes}/${s.B.passesTentees}`) +
       ligneStat('Courses', s.A.carries, s.B.carries) +
       ligneStat('Mètres gagnés', Math.round(s.A.metresGagnes), Math.round(s.B.metresGagnes)) +
       ligneStat('Coups de pied', s.A.kicks, s.B.kicks) +

@@ -253,7 +253,7 @@
 
     _statsVierges() {
       return {
-        essais: 0, carries: 0, passes: 0, offloads: 0, kicks: 0,
+        essais: 0, carries: 0, passes: 0, passesTentees: 0, offloads: 0, kicks: 0,
         tacklesAttempted: 0, tacklesMade: 0, missedTackles: 0,
         rucks: 0, lineouts: 0, lineoutsGagnes: 0, scrums: 0, scrumsGagnes: 0, mauls: 0,
         penalitesConcedees: 0, turnovers: 0, knockOns: 0, cartonsJaunes: 0, metresGagnes: 0,
@@ -967,6 +967,7 @@
         if (score > meilleurScore) { meilleurScore = score; cible = c; }
       }
 
+      this.stats[this.possession].passesTentees++;
       if (Referee.passeEnAvant(porteur.sensAttaque, porteur, cible)) {
         this.log('MELEE_AVANT', this.possession, `Passe en avant, equipe ${this.possession} - melee adverse`);
         this._accorderMelee(this.possession, porteur);
