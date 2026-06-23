@@ -98,7 +98,7 @@
       ligneStat('Courses', s.A.carries, s.B.carries) +
       ligneStat('Mètres gagnés', Math.round(s.A.metresGagnes), Math.round(s.B.metresGagnes)) +
       ligneStat('Coups de pied', s.A.kicks, s.B.kicks) +
-      ligneStat('Plaquages réussis', s.A.tacklesMade, s.B.tacklesMade) +
+      ligneStat('Plaquages réussis', `${s.A.tacklesMade}/${s.A.tacklesAttempted}`, `${s.B.tacklesMade}/${s.B.tacklesAttempted}`) +
       ligneStat('Plaquages manqués', s.A.missedTackles, s.B.missedTackles) +
       ligneStat('Mêlées gagnées', `${s.A.scrumsGagnes}/${s.A.scrums + s.B.scrums}`, `${s.B.scrumsGagnes}/${s.A.scrums + s.B.scrums}`) +
       ligneStat('Touches gagnées', `${s.A.lineoutsGagnes}/${s.A.lineouts + s.B.lineouts}`, `${s.B.lineoutsGagnes}/${s.A.lineouts + s.B.lineouts}`) +
