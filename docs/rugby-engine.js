@@ -87,6 +87,11 @@
       // quoi le défenseur qui vient de sortir du ruck, resté au même endroit, plaque
       // le porteur suivant dès la première fraction de seconde de jeu courant.
       ruckRecovery: 0,
+      // Temps restant au "bin" après un carton jaune : tant qu'il est > 0, ce
+      // joueur est exclu de attaquants()/defenseurs() (son équipe joue à 14),
+      // conformément à la sanction réelle plutôt qu'un carton purement
+      // cosmétique sans effet sur le jeu.
+      sinBin: 0,
       sensAttaque,
     };
   }
@@ -247,7 +252,7 @@
         essais: 0, carries: 0, passes: 0, offloads: 0, kicks: 0,
         tacklesAttempted: 0, tacklesMade: 0, missedTackles: 0,
         rucks: 0, lineouts: 0, lineoutsGagnes: 0, scrums: 0, mauls: 0,
-        penalitesConcedees: 0, turnovers: 0, knockOns: 0,
+        penalitesConcedees: 0, turnovers: 0, knockOns: 0, cartonsJaunes: 0,
       };
     }
 
@@ -447,8 +452,16 @@
       return { x: p.x, y: Math.max(0, Math.min(LARGEUR, p.y - 6)) };
     }
 
-    attaquants() { return this.possession === 'A' ? this.equipeA : this.equipeB; }
-    defenseurs() { return this.possession === 'A' ? this.equipeB : this.equipeA; }
+    // Un joueur au bin (carton jaune) est retiré de la feuille de match active :
+    // son équipe joue réellement à 14, au lieu d'un carton purement visuel.
+    attaquants() {
+      const eq = this.possession === 'A' ? this.equipeA : this.equipeB;
+      return eq.filter(j => j.sinBin <= 0);
+    }
+    defenseurs() {
+      const eq = this.possession === 'A' ? this.equipeB : this.equipeA;
+      return eq.filter(j => j.sinBin <= 0);
+    }
 
     // À la sortie d'un regroupement (mêlée, touche, ruck, maul), le 9
     // introduit ou récupère le ballon mais le transmet presque toujours
@@ -457,7 +470,10 @@
     // prendre lui-même. Si le 10 est indisponible (plaqué, hors du jeu),
     // le 9 garde le ballon.
     _neufVersDix(equipe, neuf) {
-      const dix = equipe[9];
+      // Recherche par numéro, pas par index : `equipe` est parfois la feuille
+      // complète (15), parfois attaquants() déjà filtré du joueur au bin, où
+      // l'index 9 ne correspond plus forcément au n°10.
+      const dix = equipe.find(j => j.numero === 10);
       return (dix && dix.auSol === 0) ? dix : neuf;
     }
 
@@ -1157,7 +1173,7 @@
           this.log('RUCK_SORTIE_9', this.possession, `Sortie de ruck par le 9, transmission a l'ouvreur`);
           relayeur = this._neufVersDix(att, neuf);
         }
-        this.porteur = relayeur || att[8];
+        this.porteur = relayeur || att.find(j => j.numero === 8) || att[0];
         this.porteur.x = pt.x;
         this.porteur.y = pt.y;
         this._imposerRecuperationRuck(pt);
@@ -1416,7 +1432,16 @@
       this._finMaul();
 
       if (faute.delibere && (presDeLigne || repetee)) {
-        this.log('CARTON_JAUNE', fautive, `Carton jaune pour l'equipe ${fautive} : ${faute.message}`);
+        // Le carton doit coûter un joueur, pas seulement une bannière : 10 min
+        // réelles de bin (ramenées à l'échelle du match, cf. _echelleArret),
+        // pendant lesquelles l'équipe fautive joue à 14 (attaquants()/
+        // defenseurs() l'excluent). Le fautif retenu est le joueur de l'équipe
+        // fautive le plus proche du maul, faute d'identifier l'auteur exact.
+        const eqFautive = fautive === 'A' ? this.equipeA : this.equipeB;
+        const { joueur: fautif } = joueurLePlusProche(eqFautive, pos.x, pos.y);
+        fautif.sinBin = 600 * this._echelleArret;
+        this.stats[fautive].cartonsJaunes++;
+        this.log('CARTON_JAUNE', fautive, `Carton jaune pour l'equipe ${fautive} (n°${fautif.numero}) : ${faute.message} - a 14 pendant ${Math.round(fautif.sinBin)}s`);
       }
       if (empecheEssai) {
         this.score[benef] += 7;
@@ -1744,6 +1769,7 @@
         if (j.auSol > 0) j.auSol = Math.max(0, j.auSol - dt);
         if (j.missCooldown > 0) j.missCooldown = Math.max(0, j.missCooldown - dt);
         if (j.ruckRecovery > 0) j.ruckRecovery = Math.max(0, j.ruckRecovery - dt);
+        if (j.sinBin > 0) j.sinBin = Math.max(0, j.sinBin - dt);
       }
       // Temps de jeu effectif (ballon vivant) : phases où le jeu est réellement
       // en cours, à l'exclusion des arrêts (essai/transformation/pénalité au
