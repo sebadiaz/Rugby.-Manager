@@ -243,6 +243,10 @@
         A: this._statsVierges(), B: this._statsVierges(),
       };
       this.tempsJeuEffectif = 0;
+      // Temps de possession réel par équipe (ballon vivant uniquement, même
+      // condition que tempsJeuEffectif) : sert à calculer un % de possession
+      // basé sur le temps de jeu effectif, pas sur un compteur d'événements.
+      this.tempsPossession = { A: 0, B: 0 };
       this._nouvelleManche('A');
       this.equipeKickPremiereMiTemps = this._dernierEquipeKick;
     }
@@ -1821,6 +1825,7 @@
       if (this.phase === 'PORTE' || this.phase === 'RUCK' || this.phase === 'MAUL'
         || this.phase === 'COUP_ENVOI' || this.phase === 'COUP_DE_PIED_JEU') {
         this.tempsJeuEffectif += dt;
+        this.tempsPossession[this.possession] += dt;
       }
       this.tempsMatch += dt;
       if (this.tempsMatch >= this.dureeMatch) {
@@ -1926,6 +1931,13 @@
         // après coup à partir d'autre chose que ces compteurs.
         stats: { A: { ...this.stats.A }, B: { ...this.stats.B } },
         tempsJeuEffectif: this.tempsJeuEffectif,
+        // % de possession réel, calculé à partir du temps de jeu effectif
+        // accumulé par équipe (this.tempsPossession), pas un chiffre fixé :
+        // 50/50 tant qu'aucune seconde de jeu effectif n'a encore eu lieu.
+        possessionPct: this.tempsJeuEffectif > 0 ? {
+          A: Math.round((this.tempsPossession.A / this.tempsJeuEffectif) * 100),
+          B: Math.round((this.tempsPossession.B / this.tempsJeuEffectif) * 100),
+        } : { A: 50, B: 50 },
       };
     }
   }

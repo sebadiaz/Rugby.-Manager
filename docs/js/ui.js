@@ -34,6 +34,12 @@
     document.getElementById('horloge').textContent =
       `${formaterTemps(state.clock.time)} / ${formaterTemps(state.clock.duration === Infinity ? dureeAffichee : state.clock.duration)} · ${state.clock.period === 2 ? '2e pér.' : '1ère pér.'}`;
 
+    // Possession réelle (% du temps de jeu effectif par équipe, cf.
+    // MatchEngine.getState().possessionPct), pas une valeur fixe.
+    const pct = state.possessionPct || { A: 50, B: 50 };
+    document.getElementById('possession').innerHTML =
+      `<span>${pct.A}%</span><span class="barre"><span class="partA" style="width:${pct.A}%"></span><span class="partB" style="width:${pct.B}%"></span></span><span>${pct.B}%</span>`;
+
     const seekEl = document.getElementById('seek');
     if (document.activeElement !== seekEl) seekEl.value = Math.round(state.clock.time);
     document.getElementById('tempsLabel').textContent = formaterTemps(state.clock.time);

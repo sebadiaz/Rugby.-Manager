@@ -25,6 +25,9 @@
       },
       phase: rawState.phase,
       possession: rawState.possession,
+      // % de possession réel (temps de jeu effectif par équipe), pas une
+      // valeur fixe : cf. MatchEngine.getState().
+      possessionPct: rawState.possessionPct,
       // Objet ballon normalisé { x, y, vx, vy, state, carrierTeam, carrierNumber }
       // exposé directement par le moteur (cf. MatchEngine.getState()).
       ball: rawState.ball,
