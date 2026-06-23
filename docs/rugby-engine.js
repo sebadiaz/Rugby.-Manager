@@ -151,6 +151,21 @@
     return base + (j.plaquage - 60) * 0.3;
   }
 
+  // --- Mêlée (lois 19/20) : machine à états -----------------------------------
+  // Comme le maul (ETATS_MAUL ci-dessus), la mêlée traverse une vraie séquence
+  // arbitrale (placement, "Crouch"/"Bind"/"Set", introduction, contestation,
+  // sortie de balle) au lieu d'un tirage aléatoire instantané. L'état est porté
+  // par `engine.melee.etat`, la phase moteur restant 'MELEE'.
+  const ETATS_MELEE = {
+    FORMATION: 'MELEE_FORMATION',
+    CROUCH: 'MELEE_CROUCH',
+    BIND: 'MELEE_BIND',
+    SET: 'MELEE_SET',
+    INTRODUCTION: 'MELEE_INTRODUCTION',
+    CONTESTATION: 'MELEE_CONTESTATION',
+    SORTIE: 'MELEE_SORTIE',
+  };
+
   // --- Arbitre : applique de vraies règles plutôt que de laisser le jeu continuer
   // sans contrainte. Chaque méthode renvoie une infraction ou null. ---
   const Referee = {
@@ -233,6 +248,10 @@
       // (persiste d'un maul à l'autre) : sert à siffler un carton jaune pour
       // fautes répétées, comme l'arbitrage réel.
       this._maulPenalitesMatch = { A: 0, B: 0 };
+      // Mêlée (lois 19/20) : objet d'état courant (null hors mêlée), et même
+      // compteur d'infractions répétées par équipe que le maul ci-dessus.
+      this.melee = null;
+      this._meleePenalitesMatch = { A: 0, B: 0 };
       this._sequenceEvenement = 0;
       // Statistiques agrégées du match, calibrage du jeu (pas un affichage
       // décoratif) : chaque compteur n'est incrémenté qu'au moment réel où
@@ -282,6 +301,7 @@
     _nouvelleManche(equipeReceptrice, xCentre = LONGUEUR / 2) {
       const sens = { A: 1, B: -1 };
       this.maul = null;
+      this.melee = null;
       this._receptionDirecte = false;
       this.equipeA = creerEquipe('A', sens.A, this.rng);
       this.equipeB = creerEquipe('B', sens.B, this.rng);
@@ -487,16 +507,7 @@
     // --- Mêlée suite à infraction (passe en avant / en-avant) : avantage + relance
     // pour l'équipe non fautive, conformément à la loi (knock-on / forward pass). ---
     _accorderMelee(equipeFautive, position) {
-      this.possession = equipeFautive === 'A' ? 'B' : 'A';
-      this.stats[this.possession].scrums++;
-      this.log('MELEE', this.possession, `Melee, introduction pour l'equipe ${this.possession}`);
-      const equipe = this.possession === 'A' ? this.equipeA : this.equipeB;
-      this.porteur = this._neufVersDix(equipe, equipe[8]);
-      this.porteur.x = Math.max(5, Math.min(LONGUEUR - 5, position.x));
-      this.porteur.y = Math.max(5, Math.min(LARGEUR - 5, position.y));
-      this.ruckPoint = { x: this.porteur.x, y: this.porteur.y };
-      this.phase = 'MELEE';
-      this.timerPhase = 0;
+      this._formerMelee(equipeFautive === 'A' ? 'B' : 'A', position);
     }
 
     // --- Touche : un ballon porté en touche donne une touche (lancer) à l'équipe
@@ -1586,16 +1597,7 @@
     // Mêlée accordée à une équipe précise (utilisée par le maul injouable, où le
     // bénéficiaire n'est pas forcément l'adversaire du porteur).
     _accorderMeleeA(equipe, position) {
-      this.possession = equipe;
-      this.stats[equipe].scrums++;
-      this.log('MELEE', this.possession, `Melee, introduction pour l'equipe ${this.possession}`);
-      const eq = equipe === 'A' ? this.equipeA : this.equipeB;
-      this.porteur = this._neufVersDix(eq, eq[8]);
-      this.porteur.x = Math.max(5, Math.min(LONGUEUR - 5, position.x));
-      this.porteur.y = Math.max(5, Math.min(LARGEUR - 5, position.y));
-      this.ruckPoint = { x: this.porteur.x, y: this.porteur.y };
-      this.phase = 'MELEE';
-      this.timerPhase = 0;
+      this._formerMelee(equipe, position);
     }
 
     _finMaul() {
@@ -1603,79 +1605,385 @@
       this.contestants = [];
     }
 
-    // Mêlée (lois 19/20) : les avants se regroupent réellement (première ligne
-    // contre première ligne) plutôt que de figer le jeu courant, les lignes
-    // arrières défensives doivent respecter les 5 m de hors-jeu jusqu'à la
-    // sortie du ballon, et le paquet le plus puissant peut faire gratter le
-    // ballon contre le sens de l'introduction (jamais garanti, comme au ruck).
-    _tickMelee(dt) {
-      this.timerPhase += dt;
-      const pt = this.ruckPoint;
-      const sensAttaque = this.porteur.sensAttaque;
-      const equipeAtt = this.possession === 'A' ? this.equipeA : this.equipeB;
-      const equipeDef = this.possession === 'A' ? this.equipeB : this.equipeA;
+    // === Mêlée (lois 19/20) : machine à états complète ========================
+    // Initialise l'objet mêlée et bascule la phase moteur sur 'MELEE'. À partir
+    // de là, _tickMelee fait avancer la machine à états (placement -> "Crouch"
+    // -> "Bind" -> "Set" -> introduction -> contestation -> sortie de balle),
+    // exactement comme _formerMaul/_tickMaul pour le maul.
+    _formerMelee(equipeIntroduction, position) {
+      this.stats[equipeIntroduction].scrums++;
+      this.log('MELEE', equipeIntroduction, `Melee, introduction pour l'equipe ${equipeIntroduction}`);
+      const px = Math.max(5, Math.min(LONGUEUR - 5, position.x));
+      const py = Math.max(5, Math.min(LARGEUR - 5, position.y));
+      this.melee = {
+        etat: ETATS_MELEE.FORMATION,
+        equipeIntroduction,
+        equipeNonIntroduction: equipeIntroduction === 'A' ? 'B' : 'A',
+        x: px, y: py, sens: equipeIntroduction === 'A' ? 1 : -1,
+        timer: 0, timerGlobal: 0,
+        // Conditions de terrain/ballon (pelouse, météo...) propres à cette
+        // mêlée, tirées une seule fois : petit facteur de contestation parmi
+        // d'autres, jamais déterminant à lui seul.
+        conditions: (this.rng() - 0.5) * 0.1,
+        rotation: 0, resets: 0,
+        diff: 0, vainqueur: null, qualite: null, useItAnnonce: false,
+      };
+      this.possession = equipeIntroduction;
+      const eq = equipeIntroduction === 'A' ? this.equipeA : this.equipeB;
+      this.porteur = this._neufVersDix(eq, eq[8]);
+      this.porteur.x = px;
+      this.porteur.y = py;
+      this.ruckPoint = { x: px, y: py };
+      this.contestants = [];
+      this.phase = 'MELEE';
+      this.timerPhase = 0;
+    }
 
-      const placerPaquet = (equipe, recul) => {
+    _finMelee() {
+      this.melee = null;
+      this.contestants = [];
+    }
+
+    // Orchestrateur : exécute un pas de la machine à états de la mêlée.
+    _tickMelee(dt) {
+      const m = this.melee;
+      if (!m) { this.phase = 'PORTE'; this.timerPhase = 0; return; }
+      m.timer += dt;
+      m.timerGlobal += dt;
+      this.ruckPoint = { x: m.x, y: m.y };
+
+      // 1) IA des joueurs : packs qui se rapprochent et se lient, lignes
+      // arrières en retrait, prêtes pour la sortie de balle.
+      this._meleePlacerPaquets(dt);
+
+      // 2) Arbitrage permanent : fautes (poussée prématurée, écroulement,
+      // pilier en travers, liaison incorrecte, introduction non droite,
+      // ballon bloqué, hors-jeu des lignes arrières...).
+      const faute = this._meleeDetecterFautes(dt);
+      if (faute) return this._meleeSanctionner(faute);
+
+      const E = ETATS_MELEE;
+      const dur = (s) => s * this._echelleArret;
+      switch (m.etat) {
+        case E.FORMATION:
+          // Les deux packs se placent face à face ; si une équipe est plus
+          // forte elle ne pousse pas encore, elle attend l'introduction.
+          if (m.timer >= dur(1.5)) {
+            m.etat = E.CROUCH; m.timer = 0;
+            this.log('MELEE_CROUCH', m.equipeIntroduction, 'Arbitre : "Crouch" - les premieres lignes se baissent');
+          }
+          break;
+        case E.CROUCH:
+          if (m.timer >= dur(1.0)) {
+            m.etat = E.BIND; m.timer = 0;
+            this.log('MELEE_BIND', m.equipeIntroduction, 'Arbitre : "Bind" - les piliers se lient a l\'adversaire');
+          }
+          break;
+        case E.BIND:
+          if (m.timer >= dur(0.8)) {
+            m.etat = E.SET; m.timer = 0;
+            this.log('MELEE_SET', m.equipeIntroduction, 'Arbitre : "Set" - les deux packs s\'engagent');
+          }
+          break;
+        case E.SET:
+          // La poussée ne commence qu'a partir d'ici (apres l'engagement),
+          // jamais avant l'introduction.
+          if (m.timer >= dur(0.6)) {
+            m.etat = E.INTRODUCTION; m.timer = 0;
+            this.log('MELEE_INTRODUCTION', m.equipeIntroduction, `Le demi de melee introduit le ballon dans le tunnel pour l'equipe ${m.equipeIntroduction}`);
+          }
+          break;
+        case E.INTRODUCTION:
+          // Le talonneur tente de talonner, le ballon progresse vers les
+          // pieds du numero 8 : les facteurs de contestation sont calculés
+          // une fois, au moment où la lutte pour le ballon démarre vraiment.
+          if (m.timer >= dur(1.6)) {
+            m.etat = E.CONTESTATION; m.timer = 0;
+            m.diff = this._meleeFacteurs();
+            this.log('MELEE_CONTESTATION', m.equipeIntroduction, 'Contestation en melee, les deux packs poussent pour le ballon');
+          }
+          break;
+        case E.CONTESTATION:
+          this._meleeAvancerPoussee(dt);
+          if (Math.abs(m.rotation) > 90) {
+            this.log('MELEE_TOURNEE', m.equipeIntroduction, 'La melee tourne de plus de 90 degres, l\'arbitre la fait reformer');
+            return this._meleeReset();
+          }
+          if (m.timer >= dur(3.0)) this._meleeResoudreContestation();
+          break;
+        case E.SORTIE: {
+          // Comme le "use it" du maul : le ballon doit ressortir sous peine
+          // d'être sifflé injouable ; probabilité de sortie croissante avec
+          // le temps plutôt qu'un instant fixe.
+          const seuilUseIt = dur(1.5);
+          if (m.timerSortie <= seuilUseIt && !m.useItAnnonce) {
+            m.useItAnnonce = true;
+            this.log('MELEE_USE_IT', m.vainqueur, 'Arbitre : "Use it !" - le ballon doit sortir de la melee');
+          }
+          m.timerSortie -= dt;
+          if (this.rng() < 0.7 * dt || m.timerSortie <= 0) return this._meleeSortieBallon();
+          break;
+        }
+      }
+    }
+
+    // Placement progressif des deux packs (et repli des lignes arrières) :
+    // écart large à la formation, qui se resserre jusqu'à l'engagement
+    // ("Set"), puis quasi nul une fois les packs liés en contestation.
+    _meleePlacerPaquets(dt) {
+      const m = this.melee;
+      const E = ETATS_MELEE;
+      const eqIntro = m.equipeIntroduction === 'A' ? this.equipeA : this.equipeB;
+      const eqDef = m.equipeIntroduction === 'A' ? this.equipeB : this.equipeA;
+      const ecart = m.etat === E.FORMATION ? 1.6
+        : m.etat === E.CROUCH ? 1.1
+          : m.etat === E.BIND ? 0.7
+            : 0.35;
+      const placer = (equipe, cote) => {
         const avants = equipe.filter(j => j.numero <= 8);
         avants.forEach((j, i) => {
-          const cx = pt.x - sensAttaque * recul * (0.5 + (i % 3) * 0.4);
-          const cy = pt.y + ((i % 2) ? -1 : 1) * Math.ceil((i + 1) / 2) * 0.6;
+          const cx = m.x - m.sens * cote * (ecart + (i % 3) * 0.5);
+          const cy = m.y + ((i % 2) ? -1 : 1) * Math.ceil((i + 1) / 2) * 0.6;
           avancer(j, cx - j.x, cy - j.y, dt, vitesseMs(j) * 0.7);
         });
+        const backs = equipe.filter(j => j.numero > 8);
+        const cxBacks = m.x - m.sens * cote * 9;
+        backs.forEach((j) => avancer(j, cxBacks - j.x, j.channelY - j.y, dt, vitesseMs(j) * 0.85));
       };
-      placerPaquet(equipeAtt, -1);
-      placerPaquet(equipeDef, 1);
+      placer(eqIntro, -1);
+      placer(eqDef, 1);
+    }
 
-      // Hors-jeu (loi 19/20) : les arrières défenseurs doivent rester à 5 m du
-      // point d'introduction jusqu'à la sortie du ballon ; un délai de grâce
-      // leur laisse le temps de se replier avant d'être sifflés (même logique
-      // qu'au ruck).
-      const margeBacks = 5;
-      const delaiGrace = 1.5;
-      for (const j of equipeDef) {
-        if (j.numero <= 8) continue;
-        const limite = sensAttaque > 0 ? pt.x - margeBacks : pt.x + margeBacks;
-        const enInfraction = sensAttaque > 0 ? j.x < limite : j.x > limite;
-        if (enInfraction) {
-          avancer(j, limite - j.x, pt.y - j.y, dt, vitesseMs(j));
-          const toujoursEnInfraction = sensAttaque > 0 ? j.x < limite : j.x > limite;
-          if (this.timerPhase > delaiGrace && toujoursEnInfraction) {
-            this._traiterPenalite(this.possession, { x: pt.x, y: pt.y });
-            return;
+    // Facteurs de contestation (loi 19) combinés en un différentiel unique :
+    // force des piliers, puissance du pack, technique du talonneur, cohésion/
+    // fatigue (bruit plus fort en fin de match), moral (lié au score), terrain,
+    // et avantage structurel de l'introduction (le pack qui introduit gagne
+    // l'immense majorité des mêlées en match réel). Positif = avantage à
+    // l'équipe qui introduit.
+    _meleeFacteurs() {
+      const m = this.melee;
+      const eqIntro = m.equipeIntroduction === 'A' ? this.equipeA : this.equipeB;
+      const eqDef = m.equipeNonIntroduction === 'A' ? this.equipeA : this.equipeB;
+      const avantsIntro = eqIntro.filter(j => j.numero <= 8);
+      const avantsDef = eqDef.filter(j => j.numero <= 8);
+      const puissanceIntro = avantsIntro.reduce((s, j) => s + forceMaul(j), 0);
+      const puissanceDef = avantsDef.reduce((s, j) => s + forceMaul(j), 0);
+      const piliersIntro = avantsIntro.filter(j => j.numero === 1 || j.numero === 3).reduce((s, j) => s + forceMaul(j), 0);
+      const piliersDef = avantsDef.filter(j => j.numero === 1 || j.numero === 3).reduce((s, j) => s + forceMaul(j), 0);
+      const talonneur = eqIntro.find(j => j.numero === 2);
+      const techniqueTalonneur = talonneur ? (talonneur.plaquage - 60) * 0.4 : 0;
+      const fatigue = (this.dureeMatch === Infinity || this.dureeMatch <= 0) ? 0 : Math.min(1, this.tempsMatch / this.dureeMatch);
+      const moral = Math.max(-4, Math.min(4, (this.score[m.equipeIntroduction] - this.score[m.equipeNonIntroduction]) / 5));
+      const avantageIntroduction = 18;
+      return (puissanceIntro - puissanceDef) + (piliersIntro - piliersDef) * 0.5
+        + techniqueTalonneur + moral + avantageIntroduction
+        + m.conditions * 40 + (this.rng() - 0.5) * (10 + fatigue * 10);
+    }
+
+    // Pendant la contestation : la poussée fait dériver le point de mêlée
+    // (gain/perte de terrain) et accumule une rotation (mêlée qui tourne),
+    // jamais de façon déterministe — un déséquilibre net augmente juste la
+    // probabilité, sans jamais la garantir.
+    _meleeAvancerPoussee(dt) {
+      const m = this.melee;
+      const vitessePoussee = Math.max(-0.5, Math.min(0.7, m.diff / 80));
+      m.x = Math.max(0, Math.min(LONGUEUR, m.x + vitessePoussee * m.sens * dt));
+      m.rotation += (-m.diff / 20 + (this.rng() - 0.5) * 12) * dt;
+    }
+
+    // Détection des fautes probables de mêlée, gravité et camp fautif selon
+    // l'état courant — mêmes ordres de grandeur que le maul (la plupart des
+    // mêlées ne sont pas sanctionnées, sinon l'équilibre du match casse).
+    _meleeDetecterFautes(dt) {
+      const m = this.melee;
+      const E = ETATS_MELEE;
+      const r = this.rng();
+      let seuil = 0;
+      if (m.etat === E.CROUCH || m.etat === E.BIND || m.etat === E.SET) {
+        seuil += 0.006 * dt;
+        if (r < seuil) {
+          const eqF = this.rng() < 0.5 ? m.equipeIntroduction : m.equipeNonIntroduction;
+          return { type: 'POUSSEE_AVANT', equipeFautive: eqF, gravite: 'COUP_FRANC', message: "poussee avant l'introduction du ballon", delibere: false };
+        }
+        seuil += 0.004 * dt;
+        if (r < seuil) {
+          const eqF = this.rng() < 0.5 ? m.equipeIntroduction : m.equipeNonIntroduction;
+          return { type: 'LIAISON', equipeFautive: eqF, gravite: 'COUP_FRANC', message: 'liaison incorrecte en premiere ligne', delibere: false };
+        }
+      }
+      if (m.etat === E.INTRODUCTION) {
+        seuil += 0.05 * dt;
+        if (r < seuil) {
+          return { type: 'INTRODUCTION_NON_DROITE', equipeFautive: m.equipeIntroduction, gravite: 'COUP_FRANC', message: 'introduction non droite dans le tunnel', delibere: false };
+        }
+      }
+      if (m.etat === E.SET || m.etat === E.CONTESTATION) {
+        const distLigneDef = m.sens > 0 ? (LONGUEUR - m.x) : m.x;
+        // Le camp en difficulté (qui recule dans le duel de poussée) est le
+        // plus exposé à l'écroulement volontaire et au pilier en travers.
+        const campEnDifficulte = m.diff >= 0 ? m.equipeNonIntroduction : m.equipeIntroduction;
+        seuil += distLigneDef < 5 ? 0.05 * dt : 0.008 * dt;
+        if (r < seuil) {
+          return { type: 'ECROULEMENT', equipeFautive: campEnDifficulte, gravite: 'PENALITE', message: 'ecroulement volontaire de la melee', delibere: true };
+        }
+        seuil += 0.0025 * dt;
+        if (r < seuil) {
+          return { type: 'PILIER_TRAVERS', equipeFautive: campEnDifficulte, gravite: 'PENALITE', message: 'pilier qui pousse en travers (boring in)', delibere: false };
+        }
+        seuil += 0.0025 * dt;
+        if (r < seuil) {
+          const eqF = this.rng() < 0.5 ? m.equipeIntroduction : m.equipeNonIntroduction;
+          return { type: 'RELEVE', equipeFautive: eqF, gravite: 'COUP_FRANC', message: 'joueur de premiere ligne qui se releve', delibere: false };
+        }
+        seuil += 0.002 * dt;
+        if (r < seuil) {
+          return { type: 'BALLON_BLOQUE', equipeFautive: m.equipeIntroduction, gravite: 'RESET', message: 'ballon bloque, ne ressort pas du pied du numero 8', delibere: false };
+        }
+      }
+      // Hors-jeu des lignes arrières (loi 19/20) : les arrières défenseurs
+      // doivent rester à 5 m du point d'introduction jusqu'à la sortie du
+      // ballon. On ne contrôle qu'à partir de l'introduction (pas pendant
+      // SET) pour laisser aux arrières le temps physique de rejoindre leur
+      // ligne de hors-jeu depuis leur position de jeu précédente.
+      if (m.etat === E.INTRODUCTION || m.etat === E.CONTESTATION || m.etat === E.SORTIE) {
+        const def = m.equipeNonIntroduction === 'A' ? this.equipeA : this.equipeB;
+        const margeBacks = 5, delaiGrace = 2.5;
+        for (const j of def) {
+          if (j.numero <= 8) continue;
+          const limite = m.sens > 0 ? m.x - margeBacks : m.x + margeBacks;
+          const enInfraction = m.sens > 0 ? j.x > limite : j.x < limite;
+          if (enInfraction && m.timerGlobal > delaiGrace) {
+            return { type: 'HORS_JEU_BACKS', equipeFautive: m.equipeNonIntroduction, gravite: 'PENALITE', message: 'hors-jeu des lignes arrieres a la melee', delibere: false };
           }
         }
       }
+      return null;
+    }
 
-      // Durée totale de la mêlée (formation, liaison, poussée, sortie du
-      // ballon) : un vrai engagement de mêlée prend bien plus que quelques
-      // secondes en match réel (~10-15 s entre l'introduction et la sortie).
-      // Compressée comme les autres temps d'arrêt sur un format démo court
-      // (cf. _echelleArret) pour laisser plus de place au jeu courant.
-      if (this.timerPhase >= 12 * this._echelleArret) {
-        // Poussée des paquets (même proxy de force que le ruck/maul,
-        // forceMaul), sur les 8 avants de chaque équipe : un paquet plus
-        // puissant fait gratter le ballon plus souvent côté défense, sans
-        // jamais rendre l'issue certaine.
-        let forceAtt = 0, forceDef = 0;
-        for (const j of equipeAtt) if (j.numero <= 8) forceAtt += forceMaul(j);
-        for (const j of equipeDef) if (j.numero <= 8) forceDef += forceMaul(j);
-        const probaTurnover = Math.max(0.03, Math.min(0.25, 0.08 + (forceDef - forceAtt) / 900));
-        if (this.rng() < probaTurnover) {
-          this.possession = this.possession === 'A' ? 'B' : 'A';
-          this.stats[this.possession].turnovers++;
-          this.log('TURNOVER', this.possession, `Ballon talonne contre le sens de l'introduction, equipe ${this.possession} recupere a la melee`);
-          const eqNouv = this.possession === 'A' ? this.equipeA : this.equipeB;
-          this.porteur = this._neufVersDix(eqNouv, eqNouv[8]);
-        }
-        // Mêlée gagnée par l'équipe qui ressort avec le ballon (l'introducteur
-        // en cas normal, l'adversaire en cas de turnover ci-dessus).
-        this.stats[this.possession].scrumsGagnes++;
+    // Reformation sans faute (mêlée tournée, ballon bloqué) : même équipe
+    // réintroduit, sans changement de possession ni sanction. Bornée pour
+    // éviter une boucle en cas de série de reformations improbable.
+    _meleeReset() {
+      const m = this.melee;
+      m.resets = (m.resets || 0) + 1;
+      m.rotation = 0;
+      m.timer = 0;
+      m.etat = m.resets > 2 ? ETATS_MELEE.SET : ETATS_MELEE.FORMATION;
+    }
+
+    // Décision d'arbitrage sur une faute de mêlée : reformation simple, coup
+    // franc, pénalité (avec essai de pénalité/carton si délibérée, proche de
+    // la ligne ou répétée), même logique que _maulSanctionner.
+    _meleeSanctionner(faute) {
+      const m = this.melee;
+      if (faute.gravite === 'RESET') {
+        this.log('MELEE_RESET', m.equipeIntroduction, `Melee a refaire : ${faute.message}`);
+        return this._meleeReset();
+      }
+      const fautive = faute.equipeFautive;
+      const benef = fautive === 'A' ? 'B' : 'A';
+      const pos = { x: m.x, y: m.y };
+      this._meleePenalitesMatch[fautive] = (this._meleePenalitesMatch[fautive] || 0) + 1;
+      const repetee = this._meleePenalitesMatch[fautive] >= 3;
+      const sensBenef = benef === 'A' ? 1 : -1;
+      const distLigne = sensBenef > 0 ? (LONGUEUR - pos.x) : pos.x;
+      const presDeLigne = distLigne <= 5;
+      const empecheEssai = faute.delibere && faute.type === 'ECROULEMENT' && presDeLigne;
+      this._finMelee();
+
+      if (faute.delibere && (presDeLigne || repetee)) {
+        const eqFautive = fautive === 'A' ? this.equipeA : this.equipeB;
+        const { joueur: fautif } = joueurLePlusProche(eqFautive, pos.x, pos.y);
+        fautif.sinBin = 600 * this._echelleArret;
+        this.stats[fautive].cartonsJaunes++;
+        this.log('CARTON_JAUNE', fautive, `Carton jaune pour l'equipe ${fautive} (n°${fautif.numero}) : ${faute.message} - a 14 pendant ${Math.round(fautif.sinBin)}s`);
+      }
+      if (empecheEssai) {
+        this.score[benef] += 7;
+        this.stats[benef].essais++;
+        this.log('ESSAI_PENALITE', benef, `Essai de penalite : ${faute.message} en melee, equipe ${benef} +7`);
+        this._nouvelleManche(benef);
+        return;
+      }
+      const evt = faute.type === 'ECROULEMENT' ? 'MELEE_PEN_ECROULEMENT'
+        : faute.type === 'PILIER_TRAVERS' ? 'MELEE_PEN_TRAVERS'
+          : faute.type === 'HORS_JEU_BACKS' ? 'MELEE_PEN_HORSJEU'
+            : 'MELEE_PEN_TECHNIQUE';
+      if (faute.gravite === 'COUP_FRANC') {
+        this.log(evt, fautive, `Coup franc melee : ${faute.message} (equipe ${fautive}), coup franc pour l'equipe ${benef}`);
+        this._traiterCoupFranc(benef, pos);
+        return;
+      }
+      this.log(evt, fautive, `Penalite melee : ${faute.message} (equipe ${fautive}), penalite pour l'equipe ${benef}`);
+      this.possession = benef;
+      const eqB = benef === 'A' ? this.equipeA : this.equipeB;
+      const { joueur } = joueurLePlusProche(eqB, pos.x, pos.y);
+      this.porteur = joueur;
+      this.porteur.x = Math.max(0, Math.min(LONGUEUR, pos.x));
+      this.porteur.y = Math.max(0, Math.min(LARGEUR, pos.y));
+      this._traiterPenalite(benef, pos);
+    }
+
+    // Résolution de la contestation : détermine qui ressort avec le ballon et
+    // dans quelles conditions (propre, sous pression, poussée dominante, ou
+    // volé contre l'introduction — rare mais possible), à partir du
+    // différentiel de force calculé à l'entrée en contestation.
+    _meleeResoudreContestation() {
+      const m = this.melee;
+      const intro = m.equipeIntroduction, nonIntro = m.equipeNonIntroduction;
+      const probaVol = Math.max(0.02, Math.min(0.35, 0.05 - m.diff / 300));
+      if (this.rng() < probaVol) {
+        m.vainqueur = nonIntro; m.qualite = 'VOLE';
+        this.stats[nonIntro].turnovers++;
+        this.log('TURNOVER', nonIntro, `Ballon vole en melee contre l'introduction, l'equipe ${nonIntro} recupere`);
+      } else if (m.diff > 25) {
+        m.vainqueur = intro; m.qualite = 'DOMINANT';
+        this.log('MELEE_DOMINEE', intro, `Poussee dominante en melee, l'equipe ${intro} fait reculer le pack adverse`);
+      } else if (m.diff > 8) {
+        m.vainqueur = intro; m.qualite = 'PROPRE';
+        this.log('MELEE_GAGNEE', intro, `Ballon gagne proprement par l'equipe ${intro} en melee`);
+      } else {
+        m.vainqueur = intro; m.qualite = 'PRESSION';
+        this.log('MELEE_PRESSION', intro, `Ballon gagne sous pression par l'equipe ${intro} en melee`);
+      }
+      this.stats[m.vainqueur].scrumsGagnes++;
+      const eqVainqueur = m.vainqueur === 'A' ? this.equipeA : this.equipeB;
+      this.porteur = eqVainqueur.find(j => j.numero === 8) || eqVainqueur[7];
+      this.porteur.x = Math.max(0, Math.min(LONGUEUR, m.x));
+      this.porteur.y = Math.max(0, Math.min(LARGEUR, m.y));
+      m.etat = ETATS_MELEE.SORTIE;
+      m.timer = 0;
+      m.timerSortie = 4 * this._echelleArret;
+      m.useItAnnonce = false;
+    }
+
+    // Sortie de balle : le demi de mêlée sort le ballon vers l'ouvreur dans la
+    // grande majorité des cas (qui décide ensuite passe/jeu au large/coup de
+    // pied via l'IA de jeu courant), ou le numéro 8 ramasse et part au près
+    // (pick-and-go), plus probable après une poussée dominante.
+    _meleeSortieBallon() {
+      const m = this.melee;
+      const poss = m.vainqueur;
+      const eq = poss === 'A' ? this.equipeA : this.equipeB;
+      const huit = eq.find(j => j.numero === 8);
+      const pt = { x: m.x, y: m.y };
+      const pickAndGo = huit && huit.auSol === 0 && this.rng() < (m.qualite === 'DOMINANT' ? 0.35 : 0.12);
+      this._finMelee();
+      this.possession = poss;
+      if (pickAndGo) {
+        this.porteur = huit;
         this.porteur.x = pt.x;
         this.porteur.y = pt.y;
-        this._imposerRecuperationRuck(pt);
-        this.phase = 'PORTE';
-        this.timerPhase = 0;
+        this.log('MELEE_PICK_AND_GO', poss, `Le numero 8 ramasse au pied de la melee et part au contact pour l'equipe ${poss}`);
+      } else {
+        this.porteur = this._neufVersDix(eq, eq[8]);
+        this.porteur.x = pt.x;
+        this.porteur.y = pt.y;
+        this.log('MELEE_BALLON_SORTI', poss, `Le demi de melee sort le ballon de la melee pour l'equipe ${poss}`);
       }
+      this._imposerRecuperationRuck(pt);
+      this.phase = 'PORTE';
+      this.timerPhase = 0;
     }
 
     // Touche (loi 18) : véritable contest au saut, pondéré par la force des
@@ -1940,6 +2248,8 @@
         phase: this.phase,
         // État détaillé du maul en cours (null hors maul), pour l'affichage.
         maul: this.maul ? { etat: this.maul.etat, x: this.maul.x, y: this.maul.y } : null,
+        // État détaillé de la mêlée en cours (null hors mêlée), pour l'affichage.
+        melee: this.melee ? { etat: this.melee.etat, x: this.melee.x, y: this.melee.y } : null,
         // État du ruck en cours (null hors ruck), pour l'affichage/les tests.
         ruck: this.phase === 'RUCK' ? {
           x: this.ruckPoint.x, y: this.ruckPoint.y,

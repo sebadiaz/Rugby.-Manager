@@ -41,6 +41,7 @@
       eventLog: rawState.events,
       ruck: rawState.ruck,
       maul: rawState.maul,
+      melee: rawState.melee,
       // Pas encore modélisé séparément côté moteur (mêlée/touche/pénalité sont
       // des phases à part entière plutôt qu'un sous-objet `setPiece` dédié) :
       // exposé à null pour ne pas mentir sur ce qui existe vraiment.

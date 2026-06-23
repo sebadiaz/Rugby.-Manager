@@ -28,6 +28,11 @@
     MELEE_RUCK_INJOUABLE: '🔒',
     MAUL_PEN_ECROULEMENT: '🟨', MAUL_PEN_HORSJEU: '🟨', MAUL_PEN_ENTREE_COTE: '🟨', MAUL_PEN_TECHNIQUE: '🟨', CARTON_JAUNE: '🟡',
     JEU_LARGE: '↔️', PASSE: '👐', PASSE_RATEE: '💥',
+    // Machine à états de la mêlée (loi 19/20, cf. ETATS_MELEE dans le moteur).
+    MELEE: '⚪', MELEE_CROUCH: '⬇️', MELEE_BIND: '🤝', MELEE_SET: '💥', MELEE_INTRODUCTION: '↘️',
+    MELEE_CONTESTATION: '💪', MELEE_DOMINEE: '🚀', MELEE_GAGNEE: '✅', MELEE_PRESSION: '⚠️',
+    MELEE_BALLON_SORTI: '➡️', MELEE_PICK_AND_GO: '🏃', MELEE_USE_IT: '⏱️', MELEE_TOURNEE: '🔄', MELEE_RESET: '↩️',
+    MELEE_PEN_ECROULEMENT: '🟨', MELEE_PEN_TRAVERS: '🟨', MELEE_PEN_HORSJEU: '🟨', MELEE_PEN_TECHNIQUE: '🙌',
   };
 
   // Libellés lisibles des états du maul (loi 17) pour l'affichage de la phase.
@@ -35,6 +40,14 @@
     MAUL_FORMING: 'Maul (formation)', MAUL_ACTIVE: 'Maul', MAUL_MOVING: 'Maul (avance)',
     MAUL_FIRST_STOP: 'Maul (arrêt 1 — use it once)', MAUL_SECOND_STOP: 'Maul (arrêt 2)',
     MAUL_USE_IT: 'Maul (use it !)', MAUL_UNPLAYABLE: 'Maul (injouable)',
+  };
+
+  // Libellés lisibles des états de la mêlée (loi 19/20) pour l'affichage de la phase.
+  const ETATS_MELEE_LABEL = {
+    MELEE_FORMATION: 'Mêlée (formation)', MELEE_CROUCH: 'Mêlée (« Crouch »)',
+    MELEE_BIND: 'Mêlée (« Bind »)', MELEE_SET: 'Mêlée (« Set »)',
+    MELEE_INTRODUCTION: 'Mêlée (introduction)', MELEE_CONTESTATION: 'Mêlée (contestation)',
+    MELEE_SORTIE: 'Mêlée (sortie de balle)',
   };
 
   const PHASES = {
@@ -62,10 +75,16 @@
     // bannière — sinon il est noyé en quelques secondes par les rucks dans
     // le fil d'événements (5 lignes affichées, écrasées en permanence).
     'JEU_LARGE',
+    // Mêlée (loi 19/20) : on bannière l'octroi et les événements rares/notables
+    // (poussée dominante, tournée, à refaire, use it, fautes), pas les appels
+    // d'arbitre courants (crouch/bind/set) ni les sorties de balle routinières
+    // qui se produisent à chaque mêlée et noieraient la bannière.
+    'MELEE', 'MELEE_DOMINEE', 'MELEE_TOURNEE', 'MELEE_RESET', 'MELEE_USE_IT',
+    'MELEE_PEN_ECROULEMENT', 'MELEE_PEN_TRAVERS', 'MELEE_PEN_HORSJEU', 'MELEE_PEN_TECHNIQUE',
   ]);
 
   global.RMConstants = {
     DUREE_MATCH, PAS_FIXE, CLE_HISTORIQUE, PROF_EN_BUT, MARGE_TOUCHE,
-    ICONES, ETATS_MAUL_LABEL, PHASES, TYPES_BANNIERE,
+    ICONES, ETATS_MAUL_LABEL, ETATS_MELEE_LABEL, PHASES, TYPES_BANNIERE,
   };
 })(window);

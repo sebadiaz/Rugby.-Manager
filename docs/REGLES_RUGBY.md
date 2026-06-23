@@ -205,14 +205,52 @@ Implémenté (`_accorderTouche`, `_tickTouche`) :
   compte en `turnovers`. ⚠️ Simplifié : pas de modélisation individuelle du
   sauteur/lanceur/soutien, juste une probabilité agrégée par paquet.
 
-## 7. Mêlée sur faute de jeu (Law 19 — Forward pass / Knock-on)
+## 7. Mêlée (Law 19/20)
 
 Règle réelle : passe en avant ou en-avant (ballon qui part vers l'avant
-depuis les mains ou touché en avant) → mêlée pour l'équipe non fautive à
-l'endroit de la faute (sauf avantage).
+depuis les mains ou touché en avant), ruck/maul devenu injouable → mêlée
+pour l'équipe non fautive à l'endroit de la faute (sauf avantage). La
+mêlée pit 8 avants contre 8, le demi de mêlée introduit le ballon dans le
+tunnel, le talonneur tente de le crocheter, et le ballon ressort au pied du
+n°8 vers la sortie de balle.
 
-Implémenté (`MELEE_AVANT`, `MELEE_ENAVANT`) : ✅ mêlée simplifiée déclenchée,
-pas de contestation de mêlée joueur par joueur (résolution agrégée).
+Implémenté (`ETATS_MELEE`, `_formerMelee`, `_tickMelee`, et les méthodes
+`_melee*`) : ✅ machine à états complète, plusieurs secondes, pas de tirage
+aléatoire instantané :
+
+1. **FORMATION** : les deux paquets se placent face à face de part et
+   d'autre du point de mêlée (`_meleePlacerPaquets`, avants groupés près du
+   point, arrières à ~9 m derrière leur ligne de hors-jeu).
+2. **CROUCH → BIND → SET** : séquence des commandes d'arbitre, journalisée
+   dans le fil d'événements (`MELEE_CROUCH`, `MELEE_BIND`, `MELEE_SET`) ;
+   les paquets se resserrent progressivement à chaque appel.
+3. **INTRODUCTION** : le demi de mêlée introduit le ballon (`MELEE_INTRODUCTION`).
+4. **CONTESTATION** : un différentiel de poussée (`_meleeFacteurs`) combine
+   force des piliers, puissance globale du paquet (`forceMaul`, même proxy
+   que ruck/maul/touche), technique du talonneur, moral (écart au score),
+   conditions de terrain et avantage structurel de l'introduction ; il fait
+   dériver le point de mêlée et accumule une rotation (`_meleeAvancerPoussee`).
+   Issue résolue après quelques secondes (`_meleeResoudreContestation`) :
+   ballon gagné proprement, gagné sous pression, poussée dominante (le paquet
+   adverse est repoussé), ou — rare — ballon volé contre l'introduction
+   (turnover).
+5. **SORTIE** : le demi de mêlée sort le ballon (`MELEE_BALLON_SORTI`,
+   relais vers l'IA de décision existante via `_neufVersDix` : passe, jeu au
+   pied, jeu au large selon la situation) ou le n°8 ramasse et part au
+   contact (`MELEE_PICK_AND_GO`, plus probable après une poussée dominante).
+   Si le ballon reste trop longtemps, l'arbitre annonce « use it »
+   (`MELEE_USE_IT`) puis force la sortie.
+- ✅ **Fautes simulées** (`_meleeDetecterFautes` / `_meleeSanctionner`) :
+  poussée avant l'introduction, liaison incorrecte, introduction non
+  droite, écroulement volontaire (pénalité, carton jaune si répété ou près
+  de la ligne, essai de pénalité si l'écroulement empêche un essai
+  certain), pilier qui pousse en travers (« boring in »), joueur de
+  première ligne qui se relève, ballon bloqué au pied du n°8 (mêlée à
+  refaire sans sanction), hors-jeu des lignes arrières, mêlée qui tourne de
+  plus de 90° (à refaire).
+- ⚠️ Simplifié : pas de modélisation individuelle joueur par joueur de
+  chaque liaison ; la contestation est un différentiel agrégé par paquet,
+  comme pour le ruck/maul/touche.
 
 ## 8. Hors scope explicite (non modélisé du tout)
 

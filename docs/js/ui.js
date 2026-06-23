@@ -4,7 +4,7 @@
 (function (global) {
   'use strict';
 
-  const { ICONES, ETATS_MAUL_LABEL, PHASES, TYPES_BANNIERE, CLE_HISTORIQUE } = global.RMConstants;
+  const { ICONES, ETATS_MAUL_LABEL, ETATS_MELEE_LABEL, PHASES, TYPES_BANNIERE, CLE_HISTORIQUE } = global.RMConstants;
 
   function formaterTemps(s) {
     const m = Math.floor(s / 60), sec = Math.floor(s % 60);
@@ -26,10 +26,13 @@
       `Equipe A ${state.score.A} — ${state.score.B} Equipe B`;
     const infosPhase = PHASES[state.phase] || { label: state.phase, couleur: '#455a64' };
     const phaseEl = document.getElementById('phase');
-    // Pendant un maul, afficher l'état détaillé de la machine à états (loi 17).
+    // Pendant un maul ou une mêlée, afficher l'état détaillé de la machine à
+    // états (loi 17 pour le maul, loi 19/20 pour la mêlée).
     phaseEl.textContent = (state.phase === 'MAUL' && state.maul && ETATS_MAUL_LABEL[state.maul.etat])
       ? ETATS_MAUL_LABEL[state.maul.etat]
-      : infosPhase.label;
+      : (state.phase === 'MELEE' && state.melee && ETATS_MELEE_LABEL[state.melee.etat])
+        ? ETATS_MELEE_LABEL[state.melee.etat]
+        : infosPhase.label;
     phaseEl.style.background = infosPhase.couleur;
     document.getElementById('horloge').textContent =
       `${formaterTemps(state.clock.time)} / ${formaterTemps(state.clock.duration === Infinity ? dureeAffichee : state.clock.duration)} · ${state.clock.period === 2 ? '2e pér.' : '1ère pér.'}`;
