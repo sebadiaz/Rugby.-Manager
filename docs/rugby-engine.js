@@ -251,7 +251,7 @@
       return {
         essais: 0, carries: 0, passes: 0, offloads: 0, kicks: 0,
         tacklesAttempted: 0, tacklesMade: 0, missedTackles: 0,
-        rucks: 0, lineouts: 0, lineoutsGagnes: 0, scrums: 0, mauls: 0,
+        rucks: 0, lineouts: 0, lineoutsGagnes: 0, scrums: 0, scrumsGagnes: 0, mauls: 0,
         penalitesConcedees: 0, turnovers: 0, knockOns: 0, cartonsJaunes: 0,
       };
     }
@@ -1633,6 +1633,9 @@
           const eqNouv = this.possession === 'A' ? this.equipeA : this.equipeB;
           this.porteur = this._neufVersDix(eqNouv, eqNouv[8]);
         }
+        // Mêlée gagnée par l'équipe qui ressort avec le ballon (l'introducteur
+        // en cas normal, l'adversaire en cas de turnover ci-dessus).
+        this.stats[this.possession].scrumsGagnes++;
         this.porteur.x = pt.x;
         this.porteur.y = pt.y;
         this._imposerRecuperationRuck(pt);
