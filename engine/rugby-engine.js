@@ -801,7 +801,10 @@
       {
         const sensAttaqueDrop = porteur.sensAttaque;
         const distanceButsDrop = sensAttaqueDrop > 0 ? (LONGUEUR - porteur.x) : porteur.x;
-        if (distanceButsDrop >= 8 && distanceButsDrop <= 38 && this.rng() < 0.012 * dt) {
+        // Réservé aux joueurs qui tirent réellement au but en match (ouvreur,
+        // centres, arrière) : sans ce filtre, un pilier porteur du ballon à
+        // 30 m pouvait tenter un drop-goal, ce qu'on ne voit jamais en match.
+        if (porteur.tendance <= 55 && distanceButsDrop >= 8 && distanceButsDrop <= 38 && this.rng() < 0.012 * dt) {
           const offsetLateralDrop = Math.abs(porteur.y - LARGEUR / 2);
           const equipe = this.possession;
           this.stats[equipe].kicks++;
