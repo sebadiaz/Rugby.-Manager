@@ -252,7 +252,7 @@
         essais: 0, carries: 0, passes: 0, offloads: 0, kicks: 0,
         tacklesAttempted: 0, tacklesMade: 0, missedTackles: 0,
         rucks: 0, lineouts: 0, lineoutsGagnes: 0, scrums: 0, scrumsGagnes: 0, mauls: 0,
-        penalitesConcedees: 0, turnovers: 0, knockOns: 0, cartonsJaunes: 0,
+        penalitesConcedees: 0, turnovers: 0, knockOns: 0, cartonsJaunes: 0, metresGagnes: 0,
       };
     }
 
@@ -710,7 +710,12 @@
 
       const dx = porteur.sensAttaque * 6;
       const evite = (porteur.y - defenseurProche.y) > 0 ? 2.5 : -2.5;
+      const xAvantCourse = porteur.x;
       avancer(porteur, dx, evite, dt, vitesseMs(porteur));
+      // Mètres gagnés : uniquement le terrain réellement parcouru ballon en
+      // main dans le sens d'attaque (pas les passes ni le jeu au pied), comme
+      // la statistique "metres gained" d'un relevé de match réel.
+      this.stats[this.possession].metresGagnes += (porteur.x - xAvantCourse) * porteur.sensAttaque;
 
       // Touche : le ballon porté au-delà de la ligne de touche est mort, jeu arrêté.
       if (porteur.y <= 0.01 || porteur.y >= LARGEUR - 0.01) {
