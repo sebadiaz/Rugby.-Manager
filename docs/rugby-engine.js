@@ -945,6 +945,17 @@
       const rayon = jeuLarge ? 45 : 25;
       let candidats = att.filter(j => j !== porteur && j.auSol === 0 && distance(j, porteur) <= rayon);
       if (jeuLarge) candidats = candidats.filter(j => j.tendance <= 50);
+      // Un vrai joueur ne cherche pas un soutien placé devant lui dans le sens
+      // d'attaque : il sait que ce serait une passe en avant, donc il regarde
+      // les options à hauteur ou en retrait avant de lâcher le ballon. Sans ce
+      // filtre, le meilleur candidat au score (proximité/tendance) était
+      // parfois légèrement devant le porteur, transformant une simple passe en
+      // mêlée pour passe en avant bien plus souvent qu'en match réel. On garde
+      // un repli sur la liste complète si aucune option à hauteur/en retrait
+      // n'existe, comme un joueur sous pression qui tente quand même sa chance.
+      const memesTolerance = 0.3;
+      const candidatsOnside = candidats.filter(j => (j.x - porteur.x) * porteur.sensAttaque <= memesTolerance);
+      if (candidatsOnside.length > 0) candidats = candidatsOnside;
       if (candidats.length === 0) return false;
 
       let cible = candidats[0], meilleurScore = -Infinity;
