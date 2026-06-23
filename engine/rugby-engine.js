@@ -247,6 +247,9 @@
       // condition que tempsJeuEffectif) : sert à calculer un % de possession
       // basé sur le temps de jeu effectif, pas sur un compteur d'événements.
       this.tempsPossession = { A: 0, B: 0 };
+      // Occupation territoriale (où se joue le match), distincte de la
+      // possession (qui porte le ballon) : cf. tick().
+      this.tempsOccupation = { A: 0, B: 0 };
       this._nouvelleManche('A');
       this.equipeKickPremiereMiTemps = this._dernierEquipeKick;
     }
@@ -1838,6 +1841,12 @@
         || this.phase === 'COUP_ENVOI' || this.phase === 'COUP_DE_PIED_JEU') {
         this.tempsJeuEffectif += dt;
         this.tempsPossession[this.possession] += dt;
+        // Occupation : où se joue le match (position réelle du ballon),
+        // indépendamment de qui le porte — sensAttaque de A est toujours +1,
+        // donc la moitié de terrain x > LONGUEUR/2 est sa moitié offensive.
+        const xBallon = this.ballonEnVol ? this.ballonVolX : this.porteur.x;
+        if (xBallon > LONGUEUR / 2) this.tempsOccupation.A += dt;
+        else this.tempsOccupation.B += dt;
       }
       this.tempsMatch += dt;
       if (this.tempsMatch >= this.dureeMatch) {
@@ -1949,6 +1958,12 @@
         possessionPct: this.tempsJeuEffectif > 0 ? {
           A: Math.round((this.tempsPossession.A / this.tempsJeuEffectif) * 100),
           B: Math.round((this.tempsPossession.B / this.tempsJeuEffectif) * 100),
+        } : { A: 50, B: 50 },
+        // % d'occupation réel (où s'est joué le match), calculé à partir de la
+        // position du ballon accumulée par équipe (this.tempsOccupation).
+        occupationPct: this.tempsJeuEffectif > 0 ? {
+          A: Math.round((this.tempsOccupation.A / this.tempsJeuEffectif) * 100),
+          B: Math.round((this.tempsOccupation.B / this.tempsJeuEffectif) * 100),
         } : { A: 50, B: 50 },
       };
     }

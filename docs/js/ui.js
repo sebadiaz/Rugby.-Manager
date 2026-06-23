@@ -89,8 +89,10 @@
     if (!s) return;
     const conteneur = document.getElementById('corpsStats');
     const pct = state.possessionPct || { A: 50, B: 50 };
+    const occ = state.occupationPct || { A: 50, B: 50 };
     conteneur.innerHTML =
       ligneStat('Possession', `${pct.A}%`, `${pct.B}%`) +
+      ligneStat('Occupation', `${occ.A}%`, `${occ.B}%`) +
       ligneStat('Essais', s.A.essais, s.B.essais) +
       ligneStat('Passes réussies', `${s.A.passes}/${s.A.passesTentees}`, `${s.B.passes}/${s.B.passesTentees}`) +
       ligneStat('Courses', s.A.carries, s.B.carries) +

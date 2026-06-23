@@ -28,6 +28,9 @@
       // % de possession réel (temps de jeu effectif par équipe), pas une
       // valeur fixe : cf. MatchEngine.getState().
       possessionPct: rawState.possessionPct,
+      // % d'occupation territoriale réel (où s'est joué le match), distinct
+      // de la possession (qui porte le ballon) : cf. MatchEngine.getState().
+      occupationPct: rawState.occupationPct,
       // Statistiques cumulées par équipe (cf. MatchEngine._statsVierges/getState),
       // toutes dérivées des actions réellement jouées dans la simulation.
       stats: rawState.stats,
