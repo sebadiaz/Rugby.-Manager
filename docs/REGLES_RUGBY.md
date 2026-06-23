@@ -17,7 +17,7 @@ Numérotation des lois selon World Rugby (« Laws of the Game »).
 | Transformation réussie | 2 | ✅ `TRANSFORMATION_REUSSIE`, +2 |
 | Pénalité au but réussie | 3 | ✅ `PENALITE_REUSSIE`, +3 |
 | Drop-goal | 3 | ✅ `DROP_GOAL_REUSSI`, +3 (l'équipe en possession dans la zone de tir 8–38 m travaille le ballon pour son ouvreur qui tente un drop en jeu courant, ~1,4 tentative/match, cf. `_tickPorte`) |
-| Essai de pénalité | 7 | ✅ `ESSAI_PENALITE`, +7 (faute à ≤ 5 m de la ligne d'en-but empêchant un essai probable, sans transformation, cf. `_traiterPenalite`) |
+| Essai de pénalité | 7 | ✅ `ESSAI_PENALITE`, +7 (faute à ≤ 5 m de la ligne d'en-but empêchant un essai probable, sans transformation, cf. `_traiterPenalite`), **toujours accompagné d'un carton jaune** (`CARTON_JAUNE`) pour le défenseur le plus proche de la faute |
 
 ## 2. Coup d'envoi et remises en jeu (Law 12 — Kick-off and restart kicks)
 
@@ -172,6 +172,10 @@ Implémenté (`_traiterPenalite`, `_accorderPenaliteTouche`) :
 - ✅ Essai de pénalité : si la faute est commise à ≤ 5 m de la ligne d'en-but
   (essai probable empêché), 7 points sont accordés directement
   (`ESSAI_PENALITE`), sans tir ni transformation, puis coup d'envoi adverse.
+  Le joueur fautif (le défenseur le plus proche du point de la faute) reçoit
+  systématiquement un carton jaune (`CARTON_JAUNE`), comme en match réel où
+  une faute délibérée qui empêche un essai quasi certain vaut un carton en
+  plus des points.
 - ✅ **Pénalité en touche**, avec conservation du lancer par l'équipe qui a
   botté (contrairement à une touche en jeu courant) : choisie quand le but est
   hors de portée de tir réaliste (> 45 m, probabilité `0.35`), ou pour chercher
