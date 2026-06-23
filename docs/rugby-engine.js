@@ -527,6 +527,18 @@
         this._nouvelleManche(equipeBeneficiaire);
         return;
       }
+      // Pénalité en touche : contrairement à une touche en jeu courant, c'est
+      // ici l'équipe qui a botté qui conserve le lancer (loi 19). Utilisée pour
+      // gagner du terrain quand le but est hors de portée, ou pour chercher un
+      // maul tout près de la ligne adverse plutôt que 3 points — deux tactiques
+      // réelles très fréquentes que seul le jeu rapide à la main ne représentait
+      // pas jusqu'ici.
+      const tropLoinPourTir = distanceButs > 45;
+      const procheLigneAdverse = distanceButs >= 5 && distanceButs <= 22;
+      if ((tropLoinPourTir && this.rng() < 0.35) || (procheLigneAdverse && this.rng() < 0.15)) {
+        this._accorderPenaliteTouche(equipeBeneficiaire, position);
+        return;
+      }
       const enZoneDeTir = distanceButs >= 5 && distanceButs <= 45;
       if (enZoneDeTir && this.rng() < 0.55) {
         this.equipeAuTir = equipeBeneficiaire;
@@ -548,6 +560,25 @@
       this.porteur.x = Math.max(0, Math.min(LONGUEUR, this.porteur.x));
       this.phase = 'PORTE';
       this.timerPhase = 0;
+    }
+
+    // Pénalité jouée en touche : l'équipe qui a botté conserve le lancer
+    // (à l'inverse d'une touche en jeu courant), avec un gain de terrain
+    // réaliste borné au terrain.
+    _accorderPenaliteTouche(equipe, position) {
+      this.log('PENALITE', equipe, `Penalite, equipe ${equipe} joue en touche et conserve le lancer`);
+      this.possession = equipe;
+      const sensAttaque = equipe === 'A' ? 1 : -1;
+      const gain = 10 + this.rng() * 10;
+      const xTouche = Math.max(0, Math.min(LONGUEUR, position.x + sensAttaque * gain));
+      const eqLanceur = equipe === 'A' ? this.equipeA : this.equipeB;
+      this.porteur = this._neufVersDix(eqLanceur, eqLanceur[8]);
+      this.porteur.x = Math.max(5, Math.min(LONGUEUR - 5, xTouche));
+      this.porteur.y = position.y <= LARGEUR / 2 ? 5 : LARGEUR - 5;
+      this.ruckPoint = { x: this.porteur.x, y: this.porteur.y };
+      this.phase = 'TOUCHE';
+      this.timerPhase = 0;
+      this.toucheLanceurY = this.porteur.y;
     }
 
     // À la sortie d'un regroupement (ruck/maul/mêlée/touche), les joueurs qui

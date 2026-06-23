@@ -147,10 +147,15 @@ ses fonctions dédiées ; états dans `ETATS_MAUL`) :
   simple ; **carton jaune** (`CARTON_JAUNE`) si la faute délibérée est commise
   près de la ligne ou répétée ; **essai de pénalité** (`ESSAI_PENALITE`, +7) si
   une faute délibérée empêche un maul lancé qui allait probablement marquer.
-- ⚠️ Simplifié : le carton jaune est annoncé mais **sans exclusion temporaire
-  réelle** (le joueur n'est pas retiré 10 min — l'effectif est recréé à chaque
-  remise en jeu, la persistance d'un carton n'est pas modélisée). Les liaisons
-  sont gérées de façon agrégée (5 avants par camp), sans modéliser chaque bras.
+- ✅ Le carton jaune entraîne désormais une **exclusion temporaire réelle**
+  (`sinBin`, 10 min ramenées à l'échelle du match via `_echelleArret`) : le
+  joueur fautif est retiré de `attaquants()`/`defenseurs()`, donc des phases de
+  jeu courant (porteur, soutien, défense, passes) — son équipe joue réellement
+  à 14. ⚠️ Simplifié : le fautif retenu est le joueur de l'équipe sanctionnée le
+  plus proche du maul (faute d'identifier l'auteur exact), et il réapparaît
+  encore dans les formations de mêlée/touche/coup d'envoi qui lisent
+  directement `equipeA`/`equipeB` sans passer par ce filtre. Les liaisons sont
+  gérées de façon agrégée (5 avants par camp), sans modéliser chaque bras.
 
 ## 5. Options sur pénalité (Law 19–21 — Penalty and free kick options)
 
@@ -198,9 +203,8 @@ pas de contestation de mêlée joueur par joueur (résolution agrégée).
 
 ## 8. Hors scope explicite (non modélisé du tout)
 
-- Exclusion temporaire réelle (sin-bin de 10 min) : le **carton jaune** est
-  désormais décidé et annoncé sur faute de maul (cf. section 4), mais le joueur
-  n'est pas physiquement retiré du terrain ; le carton rouge n'est pas modélisé.
+- Le carton rouge (exclusion définitive) n'est pas modélisé — seul le carton
+  jaune existe, avec sin-bin réel (cf. section 4).
 - 50:22, jeu au pied tactique avancé (chandelles, grubber).
 - Avantage prolongé (l'avantage n'est pas modélisé comme une fenêtre
   temporelle distincte ; cf. tap-and-go immédiat dans `_traiterPenalite`).
