@@ -111,6 +111,13 @@
   document.getElementById('fermerHistorique').addEventListener('click', () => {
     document.getElementById('panneauHistorique').classList.remove('visible');
   });
+  document.getElementById('btnStats').addEventListener('click', () => {
+    UI.rafraichirPanneauStats(normalizeMatchState(match.getState()));
+    document.getElementById('panneauStats').classList.add('visible');
+  });
+  document.getElementById('fermerStats').addEventListener('click', () => {
+    document.getElementById('panneauStats').classList.remove('visible');
+  });
   document.getElementById('btnLegende').addEventListener('click', () => {
     document.getElementById('panneauLegende').classList.add('visible');
   });

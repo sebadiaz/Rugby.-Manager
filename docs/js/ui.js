@@ -79,6 +79,35 @@
     document.getElementById('btnSauver').disabled = state.phase !== 'TERMINE';
   }
 
+  // --- Panneau de statistiques de match (toutes issues de state.stats, donc
+  // des actions réellement produites par la simulation, jamais inventées) ---
+  function ligneStat(label, a, b) {
+    return `<div class="ligneStat"><span class="valA">${a}</span><span class="labelStat">${label}</span><span class="valB">${b}</span></div>`;
+  }
+  function rafraichirPanneauStats(state) {
+    const s = state.stats;
+    if (!s) return;
+    const conteneur = document.getElementById('corpsStats');
+    const pct = state.possessionPct || { A: 50, B: 50 };
+    conteneur.innerHTML =
+      ligneStat('Possession', `${pct.A}%`, `${pct.B}%`) +
+      ligneStat('Essais', s.A.essais, s.B.essais) +
+      ligneStat('Passes réussies', s.A.passes, s.B.passes) +
+      ligneStat('Courses', s.A.carries, s.B.carries) +
+      ligneStat('Mètres gagnés', Math.round(s.A.metresGagnes), Math.round(s.B.metresGagnes)) +
+      ligneStat('Coups de pied', s.A.kicks, s.B.kicks) +
+      ligneStat('Plaquages réussis', s.A.tacklesMade, s.B.tacklesMade) +
+      ligneStat('Plaquages manqués', s.A.missedTackles, s.B.missedTackles) +
+      ligneStat('Mêlées gagnées', `${s.A.scrumsGagnes}/${s.A.scrums + s.B.scrums}`, `${s.B.scrumsGagnes}/${s.A.scrums + s.B.scrums}`) +
+      ligneStat('Touches gagnées', `${s.A.lineoutsGagnes}/${s.A.lineouts + s.B.lineouts}`, `${s.B.lineoutsGagnes}/${s.A.lineouts + s.B.lineouts}`) +
+      ligneStat('Rucks', s.A.rucks, s.B.rucks) +
+      ligneStat('Mauls', s.A.mauls, s.B.mauls) +
+      ligneStat('Turnovers gagnés', s.A.turnovers, s.B.turnovers) +
+      ligneStat('En-avants', s.A.knockOns, s.B.knockOns) +
+      ligneStat('Pénalités concédées', s.A.penalitesConcedees, s.B.penalitesConcedees) +
+      ligneStat('Cartons jaunes', s.A.cartonsJaunes, s.B.cartonsJaunes);
+  }
+
   // --- Historique des résultats (localStorage), pour rejouer un match déjà joué ---
   function chargerHistorique() {
     try { return JSON.parse(localStorage.getItem(CLE_HISTORIQUE)) || []; }
@@ -121,5 +150,6 @@
   global.RMUI = {
     formaterTemps, majAffichage, reinitialiserSuivi,
     chargerHistorique, rafraichirPanneauHistorique, enregistrerResultat,
+    rafraichirPanneauStats,
   };
 })(window);
