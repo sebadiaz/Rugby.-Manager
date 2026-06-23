@@ -526,11 +526,21 @@
       const distanceButs = sensAttaque > 0 ? (LONGUEUR - position.x) : position.x;
       // Essai de pénalité : quand la faute est commise tout près de la ligne
       // d'en-but adverse, elle a empêché un essai quasi certain. L'équipe non
-      // fautive marque directement 7 points, sans tir ni jeu rapide.
+      // fautive marque directement 7 points, sans tir ni jeu rapide. Loi 19 :
+      // une faute délibérée qui empêche un essai quasi certain est aussi
+      // sanctionnée d'un carton (jaune au minimum) pour l'auteur, pas
+      // seulement les 7 points — sinon l'essai de pénalité n'a aucun coût pour
+      // l'équipe fautive au-delà de la possession perdue.
       if (distanceButs <= 5 && this.rng() < 0.25) {
         this.score[equipeBeneficiaire] += 7;
         this.stats[equipeBeneficiaire].essais++;
         this.log('ESSAI_PENALITE', equipeBeneficiaire, `Essai de penalite, equipe ${equipeBeneficiaire} +7`);
+        const fautive = equipeBeneficiaire === 'A' ? 'B' : 'A';
+        const eqFautive = fautive === 'A' ? this.equipeA : this.equipeB;
+        const { joueur: fautif } = joueurLePlusProche(eqFautive, position.x, position.y);
+        fautif.sinBin = 600 * this._echelleArret;
+        this.stats[fautive].cartonsJaunes++;
+        this.log('CARTON_JAUNE', fautive, `Carton jaune pour l'equipe ${fautive} (n°${fautif.numero}) : faute deliberee empechant un essai - a 14 pendant ${Math.round(fautif.sinBin)}s`);
         this._nouvelleManche(equipeBeneficiaire);
         return;
       }
