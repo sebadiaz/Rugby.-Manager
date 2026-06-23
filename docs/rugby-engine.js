@@ -684,8 +684,15 @@
       for (const j of att) {
         if (j === porteur) continue;
         if (pursuiteEtroite.has(j)) {
+          // L'écart latéral (angle) ne doit jouer que sur Y : appliqué aussi à
+          // X, il pouvait placer le soutien jusqu'à 2 m devant le porteur dans
+          // le sens d'attaque, ce qui transformait toute passe vers lui en
+          // passe en avant (mêlée injustifiée). Le soutien reste toujours
+          // légèrement en retrait du porteur en profondeur, comme un vrai
+          // joueur de soutien qui attend le ballon dans son dos.
           const angle = (j.numero % 5) - 2;
-          avancer(j, (porteur.x - j.x) + angle, (porteur.y - j.y) + angle * 0.5, dt, vitesseMs(j) * 0.9);
+          const cibleX = porteur.x - porteur.sensAttaque * 1.5;
+          avancer(j, cibleX - j.x, (porteur.y - j.y) + angle * 0.5, dt, vitesseMs(j) * 0.9);
         } else if (j.tendance >= 30) {
           // Ouvreur/centres tiennent surtout leur couloir (ligne d'attaque
           // écartée, options de passe disponibles) avec juste une légère
