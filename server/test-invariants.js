@@ -112,6 +112,28 @@ test('un maul bloqué déclenche bien "use it"', () => {
   assert.ok(trouve, 'aucun évènement MAUL_USE_IT observé sur 20 graines');
 });
 
+test('une mêlée se termine toujours (jamais bloquée indéfiniment)', () => {
+  let globalMax = 0;
+  for (let seed = 1; seed <= 40; seed++) {
+    const m = new MatchEngine(seed, 300);
+    let tempsEnMeleeContinu = 0;
+    for (let t = 0; t < 300; t += 0.1) {
+      m.tick(0.1);
+      if (m.phase === 'MELEE') {
+        tempsEnMeleeContinu += 0.1;
+        globalMax = Math.max(globalMax, tempsEnMeleeContinu);
+      } else {
+        tempsEnMeleeContinu = 0;
+      }
+    }
+  }
+  // Séquence complète (formation/Crouch/Bind/Set/introduction/contestation/
+  // sortie) mesurée à ~2.3s max sur 40 graines avec _echelleArret au plancher
+  // (dureeMatch=300s) ; la marge couvre une chaîne de reformations (loi 20,
+  // mêlée qui tourne ou ballon bloqué) sans tomber dans un blocage réel.
+  assert.ok(globalMax < 8, `une mêlée est restée bloquée ${globalMax.toFixed(1)}s (devrait toujours se résoudre sous ~8s)`);
+});
+
 test('le ballon ne disparaît jamais (toujours des coordonnées numériques valides)', () => {
   const m = new MatchEngine(55, 300);
   for (let t = 0; t < 300; t += 0.1) {
