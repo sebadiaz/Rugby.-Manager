@@ -29,6 +29,10 @@
   function redimensionner() {
     const { hudH, seekH, ctrlH } = tailleZones();
     Renderer.redimensionner(hudH, seekH, ctrlH);
+    // La bannière d'arbitre est ancrée en haut à droite, sous le HUD (dont
+    // la hauteur varie avec le contenu du fil d'événements) plutôt qu'au
+    // centre de l'écran, pour ne pas masquer l'action sur le terrain.
+    document.getElementById('banner').style.top = (hudH + 8) + 'px';
   }
   window.addEventListener('resize', redimensionner);
 
@@ -40,6 +44,8 @@
     match = new MatchEngine(seed, duree);
     UI.reinitialiserSuivi();
     accumulateur = 0;
+    dernierEtatMelee = null;
+    miniPauseJusqua = 0;
     document.getElementById('seek').max = duree;
     document.getElementById('seek').value = 0;
     document.getElementById('tempsLabelFin').textContent = UI.formaterTemps(duree);
@@ -63,11 +69,27 @@
   let dernierTs = null;
   let accumulateur = 0;
 
+  // Mini-pause automatique sur mêlée : chaque étape (formation, Crouch,
+  // Bind, Set, introduction, contestation, sortie) est sinon trop rapide
+  // pour être vraiment vue (durées compressées sur un match démo de 5 min,
+  // cf. _echelleArret dans le moteur). On gèle l'avancée du temps de
+  // simulation (pas le rendu) une fraction de seconde à chaque changement
+  // d'étape, pour que le joueur voie réellement le déroulé de la mêlée.
+  const MINI_PAUSE_MELEE_MS = 700;
+  let dernierEtatMelee = null;
+  let miniPauseJusqua = 0;
+
   function boucle(ts) {
     if (dernierTs === null) dernierTs = ts;
     const dtReel = Math.min(0.05, (ts - dernierTs) / 1000);
     dernierTs = ts;
-    if (enCours) {
+    const etatMeleeActuel = match.phase === 'MELEE' && match.melee ? match.melee.etat : null;
+    if (etatMeleeActuel !== dernierEtatMelee) {
+      dernierEtatMelee = etatMeleeActuel;
+      if (etatMeleeActuel) miniPauseJusqua = ts + MINI_PAUSE_MELEE_MS;
+    }
+    const enMiniPause = ts < miniPauseJusqua;
+    if (enCours && !enMiniPause) {
       accumulateur += dtReel * vitesseSim;
       while (accumulateur >= PAS_FIXE) {
         match.tick(PAS_FIXE);
@@ -96,6 +118,8 @@
     const cible = Number(e.target.value);
     match = avancerJusqua(cible);
     accumulateur = 0;
+    dernierEtatMelee = null;
+    miniPauseJusqua = 0;
     document.getElementById('tempsLabel').textContent = UI.formaterTemps(cible);
   });
 
