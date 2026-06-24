@@ -131,10 +131,15 @@ test('une mêlée se termine toujours (jamais bloquée indéfiniment)', () => {
     }
   }
   // Séquence complète (formation/Crouch/Bind/Set/introduction/contestation/
-  // sortie) mesurée à ~2.3s max sur 40 graines avec _echelleArret au plancher
-  // (dureeMatch=300s) ; la marge couvre une chaîne de reformations (loi 20,
+  // sortie) mesurée jusqu'à ~10.6s max sur 40 graines avec _echelleArret au
+  // plancher (dureeMatch=300s) : la phase FORMATION attend désormais que les
+  // avants convergent réellement en courant vers le point de mêlée (cf.
+  // _capFormationMelee) plutôt que de les téléporter ou d'annoncer "Crouch"
+  // alors qu'ils sont encore loin ; un en-avant survenu à l'autre bout du
+  // terrain peut donc légitimement prendre quelques secondes de plus à se
+  // reformer. La marge couvre en plus une chaîne de reformations (loi 20,
   // mêlée qui tourne ou ballon bloqué) sans tomber dans un blocage réel.
-  assert.ok(globalMax < 8, `une mêlée est restée bloquée ${globalMax.toFixed(1)}s (devrait toujours se résoudre sous ~8s)`);
+  assert.ok(globalMax < 16, `une mêlée est restée bloquée ${globalMax.toFixed(1)}s (devrait toujours se résoudre sous ~16s)`);
 });
 
 test('la réception d\'un coup de pied ne téléporte jamais un joueur (course réelle jusqu\'au point de chute)', () => {

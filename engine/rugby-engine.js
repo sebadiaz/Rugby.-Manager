@@ -1690,13 +1690,42 @@
       // Le demi de melee tient le ballon a l'entree du tunnel, pas deja au
       // centre des avants : il ne le glissera dans la melee qu'a l'annonce
       // "introduction" (cf. _meleePositionnerBallon), sinon le ballon semble
-      // deja introduit avant meme que l'arbitre l'ait dit.
-      this.porteur.x = px - (equipeIntroduction === 'A' ? 1 : -1) * 1.2;
+      // deja introduit avant meme que l'arbitre l'ait dit. Comme le porteur
+      // change a chaque melee (le demi de melee de l'equipe qui beneficie de
+      // l'introduction n'est pas forcement celui qui jouait juste avant), ce
+      // positionnement est une reprise de jeu (cf. remise en jeu apres faute),
+      // pas un deplacement du meme joueur en cours d'action.
+      const xEntreePorteur = px - (equipeIntroduction === 'A' ? 1 : -1) * 1.2;
+      this.porteur.x = xEntreePorteur;
       this.porteur.y = py;
+      // Les avants convergent ensuite a la course (cf. _meleePlacerPaquets et
+      // le palier "pret" de _tickMelee, case FORMATION) : le joueur voit donc
+      // reellement les packs se reorganiser vers le point de melee plutot que
+      // d'apparaitre deja en place. Le delai d'annonce "Crouch" s'adapte a la
+      // distance du plus excentre (plafonne pour ne jamais bloquer le match),
+      // cf. _capFormationMelee.
+      this.melee.capFormation = this._capFormationMelee(px, py);
       this.ruckPoint = { x: px, y: py };
       this.contestants = [];
       this.phase = 'MELEE';
       this.timerPhase = 0;
+    }
+
+    // Estime le temps reel necessaire au pack le plus excentre pour rallier
+    // le point de melee en courant (vitesse pack ~0.7x, cf. _meleePlacerPaquets),
+    // avec une marge de securite (vitesse basse) et un plafond pour qu'un
+    // en-avant survenu tres loin du point de melee ne bloque jamais le match :
+    // remplace l'ancien plafond fixe de 3s, qui ne laissait pas le temps aux
+    // avants partis de loin de vraiment se regrouper avant l'annonce "Crouch".
+    _capFormationMelee(px, py) {
+      const avants = this.equipeA.concat(this.equipeB).filter(j => j.numero <= 8 && j.sinBin <= 0);
+      let pireDistance = 0;
+      for (const j of avants) {
+        const d = Math.hypot(j.x - px, j.y - py);
+        if (d > pireDistance) pireDistance = d;
+      }
+      const vitessePackMin = 2.5; // m/s, vitesse basse d'un pack qui se regroupe
+      return Math.min(10, Math.max(3, pireDistance / vitessePackMin));
     }
 
     _finMelee() {
@@ -1737,7 +1766,7 @@
           const tousAvants = this.equipeA.concat(this.equipeB).filter(j => j.numero <= 8 && j.sinBin <= 0);
           const enPlace = tousAvants.filter(j => Math.hypot(j.x - m.x, j.y - m.y) < 3.5).length;
           const pret = tousAvants.length === 0 || enPlace >= Math.ceil(tousAvants.length * 0.75);
-          if (m.timer >= dur(1.5) && (pret || m.timer >= 3)) {
+          if (m.timer >= dur(1.5) && (pret || m.timer >= m.capFormation)) {
             m.etat = E.CROUCH; m.timer = 0;
             this.log('MELEE_CROUCH', m.equipeIntroduction, 'Arbitre : "Crouch" - les premieres lignes se baissent');
           }
@@ -1862,13 +1891,16 @@
       const m = this.melee;
       const eqIntro = m.equipeIntroduction === 'A' ? this.equipeA : this.equipeB;
       const eqDef = m.equipeNonIntroduction === 'A' ? this.equipeA : this.equipeB;
-      const avantsIntro = eqIntro.filter(j => j.numero <= 8);
-      const avantsDef = eqDef.filter(j => j.numero <= 8);
+      // sinBin <= 0 : une équipe qui joue la mêlée à 7 (pack incomplet, cf.
+      // _meleePlacerPaquets) ne doit pas garder la force de poussée d'un
+      // pack à 8 dans le calcul de la contestation.
+      const avantsIntro = eqIntro.filter(j => j.numero <= 8 && j.sinBin <= 0);
+      const avantsDef = eqDef.filter(j => j.numero <= 8 && j.sinBin <= 0);
       const puissanceIntro = avantsIntro.reduce((s, j) => s + forceMaul(j), 0);
       const puissanceDef = avantsDef.reduce((s, j) => s + forceMaul(j), 0);
       const piliersIntro = avantsIntro.filter(j => j.numero === 1 || j.numero === 3).reduce((s, j) => s + forceMaul(j), 0);
       const piliersDef = avantsDef.filter(j => j.numero === 1 || j.numero === 3).reduce((s, j) => s + forceMaul(j), 0);
-      const talonneur = eqIntro.find(j => j.numero === 2);
+      const talonneur = eqIntro.find(j => j.numero === 2 && j.sinBin <= 0);
       const techniqueTalonneur = talonneur ? (talonneur.plaquage - 60) * 0.4 : 0;
       const fatigue = (this.dureeMatch === Infinity || this.dureeMatch <= 0) ? 0 : Math.min(1, this.tempsMatch / this.dureeMatch);
       const moral = Math.max(-4, Math.min(4, (this.score[m.equipeIntroduction] - this.score[m.equipeNonIntroduction]) / 5));
