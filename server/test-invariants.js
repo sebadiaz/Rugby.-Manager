@@ -139,7 +139,35 @@ test('une mêlée se termine toujours (jamais bloquée indéfiniment)', () => {
   // terrain peut donc légitimement prendre quelques secondes de plus à se
   // reformer. La marge couvre en plus une chaîne de reformations (loi 20,
   // mêlée qui tourne ou ballon bloqué) sans tomber dans un blocage réel.
+  // Ce seuil de 16s n'est garanti qu'à ce régime (_echelleArret au plancher,
+  // dureeMatch<=720s) : à pleine échelle (_echelleArret=1, dureeMatch=4800,
+  // le régime utilisé par server/simulate-many.js pour le calibrage), la même
+  // mêlée qui tourne prend mécaniquement plus de temps réel à se reformer ;
+  // cf. le test suivant pour la garantie "jamais bloquée" à cette échelle.
   assert.ok(globalMax < 16, `une mêlée est restée bloquée ${globalMax.toFixed(1)}s (devrait toujours se résoudre sous ~16s)`);
+});
+
+test('une mêlée se termine toujours, même à pleine échelle (_echelleArret=1)', () => {
+  let globalMax = 0;
+  for (let seed = 1; seed <= 20; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    let tempsEnMeleeContinu = 0;
+    for (let t = 0; t < 4800; t += 0.1) {
+      m.tick(0.1);
+      if (m.phase === 'MELEE') {
+        tempsEnMeleeContinu += 0.1;
+        globalMax = Math.max(globalMax, tempsEnMeleeContinu);
+      } else {
+        tempsEnMeleeContinu = 0;
+      }
+    }
+  }
+  // Mesuré jusqu'à ~22.9s max sur 20 graines à dureeMatch=4800 (match complet
+  // de 80 min, sans compression) : le délai de convergence des avants
+  // (_capFormationMelee, plafonné à 10s) plus une mêlée qui tourne et se
+  // reforme (loi 20) peuvent s'additionner ; la marge reste un garde-fou
+  // contre un blocage réel, pas une borne de confort.
+  assert.ok(globalMax < 30, `une mêlée est restée bloquée ${globalMax.toFixed(1)}s à pleine échelle (devrait toujours se résoudre sous ~30s)`);
 });
 
 test('la réception d\'un coup de pied ne téléporte jamais un joueur (course réelle jusqu\'au point de chute)', () => {
