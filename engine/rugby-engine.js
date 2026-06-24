@@ -1687,7 +1687,11 @@
       this.possession = equipeIntroduction;
       const eq = equipeIntroduction === 'A' ? this.equipeA : this.equipeB;
       this.porteur = this._neufVersDix(eq, eq[8]);
-      this.porteur.x = px;
+      // Le demi de melee tient le ballon a l'entree du tunnel, pas deja au
+      // centre des avants : il ne le glissera dans la melee qu'a l'annonce
+      // "introduction" (cf. _meleePositionnerBallon), sinon le ballon semble
+      // deja introduit avant meme que l'arbitre l'ait dit.
+      this.porteur.x = px - (equipeIntroduction === 'A' ? 1 : -1) * 1.2;
       this.porteur.y = py;
       this.ruckPoint = { x: px, y: py };
       this.contestants = [];
@@ -1711,6 +1715,7 @@
       // 1) IA des joueurs : packs qui se rapprochent et se lient, lignes
       // arrières en retrait, prêtes pour la sortie de balle.
       this._meleePlacerPaquets(dt);
+      this._meleePositionnerBallon(dt);
 
       // 2) Arbitrage permanent : fautes (poussée prématurée, écroulement,
       // pilier en travers, liaison incorrecte, introduction non droite,
@@ -1721,14 +1726,23 @@
       const E = ETATS_MELEE;
       const dur = (s) => s * this._echelleArret;
       switch (m.etat) {
-        case E.FORMATION:
+        case E.FORMATION: {
           // Les deux packs se placent face à face ; si une équipe est plus
           // forte elle ne pousse pas encore, elle attend l'introduction.
-          if (m.timer >= dur(1.5)) {
+          // L'arbitre n'engage "Crouch" que lorsque les avants sont
+          // réellement arrivés (sinon, sur un en-avant loin du point de
+          // mêlée, la contestation démarrerait avec une poignée de joueurs
+          // encore en train de courir depuis l'autre bout du terrain) ;
+          // un plafond évite un blocage si un avant reste très excentré.
+          const tousAvants = this.equipeA.concat(this.equipeB).filter(j => j.numero <= 8 && j.sinBin <= 0);
+          const enPlace = tousAvants.filter(j => Math.hypot(j.x - m.x, j.y - m.y) < 3.5).length;
+          const pret = tousAvants.length === 0 || enPlace >= Math.ceil(tousAvants.length * 0.75);
+          if (m.timer >= dur(1.5) && (pret || m.timer >= 3)) {
             m.etat = E.CROUCH; m.timer = 0;
             this.log('MELEE_CROUCH', m.equipeIntroduction, 'Arbitre : "Crouch" - les premieres lignes se baissent');
           }
           break;
+        }
         case E.CROUCH:
           if (m.timer >= dur(1.0)) {
             m.etat = E.BIND; m.timer = 0;
@@ -1796,18 +1810,46 @@
           : m.etat === E.BIND ? 0.7
             : 0.35;
       const placer = (equipe, cote) => {
-        const avants = equipe.filter(j => j.numero <= 8);
+        // sinBin <= 0 : un avant au "bin" ne rejoint pas le pack, son équipe
+        // joue la mêlée à 7 (ou moins), comme en match réel.
+        const avants = equipe.filter(j => j.numero <= 8 && j.sinBin <= 0);
         avants.forEach((j, i) => {
           const cx = m.x - m.sens * cote * (ecart + (i % 3) * 0.5);
           const cy = m.y + ((i % 2) ? -1 : 1) * Math.ceil((i + 1) / 2) * 0.6;
           avancer(j, cx - j.x, cy - j.y, dt, vitesseMs(j) * 0.7);
         });
-        const backs = equipe.filter(j => j.numero > 8);
+        // Le porteur (demi de mêlée tenant le ballon) est positionné à part
+        // par _meleePositionnerBallon, pas ramené sur son couloir habituel.
+        const backs = equipe.filter(j => j.numero > 8 && j.sinBin <= 0 && j !== this.porteur);
         const cxBacks = m.x - m.sens * cote * 9;
-        backs.forEach((j) => avancer(j, cxBacks - j.x, j.channelY - j.y, dt, vitesseMs(j) * 0.85));
+        backs.forEach((j) => {
+          // La ligne arrière se réorganise autour du point de mêlée réel
+          // (pas uniquement sur le couloir figé de chaque joueur) : sinon
+          // les arrières ne bougent jamais en fonction d'où la mêlée se
+          // forme sur la largeur du terrain.
+          const cibleY = j.channelY * 0.6 + m.y * 0.4;
+          avancer(j, cxBacks - j.x, cibleY - j.y, dt, vitesseMs(j) * 0.85);
+        });
       };
       placer(eqIntro, -1);
       placer(eqDef, 1);
+    }
+
+    // Ballon tenu par le demi de mêlée à l'entrée du tunnel pendant la mise
+    // en place (formation/Crouch/Bind/Set), glissé dans la mêlée seulement
+    // pendant l'état "introduction" : le ballon ne doit pas déjà être au
+    // centre des avants avant que l'arbitre ait réellement annoncé son
+    // entrée, sinon l'annonce "introduction" arrive après coup, sur un
+    // ballon visuellement déjà en place.
+    _meleePositionnerBallon(dt) {
+      const m = this.melee;
+      const E = ETATS_MELEE;
+      const xEntree = m.x - m.sens * 1.2;
+      if (m.etat === E.INTRODUCTION) {
+        avancer(this.porteur, m.x - this.porteur.x, m.y - this.porteur.y, dt, vitesseMs(this.porteur));
+      } else if (m.etat === E.FORMATION || m.etat === E.CROUCH || m.etat === E.BIND || m.etat === E.SET) {
+        avancer(this.porteur, xEntree - this.porteur.x, m.y - this.porteur.y, dt, vitesseMs(this.porteur));
+      }
     }
 
     // Facteurs de contestation (loi 19) combinés en un différentiel unique :
