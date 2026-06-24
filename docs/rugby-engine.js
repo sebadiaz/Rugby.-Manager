@@ -726,9 +726,9 @@
           this.porteur.auSol = 1.5;
           this.stats[this.possession].rucks++;
           const tierRuck = this.rng();
-          this.ruckDureeCible = tierRuck < 0.55 ? 2 + this.rng() * 2
+          this.ruckDureeCible = (tierRuck < 0.55 ? 2 + this.rng() * 2
             : tierRuck < 0.85 ? 4 + this.rng() * 3
-              : 7 + this.rng() * 4;
+              : 7 + this.rng() * 4) * this._echelleArret;
           this.ruckTempsSansSoutien = 0;
           this.phase = 'RUCK';
           this._receptionDirecte = false;
@@ -831,9 +831,9 @@
             porteur.auSol = 1.5;
             this.stats[this.possession].rucks++;
             const tierRuck = this.rng();
-            this.ruckDureeCible = tierRuck < 0.55 ? 2 + this.rng() * 2
+            this.ruckDureeCible = (tierRuck < 0.55 ? 2 + this.rng() * 2
               : tierRuck < 0.85 ? 4 + this.rng() * 3
-                : 7 + this.rng() * 4;
+                : 7 + this.rng() * 4) * this._echelleArret;
             this.ruckTempsSansSoutien = 0;
             this.phase = 'RUCK';
             this._receptionDirecte = false;
@@ -1161,7 +1161,7 @@
       // _imposerRecuperationRuck), un recul trop large ouvrirait des brèches
       // systématiques côté ligne d'en-but.
       const margeRecul = 3;
-      const delaiGrace = 1.5;
+      const delaiGrace = 1.5 * this._echelleArret;
 
       // Joueurs qui convergent vers le point de ruck (le(s) contestant(s)
       // défensif(s) et les soutiens d'attaque) : chacun garde une position
@@ -1197,7 +1197,7 @@
       // coéquipier n'est venu sécuriser le ballon, jamais réinitialisé tant que
       // le ruck dure — c'est ce cumul qui pèse sur le risque de turnover/pénalité.
       if (iSoutien === 0) this.ruckTempsSansSoutien = (this.ruckTempsSansSoutien || 0) + dt;
-      const dureeCible = this.ruckDureeCible || 1.8;
+      const dureeCible = this.ruckDureeCible || 1.8 * this._echelleArret;
       if (this.timerPhase >= dureeCible) {
         // Contest au ruck pondéré par les avants réellement engagés autour du
         // point de ruck (même proxy de force que le maul, forceMaul), plutôt
@@ -1232,7 +1232,7 @@
           this.possession = this.possession === 'A' ? 'B' : 'A';
           this.stats[this.possession].turnovers++;
           this.log('TURNOVER', this.possession, `Ballon gratte au ruck, equipe ${this.possession} recupere`);
-        } else if ((this.ruckTempsSansSoutien || 0) > 1.5 && this.rng() < 0.12) {
+        } else if ((this.ruckTempsSansSoutien || 0) > 1.5 * this._echelleArret && this.rng() < 0.12) {
           this.log('PENALITE_RUCK_ISOLE', equipeOriginale, `Porteur isole au ruck, ballon non rendu, penalite pour l'equipe adverse`);
           this._traiterPenalite(equipeOriginale === 'A' ? 'B' : 'A', pt);
           return;

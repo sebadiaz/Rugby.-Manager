@@ -95,8 +95,11 @@ test('un ruck se termine toujours (jamais bloqué indéfiniment)', () => {
     }
   }
   // Ruck à résolution variable (rucks rapides 2-4s, moyens 4-7s, lents
-  // 7-11s, cf. _tickPorte/_tickRuck) : la borne haute correspond donc au tiers
-  // lent (11s) plus une marge pour le délai de grâce de hors-jeu (1.5s).
+  // 7-11s, cf. _tickRuck), mis à l'échelle par _echelleArret selon la durée
+  // du match (300s ici => plancher 0.15, donc tiers réels ~0.3-1.65s) : la
+  // borne haute du test reste volontairement large (durée non mise à
+  // l'échelle, palier lent 11s + marge hors-jeu 1.5s) pour rester un garde-fou
+  // valide même si la durée de match ou l'échelle changent.
   assert.ok(maxTempsEnRuck < 13, `un ruck est resté bloqué ${maxTempsEnRuck.toFixed(1)}s (devrait toujours se résoudre sous ~12.5s avec la résolution à trois paliers)`);
 });
 

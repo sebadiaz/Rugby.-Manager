@@ -95,12 +95,19 @@ Implémenté (`Referee.horsJeuRuck`, `_tickRuck`) :
 - ✅ Ligne de hors-jeu calculée à partir du point de ruck (`ruckPoint`) et du
   sens d'attaque.
 - ✅ Joueurs hors-jeu doivent se replier vers la zone onside (au-delà du
-  ruck, côté de leur propre en-but) ; délai de grâce de 1.5 s avant
-  sanction (`delaiGrace`), pour laisser un temps de réaction réaliste avant
-  de siffler.
+  ruck, côté de leur propre en-but) ; délai de grâce avant sanction
+  (`delaiGrace`), pour laisser un temps de réaction réaliste avant de
+  siffler.
 - ⚠️ Simplifié : pas de notion de « porte d'entrée » au ruck (entrer par les
   côtés), pas de ruck prolongé/jackal différencié — résolu de façon agrégée
-  après 1.8 s (`timerPhase >= 1.8`).
+  après une durée cible tirée par paliers (`ruckDureeCible`) : 55 % de
+  rucks rapides (2-4 s), 30 % de rucks moyens (4-7 s), 15 % de rucks lents
+  (7-11 s). Comme tous les autres délais d'arrêt de jeu du moteur
+  (carton, sortie de mêlée, célébration d'essai...), cette durée et le
+  délai de grâce de hors-jeu sont mis à l'échelle par `_echelleArret`
+  (`dureeMatch / 4800`, plancher 0.15) pour rester proportionnels sur un
+  match raccourci plutôt que de figer un ruck à sa durée « 80 minutes »
+  sur une partie de démonstration de quelques minutes.
 
 ## 4. Maul (Law 17 — Maul)
 
