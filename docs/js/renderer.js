@@ -141,6 +141,19 @@
       ctx.stroke();
       return;
     }
+    // Ballon au sol après un coup de pied tactique, pas encore récupéré :
+    // posé au point de chute réel, jamais dans des mains (personne ne l'a
+    // encore rejoint en courant) — cf. MatchEngine._tickReceptionCoupDePied.
+    if (state.ball && state.ball.state === 'LOOSE') {
+      ctx.beginPath();
+      ctx.ellipse(sol.px, sol.py, 6, 3.8, Math.PI / 4, 0, Math.PI * 2);
+      ctx.fillStyle = '#8d5524';
+      ctx.fill();
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = '#5d3a1a';
+      ctx.stroke();
+      return;
+    }
     // Ballon tenu : dessiné dans les mains du porteur, légèrement décalé.
     const main = versCanvas(state.porteur.x, state.porteur.y);
     ctx.beginPath();
@@ -173,10 +186,11 @@
 
   function dessiner(state) {
     dessinerTerrain();
-    // Pendant que le ballon est en vol (coup d'envoi), personne ne le porte :
-    // on ne met aucun joueur en surbrillance.
-    const enVol = state.ballon && state.ballon.enVol;
-    const estPorteur = j => !enVol && j.team === state.porteur.team && j.numero === state.porteur.numero;
+    // Pendant que le ballon est en vol ou au sol après un coup de pied
+    // (personne ne l'a encore rejoint), on ne met aucun joueur en
+    // surbrillance : le dernier porteur (le buteur) ne l'a plus en main.
+    const sansPorteur = (state.ballon && state.ballon.enVol) || (state.ball && state.ball.state === 'LOOSE');
+    const estPorteur = j => !sansPorteur && j.team === state.porteur.team && j.numero === state.porteur.numero;
     for (const j of state.teams.A) dessinerJoueur(j, estPorteur(j));
     for (const j of state.teams.B) dessinerJoueur(j, estPorteur(j));
     dessinerArbitre(state);

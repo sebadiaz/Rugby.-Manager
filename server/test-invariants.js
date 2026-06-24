@@ -38,7 +38,7 @@ test('un seul porteur de balle à la fois (ball.state cohérent avec porteur)', 
       j => j.team === s.porteur.team && j.numero === s.porteur.numero
     );
     assert.strictEqual(porteurs.length, 1, 'doit y avoir exactement un porteur identifiable');
-    assert.ok(['CARRIED', 'AIR', 'RUCK', 'MAUL', 'OUT'].includes(s.ball.state), `état de balle invalide : ${s.ball.state}`);
+    assert.ok(['CARRIED', 'AIR', 'LOOSE', 'RUCK', 'MAUL', 'OUT'].includes(s.ball.state), `état de balle invalide : ${s.ball.state}`);
   }
 });
 
@@ -135,6 +135,45 @@ test('une mêlée se termine toujours (jamais bloquée indéfiniment)', () => {
   // (dureeMatch=300s) ; la marge couvre une chaîne de reformations (loi 20,
   // mêlée qui tourne ou ballon bloqué) sans tomber dans un blocage réel.
   assert.ok(globalMax < 8, `une mêlée est restée bloquée ${globalMax.toFixed(1)}s (devrait toujours se résoudre sous ~8s)`);
+});
+
+test('la réception d\'un coup de pied ne téléporte jamais un joueur (course réelle jusqu\'au point de chute)', () => {
+  // Avant le passage à l'échelle des durées de ruck, la réception d'un coup
+  // de pied tactique plaçait directement le joueur gagnant sur le point de
+  // chute, quelle que soit sa distance réelle au moment de la résolution
+  // (cf. _tickReceptionCoupDePied) : ce test garde le bug fermé en bornant
+  // le déplacement par tick à la vitesse de course maximale + marge.
+  const VITESSE_MAX = 8.0; // cf. vitesseMs() : 3.0 + (100/100)*5.0
+  // La marque (loi 11, cf. _traiterCoupFranc) avance délibérément le
+  // receveur d'environ 5 m pour jouer vite son coup franc : ce saut existait
+  // déjà avant ce correctif et n'est pas le bug visé (qui plaçait le joueur
+  // directement sur le point de chute, à n'importe quelle distance). On
+  // élargit donc la marge pour couvrir chasse + marque, sans la rendre
+  // infinie : un vrai téléport vers le point de chute (souvent >15-20 m) la
+  // dépasserait encore largement.
+  const AVANCE_MARQUE = 5.0;
+  for (let seed = 1; seed <= 25; seed++) {
+    const m = new MatchEngine(seed, 300);
+    for (let t = 0; t < 300; t += 0.1) {
+      const enPhaseCoupDePied = m.phase === 'COUP_DE_PIED_JEU';
+      const avant = enPhaseCoupDePied
+        ? new Map([...m.equipeA, ...m.equipeB].map(j => [j.team + j.numero, { x: j.x, y: j.y }]))
+        : null;
+      m.tick(0.1);
+      if (!enPhaseCoupDePied) continue;
+      // Une sortie en touche pendant ce tick forme immédiatement la touche
+      // (les joueurs se placent sur la ligne de touche, conformément à la
+      // mécanique de touche existante, indépendante de ce correctif) : on
+      // n'evalue le non-téléportation que pour la chasse/réception réelle.
+      if (m.phase === 'TOUCHE') continue;
+      for (const j of [...m.equipeA, ...m.equipeB]) {
+        const prev = avant.get(j.team + j.numero);
+        const dist = Math.hypot(j.x - prev.x, j.y - prev.y);
+        const pasMax = VITESSE_MAX * 0.1 * 1.5 + AVANCE_MARQUE;
+        assert.ok(dist <= pasMax, `${j.team}${j.numero} a parcouru ${dist.toFixed(2)}m en un seul tick (0.1s) pendant un coup de pied (téléportation suspectée)`);
+      }
+    }
+  }
 });
 
 test('le ballon ne disparaît jamais (toujours des coordonnées numériques valides)', () => {

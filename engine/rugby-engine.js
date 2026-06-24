@@ -239,6 +239,12 @@
       this.ballonVolX = LONGUEUR / 2;
       this.ballonVolY = LARGEUR / 2;
       this.ballonVolHauteur = 0;
+      // Ballon au sol après un coup de pied tactique, pas encore récupéré :
+      // les chasseurs/receveurs doivent réellement courir jusqu'au point de
+      // chute (cf. _tickReceptionCoupDePied) avant qu'un joueur ne soit
+      // déclaré porteur, jamais une téléportation instantanée.
+      this._receptionEnAttente = false;
+      this.timerReceptionAuSol = 0;
       // Maul (loi 17) : objet d'état courant (null hors maul), et indicateur
       // « le ballon vient d'une réception directe d'un coup de pied adverse »
       // (exception loi 8 sur l'attribution de la mêlée en cas de ballon injouable).
@@ -1071,11 +1077,13 @@
       this.timerPhase = 0;
     }
 
-    // Vol puis résolution d'un coup de pied tactique : sortie en touche (avec
-    // l'exception loi 19.2 du 22 m), contest aérien (chandelle/chip) ou simple
-    // récupération par l'équipe la mieux placée (dégagement/occupation).
+    // Vol d'un coup de pied tactique : sortie en touche (avec l'exception loi
+    // 19.2 du 22 m) dès la chute si hors-terrain, sinon le ballon retombe au
+    // sol et c'est _tickReceptionCoupDePied qui gère la course jusqu'à lui.
     _tickCoupDePiedJeu(dt) {
       this.timerPhase += dt;
+      if (!this.ballonEnVol) { this._tickReceptionCoupDePied(dt); return; }
+
       const dxVol = this.cibleCoupDePiedX - this.xCoupDePiedJeu;
       const dyVol = this.cibleCoupDePiedY - this.yCoupDePiedJeu;
       const distVol = Math.hypot(dxVol, dyVol);
@@ -1096,8 +1104,8 @@
       if (this.timerPhase < duree) return;
       this.ballonEnVol = false;
       this.ballonVolHauteur = 0;
-      const type = this.typeCoupDePiedJeu;
       const cibleX = Math.max(0, Math.min(LONGUEUR, this.cibleCoupDePiedX));
+      const cibleY = Math.max(0, Math.min(LARGEUR, this.cibleCoupDePiedY));
       const horsTerrain = this.cibleCoupDePiedY <= 0.01 || this.cibleCoupDePiedY >= LARGEUR - 0.01;
 
       if (horsTerrain) {
@@ -1107,20 +1115,68 @@
         const zoneKickeur = this._zoneTerrain({ x: this.xCoupDePiedJeu, sensAttaque: equipeKick === 'A' ? 1 : -1 });
         const conserveTouche = zoneKickeur === 'OWN_22';
         const equipeQuiSort = conserveTouche ? (equipeKick === 'A' ? 'B' : 'A') : equipeKick;
-        this._accorderTouche(equipeQuiSort, { x: cibleX, y: Math.max(0, Math.min(LARGEUR, this.cibleCoupDePiedY)) });
+        this._accorderTouche(equipeQuiSort, { x: cibleX, y: cibleY });
         return;
       }
 
-      const { joueur: chasseurProche, distance: dChasseur } = joueurLePlusProche(chasseurs, cibleX, this.cibleCoupDePiedY);
-      const { joueur: receveurProche, distance: dReceveur } = joueurLePlusProche(receveurs, cibleX, this.cibleCoupDePiedY);
-      const contestable = type === 'CHANDELLE' || type === 'CHIP';
-      const probaChasseurGagne = contestable
-        ? Math.max(0.15, Math.min(0.55, 0.4 - (dChasseur - dReceveur) / 20))
-        : Math.max(0.03, Math.min(0.2, 0.08 - (dChasseur - dReceveur) / 30));
-      const chasseurGagne = this.rng() < probaChasseurGagne;
+      // Le ballon touche le sol : il reste loose au point de chute, personne
+      // n'est téléporté dessus. _tickReceptionCoupDePied (appelée au prochain
+      // tick puisque ballonEnVol vient de passer à false) fait converger les
+      // chasseurs/receveurs en courant et ne déclare un porteur qu'une fois
+      // l'un d'eux réellement arrivé au contact du ballon.
+      this.ballonVolX = cibleX;
+      this.ballonVolY = cibleY;
+      this._receptionEnAttente = true;
+      this.timerReceptionAuSol = 0;
+    }
+
+    // Ballon au sol après un coup de pied tactique, en attente de réception :
+    // les chasseurs et receveurs continuent de courir vers le point de chute
+    // (mêmes vitesses que pendant le vol), et seul un joueur réellement arrivé
+    // au contact peut capter le ballon — jamais de téléportation directe sur
+    // la cible. Délai de grâce borné (4 s) pour ne jamais laisser le ballon
+    // mort au sol indéfiniment si un dégagement profond atterrit loin de tout
+    // le monde : on force alors l'arrivée du joueur le plus proche.
+    _tickReceptionCoupDePied(dt) {
+      this.timerReceptionAuSol += dt;
+      const type = this.typeCoupDePiedJeu;
+      const equipeKick = this.equipeCoupDePiedJeu;
+      const chasseurs = equipeKick === 'A' ? this.equipeA : this.equipeB;
+      const receveurs = equipeKick === 'A' ? this.equipeB : this.equipeA;
+      const cibleX = this.ballonVolX, cibleY = this.ballonVolY;
+
+      for (const j of [...chasseurs, ...receveurs]) {
+        avancer(j, cibleX - j.x, cibleY - j.y, dt, vitesseMs(j) * 0.85);
+      }
+
+      const RAYON_RECEPTION = 1.3;
+      const { joueur: chasseurProche, distance: dChasseur } = joueurLePlusProche(chasseurs, cibleX, cibleY);
+      const { joueur: receveurProche, distance: dReceveur } = joueurLePlusProche(receveurs, cibleX, cibleY);
+      const chasseurOk = dChasseur <= RAYON_RECEPTION;
+      const receveurOk = dReceveur <= RAYON_RECEPTION;
+      const delaiEcoule = this.timerReceptionAuSol >= 4;
+      if (!chasseurOk && !receveurOk && !delaiEcoule) return;
+
+      this._receptionEnAttente = false;
+      // Seul un camp réellement arrivé au contact peut capter le ballon : si
+      // un seul camp est à portée, il récupère d'office (pas de tirage au
+      // sort, pas de téléportation : le joueur est déjà là où il a couru).
+      // Si les deux sont à portée (ou qu'aucun ne l'est après le délai de
+      // grâce), le tirage au sort habituel départage, et le gagnant ramasse
+      // depuis sa position réelle — jamais en se déplaçant sur la cible.
+      let chasseurGagne;
+      if (chasseurOk && !receveurOk) {
+        chasseurGagne = true;
+      } else if (receveurOk && !chasseurOk) {
+        chasseurGagne = false;
+      } else {
+        const contestable = type === 'CHANDELLE' || type === 'CHIP';
+        const probaChasseurGagne = contestable
+          ? Math.max(0.15, Math.min(0.55, 0.4 - (dChasseur - dReceveur) / 20))
+          : Math.max(0.03, Math.min(0.2, 0.08 - (dChasseur - dReceveur) / 30));
+        chasseurGagne = this.rng() < probaChasseurGagne;
+      }
       const joueur = chasseurGagne ? chasseurProche : receveurProche;
-      joueur.x = cibleX;
-      joueur.y = Math.max(0, Math.min(LARGEUR, this.cibleCoupDePiedY));
       this.porteur = joueur;
       this.possession = joueur.team;
       this.ruckPoint = { x: joueur.x, y: joueur.y };
@@ -2162,7 +2218,7 @@
         // Occupation : où se joue le match (position réelle du ballon),
         // indépendamment de qui le porte — sensAttaque de A est toujours +1,
         // donc la moitié de terrain x > LONGUEUR/2 est sa moitié offensive.
-        const xBallon = this.ballonEnVol ? this.ballonVolX : this.porteur.x;
+        const xBallon = (this.ballonEnVol || this._receptionEnAttente) ? this.ballonVolX : this.porteur.x;
         if (xBallon > LONGUEUR / 2) this.tempsOccupation.A += dt;
         else this.tempsOccupation.B += dt;
       }
@@ -2205,6 +2261,7 @@
     // "tenu" n'a pas de vitesse propre, il suit le porteur).
     _etatBallon() {
       if (this.ballonEnVol) return 'AIR';
+      if (this._receptionEnAttente) return 'LOOSE';
       if (this.phase === 'RUCK') return 'RUCK';
       if (this.phase === 'MAUL') return 'MAUL';
       if (this.phase === 'TOUCHE') return 'OUT';
@@ -2213,6 +2270,10 @@
 
     getState() {
       const enVol = this.ballonEnVol;
+      // Ballon au sol après un coup de pied tactique, pas encore récupéré :
+      // pas tenu par le porteur (qui est resté en arrière, ballon déjà loin) —
+      // sa position réelle est celle du point de chute, comme pendant le vol.
+      const auSolLoose = !enVol && this._receptionEnAttente;
       let bvx = 0, bvy = 0;
       if (enVol) {
         const dxVol = this.ballonCibleX - this.xCoupEnvoi;
@@ -2226,22 +2287,25 @@
         equipeB: this.equipeB.map(j => ({ ...j })),
         porteur: { team: this.porteur.team, numero: this.porteur.numero, x: this.porteur.x, y: this.porteur.y },
         // Position réelle du ballon : en vol pendant un coup d'envoi (avec une
-        // hauteur 0..1 pour figurer la cloche), sinon dans les mains du porteur.
-        // Conservé pour compatibilité avec le rendu existant.
+        // hauteur 0..1 pour figurer la cloche), au sol après un coup de pied
+        // tactique tant que personne ne l'a rejoint, sinon dans les mains du
+        // porteur. Conservé pour compatibilité avec le rendu existant.
         ballon: enVol
           ? { x: this.ballonVolX, y: this.ballonVolY, enVol: true, hauteur: this.ballonVolHauteur }
-          : { x: this.porteur.x, y: this.porteur.y, enVol: false, hauteur: 0 },
+          : auSolLoose
+            ? { x: this.ballonVolX, y: this.ballonVolY, enVol: false, hauteur: 0 }
+            : { x: this.porteur.x, y: this.porteur.y, enVol: false, hauteur: 0 },
         // Objet ballon normalisé : { x, y, vx, vy, state, carrierTeam, carrierNumber }.
         // À terme, c'est cette forme qui doit devenir la source de vérité côté
         // rendu (docs/js/renderer.js) ; `ballon`/`porteur` restent en place tant
         // que la migration du rendu n'est pas terminée.
         ball: {
-          x: enVol ? this.ballonVolX : this.porteur.x,
-          y: enVol ? this.ballonVolY : this.porteur.y,
+          x: enVol || auSolLoose ? this.ballonVolX : this.porteur.x,
+          y: enVol || auSolLoose ? this.ballonVolY : this.porteur.y,
           vx: bvx, vy: bvy,
           state: this._etatBallon(),
-          carrierTeam: enVol ? null : this.porteur.team,
-          carrierNumber: enVol ? null : this.porteur.numero,
+          carrierTeam: enVol || auSolLoose ? null : this.porteur.team,
+          carrierNumber: enVol || auSolLoose ? null : this.porteur.numero,
         },
         arbitre: this._positionArbitre(),
         possession: this.possession,
