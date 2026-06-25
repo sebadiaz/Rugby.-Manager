@@ -1757,7 +1757,11 @@
       };
       this.possession = equipeIntroduction;
       const eq = equipeIntroduction === 'A' ? this.equipeA : this.equipeB;
-      this.porteur = this._neufVersDix(eq, eq[8]);
+      // Loi 19.13-15 : seul le demi de melee (n°9) introduit le ballon dans
+      // le tunnel, jamais l'ouvreur. _neufVersDix (qui privilegie le n°10)
+      // sert a la SORTIE de balle d'un regroupement, pas a l'introduction -
+      // l'utiliser ici donnait le ballon au n°10 sur 100% des melees.
+      this.porteur = eq.find(j => j.numero === 9 && j.sinBin <= 0) || eq[8];
       // Le demi de melee tient le ballon a l'entree du tunnel, pas deja au
       // centre des avants : il ne le glissera dans la melee qu'a l'annonce
       // "introduction" (cf. _meleePositionnerBallon), sinon le ballon semble
