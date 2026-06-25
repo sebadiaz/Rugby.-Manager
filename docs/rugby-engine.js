@@ -2276,11 +2276,34 @@
       this.timerPhase = 0;
     }
 
+    // Replacement des joueurs pendant l'essai/la transformation (loi 8.9 et
+    // 8.14) : l'équipe qui défend doit se replier sur sa ligne d'en-but tant
+    // que le botteur n'a pas amorcé sa course d'élan ; l'équipe du botteur
+    // reste derrière le ballon. Sans ce replacement, les 28 autres joueurs
+    // restaient figés exactement là où l'essai avait été marqué pendant les
+    // ~33 s de célébration + transformation.
+    _transformationPlacerJoueurs(dt) {
+      const sens = this.essaiEquipe === 'A' ? 1 : -1;
+      const equipeAttaque = this.essaiEquipe === 'A' ? this.equipeA : this.equipeB;
+      const equipeDefense = this.essaiEquipe === 'A' ? this.equipeB : this.equipeA;
+      const ligneDefense = sens > 0 ? LONGUEUR : 0;
+      const xAttaque = Math.max(0, Math.min(LONGUEUR, this.essaiX - sens * 15));
+      for (const j of equipeDefense) {
+        if (j.sinBin > 0) continue;
+        avancer(j, ligneDefense - j.x, 0, dt, vitesseMs(j) * 0.8);
+      }
+      for (const j of equipeAttaque) {
+        if (j.sinBin > 0 || j === this.porteur) continue;
+        avancer(j, xAttaque - j.x, 0, dt, vitesseMs(j) * 0.8);
+      }
+    }
+
     // Célébration de l'essai avant l'enchaînement sur la transformation : en
     // match réel, l'arbitre laisse un temps mort notable (replays, retour au
     // sol, replacement) avant que le botteur ne s'installe.
     _tickEssai(dt) {
       this.timerPhase += dt;
+      this._transformationPlacerJoueurs(dt);
       if (this.timerPhase >= 8 * this._echelleArret) {
         // Place le buteur (l'ouvreur) dans l'alignement de l'essai : sinon
         // tous les joueurs restent figés là où l'essai a été marqué et rien
@@ -2302,6 +2325,7 @@
     // frappe prennent ~20-25 s en match réel, pas 2 s.
     _tickTransformation(dt) {
       this.timerPhase += dt;
+      this._transformationPlacerJoueurs(dt);
       const duree = 25 * this._echelleArret;
       // Le ballon s'envole vers les poteaux pendant la dernière fraction du
       // temps d'arrêt (le reste, c'est le placement et la course d'élan) :
