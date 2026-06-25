@@ -154,6 +154,20 @@
       ctx.stroke();
       return;
     }
+    // Ballon au ruck : personne ne le tient, il est au sol au point de
+    // regroupement (le porteur affiché n'est que le dernier joueur plaqué,
+    // couché dessus) — sinon le ballon semblait toujours "en mains" même
+    // pendant la phase de jeu la plus fréquente du match.
+    if (state.ball && state.ball.state === 'RUCK') {
+      ctx.beginPath();
+      ctx.ellipse(sol.px, sol.py + 5, 5.5, 3.4, Math.PI / 4, 0, Math.PI * 2);
+      ctx.fillStyle = '#8d5524';
+      ctx.fill();
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = '#5d3a1a';
+      ctx.stroke();
+      return;
+    }
     // Ballon tenu : dessiné dans les mains du porteur, légèrement décalé.
     const main = versCanvas(state.porteur.x, state.porteur.y);
     ctx.beginPath();
