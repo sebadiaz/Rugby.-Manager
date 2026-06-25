@@ -1233,9 +1233,20 @@
         if (j === this.porteur) continue;
         const estContestant = this.contestants.includes(j.numero) && j.team !== this.possession;
         const estSoutienAttaque = j.team === this.possession && distance(j, pt) < 8;
+        // Le demi de mêlée court vers la base du ruck quelle que soit sa
+        // distance de départ (il suit toujours le jeu en match réel) : c'est
+        // lui qui jouera le ballon à la sortie (cf. plus bas), donc il ne
+        // doit jamais y être téléporté à la résolution — il doit l'avoir
+        // réellement rejoint en courant pendant la phase.
+        const estDemiMelee = !estSoutienAttaque && j.team === this.possession && j.numero === 9 && j.auSol === 0;
 
         if (estContestant) { placerEnRosette(j, 1, iContestants++); continue; }
         if (estSoutienAttaque) { placerEnRosette(j, -1, iSoutien++); continue; }
+        if (estDemiMelee) {
+          const cx = pt.x - sensAttaque * 1;
+          avancer(j, cx - j.x, pt.y - j.y, dt, vitesseMs(j));
+          continue;
+        }
 
         if (j.team !== this.possession && Referee.horsJeuRuck(j, pt, sensAttaque)) {
           // Se replier vers la zone ONSIDE (au-delà du point de ruck, côté de
@@ -1294,23 +1305,25 @@
           return;
         }
         // Sortie de ruck : c'est le demi de mêlée (n°9) qui joue le ballon au
-        // pied du regroupement, comme à la mêlée, à la touche et à la sortie
-        // de maul — pas simplement l'avant le plus proche du point de ruck.
-        // S'il est lui-même au sol (rare, juste plaqué), un autre avant relaie.
+        // pied du regroupement, comme à la mêlée et à la sortie de maul — pas
+        // simplement l'avant le plus proche du point de ruck. Il a couru vers
+        // le ruck tout au long de la phase ci-dessus (cf. estDemiMelee) ; on
+        // ne force donc plus sa position au point de ruck à la résolution, ce
+        // qui le téléportait auparavant depuis là où il se trouvait vraiment.
+        // S'il est lui-même au sol (rare, juste plaqué), l'avant le plus
+        // proche du point relaie à sa place. La transmission à l'ouvreur
+        // n'est plus instantanée : depuis sa position réelle, le 9 décide
+        // ensuite normalement (cf. _tickPorte/_tenterPasse) s'il lui passe,
+        // exactement comme n'importe quelle autre passe en jeu courant.
         const att = this.attaquants();
         const neuf = att.find(j => j.numero === 9 && j.auSol === 0);
         let relayeur = neuf;
         if (!relayeur) {
           ({ joueur: relayeur } = joueurLePlusProche(att.filter(j => j.tendance >= 50), pt.x, pt.y));
         } else {
-          // Sortie nette (le 9 a bien récupéré le ballon) : il le transmet
-          // presque toujours immédiatement à l'ouvreur, qui décide du jeu.
-          this.log('RUCK_SORTIE_9', this.possession, `Sortie de ruck par le 9, transmission a l'ouvreur`);
-          relayeur = this._neufVersDix(att, neuf);
+          this.log('RUCK_SORTIE_9', this.possession, `Sortie de ruck par le 9`);
         }
         this.porteur = relayeur || att.find(j => j.numero === 8) || att[0];
-        this.porteur.x = pt.x;
-        this.porteur.y = pt.y;
         this._imposerRecuperationRuck(pt);
         this.phase = 'PORTE';
         this.timerPhase = 0;
@@ -1765,7 +1778,11 @@
           // un plafond évite un blocage si un avant reste très excentré.
           const tousAvants = this.equipeA.concat(this.equipeB).filter(j => j.numero <= 8 && j.sinBin <= 0);
           const enPlace = tousAvants.filter(j => Math.hypot(j.x - m.x, j.y - m.y) < 3.5).length;
-          const pret = tousAvants.length === 0 || enPlace >= Math.ceil(tousAvants.length * 0.75);
+          // Tous les avants doivent être présents et alignés pour que l'arbitre
+          // engage "Crouch" (pas seulement une majorité) : le plafond
+          // capFormation reste l'unique garde-fou si un avant ne rejoint
+          // jamais exactement le point (sin-bin, blocage en touche...).
+          const pret = tousAvants.length === 0 || enPlace >= tousAvants.length;
           if (m.timer >= dur(1.5) && (pret || m.timer >= m.capFormation)) {
             m.etat = E.CROUCH; m.timer = 0;
             this.log('MELEE_CROUCH', m.equipeIntroduction, 'Arbitre : "Crouch" - les premieres lignes se baissent');
