@@ -532,6 +532,25 @@
       // couloir, le reste écarté, comme préparation à un vrai contest (résolu
       // dans _tickTouche) plutôt qu'un simple timer sans enjeu.
       this.toucheLanceurY = position.y <= LARGEUR / 2 ? 5 : LARGEUR - 5;
+      // Comme à la mêlée (cf. _capFormationMelee) : le lancer n'a lieu que
+      // lorsque les avants sont réellement alignés (cf. _tickTouche), avec un
+      // plafond pour ne jamais bloquer le match si un avant est très excentré.
+      this.toucheCapFormation = this._capFormationTouche(this.porteur.x);
+    }
+
+    // Même logique que _capFormationMelee : temps réel nécessaire à l'avant le
+    // plus excentré pour rallier en courant la ligne de touche (couloir
+    // perpendiculaire à la ligne de touche, à l'abscisse px), borné pour ne
+    // jamais bloquer le match.
+    _capFormationTouche(px) {
+      const avants = this.equipeA.concat(this.equipeB).filter(j => j.numero <= 8 && j.sinBin <= 0);
+      let pireDistance = 0;
+      for (const j of avants) {
+        const d = Math.abs(j.x - px);
+        if (d > pireDistance) pireDistance = d;
+      }
+      const vitessePackMin = 2.5;
+      return Math.min(10, Math.max(3, pireDistance / vitessePackMin));
     }
 
     // --- Pénalité : selon la distance aux poteaux, l'équipe non fautive tente un
@@ -613,6 +632,7 @@
       this.phase = 'TOUCHE';
       this.timerPhase = 0;
       this.toucheLanceurY = this.porteur.y;
+      this.toucheCapFormation = this._capFormationTouche(this.porteur.x);
     }
 
     // À la sortie d'un regroupement (ruck/maul/mêlée/touche), les joueurs qui
@@ -1453,10 +1473,20 @@
         const cy = m.y + ((i % 2) ? -1 : 1) * Math.ceil((i + 1) / 2) * 0.7;
         avancer(j, cx - j.x, cy - j.y, dt, vitesseMs(j));
       });
+      // Le demi de mêlée de l'équipe en possession suit la base du maul tout
+      // au long de la phase, comme au ruck (cf. _tickRuck, estDemiMelee) :
+      // c'est lui qui jouera le ballon à la sortie (cf. _maulSortieBallon),
+      // donc il ne doit jamais y être téléporté à la résolution — il doit
+      // l'avoir réellement rejoint en courant pendant le maul.
+      const neufAtt = att.find(j => j.numero === 9 && j.auSol === 0 && j !== this.porteur);
+      if (neufAtt) {
+        const cx9 = m.x - m.sens * 1.5;
+        avancer(neufAtt, cx9 - neufAtt.x, m.y - neufAtt.y, dt, vitesseMs(neufAtt));
+      }
       // Joueurs non liés : rester en-deçà de leur ligne de hors-jeu (onside).
       const cibleAtt = m.x - m.sens * 3;
       for (const j of att) {
-        if (liesAtt.includes(j) || j === this.porteur) continue;
+        if (liesAtt.includes(j) || j === this.porteur || j === neufAtt) continue;
         if ((m.sens > 0 && j.x > cibleAtt) || (m.sens < 0 && j.x < cibleAtt)) {
           avancer(j, cibleAtt - j.x, 0, dt, vitesseMs(j) * 0.6);
         }
@@ -1614,19 +1644,19 @@
     }
 
     // Sortie du ballon après « use it » : le demi de mêlée (n°9) joue le ballon,
-    // le jeu reprend à la main au pied du maul.
+    // le jeu reprend à la main au pied du maul. Il a suivi la base du maul tout
+    // au long de la phase (cf. _maulGererLiaisons, neufAtt) : pas de
+    // téléportation, il joue depuis sa position réelle. S'il est au sol (rare,
+    // juste plaqué), l'avant le plus proche du pied du maul relaie.
     _maulSortieBallon() {
       const m = this.maul;
       const poss = m.equipePossession;
-      const x = Math.max(0, Math.min(LONGUEUR, m.x - m.sens * 1.5));
-      const y = m.y;
       this.log('MAUL_BALLON_SORTI', poss, `Ballon sorti du maul par le demi de melee, l'equipe ${poss} relance`);
       this._finMaul();
       this.possession = poss;
       const eqMaul = poss === 'A' ? this.equipeA : this.equipeB;
-      this.porteur = this._neufVersDix(eqMaul, eqMaul[8]);
-      this.porteur.x = x;
-      this.porteur.y = y;
+      const neuf = eqMaul.find(j => j.numero === 9 && j.auSol === 0);
+      this.porteur = neuf || joueurLePlusProche(eqMaul, m.x, m.y).joueur;
       this._imposerRecuperationRuck({ x: m.x, y: m.y });
       this.phase = 'PORTE';
       this.timerPhase = 0;
@@ -2138,19 +2168,61 @@
     // pas systématiquement son propre lancer. Une touche gagnée dans les 22 m
     // adverses est la voie PRINCIPALE de formation d'un maul (catch-and-drive),
     // pas une mêlée aléatoire en plein champ.
+    // Alignement progressif des deux lignes de touche pendant l'attente (loi 9) :
+    // les avants des deux équipes convergent en courant vers le couloir
+    // perpendiculaire à la ligne de touche, espacés le long de la touche (axe y),
+    // de part et d'autre d'un mince couloir central où passe le ballon. Le demi
+    // de mêlée de chaque équipe se tient en retrait, prêt à jouer un ballon
+    // gagné — c'est lui qui récupère un lancer volé (cf. _tickTouche), donc il
+    // doit avoir réellement rejoint cette position en courant, jamais y être
+    // téléporté à la résolution.
+    _touchePlacerLignes(dt) {
+      const pt = this.ruckPoint;
+      const yBase = this.toucheLanceurY != null ? this.toucheLanceurY : pt.y;
+      const versCentre = yBase <= LARGEUR / 2 ? 1 : -1;
+      const placer = (equipe, decalX) => {
+        const avants = equipe.filter(j => j.numero <= 8 && j.sinBin <= 0 && j !== this.porteur);
+        avants.forEach((j, i) => {
+          const cx = pt.x + decalX;
+          const cy = yBase + versCentre * (1.5 + i * 1.8);
+          avancer(j, cx - j.x, cy - j.y, dt, vitesseMs(j) * 0.8);
+        });
+        const neuf = equipe.find(j => j.numero === 9 && j.auSol === 0 && j !== this.porteur);
+        if (neuf) {
+          const cx9 = pt.x + decalX;
+          const cy9 = yBase + versCentre * 8;
+          avancer(neuf, cx9 - neuf.x, cy9 - neuf.y, dt, vitesseMs(neuf) * 0.8);
+        }
+      };
+      placer(this.equipeA, -0.5);
+      placer(this.equipeB, 0.5);
+    }
+
     _tickTouche(dt) {
       this.timerPhase += dt;
+      this._touchePlacerLignes(dt);
       // Alignement, lancer et contestation au saut pris dans leur ensemble :
       // une touche réelle prend bien plus que 2 s entre l'arrêt de jeu et la
       // remise en mouvement du ballon (~10-15 s en match réel). Compressée
       // comme les autres temps d'arrêt sur un format démo court (cf.
       // _echelleArret) pour laisser plus de place au jeu courant.
-      if (this.timerPhase < 12 * this._echelleArret) return;
+      const dureeMin = 12 * this._echelleArret;
+      if (this.timerPhase < dureeMin) return;
+      // Comme à la mêlée (cf. _tickMelee, case FORMATION) : l'arbitre n'autorise
+      // le lancer que lorsque les avants des deux équipes sont réellement
+      // alignés dans le couloir de touche, pas seulement après un délai fixe ;
+      // le plafond toucheCapFormation évite un blocage si un avant reste très
+      // excentré (cf. _capFormationTouche).
+      const pt = this.ruckPoint;
+      const tousAvants = this.equipeA.concat(this.equipeB).filter(j => j.numero <= 8 && j.sinBin <= 0);
+      const enPlace = tousAvants.filter(j => Math.abs(j.x - pt.x) < 2).length;
+      const pret = tousAvants.length === 0 || enPlace >= tousAvants.length;
+      if (!pret && this.timerPhase < (this.toucheCapFormation || dureeMin)) return;
+
       const lanceur = this.possession;
       const adversaire = lanceur === 'A' ? 'B' : 'A';
       const eqLanceur = lanceur === 'A' ? this.equipeA : this.equipeB;
       const eqAdverse = adversaire === 'A' ? this.equipeA : this.equipeB;
-      const pt = this.ruckPoint;
 
       this.stats[lanceur].lineouts++;
       let forceLanceur = 0, forceAdverse = 0;
@@ -2166,12 +2238,17 @@
       }
       this.possession = gagnant;
       const eqGagnante = gagnant === 'A' ? this.equipeA : this.equipeB;
-      this.porteur = this._neufVersDix(eqGagnante, eqGagnante[8]);
-      this.porteur.x = pt.x;
-      // pt.y est le point exact de sortie en touche (sur la ligne) : on récupère
-      // plutôt la position resserrée de 5 m calculée à l'octroi de la touche, sinon
-      // le porteur démarre sur la ligne de touche et la sort à nouveau immédiatement.
-      this.porteur.y = this.toucheLanceurY != null ? this.toucheLanceurY : pt.y;
+      if (vole) {
+        // Touche volée : le sauteur adverse qui s'impose est déjà aligné dans
+        // le couloir de touche (cf. _touchePlacerLignes ci-dessus) — jamais
+        // téléporté depuis une position prise au hasard sur le terrain.
+        const candidats = eqGagnante.filter(j => j.numero <= 8 && j.auSol === 0);
+        const { joueur } = joueurLePlusProche(candidats.length ? candidats : eqGagnante, pt.x, this.toucheLanceurY != null ? this.toucheLanceurY : pt.y);
+        this.porteur = joueur;
+      }
+      // Si le lancer n'est pas volé, le porteur reste le lanceur déjà en place
+      // depuis l'octroi de la touche (cf. _accorderTouche) : aucun nouveau
+      // positionnement à imposer, donc aucune téléportation.
 
       if (!vole) {
         const zone = this._zoneTerrain(this.porteur);
