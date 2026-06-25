@@ -536,18 +536,22 @@
       this.possession = equipeQuiSort === 'A' ? 'B' : 'A';
       const equipe = this.possession === 'A' ? this.equipeA : this.equipeB;
       this.porteur = this._neufVersDix(equipe, equipe[8]);
-      this.porteur.x = Math.max(5, Math.min(LONGUEUR - 5, position.x));
-      this.porteur.y = position.y <= LARGEUR / 2 ? 5 : LARGEUR - 5;
       this.phase = 'TOUCHE';
       this.timerPhase = 0;
       // Position des deux lignes de touche (loi 18) : avants au centre dans le
       // couloir, le reste écarté, comme préparation à un vrai contest (résolu
       // dans _tickTouche) plutôt qu'un simple timer sans enjeu.
       this.toucheLanceurY = position.y <= LARGEUR / 2 ? 5 : LARGEUR - 5;
+      // Cible du lanceur (loi 18.22 : sur la marque de touche) — il doit s'y
+      // rendre en courant (cf. _touchePlacerLignes), jamais y être téléporté,
+      // même quand c'est l'ouvreur qui s'y trouve déjà sans rapport avec la
+      // marque de touche.
+      this.toucheLanceurX = Math.max(5, Math.min(LONGUEUR - 5, position.x));
       // Comme à la mêlée (cf. _capFormationMelee) : le lancer n'a lieu que
-      // lorsque les avants sont réellement alignés (cf. _tickTouche), avec un
-      // plafond pour ne jamais bloquer le match si un avant est très excentré.
-      this.toucheCapFormation = this._capFormationTouche(this.porteur.x);
+      // lorsque les avants ET le lanceur sont réellement alignés (cf.
+      // _tickTouche), avec un plafond pour ne jamais bloquer le match si un
+      // joueur est très excentré.
+      this.toucheCapFormation = this._capFormationTouche(this.toucheLanceurX);
     }
 
     // Même logique que _capFormationMelee : temps réel nécessaire à l'avant le
@@ -560,6 +564,14 @@
       for (const j of avants) {
         const d = Math.abs(j.x - px);
         if (d > pireDistance) pireDistance = d;
+      }
+      // Le lanceur peut être bien plus loin de la marque que les avants
+      // (ex. l'ouvreur qui couvrait en profondeur) : sans ce terme, le lancer
+      // pourrait être autorisé avant même qu'il ait fini de courir jusqu'à
+      // la touche.
+      if (this.porteur) {
+        const dLanceur = distance(this.porteur, { x: px, y: this.toucheLanceurY });
+        if (dLanceur > pireDistance) pireDistance = dLanceur;
       }
       const vitessePackMin = 2.5;
       return Math.min(10, Math.max(3, pireDistance / vitessePackMin));
@@ -638,13 +650,17 @@
       const xTouche = Math.max(0, Math.min(LONGUEUR, position.x + sensAttaque * gain));
       const eqLanceur = equipe === 'A' ? this.equipeA : this.equipeB;
       this.porteur = this._neufVersDix(eqLanceur, eqLanceur[8]);
-      this.porteur.x = Math.max(5, Math.min(LONGUEUR - 5, xTouche));
-      this.porteur.y = position.y <= LARGEUR / 2 ? 5 : LARGEUR - 5;
-      this.ruckPoint = { x: this.porteur.x, y: this.porteur.y };
+      const xLanceur = Math.max(5, Math.min(LONGUEUR - 5, xTouche));
+      const yLanceur = position.y <= LARGEUR / 2 ? 5 : LARGEUR - 5;
+      this.ruckPoint = { x: xLanceur, y: yLanceur };
       this.phase = 'TOUCHE';
       this.timerPhase = 0;
-      this.toucheLanceurY = this.porteur.y;
-      this.toucheCapFormation = this._capFormationTouche(this.porteur.x);
+      this.toucheLanceurY = yLanceur;
+      // Cible à rejoindre en courant (cf. _touchePlacerLignes), jamais une
+      // téléportation : le lanceur peut être loin du point de pénalité si le
+      // gain de terrain du coup de pied est important.
+      this.toucheLanceurX = xLanceur;
+      this.toucheCapFormation = this._capFormationTouche(xLanceur);
     }
 
     // À la sortie d'un regroupement (ruck/maul/mêlée/touche), les joueurs qui
@@ -2192,6 +2208,14 @@
       const pt = this.ruckPoint;
       const yBase = this.toucheLanceurY != null ? this.toucheLanceurY : pt.y;
       const versCentre = yBase <= LARGEUR / 2 ? 1 : -1;
+      // Le lanceur rejoint la marque de touche en courant, comme les avants
+      // ci-dessous — avant ce correctif, il y était téléporté directement
+      // dès l'octroi de la touche (cf. _accorderTouche), ce qui pouvait le
+      // faire apparaître instantanément à 30-50 m de sa position réelle.
+      if (this.porteur) {
+        const xLanceur = this.toucheLanceurX != null ? this.toucheLanceurX : pt.x;
+        avancer(this.porteur, xLanceur - this.porteur.x, yBase - this.porteur.y, dt, vitesseMs(this.porteur) * 0.9);
+      }
       const placer = (equipe, decalX) => {
         const avants = equipe.filter(j => j.numero <= 8 && j.sinBin <= 0 && j !== this.porteur);
         avants.forEach((j, i) => {
@@ -2228,7 +2252,13 @@
       const pt = this.ruckPoint;
       const tousAvants = this.equipeA.concat(this.equipeB).filter(j => j.numero <= 8 && j.sinBin <= 0);
       const enPlace = tousAvants.filter(j => Math.abs(j.x - pt.x) < 2).length;
-      const pret = tousAvants.length === 0 || enPlace >= tousAvants.length;
+      // Le lanceur lui-même doit avoir rejoint la marque de touche (loi 18.22)
+      // avant que le lancer ne puisse être joué : sinon il pourrait "lancer"
+      // alors qu'il court toujours vers la touche.
+      const xLanceur = this.toucheLanceurX != null ? this.toucheLanceurX : pt.x;
+      const yLanceur = this.toucheLanceurY != null ? this.toucheLanceurY : pt.y;
+      const lanceurEnPlace = !this.porteur || distance(this.porteur, { x: xLanceur, y: yLanceur }) < 2;
+      const pret = (tousAvants.length === 0 || enPlace >= tousAvants.length) && lanceurEnPlace;
       if (!pret && this.timerPhase < (this.toucheCapFormation || dureeMin)) return;
 
       const lanceur = this.possession;
