@@ -1911,25 +1911,31 @@
     _meleePlacerPaquets(dt) {
       const m = this.melee;
       const E = ETATS_MELEE;
-      const eqIntro = m.equipeIntroduction === 'A' ? this.equipeA : this.equipeB;
-      const eqDef = m.equipeIntroduction === 'A' ? this.equipeB : this.equipeA;
       const ecart = m.etat === E.FORMATION ? 1.6
         : m.etat === E.CROUCH ? 1.1
           : m.etat === E.BIND ? 0.7
             : 0.35;
-      const placer = (equipe, cote) => {
+      // Chaque pack se place de son propre cote du point de melee, celui
+      // oppose a son sens d'attaque (comme un vrai pack qui pousse vers la
+      // ligne adverse) : ce cote depend de l'equipe elle-meme (sensAttaque,
+      // fixe pour tout le match), jamais de l'equipe qui introduit. Avant ce
+      // correctif le cote dependait de m.sens (= equipe d'introduction), donc
+      // les deux packs echangeaient de cote a chaque melee selon qui
+      // introduisait - flagrant juste apres l'engagement, quand les deux
+      // equipes arrivent encore bien separees de chaque cote du terrain.
+      const placer = (equipe) => {
         // sinBin <= 0 : un avant au "bin" ne rejoint pas le pack, son équipe
         // joue la mêlée à 7 (ou moins), comme en match réel.
         const avants = equipe.filter(j => j.numero <= 8 && j.sinBin <= 0);
         avants.forEach((j, i) => {
-          const cx = m.x - m.sens * cote * (ecart + (i % 3) * 0.5);
+          const cx = m.x - j.sensAttaque * (ecart + (i % 3) * 0.5);
           const cy = m.y + ((i % 2) ? -1 : 1) * Math.ceil((i + 1) / 2) * 0.6;
           avancer(j, cx - j.x, cy - j.y, dt, vitesseMs(j) * 0.7);
         });
         // Le porteur (demi de mêlée tenant le ballon) est positionné à part
         // par _meleePositionnerBallon, pas ramené sur son couloir habituel.
         const backs = equipe.filter(j => j.numero > 8 && j.sinBin <= 0 && j !== this.porteur);
-        const cxBacks = m.x - m.sens * cote * 9;
+        const cxBacks = m.x - equipe[0].sensAttaque * 9;
         backs.forEach((j) => {
           // La ligne arrière se réorganise autour du point de mêlée réel
           // (pas uniquement sur le couloir figé de chaque joueur) : sinon
@@ -1939,8 +1945,8 @@
           avancer(j, cxBacks - j.x, cibleY - j.y, dt, vitesseMs(j) * 0.85);
         });
       };
-      placer(eqIntro, -1);
-      placer(eqDef, 1);
+      placer(this.equipeA);
+      placer(this.equipeB);
     }
 
     // Ballon tenu par le demi de mêlée à l'entrée du tunnel pendant la mise
