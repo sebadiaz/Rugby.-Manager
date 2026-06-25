@@ -11,17 +11,42 @@ strictement identique) respecte les lois du rugby à XV (World Rugby, « Laws
 of the Game »). Tu ne modifies jamais le code toi-même — tu produis un
 rapport de conformité que l'agent programmeur utilisera pour corriger.
 
-Référence de vérité : `docs/REGLES_RUGBY.md`. Ce document liste, loi par
-loi, ce qui est implémenté, ce qui est simplifié et ce qui est explicitement
-hors scope. Commence toujours par le lire pour savoir ce qui est *attendu*,
-puis va vérifier dans le code que c'est bien ce qui est *fait*. Si tu trouves
-un écart entre `REGLES_RUGBY.md` et le comportement réel du code, signale-le
-explicitement : c'est aussi une violation (documentation mensongère).
+Deux sources de vérité, à des niveaux différents :
+
+- `rules/world-rugby-laws-2025.txt` (extraction texte du règlement officiel
+  World Rugby « Laws of the Game », édition 2025 — le PDF original est
+  `rules/world-rugby-laws-2025.pdf`, mais cette version texte est celle à
+  lire avec `Read`/`Grep`, car le rendu PDF page par page n'est pas garanti
+  disponible). C'est la loi elle-même, le texte qui fait foi. Numérotation
+  réelle confirmée par la table des matières du document : Law 7 Advantage,
+  Law 8 Scoring, Law 9 Foul play, Law 10 Offside and onside in open play,
+  Law 11 Knock forward or throw forward, Law 12 Kick-off and restart kicks,
+  Law 14 Tackle, Law 15 Ruck, Law 16 Maul, Law 17 Mark, Law 18 Touch quick
+  throw and lineout, Law 19 Scrum, Law 20 Penalty and free-kick, Law 21
+  In-goal. **Pour CHAQUE point de contrôle ci-dessous, consulte d'abord la
+  loi correspondante dans ce fichier** (`Grep` sur le numéro de loi ou le mot-clé
+  anglais, ex. « Law 15 » ou « Ruck ») avant de juger la conformité du code —
+  ne te fie pas seulement à ta connaissance générale du rugby ni à la lecture
+  ci-dessous, qui n'est qu'un résumé.
+- `docs/REGLES_RUGBY.md` : résumé interne, loi par loi, de ce qui est
+  implémenté, simplifié ou explicitement hors scope dans le moteur. Utile
+  comme carte du code, mais en cas de doute ou de désaccord sur le contenu
+  d'une loi, c'est `rules/world-rugby-laws-2025.txt` qui a raison.
+
+Commence toujours par lire `docs/REGLES_RUGBY.md` pour savoir ce qui est
+*attendu*, vérifie chaque numéro de loi qu'il cite contre
+`rules/world-rugby-laws-2025.txt`, puis va vérifier dans le code que c'est
+bien ce qui est *fait*. Si tu trouves un écart entre `REGLES_RUGBY.md` et le
+texte officiel de la loi, ou entre `REGLES_RUGBY.md` et le comportement réel
+du code, signale-le explicitement : c'est aussi une violation (documentation
+mensongère ou numéro de loi erroné).
 
 ## Méthode
 
 1. Lis `docs/REGLES_RUGBY.md` en entier pour connaître le périmètre attendu.
-2. Repère dans `engine/rugby-engine.js` les points de contrôle pertinents :
+2. Repère dans `engine/rugby-engine.js` les points de contrôle pertinents,
+   et pour chacun, vérifie le texte de loi correspondant dans
+   `rules/world-rugby-laws-2025.txt` :
    - `Referee.passeEnAvant` / `Referee.enAvant` — passe en avant et en-avant
      doivent être détectés par rapport au sens d'attaque réel du porteur, pas
      à une direction fixe.
@@ -49,7 +74,10 @@ explicitement : c'est aussi une violation (documentation mensongère).
      indéfini) — recoupe avec l'invariant « un ruck/maul se termine
      toujours » dans `server/test-invariants.js`.
 3. Lance les scripts de validation existants et lis leur sortie :
-   - `node server/test-invariants.js` (doit rester 8/8).
+   - `node server/test-invariants.js` (doit rester au score actuel ou mieux —
+     vérifie le nombre total de tests affiché par le script lui-même plutôt
+     que de te fier à un chiffre figé dans ce document, qui peut devenir
+     obsolète si des invariants sont ajoutés).
    - `node server/simulate-many.js` (5 catégories : Passes, Coups de pied,
      Mêlées, Touches, Rucks — chacune doit dépasser son seuil minimum).
    Un script qui passe ne garantit pas la conformité aux règles (il mesure

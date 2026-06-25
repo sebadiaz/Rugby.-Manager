@@ -7,9 +7,12 @@ qui ne respecte pas les lois du jeu (ce qui est arrivé plusieurs fois — score
 non conforme, coup d'envoi absent, mêlée mal placée, hors-jeu au ruck jamais
 sifflé). Quand le moteur simplifie une règle, c'est noté explicitement.
 
-Numérotation des lois selon World Rugby (« Laws of the Game »).
+Numérotation des lois selon World Rugby (« Laws of the Game », édition 2025 —
+texte intégral dans `rules/world-rugby-laws-2025.pdf` /
+`rules/world-rugby-laws-2025.txt`, qui font foi en cas de doute sur un numéro
+de loi).
 
-## 1. Score (Law 8 / Law 9)
+## 1. Score (Law 8 — Scoring ; Law 9 — Foul play pour l'essai de pénalité)
 
 | Action | Points | Implémenté |
 |---|---|---|
@@ -69,7 +72,7 @@ Implémenté (`_nouvelleManche`, `_tickCoupEnvoi`, phase `COUP_ENVOI`) :
 - ✅ Coup d'envoi profond (`coupEnvoiProfond`, ~18 % des coups d'envoi) : botté
   loin vers les 22 m adverses ; c'est le seul cas où le receveur capte le
   ballon dans son propre en-deçà des 22 m et peut alors demander une **marque**
-  (loi 11) → coup franc `COUP_FRANC` (cf. `_traiterCoupFranc`), jeu rapide à la
+  (loi 17 — Mark) → coup franc `COUP_FRANC` (cf. `_traiterCoupFranc`), jeu rapide à la
   main sans option de tir au but.
 - ⚠️ Simplifié : pas d'option de retaper en cas de coup d'envoi trop court ou
   envoyé directement en touche (seule la conséquence « mêlée au centre » est
@@ -109,7 +112,7 @@ Implémenté (`Referee.horsJeuRuck`, `_tickRuck`) :
   match raccourci plutôt que de figer un ruck à sa durée « 80 minutes »
   sur une partie de démonstration de quelques minutes.
 
-## 4. Maul (Law 17 — Maul)
+## 4. Maul (Law 16 — Maul)
 
 Règle réelle : un maul se forme quand le porteur du ballon est tenu/contesté
 mais **reste sur ses appuis** (pas amené au sol), qu'au moins un adversaire est
@@ -122,7 +125,7 @@ annonce « use it » et l'équipe doit jouer le ballon sous 5 s, sinon mêlée. 
 
 Implémenté comme une **machine à états complète** (`_formerMaul`, `_tickMaul` et
 ses fonctions dédiées ; états dans `ETATS_MAUL`) :
-- ✅ **Formation (loi 17)** : sur un plaquage où le porteur reste debout avec un
+- ✅ **Formation (loi 16)** : sur un plaquage où le porteur reste debout avec un
   soutien lié, `Referee.maulForme(...)` vérifie les conditions (porteur debout,
   adversaire lié et debout, coéquipier lié, ballon en main, dans le champ de
   jeu) avant de créer le maul. Volontairement occasionnel (≈3,5 % des plaquages,
@@ -141,7 +144,7 @@ ses fonctions dédiées ; états dans `ETATS_MAUL`) :
 - ✅ **Liaisons / IA** (`_maulGererLiaisons`) : les avants liés poussent dans
   l'axe (attaque derrière le ballon, défense devant), les joueurs non engagés se
   replient derrière leur ligne de hors-jeu.
-- ✅ **Use it / ballon injouable (loi 8)** : après « use it », le demi de mêlée
+- ✅ **Use it / ballon injouable (loi 16)** : après « use it », le demi de mêlée
   sort le ballon (retour au jeu courant) ; s'il reste bloqué plus de 5 s →
   **mêlée à l'équipe qui n'avait pas le ballon au début du maul**, *sauf* si le
   maul a suivi une réception directe d'un coup de pied adverse (`_receptionDirecte`),
@@ -164,7 +167,7 @@ ses fonctions dédiées ; états dans `ETATS_MAUL`) :
   directement `equipeA`/`equipeB` sans passer par ce filtre. Les liaisons sont
   gérées de façon agrégée (5 avants par camp), sans modéliser chaque bras.
 
-## 5. Options sur pénalité (Law 19–21 — Penalty and free kick options)
+## 5. Options sur pénalité (Law 20 — Penalty and free kick)
 
 Règle réelle : l'équipe qui obtient une pénalité a le choix entre :
 1. Tir au but (3 points si réussi).
@@ -195,7 +198,7 @@ Implémenté (`_traiterPenalite`, `_accorderPenaliteTouche`) :
   volontairement différé (hors tir au but/touche, le seul autre choix
   modélisé est le jeu à la main).
 
-## 6. Touche en jeu courant (Law 18/19 — Touch and Line-out)
+## 6. Touche en jeu courant (Law 18 — Touch, quick throw and lineout)
 
 Règle réelle : quand le ballon (ou le porteur) sort en touche en jeu courant,
 le lancer est pour l'équipe qui N'A PAS fait sortir le ballon.
@@ -212,7 +215,7 @@ Implémenté (`_accorderTouche`, `_tickTouche`) :
   compte en `turnovers`. ⚠️ Simplifié : pas de modélisation individuelle du
   sauteur/lanceur/soutien, juste une probabilité agrégée par paquet.
 
-## 7. Mêlée (Law 19/20)
+## 7. Mêlée (Law 19 — Scrum)
 
 Règle réelle : passe en avant ou en-avant (ballon qui part vers l'avant
 depuis les mains ou touché en avant), ruck/maul devenu injouable → mêlée
