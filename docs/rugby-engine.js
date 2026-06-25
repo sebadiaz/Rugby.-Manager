@@ -125,7 +125,7 @@
     return { joueur: meilleur, distance: meilleureDist };
   }
 
-  // --- Maul (loi 17) : machine à états ---------------------------------------
+  // --- Maul (loi 16) : machine à états ---------------------------------------
   // Le maul traverse une suite d'états bien définis, de sa formation à sa fin,
   // exactement comme l'arbitrage réel d'un maul (formation, avancée, arrêts
   // successifs, « use it », ballon injouable, écroulement). L'état est porté par
@@ -187,7 +187,7 @@
       if (sensAttaqueAdverse > 0) return defenseur.x < ruckPoint.x - marge;
       return defenseur.x > ruckPoint.x + marge;
     },
-    // Décision : un maul est-il valablement formé (loi 17) ? Il faut le porteur
+    // Décision : un maul est-il valablement formé (loi 16) ? Il faut le porteur
     // debout, au moins un adversaire lié et debout, au moins un coéquipier lié,
     // le ballon en main (pas au sol) et l'action dans le champ de jeu.
     maulForme(porteur, adversaireLie, coequipierLie) {
@@ -245,9 +245,9 @@
       // déclaré porteur, jamais une téléportation instantanée.
       this._receptionEnAttente = false;
       this.timerReceptionAuSol = 0;
-      // Maul (loi 17) : objet d'état courant (null hors maul), et indicateur
+      // Maul (loi 16) : objet d'état courant (null hors maul), et indicateur
       // « le ballon vient d'une réception directe d'un coup de pied adverse »
-      // (exception loi 8 sur l'attribution de la mêlée en cas de ballon injouable).
+      // (exception loi 19 sur l'attribution de la mêlée en cas de ballon injouable).
       this.maul = null;
       this._receptionDirecte = false;
       // Compteur d'infractions de maul par équipe sur l'ensemble du match
@@ -309,8 +309,20 @@
       this.maul = null;
       this.melee = null;
       this._receptionDirecte = false;
+      // Un carton jaune en cours (sinBin > 0) doit survivre au redémarrage de
+      // manche : sans ce report, l'exclusion de 10 min (loi 9.29) serait
+      // effacée dès le prochain essai/pénalité/mi-temps, ce qui annule la
+      // sanction au lieu de l'appliquer.
+      const sinBinRestant = new Map();
+      for (const j of (this.equipeA || []).concat(this.equipeB || [])) {
+        if (j.sinBin > 0) sinBinRestant.set(j.team + '-' + j.numero, j.sinBin);
+      }
       this.equipeA = creerEquipe('A', sens.A, this.rng);
       this.equipeB = creerEquipe('B', sens.B, this.rng);
+      for (const j of [...this.equipeA, ...this.equipeB]) {
+        const restant = sinBinRestant.get(j.team + '-' + j.numero);
+        if (restant) j.sinBin = restant;
+      }
       const equipeKick = equipeReceptrice === 'A' ? 'B' : 'A';
       this._dernierEquipeKick = equipeKick;
       const dirKick = sens[equipeKick];
@@ -339,7 +351,7 @@
       // Coup d'envoi profond : botté loin vers les 22 m adverses pour mettre la
       // pression sur la réception (au prix d'une chasse plus difficile). C'est
       // le seul cas où le receveur capte le ballon dans son propre en-deçà des
-      // 22 m et peut donc demander une marque (loi 11).
+      // 22 m et peut donc demander une marque (loi 17).
       this.coupEnvoiProfond = !this.coupEnvoiCourt && this.rng() < 0.18;
       this.ballonCibleX = this.coupEnvoiCourt
         ? Math.max(0, Math.min(LONGUEUR, xCentre + dirKick * (3 + this.rng() * 6)))
@@ -435,7 +447,7 @@
           this.log('CONTRE_COUP_ENVOI', joueur.team, `Coup d'envoi contre, equipe ${joueur.team} recupere le ballon`);
           return;
         }
-        // Marque (loi 11) : un joueur qui réceptionne proprement le ballon dans
+        // Marque (loi 17) : un joueur qui réceptionne proprement le ballon dans
         // son propre en-deçà des 22 m peut crier « marque » et obtenir un coup
         // franc (pas de tir au but possible), pour dégager la pression.
         const sensReceveur = joueur.team === 'A' ? 1 : -1;
@@ -445,7 +457,7 @@
           return;
         }
         // Réception directe d'un coup de pied adverse : si un maul se forme dans
-        // la foulée, l'exception de la loi 8 attribuera la mêlée (ballon
+        // la foulée, l'exception de la loi 19 attribuera la mêlée (ballon
         // injouable) à l'équipe du réceptionneur, pas à la défense.
         this._receptionDirecte = true;
         this.phase = 'PORTE';
@@ -453,7 +465,7 @@
       }
     }
 
-    // Coup franc (loi 11/20) : sanction plus légère qu'une pénalité, sans
+    // Coup franc (loi 20) : sanction plus légère qu'une pénalité, sans
     // possibilité de tir au but ni de touche directe avec gain de terrain par
     // le pied. L'équipe joue rapidement à la main et avance un peu.
     _traiterCoupFranc(equipe, position) {
@@ -528,7 +540,7 @@
       this.porteur.y = position.y <= LARGEUR / 2 ? 5 : LARGEUR - 5;
       this.phase = 'TOUCHE';
       this.timerPhase = 0;
-      // Position des deux lignes de touche (loi 9) : avants au centre dans le
+      // Position des deux lignes de touche (loi 18) : avants au centre dans le
       // couloir, le reste écarté, comme préparation à un vrai contest (résolu
       // dans _tickTouche) plutôt qu'un simple timer sans enjeu.
       this.toucheLanceurY = position.y <= LARGEUR / 2 ? 5 : LARGEUR - 5;
@@ -581,7 +593,7 @@
         return;
       }
       // Pénalité en touche : contrairement à une touche en jeu courant, c'est
-      // ici l'équipe qui a botté qui conserve le lancer (loi 19). Utilisée pour
+      // ici l'équipe qui a botté qui conserve le lancer (loi 20). Utilisée pour
       // gagner du terrain quand le but est hors de portée, ou pour chercher un
       // maul tout près de la ligne adverse plutôt que 3 points — deux tactiques
       // réelles très fréquentes que seul le jeu rapide à la main ne représentait
@@ -740,7 +752,7 @@
           this._receptionDirecte = false;
           return;
         }
-        // Maul (loi 17) : voie secondaire (rare en plein champ), nettement plus
+        // Maul (loi 16) : voie secondaire (rare en plein champ), nettement plus
         // probable tout près de la ligne adverse (pick-and-go qui se transforme
         // en maul) — la voie PRINCIPALE de formation reste la touche gagnée
         // dans les 22 m adverses (cf. _tickTouche).
@@ -1130,7 +1142,7 @@
 
       if (horsTerrain) {
         // Touche : un coup de pied direct en touche depuis son propre 22
-        // conserve le lancer pour l'équipe qui a botté (loi 19.2) ; sinon la
+        // conserve le lancer pour l'équipe qui a botté (loi 18.10) ; sinon la
         // touche revient à l'équipe adverse, comme pour toute sortie en touche.
         const zoneKickeur = this._zoneTerrain({ x: this.xCoupDePiedJeu, sensAttaque: equipeKick === 'A' ? 1 : -1 });
         const conserveTouche = zoneKickeur === 'OWN_22';
@@ -1201,7 +1213,7 @@
       this.possession = joueur.team;
       this.ruckPoint = { x: joueur.x, y: joueur.y };
 
-      // Marque (loi 11) : réception propre dans son propre en-deçà des 22 m.
+      // Marque (loi 17) : réception propre dans son propre en-deçà des 22 m.
       const sensReceveur = joueur.team === 'A' ? 1 : -1;
       const distPropreLigne = sensReceveur > 0 ? joueur.x : (LONGUEUR - joueur.x);
       if (!chasseurGagne && distPropreLigne <= 22 && this.rng() < 0.35) {
@@ -1350,7 +1362,7 @@
       }
     }
 
-    // === Maul (loi 17) : machine à états complète ============================
+    // === Maul (loi 16) : machine à états complète ============================
     // Initialise l'objet maul et bascule la phase moteur sur 'MAUL'. À partir de
     // là, _tickMaul fait avancer la machine à états jusqu'à la sortie du ballon,
     // la mêlée (ballon injouable) ou une pénalité.
@@ -1662,7 +1674,7 @@
       this.timerPhase = 0;
     }
 
-    // Ballon injouable : mêlée à l'équipe désignée par la loi 8 (défense, ou
+    // Ballon injouable : mêlée à l'équipe désignée par la loi 19 (défense, ou
     // réceptionneur si le maul a suivi une réception directe).
     _maulMeleeInjouable() {
       const m = this.maul;
@@ -2017,7 +2029,7 @@
           return { type: 'BALLON_BLOQUE', equipeFautive: m.equipeIntroduction, gravite: 'RESET', message: 'ballon bloque, ne ressort pas du pied du numero 8', delibere: false };
         }
       }
-      // Hors-jeu des lignes arrières (loi 19/20) : les arrières défenseurs
+      // Hors-jeu des lignes arrières (loi 19) : les arrières défenseurs
       // doivent rester à 5 m du point d'introduction jusqu'à la sortie du
       // ballon. On ne contrôle qu'à partir de l'introduction (pas pendant
       // SET) pour laisser aux arrières le temps physique de rejoindre leur
@@ -2168,7 +2180,7 @@
     // pas systématiquement son propre lancer. Une touche gagnée dans les 22 m
     // adverses est la voie PRINCIPALE de formation d'un maul (catch-and-drive),
     // pas une mêlée aléatoire en plein champ.
-    // Alignement progressif des deux lignes de touche pendant l'attente (loi 9) :
+    // Alignement progressif des deux lignes de touche pendant l'attente (loi 18) :
     // les avants des deux équipes convergent en courant vers le couloir
     // perpendiculaire à la ligne de touche, espacés le long de la touche (axe y),
     // de part et d'autre d'un mince couloir central où passe le ballon. Le demi
@@ -2356,7 +2368,7 @@
         } else {
           this.log('PENALITE_RATEE', equipe, `Coup de pied au but rate, equipe ${equipe}`);
           // Un tir manqué part en général au-delà de la ligne d'en-but adverse
-          // et y meurt : remise en jeu en 22m (loi 13), botté par l'équipe
+          // et y meurt : remise en jeu en 22m (loi 12), botté par l'équipe
           // défenseure depuis SA ligne des 22m, pas un coup d'envoi à mi-terrain.
           const sensEquipe = sens[equipe];
           const ligneEssaiAdverse = sensEquipe > 0 ? LONGUEUR : 0;
