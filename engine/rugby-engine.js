@@ -2155,19 +2155,28 @@
           return { type: 'BALLON_BLOQUE', equipeFautive: m.equipeIntroduction, gravite: 'RESET', message: 'ballon bloque, ne ressort pas du pied du numero 8', delibere: false };
         }
       }
-      // Hors-jeu des lignes arrières (loi 19) : les arrières défenseurs
-      // doivent rester à 5 m du point d'introduction jusqu'à la sortie du
-      // ballon. On ne contrôle qu'à partir de l'introduction (pas pendant
-      // SET) pour laisser aux arrières le temps physique de rejoindre leur
-      // ligne de hors-jeu depuis leur position de jeu précédente.
+      // Hors-jeu des lignes arrières (loi 19) : les trois-quarts défenseurs
+      // (n°10-15) doivent rester à 5 m derrière la mêlée, de LEUR côté, jusqu'à
+      // la sortie du ballon. On ne contrôle qu'à partir de l'introduction (pas
+      // pendant SET) pour laisser aux arrières le temps de rejoindre leur ligne.
       if (m.etat === E.INTRODUCTION || m.etat === E.CONTESTATION || m.etat === E.SORTIE) {
         const def = m.equipeNonIntroduction === 'A' ? this.equipeA : this.equipeB;
         const margeBacks = 5, delaiGrace = 2.5;
         for (const j of def) {
-          if (j.numero <= 8) continue;
-          const limite = m.sens > 0 ? m.x - margeBacks : m.x + margeBacks;
-          const enInfraction = m.sens > 0 ? j.x > limite : j.x < limite;
-          if (enInfraction && m.timerGlobal > delaiGrace) {
+          // Avants (dans la mêlée) ET demi de mêlée exclus : le demi défenseur
+          // a sa propre ligne (rester derrière le ballon, de son côté), pas la
+          // ligne des 5 m qui ne vaut que pour les autres trois-quarts.
+          if (j.numero <= 9) continue;
+          // L'équipe défenseure se tient du côté +m.sens de la mêlée (m.sens =
+          // sens d'attaque de l'équipe qui introduit). Sa ligne de hors-jeu est
+          // donc 5 m derrière la mêlée DANS CE SENS. Un défenseur est hors-jeu
+          // s'il est à moins de 5 m derrière le point de mêlée de son côté.
+          // (Avant correctif : la limite était calculée du mauvais côté, si
+          // bien que les arrières défenseurs — désormais correctement placés de
+          // leur côté — étaient sifflés hors-jeu sur 100 % des mêlées, qui ne
+          // ressortaient donc jamais proprement.)
+          const reculBack = (j.x - m.x) * m.sens;
+          if (reculBack < margeBacks && m.timerGlobal > delaiGrace) {
             return { type: 'HORS_JEU_BACKS', equipeFautive: m.equipeNonIntroduction, gravite: 'PENALITE', message: 'hors-jeu des lignes arrieres a la melee', delibere: false };
           }
         }
