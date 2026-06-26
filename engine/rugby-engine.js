@@ -2295,17 +2295,36 @@
       }
       this.possession = gagnant;
       const eqGagnante = gagnant === 'A' ? this.equipeA : this.equipeB;
+      // Le sauteur n'est jamais "le plus proche d'un point" : en match réel le
+      // lancer vise un appel tactique (plot avant/milieu/fond de ligne), donc
+      // un sauteur choisi au hasard parmi les vrais sauteurs (2e/3e ligne,
+      // n°4-8 - jamais la 1ere ligne qui lie/lève sans sauter) plutôt qu'un
+      // calcul de distance qui désignait toujours le même joueur (celui posté
+      // en bout de ligne par _touchePlacerLignes, presque toujours un pilier
+      // ou systématiquement le n°4). Tous les candidats sont déjà alignés en
+      // courant (cf. _touchePlacerLignes), donc aucune téléportation.
+      const tirerSauteur = (equipe, exclu) => {
+        const sauteurs = equipe.filter(j => j.numero >= 4 && j.numero <= 8 && j.sinBin <= 0 && j.auSol === 0 && j !== exclu);
+        const avants = equipe.filter(j => j.numero <= 8 && j.sinBin <= 0 && j.auSol === 0 && j !== exclu);
+        const pool = sauteurs.length ? sauteurs : (avants.length ? avants : equipe);
+        return pool[Math.floor(this.rng() * pool.length)];
+      };
       if (vole) {
         // Touche volée : le sauteur adverse qui s'impose est déjà aligné dans
         // le couloir de touche (cf. _touchePlacerLignes ci-dessus) — jamais
         // téléporté depuis une position prise au hasard sur le terrain.
-        const candidats = eqGagnante.filter(j => j.numero <= 8 && j.auSol === 0);
-        const { joueur } = joueurLePlusProche(candidats.length ? candidats : eqGagnante, pt.x, this.toucheLanceurY != null ? this.toucheLanceurY : pt.y);
-        this.porteur = joueur;
+        this.porteur = tirerSauteur(eqGagnante, null);
+      } else {
+        // Touche gagnée par l'équipe qui lance : avant ce correctif, le
+        // porteur restait le talonneur (lui ne capte rien, il vient de
+        // lancer) au lieu d'un sauteur. Le sauteur capte le ballon puis le
+        // transmet au demi de mêlée (lui aussi déjà en place, pas
+        // téléporté) qui décide comme à la sortie d'une mêlée/d'un ruck.
+        const sauteur = tirerSauteur(eqLanceur, this.porteur);
+        this.log('TOUCHE_BALLON_GAGNE', lanceur, `Touche gagnee, le n°${sauteur.numero} capte le ballon pour l'equipe ${lanceur}`);
+        const neuf = eqLanceur.find(j => j.numero === 9 && j.sinBin <= 0) || sauteur;
+        this.porteur = this._neufVersDix(eqLanceur, neuf);
       }
-      // Si le lancer n'est pas volé, le porteur reste le lanceur déjà en place
-      // depuis l'octroi de la touche (cf. _accorderTouche) : aucun nouveau
-      // positionnement à imposer, donc aucune téléportation.
 
       if (!vole) {
         const zone = this._zoneTerrain(this.porteur);
