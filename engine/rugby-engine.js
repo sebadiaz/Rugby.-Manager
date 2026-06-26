@@ -790,8 +790,11 @@
         this.stats[defenseurProche.team].tacklesMade++;
         this.timerPhase = 0;
         // En-avant au contact : conséquence directe et distincte du plaquage
-        // réussi, pas seulement un succès/échec binaire ruck-ou-rien.
-        if (this.rng() < 0.045) {
+        // réussi, pas seulement un succès/échec binaire ruck-ou-rien. Taux
+        // volontairement bas (~1 contact sur 75) : à 0.045 il produisait à lui
+        // seul ~25 mêlées/match, très au-dessus du repère réel (8-25 mêlées
+        // TOTALES par match, cf. CLAUDE.md Rôle 6).
+        if (this.rng() < 0.012) {
           this.stats[this.possession].knockOns++;
           this.log('MELEE_ENAVANT', this.possession, `En-avant au contact, equipe ${this.possession} - melee adverse`);
           this._accorderMelee(this.possession, porteur);
@@ -1112,7 +1115,12 @@
         return true;
       }
       const distancePasse = distance(porteur, cible);
-      const probaReussite = Math.max(0.65, Math.min(0.97, 0.97 - distancePasse / 70));
+      // Réussite de passe réaliste : en match réel une passe se complète à
+      // ~95-98 %, y compris au large. L'ancien plancher 0.65 faisait rater 35 %
+      // des passes longues, ce qui produisait ~19 mêlées/match sur passe ratée
+      // (bien trop : cf. repère 8-25 mêlées TOTALES, CLAUDE.md Rôle 6). On
+      // relève le plancher et on adoucit la pénalité de distance.
+      const probaReussite = Math.max(0.93, Math.min(0.99, 0.99 - distancePasse / 130));
       if (this.rng() < probaReussite) {
         this.stats[this.possession].passes++;
         this.log(jeuLarge ? 'JEU_LARGE' : 'PASSE', this.possession, `${jeuLarge ? 'Jeu au large' : 'Passe'} de l'equipe ${this.possession}`);
@@ -1392,7 +1400,10 @@
         // plutôt que de trancher arbitrairement un gagnant.
         const ecartForces = Math.abs(forceDef - forceAtt);
         const engagementTotal = forceAtt + forceDef;
-        if (engagementTotal > 80 && ecartForces < 35 && this.rng() < 0.10) {
+        // Ballon injouable au ruck → mêlée : rare en match réel. À 0.10 cette
+        // voie produisait ~9 mêlées/match ; abaissée pour rester dans le repère
+        // global de 8-25 mêlées TOTALES (cf. CLAUDE.md Rôle 6).
+        if (engagementTotal > 80 && ecartForces < 35 && this.rng() < 0.04) {
           this.log('MELEE_RUCK_INJOUABLE', equipeOriginale, `Ballon injouable au ruck, melee pour l'equipe ${equipeOriginale}`);
           this._accorderMeleeA(equipeOriginale, pt);
           return;
