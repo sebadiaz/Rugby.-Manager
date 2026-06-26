@@ -551,7 +551,12 @@
       // Position des deux lignes de touche (loi 18) : avants au centre dans le
       // couloir, le reste écarté, comme préparation à un vrai contest (résolu
       // dans _tickTouche) plutôt qu'un simple timer sans enjeu.
-      this.toucheLanceurY = position.y <= LARGEUR / 2 ? 5 : LARGEUR - 5;
+      // Loi 18.22 : le lanceur se tient SUR la ligne de touche (les deux pieds
+      // hors du terrain), pas à 5 m à l'intérieur au milieu des sauteurs. On le
+      // place donc au bord du terrain ; l'alignement des sauteurs commence lui
+      // à 5 m de la touche (cf. _touchePlacerLignes), laissant un vrai couloir
+      // entre le lanceur et le premier sauteur.
+      this.toucheLanceurY = position.y <= LARGEUR / 2 ? 0.5 : LARGEUR - 0.5;
       // Cible du lanceur (loi 18.22 : sur la marque de touche) — il doit s'y
       // rendre en courant (cf. _touchePlacerLignes), jamais y être téléporté,
       // même quand c'est l'ouvreur qui s'y trouve déjà sans rapport avec la
@@ -667,7 +672,9 @@
       // (cf. _accorderTouche).
       this.porteur = eqLanceur.find(j => j.numero === 2 && j.sinBin <= 0) || eqLanceur[8];
       const xLanceur = Math.max(5, Math.min(LONGUEUR - 5, xTouche));
-      const yLanceur = position.y <= LARGEUR / 2 ? 5 : LARGEUR - 5;
+      // Loi 18.22 : le lanceur sur la ligne de touche (cf. _accorderTouche),
+      // pas à 5 m à l'intérieur.
+      const yLanceur = position.y <= LARGEUR / 2 ? 0.5 : LARGEUR - 0.5;
       this.ruckPoint = { x: xLanceur, y: yLanceur };
       this.phase = 'TOUCHE';
       this.timerPhase = 0;
@@ -2278,27 +2285,42 @@
     // téléporté à la résolution.
     _touchePlacerLignes(dt) {
       const pt = this.ruckPoint;
-      const yBase = this.toucheLanceurY != null ? this.toucheLanceurY : pt.y;
-      const versCentre = yBase <= LARGEUR / 2 ? 1 : -1;
-      // Le lanceur rejoint la marque de touche en courant, comme les avants
-      // ci-dessous — avant ce correctif, il y était téléporté directement
-      // dès l'octroi de la touche (cf. _accorderTouche), ce qui pouvait le
-      // faire apparaître instantanément à 30-50 m de sa position réelle.
+      // yTouche = bord du terrain où se tient le lanceur (loi 18.22). La ligne
+      // des sauteurs commence elle à 5 m de la touche (loi 18 : l'alignement est
+      // entre la ligne des 5 m et celle des 15 m), d'où un vrai couloir entre le
+      // lanceur et le premier sauteur, au lieu d'un lanceur noyé dans la ligne.
+      const yTouche = this.toucheLanceurY != null ? this.toucheLanceurY : pt.y;
+      const versCentre = yTouche <= LARGEUR / 2 ? 1 : -1;
+      const yLigne5 = yTouche + versCentre * 5;
+      // Le lanceur rejoint la marque de touche (sur le bord) en courant, comme
+      // les avants ci-dessous — avant ce correctif, il y était téléporté
+      // directement dès l'octroi de la touche (cf. _accorderTouche), ce qui
+      // pouvait le faire apparaître instantanément à 30-50 m de sa position.
       if (this.porteur) {
         const xLanceur = this.toucheLanceurX != null ? this.toucheLanceurX : pt.x;
-        avancer(this.porteur, xLanceur - this.porteur.x, yBase - this.porteur.y, dt, vitesseMs(this.porteur) * 0.9);
+        avancer(this.porteur, xLanceur - this.porteur.x, yTouche - this.porteur.y, dt, vitesseMs(this.porteur) * 0.9);
       }
       const placer = (equipe, decalX) => {
+        const sens = equipe[0].sensAttaque;
+        // Sauteurs alignés perpendiculairement à la touche, de la ligne des 5 m
+        // vers l'intérieur, espacés d'environ 1,7 m (zone 5-15 m). Les deux
+        // équipes forment deux colonnes séparées par le couloir d'un mètre
+        // (decalX), conformément à la loi.
         const avants = equipe.filter(j => j.numero <= 8 && j.sinBin <= 0 && j !== this.porteur);
         avants.forEach((j, i) => {
           const cx = pt.x + decalX;
-          const cy = yBase + versCentre * (1.5 + i * 1.8);
+          const cy = yLigne5 + versCentre * (i * 1.7);
           avancer(j, cx - j.x, cy - j.y, dt, vitesseMs(j) * 0.8);
         });
+        // Le demi de mêlée (receveur) se tient DERRIÈRE son propre alignement,
+        // ~2,5 m en retrait du côté de son camp (sens), pas dans la colonne des
+        // sauteurs : il reçoit le ballon descendu par le sauteur. Avant ce
+        // correctif il était planté au milieu de la ligne, à la même abscisse
+        // que ses avants.
         const neuf = equipe.find(j => j.numero === 9 && j.auSol === 0 && j !== this.porteur);
         if (neuf) {
-          const cx9 = pt.x + decalX;
-          const cy9 = yBase + versCentre * 8;
+          const cx9 = pt.x - sens * 2.5;
+          const cy9 = yLigne5 + versCentre * 5;
           avancer(neuf, cx9 - neuf.x, cy9 - neuf.y, dt, vitesseMs(neuf) * 0.8);
         }
         // Loi 18 : les joueurs NON participants à la touche (les trois-quarts,
@@ -2307,13 +2329,12 @@
         // ce correctif ils n'étaient jamais repositionnés pendant la touche : ils
         // restaient figés n'importe où sur le terrain. Ils s'alignent désormais
         // en courant (avancer, jamais de téléportation) sur cette ligne des 10 m,
-        // côté de leur propre camp (sensAttaque), espacés sur la largeur du côté
-        // ouvert, prêts à lancer ou défendre l'attaque issue de la touche.
-        const sens = equipe[0].sensAttaque;
+        // côté de leur propre camp (sens), espacés sur la largeur du côté ouvert,
+        // prêts à lancer ou défendre l'attaque issue de la touche.
         const backs = equipe.filter(j => j.numero >= 10 && j.sinBin <= 0 && j !== this.porteur);
         const xBacks = pt.x - sens * 10;
         backs.forEach((j, k) => {
-          const cyB = yBase + versCentre * (12 + k * 6);
+          const cyB = yLigne5 + versCentre * (8 + k * 6);
           avancer(j, xBacks - j.x, cyB - j.y, dt, vitesseMs(j) * 0.85);
         });
       };
