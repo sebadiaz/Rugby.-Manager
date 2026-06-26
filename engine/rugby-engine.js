@@ -250,6 +250,11 @@
       // décidée ; null hors lancer. Évite que le ballon "saute" instantanément
       // de la ligne de touche jusque dans l'alignement (cf. _tickToucheLancer).
       this.toucheLancer = null;
+      // Vol visuel d'une passe en jeu courant : le ballon décrit un court arc
+      // du passeur au receveur au lieu de "sauter" instantanément. Purement
+      // visuel (la possession change tout de suite côté logique), null hors
+      // passe. Cf. _lancerPasseVisuelle / getState.
+      this.passeVisuelle = null;
       // Maul (loi 16) : objet d'état courant (null hors maul), et indicateur
       // « le ballon vient d'une réception directe d'un coup de pied adverse »
       // (exception loi 19 sur l'attribution de la mêlée en cas de ballon injouable).
@@ -794,6 +799,7 @@
           this.stats[this.possession].passes++;
           this.stats[this.possession].offloads++;
           this.log('OFFLOAD', this.possession, `Offload de l'equipe ${this.possession} dans le plaquage`);
+          this._lancerPasseVisuelle(porteur, receveurOffload);
           this.porteur = receveurOffload;
           this._receptionDirecte = false;
           return;
@@ -1044,6 +1050,22 @@
     // disponible. Retourne true si la tentative a consommé le tick (passe
     // réussie, en-avant ou passe ratée -> mêlée), false s'il n'y avait aucun
     // candidat valable (le tick retombe alors sur la logique de course/contact).
+    // Déclenche le vol visuel d'une passe : le ballon part du passeur et
+    // décrit un court arc jusqu'au receveur (cf. getState), au lieu de "sauter"
+    // instantanément. La possession (this.porteur) change tout de suite côté
+    // logique — c'est purement de l'affichage —, donc aucun impact sur le jeu,
+    // les statistiques ou les invariants ; seul le dernier saut instantané du
+    // ballon lors d'une passe disparaît à l'écran. Durée proportionnelle à la
+    // distance (passe courte ~0,15 s, jeu au large ~0,5 s).
+    _lancerPasseVisuelle(passeur, cible) {
+      const d = distance(passeur, cible);
+      this.passeVisuelle = {
+        fromX: passeur.x, fromY: passeur.y, cible,
+        timer: 0,
+        duree: Math.max(0.12, Math.min(0.5, d / 22)),
+      };
+    }
+
     _tenterPasse(porteur, jeuLarge) {
       const att = this.attaquants();
       // Rayon de recherche du destinataire : un jeu au large vise précisément
@@ -1086,6 +1108,7 @@
       if (this.rng() < probaReussite) {
         this.stats[this.possession].passes++;
         this.log(jeuLarge ? 'JEU_LARGE' : 'PASSE', this.possession, `${jeuLarge ? 'Jeu au large' : 'Passe'} de l'equipe ${this.possession}`);
+        this._lancerPasseVisuelle(porteur, cible);
         this.porteur = cible;
         this._receptionDirecte = false;
       } else {
@@ -2630,6 +2653,17 @@
         if (j.ruckRecovery > 0) j.ruckRecovery = Math.max(0, j.ruckRecovery - dt);
         if (j.sinBin > 0) j.sinBin = Math.max(0, j.sinBin - dt);
       }
+      // Avancement du vol visuel d'une passe (cf. _lancerPasseVisuelle) : on le
+      // termine au bout de sa durée. Le vol n'a de sens qu'en jeu courant ; si
+      // la phase a changé entre-temps (plaquage -> ruck, sortie en touche...),
+      // on l'arrête pour que le ballon ne reste pas "en l'air" sur un autre
+      // arrêt de jeu.
+      if (this.passeVisuelle) {
+        this.passeVisuelle.timer += dt;
+        if (this.passeVisuelle.timer >= this.passeVisuelle.duree || this.phase !== 'PORTE') {
+          this.passeVisuelle = null;
+        }
+      }
       // Temps de jeu effectif (ballon vivant) : phases où le jeu est réellement
       // en cours, à l'exclusion des arrêts (essai/transformation/pénalité au
       // but/mi-temps) et de la formation mêlée/touche (liaison des paquets,
@@ -2706,6 +2740,20 @@
         bvx = dxVol / duree;
         bvy = dyVol / duree;
       }
+      // Vol visuel d'une passe en jeu courant (cf. _lancerPasseVisuelle) : le
+      // ballon décrit un petit arc du passeur jusqu'au receveur (qui est déjà
+      // le porteur côté logique). On ne l'affiche qu'en jeu courant (PORTE) :
+      // si un plaquage/une touche a interrompu entre-temps, le ballon revient
+      // à sa position normale. L'arc est plus bas qu'un coup de pied (×0,4).
+      let passeX = null, passeY = null, passeH = 0;
+      if (this.passeVisuelle && !enVol && !auSolLoose && this.phase === 'PORTE') {
+        const P = this.passeVisuelle;
+        const t = P.duree > 0 ? Math.min(1, P.timer / P.duree) : 1;
+        passeX = P.fromX + (P.cible.x - P.fromX) * t;
+        passeY = P.fromY + (P.cible.y - P.fromY) * t;
+        passeH = Math.sin(Math.PI * t) * 0.4;
+      }
+      const enPasse = passeX != null;
       return {
         equipeA: this.equipeA.map(j => ({ ...j })),
         equipeB: this.equipeB.map(j => ({ ...j })),
@@ -2716,20 +2764,22 @@
         // porteur. Conservé pour compatibilité avec le rendu existant.
         ballon: enVol
           ? { x: this.ballonVolX, y: this.ballonVolY, enVol: true, hauteur: this.ballonVolHauteur }
-          : auSolLoose
-            ? { x: this.ballonVolX, y: this.ballonVolY, enVol: false, hauteur: 0 }
-            : { x: this.porteur.x, y: this.porteur.y, enVol: false, hauteur: 0 },
+          : enPasse
+            ? { x: passeX, y: passeY, enVol: true, hauteur: passeH }
+            : auSolLoose
+              ? { x: this.ballonVolX, y: this.ballonVolY, enVol: false, hauteur: 0 }
+              : { x: this.porteur.x, y: this.porteur.y, enVol: false, hauteur: 0 },
         // Objet ballon normalisé : { x, y, vx, vy, state, carrierTeam, carrierNumber }.
         // À terme, c'est cette forme qui doit devenir la source de vérité côté
         // rendu (docs/js/renderer.js) ; `ballon`/`porteur` restent en place tant
         // que la migration du rendu n'est pas terminée.
         ball: {
-          x: enVol || auSolLoose ? this.ballonVolX : this.porteur.x,
-          y: enVol || auSolLoose ? this.ballonVolY : this.porteur.y,
+          x: enVol || auSolLoose ? this.ballonVolX : enPasse ? passeX : this.porteur.x,
+          y: enVol || auSolLoose ? this.ballonVolY : enPasse ? passeY : this.porteur.y,
           vx: bvx, vy: bvy,
-          state: this._etatBallon(),
-          carrierTeam: enVol || auSolLoose ? null : this.porteur.team,
-          carrierNumber: enVol || auSolLoose ? null : this.porteur.numero,
+          state: enPasse ? 'AIR' : this._etatBallon(),
+          carrierTeam: enVol || auSolLoose || enPasse ? null : this.porteur.team,
+          carrierNumber: enVol || auSolLoose || enPasse ? null : this.porteur.numero,
         },
         arbitre: this._positionArbitre(),
         possession: this.possession,
