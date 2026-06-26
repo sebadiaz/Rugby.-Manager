@@ -255,6 +255,13 @@
       // visuel (la possession change tout de suite côté logique), null hors
       // passe. Cf. _lancerPasseVisuelle / getState.
       this.passeVisuelle = null;
+      // Coups de pied au but (pénalité / transformation) : passe à true une fois
+      // que TOUS les joueurs ont fini de se replacer. Tant que c'est false, la
+      // frappe n'est pas armée (on ne peut pas botter tant que le replacement
+      // n'est pas terminé) ; une fois true, les joueurs ne bougent plus —
+      // notamment au moment du tir. Remis à false à chaque nouveau coup de pied.
+      this.tirEnPlace = false;
+      this.transfoEnPlace = false;
       // Maul (loi 16) : objet d'état courant (null hors maul), et indicateur
       // « le ballon vient d'une réception directe d'un coup de pied adverse »
       // (exception loi 19 sur l'attribution de la mêlée en cas de ballon injouable).
@@ -655,6 +662,7 @@
         this.porteur.y = position.y;
         this.phase = 'PENALITE_TIR';
         this.timerPhase = 0;
+        this.tirEnPlace = false;
         this.log('PENALITE', equipeBeneficiaire, `Penalite, equipe ${equipeBeneficiaire} tente un coup de pied au but`);
         return;
       }
@@ -2500,20 +2508,27 @@
     // reste derrière le ballon. Sans ce replacement, les 28 autres joueurs
     // restaient figés exactement là où l'essai avait été marqué pendant les
     // ~33 s de célébration + transformation.
+    // Renvoie true quand tous les joueurs concernés ont rejoint leur place
+    // (la défense sur sa ligne d'en-but, l'attaque derrière le ballon), ce qui
+    // permet d'armer la frappe et de les figer ensuite.
     _transformationPlacerJoueurs(dt) {
       const sens = this.essaiEquipe === 'A' ? 1 : -1;
       const equipeAttaque = this.essaiEquipe === 'A' ? this.equipeA : this.equipeB;
       const equipeDefense = this.essaiEquipe === 'A' ? this.equipeB : this.equipeA;
       const ligneDefense = sens > 0 ? LONGUEUR : 0;
       const xAttaque = Math.max(0, Math.min(LONGUEUR, this.essaiX - sens * 15));
+      let pireEcart = 0;
       for (const j of equipeDefense) {
         if (j.sinBin > 0) continue;
         avancer(j, ligneDefense - j.x, 0, dt, vitesseMs(j) * 0.8);
+        pireEcart = Math.max(pireEcart, Math.abs(j.x - ligneDefense));
       }
       for (const j of equipeAttaque) {
         if (j.sinBin > 0 || j === this.porteur) continue;
         avancer(j, xAttaque - j.x, 0, dt, vitesseMs(j) * 0.8);
+        pireEcart = Math.max(pireEcart, Math.abs(j.x - xAttaque));
       }
+      return pireEcart < 1.2;
     }
 
     // Célébration de l'essai avant l'enchaînement sur la transformation : en
@@ -2534,6 +2549,7 @@
         this.porteur = kicker;
         this.phase = 'TRANSFORMATION';
         this.timerPhase = 0;
+        this.transfoEnPlace = false;
       }
     }
 
@@ -2543,7 +2559,6 @@
     // frappe prennent ~20-25 s en match réel, pas 2 s.
     _tickTransformation(dt) {
       this.timerPhase += dt;
-      this._transformationPlacerJoueurs(dt);
       const duree = 25 * this._echelleArret;
       // Le ballon s'envole vers les poteaux pendant la dernière fraction du
       // temps d'arrêt (le reste, c'est le placement et la course d'élan) :
@@ -2551,6 +2566,15 @@
       // visible à l'écran, au lieu de 25 s où rien ne bouge.
       const dureeVol = Math.min(1.4, duree * 0.3);
       const debutVol = duree - dureeVol;
+      // Mise en place : les joueurs rejoignent leur position. On ne les fige (et
+      // la frappe n'est armée) qu'une fois TOUS arrivés — au plus tard au début
+      // du vol, pour ne jamais bloquer. Une fois en place, on ne les replace
+      // plus : ils sont donc parfaitement immobiles au moment du tir (loi 8 :
+      // personne n'avance tant que le botteur n'a pas frappé).
+      if (!this.transfoEnPlace) {
+        const enPlace = this._transformationPlacerJoueurs(dt);
+        if (enPlace || this.timerPhase >= debutVol) this.transfoEnPlace = true;
+      }
       if (this.timerPhase >= debutVol && this.timerPhase < duree) {
         const t = Math.min(1, (this.timerPhase - debutVol) / dureeVol);
         this.ballonEnVol = true;
@@ -2583,33 +2607,46 @@
     // peut pas charger un tir au but), l'équipe qui botte se replace derrière le
     // ballon (onside), prête à suivre le jeu sur une éventuelle touche/relance.
     // Tout se fait à la course (avancer), jamais de téléportation.
+    // Renvoie true quand tous les joueurs concernés sont en place (même logique
+    // que _transformationPlacerJoueurs) : sert à armer la frappe puis à figer.
     _penaliteTirPlacerJoueurs(dt) {
-      if (!this.positionTir) return;
+      if (!this.positionTir) return true;
       const sens = this.equipeAuTir === 'A' ? 1 : -1;
       const equipeAttaque = this.equipeAuTir === 'A' ? this.equipeA : this.equipeB;
       const equipeDefense = this.equipeAuTir === 'A' ? this.equipeB : this.equipeA;
       const ligneDefense = sens > 0 ? LONGUEUR : 0;
       const xAttaque = Math.max(0, Math.min(LONGUEUR, this.positionTir.x - sens * 15));
+      let pireEcart = 0;
       for (const j of equipeDefense) {
         if (j.sinBin > 0) continue;
         avancer(j, ligneDefense - j.x, 0, dt, vitesseMs(j) * 0.8);
+        pireEcart = Math.max(pireEcart, Math.abs(j.x - ligneDefense));
       }
       for (const j of equipeAttaque) {
         if (j.sinBin > 0 || j === this.porteur) continue;
         avancer(j, xAttaque - j.x, 0, dt, vitesseMs(j) * 0.8);
+        pireEcart = Math.max(pireEcart, Math.abs(j.x - xAttaque));
       }
+      return pireEcart < 1.2;
     }
 
     // Coup de pied de pénalité au but (+3), résolu après un temps d'arrêt
     // réaliste (placement, recul, course d'élan, frappe : ~20-25 s en match réel).
     _tickPenaliteTir(dt) {
       this.timerPhase += dt;
-      this._penaliteTirPlacerJoueurs(dt);
       const duree = 25 * this._echelleArret;
       // Même principe que pour la transformation : le ballon vole vers les
       // poteaux pendant la dernière fraction du temps d'arrêt.
       const dureeVol = Math.min(1.4, duree * 0.3);
       const debutVol = duree - dureeVol;
+      // On ne peut pas botter tant que le replacement n'est pas fini : les
+      // joueurs rejoignent leur place, et seulement une fois tous arrivés (au
+      // plus tard au début du vol) la frappe est armée et ils sont figés — ils
+      // ne bougent plus au moment du tir.
+      if (!this.tirEnPlace) {
+        const enPlace = this._penaliteTirPlacerJoueurs(dt);
+        if (enPlace || this.timerPhase >= debutVol) this.tirEnPlace = true;
+      }
       if (this.timerPhase >= debutVol && this.timerPhase < duree) {
         const sensVol = this.equipeAuTir === 'A' ? 1 : -1;
         const cibleX = sensVol > 0 ? LONGUEUR : 0;
