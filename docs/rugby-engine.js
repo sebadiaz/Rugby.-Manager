@@ -468,14 +468,21 @@
     // Coup franc (loi 20) : sanction plus légère qu'une pénalité, sans
     // possibilité de tir au but ni de touche directe avec gain de terrain par
     // le pied. L'équipe joue rapidement à la main et avance un peu.
-    _traiterCoupFranc(equipe, position) {
+    _traiterCoupFranc(equipe, position, porteurImpose = null) {
       this.possession = equipe;
       const sensAttaque = equipe === 'A' ? 1 : -1;
       const eq = equipe === 'A' ? this.equipeA : this.equipeB;
-      const { joueur } = joueurLePlusProche(eq, position.x, position.y);
-      this.porteur = joueur;
-      this.porteur.x = Math.max(0, Math.min(LONGUEUR, position.x + sensAttaque * 5));
-      this.porteur.y = Math.max(2, Math.min(LARGEUR - 2, position.y));
+      if (porteurImpose) {
+        // Joueur déjà en place (demi de mêlée à la base de la mêlée) : il tape
+        // le ballon et part en courant depuis sa position, sans téléportation
+        // sur la marque.
+        this.porteur = porteurImpose;
+      } else {
+        const { joueur } = joueurLePlusProche(eq, position.x, position.y);
+        this.porteur = joueur;
+        this.porteur.x = Math.max(0, Math.min(LONGUEUR, position.x + sensAttaque * 5));
+        this.porteur.y = Math.max(2, Math.min(LARGEUR - 2, position.y));
+      }
       this.log('COUP_FRANC', equipe, `Marque, equipe ${equipe} obtient un coup franc et joue rapidement`);
       this.phase = 'PORTE';
       this.timerPhase = 0;
@@ -636,8 +643,12 @@
         return;
       }
       this.log('PENALITE', equipeBeneficiaire, `Penalite, equipe ${equipeBeneficiaire} joue rapidement et avance`);
-      this.porteur.x += sensAttaque * 8;
-      this.porteur.x = Math.max(0, Math.min(LONGUEUR, this.porteur.x));
+      // Jeu rapide (tap-and-go) : le joueur tape le ballon et PART en courant,
+      // il n'est plus téléporté de 8 m d'un coup. Le gain de terrain vient de
+      // sa course en jeu courant (_tickPorte) ; l'adversaire fautif, lui, doit
+      // se retirer (cf. hors-jeu de pénalité), ce qui ouvre l'espace réel.
+      // Avant ce correctif, ce saut instantané de 8 m faisait "sauter" le
+      // porteur à chaque pénalité jouée à la main.
       this.phase = 'PORTE';
       this.timerPhase = 0;
     }
@@ -1767,23 +1778,19 @@
       // sert a la SORTIE de balle d'un regroupement, pas a l'introduction -
       // l'utiliser ici donnait le ballon au n°10 sur 100% des melees.
       this.porteur = eq.find(j => j.numero === 9 && j.sinBin <= 0) || eq[8];
-      // Le demi de melee tient le ballon a l'entree du tunnel, pas deja au
-      // centre des avants : il ne le glissera dans la melee qu'a l'annonce
-      // "introduction" (cf. _meleePositionnerBallon), sinon le ballon semble
-      // deja introduit avant meme que l'arbitre l'ait dit. Comme le porteur
-      // change a chaque melee (le demi de melee de l'equipe qui beneficie de
-      // l'introduction n'est pas forcement celui qui jouait juste avant), ce
-      // positionnement est une reprise de jeu (cf. remise en jeu apres faute),
-      // pas un deplacement du meme joueur en cours d'action.
-      const xEntreePorteur = px - (equipeIntroduction === 'A' ? 1 : -1) * 1.2;
-      this.porteur.x = xEntreePorteur;
-      this.porteur.y = py;
-      // Les avants convergent ensuite a la course (cf. _meleePlacerPaquets et
-      // le palier "pret" de _tickMelee, case FORMATION) : le joueur voit donc
-      // reellement les packs se reorganiser vers le point de melee plutot que
-      // d'apparaitre deja en place. Le delai d'annonce "Crouch" s'adapte a la
-      // distance du plus excentre (plafonne pour ne jamais bloquer le match),
-      // cf. _capFormationMelee.
+      // Le demi de melee N'EST PLUS teleporte a l'entree du tunnel : il y court
+      // depuis sa position courante (cf. _meleePositionnerBallon, via avancer()),
+      // exactement comme les avants rejoignent le pack a la course. Avant ce
+      // correctif il etait snappe d'un coup (jusqu'a ~27 m de saut visible). Il
+      // se place sur le COTE du tunnel (loi 19 : le demi se tient sur le cote
+      // pour introduire), pas au centre des avants, et ne glisse le ballon
+      // qu'a l'annonce "introduction".
+      // Les avants ET les deux demis convergent a la course (cf.
+      // _meleePlacerPaquets, _meleePositionnerBallon et le palier "pret" de
+      // _tickMelee, case FORMATION) : le joueur voit reellement la melee se
+      // reorganiser vers le point plutot que d'apparaitre deja en place. Le
+      // delai "Crouch" s'adapte a la distance du plus excentre, plafonne pour
+      // ne jamais bloquer le match (cf. _capFormationMelee).
       this.melee.capFormation = this._capFormationMelee(px, py);
       this.ruckPoint = { x: px, y: py };
       this.contestants = [];
@@ -1804,8 +1811,25 @@
         const d = Math.hypot(j.x - px, j.y - py);
         if (d > pireDistance) pireDistance = d;
       }
+      // Le demi de melee qui introduit court lui aussi jusqu'a sa marque (le
+      // cote du tunnel) : sans ce terme, "Crouch" pourrait etre annonce alors
+      // qu'il est encore loin, et l'introduction se ferait sans lui en place.
+      if (this.porteur && this.melee) {
+        const feed = this._meleeFeedPos(this.melee);
+        const d9 = Math.hypot(this.porteur.x - feed.x, this.porteur.y - feed.y);
+        if (d9 > pireDistance) pireDistance = d9;
+      }
       const vitessePackMin = 2.5; // m/s, vitesse basse d'un pack qui se regroupe
       return Math.min(10, Math.max(3, pireDistance / vitessePackMin));
+    }
+
+    // Position de mise en jeu du demi de melee : sur le COTE du tunnel (loi 19),
+    // legerement du cote de son equipe, decale vers le centre du terrain pour
+    // ne pas etre colle a la ligne de touche. Sert de cible de course (jamais
+    // de teleportation) et de reference au palier "pret" de la formation.
+    _meleeFeedPos(m) {
+      const sideSign = m.y < LARGEUR / 2 ? 1 : -1;
+      return { x: m.x - m.sens * 0.5, y: m.y + sideSign * 2.6 };
     }
 
     _finMelee() {
@@ -1849,7 +1873,14 @@
           // engage "Crouch" (pas seulement une majorité) : le plafond
           // capFormation reste l'unique garde-fou si un avant ne rejoint
           // jamais exactement le point (sin-bin, blocage en touche...).
-          const pret = tousAvants.length === 0 || enPlace >= tousAvants.length;
+          // Le demi de melee doit lui aussi avoir rejoint le cote du tunnel
+          // (loi 19) avant l'engagement, sinon l'introduction demarrerait
+          // alors qu'il court encore. Le plafond capFormation reste l'unique
+          // garde-fou s'il ne peut jamais rallier exactement la marque.
+          const feed = this._meleeFeedPos(m);
+          const neufEnPlace = !this.porteur
+            || Math.hypot(this.porteur.x - feed.x, this.porteur.y - feed.y) < 2;
+          const pret = (tousAvants.length === 0 || enPlace >= tousAvants.length) && neufEnPlace;
           if (m.timer >= dur(1.5) && (pret || m.timer >= m.capFormation)) {
             m.etat = E.CROUCH; m.timer = 0;
             this.log('MELEE_CROUCH', m.equipeIntroduction, 'Arbitre : "Crouch" - les premieres lignes se baissent');
@@ -1937,9 +1968,11 @@
           const cy = m.y + ((i % 2) ? -1 : 1) * Math.ceil((i + 1) / 2) * 0.6;
           avancer(j, cx - j.x, cy - j.y, dt, vitesseMs(j) * 0.7);
         });
-        // Le porteur (demi de mêlée tenant le ballon) est positionné à part
-        // par _meleePositionnerBallon, pas ramené sur son couloir habituel.
-        const backs = equipe.filter(j => j.numero > 8 && j.sinBin <= 0 && j !== this.porteur);
+        // Les DEUX demis de mêlée (n°9) sont positionnés à part par
+        // _meleePositionnerBallon (sur le côté de la base), pas ramenés sur le
+        // couloir des arrières : sinon le 9 serait tiré à 9 m en retrait puis
+        // devrait être téléporté sur la base à la sortie du ballon.
+        const backs = equipe.filter(j => j.numero > 9 && j.sinBin <= 0);
         const cxBacks = m.x - equipe[0].sensAttaque * 9;
         backs.forEach((j) => {
           // La ligne arrière se réorganise autour du point de mêlée réel
@@ -1963,11 +1996,28 @@
     _meleePositionnerBallon(dt) {
       const m = this.melee;
       const E = ETATS_MELEE;
-      const xEntree = m.x - m.sens * 1.2;
-      if (m.etat === E.INTRODUCTION) {
-        avancer(this.porteur, m.x - this.porteur.x, m.y - this.porteur.y, dt, vitesseMs(this.porteur));
-      } else if (m.etat === E.FORMATION || m.etat === E.CROUCH || m.etat === E.BIND || m.etat === E.SET) {
-        avancer(this.porteur, xEntree - this.porteur.x, m.y - this.porteur.y, dt, vitesseMs(this.porteur));
+      const sideSign = m.y < LARGEUR / 2 ? 1 : -1;
+      const eqIntro = m.equipeIntroduction === 'A' ? this.equipeA : this.equipeB;
+      const eqDef = m.equipeIntroduction === 'A' ? this.equipeB : this.equipeA;
+      const neufIntro = eqIntro.find(j => j.numero === 9 && j.sinBin <= 0);
+      const neufDef = eqDef.find(j => j.numero === 9 && j.sinBin <= 0);
+      // Demi qui introduit : à la bouche du tunnel, sur le côté de son équipe.
+      // Il se penche vers le tunnel au moment de l'introduction pour y glisser
+      // le ballon (jamais au centre des avants). Tout en course (avancer),
+      // jamais snappé, et il suit la base si la mêlée avance en poussant.
+      if (neufIntro) {
+        const cible = m.etat === E.INTRODUCTION
+          ? { x: m.x - m.sens * 0.2, y: m.y + sideSign * 1.4 }
+          : this._meleeFeedPos(m);
+        avancer(neufIntro, cible.x - neufIntro.x, cible.y - neufIntro.y, dt, vitesseMs(neufIntro));
+      }
+      // Demi adverse : garde la base de la mêlée de l'autre côté du tunnel,
+      // prêt à défendre la sortie (et à jouer le ballon s'il est gagné contre
+      // l'introduction). Là aussi en course, donc aucune téléportation à la
+      // sortie quand c'est lui qui récupère un ballon volé.
+      if (neufDef) {
+        const cibleDef = { x: m.x + m.sens * 0.5, y: m.y - sideSign * 2.6 };
+        avancer(neufDef, cibleDef.x - neufDef.x, cibleDef.y - neufDef.y, dt, vitesseMs(neufDef) * 0.9);
       }
     }
 
@@ -2129,18 +2179,21 @@
         : faute.type === 'PILIER_TRAVERS' ? 'MELEE_PEN_TRAVERS'
           : faute.type === 'HORS_JEU_BACKS' ? 'MELEE_PEN_HORSJEU'
             : 'MELEE_PEN_TECHNIQUE';
+      // Le ballon de pénalité/coup franc de mêlée est joué par le demi de mêlée,
+      // déjà présent à la base (cf. _meleePositionnerBallon), et non par un avant
+      // "le plus proche" téléporté sur la marque (~5-6 m de saut visible). Repli
+      // sur le joueur disponible le plus proche si le 9 est indisponible.
+      const eqB = benef === 'A' ? this.equipeA : this.equipeB;
+      const neufB = eqB.find(j => j.numero === 9 && j.sinBin <= 0)
+        || joueurLePlusProche(eqB.filter(j => j.sinBin <= 0), pos.x, pos.y).joueur;
+      this.possession = benef;
+      this.porteur = neufB;
       if (faute.gravite === 'COUP_FRANC') {
         this.log(evt, fautive, `Coup franc melee : ${faute.message} (equipe ${fautive}), coup franc pour l'equipe ${benef}`);
-        this._traiterCoupFranc(benef, pos);
+        this._traiterCoupFranc(benef, pos, neufB);
         return;
       }
       this.log(evt, fautive, `Penalite melee : ${faute.message} (equipe ${fautive}), penalite pour l'equipe ${benef}`);
-      this.possession = benef;
-      const eqB = benef === 'A' ? this.equipeA : this.equipeB;
-      const { joueur } = joueurLePlusProche(eqB, pos.x, pos.y);
-      this.porteur = joueur;
-      this.porteur.x = Math.max(0, Math.min(LONGUEUR, pos.x));
-      this.porteur.y = Math.max(0, Math.min(LARGEUR, pos.y));
       this._traiterPenalite(benef, pos);
     }
 
@@ -2168,9 +2221,10 @@
       }
       this.stats[m.vainqueur].scrumsGagnes++;
       const eqVainqueur = m.vainqueur === 'A' ? this.equipeA : this.equipeB;
+      // Pendant l'état SORTIE le n°8 contrôle le ballon au pied de la mêlée :
+      // il est déjà à l'arrière de son pack (donc sur la base), aucun snap —
+      // sinon il "sautait" sur la base depuis sa position de poussée.
       this.porteur = eqVainqueur.find(j => j.numero === 8) || eqVainqueur[7];
-      this.porteur.x = Math.max(0, Math.min(LONGUEUR, m.x));
-      this.porteur.y = Math.max(0, Math.min(LARGEUR, m.y));
       m.etat = ETATS_MELEE.SORTIE;
       m.timer = 0;
       m.timerSortie = 4 * this._echelleArret;
@@ -2191,14 +2245,17 @@
       this._finMelee();
       this.possession = poss;
       if (pickAndGo) {
+        // Le n°8 ramasse au pied de la mêlée : déjà à l'arrière du pack (sur la
+        // base), aucun snap — il part au contact depuis là.
         this.porteur = huit;
-        this.porteur.x = pt.x;
-        this.porteur.y = pt.y;
         this.log('MELEE_PICK_AND_GO', poss, `Le numero 8 ramasse au pied de la melee et part au contact pour l'equipe ${poss}`);
       } else {
-        this.porteur = this._neufVersDix(eq, eq[8]);
-        this.porteur.x = pt.x;
-        this.porteur.y = pt.y;
+        // Le demi de mêlée du vainqueur sort le ballon : il se tient déjà sur le
+        // côté de la base (cf. _meleePositionnerBallon), donc il le ramasse sur
+        // place, sans téléportation. La passe vers l'ouvreur se fait ensuite
+        // naturellement en jeu courant (_tickPorte), au lieu de télésnapper
+        // directement l'ouvreur (≈9 m en arrière) sur la base de la mêlée.
+        this.porteur = eq.find(j => j.numero === 9 && j.sinBin <= 0) || huit || eq[8];
         this.log('MELEE_BALLON_SORTI', poss, `Le demi de melee sort le ballon de la melee pour l'equipe ${poss}`);
       }
       this._imposerRecuperationRuck(pt);

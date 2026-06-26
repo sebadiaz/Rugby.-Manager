@@ -209,6 +209,47 @@ test('la réception d\'un coup de pied ne téléporte jamais un joueur (course r
   }
 });
 
+test('aucun joueur ne se téléporte pendant une mêlée ni à la sortie du ballon', () => {
+  // Règle demandée : un joueur ne doit JAMAIS se déplacer sans courir. À la
+  // mêlée, plusieurs snaps existaient (le demi de mêlée projeté à l'entrée du
+  // tunnel jusqu'à ~27 m, le porteur projeté sur la base à la sortie ~9 m, un
+  // avant projeté sur la marque de pénalité ~5-6 m, le jeu rapide qui avançait
+  // le porteur de 8 m d'un coup). Tous doivent désormais se faire à la course.
+  // On borne le déplacement par tick à la vitesse de course maximale + marge.
+  // On n'évalue QUE les phases de mêlée et sa sortie en jeu courant : les
+  // vraies remises en jeu (coup de pied au but, retour sous les poteaux,
+  // engagement après essai/mi-temps) sont des reprises où le replacement est
+  // licite et reste hors de ce périmètre.
+  const VITESSE_MAX = 8.0; // cf. vitesseMs() : 3.0 + (100/100)*5.0
+  const PAS_MAX = VITESSE_MAX * 0.1 * 2; // 1.6 m/tick, large marge sur 0.8 m réel
+  for (let seed = 1; seed <= 12; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    let phaseAvant = m.phase;
+    for (let t = 0; t < 4800; t += 0.1) {
+      const avant = new Map(
+        [...m.equipeA, ...m.equipeB].map(j => [j.team + j.numero, { x: j.x, y: j.y }])
+      );
+      m.tick(0.1);
+      // Tick concerné : on est en mêlée, ou on vient d'en sortir balle en main
+      // (la seule transition de mêlée censée garder les mêmes joueurs en jeu
+      // courant ; les sorties vers un tir/une touche/un engagement sont des
+      // reprises licites, exclues ici).
+      const concerne = m.phase === 'MELEE' || (phaseAvant === 'MELEE' && m.phase === 'PORTE');
+      if (concerne) {
+        for (const j of [...m.equipeA, ...m.equipeB]) {
+          const prev = avant.get(j.team + j.numero);
+          const dist = Math.hypot(j.x - prev.x, j.y - prev.y);
+          assert.ok(
+            dist <= PAS_MAX,
+            `${j.team}${j.numero} a parcouru ${dist.toFixed(2)}m en un tick (0.1s) en phase mêlée/sortie (téléportation) [graine ${seed}, t=${t.toFixed(1)}, ${phaseAvant}->${m.phase}]`
+          );
+        }
+      }
+      phaseAvant = m.phase;
+    }
+  }
+});
+
 test('le ballon ne disparaît jamais (toujours des coordonnées numériques valides)', () => {
   const m = new MatchEngine(55, 300);
   for (let t = 0; t < 300; t += 0.1) {
