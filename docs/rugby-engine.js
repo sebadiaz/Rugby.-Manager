@@ -245,6 +245,11 @@
       // déclaré porteur, jamais une téléportation instantanée.
       this._receptionEnAttente = false;
       this.timerReceptionAuSol = 0;
+      // Lancer de touche en cours (loi 18) : pendant que le ballon vole du
+      // lanceur vers le sauteur, on stocke ici la cible et l'issue déjà
+      // décidée ; null hors lancer. Évite que le ballon "saute" instantanément
+      // de la ligne de touche jusque dans l'alignement (cf. _tickToucheLancer).
+      this.toucheLancer = null;
       // Maul (loi 16) : objet d'état courant (null hors maul), et indicateur
       // « le ballon vient d'une réception directe d'un coup de pied adverse »
       // (exception loi 19 sur l'attribution de la mêlée en cas de ballon injouable).
@@ -548,6 +553,7 @@
       this.porteur = equipe.find(j => j.numero === 2 && j.sinBin <= 0) || equipe[8];
       this.phase = 'TOUCHE';
       this.timerPhase = 0;
+      this.toucheLancer = null;
       // Position des deux lignes de touche (loi 18) : avants au centre dans le
       // couloir, le reste écarté, comme préparation à un vrai contest (résolu
       // dans _tickTouche) plutôt qu'un simple timer sans enjeu.
@@ -678,6 +684,7 @@
       this.ruckPoint = { x: xLanceur, y: yLanceur };
       this.phase = 'TOUCHE';
       this.timerPhase = 0;
+      this.toucheLancer = null;
       this.toucheLanceurY = yLanceur;
       // Cible à rejoindre en courant (cf. _touchePlacerLignes), jamais une
       // téléportation : le lanceur peut être loin du point de pénalité si le
@@ -2344,6 +2351,10 @@
 
     _tickTouche(dt) {
       this.timerPhase += dt;
+      // Si le ballon est en train de voler du lanceur vers le sauteur, on
+      // anime ce vol jusqu'à la réception (cf. _tickToucheLancer) plutôt que
+      // de résoudre la touche dans le même tick.
+      if (this.toucheLancer) return this._tickToucheLancer(dt);
       this._touchePlacerLignes(dt);
       // Alignement, lancer et contestation au saut pris dans leur ensemble :
       // une touche réelle prend bien plus que 2 s entre l'arrêt de jeu et la
@@ -2382,53 +2393,80 @@
       const vole = this.rng() < probaVolAdverse;
       const gagnant = vole ? adversaire : lanceur;
       this.stats[gagnant].lineoutsGagnes++;
-      if (vole) {
-        this.stats[adversaire].turnovers++;
-        this.log('TURNOVER', adversaire, `Touche volee, l'equipe ${adversaire} recupere le ballon`);
-      }
-      this.possession = gagnant;
-      const eqGagnante = gagnant === 'A' ? this.equipeA : this.equipeB;
+      if (vole) this.stats[adversaire].turnovers++;
       // Le sauteur n'est jamais "le plus proche d'un point" : en match réel le
       // lancer vise un appel tactique (plot avant/milieu/fond de ligne), donc
       // un sauteur choisi au hasard parmi les vrais sauteurs (2e/3e ligne,
-      // n°4-8 - jamais la 1ere ligne qui lie/lève sans sauter) plutôt qu'un
-      // calcul de distance qui désignait toujours le même joueur (celui posté
-      // en bout de ligne par _touchePlacerLignes, presque toujours un pilier
-      // ou systématiquement le n°4). Tous les candidats sont déjà alignés en
-      // courant (cf. _touchePlacerLignes), donc aucune téléportation.
+      // n°4-8 - jamais la 1ere ligne qui lie/lève sans sauter). Tous les
+      // candidats sont déjà alignés en courant (cf. _touchePlacerLignes).
+      const eqGagnante = gagnant === 'A' ? this.equipeA : this.equipeB;
       const tirerSauteur = (equipe, exclu) => {
         const sauteurs = equipe.filter(j => j.numero >= 4 && j.numero <= 8 && j.sinBin <= 0 && j.auSol === 0 && j !== exclu);
         const avants = equipe.filter(j => j.numero <= 8 && j.sinBin <= 0 && j.auSol === 0 && j !== exclu);
         const pool = sauteurs.length ? sauteurs : (avants.length ? avants : equipe);
         return pool[Math.floor(this.rng() * pool.length)];
       };
-      if (vole) {
-        // Touche volée : le sauteur adverse qui s'impose est déjà aligné dans
-        // le couloir de touche (cf. _touchePlacerLignes ci-dessus) — jamais
-        // téléporté depuis une position prise au hasard sur le terrain.
-        this.porteur = tirerSauteur(eqGagnante, null);
-      } else {
-        // Touche gagnée par l'équipe qui lance : avant ce correctif, le
-        // porteur restait le talonneur (lui ne capte rien, il vient de
-        // lancer) au lieu d'un sauteur. Le sauteur capte le ballon puis le
-        // transmet au demi de mêlée (lui aussi déjà en place, pas
-        // téléporté) qui décide comme à la sortie d'une mêlée/d'un ruck.
-        const sauteur = tirerSauteur(eqLanceur, this.porteur);
-        this.log('TOUCHE_BALLON_GAGNE', lanceur, `Touche gagnee, le n°${sauteur.numero} capte le ballon pour l'equipe ${lanceur}`);
-        const neuf = eqLanceur.find(j => j.numero === 9 && j.sinBin <= 0) || sauteur;
-        this.porteur = this._neufVersDix(eqLanceur, neuf);
-      }
+      const sauteur = tirerSauteur(eqGagnante, vole ? null : this.porteur);
+      // On NE résout PAS la touche tout de suite : le ballon doit voler du
+      // lanceur (sur la ligne de touche) jusqu'au sauteur, à vue, avant d'être
+      // capté. Sans ça le ballon "sautait" instantanément de la touche jusque
+      // dans l'alignement — la "magie" signalée. Le vol et la réception sont
+      // gérés par _tickToucheLancer ; l'issue (volé/gagné, sauteur) est déjà
+      // décidée ici mais ne s'applique qu'à la réception.
+      const fromX = this.porteur ? this.porteur.x : xLanceur;
+      const fromY = this.porteur ? this.porteur.y : yLanceur;
+      this.toucheLancer = { sauteur, gagnant, vole, lanceur, eqAdverse, fromX, fromY, timer: 0, duree: 0.8 };
+      this.ballonEnVol = true;
+      this.ballonVolX = fromX;
+      this.ballonVolY = fromY;
+      this.ballonVolHauteur = 0;
+      this.log('TOUCHE_LANCER', lanceur, `Lancer en touche de l'equipe ${lanceur}`);
+    }
 
-      if (!vole) {
+    // Vol du ballon lors d'un lancer en touche : trajectoire en cloche du
+    // lanceur (ligne de touche) vers le sauteur, puis réception. Reprend le
+    // mécanisme de vol des coups de pied (ballonEnVol) pour que la remise en
+    // jeu soit réellement visible, jamais une téléportation du ballon.
+    _tickToucheLancer(dt) {
+      const L = this.toucheLancer;
+      L.timer += dt;
+      this._touchePlacerLignes(dt);
+      const t = Math.min(1, L.timer / L.duree);
+      // La cible suit le sauteur (toujours positionné par _touchePlacerLignes),
+      // donc le ballon atterrit bien dans ses mains où qu'il se tienne.
+      this.ballonEnVol = true;
+      this.ballonVolX = L.fromX + (L.sauteur.x - L.fromX) * t;
+      this.ballonVolY = L.fromY + (L.sauteur.y - L.fromY) * t;
+      this.ballonVolHauteur = Math.sin(Math.PI * t);
+      if (t < 1) return;
+      // Réception : le sauteur capte le ballon en l'air, à sa position réelle.
+      this.ballonEnVol = false;
+      this.ballonVolHauteur = 0;
+      this.toucheLancer = null;
+      this.possession = L.gagnant;
+      this.porteur = L.sauteur;
+      if (L.vole) {
+        this.log('TURNOVER', L.gagnant, `Touche volee, l'equipe ${L.gagnant} recupere le ballon`);
+      } else {
+        this.log('TOUCHE_BALLON_GAGNE', L.lanceur, `Touche gagnee, le n°${L.sauteur.numero} capte le ballon pour l'equipe ${L.lanceur}`);
+        // Maul (catch-and-drive) probable près de la ligne adverse.
         const zone = this._zoneTerrain(this.porteur);
         const tauxMaulTouche = (zone === 'OPP_22' || zone === 'CINQ_M') ? 0.45 : 0.08;
         if (this.rng() < tauxMaulTouche) {
-          const { joueur: defenseurProche } = joueurLePlusProche(eqAdverse, this.porteur.x, this.porteur.y);
+          const { joueur: defenseurProche } = joueurLePlusProche(L.eqAdverse, this.porteur.x, this.porteur.y);
           this._formerMaul(this.porteur, defenseurProche);
           return;
         }
+        // Sinon le sauteur transmet au demi de mêlée, déjà en retrait juste
+        // derrière l'alignement (~2,5 m, cf. _touchePlacerLignes) : passe courte
+        // normale. On NE délègue PAS à l'ouvreur (_neufVersDix) ici : il se tient
+        // avec les trois-quarts à 10 m, et lui donner le ballon ferait "sauter"
+        // celui-ci de 10 m. La passe demi -> ouvreur se fait ensuite en jeu
+        // courant (_tickPorte), à vue.
+        const eqG = L.gagnant === 'A' ? this.equipeA : this.equipeB;
+        this.porteur = eqG.find(j => j.numero === 9 && j.sinBin <= 0) || L.sauteur;
       }
-      this._imposerRecuperationRuck(pt);
+      this._imposerRecuperationRuck(this.ruckPoint);
       this.phase = 'PORTE';
       this.timerPhase = 0;
     }
