@@ -2515,10 +2515,35 @@
       }
     }
 
+    // Replacement des joueurs pendant un coup de pied de pénalité au but : comme
+    // à la transformation (cf. _transformationPlacerJoueurs), les 28 autres
+    // joueurs restaient figés là où la faute avait été commise pendant les ~25 s
+    // du tir. L'équipe qui défend se replie derrière sa ligne d'en-but (elle ne
+    // peut pas charger un tir au but), l'équipe qui botte se replace derrière le
+    // ballon (onside), prête à suivre le jeu sur une éventuelle touche/relance.
+    // Tout se fait à la course (avancer), jamais de téléportation.
+    _penaliteTirPlacerJoueurs(dt) {
+      if (!this.positionTir) return;
+      const sens = this.equipeAuTir === 'A' ? 1 : -1;
+      const equipeAttaque = this.equipeAuTir === 'A' ? this.equipeA : this.equipeB;
+      const equipeDefense = this.equipeAuTir === 'A' ? this.equipeB : this.equipeA;
+      const ligneDefense = sens > 0 ? LONGUEUR : 0;
+      const xAttaque = Math.max(0, Math.min(LONGUEUR, this.positionTir.x - sens * 15));
+      for (const j of equipeDefense) {
+        if (j.sinBin > 0) continue;
+        avancer(j, ligneDefense - j.x, 0, dt, vitesseMs(j) * 0.8);
+      }
+      for (const j of equipeAttaque) {
+        if (j.sinBin > 0 || j === this.porteur) continue;
+        avancer(j, xAttaque - j.x, 0, dt, vitesseMs(j) * 0.8);
+      }
+    }
+
     // Coup de pied de pénalité au but (+3), résolu après un temps d'arrêt
     // réaliste (placement, recul, course d'élan, frappe : ~20-25 s en match réel).
     _tickPenaliteTir(dt) {
       this.timerPhase += dt;
+      this._penaliteTirPlacerJoueurs(dt);
       const duree = 25 * this._echelleArret;
       // Même principe que pour la transformation : le ballon vole vers les
       // poteaux pendant la dernière fraction du temps d'arrêt.
