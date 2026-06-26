@@ -1412,8 +1412,15 @@
         // Porteur isolé (pas de soutien arrivé à temps) : risque accru de
         // turnover ou, si le porteur s'accroche au ballon sans soutien,
         // pénalité directe pour "ballon non rendu" plutôt qu'un turnover propre.
-        const bonusIsolement = Math.min(0.22, (this.ruckTempsSansSoutien || 0) * 0.15);
-        const probaTurnover = Math.max(0.04, Math.min(0.45, 0.12 + (forceDef - forceAtt) / 700 + bonusIsolement));
+        const bonusIsolement = Math.min(0.12, (this.ruckTempsSansSoutien || 0) * 0.08);
+        // Taux de grattage au ruck : en match réel l'équipe qui attaque conserve
+        // ~95 % de ses rucks (turnover ~3-5 %). L'ancienne base de 0.12 donnait
+        // ~24 % de turnovers, soit ~122 ballons grattés/match (réel ~20) et un
+        // jeu en va-et-vient permanent irréaliste. Base abaissée à 0.03 ; le
+        // différentiel de force du pack et surtout l'isolement du porteur
+        // (bonusIsolement) restent les vrais moteurs d'un grattage — un porteur
+        // isolé face à un pack costaud peut toujours se faire gratter souvent.
+        const probaTurnover = Math.max(0.012, Math.min(0.18, 0.025 + (forceDef - forceAtt) / 1600 + bonusIsolement));
         const turnover = this.rng() < probaTurnover;
         if (turnover) {
           this.possession = this.possession === 'A' ? 'B' : 'A';
