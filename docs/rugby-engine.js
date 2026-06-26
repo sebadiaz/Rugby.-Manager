@@ -535,7 +535,10 @@
       this.ruckPoint = { x: position.x, y: position.y };
       this.possession = equipeQuiSort === 'A' ? 'B' : 'A';
       const equipe = this.possession === 'A' ? this.equipeA : this.equipeB;
-      this.porteur = this._neufVersDix(equipe, equipe[8]);
+      // Loi 18 : c'est le talonneur (n°2) qui lance en touche en match reel,
+      // jamais le demi de melee ni l'ouvreur - _neufVersDix (9->10) sert a la
+      // sortie de balle d'un regroupement, pas au lancer de touche.
+      this.porteur = equipe.find(j => j.numero === 2 && j.sinBin <= 0) || equipe[8];
       this.phase = 'TOUCHE';
       this.timerPhase = 0;
       // Position des deux lignes de touche (loi 18) : avants au centre dans le
@@ -649,7 +652,9 @@
       const gain = 10 + this.rng() * 10;
       const xTouche = Math.max(0, Math.min(LONGUEUR, position.x + sensAttaque * gain));
       const eqLanceur = equipe === 'A' ? this.equipeA : this.equipeB;
-      this.porteur = this._neufVersDix(eqLanceur, eqLanceur[8]);
+      // Loi 18 : le talonneur (n°2) lance, comme a la touche en jeu courant
+      // (cf. _accorderTouche).
+      this.porteur = eqLanceur.find(j => j.numero === 2 && j.sinBin <= 0) || eqLanceur[8];
       const xLanceur = Math.max(5, Math.min(LONGUEUR - 5, xTouche));
       const yLanceur = position.y <= LARGEUR / 2 ? 5 : LARGEUR - 5;
       this.ruckPoint = { x: xLanceur, y: yLanceur };
