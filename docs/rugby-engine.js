@@ -2301,6 +2301,21 @@
           const cy9 = yBase + versCentre * 8;
           avancer(neuf, cx9 - neuf.x, cy9 - neuf.y, dt, vitesseMs(neuf) * 0.8);
         }
+        // Loi 18 : les joueurs NON participants à la touche (les trois-quarts,
+        // n°10-15) doivent se replacer DERRIÈRE leur ligne de hors-jeu, à 10 m
+        // de la ligne de touche, et non rester là où le ballon est sorti. Avant
+        // ce correctif ils n'étaient jamais repositionnés pendant la touche : ils
+        // restaient figés n'importe où sur le terrain. Ils s'alignent désormais
+        // en courant (avancer, jamais de téléportation) sur cette ligne des 10 m,
+        // côté de leur propre camp (sensAttaque), espacés sur la largeur du côté
+        // ouvert, prêts à lancer ou défendre l'attaque issue de la touche.
+        const sens = equipe[0].sensAttaque;
+        const backs = equipe.filter(j => j.numero >= 10 && j.sinBin <= 0 && j !== this.porteur);
+        const xBacks = pt.x - sens * 10;
+        backs.forEach((j, k) => {
+          const cyB = yBase + versCentre * (12 + k * 6);
+          avancer(j, xBacks - j.x, cyB - j.y, dt, vitesseMs(j) * 0.85);
+        });
       };
       placer(this.equipeA, -0.5);
       placer(this.equipeB, 0.5);
