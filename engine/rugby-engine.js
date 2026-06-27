@@ -986,16 +986,27 @@
           avancer(j, cibleInterceptX - j.x, porteur.y - j.y, dt, vitesseMs(j));
           continue;
         }
-        // Les autres défenseurs NE convergent PAS sur le ballon : ils montent en
+        // L'ARRIÈRE (n°15) ne monte PAS dans la ligne : il SWEEPE en couverture
+        // ~18 m derrière, au centre, pour parer le jeu au pied et les
+        // débordements (dernier rideau). Il ne court jamais vers le ballon.
+        if (j.numero === 15) {
+          const cibleX = porteur.x + porteur.sensAttaque * 18;
+          const cibleY = j.channelY * 0.7 + porteur.y * 0.3;
+          avancer(j, cibleX - j.x, cibleY - j.y, dt, vitesseMs(j) * 0.8);
+          continue;
+        }
+        // Les autres défenseurs (avants + 9/10/12/13 + AILIERS 11/14) montent en
         // LIGNE à plat sur la ligne d'avantage et tiennent leur couloir pour
-        // OCCUPER toute la largeur, avec une simple glissade vers le ballon
-        // (défense en glissement, dérive 0.2 au lieu de 0.4 qui les agglutinait).
-        // Ils restent côté ligne d'en-but adverse au porteur pour ne pas laisser
-        // le couloir vers l'essai ouvert.
+        // OCCUPER toute la largeur, avec une glissade vers le ballon (défense en
+        // glissement). Les AILIERS tiennent FERMEMENT leur bord (dérive minime) :
+        // ils ne se font pas aspirer vers le ballon, donc les ailes restent
+        // couvertes. Tous restent côté en-but adverse au porteur (couloir fermé).
         const estAvant = j.numero <= 8;
+        const ailier = j.numero === 11 || j.numero === 14;
         const avance = porteur.sensAttaque > 0 ? (estAvant ? 1 : 2.5) : -(estAvant ? 1 : 2.5);
         const cibleX = porteur.x + avance;
-        const cibleY = j.channelY * 0.8 + porteur.y * 0.2;
+        const drift = ailier ? 0.06 : 0.2;
+        const cibleY = j.channelY * (1 - drift) + porteur.y * drift;
         avancer(j, cibleX - j.x, cibleY - j.y, dt, vitesseMs(j) * 0.85);
       }
 
