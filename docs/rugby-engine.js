@@ -1112,11 +1112,15 @@
       // sous pression), de plus en plus rare en remontant le terrain. Une
       // équipe qui mène botte un peu plus pour la touche/le territoire.
       if (this.timerPhase > 0.4 && zone !== 'CINQ_M') {
+        // Taux abaissés (~ -35 %) : le jeu au pied était trop fréquent (~64
+        // coups de pied/match, réel ~25-40). On botte toujours surtout depuis
+        // son propre camp (dégagement/occupation) mais on garde davantage le
+        // ballon en main pour faire vivre le jeu.
         let pParSeconde;
-        if (zone === 'OWN_22') pParSeconde = 0.40 + (pression ? 0.22 : 0);
-        else if (zone === 'OWN_HALF') pParSeconde = 0.12 + (pression ? 0.08 : 0);
-        else if (zone === 'OPP_HALF') pParSeconde = 0.03 + (pression ? 0.02 : 0);
-        else pParSeconde = 0.015; // OPP_22 : on privilégie le jeu au sol/pick-and-go.
+        if (zone === 'OWN_22') pParSeconde = 0.26 + (pression ? 0.16 : 0);
+        else if (zone === 'OWN_HALF') pParSeconde = 0.075 + (pression ? 0.05 : 0);
+        else if (zone === 'OPP_HALF') pParSeconde = 0.02 + (pression ? 0.012 : 0);
+        else pParSeconde = 0.01; // OPP_22 : on privilégie le jeu au sol/pick-and-go.
         if (enMene) pParSeconde *= 1.15; else pParSeconde *= 0.9;
         if (this.rng() < pParSeconde * dt) return 'KICK';
       }
