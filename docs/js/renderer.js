@@ -99,21 +99,38 @@
 
   function dessinerJoueur(j, estPorteur) {
     const { px, py } = versCanvas(j.x, j.y);
+    const auSol = j.auSol > 0;
+    ctx.save();
     ctx.beginPath();
-    ctx.arc(px, py, 10, 0, Math.PI * 2);
+    if (auSol) {
+      // Joueur AU SOL : dessiné couché (ellipse aplatie) et atténué, pour qu'on
+      // voie d'un coup d'œil qu'il est à terre et ne participe pas (plaqué qui
+      // ne s'est pas encore relevé).
+      ctx.ellipse(px, py, 12, 5, 0, 0, Math.PI * 2);
+    } else {
+      ctx.arc(px, py, 10, 0, Math.PI * 2);
+    }
     ctx.fillStyle = j.team === 'A' ? '#1565c0' : '#c62828';
-    if (j.auSol > 0) ctx.fillStyle = j.team === 'A' ? '#5c7fa3' : '#a36a6a';
+    if (auSol) ctx.globalAlpha = 0.5;
     ctx.fill();
+    ctx.globalAlpha = 1;
     if (estPorteur) {
-      ctx.lineWidth = 3;
+      // Porteur du ballon nettement marqué : anneau jaune épais + halo.
+      ctx.lineWidth = 4;
       ctx.strokeStyle = '#ffeb3b';
       ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(px, py, 14, 0, Math.PI * 2);
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = 'rgba(255,235,59,0.5)';
+      ctx.stroke();
     }
-    ctx.fillStyle = '#fff';
-    ctx.font = '10px sans-serif';
+    ctx.fillStyle = auSol ? 'rgba(255,255,255,0.65)' : '#fff';
+    ctx.font = (auSol ? '8px' : '10px') + ' sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(j.numero, px, py);
+    ctx.restore();
   }
 
   function dessinerBallon(state) {
