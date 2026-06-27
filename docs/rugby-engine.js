@@ -267,6 +267,11 @@
       // (exception loi 19 sur l'attribution de la mêlée en cas de ballon injouable).
       this.maul = null;
       this._receptionDirecte = false;
+      // Avantage (loi 8) : objet d'état courant (null hors avantage). Quand une
+      // équipe commet une faute, l'arbitre laisse jouer l'équipe non fautive et
+      // ne siffle la sanction que si celle-ci n'en tire rien. Stocke la sanction
+      // en attente, le bénéficiaire, la marque et le repère de progression.
+      this.avantage = null;
       // Compteur d'infractions de maul par équipe sur l'ensemble du match
       // (persiste d'un maul à l'autre) : sert à siffler un carton jaune pour
       // fautes répétées, comme l'arbitrage réel.
@@ -326,6 +331,9 @@
       this.maul = null;
       this.melee = null;
       this._receptionDirecte = false;
+      // Toute reprise (coup d'envoi après essai/pénalité/22 m) annule un avantage
+      // éventuellement en cours : on repart sur une nouvelle séquence de jeu.
+      this.avantage = null;
       // Un carton jaune en cours (sinBin > 0) doit survivre au redémarrage de
       // manche : sans ce report, l'exclusion de 10 min (loi 9.29) serait
       // effacée dès le prochain essai/pénalité/mi-temps, ce qui annule la
@@ -608,6 +616,62 @@
       }
       const vitessePackMin = 2.5;
       return Math.min(10, Math.max(3, pireDistance / vitessePackMin));
+    }
+
+    // --- Avantage (loi 8) : au lieu de siffler la faute tout de suite, l'arbitre
+    // laisse l'équipe non fautive (bénéficiaire) jouer. Si elle progresse
+    // nettement ou garde le ballon, l'avantage est « joué » et le match continue
+    // (la sanction est effacée). Si elle perd le ballon au profit de l'équipe
+    // fautive sans contrepartie, l'arbitre revient à la marque et applique la
+    // sanction en attente. Le jeu n'est PAS arrêté au moment de la faute. ---
+    _jouerAvantage(type, equipeFautive, equipeBeneficiaire, position) {
+      // Un seul avantage à la fois : si un est déjà en cours, on n'en réarme pas.
+      if (this.avantage) return;
+      this.avantage = {
+        type, // 'PENALITE' ou 'MELEE'
+        equipeFautive, equipeBeneficiaire,
+        position: { x: position.x, y: position.y },
+        timer: 0,
+        // Repère de progression : abscisse du porteur au moment de la faute.
+        xDepart: this.porteur ? this.porteur.x : position.x,
+      };
+      this.log('AVANTAGE', equipeBeneficiaire, `Avantage joue pour l'equipe ${equipeBeneficiaire} (faute de ${equipeFautive})`);
+    }
+
+    // Suivi de l'avantage à chaque tick : décide s'il est joué (jeu continue) ou
+    // s'il faut revenir à la sanction.
+    _tickAvantage(dt) {
+      const a = this.avantage;
+      a.timer += dt;
+      // L'équipe bénéficiaire a tapé au pied (jeu territorial) ou marqué : elle a
+      // utilisé son avantage. On le considère joué même si le ballon change
+      // ensuite de camp sur la réception — sinon on reviendrait à la pénalité
+      // alors qu'elle a délibérément choisi de jouer (et on téléporterait le
+      // buteur sur la marque en plein vol de balle).
+      if (this.phase === 'COUP_DE_PIED_JEU' || this.ballonEnVol
+        || this.phase === 'ESSAI' || this.phase === 'TRANSFORMATION' || this.phase === 'PENALITE_TIR') {
+        this.avantage = null;
+        this.log('AVANTAGE_JOUE', a.equipeBeneficiaire, `Avantage joue pour l'equipe ${a.equipeBeneficiaire}`);
+        return;
+      }
+      // Avantage non concrétisé : le ballon est passé à l'équipe fautive sans que
+      // le bénéficiaire en tire profit -> retour à la marque, sanction appliquée.
+      if (this.possession === a.equipeFautive) {
+        this.avantage = null;
+        this.log('AVANTAGE_REVIENT', a.equipeBeneficiaire, `Pas d'avantage : retour a la sanction pour l'equipe ${a.equipeBeneficiaire}`);
+        if (a.type === 'PENALITE') this._traiterPenalite(a.equipeBeneficiaire, a.position);
+        else this._accorderMelee(a.equipeFautive, a.position);
+        return;
+      }
+      // Avantage obtenu : gain de terrain net (>= 12 m) ou ballon conservé assez
+      // longtemps (l'équipe a fait au moins aussi bien qu'avec la pénalité). Le
+      // jeu continue, la sanction est effacée.
+      const sens = a.equipeBeneficiaire === 'A' ? 1 : -1;
+      const gain = this.porteur ? (this.porteur.x - a.xDepart) * sens : 0;
+      if (gain >= 12 || a.timer >= 5) {
+        this.avantage = null;
+        this.log('AVANTAGE_JOUE', a.equipeBeneficiaire, `Avantage obtenu, le jeu continue pour l'equipe ${a.equipeBeneficiaire}`);
+      }
     }
 
     // --- Pénalité : selon la distance aux poteaux, l'équipe non fautive tente un
@@ -1386,8 +1450,11 @@
           const cibleX = sensAttaque > 0 ? pt.x + margeRecul : pt.x - margeRecul;
           avancer(j, cibleX - j.x, j.channelY - j.y, dt, vitesseMs(j));
           if (this.timerPhase > delaiGrace && Referee.horsJeuRuck(j, pt, sensAttaque)) {
-            this._traiterPenalite(this.possession, { x: this.porteur.x, y: this.porteur.y });
-            return;
+            // Hors-jeu défensif au ruck : avantage (loi 8). L'équipe en possession
+            // joue ; la pénalité n'est sifflée que si elle n'en tire rien (cf.
+            // _tickAvantage). On ne stoppe donc PAS le ruck — il se résout
+            // normalement et l'avantage est suivi à partir de là.
+            this._jouerAvantage('PENALITE', this.possession === 'A' ? 'B' : 'A', this.possession, { x: this.porteur.x, y: this.porteur.y });
           }
           continue;
         }
@@ -2803,6 +2870,10 @@
       else if (this.phase === 'ESSAI') this._tickEssai(dt);
       else if (this.phase === 'TRANSFORMATION') this._tickTransformation(dt);
       else if (this.phase === 'PENALITE_TIR') this._tickPenaliteTir(dt);
+      // Suivi de l'avantage (loi 8) APRÈS la phase : on évalue sur l'état mis à
+      // jour (possession, position du porteur) si l'avantage est joué ou s'il
+      // faut revenir à la sanction.
+      if (this.avantage) this._tickAvantage(dt);
     }
 
     // Forme normalisée du ballon (cf. docs/index.html refonte modulaire) :
