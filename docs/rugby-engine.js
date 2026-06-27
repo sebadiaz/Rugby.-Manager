@@ -1428,6 +1428,18 @@
       this.timerPhase += dt;
       const pt = this.ruckPoint;
       const sensAttaque = this.porteur.sensAttaque;
+      // Loi 14/15 : le joueur PLAQUÉ (porteur actuel) est au sol et NE PEUT PAS
+      // se relever ni rejouer tant que le ruck n'est pas résolu. On maintient
+      // son état « au sol » pendant toute la durée du regroupement (sinon il se
+      // relevait après 1,5 s alors que le ruck dure plus longtemps) : il faut
+      // qu'un partenaire vienne sécuriser puis sortir le ballon avant qu'il ne
+      // reparte. Il se relèvera (auSol redescend) une fois le ballon sorti.
+      if (this.porteur && this.porteur.auSol >= 0) {
+        this.porteur.auSol = Math.max(this.porteur.auSol, 0.4);
+        // Il reste au sol au point de plaquage (il ne dérive pas).
+        this.porteur.x = pt.x;
+        this.porteur.y = pt.y;
+      }
       // Marge de repli et délai de grâce : au moment du plaquage, des défenseurs
       // non-contestants se trouvent souvent déjà tout près du point de ruck (ils
       // suivaient le porteur en jeu ouvert). La loi sanctionne le hors-jeu, mais un
@@ -1515,7 +1527,17 @@
       // le ruck dure — c'est ce cumul qui pèse sur le risque de turnover/pénalité.
       if (iSoutien === 0) this.ruckTempsSansSoutien = (this.ruckTempsSansSoutien || 0) + dt;
       const dureeCible = this.ruckDureeCible || 1.8 * this._echelleArret;
+      // Le ballon ne SORT du ruck que lorsqu'un partenaire est venu le sécuriser
+      // (au moins un coéquipier debout, hors le plaqué, est arrivé sur le ballon
+      // au sol) : c'est lui qui va chercher le ballon puis le redonne (cf. la
+      // sortie ci-dessous, par le n°9). Tant que personne n'est arrivé, le
+      // ballon reste au sol et on attend (le porteur isolé voit son risque de
+      // turnover/pénalité grandir), avec un plafond pour ne jamais bloquer.
+      const eqAtt = this.possession === 'A' ? this.equipeA : this.equipeB;
+      const soutienArrive = eqAtt.some(j => j !== this.porteur && j.auSol === 0
+        && j.sinBin <= 0 && distance(j, pt) < 2.5);
       if (this.timerPhase >= dureeCible) {
+        if (!soutienArrive && this.timerPhase < dureeCible + 4 * this._echelleArret) return;
         // Contest au ruck pondéré par les avants réellement engagés autour du
         // point de ruck (même proxy de force que le maul, forceMaul), plutôt
         // qu'un taux de turnover fixe : un paquet adverse plus nombreux ou
