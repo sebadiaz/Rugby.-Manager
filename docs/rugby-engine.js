@@ -855,41 +855,39 @@
         return;
       }
 
-      // Soutien rapproché : seuls 1 à 2 coéquipiers (les plus proches parmi les
-      // joueurs à forte tendance de proximité) collent réellement le porteur ;
-      // les autres tiennent leur couloir ou suivent à distance, sinon toute
-      // l'équipe converge sur le ballon comme un seul bloc, ce qui n'arrive pas
-      // en match réel (lignes, options de passe écartées...).
+      // Soutien et organisation de l'attaque : seuls les 2 coéquipiers les PLUS
+      // PROCHES du porteur (quel que soit leur poste) viennent réellement le
+      // soutenir. Tous les autres NE courent PAS après le ballon : ils tiennent
+      // leur couloir du plan de jeu (avants au centre, ligne de trois-quarts
+      // écartée, ailiers sur les bords), légèrement en retrait pour rester
+      // onside, et OCCUPENT la largeur du terrain — prêts à recevoir une passe
+      // au large. Avant, toute l'équipe dérivait vers le ballon et se compactait.
       const att = this.attaquants();
-      const candidatsProches = att
-        .filter(j => j !== porteur && j.tendance >= 70)
-        .sort((a, b) => distance(a, porteur) - distance(b, porteur));
-      const pursuiteEtroite = new Set(candidatsProches.slice(0, 2));
+      const soutienDirect = new Set(
+        att.filter(j => j !== porteur && j.auSol === 0)
+          .sort((a, b) => distance(a, porteur) - distance(b, porteur))
+          .slice(0, 2)
+      );
       for (const j of att) {
         if (j === porteur) continue;
-        if (pursuiteEtroite.has(j)) {
-          // L'écart latéral (angle) ne doit jouer que sur Y : appliqué aussi à
-          // X, il pouvait placer le soutien jusqu'à 2 m devant le porteur dans
-          // le sens d'attaque, ce qui transformait toute passe vers lui en
-          // passe en avant (mêlée injustifiée). Le soutien reste toujours
-          // légèrement en retrait du porteur en profondeur, comme un vrai
-          // joueur de soutien qui attend le ballon dans son dos.
+        if (soutienDirect.has(j)) {
+          // Soutien rapproché, toujours légèrement en retrait du porteur en
+          // profondeur (jamais devant, sinon passe en avant) : il attend le
+          // ballon dans son dos.
           const angle = (j.numero % 5) - 2;
           const cibleX = porteur.x - porteur.sensAttaque * 1.5;
           avancer(j, cibleX - j.x, (porteur.y - j.y) + angle * 0.5, dt, vitesseMs(j) * 0.9);
-        } else if (j.tendance >= 30) {
-          // Ouvreur/centres tiennent surtout leur couloir (ligne d'attaque
-          // écartée, options de passe disponibles) avec juste une légère
-          // dérive vers le ballon ; avec un poids majoritaire donné au ballon
-          // (l'ancien 0.6), toute la ligne se compactait sur un seul point
-          // au lieu de garder une vraie largeur de jeu.
-          const cibleY = j.channelY * 0.75 + porteur.y * 0.25;
-          const cibleX = porteur.x - porteur.sensAttaque * (6 + Math.abs(j.channelY - porteur.y) * 0.2);
-          avancer(j, cibleX - j.x, cibleY - j.y, dt, vitesseMs(j) * 0.8);
         } else {
-          const cibleY = j.channelY;
-          const cibleX = porteur.x - porteur.sensAttaque * 10;
-          avancer(j, cibleX - j.x, cibleY - j.y, dt, vitesseMs(j) * 0.6);
+          // Tient son couloir et garde la largeur : dérive seulement légère vers
+          // le ballon (avants un peu plus que les trois-quarts, qui restent
+          // écartés pour offrir des options de passe au large). Profondeur
+          // derrière le porteur pour rester onside.
+          const avant = j.numero <= 8;
+          const driftBallon = avant ? 0.2 : 0.1;
+          const cibleY = j.channelY * (1 - driftBallon) + porteur.y * driftBallon;
+          const profondeur = avant ? 7 : 9 + Math.abs(j.channelY - porteur.y) * 0.12;
+          const cibleX = porteur.x - porteur.sensAttaque * profondeur;
+          avancer(j, cibleX - j.x, cibleY - j.y, dt, vitesseMs(j) * (avant ? 0.7 : 0.8));
         }
       }
 
@@ -905,13 +903,16 @@
           avancer(j, cibleInterceptX - j.x, porteur.y - j.y, dt, vitesseMs(j));
           continue;
         }
-        // Les défenseurs hors plaqueur direct doivent se placer ENTRE le porteur
-        // et leur propre ligne d'en-but (donc dans le sens d'attaque du porteur),
-        // pas derrière lui : sinon le couloir vers l'essai reste grand ouvert.
+        // Les autres défenseurs NE convergent PAS sur le ballon : ils montent en
+        // LIGNE à plat sur la ligne d'avantage et tiennent leur couloir pour
+        // OCCUPER toute la largeur, avec une simple glissade vers le ballon
+        // (défense en glissement, dérive 0.2 au lieu de 0.4 qui les agglutinait).
+        // Ils restent côté ligne d'en-but adverse au porteur pour ne pas laisser
+        // le couloir vers l'essai ouvert.
         const estAvant = j.numero <= 8;
-        const avance = porteur.sensAttaque > 0 ? (estAvant ? 1 : 3) : -(estAvant ? 1 : 3);
+        const avance = porteur.sensAttaque > 0 ? (estAvant ? 1 : 2.5) : -(estAvant ? 1 : 2.5);
         const cibleX = porteur.x + avance;
-        const cibleY = j.channelY * 0.6 + porteur.y * 0.4;
+        const cibleY = j.channelY * 0.8 + porteur.y * 0.2;
         avancer(j, cibleX - j.x, cibleY - j.y, dt, vitesseMs(j) * 0.85);
       }
 
@@ -1348,17 +1349,27 @@
         const cy = pt.y + ((i % 2) ? -1 : 1) * Math.ceil((i + 1) / 2) * 0.7;
         avancer(j, cx - j.x, cy - j.y, dt, vitesseMs(j) * 0.7);
       };
+      // Seuls les 3 attaquants les plus proches du ruck s'y engagent réellement
+      // (nettoyage/conservation) ; le reste de l'équipe NE se jette PAS dedans,
+      // il s'aligne pour la phase suivante (cf. plus bas). En match réel une
+      // poignée de joueurs s'engage au ruck, pas tout le pack.
+      const soutiensRuck = new Set(
+        [...this.equipeA, ...this.equipeB]
+          .filter(j => j.team === this.possession && j !== this.porteur && j.auSol === 0 && j.numero !== 9)
+          .sort((a, b) => distance(a, pt) - distance(b, pt))
+          .slice(0, 3)
+      );
       let iContestants = 0, iSoutien = 0;
       for (const j of [...this.equipeA, ...this.equipeB]) {
         if (j === this.porteur) continue;
         const estContestant = this.contestants.includes(j.numero) && j.team !== this.possession;
-        const estSoutienAttaque = j.team === this.possession && distance(j, pt) < 8;
+        const estSoutienAttaque = soutiensRuck.has(j);
         // Le demi de mêlée court vers la base du ruck quelle que soit sa
         // distance de départ (il suit toujours le jeu en match réel) : c'est
         // lui qui jouera le ballon à la sortie (cf. plus bas), donc il ne
         // doit jamais y être téléporté à la résolution — il doit l'avoir
         // réellement rejoint en courant pendant la phase.
-        const estDemiMelee = !estSoutienAttaque && j.team === this.possession && j.numero === 9 && j.auSol === 0;
+        const estDemiMelee = j.team === this.possession && j.numero === 9 && j.auSol === 0;
 
         if (estContestant) { placerEnRosette(j, 1, iContestants++); continue; }
         if (estSoutienAttaque) { placerEnRosette(j, -1, iSoutien++); continue; }
@@ -1370,13 +1381,28 @@
 
         if (j.team !== this.possession && Referee.horsJeuRuck(j, pt, sensAttaque)) {
           // Se replier vers la zone ONSIDE (au-delà du point de ruck, côté de
-          // son propre en-but), pas plus profondément dans la zone hors-jeu.
+          // son propre en-but), en tenant son couloir (largeur) plutôt qu'en se
+          // massant sur le ballon.
           const cibleX = sensAttaque > 0 ? pt.x + margeRecul : pt.x - margeRecul;
-          avancer(j, cibleX - j.x, pt.y - j.y, dt, vitesseMs(j));
+          avancer(j, cibleX - j.x, j.channelY - j.y, dt, vitesseMs(j));
           if (this.timerPhase > delaiGrace && Referee.horsJeuRuck(j, pt, sensAttaque)) {
             this._traiterPenalite(this.possession, { x: this.porteur.x, y: this.porteur.y });
             return;
           }
+          continue;
+        }
+
+        // Tous les autres (attaquants non engagés et défenseurs déjà onside) ne
+        // courent pas après le ballon : ils tiennent leur couloir et occupent la
+        // largeur, prêts pour la phase suivante. L'attaque se replace en retrait
+        // du ruck (ligne onside prête à relancer), la défense monte en ligne à
+        // plat de son côté.
+        if (j.team === this.possession) {
+          const cibleX = pt.x - sensAttaque * (8 + Math.abs(j.channelY - pt.y) * 0.12);
+          avancer(j, cibleX - j.x, j.channelY - j.y, dt, vitesseMs(j) * 0.7);
+        } else {
+          const cibleX = sensAttaque > 0 ? pt.x + margeRecul : pt.x - margeRecul;
+          avancer(j, cibleX - j.x, j.channelY - j.y, dt, vitesseMs(j) * 0.7);
         }
       }
       // Temps sans aucun soutien d'attaque proche du point de ruck (porteur
