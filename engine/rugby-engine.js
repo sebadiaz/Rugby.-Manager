@@ -619,10 +619,19 @@
     // perpendiculaire à la ligne de touche, à l'abscisse px), borné pour ne
     // jamais bloquer le match.
     _capFormationTouche(px) {
+      // Le plafond doit couvrir le trajet RÉEL (2D) de l'avant le plus éloigné
+      // jusqu'à la zone d'alignement, pas seulement son décalage en profondeur
+      // (x) : un avant déjà à la bonne abscisse mais encore loin sur la largeur
+      // (y) mettait sinon le cap à ~3 s et le lancer partait pendant qu'il
+      // courait encore vers la bande des 5-15 m, le laissant au-delà des 15 m.
+      // On vise le milieu de cette bande (≈10 m de la touche), côté terrain.
+      const yT = this.toucheLanceurY;
+      const versCentre = (yT != null && yT <= LARGEUR / 2) ? 1 : -1;
+      const cible = { x: px, y: (yT != null ? yT : LARGEUR / 2) + versCentre * 10 };
       const avants = this.equipeA.concat(this.equipeB).filter(j => j.numero <= 8 && j.sinBin <= 0);
       let pireDistance = 0;
       for (const j of avants) {
-        const d = Math.abs(j.x - px);
+        const d = distance(j, cible);
         if (d > pireDistance) pireDistance = d;
       }
       // Le lanceur peut être bien plus loin de la marque que les avants
@@ -630,11 +639,11 @@
       // pourrait être autorisé avant même qu'il ait fini de courir jusqu'à
       // la touche.
       if (this.porteur) {
-        const dLanceur = distance(this.porteur, { x: px, y: this.toucheLanceurY });
+        const dLanceur = distance(this.porteur, { x: px, y: yT != null ? yT : LARGEUR / 2 });
         if (dLanceur > pireDistance) pireDistance = dLanceur;
       }
       const vitessePackMin = 2.5;
-      return Math.min(10, Math.max(3, pireDistance / vitessePackMin));
+      return Math.min(12, Math.max(3, pireDistance / vitessePackMin));
     }
 
     // --- Avantage (loi 8) : au lieu de siffler la faute tout de suite, l'arbitre
@@ -2239,7 +2248,14 @@
         // couloir des arrières : sinon le 9 serait tiré à 9 m en retrait puis
         // devrait être téléporté sur la base à la sortie du ballon.
         const backs = equipe.filter(j => j.numero > 9 && j.sinBin <= 0);
-        const cxBacks = m.x - equipe[0].sensAttaque * 9;
+        // Ligne de hors-jeu des trois-quarts (loi 19.31) : 5 m DERRIÈRE le pied
+        // le plus reculé de la mêlée. La mêlée est profonde d'environ 1,5 m de
+        // part et d'autre de la marque (m.x), donc le dernier pied est à ~1,5 m
+        // et la ligne réglementaire à ~6,5 m de la marque. On place les backs à
+        // 7,5 m (1 m de marge derrière la ligne pour ne pas être sifflé sur un
+        // simple flottement), au lieu des 9 m d'avant qui les reculaient de
+        // ~2,5 m de trop et aplatissaient le jeu juste après la mêlée.
+        const cxBacks = m.x - equipe[0].sensAttaque * 7.5;
         backs.forEach((j) => {
           // La ligne arrière se réorganise autour du point de mêlée réel
           // (pas uniquement sur le couloir figé de chaque joueur) : sinon
@@ -2376,13 +2392,18 @@
           return { type: 'BALLON_BLOQUE', equipeFautive: m.equipeIntroduction, gravite: 'RESET', message: 'ballon bloque, ne ressort pas du pied du numero 8', delibere: false };
         }
       }
-      // Hors-jeu des lignes arrières (loi 19) : les trois-quarts défenseurs
-      // (n°10-15) doivent rester à 5 m derrière la mêlée, de LEUR côté, jusqu'à
-      // la sortie du ballon. On ne contrôle qu'à partir de l'introduction (pas
-      // pendant SET) pour laisser aux arrières le temps de rejoindre leur ligne.
+      // Hors-jeu des lignes arrières (loi 19.31) : les trois-quarts défenseurs
+      // (n°10-15) doivent rester 5 m DERRIÈRE le pied le plus reculé de la
+      // mêlée, de LEUR côté, jusqu'à la sortie du ballon. La mêlée étant
+      // profonde d'environ 1,5 m depuis la marque (m.x), la ligne réglementaire
+      // est à ~6,5 m de la marque (5 m + 1,5 m), et non 5 m du centre comme
+      // auparavant : on mesurait alors le hors-jeu depuis la marque, pas depuis
+      // le dernier pied, ce qui laissait un défenseur s'avancer ~1,5 m trop
+      // près. On ne contrôle qu'à partir de l'introduction (pas pendant SET)
+      // pour laisser aux arrières le temps de rejoindre leur ligne.
       if (m.etat === E.INTRODUCTION || m.etat === E.CONTESTATION || m.etat === E.SORTIE) {
         const def = m.equipeNonIntroduction === 'A' ? this.equipeA : this.equipeB;
-        const margeBacks = 5, delaiGrace = 2.5;
+        const margeBacks = 6.5, delaiGrace = 2.5;
         for (const j of def) {
           // Avants (dans la mêlée) ET demi de mêlée exclus : le demi défenseur
           // a sa propre ligne (rester derrière le ballon, de son côté), pas la
@@ -2390,8 +2411,9 @@
           if (j.numero <= 9) continue;
           // L'équipe défenseure se tient du côté +m.sens de la mêlée (m.sens =
           // sens d'attaque de l'équipe qui introduit). Sa ligne de hors-jeu est
-          // donc 5 m derrière la mêlée DANS CE SENS. Un défenseur est hors-jeu
-          // s'il est à moins de 5 m derrière le point de mêlée de son côté.
+          // donc ~6,5 m derrière la marque DANS CE SENS. Un défenseur est
+          // hors-jeu s'il est à moins de 6,5 m (5 m + profondeur de mêlée)
+          // derrière le point de mêlée de son côté.
           // (Avant correctif : la limite était calculée du mauvais côté, si
           // bien que les arrières défenseurs — désormais correctement placés de
           // leur côté — étaient sifflés hors-jeu sur 100 % des mêlées, qui ne
@@ -2571,13 +2593,17 @@
       const placer = (equipe, decalX) => {
         const sens = equipe[0].sensAttaque;
         // Sauteurs alignés perpendiculairement à la touche, de la ligne des 5 m
-        // vers l'intérieur, espacés d'environ 1,7 m (zone 5-15 m). Les deux
-        // équipes forment deux colonnes séparées par le couloir d'un mètre
-        // (decalX), conformément à la loi.
+        // vers l'intérieur, espacés de 1,4 m (zone 5-15 m, loi 18.10). Avec
+        // jusqu'à 7 avants dans l'alignement (n°1,3-8, le n°2 lance), un
+        // espacement de 1,7 m poussait le dernier sauteur jusqu'à ~15,7-17,4 m,
+        // donc AU-DELÀ de la ligne des 15 m (coup franc en jeu réel). À 1,4 m,
+        // 7 sauteurs depuis 5 m s'étalent jusqu'à ~13,4 m, sous le plafond légal.
+        // Les deux équipes forment deux colonnes séparées par le couloir d'un
+        // mètre (decalX), conformément à la loi.
         const avants = equipe.filter(j => j.numero <= 8 && j.sinBin <= 0 && j !== this.porteur);
         avants.forEach((j, i) => {
           const cx = pt.x + decalX;
-          const cy = yLigne5 + versCentre * (i * 1.7);
+          const cy = yLigne5 + versCentre * (i * 1.4);
           avancer(j, cx - j.x, cy - j.y, dt, vitesseMs(j) * 0.8);
         });
         // Le demi de mêlée (receveur) se tient DERRIÈRE son propre alignement,
@@ -2631,7 +2657,17 @@
       // excentré (cf. _capFormationTouche).
       const pt = this.ruckPoint;
       const tousAvants = this.equipeA.concat(this.equipeB).filter(j => j.numero <= 8 && j.sinBin <= 0);
-      const enPlace = tousAvants.filter(j => Math.abs(j.x - pt.x) < 2).length;
+      // Lancer autorisé seulement quand chaque avant est À LA FOIS aligné en
+      // profondeur (x proche de la marque) ET dans la bande légale des 5-15 m
+      // depuis la touche (loi 18.10). Sans la contrainte sur y, un avant encore
+      // en course vers l'alignement (mesuré jusqu'à ~16,7 m sur la largeur)
+      // pouvait se retrouver AU-DELÀ de la ligne des 15 m à l'instant où le
+      // ballon partait : le lancer attend désormais qu'il soit rentré dans la
+      // zone légale.
+      const yTouche = this.toucheLanceurY != null ? this.toucheLanceurY : pt.y;
+      const versTouche = yTouche <= LARGEUR / 2 ? 1 : -1;
+      const dansBande = (j) => { const d = (j.y - yTouche) * versTouche; return d >= 4 && d <= 15; };
+      const enPlace = tousAvants.filter(j => Math.abs(j.x - pt.x) < 2 && dansBande(j)).length;
       // Le lanceur lui-même doit avoir rejoint la marque de touche (loi 18.22)
       // avant que le lancer ne puisse être joué : sinon il pourrait "lancer"
       // alors qu'il court toujours vers la touche.
