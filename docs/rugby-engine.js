@@ -272,6 +272,9 @@
       // ne siffle la sanction que si celle-ci n'en tire rien. Stocke la sanction
       // en attente, le bénéficiaire, la marque et le repère de progression.
       this.avantage = null;
+      // Position courante de l'arbitre (entité qui se déplace, jamais
+      // téléportée) : il court vers sa cible chaque tick (cf. _majArbitre).
+      this.arbitrePos = { x: LONGUEUR / 2, y: LARGEUR / 2 };
       // Compteur d'infractions de maul par équipe sur l'ensemble du match
       // (persiste d'un maul à l'autre) : sert à siffler un carton jaune pour
       // fautes répétées, comme l'arbitrage réel.
@@ -513,7 +516,23 @@
       this.timerPhase = 0;
     }
 
-    // Position affichable de l'arbitre : suit le point de ruck/mêlée pendant les
+    // Met à jour la position de l'arbitre : il COURT vers sa cible (suivre le
+    // jeu, se placer au ruck/à la mêlée), il n'y est jamais téléporté. Sa
+    // vitesse est un peu supérieure à celle des joueurs pour qu'il reste au
+    // contact du jeu ; sur un changement brusque (passe au large, coup de pied
+    // long) il rejoint sa nouvelle place en courant, comme un vrai arbitre.
+    _majArbitre(dt) {
+      const cible = this._positionArbitre();
+      const dx = cible.x - this.arbitrePos.x;
+      const dy = cible.y - this.arbitrePos.y;
+      const d = Math.hypot(dx, dy);
+      if (d < 0.01) return;
+      const pas = Math.min(d, 9 * dt); // ~9 m/s
+      this.arbitrePos.x += (dx / d) * pas;
+      this.arbitrePos.y += (dy / d) * pas;
+    }
+
+    // Cible de placement de l'arbitre : suit le point de ruck/mêlée pendant les
     // phases statiques, sinon reste juste derrière le porteur du ballon.
     _positionArbitre() {
       if (this.phase === 'RUCK' || this.phase === 'MAUL' || this.phase === 'MELEE' || this.phase === 'TOUCHE') {
@@ -1141,7 +1160,10 @@
       this.passeVisuelle = {
         fromX: passeur.x, fromY: passeur.y, cible,
         timer: 0,
-        duree: Math.max(0.12, Math.min(0.5, d / 22)),
+        // Durée proportionnelle à la distance, plafonnée plus haut pour les
+        // passes au large (sinon le ballon "saute" ~5 m/tick et paraît
+        // téléporté) : une passe longue prend ~1 s comme en vrai.
+        duree: Math.max(0.12, Math.min(1.0, d / 20)),
       };
     }
 
@@ -1539,12 +1561,20 @@
         // ensuite normalement (cf. _tickPorte/_tenterPasse) s'il lui passe,
         // exactement comme n'importe quelle autre passe en jeu courant.
         const att = this.attaquants();
-        const neuf = att.find(j => j.numero === 9 && j.auSol === 0);
-        let relayeur = neuf;
-        if (!relayeur) {
-          ({ joueur: relayeur } = joueurLePlusProche(att.filter(j => j.tendance >= 50), pt.x, pt.y));
+        let relayeur;
+        if (turnover) {
+          // Ballon gratté : c'est le joueur qui l'a arraché (le plus proche du
+          // ruck dans la nouvelle équipe, déjà sur place) qui le récupère, là
+          // où il est — pas le demi de mêlée adverse resté loin, ce qui
+          // téléportait le ballon à l'autre bout du regroupement.
+          ({ joueur: relayeur } = joueurLePlusProche(att.filter(j => j.auSol === 0), pt.x, pt.y));
         } else {
-          this.log('RUCK_SORTIE_9', this.possession, `Sortie de ruck par le 9`);
+          // Sortie propre : le demi de mêlée (n°9) joue le ballon au pied du
+          // regroupement (il a couru vers le ruck pendant la phase, cf.
+          // estDemiMelee) ; il décide ensuite normalement (passe/jeu au pied).
+          const neuf = att.find(j => j.numero === 9 && j.auSol === 0);
+          if (neuf) { relayeur = neuf; this.log('RUCK_SORTIE_9', this.possession, `Sortie de ruck par le 9`); }
+          else ({ joueur: relayeur } = joueurLePlusProche(att.filter(j => j.tendance >= 50), pt.x, pt.y));
         }
         this.porteur = relayeur || att.find(j => j.numero === 8) || att[0];
         this._imposerRecuperationRuck(pt);
@@ -2874,6 +2904,8 @@
       // jour (possession, position du porteur) si l'avantage est joué ou s'il
       // faut revenir à la sanction.
       if (this.avantage) this._tickAvantage(dt);
+      // L'arbitre court vers sa place (jamais de téléportation).
+      if (this.phase !== 'TERMINE') this._majArbitre(dt);
     }
 
     // Forme normalisée du ballon (cf. docs/index.html refonte modulaire) :
@@ -2945,7 +2977,7 @@
           carrierTeam: enVol || auSolLoose || enPasse ? null : this.porteur.team,
           carrierNumber: enVol || auSolLoose || enPasse ? null : this.porteur.numero,
         },
-        arbitre: this._positionArbitre(),
+        arbitre: { x: this.arbitrePos.x, y: this.arbitrePos.y },
         possession: this.possession,
         phase: this.phase,
         // État détaillé du maul en cours (null hors maul), pour l'affichage.
