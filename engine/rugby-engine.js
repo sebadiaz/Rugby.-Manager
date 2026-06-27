@@ -2994,6 +2994,25 @@
         passeH = Math.sin(Math.PI * t) * 0.4;
       }
       const enPasse = passeX != null;
+      // Position d'affichage du ballon pendant les phases statiques (mêlée /
+      // touche) : le ballon est sur la MARQUE (base de la mêlée, marque de
+      // touche), PAS « dans les mains » d'un joueur encore loin — sinon il se
+      // téléporte vers ce joueur au début de la phase (jusqu'à ~40 m observés à
+      // la touche) puis en revient. Pendant un vol (lancer de touche, coup de
+      // pied), le vol prime (géré au-dessus via enVol). Le porteur réel reste
+      // inchangé côté logique ; ceci ne concerne QUE l'affichage du ballon.
+      let ballonPhaseX = null, ballonPhaseY = null;
+      if (!enVol && !enPasse && !auSolLoose) {
+        if (this.phase === 'MELEE' && this.melee) {
+          ballonPhaseX = this.melee.x; ballonPhaseY = this.melee.y;
+        } else if (this.phase === 'TOUCHE') {
+          ballonPhaseX = this.toucheLanceurX != null ? this.toucheLanceurX : this.ruckPoint.x;
+          ballonPhaseY = this.toucheLanceurY != null ? this.toucheLanceurY : this.ruckPoint.y;
+        }
+      }
+      const enPhaseStatique = ballonPhaseX != null;
+      const ballonX = enVol || auSolLoose ? this.ballonVolX : enPasse ? passeX : enPhaseStatique ? ballonPhaseX : this.porteur.x;
+      const ballonY = enVol || auSolLoose ? this.ballonVolY : enPasse ? passeY : enPhaseStatique ? ballonPhaseY : this.porteur.y;
       return {
         equipeA: this.equipeA.map(j => ({ ...j })),
         equipeB: this.equipeB.map(j => ({ ...j })),
@@ -3006,20 +3025,18 @@
           ? { x: this.ballonVolX, y: this.ballonVolY, enVol: true, hauteur: this.ballonVolHauteur }
           : enPasse
             ? { x: passeX, y: passeY, enVol: true, hauteur: passeH }
-            : auSolLoose
-              ? { x: this.ballonVolX, y: this.ballonVolY, enVol: false, hauteur: 0 }
-              : { x: this.porteur.x, y: this.porteur.y, enVol: false, hauteur: 0 },
+            : { x: ballonX, y: ballonY, enVol: false, hauteur: 0 },
         // Objet ballon normalisé : { x, y, vx, vy, state, carrierTeam, carrierNumber }.
         // À terme, c'est cette forme qui doit devenir la source de vérité côté
         // rendu (docs/js/renderer.js) ; `ballon`/`porteur` restent en place tant
         // que la migration du rendu n'est pas terminée.
         ball: {
-          x: enVol || auSolLoose ? this.ballonVolX : enPasse ? passeX : this.porteur.x,
-          y: enVol || auSolLoose ? this.ballonVolY : enPasse ? passeY : this.porteur.y,
+          x: ballonX,
+          y: ballonY,
           vx: bvx, vy: bvy,
           state: enPasse ? 'AIR' : this._etatBallon(),
-          carrierTeam: enVol || auSolLoose || enPasse ? null : this.porteur.team,
-          carrierNumber: enVol || auSolLoose || enPasse ? null : this.porteur.numero,
+          carrierTeam: enVol || auSolLoose || enPasse || enPhaseStatique ? null : this.porteur.team,
+          carrierNumber: enVol || auSolLoose || enPasse || enPhaseStatique ? null : this.porteur.numero,
         },
         arbitre: { x: this.arbitrePos.x, y: this.arbitrePos.y },
         possession: this.possession,

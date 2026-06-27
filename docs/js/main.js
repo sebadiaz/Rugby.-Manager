@@ -96,6 +96,15 @@
     if (!a || !b) return true;
     return Math.hypot(b.x - a.x, b.y - a.y) > 4; // > vitesse de course réelle sur un pas
   }
+  // Le ballon, lui, est interpolé même sur des sauts plus grands (jusqu'à 14 m)
+  // pour qu'il GLISSE au lieu de se téléporter sur les transferts (sortie de
+  // ruck, mise en jeu, mise sur la marque) : seuls les très grands placements
+  // de reprise (renvoi à 50 m, ballon posé pour un coup d'envoi) ne sont pas
+  // interpolés. Le vol des passes/coups de pied est déjà animé en continu.
+  function sautBallonTropGrand(a, b) {
+    if (!a || !b) return true;
+    return Math.hypot(b.x - a.x, b.y - a.y) > 14;
+  }
   function interpolerEtat(a, b, f) {
     if (!a || f >= 1) return b;
     return Object.assign({}, b, {
@@ -103,8 +112,8 @@
         A: interpolerJoueurs(a.teams.A, b.teams.A, f),
         B: interpolerJoueurs(a.teams.B, b.teams.B, f),
       },
-      ball: sautTropGrand(a.ball, b.ball) ? b.ball : interpolerPoint(a.ball, b.ball, f),
-      ballon: (a.ballon && b.ballon && !sautTropGrand(a.ballon, b.ballon))
+      ball: sautBallonTropGrand(a.ball, b.ball) ? b.ball : interpolerPoint(a.ball, b.ball, f),
+      ballon: (a.ballon && b.ballon && !sautBallonTropGrand(a.ballon, b.ballon))
         ? Object.assign({}, b.ballon, { x: lerp(a.ballon.x, b.ballon.x, f), y: lerp(a.ballon.y, b.ballon.y, f) })
         : b.ballon,
       arbitre: interpolerPoint(a.arbitre, b.arbitre, f),
