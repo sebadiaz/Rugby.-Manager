@@ -1133,6 +1133,24 @@
         return 'PICK_GO';
       }
 
+      // 2b. Sortie de regroupement : le demi de mêlée (9) ÉCARTE le ballon de la
+      // congestion. À la sortie d'un ruck/d'une mêlée, les deux paquets sont
+      // massés autour du ballon et la défense ne laisse pas passer le porteur ;
+      // le 9 ne doit donc PAS foncer dedans, il donne à l'ouvreur (10) ou à un
+      // trois-quarts placé EN ESPACE derrière/à hauteur. C'est ce qui sort
+      // réellement le ballon du regroupement et permet d'avancer. Très probable
+      // dès qu'une option existe (encore plus sous pression immédiate).
+      if (porteur.numero === 9) {
+        // On vise l'ouvreur (10) à hauteur/léger retrait, dégagé : c'est la
+        // sortie classique 9->10. Taux modéré (le 9 garde l'option de jouer
+        // lui-même près du ruck) et plus élevé si un défenseur le presse déjà.
+        const dix = att.find(j => j.numero === 10 && j.auSol === 0
+          && (j.x - porteur.x) * porteur.sensAttaque <= 0.3
+          && distance(j, porteur) < 16
+          && joueurLePlusProche(this.defenseurs(), j.x, j.y).distance > 3);
+        if (dix && this.rng() < (pression ? 0.6 : 0.3) * dt) return 'PASS';
+      }
+
       // 3. Passe avant contact : défenseur qui se rapproche mais pas encore au
       // plaquage, avec un soutien à proximité immédiate — l'attaque transmet
       // le ballon plutôt que d'attendre le choc.
@@ -1206,12 +1224,27 @@
       if (candidatsOnside.length > 0) candidats = candidatsOnside;
       if (candidats.length === 0) return false;
 
+      // Le demi de mêlée (9) qui sort le ballon cherche à l'ÉCARTER de la
+      // congestion : il vise l'ouvreur (10) en priorité, puis un trois-quarts
+      // EN ESPACE (défenseur le plus proche loin), pas un avant collé au
+      // regroupement. Pour les autres passeurs, on garde la logique « soutien
+      // le plus proche ».
+      const passeurNeuf = porteur.numero === 9;
       let cible = candidats[0], meilleurScore = -Infinity;
       for (const c of candidats) {
         const d = distance(c, porteur);
-        const score = jeuLarge
-          ? Math.abs(c.channelY - LARGEUR / 2) - d * 0.3
-          : (100 - d) + c.tendance * 0.1;
+        let score;
+        if (jeuLarge) {
+          score = Math.abs(c.channelY - LARGEUR / 2) - d * 0.3;
+        } else if (passeurNeuf) {
+          // Le 9 vise l'ouvreur en priorité, puis le soutien dégagé le plus
+          // proche — sans aller chercher le joueur le plus profond (ce qui
+          // ferait reculer le ballon et tuerait toute avancée).
+          const espace = joueurLePlusProche(this.defenseurs(), c.x, c.y).distance;
+          score = (c.numero === 10 ? 80 : 0) + espace * 0.5 - d * 0.4 - c.tendance * 0.1;
+        } else {
+          score = (100 - d) + c.tendance * 0.1;
+        }
         if (score > meilleurScore) { meilleurScore = score; cible = c; }
       }
 
@@ -1227,7 +1260,7 @@
       // des passes longues, ce qui produisait ~19 mêlées/match sur passe ratée
       // (bien trop : cf. repère 8-25 mêlées TOTALES, CLAUDE.md Rôle 6). On
       // relève le plancher et on adoucit la pénalité de distance.
-      const probaReussite = Math.max(0.93, Math.min(0.99, 0.99 - distancePasse / 130));
+      const probaReussite = Math.max(0.96, Math.min(0.99, 0.995 - distancePasse / 150));
       if (this.rng() < probaReussite) {
         this.stats[this.possession].passes++;
         this.log(jeuLarge ? 'JEU_LARGE' : 'PASSE', this.possession, `${jeuLarge ? 'Jeu au large' : 'Passe'} de l'equipe ${this.possession}`);
