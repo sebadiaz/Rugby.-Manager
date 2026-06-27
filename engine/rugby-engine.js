@@ -778,7 +778,10 @@
         const att0 = this.attaquants();
         this.stats[this.possession].carries++;
         this.stats[defenseurProche.team].tacklesAttempted++;
-        const probaPlaquage = Math.max(0.70, Math.min(0.94, 0.83 + (defenseurProche.plaquage - this.porteur.vitesse) / 250));
+        // Réussite de plaquage ~86-88 % (réel ~85-88 %) : l'ancienne base 0.83
+        // donnait ~80 % de réussite et ~128 plaquages manqués/match (réel ~15 %
+        // d'échec), donc trop de défenseurs battus et de franchissements.
+        const probaPlaquage = Math.max(0.80, Math.min(0.95, 0.88 + (defenseurProche.plaquage - this.porteur.vitesse) / 250));
         if (this.rng() >= probaPlaquage) {
           // Plaquage manqué : le défenseur reste hors-jeu de contact un court
           // instant, le porteur poursuit sa course sans être inquiété par lui.
