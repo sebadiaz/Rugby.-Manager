@@ -910,7 +910,9 @@
         if (soutiens.length > 0 && this.rng() < tauxMaul && Referee.maulForme(porteur, defenseurProche, soutiens.length > 0)) {
           this._formerMaul(porteur, defenseurProche);
         } else {
-          this.porteur.auSol = 1.5;
+          // Plaqué : à terre, il ne se relèvera pas tout de suite (cf. _tickRuck
+          // qui maintient cet état pendant le ruck et impose un temps de relève).
+          this.porteur.auSol = 2.0;
           this.stats[this.possession].rucks++;
           const tierRuck = this.rng();
           this.ruckDureeCible = (tierRuck < 0.55 ? 2 + this.rng() * 2
@@ -1027,7 +1029,7 @@
             porteur.x = porteur.sensAttaque > 0 ? LONGUEUR - 0.5 : 0.5;
             this.ruckPoint = { x: porteur.x, y: porteur.y };
             this.contestants = [sauveteur.numero];
-            porteur.auSol = 1.5;
+            porteur.auSol = 2.0;
             this.stats[this.possession].rucks++;
             const tierRuck = this.rng();
             this.ruckDureeCible = (tierRuck < 0.55 ? 2 + this.rng() * 2
@@ -1435,7 +1437,12 @@
       // qu'un partenaire vienne sécuriser puis sortir le ballon avant qu'il ne
       // reparte. Il se relèvera (auSol redescend) une fois le ballon sorti.
       if (this.porteur && this.porteur.auSol >= 0) {
-        this.porteur.auSol = Math.max(this.porteur.auSol, 0.4);
+        // Se relever quand on est à terre prend du temps : on maintient l'état
+        // « au sol » à au moins 2 s pendant tout le ruck. Ainsi le plaqué reste
+        // au sol pendant le regroupement PUIS met encore ~2 s à se relever et
+        // rejoindre le jeu une fois le ballon sorti — il ne « rebondit » jamais
+        // sur ses pieds instantanément.
+        this.porteur.auSol = Math.max(this.porteur.auSol, 2.0);
         // Il reste au sol au point de plaquage (il ne dérive pas).
         this.porteur.x = pt.x;
         this.porteur.y = pt.y;
