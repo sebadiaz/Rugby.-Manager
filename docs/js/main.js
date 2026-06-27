@@ -46,6 +46,8 @@
     accumulateur = 0;
     dernierEtatMelee = null;
     miniPauseJusqua = 0;
+    etatPrecedent = null;
+    etatCourant = null;
     document.getElementById('seek').max = duree;
     document.getElementById('seek').value = 0;
     document.getElementById('tempsLabelFin').textContent = UI.formaterTemps(duree);
@@ -68,6 +70,47 @@
   let vitesseSim = 1;
   let dernierTs = null;
   let accumulateur = 0;
+  // Interpolation de rendu : le moteur n'avance que par pas fixes de 0,1 s,
+  // mais l'écran rafraîchit à ~60 fps. Sans interpolation, chaque position est
+  // figée ~6 images puis « saute » d'un coup — le mouvement paraît saccadé, pas
+  // animé. On garde donc l'état AVANT et APRÈS le dernier pas et on affiche une
+  // position interpolée selon la fraction de pas écoulée : les joueurs et le
+  // ballon glissent de façon continue. Purement visuel, le moteur est intact.
+  let etatPrecedent = null;
+  let etatCourant = null;
+
+  function lerp(a, b, f) { return a + (b - a) * f; }
+  function interpolerJoueurs(ja, jb, f) {
+    return jb.map((joueur, i) => {
+      const p = ja[i];
+      return p ? Object.assign({}, joueur, { x: lerp(p.x, joueur.x, f), y: lerp(p.y, joueur.y, f) }) : joueur;
+    });
+  }
+  function interpolerPoint(pa, pb, f) {
+    return (pa && pb) ? Object.assign({}, pb, { x: lerp(pa.x, pb.x, f), y: lerp(pa.y, pb.y, f) }) : pb;
+  }
+  // Au-delà d'un certain saut (reprise de jeu : coup d'envoi, replacement), on
+  // n'interpole pas (sinon un joueur « file » à toute vitesse à travers le
+  // terrain sur 0,1 s) : on bascule directement sur la nouvelle position.
+  function sautTropGrand(a, b) {
+    if (!a || !b) return true;
+    return Math.hypot(b.x - a.x, b.y - a.y) > 4; // > vitesse de course réelle sur un pas
+  }
+  function interpolerEtat(a, b, f) {
+    if (!a || f >= 1) return b;
+    return Object.assign({}, b, {
+      teams: {
+        A: interpolerJoueurs(a.teams.A, b.teams.A, f),
+        B: interpolerJoueurs(a.teams.B, b.teams.B, f),
+      },
+      ball: sautTropGrand(a.ball, b.ball) ? b.ball : interpolerPoint(a.ball, b.ball, f),
+      ballon: (a.ballon && b.ballon && !sautTropGrand(a.ballon, b.ballon))
+        ? Object.assign({}, b.ballon, { x: lerp(a.ballon.x, b.ballon.x, f), y: lerp(a.ballon.y, b.ballon.y, f) })
+        : b.ballon,
+      arbitre: interpolerPoint(a.arbitre, b.arbitre, f),
+      porteur: sautTropGrand(a.porteur, b.porteur) ? b.porteur : interpolerPoint(a.porteur, b.porteur, f),
+    });
+  }
 
   // Mini-pause automatique sur mêlée : chaque étape (formation, Crouch,
   // Bind, Set, introduction, contestation, sortie) est sinon trop rapide
@@ -89,16 +132,22 @@
       if (etatMeleeActuel) miniPauseJusqua = ts + MINI_PAUSE_MELEE_MS;
     }
     const enMiniPause = ts < miniPauseJusqua;
+    if (etatCourant === null) etatCourant = normalizeMatchState(match.getState());
     if (enCours && !enMiniPause) {
       accumulateur += dtReel * vitesseSim;
       while (accumulateur >= PAS_FIXE) {
+        etatPrecedent = etatCourant;
         match.tick(PAS_FIXE);
+        etatCourant = normalizeMatchState(match.getState());
         accumulateur -= PAS_FIXE;
       }
     }
-    const state = normalizeMatchState(match.getState());
-    UI.majAffichage(state, DUREE_MATCH);
-    Renderer.dessiner(state);
+    // Fraction de pas écoulée depuis le dernier tick : position interpolée.
+    const frac = (enCours && !enMiniPause && etatPrecedent)
+      ? Math.max(0, Math.min(1, accumulateur / PAS_FIXE)) : 1;
+    const etatRendu = frac < 1 ? interpolerEtat(etatPrecedent, etatCourant, frac) : etatCourant;
+    UI.majAffichage(etatCourant, DUREE_MATCH);
+    Renderer.dessiner(etatRendu);
     requestAnimationFrame(boucle);
   }
 
@@ -120,6 +169,8 @@
     accumulateur = 0;
     dernierEtatMelee = null;
     miniPauseJusqua = 0;
+    etatPrecedent = null;
+    etatCourant = null;
     document.getElementById('tempsLabel').textContent = UI.formaterTemps(cible);
   });
 
