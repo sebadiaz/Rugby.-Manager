@@ -1485,9 +1485,15 @@
         // rejoindre le jeu une fois le ballon sorti — il ne « rebondit » jamais
         // sur ses pieds instantanément.
         this.porteur.auSol = Math.max(this.porteur.auSol, 2.0);
-        // Il reste au sol au point de plaquage (il ne dérive pas).
-        this.porteur.x = pt.x;
-        this.porteur.y = pt.y;
+        // Loi 14 : le plaqué doit LIBÉRER le ballon puis s'ÉCARTER. Plutôt que de
+        // le clouer sur place (effet « plot mort » : il ne bougeait plus du tout
+        // jusqu'à se relever d'un coup), il rampe lentement (~0,9 m/s) vers son
+        // propre camp — à l'opposé de son sens d'attaque — pour dégager le
+        // ballon, sur ~1,5 m, puis se relève une fois le ruck résolu. Le ballon
+        // du ruck reste, lui, affiché sur le point de regroupement (cf. getState,
+        // bloc RUCK de ballonPhase), donc ce ramper ne déplace pas le ballon.
+        const cibleX = pt.x - this.porteur.sensAttaque * 1.5;
+        avancer(this.porteur, cibleX - this.porteur.x, pt.y - this.porteur.y, dt, 0.9);
       }
       // Marge de repli et délai de grâce : au moment du plaquage, des défenseurs
       // non-contestants se trouvent souvent déjà tout près du point de ruck (ils
@@ -3077,6 +3083,13 @@
         } else if (this.phase === 'TOUCHE') {
           ballonPhaseX = this.toucheLanceurX != null ? this.toucheLanceurX : this.ruckPoint.x;
           ballonPhaseY = this.toucheLanceurY != null ? this.toucheLanceurY : this.ruckPoint.y;
+        } else if (this.phase === 'RUCK' && this.ruckPoint) {
+          // Ballon au sol au point de regroupement, jamais « dans les mains » du
+          // joueur plaqué : sans cet ancrage, le ballon suivait la position du
+          // porteur (this.porteur.x/y plus bas). Le plaqué pouvant désormais
+          // ramper pour s'écarter (loi 14, cf. _tickRuck), le ballon le suivrait
+          // s'il n'était pas fixé ici au point de ruck.
+          ballonPhaseX = this.ruckPoint.x; ballonPhaseY = this.ruckPoint.y;
         }
       }
       const enPhaseStatique = ballonPhaseX != null;
