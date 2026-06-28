@@ -1217,9 +1217,24 @@
     // ballon lors d'une passe disparaît à l'écran. Durée proportionnelle à la
     // distance (passe courte ~0,15 s, jeu au large ~0,5 s).
     _lancerPasseVisuelle(passeur, cible) {
-      const d = distance(passeur, cible);
+      // Point de départ du vol : normalement les mains du passeur. MAIS si une
+      // passe est déjà en vol (ballon pas encore arrivé au receveur précédent),
+      // on démarre la nouvelle passe depuis la position ACTUELLE du ballon en
+      // vol, pas depuis le passeur : sinon, sur les passes enchaînées le long de
+      // la ligne (9->10->12->13...), chaque nouvelle passe faisait "sauter" le
+      // ballon depuis son vol en cours jusqu'au passeur suivant — la balle qui
+      // apparaît puis disparaît pour réapparaître ailleurs. Ainsi le ballon
+      // glisse de façon continue d'un receveur au suivant.
+      let fromX = passeur.x, fromY = passeur.y;
+      if (this.passeVisuelle) {
+        const P = this.passeVisuelle;
+        const t = P.duree > 0 ? Math.min(1, P.timer / P.duree) : 1;
+        fromX = P.fromX + (P.cible.x - P.fromX) * t;
+        fromY = P.fromY + (P.cible.y - P.fromY) * t;
+      }
+      const d = distance({ x: fromX, y: fromY }, cible);
       this.passeVisuelle = {
-        fromX: passeur.x, fromY: passeur.y, cible,
+        fromX, fromY, cible,
         timer: 0,
         // Durée proportionnelle à la distance, plafonnée plus haut pour les
         // passes au large (sinon le ballon "saute" ~5 m/tick et paraît
@@ -1683,9 +1698,19 @@
           else ({ joueur: relayeur } = joueurLePlusProche(att.filter(j => j.tendance >= 50), pt.x, pt.y));
         }
         this.porteur = relayeur || att.find(j => j.numero === 8) || att[0];
-        this._imposerRecuperationRuck(pt);
         this.phase = 'PORTE';
         this.timerPhase = 0;
+        // Le ballon sort du regroupement en étant JOUÉ depuis la base vers le
+        // porteur (le 9 le ramasse au pied du ruck) : on anime ce trajet en
+        // passe visible depuis le point de ruck. Sans ça le ballon, affiché au
+        // point de ruck pendant toute la phase, "réapparaissait" d'un coup sur
+        // le porteur — parfois à 15-20 m quand le 9 n'avait pas fini de rejoindre
+        // la base —, exactement la téléportation signalée. Le ballon glisse
+        // désormais à vue de la base vers le joueur qui le joue.
+        if (this.porteur && distance({ x: pt.x, y: pt.y }, this.porteur) > 1.5) {
+          this._lancerPasseVisuelle({ x: pt.x, y: pt.y }, this.porteur);
+        }
+        this._imposerRecuperationRuck(pt);
       }
     }
 
