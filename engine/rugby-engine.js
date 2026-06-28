@@ -921,7 +921,11 @@
         } else {
           // Plaqué : à terre, il ne se relèvera pas tout de suite (cf. _tickRuck
           // qui maintient cet état pendant le ruck et impose un temps de relève).
+          // On mémorise l'endroit EXACT de la chute : tant qu'il est au sol, le
+          // joueur y est figé (cf. tick(), gel global des joueurs au sol) et ne
+          // se déplace plus du tout jusqu'à s'être relevé.
           this.porteur.auSol = 2.0;
+          this.porteur._solX = this.porteur.x; this.porteur._solY = this.porteur.y;
           this.stats[this.possession].rucks++;
           const tierRuck = this.rng();
           this.ruckDureeCible = (tierRuck < 0.55 ? 2 + this.rng() * 2
@@ -1039,6 +1043,7 @@
             this.ruckPoint = { x: porteur.x, y: porteur.y };
             this.contestants = [sauveteur.numero];
             porteur.auSol = 2.0;
+            porteur._solX = porteur.x; porteur._solY = porteur.y;
             this.stats[this.possession].rucks++;
             const tierRuck = this.rng();
             this.ruckDureeCible = (tierRuck < 0.55 ? 2 + this.rng() * 2
@@ -1485,15 +1490,12 @@
         // rejoindre le jeu une fois le ballon sorti — il ne « rebondit » jamais
         // sur ses pieds instantanément.
         this.porteur.auSol = Math.max(this.porteur.auSol, 2.0);
-        // Loi 14 : le plaqué doit LIBÉRER le ballon puis s'ÉCARTER. Plutôt que de
-        // le clouer sur place (effet « plot mort » : il ne bougeait plus du tout
-        // jusqu'à se relever d'un coup), il rampe lentement (~0,9 m/s) vers son
-        // propre camp — à l'opposé de son sens d'attaque — pour dégager le
-        // ballon, sur ~1,5 m, puis se relève une fois le ruck résolu. Le ballon
-        // du ruck reste, lui, affiché sur le point de regroupement (cf. getState,
-        // bloc RUCK de ballonPhase), donc ce ramper ne déplace pas le ballon.
-        const cibleX = pt.x - this.porteur.sensAttaque * 1.5;
-        avancer(this.porteur, cibleX - this.porteur.x, pt.y - this.porteur.y, dt, 0.9);
+        // Le plaqué reste figé à l'endroit où il est tombé pendant tout le ruck
+        // (et le temps de se relever ensuite) : sa position est verrouillée par
+        // le gel global des joueurs au sol dans tick(). On s'assure juste que sa
+        // position de chute est mémorisée (cas d'un ruck formé par une autre
+        // voie que le plaquage standard).
+        if (this.porteur._solX == null) { this.porteur._solX = this.porteur.x; this.porteur._solY = this.porteur.y; }
       }
       // Marge de repli et délai de grâce : au moment du plaquage, des défenseurs
       // non-contestants se trouvent souvent déjà tout près du point de ruck (ils
@@ -2957,7 +2959,12 @@
     tick(dt) {
       if (this.phase === 'TERMINE') return;
       for (const j of [...this.equipeA, ...this.equipeB]) {
-        if (j.auSol > 0) j.auSol = Math.max(0, j.auSol - dt);
+        if (j.auSol > 0) {
+          j.auSol = Math.max(0, j.auSol - dt);
+          // Une fois relevé (auSol retombé à 0), on oublie la position de chute :
+          // le joueur redevient libre de se déplacer (l'IA le replace).
+          if (j.auSol === 0) j._solX = null;
+        }
         if (j.missCooldown > 0) j.missCooldown = Math.max(0, j.missCooldown - dt);
         if (j.ruckRecovery > 0) j.ruckRecovery = Math.max(0, j.ruckRecovery - dt);
         if (j.sinBin > 0) j.sinBin = Math.max(0, j.sinBin - dt);
@@ -3019,6 +3026,22 @@
       else if (this.phase === 'ESSAI') this._tickEssai(dt);
       else if (this.phase === 'TRANSFORMATION') this._tickTransformation(dt);
       else if (this.phase === 'PENALITE_TIR') this._tickPenaliteTir(dt);
+      // Gel global des joueurs AU SOL : un joueur plaqué/à terre (auSol > 0) ne
+      // se déplace JAMAIS tant qu'il n'est pas relevé. Sans ce verrou, l'IA de
+      // placement (ligne défensive, soutiens, replacement) le faisait glisser —
+      // parfois à pleine vitesse de course (~7 m/s mesuré) — alors qu'il est
+      // dessiné couché : on voyait des joueurs « courir au sol ». On les refige
+      // à l'endroit exact de leur chute dans TOUTES les phases SAUF la formation
+      // d'une mêlée ou d'une touche (où ils doivent au contraire pouvoir rejoindre
+      // leur place, auSol expirant en ~2 s). Le coup de pied est inclus : sinon le
+      // joueur, figé pendant le jeu courant, se « dégelait » au coup de pied et
+      // sautait d'un coup vers sa position de chasse (téléportation détectée par
+      // les invariants).
+      if (this.phase !== 'MELEE' && this.phase !== 'TOUCHE') {
+        for (const j of [...this.equipeA, ...this.equipeB]) {
+          if (j.auSol > 0 && j._solX != null) { j.x = j._solX; j.y = j._solY; }
+        }
+      }
       // Suivi de l'avantage (loi 8) APRÈS la phase : on évalue sur l'état mis à
       // jour (possession, position du porteur) si l'avantage est joué ou s'il
       // faut revenir à la sanction.
