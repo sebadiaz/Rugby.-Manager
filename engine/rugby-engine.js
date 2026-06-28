@@ -535,8 +535,20 @@
     // Cible de placement de l'arbitre : suit le point de ruck/mêlée pendant les
     // phases statiques, sinon reste juste derrière le porteur du ballon.
     _positionArbitre() {
-      if (this.phase === 'RUCK' || this.phase === 'MAUL' || this.phase === 'MELEE' || this.phase === 'TOUCHE') {
+      if (this.phase === 'RUCK' || this.phase === 'MAUL' || this.phase === 'MELEE') {
         return { x: this.ruckPoint.x, y: Math.max(0, Math.min(LARGEUR, this.ruckPoint.y - 5)) };
+      }
+      // Touche : l'arbitre ne se tient PAS sur la ligne de touche (place du juge
+      // de touche) mais EN RETRAIT dans le terrain, derrière l'alignement et un
+      // peu en arrière de la ligne de lancer, pour surveiller le couloir d'un
+      // mètre, la rectitude du lancer et le hors-jeu des arrières. ruckPoint.y
+      // est ici le bord (marque de touche) : on rentre de ~11 m vers le centre.
+      if (this.phase === 'TOUCHE') {
+        const versCentre = this.ruckPoint.y <= LARGEUR / 2 ? 1 : -1;
+        return {
+          x: this.ruckPoint.x,
+          y: Math.max(0, Math.min(LARGEUR, this.ruckPoint.y + versCentre * 11)),
+        };
       }
       if (this.phase === 'PENALITE_TIR' && this.positionTir) {
         return { x: this.positionTir.x, y: Math.max(0, Math.min(LARGEUR, this.positionTir.y + 5)) };
@@ -2614,14 +2626,15 @@
           const cy = yLigne5 + versCentre * (i * 1.4);
           avancer(j, cx - j.x, cy - j.y, dt, vitesseMs(j) * 0.8);
         });
-        // Le demi de mêlée (receveur) se tient DERRIÈRE son propre alignement,
-        // ~2,5 m en retrait du côté de son camp (sens), pas dans la colonne des
-        // sauteurs : il reçoit le ballon descendu par le sauteur. Avant ce
-        // correctif il était planté au milieu de la ligne, à la même abscisse
-        // que ses avants.
+        // Le demi de mêlée (receveur, loi 18.16) se tient nettement DERRIÈRE son
+        // propre alignement, ~4 m en retrait du côté de son camp (sens), à 2 m de
+        // ses coéquipiers : il NE capte PAS le lancer (c'est le sauteur), il
+        // reçoit le ballon redescendu par le sauteur dans un DEUXIÈME temps. Il
+        // était auparavant trop près (~2,5 m), si bien qu'on avait l'impression
+        // qu'il prenait la balle directement dans l'alignement.
         const neuf = equipe.find(j => j.numero === 9 && j.auSol === 0 && j !== this.porteur);
         if (neuf) {
-          const cx9 = pt.x - sens * 2.5;
+          const cx9 = pt.x - sens * 4;
           const cy9 = yLigne5 + versCentre * 5;
           avancer(neuf, cx9 - neuf.x, cy9 - neuf.y, dt, vitesseMs(neuf) * 0.8);
         }
@@ -2762,14 +2775,20 @@
           this._formerMaul(this.porteur, defenseurProche);
           return;
         }
-        // Sinon le sauteur transmet au demi de mêlée, déjà en retrait juste
-        // derrière l'alignement (~2,5 m, cf. _touchePlacerLignes) : passe courte
-        // normale. On NE délègue PAS à l'ouvreur (_neufVersDix) ici : il se tient
-        // avec les trois-quarts à 10 m, et lui donner le ballon ferait "sauter"
-        // celui-ci de 10 m. La passe demi -> ouvreur se fait ensuite en jeu
-        // courant (_tickPorte), à vue.
+        // Le sauteur a capté le lancer ; il transmet ENSUITE le ballon au demi de
+        // mêlée (receveur), en retrait derrière l'alignement (~4 m, cf.
+        // _touchePlacerLignes). Cette transmission est une PASSE VISIBLE (le
+        // ballon descend du sauteur vers le 9, à vue) et non un transfert
+        // instantané : sans ça le ballon "apparaissait" directement dans les
+        // mains du 9 (le 9 semblait capter le lancer lui-même). C'est le
+        // "deuxième temps" de la touche. On NE délègue PAS à l'ouvreur ici
+        // (_neufVersDix) : la passe 9 -> 10 se fait après, en jeu courant.
         const eqG = L.gagnant === 'A' ? this.equipeA : this.equipeB;
-        this.porteur = eqG.find(j => j.numero === 9 && j.sinBin <= 0) || L.sauteur;
+        const neuf = eqG.find(j => j.numero === 9 && j.sinBin <= 0 && j.auSol === 0);
+        if (neuf && neuf !== this.porteur) {
+          this._lancerPasseVisuelle(this.porteur, neuf);
+          this.porteur = neuf;
+        }
       }
       this._imposerRecuperationRuck(this.ruckPoint);
       this.phase = 'PORTE';
