@@ -333,6 +333,7 @@
       const sens = { A: 1, B: -1 };
       this.maul = null;
       this.melee = null;
+      this.penaliteRecul = null;
       this._receptionDirecte = false;
       // Toute reprise (coup d'envoi après essai/pénalité/22 m) annule un avantage
       // éventuellement en cours : on repart sur une nouvelle séquence de jeu.
@@ -498,7 +499,6 @@
     // le pied. L'équipe joue rapidement à la main et avance un peu.
     _traiterCoupFranc(equipe, position, porteurImpose = null) {
       this.possession = equipe;
-      const sensAttaque = equipe === 'A' ? 1 : -1;
       const eq = equipe === 'A' ? this.equipeA : this.equipeB;
       if (porteurImpose) {
         // Joueur déjà en place (demi de mêlée à la base de la mêlée) : il tape
@@ -506,14 +506,15 @@
         // sur la marque.
         this.porteur = porteurImpose;
       } else {
-        const { joueur } = joueurLePlusProche(eq, position.x, position.y);
+        // Le tapeur (joueur le plus proche de la marque) REJOINT la marque en
+        // courant pendant la mise en place (cf. _tickJeuRapidePenalite), il n'y
+        // est plus téléporté.
+        const { joueur } = joueurLePlusProche(eq.filter(j => j.auSol === 0), position.x, position.y);
         this.porteur = joueur;
-        this.porteur.x = Math.max(0, Math.min(LONGUEUR, position.x + sensAttaque * 5));
-        this.porteur.y = Math.max(2, Math.min(LARGEUR - 2, position.y));
       }
       this.log('COUP_FRANC', equipe, `Marque, equipe ${equipe} obtient un coup franc et joue rapidement`);
-      this.phase = 'PORTE';
-      this.timerPhase = 0;
+      // Loi 20.12 : l'équipe non bénéficiaire recule de 10 m, comme sur pénalité.
+      this._lancerJeuRapidePenalite(equipe, position);
     }
 
     // Met à jour la position de l'arbitre : il COURT vers sa cible (suivre le
@@ -770,15 +771,59 @@
         this.log('PENALITE', equipeBeneficiaire, `Penalite, equipe ${equipeBeneficiaire} tente un coup de pied au but`);
         return;
       }
+      // Jeu rapide (tap-and-go). Loi 20 : le ballon revient à l'équipe NON
+      // fautive — avant ce correctif, la possession et le porteur restaient ceux
+      // de l'équipe FAUTIVE (mesuré : bénéficiaire A → possession B), si bien que
+      // la pénalité ne donnait même pas le ballon au bon camp. On donne donc le
+      // ballon au bénéficiaire (son n°9 tape) et on arme la mise en place.
+      this.possession = equipeBeneficiaire;
+      const eqBen = equipeBeneficiaire === 'A' ? this.equipeA : this.equipeB;
+      const neuf = eqBen.find(j => j.numero === 9 && j.auSol === 0);
+      this.porteur = neuf || joueurLePlusProche(eqBen.filter(j => j.auSol === 0), position.x, position.y).joueur;
       this.log('PENALITE', equipeBeneficiaire, `Penalite, equipe ${equipeBeneficiaire} joue rapidement et avance`);
-      // Jeu rapide (tap-and-go) : le joueur tape le ballon et PART en courant,
-      // il n'est plus téléporté de 8 m d'un coup. Le gain de terrain vient de
-      // sa course en jeu courant (_tickPorte) ; l'adversaire fautif, lui, doit
-      // se retirer (cf. hors-jeu de pénalité), ce qui ouvre l'espace réel.
-      // Avant ce correctif, ce saut instantané de 8 m faisait "sauter" le
-      // porteur à chaque pénalité jouée à la main.
+      this._lancerJeuRapidePenalite(equipeBeneficiaire, position);
+    }
+
+    // Mise en place d'une pénalité/coup franc joué rapidement à la main (loi
+    // 20.12). Le tapeur (possession/porteur déjà fixés par l'appelant) REJOINT la
+    // marque en courant et l'équipe fautive RECULE de 10 m vers son en-but, le
+    // tout EN COURANT pendant une brève phase de mise en place (cf.
+    // _tickJeuRapidePenalite) — jamais une téléportation. Le jeu courant ne
+    // reprend qu'une fois le tapeur sur la marque et les fautifs repliés : c'est
+    // ce qui crée enfin l'espace réel de la pénalité (sans lui, le tapeur se
+    // faisait plaquer aussitôt par un défenseur resté sur la marque).
+    _lancerJeuRapidePenalite(equipeBeneficiaire, position) {
+      const sens = equipeBeneficiaire === 'A' ? 1 : -1;
+      const eqDef = equipeBeneficiaire === 'A' ? this.equipeB : this.equipeA;
+      // Ligne des 10 m, bornée à l'en-but des fautifs (équivalent loi 19.32 :
+      // marque à moins de 10 m de leur ligne → recul jusqu'à la ligne d'en-but).
+      const ligne = Math.max(0, Math.min(LONGUEUR, position.x + sens * 10));
+      this.penaliteRecul = { sens, eqDef, ligne, markX: position.x, markY: position.y, timer: 2.5 };
       this.phase = 'PORTE';
       this.timerPhase = 0;
+    }
+
+    // Phase de mise en place du jeu rapide : tapeur vers la marque, fautifs vers
+    // la ligne des 10 m, tout en course. Se termine (le ballon est « tapé », jeu
+    // courant normal) dès que tapeur en place ET fautifs repliés, ou au délai.
+    _tickJeuRapidePenalite(dt) {
+      const R = this.penaliteRecul;
+      R.timer -= dt;
+      let pret = true;
+      if (this.porteur) {
+        avancer(this.porteur, R.markX - this.porteur.x, R.markY - this.porteur.y, dt, vitesseMs(this.porteur));
+        if (distance(this.porteur, { x: R.markX, y: R.markY }) > 1) pret = false;
+      }
+      for (const j of R.eqDef) {
+        if (j.auSol > 0) continue;
+        // En deçà de la ligne des 10 m (entre la marque et la ligne) → se replie
+        // en reculant (x vers la ligne), en gardant sa largeur (y inchangé).
+        if ((j.x - R.ligne) * R.sens < -0.5) {
+          avancer(j, R.ligne - j.x, 0, dt, vitesseMs(j));
+          pret = false;
+        }
+      }
+      if (R.timer <= 0 || pret) this.penaliteRecul = null;
     }
 
     // Pénalité jouée en touche : l'équipe qui a botté conserve le lancer
@@ -3083,7 +3128,12 @@
         return;
       }
       if (this.phase === 'MI_TEMPS') this._tickMiTemps(dt);
-      else if (this.phase === 'PORTE') this._tickPorte(dt);
+      else if (this.phase === 'PORTE') {
+        // Mise en place d'un jeu rapide sur pénalité/coup franc (recul de 10 m
+        // des fautifs, tapeur vers la marque) avant que le jeu courant reprenne.
+        if (this.penaliteRecul) this._tickJeuRapidePenalite(dt);
+        else this._tickPorte(dt);
+      }
       else if (this.phase === 'COUP_ENVOI') this._tickCoupEnvoi(dt);
       else if (this.phase === 'COUP_DE_PIED_JEU') this._tickCoupDePiedJeu(dt);
       else if (this.phase === 'RUCK') this._tickRuck(dt);
