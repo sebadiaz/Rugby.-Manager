@@ -996,7 +996,13 @@
       }
 
       const dx = porteur.sensAttaque * 6;
-      const evite = (porteur.y - defenseurProche.y) > 0 ? 2.5 : -2.5;
+      let evite = (porteur.y - defenseurProche.y) > 0 ? 2.5 : -2.5;
+      // Près d'une ligne de touche, le porteur ne crochète JAMAIS vers la touche
+      // (ce qui le faisait sortir gratuitement, gonflant le nombre de touches dès
+      // qu'on écartait le jeu) : il coupe à l'intérieur, comme un vrai ailier/
+      // centre qui rentre chercher du soutien plutôt que de mourir sur la ligne.
+      if (porteur.y < 8) evite = Math.abs(evite);
+      else if (porteur.y > LARGEUR - 8) evite = -Math.abs(evite);
       const xAvantCourse = porteur.x;
       avancer(porteur, dx, evite, dt, vitesseMs(porteur));
       // Mètres gagnés : uniquement le terrain réellement parcouru ballon en
@@ -1222,6 +1228,23 @@
         if (dix && this.rng() < (pression ? 0.6 : 0.3) * dt) return 'PASS';
       }
 
+      // 2c. Trois-quarts qui FAIT VIVRE LA LIGNE : un back (10-13) qui a un
+      // partenaire EXTÉRIEUR (plus près de la touche ouverte) et EN ESPACE écarte
+      // le ballon vers le large plutôt que de rentrer au centre. C'est ce qui
+      // exploite la largeur du terrain (10->12->13->aile) au lieu de figer le jeu
+      // sur l'axe central 9-10. On vise le joueur SUIVANT de la ligne (passe
+      // courte, <22 m), jamais un saut direct vers l'ailier collé à la touche
+      // (marge de bord), et on évite de fixer un partenaire déjà sous pression.
+      if (porteur.numero >= 10 && porteur.numero <= 13 && zone !== 'CINQ_M') {
+        const versLarge = att.find(j => j !== porteur && j.auSol === 0
+          && (j.x - porteur.x) * porteur.sensAttaque <= 0.3
+          && Math.abs(j.y - LARGEUR / 2) > Math.abs(porteur.y - LARGEUR / 2) + 3
+          && Math.abs(j.y - LARGEUR / 2) < 24 // zone mi-large, pas collé à la touche
+          && distance(j, porteur) < 22
+          && joueurLePlusProche(this.defenseurs(), j.x, j.y).distance > 4);
+        if (versLarge && this.rng() < (pression ? 0.55 : 0.3) * dt) return 'PASS';
+      }
+
       // 3. Passe avant contact : défenseur qui se rapproche mais pas encore au
       // plaquage, avec un soutien à proximité immédiate — l'attaque transmet
       // le ballon plutôt que d'attendre le choc.
@@ -1316,6 +1339,7 @@
       // regroupement. Pour les autres passeurs, on garde la logique « soutien
       // le plus proche ».
       const passeurNeuf = porteur.numero === 9;
+      const passeurBack = porteur.numero >= 10 && porteur.numero <= 13;
       let cible = candidats[0], meilleurScore = -Infinity;
       for (const c of candidats) {
         const d = distance(c, porteur);
@@ -1328,6 +1352,18 @@
           // ferait reculer le ballon et tuerait toute avancée).
           const espace = joueurLePlusProche(this.defenseurs(), c.x, c.y).distance;
           score = (c.numero === 10 ? 80 : 0) + espace * 0.5 - d * 0.4 - c.tendance * 0.1;
+        } else if (passeurBack) {
+          // Trois-quarts qui fait vivre la ligne : il vise un partenaire EN ESPACE
+          // dans la zone MI-LARGE (couloirs des centres/arrière), pas le soutien
+          // le plus proche (souvent un avant central) NI l'ailier collé à la
+          // touche. « largeurUtile » récompense l'écartement jusqu'à ~22 m du
+          // centre PUIS REDESCEND vers la touche (offset 35) : ainsi le ballon va
+          // au large sans s'entonner dans le coin (ce qui envoyait l'ailier en
+          // touche). La pénalité de distance garde la passe sur le joueur suivant.
+          const espace = joueurLePlusProche(this.defenseurs(), c.x, c.y).distance;
+          const offset = Math.abs(c.y - LARGEUR / 2);
+          const largeurUtile = offset > 22 ? Math.max(0, LARGEUR / 2 - offset) : offset;
+          score = largeurUtile * 2 + espace * 0.7 - d * 0.5;
         } else {
           score = (100 - d) + c.tendance * 0.1;
         }
