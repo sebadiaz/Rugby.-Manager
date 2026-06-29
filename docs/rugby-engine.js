@@ -3041,7 +3041,18 @@
         else this.tempsOccupation.B += dt;
       }
       this.tempsMatch += dt;
-      if (this.tempsMatch >= this.dureeMatch) {
+      // Une séquence de marque déjà engagée (essai en attente de transformation,
+      // tir au but en cours) doit aller à son TERME même si le temps de la
+      // période ou du match expire pendant ce temps : en rugby, un essai marqué
+      // au temps écoulé se transforme, et un coup de pied accordé avant la fin se
+      // joue (le temps ne s'arrête que lorsque le ballon est mort). Sans ce
+      // report, la bascule en MI_TEMPS/TERMINE court-circuitait _tickEssai/
+      // _tickTransformation/_tickPenaliteTir (return immédiat) et effaçait des
+      // points légitimes — ~7,5 % des matchs perdaient la transformation d'un
+      // essai de fin de période. On laisse donc la phase de marque se résoudre,
+      // puis la bascule de temps se déclenche au tick suivant.
+      const sequenceMarque = this.phase === 'ESSAI' || this.phase === 'TRANSFORMATION' || this.phase === 'PENALITE_TIR';
+      if (!sequenceMarque && this.tempsMatch >= this.dureeMatch) {
         this.phase = 'TERMINE';
         this.log('FIN_MATCH', null, `Fin du match : equipe A ${this.score.A} - ${this.score.B} equipe B`);
         return;
@@ -3052,7 +3063,7 @@
       // est différé d'une seconde de jeu (phase MI_TEMPS) plutôt que déclenché
       // dans le même tick que l'événement MI_TEMPS, sinon l'événement COUP_ENVOI
       // qui suit immédiatement masque la bannière de mi-temps dans l'interface.
-      if (!this.miTempsJouee && this.tempsMatch >= this.dureeMiTemps) {
+      if (!sequenceMarque && !this.miTempsJouee && this.tempsMatch >= this.dureeMiTemps) {
         this.miTempsJouee = true;
         this.log('MI_TEMPS', null, `Mi-temps : equipe A ${this.score.A} - ${this.score.B} equipe B`);
         this.phase = 'MI_TEMPS';
