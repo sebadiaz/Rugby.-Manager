@@ -2651,16 +2651,28 @@
           const cy = yLigne5 + versCentre * (i * 1.4);
           avancer(j, cx - j.x, cy - j.y, dt, vitesseMs(j) * 0.8);
         });
-        // Le demi de mêlée (receveur, loi 18.16) se tient nettement DERRIÈRE son
-        // propre alignement, ~4 m en retrait du côté de son camp (sens), à 2 m de
-        // ses coéquipiers : il NE capte PAS le lancer (c'est le sauteur), il
-        // reçoit le ballon redescendu par le sauteur dans un DEUXIÈME temps. Il
-        // était auparavant trop près (~2,5 m), si bien qu'on avait l'impression
-        // qu'il prenait la balle directement dans l'alignement.
+        // Position du n°9 selon que SON équipe lance ou non (le placement diffère
+        // dans la loi) :
+        //  - Équipe qui LANCE → RECEVEUR (loi 18.16) : nettement DERRIÈRE son
+        //    propre alignement, ~4 m en retrait, à au moins 2 m de ses
+        //    coéquipiers. Il NE capte PAS le lancer (c'est le sauteur) ; il reçoit
+        //    le ballon redescendu par le sauteur dans un DEUXIÈME temps.
+        //  - Équipe qui NE LANCE PAS → GARDIEN du couloir avant (loi 18.15) : un
+        //    joueur ENTRE la ligne de touche et la ligne des 5 m, à ~2 m de la
+        //    marque (côté de son camp) et ~2 m de la ligne des 5 m. Auparavant ce
+        //    9 défenseur était lui aussi planté en receveur à 10 m, si bien que
+        //    personne ne tenait le couloir des 5 m (loi 18.15 jamais respectée).
+        const estLanceur = equipe[0].team === this.possession;
         const neuf = equipe.find(j => j.numero === 9 && j.auSol === 0 && j !== this.porteur);
         if (neuf) {
-          const cx9 = pt.x - sens * 4;
-          const cy9 = yLigne5 + versCentre * 5;
+          let cx9, cy9;
+          if (estLanceur) {
+            cx9 = pt.x - sens * 4;
+            cy9 = yLigne5 + versCentre * 5;
+          } else {
+            cx9 = pt.x + Math.sign(decalX) * 2;
+            cy9 = yTouche + versCentre * 3;
+          }
           avancer(neuf, cx9 - neuf.x, cy9 - neuf.y, dt, vitesseMs(neuf) * 0.8);
         }
         // Loi 18 : les joueurs NON participants à la touche (les trois-quarts,
