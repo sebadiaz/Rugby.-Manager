@@ -1023,7 +1023,12 @@
       }
 
       const dx = porteur.sensAttaque * 6;
-      let evite = (porteur.y - defenseurProche.y) > 0 ? 2.5 : -2.5;
+      // Amplitude du crochet selon le PROFIL : un joueur rapide (ailier ~90)
+      // crochète franchement pour éliminer le défenseur, un avant (~45) court
+      // quasi droit et va au contact. Donne une évasion individuelle visible au
+      // lieu d'un même pas de côté pour tous.
+      const amplEvite = 1.0 + Math.max(0, (porteur.vitesse - 45)) / 45 * 2.5;
+      let evite = ((porteur.y - defenseurProche.y) > 0 ? 1 : -1) * amplEvite;
       // Près d'une ligne de touche, le porteur ne crochète JAMAIS vers la touche
       // (ce qui le faisait sortir gratuitement, gonflant le nombre de touches dès
       // qu'on écartait le jeu) : il coupe à l'intérieur, comme un vrai ailier/
@@ -1066,16 +1071,19 @@
           const cibleX = porteur.x - porteur.sensAttaque * 1.5;
           avancer(j, cibleX - j.x, (porteur.y - j.y) + angle * 0.5, dt, vitesseMs(j) * 0.9);
         } else {
-          // Tient son couloir et garde la largeur : dérive seulement légère vers
-          // le ballon (avants un peu plus que les trois-quarts, qui restent
-          // écartés pour offrir des options de passe au large). Profondeur
-          // derrière le porteur pour rester onside.
-          const avant = j.numero <= 8;
-          const driftBallon = avant ? 0.2 : 0.1;
+          // AUTONOMIE par le profil : chaque joueur suit le ballon selon SA
+          // tendance individuelle (proximité au ballon, cf. modèle) plutôt qu'un
+          // binaire avant/back. Un joueur « tenant du ballon » (n°9, piliers,
+          // tendance ~90) dérive franchement vers le jeu pour soutenir ; un ailier
+          // (tendance ~15) tient son large. Idem pour la profondeur : les suiveurs
+          // se placent plus à plat (soutien proche), les arrières plus en
+          // profondeur (lecture et espace). Le placement émerge ainsi des profils.
+          const t = j.tendance / 100; // 0.15 (ailier) .. 0.90 (9/pilier)
+          const driftBallon = 0.04 + t * 0.20;
           const cibleY = j.channelY * (1 - driftBallon) + porteur.y * driftBallon;
-          const profondeur = avant ? 7 : 9 + Math.abs(j.channelY - porteur.y) * 0.12;
+          const profondeur = (10 - t * 4) + Math.abs(j.channelY - porteur.y) * (0.14 - t * 0.1);
           const cibleX = porteur.x - porteur.sensAttaque * profondeur;
-          avancer(j, cibleX - j.x, cibleY - j.y, dt, vitesseMs(j) * (avant ? 0.7 : 0.8));
+          avancer(j, cibleX - j.x, cibleY - j.y, dt, vitesseMs(j) * (j.numero <= 8 ? 0.7 : 0.8));
         }
       }
 
@@ -1297,10 +1305,17 @@
         if (versLarge && this.rng() < (pression ? 0.55 : 0.3) * dt) return 'PASS';
       }
 
-      // 3. Passe avant contact : défenseur qui se rapproche mais pas encore au
-      // plaquage, avec un soutien à proximité immédiate — l'attaque transmet
-      // le ballon plutôt que d'attendre le choc.
-      if (distDef < 5.5 && soutienDisponible && this.rng() < 0.7 * dt) {
+      // 3. Passe avant contact, modulée par le PROFIL du porteur (autonomie) :
+      // un AVANT (tendance haute) va au CONTACT pour avancer et fixer plutôt que
+      // de lâcher ; un FINISSEUR rapide (ailier/arrière, vitesse élevée) se fie à
+      // sa vitesse et PERCE plutôt que de passer ; un DISTRIBUTEUR (ouvreur/centre)
+      // lâche volontiers le ballon avant le choc. Même situation, choix différent
+      // selon le joueur — au lieu d'un taux unique pour tous.
+      let pPasse = 0.7;
+      if (porteur.numero <= 8) pPasse = 0.45;
+      else if (porteur.vitesse > 80) pPasse = 0.45;
+      else if (porteur.numero === 10 || porteur.numero === 12 || porteur.numero === 13) pPasse = 0.9;
+      if (distDef < 5.5 && soutienDisponible && this.rng() < pPasse * dt) {
         return 'PASS';
       }
 
