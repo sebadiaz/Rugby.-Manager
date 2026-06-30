@@ -1090,8 +1090,31 @@
           avancer(j, cibleX - j.x, cibleY - j.y, dt, vitesseMs(j) * 0.8);
           continue;
         }
-        // Les autres défenseurs (avants + 9/10/12/13 + AILIERS 11/14) montent en
-        // LIGNE à plat sur la ligne d'avantage et tiennent leur couloir pour
+        // AILE CÔTÉ FERMÉ (à l'opposé du ballon) : elle ne monte PAS dans la
+        // ligne mais RECULE en couverture (~10 m derrière la ligne d'avantage),
+        // formant le rideau arrière avec le n°15 (back-three) — prête à cueillir
+        // un coup de pied ou un débordement au large. L'aile côté OUVERT (près du
+        // ballon) reste, elle, dans la ligne pour défendre le large. La défense
+        // couvre ainsi la PROFONDEUR sans dégarnir le côté où l'attaque se
+        // développe.
+        if (j.numero === 11 || j.numero === 14) {
+          const coteAile = Math.sign(j.channelY - LARGEUR / 2) || 1;
+          const coteBallon = Math.sign(porteur.y - LARGEUR / 2) || 1;
+          // Seulement LOIN de la ligne défendue (>40 m) : là, la menace est le
+          // coup de pied/le territoire, donc on décroche l'aile fermée en
+          // couverture. PRÈS de l'en-but défendu (zone rouge), la menace est
+          // l'essai : l'aile RESTE dans la ligne, on ne dégarnit pas la défense
+          // là où se marquent les essais (sinon on en concède davantage).
+          const ligneDef = porteur.sensAttaque > 0 ? LONGUEUR : 0;
+          const distLigneDef = Math.abs(ligneDef - porteur.x);
+          if (coteAile !== coteBallon && distLigneDef > 40) {
+            const cibleXcouv = porteur.x + porteur.sensAttaque * 12;
+            avancer(j, cibleXcouv - j.x, j.channelY - j.y, dt, vitesseMs(j) * 0.85);
+            continue;
+          }
+        }
+        // Les autres défenseurs (avants + 9/10/12/13 + AILIER côté ouvert) montent
+        // en LIGNE à plat sur la ligne d'avantage et tiennent leur couloir pour
         // OCCUPER toute la largeur, avec une glissade vers le ballon (défense en
         // glissement). Les AILIERS tiennent FERMEMENT leur bord (dérive minime) :
         // ils ne se font pas aspirer vers le ballon, donc les ailes restent
