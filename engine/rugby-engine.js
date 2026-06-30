@@ -334,6 +334,7 @@
       this.maul = null;
       this.melee = null;
       this.penaliteRecul = null;
+      this.ruckDominant = false;
       this._receptionDirecte = false;
       // Toute reprise (coup d'envoi après essai/pénalité/22 m) annule un avantage
       // éventuellement en cours : on repart sur une nouvelle séquence de jeu.
@@ -969,6 +970,15 @@
           this._accorderMelee(this.possession, porteur);
           return;
         }
+        // Plaquage DOMINANT : le défenseur gagne nettement le duel (gros
+        // plaqueur, lecture parfaite, porteur lent). Le porteur est REPOUSSÉ — la
+        // défense AVANCE au lieu de subir : le contact recule la ligne de gain
+        // (~1,5 m côté attaque) et la défense récupère un ballon « sur l'avancée »
+        // (contest bien plus probable au ruck qui suit, cf. _tickRuck). C'est ce
+        // qui rend un bon plaquage payant au lieu de toujours céder du terrain.
+        const margePlaquage = defenseurProche.plaquage - this.porteur.vitesse;
+        this.ruckDominant = margePlaquage > 12 && this.rng() < 0.3;
+        if (this.ruckDominant) this.porteur.x -= this.porteur.sensAttaque * 1.2;
         this.ruckPoint = { x: this.porteur.x, y: this.porteur.y };
         this.contestants = [defenseurProche.numero];
         // Offload : le porteur plaqué mais pas encore au sol transmet à un
@@ -1153,6 +1163,7 @@
               : tierRuck < 0.85 ? 4 + this.rng() * 3
                 : 7 + this.rng() * 4) * this._echelleArret;
             this.ruckTempsSansSoutien = 0;
+            this.ruckDominant = false; // plaquage de sauvetage in extremis, pas un ballon sur l'avancée
             this.phase = 'RUCK';
             this._receptionDirecte = false;
             this.timerPhase = 0;
@@ -1258,9 +1269,10 @@
       // réellement le ballon du regroupement et permet d'avancer. Très probable
       // dès qu'une option existe (encore plus sous pression immédiate).
       if (porteur.numero === 9) {
-        // On vise l'ouvreur (10) à hauteur/léger retrait, dégagé : c'est la
-        // sortie classique 9->10. Taux modéré (le 9 garde l'option de jouer
-        // lui-même près du ruck) et plus élevé si un défenseur le presse déjà.
+        // Sortie classique 9->10 : le 9 donne à l'ouvreur dégagé à hauteur/léger
+        // retrait. (Varier ce destinataire déstabilise l'alignement et effondre
+        // les essais — cf. _tenterPasse, branche passeurNeuf. La largeur vient du
+        // 10 qui écarte ensuite le long de la ligne.)
         const dix = att.find(j => j.numero === 10 && j.auSol === 0
           && (j.x - porteur.x) * porteur.sensAttaque <= 0.3
           && distance(j, porteur) < 16
@@ -1387,9 +1399,13 @@
         if (jeuLarge) {
           score = Math.abs(c.channelY - LARGEUR / 2) - d * 0.3;
         } else if (passeurNeuf) {
-          // Le 9 vise l'ouvreur en priorité, puis le soutien dégagé le plus
-          // proche — sans aller chercher le joueur le plus profond (ce qui
-          // ferait reculer le ballon et tuerait toute avancée).
+          // Le 9 vise l'ouvreur (10) en priorité, puis le soutien dégagé le plus
+          // proche — sans aller chercher le joueur le plus profond (ce qui ferait
+          // reculer le ballon et tuerait l'avancée). L'attaque du moteur démarre
+          // structurellement par cette sortie 9->10 ; varier le destinataire du 9
+          // (back plus large/profond) déstabilise l'alignement et effondre les
+          // essais (testé). La VARIÉTÉ vient ensuite du 10 qui écarte le long de la
+          // ligne (cf. branche passeurBack).
           const espace = joueurLePlusProche(this.defenseurs(), c.x, c.y).distance;
           score = (c.numero === 10 ? 80 : 0) + espace * 0.5 - d * 0.4 - c.tendance * 0.1;
         } else if (passeurBack) {
@@ -1780,8 +1796,13 @@
         // différentiel de force du pack et surtout l'isolement du porteur
         // (bonusIsolement) restent les vrais moteurs d'un grattage — un porteur
         // isolé face à un pack costaud peut toujours se faire gratter souvent.
-        const probaTurnover = Math.max(0.012, Math.min(0.18, 0.025 + (forceDef - forceAtt) / 1600 + bonusIsolement));
+        // Ballon « sur l'avancée » après un plaquage dominant (cf. _tickPorte) :
+        // la défense a gagné le contact, elle conteste avec bien plus de chances
+        // de gratter le ballon. Bonus consommé une seule fois (ce ruck).
+        const bonusDominant = this.ruckDominant ? 0.035 : 0;
+        const probaTurnover = Math.max(0.012, Math.min(0.20, 0.025 + (forceDef - forceAtt) / 1600 + bonusIsolement + bonusDominant));
         const turnover = this.rng() < probaTurnover;
+        this.ruckDominant = false;
         if (turnover) {
           this.possession = this.possession === 'A' ? 'B' : 'A';
           this.stats[this.possession].turnovers++;
@@ -1842,6 +1863,7 @@
     _formerMaul(porteur, defenseur) {
       const poss = this.possession;
       const sens = porteur.sensAttaque;
+      this.ruckDominant = false; // un maul n'est pas un ballon de ruck sur l'avancée
       this.maul = {
         etat: ETATS_MAUL.FORMATION,
         equipePossession: poss,
