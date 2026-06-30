@@ -780,9 +780,11 @@
         // porteur reste figé là où la faute a été commise et rien ne montre
         // visuellement qu'un coup de pied au but va être tenté.
         const eqTir = equipeBeneficiaire === 'A' ? this.equipeA : this.equipeB;
+        // Le buteur (l'ouvreur) REJOINT le tee en courant pendant la mise en
+        // place (cf. _penaliteTirPlacerJoueurs), il n'y est plus téléporté ; le
+        // ballon est posé sur le tee (cf. getState, ballon sur la marque en
+        // PENALITE_TIR).
         this.porteur = eqTir[9];
-        this.porteur.x = position.x;
-        this.porteur.y = position.y;
         this.phase = 'PENALITE_TIR';
         this.timerPhase = 0;
         this.tirEnPlace = false;
@@ -3009,6 +3011,9 @@
       const equipeDefense = this.essaiEquipe === 'A' ? this.equipeB : this.equipeA;
       const ligneDefense = sens > 0 ? LONGUEUR : 0;
       const xAttaque = Math.max(0, Math.min(LONGUEUR, this.essaiX - sens * 15));
+      const buteur = equipeAttaque[9]; // n°10
+      const teeX = Math.max(0, Math.min(LONGUEUR, this.essaiX - sens * 10));
+      const teeY = this.essaiY;
       let pireEcart = 0;
       for (const j of equipeDefense) {
         if (j.sinBin > 0) continue;
@@ -3016,9 +3021,17 @@
         pireEcart = Math.max(pireEcart, Math.abs(j.x - ligneDefense));
       }
       for (const j of equipeAttaque) {
-        if (j.sinBin > 0 || j === this.porteur) continue;
+        if (j.sinBin > 0 || j === this.porteur || j === buteur) continue;
         avancer(j, xAttaque - j.x, 0, dt, vitesseMs(j) * 0.8);
         pireEcart = Math.max(pireEcart, Math.abs(j.x - xAttaque));
+      }
+      // Le buteur COURT jusqu'au tee (dans l'axe de l'essai, ~10 m en retrait), à
+      // pleine vitesse, dès la célébration de l'essai (la fonction est appelée
+      // pendant ESSAI puis TRANSFORMATION) : il a tout le temps d'y arriver et
+      // n'y est plus téléporté.
+      if (buteur && buteur.sinBin <= 0) {
+        avancer(buteur, teeX - buteur.x, teeY - buteur.y, dt, vitesseMs(buteur));
+        pireEcart = Math.max(pireEcart, distance(buteur, { x: teeX, y: teeY }));
       }
       return pireEcart < 1.2;
     }
@@ -3030,15 +3043,11 @@
       this.timerPhase += dt;
       this._transformationPlacerJoueurs(dt);
       if (this.timerPhase >= 8 * this._echelleArret) {
-        // Place le buteur (l'ouvreur) dans l'alignement de l'essai : sinon
-        // tous les joueurs restent figés là où l'essai a été marqué et rien
-        // n'indique qu'une transformation va être tentée.
+        // Le buteur (l'ouvreur) a couru jusqu'au tee pendant la célébration
+        // (cf. _transformationPlacerJoueurs) : il y est déjà, on ne le téléporte
+        // plus. Il devient simplement le porteur pour la frappe.
         const eq = this.essaiEquipe === 'A' ? this.equipeA : this.equipeB;
-        const sens = this.essaiEquipe === 'A' ? 1 : -1;
-        const kicker = eq[9];
-        kicker.x = Math.max(0, Math.min(LONGUEUR, this.essaiX - sens * 10));
-        kicker.y = this.essaiY;
-        this.porteur = kicker;
+        this.porteur = eq[9];
         this.phase = 'TRANSFORMATION';
         this.timerPhase = 0;
         this.transfoEnPlace = false;
@@ -3118,6 +3127,13 @@
         if (j.sinBin > 0 || j === this.porteur) continue;
         avancer(j, xAttaque - j.x, 0, dt, vitesseMs(j) * 0.8);
         pireEcart = Math.max(pireEcart, Math.abs(j.x - xAttaque));
+      }
+      // Le buteur COURT jusqu'au tee (point de pénalité), à pleine vitesse — il
+      // n'y est jamais téléporté. Sa présence sur le tee fait partie des
+      // conditions de « tous en place » avant d'armer la frappe.
+      if (this.porteur) {
+        avancer(this.porteur, this.positionTir.x - this.porteur.x, this.positionTir.y - this.porteur.y, dt, vitesseMs(this.porteur));
+        pireEcart = Math.max(pireEcart, distance(this.porteur, this.positionTir));
       }
       return pireEcart < 1.2;
     }
