@@ -2160,13 +2160,12 @@
           : faute.type === 'ENTREE_COTE' ? 'MAUL_PEN_ENTREE_COTE'
             : 'MAUL_PEN_TECHNIQUE';
       this.log(evt, fautive, `Penalite maul : ${faute.message} (equipe ${fautive}), penalite pour l'equipe ${benef}`);
-      // Préparer le porteur bénéficiaire puis appliquer la pénalité (tir/jeu rapide).
-      this.possession = benef;
-      const eqB = benef === 'A' ? this.equipeA : this.equipeB;
-      const { joueur } = joueurLePlusProche(eqB, pos.x, pos.y);
-      this.porteur = joueur;
-      this.porteur.x = Math.max(0, Math.min(LONGUEUR, pos.x));
-      this.porteur.y = Math.max(0, Math.min(LARGEUR, pos.y));
+      // _traiterPenalite fixe lui-même la possession ET le porteur selon l'option
+      // choisie (tir au but, pénalité-touche, ou jeu rapide où le tapeur REJOINT
+      // la marque EN COURANT, cf. _lancerJeuRapidePenalite). On ne téléporte donc
+      // plus un joueur directement sur la marque ici : ce set x/y était redondant
+      // (aussitôt écrasé) et incohérent avec la politique anti-téléportation
+      // appliquée partout ailleurs.
       this._traiterPenalite(benef, pos);
     }
 
