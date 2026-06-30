@@ -973,7 +973,7 @@
         // Plaquage DOMINANT : le défenseur gagne nettement le duel (gros
         // plaqueur, lecture parfaite, porteur lent). Le porteur est REPOUSSÉ — la
         // défense AVANCE au lieu de subir : le contact recule la ligne de gain
-        // (~1,5 m côté attaque) et la défense récupère un ballon « sur l'avancée »
+        // (~1,2 m côté attaque) et la défense récupère un ballon « sur l'avancée »
         // (contest bien plus probable au ruck qui suit, cf. _tickRuck). C'est ce
         // qui rend un bon plaquage payant au lieu de toujours céder du terrain.
         const margePlaquage = defenseurProche.plaquage - this.porteur.vitesse;
@@ -983,7 +983,12 @@
         this.contestants = [defenseurProche.numero];
         // Offload : le porteur plaqué mais pas encore au sol transmet à un
         // soutien tout proche plutôt que de finir au ruck — garde le ballon vivant.
-        const soutiens = att0.filter(j => j !== porteur && distance(j, porteur) < 4 && j.auSol === 0);
+        // Le soutien doit être À HAUTEUR OU EN RETRAIT (loi 11) : un offload reste
+        // une passe, il ne peut pas aller vers l'avant. Sans ce filtre, l'offload
+        // était la seule voie de passe qui contournait le contrôle de la passe en
+        // avant (jusqu'à ~3 m vers l'avant non sifflés, ~5/match mesurés).
+        const soutiens = att0.filter(j => j !== porteur && distance(j, porteur) < 4 && j.auSol === 0
+          && (j.x - porteur.x) * porteur.sensAttaque <= 0.3);
         if (soutiens.length > 0 && this.rng() < 0.10) {
           const { joueur: receveurOffload } = joueurLePlusProche(soutiens, porteur.x, porteur.y);
           this.stats[this.possession].passes++;

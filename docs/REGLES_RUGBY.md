@@ -224,13 +224,22 @@ mêlée pit 8 avants contre 8, le demi de mêlée introduit le ballon dans le
 tunnel, le talonneur tente de le crocheter, et le ballon ressort au pied du
 n°8 vers la sortie de balle.
 
+Offload (Law 11/14) : un porteur plaqué mais pas encore au sol peut
+transmettre le ballon à un soutien tout proche (`_tickPorte`, mécanique de
+contact) pour garder le jeu vivant. Comme toute passe, l'offload est soumis à
+la règle de la passe en avant : le receveur doit être à hauteur ou en retrait
+(`(receveur.x - porteur.x) * sensAttaque <= 0.3`, même seuil que
+`Referee.passeEnAvant`), sinon le soutien n'est pas retenu — un offload ne
+peut jamais aller vers l'avant.
+
 Implémenté (`ETATS_MELEE`, `_formerMelee`, `_tickMelee`, et les méthodes
 `_melee*`) : ✅ machine à états complète, plusieurs secondes, pas de tirage
 aléatoire instantané :
 
 1. **FORMATION** : les deux paquets se placent face à face de part et
    d'autre du point de mêlée (`_meleePlacerPaquets`, avants groupés près du
-   point, arrières à ~9 m derrière leur ligne de hors-jeu).
+   point, arrières à ~7,5 m derrière leur ligne de hors-jeu réglementaire,
+   soit 5 m derrière le pied le plus reculé, loi 19.31).
 2. **CROUCH → BIND → SET** : séquence des commandes d'arbitre, journalisée
    dans le fil d'événements (`MELEE_CROUCH`, `MELEE_BIND`, `MELEE_SET`) ;
    les paquets se resserrent progressivement à chaque appel.
