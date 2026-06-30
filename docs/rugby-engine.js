@@ -355,11 +355,28 @@
       const equipeKick = equipeReceptrice === 'A' ? 'B' : 'A';
       this._dernierEquipeKick = equipeKick;
       const dirKick = sens[equipeKick];
+      // Réception du coup d'envoi : défense ÉTAGÉE en profondeur (loi 12), pas
+      // une seule ligne massée sur les 10 m. Sans étagement, un coup d'envoi long
+      // tombait derrière tout le monde, personne pour le réceptionner.
+      //  - Avants (1-8) : 1ʳᵉ ligne sur la ligne des 10 m (capter/contester les
+      //    coups courts, monter au plaquage).
+      //  - 9,10,12,13 : 2ᵉ rideau ~18 m.
+      //  - Ailiers (11,14) : autour de la ligne des 22 m (~30 m du centre),
+      //    écartés sur les bords.
+      //  - Arrière (15) : couverture PROFONDE, ENTRE LES 22 M ET L'EN-BUT
+      //    (~38 m du centre), au milieu — le dernier rideau qui cueille les
+      //    longs coups de pied. (La ligne des 22 m est à 28 m du centre.)
+      const profondeurReception = (n) => {
+        if (n <= 8) return 10;
+        if (n === 15) return 38;
+        if (n === 11 || n === 14) return 30;
+        return 18;
+      };
       for (const j of [...this.equipeA, ...this.equipeB]) {
         if (j.team === equipeKick) {
           j.x = Math.max(0, Math.min(LONGUEUR, xCentre - dirKick * (j.numero <= 8 ? 2 : 6)));
         } else {
-          j.x = Math.max(0, Math.min(LONGUEUR, xCentre + dirKick * (10 + (j.numero <= 8 ? 0 : 6))));
+          j.x = Math.max(0, Math.min(LONGUEUR, xCentre + dirKick * profondeurReception(j.numero)));
         }
         j.y = j.channelY;
       }
