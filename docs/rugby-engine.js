@@ -2458,20 +2458,46 @@
         // devrait être téléporté sur la base à la sortie du ballon.
         const backs = equipe.filter(j => j.numero > 9 && j.sinBin <= 0);
         // Ligne de hors-jeu des trois-quarts (loi 19.31) : 5 m DERRIÈRE le pied
-        // le plus reculé de la mêlée. La mêlée est profonde d'environ 1,5 m de
-        // part et d'autre de la marque (m.x), donc le dernier pied est à ~1,5 m
-        // et la ligne réglementaire à ~6,5 m de la marque. On place les backs à
-        // 7,5 m (1 m de marge derrière la ligne pour ne pas être sifflé sur un
-        // simple flottement), au lieu des 9 m d'avant qui les reculaient de
-        // ~2,5 m de trop et aplatissaient le jeu juste après la mêlée.
-        const cxBacks = m.x - equipe[0].sensAttaque * 7.5;
+        // le plus reculé de la mêlée (~1,5 m), soit ~6,5 m de la marque ; on
+        // place la ligne à 7,5 m (1 m de marge). Les 3/4 ne sont PLUS alignés en
+        // un mur plat : ils prennent leur VRAIE forme de mêlée.
+        const sA = equipe[0].sensAttaque;
+        const ligneHJ = m.x - sA * 7.5;
+        const estAttaque = equipe[0].team === m.equipeIntroduction;
+        // Côté OUVERT = celui qui a le plus de champ depuis la mêlée (vers le
+        // large), côté FERMÉ = petit côté vers la touche la plus proche.
+        const openSign = m.y < LARGEUR / 2 ? 1 : -1;
+        const clampY = (y) => Math.max(2, Math.min(LARGEUR - 2, y));
+        const idxLigne = (n) => (n === 10 ? 0 : n === 12 ? 1 : 2); // 10,12,13
         backs.forEach((j) => {
-          // La ligne arrière se réorganise autour du point de mêlée réel
-          // (pas uniquement sur le couloir figé de chaque joueur) : sinon
-          // les arrières ne bougent jamais en fonction d'où la mêlée se
-          // forme sur la largeur du terrain.
-          const cibleY = j.channelY * 0.6 + m.y * 0.4;
-          avancer(j, cxBacks - j.x, cibleY - j.y, dt, vitesseMs(j) * 0.85);
+          let cx, cy;
+          if (j.numero === 15) {
+            // Arrière : couverture PROFONDE au centre (dernier rideau), pas dans
+            // la ligne.
+            cx = m.x - sA * 20; cy = LARGEUR / 2;
+          } else if (j.numero === 11 || j.numero === 14) {
+            // Ailiers : l'ailier du côté OUVERT s'écarte au large sur la ligne de
+            // hors-jeu ; l'autre couvre le petit côté (côté fermé).
+            const cotAile = (Math.sign(j.channelY - LARGEUR / 2) || 1);
+            cx = ligneHJ;
+            cy = cotAile === openSign ? LARGEUR / 2 + openSign * 22 : m.y - openSign * 7;
+          } else {
+            // 10, 12, 13 : la ligne des trois-quarts, ÉTAGÉE vers le côté ouvert.
+            const idx = idxLigne(j.numero);
+            cy = m.y + openSign * (7 + idx * 8);
+            // Attaque : ligne FANÉE (de plus en plus en retrait vers l'extérieur,
+            // pour recevoir en avançant). Défense : ligne À PLAT sur la ligne de
+            // hors-jeu, prête à monter à plat.
+            cx = estAttaque ? ligneHJ - sA * idx * 2 : ligneHJ;
+          }
+          // Priorité au REPLI en profondeur : tant que le back est en avant de sa
+          // ligne de hors-jeu (loi 19.31), il ferme d'abord la profondeur (on
+          // réduit la composante latérale) — sinon une cible large lointaine (aile
+          // au grand large) lui fait dépenser sa course en y et il reste
+          // transitoirement hors-jeu. Une fois derrière la ligne, il s'écarte.
+          const enAvantLigne = (j.x - ligneHJ) * sA > 0.3;
+          const dyB = clampY(cy) - j.y;
+          avancer(j, cx - j.x, enAvantLigne ? dyB * 0.3 : dyB, dt, vitesseMs(j) * 0.9);
         });
       };
       placer(this.equipeA);
