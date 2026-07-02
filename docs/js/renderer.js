@@ -99,7 +99,10 @@
 
   function dessinerJoueur(j, estPorteur) {
     const { px, py } = versCanvas(j.x, j.y);
-    const auSol = j.auSol > 0;
+    // Dessiné couché si réellement au sol (plaqué, figé) OU s'il vient de plaquer
+    // (marqueur visuel pur solVisuel) : la définition officielle du plaquage veut
+    // que le plaqueur aille aussi au sol.
+    const auSol = j.auSol > 0 || j.solVisuel > 0;
     ctx.save();
     ctx.beginPath();
     if (auSol) {

@@ -462,12 +462,22 @@
       this.equipeKickPremiereMiTemps = this._dernierEquipeKick;
     }
 
+    // Statistiques de match, alignées sur les définitions officielles World Rugby
+    // (game analysis). Toutes dérivées d'ACTIONS RÉELLES de la simulation, jamais
+    // fabriquées. Correspondance documentée dans docs/REGLES_RUGBY.md.
+    //  - carries          : ballons portés AU CONTACT (le porteur engage le contact) ;
+    //  - passes / passesTentees / offloads : passes réussies / tentées / dans le plaquage ;
+    //  - tacklesMade / missedTackles       : plaquages réussis / manqués (côté défense) ;
+    //  - defenseursBattus : défenseurs BATTUS (côté attaque = plaquage manqué subi par la défense) ;
+    //  - turnovers / turnoversConcedes      : ballons GAGNÉS / PERDUS (perte de possession en jeu) ;
+    //  - phases           : phases jouées (nombre de rucks + mauls de la possession) ;
+    //  - kicks            : coups de pied en jeu ; metresGagnes : mètres gagnés ballon en main.
     _statsVierges() {
       return {
         essais: 0, carries: 0, passes: 0, passesTentees: 0, offloads: 0, kicks: 0,
-        tacklesAttempted: 0, tacklesMade: 0, missedTackles: 0,
-        rucks: 0, lineouts: 0, lineoutsGagnes: 0, scrums: 0, scrumsGagnes: 0, mauls: 0,
-        penalitesConcedees: 0, turnovers: 0, knockOns: 0, cartonsJaunes: 0, metresGagnes: 0,
+        tacklesAttempted: 0, tacklesMade: 0, missedTackles: 0, defenseursBattus: 0,
+        rucks: 0, lineouts: 0, lineoutsGagnes: 0, scrums: 0, scrumsGagnes: 0, mauls: 0, phases: 0,
+        penalitesConcedees: 0, turnovers: 0, turnoversConcedes: 0, knockOns: 0, cartonsJaunes: 0, metresGagnes: 0,
       };
     }
 
@@ -1122,10 +1132,18 @@
           // instant, le porteur poursuit sa course sans être inquiété par lui.
           defenseurProche.missCooldown = 1.0;
           this.stats[defenseurProche.team].missedTackles++;
+          this.stats[this.possession].defenseursBattus++; // le porteur a battu un défenseur
           this.log('PLAQUAGE_MANQUE', this.possession, `Plaquage manque, l'equipe ${this.possession} poursuit sa course`);
           return;
         }
         this.stats[defenseurProche.team].tacklesMade++;
+        // Définition officielle du plaquage (World Rugby) : le plaqueur amène le
+        // porteur au sol ET va LUI-MÊME au sol. On le montre donc brièvement
+        // couché À L'ÉCRAN (marqueur PUREMENT VISUEL solVisuel, cf. renderer),
+        // SANS le figer côté jeu : le figer, même 0,3 s, le retirait de la
+        // défense et faisait monter les essais (4,8 -> 5,9 mesuré). Ce marqueur
+        // n'a AUCUN effet sur la simulation — il illustre juste la définition.
+        defenseurProche.solVisuel = 0.9;
         this.timerPhase = 0;
         // En-avant au contact : conséquence directe et distincte du plaquage
         // réussi, pas seulement un succès/échec binaire ruck-ou-rien. Taux
@@ -1183,7 +1201,7 @@
           // se déplace plus du tout jusqu'à s'être relevé.
           this.porteur.auSol = 2.0;
           this.porteur._solX = this.porteur.x; this.porteur._solY = this.porteur.y;
-          this.stats[this.possession].rucks++;
+          this.stats[this.possession].rucks++; this.stats[this.possession].phases++;
           const tierRuck = this.rng();
           this.ruckDureeCible = (tierRuck < 0.55 ? 2 + this.rng() * 2
             : tierRuck < 0.85 ? 4 + this.rng() * 3
@@ -1342,7 +1360,7 @@
             this.contestants = [sauveteur.numero];
             porteur.auSol = 2.0;
             porteur._solX = porteur.x; porteur._solY = porteur.y;
-            this.stats[this.possession].rucks++;
+            this.stats[this.possession].rucks++; this.stats[this.possession].phases++;
             const tierRuck = this.rng();
             this.ruckDureeCible = (tierRuck < 0.55 ? 2 + this.rng() * 2
               : tierRuck < 0.85 ? 4 + this.rng() * 3
@@ -1356,6 +1374,7 @@
           }
           sauveteur.missCooldown = 1.0;
           this.stats[sauveteur.team].missedTackles++;
+          this.stats[this.possession].defenseursBattus++;
           this.log('PLAQUAGE_MANQUE', this.possession, `Plaquage de sauvetage manque, l'equipe ${this.possession} aplatit`);
         }
         porteur.x = porteur.sensAttaque > 0 ? LONGUEUR : 0;
@@ -1996,8 +2015,9 @@
         const turnover = this.rng() < probaTurnover;
         this.ruckDominant = false;
         if (turnover) {
+          this.stats[this.possession].turnoversConcedes++; // équipe qui PERD le ballon
           this.possession = this.possession === 'A' ? 'B' : 'A';
-          this.stats[this.possession].turnovers++;
+          this.stats[this.possession].turnovers++;           // équipe qui GAGNE le ballon
           this.log('TURNOVER', this.possession, `Ballon gratte au ruck, equipe ${this.possession} recupere`);
         } else if ((this.ruckTempsSansSoutien || 0) > 1.5 * this._echelleArret && this.rng() < 0.12) {
           this.log('PENALITE_RUCK_ISOLE', equipeOriginale, `Porteur isole au ruck, ballon non rendu, penalite pour l'equipe adverse`);
@@ -2074,7 +2094,7 @@
       this.contestants = [defenseur.numero];
       this.phase = 'MAUL';
       this.timerPhase = 0;
-      this.stats[poss].mauls++;
+      this.stats[poss].mauls++; this.stats[poss].phases++;
       this.log('MAUL', poss, `Maul forme, l'equipe ${poss} garde le ballon debout avec ses soutiens`);
     }
 
@@ -2920,6 +2940,7 @@
       if (this.rng() < probaVol) {
         m.vainqueur = nonIntro; m.qualite = 'VOLE';
         this.stats[nonIntro].turnovers++;
+        this.stats[intro].turnoversConcedes++;
         this.log('TURNOVER', nonIntro, `Ballon vole en melee contre l'introduction, l'equipe ${nonIntro} recupere`);
       } else if (m.diff > 25) {
         m.vainqueur = intro; m.qualite = 'DOMINANT';
@@ -3209,7 +3230,7 @@
       const vole = this.rng() < probaVolAdverse;
       const gagnant = vole ? adversaire : lanceur;
       this.stats[gagnant].lineoutsGagnes++;
-      if (vole) this.stats[adversaire].turnovers++;
+      if (vole) { this.stats[adversaire].turnovers++; this.stats[lanceur].turnoversConcedes++; }
       // Le sauteur n'est jamais "le plus proche d'un point" : en match réel le
       // lancer vise un appel tactique (plot avant/milieu/fond de ligne), donc
       // un sauteur choisi au hasard parmi les vrais sauteurs (2e/3e ligne,
@@ -3503,6 +3524,7 @@
         if (j.missCooldown > 0) j.missCooldown = Math.max(0, j.missCooldown - dt);
         if (j.ruckRecovery > 0) j.ruckRecovery = Math.max(0, j.ruckRecovery - dt);
         if (j._croiseTimer > 0) j._croiseTimer = Math.max(0, j._croiseTimer - dt);
+        if (j.solVisuel > 0) j.solVisuel = Math.max(0, j.solVisuel - dt); // plaqueur couché (visuel pur)
         if (j.sinBin > 0) j.sinBin = Math.max(0, j.sinBin - dt);
       }
       // Avancement du vol visuel d'une passe (cf. _lancerPasseVisuelle) : on le

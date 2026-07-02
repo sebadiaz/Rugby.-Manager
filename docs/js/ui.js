@@ -97,17 +97,23 @@
       ligneStat('Possession', `${pct.A}%`, `${pct.B}%`) +
       ligneStat('Occupation', `${occ.A}%`, `${occ.B}%`) +
       ligneStat('Essais', s.A.essais, s.B.essais) +
+      // Statistiques alignées sur les définitions officielles World Rugby
+      // (game analysis) — toutes issues d'actions réelles de la simulation.
       ligneStat('Passes réussies', `${s.A.passes}/${s.A.passesTentees}`, `${s.B.passes}/${s.B.passesTentees}`) +
-      ligneStat('Courses', s.A.carries, s.B.carries) +
+      ligneStat('Offloads', s.A.offloads, s.B.offloads) +
+      ligneStat('Courses (au contact)', s.A.carries, s.B.carries) +
       ligneStat('Mètres gagnés', Math.round(s.A.metresGagnes), Math.round(s.B.metresGagnes)) +
+      ligneStat('Défenseurs battus', s.A.defenseursBattus, s.B.defenseursBattus) +
       ligneStat('Coups de pied', s.A.kicks, s.B.kicks) +
       ligneStat('Plaquages réussis', `${s.A.tacklesMade}/${s.A.tacklesAttempted}`, `${s.B.tacklesMade}/${s.B.tacklesAttempted}`) +
       ligneStat('Plaquages manqués', s.A.missedTackles, s.B.missedTackles) +
-      ligneStat('Mêlées gagnées', `${s.A.scrumsGagnes}/${s.A.scrums + s.B.scrums}`, `${s.B.scrumsGagnes}/${s.A.scrums + s.B.scrums}`) +
-      ligneStat('Touches gagnées', `${s.A.lineoutsGagnes}/${s.A.lineouts + s.B.lineouts}`, `${s.B.lineoutsGagnes}/${s.A.lineouts + s.B.lineouts}`) +
+      ligneStat('Phases jouées', s.A.phases, s.B.phases) +
       ligneStat('Rucks', s.A.rucks, s.B.rucks) +
       ligneStat('Mauls', s.A.mauls, s.B.mauls) +
+      ligneStat('Mêlées gagnées', `${s.A.scrumsGagnes}/${s.A.scrums + s.B.scrums}`, `${s.B.scrumsGagnes}/${s.A.scrums + s.B.scrums}`) +
+      ligneStat('Touches gagnées', `${s.A.lineoutsGagnes}/${s.A.lineouts + s.B.lineouts}`, `${s.B.lineoutsGagnes}/${s.A.lineouts + s.B.lineouts}`) +
       ligneStat('Turnovers gagnés', s.A.turnovers, s.B.turnovers) +
+      ligneStat('Turnovers concédés', s.A.turnoversConcedes, s.B.turnoversConcedes) +
       ligneStat('En-avants', s.A.knockOns, s.B.knockOns) +
       ligneStat('Pénalités concédées', s.A.penalitesConcedees, s.B.penalitesConcedees) +
       ligneStat('Cartons jaunes', s.A.cartonsJaunes, s.B.cartonsJaunes);

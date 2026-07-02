@@ -280,6 +280,31 @@ aléatoire instantané :
   temporelle distincte ; cf. tap-and-go immédiat dans `_traiterPenalite`).
 - TMO / arbitrage vidéo.
 
+## 9. Statistiques — définitions World Rugby (game analysis)
+
+Les statistiques de match du moteur (`_statsVierges`, exposées par `getState().stats`
+et affichées dans le panneau « Stats ») sont alignées sur les définitions officielles
+World Rugby (game analysis definitions). **Toutes sont issues d'actions réellement
+jouées dans la simulation — aucune n'est fabriquée.**
+
+| Stat moteur | Définition World Rugby | Où c'est compté |
+|---|---|---|
+| `carries` (Courses au contact) | Un joueur qui, ballon en main, **engage le contact** avec l'adversaire | `_tickPorte`, à l'entrée du contact (distance défenseur < 2,2 m) |
+| `passes` / `passesTentees` | Lancer du ballon (hors lancer de touche / introduction en mêlée) | passe réussie / tentée (`_tenterPasse`, combinaisons) |
+| `offloads` | Passe effectuée **pendant** le plaquage | `_tickPorte`, offload dans le contact |
+| `tacklesMade` / `missedTackles` | Plaquage réussi (le plaqueur amène le porteur au sol) / manqué | résolution du plaquage |
+| `defenseursBattus` (Défenseurs battus) | Défenseur **battu** par le porteur (côté attaque = plaquage manqué subi) | à chaque `PLAQUAGE_MANQUE` |
+| `turnovers` / `turnoversConcedes` | Ballon **gagné** / **perdu** (perte de possession en jeu : grattage, vol) | ruck, mêlée volée, touche volée |
+| `phases` (Phases jouées) | Nombre de **rucks + mauls** de la possession (une phase par regroupement) | à chaque formation de ruck/maul |
+| `metresGagnes` | Mètres gagnés **ballon en main** dans le sens d'attaque | course du porteur (`_tickPorte`) |
+| `kicks` | Coup de pied en jeu (hors pénalités / coups francs) | `_tenterCoupDePiedJeu` |
+| possession % / occupation % | % de temps de contrôle du ballon / d'occupation territoriale | `tempsPossession` / `tempsOccupation` |
+
+Comportement aligné sur la définition : le **plaquage** amène le porteur au sol **et
+le plaqueur va aussi au sol** — le plaqueur est donc dessiné brièvement couché
+(marqueur visuel `solVisuel`, purement graphique : le figer côté jeu retirait un
+défenseur et faisait monter les essais, cf. commentaire moteur).
+
 Voir aussi `docs/SPEC_MOTEUR_MATCH.md` pour l'architecture générale du moteur
 (obsolète sur le plan technique — décrit une conception C++ jamais
 implémentée — mais toujours pertinent pour l'intention de conception).
