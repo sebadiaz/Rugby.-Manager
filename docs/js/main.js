@@ -38,10 +38,16 @@
 
   let match = null;
   let seedActuel = graineAleatoire();
+  // Config paramétrable chargée avant le match (docs/rugby-config.json) :
+  // caractéristiques des joueurs, combinaisons de touche, sorties de mêlée,
+  // organisation attaque/défense. `null` = valeurs par défaut du moteur.
+  // Chargée de façon asynchrone au démarrage ; si le chargement échoue (ex.
+  // ouverture en file://), on garde le comportement par défaut.
+  let configMatch = null;
 
   function demarrerNouveauMatch(seed, duree) {
     seedActuel = seed;
-    match = new MatchEngine(seed, duree);
+    match = new MatchEngine(seed, duree, configMatch);
     UI.reinitialiserSuivi();
     accumulateur = 0;
     dernierEtatMelee = null;
@@ -60,7 +66,7 @@
   // "rejouable à tout moment" (la simulation est déterministe, donc rejouer
   // == recalculer).
   function avancerJusqua(cible) {
-    const m = new MatchEngine(seedActuel, DUREE_MATCH);
+    const m = new MatchEngine(seedActuel, DUREE_MATCH, configMatch);
     const nbPas = Math.round(cible / PAS_FIXE);
     for (let i = 0; i < nbPas; i++) m.tick(PAS_FIXE);
     return m;
@@ -217,6 +223,20 @@
   }
 
   redimensionner();
-  demarrerNouveauMatch(seedActuel, DUREE_MATCH);
-  requestAnimationFrame(boucle);
+  // Charge la config paramétrable AVANT de lancer le premier match, puis démarre.
+  // Si le chargement échoue (fichier absent, ouverture en file://), on démarre
+  // avec les valeurs par défaut du moteur — le jeu fonctionne toujours.
+  function demarrer() {
+    demarrerNouveauMatch(seedActuel, DUREE_MATCH);
+    requestAnimationFrame(boucle);
+  }
+  if (typeof fetch === 'function') {
+    fetch('rugby-config.json')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((cfg) => { if (cfg) { delete cfg._lisezMoi; configMatch = cfg; } })
+      .catch(() => { /* pas de config : valeurs par défaut */ })
+      .finally(demarrer);
+  } else {
+    demarrer();
+  }
 })();

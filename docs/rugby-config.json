@@ -1,0 +1,145 @@
+{
+  "_lisezMoi": "Configuration editable AVANT le match. Modifiez ces valeurs puis rechargez la page. joueurs: caracteristiques par numero de maillot (poste, vitesse 0-100, plaquage 0-100, tendance 0-100 = proximite au ballon, couloir 0-70 = position laterale au repos). touche: lanceur, sauteurs (numeros dans les appels), espacement de l alignement (m), reculReceveur (m), offsideNonParticipants (m), tauxMaul (proche/loin, 0-1). melee: reculTroisQuarts (m), pickAndGoHuit (proba sortie n8 selon domination). attaque: jeuLargeTaux (proba d ecarter par seconde). defense: profondeurs de couverture de l arriere (m) et recul au ruck (m).",
+  "joueurs": {
+    "1": {
+      "poste": "P",
+      "vitesse": 45,
+      "plaquage": 70,
+      "tendance": 85,
+      "couloir": 26
+    },
+    "2": {
+      "poste": "T",
+      "vitesse": 48,
+      "plaquage": 70,
+      "tendance": 85,
+      "couloir": 32
+    },
+    "3": {
+      "poste": "P",
+      "vitesse": 45,
+      "plaquage": 70,
+      "tendance": 85,
+      "couloir": 38
+    },
+    "4": {
+      "poste": "2L",
+      "vitesse": 50,
+      "plaquage": 65,
+      "tendance": 80,
+      "couloir": 24
+    },
+    "5": {
+      "poste": "2L",
+      "vitesse": 50,
+      "plaquage": 65,
+      "tendance": 80,
+      "couloir": 42
+    },
+    "6": {
+      "poste": "3L",
+      "vitesse": 60,
+      "plaquage": 75,
+      "tendance": 75,
+      "couloir": 20
+    },
+    "7": {
+      "poste": "3L",
+      "vitesse": 62,
+      "plaquage": 78,
+      "tendance": 75,
+      "couloir": 48
+    },
+    "8": {
+      "poste": "3L",
+      "vitesse": 60,
+      "plaquage": 72,
+      "tendance": 75,
+      "couloir": 35
+    },
+    "9": {
+      "poste": "DM",
+      "vitesse": 65,
+      "plaquage": 55,
+      "tendance": 90,
+      "couloir": 35
+    },
+    "10": {
+      "poste": "OV",
+      "vitesse": 70,
+      "plaquage": 50,
+      "tendance": 55,
+      "couloir": 31
+    },
+    "11": {
+      "poste": "AI",
+      "vitesse": 90,
+      "plaquage": 45,
+      "tendance": 15,
+      "couloir": 7
+    },
+    "12": {
+      "poste": "CE",
+      "vitesse": 72,
+      "plaquage": 65,
+      "tendance": 45,
+      "couloir": 26
+    },
+    "13": {
+      "poste": "CE",
+      "vitesse": 74,
+      "plaquage": 60,
+      "tendance": 45,
+      "couloir": 44
+    },
+    "14": {
+      "poste": "AI",
+      "vitesse": 90,
+      "plaquage": 45,
+      "tendance": 15,
+      "couloir": 63
+    },
+    "15": {
+      "poste": "AR",
+      "vitesse": 80,
+      "plaquage": 50,
+      "tendance": 20,
+      "couloir": 35
+    }
+  },
+  "touche": {
+    "lanceur": 2,
+    "sauteurs": [
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "espacementSauteurs": 1.4,
+    "reculReceveur": 4,
+    "offsideNonParticipants": 10,
+    "tauxMaul": {
+      "proche": 0.45,
+      "loin": 0.08
+    }
+  },
+  "melee": {
+    "reculTroisQuarts": 7.5,
+    "pickAndGoHuit": {
+      "dominant": 0.35,
+      "normal": 0.12
+    }
+  },
+  "attaque": {
+    "jeuLargeTaux": {
+      "pression": 0.55,
+      "calme": 0.3
+    }
+  },
+  "defense": {
+    "profondeurArriereJeu": 18,
+    "profondeurArriereMelee": 20,
+    "reculRuck": 3
+  }
+}

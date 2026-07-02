@@ -65,14 +65,87 @@
     9: 35, 10: 31, 11: 7, 12: 26, 13: 44, 14: 63, 15: 35,
   };
 
-  function creerJoueur(numero, team, sensAttaque, rng) {
+  // === Configuration paramétrable avant le match ============================
+  // Toutes les valeurs réglables (caractéristiques des joueurs, combinaisons de
+  // touche, sorties de mêlée, organisation attaque/défense) sont regroupées ici
+  // sous forme d'objet simple. Le moteur lit CETTE config (this.cfg), pas des
+  // constantes en dur : on peut donc la surcharger avant le match via
+  // `new MatchEngine(seed, duree, config)` (cf. docs/rugby-config.json chargé par
+  // l'interface). Les valeurs par défaut ci-dessous reproduisent exactement le
+  // comportement historique.
+  const DEFAULT_CONFIG = {
+    // Caractéristiques de chaque joueur (par numéro de maillot) : poste, vitesse,
+    // plaquage (proxy de puissance), tendance (proximité au ballon), couloir
+    // latéral au repos (0-70). Dérivées des profils/couloirs historiques.
+    joueurs: (() => {
+      const j = {};
+      for (let n = 1; n <= 15; n++) {
+        j[n] = {
+          poste: PROFILS[n].label,
+          vitesse: PROFILS[n].vitesse,
+          plaquage: PROFILS[n].plaquage,
+          tendance: PROFILS[n].tendance,
+          couloir: COULOIR_BASE[n],
+        };
+      }
+      return j;
+    })(),
+    // Touche (loi 18) : qui lance, quels sauteurs sont dans les appels possibles,
+    // espacement de l'alignement, recul du receveur (n°9), et probabilité de
+    // former un maul (catch-and-drive) selon la zone.
+    touche: {
+      lanceur: 2,
+      sauteurs: [4, 5, 6, 7, 8],
+      espacementSauteurs: 1.4,
+      reculReceveur: 4,
+      offsideNonParticipants: 10,
+      tauxMaul: { proche: 0.45, loin: 0.08 },
+    },
+    // Mêlée (loi 19) : recul réglementaire des trois-quarts, et probabilité que
+    // le n°8 sorte le ballon au pied (pick-and-go) plutôt que le 9, selon la
+    // domination de la poussée.
+    melee: {
+      reculTroisQuarts: 7.5,
+      pickAndGoHuit: { dominant: 0.35, normal: 0.12 },
+    },
+    // Organisation d'attaque : taux de jeu au large (écarter vers le centre en
+    // espace) sous pression / au calme.
+    attaque: {
+      jeuLargeTaux: { pression: 0.55, calme: 0.3 },
+    },
+    // Organisation de défense : profondeur de couverture de l'arrière (n°15) en
+    // jeu courant et à la mêlée, recul de la ligne au ruck.
+    defense: {
+      profondeurArriereJeu: 18,
+      profondeurArriereMelee: 20,
+      reculRuck: 3,
+    },
+  };
+
+  // Fusion profonde d'une config partielle par-dessus les valeurs par défaut :
+  // l'utilisateur ne fournit que ce qu'il veut changer, le reste garde le défaut.
+  function fusionnerConfig(base, surcharge) {
+    const out = Array.isArray(base) ? base.slice() : Object.assign({}, base);
+    if (!surcharge || typeof surcharge !== 'object') return out;
+    for (const k of Object.keys(surcharge)) {
+      const v = surcharge[k];
+      out[k] = (v && typeof v === 'object' && !Array.isArray(v) && base && typeof base[k] === 'object' && !Array.isArray(base[k]))
+        ? fusionnerConfig(base[k], v)
+        : v;
+    }
+    return out;
+  }
+
+  function creerJoueur(numero, team, sensAttaque, rng, joueursCfg) {
+    const c = (joueursCfg && joueursCfg[numero]) || {};
     const p = PROFILS[numero];
-    const channelY = COULOIR_BASE[numero] * (LARGEUR / 70);
+    const couloir = c.couloir != null ? c.couloir : COULOIR_BASE[numero];
+    const channelY = couloir * (LARGEUR / 70);
     return {
-      team, numero, label: p.label,
-      vitesse: p.vitesse + (rng() * 10 - 5),
-      plaquage: p.plaquage + (rng() * 10 - 5),
-      tendance: p.tendance,
+      team, numero, label: c.poste || p.label,
+      vitesse: (c.vitesse != null ? c.vitesse : p.vitesse) + (rng() * 10 - 5),
+      plaquage: (c.plaquage != null ? c.plaquage : p.plaquage) + (rng() * 10 - 5),
+      tendance: c.tendance != null ? c.tendance : p.tendance,
       channelY,
       x: 0, y: channelY,
       auSol: 0,
@@ -96,9 +169,9 @@
     };
   }
 
-  function creerEquipe(team, sensAttaque, rng) {
+  function creerEquipe(team, sensAttaque, rng, joueursCfg) {
     const joueurs = [];
-    for (let n = 1; n <= 15; n++) joueurs.push(creerJoueur(n, team, sensAttaque, rng));
+    for (let n = 1; n <= 15; n++) joueurs.push(creerJoueur(n, team, sensAttaque, rng, joueursCfg));
     return joueurs;
   }
 
@@ -213,7 +286,11 @@
   class MatchEngine {
     // dureeMatch (secondes de jeu simulées) optionnel : Infinity par défaut pour ne
     // pas casser les usages existants (tests headless, qui veulent un flux continu).
-    constructor(seed, dureeMatch = Infinity) {
+    constructor(seed, dureeMatch = Infinity, config = null) {
+      // Config paramétrable avant le match (caractéristiques joueurs, touche,
+      // mêlée, attaque, défense) fusionnée par-dessus les défauts : cf.
+      // DEFAULT_CONFIG. `null` => comportement historique exact.
+      this.cfg = fusionnerConfig(DEFAULT_CONFIG, config);
       this.rng = creerRng(seed >>> 0 || 1);
       this.score = { A: 0, B: 0 };
       this.events = [];
@@ -347,8 +424,8 @@
       for (const j of (this.equipeA || []).concat(this.equipeB || [])) {
         if (j.sinBin > 0) sinBinRestant.set(j.team + '-' + j.numero, j.sinBin);
       }
-      this.equipeA = creerEquipe('A', sens.A, this.rng);
-      this.equipeB = creerEquipe('B', sens.B, this.rng);
+      this.equipeA = creerEquipe('A', sens.A, this.rng, this.cfg.joueurs);
+      this.equipeB = creerEquipe('B', sens.B, this.rng, this.cfg.joueurs);
       for (const j of [...this.equipeA, ...this.equipeB]) {
         const restant = sinBinRestant.get(j.team + '-' + j.numero);
         if (restant) j.sinBin = restant;
@@ -620,7 +697,7 @@
       // Loi 18 : c'est le talonneur (n°2) qui lance en touche en match reel,
       // jamais le demi de melee ni l'ouvreur - _neufVersDix (9->10) sert a la
       // sortie de balle d'un regroupement, pas au lancer de touche.
-      this.porteur = equipe.find(j => j.numero === 2 && j.sinBin <= 0) || equipe[8];
+      this.porteur = equipe.find(j => j.numero === this.cfg.touche.lanceur && j.sinBin <= 0) || equipe[8];
       this.phase = 'TOUCHE';
       this.timerPhase = 0;
       this.toucheLancer = null;
@@ -858,7 +935,7 @@
       const eqLanceur = equipe === 'A' ? this.equipeA : this.equipeB;
       // Loi 18 : le talonneur (n°2) lance, comme a la touche en jeu courant
       // (cf. _accorderTouche).
-      this.porteur = eqLanceur.find(j => j.numero === 2 && j.sinBin <= 0) || eqLanceur[8];
+      this.porteur = eqLanceur.find(j => j.numero === this.cfg.touche.lanceur && j.sinBin <= 0) || eqLanceur[8];
       const xLanceur = Math.max(5, Math.min(LONGUEUR - 5, xTouche));
       // Loi 18.22 : le lanceur sur la ligne de touche (cf. _accorderTouche),
       // pas à 5 m à l'intérieur.
@@ -1110,7 +1187,7 @@
         // ~18 m derrière, au centre, pour parer le jeu au pied et les
         // débordements (dernier rideau). Il ne court jamais vers le ballon.
         if (j.numero === 15) {
-          const cibleX = porteur.x + porteur.sensAttaque * 18;
+          const cibleX = porteur.x + porteur.sensAttaque * this.cfg.defense.profondeurArriereJeu;
           const cibleY = j.channelY * 0.7 + porteur.y * 0.3;
           avancer(j, cibleX - j.x, cibleY - j.y, dt, vitesseMs(j) * 0.8);
           continue;
@@ -1309,7 +1386,7 @@
           && Math.abs(j.y - LARGEUR / 2) < 24 // zone mi-large, pas collé à la touche
           && distance(j, porteur) < 22
           && joueurLePlusProche(this.defenseurs(), j.x, j.y).distance > 4);
-        if (versLarge && this.rng() < (pression ? 0.55 : 0.3) * dt) return 'PASS';
+        if (versLarge && this.rng() < (pression ? this.cfg.attaque.jeuLargeTaux.pression : this.cfg.attaque.jeuLargeTaux.calme) * dt) return 'PASS';
       }
 
       // 3. Passe avant contact, modulée par le PROFIL du porteur (autonomie) :
@@ -1693,7 +1770,7 @@
       // Valeur modérée : combinée à la récupération post-regroupement (cf.
       // _imposerRecuperationRuck), un recul trop large ouvrirait des brèches
       // systématiques côté ligne d'en-but.
-      const margeRecul = 3;
+      const margeRecul = this.cfg.defense.reculRuck;
       const delaiGrace = 1.5 * this._echelleArret;
 
       // Joueurs qui convergent vers le point de ruck (le(s) contestant(s)
@@ -2462,7 +2539,7 @@
         // place la ligne à 7,5 m (1 m de marge). Les 3/4 ne sont PLUS alignés en
         // un mur plat : ils prennent leur VRAIE forme de mêlée.
         const sA = equipe[0].sensAttaque;
-        const ligneHJ = m.x - sA * 7.5;
+        const ligneHJ = m.x - sA * this.cfg.melee.reculTroisQuarts;
         const estAttaque = equipe[0].team === m.equipeIntroduction;
         // Côté OUVERT = celui qui a le plus de champ depuis la mêlée (vers le
         // large), côté FERMÉ = petit côté vers la touche la plus proche.
@@ -2474,7 +2551,7 @@
           if (j.numero === 15) {
             // Arrière : couverture PROFONDE au centre (dernier rideau), pas dans
             // la ligne.
-            cx = m.x - sA * 20; cy = LARGEUR / 2;
+            cx = m.x - sA * this.cfg.defense.profondeurArriereMelee; cy = LARGEUR / 2;
           } else if (j.numero === 11 || j.numero === 14) {
             // Ailiers : l'ailier du côté OUVERT s'écarte au large sur la ligne de
             // hors-jeu ; l'autre couvre le petit côté (côté fermé).
@@ -2773,7 +2850,7 @@
       const eq = poss === 'A' ? this.equipeA : this.equipeB;
       const huit = eq.find(j => j.numero === 8);
       const pt = { x: m.x, y: m.y };
-      const pickAndGo = huit && huit.auSol === 0 && this.rng() < (m.qualite === 'DOMINANT' ? 0.35 : 0.12);
+      const pickAndGo = huit && huit.auSol === 0 && this.rng() < (m.qualite === 'DOMINANT' ? this.cfg.melee.pickAndGoHuit.dominant : this.cfg.melee.pickAndGoHuit.normal);
       this._finMelee();
       this.possession = poss;
       if (pickAndGo) {
@@ -2838,7 +2915,7 @@
         const avants = equipe.filter(j => j.numero <= 8 && j.sinBin <= 0 && j !== this.porteur);
         avants.forEach((j, i) => {
           const cx = pt.x + decalX;
-          const cy = yLigne5 + versCentre * (i * 1.4);
+          const cy = yLigne5 + versCentre * (i * this.cfg.touche.espacementSauteurs);
           avancer(j, cx - j.x, cy - j.y, dt, vitesseMs(j) * 0.8);
         });
         // Position du n°9 selon que SON équipe lance ou non (le placement diffère
@@ -2857,7 +2934,7 @@
         if (neuf) {
           let cx9, cy9;
           if (estLanceur) {
-            cx9 = pt.x - sens * 4;
+            cx9 = pt.x - sens * this.cfg.touche.reculReceveur;
             cy9 = yLigne5 + versCentre * 5;
           } else {
             cx9 = pt.x + Math.sign(decalX) * 2;
@@ -2874,7 +2951,7 @@
         // côté de leur propre camp (sens), espacés sur la largeur du côté ouvert,
         // prêts à lancer ou défendre l'attaque issue de la touche.
         const backs = equipe.filter(j => j.numero >= 10 && j.sinBin <= 0 && j !== this.porteur);
-        const xBacks = pt.x - sens * 10;
+        const xBacks = pt.x - sens * this.cfg.touche.offsideNonParticipants;
         backs.forEach((j, k) => {
           const cyB = yLigne5 + versCentre * (8 + k * 6);
           avancer(j, xBacks - j.x, cyB - j.y, dt, vitesseMs(j) * 0.85);
@@ -2945,8 +3022,9 @@
       // n°4-8 - jamais la 1ere ligne qui lie/lève sans sauter). Tous les
       // candidats sont déjà alignés en courant (cf. _touchePlacerLignes).
       const eqGagnante = gagnant === 'A' ? this.equipeA : this.equipeB;
+      const poolSauteurs = this.cfg.touche.sauteurs;
       const tirerSauteur = (equipe, exclu) => {
-        const sauteurs = equipe.filter(j => j.numero >= 4 && j.numero <= 8 && j.sinBin <= 0 && j.auSol === 0 && j !== exclu);
+        const sauteurs = equipe.filter(j => poolSauteurs.indexOf(j.numero) >= 0 && j.sinBin <= 0 && j.auSol === 0 && j !== exclu);
         const avants = equipe.filter(j => j.numero <= 8 && j.sinBin <= 0 && j.auSol === 0 && j !== exclu);
         const pool = sauteurs.length ? sauteurs : (avants.length ? avants : equipe);
         return pool[Math.floor(this.rng() * pool.length)];
@@ -2996,7 +3074,7 @@
         this.log('TOUCHE_BALLON_GAGNE', L.lanceur, `Touche gagnee, le n°${L.sauteur.numero} capte le ballon pour l'equipe ${L.lanceur}`);
         // Maul (catch-and-drive) probable près de la ligne adverse.
         const zone = this._zoneTerrain(this.porteur);
-        const tauxMaulTouche = (zone === 'OPP_22' || zone === 'CINQ_M') ? 0.45 : 0.08;
+        const tauxMaulTouche = (zone === 'OPP_22' || zone === 'CINQ_M') ? this.cfg.touche.tauxMaul.proche : this.cfg.touche.tauxMaul.loin;
         if (this.rng() < tauxMaulTouche) {
           const { joueur: defenseurProche } = joueurLePlusProche(L.eqAdverse, this.porteur.x, this.porteur.y);
           this._formerMaul(this.porteur, defenseurProche);
@@ -3465,5 +3543,5 @@
     }
   }
 
-  return { MatchEngine, LONGUEUR, LARGEUR, creerRng, distance };
+  return { MatchEngine, LONGUEUR, LARGEUR, creerRng, distance, DEFAULT_CONFIG, fusionnerConfig };
 });
