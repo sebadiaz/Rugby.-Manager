@@ -1,5 +1,5 @@
 {
-  "_lisezMoi": "Configuration editable AVANT le match. Modifiez ces valeurs puis rechargez la page. joueurs: caracteristiques par numero de maillot (poste, vitesse 0-100, plaquage 0-100, tendance 0-100 = proximite au ballon, couloir 0-70 = position laterale au repos). touche: lanceur, sauteurs (numeros dans les appels), espacement de l alignement (m), reculReceveur (m), offsideNonParticipants (m), tauxMaul (proche/loin, 0-1). melee: reculTroisQuarts (m), pickAndGoHuit (proba sortie n8 selon domination). attaque: jeuLargeTaux (proba d ecarter par seconde). defense: profondeurs de couverture de l arriere (m) et recul au ruck (m).",
+  "_lisezMoi": "Configuration editable AVANT le match. joueurs: caracteristiques par numero (poste, vitesse/plaquage/tendance 0-100, couloir 0-70). touche/melee/attaque/defense: distances (m) et taux (0-1). combinaisons: PLAYBOOK - mouvements scriptes joues a la sortie de melee/touche. proba=chance de jouer une combinaison. Chaque combinaison a un poids (tirage) et des etapes {action:passe, de:numero, vers:numero, ligne:droit|croise|saute}. croise = le receveur change de direction et croise en sens inverse.",
   "joueurs": {
     "1": {
       "poste": "P",
@@ -141,5 +141,67 @@
     "profondeurArriereJeu": 18,
     "profondeurArriereMelee": 20,
     "reculRuck": 3
+  },
+  "combinaisons": {
+    "proba": 0.5,
+    "melee": [
+      {
+        "nom": "9-10-croise-12",
+        "poids": 1,
+        "etapes": [
+          {
+            "action": "passe",
+            "de": 9,
+            "vers": 10
+          },
+          {
+            "action": "passe",
+            "de": 10,
+            "vers": 12,
+            "ligne": "croise"
+          }
+        ]
+      },
+      {
+        "nom": "9-10-large-13",
+        "poids": 1,
+        "etapes": [
+          {
+            "action": "passe",
+            "de": 9,
+            "vers": 10
+          },
+          {
+            "action": "passe",
+            "de": 10,
+            "vers": 12
+          },
+          {
+            "action": "passe",
+            "de": 12,
+            "vers": 13
+          }
+        ]
+      }
+    ],
+    "touche": [
+      {
+        "nom": "9-10-saute-13",
+        "poids": 1,
+        "etapes": [
+          {
+            "action": "passe",
+            "de": 9,
+            "vers": 10
+          },
+          {
+            "action": "passe",
+            "de": 10,
+            "vers": 13,
+            "ligne": "saute"
+          }
+        ]
+      }
+    ]
   }
 }

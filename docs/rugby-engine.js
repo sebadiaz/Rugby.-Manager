@@ -120,6 +120,49 @@
       profondeurArriereMelee: 20,
       reculRuck: 3,
     },
+    // COMBINAISONS (playbook) : mouvements scriptés joués sur une sortie de
+    // regroupement (mêlée / touche). Chaque combinaison est une SUITE D'ÉTAPES,
+    // chaque étape = une passe d'un joueur (numéro) à un autre, avec un type de
+    // ligne du RECEVEUR :
+    //   - "droit"  : le receveur continue tout droit ;
+    //   - "croise" : le receveur CHANGE de direction et croise en sens inverse
+    //                (mouvement de "une-deux" croisé, ex. le 12 revient à
+    //                l'intérieur derrière l'ouvreur) ;
+    //   - "saute"  : passe sautée (on saute un joueur pour aller plus au large).
+    // `proba` = probabilité qu'une combinaison soit jouée à la sortie (sinon jeu
+    // libre) ; chaque combinaison a un `poids` pour le tirage pondéré.
+    combinaisons: {
+      proba: 0.5,
+      melee: [
+        {
+          nom: '9-10-croise-12',
+          poids: 1,
+          etapes: [
+            { action: 'passe', de: 9, vers: 10 },
+            { action: 'passe', de: 10, vers: 12, ligne: 'croise' },
+          ],
+        },
+        {
+          nom: '9-10-large-13',
+          poids: 1,
+          etapes: [
+            { action: 'passe', de: 9, vers: 10 },
+            { action: 'passe', de: 10, vers: 12 },
+            { action: 'passe', de: 12, vers: 13 },
+          ],
+        },
+      ],
+      touche: [
+        {
+          nom: '9-10-saute-13',
+          poids: 1,
+          etapes: [
+            { action: 'passe', de: 9, vers: 10 },
+            { action: 'passe', de: 10, vers: 13, ligne: 'saute' },
+          ],
+        },
+      ],
+    },
   };
 
   // Fusion profonde d'une config partielle par-dessus les valeurs par défaut :
@@ -412,6 +455,7 @@
       this.melee = null;
       this.penaliteRecul = null;
       this.ruckDominant = false;
+      this.combinaison = null;
       this._receptionDirecte = false;
       // Toute reprise (coup d'envoi après essai/pénalité/22 m) annule un avantage
       // éventuellement en cours : on repart sur une nouvelle séquence de jeu.
@@ -1001,13 +1045,20 @@
       );
       this.timerPhase += dt;
 
+      // Combinaison scriptée en cours (sortie de mêlée/touche, cf. playbook) :
+      // elle PILOTE les passes ; le porteur ne décide pas librement (kick/passe
+      // libre) tant qu'elle dure. Si une passe scriptée est jouée ce tick, le
+      // tick s'arrête là ; entre deux passes, le porteur court (RUN) et reste
+      // plaquable ci-dessous — la défense peut donc contrer la combinaison.
+      if (this.combinaison && this._tickCombinaison(dt)) return;
+
       // Décision tactique du porteur (botter, passer, jouer au large, foncer au
       // contact) : tranchée AVANT la résolution du plaquage ci-dessous, sur la
       // base de la zone, de la pression défensive, du soutien disponible, du
       // numéro du porteur et du score (cf. choisirActionPorteur). Le coup de
       // pied peut survenir même défenseur tout proche (dégagement sous
       // pression) ; la passe suppose de ne pas être déjà au contact.
-      const action = this.choisirActionPorteur(porteur, defenseurProche, distDef, dt);
+      const action = this.combinaison ? 'RUN' : this.choisirActionPorteur(porteur, defenseurProche, distDef, dt);
       if (action === 'KICK') { this._executerCoupDePiedJeu(porteur); return; }
       if (distDef >= 2.2 && (action === 'PASS' || action === 'JEU_LARGE') && this._tenterPasse(porteur, action === 'JEU_LARGE')) return;
 
@@ -1113,6 +1164,10 @@
       // lieu d'un même pas de côté pour tous.
       const amplEvite = 1.0 + Math.max(0, (porteur.vitesse - 45)) / 45 * 2.5;
       let evite = ((porteur.y - defenseurProche.y) > 0 ? 1 : -1) * amplEvite;
+      // Ligne CROISÉE (issue d'une combinaison, cf. _tickCombinaison) : le
+      // receveur vient de prendre le ballon sur un croisé, il change de direction
+      // et repique de l'autre côté un court instant, au lieu du crochet habituel.
+      if (porteur._croiseTimer > 0) evite = (porteur._croiseDir || 1) * amplEvite;
       // Près d'une ligne de touche, le porteur ne crochète JAMAIS vers la touche
       // (ce qui le faisait sortir gratuitement, gonflant le nombre de touches dès
       // qu'on écartait le jeu) : il coupe à l'intérieur, comme un vrai ailier/
@@ -2867,9 +2922,77 @@
         this.porteur = eq.find(j => j.numero === 9 && j.sinBin <= 0) || huit || eq[8];
         this.log('MELEE_BALLON_SORTI', poss, `Le demi de melee sort le ballon de la melee pour l'equipe ${poss}`);
       }
+      // Sortie propre par le 9 : on peut enchaîner une COMBINAISON scriptée
+      // (playbook, cf. cfg.combinaisons.melee) — ex. 9->10->12 croisé. Sinon jeu
+      // libre normal. (Pas de combinaison sur un pick-and-go du n°8 : il part au
+      // contact.)
+      if (!pickAndGo) this._lancerCombinaison('melee');
       this._imposerRecuperationRuck(pt);
       this.phase = 'PORTE';
       this.timerPhase = 0;
+    }
+
+    // --- Combinaisons scriptées (playbook, cf. cfg.combinaisons) --------------
+    // Tire une combinaison pondérée pour le type donné ('melee' | 'touche'),
+    // ou null (jeu libre) selon la probabilité configurée.
+    _choisirCombinaison(type) {
+      const cc = this.cfg.combinaisons;
+      if (!cc || this.rng() >= (cc.proba || 0)) return null;
+      const liste = cc[type];
+      if (!liste || !liste.length) return null;
+      const total = liste.reduce((s, c) => s + (c.poids || 1), 0);
+      let r = this.rng() * total;
+      for (const c of liste) { r -= (c.poids || 1); if (r <= 0) return c; }
+      return liste[liste.length - 1];
+    }
+
+    // Arme une combinaison : le porteur courant doit être le "de" de la 1re étape
+    // (le 9 qui vient de récupérer). Rien ne se passe si aucune combinaison n'est
+    // tirée (jeu libre).
+    _lancerCombinaison(type) {
+      const combo = this._choisirCombinaison(type);
+      if (!combo || !combo.etapes || !combo.etapes.length) return;
+      this.combinaison = { etapes: combo.etapes, i: 0, timer: 0, delai: 0.55 };
+    }
+
+    // Déroule pas à pas la combinaison en cours (passes ciblées + lignes de
+    // course). Renvoie true si une passe a été jouée CE tick (le tick de jeu
+    // courant s'arrête là). Une passe qui serait en avant, ou vers un joueur
+    // indisponible, ou un porteur qui n'est plus le "de" attendu (plaquage,
+    // interruption), stoppe la combinaison et rend la main au jeu libre.
+    _tickCombinaison(dt) {
+      const c = this.combinaison;
+      if (!c) return false;
+      const etape = c.etapes[c.i];
+      if (!this.porteur || this.porteur.numero !== etape.de || this.porteur.team !== this.possession) {
+        this.combinaison = null; return false;
+      }
+      c.timer += dt;
+      if (c.timer < c.delai) return false; // le porteur court en attendant la passe
+      c.timer = 0;
+      const eq = this.possession === 'A' ? this.equipeA : this.equipeB;
+      const cible = eq.find(j => j.numero === etape.vers && j.sinBin <= 0 && j.auSol === 0);
+      if (!cible || Referee.passeEnAvant(this.porteur.sensAttaque, this.porteur, cible)) {
+        this.combinaison = null; return false; // option scriptée impossible -> jeu libre
+      }
+      const passeur = this.porteur;
+      this.stats[this.possession].passesTentees++;
+      this.stats[this.possession].passes++;
+      this._lancerPasseVisuelle(passeur, cible);
+      this.porteur = cible;
+      this._receptionDirecte = false;
+      this.log('COMBINAISON', this.possession, `Combinaison : passe du n°${etape.de} au n°${etape.vers}${etape.ligne ? ' (' + etape.ligne + ')' : ''}`);
+      // Ligne de course du RECEVEUR :
+      if (etape.ligne === 'croise') {
+        // Croisé : le receveur CHANGE de direction et repasse de l'AUTRE côté
+        // (derrière le passeur) — vrai mouvement croisé. On force son crochet
+        // vers le côté du passeur un court instant (cf. bloc de course _tickPorte).
+        cible._croiseTimer = 1.2 * this._echelleArret + 0.6;
+        cible._croiseDir = Math.sign(passeur.y - cible.y) || 1;
+      }
+      c.i++;
+      if (c.i >= c.etapes.length) this.combinaison = null; // combinaison terminée
+      return true;
     }
 
     // Touche (loi 18) : véritable contest au saut, pondéré par la force des
@@ -3093,6 +3216,9 @@
         if (neuf && neuf !== this.porteur) {
           this._lancerPasseVisuelle(this.porteur, neuf);
           this.porteur = neuf;
+          // Le 9 a le ballon derrière l'alignement : on peut enchaîner une
+          // COMBINAISON scriptée de touche (cf. cfg.combinaisons.touche).
+          this._lancerCombinaison('touche');
         }
       }
       this._imposerRecuperationRuck(this.ruckPoint);
@@ -3305,6 +3431,7 @@
         }
         if (j.missCooldown > 0) j.missCooldown = Math.max(0, j.missCooldown - dt);
         if (j.ruckRecovery > 0) j.ruckRecovery = Math.max(0, j.ruckRecovery - dt);
+        if (j._croiseTimer > 0) j._croiseTimer = Math.max(0, j._croiseTimer - dt);
         if (j.sinBin > 0) j.sinBin = Math.max(0, j.sinBin - dt);
       }
       // Avancement du vol visuel d'une passe (cf. _lancerPasseVisuelle) : on le
