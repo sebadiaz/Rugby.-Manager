@@ -104,7 +104,10 @@
       ligneStat('Courses (au contact)', s.A.carries, s.B.carries) +
       ligneStat('Mètres gagnés', Math.round(s.A.metresGagnes), Math.round(s.B.metresGagnes)) +
       ligneStat('Défenseurs battus', s.A.defenseursBattus, s.B.defenseursBattus) +
+      ligneStat('Franchissements', s.A.franchissements, s.B.franchissements) +
       ligneStat('Coups de pied', s.A.kicks, s.B.kicks) +
+      ligneStat('Coups de pied regagnés', s.A.kicksRegagnes, s.B.kicksRegagnes) +
+      ligneStat('Sorties de camp (ratées)', `${s.A.exits} (${s.A.exitsRates})`, `${s.B.exits} (${s.B.exitsRates})`) +
       ligneStat('Plaquages réussis', `${s.A.tacklesMade}/${s.A.tacklesAttempted}`, `${s.B.tacklesMade}/${s.B.tacklesAttempted}`) +
       ligneStat('Plaquages manqués', s.A.missedTackles, s.B.missedTackles) +
       ligneStat('Phases jouées', s.A.phases, s.B.phases) +

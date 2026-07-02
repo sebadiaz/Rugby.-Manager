@@ -300,6 +300,25 @@ jouées dans la simulation — aucune n'est fabriquée.**
 | `kicks` | Coup de pied en jeu (hors pénalités / coups francs) | `_tenterCoupDePiedJeu` |
 | possession % / occupation % | % de temps de contrôle du ballon / d'occupation territoriale | `tempsPossession` / `tempsOccupation` |
 
+### Motifs de jeu discriminants (étude rorybunker/rugby-sequences)
+
+Une étude de fouille de motifs séquentiels sur des matchs réels (Japan Top League)
+identifie les motifs qui distinguent le mieux **marquer** de **encaisser** :
+franchissements, touches gagnées, coups de pied regagnés, jeu multi-phases et
+sorties de camp ratées. Le moteur suit ces motifs (stats réelles) :
+
+| Stat moteur | Motif | Comptage |
+|---|---|---|
+| `franchissements` | Line break : le porteur bat un défenseur ET se retrouve en espace (prochain défenseur > 12 m) | au plaquage manqué en espace |
+| `kicksRegagnes` | Coup de pied regagné : l'équipe qui botte récupère son propre coup de pied | à la réception |
+| `exits` / `exitsRates` | Sortie de camp (kick depuis son 22 m) / sortie **ratée** (ne dégage pas au-delà des 22 m) | au coup de pied |
+| `phases` | Jeu multi-phases (rucks + mauls) | cf. tableau ci-dessus |
+| `lineoutsGagnes` | Touches gagnées | à la touche |
+
+Corrélation vérifiée dans la simulation (60 matchs) conforme à l'étude : l'équipe
+qui l'emporte a **plus de franchissements** (1,7 vs 1,0) et **moins de sorties
+ratées** (0,0 vs 0,3) que celle qui encaisse.
+
 Comportement aligné sur la définition : le **plaquage** amène le porteur au sol **et
 le plaqueur va aussi au sol** — le plaqueur est donc dessiné brièvement couché
 (marqueur visuel `solVisuel`, purement graphique : le figer côté jeu retirait un

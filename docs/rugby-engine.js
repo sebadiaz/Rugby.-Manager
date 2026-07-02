@@ -478,6 +478,11 @@
         tacklesAttempted: 0, tacklesMade: 0, missedTackles: 0, defenseursBattus: 0,
         rucks: 0, lineouts: 0, lineoutsGagnes: 0, scrums: 0, scrumsGagnes: 0, mauls: 0, phases: 0,
         penalitesConcedees: 0, turnovers: 0, turnoversConcedes: 0, knockOns: 0, cartonsJaunes: 0, metresGagnes: 0,
+        // Motifs de jeu discriminants (d'apres l'etude rorybunker/rugby-sequences,
+        // qui identifie franchissements, touches gagnees, coups de pied regagnes,
+        // jeu multi-phases et sorties de camp comme les motifs qui distinguent le
+        // mieux marquer vs encaisser). Tous derives d'actions reelles.
+        franchissements: 0, kicksRegagnes: 0, exits: 0, exitsRates: 0,
       };
     }
 
@@ -1133,6 +1138,14 @@
           defenseurProche.missCooldown = 1.0;
           this.stats[defenseurProche.team].missedTackles++;
           this.stats[this.possession].defenseursBattus++; // le porteur a battu un défenseur
+          // FRANCHISSEMENT (line break) : le porteur bat le plaqueur ET se
+          // retrouve en ESPACE (aucun autre défenseur proche) — le motif clé de
+          // l'étude. On l'incrémente si le prochain défenseur le plus proche est
+          // loin (> 12 m), pas sur chaque simple plaquage manqué.
+          const autres = def.filter((d) => d !== defenseurProche && d.auSol === 0);
+          if (joueurLePlusProche(autres, porteur.x, porteur.y).distance > 12) {
+            this.stats[this.possession].franchissements++;
+          }
           this.log('PLAQUAGE_MANQUE', this.possession, `Plaquage manque, l'equipe ${this.possession} poursuit sa course`);
           return;
         }
@@ -1375,6 +1388,9 @@
           sauveteur.missCooldown = 1.0;
           this.stats[sauveteur.team].missedTackles++;
           this.stats[this.possession].defenseursBattus++;
+          // Battre le dernier défenseur (plaquage de sauvetage) EST un
+          // franchissement — le porteur file vers l'en-but.
+          this.stats[this.possession].franchissements++;
           this.log('PLAQUAGE_MANQUE', this.possession, `Plaquage de sauvetage manque, l'equipe ${this.possession} aplatit`);
         }
         porteur.x = porteur.sensAttaque > 0 ? LONGUEUR : 0;
@@ -1708,6 +1724,18 @@
         cibleY = Math.max(3, Math.min(LARGEUR - 3, porteur.y + (this.rng() * 8 - 4)));
       }
 
+      // SORTIE DE CAMP (exit play) : coup de pied depuis son propre 22 m pour se
+      // dégager (motif discriminant de l'étude). Ratée si le ballon ne dégage pas
+      // au-delà de la ligne des 22 m (reste dans la zone de danger) — hors touche,
+      // qui trouve la ligne et dégage toujours.
+      if (this._zoneTerrain(porteur) === 'OWN_22') {
+        this.stats[equipe].exits++;
+        const ligne22 = sens > 0 ? 22 : LONGUEUR - 22;
+        if (type !== 'TOUCHE' && (cibleX - ligne22) * sens < 0) {
+          this.stats[equipe].exitsRates++;
+        }
+      }
+
       this.typeCoupDePiedJeu = type;
       this.equipeCoupDePiedJeu = equipe;
       this.xCoupDePiedJeu = porteur.x;
@@ -1823,6 +1851,9 @@
         chasseurGagne = this.rng() < probaChasseurGagne;
       }
       const joueur = chasseurGagne ? chasseurProche : receveurProche;
+      // Coup de pied REGAGNÉ : l'équipe qui a botté récupère son propre coup de
+      // pied (motif discriminant de l'étude).
+      if (chasseurGagne) this.stats[equipeKick].kicksRegagnes++;
       this.porteur = joueur;
       this.possession = joueur.team;
       this.ruckPoint = { x: joueur.x, y: joueur.y };
