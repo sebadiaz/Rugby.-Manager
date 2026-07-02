@@ -133,6 +133,9 @@
     // libre) ; chaque combinaison a un `poids` pour le tirage pondéré.
     combinaisons: {
       proba: 0.5,
+      // Listes PARTAGÉES (défaut pour les deux équipes). On peut aussi définir
+      // un playbook propre à une équipe via une clé "A" / "B" (cf. exemple A
+      // ci-dessous) : { A: { melee: [...], touche: [...] } }.
       melee: [
         {
           nom: '9-10-croise-12',
@@ -151,6 +154,17 @@
             { action: 'passe', de: 12, vers: 13 },
           ],
         },
+        {
+          // Combinaison de ZONE : seulement dans les 22 m adverses. Le 10 tape une
+          // chandelle par-dessus la défense (à récupérer par les chasseurs).
+          nom: '9-10-chandelle-22',
+          poids: 1,
+          zone: ['OPP_22', 'CINQ_M'],
+          etapes: [
+            { action: 'passe', de: 9, vers: 10 },
+            { action: 'pied', de: 10, type: 'CHANDELLE' },
+          ],
+        },
       ],
       touche: [
         {
@@ -161,7 +175,31 @@
             { action: 'passe', de: 10, vers: 13, ligne: 'saute' },
           ],
         },
+        {
+          // Boucle : le 10 donne au 12 qui repart à l'extérieur (le 10 boucle).
+          nom: '9-10-boucle-12',
+          poids: 1,
+          etapes: [
+            { action: 'passe', de: 9, vers: 10 },
+            { action: 'passe', de: 10, vers: 12, ligne: 'boucle' },
+          ],
+        },
       ],
+      // Playbook SPÉCIFIQUE à l'équipe A (exemple) : à la mêlée, A privilégie une
+      // sortie 8->9->10->13 sautée. Si une clé d'équipe existe pour un type, elle
+      // REMPLACE la liste partagée pour cette équipe.
+      A: {
+        melee: [
+          {
+            nom: 'A-9-10-saute-13',
+            poids: 1,
+            etapes: [
+              { action: 'passe', de: 9, vers: 10 },
+              { action: 'passe', de: 10, vers: 13, ligne: 'saute' },
+            ],
+          },
+        ],
+      },
     },
   };
 
@@ -2461,6 +2499,16 @@
       m.timerGlobal += dt;
       this.ruckPoint = { x: m.x, y: m.y };
 
+      // Garde-fou anti-blocage : une mêlée ne s'éternise JAMAIS. Une formation
+      // lente (avants partis loin) répétée après une reformation pouvait faire
+      // durer une mêlée > 34 s. Au-delà de ~24 s, l'arbitre RÉSOUT la mêlée au
+      // lieu de la refaire (l'équipe qui introduit garde le ballon), ce qui
+      // garantit que TOUTE mêlée se termine quelle que soit la durée du match.
+      if (m.timerGlobal > 24 && m.etat !== ETATS_MELEE.SORTIE) {
+        m.diff = m.diff || this._meleeFacteurs();
+        return this._meleeResoudreContestation();
+      }
+
       // 1) IA des joueurs : packs qui se rapprochent et se lient, lignes
       // arrières en retrait, prêtes pour la sortie de balle.
       this._meleePlacerPaquets(dt);
@@ -2938,8 +2986,17 @@
     _choisirCombinaison(type) {
       const cc = this.cfg.combinaisons;
       if (!cc || this.rng() >= (cc.proba || 0)) return null;
-      const liste = cc[type];
+      // Playbook SPÉCIFIQUE à l'équipe en possession (cc.A / cc.B) s'il existe,
+      // sinon la liste partagée (cc.melee / cc.touche) : chaque équipe peut avoir
+      // son propre répertoire de combinaisons.
+      const specifique = cc[this.possession] && cc[this.possession][type];
+      let liste = (specifique && specifique.length) ? specifique : cc[type];
       if (!liste || !liste.length) return null;
+      // Filtre par ZONE de terrain si la combinaison en impose une (une chandelle
+      // ou un cross-kick ne se joue que dans les 22 m adverses, etc.).
+      const zone = this.porteur ? this._zoneTerrain(this.porteur) : null;
+      liste = liste.filter((c) => !c.zone || (zone && c.zone.indexOf(zone) >= 0));
+      if (!liste.length) return null;
       const total = liste.reduce((s, c) => s + (c.poids || 1), 0);
       let r = this.rng() * total;
       for (const c of liste) { r -= (c.poids || 1); if (r <= 0) return c; }
@@ -2968,8 +3025,21 @@
         this.combinaison = null; return false;
       }
       c.timer += dt;
-      if (c.timer < c.delai) return false; // le porteur court en attendant la passe
+      if (c.timer < c.delai) return false; // le porteur court en attendant l'action
       c.timer = 0;
+
+      // Action COUP DE PIED programmé (ex. cross-kick / chandelle sur combinaison
+      // de zone) : le joueur "de" botte, ce qui termine la combinaison.
+      if (etape.action === 'pied') {
+        const TYPES = ['DEGAGEMENT', 'OCCUPATION', 'TOUCHE', 'CHANDELLE', 'CHIP'];
+        const type = TYPES.indexOf((etape.type || '').toUpperCase()) >= 0 ? etape.type.toUpperCase() : 'CHANDELLE';
+        this.log('COMBINAISON', this.possession, `Combinaison : coup de pied (${type.toLowerCase()}) du n°${etape.de}`);
+        this.combinaison = null;
+        this._tenterCoupDePiedJeu(this.porteur, type);
+        return true;
+      }
+
+      // Action PASSE (défaut).
       const eq = this.possession === 'A' ? this.equipeA : this.equipeB;
       const cible = eq.find(j => j.numero === etape.vers && j.sinBin <= 0 && j.auSol === 0);
       if (!cible || Referee.passeEnAvant(this.porteur.sensAttaque, this.porteur, cible)) {
@@ -2982,13 +3052,14 @@
       this.porteur = cible;
       this._receptionDirecte = false;
       this.log('COMBINAISON', this.possession, `Combinaison : passe du n°${etape.de} au n°${etape.vers}${etape.ligne ? ' (' + etape.ligne + ')' : ''}`);
-      // Ligne de course du RECEVEUR :
-      if (etape.ligne === 'croise') {
-        // Croisé : le receveur CHANGE de direction et repasse de l'AUTRE côté
-        // (derrière le passeur) — vrai mouvement croisé. On force son crochet
-        // vers le côté du passeur un court instant (cf. bloc de course _tickPorte).
+      // Ligne de course du RECEVEUR (croisé ou boucle) : dans les deux cas il
+      // CHANGE de direction un court instant.
+      if (etape.ligne === 'croise' || etape.ligne === 'boucle') {
+        // croisé : le receveur repique vers le côté du passeur (derrière lui) ;
+        // boucle : il part à l'extérieur (le passeur boucle dans son dos).
+        const versPasseur = Math.sign(passeur.y - cible.y) || 1;
         cible._croiseTimer = 1.2 * this._echelleArret + 0.6;
-        cible._croiseDir = Math.sign(passeur.y - cible.y) || 1;
+        cible._croiseDir = etape.ligne === 'croise' ? versPasseur : -versPasseur;
       }
       c.i++;
       if (c.i >= c.etapes.length) this.combinaison = null; // combinaison terminée

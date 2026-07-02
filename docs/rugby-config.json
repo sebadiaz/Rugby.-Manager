@@ -1,5 +1,5 @@
 {
-  "_lisezMoi": "Configuration editable AVANT le match. joueurs: caracteristiques par numero (poste, vitesse/plaquage/tendance 0-100, couloir 0-70). touche/melee/attaque/defense: distances (m) et taux (0-1). combinaisons: PLAYBOOK - mouvements scriptes joues a la sortie de melee/touche. proba=chance de jouer une combinaison. Chaque combinaison a un poids (tirage) et des etapes {action:passe, de:numero, vers:numero, ligne:droit|croise|saute}. croise = le receveur change de direction et croise en sens inverse.",
+  "_lisezMoi": "Configuration editable AVANT le match. joueurs: caracteristiques par numero (poste, vitesse/plaquage/tendance 0-100, couloir 0-70). touche/melee/attaque/defense: distances (m) et taux (0-1). combinaisons: PLAYBOOK - mouvements scriptes a la sortie de melee/touche. proba=chance de jouer une combinaison. Chaque combinaison: nom, poids (tirage), zone (optionnel, ex [OPP_22] = seulement dans les 22m adverses), et etapes. Etape action=passe {de, vers, ligne} ou action=pied {de, type}. ligne: droit | croise (le receveur change de direction et croise en sens inverse) | boucle (le receveur part a l exterieur) | saute (passe sautee). Playbook propre a une equipe: cle A ou B remplacant la liste partagee (ex A.melee).",
   "joueurs": {
     "1": {
       "poste": "P",
@@ -182,6 +182,26 @@
             "vers": 13
           }
         ]
+      },
+      {
+        "nom": "9-10-chandelle-22",
+        "poids": 1,
+        "zone": [
+          "OPP_22",
+          "CINQ_M"
+        ],
+        "etapes": [
+          {
+            "action": "passe",
+            "de": 9,
+            "vers": 10
+          },
+          {
+            "action": "pied",
+            "de": 10,
+            "type": "CHANDELLE"
+          }
+        ]
       }
     ],
     "touche": [
@@ -201,7 +221,45 @@
             "ligne": "saute"
           }
         ]
+      },
+      {
+        "nom": "9-10-boucle-12",
+        "poids": 1,
+        "etapes": [
+          {
+            "action": "passe",
+            "de": 9,
+            "vers": 10
+          },
+          {
+            "action": "passe",
+            "de": 10,
+            "vers": 12,
+            "ligne": "boucle"
+          }
+        ]
       }
-    ]
+    ],
+    "A": {
+      "melee": [
+        {
+          "nom": "A-9-10-saute-13",
+          "poids": 1,
+          "etapes": [
+            {
+              "action": "passe",
+              "de": 9,
+              "vers": 10
+            },
+            {
+              "action": "passe",
+              "de": 10,
+              "vers": 13,
+              "ligne": "saute"
+            }
+          ]
+        }
+      ]
+    }
   }
 }
