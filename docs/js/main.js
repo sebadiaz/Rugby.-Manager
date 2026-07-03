@@ -44,9 +44,21 @@
   // Chargée de façon asynchrone au démarrage ; si le chargement échoue (ex.
   // ouverture en file://), on garde le comportement par défaut.
   let configMatch = null;
+  // Durée du match choisie par le joueur (menu déroulant). Par défaut la démo
+  // de 5 min ; un match complet (80 min) montre un score et des statistiques
+  // crédibles (~48-55 pts, 6-7 essais), invisibles sur 5 min faute de temps de
+  // jeu. Le moteur accepte déjà n'importe quelle durée (new MatchEngine(seed,
+  // duree, cfg)) : rien à changer côté simulation.
+  let dureeMatchActuel = DUREE_MATCH;
+  function lireDureeChoisie() {
+    const sel = document.getElementById('selDuree');
+    const v = sel ? Number(sel.value) : DUREE_MATCH;
+    return Number.isFinite(v) && v > 0 ? v : DUREE_MATCH;
+  }
 
   function demarrerNouveauMatch(seed, duree) {
     seedActuel = seed;
+    dureeMatchActuel = duree;
     match = new MatchEngine(seed, duree, configMatch);
     UI.reinitialiserSuivi();
     accumulateur = 0;
@@ -58,7 +70,7 @@
     document.getElementById('seek').value = 0;
     document.getElementById('tempsLabelFin').textContent = UI.formaterTemps(duree);
     document.getElementById('btnSauver').disabled = true;
-    UI.majAffichage(normalizeMatchState(match.getState()), DUREE_MATCH);
+    UI.majAffichage(normalizeMatchState(match.getState()), duree);
   }
 
   // Reproduit l'état du match au temps `cible` en rejouant depuis le début
@@ -66,7 +78,7 @@
   // "rejouable à tout moment" (la simulation est déterministe, donc rejouer
   // == recalculer).
   function avancerJusqua(cible) {
-    const m = new MatchEngine(seedActuel, DUREE_MATCH, configMatch);
+    const m = new MatchEngine(seedActuel, dureeMatchActuel, configMatch);
     const nbPas = Math.round(cible / PAS_FIXE);
     for (let i = 0; i < nbPas; i++) m.tick(PAS_FIXE);
     return m;
@@ -161,7 +173,7 @@
     const frac = (enCours && !enMiniPause && etatPrecedent)
       ? Math.max(0, Math.min(1, accumulateur / PAS_FIXE)) : 1;
     const etatRendu = frac < 1 ? interpolerEtat(etatPrecedent, etatCourant, frac) : etatCourant;
-    UI.majAffichage(etatCourant, DUREE_MATCH);
+    UI.majAffichage(etatCourant, dureeMatchActuel);
     Renderer.dessiner(etatRendu);
     requestAnimationFrame(boucle);
   }
@@ -171,11 +183,20 @@
     e.target.textContent = enCours ? 'Pause' : 'Lecture';
   });
   document.getElementById('btnSpeed').addEventListener('click', (e) => {
-    vitesseSim = vitesseSim === 1 ? 2 : (vitesseSim === 2 ? 4 : 1);
+    // Palier jusqu'à x16 : un match complet (80 min) reste regardable
+    // (80 min / 16 ≈ 5 min réelles), et la barre de progression permet de
+    // sauter directement aux moments forts.
+    const paliers = [1, 2, 4, 8, 16];
+    vitesseSim = paliers[(paliers.indexOf(vitesseSim) + 1) % paliers.length];
     e.target.textContent = `Vitesse x${vitesseSim}`;
   });
   document.getElementById('btnNouveau').addEventListener('click', () => {
-    demarrerNouveauMatch(graineAleatoire(), DUREE_MATCH);
+    demarrerNouveauMatch(graineAleatoire(), lireDureeChoisie());
+  });
+  // Changer la durée relance immédiatement un match de cette durée (même graine
+  // conservée pour comparer), pour que le choix soit visible tout de suite.
+  document.getElementById('selDuree').addEventListener('change', () => {
+    demarrerNouveauMatch(seedActuel, lireDureeChoisie());
   });
 
   document.getElementById('seek').addEventListener('input', (e) => {
@@ -191,7 +212,7 @@
 
   document.getElementById('btnSauver').addEventListener('click', () => {
     const state = match.getState();
-    UI.enregistrerResultat(seedActuel, DUREE_MATCH, state.score);
+    UI.enregistrerResultat(seedActuel, dureeMatchActuel, state.score);
     UI.rafraichirPanneauHistorique(onRevoirHistorique);
   });
   document.getElementById('btnHistorique').addEventListener('click', () => {
@@ -227,7 +248,7 @@
   // Si le chargement échoue (fichier absent, ouverture en file://), on démarre
   // avec les valeurs par défaut du moteur — le jeu fonctionne toujours.
   function demarrer() {
-    demarrerNouveauMatch(seedActuel, DUREE_MATCH);
+    demarrerNouveauMatch(seedActuel, lireDureeChoisie());
     requestAnimationFrame(boucle);
   }
   if (typeof fetch === 'function') {

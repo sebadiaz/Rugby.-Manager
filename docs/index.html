@@ -26,6 +26,13 @@
 <div id="controls">
   <button id="btnPlay">Pause</button>
   <button id="btnSpeed" class="alt">Vitesse x1</button>
+  <label for="selDuree" class="sr-label" style="align-self:center;font-size:.85em;opacity:.85">Durée&nbsp;:</label>
+  <select id="selDuree" class="alt" title="Durée du match simulé">
+    <option value="300">5 min (démo)</option>
+    <option value="1200">20 min</option>
+    <option value="2400">40 min (mi-temps)</option>
+    <option value="4800">80 min (match complet)</option>
+  </select>
   <button id="btnNouveau" class="alt">Nouveau match</button>
   <button id="btnSauver" class="accent" disabled>Enregistrer le résultat</button>
   <button id="btnStats" class="alt">Stats</button>
