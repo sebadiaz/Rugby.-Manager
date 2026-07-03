@@ -70,6 +70,9 @@
     document.getElementById('seek').value = 0;
     document.getElementById('tempsLabelFin').textContent = UI.formaterTemps(duree);
     document.getElementById('btnSauver').disabled = true;
+    // Avance rapide adaptée à la durée : ~5 min de visionnage quelle que soit la
+    // durée simulée (le joueur peut toujours ralentir avec le bouton Vitesse).
+    appliquerVitesse(vitesseParDefautPour(duree));
     UI.majAffichage(normalizeMatchState(match.getState()), duree);
   }
 
@@ -85,6 +88,23 @@
   }
 
   let enCours = true;
+  // Le match est une VRAIE simulation de la durée choisie (par défaut 80 min de
+  // temps de jeu), rejouée en AVANCE RAPIDE : la vitesse est calée pour que
+  // n'importe quelle durée se regarde en ~5 min réelles (80 min / 16 ≈ 5 min).
+  // Le moteur tourne à temps de jeu réel (durées d'arrêt non compressées quand
+  // dureeMatch = 4800, cf. _echelleArret) ; seul l'AFFICHAGE est accéléré.
+  const PALIERS_VITESSE = [1, 2, 4, 8, 16];
+  function vitesseParDefautPour(duree) {
+    const ideal = duree / 300; // ~5 min réelles de visionnage
+    let best = PALIERS_VITESSE[0];
+    for (const p of PALIERS_VITESSE) if (p <= ideal + 0.001) best = p;
+    return best;
+  }
+  function appliquerVitesse(v) {
+    vitesseSim = v;
+    const b = document.getElementById('btnSpeed');
+    if (b) b.textContent = `Vitesse x${v}`;
+  }
   let vitesseSim = 1;
   let dernierTs = null;
   let accumulateur = 0;
@@ -145,7 +165,11 @@
   // cf. _echelleArret dans le moteur). On gèle l'avancée du temps de
   // simulation (pas le rendu) une fraction de seconde à chaque changement
   // d'étape, pour que le joueur voie réellement le déroulé de la mêlée.
+  // Inutile sur un match complet : les arrêts y durent leur temps réel (la
+  // mêlée s'étale déjà sur plusieurs secondes même en avance rapide), et
+  // ces pauses casseraient la cible « tout le match en ~5 min ».
   const MINI_PAUSE_MELEE_MS = 700;
+  const SEUIL_MINI_PAUSE = 600; // seulement pour la démo compressée (≤ 10 min)
   let dernierEtatMelee = null;
   let miniPauseJusqua = 0;
 
@@ -156,7 +180,7 @@
     const etatMeleeActuel = match.phase === 'MELEE' && match.melee ? match.melee.etat : null;
     if (etatMeleeActuel !== dernierEtatMelee) {
       dernierEtatMelee = etatMeleeActuel;
-      if (etatMeleeActuel) miniPauseJusqua = ts + MINI_PAUSE_MELEE_MS;
+      if (etatMeleeActuel && dureeMatchActuel <= SEUIL_MINI_PAUSE) miniPauseJusqua = ts + MINI_PAUSE_MELEE_MS;
     }
     const enMiniPause = ts < miniPauseJusqua;
     if (etatCourant === null) etatCourant = normalizeMatchState(match.getState());
@@ -182,13 +206,11 @@
     enCours = !enCours;
     e.target.textContent = enCours ? 'Pause' : 'Lecture';
   });
-  document.getElementById('btnSpeed').addEventListener('click', (e) => {
-    // Palier jusqu'à x16 : un match complet (80 min) reste regardable
-    // (80 min / 16 ≈ 5 min réelles), et la barre de progression permet de
-    // sauter directement aux moments forts.
-    const paliers = [1, 2, 4, 8, 16];
-    vitesseSim = paliers[(paliers.indexOf(vitesseSim) + 1) % paliers.length];
-    e.target.textContent = `Vitesse x${vitesseSim}`;
+  document.getElementById('btnSpeed').addEventListener('click', () => {
+    // Palier jusqu'à x16 : le joueur peut ralentir pour savourer une action ou
+    // accélérer ; la barre de progression permet aussi de sauter aux temps forts.
+    const i = PALIERS_VITESSE.indexOf(vitesseSim);
+    appliquerVitesse(PALIERS_VITESSE[(i + 1) % PALIERS_VITESSE.length]);
   });
   document.getElementById('btnNouveau').addEventListener('click', () => {
     demarrerNouveauMatch(graineAleatoire(), lireDureeChoisie());
