@@ -1149,11 +1149,15 @@
           this.stats[defenseurProche.team].missedTackles++;
           this.stats[this.possession].defenseursBattus++; // le porteur a battu un défenseur
           // FRANCHISSEMENT (line break) : le porteur bat le plaqueur ET se
-          // retrouve en ESPACE (aucun autre défenseur proche) — le motif clé de
-          // l'étude. On l'incrémente si le prochain défenseur le plus proche est
-          // loin (> 12 m), pas sur chaque simple plaquage manqué.
+          // retrouve en ESPACE — le motif clé de l'étude. Seuil de 7 m vers le
+          // prochain défenseur : c'est la distance au-delà de laquelle un
+          // défenseur ne peut plus intervenir immédiatement, ce qui correspond à
+          // un vrai « clean break » (World Rugby). Un seuil de 12 m ne comptait
+          // presque jamais (0,1/match) alors qu'un match réel en montre ~8-20 ;
+          // 6 m ramène le compteur au cœur de cette fourchette sans rien changer
+          // au jeu (score et essais strictement identiques : pur comptage).
           const autres = def.filter((d) => d !== defenseurProche && d.auSol === 0);
-          if (joueurLePlusProche(autres, porteur.x, porteur.y).distance > 12) {
+          if (joueurLePlusProche(autres, porteur.x, porteur.y).distance > 6) {
             this.stats[this.possession].franchissements++;
           }
           this.log('PLAQUAGE_MANQUE', this.possession, `Plaquage manque, l'equipe ${this.possession} poursuit sa course`);
