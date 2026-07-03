@@ -337,6 +337,35 @@ donnaient ~27 % de réussite (au lieu de ~70-80 % d'un buteur pro), d'où un mot
 moteur passe à **~39 pts/match**, dans la distribution réelle (entre p25 et la
 médiane). Les transformations réussies passent de ~1 à ~3/match.
 
+### Validation croisée sur un second jeu réel, en direct (rugbypy)
+
+Le paquet Python `rugbypy` (`fetch_all_matches` / `fetch_match_details`) donne les
+scores finaux réels **de la saison en cours**, toutes compétitions confondues.
+Échantillon de **150 matchs XV récents (2026)** sur 9 compétitions (Top 14, Pro D2,
+URC, Super Rugby, Japan League One, Six Nations U20, internationaux, Premiership) :
+
+| Repère | Rugby-Data (8 880, historique) | rugbypy (150, saison 2026) | Moteur |
+|---|---|---|---|
+| Points totaux / match | moy **48,5** (méd. 48) | moy **55,9** (méd. 54, p25 44, p75 70) | **48,6** |
+| Score par équipe | 24,2 | 27,9 | 24,3 |
+| Marge (écart) | 14,8 | 16,6 | 14,8 |
+
+Les deux sources **encadrent** le moteur : il colle exactement à la moyenne
+historique et reste dans l'intervalle interquartile de l'échantillon moderne (le
+rugby récent marque un peu plus). Le score du moteur est donc validé par deux jeux
+de données réels indépendants, dont un en direct — il n'est pas surajusté à une
+seule source.
+
+**Cause racine des écarts résiduels (à traiter ensuite).** Les statistiques encore
+hors norme — plaquages ~647 (réel 150-250), rucks ~495 (70-180), phases ~504
+(120-200), mètres ~5 950 (800-1 400), et à l'inverse pénalités ~7 (12-30) — sont
+**toutes couplées à un même défaut : le tempo est ~3× trop rapide**. Comme les
+pénalités sont générées par ruck, un compteur de rucks 3× trop élevé empêche de
+régler proprement le taux de pénalité par-dessus. Le vrai correctif est donc
+d'allonger la durée simulée de chaque phase (ruck + recyclage) pour passer d'~500 à
+~180 phases/match, puis de recalibrer le taux d'essai par phase pour préserver le
+score validé ci-dessus.
+
 Comportement aligné sur la définition : le **plaquage** amène le porteur au sol **et
 le plaqueur va aussi au sol** — le plaqueur est donc dessiné brièvement couché
 (marqueur visuel `solVisuel`, purement graphique : le figer côté jeu retirait un
