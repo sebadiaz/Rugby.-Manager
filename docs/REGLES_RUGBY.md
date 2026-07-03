@@ -319,6 +319,24 @@ Corrélation vérifiée dans la simulation (60 matchs) conforme à l'étude : l'
 qui l'emporte a **plus de franchissements** (1,7 vs 1,0) et **moins de sorties
 ratées** (0,0 vs 0,3) que celle qui encaisse.
 
+### Calibration des scores sur données réelles (transientlunatic/Rugby-Data)
+
+Distribution des scores mesurée sur **8 880 matchs professionnels réels** (Top 14,
+Premiership, URC, coupes d'Europe, internationaux) :
+
+| Repère | Réel | Cible moteur |
+|---|---|---|
+| Points totaux / match | moy **48,5** (médiane 48, p10 29, p90 70) | viser ce haut de fourchette |
+| Score par équipe | moy **24,2** | — |
+| Marge (écart) | moy **14,8** (médiane 11) | — |
+
+Bug corrigé grâce à ces données : les **taux de réussite au pied** (`probaReussiteTir`)
+donnaient ~27 % de réussite (au lieu de ~70-80 % d'un buteur pro), d'où un moteur à
+~32 pts/match au lieu de ~48. Formule recalibrée (~90 % central court, ~72 % à 40 m,
+~45 % transformation grand large) et taux de tir au but sur pénalité relevé : le
+moteur passe à **~39 pts/match**, dans la distribution réelle (entre p25 et la
+médiane). Les transformations réussies passent de ~1 à ~3/match.
+
 Comportement aligné sur la définition : le **plaquage** amène le porteur au sol **et
 le plaqueur va aussi au sol** — le plaqueur est donc dessiné brièvement couché
 (marqueur visuel `solVisuel`, purement graphique : le figer côté jeu retirait un

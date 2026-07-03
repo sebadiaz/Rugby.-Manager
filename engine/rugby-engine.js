@@ -32,7 +32,13 @@
   function probaReussiteTir(distanceM, offsetLateralM) {
     const distanceReelle = Math.hypot(distanceM, offsetLateralM);
     const angleDeg = Math.abs(Math.atan2(offsetLateralM, Math.max(distanceM, 0.01))) * 180 / Math.PI;
-    return Math.max(0.05, Math.min(0.92, 0.97 - distanceReelle / 90 - angleDeg / 110));
+    // Taux de réussite calibrés sur les BUTEURS PROFESSIONNELS (cf. données
+    // réelles transientlunatic/Rugby-Data : ~48,5 pts/match, dont une grande part
+    // au pied). L'ancienne formule (base 0.97, dist/90, angle/110) donnait ~27 %
+    // de réussite en moyenne — bien trop sévère : la sim marquait ~32 pts/match
+    // au lieu de ~48. Un vrai buteur réussit ~90 % d'un tir central court, ~72 %
+    // à 40 m dans l'axe, ~45 % d'une transformation grand large.
+    return Math.max(0.3, Math.min(0.96, 1.05 - distanceReelle / 150 - angleDeg / 160));
   }
 
   // --- Profils d'attributs par numéro de maillot (1-15) ---
@@ -946,8 +952,12 @@
         this._accorderPenaliteTouche(equipeBeneficiaire, position);
         return;
       }
+      // Tir au but : une équipe à portée tape au but bien plus souvent qu'à la
+      // main (calibré sur ~48,5 pts/match réels, dont ~4-6 pénalités au but).
+      // L'ancien taux 0.55 ne donnait que ~1,4 tir/match ; ~0.85 rapproche des
+      // ~5 tentatives réelles.
       const enZoneDeTir = distanceButs >= 5 && distanceButs <= 45;
-      if (enZoneDeTir && this.rng() < 0.55) {
+      if (enZoneDeTir && this.rng() < 0.85) {
         this.equipeAuTir = equipeBeneficiaire;
         this.positionTir = { x: position.x, y: position.y, distanceButs };
         // Place le buteur (l'ouvreur) sur le point de pénalité : sans ça, le
