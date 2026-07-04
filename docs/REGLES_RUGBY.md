@@ -22,6 +22,29 @@ de loi).
 | Drop-goal | 3 | ✅ `DROP_GOAL_REUSSI`, +3 (l'équipe en possession dans la zone de tir 8–38 m travaille le ballon pour son ouvreur qui tente un drop en jeu courant, ~1,4 tentative/match, cf. `_tickPorte`) |
 | Essai de pénalité | 7 | ✅ `ESSAI_PENALITE`, +7 (faute à ≤ 5 m de la ligne d'en-but empêchant un essai probable, sans transformation, cf. `_traiterPenalite`), **toujours accompagné d'un carton jaune** (`CARTON_JAUNE`) pour le défenseur le plus proche de la faute |
 
+### Temps maximum réglementaires pour botter (« shot clock »)
+
+Le jeu impose un **temps maximum** pour porter certains coups de pied ; au-delà,
+le coup est refusé. Ces limites sont maintenant modélisées (le buteur prend une
+routine réaliste — placement du tee, concentration, course d'élan —, plus longue
+sur un angle fermé, mais toujours sous le maximum légal) :
+
+| Action | Temps max (loi) | Modélisé |
+|---|---|---|
+| **Transformation** | **90 s** après l'essai (Law 8.21) | ✅ `_tickTransformation` : routine ~28 s face aux poteaux → ~64 s près de la touche, plafond dur à 90 s |
+| **Pénalité au but** | **60 s** après l'annonce d'intention (Law 20) | ✅ `_tickPenaliteTir` : routine ~26 s → ~52 s, plafond dur à 60 s |
+
+Ces durées étaient auparavant un **plat forfaitaire de 25 s**, ni réaliste ni
+conforme au maximum légal. Le match étant désormais regardé en **avance rapide**
+(cf. `docs/js/main.js`), ces temps réels restent confortables à l'écran, et le
+score global est **inchangé** (~48 pts/match, N=20 — le temps supplémentaire est
+absorbé par l'avance rapide, pas par le score).
+
+Les **« use it »** des autres phases (5 s, sinon sanction) sont modélisés depuis
+plus longtemps : **maul** (§4, compteur 5 s → mêlée) et **mêlée** (§7, annonce
+« use it » → le ballon doit sortir). Le ruck (§3) est borné par sa durée de
+résolution et le contest du paquet.
+
 ## 2. Coup d'envoi et remises en jeu (Law 12 — Kick-off and restart kicks)
 
 Règles réelles :

@@ -3427,7 +3427,14 @@
     // frappe prennent ~20-25 s en match réel, pas 2 s.
     _tickTransformation(dt) {
       this.timerPhase += dt;
-      const duree = 25 * this._echelleArret;
+      // Loi 8.21 : la transformation doit être JOUÉE dans les 90 secondes qui
+      // suivent l'essai, sinon elle est refusée. Le buteur prend une vraie
+      // routine (placement du tee, concentration, course d'élan), plus longue
+      // sur un angle fermé — mais toujours sous le maximum réglementaire. Le
+      // match étant regardé en avance rapide, ce temps réel reste confortable.
+      const DUREE_MAX_TRANSFO = 90; // secondes réglementaires (loi 8.21)
+      const routine = 28 + Math.abs(this.essaiY - LARGEUR / 2) * 1.1; // ~28 s face aux poteaux, jusqu'à ~64 s près de la touche
+      const duree = Math.min(DUREE_MAX_TRANSFO, routine) * this._echelleArret;
       // Le ballon s'envole vers les poteaux pendant la dernière fraction du
       // temps d'arrêt (le reste, c'est le placement et la course d'élan) :
       // réutilise le mécanisme de vol du coup d'envoi pour rendre la frappe
@@ -3505,11 +3512,17 @@
       return pireEcart < 1.2;
     }
 
-    // Coup de pied de pénalité au but (+3), résolu après un temps d'arrêt
-    // réaliste (placement, recul, course d'élan, frappe : ~20-25 s en match réel).
+    // Coup de pied de pénalité au but (+3). Loi 20 : le tir doit être PORTÉ dans
+    // les 60 secondes qui suivent l'annonce de l'intention de taper au but, sinon
+    // le coup de pied est annulé (mêlée à l'adversaire). Le buteur prend une
+    // routine réaliste (placement, recul, course d'élan, frappe), plus longue sur
+    // un angle fermé, mais toujours sous le maximum réglementaire.
     _tickPenaliteTir(dt) {
       this.timerPhase += dt;
-      const duree = 25 * this._echelleArret;
+      const DUREE_MAX_PENALITE = 60; // secondes réglementaires (loi 20)
+      const offsetTir = this.positionTir ? Math.abs(this.positionTir.y - LARGEUR / 2) : 0;
+      const routine = 26 + offsetTir * 0.8; // ~26 s face aux poteaux, jusqu'à ~52 s (plafonné 60)
+      const duree = Math.min(DUREE_MAX_PENALITE, routine) * this._echelleArret;
       // Même principe que pour la transformation : le ballon vole vers les
       // poteaux pendant la dernière fraction du temps d'arrêt.
       const dureeVol = Math.min(1.4, duree * 0.3);
