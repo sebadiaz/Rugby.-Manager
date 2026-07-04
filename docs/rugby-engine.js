@@ -262,8 +262,14 @@
     return joueurs;
   }
 
+  // Multiplicateur de fatigue du tick courant (1 au coup d'envoi, ~0,9 à la 80e) :
+  // tous les joueurs courent un peu moins vite en fin de match. Positionné en début
+  // de tick() ; s'applique aux DEUX équipes (donc n'avantage personne — c'est le
+  // RYTHME qui baisse et le jeu qui s'ouvre en fin de match, comme en vrai).
+  let _fatigueVitesse = 1;
+
   function vitesseMs(j) {
-    return 3.0 + (Math.max(0, Math.min(100, j.vitesse)) / 100) * 5.0;
+    return (3.0 + (Math.max(0, Math.min(100, j.vitesse)) / 100) * 5.0) * _fatigueVitesse;
   }
 
   // Regroupement INFRANCHISSABLE du tick courant (mêlée / ruck / maul) : on ne le
@@ -1173,7 +1179,14 @@
         // Réussite de plaquage ~86-88 % (réel ~85-88 %) : l'ancienne base 0.83
         // donnait ~80 % de réussite et ~128 plaquages manqués/match (réel ~15 %
         // d'échec), donc trop de défenseurs battus et de franchissements.
-        const probaPlaquage = Math.max(0.80, Math.min(0.95, 0.88 + (defenseurProche.plaquage - this.porteur.vitesse) / 250));
+        // FATIGUE : les plaquages sont plus SÛRS en début de match et plus
+        // souvent MANQUÉS en fin de match (défenseurs fatigués) — le jeu s'ouvre
+        // dans le dernier quart, comme en vrai. Effet CENTRÉ (moyenne du match
+        // inchangée) : on ne change pas le taux global de plaquage ni le nombre
+        // total d'essais, on déplace juste les essais vers la fin du match.
+        const fatigue = (this.dureeMatch === Infinity || this.dureeMatch <= 0) ? 0.5 : Math.min(1, this.tempsMatch / this.dureeMatch);
+        const bonusFraicheur = (0.5 - fatigue) * 0.06; // +0.03 au coup d'envoi, -0.03 à la 80e
+        const probaPlaquage = Math.max(0.80, Math.min(0.95, 0.88 + bonusFraicheur + (defenseurProche.plaquage - this.porteur.vitesse) / 250));
         if (this.rng() >= probaPlaquage) {
           // Plaquage manqué : le défenseur reste hors-jeu de contact un court
           // instant, le porteur poursuit sa course sans être inquiété par lui.
@@ -3696,6 +3709,10 @@
       else if (this.phase === 'MAUL' && this.maul) _obstacle = { x: this.maul.x, y: this.maul.y, r: 3 };
       else if (this.phase === 'RUCK' && this.ruckPoint) _obstacle = { x: this.ruckPoint.x, y: this.ruckPoint.y, r: 2.6 };
       else _obstacle = null;
+      // Fatigue de fin de match : les joueurs ralentissent progressivement (jusqu'à
+      // ~10 % à la 80e minute). Purement visuel/rythmique (s'applique aux 2 équipes).
+      const _fat = (this.dureeMatch === Infinity || this.dureeMatch <= 0) ? 0 : Math.min(1, this.tempsMatch / this.dureeMatch);
+      _fatigueVitesse = 1 - _fat * 0.10;
       for (const j of [...this.equipeA, ...this.equipeB]) {
         if (j.auSol > 0) {
           j.auSol = Math.max(0, j.auSol - dt);
