@@ -266,12 +266,44 @@
     return 3.0 + (Math.max(0, Math.min(100, j.vitesse)) / 100) * 5.0;
   }
 
+  // Regroupement INFRANCHISSABLE du tick courant (mêlée / ruck / maul) : on ne le
+  // traverse pas. Positionné en début de tick() selon la phase, remis à null hors
+  // regroupement. Partagé au niveau du module (avancer n'est pas une méthode) ;
+  // sûr car chaque tick le (re)définit et avancer n'est appelé que pendant un tick.
+  let _obstacle = null;
+
   function avancer(j, dx, dy, dt, vmax) {
     const d = Math.hypot(dx, dy);
     if (d < 0.01) return;
     const pas = Math.min(d, vmax * dt);
-    j.x += (dx / d) * pas;
-    j.y += (dy / d) * pas;
+    let ux = dx / d, uy = dy / d;
+    // Contournement du regroupement : un joueur ne TRAVERSE pas une mêlée/ruck/maul.
+    // On ne dévie QUE celui qui veut passer DE L'AUTRE CÔTÉ (sa cible est au-delà du
+    // regroupement) ; celui qui s'y ENGAGE (cible À L'INTÉRIEUR) n'est pas dévié —
+    // sinon les soutiens ne pourraient jamais venir sécuriser le ballon. Le joueur
+    // dévié glisse tangentiellement autour du cercle (« il fait le tour »).
+    if (_obstacle) {
+      const ox = _obstacle.x, oy = _obstacle.y, r = _obstacle.r;
+      const cibleDist = Math.hypot((j.x + dx) - ox, (j.y + dy) - oy);
+      const posDist = Math.hypot(j.x - ox, j.y - oy);
+      if (cibleDist >= r && posDist >= r * 0.85) {
+        const seg2 = dx * dx + dy * dy;
+        let tc = ((ox - j.x) * dx + (oy - j.y) * dy) / (seg2 || 1);
+        tc = Math.max(0, Math.min(1, tc));
+        const closest = Math.hypot((j.x + tc * dx) - ox, (j.y + tc * dy) - oy);
+        if (closest < r) {
+          const nx = (j.x - ox) / (posDist || 1), ny = (j.y - oy) / (posDist || 1);
+          // tangente du côté qui rapproche le plus de la cible
+          const useT1 = (-ny * ux + nx * uy) >= (ny * ux - nx * uy);
+          const tanx = useT1 ? -ny : ny, tany = useT1 ? nx : -nx;
+          const push = posDist < r ? 1 : 0.25; // ressort vers l'extérieur si déjà au bord
+          ux = tanx + nx * push; uy = tany + ny * push;
+          const n = Math.hypot(ux, uy) || 1; ux /= n; uy /= n;
+        }
+      }
+    }
+    j.x += ux * pas;
+    j.y += uy * pas;
     j.x = Math.max(0, Math.min(LONGUEUR, j.x));
     j.y = Math.max(0, Math.min(LARGEUR, j.y));
   }
@@ -3657,6 +3689,13 @@
 
     tick(dt) {
       if (this.phase === 'TERMINE') return;
+      // Zone de regroupement infranchissable de ce tick (mêlée/ruck/maul) : les
+      // joueurs la contournent au lieu de la traverser (cf. avancer). Une mêlée
+      // est plus large (16 avants liés) qu'un ruck ou un maul.
+      if (this.phase === 'MELEE' && this.melee) _obstacle = { x: this.melee.x, y: this.melee.y, r: 4 };
+      else if (this.phase === 'MAUL' && this.maul) _obstacle = { x: this.maul.x, y: this.maul.y, r: 3 };
+      else if (this.phase === 'RUCK' && this.ruckPoint) _obstacle = { x: this.ruckPoint.x, y: this.ruckPoint.y, r: 2.6 };
+      else _obstacle = null;
       for (const j of [...this.equipeA, ...this.equipeB]) {
         if (j.auSol > 0) {
           j.auSol = Math.max(0, j.auSol - dt);
