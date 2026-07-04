@@ -1656,7 +1656,13 @@
         // la distance via probaReussite dans _tenterPasse).
         const soutienLarge = att.find(j => j !== porteur && j.auSol === 0
           && j.tendance <= 50 && distance(j, porteur) < 45);
-        if (soutienLarge && this.rng() < 0.22 * dt) return 'JEU_LARGE';
+        // Taux relevé (0.22 -> 0.33) : l'attaque ÉCARTE le ballon plus souvent
+        // vers les trois-quarts au lieu de le porter systématiquement au contact —
+        // le ballon circule davantage (comme en vrai). On ne relève QUE le jeu au
+        // LARGE (pas la passe de contact) : augmenter la passe brute effondre le
+        // score (ballon latéral sans percer + en-avants), tandis que l'écart vers
+        // l'espace fait vivre le jeu sans casser la finition (score préservé ~47).
+        if (soutienLarge && this.rng() < 0.33 * dt) return 'JEU_LARGE';
       }
 
       // 5. Hors de portée de plaquage et aucune décision ci-dessus : on
