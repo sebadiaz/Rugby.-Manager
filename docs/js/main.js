@@ -70,9 +70,9 @@
     document.getElementById('seek').value = 0;
     document.getElementById('tempsLabelFin').textContent = UI.formaterTemps(duree);
     document.getElementById('btnSauver').disabled = true;
-    // Avance rapide adaptée à la durée : ~5 min de visionnage quelle que soit la
-    // durée simulée (le joueur peut toujours ralentir avec le bouton Vitesse).
-    appliquerVitesse(vitesseParDefautPour(duree));
+    // La vitesse de lecture est PARAMÉTRABLE par le joueur (bouton Vitesse) et
+    // PERSISTE : on ne la réinitialise pas à chaque nouveau match ni changement
+    // de durée. On garde donc simplement `vitesseSim` tel que le joueur l'a réglé.
     UI.majAffichage(normalizeMatchState(match.getState()), duree);
   }
 
@@ -88,27 +88,21 @@
   }
 
   let enCours = true;
-  // Le match est une VRAIE simulation de la durée choisie, rejouée en AVANCE
-  // RAPIDE. La vitesse par défaut est calée pour rester REGARDABLE : au-delà de
-  // ~x4 le rendu saute des pas (une passe dure ~0,5 s de jeu, soit < 0,06 s à
-  // l'écran à x16 : invisible), donc on plafonne l'avance rapide AUTOMATIQUE à
-  // x4 — l'action reste lisible. Le joueur peut toujours monter jusqu'à x16
-  // manuellement pour SAUTER en avant, ou ralentir à x1 pour savourer.
+  // Le match est une VRAIE simulation de 80 min (durée choisie au menu), rejouée
+  // en AVANCE RAPIDE. La VITESSE DE LECTURE est PARAMÉTRABLE par le joueur via le
+  // bouton Vitesse et persiste (jamais réinitialisée). Paliers de x1 (temps réel,
+  // pour savourer) à x16 (pour SAUTER en avant). Repère : à ~x4 le rendu reste
+  // fluide et lisible (une passe dure ~0,5 s de jeu) ; au-delà l'action défile
+  // vite (utile pour avancer dans le match, moins pour suivre le ballon).
   // Le moteur tourne à temps de jeu réel ; seul l'AFFICHAGE est accéléré.
   const PALIERS_VITESSE = [1, 2, 4, 8, 16];
-  const VITESSE_AUTO_MAX = 4; // plafond de l'avance rapide automatique (lisibilité)
-  function vitesseParDefautPour(duree) {
-    const ideal = Math.min(VITESSE_AUTO_MAX, duree / 300); // ~5 min de visionnage, mais lisible
-    let best = PALIERS_VITESSE[0];
-    for (const p of PALIERS_VITESSE) if (p <= ideal + 0.001) best = p;
-    return best;
-  }
+  const VITESSE_INITIALE = 4; // départ regardable ; le joueur ajuste ensuite librement
   function appliquerVitesse(v) {
     vitesseSim = v;
     const b = document.getElementById('btnSpeed');
     if (b) b.textContent = `Vitesse x${v}`;
   }
-  let vitesseSim = 1;
+  let vitesseSim = VITESSE_INITIALE;
   let dernierTs = null;
   let accumulateur = 0;
   // Interpolation de rendu : le moteur n'avance que par pas fixes de 0,1 s,
@@ -273,6 +267,7 @@
   // Si le chargement échoue (fichier absent, ouverture en file://), on démarre
   // avec les valeurs par défaut du moteur — le jeu fonctionne toujours.
   function demarrer() {
+    appliquerVitesse(VITESSE_INITIALE); // affiche la vitesse de départ sur le bouton
     demarrerNouveauMatch(seedActuel, lireDureeChoisie());
     requestAnimationFrame(boucle);
   }
