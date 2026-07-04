@@ -1230,9 +1230,13 @@
           this.porteur._solX = this.porteur.x; this.porteur._solY = this.porteur.y;
           this.stats[this.possession].rucks++; this.stats[this.possession].phases++;
           const tierRuck = this.rng();
-          this.ruckDureeCible = (tierRuck < 0.55 ? 2 + this.rng() * 2
-            : tierRuck < 0.85 ? 4 + this.rng() * 3
-              : 7 + this.rng() * 4) * this._echelleArret;
+          // Durée de recyclage du ruck, réaliste : ballon rapide ~1,5-3 s,
+          // normal ~3-5 s, lent ~5-7 s. Un vrai ruck se recycle en quelques
+          // secondes (loi 15.16, « use it » ~5 s) — l'ancien palier lent allait
+          // jusqu'à 11 s, ce qui faisait « traîner » les rucks à l'écran.
+          this.ruckDureeCible = (tierRuck < 0.55 ? 1.5 + this.rng() * 1.5
+            : tierRuck < 0.85 ? 3 + this.rng() * 2
+              : 5 + this.rng() * 2) * this._echelleArret;
           this.ruckTempsSansSoutien = 0;
           this.phase = 'RUCK';
           this._receptionDirecte = false;
@@ -1405,9 +1409,11 @@
             porteur._solX = porteur.x; porteur._solY = porteur.y;
             this.stats[this.possession].rucks++; this.stats[this.possession].phases++;
             const tierRuck = this.rng();
-            this.ruckDureeCible = (tierRuck < 0.55 ? 2 + this.rng() * 2
-              : tierRuck < 0.85 ? 4 + this.rng() * 3
-                : 7 + this.rng() * 4) * this._echelleArret;
+            // Recyclage réaliste (cf. l'autre site de création de ruck) : max ~7 s
+            // au lieu de 11 s, pour que les rucks ne traînent plus à l'écran.
+            this.ruckDureeCible = (tierRuck < 0.55 ? 1.5 + this.rng() * 1.5
+              : tierRuck < 0.85 ? 3 + this.rng() * 2
+                : 5 + this.rng() * 2) * this._echelleArret;
             this.ruckTempsSansSoutien = 0;
             this.ruckDominant = false; // plaquage de sauvetage in extremis, pas un ballon sur l'avancée
             this.phase = 'RUCK';
