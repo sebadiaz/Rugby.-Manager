@@ -31,7 +31,7 @@ sur un angle fermé, mais toujours sous le maximum légal) :
 
 | Action | Temps max (loi) | Modélisé |
 |---|---|---|
-| **Transformation** | **90 s** après l'essai (Law 8.21) | ✅ `_tickTransformation` : routine ~28 s face aux poteaux → ~64 s près de la touche, plafond dur à 90 s |
+| **Transformation** | **60 s** après l'essai (Law 8.8.c) | ✅ `_tickTransformation` : routine ~26 s face aux poteaux → ~57 s près de la touche, plafond dur à 60 s |
 | **Pénalité au but** | **60 s** après l'annonce d'intention (Law 20) | ✅ `_tickPenaliteTir` : routine ~26 s → ~52 s, plafond dur à 60 s |
 
 Ces durées étaient auparavant un **plat forfaitaire de 25 s**, ni réaliste ni

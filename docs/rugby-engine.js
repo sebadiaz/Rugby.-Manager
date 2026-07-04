@@ -3494,8 +3494,8 @@
       // routine (placement du tee, concentration, course d'élan), plus longue
       // sur un angle fermé — mais toujours sous le maximum réglementaire. Le
       // match étant regardé en avance rapide, ce temps réel reste confortable.
-      const DUREE_MAX_TRANSFO = 90; // secondes réglementaires (loi 8.21)
-      const routine = 28 + Math.abs(this.essaiY - LARGEUR / 2) * 1.1; // ~28 s face aux poteaux, jusqu'à ~64 s près de la touche
+      const DUREE_MAX_TRANSFO = 60; // secondes réglementaires (loi 8.8.c : la transformation doit être jouée sous 60 s)
+      const routine = 26 + Math.abs(this.essaiY - LARGEUR / 2) * 0.9; // ~26 s face aux poteaux, jusqu'à ~57 s près de la touche (toujours < 60 s)
       const duree = Math.min(DUREE_MAX_TRANSFO, routine) * this._echelleArret;
       // Le ballon s'envole vers les poteaux pendant la dernière fraction du
       // temps d'arrêt (le reste, c'est le placement et la course d'élan) :
