@@ -2152,6 +2152,13 @@
           if (neuf) { relayeur = neuf; this._neufLibre = true; this.log('RUCK_SORTIE_9', this.possession, `Sortie de ruck par le 9`); }
           else ({ joueur: relayeur } = joueurLePlusProche(att.filter(j => j.tendance >= 50), pt.x, pt.y));
         }
+        // Le joueur qui était plaqué (ancien porteur, au sol) se relève PROMPTEMENT
+        // une fois le ballon sorti et le jeu reparti : sinon il restait ~2 s au sol
+        // TOUT SEUL pendant que le jeu s'éloignait de 10-15 m — c'est ce qui donnait
+        // l'impression d'un joueur « qui tombe sans plaqueur ». Il se relève donc
+        // dès la sortie du ballon (auSol ramené à ~0,7 s) au lieu de traîner à terre.
+        const plaque = this.porteur;
+        if (plaque && plaque.auSol > 0.7) plaque.auSol = 0.7;
         this.porteur = relayeur || att.find(j => j.numero === 8) || att[0];
         this.phase = 'PORTE';
         this.timerPhase = 0;
@@ -3644,7 +3651,14 @@
         if (j.missCooldown > 0) j.missCooldown = Math.max(0, j.missCooldown - dt);
         if (j.ruckRecovery > 0) j.ruckRecovery = Math.max(0, j.ruckRecovery - dt);
         if (j._croiseTimer > 0) j._croiseTimer = Math.max(0, j._croiseTimer - dt);
-        if (j.solVisuel > 0) j.solVisuel = Math.max(0, j.solVisuel - dt); // plaqueur couché (visuel pur)
+        // Plaqueur couché (visuel pur) : ne persiste qu'en JEU COURANT. Sur un
+        // changement de phase (mêlée, touche, coup de pied...), on l'efface : sinon
+        // un plaqueur restait dessiné au sol tout seul, loin de la nouvelle action
+        // (effet « joueur qui tombe sans plaqueur »).
+        if (j.solVisuel > 0) {
+          j.solVisuel = (this.phase === 'PORTE' || this.phase === 'RUCK' || this.phase === 'MAUL')
+            ? Math.max(0, j.solVisuel - dt) : 0;
+        }
         if (j.sinBin > 0) j.sinBin = Math.max(0, j.sinBin - dt);
       }
       // Avancement du vol visuel d'une passe (cf. _lancerPasseVisuelle) : on le
