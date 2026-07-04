@@ -88,14 +88,17 @@
   }
 
   let enCours = true;
-  // Le match est une VRAIE simulation de la durée choisie (par défaut 80 min de
-  // temps de jeu), rejouée en AVANCE RAPIDE : la vitesse est calée pour que
-  // n'importe quelle durée se regarde en ~5 min réelles (80 min / 16 ≈ 5 min).
-  // Le moteur tourne à temps de jeu réel (durées d'arrêt non compressées quand
-  // dureeMatch = 4800, cf. _echelleArret) ; seul l'AFFICHAGE est accéléré.
+  // Le match est une VRAIE simulation de la durée choisie, rejouée en AVANCE
+  // RAPIDE. La vitesse par défaut est calée pour rester REGARDABLE : au-delà de
+  // ~x4 le rendu saute des pas (une passe dure ~0,5 s de jeu, soit < 0,06 s à
+  // l'écran à x16 : invisible), donc on plafonne l'avance rapide AUTOMATIQUE à
+  // x4 — l'action reste lisible. Le joueur peut toujours monter jusqu'à x16
+  // manuellement pour SAUTER en avant, ou ralentir à x1 pour savourer.
+  // Le moteur tourne à temps de jeu réel ; seul l'AFFICHAGE est accéléré.
   const PALIERS_VITESSE = [1, 2, 4, 8, 16];
+  const VITESSE_AUTO_MAX = 4; // plafond de l'avance rapide automatique (lisibilité)
   function vitesseParDefautPour(duree) {
-    const ideal = duree / 300; // ~5 min réelles de visionnage
+    const ideal = Math.min(VITESSE_AUTO_MAX, duree / 300); // ~5 min de visionnage, mais lisible
     let best = PALIERS_VITESSE[0];
     for (const p of PALIERS_VITESSE) if (p <= ideal + 0.001) best = p;
     return best;
