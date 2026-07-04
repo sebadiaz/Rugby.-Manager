@@ -1285,6 +1285,22 @@
       );
       for (const j of att) {
         if (j === porteur) continue;
+        // L'OUVREUR (10) ne se place JAMAIS dans le dos direct du 9 : quand le 9
+        // a le ballon (sortie), le 10 se décale sur un CÔTÉ (le grand côté, plus
+        // d'espace) et EN RETRAIT, pour recevoir lancé et avec un angle et amorcer
+        // l'attaque — pas à l'arrêt collé au regroupement. C'est ce premier
+        // receveur décalé qui donne une vraie ligne d'attaque.
+        if (j.numero === 10 && porteur.numero === 9 && j.auSol === 0) {
+          // Décalé sur le côté ouvert (~6 m) et légèrement en retrait (~4 m) :
+          // clairement SUR UN CÔTÉ et non dans le dos du 9, mais assez proche
+          // pour rester le premier relais de l'attaque (un décalage trop large
+          // sortait le 10 de la structure et effondrait les essais — mesuré).
+          const coteOuvert = porteur.y <= LARGEUR / 2 ? 1 : -1;
+          const cibleY10 = Math.max(6, Math.min(LARGEUR - 6, porteur.y + coteOuvert * 6));
+          const cibleX10 = porteur.x - porteur.sensAttaque * 4;
+          avancer(j, cibleX10 - j.x, cibleY10 - j.y, dt, vitesseMs(j) * 0.9);
+          continue;
+        }
         if (soutienDirect.has(j)) {
           // Soutien rapproché, toujours légèrement en retrait du porteur en
           // profondeur (jamais devant, sinon passe en avant) : il attend le
@@ -1472,6 +1488,38 @@
       const avant = porteur.numero <= 8;
       const enMene = this.score[porteur.team] > this.score[porteur.team === 'A' ? 'B' : 'A'];
 
+      // 0. DEMI DE MÊLÉE LIBRE à la sortie (ruck/mêlée/touche où il n'était pas
+      // au contact) : en plus du lancement classique 9→10 et du jeu au pied déjà
+      // gérés plus bas (sections 1 et 2b, calibrés), on ajoute ici les deux seules
+      // options qui manquaient au 9, et RAREMENT pour ne pas casser la structure
+      // d'attaque (un 9 qui snipe/tape à chaque ruck effondre les essais) :
+      //   - PERCÉE : s'il y a un vrai trou devant lui (aucun défenseur dans un
+      //     large cône proche), il part seul ;
+      //   - AVANT LANCÉ : il sert un avant tout près (ballon porté / pick).
+      // Sinon (cas courant) il tombe dans le jeu au pied calibré (touche/dégagement
+      // dans ses 22, chandelle plus haut) puis le lancement vers l'ouvreur.
+      if (porteur.numero === 9 && this._neufLibre) {
+        if (this.timerPhase < 0.3) return null; // le ballon finit d'arriver de la base
+        this._neufLibre = false;
+        const sens = porteur.sensAttaque;
+        const r = this.rng();
+        // PERCÉE du 9 : uniquement dans le camp adverse (là où un 9 stoppé laisse
+        // un ruck en bonne position au lieu de sacrifier une possession dans son
+        // propre camp) et seulement si le CHANNEL immédiat devant lui est vide
+        // (aucun défenseur dans un cône serré) — c'est le vrai trou près du ruck.
+        const enCampAdverse = zone === 'OPP_HALF' || zone === 'OPP_22' || zone === 'CINQ_M';
+        const channelVide = !this.defenseurs().some(d => d.auSol === 0
+          && (d.x - porteur.x) * sens > -0.5 && (d.x - porteur.x) * sens < 6
+          && Math.abs(d.y - porteur.y) < 3);
+        if (channelVide && enCampAdverse && r < 0.45) return 'RUN'; // trou net près de la ligne → il part seul
+        // AVANT LANCÉ tout près (ballon porté / pick) : une option de temps en
+        // temps, pas à chaque sortie (sinon le 9 ne lance plus jamais sa ligne).
+        const avantLance = att.find(j => j.numero <= 8 && j.auSol === 0
+          && distance(j, porteur) < 6 && (j.x - porteur.x) * sens <= 0.3 && (j.x - porteur.x) * sens > -5);
+        if (avantLance && r < 0.12) { this._passeCibleForcee = avantLance; return 'PASS'; }
+        // sinon : jeu au pied calibré (section 1) puis lancement 9→10 (section 2b).
+      }
+
       // 1. Botter en jeu courant : très fréquent dans son propre 22 (surtout
       // sous pression), de plus en plus rare en remontant le terrain. Une
       // équipe qui mène botte un peu plus pour la touche/le territoire.
@@ -1634,6 +1682,13 @@
       const passeurNeuf = porteur.numero === 9;
       const passeurBack = porteur.numero >= 10 && porteur.numero <= 13;
       let cible = candidats[0], meilleurScore = -Infinity;
+      // Cible imposée par une décision du porteur (ex. le 9 libre qui sert un
+      // avant lancé tout près à la sortie, cf. choisirActionPorteur) : on
+      // court-circuite le scoring si elle est bien une option légale (onside).
+      const cibleForcee = this._passeCibleForcee; this._passeCibleForcee = null;
+      if (cibleForcee && candidats.includes(cibleForcee)) {
+        cible = cibleForcee;
+      } else
       for (const c of candidats) {
         const d = distance(c, porteur);
         let score;
@@ -1686,6 +1741,7 @@
         this._lancerPasseVisuelle(porteur, cible);
         this.porteur = cible;
         this._receptionDirecte = false;
+        this._neufLibre = false; // le ballon a quitté le 9 : la fenêtre de décision de sortie est close
       } else {
         this.stats[this.possession].knockOns++;
         this.log('PASSE_RATEE', this.possession, `Passe ratee, equipe ${this.possession} - melee adverse`);
@@ -2093,7 +2149,7 @@
           // regroupement (il a couru vers le ruck pendant la phase, cf.
           // estDemiMelee) ; il décide ensuite normalement (passe/jeu au pied).
           const neuf = att.find(j => j.numero === 9 && j.auSol === 0);
-          if (neuf) { relayeur = neuf; this.log('RUCK_SORTIE_9', this.possession, `Sortie de ruck par le 9`); }
+          if (neuf) { relayeur = neuf; this._neufLibre = true; this.log('RUCK_SORTIE_9', this.possession, `Sortie de ruck par le 9`); }
           else ({ joueur: relayeur } = joueurLePlusProche(att.filter(j => j.tendance >= 50), pt.x, pt.y));
         }
         this.porteur = relayeur || att.find(j => j.numero === 8) || att[0];
@@ -3041,6 +3097,9 @@
       // libre normal. (Pas de combinaison sur un pick-and-go du n°8 : il part au
       // contact.)
       if (!pickAndGo) this._lancerCombinaison('melee');
+      // Sortie de mêlée par le 9 SANS combinaison scriptée : il est libre et
+      // décide lui-même (cf. choisirActionPorteur, branche _neufLibre).
+      if (!pickAndGo && !this.combinaison && this.porteur && this.porteur.numero === 9) this._neufLibre = true;
       this._imposerRecuperationRuck(pt);
       this.phase = 'PORTE';
       this.timerPhase = 0;
@@ -3356,6 +3415,9 @@
           // Le 9 a le ballon derrière l'alignement : on peut enchaîner une
           // COMBINAISON scriptée de touche (cf. cfg.combinaisons.touche).
           this._lancerCombinaison('touche');
+          // Sans combinaison, le 9 est libre et décide lui-même (dégagement,
+          // chandelle, avant lancé, ouvreur, ou percée) — cf. choisirActionPorteur.
+          if (!this.combinaison) this._neufLibre = true;
         }
       }
       this._imposerRecuperationRuck(this.ruckPoint);
