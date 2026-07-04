@@ -2156,9 +2156,12 @@
         // une fois le ballon sorti et le jeu reparti : sinon il restait ~2 s au sol
         // TOUT SEUL pendant que le jeu s'éloignait de 10-15 m — c'est ce qui donnait
         // l'impression d'un joueur « qui tombe sans plaqueur ». Il se relève donc
-        // dès la sortie du ballon (auSol ramené à ~0,7 s) au lieu de traîner à terre.
+        // plus vite (auSol ramené à ~1,3 s) au lieu de traîner ~2 s à terre. NB :
+        // le relever trop vite (0,7 s) le renvoie tout de suite dans la ligne et
+        // gonfle les essais (mesuré : 10/match) ; 1,3 s garde ~7 essais/match tout
+        // en supprimant le "joueur au sol tout seul".
         const plaque = this.porteur;
-        if (plaque && plaque.auSol > 0.7) plaque.auSol = 0.7;
+        if (plaque && plaque.auSol > 1.3) plaque.auSol = 1.3;
         this.porteur = relayeur || att.find(j => j.numero === 8) || att[0];
         this.phase = 'PORTE';
         this.timerPhase = 0;
@@ -3091,13 +3094,20 @@
         this.porteur = huit;
         this.log('MELEE_PICK_AND_GO', poss, `Le numero 8 ramasse au pied de la melee et part au contact pour l'equipe ${poss}`);
       } else {
-        // Le demi de mêlée du vainqueur sort le ballon : il se tient déjà sur le
-        // côté de la base (cf. _meleePositionnerBallon), donc il le ramasse sur
-        // place, sans téléportation. La passe vers l'ouvreur se fait ensuite
-        // naturellement en jeu courant (_tickPorte), au lieu de télésnapper
-        // directement l'ouvreur (≈9 m en arrière) sur la base de la mêlée.
-        this.porteur = eq.find(j => j.numero === 9 && j.sinBin <= 0) || huit || eq[8];
-        this.log('MELEE_BALLON_SORTI', poss, `Le demi de melee sort le ballon de la melee pour l'equipe ${poss}`);
+        // Loi 19 : le ballon gagné sort par l'ARRIÈRE de la mêlée, aux pieds du
+        // n°8 (dernier joueur du pack, sur la base). C'est donc le 8 qui le
+        // RÉCUPÈRE — « la balle sort sur le 8 » — puis le DÉLIVRE au demi de mêlée
+        // (passe courte visible depuis la base). Le 9 ne cueille jamais le ballon
+        // DANS la mêlée : il le reçoit du 8. La passe vers l'ouvreur se fait
+        // ensuite naturellement en jeu courant (_tickPorte).
+        const neuf = eq.find(j => j.numero === 9 && j.sinBin <= 0);
+        this.porteur = huit || eq[7]; // le ballon sort SUR le n°8
+        this.log('MELEE_BALLON_SORTI', poss, `Le n°8 recupere le ballon a la base de la melee pour l'equipe ${poss}`);
+        if (neuf && neuf !== this.porteur) {
+          // Le 8 délivre le ballon au demi de mêlée (passe courte depuis la base).
+          this._lancerPasseVisuelle(this.porteur, neuf);
+          this.porteur = neuf;
+        }
       }
       // Sortie propre par le 9 : on peut enchaîner une COMBINAISON scriptée
       // (playbook, cf. cfg.combinaisons.melee) — ex. 9->10->12 croisé. Sinon jeu
