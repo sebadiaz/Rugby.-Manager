@@ -1172,7 +1172,7 @@
       // suivant contre le même défenseur (sinon le raté n'aurait aucune
       // conséquence : il serait rejoué jusqu'à réussite quelques dixièmes de
       // seconde plus tard).
-      if (distDef < 2.2 && defenseurProche.missCooldown <= 0) {
+      if (distDef < 2.2 && defenseurProche.missCooldown <= 0 && (defenseurProche.fixeCooldown || 0) <= 0) {
         const att0 = this.attaquants();
         this.stats[this.possession].carries++;
         this.stats[defenseurProche.team].tacklesAttempted++;
@@ -1186,10 +1186,11 @@
         // total d'essais, on déplace juste les essais vers la fin du match.
         const fatigue = (this.dureeMatch === Infinity || this.dureeMatch <= 0) ? 0.5 : Math.min(1, this.tempsMatch / this.dureeMatch);
         const bonusFraicheur = (0.5 - fatigue) * 0.06; // +0.03 au coup d'envoi, -0.03 à la 80e
-        // Base 0.83 (~82 % de plaquages réussis) : le jeu structuré à passes
-        // COURTES (9→10 puis ligne) perce moins qu'un large étiré, donc on redonne
-        // un peu d'air à l'attaque pour un score réaliste (~40 pts / 5 essais).
-        const probaPlaquage = Math.max(0.76, Math.min(0.93, 0.83 + bonusFraicheur + (defenseurProche.plaquage - this.porteur.vitesse) / 250));
+        // Base 0.88 (~84 % de plaquages réussis, RÉALISTE) : les brèches viennent
+        // désormais du FIXAGE/surnombre au large (cf. _tenterPasse), plus d'une
+        // défense volontairement affaiblie. On peut donc remettre un taux de
+        // plaquage réel tout en gardant un jeu au large qui perce.
+        const probaPlaquage = Math.max(0.80, Math.min(0.95, 0.88 + bonusFraicheur + (defenseurProche.plaquage - this.porteur.vitesse) / 250));
         if (this.rng() >= probaPlaquage) {
           // Plaquage manqué : le défenseur reste hors-jeu de contact un court
           // instant, le porteur poursuit sa course sans être inquiété par lui.
@@ -1397,6 +1398,10 @@
       }
 
       for (const j of def) {
+        // Défenseur FIXÉ (battu par une passe, cf. _tenterPasse) : il est hors du
+        // coup un court instant, il ne monte plus couvrir le receveur — c'est ce
+        // qui laisse le SURNOMBRE (et l'espace) au large.
+        if ((j.fixeCooldown || 0) > 0) continue;
         if (j === defenseurProche) {
           // Le plaqueur désigné vise un point d'interception légèrement
           // devant le porteur (dans son sens de course), pas sa position
@@ -1843,6 +1848,24 @@
       const probaReussite = Math.max(0.96, Math.min(0.99, 0.995 - distancePasse / 150));
       if (this.rng() < probaReussite) {
         this.stats[this.possession].passes++;
+        // FIXAGE / SURNOMBRE : si le passeur (un back) a couru sur son défenseur
+        // avant de lâcher — un adversaire est tout proche DEVANT lui — il l'a FIXÉ.
+        // Ce défenseur est battu par la passe : il ne peut plus glisser couvrir le
+        // receveur pendant un court instant (fixeCooldown). En enchaînant
+        // fixe+passe le long de la ligne, les défenseurs intérieurs sont battus un
+        // à un et un SURNOMBRE se crée au large → c'est ça qui fait qu'écarter le
+        // ballon PERCE (au lieu de mourir sur une défense qui couvre tout).
+        if (porteur.numero >= 10) {
+          const sens = porteur.sensAttaque;
+          let fixe = null, dmin = 4.6;
+          for (const d of this.defenseurs()) {
+            if (d.auSol > 0 || (d.fixeCooldown || 0) > 0) continue;
+            const devant = (d.x - porteur.x) * sens; // > 0 = devant le passeur (côté défense)
+            const dd = distance(d, porteur);
+            if (devant > -1.5 && devant < 4 && dd < dmin) { dmin = dd; fixe = d; }
+          }
+          if (fixe) fixe.fixeCooldown = 1.3;
+        }
         this.log(jeuLarge ? 'JEU_LARGE' : 'PASSE', this.possession, `${jeuLarge ? 'Jeu au large' : 'Passe'} de l'equipe ${this.possession}`);
         this._lancerPasseVisuelle(porteur, cible);
         this.porteur = cible;
@@ -3776,6 +3799,7 @@
           if (j.auSol === 0) j._solX = null;
         }
         if (j.missCooldown > 0) j.missCooldown = Math.max(0, j.missCooldown - dt);
+        if (j.fixeCooldown > 0) j.fixeCooldown = Math.max(0, j.fixeCooldown - dt); // défenseur fixé/battu par une passe
         if (j.ruckRecovery > 0) j.ruckRecovery = Math.max(0, j.ruckRecovery - dt);
         if (j._croiseTimer > 0) j._croiseTimer = Math.max(0, j._croiseTimer - dt);
         // Plaqueur couché (visuel pur) : ne persiste qu'en JEU COURANT. Sur un
