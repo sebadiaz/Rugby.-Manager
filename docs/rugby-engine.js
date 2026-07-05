@@ -561,15 +561,25 @@
       // manche : sans ce report, l'exclusion de 10 min (loi 9.29) serait
       // effacée dès le prochain essai/pénalité/mi-temps, ce qui annule la
       // sanction au lieu de l'appliquer.
+      // On mémorise le sin-bin ET la POSITION de chaque joueur avant de recréer les
+      // équipes : sinon les nouveaux objets repartaient à (0, channelY) — les
+      // joueurs « sautaient » sur la ligne d'en-but (téléportation à chaque
+      // reprise). On restaure leur position réelle ; ils rejoignent ensuite leur
+      // place de coup d'envoi EN COURANT (cf. _cibleEnvoi / _tickCoupEnvoi).
       const sinBinRestant = new Map();
+      const posRestante = new Map();
+      const avaitEquipes = !!(this.equipeA && this.equipeA.length);
       for (const j of (this.equipeA || []).concat(this.equipeB || [])) {
         if (j.sinBin > 0) sinBinRestant.set(j.team + '-' + j.numero, j.sinBin);
+        posRestante.set(j.team + '-' + j.numero, { x: j.x, y: j.y });
       }
       this.equipeA = creerEquipe('A', sens.A, this.rng, this.cfg.joueurs);
       this.equipeB = creerEquipe('B', sens.B, this.rng, this.cfg.joueurs);
       for (const j of [...this.equipeA, ...this.equipeB]) {
         const restant = sinBinRestant.get(j.team + '-' + j.numero);
         if (restant) j.sinBin = restant;
+        const p = posRestante.get(j.team + '-' + j.numero);
+        if (p) { j.x = p.x; j.y = p.y; } // continuité : on garde la position d'avant la reprise
       }
       const equipeKick = equipeReceptrice === 'A' ? 'B' : 'A';
       this._dernierEquipeKick = equipeKick;
@@ -591,17 +601,25 @@
         if (n === 11 || n === 14) return 30;
         return 18;
       };
+      // Les joueurs ne sont PLUS téléportés à leur place de coup d'envoi : on
+      // mémorise leur position CIBLE et ils s'y rendent EN COURANT pendant la mise
+      // en place (cf. _tickCoupEnvoi, phase envoiEnPlace). Après un essai, on voit
+      // donc les joueurs regagner le milieu de terrain à la course, comme en vrai,
+      // au lieu de « sauter » d'un bout à l'autre du terrain (téléportation).
       for (const j of [...this.equipeA, ...this.equipeB]) {
-        if (j.team === equipeKick) {
-          j.x = Math.max(0, Math.min(LONGUEUR, xCentre - dirKick * (j.numero <= 8 ? 2 : 6)));
-        } else {
-          j.x = Math.max(0, Math.min(LONGUEUR, xCentre + dirKick * profondeurReception(j.numero)));
-        }
-        j.y = j.channelY;
+        const cx = j.team === equipeKick
+          ? Math.max(0, Math.min(LONGUEUR, xCentre - dirKick * (j.numero <= 8 ? 2 : 6)))
+          : Math.max(0, Math.min(LONGUEUR, xCentre + dirKick * profondeurReception(j.numero)));
+        j._cibleEnvoi = { x: cx, y: j.channelY };
+        if (!avaitEquipes) { j.x = cx; j.y = j.channelY; } // 1er coup d'envoi du match : placement direct
       }
       const kickeur = (equipeKick === 'A' ? this.equipeA : this.equipeB)[9]; // ouvreur, n.10
-      kickeur.x = xCentre;
-      kickeur.y = LARGEUR / 2;
+      kickeur._cibleEnvoi = { x: xCentre, y: LARGEUR / 2 };
+      if (!avaitEquipes) { kickeur.x = xCentre; kickeur.y = LARGEUR / 2; }
+      // Mise en place : au coup d'envoi d'ouverture, les joueurs sont déjà placés ;
+      // sinon (reprise après un score) ils COURENT rejoindre leur poste depuis leur
+      // position réelle (pas de téléportation), cf. _tickCoupEnvoi.
+      this.envoiEnPlace = !avaitEquipes;
       this.possession = equipeKick;
       this.porteur = kickeur;
       this.equipeReceptriceAttendue = equipeReceptrice;
@@ -643,6 +661,26 @@
     // réellement disputé en l'air, pas une simple remise en main.
     _tickCoupEnvoi(dt) {
       this.timerPhase += dt;
+      // MISE EN PLACE : après un essai/une pénalité, les joueurs REJOIGNENT le
+      // milieu de terrain EN COURANT (cf. _nouvelleManche, positions cibles), au
+      // lieu d'y être téléportés. Le ballon reste tenu par le botteur tant que la
+      // ligne n'est pas prête ; on botte dès que tout le monde est à peu près en
+      // place (ou au plus tard après ~8 s, pour ne jamais bloquer le match).
+      if (!this.envoiEnPlace) {
+        let pireEcart = 0;
+        for (const j of [...this.equipeA, ...this.equipeB]) {
+          if (!j._cibleEnvoi) continue;
+          avancer(j, j._cibleEnvoi.x - j.x, j._cibleEnvoi.y - j.y, dt, vitesseMs(j));
+          pireEcart = Math.max(pireEcart, Math.hypot(j._cibleEnvoi.x - j.x, j._cibleEnvoi.y - j.y));
+        }
+        this.ballonEnVol = false; // le ballon est tenu par le botteur, pas encore botté
+        if (pireEcart < 2 || this.timerPhase > 8) {
+          this.envoiEnPlace = true;
+          this.timerPhase = 0; // le vol du ballon repart de zéro une fois en place
+          for (const j of [...this.equipeA, ...this.equipeB]) j._cibleEnvoi = null;
+        }
+        return;
+      }
       // Le ballon est botté : il file nettement plus vite qu'un joueur ne court
       // (~18 m/s contre ~7-9 m/s), c'est tout l'intérêt du coup de pied. La durée
       // de vol découle donc de la distance bottée et d'une vitesse de ballon
@@ -698,11 +736,11 @@
         const { joueur: chasseurProche, distance: distChasseur } = joueurLePlusProche(chasseurs, this.ballonCibleX, this.ballonCibleY);
         const chasseurGagne = distChasseur < 3 && this.rng() < 0.15;
         const joueur = chasseurGagne ? chasseurProche : receveurProche;
-        // Le réceptionneur capte le ballon là où il retombe : on le place au
-        // point de chute (sinon, avec un vol court et rapide, il pourrait ne pas
-        // l'avoir encore rejoint, ce qui fausserait notamment la zone de marque).
-        joueur.x = this.ballonCibleX;
-        joueur.y = this.ballonCibleY;
+        // Le réceptionneur capte le ballon LÀ OÙ IL EST (le joueur le plus proche
+        // du point de chute) : on ne le TÉLÉPORTE PLUS au point de chute (ça le
+        // faisait « sauter » de quelques mètres). Le ballon vient à lui — le léger
+        // écart entre le point de chute et le receveur est absorbé par
+        // l'interpolation du ballon (glissé, jamais de saut du joueur).
         this.porteur = joueur;
         this.possession = joueur.team;
         this.ruckPoint = { x: joueur.x, y: joueur.y };
