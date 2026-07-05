@@ -138,7 +138,13 @@
 
   function dessinerBallon(state) {
     const ballon = state.ballon || { x: state.porteur.x, y: state.porteur.y, enVol: false, hauteur: 0 };
-    const sol = versCanvas(ballon.x, ballon.y);
+    // Position lissée du ballon au sol / en mains : la boucle de rendu fait
+    // glisser `ballonRendu` vers sa cible logique (comme les joueurs) pour
+    // supprimer les téléportations du ballon d'une marque à l'autre (sortie
+    // de ruck, de mêlée, changement de porteur). En vol, on garde la position
+    // physique du moteur (la cloche est déjà animée tick par tick).
+    const posSol = (!ballon.enVol && state.ballonRendu) ? state.ballonRendu : ballon;
+    const sol = versCanvas(posSol.x, posSol.y);
     if (ballon.enVol) {
       // Coup d'envoi en cloche : ombre au sol (qui rétrécit quand le ballon
       // monte) + ballon décalé vers le haut et nettement grossi à l'apogée,
@@ -189,9 +195,12 @@
       return;
     }
     // Ballon tenu : dessiné dans les mains du porteur, légèrement décalé.
-    const main = versCanvas(state.porteur.x, state.porteur.y);
+    // On part de la position lissée (`sol`) plutôt que de la position brute du
+    // porteur : lors d'un changement de porteur (sortie de mêlée sur le 8 puis
+    // relais au 9, passe interceptée…) le ballon glisse jusqu'aux nouvelles
+    // mains au lieu de s'y téléporter.
     ctx.beginPath();
-    ctx.ellipse(main.px + 12, main.py - 8, 5, 3.2, Math.PI / 4, 0, Math.PI * 2);
+    ctx.ellipse(sol.px + 12, sol.py - 8, 5, 3.2, Math.PI / 4, 0, Math.PI * 2);
     ctx.fillStyle = '#8d5524';
     ctx.fill();
   }

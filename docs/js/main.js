@@ -66,6 +66,7 @@
     miniPauseJusqua = 0;
     etatPrecedent = null;
     etatCourant = null;
+    ballonRendu = null; // nouveau match : le ballon se pose net, sans glisser depuis l'ancienne marque
     document.getElementById('seek').max = duree;
     document.getElementById('seek').value = 0;
     document.getElementById('tempsLabelFin').textContent = UI.formaterTemps(duree);
@@ -170,6 +171,20 @@
   let dernierEtatMelee = null;
   let miniPauseJusqua = 0;
 
+  // GLISSEMENT DU BALLON : le ballon a une position « rendue » qui rejoint sa
+  // position logique à vitesse bornée, au lieu de « sauter » d'un coup sur les
+  // relocalisations (marque de mêlée quand on siffle un en-avant, centre au coup
+  // d'envoi, point de coup de pied, changement de porteur lointain). Le ballon
+  // GLISSE ainsi jusqu'à la marque, il ne se téléporte jamais. Les vols (coup de
+  // pied/coup d'envoi) ne sont pas bridés : ils sont déjà animés en cloche.
+  let ballonRendu = null;
+  function positionBallonLogique(st) {
+    if (st.ballon && st.ballon.enVol) return { x: st.ballon.x, y: st.ballon.y, enVol: true };
+    if (st.ball && (st.ball.state === 'LOOSE' || st.ball.state === 'RUCK')) return { x: st.ball.x, y: st.ball.y };
+    if (st.porteur) return { x: st.porteur.x, y: st.porteur.y };
+    return st.ballon ? { x: st.ballon.x, y: st.ballon.y } : null;
+  }
+
   function boucle(ts) {
     if (dernierTs === null) dernierTs = ts;
     const dtReel = Math.min(0.05, (ts - dernierTs) / 1000);
@@ -194,6 +209,22 @@
     const frac = (enCours && !enMiniPause && etatPrecedent)
       ? Math.max(0, Math.min(1, accumulateur / PAS_FIXE)) : 1;
     const etatRendu = frac < 1 ? interpolerEtat(etatPrecedent, etatCourant, frac) : etatCourant;
+    // Position rendue du ballon : glisse vers sa cible logique à ~55 m/s de JEU
+    // (donc rapide en avance rapide, posé et visible en temps réel). En vol, on
+    // colle exactement à la trajectoire (déjà animée). En pause, on colle aussi.
+    const dtGame = (enCours && !enMiniPause) ? dtReel * vitesseSim : 0;
+    const cibleBallon = positionBallonLogique(etatRendu);
+    if (cibleBallon) {
+      if (!ballonRendu || cibleBallon.enVol || dtGame === 0) {
+        ballonRendu = { x: cibleBallon.x, y: cibleBallon.y };
+      } else {
+        const dx = cibleBallon.x - ballonRendu.x, dy = cibleBallon.y - ballonRendu.y;
+        const dist = Math.hypot(dx, dy);
+        const pas = Math.min(dist, 55 * dtGame);
+        if (dist > 1e-4) { ballonRendu.x += (dx / dist) * pas; ballonRendu.y += (dy / dist) * pas; }
+      }
+      etatRendu.ballonRendu = { x: ballonRendu.x, y: ballonRendu.y };
+    }
     UI.majAffichage(etatCourant, dureeMatchActuel);
     Renderer.dessiner(etatRendu);
     requestAnimationFrame(boucle);
@@ -226,6 +257,7 @@
     miniPauseJusqua = 0;
     etatPrecedent = null;
     etatCourant = null;
+    ballonRendu = null; // saut dans le temps : le ballon se pose net à la nouvelle position
     document.getElementById('tempsLabel').textContent = UI.formaterTemps(cible);
   });
 
