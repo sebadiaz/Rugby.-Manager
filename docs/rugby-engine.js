@@ -117,7 +117,7 @@
     // Organisation d'attaque : taux de jeu au large (écarter vers le centre en
     // espace) sous pression / au calme.
     attaque: {
-      jeuLargeTaux: { pression: 0.55, calme: 0.3 },
+      jeuLargeTaux: { pression: 2.5, calme: 1.8 },
     },
     // Organisation de défense : profondeur de couverture de l'arrière (n°15) en
     // jeu courant et à la mêlée, recul de la ligne au ruck.
@@ -1186,7 +1186,10 @@
         // total d'essais, on déplace juste les essais vers la fin du match.
         const fatigue = (this.dureeMatch === Infinity || this.dureeMatch <= 0) ? 0.5 : Math.min(1, this.tempsMatch / this.dureeMatch);
         const bonusFraicheur = (0.5 - fatigue) * 0.06; // +0.03 au coup d'envoi, -0.03 à la 80e
-        const probaPlaquage = Math.max(0.80, Math.min(0.95, 0.88 + bonusFraicheur + (defenseurProche.plaquage - this.porteur.vitesse) / 250));
+        // Base relevée 0.88 -> 0.92 pour compenser la défense étirée par le jeu au
+        // large : l'attaque écarte le ballon (2 passes/phase), donc la défense doit
+        // mieux couvrir sinon le score explose (mesuré 61 pts). Ramène à ~51 pts / 7 essais.
+        const probaPlaquage = Math.max(0.80, Math.min(0.95, 0.92 + bonusFraicheur + (defenseurProche.plaquage - this.porteur.vitesse) / 250));
         if (this.rng() >= probaPlaquage) {
           // Plaquage manqué : le défenseur reste hors-jeu de contact un court
           // instant, le porteur poursuit sa course sans être inquiété par lui.
@@ -1349,6 +1352,25 @@
           const cibleX10 = porteur.x - porteur.sensAttaque * 4;
           avancer(j, cibleX10 - j.x, cibleY10 - j.y, dt, vitesseMs(j) * 0.9);
           continue;
+        }
+        // LIGNE DE TROIS-QUARTS À PLAT : quand un back (9-13) porte en jeu courant,
+        // les backs situés À L'EXTÉRIEUR de lui dans la ligne (vers le grand côté)
+        // se placent ÉCARTÉS (~7 m entre chaque) et seulement LÉGÈREMENT en retrait
+        // (~3-6 m, jamais loin derrière — « pas de passe derrière soi »), pour
+        // recevoir À PLAT et enchaîner 10→12→13→aile. C'est ce qui fait circuler
+        // le ballon sur 2-3 passes avant le contact, au lieu de foncer au ras.
+        const ordreLigne = { 10: 0, 12: 1, 13: 2, 11: 3, 14: 3 };
+        if (this.phase === 'PORTE' && !soutienDirect.has(j)
+          && porteur.numero >= 9 && porteur.numero <= 13
+          && (j.numero >= 10 && j.numero <= 14)) {
+          const rang = (ordreLigne[j.numero] ?? 3) - (ordreLigne[porteur.numero] ?? 0);
+          if (rang > 0) {
+            const coteOuvert = porteur.y <= LARGEUR / 2 ? 1 : -1;
+            const cibleY = Math.max(4, Math.min(LARGEUR - 4, porteur.y + coteOuvert * 7 * rang));
+            const cibleX = porteur.x - porteur.sensAttaque * (2 + rang * 1.3);
+            avancer(j, cibleX - j.x, cibleY - j.y, dt, vitesseMs(j) * 0.9);
+            continue;
+          }
         }
         if (soutienDirect.has(j)) {
           // Soutien rapproché, toujours légèrement en retrait du porteur en
@@ -1621,13 +1643,20 @@
       // courte, <22 m), jamais un saut direct vers l'ailier collé à la touche
       // (marge de bord), et on évite de fixer un partenaire déjà sous pression.
       if (porteur.numero >= 10 && porteur.numero <= 13 && zone !== 'CINQ_M') {
-        const versLarge = att.find(j => j !== porteur && j.auSol === 0
-          && (j.x - porteur.x) * porteur.sensAttaque <= 0.3
-          && Math.abs(j.y - LARGEUR / 2) > Math.abs(porteur.y - LARGEUR / 2) + 3
-          && Math.abs(j.y - LARGEUR / 2) < 24 // zone mi-large, pas collé à la touche
-          && distance(j, porteur) < 22
-          && joueurLePlusProche(this.defenseurs(), j.x, j.y).distance > 4);
-        if (versLarge && this.rng() < (pression ? this.cfg.attaque.jeuLargeTaux.pression : this.cfg.attaque.jeuLargeTaux.calme) * dt) return 'PASS';
+        // On vise le SUIVANT dans la ligne des trois-quarts (plus à l'extérieur :
+        // 10→12→13→aile), onside et en espace, et on FORCE la passe sur lui — une
+        // passe courte et latérale (jamais en arrière). C'est ce qui fait circuler
+        // le ballon sur 2-3 passes avant le contact au lieu de foncer au ras.
+        const ordreL = { 10: 0, 12: 1, 13: 2, 11: 3, 14: 3 };
+        const rangP = ordreL[porteur.numero] ?? 0;
+        const suivant = att.find(j => j !== porteur && j.auSol === 0
+          && (ordreL[j.numero] ?? -1) > rangP
+          && (j.x - porteur.x) * porteur.sensAttaque <= 0.5 // onside (à hauteur/léger retrait)
+          && distance(j, porteur) < 18
+          && joueurLePlusProche(this.defenseurs(), j.x, j.y).distance > 3.5);
+        if (suivant && this.rng() < (pression ? this.cfg.attaque.jeuLargeTaux.pression : this.cfg.attaque.jeuLargeTaux.calme) * dt) {
+          this._passeCibleForcee = suivant; return 'PASS';
+        }
       }
 
       // 3. Passe avant contact, modulée par le PROFIL du porteur (autonomie) :
