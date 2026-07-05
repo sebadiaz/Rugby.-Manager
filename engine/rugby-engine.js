@@ -1631,14 +1631,15 @@
         // retrait. (Varier ce destinataire déstabilise l'alignement et effondre
         // les essais — cf. _tenterPasse, branche passeurNeuf. La largeur vient du
         // 10 qui écarte ensuite le long de la ligne.)
+        // Le 9 donne au 10 QUASI SYSTÉMATIQUEMENT, même si un défenseur est proche
+        // du 10 (c'est une passe, le 10 recevra et décidera) : sinon, dès que la
+        // défense montait vite, le 9 ne trouvait « personne de libre » et fonçait
+        // au ras du ruck où il se faisait plaquer (67 plaquages/match sur le 9 !).
+        // Son rôle est de PASSER, pas de porter. On force la cible sur le 10.
         const dix = att.find(j => j.numero === 10 && j.auSol === 0
-          && (j.x - porteur.x) * porteur.sensAttaque <= 0.3
-          && distance(j, porteur) < 16
-          && joueurLePlusProche(this.defenseurs(), j.x, j.y).distance > 3);
-        // Le 9 donne au 10 QUASI SYSTÉMATIQUEMENT et vite (taux élevé) : c'est son
-        // rôle de passeur. On force la cible sur le 10 pour une passe courte et
-        // nette, et c'est ENSUITE le 10 qui décide de la stratégie (section 2c/3/4).
-        if (dix && this.rng() < (pression ? 6 : 4) * dt) { this._passeCibleForcee = dix; return 'PASS'; }
+          && (j.x - porteur.x) * porteur.sensAttaque <= 0.5
+          && distance(j, porteur) < 20);
+        if (dix) { this._passeCibleForcee = dix; return 'PASS'; }
       }
 
       // 2c. Trois-quarts qui FAIT VIVRE LA LIGNE : un back (10-13) qui a un
@@ -1656,15 +1657,20 @@
         const ordreL = { 10: 0, 12: 1, 13: 2, 11: 3, 14: 3 };
         const rangP = ordreL[porteur.numero] ?? 0;
         // On vise le VOISIN IMMÉDIAT dans la ligne (rang le plus proche au-dessus),
-        // à COURTE distance (< 12 m) : une passe courte et latérale au joueur d'à
-        // côté, jamais une longue passe qui saute par-dessus la ligne.
+        // à courte distance (< 13 m) : passe courte et latérale au joueur d'à côté.
+        // On passe MÊME si un défenseur est proche du receveur (c'est une passe, le
+        // receveur enchaînera) : sinon la chaîne s'arrêtait au 12 dès que la défense
+        // couvrait, et le porteur fonçait au ras. C'est en faisant TOURNER le ballon
+        // vite le long de la ligne qu'on atteint enfin l'espace au large (13/aile).
         const suivant = att.filter(j => j !== porteur && j.auSol === 0
           && (ordreL[j.numero] ?? -1) > rangP
           && (j.x - porteur.x) * porteur.sensAttaque <= 0.5 // onside (à hauteur/léger retrait)
-          && distance(j, porteur) < 12
-          && joueurLePlusProche(this.defenseurs(), j.x, j.y).distance > 3.5)
+          && distance(j, porteur) < 13
+          && joueurLePlusProche(this.defenseurs(), j.x, j.y).distance > 2) // au moins un peu d'air
           .sort((a, b) => (ordreL[a.numero] - ordreL[b.numero]))[0];
-        if (suivant && this.rng() < (pression ? this.cfg.attaque.jeuLargeTaux.pression : this.cfg.attaque.jeuLargeTaux.calme) * dt) {
+        // Passe rapide et fiable le long de la ligne (taux élevé) tant que le
+        // porteur n'est pas au contact immédiat : le ballon file vers le large.
+        if (suivant && distDef > 2.4 && this.rng() < (pression ? this.cfg.attaque.jeuLargeTaux.pression : this.cfg.attaque.jeuLargeTaux.calme) * dt) {
           this._passeCibleForcee = suivant; return 'PASS';
         }
       }
