@@ -1186,10 +1186,10 @@
         // total d'essais, on déplace juste les essais vers la fin du match.
         const fatigue = (this.dureeMatch === Infinity || this.dureeMatch <= 0) ? 0.5 : Math.min(1, this.tempsMatch / this.dureeMatch);
         const bonusFraicheur = (0.5 - fatigue) * 0.06; // +0.03 au coup d'envoi, -0.03 à la 80e
-        // Base relevée 0.88 -> 0.92 pour compenser la défense étirée par le jeu au
-        // large : l'attaque écarte le ballon (2 passes/phase), donc la défense doit
-        // mieux couvrir sinon le score explose (mesuré 61 pts). Ramène à ~51 pts / 7 essais.
-        const probaPlaquage = Math.max(0.80, Math.min(0.95, 0.92 + bonusFraicheur + (defenseurProche.plaquage - this.porteur.vitesse) / 250));
+        // Base 0.83 (~82 % de plaquages réussis) : le jeu structuré à passes
+        // COURTES (9→10 puis ligne) perce moins qu'un large étiré, donc on redonne
+        // un peu d'air à l'attaque pour un score réaliste (~40 pts / 5 essais).
+        const probaPlaquage = Math.max(0.76, Math.min(0.93, 0.83 + bonusFraicheur + (defenseurProche.plaquage - this.porteur.vitesse) / 250));
         if (this.rng() >= probaPlaquage) {
           // Plaquage manqué : le défenseur reste hors-jeu de contact un court
           // instant, le porteur poursuit sa course sans être inquiété par lui.
@@ -1580,17 +1580,20 @@
         // un ruck en bonne position au lieu de sacrifier une possession dans son
         // propre camp) et seulement si le CHANNEL immédiat devant lui est vide
         // (aucun défenseur dans un cône serré) — c'est le vrai trou près du ruck.
+        // Le 9 est un PASSEUR : son travail est de donner au 10, il ne part que
+        // TRÈS RAREMENT au ras. Percée seulement s'il y a un vrai trou net devant
+        // lui près de la ligne adverse, et rarement (r < 0.10). Sinon il donne
+        // (section 2b, 9→10 quasi systématique).
         const enCampAdverse = zone === 'OPP_HALF' || zone === 'OPP_22' || zone === 'CINQ_M';
         const channelVide = !this.defenseurs().some(d => d.auSol === 0
           && (d.x - porteur.x) * sens > -0.5 && (d.x - porteur.x) * sens < 6
           && Math.abs(d.y - porteur.y) < 3);
-        if (channelVide && enCampAdverse && r < 0.45) return 'RUN'; // trou net près de la ligne → il part seul
-        // AVANT LANCÉ tout près (ballon porté / pick) : une option de temps en
-        // temps, pas à chaque sortie (sinon le 9 ne lance plus jamais sa ligne).
+        if (channelVide && enCampAdverse && r < 0.10) return 'RUN'; // trou net près de la ligne → il part seul (rare)
+        // Avant lancé tout près (ballon porté / pick), très occasionnel.
         const avantLance = att.find(j => j.numero <= 8 && j.auSol === 0
           && distance(j, porteur) < 6 && (j.x - porteur.x) * sens <= 0.3 && (j.x - porteur.x) * sens > -5);
-        if (avantLance && r < 0.12) { this._passeCibleForcee = avantLance; return 'PASS'; }
-        // sinon : jeu au pied calibré (section 1) puis lancement 9→10 (section 2b).
+        if (avantLance && r < 0.05) { this._passeCibleForcee = avantLance; return 'PASS'; }
+        // sinon (cas TRÈS majoritaire) : lancement vers l'ouvreur (section 2b).
       }
 
       // 1. Botter en jeu courant : très fréquent dans son propre 22 (surtout
@@ -1632,7 +1635,10 @@
           && (j.x - porteur.x) * porteur.sensAttaque <= 0.3
           && distance(j, porteur) < 16
           && joueurLePlusProche(this.defenseurs(), j.x, j.y).distance > 3);
-        if (dix && this.rng() < (pression ? 0.6 : 0.3) * dt) return 'PASS';
+        // Le 9 donne au 10 QUASI SYSTÉMATIQUEMENT et vite (taux élevé) : c'est son
+        // rôle de passeur. On force la cible sur le 10 pour une passe courte et
+        // nette, et c'est ENSUITE le 10 qui décide de la stratégie (section 2c/3/4).
+        if (dix && this.rng() < (pression ? 6 : 4) * dt) { this._passeCibleForcee = dix; return 'PASS'; }
       }
 
       // 2c. Trois-quarts qui FAIT VIVRE LA LIGNE : un back (10-13) qui a un
@@ -1649,11 +1655,15 @@
         // le ballon sur 2-3 passes avant le contact au lieu de foncer au ras.
         const ordreL = { 10: 0, 12: 1, 13: 2, 11: 3, 14: 3 };
         const rangP = ordreL[porteur.numero] ?? 0;
-        const suivant = att.find(j => j !== porteur && j.auSol === 0
+        // On vise le VOISIN IMMÉDIAT dans la ligne (rang le plus proche au-dessus),
+        // à COURTE distance (< 12 m) : une passe courte et latérale au joueur d'à
+        // côté, jamais une longue passe qui saute par-dessus la ligne.
+        const suivant = att.filter(j => j !== porteur && j.auSol === 0
           && (ordreL[j.numero] ?? -1) > rangP
           && (j.x - porteur.x) * porteur.sensAttaque <= 0.5 // onside (à hauteur/léger retrait)
-          && distance(j, porteur) < 18
-          && joueurLePlusProche(this.defenseurs(), j.x, j.y).distance > 3.5);
+          && distance(j, porteur) < 12
+          && joueurLePlusProche(this.defenseurs(), j.x, j.y).distance > 3.5)
+          .sort((a, b) => (ordreL[a.numero] - ordreL[b.numero]))[0];
         if (suivant && this.rng() < (pression ? this.cfg.attaque.jeuLargeTaux.pression : this.cfg.attaque.jeuLargeTaux.calme) * dt) {
           this._passeCibleForcee = suivant; return 'PASS';
         }
@@ -1683,8 +1693,12 @@
         // jamais qu'un centre, jamais un ailier. D'où un rayon dédié, plus
         // large, pour cette détection (la passe elle-même reste risquée sur
         // la distance via probaReussite dans _tenterPasse).
+        // Distance ramenée de 45 m à 18 m : le « jeu au large » ne doit PAS être
+        // une passe interminable par-dessus tout le terrain (« super longue passe »
+        // signalée). L'écartement se fait de proche en proche via la ligne (2c) ;
+        // ici on ne cherche qu'un partenaire large RAISONNABLEMENT proche.
         const soutienLarge = att.find(j => j !== porteur && j.auSol === 0
-          && j.tendance <= 50 && distance(j, porteur) < 45);
+          && j.tendance <= 50 && distance(j, porteur) < 18);
         // Taux relevé (0.22 -> 0.33) : l'attaque ÉCARTE le ballon plus souvent
         // vers les trois-quarts au lieu de le porter systématiquement au contact —
         // le ballon circule davantage (comme en vrai). On ne relève QUE le jeu au
