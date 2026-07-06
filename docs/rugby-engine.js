@@ -1345,13 +1345,17 @@
           this.porteur._solX = this.porteur.x; this.porteur._solY = this.porteur.y;
           this.stats[this.possession].rucks++; this.stats[this.possession].phases++;
           const tierRuck = this.rng();
-          // Durée de recyclage du ruck, réaliste : ballon rapide ~1,5-3 s,
-          // normal ~3-5 s, lent ~5-7 s. Un vrai ruck se recycle en quelques
-          // secondes (loi 15.16, « use it » ~5 s) — l'ancien palier lent allait
-          // jusqu'à 11 s, ce qui faisait « traîner » les rucks à l'écran.
-          this.ruckDureeCible = (tierRuck < 0.55 ? 1.5 + this.rng() * 1.5
-            : tierRuck < 0.85 ? 3 + this.rng() * 2
-              : 5 + this.rng() * 2) * this._echelleArret;
+          // Durée de recyclage du ruck. BALLON RAPIDE = la norme : le rôle du 9
+          // est de FLUIDIFIER — arriver vite à la base et ressortir le ballon au
+          // plus tôt. La grande majorité des rucks se recyclent donc en ~1-2 s
+          // (ballon rapide), quelques-uns en ~2-3,5 s (normal), et seuls les
+          // rucks vraiment contestés traînent ~3,5-5,5 s. Avant, 45 % des rucks
+          // duraient 3-7 s : le 9 arrivait vite (mesuré : à ~1 m de la base) mais
+          // restait planté à ATTENDRE le timer — d'où l'impression d'« attente
+          // très longue au ruck » alors que le ballon était jouable.
+          this.ruckDureeCible = (tierRuck < 0.65 ? 0.9 + this.rng() * 1.1
+            : tierRuck < 0.90 ? 2.0 + this.rng() * 1.5
+              : 3.5 + this.rng() * 2) * this._echelleArret;
           this.ruckTempsSansSoutien = 0;
           this.phase = 'RUCK';
           this._receptionDirecte = false;
@@ -1547,11 +1551,11 @@
             porteur._solX = porteur.x; porteur._solY = porteur.y;
             this.stats[this.possession].rucks++; this.stats[this.possession].phases++;
             const tierRuck = this.rng();
-            // Recyclage réaliste (cf. l'autre site de création de ruck) : max ~7 s
-            // au lieu de 11 s, pour que les rucks ne traînent plus à l'écran.
-            this.ruckDureeCible = (tierRuck < 0.55 ? 1.5 + this.rng() * 1.5
-              : tierRuck < 0.85 ? 3 + this.rng() * 2
-                : 5 + this.rng() * 2) * this._echelleArret;
+            // Recyclage rapide, ballon rapide en norme (cf. l'autre site de
+            // création de ruck) : ~1-2 s en majorité, ~3,5-5,5 s au maximum.
+            this.ruckDureeCible = (tierRuck < 0.65 ? 0.9 + this.rng() * 1.1
+              : tierRuck < 0.90 ? 2.0 + this.rng() * 1.5
+                : 3.5 + this.rng() * 2) * this._echelleArret;
             this.ruckTempsSansSoutien = 0;
             this.ruckDominant = false; // plaquage de sauvetage in extremis, pas un ballon sur l'avancée
             this.phase = 'RUCK';
@@ -2286,8 +2290,19 @@
       const eqAtt = this.possession === 'A' ? this.equipeA : this.equipeB;
       const soutienArrive = eqAtt.some(j => j !== this.porteur && j.auSol === 0
         && j.sinBin <= 0 && distance(j, pt) < 2.5);
+      // Le ballon ne SORT proprement que lorsque le n°9 est ARRIVÉ à la base
+      // (son rôle : rejoindre vite le ruck pour jouer le ballon). Avec le ballon
+      // rapide, le ruck peut être « mûr » avant que le 9 n'ait fini de courir ;
+      // on lui laisse alors un court délai (≤ ~2 s au-delà de la durée cible)
+      // pour arriver, plutôt que de sortir le ballon vers un 9 encore à 8-10 m
+      // (ce qui faisait « filer » le ballon loin de la base au lieu d'une vraie
+      // sortie de demi de mêlée). Passé ce délai, on sort quand même (un avant
+      // relaie), pour ne jamais bloquer le jeu.
+      const neuf9 = eqAtt.find(j => j.numero === 9 && j.auSol === 0 && j.sinBin <= 0);
+      const neufPret = !neuf9 || distance(neuf9, pt) < 4;
       if (this.timerPhase >= dureeCible) {
         if (!soutienArrive && this.timerPhase < dureeCible + 4 * this._echelleArret) return;
+        if (!neufPret && this.timerPhase < dureeCible + 2 * this._echelleArret) return;
         // Contest au ruck pondéré par les avants réellement engagés autour du
         // point de ruck (même proxy de force que le maul, forceMaul), plutôt
         // qu'un taux de turnover fixe : un paquet adverse plus nombreux ou
@@ -2730,11 +2745,23 @@
       this.essaiY = m.y;
       this.essaiEquipe = poss;
       this.log('ESSAI', poss, `Essai sur maul penetrant, equipe ${poss} !`);
+      // Le MARQUEUR est le porteur RÉEL du maul : pendant toute la poussée,
+      // _tickMaul l'a maintenu collé à l'arrière du maul (this.porteur, cf.
+      // lignes « this.porteur.x = m.x - m.sens*0.8 »), il est donc DÉJÀ sur la
+      // ligne. On l'aplatit d'un pas par-dessus la ligne. AVANT, on réassignait
+      // this.porteur à un n°8 nominal (eq[7]) placé ailleurs sur le terrain puis
+      // on le TÉLÉPORTAIT sur la marque (saut mesuré ~20 m) — le porteur réel,
+      // lui, était pourtant déjà au bon endroit. On garde donc le porteur courant.
+      const marqueur = this.porteur;
       this._finMaul();
       this.possession = poss;
-      this.porteur = (poss === 'A' ? this.equipeA : this.equipeB)[7];
-      this.porteur.x = x;
-      this.porteur.y = m.y;
+      if (marqueur) {
+        marqueur.x = x; marqueur.y = m.y;
+        this.porteur = marqueur;
+      } else {
+        this.porteur = (poss === 'A' ? this.equipeA : this.equipeB)[7];
+        this.porteur.x = x; this.porteur.y = m.y;
+      }
       this.phase = 'ESSAI';
       this.timerPhase = 0;
     }
