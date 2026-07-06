@@ -1264,7 +1264,7 @@
         // volontairement bas (~1 contact sur 75) : à 0.045 il produisait à lui
         // seul ~25 mêlées/match, très au-dessus du repère réel (8-25 mêlées
         // TOTALES par match, cf. CLAUDE.md Rôle 6).
-        if (this.rng() < 0.012) {
+        if (this.rng() < 0.008) {
           this.stats[this.possession].knockOns++;
           this.log('MELEE_ENAVANT', this.possession, `En-avant au contact, equipe ${this.possession} - melee adverse`);
           this._accorderMelee(this.possession, porteur);
@@ -1392,6 +1392,19 @@
       );
       for (const j of att) {
         if (j === porteur) continue;
+        // HORS-JEU D'ATTAQUE (jeu courant) : un coéquipier NETTEMENT devant le
+        // porteur est hors-jeu. Au lieu de traîner devant le ballon (les avants du
+        // temps précédent restaient plantés en avant quand le ballon repartait vers
+        // l'arrière — « hors-jeu » très visible), il se REPLIE derrière le porteur
+        // pour se remettre onside, comme un vrai joueur. Repli à allure modérée
+        // (0,8×) pour ne pas déstructurer le jeu ; seuil 2 m pour ne cibler que les
+        // joueurs franchement hors-jeu (au-delà de la tolérance de passe et de
+        // l'alignement à plat de la ligne).
+        if (this.phase === 'PORTE' && (j.x - porteur.x) * porteur.sensAttaque > 2) {
+          const cibleX = porteur.x - porteur.sensAttaque * 2.5;
+          avancer(j, cibleX - j.x, (j.channelY - j.y) * 0.3, dt, vitesseMs(j) * 0.8);
+          continue;
+        }
         // L'OUVREUR (10) ne se place JAMAIS dans le dos direct du 9 : quand le 9
         // a le ballon (sortie), le 10 se décale sur un CÔTÉ (le grand côté, plus
         // d'espace) et EN RETRAIT, pour recevoir lancé et avec un angle et amorcer
@@ -1921,7 +1934,15 @@
       // des passes longues, ce qui produisait ~19 mêlées/match sur passe ratée
       // (bien trop : cf. repère 8-25 mêlées TOTALES, CLAUDE.md Rôle 6). On
       // relève le plancher et on adoucit la pénalité de distance.
-      const probaReussite = Math.max(0.96, Math.min(0.99, 0.995 - distancePasse / 150));
+      // Une passe COURTE (9->10, passe le long de la ligne au voisin) se complète
+      // en réalité à ~99 % : elle ne doit quasiment jamais finir en mêlée. Seules
+      // les passes LONGUES (sautée, jeu au large tendu) gardent un vrai risque.
+      // L'ancien plancher 0,96 faisait rater ~4 % de TOUTES les passes ; comme le
+      // moteur en joue beaucoup (structure 9->10->ligne), ça produisait ~56 mêlées
+      // sur passe ratée par match — d'où l'impression de « passes en avant / ratées
+      // partout ». On rend les passes courtes très fiables (jusqu'à 0,995) et on
+      // ne pénalise vraiment que la distance.
+      const probaReussite = Math.max(0.95, Math.min(0.994, 1.0 - distancePasse / 300));
       if (this.rng() < probaReussite) {
         this.stats[this.possession].passes++;
         // FIXAGE / SURNOMBRE : si le passeur (un back) a couru sur son défenseur
