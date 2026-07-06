@@ -1281,32 +1281,16 @@
         if (this.ruckDominant) {
           // Plaquage dominant : la défense repousse le porteur (~1,2 m perdus).
           this.porteur.x -= this.porteur.sensAttaque * 1.2;
-        } else {
-          // GAIN LINE AU CONTACT (miroir du plaquage dominant) : un porteur lancé
-          // tombe EN AVANT (poussée des jambes, ballon « sur l'avancée »), donc le
-          // ruck se forme un PEU AU-DELÀ du point de plaquage. Sans ce pendant,
-          // SEULE la défense gagnait du terrain au contact et CHAQUE phase reculait
-          // en moyenne (mesuré : gain moyen négatif) — le match paraissait un
-          // surplace de rucks au ras au lieu d'avancer vers l'en-but. Le gain
-          // ÉMERGE du duel réel porteur/plaqueur (vitesse-élan contre plaquage),
-          // borné à ~1,4 m : un porteur qui domine son vis-à-vis avance franchement,
-          // un porteur dominé n'avance quasiment pas. Base ~0,35 m = la simple chute
-          // vers l'avant d'un joueur en mouvement. Valeurs calibrées pour garder
-          // score (~44) et essais (~5,5) dans les repères réels tout en ramenant le
-          // gain moyen par phase de −0,5 m (net recul) à quasi neutre.
-          const elan = this.porteur.vitesse - defenseurProche.plaquage;
-          const gainContact = Math.max(0, Math.min(1.4, 0.35 + elan / 45));
-          this.porteur.x += this.porteur.sensAttaque * gainContact;
-          // Le gain au contact ne FRANCHIT JAMAIS la ligne d'essai : un porteur
-          // plaqué court de la ligne reste au ruck DEVANT l'en-but (un essai ne
-          // s'aplatit qu'en jeu courant, hors contact, cf. branche course). Sans
-          // ce garde-fou, l'avancée pouvait poser le ruck dans l'en-but (~0,5 m
-          // au-delà) — un ruck en-but, situation non réglementaire.
-          const ligneEssai = this.porteur.sensAttaque > 0 ? LONGUEUR : 0;
-          if ((this.porteur.x - ligneEssai) * this.porteur.sensAttaque > -0.5) {
-            this.porteur.x = ligneEssai - this.porteur.sensAttaque * 0.5;
-          }
         }
+        // Plaquage NORMAL : le ruck se forme exactement au point de plaquage
+        // (aucun gain ni recul fabriqué). L'attaque gagne du terrain EN AMONT,
+        // par une LIGNE DE TROIS-QUARTS À PLAT qui reçoit lancée et franchit la
+        // ligne d'avantage (cf. positionnement des backs au ruck) — pas par une
+        // poussée artificielle au contact. Mesuré : cette ligne plate suffit à
+        // rendre le gain moyen par phase positif (+0,09 m) avec un score (~45) et
+        // des essais (~5,5) réalistes ; un gain de contact en plus sur-gonflait
+        // le score (~53). On préfère donc la cause réelle (l'alignement) à un
+        // effet fabriqué.
         this.ruckPoint = { x: this.porteur.x, y: this.porteur.y };
         this.contestants = [defenseurProche.numero];
         // Offload : le porteur plaqué mais pas encore au sol transmet à un
@@ -2268,8 +2252,27 @@
         // du ruck (ligne onside prête à relancer), la défense monte en ligne à
         // plat de son côté.
         if (j.team === this.possession) {
-          const cibleX = pt.x - sensAttaque * (8 + Math.abs(j.channelY - pt.y) * 0.12);
-          avancer(j, cibleX - j.x, j.channelY - j.y, dt, vitesseMs(j) * 0.7);
+          // La LIGNE DE TROIS-QUARTS (10-14) se met en place PENDANT le ruck : à
+          // PLAT (~4-6 m derrière la base, onside) et ÉTAGÉE sur le CÔTÉ OUVERT,
+          // prête à lancer le jeu au large DÈS la sortie du 9. Avant, tous les
+          // attaquants étaient massés ~8 m derrière le ruck : le 9 devait alors
+          // passer 7-11 m EN ARRIÈRE au 10 (mesuré), le ballon reculait à chaque
+          // passe et l'attaque ne « lançait » jamais le jeu sur le côté. Les backs
+          // se placent donc en éventail à droite/gauche du 9, pas dans son dos.
+          const estBack = j.numero >= 10 && j.numero <= 14;
+          if (estBack) {
+            const coteOuvert = pt.y <= LARGEUR / 2 ? 1 : -1;
+            const ordreBack = { 10: 1, 12: 2, 13: 3, 11: 4, 14: 4 };
+            const rangB = ordreBack[j.numero] || 2;
+            const cibleY = Math.max(4, Math.min(LARGEUR - 4, pt.y + coteOuvert * (6 + (rangB - 1) * 7)));
+            const cibleX = pt.x - sensAttaque * (4 + rangB * 0.7);
+            avancer(j, cibleX - j.x, cibleY - j.y, dt, vitesseMs(j) * 0.85);
+          } else {
+            // Avants non engagés + arrière (15) : en soutien un peu plus en
+            // retrait, dans leur couloir, prêts pour le temps suivant.
+            const cibleX = pt.x - sensAttaque * (6 + Math.abs(j.channelY - pt.y) * 0.12);
+            avancer(j, cibleX - j.x, j.channelY - j.y, dt, vitesseMs(j) * 0.7);
+          }
         } else {
           const cibleX = sensAttaque > 0 ? pt.x + margeRecul : pt.x - margeRecul;
           avancer(j, cibleX - j.x, j.channelY - j.y, dt, vitesseMs(j) * 0.7);
@@ -4014,6 +4017,17 @@
       if (this.phase !== 'MELEE' && this.phase !== 'TOUCHE') {
         for (const j of [...this.equipeA, ...this.equipeB]) {
           if (j.auSol > 0 && j._solX != null) { j.x = j._solX; j.y = j._solY; }
+        }
+      } else {
+        // Pendant la formation d'une mêlée/touche, un joueur encore à terre
+        // (auSol > 0) est autorisé à REJOINDRE sa place (freeze levé ci-dessus).
+        // On lève alors définitivement son épingle de chute (_solX) : sinon, dès
+        // qu'on RESORT de la mêlée/touche (ex. mi-temps qui interrompt la mêlée),
+        // le gel se réactive et le RE-fige d'un coup à son ancien point de chute
+        // — un saut visible (mesuré : ~5 m) alors qu'il avait déjà rejoint sa
+        // position. Une fois qu'il a commencé à se replacer, il n'est plus épinglé.
+        for (const j of [...this.equipeA, ...this.equipeB]) {
+          if (j._solX != null) { j._solX = null; j._solY = null; }
         }
       }
       // Suivi de l'avantage (loi 8) APRÈS la phase : on évalue sur l'état mis à
