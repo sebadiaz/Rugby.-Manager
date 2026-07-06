@@ -1297,6 +1297,15 @@
           const elan = this.porteur.vitesse - defenseurProche.plaquage;
           const gainContact = Math.max(0, Math.min(1.4, 0.35 + elan / 45));
           this.porteur.x += this.porteur.sensAttaque * gainContact;
+          // Le gain au contact ne FRANCHIT JAMAIS la ligne d'essai : un porteur
+          // plaqué court de la ligne reste au ruck DEVANT l'en-but (un essai ne
+          // s'aplatit qu'en jeu courant, hors contact, cf. branche course). Sans
+          // ce garde-fou, l'avancée pouvait poser le ruck dans l'en-but (~0,5 m
+          // au-delà) — un ruck en-but, situation non réglementaire.
+          const ligneEssai = this.porteur.sensAttaque > 0 ? LONGUEUR : 0;
+          if ((this.porteur.x - ligneEssai) * this.porteur.sensAttaque > -0.5) {
+            this.porteur.x = ligneEssai - this.porteur.sensAttaque * 0.5;
+          }
         }
         this.ruckPoint = { x: this.porteur.x, y: this.porteur.y };
         this.contestants = [defenseurProche.numero];
