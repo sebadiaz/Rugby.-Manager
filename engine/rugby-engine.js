@@ -1278,7 +1278,26 @@
         // qui rend un bon plaquage payant au lieu de toujours céder du terrain.
         const margePlaquage = defenseurProche.plaquage - this.porteur.vitesse;
         this.ruckDominant = margePlaquage > 12 && this.rng() < 0.3;
-        if (this.ruckDominant) this.porteur.x -= this.porteur.sensAttaque * 1.2;
+        if (this.ruckDominant) {
+          // Plaquage dominant : la défense repousse le porteur (~1,2 m perdus).
+          this.porteur.x -= this.porteur.sensAttaque * 1.2;
+        } else {
+          // GAIN LINE AU CONTACT (miroir du plaquage dominant) : un porteur lancé
+          // tombe EN AVANT (poussée des jambes, ballon « sur l'avancée »), donc le
+          // ruck se forme un PEU AU-DELÀ du point de plaquage. Sans ce pendant,
+          // SEULE la défense gagnait du terrain au contact et CHAQUE phase reculait
+          // en moyenne (mesuré : gain moyen négatif) — le match paraissait un
+          // surplace de rucks au ras au lieu d'avancer vers l'en-but. Le gain
+          // ÉMERGE du duel réel porteur/plaqueur (vitesse-élan contre plaquage),
+          // borné à ~1,4 m : un porteur qui domine son vis-à-vis avance franchement,
+          // un porteur dominé n'avance quasiment pas. Base ~0,35 m = la simple chute
+          // vers l'avant d'un joueur en mouvement. Valeurs calibrées pour garder
+          // score (~44) et essais (~5,5) dans les repères réels tout en ramenant le
+          // gain moyen par phase de −0,5 m (net recul) à quasi neutre.
+          const elan = this.porteur.vitesse - defenseurProche.plaquage;
+          const gainContact = Math.max(0, Math.min(1.4, 0.35 + elan / 45));
+          this.porteur.x += this.porteur.sensAttaque * gainContact;
+        }
         this.ruckPoint = { x: this.porteur.x, y: this.porteur.y };
         this.contestants = [defenseurProche.numero];
         // Offload : le porteur plaqué mais pas encore au sol transmet à un
@@ -1755,6 +1774,28 @@
         // score (ballon latéral sans percer + en-avants), tandis que l'écart vers
         // l'espace fait vivre le jeu sans casser la finition (score préservé ~47).
         if (soutienLarge && this.rng() < 0.33 * dt) return 'JEU_LARGE';
+      }
+
+      // 4b. ANTI « DÉPART AU RAS » : un demi/back (9-13) pris tout près du
+      // regroupement, en plein champ (pas dans les 22 m, où le pick-and-go /
+      // la percée près de la ligne sont légitimes), ne CRASHE PAS bêtement le
+      // ballon 3 m après la sortie — il le garde vivant en le donnant au
+      // partenaire SUIVANT de la ligne (plus à l'extérieur, onside, à portée)
+      // pour continuer d'écarter. C'est la dernière option avant le contact :
+      // mesuré, les rucks « au ras » (< 5 m du précédent) venaient à 55 % du
+      // 9/10/12 qui recevaient et se faisaient plaquer sur place au lieu de
+      // faire circuler. On ne déclenche ce relais que si le partenaire existe
+      // (sinon on retombe sur le contact) — donc jamais de passe dans le vide.
+      if (porteur.numero >= 9 && porteur.numero <= 13
+          && zone !== 'CINQ_M' && zone !== 'OPP_22' && distDef < 2.2) {
+        const ordreRelais = { 9: -1, 10: 0, 12: 1, 13: 2, 15: 2, 11: 3, 14: 3 };
+        const rangP = ordreRelais[porteur.numero] ?? 0;
+        const relais = att.filter(j => j !== porteur && j.auSol === 0
+          && (ordreRelais[j.numero] ?? -2) > rangP
+          && (j.x - porteur.x) * porteur.sensAttaque <= 0.5 // onside (jamais devant)
+          && distance(j, porteur) < 14)
+          .sort((a, b) => (ordreRelais[a.numero] - ordreRelais[b.numero]))[0];
+        if (relais) { this._passeCibleForcee = relais; return 'PASS'; }
       }
 
       // 5. Hors de portée de plaquage et aucune décision ci-dessus : on
