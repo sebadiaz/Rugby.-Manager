@@ -1323,11 +1323,28 @@
         const soutiens = att0.filter(j => j !== porteur && distance(j, porteur) < rayonOffload && j.auSol === 0
           && (j.x - porteur.x) * porteur.sensAttaque <= 0.3);
         if (soutiens.length > 0 && this.rng() < tauxOffload) {
-          const { joueur: receveurOffload } = joueurLePlusProche(soutiens, porteur.x, porteur.y);
+          // Sur PERCÉE, le perceur sert le soutien EN ESPACE (défenseur le plus
+          // proche le plus loin), pas le plus proche dans le trafic : c'est le
+          // receveur lancé dans le trou qui prolonge vraiment l'avancée. Dans un
+          // plaquage banal, on garde le soutien le plus proche (offload court).
+          let receveurOffload;
+          if (enPercee) {
+            let meilleurAir = -1;
+            for (const s of soutiens) {
+              const air = joueurLePlusProche(def, s.x, s.y).distance;
+              if (air > meilleurAir) { meilleurAir = air; receveurOffload = s; }
+            }
+          } else {
+            ({ joueur: receveurOffload } = joueurLePlusProche(soutiens, porteur.x, porteur.y));
+          }
           this.stats[this.possession].passes++;
           this.stats[this.possession].offloads++;
           this.log('OFFLOAD', this.possession, `Offload de l'equipe ${this.possession} dans le plaquage`);
           this._lancerPasseVisuelle(porteur, receveurOffload);
+          // NB : figer les défenseurs engagés sur le plaquage (fixeCooldown) a été
+          // testé ici et RETIRÉ — mesuré négatif (-4 pts sur deux jeux de graines) :
+          // gelés, ils ne se replient plus et se retrouvent parfaitement placés au
+          // point de chute suivant. L'espace vient du receveur décalé, pas du gel.
           this.porteur = receveurOffload;
           this._receptionDirecte = false;
           return;
@@ -1480,14 +1497,23 @@
         if (soutienDirect.has(j)) {
           // Soutien rapproché, toujours légèrement en retrait du porteur en
           // profondeur (jamais devant, sinon passe en avant) : il attend le
-          // ballon dans son dos. Si le porteur est EN PERCÉE (défenseur battu),
-          // le soutien SPRINTE dans sa foulée (pleine vitesse) pour offrir le
-          // relais de continuité — c'est lui qui reçoit l'offload quand la
-          // couverture reprend le perceur.
-          const angle = (j.numero % 5) - 2;
+          // ballon dans son dos.
           const cibleX = porteur.x - porteur.sensAttaque * 1.5;
-          const vSoutien = (porteur._percee || 0) > 0 ? vitesseMs(j) : vitesseMs(j) * 0.9;
-          avancer(j, cibleX - j.x, (porteur.y - j.y) + angle * 0.5, dt, vSoutien);
+          if ((porteur._percee || 0) > 0) {
+            // PERCÉE : le soutien SPRINTE en LIGNE DE PASSE dans l'ESPACE — il ne
+            // colle pas l'axe du perceur (où la couverture converge), il se
+            // décale du CÔTÉ OPPOSÉ au défenseur de couverture le plus proche.
+            // L'offload du perceur trouve ainsi un receveur lancé EN ESPACE, ce
+            // qui transforme la percée en avancée longue/essai construit au lieu
+            // d'un relais dans le trafic aussitôt plaqué.
+            const { joueur: couverture } = joueurLePlusProche(def, porteur.x, porteur.y);
+            const coteLibre = couverture ? (Math.sign(porteur.y - couverture.y) || 1) : 1;
+            const cibleY = Math.max(3, Math.min(LARGEUR - 3, porteur.y + coteLibre * 4));
+            avancer(j, cibleX - j.x, cibleY - j.y, dt, vitesseMs(j));
+          } else {
+            const angle = (j.numero % 5) - 2;
+            avancer(j, cibleX - j.x, (porteur.y - j.y) + angle * 0.5, dt, vitesseMs(j) * 0.9);
+          }
         } else {
           // AUTONOMIE par le profil : chaque joueur suit le ballon selon SA
           // tendance individuelle (proximité au ballon, cf. modèle) plutôt qu'un
