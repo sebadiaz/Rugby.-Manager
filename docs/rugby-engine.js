@@ -1428,8 +1428,30 @@
           .sort((a, b) => distance(a, porteur) - distance(b, porteur))
           .slice(0, 2)
       );
+      // AVANT LANCÉ : quand le 9 tient le ballon à la base, l'avant de pod le
+      // plus proche (onside) part en COURSE DE PERCUSSION vers la ligne
+      // d'avantage — il arrive lancé au niveau du 9, prêt à percuter si le 9 le
+      // sert (cf. choisirActionPorteur, avantLance). C'est l'animation visible
+      // du jeu d'avants : un gros qui se lance dans l'axe à chaque temps de jeu,
+      // même quand le ballon part finalement au large.
+      let avantLanceRun = null;
+      if (porteur.numero === 9) {
+        let dminLance = 9;
+        for (const k of att) {
+          if (k !== porteur && k.numero <= 8 && k.auSol === 0
+            && (k.x - porteur.x) * porteur.sensAttaque <= 0.5) {
+            const dk = distance(k, porteur);
+            if (dk < dminLance) { dminLance = dk; avantLanceRun = k; }
+          }
+        }
+      }
       for (const j of att) {
         if (j === porteur) continue;
+        if (j === avantLanceRun) {
+          const cibleXl = porteur.x - porteur.sensAttaque * 0.3;
+          avancer(j, cibleXl - j.x, (porteur.y - j.y) * 0.3, dt, vitesseMs(j));
+          continue;
+        }
         // HORS-JEU D'ATTAQUE (jeu courant) : un coéquipier NETTEMENT devant le
         // porteur est hors-jeu. Au lieu de traîner devant le ballon (les avants du
         // temps précédent restaient plantés en avant quand le ballon repartait vers
@@ -1728,10 +1750,16 @@
           && (d.x - porteur.x) * sens > -0.5 && (d.x - porteur.x) * sens < 6
           && Math.abs(d.y - porteur.y) < 3);
         if (channelVide && enCampAdverse && r < 0.10) return 'RUN'; // trou net près de la ligne → il part seul (rare)
-        // Avant lancé tout près (ballon porté / pick), très occasionnel.
+        // AVANT LANCÉ sur le pod (animation offensive) : les avants se tiennent
+        // en pods à plat de chaque côté du ruck (cf. _tickRuck) et le plus
+        // proche part en course de percussion dès que le 9 tient le ballon (cf.
+        // _tickPorte). Le 9 le sert nettement plus souvent qu'avant (18 % contre
+        // 5 %) : l'attaque ALTERNE visiblement percussion dans l'axe et
+        // lancement au large, comme une vraie animation offensive — au lieu de
+        // sortir mécaniquement vers le 10 à chaque temps de jeu.
         const avantLance = att.find(j => j.numero <= 8 && j.auSol === 0
-          && distance(j, porteur) < 6 && (j.x - porteur.x) * sens <= 0.3 && (j.x - porteur.x) * sens > -5);
-        if (avantLance && r < 0.05) { this._passeCibleForcee = avantLance; return 'PASS'; }
+          && distance(j, porteur) < 8 && (j.x - porteur.x) * sens <= 0.3 && (j.x - porteur.x) * sens > -5);
+        if (avantLance && r < 0.18) { this._passeCibleForcee = avantLance; return 'PASS'; }
         // sinon (cas TRÈS majoritaire) : lancement vers l'ouvreur (section 2b).
       }
 
@@ -2298,6 +2326,12 @@
           .sort((a, b) => distance(a, pt) - distance(b, pt))
           .slice(0, 3)
       );
+      // Avants disponibles pour les PODS de relais (cf. placement plus bas) :
+      // ordre stable (numéro) pour que chacun garde son pod d'un tick à l'autre.
+      this._podAvants = [...this.equipeA, ...this.equipeB]
+        .filter(j => j.team === this.possession && j !== this.porteur && j.auSol === 0
+          && j.sinBin <= 0 && j.numero <= 8 && j.numero !== 9 && !soutiensRuck.has(j))
+        .sort((a, b) => a.numero - b.numero);
       let iContestants = 0, iSoutien = 0;
       for (const j of [...this.equipeA, ...this.equipeB]) {
         if (j === this.porteur) continue;
@@ -2375,9 +2409,24 @@
             const cibleY = Math.max(4, Math.min(LARGEUR - 4, pt.y + coteOuvert * (7 + (rangB - 1) * 8)));
             const cibleX = pt.x - sensAttaque * (6.5 + rangB * 1.4);
             avancer(j, cibleX - j.x, cibleY - j.y, dt, vitesseMs(j) * 0.85);
+          } else if (j.numero <= 8) {
+            // PODS D'AVANTS (animation offensive) : les avants non engagés ne
+            // flottent plus chacun dans son couloir — ils se GROUPENT en deux
+            // cellules de relais (2-3 joueurs serrés) À PLAT (~3 m derrière la
+            // base), une de CHAQUE CÔTÉ du ruck (~4,5-8 m), comme les pods du
+            // rugby moderne (structure 1-3-3-1). Ce sont les options de
+            // percussion du 9 (avant lancé dans l'axe) et le premier rideau de
+            // conservation du temps suivant. Visuellement : deux blocs compacts
+            // qui encadrent chaque ruck au lieu d'une masse diffuse.
+            const coteOuvert = pt.y <= LARGEUR / 2 ? 1 : -1;
+            const iPod = this._podAvants ? this._podAvants.indexOf(j) : -1;
+            const cote = (iPod % 2 === 0) ? coteOuvert : -coteOuvert;
+            const rangPod = Math.max(0, Math.floor(iPod / 2));
+            const cibleY = Math.max(3, Math.min(LARGEUR - 3, pt.y + cote * (4.5 + rangPod * 1.8)));
+            const cibleX = pt.x - sensAttaque * 3.2;
+            avancer(j, cibleX - j.x, cibleY - j.y, dt, vitesseMs(j) * 0.85);
           } else {
-            // Avants non engagés + arrière (15) : en soutien un peu plus en
-            // retrait, dans leur couloir, prêts pour le temps suivant.
+            // Arrière (15) : en couverture profonde dans son couloir.
             const cibleX = pt.x - sensAttaque * (6 + Math.abs(j.channelY - pt.y) * 0.12);
             avancer(j, cibleX - j.x, j.channelY - j.y, dt, vitesseMs(j) * 0.7);
           }
