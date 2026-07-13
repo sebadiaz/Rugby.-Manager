@@ -115,9 +115,12 @@
       pickAndGoHuit: { dominant: 0.35, normal: 0.12 },
     },
     // Organisation d'attaque : taux de jeu au large (écarter vers le centre en
-    // espace) sous pression / au calme.
+    // espace) sous pression / au calme. Cadence ~1 passe/s max : un receveur
+    // LANCÉ (cf. placement profond + élan) fait d'abord 3-5 foulées ballon en
+    // main (~1 s, 5-6 m) avant de servir le suivant — à 2,5/s il lâchait le
+    // ballon en ~0,4 s sans jamais manger sa piste d'élan, et la ligne reculait.
     attaque: {
-      jeuLargeTaux: { pression: 2.5, calme: 1.8 },
+      jeuLargeTaux: { pression: 1.4, calme: 1.0 },
     },
     // Organisation de défense : profondeur de couverture de l'arrière (n°15) en
     // jeu courant et à la mêlée, recul de la ligne au ruck.
@@ -1411,14 +1414,15 @@
         // l'attaque — pas à l'arrêt collé au regroupement. C'est ce premier
         // receveur décalé qui donne une vraie ligne d'attaque.
         if (j.numero === 10 && porteur.numero === 9 && j.auSol === 0) {
-          // Décalé sur le côté ouvert (~6 m) et légèrement en retrait (~4 m) :
-          // clairement SUR UN CÔTÉ et non dans le dos du 9, mais assez proche
-          // pour rester le premier relais de l'attaque (un décalage trop large
-          // sortait le 10 de la structure et effondrait les essais — mesuré).
+          // Quand le 9 tient le ballon (sortie), le 10 — parti PROFOND (placé
+          // ~8 m derrière pendant le ruck) — S'ÉLANCE à pleine vitesse vers une
+          // cible quasi à plat sur le côté ouvert : la passe du 9 part en ~0,3-
+          // 0,5 s, donc le 10 la reçoit LANCÉ, encore ~4-6 m derrière (passe
+          // légale) mais en pleine accélération vers la ligne d'avantage.
           const coteOuvert = porteur.y <= LARGEUR / 2 ? 1 : -1;
           const cibleY10 = Math.max(6, Math.min(LARGEUR - 6, porteur.y + coteOuvert * 6));
-          const cibleX10 = porteur.x - porteur.sensAttaque * 4;
-          avancer(j, cibleX10 - j.x, cibleY10 - j.y, dt, vitesseMs(j) * 0.9);
+          const cibleX10 = porteur.x - porteur.sensAttaque * 1.5;
+          avancer(j, cibleX10 - j.x, cibleY10 - j.y, dt, vitesseMs(j));
           continue;
         }
         // LIGNE DE TROIS-QUARTS À PLAT : quand un back (9-13) porte en jeu courant,
@@ -1433,10 +1437,25 @@
           && (j.numero >= 10 && j.numero <= 14)) {
           const rang = (ordreLigne[j.numero] ?? 3) - (ordreLigne[porteur.numero] ?? 0);
           if (rang > 0) {
+            // LANCEMENT : partis EN PROFONDEUR (placés ~8-12 m derrière pendant
+            // le ruck), les backs extérieurs SPRINTENT (pleine vitesse) vers une
+            // cible quasi À PLAT sur le porteur — ils prennent de la vitesse
+            // pendant que le ballon voyage et le reçoivent EN PLEINE COURSE au
+            // moment de franchir la ligne d'avantage, au lieu d'attendre à plat
+            // et d'être plaqués sur place (« départ au ras »).
             const coteOuvert = porteur.y <= LARGEUR / 2 ? 1 : -1;
+            // L'ailier côté fermé tient son aile (cf. placement au ruck) au lieu
+            // de traverser tout le terrain pour rejoindre l'éventail ouvert.
+            const estAilier = j.numero === 11 || j.numero === 14;
+            const sonCote = Math.sign(j.channelY - LARGEUR / 2) || 1;
+            if (estAilier && sonCote !== coteOuvert) {
+              const cibleXa = porteur.x - porteur.sensAttaque * 4;
+              avancer(j, cibleXa - j.x, j.channelY - j.y, dt, vitesseMs(j) * 0.85);
+              continue;
+            }
             const cibleY = Math.max(4, Math.min(LARGEUR - 4, porteur.y + coteOuvert * 7 * rang));
-            const cibleX = porteur.x - porteur.sensAttaque * (2 + rang * 1.3);
-            avancer(j, cibleX - j.x, cibleY - j.y, dt, vitesseMs(j) * 0.9);
+            const cibleX = porteur.x - porteur.sensAttaque * (0.8 + rang * 0.6);
+            avancer(j, cibleX - j.x, cibleY - j.y, dt, vitesseMs(j));
             continue;
           }
         }
@@ -2282,11 +2301,31 @@
           // se placent donc en éventail à droite/gauche du 9, pas dans son dos.
           const estBack = j.numero >= 10 && j.numero <= 14;
           if (estBack) {
+            // Placement EN PROFONDEUR pendant le ruck (~8-12 m derrière la base,
+            // éventail LARGE de ~7 à ~31 m sur le côté ouvert) : la ligne n'est
+            // PAS à plat à l'arrêt — elle prend du recul pour pouvoir S'ÉLANCER
+            // à la sortie et recevoir LANCÉE (cf. _tickPorte : cibles à plat,
+            // pleine vitesse). Mesuré avant : receveurs à 0,5 m/s vers l'avant
+            // (à l'arrêt → plaqués sur place, « départ au ras ») et attaque
+            // resserrée sur 31 m de large. La profondeur donne la piste d'élan,
+            // l'éventail donne la largeur.
             const coteOuvert = pt.y <= LARGEUR / 2 ? 1 : -1;
+            // L'ailier CÔTÉ FERMÉ ne rejoint PAS l'éventail : il tient son aile
+            // (option côté court, couverture). Avant, les DEUX ailiers filaient
+            // au même point du côté ouvert et le côté fermé était abandonné —
+            // c'est ce qui resserrait l'attaque sur ~32 m de large au lieu
+            // d'occuper tout le terrain.
+            const estAilier = j.numero === 11 || j.numero === 14;
+            const sonCote = Math.sign(j.channelY - LARGEUR / 2) || 1;
+            if (estAilier && sonCote !== coteOuvert) {
+              const cibleXf = pt.x - sensAttaque * 8;
+              avancer(j, cibleXf - j.x, j.channelY - j.y, dt, vitesseMs(j) * 0.85);
+              continue;
+            }
             const ordreBack = { 10: 1, 12: 2, 13: 3, 11: 4, 14: 4 };
             const rangB = ordreBack[j.numero] || 2;
-            const cibleY = Math.max(4, Math.min(LARGEUR - 4, pt.y + coteOuvert * (6 + (rangB - 1) * 7)));
-            const cibleX = pt.x - sensAttaque * (4 + rangB * 0.7);
+            const cibleY = Math.max(4, Math.min(LARGEUR - 4, pt.y + coteOuvert * (7 + (rangB - 1) * 8)));
+            const cibleX = pt.x - sensAttaque * (6.5 + rangB * 1.4);
             avancer(j, cibleX - j.x, cibleY - j.y, dt, vitesseMs(j) * 0.85);
           } else {
             // Avants non engagés + arrière (15) : en soutien un peu plus en
