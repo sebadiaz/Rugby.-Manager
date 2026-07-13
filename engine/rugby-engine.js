@@ -1937,12 +1937,12 @@
       // Une passe COURTE (9->10, passe le long de la ligne au voisin) se complète
       // en réalité à ~99 % : elle ne doit quasiment jamais finir en mêlée. Seules
       // les passes LONGUES (sautée, jeu au large tendu) gardent un vrai risque.
-      // L'ancien plancher 0,96 faisait rater ~4 % de TOUTES les passes ; comme le
-      // moteur en joue beaucoup (structure 9->10->ligne), ça produisait ~56 mêlées
-      // sur passe ratée par match — d'où l'impression de « passes en avant / ratées
-      // partout ». On rend les passes courtes très fiables (jusqu'à 0,995) et on
-      // ne pénalise vraiment que la distance.
-      const probaReussite = Math.max(0.95, Math.min(0.994, 1.0 - distancePasse / 300));
+      // Le taux est calibré sur le NOMBRE ABSOLU d'en-avants par match (~10-15
+      // en réel) et non sur un pourcentage : le moteur joue beaucoup de passes
+      // (structure 9->10->ligne), donc même un petit pourcentage d'échec
+      // produisait des dizaines de mêlées sur passe ratée (56 mesurées, puis 36).
+      // Barème : ~99,3 % de près, ~98 % à 20 m, plancher 97 % au large.
+      const probaReussite = Math.max(0.97, Math.min(0.998, 1.0 - distancePasse / 1500));
       if (this.rng() < probaReussite) {
         this.stats[this.possession].passes++;
         // FIXAGE / SURNOMBRE : si le passeur (un back) a couru sur son défenseur
@@ -2944,20 +2944,29 @@
           const neufEnPlace = !this.porteur
             || Math.hypot(this.porteur.x - feed.x, this.porteur.y - feed.y) < 2;
           const pret = (tousAvants.length === 0 || enPlace >= tousAvants.length) && neufEnPlace;
-          if (m.timer >= dur(1.5) && (pret || m.timer >= m.capFormation)) {
+          // Durée de formation RÉALISTE (loi 19 ; ~45-70 s de l'octroi à la
+          // sortie en match réel) : les packs ne sprintent pas puis s'engagent
+          // dans la foulée — ils marchent, se regroupent, se lient posément.
+          // C'est le PRINCIPAL poste du temps « ballon mort » réel : l'expédier
+          // en ~9 s (ancien réglage) gonflait le ballon-en-jeu à 65 % (réel
+          // ~44 %) et multipliait les possessions (donc rucks/passes/mêlées,
+          // 3-4× le réel). Les paliers ci-dessous consomment le temps réel d'une
+          // vraie séquence de mêlée ; l'échelle (_echelleArret) compresse tout
+          // automatiquement sur les matchs démo courts.
+          if (m.timer >= dur(14) && (pret || m.timer >= m.capFormation + dur(10))) {
             m.etat = E.CROUCH; m.timer = 0;
             this.log('MELEE_CROUCH', m.equipeIntroduction, 'Arbitre : "Crouch" - les premieres lignes se baissent');
           }
           break;
         }
         case E.CROUCH:
-          if (m.timer >= dur(1.0)) {
+          if (m.timer >= dur(3.0)) {
             m.etat = E.BIND; m.timer = 0;
             this.log('MELEE_BIND', m.equipeIntroduction, 'Arbitre : "Bind" - les piliers se lient a l\'adversaire');
           }
           break;
         case E.BIND:
-          if (m.timer >= dur(0.8)) {
+          if (m.timer >= dur(2.5)) {
             m.etat = E.SET; m.timer = 0;
             this.log('MELEE_SET', m.equipeIntroduction, 'Arbitre : "Set" - les deux packs s\'engagent');
           }
@@ -2965,7 +2974,7 @@
         case E.SET:
           // La poussée ne commence qu'a partir d'ici (apres l'engagement),
           // jamais avant l'introduction.
-          if (m.timer >= dur(0.6)) {
+          if (m.timer >= dur(2.0)) {
             m.etat = E.INTRODUCTION; m.timer = 0;
             this.log('MELEE_INTRODUCTION', m.equipeIntroduction, `Le demi de melee introduit le ballon dans le tunnel pour l'equipe ${m.equipeIntroduction}`);
           }
@@ -2974,7 +2983,7 @@
           // Le talonneur tente de talonner, le ballon progresse vers les
           // pieds du numero 8 : les facteurs de contestation sont calculés
           // une fois, au moment où la lutte pour le ballon démarre vraiment.
-          if (m.timer >= dur(1.6)) {
+          if (m.timer >= dur(2.5)) {
             m.etat = E.CONTESTATION; m.timer = 0;
             m.diff = this._meleeFacteurs();
             this.log('MELEE_CONTESTATION', m.equipeIntroduction, 'Contestation en melee, les deux packs poussent pour le ballon');
@@ -2986,7 +2995,7 @@
             this.log('MELEE_TOURNEE', m.equipeIntroduction, 'La melee tourne de plus de 90 degres, l\'arbitre la fait reformer');
             return this._meleeReset();
           }
-          if (m.timer >= dur(3.0)) this._meleeResoudreContestation();
+          if (m.timer >= dur(4.0)) this._meleeResoudreContestation();
           break;
         case E.SORTIE: {
           // Comme le "use it" du maul : le ballon doit ressortir sous peine
@@ -3573,11 +3582,12 @@
       if (this.toucheLancer) return this._tickToucheLancer(dt);
       this._touchePlacerLignes(dt);
       // Alignement, lancer et contestation au saut pris dans leur ensemble :
-      // une touche réelle prend bien plus que 2 s entre l'arrêt de jeu et la
-      // remise en mouvement du ballon (~10-15 s en match réel). Compressée
-      // comme les autres temps d'arrêt sur un format démo court (cf.
-      // _echelleArret) pour laisser plus de place au jeu courant.
-      const dureeMin = 12 * this._echelleArret;
+      // une touche réelle prend ~25-35 s entre la sortie du ballon et la remise
+      // en jeu (les joueurs MARCHENT vers l'alignement, l'annonce est faite, le
+      // talonneur prépare son lancer). Compressée comme les autres temps d'arrêt
+      // sur un format démo court (cf. _echelleArret). C'est, avec la mêlée, ce
+      // qui ramène le « ballon en jeu » vers les ~44 % réels.
+      const dureeMin = 24 * this._echelleArret;
       if (this.timerPhase < dureeMin) return;
       // Comme à la mêlée (cf. _tickMelee, case FORMATION) : l'arbitre n'autorise
       // le lancer que lorsque les avants des deux équipes sont réellement
@@ -3756,7 +3766,10 @@
     _tickEssai(dt) {
       this.timerPhase += dt;
       this._transformationPlacerJoueurs(dt);
-      if (this.timerPhase >= 8 * this._echelleArret) {
+      // Célébration + replacement réalistes (~15 s) : en match réel, entre
+      // l'essai accordé et le début de la routine du buteur, il se passe un
+      // long moment (célébration, replay, retour des équipes).
+      if (this.timerPhase >= 15 * this._echelleArret) {
         // Le buteur (l'ouvreur) a couru jusqu'au tee pendant la célébration
         // (cf. _transformationPlacerJoueurs) : il y est déjà, on ne le téléporte
         // plus. Il devient simplement le porteur pour la frappe.
