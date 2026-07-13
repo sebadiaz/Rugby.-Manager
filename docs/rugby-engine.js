@@ -1250,6 +1250,13 @@
           if (joueurLePlusProche(autres, porteur.x, porteur.y).distance > 6) {
             this.stats[this.possession].franchissements++;
           }
+          // PERCÉE EN COURS : pendant quelques secondes, le porteur qui vient de
+          // battre son vis-à-vis joue en CONTINUITÉ — ses soutiens sprintent dans
+          // sa foulée et, si la couverture le reprend, il garde le ballon VIVANT
+          // par un offload au trailer (cf. résolution du plaquage) au lieu de
+          // mourir au premier plaquage de couverture. C'est ce qui transforme un
+          // franchissement en avancée longue, comme en vrai.
+          porteur._percee = 2.5;
           this.log('PLAQUAGE_MANQUE', this.possession, `Plaquage manque, l'equipe ${this.possession} poursuit sa course`);
           return;
         }
@@ -1302,9 +1309,20 @@
         // une passe, il ne peut pas aller vers l'avant. Sans ce filtre, l'offload
         // était la seule voie de passe qui contournait le contrôle de la passe en
         // avant (jusqu'à ~3 m vers l'avant non sifflés, ~5/match mesurés).
-        const soutiens = att0.filter(j => j !== porteur && distance(j, porteur) < 4 && j.auSol === 0
+        // TAUX RESTRUCTURÉ selon la situation, comme en vrai : dans un plaquage
+        // banal (défense en place), l'offload est RARE (0,04 — l'ancien taux
+        // uniforme 0,10 en produisait ~61/match, réel 8-15) ; mais un porteur EN
+        // PERCÉE (vient de battre son vis-à-vis, _percee actif) cherche
+        // SYSTÉMATIQUEMENT la continuité : son offload au trailer est très
+        // probable (0,45) et porte plus loin (rayon 6 m, les soutiens sprintent
+        // dans sa foulée). C'est ce qui convertit un franchissement en avancée
+        // longue au lieu de mourir au premier plaquage de couverture.
+        const enPercee = (porteur._percee || 0) > 0;
+        const rayonOffload = enPercee ? 6 : 4;
+        const tauxOffload = enPercee ? 0.30 : 0.03;
+        const soutiens = att0.filter(j => j !== porteur && distance(j, porteur) < rayonOffload && j.auSol === 0
           && (j.x - porteur.x) * porteur.sensAttaque <= 0.3);
-        if (soutiens.length > 0 && this.rng() < 0.10) {
+        if (soutiens.length > 0 && this.rng() < tauxOffload) {
           const { joueur: receveurOffload } = joueurLePlusProche(soutiens, porteur.x, porteur.y);
           this.stats[this.possession].passes++;
           this.stats[this.possession].offloads++;
@@ -1462,10 +1480,14 @@
         if (soutienDirect.has(j)) {
           // Soutien rapproché, toujours légèrement en retrait du porteur en
           // profondeur (jamais devant, sinon passe en avant) : il attend le
-          // ballon dans son dos.
+          // ballon dans son dos. Si le porteur est EN PERCÉE (défenseur battu),
+          // le soutien SPRINTE dans sa foulée (pleine vitesse) pour offrir le
+          // relais de continuité — c'est lui qui reçoit l'offload quand la
+          // couverture reprend le perceur.
           const angle = (j.numero % 5) - 2;
           const cibleX = porteur.x - porteur.sensAttaque * 1.5;
-          avancer(j, cibleX - j.x, (porteur.y - j.y) + angle * 0.5, dt, vitesseMs(j) * 0.9);
+          const vSoutien = (porteur._percee || 0) > 0 ? vitesseMs(j) : vitesseMs(j) * 0.9;
+          avancer(j, cibleX - j.x, (porteur.y - j.y) + angle * 0.5, dt, vSoutien);
         } else {
           // AUTONOMIE par le profil : chaque joueur suit le ballon selon SA
           // tendance individuelle (proximité au ballon, cf. modèle) plutôt qu'un
@@ -3990,6 +4012,7 @@
           if (j.auSol === 0) j._solX = null;
         }
         if (j.missCooldown > 0) j.missCooldown = Math.max(0, j.missCooldown - dt);
+        if (j._percee > 0) j._percee = Math.max(0, j._percee - dt); // fenêtre de continuité après un défenseur battu
         if (j.fixeCooldown > 0) j.fixeCooldown = Math.max(0, j.fixeCooldown - dt); // défenseur fixé/battu par une passe
         if (j.ruckRecovery > 0) j.ruckRecovery = Math.max(0, j.ruckRecovery - dt);
         if (j._croiseTimer > 0) j._croiseTimer = Math.max(0, j._croiseTimer - dt);
