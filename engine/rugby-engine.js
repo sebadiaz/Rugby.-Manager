@@ -1375,9 +1375,12 @@
           // duraient 3-7 s : le 9 arrivait vite (mesuré : à ~1 m de la base) mais
           // restait planté à ATTENDRE le timer — d'où l'impression d'« attente
           // très longue au ruck » alors que le ballon était jouable.
-          this.ruckDureeCible = (tierRuck < 0.65 ? 0.9 + this.rng() * 1.1
-            : tierRuck < 0.90 ? 2.0 + this.rng() * 1.5
-              : 3.5 + this.rng() * 2) * this._echelleArret;
+          // Distribution resserrée vers le BALLON ÉCLAIR (sorties de ruck jugées
+          // lentes) : 70 % en ~0,7-1,6 s, 22 % en ~1,6-2,8 s, 8 % de rucks
+          // vraiment disputés en ~2,8-4,5 s (médiane ~1,2 s contre 2,0 avant).
+          this.ruckDureeCible = (tierRuck < 0.70 ? 0.7 + this.rng() * 0.9
+            : tierRuck < 0.92 ? 1.6 + this.rng() * 1.2
+              : 2.8 + this.rng() * 1.7) * this._echelleArret;
           this.ruckTempsSansSoutien = 0;
           this.phase = 'RUCK';
           this._receptionDirecte = false;
@@ -1613,7 +1616,11 @@
         const cibleX = porteur.x + avance;
         const drift = ailier ? 0.06 : 0.2;
         const cibleY = j.channelY * (1 - drift) + porteur.y * drift;
-        avancer(j, cibleX - j.x, cibleY - j.y, dt, vitesseMs(j) * 0.85);
+        // DÉFENSE PAS REPLACÉE après un ballon éclair au ruck (_defenseTardive) :
+        // la montée en ligne est nettement plus lente pendant ~1,2 s — c'est la
+        // récompense du jeu rapide, le seul vrai avantage du ballon éclair.
+        const vLigne = this._defenseTardive > 0 ? 0.55 : 0.85;
+        avancer(j, cibleX - j.x, cibleY - j.y, dt, vitesseMs(j) * vLigne);
       }
 
       // Essai
@@ -1637,11 +1644,11 @@
             porteur._solX = porteur.x; porteur._solY = porteur.y;
             this.stats[this.possession].rucks++; this.stats[this.possession].phases++;
             const tierRuck = this.rng();
-            // Recyclage rapide, ballon rapide en norme (cf. l'autre site de
-            // création de ruck) : ~1-2 s en majorité, ~3,5-5,5 s au maximum.
-            this.ruckDureeCible = (tierRuck < 0.65 ? 0.9 + this.rng() * 1.1
-              : tierRuck < 0.90 ? 2.0 + this.rng() * 1.5
-                : 3.5 + this.rng() * 2) * this._echelleArret;
+            // Recyclage éclair, ballon rapide en norme (cf. l'autre site de
+            // création de ruck) : ~0,7-1,6 s en majorité, ~4,5 s au maximum.
+            this.ruckDureeCible = (tierRuck < 0.70 ? 0.7 + this.rng() * 0.9
+              : tierRuck < 0.92 ? 1.6 + this.rng() * 1.2
+                : 2.8 + this.rng() * 1.7) * this._echelleArret;
             this.ruckTempsSansSoutien = 0;
             this.ruckDominant = false; // plaquage de sauvetage in extremis, pas un ballon sur l'avancée
             this.phase = 'RUCK';
@@ -1733,7 +1740,7 @@
       // Sinon (cas courant) il tombe dans le jeu au pied calibré (touche/dégagement
       // dans ses 22, chandelle plus haut) puis le lancement vers l'ouvreur.
       if (porteur.numero === 9 && this._neufLibre) {
-        if (this.timerPhase < 0.3) return null; // le ballon finit d'arriver de la base
+        if (this.timerPhase < 0.15) return null; // le ballon finit d'arriver de la base (sortie éclair)
         this._neufLibre = false;
         const sens = porteur.sensAttaque;
         const r = this.rng();
@@ -2408,7 +2415,11 @@
             const rangB = ordreBack[j.numero] || 2;
             const cibleY = Math.max(4, Math.min(LARGEUR - 4, pt.y + coteOuvert * (7 + (rangB - 1) * 8)));
             const cibleX = pt.x - sensAttaque * (6.5 + rangB * 1.4);
-            avancer(j, cibleX - j.x, cibleY - j.y, dt, vitesseMs(j) * 0.85);
+            // PLEINE VITESSE : la ligne se replace en COURANT pendant le ruck —
+            // c'est ce qui permet au 9 de jouer éclair (cf. porte dixPret) sans
+            // lancer vers une ligne pas prête. À 85 %, le 10 arrivait souvent
+            // après la durée cible du ruck et retardait toutes les sorties.
+            avancer(j, cibleX - j.x, cibleY - j.y, dt, vitesseMs(j));
           } else if (j.numero <= 8) {
             // PODS D'AVANTS (animation offensive) : les avants non engagés ne
             // flottent plus chacun dans son couloir — ils se GROUPENT en deux
@@ -2460,9 +2471,14 @@
       // relaie), pour ne jamais bloquer le jeu.
       const neuf9 = eqAtt.find(j => j.numero === 9 && j.auSol === 0 && j.sinBin <= 0);
       const neufPret = !neuf9 || distance(neuf9, pt) < 4;
+      // NB : une porte « attendre que le 10 soit replacé » a été testée ici puis
+      // RETIRÉE : elle rallongeait la sortie médiane de 1,5 à 2,1 s (l'inverse du
+      // but — sorties de ruck jugées lentes) pour un gain de score dans le bruit
+      // statistique. La ligne se replace à pleine vitesse pendant le ruck à la
+      // place (cf. placement des backs).
       if (this.timerPhase >= dureeCible) {
         if (!soutienArrive && this.timerPhase < dureeCible + 4 * this._echelleArret) return;
-        if (!neufPret && this.timerPhase < dureeCible + 2 * this._echelleArret) return;
+        if (!neufPret && this.timerPhase < dureeCible + 1.2 * this._echelleArret) return;
         // Contest au ruck pondéré par les avants réellement engagés autour du
         // point de ruck (même proxy de force que le maul, forceMaul), plutôt
         // qu'un taux de turnover fixe : un paquet adverse plus nombreux ou
@@ -2555,6 +2571,13 @@
         const plaque = this.porteur;
         if (plaque && plaque.auSol > 1.3) plaque.auSol = 1.3;
         this.porteur = relayeur || att.find(j => j.numero === 8) || att[0];
+        // BALLON ÉCLAIR : un ruck recyclé en moins de ~1,8 s prend la défense
+        // PAS ENCORE REPLACÉE — pendant ~1,2 s sa montée en ligne est ralentie
+        // (cf. _tickPorte). C'est LA récompense réelle du jeu rapide au ruck :
+        // sans elle, la défense du moteur se réalignait instantanément et le
+        // ballon rapide ne servait à rien (il ne faisait qu'enchaîner les
+        // phases plus vite contre une défense toujours en place).
+        this._defenseTardive = this.timerPhase < 1.8 * this._echelleArret ? 1.2 : 0;
         this.phase = 'PORTE';
         this.timerPhase = 0;
         // Le ballon sort du regroupement en étant JOUÉ depuis la base vers le
@@ -4123,6 +4146,8 @@
         }
         if (j.sinBin > 0) j.sinBin = Math.max(0, j.sinBin - dt);
       }
+      // Fenêtre « défense pas replacée » après un ballon éclair au ruck.
+      if (this._defenseTardive > 0) this._defenseTardive = Math.max(0, this._defenseTardive - dt);
       // Avancement du vol visuel d'une passe (cf. _lancerPasseVisuelle) : on le
       // termine au bout de sa durée. Le vol n'a de sens qu'en jeu courant ; si
       // la phase a changé entre-temps (plaquage -> ruck, sortie en touche...),
