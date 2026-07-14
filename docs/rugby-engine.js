@@ -1819,7 +1819,16 @@
         const dix = att.find(j => j.numero === 10 && j.auSol === 0
           && (j.x - porteur.x) * porteur.sensAttaque <= 0.5
           && distance(j, porteur) < 20);
-        if (dix) { this._passeCibleForcee = dix; return 'PASS'; }
+        // SYNCHRONISATION : si le 10 est encore PROFOND (> 4,5 m en retrait,
+        // en train de s'élancer), le 9 tient le ballon un court instant
+        // (≤ 0,6 s) pour lui passer À PLAT en pleine course — au lieu de lâcher
+        // aussitôt une passe de 6-8 m vers l'arrière (« que des passes en
+        // arrière »). Passé 0,6 s, il donne quand même (jeu rapide d'abord).
+        if (dix) {
+          const profondeurDix = (porteur.x - dix.x) * porteur.sensAttaque;
+          if (profondeurDix > 4.5 && this.timerPhase < 0.6) return null;
+          this._passeCibleForcee = dix; return 'PASS';
+        }
       }
 
       // 2c. Trois-quarts qui FAIT VIVRE LA LIGNE : un back (10-13) qui a un
@@ -2476,7 +2485,12 @@
             const ordreBack = { 10: 1, 12: 2, 13: 3, 11: 4, 14: 4 };
             const rangB = ordreBack[j.numero] || 2;
             const cibleY = Math.max(4, Math.min(LARGEUR - 4, pt.y + coteOuvert * (7 + (rangB - 1) * 8)));
-            const cibleX = pt.x - sensAttaque * (6.5 + rangB * 1.4);
+            // Profondeur MODÉRÉE (~5,5-8 m) : assez pour s'élancer et recevoir
+            // lancé, pas plus — à 8-12 m, 31 % des passes partaient à PLUS de
+            // 5 m en arrière (mesuré) : « que des passes en arrière » à l'écran.
+            // L'élan vient de la course (cibles à plat, pleine vitesse), pas
+            // d'une profondeur excessive.
+            const cibleX = pt.x - sensAttaque * (4.5 + rangB * 0.9);
             // PLEINE VITESSE : la ligne se replace en COURANT pendant le ruck —
             // c'est ce qui permet au 9 de jouer éclair (cf. porte dixPret) sans
             // lancer vers une ligne pas prête. À 85 %, le 10 arrivait souvent
