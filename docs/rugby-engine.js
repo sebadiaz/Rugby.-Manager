@@ -2353,6 +2353,52 @@
         .filter(j => j.team === this.possession && j !== this.porteur && j.auSol === 0
           && j.sinBin <= 0 && j.numero <= 8 && j.numero !== 9 && !soutiensRuck.has(j))
         .sort((a, b) => a.numero - b.numero);
+      // CRÉNEAUX DÉFENSIFS ÉQUIRÉPARTIS : les défenseurs de la ligne (ni
+      // contestants, ni l'arrière n°15 qui couvre le fond) se répartissent
+      // UNIFORMÉMENT sur la largeur, triés par position pour ne jamais se
+      // croiser. Avant, chacun tenait son couloir nominal fixe : la ligne
+      // couvrait bien 47 m MAIS avec des trous latéraux moyens de ~16 m (un
+      // boulevard) selon l'endroit du ruck. Espacement désormais régulier
+      // (~5 m), comme une vraie ligne qui se compte et comble les espaces.
+      const defsLigne = [...this.equipeA, ...this.equipeB]
+        .filter(j => j.team !== this.possession && j.auSol === 0 && j.sinBin <= 0
+          && j.numero !== 15 && !this.contestants.includes(j.numero))
+        .sort((a, b) => a.y - b.y);
+      this._slotDefense = new Map();
+      if (defsLigne.length > 0) {
+        // Créneaux CENTRÉS SUR LE RUCK, à la manière d'une vraie ligne qui se
+        // compte : deux « gardes » collés au regroupement (±2,5 m), puis un
+        // défenseur tous les ~5 m en s'écartant. La défense est dense là où le
+        // danger est immédiat, plus étirée vers le grand large ; l'extrême bord
+        // opposé reste plus doux (comme en vrai, c'est le repli/l'aile qui y
+        // glisse). NB : une équirépartition mur-à-mur sur TOUTE la largeur a été
+        // testée : zéro trou mais plus aucun espace nulle part — score effondré
+        // (30 -> 20, des matchs à 0) ; retirée.
+        const cibles = [];
+        for (let i = 0; i < defsLigne.length; i++) {
+          const k = Math.ceil((i + 1) / 2);
+          const cote = (i % 2 === 0) ? 1 : -1;
+          cibles.push(Math.max(2.5, Math.min(LARGEUR - 2.5, pt.y + cote * (2.5 + (k - 1) * 5))));
+        }
+        cibles.sort((a, b) => a - b);
+        // Espacement minimal après bornage aux touches (les créneaux repoussés
+        // par le bord se tassaient au même endroit) : balayage avant/arrière.
+        for (let i = 1; i < cibles.length; i++) cibles[i] = Math.max(cibles[i], cibles[i - 1] + 2.5);
+        for (let i = cibles.length - 2; i >= 0; i--) cibles[i] = Math.min(cibles[i], cibles[i + 1] - 2.5);
+        // RÉPARTITION PAR POSTE : les AVANTS prennent les créneaux PROCHES du
+        // ruck (gardes/défense de zone proche — et ils restent à distance
+        // raisonnable d'une éventuelle mêlée à venir), les BACKS prennent les
+        // créneaux LARGES. Sans ce tri, un pilier pouvait hériter d'un créneau
+        // au grand large et devoir traverser le terrain à la mêlée suivante
+        // (formation interminable — invariant « une mêlée se termine » violé).
+        const parProximite = cibles.map(c => ({ c, d: Math.abs(c - pt.y) })).sort((a, b) => a.d - b.d);
+        const avantsDef = defsLigne.filter(j => j.numero <= 8).sort((a, b) => a.y - b.y);
+        const backsDef = defsLigne.filter(j => j.numero > 8).sort((a, b) => a.y - b.y);
+        const slotsAvants = parProximite.slice(0, avantsDef.length).map(o => o.c).sort((a, b) => a - b);
+        const slotsBacks = parProximite.slice(avantsDef.length).map(o => o.c).sort((a, b) => a - b);
+        avantsDef.forEach((j, i) => this._slotDefense.set(j, slotsAvants[i]));
+        backsDef.forEach((j, i) => this._slotDefense.set(j, slotsBacks[i]));
+      }
       let iContestants = 0, iSoutien = 0;
       for (const j of [...this.equipeA, ...this.equipeB]) {
         if (j === this.porteur) continue;
@@ -2375,10 +2421,12 @@
 
         if (j.team !== this.possession && Referee.horsJeuRuck(j, pt, sensAttaque)) {
           // Se replier vers la zone ONSIDE (au-delà du point de ruck, côté de
-          // son propre en-but), en tenant son couloir (largeur) plutôt qu'en se
-          // massant sur le ballon.
+          // son propre en-but), vers son CRÉNEAU équiréparti de la ligne (pas
+          // son couloir nominal — cf. _slotDefense) : la ligne se reforme sans
+          // trous en même temps qu'elle se replie.
           const cibleX = sensAttaque > 0 ? pt.x + margeRecul : pt.x - margeRecul;
-          avancer(j, cibleX - j.x, j.channelY - j.y, dt, vitesseMs(j));
+          const slotY = this._slotDefense.get(j) ?? j.channelY;
+          avancer(j, cibleX - j.x, slotY - j.y, dt, vitesseMs(j));
           if (this.timerPhase > delaiGrace && Referee.horsJeuRuck(j, pt, sensAttaque)) {
             // Hors-jeu défensif au ruck : avantage (loi 8). L'équipe en possession
             // joue ; la pénalité n'est sifflée que si elle n'en tire rien (cf.
@@ -2456,8 +2504,13 @@
             avancer(j, cibleX - j.x, j.channelY - j.y, dt, vitesseMs(j) * 0.7);
           }
         } else {
+          // Défenseur déjà onside : il rejoint son CRÉNEAU équiréparti sur la
+          // ligne de défense (cf. _slotDefense) — espacement régulier ~5 m,
+          // plus de trous de 15 m laissés par les couloirs nominaux. Le n°15
+          // défensif garde son couloir (couverture du fond, exclu des slots).
           const cibleX = sensAttaque > 0 ? pt.x + margeRecul : pt.x - margeRecul;
-          avancer(j, cibleX - j.x, j.channelY - j.y, dt, vitesseMs(j) * 0.7);
+          const slotY = this._slotDefense.get(j) ?? j.channelY;
+          avancer(j, cibleX - j.x, slotY - j.y, dt, vitesseMs(j) * 0.8);
         }
       }
       // Temps sans aucun soutien d'attaque proche du point de ruck (porteur
@@ -3466,7 +3519,13 @@
       m.resets = (m.resets || 0) + 1;
       m.rotation = 0;
       m.timer = 0;
-      m.etat = m.resets > 2 ? ETATS_MELEE.SET : ETATS_MELEE.FORMATION;
+      // Reformation RAPIDE : les deux packs sont déjà sur la marque, l'arbitre
+      // les fait directement re-engager (« Crouch ») — on ne re-déroule pas la
+      // longue mise en place initiale (formation ~14 s : marche d'approche,
+      // liaisons), ce qui faisait traîner les mêlées à refaire au-delà du
+      // raisonnable. Au 3e reset, engagement direct (« Set »), comme un arbitre
+      // pressé d'en finir.
+      m.etat = m.resets > 2 ? ETATS_MELEE.SET : ETATS_MELEE.CROUCH;
     }
 
     // Décision d'arbitrage sur une faute de mêlée : reformation simple, coup
