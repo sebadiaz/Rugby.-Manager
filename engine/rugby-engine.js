@@ -3171,9 +3171,23 @@
         // sinBin <= 0 : un avant au "bin" ne rejoint pas le pack, son équipe
         // joue la mêlée à 7 (ou moins), comme en match réel.
         const avants = equipe.filter(j => j.numero <= 8 && j.sinBin <= 0);
-        avants.forEach((j, i) => {
-          const cx = m.x - j.sensAttaque * (ecart + (i % 3) * 0.5);
-          const cy = m.y + ((i % 2) ? -1 : 1) * Math.ceil((i + 1) / 2) * 0.6;
+        // VRAIE FORMATION 3-4-1 (loi 19) — chaque avant à SA place, par numéro :
+        // 1re ligne : pilier gauche (1), talonneur (2) au centre, pilier droit (3) ;
+        // 2e ligne : les deux verrous (4, 5) dans l'axe, flankers (6, 7) liés sur
+        // les côtés ; le n°8 SEUL EN 3e LIGNE, dans l'axe, DERNIER élément de la
+        // mêlée — c'est à ses pieds que le ballon sort. L'ancienne « rosette »
+        // par index plaçait le 8 quasi au niveau de la 1re ligne et décalé de
+        // 2,4 m sur le côté, comme s'il était dans la ligne des trois-quarts.
+        const FORMATION_341 = {
+          1: { prof: 0, lat: -1.0 }, 2: { prof: 0, lat: 0 }, 3: { prof: 0, lat: 1.0 },
+          4: { prof: 1.0, lat: -0.5 }, 5: { prof: 1.0, lat: 0.5 },
+          6: { prof: 1.0, lat: -1.6 }, 7: { prof: 1.0, lat: 1.6 },
+          8: { prof: 2.0, lat: 0 },
+        };
+        avants.forEach((j) => {
+          const f = FORMATION_341[j.numero] || { prof: 1.0, lat: 0 };
+          const cx = m.x - j.sensAttaque * (ecart + f.prof);
+          const cy = m.y + f.lat;
           avancer(j, cx - j.x, cy - j.y, dt, vitesseMs(j) * 0.7);
         });
         // Les DEUX demis de mêlée (n°9) sont positionnés à part par
@@ -3247,9 +3261,17 @@
       // le ballon (jamais au centre des avants). Tout en course (avancer),
       // jamais snappé, et il suit la base si la mêlée avance en poussant.
       if (neufIntro) {
-        const cible = m.etat === E.INTRODUCTION
-          ? { x: m.x - m.sens * 0.2, y: m.y + sideSign * 1.4 }
-          : this._meleeFeedPos(m);
+        // Le 9 SUIT LE BALLON : à l'entrée du tunnel jusqu'à l'introduction,
+        // puis il SE REPLACE DERRIÈRE LE N°8 (dernier élément de la mêlée,
+        // formation 3-4-1 : base à ~2,4 m de la marque) pendant que le ballon
+        // talonné remonte vers les pieds du 8 — prêt à le ramasser à la sortie
+        // et à le distribuer au 10, comme sur n'importe quelle phase. Avant, il
+        // restait planté à l'entrée du tunnel pendant toute la contestation.
+        const cible = (m.etat === E.CONTESTATION || m.etat === E.SORTIE)
+          ? { x: m.x - m.sens * 3.6, y: m.y + sideSign * 0.6 }
+          : m.etat === E.INTRODUCTION
+            ? { x: m.x - m.sens * 0.2, y: m.y + sideSign * 1.4 }
+            : this._meleeFeedPos(m);
         avancer(neufIntro, cible.x - neufIntro.x, cible.y - neufIntro.y, dt, vitesseMs(neufIntro));
       }
       // Demi adverse : garde la base de la mêlée de l'autre côté du tunnel,
