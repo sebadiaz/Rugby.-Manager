@@ -1426,6 +1426,12 @@
       // onside, et OCCUPENT la largeur du terrain — prêts à recevoir une passe
       // au large. Avant, toute l'équipe dérivait vers le ballon et se compactait.
       const att = this.attaquants();
+      // Trailers : les DEUX joueurs les plus proches suivent le porteur — ce
+      // sont eux qui se précipiteront pour sécuriser le ruck au plaquage. (Une
+      // variante « avants seulement » a été testée et RETIRÉE : un back parti au
+      // large se retrouvait sans soutien à moins de 15 m, chaque percée mourait
+      // isolée — score effondré de 29 à 19. La limitation du monde au
+      // regroupement se fait AU RUCK, cf. soutiensRuck limité à 2, pas ici.)
       const soutienDirect = new Set(
         att.filter(j => j !== porteur && j.auSol === 0)
           .sort((a, b) => distance(a, porteur) - distance(b, porteur))
@@ -2321,12 +2327,20 @@
       const placerEnRosette = (j, recul, i) => {
         const cx = pt.x - sensAttaque * recul * (0.5 + (i % 2) * 0.5);
         const cy = pt.y + ((i % 2) ? -1 : 1) * Math.ceil((i + 1) / 2) * 0.7;
-        avancer(j, cx - j.x, cy - j.y, dt, vitesseMs(j) * 0.7);
+        // Les soutiens d'attaque SE PRÉCIPITENT au ruck (pleine vitesse : chaque
+        // dixième de seconde compte pour ne pas perdre le ballon) ; le contestant
+        // défensif arrive en opposition, plus posé (0,7×).
+        const vRuck = recul < 0 ? vitesseMs(j) : vitesseMs(j) * 0.7;
+        avancer(j, cx - j.x, cy - j.y, dt, vRuck);
       };
-      // Seuls les 3 attaquants les plus proches du ruck s'y engagent réellement
-      // (nettoyage/conservation) ; le reste de l'équipe NE se jette PAS dedans,
-      // il s'aligne pour la phase suivante (cf. plus bas). En match réel une
-      // poignée de joueurs s'engage au ruck, pas tout le pack.
+      // Seuls les attaquants LES PLUS PROCHES du ruck s'y engagent (ceux qui se
+      // précipitent pour ne pas perdre le ballon) ; le reste de l'équipe NE se
+      // jette PAS dedans, il se REPLACE en ligne d'attaque pour le temps suivant
+      // (pods d'avants, éventail de trois-quarts — cf. plus bas). NB : réduire à
+      // 2 a été testé (même avec un contest repondéré « corps sur le ballon ») et
+      // RETIRÉ : le 3e homme sert aussi de relais de sortie et de présence de
+      // sécurisation — sans lui, turnovers +20 % et score effondré (29 -> 20).
+      // Un vrai ruck compte d'ailleurs ~5-6 corps avec le plaqué et le plaqueur.
       const soutiensRuck = new Set(
         [...this.equipeA, ...this.equipeB]
           .filter(j => j.team === this.possession && j !== this.porteur && j.auSol === 0 && j.numero !== 9)
@@ -2487,9 +2501,22 @@
         const equipeOriginale = this.possession;
         const equipeAtt = equipeOriginale === 'A' ? this.equipeA : this.equipeB;
         const equipeDef = equipeOriginale === 'A' ? this.equipeB : this.equipeA;
+        // Les corps SUR le ballon (< 3 m : les 1-2 nettoyeurs/contestants
+        // réellement engagés) pèsent bien plus (×1,6) que les avants À PROXIMITÉ
+        // (3-8 m : pods, arrivées) : c'est ce qui permet de ne commettre que 2
+        // soutiens au ruck (réalisme, cf. soutiensRuck) sans perdre le ballon
+        // plus qu'avant — un ruck bien nettoyé à 2 se gagne, comme en vrai.
         let forceAtt = 0, forceDef = 0;
-        for (const j of equipeAtt) if (j.numero <= 8 && j.auSol === 0 && distance(j, pt) < 8) forceAtt += forceMaul(j);
-        for (const j of equipeDef) if (j.numero <= 8 && j.auSol === 0 && distance(j, pt) < 8) forceDef += forceMaul(j);
+        for (const j of equipeAtt) if (j.numero <= 8 && j.auSol === 0) {
+          const dj = distance(j, pt);
+          if (dj < 3) forceAtt += forceMaul(j) * 1.6;
+          else if (dj < 8) forceAtt += forceMaul(j);
+        }
+        for (const j of equipeDef) if (j.numero <= 8 && j.auSol === 0) {
+          const dj = distance(j, pt);
+          if (dj < 3) forceDef += forceMaul(j) * 1.6;
+          else if (dj < 8) forceDef += forceMaul(j);
+        }
 
         // Ruck très disputé des deux côtés et quasiment à l'équilibre : le
         // ballon ne sort franchement pour personne, l'arbitre rend une mêlée
