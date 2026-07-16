@@ -48,16 +48,29 @@ ne recycle que **52 % de ses rucks en moins de 3 s** — un tiers prend 3 à 6 s
 
 ## Tâches de correction (par priorité)
 
-### T1 — Tempo du cycle de phase (l'écart ×4) 🔴
-- Redistribuer les durées de ruck sur le profil RÉEL mesuré : ~55 % en 1,5-3 s,
-  ~33 % en 3-6 s, ~12 % en 6 s+ (aujourd'hui : 91 % < 3 s). Garder la latence
-  de sortie du 9 (0,2 s) : c'est la durée du regroupement qui doit respirer,
-  pas la transmission.
-- Allonger la phase de course avant contact : montée défensive avec montée en
-  charge progressive (~1 s de mise en route par temps de jeu) pour que le
-  porteur lancé fasse 5-8 m avant le contact (réel : 3,8 m/course en moyenne,
-  976 m sur 255 courses) au lieu d'être plaqué en ~2 s.
-- Objectif chiffré : rucks 850 → ≤ 400/match, passes ≤ 700, plaquages ≤ 450.
+### T1 — Tempo du cycle de phase (l'écart ×4) 🔴 — ✅ PREMIÈRE PASSE FAITE
+**Balayage réalisé** (3 profils de ruck × 3 rampes défensives × 4 taux de jeu
+au pied × 3 cadences de passe, 8 matchs par combinaison, puis 20 matchs de
+validation). Configuration retenue (nouveau défaut du moteur) :
+- `ruck.profil` = profil RÉEL 55 % / 33 % / 12 % (1,5-3 s / 3-6 s / 6-8 s) ;
+- `defense.rampeMontee` = 2,5 s (montée en charge par temps de jeu) ;
+- `attaque.tauxJeuAuPied` = ×2 (une équipe réelle botte toutes les ~3 courses).
+
+**Résultats mesurés (20 matchs)** :
+| | Avant | Après | Réel |
+|---|---|---|---|
+| Rucks | 853 | **519** (−39 %) | 181 |
+| Passes | 1 556 | **1 112** (−29 %) | 347 |
+| Plaquages | 919 | **559** (−39 %) | 294 |
+| Turnovers | 23,9 | **12,5** ✅ | 15 |
+| Offloads | 48,7 | **28,1** ✅ | 25 |
+| Rucks < 3 s / 3-6 s / 6 s+ | 91/9/0 % | **47/39/14 %** ✅ | 52-63/21-33/~10 % |
+| Score / Essais | 42,7 / 5,1 | **43,9 / 6,0** ✅ | 50 / 7 |
+
+Le reste de l'écart (×2,9 sur les volumes) vient du **ballon en jeu à 66 %**
+(réel 44 %) : c'est T2 (temps d'arrêt) qui doit le fermer — les leviers de
+tempo en jeu courant sont épuisés (mesuré : la cadence de passe est plate,
+le pied au-delà de ×2 déborde le réel sans réduire les rucks).
 
 ### T2 — Équilibre mêlées/touches 🟠
 - Réel : ~13 mêlées / ~25 touches. Sim : 23,6 / 14,2 — inversé.

@@ -121,13 +121,42 @@
     // ballon en ~0,4 s sans jamais manger sa piste d'élan, et la ligne reculait.
     attaque: {
       jeuLargeTaux: { pression: 1.4, calme: 1.0 },
+      // x2 : une équipe réelle botte toutes les ~3 courses (France-Irlande
+      // 2026 : 78 coups de pied / 255 courses) — c'est le régulateur n°1 de la
+      // longueur des possessions. Retenu par balayage : x1 laissait des
+      // possessions interminables (60 coups de pied, 579 rucks), x3 débordait
+      // le réel (141 coups de pied) en écrasant le score.
+      tauxJeuAuPied: 2,
     },
     // Organisation de défense : profondeur de couverture de l'arrière (n°15) en
-    // jeu courant et à la mêlée, recul de la ligne au ruck.
+    // jeu courant et à la mêlée, recul de la ligne au ruck. rampeMontee =
+    // secondes de mise en route de la montée défensive à chaque temps de jeu
+    // (la ligne se réorganise après chaque regroupement avant de monter à
+    // pleine vitesse) ; 0 = montée immédiate. Calibré par balayage de
+    // simulations face au France-Irlande 2026 (cf. docs/ANALYSE_MATCH_REEL.md).
     defense: {
       profondeurArriereJeu: 18,
       profondeurArriereMelee: 20,
       reculRuck: 3,
+      // Retenu par balayage : 2,5 s de mise en route de la montée par temps de
+      // jeu — le porteur lancé court 5-8 m avant le contact comme en vrai, le
+      // score remonte au niveau réel (~46) et les volumes baissent de ~40 %.
+      rampeMontee: 2.5,
+    },
+    // Profil des durées de recyclage de ruck : liste de paliers
+    // [part, minimum(s), étendue(s)] — la part est la fraction des rucks tirée
+    // dans ce palier, la durée = minimum + alea*étendue. Référence réelle
+    // (France-Irlande 2026) : ~52-63 % des rucks en moins de 3 s, ~21-33 % en
+    // 3-6 s, le reste au-delà. Calibré par balayage (cf. ANALYSE_MATCH_REEL.md).
+    ruck: {
+      // Profil RÉEL retenu par balayage : ~55 % des rucks en 1,5-3 s (ballon
+      // rapide), ~33 % en 3-6 s, ~12 % en 6-8 s — exactement la distribution
+      // mesurée au France-Irlande 2026 (52-63 % / 21-33 % / reste). Le profil
+      // « éclair » précédent (70 % sous 1,6 s, 91 % sous 3 s) n'existe dans
+      // aucun vrai match, même chez la France, l'équipe la plus rapide au monde
+      // à ce poste. La transmission du 9 reste immédiate (0,2 s) une fois le
+      // ballon sorti : c'est le regroupement qui respire, pas la passe.
+      profil: [[0.55, 1.5, 1.5], [0.33, 3.0, 3.0], [0.12, 6.0, 2.0]],
     },
     // COMBINAISONS (playbook) : mouvements scriptés joués sur une sortie de
     // regroupement (mêlée / touche). Chaque combinaison est une SUITE D'ÉTAPES,
@@ -1366,21 +1395,10 @@
           this.porteur.auSol = 2.0;
           this.porteur._solX = this.porteur.x; this.porteur._solY = this.porteur.y;
           this.stats[this.possession].rucks++; this.stats[this.possession].phases++;
-          const tierRuck = this.rng();
-          // Durée de recyclage du ruck. BALLON RAPIDE = la norme : le rôle du 9
-          // est de FLUIDIFIER — arriver vite à la base et ressortir le ballon au
-          // plus tôt. La grande majorité des rucks se recyclent donc en ~1-2 s
-          // (ballon rapide), quelques-uns en ~2-3,5 s (normal), et seuls les
-          // rucks vraiment contestés traînent ~3,5-5,5 s. Avant, 45 % des rucks
-          // duraient 3-7 s : le 9 arrivait vite (mesuré : à ~1 m de la base) mais
-          // restait planté à ATTENDRE le timer — d'où l'impression d'« attente
-          // très longue au ruck » alors que le ballon était jouable.
-          // Distribution resserrée vers le BALLON ÉCLAIR (sorties de ruck jugées
-          // lentes) : 70 % en ~0,7-1,6 s, 22 % en ~1,6-2,8 s, 8 % de rucks
-          // vraiment disputés en ~2,8-4,5 s (médiane ~1,2 s contre 2,0 avant).
-          this.ruckDureeCible = (tierRuck < 0.70 ? 0.7 + this.rng() * 0.9
-            : tierRuck < 0.92 ? 1.6 + this.rng() * 1.2
-              : 2.8 + this.rng() * 1.7) * this._echelleArret;
+          // Durée de recyclage du ruck : tirée du profil configurable
+          // (cfg.ruck.profil), calibré par balayage de simulations sur les
+          // vitesses de ruck du France-Irlande 2026 (cf. _tirerDureeRuck).
+          this.ruckDureeCible = this._tirerDureeRuck();
           this.ruckTempsSansSoutien = 0;
           this.phase = 'RUCK';
           this._receptionDirecte = false;
@@ -1562,6 +1580,15 @@
         }
       }
 
+      // MONTÉE EN CHARGE de la défense (cfg.defense.rampeMontee, en secondes) :
+      // au début de chaque temps de jeu la ligne se RÉORGANISE (repli, comptage,
+      // communication) avant de monter à pleine vitesse — c'est ce qui laisse au
+      // porteur lancé le temps de courir 5-8 m avant le contact, comme en vrai
+      // (mesuré France-Irlande : 3,8 m gagnés par course, un contact toutes les
+      // ~11 s de jeu ; sans rampe le contact tombait en ~2 s et le match jouait
+      // 4x trop de phases). 0 = montée immédiate (comportement historique).
+      const rampeDef = this.cfg.defense.rampeMontee || 0;
+      const fRampe = rampeDef > 0 ? Math.min(1, 0.35 + this.timerPhase / rampeDef) : 1;
       for (const j of def) {
         // Défenseur FIXÉ (battu par une passe, cf. _tenterPasse) : il est hors du
         // coup un court instant, il ne monte plus couvrir le receveur — c'est ce
@@ -1575,7 +1602,7 @@
           // jute latéralement (chaque tick, le défenseur réoriente en retard
           // d'un cran) — un vrai plaqueur lit la trajectoire et coupe l'angle.
           const cibleInterceptX = porteur.x + porteur.sensAttaque * 1.5;
-          avancer(j, cibleInterceptX - j.x, porteur.y - j.y, dt, vitesseMs(j));
+          avancer(j, cibleInterceptX - j.x, porteur.y - j.y, dt, vitesseMs(j) * fRampe);
           continue;
         }
         // L'ARRIÈRE (n°15) ne monte PAS dans la ligne : il SWEEPE en couverture
@@ -1625,7 +1652,8 @@
         // DÉFENSE PAS REPLACÉE après un ballon éclair au ruck (_defenseTardive) :
         // la montée en ligne est nettement plus lente pendant ~1,2 s — c'est la
         // récompense du jeu rapide, le seul vrai avantage du ballon éclair.
-        const vLigne = this._defenseTardive > 0 ? 0.55 : 0.85;
+        // Le tout modulé par la montée en charge du temps de jeu (fRampe).
+        const vLigne = (this._defenseTardive > 0 ? 0.55 : 0.85) * fRampe;
         avancer(j, cibleX - j.x, cibleY - j.y, dt, vitesseMs(j) * vLigne);
       }
 
@@ -1649,12 +1677,8 @@
             porteur.auSol = 2.0;
             porteur._solX = porteur.x; porteur._solY = porteur.y;
             this.stats[this.possession].rucks++; this.stats[this.possession].phases++;
-            const tierRuck = this.rng();
-            // Recyclage éclair, ballon rapide en norme (cf. l'autre site de
-            // création de ruck) : ~0,7-1,6 s en majorité, ~4,5 s au maximum.
-            this.ruckDureeCible = (tierRuck < 0.70 ? 0.7 + this.rng() * 0.9
-              : tierRuck < 0.92 ? 1.6 + this.rng() * 1.2
-                : 2.8 + this.rng() * 1.7) * this._echelleArret;
+            // Profil de durées configurable, cf. l'autre site de création de ruck.
+            this.ruckDureeCible = this._tirerDureeRuck();
             this.ruckTempsSansSoutien = 0;
             this.ruckDominant = false; // plaquage de sauvetage in extremis, pas un ballon sur l'avancée
             this.phase = 'RUCK';
@@ -1790,6 +1814,11 @@
         else if (zone === 'OPP_HALF') pParSeconde = 0.02 + (pression ? 0.012 : 0);
         else pParSeconde = 0.01; // OPP_22 : on privilégie le jeu au sol/pick-and-go.
         if (enMene) pParSeconde *= 1.15; else pParSeconde *= 0.9;
+        // Multiplicateur global configurable : en vrai une équipe botte toutes
+        // les ~3 courses (78 coups de pied pour 255 courses au France-Irlande
+        // 2026) — c'est LE régulateur de la longueur des possessions. Calibré
+        // par balayage (cf. docs/ANALYSE_MATCH_REEL.md).
+        pParSeconde *= (this.cfg.attaque.tauxJeuAuPied || 1);
         if (this.rng() < pParSeconde * dt) return 'KICK';
       }
 
@@ -2290,6 +2319,26 @@
       if (this.timerPhase >= 1) {
         this._nouvelleManche(this.equipeKickPremiereMiTemps);
       }
+    }
+
+    // Tire une durée de recyclage de ruck dans le profil configuré
+    // (cfg.ruck.profil = liste de paliers [part, minimum, étendue]) : la part
+    // est la fraction des rucks concernée, la durée = minimum + alea*étendue,
+    // le tout à l'échelle des arrêts de jeu (_echelleArret). Le profil par
+    // défaut est calibré par balayage de simulations pour reproduire les
+    // vitesses de ruck réelles ET les volumes réels de rucks/passes/plaquages
+    // (France-Irlande 2026, cf. docs/ANALYSE_MATCH_REEL.md).
+    _tirerDureeRuck() {
+      const profil = (this.cfg.ruck && this.cfg.ruck.profil)
+        || [[0.70, 0.7, 0.9], [0.22, 1.6, 1.2], [0.08, 2.8, 1.7]];
+      const r = this.rng();
+      let cumul = 0;
+      for (const [part, minimum, etendue] of profil) {
+        cumul += part;
+        if (r < cumul) return (minimum + this.rng() * etendue) * this._echelleArret;
+      }
+      const dernier = profil[profil.length - 1];
+      return (dernier[1] + this.rng() * dernier[2]) * this._echelleArret;
     }
 
     _tickRuck(dt) {
