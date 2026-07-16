@@ -120,7 +120,11 @@
     // main (~1 s, 5-6 m) avant de servir le suivant — à 2,5/s il lâchait le
     // ballon en ~0,4 s sans jamais manger sa piste d'élan, et la ligne reculait.
     attaque: {
-      jeuLargeTaux: { pression: 1.4, calme: 1.0 },
+      // Cadence relevée (1,4/1,0 -> 1,7/1,3) pour SOUTENIR LA CHAÎNE de passes
+      // courtes le long de la ligne : mesuré, seulement 29 % des séquences
+      // atteignaient 3 passes (le ballon n'était « jamais écarté ») — la
+      // diagonale d'attaque donne la profondeur, la cadence fait circuler.
+      jeuLargeTaux: { pression: 1.7, calme: 1.3 },
       // x2 : une équipe réelle botte toutes les ~3 courses (France-Irlande
       // 2026 : 78 coups de pied / 255 courses) — c'est le régulateur n°1 de la
       // longueur des possessions. Retenu par balayage : x1 laissait des
@@ -1538,7 +1542,14 @@
               continue;
             }
             const cibleY = Math.max(4, Math.min(LARGEUR - 4, porteur.y + coteOuvert * 7 * rang));
-            const cibleX = porteur.x - porteur.sensAttaque * (0.8 + rang * 0.6);
+            // DIAGONALE en course aussi : le voisin immédiat vient quasi à plat
+            // (rang 1 : ~2,2 m derrière le porteur, prêt à prendre la passe
+            // courte lancé), mais chaque homme au-delà GARDE de la profondeur
+            // (~1,4 m de plus par cran) — la ligne ne s'aplatit jamais toute
+            // entière : quand le 12 reçoit, le 13 et l'aile ont encore du champ
+            // pour continuer le mouvement. C'est ce qui permet d'ÉCARTER par
+            // passes courtes successives au lieu d'une seule passe longue.
+            const cibleX = porteur.x - porteur.sensAttaque * (0.8 + rang * 1.4);
             avancer(j, cibleX - j.x, cibleY - j.y, dt, vitesseMs(j));
             continue;
           }
@@ -1888,7 +1899,14 @@
           .sort((a, b) => (ordreL[a.numero] - ordreL[b.numero]))[0];
         // Passe rapide et fiable le long de la ligne (taux élevé) tant que le
         // porteur n'est pas au contact immédiat : le ballon file vers le large.
-        if (suivant && distDef > 2.4 && this.rng() < (pression ? this.cfg.attaque.jeuLargeTaux.pression : this.cfg.attaque.jeuLargeTaux.calme) * dt) {
+        // ENCHAÎNEMENT : un receveur frais (vient de recevoir, fenêtre _enchaine)
+        // relâche le ballon nettement plus volontiers — c'est ce qui fait
+        // TRAVERSER la ligne au ballon (10->12->13->aile) plus vite que la
+        // défense ne glisse, au lieu de mourir au 2e maillon. Mesuré sans ça :
+        // 2,2 passes par séquence, 32 % seulement à 3+ passes.
+        const tauxLigne = (pression ? this.cfg.attaque.jeuLargeTaux.pression : this.cfg.attaque.jeuLargeTaux.calme)
+          * ((porteur._enchaine || 0) > 0 ? 2.2 : 1);
+        if (suivant && distDef > 2.4 && this.rng() < tauxLigne * dt) {
           this._passeCibleForcee = suivant; return 'PASS';
         }
       }
@@ -1929,7 +1947,10 @@
         // LARGE (pas la passe de contact) : augmenter la passe brute effondre le
         // score (ballon latéral sans percer + en-avants), tandis que l'écart vers
         // l'espace fait vivre le jeu sans casser la finition (score préservé ~47).
-        if (soutienLarge && this.rng() < 0.33 * dt) return 'JEU_LARGE';
+        // Taux abaissé (0,33 -> 0,15) : la passe LONGUE directe est RARE en vrai
+        // (difficile, interceptable) — l'écart normal se fait par passes courtes
+        // successives le long de la ligne (cf. 2c + diagonale d'attaque).
+        if (soutienLarge && this.rng() < 0.15 * dt) return 'JEU_LARGE';
       }
 
       // 4b. ANTI « DÉPART AU RAS » : un demi/back (9-13) pris tout près du
@@ -2004,7 +2025,9 @@
       // un ailier/arrière qui tient son couloir à 20-30 m du regroupement, le
       // plafond de 25 m utilisé pour la passe courte l'exclurait presque
       // toujours — la distance reste pénalisée via probaReussite ci-dessous.
-      const rayon = jeuLarge ? 45 : 25;
+      // Rayon du jeu au large ramené de 45 à 28 m : une passe de 30-45 m
+      // n'existe pas (sauf coup de pied) — même la sautée reste sous ~20 m.
+      const rayon = jeuLarge ? 28 : 25;
       let candidats = att.filter(j => j !== porteur && j.auSol === 0 && distance(j, porteur) <= rayon);
       if (jeuLarge) candidats = candidats.filter(j => j.tendance <= 50);
       // Un vrai joueur ne cherche pas un soutien placé devant lui dans le sens
@@ -2111,6 +2134,9 @@
         }
         this.log(jeuLarge ? 'JEU_LARGE' : 'PASSE', this.possession, `${jeuLarge ? 'Jeu au large' : 'Passe'} de l'equipe ${this.possession}`);
         this._lancerPasseVisuelle(porteur, cible);
+        // Fenêtre d'enchaînement : le receveur a ~0,9 s pendant lesquelles il
+        // relâche volontiers le ballon au suivant (le mouvement continue).
+        cible._enchaine = 0.9;
         this.porteur = cible;
         this._receptionDirecte = false;
         this._neufLibre = false; // le ballon a quitté le 9 : la fenêtre de décision de sortie est close
@@ -2534,12 +2560,14 @@
             const ordreBack = { 10: 1, 12: 2, 13: 3, 11: 4, 14: 4 };
             const rangB = ordreBack[j.numero] || 2;
             const cibleY = Math.max(4, Math.min(LARGEUR - 4, pt.y + coteOuvert * (7 + (rangB - 1) * 8)));
-            // Profondeur MODÉRÉE (~5,5-8 m) : assez pour s'élancer et recevoir
-            // lancé, pas plus — à 8-12 m, 31 % des passes partaient à PLUS de
-            // 5 m en arrière (mesuré) : « que des passes en arrière » à l'écran.
-            // L'élan vient de la course (cibles à plat, pleine vitesse), pas
-            // d'une profondeur excessive.
-            const cibleX = pt.x - sensAttaque * (4.5 + rangB * 0.9);
+            // DIAGONALE D'ATTAQUE : chaque homme se place PLUS PROFOND que celui
+            // à son intérieur (10 à ~5,7 m, 12 à ~7,4 m, 13 à ~9,1 m, aile à
+            // ~10,8 m) — c'est la profondeur qui permet de CONSTRUIRE : chaque
+            // receveur arrive lancé sur une passe courte pendant que le suivant
+            // garde encore du champ. Une ligne trop plate (testée) ne laisse
+            // aucune profondeur pour attaquer ; trop profonde (8-12 m uniformes,
+            // testé aussi), toutes les passes partent 5 m en arrière.
+            const cibleX = pt.x - sensAttaque * (4 + rangB * 1.7);
             // PLEINE VITESSE : la ligne se replace en COURANT pendant le ruck —
             // c'est ce qui permet au 9 de jouer éclair (cf. porte dixPret) sans
             // lancer vers une ligne pas prête. À 85 %, le 10 arrivait souvent
@@ -4282,6 +4310,7 @@
         }
         if (j.missCooldown > 0) j.missCooldown = Math.max(0, j.missCooldown - dt);
         if (j._percee > 0) j._percee = Math.max(0, j._percee - dt); // fenêtre de continuité après un défenseur battu
+        if (j._enchaine > 0) j._enchaine = Math.max(0, j._enchaine - dt); // fenêtre d'enchaînement après réception (le ballon circule)
         if (j.fixeCooldown > 0) j.fixeCooldown = Math.max(0, j.fixeCooldown - dt); // défenseur fixé/battu par une passe
         if (j.ruckRecovery > 0) j.ruckRecovery = Math.max(0, j.ruckRecovery - dt);
         if (j._croiseTimer > 0) j._croiseTimer = Math.max(0, j._croiseTimer - dt);
