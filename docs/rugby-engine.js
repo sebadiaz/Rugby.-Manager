@@ -2134,14 +2134,23 @@
       const probaReussite = Math.max(0.97, Math.min(0.998, 1.0 - distancePasse / 1500));
       if (this.rng() < probaReussite) {
         this.stats[this.possession].passes++;
-        // FIXAGE / SURNOMBRE : si le passeur (un back) a couru sur son défenseur
-        // avant de lâcher — un adversaire est tout proche DEVANT lui — il l'a FIXÉ.
-        // Ce défenseur est battu par la passe : il ne peut plus glisser couvrir le
-        // receveur pendant un court instant (fixeCooldown). En enchaînant
-        // fixe+passe le long de la ligne, les défenseurs intérieurs sont battus un
-        // à un et un SURNOMBRE se crée au large → c'est ça qui fait qu'écarter le
-        // ballon PERCE (au lieu de mourir sur une défense qui couvre tout).
-        if (porteur.numero >= 10) {
+        // FIXAGE / SURNOMBRE : si le passeur (n'importe qui, 9 compris — sa
+        // sortie de ruck fixe tout autant un défenseur qu'une passe de back) a
+        // couru sur son défenseur avant de lâcher — un adversaire est tout
+        // proche DEVANT lui — il l'a FIXÉ. Ce défenseur est battu par la passe :
+        // il ne peut plus glisser couvrir le receveur pendant un court instant
+        // (fixeCooldown). En enchaînant fixe+passe le long de la ligne, les
+        // défenseurs intérieurs sont battus un à un et un SURNOMBRE se crée au
+        // large → c'est ça qui fait qu'écarter le ballon PERCE (au lieu de
+        // mourir sur une défense qui couvre tout).
+        // AVANT : le 9 (numero 9) était EXCLU (seuil >= 10) — mesuré : sa passe
+        // au 10 (34 % de toutes les sorties de ruck, la plus grosse catégorie)
+        // ne fixait jamais aucun défenseur. Avec une défense bien organisée en
+        // créneaux (sans trous, cf. patch précédent), un défenseur se trouvait
+        // quasi toujours déjà à portée du 10 à la réception, sans la moindre
+        // fenêtre pour relayer — 54 % de ces séquences restaient à moins de 5 m
+        // de large. Le 9 doit fixer comme n'importe quel passeur.
+        if (porteur.numero >= 9) {
           const sens = porteur.sensAttaque;
           let fixe = null, dmin = 4.6;
           for (const d of this.defenseurs()) {
@@ -2477,7 +2486,12 @@
         // opposé reste plus doux (comme en vrai, c'est le repli/l'aile qui y
         // glisse). NB : une équirépartition mur-à-mur sur TOUTE la largeur a été
         // testée : zéro trou mais plus aucun espace nulle part — score effondré
-        // (30 -> 20, des matchs à 0) ; retirée.
+        // (30 -> 20, des matchs à 0) ; retirée. NB2 : élargir l'écart guard/1er
+        // créneau (2,5->4,5 m) a aussi été testé pour désaligner la couverture
+        // du point de réception du 10 — mesuré INEFFICACE (54,1 % -> 58,4 % de
+        // séquences 9->10 sous 5 m de large, aggravé) ; retiré. La cause n'est
+        // pas l'alignement des créneaux (cf. mesure directe distance 10<->
+        // défenseur à la réception, plus bas dans l'historique des commits).
         const cibles = [];
         for (let i = 0; i < defsLigne.length; i++) {
           const k = Math.ceil((i + 1) / 2);
