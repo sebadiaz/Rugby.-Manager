@@ -1571,8 +1571,13 @@
             const cibleY = Math.max(3, Math.min(LARGEUR - 3, porteur.y + coteLibre * 4));
             avancer(j, cibleX - j.x, cibleY - j.y, dt, vitesseMs(j));
           } else {
-            const angle = (j.numero % 5) - 2;
-            avancer(j, cibleX - j.x, (porteur.y - j.y) + angle * 0.5, dt, vitesseMs(j) * 0.9);
+            // Le soutien court À CÔTÉ-derrière du porteur (décalé de ~2,5-3 m
+            // sur le côté, jamais dans son dos) : une passe se donne à un
+            // joueur SUR LE CÔTÉ — passer droit derrière soi est impossible.
+            // Mesuré avant : 16 % des passes partaient « dans le dos ».
+            const cote = (j.numero % 2 === 0) ? 1 : -1;
+            const cibleYs = Math.max(2, Math.min(LARGEUR - 2, porteur.y + cote * (2.5 + (j.numero % 3) * 0.4)));
+            avancer(j, cibleX - j.x, cibleYs - j.y, dt, vitesseMs(j) * 0.9);
           }
         } else {
           // AUTONOMIE par le profil : chaque joueur suit le ballon selon SA
@@ -2041,6 +2046,11 @@
       const memesTolerance = 0.3;
       const candidatsOnside = candidats.filter(j => (j.x - porteur.x) * porteur.sensAttaque <= memesTolerance);
       if (candidatsOnside.length > 0) candidats = candidatsOnside;
+      // Une passe se donne à un joueur SUR LE CÔTÉ (composante latérale) :
+      // passer droit dans son propre dos est impossible. On écarte les cibles
+      // sans décalage latéral (< 1,2 m) tant qu'une option latérale existe.
+      const candidatsLateraux = candidats.filter(j => Math.abs(j.y - porteur.y) > 1.2);
+      if (candidatsLateraux.length > 0) candidats = candidatsLateraux;
       if (candidats.length === 0) return false;
 
       // Le demi de mêlée (9) qui sort le ballon cherche à l'ÉCARTER de la
@@ -2446,7 +2456,7 @@
       // (~5 m), comme une vraie ligne qui se compte et comble les espaces.
       const defsLigne = [...this.equipeA, ...this.equipeB]
         .filter(j => j.team !== this.possession && j.auSol === 0 && j.sinBin <= 0
-          && j.numero !== 15 && !this.contestants.includes(j.numero))
+          && j.numero !== 15 && j.numero !== 9 && !this.contestants.includes(j.numero))
         .sort((a, b) => a.y - b.y);
       this._slotDefense = new Map();
       if (defsLigne.length > 0) {
@@ -2469,19 +2479,30 @@
         // par le bord se tassaient au même endroit) : balayage avant/arrière.
         for (let i = 1; i < cibles.length; i++) cibles[i] = Math.max(cibles[i], cibles[i - 1] + 2.5);
         for (let i = cibles.length - 2; i >= 0; i--) cibles[i] = Math.min(cibles[i], cibles[i + 1] - 2.5);
-        // RÉPARTITION PAR POSTE : les AVANTS prennent les créneaux PROCHES du
-        // ruck (gardes/défense de zone proche — et ils restent à distance
-        // raisonnable d'une éventuelle mêlée à venir), les BACKS prennent les
-        // créneaux LARGES. Sans ce tri, un pilier pouvait hériter d'un créneau
-        // au grand large et devoir traverser le terrain à la mêlée suivante
-        // (formation interminable — invariant « une mêlée se termine » violé).
-        const parProximite = cibles.map(c => ({ c, d: Math.abs(c - pt.y) })).sort((a, b) => a.d - b.d);
-        const avantsDef = defsLigne.filter(j => j.numero <= 8).sort((a, b) => a.y - b.y);
-        const backsDef = defsLigne.filter(j => j.numero > 8).sort((a, b) => a.y - b.y);
-        const slotsAvants = parProximite.slice(0, avantsDef.length).map(o => o.c).sort((a, b) => a - b);
-        const slotsBacks = parProximite.slice(avantsDef.length).map(o => o.c).sort((a, b) => a - b);
-        avantsDef.forEach((j, i) => this._slotDefense.set(j, slotsAvants[i]));
-        backsDef.forEach((j, i) => this._slotDefense.set(j, slotsBacks[i]));
+        // RÉPARTITION PAR POSTE (rôles réels, pas un simple tri par position) :
+        // 1. les AILIERS tiennent les EXTRÉMITÉS de leur propre côté (jamais un
+        //    10 planté au bord de touche à l'extérieur de son ailier — vu à
+        //    l'écran avant ce correctif) ;
+        // 2. les AVANTS prennent les créneaux PROCHES du ruck (gardes — et ils
+        //    restent près d'une éventuelle mêlée à venir : invariant « une
+        //    mêlée se termine ») ;
+        // 3. les autres BACKS (10/12/13) remplissent les créneaux restants.
+        // Le 9 défensif n'est PAS dans la ligne : il balaie derrière (cf. plus
+        // bas), comme l'arrière.
+        const dispo = [...cibles];
+        const prendreSlot = (j, idx) => { this._slotDefense.set(j, dispo[idx]); dispo.splice(idx, 1); };
+        for (const j of defsLigne.filter(x => x.numero === 11 || x.numero === 14)) {
+          if (!dispo.length) break;
+          prendreSlot(j, j.channelY < LARGEUR / 2 ? 0 : dispo.length - 1);
+        }
+        const avantsDef = defsLigne.filter(j => j.numero <= 8 && !this._slotDefense.has(j)).sort((a, b) => a.y - b.y);
+        const idxProches = dispo.map((c, i) => ({ i, d: Math.abs(c - pt.y) }))
+          .sort((a, b) => a.d - b.d).slice(0, avantsDef.length).map(o => o.i);
+        const slotsAvants = idxProches.map(i => dispo[i]).sort((a, b) => a - b);
+        avantsDef.forEach((j, k) => this._slotDefense.set(j, slotsAvants[k]));
+        for (const v of slotsAvants) { const i = dispo.indexOf(v); if (i >= 0) dispo.splice(i, 1); }
+        const restes = defsLigne.filter(j => !this._slotDefense.has(j)).sort((a, b) => a.y - b.y);
+        restes.forEach((j, k) => { if (k < dispo.length) this._slotDefense.set(j, dispo[k]); });
       }
       let iContestants = 0, iSoutien = 0;
       for (const j of [...this.equipeA, ...this.equipeB]) {
@@ -2500,6 +2521,15 @@
         if (estDemiMelee) {
           const cx = pt.x - sensAttaque * 1;
           avancer(j, cx - j.x, pt.y - j.y, dt, vitesseMs(j));
+          continue;
+        }
+        // Le 9 DÉFENSIF ne se met pas dans la ligne : il BALAIE derrière elle,
+        // près du ruck (~6 m côté défense), prêt à couvrir un ballon poussé, un
+        // petit côté ou un coup de pied rasant — son rôle réel. Avant, il
+        // héritait d'un créneau de ligne parfois au bord de touche.
+        if (j.team !== this.possession && j.numero === 9 && j.auSol === 0) {
+          const cx = pt.x + sensAttaque * 6;
+          avancer(j, cx - j.x, pt.y - j.y, dt, vitesseMs(j) * 0.85);
           continue;
         }
 
@@ -3283,20 +3313,20 @@
           // 3-4× le réel). Les paliers ci-dessous consomment le temps réel d'une
           // vraie séquence de mêlée ; l'échelle (_echelleArret) compresse tout
           // automatiquement sur les matchs démo courts.
-          if (m.timer >= dur(14) && (pret || m.timer >= m.capFormation + dur(10))) {
+          if (m.timer >= dur(8) && (pret || m.timer >= m.capFormation + dur(6))) {
             m.etat = E.CROUCH; m.timer = 0;
             this.log('MELEE_CROUCH', m.equipeIntroduction, 'Arbitre : "Crouch" - les premieres lignes se baissent');
           }
           break;
         }
         case E.CROUCH:
-          if (m.timer >= dur(3.0)) {
+          if (m.timer >= dur(1.8)) {
             m.etat = E.BIND; m.timer = 0;
             this.log('MELEE_BIND', m.equipeIntroduction, 'Arbitre : "Bind" - les piliers se lient a l\'adversaire');
           }
           break;
         case E.BIND:
-          if (m.timer >= dur(2.5)) {
+          if (m.timer >= dur(1.4)) {
             m.etat = E.SET; m.timer = 0;
             this.log('MELEE_SET', m.equipeIntroduction, 'Arbitre : "Set" - les deux packs s\'engagent');
           }
@@ -3304,7 +3334,7 @@
         case E.SET:
           // La poussée ne commence qu'a partir d'ici (apres l'engagement),
           // jamais avant l'introduction.
-          if (m.timer >= dur(2.0)) {
+          if (m.timer >= dur(1.2)) {
             m.etat = E.INTRODUCTION; m.timer = 0;
             this.log('MELEE_INTRODUCTION', m.equipeIntroduction, `Le demi de melee introduit le ballon dans le tunnel pour l'equipe ${m.equipeIntroduction}`);
           }
@@ -3313,7 +3343,7 @@
           // Le talonneur tente de talonner, le ballon progresse vers les
           // pieds du numero 8 : les facteurs de contestation sont calculés
           // une fois, au moment où la lutte pour le ballon démarre vraiment.
-          if (m.timer >= dur(2.5)) {
+          if (m.timer >= dur(1.8)) {
             m.etat = E.CONTESTATION; m.timer = 0;
             m.diff = this._meleeFacteurs();
             this.log('MELEE_CONTESTATION', m.equipeIntroduction, 'Contestation en melee, les deux packs poussent pour le ballon');
@@ -3325,7 +3355,7 @@
             this.log('MELEE_TOURNEE', m.equipeIntroduction, 'La melee tourne de plus de 90 degres, l\'arbitre la fait reformer');
             return this._meleeReset();
           }
-          if (m.timer >= dur(4.0)) this._meleeResoudreContestation();
+          if (m.timer >= dur(3.0)) this._meleeResoudreContestation();
           break;
         case E.SORTIE: {
           // Comme le "use it" du maul : le ballon doit ressortir sous peine
@@ -3945,7 +3975,7 @@
       // talonneur prépare son lancer). Compressée comme les autres temps d'arrêt
       // sur un format démo court (cf. _echelleArret). C'est, avec la mêlée, ce
       // qui ramène le « ballon en jeu » vers les ~44 % réels.
-      const dureeMin = 24 * this._echelleArret;
+      const dureeMin = 14 * this._echelleArret;
       if (this.timerPhase < dureeMin) return;
       // Comme à la mêlée (cf. _tickMelee, case FORMATION) : l'arbitre n'autorise
       // le lancer que lorsque les avants des deux équipes sont réellement
@@ -4127,7 +4157,7 @@
       // Célébration + replacement réalistes (~15 s) : en match réel, entre
       // l'essai accordé et le début de la routine du buteur, il se passe un
       // long moment (célébration, replay, retour des équipes).
-      if (this.timerPhase >= 15 * this._echelleArret) {
+      if (this.timerPhase >= 10 * this._echelleArret) {
         // Le buteur (l'ouvreur) a couru jusqu'au tee pendant la célébration
         // (cf. _transformationPlacerJoueurs) : il y est déjà, on ne le téléporte
         // plus. Il devient simplement le porteur pour la frappe.
