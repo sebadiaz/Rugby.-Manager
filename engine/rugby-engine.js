@@ -4502,12 +4502,28 @@
     // Écarte les paires de joueurs DEBOUT trop rapprochées, d'un pas borné
     // (jamais un saut : au plus minSep/2 par joueur, très en-dessous du seuil
     // de téléportation) — pas un pas de simulation supplémentaire mais une
-    // correction géométrique après le placement du tick. Le minimum est plus
-    // serré près d'un regroupement actif (mêlée/ruck/maul, où les joueurs sont
-    // réellement liés épaule contre épaule, cf. _obstacle) qu'en jeu ouvert.
+    // correction géométrique après le placement du tick.
+    //
+    // Ce n'est PAS la portée des bras : la portée de contact/plaquage existe
+    // déjà séparément (distDef < 2.2 m, cf. choisirActionPorteur/_tickPorte) —
+    // c'est là que « les bras accrochent ». Ici, on empêche seulement les
+    // TORSES de s'interpénétrer une fois deux joueurs déjà au contact/à l'arrêt
+    // l'un contre l'autre. Valeurs calées sur l'anatomie réelle (le corps n'est
+    // pas un disque isotrope : plus large de face que profond) :
+    //   - largeur d'épaules (biacromiale) d'un joueur de rugby : ~0,48-0,55 m ;
+    //   - profondeur du torse (poitrine-dos) : ~0,28-0,32 m.
+    // JEU OUVERT (0,55 m) : contact majoritairement épaule/latéral (joueurs qui
+    // courent côte à côte) + marge pour le balancement des bras en course.
+    // REGROUPEMENT (0,42 m, mêlée/ruck/maul) : mélange de contacts LATÉRAUX
+    // (première ligne de mêlée, liée épaule contre épaule, ~0,48-0,50 m) et
+    // FRONTAUX (plaqueur/jackal au ruck, torse contre torse, ~0,30 m) — un seul
+    // seuil isotrope ne peut pas distinguer l'orientation, 0,42 m est le point
+    // médian qui reste physiquement plausible dans les deux cas plutôt que de
+    // sous-serrer le contact frontal (ancien 0,32 m, trop permissif pour une
+    // mêlée liée épaule contre épaule).
     _separerJoueurs() {
       const tous = [...this.equipeA, ...this.equipeB].filter(j => j.auSol === 0);
-      const SEP_OUVERT = 0.55, SEP_REGROUPEMENT = 0.32;
+      const SEP_OUVERT = 0.55, SEP_REGROUPEMENT = 0.42;
       for (let a = 0; a < tous.length; a++) {
         const j1 = tous[a];
         for (let b = a + 1; b < tous.length; b++) {
