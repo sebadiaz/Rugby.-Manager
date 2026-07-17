@@ -1336,6 +1336,23 @@
         // effet fabriqué.
         this.ruckPoint = { x: this.porteur.x, y: this.porteur.y };
         this.contestants = [defenseurProche.numero];
+        // RUCK QUI RECULE (plaquage dominant) : un SEUL contestant ne suffit
+        // pas à représenter la réalité — sur un ballon repoussé, un 2e
+        // défenseur proche vient SOUTENIR le jackal pour presser le turnover
+        // (d'où le bonus de probabilité de grattage déjà appliqué plus bas,
+        // cf. bonusDominant). Avant ce correctif, ce bonus existait dans le
+        // calcul mais RIEN ne se voyait à l'écran : sur un ruck qui recule,
+        // aucun défenseur ne venait jamais soutenir le plaqueur — signalé par
+        // le joueur, confirmé dans le code (contestants toujours limité à 1,
+        // même dominant). Le 2e défenseur le plus proche (hors le plaqueur
+        // déjà désigné), s'il est disponible, rejoint la contestation.
+        if (this.ruckDominant) {
+          const autresDef = def.filter(j => j !== defenseurProche && j.auSol === 0 && j.ruckRecovery <= 0);
+          if (autresDef.length > 0) {
+            const { joueur: soutienDef } = joueurLePlusProche(autresDef, this.ruckPoint.x, this.ruckPoint.y);
+            this.contestants.push(soutienDef.numero);
+          }
+        }
         // Offload : le porteur plaqué mais pas encore au sol transmet à un
         // soutien tout proche plutôt que de finir au ruck — garde le ballon vivant.
         // Le soutien doit être À HAUTEUR OU EN RETRAIT (loi 11) : un offload reste
