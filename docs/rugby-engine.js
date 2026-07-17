@@ -3460,19 +3460,26 @@
             // la ligne.
             cx = m.x - sA * this.cfg.defense.profondeurArriereMelee; cy = LARGEUR / 2;
           } else if (j.numero === 11 || j.numero === 14) {
-            // Ailiers : l'ailier du côté OUVERT s'écarte au large sur la ligne de
-            // hors-jeu ; l'autre couvre le petit côté (côté fermé).
+            // Ailiers : l'ailier du côté OUVERT s'écarte au large ; l'autre
+            // couvre le petit côté (côté fermé). En ATTAQUE, l'ailier ouvert est
+            // LE PLUS PROFOND de l'escalier (~11 m derrière la ligne de
+            // hors-jeu) : c'est lui qui reçoit lancé en bout de ligne et file
+            // dans le couloir (la flèche longue du tableau tactique).
             const cotAile = (Math.sign(j.channelY - LARGEUR / 2) || 1);
-            cx = ligneHJ;
-            cy = cotAile === openSign ? LARGEUR / 2 + openSign * 22 : m.y - openSign * 7;
+            const estOuvert = cotAile === openSign;
+            cx = (estAttaque && estOuvert) ? ligneHJ - sA * 11 : ligneHJ;
+            cy = estOuvert ? LARGEUR / 2 + openSign * 22 : m.y - openSign * 7;
           } else {
             // 10, 12, 13 : la ligne des trois-quarts, ÉTAGÉE vers le côté ouvert.
             const idx = idxLigne(j.numero);
             cy = m.y + openSign * (7 + idx * 8);
-            // Attaque : ligne FANÉE (de plus en plus en retrait vers l'extérieur,
-            // pour recevoir en avançant). Défense : ligne À PLAT sur la ligne de
-            // hors-jeu, prête à monter à plat.
-            cx = estAttaque ? ligneHJ - sA * idx * 2 : ligneHJ;
+            // Attaque : ESCALIER DIAGONAL MARQUÉ (tableau tactique classique) —
+            // chaque back nettement plus profond que l'intérieur (~3,5 m par
+            // cran, 10 ~1,5 m derrière la ligne de hors-jeu, 13 ~8,5 m) : le
+            // ballon descend la ligne par passes enchaînées, chaque receveur
+            // arrive lancé, jusqu'à la libération de l'ailier dans le couloir.
+            // Défense : ligne À PLAT sur la ligne de hors-jeu, rideau régulier.
+            cx = estAttaque ? ligneHJ - sA * (1.5 + idx * 3.5) : ligneHJ;
           }
           // Priorité au REPLI en profondeur : tant que le back est en avant de sa
           // ligne de hors-jeu (loi 19.31), il ferme d'abord la profondeur (on
