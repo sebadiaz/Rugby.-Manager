@@ -1496,6 +1496,16 @@
           avancer(j, cibleX - j.x, (j.channelY - j.y) * 0.3, dt, vitesseMs(j) * 0.8);
           continue;
         }
+        // Le 9 (quand il ne porte pas) SUIT L'ACTION EN PERMANENCE : ~4,5 m
+        // derrière le porteur, en glissant vers sa colonne — c'est lui qui doit
+        // ARRIVER LE PREMIER sur le prochain ruck pour distribuer avant le
+        // redéploiement adverse. Avant, il traînait à ~6,5 m par la logique
+        // générique : chaque mètre d'écart retarde la sortie du ballon.
+        if (j.numero === 9 && j.auSol === 0) {
+          const cibleX9 = porteur.x - porteur.sensAttaque * 4.5;
+          avancer(j, cibleX9 - j.x, (porteur.y - j.y) * 0.6, dt, vitesseMs(j) * 0.95);
+          continue;
+        }
         // L'OUVREUR (10) ne se place JAMAIS dans le dos direct du 9 : quand le 9
         // a le ballon (sortie), le 10 se décale sur un CÔTÉ (le grand côté, plus
         // d'espace) et EN RETRAIT, pour recevoir lancé et avec un angle et amorcer
@@ -2664,9 +2674,21 @@
       // but — sorties de ruck jugées lentes) pour un gain de score dans le bruit
       // statistique. La ligne se replace à pleine vitesse pendant le ruck à la
       // place (cf. placement des backs).
-      if (this.timerPhase >= dureeCible) {
-        if (!soutienArrive && this.timerPhase < dureeCible + 4 * this._echelleArret) return;
-        if (!neufPret && this.timerPhase < dureeCible + 1.2 * this._echelleArret) return;
+      // SERVICE RAPIDE MÉRITÉ : la durée tirée (profil réel) n'est pas un
+      // couperet aveugle — si le 9 est DÉJÀ à la base, le ballon sécurisé par
+      // un soutien et le contact non dominé, le 9 joue dès ~55 % de la durée
+      // (plancher 1,6 s) : il distribue AVANT le redéploiement adverse, ce qui
+      // déclenche en plus la fenêtre « défense pas replacée » (_defenseTardive).
+      // Un ruck contesté/dominé ou un 9 en retard garde sa durée pleine —
+      // exactement la dynamique réelle du ballon rapide.
+      const serviceRapide = soutienArrive && !this.ruckDominant
+        && neuf9 && distance(neuf9, pt) < 3;
+      const dureeEffective = serviceRapide
+        ? Math.min(dureeCible, Math.max(1.6 * this._echelleArret, dureeCible * 0.55))
+        : dureeCible;
+      if (this.timerPhase >= dureeEffective) {
+        if (!soutienArrive && this.timerPhase < dureeEffective + 4 * this._echelleArret) return;
+        if (!neufPret && this.timerPhase < dureeEffective + 1.2 * this._echelleArret) return;
         // Contest au ruck pondéré par les avants réellement engagés autour du
         // point de ruck (même proxy de force que le maul, forceMaul), plutôt
         // qu'un taux de turnover fixe : un paquet adverse plus nombreux ou
