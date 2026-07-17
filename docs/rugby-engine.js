@@ -4485,12 +4485,57 @@
           if (j._solX != null) { j._solX = null; j._solY = null; }
         }
       }
+      // ANTI-COLLISION : deux joueurs DEBOUT ne doivent jamais occuper (quasi)
+      // le même point — sans ça, plusieurs joueurs qui convergent vers la même
+      // cible (chasse au ballon, ruck, tee de transformation...) finissent
+      // superposés à l'écran, et l'un semble « avancer à travers » l'autre.
+      // Un joueur AU SOL n'est jamais déplacé (il est figé à sa chute).
+      this._separerJoueurs();
       // Suivi de l'avantage (loi 8) APRÈS la phase : on évalue sur l'état mis à
       // jour (possession, position du porteur) si l'avantage est joué ou s'il
       // faut revenir à la sanction.
       if (this.avantage) this._tickAvantage(dt);
       // L'arbitre court vers sa place (jamais de téléportation).
       if (this.phase !== 'TERMINE') this._majArbitre(dt);
+    }
+
+    // Écarte les paires de joueurs DEBOUT trop rapprochées, d'un pas borné
+    // (jamais un saut : au plus minSep/2 par joueur, très en-dessous du seuil
+    // de téléportation) — pas un pas de simulation supplémentaire mais une
+    // correction géométrique après le placement du tick. Le minimum est plus
+    // serré près d'un regroupement actif (mêlée/ruck/maul, où les joueurs sont
+    // réellement liés épaule contre épaule, cf. _obstacle) qu'en jeu ouvert.
+    _separerJoueurs() {
+      const tous = [...this.equipeA, ...this.equipeB].filter(j => j.auSol === 0);
+      const SEP_OUVERT = 0.55, SEP_REGROUPEMENT = 0.32;
+      for (let a = 0; a < tous.length; a++) {
+        const j1 = tous[a];
+        for (let b = a + 1; b < tous.length; b++) {
+          const j2 = tous[b];
+          const dx = j2.x - j1.x, dy = j2.y - j1.y;
+          const d = Math.hypot(dx, dy);
+          const pres1 = _obstacle && Math.hypot(j1.x - _obstacle.x, j1.y - _obstacle.y) < _obstacle.r + 1.5;
+          const pres2 = _obstacle && Math.hypot(j2.x - _obstacle.x, j2.y - _obstacle.y) < _obstacle.r + 1.5;
+          const minSep = (pres1 || pres2) ? SEP_REGROUPEMENT : SEP_OUVERT;
+          if (d >= minSep) continue;
+          let ux, uy;
+          if (d > 1e-6) { ux = dx / d; uy = dy / d; }
+          else {
+            // Superposition exacte : direction déterministe (jamais this.rng(),
+            // qui romprait la reproductibilité du match) via un angle dérivé
+            // des identités des deux joueurs, réparti par nombre d'or.
+            const id1 = (j1.team === 'A' ? 0 : 100) + j1.numero;
+            const id2 = (j2.team === 'A' ? 0 : 100) + j2.numero;
+            const ang = (id1 - id2) * 2.399963;
+            ux = Math.cos(ang); uy = Math.sin(ang);
+          }
+          const push = (minSep - d) / 2;
+          j1.x = Math.max(0, Math.min(LONGUEUR, j1.x - ux * push));
+          j1.y = Math.max(0, Math.min(LARGEUR, j1.y - uy * push));
+          j2.x = Math.max(0, Math.min(LONGUEUR, j2.x + ux * push));
+          j2.y = Math.max(0, Math.min(LARGEUR, j2.y + uy * push));
+        }
+      }
     }
 
     // Forme normalisée du ballon (cf. docs/index.html refonte modulaire) :
