@@ -28,9 +28,20 @@
 <div class="panneau" id="panneauGeneration">
   <div class="accueilContenu">
     <h2>Génération du match…</h2>
-    <p>Le moteur simule le match complet en arrière-plan (mêlées, rucks, plaquages, coups de pied…), puis la visualisation démarre.</p>
+    <p>Le moteur simule le match complet en arrière-plan (mêlées, rucks, plaquages, coups de pied…).</p>
     <div class="barreProgression"><div class="barreProgressionRemplissage" id="genProgressBar"></div></div>
     <p id="genProgressLabel">0:00 / 80:00</p>
+  </div>
+</div>
+
+<div class="panneau" id="panneauResultat">
+  <div class="accueilContenu">
+    <h2>Match terminé</h2>
+    <div id="resultatScore" style="font-size:22px;font-weight:700;margin:14px 0;"></div>
+    <p id="resultatDetail" style="opacity:.85;font-size:13px;"></p>
+    <p style="opacity:.7;font-size:12px;">Voir le match est facultatif : le résultat est déjà acquis.</p>
+    <button id="btnResultatVoir" class="accent">Voir le match</button>
+    <button id="btnResultatFermer" class="alt">Fermer</button>
   </div>
 </div>
 

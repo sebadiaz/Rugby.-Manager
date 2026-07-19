@@ -72,10 +72,10 @@
   // GÉNÉRATION EN ARRIÈRE-PLAN : le match complet (jusqu'à 80 min = 48000 pas)
   // est simulé d'un coup par lots (setTimeout entre chaque lot pour ne pas
   // geler l'onglet), sur un moteur JETABLE avec la même graine — la
-  // simulation est déterministe, donc la VRAIE lecture (démarrée juste après
-  // via demarrerNouveauMatch) rejouera exactement le même match. Le joueur
-  // voit une barre de progression pendant le calcul, puis la visualisation
-  // démarre seulement une fois le match entièrement généré.
+  // simulation est déterministe, donc la VRAIE lecture (si le joueur choisit
+  // de la lancer, cf. plus bas) rejouera exactement le même match. Le joueur
+  // voit une barre de progression pendant le calcul ; `onTermine` reçoit
+  // l'état final normalisé (score, stats) une fois le match entièrement généré.
   const PAS_PAR_LOT = 400; // ~40 s de jeu par lot : fluide (plusieurs lots/s), UI jamais bloquée longtemps
   function genererMatchEnArrierePlan(seed, duree, onTermine) {
     document.getElementById('panneauGeneration').classList.add('visible');
@@ -95,23 +95,48 @@
       if (genEngine.tempsMatch < duree && genEngine.phase !== 'TERMINE') {
         setTimeout(lot, 0);
       } else {
-        onTermine();
+        document.getElementById('panneauGeneration').classList.remove('visible');
+        onTermine(normalizeMatchState(genEngine.getState()));
       }
     }
     lot();
   }
 
-  // Point d'entrée commun pour lancer un NOUVEAU match visible : génère
-  // d'abord en arrière-plan (voir ci-dessus), puis seulement une fois prêt,
-  // démarre la vraie lecture et l'affiche.
-  function lancerNouveauMatchAvecGeneration(seed, duree, apresDemarrage) {
-    genererMatchEnArrierePlan(seed, duree, () => {
-      demarrerNouveauMatch(seed, duree);
-      enCours = true;
-      document.getElementById('btnPlay').textContent = 'Pause';
-      afficherVueMatch();
-      assurerBoucle();
-      if (apresDemarrage) apresDemarrage();
+  function demarrerLectureReelle(seed, duree) {
+    demarrerNouveauMatch(seed, duree);
+    enCours = true;
+    document.getElementById('btnPlay').textContent = 'Pause';
+    afficherVueMatch();
+    assurerBoucle();
+  }
+
+  // Point d'entrée commun pour lancer un NOUVEAU match : génère d'abord en
+  // arrière-plan (voir ci-dessus). Le résultat est ACQUIS dès la génération
+  // terminée (opts.onResultat reçoit l'état final tout de suite, que le
+  // joueur regarde le match ou non) ; « voir le match » n'est qu'une option
+  // proposée ensuite — le joueur peut fermer directement sur le résultat.
+  // opts.direct=true saute l'écran de choix et lance la lecture tout de
+  // suite (utilisé pour « Revoir » un match déjà connu depuis l'historique).
+  function lancerNouveauMatchAvecGeneration(seed, duree, opts) {
+    const { onResultat, onFermer, direct } = opts || {};
+    genererMatchEnArrierePlan(seed, duree, (etatFinal) => {
+      if (onResultat) onResultat(etatFinal);
+      if (direct) { demarrerLectureReelle(seed, duree); return; }
+      const s = etatFinal.stats;
+      document.getElementById('resultatScore').textContent =
+        `Equipe A ${etatFinal.score.A} — ${etatFinal.score.B} Equipe B`;
+      document.getElementById('resultatDetail').textContent = s
+        ? `${s.A.essais} essai(s) contre ${s.B.essais} · possession ${etatFinal.possessionPct.A}% / ${etatFinal.possessionPct.B}%`
+        : '';
+      document.getElementById('panneauResultat').classList.add('visible');
+      document.getElementById('btnResultatVoir').onclick = () => {
+        document.getElementById('panneauResultat').classList.remove('visible');
+        demarrerLectureReelle(seed, duree);
+      };
+      document.getElementById('btnResultatFermer').onclick = () => {
+        document.getElementById('panneauResultat').classList.remove('visible');
+        if (onFermer) onFermer();
+      };
     });
   }
 
@@ -310,12 +335,12 @@
     appliquerVitesse(PALIERS_VITESSE[(i + 1) % PALIERS_VITESSE.length]);
   });
   document.getElementById('btnNouveau').addEventListener('click', () => {
-    lancerNouveauMatchAvecGeneration(graineAleatoire(), lireDureeChoisie());
+    lancerNouveauMatchAvecGeneration(graineAleatoire(), lireDureeChoisie(), { onFermer: afficherAccueil });
   });
   // Changer la durée relance immédiatement un match de cette durée (même graine
   // conservée pour comparer), pour que le choix soit visible tout de suite.
   document.getElementById('selDuree').addEventListener('change', () => {
-    lancerNouveauMatchAvecGeneration(seedActuel, lireDureeChoisie());
+    lancerNouveauMatchAvecGeneration(seedActuel, lireDureeChoisie(), { onFermer: afficherAccueil });
   });
   document.getElementById('btnAccueil').addEventListener('click', () => {
     afficherAccueil();
@@ -361,7 +386,9 @@
 
   function onRevoirHistorique(entree) {
     document.getElementById('panneauHistorique').classList.remove('visible');
-    lancerNouveauMatchAvecGeneration(entree.seed, entree.duree);
+    // Un match déjà rejoué depuis l'historique va droit à la visualisation
+    // (le joueur a déjà choisi « Revoir », pas besoin de reproposer le choix).
+    lancerNouveauMatchAvecGeneration(entree.seed, entree.duree, { direct: true });
   }
 
   // --- Page d'accueil : point d'entrée du jeu, affichée au chargement. Le
@@ -403,13 +430,15 @@
   // par défaut : tant que rien n'appelle demarrerMatchClub, le Match rapide
   // fonctionne exactement comme avant.
   window.RMMain = {
-    // `onDemarre` est appelé une fois la génération en arrière-plan terminée
-    // et la VRAIE lecture démarrée (pas avant) : c'est à partir de là que
-    // clubUI.js peut sans risque commencer à surveiller la fin du match
-    // (sinon il pourrait lire l'état d'un match précédent encore affiché).
-    demarrerMatchClub(seed, duree, joueursA, joueursB, onDemarre) {
+    // `callbacks.onResultat(etatFinal)` est appelé dès que le match est généré
+    // (score connu, avant même que le joueur choisisse de le regarder) : c'est
+    // le moment où clubUI.js doit enregistrer le résultat dans la saison — le
+    // résultat est acquis, « voir le match » n'est qu'une option ensuite.
+    // `callbacks.onFermer()` est appelé si le joueur ferme l'écran de résultat
+    // sans regarder (pour rouvrir le panneau Club).
+    demarrerMatchClub(seed, duree, joueursA, joueursB, callbacks) {
       configMatch = Object.assign({}, configMatch, { joueursA, joueursB });
-      lancerNouveauMatchAvecGeneration(seed, duree, onDemarre);
+      lancerNouveauMatchAvecGeneration(seed, duree, callbacks);
     },
     // Efface joueursA/joueursB pour revenir aux effectifs par défaut du
     // moteur (utilisé en quittant le Mode Club vers le Match rapide).
