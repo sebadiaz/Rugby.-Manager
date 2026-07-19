@@ -52,22 +52,29 @@
   // tendance : tendance de proximité au ballon (suiveur de jeu vs tenant de station).
   // adresse : précision au pied sur coup de but (0-100), cf. probaReussiteTir —
   // reflète qui, en match réel, prend les tirs (ouvreur/arrière/centre).
+  // Attributs de profondeur (0-100, neutre 60 si absent d'une config) :
+  // melee (technique de poussée, cf. forceMelee), touche (contestation de
+  // lancer, cf. forceTouche), puissance (poussée au maul, cf. forceMaul),
+  // endurance (gestion de fatigue, cf. Mode Club), passe (réussite de passe/
+  // offload), jeuPied (portée en jeu courant, distincte de l'adresse au but),
+  // decision (sécurité du ballon au contact), discipline (fréquence de fautes
+  // de mêlée/maul, cf. facteurDiscipline).
   const PROFILS = {
-    1: { vitesse: 45, plaquage: 70, tendance: 85, adresse: 25, label: 'P' },
-    2: { vitesse: 48, plaquage: 70, tendance: 85, adresse: 25, label: 'T' },
-    3: { vitesse: 45, plaquage: 70, tendance: 85, adresse: 25, label: 'P' },
-    4: { vitesse: 50, plaquage: 65, tendance: 80, adresse: 20, label: '2L' },
-    5: { vitesse: 50, plaquage: 65, tendance: 80, adresse: 20, label: '2L' },
-    6: { vitesse: 60, plaquage: 75, tendance: 75, adresse: 25, label: '3L' },
-    7: { vitesse: 62, plaquage: 78, tendance: 75, adresse: 25, label: '3L' },
-    8: { vitesse: 60, plaquage: 72, tendance: 75, adresse: 30, label: '3L' },
-    9: { vitesse: 65, plaquage: 55, tendance: 90, adresse: 45, label: 'DM' },
-    10: { vitesse: 70, plaquage: 50, tendance: 55, adresse: 75, label: 'OV' },
-    11: { vitesse: 90, plaquage: 45, tendance: 15, adresse: 35, label: 'AI' },
-    12: { vitesse: 72, plaquage: 65, tendance: 45, adresse: 45, label: 'CE' },
-    13: { vitesse: 74, plaquage: 60, tendance: 45, adresse: 45, label: 'CE' },
-    14: { vitesse: 90, plaquage: 45, tendance: 15, adresse: 35, label: 'AI' },
-    15: { vitesse: 80, plaquage: 50, tendance: 20, adresse: 65, label: 'AR' },
+    1: { vitesse: 45, plaquage: 70, tendance: 85, adresse: 25, melee: 80, touche: 15, puissance: 80, endurance: 55, passe: 25, jeuPied: 10, decision: 40, discipline: 45, label: 'P' },
+    2: { vitesse: 48, plaquage: 70, tendance: 85, adresse: 25, melee: 85, touche: 55, puissance: 70, endurance: 60, passe: 35, jeuPied: 10, decision: 50, discipline: 50, label: 'T' },
+    3: { vitesse: 45, plaquage: 70, tendance: 85, adresse: 25, melee: 80, touche: 15, puissance: 80, endurance: 55, passe: 25, jeuPied: 10, decision: 40, discipline: 45, label: 'P' },
+    4: { vitesse: 50, plaquage: 65, tendance: 80, adresse: 20, melee: 65, touche: 75, puissance: 75, endurance: 60, passe: 30, jeuPied: 10, decision: 45, discipline: 50, label: '2L' },
+    5: { vitesse: 50, plaquage: 65, tendance: 80, adresse: 20, melee: 65, touche: 80, puissance: 78, endurance: 60, passe: 30, jeuPied: 10, decision: 45, discipline: 50, label: '2L' },
+    6: { vitesse: 60, plaquage: 75, tendance: 75, adresse: 25, melee: 45, touche: 55, puissance: 70, endurance: 70, passe: 45, jeuPied: 15, decision: 55, discipline: 55, label: '3L' },
+    7: { vitesse: 62, plaquage: 78, tendance: 75, adresse: 25, melee: 40, touche: 45, puissance: 65, endurance: 75, passe: 50, jeuPied: 15, decision: 60, discipline: 55, label: '3L' },
+    8: { vitesse: 60, plaquage: 72, tendance: 75, adresse: 30, melee: 55, touche: 60, puissance: 78, endurance: 70, passe: 50, jeuPied: 20, decision: 60, discipline: 55, label: '3L' },
+    9: { vitesse: 65, plaquage: 55, tendance: 90, adresse: 45, melee: 20, touche: 15, puissance: 40, endurance: 75, passe: 85, jeuPied: 55, decision: 75, discipline: 60, label: 'DM' },
+    10: { vitesse: 70, plaquage: 50, tendance: 55, adresse: 75, melee: 10, touche: 10, puissance: 35, endurance: 65, passe: 80, jeuPied: 85, decision: 80, discipline: 60, label: 'OV' },
+    11: { vitesse: 90, plaquage: 45, tendance: 15, adresse: 35, melee: 5, touche: 10, puissance: 35, endurance: 70, passe: 50, jeuPied: 35, decision: 55, discipline: 55, label: 'AI' },
+    12: { vitesse: 72, plaquage: 65, tendance: 45, adresse: 45, melee: 10, touche: 15, puissance: 60, endurance: 70, passe: 65, jeuPied: 45, decision: 65, discipline: 55, label: 'CE' },
+    13: { vitesse: 74, plaquage: 60, tendance: 45, adresse: 45, melee: 10, touche: 15, puissance: 55, endurance: 70, passe: 65, jeuPied: 45, decision: 65, discipline: 55, label: 'CE' },
+    14: { vitesse: 90, plaquage: 45, tendance: 15, adresse: 35, melee: 5, touche: 10, puissance: 35, endurance: 70, passe: 50, jeuPied: 35, decision: 55, discipline: 55, label: 'AI' },
+    15: { vitesse: 80, plaquage: 50, tendance: 20, adresse: 65, melee: 5, touche: 20, puissance: 45, endurance: 65, passe: 60, jeuPied: 75, decision: 70, discipline: 55, label: 'AR' },
   };
 
   // Couloir latéral "au repos" par numéro de maillot : forme un vrai plan de
@@ -106,6 +113,14 @@
           plaquage: PROFILS[n].plaquage,
           tendance: PROFILS[n].tendance,
           adresse: PROFILS[n].adresse,
+          melee: PROFILS[n].melee,
+          touche: PROFILS[n].touche,
+          puissance: PROFILS[n].puissance,
+          endurance: PROFILS[n].endurance,
+          passe: PROFILS[n].passe,
+          jeuPied: PROFILS[n].jeuPied,
+          decision: PROFILS[n].decision,
+          discipline: PROFILS[n].discipline,
           couloir: COULOIR_BASE[n],
         };
       }
@@ -285,6 +300,14 @@
       plaquage: (c.plaquage != null ? c.plaquage : p.plaquage) + (rng() * 10 - 5),
       tendance: c.tendance != null ? c.tendance : p.tendance,
       adresse: c.adresse != null ? c.adresse : p.adresse,
+      melee: c.melee != null ? c.melee : p.melee,
+      touche: c.touche != null ? c.touche : p.touche,
+      puissance: c.puissance != null ? c.puissance : p.puissance,
+      endurance: c.endurance != null ? c.endurance : p.endurance,
+      passe: c.passe != null ? c.passe : p.passe,
+      jeuPied: c.jeuPied != null ? c.jeuPied : p.jeuPied,
+      decision: c.decision != null ? c.decision : p.decision,
+      discipline: c.discipline != null ? c.discipline : p.discipline,
       channelY,
       x: 0, y: channelY,
       auSol: 0,
@@ -394,11 +417,49 @@
   };
 
   // Force de poussée d'un joueur dans le maul : les avants (1-8) poussent
-  // nettement plus fort que les arrières ; modulée par l'attribut de plaquage
-  // (proxy de puissance physique).
+  // nettement plus fort que les arrières ; modulée par le plaquage (contact)
+  // ET l'attribut "puissance" (0-100, cf. profils Mode Club) s'il est fourni
+  // — sinon comportement historique inchangé (puissance neutre = 60).
   function forceMaul(j) {
     const base = j.numero <= 8 ? 80 : 40;
-    return base + (j.plaquage - 60) * 0.3;
+    const puissance = typeof j.puissance === 'number' ? j.puissance : 60;
+    return base + (j.plaquage - 60) * 0.2 + (puissance - 60) * 0.25;
+  }
+
+  // Force spécifique de mêlée (technique de poussée organisée), distincte du
+  // maul : pondérée par l'attribut "melee" (0-100) plutôt que par la
+  // puissance brute — un pack technique domine même sans être le plus lourd.
+  function forceMelee(j) {
+    const base = j.numero <= 8 ? 80 : 40;
+    const melee = typeof j.melee === 'number' ? j.melee : 60;
+    return base + (j.plaquage - 60) * 0.15 + (melee - 60) * 0.35;
+  }
+
+  // Force de contestation en touche : pondérée par l'attribut "touche"
+  // (détente/timing du sauteur, soutien du lever) plutôt que par la
+  // puissance brute.
+  function forceTouche(j) {
+    const base = j.numero <= 8 ? 80 : 40;
+    const touche = typeof j.touche === 'number' ? j.touche : 60;
+    return base + (j.plaquage - 60) * 0.1 + (touche - 60) * 0.4;
+  }
+
+  // Discipline moyenne (0-100) des avants sur le terrain d'une équipe — sert à
+  // moduler la fréquence des fautes de mêlée/maul (cf. _meleeDetecterFautes/
+  // _maulDetecterFautes). Neutre (60, comportement historique) si l'attribut
+  // n'est pas fourni pour un joueur donné.
+  function disciplineMoyenne(equipe) {
+    const avants = equipe.filter(j => j.numero <= 8 && j.sinBin <= 0);
+    if (avants.length === 0) return 60;
+    const somme = avants.reduce((s, j) => s + (typeof j.discipline === 'number' ? j.discipline : 60), 0);
+    return somme / avants.length;
+  }
+  // Facteur multiplicatif appliqué aux seuils de faute (>1 = plus fautif) :
+  // une équipe très disciplinée (90) concède ~40 % de fautes en moins sur ces
+  // regroupements, une équipe indisciplinée (20) ~55 % de plus — borné pour
+  // ne jamais neutraliser complètement le risque de faute.
+  function facteurDiscipline(equipe) {
+    return Math.max(0.55, Math.min(1.6, 1 + (60 - disciplineMoyenne(equipe)) / 75));
   }
 
   // --- Mêlée (lois 19/20) : machine à états -----------------------------------
@@ -591,6 +652,11 @@
       this.stats = {
         A: this._statsVierges(), B: this._statsVierges(),
       };
+      // Statistiques PAR JOUEUR (numéro), même principe que this.stats mais
+      // ventilé individu par individu (Mode Club : classement des marqueurs,
+      // fiche joueur) — peuplé paresseusement au premier événement de chaque
+      // joueur, jamais déduit après coup.
+      this.statsJoueurs = { A: {}, B: {} };
       this.tempsJeuEffectif = 0;
       // Temps de possession réel par équipe (ballon vivant uniquement, même
       // condition que tempsJeuEffectif) : sert à calculer un % de possession
@@ -625,6 +691,18 @@
         // mieux marquer vs encaisser). Tous derives d'actions reelles.
         franchissements: 0, kicksRegagnes: 0, exits: 0, exitsRates: 0,
       };
+    }
+
+    // Retourne (en la créant si besoin) le compteur individuel d'un joueur —
+    // sous-ensemble volontairement resserré de _statsVierges (les stats les
+    // plus lisibles pour un classement individuel), jamais une déduction.
+    _statJoueur(joueur) {
+      if (!joueur) return null;
+      const bucket = this.statsJoueurs[joueur.team];
+      if (!bucket[joueur.numero]) {
+        bucket[joueur.numero] = { essais: 0, passes: 0, tacklesMade: 0, tacklesAttempted: 0, metresGagnes: 0 };
+      }
+      return bucket[joueur.numero];
     }
 
     // type : catégorie machine-lisible de l'événement (ESSAI, PENALITE, ...) pour que
@@ -1311,6 +1389,7 @@
         const att0 = this.attaquants();
         this.stats[this.possession].carries++;
         this.stats[defenseurProche.team].tacklesAttempted++;
+        this._statJoueur(defenseurProche).tacklesAttempted++;
         // Réussite de plaquage ~86-88 % (réel ~85-88 %) : l'ancienne base 0.83
         // donnait ~80 % de réussite et ~128 plaquages manqués/match (réel ~15 %
         // d'échec), donc trop de défenseurs battus et de franchissements.
@@ -1355,6 +1434,7 @@
           return;
         }
         this.stats[defenseurProche.team].tacklesMade++;
+        this._statJoueur(defenseurProche).tacklesMade++;
         // Définition officielle du plaquage (World Rugby) : le plaqueur amène le
         // porteur au sol ET va LUI-MÊME au sol. On le montre donc brièvement
         // couché À L'ÉCRAN (marqueur PUREMENT VISUEL solVisuel, cf. renderer),
@@ -1368,7 +1448,13 @@
         // volontairement bas (~1 contact sur 75) : à 0.045 il produisait à lui
         // seul ~25 mêlées/match, très au-dessus du repère réel (8-25 mêlées
         // TOTALES par match, cf. CLAUDE.md Rôle 6).
-        if (this.rng() < 0.008) {
+        // Sécurité du ballon au contact modulée par la décision/lucidité du
+        // porteur (0-100, cf. profils Mode Club) : neutre (60) = taux
+        // historique inchangé, un porteur mal inspiré (30) en perd nettement
+        // plus, un porteur très sûr (90) presque jamais.
+        const facteurDecision = typeof porteur.decision === 'number'
+          ? Math.max(0.5, Math.min(1.6, 1 + (60 - porteur.decision) / 75)) : 1;
+        if (this.rng() < 0.008 * facteurDecision) {
           this.stats[this.possession].knockOns++;
           this.log('MELEE_ENAVANT', this.possession, `En-avant au contact, equipe ${this.possession} - melee adverse`);
           this._accorderMelee(this.possession, porteur);
@@ -1430,7 +1516,12 @@
         // longue au lieu de mourir au premier plaquage de couverture.
         const enPercee = (porteur._percee || 0) > 0;
         const rayonOffload = enPercee ? 6 : 4;
-        const tauxOffload = enPercee ? 0.30 : 0.03;
+        // Modulé par l'attribut "passe" du porteur (0-100) : offloader dans le
+        // contact est une compétence de passe sous pression — neutre (60) =
+        // taux historique inchangé.
+        const facteurPasse = typeof porteur.passe === 'number'
+          ? Math.max(0.5, Math.min(1.6, 1 + (porteur.passe - 60) / 90)) : 1;
+        const tauxOffload = (enPercee ? 0.30 : 0.03) * facteurPasse;
         const soutiens = att0.filter(j => j !== porteur && distance(j, porteur) < rayonOffload && j.auSol === 0
           && (j.x - porteur.x) * porteur.sensAttaque <= 0.3);
         if (soutiens.length > 0 && this.rng() < tauxOffload) {
@@ -1450,6 +1541,7 @@
           }
           this.stats[this.possession].passes++;
           this.stats[this.possession].offloads++;
+          this._statJoueur(porteur).passes++;
           this.log('OFFLOAD', this.possession, `Offload de l'equipe ${this.possession} dans le plaquage`);
           this._lancerPasseVisuelle(porteur, receveurOffload);
           // NB : figer les défenseurs engagés sur le plaquage (fixeCooldown) a été
@@ -1510,7 +1602,9 @@
       // Mètres gagnés : uniquement le terrain réellement parcouru ballon en
       // main dans le sens d'attaque (pas les passes ni le jeu au pied), comme
       // la statistique "metres gained" d'un relevé de match réel.
-      this.stats[this.possession].metresGagnes += (porteur.x - xAvantCourse) * porteur.sensAttaque;
+      const metresCourus = (porteur.x - xAvantCourse) * porteur.sensAttaque;
+      this.stats[this.possession].metresGagnes += metresCourus;
+      this._statJoueur(porteur).metresGagnes += metresCourus;
 
       // Touche : le ballon porté au-delà de la ligne de touche est mort, jeu arrêté.
       if (porteur.y <= 0.01 || porteur.y >= LARGEUR - 0.01) {
@@ -1773,9 +1867,11 @@
         if (distSauvetage < 2.2 && sauveteur.missCooldown <= 0) {
           this.stats[this.possession].carries++;
           this.stats[sauveteur.team].tacklesAttempted++;
+          this._statJoueur(sauveteur).tacklesAttempted++;
           const probaSauvetage = Math.max(0.55, Math.min(0.85, 0.68 + (sauveteur.plaquage - porteur.vitesse) / 250));
           if (this.rng() < probaSauvetage) {
             this.stats[sauveteur.team].tacklesMade++;
+            this._statJoueur(sauveteur).tacklesMade++;
             porteur.x = porteur.sensAttaque > 0 ? LONGUEUR - 0.5 : 0.5;
             this.ruckPoint = { x: porteur.x, y: porteur.y };
             this.contestants = [sauveteur.numero];
@@ -1803,6 +1899,7 @@
         this.score[this.possession] += 5;
         this.stats[this.possession].essais++;
         this.stats[this.possession].carries++;
+        this._statJoueur(porteur).essais++;
         this.essaiX = porteur.x;
         this.essaiY = porteur.y;
         this.essaiEquipe = this.possession;
@@ -2211,9 +2308,17 @@
       // (structure 9->10->ligne), donc même un petit pourcentage d'échec
       // produisait des dizaines de mêlées sur passe ratée (56 mesurées, puis 36).
       // Barème : ~99,3 % de près, ~98 % à 20 m, plancher 97 % au large.
-      const probaReussite = Math.max(0.97, Math.min(0.998, 1.0 - distancePasse / 1500));
+      // Écart borné et volontairement PETIT (cf. attribut "passe", 0-100,
+      // neutre à 60) : la base ci-dessus est déjà calibrée sur le nombre
+      // absolu d'en-avants réels par match, un skill de passe ne doit
+      // qu'affiner ce taux déjà très élevé, jamais le dénaturer.
+      const skillPasse = typeof porteur.passe === 'number'
+        ? Math.max(-0.02, Math.min(0.015, (porteur.passe - 60) * 0.0003)) : 0;
+      const probaReussite = Math.max(0.94, Math.min(0.999,
+        Math.max(0.97, Math.min(0.998, 1.0 - distancePasse / 1500)) + skillPasse));
       if (this.rng() < probaReussite) {
         this.stats[this.possession].passes++;
+        this._statJoueur(porteur).passes++;
         // FIXAGE / SURNOMBRE : si le passeur (n'importe qui, 9 compris — sa
         // sortie de ruck fixe tout autant un défenseur qu'une passe de back) a
         // couru sur son défenseur avant de lâcher — un adversaire est tout
@@ -2282,12 +2387,18 @@
       const equipe = this.possession;
       this.stats[equipe].kicks++;
       const sens = porteur.sensAttaque;
+      // Attribut "jeu au pied" (0-100, neutre 60) : distincte de l'adresse au
+      // but, cette compétence module la PORTÉE réelle en jeu courant — un
+      // bon botteur gagne du terrain, un piètre botteur en perd.
+      const skillPied = typeof porteur.jeuPied === 'number'
+        ? Math.max(-7, Math.min(7, (porteur.jeuPied - 60) * 0.14)) : 0;
       let portee, etale;
-      if (type === 'DEGAGEMENT') { portee = 35 + this.rng() * 20; etale = true; }
-      else if (type === 'OCCUPATION') { portee = 20 + this.rng() * 15; etale = false; }
-      else if (type === 'TOUCHE') { portee = 15 + this.rng() * 15; etale = true; }
-      else if (type === 'CHANDELLE') { portee = 10 + this.rng() * 10; etale = false; }
-      else { portee = 8 + this.rng() * 7; etale = false; } // CHIP
+      if (type === 'DEGAGEMENT') { portee = 35 + this.rng() * 20 + skillPied; etale = true; }
+      else if (type === 'OCCUPATION') { portee = 20 + this.rng() * 15 + skillPied * 0.7; etale = false; }
+      else if (type === 'TOUCHE') { portee = 15 + this.rng() * 15 + skillPied * 0.7; etale = true; }
+      else if (type === 'CHANDELLE') { portee = 10 + this.rng() * 10 + skillPied * 0.4; etale = false; }
+      else { portee = 8 + this.rng() * 7 + skillPied * 0.3; etale = false; } // CHIP
+      portee = Math.max(4, portee);
 
       const cibleX = Math.max(0, Math.min(LONGUEUR, porteur.x + sens * portee));
       let cibleY;
@@ -3128,7 +3239,8 @@
       const tauxEcroulement = avance && distLigneDef < 5 ? 0.04
         : avance && distLigneDef < 18 ? 0.010
           : 0.003;
-      let seuil = tauxEcroulement * dt;
+      const eqDefMaul = m.equipeNonPossession === 'A' ? this.equipeA : this.equipeB;
+      let seuil = tauxEcroulement * dt * facteurDiscipline(eqDefMaul);
       if (r < seuil) {
         return { type: 'ECROULEMENT', equipeFautive: m.equipeNonPossession, message: 'ecroulement volontaire du maul', delibere: true };
       }
@@ -3242,6 +3354,7 @@
       const x = m.sens > 0 ? LONGUEUR : 0;
       this.score[poss] += 5;
       this.stats[poss].essais++;
+      this._statJoueur(this.porteur).essais++; // porteur réel du maul, cf. commentaire ci-dessous
       this.essaiX = x;
       this.essaiY = m.y;
       this.essaiEquipe = poss;
@@ -3647,12 +3760,13 @@
       // pack à 8 dans le calcul de la contestation.
       const avantsIntro = eqIntro.filter(j => j.numero <= 8 && j.sinBin <= 0);
       const avantsDef = eqDef.filter(j => j.numero <= 8 && j.sinBin <= 0);
-      const puissanceIntro = avantsIntro.reduce((s, j) => s + forceMaul(j), 0);
-      const puissanceDef = avantsDef.reduce((s, j) => s + forceMaul(j), 0);
-      const piliersIntro = avantsIntro.filter(j => j.numero === 1 || j.numero === 3).reduce((s, j) => s + forceMaul(j), 0);
-      const piliersDef = avantsDef.filter(j => j.numero === 1 || j.numero === 3).reduce((s, j) => s + forceMaul(j), 0);
+      const puissanceIntro = avantsIntro.reduce((s, j) => s + forceMelee(j), 0);
+      const puissanceDef = avantsDef.reduce((s, j) => s + forceMelee(j), 0);
+      const piliersIntro = avantsIntro.filter(j => j.numero === 1 || j.numero === 3).reduce((s, j) => s + forceMelee(j), 0);
+      const piliersDef = avantsDef.filter(j => j.numero === 1 || j.numero === 3).reduce((s, j) => s + forceMelee(j), 0);
       const talonneur = eqIntro.find(j => j.numero === 2 && j.sinBin <= 0);
-      const techniqueTalonneur = talonneur ? (talonneur.plaquage - 60) * 0.4 : 0;
+      const meleeTalonneur = talonneur && typeof talonneur.melee === 'number' ? talonneur.melee : 60;
+      const techniqueTalonneur = talonneur ? (talonneur.plaquage - 60) * 0.2 + (meleeTalonneur - 60) * 0.5 : 0;
       const fatigue = (this.dureeMatch === Infinity || this.dureeMatch <= 0) ? 0 : Math.min(1, this.tempsMatch / this.dureeMatch);
       const moral = Math.max(-4, Math.min(4, (this.score[m.equipeIntroduction] - this.score[m.equipeNonIntroduction]) / 5));
       const avantageIntroduction = 18;
@@ -3703,11 +3817,15 @@
         // Le camp en difficulté (qui recule dans le duel de poussée) est le
         // plus exposé à l'écroulement volontaire et au pilier en travers.
         const campEnDifficulte = m.diff >= 0 ? m.equipeNonIntroduction : m.equipeIntroduction;
-        seuil += distLigneDef < 5 ? 0.05 * dt : 0.008 * dt;
+        // La discipline moyenne du camp en difficulté module ces deux fautes
+        // (écroulement/pilier en travers) : un pack indiscipliné y cède
+        // nettement plus souvent qu'un pack rigoureux.
+        const facteurDiscEcroulement = facteurDiscipline(campEnDifficulte === 'A' ? this.equipeA : this.equipeB);
+        seuil += (distLigneDef < 5 ? 0.05 * dt : 0.008 * dt) * facteurDiscEcroulement;
         if (r < seuil) {
           return { type: 'ECROULEMENT', equipeFautive: campEnDifficulte, gravite: 'PENALITE', message: 'ecroulement volontaire de la melee', delibere: true };
         }
-        seuil += 0.0025 * dt;
+        seuil += 0.0025 * dt * facteurDiscEcroulement;
         if (r < seuil) {
           return { type: 'PILIER_TRAVERS', equipeFautive: campEnDifficulte, gravite: 'PENALITE', message: 'pilier qui pousse en travers (boring in)', delibere: false };
         }
@@ -3980,6 +4098,7 @@
       const passeur = this.porteur;
       this.stats[this.possession].passesTentees++;
       this.stats[this.possession].passes++;
+      this._statJoueur(passeur).passes++;
       this._lancerPasseVisuelle(passeur, cible);
       this.porteur = cible;
       this._receptionDirecte = false;
@@ -4136,8 +4255,8 @@
 
       this.stats[lanceur].lineouts++;
       let forceLanceur = 0, forceAdverse = 0;
-      for (const j of eqLanceur) if (j.numero <= 8) forceLanceur += forceMaul(j);
-      for (const j of eqAdverse) if (j.numero <= 8) forceAdverse += forceMaul(j);
+      for (const j of eqLanceur) if (j.numero <= 8) forceLanceur += forceTouche(j);
+      for (const j of eqAdverse) if (j.numero <= 8) forceAdverse += forceTouche(j);
       const probaVolAdverse = Math.max(0.06, Math.min(0.30, 0.14 + (forceAdverse - forceLanceur) / 900));
       const vole = this.rng() < probaVolAdverse;
       const gagnant = vole ? adversaire : lanceur;
@@ -4772,6 +4891,12 @@
         // calibrage (simulateBatch) et affichage éventuel, jamais recalculées
         // après coup à partir d'autre chose que ces compteurs.
         stats: { A: { ...this.stats.A }, B: { ...this.stats.B } },
+        // Statistiques PAR JOUEUR (numéro -> compteurs), même principe que
+        // ci-dessus mais ventilé individu par individu (cf. _statJoueur).
+        statsJoueurs: {
+          A: Object.fromEntries(Object.entries(this.statsJoueurs.A).map(([n, s]) => [n, { ...s }])),
+          B: Object.fromEntries(Object.entries(this.statsJoueurs.B).map(([n, s]) => [n, { ...s }])),
+        },
         tempsJeuEffectif: this.tempsJeuEffectif,
         // % de possession réel, calculé à partir du temps de jeu effectif
         // accumulé par équipe (this.tempsPossession), pas un chiffre fixé :
