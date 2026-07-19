@@ -259,10 +259,24 @@
   }
 
   // --- Marché des transferts (club du joueur uniquement) ---
+  // Repérage façon "scouting" FM : un joueur libre n'est d'abord connu
+  // qu'approximativement (connaissance basse, cf. statsApparentes) — un vrai
+  // rapport de scout se précise avec l'investissement, il ne tombe pas tout
+  // armé avec des statistiques exactes.
+  const COUT_SCOUTING = 8; // k€ par action de repérage
+  const SEUIL_CONNAISSANCE_COMPLETE = 90;
+
   function genererJoueurLibre(rng, niveauMoyen) {
     const poste = choisir(rng, GABARIT_EFFECTIF);
     const j = genererJoueurEtendu(poste, rng, niveauMoyen);
     j.prixTransfert = Math.round((j.vitesse + j.plaquage) * 3 + (30 - Math.min(j.age, 30)) * 5);
+    // Premier repérage : connaissance faible (20-50 %) et incertitude fixe
+    // sur chaque statistique (±15 au max), qui se résorbe avec la connaissance
+    // — cf. statsApparentes. Fixée une fois pour toutes à la génération, pas
+    // recalculée aléatoirement à chaque affichage (sinon le rapport "flotte").
+    j.connaissance = 20 + Math.floor(rng() * 30);
+    j.ecartVitesse = Math.round((rng() * 2 - 1) * 15);
+    j.ecartPlaquage = Math.round((rng() * 2 - 1) * 15);
     return j;
   }
   function genererMarcheTransferts(rng, niveauMoyen, n) {
@@ -271,12 +285,47 @@
     return marche;
   }
 
+  // Ce que le RAPPORT DE SCOUT affiche pour ce joueur du marché — pas
+  // forcément ses vraies statistiques tant qu'il n'est pas bien connu.
+  // `complet` indique si on peut faire confiance aux valeurs affichées.
+  function statsApparentes(joueur) {
+    const fiabilite = Math.min(1, joueur.connaissance / SEUIL_CONNAISSANCE_COMPLETE);
+    return {
+      vitesse: Math.round(joueur.vitesse - joueur.ecartVitesse * (1 - fiabilite)),
+      plaquage: Math.round(joueur.plaquage - joueur.ecartPlaquage * (1 - fiabilite)),
+      complet: joueur.connaissance >= SEUIL_CONNAISSANCE_COMPLETE,
+    };
+  }
+  // Étoiles (1-5) dérivées du rapport de scout ACTUEL (pas des vraies stats
+  // si le joueur n'est pas encore bien connu) : ce que verrait vraiment un
+  // manager, incertitude comprise.
+  function estimationEtoiles(joueur) {
+    const s = statsApparentes(joueur);
+    const niveau = (s.vitesse + s.plaquage) / 2;
+    return Math.max(1, Math.min(5, Math.round((niveau - 30) / 13)));
+  }
+
+  // Investit dans le repérage d'un joueur du marché : coûte un peu de budget,
+  // fait progresser la connaissance vers un rapport fiable.
+  function scouterJoueur(saison, joueurId) {
+    const j = saison.marche.find((x) => x.id === joueurId);
+    if (!j) return { ok: false, motif: 'introuvable' };
+    if (j.connaissance >= 100) return { ok: false, motif: 'deja_complet' };
+    if (saison.clubJoueur.budget < COUT_SCOUTING) return { ok: false, motif: 'budget' };
+    saison.clubJoueur.budget -= COUT_SCOUTING;
+    j.connaissance = Math.min(100, j.connaissance + 30);
+    return { ok: true, connaissance: j.connaissance };
+  }
+
   function signerJoueur(saison, joueurId) {
     const i = saison.marche.findIndex((j) => j.id === joueurId);
     if (i === -1) return { ok: false, motif: 'introuvable' };
     const joueur = saison.marche[i];
     if (saison.clubJoueur.budget < joueur.prixTransfert) return { ok: false, motif: 'budget' };
     saison.clubJoueur.budget -= joueur.prixTransfert;
+    // Une fois signé, c'est TON joueur : plus de brouillard de scouting, ses
+    // vraies statistiques s'affichent directement dans l'effectif.
+    delete joueur.connaissance; delete joueur.ecartVitesse; delete joueur.ecartPlaquage;
     saison.clubJoueur.effectif.push(joueur);
     saison.marche.splice(i, 1);
     return { ok: true };
@@ -479,6 +528,7 @@
     compositionVersJoueursCfg, meilleureComposition,
     masseSalariale, appliquerFinancesMatch,
     genererMarcheTransferts, signerJoueur, libererJoueur,
+    statsApparentes, estimationEtoiles, scouterJoueur, COUT_SCOUTING,
     faireProgresserBlessures, avancerSaison,
     TACTIQUES, tactiqueVersConfig,
   };

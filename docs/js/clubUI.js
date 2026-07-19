@@ -185,14 +185,26 @@
     document.getElementById('clubComposition').innerHTML = lignes;
   }
 
+  // Rapport de scout, pas fiche technique parfaite : tant qu'un joueur du
+  // marché n'est pas assez CONNU (cf. RMClub.scouterJoueur), on affiche une
+  // estimation en étoiles plutôt que ses vraies statistiques — un manager ne
+  // sait jamais tout d'un joueur qu'il n'a jamais vraiment observé.
   function rafraichirMarche() {
     const c = saison.clubJoueur;
     document.getElementById('transfertsBudget').innerHTML =
       `<div class="ligneFinances"><span>Budget disponible</span><span class="budgetValeur${c.budget < 0 ? ' negatif' : ''}">${c.budget} k€</span></div>`;
     document.getElementById('clubMarche').innerHTML = saison.marche.map((j) => {
       const abordable = c.budget >= j.prixTransfert;
-      return `<div class="ligneMarche"><span class="infosJoueur"><b>${j.nom}</b><span>${POSTE_COMPLET[j.poste] || j.poste} · ${j.age} ans · Vit.${j.vitesse}/Plaq.${j.plaquage}</span></span>` +
-        `<span class="actionMarche"><span class="prixMarche">${j.prixTransfert} k€</span>` +
+      const stats = RMClub.statsApparentes(j);
+      const etoiles = '★'.repeat(RMClub.estimationEtoiles(j)) + '☆'.repeat(5 - RMClub.estimationEtoiles(j));
+      const ligneStats = stats.complet
+        ? `Vit.${stats.vitesse}/Plaq.${stats.plaquage}`
+        : `${etoiles} <span title="Rapport de scout incomplet, chiffres approximatifs">(estimation)</span>`;
+      const boutonScout = stats.complet
+        ? ''
+        : `<button class="alt btnScouter" data-joueur="${j.id}"${c.budget >= RMClub.COUT_SCOUTING ? '' : ' disabled'}>🔍 Scouter (${RMClub.COUT_SCOUTING} k€)</button>`;
+      return `<div class="ligneMarche"><span class="infosJoueur"><b>${j.nom}</b><span>${POSTE_COMPLET[j.poste] || j.poste} · ${j.age} ans · ${ligneStats}</span></span>` +
+        `<span class="actionMarche"><span class="prixMarche">${j.prixTransfert} k€</span>${boutonScout}` +
         `<button class="accent btnSigner" data-joueur="${j.id}"${abordable ? '' : ' disabled'}>Signer</button></span></div>`;
     }).join('') || '<p>Aucun joueur libre pour le moment.</p>';
   }
@@ -282,7 +294,15 @@
   });
   document.getElementById('clubMarche').addEventListener('click', (e) => {
     const id = e.target.dataset.joueur;
-    if (!id || !e.target.classList.contains('btnSigner')) return;
+    if (!id) return;
+    if (e.target.classList.contains('btnScouter')) {
+      const res = RMClub.scouterJoueur(saison, id);
+      if (!res.ok) { window.alert('Budget insuffisant pour financer ce repérage.'); return; }
+      RMClub.sauvegarderSaison(saison);
+      rafraichirMarche();
+      return;
+    }
+    if (!e.target.classList.contains('btnSigner')) return;
     const res = RMClub.signerJoueur(saison, id);
     if (!res.ok) { window.alert('Budget insuffisant pour cette signature.'); return; }
     compositionActuelle = null; // nouveau joueur potentiellement meilleur : ré-évalue la composition
