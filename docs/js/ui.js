@@ -19,11 +19,21 @@
     banniereJusqua = 0;
   }
 
+  // Noms affichés pour l'équipe A / l'équipe B : génériques par défaut (Match
+  // rapide), remplacés par les vrais noms de club pendant un match du Mode
+  // Club (cf. definirNomsEquipes, appelé par main.js avant de démarrer un
+  // match). Le moteur lui-même ne connaît que "A"/"B" — l'affichage seul
+  // traduit ces identifiants en noms lisibles.
+  let nomsEquipes = { A: 'Equipe A', B: 'Equipe B' };
+  function definirNomsEquipes(noms) {
+    nomsEquipes = { A: (noms && noms.A) || 'Equipe A', B: (noms && noms.B) || 'Equipe B' };
+  }
+
   // Affiche l'état courant dans le HUD. `dureeAffichee` est utilisé pour le
   // libellé "x / y" tant que la durée réelle du match n'est pas finie (Infinity).
   function majAffichage(state, dureeAffichee) {
     document.getElementById('score').textContent =
-      `Equipe A ${state.score.A} — ${state.score.B} Equipe B`;
+      `${nomsEquipes.A} ${state.score.A} — ${state.score.B} ${nomsEquipes.B}`;
     const infosPhase = PHASES[state.phase] || { label: state.phase, couleur: '#455a64' };
     const phaseEl = document.getElementById('phase');
     // Pendant un maul ou une mêlée, afficher l'état détaillé de la machine à
@@ -90,6 +100,8 @@
   function rafraichirPanneauStats(state) {
     const s = state.stats;
     if (!s) return;
+    document.getElementById('statsNomA').textContent = nomsEquipes.A;
+    document.getElementById('statsNomB').textContent = nomsEquipes.B;
     const conteneur = document.getElementById('corpsStats');
     const pct = state.possessionPct || { A: 50, B: 50 };
     const occ = state.occupationPct || { A: 50, B: 50 };
@@ -162,7 +174,7 @@
   }
 
   global.RMUI = {
-    formaterTemps, majAffichage, reinitialiserSuivi,
+    formaterTemps, majAffichage, reinitialiserSuivi, definirNomsEquipes,
     chargerHistorique, rafraichirPanneauHistorique, enregistrerResultat,
     rafraichirPanneauStats,
   };

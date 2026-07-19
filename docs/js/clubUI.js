@@ -132,6 +132,7 @@
       RMClub.effectifVersJoueursCfg(clubDomicile),
       RMClub.effectifVersJoueursCfg(clubExterieur),
       {
+        noms: { A: clubDomicile.nom, B: clubExterieur.nom },
         onResultat(etat) {
           RMClub.enregistrerResultat(saison, f.id, etat.score.A, etat.score.B, etat.stats.A.essais, etat.stats.B.essais);
           RMClub.sauvegarderSaison(saison);

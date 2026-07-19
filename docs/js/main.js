@@ -102,7 +102,11 @@
     lot();
   }
 
-  function demarrerLectureReelle(seed, duree) {
+  // `noms` ({A,B}) donne les noms de club affichés dans le HUD/les stats
+  // pendant CE match (Mode Club) ; par défaut (Match rapide, historique) on
+  // retombe sur les libellés génériques "Equipe A"/"Equipe B".
+  function demarrerLectureReelle(seed, duree, noms) {
+    UI.definirNomsEquipes(noms);
     demarrerNouveauMatch(seed, duree);
     enCours = true;
     document.getElementById('btnPlay').textContent = 'Pause';
@@ -117,21 +121,24 @@
   // proposée ensuite — le joueur peut fermer directement sur le résultat.
   // opts.direct=true saute l'écran de choix et lance la lecture tout de
   // suite (utilisé pour « Revoir » un match déjà connu depuis l'historique).
+  // opts.noms ({A,B}) : noms de club à afficher (Mode Club uniquement).
   function lancerNouveauMatchAvecGeneration(seed, duree, opts) {
-    const { onResultat, onFermer, direct } = opts || {};
+    const { onResultat, onFermer, direct, noms } = opts || {};
+    const nomA = (noms && noms.A) || 'Equipe A';
+    const nomB = (noms && noms.B) || 'Equipe B';
     genererMatchEnArrierePlan(seed, duree, (etatFinal) => {
       if (onResultat) onResultat(etatFinal);
-      if (direct) { demarrerLectureReelle(seed, duree); return; }
+      if (direct) { demarrerLectureReelle(seed, duree, noms); return; }
       const s = etatFinal.stats;
       document.getElementById('resultatScore').textContent =
-        `Equipe A ${etatFinal.score.A} — ${etatFinal.score.B} Equipe B`;
+        `${nomA} ${etatFinal.score.A} — ${etatFinal.score.B} ${nomB}`;
       document.getElementById('resultatDetail').textContent = s
         ? `${s.A.essais} essai(s) contre ${s.B.essais} · possession ${etatFinal.possessionPct.A}% / ${etatFinal.possessionPct.B}%`
         : '';
       document.getElementById('panneauResultat').classList.add('visible');
       document.getElementById('btnResultatVoir').onclick = () => {
         document.getElementById('panneauResultat').classList.remove('visible');
-        demarrerLectureReelle(seed, duree);
+        demarrerLectureReelle(seed, duree, noms);
       };
       document.getElementById('btnResultatFermer').onclick = () => {
         document.getElementById('panneauResultat').classList.remove('visible');
@@ -436,6 +443,9 @@
     // résultat est acquis, « voir le match » n'est qu'une option ensuite.
     // `callbacks.onFermer()` est appelé si le joueur ferme l'écran de résultat
     // sans regarder (pour rouvrir le panneau Club).
+    // `callbacks.noms` ({A,B}) : noms des deux clubs, affichés dans le HUD/les
+    // stats à la place des libellés génériques "Equipe A"/"Equipe B" si le
+    // joueur regarde le match.
     demarrerMatchClub(seed, duree, joueursA, joueursB, callbacks) {
       configMatch = Object.assign({}, configMatch, { joueursA, joueursB });
       lancerNouveauMatchAvecGeneration(seed, duree, callbacks);
