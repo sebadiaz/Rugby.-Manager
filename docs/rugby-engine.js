@@ -83,6 +83,11 @@
     // Caractéristiques de chaque joueur (par numéro de maillot) : poste, vitesse,
     // plaquage (proxy de puissance), tendance (proximité au ballon), couloir
     // latéral au repos (0-70). Dérivées des profils/couloirs historiques.
+    // `joueurs` s'applique aux DEUX équipes si `joueursA`/`joueursB` ne sont pas
+    // fournis (comportement historique inchangé) — utile pour le mode club
+    // (deux effectifs différents, cf. constructeur MatchEngine) sans rien
+    // casser des usages existants (démo, harnais serveur) qui ne passent qu'une
+    // config partagée ou aucune config.
     joueurs: (() => {
       const j = {};
       for (let n = 1; n <= 15; n++) {
@@ -609,8 +614,8 @@
         if (j.sinBin > 0) sinBinRestant.set(j.team + '-' + j.numero, j.sinBin);
         posRestante.set(j.team + '-' + j.numero, { x: j.x, y: j.y });
       }
-      this.equipeA = creerEquipe('A', sens.A, this.rng, this.cfg.joueurs);
-      this.equipeB = creerEquipe('B', sens.B, this.rng, this.cfg.joueurs);
+      this.equipeA = creerEquipe('A', sens.A, this.rng, this.cfg.joueursA || this.cfg.joueurs);
+      this.equipeB = creerEquipe('B', sens.B, this.rng, this.cfg.joueursB || this.cfg.joueurs);
       for (const j of [...this.equipeA, ...this.equipeB]) {
         const restant = sinBinRestant.get(j.team + '-' + j.numero);
         if (restant) j.sinBin = restant;
