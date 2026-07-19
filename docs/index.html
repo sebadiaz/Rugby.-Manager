@@ -126,7 +126,11 @@
         <option value="2400">40 min (mi-temps)</option>
         <option value="4800" selected>80 min (match complet)</option>
       </select>
-      <button id="btnJouerMatchClub" class="accent" style="width:100%;margin-top:10px;">Jouer la journée</button>
+      <div style="display:flex;gap:8px;margin-top:10px;">
+        <button id="btnComposition" class="alt" style="flex:1;">📋 Composition</button>
+        <button id="btnJouerMatchClub" class="accent" style="flex:2;">Jouer la journée</button>
+      </div>
+      <button id="btnSaisonSuivante" class="accent" style="width:100%;margin-top:10px;display:none;">Saison suivante →</button>
     </div>
 
     <div class="carteClub">
@@ -135,7 +139,10 @@
     </div>
 
     <div class="carteClub">
-      <h3>Effectif</h3>
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <h3 style="margin:0;">Effectif</h3>
+        <button id="btnTransferts" class="alt" style="flex:0 0 auto;width:auto;padding:8px 12px;font-size:12px;">💼 Transferts</button>
+      </div>
       <div id="clubEffectif"></div>
     </div>
 
@@ -145,11 +152,32 @@
     </div>
 
     <div style="margin:0 16px 16px;">
-      <button id="btnNouvelleSaisonClub" class="alt warn" style="width:100%;">Nouvelle saison (efface la saison en cours)</button>
+      <button id="btnNouvelleSaisonClub" class="alt warn" style="width:100%;">Recommencer (efface la saison en cours)</button>
     </div>
   </div>
 
   <button class="fermer alt" id="fermerClub">Fermer</button>
+</div>
+
+<div class="panneau" id="panneauComposition">
+  <h2>Composition du jour</h2>
+  <p style="margin:0 16px 8px;font-size:13px;color:var(--text-dim);">Un joueur blessé (🤕) reste sélectionnable mais jouera diminué — évite de l'aligner si tu as une alternative.</p>
+  <div style="margin:0 16px 12px;">
+    <button id="btnCompositionAuto" class="alt" style="width:100%;">Revenir à la meilleure équipe possible</button>
+  </div>
+  <div id="clubComposition" style="margin:0 16px;"></div>
+  <button class="fermer alt" id="fermerComposition">Fermer</button>
+</div>
+
+<div class="panneau" id="panneauTransferts">
+  <h2>Marché des transferts</h2>
+  <div id="transfertsBudget" class="carteClub" style="margin-top:16px;"></div>
+  <div style="margin:0 16px 12px;">
+    <button id="btnRafraichirMarche" class="alt" style="width:100%;">🔄 Rafraîchir le marché</button>
+  </div>
+  <h3>Joueurs libres</h3>
+  <div id="clubMarche" style="margin:0 16px;"></div>
+  <button class="fermer alt" id="fermerTransferts">Fermer</button>
 </div>
 
 <div class="panneau" id="panneauHistorique">

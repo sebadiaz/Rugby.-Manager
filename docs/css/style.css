@@ -230,6 +230,12 @@ select {
 .clubEntete .nomClub { font-size: 18px; font-weight: 800; }
 .clubEntete .sousLigne { display: block; font-size: 12px; color: var(--text-dim); font-weight: 500; }
 
+/* L'effectif étendu (9 colonnes : nom/poste/âge/vit./plaq./contrat/salaire/
+   forme/action) ne tient pas sur un mobile étroit — plutôt que de le
+   compresser jusqu'à l'illisible, il défile horizontalement dans sa propre
+   zone (le reste de la page ne bouge pas). */
+#clubEffectif, #clubClassement { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+#clubEffectif table { min-width: 620px; }
 .tableauClub { width: 100%; border-collapse: collapse; font-size: 12.5px; }
 .tableauClub th {
   text-align: left; color: var(--text-faint); font-weight: 700; padding: 6px 6px;
@@ -241,6 +247,41 @@ select {
 .tableauClub tr.ligneClubJoueur { background: rgba(255, 183, 3, 0.1); }
 .tableauClub tr.ligneClubJoueur td:first-child { border-left: 2px solid var(--accent); }
 .tableauClub tr.ligneJouee { opacity: 0.55; }
+.badgeBlessure { color: var(--loss); font-size: 11px; white-space: nowrap; }
+.badgeContratCourt { color: var(--draw); }
+.btnLiberer {
+  flex: 0 0 auto; width: auto; padding: 4px 9px; font-size: 11px; min-width: 0;
+  border-color: rgba(239, 71, 111, 0.35); color: var(--loss); background: transparent;
+}
+
+/* ---------- Composition du jour ---------- */
+.ligneComposition {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 12.5px;
+}
+.ligneComposition:last-child { border-bottom: none; }
+.numComposition { flex: 0 0 auto; width: 92px; color: var(--text-dim); }
+.numComposition em { color: var(--text-faint); font-style: normal; font-size: 11px; }
+.ligneComposition select { flex: 1; font-size: 12.5px; padding: 8px; }
+
+/* ---------- Marché des transferts ---------- */
+.ligneMarche {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 12.5px;
+}
+.ligneMarche:last-child { border-bottom: none; }
+.ligneMarche .infosJoueur { display: flex; flex-direction: column; }
+.ligneMarche .infosJoueur b { font-size: 13px; }
+.ligneMarche .infosJoueur span { color: var(--text-dim); font-size: 11.5px; }
+.ligneMarche .actionMarche { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+.ligneMarche .prixMarche { font-variant-numeric: tabular-nums; font-weight: 700; white-space: nowrap; }
+.ligneMarche button { min-width: 0; width: auto; padding: 8px 12px; font-size: 12px; }
+
+.ligneFinances {
+  display: flex; justify-content: space-between; align-items: baseline; font-size: 13px;
+}
+.ligneFinances .budgetValeur { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.ligneFinances .budgetValeur.negatif { color: var(--loss); }
 
 .ligneCalendrier {
   display: flex; justify-content: space-between; align-items: center;

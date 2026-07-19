@@ -1,13 +1,18 @@
-// Mode Club : modèle de données minimal pour gérer un club fictif à travers
-// une saison (effectif, calendrier, classement), au-dessus du même moteur de
-// match (engine/rugby-engine.js) que le mode « Match rapide ». Aucune règle de
-// jeu ici — uniquement club/effectif/calendrier/classement et leur persistance
-// (localStorage), séparés du rendu (cf. docs/js/clubUI.js).
+// Mode Club : modèle de données pour gérer un club fictif à travers plusieurs
+// saisons (effectif étendu, contrats, finances, marché des transferts,
+// blessures, calendrier, classement), au-dessus du même moteur de match
+// (engine/rugby-engine.js) que le mode « Match rapide ». Aucune règle de jeu
+// ici — uniquement gestion de club et sa persistance (localStorage), séparées
+// du rendu (cf. docs/js/clubUI.js).
 (function (global) {
   'use strict';
 
   const { DEFAULT_CONFIG } = global.RugbyEngine;
   const CLE_CLUB = 'rugbyManager.club.v1';
+  // Incrémenté à chaque changement de forme des données sauvegardées : une
+  // sauvegarde d'une version différente est ignorée (repart à zéro) plutôt que
+  // de faire planter le jeu sur des champs manquants.
+  const VERSION_SAUVEGARDE = 2;
 
   // --- Génération de noms (club fictif, aucune référence à un club/joueur réel) ---
   const PRENOMS = ['Thomas', 'Lucas', 'Hugo', 'Louis', 'Jules', 'Nathan', 'Enzo', 'Léo',
@@ -32,22 +37,84 @@
     return `${choisir(rng, VILLES)} ${choisir(rng, NOMS_CLUB)}`;
   }
 
-  // Génère un joueur d'effectif pour le numéro donné : archétype de poste tiré
-  // de DEFAULT_CONFIG.joueurs (même baseline que le moteur), avec une variance
-  // liée au NIVEAU DU CLUB (0 = modeste, 1 = très fort) — c'est ce qui rend les
-  // clubs adverses inégaux, comme en vrai championnat.
+  // --- Postes : quel numéro de maillot exige quelle catégorie de poste ---
+  const POSTE_REQUIS = {
+    1: 'P', 2: 'T', 3: 'P', 4: '2L', 5: '2L', 6: '3L', 7: '3L', 8: '3L',
+    9: 'DM', 10: 'OV', 11: 'AI', 12: 'CE', 13: 'CE', 14: 'AI', 15: 'AR',
+  };
+  // Gabarit de l'effectif étendu du club du joueur (24 joueurs, avec
+  // profondeur à chaque poste) — dérivé de la répartition réelle d'une feuille
+  // de match à XV plus quelques remplaçants par ligne.
+  const GABARIT_EFFECTIF = [
+    'P', 'P', 'P', 'T', 'T', '2L', '2L', '2L', '3L', '3L', '3L', '3L',
+    'DM', 'DM', 'OV', 'OV', 'CE', 'CE', 'CE', 'AI', 'AI', 'AI', 'AR', 'AR',
+  ];
+  const TAILLE_EFFECTIF_CIBLE = GABARIT_EFFECTIF.length;
+
+  // Archétype de base (vitesse/plaquage/tendance/couloir) par CATÉGORIE de
+  // poste, dérivé de DEFAULT_CONFIG.joueurs (même baseline que le moteur) : on
+  // prend le premier numéro rencontré pour chaque poste comme représentant.
+  const ARCHETYPE_PAR_POSTE = {};
+  for (const n of Object.keys(DEFAULT_CONFIG.joueurs)) {
+    const j = DEFAULT_CONFIG.joueurs[n];
+    if (!ARCHETYPE_PAR_POSTE[j.poste]) ARCHETYPE_PAR_POSTE[j.poste] = j;
+  }
+
+  let compteurJoueurId = 1;
+  function borneStat(v) { return Math.max(30, Math.min(95, Math.round(v))); }
+
+  // Salaire annuel (k€, fictif) : proportionnel au niveau, avec une prime pour
+  // les joueurs en pleine maturité (25-29 ans) — jeunes espoirs et joueurs
+  // vieillissants coûtent moins cher, comme un vrai marché.
+  function calculerSalaire(vitesse, plaquage, age) {
+    const niveau = (vitesse + plaquage) / 2;
+    const primeAge = (age >= 25 && age <= 29) ? 1.15 : (age <= 21 || age >= 33) ? 0.75 : 1;
+    // Calibré pour qu'une masse salariale de 24 joueurs (~500-700 k€/saison,
+    // donc ~50-70 k€/journée) reste du même ordre de grandeur que la recette
+    // d'un match (cf. appliquerFinancesMatch) — sinon le club fait faillite
+    // dès le premier match, quel que soit le résultat.
+    return Math.round(niveau * 0.45 * primeAge);
+  }
+
+  // Génère un joueur pour une CATÉGORIE de poste (effectif étendu, club du
+  // joueur) — pas de numéro fixe : c'est la composition du jour qui choisit
+  // qui porte quel maillot (cf. meilleureComposition).
+  function genererJoueurEtendu(poste, rng, niveauClub) {
+    const base = ARCHETYPE_PAR_POSTE[poste];
+    const ecartNiveau = (niveauClub - 0.5) * 20;
+    const bruit = () => (rng() * 12 - 6);
+    const age = 18 + Math.floor(rng() * 17);
+    const vitesse = borneStat(base.vitesse + ecartNiveau + bruit());
+    const plaquage = borneStat(base.plaquage + ecartNiveau + bruit());
+    return {
+      id: 'j' + compteurJoueurId++,
+      nom: genererNomJoueur(rng),
+      poste, age, vitesse, plaquage,
+      tendance: base.tendance, couloir: base.couloir,
+      contrat: 1 + Math.floor(rng() * 4), // saisons restantes (1-4)
+      salaire: calculerSalaire(vitesse, plaquage, age),
+      blessureJournees: 0, // >0 = indisponible pour ce nombre de journées
+    };
+  }
+
+  function genererEffectifEtendu(rng, niveauClub) {
+    return GABARIT_EFFECTIF.map((poste) => genererJoueurEtendu(poste, rng, niveauClub));
+  }
+
+  // Génère un joueur d'effectif pour le numéro donné (club ADVERSAIRE, IA) :
+  // toujours un effectif prêt à jouer de 15, sans gestion (pas de profondeur,
+  // pas de contrats/finances) — seul le club du joueur est géré en détail.
   function genererJoueur(numero, rng, niveauClub) {
     const base = DEFAULT_CONFIG.joueurs[numero];
-    const ecartNiveau = (niveauClub - 0.5) * 20; // -10..+10 selon le niveau du club
-    const bruit = () => (rng() * 12 - 6); // variance individuelle, comme le moteur
-    const borne = (v) => Math.max(30, Math.min(95, Math.round(v)));
+    const ecartNiveau = (niveauClub - 0.5) * 20;
+    const bruit = () => (rng() * 12 - 6);
     return {
       numero,
       nom: genererNomJoueur(rng),
       poste: base.poste,
-      age: 18 + Math.floor(rng() * 17), // 18-34 ans
-      vitesse: borne(base.vitesse + ecartNiveau + bruit()),
-      plaquage: borne(base.plaquage + ecartNiveau + bruit()),
+      age: 18 + Math.floor(rng() * 17),
+      vitesse: borneStat(base.vitesse + ecartNiveau + bruit()),
+      plaquage: borneStat(base.plaquage + ecartNiveau + bruit()),
       tendance: base.tendance,
       couloir: base.couloir,
     };
@@ -70,8 +137,28 @@
     };
   }
 
-  // Convertit l'effectif d'un club (15 joueurs) en config joueursA/joueursB
-  // consommée par MatchEngine (cf. engine/rugby-engine.js, creerJoueur) :
+  // Budget de départ (k€, fictif) : les clubs plus huppés démarrent avec plus
+  // de moyens — cohérent avec le niveauClub qui pilote déjà leur force sportive.
+  function budgetInitial(niveauClub, rng) {
+    return Math.round(150 + niveauClub * 500 + rng() * 100);
+  }
+
+  // Club du joueur : effectif ÉTENDU (24, avec profondeur) + budget. C'est le
+  // seul club géré en détail (composition, transferts, finances) — les
+  // adversaires (IA) restent un effectif de 15 prêt à jouer.
+  function genererClubJoueur(rng, { nom, niveauClub = 0.5 } = {}) {
+    return {
+      id: 'club' + (compteurId++),
+      nom: nom || genererNomClub(rng),
+      couleur: choisir(rng, COULEURS),
+      niveauClub,
+      effectif: genererEffectifEtendu(rng, niveauClub),
+      budget: budgetInitial(niveauClub, rng),
+    };
+  }
+
+  // Convertit l'effectif d'un club ADVERSAIRE (15, un par numéro) en config
+  // joueursA/joueursB consommée par MatchEngine (cf. engine/rugby-engine.js) :
   // {numero: {poste, vitesse, plaquage, tendance, couloir}}.
   function effectifVersJoueursCfg(club) {
     const cfg = {};
@@ -79,6 +166,94 @@
       cfg[j.numero] = { poste: j.poste, vitesse: j.vitesse, plaquage: j.plaquage, tendance: j.tendance, couloir: j.couloir };
     }
     return cfg;
+  }
+
+  // Même conversion, mais pour le club du JOUEUR : `composition` associe
+  // chaque numéro (1-15) à l'id du joueur de l'effectif étendu qui le porte
+  // ce jour-là (cf. meilleureComposition / choix manuel dans l'UI).
+  function compositionVersJoueursCfg(effectif, composition) {
+    const parId = {};
+    for (const j of effectif) parId[j.id] = j;
+    const cfg = {};
+    for (const numero of Object.keys(POSTE_REQUIS)) {
+      const j = parId[composition[numero]];
+      if (!j) continue;
+      cfg[numero] = { poste: POSTE_REQUIS[numero], vitesse: j.vitesse, plaquage: j.plaquage, tendance: j.tendance, couloir: j.couloir };
+    }
+    return cfg;
+  }
+
+  // Compose automatiquement la meilleure équipe disponible : pour chaque
+  // numéro, le joueur du bon poste, NON BLESSÉ, au meilleur niveau
+  // (vitesse+plaquage) qui n'est pas déjà titularisé ailleurs. S'il ne reste
+  // aucun joueur valide à un poste (tous blessés), on titularise quand même
+  // le moins pire plutôt que de laisser un trou dans la composition.
+  function meilleureComposition(effectif) {
+    const utilises = new Set();
+    const composition = {};
+    for (const numero of Object.keys(POSTE_REQUIS)) {
+      const poste = POSTE_REQUIS[numero];
+      const candidats = effectif.filter((j) => j.poste === poste && !utilises.has(j.id));
+      if (candidats.length === 0) continue;
+      const disponibles = candidats.filter((j) => !j.blessureJournees);
+      const pool = disponibles.length > 0 ? disponibles : candidats;
+      pool.sort((a, b) => (b.vitesse + b.plaquage) - (a.vitesse + a.plaquage));
+      composition[numero] = pool[0].id;
+      utilises.add(pool[0].id);
+    }
+    return composition;
+  }
+
+  function masseSalariale(effectif) {
+    return effectif.reduce((somme, j) => somme + j.salaire, 0);
+  }
+
+  // Finances d'un jour de match (club du joueur uniquement) : recette de
+  // billetterie (plus élevée pour un grand club, prime en cas de victoire) et
+  // une part de la masse salariale annuelle (répartie sur les 10 journées de
+  // la saison) — un budget qui bouge vraiment avec les résultats, sans
+  // simuler des dizaines de lignes comptables.
+  function appliquerFinancesMatch(club, forme) {
+    const recette = Math.round(40 + club.niveauClub * 120 + (forme === 'v' ? 25 : forme === 'n' ? 10 : 0));
+    const salaires = Math.round(masseSalariale(club.effectif) / 10);
+    club.budget += recette - salaires;
+    return { recette, salaires };
+  }
+
+  // --- Marché des transferts (club du joueur uniquement) ---
+  function genererJoueurLibre(rng, niveauMoyen) {
+    const poste = choisir(rng, GABARIT_EFFECTIF);
+    const j = genererJoueurEtendu(poste, rng, niveauMoyen);
+    j.prixTransfert = Math.round((j.vitesse + j.plaquage) * 3 + (30 - Math.min(j.age, 30)) * 5);
+    return j;
+  }
+  function genererMarcheTransferts(rng, niveauMoyen, n) {
+    const marche = [];
+    for (let i = 0; i < (n || 6); i++) marche.push(genererJoueurLibre(rng, niveauMoyen));
+    return marche;
+  }
+
+  function signerJoueur(saison, joueurId) {
+    const i = saison.marche.findIndex((j) => j.id === joueurId);
+    if (i === -1) return { ok: false, motif: 'introuvable' };
+    const joueur = saison.marche[i];
+    if (saison.clubJoueur.budget < joueur.prixTransfert) return { ok: false, motif: 'budget' };
+    saison.clubJoueur.budget -= joueur.prixTransfert;
+    saison.clubJoueur.effectif.push(joueur);
+    saison.marche.splice(i, 1);
+    return { ok: true };
+  }
+
+  // Refuse de libérer un joueur si ça viderait complètement son poste (sinon
+  // la composition automatique ne pourrait plus aligner une équipe complète).
+  function libererJoueur(saison, joueurId) {
+    const effectif = saison.clubJoueur.effectif;
+    const joueur = effectif.find((j) => j.id === joueurId);
+    if (!joueur) return { ok: false, motif: 'introuvable' };
+    const memePoste = effectif.filter((j) => j.poste === joueur.poste);
+    if (memePoste.length <= 1) return { ok: false, motif: 'dernier_du_poste' };
+    saison.clubJoueur.effectif = effectif.filter((j) => j.id !== joueurId);
+    return { ok: true };
   }
 
   // Calendrier aller-retour complet (méthode du cercle, championnat classique) :
@@ -98,7 +273,6 @@
       const ronde = [];
       for (let i = 0; i < n / 2; i++) {
         const a = ordre[i], b = ordre[n - 1 - i];
-        // Alterne qui reçoit d'une ronde à l'autre pour équilibrer domicile/extérieur.
         ronde.push(r % 2 === 0 ? [a, b] : [b, a]);
       }
       rondesAller.push(ronde);
@@ -114,7 +288,6 @@
     const decalage = rondesAller.length;
     rondesAller.forEach((ronde, r) => {
       for (const [domicileId, exterieurId] of ronde) {
-        // Match retour : domicile/extérieur inversés par rapport à l'aller.
         fixtures.push({ id: 'f' + id++, journee: decalage + r + 1, domicileId: exterieurId, exterieurId: domicileId, joue: false, score: null });
       }
     });
@@ -128,7 +301,6 @@
   }
 
   // Points de classement classiques (rugby à XV) : victoire 4, nul 2, défaite 0.
-  // Pas de points de bonus pour cette première version — cf. README/roadmap.
   function enregistrerResultat(saison, fixtureId, scoreDomicile, scoreExterieur, essaisDomicile, essaisExterieur) {
     const f = saison.calendrier.find((x) => x.id === fixtureId);
     if (!f || f.joue) return;
@@ -151,9 +323,6 @@
       b.pts - a.pts || (b.pointsPour - b.pointsContre) - (a.pointsPour - a.pointsContre) || b.pointsPour - a.pointsPour);
   }
 
-  // Renvoie TOUS les matchs de la prochaine journée non jouée (pas un seul) —
-  // avec un calendrier complet, une journée fait jouer tous les clubs à la
-  // fois (cf. genererCalendrier). Tableau vide si la saison est terminée.
   function prochainesFixtures(saison) {
     const prochaine = saison.calendrier.find((f) => !f.joue);
     if (!prochaine) return [];
@@ -165,19 +334,85 @@
     return saison.adversaires.find((c) => c.id === clubId) || null;
   }
 
-  // Crée une nouvelle saison complète : le club du joueur + 5 adversaires de
-  // niveaux variés, calendrier aller-retour, classement à zéro.
+  // Réduit les blessures d'une journée (appelé une fois par journée jouée) et
+  // tire une petite chance de blessure pour chaque titulaire qui a joué.
+  function faireProgresserBlessures(rng, effectif, composition) {
+    for (const j of effectif) {
+      if (j.blessureJournees > 0) j.blessureJournees--;
+    }
+    const titulairesIds = new Set(Object.values(composition || {}));
+    for (const j of effectif) {
+      if (!titulairesIds.has(j.id)) continue;
+      if (rng() < 0.06) j.blessureJournees = 1 + Math.floor(rng() * 3); // 1-3 journées
+    }
+  }
+
+  // Fin de saison (club du joueur) : vieillissement, fin de contrat, retraite,
+  // recrutement de jeunes pour compenser les départs et garder l'effectif à sa
+  // taille cible. Le budget et l'identité du club sont conservés ; calendrier
+  // et classement repartent à zéro avec de nouveaux adversaires.
+  function avancerSaison(rng, saison) {
+    const effectif = saison.clubJoueur.effectif;
+    const partis = [];
+    let reste = effectif.map((j) => {
+      const copie = Object.assign({}, j, { age: j.age + 1, contrat: j.contrat - 1 });
+      return copie;
+    });
+    reste = reste.filter((j) => {
+      const retraite = j.age >= 37 || (j.age >= 34 && rng() < 0.25);
+      const finDeContrat = j.contrat <= 0;
+      if (retraite || finDeContrat) {
+        const memePoste = reste.filter((x) => x.poste === j.poste).length;
+        if (memePoste <= 1 && !retraite) { j.contrat = 1; return true; } // évite un poste à 0 joueur
+        partis.push({ nom: j.nom, poste: j.poste, motif: retraite ? 'retraite' : 'fin de contrat' });
+        return false;
+      }
+      return true;
+    });
+    const arrivees = [];
+    while (reste.length < TAILLE_EFFECTIF_CIBLE) {
+      const compte = {};
+      for (const j of reste) compte[j.poste] = (compte[j.poste] || 0) + 1;
+      const posteManquant = GABARIT_EFFECTIF.find((p) => (compte[p] || 0) < GABARIT_EFFECTIF.filter((x) => x === p).length)
+        || choisir(rng, GABARIT_EFFECTIF);
+      const jeune = genererJoueurEtendu(posteManquant, rng, saison.clubJoueur.niveauClub);
+      jeune.age = 18 + Math.floor(rng() * 3); // jeunes espoirs, 18-20 ans
+      jeune.contrat = 2 + Math.floor(rng() * 2);
+      jeune.salaire = calculerSalaire(jeune.vitesse, jeune.plaquage, jeune.age);
+      reste.push(jeune);
+      arrivees.push({ nom: jeune.nom, poste: jeune.poste });
+    }
+    saison.clubJoueur.effectif = reste;
+
+    const adversaires = [];
+    const niveaux = [0.25, 0.4, 0.5, 0.6, 0.75];
+    for (const niveauClub of niveaux) adversaires.push(genererClub(rng, { niveauClub }));
+    saison.adversaires = adversaires;
+    const tousLesClubs = [saison.clubJoueur, ...adversaires];
+    saison.calendrier = genererCalendrier(tousLesClubs);
+    saison.classement = classementInitial(tousLesClubs);
+    saison.marche = genererMarcheTransferts(rng, 0.5, 6);
+    saison.numero = (saison.numero || 1) + 1;
+    return { partis, arrivees };
+  }
+
+  // Crée une nouvelle saison complète : le club du joueur (effectif étendu +
+  // budget) + 5 adversaires IA de niveaux variés, calendrier aller-retour,
+  // classement à zéro, marché des transferts initial.
   function nouvelleSaison(rng, nomClubJoueur) {
-    const clubJoueur = genererClub(rng, { nom: nomClubJoueur, niveauClub: 0.5 });
+    const clubJoueur = genererClubJoueur(rng, { nom: nomClubJoueur, niveauClub: 0.5 });
     const adversaires = [];
     const niveaux = [0.25, 0.4, 0.5, 0.6, 0.75]; // du plus faible au plus fort
     for (const niveauClub of niveaux) adversaires.push(genererClub(rng, { niveauClub }));
     const tousLesClubs = [clubJoueur, ...adversaires];
     return {
+      version: VERSION_SAUVEGARDE,
+      numero: 1,
       clubJoueur,
       adversaires,
       calendrier: genererCalendrier(tousLesClubs),
       classement: classementInitial(tousLesClubs),
+      marche: genererMarcheTransferts(rng, 0.5, 6),
     };
   }
 
@@ -187,7 +422,10 @@
   function chargerSaison() {
     try {
       const brut = localStorage.getItem(CLE_CLUB);
-      return brut ? JSON.parse(brut) : null;
+      if (!brut) return null;
+      const saison = JSON.parse(brut);
+      if (saison.version !== VERSION_SAUVEGARDE) return null; // ancien format : on repart à zéro plutôt que de planter
+      return saison;
     } catch (e) { return null; }
   }
   function effacerSaison() {
@@ -199,5 +437,10 @@
     nouvelleSaison, genererCalendrier, classementInitial, enregistrerResultat,
     classementTrie, prochainesFixtures, club,
     sauvegarderSaison, chargerSaison, effacerSaison,
+    POSTE_REQUIS, TAILLE_EFFECTIF_CIBLE,
+    compositionVersJoueursCfg, meilleureComposition,
+    masseSalariale, appliquerFinancesMatch,
+    genererMarcheTransferts, signerJoueur, libererJoueur,
+    faireProgresserBlessures, avancerSaison,
   };
 })(window);
