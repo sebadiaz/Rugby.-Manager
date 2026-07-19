@@ -62,6 +62,9 @@
 
   let compteurJoueurId = 1;
   function borneStat(v) { return Math.max(30, Math.min(95, Math.round(v))); }
+  // Adresse au pied : plage plus large que vitesse/plaquage (un avant peut être
+  // vraiment mauvais buteur, 10-20) — cf. engine/rugby-engine.js probaReussiteTir.
+  function borneAdresse(v) { return Math.max(10, Math.min(95, Math.round(v))); }
 
   // Salaire annuel (k€, fictif) : proportionnel au niveau, avec une prime pour
   // les joueurs en pleine maturité (25-29 ans) — jeunes espoirs et joueurs
@@ -86,14 +89,17 @@
     const age = 18 + Math.floor(rng() * 17);
     const vitesse = borneStat(base.vitesse + ecartNiveau + bruit());
     const plaquage = borneStat(base.plaquage + ecartNiveau + bruit());
+    const adresse = borneAdresse((base.adresse != null ? base.adresse : 30) + ecartNiveau * 0.5 + bruit());
     return {
       id: 'j' + compteurJoueurId++,
       nom: genererNomJoueur(rng),
-      poste, age, vitesse, plaquage,
+      poste, age, vitesse, plaquage, adresse,
       tendance: base.tendance, couloir: base.couloir,
       contrat: 1 + Math.floor(rng() * 4), // saisons restantes (1-4)
       salaire: calculerSalaire(vitesse, plaquage, age),
       blessureJournees: 0, // >0 = indisponible pour ce nombre de journées
+      fatigue: 0, // 0-100, cf. appliquerFatigue — répercutée sur les stats effectives en match
+      matchsJoues: 0, // compteur RÉEL de titularisations cette saison (fiche joueur)
     };
   }
 
@@ -115,6 +121,7 @@
       age: 18 + Math.floor(rng() * 17),
       vitesse: borneStat(base.vitesse + ecartNiveau + bruit()),
       plaquage: borneStat(base.plaquage + ecartNiveau + bruit()),
+      adresse: borneAdresse((base.adresse != null ? base.adresse : 30) + ecartNiveau * 0.5 + bruit()),
       tendance: base.tendance,
       couloir: base.couloir,
     };
@@ -155,12 +162,22 @@
       niveauClub,
       effectif: genererEffectifEtendu(rng, niveauClub),
       budget: budgetInitial(niveauClub, rng),
-      tactique: { style: 'equilibre', pied: 'normal', ligneDef: 'normale' },
+      tactique: { style: 'equilibre', avants: 'equilibre', rythme: 'normal', ligneDef: 'normale', pied: 'normal', toucheMaul: 'equilibre' },
       // Historique financier (derniers mouvements, pour l'onglet Finances) et
       // statistiques cumulées de la saison (pour l'onglet Statistiques) — vides
       // au départ, alimentés au fil des matchs joués par le club du joueur.
       historiqueFinances: [],
       statsCumulees: null,
+      // Composition du jour (titulaires 1-15 + banc 16-23, numéro -> id joueur)
+      // et encadrement (capitaine, buteur, lanceur en touche) : null tant que
+      // rien n'a été composé, complété/désigné automatiquement à la demande
+      // (cf. completerComposition/autoDesignerEncadrement) — persistés dans la
+      // saison pour survivre à un rechargement de page.
+      compositionTitulaires: null,
+      compositionBanc: null,
+      capitaineId: null,
+      buteurId: null,
+      lanceurToucheId: null,
     };
   }
 
@@ -192,22 +209,38 @@
     if (club.historiqueFinances.length > 15) club.historiqueFinances.shift();
   }
 
-  // Tactique = 3 réglages INDÉPENDANTS qui se combinent (comme les
+  // Tactique = 6 réglages INDÉPENDANTS qui se combinent (comme les
   // instructions d'équipe FM — on ne choisit pas un "template" figé, on
-  // compose : style de jeu × usage du pied × hauteur de ligne défensive),
-  // traduits en réglages concrets du moteur (cf. engine/rugby-engine.js,
-  // cfgAttaque/cfgDefense PAR ÉQUIPE). `null` = valeur par défaut du moteur.
+  // compose), CHACUN traduit en un réglage RÉEL et DISTINCT du moteur (cf.
+  // engine/rugby-engine.js, cfgAttaque/cfgDefense/cfgMelee/cfgTouche/cfgRuck
+  // PAR ÉQUIPE). `null` = valeur par défaut du moteur pour cet axe.
   const AXES_TACTIQUE = {
     style: {
-      label: 'Style de jeu', defaut: 'equilibre',
+      label: 'Largeur du jeu', defaut: 'equilibre',
       options: {
         sol: { nom: 'Jeu au sol', description: 'Reste près du regroupement, limite les prises de risque au large.', attaque: { jeuLargeTaux: { pression: 1.1, calme: 0.9 } } },
         equilibre: { nom: 'Équilibré', description: 'Ni resserré, ni systématiquement porté au large.', attaque: null },
         large: { nom: 'Jeu au large', description: 'Cherche l\'espace au large à chaque occasion.', attaque: { jeuLargeTaux: { pression: 2.3, calme: 2.0 } } },
       },
     },
+    avants: {
+      label: 'Jeu d\'avants', defaut: 'equilibre',
+      options: {
+        proche: { nom: 'Près du ruck', description: 'Le n°8 privilégie le pick-and-go au près plutôt qu\'une sortie rapide aux trois-quarts.', melee: { pickAndGoHuit: { dominant: 0.6, normal: 0.22 } } },
+        equilibre: { nom: 'Équilibré', description: 'Sortie de mêlée standard, décision au cas par cas.', melee: null },
+        large: { nom: 'Ouvert aux 3/4', description: 'Sort vite le ballon aux trois-quarts, peu de pick-and-go.', melee: { pickAndGoHuit: { dominant: 0.15, normal: 0.05 } } },
+      },
+    },
+    rythme: {
+      label: 'Rythme du jeu', defaut: 'normal',
+      options: {
+        lent: { nom: 'Contrôlé', description: 'Rucks plus longs : on ralentit le jeu et on garde le contrôle du ballon.', ruck: { profil: [[0.55, 2.0, 2.0], [0.33, 4.0, 4.0], [0.12, 8.0, 2.6]] } },
+        normal: { nom: 'Normal', description: 'Rythme de recyclage standard.', ruck: null },
+        rapide: { nom: 'Rapide', description: 'Ballon recyclé au plus vite pour prendre la défense de vitesse.', ruck: { profil: [[0.55, 1.0, 1.0], [0.33, 2.0, 2.0], [0.12, 4.0, 1.4]] } },
+      },
+    },
     pied: {
-      label: 'Jeu au pied', defaut: 'normal',
+      label: 'Occupation au pied', defaut: 'normal',
       options: {
         rare: { nom: 'Rare', description: 'Privilégie la conservation du ballon en main.', attaque: { tauxJeuAuPied: 0.5 } },
         normal: { nom: 'Normal', description: 'Fréquence de coups de pied standard.', attaque: null },
@@ -215,30 +248,43 @@
       },
     },
     ligneDef: {
-      label: 'Ligne défensive', defaut: 'normale',
+      label: 'Défense', defaut: 'normale',
       options: {
-        basse: { nom: 'Basse', description: 'Défense prudente et repliée, moins de risques à la montée.', defense: { rampeMontee: 3.5, profondeurArriereJeu: 22, profondeurArriereMelee: 24 } },
+        basse: { nom: 'Basse', description: 'Défense prudente et repliée, moins de risques à la montée, reste groupée au ruck.', defense: { rampeMontee: 3.5, profondeurArriereJeu: 22, profondeurArriereMelee: 24, reculRuck: 4.5 } },
         normale: { nom: 'Normale', description: 'Hauteur de ligne standard.', defense: null },
-        haute: { nom: 'Haute', description: 'Presse haut et vite, plus risqué si elle est percée.', defense: { rampeMontee: 1.5, profondeurArriereJeu: 15, profondeurArriereMelee: 17 } },
+        haute: { nom: 'Haute', description: 'Presse haut et vite, y compris au ruck — plus risqué si elle est percée.', defense: { rampeMontee: 1.5, profondeurArriereJeu: 15, profondeurArriereMelee: 17, reculRuck: 2 } },
+      },
+    },
+    toucheMaul: {
+      label: 'Touche & maul', defaut: 'equilibre',
+      options: {
+        sol: { nom: 'Jeu au sol', description: 'Sort vite le ballon de touche, évite le maul.', touche: { tauxMaul: { proche: 0.15, loin: 0.02 } } },
+        equilibre: { nom: 'Équilibré', description: 'Maul selon l\'opportunité, comme la moyenne.', touche: null },
+        maul: { nom: 'Conquête (maul)', description: 'Cherche systématiquement le maul après une touche gagnée en zone proche.', touche: { tauxMaul: { proche: 0.85, loin: 0.15 } } },
       },
     },
   };
 
-  // Config moteur (attaque/défense PAR ÉQUIPE) résultant de la COMBINAISON
-  // des 3 axes — `tactique` peut être partiel ou absent, chaque axe retombe
-  // sur son défaut (comportement du moteur inchangé si rien n'est choisi).
+  // Config moteur (attaque/défense/mêlée/touche PAR ÉQUIPE) résultant de la
+  // COMBINAISON des 6 axes — `tactique` peut être partiel ou absent, chaque
+  // axe retombe sur son défaut (comportement du moteur inchangé si rien
+  // n'est choisi, et compatible avec une ancienne sauvegarde à 3 axes).
   function tactiqueVersConfig(tactique) {
-    const t = Object.assign(
-      { style: AXES_TACTIQUE.style.defaut, pied: AXES_TACTIQUE.pied.defaut, ligneDef: AXES_TACTIQUE.ligneDef.defaut },
-      (tactique && typeof tactique === 'object') ? tactique : {}
-    );
-    const optStyle = AXES_TACTIQUE.style.options[t.style] || AXES_TACTIQUE.style.options[AXES_TACTIQUE.style.defaut];
-    const optPied = AXES_TACTIQUE.pied.options[t.pied] || AXES_TACTIQUE.pied.options[AXES_TACTIQUE.pied.defaut];
-    const optLigne = AXES_TACTIQUE.ligneDef.options[t.ligneDef] || AXES_TACTIQUE.ligneDef.options[AXES_TACTIQUE.ligneDef.defaut];
+    const defauts = {};
+    for (const axe of Object.keys(AXES_TACTIQUE)) defauts[axe] = AXES_TACTIQUE[axe].defaut;
+    const t = Object.assign(defauts, (tactique && typeof tactique === 'object') ? tactique : {});
+    function option(axe) {
+      return AXES_TACTIQUE[axe].options[t[axe]] || AXES_TACTIQUE[axe].options[AXES_TACTIQUE[axe].defaut];
+    }
+    const optStyle = option('style'), optAvants = option('avants'), optRythme = option('rythme'),
+      optPied = option('pied'), optLigne = option('ligneDef'), optToucheMaul = option('toucheMaul');
     const attaque = Object.assign({}, optStyle.attaque || null, optPied.attaque || null);
     const cfg = {};
     if (Object.keys(attaque).length) cfg.attaque = attaque;
     if (optLigne.defense) cfg.defense = optLigne.defense;
+    if (optAvants.melee) cfg.melee = optAvants.melee;
+    if (optRythme.ruck) cfg.ruck = optRythme.ruck;
+    if (optToucheMaul.touche) cfg.touche = optToucheMaul.touche;
     return cfg;
   }
 
@@ -248,14 +294,16 @@
   function effectifVersJoueursCfg(club) {
     const cfg = {};
     for (const j of club.effectif) {
-      cfg[j.numero] = { poste: j.poste, vitesse: j.vitesse, plaquage: j.plaquage, tendance: j.tendance, couloir: j.couloir };
+      cfg[j.numero] = { poste: j.poste, vitesse: j.vitesse, plaquage: j.plaquage, tendance: j.tendance, couloir: j.couloir, adresse: j.adresse };
     }
     return cfg;
   }
 
   // Même conversion, mais pour le club du JOUEUR : `composition` associe
   // chaque numéro (1-15) à l'id du joueur de l'effectif étendu qui le porte
-  // ce jour-là (cf. meilleureComposition / choix manuel dans l'UI).
+  // ce jour-là (cf. meilleureComposition / choix manuel dans l'UI). La fatigue
+  // accumulée (cf. appliquerFatigue) réduit réellement la vitesse/le plaquage
+  // effectifs transmis au moteur — pas un simple badge cosmétique.
   function compositionVersJoueursCfg(effectif, composition) {
     const parId = {};
     for (const j of effectif) parId[j.id] = j;
@@ -263,7 +311,13 @@
     for (const numero of Object.keys(POSTE_REQUIS)) {
       const j = parId[composition[numero]];
       if (!j) continue;
-      cfg[numero] = { poste: POSTE_REQUIS[numero], vitesse: j.vitesse, plaquage: j.plaquage, tendance: j.tendance, couloir: j.couloir };
+      const malusFatigue = Math.round(((j.fatigue || 0) / 100) * 12);
+      cfg[numero] = {
+        poste: POSTE_REQUIS[numero],
+        vitesse: Math.max(20, j.vitesse - malusFatigue),
+        plaquage: Math.max(20, j.plaquage - malusFatigue),
+        tendance: j.tendance, couloir: j.couloir, adresse: j.adresse,
+      };
     }
     return cfg;
   }
@@ -287,6 +341,119 @@
       utilises.add(pool[0].id);
     }
     return composition;
+  }
+
+  // Complète une composition PARTIELLE (choix déjà faits par le joueur, ou
+  // chargée depuis une saison sauvegardée) sans écraser les choix valides :
+  // ne remplace que les numéros vides ou invalides (joueur libéré, mauvais
+  // poste, doublon) par le meilleur joueur disponible restant. Utilisé à
+  // l'ouverture de l'écran de composition — la version "table rase" reste
+  // meilleureComposition (bouton "meilleure équipe possible").
+  function completerComposition(effectif, compositionPartielle) {
+    const parId = {};
+    for (const j of effectif) parId[j.id] = j;
+    const composition = {};
+    const utilises = new Set();
+    for (const numero of Object.keys(POSTE_REQUIS)) {
+      const id = compositionPartielle && compositionPartielle[numero];
+      const j = id && parId[id];
+      if (j && j.poste === POSTE_REQUIS[numero] && !utilises.has(id)) {
+        composition[numero] = id;
+        utilises.add(id);
+      }
+    }
+    for (const numero of Object.keys(POSTE_REQUIS)) {
+      if (composition[numero]) continue;
+      const poste = POSTE_REQUIS[numero];
+      const candidats = effectif.filter((j) => j.poste === poste && !utilises.has(j.id));
+      if (candidats.length === 0) continue;
+      const disponibles = candidats.filter((j) => !j.blessureJournees);
+      const pool = disponibles.length > 0 ? disponibles : candidats;
+      pool.sort((a, b) => (b.vitesse + b.plaquage) - (a.vitesse + a.plaquage));
+      composition[numero] = pool[0].id;
+      utilises.add(pool[0].id);
+    }
+    return composition;
+  }
+
+  // Banc de 8 remplaçants (numéros 16-23), choisis parmi les joueurs NON
+  // titularisés. Un par catégorie de poste NON DÉJÀ ÉPUISÉE par les titulaires
+  // (GABARIT_EFFECTIF ne prévoit qu'UN seul joueur de profondeur par poste,
+  // sauf l'aile qui reste en réserve non convoquée ce jour-là — comme un vrai
+  // groupe de 23 sur un effectif de 24-25). Même logique "complète sans
+  // écraser" que completerComposition.
+  const POSTE_REQUIS_BANC = { 16: 'P', 17: 'T', 18: '2L', 19: '3L', 20: 'DM', 21: 'OV', 22: 'CE', 23: 'AR' };
+
+  function completerCompositionBanc(effectif, compositionTitulaires, bancPartiel) {
+    const parId = {};
+    for (const j of effectif) parId[j.id] = j;
+    const utilisesTitulaires = new Set(Object.values(compositionTitulaires || {}));
+    const banc = {};
+    const utilisesBanc = new Set();
+    for (const numero of Object.keys(POSTE_REQUIS_BANC)) {
+      const id = bancPartiel && bancPartiel[numero];
+      const j = id && parId[id];
+      if (j && j.poste === POSTE_REQUIS_BANC[numero] && !utilisesTitulaires.has(id) && !utilisesBanc.has(id)) {
+        banc[numero] = id;
+        utilisesBanc.add(id);
+      }
+    }
+    for (const numero of Object.keys(POSTE_REQUIS_BANC)) {
+      if (banc[numero]) continue;
+      const poste = POSTE_REQUIS_BANC[numero];
+      const candidats = effectif.filter((j) => j.poste === poste && !utilisesTitulaires.has(j.id) && !utilisesBanc.has(j.id));
+      if (candidats.length === 0) continue;
+      const disponibles = candidats.filter((j) => !j.blessureJournees);
+      const pool = disponibles.length > 0 ? disponibles : candidats;
+      pool.sort((a, b) => (b.vitesse + b.plaquage) - (a.vitesse + a.plaquage));
+      banc[numero] = pool[0].id;
+      utilisesBanc.add(pool[0].id);
+    }
+    return banc;
+  }
+
+  // Retrouve le numéro de maillot (titulaire) porté par un joueur donné dans
+  // une composition — sert à convertir capitaineId/buteurId/lanceurToucheId
+  // (id joueur) en numéro pour la config moteur (buteurA/toucheLanceurA).
+  function numeroDuJoueurDansComposition(composition, joueurId) {
+    if (!joueurId || !composition) return null;
+    for (const numero of Object.keys(composition)) {
+      if (composition[numero] === joueurId) return numero;
+    }
+    return null;
+  }
+
+  // Désigne automatiquement capitaine (meilleur niveau global), buteur
+  // (meilleure adresse au pied) et lanceur en touche (le talonneur titulaire,
+  // n°2, comme en match réel) parmi les 15 titulaires — utilisé tant que le
+  // joueur n'a rien choisi lui-même, et comme filet de sécurité si son choix
+  // précédent n'est plus titulaire (blessure, transfert...).
+  function autoDesignerEncadrement(effectif, compositionTitulaires) {
+    const parId = {};
+    for (const j of effectif) parId[j.id] = j;
+    const titulaires = Object.values(compositionTitulaires || {}).map((id) => parId[id]).filter(Boolean);
+    if (titulaires.length === 0) return { capitaineId: null, buteurId: null, lanceurToucheId: null };
+    const capitaine = titulaires.slice().sort((a, b) => (b.vitesse + b.plaquage) - (a.vitesse + a.plaquage))[0];
+    const buteur = titulaires.slice().sort((a, b) => (b.adresse || 0) - (a.adresse || 0))[0];
+    const lanceur = parId[compositionTitulaires['2']] || titulaires.find((j) => j.poste === 'T') || titulaires[0];
+    return { capitaineId: capitaine.id, buteurId: buteur.id, lanceurToucheId: lanceur.id };
+  }
+
+  // Fatigue (Mode Club) : les titulaires du jour encaissent une charge de
+  // match (répercutée sur leurs stats effectives au match suivant, cf.
+  // compositionVersJoueursCfg), les autres récupèrent — appelé une fois par
+  // journée jouée, comme faireProgresserBlessures. `matchsJoues` est le
+  // compteur RÉEL de titularisations affiché dans la fiche joueur.
+  function appliquerFatigue(effectif, compositionTitulaires) {
+    const titulairesIds = new Set(Object.values(compositionTitulaires || {}));
+    for (const j of effectif) {
+      if (titulairesIds.has(j.id)) {
+        j.fatigue = Math.min(100, (j.fatigue || 0) + 32);
+        j.matchsJoues = (j.matchsJoues || 0) + 1;
+      } else {
+        j.fatigue = Math.max(0, (j.fatigue || 0) - 22);
+      }
+    }
   }
 
   function masseSalariale(effectif) {
@@ -387,6 +554,20 @@
     const memePoste = effectif.filter((j) => j.poste === joueur.poste);
     if (memePoste.length <= 1) return { ok: false, motif: 'dernier_du_poste' };
     saison.clubJoueur.effectif = effectif.filter((j) => j.id !== joueurId);
+    // Nettoie toute référence pendante vers ce joueur (composition, banc,
+    // encadrement) : sinon la config moteur ou l'UI pointerait vers un id
+    // qui n'existe plus (cf. completerComposition/completerCompositionBanc,
+    // qui recomposent proprement autour des trous laissés ici).
+    const c = saison.clubJoueur;
+    if (c.capitaineId === joueurId) c.capitaineId = null;
+    if (c.buteurId === joueurId) c.buteurId = null;
+    if (c.lanceurToucheId === joueurId) c.lanceurToucheId = null;
+    for (const compo of [c.compositionTitulaires, c.compositionBanc]) {
+      if (!compo) continue;
+      for (const numero of Object.keys(compo)) {
+        if (compo[numero] === joueurId) delete compo[numero];
+      }
+    }
     return { ok: true };
   }
 
@@ -489,7 +670,10 @@
     const effectif = saison.clubJoueur.effectif;
     const partis = [];
     let reste = effectif.map((j) => {
-      const copie = Object.assign({}, j, { age: j.age + 1, contrat: j.contrat - 1 });
+      // Nouvelle saison, nouvelle fraîcheur : la fatigue et le compteur de
+      // matchs (statistique de LA saison) repartent à zéro, comme la vraie
+      // préparation estivale d'un club.
+      const copie = Object.assign({}, j, { age: j.age + 1, contrat: j.contrat - 1, fatigue: 0, matchsJoues: 0 });
       return copie;
     });
     reste = reste.filter((j) => {
@@ -531,6 +715,14 @@
     // le journal financier, lui, garde son historique récent (utile pour voir
     // la transition entre deux saisons dans l'onglet Finances).
     saison.clubJoueur.statsCumulees = null;
+    // Composition/banc/encadrement de l'an dernier n'ont plus de sens avec un
+    // effectif qui a bougé (départs/arrivées) : repartent à zéro, recomposés
+    // automatiquement à la prochaine ouverture de l'écran de composition.
+    saison.clubJoueur.compositionTitulaires = null;
+    saison.clubJoueur.compositionBanc = null;
+    saison.clubJoueur.capitaineId = null;
+    saison.clubJoueur.buteurId = null;
+    saison.clubJoueur.lanceurToucheId = null;
     return { partis, arrivees };
   }
 
@@ -575,8 +767,10 @@
     nouvelleSaison, genererCalendrier, classementInitial, enregistrerResultat,
     classementTrie, prochainesFixtures, club,
     sauvegarderSaison, chargerSaison, effacerSaison,
-    POSTE_REQUIS, TAILLE_EFFECTIF_CIBLE,
+    POSTE_REQUIS, POSTE_REQUIS_BANC, TAILLE_EFFECTIF_CIBLE,
     compositionVersJoueursCfg, meilleureComposition,
+    completerComposition, completerCompositionBanc,
+    numeroDuJoueurDansComposition, autoDesignerEncadrement, appliquerFatigue,
     masseSalariale, appliquerFinancesMatch,
     genererMarcheTransferts, signerJoueur, libererJoueur,
     statsApparentes, estimationEtoiles, scouterJoueur, COUT_SCOUTING,

@@ -29,7 +29,7 @@
   // Probabilité de réussite d'un coup de pied au but (transformation ou pénalité),
   // fonction de la distance perpendiculaire aux poteaux et de l'angle d'attaque :
   // un tir long ou très excentré est nettement moins fiable, conformément à la réalité.
-  function probaReussiteTir(distanceM, offsetLateralM) {
+  function probaReussiteTir(distanceM, offsetLateralM, adresse) {
     const distanceReelle = Math.hypot(distanceM, offsetLateralM);
     const angleDeg = Math.abs(Math.atan2(offsetLateralM, Math.max(distanceM, 0.01))) * 180 / Math.PI;
     // Taux de réussite calibrés sur les BUTEURS PROFESSIONNELS (cf. données
@@ -38,27 +38,36 @@
     // de réussite en moyenne — bien trop sévère : la sim marquait ~32 pts/match
     // au lieu de ~48. Un vrai buteur réussit ~90 % d'un tir central court, ~72 %
     // à 40 m dans l'axe, ~45 % d'une transformation grand large.
-    return Math.max(0.3, Math.min(0.96, 1.05 - distanceReelle / 150 - angleDeg / 160));
+    const base = 1.05 - distanceReelle / 150 - angleDeg / 160;
+    // Adresse au pied (0-100, cf. PROFILS/adresse) : calibrée autour de ~70
+    // (buteur pro moyen, la base ci-dessus est déjà calée sur ce niveau), avec
+    // un écart borné pour qu'un très bon buteur (90+) marque sensiblement plus
+    // et qu'un avant peu habitué au tir (25) rate nettement plus, sans casser
+    // la calibration issue de vraies données de match.
+    const skill = typeof adresse === 'number' ? Math.max(-0.22, Math.min(0.1, (adresse - 70) * 0.004)) : 0;
+    return Math.max(0.12, Math.min(0.97, base + skill));
   }
 
   // --- Profils d'attributs par numéro de maillot (1-15) ---
   // tendance : tendance de proximité au ballon (suiveur de jeu vs tenant de station).
+  // adresse : précision au pied sur coup de but (0-100), cf. probaReussiteTir —
+  // reflète qui, en match réel, prend les tirs (ouvreur/arrière/centre).
   const PROFILS = {
-    1: { vitesse: 45, plaquage: 70, tendance: 85, label: 'P' },
-    2: { vitesse: 48, plaquage: 70, tendance: 85, label: 'T' },
-    3: { vitesse: 45, plaquage: 70, tendance: 85, label: 'P' },
-    4: { vitesse: 50, plaquage: 65, tendance: 80, label: '2L' },
-    5: { vitesse: 50, plaquage: 65, tendance: 80, label: '2L' },
-    6: { vitesse: 60, plaquage: 75, tendance: 75, label: '3L' },
-    7: { vitesse: 62, plaquage: 78, tendance: 75, label: '3L' },
-    8: { vitesse: 60, plaquage: 72, tendance: 75, label: '3L' },
-    9: { vitesse: 65, plaquage: 55, tendance: 90, label: 'DM' },
-    10: { vitesse: 70, plaquage: 50, tendance: 55, label: 'OV' },
-    11: { vitesse: 90, plaquage: 45, tendance: 15, label: 'AI' },
-    12: { vitesse: 72, plaquage: 65, tendance: 45, label: 'CE' },
-    13: { vitesse: 74, plaquage: 60, tendance: 45, label: 'CE' },
-    14: { vitesse: 90, plaquage: 45, tendance: 15, label: 'AI' },
-    15: { vitesse: 80, plaquage: 50, tendance: 20, label: 'AR' },
+    1: { vitesse: 45, plaquage: 70, tendance: 85, adresse: 25, label: 'P' },
+    2: { vitesse: 48, plaquage: 70, tendance: 85, adresse: 25, label: 'T' },
+    3: { vitesse: 45, plaquage: 70, tendance: 85, adresse: 25, label: 'P' },
+    4: { vitesse: 50, plaquage: 65, tendance: 80, adresse: 20, label: '2L' },
+    5: { vitesse: 50, plaquage: 65, tendance: 80, adresse: 20, label: '2L' },
+    6: { vitesse: 60, plaquage: 75, tendance: 75, adresse: 25, label: '3L' },
+    7: { vitesse: 62, plaquage: 78, tendance: 75, adresse: 25, label: '3L' },
+    8: { vitesse: 60, plaquage: 72, tendance: 75, adresse: 30, label: '3L' },
+    9: { vitesse: 65, plaquage: 55, tendance: 90, adresse: 45, label: 'DM' },
+    10: { vitesse: 70, plaquage: 50, tendance: 55, adresse: 75, label: 'OV' },
+    11: { vitesse: 90, plaquage: 45, tendance: 15, adresse: 35, label: 'AI' },
+    12: { vitesse: 72, plaquage: 65, tendance: 45, adresse: 45, label: 'CE' },
+    13: { vitesse: 74, plaquage: 60, tendance: 45, adresse: 45, label: 'CE' },
+    14: { vitesse: 90, plaquage: 45, tendance: 15, adresse: 35, label: 'AI' },
+    15: { vitesse: 80, plaquage: 50, tendance: 20, adresse: 65, label: 'AR' },
   };
 
   // Couloir latéral "au repos" par numéro de maillot : forme un vrai plan de
@@ -96,6 +105,7 @@
           vitesse: PROFILS[n].vitesse,
           plaquage: PROFILS[n].plaquage,
           tendance: PROFILS[n].tendance,
+          adresse: PROFILS[n].adresse,
           couloir: COULOIR_BASE[n],
         };
       }
@@ -274,6 +284,7 @@
       vitesse: (c.vitesse != null ? c.vitesse : p.vitesse) + (rng() * 10 - 5),
       plaquage: (c.plaquage != null ? c.plaquage : p.plaquage) + (rng() * 10 - 5),
       tendance: c.tendance != null ? c.tendance : p.tendance,
+      adresse: c.adresse != null ? c.adresse : p.adresse,
       channelY,
       x: 0, y: channelY,
       auSol: 0,
@@ -472,6 +483,35 @@
       this.cfgDefense = {
         A: fusionnerConfig(this.cfg.defense, config && config.defenseA),
         B: fusionnerConfig(this.cfg.defense, config && config.defenseB),
+      };
+      // Buteur désigné (tirs au but/transformations) et lanceur en touche, PAR
+      // ÉQUIPE (Mode Club) : `config.buteurA/buteurB` (numéro de maillot) et
+      // `config.toucheLanceurA/toucheLanceurB`. Sans surcharge : n°10 au pied,
+      // n°2 (talonneur) en touche — comportement historique inchangé.
+      this.buteurNumero = {
+        A: (config && config.buteurA) || 10,
+        B: (config && config.buteurB) || 10,
+      };
+      this.toucheLanceurNumero = {
+        A: (config && config.toucheLanceurA) || this.cfg.touche.lanceur,
+        B: (config && config.toucheLanceurB) || this.cfg.touche.lanceur,
+      };
+      // Mêlée/touche/ruck PAR ÉQUIPE (Mode Club, tactique) : même principe que
+      // cfgAttaque/cfgDefense ci-dessus — `config.meleeA/meleeB`,
+      // `config.toucheA/toucheB`, `config.ruckA/ruckB` fusionnés par-dessus le
+      // socle commun this.cfg.melee/touche/ruck. Sans surcharge, comportement
+      // historique inchangé (les deux équipes partagent le même réglage).
+      this.cfgMelee = {
+        A: fusionnerConfig(this.cfg.melee, config && config.meleeA),
+        B: fusionnerConfig(this.cfg.melee, config && config.meleeB),
+      };
+      this.cfgTouche = {
+        A: fusionnerConfig(this.cfg.touche, config && config.toucheA),
+        B: fusionnerConfig(this.cfg.touche, config && config.toucheB),
+      };
+      this.cfgRuck = {
+        A: fusionnerConfig(this.cfg.ruck, config && config.ruckA),
+        B: fusionnerConfig(this.cfg.ruck, config && config.ruckB),
       };
       this.rng = creerRng(seed >>> 0 || 1);
       this.score = { A: 0, B: 0 };
@@ -933,7 +973,7 @@
       // Loi 18 : c'est le talonneur (n°2) qui lance en touche en match reel,
       // jamais le demi de melee ni l'ouvreur - _neufVersDix (9->10) sert a la
       // sortie de balle d'un regroupement, pas au lancer de touche.
-      this.porteur = equipe.find(j => j.numero === this.cfg.touche.lanceur && j.sinBin <= 0) || equipe[8];
+      this.porteur = equipe.find(j => j.numero === this.toucheLanceurNumero[this.possession] && j.sinBin <= 0) || equipe[8];
       this.phase = 'TOUCHE';
       this.timerPhase = 0;
       this.toucheLancer = null;
@@ -1101,7 +1141,7 @@
         // place (cf. _penaliteTirPlacerJoueurs), il n'y est plus téléporté ; le
         // ballon est posé sur le tee (cf. getState, ballon sur la marque en
         // PENALITE_TIR).
-        this.porteur = eqTir[9];
+        this.porteur = eqTir.find(j => j.numero === this.buteurNumero[equipeBeneficiaire] && j.sinBin <= 0) || eqTir[9];
         this.phase = 'PENALITE_TIR';
         this.timerPhase = 0;
         this.tirEnPlace = false;
@@ -1175,7 +1215,7 @@
       const eqLanceur = equipe === 'A' ? this.equipeA : this.equipeB;
       // Loi 18 : le talonneur (n°2) lance, comme a la touche en jeu courant
       // (cf. _accorderTouche).
-      this.porteur = eqLanceur.find(j => j.numero === this.cfg.touche.lanceur && j.sinBin <= 0) || eqLanceur[8];
+      this.porteur = eqLanceur.find(j => j.numero === this.toucheLanceurNumero[equipe] && j.sinBin <= 0) || eqLanceur[8];
       const xLanceur = Math.max(5, Math.min(LONGUEUR - 5, xTouche));
       // Loi 18.22 : le lanceur sur la ligne de touche (cf. _accorderTouche),
       // pas à 5 m à l'intérieur.
@@ -1440,7 +1480,7 @@
           // Durée de recyclage du ruck : tirée du profil configurable
           // (cfg.ruck.profil), calibré par balayage de simulations sur les
           // vitesses de ruck du France-Irlande 2026 (cf. _tirerDureeRuck).
-          this.ruckDureeCible = this._tirerDureeRuck();
+          this.ruckDureeCible = this._tirerDureeRuck(this.possession);
           this.ruckTempsSansSoutien = 0;
           this.phase = 'RUCK';
           this._receptionDirecte = false;
@@ -1743,7 +1783,7 @@
             porteur._solX = porteur.x; porteur._solY = porteur.y;
             this.stats[this.possession].rucks++; this.stats[this.possession].phases++;
             // Profil de durées configurable, cf. l'autre site de création de ruck.
-            this.ruckDureeCible = this._tirerDureeRuck();
+            this.ruckDureeCible = this._tirerDureeRuck(this.possession);
             this.ruckTempsSansSoutien = 0;
             this.ruckDominant = false; // plaquage de sauvetage in extremis, pas un ballon sur l'avancée
             this.phase = 'RUCK';
@@ -1787,7 +1827,7 @@
           const offsetLateralDrop = Math.abs(porteur.y - LARGEUR / 2);
           const equipe = this.possession;
           this.stats[equipe].kicks++;
-          if (this.rng() < probaReussiteTir(distanceButsDrop, offsetLateralDrop) * 0.7) {
+          if (this.rng() < probaReussiteTir(distanceButsDrop, offsetLateralDrop, porteur.adresse) * 0.7) {
             this.score[equipe] += 3;
             this.log('DROP_GOAL_REUSSI', equipe, `Drop-goal reussi, equipe ${equipe} +3`);
             this._nouvelleManche(equipe);
@@ -2423,8 +2463,9 @@
     // défaut est calibré par balayage de simulations pour reproduire les
     // vitesses de ruck réelles ET les volumes réels de rucks/passes/plaquages
     // (France-Irlande 2026, cf. docs/ANALYSE_MATCH_REEL.md).
-    _tirerDureeRuck() {
-      const profil = (this.cfg.ruck && this.cfg.ruck.profil)
+    _tirerDureeRuck(team) {
+      const cfgR = team ? this.cfgRuck[team] : this.cfg.ruck;
+      const profil = (cfgR && cfgR.profil)
         || [[0.70, 0.7, 0.9], [0.22, 1.6, 1.2], [0.08, 2.8, 1.7]];
       const r = this.rng();
       let cumul = 0;
@@ -3833,7 +3874,8 @@
       const eq = poss === 'A' ? this.equipeA : this.equipeB;
       const huit = eq.find(j => j.numero === 8);
       const pt = { x: m.x, y: m.y };
-      const pickAndGo = huit && huit.auSol === 0 && this.rng() < (m.qualite === 'DOMINANT' ? this.cfg.melee.pickAndGoHuit.dominant : this.cfg.melee.pickAndGoHuit.normal);
+      const pickAndGoHuit = this.cfgMelee[poss].pickAndGoHuit;
+      const pickAndGo = huit && huit.auSol === 0 && this.rng() < (m.qualite === 'DOMINANT' ? pickAndGoHuit.dominant : pickAndGoHuit.normal);
       this._finMelee();
       this.possession = poss;
       if (pickAndGo) {
@@ -4159,7 +4201,8 @@
         this.log('TOUCHE_BALLON_GAGNE', L.lanceur, `Touche gagnee, le n°${L.sauteur.numero} capte le ballon pour l'equipe ${L.lanceur}`);
         // Maul (catch-and-drive) probable près de la ligne adverse.
         const zone = this._zoneTerrain(this.porteur);
-        const tauxMaulTouche = (zone === 'OPP_22' || zone === 'CINQ_M') ? this.cfg.touche.tauxMaul.proche : this.cfg.touche.tauxMaul.loin;
+        const tauxMaulCfg = this.cfgTouche[L.lanceur].tauxMaul;
+        const tauxMaulTouche = (zone === 'OPP_22' || zone === 'CINQ_M') ? tauxMaulCfg.proche : tauxMaulCfg.loin;
         if (this.rng() < tauxMaulTouche) {
           const { joueur: defenseurProche } = joueurLePlusProche(L.eqAdverse, this.porteur.x, this.porteur.y);
           this._formerMaul(this.porteur, defenseurProche);
@@ -4206,7 +4249,7 @@
       const equipeDefense = this.essaiEquipe === 'A' ? this.equipeB : this.equipeA;
       const ligneDefense = sens > 0 ? LONGUEUR : 0;
       const xAttaque = Math.max(0, Math.min(LONGUEUR, this.essaiX - sens * 15));
-      const buteur = equipeAttaque[9]; // n°10
+      const buteur = equipeAttaque.find(j => j.numero === this.buteurNumero[this.essaiEquipe] && j.sinBin <= 0) || equipeAttaque[9];
       const teeX = Math.max(0, Math.min(LONGUEUR, this.essaiX - sens * 10));
       const teeY = this.essaiY;
       let pireEcart = 0;
@@ -4245,7 +4288,7 @@
         // (cf. _transformationPlacerJoueurs) : il y est déjà, on ne le téléporte
         // plus. Il devient simplement le porteur pour la frappe.
         const eq = this.essaiEquipe === 'A' ? this.equipeA : this.equipeB;
-        this.porteur = eq[9];
+        this.porteur = eq.find(j => j.numero === this.buteurNumero[this.essaiEquipe] && j.sinBin <= 0) || eq[9];
         this.phase = 'TRANSFORMATION';
         this.timerPhase = 0;
         this.transfoEnPlace = false;
@@ -4293,7 +4336,7 @@
         this.ballonVolHauteur = 0;
         const equipe = this.essaiEquipe;
         const offsetLateral = Math.abs(this.essaiY - LARGEUR / 2);
-        if (this.rng() < probaReussiteTir(10, offsetLateral)) {
+        if (this.rng() < probaReussiteTir(10, offsetLateral, this.porteur.adresse)) {
           this.score[equipe] += 2;
           this.log('TRANSFORMATION_REUSSIE', equipe, `Transformation reussie, equipe ${equipe} +2`);
         } else {
@@ -4382,7 +4425,7 @@
         const { y, distanceButs } = this.positionTir;
         const offsetLateral = Math.abs(y - LARGEUR / 2);
         const sens = { A: 1, B: -1 };
-        if (this.rng() < probaReussiteTir(distanceButs, offsetLateral)) {
+        if (this.rng() < probaReussiteTir(distanceButs, offsetLateral, this.porteur.adresse)) {
           this.score[equipe] += 3;
           this.log('PENALITE_REUSSIE', equipe, `Coup de pied au but reussi, equipe ${equipe} +3`);
           // Comme après un essai : coup d'envoi à la mi-terrain, botté par

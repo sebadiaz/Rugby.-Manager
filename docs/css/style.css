@@ -215,23 +215,66 @@ select {
 .ligneStat .valB { text-align: right; color: var(--team-b); font-weight: 700; }
 .ligneStat .labelStat { text-align: center; color: var(--text-dim); font-size: 12px; }
 
-/* ---------- Mode Club ---------- */
+/* ---------- Mode Club : coquille d'application ---------- */
 #clubCreation p { font-size: 13px; }
+#panneauClub.visible { display: flex; flex-direction: column; overflow: hidden; }
+#clubCreation, #clubGestion { flex: 1; min-height: 0; overflow-y: auto; }
+#clubGestion { display: none; flex-direction: column; }
 
-/* Barre d'onglets façon dashboard FM (Aperçu/Effectif/Tactique/Transferts/
-   Calendrier/Finances/Médical/Stats) : défile horizontalement plutôt que de
-   tout empiler sur un mobile étroit — un seul volet visible à la fois. */
+/* Barre supérieure persistante : identité du club + repères clés (saison,
+   prochain match, position au classement, budget) visibles quel que soit
+   l'onglet actif — jamais besoin de retourner à l'Aperçu pour les voir. */
+#clubTopBar {
+  flex: 0 0 auto; display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px;
+  padding: 12px 14px; background: linear-gradient(180deg, rgba(6,11,8,0.98), rgba(6,11,8,0.9));
+  border-bottom: 1px solid var(--border);
+}
+#clubTopBar #clubEntete { flex: 1 1 auto; min-width: 0; }
+#clubTopBar #fermerClub {
+  flex: 0 0 auto; width: 38px; min-width: 0; padding: 0; height: 38px; font-size: 16px;
+  border-radius: 50%; order: 2;
+}
+#clubTopBarInfos {
+  flex: 1 1 100%; order: 3; display: flex; gap: 8px 16px; flex-wrap: wrap;
+  font-size: 12px; color: var(--text-dim); border-top: 1px solid var(--border);
+  padding-top: 8px; margin-top: 2px;
+}
+#clubTopBarInfos .chipInfo { display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+#clubTopBarInfos .chipInfo b { color: var(--text); font-variant-numeric: tabular-nums; }
+#clubTopBarInfos .chipInfo.alerte b { color: var(--loss); }
+
+#clubBody { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+
+/* Navigation : bandeau horizontal défilant en haut sur mobile (un seul volet
+   visible à la fois), menu latéral fixe sur grand écran (cf. media query
+   plus bas) — même mécanisme basculerOnglet(), seule la présentation change. */
 .barreOnglets {
-  display: flex; gap: 6px; overflow-x: auto; padding: 0 16px 14px;
-  -webkit-overflow-scrolling: touch; scrollbar-width: none;
+  flex: 0 0 auto; display: flex; gap: 6px; overflow-x: auto; padding: 10px 14px;
+  -webkit-overflow-scrolling: touch; scrollbar-width: none; border-bottom: 1px solid var(--border);
 }
 .barreOnglets::-webkit-scrollbar { display: none; }
 .ongletBtn {
   flex: 0 0 auto; width: auto; min-width: 0; padding: 8px 14px; font-size: 12.5px;
   background: transparent; border: 1px solid var(--border-strong); color: var(--text-dim);
-  border-radius: 999px; white-space: nowrap;
+  border-radius: 999px; white-space: nowrap; display: flex; align-items: center; gap: 5px;
 }
-.ongletBtn.actif { background: var(--accent); color: var(--accent-ink); border-color: transparent; font-weight: 700; }
+.ongletBtn.actif, .ongletBtn.actif:hover { background: var(--accent); color: var(--accent-ink); border-color: transparent; font-weight: 700; }
+
+#clubMain { flex: 1; min-height: 0; overflow-y: auto; padding-top: 14px; }
+
+/* À partir de 900px : vrai menu latéral façon logiciel de gestion, plutôt
+   qu'un bandeau d'onglets — la coquille d'application demandée pour le poste
+   de travail (souris + grand écran), la navigation mobile restant inchangée
+   en dessous de ce seuil. */
+@media (min-width: 900px) {
+  #clubBody { flex-direction: row; }
+  .barreOnglets {
+    flex: 0 0 210px; flex-direction: column; overflow-y: auto; overflow-x: hidden;
+    border-bottom: none; border-right: 1px solid var(--border); padding: 14px 10px;
+  }
+  .ongletBtn { width: 100%; justify-content: flex-start; padding: 10px 12px; border-radius: var(--radius-sm); }
+  #clubMain { max-width: 900px; }
+}
 
 /* Widgets d'aperçu : forme récente, statut d'effectif, résumé financier. */
 .rangeeForme { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
@@ -324,6 +367,97 @@ select {
 .numComposition { flex: 0 0 auto; width: 92px; color: var(--text-dim); }
 .numComposition em { color: var(--text-faint); font-style: normal; font-size: 11px; }
 .ligneComposition select { flex: 1; font-size: 12.5px; padding: 8px; }
+
+/* Terrain de composition : 15 postes positionnés sur un vrai schéma de jeu
+   (avants groupés en haut, trois-quarts étagés, arrière au fond) plutôt
+   qu'une liste de <select> empilés — cf. clubUI.js POSITIONS_TERRAIN. */
+.terrainComposition {
+  position: relative; width: 100%; aspect-ratio: 3 / 4; margin-top: 14px;
+  border-radius: var(--radius-md); overflow: hidden;
+  background-color: #1e5b2f;
+  background-image:
+    repeating-linear-gradient(180deg, rgba(255,255,255,0.05) 0, rgba(255,255,255,0.05) 1px, transparent 1px, transparent 10%),
+    linear-gradient(180deg, #1e5b2f, #184a26);
+  border: 1px solid var(--border-strong);
+}
+.chipTerrain {
+  position: absolute; transform: translate(-50%, -50%);
+  display: flex; flex-direction: column; align-items: center; gap: 2px; width: 76px;
+}
+.chipTerrain .numChip {
+  font-size: 9.5px; font-weight: 800; color: rgba(255,255,255,0.85);
+  background: rgba(0,0,0,0.35); border-radius: 4px; padding: 1px 5px;
+}
+.chipTerrain select {
+  width: 100%; font-size: 10px; padding: 5px 2px; text-align: center; text-align-last: center;
+  background: rgba(10, 18, 12, 0.92); border: 1px solid var(--accent); color: var(--text);
+  border-radius: 6px;
+}
+.chipTerrain select.blesseChip { border-color: var(--loss); }
+
+/* Banc de remplaçants : grille de chips compactes (2 colonnes mobile, 4 sur
+   plus large), même esprit que le terrain sans les contraintes de position. */
+.grilleBanc { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+@media (min-width: 480px) { .grilleBanc { grid-template-columns: repeat(4, 1fr); } }
+.chipBanc {
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: 8px; text-align: center;
+}
+.chipBanc .numChip { font-size: 10px; color: var(--text-faint); display: block; margin-bottom: 4px; }
+.chipBanc select { width: 100%; font-size: 11px; padding: 6px 2px; }
+
+/* Encadrement (capitaine/buteur/lanceur en touche) et badges de rôle,
+   affichés aussi dans l'effectif/la fiche joueur pour rester cohérents. */
+.badgeRole {
+  display: inline-block; font-size: 9.5px; font-weight: 800; padding: 2px 6px;
+  border-radius: 4px; margin-left: 4px; white-space: nowrap; vertical-align: middle;
+}
+.badgeRole.capitaine { background: rgba(255, 183, 3, 0.18); color: var(--accent); }
+.badgeRole.buteur { background: rgba(78, 168, 222, 0.18); color: var(--team-a); }
+.badgeRole.lanceur { background: rgba(58, 196, 125, 0.18); color: var(--win); }
+
+/* Fatigue : jauge réelle (pas cosmétique — répercutée sur les stats
+   effectives en match, cf. RMClub.compositionVersJoueursCfg). */
+.barreFatigue {
+  display: inline-block; width: 46px; height: 6px; border-radius: 4px;
+  background: var(--surface-2); overflow: hidden; vertical-align: middle;
+}
+.barreFatigue > span { display: block; height: 100%; background: var(--draw); }
+.barreFatigue.haute > span { background: var(--loss); }
+
+/* ---------- Effectif : recherche/tri/filtres ---------- */
+.filtresEffectif { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.filtresEffectif .champTexte, .filtresEffectif select { margin: 0; }
+.filtreCase {
+  display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-dim);
+  flex: 0 0 auto; white-space: nowrap;
+}
+.filtreCase input { accent-color: var(--accent); }
+.tableauClub th.triable { cursor: pointer; user-select: none; }
+.tableauClub th.triable:hover { color: var(--text); }
+.tableauClub th.triable .flecheTri { margin-left: 3px; opacity: 0.7; }
+
+/* ---------- Dashboard club ---------- */
+.ligneResultatDash {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 12.5px; gap: 8px;
+}
+.ligneResultatDash:last-child { border-bottom: none; }
+.ligneResultatDash .adversaireDash { color: var(--text-dim); }
+.ligneResultatDash .scoreDash { font-variant-numeric: tabular-nums; font-weight: 700; }
+.miniClassementLigne {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 6px 4px; font-size: 12.5px; border-bottom: 1px solid var(--border); border-radius: var(--radius-sm);
+}
+.miniClassementLigne:last-child { border-bottom: none; }
+.miniClassementLigne.ligneClubJoueur { background: rgba(255, 183, 3, 0.1); font-weight: 700; }
+.ligneAlerte {
+  display: flex; align-items: flex-start; gap: 8px; padding: 9px 4px;
+  border-bottom: 1px solid var(--border); font-size: 12.5px; cursor: pointer; border-radius: var(--radius-sm);
+}
+.ligneAlerte:last-child { border-bottom: none; }
+.ligneAlerte:hover { background: var(--surface-hover); }
+.ligneAlerte .iconeAlerte { flex: 0 0 auto; }
 
 /* ---------- Marché des transferts ---------- */
 .ligneMarche {

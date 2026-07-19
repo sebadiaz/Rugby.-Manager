@@ -527,6 +527,11 @@
       delete configMatch.joueursA; delete configMatch.joueursB;
       delete configMatch.attaqueA; delete configMatch.attaqueB;
       delete configMatch.defenseA; delete configMatch.defenseB;
+      delete configMatch.meleeA; delete configMatch.meleeB;
+      delete configMatch.toucheA; delete configMatch.toucheB;
+      delete configMatch.ruckA; delete configMatch.ruckB;
+      delete configMatch.buteurA; delete configMatch.buteurB;
+      delete configMatch.toucheLanceurA; delete configMatch.toucheLanceurB;
     },
     etatActuel() {
       return match ? normalizeMatchState(match.getState()) : null;

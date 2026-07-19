@@ -1,7 +1,8 @@
-// Mode Club : rendu du panneau (effectif/calendrier/classement) et connexion
-// au modèle de données (docs/js/club.js) et au lanceur de match (window.RMMain,
-// cf. docs/js/main.js). Aucune règle de jeu ici, uniquement affichage/DOM —
-// même séparation que ui.js pour le Match rapide.
+// Mode Club : rendu de l'application (dashboard/effectif/composition/tactique/
+// transferts/calendrier/finances/médical/bilan) et connexion au modèle de
+// données (docs/js/club.js) et au lanceur de match (window.RMMain, cf.
+// docs/js/main.js). Aucune règle de jeu ici, uniquement affichage/DOM — même
+// séparation que ui.js pour le Match rapide.
 (function () {
   'use strict';
 
@@ -9,16 +10,14 @@
   const { creerRng } = window.RugbyEngine;
 
   let saison = RMClub.chargerSaison();
-  // Composition du jour (numéro -> id joueur) pour le club du joueur : tenue
-  // en mémoire, recalculée en "meilleure équipe possible" à chaque ouverture
-  // du panneau Club (donc après blessures/transferts) sauf si le joueur l'a
-  // lui-même ajustée entre-temps via #blocComposition (dépliée sur place
-  // dans l'onglet Aperçu, plus un panneau à part).
-  let compositionActuelle = null;
   // Joueur actuellement affiché dans la fiche (#clubJoueurDetail, dépliée sur
   // place dans l'onglet Effectif) — sert au bouton "Libérer ce joueur", qui
   // vit dans l'innerHTML régénéré et est géré par délégation d'événements.
   let joueurAffiche = null;
+  // État des filtres/tri de l'effectif (recherche/poste/disponibilité/tri de
+  // colonne) : tenu en mémoire, réappliqué à chaque rendu (pas persisté —
+  // ce sont des préférences d'affichage, pas des données de la saison).
+  const filtreEffectif = { recherche: '', poste: '', disponible: false, triChamp: 'poste', triSens: 1 };
 
   function graineAleatoire() {
     return Math.floor(window.RMRng.random() * 0xffffffff);
@@ -37,13 +36,31 @@
     return estClubJoueur(f.domicileId) || estClubJoueur(f.exterieurId);
   }
 
-  // Config moteur pour un club donné : composition du jour (choisie ou
-  // meilleure équipe automatique) pour le club du joueur, effectif direct
-  // (15, un par numéro) pour un adversaire IA — cf. docs/js/club.js.
+  // Garantit une composition (titulaires + banc + encadrement) toujours
+  // complète et valide, sans écraser les choix déjà faits par le joueur :
+  // comble seulement les trous (joueur libéré, jamais choisi, etc.) — cf.
+  // RMClub.completerComposition/completerCompositionBanc/autoDesignerEncadrement.
+  // Appelée à l'ouverture de l'écran Composition ET juste avant de lancer un
+  // match, pour ne jamais transmettre une composition invalide au moteur.
+  function assurerComposition() {
+    const c = saison.clubJoueur;
+    c.compositionTitulaires = RMClub.completerComposition(c.effectif, c.compositionTitulaires);
+    c.compositionBanc = RMClub.completerCompositionBanc(c.effectif, c.compositionTitulaires, c.compositionBanc);
+    const titulaireIds = new Set(Object.values(c.compositionTitulaires));
+    const auto = RMClub.autoDesignerEncadrement(c.effectif, c.compositionTitulaires);
+    if (!c.capitaineId || !titulaireIds.has(c.capitaineId)) c.capitaineId = auto.capitaineId;
+    if (!c.buteurId || !titulaireIds.has(c.buteurId)) c.buteurId = auto.buteurId;
+    if (!c.lanceurToucheId || !titulaireIds.has(c.lanceurToucheId)) c.lanceurToucheId = auto.lanceurToucheId;
+    return c.compositionTitulaires;
+  }
+
+  // Config moteur pour un club donné : composition du jour (persistée dans la
+  // saison) pour le club du joueur, effectif direct (15, un par numéro) pour
+  // un adversaire IA — cf. docs/js/club.js.
   function cfgPour(c) {
     if (c.id === saison.clubJoueur.id) {
-      if (!compositionActuelle) compositionActuelle = RMClub.meilleureComposition(c.effectif);
-      return RMClub.compositionVersJoueursCfg(c.effectif, compositionActuelle);
+      assurerComposition();
+      return RMClub.compositionVersJoueursCfg(c.effectif, c.compositionTitulaires);
     }
     return RMClub.effectifVersJoueursCfg(c);
   }
@@ -62,12 +79,15 @@
   }
   const LIBELLE_FORME = { v: 'V', n: 'N', d: 'D' };
 
-  // 3 axes INDÉPENDANTS qui se combinent (cf. RMClub.AXES_TACTIQUE) — pas un
+  // 6 axes INDÉPENDANTS qui se combinent (cf. RMClub.AXES_TACTIQUE) — pas un
   // choix unique parmi des templates figés : le joueur compose sa tactique
-  // comme les instructions d'équipe d'un vrai jeu de gestion.
+  // comme les instructions d'équipe d'un vrai jeu de gestion. La boucle
+  // s'adapte automatiquement au nombre d'axes définis côté modèle.
   function rafraichirTactique() {
     if (!saison.clubJoueur.tactique || typeof saison.clubJoueur.tactique !== 'object') {
-      saison.clubJoueur.tactique = { style: 'equilibre', pied: 'normal', ligneDef: 'normale' };
+      const defauts = {};
+      for (const axe of Object.keys(RMClub.AXES_TACTIQUE)) defauts[axe] = RMClub.AXES_TACTIQUE[axe].defaut;
+      saison.clubJoueur.tactique = defauts;
     }
     const actuelle = saison.clubJoueur.tactique;
     document.getElementById('clubTactique').innerHTML = Object.keys(RMClub.AXES_TACTIQUE).map((axe) => {
@@ -97,7 +117,29 @@
     const initiale = (c.nom.match(/\b\w/g) || ['?']).slice(0, 2).join('').toUpperCase();
     document.getElementById('clubEntete').innerHTML =
       `<div class="clubEntete"><span class="pastilleClub" style="background:${c.couleur}">${initiale}</span>` +
-      `<span><span class="nomClub">${c.nom}</span><span class="sousLigne">Saison ${saison.numero || 1} · 💰 ${c.budget} k€</span></span></div>`;
+      `<span class="nomClub">${c.nom}</span></div>`;
+  }
+
+  // Barre supérieure persistante (cf. index.html #clubTopBarInfos) : saison,
+  // prochain match, position au classement, budget — visibles quel que soit
+  // l'onglet actif, sans avoir à retourner au Dashboard pour les consulter.
+  function rafraichirTopBarInfos() {
+    const c = saison.clubJoueur;
+    const classement = RMClub.classementTrie(saison);
+    const position = classement.findIndex((r) => r.clubId === c.id) + 1;
+    const prochaine = RMClub.prochainesFixtures(saison);
+    const matchJoueur = prochaine.find(concerneClubJoueur);
+    let texteMatch = 'Saison terminée';
+    if (matchJoueur) {
+      const domicileEstJoueur = estClubJoueur(matchJoueur.domicileId);
+      const adversaireId = domicileEstJoueur ? matchJoueur.exterieurId : matchJoueur.domicileId;
+      texteMatch = `J${matchJoueur.journee} ${domicileEstJoueur ? 'vs' : '@'} ${nomClub(adversaireId)}`;
+    }
+    document.getElementById('clubTopBarInfos').innerHTML =
+      `<span class="chipInfo">📅 Saison <b>${saison.numero || 1}</b></span>` +
+      `<span class="chipInfo">🏉 <b>${texteMatch}</b></span>` +
+      `<span class="chipInfo">🏆 <b>${position}${position === 1 ? 'er' : 'e'}</b>/${classement.length}</span>` +
+      `<span class="chipInfo${c.budget < 0 ? ' alerte' : ''}">💰 <b>${c.budget} k€</b></span>`;
   }
 
   // La journée fait jouer TOUS les clubs à la fois (n/2 matchs simultanés,
@@ -134,6 +176,14 @@
       `<table class="tableauClub"><thead><tr><th></th><th>Club</th><th>J</th><th>G</th><th>N</th><th>P</th><th>Pts+</th><th>Pts-</th><th>Diff</th><th>Pts</th></tr></thead><tbody>${lignes}</tbody></table>`;
   }
 
+  function rafraichirMiniClassement() {
+    const classement = RMClub.classementTrie(saison);
+    document.getElementById('clubMiniClassement').innerHTML = classement.map((r, i) => {
+      const classe = estClubJoueur(r.clubId) ? ' ligneClubJoueur' : '';
+      return `<div class="miniClassementLigne${classe}"><span>${i + 1}. ${nomClub(r.clubId)}</span><span>${r.j}J · <b>${r.pts}</b> pts</span></div>`;
+    }).join('');
+  }
+
   // Abréviations de poste (cf. moteur, PROFILS[n].label) traduites en toutes
   // lettres pour l'effectif : "P"/"T" n'est parlant que pour qui connaît déjà
   // la numérotation du rugby à XV, or le Mode Club vise aussi les néophytes.
@@ -142,37 +192,82 @@
     DM: 'Demi de mêlée', OV: 'Ouverture', AI: 'Ailier', CE: 'Centre', AR: 'Arrière',
   };
 
+  // Badges de rôle (capitaine/buteur/lanceur en touche) affichés à la fois
+  // dans le tableau de l'effectif et dans la fiche joueur — la même info,
+  // jamais recalculée différemment à deux endroits.
+  function badgesRole(id) {
+    const c = saison.clubJoueur;
+    let out = '';
+    if (c.capitaineId === id) out += '<span class="badgeRole capitaine" title="Capitaine">C</span>';
+    if (c.buteurId === id) out += '<span class="badgeRole buteur" title="Buteur désigné">BUT</span>';
+    if (c.lanceurToucheId === id) out += '<span class="badgeRole lanceur" title="Lanceur en touche">TOU</span>';
+    return out;
+  }
+
+  function valeurTri(j, champ) {
+    if (champ === 'nom') return j.nom;
+    return j[champ] || 0;
+  }
+
   // Effectif ÉTENDU du club du joueur (24 avec profondeur, contrats, salaires,
-  // blessures) — bien plus détaillé que celui, purement sportif, des
-  // adversaires IA, puisque c'est le seul club réellement géré ici. Chaque
-  // ligne ouvre la fiche joueur (cf. ouvrirFicheJoueur) : table dense, actions
-  // (libérer) déportées dans la fiche plutôt qu'un bouton sur chaque ligne.
+  // blessures, fatigue) — recherche/tri/filtres (cf. filtreEffectif), bien
+  // plus détaillé que celui, purement sportif, des adversaires IA, puisque
+  // c'est le seul club réellement géré ici. Chaque ligne ouvre la fiche
+  // joueur (cf. ouvrirFicheJoueur) : table dense, actions (libérer) déportées
+  // dans la fiche plutôt qu'un bouton sur chaque ligne.
   function rafraichirEffectif() {
-    const effectif = saison.clubJoueur.effectif.slice().sort((a, b) => a.poste.localeCompare(b.poste) || (b.vitesse + b.plaquage) - (a.vitesse + a.plaquage));
+    const f = filtreEffectif;
+    let effectif = saison.clubJoueur.effectif.filter((j) => {
+      if (f.recherche && !j.nom.toLowerCase().includes(f.recherche)) return false;
+      if (f.poste && j.poste !== f.poste) return false;
+      if (f.disponible && j.blessureJournees > 0) return false;
+      return true;
+    });
+    effectif.sort((a, b) => {
+      const va = valeurTri(a, f.triChamp), vb = valeurTri(b, f.triChamp);
+      let cmp = typeof va === 'string' ? va.localeCompare(vb) : va - vb;
+      if (cmp === 0) cmp = (b.vitesse + b.plaquage) - (a.vitesse + a.plaquage);
+      return cmp * f.triSens;
+    });
+    const colonnes = [
+      ['nom', 'Nom'], ['poste', 'Poste'], ['age', 'Âge'], ['vitesse', 'Vit.'], ['plaquage', 'Plaq.'],
+      ['fatigue', 'Fatigue'], ['contrat', 'Contrat'], ['salaire', 'Salaire'],
+    ];
+    const entetes = colonnes.map(([champ, label]) => {
+      const fleche = f.triChamp === champ ? (f.triSens === 1 ? '▲' : '▼') : '';
+      return `<th class="triable" data-champ="${champ}">${label}<span class="flecheTri">${fleche}</span></th>`;
+    }).join('') + '<th>Forme</th>';
     const lignes = effectif.map((j) => {
       const blessure = j.blessureJournees > 0 ? `<span class="badgeBlessure">🤕 ${j.blessureJournees}j</span>` : '—';
       const contratClasse = j.contrat <= 1 ? ' class="badgeContratCourt"' : '';
-      return `<tr data-joueur="${j.id}"><td>${j.nom}</td><td>${POSTE_COMPLET[j.poste] || j.poste}</td><td>${j.age}</td><td>${j.vitesse}</td><td>${j.plaquage}</td>` +
+      const fatigue = j.fatigue || 0;
+      return `<tr data-joueur="${j.id}"><td>${j.nom}${badgesRole(j.id)}</td><td>${POSTE_COMPLET[j.poste] || j.poste}</td><td>${j.age}</td><td>${j.vitesse}</td><td>${j.plaquage}</td>` +
+        `<td><span class="barreFatigue${fatigue >= 65 ? ' haute' : ''}"><span style="width:${fatigue}%"></span></span></td>` +
         `<td${contratClasse}>${j.contrat} an(s)</td><td>${j.salaire} k€</td><td>${blessure}</td></tr>`;
     }).join('');
-    document.getElementById('clubEffectif').innerHTML =
-      `<table class="tableauClub effectifCliquable"><thead><tr><th>Nom</th><th>Poste</th><th>Âge</th><th>Vit.</th><th>Plaq.</th><th>Contrat</th><th>Salaire</th><th>Forme</th></tr></thead><tbody>${lignes}</tbody></table>`;
+    document.getElementById('clubEffectif').innerHTML = effectif.length
+      ? `<table class="tableauClub effectifCliquable"><thead><tr>${entetes}</tr></thead><tbody>${lignes}</tbody></table>`
+      : '<p>Aucun joueur ne correspond à ces filtres.</p>';
   }
 
-  // --- Aperçu (Home) : forme récente, statut de l'effectif — façon widgets
-  // FM (cf. guide "Home Screen" : Squad Status, Team Stats, Finance). ---
-  function rafraichirForme() {
+  // --- Dashboard (Home) : 5 derniers résultats, classement, statut de
+  // l'effectif, finances, alertes/décisions urgentes — façon écran d'accueil
+  // FM, entièrement dérivé de données RÉELLEMENT produites par la simulation. ---
+  function rafraichirDerniersResultats() {
     const joues = saison.calendrier.filter((f) => f.joue && concerneClubJoueur(f));
-    const derniers = joues.slice(-5);
-    const zone = document.getElementById('clubForme');
+    const derniers = joues.slice(-5).reverse();
+    const zone = document.getElementById('clubDerniersResultats');
     if (derniers.length === 0) { zone.innerHTML = '<p>Aucun match joué pour le moment.</p>'; return; }
-    const compte = { v: 0, n: 0, d: 0 };
-    const badges = derniers.map((f) => {
+    zone.innerHTML = derniers.map((f) => {
+      const domicileEstJoueur = estClubJoueur(f.domicileId);
+      const adversaireId = domicileEstJoueur ? f.exterieurId : f.domicileId;
+      const scoreJoueur = domicileEstJoueur ? f.score.domicile : f.score.exterieur;
+      const scoreAdv = domicileEstJoueur ? f.score.exterieur : f.score.domicile;
       const forme = formeClubJoueur(f);
-      compte[forme]++;
-      return `<span class="badgeForme ${forme}">${LIBELLE_FORME[forme]}</span>`;
+      return `<div class="ligneResultatDash"><span class="badgeForme ${forme}">${LIBELLE_FORME[forme]}</span>` +
+        `<span class="adversaireDash">${domicileEstJoueur ? 'vs' : '@'} ${nomClub(adversaireId)}</span>` +
+        `<span class="scoreDash">${scoreJoueur} - ${scoreAdv}</span></div>`;
     }).join('');
-    zone.innerHTML = `<div class="rangeeForme">${badges}<span class="resumeForme">${compte.v}V ${compte.n}N ${compte.d}D sur les ${derniers.length} derniers</span></div>`;
   }
 
   function rafraichirStatutEffectif() {
@@ -184,6 +279,38 @@
       `<div class="ligneStatut"><span>Blessés</span><span class="valeurStatut${blesses > 0 ? ' alerte' : ''}">${blesses}</span></div>` +
       `<div class="ligneStatut"><span>Contrats expirant fin de saison</span><span class="valeurStatut${contratsCourts > 0 ? ' alerte' : ''}">${contratsCourts}</span></div>` +
       `<div class="ligneStatut"><span>Budget</span><span class="valeurStatut${saison.clubJoueur.budget < 0 ? ' critique' : ''}">${saison.clubJoueur.budget} k€</span></div></div>`;
+  }
+
+  // Alertes/décisions urgentes : dérivées UNIQUEMENT de l'état réel du club
+  // (jamais fabriquées) — blessures, fatigue, contrats, budget. Cliquer une
+  // alerte ouvre directement l'onglet concerné.
+  function genererAlertes() {
+    const c = saison.clubJoueur;
+    const alertes = [];
+    const blesses = c.effectif.filter((j) => j.blessureJournees > 0).length;
+    if (blesses > 0) alertes.push({ icone: '🤕', texte: `${blesses} joueur(s) blessé(s)`, onglet: 'medical' });
+    const fatigues = c.effectif.filter((j) => (j.fatigue || 0) >= 70).length;
+    if (fatigues > 0) alertes.push({ icone: '⚡', texte: `${fatigues} joueur(s) très fatigué(s) — pense à les laisser au repos`, onglet: 'composition' });
+    const contratsCourts = c.effectif.filter((j) => j.contrat <= 1).length;
+    if (contratsCourts > 0) alertes.push({ icone: '📄', texte: `${contratsCourts} contrat(s) expirant en fin de saison`, onglet: 'effectif' });
+    if (c.budget < 0) alertes.push({ icone: '💸', texte: `Budget négatif (${c.budget} k€)`, onglet: 'finances' });
+    return alertes;
+  }
+
+  function rafraichirAlertes() {
+    const alertes = genererAlertes();
+    const carte = document.getElementById('carteAlertes');
+    if (alertes.length === 0) { carte.style.display = 'none'; return; }
+    carte.style.display = '';
+    document.getElementById('clubAlertes').innerHTML = alertes.map((a) =>
+      `<div class="ligneAlerte" data-onglet="${a.onglet}"><span class="iconeAlerte">${a.icone}</span><span>${a.texte}</span></div>`
+    ).join('');
+  }
+
+  function rafraichirFinancesApercu() {
+    const c = saison.clubJoueur;
+    document.getElementById('clubFinancesApercu').innerHTML =
+      `<div class="ligneFinances"><span>Budget actuel</span><span class="budgetValeur${c.budget < 0 ? ' negatif' : ''}">${c.budget} k€</span></div>`;
   }
 
   // --- Finances : budget + journal des derniers mouvements (recette/salaires
@@ -198,12 +325,21 @@
       : '<p>Aucun match joué pour le moment.</p>';
   }
 
-  // --- Médical : vue filtrée de l'effectif (façon Medical Centre FM). ---
+  // --- Médical : vue filtrée de l'effectif (façon Medical Centre FM), plus
+  // la charge de fatigue de l'effectif (réellement répercutée en match). ---
   function rafraichirMedical() {
     const blesses = saison.clubJoueur.effectif.filter((j) => j.blessureJournees > 0);
     document.getElementById('clubMedical').innerHTML = blesses.length
       ? blesses.map((j) => `<div class="ligneMedicale"><span><b>${j.nom}</b> — ${POSTE_COMPLET[j.poste] || j.poste}</span><span class="retourMedical">Retour dans ${j.blessureJournees} journée(s)</span></div>`).join('')
       : '<p>Aucun joueur blessé actuellement — effectif au complet.</p>';
+  }
+
+  function rafraichirFatigueTab() {
+    const fatigues = saison.clubJoueur.effectif.filter((j) => (j.fatigue || 0) > 0).sort((a, b) => (b.fatigue || 0) - (a.fatigue || 0));
+    document.getElementById('clubFatigue').innerHTML = fatigues.length
+      ? fatigues.map((j) => `<div class="ligneMedicale"><span><b>${j.nom}</b> — ${POSTE_COMPLET[j.poste] || j.poste}</span>` +
+        `<span class="barreFatigue${(j.fatigue || 0) >= 65 ? ' haute' : ''}"><span style="width:${j.fatigue}%"></span></span></div>`).join('')
+      : '<p>Aucune fatigue notable dans l\'effectif actuellement.</p>';
   }
 
   // --- Statistiques : cumul RÉEL des actions produites en match cette saison
@@ -231,34 +367,49 @@
 
   // --- Fiche joueur : dépliée sur place dans l'onglet Effectif (#clubJoueurDetail),
   // en remplacement de la table le temps de la consultation — pas une fenêtre
-  // empilée par-dessus l'onglet. ---
+  // empilée par-dessus l'onglet. Attributs rugby, forme/fatigue, historique
+  // (matchs joués cette saison), contrat, disponibilité et rôle du jour. ---
   function ouvrirFicheJoueur(id) {
     const j = saison.clubJoueur.effectif.find((x) => x.id === id);
     if (!j) return;
     joueurAffiche = id;
-    const blessure = j.blessureJournees > 0 ? `${j.blessureJournees} journée(s) restantes` : 'Aucune';
+    const c = saison.clubJoueur;
+    const disponibilite = j.blessureJournees > 0 ? `Blessé — ${j.blessureJournees} journée(s) restantes` : 'Disponible';
+    const titulaire = c.compositionTitulaires && Object.values(c.compositionTitulaires).includes(id);
+    const banc = c.compositionBanc && Object.values(c.compositionBanc).includes(id);
+    const statutCompo = titulaire ? 'Titulaire ce jour' : banc ? 'Remplaçant ce jour' : 'Non retenu ce jour';
+    const fatigue = j.fatigue || 0;
     document.getElementById('clubJoueurDetail').innerHTML =
-      `<div class="ficheJoueurEntete"><span><span class="nomJoueurFiche">${j.nom}</span><span class="posteJoueurFiche">${POSTE_COMPLET[j.poste] || j.poste} · ${j.age} ans</span></span></div>` +
+      `<div class="ficheJoueurEntete"><span><span class="nomJoueurFiche">${j.nom}${badgesRole(id)}</span><span class="posteJoueurFiche">${POSTE_COMPLET[j.poste] || j.poste} · ${j.age} ans</span></span></div>` +
       `<div class="ligneJoueur"><span>Vitesse</span><b>${j.vitesse}</b></div>` +
       `<div class="ligneJoueur"><span>Plaquage</span><b>${j.plaquage}</b></div>` +
+      `<div class="ligneJoueur"><span>Adresse au pied</span><b>${j.adresse}</b></div>` +
+      `<div class="ligneJoueur"><span>Fatigue</span><b><span class="barreFatigue${fatigue >= 65 ? ' haute' : ''}"><span style="width:${fatigue}%"></span></span> ${fatigue}%</b></div>` +
+      `<div class="ligneJoueur"><span>Matchs joués cette saison</span><b>${j.matchsJoues || 0}</b></div>` +
+      `<div class="ligneJoueur"><span>Sélection du jour</span><b>${statutCompo}</b></div>` +
       `<div class="ligneJoueur"><span>Contrat</span><b>${j.contrat} an(s) restant(s)</b></div>` +
       `<div class="ligneJoueur"><span>Salaire</span><b>${j.salaire} k€/saison</b></div>` +
-      `<div class="ligneJoueur"><span>Blessure</span><b>${blessure}</b></div>` +
+      `<div class="ligneJoueur"><span>Disponibilité</span><b>${disponibilite}</b></div>` +
       `<div style="display:flex;gap:8px;margin-top:14px;">` +
       `<button class="alt" id="btnFermerFicheJoueur" style="flex:1;">← Retour à l'effectif</button>` +
       `<button class="alt warn" id="btnLibererFiche" style="flex:1;">Libérer ce joueur</button></div>`;
     document.getElementById('clubJoueurDetail').style.display = '';
     document.getElementById('clubEffectif').style.display = 'none';
+    document.getElementById('clubEffectifFiltres').style.display = 'none';
   }
 
   function fermerFicheJoueur() {
     joueurAffiche = null;
-    document.getElementById('clubJoueurDetail').style.display = 'none';
-    document.getElementById('clubEffectif').style.display = '';
+    const detail = document.getElementById('clubJoueurDetail');
+    if (detail) detail.style.display = 'none';
+    const eff = document.getElementById('clubEffectif');
+    if (eff) eff.style.display = '';
+    const filtres = document.getElementById('clubEffectifFiltres');
+    if (filtres) filtres.style.display = '';
   }
 
-  // --- Barre d'onglets : un seul volet visible à la fois (Aperçu par défaut
-  // à l'ouverture, cf. rafraichirTout). ---
+  // --- Navigation : bandeau horizontal (mobile) / menu latéral (desktop, cf.
+  // style.css), un seul volet visible à la fois. ---
   function basculerOnglet(cle) {
     document.querySelectorAll('#barreOngletsClub .ongletBtn').forEach((b) => {
       b.classList.toggle('actif', b.dataset.onglet === cle);
@@ -286,30 +437,76 @@
       }).join('');
   }
 
-  // Composition du jour : un <select> par numéro de maillot (1-15), limité
-  // aux joueurs du bon poste NON déjà titularisés à un autre numéro (évite
-  // les doublons sans logique d'échange à gérer). Un joueur blessé reste
+  // --- Composition sur le terrain : 15 postes positionnés selon un vrai plan
+  // de jeu (cf. POSITIONS_TERRAIN), banc de 8 remplaçants, encadrement
+  // (capitaine/buteur/lanceur en touche). Un joueur blessé reste
   // sélectionnable (mieux vaut jouer diminué que laisser un trou) mais
-  // signalé par 🤕 dans son libellé.
-  function rafraichirComposition() {
+  // signalé par 🤕 ; la fatigue (⚡) est aussi affichée. ---
+  const POSITIONS_TERRAIN = {
+    1: { top: 14, left: 28 }, 2: { top: 8, left: 50 }, 3: { top: 14, left: 72 },
+    4: { top: 24, left: 38 }, 5: { top: 24, left: 62 },
+    6: { top: 32, left: 18 }, 7: { top: 32, left: 82 }, 8: { top: 34, left: 50 },
+    9: { top: 46, left: 50 },
+    10: { top: 56, left: 35 },
+    12: { top: 68, left: 42 }, 13: { top: 68, left: 66 },
+    11: { top: 80, left: 10 }, 14: { top: 80, left: 90 },
+    15: { top: 92, left: 50 },
+  };
+
+  function rafraichirTerrain() {
     const effectif = saison.clubJoueur.effectif;
-    if (!compositionActuelle) compositionActuelle = RMClub.meilleureComposition(effectif);
-    const parId = {};
-    for (const j of effectif) parId[j.id] = j;
-    const lignes = Object.keys(RMClub.POSTE_REQUIS).map((numero) => {
+    const composition = assurerComposition();
+    document.getElementById('clubTerrain').innerHTML = Object.keys(RMClub.POSTE_REQUIS).map((numero) => {
       const poste = RMClub.POSTE_REQUIS[numero];
-      const utiliseAilleurs = new Set(Object.keys(compositionActuelle)
-        .filter((n) => n !== numero).map((n) => compositionActuelle[n]));
+      const pos = POSITIONS_TERRAIN[numero];
+      const utiliseAilleurs = new Set(Object.keys(composition)
+        .filter((n) => n !== numero).map((n) => composition[n]));
       const candidats = effectif.filter((j) => j.poste === poste && !utiliseAilleurs.has(j.id));
+      const blesseActuel = effectif.find((j) => j.id === composition[numero] && j.blessureJournees > 0);
+      const options = candidats.map((j) => {
+        const etat = j.blessureJournees > 0 ? ` 🤕${j.blessureJournees}j` : ((j.fatigue || 0) >= 65 ? ' ⚡' : '');
+        const selectionne = composition[numero] === j.id ? ' selected' : '';
+        return `<option value="${j.id}"${selectionne}>${j.nom}${etat}</option>`;
+      }).join('');
+      return `<div class="chipTerrain" style="top:${pos.top}%;left:${pos.left}%;">` +
+        `<span class="numChip">N°${numero} ${poste}</span>` +
+        `<select data-numero="${numero}"${blesseActuel ? ' class="blesseChip"' : ''}>${options}</select></div>`;
+    }).join('');
+  }
+
+  function rafraichirBanc() {
+    const effectif = saison.clubJoueur.effectif;
+    const c = saison.clubJoueur;
+    const banc = c.compositionBanc || {};
+    const titulaireIds = new Set(Object.values(c.compositionTitulaires || {}));
+    document.getElementById('clubBanc').innerHTML = Object.keys(RMClub.POSTE_REQUIS_BANC).map((numero) => {
+      const poste = RMClub.POSTE_REQUIS_BANC[numero];
+      const utiliseAilleurs = new Set(Object.keys(banc).filter((n) => n !== numero).map((n) => banc[n]));
+      const candidats = effectif.filter((j) => j.poste === poste && !titulaireIds.has(j.id) && !utiliseAilleurs.has(j.id));
       const options = candidats.map((j) => {
         const etat = j.blessureJournees > 0 ? ` 🤕${j.blessureJournees}j` : '';
-        const selectionne = compositionActuelle[numero] === j.id ? ' selected' : '';
-        return `<option value="${j.id}"${selectionne}>${j.nom} (${j.vitesse}/${j.plaquage})${etat}</option>`;
+        const selectionne = banc[numero] === j.id ? ' selected' : '';
+        return `<option value="${j.id}"${selectionne}>${j.nom}${etat}</option>`;
       }).join('');
-      return `<div class="ligneComposition"><span class="numComposition">N°${numero} <em>${POSTE_COMPLET[poste] || poste}</em></span>` +
-        `<select data-numero="${numero}">${options}</select></div>`;
+      return `<div class="chipBanc"><span class="numChip">N°${numero} · ${POSTE_COMPLET[poste] || poste}</span>` +
+        `<select data-numero="${numero}">${options || '<option value="">—</option>'}</select></div>`;
     }).join('');
-    document.getElementById('clubComposition').innerHTML = lignes;
+  }
+
+  function rafraichirEncadrement() {
+    const c = saison.clubJoueur;
+    const parId = {};
+    for (const j of c.effectif) parId[j.id] = j;
+    const titulaires = Object.keys(c.compositionTitulaires || {})
+      .map((n) => ({ numero: n, joueur: parId[c.compositionTitulaires[n]] }))
+      .filter((x) => x.joueur);
+    function options(valeurActuelle) {
+      return titulaires.map((t) => `<option value="${t.joueur.id}"${t.joueur.id === valeurActuelle ? ' selected' : ''}>N°${t.numero} ${t.joueur.nom}</option>`).join('');
+    }
+    document.getElementById('clubEncadrement').innerHTML =
+      `<div class="ligneComposition"><span class="numComposition">Capitaine</span><select data-role="capitaineId">${options(c.capitaineId)}</select></div>` +
+      `<div class="ligneComposition"><span class="numComposition">Buteur</span><select data-role="buteurId">${options(c.buteurId)}</select></div>` +
+      `<div class="ligneComposition"><span class="numComposition">Lanceur en touche</span><select data-role="lanceurToucheId">${options(c.lanceurToucheId)}</select></div>`;
   }
 
   // Rapport de scout, pas fiche technique parfaite : tant qu'un joueur du
@@ -356,12 +553,17 @@
     rafraichirCarteAccueil();
     const enCreation = !saison;
     document.getElementById('clubCreation').style.display = enCreation ? 'block' : 'none';
-    document.getElementById('clubGestion').style.display = enCreation ? 'none' : 'block';
+    document.getElementById('clubGestion').style.display = enCreation ? 'none' : 'flex';
     if (enCreation) return;
+    assurerComposition();
     rafraichirEntete();
+    rafraichirTopBarInfos();
     rafraichirProchainMatch();
-    rafraichirForme();
+    rafraichirDerniersResultats();
+    rafraichirMiniClassement();
+    rafraichirAlertes();
     rafraichirStatutEffectif();
+    rafraichirFinancesApercu();
     rafraichirTactique();
     rafraichirMarche();
     rafraichirClassement();
@@ -369,8 +571,16 @@
     rafraichirCalendrier();
     rafraichirFinancesTab();
     rafraichirMedical();
+    rafraichirFatigueTab();
     rafraichirStatsTab();
-    basculerOnglet('apercu'); // toujours l'Aperçu en entrant dans le club, comme un vrai écran d'accueil
+    rafraichirTerrain();
+    rafraichirBanc();
+    rafraichirEncadrement();
+    basculerOnglet('dashboard'); // toujours le Dashboard en entrant dans le club, comme un vrai écran d'accueil
+  }
+
+  function fermerPanneauClub() {
+    document.getElementById('panneauClub').classList.remove('visible');
   }
 
   document.getElementById('btnModeClub').addEventListener('click', () => {
@@ -385,15 +595,20 @@
     if (!bouton) return;
     basculerOnglet(bouton.dataset.onglet);
   });
-  document.getElementById('fermerClub').addEventListener('click', () => {
-    document.getElementById('panneauClub').classList.remove('visible');
+  document.getElementById('fermerClub').addEventListener('click', fermerPanneauClub);
+  document.getElementById('fermerClubCreation').addEventListener('click', fermerPanneauClub);
+
+  // --- Alertes du dashboard : cliquer une alerte ouvre l'onglet concerné ---
+  document.getElementById('clubAlertes').addEventListener('click', (e) => {
+    const ligne = e.target.closest('.ligneAlerte');
+    if (!ligne) return;
+    basculerOnglet(ligne.dataset.onglet);
   });
 
   document.getElementById('btnCreerClub').addEventListener('click', () => {
     const nom = document.getElementById('inputNomClub').value.trim();
     const rng = creerRng(graineAleatoire());
     saison = RMClub.nouvelleSaison(rng, nom || null);
-    compositionActuelle = null;
     RMClub.sauvegarderSaison(saison);
     rafraichirTout();
   });
@@ -402,28 +617,89 @@
     if (!window.confirm('Effacer la saison en cours et repartir de zéro (effectif, budget, historique compris) ?')) return;
     RMClub.effacerSaison();
     saison = null;
-    compositionActuelle = null;
     document.getElementById('inputNomClub').value = '';
     rafraichirTout();
   });
 
-  // --- Composition du jour : dépliée/repliée sur place dans l'onglet Aperçu
-  // (#blocComposition), plus un panneau à part empilé par-dessus. ---
-  document.getElementById('btnComposition').addEventListener('click', () => {
-    const bloc = document.getElementById('blocComposition');
-    const ouvrir = bloc.style.display === 'none';
-    if (ouvrir) rafraichirComposition();
-    bloc.style.display = ouvrir ? '' : 'none';
+  // --- Effectif : recherche/tri/filtres ---
+  document.getElementById('filtreEffectifRecherche').addEventListener('input', (e) => {
+    filtreEffectif.recherche = e.target.value.trim().toLowerCase();
+    rafraichirEffectif();
   });
+  document.getElementById('filtreEffectifPoste').addEventListener('change', (e) => {
+    filtreEffectif.poste = e.target.value;
+    rafraichirEffectif();
+  });
+  document.getElementById('filtreEffectifDisponible').addEventListener('change', (e) => {
+    filtreEffectif.disponible = e.target.checked;
+    rafraichirEffectif();
+  });
+  document.getElementById('clubEffectif').addEventListener('click', (e) => {
+    const th = e.target.closest('th.triable');
+    if (th) {
+      const champ = th.dataset.champ;
+      if (filtreEffectif.triChamp === champ) filtreEffectif.triSens *= -1;
+      else { filtreEffectif.triChamp = champ; filtreEffectif.triSens = 1; }
+      rafraichirEffectif();
+      return;
+    }
+    const ligne = e.target.closest('tr[data-joueur]');
+    if (!ligne) return;
+    ouvrirFicheJoueur(ligne.dataset.joueur);
+  });
+  // Fiche joueur : boutons régénérés à chaque ouverture (cf. ouvrirFicheJoueur),
+  // délégation sur le conteneur parent plutôt qu'un addEventListener par joueur.
+  document.getElementById('clubJoueurDetail').addEventListener('click', (e) => {
+    if (e.target.id === 'btnFermerFicheJoueur') { fermerFicheJoueur(); return; }
+    if (e.target.id !== 'btnLibererFiche') return;
+    if (!joueurAffiche) return;
+    const joueur = saison.clubJoueur.effectif.find((j) => j.id === joueurAffiche);
+    if (!joueur || !window.confirm(`Libérer ${joueur.nom} ? Il quittera définitivement l'effectif.`)) return;
+    const res = RMClub.libererJoueur(saison, joueurAffiche);
+    if (!res.ok) { window.alert("Impossible : c'est le dernier joueur de ce poste dans l'effectif."); return; }
+    assurerComposition(); // rebouche les trous laissés par le départ (cf. club.js)
+    RMClub.sauvegarderSaison(saison);
+    fermerFicheJoueur();
+    rafraichirEffectif();
+    rafraichirStatutEffectif();
+    rafraichirTerrain();
+    rafraichirBanc();
+    rafraichirEncadrement();
+  });
+
+  // --- Composition : navigation depuis le Dashboard vers l'onglet dédié
+  // (terrain + banc), plus une simple liste dépliée sur place. ---
+  document.getElementById('btnComposition').addEventListener('click', () => basculerOnglet('composition'));
   document.getElementById('btnCompositionAuto').addEventListener('click', () => {
-    compositionActuelle = RMClub.meilleureComposition(saison.clubJoueur.effectif);
-    rafraichirComposition();
+    const c = saison.clubJoueur;
+    c.compositionTitulaires = RMClub.meilleureComposition(c.effectif);
+    c.compositionBanc = RMClub.completerCompositionBanc(c.effectif, c.compositionTitulaires, {});
+    const auto = RMClub.autoDesignerEncadrement(c.effectif, c.compositionTitulaires);
+    c.capitaineId = auto.capitaineId; c.buteurId = auto.buteurId; c.lanceurToucheId = auto.lanceurToucheId;
+    RMClub.sauvegarderSaison(saison);
+    rafraichirTerrain(); rafraichirBanc(); rafraichirEncadrement();
   });
-  document.getElementById('clubComposition').addEventListener('change', (e) => {
+  document.getElementById('clubTerrain').addEventListener('change', (e) => {
     const numero = e.target.dataset.numero;
     if (!numero) return;
-    compositionActuelle[numero] = e.target.value;
-    rafraichirComposition(); // ce joueur n'est plus proposé aux autres numéros
+    saison.clubJoueur.compositionTitulaires[numero] = e.target.value;
+    RMClub.sauvegarderSaison(saison);
+    rafraichirTerrain(); // ce joueur n'est plus proposé aux autres numéros
+    rafraichirBanc(); // peut libérer/consommer un joueur du vivier du banc
+    rafraichirEncadrement(); // options dépendantes des titulaires
+  });
+  document.getElementById('clubBanc').addEventListener('change', (e) => {
+    const numero = e.target.dataset.numero;
+    if (!numero) return;
+    saison.clubJoueur.compositionBanc[numero] = e.target.value;
+    RMClub.sauvegarderSaison(saison);
+    rafraichirBanc();
+  });
+  document.getElementById('clubEncadrement').addEventListener('change', (e) => {
+    const role = e.target.dataset.role;
+    if (!role) return;
+    saison.clubJoueur[role] = e.target.value;
+    RMClub.sauvegarderSaison(saison);
   });
 
   // --- Tactique : n'affecte QUE le club du joueur (cf. lancerMatchJoueur) ---
@@ -451,41 +727,17 @@
       if (!res.ok) { window.alert('Budget insuffisant pour financer ce repérage.'); return; }
       RMClub.sauvegarderSaison(saison);
       rafraichirMarche();
-      rafraichirEntete();
+      rafraichirTopBarInfos();
       rafraichirStatutEffectif();
       return;
     }
     if (!e.target.classList.contains('btnSigner')) return;
     const res = RMClub.signerJoueur(saison, id);
     if (!res.ok) { window.alert('Budget insuffisant pour cette signature.'); return; }
-    compositionActuelle = null; // nouveau joueur potentiellement meilleur : ré-évalue la composition
     RMClub.sauvegarderSaison(saison);
     rafraichirMarche();
     rafraichirEffectif();
-    rafraichirEntete();
-    rafraichirStatutEffectif();
-  });
-
-  // --- Effectif : chaque ligne ouvre la fiche joueur sur place ---
-  document.getElementById('clubEffectif').addEventListener('click', (e) => {
-    const ligne = e.target.closest('tr[data-joueur]');
-    if (!ligne) return;
-    ouvrirFicheJoueur(ligne.dataset.joueur);
-  });
-  // Fiche joueur : boutons régénérés à chaque ouverture (cf. ouvrirFicheJoueur),
-  // délégation sur le conteneur parent plutôt qu'un addEventListener par joueur.
-  document.getElementById('clubJoueurDetail').addEventListener('click', (e) => {
-    if (e.target.id === 'btnFermerFicheJoueur') { fermerFicheJoueur(); return; }
-    if (e.target.id !== 'btnLibererFiche') return;
-    if (!joueurAffiche) return;
-    const joueur = saison.clubJoueur.effectif.find((j) => j.id === joueurAffiche);
-    if (!joueur || !window.confirm(`Libérer ${joueur.nom} ? Il quittera définitivement l'effectif.`)) return;
-    const res = RMClub.libererJoueur(saison, joueurAffiche);
-    if (!res.ok) { window.alert("Impossible : c'est le dernier joueur de ce poste dans l'effectif."); return; }
-    compositionActuelle = null;
-    RMClub.sauvegarderSaison(saison);
-    fermerFicheJoueur();
-    rafraichirEffectif();
+    rafraichirTopBarInfos();
     rafraichirStatutEffectif();
   });
 
@@ -494,7 +746,6 @@
   document.getElementById('btnSaisonSuivante').addEventListener('click', () => {
     const rng = creerRng(graineAleatoire());
     const { partis, arrivees } = RMClub.avancerSaison(rng, saison);
-    compositionActuelle = null;
     RMClub.sauvegarderSaison(saison);
     rafraichirTout();
     const resume = [
@@ -533,15 +784,23 @@
       if (!matchJoueur) return; // calendrier à nombre pair de clubs : ne devrait pas arriver
       const clubDomicile = RMClub.club(saison, matchJoueur.domicileId);
       const clubExterieur = RMClub.club(saison, matchJoueur.exterieurId);
-      const compositionUtilisee = compositionActuelle;
-      // La tactique choisie (cf. panneau Club) ne s'applique QU'au club du
-      // joueur, jamais à l'IA adverse — d'où le suffixe A/B dynamique selon
-      // le côté du joueur pour ce match précis (domicile/extérieur alterne).
+      assurerComposition();
+      const compositionUtilisee = saison.clubJoueur.compositionTitulaires;
+      // La tactique choisie (cf. onglet Tactique) et l'encadrement (buteur,
+      // lanceur en touche) ne s'appliquent QU'au club du joueur, jamais à
+      // l'IA adverse — d'où le suffixe A/B dynamique selon le côté du joueur
+      // pour ce match précis (domicile/extérieur alterne).
       const lettreJoueur = estClubJoueur(matchJoueur.domicileId) ? 'A' : 'B';
       const cfgTactique = RMClub.tactiqueVersConfig(saison.clubJoueur.tactique);
       const tactiqueCfg = {};
       if (cfgTactique.attaque) tactiqueCfg['attaque' + lettreJoueur] = cfgTactique.attaque;
       if (cfgTactique.defense) tactiqueCfg['defense' + lettreJoueur] = cfgTactique.defense;
+      if (cfgTactique.melee) tactiqueCfg['melee' + lettreJoueur] = cfgTactique.melee;
+      if (cfgTactique.touche) tactiqueCfg['touche' + lettreJoueur] = cfgTactique.touche;
+      const numeroButeur = RMClub.numeroDuJoueurDansComposition(compositionUtilisee, saison.clubJoueur.buteurId);
+      if (numeroButeur) tactiqueCfg['buteur' + lettreJoueur] = Number(numeroButeur);
+      const numeroLanceur = RMClub.numeroDuJoueurDansComposition(compositionUtilisee, saison.clubJoueur.lanceurToucheId);
+      if (numeroLanceur) tactiqueCfg['toucheLanceur' + lettreJoueur] = Number(numeroLanceur);
       window.RMMain.demarrerMatchClub(
         graineAleatoire(), duree,
         cfgPour(clubDomicile),
@@ -557,7 +816,7 @@
             RMClub.enregistrerMouvementFinances(saison.clubJoueur, matchJoueur.journee, mouvement);
             RMClub.accumulerStats(saison.clubJoueur, etat.stats[lettreJoueur]);
             RMClub.faireProgresserBlessures(creerRng(graineAleatoire()), saison.clubJoueur.effectif, compositionUtilisee);
-            compositionActuelle = null; // recalculée à la prochaine ouverture (blessures ont pu changer la donne)
+            RMClub.appliquerFatigue(saison.clubJoueur.effectif, compositionUtilisee);
             RMClub.sauvegarderSaison(saison);
             window.RMMain.reinitialiserConfigClub();
           },
