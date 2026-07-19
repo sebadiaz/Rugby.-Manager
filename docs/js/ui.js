@@ -29,6 +29,19 @@
     nomsEquipes = { A: (noms && noms.A) || 'Equipe A', B: (noms && noms.B) || 'Equipe B' };
   }
 
+  // Le fil d'événements et la bannière arbitrale viennent du moteur, qui ne
+  // désigne les équipes que par "équipe A"/"équipe B" dans ses messages (ex.
+  // "Pénalité, équipe A tente un coup de pied au but"). Pour un match de
+  // club, on y substitue les vrais noms : chaque message contient toujours la
+  // lettre d'équipe comme mot isolé (jamais accolée à un autre mot), donc un
+  // remplacement par mot entier suffit à couvrir tous les messages sans
+  // toucher au moteur. Ne rien faire en Match rapide (noms génériques) pour
+  // ne pas produire "l'équipe Equipe A".
+  function traduireEquipesDansMessage(msg) {
+    if (nomsEquipes.A === 'Equipe A' && nomsEquipes.B === 'Equipe B') return msg;
+    return msg.replace(/\bA\b|\bB\b/g, (lettre) => (lettre === 'A' ? nomsEquipes.A : nomsEquipes.B));
+  }
+
   // Affiche l'état courant dans le HUD. `dureeAffichee` est utilisé pour le
   // libellé "x / y" tant que la durée réelle du match n'est pas finie (Infinity).
   function majAffichage(state, dureeAffichee) {
@@ -63,7 +76,7 @@
     const derniers = state.eventLog.slice(-5).reverse();
     for (const ev of derniers) {
       const li = document.createElement('li');
-      li.textContent = `${ICONES[ev.type] || '•'} ${ev.message}`;
+      li.textContent = `${ICONES[ev.type] || '•'} ${traduireEquipesDansMessage(ev.message)}`;
       if (ev.id > dernierIdEvenementAffiche - 1) li.className = 'recent';
       feed.appendChild(li);
     }
@@ -78,7 +91,7 @@
     const aAfficher = [...nouveaux].reverse().find(e => TYPES_BANNIERE.has(e.type));
     if (aAfficher) {
       const banner = document.getElementById('banner');
-      banner.textContent = `🟨 ARBITRE — ${aAfficher.message}`;
+      banner.textContent = `🟨 ARBITRE — ${traduireEquipesDansMessage(aAfficher.message)}`;
       banner.classList.add('visible');
       banniereJusqua = performance.now() + 2200;
     }
