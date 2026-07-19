@@ -283,6 +283,18 @@ select {
 .ligneFinances .budgetValeur { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; }
 .ligneFinances .budgetValeur.negatif { color: var(--loss); }
 
+/* ---------- Tactique ---------- */
+.ligneTactique {
+  display: block; width: 100%; text-align: left; cursor: pointer;
+  padding: 10px 12px; margin-bottom: 8px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong); background: transparent; color: var(--text);
+}
+.ligneTactique:last-child { margin-bottom: 0; }
+.ligneTactique b { display: block; font-size: 13.5px; margin-bottom: 2px; }
+.ligneTactique span { display: block; font-size: 12px; color: var(--text-dim); }
+.ligneTactique.choisie { border-color: var(--accent); background: rgba(255, 183, 3, 0.1); }
+.ligneTactique.choisie b { color: var(--accent); }
+
 .ligneCalendrier {
   display: flex; justify-content: space-between; align-items: center;
   padding: 9px 8px; border-bottom: 1px solid var(--border); font-size: 12.5px; gap: 8px;

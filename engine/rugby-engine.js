@@ -457,6 +457,22 @@
       // mêlée, attaque, défense) fusionnée par-dessus les défauts : cf.
       // DEFAULT_CONFIG. `null` => comportement historique exact.
       this.cfg = fusionnerConfig(DEFAULT_CONFIG, config);
+      // Tactique PAR ÉQUIPE (Mode Club) : `config.attaqueA/attaqueB` et
+      // `config.defenseA/defenseB`, fusionnés par-dessus this.cfg.attaque/
+      // defense (déjà résolu ci-dessus, donc un réglage partagé via
+      // `config.attaque` reste le socle commun) plutôt que par-dessus
+      // DEFAULT_CONFIG directement — sinon un override partiel (ex. juste
+      // `tauxJeuAuPied`) perdrait les autres champs (ex. `jeuLargeTaux`).
+      // Sans surcharge, les deux équipes utilisent this.cfg.attaque/defense :
+      // comportement historique strictement inchangé.
+      this.cfgAttaque = {
+        A: fusionnerConfig(this.cfg.attaque, config && config.attaqueA),
+        B: fusionnerConfig(this.cfg.attaque, config && config.attaqueB),
+      };
+      this.cfgDefense = {
+        A: fusionnerConfig(this.cfg.defense, config && config.defenseA),
+        B: fusionnerConfig(this.cfg.defense, config && config.defenseB),
+      };
       this.rng = creerRng(seed >>> 0 || 1);
       this.score = { A: 0, B: 0 };
       this.events = [];
@@ -1635,7 +1651,8 @@
       // (mesuré France-Irlande : 3,8 m gagnés par course, un contact toutes les
       // ~11 s de jeu ; sans rampe le contact tombait en ~2 s et le match jouait
       // 4x trop de phases). 0 = montée immédiate (comportement historique).
-      const rampeDef = this.cfg.defense.rampeMontee || 0;
+      const cfgDef = this.cfgDefense[porteur.team === 'A' ? 'B' : 'A'];
+      const rampeDef = cfgDef.rampeMontee || 0;
       const fRampe = rampeDef > 0 ? Math.min(1, 0.35 + this.timerPhase / rampeDef) : 1;
       for (const j of def) {
         // Défenseur FIXÉ (battu par une passe, cf. _tenterPasse) : il est hors du
@@ -1657,7 +1674,7 @@
         // ~18 m derrière, au centre, pour parer le jeu au pied et les
         // débordements (dernier rideau). Il ne court jamais vers le ballon.
         if (j.numero === 15) {
-          const cibleX = porteur.x + porteur.sensAttaque * this.cfg.defense.profondeurArriereJeu;
+          const cibleX = porteur.x + porteur.sensAttaque * cfgDef.profondeurArriereJeu;
           const cibleY = j.channelY * 0.7 + porteur.y * 0.3;
           avancer(j, cibleX - j.x, cibleY - j.y, dt, vitesseMs(j) * 0.8);
           continue;
@@ -1866,7 +1883,7 @@
         // les ~3 courses (78 coups de pied pour 255 courses au France-Irlande
         // 2026) — c'est LE régulateur de la longueur des possessions. Calibré
         // par balayage (cf. docs/ANALYSE_MATCH_REEL.md).
-        pParSeconde *= (this.cfg.attaque.tauxJeuAuPied || 1);
+        pParSeconde *= (this.cfgAttaque[porteur.team].tauxJeuAuPied || 1);
         if (this.rng() < pParSeconde * dt) return 'KICK';
       }
 
@@ -1941,7 +1958,8 @@
         // TRAVERSER la ligne au ballon (10->12->13->aile) plus vite que la
         // défense ne glisse, au lieu de mourir au 2e maillon. Mesuré sans ça :
         // 2,2 passes par séquence, 32 % seulement à 3+ passes.
-        const tauxLigne = (pression ? this.cfg.attaque.jeuLargeTaux.pression : this.cfg.attaque.jeuLargeTaux.calme)
+        const cfgAtt = this.cfgAttaque[porteur.team];
+        const tauxLigne = (pression ? cfgAtt.jeuLargeTaux.pression : cfgAtt.jeuLargeTaux.calme)
           * ((porteur._enchaine || 0) > 0 ? 2.2 : 1);
         if (suivant && distDef > 2.4 && this.rng() < tauxLigne * dt) {
           this._passeCibleForcee = suivant; return 'PASS';
@@ -2452,7 +2470,7 @@
       // Valeur modérée : combinée à la récupération post-regroupement (cf.
       // _imposerRecuperationRuck), un recul trop large ouvrirait des brèches
       // systématiques côté ligne d'en-but.
-      const margeRecul = this.cfg.defense.reculRuck;
+      const margeRecul = this.cfgDefense[this.porteur.team === 'A' ? 'B' : 'A'].reculRuck;
       const delaiGrace = 1.5 * this._echelleArret;
 
       // Joueurs qui convergent vers le point de ruck (le(s) contestant(s)
@@ -3494,7 +3512,7 @@
           if (j.numero === 15) {
             // Arrière : couverture PROFONDE au centre (dernier rideau), pas dans
             // la ligne.
-            cx = m.x - sA * this.cfg.defense.profondeurArriereMelee; cy = LARGEUR / 2;
+            cx = m.x - sA * this.cfgDefense[equipe[0].team].profondeurArriereMelee; cy = LARGEUR / 2;
           } else if (j.numero === 11 || j.numero === 14) {
             // Ailiers : l'ailier du côté OUVERT s'écarte au large ; l'autre
             // couvre le petit côté (côté fermé). En ATTAQUE, l'ailier ouvert est

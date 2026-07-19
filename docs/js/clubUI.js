@@ -57,6 +57,15 @@
   }
   const LIBELLE_FORME = { v: 'V', n: 'N', d: 'D' };
 
+  function rafraichirTactique() {
+    const actuelle = saison.clubJoueur.tactique || 'equilibre';
+    document.getElementById('clubTactique').innerHTML = Object.keys(RMClub.TACTIQUES).map((cle) => {
+      const t = RMClub.TACTIQUES[cle];
+      const choisie = cle === actuelle ? ' choisie' : '';
+      return `<button class="ligneTactique${choisie}" data-tactique="${cle}"><b>${t.nom}</b><span>${t.description}</span></button>`;
+    }).join('');
+  }
+
   function formaterLigneCalendrier(f) {
     const domicile = nomClub(f.domicileId);
     const exterieur = nomClub(f.exterieurId);
@@ -195,6 +204,7 @@
     if (enCreation) return;
     rafraichirEntete();
     rafraichirProchainMatch();
+    rafraichirTactique();
     rafraichirClassement();
     rafraichirEffectif();
     rafraichirCalendrier();
@@ -243,6 +253,15 @@
     if (!numero) return;
     compositionActuelle[numero] = e.target.value;
     rafraichirComposition(); // ce joueur n'est plus proposé aux autres numéros
+  });
+
+  // --- Tactique : n'affecte QUE le club du joueur (cf. lancerMatchJoueur) ---
+  document.getElementById('clubTactique').addEventListener('click', (e) => {
+    const cle = e.target.closest('[data-tactique]');
+    if (!cle) return;
+    saison.clubJoueur.tactique = cle.dataset.tactique;
+    RMClub.sauvegarderSaison(saison);
+    rafraichirTactique();
   });
 
   // --- Marché des transferts ---
@@ -327,10 +346,19 @@
       const clubDomicile = RMClub.club(saison, matchJoueur.domicileId);
       const clubExterieur = RMClub.club(saison, matchJoueur.exterieurId);
       const compositionUtilisee = compositionActuelle;
+      // La tactique choisie (cf. panneau Club) ne s'applique QU'au club du
+      // joueur, jamais à l'IA adverse — d'où le suffixe A/B dynamique selon
+      // le côté du joueur pour ce match précis (domicile/extérieur alterne).
+      const lettreJoueur = estClubJoueur(matchJoueur.domicileId) ? 'A' : 'B';
+      const cfgTactique = RMClub.tactiqueVersConfig(saison.clubJoueur.tactique || 'equilibre');
+      const tactiqueCfg = {};
+      if (cfgTactique.attaque) tactiqueCfg['attaque' + lettreJoueur] = cfgTactique.attaque;
+      if (cfgTactique.defense) tactiqueCfg['defense' + lettreJoueur] = cfgTactique.defense;
       window.RMMain.demarrerMatchClub(
         graineAleatoire(), duree,
         cfgPour(clubDomicile),
         cfgPour(clubExterieur),
+        tactiqueCfg,
         {
           noms: { A: clubDomicile.nom, B: clubExterieur.nom },
           equipeJoueur: estClubJoueur(matchJoueur.domicileId) ? 'A' : 'B',

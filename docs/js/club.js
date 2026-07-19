@@ -143,9 +143,10 @@
     return Math.round(150 + niveauClub * 500 + rng() * 100);
   }
 
-  // Club du joueur : effectif ÉTENDU (24, avec profondeur) + budget. C'est le
-  // seul club géré en détail (composition, transferts, finances) — les
-  // adversaires (IA) restent un effectif de 15 prêt à jouer.
+  // Club du joueur : effectif ÉTENDU (24, avec profondeur) + budget + tactique.
+  // C'est le seul club géré en détail (composition, transferts, finances,
+  // tactique) — les adversaires (IA) restent un effectif de 15 prêt à jouer,
+  // avec les réglages d'attaque/défense par défaut du moteur.
   function genererClubJoueur(rng, { nom, niveauClub = 0.5 } = {}) {
     return {
       id: 'club' + (compteurId++),
@@ -154,7 +155,44 @@
       niveauClub,
       effectif: genererEffectifEtendu(rng, niveauClub),
       budget: budgetInitial(niveauClub, rng),
+      tactique: 'equilibre',
     };
+  }
+
+  // Tactiques disponibles pour le club du joueur : chacune traduit une
+  // identité de jeu lisible en réglages concrets du moteur (cf.
+  // engine/rugby-engine.js, cfgAttaque/cfgDefense PAR ÉQUIPE). `null` = les
+  // réglages par défaut du moteur (comportement historique, inchangé).
+  const TACTIQUES = {
+    equilibre: {
+      nom: 'Équilibré', description: 'Approche standard, sans excès dans un sens ou l\'autre.',
+      attaque: null, defense: null,
+    },
+    sol: {
+      nom: 'Jeu au sol', description: 'Conserve le ballon près du regroupement, peu de coups de pied, défense patiente.',
+      attaque: { tauxJeuAuPied: 0.6, jeuLargeTaux: { pression: 1.1, calme: 0.9 } },
+      defense: { rampeMontee: 3.5, profondeurArriereJeu: 22, profondeurArriereMelee: 24 },
+    },
+    large: {
+      nom: 'Jeu au large', description: 'Cherche l\'espace au large à chaque occasion, presse haut en défense (plus risqué).',
+      attaque: { tauxJeuAuPied: 0.7, jeuLargeTaux: { pression: 2.3, calme: 2.0 } },
+      defense: { rampeMontee: 1.5, profondeurArriereJeu: 15, profondeurArriereMelee: 17 },
+    },
+    pied: {
+      nom: 'Jeu au pied', description: 'Beaucoup de coups de pied pour occuper le camp adverse, défense repliée.',
+      attaque: { tauxJeuAuPied: 2.5, jeuLargeTaux: { pression: 1.5, calme: 1.2 } },
+      defense: { rampeMontee: 3, profondeurArriereJeu: 22, profondeurArriereMelee: 24 },
+    },
+  };
+
+  // Config moteur (attaque/défense PAR ÉQUIPE) pour la tactique choisie —
+  // {} pour "équilibré" (aucune surcharge, comportement par défaut du moteur).
+  function tactiqueVersConfig(cleTactique) {
+    const t = TACTIQUES[cleTactique] || TACTIQUES.equilibre;
+    const cfg = {};
+    if (t.attaque) cfg.attaque = t.attaque;
+    if (t.defense) cfg.defense = t.defense;
+    return cfg;
   }
 
   // Convertit l'effectif d'un club ADVERSAIRE (15, un par numéro) en config
@@ -442,5 +480,6 @@
     masseSalariale, appliquerFinancesMatch,
     genererMarcheTransferts, signerJoueur, libererJoueur,
     faireProgresserBlessures, avancerSaison,
+    TACTIQUES, tactiqueVersConfig,
   };
 })(window);

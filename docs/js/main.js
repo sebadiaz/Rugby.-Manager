@@ -501,8 +501,11 @@
     // `callbacks.noms` ({A,B}) : noms des deux clubs, affichés dans le HUD/les
     // stats à la place des libellés génériques "Equipe A"/"Equipe B" si le
     // joueur regarde le match.
-    demarrerMatchClub(seed, duree, joueursA, joueursB, callbacks) {
-      configMatch = Object.assign({}, configMatch, { joueursA, joueursB });
+    // `tactiqueCfg` ({attaqueA?/attaqueB?/defenseA?/defenseB?}) : réglages
+    // tactiques PAR ÉQUIPE (Mode Club, cf. RMClub.tactiqueVersConfig) —
+    // n'affecte que le club du joueur, jamais l'IA adverse.
+    demarrerMatchClub(seed, duree, joueursA, joueursB, tactiqueCfg, callbacks) {
+      configMatch = Object.assign({}, configMatch, { joueursA, joueursB }, tactiqueCfg || {});
       lancerNouveauMatchAvecGeneration(seed, duree, callbacks);
     },
     // Simule un match COMPLET en arrière-plan sans jamais l'afficher (Mode
@@ -515,10 +518,15 @@
       const cfg = Object.assign({}, configMatch, { joueursA, joueursB });
       genererMatchEnArrierePlan(seed, duree, cfg, titre, onTermine);
     },
-    // Efface joueursA/joueursB pour revenir aux effectifs par défaut du
-    // moteur (utilisé en quittant le Mode Club vers le Match rapide).
+    // Efface joueursA/joueursB et toute tactique par équipe pour revenir aux
+    // réglages par défaut du moteur (utilisé en quittant le Mode Club vers le
+    // Match rapide) — sinon une tactique de club resterait active sur un
+    // Match rapide suivant, qui n'a pourtant aucune notion de "mon club".
     reinitialiserConfigClub() {
-      if (configMatch) { delete configMatch.joueursA; delete configMatch.joueursB; }
+      if (!configMatch) return;
+      delete configMatch.joueursA; delete configMatch.joueursB;
+      delete configMatch.attaqueA; delete configMatch.attaqueB;
+      delete configMatch.defenseA; delete configMatch.defenseB;
     },
     etatActuel() {
       return match ? normalizeMatchState(match.getState()) : null;
