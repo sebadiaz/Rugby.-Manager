@@ -9,19 +9,26 @@
 <body>
 <div class="panneau visible" id="panneauAccueil">
   <div class="accueilContenu">
-    <h1>🏉 Rugby Manager 2D</h1>
-    <p>Simulation de match de rugby à XV, jouable dans le navigateur.</p>
-    <label for="selDureeAccueil" class="sr-label" style="display:block;margin:14px 0 4px;font-size:.85em;opacity:.85">Durée du match rapide</label>
-    <select id="selDureeAccueil" class="alt" title="Durée du match simulé" style="width:100%;">
-      <option value="300">5 min (démo courte)</option>
-      <option value="1200">20 min</option>
-      <option value="2400">40 min (mi-temps)</option>
-      <option value="4800" selected>80 min (match complet)</option>
-    </select>
-    <button id="btnAccueilMatchRapide" class="accent">Match rapide</button>
-    <button id="btnAccueilModeClub" class="alt">Mode Club</button>
-    <button id="btnAccueilHistorique" class="alt">Historique</button>
-    <button id="btnAccueilLegende" class="alt">Comment lire le match ?</button>
+    <div class="heroBadge">🏉</div>
+    <h1>Rugby Manager 2D</h1>
+    <p class="sousTitre">Simulation de match de rugby à XV, jouable dans le navigateur.</p>
+
+    <div class="carteAction">
+      <label for="selDureeAccueil" class="sr-label">Durée du match rapide</label>
+      <select id="selDureeAccueil" title="Durée du match simulé">
+        <option value="300">5 min (démo courte)</option>
+        <option value="1200">20 min</option>
+        <option value="2400">40 min (mi-temps)</option>
+        <option value="4800" selected>80 min (match complet)</option>
+      </select>
+      <button id="btnAccueilMatchRapide" class="accent">▶ Match rapide</button>
+    </div>
+
+    <div class="grilleSecondaire">
+      <button id="btnAccueilModeClub" class="alt">🏟️ Mode Club</button>
+      <button id="btnAccueilHistorique" class="alt">🕓 Historique</button>
+      <button id="btnAccueilLegende" class="alt">❓ Règles</button>
+    </div>
   </div>
 </div>
 
@@ -36,10 +43,11 @@
 
 <div class="panneau" id="panneauResultat">
   <div class="accueilContenu">
+    <div id="resultatBadge" class="badgeResultat" style="display:none;"></div>
     <h2>Match terminé</h2>
-    <div id="resultatScore" style="font-size:22px;font-weight:700;margin:14px 0;"></div>
-    <p id="resultatDetail" style="opacity:.85;font-size:13px;"></p>
-    <p style="opacity:.7;font-size:12px;">Voir le match est facultatif : le résultat est déjà acquis.</p>
+    <div id="resultatScore" class="grosScore"></div>
+    <p id="resultatDetail" class="detailResultat"></p>
+    <p class="noteFacultatif">Voir le match est facultatif : le résultat est déjà acquis.</p>
     <button id="btnResultatVoir" class="accent">Voir le match</button>
     <button id="btnResultatFermer" class="alt">Fermer</button>
   </div>
@@ -63,22 +71,25 @@
     <span id="tempsLabelFin">5:00</span>
   </div>
   <div id="controls">
-    <button id="btnAccueil" class="alt">Accueil</button>
-    <button id="btnPlay">Pause</button>
-    <button id="btnSpeed" class="alt">Vitesse x1</button>
-    <label for="selDuree" class="sr-label" style="align-self:center;font-size:.85em;opacity:.85">Durée&nbsp;:</label>
-    <select id="selDuree" class="alt" title="Durée du match simulé">
-      <option value="300">5 min (démo courte)</option>
-      <option value="1200">20 min</option>
-      <option value="2400">40 min (mi-temps)</option>
-      <option value="4800" selected>80 min (match complet)</option>
-    </select>
-    <button id="btnNouveau" class="alt">Nouveau match</button>
-    <button id="btnSauver" class="accent" disabled>Enregistrer le résultat</button>
-    <button id="btnStats" class="alt">Stats</button>
-    <button id="btnHistorique" class="alt">Historique</button>
-    <button id="btnModeClub" class="alt">Mode Club</button>
-    <button id="btnLegende" class="alt">?</button>
+    <div class="controlsRangee principale">
+      <button id="btnPlay">Pause</button>
+      <button id="btnSpeed" class="alt">Vitesse x1</button>
+      <button id="btnNouveau" class="alt">Nouveau match</button>
+      <button id="btnSauver" class="accent" disabled>Enregistrer</button>
+    </div>
+    <div class="controlsRangee secondaire">
+      <button id="btnAccueil" class="alt">Accueil</button>
+      <select id="selDuree" title="Durée du match simulé" aria-label="Durée du match simulé">
+        <option value="300">5 min (démo courte)</option>
+        <option value="1200">20 min</option>
+        <option value="2400">40 min (mi-temps)</option>
+        <option value="4800" selected>80 min (match complet)</option>
+      </select>
+      <button id="btnStats" class="alt">Stats</button>
+      <button id="btnHistorique" class="alt">Historique</button>
+      <button id="btnModeClub" class="alt">Mode Club</button>
+      <button id="btnLegende" class="alt">?</button>
+    </div>
   </div>
 </div>
 
@@ -86,36 +97,48 @@
   <h2>Mode Club</h2>
 
   <div id="clubCreation">
-    <p>Crée ton club pour démarrer une saison : effectif généré, calendrier aller-retour contre 5 adversaires de niveaux variés, classement mis à jour après chaque match simulé avec le même moteur que le Match rapide.</p>
-    <label class="sr-label" for="inputNomClub" style="display:block;margin:10px 0 4px;font-size:.85em;opacity:.85">Nom du club</label>
-    <input type="text" id="inputNomClub" placeholder="Laisser vide pour un nom généré" style="width:100%;box-sizing:border-box;padding:10px;border-radius:8px;border:none;font-size:14px;">
-    <button id="btnCreerClub" class="accent" style="width:100%;margin-top:10px;">Créer le club et démarrer la saison</button>
+    <div class="carteClub">
+      <p>Crée ton club pour démarrer une saison : effectif généré, calendrier aller-retour contre 5 adversaires de niveaux variés, classement mis à jour après chaque match simulé avec le même moteur que le Match rapide.</p>
+      <label class="sr-label" for="inputNomClub">Nom du club</label>
+      <input type="text" id="inputNomClub" class="champTexte" placeholder="Laisser vide pour un nom généré">
+      <button id="btnCreerClub" class="accent" style="width:100%;margin-top:12px;">Créer le club et démarrer la saison</button>
+    </div>
   </div>
 
   <div id="clubGestion" style="display:none;">
-    <div id="clubEntete" style="margin-bottom:12px;"></div>
+    <div id="clubEntete"></div>
 
-    <h3 style="margin-bottom:6px;">Prochain match</h3>
-    <div id="clubProchainMatch"></div>
-    <label class="sr-label" for="selDureeClub" style="display:block;margin:8px 0 4px;font-size:.85em;opacity:.85">Durée du match</label>
-    <select id="selDureeClub" class="alt" title="Durée du match simulé" style="width:100%;">
-      <option value="300">5 min (démo courte)</option>
-      <option value="1200">20 min</option>
-      <option value="2400">40 min (mi-temps)</option>
-      <option value="4800" selected>80 min (match complet)</option>
-    </select>
-    <button id="btnJouerMatchClub" class="accent" style="width:100%;margin:8px 0 16px;">Jouer le match</button>
+    <div class="carteClub">
+      <h3>Prochain match</h3>
+      <div id="clubProchainMatch"></div>
+      <label class="sr-label" for="selDureeClub" style="margin-top:10px;">Durée du match</label>
+      <select id="selDureeClub" style="width:100%;" title="Durée du match simulé">
+        <option value="300">5 min (démo courte)</option>
+        <option value="1200">20 min</option>
+        <option value="2400">40 min (mi-temps)</option>
+        <option value="4800" selected>80 min (match complet)</option>
+      </select>
+      <button id="btnJouerMatchClub" class="accent" style="width:100%;margin-top:10px;">Jouer le match</button>
+    </div>
 
-    <h3 style="margin-bottom:6px;">Classement</h3>
-    <div id="clubClassement"></div>
+    <div class="carteClub">
+      <h3>Classement</h3>
+      <div id="clubClassement"></div>
+    </div>
 
-    <h3 style="margin:16px 0 6px;">Effectif</h3>
-    <div id="clubEffectif"></div>
+    <div class="carteClub">
+      <h3>Effectif</h3>
+      <div id="clubEffectif"></div>
+    </div>
 
-    <h3 style="margin:16px 0 6px;">Calendrier</h3>
-    <div id="clubCalendrier"></div>
+    <div class="carteClub">
+      <h3>Calendrier</h3>
+      <div id="clubCalendrier"></div>
+    </div>
 
-    <button id="btnNouvelleSaisonClub" class="alt" style="width:100%;margin-top:16px;">Nouvelle saison (efface la saison en cours)</button>
+    <div style="margin:0 16px 16px;">
+      <button id="btnNouvelleSaisonClub" class="alt warn" style="width:100%;">Nouvelle saison (efface la saison en cours)</button>
+    </div>
   </div>
 
   <button class="fermer alt" id="fermerClub">Fermer</button>

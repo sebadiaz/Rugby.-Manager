@@ -1,116 +1,291 @@
+/* ---------- Design tokens ---------- */
+:root {
+  --bg-1: #0d1a13;
+  --bg-2: #060b08;
+  --surface: #141f19;
+  --surface-2: #1b2921;
+  --surface-hover: #223328;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.16);
+  --text: #f2f6f2;
+  --text-dim: #9fb3a6;
+  --text-faint: #6e8579;
+  --accent: #ffb703;
+  --accent-strong: #ffcb3d;
+  --accent-ink: #23180a;
+  --team-a: #4ea8de;
+  --team-b: #ef476f;
+  --win: #3ac47d;
+  --draw: #f4c542;
+  --loss: #ef476f;
+  --radius-lg: 18px;
+  --radius-md: 12px;
+  --radius-sm: 8px;
+  --shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+  --shadow-sm: 0 4px 14px rgba(0, 0, 0, 0.28);
+}
+
+* { box-sizing: border-box; }
+
 html, body {
   margin: 0; padding: 0; height: 100%; overflow: hidden;
-  background: #0b1a0f; color: #eee;
-  font-family: system-ui, -apple-system, sans-serif;
+  background: radial-gradient(ellipse at 50% -10%, var(--bg-1), var(--bg-2) 65%);
+  color: var(--text);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
   -webkit-tap-highlight-color: transparent;
 }
+
+h1, h2, h3 { font-weight: 700; letter-spacing: -0.01em; }
+
+.sr-label {
+  display: block; margin: 0 0 6px; font-size: 12px; font-weight: 600;
+  color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.04em;
+}
+
+/* ---------- HUD (bandeau de match) ---------- */
 #hud {
   position: absolute; top: 0; left: 0; right: 0;
-  display: flex; flex-direction: column; gap: 4px;
-  padding: 8px 10px; font-size: 13px; background: rgba(0,0,0,0.55);
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 10px 14px; font-size: 13px;
+  background: linear-gradient(180deg, rgba(6,11,8,0.92), rgba(6,11,8,0.72) 80%, transparent);
   z-index: 2;
 }
-#hud .ligne1 { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-#hud .score { font-weight: bold; font-size: 16px; }
-#hud .horloge { font-variant-numeric: tabular-nums; opacity: 0.85; font-size: 12px; }
+/* Le score passe en premier sur sa propre ligne pleine largeur (flex-wrap +
+   flex-basis:100%) : avec de vrais noms de club (Mode Club), il peut être
+   trop long pour tenir à côté de la pastille de phase et de l'horloge sans
+   passer à la ligne au milieu du texte. Phase + horloge partagent la ligne
+   suivante (le flex-wrap crée 2 lignes, chacune avec son propre space-between). */
+#hud .ligne1 { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 4px 10px; }
+#hud .score { flex: 1 1 100%; font-weight: 800; font-size: 17px; letter-spacing: -0.01em; }
+#hud .horloge { font-variant-numeric: tabular-nums; color: var(--text-dim); font-size: 12px; }
 #phase {
-  padding: 3px 8px; border-radius: 10px; font-weight: 600; font-size: 12px;
-  background: #2e7d32; white-space: nowrap;
+  padding: 4px 10px; border-radius: 999px; font-weight: 700; font-size: 11px;
+  text-transform: uppercase; letter-spacing: 0.03em;
+  background: var(--surface-2); border: 1px solid var(--border-strong); white-space: nowrap;
 }
 #hud .possession {
-  display: flex; align-items: center; gap: 6px; font-size: 10px; opacity: 0.85;
+  display: flex; align-items: center; gap: 8px; font-size: 10px; color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
 }
 #hud .possession .barre {
-  flex: 1; height: 5px; border-radius: 3px; overflow: hidden;
-  display: flex; background: #444;
+  flex: 1; height: 6px; border-radius: 4px; overflow: hidden;
+  display: flex; background: var(--surface-2);
 }
-#hud .possession .barre .partA { background: #1976d2; height: 100%; }
-#hud .possession .barre .partB { background: #c62828; height: 100%; }
-#feed { list-style: none; margin: 0; padding: 0; max-height: 64px; overflow-y: auto; font-size: 11px; }
-#feed li { padding: 1px 0; opacity: 0.9; }
-#feed li.recent { opacity: 1; font-weight: 600; }
+#hud .possession .barre .partA { background: var(--team-a); height: 100%; }
+#hud .possession .barre .partB { background: var(--team-b); height: 100%; }
+#feed {
+  list-style: none; margin: 0; padding: 0; max-height: 66px; overflow-y: auto;
+  font-size: 11.5px; color: var(--text-dim);
+}
+#feed li { padding: 2px 0; }
+#feed li.recent { color: var(--text); font-weight: 600; }
 
 #banner {
   position: absolute; top: 100px; right: 10px; left: auto; transform: none;
-  z-index: 5; background: rgba(20, 20, 20, 0.88); border: 2px solid #f9a825;
-  border-radius: 10px; padding: 8px 14px; text-align: right; max-width: 42vw;
+  z-index: 5; background: rgba(15, 20, 16, 0.94); border: 1px solid var(--accent);
+  border-radius: var(--radius-md); padding: 10px 16px; text-align: right; max-width: 42vw;
   font-size: 13px; font-weight: 700; opacity: 0; transition: opacity 0.3s;
-  pointer-events: none;
+  pointer-events: none; box-shadow: var(--shadow-sm);
 }
 #banner.visible { opacity: 1; }
 
 #pitch { display: block; margin: 0 auto; background: #2e7d32; }
 
+/* ---------- Barre de défilement temporel ---------- */
 #seekZone {
   position: absolute; left: 0; right: 0; z-index: 2;
-  display: flex; align-items: center; gap: 6px;
-  padding: 4px 10px; background: rgba(0,0,0,0.45); font-size: 11px;
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 14px; background: rgba(6, 11, 8, 0.75); font-size: 11px;
+  color: var(--text-dim);
 }
-#seekZone input[type=range] { flex: 1; }
-#tempsLabel { font-variant-numeric: tabular-nums; white-space: nowrap; }
+#seekZone input[type=range] {
+  flex: 1; accent-color: var(--accent); height: 4px;
+}
+#tempsLabel, #tempsLabelFin { font-variant-numeric: tabular-nums; white-space: nowrap; }
 
+/* ---------- Contrôles ---------- */
 #controls {
   position: absolute; bottom: 0; left: 0; right: 0;
-  display: flex; gap: 6px; padding: 8px; justify-content: center;
-  background: rgba(0,0,0,0.55); z-index: 2; flex-wrap: wrap;
+  display: flex; flex-direction: column; gap: 6px; padding: 10px 10px 12px;
+  background: linear-gradient(0deg, rgba(6,11,8,0.95), rgba(6,11,8,0.75) 85%, transparent);
+  z-index: 2;
+}
+.controlsRangee { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; }
+.controlsRangee.secondaire button,
+.controlsRangee.secondaire select { font-size: 12px; padding: 8px 10px; }
+
+button, select {
+  font-family: inherit;
 }
 button {
-  flex: 1 1 auto; min-width: 64px; padding: 10px 8px; font-size: 13px;
-  border: none; border-radius: 8px; background: #1565c0; color: white;
-  font-weight: 600;
+  flex: 1 1 auto; min-width: 64px; padding: 11px 10px; font-size: 13.5px;
+  border: 1px solid transparent; border-radius: var(--radius-sm);
+  background: var(--surface-2); color: var(--text); font-weight: 600;
+  cursor: pointer; transition: filter 0.12s, transform 0.05s, background 0.15s;
 }
-button.alt { background: #455a64; }
-button.accent { background: #2e7d32; }
-button:disabled { opacity: 0.4; }
-button:active:not(:disabled) { filter: brightness(1.3); }
+button:hover:not(:disabled) { background: var(--surface-hover); }
+button:active:not(:disabled) { transform: scale(0.98); }
+button.alt {
+  background: transparent; border-color: var(--border-strong); color: var(--text-dim);
+}
+button.alt:hover:not(:disabled) { background: var(--surface); color: var(--text); }
+button.accent {
+  background: var(--accent); color: var(--accent-ink); border-color: transparent;
+}
+button.accent:hover:not(:disabled) { background: var(--accent-strong); }
+button.warn { border-color: rgba(239, 71, 111, 0.4); color: var(--loss); }
+button.warn:hover:not(:disabled) { background: rgba(239, 71, 111, 0.1); }
+button:disabled { opacity: 0.4; cursor: default; }
 
+select {
+  padding: 11px 10px; font-size: 13px; border-radius: var(--radius-sm);
+  background: transparent; border: 1px solid var(--border-strong); color: var(--text-dim);
+}
+
+.champTexte {
+  width: 100%; padding: 12px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong); background: var(--surface-2);
+  color: var(--text); font-size: 14px;
+}
+.champTexte::placeholder { color: var(--text-faint); }
+
+/* ---------- Panneaux plein écran ---------- */
 .panneau {
   position: absolute; top: 0; left: 0; right: 0; bottom: 0; z-index: 10;
-  background: rgba(8, 14, 9, 0.96); padding: 16px; overflow-y: auto;
+  background: linear-gradient(180deg, #0e1712, #060b08 55%);
+  padding: 0; overflow-y: auto;
   display: none;
 }
 .panneau.visible { display: block; }
-.panneau h2 { margin-top: 0; font-size: 16px; }
-.panneau .fermer { width: 100%; margin-top: 10px; }
+.panneau > h2 {
+  position: sticky; top: 0; z-index: 1; margin: 0; font-size: 15px;
+  padding: 16px; background: linear-gradient(180deg, rgba(6,11,8,0.98), rgba(6,11,8,0.9));
+  border-bottom: 1px solid var(--border);
+}
+.panneau h3 {
+  margin: 18px 16px 8px; font-size: 12px; color: var(--text-faint);
+  text-transform: uppercase; letter-spacing: 0.05em;
+}
+.carteClub h3 { margin: 0 0 10px; }
+.panneau > #listeHistorique, .panneau > #corpsStats,
+.panneau > .legende-item, .panneau > p {
+  margin-left: 16px; margin-right: 16px;
+}
+.panneau .fermer {
+  /* Volontairement PAS en position sticky : un footer collé recouvrirait les
+     dernières lignes d'une liste longue (stats, historique) pendant le
+     défilement, sauf à réserver une marge basse dédiée partout — plus simple
+     et plus sûr de le laisser dans le flux normal, en fin de contenu. */
+  width: calc(100% - 32px); margin: 20px 16px; display: block;
+}
 .entreeHistorique {
   display: flex; justify-content: space-between; align-items: center;
-  padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.15); font-size: 13px;
+  padding: 10px 14px; margin: 0 16px 8px; border-radius: var(--radius-sm);
+  background: var(--surface); border: 1px solid var(--border); font-size: 13px;
 }
-.entreeHistorique button { flex: 0 0 auto; min-width: 0; padding: 6px 10px; }
-.legende-item { display: flex; align-items: center; gap: 8px; margin: 8px 0; font-size: 13px; }
+.entreeHistorique button { flex: 0 0 auto; min-width: 0; padding: 7px 12px; }
+.legende-item { display: flex; align-items: center; gap: 10px; margin: 10px 16px; font-size: 13px; }
 .puce { width: 14px; height: 14px; border-radius: 50%; flex: 0 0 auto; }
+.panneau p { font-size: 13px; color: var(--text-dim); line-height: 1.5; }
+.panneau p b { color: var(--text); }
 
 .enTeteStats {
-  display: flex; justify-content: space-between; font-size: 12px; font-weight: 600;
-  opacity: 0.8; padding-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.25);
+  display: flex; justify-content: space-between; font-size: 13px; font-weight: 700;
+  padding: 12px 16px; border-bottom: 1px solid var(--border);
+  position: sticky; top: 52px; background: var(--bg-2); z-index: 1;
 }
+#corpsStats { padding-top: 4px; }
 .ligneStat {
   display: grid; grid-template-columns: 1fr 1.4fr 1fr; align-items: center;
-  padding: 7px 0; border-bottom: 1px solid rgba(255,255,255,0.1); font-size: 13px;
+  padding: 9px 0; border-bottom: 1px solid var(--border); font-size: 13px;
 }
-.ligneStat .valA { text-align: left; color: #64b5f6; font-weight: 600; }
-.ligneStat .valB { text-align: right; color: #ef9a9a; font-weight: 600; }
-.ligneStat .labelStat { text-align: center; opacity: 0.85; font-size: 12px; }
+.ligneStat .valA { text-align: left; color: var(--team-a); font-weight: 700; }
+.ligneStat .valB { text-align: right; color: var(--team-b); font-weight: 700; }
+.ligneStat .labelStat { text-align: center; color: var(--text-dim); font-size: 12px; }
 
-/* Mode Club : tableaux effectif/calendrier/classement, cohérents avec .entreeHistorique */
-.clubEntete { display: flex; align-items: center; gap: 10px; }
-.clubEntete .pastilleClub { width: 22px; height: 22px; border-radius: 50%; flex: 0 0 auto; }
-.clubEntete .nomClub { font-size: 16px; font-weight: 700; }
-.tableauClub { width: 100%; border-collapse: collapse; font-size: 12px; }
-.tableauClub th { text-align: left; opacity: 0.7; font-weight: 600; padding: 4px 6px; border-bottom: 1px solid rgba(255,255,255,0.25); white-space: nowrap; }
-.tableauClub td { padding: 5px 6px; border-bottom: 1px solid rgba(255,255,255,0.1); }
-.tableauClub tr.ligneClubJoueur { background: rgba(255,235,59,0.08); }
-.tableauClub tr.ligneJouee { opacity: 0.6; }
-.ligneCalendrier { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.1); font-size: 12px; }
-.ligneCalendrier .scoreCal { font-variant-numeric: tabular-nums; font-weight: 600; }
+/* ---------- Mode Club ---------- */
+#clubCreation p { font-size: 13px; }
+.carteClub {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md);
+  padding: 14px; margin: 0 16px 14px; box-shadow: var(--shadow-sm);
+}
+.clubEntete { display: flex; align-items: center; gap: 12px; padding: 14px 16px; }
+.clubEntete .pastilleClub {
+  width: 40px; height: 40px; border-radius: 50%; flex: 0 0 auto;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 800; font-size: 16px; color: rgba(0,0,0,0.55);
+}
+.clubEntete .nomClub { font-size: 18px; font-weight: 800; }
+.clubEntete .sousLigne { display: block; font-size: 12px; color: var(--text-dim); font-weight: 500; }
 
-/* Page d'accueil et écran de génération : panneaux centrés, boutons empilés.
-   (spécificité : sélecteurs à ID pour l'emporter sur .panneau/.panneau.visible) */
-#panneauAccueil.visible, #panneauGeneration.visible, #panneauResultat.visible { display: flex; align-items: center; justify-content: center; }
+.tableauClub { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.tableauClub th {
+  text-align: left; color: var(--text-faint); font-weight: 700; padding: 6px 6px;
+  border-bottom: 1px solid var(--border-strong); white-space: nowrap;
+  text-transform: uppercase; font-size: 10.5px; letter-spacing: 0.03em;
+}
+.tableauClub td { padding: 7px 6px; border-bottom: 1px solid var(--border); }
+.tableauClub tr:last-child td { border-bottom: none; }
+.tableauClub tr.ligneClubJoueur { background: rgba(255, 183, 3, 0.1); }
+.tableauClub tr.ligneClubJoueur td:first-child { border-left: 2px solid var(--accent); }
+.tableauClub tr.ligneJouee { opacity: 0.55; }
+
+.ligneCalendrier {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 9px 0; border-bottom: 1px solid var(--border); font-size: 12.5px; gap: 8px;
+}
+.ligneCalendrier:last-child { border-bottom: none; }
+.ligneCalendrier .scoreCal {
+  font-variant-numeric: tabular-nums; font-weight: 700; display: flex; align-items: center; gap: 8px;
+}
+.badgeForme {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px; border-radius: 50%; font-size: 11px; font-weight: 800;
+  color: #08120c;
+}
+.badgeForme.v { background: var(--win); }
+.badgeForme.n { background: var(--draw); }
+.badgeForme.d { background: var(--loss); }
+
+/* ---------- Page d'accueil, génération, résultat ---------- */
+#panneauAccueil.visible, #panneauGeneration.visible, #panneauResultat.visible {
+  display: flex; align-items: center; justify-content: center; padding: 20px;
+}
 .accueilContenu { max-width: 420px; width: 100%; text-align: center; }
-.accueilContenu h1 { font-size: 26px; margin-bottom: 6px; }
-.accueilContenu p { opacity: 0.85; font-size: 13px; }
-.accueilContenu button { display: block; width: 100%; margin-top: 10px; padding: 14px; font-size: 15px; }
-.barreProgression { width: 100%; height: 10px; border-radius: 6px; background: rgba(255,255,255,0.15); overflow: hidden; margin-top: 18px; }
-.barreProgressionRemplissage { height: 100%; width: 0%; background: #2e7d32; transition: width 0.15s linear; }
-#genProgressLabel { font-variant-numeric: tabular-nums; margin-top: 8px; }
+.heroBadge { font-size: 46px; line-height: 1; margin-bottom: 8px; }
+.accueilContenu h1 { font-size: 25px; margin: 0 0 6px; }
+.accueilContenu h2 { font-size: 19px; margin: 0 0 6px; }
+.sousTitre { color: var(--text-dim); font-size: 13.5px; margin: 0 0 22px; }
+
+.carteAction {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
+  padding: 18px; box-shadow: var(--shadow); text-align: left; margin-bottom: 14px;
+}
+.carteAction select { width: 100%; margin-bottom: 12px; }
+.carteAction button { width: 100%; padding: 15px; font-size: 15px; }
+
+.grilleSecondaire { display: flex; gap: 8px; }
+.grilleSecondaire button { font-size: 12.5px; padding: 12px 8px; }
+
+.barreProgression {
+  width: 100%; height: 8px; border-radius: 6px; background: var(--surface-2);
+  overflow: hidden; margin-top: 20px;
+}
+.barreProgressionRemplissage {
+  height: 100%; width: 0%; background: linear-gradient(90deg, var(--accent), var(--accent-strong));
+  transition: width 0.15s linear;
+}
+#genProgressLabel { font-variant-numeric: tabular-nums; margin-top: 10px; color: var(--text-dim); font-size: 12px; }
+#panneauGeneration p { font-size: 13px; color: var(--text-dim); }
+
+.badgeResultat {
+  display: inline-block; padding: 5px 16px; border-radius: 999px; font-weight: 800;
+  font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 12px;
+}
+.badgeResultat.v { background: rgba(58, 196, 125, 0.18); color: var(--win); }
+.badgeResultat.n { background: rgba(244, 197, 66, 0.18); color: var(--draw); }
+.badgeResultat.d { background: rgba(239, 71, 111, 0.18); color: var(--loss); }
+.grosScore { font-size: 26px; font-weight: 800; margin: 6px 0 12px; letter-spacing: -0.01em; }
+.detailResultat { color: var(--text-dim); font-size: 13px; margin: 0 0 4px; }
+.noteFacultatif { color: var(--text-faint); font-size: 11.5px; margin: 0 0 18px; }
+#panneauResultat .accueilContenu button { margin-top: 8px; }

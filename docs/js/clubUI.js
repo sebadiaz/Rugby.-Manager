@@ -23,17 +23,34 @@
     return saison.clubJoueur.id === clubId;
   }
 
+  // Victoire/Nul/Défaite du point de vue du club du joueur — le calendrier
+  // n'affronte QUE le club du joueur (jamais deux adversaires IA entre eux,
+  // cf. RMClub.genererCalendrier), donc chaque match joué en a un.
+  function formeClubJoueur(f) {
+    if (!f.joue) return null;
+    const domicileEstJoueur = estClubJoueur(f.domicileId);
+    const pour = domicileEstJoueur ? f.score.domicile : f.score.exterieur;
+    const contre = domicileEstJoueur ? f.score.exterieur : f.score.domicile;
+    if (pour > contre) return 'v';
+    if (pour < contre) return 'd';
+    return 'n';
+  }
+  const LIBELLE_FORME = { v: 'V', n: 'N', d: 'D' };
+
   function formaterLigneCalendrier(f) {
     const domicile = nomClub(f.domicileId);
     const exterieur = nomClub(f.exterieurId);
     const score = f.joue ? `${f.score.domicile} - ${f.score.exterieur}` : 'à jouer';
-    return `<div class="ligneCalendrier"><span>J${f.journee} — ${domicile} vs ${exterieur}</span><span class="scoreCal">${score}</span></div>`;
+    const forme = formeClubJoueur(f);
+    const badge = forme ? `<span class="badgeForme ${forme}">${LIBELLE_FORME[forme]}</span>` : '';
+    return `<div class="ligneCalendrier"><span>J${f.journee} — ${domicile} vs ${exterieur}</span><span class="scoreCal">${badge}${score}</span></div>`;
   }
 
   function rafraichirEntete() {
     const c = saison.clubJoueur;
+    const initiale = (c.nom.match(/\b\w/g) || ['?']).slice(0, 2).join('').toUpperCase();
     document.getElementById('clubEntete').innerHTML =
-      `<div class="clubEntete"><span class="pastilleClub" style="background:${c.couleur}"></span><span class="nomClub">${c.nom}</span></div>`;
+      `<div class="clubEntete"><span class="pastilleClub" style="background:${c.couleur}">${initiale}</span><span><span class="nomClub">${c.nom}</span></span></div>`;
   }
 
   function rafraichirProchainMatch() {
@@ -133,6 +150,10 @@
       RMClub.effectifVersJoueursCfg(clubExterieur),
       {
         noms: { A: clubDomicile.nom, B: clubExterieur.nom },
+        // Le calendrier alterne domicile/extérieur pour le club du joueur
+        // (aller-retour, cf. RMClub.genererCalendrier) : ce n'est PAS toujours
+        // l'équipe A, il faut vérifier laquelle des deux c'est à chaque match.
+        equipeJoueur: estClubJoueur(f.domicileId) ? 'A' : 'B',
         onResultat(etat) {
           RMClub.enregistrerResultat(saison, f.id, etat.score.A, etat.score.B, etat.stats.A.essais, etat.stats.B.essais);
           RMClub.sauvegarderSaison(saison);

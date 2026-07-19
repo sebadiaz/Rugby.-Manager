@@ -122,8 +122,11 @@
   // opts.direct=true saute l'écran de choix et lance la lecture tout de
   // suite (utilisé pour « Revoir » un match déjà connu depuis l'historique).
   // opts.noms ({A,B}) : noms de club à afficher (Mode Club uniquement).
+  // opts.equipeJoueur ('A'|'B') : si fourni, affiche un badge Victoire/Nul/
+  // Défaite du point de vue de cette équipe (Mode Club uniquement — un Match
+  // rapide n'a pas de "camp du joueur", donc pas de badge).
   function lancerNouveauMatchAvecGeneration(seed, duree, opts) {
-    const { onResultat, onFermer, direct, noms } = opts || {};
+    const { onResultat, onFermer, direct, noms, equipeJoueur } = opts || {};
     const nomA = (noms && noms.A) || 'Equipe A';
     const nomB = (noms && noms.B) || 'Equipe B';
     genererMatchEnArrierePlan(seed, duree, (etatFinal) => {
@@ -135,6 +138,17 @@
       document.getElementById('resultatDetail').textContent = s
         ? `${s.A.essais} essai(s) contre ${s.B.essais} · possession ${etatFinal.possessionPct.A}% / ${etatFinal.possessionPct.B}%`
         : '';
+      const badge = document.getElementById('resultatBadge');
+      if (equipeJoueur) {
+        const autre = equipeJoueur === 'A' ? 'B' : 'A';
+        const pour = etatFinal.score[equipeJoueur], contre = etatFinal.score[autre];
+        const forme = pour > contre ? 'v' : pour < contre ? 'd' : 'n';
+        badge.textContent = forme === 'v' ? 'Victoire' : forme === 'd' ? 'Défaite' : 'Match nul';
+        badge.className = `badgeResultat ${forme}`;
+        badge.style.display = '';
+      } else {
+        badge.style.display = 'none';
+      }
       document.getElementById('panneauResultat').classList.add('visible');
       document.getElementById('btnResultatVoir').onclick = () => {
         document.getElementById('panneauResultat').classList.remove('visible');
