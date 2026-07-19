@@ -116,47 +116,114 @@
   <div id="clubGestion" style="display:none;">
     <div id="clubEntete"></div>
 
-    <div class="carteClub">
-      <h3>Prochaine journée</h3>
-      <div id="clubProchainMatch"></div>
-      <label class="sr-label" for="selDureeClub" style="margin-top:10px;">Durée du match</label>
-      <select id="selDureeClub" style="width:100%;" title="Durée du match simulé">
-        <option value="300">5 min (démo courte)</option>
-        <option value="1200">20 min</option>
-        <option value="2400">40 min (mi-temps)</option>
-        <option value="4800" selected>80 min (match complet)</option>
-      </select>
-      <div style="display:flex;gap:8px;margin-top:10px;">
-        <button id="btnComposition" class="alt" style="flex:1;">📋 Composition</button>
-        <button id="btnJouerMatchClub" class="accent" style="flex:2;">Jouer la journée</button>
+    <div class="barreOnglets" id="barreOngletsClub">
+      <button class="ongletBtn actif" data-onglet="apercu">Aperçu</button>
+      <button class="ongletBtn" data-onglet="effectif">Effectif</button>
+      <button class="ongletBtn" data-onglet="tactique">Tactique</button>
+      <button class="ongletBtn" data-onglet="transferts">Transferts</button>
+      <button class="ongletBtn" data-onglet="calendrier">Calendrier</button>
+      <button class="ongletBtn" data-onglet="finances">Finances</button>
+      <button class="ongletBtn" data-onglet="medical">Médical</button>
+      <button class="ongletBtn" data-onglet="stats">Stats</button>
+    </div>
+
+    <!-- Aperçu : widget d'accueil façon FM (prochain match, forme, statut de
+         l'effectif, finances) — la vue qu'on voit en entrant dans le club. -->
+    <div class="voletOnglet" data-volet="apercu">
+      <div class="carteClub">
+        <h3>Prochaine journée</h3>
+        <div id="clubProchainMatch"></div>
+        <label class="sr-label" for="selDureeClub" style="margin-top:10px;">Durée du match</label>
+        <select id="selDureeClub" style="width:100%;" title="Durée du match simulé">
+          <option value="300">5 min (démo courte)</option>
+          <option value="1200">20 min</option>
+          <option value="2400">40 min (mi-temps)</option>
+          <option value="4800" selected>80 min (match complet)</option>
+        </select>
+        <div style="display:flex;gap:8px;margin-top:10px;">
+          <button id="btnComposition" class="alt" style="flex:1;">📋 Composition</button>
+          <button id="btnJouerMatchClub" class="accent" style="flex:2;">Jouer la journée</button>
+        </div>
+        <button id="btnSaisonSuivante" class="accent" style="width:100%;margin-top:10px;display:none;">Saison suivante →</button>
       </div>
-      <button id="btnSaisonSuivante" class="accent" style="width:100%;margin-top:10px;display:none;">Saison suivante →</button>
-    </div>
-
-    <div class="carteClub">
-      <h3>Tactique</h3>
-      <div id="clubTactique"></div>
-    </div>
-
-    <div class="carteClub">
-      <h3>Classement</h3>
-      <div id="clubClassement"></div>
-    </div>
-
-    <div class="carteClub">
-      <div style="display:flex;justify-content:space-between;align-items:center;">
-        <h3 style="margin:0;">Effectif</h3>
-        <button id="btnTransferts" class="alt" style="flex:0 0 auto;width:auto;padding:8px 12px;font-size:12px;">💼 Transferts</button>
+      <div class="carteClub">
+        <h3>Forme récente</h3>
+        <div id="clubForme"></div>
       </div>
-      <div id="clubEffectif"></div>
+      <div class="carteClub">
+        <h3>Statut de l'effectif</h3>
+        <div id="clubStatutEffectif"></div>
+      </div>
     </div>
 
-    <div class="carteClub">
-      <h3>Calendrier</h3>
-      <div id="clubCalendrier"></div>
+    <!-- Effectif : chaque ligne ouvre la fiche joueur (cf. panneauJoueur). -->
+    <div class="voletOnglet" data-volet="effectif" style="display:none;">
+      <div class="carteClub">
+        <h3>Effectif</h3>
+        <div id="clubEffectif"></div>
+      </div>
     </div>
 
-    <div style="margin:0 16px 16px;">
+    <div class="voletOnglet" data-volet="tactique" style="display:none;">
+      <div class="carteClub">
+        <h3>Tactique</h3>
+        <div id="clubTactique"></div>
+      </div>
+    </div>
+
+    <!-- Transferts : marché + repérage (scouting), cf. RMClub.statsApparentes. -->
+    <div class="voletOnglet" data-volet="transferts" style="display:none;">
+      <div id="transfertsBudget" class="carteClub"></div>
+      <div class="carteClub">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <h3 style="margin:0;">Joueurs libres</h3>
+          <button id="btnRafraichirMarche" class="alt" style="flex:0 0 auto;width:auto;padding:8px 12px;font-size:12px;">🔄 Rafraîchir</button>
+        </div>
+        <div id="clubMarche"></div>
+      </div>
+    </div>
+
+    <div class="voletOnglet" data-volet="calendrier" style="display:none;">
+      <div class="carteClub">
+        <h3>Classement</h3>
+        <div id="clubClassement"></div>
+      </div>
+      <div class="carteClub">
+        <h3>Calendrier</h3>
+        <div id="clubCalendrier"></div>
+      </div>
+    </div>
+
+    <div class="voletOnglet" data-volet="finances" style="display:none;">
+      <div class="carteClub">
+        <h3>Budget</h3>
+        <div id="clubBudgetDetail"></div>
+      </div>
+      <div class="carteClub">
+        <h3>Derniers mouvements</h3>
+        <div id="clubHistoriqueFinances"></div>
+      </div>
+    </div>
+
+    <!-- Médical : vue filtrée de l'effectif, façon Medical Centre FM
+         (blessé, depuis quand, retour estimé). -->
+    <div class="voletOnglet" data-volet="medical" style="display:none;">
+      <div class="carteClub">
+        <h3>Joueurs blessés</h3>
+        <div id="clubMedical"></div>
+      </div>
+    </div>
+
+    <!-- Stats : cumul RÉEL des actions produites en match (jamais inventé),
+         saison en cours uniquement. -->
+    <div class="voletOnglet" data-volet="stats" style="display:none;">
+      <div class="carteClub">
+        <h3>Statistiques de la saison</h3>
+        <div id="clubStats"></div>
+      </div>
+    </div>
+
+    <div style="margin:16px 16px 16px;">
       <button id="btnNouvelleSaisonClub" class="alt warn" style="width:100%;">Recommencer (efface la saison en cours)</button>
     </div>
   </div>
@@ -174,15 +241,13 @@
   <button class="fermer alt" id="fermerComposition">Fermer</button>
 </div>
 
-<div class="panneau" id="panneauTransferts">
-  <h2>Marché des transferts</h2>
-  <div id="transfertsBudget" class="carteClub" style="margin-top:16px;"></div>
-  <div style="margin:0 16px 12px;">
-    <button id="btnRafraichirMarche" class="alt" style="width:100%;">🔄 Rafraîchir le marché</button>
+<div class="panneau" id="panneauJoueur">
+  <h2>Fiche joueur</h2>
+  <div id="joueurDetailCorps" class="carteClub" style="margin-top:16px;"></div>
+  <div style="margin:0 16px 16px;">
+    <button id="btnLibererFiche" class="alt warn" style="width:100%;">Libérer ce joueur</button>
   </div>
-  <h3>Joueurs libres</h3>
-  <div id="clubMarche" style="margin:0 16px;"></div>
-  <button class="fermer alt" id="fermerTransferts">Fermer</button>
+  <button class="fermer alt" id="fermerJoueur">Fermer</button>
 </div>
 
 <div class="panneau" id="panneauHistorique">

@@ -156,7 +156,40 @@
       effectif: genererEffectifEtendu(rng, niveauClub),
       budget: budgetInitial(niveauClub, rng),
       tactique: { style: 'equilibre', pied: 'normal', ligneDef: 'normale' },
+      // Historique financier (derniers mouvements, pour l'onglet Finances) et
+      // statistiques cumulées de la saison (pour l'onglet Statistiques) — vides
+      // au départ, alimentés au fil des matchs joués par le club du joueur.
+      historiqueFinances: [],
+      statsCumulees: null,
     };
+  }
+
+  // Champs conservés dans les statistiques cumulées de la saison — un
+  // sous-ensemble lisible des stats de match (cf. state.stats côté moteur),
+  // jamais inventé : toujours la somme d'actions réellement produites.
+  const CHAMPS_STATS_CUMULEES = [
+    'essais', 'passes', 'passesTentees', 'metresGagnes',
+    'tacklesMade', 'tacklesAttempted', 'turnovers', 'penalitesConcedees', 'kicks',
+  ];
+  function accumulerStats(club, statsMatch) {
+    if (!club.statsCumulees) {
+      club.statsCumulees = { matchsJoues: 0 };
+      for (const champ of CHAMPS_STATS_CUMULEES) club.statsCumulees[champ] = 0;
+    }
+    club.statsCumulees.matchsJoues++;
+    for (const champ of CHAMPS_STATS_CUMULEES) {
+      club.statsCumulees[champ] += statsMatch[champ] || 0;
+    }
+  }
+
+  // Ajoute un mouvement au journal financier (borné aux 15 derniers, pour
+  // l'onglet Finances) — appelé après appliquerFinancesMatch avec son résultat.
+  function enregistrerMouvementFinances(club, journee, mouvement) {
+    if (!club.historiqueFinances) club.historiqueFinances = [];
+    club.historiqueFinances.push({
+      journee, recette: mouvement.recette, salaires: mouvement.salaires, budgetApres: club.budget,
+    });
+    if (club.historiqueFinances.length > 15) club.historiqueFinances.shift();
   }
 
   // Tactique = 3 réglages INDÉPENDANTS qui se combinent (comme les
@@ -494,6 +527,10 @@
     saison.classement = classementInitial(tousLesClubs);
     saison.marche = genererMarcheTransferts(rng, 0.5, 6);
     saison.numero = (saison.numero || 1) + 1;
+    // Les stats cumulées repartent à zéro (nouvelle saison, nouveau compteur) ;
+    // le journal financier, lui, garde son historique récent (utile pour voir
+    // la transition entre deux saisons dans l'onglet Finances).
+    saison.clubJoueur.statsCumulees = null;
     return { partis, arrivees };
   }
 
@@ -545,5 +582,6 @@
     statsApparentes, estimationEtoiles, scouterJoueur, COUT_SCOUTING,
     faireProgresserBlessures, avancerSaison,
     AXES_TACTIQUE, tactiqueVersConfig,
+    accumulerStats, enregistrerMouvementFinances,
   };
 })(window);
