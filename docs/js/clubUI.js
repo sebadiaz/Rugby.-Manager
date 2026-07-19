@@ -12,10 +12,12 @@
   // Composition du jour (numéro -> id joueur) pour le club du joueur : tenue
   // en mémoire, recalculée en "meilleure équipe possible" à chaque ouverture
   // du panneau Club (donc après blessures/transferts) sauf si le joueur l'a
-  // lui-même ajustée entre-temps via #panneauComposition.
+  // lui-même ajustée entre-temps via #blocComposition (dépliée sur place
+  // dans l'onglet Aperçu, plus un panneau à part).
   let compositionActuelle = null;
-  // Joueur actuellement affiché dans la fiche (panneauJoueur) — sert au bouton
-  // "Libérer ce joueur", qui vit hors de l'innerHTML régénéré (cf. index.html).
+  // Joueur actuellement affiché dans la fiche (#clubJoueurDetail, dépliée sur
+  // place dans l'onglet Effectif) — sert au bouton "Libérer ce joueur", qui
+  // vit dans l'innerHTML régénéré et est géré par délégation d'événements.
   let joueurAffiche = null;
 
   function graineAleatoire() {
@@ -227,20 +229,32 @@
       `<div class="caseStat"><span class="valeurCaseStat">${(s.essais / s.matchsJoues).toFixed(1)}</span><span class="labelCaseStat">Essais / match</span></div></div>`;
   }
 
-  // --- Fiche joueur (panneauJoueur) ---
+  // --- Fiche joueur : dépliée sur place dans l'onglet Effectif (#clubJoueurDetail),
+  // en remplacement de la table le temps de la consultation — pas une fenêtre
+  // empilée par-dessus l'onglet. ---
   function ouvrirFicheJoueur(id) {
     const j = saison.clubJoueur.effectif.find((x) => x.id === id);
     if (!j) return;
     joueurAffiche = id;
     const blessure = j.blessureJournees > 0 ? `${j.blessureJournees} journée(s) restantes` : 'Aucune';
-    document.getElementById('joueurDetailCorps').innerHTML =
+    document.getElementById('clubJoueurDetail').innerHTML =
       `<div class="ficheJoueurEntete"><span><span class="nomJoueurFiche">${j.nom}</span><span class="posteJoueurFiche">${POSTE_COMPLET[j.poste] || j.poste} · ${j.age} ans</span></span></div>` +
       `<div class="ligneJoueur"><span>Vitesse</span><b>${j.vitesse}</b></div>` +
       `<div class="ligneJoueur"><span>Plaquage</span><b>${j.plaquage}</b></div>` +
       `<div class="ligneJoueur"><span>Contrat</span><b>${j.contrat} an(s) restant(s)</b></div>` +
       `<div class="ligneJoueur"><span>Salaire</span><b>${j.salaire} k€/saison</b></div>` +
-      `<div class="ligneJoueur"><span>Blessure</span><b>${blessure}</b></div>`;
-    document.getElementById('panneauJoueur').classList.add('visible');
+      `<div class="ligneJoueur"><span>Blessure</span><b>${blessure}</b></div>` +
+      `<div style="display:flex;gap:8px;margin-top:14px;">` +
+      `<button class="alt" id="btnFermerFicheJoueur" style="flex:1;">← Retour à l'effectif</button>` +
+      `<button class="alt warn" id="btnLibererFiche" style="flex:1;">Libérer ce joueur</button></div>`;
+    document.getElementById('clubJoueurDetail').style.display = '';
+    document.getElementById('clubEffectif').style.display = 'none';
+  }
+
+  function fermerFicheJoueur() {
+    joueurAffiche = null;
+    document.getElementById('clubJoueurDetail').style.display = 'none';
+    document.getElementById('clubEffectif').style.display = '';
   }
 
   // --- Barre d'onglets : un seul volet visible à la fois (Aperçu par défaut
@@ -252,6 +266,7 @@
     document.querySelectorAll('#clubGestion .voletOnglet').forEach((v) => {
       v.style.display = v.dataset.volet === cle ? '' : 'none';
     });
+    fermerFicheJoueur(); // change d'onglet = referme toute fiche laissée ouverte
   }
 
   // Groupé par journée (un en-tête toutes les n/2 lignes) : à plat, 30
@@ -321,7 +336,24 @@
     }).join('') || '<p>Aucun joueur libre pour le moment.</p>';
   }
 
+  // Carte "Continuer ma saison" sur la page d'accueil (cf. index.html) :
+  // l'accueil doit refléter ce que le joueur fait réellement — s'il a déjà
+  // une saison de club en cours, ce n'est plus "Match rapide" qui devrait
+  // primer à chaque visite, mais la reprise de sa carrière.
+  function rafraichirCarteAccueil() {
+    const carte = document.getElementById('carteContinuerClub');
+    if (!carte) return;
+    if (!saison) { carte.style.display = 'none'; return; }
+    const prochaine = RMClub.prochainesFixtures(saison);
+    const statut = prochaine.length ? `Journée ${prochaine[0].journee} à jouer` : 'Saison terminée — prête à être avancée';
+    document.getElementById('continuerClubInfos').innerHTML =
+      `<span class="nomClubAccueil">${saison.clubJoueur.nom}</span>` +
+      `<span class="detailClubAccueil">Saison ${saison.numero || 1} · 💰 ${saison.clubJoueur.budget} k€ · ${statut}</span>`;
+    carte.style.display = 'block';
+  }
+
   function rafraichirTout() {
+    rafraichirCarteAccueil();
     const enCreation = !saison;
     document.getElementById('clubCreation').style.display = enCreation ? 'block' : 'none';
     document.getElementById('clubGestion').style.display = enCreation ? 'none' : 'block';
@@ -344,6 +376,9 @@
   document.getElementById('btnModeClub').addEventListener('click', () => {
     rafraichirTout();
     document.getElementById('panneauClub').classList.add('visible');
+  });
+  document.getElementById('btnContinuerClub').addEventListener('click', () => {
+    document.getElementById('btnModeClub').click();
   });
   document.getElementById('barreOngletsClub').addEventListener('click', (e) => {
     const bouton = e.target.closest('.ongletBtn');
@@ -372,13 +407,13 @@
     rafraichirTout();
   });
 
-  // --- Composition du jour ---
+  // --- Composition du jour : dépliée/repliée sur place dans l'onglet Aperçu
+  // (#blocComposition), plus un panneau à part empilé par-dessus. ---
   document.getElementById('btnComposition').addEventListener('click', () => {
-    rafraichirComposition();
-    document.getElementById('panneauComposition').classList.add('visible');
-  });
-  document.getElementById('fermerComposition').addEventListener('click', () => {
-    document.getElementById('panneauComposition').classList.remove('visible');
+    const bloc = document.getElementById('blocComposition');
+    const ouvrir = bloc.style.display === 'none';
+    if (ouvrir) rafraichirComposition();
+    bloc.style.display = ouvrir ? '' : 'none';
   });
   document.getElementById('btnCompositionAuto').addEventListener('click', () => {
     compositionActuelle = RMClub.meilleureComposition(saison.clubJoueur.effectif);
@@ -431,26 +466,25 @@
     rafraichirStatutEffectif();
   });
 
-  // --- Effectif : chaque ligne ouvre la fiche joueur ---
+  // --- Effectif : chaque ligne ouvre la fiche joueur sur place ---
   document.getElementById('clubEffectif').addEventListener('click', (e) => {
     const ligne = e.target.closest('tr[data-joueur]');
     if (!ligne) return;
     ouvrirFicheJoueur(ligne.dataset.joueur);
   });
-  document.getElementById('fermerJoueur').addEventListener('click', () => {
-    document.getElementById('panneauJoueur').classList.remove('visible');
-    joueurAffiche = null;
-  });
-  document.getElementById('btnLibererFiche').addEventListener('click', () => {
+  // Fiche joueur : boutons régénérés à chaque ouverture (cf. ouvrirFicheJoueur),
+  // délégation sur le conteneur parent plutôt qu'un addEventListener par joueur.
+  document.getElementById('clubJoueurDetail').addEventListener('click', (e) => {
+    if (e.target.id === 'btnFermerFicheJoueur') { fermerFicheJoueur(); return; }
+    if (e.target.id !== 'btnLibererFiche') return;
     if (!joueurAffiche) return;
     const joueur = saison.clubJoueur.effectif.find((j) => j.id === joueurAffiche);
     if (!joueur || !window.confirm(`Libérer ${joueur.nom} ? Il quittera définitivement l'effectif.`)) return;
     const res = RMClub.libererJoueur(saison, joueurAffiche);
     if (!res.ok) { window.alert("Impossible : c'est le dernier joueur de ce poste dans l'effectif."); return; }
     compositionActuelle = null;
-    joueurAffiche = null;
     RMClub.sauvegarderSaison(saison);
-    document.getElementById('panneauJoueur').classList.remove('visible');
+    fermerFicheJoueur();
     rafraichirEffectif();
     rafraichirStatutEffectif();
   });

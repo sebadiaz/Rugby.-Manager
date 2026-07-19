@@ -269,7 +269,7 @@ select {
 .caseStat .valeurCaseStat { display: block; font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums; }
 .caseStat .labelCaseStat { display: block; font-size: 10.5px; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.04em; margin-top: 2px; }
 
-/* Fiche joueur (panneauJoueur) */
+/* Fiche joueur (dépliée sur place dans l'onglet Effectif, #clubJoueurDetail) */
 .ficheJoueurEntete { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
 .ficheJoueurEntete .nomJoueurFiche { font-size: 18px; font-weight: 800; display: block; }
 .ficheJoueurEntete .posteJoueurFiche { color: var(--text-dim); font-size: 13px; }
@@ -404,6 +404,10 @@ select {
 .carteAction select { width: 100%; margin-bottom: 12px; }
 .carteAction button { width: 100%; padding: 15px; font-size: 15px; }
 .notemini { font-size: 11.5px; color: var(--text-faint); margin: 8px 0 0; text-align: center; }
+
+.carteContinuerClub { border-color: var(--accent); }
+#continuerClubInfos .nomClubAccueil { font-size: 17px; font-weight: 800; display: block; }
+#continuerClubInfos .detailClubAccueil { font-size: 12.5px; color: var(--text-dim); display: block; margin-top: 2px; }
 
 .grilleSecondaire { display: flex; gap: 8px; }
 .grilleSecondaire button { font-size: 12.5px; padding: 12px 8px; }

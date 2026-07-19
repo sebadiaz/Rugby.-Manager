@@ -13,6 +13,16 @@
     <h1>Rugby Manager 2D</h1>
     <p class="sousTitre">Simulation de match de rugby à XV, jouable dans le navigateur.</p>
 
+    <!-- Affichée seulement si une saison de club est en cours (cf.
+         clubUI.js, rafraichirCarteAccueil) : l'accueil doit refléter ce que
+         le joueur est réellement en train de faire, pas toujours pousser un
+         match rapide en priorité si une carrière de club existe déjà. -->
+    <div class="carteAction carteContinuerClub" id="carteContinuerClub" style="display:none;">
+      <p class="sr-label" style="margin:0 0 8px;">Ta saison en cours</p>
+      <div id="continuerClubInfos"></div>
+      <button id="btnContinuerClub" class="accent" style="width:100%;margin-top:10px;">Continuer ma saison</button>
+    </div>
+
     <div class="carteAction">
       <label for="selDureeAccueil" class="sr-label">Durée du match rapide</label>
       <select id="selDureeAccueil" title="Durée du match simulé">
@@ -93,7 +103,7 @@
       <option value="4800" selected>80 min (match complet)</option>
     </select>
     <button id="btnAccueil" class="alt" style="width:100%;margin-bottom:10px;">Accueil</button>
-    <button id="btnStats" class="alt" style="width:100%;margin-bottom:10px;">Statistiques</button>
+    <button id="btnStats" class="alt" style="width:100%;margin-bottom:10px;">Stats du match</button>
     <button id="btnHistorique" class="alt" style="width:100%;margin-bottom:10px;">Historique</button>
     <button id="btnModeClub" class="alt" style="width:100%;margin-bottom:10px;">Mode Club</button>
     <button id="btnLegende" class="alt" style="width:100%;">Comment lire le match ?</button>
@@ -124,7 +134,7 @@
       <button class="ongletBtn" data-onglet="calendrier">Calendrier</button>
       <button class="ongletBtn" data-onglet="finances">Finances</button>
       <button class="ongletBtn" data-onglet="medical">Médical</button>
-      <button class="ongletBtn" data-onglet="stats">Stats</button>
+      <button class="ongletBtn" data-onglet="stats">Bilan</button>
     </div>
 
     <!-- Aperçu : widget d'accueil façon FM (prochain match, forme, statut de
@@ -145,6 +155,13 @@
           <button id="btnJouerMatchClub" class="accent" style="flex:2;">Jouer la journée</button>
         </div>
         <button id="btnSaisonSuivante" class="accent" style="width:100%;margin-top:10px;display:none;">Saison suivante →</button>
+        <!-- Composition du jour : dépliée sur place (pas un écran à part) —
+             évite d'empiler une fenêtre de plus par-dessus l'onglet. -->
+        <div id="blocComposition" style="display:none;margin-top:16px;border-top:1px solid var(--border);padding-top:14px;">
+          <p style="font-size:12px;color:var(--text-dim);margin:0 0 10px;">Un joueur blessé (🤕) reste sélectionnable mais jouera diminué — évite de l'aligner si tu as une alternative.</p>
+          <button id="btnCompositionAuto" class="alt" style="width:100%;margin-bottom:10px;">Revenir à la meilleure équipe possible</button>
+          <div id="clubComposition"></div>
+        </div>
       </div>
       <div class="carteClub">
         <h3>Forme récente</h3>
@@ -156,11 +173,14 @@
       </div>
     </div>
 
-    <!-- Effectif : chaque ligne ouvre la fiche joueur (cf. panneauJoueur). -->
+    <!-- Effectif : chaque ligne bascule sur une fiche joueur SUR PLACE
+         (cf. clubUI.js, ouvrirFicheJoueur/fermerFicheJoueur) — pas un
+         écran empilé par-dessus l'onglet. -->
     <div class="voletOnglet" data-volet="effectif" style="display:none;">
       <div class="carteClub">
         <h3>Effectif</h3>
         <div id="clubEffectif"></div>
+        <div id="clubJoueurDetail" style="display:none;"></div>
       </div>
     </div>
 
@@ -229,25 +249,6 @@
   </div>
 
   <button class="fermer alt" id="fermerClub">Fermer</button>
-</div>
-
-<div class="panneau" id="panneauComposition">
-  <h2>Composition du jour</h2>
-  <p style="margin:0 16px 8px;font-size:13px;color:var(--text-dim);">Un joueur blessé (🤕) reste sélectionnable mais jouera diminué — évite de l'aligner si tu as une alternative.</p>
-  <div style="margin:0 16px 12px;">
-    <button id="btnCompositionAuto" class="alt" style="width:100%;">Revenir à la meilleure équipe possible</button>
-  </div>
-  <div id="clubComposition" style="margin:0 16px;"></div>
-  <button class="fermer alt" id="fermerComposition">Fermer</button>
-</div>
-
-<div class="panneau" id="panneauJoueur">
-  <h2>Fiche joueur</h2>
-  <div id="joueurDetailCorps" class="carteClub" style="margin-top:16px;"></div>
-  <div style="margin:0 16px 16px;">
-    <button id="btnLibererFiche" class="alt warn" style="width:100%;">Libérer ce joueur</button>
-  </div>
-  <button class="fermer alt" id="fermerJoueur">Fermer</button>
 </div>
 
 <div class="panneau" id="panneauHistorique">
