@@ -56,6 +56,65 @@
     return Number.isFinite(v) && v > 0 ? v : DUREE_MATCH;
   }
 
+  function afficherVueMatch() {
+    document.getElementById('panneauAccueil').classList.remove('visible');
+    document.getElementById('panneauGeneration').classList.remove('visible');
+    document.getElementById('vueMatch').style.display = '';
+    redimensionner();
+  }
+  function afficherAccueil() {
+    enCours = false;
+    document.getElementById('vueMatch').style.display = 'none';
+    document.getElementById('panneauGeneration').classList.remove('visible');
+    document.getElementById('panneauAccueil').classList.add('visible');
+  }
+
+  // GÉNÉRATION EN ARRIÈRE-PLAN : le match complet (jusqu'à 80 min = 48000 pas)
+  // est simulé d'un coup par lots (setTimeout entre chaque lot pour ne pas
+  // geler l'onglet), sur un moteur JETABLE avec la même graine — la
+  // simulation est déterministe, donc la VRAIE lecture (démarrée juste après
+  // via demarrerNouveauMatch) rejouera exactement le même match. Le joueur
+  // voit une barre de progression pendant le calcul, puis la visualisation
+  // démarre seulement une fois le match entièrement généré.
+  const PAS_PAR_LOT = 400; // ~40 s de jeu par lot : fluide (plusieurs lots/s), UI jamais bloquée longtemps
+  function genererMatchEnArrierePlan(seed, duree, onTermine) {
+    document.getElementById('panneauGeneration').classList.add('visible');
+    const barre = document.getElementById('genProgressBar');
+    const label = document.getElementById('genProgressLabel');
+    barre.style.width = '0%';
+    const genEngine = new MatchEngine(seed, duree, configMatch);
+    function lot() {
+      let i = 0;
+      while (i < PAS_PAR_LOT && genEngine.tempsMatch < duree && genEngine.phase !== 'TERMINE') {
+        genEngine.tick(PAS_FIXE);
+        i++;
+      }
+      const frac = Math.max(0, Math.min(1, genEngine.tempsMatch / duree));
+      barre.style.width = (frac * 100) + '%';
+      label.textContent = `${UI.formaterTemps(genEngine.tempsMatch)} / ${UI.formaterTemps(duree)}`;
+      if (genEngine.tempsMatch < duree && genEngine.phase !== 'TERMINE') {
+        setTimeout(lot, 0);
+      } else {
+        onTermine();
+      }
+    }
+    lot();
+  }
+
+  // Point d'entrée commun pour lancer un NOUVEAU match visible : génère
+  // d'abord en arrière-plan (voir ci-dessus), puis seulement une fois prêt,
+  // démarre la vraie lecture et l'affiche.
+  function lancerNouveauMatchAvecGeneration(seed, duree, apresDemarrage) {
+    genererMatchEnArrierePlan(seed, duree, () => {
+      demarrerNouveauMatch(seed, duree);
+      enCours = true;
+      document.getElementById('btnPlay').textContent = 'Pause';
+      afficherVueMatch();
+      assurerBoucle();
+      if (apresDemarrage) apresDemarrage();
+    });
+  }
+
   function demarrerNouveauMatch(seed, duree) {
     seedActuel = seed;
     dureeMatchActuel = duree;
@@ -230,6 +289,16 @@
     requestAnimationFrame(boucle);
   }
 
+  // La boucle de rendu ne démarre qu'une seule fois, au premier match réellement
+  // visualisé (depuis l'accueil) — pas au chargement de la page, qui affiche
+  // désormais la page d'accueil sans match en cours.
+  let boucleDemarree = false;
+  function assurerBoucle() {
+    if (boucleDemarree) return;
+    boucleDemarree = true;
+    requestAnimationFrame(boucle);
+  }
+
   document.getElementById('btnPlay').addEventListener('click', (e) => {
     enCours = !enCours;
     e.target.textContent = enCours ? 'Pause' : 'Lecture';
@@ -241,12 +310,15 @@
     appliquerVitesse(PALIERS_VITESSE[(i + 1) % PALIERS_VITESSE.length]);
   });
   document.getElementById('btnNouveau').addEventListener('click', () => {
-    demarrerNouveauMatch(graineAleatoire(), lireDureeChoisie());
+    lancerNouveauMatchAvecGeneration(graineAleatoire(), lireDureeChoisie());
   });
   // Changer la durée relance immédiatement un match de cette durée (même graine
   // conservée pour comparer), pour que le choix soit visible tout de suite.
   document.getElementById('selDuree').addEventListener('change', () => {
-    demarrerNouveauMatch(seedActuel, lireDureeChoisie());
+    lancerNouveauMatchAvecGeneration(seedActuel, lireDureeChoisie());
+  });
+  document.getElementById('btnAccueil').addEventListener('click', () => {
+    afficherAccueil();
   });
 
   document.getElementById('seek').addEventListener('input', (e) => {
@@ -288,29 +360,40 @@
   });
 
   function onRevoirHistorique(entree) {
-    demarrerNouveauMatch(entree.seed, entree.duree);
-    enCours = true;
-    document.getElementById('btnPlay').textContent = 'Pause';
     document.getElementById('panneauHistorique').classList.remove('visible');
+    lancerNouveauMatchAvecGeneration(entree.seed, entree.duree);
   }
 
+  // --- Page d'accueil : point d'entrée du jeu, affichée au chargement. Le
+  // match n'est plus démarré automatiquement — le joueur choisit une action,
+  // le match est alors généré en arrière-plan (barre de progression) puis la
+  // visualisation démarre. ---
+  document.getElementById('btnAccueilMatchRapide').addEventListener('click', () => {
+    const duree = Number(document.getElementById('selDureeAccueil').value) || DUREE_MATCH;
+    document.getElementById('selDuree').value = String(duree); // reste cohérent pour "Nouveau match" ensuite
+    lancerNouveauMatchAvecGeneration(graineAleatoire(), duree);
+  });
+  document.getElementById('btnAccueilModeClub').addEventListener('click', () => {
+    document.getElementById('btnModeClub').click();
+  });
+  document.getElementById('btnAccueilHistorique').addEventListener('click', () => {
+    UI.rafraichirPanneauHistorique(onRevoirHistorique);
+    document.getElementById('panneauHistorique').classList.add('visible');
+  });
+  document.getElementById('btnAccueilLegende').addEventListener('click', () => {
+    document.getElementById('panneauLegende').classList.add('visible');
+  });
+
   redimensionner();
-  // Charge la config paramétrable AVANT de lancer le premier match, puis démarre.
-  // Si le chargement échoue (fichier absent, ouverture en file://), on démarre
-  // avec les valeurs par défaut du moteur — le jeu fonctionne toujours.
-  function demarrer() {
-    appliquerVitesse(VITESSE_INITIALE); // affiche la vitesse de départ sur le bouton
-    demarrerNouveauMatch(seedActuel, lireDureeChoisie());
-    requestAnimationFrame(boucle);
-  }
+  appliquerVitesse(VITESSE_INITIALE); // affiche la vitesse de départ sur le bouton, avant même le 1er match
+  // Charge la config paramétrable en arrière-plan ; si le chargement échoue
+  // (fichier absent, ouverture en file://), le jeu garde les valeurs par
+  // défaut du moteur — aucun blocage de la page d'accueil dans tous les cas.
   if (typeof fetch === 'function') {
     fetch('rugby-config.json')
       .then((r) => (r.ok ? r.json() : null))
       .then((cfg) => { if (cfg) { delete cfg._lisezMoi; configMatch = cfg; } })
-      .catch(() => { /* pas de config : valeurs par défaut */ })
-      .finally(demarrer);
-  } else {
-    demarrer();
+      .catch(() => { /* pas de config : valeurs par défaut */ });
   }
 
   // API minimale exposée pour le Mode Club (docs/js/clubUI.js) : lancer un
@@ -320,11 +403,13 @@
   // par défaut : tant que rien n'appelle demarrerMatchClub, le Match rapide
   // fonctionne exactement comme avant.
   window.RMMain = {
-    demarrerMatchClub(seed, duree, joueursA, joueursB) {
+    // `onDemarre` est appelé une fois la génération en arrière-plan terminée
+    // et la VRAIE lecture démarrée (pas avant) : c'est à partir de là que
+    // clubUI.js peut sans risque commencer à surveiller la fin du match
+    // (sinon il pourrait lire l'état d'un match précédent encore affiché).
+    demarrerMatchClub(seed, duree, joueursA, joueursB, onDemarre) {
       configMatch = Object.assign({}, configMatch, { joueursA, joueursB });
-      demarrerNouveauMatch(seed, duree);
-      enCours = true;
-      document.getElementById('btnPlay').textContent = 'Pause';
+      lancerNouveauMatchAvecGeneration(seed, duree, onDemarre);
     },
     // Efface joueursA/joueursB pour revenir aux effectifs par défaut du
     // moteur (utilisé en quittant le Mode Club vers le Match rapide).

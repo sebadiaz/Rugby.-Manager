@@ -125,23 +125,28 @@
     const clubDomicile = RMClub.club(saison, f.domicileId);
     const clubExterieur = RMClub.club(saison, f.exterieurId);
     const seed = graineAleatoire();
-    const duree = Number(document.getElementById('selDuree').value) || 4800;
+    const duree = Number(document.getElementById('selDureeClub').value) || 4800;
     document.getElementById('panneauClub').classList.remove('visible');
+    if (intervalleSuivi) { clearInterval(intervalleSuivi); intervalleSuivi = null; }
     window.RMMain.demarrerMatchClub(
       seed, duree,
       RMClub.effectifVersJoueursCfg(clubDomicile),
-      RMClub.effectifVersJoueursCfg(clubExterieur)
+      RMClub.effectifVersJoueursCfg(clubExterieur),
+      // Appelé seulement une fois le match généré et la vraie lecture lancée
+      // (cf. docs/js/main.js) : on ne surveille la fin qu'à partir de là, pour
+      // ne jamais lire par erreur l'état encore affiché d'un match précédent.
+      () => {
+        intervalleSuivi = setInterval(() => {
+          const etat = window.RMMain.etatActuel();
+          if (!etat || etat.phase !== 'TERMINE') return;
+          clearInterval(intervalleSuivi);
+          intervalleSuivi = null;
+          RMClub.enregistrerResultat(saison, f.id, etat.score.A, etat.score.B, etat.stats.A.essais, etat.stats.B.essais);
+          RMClub.sauvegarderSaison(saison);
+          window.RMMain.reinitialiserConfigClub();
+        }, 1000);
+      }
     );
-    if (intervalleSuivi) clearInterval(intervalleSuivi);
-    intervalleSuivi = setInterval(() => {
-      const etat = window.RMMain.etatActuel();
-      if (!etat || etat.phase !== 'TERMINE') return;
-      clearInterval(intervalleSuivi);
-      intervalleSuivi = null;
-      RMClub.enregistrerResultat(saison, f.id, etat.score.A, etat.score.B, etat.stats.A.essais, etat.stats.B.essais);
-      RMClub.sauvegarderSaison(saison);
-      window.RMMain.reinitialiserConfigClub();
-    }, 1000);
   });
 
   rafraichirTout();
