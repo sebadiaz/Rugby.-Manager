@@ -294,6 +294,11 @@ select {
 .ligneTactique span { display: block; font-size: 12px; color: var(--text-dim); }
 .ligneTactique.choisie { border-color: var(--accent); background: rgba(255, 183, 3, 0.1); }
 .ligneTactique.choisie b { color: var(--accent); }
+.titreAxeTactique {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-faint);
+  font-weight: 700; margin: 16px 0 8px;
+}
+.titreAxeTactique:first-child { margin-top: 0; }
 
 .ligneCalendrier {
   display: flex; justify-content: space-between; align-items: center;

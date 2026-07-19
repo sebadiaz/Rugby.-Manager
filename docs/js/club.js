@@ -155,43 +155,57 @@
       niveauClub,
       effectif: genererEffectifEtendu(rng, niveauClub),
       budget: budgetInitial(niveauClub, rng),
-      tactique: 'equilibre',
+      tactique: { style: 'equilibre', pied: 'normal', ligneDef: 'normale' },
     };
   }
 
-  // Tactiques disponibles pour le club du joueur : chacune traduit une
-  // identité de jeu lisible en réglages concrets du moteur (cf.
-  // engine/rugby-engine.js, cfgAttaque/cfgDefense PAR ÉQUIPE). `null` = les
-  // réglages par défaut du moteur (comportement historique, inchangé).
-  const TACTIQUES = {
-    equilibre: {
-      nom: 'Équilibré', description: 'Approche standard, sans excès dans un sens ou l\'autre.',
-      attaque: null, defense: null,
-    },
-    sol: {
-      nom: 'Jeu au sol', description: 'Conserve le ballon près du regroupement, peu de coups de pied, défense patiente.',
-      attaque: { tauxJeuAuPied: 0.6, jeuLargeTaux: { pression: 1.1, calme: 0.9 } },
-      defense: { rampeMontee: 3.5, profondeurArriereJeu: 22, profondeurArriereMelee: 24 },
-    },
-    large: {
-      nom: 'Jeu au large', description: 'Cherche l\'espace au large à chaque occasion, presse haut en défense (plus risqué).',
-      attaque: { tauxJeuAuPied: 0.7, jeuLargeTaux: { pression: 2.3, calme: 2.0 } },
-      defense: { rampeMontee: 1.5, profondeurArriereJeu: 15, profondeurArriereMelee: 17 },
+  // Tactique = 3 réglages INDÉPENDANTS qui se combinent (comme les
+  // instructions d'équipe FM — on ne choisit pas un "template" figé, on
+  // compose : style de jeu × usage du pied × hauteur de ligne défensive),
+  // traduits en réglages concrets du moteur (cf. engine/rugby-engine.js,
+  // cfgAttaque/cfgDefense PAR ÉQUIPE). `null` = valeur par défaut du moteur.
+  const AXES_TACTIQUE = {
+    style: {
+      label: 'Style de jeu', defaut: 'equilibre',
+      options: {
+        sol: { nom: 'Jeu au sol', description: 'Reste près du regroupement, limite les prises de risque au large.', attaque: { jeuLargeTaux: { pression: 1.1, calme: 0.9 } } },
+        equilibre: { nom: 'Équilibré', description: 'Ni resserré, ni systématiquement porté au large.', attaque: null },
+        large: { nom: 'Jeu au large', description: 'Cherche l\'espace au large à chaque occasion.', attaque: { jeuLargeTaux: { pression: 2.3, calme: 2.0 } } },
+      },
     },
     pied: {
-      nom: 'Jeu au pied', description: 'Beaucoup de coups de pied pour occuper le camp adverse, défense repliée.',
-      attaque: { tauxJeuAuPied: 2.5, jeuLargeTaux: { pression: 1.5, calme: 1.2 } },
-      defense: { rampeMontee: 3, profondeurArriereJeu: 22, profondeurArriereMelee: 24 },
+      label: 'Jeu au pied', defaut: 'normal',
+      options: {
+        rare: { nom: 'Rare', description: 'Privilégie la conservation du ballon en main.', attaque: { tauxJeuAuPied: 0.5 } },
+        normal: { nom: 'Normal', description: 'Fréquence de coups de pied standard.', attaque: null },
+        frequent: { nom: 'Fréquent', description: 'Beaucoup de coups de pied pour occuper le camp adverse.', attaque: { tauxJeuAuPied: 2.5 } },
+      },
+    },
+    ligneDef: {
+      label: 'Ligne défensive', defaut: 'normale',
+      options: {
+        basse: { nom: 'Basse', description: 'Défense prudente et repliée, moins de risques à la montée.', defense: { rampeMontee: 3.5, profondeurArriereJeu: 22, profondeurArriereMelee: 24 } },
+        normale: { nom: 'Normale', description: 'Hauteur de ligne standard.', defense: null },
+        haute: { nom: 'Haute', description: 'Presse haut et vite, plus risqué si elle est percée.', defense: { rampeMontee: 1.5, profondeurArriereJeu: 15, profondeurArriereMelee: 17 } },
+      },
     },
   };
 
-  // Config moteur (attaque/défense PAR ÉQUIPE) pour la tactique choisie —
-  // {} pour "équilibré" (aucune surcharge, comportement par défaut du moteur).
-  function tactiqueVersConfig(cleTactique) {
-    const t = TACTIQUES[cleTactique] || TACTIQUES.equilibre;
+  // Config moteur (attaque/défense PAR ÉQUIPE) résultant de la COMBINAISON
+  // des 3 axes — `tactique` peut être partiel ou absent, chaque axe retombe
+  // sur son défaut (comportement du moteur inchangé si rien n'est choisi).
+  function tactiqueVersConfig(tactique) {
+    const t = Object.assign(
+      { style: AXES_TACTIQUE.style.defaut, pied: AXES_TACTIQUE.pied.defaut, ligneDef: AXES_TACTIQUE.ligneDef.defaut },
+      (tactique && typeof tactique === 'object') ? tactique : {}
+    );
+    const optStyle = AXES_TACTIQUE.style.options[t.style] || AXES_TACTIQUE.style.options[AXES_TACTIQUE.style.defaut];
+    const optPied = AXES_TACTIQUE.pied.options[t.pied] || AXES_TACTIQUE.pied.options[AXES_TACTIQUE.pied.defaut];
+    const optLigne = AXES_TACTIQUE.ligneDef.options[t.ligneDef] || AXES_TACTIQUE.ligneDef.options[AXES_TACTIQUE.ligneDef.defaut];
+    const attaque = Object.assign({}, optStyle.attaque || null, optPied.attaque || null);
     const cfg = {};
-    if (t.attaque) cfg.attaque = t.attaque;
-    if (t.defense) cfg.defense = t.defense;
+    if (Object.keys(attaque).length) cfg.attaque = attaque;
+    if (optLigne.defense) cfg.defense = optLigne.defense;
     return cfg;
   }
 
@@ -530,6 +544,6 @@
     genererMarcheTransferts, signerJoueur, libererJoueur,
     statsApparentes, estimationEtoiles, scouterJoueur, COUT_SCOUTING,
     faireProgresserBlessures, avancerSaison,
-    TACTIQUES, tactiqueVersConfig,
+    AXES_TACTIQUE, tactiqueVersConfig,
   };
 })(window);

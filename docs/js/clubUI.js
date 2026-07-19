@@ -57,12 +57,23 @@
   }
   const LIBELLE_FORME = { v: 'V', n: 'N', d: 'D' };
 
+  // 3 axes INDÉPENDANTS qui se combinent (cf. RMClub.AXES_TACTIQUE) — pas un
+  // choix unique parmi des templates figés : le joueur compose sa tactique
+  // comme les instructions d'équipe d'un vrai jeu de gestion.
   function rafraichirTactique() {
-    const actuelle = saison.clubJoueur.tactique || 'equilibre';
-    document.getElementById('clubTactique').innerHTML = Object.keys(RMClub.TACTIQUES).map((cle) => {
-      const t = RMClub.TACTIQUES[cle];
-      const choisie = cle === actuelle ? ' choisie' : '';
-      return `<button class="ligneTactique${choisie}" data-tactique="${cle}"><b>${t.nom}</b><span>${t.description}</span></button>`;
+    if (!saison.clubJoueur.tactique || typeof saison.clubJoueur.tactique !== 'object') {
+      saison.clubJoueur.tactique = { style: 'equilibre', pied: 'normal', ligneDef: 'normale' };
+    }
+    const actuelle = saison.clubJoueur.tactique;
+    document.getElementById('clubTactique').innerHTML = Object.keys(RMClub.AXES_TACTIQUE).map((axe) => {
+      const infosAxe = RMClub.AXES_TACTIQUE[axe];
+      const valeurActuelle = actuelle[axe] || infosAxe.defaut;
+      const boutons = Object.keys(infosAxe.options).map((cle) => {
+        const o = infosAxe.options[cle];
+        const choisie = cle === valeurActuelle ? ' choisie' : '';
+        return `<button class="ligneTactique${choisie}" data-axe="${axe}" data-valeur="${cle}"><b>${o.nom}</b><span>${o.description}</span></button>`;
+      }).join('');
+      return `<h4 class="titreAxeTactique">${infosAxe.label}</h4>${boutons}`;
     }).join('');
   }
 
@@ -269,9 +280,10 @@
 
   // --- Tactique : n'affecte QUE le club du joueur (cf. lancerMatchJoueur) ---
   document.getElementById('clubTactique').addEventListener('click', (e) => {
-    const cle = e.target.closest('[data-tactique]');
-    if (!cle) return;
-    saison.clubJoueur.tactique = cle.dataset.tactique;
+    const bouton = e.target.closest('[data-axe]');
+    if (!bouton) return;
+    if (!saison.clubJoueur.tactique || typeof saison.clubJoueur.tactique !== 'object') saison.clubJoueur.tactique = {};
+    saison.clubJoueur.tactique[bouton.dataset.axe] = bouton.dataset.valeur;
     RMClub.sauvegarderSaison(saison);
     rafraichirTactique();
   });
@@ -370,7 +382,7 @@
       // joueur, jamais à l'IA adverse — d'où le suffixe A/B dynamique selon
       // le côté du joueur pour ce match précis (domicile/extérieur alterne).
       const lettreJoueur = estClubJoueur(matchJoueur.domicileId) ? 'A' : 'B';
-      const cfgTactique = RMClub.tactiqueVersConfig(saison.clubJoueur.tactique || 'equilibre');
+      const cfgTactique = RMClub.tactiqueVersConfig(saison.clubJoueur.tactique);
       const tactiqueCfg = {};
       if (cfgTactique.attaque) tactiqueCfg['attaque' + lettreJoueur] = cfgTactique.attaque;
       if (cfgTactique.defense) tactiqueCfg['defense' + lettreJoueur] = cfgTactique.defense;
