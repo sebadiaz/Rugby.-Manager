@@ -59,6 +59,7 @@
   function afficherVueMatch() {
     document.getElementById('panneauAccueil').classList.remove('visible');
     document.getElementById('panneauGeneration').classList.remove('visible');
+    document.getElementById('panneauMenu').classList.remove('visible');
     document.getElementById('vueMatch').style.display = '';
     redimensionner();
   }
@@ -66,6 +67,7 @@
     enCours = false;
     document.getElementById('vueMatch').style.display = 'none';
     document.getElementById('panneauGeneration').classList.remove('visible');
+    document.getElementById('panneauMenu').classList.remove('visible');
     document.getElementById('panneauAccueil').classList.add('visible');
   }
 
@@ -83,6 +85,11 @@
   // enchaîner plusieurs simulations (une journée entière) sans clignoter.
   const PAS_PAR_LOT = 400; // ~40 s de jeu par lot : fluide (plusieurs lots/s), UI jamais bloquée longtemps
   function genererMatchEnArrierePlan(seed, duree, cfg, titre, onTermine) {
+    // Referme le menu s'il était ouvert (ex. la durée vient d'être changée
+    // depuis le menu) : sinon il resterait affiché AU-DESSUS de l'écran de
+    // génération puis du résultat (tous deux ouverts bien avant que la vraie
+    // lecture — et donc afficherVueMatch — ne démarre), bloquant les clics.
+    document.getElementById('panneauMenu').classList.remove('visible');
     document.getElementById('panneauGeneration').classList.add('visible');
     const titreEl = document.getElementById('genTitre');
     if (titreEl) titreEl.textContent = titre || 'Génération du match…';
@@ -182,7 +189,7 @@
     document.getElementById('seek').max = duree;
     document.getElementById('seek').value = 0;
     document.getElementById('tempsLabelFin').textContent = UI.formaterTemps(duree);
-    document.getElementById('btnSauver').disabled = true;
+    // btnSauver est masqué/affiché par UI.majAffichage selon la phase (cf. ui.js).
     // La vitesse de lecture est PARAMÉTRABLE par le joueur (bouton Vitesse) et
     // PERSISTE : on ne la réinitialise pas à chaque nouveau match ni changement
     // de durée. On garde donc simplement `vitesseSim` tel que le joueur l'a réglé.
@@ -366,12 +373,39 @@
     lancerNouveauMatchAvecGeneration(graineAleatoire(), lireDureeChoisie(), { onFermer: afficherAccueil });
   });
   // Changer la durée relance immédiatement un match de cette durée (même graine
-  // conservée pour comparer), pour que le choix soit visible tout de suite.
+  // conservée pour comparer), pour que le choix soit visible tout de suite —
+  // mais ça abandonne le match affiché, donc on prévient avant (sinon un tap
+  // sur ce réglage, dans le menu à côté d'actions anodines comme "Stats",
+  // efface silencieusement un match en cours sans qu'on l'ait demandé).
   document.getElementById('selDuree').addEventListener('change', () => {
+    if (!window.confirm('Changer la durée relance un nouveau match et abandonne celui en cours. Continuer ?')) {
+      document.getElementById('selDuree').value = String(dureeMatchActuel);
+      return;
+    }
     lancerNouveauMatchAvecGeneration(seedActuel, lireDureeChoisie(), { onFermer: afficherAccueil });
   });
   document.getElementById('btnAccueil').addEventListener('click', () => {
     afficherAccueil();
+  });
+
+  // Menu (Accueil/Stats/Historique/Mode Club/Règles/Durée) regroupé dans un
+  // panneau à part : la barre de contrôles reste à une seule rangée, avec des
+  // boutons assez grands pour être tapés sans viser (Lecture/Vitesse toujours
+  // visibles, le reste à un tap de distance plutôt qu'entassé en permanence).
+  document.getElementById('btnMenu').addEventListener('click', () => {
+    document.getElementById('panneauMenu').classList.add('visible');
+  });
+  document.getElementById('fermerMenu').addEventListener('click', () => {
+    document.getElementById('panneauMenu').classList.remove('visible');
+  });
+  // N'importe quel bouton d'action dans le menu (Nouveau match, Stats,
+  // Historique, Mode Club, Règles, Accueil) referme le menu lui-même — sinon
+  // il resterait affiché sous le panneau ouvert, et "Fermer" sur ce panneau
+  // ramènerait au menu plutôt qu'au match.
+  document.getElementById('panneauMenu').addEventListener('click', (e) => {
+    if (e.target.tagName === 'BUTTON' && e.target.id !== 'fermerMenu') {
+      document.getElementById('panneauMenu').classList.remove('visible');
+    }
   });
 
   document.getElementById('seek').addEventListener('input', (e) => {

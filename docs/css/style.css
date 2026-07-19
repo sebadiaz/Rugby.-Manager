@@ -103,6 +103,16 @@ h1, h2, h3 { font-weight: 700; letter-spacing: -0.01em; }
 }
 #tempsLabel, #tempsLabelFin { font-variant-numeric: tabular-nums; white-space: nowrap; }
 
+/* Sur les grands écrans, le terrain (canvas) reste plein cadre, mais le HUD,
+   la barre de défilement et les contrôles sont plafonnés en largeur et
+   centrés : sans ça, chaque bouton (flex:1 1 auto) s'étire pour remplir toute
+   la fenêtre — un bouton "Enregistrer" à 300+ px de large ne ressemble plus à
+   un bouton. Le jeu reste pensé mobile-first ; le desktop obtient une bande
+   centrale cohérente plutôt qu'un étirement disproportionné. */
+@media (min-width: 720px) {
+  #hud, #seekZone, #controls { max-width: 560px; margin-left: auto; margin-right: auto; }
+}
+
 /* ---------- Contrôles ---------- */
 #controls {
   position: absolute; bottom: 0; left: 0; right: 0;
@@ -111,8 +121,10 @@ h1, h2, h3 { font-weight: 700; letter-spacing: -0.01em; }
   z-index: 2;
 }
 .controlsRangee { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; }
-.controlsRangee.secondaire button,
-.controlsRangee.secondaire select { font-size: 12px; padding: 8px 10px; }
+/* Rangée unique en match : moins de boutons en permanence (le reste vit dans
+   #panneauMenu) permet de leur donner une vraie cible tactile (~46px) au lieu
+   d'entasser deux rangées de petits boutons. */
+.controlsRangee.principale button { padding: 13px 10px; font-size: 14px; min-height: 46px; }
 
 button, select {
   font-family: inherit;
@@ -240,6 +252,13 @@ select {
 .ligneCalendrier .scoreCal {
   font-variant-numeric: tabular-nums; font-weight: 700; display: flex; align-items: center; gap: 8px;
 }
+/* Calendrier groupé par journée (30 rencontres à plat étaient impossibles à
+   scanner) : un repère toutes les 3 lignes plutôt qu'une liste ininterrompue. */
+.blocJournee + .blocJournee { margin-top: 14px; }
+.blocJournee h4 {
+  margin: 0 0 4px; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em;
+  color: var(--text-faint); font-weight: 700;
+}
 .badgeForme {
   display: inline-flex; align-items: center; justify-content: center;
   width: 20px; height: 20px; border-radius: 50%; font-size: 11px; font-weight: 800;
@@ -265,6 +284,7 @@ select {
 }
 .carteAction select { width: 100%; margin-bottom: 12px; }
 .carteAction button { width: 100%; padding: 15px; font-size: 15px; }
+.notemini { font-size: 11.5px; color: var(--text-faint); margin: 8px 0 0; text-align: center; }
 
 .grilleSecondaire { display: flex; gap: 8px; }
 .grilleSecondaire button { font-size: 12.5px; padding: 12px 8px; }

@@ -85,19 +85,36 @@
       `<table class="tableauClub"><thead><tr><th></th><th>Club</th><th>J</th><th>G</th><th>N</th><th>P</th><th>Pts+</th><th>Pts-</th><th>Diff</th><th>Pts</th></tr></thead><tbody>${lignes}</tbody></table>`;
   }
 
+  // Abréviations de poste (cf. moteur, PROFILS[n].label) traduites en toutes
+  // lettres pour l'effectif : "P"/"T" n'est parlant que pour qui connaît déjà
+  // la numérotation du rugby à XV, or le Mode Club vise aussi les néophytes.
+  const POSTE_COMPLET = {
+    P: 'Pilier', T: 'Talonneur', '2L': 'Deuxième ligne', '3L': 'Troisième ligne',
+    DM: 'Demi de mêlée', OV: 'Ouverture', AI: 'Ailier', CE: 'Centre', AR: 'Arrière',
+  };
+
   function rafraichirEffectif() {
     const lignes = saison.clubJoueur.effectif.map((j) =>
-      `<tr><td>${j.numero}</td><td>${j.nom}</td><td>${j.poste}</td><td>${j.age}</td><td>${j.vitesse}</td><td>${j.plaquage}</td></tr>`
+      `<tr><td>${j.numero}</td><td>${j.nom}</td><td>${POSTE_COMPLET[j.poste] || j.poste}</td><td>${j.age}</td><td>${j.vitesse}</td><td>${j.plaquage}</td></tr>`
     ).join('');
     document.getElementById('clubEffectif').innerHTML =
       `<table class="tableauClub"><thead><tr><th>#</th><th>Nom</th><th>Poste</th><th>Âge</th><th>Vitesse</th><th>Plaquage</th></tr></thead><tbody>${lignes}</tbody></table>`;
   }
 
+  // Groupé par journée (un en-tête toutes les n/2 lignes) : à plat, 30
+  // rencontres (championnat complet) étaient impossibles à scanner et
+  // noyaient le bouton "Nouvelle saison" tout en bas sous un mur de texte.
   function rafraichirCalendrier() {
-    document.getElementById('clubCalendrier').innerHTML =
-      saison.calendrier.map((f) => {
-        const attenu = f.joue ? ' style="opacity:.6"' : '';
-        return `<div${attenu}>${formaterLigneCalendrier(f)}</div>`;
+    const parJournee = {};
+    for (const f of saison.calendrier) (parJournee[f.journee] = parJournee[f.journee] || []).push(f);
+    document.getElementById('clubCalendrier').innerHTML = Object.keys(parJournee)
+      .sort((a, b) => Number(a) - Number(b))
+      .map((j) => {
+        const lignes = parJournee[j].map((f) => {
+          const attenu = f.joue ? ' style="opacity:.6"' : '';
+          return `<div${attenu}>${formaterLigneCalendrier(f)}</div>`;
+        }).join('');
+        return `<div class="blocJournee"><h4>Journée ${j}</h4>${lignes}</div>`;
       }).join('');
   }
 

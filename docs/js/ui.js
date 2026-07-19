@@ -102,7 +102,11 @@
       document.getElementById('banner').classList.remove('visible');
     }
 
-    document.getElementById('btnSauver').disabled = state.phase !== 'TERMINE';
+    // Masqué (pas seulement désactivé) tant que le match n'est pas terminé :
+    // un bouton "Enregistrer" doré-mais-grisé pendant 80 min laisse croire à
+    // un bug plutôt qu'à une action qui n'a pas encore de sens. Il apparaît
+    // exactement au moment où il devient pertinent.
+    document.getElementById('btnSauver').style.display = state.phase === 'TERMINE' ? '' : 'none';
   }
 
   // --- Panneau de statistiques de match (toutes issues de state.stats, donc

@@ -22,6 +22,7 @@
         <option value="4800" selected>80 min (match complet)</option>
       </select>
       <button id="btnAccueilMatchRapide" class="accent">▶ Match rapide</button>
+      <p class="notemini">80 min recommandé : match complet, score et statistiques crédibles.</p>
     </div>
 
     <div class="grilleSecondaire">
@@ -74,23 +75,30 @@
     <div class="controlsRangee principale">
       <button id="btnPlay">Pause</button>
       <button id="btnSpeed" class="alt">Vitesse x1</button>
-      <button id="btnNouveau" class="alt">Nouveau match</button>
-      <button id="btnSauver" class="accent" disabled>Enregistrer</button>
-    </div>
-    <div class="controlsRangee secondaire">
-      <button id="btnAccueil" class="alt">Accueil</button>
-      <select id="selDuree" title="Durée du match simulé" aria-label="Durée du match simulé">
-        <option value="300">5 min (démo courte)</option>
-        <option value="1200">20 min</option>
-        <option value="2400">40 min (mi-temps)</option>
-        <option value="4800" selected>80 min (match complet)</option>
-      </select>
-      <button id="btnStats" class="alt">Stats</button>
-      <button id="btnHistorique" class="alt">Historique</button>
-      <button id="btnModeClub" class="alt">Mode Club</button>
-      <button id="btnLegende" class="alt">?</button>
+      <button id="btnSauver" class="accent" style="display:none;">Enregistrer</button>
+      <button id="btnMenu" class="alt">☰ Menu</button>
     </div>
   </div>
+</div>
+
+<div class="panneau" id="panneauMenu">
+  <h2>Menu</h2>
+  <div style="margin:0 16px 16px;">
+    <button id="btnNouveau" class="alt" style="width:100%;margin-bottom:10px;">Nouveau match</button>
+    <label class="sr-label" for="selDuree">Durée du match</label>
+    <select id="selDuree" title="Durée du match simulé" style="width:100%;margin-bottom:16px;">
+      <option value="300">5 min (démo courte)</option>
+      <option value="1200">20 min</option>
+      <option value="2400">40 min (mi-temps)</option>
+      <option value="4800" selected>80 min (match complet)</option>
+    </select>
+    <button id="btnAccueil" class="alt" style="width:100%;margin-bottom:10px;">Accueil</button>
+    <button id="btnStats" class="alt" style="width:100%;margin-bottom:10px;">Statistiques</button>
+    <button id="btnHistorique" class="alt" style="width:100%;margin-bottom:10px;">Historique</button>
+    <button id="btnModeClub" class="alt" style="width:100%;margin-bottom:10px;">Mode Club</button>
+    <button id="btnLegende" class="alt" style="width:100%;">Comment lire le match ?</button>
+  </div>
+  <button class="fermer alt" id="fermerMenu">Fermer</button>
 </div>
 
 <div class="panneau" id="panneauClub">
