@@ -23,11 +23,15 @@
     return saison.clubJoueur.id === clubId;
   }
 
-  // Victoire/Nul/Défaite du point de vue du club du joueur — le calendrier
-  // n'affronte QUE le club du joueur (jamais deux adversaires IA entre eux,
-  // cf. RMClub.genererCalendrier), donc chaque match joué en a un.
+  function concerneClubJoueur(f) {
+    return estClubJoueur(f.domicileId) || estClubJoueur(f.exterieurId);
+  }
+
+  // Victoire/Nul/Défaite du point de vue du club du joueur. Un calendrier
+  // complet fait aussi jouer les adversaires entre eux (cf. genererCalendrier) :
+  // ces matchs-là n'ont pas de "forme" du point de vue du joueur (null).
   function formeClubJoueur(f) {
-    if (!f.joue) return null;
+    if (!f.joue || !concerneClubJoueur(f)) return null;
     const domicileEstJoueur = estClubJoueur(f.domicileId);
     const pour = domicileEstJoueur ? f.score.domicile : f.score.exterieur;
     const contre = domicileEstJoueur ? f.score.exterieur : f.score.domicile;
@@ -43,7 +47,8 @@
     const score = f.joue ? `${f.score.domicile} - ${f.score.exterieur}` : 'à jouer';
     const forme = formeClubJoueur(f);
     const badge = forme ? `<span class="badgeForme ${forme}">${LIBELLE_FORME[forme]}</span>` : '';
-    return `<div class="ligneCalendrier"><span>J${f.journee} — ${domicile} vs ${exterieur}</span><span class="scoreCal">${badge}${score}</span></div>`;
+    const classe = concerneClubJoueur(f) ? ' ligneClubJoueur' : '';
+    return `<div class="ligneCalendrier${classe}"><span>J${f.journee} — ${domicile} vs ${exterieur}</span><span class="scoreCal">${badge}${score}</span></div>`;
   }
 
   function rafraichirEntete() {
@@ -53,16 +58,19 @@
       `<div class="clubEntete"><span class="pastilleClub" style="background:${c.couleur}">${initiale}</span><span><span class="nomClub">${c.nom}</span></span></div>`;
   }
 
+  // La journée fait jouer TOUS les clubs à la fois (n/2 matchs simultanés,
+  // cf. RMClub.genererCalendrier) : on affiche donc toute la liste, pas un
+  // seul match — le match du joueur y est repéré par la marque ligneClubJoueur.
   function rafraichirProchainMatch() {
-    const f = RMClub.prochaineJourneeNonJouee(saison);
+    const fixtures = RMClub.prochainesFixtures(saison);
     const zone = document.getElementById('clubProchainMatch');
     const bouton = document.getElementById('btnJouerMatchClub');
-    if (!f) {
+    if (fixtures.length === 0) {
       zone.innerHTML = '<p>Saison terminée — toutes les journées ont été jouées.</p>';
       bouton.disabled = true;
       return;
     }
-    zone.innerHTML = formaterLigneCalendrier(f);
+    zone.innerHTML = fixtures.map(formaterLigneCalendrier).join('');
     bouton.disabled = false;
   }
 
@@ -129,42 +137,66 @@
     rafraichirTout();
   });
 
-  // Lance le prochain match de la saison sur le MÊME canvas/boucle de rendu
-  // que le Match rapide (cf. window.RMMain.demarrerMatchClub, docs/js/main.js) :
-  // le club à domicile est l'équipe A, l'extérieur l'équipe B (pas d'avantage
-  // du terrain modélisé dans cette 1re version). Le résultat est enregistré
-  // dans la saison dès que le match est généré (onResultat) — regarder le
-  // match est ensuite juste une option proposée au joueur, pas une condition
-  // pour que le résultat compte.
+  // Joue la journée ENTIÈRE : tous les clubs jouent en même temps (cf.
+  // RMClub.genererCalendrier), pas seulement le club du joueur. Les autres
+  // rencontres (IA contre IA) sont simulées en arrière-plan (invisibles, pas
+  // d'option "voir" : personne ne les regarde) et leur résultat enregistré
+  // aussitôt ; le match du joueur suit ensuite le parcours habituel (génération
+  // → résultat → « voir le match » optionnel), sur le MÊME canvas/boucle de
+  // rendu que le Match rapide (cf. window.RMMain.demarrerMatchClub).
   document.getElementById('btnJouerMatchClub').addEventListener('click', () => {
-    const f = RMClub.prochaineJourneeNonJouee(saison);
-    if (!f) return;
-    const clubDomicile = RMClub.club(saison, f.domicileId);
-    const clubExterieur = RMClub.club(saison, f.exterieurId);
-    const seed = graineAleatoire();
+    const fixtures = RMClub.prochainesFixtures(saison);
+    if (fixtures.length === 0) return;
+    const matchJoueur = fixtures.find(concerneClubJoueur);
+    const autresMatchs = fixtures.filter((f) => f !== matchJoueur);
     const duree = Number(document.getElementById('selDureeClub').value) || 4800;
     document.getElementById('panneauClub').classList.remove('visible');
-    window.RMMain.demarrerMatchClub(
-      seed, duree,
-      RMClub.effectifVersJoueursCfg(clubDomicile),
-      RMClub.effectifVersJoueursCfg(clubExterieur),
-      {
-        noms: { A: clubDomicile.nom, B: clubExterieur.nom },
-        // Le calendrier alterne domicile/extérieur pour le club du joueur
-        // (aller-retour, cf. RMClub.genererCalendrier) : ce n'est PAS toujours
-        // l'équipe A, il faut vérifier laquelle des deux c'est à chaque match.
-        equipeJoueur: estClubJoueur(f.domicileId) ? 'A' : 'B',
-        onResultat(etat) {
+
+    function lancerMatchJoueur() {
+      if (!matchJoueur) return; // calendrier à nombre pair de clubs : ne devrait pas arriver
+      const clubDomicile = RMClub.club(saison, matchJoueur.domicileId);
+      const clubExterieur = RMClub.club(saison, matchJoueur.exterieurId);
+      window.RMMain.demarrerMatchClub(
+        graineAleatoire(), duree,
+        RMClub.effectifVersJoueursCfg(clubDomicile),
+        RMClub.effectifVersJoueursCfg(clubExterieur),
+        {
+          noms: { A: clubDomicile.nom, B: clubExterieur.nom },
+          equipeJoueur: estClubJoueur(matchJoueur.domicileId) ? 'A' : 'B',
+          onResultat(etat) {
+            RMClub.enregistrerResultat(saison, matchJoueur.id, etat.score.A, etat.score.B, etat.stats.A.essais, etat.stats.B.essais);
+            RMClub.sauvegarderSaison(saison);
+            window.RMMain.reinitialiserConfigClub();
+          },
+          onFermer() {
+            rafraichirTout();
+            document.getElementById('panneauClub').classList.add('visible');
+          },
+        }
+      );
+    }
+
+    // Simule les autres rencontres une par une (même écran de génération,
+    // titre différent), puis enchaîne sur le match du joueur.
+    function simulerAutre(i) {
+      if (i >= autresMatchs.length) { lancerMatchJoueur(); return; }
+      const f = autresMatchs[i];
+      const clubA = RMClub.club(saison, f.domicileId);
+      const clubB = RMClub.club(saison, f.exterieurId);
+      window.RMMain.simulerMatchEnArrierePlan(
+        graineAleatoire(), duree,
+        RMClub.effectifVersJoueursCfg(clubA),
+        RMClub.effectifVersJoueursCfg(clubB),
+        `Simulation : ${clubA.nom} vs ${clubB.nom} (${i + 1}/${autresMatchs.length})`,
+        (etat) => {
           RMClub.enregistrerResultat(saison, f.id, etat.score.A, etat.score.B, etat.stats.A.essais, etat.stats.B.essais);
           RMClub.sauvegarderSaison(saison);
-          window.RMMain.reinitialiserConfigClub();
-        },
-        onFermer() {
-          rafraichirTout();
-          document.getElementById('panneauClub').classList.add('visible');
-        },
-      }
-    );
+          simulerAutre(i + 1);
+        }
+      );
+    }
+
+    simulerAutre(0);
   });
 
   rafraichirTout();

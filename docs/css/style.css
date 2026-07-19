@@ -232,9 +232,11 @@ select {
 
 .ligneCalendrier {
   display: flex; justify-content: space-between; align-items: center;
-  padding: 9px 0; border-bottom: 1px solid var(--border); font-size: 12.5px; gap: 8px;
+  padding: 9px 8px; border-bottom: 1px solid var(--border); font-size: 12.5px; gap: 8px;
+  border-radius: var(--radius-sm);
 }
 .ligneCalendrier:last-child { border-bottom: none; }
+.ligneCalendrier.ligneClubJoueur { background: rgba(255, 183, 3, 0.1); border-left: 2px solid var(--accent); }
 .ligneCalendrier .scoreCal {
   font-variant-numeric: tabular-nums; font-weight: 700; display: flex; align-items: center; gap: 8px;
 }

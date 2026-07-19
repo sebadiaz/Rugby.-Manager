@@ -34,7 +34,7 @@
 
 <div class="panneau" id="panneauGeneration">
   <div class="accueilContenu">
-    <h2>Génération du match…</h2>
+    <h2 id="genTitre">Génération du match…</h2>
     <p>Le moteur simule le match complet en arrière-plan (mêlées, rucks, plaquages, coups de pied…).</p>
     <div class="barreProgression"><div class="barreProgressionRemplissage" id="genProgressBar"></div></div>
     <p id="genProgressLabel">0:00 / 80:00</p>
@@ -98,7 +98,7 @@
 
   <div id="clubCreation">
     <div class="carteClub">
-      <p>Crée ton club pour démarrer une saison : effectif généré, calendrier aller-retour contre 5 adversaires de niveaux variés, classement mis à jour après chaque match simulé avec le même moteur que le Match rapide.</p>
+      <p>Crée ton club pour démarrer une saison : effectif généré, championnat complet à 6 clubs (aller-retour) où tout le monde joue à chaque journée, classement mis à jour après chaque match simulé avec le même moteur que le Match rapide.</p>
       <label class="sr-label" for="inputNomClub">Nom du club</label>
       <input type="text" id="inputNomClub" class="champTexte" placeholder="Laisser vide pour un nom généré">
       <button id="btnCreerClub" class="accent" style="width:100%;margin-top:12px;">Créer le club et démarrer la saison</button>
@@ -109,7 +109,7 @@
     <div id="clubEntete"></div>
 
     <div class="carteClub">
-      <h3>Prochain match</h3>
+      <h3>Prochaine journée</h3>
       <div id="clubProchainMatch"></div>
       <label class="sr-label" for="selDureeClub" style="margin-top:10px;">Durée du match</label>
       <select id="selDureeClub" style="width:100%;" title="Durée du match simulé">
@@ -118,7 +118,7 @@
         <option value="2400">40 min (mi-temps)</option>
         <option value="4800" selected>80 min (match complet)</option>
       </select>
-      <button id="btnJouerMatchClub" class="accent" style="width:100%;margin-top:10px;">Jouer le match</button>
+      <button id="btnJouerMatchClub" class="accent" style="width:100%;margin-top:10px;">Jouer la journée</button>
     </div>
 
     <div class="carteClub">

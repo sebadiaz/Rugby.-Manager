@@ -81,29 +81,44 @@
     return cfg;
   }
 
-  // Calendrier aller-retour : le club du joueur affronte chaque adversaire une
-  // fois à domicile, une fois à l'extérieur — une petite saison complète et
-  // lisible (avec 5 adversaires : 10 journées), pas un championnat interminable.
-  function genererCalendrier(rng, clubJoueur, adversaires) {
+  // Calendrier aller-retour complet (méthode du cercle, championnat classique) :
+  // TOUS les clubs s'affrontent deux fois chacun (une fois à domicile, une
+  // fois à l'extérieur), et chaque JOURNÉE fait jouer TOUS les clubs en même
+  // temps (n/2 matchs simultanés) — pas seulement le club du joueur. Avec 6
+  // clubs (le joueur + 5 adversaires) : 3 matchs/journée, 10 journées. Exige
+  // un nombre pair de clubs (sinon un club serait au repos chaque journée).
+  function genererCalendrier(clubs) {
+    const n = clubs.length;
+    const ids = clubs.map((c) => c.id);
+    const fixe = ids[0];
+    const tournant = ids.slice(1);
+    const rondesAller = [];
+    for (let r = 0; r < n - 1; r++) {
+      const ordre = [fixe, ...tournant];
+      const ronde = [];
+      for (let i = 0; i < n / 2; i++) {
+        const a = ordre[i], b = ordre[n - 1 - i];
+        // Alterne qui reçoit d'une ronde à l'autre pour équilibrer domicile/extérieur.
+        ronde.push(r % 2 === 0 ? [a, b] : [b, a]);
+      }
+      rondesAller.push(ronde);
+      tournant.push(tournant.shift());
+    }
     const fixtures = [];
-    let journee = 1;
-    for (const adv of adversaires) {
-      fixtures.push({ id: 'f' + fixtures.length, journee: journee++, domicileId: clubJoueur.id, exterieurId: adv.id, joue: false, score: null });
-    }
-    for (const adv of adversaires) {
-      fixtures.push({ id: 'f' + fixtures.length, journee: journee++, domicileId: adv.id, exterieurId: clubJoueur.id, joue: false, score: null });
-    }
-    // Mélange les journées (hors 1re) pour ne pas jouer tous les matchs à
-    // domicile puis tous à l'extérieur d'affilée, comme un vrai calendrier.
-    const tete = fixtures.slice(0, 1);
-    const reste = fixtures.slice(1);
-    for (let i = reste.length - 1; i > 0; i--) {
-      const j = Math.floor(rng() * (i + 1));
-      [reste[i], reste[j]] = [reste[j], reste[i]];
-    }
-    const toutes = tete.concat(reste);
-    toutes.forEach((f, i) => { f.journee = i + 1; });
-    return toutes;
+    let id = 0;
+    rondesAller.forEach((ronde, r) => {
+      for (const [domicileId, exterieurId] of ronde) {
+        fixtures.push({ id: 'f' + id++, journee: r + 1, domicileId, exterieurId, joue: false, score: null });
+      }
+    });
+    const decalage = rondesAller.length;
+    rondesAller.forEach((ronde, r) => {
+      for (const [domicileId, exterieurId] of ronde) {
+        // Match retour : domicile/extérieur inversés par rapport à l'aller.
+        fixtures.push({ id: 'f' + id++, journee: decalage + r + 1, domicileId: exterieurId, exterieurId: domicileId, joue: false, score: null });
+      }
+    });
+    return fixtures;
   }
 
   function classementInitial(clubs) {
@@ -136,8 +151,13 @@
       b.pts - a.pts || (b.pointsPour - b.pointsContre) - (a.pointsPour - a.pointsContre) || b.pointsPour - a.pointsPour);
   }
 
-  function prochaineJourneeNonJouee(saison) {
-    return saison.calendrier.find((f) => !f.joue) || null;
+  // Renvoie TOUS les matchs de la prochaine journée non jouée (pas un seul) —
+  // avec un calendrier complet, une journée fait jouer tous les clubs à la
+  // fois (cf. genererCalendrier). Tableau vide si la saison est terminée.
+  function prochainesFixtures(saison) {
+    const prochaine = saison.calendrier.find((f) => !f.joue);
+    if (!prochaine) return [];
+    return saison.calendrier.filter((f) => f.journee === prochaine.journee);
   }
 
   function club(saison, clubId) {
@@ -156,7 +176,7 @@
     return {
       clubJoueur,
       adversaires,
-      calendrier: genererCalendrier(rng, clubJoueur, adversaires),
+      calendrier: genererCalendrier(tousLesClubs),
       classement: classementInitial(tousLesClubs),
     };
   }
@@ -177,7 +197,7 @@
   global.RMClub = {
     genererNomClub, genererClub, genererEffectif, effectifVersJoueursCfg,
     nouvelleSaison, genererCalendrier, classementInitial, enregistrerResultat,
-    classementTrie, prochaineJourneeNonJouee, club,
+    classementTrie, prochainesFixtures, club,
     sauvegarderSaison, chargerSaison, effacerSaison,
   };
 })(window);

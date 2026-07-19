@@ -76,13 +76,20 @@
   // de la lancer, cf. plus bas) rejouera exactement le même match. Le joueur
   // voit une barre de progression pendant le calcul ; `onTermine` reçoit
   // l'état final normalisé (score, stats) une fois le match entièrement généré.
+  // `cfg` est passé explicitement (pas lu depuis `configMatch`) pour pouvoir
+  // aussi simuler des matchs tiers (Mode Club : les autres rencontres de la
+  // journée) SANS toucher à la config du match réellement affiché ensuite.
+  // Ne masque PAS le panneau à la fin : laissé aux appelants, pour pouvoir
+  // enchaîner plusieurs simulations (une journée entière) sans clignoter.
   const PAS_PAR_LOT = 400; // ~40 s de jeu par lot : fluide (plusieurs lots/s), UI jamais bloquée longtemps
-  function genererMatchEnArrierePlan(seed, duree, onTermine) {
+  function genererMatchEnArrierePlan(seed, duree, cfg, titre, onTermine) {
     document.getElementById('panneauGeneration').classList.add('visible');
+    const titreEl = document.getElementById('genTitre');
+    if (titreEl) titreEl.textContent = titre || 'Génération du match…';
     const barre = document.getElementById('genProgressBar');
     const label = document.getElementById('genProgressLabel');
     barre.style.width = '0%';
-    const genEngine = new MatchEngine(seed, duree, configMatch);
+    const genEngine = new MatchEngine(seed, duree, cfg);
     function lot() {
       let i = 0;
       while (i < PAS_PAR_LOT && genEngine.tempsMatch < duree && genEngine.phase !== 'TERMINE') {
@@ -95,7 +102,6 @@
       if (genEngine.tempsMatch < duree && genEngine.phase !== 'TERMINE') {
         setTimeout(lot, 0);
       } else {
-        document.getElementById('panneauGeneration').classList.remove('visible');
         onTermine(normalizeMatchState(genEngine.getState()));
       }
     }
@@ -129,7 +135,8 @@
     const { onResultat, onFermer, direct, noms, equipeJoueur } = opts || {};
     const nomA = (noms && noms.A) || 'Equipe A';
     const nomB = (noms && noms.B) || 'Equipe B';
-    genererMatchEnArrierePlan(seed, duree, (etatFinal) => {
+    genererMatchEnArrierePlan(seed, duree, configMatch, null, (etatFinal) => {
+      document.getElementById('panneauGeneration').classList.remove('visible');
       if (onResultat) onResultat(etatFinal);
       if (direct) { demarrerLectureReelle(seed, duree, noms); return; }
       const s = etatFinal.stats;
@@ -463,6 +470,16 @@
     demarrerMatchClub(seed, duree, joueursA, joueursB, callbacks) {
       configMatch = Object.assign({}, configMatch, { joueursA, joueursB });
       lancerNouveauMatchAvecGeneration(seed, duree, callbacks);
+    },
+    // Simule un match COMPLET en arrière-plan sans jamais l'afficher (Mode
+    // Club : les autres rencontres de la journée, jouées par l'IA en même
+    // temps que celui du joueur — cf. clubUI.js). Réutilise l'écran de
+    // génération (même barre de progression, titre personnalisable) mais ne
+    // le masque pas à la fin : l'appelant enchaîne d'autres simulations ou
+    // passe au match du joueur, qui le masquera lui-même en terminant.
+    simulerMatchEnArrierePlan(seed, duree, joueursA, joueursB, titre, onTermine) {
+      const cfg = Object.assign({}, configMatch, { joueursA, joueursB });
+      genererMatchEnArrierePlan(seed, duree, cfg, titre, onTermine);
     },
     // Efface joueursA/joueursB pour revenir aux effectifs par défaut du
     // moteur (utilisé en quittant le Mode Club vers le Match rapide).
