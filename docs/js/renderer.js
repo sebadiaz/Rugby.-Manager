@@ -99,26 +99,52 @@
 
   function dessinerJoueur(j, estPorteur) {
     const { px, py } = versCanvas(j.x, j.y);
+    // Dessiné couché si réellement au sol (plaqué, figé) OU s'il vient de plaquer
+    // (marqueur visuel pur solVisuel) : la définition officielle du plaquage veut
+    // que le plaqueur aille aussi au sol.
+    const auSol = j.auSol > 0 || j.solVisuel > 0;
+    ctx.save();
     ctx.beginPath();
-    ctx.arc(px, py, 10, 0, Math.PI * 2);
+    if (auSol) {
+      // Joueur AU SOL : dessiné couché (ellipse aplatie) et atténué, pour qu'on
+      // voie d'un coup d'œil qu'il est à terre et ne participe pas (plaqué qui
+      // ne s'est pas encore relevé).
+      ctx.ellipse(px, py, 12, 5, 0, 0, Math.PI * 2);
+    } else {
+      ctx.arc(px, py, 10, 0, Math.PI * 2);
+    }
     ctx.fillStyle = j.team === 'A' ? '#1565c0' : '#c62828';
-    if (j.auSol > 0) ctx.fillStyle = j.team === 'A' ? '#5c7fa3' : '#a36a6a';
+    if (auSol) ctx.globalAlpha = 0.5;
     ctx.fill();
+    ctx.globalAlpha = 1;
     if (estPorteur) {
-      ctx.lineWidth = 3;
+      // Porteur du ballon nettement marqué : anneau jaune épais + halo.
+      ctx.lineWidth = 4;
       ctx.strokeStyle = '#ffeb3b';
       ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(px, py, 14, 0, Math.PI * 2);
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = 'rgba(255,235,59,0.5)';
+      ctx.stroke();
     }
-    ctx.fillStyle = '#fff';
-    ctx.font = '10px sans-serif';
+    ctx.fillStyle = auSol ? 'rgba(255,255,255,0.65)' : '#fff';
+    ctx.font = (auSol ? '8px' : '10px') + ' sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(j.numero, px, py);
+    ctx.restore();
   }
 
   function dessinerBallon(state) {
     const ballon = state.ballon || { x: state.porteur.x, y: state.porteur.y, enVol: false, hauteur: 0 };
-    const sol = versCanvas(ballon.x, ballon.y);
+    // Position lissée du ballon au sol / en mains : la boucle de rendu fait
+    // glisser `ballonRendu` vers sa cible logique (comme les joueurs) pour
+    // supprimer les téléportations du ballon d'une marque à l'autre (sortie
+    // de ruck, de mêlée, changement de porteur). En vol, on garde la position
+    // physique du moteur (la cloche est déjà animée tick par tick).
+    const posSol = (!ballon.enVol && state.ballonRendu) ? state.ballonRendu : ballon;
+    const sol = versCanvas(posSol.x, posSol.y);
     if (ballon.enVol) {
       // Coup d'envoi en cloche : ombre au sol (qui rétrécit quand le ballon
       // monte) + ballon décalé vers le haut et nettement grossi à l'apogée,
@@ -141,10 +167,40 @@
       ctx.stroke();
       return;
     }
+    // Ballon au sol après un coup de pied tactique, pas encore récupéré :
+    // posé au point de chute réel, jamais dans des mains (personne ne l'a
+    // encore rejoint en courant) — cf. MatchEngine._tickReceptionCoupDePied.
+    if (state.ball && state.ball.state === 'LOOSE') {
+      ctx.beginPath();
+      ctx.ellipse(sol.px, sol.py, 6, 3.8, Math.PI / 4, 0, Math.PI * 2);
+      ctx.fillStyle = '#8d5524';
+      ctx.fill();
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = '#5d3a1a';
+      ctx.stroke();
+      return;
+    }
+    // Ballon au ruck : personne ne le tient, il est au sol au point de
+    // regroupement (le porteur affiché n'est que le dernier joueur plaqué,
+    // couché dessus) — sinon le ballon semblait toujours "en mains" même
+    // pendant la phase de jeu la plus fréquente du match.
+    if (state.ball && state.ball.state === 'RUCK') {
+      ctx.beginPath();
+      ctx.ellipse(sol.px, sol.py + 5, 5.5, 3.4, Math.PI / 4, 0, Math.PI * 2);
+      ctx.fillStyle = '#8d5524';
+      ctx.fill();
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = '#5d3a1a';
+      ctx.stroke();
+      return;
+    }
     // Ballon tenu : dessiné dans les mains du porteur, légèrement décalé.
-    const main = versCanvas(state.porteur.x, state.porteur.y);
+    // On part de la position lissée (`sol`) plutôt que de la position brute du
+    // porteur : lors d'un changement de porteur (sortie de mêlée sur le 8 puis
+    // relais au 9, passe interceptée…) le ballon glisse jusqu'aux nouvelles
+    // mains au lieu de s'y téléporter.
     ctx.beginPath();
-    ctx.ellipse(main.px + 12, main.py - 8, 5, 3.2, Math.PI / 4, 0, Math.PI * 2);
+    ctx.ellipse(sol.px + 12, sol.py - 8, 5, 3.2, Math.PI / 4, 0, Math.PI * 2);
     ctx.fillStyle = '#8d5524';
     ctx.fill();
   }
@@ -173,10 +229,11 @@
 
   function dessiner(state) {
     dessinerTerrain();
-    // Pendant que le ballon est en vol (coup d'envoi), personne ne le porte :
-    // on ne met aucun joueur en surbrillance.
-    const enVol = state.ballon && state.ballon.enVol;
-    const estPorteur = j => !enVol && j.team === state.porteur.team && j.numero === state.porteur.numero;
+    // Pendant que le ballon est en vol ou au sol après un coup de pied
+    // (personne ne l'a encore rejoint), on ne met aucun joueur en
+    // surbrillance : le dernier porteur (le buteur) ne l'a plus en main.
+    const sansPorteur = (state.ballon && state.ballon.enVol) || (state.ball && state.ball.state === 'LOOSE');
+    const estPorteur = j => !sansPorteur && j.team === state.porteur.team && j.numero === state.porteur.numero;
     for (const j of state.teams.A) dessinerJoueur(j, estPorteur(j));
     for (const j of state.teams.B) dessinerJoueur(j, estPorteur(j));
     dessinerArbitre(state);

@@ -13,6 +13,7 @@
     <div id="phase">En jeu</div>
     <div class="horloge" id="horloge">0:00 / 5:00</div>
   </div>
+  <div class="possession" id="possession"></div>
   <ul id="feed"></ul>
 </div>
 <div id="banner"></div>
@@ -25,16 +26,64 @@
 <div id="controls">
   <button id="btnPlay">Pause</button>
   <button id="btnSpeed" class="alt">Vitesse x1</button>
+  <label for="selDuree" class="sr-label" style="align-self:center;font-size:.85em;opacity:.85">Durée&nbsp;:</label>
+  <select id="selDuree" class="alt" title="Durée du match simulé">
+    <option value="300">5 min (démo courte)</option>
+    <option value="1200">20 min</option>
+    <option value="2400">40 min (mi-temps)</option>
+    <option value="4800" selected>80 min (match complet)</option>
+  </select>
   <button id="btnNouveau" class="alt">Nouveau match</button>
   <button id="btnSauver" class="accent" disabled>Enregistrer le résultat</button>
+  <button id="btnStats" class="alt">Stats</button>
   <button id="btnHistorique" class="alt">Historique</button>
+  <button id="btnModeClub" class="alt">Mode Club</button>
   <button id="btnLegende" class="alt">?</button>
+</div>
+
+<div class="panneau" id="panneauClub">
+  <h2>Mode Club</h2>
+
+  <div id="clubCreation">
+    <p>Crée ton club pour démarrer une saison : effectif généré, calendrier aller-retour contre 5 adversaires de niveaux variés, classement mis à jour après chaque match simulé avec le même moteur que le Match rapide.</p>
+    <label class="sr-label" for="inputNomClub" style="display:block;margin:10px 0 4px;font-size:.85em;opacity:.85">Nom du club</label>
+    <input type="text" id="inputNomClub" placeholder="Laisser vide pour un nom généré" style="width:100%;box-sizing:border-box;padding:10px;border-radius:8px;border:none;font-size:14px;">
+    <button id="btnCreerClub" class="accent" style="width:100%;margin-top:10px;">Créer le club et démarrer la saison</button>
+  </div>
+
+  <div id="clubGestion" style="display:none;">
+    <div id="clubEntete" style="margin-bottom:12px;"></div>
+
+    <h3 style="margin-bottom:6px;">Prochain match</h3>
+    <div id="clubProchainMatch"></div>
+    <button id="btnJouerMatchClub" class="accent" style="width:100%;margin:8px 0 16px;">Jouer le match</button>
+
+    <h3 style="margin-bottom:6px;">Classement</h3>
+    <div id="clubClassement"></div>
+
+    <h3 style="margin:16px 0 6px;">Effectif</h3>
+    <div id="clubEffectif"></div>
+
+    <h3 style="margin:16px 0 6px;">Calendrier</h3>
+    <div id="clubCalendrier"></div>
+
+    <button id="btnNouvelleSaisonClub" class="alt" style="width:100%;margin-top:16px;">Nouvelle saison (efface la saison en cours)</button>
+  </div>
+
+  <button class="fermer alt" id="fermerClub">Fermer</button>
 </div>
 
 <div class="panneau" id="panneauHistorique">
   <h2>Matchs enregistrés</h2>
   <div id="listeHistorique"><p>Aucun match enregistré pour le moment. Terminez un match puis cliquez sur « Enregistrer le résultat ».</p></div>
   <button class="fermer alt" id="fermerHistorique">Fermer</button>
+</div>
+
+<div class="panneau" id="panneauStats">
+  <h2>Statistiques du match</h2>
+  <div class="enTeteStats"><span>Equipe A</span><span></span><span>Equipe B</span></div>
+  <div id="corpsStats"></div>
+  <button class="fermer alt" id="fermerStats">Fermer</button>
 </div>
 
 <div class="panneau" id="panneauLegende">
@@ -48,6 +97,7 @@
   <p>Coup d'envoi/remise en jeu (loi 12) : après un essai ou une pénalité réussie, c'est l'équipe qui vient d'encaisser les points qui botte depuis la mi-terrain — l'équipe qui a marqué reçoit. Après une pénalité ratée, c'est une remise en jeu aux 22m bottée par l'équipe qui défendait. Dans les deux cas le ballon est réellement disputé en l'air à la réception (icône ✋ si l'équipe qui a botté le récupère elle-même).</p>
   <p>Chaque décision de l'arbitre (pénalité, mêlée, touche, essai, transformation) s'affiche en grand au centre de l'écran pendant 2 secondes, et reste dans le fil d'événements sous le score.</p>
   <p>La barre en dessous du terrain permet de rejouer le match à n'importe quel instant : faites-la glisser pour avancer ou reculer dans le temps, le résultat est toujours identique (le match est déterministe à partir de sa « graine » aléatoire).</p>
+  <p>Le bouton <b>Stats</b> ouvre à tout moment le détail du match : possession, passes réussies, plaquages, mêlées et touches gagnées, mètres gagnés, turnovers... toutes calculées à partir des actions réellement jouées.</p>
   <button class="fermer alt" id="fermerLegende">Fermer</button>
 </div>
 
@@ -58,5 +108,7 @@
 <script src="js/renderer.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/main.js"></script>
+<script src="js/club.js"></script>
+<script src="js/clubUI.js"></script>
 </body>
 </html>

@@ -4,7 +4,7 @@
 (function (global) {
   'use strict';
 
-  const { ICONES, ETATS_MAUL_LABEL, PHASES, TYPES_BANNIERE, CLE_HISTORIQUE } = global.RMConstants;
+  const { ICONES, ETATS_MAUL_LABEL, ETATS_MELEE_LABEL, PHASES, TYPES_BANNIERE, CLE_HISTORIQUE } = global.RMConstants;
 
   function formaterTemps(s) {
     const m = Math.floor(s / 60), sec = Math.floor(s % 60);
@@ -26,13 +26,22 @@
       `Equipe A ${state.score.A} — ${state.score.B} Equipe B`;
     const infosPhase = PHASES[state.phase] || { label: state.phase, couleur: '#455a64' };
     const phaseEl = document.getElementById('phase');
-    // Pendant un maul, afficher l'état détaillé de la machine à états (loi 17).
+    // Pendant un maul ou une mêlée, afficher l'état détaillé de la machine à
+    // états (loi 17 pour le maul, loi 19/20 pour la mêlée).
     phaseEl.textContent = (state.phase === 'MAUL' && state.maul && ETATS_MAUL_LABEL[state.maul.etat])
       ? ETATS_MAUL_LABEL[state.maul.etat]
-      : infosPhase.label;
+      : (state.phase === 'MELEE' && state.melee && ETATS_MELEE_LABEL[state.melee.etat])
+        ? ETATS_MELEE_LABEL[state.melee.etat]
+        : infosPhase.label;
     phaseEl.style.background = infosPhase.couleur;
     document.getElementById('horloge').textContent =
       `${formaterTemps(state.clock.time)} / ${formaterTemps(state.clock.duration === Infinity ? dureeAffichee : state.clock.duration)} · ${state.clock.period === 2 ? '2e pér.' : '1ère pér.'}`;
+
+    // Possession réelle (% du temps de jeu effectif par équipe, cf.
+    // MatchEngine.getState().possessionPct), pas une valeur fixe.
+    const pct = state.possessionPct || { A: 50, B: 50 };
+    document.getElementById('possession').innerHTML =
+      `<span>${pct.A}%</span><span class="barre"><span class="partA" style="width:${pct.A}%"></span><span class="partB" style="width:${pct.B}%"></span></span><span>${pct.B}%</span>`;
 
     const seekEl = document.getElementById('seek');
     if (document.activeElement !== seekEl) seekEl.value = Math.round(state.clock.time);
@@ -71,6 +80,46 @@
     }
 
     document.getElementById('btnSauver').disabled = state.phase !== 'TERMINE';
+  }
+
+  // --- Panneau de statistiques de match (toutes issues de state.stats, donc
+  // des actions réellement produites par la simulation, jamais inventées) ---
+  function ligneStat(label, a, b) {
+    return `<div class="ligneStat"><span class="valA">${a}</span><span class="labelStat">${label}</span><span class="valB">${b}</span></div>`;
+  }
+  function rafraichirPanneauStats(state) {
+    const s = state.stats;
+    if (!s) return;
+    const conteneur = document.getElementById('corpsStats');
+    const pct = state.possessionPct || { A: 50, B: 50 };
+    const occ = state.occupationPct || { A: 50, B: 50 };
+    conteneur.innerHTML =
+      ligneStat('Possession', `${pct.A}%`, `${pct.B}%`) +
+      ligneStat('Occupation', `${occ.A}%`, `${occ.B}%`) +
+      ligneStat('Essais', s.A.essais, s.B.essais) +
+      // Statistiques alignées sur les définitions officielles World Rugby
+      // (game analysis) — toutes issues d'actions réelles de la simulation.
+      ligneStat('Passes réussies', `${s.A.passes}/${s.A.passesTentees}`, `${s.B.passes}/${s.B.passesTentees}`) +
+      ligneStat('Offloads', s.A.offloads, s.B.offloads) +
+      ligneStat('Courses (au contact)', s.A.carries, s.B.carries) +
+      ligneStat('Mètres gagnés', Math.round(s.A.metresGagnes), Math.round(s.B.metresGagnes)) +
+      ligneStat('Défenseurs battus', s.A.defenseursBattus, s.B.defenseursBattus) +
+      ligneStat('Franchissements', s.A.franchissements, s.B.franchissements) +
+      ligneStat('Coups de pied', s.A.kicks, s.B.kicks) +
+      ligneStat('Coups de pied regagnés', s.A.kicksRegagnes, s.B.kicksRegagnes) +
+      ligneStat('Sorties de camp (ratées)', `${s.A.exits} (${s.A.exitsRates})`, `${s.B.exits} (${s.B.exitsRates})`) +
+      ligneStat('Plaquages réussis', `${s.A.tacklesMade}/${s.A.tacklesAttempted}`, `${s.B.tacklesMade}/${s.B.tacklesAttempted}`) +
+      ligneStat('Plaquages manqués', s.A.missedTackles, s.B.missedTackles) +
+      ligneStat('Phases jouées', s.A.phases, s.B.phases) +
+      ligneStat('Rucks', s.A.rucks, s.B.rucks) +
+      ligneStat('Mauls', s.A.mauls, s.B.mauls) +
+      ligneStat('Mêlées gagnées', `${s.A.scrumsGagnes}/${s.A.scrums + s.B.scrums}`, `${s.B.scrumsGagnes}/${s.A.scrums + s.B.scrums}`) +
+      ligneStat('Touches gagnées', `${s.A.lineoutsGagnes}/${s.A.lineouts + s.B.lineouts}`, `${s.B.lineoutsGagnes}/${s.A.lineouts + s.B.lineouts}`) +
+      ligneStat('Turnovers gagnés', s.A.turnovers, s.B.turnovers) +
+      ligneStat('Turnovers concédés', s.A.turnoversConcedes, s.B.turnoversConcedes) +
+      ligneStat('En-avants', s.A.knockOns, s.B.knockOns) +
+      ligneStat('Pénalités concédées', s.A.penalitesConcedees, s.B.penalitesConcedees) +
+      ligneStat('Cartons jaunes', s.A.cartonsJaunes, s.B.cartonsJaunes);
   }
 
   // --- Historique des résultats (localStorage), pour rejouer un match déjà joué ---
@@ -115,5 +164,6 @@
   global.RMUI = {
     formaterTemps, majAffichage, reinitialiserSuivi,
     chargerHistorique, rafraichirPanneauHistorique, enregistrerResultat,
+    rafraichirPanneauStats,
   };
 })(window);

@@ -32,7 +32,13 @@
   function probaReussiteTir(distanceM, offsetLateralM) {
     const distanceReelle = Math.hypot(distanceM, offsetLateralM);
     const angleDeg = Math.abs(Math.atan2(offsetLateralM, Math.max(distanceM, 0.01))) * 180 / Math.PI;
-    return Math.max(0.05, Math.min(0.92, 0.97 - distanceReelle / 90 - angleDeg / 110));
+    // Taux de réussite calibrés sur les BUTEURS PROFESSIONNELS (cf. données
+    // réelles transientlunatic/Rugby-Data : ~48,5 pts/match, dont une grande part
+    // au pied). L'ancienne formule (base 0.97, dist/90, angle/110) donnait ~27 %
+    // de réussite en moyenne — bien trop sévère : la sim marquait ~32 pts/match
+    // au lieu de ~48. Un vrai buteur réussit ~90 % d'un tir central court, ~72 %
+    // à 40 m dans l'axe, ~45 % d'une transformation grand large.
+    return Math.max(0.3, Math.min(0.96, 1.05 - distanceReelle / 150 - angleDeg / 160));
   }
 
   // --- Profils d'attributs par numéro de maillot (1-15) ---
@@ -65,14 +71,209 @@
     9: 35, 10: 31, 11: 7, 12: 26, 13: 44, 14: 63, 15: 35,
   };
 
-  function creerJoueur(numero, team, sensAttaque, rng) {
+  // === Configuration paramétrable avant le match ============================
+  // Toutes les valeurs réglables (caractéristiques des joueurs, combinaisons de
+  // touche, sorties de mêlée, organisation attaque/défense) sont regroupées ici
+  // sous forme d'objet simple. Le moteur lit CETTE config (this.cfg), pas des
+  // constantes en dur : on peut donc la surcharger avant le match via
+  // `new MatchEngine(seed, duree, config)` (cf. docs/rugby-config.json chargé par
+  // l'interface). Les valeurs par défaut ci-dessous reproduisent exactement le
+  // comportement historique.
+  const DEFAULT_CONFIG = {
+    // Caractéristiques de chaque joueur (par numéro de maillot) : poste, vitesse,
+    // plaquage (proxy de puissance), tendance (proximité au ballon), couloir
+    // latéral au repos (0-70). Dérivées des profils/couloirs historiques.
+    // `joueurs` s'applique aux DEUX équipes si `joueursA`/`joueursB` ne sont pas
+    // fournis (comportement historique inchangé) — utile pour le mode club
+    // (deux effectifs différents, cf. constructeur MatchEngine) sans rien
+    // casser des usages existants (démo, harnais serveur) qui ne passent qu'une
+    // config partagée ou aucune config.
+    joueurs: (() => {
+      const j = {};
+      for (let n = 1; n <= 15; n++) {
+        j[n] = {
+          poste: PROFILS[n].label,
+          vitesse: PROFILS[n].vitesse,
+          plaquage: PROFILS[n].plaquage,
+          tendance: PROFILS[n].tendance,
+          couloir: COULOIR_BASE[n],
+        };
+      }
+      return j;
+    })(),
+    // Touche (loi 18) : qui lance, quels sauteurs sont dans les appels possibles,
+    // espacement de l'alignement, recul du receveur (n°9), et probabilité de
+    // former un maul (catch-and-drive) selon la zone.
+    touche: {
+      lanceur: 2,
+      sauteurs: [4, 5, 6, 7, 8],
+      espacementSauteurs: 1.4,
+      reculReceveur: 4,
+      offsideNonParticipants: 10,
+      tauxMaul: { proche: 0.45, loin: 0.08 },
+    },
+    // Mêlée (loi 19) : recul réglementaire des trois-quarts, et probabilité que
+    // le n°8 sorte le ballon au pied (pick-and-go) plutôt que le 9, selon la
+    // domination de la poussée.
+    melee: {
+      reculTroisQuarts: 7.5,
+      pickAndGoHuit: { dominant: 0.35, normal: 0.12 },
+    },
+    // Organisation d'attaque : taux de jeu au large (écarter vers le centre en
+    // espace) sous pression / au calme. Cadence ~1 passe/s max : un receveur
+    // LANCÉ (cf. placement profond + élan) fait d'abord 3-5 foulées ballon en
+    // main (~1 s, 5-6 m) avant de servir le suivant — à 2,5/s il lâchait le
+    // ballon en ~0,4 s sans jamais manger sa piste d'élan, et la ligne reculait.
+    attaque: {
+      // Cadence relevée (1,4/1,0 -> 1,7/1,3) pour SOUTENIR LA CHAÎNE de passes
+      // courtes le long de la ligne : mesuré, seulement 29 % des séquences
+      // atteignaient 3 passes (le ballon n'était « jamais écarté ») — la
+      // diagonale d'attaque donne la profondeur, la cadence fait circuler.
+      jeuLargeTaux: { pression: 1.7, calme: 1.3 },
+      // x2 : une équipe réelle botte toutes les ~3 courses (France-Irlande
+      // 2026 : 78 coups de pied / 255 courses) — c'est le régulateur n°1 de la
+      // longueur des possessions. Retenu par balayage : x1 laissait des
+      // possessions interminables (60 coups de pied, 579 rucks), x3 débordait
+      // le réel (141 coups de pied) en écrasant le score.
+      tauxJeuAuPied: 2,
+    },
+    // Organisation de défense : profondeur de couverture de l'arrière (n°15) en
+    // jeu courant et à la mêlée, recul de la ligne au ruck. rampeMontee =
+    // secondes de mise en route de la montée défensive à chaque temps de jeu
+    // (la ligne se réorganise après chaque regroupement avant de monter à
+    // pleine vitesse) ; 0 = montée immédiate. Calibré par balayage de
+    // simulations face au France-Irlande 2026 (cf. docs/ANALYSE_MATCH_REEL.md).
+    defense: {
+      profondeurArriereJeu: 18,
+      profondeurArriereMelee: 20,
+      reculRuck: 3,
+      // Retenu par balayage : 2,5 s de mise en route de la montée par temps de
+      // jeu — le porteur lancé court 5-8 m avant le contact comme en vrai, le
+      // score remonte au niveau réel (~46) et les volumes baissent de ~40 %.
+      rampeMontee: 2.5,
+    },
+    // Profil des durées de recyclage de ruck : liste de paliers
+    // [part, minimum(s), étendue(s)] — la part est la fraction des rucks tirée
+    // dans ce palier, la durée = minimum + alea*étendue. Référence réelle
+    // (France-Irlande 2026) : ~52-63 % des rucks en moins de 3 s, ~21-33 % en
+    // 3-6 s, le reste au-delà. Calibré par balayage (cf. ANALYSE_MATCH_REEL.md).
+    ruck: {
+      // Profil RÉEL retenu par balayage : ~55 % des rucks en 1,5-3 s (ballon
+      // rapide), ~33 % en 3-6 s, ~12 % en 6-8 s — exactement la distribution
+      // mesurée au France-Irlande 2026 (52-63 % / 21-33 % / reste). Le profil
+      // « éclair » précédent (70 % sous 1,6 s, 91 % sous 3 s) n'existe dans
+      // aucun vrai match, même chez la France, l'équipe la plus rapide au monde
+      // à ce poste. La transmission du 9 reste immédiate (0,2 s) une fois le
+      // ballon sorti : c'est le regroupement qui respire, pas la passe.
+      profil: [[0.55, 1.5, 1.5], [0.33, 3.0, 3.0], [0.12, 6.0, 2.0]],
+    },
+    // COMBINAISONS (playbook) : mouvements scriptés joués sur une sortie de
+    // regroupement (mêlée / touche). Chaque combinaison est une SUITE D'ÉTAPES,
+    // chaque étape = une passe d'un joueur (numéro) à un autre, avec un type de
+    // ligne du RECEVEUR :
+    //   - "droit"  : le receveur continue tout droit ;
+    //   - "croise" : le receveur CHANGE de direction et croise en sens inverse
+    //                (mouvement de "une-deux" croisé, ex. le 12 revient à
+    //                l'intérieur derrière l'ouvreur) ;
+    //   - "saute"  : passe sautée (on saute un joueur pour aller plus au large).
+    // `proba` = probabilité qu'une combinaison soit jouée à la sortie (sinon jeu
+    // libre) ; chaque combinaison a un `poids` pour le tirage pondéré.
+    combinaisons: {
+      proba: 0.5,
+      // Listes PARTAGÉES (défaut pour les deux équipes). On peut aussi définir
+      // un playbook propre à une équipe via une clé "A" / "B" (cf. exemple A
+      // ci-dessous) : { A: { melee: [...], touche: [...] } }.
+      melee: [
+        {
+          nom: '9-10-croise-12',
+          poids: 1,
+          etapes: [
+            { action: 'passe', de: 9, vers: 10 },
+            { action: 'passe', de: 10, vers: 12, ligne: 'croise' },
+          ],
+        },
+        {
+          nom: '9-10-large-13',
+          poids: 1,
+          etapes: [
+            { action: 'passe', de: 9, vers: 10 },
+            { action: 'passe', de: 10, vers: 12 },
+            { action: 'passe', de: 12, vers: 13 },
+          ],
+        },
+        {
+          // Combinaison de ZONE : seulement dans les 22 m adverses. Le 10 tape une
+          // chandelle par-dessus la défense (à récupérer par les chasseurs).
+          nom: '9-10-chandelle-22',
+          poids: 1,
+          zone: ['OPP_22', 'CINQ_M'],
+          etapes: [
+            { action: 'passe', de: 9, vers: 10 },
+            { action: 'pied', de: 10, type: 'CHANDELLE' },
+          ],
+        },
+      ],
+      touche: [
+        {
+          nom: '9-10-saute-13',
+          poids: 1,
+          etapes: [
+            { action: 'passe', de: 9, vers: 10 },
+            { action: 'passe', de: 10, vers: 13, ligne: 'saute' },
+          ],
+        },
+        {
+          // Boucle : le 10 donne au 12 qui repart à l'extérieur (le 10 boucle).
+          nom: '9-10-boucle-12',
+          poids: 1,
+          etapes: [
+            { action: 'passe', de: 9, vers: 10 },
+            { action: 'passe', de: 10, vers: 12, ligne: 'boucle' },
+          ],
+        },
+      ],
+      // Playbook SPÉCIFIQUE à l'équipe A (exemple) : à la mêlée, A privilégie une
+      // sortie 8->9->10->13 sautée. Si une clé d'équipe existe pour un type, elle
+      // REMPLACE la liste partagée pour cette équipe.
+      A: {
+        melee: [
+          {
+            nom: 'A-9-10-saute-13',
+            poids: 1,
+            etapes: [
+              { action: 'passe', de: 9, vers: 10 },
+              { action: 'passe', de: 10, vers: 13, ligne: 'saute' },
+            ],
+          },
+        ],
+      },
+    },
+  };
+
+  // Fusion profonde d'une config partielle par-dessus les valeurs par défaut :
+  // l'utilisateur ne fournit que ce qu'il veut changer, le reste garde le défaut.
+  function fusionnerConfig(base, surcharge) {
+    const out = Array.isArray(base) ? base.slice() : Object.assign({}, base);
+    if (!surcharge || typeof surcharge !== 'object') return out;
+    for (const k of Object.keys(surcharge)) {
+      const v = surcharge[k];
+      out[k] = (v && typeof v === 'object' && !Array.isArray(v) && base && typeof base[k] === 'object' && !Array.isArray(base[k]))
+        ? fusionnerConfig(base[k], v)
+        : v;
+    }
+    return out;
+  }
+
+  function creerJoueur(numero, team, sensAttaque, rng, joueursCfg) {
+    const c = (joueursCfg && joueursCfg[numero]) || {};
     const p = PROFILS[numero];
-    const channelY = COULOIR_BASE[numero] * (LARGEUR / 70);
+    const couloir = c.couloir != null ? c.couloir : COULOIR_BASE[numero];
+    const channelY = couloir * (LARGEUR / 70);
     return {
-      team, numero, label: p.label,
-      vitesse: p.vitesse + (rng() * 10 - 5),
-      plaquage: p.plaquage + (rng() * 10 - 5),
-      tendance: p.tendance,
+      team, numero, label: c.poste || p.label,
+      vitesse: (c.vitesse != null ? c.vitesse : p.vitesse) + (rng() * 10 - 5),
+      plaquage: (c.plaquage != null ? c.plaquage : p.plaquage) + (rng() * 10 - 5),
+      tendance: c.tendance != null ? c.tendance : p.tendance,
       channelY,
       x: 0, y: channelY,
       auSol: 0,
@@ -87,26 +288,69 @@
       // quoi le défenseur qui vient de sortir du ruck, resté au même endroit, plaque
       // le porteur suivant dès la première fraction de seconde de jeu courant.
       ruckRecovery: 0,
+      // Temps restant au "bin" après un carton jaune : tant qu'il est > 0, ce
+      // joueur est exclu de attaquants()/defenseurs() (son équipe joue à 14),
+      // conformément à la sanction réelle plutôt qu'un carton purement
+      // cosmétique sans effet sur le jeu.
+      sinBin: 0,
       sensAttaque,
     };
   }
 
-  function creerEquipe(team, sensAttaque, rng) {
+  function creerEquipe(team, sensAttaque, rng, joueursCfg) {
     const joueurs = [];
-    for (let n = 1; n <= 15; n++) joueurs.push(creerJoueur(n, team, sensAttaque, rng));
+    for (let n = 1; n <= 15; n++) joueurs.push(creerJoueur(n, team, sensAttaque, rng, joueursCfg));
     return joueurs;
   }
 
+  // Multiplicateur de fatigue du tick courant (1 au coup d'envoi, ~0,9 à la 80e) :
+  // tous les joueurs courent un peu moins vite en fin de match. Positionné en début
+  // de tick() ; s'applique aux DEUX équipes (donc n'avantage personne — c'est le
+  // RYTHME qui baisse et le jeu qui s'ouvre en fin de match, comme en vrai).
+  let _fatigueVitesse = 1;
+
   function vitesseMs(j) {
-    return 3.0 + (Math.max(0, Math.min(100, j.vitesse)) / 100) * 5.0;
+    return (3.0 + (Math.max(0, Math.min(100, j.vitesse)) / 100) * 5.0) * _fatigueVitesse;
   }
+
+  // Regroupement INFRANCHISSABLE du tick courant (mêlée / ruck / maul) : on ne le
+  // traverse pas. Positionné en début de tick() selon la phase, remis à null hors
+  // regroupement. Partagé au niveau du module (avancer n'est pas une méthode) ;
+  // sûr car chaque tick le (re)définit et avancer n'est appelé que pendant un tick.
+  let _obstacle = null;
 
   function avancer(j, dx, dy, dt, vmax) {
     const d = Math.hypot(dx, dy);
     if (d < 0.01) return;
     const pas = Math.min(d, vmax * dt);
-    j.x += (dx / d) * pas;
-    j.y += (dy / d) * pas;
+    let ux = dx / d, uy = dy / d;
+    // Contournement du regroupement : un joueur ne TRAVERSE pas une mêlée/ruck/maul.
+    // On ne dévie QUE celui qui veut passer DE L'AUTRE CÔTÉ (sa cible est au-delà du
+    // regroupement) ; celui qui s'y ENGAGE (cible À L'INTÉRIEUR) n'est pas dévié —
+    // sinon les soutiens ne pourraient jamais venir sécuriser le ballon. Le joueur
+    // dévié glisse tangentiellement autour du cercle (« il fait le tour »).
+    if (_obstacle) {
+      const ox = _obstacle.x, oy = _obstacle.y, r = _obstacle.r;
+      const cibleDist = Math.hypot((j.x + dx) - ox, (j.y + dy) - oy);
+      const posDist = Math.hypot(j.x - ox, j.y - oy);
+      if (cibleDist >= r && posDist >= r * 0.85) {
+        const seg2 = dx * dx + dy * dy;
+        let tc = ((ox - j.x) * dx + (oy - j.y) * dy) / (seg2 || 1);
+        tc = Math.max(0, Math.min(1, tc));
+        const closest = Math.hypot((j.x + tc * dx) - ox, (j.y + tc * dy) - oy);
+        if (closest < r) {
+          const nx = (j.x - ox) / (posDist || 1), ny = (j.y - oy) / (posDist || 1);
+          // tangente du côté qui rapproche le plus de la cible
+          const useT1 = (-ny * ux + nx * uy) >= (ny * ux - nx * uy);
+          const tanx = useT1 ? -ny : ny, tany = useT1 ? nx : -nx;
+          const push = posDist < r ? 1 : 0.25; // ressort vers l'extérieur si déjà au bord
+          ux = tanx + nx * push; uy = tany + ny * push;
+          const n = Math.hypot(ux, uy) || 1; ux /= n; uy /= n;
+        }
+      }
+    }
+    j.x += ux * pas;
+    j.y += uy * pas;
     j.x = Math.max(0, Math.min(LONGUEUR, j.x));
     j.y = Math.max(0, Math.min(LARGEUR, j.y));
   }
@@ -120,7 +364,7 @@
     return { joueur: meilleur, distance: meilleureDist };
   }
 
-  // --- Maul (loi 17) : machine à états ---------------------------------------
+  // --- Maul (loi 16) : machine à états ---------------------------------------
   // Le maul traverse une suite d'états bien définis, de sa formation à sa fin,
   // exactement comme l'arbitrage réel d'un maul (formation, avancée, arrêts
   // successifs, « use it », ballon injouable, écroulement). L'état est porté par
@@ -146,6 +390,21 @@
     return base + (j.plaquage - 60) * 0.3;
   }
 
+  // --- Mêlée (lois 19/20) : machine à états -----------------------------------
+  // Comme le maul (ETATS_MAUL ci-dessus), la mêlée traverse une vraie séquence
+  // arbitrale (placement, "Crouch"/"Bind"/"Set", introduction, contestation,
+  // sortie de balle) au lieu d'un tirage aléatoire instantané. L'état est porté
+  // par `engine.melee.etat`, la phase moteur restant 'MELEE'.
+  const ETATS_MELEE = {
+    FORMATION: 'MELEE_FORMATION',
+    CROUCH: 'MELEE_CROUCH',
+    BIND: 'MELEE_BIND',
+    SET: 'MELEE_SET',
+    INTRODUCTION: 'MELEE_INTRODUCTION',
+    CONTESTATION: 'MELEE_CONTESTATION',
+    SORTIE: 'MELEE_SORTIE',
+  };
+
   // --- Arbitre : applique de vraies règles plutôt que de laisser le jeu continuer
   // sans contrainte. Chaque méthode renvoie une infraction ou null. ---
   const Referee = {
@@ -167,7 +426,7 @@
       if (sensAttaqueAdverse > 0) return defenseur.x < ruckPoint.x - marge;
       return defenseur.x > ruckPoint.x + marge;
     },
-    // Décision : un maul est-il valablement formé (loi 17) ? Il faut le porteur
+    // Décision : un maul est-il valablement formé (loi 16) ? Il faut le porteur
     // debout, au moins un adversaire lié et debout, au moins un coéquipier lié,
     // le ballon en main (pas au sol) et l'action dans le champ de jeu.
     maulForme(porteur, adversaireLie, coequipierLie) {
@@ -193,7 +452,11 @@
   class MatchEngine {
     // dureeMatch (secondes de jeu simulées) optionnel : Infinity par défaut pour ne
     // pas casser les usages existants (tests headless, qui veulent un flux continu).
-    constructor(seed, dureeMatch = Infinity) {
+    constructor(seed, dureeMatch = Infinity, config = null) {
+      // Config paramétrable avant le match (caractéristiques joueurs, touche,
+      // mêlée, attaque, défense) fusionnée par-dessus les défauts : cf.
+      // DEFAULT_CONFIG. `null` => comportement historique exact.
+      this.cfg = fusionnerConfig(DEFAULT_CONFIG, config);
       this.rng = creerRng(seed >>> 0 || 1);
       this.score = { A: 0, B: 0 };
       this.events = [];
@@ -219,15 +482,50 @@
       this.ballonVolX = LONGUEUR / 2;
       this.ballonVolY = LARGEUR / 2;
       this.ballonVolHauteur = 0;
-      // Maul (loi 17) : objet d'état courant (null hors maul), et indicateur
+      // Ballon au sol après un coup de pied tactique, pas encore récupéré :
+      // les chasseurs/receveurs doivent réellement courir jusqu'au point de
+      // chute (cf. _tickReceptionCoupDePied) avant qu'un joueur ne soit
+      // déclaré porteur, jamais une téléportation instantanée.
+      this._receptionEnAttente = false;
+      this.timerReceptionAuSol = 0;
+      // Lancer de touche en cours (loi 18) : pendant que le ballon vole du
+      // lanceur vers le sauteur, on stocke ici la cible et l'issue déjà
+      // décidée ; null hors lancer. Évite que le ballon "saute" instantanément
+      // de la ligne de touche jusque dans l'alignement (cf. _tickToucheLancer).
+      this.toucheLancer = null;
+      // Vol visuel d'une passe en jeu courant : le ballon décrit un court arc
+      // du passeur au receveur au lieu de "sauter" instantanément. Purement
+      // visuel (la possession change tout de suite côté logique), null hors
+      // passe. Cf. _lancerPasseVisuelle / getState.
+      this.passeVisuelle = null;
+      // Coups de pied au but (pénalité / transformation) : passe à true une fois
+      // que TOUS les joueurs ont fini de se replacer. Tant que c'est false, la
+      // frappe n'est pas armée (on ne peut pas botter tant que le replacement
+      // n'est pas terminé) ; une fois true, les joueurs ne bougent plus —
+      // notamment au moment du tir. Remis à false à chaque nouveau coup de pied.
+      this.tirEnPlace = false;
+      this.transfoEnPlace = false;
+      // Maul (loi 16) : objet d'état courant (null hors maul), et indicateur
       // « le ballon vient d'une réception directe d'un coup de pied adverse »
-      // (exception loi 8 sur l'attribution de la mêlée en cas de ballon injouable).
+      // (exception loi 19 sur l'attribution de la mêlée en cas de ballon injouable).
       this.maul = null;
       this._receptionDirecte = false;
+      // Avantage (loi 8) : objet d'état courant (null hors avantage). Quand une
+      // équipe commet une faute, l'arbitre laisse jouer l'équipe non fautive et
+      // ne siffle la sanction que si celle-ci n'en tire rien. Stocke la sanction
+      // en attente, le bénéficiaire, la marque et le repère de progression.
+      this.avantage = null;
+      // Position courante de l'arbitre (entité qui se déplace, jamais
+      // téléportée) : il court vers sa cible chaque tick (cf. _majArbitre).
+      this.arbitrePos = { x: LONGUEUR / 2, y: LARGEUR / 2 };
       // Compteur d'infractions de maul par équipe sur l'ensemble du match
       // (persiste d'un maul à l'autre) : sert à siffler un carton jaune pour
       // fautes répétées, comme l'arbitrage réel.
       this._maulPenalitesMatch = { A: 0, B: 0 };
+      // Mêlée (lois 19/20) : objet d'état courant (null hors mêlée), et même
+      // compteur d'infractions répétées par équipe que le maul ci-dessus.
+      this.melee = null;
+      this._meleePenalitesMatch = { A: 0, B: 0 };
       this._sequenceEvenement = 0;
       // Statistiques agrégées du match, calibrage du jeu (pas un affichage
       // décoratif) : chaque compteur n'est incrémenté qu'au moment réel où
@@ -238,16 +536,38 @@
         A: this._statsVierges(), B: this._statsVierges(),
       };
       this.tempsJeuEffectif = 0;
+      // Temps de possession réel par équipe (ballon vivant uniquement, même
+      // condition que tempsJeuEffectif) : sert à calculer un % de possession
+      // basé sur le temps de jeu effectif, pas sur un compteur d'événements.
+      this.tempsPossession = { A: 0, B: 0 };
+      // Occupation territoriale (où se joue le match), distincte de la
+      // possession (qui porte le ballon) : cf. tick().
+      this.tempsOccupation = { A: 0, B: 0 };
       this._nouvelleManche('A');
       this.equipeKickPremiereMiTemps = this._dernierEquipeKick;
     }
 
+    // Statistiques de match, alignées sur les définitions officielles World Rugby
+    // (game analysis). Toutes dérivées d'ACTIONS RÉELLES de la simulation, jamais
+    // fabriquées. Correspondance documentée dans docs/REGLES_RUGBY.md.
+    //  - carries          : ballons portés AU CONTACT (le porteur engage le contact) ;
+    //  - passes / passesTentees / offloads : passes réussies / tentées / dans le plaquage ;
+    //  - tacklesMade / missedTackles       : plaquages réussis / manqués (côté défense) ;
+    //  - defenseursBattus : défenseurs BATTUS (côté attaque = plaquage manqué subi par la défense) ;
+    //  - turnovers / turnoversConcedes      : ballons GAGNÉS / PERDUS (perte de possession en jeu) ;
+    //  - phases           : phases jouées (nombre de rucks + mauls de la possession) ;
+    //  - kicks            : coups de pied en jeu ; metresGagnes : mètres gagnés ballon en main.
     _statsVierges() {
       return {
-        essais: 0, carries: 0, passes: 0, offloads: 0, kicks: 0,
-        tacklesAttempted: 0, tacklesMade: 0, missedTackles: 0,
-        rucks: 0, lineouts: 0, lineoutsGagnes: 0, scrums: 0, mauls: 0,
-        penalitesConcedees: 0, turnovers: 0, knockOns: 0,
+        essais: 0, carries: 0, passes: 0, passesTentees: 0, offloads: 0, kicks: 0,
+        tacklesAttempted: 0, tacklesMade: 0, missedTackles: 0, defenseursBattus: 0,
+        rucks: 0, lineouts: 0, lineoutsGagnes: 0, scrums: 0, scrumsGagnes: 0, mauls: 0, phases: 0,
+        penalitesConcedees: 0, turnovers: 0, turnoversConcedes: 0, knockOns: 0, cartonsJaunes: 0, metresGagnes: 0,
+        // Motifs de jeu discriminants (d'apres l'etude rorybunker/rugby-sequences,
+        // qui identifie franchissements, touches gagnees, coups de pied regagnes,
+        // jeu multi-phases et sorties de camp comme les motifs qui distinguent le
+        // mieux marquer vs encaisser). Tous derives d'actions reelles.
+        franchissements: 0, kicksRegagnes: 0, exits: 0, exitsRates: 0,
       };
     }
 
@@ -270,23 +590,77 @@
     _nouvelleManche(equipeReceptrice, xCentre = LONGUEUR / 2) {
       const sens = { A: 1, B: -1 };
       this.maul = null;
+      this.melee = null;
+      this.penaliteRecul = null;
+      this.ruckDominant = false;
+      this.combinaison = null;
       this._receptionDirecte = false;
-      this.equipeA = creerEquipe('A', sens.A, this.rng);
-      this.equipeB = creerEquipe('B', sens.B, this.rng);
+      // Toute reprise (coup d'envoi après essai/pénalité/22 m) annule un avantage
+      // éventuellement en cours : on repart sur une nouvelle séquence de jeu.
+      this.avantage = null;
+      // Un carton jaune en cours (sinBin > 0) doit survivre au redémarrage de
+      // manche : sans ce report, l'exclusion de 10 min (loi 9.29) serait
+      // effacée dès le prochain essai/pénalité/mi-temps, ce qui annule la
+      // sanction au lieu de l'appliquer.
+      // On mémorise le sin-bin ET la POSITION de chaque joueur avant de recréer les
+      // équipes : sinon les nouveaux objets repartaient à (0, channelY) — les
+      // joueurs « sautaient » sur la ligne d'en-but (téléportation à chaque
+      // reprise). On restaure leur position réelle ; ils rejoignent ensuite leur
+      // place de coup d'envoi EN COURANT (cf. _cibleEnvoi / _tickCoupEnvoi).
+      const sinBinRestant = new Map();
+      const posRestante = new Map();
+      const avaitEquipes = !!(this.equipeA && this.equipeA.length);
+      for (const j of (this.equipeA || []).concat(this.equipeB || [])) {
+        if (j.sinBin > 0) sinBinRestant.set(j.team + '-' + j.numero, j.sinBin);
+        posRestante.set(j.team + '-' + j.numero, { x: j.x, y: j.y });
+      }
+      this.equipeA = creerEquipe('A', sens.A, this.rng, this.cfg.joueursA || this.cfg.joueurs);
+      this.equipeB = creerEquipe('B', sens.B, this.rng, this.cfg.joueursB || this.cfg.joueurs);
+      for (const j of [...this.equipeA, ...this.equipeB]) {
+        const restant = sinBinRestant.get(j.team + '-' + j.numero);
+        if (restant) j.sinBin = restant;
+        const p = posRestante.get(j.team + '-' + j.numero);
+        if (p) { j.x = p.x; j.y = p.y; } // continuité : on garde la position d'avant la reprise
+      }
       const equipeKick = equipeReceptrice === 'A' ? 'B' : 'A';
       this._dernierEquipeKick = equipeKick;
       const dirKick = sens[equipeKick];
+      // Réception du coup d'envoi : défense ÉTAGÉE en profondeur (loi 12), pas
+      // une seule ligne massée sur les 10 m. Sans étagement, un coup d'envoi long
+      // tombait derrière tout le monde, personne pour le réceptionner.
+      //  - Avants (1-8) : 1ʳᵉ ligne sur la ligne des 10 m (capter/contester les
+      //    coups courts, monter au plaquage).
+      //  - 9,10,12,13 : 2ᵉ rideau ~18 m.
+      //  - Ailiers (11,14) : autour de la ligne des 22 m (~30 m du centre),
+      //    écartés sur les bords.
+      //  - Arrière (15) : couverture PROFONDE, ENTRE LES 22 M ET L'EN-BUT
+      //    (~38 m du centre), au milieu — le dernier rideau qui cueille les
+      //    longs coups de pied. (La ligne des 22 m est à 28 m du centre.)
+      const profondeurReception = (n) => {
+        if (n <= 8) return 10;
+        if (n === 15) return 38;
+        if (n === 11 || n === 14) return 30;
+        return 18;
+      };
+      // Les joueurs ne sont PLUS téléportés à leur place de coup d'envoi : on
+      // mémorise leur position CIBLE et ils s'y rendent EN COURANT pendant la mise
+      // en place (cf. _tickCoupEnvoi, phase envoiEnPlace). Après un essai, on voit
+      // donc les joueurs regagner le milieu de terrain à la course, comme en vrai,
+      // au lieu de « sauter » d'un bout à l'autre du terrain (téléportation).
       for (const j of [...this.equipeA, ...this.equipeB]) {
-        if (j.team === equipeKick) {
-          j.x = Math.max(0, Math.min(LONGUEUR, xCentre - dirKick * (j.numero <= 8 ? 2 : 6)));
-        } else {
-          j.x = Math.max(0, Math.min(LONGUEUR, xCentre + dirKick * (10 + (j.numero <= 8 ? 0 : 6))));
-        }
-        j.y = j.channelY;
+        const cx = j.team === equipeKick
+          ? Math.max(0, Math.min(LONGUEUR, xCentre - dirKick * (j.numero <= 8 ? 2 : 6)))
+          : Math.max(0, Math.min(LONGUEUR, xCentre + dirKick * profondeurReception(j.numero)));
+        j._cibleEnvoi = { x: cx, y: j.channelY };
+        if (!avaitEquipes) { j.x = cx; j.y = j.channelY; } // 1er coup d'envoi du match : placement direct
       }
       const kickeur = (equipeKick === 'A' ? this.equipeA : this.equipeB)[9]; // ouvreur, n.10
-      kickeur.x = xCentre;
-      kickeur.y = LARGEUR / 2;
+      kickeur._cibleEnvoi = { x: xCentre, y: LARGEUR / 2 };
+      if (!avaitEquipes) { kickeur.x = xCentre; kickeur.y = LARGEUR / 2; }
+      // Mise en place : au coup d'envoi d'ouverture, les joueurs sont déjà placés ;
+      // sinon (reprise après un score) ils COURENT rejoindre leur poste depuis leur
+      // position réelle (pas de téléportation), cf. _tickCoupEnvoi.
+      this.envoiEnPlace = !avaitEquipes;
       this.possession = equipeKick;
       this.porteur = kickeur;
       this.equipeReceptriceAttendue = equipeReceptrice;
@@ -301,7 +675,7 @@
       // Coup d'envoi profond : botté loin vers les 22 m adverses pour mettre la
       // pression sur la réception (au prix d'une chasse plus difficile). C'est
       // le seul cas où le receveur capte le ballon dans son propre en-deçà des
-      // 22 m et peut donc demander une marque (loi 11).
+      // 22 m et peut donc demander une marque (loi 17).
       this.coupEnvoiProfond = !this.coupEnvoiCourt && this.rng() < 0.18;
       this.ballonCibleX = this.coupEnvoiCourt
         ? Math.max(0, Math.min(LONGUEUR, xCentre + dirKick * (3 + this.rng() * 6)))
@@ -328,6 +702,26 @@
     // réellement disputé en l'air, pas une simple remise en main.
     _tickCoupEnvoi(dt) {
       this.timerPhase += dt;
+      // MISE EN PLACE : après un essai/une pénalité, les joueurs REJOIGNENT le
+      // milieu de terrain EN COURANT (cf. _nouvelleManche, positions cibles), au
+      // lieu d'y être téléportés. Le ballon reste tenu par le botteur tant que la
+      // ligne n'est pas prête ; on botte dès que tout le monde est à peu près en
+      // place (ou au plus tard après ~8 s, pour ne jamais bloquer le match).
+      if (!this.envoiEnPlace) {
+        let pireEcart = 0;
+        for (const j of [...this.equipeA, ...this.equipeB]) {
+          if (!j._cibleEnvoi) continue;
+          avancer(j, j._cibleEnvoi.x - j.x, j._cibleEnvoi.y - j.y, dt, vitesseMs(j));
+          pireEcart = Math.max(pireEcart, Math.hypot(j._cibleEnvoi.x - j.x, j._cibleEnvoi.y - j.y));
+        }
+        this.ballonEnVol = false; // le ballon est tenu par le botteur, pas encore botté
+        if (pireEcart < 2 || this.timerPhase > 8) {
+          this.envoiEnPlace = true;
+          this.timerPhase = 0; // le vol du ballon repart de zéro une fois en place
+          for (const j of [...this.equipeA, ...this.equipeB]) j._cibleEnvoi = null;
+        }
+        return;
+      }
       // Le ballon est botté : il file nettement plus vite qu'un joueur ne court
       // (~18 m/s contre ~7-9 m/s), c'est tout l'intérêt du coup de pied. La durée
       // de vol découle donc de la distance bottée et d'une vitesse de ballon
@@ -383,11 +777,11 @@
         const { joueur: chasseurProche, distance: distChasseur } = joueurLePlusProche(chasseurs, this.ballonCibleX, this.ballonCibleY);
         const chasseurGagne = distChasseur < 3 && this.rng() < 0.15;
         const joueur = chasseurGagne ? chasseurProche : receveurProche;
-        // Le réceptionneur capte le ballon là où il retombe : on le place au
-        // point de chute (sinon, avec un vol court et rapide, il pourrait ne pas
-        // l'avoir encore rejoint, ce qui fausserait notamment la zone de marque).
-        joueur.x = this.ballonCibleX;
-        joueur.y = this.ballonCibleY;
+        // Le réceptionneur capte le ballon LÀ OÙ IL EST (le joueur le plus proche
+        // du point de chute) : on ne le TÉLÉPORTE PLUS au point de chute (ça le
+        // faisait « sauter » de quelques mètres). Le ballon vient à lui — le léger
+        // écart entre le point de chute et le receveur est absorbé par
+        // l'interpolation du ballon (glissé, jamais de saut du joueur).
         this.porteur = joueur;
         this.possession = joueur.team;
         this.ruckPoint = { x: joueur.x, y: joueur.y };
@@ -397,7 +791,7 @@
           this.log('CONTRE_COUP_ENVOI', joueur.team, `Coup d'envoi contre, equipe ${joueur.team} recupere le ballon`);
           return;
         }
-        // Marque (loi 11) : un joueur qui réceptionne proprement le ballon dans
+        // Marque (loi 17) : un joueur qui réceptionne proprement le ballon dans
         // son propre en-deçà des 22 m peut crier « marque » et obtenir un coup
         // franc (pas de tir au but possible), pour dégager la pression.
         const sensReceveur = joueur.team === 'A' ? 1 : -1;
@@ -407,7 +801,7 @@
           return;
         }
         // Réception directe d'un coup de pied adverse : si un maul se forme dans
-        // la foulée, l'exception de la loi 8 attribuera la mêlée (ballon
+        // la foulée, l'exception de la loi 19 attribuera la mêlée (ballon
         // injouable) à l'équipe du réceptionneur, pas à la défense.
         this._receptionDirecte = true;
         this.phase = 'PORTE';
@@ -415,27 +809,62 @@
       }
     }
 
-    // Coup franc (loi 11/20) : sanction plus légère qu'une pénalité, sans
+    // Coup franc (loi 20) : sanction plus légère qu'une pénalité, sans
     // possibilité de tir au but ni de touche directe avec gain de terrain par
     // le pied. L'équipe joue rapidement à la main et avance un peu.
-    _traiterCoupFranc(equipe, position) {
+    _traiterCoupFranc(equipe, position, porteurImpose = null) {
       this.possession = equipe;
-      const sensAttaque = equipe === 'A' ? 1 : -1;
       const eq = equipe === 'A' ? this.equipeA : this.equipeB;
-      const { joueur } = joueurLePlusProche(eq, position.x, position.y);
-      this.porteur = joueur;
-      this.porteur.x = Math.max(0, Math.min(LONGUEUR, position.x + sensAttaque * 5));
-      this.porteur.y = Math.max(2, Math.min(LARGEUR - 2, position.y));
+      if (porteurImpose) {
+        // Joueur déjà en place (demi de mêlée à la base de la mêlée) : il tape
+        // le ballon et part en courant depuis sa position, sans téléportation
+        // sur la marque.
+        this.porteur = porteurImpose;
+      } else {
+        // Le tapeur (joueur le plus proche de la marque) REJOINT la marque en
+        // courant pendant la mise en place (cf. _tickJeuRapidePenalite), il n'y
+        // est plus téléporté.
+        const { joueur } = joueurLePlusProche(eq.filter(j => j.auSol === 0), position.x, position.y);
+        this.porteur = joueur;
+      }
       this.log('COUP_FRANC', equipe, `Marque, equipe ${equipe} obtient un coup franc et joue rapidement`);
-      this.phase = 'PORTE';
-      this.timerPhase = 0;
+      // Loi 20.12 : l'équipe non bénéficiaire recule de 10 m, comme sur pénalité.
+      this._lancerJeuRapidePenalite(equipe, position);
     }
 
-    // Position affichable de l'arbitre : suit le point de ruck/mêlée pendant les
+    // Met à jour la position de l'arbitre : il COURT vers sa cible (suivre le
+    // jeu, se placer au ruck/à la mêlée), il n'y est jamais téléporté. Sa
+    // vitesse est un peu supérieure à celle des joueurs pour qu'il reste au
+    // contact du jeu ; sur un changement brusque (passe au large, coup de pied
+    // long) il rejoint sa nouvelle place en courant, comme un vrai arbitre.
+    _majArbitre(dt) {
+      const cible = this._positionArbitre();
+      const dx = cible.x - this.arbitrePos.x;
+      const dy = cible.y - this.arbitrePos.y;
+      const d = Math.hypot(dx, dy);
+      if (d < 0.01) return;
+      const pas = Math.min(d, 9 * dt); // ~9 m/s
+      this.arbitrePos.x += (dx / d) * pas;
+      this.arbitrePos.y += (dy / d) * pas;
+    }
+
+    // Cible de placement de l'arbitre : suit le point de ruck/mêlée pendant les
     // phases statiques, sinon reste juste derrière le porteur du ballon.
     _positionArbitre() {
-      if (this.phase === 'RUCK' || this.phase === 'MAUL' || this.phase === 'MELEE' || this.phase === 'TOUCHE') {
+      if (this.phase === 'RUCK' || this.phase === 'MAUL' || this.phase === 'MELEE') {
         return { x: this.ruckPoint.x, y: Math.max(0, Math.min(LARGEUR, this.ruckPoint.y - 5)) };
+      }
+      // Touche : l'arbitre ne se tient PAS sur la ligne de touche (place du juge
+      // de touche) mais EN RETRAIT dans le terrain, derrière l'alignement et un
+      // peu en arrière de la ligne de lancer, pour surveiller le couloir d'un
+      // mètre, la rectitude du lancer et le hors-jeu des arrières. ruckPoint.y
+      // est ici le bord (marque de touche) : on rentre de ~11 m vers le centre.
+      if (this.phase === 'TOUCHE') {
+        const versCentre = this.ruckPoint.y <= LARGEUR / 2 ? 1 : -1;
+        return {
+          x: this.ruckPoint.x,
+          y: Math.max(0, Math.min(LARGEUR, this.ruckPoint.y + versCentre * 11)),
+        };
       }
       if (this.phase === 'PENALITE_TIR' && this.positionTir) {
         return { x: this.positionTir.x, y: Math.max(0, Math.min(LARGEUR, this.positionTir.y + 5)) };
@@ -447,8 +876,16 @@
       return { x: p.x, y: Math.max(0, Math.min(LARGEUR, p.y - 6)) };
     }
 
-    attaquants() { return this.possession === 'A' ? this.equipeA : this.equipeB; }
-    defenseurs() { return this.possession === 'A' ? this.equipeB : this.equipeA; }
+    // Un joueur au bin (carton jaune) est retiré de la feuille de match active :
+    // son équipe joue réellement à 14, au lieu d'un carton purement visuel.
+    attaquants() {
+      const eq = this.possession === 'A' ? this.equipeA : this.equipeB;
+      return eq.filter(j => j.sinBin <= 0);
+    }
+    defenseurs() {
+      const eq = this.possession === 'A' ? this.equipeB : this.equipeA;
+      return eq.filter(j => j.sinBin <= 0);
+    }
 
     // À la sortie d'un regroupement (mêlée, touche, ruck, maul), le 9
     // introduit ou récupère le ballon mais le transmet presque toujours
@@ -457,23 +894,17 @@
     // prendre lui-même. Si le 10 est indisponible (plaqué, hors du jeu),
     // le 9 garde le ballon.
     _neufVersDix(equipe, neuf) {
-      const dix = equipe[9];
+      // Recherche par numéro, pas par index : `equipe` est parfois la feuille
+      // complète (15), parfois attaquants() déjà filtré du joueur au bin, où
+      // l'index 9 ne correspond plus forcément au n°10.
+      const dix = equipe.find(j => j.numero === 10);
       return (dix && dix.auSol === 0) ? dix : neuf;
     }
 
     // --- Mêlée suite à infraction (passe en avant / en-avant) : avantage + relance
     // pour l'équipe non fautive, conformément à la loi (knock-on / forward pass). ---
     _accorderMelee(equipeFautive, position) {
-      this.possession = equipeFautive === 'A' ? 'B' : 'A';
-      this.stats[this.possession].scrums++;
-      this.log('MELEE', this.possession, `Melee, introduction pour l'equipe ${this.possession}`);
-      const equipe = this.possession === 'A' ? this.equipeA : this.equipeB;
-      this.porteur = this._neufVersDix(equipe, equipe[8]);
-      this.porteur.x = Math.max(5, Math.min(LONGUEUR - 5, position.x));
-      this.porteur.y = Math.max(5, Math.min(LARGEUR - 5, position.y));
-      this.ruckPoint = { x: this.porteur.x, y: this.porteur.y };
-      this.phase = 'MELEE';
-      this.timerPhase = 0;
+      this._formerMelee(equipeFautive === 'A' ? 'B' : 'A', position);
     }
 
     // --- Touche : un ballon porté en touche donne une touche (lancer) à l'équipe
@@ -483,15 +914,120 @@
       this.ruckPoint = { x: position.x, y: position.y };
       this.possession = equipeQuiSort === 'A' ? 'B' : 'A';
       const equipe = this.possession === 'A' ? this.equipeA : this.equipeB;
-      this.porteur = this._neufVersDix(equipe, equipe[8]);
-      this.porteur.x = Math.max(5, Math.min(LONGUEUR - 5, position.x));
-      this.porteur.y = position.y <= LARGEUR / 2 ? 5 : LARGEUR - 5;
+      // Loi 18 : c'est le talonneur (n°2) qui lance en touche en match reel,
+      // jamais le demi de melee ni l'ouvreur - _neufVersDix (9->10) sert a la
+      // sortie de balle d'un regroupement, pas au lancer de touche.
+      this.porteur = equipe.find(j => j.numero === this.cfg.touche.lanceur && j.sinBin <= 0) || equipe[8];
       this.phase = 'TOUCHE';
       this.timerPhase = 0;
-      // Position des deux lignes de touche (loi 9) : avants au centre dans le
+      this.toucheLancer = null;
+      // Position des deux lignes de touche (loi 18) : avants au centre dans le
       // couloir, le reste écarté, comme préparation à un vrai contest (résolu
       // dans _tickTouche) plutôt qu'un simple timer sans enjeu.
-      this.toucheLanceurY = position.y <= LARGEUR / 2 ? 5 : LARGEUR - 5;
+      // Loi 18.22 : le lanceur se tient SUR la ligne de touche (les deux pieds
+      // hors du terrain), pas à 5 m à l'intérieur au milieu des sauteurs. On le
+      // place donc au bord du terrain ; l'alignement des sauteurs commence lui
+      // à 5 m de la touche (cf. _touchePlacerLignes), laissant un vrai couloir
+      // entre le lanceur et le premier sauteur.
+      this.toucheLanceurY = position.y <= LARGEUR / 2 ? 0.5 : LARGEUR - 0.5;
+      // Cible du lanceur (loi 18.22 : sur la marque de touche) — il doit s'y
+      // rendre en courant (cf. _touchePlacerLignes), jamais y être téléporté,
+      // même quand c'est l'ouvreur qui s'y trouve déjà sans rapport avec la
+      // marque de touche.
+      this.toucheLanceurX = Math.max(5, Math.min(LONGUEUR - 5, position.x));
+      // Comme à la mêlée (cf. _capFormationMelee) : le lancer n'a lieu que
+      // lorsque les avants ET le lanceur sont réellement alignés (cf.
+      // _tickTouche), avec un plafond pour ne jamais bloquer le match si un
+      // joueur est très excentré.
+      this.toucheCapFormation = this._capFormationTouche(this.toucheLanceurX);
+    }
+
+    // Même logique que _capFormationMelee : temps réel nécessaire à l'avant le
+    // plus excentré pour rallier en courant la ligne de touche (couloir
+    // perpendiculaire à la ligne de touche, à l'abscisse px), borné pour ne
+    // jamais bloquer le match.
+    _capFormationTouche(px) {
+      // Le plafond doit couvrir le trajet RÉEL (2D) de l'avant le plus éloigné
+      // jusqu'à la zone d'alignement, pas seulement son décalage en profondeur
+      // (x) : un avant déjà à la bonne abscisse mais encore loin sur la largeur
+      // (y) mettait sinon le cap à ~3 s et le lancer partait pendant qu'il
+      // courait encore vers la bande des 5-15 m, le laissant au-delà des 15 m.
+      // On vise le milieu de cette bande (≈10 m de la touche), côté terrain.
+      const yT = this.toucheLanceurY;
+      const versCentre = (yT != null && yT <= LARGEUR / 2) ? 1 : -1;
+      const cible = { x: px, y: (yT != null ? yT : LARGEUR / 2) + versCentre * 10 };
+      const avants = this.equipeA.concat(this.equipeB).filter(j => j.numero <= 8 && j.sinBin <= 0);
+      let pireDistance = 0;
+      for (const j of avants) {
+        const d = distance(j, cible);
+        if (d > pireDistance) pireDistance = d;
+      }
+      // Le lanceur peut être bien plus loin de la marque que les avants
+      // (ex. l'ouvreur qui couvrait en profondeur) : sans ce terme, le lancer
+      // pourrait être autorisé avant même qu'il ait fini de courir jusqu'à
+      // la touche.
+      if (this.porteur) {
+        const dLanceur = distance(this.porteur, { x: px, y: yT != null ? yT : LARGEUR / 2 });
+        if (dLanceur > pireDistance) pireDistance = dLanceur;
+      }
+      const vitessePackMin = 2.5;
+      return Math.min(12, Math.max(3, pireDistance / vitessePackMin));
+    }
+
+    // --- Avantage (loi 8) : au lieu de siffler la faute tout de suite, l'arbitre
+    // laisse l'équipe non fautive (bénéficiaire) jouer. Si elle progresse
+    // nettement ou garde le ballon, l'avantage est « joué » et le match continue
+    // (la sanction est effacée). Si elle perd le ballon au profit de l'équipe
+    // fautive sans contrepartie, l'arbitre revient à la marque et applique la
+    // sanction en attente. Le jeu n'est PAS arrêté au moment de la faute. ---
+    _jouerAvantage(type, equipeFautive, equipeBeneficiaire, position) {
+      // Un seul avantage à la fois : si un est déjà en cours, on n'en réarme pas.
+      if (this.avantage) return;
+      this.avantage = {
+        type, // 'PENALITE' ou 'MELEE'
+        equipeFautive, equipeBeneficiaire,
+        position: { x: position.x, y: position.y },
+        timer: 0,
+        // Repère de progression : abscisse du porteur au moment de la faute.
+        xDepart: this.porteur ? this.porteur.x : position.x,
+      };
+      this.log('AVANTAGE', equipeBeneficiaire, `Avantage joue pour l'equipe ${equipeBeneficiaire} (faute de ${equipeFautive})`);
+    }
+
+    // Suivi de l'avantage à chaque tick : décide s'il est joué (jeu continue) ou
+    // s'il faut revenir à la sanction.
+    _tickAvantage(dt) {
+      const a = this.avantage;
+      a.timer += dt;
+      // L'équipe bénéficiaire a tapé au pied (jeu territorial) ou marqué : elle a
+      // utilisé son avantage. On le considère joué même si le ballon change
+      // ensuite de camp sur la réception — sinon on reviendrait à la pénalité
+      // alors qu'elle a délibérément choisi de jouer (et on téléporterait le
+      // buteur sur la marque en plein vol de balle).
+      if (this.phase === 'COUP_DE_PIED_JEU' || this.ballonEnVol
+        || this.phase === 'ESSAI' || this.phase === 'TRANSFORMATION' || this.phase === 'PENALITE_TIR') {
+        this.avantage = null;
+        this.log('AVANTAGE_JOUE', a.equipeBeneficiaire, `Avantage joue pour l'equipe ${a.equipeBeneficiaire}`);
+        return;
+      }
+      // Avantage non concrétisé : le ballon est passé à l'équipe fautive sans que
+      // le bénéficiaire en tire profit -> retour à la marque, sanction appliquée.
+      if (this.possession === a.equipeFautive) {
+        this.avantage = null;
+        this.log('AVANTAGE_REVIENT', a.equipeBeneficiaire, `Pas d'avantage : retour a la sanction pour l'equipe ${a.equipeBeneficiaire}`);
+        if (a.type === 'PENALITE') this._traiterPenalite(a.equipeBeneficiaire, a.position);
+        else this._accorderMelee(a.equipeFautive, a.position);
+        return;
+      }
+      // Avantage obtenu : gain de terrain net (>= 12 m) ou ballon conservé assez
+      // longtemps (l'équipe a fait au moins aussi bien qu'avec la pénalité). Le
+      // jeu continue, la sanction est effacée.
+      const sens = a.equipeBeneficiaire === 'A' ? 1 : -1;
+      const gain = this.porteur ? (this.porteur.x - a.xDepart) * sens : 0;
+      if (gain >= 12 || a.timer >= 5) {
+        this.avantage = null;
+        this.log('AVANTAGE_JOUE', a.equipeBeneficiaire, `Avantage obtenu, le jeu continue pour l'equipe ${a.equipeBeneficiaire}`);
+      }
     }
 
     // --- Pénalité : selon la distance aux poteaux, l'équipe non fautive tente un
@@ -503,35 +1039,141 @@
       const distanceButs = sensAttaque > 0 ? (LONGUEUR - position.x) : position.x;
       // Essai de pénalité : quand la faute est commise tout près de la ligne
       // d'en-but adverse, elle a empêché un essai quasi certain. L'équipe non
-      // fautive marque directement 7 points, sans tir ni jeu rapide.
+      // fautive marque directement 7 points, sans tir ni jeu rapide. Loi 19 :
+      // une faute délibérée qui empêche un essai quasi certain est aussi
+      // sanctionnée d'un carton (jaune au minimum) pour l'auteur, pas
+      // seulement les 7 points — sinon l'essai de pénalité n'a aucun coût pour
+      // l'équipe fautive au-delà de la possession perdue.
       if (distanceButs <= 5 && this.rng() < 0.25) {
         this.score[equipeBeneficiaire] += 7;
         this.stats[equipeBeneficiaire].essais++;
         this.log('ESSAI_PENALITE', equipeBeneficiaire, `Essai de penalite, equipe ${equipeBeneficiaire} +7`);
+        const fautive = equipeBeneficiaire === 'A' ? 'B' : 'A';
+        const eqFautive = fautive === 'A' ? this.equipeA : this.equipeB;
+        const { joueur: fautif } = joueurLePlusProche(eqFautive, position.x, position.y);
+        fautif.sinBin = 600 * this._echelleArret;
+        this.stats[fautive].cartonsJaunes++;
+        this.log('CARTON_JAUNE', fautive, `Carton jaune pour l'equipe ${fautive} (n°${fautif.numero}) : faute deliberee empechant un essai - a 14 pendant ${Math.round(fautif.sinBin)}s`);
         this._nouvelleManche(equipeBeneficiaire);
         return;
       }
+      // Pénalité en touche : contrairement à une touche en jeu courant, c'est
+      // ici l'équipe qui a botté qui conserve le lancer (loi 20). Utilisée pour
+      // gagner du terrain quand le but est hors de portée, ou pour chercher un
+      // maul tout près de la ligne adverse plutôt que 3 points — deux tactiques
+      // réelles très fréquentes que seul le jeu rapide à la main ne représentait
+      // pas jusqu'ici.
+      const tropLoinPourTir = distanceButs > 45;
+      const procheLigneAdverse = distanceButs >= 5 && distanceButs <= 22;
+      if ((tropLoinPourTir && this.rng() < 0.35) || (procheLigneAdverse && this.rng() < 0.15)) {
+        this._accorderPenaliteTouche(equipeBeneficiaire, position);
+        return;
+      }
+      // Tir au but : une équipe à portée tape au but bien plus souvent qu'à la
+      // main (calibré sur ~48,5 pts/match réels, dont ~4-6 pénalités au but).
+      // L'ancien taux 0.55 ne donnait que ~1,4 tir/match ; ~0.85 rapproche des
+      // ~5 tentatives réelles.
       const enZoneDeTir = distanceButs >= 5 && distanceButs <= 45;
-      if (enZoneDeTir && this.rng() < 0.55) {
+      if (enZoneDeTir && this.rng() < 0.85) {
         this.equipeAuTir = equipeBeneficiaire;
         this.positionTir = { x: position.x, y: position.y, distanceButs };
         // Place le buteur (l'ouvreur) sur le point de pénalité : sans ça, le
         // porteur reste figé là où la faute a été commise et rien ne montre
         // visuellement qu'un coup de pied au but va être tenté.
         const eqTir = equipeBeneficiaire === 'A' ? this.equipeA : this.equipeB;
+        // Le buteur (l'ouvreur) REJOINT le tee en courant pendant la mise en
+        // place (cf. _penaliteTirPlacerJoueurs), il n'y est plus téléporté ; le
+        // ballon est posé sur le tee (cf. getState, ballon sur la marque en
+        // PENALITE_TIR).
         this.porteur = eqTir[9];
-        this.porteur.x = position.x;
-        this.porteur.y = position.y;
         this.phase = 'PENALITE_TIR';
         this.timerPhase = 0;
+        this.tirEnPlace = false;
         this.log('PENALITE', equipeBeneficiaire, `Penalite, equipe ${equipeBeneficiaire} tente un coup de pied au but`);
         return;
       }
+      // Jeu rapide (tap-and-go). Loi 20 : le ballon revient à l'équipe NON
+      // fautive — avant ce correctif, la possession et le porteur restaient ceux
+      // de l'équipe FAUTIVE (mesuré : bénéficiaire A → possession B), si bien que
+      // la pénalité ne donnait même pas le ballon au bon camp. On donne donc le
+      // ballon au bénéficiaire (son n°9 tape) et on arme la mise en place.
+      this.possession = equipeBeneficiaire;
+      const eqBen = equipeBeneficiaire === 'A' ? this.equipeA : this.equipeB;
+      const neuf = eqBen.find(j => j.numero === 9 && j.auSol === 0);
+      this.porteur = neuf || joueurLePlusProche(eqBen.filter(j => j.auSol === 0), position.x, position.y).joueur;
       this.log('PENALITE', equipeBeneficiaire, `Penalite, equipe ${equipeBeneficiaire} joue rapidement et avance`);
-      this.porteur.x += sensAttaque * 8;
-      this.porteur.x = Math.max(0, Math.min(LONGUEUR, this.porteur.x));
+      this._lancerJeuRapidePenalite(equipeBeneficiaire, position);
+    }
+
+    // Mise en place d'une pénalité/coup franc joué rapidement à la main (loi
+    // 20.12). Le tapeur (possession/porteur déjà fixés par l'appelant) REJOINT la
+    // marque en courant et l'équipe fautive RECULE de 10 m vers son en-but, le
+    // tout EN COURANT pendant une brève phase de mise en place (cf.
+    // _tickJeuRapidePenalite) — jamais une téléportation. Le jeu courant ne
+    // reprend qu'une fois le tapeur sur la marque et les fautifs repliés : c'est
+    // ce qui crée enfin l'espace réel de la pénalité (sans lui, le tapeur se
+    // faisait plaquer aussitôt par un défenseur resté sur la marque).
+    _lancerJeuRapidePenalite(equipeBeneficiaire, position) {
+      const sens = equipeBeneficiaire === 'A' ? 1 : -1;
+      const eqDef = equipeBeneficiaire === 'A' ? this.equipeB : this.equipeA;
+      // Ligne des 10 m, bornée à l'en-but des fautifs (équivalent loi 19.32 :
+      // marque à moins de 10 m de leur ligne → recul jusqu'à la ligne d'en-but).
+      const ligne = Math.max(0, Math.min(LONGUEUR, position.x + sens * 10));
+      this.penaliteRecul = { sens, eqDef, ligne, markX: position.x, markY: position.y, timer: 2.5 };
       this.phase = 'PORTE';
       this.timerPhase = 0;
+    }
+
+    // Phase de mise en place du jeu rapide : tapeur vers la marque, fautifs vers
+    // la ligne des 10 m, tout en course. Se termine (le ballon est « tapé », jeu
+    // courant normal) dès que tapeur en place ET fautifs repliés, ou au délai.
+    _tickJeuRapidePenalite(dt) {
+      const R = this.penaliteRecul;
+      R.timer -= dt;
+      let pret = true;
+      if (this.porteur) {
+        avancer(this.porteur, R.markX - this.porteur.x, R.markY - this.porteur.y, dt, vitesseMs(this.porteur));
+        if (distance(this.porteur, { x: R.markX, y: R.markY }) > 1) pret = false;
+      }
+      for (const j of R.eqDef) {
+        if (j.auSol > 0) continue;
+        // En deçà de la ligne des 10 m (entre la marque et la ligne) → se replie
+        // en reculant (x vers la ligne), en gardant sa largeur (y inchangé).
+        if ((j.x - R.ligne) * R.sens < -0.5) {
+          avancer(j, R.ligne - j.x, 0, dt, vitesseMs(j));
+          pret = false;
+        }
+      }
+      if (R.timer <= 0 || pret) this.penaliteRecul = null;
+    }
+
+    // Pénalité jouée en touche : l'équipe qui a botté conserve le lancer
+    // (à l'inverse d'une touche en jeu courant), avec un gain de terrain
+    // réaliste borné au terrain.
+    _accorderPenaliteTouche(equipe, position) {
+      this.log('PENALITE', equipe, `Penalite, equipe ${equipe} joue en touche et conserve le lancer`);
+      this.possession = equipe;
+      const sensAttaque = equipe === 'A' ? 1 : -1;
+      const gain = 10 + this.rng() * 10;
+      const xTouche = Math.max(0, Math.min(LONGUEUR, position.x + sensAttaque * gain));
+      const eqLanceur = equipe === 'A' ? this.equipeA : this.equipeB;
+      // Loi 18 : le talonneur (n°2) lance, comme a la touche en jeu courant
+      // (cf. _accorderTouche).
+      this.porteur = eqLanceur.find(j => j.numero === this.cfg.touche.lanceur && j.sinBin <= 0) || eqLanceur[8];
+      const xLanceur = Math.max(5, Math.min(LONGUEUR - 5, xTouche));
+      // Loi 18.22 : le lanceur sur la ligne de touche (cf. _accorderTouche),
+      // pas à 5 m à l'intérieur.
+      const yLanceur = position.y <= LARGEUR / 2 ? 0.5 : LARGEUR - 0.5;
+      this.ruckPoint = { x: xLanceur, y: yLanceur };
+      this.phase = 'TOUCHE';
+      this.timerPhase = 0;
+      this.toucheLancer = null;
+      this.toucheLanceurY = yLanceur;
+      // Cible à rejoindre en courant (cf. _touchePlacerLignes), jamais une
+      // téléportation : le lanceur peut être loin du point de pénalité si le
+      // gain de terrain du coup de pied est important.
+      this.toucheLanceurX = xLanceur;
+      this.toucheCapFormation = this._capFormationTouche(xLanceur);
     }
 
     // À la sortie d'un regroupement (ruck/maul/mêlée/touche), les joueurs qui
@@ -583,13 +1225,20 @@
       );
       this.timerPhase += dt;
 
+      // Combinaison scriptée en cours (sortie de mêlée/touche, cf. playbook) :
+      // elle PILOTE les passes ; le porteur ne décide pas librement (kick/passe
+      // libre) tant qu'elle dure. Si une passe scriptée est jouée ce tick, le
+      // tick s'arrête là ; entre deux passes, le porteur court (RUN) et reste
+      // plaquable ci-dessous — la défense peut donc contrer la combinaison.
+      if (this.combinaison && this._tickCombinaison(dt)) return;
+
       // Décision tactique du porteur (botter, passer, jouer au large, foncer au
       // contact) : tranchée AVANT la résolution du plaquage ci-dessous, sur la
       // base de la zone, de la pression défensive, du soutien disponible, du
       // numéro du porteur et du score (cf. choisirActionPorteur). Le coup de
       // pied peut survenir même défenseur tout proche (dégagement sous
       // pression) ; la passe suppose de ne pas être déjà au contact.
-      const action = this.choisirActionPorteur(porteur, defenseurProche, distDef, dt);
+      const action = this.combinaison ? 'RUN' : this.choisirActionPorteur(porteur, defenseurProche, distDef, dt);
       if (action === 'KICK') { this._executerCoupDePiedJeu(porteur); return; }
       if (distDef >= 2.2 && (action === 'PASS' || action === 'JEU_LARGE') && this._tenterPasse(porteur, action === 'JEU_LARGE')) return;
 
@@ -602,44 +1251,160 @@
       // suivant contre le même défenseur (sinon le raté n'aurait aucune
       // conséquence : il serait rejoué jusqu'à réussite quelques dixièmes de
       // seconde plus tard).
-      if (distDef < 2.2 && defenseurProche.missCooldown <= 0) {
+      if (distDef < 2.2 && defenseurProche.missCooldown <= 0 && (defenseurProche.fixeCooldown || 0) <= 0) {
         const att0 = this.attaquants();
         this.stats[this.possession].carries++;
         this.stats[defenseurProche.team].tacklesAttempted++;
-        const probaPlaquage = Math.max(0.70, Math.min(0.94, 0.83 + (defenseurProche.plaquage - this.porteur.vitesse) / 250));
+        // Réussite de plaquage ~86-88 % (réel ~85-88 %) : l'ancienne base 0.83
+        // donnait ~80 % de réussite et ~128 plaquages manqués/match (réel ~15 %
+        // d'échec), donc trop de défenseurs battus et de franchissements.
+        // FATIGUE : les plaquages sont plus SÛRS en début de match et plus
+        // souvent MANQUÉS en fin de match (défenseurs fatigués) — le jeu s'ouvre
+        // dans le dernier quart, comme en vrai. Effet CENTRÉ (moyenne du match
+        // inchangée) : on ne change pas le taux global de plaquage ni le nombre
+        // total d'essais, on déplace juste les essais vers la fin du match.
+        const fatigue = (this.dureeMatch === Infinity || this.dureeMatch <= 0) ? 0.5 : Math.min(1, this.tempsMatch / this.dureeMatch);
+        const bonusFraicheur = (0.5 - fatigue) * 0.06; // +0.03 au coup d'envoi, -0.03 à la 80e
+        // Base 0.88 (~84 % de plaquages réussis, RÉALISTE) : les brèches viennent
+        // désormais du FIXAGE/surnombre au large (cf. _tenterPasse), plus d'une
+        // défense volontairement affaiblie. On peut donc remettre un taux de
+        // plaquage réel tout en gardant un jeu au large qui perce.
+        const probaPlaquage = Math.max(0.80, Math.min(0.95, 0.88 + bonusFraicheur + (defenseurProche.plaquage - this.porteur.vitesse) / 250));
         if (this.rng() >= probaPlaquage) {
           // Plaquage manqué : le défenseur reste hors-jeu de contact un court
           // instant, le porteur poursuit sa course sans être inquiété par lui.
           defenseurProche.missCooldown = 1.0;
           this.stats[defenseurProche.team].missedTackles++;
+          this.stats[this.possession].defenseursBattus++; // le porteur a battu un défenseur
+          // FRANCHISSEMENT (line break) : le porteur bat le plaqueur ET se
+          // retrouve en ESPACE — le motif clé de l'étude. Seuil de 7 m vers le
+          // prochain défenseur : c'est la distance au-delà de laquelle un
+          // défenseur ne peut plus intervenir immédiatement, ce qui correspond à
+          // un vrai « clean break » (World Rugby). Un seuil de 12 m ne comptait
+          // presque jamais (0,1/match) alors qu'un match réel en montre ~8-20 ;
+          // 6 m ramène le compteur au cœur de cette fourchette sans rien changer
+          // au jeu (score et essais strictement identiques : pur comptage).
+          const autres = def.filter((d) => d !== defenseurProche && d.auSol === 0);
+          if (joueurLePlusProche(autres, porteur.x, porteur.y).distance > 6) {
+            this.stats[this.possession].franchissements++;
+          }
+          // PERCÉE EN COURS : pendant quelques secondes, le porteur qui vient de
+          // battre son vis-à-vis joue en CONTINUITÉ — ses soutiens sprintent dans
+          // sa foulée et, si la couverture le reprend, il garde le ballon VIVANT
+          // par un offload au trailer (cf. résolution du plaquage) au lieu de
+          // mourir au premier plaquage de couverture. C'est ce qui transforme un
+          // franchissement en avancée longue, comme en vrai.
+          porteur._percee = 2.5;
           this.log('PLAQUAGE_MANQUE', this.possession, `Plaquage manque, l'equipe ${this.possession} poursuit sa course`);
           return;
         }
         this.stats[defenseurProche.team].tacklesMade++;
+        // Définition officielle du plaquage (World Rugby) : le plaqueur amène le
+        // porteur au sol ET va LUI-MÊME au sol. On le montre donc brièvement
+        // couché À L'ÉCRAN (marqueur PUREMENT VISUEL solVisuel, cf. renderer),
+        // SANS le figer côté jeu : le figer, même 0,3 s, le retirait de la
+        // défense et faisait monter les essais (4,8 -> 5,9 mesuré). Ce marqueur
+        // n'a AUCUN effet sur la simulation — il illustre juste la définition.
+        defenseurProche.solVisuel = 0.9;
         this.timerPhase = 0;
         // En-avant au contact : conséquence directe et distincte du plaquage
-        // réussi, pas seulement un succès/échec binaire ruck-ou-rien.
-        if (this.rng() < 0.045) {
+        // réussi, pas seulement un succès/échec binaire ruck-ou-rien. Taux
+        // volontairement bas (~1 contact sur 75) : à 0.045 il produisait à lui
+        // seul ~25 mêlées/match, très au-dessus du repère réel (8-25 mêlées
+        // TOTALES par match, cf. CLAUDE.md Rôle 6).
+        if (this.rng() < 0.008) {
           this.stats[this.possession].knockOns++;
           this.log('MELEE_ENAVANT', this.possession, `En-avant au contact, equipe ${this.possession} - melee adverse`);
           this._accorderMelee(this.possession, porteur);
           return;
         }
+        // Plaquage DOMINANT : le défenseur gagne nettement le duel (gros
+        // plaqueur, lecture parfaite, porteur lent). Le porteur est REPOUSSÉ — la
+        // défense AVANCE au lieu de subir : le contact recule la ligne de gain
+        // (~1,2 m côté attaque) et la défense récupère un ballon « sur l'avancée »
+        // (contest bien plus probable au ruck qui suit, cf. _tickRuck). C'est ce
+        // qui rend un bon plaquage payant au lieu de toujours céder du terrain.
+        const margePlaquage = defenseurProche.plaquage - this.porteur.vitesse;
+        this.ruckDominant = margePlaquage > 12 && this.rng() < 0.3;
+        if (this.ruckDominant) {
+          // Plaquage dominant : la défense repousse le porteur (~1,2 m perdus).
+          this.porteur.x -= this.porteur.sensAttaque * 1.2;
+        }
+        // Plaquage NORMAL : le ruck se forme exactement au point de plaquage
+        // (aucun gain ni recul fabriqué). L'attaque gagne du terrain EN AMONT,
+        // par une LIGNE DE TROIS-QUARTS À PLAT qui reçoit lancée et franchit la
+        // ligne d'avantage (cf. positionnement des backs au ruck) — pas par une
+        // poussée artificielle au contact. Mesuré : cette ligne plate suffit à
+        // rendre le gain moyen par phase positif (+0,09 m) avec un score (~45) et
+        // des essais (~5,5) réalistes ; un gain de contact en plus sur-gonflait
+        // le score (~53). On préfère donc la cause réelle (l'alignement) à un
+        // effet fabriqué.
         this.ruckPoint = { x: this.porteur.x, y: this.porteur.y };
         this.contestants = [defenseurProche.numero];
+        // RUCK QUI RECULE (plaquage dominant) : un SEUL contestant ne suffit
+        // pas à représenter la réalité — sur un ballon repoussé, un 2e
+        // défenseur proche vient SOUTENIR le jackal pour presser le turnover
+        // (d'où le bonus de probabilité de grattage déjà appliqué plus bas,
+        // cf. bonusDominant). Avant ce correctif, ce bonus existait dans le
+        // calcul mais RIEN ne se voyait à l'écran : sur un ruck qui recule,
+        // aucun défenseur ne venait jamais soutenir le plaqueur — signalé par
+        // le joueur, confirmé dans le code (contestants toujours limité à 1,
+        // même dominant). Le 2e défenseur le plus proche (hors le plaqueur
+        // déjà désigné), s'il est disponible, rejoint la contestation.
+        if (this.ruckDominant) {
+          const autresDef = def.filter(j => j !== defenseurProche && j.auSol === 0 && j.ruckRecovery <= 0);
+          if (autresDef.length > 0) {
+            const { joueur: soutienDef } = joueurLePlusProche(autresDef, this.ruckPoint.x, this.ruckPoint.y);
+            this.contestants.push(soutienDef.numero);
+          }
+        }
         // Offload : le porteur plaqué mais pas encore au sol transmet à un
         // soutien tout proche plutôt que de finir au ruck — garde le ballon vivant.
-        const soutiens = att0.filter(j => j !== porteur && distance(j, porteur) < 4 && j.auSol === 0);
-        if (soutiens.length > 0 && this.rng() < 0.10) {
-          const { joueur: receveurOffload } = joueurLePlusProche(soutiens, porteur.x, porteur.y);
+        // Le soutien doit être À HAUTEUR OU EN RETRAIT (loi 11) : un offload reste
+        // une passe, il ne peut pas aller vers l'avant. Sans ce filtre, l'offload
+        // était la seule voie de passe qui contournait le contrôle de la passe en
+        // avant (jusqu'à ~3 m vers l'avant non sifflés, ~5/match mesurés).
+        // TAUX RESTRUCTURÉ selon la situation, comme en vrai : dans un plaquage
+        // banal (défense en place), l'offload est RARE (0,04 — l'ancien taux
+        // uniforme 0,10 en produisait ~61/match, réel 8-15) ; mais un porteur EN
+        // PERCÉE (vient de battre son vis-à-vis, _percee actif) cherche
+        // SYSTÉMATIQUEMENT la continuité : son offload au trailer est très
+        // probable (0,45) et porte plus loin (rayon 6 m, les soutiens sprintent
+        // dans sa foulée). C'est ce qui convertit un franchissement en avancée
+        // longue au lieu de mourir au premier plaquage de couverture.
+        const enPercee = (porteur._percee || 0) > 0;
+        const rayonOffload = enPercee ? 6 : 4;
+        const tauxOffload = enPercee ? 0.30 : 0.03;
+        const soutiens = att0.filter(j => j !== porteur && distance(j, porteur) < rayonOffload && j.auSol === 0
+          && (j.x - porteur.x) * porteur.sensAttaque <= 0.3);
+        if (soutiens.length > 0 && this.rng() < tauxOffload) {
+          // Sur PERCÉE, le perceur sert le soutien EN ESPACE (défenseur le plus
+          // proche le plus loin), pas le plus proche dans le trafic : c'est le
+          // receveur lancé dans le trou qui prolonge vraiment l'avancée. Dans un
+          // plaquage banal, on garde le soutien le plus proche (offload court).
+          let receveurOffload;
+          if (enPercee) {
+            let meilleurAir = -1;
+            for (const s of soutiens) {
+              const air = joueurLePlusProche(def, s.x, s.y).distance;
+              if (air > meilleurAir) { meilleurAir = air; receveurOffload = s; }
+            }
+          } else {
+            ({ joueur: receveurOffload } = joueurLePlusProche(soutiens, porteur.x, porteur.y));
+          }
           this.stats[this.possession].passes++;
           this.stats[this.possession].offloads++;
           this.log('OFFLOAD', this.possession, `Offload de l'equipe ${this.possession} dans le plaquage`);
+          this._lancerPasseVisuelle(porteur, receveurOffload);
+          // NB : figer les défenseurs engagés sur le plaquage (fixeCooldown) a été
+          // testé ici et RETIRÉ — mesuré négatif (-4 pts sur deux jeux de graines) :
+          // gelés, ils ne se replient plus et se retrouvent parfaitement placés au
+          // point de chute suivant. L'espace vient du receveur décalé, pas du gel.
           this.porteur = receveurOffload;
           this._receptionDirecte = false;
           return;
         }
-        // Maul (loi 17) : voie secondaire (rare en plein champ), nettement plus
+        // Maul (loi 16) : voie secondaire (rare en plein champ), nettement plus
         // probable tout près de la ligne adverse (pick-and-go qui se transforme
         // en maul) — la voie PRINCIPALE de formation reste la touche gagnée
         // dans les 22 m adverses (cf. _tickTouche).
@@ -648,12 +1413,18 @@
         if (soutiens.length > 0 && this.rng() < tauxMaul && Referee.maulForme(porteur, defenseurProche, soutiens.length > 0)) {
           this._formerMaul(porteur, defenseurProche);
         } else {
-          this.porteur.auSol = 1.5;
-          this.stats[this.possession].rucks++;
-          const tierRuck = this.rng();
-          this.ruckDureeCible = tierRuck < 0.55 ? 2 + this.rng() * 2
-            : tierRuck < 0.85 ? 4 + this.rng() * 3
-              : 7 + this.rng() * 4;
+          // Plaqué : à terre, il ne se relèvera pas tout de suite (cf. _tickRuck
+          // qui maintient cet état pendant le ruck et impose un temps de relève).
+          // On mémorise l'endroit EXACT de la chute : tant qu'il est au sol, le
+          // joueur y est figé (cf. tick(), gel global des joueurs au sol) et ne
+          // se déplace plus du tout jusqu'à s'être relevé.
+          this.porteur.auSol = 2.0;
+          this.porteur._solX = this.porteur.x; this.porteur._solY = this.porteur.y;
+          this.stats[this.possession].rucks++; this.stats[this.possession].phases++;
+          // Durée de recyclage du ruck : tirée du profil configurable
+          // (cfg.ruck.profil), calibré par balayage de simulations sur les
+          // vitesses de ruck du France-Irlande 2026 (cf. _tirerDureeRuck).
+          this.ruckDureeCible = this._tirerDureeRuck();
           this.ruckTempsSansSoutien = 0;
           this.phase = 'RUCK';
           this._receptionDirecte = false;
@@ -662,8 +1433,28 @@
       }
 
       const dx = porteur.sensAttaque * 6;
-      const evite = (porteur.y - defenseurProche.y) > 0 ? 2.5 : -2.5;
+      // Amplitude du crochet selon le PROFIL : un joueur rapide (ailier ~90)
+      // crochète franchement pour éliminer le défenseur, un avant (~45) court
+      // quasi droit et va au contact. Donne une évasion individuelle visible au
+      // lieu d'un même pas de côté pour tous.
+      const amplEvite = 1.0 + Math.max(0, (porteur.vitesse - 45)) / 45 * 2.5;
+      let evite = ((porteur.y - defenseurProche.y) > 0 ? 1 : -1) * amplEvite;
+      // Ligne CROISÉE (issue d'une combinaison, cf. _tickCombinaison) : le
+      // receveur vient de prendre le ballon sur un croisé, il change de direction
+      // et repique de l'autre côté un court instant, au lieu du crochet habituel.
+      if (porteur._croiseTimer > 0) evite = (porteur._croiseDir || 1) * amplEvite;
+      // Près d'une ligne de touche, le porteur ne crochète JAMAIS vers la touche
+      // (ce qui le faisait sortir gratuitement, gonflant le nombre de touches dès
+      // qu'on écartait le jeu) : il coupe à l'intérieur, comme un vrai ailier/
+      // centre qui rentre chercher du soutien plutôt que de mourir sur la ligne.
+      if (porteur.y < 8) evite = Math.abs(evite);
+      else if (porteur.y > LARGEUR - 8) evite = -Math.abs(evite);
+      const xAvantCourse = porteur.x;
       avancer(porteur, dx, evite, dt, vitesseMs(porteur));
+      // Mètres gagnés : uniquement le terrain réellement parcouru ballon en
+      // main dans le sens d'attaque (pas les passes ni le jeu au pied), comme
+      // la statistique "metres gained" d'un relevé de match réel.
+      this.stats[this.possession].metresGagnes += (porteur.x - xAvantCourse) * porteur.sensAttaque;
 
       // Touche : le ballon porté au-delà de la ligne de touche est mort, jeu arrêté.
       if (porteur.y <= 0.01 || porteur.y >= LARGEUR - 0.01) {
@@ -671,38 +1462,186 @@
         return;
       }
 
-      // Soutien rapproché : seuls 1 à 2 coéquipiers (les plus proches parmi les
-      // joueurs à forte tendance de proximité) collent réellement le porteur ;
-      // les autres tiennent leur couloir ou suivent à distance, sinon toute
-      // l'équipe converge sur le ballon comme un seul bloc, ce qui n'arrive pas
-      // en match réel (lignes, options de passe écartées...).
+      // Soutien et organisation de l'attaque : seuls les 2 coéquipiers les PLUS
+      // PROCHES du porteur (quel que soit leur poste) viennent réellement le
+      // soutenir. Tous les autres NE courent PAS après le ballon : ils tiennent
+      // leur couloir du plan de jeu (avants au centre, ligne de trois-quarts
+      // écartée, ailiers sur les bords), légèrement en retrait pour rester
+      // onside, et OCCUPENT la largeur du terrain — prêts à recevoir une passe
+      // au large. Avant, toute l'équipe dérivait vers le ballon et se compactait.
       const att = this.attaquants();
-      const candidatsProches = att
-        .filter(j => j !== porteur && j.tendance >= 70)
-        .sort((a, b) => distance(a, porteur) - distance(b, porteur));
-      const pursuiteEtroite = new Set(candidatsProches.slice(0, 2));
+      // Trailers : les DEUX joueurs les plus proches suivent le porteur — ce
+      // sont eux qui se précipiteront pour sécuriser le ruck au plaquage. (Une
+      // variante « avants seulement » a été testée et RETIRÉE : un back parti au
+      // large se retrouvait sans soutien à moins de 15 m, chaque percée mourait
+      // isolée — score effondré de 29 à 19. La limitation du monde au
+      // regroupement se fait AU RUCK, cf. soutiensRuck limité à 2, pas ici.)
+      const soutienDirect = new Set(
+        att.filter(j => j !== porteur && j.auSol === 0)
+          .sort((a, b) => distance(a, porteur) - distance(b, porteur))
+          .slice(0, 2)
+      );
+      // AVANT LANCÉ : quand le 9 tient le ballon à la base, l'avant de pod le
+      // plus proche (onside) part en COURSE DE PERCUSSION vers la ligne
+      // d'avantage — il arrive lancé au niveau du 9, prêt à percuter si le 9 le
+      // sert (cf. choisirActionPorteur, avantLance). C'est l'animation visible
+      // du jeu d'avants : un gros qui se lance dans l'axe à chaque temps de jeu,
+      // même quand le ballon part finalement au large.
+      let avantLanceRun = null;
+      if (porteur.numero === 9) {
+        let dminLance = 9;
+        for (const k of att) {
+          if (k !== porteur && k.numero <= 8 && k.auSol === 0
+            && (k.x - porteur.x) * porteur.sensAttaque <= 0.5) {
+            const dk = distance(k, porteur);
+            if (dk < dminLance) { dminLance = dk; avantLanceRun = k; }
+          }
+        }
+      }
       for (const j of att) {
         if (j === porteur) continue;
-        if (pursuiteEtroite.has(j)) {
-          const angle = (j.numero % 5) - 2;
-          avancer(j, (porteur.x - j.x) + angle, (porteur.y - j.y) + angle * 0.5, dt, vitesseMs(j) * 0.9);
-        } else if (j.tendance >= 30) {
-          // Ouvreur/centres tiennent surtout leur couloir (ligne d'attaque
-          // écartée, options de passe disponibles) avec juste une légère
-          // dérive vers le ballon ; avec un poids majoritaire donné au ballon
-          // (l'ancien 0.6), toute la ligne se compactait sur un seul point
-          // au lieu de garder une vraie largeur de jeu.
-          const cibleY = j.channelY * 0.75 + porteur.y * 0.25;
-          const cibleX = porteur.x - porteur.sensAttaque * (6 + Math.abs(j.channelY - porteur.y) * 0.2);
-          avancer(j, cibleX - j.x, cibleY - j.y, dt, vitesseMs(j) * 0.8);
+        if (j === avantLanceRun) {
+          const cibleXl = porteur.x - porteur.sensAttaque * 0.3;
+          avancer(j, cibleXl - j.x, (porteur.y - j.y) * 0.3, dt, vitesseMs(j));
+          continue;
+        }
+        // HORS-JEU D'ATTAQUE (jeu courant) : un coéquipier NETTEMENT devant le
+        // porteur est hors-jeu. Au lieu de traîner devant le ballon (les avants du
+        // temps précédent restaient plantés en avant quand le ballon repartait vers
+        // l'arrière — « hors-jeu » très visible), il se REPLIE derrière le porteur
+        // pour se remettre onside, comme un vrai joueur. Repli à allure modérée
+        // (0,8×) pour ne pas déstructurer le jeu ; seuil 2 m pour ne cibler que les
+        // joueurs franchement hors-jeu (au-delà de la tolérance de passe et de
+        // l'alignement à plat de la ligne).
+        if (this.phase === 'PORTE' && (j.x - porteur.x) * porteur.sensAttaque > 2) {
+          const cibleX = porteur.x - porteur.sensAttaque * 2.5;
+          avancer(j, cibleX - j.x, (j.channelY - j.y) * 0.3, dt, vitesseMs(j) * 0.8);
+          continue;
+        }
+        // Le 9 (quand il ne porte pas) SUIT L'ACTION EN PERMANENCE : ~4,5 m
+        // derrière le porteur, en glissant vers sa colonne — c'est lui qui doit
+        // ARRIVER LE PREMIER sur le prochain ruck pour distribuer avant le
+        // redéploiement adverse. Avant, il traînait à ~6,5 m par la logique
+        // générique : chaque mètre d'écart retarde la sortie du ballon.
+        if (j.numero === 9 && j.auSol === 0) {
+          const cibleX9 = porteur.x - porteur.sensAttaque * 4.5;
+          avancer(j, cibleX9 - j.x, (porteur.y - j.y) * 0.6, dt, vitesseMs(j) * 0.95);
+          continue;
+        }
+        // L'OUVREUR (10) ne se place JAMAIS dans le dos direct du 9 : quand le 9
+        // a le ballon (sortie), le 10 se décale sur un CÔTÉ (le grand côté, plus
+        // d'espace) et EN RETRAIT, pour recevoir lancé et avec un angle et amorcer
+        // l'attaque — pas à l'arrêt collé au regroupement. C'est ce premier
+        // receveur décalé qui donne une vraie ligne d'attaque.
+        if (j.numero === 10 && porteur.numero === 9 && j.auSol === 0) {
+          // Quand le 9 tient le ballon (sortie), le 10 — parti PROFOND (placé
+          // ~8 m derrière pendant le ruck) — S'ÉLANCE à pleine vitesse vers une
+          // cible quasi à plat sur le côté ouvert : la passe du 9 part en ~0,3-
+          // 0,5 s, donc le 10 la reçoit LANCÉ, encore ~4-6 m derrière (passe
+          // légale) mais en pleine accélération vers la ligne d'avantage.
+          const coteOuvert = porteur.y <= LARGEUR / 2 ? 1 : -1;
+          const cibleY10 = Math.max(6, Math.min(LARGEUR - 6, porteur.y + coteOuvert * 6));
+          const cibleX10 = porteur.x - porteur.sensAttaque * 1.5;
+          avancer(j, cibleX10 - j.x, cibleY10 - j.y, dt, vitesseMs(j));
+          continue;
+        }
+        // LIGNE DE TROIS-QUARTS À PLAT : quand un back (9-13) porte en jeu courant,
+        // les backs situés À L'EXTÉRIEUR de lui dans la ligne (vers le grand côté)
+        // se placent ÉCARTÉS (~7 m entre chaque) et seulement LÉGÈREMENT en retrait
+        // (~3-6 m, jamais loin derrière — « pas de passe derrière soi »), pour
+        // recevoir À PLAT et enchaîner 10→12→13→aile. C'est ce qui fait circuler
+        // le ballon sur 2-3 passes avant le contact, au lieu de foncer au ras.
+        const ordreLigne = { 10: 0, 12: 1, 13: 2, 11: 3, 14: 3 };
+        if (this.phase === 'PORTE' && !soutienDirect.has(j)
+          && porteur.numero >= 9 && porteur.numero <= 13
+          && (j.numero >= 10 && j.numero <= 14)) {
+          const rang = (ordreLigne[j.numero] ?? 3) - (ordreLigne[porteur.numero] ?? 0);
+          if (rang > 0) {
+            // LANCEMENT : partis EN PROFONDEUR (placés ~8-12 m derrière pendant
+            // le ruck), les backs extérieurs SPRINTENT (pleine vitesse) vers une
+            // cible quasi À PLAT sur le porteur — ils prennent de la vitesse
+            // pendant que le ballon voyage et le reçoivent EN PLEINE COURSE au
+            // moment de franchir la ligne d'avantage, au lieu d'attendre à plat
+            // et d'être plaqués sur place (« départ au ras »).
+            const coteOuvert = porteur.y <= LARGEUR / 2 ? 1 : -1;
+            // L'ailier côté fermé tient son aile (cf. placement au ruck) au lieu
+            // de traverser tout le terrain pour rejoindre l'éventail ouvert.
+            const estAilier = j.numero === 11 || j.numero === 14;
+            const sonCote = Math.sign(j.channelY - LARGEUR / 2) || 1;
+            if (estAilier && sonCote !== coteOuvert) {
+              const cibleXa = porteur.x - porteur.sensAttaque * 4;
+              avancer(j, cibleXa - j.x, j.channelY - j.y, dt, vitesseMs(j) * 0.85);
+              continue;
+            }
+            const cibleY = Math.max(4, Math.min(LARGEUR - 4, porteur.y + coteOuvert * 7 * rang));
+            // DIAGONALE en course aussi : le voisin immédiat vient quasi à plat
+            // (rang 1 : ~2,2 m derrière le porteur, prêt à prendre la passe
+            // courte lancé), mais chaque homme au-delà GARDE de la profondeur
+            // (~1,4 m de plus par cran) — la ligne ne s'aplatit jamais toute
+            // entière : quand le 12 reçoit, le 13 et l'aile ont encore du champ
+            // pour continuer le mouvement. C'est ce qui permet d'ÉCARTER par
+            // passes courtes successives au lieu d'une seule passe longue.
+            const cibleX = porteur.x - porteur.sensAttaque * (0.8 + rang * 1.4);
+            avancer(j, cibleX - j.x, cibleY - j.y, dt, vitesseMs(j));
+            continue;
+          }
+        }
+        if (soutienDirect.has(j)) {
+          // Soutien rapproché, toujours légèrement en retrait du porteur en
+          // profondeur (jamais devant, sinon passe en avant) : il attend le
+          // ballon dans son dos.
+          const cibleX = porteur.x - porteur.sensAttaque * 1.5;
+          if ((porteur._percee || 0) > 0) {
+            // PERCÉE : le soutien SPRINTE en LIGNE DE PASSE dans l'ESPACE — il ne
+            // colle pas l'axe du perceur (où la couverture converge), il se
+            // décale du CÔTÉ OPPOSÉ au défenseur de couverture le plus proche.
+            // L'offload du perceur trouve ainsi un receveur lancé EN ESPACE, ce
+            // qui transforme la percée en avancée longue/essai construit au lieu
+            // d'un relais dans le trafic aussitôt plaqué.
+            const { joueur: couverture } = joueurLePlusProche(def, porteur.x, porteur.y);
+            const coteLibre = couverture ? (Math.sign(porteur.y - couverture.y) || 1) : 1;
+            const cibleY = Math.max(3, Math.min(LARGEUR - 3, porteur.y + coteLibre * 4));
+            avancer(j, cibleX - j.x, cibleY - j.y, dt, vitesseMs(j));
+          } else {
+            // Le soutien court À CÔTÉ-derrière du porteur (décalé de ~2,5-3 m
+            // sur le côté, jamais dans son dos) : une passe se donne à un
+            // joueur SUR LE CÔTÉ — passer droit derrière soi est impossible.
+            // Mesuré avant : 16 % des passes partaient « dans le dos ».
+            const cote = (j.numero % 2 === 0) ? 1 : -1;
+            const cibleYs = Math.max(2, Math.min(LARGEUR - 2, porteur.y + cote * (2.5 + (j.numero % 3) * 0.4)));
+            avancer(j, cibleX - j.x, cibleYs - j.y, dt, vitesseMs(j) * 0.9);
+          }
         } else {
-          const cibleY = j.channelY;
-          const cibleX = porteur.x - porteur.sensAttaque * 10;
-          avancer(j, cibleX - j.x, cibleY - j.y, dt, vitesseMs(j) * 0.6);
+          // AUTONOMIE par le profil : chaque joueur suit le ballon selon SA
+          // tendance individuelle (proximité au ballon, cf. modèle) plutôt qu'un
+          // binaire avant/back. Un joueur « tenant du ballon » (n°9, piliers,
+          // tendance ~90) dérive franchement vers le jeu pour soutenir ; un ailier
+          // (tendance ~15) tient son large. Idem pour la profondeur : les suiveurs
+          // se placent plus à plat (soutien proche), les arrières plus en
+          // profondeur (lecture et espace). Le placement émerge ainsi des profils.
+          const t = j.tendance / 100; // 0.15 (ailier) .. 0.90 (9/pilier)
+          const driftBallon = 0.04 + t * 0.20;
+          const cibleY = j.channelY * (1 - driftBallon) + porteur.y * driftBallon;
+          const profondeur = (10 - t * 4) + Math.abs(j.channelY - porteur.y) * (0.14 - t * 0.1);
+          const cibleX = porteur.x - porteur.sensAttaque * profondeur;
+          avancer(j, cibleX - j.x, cibleY - j.y, dt, vitesseMs(j) * (j.numero <= 8 ? 0.7 : 0.8));
         }
       }
 
+      // MONTÉE EN CHARGE de la défense (cfg.defense.rampeMontee, en secondes) :
+      // au début de chaque temps de jeu la ligne se RÉORGANISE (repli, comptage,
+      // communication) avant de monter à pleine vitesse — c'est ce qui laisse au
+      // porteur lancé le temps de courir 5-8 m avant le contact, comme en vrai
+      // (mesuré France-Irlande : 3,8 m gagnés par course, un contact toutes les
+      // ~11 s de jeu ; sans rampe le contact tombait en ~2 s et le match jouait
+      // 4x trop de phases). 0 = montée immédiate (comportement historique).
+      const rampeDef = this.cfg.defense.rampeMontee || 0;
+      const fRampe = rampeDef > 0 ? Math.min(1, 0.35 + this.timerPhase / rampeDef) : 1;
       for (const j of def) {
+        // Défenseur FIXÉ (battu par une passe, cf. _tenterPasse) : il est hors du
+        // coup un court instant, il ne monte plus couvrir le receveur — c'est ce
+        // qui laisse le SURNOMBRE (et l'espace) au large.
+        if ((j.fixeCooldown || 0) > 0) continue;
         if (j === defenseurProche) {
           // Le plaqueur désigné vise un point d'interception légèrement
           // devant le porteur (dans son sens de course), pas sa position
@@ -711,17 +1650,59 @@
           // jute latéralement (chaque tick, le défenseur réoriente en retard
           // d'un cran) — un vrai plaqueur lit la trajectoire et coupe l'angle.
           const cibleInterceptX = porteur.x + porteur.sensAttaque * 1.5;
-          avancer(j, cibleInterceptX - j.x, porteur.y - j.y, dt, vitesseMs(j));
+          avancer(j, cibleInterceptX - j.x, porteur.y - j.y, dt, vitesseMs(j) * fRampe);
           continue;
         }
-        // Les défenseurs hors plaqueur direct doivent se placer ENTRE le porteur
-        // et leur propre ligne d'en-but (donc dans le sens d'attaque du porteur),
-        // pas derrière lui : sinon le couloir vers l'essai reste grand ouvert.
+        // L'ARRIÈRE (n°15) ne monte PAS dans la ligne : il SWEEPE en couverture
+        // ~18 m derrière, au centre, pour parer le jeu au pied et les
+        // débordements (dernier rideau). Il ne court jamais vers le ballon.
+        if (j.numero === 15) {
+          const cibleX = porteur.x + porteur.sensAttaque * this.cfg.defense.profondeurArriereJeu;
+          const cibleY = j.channelY * 0.7 + porteur.y * 0.3;
+          avancer(j, cibleX - j.x, cibleY - j.y, dt, vitesseMs(j) * 0.8);
+          continue;
+        }
+        // AILE CÔTÉ FERMÉ (à l'opposé du ballon) : elle ne monte PAS dans la
+        // ligne mais RECULE en couverture (~10 m derrière la ligne d'avantage),
+        // formant le rideau arrière avec le n°15 (back-three) — prête à cueillir
+        // un coup de pied ou un débordement au large. L'aile côté OUVERT (près du
+        // ballon) reste, elle, dans la ligne pour défendre le large. La défense
+        // couvre ainsi la PROFONDEUR sans dégarnir le côté où l'attaque se
+        // développe.
+        if (j.numero === 11 || j.numero === 14) {
+          const coteAile = Math.sign(j.channelY - LARGEUR / 2) || 1;
+          const coteBallon = Math.sign(porteur.y - LARGEUR / 2) || 1;
+          // Seulement LOIN de la ligne défendue (>40 m) : là, la menace est le
+          // coup de pied/le territoire, donc on décroche l'aile fermée en
+          // couverture. PRÈS de l'en-but défendu (zone rouge), la menace est
+          // l'essai : l'aile RESTE dans la ligne, on ne dégarnit pas la défense
+          // là où se marquent les essais (sinon on en concède davantage).
+          const ligneDef = porteur.sensAttaque > 0 ? LONGUEUR : 0;
+          const distLigneDef = Math.abs(ligneDef - porteur.x);
+          if (coteAile !== coteBallon && distLigneDef > 40) {
+            const cibleXcouv = porteur.x + porteur.sensAttaque * 12;
+            avancer(j, cibleXcouv - j.x, j.channelY - j.y, dt, vitesseMs(j) * 0.85);
+            continue;
+          }
+        }
+        // Les autres défenseurs (avants + 9/10/12/13 + AILIER côté ouvert) montent
+        // en LIGNE à plat sur la ligne d'avantage et tiennent leur couloir pour
+        // OCCUPER toute la largeur, avec une glissade vers le ballon (défense en
+        // glissement). Les AILIERS tiennent FERMEMENT leur bord (dérive minime) :
+        // ils ne se font pas aspirer vers le ballon, donc les ailes restent
+        // couvertes. Tous restent côté en-but adverse au porteur (couloir fermé).
         const estAvant = j.numero <= 8;
-        const avance = porteur.sensAttaque > 0 ? (estAvant ? 1 : 3) : -(estAvant ? 1 : 3);
+        const ailier = j.numero === 11 || j.numero === 14;
+        const avance = porteur.sensAttaque > 0 ? (estAvant ? 1 : 2.5) : -(estAvant ? 1 : 2.5);
         const cibleX = porteur.x + avance;
-        const cibleY = j.channelY * 0.6 + porteur.y * 0.4;
-        avancer(j, cibleX - j.x, cibleY - j.y, dt, vitesseMs(j) * 0.85);
+        const drift = ailier ? 0.06 : 0.2;
+        const cibleY = j.channelY * (1 - drift) + porteur.y * drift;
+        // DÉFENSE PAS REPLACÉE après un ballon éclair au ruck (_defenseTardive) :
+        // la montée en ligne est nettement plus lente pendant ~1,2 s — c'est la
+        // récompense du jeu rapide, le seul vrai avantage du ballon éclair.
+        // Le tout modulé par la montée en charge du temps de jeu (fRampe).
+        const vLigne = (this._defenseTardive > 0 ? 0.55 : 0.85) * fRampe;
+        avancer(j, cibleX - j.x, cibleY - j.y, dt, vitesseMs(j) * vLigne);
       }
 
       // Essai
@@ -741,13 +1722,13 @@
             porteur.x = porteur.sensAttaque > 0 ? LONGUEUR - 0.5 : 0.5;
             this.ruckPoint = { x: porteur.x, y: porteur.y };
             this.contestants = [sauveteur.numero];
-            porteur.auSol = 1.5;
-            this.stats[this.possession].rucks++;
-            const tierRuck = this.rng();
-            this.ruckDureeCible = tierRuck < 0.55 ? 2 + this.rng() * 2
-              : tierRuck < 0.85 ? 4 + this.rng() * 3
-                : 7 + this.rng() * 4;
+            porteur.auSol = 2.0;
+            porteur._solX = porteur.x; porteur._solY = porteur.y;
+            this.stats[this.possession].rucks++; this.stats[this.possession].phases++;
+            // Profil de durées configurable, cf. l'autre site de création de ruck.
+            this.ruckDureeCible = this._tirerDureeRuck();
             this.ruckTempsSansSoutien = 0;
+            this.ruckDominant = false; // plaquage de sauvetage in extremis, pas un ballon sur l'avancée
             this.phase = 'RUCK';
             this._receptionDirecte = false;
             this.timerPhase = 0;
@@ -755,6 +1736,10 @@
           }
           sauveteur.missCooldown = 1.0;
           this.stats[sauveteur.team].missedTackles++;
+          this.stats[this.possession].defenseursBattus++;
+          // Battre le dernier défenseur (plaquage de sauvetage) EST un
+          // franchissement — le porteur file vers l'en-but.
+          this.stats[this.possession].franchissements++;
           this.log('PLAQUAGE_MANQUE', this.possession, `Plaquage de sauvetage manque, l'equipe ${this.possession} aplatit`);
         }
         porteur.x = porteur.sensAttaque > 0 ? LONGUEUR : 0;
@@ -778,7 +1763,10 @@
       {
         const sensAttaqueDrop = porteur.sensAttaque;
         const distanceButsDrop = sensAttaqueDrop > 0 ? (LONGUEUR - porteur.x) : porteur.x;
-        if (distanceButsDrop >= 8 && distanceButsDrop <= 38 && this.rng() < 0.012 * dt) {
+        // Réservé aux joueurs qui tirent réellement au but en match (ouvreur,
+        // centres, arrière) : sans ce filtre, un pilier porteur du ballon à
+        // 30 m pouvait tenter un drop-goal, ce qu'on ne voit jamais en match.
+        if (porteur.tendance <= 55 && distanceButsDrop >= 8 && distanceButsDrop <= 38 && this.rng() < 0.012 * dt) {
           const offsetLateralDrop = Math.abs(porteur.y - LARGEUR / 2);
           const equipe = this.possession;
           this.stats[equipe].kicks++;
@@ -819,16 +1807,66 @@
       const avant = porteur.numero <= 8;
       const enMene = this.score[porteur.team] > this.score[porteur.team === 'A' ? 'B' : 'A'];
 
+      // 0. DEMI DE MÊLÉE LIBRE à la sortie (ruck/mêlée/touche où il n'était pas
+      // au contact) : en plus du lancement classique 9→10 et du jeu au pied déjà
+      // gérés plus bas (sections 1 et 2b, calibrés), on ajoute ici les deux seules
+      // options qui manquaient au 9, et RAREMENT pour ne pas casser la structure
+      // d'attaque (un 9 qui snipe/tape à chaque ruck effondre les essais) :
+      //   - PERCÉE : s'il y a un vrai trou devant lui (aucun défenseur dans un
+      //     large cône proche), il part seul ;
+      //   - AVANT LANCÉ : il sert un avant tout près (ballon porté / pick).
+      // Sinon (cas courant) il tombe dans le jeu au pied calibré (touche/dégagement
+      // dans ses 22, chandelle plus haut) puis le lancement vers l'ouvreur.
+      if (porteur.numero === 9 && this._neufLibre) {
+        if (this.timerPhase < 0.15) return null; // le ballon finit d'arriver de la base (sortie éclair)
+        this._neufLibre = false;
+        const sens = porteur.sensAttaque;
+        const r = this.rng();
+        // PERCÉE du 9 : uniquement dans le camp adverse (là où un 9 stoppé laisse
+        // un ruck en bonne position au lieu de sacrifier une possession dans son
+        // propre camp) et seulement si le CHANNEL immédiat devant lui est vide
+        // (aucun défenseur dans un cône serré) — c'est le vrai trou près du ruck.
+        // Le 9 est un PASSEUR : son travail est de donner au 10, il ne part que
+        // TRÈS RAREMENT au ras. Percée seulement s'il y a un vrai trou net devant
+        // lui près de la ligne adverse, et rarement (r < 0.10). Sinon il donne
+        // (section 2b, 9→10 quasi systématique).
+        const enCampAdverse = zone === 'OPP_HALF' || zone === 'OPP_22' || zone === 'CINQ_M';
+        const channelVide = !this.defenseurs().some(d => d.auSol === 0
+          && (d.x - porteur.x) * sens > -0.5 && (d.x - porteur.x) * sens < 6
+          && Math.abs(d.y - porteur.y) < 3);
+        if (channelVide && enCampAdverse && r < 0.10) return 'RUN'; // trou net près de la ligne → il part seul (rare)
+        // AVANT LANCÉ sur le pod (animation offensive) : les avants se tiennent
+        // en pods à plat de chaque côté du ruck (cf. _tickRuck) et le plus
+        // proche part en course de percussion dès que le 9 tient le ballon (cf.
+        // _tickPorte). Le 9 le sert nettement plus souvent qu'avant (18 % contre
+        // 5 %) : l'attaque ALTERNE visiblement percussion dans l'axe et
+        // lancement au large, comme une vraie animation offensive — au lieu de
+        // sortir mécaniquement vers le 10 à chaque temps de jeu.
+        const avantLance = att.find(j => j.numero <= 8 && j.auSol === 0
+          && distance(j, porteur) < 8 && (j.x - porteur.x) * sens <= 0.3 && (j.x - porteur.x) * sens > -5);
+        if (avantLance && r < 0.18) { this._passeCibleForcee = avantLance; return 'PASS'; }
+        // sinon (cas TRÈS majoritaire) : lancement vers l'ouvreur (section 2b).
+      }
+
       // 1. Botter en jeu courant : très fréquent dans son propre 22 (surtout
       // sous pression), de plus en plus rare en remontant le terrain. Une
       // équipe qui mène botte un peu plus pour la touche/le territoire.
       if (this.timerPhase > 0.4 && zone !== 'CINQ_M') {
+        // Taux abaissés (~ -35 %) : le jeu au pied était trop fréquent (~64
+        // coups de pied/match, réel ~25-40). On botte toujours surtout depuis
+        // son propre camp (dégagement/occupation) mais on garde davantage le
+        // ballon en main pour faire vivre le jeu.
         let pParSeconde;
-        if (zone === 'OWN_22') pParSeconde = 0.40 + (pression ? 0.22 : 0);
-        else if (zone === 'OWN_HALF') pParSeconde = 0.12 + (pression ? 0.08 : 0);
-        else if (zone === 'OPP_HALF') pParSeconde = 0.03 + (pression ? 0.02 : 0);
-        else pParSeconde = 0.015; // OPP_22 : on privilégie le jeu au sol/pick-and-go.
+        if (zone === 'OWN_22') pParSeconde = 0.26 + (pression ? 0.16 : 0);
+        else if (zone === 'OWN_HALF') pParSeconde = 0.075 + (pression ? 0.05 : 0);
+        else if (zone === 'OPP_HALF') pParSeconde = 0.02 + (pression ? 0.012 : 0);
+        else pParSeconde = 0.01; // OPP_22 : on privilégie le jeu au sol/pick-and-go.
         if (enMene) pParSeconde *= 1.15; else pParSeconde *= 0.9;
+        // Multiplicateur global configurable : en vrai une équipe botte toutes
+        // les ~3 courses (78 coups de pied pour 255 courses au France-Irlande
+        // 2026) — c'est LE régulateur de la longueur des possessions. Calibré
+        // par balayage (cf. docs/ANALYSE_MATCH_REEL.md).
+        pParSeconde *= (this.cfg.attaque.tauxJeuAuPied || 1);
         if (this.rng() < pParSeconde * dt) return 'KICK';
       }
 
@@ -838,10 +1876,89 @@
         return 'PICK_GO';
       }
 
-      // 3. Passe avant contact : défenseur qui se rapproche mais pas encore au
-      // plaquage, avec un soutien à proximité immédiate — l'attaque transmet
-      // le ballon plutôt que d'attendre le choc.
-      if (distDef < 5.5 && soutienDisponible && this.rng() < 0.7 * dt) {
+      // 2b. Sortie de regroupement : le demi de mêlée (9) ÉCARTE le ballon de la
+      // congestion. À la sortie d'un ruck/d'une mêlée, les deux paquets sont
+      // massés autour du ballon et la défense ne laisse pas passer le porteur ;
+      // le 9 ne doit donc PAS foncer dedans, il donne à l'ouvreur (10) ou à un
+      // trois-quarts placé EN ESPACE derrière/à hauteur. C'est ce qui sort
+      // réellement le ballon du regroupement et permet d'avancer. Très probable
+      // dès qu'une option existe (encore plus sous pression immédiate).
+      if (porteur.numero === 9) {
+        // Sortie classique 9->10 : le 9 donne à l'ouvreur dégagé à hauteur/léger
+        // retrait. (Varier ce destinataire déstabilise l'alignement et effondre
+        // les essais — cf. _tenterPasse, branche passeurNeuf. La largeur vient du
+        // 10 qui écarte ensuite le long de la ligne.)
+        // Le 9 donne au 10 QUASI SYSTÉMATIQUEMENT, même si un défenseur est proche
+        // du 10 (c'est une passe, le 10 recevra et décidera) : sinon, dès que la
+        // défense montait vite, le 9 ne trouvait « personne de libre » et fonçait
+        // au ras du ruck où il se faisait plaquer (67 plaquages/match sur le 9 !).
+        // Son rôle est de PASSER, pas de porter. On force la cible sur le 10.
+        const dix = att.find(j => j.numero === 10 && j.auSol === 0
+          && (j.x - porteur.x) * porteur.sensAttaque <= 0.5
+          && distance(j, porteur) < 20);
+        // SYNCHRONISATION : si le 10 est encore PROFOND (> 4,5 m en retrait,
+        // en train de s'élancer), le 9 tient le ballon un court instant
+        // (≤ 0,6 s) pour lui passer À PLAT en pleine course — au lieu de lâcher
+        // aussitôt une passe de 6-8 m vers l'arrière (« que des passes en
+        // arrière »). Passé 0,6 s, il donne quand même (jeu rapide d'abord).
+        if (dix) {
+          const profondeurDix = (porteur.x - dix.x) * porteur.sensAttaque;
+          if (profondeurDix > 4.5 && this.timerPhase < 0.6) return null;
+          this._passeCibleForcee = dix; return 'PASS';
+        }
+      }
+
+      // 2c. Trois-quarts qui FAIT VIVRE LA LIGNE : un back (10-13) qui a un
+      // partenaire EXTÉRIEUR (plus près de la touche ouverte) et EN ESPACE écarte
+      // le ballon vers le large plutôt que de rentrer au centre. C'est ce qui
+      // exploite la largeur du terrain (10->12->13->aile) au lieu de figer le jeu
+      // sur l'axe central 9-10. On vise le joueur SUIVANT de la ligne (passe
+      // courte, <22 m), jamais un saut direct vers l'ailier collé à la touche
+      // (marge de bord), et on évite de fixer un partenaire déjà sous pression.
+      if (porteur.numero >= 10 && porteur.numero <= 13 && zone !== 'CINQ_M') {
+        // On vise le SUIVANT dans la ligne des trois-quarts (plus à l'extérieur :
+        // 10→12→13→aile), onside et en espace, et on FORCE la passe sur lui — une
+        // passe courte et latérale (jamais en arrière). C'est ce qui fait circuler
+        // le ballon sur 2-3 passes avant le contact au lieu de foncer au ras.
+        const ordreL = { 10: 0, 12: 1, 13: 2, 11: 3, 14: 3 };
+        const rangP = ordreL[porteur.numero] ?? 0;
+        // On vise le VOISIN IMMÉDIAT dans la ligne (rang le plus proche au-dessus),
+        // à courte distance (< 13 m) : passe courte et latérale au joueur d'à côté.
+        // On passe MÊME si un défenseur est proche du receveur (c'est une passe, le
+        // receveur enchaînera) : sinon la chaîne s'arrêtait au 12 dès que la défense
+        // couvrait, et le porteur fonçait au ras. C'est en faisant TOURNER le ballon
+        // vite le long de la ligne qu'on atteint enfin l'espace au large (13/aile).
+        const suivant = att.filter(j => j !== porteur && j.auSol === 0
+          && (ordreL[j.numero] ?? -1) > rangP
+          && (j.x - porteur.x) * porteur.sensAttaque <= 0.5 // onside (à hauteur/léger retrait)
+          && distance(j, porteur) < 13
+          && joueurLePlusProche(this.defenseurs(), j.x, j.y).distance > 2) // au moins un peu d'air
+          .sort((a, b) => (ordreL[a.numero] - ordreL[b.numero]))[0];
+        // Passe rapide et fiable le long de la ligne (taux élevé) tant que le
+        // porteur n'est pas au contact immédiat : le ballon file vers le large.
+        // ENCHAÎNEMENT : un receveur frais (vient de recevoir, fenêtre _enchaine)
+        // relâche le ballon nettement plus volontiers — c'est ce qui fait
+        // TRAVERSER la ligne au ballon (10->12->13->aile) plus vite que la
+        // défense ne glisse, au lieu de mourir au 2e maillon. Mesuré sans ça :
+        // 2,2 passes par séquence, 32 % seulement à 3+ passes.
+        const tauxLigne = (pression ? this.cfg.attaque.jeuLargeTaux.pression : this.cfg.attaque.jeuLargeTaux.calme)
+          * ((porteur._enchaine || 0) > 0 ? 2.2 : 1);
+        if (suivant && distDef > 2.4 && this.rng() < tauxLigne * dt) {
+          this._passeCibleForcee = suivant; return 'PASS';
+        }
+      }
+
+      // 3. Passe avant contact, modulée par le PROFIL du porteur (autonomie) :
+      // un AVANT (tendance haute) va au CONTACT pour avancer et fixer plutôt que
+      // de lâcher ; un FINISSEUR rapide (ailier/arrière, vitesse élevée) se fie à
+      // sa vitesse et PERCE plutôt que de passer ; un DISTRIBUTEUR (ouvreur/centre)
+      // lâche volontiers le ballon avant le choc. Même situation, choix différent
+      // selon le joueur — au lieu d'un taux unique pour tous.
+      let pPasse = 0.7;
+      if (porteur.numero <= 8) pPasse = 0.45;
+      else if (porteur.vitesse > 80) pPasse = 0.45;
+      else if (porteur.numero === 10 || porteur.numero === 12 || porteur.numero === 13) pPasse = 0.9;
+      if (distDef < 5.5 && soutienDisponible && this.rng() < pPasse * dt) {
         return 'PASS';
       }
 
@@ -855,9 +1972,44 @@
         // jamais qu'un centre, jamais un ailier. D'où un rayon dédié, plus
         // large, pour cette détection (la passe elle-même reste risquée sur
         // la distance via probaReussite dans _tenterPasse).
+        // Distance ramenée de 45 m à 18 m : le « jeu au large » ne doit PAS être
+        // une passe interminable par-dessus tout le terrain (« super longue passe »
+        // signalée). L'écartement se fait de proche en proche via la ligne (2c) ;
+        // ici on ne cherche qu'un partenaire large RAISONNABLEMENT proche.
         const soutienLarge = att.find(j => j !== porteur && j.auSol === 0
-          && j.tendance <= 50 && distance(j, porteur) < 45);
-        if (soutienLarge && this.rng() < 0.22 * dt) return 'JEU_LARGE';
+          && j.tendance <= 50 && distance(j, porteur) < 18);
+        // Taux relevé (0.22 -> 0.33) : l'attaque ÉCARTE le ballon plus souvent
+        // vers les trois-quarts au lieu de le porter systématiquement au contact —
+        // le ballon circule davantage (comme en vrai). On ne relève QUE le jeu au
+        // LARGE (pas la passe de contact) : augmenter la passe brute effondre le
+        // score (ballon latéral sans percer + en-avants), tandis que l'écart vers
+        // l'espace fait vivre le jeu sans casser la finition (score préservé ~47).
+        // Taux abaissé (0,33 -> 0,15) : la passe LONGUE directe est RARE en vrai
+        // (difficile, interceptable) — l'écart normal se fait par passes courtes
+        // successives le long de la ligne (cf. 2c + diagonale d'attaque).
+        if (soutienLarge && this.rng() < 0.15 * dt) return 'JEU_LARGE';
+      }
+
+      // 4b. ANTI « DÉPART AU RAS » : un demi/back (9-13) pris tout près du
+      // regroupement, en plein champ (pas dans les 22 m, où le pick-and-go /
+      // la percée près de la ligne sont légitimes), ne CRASHE PAS bêtement le
+      // ballon 3 m après la sortie — il le garde vivant en le donnant au
+      // partenaire SUIVANT de la ligne (plus à l'extérieur, onside, à portée)
+      // pour continuer d'écarter. C'est la dernière option avant le contact :
+      // mesuré, les rucks « au ras » (< 5 m du précédent) venaient à 55 % du
+      // 9/10/12 qui recevaient et se faisaient plaquer sur place au lieu de
+      // faire circuler. On ne déclenche ce relais que si le partenaire existe
+      // (sinon on retombe sur le contact) — donc jamais de passe dans le vide.
+      if (porteur.numero >= 9 && porteur.numero <= 13
+          && zone !== 'CINQ_M' && zone !== 'OPP_22' && distDef < 2.2) {
+        const ordreRelais = { 9: -1, 10: 0, 12: 1, 13: 2, 15: 2, 11: 3, 14: 3 };
+        const rangP = ordreRelais[porteur.numero] ?? 0;
+        const relais = att.filter(j => j !== porteur && j.auSol === 0
+          && (ordreRelais[j.numero] ?? -2) > rangP
+          && (j.x - porteur.x) * porteur.sensAttaque <= 0.5 // onside (jamais devant)
+          && distance(j, porteur) < 14)
+          .sort((a, b) => (ordreRelais[a.numero] - ordreRelais[b.numero]))[0];
+        if (relais) { this._passeCibleForcee = relais; return 'PASS'; }
       }
 
       // 5. Hors de portée de plaquage et aucune décision ci-dessus : on
@@ -870,38 +2022,175 @@
     // disponible. Retourne true si la tentative a consommé le tick (passe
     // réussie, en-avant ou passe ratée -> mêlée), false s'il n'y avait aucun
     // candidat valable (le tick retombe alors sur la logique de course/contact).
+    // Déclenche le vol visuel d'une passe : le ballon part du passeur et
+    // décrit un court arc jusqu'au receveur (cf. getState), au lieu de "sauter"
+    // instantanément. La possession (this.porteur) change tout de suite côté
+    // logique — c'est purement de l'affichage —, donc aucun impact sur le jeu,
+    // les statistiques ou les invariants ; seul le dernier saut instantané du
+    // ballon lors d'une passe disparaît à l'écran. Durée proportionnelle à la
+    // distance (passe courte ~0,15 s, jeu au large ~0,5 s).
+    _lancerPasseVisuelle(passeur, cible) {
+      // Point de départ du vol : normalement les mains du passeur. MAIS si une
+      // passe est déjà en vol (ballon pas encore arrivé au receveur précédent),
+      // on démarre la nouvelle passe depuis la position ACTUELLE du ballon en
+      // vol, pas depuis le passeur : sinon, sur les passes enchaînées le long de
+      // la ligne (9->10->12->13...), chaque nouvelle passe faisait "sauter" le
+      // ballon depuis son vol en cours jusqu'au passeur suivant — la balle qui
+      // apparaît puis disparaît pour réapparaître ailleurs. Ainsi le ballon
+      // glisse de façon continue d'un receveur au suivant.
+      let fromX = passeur.x, fromY = passeur.y;
+      if (this.passeVisuelle) {
+        const P = this.passeVisuelle;
+        const t = P.duree > 0 ? Math.min(1, P.timer / P.duree) : 1;
+        fromX = P.fromX + (P.cible.x - P.fromX) * t;
+        fromY = P.fromY + (P.cible.y - P.fromY) * t;
+      }
+      const d = distance({ x: fromX, y: fromY }, cible);
+      this.passeVisuelle = {
+        fromX, fromY, cible,
+        timer: 0,
+        // Durée proportionnelle à la distance, plafonnée plus haut pour les
+        // passes au large (sinon le ballon "saute" ~5 m/tick et paraît
+        // téléporté) : une passe longue prend ~1 s comme en vrai.
+        duree: Math.max(0.12, Math.min(1.0, d / 20)),
+      };
+    }
+
     _tenterPasse(porteur, jeuLarge) {
       const att = this.attaquants();
       // Rayon de recherche du destinataire : un jeu au large vise précisément
       // un ailier/arrière qui tient son couloir à 20-30 m du regroupement, le
       // plafond de 25 m utilisé pour la passe courte l'exclurait presque
       // toujours — la distance reste pénalisée via probaReussite ci-dessous.
-      const rayon = jeuLarge ? 45 : 25;
+      // Rayon du jeu au large ramené de 45 à 28 m : une passe de 30-45 m
+      // n'existe pas (sauf coup de pied) — même la sautée reste sous ~20 m.
+      const rayon = jeuLarge ? 28 : 25;
       let candidats = att.filter(j => j !== porteur && j.auSol === 0 && distance(j, porteur) <= rayon);
       if (jeuLarge) candidats = candidats.filter(j => j.tendance <= 50);
+      // Un vrai joueur ne cherche pas un soutien placé devant lui dans le sens
+      // d'attaque : il sait que ce serait une passe en avant, donc il regarde
+      // les options à hauteur ou en retrait avant de lâcher le ballon. Sans ce
+      // filtre, le meilleur candidat au score (proximité/tendance) était
+      // parfois légèrement devant le porteur, transformant une simple passe en
+      // mêlée pour passe en avant bien plus souvent qu'en match réel. On garde
+      // un repli sur la liste complète si aucune option à hauteur/en retrait
+      // n'existe, comme un joueur sous pression qui tente quand même sa chance.
+      const memesTolerance = 0.3;
+      const candidatsOnside = candidats.filter(j => (j.x - porteur.x) * porteur.sensAttaque <= memesTolerance);
+      if (candidatsOnside.length > 0) candidats = candidatsOnside;
+      // Une passe se donne à un joueur SUR LE CÔTÉ (composante latérale) :
+      // passer droit dans son propre dos est impossible. On écarte les cibles
+      // sans décalage latéral (< 1,2 m) tant qu'une option latérale existe.
+      const candidatsLateraux = candidats.filter(j => Math.abs(j.y - porteur.y) > 1.2);
+      if (candidatsLateraux.length > 0) candidats = candidatsLateraux;
       if (candidats.length === 0) return false;
 
+      // Le demi de mêlée (9) qui sort le ballon cherche à l'ÉCARTER de la
+      // congestion : il vise l'ouvreur (10) en priorité, puis un trois-quarts
+      // EN ESPACE (défenseur le plus proche loin), pas un avant collé au
+      // regroupement. Pour les autres passeurs, on garde la logique « soutien
+      // le plus proche ».
+      const passeurNeuf = porteur.numero === 9;
+      const passeurBack = porteur.numero >= 10 && porteur.numero <= 13;
       let cible = candidats[0], meilleurScore = -Infinity;
+      // Cible imposée par une décision du porteur (ex. le 9 libre qui sert un
+      // avant lancé tout près à la sortie, cf. choisirActionPorteur) : on
+      // court-circuite le scoring si elle est bien une option légale (onside).
+      const cibleForcee = this._passeCibleForcee; this._passeCibleForcee = null;
+      if (cibleForcee && candidats.includes(cibleForcee)) {
+        cible = cibleForcee;
+      } else
       for (const c of candidats) {
         const d = distance(c, porteur);
-        const score = jeuLarge
-          ? Math.abs(c.channelY - LARGEUR / 2) - d * 0.3
-          : (100 - d) + c.tendance * 0.1;
+        let score;
+        if (jeuLarge) {
+          score = Math.abs(c.channelY - LARGEUR / 2) - d * 0.3;
+        } else if (passeurNeuf) {
+          // Le 9 vise l'ouvreur (10) en priorité, puis le soutien dégagé le plus
+          // proche — sans aller chercher le joueur le plus profond (ce qui ferait
+          // reculer le ballon et tuerait l'avancée). L'attaque du moteur démarre
+          // structurellement par cette sortie 9->10 ; varier le destinataire du 9
+          // (back plus large/profond) déstabilise l'alignement et effondre les
+          // essais (testé). La VARIÉTÉ vient ensuite du 10 qui écarte le long de la
+          // ligne (cf. branche passeurBack).
+          const espace = joueurLePlusProche(this.defenseurs(), c.x, c.y).distance;
+          score = (c.numero === 10 ? 80 : 0) + espace * 0.5 - d * 0.4 - c.tendance * 0.1;
+        } else if (passeurBack) {
+          // Trois-quarts qui fait vivre la ligne : il vise un partenaire EN ESPACE
+          // dans la zone MI-LARGE (couloirs des centres/arrière), pas le soutien
+          // le plus proche (souvent un avant central) NI l'ailier collé à la
+          // touche. « largeurUtile » récompense l'écartement jusqu'à ~22 m du
+          // centre PUIS REDESCEND vers la touche (offset 35) : ainsi le ballon va
+          // au large sans s'entonner dans le coin (ce qui envoyait l'ailier en
+          // touche). La pénalité de distance garde la passe sur le joueur suivant.
+          const espace = joueurLePlusProche(this.defenseurs(), c.x, c.y).distance;
+          const offset = Math.abs(c.y - LARGEUR / 2);
+          const largeurUtile = offset > 22 ? Math.max(0, LARGEUR / 2 - offset) : offset;
+          score = largeurUtile * 2 + espace * 0.7 - d * 0.5;
+        } else {
+          score = (100 - d) + c.tendance * 0.1;
+        }
         if (score > meilleurScore) { meilleurScore = score; cible = c; }
       }
 
+      this.stats[this.possession].passesTentees++;
       if (Referee.passeEnAvant(porteur.sensAttaque, porteur, cible)) {
         this.log('MELEE_AVANT', this.possession, `Passe en avant, equipe ${this.possession} - melee adverse`);
         this._accorderMelee(this.possession, porteur);
         return true;
       }
       const distancePasse = distance(porteur, cible);
-      const probaReussite = Math.max(0.65, Math.min(0.97, 0.97 - distancePasse / 70));
+      // Réussite de passe réaliste : en match réel une passe se complète à
+      // ~95-98 %, y compris au large. L'ancien plancher 0.65 faisait rater 35 %
+      // des passes longues, ce qui produisait ~19 mêlées/match sur passe ratée
+      // (bien trop : cf. repère 8-25 mêlées TOTALES, CLAUDE.md Rôle 6). On
+      // relève le plancher et on adoucit la pénalité de distance.
+      // Une passe COURTE (9->10, passe le long de la ligne au voisin) se complète
+      // en réalité à ~99 % : elle ne doit quasiment jamais finir en mêlée. Seules
+      // les passes LONGUES (sautée, jeu au large tendu) gardent un vrai risque.
+      // Le taux est calibré sur le NOMBRE ABSOLU d'en-avants par match (~10-15
+      // en réel) et non sur un pourcentage : le moteur joue beaucoup de passes
+      // (structure 9->10->ligne), donc même un petit pourcentage d'échec
+      // produisait des dizaines de mêlées sur passe ratée (56 mesurées, puis 36).
+      // Barème : ~99,3 % de près, ~98 % à 20 m, plancher 97 % au large.
+      const probaReussite = Math.max(0.97, Math.min(0.998, 1.0 - distancePasse / 1500));
       if (this.rng() < probaReussite) {
         this.stats[this.possession].passes++;
+        // FIXAGE / SURNOMBRE : si le passeur (n'importe qui, 9 compris — sa
+        // sortie de ruck fixe tout autant un défenseur qu'une passe de back) a
+        // couru sur son défenseur avant de lâcher — un adversaire est tout
+        // proche DEVANT lui — il l'a FIXÉ. Ce défenseur est battu par la passe :
+        // il ne peut plus glisser couvrir le receveur pendant un court instant
+        // (fixeCooldown). En enchaînant fixe+passe le long de la ligne, les
+        // défenseurs intérieurs sont battus un à un et un SURNOMBRE se crée au
+        // large → c'est ça qui fait qu'écarter le ballon PERCE (au lieu de
+        // mourir sur une défense qui couvre tout).
+        // AVANT : le 9 (numero 9) était EXCLU (seuil >= 10) — mesuré : sa passe
+        // au 10 (34 % de toutes les sorties de ruck, la plus grosse catégorie)
+        // ne fixait jamais aucun défenseur. Avec une défense bien organisée en
+        // créneaux (sans trous, cf. patch précédent), un défenseur se trouvait
+        // quasi toujours déjà à portée du 10 à la réception, sans la moindre
+        // fenêtre pour relayer — 54 % de ces séquences restaient à moins de 5 m
+        // de large. Le 9 doit fixer comme n'importe quel passeur.
+        if (porteur.numero >= 9) {
+          const sens = porteur.sensAttaque;
+          let fixe = null, dmin = 4.6;
+          for (const d of this.defenseurs()) {
+            if (d.auSol > 0 || (d.fixeCooldown || 0) > 0) continue;
+            const devant = (d.x - porteur.x) * sens; // > 0 = devant le passeur (côté défense)
+            const dd = distance(d, porteur);
+            if (devant > -1.5 && devant < 4 && dd < dmin) { dmin = dd; fixe = d; }
+          }
+          if (fixe) fixe.fixeCooldown = 1.3;
+        }
         this.log(jeuLarge ? 'JEU_LARGE' : 'PASSE', this.possession, `${jeuLarge ? 'Jeu au large' : 'Passe'} de l'equipe ${this.possession}`);
+        this._lancerPasseVisuelle(porteur, cible);
+        // Fenêtre d'enchaînement : le receveur a ~0,9 s pendant lesquelles il
+        // relâche volontiers le ballon au suivant (le mouvement continue).
+        cible._enchaine = 0.9;
         this.porteur = cible;
         this._receptionDirecte = false;
+        this._neufLibre = false; // le ballon a quitté le 9 : la fenêtre de décision de sortie est close
       } else {
         this.stats[this.possession].knockOns++;
         this.log('PASSE_RATEE', this.possession, `Passe ratee, equipe ${this.possession} - melee adverse`);
@@ -954,6 +2243,18 @@
         cibleY = Math.max(3, Math.min(LARGEUR - 3, porteur.y + (this.rng() * 8 - 4)));
       }
 
+      // SORTIE DE CAMP (exit play) : coup de pied depuis son propre 22 m pour se
+      // dégager (motif discriminant de l'étude). Ratée si le ballon ne dégage pas
+      // au-delà de la ligne des 22 m (reste dans la zone de danger) — hors touche,
+      // qui trouve la ligne et dégage toujours.
+      if (this._zoneTerrain(porteur) === 'OWN_22') {
+        this.stats[equipe].exits++;
+        const ligne22 = sens > 0 ? 22 : LONGUEUR - 22;
+        if (type !== 'TOUCHE' && (cibleX - ligne22) * sens < 0) {
+          this.stats[equipe].exitsRates++;
+        }
+      }
+
       this.typeCoupDePiedJeu = type;
       this.equipeCoupDePiedJeu = equipe;
       this.xCoupDePiedJeu = porteur.x;
@@ -969,11 +2270,13 @@
       this.timerPhase = 0;
     }
 
-    // Vol puis résolution d'un coup de pied tactique : sortie en touche (avec
-    // l'exception loi 19.2 du 22 m), contest aérien (chandelle/chip) ou simple
-    // récupération par l'équipe la mieux placée (dégagement/occupation).
+    // Vol d'un coup de pied tactique : sortie en touche (avec l'exception loi
+    // 19.2 du 22 m) dès la chute si hors-terrain, sinon le ballon retombe au
+    // sol et c'est _tickReceptionCoupDePied qui gère la course jusqu'à lui.
     _tickCoupDePiedJeu(dt) {
       this.timerPhase += dt;
+      if (!this.ballonEnVol) { this._tickReceptionCoupDePied(dt); return; }
+
       const dxVol = this.cibleCoupDePiedX - this.xCoupDePiedJeu;
       const dyVol = this.cibleCoupDePiedY - this.yCoupDePiedJeu;
       const distVol = Math.hypot(dxVol, dyVol);
@@ -994,36 +2297,87 @@
       if (this.timerPhase < duree) return;
       this.ballonEnVol = false;
       this.ballonVolHauteur = 0;
-      const type = this.typeCoupDePiedJeu;
       const cibleX = Math.max(0, Math.min(LONGUEUR, this.cibleCoupDePiedX));
+      const cibleY = Math.max(0, Math.min(LARGEUR, this.cibleCoupDePiedY));
       const horsTerrain = this.cibleCoupDePiedY <= 0.01 || this.cibleCoupDePiedY >= LARGEUR - 0.01;
 
       if (horsTerrain) {
         // Touche : un coup de pied direct en touche depuis son propre 22
-        // conserve le lancer pour l'équipe qui a botté (loi 19.2) ; sinon la
+        // conserve le lancer pour l'équipe qui a botté (loi 18.10) ; sinon la
         // touche revient à l'équipe adverse, comme pour toute sortie en touche.
         const zoneKickeur = this._zoneTerrain({ x: this.xCoupDePiedJeu, sensAttaque: equipeKick === 'A' ? 1 : -1 });
         const conserveTouche = zoneKickeur === 'OWN_22';
         const equipeQuiSort = conserveTouche ? (equipeKick === 'A' ? 'B' : 'A') : equipeKick;
-        this._accorderTouche(equipeQuiSort, { x: cibleX, y: Math.max(0, Math.min(LARGEUR, this.cibleCoupDePiedY)) });
+        this._accorderTouche(equipeQuiSort, { x: cibleX, y: cibleY });
         return;
       }
 
-      const { joueur: chasseurProche, distance: dChasseur } = joueurLePlusProche(chasseurs, cibleX, this.cibleCoupDePiedY);
-      const { joueur: receveurProche, distance: dReceveur } = joueurLePlusProche(receveurs, cibleX, this.cibleCoupDePiedY);
-      const contestable = type === 'CHANDELLE' || type === 'CHIP';
-      const probaChasseurGagne = contestable
-        ? Math.max(0.15, Math.min(0.55, 0.4 - (dChasseur - dReceveur) / 20))
-        : Math.max(0.03, Math.min(0.2, 0.08 - (dChasseur - dReceveur) / 30));
-      const chasseurGagne = this.rng() < probaChasseurGagne;
+      // Le ballon touche le sol : il reste loose au point de chute, personne
+      // n'est téléporté dessus. _tickReceptionCoupDePied (appelée au prochain
+      // tick puisque ballonEnVol vient de passer à false) fait converger les
+      // chasseurs/receveurs en courant et ne déclare un porteur qu'une fois
+      // l'un d'eux réellement arrivé au contact du ballon.
+      this.ballonVolX = cibleX;
+      this.ballonVolY = cibleY;
+      this._receptionEnAttente = true;
+      this.timerReceptionAuSol = 0;
+    }
+
+    // Ballon au sol après un coup de pied tactique, en attente de réception :
+    // les chasseurs et receveurs continuent de courir vers le point de chute
+    // (mêmes vitesses que pendant le vol), et seul un joueur réellement arrivé
+    // au contact peut capter le ballon — jamais de téléportation directe sur
+    // la cible. Délai de grâce borné (4 s) pour ne jamais laisser le ballon
+    // mort au sol indéfiniment si un dégagement profond atterrit loin de tout
+    // le monde : on force alors l'arrivée du joueur le plus proche.
+    _tickReceptionCoupDePied(dt) {
+      this.timerReceptionAuSol += dt;
+      const type = this.typeCoupDePiedJeu;
+      const equipeKick = this.equipeCoupDePiedJeu;
+      const chasseurs = equipeKick === 'A' ? this.equipeA : this.equipeB;
+      const receveurs = equipeKick === 'A' ? this.equipeB : this.equipeA;
+      const cibleX = this.ballonVolX, cibleY = this.ballonVolY;
+
+      for (const j of [...chasseurs, ...receveurs]) {
+        avancer(j, cibleX - j.x, cibleY - j.y, dt, vitesseMs(j) * 0.85);
+      }
+
+      const RAYON_RECEPTION = 1.3;
+      const { joueur: chasseurProche, distance: dChasseur } = joueurLePlusProche(chasseurs, cibleX, cibleY);
+      const { joueur: receveurProche, distance: dReceveur } = joueurLePlusProche(receveurs, cibleX, cibleY);
+      const chasseurOk = dChasseur <= RAYON_RECEPTION;
+      const receveurOk = dReceveur <= RAYON_RECEPTION;
+      const delaiEcoule = this.timerReceptionAuSol >= 4;
+      if (!chasseurOk && !receveurOk && !delaiEcoule) return;
+
+      this._receptionEnAttente = false;
+      // Seul un camp réellement arrivé au contact peut capter le ballon : si
+      // un seul camp est à portée, il récupère d'office (pas de tirage au
+      // sort, pas de téléportation : le joueur est déjà là où il a couru).
+      // Si les deux sont à portée (ou qu'aucun ne l'est après le délai de
+      // grâce), le tirage au sort habituel départage, et le gagnant ramasse
+      // depuis sa position réelle — jamais en se déplaçant sur la cible.
+      let chasseurGagne;
+      if (chasseurOk && !receveurOk) {
+        chasseurGagne = true;
+      } else if (receveurOk && !chasseurOk) {
+        chasseurGagne = false;
+      } else {
+        const contestable = type === 'CHANDELLE' || type === 'CHIP';
+        const probaChasseurGagne = contestable
+          ? Math.max(0.15, Math.min(0.55, 0.4 - (dChasseur - dReceveur) / 20))
+          : Math.max(0.03, Math.min(0.2, 0.08 - (dChasseur - dReceveur) / 30));
+        chasseurGagne = this.rng() < probaChasseurGagne;
+      }
       const joueur = chasseurGagne ? chasseurProche : receveurProche;
-      joueur.x = cibleX;
-      joueur.y = Math.max(0, Math.min(LARGEUR, this.cibleCoupDePiedY));
+      // Coup de pied REGAGNÉ : l'équipe qui a botté récupère son propre coup de
+      // pied (motif discriminant de l'étude).
+      if (chasseurGagne) this.stats[equipeKick].kicksRegagnes++;
       this.porteur = joueur;
       this.possession = joueur.team;
       this.ruckPoint = { x: joueur.x, y: joueur.y };
 
-      // Marque (loi 11) : réception propre dans son propre en-deçà des 22 m.
+      // Marque (loi 17) : réception propre dans son propre en-deçà des 22 m.
       const sensReceveur = joueur.team === 'A' ? 1 : -1;
       const distPropreLigne = sensReceveur > 0 ? joueur.x : (LONGUEUR - joueur.x);
       if (!chasseurGagne && distPropreLigne <= 22 && this.rng() < 0.35) {
@@ -1044,10 +2398,50 @@
       }
     }
 
+    // Tire une durée de recyclage de ruck dans le profil configuré
+    // (cfg.ruck.profil = liste de paliers [part, minimum, étendue]) : la part
+    // est la fraction des rucks concernée, la durée = minimum + alea*étendue,
+    // le tout à l'échelle des arrêts de jeu (_echelleArret). Le profil par
+    // défaut est calibré par balayage de simulations pour reproduire les
+    // vitesses de ruck réelles ET les volumes réels de rucks/passes/plaquages
+    // (France-Irlande 2026, cf. docs/ANALYSE_MATCH_REEL.md).
+    _tirerDureeRuck() {
+      const profil = (this.cfg.ruck && this.cfg.ruck.profil)
+        || [[0.70, 0.7, 0.9], [0.22, 1.6, 1.2], [0.08, 2.8, 1.7]];
+      const r = this.rng();
+      let cumul = 0;
+      for (const [part, minimum, etendue] of profil) {
+        cumul += part;
+        if (r < cumul) return (minimum + this.rng() * etendue) * this._echelleArret;
+      }
+      const dernier = profil[profil.length - 1];
+      return (dernier[1] + this.rng() * dernier[2]) * this._echelleArret;
+    }
+
     _tickRuck(dt) {
       this.timerPhase += dt;
       const pt = this.ruckPoint;
       const sensAttaque = this.porteur.sensAttaque;
+      // Loi 14/15 : le joueur PLAQUÉ (porteur actuel) est au sol et NE PEUT PAS
+      // se relever ni rejouer tant que le ruck n'est pas résolu. On maintient
+      // son état « au sol » pendant toute la durée du regroupement (sinon il se
+      // relevait après 1,5 s alors que le ruck dure plus longtemps) : il faut
+      // qu'un partenaire vienne sécuriser puis sortir le ballon avant qu'il ne
+      // reparte. Il se relèvera (auSol redescend) une fois le ballon sorti.
+      if (this.porteur && this.porteur.auSol >= 0) {
+        // Se relever quand on est à terre prend du temps : on maintient l'état
+        // « au sol » à au moins 2 s pendant tout le ruck. Ainsi le plaqué reste
+        // au sol pendant le regroupement PUIS met encore ~2 s à se relever et
+        // rejoindre le jeu une fois le ballon sorti — il ne « rebondit » jamais
+        // sur ses pieds instantanément.
+        this.porteur.auSol = Math.max(this.porteur.auSol, 2.0);
+        // Le plaqué reste figé à l'endroit où il est tombé pendant tout le ruck
+        // (et le temps de se relever ensuite) : sa position est verrouillée par
+        // le gel global des joueurs au sol dans tick(). On s'assure juste que sa
+        // position de chute est mémorisée (cas d'un ruck formé par une autre
+        // voie que le plaquage standard).
+        if (this.porteur._solX == null) { this.porteur._solX = this.porteur.x; this.porteur._solY = this.porteur.y; }
+      }
       // Marge de repli et délai de grâce : au moment du plaquage, des défenseurs
       // non-contestants se trouvent souvent déjà tout près du point de ruck (ils
       // suivaient le porteur en jeu ouvert). La loi sanctionne le hors-jeu, mais un
@@ -1058,8 +2452,8 @@
       // Valeur modérée : combinée à la récupération post-regroupement (cf.
       // _imposerRecuperationRuck), un recul trop large ouvrirait des brèches
       // systématiques côté ligne d'en-but.
-      const margeRecul = 3;
-      const delaiGrace = 1.5;
+      const margeRecul = this.cfg.defense.reculRuck;
+      const delaiGrace = 1.5 * this._echelleArret;
 
       // Joueurs qui convergent vers le point de ruck (le(s) contestant(s)
       // défensif(s) et les soutiens d'attaque) : chacun garde une position
@@ -1068,26 +2462,222 @@
       const placerEnRosette = (j, recul, i) => {
         const cx = pt.x - sensAttaque * recul * (0.5 + (i % 2) * 0.5);
         const cy = pt.y + ((i % 2) ? -1 : 1) * Math.ceil((i + 1) / 2) * 0.7;
-        avancer(j, cx - j.x, cy - j.y, dt, vitesseMs(j) * 0.7);
+        // Les soutiens d'attaque SE PRÉCIPITENT au ruck (pleine vitesse : chaque
+        // dixième de seconde compte pour ne pas perdre le ballon) ; le contestant
+        // défensif arrive en opposition, plus posé (0,7×).
+        const vRuck = recul < 0 ? vitesseMs(j) : vitesseMs(j) * 0.7;
+        avancer(j, cx - j.x, cy - j.y, dt, vRuck);
       };
+      // Seuls les attaquants LES PLUS PROCHES du ruck s'y engagent (ceux qui se
+      // précipitent pour ne pas perdre le ballon) ; le reste de l'équipe NE se
+      // jette PAS dedans, il se REPLACE en ligne d'attaque pour le temps suivant
+      // (pods d'avants, éventail de trois-quarts — cf. plus bas). NB : réduire à
+      // 2 a été testé (même avec un contest repondéré « corps sur le ballon ») et
+      // RETIRÉ : le 3e homme sert aussi de relais de sortie et de présence de
+      // sécurisation — sans lui, turnovers +20 % et score effondré (29 -> 20).
+      // Un vrai ruck compte d'ailleurs ~5-6 corps avec le plaqué et le plaqueur.
+      const soutiensRuck = new Set(
+        [...this.equipeA, ...this.equipeB]
+          .filter(j => j.team === this.possession && j !== this.porteur && j.auSol === 0 && j.numero !== 9)
+          .sort((a, b) => distance(a, pt) - distance(b, pt))
+          .slice(0, 3)
+      );
+      // Avants disponibles pour les PODS de relais (cf. placement plus bas) :
+      // ordre stable (numéro) pour que chacun garde son pod d'un tick à l'autre.
+      this._podAvants = [...this.equipeA, ...this.equipeB]
+        .filter(j => j.team === this.possession && j !== this.porteur && j.auSol === 0
+          && j.sinBin <= 0 && j.numero <= 8 && j.numero !== 9 && !soutiensRuck.has(j))
+        .sort((a, b) => a.numero - b.numero);
+      // CRÉNEAUX DÉFENSIFS ÉQUIRÉPARTIS : les défenseurs de la ligne (ni
+      // contestants, ni l'arrière n°15 qui couvre le fond) se répartissent
+      // UNIFORMÉMENT sur la largeur, triés par position pour ne jamais se
+      // croiser. Avant, chacun tenait son couloir nominal fixe : la ligne
+      // couvrait bien 47 m MAIS avec des trous latéraux moyens de ~16 m (un
+      // boulevard) selon l'endroit du ruck. Espacement désormais régulier
+      // (~5 m), comme une vraie ligne qui se compte et comble les espaces.
+      const defsLigne = [...this.equipeA, ...this.equipeB]
+        .filter(j => j.team !== this.possession && j.auSol === 0 && j.sinBin <= 0
+          && j.numero !== 15 && j.numero !== 9 && !this.contestants.includes(j.numero))
+        .sort((a, b) => a.y - b.y);
+      this._slotDefense = new Map();
+      if (defsLigne.length > 0) {
+        // Créneaux CENTRÉS SUR LE RUCK, à la manière d'une vraie ligne qui se
+        // compte : deux « gardes » collés au regroupement (±2,5 m), puis un
+        // défenseur tous les ~5 m en s'écartant. La défense est dense là où le
+        // danger est immédiat, plus étirée vers le grand large ; l'extrême bord
+        // opposé reste plus doux (comme en vrai, c'est le repli/l'aile qui y
+        // glisse). NB : une équirépartition mur-à-mur sur TOUTE la largeur a été
+        // testée : zéro trou mais plus aucun espace nulle part — score effondré
+        // (30 -> 20, des matchs à 0) ; retirée. NB2 : élargir l'écart guard/1er
+        // créneau (2,5->4,5 m) a aussi été testé pour désaligner la couverture
+        // du point de réception du 10 — mesuré INEFFICACE (54,1 % -> 58,4 % de
+        // séquences 9->10 sous 5 m de large, aggravé) ; retiré. La cause n'est
+        // pas l'alignement des créneaux (cf. mesure directe distance 10<->
+        // défenseur à la réception, plus bas dans l'historique des commits).
+        const cibles = [];
+        for (let i = 0; i < defsLigne.length; i++) {
+          const k = Math.ceil((i + 1) / 2);
+          const cote = (i % 2 === 0) ? 1 : -1;
+          cibles.push(Math.max(2.5, Math.min(LARGEUR - 2.5, pt.y + cote * (2.5 + (k - 1) * 5))));
+        }
+        cibles.sort((a, b) => a - b);
+        // Espacement minimal après bornage aux touches (les créneaux repoussés
+        // par le bord se tassaient au même endroit) : balayage avant/arrière.
+        for (let i = 1; i < cibles.length; i++) cibles[i] = Math.max(cibles[i], cibles[i - 1] + 2.5);
+        for (let i = cibles.length - 2; i >= 0; i--) cibles[i] = Math.min(cibles[i], cibles[i + 1] - 2.5);
+        // RÉPARTITION PAR POSTE (rôles réels, pas un simple tri par position) :
+        // 1. les AILIERS tiennent les EXTRÉMITÉS de leur propre côté (jamais un
+        //    10 planté au bord de touche à l'extérieur de son ailier — vu à
+        //    l'écran avant ce correctif) ;
+        // 2. les AVANTS prennent les créneaux PROCHES du ruck (gardes — et ils
+        //    restent près d'une éventuelle mêlée à venir : invariant « une
+        //    mêlée se termine ») ;
+        // 3. les autres BACKS (10/12/13) remplissent les créneaux restants.
+        // Le 9 défensif n'est PAS dans la ligne : il balaie derrière (cf. plus
+        // bas), comme l'arrière.
+        const dispo = [...cibles];
+        const prendreSlot = (j, idx) => { this._slotDefense.set(j, dispo[idx]); dispo.splice(idx, 1); };
+        for (const j of defsLigne.filter(x => x.numero === 11 || x.numero === 14)) {
+          if (!dispo.length) break;
+          prendreSlot(j, j.channelY < LARGEUR / 2 ? 0 : dispo.length - 1);
+        }
+        const avantsDef = defsLigne.filter(j => j.numero <= 8 && !this._slotDefense.has(j)).sort((a, b) => a.y - b.y);
+        const idxProches = dispo.map((c, i) => ({ i, d: Math.abs(c - pt.y) }))
+          .sort((a, b) => a.d - b.d).slice(0, avantsDef.length).map(o => o.i);
+        const slotsAvants = idxProches.map(i => dispo[i]).sort((a, b) => a - b);
+        avantsDef.forEach((j, k) => this._slotDefense.set(j, slotsAvants[k]));
+        for (const v of slotsAvants) { const i = dispo.indexOf(v); if (i >= 0) dispo.splice(i, 1); }
+        const restes = defsLigne.filter(j => !this._slotDefense.has(j)).sort((a, b) => a.y - b.y);
+        restes.forEach((j, k) => { if (k < dispo.length) this._slotDefense.set(j, dispo[k]); });
+      }
       let iContestants = 0, iSoutien = 0;
       for (const j of [...this.equipeA, ...this.equipeB]) {
         if (j === this.porteur) continue;
         const estContestant = this.contestants.includes(j.numero) && j.team !== this.possession;
-        const estSoutienAttaque = j.team === this.possession && distance(j, pt) < 8;
+        const estSoutienAttaque = soutiensRuck.has(j);
+        // Le demi de mêlée court vers la base du ruck quelle que soit sa
+        // distance de départ (il suit toujours le jeu en match réel) : c'est
+        // lui qui jouera le ballon à la sortie (cf. plus bas), donc il ne
+        // doit jamais y être téléporté à la résolution — il doit l'avoir
+        // réellement rejoint en courant pendant la phase.
+        const estDemiMelee = j.team === this.possession && j.numero === 9 && j.auSol === 0;
 
         if (estContestant) { placerEnRosette(j, 1, iContestants++); continue; }
         if (estSoutienAttaque) { placerEnRosette(j, -1, iSoutien++); continue; }
+        if (estDemiMelee) {
+          const cx = pt.x - sensAttaque * 1;
+          avancer(j, cx - j.x, pt.y - j.y, dt, vitesseMs(j));
+          continue;
+        }
+        // Le 9 DÉFENSIF ne se met pas dans la ligne : il BALAIE derrière elle,
+        // près du ruck (~6 m côté défense), prêt à couvrir un ballon poussé, un
+        // petit côté ou un coup de pied rasant — son rôle réel. Avant, il
+        // héritait d'un créneau de ligne parfois au bord de touche.
+        if (j.team !== this.possession && j.numero === 9 && j.auSol === 0) {
+          const cx = pt.x + sensAttaque * 6;
+          avancer(j, cx - j.x, pt.y - j.y, dt, vitesseMs(j) * 0.85);
+          continue;
+        }
 
         if (j.team !== this.possession && Referee.horsJeuRuck(j, pt, sensAttaque)) {
           // Se replier vers la zone ONSIDE (au-delà du point de ruck, côté de
-          // son propre en-but), pas plus profondément dans la zone hors-jeu.
+          // son propre en-but), vers son CRÉNEAU équiréparti de la ligne (pas
+          // son couloir nominal — cf. _slotDefense) : la ligne se reforme sans
+          // trous en même temps qu'elle se replie.
           const cibleX = sensAttaque > 0 ? pt.x + margeRecul : pt.x - margeRecul;
-          avancer(j, cibleX - j.x, pt.y - j.y, dt, vitesseMs(j));
+          const slotY = this._slotDefense.get(j) ?? j.channelY;
+          avancer(j, cibleX - j.x, slotY - j.y, dt, vitesseMs(j));
           if (this.timerPhase > delaiGrace && Referee.horsJeuRuck(j, pt, sensAttaque)) {
-            this._traiterPenalite(this.possession, { x: this.porteur.x, y: this.porteur.y });
-            return;
+            // Hors-jeu défensif au ruck : avantage (loi 8). L'équipe en possession
+            // joue ; la pénalité n'est sifflée que si elle n'en tire rien (cf.
+            // _tickAvantage). On ne stoppe donc PAS le ruck — il se résout
+            // normalement et l'avantage est suivi à partir de là.
+            this._jouerAvantage('PENALITE', this.possession === 'A' ? 'B' : 'A', this.possession, { x: this.porteur.x, y: this.porteur.y });
           }
+          continue;
+        }
+
+        // Tous les autres (attaquants non engagés et défenseurs déjà onside) ne
+        // courent pas après le ballon : ils tiennent leur couloir et occupent la
+        // largeur, prêts pour la phase suivante. L'attaque se replace en retrait
+        // du ruck (ligne onside prête à relancer), la défense monte en ligne à
+        // plat de son côté.
+        if (j.team === this.possession) {
+          // La LIGNE DE TROIS-QUARTS (10-14) se met en place PENDANT le ruck : à
+          // PLAT (~4-6 m derrière la base, onside) et ÉTAGÉE sur le CÔTÉ OUVERT,
+          // prête à lancer le jeu au large DÈS la sortie du 9. Avant, tous les
+          // attaquants étaient massés ~8 m derrière le ruck : le 9 devait alors
+          // passer 7-11 m EN ARRIÈRE au 10 (mesuré), le ballon reculait à chaque
+          // passe et l'attaque ne « lançait » jamais le jeu sur le côté. Les backs
+          // se placent donc en éventail à droite/gauche du 9, pas dans son dos.
+          const estBack = j.numero >= 10 && j.numero <= 14;
+          if (estBack) {
+            // Placement EN PROFONDEUR pendant le ruck (~8-12 m derrière la base,
+            // éventail LARGE de ~7 à ~31 m sur le côté ouvert) : la ligne n'est
+            // PAS à plat à l'arrêt — elle prend du recul pour pouvoir S'ÉLANCER
+            // à la sortie et recevoir LANCÉE (cf. _tickPorte : cibles à plat,
+            // pleine vitesse). Mesuré avant : receveurs à 0,5 m/s vers l'avant
+            // (à l'arrêt → plaqués sur place, « départ au ras ») et attaque
+            // resserrée sur 31 m de large. La profondeur donne la piste d'élan,
+            // l'éventail donne la largeur.
+            const coteOuvert = pt.y <= LARGEUR / 2 ? 1 : -1;
+            // L'ailier CÔTÉ FERMÉ ne rejoint PAS l'éventail : il tient son aile
+            // (option côté court, couverture). Avant, les DEUX ailiers filaient
+            // au même point du côté ouvert et le côté fermé était abandonné —
+            // c'est ce qui resserrait l'attaque sur ~32 m de large au lieu
+            // d'occuper tout le terrain.
+            const estAilier = j.numero === 11 || j.numero === 14;
+            const sonCote = Math.sign(j.channelY - LARGEUR / 2) || 1;
+            if (estAilier && sonCote !== coteOuvert) {
+              const cibleXf = pt.x - sensAttaque * 8;
+              avancer(j, cibleXf - j.x, j.channelY - j.y, dt, vitesseMs(j) * 0.85);
+              continue;
+            }
+            const ordreBack = { 10: 1, 12: 2, 13: 3, 11: 4, 14: 4 };
+            const rangB = ordreBack[j.numero] || 2;
+            const cibleY = Math.max(4, Math.min(LARGEUR - 4, pt.y + coteOuvert * (7 + (rangB - 1) * 8)));
+            // DIAGONALE D'ATTAQUE : chaque homme se place PLUS PROFOND que celui
+            // à son intérieur (10 à ~5,7 m, 12 à ~7,4 m, 13 à ~9,1 m, aile à
+            // ~10,8 m) — c'est la profondeur qui permet de CONSTRUIRE : chaque
+            // receveur arrive lancé sur une passe courte pendant que le suivant
+            // garde encore du champ. Une ligne trop plate (testée) ne laisse
+            // aucune profondeur pour attaquer ; trop profonde (8-12 m uniformes,
+            // testé aussi), toutes les passes partent 5 m en arrière.
+            const cibleX = pt.x - sensAttaque * (4 + rangB * 1.7);
+            // PLEINE VITESSE : la ligne se replace en COURANT pendant le ruck —
+            // c'est ce qui permet au 9 de jouer éclair (cf. porte dixPret) sans
+            // lancer vers une ligne pas prête. À 85 %, le 10 arrivait souvent
+            // après la durée cible du ruck et retardait toutes les sorties.
+            avancer(j, cibleX - j.x, cibleY - j.y, dt, vitesseMs(j));
+          } else if (j.numero <= 8) {
+            // PODS D'AVANTS (animation offensive) : les avants non engagés ne
+            // flottent plus chacun dans son couloir — ils se GROUPENT en deux
+            // cellules de relais (2-3 joueurs serrés) À PLAT (~3 m derrière la
+            // base), une de CHAQUE CÔTÉ du ruck (~4,5-8 m), comme les pods du
+            // rugby moderne (structure 1-3-3-1). Ce sont les options de
+            // percussion du 9 (avant lancé dans l'axe) et le premier rideau de
+            // conservation du temps suivant. Visuellement : deux blocs compacts
+            // qui encadrent chaque ruck au lieu d'une masse diffuse.
+            const coteOuvert = pt.y <= LARGEUR / 2 ? 1 : -1;
+            const iPod = this._podAvants ? this._podAvants.indexOf(j) : -1;
+            const cote = (iPod % 2 === 0) ? coteOuvert : -coteOuvert;
+            const rangPod = Math.max(0, Math.floor(iPod / 2));
+            const cibleY = Math.max(3, Math.min(LARGEUR - 3, pt.y + cote * (4.5 + rangPod * 1.8)));
+            const cibleX = pt.x - sensAttaque * 3.2;
+            avancer(j, cibleX - j.x, cibleY - j.y, dt, vitesseMs(j) * 0.85);
+          } else {
+            // Arrière (15) : en couverture profonde dans son couloir.
+            const cibleX = pt.x - sensAttaque * (6 + Math.abs(j.channelY - pt.y) * 0.12);
+            avancer(j, cibleX - j.x, j.channelY - j.y, dt, vitesseMs(j) * 0.7);
+          }
+        } else {
+          // Défenseur déjà onside : il rejoint son CRÉNEAU équiréparti sur la
+          // ligne de défense (cf. _slotDefense) — espacement régulier ~5 m,
+          // plus de trous de 15 m laissés par les couloirs nominaux. Le n°15
+          // défensif garde son couloir (couverture du fond, exclu des slots).
+          const cibleX = sensAttaque > 0 ? pt.x + margeRecul : pt.x - margeRecul;
+          const slotY = this._slotDefense.get(j) ?? j.channelY;
+          avancer(j, cibleX - j.x, slotY - j.y, dt, vitesseMs(j) * 0.8);
         }
       }
       // Temps sans aucun soutien d'attaque proche du point de ruck (porteur
@@ -1095,8 +2685,46 @@
       // coéquipier n'est venu sécuriser le ballon, jamais réinitialisé tant que
       // le ruck dure — c'est ce cumul qui pèse sur le risque de turnover/pénalité.
       if (iSoutien === 0) this.ruckTempsSansSoutien = (this.ruckTempsSansSoutien || 0) + dt;
-      const dureeCible = this.ruckDureeCible || 1.8;
-      if (this.timerPhase >= dureeCible) {
+      const dureeCible = this.ruckDureeCible || 1.8 * this._echelleArret;
+      // Le ballon ne SORT du ruck que lorsqu'un partenaire est venu le sécuriser
+      // (au moins un coéquipier debout, hors le plaqué, est arrivé sur le ballon
+      // au sol) : c'est lui qui va chercher le ballon puis le redonne (cf. la
+      // sortie ci-dessous, par le n°9). Tant que personne n'est arrivé, le
+      // ballon reste au sol et on attend (le porteur isolé voit son risque de
+      // turnover/pénalité grandir), avec un plafond pour ne jamais bloquer.
+      const eqAtt = this.possession === 'A' ? this.equipeA : this.equipeB;
+      const soutienArrive = eqAtt.some(j => j !== this.porteur && j.auSol === 0
+        && j.sinBin <= 0 && distance(j, pt) < 2.5);
+      // Le ballon ne SORT proprement que lorsque le n°9 est ARRIVÉ à la base
+      // (son rôle : rejoindre vite le ruck pour jouer le ballon). Avec le ballon
+      // rapide, le ruck peut être « mûr » avant que le 9 n'ait fini de courir ;
+      // on lui laisse alors un court délai (≤ ~2 s au-delà de la durée cible)
+      // pour arriver, plutôt que de sortir le ballon vers un 9 encore à 8-10 m
+      // (ce qui faisait « filer » le ballon loin de la base au lieu d'une vraie
+      // sortie de demi de mêlée). Passé ce délai, on sort quand même (un avant
+      // relaie), pour ne jamais bloquer le jeu.
+      const neuf9 = eqAtt.find(j => j.numero === 9 && j.auSol === 0 && j.sinBin <= 0);
+      const neufPret = !neuf9 || distance(neuf9, pt) < 4;
+      // NB : une porte « attendre que le 10 soit replacé » a été testée ici puis
+      // RETIRÉE : elle rallongeait la sortie médiane de 1,5 à 2,1 s (l'inverse du
+      // but — sorties de ruck jugées lentes) pour un gain de score dans le bruit
+      // statistique. La ligne se replace à pleine vitesse pendant le ruck à la
+      // place (cf. placement des backs).
+      // SERVICE RAPIDE MÉRITÉ : la durée tirée (profil réel) n'est pas un
+      // couperet aveugle — si le 9 est DÉJÀ à la base, le ballon sécurisé par
+      // un soutien et le contact non dominé, le 9 joue dès ~55 % de la durée
+      // (plancher 1,6 s) : il distribue AVANT le redéploiement adverse, ce qui
+      // déclenche en plus la fenêtre « défense pas replacée » (_defenseTardive).
+      // Un ruck contesté/dominé ou un 9 en retard garde sa durée pleine —
+      // exactement la dynamique réelle du ballon rapide.
+      const serviceRapide = soutienArrive && !this.ruckDominant
+        && neuf9 && distance(neuf9, pt) < 3;
+      const dureeEffective = serviceRapide
+        ? Math.min(dureeCible, Math.max(1.6 * this._echelleArret, dureeCible * 0.55))
+        : dureeCible;
+      if (this.timerPhase >= dureeEffective) {
+        if (!soutienArrive && this.timerPhase < dureeEffective + 4 * this._echelleArret) return;
+        if (!neufPret && this.timerPhase < dureeEffective + 1.2 * this._echelleArret) return;
         // Contest au ruck pondéré par les avants réellement engagés autour du
         // point de ruck (même proxy de force que le maul, forceMaul), plutôt
         // qu'un taux de turnover fixe : un paquet adverse plus nombreux ou
@@ -1105,16 +2733,32 @@
         const equipeOriginale = this.possession;
         const equipeAtt = equipeOriginale === 'A' ? this.equipeA : this.equipeB;
         const equipeDef = equipeOriginale === 'A' ? this.equipeB : this.equipeA;
+        // Les corps SUR le ballon (< 3 m : les 1-2 nettoyeurs/contestants
+        // réellement engagés) pèsent bien plus (×1,6) que les avants À PROXIMITÉ
+        // (3-8 m : pods, arrivées) : c'est ce qui permet de ne commettre que 2
+        // soutiens au ruck (réalisme, cf. soutiensRuck) sans perdre le ballon
+        // plus qu'avant — un ruck bien nettoyé à 2 se gagne, comme en vrai.
         let forceAtt = 0, forceDef = 0;
-        for (const j of equipeAtt) if (j.numero <= 8 && j.auSol === 0 && distance(j, pt) < 8) forceAtt += forceMaul(j);
-        for (const j of equipeDef) if (j.numero <= 8 && j.auSol === 0 && distance(j, pt) < 8) forceDef += forceMaul(j);
+        for (const j of equipeAtt) if (j.numero <= 8 && j.auSol === 0) {
+          const dj = distance(j, pt);
+          if (dj < 3) forceAtt += forceMaul(j) * 1.6;
+          else if (dj < 8) forceAtt += forceMaul(j);
+        }
+        for (const j of equipeDef) if (j.numero <= 8 && j.auSol === 0) {
+          const dj = distance(j, pt);
+          if (dj < 3) forceDef += forceMaul(j) * 1.6;
+          else if (dj < 8) forceDef += forceMaul(j);
+        }
 
         // Ruck très disputé des deux côtés et quasiment à l'équilibre : le
         // ballon ne sort franchement pour personne, l'arbitre rend une mêlée
         // plutôt que de trancher arbitrairement un gagnant.
         const ecartForces = Math.abs(forceDef - forceAtt);
         const engagementTotal = forceAtt + forceDef;
-        if (engagementTotal > 80 && ecartForces < 35 && this.rng() < 0.10) {
+        // Ballon injouable au ruck → mêlée : rare en match réel. À 0.10 cette
+        // voie produisait ~9 mêlées/match ; abaissée pour rester dans le repère
+        // global de 8-25 mêlées TOTALES (cf. CLAUDE.md Rôle 6).
+        if (engagementTotal > 80 && ecartForces < 35 && this.rng() < 0.04) {
           this.log('MELEE_RUCK_INJOUABLE', equipeOriginale, `Ballon injouable au ruck, melee pour l'equipe ${equipeOriginale}`);
           this._accorderMeleeA(equipeOriginale, pt);
           return;
@@ -1123,49 +2767,100 @@
         // Porteur isolé (pas de soutien arrivé à temps) : risque accru de
         // turnover ou, si le porteur s'accroche au ballon sans soutien,
         // pénalité directe pour "ballon non rendu" plutôt qu'un turnover propre.
-        const bonusIsolement = Math.min(0.22, (this.ruckTempsSansSoutien || 0) * 0.15);
-        const probaTurnover = Math.max(0.04, Math.min(0.45, 0.12 + (forceDef - forceAtt) / 700 + bonusIsolement));
+        const bonusIsolement = Math.min(0.12, (this.ruckTempsSansSoutien || 0) * 0.08);
+        // Taux de grattage au ruck : en match réel l'équipe qui attaque conserve
+        // ~95 % de ses rucks (turnover ~3-5 %). L'ancienne base de 0.12 donnait
+        // ~24 % de turnovers, soit ~122 ballons grattés/match (réel ~20) et un
+        // jeu en va-et-vient permanent irréaliste. Base abaissée à 0.03 ; le
+        // différentiel de force du pack et surtout l'isolement du porteur
+        // (bonusIsolement) restent les vrais moteurs d'un grattage — un porteur
+        // isolé face à un pack costaud peut toujours se faire gratter souvent.
+        // Ballon « sur l'avancée » après un plaquage dominant (cf. _tickPorte) :
+        // la défense a gagné le contact, elle conteste avec bien plus de chances
+        // de gratter le ballon. Bonus consommé une seule fois (ce ruck).
+        const bonusDominant = this.ruckDominant ? 0.035 : 0;
+        const probaTurnover = Math.max(0.012, Math.min(0.20, 0.025 + (forceDef - forceAtt) / 1600 + bonusIsolement + bonusDominant));
         const turnover = this.rng() < probaTurnover;
+        this.ruckDominant = false;
         if (turnover) {
+          this.stats[this.possession].turnoversConcedes++; // équipe qui PERD le ballon
           this.possession = this.possession === 'A' ? 'B' : 'A';
-          this.stats[this.possession].turnovers++;
+          this.stats[this.possession].turnovers++;           // équipe qui GAGNE le ballon
           this.log('TURNOVER', this.possession, `Ballon gratte au ruck, equipe ${this.possession} recupere`);
-        } else if ((this.ruckTempsSansSoutien || 0) > 1.5 && this.rng() < 0.12) {
+        } else if ((this.ruckTempsSansSoutien || 0) > 1.5 * this._echelleArret && this.rng() < 0.12) {
           this.log('PENALITE_RUCK_ISOLE', equipeOriginale, `Porteur isole au ruck, ballon non rendu, penalite pour l'equipe adverse`);
           this._traiterPenalite(equipeOriginale === 'A' ? 'B' : 'A', pt);
           return;
         }
         // Sortie de ruck : c'est le demi de mêlée (n°9) qui joue le ballon au
-        // pied du regroupement, comme à la mêlée, à la touche et à la sortie
-        // de maul — pas simplement l'avant le plus proche du point de ruck.
-        // S'il est lui-même au sol (rare, juste plaqué), un autre avant relaie.
+        // pied du regroupement, comme à la mêlée et à la sortie de maul — pas
+        // simplement l'avant le plus proche du point de ruck. Il a couru vers
+        // le ruck tout au long de la phase ci-dessus (cf. estDemiMelee) ; on
+        // ne force donc plus sa position au point de ruck à la résolution, ce
+        // qui le téléportait auparavant depuis là où il se trouvait vraiment.
+        // S'il est lui-même au sol (rare, juste plaqué), l'avant le plus
+        // proche du point relaie à sa place. La transmission à l'ouvreur
+        // n'est plus instantanée : depuis sa position réelle, le 9 décide
+        // ensuite normalement (cf. _tickPorte/_tenterPasse) s'il lui passe,
+        // exactement comme n'importe quelle autre passe en jeu courant.
         const att = this.attaquants();
-        const neuf = att.find(j => j.numero === 9 && j.auSol === 0);
-        let relayeur = neuf;
-        if (!relayeur) {
-          ({ joueur: relayeur } = joueurLePlusProche(att.filter(j => j.tendance >= 50), pt.x, pt.y));
+        let relayeur;
+        if (turnover) {
+          // Ballon gratté : c'est le joueur qui l'a arraché (le plus proche du
+          // ruck dans la nouvelle équipe, déjà sur place) qui le récupère, là
+          // où il est — pas le demi de mêlée adverse resté loin, ce qui
+          // téléportait le ballon à l'autre bout du regroupement.
+          ({ joueur: relayeur } = joueurLePlusProche(att.filter(j => j.auSol === 0), pt.x, pt.y));
         } else {
-          // Sortie nette (le 9 a bien récupéré le ballon) : il le transmet
-          // presque toujours immédiatement à l'ouvreur, qui décide du jeu.
-          this.log('RUCK_SORTIE_9', this.possession, `Sortie de ruck par le 9, transmission a l'ouvreur`);
-          relayeur = this._neufVersDix(att, neuf);
+          // Sortie propre : le demi de mêlée (n°9) joue le ballon au pied du
+          // regroupement (il a couru vers le ruck pendant la phase, cf.
+          // estDemiMelee) ; il décide ensuite normalement (passe/jeu au pied).
+          const neuf = att.find(j => j.numero === 9 && j.auSol === 0);
+          if (neuf) { relayeur = neuf; this._neufLibre = true; this.log('RUCK_SORTIE_9', this.possession, `Sortie de ruck par le 9`); }
+          else ({ joueur: relayeur } = joueurLePlusProche(att.filter(j => j.tendance >= 50), pt.x, pt.y));
         }
-        this.porteur = relayeur || att[8];
-        this.porteur.x = pt.x;
-        this.porteur.y = pt.y;
-        this._imposerRecuperationRuck(pt);
+        // Le joueur qui était plaqué (ancien porteur, au sol) se relève PROMPTEMENT
+        // une fois le ballon sorti et le jeu reparti : sinon il restait ~2 s au sol
+        // TOUT SEUL pendant que le jeu s'éloignait de 10-15 m — c'est ce qui donnait
+        // l'impression d'un joueur « qui tombe sans plaqueur ». Il se relève donc
+        // plus vite (auSol ramené à ~1,3 s) au lieu de traîner ~2 s à terre. NB :
+        // le relever trop vite (0,7 s) le renvoie tout de suite dans la ligne et
+        // gonfle les essais (mesuré : 10/match) ; 1,3 s garde ~7 essais/match tout
+        // en supprimant le "joueur au sol tout seul".
+        const plaque = this.porteur;
+        if (plaque && plaque.auSol > 1.3) plaque.auSol = 1.3;
+        this.porteur = relayeur || att.find(j => j.numero === 8) || att[0];
+        // BALLON ÉCLAIR : un ruck recyclé en moins de ~1,8 s prend la défense
+        // PAS ENCORE REPLACÉE — pendant ~1,2 s sa montée en ligne est ralentie
+        // (cf. _tickPorte). C'est LA récompense réelle du jeu rapide au ruck :
+        // sans elle, la défense du moteur se réalignait instantanément et le
+        // ballon rapide ne servait à rien (il ne faisait qu'enchaîner les
+        // phases plus vite contre une défense toujours en place).
+        this._defenseTardive = this.timerPhase < 1.8 * this._echelleArret ? 1.2 : 0;
         this.phase = 'PORTE';
         this.timerPhase = 0;
+        // Le ballon sort du regroupement en étant JOUÉ depuis la base vers le
+        // porteur (le 9 le ramasse au pied du ruck) : on anime ce trajet en
+        // passe visible depuis le point de ruck. Sans ça le ballon, affiché au
+        // point de ruck pendant toute la phase, "réapparaissait" d'un coup sur
+        // le porteur — parfois à 15-20 m quand le 9 n'avait pas fini de rejoindre
+        // la base —, exactement la téléportation signalée. Le ballon glisse
+        // désormais à vue de la base vers le joueur qui le joue.
+        if (this.porteur && distance({ x: pt.x, y: pt.y }, this.porteur) > 1.5) {
+          this._lancerPasseVisuelle({ x: pt.x, y: pt.y }, this.porteur);
+        }
+        this._imposerRecuperationRuck(pt);
       }
     }
 
-    // === Maul (loi 17) : machine à états complète ============================
+    // === Maul (loi 16) : machine à états complète ============================
     // Initialise l'objet maul et bascule la phase moteur sur 'MAUL'. À partir de
     // là, _tickMaul fait avancer la machine à états jusqu'à la sortie du ballon,
     // la mêlée (ballon injouable) ou une pénalité.
     _formerMaul(porteur, defenseur) {
       const poss = this.possession;
       const sens = porteur.sensAttaque;
+      this.ruckDominant = false; // un maul n'est pas un ballon de ruck sur l'avancée
       this.maul = {
         etat: ETATS_MAUL.FORMATION,
         equipePossession: poss,
@@ -1184,7 +2879,7 @@
       this.contestants = [defenseur.numero];
       this.phase = 'MAUL';
       this.timerPhase = 0;
-      this.stats[poss].mauls++;
+      this.stats[poss].mauls++; this.stats[poss].phases++;
       this.log('MAUL', poss, `Maul forme, l'equipe ${poss} garde le ballon debout avec ses soutiens`);
     }
 
@@ -1282,10 +2977,20 @@
         const cy = m.y + ((i % 2) ? -1 : 1) * Math.ceil((i + 1) / 2) * 0.7;
         avancer(j, cx - j.x, cy - j.y, dt, vitesseMs(j));
       });
+      // Le demi de mêlée de l'équipe en possession suit la base du maul tout
+      // au long de la phase, comme au ruck (cf. _tickRuck, estDemiMelee) :
+      // c'est lui qui jouera le ballon à la sortie (cf. _maulSortieBallon),
+      // donc il ne doit jamais y être téléporté à la résolution — il doit
+      // l'avoir réellement rejoint en courant pendant le maul.
+      const neufAtt = att.find(j => j.numero === 9 && j.auSol === 0 && j !== this.porteur);
+      if (neufAtt) {
+        const cx9 = m.x - m.sens * 1.5;
+        avancer(neufAtt, cx9 - neufAtt.x, m.y - neufAtt.y, dt, vitesseMs(neufAtt));
+      }
       // Joueurs non liés : rester en-deçà de leur ligne de hors-jeu (onside).
       const cibleAtt = m.x - m.sens * 3;
       for (const j of att) {
-        if (liesAtt.includes(j) || j === this.porteur) continue;
+        if (liesAtt.includes(j) || j === this.porteur || j === neufAtt) continue;
         if ((m.sens > 0 && j.x > cibleAtt) || (m.sens < 0 && j.x < cibleAtt)) {
           avancer(j, cibleAtt - j.x, 0, dt, vitesseMs(j) * 0.6);
         }
@@ -1409,7 +3114,16 @@
       this._finMaul();
 
       if (faute.delibere && (presDeLigne || repetee)) {
-        this.log('CARTON_JAUNE', fautive, `Carton jaune pour l'equipe ${fautive} : ${faute.message}`);
+        // Le carton doit coûter un joueur, pas seulement une bannière : 10 min
+        // réelles de bin (ramenées à l'échelle du match, cf. _echelleArret),
+        // pendant lesquelles l'équipe fautive joue à 14 (attaquants()/
+        // defenseurs() l'excluent). Le fautif retenu est le joueur de l'équipe
+        // fautive le plus proche du maul, faute d'identifier l'auteur exact.
+        const eqFautive = fautive === 'A' ? this.equipeA : this.equipeB;
+        const { joueur: fautif } = joueurLePlusProche(eqFautive, pos.x, pos.y);
+        fautif.sinBin = 600 * this._echelleArret;
+        this.stats[fautive].cartonsJaunes++;
+        this.log('CARTON_JAUNE', fautive, `Carton jaune pour l'equipe ${fautive} (n°${fautif.numero}) : ${faute.message} - a 14 pendant ${Math.round(fautif.sinBin)}s`);
       }
       if (empecheEssai) {
         this.score[benef] += 7;
@@ -1423,36 +3137,35 @@
           : faute.type === 'ENTREE_COTE' ? 'MAUL_PEN_ENTREE_COTE'
             : 'MAUL_PEN_TECHNIQUE';
       this.log(evt, fautive, `Penalite maul : ${faute.message} (equipe ${fautive}), penalite pour l'equipe ${benef}`);
-      // Préparer le porteur bénéficiaire puis appliquer la pénalité (tir/jeu rapide).
-      this.possession = benef;
-      const eqB = benef === 'A' ? this.equipeA : this.equipeB;
-      const { joueur } = joueurLePlusProche(eqB, pos.x, pos.y);
-      this.porteur = joueur;
-      this.porteur.x = Math.max(0, Math.min(LONGUEUR, pos.x));
-      this.porteur.y = Math.max(0, Math.min(LARGEUR, pos.y));
+      // _traiterPenalite fixe lui-même la possession ET le porteur selon l'option
+      // choisie (tir au but, pénalité-touche, ou jeu rapide où le tapeur REJOINT
+      // la marque EN COURANT, cf. _lancerJeuRapidePenalite). On ne téléporte donc
+      // plus un joueur directement sur la marque ici : ce set x/y était redondant
+      // (aussitôt écrasé) et incohérent avec la politique anti-téléportation
+      // appliquée partout ailleurs.
       this._traiterPenalite(benef, pos);
     }
 
     // Sortie du ballon après « use it » : le demi de mêlée (n°9) joue le ballon,
-    // le jeu reprend à la main au pied du maul.
+    // le jeu reprend à la main au pied du maul. Il a suivi la base du maul tout
+    // au long de la phase (cf. _maulGererLiaisons, neufAtt) : pas de
+    // téléportation, il joue depuis sa position réelle. S'il est au sol (rare,
+    // juste plaqué), l'avant le plus proche du pied du maul relaie.
     _maulSortieBallon() {
       const m = this.maul;
       const poss = m.equipePossession;
-      const x = Math.max(0, Math.min(LONGUEUR, m.x - m.sens * 1.5));
-      const y = m.y;
       this.log('MAUL_BALLON_SORTI', poss, `Ballon sorti du maul par le demi de melee, l'equipe ${poss} relance`);
       this._finMaul();
       this.possession = poss;
       const eqMaul = poss === 'A' ? this.equipeA : this.equipeB;
-      this.porteur = this._neufVersDix(eqMaul, eqMaul[8]);
-      this.porteur.x = x;
-      this.porteur.y = y;
+      const neuf = eqMaul.find(j => j.numero === 9 && j.auSol === 0);
+      this.porteur = neuf || joueurLePlusProche(eqMaul, m.x, m.y).joueur;
       this._imposerRecuperationRuck({ x: m.x, y: m.y });
       this.phase = 'PORTE';
       this.timerPhase = 0;
     }
 
-    // Ballon injouable : mêlée à l'équipe désignée par la loi 8 (défense, ou
+    // Ballon injouable : mêlée à l'équipe désignée par la loi 19 (défense, ou
     // réceptionneur si le maul a suivi une réception directe).
     _maulMeleeInjouable() {
       const m = this.maul;
@@ -1474,11 +3187,23 @@
       this.essaiY = m.y;
       this.essaiEquipe = poss;
       this.log('ESSAI', poss, `Essai sur maul penetrant, equipe ${poss} !`);
+      // Le MARQUEUR est le porteur RÉEL du maul : pendant toute la poussée,
+      // _tickMaul l'a maintenu collé à l'arrière du maul (this.porteur, cf.
+      // lignes « this.porteur.x = m.x - m.sens*0.8 »), il est donc DÉJÀ sur la
+      // ligne. On l'aplatit d'un pas par-dessus la ligne. AVANT, on réassignait
+      // this.porteur à un n°8 nominal (eq[7]) placé ailleurs sur le terrain puis
+      // on le TÉLÉPORTAIT sur la marque (saut mesuré ~20 m) — le porteur réel,
+      // lui, était pourtant déjà au bon endroit. On garde donc le porteur courant.
+      const marqueur = this.porteur;
       this._finMaul();
       this.possession = poss;
-      this.porteur = (poss === 'A' ? this.equipeA : this.equipeB)[7];
-      this.porteur.x = x;
-      this.porteur.y = m.y;
+      if (marqueur) {
+        marqueur.x = x; marqueur.y = m.y;
+        this.porteur = marqueur;
+      } else {
+        this.porteur = (poss === 'A' ? this.equipeA : this.equipeB)[7];
+        this.porteur.x = x; this.porteur.y = m.y;
+      }
       this.phase = 'ESSAI';
       this.timerPhase = 0;
     }
@@ -1486,16 +3211,7 @@
     // Mêlée accordée à une équipe précise (utilisée par le maul injouable, où le
     // bénéficiaire n'est pas forcément l'adversaire du porteur).
     _accorderMeleeA(equipe, position) {
-      this.possession = equipe;
-      this.stats[equipe].scrums++;
-      this.log('MELEE', this.possession, `Melee, introduction pour l'equipe ${this.possession}`);
-      const eq = equipe === 'A' ? this.equipeA : this.equipeB;
-      this.porteur = this._neufVersDix(eq, eq[8]);
-      this.porteur.x = Math.max(5, Math.min(LONGUEUR - 5, position.x));
-      this.porteur.y = Math.max(5, Math.min(LARGEUR - 5, position.y));
-      this.ruckPoint = { x: this.porteur.x, y: this.porteur.y };
-      this.phase = 'MELEE';
-      this.timerPhase = 0;
+      this._formerMelee(equipe, position);
     }
 
     _finMaul() {
@@ -1503,76 +3219,723 @@
       this.contestants = [];
     }
 
-    // Mêlée (lois 19/20) : les avants se regroupent réellement (première ligne
-    // contre première ligne) plutôt que de figer le jeu courant, les lignes
-    // arrières défensives doivent respecter les 5 m de hors-jeu jusqu'à la
-    // sortie du ballon, et le paquet le plus puissant peut faire gratter le
-    // ballon contre le sens de l'introduction (jamais garanti, comme au ruck).
-    _tickMelee(dt) {
-      this.timerPhase += dt;
-      const pt = this.ruckPoint;
-      const sensAttaque = this.porteur.sensAttaque;
-      const equipeAtt = this.possession === 'A' ? this.equipeA : this.equipeB;
-      const equipeDef = this.possession === 'A' ? this.equipeB : this.equipeA;
+    // === Mêlée (lois 19/20) : machine à états complète ========================
+    // Initialise l'objet mêlée et bascule la phase moteur sur 'MELEE'. À partir
+    // de là, _tickMelee fait avancer la machine à états (placement -> "Crouch"
+    // -> "Bind" -> "Set" -> introduction -> contestation -> sortie de balle),
+    // exactement comme _formerMaul/_tickMaul pour le maul.
+    _formerMelee(equipeIntroduction, position) {
+      this.stats[equipeIntroduction].scrums++;
+      this.log('MELEE', equipeIntroduction, `Melee, introduction pour l'equipe ${equipeIntroduction}`);
+      const px = Math.max(5, Math.min(LONGUEUR - 5, position.x));
+      const py = Math.max(5, Math.min(LARGEUR - 5, position.y));
+      this.melee = {
+        etat: ETATS_MELEE.FORMATION,
+        equipeIntroduction,
+        equipeNonIntroduction: equipeIntroduction === 'A' ? 'B' : 'A',
+        x: px, y: py, sens: equipeIntroduction === 'A' ? 1 : -1,
+        timer: 0, timerGlobal: 0,
+        // Conditions de terrain/ballon (pelouse, météo...) propres à cette
+        // mêlée, tirées une seule fois : petit facteur de contestation parmi
+        // d'autres, jamais déterminant à lui seul.
+        conditions: (this.rng() - 0.5) * 0.1,
+        rotation: 0, resets: 0,
+        diff: 0, vainqueur: null, qualite: null, useItAnnonce: false,
+      };
+      this.possession = equipeIntroduction;
+      const eq = equipeIntroduction === 'A' ? this.equipeA : this.equipeB;
+      // Loi 19.13-15 : seul le demi de melee (n°9) introduit le ballon dans
+      // le tunnel, jamais l'ouvreur. _neufVersDix (qui privilegie le n°10)
+      // sert a la SORTIE de balle d'un regroupement, pas a l'introduction -
+      // l'utiliser ici donnait le ballon au n°10 sur 100% des melees.
+      this.porteur = eq.find(j => j.numero === 9 && j.sinBin <= 0) || eq[8];
+      // Le demi de melee N'EST PLUS teleporte a l'entree du tunnel : il y court
+      // depuis sa position courante (cf. _meleePositionnerBallon, via avancer()),
+      // exactement comme les avants rejoignent le pack a la course. Avant ce
+      // correctif il etait snappe d'un coup (jusqu'a ~27 m de saut visible). Il
+      // se place sur le COTE du tunnel (loi 19 : le demi se tient sur le cote
+      // pour introduire), pas au centre des avants, et ne glisse le ballon
+      // qu'a l'annonce "introduction".
+      // Les avants ET les deux demis convergent a la course (cf.
+      // _meleePlacerPaquets, _meleePositionnerBallon et le palier "pret" de
+      // _tickMelee, case FORMATION) : le joueur voit reellement la melee se
+      // reorganiser vers le point plutot que d'apparaitre deja en place. Le
+      // delai "Crouch" s'adapte a la distance du plus excentre, plafonne pour
+      // ne jamais bloquer le match (cf. _capFormationMelee).
+      this.melee.capFormation = this._capFormationMelee(px, py);
+      this.ruckPoint = { x: px, y: py };
+      this.contestants = [];
+      this.phase = 'MELEE';
+      this.timerPhase = 0;
+    }
 
-      const placerPaquet = (equipe, recul) => {
-        const avants = equipe.filter(j => j.numero <= 8);
-        avants.forEach((j, i) => {
-          const cx = pt.x - sensAttaque * recul * (0.5 + (i % 3) * 0.4);
-          const cy = pt.y + ((i % 2) ? -1 : 1) * Math.ceil((i + 1) / 2) * 0.6;
+    // Estime le temps reel necessaire au pack le plus excentre pour rallier
+    // le point de melee en courant (vitesse pack ~0.7x, cf. _meleePlacerPaquets),
+    // avec une marge de securite (vitesse basse) et un plafond pour qu'un
+    // en-avant survenu tres loin du point de melee ne bloque jamais le match :
+    // remplace l'ancien plafond fixe de 3s, qui ne laissait pas le temps aux
+    // avants partis de loin de vraiment se regrouper avant l'annonce "Crouch".
+    _capFormationMelee(px, py) {
+      const avants = this.equipeA.concat(this.equipeB).filter(j => j.numero <= 8 && j.sinBin <= 0);
+      let pireDistance = 0;
+      for (const j of avants) {
+        const d = Math.hypot(j.x - px, j.y - py);
+        if (d > pireDistance) pireDistance = d;
+      }
+      // Le demi de melee qui introduit court lui aussi jusqu'a sa marque (le
+      // cote du tunnel) : sans ce terme, "Crouch" pourrait etre annonce alors
+      // qu'il est encore loin, et l'introduction se ferait sans lui en place.
+      if (this.porteur && this.melee) {
+        const feed = this._meleeFeedPos(this.melee);
+        const d9 = Math.hypot(this.porteur.x - feed.x, this.porteur.y - feed.y);
+        if (d9 > pireDistance) pireDistance = d9;
+      }
+      const vitessePackMin = 2.5; // m/s, vitesse basse d'un pack qui se regroupe
+      return Math.min(10, Math.max(3, pireDistance / vitessePackMin));
+    }
+
+    // Position de mise en jeu du demi de melee : sur le COTE du tunnel (loi 19),
+    // legerement du cote de son equipe, decale vers le centre du terrain pour
+    // ne pas etre colle a la ligne de touche. Sert de cible de course (jamais
+    // de teleportation) et de reference au palier "pret" de la formation.
+    _meleeFeedPos(m) {
+      const sideSign = m.y < LARGEUR / 2 ? 1 : -1;
+      return { x: m.x - m.sens * 0.5, y: m.y + sideSign * 2.6 };
+    }
+
+    _finMelee() {
+      this.melee = null;
+      this.contestants = [];
+    }
+
+    // Orchestrateur : exécute un pas de la machine à états de la mêlée.
+    _tickMelee(dt) {
+      const m = this.melee;
+      if (!m) { this.phase = 'PORTE'; this.timerPhase = 0; return; }
+      m.timer += dt;
+      m.timerGlobal += dt;
+      this.ruckPoint = { x: m.x, y: m.y };
+
+      // Garde-fou anti-blocage : une mêlée ne s'éternise JAMAIS. Une formation
+      // lente (avants partis loin) répétée après une reformation pouvait faire
+      // durer une mêlée > 34 s. Au-delà de ~24 s, l'arbitre RÉSOUT la mêlée au
+      // lieu de la refaire (l'équipe qui introduit garde le ballon), ce qui
+      // garantit que TOUTE mêlée se termine quelle que soit la durée du match.
+      if (m.timerGlobal > 24 && m.etat !== ETATS_MELEE.SORTIE) {
+        m.diff = m.diff || this._meleeFacteurs();
+        return this._meleeResoudreContestation();
+      }
+
+      // 1) IA des joueurs : packs qui se rapprochent et se lient, lignes
+      // arrières en retrait, prêtes pour la sortie de balle.
+      this._meleePlacerPaquets(dt);
+      this._meleePositionnerBallon(dt);
+
+      // 2) Arbitrage permanent : fautes (poussée prématurée, écroulement,
+      // pilier en travers, liaison incorrecte, introduction non droite,
+      // ballon bloqué, hors-jeu des lignes arrières...).
+      const faute = this._meleeDetecterFautes(dt);
+      if (faute) return this._meleeSanctionner(faute);
+
+      const E = ETATS_MELEE;
+      const dur = (s) => s * this._echelleArret;
+      switch (m.etat) {
+        case E.FORMATION: {
+          // Les deux packs se placent face à face ; si une équipe est plus
+          // forte elle ne pousse pas encore, elle attend l'introduction.
+          // L'arbitre n'engage "Crouch" que lorsque les avants sont
+          // réellement arrivés (sinon, sur un en-avant loin du point de
+          // mêlée, la contestation démarrerait avec une poignée de joueurs
+          // encore en train de courir depuis l'autre bout du terrain) ;
+          // un plafond évite un blocage si un avant reste très excentré.
+          const tousAvants = this.equipeA.concat(this.equipeB).filter(j => j.numero <= 8 && j.sinBin <= 0);
+          const enPlace = tousAvants.filter(j => Math.hypot(j.x - m.x, j.y - m.y) < 3.5).length;
+          // Tous les avants doivent être présents et alignés pour que l'arbitre
+          // engage "Crouch" (pas seulement une majorité) : le plafond
+          // capFormation reste l'unique garde-fou si un avant ne rejoint
+          // jamais exactement le point (sin-bin, blocage en touche...).
+          // Le demi de melee doit lui aussi avoir rejoint le cote du tunnel
+          // (loi 19) avant l'engagement, sinon l'introduction demarrerait
+          // alors qu'il court encore. Le plafond capFormation reste l'unique
+          // garde-fou s'il ne peut jamais rallier exactement la marque.
+          const feed = this._meleeFeedPos(m);
+          const neufEnPlace = !this.porteur
+            || Math.hypot(this.porteur.x - feed.x, this.porteur.y - feed.y) < 2;
+          const pret = (tousAvants.length === 0 || enPlace >= tousAvants.length) && neufEnPlace;
+          // Durée de formation RÉALISTE (loi 19 ; ~45-70 s de l'octroi à la
+          // sortie en match réel) : les packs ne sprintent pas puis s'engagent
+          // dans la foulée — ils marchent, se regroupent, se lient posément.
+          // C'est le PRINCIPAL poste du temps « ballon mort » réel : l'expédier
+          // en ~9 s (ancien réglage) gonflait le ballon-en-jeu à 65 % (réel
+          // ~44 %) et multipliait les possessions (donc rucks/passes/mêlées,
+          // 3-4× le réel). Les paliers ci-dessous consomment le temps réel d'une
+          // vraie séquence de mêlée ; l'échelle (_echelleArret) compresse tout
+          // automatiquement sur les matchs démo courts.
+          if (m.timer >= dur(8) && (pret || m.timer >= m.capFormation + dur(6))) {
+            m.etat = E.CROUCH; m.timer = 0;
+            this.log('MELEE_CROUCH', m.equipeIntroduction, 'Arbitre : "Crouch" - les premieres lignes se baissent');
+          }
+          break;
+        }
+        case E.CROUCH:
+          if (m.timer >= dur(1.8)) {
+            m.etat = E.BIND; m.timer = 0;
+            this.log('MELEE_BIND', m.equipeIntroduction, 'Arbitre : "Bind" - les piliers se lient a l\'adversaire');
+          }
+          break;
+        case E.BIND:
+          if (m.timer >= dur(1.4)) {
+            m.etat = E.SET; m.timer = 0;
+            this.log('MELEE_SET', m.equipeIntroduction, 'Arbitre : "Set" - les deux packs s\'engagent');
+          }
+          break;
+        case E.SET:
+          // La poussée ne commence qu'a partir d'ici (apres l'engagement),
+          // jamais avant l'introduction.
+          if (m.timer >= dur(1.2)) {
+            m.etat = E.INTRODUCTION; m.timer = 0;
+            this.log('MELEE_INTRODUCTION', m.equipeIntroduction, `Le demi de melee introduit le ballon dans le tunnel pour l'equipe ${m.equipeIntroduction}`);
+          }
+          break;
+        case E.INTRODUCTION:
+          // Le talonneur tente de talonner, le ballon progresse vers les
+          // pieds du numero 8 : les facteurs de contestation sont calculés
+          // une fois, au moment où la lutte pour le ballon démarre vraiment.
+          if (m.timer >= dur(1.8)) {
+            m.etat = E.CONTESTATION; m.timer = 0;
+            m.diff = this._meleeFacteurs();
+            this.log('MELEE_CONTESTATION', m.equipeIntroduction, 'Contestation en melee, les deux packs poussent pour le ballon');
+          }
+          break;
+        case E.CONTESTATION:
+          this._meleeAvancerPoussee(dt);
+          if (Math.abs(m.rotation) > 90) {
+            this.log('MELEE_TOURNEE', m.equipeIntroduction, 'La melee tourne de plus de 90 degres, l\'arbitre la fait reformer');
+            return this._meleeReset();
+          }
+          if (m.timer >= dur(3.0)) this._meleeResoudreContestation();
+          break;
+        case E.SORTIE: {
+          // Comme le "use it" du maul : le ballon doit ressortir sous peine
+          // d'être sifflé injouable ; probabilité de sortie croissante avec
+          // le temps plutôt qu'un instant fixe.
+          const seuilUseIt = dur(1.5);
+          if (m.timerSortie <= seuilUseIt && !m.useItAnnonce) {
+            m.useItAnnonce = true;
+            this.log('MELEE_USE_IT', m.vainqueur, 'Arbitre : "Use it !" - le ballon doit sortir de la melee');
+          }
+          m.timerSortie -= dt;
+          if (this.rng() < 0.7 * dt || m.timerSortie <= 0) return this._meleeSortieBallon();
+          break;
+        }
+      }
+    }
+
+    // Placement progressif des deux packs (et repli des lignes arrières) :
+    // écart large à la formation, qui se resserre jusqu'à l'engagement
+    // ("Set"), puis quasi nul une fois les packs liés en contestation.
+    _meleePlacerPaquets(dt) {
+      const m = this.melee;
+      const E = ETATS_MELEE;
+      const ecart = m.etat === E.FORMATION ? 1.6
+        : m.etat === E.CROUCH ? 1.1
+          : m.etat === E.BIND ? 0.7
+            : 0.35;
+      // Chaque pack se place de son propre cote du point de melee, celui
+      // oppose a son sens d'attaque (comme un vrai pack qui pousse vers la
+      // ligne adverse) : ce cote depend de l'equipe elle-meme (sensAttaque,
+      // fixe pour tout le match), jamais de l'equipe qui introduit. Avant ce
+      // correctif le cote dependait de m.sens (= equipe d'introduction), donc
+      // les deux packs echangeaient de cote a chaque melee selon qui
+      // introduisait - flagrant juste apres l'engagement, quand les deux
+      // equipes arrivent encore bien separees de chaque cote du terrain.
+      const placer = (equipe) => {
+        // sinBin <= 0 : un avant au "bin" ne rejoint pas le pack, son équipe
+        // joue la mêlée à 7 (ou moins), comme en match réel.
+        const avants = equipe.filter(j => j.numero <= 8 && j.sinBin <= 0);
+        // VRAIE FORMATION 3-4-1 (loi 19) — chaque avant à SA place, par numéro :
+        // 1re ligne : pilier gauche (1), talonneur (2) au centre, pilier droit (3) ;
+        // 2e ligne : les deux verrous (4, 5) dans l'axe, flankers (6, 7) liés sur
+        // les côtés ; le n°8 SEUL EN 3e LIGNE, dans l'axe, DERNIER élément de la
+        // mêlée — c'est à ses pieds que le ballon sort. L'ancienne « rosette »
+        // par index plaçait le 8 quasi au niveau de la 1re ligne et décalé de
+        // 2,4 m sur le côté, comme s'il était dans la ligne des trois-quarts.
+        const FORMATION_341 = {
+          1: { prof: 0, lat: -1.0 }, 2: { prof: 0, lat: 0 }, 3: { prof: 0, lat: 1.0 },
+          4: { prof: 1.0, lat: -0.5 }, 5: { prof: 1.0, lat: 0.5 },
+          6: { prof: 1.0, lat: -1.6 }, 7: { prof: 1.0, lat: 1.6 },
+          8: { prof: 2.0, lat: 0 },
+        };
+        avants.forEach((j) => {
+          const f = FORMATION_341[j.numero] || { prof: 1.0, lat: 0 };
+          const cx = m.x - j.sensAttaque * (ecart + f.prof);
+          const cy = m.y + f.lat;
           avancer(j, cx - j.x, cy - j.y, dt, vitesseMs(j) * 0.7);
         });
+        // Les DEUX demis de mêlée (n°9) sont positionnés à part par
+        // _meleePositionnerBallon (sur le côté de la base), pas ramenés sur le
+        // couloir des arrières : sinon le 9 serait tiré à 9 m en retrait puis
+        // devrait être téléporté sur la base à la sortie du ballon.
+        const backs = equipe.filter(j => j.numero > 9 && j.sinBin <= 0);
+        // Ligne de hors-jeu des trois-quarts (loi 19.31) : 5 m DERRIÈRE le pied
+        // le plus reculé de la mêlée (~1,5 m), soit ~6,5 m de la marque ; on
+        // place la ligne à 7,5 m (1 m de marge). Les 3/4 ne sont PLUS alignés en
+        // un mur plat : ils prennent leur VRAIE forme de mêlée.
+        const sA = equipe[0].sensAttaque;
+        const ligneHJ = m.x - sA * this.cfg.melee.reculTroisQuarts;
+        const estAttaque = equipe[0].team === m.equipeIntroduction;
+        // Côté OUVERT = celui qui a le plus de champ depuis la mêlée (vers le
+        // large), côté FERMÉ = petit côté vers la touche la plus proche.
+        const openSign = m.y < LARGEUR / 2 ? 1 : -1;
+        const clampY = (y) => Math.max(2, Math.min(LARGEUR - 2, y));
+        const idxLigne = (n) => (n === 10 ? 0 : n === 12 ? 1 : 2); // 10,12,13
+        backs.forEach((j) => {
+          let cx, cy;
+          if (j.numero === 15) {
+            // Arrière : couverture PROFONDE au centre (dernier rideau), pas dans
+            // la ligne.
+            cx = m.x - sA * this.cfg.defense.profondeurArriereMelee; cy = LARGEUR / 2;
+          } else if (j.numero === 11 || j.numero === 14) {
+            // Ailiers : l'ailier du côté OUVERT s'écarte au large ; l'autre
+            // couvre le petit côté (côté fermé). En ATTAQUE, l'ailier ouvert est
+            // LE PLUS PROFOND de l'escalier (~11 m derrière la ligne de
+            // hors-jeu) : c'est lui qui reçoit lancé en bout de ligne et file
+            // dans le couloir (la flèche longue du tableau tactique).
+            const cotAile = (Math.sign(j.channelY - LARGEUR / 2) || 1);
+            const estOuvert = cotAile === openSign;
+            cx = (estAttaque && estOuvert) ? ligneHJ - sA * 11 : ligneHJ;
+            cy = estOuvert ? LARGEUR / 2 + openSign * 22 : m.y - openSign * 7;
+          } else {
+            // 10, 12, 13 : la ligne des trois-quarts, ÉTAGÉE vers le côté ouvert.
+            const idx = idxLigne(j.numero);
+            cy = m.y + openSign * (7 + idx * 8);
+            // Attaque : ESCALIER DIAGONAL MARQUÉ (tableau tactique classique) —
+            // chaque back nettement plus profond que l'intérieur (~3,5 m par
+            // cran, 10 ~1,5 m derrière la ligne de hors-jeu, 13 ~8,5 m) : le
+            // ballon descend la ligne par passes enchaînées, chaque receveur
+            // arrive lancé, jusqu'à la libération de l'ailier dans le couloir.
+            // Défense : ligne À PLAT sur la ligne de hors-jeu, rideau régulier.
+            cx = estAttaque ? ligneHJ - sA * (1.5 + idx * 3.5) : ligneHJ;
+          }
+          // Priorité au REPLI en profondeur : tant que le back est en avant de sa
+          // ligne de hors-jeu (loi 19.31), il ferme d'abord la profondeur (on
+          // réduit la composante latérale) — sinon une cible large lointaine (aile
+          // au grand large) lui fait dépenser sa course en y et il reste
+          // transitoirement hors-jeu. Une fois derrière la ligne, il s'écarte.
+          const enAvantLigne = (j.x - ligneHJ) * sA > 0.3;
+          const dyB = clampY(cy) - j.y;
+          avancer(j, cx - j.x, enAvantLigne ? dyB * 0.3 : dyB, dt, vitesseMs(j) * 0.9);
+        });
       };
-      placerPaquet(equipeAtt, -1);
-      placerPaquet(equipeDef, 1);
+      placer(this.equipeA);
+      placer(this.equipeB);
+    }
 
-      // Hors-jeu (loi 19/20) : les arrières défenseurs doivent rester à 5 m du
-      // point d'introduction jusqu'à la sortie du ballon ; un délai de grâce
-      // leur laisse le temps de se replier avant d'être sifflés (même logique
-      // qu'au ruck).
-      const margeBacks = 5;
-      const delaiGrace = 1.5;
-      for (const j of equipeDef) {
-        if (j.numero <= 8) continue;
-        const limite = sensAttaque > 0 ? pt.x - margeBacks : pt.x + margeBacks;
-        const enInfraction = sensAttaque > 0 ? j.x < limite : j.x > limite;
-        if (enInfraction) {
-          avancer(j, limite - j.x, pt.y - j.y, dt, vitesseMs(j));
-          const toujoursEnInfraction = sensAttaque > 0 ? j.x < limite : j.x > limite;
-          if (this.timerPhase > delaiGrace && toujoursEnInfraction) {
-            this._traiterPenalite(this.possession, { x: pt.x, y: pt.y });
-            return;
+    // Ballon tenu par le demi de mêlée à l'entrée du tunnel pendant la mise
+    // en place (formation/Crouch/Bind/Set), glissé dans la mêlée seulement
+    // pendant l'état "introduction" : le ballon ne doit pas déjà être au
+    // centre des avants avant que l'arbitre ait réellement annoncé son
+    // entrée, sinon l'annonce "introduction" arrive après coup, sur un
+    // ballon visuellement déjà en place.
+    _meleePositionnerBallon(dt) {
+      const m = this.melee;
+      const E = ETATS_MELEE;
+      const sideSign = m.y < LARGEUR / 2 ? 1 : -1;
+      const eqIntro = m.equipeIntroduction === 'A' ? this.equipeA : this.equipeB;
+      const eqDef = m.equipeIntroduction === 'A' ? this.equipeB : this.equipeA;
+      const neufIntro = eqIntro.find(j => j.numero === 9 && j.sinBin <= 0);
+      const neufDef = eqDef.find(j => j.numero === 9 && j.sinBin <= 0);
+      // Demi qui introduit : à la bouche du tunnel, sur le côté de son équipe.
+      // Il se penche vers le tunnel au moment de l'introduction pour y glisser
+      // le ballon (jamais au centre des avants). Tout en course (avancer),
+      // jamais snappé, et il suit la base si la mêlée avance en poussant.
+      if (neufIntro) {
+        // Le 9 SUIT LE BALLON : à l'entrée du tunnel jusqu'à l'introduction,
+        // puis il SE REPLACE DERRIÈRE LE N°8 (dernier élément de la mêlée,
+        // formation 3-4-1 : base à ~2,4 m de la marque) pendant que le ballon
+        // talonné remonte vers les pieds du 8 — prêt à le ramasser à la sortie
+        // et à le distribuer au 10, comme sur n'importe quelle phase. Avant, il
+        // restait planté à l'entrée du tunnel pendant toute la contestation.
+        const cible = (m.etat === E.CONTESTATION || m.etat === E.SORTIE)
+          ? { x: m.x - m.sens * 3.6, y: m.y + sideSign * 0.6 }
+          : m.etat === E.INTRODUCTION
+            ? { x: m.x - m.sens * 0.2, y: m.y + sideSign * 1.4 }
+            : this._meleeFeedPos(m);
+        avancer(neufIntro, cible.x - neufIntro.x, cible.y - neufIntro.y, dt, vitesseMs(neufIntro));
+      }
+      // Demi adverse : garde la base de la mêlée de l'autre côté du tunnel,
+      // prêt à défendre la sortie (et à jouer le ballon s'il est gagné contre
+      // l'introduction). Là aussi en course, donc aucune téléportation à la
+      // sortie quand c'est lui qui récupère un ballon volé.
+      if (neufDef) {
+        const cibleDef = { x: m.x + m.sens * 0.5, y: m.y - sideSign * 2.6 };
+        avancer(neufDef, cibleDef.x - neufDef.x, cibleDef.y - neufDef.y, dt, vitesseMs(neufDef) * 0.9);
+      }
+    }
+
+    // Facteurs de contestation (loi 19) combinés en un différentiel unique :
+    // force des piliers, puissance du pack, technique du talonneur, cohésion/
+    // fatigue (bruit plus fort en fin de match), moral (lié au score), terrain,
+    // et avantage structurel de l'introduction (le pack qui introduit gagne
+    // l'immense majorité des mêlées en match réel). Positif = avantage à
+    // l'équipe qui introduit.
+    _meleeFacteurs() {
+      const m = this.melee;
+      const eqIntro = m.equipeIntroduction === 'A' ? this.equipeA : this.equipeB;
+      const eqDef = m.equipeNonIntroduction === 'A' ? this.equipeA : this.equipeB;
+      // sinBin <= 0 : une équipe qui joue la mêlée à 7 (pack incomplet, cf.
+      // _meleePlacerPaquets) ne doit pas garder la force de poussée d'un
+      // pack à 8 dans le calcul de la contestation.
+      const avantsIntro = eqIntro.filter(j => j.numero <= 8 && j.sinBin <= 0);
+      const avantsDef = eqDef.filter(j => j.numero <= 8 && j.sinBin <= 0);
+      const puissanceIntro = avantsIntro.reduce((s, j) => s + forceMaul(j), 0);
+      const puissanceDef = avantsDef.reduce((s, j) => s + forceMaul(j), 0);
+      const piliersIntro = avantsIntro.filter(j => j.numero === 1 || j.numero === 3).reduce((s, j) => s + forceMaul(j), 0);
+      const piliersDef = avantsDef.filter(j => j.numero === 1 || j.numero === 3).reduce((s, j) => s + forceMaul(j), 0);
+      const talonneur = eqIntro.find(j => j.numero === 2 && j.sinBin <= 0);
+      const techniqueTalonneur = talonneur ? (talonneur.plaquage - 60) * 0.4 : 0;
+      const fatigue = (this.dureeMatch === Infinity || this.dureeMatch <= 0) ? 0 : Math.min(1, this.tempsMatch / this.dureeMatch);
+      const moral = Math.max(-4, Math.min(4, (this.score[m.equipeIntroduction] - this.score[m.equipeNonIntroduction]) / 5));
+      const avantageIntroduction = 18;
+      return (puissanceIntro - puissanceDef) + (piliersIntro - piliersDef) * 0.5
+        + techniqueTalonneur + moral + avantageIntroduction
+        + m.conditions * 40 + (this.rng() - 0.5) * (10 + fatigue * 10);
+    }
+
+    // Pendant la contestation : la poussée fait dériver le point de mêlée
+    // (gain/perte de terrain) et accumule une rotation (mêlée qui tourne),
+    // jamais de façon déterministe — un déséquilibre net augmente juste la
+    // probabilité, sans jamais la garantir.
+    _meleeAvancerPoussee(dt) {
+      const m = this.melee;
+      const vitessePoussee = Math.max(-0.5, Math.min(0.7, m.diff / 80));
+      m.x = Math.max(0, Math.min(LONGUEUR, m.x + vitessePoussee * m.sens * dt));
+      m.rotation += (-m.diff / 20 + (this.rng() - 0.5) * 12) * dt;
+    }
+
+    // Détection des fautes probables de mêlée, gravité et camp fautif selon
+    // l'état courant — mêmes ordres de grandeur que le maul (la plupart des
+    // mêlées ne sont pas sanctionnées, sinon l'équilibre du match casse).
+    _meleeDetecterFautes(dt) {
+      const m = this.melee;
+      const E = ETATS_MELEE;
+      const r = this.rng();
+      let seuil = 0;
+      if (m.etat === E.CROUCH || m.etat === E.BIND || m.etat === E.SET) {
+        seuil += 0.006 * dt;
+        if (r < seuil) {
+          const eqF = this.rng() < 0.5 ? m.equipeIntroduction : m.equipeNonIntroduction;
+          return { type: 'POUSSEE_AVANT', equipeFautive: eqF, gravite: 'COUP_FRANC', message: "poussee avant l'introduction du ballon", delibere: false };
+        }
+        seuil += 0.004 * dt;
+        if (r < seuil) {
+          const eqF = this.rng() < 0.5 ? m.equipeIntroduction : m.equipeNonIntroduction;
+          return { type: 'LIAISON', equipeFautive: eqF, gravite: 'COUP_FRANC', message: 'liaison incorrecte en premiere ligne', delibere: false };
+        }
+      }
+      if (m.etat === E.INTRODUCTION) {
+        seuil += 0.05 * dt;
+        if (r < seuil) {
+          return { type: 'INTRODUCTION_NON_DROITE', equipeFautive: m.equipeIntroduction, gravite: 'COUP_FRANC', message: 'introduction non droite dans le tunnel', delibere: false };
+        }
+      }
+      if (m.etat === E.SET || m.etat === E.CONTESTATION) {
+        const distLigneDef = m.sens > 0 ? (LONGUEUR - m.x) : m.x;
+        // Le camp en difficulté (qui recule dans le duel de poussée) est le
+        // plus exposé à l'écroulement volontaire et au pilier en travers.
+        const campEnDifficulte = m.diff >= 0 ? m.equipeNonIntroduction : m.equipeIntroduction;
+        seuil += distLigneDef < 5 ? 0.05 * dt : 0.008 * dt;
+        if (r < seuil) {
+          return { type: 'ECROULEMENT', equipeFautive: campEnDifficulte, gravite: 'PENALITE', message: 'ecroulement volontaire de la melee', delibere: true };
+        }
+        seuil += 0.0025 * dt;
+        if (r < seuil) {
+          return { type: 'PILIER_TRAVERS', equipeFautive: campEnDifficulte, gravite: 'PENALITE', message: 'pilier qui pousse en travers (boring in)', delibere: false };
+        }
+        seuil += 0.0025 * dt;
+        if (r < seuil) {
+          const eqF = this.rng() < 0.5 ? m.equipeIntroduction : m.equipeNonIntroduction;
+          return { type: 'RELEVE', equipeFautive: eqF, gravite: 'COUP_FRANC', message: 'joueur de premiere ligne qui se releve', delibere: false };
+        }
+        seuil += 0.002 * dt;
+        if (r < seuil) {
+          return { type: 'BALLON_BLOQUE', equipeFautive: m.equipeIntroduction, gravite: 'RESET', message: 'ballon bloque, ne ressort pas du pied du numero 8', delibere: false };
+        }
+      }
+      // Hors-jeu des lignes arrières (loi 19.31) : les trois-quarts défenseurs
+      // (n°10-15) doivent rester 5 m DERRIÈRE le pied le plus reculé de la
+      // mêlée, de LEUR côté, jusqu'à la sortie du ballon. La mêlée étant
+      // profonde d'environ 1,5 m depuis la marque (m.x), la ligne réglementaire
+      // est à ~6,5 m de la marque (5 m + 1,5 m), et non 5 m du centre comme
+      // auparavant : on mesurait alors le hors-jeu depuis la marque, pas depuis
+      // le dernier pied, ce qui laissait un défenseur s'avancer ~1,5 m trop
+      // près. On ne contrôle qu'à partir de l'introduction (pas pendant SET)
+      // pour laisser aux arrières le temps de rejoindre leur ligne.
+      if (m.etat === E.INTRODUCTION || m.etat === E.CONTESTATION || m.etat === E.SORTIE) {
+        const def = m.equipeNonIntroduction === 'A' ? this.equipeA : this.equipeB;
+        const margeBacks = 6.5, delaiGrace = 2.5;
+        for (const j of def) {
+          // Avants (dans la mêlée) ET demi de mêlée exclus : le demi défenseur
+          // a sa propre ligne (rester derrière le ballon, de son côté), pas la
+          // ligne des 5 m qui ne vaut que pour les autres trois-quarts.
+          if (j.numero <= 9) continue;
+          // L'équipe défenseure se tient du côté +m.sens de la mêlée (m.sens =
+          // sens d'attaque de l'équipe qui introduit). Sa ligne de hors-jeu est
+          // donc ~6,5 m derrière la marque DANS CE SENS. Un défenseur est
+          // hors-jeu s'il est à moins de 6,5 m (5 m + profondeur de mêlée)
+          // derrière le point de mêlée de son côté.
+          // (Avant correctif : la limite était calculée du mauvais côté, si
+          // bien que les arrières défenseurs — désormais correctement placés de
+          // leur côté — étaient sifflés hors-jeu sur 100 % des mêlées, qui ne
+          // ressortaient donc jamais proprement.)
+          const reculBack = (j.x - m.x) * m.sens;
+          if (reculBack < margeBacks && m.timerGlobal > delaiGrace) {
+            return { type: 'HORS_JEU_BACKS', equipeFautive: m.equipeNonIntroduction, gravite: 'PENALITE', message: 'hors-jeu des lignes arrieres a la melee', delibere: false };
           }
         }
       }
+      return null;
+    }
 
-      // Durée totale de la mêlée (formation, liaison, poussée, sortie du
-      // ballon) : un vrai engagement de mêlée prend bien plus que quelques
-      // secondes en match réel (~10-15 s entre l'introduction et la sortie).
-      // Compressée comme les autres temps d'arrêt sur un format démo court
-      // (cf. _echelleArret) pour laisser plus de place au jeu courant.
-      if (this.timerPhase >= 12 * this._echelleArret) {
-        // Poussée des paquets (même proxy de force que le ruck/maul,
-        // forceMaul), sur les 8 avants de chaque équipe : un paquet plus
-        // puissant fait gratter le ballon plus souvent côté défense, sans
-        // jamais rendre l'issue certaine.
-        let forceAtt = 0, forceDef = 0;
-        for (const j of equipeAtt) if (j.numero <= 8) forceAtt += forceMaul(j);
-        for (const j of equipeDef) if (j.numero <= 8) forceDef += forceMaul(j);
-        const probaTurnover = Math.max(0.03, Math.min(0.25, 0.08 + (forceDef - forceAtt) / 900));
-        if (this.rng() < probaTurnover) {
-          this.possession = this.possession === 'A' ? 'B' : 'A';
-          this.stats[this.possession].turnovers++;
-          this.log('TURNOVER', this.possession, `Ballon talonne contre le sens de l'introduction, equipe ${this.possession} recupere a la melee`);
-          const eqNouv = this.possession === 'A' ? this.equipeA : this.equipeB;
-          this.porteur = this._neufVersDix(eqNouv, eqNouv[8]);
-        }
-        this.porteur.x = pt.x;
-        this.porteur.y = pt.y;
-        this._imposerRecuperationRuck(pt);
-        this.phase = 'PORTE';
-        this.timerPhase = 0;
+    // Reformation sans faute (mêlée tournée, ballon bloqué) : même équipe
+    // réintroduit, sans changement de possession ni sanction. Bornée pour
+    // éviter une boucle en cas de série de reformations improbable.
+    _meleeReset() {
+      const m = this.melee;
+      m.resets = (m.resets || 0) + 1;
+      m.rotation = 0;
+      m.timer = 0;
+      // Reformation RAPIDE : les deux packs sont déjà sur la marque, l'arbitre
+      // les fait directement re-engager (« Crouch ») — on ne re-déroule pas la
+      // longue mise en place initiale (formation ~14 s : marche d'approche,
+      // liaisons), ce qui faisait traîner les mêlées à refaire au-delà du
+      // raisonnable. Au 3e reset, engagement direct (« Set »), comme un arbitre
+      // pressé d'en finir.
+      m.etat = m.resets > 2 ? ETATS_MELEE.SET : ETATS_MELEE.CROUCH;
+    }
+
+    // Décision d'arbitrage sur une faute de mêlée : reformation simple, coup
+    // franc, pénalité (avec essai de pénalité/carton si délibérée, proche de
+    // la ligne ou répétée), même logique que _maulSanctionner.
+    _meleeSanctionner(faute) {
+      const m = this.melee;
+      if (faute.gravite === 'RESET') {
+        this.log('MELEE_RESET', m.equipeIntroduction, `Melee a refaire : ${faute.message}`);
+        return this._meleeReset();
       }
+      const fautive = faute.equipeFautive;
+      const benef = fautive === 'A' ? 'B' : 'A';
+      const pos = { x: m.x, y: m.y };
+      this._meleePenalitesMatch[fautive] = (this._meleePenalitesMatch[fautive] || 0) + 1;
+      const repetee = this._meleePenalitesMatch[fautive] >= 3;
+      const sensBenef = benef === 'A' ? 1 : -1;
+      const distLigne = sensBenef > 0 ? (LONGUEUR - pos.x) : pos.x;
+      const presDeLigne = distLigne <= 5;
+      const empecheEssai = faute.delibere && faute.type === 'ECROULEMENT' && presDeLigne;
+      this._finMelee();
+
+      if (faute.delibere && (presDeLigne || repetee)) {
+        const eqFautive = fautive === 'A' ? this.equipeA : this.equipeB;
+        const { joueur: fautif } = joueurLePlusProche(eqFautive, pos.x, pos.y);
+        fautif.sinBin = 600 * this._echelleArret;
+        this.stats[fautive].cartonsJaunes++;
+        this.log('CARTON_JAUNE', fautive, `Carton jaune pour l'equipe ${fautive} (n°${fautif.numero}) : ${faute.message} - a 14 pendant ${Math.round(fautif.sinBin)}s`);
+      }
+      if (empecheEssai) {
+        this.score[benef] += 7;
+        this.stats[benef].essais++;
+        this.log('ESSAI_PENALITE', benef, `Essai de penalite : ${faute.message} en melee, equipe ${benef} +7`);
+        this._nouvelleManche(benef);
+        return;
+      }
+      const evt = faute.type === 'ECROULEMENT' ? 'MELEE_PEN_ECROULEMENT'
+        : faute.type === 'PILIER_TRAVERS' ? 'MELEE_PEN_TRAVERS'
+          : faute.type === 'HORS_JEU_BACKS' ? 'MELEE_PEN_HORSJEU'
+            : 'MELEE_PEN_TECHNIQUE';
+      // Le ballon de pénalité/coup franc de mêlée est joué par le demi de mêlée,
+      // déjà présent à la base (cf. _meleePositionnerBallon), et non par un avant
+      // "le plus proche" téléporté sur la marque (~5-6 m de saut visible). Repli
+      // sur le joueur disponible le plus proche si le 9 est indisponible.
+      const eqB = benef === 'A' ? this.equipeA : this.equipeB;
+      const neufB = eqB.find(j => j.numero === 9 && j.sinBin <= 0)
+        || joueurLePlusProche(eqB.filter(j => j.sinBin <= 0), pos.x, pos.y).joueur;
+      this.possession = benef;
+      this.porteur = neufB;
+      if (faute.gravite === 'COUP_FRANC') {
+        this.log(evt, fautive, `Coup franc melee : ${faute.message} (equipe ${fautive}), coup franc pour l'equipe ${benef}`);
+        this._traiterCoupFranc(benef, pos, neufB);
+        return;
+      }
+      this.log(evt, fautive, `Penalite melee : ${faute.message} (equipe ${fautive}), penalite pour l'equipe ${benef}`);
+      this._traiterPenalite(benef, pos);
+    }
+
+    // Résolution de la contestation : détermine qui ressort avec le ballon et
+    // dans quelles conditions (propre, sous pression, poussée dominante, ou
+    // volé contre l'introduction — rare mais possible), à partir du
+    // différentiel de force calculé à l'entrée en contestation.
+    _meleeResoudreContestation() {
+      const m = this.melee;
+      const intro = m.equipeIntroduction, nonIntro = m.equipeNonIntroduction;
+      const probaVol = Math.max(0.02, Math.min(0.35, 0.05 - m.diff / 300));
+      if (this.rng() < probaVol) {
+        m.vainqueur = nonIntro; m.qualite = 'VOLE';
+        this.stats[nonIntro].turnovers++;
+        this.stats[intro].turnoversConcedes++;
+        this.log('TURNOVER', nonIntro, `Ballon vole en melee contre l'introduction, l'equipe ${nonIntro} recupere`);
+      } else if (m.diff > 25) {
+        m.vainqueur = intro; m.qualite = 'DOMINANT';
+        this.log('MELEE_DOMINEE', intro, `Poussee dominante en melee, l'equipe ${intro} fait reculer le pack adverse`);
+      } else if (m.diff > 8) {
+        m.vainqueur = intro; m.qualite = 'PROPRE';
+        this.log('MELEE_GAGNEE', intro, `Ballon gagne proprement par l'equipe ${intro} en melee`);
+      } else {
+        m.vainqueur = intro; m.qualite = 'PRESSION';
+        this.log('MELEE_PRESSION', intro, `Ballon gagne sous pression par l'equipe ${intro} en melee`);
+      }
+      this.stats[m.vainqueur].scrumsGagnes++;
+      const eqVainqueur = m.vainqueur === 'A' ? this.equipeA : this.equipeB;
+      // Pendant l'état SORTIE le n°8 contrôle le ballon au pied de la mêlée :
+      // il est déjà à l'arrière de son pack (donc sur la base), aucun snap —
+      // sinon il "sautait" sur la base depuis sa position de poussée.
+      this.porteur = eqVainqueur.find(j => j.numero === 8) || eqVainqueur[7];
+      m.etat = ETATS_MELEE.SORTIE;
+      m.timer = 0;
+      m.timerSortie = 4 * this._echelleArret;
+      m.useItAnnonce = false;
+    }
+
+    // Sortie de balle : le demi de mêlée sort le ballon vers l'ouvreur dans la
+    // grande majorité des cas (qui décide ensuite passe/jeu au large/coup de
+    // pied via l'IA de jeu courant), ou le numéro 8 ramasse et part au près
+    // (pick-and-go), plus probable après une poussée dominante.
+    _meleeSortieBallon() {
+      const m = this.melee;
+      const poss = m.vainqueur;
+      const eq = poss === 'A' ? this.equipeA : this.equipeB;
+      const huit = eq.find(j => j.numero === 8);
+      const pt = { x: m.x, y: m.y };
+      const pickAndGo = huit && huit.auSol === 0 && this.rng() < (m.qualite === 'DOMINANT' ? this.cfg.melee.pickAndGoHuit.dominant : this.cfg.melee.pickAndGoHuit.normal);
+      this._finMelee();
+      this.possession = poss;
+      if (pickAndGo) {
+        // Le n°8 ramasse au pied de la mêlée : déjà à l'arrière du pack (sur la
+        // base), aucun snap — il part au contact depuis là.
+        this.porteur = huit;
+        this.log('MELEE_PICK_AND_GO', poss, `Le numero 8 ramasse au pied de la melee et part au contact pour l'equipe ${poss}`);
+      } else {
+        // Loi 19 : le ballon gagné sort par l'ARRIÈRE de la mêlée, aux pieds du
+        // n°8 (dernier joueur du pack, sur la base). C'est donc le 8 qui le
+        // RÉCUPÈRE — « la balle sort sur le 8 » — puis le DÉLIVRE au demi de mêlée
+        // (passe courte visible depuis la base). Le 9 ne cueille jamais le ballon
+        // DANS la mêlée : il le reçoit du 8. La passe vers l'ouvreur se fait
+        // ensuite naturellement en jeu courant (_tickPorte).
+        const neuf = eq.find(j => j.numero === 9 && j.sinBin <= 0);
+        this.porteur = huit || eq[7]; // le ballon sort SUR le n°8
+        this.log('MELEE_BALLON_SORTI', poss, `Le n°8 recupere le ballon a la base de la melee pour l'equipe ${poss}`);
+        if (neuf && neuf !== this.porteur) {
+          // Le 8 délivre le ballon au demi de mêlée (passe courte depuis la base).
+          this._lancerPasseVisuelle(this.porteur, neuf);
+          this.porteur = neuf;
+        }
+      }
+      // Sortie propre par le 9 : on peut enchaîner une COMBINAISON scriptée
+      // (playbook, cf. cfg.combinaisons.melee) — ex. 9->10->12 croisé. Sinon jeu
+      // libre normal. (Pas de combinaison sur un pick-and-go du n°8 : il part au
+      // contact.)
+      if (!pickAndGo) this._lancerCombinaison('melee');
+      // Sortie de mêlée par le 9 SANS combinaison scriptée : il est libre et
+      // décide lui-même (cf. choisirActionPorteur, branche _neufLibre).
+      if (!pickAndGo && !this.combinaison && this.porteur && this.porteur.numero === 9) this._neufLibre = true;
+      this._imposerRecuperationRuck(pt);
+      this.phase = 'PORTE';
+      this.timerPhase = 0;
+    }
+
+    // --- Combinaisons scriptées (playbook, cf. cfg.combinaisons) --------------
+    // Tire une combinaison pondérée pour le type donné ('melee' | 'touche'),
+    // ou null (jeu libre) selon la probabilité configurée.
+    _choisirCombinaison(type) {
+      const cc = this.cfg.combinaisons;
+      if (!cc || this.rng() >= (cc.proba || 0)) return null;
+      // Playbook SPÉCIFIQUE à l'équipe en possession (cc.A / cc.B) s'il existe,
+      // sinon la liste partagée (cc.melee / cc.touche) : chaque équipe peut avoir
+      // son propre répertoire de combinaisons.
+      const specifique = cc[this.possession] && cc[this.possession][type];
+      let liste = (specifique && specifique.length) ? specifique : cc[type];
+      if (!liste || !liste.length) return null;
+      // Filtre par ZONE de terrain si la combinaison en impose une (une chandelle
+      // ou un cross-kick ne se joue que dans les 22 m adverses, etc.).
+      const zone = this.porteur ? this._zoneTerrain(this.porteur) : null;
+      liste = liste.filter((c) => !c.zone || (zone && c.zone.indexOf(zone) >= 0));
+      if (!liste.length) return null;
+      const total = liste.reduce((s, c) => s + (c.poids || 1), 0);
+      let r = this.rng() * total;
+      for (const c of liste) { r -= (c.poids || 1); if (r <= 0) return c; }
+      return liste[liste.length - 1];
+    }
+
+    // Arme une combinaison : le porteur courant doit être le "de" de la 1re étape
+    // (le 9 qui vient de récupérer). Rien ne se passe si aucune combinaison n'est
+    // tirée (jeu libre).
+    _lancerCombinaison(type) {
+      const combo = this._choisirCombinaison(type);
+      if (!combo || !combo.etapes || !combo.etapes.length) return;
+      this.combinaison = { etapes: combo.etapes, i: 0, timer: 0, delai: 0.55 };
+    }
+
+    // Déroule pas à pas la combinaison en cours (passes ciblées + lignes de
+    // course). Renvoie true si une passe a été jouée CE tick (le tick de jeu
+    // courant s'arrête là). Une passe qui serait en avant, ou vers un joueur
+    // indisponible, ou un porteur qui n'est plus le "de" attendu (plaquage,
+    // interruption), stoppe la combinaison et rend la main au jeu libre.
+    _tickCombinaison(dt) {
+      const c = this.combinaison;
+      if (!c) return false;
+      const etape = c.etapes[c.i];
+      if (!this.porteur || this.porteur.numero !== etape.de || this.porteur.team !== this.possession) {
+        this.combinaison = null; return false;
+      }
+      c.timer += dt;
+      if (c.timer < c.delai) return false; // le porteur court en attendant l'action
+      c.timer = 0;
+
+      // Action COUP DE PIED programmé (ex. cross-kick / chandelle sur combinaison
+      // de zone) : le joueur "de" botte, ce qui termine la combinaison.
+      if (etape.action === 'pied') {
+        const TYPES = ['DEGAGEMENT', 'OCCUPATION', 'TOUCHE', 'CHANDELLE', 'CHIP'];
+        const type = TYPES.indexOf((etape.type || '').toUpperCase()) >= 0 ? etape.type.toUpperCase() : 'CHANDELLE';
+        this.log('COMBINAISON', this.possession, `Combinaison : coup de pied (${type.toLowerCase()}) du n°${etape.de}`);
+        this.combinaison = null;
+        this._tenterCoupDePiedJeu(this.porteur, type);
+        return true;
+      }
+
+      // Action PASSE (défaut).
+      const eq = this.possession === 'A' ? this.equipeA : this.equipeB;
+      const cible = eq.find(j => j.numero === etape.vers && j.sinBin <= 0 && j.auSol === 0);
+      if (!cible || Referee.passeEnAvant(this.porteur.sensAttaque, this.porteur, cible)) {
+        this.combinaison = null; return false; // option scriptée impossible -> jeu libre
+      }
+      const passeur = this.porteur;
+      this.stats[this.possession].passesTentees++;
+      this.stats[this.possession].passes++;
+      this._lancerPasseVisuelle(passeur, cible);
+      this.porteur = cible;
+      this._receptionDirecte = false;
+      this.log('COMBINAISON', this.possession, `Combinaison : passe du n°${etape.de} au n°${etape.vers}${etape.ligne ? ' (' + etape.ligne + ')' : ''}`);
+      // Ligne de course du RECEVEUR (croisé ou boucle) : dans les deux cas il
+      // CHANGE de direction un court instant.
+      if (etape.ligne === 'croise' || etape.ligne === 'boucle') {
+        // croisé : le receveur repique vers le côté du passeur (derrière lui) ;
+        // boucle : il part à l'extérieur (le passeur boucle dans son dos).
+        const versPasseur = Math.sign(passeur.y - cible.y) || 1;
+        cible._croiseTimer = 1.2 * this._echelleArret + 0.6;
+        cible._croiseDir = etape.ligne === 'croise' ? versPasseur : -versPasseur;
+      }
+      c.i++;
+      if (c.i >= c.etapes.length) this.combinaison = null; // combinaison terminée
+      return true;
     }
 
     // Touche (loi 18) : véritable contest au saut, pondéré par la force des
@@ -1580,19 +3943,136 @@
     // pas systématiquement son propre lancer. Une touche gagnée dans les 22 m
     // adverses est la voie PRINCIPALE de formation d'un maul (catch-and-drive),
     // pas une mêlée aléatoire en plein champ.
+    // Alignement progressif des deux lignes de touche pendant l'attente (loi 18) :
+    // les avants des deux équipes convergent en courant vers le couloir
+    // perpendiculaire à la ligne de touche, espacés le long de la touche (axe y),
+    // de part et d'autre d'un mince couloir central où passe le ballon. Le demi
+    // de mêlée de chaque équipe se tient en retrait, prêt à jouer un ballon
+    // gagné — c'est lui qui récupère un lancer volé (cf. _tickTouche), donc il
+    // doit avoir réellement rejoint cette position en courant, jamais y être
+    // téléporté à la résolution.
+    _touchePlacerLignes(dt) {
+      const pt = this.ruckPoint;
+      // yTouche = bord du terrain où se tient le lanceur (loi 18.22). La ligne
+      // des sauteurs commence elle à 5 m de la touche (loi 18 : l'alignement est
+      // entre la ligne des 5 m et celle des 15 m), d'où un vrai couloir entre le
+      // lanceur et le premier sauteur, au lieu d'un lanceur noyé dans la ligne.
+      const yTouche = this.toucheLanceurY != null ? this.toucheLanceurY : pt.y;
+      const versCentre = yTouche <= LARGEUR / 2 ? 1 : -1;
+      const yLigne5 = yTouche + versCentre * 5;
+      // Le lanceur rejoint la marque de touche (sur le bord) en courant, comme
+      // les avants ci-dessous — avant ce correctif, il y était téléporté
+      // directement dès l'octroi de la touche (cf. _accorderTouche), ce qui
+      // pouvait le faire apparaître instantanément à 30-50 m de sa position.
+      if (this.porteur) {
+        const xLanceur = this.toucheLanceurX != null ? this.toucheLanceurX : pt.x;
+        avancer(this.porteur, xLanceur - this.porteur.x, yTouche - this.porteur.y, dt, vitesseMs(this.porteur) * 0.9);
+      }
+      const placer = (equipe, decalX) => {
+        const sens = equipe[0].sensAttaque;
+        // Sauteurs alignés perpendiculairement à la touche, de la ligne des 5 m
+        // vers l'intérieur, espacés de 1,4 m (zone 5-15 m, loi 18.10). Avec
+        // jusqu'à 7 avants dans l'alignement (n°1,3-8, le n°2 lance), un
+        // espacement de 1,7 m poussait le dernier sauteur jusqu'à ~15,7-17,4 m,
+        // donc AU-DELÀ de la ligne des 15 m (coup franc en jeu réel). À 1,4 m,
+        // 7 sauteurs depuis 5 m s'étalent jusqu'à ~13,4 m, sous le plafond légal.
+        // Les deux équipes forment deux colonnes séparées par le couloir d'un
+        // mètre (decalX), conformément à la loi.
+        const avants = equipe.filter(j => j.numero <= 8 && j.sinBin <= 0 && j !== this.porteur);
+        avants.forEach((j, i) => {
+          const cx = pt.x + decalX;
+          const cy = yLigne5 + versCentre * (i * this.cfg.touche.espacementSauteurs);
+          avancer(j, cx - j.x, cy - j.y, dt, vitesseMs(j) * 0.8);
+        });
+        // Position du n°9 selon que SON équipe lance ou non (le placement diffère
+        // dans la loi) :
+        //  - Équipe qui LANCE → RECEVEUR (loi 18.16) : nettement DERRIÈRE son
+        //    propre alignement, ~4 m en retrait, à au moins 2 m de ses
+        //    coéquipiers. Il NE capte PAS le lancer (c'est le sauteur) ; il reçoit
+        //    le ballon redescendu par le sauteur dans un DEUXIÈME temps.
+        //  - Équipe qui NE LANCE PAS → GARDIEN du couloir avant (loi 18.15) : un
+        //    joueur ENTRE la ligne de touche et la ligne des 5 m, à ~2 m de la
+        //    marque (côté de son camp) et ~2 m de la ligne des 5 m. Auparavant ce
+        //    9 défenseur était lui aussi planté en receveur à 10 m, si bien que
+        //    personne ne tenait le couloir des 5 m (loi 18.15 jamais respectée).
+        const estLanceur = equipe[0].team === this.possession;
+        const neuf = equipe.find(j => j.numero === 9 && j.auSol === 0 && j !== this.porteur);
+        if (neuf) {
+          let cx9, cy9;
+          if (estLanceur) {
+            cx9 = pt.x - sens * this.cfg.touche.reculReceveur;
+            cy9 = yLigne5 + versCentre * 5;
+          } else {
+            cx9 = pt.x + Math.sign(decalX) * 2;
+            cy9 = yTouche + versCentre * 3;
+          }
+          avancer(neuf, cx9 - neuf.x, cy9 - neuf.y, dt, vitesseMs(neuf) * 0.8);
+        }
+        // Loi 18 : les joueurs NON participants à la touche (les trois-quarts,
+        // n°10-15) doivent se replacer DERRIÈRE leur ligne de hors-jeu, à 10 m
+        // de la ligne de touche, et non rester là où le ballon est sorti. Avant
+        // ce correctif ils n'étaient jamais repositionnés pendant la touche : ils
+        // restaient figés n'importe où sur le terrain. Ils s'alignent désormais
+        // en courant (avancer, jamais de téléportation) sur cette ligne des 10 m,
+        // côté de leur propre camp (sens), espacés sur la largeur du côté ouvert,
+        // prêts à lancer ou défendre l'attaque issue de la touche.
+        const backs = equipe.filter(j => j.numero >= 10 && j.sinBin <= 0 && j !== this.porteur);
+        const xBacks = pt.x - sens * this.cfg.touche.offsideNonParticipants;
+        backs.forEach((j, k) => {
+          const cyB = yLigne5 + versCentre * (8 + k * 6);
+          avancer(j, xBacks - j.x, cyB - j.y, dt, vitesseMs(j) * 0.85);
+        });
+      };
+      placer(this.equipeA, -0.5);
+      placer(this.equipeB, 0.5);
+    }
+
     _tickTouche(dt) {
       this.timerPhase += dt;
+      // Si le ballon est en train de voler du lanceur vers le sauteur, on
+      // anime ce vol jusqu'à la réception (cf. _tickToucheLancer) plutôt que
+      // de résoudre la touche dans le même tick.
+      if (this.toucheLancer) return this._tickToucheLancer(dt);
+      this._touchePlacerLignes(dt);
       // Alignement, lancer et contestation au saut pris dans leur ensemble :
-      // une touche réelle prend bien plus que 2 s entre l'arrêt de jeu et la
-      // remise en mouvement du ballon (~10-15 s en match réel). Compressée
-      // comme les autres temps d'arrêt sur un format démo court (cf.
-      // _echelleArret) pour laisser plus de place au jeu courant.
-      if (this.timerPhase < 12 * this._echelleArret) return;
+      // une touche réelle prend ~25-35 s entre la sortie du ballon et la remise
+      // en jeu (les joueurs MARCHENT vers l'alignement, l'annonce est faite, le
+      // talonneur prépare son lancer). Compressée comme les autres temps d'arrêt
+      // sur un format démo court (cf. _echelleArret). C'est, avec la mêlée, ce
+      // qui ramène le « ballon en jeu » vers les ~44 % réels.
+      const dureeMin = 14 * this._echelleArret;
+      if (this.timerPhase < dureeMin) return;
+      // Comme à la mêlée (cf. _tickMelee, case FORMATION) : l'arbitre n'autorise
+      // le lancer que lorsque les avants des deux équipes sont réellement
+      // alignés dans le couloir de touche, pas seulement après un délai fixe ;
+      // le plafond toucheCapFormation évite un blocage si un avant reste très
+      // excentré (cf. _capFormationTouche).
+      const pt = this.ruckPoint;
+      const tousAvants = this.equipeA.concat(this.equipeB).filter(j => j.numero <= 8 && j.sinBin <= 0);
+      // Lancer autorisé seulement quand chaque avant est À LA FOIS aligné en
+      // profondeur (x proche de la marque) ET dans la bande légale des 5-15 m
+      // depuis la touche (loi 18.10). Sans la contrainte sur y, un avant encore
+      // en course vers l'alignement (mesuré jusqu'à ~16,7 m sur la largeur)
+      // pouvait se retrouver AU-DELÀ de la ligne des 15 m à l'instant où le
+      // ballon partait : le lancer attend désormais qu'il soit rentré dans la
+      // zone légale.
+      const yTouche = this.toucheLanceurY != null ? this.toucheLanceurY : pt.y;
+      const versTouche = yTouche <= LARGEUR / 2 ? 1 : -1;
+      const dansBande = (j) => { const d = (j.y - yTouche) * versTouche; return d >= 4 && d <= 15; };
+      const enPlace = tousAvants.filter(j => Math.abs(j.x - pt.x) < 2 && dansBande(j)).length;
+      // Le lanceur lui-même doit avoir rejoint la marque de touche (loi 18.22)
+      // avant que le lancer ne puisse être joué : sinon il pourrait "lancer"
+      // alors qu'il court toujours vers la touche.
+      const xLanceur = this.toucheLanceurX != null ? this.toucheLanceurX : pt.x;
+      const yLanceur = this.toucheLanceurY != null ? this.toucheLanceurY : pt.y;
+      const lanceurEnPlace = !this.porteur || distance(this.porteur, { x: xLanceur, y: yLanceur }) < 2;
+      const pret = (tousAvants.length === 0 || enPlace >= tousAvants.length) && lanceurEnPlace;
+      if (!pret && this.timerPhase < (this.toucheCapFormation || dureeMin)) return;
+
       const lanceur = this.possession;
       const adversaire = lanceur === 'A' ? 'B' : 'A';
       const eqLanceur = lanceur === 'A' ? this.equipeA : this.equipeB;
       const eqAdverse = adversaire === 'A' ? this.equipeA : this.equipeB;
-      const pt = this.ruckPoint;
 
       this.stats[lanceur].lineouts++;
       let forceLanceur = 0, forceAdverse = 0;
@@ -1602,31 +4082,135 @@
       const vole = this.rng() < probaVolAdverse;
       const gagnant = vole ? adversaire : lanceur;
       this.stats[gagnant].lineoutsGagnes++;
-      if (vole) {
-        this.stats[adversaire].turnovers++;
-        this.log('TURNOVER', adversaire, `Touche volee, l'equipe ${adversaire} recupere le ballon`);
-      }
-      this.possession = gagnant;
+      if (vole) { this.stats[adversaire].turnovers++; this.stats[lanceur].turnoversConcedes++; }
+      // Le sauteur n'est jamais "le plus proche d'un point" : en match réel le
+      // lancer vise un appel tactique (plot avant/milieu/fond de ligne), donc
+      // un sauteur choisi au hasard parmi les vrais sauteurs (2e/3e ligne,
+      // n°4-8 - jamais la 1ere ligne qui lie/lève sans sauter). Tous les
+      // candidats sont déjà alignés en courant (cf. _touchePlacerLignes).
       const eqGagnante = gagnant === 'A' ? this.equipeA : this.equipeB;
-      this.porteur = this._neufVersDix(eqGagnante, eqGagnante[8]);
-      this.porteur.x = pt.x;
-      // pt.y est le point exact de sortie en touche (sur la ligne) : on récupère
-      // plutôt la position resserrée de 5 m calculée à l'octroi de la touche, sinon
-      // le porteur démarre sur la ligne de touche et la sort à nouveau immédiatement.
-      this.porteur.y = this.toucheLanceurY != null ? this.toucheLanceurY : pt.y;
+      const poolSauteurs = this.cfg.touche.sauteurs;
+      const tirerSauteur = (equipe, exclu) => {
+        const sauteurs = equipe.filter(j => poolSauteurs.indexOf(j.numero) >= 0 && j.sinBin <= 0 && j.auSol === 0 && j !== exclu);
+        const avants = equipe.filter(j => j.numero <= 8 && j.sinBin <= 0 && j.auSol === 0 && j !== exclu);
+        const pool = sauteurs.length ? sauteurs : (avants.length ? avants : equipe);
+        return pool[Math.floor(this.rng() * pool.length)];
+      };
+      const sauteur = tirerSauteur(eqGagnante, vole ? null : this.porteur);
+      // On NE résout PAS la touche tout de suite : le ballon doit voler du
+      // lanceur (sur la ligne de touche) jusqu'au sauteur, à vue, avant d'être
+      // capté. Sans ça le ballon "sautait" instantanément de la touche jusque
+      // dans l'alignement — la "magie" signalée. Le vol et la réception sont
+      // gérés par _tickToucheLancer ; l'issue (volé/gagné, sauteur) est déjà
+      // décidée ici mais ne s'applique qu'à la réception.
+      const fromX = this.porteur ? this.porteur.x : xLanceur;
+      const fromY = this.porteur ? this.porteur.y : yLanceur;
+      this.toucheLancer = { sauteur, gagnant, vole, lanceur, eqAdverse, fromX, fromY, timer: 0, duree: 0.8 };
+      this.ballonEnVol = true;
+      this.ballonVolX = fromX;
+      this.ballonVolY = fromY;
+      this.ballonVolHauteur = 0;
+      this.log('TOUCHE_LANCER', lanceur, `Lancer en touche de l'equipe ${lanceur}`);
+    }
 
-      if (!vole) {
+    // Vol du ballon lors d'un lancer en touche : trajectoire en cloche du
+    // lanceur (ligne de touche) vers le sauteur, puis réception. Reprend le
+    // mécanisme de vol des coups de pied (ballonEnVol) pour que la remise en
+    // jeu soit réellement visible, jamais une téléportation du ballon.
+    _tickToucheLancer(dt) {
+      const L = this.toucheLancer;
+      L.timer += dt;
+      this._touchePlacerLignes(dt);
+      const t = Math.min(1, L.timer / L.duree);
+      // La cible suit le sauteur (toujours positionné par _touchePlacerLignes),
+      // donc le ballon atterrit bien dans ses mains où qu'il se tienne.
+      this.ballonEnVol = true;
+      this.ballonVolX = L.fromX + (L.sauteur.x - L.fromX) * t;
+      this.ballonVolY = L.fromY + (L.sauteur.y - L.fromY) * t;
+      this.ballonVolHauteur = Math.sin(Math.PI * t);
+      if (t < 1) return;
+      // Réception : le sauteur capte le ballon en l'air, à sa position réelle.
+      this.ballonEnVol = false;
+      this.ballonVolHauteur = 0;
+      this.toucheLancer = null;
+      this.possession = L.gagnant;
+      this.porteur = L.sauteur;
+      if (L.vole) {
+        this.log('TURNOVER', L.gagnant, `Touche volee, l'equipe ${L.gagnant} recupere le ballon`);
+      } else {
+        this.log('TOUCHE_BALLON_GAGNE', L.lanceur, `Touche gagnee, le n°${L.sauteur.numero} capte le ballon pour l'equipe ${L.lanceur}`);
+        // Maul (catch-and-drive) probable près de la ligne adverse.
         const zone = this._zoneTerrain(this.porteur);
-        const tauxMaulTouche = (zone === 'OPP_22' || zone === 'CINQ_M') ? 0.45 : 0.08;
+        const tauxMaulTouche = (zone === 'OPP_22' || zone === 'CINQ_M') ? this.cfg.touche.tauxMaul.proche : this.cfg.touche.tauxMaul.loin;
         if (this.rng() < tauxMaulTouche) {
-          const { joueur: defenseurProche } = joueurLePlusProche(eqAdverse, this.porteur.x, this.porteur.y);
+          const { joueur: defenseurProche } = joueurLePlusProche(L.eqAdverse, this.porteur.x, this.porteur.y);
           this._formerMaul(this.porteur, defenseurProche);
           return;
         }
+        // Le sauteur a capté le lancer ; il transmet ENSUITE le ballon au demi de
+        // mêlée (receveur), en retrait derrière l'alignement (~4 m, cf.
+        // _touchePlacerLignes). Cette transmission est une PASSE VISIBLE (le
+        // ballon descend du sauteur vers le 9, à vue) et non un transfert
+        // instantané : sans ça le ballon "apparaissait" directement dans les
+        // mains du 9 (le 9 semblait capter le lancer lui-même). C'est le
+        // "deuxième temps" de la touche. On NE délègue PAS à l'ouvreur ici
+        // (_neufVersDix) : la passe 9 -> 10 se fait après, en jeu courant.
+        const eqG = L.gagnant === 'A' ? this.equipeA : this.equipeB;
+        const neuf = eqG.find(j => j.numero === 9 && j.sinBin <= 0 && j.auSol === 0);
+        if (neuf && neuf !== this.porteur) {
+          this._lancerPasseVisuelle(this.porteur, neuf);
+          this.porteur = neuf;
+          // Le 9 a le ballon derrière l'alignement : on peut enchaîner une
+          // COMBINAISON scriptée de touche (cf. cfg.combinaisons.touche).
+          this._lancerCombinaison('touche');
+          // Sans combinaison, le 9 est libre et décide lui-même (dégagement,
+          // chandelle, avant lancé, ouvreur, ou percée) — cf. choisirActionPorteur.
+          if (!this.combinaison) this._neufLibre = true;
+        }
       }
-      this._imposerRecuperationRuck(pt);
+      this._imposerRecuperationRuck(this.ruckPoint);
       this.phase = 'PORTE';
       this.timerPhase = 0;
+    }
+
+    // Replacement des joueurs pendant l'essai/la transformation (loi 8.9 et
+    // 8.14) : l'équipe qui défend doit se replier sur sa ligne d'en-but tant
+    // que le botteur n'a pas amorcé sa course d'élan ; l'équipe du botteur
+    // reste derrière le ballon. Sans ce replacement, les 28 autres joueurs
+    // restaient figés exactement là où l'essai avait été marqué pendant les
+    // ~33 s de célébration + transformation.
+    // Renvoie true quand tous les joueurs concernés ont rejoint leur place
+    // (la défense sur sa ligne d'en-but, l'attaque derrière le ballon), ce qui
+    // permet d'armer la frappe et de les figer ensuite.
+    _transformationPlacerJoueurs(dt) {
+      const sens = this.essaiEquipe === 'A' ? 1 : -1;
+      const equipeAttaque = this.essaiEquipe === 'A' ? this.equipeA : this.equipeB;
+      const equipeDefense = this.essaiEquipe === 'A' ? this.equipeB : this.equipeA;
+      const ligneDefense = sens > 0 ? LONGUEUR : 0;
+      const xAttaque = Math.max(0, Math.min(LONGUEUR, this.essaiX - sens * 15));
+      const buteur = equipeAttaque[9]; // n°10
+      const teeX = Math.max(0, Math.min(LONGUEUR, this.essaiX - sens * 10));
+      const teeY = this.essaiY;
+      let pireEcart = 0;
+      for (const j of equipeDefense) {
+        if (j.sinBin > 0) continue;
+        avancer(j, ligneDefense - j.x, 0, dt, vitesseMs(j) * 0.8);
+        pireEcart = Math.max(pireEcart, Math.abs(j.x - ligneDefense));
+      }
+      for (const j of equipeAttaque) {
+        if (j.sinBin > 0 || j === this.porteur || j === buteur) continue;
+        avancer(j, xAttaque - j.x, 0, dt, vitesseMs(j) * 0.8);
+        pireEcart = Math.max(pireEcart, Math.abs(j.x - xAttaque));
+      }
+      // Le buteur COURT jusqu'au tee (dans l'axe de l'essai, ~10 m en retrait), à
+      // pleine vitesse, dès la célébration de l'essai (la fonction est appelée
+      // pendant ESSAI puis TRANSFORMATION) : il a tout le temps d'y arriver et
+      // n'y est plus téléporté.
+      if (buteur && buteur.sinBin <= 0) {
+        avancer(buteur, teeX - buteur.x, teeY - buteur.y, dt, vitesseMs(buteur));
+        pireEcart = Math.max(pireEcart, distance(buteur, { x: teeX, y: teeY }));
+      }
+      return pireEcart < 1.2;
     }
 
     // Célébration de l'essai avant l'enchaînement sur la transformation : en
@@ -1634,18 +4218,19 @@
     // sol, replacement) avant que le botteur ne s'installe.
     _tickEssai(dt) {
       this.timerPhase += dt;
-      if (this.timerPhase >= 8 * this._echelleArret) {
-        // Place le buteur (l'ouvreur) dans l'alignement de l'essai : sinon
-        // tous les joueurs restent figés là où l'essai a été marqué et rien
-        // n'indique qu'une transformation va être tentée.
+      this._transformationPlacerJoueurs(dt);
+      // Célébration + replacement réalistes (~15 s) : en match réel, entre
+      // l'essai accordé et le début de la routine du buteur, il se passe un
+      // long moment (célébration, replay, retour des équipes).
+      if (this.timerPhase >= 10 * this._echelleArret) {
+        // Le buteur (l'ouvreur) a couru jusqu'au tee pendant la célébration
+        // (cf. _transformationPlacerJoueurs) : il y est déjà, on ne le téléporte
+        // plus. Il devient simplement le porteur pour la frappe.
         const eq = this.essaiEquipe === 'A' ? this.equipeA : this.equipeB;
-        const sens = this.essaiEquipe === 'A' ? 1 : -1;
-        const kicker = eq[9];
-        kicker.x = Math.max(0, Math.min(LONGUEUR, this.essaiX - sens * 10));
-        kicker.y = this.essaiY;
-        this.porteur = kicker;
+        this.porteur = eq[9];
         this.phase = 'TRANSFORMATION';
         this.timerPhase = 0;
+        this.transfoEnPlace = false;
       }
     }
 
@@ -1655,13 +4240,29 @@
     // frappe prennent ~20-25 s en match réel, pas 2 s.
     _tickTransformation(dt) {
       this.timerPhase += dt;
-      const duree = 25 * this._echelleArret;
+      // Loi 8.21 : la transformation doit être JOUÉE dans les 90 secondes qui
+      // suivent l'essai, sinon elle est refusée. Le buteur prend une vraie
+      // routine (placement du tee, concentration, course d'élan), plus longue
+      // sur un angle fermé — mais toujours sous le maximum réglementaire. Le
+      // match étant regardé en avance rapide, ce temps réel reste confortable.
+      const DUREE_MAX_TRANSFO = 60; // secondes réglementaires (loi 8.8.c : la transformation doit être jouée sous 60 s)
+      const routine = 26 + Math.abs(this.essaiY - LARGEUR / 2) * 0.9; // ~26 s face aux poteaux, jusqu'à ~57 s près de la touche (toujours < 60 s)
+      const duree = Math.min(DUREE_MAX_TRANSFO, routine) * this._echelleArret;
       // Le ballon s'envole vers les poteaux pendant la dernière fraction du
       // temps d'arrêt (le reste, c'est le placement et la course d'élan) :
       // réutilise le mécanisme de vol du coup d'envoi pour rendre la frappe
       // visible à l'écran, au lieu de 25 s où rien ne bouge.
       const dureeVol = Math.min(1.4, duree * 0.3);
       const debutVol = duree - dureeVol;
+      // Mise en place : les joueurs rejoignent leur position. On ne les fige (et
+      // la frappe n'est armée) qu'une fois TOUS arrivés — au plus tard au début
+      // du vol, pour ne jamais bloquer. Une fois en place, on ne les replace
+      // plus : ils sont donc parfaitement immobiles au moment du tir (loi 8 :
+      // personne n'avance tant que le botteur n'a pas frappé).
+      if (!this.transfoEnPlace) {
+        const enPlace = this._transformationPlacerJoueurs(dt);
+        if (enPlace || this.timerPhase >= debutVol) this.transfoEnPlace = true;
+      }
       if (this.timerPhase >= debutVol && this.timerPhase < duree) {
         const t = Math.min(1, (this.timerPhase - debutVol) / dureeVol);
         this.ballonEnVol = true;
@@ -1687,15 +4288,66 @@
       }
     }
 
-    // Coup de pied de pénalité au but (+3), résolu après un temps d'arrêt
-    // réaliste (placement, recul, course d'élan, frappe : ~20-25 s en match réel).
+    // Replacement des joueurs pendant un coup de pied de pénalité au but : comme
+    // à la transformation (cf. _transformationPlacerJoueurs), les 28 autres
+    // joueurs restaient figés là où la faute avait été commise pendant les ~25 s
+    // du tir. L'équipe qui défend se replie derrière sa ligne d'en-but (elle ne
+    // peut pas charger un tir au but), l'équipe qui botte se replace derrière le
+    // ballon (onside), prête à suivre le jeu sur une éventuelle touche/relance.
+    // Tout se fait à la course (avancer), jamais de téléportation.
+    // Renvoie true quand tous les joueurs concernés sont en place (même logique
+    // que _transformationPlacerJoueurs) : sert à armer la frappe puis à figer.
+    _penaliteTirPlacerJoueurs(dt) {
+      if (!this.positionTir) return true;
+      const sens = this.equipeAuTir === 'A' ? 1 : -1;
+      const equipeAttaque = this.equipeAuTir === 'A' ? this.equipeA : this.equipeB;
+      const equipeDefense = this.equipeAuTir === 'A' ? this.equipeB : this.equipeA;
+      const ligneDefense = sens > 0 ? LONGUEUR : 0;
+      const xAttaque = Math.max(0, Math.min(LONGUEUR, this.positionTir.x - sens * 15));
+      let pireEcart = 0;
+      for (const j of equipeDefense) {
+        if (j.sinBin > 0) continue;
+        avancer(j, ligneDefense - j.x, 0, dt, vitesseMs(j) * 0.8);
+        pireEcart = Math.max(pireEcart, Math.abs(j.x - ligneDefense));
+      }
+      for (const j of equipeAttaque) {
+        if (j.sinBin > 0 || j === this.porteur) continue;
+        avancer(j, xAttaque - j.x, 0, dt, vitesseMs(j) * 0.8);
+        pireEcart = Math.max(pireEcart, Math.abs(j.x - xAttaque));
+      }
+      // Le buteur COURT jusqu'au tee (point de pénalité), à pleine vitesse — il
+      // n'y est jamais téléporté. Sa présence sur le tee fait partie des
+      // conditions de « tous en place » avant d'armer la frappe.
+      if (this.porteur) {
+        avancer(this.porteur, this.positionTir.x - this.porteur.x, this.positionTir.y - this.porteur.y, dt, vitesseMs(this.porteur));
+        pireEcart = Math.max(pireEcart, distance(this.porteur, this.positionTir));
+      }
+      return pireEcart < 1.2;
+    }
+
+    // Coup de pied de pénalité au but (+3). Loi 20 : le tir doit être PORTÉ dans
+    // les 60 secondes qui suivent l'annonce de l'intention de taper au but, sinon
+    // le coup de pied est annulé (mêlée à l'adversaire). Le buteur prend une
+    // routine réaliste (placement, recul, course d'élan, frappe), plus longue sur
+    // un angle fermé, mais toujours sous le maximum réglementaire.
     _tickPenaliteTir(dt) {
       this.timerPhase += dt;
-      const duree = 25 * this._echelleArret;
+      const DUREE_MAX_PENALITE = 60; // secondes réglementaires (loi 20)
+      const offsetTir = this.positionTir ? Math.abs(this.positionTir.y - LARGEUR / 2) : 0;
+      const routine = 26 + offsetTir * 0.8; // ~26 s face aux poteaux, jusqu'à ~52 s (plafonné 60)
+      const duree = Math.min(DUREE_MAX_PENALITE, routine) * this._echelleArret;
       // Même principe que pour la transformation : le ballon vole vers les
       // poteaux pendant la dernière fraction du temps d'arrêt.
       const dureeVol = Math.min(1.4, duree * 0.3);
       const debutVol = duree - dureeVol;
+      // On ne peut pas botter tant que le replacement n'est pas fini : les
+      // joueurs rejoignent leur place, et seulement une fois tous arrivés (au
+      // plus tard au début du vol) la frappe est armée et ils sont figés — ils
+      // ne bougent plus au moment du tir.
+      if (!this.tirEnPlace) {
+        const enPlace = this._penaliteTirPlacerJoueurs(dt);
+        if (enPlace || this.timerPhase >= debutVol) this.tirEnPlace = true;
+      }
       if (this.timerPhase >= debutVol && this.timerPhase < duree) {
         const sensVol = this.equipeAuTir === 'A' ? 1 : -1;
         const cibleX = sensVol > 0 ? LONGUEUR : 0;
@@ -1721,7 +4373,7 @@
         } else {
           this.log('PENALITE_RATEE', equipe, `Coup de pied au but rate, equipe ${equipe}`);
           // Un tir manqué part en général au-delà de la ligne d'en-but adverse
-          // et y meurt : remise en jeu en 22m (loi 13), botté par l'équipe
+          // et y meurt : remise en jeu en 22m (loi 12), botté par l'équipe
           // défenseure depuis SA ligne des 22m, pas un coup d'envoi à mi-terrain.
           const sensEquipe = sens[equipe];
           const ligneEssaiAdverse = sensEquipe > 0 ? LONGUEUR : 0;
@@ -1733,10 +4385,52 @@
 
     tick(dt) {
       if (this.phase === 'TERMINE') return;
+      // Zone de regroupement infranchissable de ce tick (mêlée/ruck/maul) : les
+      // joueurs la contournent au lieu de la traverser (cf. avancer). Une mêlée
+      // est plus large (16 avants liés) qu'un ruck ou un maul.
+      if (this.phase === 'MELEE' && this.melee) _obstacle = { x: this.melee.x, y: this.melee.y, r: 4 };
+      else if (this.phase === 'MAUL' && this.maul) _obstacle = { x: this.maul.x, y: this.maul.y, r: 3 };
+      else if (this.phase === 'RUCK' && this.ruckPoint) _obstacle = { x: this.ruckPoint.x, y: this.ruckPoint.y, r: 2.6 };
+      else _obstacle = null;
+      // Fatigue de fin de match : les joueurs ralentissent progressivement (jusqu'à
+      // ~10 % à la 80e minute). Purement visuel/rythmique (s'applique aux 2 équipes).
+      const _fat = (this.dureeMatch === Infinity || this.dureeMatch <= 0) ? 0 : Math.min(1, this.tempsMatch / this.dureeMatch);
+      _fatigueVitesse = 1 - _fat * 0.10;
       for (const j of [...this.equipeA, ...this.equipeB]) {
-        if (j.auSol > 0) j.auSol = Math.max(0, j.auSol - dt);
+        if (j.auSol > 0) {
+          j.auSol = Math.max(0, j.auSol - dt);
+          // Une fois relevé (auSol retombé à 0), on oublie la position de chute :
+          // le joueur redevient libre de se déplacer (l'IA le replace).
+          if (j.auSol === 0) j._solX = null;
+        }
         if (j.missCooldown > 0) j.missCooldown = Math.max(0, j.missCooldown - dt);
+        if (j._percee > 0) j._percee = Math.max(0, j._percee - dt); // fenêtre de continuité après un défenseur battu
+        if (j._enchaine > 0) j._enchaine = Math.max(0, j._enchaine - dt); // fenêtre d'enchaînement après réception (le ballon circule)
+        if (j.fixeCooldown > 0) j.fixeCooldown = Math.max(0, j.fixeCooldown - dt); // défenseur fixé/battu par une passe
         if (j.ruckRecovery > 0) j.ruckRecovery = Math.max(0, j.ruckRecovery - dt);
+        if (j._croiseTimer > 0) j._croiseTimer = Math.max(0, j._croiseTimer - dt);
+        // Plaqueur couché (visuel pur) : ne persiste qu'en JEU COURANT. Sur un
+        // changement de phase (mêlée, touche, coup de pied...), on l'efface : sinon
+        // un plaqueur restait dessiné au sol tout seul, loin de la nouvelle action
+        // (effet « joueur qui tombe sans plaqueur »).
+        if (j.solVisuel > 0) {
+          j.solVisuel = (this.phase === 'PORTE' || this.phase === 'RUCK' || this.phase === 'MAUL')
+            ? Math.max(0, j.solVisuel - dt) : 0;
+        }
+        if (j.sinBin > 0) j.sinBin = Math.max(0, j.sinBin - dt);
+      }
+      // Fenêtre « défense pas replacée » après un ballon éclair au ruck.
+      if (this._defenseTardive > 0) this._defenseTardive = Math.max(0, this._defenseTardive - dt);
+      // Avancement du vol visuel d'une passe (cf. _lancerPasseVisuelle) : on le
+      // termine au bout de sa durée. Le vol n'a de sens qu'en jeu courant ; si
+      // la phase a changé entre-temps (plaquage -> ruck, sortie en touche...),
+      // on l'arrête pour que le ballon ne reste pas "en l'air" sur un autre
+      // arrêt de jeu.
+      if (this.passeVisuelle) {
+        this.passeVisuelle.timer += dt;
+        if (this.passeVisuelle.timer >= this.passeVisuelle.duree || this.phase !== 'PORTE') {
+          this.passeVisuelle = null;
+        }
       }
       // Temps de jeu effectif (ballon vivant) : phases où le jeu est réellement
       // en cours, à l'exclusion des arrêts (essai/transformation/pénalité au
@@ -1746,9 +4440,27 @@
       if (this.phase === 'PORTE' || this.phase === 'RUCK' || this.phase === 'MAUL'
         || this.phase === 'COUP_ENVOI' || this.phase === 'COUP_DE_PIED_JEU') {
         this.tempsJeuEffectif += dt;
+        this.tempsPossession[this.possession] += dt;
+        // Occupation : où se joue le match (position réelle du ballon),
+        // indépendamment de qui le porte — sensAttaque de A est toujours +1,
+        // donc la moitié de terrain x > LONGUEUR/2 est sa moitié offensive.
+        const xBallon = (this.ballonEnVol || this._receptionEnAttente) ? this.ballonVolX : this.porteur.x;
+        if (xBallon > LONGUEUR / 2) this.tempsOccupation.A += dt;
+        else this.tempsOccupation.B += dt;
       }
       this.tempsMatch += dt;
-      if (this.tempsMatch >= this.dureeMatch) {
+      // Une séquence de marque déjà engagée (essai en attente de transformation,
+      // tir au but en cours) doit aller à son TERME même si le temps de la
+      // période ou du match expire pendant ce temps : en rugby, un essai marqué
+      // au temps écoulé se transforme, et un coup de pied accordé avant la fin se
+      // joue (le temps ne s'arrête que lorsque le ballon est mort). Sans ce
+      // report, la bascule en MI_TEMPS/TERMINE court-circuitait _tickEssai/
+      // _tickTransformation/_tickPenaliteTir (return immédiat) et effaçait des
+      // points légitimes — ~7,5 % des matchs perdaient la transformation d'un
+      // essai de fin de période. On laisse donc la phase de marque se résoudre,
+      // puis la bascule de temps se déclenche au tick suivant.
+      const sequenceMarque = this.phase === 'ESSAI' || this.phase === 'TRANSFORMATION' || this.phase === 'PENALITE_TIR';
+      if (!sequenceMarque && this.tempsMatch >= this.dureeMatch) {
         this.phase = 'TERMINE';
         this.log('FIN_MATCH', null, `Fin du match : equipe A ${this.score.A} - ${this.score.B} equipe B`);
         return;
@@ -1759,7 +4471,7 @@
       // est différé d'une seconde de jeu (phase MI_TEMPS) plutôt que déclenché
       // dans le même tick que l'événement MI_TEMPS, sinon l'événement COUP_ENVOI
       // qui suit immédiatement masque la bannière de mi-temps dans l'interface.
-      if (!this.miTempsJouee && this.tempsMatch >= this.dureeMiTemps) {
+      if (!sequenceMarque && !this.miTempsJouee && this.tempsMatch >= this.dureeMiTemps) {
         this.miTempsJouee = true;
         this.log('MI_TEMPS', null, `Mi-temps : equipe A ${this.score.A} - ${this.score.B} equipe B`);
         this.phase = 'MI_TEMPS';
@@ -1767,7 +4479,12 @@
         return;
       }
       if (this.phase === 'MI_TEMPS') this._tickMiTemps(dt);
-      else if (this.phase === 'PORTE') this._tickPorte(dt);
+      else if (this.phase === 'PORTE') {
+        // Mise en place d'un jeu rapide sur pénalité/coup franc (recul de 10 m
+        // des fautifs, tapeur vers la marque) avant que le jeu courant reprenne.
+        if (this.penaliteRecul) this._tickJeuRapidePenalite(dt);
+        else this._tickPorte(dt);
+      }
       else if (this.phase === 'COUP_ENVOI') this._tickCoupEnvoi(dt);
       else if (this.phase === 'COUP_DE_PIED_JEU') this._tickCoupDePiedJeu(dt);
       else if (this.phase === 'RUCK') this._tickRuck(dt);
@@ -1777,6 +4494,100 @@
       else if (this.phase === 'ESSAI') this._tickEssai(dt);
       else if (this.phase === 'TRANSFORMATION') this._tickTransformation(dt);
       else if (this.phase === 'PENALITE_TIR') this._tickPenaliteTir(dt);
+      // Gel global des joueurs AU SOL : un joueur plaqué/à terre (auSol > 0) ne
+      // se déplace JAMAIS tant qu'il n'est pas relevé. Sans ce verrou, l'IA de
+      // placement (ligne défensive, soutiens, replacement) le faisait glisser —
+      // parfois à pleine vitesse de course (~7 m/s mesuré) — alors qu'il est
+      // dessiné couché : on voyait des joueurs « courir au sol ». On les refige
+      // à l'endroit exact de leur chute dans TOUTES les phases SAUF la formation
+      // d'une mêlée ou d'une touche (où ils doivent au contraire pouvoir rejoindre
+      // leur place, auSol expirant en ~2 s). Le coup de pied est inclus : sinon le
+      // joueur, figé pendant le jeu courant, se « dégelait » au coup de pied et
+      // sautait d'un coup vers sa position de chasse (téléportation détectée par
+      // les invariants).
+      if (this.phase !== 'MELEE' && this.phase !== 'TOUCHE') {
+        for (const j of [...this.equipeA, ...this.equipeB]) {
+          if (j.auSol > 0 && j._solX != null) { j.x = j._solX; j.y = j._solY; }
+        }
+      } else {
+        // Pendant la formation d'une mêlée/touche, un joueur encore à terre
+        // (auSol > 0) est autorisé à REJOINDRE sa place (freeze levé ci-dessus).
+        // On lève alors définitivement son épingle de chute (_solX) : sinon, dès
+        // qu'on RESORT de la mêlée/touche (ex. mi-temps qui interrompt la mêlée),
+        // le gel se réactive et le RE-fige d'un coup à son ancien point de chute
+        // — un saut visible (mesuré : ~5 m) alors qu'il avait déjà rejoint sa
+        // position. Une fois qu'il a commencé à se replacer, il n'est plus épinglé.
+        for (const j of [...this.equipeA, ...this.equipeB]) {
+          if (j._solX != null) { j._solX = null; j._solY = null; }
+        }
+      }
+      // ANTI-COLLISION : deux joueurs DEBOUT ne doivent jamais occuper (quasi)
+      // le même point — sans ça, plusieurs joueurs qui convergent vers la même
+      // cible (chasse au ballon, ruck, tee de transformation...) finissent
+      // superposés à l'écran, et l'un semble « avancer à travers » l'autre.
+      // Un joueur AU SOL n'est jamais déplacé (il est figé à sa chute).
+      this._separerJoueurs();
+      // Suivi de l'avantage (loi 8) APRÈS la phase : on évalue sur l'état mis à
+      // jour (possession, position du porteur) si l'avantage est joué ou s'il
+      // faut revenir à la sanction.
+      if (this.avantage) this._tickAvantage(dt);
+      // L'arbitre court vers sa place (jamais de téléportation).
+      if (this.phase !== 'TERMINE') this._majArbitre(dt);
+    }
+
+    // Écarte les paires de joueurs DEBOUT trop rapprochées, d'un pas borné
+    // (jamais un saut : au plus minSep/2 par joueur, très en-dessous du seuil
+    // de téléportation) — pas un pas de simulation supplémentaire mais une
+    // correction géométrique après le placement du tick.
+    //
+    // Ce n'est PAS la portée des bras : la portée de contact/plaquage existe
+    // déjà séparément (distDef < 2.2 m, cf. choisirActionPorteur/_tickPorte) —
+    // c'est là que « les bras accrochent ». Ici, on empêche seulement les
+    // TORSES de s'interpénétrer une fois deux joueurs déjà au contact/à l'arrêt
+    // l'un contre l'autre. Valeurs calées sur l'anatomie réelle (le corps n'est
+    // pas un disque isotrope : plus large de face que profond) :
+    //   - largeur d'épaules (biacromiale) d'un joueur de rugby : ~0,48-0,55 m ;
+    //   - profondeur du torse (poitrine-dos) : ~0,28-0,32 m.
+    // JEU OUVERT (0,55 m) : contact majoritairement épaule/latéral (joueurs qui
+    // courent côte à côte) + marge pour le balancement des bras en course.
+    // REGROUPEMENT (0,42 m, mêlée/ruck/maul) : mélange de contacts LATÉRAUX
+    // (première ligne de mêlée, liée épaule contre épaule, ~0,48-0,50 m) et
+    // FRONTAUX (plaqueur/jackal au ruck, torse contre torse, ~0,30 m) — un seul
+    // seuil isotrope ne peut pas distinguer l'orientation, 0,42 m est le point
+    // médian qui reste physiquement plausible dans les deux cas plutôt que de
+    // sous-serrer le contact frontal (ancien 0,32 m, trop permissif pour une
+    // mêlée liée épaule contre épaule).
+    _separerJoueurs() {
+      const tous = [...this.equipeA, ...this.equipeB].filter(j => j.auSol === 0);
+      const SEP_OUVERT = 0.55, SEP_REGROUPEMENT = 0.42;
+      for (let a = 0; a < tous.length; a++) {
+        const j1 = tous[a];
+        for (let b = a + 1; b < tous.length; b++) {
+          const j2 = tous[b];
+          const dx = j2.x - j1.x, dy = j2.y - j1.y;
+          const d = Math.hypot(dx, dy);
+          const pres1 = _obstacle && Math.hypot(j1.x - _obstacle.x, j1.y - _obstacle.y) < _obstacle.r + 1.5;
+          const pres2 = _obstacle && Math.hypot(j2.x - _obstacle.x, j2.y - _obstacle.y) < _obstacle.r + 1.5;
+          const minSep = (pres1 || pres2) ? SEP_REGROUPEMENT : SEP_OUVERT;
+          if (d >= minSep) continue;
+          let ux, uy;
+          if (d > 1e-6) { ux = dx / d; uy = dy / d; }
+          else {
+            // Superposition exacte : direction déterministe (jamais this.rng(),
+            // qui romprait la reproductibilité du match) via un angle dérivé
+            // des identités des deux joueurs, réparti par nombre d'or.
+            const id1 = (j1.team === 'A' ? 0 : 100) + j1.numero;
+            const id2 = (j2.team === 'A' ? 0 : 100) + j2.numero;
+            const ang = (id1 - id2) * 2.399963;
+            ux = Math.cos(ang); uy = Math.sin(ang);
+          }
+          const push = (minSep - d) / 2;
+          j1.x = Math.max(0, Math.min(LONGUEUR, j1.x - ux * push));
+          j1.y = Math.max(0, Math.min(LARGEUR, j1.y - uy * push));
+          j2.x = Math.max(0, Math.min(LONGUEUR, j2.x + ux * push));
+          j2.y = Math.max(0, Math.min(LARGEUR, j2.y + uy * push));
+        }
+      }
     }
 
     // Forme normalisée du ballon (cf. docs/index.html refonte modulaire) :
@@ -1786,6 +4597,7 @@
     // "tenu" n'a pas de vitesse propre, il suit le porteur).
     _etatBallon() {
       if (this.ballonEnVol) return 'AIR';
+      if (this._receptionEnAttente) return 'LOOSE';
       if (this.phase === 'RUCK') return 'RUCK';
       if (this.phase === 'MAUL') return 'MAUL';
       if (this.phase === 'TOUCHE') return 'OUT';
@@ -1794,6 +4606,10 @@
 
     getState() {
       const enVol = this.ballonEnVol;
+      // Ballon au sol après un coup de pied tactique, pas encore récupéré :
+      // pas tenu par le porteur (qui est resté en arrière, ballon déjà loin) —
+      // sa position réelle est celle du point de chute, comme pendant le vol.
+      const auSolLoose = !enVol && this._receptionEnAttente;
       let bvx = 0, bvy = 0;
       if (enVol) {
         const dxVol = this.ballonCibleX - this.xCoupEnvoi;
@@ -1802,33 +4618,78 @@
         bvx = dxVol / duree;
         bvy = dyVol / duree;
       }
+      // Vol visuel d'une passe en jeu courant (cf. _lancerPasseVisuelle) : le
+      // ballon décrit un petit arc du passeur jusqu'au receveur (qui est déjà
+      // le porteur côté logique). On ne l'affiche qu'en jeu courant (PORTE) :
+      // si un plaquage/une touche a interrompu entre-temps, le ballon revient
+      // à sa position normale. L'arc est plus bas qu'un coup de pied (×0,4).
+      let passeX = null, passeY = null, passeH = 0;
+      if (this.passeVisuelle && !enVol && !auSolLoose && this.phase === 'PORTE') {
+        const P = this.passeVisuelle;
+        const t = P.duree > 0 ? Math.min(1, P.timer / P.duree) : 1;
+        passeX = P.fromX + (P.cible.x - P.fromX) * t;
+        passeY = P.fromY + (P.cible.y - P.fromY) * t;
+        passeH = Math.sin(Math.PI * t) * 0.4;
+      }
+      const enPasse = passeX != null;
+      // Position d'affichage du ballon pendant les phases statiques (mêlée /
+      // touche) : le ballon est sur la MARQUE (base de la mêlée, marque de
+      // touche), PAS « dans les mains » d'un joueur encore loin — sinon il se
+      // téléporte vers ce joueur au début de la phase (jusqu'à ~40 m observés à
+      // la touche) puis en revient. Pendant un vol (lancer de touche, coup de
+      // pied), le vol prime (géré au-dessus via enVol). Le porteur réel reste
+      // inchangé côté logique ; ceci ne concerne QUE l'affichage du ballon.
+      let ballonPhaseX = null, ballonPhaseY = null;
+      if (!enVol && !enPasse && !auSolLoose) {
+        if (this.phase === 'MELEE' && this.melee) {
+          ballonPhaseX = this.melee.x; ballonPhaseY = this.melee.y;
+        } else if (this.phase === 'TOUCHE') {
+          ballonPhaseX = this.toucheLanceurX != null ? this.toucheLanceurX : this.ruckPoint.x;
+          ballonPhaseY = this.toucheLanceurY != null ? this.toucheLanceurY : this.ruckPoint.y;
+        } else if (this.phase === 'RUCK' && this.ruckPoint) {
+          // Ballon au sol au point de regroupement, jamais « dans les mains » du
+          // joueur plaqué : sans cet ancrage, le ballon suivait la position du
+          // porteur (this.porteur.x/y plus bas). Le plaqué pouvant désormais
+          // ramper pour s'écarter (loi 14, cf. _tickRuck), le ballon le suivrait
+          // s'il n'était pas fixé ici au point de ruck.
+          ballonPhaseX = this.ruckPoint.x; ballonPhaseY = this.ruckPoint.y;
+        }
+      }
+      const enPhaseStatique = ballonPhaseX != null;
+      const ballonX = enVol || auSolLoose ? this.ballonVolX : enPasse ? passeX : enPhaseStatique ? ballonPhaseX : this.porteur.x;
+      const ballonY = enVol || auSolLoose ? this.ballonVolY : enPasse ? passeY : enPhaseStatique ? ballonPhaseY : this.porteur.y;
       return {
         equipeA: this.equipeA.map(j => ({ ...j })),
         equipeB: this.equipeB.map(j => ({ ...j })),
         porteur: { team: this.porteur.team, numero: this.porteur.numero, x: this.porteur.x, y: this.porteur.y },
         // Position réelle du ballon : en vol pendant un coup d'envoi (avec une
-        // hauteur 0..1 pour figurer la cloche), sinon dans les mains du porteur.
-        // Conservé pour compatibilité avec le rendu existant.
+        // hauteur 0..1 pour figurer la cloche), au sol après un coup de pied
+        // tactique tant que personne ne l'a rejoint, sinon dans les mains du
+        // porteur. Conservé pour compatibilité avec le rendu existant.
         ballon: enVol
           ? { x: this.ballonVolX, y: this.ballonVolY, enVol: true, hauteur: this.ballonVolHauteur }
-          : { x: this.porteur.x, y: this.porteur.y, enVol: false, hauteur: 0 },
+          : enPasse
+            ? { x: passeX, y: passeY, enVol: true, hauteur: passeH }
+            : { x: ballonX, y: ballonY, enVol: false, hauteur: 0 },
         // Objet ballon normalisé : { x, y, vx, vy, state, carrierTeam, carrierNumber }.
         // À terme, c'est cette forme qui doit devenir la source de vérité côté
         // rendu (docs/js/renderer.js) ; `ballon`/`porteur` restent en place tant
         // que la migration du rendu n'est pas terminée.
         ball: {
-          x: enVol ? this.ballonVolX : this.porteur.x,
-          y: enVol ? this.ballonVolY : this.porteur.y,
+          x: ballonX,
+          y: ballonY,
           vx: bvx, vy: bvy,
-          state: this._etatBallon(),
-          carrierTeam: enVol ? null : this.porteur.team,
-          carrierNumber: enVol ? null : this.porteur.numero,
+          state: enPasse ? 'AIR' : this._etatBallon(),
+          carrierTeam: enVol || auSolLoose || enPasse || enPhaseStatique ? null : this.porteur.team,
+          carrierNumber: enVol || auSolLoose || enPasse || enPhaseStatique ? null : this.porteur.numero,
         },
-        arbitre: this._positionArbitre(),
+        arbitre: { x: this.arbitrePos.x, y: this.arbitrePos.y },
         possession: this.possession,
         phase: this.phase,
         // État détaillé du maul en cours (null hors maul), pour l'affichage.
         maul: this.maul ? { etat: this.maul.etat, x: this.maul.x, y: this.maul.y } : null,
+        // État détaillé de la mêlée en cours (null hors mêlée), pour l'affichage.
+        melee: this.melee ? { etat: this.melee.etat, x: this.melee.x, y: this.melee.y } : null,
         // État du ruck en cours (null hors ruck), pour l'affichage/les tests.
         ruck: this.phase === 'RUCK' ? {
           x: this.ruckPoint.x, y: this.ruckPoint.y,
@@ -1851,9 +4712,22 @@
         // après coup à partir d'autre chose que ces compteurs.
         stats: { A: { ...this.stats.A }, B: { ...this.stats.B } },
         tempsJeuEffectif: this.tempsJeuEffectif,
+        // % de possession réel, calculé à partir du temps de jeu effectif
+        // accumulé par équipe (this.tempsPossession), pas un chiffre fixé :
+        // 50/50 tant qu'aucune seconde de jeu effectif n'a encore eu lieu.
+        possessionPct: this.tempsJeuEffectif > 0 ? {
+          A: Math.round((this.tempsPossession.A / this.tempsJeuEffectif) * 100),
+          B: Math.round((this.tempsPossession.B / this.tempsJeuEffectif) * 100),
+        } : { A: 50, B: 50 },
+        // % d'occupation réel (où s'est joué le match), calculé à partir de la
+        // position du ballon accumulée par équipe (this.tempsOccupation).
+        occupationPct: this.tempsJeuEffectif > 0 ? {
+          A: Math.round((this.tempsOccupation.A / this.tempsJeuEffectif) * 100),
+          B: Math.round((this.tempsOccupation.B / this.tempsJeuEffectif) * 100),
+        } : { A: 50, B: 50 },
       };
     }
   }
 
-  return { MatchEngine, LONGUEUR, LARGEUR, creerRng, distance };
+  return { MatchEngine, LONGUEUR, LARGEUR, creerRng, distance, DEFAULT_CONFIG, fusionnerConfig };
 });
