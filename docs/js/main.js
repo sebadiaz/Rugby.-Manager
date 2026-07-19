@@ -312,4 +312,27 @@
   } else {
     demarrer();
   }
+
+  // API minimale exposée pour le Mode Club (docs/js/clubUI.js) : lancer un
+  // match avec des effectifs de club (joueursA/joueursB) sur le MÊME canvas,
+  // la même boucle de rendu et les mêmes contrôles que le Match rapide — pas
+  // de second moteur de rendu à maintenir. Aucun changement du comportement
+  // par défaut : tant que rien n'appelle demarrerMatchClub, le Match rapide
+  // fonctionne exactement comme avant.
+  window.RMMain = {
+    demarrerMatchClub(seed, duree, joueursA, joueursB) {
+      configMatch = Object.assign({}, configMatch, { joueursA, joueursB });
+      demarrerNouveauMatch(seed, duree);
+      enCours = true;
+      document.getElementById('btnPlay').textContent = 'Pause';
+    },
+    // Efface joueursA/joueursB pour revenir aux effectifs par défaut du
+    // moteur (utilisé en quittant le Mode Club vers le Match rapide).
+    reinitialiserConfigClub() {
+      if (configMatch) { delete configMatch.joueursA; delete configMatch.joueursB; }
+    },
+    etatActuel() {
+      return match ? normalizeMatchState(match.getState()) : null;
+    },
+  };
 })();

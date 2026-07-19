@@ -37,7 +37,40 @@
   <button id="btnSauver" class="accent" disabled>Enregistrer le résultat</button>
   <button id="btnStats" class="alt">Stats</button>
   <button id="btnHistorique" class="alt">Historique</button>
+  <button id="btnModeClub" class="alt">Mode Club</button>
   <button id="btnLegende" class="alt">?</button>
+</div>
+
+<div class="panneau" id="panneauClub">
+  <h2>Mode Club</h2>
+
+  <div id="clubCreation">
+    <p>Crée ton club pour démarrer une saison : effectif généré, calendrier aller-retour contre 5 adversaires de niveaux variés, classement mis à jour après chaque match simulé avec le même moteur que le Match rapide.</p>
+    <label class="sr-label" for="inputNomClub" style="display:block;margin:10px 0 4px;font-size:.85em;opacity:.85">Nom du club</label>
+    <input type="text" id="inputNomClub" placeholder="Laisser vide pour un nom généré" style="width:100%;box-sizing:border-box;padding:10px;border-radius:8px;border:none;font-size:14px;">
+    <button id="btnCreerClub" class="accent" style="width:100%;margin-top:10px;">Créer le club et démarrer la saison</button>
+  </div>
+
+  <div id="clubGestion" style="display:none;">
+    <div id="clubEntete" style="margin-bottom:12px;"></div>
+
+    <h3 style="margin-bottom:6px;">Prochain match</h3>
+    <div id="clubProchainMatch"></div>
+    <button id="btnJouerMatchClub" class="accent" style="width:100%;margin:8px 0 16px;">Jouer le match</button>
+
+    <h3 style="margin-bottom:6px;">Classement</h3>
+    <div id="clubClassement"></div>
+
+    <h3 style="margin:16px 0 6px;">Effectif</h3>
+    <div id="clubEffectif"></div>
+
+    <h3 style="margin:16px 0 6px;">Calendrier</h3>
+    <div id="clubCalendrier"></div>
+
+    <button id="btnNouvelleSaisonClub" class="alt" style="width:100%;margin-top:16px;">Nouvelle saison (efface la saison en cours)</button>
+  </div>
+
+  <button class="fermer alt" id="fermerClub">Fermer</button>
 </div>
 
 <div class="panneau" id="panneauHistorique">
@@ -75,5 +108,7 @@
 <script src="js/renderer.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/main.js"></script>
+<script src="js/club.js"></script>
+<script src="js/clubUI.js"></script>
 </body>
 </html>
