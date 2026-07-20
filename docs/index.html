@@ -132,22 +132,33 @@
        défilant indépendamment — plus une simple succession de cartes. -->
   <div id="clubGestion" style="display:none;">
     <div id="clubTopBar">
+      <!-- Sur mobile, la navigation vit dans un tiroir masqué par défaut
+           (cf. style.css/clubUI.js) : ce bouton l'ouvre. Invisible à partir
+           de 900px, où le menu latéral reste toujours affiché. -->
+      <button class="alt" id="btnMenuClub" title="Menu">☰</button>
       <div id="clubEntete"></div>
       <button class="alt" id="fermerClub" title="Fermer le Mode Club">✕</button>
       <div id="clubTopBarInfos"></div>
     </div>
 
     <div id="clubBody">
+      <!-- Fond assombri derrière le tiroir de navigation mobile : cliquer
+           dessus referme le tiroir, comme le tiroir lui-même. -->
+      <div id="navBackdrop"></div>
       <nav class="barreOnglets" id="barreOngletsClub">
         <button class="ongletBtn actif" data-onglet="dashboard">🏠 <span>Dashboard</span></button>
+        <span class="groupeNav">Mon club</span>
         <button class="ongletBtn" data-onglet="effectif">👥 <span>Effectif</span></button>
         <button class="ongletBtn" data-onglet="composition">📋 <span>Composition</span></button>
         <button class="ongletBtn" data-onglet="tactique">🎯 <span>Tactique</span></button>
         <button class="ongletBtn" data-onglet="entrainement">🏋️ <span>Entraînement</span></button>
+        <span class="groupeNav">Recrutement</span>
         <button class="ongletBtn" data-onglet="transferts">🔁 <span>Recrutement</span></button>
         <button class="ongletBtn" data-onglet="personnel">🧑‍⚕️ <span>Personnel</span></button>
+        <span class="groupeNav">Compétition</span>
         <button class="ongletBtn" data-onglet="autresclubs">🏟️ <span>Autres clubs</span></button>
         <button class="ongletBtn" data-onglet="calendrier">📅 <span>Calendrier</span></button>
+        <span class="groupeNav">Gestion</span>
         <button class="ongletBtn" data-onglet="finances">💰 <span>Finances</span></button>
         <button class="ongletBtn" data-onglet="medical">🩺 <span>Médical</span></button>
         <button class="ongletBtn" data-onglet="stats">📊 <span>Bilan</span></button>

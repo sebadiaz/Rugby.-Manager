@@ -54,6 +54,17 @@ function optionsLancement() {
     if (m.type() === 'error' && !m.text().includes('404')) erreursConsole.push(`CONSOLE: ${m.text()}`);
   });
 
+  // Sur mobile, la navigation vit dans un tiroir masqué par défaut (cf.
+  // style.css) : l'ouvrir d'abord si le bouton menu est visible (sans effet
+  // sur grand écran, où le menu latéral est déjà affiché en permanence).
+  async function clicOnglet(cle) {
+    if (await page.isVisible('#btnMenuClub')) {
+      await page.click('#btnMenuClub');
+      await page.waitForTimeout(150);
+    }
+    await page.click(`.ongletBtn[data-onglet="${cle}"]`);
+  }
+
   // 1) Création et chargement d'une carrière.
   await page.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
   await page.click('#btnAccueilModeClub');
@@ -67,7 +78,7 @@ function optionsLancement() {
   const onglets = ['dashboard', 'effectif', 'composition', 'tactique', 'entrainement',
     'transferts', 'personnel', 'autresclubs', 'calendrier', 'finances', 'medical', 'stats'];
   for (const onglet of onglets) {
-    await page.click(`.ongletBtn[data-onglet="${onglet}"]`);
+    await clicOnglet(onglet);
     await page.waitForTimeout(120);
     const visible = await page.isVisible(`[data-volet="${onglet}"]`);
     verifier(`navigation : l'onglet "${onglet}" s'affiche sans page vide`, visible);
@@ -82,7 +93,7 @@ function optionsLancement() {
   await page.waitForTimeout(200);
 
   // 4) Composition valide.
-  await page.click('.ongletBtn[data-onglet="composition"]');
+  await clicOnglet('composition');
   await page.waitForTimeout(150);
   await page.click('#btnCompositionAuto');
   await page.waitForTimeout(150);
@@ -90,7 +101,7 @@ function optionsLancement() {
   verifier('composition valide : les 15 postes ont un joueur assigné', selectsVides === 0);
 
   // 5) Recrutement.
-  await page.click('.ongletBtn[data-onglet="transferts"]');
+  await clicOnglet('transferts');
   await page.waitForTimeout(150);
   const budgetAvantTxt = await page.textContent('#transfertsBudget');
   await page.click('#clubMarche .btnSigner:not([disabled])').catch(() => {});
@@ -99,7 +110,7 @@ function optionsLancement() {
   verifier('recrutement : le budget change après une signature', budgetAvantTxt !== budgetApresTxt);
 
   // 6) Affichage d'un club adverse.
-  await page.click('.ongletBtn[data-onglet="autresclubs"]');
+  await clicOnglet('autresclubs');
   await page.waitForTimeout(150);
   await page.click('#clubAutresClubsListe tbody tr:nth-child(1)');
   await page.waitForTimeout(150);
@@ -108,7 +119,7 @@ function optionsLancement() {
   await page.click('#btnFermerClubAdversaire');
 
   // 7) Progression d'une journée.
-  await page.click('.ongletBtn[data-onglet="dashboard"]');
+  await clicOnglet('dashboard');
   await page.waitForTimeout(150);
   await page.selectOption('#selDureeClub', '300');
   await page.click('#btnJouerMatchClub');
@@ -120,7 +131,7 @@ function optionsLancement() {
   verifier('progression d\'une journée : retour au club après le match', await page.isVisible('#panneauClub.visible'));
 
   // 8) Fin de saison.
-  await page.click('.ongletBtn[data-onglet="dashboard"]');
+  await clicOnglet('dashboard');
   await page.waitForTimeout(150);
   // Termine rapidement les journées restantes (résultat non affiché) pour
   // atteindre la fin de saison sans faire dépendre le test de 10 clics UI.

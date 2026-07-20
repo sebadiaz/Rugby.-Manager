@@ -234,6 +234,12 @@ select {
   flex: 0 0 auto; width: 38px; min-width: 0; padding: 0; height: 38px; font-size: 16px;
   border-radius: 50%; order: 2;
 }
+/* Bouton menu (mobile uniquement, cf. media query 900px plus bas) : ouvre le
+   tiroir de navigation — sans lui, le menu vit hors-écran sur mobile. */
+#btnMenuClub {
+  flex: 0 0 auto; width: 38px; min-width: 0; padding: 0; height: 38px; font-size: 16px;
+  border-radius: 50%; order: 0;
+}
 #clubTopBarInfos {
   flex: 1 1 100%; order: 3; display: flex; gap: 8px 16px; flex-wrap: wrap;
   font-size: 12px; color: var(--text-dim); border-top: 1px solid var(--border);
@@ -243,40 +249,55 @@ select {
 #clubTopBarInfos .chipInfo b { color: var(--text); font-variant-numeric: tabular-nums; }
 #clubTopBarInfos .chipInfo.alerte b { color: var(--loss); }
 
-#clubBody { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+#clubBody { flex: 1; min-height: 0; display: flex; flex-direction: column; position: relative; }
 
-/* Navigation : bandeau horizontal défilant en haut sur mobile (un seul volet
-   visible à la fois), menu latéral fixe sur grand écran (cf. media query
-   plus bas) — même mécanisme basculerOnglet(), seule la présentation change. */
+/* Navigation : sur mobile, un TIROIR plein écran ouvert par #btnMenuClub
+   (masqué hors-écran par défaut) plutôt qu'un bandeau d'onglets — avec 12
+   sections, même reparti sur plusieurs lignes un bandeau permanent poussait
+   tout le contenu vers le bas et restait un mur illisible de boutons
+   identiques. Sur grand écran (media query plus bas), menu latéral toujours
+   visible, façon logiciel de gestion — inchangé dans son principe. Même
+   mécanisme basculerOnglet() des deux côtés, seule la présentation change. */
 .barreOnglets {
-  /* flex-wrap (pas overflow-x caché) : avec 12 sections, un bandeau qui ne
-     défile qu'horizontalement cachait la majorité des onglets sur mobile
-     sans aucun indice visuel qu'il y en avait plus (cf. QA parcours mobile) —
-     ils passent donc à la ligne, tous restent visibles et cliquables. */
-  flex: 0 0 auto; display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 14px;
-  border-bottom: 1px solid var(--border);
+  position: fixed; top: 0; left: 0; bottom: 0; z-index: 1000;
+  width: min(82vw, 300px); background: var(--surface); box-shadow: var(--shadow-sm);
+  display: flex; flex-direction: column; gap: 4px; padding: 16px 12px;
+  overflow-y: auto; transform: translateX(-105%); transition: transform 0.22s ease;
+  border-right: 1px solid var(--border);
 }
-.barreOnglets::-webkit-scrollbar { display: none; }
+.barreOnglets.ouvert { transform: translateX(0); }
+.groupeNav {
+  font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+  color: var(--text-faint); padding: 12px 12px 2px;
+}
+.groupeNav:first-child { padding-top: 2px; }
 .ongletBtn {
-  flex: 0 0 auto; width: auto; min-width: 0; padding: 8px 14px; font-size: 12.5px;
-  background: transparent; border: 1px solid var(--border-strong); color: var(--text-dim);
-  border-radius: 999px; white-space: nowrap; display: flex; align-items: center; gap: 5px;
+  flex: 0 0 auto; width: 100%; min-width: 0; padding: 10px 12px; font-size: 13px;
+  background: transparent; border: 1px solid transparent; color: var(--text-dim);
+  border-radius: var(--radius-sm); white-space: nowrap; display: flex; align-items: center; gap: 8px;
+  justify-content: flex-start; text-align: left;
 }
 .ongletBtn.actif, .ongletBtn.actif:hover { background: var(--accent); color: var(--accent-ink); border-color: transparent; font-weight: 700; }
+/* Fond assombri derrière le tiroir ouvert (mobile) : cliquer dessus le referme. */
+#navBackdrop {
+  display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 999;
+}
+#navBackdrop.visible { display: block; }
 
 #clubMain { flex: 1; min-height: 0; overflow-y: auto; padding-top: 14px; }
 
-/* À partir de 900px : vrai menu latéral façon logiciel de gestion, plutôt
-   qu'un bandeau d'onglets — la coquille d'application demandée pour le poste
-   de travail (souris + grand écran), la navigation mobile restant inchangée
-   en dessous de ce seuil. */
+/* À partir de 900px : le tiroir redevient un menu latéral TOUJOURS visible
+   (poste de travail, souris + grand écran) — plus de tiroir/fond assombri,
+   qui n'ont de sens que sur un écran étroit. */
 @media (min-width: 900px) {
   #clubBody { flex-direction: row; }
+  #btnMenuClub { display: none; }
+  #navBackdrop { display: none !important; }
   .barreOnglets {
-    flex: 0 0 210px; flex-direction: column; overflow-y: auto; overflow-x: hidden;
-    border-bottom: none; border-right: 1px solid var(--border); padding: 14px 10px;
+    position: static; transform: none; box-shadow: none;
+    flex: 0 0 210px; overflow-x: hidden;
+    border-right: 1px solid var(--border); padding: 14px 10px;
   }
-  .ongletBtn { width: 100%; justify-content: flex-start; padding: 10px 12px; border-radius: var(--radius-sm); }
   #clubMain { max-width: 900px; }
 }
 

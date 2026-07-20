@@ -795,6 +795,18 @@
 
   // --- Navigation : bandeau horizontal (mobile) / menu latéral (desktop, cf.
   // style.css), un seul volet visible à la fois. ---
+  // Tiroir de navigation (mobile uniquement — sans effet sur le menu latéral
+  // fixe à partir de 900px, cf. style.css) : ouvert/fermé via #btnMenuClub,
+  // toujours refermé après avoir choisi une section.
+  function fermerTiroirNav() {
+    document.getElementById('barreOngletsClub').classList.remove('ouvert');
+    document.getElementById('navBackdrop').classList.remove('visible');
+  }
+  function basculerTiroirNav() {
+    document.getElementById('barreOngletsClub').classList.toggle('ouvert');
+    document.getElementById('navBackdrop').classList.toggle('visible');
+  }
+
   function basculerOnglet(cle) {
     document.querySelectorAll('#barreOngletsClub .ongletBtn').forEach((b) => {
       b.classList.toggle('actif', b.dataset.onglet === cle);
@@ -804,6 +816,8 @@
     });
     fermerFicheJoueur(); // change d'onglet = referme toute fiche laissée ouverte
     fermerClubAdversaire(); // idem pour la fiche d'un club adverse ouverte dans l'onglet Autres clubs
+    fermerTiroirNav(); // choisir une section referme le tiroir mobile
+    document.getElementById('clubMain').scrollTop = 0; // repart en haut de la nouvelle page
   }
 
   // Groupé par journée (un en-tête toutes les n/2 lignes) : à plat, 30
@@ -1057,6 +1071,7 @@
 
   function fermerPanneauClub() {
     document.getElementById('panneauClub').classList.remove('visible');
+    fermerTiroirNav();
   }
 
   document.getElementById('btnModeClub').addEventListener('click', () => {
@@ -1073,6 +1088,8 @@
   });
   document.getElementById('fermerClub').addEventListener('click', fermerPanneauClub);
   document.getElementById('fermerClubCreation').addEventListener('click', fermerPanneauClub);
+  document.getElementById('btnMenuClub').addEventListener('click', basculerTiroirNav);
+  document.getElementById('navBackdrop').addEventListener('click', fermerTiroirNav);
 
   // --- Alertes du dashboard : cliquer une alerte ouvre l'onglet concerné ---
   document.getElementById('clubAlertes').addEventListener('click', (e) => {
