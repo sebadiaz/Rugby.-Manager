@@ -142,6 +142,7 @@
         <button class="ongletBtn" data-onglet="tactique">🎯 <span>Tactique</span></button>
         <button class="ongletBtn" data-onglet="entrainement">🏋️ <span>Entraînement</span></button>
         <button class="ongletBtn" data-onglet="transferts">🔁 <span>Recrutement</span></button>
+        <button class="ongletBtn" data-onglet="personnel">🧑‍⚕️ <span>Personnel</span></button>
         <button class="ongletBtn" data-onglet="calendrier">📅 <span>Calendrier</span></button>
         <button class="ongletBtn" data-onglet="finances">💰 <span>Finances</span></button>
         <button class="ongletBtn" data-onglet="medical">🩺 <span>Médical</span></button>
@@ -203,7 +204,10 @@
              fiche joueur SUR PLACE (cf. clubUI.js) — pas un écran empilé. -->
         <div class="voletOnglet" data-volet="effectif" style="display:none;">
           <div class="carteClub">
-            <h3>Effectif</h3>
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+              <h3 style="margin:0;">Effectif</h3>
+              <button id="btnComparerEffectif" class="alt" style="flex:0 0 auto;width:auto;padding:8px 12px;font-size:12px;display:none;">⚖️ Comparer la sélection</button>
+            </div>
             <div id="clubEffectifFiltres" class="filtresEffectif">
               <input type="search" id="filtreEffectifRecherche" class="champTexte" placeholder="Rechercher un joueur…" style="flex:2 1 160px;">
               <select id="filtreEffectifPoste" style="flex:1 1 120px;">
@@ -221,6 +225,7 @@
               <label class="filtreCase"><input type="checkbox" id="filtreEffectifDisponible"> Disponibles seulement</label>
             </div>
             <div id="clubEffectif"></div>
+            <div id="clubComparaisonEffectif"></div>
             <div id="clubJoueurDetail" style="display:none;"></div>
           </div>
         </div>
@@ -293,6 +298,24 @@
           </div>
         </div>
 
+        <!-- Personnel : organigramme (entraîneur, préparateur, médecin,
+             recruteur, analyste), chacun avec un effet réel sur un mécanisme
+             existant (cf. RMClub.effetPersonnel) — jamais décoratif. -->
+        <div class="voletOnglet" data-volet="personnel" style="display:none;">
+          <div class="carteClub">
+            <h3>Organigramme</h3>
+            <p style="font-size:12px;color:var(--text-dim);margin:0 0 10px;">Un poste vacant n'a aucun effet ; recruter dessus module réellement l'entraînement, la fatigue, les blessures, le scouting ou l'analyse — et pèse sur la masse salariale.</p>
+            <div id="clubPersonnelActuel"></div>
+          </div>
+          <div class="carteClub">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <h3 style="margin:0;">Candidats disponibles</h3>
+              <button id="btnRafraichirPersonnel" class="alt" style="flex:0 0 auto;width:auto;padding:8px 12px;font-size:12px;">🔄 Rafraîchir</button>
+            </div>
+            <div id="clubPersonnelMarche"></div>
+          </div>
+        </div>
+
         <div class="voletOnglet" data-volet="calendrier" style="display:none;">
           <div class="carteClub">
             <h3>Classement</h3>
@@ -308,6 +331,14 @@
           <div class="carteClub">
             <h3>Budget</h3>
             <div id="clubBudgetDetail"></div>
+          </div>
+          <div class="carteClub">
+            <h3>Masse salariale</h3>
+            <div id="clubMasseSalariale"></div>
+          </div>
+          <div class="carteClub" id="cartePrevisions" style="display:none;">
+            <h3>Prévisions (5 prochaines journées)</h3>
+            <div id="clubPrevisions"></div>
           </div>
           <div class="carteClub">
             <h3>Derniers mouvements</h3>

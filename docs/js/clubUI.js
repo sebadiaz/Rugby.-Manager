@@ -132,7 +132,7 @@
       .slice(0, 10);
     document.getElementById('clubJeunes').innerHTML = jeunes.length
       ? jeunes.map(({ j, niveau }) => `<div class="ligneJeune"><span class="infosJeune"><b>${j.nom}</b><span>${POSTE_COMPLET[j.poste] || j.poste} · ${j.age} ans</span></span>` +
-        `<span>Niveau ${niveau} <span class="jaugePotentiel"><span style="width:${Math.min(100, niveau)}%"></span></span> Potentiel ${j.potentiel}</span></div>`).join('')
+        `<span>Niveau ${niveau} <span class="jaugePotentiel"><span style="width:${Math.min(100, niveau)}%"></span></span> Potentiel ${Math.round(j.potentiel)}</span></div>`).join('')
       : '<p>Aucun jeune joueur avec une marge de progression notable actuellement.</p>';
   }
 
@@ -243,18 +243,22 @@
     return j[champ] || 0;
   }
 
+  // Comparaison de joueurs de l'EFFECTIF (distincte de celle du marché, cf.
+  // selectionComparaison) — sélection par cases à cocher dans le tableau.
+  const selectionComparaisonEffectif = new Set();
+
   // Effectif ÉTENDU du club du joueur (24 avec profondeur, contrats, salaires,
-  // blessures, fatigue) — recherche/tri/filtres (cf. filtreEffectif), bien
-  // plus détaillé que celui, purement sportif, des adversaires IA, puisque
-  // c'est le seul club réellement géré ici. Chaque ligne ouvre la fiche
-  // joueur (cf. ouvrirFicheJoueur) : table dense, actions (libérer) déportées
-  // dans la fiche plutôt qu'un bouton sur chaque ligne.
+  // blessures, fatigue, moral) — recherche/tri/filtres (cf. filtreEffectif),
+  // bien plus détaillé que celui, purement sportif, des adversaires IA,
+  // puisque c'est le seul club réellement géré ici. Chaque ligne ouvre la
+  // fiche joueur (cf. ouvrirFicheJoueur) : table dense, actions (libérer)
+  // déportées dans la fiche plutôt qu'un bouton sur chaque ligne.
   function rafraichirEffectif() {
     const f = filtreEffectif;
     let effectif = saison.clubJoueur.effectif.filter((j) => {
       if (f.recherche && !j.nom.toLowerCase().includes(f.recherche)) return false;
       if (f.poste && j.poste !== f.poste) return false;
-      if (f.disponible && j.blessureJournees > 0) return false;
+      if (f.disponible && (j.blessureJournees > 0 || j.pret)) return false;
       return true;
     });
     effectif.sort((a, b) => {
@@ -265,23 +269,65 @@
     });
     const colonnes = [
       ['nom', 'Nom'], ['poste', 'Poste'], ['age', 'Âge'], ['vitesse', 'Vit.'], ['plaquage', 'Plaq.'],
-      ['fatigue', 'Fatigue'], ['contrat', 'Contrat'], ['salaire', 'Salaire'],
+      ['potentiel', 'Potentiel'], ['moral', 'Moral'], ['fatigue', 'Fatigue'], ['contrat', 'Contrat'], ['salaire', 'Salaire'],
     ];
-    const entetes = colonnes.map(([champ, label]) => {
+    const entetes = '<th></th>' + colonnes.map(([champ, label]) => {
       const fleche = f.triChamp === champ ? (f.triSens === 1 ? '▲' : '▼') : '';
       return `<th class="triable" data-champ="${champ}">${label}<span class="flecheTri">${fleche}</span></th>`;
-    }).join('') + '<th>Forme</th>';
+    }).join('') + '<th>Statut</th>';
     const lignes = effectif.map((j) => {
-      const blessure = j.blessureJournees > 0 ? `<span class="badgeBlessure">🤕 ${j.blessureJournees}j</span>` : '—';
+      const statut = j.pret ? `<span class="badgePret">📤 Prêté (${j.pret.dureeRestante}j)</span>`
+        : j.blessureJournees > 0 ? `<span class="badgeBlessure">🤕 ${j.blessureJournees}j</span>` : '—';
       const contratClasse = j.contrat <= 1 ? ' class="badgeContratCourt"' : '';
       const fatigue = j.fatigue || 0;
-      return `<tr data-joueur="${j.id}"><td>${j.nom}${badgesRole(j.id)}</td><td>${POSTE_COMPLET[j.poste] || j.poste}</td><td>${j.age}</td><td>${j.vitesse}</td><td>${j.plaquage}</td>` +
+      const moral = j.moral != null ? j.moral : 65;
+      const enComparaison = selectionComparaisonEffectif.has(j.id) ? ' checked' : '';
+      return `<tr data-joueur="${j.id}"><td><input type="checkbox" class="caseComparerEffectif" data-joueur="${j.id}"${enComparaison}></td>` +
+        `<td>${j.nom}${badgesRole(j.id)}</td><td>${POSTE_COMPLET[j.poste] || j.poste}</td><td>${j.age}</td><td>${j.vitesse}</td><td>${j.plaquage}</td>` +
+        `<td>${j.potentiel != null ? Math.round(j.potentiel) : '—'}</td>` +
+        `<td><span class="barreMoral${moral < 45 ? ' bas' : moral >= 80 ? ' haut' : ''}"><span style="width:${moral}%"></span></span></td>` +
         `<td><span class="barreFatigue${fatigue >= 65 ? ' haute' : ''}"><span style="width:${fatigue}%"></span></span></td>` +
-        `<td${contratClasse}>${j.contrat} an(s)</td><td>${j.salaire} k€</td><td>${blessure}</td></tr>`;
+        `<td${contratClasse}>${j.contrat} an(s)</td><td>${j.salaire} k€</td><td>${statut}</td></tr>`;
     }).join('');
     document.getElementById('clubEffectif').innerHTML = effectif.length
       ? `<table class="tableauClub effectifCliquable"><thead><tr>${entetes}</tr></thead><tbody>${lignes}</tbody></table>`
       : '<p>Aucun joueur ne correspond à ces filtres.</p>';
+    rafraichirComparaisonEffectif();
+  }
+
+  // Comparaison côte à côte de joueurs de L'EFFECTIF sélectionnés (cases à
+  // cocher) — données réelles (attributs/contrat/salaire), jamais fabriquées.
+  function rafraichirComparaisonEffectif() {
+    const bouton = document.getElementById('btnComparerEffectif');
+    bouton.style.display = selectionComparaisonEffectif.size >= 2 ? '' : 'none';
+    const zone = document.getElementById('clubComparaisonEffectif');
+    if (selectionComparaisonEffectif.size < 2) { zone.innerHTML = ''; return; }
+    const joueurs = [...selectionComparaisonEffectif]
+      .map((id) => saison.clubJoueur.effectif.find((j) => j.id === id))
+      .filter(Boolean);
+    if (joueurs.length < 2) { zone.innerHTML = ''; return; }
+    const CRITERES = [
+      ['poste', 'Poste', (j) => POSTE_COMPLET[j.poste] || j.poste, false],
+      ['age', 'Âge', (j) => j.age, false],
+      ['vitesse', 'Vitesse', (j) => j.vitesse, true],
+      ['plaquage', 'Plaquage', (j) => j.plaquage, true],
+      ['potentiel', 'Potentiel', (j) => (j.potentiel != null ? Math.round(j.potentiel) : 0), true],
+      ['moral', 'Moral', (j) => (j.moral != null ? j.moral : 65), true],
+      ['fatigue', 'Fatigue', (j) => j.fatigue || 0, false],
+      ['contrat', 'Contrat', (j) => `${j.contrat} an(s)`, false],
+      ['salaire', 'Salaire', (j) => `${j.salaire} k€`, false],
+    ];
+    const entetes = joueurs.map((j) => `<th>${j.nom}</th>`).join('');
+    const lignes = CRITERES.map(([cle, label, get, meilleurHaut]) => {
+      const valeurs = joueurs.map((j) => get(j));
+      const numeriques = valeurs.every((v) => typeof v === 'number');
+      let meilleur = null;
+      if (numeriques) meilleur = meilleurHaut ? Math.max(...valeurs) : Math.min(...valeurs);
+      const cellules = valeurs.map((v) => `<td${numeriques && v === meilleur ? ' class="meilleur"' : ''}>${v}</td>`).join('');
+      return `<tr><th>${label}</th>${cellules}</tr>`;
+    }).join('');
+    zone.innerHTML = `<h4 style="margin:14px 0 6px;font-size:12px;color:var(--text-faint);text-transform:uppercase;letter-spacing:0.05em;">Comparaison</h4>` +
+      `<div style="overflow-x:auto;"><table class="tableComparaison"><thead><tr><th></th>${entetes}</tr></thead><tbody>${lignes}</tbody></table></div>`;
   }
 
   // --- Dashboard (Home) : 5 derniers résultats, classement, statut de
@@ -313,7 +359,11 @@
     const matchJoueur = prochaine.find(concerneClubJoueur);
     if (!matchJoueur) { carte.style.display = 'none'; return; }
     const adversaireId = estClubJoueur(matchJoueur.domicileId) ? matchJoueur.exterieurId : matchJoueur.domicileId;
-    const analyse = RMClub.analyserAdversaire(saison, adversaireId);
+    // L'analyste vidéo (personnel) abaisse le seuil de détection : il repère
+    // des écarts plus fins qu'un manager sans analyste (seuil par défaut 6).
+    const facteurAnalyste = RMClub.effetPersonnel(saison, 'analyste');
+    const seuilAnalyste = Math.max(2, Math.round(6 - (facteurAnalyste - 1) * 8));
+    const analyse = RMClub.analyserAdversaire(saison, adversaireId, seuilAnalyste);
     if (!analyse) { carte.style.display = 'none'; return; }
     carte.style.display = '';
     const formeTxt = analyse.forme.length
@@ -386,10 +436,27 @@
   function rafraichirFinancesTab() {
     const c = saison.clubJoueur;
     document.getElementById('clubBudgetDetail').innerHTML =
-      `<div class="ligneFinances"><span>Budget actuel</span><span class="budgetValeur${c.budget < 0 ? ' negatif' : ''}">${c.budget} k€</span></div>`;
+      `<div class="ligneFinances"><span>Budget actuel</span><span class="budgetValeur${c.budget < 0 ? ' negatif' : ''}">${c.budget} k€</span></div>` +
+      (c.sponsor ? `<div class="ligneStatut" style="margin-top:8px;"><span>Sponsor</span><span class="valeurStatut">${c.sponsor.nom} · +${c.sponsor.revenuParMatch} k€/match</span></div>` : '');
+    const masseJoueurs = RMClub.masseSalariale(c.effectif);
+    const massePersonnel = RMClub.masseSalarialePersonnel(c);
+    document.getElementById('clubMasseSalariale').innerHTML =
+      `<div class="ligneStatut"><span>Salaires joueurs (saison)</span><span class="valeurStatut">${masseJoueurs} k€</span></div>` +
+      `<div class="ligneStatut"><span>Salaires personnel (saison)</span><span class="valeurStatut">${massePersonnel} k€</span></div>` +
+      `<div class="ligneStatut"><span>Total / journée</span><span class="valeurStatut">${Math.round((masseJoueurs + massePersonnel) / 10)} k€</span></div>`;
+    const prevision = RMClub.prevoirFinances(c, 5);
+    const cartePrevisions = document.getElementById('cartePrevisions');
+    if (prevision) {
+      cartePrevisions.style.display = '';
+      document.getElementById('clubPrevisions').innerHTML =
+        `<div class="ligneStatut"><span>Solde net moyen / journée</span><span class="valeurStatut${prevision.soldeNetMoyen < 0 ? ' alerte' : ''}">${prevision.soldeNetMoyen >= 0 ? '+' : ''}${prevision.soldeNetMoyen} k€</span></div>` +
+        `<div class="ligneStatut"><span>Budget projeté dans ${prevision.nJournees} journées</span><span class="valeurStatut${prevision.projection < 0 ? ' critique' : ''}">${prevision.projection} k€</span></div>`;
+    } else {
+      cartePrevisions.style.display = 'none';
+    }
     const hist = (c.historiqueFinances || []).slice().reverse();
     document.getElementById('clubHistoriqueFinances').innerHTML = hist.length
-      ? hist.map((m) => `<div class="ligneMouvement"><span>J${m.journee}<span class="detailMouvement"> — recette +${m.recette} k€, salaires -${m.salaires} k€</span></span><span class="soldeMouvement">${m.budgetApres} k€</span></div>`).join('')
+      ? hist.map((m) => `<div class="ligneMouvement"><span>J${m.journee}<span class="detailMouvement"> — recette +${m.recette} k€${m.revenuSponsor ? ` (dont sponsor +${m.revenuSponsor} k€)` : ''}, salaires -${m.salaires}${m.salairesPersonnel ? ` -${m.salairesPersonnel} (personnel)` : ''} k€</span></span><span class="soldeMouvement">${m.budgetApres} k€</span></div>`).join('')
       : '<p>Aucun match joué pour le moment.</p>';
   }
 
@@ -471,11 +538,13 @@
     if (!j) return;
     joueurAffiche = id;
     const c = saison.clubJoueur;
-    const disponibilite = j.blessureJournees > 0 ? `Blessé — ${j.blessureJournees} journée(s) restantes` : 'Disponible';
+    const disponibilite = j.pret ? `En prêt — retour dans ${j.pret.dureeRestante} journée(s)`
+      : j.blessureJournees > 0 ? `Blessé — ${j.blessureJournees} journée(s) restantes` : 'Disponible';
     const titulaire = c.compositionTitulaires && Object.values(c.compositionTitulaires).includes(id);
     const banc = c.compositionBanc && Object.values(c.compositionBanc).includes(id);
     const statutCompo = titulaire ? 'Titulaire ce jour' : banc ? 'Remplaçant ce jour' : 'Non retenu ce jour';
     const fatigue = j.fatigue || 0;
+    const moral = j.moral != null ? j.moral : 65;
     const s = j.statsSaison;
     const ATTRIBUTS_FICHE = [
       ['vitesse', 'Vitesse'], ['plaquage', 'Plaquage'], ['adresse', 'Adresse au pied'],
@@ -487,7 +556,15 @@
       j[champ] != null ? `<div class="ligneJoueur"><span>${label}</span><b>${j[champ]}</b></div>` : ''
     ).join('');
     const lignePotentiel = j.potentiel != null
-      ? `<div class="ligneJoueur"><span>Potentiel</span><b>${j.potentiel} <span class="jaugePotentiel"><span style="width:${Math.round((j.vitesse + j.plaquage) / 2)}%"></span></span></b></div>` : '';
+      ? `<div class="ligneJoueur"><span>Potentiel</span><b>${Math.round(j.potentiel)} <span class="jaugePotentiel"><span style="width:${Math.round((j.vitesse + j.plaquage) / 2)}%"></span></span></b></div>` : '';
+    // Progression RÉELLE depuis le début de la saison (cf. RMClub.calculerProgression) —
+    // vide si rien n'a bougé ou si aucun instantané n'existe (ancienne sauvegarde).
+    const ATTR_LABEL_COURT = { vitesse: 'Vitesse', plaquage: 'Plaquage', melee: 'Mêlée', touche: 'Touche', puissance: 'Puissance', endurance: 'Endurance', passe: 'Passe', jeuPied: 'Jeu au pied', decision: 'Décision' };
+    const progression = RMClub.calculerProgression(j);
+    const ligneProgression = progression.length
+      ? `<div class="ligneJoueur"><span>Progression cette saison</span><b></b></div>` +
+        progression.map((p) => `<div class="ligneProgression"><span>${ATTR_LABEL_COURT[p.attr] || p.attr}</span><span class="${p.delta > 0 ? 'deltaPositif' : 'deltaNegatif'}">${p.delta > 0 ? '+' : ''}${p.delta} (${p.avant}→${p.apres})</span></div>`).join('')
+      : '';
     const ligneStatsSaison = s
       ? `<div class="ligneJoueur"><span>Cette saison</span><b>${s.essais} essai(s) · ${s.passes} passe(s) · ${s.tacklesMade}/${s.tacklesAttempted} plaquages</b></div>`
       : '';
@@ -495,23 +572,36 @@
     const boutonRenouveler = j.contrat <= 1
       ? `<button class="accent" id="btnRenouveler" style="width:100%;margin-top:8px;">Renouveler ${offre.dureeMax} an(s) · ${offre.salaire} k€/saison</button>`
       : '';
+    const boutonPret = j.pret
+      ? `<button class="alt" id="btnRappelerJoueur" style="width:100%;margin-top:8px;">Rappeler de prêt</button>`
+      : `<button class="alt" id="btnPreterJoueur" style="width:100%;margin-top:8px;">Prêter ce joueur (3 journées)</button>`;
+    const optionsEntrainement = Object.keys(RMClub.ENTRAINEMENTS).map((cle) =>
+      `<option value="${cle}"${j.entrainementIndividuel === cle ? ' selected' : ''}>${RMClub.ENTRAINEMENTS[cle].label}</option>`
+    ).join('');
     document.getElementById('clubJoueurDetail').innerHTML =
       `<div class="ficheJoueurEntete"><span><span class="nomJoueurFiche">${j.nom}${badgesRole(id)}</span><span class="posteJoueurFiche">${POSTE_COMPLET[j.poste] || j.poste} · ${j.age} ans</span></span></div>` +
       lignesAttributs + lignePotentiel +
+      `<div class="ligneJoueur"><span>Moral</span><b><span class="barreMoral${moral < 45 ? ' bas' : moral >= 80 ? ' haut' : ''}"><span style="width:${moral}%"></span></span> ${moral}%</b></div>` +
       `<div class="ligneJoueur"><span>Fatigue</span><b><span class="barreFatigue${fatigue >= 65 ? ' haute' : ''}"><span style="width:${fatigue}%"></span></span> ${fatigue}%</b></div>` +
+      ligneProgression +
       `<div class="ligneJoueur"><span>Matchs joués cette saison</span><b>${j.matchsJoues || 0}</b></div>` +
       ligneStatsSaison +
       `<div class="ligneJoueur"><span>Sélection du jour</span><b>${statutCompo}</b></div>` +
       `<div class="ligneJoueur"><span>Contrat</span><b>${j.contrat} an(s) restant(s)</b></div>` +
       `<div class="ligneJoueur"><span>Salaire</span><b>${j.salaire} k€/saison</b></div>` +
       `<div class="ligneJoueur"><span>Disponibilité</span><b>${disponibilite}</b></div>` +
-      boutonRenouveler +
+      `<label class="sr-label" for="selEntrainementIndividuel" style="margin-top:10px;">Entraînement individuel</label>` +
+      `<select id="selEntrainementIndividuel" style="width:100%;"><option value=""${!j.entrainementIndividuel ? ' selected' : ''}>Suivre le collectif</option>${optionsEntrainement}</select>` +
+      boutonRenouveler + boutonPret +
       `<div style="display:flex;gap:8px;margin-top:14px;">` +
       `<button class="alt" id="btnFermerFicheJoueur" style="flex:1;">← Retour à l'effectif</button>` +
       `<button class="alt warn" id="btnLibererFiche" style="flex:1;">Libérer ce joueur</button></div>`;
     document.getElementById('clubJoueurDetail').style.display = '';
     document.getElementById('clubEffectif').style.display = 'none';
     document.getElementById('clubEffectifFiltres').style.display = 'none';
+    // Le tableau de comparaison reste un contenu de l'onglet Effectif, pas de
+    // la fiche : le cacher pendant la consultation évite un empilement confus.
+    document.getElementById('clubComparaisonEffectif').style.display = 'none';
   }
 
   function fermerFicheJoueur() {
@@ -522,6 +612,8 @@
     if (eff) eff.style.display = '';
     const filtres = document.getElementById('clubEffectifFiltres');
     if (filtres) filtres.style.display = '';
+    const comparaison = document.getElementById('clubComparaisonEffectif');
+    if (comparaison) comparaison.style.display = '';
   }
 
   // --- Navigation : bandeau horizontal (mobile) / menu latéral (desktop, cf.
@@ -630,7 +722,8 @@
   // estimation en étoiles plutôt que ses vraies statistiques — un manager ne
   // sait jamais tout d'un joueur qu'il n'a jamais vraiment observé.
   function ligneJoueurMarche(j, c, favori) {
-    const abordable = c.budget >= j.prixTransfert;
+    const primeSignature = RMClub.calculerPrimeSignature(j);
+    const abordable = c.budget >= (j.prixTransfert + primeSignature);
     const stats = RMClub.statsApparentes(j);
     const etoiles = '★'.repeat(RMClub.estimationEtoiles(j)) + '☆'.repeat(5 - RMClub.estimationEtoiles(j));
     const ligneStats = stats.complet
@@ -643,8 +736,28 @@
     return `<div class="ligneMarche"><label class="caseComparaison" title="Ajouter à la comparaison"><input type="checkbox" class="caseComparerJoueur" data-joueur="${j.id}"${enComparaison}></label>` +
       `<span class="infosJoueur"><b>${j.nom}</b><span>${POSTE_COMPLET[j.poste] || j.poste} · ${j.age} ans · ${ligneStats}</span></span>` +
       `<span class="actionMarche"><button class="btnFavori${favori ? ' actif' : ''}" data-joueur="${j.id}" title="Favori">${favori ? '★' : '☆'}</button>` +
-      `<span class="prixMarche">${j.prixTransfert} k€</span>${boutonScout}` +
+      `<span class="prixMarche" title="Indemnité de transfert + prime de signature">${j.prixTransfert}<span style="color:var(--text-faint);font-weight:400;"> +${primeSignature} k€</span></span>${boutonScout}` +
       `<button class="accent btnSigner" data-joueur="${j.id}"${abordable ? '' : ' disabled'}>Signer</button></span></div>`;
+  }
+  function rafraichirPersonnel() {
+    const c = saison.clubJoueur;
+    if (!c.personnel) c.personnel = [];
+    if (!saison.marchePersonnel) saison.marchePersonnel = [];
+    document.getElementById('clubPersonnelActuel').innerHTML = Object.keys(RMClub.POSTES_PERSONNEL).map((poste) => {
+      const info = RMClub.POSTES_PERSONNEL[poste];
+      const membre = c.personnel.find((p) => p.poste === poste);
+      if (membre) {
+        return `<div class="lignePersonnel"><span class="infosPersonnel"><b>${info.label} — ${membre.nom}</b><span>Niveau ${membre.niveau} · ${info.effet}</span></span>` +
+          `<span class="actionPersonnel"><span>${membre.salaire} k€/saison</span><button class="alt warn btnLicencier" data-staff="${membre.id}">Licencier</button></span></div>`;
+      }
+      return `<div class="lignePersonnel"><span class="infosPersonnel"><b class="posteVacant">${info.label} — poste vacant</b><span>${info.effet}</span></span></div>`;
+    }).join('');
+    document.getElementById('clubPersonnelMarche').innerHTML = saison.marchePersonnel.map((p) => {
+      const info = RMClub.POSTES_PERSONNEL[p.poste];
+      const pourvu = c.personnel.some((m) => m.poste === p.poste);
+      return `<div class="lignePersonnel"><span class="infosPersonnel"><b>${p.nom}</b><span>${info.label} · niveau ${p.niveau}</span></span>` +
+        `<span class="actionPersonnel"><span>${p.salaire} k€/saison</span><button class="accent btnEmbaucher" data-staff="${p.id}"${pourvu ? ' disabled title="Licencie d\'abord le titulaire de ce poste"' : ''}>Embaucher</button></span></div>`;
+    }).join('') || '<p>Aucun candidat disponible pour le moment.</p>';
   }
   function rafraichirMarche() {
     const c = saison.clubJoueur;
@@ -734,6 +847,7 @@
     rafraichirEntrainement();
     rafraichirJeunes();
     rafraichirMarche();
+    rafraichirPersonnel();
     rafraichirClassement();
     rafraichirEffectif();
     rafraichirCalendrier();
@@ -805,6 +919,7 @@
     rafraichirEffectif();
   });
   document.getElementById('clubEffectif').addEventListener('click', (e) => {
+    if (e.target.classList.contains('caseComparerEffectif')) return; // géré par le listener "change" ci-dessous
     const th = e.target.closest('th.triable');
     if (th) {
       const champ = th.dataset.champ;
@@ -817,6 +932,17 @@
     if (!ligne) return;
     ouvrirFicheJoueur(ligne.dataset.joueur);
   });
+  document.getElementById('clubEffectif').addEventListener('change', (e) => {
+    if (!e.target.classList.contains('caseComparerEffectif')) return;
+    const id = e.target.dataset.joueur;
+    if (e.target.checked) selectionComparaisonEffectif.add(id); else selectionComparaisonEffectif.delete(id);
+    rafraichirComparaisonEffectif();
+  });
+  document.getElementById('btnComparerEffectif').addEventListener('click', () => {
+    selectionComparaisonEffectif.clear();
+    document.querySelectorAll('.caseComparerEffectif').forEach((c) => { c.checked = false; });
+    rafraichirComparaisonEffectif();
+  });
   // Fiche joueur : boutons régénérés à chaque ouverture (cf. ouvrirFicheJoueur),
   // délégation sur le conteneur parent plutôt qu'un addEventListener par joueur.
   document.getElementById('clubJoueurDetail').addEventListener('click', (e) => {
@@ -828,6 +954,33 @@
       const offre = RMClub.calculerOffreRenouvellement(joueur);
       if (!window.confirm(`Renouveler ${joueur.nom} pour ${offre.dureeMax} an(s) à ${offre.salaire} k€/saison ?`)) return;
       RMClub.renouvelerContrat(saison, joueurAffiche, offre.dureeMax);
+      RMClub.sauvegarderSaison(saison);
+      ouvrirFicheJoueur(joueurAffiche);
+      rafraichirEffectif();
+      rafraichirStatutEffectif();
+      return;
+    }
+    if (e.target.id === 'btnPreterJoueur') {
+      if (!joueurAffiche) return;
+      const joueur = saison.clubJoueur.effectif.find((j) => j.id === joueurAffiche);
+      if (!joueur) return;
+      if (!window.confirm(`Prêter ${joueur.nom} pour 3 journées ? Il sera indisponible pour la sélection, contre une indemnité immédiate.`)) return;
+      const res = RMClub.preterJoueur(saison, joueurAffiche, 3);
+      if (!res.ok) { window.alert('Impossible de prêter ce joueur actuellement.'); return; }
+      assurerComposition(); // rebouche les trous laissés par le départ en prêt
+      RMClub.sauvegarderSaison(saison);
+      ouvrirFicheJoueur(joueurAffiche);
+      rafraichirEffectif();
+      rafraichirStatutEffectif();
+      rafraichirTopBarInfos();
+      rafraichirTerrain();
+      rafraichirBanc();
+      rafraichirEncadrement();
+      return;
+    }
+    if (e.target.id === 'btnRappelerJoueur') {
+      if (!joueurAffiche) return;
+      RMClub.rappelerJoueur(saison, joueurAffiche);
       RMClub.sauvegarderSaison(saison);
       ouvrirFicheJoueur(joueurAffiche);
       rafraichirEffectif();
@@ -848,6 +1001,14 @@
     rafraichirTerrain();
     rafraichirBanc();
     rafraichirEncadrement();
+  });
+  document.getElementById('clubJoueurDetail').addEventListener('change', (e) => {
+    if (e.target.id !== 'selEntrainementIndividuel') return;
+    if (!joueurAffiche) return;
+    const joueur = saison.clubJoueur.effectif.find((j) => j.id === joueurAffiche);
+    if (!joueur) return;
+    joueur.entrainementIndividuel = e.target.value || null;
+    RMClub.sauvegarderSaison(saison);
   });
 
   // --- Composition : navigation depuis le Dashboard vers l'onglet dédié
@@ -916,7 +1077,9 @@
     }
     if (!id) return;
     if (e.target.classList.contains('btnScouter')) {
-      const res = RMClub.scouterJoueur(saison, id);
+      // Le recruteur (personnel) réduit le coût et augmente le gain de
+      // connaissance par action — cf. RMClub.effetPersonnel.
+      const res = RMClub.scouterJoueur(saison, id, RMClub.effetPersonnel(saison, 'recruteur'));
       if (!res.ok) { window.alert('Budget insuffisant pour financer ce repérage.'); return; }
       RMClub.sauvegarderSaison(saison);
       rafraichirMarche();
@@ -953,6 +1116,30 @@
     document.querySelectorAll('.caseComparerJoueur').forEach((c) => { c.checked = false; });
     document.getElementById('btnComparerFavoris').style.display = 'none';
     rafraichirComparaison();
+  });
+
+  // --- Personnel : embauche/licenciement, un seul membre par poste ---
+  document.getElementById('btnRafraichirPersonnel').addEventListener('click', () => {
+    const rng = creerRng(graineAleatoire());
+    saison.marchePersonnel = RMClub.genererMarchePersonnel(rng, 5);
+    RMClub.sauvegarderSaison(saison);
+    rafraichirPersonnel();
+  });
+  document.getElementById('clubPersonnelMarche').addEventListener('click', (e) => {
+    if (!e.target.classList.contains('btnEmbaucher')) return;
+    const res = RMClub.embaucherPersonnel(saison, e.target.dataset.staff);
+    if (!res.ok) { window.alert(res.motif === 'poste_pourvu' ? 'Ce poste est déjà pourvu : licencie le titulaire pour en recruter un autre.' : 'Recrutement impossible.'); return; }
+    RMClub.sauvegarderSaison(saison);
+    rafraichirPersonnel();
+    rafraichirFinancesTab();
+  });
+  document.getElementById('clubPersonnelActuel').addEventListener('click', (e) => {
+    if (!e.target.classList.contains('btnLicencier')) return;
+    if (!window.confirm('Licencier ce membre du personnel ?')) return;
+    RMClub.licencierPersonnel(saison, e.target.dataset.staff);
+    RMClub.sauvegarderSaison(saison);
+    rafraichirPersonnel();
+    rafraichirFinancesTab();
   });
 
   // --- Entraînement : programme choisi, appliqué à chaque journée jouée
@@ -1040,9 +1227,15 @@
             RMClub.enregistrerMouvementFinances(saison.clubJoueur, matchJoueur.journee, mouvement);
             RMClub.accumulerStats(saison.clubJoueur, etat.stats[lettreJoueur]);
             RMClub.accumulerStatsJoueurs(saison.clubJoueur.effectif, compositionUtilisee, etat.statsJoueurs && etat.statsJoueurs[lettreJoueur]);
-            RMClub.faireProgresserBlessures(creerRng(graineAleatoire()), saison.clubJoueur.effectif, compositionUtilisee);
-            RMClub.appliquerFatigue(saison.clubJoueur.effectif, compositionUtilisee);
-            RMClub.appliquerEntrainement(creerRng(graineAleatoire()), saison.clubJoueur.effectif, saison.clubJoueur.entrainementFocus);
+            // Effets réels du personnel (cf. RMClub.effetPersonnel) : le
+            // médecin/l'entraîneur accélèrent (facteur >=1 direct), le
+            // préparateur physique réduit la fatigue (facteur <1, donc
+            // l'inverse de effetPersonnel qui exprime une qualité >=1).
+            RMClub.faireProgresserBlessures(creerRng(graineAleatoire()), saison.clubJoueur.effectif, compositionUtilisee, RMClub.effetPersonnel(saison, 'medecin'));
+            RMClub.appliquerFatigue(saison.clubJoueur.effectif, compositionUtilisee, 1 / RMClub.effetPersonnel(saison, 'preparateur'));
+            RMClub.appliquerMoral(saison.clubJoueur.effectif, compositionUtilisee, forme);
+            RMClub.progresserPrets(saison.clubJoueur.effectif);
+            RMClub.appliquerEntrainement(creerRng(graineAleatoire()), saison.clubJoueur.effectif, saison.clubJoueur.entrainementFocus, RMClub.effetPersonnel(saison, 'entraineur'));
             RMClub.sauvegarderSaison(saison);
             window.RMMain.reinitialiserConfigClub();
           },

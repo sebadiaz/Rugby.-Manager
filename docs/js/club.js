@@ -94,7 +94,37 @@
   // joueur déjà mûr est proche de son potentiel (plus rien à développer).
   function genererPotentiel(niveauActuel, age, rng) {
     const margeJeunesse = Math.max(0, 25 - age) * (0.9 + rng() * 1.6);
-    return Math.max(niveauActuel, Math.min(99, Math.round(niveauActuel + margeJeunesse)));
+    // Math.round appliqué APRÈS le plafond/plancher (pas avant) : sinon
+    // Math.max(niveauActuel, ...) pouvait renvoyer niveauActuel tel quel
+    // (une moyenne d'attributs, donc pas forcément entière) quand il
+    // dépassait l'estimation arrondie — potentiel affiché en fiche joueur
+    // avec des décimales (ex. 54.285714285714285) au lieu d'un entier.
+    return Math.round(Math.max(niveauActuel, Math.min(99, niveauActuel + margeJeunesse)));
+  }
+
+  // Attributs suivis pour la progression affichée en fiche joueur (cf.
+  // snapshotAttributsDebutSaison/calculerProgression) — le même ensemble que
+  // le vieillissement de fin de saison, pour rester cohérent.
+  const ATTRIBUTS_PROGRESSION = ['vitesse', 'plaquage', 'melee', 'touche', 'puissance', 'endurance', 'passe', 'jeuPied', 'decision'];
+  // Instantané RÉEL des attributs d'un joueur au début de la saison en cours —
+  // sert uniquement à afficher une progression honnête (delta réel), jamais
+  // à modifier le jeu. Pris une fois (nouvelleSaison/avancerSaison), jamais
+  // recalculé en cours de saison.
+  function snapshotAttributsDebutSaison(effectif) {
+    for (const j of effectif) {
+      const snap = {};
+      for (const attr of ATTRIBUTS_PROGRESSION) if (j[attr] != null) snap[attr] = j[attr];
+      j.attributsDebutSaison = snap;
+    }
+  }
+  // Delta réel (actuel - début de saison) pour chaque attribut suivi — vide
+  // si aucun instantané n'existe encore (ancienne sauvegarde).
+  function calculerProgression(joueur) {
+    const debut = joueur.attributsDebutSaison;
+    if (!debut) return [];
+    return ATTRIBUTS_PROGRESSION
+      .filter((attr) => debut[attr] != null && joueur[attr] != null && joueur[attr] !== debut[attr])
+      .map((attr) => ({ attr, avant: debut[attr], apres: joueur[attr], delta: joueur[attr] - debut[attr] }));
   }
 
   // Salaire annuel (k€, fictif) : proportionnel au niveau, avec une prime pour
@@ -137,8 +167,12 @@
       salaire: calculerSalaire(vitesse, plaquage, age),
       blessureJournees: 0, // >0 = indisponible pour ce nombre de journées
       fatigue: 0, // 0-100, cf. appliquerFatigue — répercutée sur les stats effectives en match
+      moral: 60 + Math.round(rng() * 10), // 0-100, cf. appliquerMoral — répercuté sur les stats effectives en match
+      pret: null, // {dureeRestante} : joueur prêté, indisponible pour la sélection (cf. preterJoueur)
       matchsJoues: 0, // compteur RÉEL de titularisations cette saison (fiche joueur)
       statsSaison: null, // cf. accumulerStatsJoueurs — jamais fabriqué, alimenté match après match
+      attributsDebutSaison: null, // snapshot RÉEL (cf. snapshotAttributsDebutSaison) pour la progression affichée en fiche joueur
+      entrainementIndividuel: null, // cf. appliquerEntrainement — remplace le programme collectif pour CE joueur si défini
     };
   }
 
@@ -205,6 +239,10 @@
       niveauClub,
       effectif: genererEffectifEtendu(rng, niveauClub),
       budget: budgetInitial(niveauClub, rng),
+      // Sponsor : revenu récurrent réel par match (cf. appliquerFinancesMatch).
+      // Personnel : organigramme vide au départ, à recruter sur marchePersonnel.
+      sponsor: genererSponsor(rng, niveauClub),
+      personnel: [],
       tactique: { style: 'equilibre', avants: 'equilibre', rythme: 'normal', ligneDef: 'normale', pied: 'normal', toucheMaul: 'equilibre' },
       // Historique financier (derniers mouvements, pour l'onglet Finances) et
       // statistiques cumulées de la saison (pour l'onglet Statistiques) — vides
@@ -288,7 +326,9 @@
   function enregistrerMouvementFinances(club, journee, mouvement) {
     if (!club.historiqueFinances) club.historiqueFinances = [];
     club.historiqueFinances.push({
-      journee, recette: mouvement.recette, salaires: mouvement.salaires, budgetApres: club.budget,
+      journee, recette: mouvement.recette, revenuSponsor: mouvement.revenuSponsor || 0,
+      salaires: mouvement.salaires, salairesPersonnel: mouvement.salairesPersonnel || 0,
+      budgetApres: club.budget,
     });
     if (club.historiqueFinances.length > 15) club.historiqueFinances.shift();
   }
@@ -400,10 +440,15 @@
       const j = parId[composition[numero]];
       if (!j) continue;
       const malusFatigue = Math.round(((j.fatigue || 0) / 100) * 12);
+      // Moral (0-100, neutre 60-70 à la génération) : un joueur au moral haut
+      // joue légèrement au-dessus de son niveau, un joueur démoralisé en
+      // dessous — petit effet borné, jamais décoratif (cf. appliquerMoral).
+      const ajustMoral = Math.round((((j.moral != null ? j.moral : 65) - 60) / 100) * 8);
+      const ajustement = ajustMoral - malusFatigue;
       cfg[numero] = {
         poste: POSTE_REQUIS[numero],
-        vitesse: Math.max(20, j.vitesse - malusFatigue),
-        plaquage: Math.max(20, j.plaquage - malusFatigue),
+        vitesse: Math.max(20, j.vitesse + ajustement),
+        plaquage: Math.max(20, j.plaquage + ajustement),
         tendance: j.tendance, couloir: j.couloir, adresse: j.adresse,
         melee: j.melee, touche: j.touche, puissance: j.puissance,
         endurance: j.endurance, passe: j.passe, jeuPied: j.jeuPied,
@@ -423,7 +468,9 @@
     const composition = {};
     for (const numero of Object.keys(POSTE_REQUIS)) {
       const poste = POSTE_REQUIS[numero];
-      const candidats = effectif.filter((j) => j.poste === poste && !utilises.has(j.id));
+      // Un joueur prêté (cf. preterJoueur) est une exclusion DURE, contrairement
+      // à une blessure : il n'est tout simplement pas dans l'effectif du jour.
+      const candidats = effectif.filter((j) => j.poste === poste && !j.pret && !utilises.has(j.id));
       if (candidats.length === 0) continue;
       const disponibles = candidats.filter((j) => !j.blessureJournees);
       const pool = disponibles.length > 0 ? disponibles : candidats;
@@ -448,7 +495,7 @@
     for (const numero of Object.keys(POSTE_REQUIS)) {
       const id = compositionPartielle && compositionPartielle[numero];
       const j = id && parId[id];
-      if (j && j.poste === POSTE_REQUIS[numero] && !utilises.has(id)) {
+      if (j && !j.pret && j.poste === POSTE_REQUIS[numero] && !utilises.has(id)) {
         composition[numero] = id;
         utilises.add(id);
       }
@@ -456,7 +503,7 @@
     for (const numero of Object.keys(POSTE_REQUIS)) {
       if (composition[numero]) continue;
       const poste = POSTE_REQUIS[numero];
-      const candidats = effectif.filter((j) => j.poste === poste && !utilises.has(j.id));
+      const candidats = effectif.filter((j) => j.poste === poste && !j.pret && !utilises.has(j.id));
       if (candidats.length === 0) continue;
       const disponibles = candidats.filter((j) => !j.blessureJournees);
       const pool = disponibles.length > 0 ? disponibles : candidats;
@@ -484,7 +531,7 @@
     for (const numero of Object.keys(POSTE_REQUIS_BANC)) {
       const id = bancPartiel && bancPartiel[numero];
       const j = id && parId[id];
-      if (j && j.poste === POSTE_REQUIS_BANC[numero] && !utilisesTitulaires.has(id) && !utilisesBanc.has(id)) {
+      if (j && !j.pret && j.poste === POSTE_REQUIS_BANC[numero] && !utilisesTitulaires.has(id) && !utilisesBanc.has(id)) {
         banc[numero] = id;
         utilisesBanc.add(id);
       }
@@ -492,7 +539,7 @@
     for (const numero of Object.keys(POSTE_REQUIS_BANC)) {
       if (banc[numero]) continue;
       const poste = POSTE_REQUIS_BANC[numero];
-      const candidats = effectif.filter((j) => j.poste === poste && !utilisesTitulaires.has(j.id) && !utilisesBanc.has(j.id));
+      const candidats = effectif.filter((j) => j.poste === poste && !j.pret && !utilisesTitulaires.has(j.id) && !utilisesBanc.has(j.id));
       if (candidats.length === 0) continue;
       const disponibles = candidats.filter((j) => !j.blessureJournees);
       const pool = disponibles.length > 0 ? disponibles : candidats;
@@ -535,7 +582,11 @@
   // compositionVersJoueursCfg), les autres récupèrent — appelé une fois par
   // journée jouée, comme faireProgresserBlessures. `matchsJoues` est le
   // compteur RÉEL de titularisations affiché dans la fiche joueur.
-  function appliquerFatigue(effectif, compositionTitulaires) {
+  // `facteurPreparateur` (défaut 1 = comportement historique inchangé) :
+  // <1 réduit la fatigue encaissée et accélère la récupération, cf. le
+  // préparateur physique dans le personnel (effetPersonnel).
+  function appliquerFatigue(effectif, compositionTitulaires, facteurPreparateur) {
+    const fp = facteurPreparateur != null ? facteurPreparateur : 1;
     const titulairesIds = new Set(Object.values(compositionTitulaires || {}));
     for (const j of effectif) {
       // Endurance (0-100, neutre 60 = comportement historique inchangé) :
@@ -543,12 +594,31 @@
       // un joueur peu endurant l'inverse — borné pour rester réaliste.
       const endurance = j.endurance != null ? j.endurance : 60;
       if (titulairesIds.has(j.id)) {
-        const facteurGain = Math.max(0.5, Math.min(1.6, 1 + (60 - endurance) / 75));
+        const facteurGain = Math.max(0.5, Math.min(1.6, 1 + (60 - endurance) / 75)) * fp;
         j.fatigue = Math.min(100, (j.fatigue || 0) + Math.round(32 * facteurGain));
         j.matchsJoues = (j.matchsJoues || 0) + 1;
       } else {
-        const facteurRecup = Math.max(0.5, Math.min(1.6, 1 + (endurance - 60) / 75));
+        const facteurRecup = Math.max(0.5, Math.min(1.6, 1 + (endurance - 60) / 75)) / fp;
         j.fatigue = Math.max(0, (j.fatigue || 0) - Math.round(22 * facteurRecup));
+      }
+    }
+  }
+
+  // --- Moral (Mode Club) : monte pour les titulaires qui gagnent, baisse
+  // légèrement en cas de défaite, dérive doucement vers la neutralité (65)
+  // pour les non-sélectionnés — répercuté sur les stats effectives en match
+  // (cf. compositionVersJoueursCfg), jamais un simple badge. ---
+  function appliquerMoral(effectif, compositionTitulaires, forme) {
+    const titulairesIds = new Set(Object.values(compositionTitulaires || {}));
+    const variation = forme === 'v' ? 8 : forme === 'd' ? -6 : 1;
+    for (const j of effectif) {
+      const actuel = j.moral != null ? j.moral : 65;
+      if (titulairesIds.has(j.id)) {
+        j.moral = Math.max(0, Math.min(100, actuel + variation));
+      } else {
+        // Dérive lente vers la neutralité pour qui ne joue pas (ni euphorie
+        // ni frustration durable sans y avoir participé).
+        j.moral = actuel + Math.sign(65 - actuel) * Math.min(3, Math.abs(65 - actuel));
       }
     }
   }
@@ -566,17 +636,24 @@
     pied: { label: 'Jeu au pied', description: 'Perfectionne la précision au pied (buts et jeu courant).', attributs: ['jeuPied', 'adresse'], postes: ['DM', 'OV', 'AR'] },
     discipline: { label: 'Discipline', description: 'Réduit les fautes concédées, notamment en mêlée et au maul.', attributs: ['discipline'], postes: null },
   };
-  function appliquerEntrainement(rng, effectif, focus) {
-    const programme = ENTRAINEMENTS[focus];
-    if (!programme) return;
+  // `facteurEntraineur` (défaut 1 = comportement historique inchangé) : >1
+  // accélère la progression, cf. l'entraîneur adjoint dans le personnel.
+  // Entraînement INDIVIDUEL (cf. j.entrainementIndividuel) : un joueur peut
+  // suivre un programme différent du collectif — utile pour cibler la
+  // faiblesse d'un joueur précis sans réorienter tout l'effectif.
+  function appliquerEntrainement(rng, effectif, focus, facteurEntraineur) {
+    const fe = facteurEntraineur != null ? facteurEntraineur : 1;
+    const programmeCollectif = ENTRAINEMENTS[focus];
     for (const j of effectif) {
+      const programme = (j.entrainementIndividuel && ENTRAINEMENTS[j.entrainementIndividuel]) || programmeCollectif;
+      if (!programme) continue;
       if (programme.postes && !programme.postes.includes(j.poste)) continue;
       if (j.age >= 32) continue; // progression réservée aux joueurs encore en développement
       const potentiel = j.potentiel != null ? j.potentiel : 70;
       // Progression graduelle et probabiliste (pas à chaque journée pour
       // chaque joueur, sinon tout le monde plafonnerait en 3 semaines) —
       // jamais au-delà du potentiel individuel.
-      if (rng() >= 0.35) continue;
+      if (rng() >= 0.35 * fe) continue;
       for (const attr of programme.attributs) {
         const actuel = j[attr] != null ? j[attr] : 60;
         if (actuel >= potentiel) continue;
@@ -589,16 +666,103 @@
     return effectif.reduce((somme, j) => somme + j.salaire, 0);
   }
 
+  // --- Personnel (Mode Club) : entraîneur adjoint, préparateur physique,
+  // médecin, recruteur, analyste vidéo — un poste par rôle, chacun avec un
+  // niveau (0-100) qui module RÉELLEMENT un mécanisme existant (cf.
+  // effetPersonnel ci-dessous), et un salaire qui pèse sur les finances
+  // comme celui des joueurs. Jamais décoratif : sans personnel, comportement
+  // historique inchangé partout où il est branché. ---
+  const POSTES_PERSONNEL = {
+    entraineur: { label: 'Entraîneur adjoint', effet: "Accélère la progression à l'entraînement collectif." },
+    preparateur: { label: 'Préparateur physique', effet: 'Réduit la fatigue accumulée et accélère la récupération.' },
+    medecin: { label: 'Médecin', effet: 'Réduit la durée des blessures.' },
+    recruteur: { label: 'Recruteur', effet: 'Réduit le coût du scouting et affine plus vite les rapports.' },
+    analyste: { label: 'Analyste vidéo', effet: "Affine l'analyse de l'adversaire (écarts plus fins détectés)." },
+  };
+  let compteurPersonnelId = 1;
+  function genererMembrePersonnel(rng, poste) {
+    const niveau = 40 + Math.floor(rng() * 55); // 40-95
+    return {
+      id: 'staff' + compteurPersonnelId++,
+      nom: genererNomJoueur(rng),
+      poste,
+      niveau,
+      salaire: Math.round(10 + niveau * 0.35), // k€/saison, ordre de grandeur d'un joueur modeste
+    };
+  }
+  function genererMarchePersonnel(rng, n) {
+    const postes = Object.keys(POSTES_PERSONNEL);
+    const marche = [];
+    for (let i = 0; i < (n || 5); i++) marche.push(genererMembrePersonnel(rng, choisir(rng, postes)));
+    return marche;
+  }
+  // Un seul membre par poste à la fois (comme un vrai organigramme) : engager
+  // un nouvel entraîneur suppose d'abord licencier l'ancien.
+  function embaucherPersonnel(saison, candidatId) {
+    if (!saison.clubJoueur.personnel) saison.clubJoueur.personnel = [];
+    const i = (saison.marchePersonnel || []).findIndex((p) => p.id === candidatId);
+    if (i === -1) return { ok: false, motif: 'introuvable' };
+    const candidat = saison.marchePersonnel[i];
+    if (saison.clubJoueur.personnel.some((p) => p.poste === candidat.poste)) return { ok: false, motif: 'poste_pourvu' };
+    saison.marchePersonnel.splice(i, 1);
+    saison.clubJoueur.personnel.push(candidat);
+    return { ok: true };
+  }
+  function licencierPersonnel(saison, staffId) {
+    const personnel = saison.clubJoueur.personnel || [];
+    const avant = personnel.length;
+    saison.clubJoueur.personnel = personnel.filter((p) => p.id !== staffId);
+    return { ok: saison.clubJoueur.personnel.length < avant };
+  }
+  function masseSalarialePersonnel(club) {
+    return (club.personnel || []).reduce((s, p) => s + p.salaire, 0);
+  }
+  // Facteur d'effet (>=1, 1 = poste non pourvu, comportement historique
+  // inchangé) dérivé du niveau du membre occupant ce poste — chaque
+  // consommateur (appliquerEntrainement, faireProgresserBlessures,
+  // scouterJoueur, analyserAdversaire, appliquerFatigue) l'applique selon
+  // son propre sens (voir leurs commentaires respectifs).
+  function effetPersonnel(saison, poste) {
+    const membre = (saison.clubJoueur.personnel || []).find((p) => p.poste === poste);
+    if (!membre) return 1;
+    return 1 + membre.niveau / 130; // niveau 95 -> ~1.73x, niveau 40 -> ~1.31x
+  }
+
+  // --- Sponsor (Mode Club) : revenu récurrent réel par match, distinct de la
+  // billetterie — proportionnel au standing du club, affiché séparément dans
+  // le journal financier. ---
+  const SPONSORS = ["RugbyCorp", 'Ovalie Assurances', 'Groupe Essai', "Touche d'Or", 'Maillot Plus', 'Ligue Ambre'];
+  function genererSponsor(rng, niveauClub) {
+    return { nom: choisir(rng, SPONSORS), revenuParMatch: Math.round(15 + niveauClub * 40 + rng() * 10) };
+  }
+
   // Finances d'un jour de match (club du joueur uniquement) : recette de
-  // billetterie (plus élevée pour un grand club, prime en cas de victoire) et
-  // une part de la masse salariale annuelle (répartie sur les 10 journées de
-  // la saison) — un budget qui bouge vraiment avec les résultats, sans
-  // simuler des dizaines de lignes comptables.
+  // billetterie (plus élevée pour un grand club, prime en cas de victoire),
+  // revenu de sponsoring récurrent, et une part de la masse salariale
+  // annuelle — joueurs ET personnel — répartie sur les 10 journées de la
+  // saison — un budget qui bouge vraiment avec les résultats, sans simuler
+  // des dizaines de lignes comptables.
   function appliquerFinancesMatch(club, forme) {
     const recette = Math.round(40 + club.niveauClub * 120 + (forme === 'v' ? 25 : forme === 'n' ? 10 : 0));
+    const revenuSponsor = club.sponsor ? club.sponsor.revenuParMatch : 0;
     const salaires = Math.round(masseSalariale(club.effectif) / 10);
-    club.budget += recette - salaires;
-    return { recette, salaires };
+    const salairesPersonnel = Math.round(masseSalarialePersonnel(club) / 10);
+    club.budget += recette + revenuSponsor - salaires - salairesPersonnel;
+    return { recette, revenuSponsor, salaires, salairesPersonnel };
+  }
+
+  // Prévision financière RÉELLE : extrapole le solde net moyen des derniers
+  // mouvements enregistrés (jamais une estimation fabriquée) sur N journées.
+  function prevoirFinances(club, nJournees) {
+    const hist = club.historiqueFinances || [];
+    if (hist.length === 0) return null;
+    const recents = hist.slice(-5);
+    const soldeNetMoyen = recents.reduce((s, m) => s + (m.recette + (m.revenuSponsor || 0) - m.salaires - (m.salairesPersonnel || 0)), 0) / recents.length;
+    return {
+      soldeNetMoyen: Math.round(soldeNetMoyen),
+      projection: Math.round(club.budget + soldeNetMoyen * nJournees),
+      nJournees,
+    };
   }
 
   // --- Marché des transferts (club du joueur uniquement) ---
@@ -650,22 +814,35 @@
 
   // Investit dans le repérage d'un joueur du marché : coûte un peu de budget,
   // fait progresser la connaissance vers un rapport fiable.
-  function scouterJoueur(saison, joueurId) {
+  // Le recruteur (personnel, cf. effetPersonnel) réduit le coût et augmente
+  // le gain de connaissance par action de scouting — sans lui, comportement
+  // historique inchangé (coût plein, +30 de connaissance).
+  function scouterJoueur(saison, joueurId, facteurRecruteur) {
+    const fr = facteurRecruteur != null ? facteurRecruteur : 1;
+    const cout = Math.max(3, Math.round(COUT_SCOUTING / fr));
     const j = saison.marche.find((x) => x.id === joueurId);
     if (!j) return { ok: false, motif: 'introuvable' };
     if (j.connaissance >= 100) return { ok: false, motif: 'deja_complet' };
-    if (saison.clubJoueur.budget < COUT_SCOUTING) return { ok: false, motif: 'budget' };
-    saison.clubJoueur.budget -= COUT_SCOUTING;
-    j.connaissance = Math.min(100, j.connaissance + 30);
-    return { ok: true, connaissance: j.connaissance };
+    if (saison.clubJoueur.budget < cout) return { ok: false, motif: 'budget' };
+    saison.clubJoueur.budget -= cout;
+    j.connaissance = Math.min(100, j.connaissance + Math.round(30 * fr));
+    return { ok: true, connaissance: j.connaissance, cout };
   }
 
+  // Prime de signature (Mode Club) : frais d'arrivée réels en plus de
+  // l'indemnité de transfert (agent, prime à la signature), proportionnelle
+  // au salaire — un transfert ne coûte pas QUE l'indemnité, comme en vrai.
+  function calculerPrimeSignature(joueur) {
+    return Math.round(joueur.salaire * 0.2);
+  }
   function signerJoueur(saison, joueurId) {
     const i = saison.marche.findIndex((j) => j.id === joueurId);
     if (i === -1) return { ok: false, motif: 'introuvable' };
     const joueur = saison.marche[i];
-    if (saison.clubJoueur.budget < joueur.prixTransfert) return { ok: false, motif: 'budget' };
-    saison.clubJoueur.budget -= joueur.prixTransfert;
+    const primeSignature = calculerPrimeSignature(joueur);
+    const coutTotal = joueur.prixTransfert + primeSignature;
+    if (saison.clubJoueur.budget < coutTotal) return { ok: false, motif: 'budget' };
+    saison.clubJoueur.budget -= coutTotal;
     // Une fois signé, c'est TON joueur : plus de brouillard de scouting, ses
     // vraies statistiques s'affichent directement dans l'effectif.
     delete joueur.connaissance; delete joueur.ecartVitesse; delete joueur.ecartPlaquage;
@@ -674,7 +851,7 @@
     // Un favori signé n'est plus "à scouter" : retiré de la liste (cf.
     // basculerFavori) pour ne pas laisser une entrée déjà recrutée dessus.
     if (saison.favoris) saison.favoris = saison.favoris.filter((j) => j.id !== joueurId);
-    return { ok: true };
+    return { ok: true, primeSignature, coutTotal };
   }
 
   // Refuse de libérer un joueur si ça viderait complètement son poste (sinon
@@ -701,6 +878,47 @@
       }
     }
     return { ok: true };
+  }
+
+  // --- Prêt (Mode Club) : le joueur reste dans l'effectif (contrat/salaire
+  // inchangés) mais devient INDISPONIBLE pour la sélection pendant la durée
+  // du prêt (exclusion dure, cf. meilleureComposition/completerComposition),
+  // en échange d'une indemnité de prêt immédiate — un vrai compromis
+  // temps de jeu / finances, pas un simple badge. ---
+  function preterJoueur(saison, joueurId, dureeJournees) {
+    const joueur = saison.clubJoueur.effectif.find((j) => j.id === joueurId);
+    if (!joueur) return { ok: false, motif: 'introuvable' };
+    if (joueur.pret) return { ok: false, motif: 'deja_prete' };
+    const duree = Math.max(1, Math.min(10, dureeJournees || 3));
+    const indemnite = Math.round(joueur.salaire * 0.3 * (duree / 10));
+    joueur.pret = { dureeRestante: duree };
+    saison.clubJoueur.budget += indemnite;
+    const c = saison.clubJoueur;
+    if (c.capitaineId === joueurId) c.capitaineId = null;
+    if (c.buteurId === joueurId) c.buteurId = null;
+    if (c.lanceurToucheId === joueurId) c.lanceurToucheId = null;
+    for (const compo of [c.compositionTitulaires, c.compositionBanc]) {
+      if (!compo) continue;
+      for (const numero of Object.keys(compo)) {
+        if (compo[numero] === joueurId) delete compo[numero];
+      }
+    }
+    return { ok: true, indemnite };
+  }
+  function rappelerJoueur(saison, joueurId) {
+    const joueur = saison.clubJoueur.effectif.find((j) => j.id === joueurId);
+    if (!joueur || !joueur.pret) return { ok: false, motif: 'pas_prete' };
+    joueur.pret = null;
+    return { ok: true };
+  }
+  // Décompte la durée restante de chaque prêt en cours (une fois par journée
+  // jouée, comme faireProgresserBlessures) et lève le prêt à échéance.
+  function progresserPrets(effectif) {
+    for (const j of effectif) {
+      if (!j.pret) continue;
+      j.pret.dureeRestante--;
+      if (j.pret.dureeRestante <= 0) j.pret = null;
+    }
   }
 
   // --- Renouvellement de contrat (Mode Club) : une offre RÉELLE calculée
@@ -753,17 +971,21 @@
     { cle: 'jeuPied', label: 'Jeu au pied', postes: null },
     { cle: 'discipline', label: 'Discipline', postes: null },
   ];
-  function analyserAdversaire(saison, clubId) {
+  // Un analyste vidéo (personnel, cf. effetPersonnel) abaisse le seuil de
+  // détection : il repère des écarts plus fins qu'un manager sans analyste
+  // (seuil par défaut 6 points, comportement historique inchangé sans lui).
+  function analyserAdversaire(saison, clubId, seuilAnalyste) {
     const adversaire = club(saison, clubId);
     if (!adversaire) return null;
+    const seuil = seuilAnalyste != null ? seuilAnalyste : 6;
     const monEffectif = saison.clubJoueur.effectif;
     const comparaison = ATTRIBUTS_ANALYSE.map((a) => {
       const moi = moyenneAttribut(monEffectif, a.cle, a.postes);
       const eux = moyenneAttribut(adversaire.effectif, a.cle, a.postes);
       return { cle: a.cle, label: a.label, moi, eux, diff: eux - moi };
     });
-    const forces = comparaison.filter((c) => c.diff >= 6).sort((a, b) => b.diff - a.diff);
-    const faiblesses = comparaison.filter((c) => c.diff <= -6).sort((a, b) => a.diff - b.diff);
+    const forces = comparaison.filter((c) => c.diff >= seuil).sort((a, b) => b.diff - a.diff);
+    const faiblesses = comparaison.filter((c) => c.diff <= -seuil).sort((a, b) => a.diff - b.diff);
     // Forme récente RÉELLE (5 derniers résultats de cet adversaire, tous
     // matchs confondus, y compris contre d'autres IA) — jamais fabriquée.
     const joues = saison.calendrier.filter((f) => f.joue && (f.domicileId === clubId || f.exterieurId === clubId));
@@ -858,14 +1080,18 @@
 
   // Réduit les blessures d'une journée (appelé une fois par journée jouée) et
   // tire une petite chance de blessure pour chaque titulaire qui a joué.
-  function faireProgresserBlessures(rng, effectif, composition) {
+  // `facteurMedecin` (défaut 1 = comportement historique inchangé) : >1
+  // accélère la guérison (récupération plus rapide, nouvelles blessures plus
+  // courtes) — cf. le médecin dans le personnel (effetPersonnel).
+  function faireProgresserBlessures(rng, effectif, composition, facteurMedecin) {
+    const fm = facteurMedecin != null ? facteurMedecin : 1;
     for (const j of effectif) {
-      if (j.blessureJournees > 0) j.blessureJournees--;
+      if (j.blessureJournees > 0) j.blessureJournees = Math.max(0, j.blessureJournees - Math.max(1, Math.round(fm)));
     }
     const titulairesIds = new Set(Object.values(composition || {}));
     for (const j of effectif) {
       if (!titulairesIds.has(j.id)) continue;
-      if (rng() < 0.06) j.blessureJournees = 1 + Math.floor(rng() * 3); // 1-3 journées
+      if (rng() < 0.06) j.blessureJournees = Math.max(1, Math.round((1 + Math.floor(rng() * 3)) / fm)); // 1-3 journées, réduites par le médecin
     }
   }
 
@@ -946,15 +1172,31 @@
     });
     if (saison.clubJoueur.historiqueSaisons.length > 20) saison.clubJoueur.historiqueSaisons.shift();
 
-    const adversaires = [];
-    const niveaux = [0.25, 0.4, 0.5, 0.6, 0.75];
-    for (const niveauClub of niveaux) adversaires.push(genererClub(rng, { niveauClub }));
+    // Évolution RÉELLE des clubs adverses d'une saison à l'autre (pas un
+    // tirage figé à chaque saison) : leur niveau dérive selon leur
+    // classement final qu'on vient de calculer ci-dessus — finir dans le
+    // haut du tableau les renforce légèrement, finir en bas les affaiblit.
+    // L'identité du club (nom, couleur, id) persiste, seul l'effectif est
+    // régénéré au nouveau niveau (renouvellement d'effectif normal).
+    const adversaires = saison.adversaires.map((ancien) => {
+      const rang = classementFinal.findIndex((r) => r.clubId === ancien.id) + 1;
+      const total = classementFinal.length;
+      const delta = rang <= 2 ? 0.05 : rang >= total - 1 ? -0.05 : 0;
+      const niveauClub = Math.max(0.15, Math.min(0.9, (ancien.niveauClub != null ? ancien.niveauClub : 0.5) + delta));
+      return { id: ancien.id, nom: ancien.nom, couleur: ancien.couleur, niveauClub, effectif: genererEffectif(rng, niveauClub) };
+    });
     saison.adversaires = adversaires;
     const tousLesClubs = [saison.clubJoueur, ...adversaires];
     saison.calendrier = genererCalendrier(tousLesClubs);
     saison.classement = classementInitial(tousLesClubs);
     saison.marche = genererMarcheTransferts(rng, 0.5, 6);
+    saison.marchePersonnel = genererMarchePersonnel(rng, 5);
     saison.numero = (saison.numero || 1) + 1;
+    // Instantané des attributs en DÉBUT de cette nouvelle saison (progression
+    // réelle affichée en fiche joueur, cf. calculerProgression) — pris APRÈS
+    // vieillissement/départs/arrivées, donc reflète bien le point de départ
+    // de la saison qui commence.
+    snapshotAttributsDebutSaison(saison.clubJoueur.effectif);
     // Les stats cumulées repartent à zéro (nouvelle saison, nouveau compteur) ;
     // le journal financier, lui, garde son historique récent (utile pour voir
     // la transition entre deux saisons dans l'onglet Finances).
@@ -978,6 +1220,7 @@
   // classement à zéro, marché des transferts initial.
   function nouvelleSaison(rng, nomClubJoueur) {
     const clubJoueur = genererClubJoueur(rng, { nom: nomClubJoueur, niveauClub: 0.5 });
+    snapshotAttributsDebutSaison(clubJoueur.effectif);
     const adversaires = [];
     const niveaux = [0.25, 0.4, 0.5, 0.6, 0.75]; // du plus faible au plus fort
     for (const niveauClub of niveaux) adversaires.push(genererClub(rng, { niveauClub }));
@@ -990,6 +1233,7 @@
       calendrier: genererCalendrier(tousLesClubs),
       classement: classementInitial(tousLesClubs),
       marche: genererMarcheTransferts(rng, 0.5, 6),
+      marchePersonnel: genererMarchePersonnel(rng, 5),
       favoris: [],
     };
   }
@@ -1027,7 +1271,11 @@
     accumulerStats, enregistrerMouvementFinances,
     ENTRAINEMENTS, appliquerEntrainement,
     accumulerStatsJoueurs, classementMarqueurs,
-    calculerOffreRenouvellement, renouvelerContrat,
+    calculerOffreRenouvellement, renouvelerContrat, calculerPrimeSignature,
     basculerFavori, analyserAdversaire,
+    appliquerMoral, preterJoueur, rappelerJoueur, progresserPrets,
+    POSTES_PERSONNEL, genererMarchePersonnel, embaucherPersonnel, licencierPersonnel,
+    effetPersonnel, masseSalarialePersonnel, prevoirFinances,
+    calculerProgression,
   };
 })(window);
