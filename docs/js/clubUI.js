@@ -29,6 +29,39 @@
     return Math.floor(window.RMRng.random() * 0xffffffff);
   }
 
+  // Confirmation visuelle brève après une action (entraînement, transfert,
+  // tactique, composition...) — sans ça, une action réussie n'a aucun retour
+  // visible en dehors du re-rendu de sa propre carte (facile à manquer si on
+  // a déjà l'œil ailleurs). Se referme seule, n'importe combien peuvent
+  // s'empiler. `type` : 'succes' (défaut) ou 'erreur'.
+  function toast(message, type) {
+    const conteneur = document.getElementById('toastContainer');
+    if (!conteneur) return;
+    const el = document.createElement('div');
+    el.className = `toast ${type || 'succes'}`;
+    el.textContent = message;
+    conteneur.appendChild(el);
+    requestAnimationFrame(() => el.classList.add('visible'));
+    setTimeout(() => {
+      el.classList.remove('visible');
+      setTimeout(() => el.remove(), 250);
+    }, 2600);
+  }
+
+  // Sauvegarde + toast d'échec UNE SEULE FOIS par session si le stockage est
+  // indisponible (navigation privée, quota dépassé) — sinon la progression se
+  // perd silencieusement sans que le joueur ne comprenne pourquoi à la
+  // prochaine visite (cf. RMClub.sauvegarderSaison, qui renvoie maintenant
+  // un booléen plutôt que d'avaler l'erreur).
+  let alerteSauvegardeAffichee = false;
+  function sauvegarder() {
+    const ok = RMClub.sauvegarderSaison(saison);
+    if (!ok && !alerteSauvegardeAffichee) {
+      alerteSauvegardeAffichee = true;
+      toast('⚠️ Sauvegarde impossible (stockage indisponible) — la progression restera en mémoire pour cette session.', 'erreur');
+    }
+  }
+
   function nomClub(clubId) {
     const c = RMClub.club(saison, clubId);
     return c ? c.nom : '?';
@@ -564,18 +597,15 @@
     const nonLus = messages.filter((m) => !m.lu).length;
     const titre = document.querySelector('#carteMessages h3');
     if (titre) titre.textContent = `Boîte de réception${nonLus ? ` (${nonLus} non lu${nonLus > 1 ? 's' : ''})` : ''}`;
+    // Décoratif sinon : rien à marquer comme lu tant que la boîte est vide.
+    const boutonToutLu = document.getElementById('btnMessagesTousLus');
+    if (boutonToutLu) boutonToutLu.style.display = nonLus > 0 ? '' : 'none';
     document.getElementById('clubMessages').innerHTML = messages.length
       ? messages.slice(0, 15).map((m) =>
           `<div class="ligneMessage${m.lu ? '' : ' nonLu'}" data-msg="${m.id}"><span class="iconeMessage">${ICONE_MESSAGE[m.categorie] || '📬'}</span>` +
           `<span class="corpsMessage"><b>${m.titre}</b><span>${m.corps}</span><span class="metaMessage">Saison ${m.saisonNumero}</span></span></div>`
         ).join('')
       : '<p style="font-size:12px;color:var(--text-faint);">Aucun message pour le moment.</p>';
-  }
-
-  function rafraichirFinancesApercu() {
-    const c = saison.clubJoueur;
-    document.getElementById('clubFinancesApercu').innerHTML =
-      `<div class="ligneFinances"><span>Budget actuel</span><span class="budgetValeur${c.budget < 0 ? ' negatif' : ''}">${c.budget} k€</span></div>`;
   }
 
   // --- Finances : budget + journal des derniers mouvements (recette/salaires
@@ -809,6 +839,15 @@
     15: { top: 92, left: 50 },
   };
 
+  // "Thomas Girard" -> "T. Girard" : uniquement pour l'AFFICHAGE compact des
+  // chips terrain/banc (largeur fixe) — un nom complet s'y tronquait de façon
+  // ambiguë (deux joueurs de même prénom devenaient indiscernables une fois
+  // coupés). La liste déroulante ouverte et la fiche joueur gardent le nom complet.
+  function nomCourt(nom) {
+    const parts = nom.split(' ');
+    return parts.length > 1 ? `${parts[0][0]}. ${parts.slice(1).join(' ')}` : nom;
+  }
+
   function rafraichirTerrain() {
     const effectif = saison.clubJoueur.effectif;
     const composition = assurerComposition();
@@ -817,12 +856,16 @@
       const pos = POSITIONS_TERRAIN[numero];
       const utiliseAilleurs = new Set(Object.keys(composition)
         .filter((n) => n !== numero).map((n) => composition[n]));
-      const candidats = effectif.filter((j) => j.poste === poste && !utiliseAilleurs.has(j.id));
+      // Un joueur prêté est une exclusion DURE (comme dans completerComposition/
+      // meilleureComposition) — il ne doit pas non plus apparaître dans la
+      // liste déroulante manuelle, sinon la sélection interactive contredit
+      // l'auto-remplissage et permettrait d'aligner un joueur indisponible.
+      const candidats = effectif.filter((j) => j.poste === poste && !j.pret && !utiliseAilleurs.has(j.id));
       const blesseActuel = effectif.find((j) => j.id === composition[numero] && j.blessureJournees > 0);
       const options = candidats.map((j) => {
         const etat = j.blessureJournees > 0 ? ` 🤕${j.blessureJournees}j` : ((j.fatigue || 0) >= 65 ? ' ⚡' : '');
         const selectionne = composition[numero] === j.id ? ' selected' : '';
-        return `<option value="${j.id}"${selectionne}>${j.nom}${etat}</option>`;
+        return `<option value="${j.id}"${selectionne} title="${j.nom}">${nomCourt(j.nom)}${etat}</option>`;
       }).join('');
       return `<div class="chipTerrain" style="top:${pos.top}%;left:${pos.left}%;">` +
         `<span class="numChip">N°${numero} ${poste}</span>` +
@@ -838,11 +881,11 @@
     document.getElementById('clubBanc').innerHTML = Object.keys(RMClub.POSTE_REQUIS_BANC).map((numero) => {
       const poste = RMClub.POSTE_REQUIS_BANC[numero];
       const utiliseAilleurs = new Set(Object.keys(banc).filter((n) => n !== numero).map((n) => banc[n]));
-      const candidats = effectif.filter((j) => j.poste === poste && !titulaireIds.has(j.id) && !utiliseAilleurs.has(j.id));
+      const candidats = effectif.filter((j) => j.poste === poste && !j.pret && !titulaireIds.has(j.id) && !utiliseAilleurs.has(j.id));
       const options = candidats.map((j) => {
         const etat = j.blessureJournees > 0 ? ` 🤕${j.blessureJournees}j` : '';
         const selectionne = banc[numero] === j.id ? ' selected' : '';
-        return `<option value="${j.id}"${selectionne}>${j.nom}${etat}</option>`;
+        return `<option value="${j.id}"${selectionne} title="${j.nom}">${nomCourt(j.nom)}${etat}</option>`;
       }).join('');
       return `<div class="chipBanc"><span class="numChip">N°${numero} · ${POSTE_COMPLET[poste] || poste}</span>` +
         `<select data-numero="${numero}">${options || '<option value="">—</option>'}</select></div>`;
@@ -992,7 +1035,6 @@
     rafraichirMiniClassement();
     rafraichirAlertes();
     rafraichirStatutEffectif();
-    rafraichirFinancesApercu();
     rafraichirTactique();
     rafraichirEntrainement();
     rafraichirJeunes();
@@ -1044,12 +1086,12 @@
     const ligne = e.target.closest('.ligneMessage');
     if (!ligne) return;
     RMClub.marquerMessageLu(saison, ligne.dataset.msg);
-    RMClub.sauvegarderSaison(saison);
+    sauvegarder();
     rafraichirMessages();
   });
   document.getElementById('btnMessagesTousLus').addEventListener('click', () => {
     RMClub.marquerTousMessagesLus(saison);
-    RMClub.sauvegarderSaison(saison);
+    sauvegarder();
     rafraichirMessages();
   });
 
@@ -1074,7 +1116,7 @@
     const nom = document.getElementById('inputNomClub').value.trim();
     const rng = creerRng(graineAleatoire());
     saison = RMClub.nouvelleSaison(rng, nom || null);
-    RMClub.sauvegarderSaison(saison);
+    sauvegarder();
     rafraichirTout();
   });
 
@@ -1135,7 +1177,8 @@
       const offre = RMClub.calculerOffreRenouvellement(joueur);
       if (!window.confirm(`Renouveler ${joueur.nom} pour ${offre.dureeMax} an(s) à ${offre.salaire} k€/saison ?`)) return;
       RMClub.renouvelerContrat(saison, joueurAffiche, offre.dureeMax);
-      RMClub.sauvegarderSaison(saison);
+      sauvegarder();
+      toast(`✅ Contrat renouvelé : ${joueur.nom} (${offre.dureeMax} an(s), ${offre.salaire} k€/saison)`);
       ouvrirFicheJoueur(joueurAffiche);
       rafraichirEffectif();
       rafraichirStatutEffectif();
@@ -1147,9 +1190,15 @@
       if (!joueur) return;
       if (!window.confirm(`Prêter ${joueur.nom} pour 3 journées ? Il sera indisponible pour la sélection, contre une indemnité immédiate.`)) return;
       const res = RMClub.preterJoueur(saison, joueurAffiche, 3);
-      if (!res.ok) { window.alert('Impossible de prêter ce joueur actuellement.'); return; }
+      if (!res.ok) {
+        window.alert(res.motif === 'dernier_du_poste'
+          ? "Impossible : c'est le dernier joueur disponible à ce poste — le prêter rendrait la composition impossible à compléter."
+          : 'Impossible de prêter ce joueur actuellement.');
+        return;
+      }
       assurerComposition(); // rebouche les trous laissés par le départ en prêt
-      RMClub.sauvegarderSaison(saison);
+      sauvegarder();
+      toast(`✅ ${joueur.nom} part en prêt (indemnité ${res.indemnite} k€)`);
       ouvrirFicheJoueur(joueurAffiche);
       rafraichirEffectif();
       rafraichirStatutEffectif();
@@ -1161,8 +1210,10 @@
     }
     if (e.target.id === 'btnRappelerJoueur') {
       if (!joueurAffiche) return;
+      const joueurRappele = saison.clubJoueur.effectif.find((j) => j.id === joueurAffiche);
       RMClub.rappelerJoueur(saison, joueurAffiche);
-      RMClub.sauvegarderSaison(saison);
+      sauvegarder();
+      if (joueurRappele) toast(`✅ ${joueurRappele.nom} est rappelé de prêt`);
       ouvrirFicheJoueur(joueurAffiche);
       rafraichirEffectif();
       rafraichirStatutEffectif();
@@ -1175,7 +1226,8 @@
     const res = RMClub.libererJoueur(saison, joueurAffiche);
     if (!res.ok) { window.alert("Impossible : c'est le dernier joueur de ce poste dans l'effectif."); return; }
     assurerComposition(); // rebouche les trous laissés par le départ (cf. club.js)
-    RMClub.sauvegarderSaison(saison);
+    sauvegarder();
+    toast(`✅ ${joueur.nom} a quitté le club`);
     fermerFicheJoueur();
     rafraichirEffectif();
     rafraichirStatutEffectif();
@@ -1189,7 +1241,10 @@
     const joueur = saison.clubJoueur.effectif.find((j) => j.id === joueurAffiche);
     if (!joueur) return;
     joueur.entrainementIndividuel = e.target.value || null;
-    RMClub.sauvegarderSaison(saison);
+    sauvegarder();
+    toast(joueur.entrainementIndividuel
+      ? `✅ ${joueur.nom} suit un entraînement individuel dédié`
+      : `✅ ${joueur.nom} suit de nouveau le programme collectif`);
   });
 
   // --- Composition : navigation depuis le Dashboard vers l'onglet dédié
@@ -1201,14 +1256,15 @@
     c.compositionBanc = RMClub.completerCompositionBanc(c.effectif, c.compositionTitulaires, {});
     const auto = RMClub.autoDesignerEncadrement(c.effectif, c.compositionTitulaires);
     c.capitaineId = auto.capitaineId; c.buteurId = auto.buteurId; c.lanceurToucheId = auto.lanceurToucheId;
-    RMClub.sauvegarderSaison(saison);
+    sauvegarder();
+    toast('✅ Meilleure équipe possible appliquée');
     rafraichirTerrain(); rafraichirBanc(); rafraichirEncadrement();
   });
   document.getElementById('clubTerrain').addEventListener('change', (e) => {
     const numero = e.target.dataset.numero;
     if (!numero) return;
     saison.clubJoueur.compositionTitulaires[numero] = e.target.value;
-    RMClub.sauvegarderSaison(saison);
+    sauvegarder();
     rafraichirTerrain(); // ce joueur n'est plus proposé aux autres numéros
     rafraichirBanc(); // peut libérer/consommer un joueur du vivier du banc
     rafraichirEncadrement(); // options dépendantes des titulaires
@@ -1217,14 +1273,14 @@
     const numero = e.target.dataset.numero;
     if (!numero) return;
     saison.clubJoueur.compositionBanc[numero] = e.target.value;
-    RMClub.sauvegarderSaison(saison);
+    sauvegarder();
     rafraichirBanc();
   });
   document.getElementById('clubEncadrement').addEventListener('change', (e) => {
     const role = e.target.dataset.role;
     if (!role) return;
     saison.clubJoueur[role] = e.target.value;
-    RMClub.sauvegarderSaison(saison);
+    sauvegarder();
   });
 
   // --- Tactique : n'affecte QUE le club du joueur (cf. lancerMatchJoueur) ---
@@ -1233,7 +1289,8 @@
     if (!bouton) return;
     if (!saison.clubJoueur.tactique || typeof saison.clubJoueur.tactique !== 'object') saison.clubJoueur.tactique = {};
     saison.clubJoueur.tactique[bouton.dataset.axe] = bouton.dataset.valeur;
-    RMClub.sauvegarderSaison(saison);
+    sauvegarder();
+    toast(`✅ Tactique mise à jour : ${bouton.querySelector('b') ? bouton.querySelector('b').textContent : bouton.dataset.valeur}`);
     rafraichirTactique();
   });
 
@@ -1243,7 +1300,7 @@
   document.getElementById('btnRafraichirMarche').addEventListener('click', () => {
     const rng = creerRng(graineAleatoire());
     saison.marche = RMClub.genererMarcheTransferts(rng, saison.clubJoueur.niveauClub, 6);
-    RMClub.sauvegarderSaison(saison);
+    sauvegarder();
     rafraichirMarche();
   });
   function gererClicJoueurMarche(e, pool) {
@@ -1251,8 +1308,9 @@
     if (e.target.classList.contains('btnFavori')) {
       const joueur = pool.find((j) => j.id === id) || (saison.favoris || []).find((j) => j.id === id);
       if (!joueur) return;
-      RMClub.basculerFavori(saison, joueur);
-      RMClub.sauvegarderSaison(saison);
+      const res = RMClub.basculerFavori(saison, joueur);
+      sauvegarder();
+      toast(res.favori ? `☆ ${joueur.nom} ajouté aux favoris` : `☆ ${joueur.nom} retiré des favoris`);
       rafraichirMarche();
       return;
     }
@@ -1262,17 +1320,20 @@
       // connaissance par action — cf. RMClub.effetPersonnel.
       const res = RMClub.scouterJoueur(saison, id, RMClub.effetPersonnel(saison, 'recruteur'));
       if (!res.ok) { window.alert('Budget insuffisant pour financer ce repérage.'); return; }
-      RMClub.sauvegarderSaison(saison);
+      sauvegarder();
+      toast(`🔍 Rapport de scouting affiné (connaissance ${res.connaissance}%)`);
       rafraichirMarche();
       rafraichirTopBarInfos();
       rafraichirStatutEffectif();
       return;
     }
     if (!e.target.classList.contains('btnSigner')) return;
+    const joueurSigne = pool.find((j) => j.id === id);
     const res = RMClub.signerJoueur(saison, id);
     if (!res.ok) { window.alert('Budget insuffisant pour cette signature.'); return; }
     selectionComparaison.delete(id);
-    RMClub.sauvegarderSaison(saison);
+    sauvegarder();
+    toast(`✅ ${joueurSigne ? joueurSigne.nom : 'Joueur'} rejoint le club (${res.coutTotal} k€)`);
     rafraichirMarche();
     rafraichirEffectif();
     rafraichirTopBarInfos();
@@ -1303,14 +1364,16 @@
   document.getElementById('btnRafraichirPersonnel').addEventListener('click', () => {
     const rng = creerRng(graineAleatoire());
     saison.marchePersonnel = RMClub.genererMarchePersonnel(rng, 5);
-    RMClub.sauvegarderSaison(saison);
+    sauvegarder();
     rafraichirPersonnel();
   });
   document.getElementById('clubPersonnelMarche').addEventListener('click', (e) => {
     if (!e.target.classList.contains('btnEmbaucher')) return;
+    const candidat = (saison.marchePersonnel || []).find((p) => p.id === e.target.dataset.staff);
     const res = RMClub.embaucherPersonnel(saison, e.target.dataset.staff);
     if (!res.ok) { window.alert(res.motif === 'poste_pourvu' ? 'Ce poste est déjà pourvu : licencie le titulaire pour en recruter un autre.' : 'Recrutement impossible.'); return; }
-    RMClub.sauvegarderSaison(saison);
+    sauvegarder();
+    toast(`✅ ${candidat ? candidat.nom : 'Recrue'} rejoint le staff`);
     rafraichirPersonnel();
     rafraichirFinancesTab();
   });
@@ -1318,7 +1381,8 @@
     if (!e.target.classList.contains('btnLicencier')) return;
     if (!window.confirm('Licencier ce membre du personnel ?')) return;
     RMClub.licencierPersonnel(saison, e.target.dataset.staff);
-    RMClub.sauvegarderSaison(saison);
+    sauvegarder();
+    toast('✅ Membre du personnel licencié');
     rafraichirPersonnel();
     rafraichirFinancesTab();
   });
@@ -1329,7 +1393,8 @@
     const bouton = e.target.closest('[data-focus]');
     if (!bouton) return;
     saison.clubJoueur.entrainementFocus = bouton.dataset.focus;
-    RMClub.sauvegarderSaison(saison);
+    sauvegarder();
+    toast(`✅ Programme d'entraînement mis à jour : ${bouton.querySelector('b') ? bouton.querySelector('b').textContent : bouton.dataset.focus}`);
     rafraichirEntrainement();
   });
 
@@ -1338,7 +1403,7 @@
   document.getElementById('btnSaisonSuivante').addEventListener('click', () => {
     const rng = creerRng(graineAleatoire());
     const { partis, arrivees } = RMClub.avancerSaison(rng, saison);
-    RMClub.sauvegarderSaison(saison);
+    sauvegarder();
     rafraichirTout();
     const resume = [
       `Saison ${saison.numero} !`,
@@ -1359,6 +1424,19 @@
     const fixtures = RMClub.prochainesFixtures(saison);
     if (fixtures.length === 0) return;
     const matchJoueur = fixtures.find(concerneClubJoueur);
+    // Garde-fou : bloque le lancement (avec une explication précise) si la
+    // composition ne peut pas être complétée — par exemple tous les joueurs
+    // d'un poste indisponibles (prêtés) — plutôt que d'envoyer une config
+    // incomplète au moteur (cf. RMClub.validerComposition).
+    if (matchJoueur) {
+      assurerComposition();
+      const manquants = RMClub.validerComposition(saison.clubJoueur.compositionTitulaires);
+      if (manquants.length > 0) {
+        const libelles = manquants.map((m) => `N°${m.numero} (${POSTE_COMPLET[m.poste] || m.poste})`).join(', ');
+        window.alert(`Impossible de jouer la journée : aucun joueur disponible pour ${libelles}. Rappelle un joueur prêté ou ajuste ton effectif avant de continuer.`);
+        return;
+      }
+    }
     const autresMatchs = fixtures.filter((f) => f !== matchJoueur);
     const duree = Number(document.getElementById('selDureeClub').value) || 4800;
     document.getElementById('panneauClub').classList.remove('visible');
@@ -1424,7 +1502,7 @@
             RMClub.appliquerMoral(saison.clubJoueur.effectif, compositionUtilisee, forme);
             RMClub.progresserPrets(saison.clubJoueur.effectif);
             RMClub.appliquerEntrainement(creerRng(graineAleatoire()), saison.clubJoueur.effectif, saison.clubJoueur.entrainementFocus, RMClub.effetPersonnel(saison, 'entraineur'));
-            RMClub.sauvegarderSaison(saison);
+            sauvegarder();
             window.RMMain.reinitialiserConfigClub();
           },
           onFermer() {
@@ -1449,7 +1527,7 @@
         `Simulation : ${clubA.nom} vs ${clubB.nom} (${i + 1}/${autresMatchs.length})`,
         (etat) => {
           RMClub.enregistrerResultat(saison, f.id, etat.score.A, etat.score.B, etat.stats.A.essais, etat.stats.B.essais);
-          RMClub.sauvegarderSaison(saison);
+          sauvegarder();
           simulerAutre(i + 1);
         }
       );

@@ -7,6 +7,9 @@
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
+<!-- Confirmations : petit message temporaire après une action (entraînement,
+     transfert, tactique, composition...) — cf. clubUI.js, fonction toast(). -->
+<div id="toastContainer" aria-live="polite"></div>
 <div class="panneau visible" id="panneauAccueil">
   <div class="accueilContenu">
     <div class="heroBadge">🏉</div>
@@ -202,13 +205,13 @@
             <h3>Classement</h3>
             <div id="clubMiniClassement"></div>
           </div>
+          <!-- Le budget est déjà affiché ci-dessous (Statut de l'effectif) et
+               dans la barre du haut : une carte "Finances" séparée ici ne
+               montrait rien de plus (doublon pur) — le détail complet reste
+               à un clic dans l'onglet Finances. -->
           <div class="carteClub">
             <h3>Statut de l'effectif</h3>
             <div id="clubStatutEffectif"></div>
-          </div>
-          <div class="carteClub">
-            <h3>Finances</h3>
-            <div id="clubFinancesApercu"></div>
           </div>
         </div>
 

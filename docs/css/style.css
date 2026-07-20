@@ -249,8 +249,12 @@ select {
    visible à la fois), menu latéral fixe sur grand écran (cf. media query
    plus bas) — même mécanisme basculerOnglet(), seule la présentation change. */
 .barreOnglets {
-  flex: 0 0 auto; display: flex; gap: 6px; overflow-x: auto; padding: 10px 14px;
-  -webkit-overflow-scrolling: touch; scrollbar-width: none; border-bottom: 1px solid var(--border);
+  /* flex-wrap (pas overflow-x caché) : avec 12 sections, un bandeau qui ne
+     défile qu'horizontalement cachait la majorité des onglets sur mobile
+     sans aucun indice visuel qu'il y en avait plus (cf. QA parcours mobile) —
+     ils passent donc à la ligne, tous restent visibles et cliquables. */
+  flex: 0 0 auto; display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
 }
 .barreOnglets::-webkit-scrollbar { display: none; }
 .ongletBtn {
@@ -695,3 +699,20 @@ select {
 .ligneMessage .corpsMessage b { font-size: 12.5px; }
 .ligneMessage .corpsMessage > span:not(.metaMessage) { color: var(--text-dim); }
 .ligneMessage .metaMessage { color: var(--text-faint); font-size: 10.5px; }
+
+/* Confirmations (toasts) : retour visuel bref après une action — cf.
+   clubUI.js, toast(). Empilées en bas d'écran, se referment seules. */
+#toastContainer {
+  position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%);
+  z-index: 9999; display: flex; flex-direction: column; gap: 8px; align-items: center;
+  pointer-events: none; width: min(92vw, 420px);
+}
+.toast {
+  background: var(--surface-2); border: 1px solid var(--border-strong); color: var(--text);
+  border-radius: var(--radius-sm); padding: 10px 16px; font-size: 12.5px; font-weight: 600;
+  box-shadow: var(--shadow-sm); opacity: 0; transform: translateY(8px);
+  transition: opacity 0.2s ease, transform 0.2s ease; width: 100%; text-align: center;
+}
+.toast.visible { opacity: 1; transform: translateY(0); }
+.toast.succes { border-color: var(--win); }
+.toast.erreur { border-color: var(--loss); color: var(--loss); }

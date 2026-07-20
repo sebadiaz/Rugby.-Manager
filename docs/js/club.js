@@ -551,6 +551,19 @@
     return composition;
   }
 
+  // Vérifie qu'un numéro a bien un joueur assigné à CHAQUE poste avant de
+  // lancer un match — completerComposition peut laisser un numéro vide si
+  // aucun joueur de ce poste n'est disponible (tous prêtés/partis), ce qui
+  // enverrait une config incomplète au moteur. Retourne les postes manquants
+  // (liste vide = composition valide).
+  function validerComposition(composition) {
+    const manquants = [];
+    for (const numero of Object.keys(POSTE_REQUIS)) {
+      if (!composition || !composition[numero]) manquants.push({ numero: Number(numero), poste: POSTE_REQUIS[numero] });
+    }
+    return manquants;
+  }
+
   // Banc de 8 remplaçants (numéros 16-23), choisis parmi les joueurs NON
   // titularisés. Un par catégorie de poste NON DÉJÀ ÉPUISÉE par les titulaires
   // (GABARIT_EFFECTIF ne prévoit qu'UN seul joueur de profondeur par poste,
@@ -928,6 +941,11 @@
     const joueur = saison.clubJoueur.effectif.find((j) => j.id === joueurId);
     if (!joueur) return { ok: false, motif: 'introuvable' };
     if (joueur.pret) return { ok: false, motif: 'deja_prete' };
+    // Même garde que libererJoueur : un prêt ne doit jamais vider complètement
+    // un poste (sinon la composition ne peut plus être complétée — plus aucun
+    // joueur disponible à aligner à ce numéro, cf. completerComposition).
+    const memePoste = saison.clubJoueur.effectif.filter((j) => j.poste === joueur.poste && !j.pret);
+    if (memePoste.length <= 1) return { ok: false, motif: 'dernier_du_poste' };
     const duree = Math.max(1, Math.min(10, dureeJournees || 3));
     const indemnite = Math.round(joueur.salaire * 0.3 * (duree / 10));
     joueur.pret = { dureeRestante: duree };
@@ -1333,8 +1351,12 @@
     };
   }
 
+  // Retourne true/false (au lieu d'avaler silencieusement l'erreur) : permet
+  // à l'UI de prévenir le joueur UNE FOIS si le stockage est indisponible
+  // (navigation privée, quota dépassé) au lieu de perdre sa progression sans
+  // aucun signal — cf. clubUI.js.
   function sauvegarderSaison(saison) {
-    try { localStorage.setItem(CLE_CLUB, JSON.stringify(saison)); } catch (e) { /* stockage indisponible (file://, quota) : la saison reste en mémoire pour cette session */ }
+    try { localStorage.setItem(CLE_CLUB, JSON.stringify(saison)); return true; } catch (e) { return false; }
   }
   function chargerSaison() {
     try {
@@ -1373,6 +1395,6 @@
     effetPersonnel, masseSalarialePersonnel, prevoirFinances,
     calculerProgression,
     enregistrerResultatClubJoueur, marquerMessageLu, marquerTousMessagesLus,
-    estimerValeurTransfert,
+    estimerValeurTransfert, validerComposition,
   };
 })(window);
