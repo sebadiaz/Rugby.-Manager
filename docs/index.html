@@ -26,22 +26,32 @@
       <button id="btnContinuerClub" class="accent" style="width:100%;margin-top:10px;">Continuer ma saison</button>
     </div>
 
-    <div class="carteAction">
-      <label for="selDureeAccueil" class="sr-label">Durée du match rapide</label>
+    <!-- Mode Club promu en action principale : c'est le vrai jeu de gestion
+         (tout le travail de fond du projet y vit), pas un sous-menu au même
+         niveau que "Historique"/"Règles". Masqué si une saison est déjà en
+         cours (cf. clubUI.js, rafraichirCarteAccueil) : "Continuer ma
+         saison" ci-dessus suffit alors, pas besoin des deux. -->
+    <div class="carteAction carteHero" id="carteNouveauClub">
+      <p class="sr-label" style="margin:0 0 8px;">Le jeu de gestion</p>
+      <h2 style="margin:0 0 6px;">🏟️ Mode Club</h2>
+      <p style="font-size:12.5px;color:var(--text-dim);margin:0 0 14px;">Prends les commandes d'un club fictif sur plusieurs saisons : effectif, tactique, transferts, finances, adversaires.</p>
+      <button id="btnAccueilModeClub" class="accent">Créer mon club</button>
+    </div>
+
+    <div class="carteAction carteSecondaire">
+      <label for="selDureeAccueil" class="sr-label">Match rapide (un seul match, sans gestion)</label>
       <select id="selDureeAccueil" title="Durée du match simulé">
         <option value="300">5 min (démo courte)</option>
         <option value="1200">20 min</option>
         <option value="2400">40 min (mi-temps)</option>
         <option value="4800" selected>80 min (match complet)</option>
       </select>
-      <button id="btnAccueilMatchRapide" class="accent">▶ Match rapide</button>
-      <p class="notemini">80 min recommandé : match complet, score et statistiques crédibles.</p>
+      <button id="btnAccueilMatchRapide" class="alt">▶ Lancer un match rapide</button>
     </div>
 
-    <div class="grilleSecondaire">
-      <button id="btnAccueilModeClub" class="alt">🏟️ Mode Club</button>
-      <button id="btnAccueilHistorique" class="alt">🕓 Historique</button>
-      <button id="btnAccueilLegende" class="alt">❓ Règles</button>
+    <div class="liensSecondaires">
+      <button id="btnAccueilHistorique" class="lienTexte">🕓 Historique</button>
+      <button id="btnAccueilLegende" class="lienTexte">❓ Règles du jeu</button>
     </div>
   </div>
 </div>
@@ -147,18 +157,18 @@
       <div id="navBackdrop"></div>
       <nav class="barreOnglets" id="barreOngletsClub">
         <button class="ongletBtn actif" data-onglet="dashboard">🏠 <span>Dashboard</span></button>
-        <span class="groupeNav">Mon club</span>
+        <span class="groupeNav" data-cat="club">Mon club</span>
         <button class="ongletBtn" data-onglet="effectif">👥 <span>Effectif</span></button>
         <button class="ongletBtn" data-onglet="composition">📋 <span>Composition</span></button>
         <button class="ongletBtn" data-onglet="tactique">🎯 <span>Tactique</span></button>
         <button class="ongletBtn" data-onglet="entrainement">🏋️ <span>Entraînement</span></button>
-        <span class="groupeNav">Recrutement</span>
+        <span class="groupeNav" data-cat="recrutement">Recrutement</span>
         <button class="ongletBtn" data-onglet="transferts">🔁 <span>Recrutement</span></button>
         <button class="ongletBtn" data-onglet="personnel">🧑‍⚕️ <span>Personnel</span></button>
-        <span class="groupeNav">Compétition</span>
+        <span class="groupeNav" data-cat="competition">Compétition</span>
         <button class="ongletBtn" data-onglet="autresclubs">🏟️ <span>Autres clubs</span></button>
         <button class="ongletBtn" data-onglet="calendrier">📅 <span>Calendrier</span></button>
-        <span class="groupeNav">Gestion</span>
+        <span class="groupeNav" data-cat="gestion">Gestion</span>
         <button class="ongletBtn" data-onglet="finances">💰 <span>Finances</span></button>
         <button class="ongletBtn" data-onglet="medical">🩺 <span>Médical</span></button>
         <button class="ongletBtn" data-onglet="stats">📊 <span>Bilan</span></button>
@@ -169,6 +179,8 @@
              alertes (blessures/fatigue/contrats/finances), effectif, budget —
              la vue qu'on voit en entrant dans le club (cf. clubUI.js). -->
         <div class="voletOnglet" data-volet="dashboard">
+          <div class="enTetePage"><span class="categoriePage">Accueil</span><h2>Dashboard</h2><p>Ta saison en un coup d'œil : prochain match, décisions urgentes et alertes.</p></div>
+          <p class="sectionDashboard">À faire maintenant</p>
           <div class="carteClub">
             <h3>Prochaine journée</h3>
             <div id="clubProchainMatch"></div>
@@ -204,6 +216,7 @@
                son effectif comparées aux tiennes + sa forme récente réelle
                (cf. clubUI.js, RMClub.analyserAdversaire) — jamais une note
                fabriquée. -->
+          <p class="sectionDashboard">Vue d'ensemble</p>
           <div class="carteClub" id="carteAdversaire" style="display:none;">
             <h3>Prochain adversaire</h3>
             <div id="clubAdversaire"></div>
@@ -229,6 +242,7 @@
         <!-- Effectif : recherche/tri/filtres, chaque ligne bascule sur une
              fiche joueur SUR PLACE (cf. clubUI.js) — pas un écran empilé. -->
         <div class="voletOnglet" data-volet="effectif" style="display:none;">
+          <div class="enTetePage"><span class="categoriePage">Mon club</span><h2>Effectif</h2><p>Recherche, tri et filtre ton effectif complet — clique un joueur pour sa fiche détaillée.</p></div>
           <div class="carteClub">
             <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
               <h3 style="margin:0;">Effectif</h3>
@@ -260,6 +274,7 @@
              lanceur en touche — un vrai écran de sélection, pas une liste
              déroulante isolée (cf. clubUI.js, rafraichirComposition). -->
         <div class="voletOnglet" data-volet="composition" style="display:none;">
+          <div class="enTetePage"><span class="categoriePage">Mon club</span><h2>Composition</h2><p>Titulaires, banc et encadrement pour la prochaine journée.</p></div>
           <div class="carteClub">
             <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
               <h3 style="margin:0;">Composition du jour</h3>
@@ -282,6 +297,7 @@
              réellement la config transmise au moteur (cf. RMClub.AXES_TACTIQUE
              et engine/rugby-engine.js cfgAttaque/cfgDefense/cfgMelee/cfgTouche/cfgRuck). -->
         <div class="voletOnglet" data-volet="tactique" style="display:none;">
+          <div class="enTetePage"><span class="categoriePage">Mon club</span><h2>Tactique</h2><p>Six réglages indépendants, chacun modifie réellement la config transmise au moteur.</p></div>
           <div class="carteClub">
             <h3>Tactique</h3>
             <div id="clubTactique"></div>
@@ -292,6 +308,7 @@
              correspondants à chaque journée jouée (cf. RMClub.appliquerEntrainement) —
              borné par le potentiel et l'âge de chaque joueur, jamais un simple badge. -->
         <div class="voletOnglet" data-volet="entrainement" style="display:none;">
+          <div class="enTetePage"><span class="categoriePage">Mon club</span><h2>Entraînement</h2><p>Programme collectif et développement des jeunes joueurs.</p></div>
           <div class="carteClub">
             <h3>Programme d'entraînement</h3>
             <p style="font-size:12px;color:var(--text-dim);margin:0 0 12px;">Appliqué à chaque journée jouée : fait progresser les attributs concernés des joueurs encore sous leur potentiel (jusqu'à 32 ans), en priorité les jeunes.</p>
@@ -306,6 +323,7 @@
         <!-- Recrutement : marché + repérage (scouting), favoris, comparaison
              — cf. RMClub.statsApparentes/basculerFavori. -->
         <div class="voletOnglet" data-volet="transferts" style="display:none;">
+          <div class="enTetePage"><span class="categoriePage">Recrutement</span><h2>Recrutement</h2><p>Marché des transferts, scouting et favoris.</p></div>
           <div id="transfertsBudget" class="carteClub"></div>
           <div class="carteClub" id="carteFavoris" style="display:none;">
             <div style="display:flex;justify-content:space-between;align-items:center;">
@@ -328,6 +346,7 @@
              recruteur, analyste), chacun avec un effet réel sur un mécanisme
              existant (cf. RMClub.effetPersonnel) — jamais décoratif. -->
         <div class="voletOnglet" data-volet="personnel" style="display:none;">
+          <div class="enTetePage"><span class="categoriePage">Recrutement</span><h2>Personnel</h2><p>Organigramme du club et candidats disponibles.</p></div>
           <div class="carteClub">
             <h3>Organigramme</h3>
             <p style="font-size:12px;color:var(--text-dim);margin:0 0 10px;">Un poste vacant n'a aucun effet ; recruter dessus module réellement l'entraînement, la fatigue, les blessures, le scouting ou l'analyse — et pèse sur la masse salariale.</p>
@@ -348,6 +367,7 @@
              forces/faiblesses et historique des confrontations directes
              (cf. clubUI.js, RMClub.analyserAdversaire/enregistrerResultatClubJoueur). -->
         <div class="voletOnglet" data-volet="autresclubs" style="display:none;">
+          <div class="enTetePage"><span class="categoriePage">Compétition</span><h2>Autres clubs</h2><p>Consulte n'importe quel adversaire : effectif, forces/faiblesses, confrontations.</p></div>
           <div class="carteClub">
             <h3>Autres clubs</h3>
             <div id="clubAutresClubsListe"></div>
@@ -368,6 +388,7 @@
         </div>
 
         <div class="voletOnglet" data-volet="calendrier" style="display:none;">
+          <div class="enTetePage"><span class="categoriePage">Compétition</span><h2>Calendrier & classement</h2><p>Toutes les rencontres de la saison, y compris celles des autres clubs.</p></div>
           <div class="carteClub">
             <h3>Classement</h3>
             <div id="clubClassement"></div>
@@ -379,6 +400,7 @@
         </div>
 
         <div class="voletOnglet" data-volet="finances" style="display:none;">
+          <div class="enTetePage"><span class="categoriePage">Gestion</span><h2>Finances</h2><p>Budget, masse salariale et prévisions à court terme.</p></div>
           <div class="carteClub">
             <h3>Budget</h3>
             <div id="clubBudgetDetail"></div>
@@ -400,6 +422,7 @@
         <!-- Médical : vue filtrée de l'effectif, façon Medical Centre FM
              (blessé, depuis quand, retour estimé, fatigue). -->
         <div class="voletOnglet" data-volet="medical" style="display:none;">
+          <div class="enTetePage"><span class="categoriePage">Gestion</span><h2>Médical</h2><p>Blessures en cours et charge de fatigue de l'effectif.</p></div>
           <div class="carteClub">
             <h3>Joueurs blessés</h3>
             <div id="clubMedical"></div>
@@ -415,6 +438,7 @@
              évolution sur plusieurs saisons (cf. RMClub.classementMarqueurs/
              historiqueSaisons). -->
         <div class="voletOnglet" data-volet="stats" style="display:none;">
+          <div class="enTetePage"><span class="categoriePage">Gestion</span><h2>Bilan</h2><p>Statistiques de la saison, classement des marqueurs et évolution pluriannuelle.</p></div>
           <div class="carteClub">
             <h3>Statistiques de la saison</h3>
             <div id="clubStats"></div>

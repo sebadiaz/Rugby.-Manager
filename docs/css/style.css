@@ -23,6 +23,14 @@
   --radius-sm: 8px;
   --shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
   --shadow-sm: 0 4px 14px rgba(0, 0, 0, 0.28);
+  /* Couleurs de catégorie : une par groupe de navigation (Mon club/
+     Recrutement/Compétition/Gestion) — reprises sur les en-têtes de page et
+     les groupes du menu, pour que la structure du site se voie d'un coup
+     d'œil au lieu d'un mur uniforme de cartes toutes identiques. */
+  --cat-club: #4ea8de;
+  --cat-recrutement: #b98cf5;
+  --cat-competition: #3ac47d;
+  --cat-gestion: #2bb3a3;
 }
 
 * { box-sizing: border-box; }
@@ -347,9 +355,58 @@ select {
 .effectifCliquable tbody tr { cursor: pointer; }
 .effectifCliquable tbody tr:hover { background: var(--surface-hover); }
 .carteClub {
-  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md);
+  background: linear-gradient(165deg, var(--surface-2), var(--surface) 60%);
+  border: 1px solid var(--border); border-radius: var(--radius-md);
   padding: 14px; margin: 0 16px 14px; box-shadow: var(--shadow-sm);
 }
+.carteClub h3 {
+  display: flex; align-items: center; gap: 8px; font-size: 13.5px; letter-spacing: 0;
+  text-transform: none; color: var(--text);
+}
+
+/* En-tête de page (Mode Club) : catégorie colorée + titre + description en
+   une ligne — reprend la couleur du groupe de navigation correspondant, pour
+   que chaque écran s'identifie d'un coup d'œil à sa place dans le site
+   plutôt que de ressembler à toutes les autres. */
+.enTetePage {
+  padding: 4px 16px 14px; border-left: 3px solid var(--cat, var(--accent));
+  margin: 0 16px 14px;
+}
+.enTetePage .categoriePage {
+  font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--cat, var(--accent));
+}
+.enTetePage h2 {
+  margin: 2px 0 4px; font-size: 19px; position: static; background: none; border: none; padding: 0;
+}
+.enTetePage p { margin: 0; font-size: 12.5px; color: var(--text-dim); }
+.voletOnglet[data-volet="dashboard"] .enTetePage { --cat: var(--accent); }
+.voletOnglet[data-volet="effectif"] .enTetePage, .voletOnglet[data-volet="composition"] .enTetePage,
+.voletOnglet[data-volet="tactique"] .enTetePage, .voletOnglet[data-volet="entrainement"] .enTetePage { --cat: var(--cat-club); }
+.voletOnglet[data-volet="transferts"] .enTetePage, .voletOnglet[data-volet="personnel"] .enTetePage { --cat: var(--cat-recrutement); }
+.voletOnglet[data-volet="autresclubs"] .enTetePage, .voletOnglet[data-volet="calendrier"] .enTetePage { --cat: var(--cat-competition); }
+.voletOnglet[data-volet="finances"] .enTetePage, .voletOnglet[data-volet="medical"] .enTetePage,
+.voletOnglet[data-volet="stats"] .enTetePage { --cat: var(--cat-gestion); }
+
+/* Groupes du menu de navigation : même code couleur que les en-têtes de page
+   (cf. ci-dessus), en pastille devant le libellé du groupe. */
+.groupeNav { position: relative; padding-left: 20px !important; }
+.groupeNav::before {
+  content: ''; position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+  width: 6px; height: 6px; border-radius: 50%; background: var(--cat, var(--text-faint));
+}
+.groupeNav[data-cat="club"] { --cat: var(--cat-club); }
+.groupeNav[data-cat="recrutement"] { --cat: var(--cat-recrutement); }
+.groupeNav[data-cat="competition"] { --cat: var(--cat-competition); }
+.groupeNav[data-cat="gestion"] { --cat: var(--cat-gestion); }
+
+/* Section du dashboard : sépare "à faire maintenant" de "vue d'ensemble"
+   plutôt qu'un empilement continu de cartes sans hiérarchie. */
+.sectionDashboard {
+  margin: 20px 16px 8px; font-size: 11px; font-weight: 800; text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--text-faint); display: flex; align-items: center; gap: 8px;
+}
+.sectionDashboard::after { content: ''; flex: 1; height: 1px; background: var(--border); }
 .clubEntete { display: flex; align-items: center; gap: 12px; padding: 14px 16px; }
 .clubEntete .pastilleClub {
   width: 40px; height: 40px; border-radius: 50%; flex: 0 0 auto;
@@ -568,8 +625,22 @@ select {
 #continuerClubInfos .nomClubAccueil { font-size: 17px; font-weight: 800; display: block; }
 #continuerClubInfos .detailClubAccueil { font-size: 12.5px; color: var(--text-dim); display: block; margin-top: 2px; }
 
-.grilleSecondaire { display: flex; gap: 8px; }
-.grilleSecondaire button { font-size: 12.5px; padding: 12px 8px; }
+/* Mode Club (action principale) : même traitement que "Continuer ma saison"
+   côté visuel (bordure accent, mise en avant), Match rapide devient la carte
+   secondaire juste en dessous — l'accueil reflète que le jeu de gestion est
+   le cœur du projet, pas un item parmi d'autres. */
+.carteHero { border-color: var(--accent); background: linear-gradient(165deg, var(--surface-2), var(--surface) 70%); }
+.carteHero h2 { font-size: 18px; }
+.carteHero button { width: 100%; padding: 15px; font-size: 15px; }
+.carteSecondaire button { width: 100%; padding: 13px; font-size: 13.5px; }
+
+.liensSecondaires { display: flex; justify-content: center; gap: 22px; margin-top: 4px; }
+.lienTexte {
+  flex: 0 0 auto; width: auto; min-width: 0; background: none; border: none;
+  color: var(--text-faint); font-size: 12.5px; padding: 6px 4px; text-decoration: underline;
+  text-decoration-color: transparent; transition: color 0.15s, text-decoration-color 0.15s;
+}
+.lienTexte:hover { color: var(--text-dim); text-decoration-color: var(--text-faint); background: none; }
 
 .barreProgression {
   width: 100%; height: 8px; border-radius: 6px; background: var(--surface-2);

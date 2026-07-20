@@ -1022,14 +1022,22 @@
   // primer à chaque visite, mais la reprise de sa carrière.
   function rafraichirCarteAccueil() {
     const carte = document.getElementById('carteContinuerClub');
+    const carteNouveau = document.getElementById('carteNouveauClub');
     if (!carte) return;
-    if (!saison) { carte.style.display = 'none'; return; }
+    if (!saison) {
+      carte.style.display = 'none';
+      if (carteNouveau) carteNouveau.style.display = ''; // pas encore de carrière : "Créer mon club" reste l'action mise en avant
+      return;
+    }
     const prochaine = RMClub.prochainesFixtures(saison);
     const statut = prochaine.length ? `Journée ${prochaine[0].journee} à jouer` : 'Saison terminée — prête à être avancée';
     document.getElementById('continuerClubInfos').innerHTML =
       `<span class="nomClubAccueil">${saison.clubJoueur.nom}</span>` +
       `<span class="detailClubAccueil">Saison ${saison.numero || 1} · 💰 ${saison.clubJoueur.budget} k€ · ${statut}</span>`;
     carte.style.display = 'block';
+    // Une carrière existe déjà : "Continuer ma saison" ci-dessus suffit,
+    // pas besoin d'une deuxième carte "Créer mon club" à côté.
+    if (carteNouveau) carteNouveau.style.display = 'none';
   }
 
   function rafraichirTout() {
