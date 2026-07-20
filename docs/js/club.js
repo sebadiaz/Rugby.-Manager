@@ -61,6 +61,7 @@
   }
 
   let compteurJoueurId = 1;
+  let compteurMessageId = 1;
   function borneStat(v) { return Math.max(30, Math.min(95, Math.round(v))); }
   // Adresse/attributs de profondeur : plage plus large que vitesse/plaquage
   // (un avant peut être un très mauvais buteur ou passeur, 10-20) — cf.
@@ -140,6 +141,14 @@
     return Math.round(niveau * 0.45 * primeAge);
   }
 
+  // Valeur de transfert estimée (k€, fictive) : même formule pour un joueur
+  // libre du marché et pour un joueur d'un club adverse (fiche joueur
+  // adverse) — dérivée uniquement de vitesse/plaquage/âge, jamais un chiffre
+  // décoratif distinct de ce qui est utilisé ailleurs pour ce même calcul.
+  function estimerValeurTransfert(vitesse, plaquage, age) {
+    return Math.round((vitesse + plaquage) * 3 + (30 - Math.min(age, 30)) * 5);
+  }
+
   // Génère un joueur pour une CATÉGORIE de poste (effectif étendu, club du
   // joueur) — pas de numéro fixe : c'est la composition du jour qui choisit
   // qui porte quel maillot (cf. meilleureComposition).
@@ -181,26 +190,41 @@
   }
 
   // Génère un joueur d'effectif pour le numéro donné (club ADVERSAIRE, IA) :
-  // toujours un effectif prêt à jouer de 15, sans gestion (pas de profondeur,
-  // pas de contrats/finances) — seul le club du joueur est géré en détail.
+  // un effectif prêt à jouer de 15, SANS gestion complète (pas de fatigue/
+  // blessures en cours de saison, pas de progression via entraînement — seul
+  // le club du joueur est géré en détail au jour le jour). Il porte quand
+  // même des attributs de contexte RÉELS (contrat, salaire, potentiel, moral,
+  // valeur estimée) — générés une fois, comme pour un joueur du marché des
+  // transferts — pour permettre une fiche joueur adverse honnête (cf.
+  // clubUI.js, ouvrirFicheJoueurAdversaire), sans prétendre à un suivi
+  // journée par journée qui n'existe pas pour l'IA.
   function genererJoueur(numero, rng, niveauClub) {
     const base = DEFAULT_CONFIG.joueurs[numero];
     const ecartNiveau = (niveauClub - 0.5) * 20;
     const bruit = () => (rng() * 12 - 6);
     const attributs = genererAttributsProfondeur(base, ecartNiveau, rng);
+    const age = 18 + Math.floor(rng() * 17);
+    const vitesse = borneStat(base.vitesse + ecartNiveau + bruit());
+    const plaquage = borneStat(base.plaquage + ecartNiveau + bruit());
+    const niveauActuel = (vitesse + plaquage + attributs.melee + attributs.touche
+      + attributs.puissance + attributs.passe + attributs.jeuPied) / 7;
     return {
       numero,
       nom: genererNomJoueur(rng),
       poste: base.poste,
-      age: 18 + Math.floor(rng() * 17),
-      vitesse: borneStat(base.vitesse + ecartNiveau + bruit()),
-      plaquage: borneStat(base.plaquage + ecartNiveau + bruit()),
+      age, vitesse, plaquage,
       adresse: borneAdresse((base.adresse != null ? base.adresse : 30) + ecartNiveau * 0.5 + bruit()),
       melee: attributs.melee, touche: attributs.touche, puissance: attributs.puissance,
       endurance: attributs.endurance, passe: attributs.passe, jeuPied: attributs.jeuPied,
       decision: attributs.decision, discipline: attributs.discipline,
       tendance: base.tendance,
       couloir: base.couloir,
+      potentiel: genererPotentiel(niveauActuel, age, rng),
+      contrat: 1 + Math.floor(rng() * 4),
+      salaire: calculerSalaire(vitesse, plaquage, age),
+      moral: 60 + Math.round(rng() * 10),
+      blessureJournees: 0,
+      valeurEstimee: estimerValeurTransfert(vitesse, plaquage, age),
     };
   }
 
@@ -218,6 +242,10 @@
       couleur: choisir(rng, COULEURS),
       niveauClub,
       effectif: genererEffectif(rng, niveauClub),
+      // Budget estimé (rapport de scouting) : même formule que le budget de
+      // départ du club du joueur — régénéré avec l'effectif à chaque saison
+      // (cf. avancerSaison), jamais un chiffre suivi match par match.
+      budget: budgetInitial(niveauClub, rng),
     };
   }
 
@@ -266,6 +294,15 @@
       // alimenté à chaque avancerSaison, jamais recalculé après coup. Sert
       // l'écran Bilan ("évolution sur plusieurs saisons").
       historiqueSaisons: [],
+      // Historique des confrontations (Mode Club) : résultats RÉELS des
+      // matchs déjà joués contre chaque adversaire, clé = id du club adverse
+      // (cf. enregistrerResultatClubJoueur) — alimente la page de détail de
+      // cet adversaire (onglet Autres clubs).
+      historiqueConfrontations: {},
+      // Boîte de réception (Mode Club) : messages RÉELS générés par les
+      // événements déjà produits par la simulation (cf. ajouterMessage) —
+      // jamais un texte fabriqué uniquement pour l'affichage.
+      messages: [],
     };
   }
 
@@ -776,7 +813,7 @@
   function genererJoueurLibre(rng, niveauMoyen) {
     const poste = choisir(rng, GABARIT_EFFECTIF);
     const j = genererJoueurEtendu(poste, rng, niveauMoyen);
-    j.prixTransfert = Math.round((j.vitesse + j.plaquage) * 3 + (30 - Math.min(j.age, 30)) * 5);
+    j.prixTransfert = estimerValeurTransfert(j.vitesse, j.plaquage, j.age);
     // Premier repérage : connaissance faible (20-50 %) et incertitude fixe
     // sur chaque statistique (±15 au max), qui se résorbe avec la connaissance
     // — cf. statsApparentes. Fixée une fois pour toutes à la génération, pas
@@ -851,6 +888,7 @@
     // Un favori signé n'est plus "à scouter" : retiré de la liste (cf.
     // basculerFavori) pour ne pas laisser une entrée déjà recrutée dessus.
     if (saison.favoris) saison.favoris = saison.favoris.filter((j) => j.id !== joueurId);
+    ajouterMessage(saison, 'transfert', 'Nouveau transfert', `${joueur.nom} rejoint le club (${coutTotal} k€).`);
     return { ok: true, primeSignature, coutTotal };
   }
 
@@ -877,6 +915,7 @@
         if (compo[numero] === joueurId) delete compo[numero];
       }
     }
+    ajouterMessage(saison, 'transfert', 'Départ libre', `${joueur.nom} quitte le club librement.`);
     return { ok: true };
   }
 
@@ -903,12 +942,14 @@
         if (compo[numero] === joueurId) delete compo[numero];
       }
     }
+    ajouterMessage(saison, 'transfert', 'Prêt sortant', `${joueur.nom} part en prêt pour ${duree} journée(s) (indemnité ${indemnite} k€).`);
     return { ok: true, indemnite };
   }
   function rappelerJoueur(saison, joueurId) {
     const joueur = saison.clubJoueur.effectif.find((j) => j.id === joueurId);
     if (!joueur || !joueur.pret) return { ok: false, motif: 'pas_prete' };
     joueur.pret = null;
+    ajouterMessage(saison, 'transfert', 'Retour de prêt', `${joueur.nom} est rappelé de prêt.`);
     return { ok: true };
   }
   // Décompte la durée restante de chaque prêt en cours (une fois par journée
@@ -937,6 +978,7 @@
     const dureeFinale = Math.max(1, Math.min(offre.dureeMax, duree || offre.dureeMax));
     joueur.contrat = dureeFinale;
     joueur.salaire = offre.salaire;
+    ajouterMessage(saison, 'contrat', 'Contrat renouvelé', `${joueur.nom} prolonge (${dureeFinale} saison(s), ${offre.salaire} k€).`);
     return { ok: true, contrat: joueur.contrat, salaire: joueur.salaire };
   }
 
@@ -997,7 +1039,11 @@
     });
     const classement = classementTrie(saison);
     const position = classement.findIndex((r) => r.clubId === clubId) + 1;
-    return { nom: adversaire.nom, comparaison, forces, faiblesses, forme, position, totalClubs: classement.length };
+    // Historique des confrontations RÉEL contre CE club précis (cf.
+    // enregistrerResultatClubJoueur) — vide tant qu'aucun match ne l'a
+    // opposé au club du joueur, jamais reconstitué après coup.
+    const confrontations = (saison.clubJoueur.historiqueConfrontations || {})[clubId] || [];
+    return { nom: adversaire.nom, comparaison, forces, faiblesses, forme, position, totalClubs: classement.length, confrontations };
   }
 
   // Calendrier aller-retour complet (méthode du cercle, championnat classique) :
@@ -1078,12 +1124,56 @@
     return saison.adversaires.find((c) => c.id === clubId) || null;
   }
 
+  // --- Boîte de réception (Mode Club) : messages RÉELS générés par des
+  // événements déjà produits ailleurs (transferts, prêts, contrats,
+  // blessures, résultats, changements de saison) — jamais un texte
+  // fabriqué uniquement pour l'affichage. Plafonnée à 40 entrées (les plus
+  // récentes en tête), comme les autres journaux (historiqueFinances...). ---
+  function ajouterMessage(saison, categorie, titre, corps) {
+    const c = saison.clubJoueur;
+    if (!c.messages) c.messages = [];
+    c.messages.unshift({
+      id: 'msg' + compteurMessageId++,
+      categorie, titre, corps,
+      saisonNumero: saison.numero || 1,
+      lu: false,
+    });
+    if (c.messages.length > 40) c.messages.length = 40;
+  }
+  function marquerMessageLu(saison, messageId) {
+    const m = (saison.clubJoueur.messages || []).find((x) => x.id === messageId);
+    if (m) m.lu = true;
+  }
+  function marquerTousMessagesLus(saison) {
+    for (const m of (saison.clubJoueur.messages || [])) m.lu = true;
+  }
+
+  // Historique des confrontations (Mode Club) : résultat RÉEL de chaque
+  // match déjà joué par le club du joueur contre UN adversaire donné —
+  // alimente sa page de détail (onglet Autres clubs) et génère le message
+  // de résultat correspondant dans la boîte de réception.
+  function enregistrerResultatClubJoueur(saison, adversaireId, scorePour, scoreContre, journee) {
+    const c = saison.clubJoueur;
+    if (!c.historiqueConfrontations) c.historiqueConfrontations = {};
+    const liste = c.historiqueConfrontations[adversaireId] || (c.historiqueConfrontations[adversaireId] = []);
+    const resultat = scorePour > scoreContre ? 'v' : scorePour < scoreContre ? 'd' : 'n';
+    liste.push({ saisonNumero: saison.numero || 1, journee, scorePour, scoreContre, resultat });
+    if (liste.length > 20) liste.shift();
+    const adv = club(saison, adversaireId);
+    const nomAdv = adv ? adv.nom : 'Adversaire';
+    const libelle = resultat === 'v' ? 'Victoire' : resultat === 'd' ? 'Défaite' : 'Match nul';
+    ajouterMessage(saison, 'match', `${libelle} contre ${nomAdv}`, `${scorePour} - ${scoreContre}`);
+  }
+
   // Réduit les blessures d'une journée (appelé une fois par journée jouée) et
   // tire une petite chance de blessure pour chaque titulaire qui a joué.
   // `facteurMedecin` (défaut 1 = comportement historique inchangé) : >1
   // accélère la guérison (récupération plus rapide, nouvelles blessures plus
   // courtes) — cf. le médecin dans le personnel (effetPersonnel).
-  function faireProgresserBlessures(rng, effectif, composition, facteurMedecin) {
+  // `saison` (optionnel, 5e paramètre) : si fourni, une nouvelle blessure
+  // génère un message RÉEL dans la boîte de réception — omis dans les
+  // scripts/tests qui n'ont pas de saison complète sous la main.
+  function faireProgresserBlessures(rng, effectif, composition, facteurMedecin, saison) {
     const fm = facteurMedecin != null ? facteurMedecin : 1;
     for (const j of effectif) {
       if (j.blessureJournees > 0) j.blessureJournees = Math.max(0, j.blessureJournees - Math.max(1, Math.round(fm)));
@@ -1091,7 +1181,10 @@
     const titulairesIds = new Set(Object.values(composition || {}));
     for (const j of effectif) {
       if (!titulairesIds.has(j.id)) continue;
-      if (rng() < 0.06) j.blessureJournees = Math.max(1, Math.round((1 + Math.floor(rng() * 3)) / fm)); // 1-3 journées, réduites par le médecin
+      if (rng() < 0.06) {
+        j.blessureJournees = Math.max(1, Math.round((1 + Math.floor(rng() * 3)) / fm)); // 1-3 journées, réduites par le médecin
+        if (saison) ajouterMessage(saison, 'blessure', 'Blessure', `${j.nom} est blessé pour ${j.blessureJournees} journée(s).`);
+      }
     }
   }
 
@@ -1171,6 +1264,8 @@
       budget: saison.clubJoueur.budget,
     });
     if (saison.clubJoueur.historiqueSaisons.length > 20) saison.clubJoueur.historiqueSaisons.shift();
+    ajouterMessage(saison, 'saison', `Fin de saison ${saison.numero || 1}`,
+      `Classement final : ${positionFinale}e/${classementFinal.length}. ${arrivees.length} arrivée(s), ${partis.length} départ(s).`);
 
     // Évolution RÉELLE des clubs adverses d'une saison à l'autre (pas un
     // tirage figé à chaque saison) : leur niveau dérive selon leur
@@ -1183,7 +1278,7 @@
       const total = classementFinal.length;
       const delta = rang <= 2 ? 0.05 : rang >= total - 1 ? -0.05 : 0;
       const niveauClub = Math.max(0.15, Math.min(0.9, (ancien.niveauClub != null ? ancien.niveauClub : 0.5) + delta));
-      return { id: ancien.id, nom: ancien.nom, couleur: ancien.couleur, niveauClub, effectif: genererEffectif(rng, niveauClub) };
+      return { id: ancien.id, nom: ancien.nom, couleur: ancien.couleur, niveauClub, effectif: genererEffectif(rng, niveauClub), budget: budgetInitial(niveauClub, rng) };
     });
     saison.adversaires = adversaires;
     const tousLesClubs = [saison.clubJoueur, ...adversaires];
@@ -1277,5 +1372,7 @@
     POSTES_PERSONNEL, genererMarchePersonnel, embaucherPersonnel, licencierPersonnel,
     effetPersonnel, masseSalarialePersonnel, prevoirFinances,
     calculerProgression,
+    enregistrerResultatClubJoueur, marquerMessageLu, marquerTousMessagesLus,
+    estimerValeurTransfert,
   };
 })(window);

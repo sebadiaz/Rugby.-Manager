@@ -673,3 +673,25 @@ select {
 .ligneProgression:last-child { border-bottom: none; }
 .ligneProgression .deltaPositif { color: var(--win); font-weight: 700; }
 .ligneProgression .deltaNegatif { color: var(--loss); font-weight: 700; }
+
+/* Autres clubs : pastille de couleur simple (liste), pas l'avatar à
+   initiales de .clubEntete .pastilleClub — contexte différent. */
+.pointCouleurClub {
+  display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+  margin-right: 7px; vertical-align: middle;
+}
+
+/* Boîte de réception : messages réels, non lus mis en avant par une barre
+   d'accent à gauche (même logique que .ligneAlerte). */
+.ligneMessage {
+  display: flex; align-items: flex-start; gap: 10px; padding: 8px 4px;
+  border-bottom: 1px solid var(--border); font-size: 12px; cursor: pointer;
+}
+.ligneMessage:last-child { border-bottom: none; }
+.ligneMessage:hover { background: var(--surface-hover); }
+.ligneMessage.nonLu { border-left: 3px solid var(--accent); padding-left: 8px; }
+.ligneMessage .iconeMessage { flex: 0 0 auto; font-size: 15px; }
+.ligneMessage .corpsMessage { display: flex; flex-direction: column; gap: 2px; }
+.ligneMessage .corpsMessage b { font-size: 12.5px; }
+.ligneMessage .corpsMessage > span:not(.metaMessage) { color: var(--text-dim); }
+.ligneMessage .metaMessage { color: var(--text-faint); font-size: 10.5px; }

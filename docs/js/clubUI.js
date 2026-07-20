@@ -14,6 +14,12 @@
   // place dans l'onglet Effectif) — sert au bouton "Libérer ce joueur", qui
   // vit dans l'innerHTML régénéré et est géré par délégation d'événements.
   let joueurAffiche = null;
+  // Club adverse actuellement affiché en détail (onglet Autres clubs) — null
+  // tant qu'on est sur la liste. Indépendant de joueurAffiche (fiche joueur
+  // de SON club) : une fiche joueur adverse se consulte à l'intérieur de ce
+  // même onglet, sur un joueur repéré par son INDEX dans l'effectif adverse
+  // (pas d'id stable requis pour un effectif IA non géré au jour le jour).
+  let clubAdversaireAffiche = null;
   // État des filtres/tri de l'effectif (recherche/poste/disponibilité/tri de
   // colonne) : tenu en mémoire, réappliqué à chaque rendu (pas persisté —
   // ce sont des préférences d'affichage, pas des données de la saison).
@@ -388,6 +394,129 @@
       (puces ? `<div class="listeQualitatif">${puces}</div>` : '<p style="font-size:11.5px;color:var(--text-faint);margin:10px 0 0;">Aucun écart marqué avec ton effectif.</p>');
   }
 
+  // --- Autres clubs (Mode Club) : consulter N'IMPORTE quel adversaire, pas
+  // seulement le prochain — identité, effectif complet (fiche joueur en
+  // lecture seule), classement/forme, tactique dérivée de ses attributs
+  // réels, forces/faiblesses (cf. RMClub.analyserAdversaire) et historique
+  // RÉEL des confrontations directes contre ce club. ---
+  function deriverTactiqueAdversaire(effectif) {
+    const moyenne = (attr) => effectif.reduce((s, j) => s + (j[attr] || 0), 0) / effectif.length;
+    const jeuPied = moyenne('jeuPied'), passe = moyenne('passe'), puissance = moyenne('puissance'), vitesse = moyenne('vitesse');
+    const traits = [];
+    if (jeuPied >= 55) traits.push('Jeu au pied fréquent');
+    if (passe >= 60 && vitesse >= 58) traits.push('Jeu de mouvement, ballon porté au large');
+    if (puissance >= 60) traits.push('Domination recherchée en contact');
+    if (!traits.length) traits.push('Jeu équilibré, sans trait dominant marqué');
+    return traits.join(' · ');
+  }
+
+  function rafraichirAutresClubs() {
+    const conteneur = document.getElementById('clubAutresClubsListe');
+    if (!conteneur) return;
+    const classement = RMClub.classementTrie(saison);
+    const lignes = saison.adversaires.map((adv) => {
+      const rang = classement.findIndex((r) => r.clubId === adv.id) + 1;
+      const etoiles = Math.max(1, Math.min(5, Math.round(adv.niveauClub * 5)));
+      return `<tr data-club="${adv.id}"><td><span class="pointCouleurClub" style="background:${adv.couleur}"></span>${adv.nom}</td>` +
+        `<td>${'★'.repeat(etoiles)}${'☆'.repeat(5 - etoiles)}</td>` +
+        `<td>${rang}${rang === 1 ? 'er' : 'e'}/${classement.length}</td>` +
+        `<td>${adv.budget != null ? adv.budget + ' k€' : '—'}</td></tr>`;
+    }).join('');
+    conteneur.innerHTML = `<table class="tableauClub effectifCliquable"><thead><tr><th>Club</th><th>Réputation</th><th>Classement</th><th>Budget (estimé)</th></tr></thead><tbody>${lignes}</tbody></table>`;
+  }
+
+  function fermerFicheJoueurAdversaire() {
+    const detail = document.getElementById('clubJoueurAdversaireDetail');
+    if (detail) detail.style.display = 'none';
+    const corps = document.getElementById('clubAutresClubCorps');
+    if (corps) corps.style.display = '';
+  }
+
+  function fermerClubAdversaire() {
+    clubAdversaireAffiche = null;
+    const detail = document.getElementById('clubAutresClubDetail');
+    if (detail) detail.style.display = 'none';
+    const liste = document.getElementById('clubAutresClubsListe');
+    if (liste) liste.style.display = '';
+    fermerFicheJoueurAdversaire();
+  }
+
+  function ouvrirClubAdversaire(clubId) {
+    const adv = RMClub.club(saison, clubId);
+    if (!adv) return;
+    clubAdversaireAffiche = clubId;
+    document.getElementById('clubAutresClubsListe').style.display = 'none';
+    document.getElementById('clubAutresClubDetail').style.display = '';
+    const facteurAnalyste = RMClub.effetPersonnel(saison, 'analyste');
+    const seuilAnalyste = Math.max(2, Math.round(6 - (facteurAnalyste - 1) * 8));
+    const analyse = RMClub.analyserAdversaire(saison, clubId, seuilAnalyste);
+    const formeTxt = analyse.forme.length
+      ? analyse.forme.map((f) => `<span class="badgeForme ${f}">${LIBELLE_FORME[f]}</span>`).join('')
+      : '<span style="color:var(--text-faint);">Aucun match joué</span>';
+    const puces = [
+      ...analyse.forces.map((c) => `<span class="puceQualitatif force">⚠️ ${c.label} (+${c.diff})</span>`),
+      ...analyse.faiblesses.map((c) => `<span class="puceQualitatif faiblesse">✓ ${c.label} (${c.diff})</span>`),
+    ].join('');
+    const confrontations = analyse.confrontations.length
+      ? analyse.confrontations.slice().reverse().map((c) =>
+          `<div class="ligneCalendrier"><span>Saison ${c.saisonNumero}, J${c.journee}</span><span class="scoreCal"><span class="badgeForme ${c.resultat}">${LIBELLE_FORME[c.resultat]}</span> ${c.scorePour} - ${c.scoreContre}</span></div>`
+        ).join('')
+      : '<p style="font-size:12px;color:var(--text-faint);">Aucune confrontation directe pour le moment.</p>';
+    const effectifLignes = adv.effectif.map((j, index) =>
+      `<tr data-index="${index}"><td>${j.nom}</td><td>${POSTE_COMPLET[j.poste] || j.poste}</td><td>${j.age}</td>` +
+      `<td>${j.vitesse}</td><td>${j.plaquage}</td><td>${j.potentiel != null ? Math.round(j.potentiel) : '—'}</td></tr>`
+    ).join('');
+    document.getElementById('clubAutresClubIdentite').innerHTML =
+      `<div class="ficheJoueurEntete"><span><span class="nomJoueurFiche">${adv.nom}</span>` +
+      `<span class="posteJoueurFiche">${analyse.position}${analyse.position === 1 ? 'er' : 'e'}/${analyse.totalClubs} au classement · Budget estimé ${adv.budget != null ? adv.budget + ' k€' : '—'}</span></span></div>` +
+      `<p style="font-size:12px;color:var(--text-dim);margin:8px 0;">Forme récente : ${formeTxt}</p>` +
+      `<p style="font-size:12px;color:var(--text-dim);margin:0 0 8px;">Tactique habituelle (déduite de l'effectif) : ${deriverTactiqueAdversaire(adv.effectif)}</p>`;
+    document.getElementById('clubAutresClubAnalyse').innerHTML =
+      analyse.comparaison.map((c) => {
+        const total = Math.max(c.moi, c.eux) + 15;
+        const largeurEux = Math.min(100, (c.eux / total) * 100);
+        const classeFaible = c.diff < 0 ? ' faible' : '';
+        return `<div class="ligneAdversaireAttr"><span class="labelAdvAttr">${c.label}</span>` +
+          `<span class="barreComparaison"><span class="${classeFaible.trim()}" style="width:${largeurEux}%"></span></span>` +
+          `<span class="valAdv">${c.eux}</span></div>`;
+      }).join('') +
+      (puces ? `<div class="listeQualitatif">${puces}</div>` : '<p style="font-size:11.5px;color:var(--text-faint);margin:10px 0 0;">Aucun écart marqué avec ton effectif.</p>');
+    document.getElementById('clubAutresClubEffectif').innerHTML =
+      `<table class="tableauClub effectifCliquable"><thead><tr><th>Nom</th><th>Poste</th><th>Âge</th><th>Vit.</th><th>Plaq.</th><th>Potentiel</th></tr></thead><tbody>${effectifLignes}</tbody></table>`;
+    document.getElementById('clubAutresClubConfrontations').innerHTML = confrontations;
+    fermerFicheJoueurAdversaire();
+  }
+
+  function ouvrirFicheJoueurAdversaire(clubId, index) {
+    const adv = RMClub.club(saison, clubId);
+    if (!adv) return;
+    const j = adv.effectif[index];
+    if (!j) return;
+    const moral = j.moral != null ? j.moral : 65;
+    const ATTRIBUTS_FICHE = [
+      ['vitesse', 'Vitesse'], ['plaquage', 'Plaquage'], ['adresse', 'Adresse au pied'],
+      ['melee', 'Mêlée'], ['touche', 'Touche'], ['puissance', 'Puissance'],
+      ['endurance', 'Endurance'], ['passe', 'Passe'], ['jeuPied', 'Jeu au pied (courant)'],
+      ['decision', 'Décision'], ['discipline', 'Discipline'],
+    ];
+    const lignesAttributs = ATTRIBUTS_FICHE.map(([champ, label]) =>
+      j[champ] != null ? `<div class="ligneJoueur"><span>${label}</span><b>${j[champ]}</b></div>` : ''
+    ).join('');
+    document.getElementById('clubJoueurAdversaireDetail').innerHTML =
+      `<div class="ficheJoueurEntete"><span><span class="nomJoueurFiche">${j.nom}</span>` +
+      `<span class="posteJoueurFiche">${POSTE_COMPLET[j.poste] || j.poste} · ${j.age} ans · ${adv.nom}</span></span></div>` +
+      lignesAttributs +
+      (j.potentiel != null ? `<div class="ligneJoueur"><span>Potentiel estimé</span><b>${Math.round(j.potentiel)}</b></div>` : '') +
+      (j.moral != null ? `<div class="ligneJoueur"><span>Moral</span><b><span class="barreMoral${moral < 45 ? ' bas' : moral >= 80 ? ' haut' : ''}"><span style="width:${moral}%"></span></span> ${moral}%</b></div>` : '') +
+      (j.contrat != null ? `<div class="ligneJoueur"><span>Contrat</span><b>${j.contrat} an(s) restant(s) (estimation)</b></div>` : '') +
+      (j.salaire != null ? `<div class="ligneJoueur"><span>Salaire</span><b>${j.salaire} k€/saison (estimation)</b></div>` : '') +
+      (j.valeurEstimee != null ? `<div class="ligneJoueur"><span>Valeur de transfert estimée</span><b>${j.valeurEstimee} k€</b></div>` : '') +
+      (j.blessureJournees > 0 ? `<div class="ligneJoueur"><span>Blessure</span><b>${j.blessureJournees} journée(s)</b></div>` : '') +
+      `<button class="alt" id="btnFermerFicheJoueurAdversaire" style="width:100%;margin-top:14px;">← Retour à l'effectif du club</button>`;
+    document.getElementById('clubJoueurAdversaireDetail').style.display = '';
+    document.getElementById('clubAutresClubCorps').style.display = 'none';
+  }
+
   function rafraichirStatutEffectif() {
     const effectif = saison.clubJoueur.effectif;
     const blesses = effectif.filter((j) => j.blessureJournees > 0).length;
@@ -423,6 +552,24 @@
     document.getElementById('clubAlertes').innerHTML = alertes.map((a) =>
       `<div class="ligneAlerte" data-onglet="${a.onglet}"><span class="iconeAlerte">${a.icone}</span><span>${a.texte}</span></div>`
     ).join('');
+  }
+
+  // --- Boîte de réception (Mode Club) : messages RÉELS générés par les
+  // événements déjà produits par la simulation (cf. RMClub.ajouterMessage,
+  // appelé depuis club.js à chaque transfert/prêt/contrat/blessure/résultat/
+  // saison) — jamais un texte fabriqué uniquement pour l'affichage. ---
+  const ICONE_MESSAGE = { transfert: '🔁', blessure: '🤕', contrat: '📄', match: '🏉', saison: '🏆' };
+  function rafraichirMessages() {
+    const messages = saison.clubJoueur.messages || [];
+    const nonLus = messages.filter((m) => !m.lu).length;
+    const titre = document.querySelector('#carteMessages h3');
+    if (titre) titre.textContent = `Boîte de réception${nonLus ? ` (${nonLus} non lu${nonLus > 1 ? 's' : ''})` : ''}`;
+    document.getElementById('clubMessages').innerHTML = messages.length
+      ? messages.slice(0, 15).map((m) =>
+          `<div class="ligneMessage${m.lu ? '' : ' nonLu'}" data-msg="${m.id}"><span class="iconeMessage">${ICONE_MESSAGE[m.categorie] || '📬'}</span>` +
+          `<span class="corpsMessage"><b>${m.titre}</b><span>${m.corps}</span><span class="metaMessage">Saison ${m.saisonNumero}</span></span></div>`
+        ).join('')
+      : '<p style="font-size:12px;color:var(--text-faint);">Aucun message pour le moment.</p>';
   }
 
   function rafraichirFinancesApercu() {
@@ -626,6 +773,7 @@
       v.style.display = v.dataset.volet === cle ? '' : 'none';
     });
     fermerFicheJoueur(); // change d'onglet = referme toute fiche laissée ouverte
+    fermerClubAdversaire(); // idem pour la fiche d'un club adverse ouverte dans l'onglet Autres clubs
   }
 
   // Groupé par journée (un en-tête toutes les n/2 lignes) : à plat, 30
@@ -838,6 +986,8 @@
     rafraichirTopBarInfos();
     rafraichirProchainMatch();
     rafraichirAdversaire();
+    rafraichirMessages();
+    rafraichirAutresClubs();
     rafraichirDerniersResultats();
     rafraichirMiniClassement();
     rafraichirAlertes();
@@ -887,6 +1037,37 @@
     const ligne = e.target.closest('.ligneAlerte');
     if (!ligne) return;
     basculerOnglet(ligne.dataset.onglet);
+  });
+
+  // --- Boîte de réception : marquer un message lu au clic, ou tous d'un coup ---
+  document.getElementById('clubMessages').addEventListener('click', (e) => {
+    const ligne = e.target.closest('.ligneMessage');
+    if (!ligne) return;
+    RMClub.marquerMessageLu(saison, ligne.dataset.msg);
+    RMClub.sauvegarderSaison(saison);
+    rafraichirMessages();
+  });
+  document.getElementById('btnMessagesTousLus').addEventListener('click', () => {
+    RMClub.marquerTousMessagesLus(saison);
+    RMClub.sauvegarderSaison(saison);
+    rafraichirMessages();
+  });
+
+  // --- Autres clubs : liste cliquable → détail d'un club → fiche joueur
+  // adverse en lecture seule (cf. ouvrirClubAdversaire/ouvrirFicheJoueurAdversaire) ---
+  document.getElementById('clubAutresClubsListe').addEventListener('click', (e) => {
+    const ligne = e.target.closest('tr[data-club]');
+    if (!ligne) return;
+    ouvrirClubAdversaire(ligne.dataset.club);
+  });
+  document.getElementById('btnFermerClubAdversaire').addEventListener('click', fermerClubAdversaire);
+  document.getElementById('clubAutresClubEffectif').addEventListener('click', (e) => {
+    const ligne = e.target.closest('tr[data-index]');
+    if (!ligne || !clubAdversaireAffiche) return;
+    ouvrirFicheJoueurAdversaire(clubAdversaireAffiche, Number(ligne.dataset.index));
+  });
+  document.getElementById('clubJoueurAdversaireDetail').addEventListener('click', (e) => {
+    if (e.target.id === 'btnFermerFicheJoueurAdversaire') fermerFicheJoueurAdversaire();
   });
 
   document.getElementById('btnCreerClub').addEventListener('click', () => {
@@ -1223,6 +1404,13 @@
           onResultat(etat) {
             RMClub.enregistrerResultat(saison, matchJoueur.id, etat.score.A, etat.score.B, etat.stats.A.essais, etat.stats.B.essais);
             const forme = formeApres(matchJoueur, etat.score.A, etat.score.B);
+            // Historique des confrontations + message de résultat RÉEL (cf.
+            // RMClub.enregistrerResultatClubJoueur) — uniquement pour le match
+            // du club du joueur, pas les rencontres IA-IA simulées à côté.
+            const adversaireId = estClubJoueur(matchJoueur.domicileId) ? matchJoueur.exterieurId : matchJoueur.domicileId;
+            const scorePour = lettreJoueur === 'A' ? etat.score.A : etat.score.B;
+            const scoreContre = lettreJoueur === 'A' ? etat.score.B : etat.score.A;
+            RMClub.enregistrerResultatClubJoueur(saison, adversaireId, scorePour, scoreContre, matchJoueur.journee);
             const mouvement = RMClub.appliquerFinancesMatch(saison.clubJoueur, forme);
             RMClub.enregistrerMouvementFinances(saison.clubJoueur, matchJoueur.journee, mouvement);
             RMClub.accumulerStats(saison.clubJoueur, etat.stats[lettreJoueur]);
@@ -1231,7 +1419,7 @@
             // médecin/l'entraîneur accélèrent (facteur >=1 direct), le
             // préparateur physique réduit la fatigue (facteur <1, donc
             // l'inverse de effetPersonnel qui exprime une qualité >=1).
-            RMClub.faireProgresserBlessures(creerRng(graineAleatoire()), saison.clubJoueur.effectif, compositionUtilisee, RMClub.effetPersonnel(saison, 'medecin'));
+            RMClub.faireProgresserBlessures(creerRng(graineAleatoire()), saison.clubJoueur.effectif, compositionUtilisee, RMClub.effetPersonnel(saison, 'medecin'), saison);
             RMClub.appliquerFatigue(saison.clubJoueur.effectif, compositionUtilisee, 1 / RMClub.effetPersonnel(saison, 'preparateur'));
             RMClub.appliquerMoral(saison.clubJoueur.effectif, compositionUtilisee, forme);
             RMClub.progresserPrets(saison.clubJoueur.effectif);

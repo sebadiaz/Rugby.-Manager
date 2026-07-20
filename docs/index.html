@@ -143,6 +143,7 @@
         <button class="ongletBtn" data-onglet="entrainement">🏋️ <span>Entraînement</span></button>
         <button class="ongletBtn" data-onglet="transferts">🔁 <span>Recrutement</span></button>
         <button class="ongletBtn" data-onglet="personnel">🧑‍⚕️ <span>Personnel</span></button>
+        <button class="ongletBtn" data-onglet="autresclubs">🏟️ <span>Autres clubs</span></button>
         <button class="ongletBtn" data-onglet="calendrier">📅 <span>Calendrier</span></button>
         <button class="ongletBtn" data-onglet="finances">💰 <span>Finances</span></button>
         <button class="ongletBtn" data-onglet="medical">🩺 <span>Médical</span></button>
@@ -173,6 +174,17 @@
           <div class="carteClub" id="carteAlertes" style="display:none;">
             <h3>Décisions & alertes</h3>
             <div id="clubAlertes"></div>
+          </div>
+          <!-- Boîte de réception : messages RÉELS générés par les événements
+               déjà produits par la simulation (transferts, prêts, contrats,
+               blessures, résultats, changements de saison) — cf. clubUI.js,
+               RMClub.ajouterMessage (appelé depuis club.js). -->
+          <div class="carteClub" id="carteMessages">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <h3 style="margin:0;">Boîte de réception</h3>
+              <button id="btnMessagesTousLus" class="alt" style="flex:0 0 auto;width:auto;padding:8px 12px;font-size:12px;">Tout marquer comme lu</button>
+            </div>
+            <div id="clubMessages"></div>
           </div>
           <!-- Analyse du prochain adversaire : moyennes d'attributs RÉELLES de
                son effectif comparées aux tiennes + sa forme récente réelle
@@ -313,6 +325,31 @@
               <button id="btnRafraichirPersonnel" class="alt" style="flex:0 0 auto;width:auto;padding:8px 12px;font-size:12px;">🔄 Rafraîchir</button>
             </div>
             <div id="clubPersonnelMarche"></div>
+          </div>
+        </div>
+
+        <!-- Autres clubs : consultation de N'IMPORTE quel adversaire (pas
+             seulement le prochain) — identité, effectif complet avec fiche
+             joueur en lecture seule, tactique déduite des attributs réels,
+             forces/faiblesses et historique des confrontations directes
+             (cf. clubUI.js, RMClub.analyserAdversaire/enregistrerResultatClubJoueur). -->
+        <div class="voletOnglet" data-volet="autresclubs" style="display:none;">
+          <div class="carteClub">
+            <h3>Autres clubs</h3>
+            <div id="clubAutresClubsListe"></div>
+          </div>
+          <div class="carteClub" id="clubAutresClubDetail" style="display:none;">
+            <button id="btnFermerClubAdversaire" class="alt" style="width:100%;margin-bottom:12px;">← Retour à la liste des clubs</button>
+            <div id="clubAutresClubCorps">
+              <div id="clubAutresClubIdentite"></div>
+              <h4 style="margin:14px 0 6px;">Comparaison d'effectif</h4>
+              <div id="clubAutresClubAnalyse"></div>
+              <h4 style="margin:14px 0 6px;">Effectif</h4>
+              <div id="clubAutresClubEffectif"></div>
+              <h4 style="margin:14px 0 6px;">Confrontations directes</h4>
+              <div id="clubAutresClubConfrontations"></div>
+            </div>
+            <div id="clubJoueurAdversaireDetail" style="display:none;"></div>
           </div>
         </div>
 
