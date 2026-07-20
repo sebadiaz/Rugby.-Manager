@@ -568,3 +568,73 @@ select {
 .detailResultat { color: var(--text-dim); font-size: 13px; margin: 0 0 4px; }
 .noteFacultatif { color: var(--text-faint); font-size: 11.5px; margin: 0 0 18px; }
 #panneauResultat .accueilContenu button { margin-top: 8px; }
+
+/* ---------- Entraînement ---------- */
+.ligneJeune {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 9px 0; border-bottom: 1px solid var(--border); font-size: 12.5px; gap: 10px;
+}
+.ligneJeune:last-child { border-bottom: none; }
+.ligneJeune .infosJeune { display: flex; flex-direction: column; }
+.ligneJeune .infosJeune b { font-size: 13px; }
+.ligneJeune .infosJeune span { color: var(--text-dim); font-size: 11.5px; }
+.jaugePotentiel {
+  display: inline-block; width: 70px; height: 7px; border-radius: 4px;
+  background: var(--surface-2); overflow: hidden; vertical-align: middle;
+}
+.jaugePotentiel > span { display: block; height: 100%; background: var(--win); }
+
+/* ---------- Recrutement : favoris & comparaison ---------- */
+.btnFavori {
+  flex: 0 0 auto; width: auto; min-width: 0; padding: 6px 9px; font-size: 14px;
+  background: transparent; border-color: var(--border-strong);
+}
+.btnFavori.actif { color: var(--accent); border-color: var(--accent); }
+.caseComparaison { flex: 0 0 auto; display: flex; align-items: center; margin-right: 4px; }
+.caseComparaison input { accent-color: var(--accent); }
+.tableComparaison { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 4px; }
+.tableComparaison th, .tableComparaison td {
+  padding: 7px 6px; border-bottom: 1px solid var(--border); text-align: center;
+}
+.tableComparaison th:first-child, .tableComparaison td:first-child { text-align: left; color: var(--text-faint); }
+.tableComparaison td.meilleur { color: var(--win); font-weight: 800; }
+
+/* ---------- Analyse de l'adversaire ---------- */
+.ligneAdversaireAttr {
+  display: flex; align-items: center; gap: 8px; padding: 6px 0;
+  border-bottom: 1px solid var(--border); font-size: 12px;
+}
+.ligneAdversaireAttr:last-child { border-bottom: none; }
+.ligneAdversaireAttr .labelAdvAttr { flex: 0 0 108px; color: var(--text-dim); }
+.ligneAdversaireAttr .barreComparaison {
+  flex: 1; height: 8px; border-radius: 4px; background: var(--surface-2);
+  position: relative; overflow: hidden;
+}
+.ligneAdversaireAttr .barreComparaison > span {
+  position: absolute; top: 0; bottom: 0; background: var(--team-b);
+}
+.ligneAdversaireAttr .barreComparaison > span.faible { background: var(--win); }
+.ligneAdversaireAttr .valAdv { flex: 0 0 34px; text-align: right; font-variant-numeric: tabular-nums; }
+.listeQualitatif { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.puceQualitatif {
+  font-size: 11px; padding: 4px 9px; border-radius: 999px; font-weight: 700;
+}
+.puceQualitatif.force { background: rgba(239, 71, 111, 0.15); color: var(--loss); }
+.puceQualitatif.faiblesse { background: rgba(58, 196, 125, 0.15); color: var(--win); }
+
+/* ---------- Bilan : marqueurs & historique multi-saisons ---------- */
+.ligneMarqueur {
+  display: flex; align-items: center; gap: 10px; padding: 8px 0;
+  border-bottom: 1px solid var(--border); font-size: 12.5px;
+}
+.ligneMarqueur:last-child { border-bottom: none; }
+.ligneMarqueur .rangMarqueur {
+  flex: 0 0 22px; text-align: center; font-weight: 800; color: var(--text-faint);
+}
+.ligneMarqueur .nomMarqueur { flex: 1; }
+.ligneMarqueur .totalMarqueur { font-weight: 800; font-variant-numeric: tabular-nums; color: var(--accent); }
+
+/* ---------- Effet réel d'un choix tactique (lisibilité/compromis) ---------- */
+.effetTactique {
+  font-size: 11px; color: var(--text-faint); margin: -6px 0 8px; padding-left: 2px;
+}

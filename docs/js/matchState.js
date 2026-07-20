@@ -34,6 +34,9 @@
       // Statistiques cumulées par équipe (cf. MatchEngine._statsVierges/getState),
       // toutes dérivées des actions réellement jouées dans la simulation.
       stats: rawState.stats,
+      // Même principe, ventilé PAR JOUEUR (numéro), cf. MatchEngine._statJoueur —
+      // consommé par le Mode Club pour le classement des marqueurs/fiche joueur.
+      statsJoueurs: rawState.statsJoueurs,
       // Objet ballon normalisé { x, y, vx, vy, state, carrierTeam, carrierNumber }
       // exposé directement par le moteur (cf. MatchEngine.getState()).
       ball: rawState.ball,

@@ -62,9 +62,40 @@
 
   let compteurJoueurId = 1;
   function borneStat(v) { return Math.max(30, Math.min(95, Math.round(v))); }
-  // Adresse au pied : plage plus large que vitesse/plaquage (un avant peut être
-  // vraiment mauvais buteur, 10-20) — cf. engine/rugby-engine.js probaReussiteTir.
+  // Adresse/attributs de profondeur : plage plus large que vitesse/plaquage
+  // (un avant peut être un très mauvais buteur ou passeur, 10-20) — cf.
+  // engine/rugby-engine.js (probaReussiteTir, forceMelee, forceTouche...).
   function borneAdresse(v) { return Math.max(10, Math.min(95, Math.round(v))); }
+  const borneCompetence = borneAdresse;
+
+  // Attributs de profondeur générés pour un joueur (0-100 chacun), dérivés de
+  // l'archétype de poste (`base`, cf. ARCHETYPE_PAR_POSTE/DEFAULT_CONFIG.joueurs
+  // — donc réellement différenciés avant/trois-quarts) + le niveau du club et
+  // du bruit individuel, EXACTEMENT comme vitesse/plaquage/adresse ci-dessus.
+  // Chacun a un effet réel et distinct dans engine/rugby-engine.js.
+  function genererAttributsProfondeur(base, ecartNiveau, rng) {
+    const bruit = () => (rng() * 12 - 6);
+    const dep = (champ, defaut) => (base[champ] != null ? base[champ] : defaut);
+    return {
+      melee: borneCompetence(dep('melee', 40) + ecartNiveau * 0.6 + bruit()),
+      touche: borneCompetence(dep('touche', 40) + ecartNiveau * 0.6 + bruit()),
+      puissance: borneCompetence(dep('puissance', 55) + ecartNiveau * 0.7 + bruit()),
+      endurance: borneCompetence(dep('endurance', 65) + ecartNiveau * 0.4 + bruit()),
+      passe: borneCompetence(dep('passe', 50) + ecartNiveau * 0.6 + bruit()),
+      jeuPied: borneCompetence(dep('jeuPied', 30) + ecartNiveau * 0.5 + bruit()),
+      decision: borneCompetence(dep('decision', 55) + ecartNiveau * 0.6 + bruit()),
+      discipline: borneCompetence(dep('discipline', 55) + ecartNiveau * 0.4 + bruit()),
+    };
+  }
+
+  // Potentiel (0-99) : plafond de progression pour l'entraînement/le
+  // vieillissement (cf. appliquerEntrainement/avancerSaison) — un jeune joueur
+  // a une marge de progression réelle au-dessus de son niveau actuel, un
+  // joueur déjà mûr est proche de son potentiel (plus rien à développer).
+  function genererPotentiel(niveauActuel, age, rng) {
+    const margeJeunesse = Math.max(0, 25 - age) * (0.9 + rng() * 1.6);
+    return Math.max(niveauActuel, Math.min(99, Math.round(niveauActuel + margeJeunesse)));
+  }
 
   // Salaire annuel (k€, fictif) : proportionnel au niveau, avec une prime pour
   // les joueurs en pleine maturité (25-29 ans) — jeunes espoirs et joueurs
@@ -90,16 +121,24 @@
     const vitesse = borneStat(base.vitesse + ecartNiveau + bruit());
     const plaquage = borneStat(base.plaquage + ecartNiveau + bruit());
     const adresse = borneAdresse((base.adresse != null ? base.adresse : 30) + ecartNiveau * 0.5 + bruit());
+    const attributs = genererAttributsProfondeur(base, ecartNiveau, rng);
+    const niveauActuel = (vitesse + plaquage + attributs.melee + attributs.touche
+      + attributs.puissance + attributs.passe + attributs.jeuPied) / 7;
     return {
       id: 'j' + compteurJoueurId++,
       nom: genererNomJoueur(rng),
       poste, age, vitesse, plaquage, adresse,
+      melee: attributs.melee, touche: attributs.touche, puissance: attributs.puissance,
+      endurance: attributs.endurance, passe: attributs.passe, jeuPied: attributs.jeuPied,
+      decision: attributs.decision, discipline: attributs.discipline,
+      potentiel: genererPotentiel(niveauActuel, age, rng),
       tendance: base.tendance, couloir: base.couloir,
       contrat: 1 + Math.floor(rng() * 4), // saisons restantes (1-4)
       salaire: calculerSalaire(vitesse, plaquage, age),
       blessureJournees: 0, // >0 = indisponible pour ce nombre de journées
       fatigue: 0, // 0-100, cf. appliquerFatigue — répercutée sur les stats effectives en match
       matchsJoues: 0, // compteur RÉEL de titularisations cette saison (fiche joueur)
+      statsSaison: null, // cf. accumulerStatsJoueurs — jamais fabriqué, alimenté match après match
     };
   }
 
@@ -114,6 +153,7 @@
     const base = DEFAULT_CONFIG.joueurs[numero];
     const ecartNiveau = (niveauClub - 0.5) * 20;
     const bruit = () => (rng() * 12 - 6);
+    const attributs = genererAttributsProfondeur(base, ecartNiveau, rng);
     return {
       numero,
       nom: genererNomJoueur(rng),
@@ -122,6 +162,9 @@
       vitesse: borneStat(base.vitesse + ecartNiveau + bruit()),
       plaquage: borneStat(base.plaquage + ecartNiveau + bruit()),
       adresse: borneAdresse((base.adresse != null ? base.adresse : 30) + ecartNiveau * 0.5 + bruit()),
+      melee: attributs.melee, touche: attributs.touche, puissance: attributs.puissance,
+      endurance: attributs.endurance, passe: attributs.passe, jeuPied: attributs.jeuPied,
+      decision: attributs.decision, discipline: attributs.discipline,
       tendance: base.tendance,
       couloir: base.couloir,
     };
@@ -178,6 +221,13 @@
       capitaineId: null,
       buteurId: null,
       lanceurToucheId: null,
+      // Programme d'entraînement choisi (cf. ENTRAINEMENTS) — 'physique' par
+      // défaut (bénéficie à tout l'effectif), appliqué à chaque journée jouée.
+      entrainementFocus: 'physique',
+      // Historique RÉEL de fin de saison (classement, bilan, essais, budget) —
+      // alimenté à chaque avancerSaison, jamais recalculé après coup. Sert
+      // l'écran Bilan ("évolution sur plusieurs saisons").
+      historiqueSaisons: [],
     };
   }
 
@@ -199,6 +249,40 @@
     }
   }
 
+  // Accumule les stats RÉELLES d'un joueur (essais, passes, plaquages, mètres)
+  // sur la saison — alimenté depuis etat.statsJoueurs[team][numero] du moteur
+  // (cf. engine/rugby-engine.js _statJoueur) via la composition du jour
+  // (numéro -> id), jamais déduit ou estimé après coup. Sert le classement
+  // des marqueurs et la fiche joueur (cf. onglet Bilan).
+  function accumulerStatsJoueurs(effectif, composition, statsJoueursMatch) {
+    if (!statsJoueursMatch || !composition) return;
+    const parId = {};
+    for (const j of effectif) parId[j.id] = j;
+    for (const numero of Object.keys(composition)) {
+      const joueur = parId[composition[numero]];
+      const s = statsJoueursMatch[numero];
+      if (!joueur || !s) continue;
+      if (!joueur.statsSaison) {
+        joueur.statsSaison = { matchsJoues: 0, essais: 0, passes: 0, tacklesMade: 0, tacklesAttempted: 0, metresGagnes: 0 };
+      }
+      joueur.statsSaison.matchsJoues++;
+      joueur.statsSaison.essais += s.essais || 0;
+      joueur.statsSaison.passes += s.passes || 0;
+      joueur.statsSaison.tacklesMade += s.tacklesMade || 0;
+      joueur.statsSaison.tacklesAttempted += s.tacklesAttempted || 0;
+      joueur.statsSaison.metresGagnes += s.metresGagnes || 0;
+    }
+  }
+
+  // Classement des marqueurs (et, plus largement, meilleurs joueurs par
+  // critère) de la saison en cours — trié directement depuis statsSaison,
+  // jamais une liste inventée.
+  function classementMarqueurs(effectif, limite) {
+    return effectif.filter((j) => j.statsSaison && j.statsSaison.essais > 0)
+      .sort((a, b) => b.statsSaison.essais - a.statsSaison.essais)
+      .slice(0, limite || 10);
+  }
+
   // Ajoute un mouvement au journal financier (borné aux 15 derniers, pour
   // l'onglet Finances) — appelé après appliquerFinancesMatch avec son résultat.
   function enregistrerMouvementFinances(club, journee, mouvement) {
@@ -218,49 +302,49 @@
     style: {
       label: 'Largeur du jeu', defaut: 'equilibre',
       options: {
-        sol: { nom: 'Jeu au sol', description: 'Reste près du regroupement, limite les prises de risque au large.', attaque: { jeuLargeTaux: { pression: 1.1, calme: 0.9 } } },
-        equilibre: { nom: 'Équilibré', description: 'Ni resserré, ni systématiquement porté au large.', attaque: null },
-        large: { nom: 'Jeu au large', description: 'Cherche l\'espace au large à chaque occasion.', attaque: { jeuLargeTaux: { pression: 2.3, calme: 2.0 } } },
+        sol: { nom: 'Jeu au sol', description: 'Reste près du regroupement, limite les prises de risque au large.', compromis: 'Plus sûr (moins de turnovers au large), mais avance moins vite contre une défense qui monte.', attaque: { jeuLargeTaux: { pression: 1.1, calme: 0.9 } } },
+        equilibre: { nom: 'Équilibré', description: 'Ni resserré, ni systématiquement porté au large.', compromis: 'Réglage neutre du moteur — aucun compromis appliqué.', attaque: null },
+        large: { nom: 'Jeu au large', description: 'Cherche l\'espace au large à chaque occasion.', compromis: 'Plus d\'essais possibles en bout de ligne, mais plus de passes = plus de risques d\'en-avant.', attaque: { jeuLargeTaux: { pression: 2.3, calme: 2.0 } } },
       },
     },
     avants: {
       label: 'Jeu d\'avants', defaut: 'equilibre',
       options: {
-        proche: { nom: 'Près du ruck', description: 'Le n°8 privilégie le pick-and-go au près plutôt qu\'une sortie rapide aux trois-quarts.', melee: { pickAndGoHuit: { dominant: 0.6, normal: 0.22 } } },
-        equilibre: { nom: 'Équilibré', description: 'Sortie de mêlée standard, décision au cas par cas.', melee: null },
-        large: { nom: 'Ouvert aux 3/4', description: 'Sort vite le ballon aux trois-quarts, peu de pick-and-go.', melee: { pickAndGoHuit: { dominant: 0.15, normal: 0.05 } } },
+        proche: { nom: 'Près du ruck', description: 'Le n°8 privilégie le pick-and-go au près plutôt qu\'une sortie rapide aux trois-quarts.', compromis: 'Conserve mieux le ballon près du regroupement, mais le jeu avance plus lentement (moins de rythme).', melee: { pickAndGoHuit: { dominant: 0.6, normal: 0.22 } } },
+        equilibre: { nom: 'Équilibré', description: 'Sortie de mêlée standard, décision au cas par cas.', compromis: 'Réglage neutre du moteur — aucun compromis appliqué.', melee: null },
+        large: { nom: 'Ouvert aux 3/4', description: 'Sort vite le ballon aux trois-quarts, peu de pick-and-go.', compromis: 'Exploite mieux la vitesse des trois-quarts, mais moins de temps de jeu conservé par les avants.', melee: { pickAndGoHuit: { dominant: 0.15, normal: 0.05 } } },
       },
     },
     rythme: {
       label: 'Rythme du jeu', defaut: 'normal',
       options: {
-        lent: { nom: 'Contrôlé', description: 'Rucks plus longs : on ralentit le jeu et on garde le contrôle du ballon.', ruck: { profil: [[0.55, 2.0, 2.0], [0.33, 4.0, 4.0], [0.12, 8.0, 2.6]] } },
-        normal: { nom: 'Normal', description: 'Rythme de recyclage standard.', ruck: null },
-        rapide: { nom: 'Rapide', description: 'Ballon recyclé au plus vite pour prendre la défense de vitesse.', ruck: { profil: [[0.55, 1.0, 1.0], [0.33, 2.0, 2.0], [0.12, 4.0, 1.4]] } },
+        lent: { nom: 'Contrôlé', description: 'Rucks plus longs : on ralentit le jeu et on garde le contrôle du ballon.', compromis: 'Réduit les prises de risque et la fatigue défensive adverse monte lentement, mais laisse à la défense le temps de se replacer.', ruck: { profil: [[0.55, 2.0, 2.0], [0.33, 4.0, 4.0], [0.12, 8.0, 2.6]] } },
+        normal: { nom: 'Normal', description: 'Rythme de recyclage standard.', compromis: 'Réglage neutre du moteur — aucun compromis appliqué.', ruck: null },
+        rapide: { nom: 'Rapide', description: 'Ballon recyclé au plus vite pour prendre la défense de vitesse.', compromis: 'Plus de phases de jeu et une défense prise de vitesse, mais plus de rucks = plus d\'occasions de faute.', ruck: { profil: [[0.55, 1.0, 1.0], [0.33, 2.0, 2.0], [0.12, 4.0, 1.4]] } },
       },
     },
     pied: {
       label: 'Occupation au pied', defaut: 'normal',
       options: {
-        rare: { nom: 'Rare', description: 'Privilégie la conservation du ballon en main.', attaque: { tauxJeuAuPied: 0.5 } },
-        normal: { nom: 'Normal', description: 'Fréquence de coups de pied standard.', attaque: null },
-        frequent: { nom: 'Fréquent', description: 'Beaucoup de coups de pied pour occuper le camp adverse.', attaque: { tauxJeuAuPied: 2.5 } },
+        rare: { nom: 'Rare', description: 'Privilégie la conservation du ballon en main.', compromis: 'Garde le ballon (plus de possession), mais occupe moins le camp adverse.', attaque: { tauxJeuAuPied: 0.5 } },
+        normal: { nom: 'Normal', description: 'Fréquence de coups de pied standard.', compromis: 'Réglage neutre du moteur — aucun compromis appliqué.', attaque: null },
+        frequent: { nom: 'Fréquent', description: 'Beaucoup de coups de pied pour occuper le camp adverse.', compromis: 'Gagne du terrain et de l\'occupation, mais cède la possession à chaque coup de pied.', attaque: { tauxJeuAuPied: 2.5 } },
       },
     },
     ligneDef: {
       label: 'Défense', defaut: 'normale',
       options: {
-        basse: { nom: 'Basse', description: 'Défense prudente et repliée, moins de risques à la montée, reste groupée au ruck.', defense: { rampeMontee: 3.5, profondeurArriereJeu: 22, profondeurArriereMelee: 24, reculRuck: 4.5 } },
-        normale: { nom: 'Normale', description: 'Hauteur de ligne standard.', defense: null },
-        haute: { nom: 'Haute', description: 'Presse haut et vite, y compris au ruck — plus risqué si elle est percée.', defense: { rampeMontee: 1.5, profondeurArriereJeu: 15, profondeurArriereMelee: 17, reculRuck: 2 } },
+        basse: { nom: 'Basse', description: 'Défense prudente et repliée, moins de risques à la montée, reste groupée au ruck.', compromis: 'Réduit le risque d\'être percée dans le dos, mais laisse plus d\'espace/de temps à l\'attaque adverse.', defense: { rampeMontee: 3.5, profondeurArriereJeu: 22, profondeurArriereMelee: 24, reculRuck: 4.5 } },
+        normale: { nom: 'Normale', description: 'Hauteur de ligne standard.', compromis: 'Réglage neutre du moteur — aucun compromis appliqué.', defense: null },
+        haute: { nom: 'Haute', description: 'Presse haut et vite, y compris au ruck — plus risqué si elle est percée.', compromis: 'Étouffe l\'attaque adverse plus tôt, mais une brèche se transforme plus souvent en franchissement.', defense: { rampeMontee: 1.5, profondeurArriereJeu: 15, profondeurArriereMelee: 17, reculRuck: 2 } },
       },
     },
     toucheMaul: {
       label: 'Touche & maul', defaut: 'equilibre',
       options: {
-        sol: { nom: 'Jeu au sol', description: 'Sort vite le ballon de touche, évite le maul.', touche: { tauxMaul: { proche: 0.15, loin: 0.02 } } },
-        equilibre: { nom: 'Équilibré', description: 'Maul selon l\'opportunité, comme la moyenne.', touche: null },
-        maul: { nom: 'Conquête (maul)', description: 'Cherche systématiquement le maul après une touche gagnée en zone proche.', touche: { tauxMaul: { proche: 0.85, loin: 0.15 } } },
+        sol: { nom: 'Jeu au sol', description: 'Sort vite le ballon de touche, évite le maul.', compromis: 'Ballon disponible plus vite pour le jeu au large, mais renonce à l\'avancée physique du maul.', touche: { tauxMaul: { proche: 0.15, loin: 0.02 } } },
+        equilibre: { nom: 'Équilibré', description: 'Maul selon l\'opportunité, comme la moyenne.', compromis: 'Réglage neutre du moteur — aucun compromis appliqué.', touche: null },
+        maul: { nom: 'Conquête (maul)', description: 'Cherche systématiquement le maul après une touche gagnée en zone proche.', compromis: 'Très efficace près de la ligne adverse (essais de maul), mais expose à l\'écroulement/pénalité si le pack est dominé.', touche: { tauxMaul: { proche: 0.85, loin: 0.15 } } },
       },
     },
   };
@@ -294,7 +378,11 @@
   function effectifVersJoueursCfg(club) {
     const cfg = {};
     for (const j of club.effectif) {
-      cfg[j.numero] = { poste: j.poste, vitesse: j.vitesse, plaquage: j.plaquage, tendance: j.tendance, couloir: j.couloir, adresse: j.adresse };
+      cfg[j.numero] = {
+        poste: j.poste, vitesse: j.vitesse, plaquage: j.plaquage, tendance: j.tendance, couloir: j.couloir,
+        adresse: j.adresse, melee: j.melee, touche: j.touche, puissance: j.puissance,
+        endurance: j.endurance, passe: j.passe, jeuPied: j.jeuPied, decision: j.decision, discipline: j.discipline,
+      };
     }
     return cfg;
   }
@@ -317,6 +405,9 @@
         vitesse: Math.max(20, j.vitesse - malusFatigue),
         plaquage: Math.max(20, j.plaquage - malusFatigue),
         tendance: j.tendance, couloir: j.couloir, adresse: j.adresse,
+        melee: j.melee, touche: j.touche, puissance: j.puissance,
+        endurance: j.endurance, passe: j.passe, jeuPied: j.jeuPied,
+        decision: j.decision, discipline: j.discipline,
       };
     }
     return cfg;
@@ -447,11 +538,49 @@
   function appliquerFatigue(effectif, compositionTitulaires) {
     const titulairesIds = new Set(Object.values(compositionTitulaires || {}));
     for (const j of effectif) {
+      // Endurance (0-100, neutre 60 = comportement historique inchangé) :
+      // un joueur endurant encaisse moins de fatigue et récupère plus vite,
+      // un joueur peu endurant l'inverse — borné pour rester réaliste.
+      const endurance = j.endurance != null ? j.endurance : 60;
       if (titulairesIds.has(j.id)) {
-        j.fatigue = Math.min(100, (j.fatigue || 0) + 32);
+        const facteurGain = Math.max(0.5, Math.min(1.6, 1 + (60 - endurance) / 75));
+        j.fatigue = Math.min(100, (j.fatigue || 0) + Math.round(32 * facteurGain));
         j.matchsJoues = (j.matchsJoues || 0) + 1;
       } else {
-        j.fatigue = Math.max(0, (j.fatigue || 0) - 22);
+        const facteurRecup = Math.max(0.5, Math.min(1.6, 1 + (endurance - 60) / 75));
+        j.fatigue = Math.max(0, (j.fatigue || 0) - Math.round(22 * facteurRecup));
+      }
+    }
+  }
+
+  // --- Entraînement (Mode Club) : un programme choisi par le joueur nudge
+  // réellement les attributs correspondants, borné par le potentiel de
+  // chacun et sa fenêtre d'âge — appelé une fois par journée jouée, comme
+  // appliquerFatigue/faireProgresserBlessures. Jamais un simple badge : les
+  // valeurs affichées dans la fiche joueur bougent vraiment. ---
+  const ENTRAINEMENTS = {
+    melee: { label: 'Mêlée', description: 'Renforce la technique de poussée en mêlée des avants.', attributs: ['melee'], postes: ['P', 'T', '2L', '3L'] },
+    touche: { label: 'Touche', description: 'Améliore la contestation en touche (sauteurs et soutiens).', attributs: ['touche'], postes: ['2L', '3L', 'T'] },
+    physique: { label: 'Physique', description: "Développe puissance et endurance de tout l'effectif.", attributs: ['puissance', 'endurance'], postes: null },
+    main: { label: 'Jeu de main', description: 'Travaille la passe et la prise de décision au contact.', attributs: ['passe', 'decision'], postes: ['DM', 'OV', 'CE', 'AI', 'AR'] },
+    pied: { label: 'Jeu au pied', description: 'Perfectionne la précision au pied (buts et jeu courant).', attributs: ['jeuPied', 'adresse'], postes: ['DM', 'OV', 'AR'] },
+    discipline: { label: 'Discipline', description: 'Réduit les fautes concédées, notamment en mêlée et au maul.', attributs: ['discipline'], postes: null },
+  };
+  function appliquerEntrainement(rng, effectif, focus) {
+    const programme = ENTRAINEMENTS[focus];
+    if (!programme) return;
+    for (const j of effectif) {
+      if (programme.postes && !programme.postes.includes(j.poste)) continue;
+      if (j.age >= 32) continue; // progression réservée aux joueurs encore en développement
+      const potentiel = j.potentiel != null ? j.potentiel : 70;
+      // Progression graduelle et probabiliste (pas à chaque journée pour
+      // chaque joueur, sinon tout le monde plafonnerait en 3 semaines) —
+      // jamais au-delà du potentiel individuel.
+      if (rng() >= 0.35) continue;
+      for (const attr of programme.attributs) {
+        const actuel = j[attr] != null ? j[attr] : 60;
+        if (actuel >= potentiel) continue;
+        j[attr] = Math.min(potentiel, actuel + 1);
       }
     }
   }
@@ -542,6 +671,9 @@
     delete joueur.connaissance; delete joueur.ecartVitesse; delete joueur.ecartPlaquage;
     saison.clubJoueur.effectif.push(joueur);
     saison.marche.splice(i, 1);
+    // Un favori signé n'est plus "à scouter" : retiré de la liste (cf.
+    // basculerFavori) pour ne pas laisser une entrée déjà recrutée dessus.
+    if (saison.favoris) saison.favoris = saison.favoris.filter((j) => j.id !== joueurId);
     return { ok: true };
   }
 
@@ -569,6 +701,81 @@
       }
     }
     return { ok: true };
+  }
+
+  // --- Renouvellement de contrat (Mode Club) : une offre RÉELLE calculée
+  // depuis le niveau et l'âge actuels du joueur (pas un chiffre décoratif) ;
+  // l'accepter modifie vraiment contrat/salaire, donc la masse salariale et
+  // le budget dès la prochaine journée. ---
+  function calculerOffreRenouvellement(joueur) {
+    const dureeMax = joueur.age >= 32 ? 1 : joueur.age >= 29 ? 2 : 3;
+    const salaire = calculerSalaire(joueur.vitesse, joueur.plaquage, joueur.age);
+    return { dureeMax, salaire };
+  }
+  function renouvelerContrat(saison, joueurId, duree) {
+    const joueur = saison.clubJoueur.effectif.find((j) => j.id === joueurId);
+    if (!joueur) return { ok: false, motif: 'introuvable' };
+    const offre = calculerOffreRenouvellement(joueur);
+    const dureeFinale = Math.max(1, Math.min(offre.dureeMax, duree || offre.dureeMax));
+    joueur.contrat = dureeFinale;
+    joueur.salaire = offre.salaire;
+    return { ok: true, contrat: joueur.contrat, salaire: joueur.salaire };
+  }
+
+  // --- Centre de scouting : liste de favoris (Mode Club) — les entrées du
+  // marché sont régénérées à chaque rafraîchissement, donc un favori est une
+  // COPIE conservée indépendamment (jamais une simple référence qui
+  // disparaîtrait au prochain "Rafraîchir"). Nettoyé automatiquement si le
+  // joueur est finalement signé (cf. signerJoueur). ---
+  function basculerFavori(saison, joueur) {
+    if (!saison.favoris) saison.favoris = [];
+    const idx = saison.favoris.findIndex((j) => j.id === joueur.id);
+    if (idx >= 0) { saison.favoris.splice(idx, 1); return { ok: true, favori: false }; }
+    saison.favoris.push(joueur);
+    return { ok: true, favori: true };
+  }
+
+  // --- Analyse du prochain adversaire (Mode Club) : moyennes d'attributs
+  // RÉELLES (avants/ensemble de l'effectif) comparées aux tiennes, plus la
+  // forme récente RÉELLE tirée du calendrier — jamais de note fabriquée. ---
+  const POSTES_AVANTS = ['P', 'T', '2L', '3L'];
+  function moyenneAttribut(effectif, attr, postes) {
+    const pool = postes ? effectif.filter((j) => postes.includes(j.poste)) : effectif;
+    if (pool.length === 0) return 0;
+    return Math.round(pool.reduce((s, j) => s + (j[attr] != null ? j[attr] : 60), 0) / pool.length);
+  }
+  const ATTRIBUTS_ANALYSE = [
+    { cle: 'melee', label: 'Mêlée', postes: POSTES_AVANTS },
+    { cle: 'touche', label: 'Touche', postes: POSTES_AVANTS },
+    { cle: 'puissance', label: 'Puissance en contact', postes: null },
+    { cle: 'vitesse', label: 'Vitesse', postes: null },
+    { cle: 'passe', label: 'Jeu de main', postes: null },
+    { cle: 'jeuPied', label: 'Jeu au pied', postes: null },
+    { cle: 'discipline', label: 'Discipline', postes: null },
+  ];
+  function analyserAdversaire(saison, clubId) {
+    const adversaire = club(saison, clubId);
+    if (!adversaire) return null;
+    const monEffectif = saison.clubJoueur.effectif;
+    const comparaison = ATTRIBUTS_ANALYSE.map((a) => {
+      const moi = moyenneAttribut(monEffectif, a.cle, a.postes);
+      const eux = moyenneAttribut(adversaire.effectif, a.cle, a.postes);
+      return { cle: a.cle, label: a.label, moi, eux, diff: eux - moi };
+    });
+    const forces = comparaison.filter((c) => c.diff >= 6).sort((a, b) => b.diff - a.diff);
+    const faiblesses = comparaison.filter((c) => c.diff <= -6).sort((a, b) => a.diff - b.diff);
+    // Forme récente RÉELLE (5 derniers résultats de cet adversaire, tous
+    // matchs confondus, y compris contre d'autres IA) — jamais fabriquée.
+    const joues = saison.calendrier.filter((f) => f.joue && (f.domicileId === clubId || f.exterieurId === clubId));
+    const forme = joues.slice(-5).map((f) => {
+      const domicile = f.domicileId === clubId;
+      const pour = domicile ? f.score.domicile : f.score.exterieur;
+      const contre = domicile ? f.score.exterieur : f.score.domicile;
+      return pour > contre ? 'v' : pour < contre ? 'd' : 'n';
+    });
+    const classement = classementTrie(saison);
+    const position = classement.findIndex((r) => r.clubId === clubId) + 1;
+    return { nom: adversaire.nom, comparaison, forces, faiblesses, forme, position, totalClubs: classement.length };
   }
 
   // Calendrier aller-retour complet (méthode du cercle, championnat classique) :
@@ -669,11 +876,29 @@
   function avancerSaison(rng, saison) {
     const effectif = saison.clubJoueur.effectif;
     const partis = [];
+    const ATTRIBUTS_VIEILLISSEMENT = ['vitesse', 'plaquage', 'melee', 'touche', 'puissance', 'endurance', 'passe', 'jeuPied', 'decision'];
     let reste = effectif.map((j) => {
       // Nouvelle saison, nouvelle fraîcheur : la fatigue et le compteur de
       // matchs (statistique de LA saison) repartent à zéro, comme la vraie
-      // préparation estivale d'un club.
-      const copie = Object.assign({}, j, { age: j.age + 1, contrat: j.contrat - 1, fatigue: 0, matchsJoues: 0 });
+      // préparation estivale d'un club. Les stats individuelles de la saison
+      // précédente sont archivées ailleurs (historiqueSaisons), pas ici.
+      const copie = Object.assign({}, j, { age: j.age + 1, contrat: j.contrat - 1, fatigue: 0, matchsJoues: 0, statsSaison: null });
+      // Vieillissement RÉEL des attributs (pas seulement le compteur d'âge) :
+      // déclin physique après 30 ans, développement estival vers le potentiel
+      // pour les jeunes joueurs encore loin de leur plafond.
+      if (copie.age >= 31) {
+        const declin = 1 + Math.floor(rng() * 2);
+        for (const attr of ATTRIBUTS_VIEILLISSEMENT) {
+          if (copie[attr] == null) continue;
+          copie[attr] = Math.max(20, copie[attr] - declin);
+        }
+      } else if (copie.age <= 23 && copie.potentiel != null) {
+        const croissance = 1 + Math.floor(rng() * 3);
+        for (const attr of ATTRIBUTS_VIEILLISSEMENT) {
+          if (copie[attr] == null) continue;
+          copie[attr] = Math.min(copie.potentiel, Math.min(99, copie[attr] + croissance));
+        }
+      }
       return copie;
     });
     reste = reste.filter((j) => {
@@ -702,6 +927,25 @@
     }
     saison.clubJoueur.effectif = reste;
 
+    // Archive un résumé RÉEL de la saison qui vient de s'achever (classement
+    // final, bilan, essais, budget) AVANT de tout réinitialiser ci-dessous —
+    // alimente l'écran Bilan "évolution sur plusieurs saisons", jamais une
+    // valeur recalculée après coup.
+    if (!saison.clubJoueur.historiqueSaisons) saison.clubJoueur.historiqueSaisons = [];
+    const classementFinal = classementTrie(saison);
+    const positionFinale = classementFinal.findIndex((r) => r.clubId === saison.clubJoueur.id) + 1;
+    const bilanClub = saison.classement[saison.clubJoueur.id];
+    saison.clubJoueur.historiqueSaisons.push({
+      numero: saison.numero || 1,
+      position: positionFinale,
+      totalClubs: classementFinal.length,
+      victoires: bilanClub.g, nuls: bilanClub.n, defaites: bilanClub.p,
+      points: bilanClub.pts,
+      essais: saison.clubJoueur.statsCumulees ? saison.clubJoueur.statsCumulees.essais : 0,
+      budget: saison.clubJoueur.budget,
+    });
+    if (saison.clubJoueur.historiqueSaisons.length > 20) saison.clubJoueur.historiqueSaisons.shift();
+
     const adversaires = [];
     const niveaux = [0.25, 0.4, 0.5, 0.6, 0.75];
     for (const niveauClub of niveaux) adversaires.push(genererClub(rng, { niveauClub }));
@@ -723,6 +967,9 @@
     saison.clubJoueur.capitaineId = null;
     saison.clubJoueur.buteurId = null;
     saison.clubJoueur.lanceurToucheId = null;
+    // Marché régénéré (ligne ci-dessus) : les anciens favoris n'y ont plus
+    // cours, on repart d'une liste vierge pour la nouvelle saison.
+    saison.favoris = [];
     return { partis, arrivees };
   }
 
@@ -743,6 +990,7 @@
       calendrier: genererCalendrier(tousLesClubs),
       classement: classementInitial(tousLesClubs),
       marche: genererMarcheTransferts(rng, 0.5, 6),
+      favoris: [],
     };
   }
 
@@ -777,5 +1025,9 @@
     faireProgresserBlessures, avancerSaison,
     AXES_TACTIQUE, tactiqueVersConfig,
     accumulerStats, enregistrerMouvementFinances,
+    ENTRAINEMENTS, appliquerEntrainement,
+    accumulerStatsJoueurs, classementMarqueurs,
+    calculerOffreRenouvellement, renouvelerContrat,
+    basculerFavori, analyserAdversaire,
   };
 })(window);

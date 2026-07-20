@@ -140,7 +140,8 @@
         <button class="ongletBtn" data-onglet="effectif">👥 <span>Effectif</span></button>
         <button class="ongletBtn" data-onglet="composition">📋 <span>Composition</span></button>
         <button class="ongletBtn" data-onglet="tactique">🎯 <span>Tactique</span></button>
-        <button class="ongletBtn" data-onglet="transferts">🔁 <span>Transferts</span></button>
+        <button class="ongletBtn" data-onglet="entrainement">🏋️ <span>Entraînement</span></button>
+        <button class="ongletBtn" data-onglet="transferts">🔁 <span>Recrutement</span></button>
         <button class="ongletBtn" data-onglet="calendrier">📅 <span>Calendrier</span></button>
         <button class="ongletBtn" data-onglet="finances">💰 <span>Finances</span></button>
         <button class="ongletBtn" data-onglet="medical">🩺 <span>Médical</span></button>
@@ -171,6 +172,14 @@
           <div class="carteClub" id="carteAlertes" style="display:none;">
             <h3>Décisions & alertes</h3>
             <div id="clubAlertes"></div>
+          </div>
+          <!-- Analyse du prochain adversaire : moyennes d'attributs RÉELLES de
+               son effectif comparées aux tiennes + sa forme récente réelle
+               (cf. clubUI.js, RMClub.analyserAdversaire) — jamais une note
+               fabriquée. -->
+          <div class="carteClub" id="carteAdversaire" style="display:none;">
+            <h3>Prochain adversaire</h3>
+            <div id="clubAdversaire"></div>
           </div>
           <div class="carteClub">
             <h3>5 derniers résultats</h3>
@@ -248,9 +257,33 @@
           </div>
         </div>
 
-        <!-- Transferts : marché + repérage (scouting), cf. RMClub.statsApparentes. -->
+        <!-- Entraînement : un programme choisi nudge RÉELLEMENT les attributs
+             correspondants à chaque journée jouée (cf. RMClub.appliquerEntrainement) —
+             borné par le potentiel et l'âge de chaque joueur, jamais un simple badge. -->
+        <div class="voletOnglet" data-volet="entrainement" style="display:none;">
+          <div class="carteClub">
+            <h3>Programme d'entraînement</h3>
+            <p style="font-size:12px;color:var(--text-dim);margin:0 0 12px;">Appliqué à chaque journée jouée : fait progresser les attributs concernés des joueurs encore sous leur potentiel (jusqu'à 32 ans), en priorité les jeunes.</p>
+            <div id="clubEntrainement"></div>
+          </div>
+          <div class="carteClub">
+            <h3>Développement des jeunes</h3>
+            <div id="clubJeunes"></div>
+          </div>
+        </div>
+
+        <!-- Recrutement : marché + repérage (scouting), favoris, comparaison
+             — cf. RMClub.statsApparentes/basculerFavori. -->
         <div class="voletOnglet" data-volet="transferts" style="display:none;">
           <div id="transfertsBudget" class="carteClub"></div>
+          <div class="carteClub" id="carteFavoris" style="display:none;">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <h3 style="margin:0;">Mes favoris</h3>
+              <button id="btnComparerFavoris" class="alt" style="flex:0 0 auto;width:auto;padding:8px 12px;font-size:12px;display:none;">⚖️ Comparer la sélection</button>
+            </div>
+            <div id="clubFavoris"></div>
+            <div id="clubComparaison" style="margin-top:12px;"></div>
+          </div>
           <div class="carteClub">
             <div style="display:flex;justify-content:space-between;align-items:center;">
               <h3 style="margin:0;">Joueurs libres</h3>
@@ -295,12 +328,22 @@
           </div>
         </div>
 
-        <!-- Stats : cumul RÉEL des actions produites en match (jamais inventé),
-             saison en cours uniquement. -->
+        <!-- Bilan : cumul RÉEL des actions produites en match (jamais
+             inventé) — équipe, classement des marqueurs, records, et
+             évolution sur plusieurs saisons (cf. RMClub.classementMarqueurs/
+             historiqueSaisons). -->
         <div class="voletOnglet" data-volet="stats" style="display:none;">
           <div class="carteClub">
             <h3>Statistiques de la saison</h3>
             <div id="clubStats"></div>
+          </div>
+          <div class="carteClub" id="carteMarqueurs" style="display:none;">
+            <h3>Classement des marqueurs</h3>
+            <div id="clubMarqueurs"></div>
+          </div>
+          <div class="carteClub" id="carteHistoriqueSaisons" style="display:none;">
+            <h3>Évolution sur plusieurs saisons</h3>
+            <div id="clubHistoriqueSaisons"></div>
           </div>
         </div>
 
