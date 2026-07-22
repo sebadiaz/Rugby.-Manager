@@ -58,22 +58,27 @@
 
 <div class="panneau" id="panneauGeneration">
   <div class="accueilContenu">
-    <h2 id="genTitre">Génération du match…</h2>
-    <p>Le moteur simule le match complet en arrière-plan (mêlées, rucks, plaquages, coups de pied…).</p>
-    <div class="barreProgression"><div class="barreProgressionRemplissage" id="genProgressBar"></div></div>
-    <p id="genProgressLabel">0:00 / 80:00</p>
+    <div class="heroBadge">🏉</div>
+    <div class="carteAction">
+      <h2 id="genTitre">Génération du match…</h2>
+      <p>Le moteur simule le match complet en arrière-plan (mêlées, rucks, plaquages, coups de pied…).</p>
+      <div class="barreProgression"><div class="barreProgressionRemplissage" id="genProgressBar"></div></div>
+      <p id="genProgressLabel">0:00 / 80:00</p>
+    </div>
   </div>
 </div>
 
 <div class="panneau" id="panneauResultat">
   <div class="accueilContenu">
-    <div id="resultatBadge" class="badgeResultat" style="display:none;"></div>
-    <h2>Match terminé</h2>
-    <div id="resultatScore" class="grosScore"></div>
-    <p id="resultatDetail" class="detailResultat"></p>
-    <p class="noteFacultatif">Voir le match est facultatif : le résultat est déjà acquis.</p>
-    <button id="btnResultatVoir" class="accent">Voir le match</button>
-    <button id="btnResultatFermer" class="alt">Fermer</button>
+    <div class="carteAction carteHero">
+      <div id="resultatBadge" class="badgeResultat" style="display:none;"></div>
+      <h2>Match terminé</h2>
+      <div id="resultatScore" class="grosScore"></div>
+      <p id="resultatDetail" class="detailResultat"></p>
+      <p class="noteFacultatif">Voir le match est facultatif : le résultat est déjà acquis.</p>
+      <button id="btnResultatVoir" class="accent">Voir le match</button>
+      <button id="btnResultatFermer" class="alt">Fermer</button>
+    </div>
   </div>
 </div>
 
@@ -127,7 +132,7 @@
 <div class="panneau" id="panneauClub">
   <div id="clubCreation">
     <div class="carteClub" style="margin-top:16px;">
-      <h3 style="margin-top:0;">Mode Club</h3>
+      <h3 style="margin-top:0;">🏟️ Mode Club</h3>
       <p>Crée ton club pour démarrer une saison : effectif généré, championnat complet à 6 clubs (aller-retour) où tout le monde joue à chaque journée, classement mis à jour après chaque match simulé avec le même moteur que le Match rapide.</p>
       <label class="sr-label" for="inputNomClub">Nom du club</label>
       <input type="text" id="inputNomClub" class="champTexte" placeholder="Laisser vide pour un nom généré">
@@ -182,7 +187,7 @@
           <div class="enTetePage"><span class="categoriePage">Accueil</span><h2>Dashboard</h2><p>Ta saison en un coup d'œil : prochain match, décisions urgentes et alertes.</p></div>
           <p class="sectionDashboard">À faire maintenant</p>
           <div class="carteClub">
-            <h3>Prochaine journée</h3>
+            <h3>🗓️ Prochaine journée</h3>
             <div id="clubProchainMatch"></div>
             <label class="sr-label" for="selDureeClub" style="margin-top:10px;">Durée du match</label>
             <select id="selDureeClub" style="width:100%;" title="Durée du match simulé">
@@ -198,7 +203,7 @@
             <button id="btnSaisonSuivante" class="accent" style="width:100%;margin-top:10px;display:none;">Saison suivante →</button>
           </div>
           <div class="carteClub" id="carteAlertes" style="display:none;">
-            <h3>Décisions & alertes</h3>
+            <h3>⚠️ Décisions & alertes</h3>
             <div id="clubAlertes"></div>
           </div>
           <!-- Boîte de réception : messages RÉELS générés par les événements
@@ -207,7 +212,7 @@
                RMClub.ajouterMessage (appelé depuis club.js). -->
           <div class="carteClub" id="carteMessages">
             <div style="display:flex;justify-content:space-between;align-items:center;">
-              <h3 style="margin:0;">Boîte de réception</h3>
+              <h3 style="margin:0;">📬 Boîte de réception</h3>
               <button id="btnMessagesTousLus" class="alt" style="flex:0 0 auto;width:auto;padding:8px 12px;font-size:12px;">Tout marquer comme lu</button>
             </div>
             <div id="clubMessages"></div>
@@ -218,15 +223,15 @@
                fabriquée. -->
           <p class="sectionDashboard">Vue d'ensemble</p>
           <div class="carteClub" id="carteAdversaire" style="display:none;">
-            <h3>Prochain adversaire</h3>
+            <h3>🆚 Prochain adversaire</h3>
             <div id="clubAdversaire"></div>
           </div>
           <div class="carteClub">
-            <h3>5 derniers résultats</h3>
+            <h3>📈 5 derniers résultats</h3>
             <div id="clubDerniersResultats"></div>
           </div>
           <div class="carteClub">
-            <h3>Classement</h3>
+            <h3>🏆 Classement</h3>
             <div id="clubMiniClassement"></div>
           </div>
           <!-- Le budget est déjà affiché ci-dessous (Statut de l'effectif) et
@@ -234,7 +239,7 @@
                montrait rien de plus (doublon pur) — le détail complet reste
                à un clic dans l'onglet Finances. -->
           <div class="carteClub">
-            <h3>Statut de l'effectif</h3>
+            <h3>🧾 Statut de l'effectif</h3>
             <div id="clubStatutEffectif"></div>
           </div>
         </div>
@@ -245,7 +250,7 @@
           <div class="enTetePage"><span class="categoriePage">Mon club</span><h2>Effectif</h2><p>Recherche, tri et filtre ton effectif complet — clique un joueur pour sa fiche détaillée.</p></div>
           <div class="carteClub">
             <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
-              <h3 style="margin:0;">Effectif</h3>
+              <h3 style="margin:0;">👥 Effectif</h3>
               <button id="btnComparerEffectif" class="alt" style="flex:0 0 auto;width:auto;padding:8px 12px;font-size:12px;display:none;">⚖️ Comparer la sélection</button>
             </div>
             <div id="clubEffectifFiltres" class="filtresEffectif">
@@ -277,18 +282,18 @@
           <div class="enTetePage"><span class="categoriePage">Mon club</span><h2>Composition</h2><p>Titulaires, banc et encadrement pour la prochaine journée.</p></div>
           <div class="carteClub">
             <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
-              <h3 style="margin:0;">Composition du jour</h3>
+              <h3 style="margin:0;">📋 Composition du jour</h3>
               <button id="btnCompositionAuto" class="alt" style="flex:0 0 auto;width:auto;padding:8px 12px;font-size:12px;">Meilleure équipe possible</button>
             </div>
             <p style="font-size:12px;color:var(--text-dim);margin:10px 0 0;">Un joueur blessé (🤕) reste sélectionnable mais jouera diminué — évite de l'aligner si tu as une alternative. La fatigue (⚡) réduit aussi ses stats en match.</p>
             <div id="clubTerrain" class="terrainComposition"></div>
           </div>
           <div class="carteClub">
-            <h3>Remplaçants (banc)</h3>
+            <h3>🔄 Remplaçants (banc)</h3>
             <div id="clubBanc" class="grilleBanc"></div>
           </div>
           <div class="carteClub">
-            <h3>Encadrement</h3>
+            <h3>🎖️ Encadrement</h3>
             <div id="clubEncadrement"></div>
           </div>
         </div>
@@ -299,7 +304,7 @@
         <div class="voletOnglet" data-volet="tactique" style="display:none;">
           <div class="enTetePage"><span class="categoriePage">Mon club</span><h2>Tactique</h2><p>Six réglages indépendants, chacun modifie réellement la config transmise au moteur.</p></div>
           <div class="carteClub">
-            <h3>Tactique</h3>
+            <h3>🎯 Tactique</h3>
             <div id="clubTactique"></div>
           </div>
         </div>
@@ -310,12 +315,12 @@
         <div class="voletOnglet" data-volet="entrainement" style="display:none;">
           <div class="enTetePage"><span class="categoriePage">Mon club</span><h2>Entraînement</h2><p>Programme collectif et développement des jeunes joueurs.</p></div>
           <div class="carteClub">
-            <h3>Programme d'entraînement</h3>
+            <h3>🏋️ Programme d'entraînement</h3>
             <p style="font-size:12px;color:var(--text-dim);margin:0 0 12px;">Appliqué à chaque journée jouée : fait progresser les attributs concernés des joueurs encore sous leur potentiel (jusqu'à 32 ans), en priorité les jeunes.</p>
             <div id="clubEntrainement"></div>
           </div>
           <div class="carteClub">
-            <h3>Développement des jeunes</h3>
+            <h3>🌱 Développement des jeunes</h3>
             <div id="clubJeunes"></div>
           </div>
         </div>
@@ -327,7 +332,7 @@
           <div id="transfertsBudget" class="carteClub"></div>
           <div class="carteClub" id="carteFavoris" style="display:none;">
             <div style="display:flex;justify-content:space-between;align-items:center;">
-              <h3 style="margin:0;">Mes favoris</h3>
+              <h3 style="margin:0;">⭐ Mes favoris</h3>
               <button id="btnComparerFavoris" class="alt" style="flex:0 0 auto;width:auto;padding:8px 12px;font-size:12px;display:none;">⚖️ Comparer la sélection</button>
             </div>
             <div id="clubFavoris"></div>
@@ -335,7 +340,7 @@
           </div>
           <div class="carteClub">
             <div style="display:flex;justify-content:space-between;align-items:center;">
-              <h3 style="margin:0;">Joueurs libres</h3>
+              <h3 style="margin:0;">🆓 Joueurs libres</h3>
               <button id="btnRafraichirMarche" class="alt" style="flex:0 0 auto;width:auto;padding:8px 12px;font-size:12px;">🔄 Rafraîchir</button>
             </div>
             <div id="clubMarche"></div>
@@ -348,13 +353,13 @@
         <div class="voletOnglet" data-volet="personnel" style="display:none;">
           <div class="enTetePage"><span class="categoriePage">Recrutement</span><h2>Personnel</h2><p>Organigramme du club et candidats disponibles.</p></div>
           <div class="carteClub">
-            <h3>Organigramme</h3>
+            <h3>🧑‍⚕️ Organigramme</h3>
             <p style="font-size:12px;color:var(--text-dim);margin:0 0 10px;">Un poste vacant n'a aucun effet ; recruter dessus module réellement l'entraînement, la fatigue, les blessures, le scouting ou l'analyse — et pèse sur la masse salariale.</p>
             <div id="clubPersonnelActuel"></div>
           </div>
           <div class="carteClub">
             <div style="display:flex;justify-content:space-between;align-items:center;">
-              <h3 style="margin:0;">Candidats disponibles</h3>
+              <h3 style="margin:0;">📥 Candidats disponibles</h3>
               <button id="btnRafraichirPersonnel" class="alt" style="flex:0 0 auto;width:auto;padding:8px 12px;font-size:12px;">🔄 Rafraîchir</button>
             </div>
             <div id="clubPersonnelMarche"></div>
@@ -369,7 +374,7 @@
         <div class="voletOnglet" data-volet="autresclubs" style="display:none;">
           <div class="enTetePage"><span class="categoriePage">Compétition</span><h2>Autres clubs</h2><p>Consulte n'importe quel adversaire : effectif, forces/faiblesses, confrontations.</p></div>
           <div class="carteClub">
-            <h3>Autres clubs</h3>
+            <h3>🏟️ Autres clubs</h3>
             <div id="clubAutresClubsListe"></div>
           </div>
           <div class="carteClub" id="clubAutresClubDetail" style="display:none;">
@@ -390,11 +395,11 @@
         <div class="voletOnglet" data-volet="calendrier" style="display:none;">
           <div class="enTetePage"><span class="categoriePage">Compétition</span><h2>Calendrier & classement</h2><p>Toutes les rencontres de la saison, y compris celles des autres clubs.</p></div>
           <div class="carteClub">
-            <h3>Classement</h3>
+            <h3>🏆 Classement</h3>
             <div id="clubClassement"></div>
           </div>
           <div class="carteClub">
-            <h3>Calendrier</h3>
+            <h3>📅 Calendrier</h3>
             <div id="clubCalendrier"></div>
           </div>
         </div>
@@ -402,19 +407,19 @@
         <div class="voletOnglet" data-volet="finances" style="display:none;">
           <div class="enTetePage"><span class="categoriePage">Gestion</span><h2>Finances</h2><p>Budget, masse salariale et prévisions à court terme.</p></div>
           <div class="carteClub">
-            <h3>Budget</h3>
+            <h3>💰 Budget</h3>
             <div id="clubBudgetDetail"></div>
           </div>
           <div class="carteClub">
-            <h3>Masse salariale</h3>
+            <h3>🧮 Masse salariale</h3>
             <div id="clubMasseSalariale"></div>
           </div>
           <div class="carteClub" id="cartePrevisions" style="display:none;">
-            <h3>Prévisions (5 prochaines journées)</h3>
+            <h3>🔮 Prévisions (5 prochaines journées)</h3>
             <div id="clubPrevisions"></div>
           </div>
           <div class="carteClub">
-            <h3>Derniers mouvements</h3>
+            <h3>🧾 Derniers mouvements</h3>
             <div id="clubHistoriqueFinances"></div>
           </div>
         </div>
@@ -424,11 +429,11 @@
         <div class="voletOnglet" data-volet="medical" style="display:none;">
           <div class="enTetePage"><span class="categoriePage">Gestion</span><h2>Médical</h2><p>Blessures en cours et charge de fatigue de l'effectif.</p></div>
           <div class="carteClub">
-            <h3>Joueurs blessés</h3>
+            <h3>🤕 Joueurs blessés</h3>
             <div id="clubMedical"></div>
           </div>
           <div class="carteClub">
-            <h3>Charge de fatigue</h3>
+            <h3>⚡ Charge de fatigue</h3>
             <div id="clubFatigue"></div>
           </div>
         </div>
@@ -440,15 +445,15 @@
         <div class="voletOnglet" data-volet="stats" style="display:none;">
           <div class="enTetePage"><span class="categoriePage">Gestion</span><h2>Bilan</h2><p>Statistiques de la saison, classement des marqueurs et évolution pluriannuelle.</p></div>
           <div class="carteClub">
-            <h3>Statistiques de la saison</h3>
+            <h3>📊 Statistiques de la saison</h3>
             <div id="clubStats"></div>
           </div>
           <div class="carteClub" id="carteMarqueurs" style="display:none;">
-            <h3>Classement des marqueurs</h3>
+            <h3>🥇 Classement des marqueurs</h3>
             <div id="clubMarqueurs"></div>
           </div>
           <div class="carteClub" id="carteHistoriqueSaisons" style="display:none;">
-            <h3>Évolution sur plusieurs saisons</h3>
+            <h3>📈 Évolution sur plusieurs saisons</h3>
             <div id="clubHistoriqueSaisons"></div>
           </div>
         </div>

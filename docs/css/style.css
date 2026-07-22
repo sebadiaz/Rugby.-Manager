@@ -421,6 +421,16 @@ select {
    compresser jusqu'à l'illisible, il défile horizontalement dans sa propre
    zone (le reste de la page ne bouge pas). */
 #clubEffectif, #clubClassement { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+/* Indice visuel de défilement horizontal sur petit écran : sans lui, les
+   colonnes coupées à droite (Moral/Fatigue/Contrat/Salaire/Statut...) ne
+   laissaient rien deviner qu'il y avait plus à voir en glissant le doigt. */
+@media (max-width: 899px) {
+  #clubEffectif, #clubClassement, #clubAutresClubsListe, #clubAutresClubEffectif {
+    overflow-x: auto; -webkit-overflow-scrolling: touch;
+    mask-image: linear-gradient(to right, black calc(100% - 22px), transparent);
+    -webkit-mask-image: linear-gradient(to right, black calc(100% - 22px), transparent);
+  }
+}
 #clubEffectif table { min-width: 620px; }
 .tableauClub { width: 100%; border-collapse: collapse; font-size: 12.5px; }
 .tableauClub th {
@@ -664,6 +674,10 @@ select {
 .detailResultat { color: var(--text-dim); font-size: 13px; margin: 0 0 4px; }
 .noteFacultatif { color: var(--text-faint); font-size: 11.5px; margin: 0 0 18px; }
 #panneauResultat .accueilContenu button { margin-top: 8px; }
+/* Score/génération : centré comme un vrai tableau d'affichage, contrairement
+   aux cartes d'accueil (alignées à gauche) — .carteAction reste la même
+   carte visuelle (bordure, dégradé), seul l'alignement du texte change ici. */
+#panneauResultat .carteAction, #panneauGeneration .carteAction { text-align: center; }
 
 /* ---------- Entraînement ---------- */
 .ligneJeune {
