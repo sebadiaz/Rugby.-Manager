@@ -370,6 +370,11 @@
     appliquerVitesse(PALIERS_VITESSE[(i + 1) % PALIERS_VITESSE.length]);
   });
   document.getElementById('btnNouveau').addEventListener('click', () => {
+    // Un vrai Match rapide ne doit jamais hériter d'une config de club
+    // laissée par une précédente journée (cf. reinitialiserConfigClub) —
+    // fait ici, au moment de démarrer un Match rapide, jamais juste après un
+    // résultat de club (sinon "Voir le match" rejouerait avec la mauvaise config).
+    window.RMMain.reinitialiserConfigClub();
     lancerNouveauMatchAvecGeneration(graineAleatoire(), lireDureeChoisie(), { onFermer: afficherAccueil });
   });
   // Changer la durée relance immédiatement un match de cette durée (même graine
@@ -458,6 +463,9 @@
   // le match est alors généré en arrière-plan (barre de progression) puis la
   // visualisation démarre. ---
   document.getElementById('btnAccueilMatchRapide').addEventListener('click', () => {
+    // Idem "Nouveau match" : repart d'une config saine, sans résidu d'une
+    // précédente journée de Mode Club (cf. reinitialiserConfigClub).
+    window.RMMain.reinitialiserConfigClub();
     const duree = Number(document.getElementById('selDureeAccueil').value) || DUREE_MATCH;
     document.getElementById('selDuree').value = String(duree); // reste cohérent pour "Nouveau match" ensuite
     lancerNouveauMatchAvecGeneration(graineAleatoire(), duree);

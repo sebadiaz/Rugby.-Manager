@@ -1555,7 +1555,14 @@
             RMClub.progresserPrets(saison.clubJoueur.effectif);
             RMClub.appliquerEntrainement(creerRng(graineAleatoire()), saison.clubJoueur.effectif, saison.clubJoueur.entrainementFocus, RMClub.effetPersonnel(saison, 'entraineur'));
             sauvegarder();
-            window.RMMain.reinitialiserConfigClub();
+            // NE PAS réinitialiser la config ici : ce callback tourne dès que
+            // le résultat est connu, AVANT même que le joueur ait vu l'écran
+            // "Match terminé" — effacer joueursA/joueursB/tactique maintenant
+            // ferait que "Voir le match" (choix ultérieur du joueur) rejoue
+            // avec la config par défaut du moteur au lieu de la composition
+            // réellement utilisée, donnant un déroulé différent du résultat
+            // déjà annoncé. La remise à zéro se fait uniquement en démarrant
+            // un vrai Match rapide (cf. main.js, reinitialiserConfigClub).
           },
           onFermer() {
             rafraichirTout();
