@@ -453,6 +453,13 @@
 
   function onRevoirHistorique(entree) {
     document.getElementById('panneauHistorique').classList.remove('visible');
+    // Un historique enregistré ne porte jamais de composition/tactique de
+    // club (seulement seed/durée/score) — sans ce nettoyage, "Revoir"
+    // hériterait d'une config de club encore active depuis une dernière
+    // journée jouée en Mode Club, et rejouerait un déroulé différent de
+    // celui réellement enregistré (même bug que reinitialiserConfigClub
+    // ailleurs dans ce fichier).
+    window.RMMain.reinitialiserConfigClub();
     // Un match déjà rejoué depuis l'historique va droit à la visualisation
     // (le joueur a déjà choisi « Revoir », pas besoin de reproposer le choix).
     lancerNouveauMatchAvecGeneration(entree.seed, entree.duree, { direct: true });
