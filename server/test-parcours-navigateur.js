@@ -131,6 +131,23 @@ function optionsLancement() {
   const apercuTxt = await page.textContent('#apercuMatchCorps');
   verifier('aperçu du match : forme/composition/tactique/adversaire réels affichés',
     apercuTxt.includes('Ma forme') && apercuTxt.includes('Ma composition') && apercuTxt.includes('Ma tactique') && apercuTxt.includes('adversaire'));
+
+  // Composition ET tactique doivent rester modifiables depuis l'aperçu,
+  // sans perdre la possibilité de relancer ensuite (cf. bouton flottant).
+  await page.click('#btnApercuModifierTactique');
+  await page.waitForTimeout(150);
+  verifier('aperçu du match : le bouton "Tactique" ouvre bien l\'onglet Tactique', await page.isVisible('[data-volet="tactique"]'));
+  await page.click('#clubTactique .ligneTactique:nth-child(3)');
+  await page.waitForTimeout(150);
+  await page.click('#btnApercuMatchFlottant');
+  await page.waitForTimeout(150);
+  await page.click('#btnApercuModifierCompo');
+  await page.waitForTimeout(150);
+  verifier('aperçu du match : le bouton "Composition" ouvre bien l\'onglet Composition', await page.isVisible('[data-volet="composition"]'));
+  await page.click('#btnApercuMatchFlottant');
+  await page.waitForTimeout(150);
+  verifier('aperçu du match : réouvrable après un aller-retour composition/tactique', await page.isVisible('#panneauApercuMatch.visible'));
+
   await page.click('#btnApercuLancerMatch');
   await page.waitForSelector('#panneauResultat.visible', { timeout: 20000 });
   const scoreTxt = await page.textContent('#resultatScore');

@@ -1291,6 +1291,10 @@
     document.getElementById('panneauApercuMatch').classList.remove('visible');
     basculerOnglet('composition');
   });
+  document.getElementById('btnApercuModifierTactique').addEventListener('click', () => {
+    document.getElementById('panneauApercuMatch').classList.remove('visible');
+    basculerOnglet('tactique');
+  });
   document.getElementById('btnApercuLancerMatch').addEventListener('click', () => {
     document.getElementById('panneauApercuMatch').classList.remove('visible');
     lancerLaJournee();
