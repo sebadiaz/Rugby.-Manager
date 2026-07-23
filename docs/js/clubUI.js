@@ -224,11 +224,13 @@
     const bouton = document.getElementById('btnJouerMatchClub');
     const boutonComposition = document.getElementById('btnComposition');
     const boutonSaisonSuivante = document.getElementById('btnSaisonSuivante');
+    const labelFlottant = document.getElementById('btnApercuMatchLabel');
     if (fixtures.length === 0) {
       zone.innerHTML = '<p>Saison terminée — toutes les journées ont été jouées.</p>';
       bouton.style.display = 'none';
       boutonComposition.style.display = 'none';
       boutonSaisonSuivante.style.display = '';
+      if (labelFlottant) labelFlottant.textContent = 'Saison suivante';
       return;
     }
     bouton.style.display = '';
@@ -236,6 +238,8 @@
     boutonSaisonSuivante.style.display = 'none';
     zone.innerHTML = fixtures.map(formaterLigneCalendrier).join('');
     bouton.disabled = false;
+    const matchJoueur = fixtures.find(concerneClubJoueur);
+    if (labelFlottant) labelFlottant.textContent = matchJoueur ? `Journée ${matchJoueur.journee}` : 'Prochaine journée';
   }
 
   function rafraichirClassement() {
@@ -1275,6 +1279,22 @@
   // --- Composition : navigation depuis le Dashboard vers l'onglet dédié
   // (terrain + banc), plus une simple liste dépliée sur place. ---
   document.getElementById('btnComposition').addEventListener('click', () => basculerOnglet('composition'));
+  // --- Aperçu du prochain match : bouton du Dashboard ET bouton flottant
+  // (toujours visible, façon "New Day") ouvrent tous les deux la même
+  // préparation d'avant-match avant de lancer réellement la simulation. ---
+  document.getElementById('btnJouerMatchClub').addEventListener('click', ouvrirApercuMatch);
+  document.getElementById('btnApercuMatchFlottant').addEventListener('click', ouvrirApercuMatch);
+  document.getElementById('fermerApercuMatch').addEventListener('click', () => {
+    document.getElementById('panneauApercuMatch').classList.remove('visible');
+  });
+  document.getElementById('btnApercuModifierCompo').addEventListener('click', () => {
+    document.getElementById('panneauApercuMatch').classList.remove('visible');
+    basculerOnglet('composition');
+  });
+  document.getElementById('btnApercuLancerMatch').addEventListener('click', () => {
+    document.getElementById('panneauApercuMatch').classList.remove('visible');
+    lancerLaJournee();
+  });
   document.getElementById('btnCompositionAuto').addEventListener('click', () => {
     const c = saison.clubJoueur;
     c.compositionTitulaires = RMClub.meilleureComposition(c.effectif);
@@ -1444,8 +1464,11 @@
   // d'option "voir" : personne ne les regarde) et leur résultat enregistré
   // aussitôt ; le match du joueur suit ensuite le parcours habituel (génération
   // → résultat → « voir le match » optionnel), sur le MÊME canvas/boucle de
-  // rendu que le Match rapide (cf. window.RMMain.demarrerMatchClub).
-  document.getElementById('btnJouerMatchClub').addEventListener('click', () => {
+  // rendu que le Match rapide (cf. window.RMMain.demarrerMatchClub). Appelée
+  // depuis le bouton "Lancer le match" de l'aperçu d'avant-match, jamais
+  // directement — la préparation (forme/composition/tactique/adversaire)
+  // passe toujours par là d'abord (cf. rafraichirApercuMatch).
+  function lancerLaJournee() {
     const fixtures = RMClub.prochainesFixtures(saison);
     if (fixtures.length === 0) return;
     const matchJoueur = fixtures.find(concerneClubJoueur);
@@ -1559,7 +1582,80 @@
     }
 
     simulerAutre(0);
-  });
+  }
+
+  // --- Aperçu du prochain match, façon écran de préparation d'avant-match
+  // (forme, composition, tactique, analyse de l'adversaire) — cf.
+  // panneauApercuMatch dans index.html. Jamais de note fabriquée : tout vient
+  // de RMClub.analyserAdversaire/calendrier/composition réels. ---
+  function rafraichirApercuMatch() {
+    const corps = document.getElementById('apercuMatchCorps');
+    const fixtures = RMClub.prochainesFixtures(saison);
+    const matchJoueur = fixtures.find(concerneClubJoueur);
+    if (!matchJoueur) {
+      corps.innerHTML = '<p style="color:var(--text-dim);">Aucun match à venir — la saison est terminée.</p>';
+      return;
+    }
+    assurerComposition();
+    const c = saison.clubJoueur;
+    const domicile = estClubJoueur(matchJoueur.domicileId);
+    const adversaireId = domicile ? matchJoueur.exterieurId : matchJoueur.domicileId;
+    const facteurAnalyste = RMClub.effetPersonnel(saison, 'analyste');
+    const seuilAnalyste = Math.max(2, Math.round(6 - (facteurAnalyste - 1) * 8));
+    const analyse = RMClub.analyserAdversaire(saison, adversaireId, seuilAnalyste);
+
+    const mesJoues = saison.calendrier.filter((f) => f.joue && concerneClubJoueur(f));
+    const maForme = mesJoues.slice(-5).map(formeClubJoueur);
+    const formeTxt = (forme) => forme.length
+      ? forme.map((f) => `<span class="badgeForme ${f}">${LIBELLE_FORME[f]}</span>`).join('')
+      : '<span style="color:var(--text-faint);">Aucun match joué</span>';
+
+    const titulairesIds = Object.values(c.compositionTitulaires || {});
+    const joueursTitulaires = titulairesIds.map((id) => c.effectif.find((j) => j.id === id)).filter(Boolean);
+    const blesses = joueursTitulaires.filter((j) => j.blessureJournees > 0);
+    const fatigues = joueursTitulaires.filter((j) => !( j.blessureJournees > 0) && (j.fatigue || 0) >= 65);
+    const capitaine = c.effectif.find((j) => j.id === c.capitaineId);
+    const alertesCompo = [
+      ...blesses.map((j) => `🤕 ${j.nom} joue diminué (blessé)`),
+      ...fatigues.map((j) => `⚡ ${j.nom} est très fatigué`),
+    ];
+
+    const tactiqueActuelle = (c.tactique && typeof c.tactique === 'object') ? c.tactique : {};
+    const tactiqueLignes = Object.keys(RMClub.AXES_TACTIQUE).map((axe) => {
+      const info = RMClub.AXES_TACTIQUE[axe];
+      const valeur = tactiqueActuelle[axe] || info.defaut;
+      const option = info.options[valeur];
+      return `<div class="ligneJoueur"><span>${info.label}</span><b>${option ? option.nom : valeur}</b></div>`;
+    }).join('');
+
+    const puces = [
+      ...analyse.forces.map((cc) => `<span class="puceQualitatif force">⚠️ Leur ${cc.label.toLowerCase()} (+${cc.diff})</span>`),
+      ...analyse.faiblesses.map((cc) => `<span class="puceQualitatif faiblesse">✓ Leur ${cc.label.toLowerCase()} (${cc.diff})</span>`),
+    ].join('');
+
+    corps.innerHTML =
+      `<div class="carteClub"><h3>🆚 ${domicile ? `${c.nom} — ${analyse.nom}` : `${analyse.nom} — ${c.nom}`}</h3>` +
+      `<p style="font-size:12px;color:var(--text-dim);margin:0 0 10px;">Journée ${matchJoueur.journee} · ${domicile ? 'À domicile' : 'À l\'extérieur'} · ${analyse.position}${analyse.position === 1 ? 'er' : 'e'}/${analyse.totalClubs} au classement</p>` +
+      `<div class="ligneJoueur"><span>Ma forme</span><b>${formeTxt(maForme)}</b></div>` +
+      `<div class="ligneJoueur"><span>Leur forme</span><b>${formeTxt(analyse.forme)}</b></div></div>` +
+      `<div class="carteClub"><h3>📋 Ma composition</h3>` +
+      `<div class="ligneJoueur"><span>Capitaine</span><b>${capitaine ? capitaine.nom : '—'}</b></div>` +
+      (alertesCompo.length
+        ? alertesCompo.map((a) => `<p style="font-size:12px;color:var(--loss);margin:6px 0;">${a}</p>`).join('')
+        : '<p style="font-size:12px;color:var(--text-dim);margin:6px 0;">Aucun problème d\'effectif détecté pour ce match.</p>') +
+      `</div>` +
+      `<div class="carteClub"><h3>🎯 Ma tactique</h3>${tactiqueLignes}</div>` +
+      `<div class="carteClub"><h3>🔍 Analyse de l'adversaire</h3>` +
+      (puces ? `<div class="listeQualitatif">${puces}</div>` : '<p style="font-size:12px;color:var(--text-faint);margin:0;">Aucun écart marqué avec ton effectif.</p>') +
+      `</div>`;
+  }
+
+  function ouvrirApercuMatch() {
+    const fixtures = RMClub.prochainesFixtures(saison);
+    if (fixtures.length === 0) { document.getElementById('btnSaisonSuivante').click(); return; }
+    rafraichirApercuMatch();
+    document.getElementById('panneauApercuMatch').classList.add('visible');
+  }
 
   rafraichirTout();
 })();

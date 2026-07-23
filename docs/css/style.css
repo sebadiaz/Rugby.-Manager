@@ -407,6 +407,27 @@ select {
   letter-spacing: 0.06em; color: var(--text-faint); display: flex; align-items: center; gap: 8px;
 }
 .sectionDashboard::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+/* Bouton flottant "New Day" : toujours visible quel que soit l'onglet actif
+   (cf. clubUI.js) — z-index sous le tiroir de navigation mobile (1000) et
+   son fond assombri (999) pour ne jamais gêner leur ouverture. */
+.btnFlottantMatch {
+  position: fixed; right: 16px; bottom: 16px; z-index: 900;
+  width: auto; min-width: 0; padding: 14px 20px; border-radius: 999px;
+  font-size: 13.5px; font-weight: 800; box-shadow: var(--shadow);
+}
+
+/* Aperçu du prochain match : préparation façon Football Manager (forme,
+   composition, tactique, analyse adverse) avant de lancer la simulation —
+   recouvre tout l'écran, au-dessus du tiroir de navigation mobile. */
+#panneauApercuMatch {
+  position: fixed; inset: 0; z-index: 1100; display: none;
+  background: linear-gradient(180deg, #0e1712, #060b08 55%);
+  overflow-y: auto; padding: 16px;
+}
+#panneauApercuMatch.visible { display: block; }
+#apercuMatchContenu { max-width: 640px; margin: 0 auto; }
+#apercuMatchCorps .carteClub { margin: 0 0 14px; padding: 14px; }
 .clubEntete { display: flex; align-items: center; gap: 12px; padding: 14px 16px; }
 .clubEntete .pastilleClub {
   width: 40px; height: 40px; border-radius: 50%; flex: 0 0 auto;

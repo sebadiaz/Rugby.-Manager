@@ -198,7 +198,7 @@
             </select>
             <div style="display:flex;gap:8px;margin-top:10px;">
               <button id="btnComposition" class="alt" style="flex:1;">📋 Composition</button>
-              <button id="btnJouerMatchClub" class="accent" style="flex:2;">Jouer la journée</button>
+              <button id="btnJouerMatchClub" class="accent" style="flex:2;">🆚 Aperçu & jouer la journée</button>
             </div>
             <button id="btnSaisonSuivante" class="accent" style="width:100%;margin-top:10px;display:none;">Saison suivante →</button>
           </div>
@@ -462,6 +462,30 @@
           <button id="btnNouvelleSaisonClub" class="alt warn" style="width:100%;">Recommencer (efface la saison en cours)</button>
         </div>
       </main>
+    </div>
+
+    <!-- Bouton toujours visible, quel que soit l'onglet actif : façon "New
+         Day"/Continue d'un jeu de management, pour ne jamais avoir à revenir
+         au Dashboard juste pour avancer la saison (cf. clubUI.js). -->
+    <button id="btnApercuMatchFlottant" class="btnFlottantMatch">▶ <span id="btnApercuMatchLabel">Prochaine journée</span></button>
+
+    <!-- Aperçu du prochain match, façon écran de préparation d'avant-match :
+         forme, composition, tactique et analyse de l'adversaire, AVANT de
+         lancer réellement la simulation (cf. clubUI.js, rafraichirApercuMatch). -->
+    <div id="panneauApercuMatch">
+      <div id="apercuMatchContenu">
+        <div class="enTetePage" style="margin:0 0 14px;padding:0 0 10px;">
+          <span class="categoriePage">Avant-match</span>
+          <h2>🆚 Aperçu du prochain match</h2>
+          <p>Ta préparation avant de lancer la simulation.</p>
+        </div>
+        <div id="apercuMatchCorps"></div>
+        <div style="display:flex;gap:8px;margin-top:6px;">
+          <button id="btnApercuModifierCompo" class="alt" style="flex:1;">📋 Composition</button>
+          <button id="btnApercuLancerMatch" class="accent" style="flex:2;">Lancer le match</button>
+        </div>
+        <button class="fermer alt" id="fermerApercuMatch" style="width:100%;margin-top:10px;">Fermer</button>
+      </div>
     </div>
   </div>
 </div>

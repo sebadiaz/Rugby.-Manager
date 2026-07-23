@@ -118,11 +118,20 @@ function optionsLancement() {
   verifier('club adverse : sa fiche affiche un contenu réel', detailAdversaireTxt.trim().length > 20);
   await page.click('#btnFermerClubAdversaire');
 
-  // 7) Progression d'une journée.
+  // 7) Aperçu du prochain match (façon Football Manager), puis progression
+  // d'une journée. Le bouton "New Day" flottant doit rester joignable depuis
+  // n'importe quel onglet ; on vérifie ici depuis le Dashboard, et une
+  // seconde fois plus bas (bouton flottant) pendant la boucle de fin de saison.
   await clicOnglet('dashboard');
   await page.waitForTimeout(150);
   await page.selectOption('#selDureeClub', '300');
   await page.click('#btnJouerMatchClub');
+  await page.waitForTimeout(200);
+  verifier('aperçu du match : la préparation d\'avant-match s\'ouvre', await page.isVisible('#panneauApercuMatch.visible'));
+  const apercuTxt = await page.textContent('#apercuMatchCorps');
+  verifier('aperçu du match : forme/composition/tactique/adversaire réels affichés',
+    apercuTxt.includes('Ma forme') && apercuTxt.includes('Ma composition') && apercuTxt.includes('Ma tactique') && apercuTxt.includes('adversaire'));
+  await page.click('#btnApercuLancerMatch');
   await page.waitForSelector('#panneauResultat.visible', { timeout: 20000 });
   const scoreTxt = await page.textContent('#resultatScore');
   verifier('progression d\'une journée : un score réel est affiché', /\d+\s*[—-]\s*\d+/.test(scoreTxt));
@@ -130,17 +139,22 @@ function optionsLancement() {
   await page.waitForTimeout(300);
   verifier('progression d\'une journée : retour au club après le match', await page.isVisible('#panneauClub.visible'));
 
-  // 8) Fin de saison.
-  await clicOnglet('dashboard');
+  // 8) Fin de saison — via le bouton flottant "New Day" (toujours visible,
+  // ici depuis un autre onglet que le Dashboard) plutôt que le bouton du
+  // Dashboard, pour couvrir les deux points d'entrée vers l'aperçu du match.
+  await clicOnglet('finances');
   await page.waitForTimeout(150);
+  verifier('bouton "New Day" flottant visible depuis un autre onglet que le Dashboard', await page.isVisible('#btnApercuMatchFlottant'));
   // Termine rapidement les journées restantes (résultat non affiché) pour
   // atteindre la fin de saison sans faire dépendre le test de 10 clics UI.
-  while (await page.isVisible('#btnJouerMatchClub') && !(await page.isVisible('#btnSaisonSuivante'))) {
+  while (await page.isVisible('#btnApercuMatchFlottant') && !(await page.isVisible('#btnSaisonSuivante'))) {
     const dejaTermine = await page.evaluate(() => document.getElementById('btnSaisonSuivante').style.display !== 'none');
     if (dejaTermine) break;
     const fixturesRestantes = await page.evaluate(() => document.getElementById('clubProchainMatch').textContent.includes('à jouer'));
     if (!fixturesRestantes) break;
-    await page.click('#btnJouerMatchClub');
+    await page.click('#btnApercuMatchFlottant');
+    await page.waitForSelector('#panneauApercuMatch.visible', { timeout: 5000 });
+    await page.click('#btnApercuLancerMatch');
     await page.waitForSelector('#panneauResultat.visible', { timeout: 20000 });
     await page.click('#btnResultatFermer');
     await page.waitForTimeout(200);
