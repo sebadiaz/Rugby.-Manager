@@ -451,6 +451,19 @@
     document.getElementById('panneauLegende').classList.remove('visible');
   });
 
+  // Échap referme le calque ouvert le plus "au-dessus" (aucun de ces
+  // panneaux n'écoutait le clavier jusqu'ici, seul un clic sur leur bouton
+  // dédié fonctionnait). Ne touche jamais au Mode Club (panneauClub), qui
+  // gère ses propres calques indépendamment (cf. clubUI.js) — les deux
+  // contextes ne sont jamais actifs en même temps.
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    for (const id of ['panneauLegende', 'panneauStats', 'panneauHistorique', 'panneauMenu']) {
+      const p = document.getElementById(id);
+      if (p && p.classList.contains('visible')) { p.classList.remove('visible'); return; }
+    }
+  });
+
   function onRevoirHistorique(entree) {
     document.getElementById('panneauHistorique').classList.remove('visible');
     // Un historique enregistré ne porte jamais de composition/tactique de

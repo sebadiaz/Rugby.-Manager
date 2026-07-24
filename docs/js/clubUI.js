@@ -1668,5 +1668,17 @@
     document.getElementById('panneauApercuMatch').classList.add('visible');
   }
 
+  // Échap referme le calque actuellement ouvert (le plus "au-dessus" en
+  // premier) — aucun des panneaux du Mode Club n'écoutait le clavier jusqu'ici,
+  // seul le clic sur leur bouton dédié fonctionnait.
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    const apercu = document.getElementById('panneauApercuMatch');
+    if (apercu.classList.contains('visible')) { apercu.classList.remove('visible'); return; }
+    if (document.getElementById('barreOngletsClub').classList.contains('ouvert')) { fermerTiroirNav(); return; }
+    if (joueurAffiche) { fermerFicheJoueur(); return; }
+    if (clubAdversaireAffiche) { fermerClubAdversaire(); return; }
+  });
+
   rafraichirTout();
 })();
