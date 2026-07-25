@@ -476,6 +476,81 @@ test('polyvalence : un choix manuel hors poste naturel survit au rafraîchisseme
   assert.strictEqual(RMClub.validerComposition(recomplete).length, 0);
 });
 
+// --- 13) Pyramide française : le club du joueur débute en petite division
+// et progresse réellement (montée/descente selon le classement final,
+// nouveaux adversaires au bon niveau, qualification européenne). Scénarios
+// isolés (nouvelle saison dédiée) pour un contrôle déterministe du
+// classement final. ---
+test('pyramide : une nouvelle carrière débute en Ligue Régionale (palier 3), avec des adversaires et un budget modestes', () => {
+  const s = RMClub.nouvelleSaison(creerRng(101), 'Petit Club');
+  const c = s.clubJoueur;
+  assert.deepStrictEqual(c.palierPyramide, { pays: 'FRA', niveau: 3 });
+  assert.ok(c.niveauClub < 0.5, 'un club qui débute en Ligue Régionale doit être plus modeste qu\'un club moyen');
+  assert.ok(s.adversaires.every((a) => a.niveauClub <= 0.5), 'les adversaires de Ligue Régionale doivent rester modestes');
+});
+
+test('pyramide : finir dans le top 2 fait monter d\'un palier, avec de nouveaux adversaires plus forts', () => {
+  const s = RMClub.nouvelleSaison(creerRng(102), 'Club Ambitieux');
+  const c = s.clubJoueur;
+  for (const id of Object.keys(s.classement)) s.classement[id].pts = 0;
+  s.classement[c.id].pts = 999; // garantit la 1re place
+  const idsAdversairesAvant = s.adversaires.map((a) => a.id).sort();
+  RMClub.avancerSaison(creerRng(103), s);
+  assert.deepStrictEqual(c.palierPyramide, { pays: 'FRA', niveau: 2 }, 'la 1re place doit faire monter de Ligue Régionale en Ligue Nationale');
+  assert.ok(c.messages.some((m) => m.titre === 'Promotion !'));
+  const idsAdversairesApres = s.adversaires.map((a) => a.id).sort();
+  assert.notDeepStrictEqual(idsAdversairesApres, idsAdversairesAvant, 'une montée de palier doit apporter de nouveaux rivaux (nouvelle division)');
+  assert.ok(s.adversaires.some((a) => a.niveauClub > 0.5), 'les adversaires de Ligue Nationale doivent être plus forts qu\'en Ligue Régionale');
+});
+
+test('pyramide : finir dans les 2 dernières places fait descendre d\'un palier (sauf déjà tout en bas)', () => {
+  const s = RMClub.nouvelleSaison(creerRng(104), 'Club en Difficulté');
+  const c = s.clubJoueur;
+  // Fait d'abord monter le club en Ligue Nationale (palier 2) pour pouvoir
+  // tester une VRAIE descente ensuite (déjà tout en bas sinon).
+  for (const id of Object.keys(s.classement)) s.classement[id].pts = 0;
+  s.classement[c.id].pts = 999;
+  RMClub.avancerSaison(creerRng(105), s);
+  assert.strictEqual(c.palierPyramide.niveau, 2);
+  // Puis dernière place cette saison-là : doit redescendre en Ligue Régionale.
+  for (const id of Object.keys(s.classement)) s.classement[id].pts = 999;
+  s.classement[c.id].pts = 0;
+  RMClub.avancerSaison(creerRng(106), s);
+  assert.deepStrictEqual(c.palierPyramide, { pays: 'FRA', niveau: 3 });
+  assert.ok(c.messages.some((m) => m.titre === 'Relégation'));
+});
+
+test('pyramide : impossible de descendre plus bas que la Ligue Régionale (déjà le palier le plus bas)', () => {
+  const s = RMClub.nouvelleSaison(creerRng(107), 'Club Modeste');
+  const c = s.clubJoueur;
+  for (const id of Object.keys(s.classement)) s.classement[id].pts = 999;
+  s.classement[c.id].pts = 0; // dernière place, déjà en palier 3
+  RMClub.avancerSaison(creerRng(108), s);
+  assert.strictEqual(c.palierPyramide.niveau, 3, 'aucune division sous la Ligue Régionale : le palier ne doit pas dépasser 3');
+  assert.ok(!c.messages.some((m) => m.titre === 'Relégation'));
+});
+
+test('pyramide : qualification européenne uniquement depuis la Ligue d\'Excellence (palier 1), selon la position finale', () => {
+  const s = RMClub.nouvelleSaison(creerRng(109), 'Club Historique');
+  const c = s.clubJoueur;
+  c.palierPyramide = { pays: 'FRA', niveau: 1 }; // déjà au sommet
+  for (const id of Object.keys(s.classement)) s.classement[id].pts = 0;
+  s.classement[c.id].pts = 999; // 1re place
+  RMClub.avancerSaison(creerRng(110), s);
+  assert.strictEqual(c.palierPyramide.niveau, 1, 'déjà au sommet : aucune montée possible au-delà');
+  assert.strictEqual(c.qualificationEuropeenne, 'continentale', '1re place en Ligue d\'Excellence qualifie pour la Continentale');
+  assert.ok(c.messages.some((m) => m.titre === 'Qualification européenne !'));
+});
+
+test('pyramide : rétrocompatibilité — une sauvegarde antérieure sans "palierPyramide" repart en Ligue d\'Excellence (pas de rétrogradation punitive)', () => {
+  const s = RMClub.nouvelleSaison(creerRng(111), 'Ancienne Sauvegarde');
+  const c = s.clubJoueur;
+  delete c.palierPyramide;
+  delete c.qualificationEuropeenne;
+  assert.doesNotThrow(() => RMClub.avancerSaison(creerRng(112), s));
+  assert.ok(c.palierPyramide && c.palierPyramide.niveau === 1, 'une sauvegarde antérieure à cette fonctionnalité doit repartir au palier le plus haut, pas être rétrogradée rétroactivement');
+});
+
 console.log(`\n${nbTests} test(s) exécuté(s).`);
 if (process.exitCode) {
   console.error('ECHEC : au moins un test du parcours club a échoué.');

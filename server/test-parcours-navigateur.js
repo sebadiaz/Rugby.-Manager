@@ -76,6 +76,8 @@ function optionsLancement() {
     (await page.textContent('#clubObjectifSaison')).includes('Confiance du président'));
   await page.waitForTimeout(300);
   verifier('création de carrière : dashboard affiché', await page.isVisible('[data-volet="dashboard"]'));
+  const entetTxt = await page.textContent('#clubEntete');
+  verifier('pyramide : une nouvelle carrière débute en Ligue Régionale (affiché dans l\'entête du club)', entetTxt.includes('Ligue Régionale'));
 
   // 2) Navigation dans toutes les pages.
   const onglets = ['dashboard', 'effectif', 'composition', 'tactique', 'entrainement',
@@ -351,11 +353,30 @@ function optionsLancement() {
   }
   const boutonSaisonSuivanteVisible = await page.isVisible('#btnSaisonSuivante').catch(() => false);
   if (boutonSaisonSuivanteVisible) {
+    // Force la 1re place (état non exposé par l'UI, modifié directement en
+    // localStorage) pour vérifier de façon déterministe qu'une vraie montée
+    // de palier a bien lieu, plutôt que de dépendre du hasard des résultats
+    // déjà simulés cette saison.
+    await page.evaluate(() => {
+      const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
+      for (const id of Object.keys(s.classement)) s.classement[id].pts = 0;
+      s.classement[s.clubJoueur.id].pts = 999;
+      localStorage.setItem('rugbyManager.club.v1', JSON.stringify(s));
+    });
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.waitForTimeout(200);
+    await page.click('#btnContinuerClub');
+    await page.waitForTimeout(200);
     page.once('dialog', (d) => d.accept());
     await page.click('#btnSaisonSuivante');
     await page.waitForTimeout(300);
-    const saisonTxt = await page.textContent('#clubTopBarInfos, #clubEntete').catch(() => '');
     verifier('fin de saison : le club reste jouable en saison 2', await page.isVisible('[data-volet="dashboard"]'));
+    const entetApresPromotion = await page.textContent('#clubEntete');
+    verifier('pyramide : finir 1er fait bien monter de palier (affiché dans l\'entête)', entetApresPromotion.includes('Ligue Nationale'));
+    await clicOnglet('dashboard');
+    await page.waitForTimeout(150);
+    const messagesTxt = await page.textContent('#clubMessages');
+    verifier('pyramide : un message "Promotion !" apparaît dans la boîte de réception', messagesTxt.includes('Promotion'));
   } else {
     console.log('   (fin de saison non atteinte dans ce run — championnat trop long pour un test rapide, mécanisme couvert par server/test-parcours-club.js)');
   }

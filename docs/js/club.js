@@ -445,6 +445,35 @@
     return Math.round(150 + niveauClub * 500 + rng() * 100);
   }
 
+  // --- Pyramide française (Mode Club) : le club du joueur DÉBUTE en petite
+  // division et peut progresser réellement (montée/descente selon le
+  // classement final, cf. avancerSaison) jusqu'à la plus haute — même
+  // principe de pyramide à 3 niveaux que l'écosystème mondial (cf.
+  // docs/js/world.js), dupliqué ici en tout petit pour que club.js reste
+  // autonome (aucune dépendance à world.js, qui lui dépend de club.js). ---
+  const PALIERS_PYRAMIDE_FRANCE = {
+    1: 'Ligue d\'Excellence', 2: 'Ligue Nationale', 3: 'Ligue Régionale',
+  };
+  function nomPalierFrance(niveau) { return PALIERS_PYRAMIDE_FRANCE[niveau] || 'Ligue Régionale'; }
+  // Bande de niveau (0-1) des clubs qu'on affronte à ce palier — plus la
+  // division est basse, plus l'opposition (et le club du joueur lui-même,
+  // cf. nouvelleSaison) est modeste.
+  function bandeNiveauPalier(niveau) {
+    if (niveau <= 1) return { min: 0.55, max: 0.85 };
+    if (niveau === 2) return { min: 0.35, max: 0.6 };
+    return { min: 0.15, max: 0.45 };
+  }
+  // 5 niveaux d'adversaires étalés sur toute la bande du palier (comme le
+  // tirage [0.25, 0.4, 0.5, 0.6, 0.75] historique, mais recentré sur la
+  // bande de CE palier plutôt que fixe) — jamais 5 clones du même niveau.
+  function niveauxAdversairesPourPalier(niveau) {
+    const bande = bandeNiveauPalier(niveau);
+    const n = 5;
+    const niveaux = [];
+    for (let i = 0; i < n; i++) niveaux.push(bande.min + (bande.max - bande.min) * (i / (n - 1)));
+    return niveaux;
+  }
+
   // Club du joueur : effectif ÉTENDU (24, avec profondeur) + budget + tactique.
   // C'est le seul club géré en détail (composition, transferts, finances,
   // tactique) — les adversaires (IA) restent un effectif de 15 prêt à jouer,
@@ -456,7 +485,13 @@
       couleur: choisir(rng, COULEURS),
       niveauClub,
       effectif: genererEffectifEtendu(rng, niveauClub),
-      budget: budgetInitial(niveauClub, rng),
+      // +80 k€ de capital de départ (repreneur) par rapport à un club IA au
+      // même niveau : garantit qu'un petit club de Ligue Régionale garde une
+      // vraie marge de manœuvre sur le marché des transferts (cf.
+      // genererMarcheTransferts, calibré sur ce même niveauClub) — sans quoi
+      // le budget d'un tout petit club ne suivrait jamais le prix, même
+      // modeste, d'un joueur libre du même niveau.
+      budget: budgetInitial(niveauClub, rng) + 80,
       // Sponsor : revenu récurrent réel par match (cf. appliquerFinancesMatch).
       // Personnel : organigramme vide au départ, à recruter sur marchePersonnel.
       sponsor: genererSponsor(rng, niveauClub),
@@ -502,6 +537,14 @@
       // séparé de l'effectif pro — promouvable à tout moment de la saison
       // (pas seulement en fin de saison) via promouvoirJeune.
       jeunes: genererCentreFormation(rng, niveauClub),
+      // Position RÉELLE dans la pyramide française (cf. PALIERS_PYRAMIDE_FRANCE) —
+      // ajustée à chaque fin de saison selon le classement final
+      // (promotion/relégation, cf. avancerSaison), jamais un statut fabriqué.
+      palierPyramide: { pays: 'FRA', niveau: 3 },
+      // Qualification européenne acquise la saison dernière (si le club
+      // jouait alors en Ligue d'Excellence et a fini dans les places
+      // qualificatives) — cf. avancerSaison. null = aucune.
+      qualificationEuropeenne: null,
     };
   }
 
@@ -1720,19 +1763,60 @@
         `Confiance du président : ${bilanObjectif.confiance}% (${bilanObjectif.delta >= 0 ? '+' : ''}${bilanObjectif.delta}).`);
     }
 
-    // Évolution RÉELLE des clubs adverses d'une saison à l'autre (pas un
-    // tirage figé à chaque saison) : leur niveau dérive selon leur
-    // classement final qu'on vient de calculer ci-dessus — finir dans le
-    // haut du tableau les renforce légèrement, finir en bas les affaiblit.
-    // L'identité du club (nom, couleur, id) persiste, seul l'effectif est
+    // Promotion/relégation RÉELLE dans la pyramide française (cf.
+    // PALIERS_PYRAMIDE_FRANCE) — dérivée du classement final qu'on vient de
+    // calculer, jamais un tirage arbitraire. Rétrocompat : une sauvegarde
+    // antérieure à cette fonctionnalité repart en Ligue d'Excellence (pas de
+    // Régionale rétroactive qui pénaliserait une progression déjà acquise).
+    if (!saison.clubJoueur.palierPyramide) saison.clubJoueur.palierPyramide = { pays: 'FRA', niveau: 1 };
+    const palierAvant = saison.clubJoueur.palierPyramide;
+    const totalClubsLigue = classementFinal.length;
+    let nouveauNiveauPalier = palierAvant.niveau;
+    let mouvementPalier = null;
+    if (palierAvant.niveau > 1 && positionFinale <= 2) { nouveauNiveauPalier = palierAvant.niveau - 1; mouvementPalier = 'promotion'; }
+    else if (palierAvant.niveau < 3 && positionFinale >= totalClubsLigue - 1) { nouveauNiveauPalier = palierAvant.niveau + 1; mouvementPalier = 'relegation'; }
+    saison.clubJoueur.palierPyramide = { pays: 'FRA', niveau: nouveauNiveauPalier };
+    if (mouvementPalier === 'promotion') {
+      ajouterMessage(saison, 'saison', 'Promotion !',
+        `${positionFinale}e place : le club monte en ${nomPalierFrance(nouveauNiveauPalier)} la saison prochaine.`);
+    } else if (mouvementPalier === 'relegation') {
+      ajouterMessage(saison, 'saison', 'Relégation',
+        `${positionFinale}e place : le club descend en ${nomPalierFrance(nouveauNiveauPalier)} la saison prochaine.`);
+    }
+    // Qualification européenne (cf. docs/js/world.js, mêmes règles) :
+    // seulement possible en jouant CETTE saison en Ligue d'Excellence
+    // (palier 1), dérivée du classement final réel — jamais fabriquée.
+    let qualificationEuropeenne = null;
+    if (palierAvant.niveau === 1) {
+      if (positionFinale <= 2) qualificationEuropeenne = 'continentale';
+      else if (positionFinale <= 4) qualificationEuropeenne = 'challenge';
+    }
+    saison.clubJoueur.qualificationEuropeenne = qualificationEuropeenne;
+    if (qualificationEuropeenne === 'continentale') {
+      ajouterMessage(saison, 'saison', 'Qualification européenne !',
+        'Le club valide sa place en Coupe des Champions Continentale la saison prochaine.');
+    } else if (qualificationEuropeenne === 'challenge') {
+      ajouterMessage(saison, 'saison', 'Qualification européenne',
+        'Le club valide sa place en Coupe Challenge Continentale la saison prochaine.');
+    }
+
+    // Évolution des clubs adverses d'une saison à l'autre : si le palier du
+    // joueur change, ce sont de NOUVEAUX rivaux (nouvelle division, cf.
+    // niveauxAdversairesPourPalier) — sinon, évolution RÉELLE des mêmes
+    // adversaires selon leur classement final (pas un tirage figé), comme
+    // avant ce patch : finir dans le haut du tableau les renforce
+    // légèrement, finir en bas les affaiblit. L'identité du club (nom,
+    // couleur, id) persiste dans ce second cas, seul l'effectif est
     // régénéré au nouveau niveau (renouvellement d'effectif normal).
-    const adversaires = saison.adversaires.map((ancien) => {
-      const rang = classementFinal.findIndex((r) => r.clubId === ancien.id) + 1;
-      const total = classementFinal.length;
-      const delta = rang <= 2 ? 0.05 : rang >= total - 1 ? -0.05 : 0;
-      const niveauClub = Math.max(0.15, Math.min(0.9, (ancien.niveauClub != null ? ancien.niveauClub : 0.5) + delta));
-      return { id: ancien.id, nom: ancien.nom, couleur: ancien.couleur, niveauClub, effectif: genererEffectif(rng, niveauClub), budget: budgetInitial(niveauClub, rng) };
-    });
+    const adversaires = mouvementPalier
+      ? niveauxAdversairesPourPalier(nouveauNiveauPalier).map((niveauClub) => genererClub(rng, { niveauClub }))
+      : saison.adversaires.map((ancien) => {
+        const rang = classementFinal.findIndex((r) => r.clubId === ancien.id) + 1;
+        const total = classementFinal.length;
+        const delta = rang <= 2 ? 0.05 : rang >= total - 1 ? -0.05 : 0;
+        const niveauClub = Math.max(0.15, Math.min(0.9, (ancien.niveauClub != null ? ancien.niveauClub : 0.5) + delta));
+        return { id: ancien.id, nom: ancien.nom, couleur: ancien.couleur, niveauClub, effectif: genererEffectif(rng, niveauClub), budget: budgetInitial(niveauClub, rng) };
+      });
     saison.adversaires = adversaires;
     const tousLesClubs = [saison.clubJoueur, ...adversaires];
     saison.calendrier = genererCalendrier(tousLesClubs);
@@ -1740,7 +1824,10 @@
     // Éligibilité à l'Équipe B réévaluée chaque saison (les budgets ont
     // bougé) — cf. determinerEligiblesEquipeB.
     saison.competitionB = genererCompetitionB(tousLesClubs);
-    saison.marche = genererMarcheTransferts(rng, 0.5, 6);
+    // Marché des transferts calibré sur le NIVEAU RÉEL du club du joueur
+    // (pas un 0.5 fixe) : un petit club de Ligue Régionale n'attire pas les
+    // mêmes joueurs libres qu'un cador de Ligue d'Excellence.
+    saison.marche = genererMarcheTransferts(rng, saison.clubJoueur.niveauClub, 6);
     saison.marchePersonnel = genererMarchePersonnel(rng, 5);
     saison.numero = (saison.numero || 1) + 1;
     // Objectif de la saison qui COMMENCE, basé sur le classement RÉEL qu'on
@@ -1774,10 +1861,15 @@
   // budget) + 5 adversaires IA de niveaux variés, calendrier aller-retour,
   // classement à zéro, marché des transferts initial.
   function nouvelleSaison(rng, nomClubJoueur) {
-    const clubJoueur = genererClubJoueur(rng, { nom: nomClubJoueur, niveauClub: 0.5 });
+    // Débute tout en bas de la pyramide française (Ligue Régionale, cf.
+    // PALIERS_PYRAMIDE_FRANCE) : un petit club modeste, comme les adversaires
+    // qu'il affronte à ce palier — la progression vers le sommet se fait
+    // ensuite réellement, saison après saison (cf. avancerSaison).
+    const niveauDepart = bandeNiveauPalier(3).min + (bandeNiveauPalier(3).max - bandeNiveauPalier(3).min) * 0.5;
+    const clubJoueur = genererClubJoueur(rng, { nom: nomClubJoueur, niveauClub: niveauDepart });
     snapshotAttributsDebutSaison(clubJoueur.effectif);
     const adversaires = [];
-    const niveaux = [0.25, 0.4, 0.5, 0.6, 0.75]; // du plus faible au plus fort
+    const niveaux = niveauxAdversairesPourPalier(3); // du plus faible au plus fort, pour ce palier
     for (const niveauClub of niveaux) adversaires.push(genererClub(rng, { niveauClub }));
     const tousLesClubs = [clubJoueur, ...adversaires];
     clubJoueur.objectifSaison = determinerObjectifSaison(clubJoueur.historiqueSaisons, tousLesClubs.length);
@@ -1789,7 +1881,9 @@
       calendrier: genererCalendrier(tousLesClubs),
       classement: classementInitial(tousLesClubs),
       competitionB: genererCompetitionB(tousLesClubs),
-      marche: genererMarcheTransferts(rng, 0.5, 6),
+      // Marché calibré sur le niveau réel du club (petit club = marché
+      // modeste) — jamais un 0.5 fixe déconnecté de la pyramide.
+      marche: genererMarcheTransferts(rng, clubJoueur.niveauClub, 6),
       marchePersonnel: genererMarchePersonnel(rng, 5),
       favoris: [],
     };
@@ -1836,7 +1930,7 @@
     ENTRAINEMENTS, appliquerEntrainement,
     accumulerStatsJoueurs, classementMarqueurs,
     calculerOffreRenouvellement, renouvelerContrat, negocierRenouvellement, calculerPrimeSignature,
-    assurerCentreFormation, promouvoirJeune, ajouterMessage,
+    assurerCentreFormation, promouvoirJeune, ajouterMessage, nomPalierFrance,
     basculerFavori, analyserAdversaire,
     appliquerMoral, preterJoueur, rappelerJoueur, progresserPrets,
     POSTES_PERSONNEL, genererMarchePersonnel, embaucherPersonnel, licencierPersonnel,

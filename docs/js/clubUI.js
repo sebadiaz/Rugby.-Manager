@@ -192,9 +192,16 @@
   function rafraichirEntete() {
     const c = saison.clubJoueur;
     const initiale = (c.nom.match(/\b\w/g) || ['?']).slice(0, 2).join('').toUpperCase();
+    // Palier de la pyramide française (cf. RMClub.nomPalierFrance) : une
+    // sauvegarde antérieure à cette fonctionnalité n'a pas encore ce champ
+    // tant qu'elle n'a pas traversé un avancerSaison — repli sur le palier
+    // le plus haut (même choix rétrocompatible que dans avancerSaison).
+    const niveauPalier = c.palierPyramide ? c.palierPyramide.niveau : 1;
+    const badgeEuropeen = c.qualificationEuropeenne
+      ? `<span class="badgeQualifEuro">🏆 Qualifié ${c.qualificationEuropeenne === 'continentale' ? 'Continentale' : 'Challenge'}</span>` : '';
     document.getElementById('clubEntete').innerHTML =
       `<div class="clubEntete"><span class="pastilleClub" style="background:${c.couleur}">${initiale}</span>` +
-      `<span class="nomClub">${c.nom}</span></div>`;
+      `<span class="nomClub">${c.nom}<span class="sousLigne">${RMClub.nomPalierFrance(niveauPalier)}</span></span></div>${badgeEuropeen}`;
   }
 
   // Barre supérieure persistante (cf. index.html #clubTopBarInfos) : saison,
