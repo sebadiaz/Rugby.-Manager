@@ -1903,12 +1903,51 @@
   function sauvegarderSaison(saison) {
     try { localStorage.setItem(CLE_CLUB, JSON.stringify(saison)); return true; } catch (e) { return false; }
   }
+  // Extrait le suffixe numérique d'un id préfixé ("j42" -> 42) — 0 si l'id
+  // n'a pas ce préfixe ou n'a pas de suffixe numérique exploitable.
+  function idNumerique(id, prefixe) {
+    if (typeof id !== 'string' || id.slice(0, prefixe.length) !== prefixe) return 0;
+    const n = Number(id.slice(prefixe.length));
+    return Number.isFinite(n) ? n : 0;
+  }
+  // Audit P0-1 (TODO_AUDIT.md) : compteurJoueurId/compteurMessageId/
+  // compteurPersonnelId/compteurId sont des variables de module réinitialisées
+  // à CHAQUE chargement du script (donc à chaque rechargement de page) alors
+  // que la sauvegarde, elle, contient déjà des identifiants avancés — sans
+  // resynchronisation, toute création après un F5 (joueur signé, message,
+  // personnel embauché, club adverse régénéré après une montée/descente)
+  // repart d'un compteur à 1 et entre en collision avec un id déjà utilisé
+  // (deux joueurs ou deux clubs partageant le même id, résolutions faussées
+  // via `.find(j => j.id === id)` ou `club(saison, id)`). Recalcule chaque
+  // compteur au-delà du plus grand id déjà présent dans la sauvegarde
+  // rechargée, une seule fois, ici — jamais lors d'un simple appel de
+  // fonction dans la même session (les compteurs y sont déjà à jour).
+  function resynchroniserCompteurs(saison) {
+    let maxJoueur = 0, maxMessage = 0, maxPersonnel = 0, maxClub = 0;
+    const c = saison.clubJoueur;
+    if (c) {
+      maxClub = Math.max(maxClub, idNumerique(c.id, 'club'));
+      for (const j of c.effectif || []) maxJoueur = Math.max(maxJoueur, idNumerique(j.id, 'j'));
+      for (const j of c.jeunes || []) maxJoueur = Math.max(maxJoueur, idNumerique(j.id, 'j'));
+      for (const m of c.messages || []) maxMessage = Math.max(maxMessage, idNumerique(m.id, 'msg'));
+      for (const p of c.personnel || []) maxPersonnel = Math.max(maxPersonnel, idNumerique(p.id, 'staff'));
+    }
+    for (const a of saison.adversaires || []) maxClub = Math.max(maxClub, idNumerique(a.id, 'club'));
+    for (const j of saison.marche || []) maxJoueur = Math.max(maxJoueur, idNumerique(j.id, 'j'));
+    for (const j of saison.favoris || []) maxJoueur = Math.max(maxJoueur, idNumerique(j.id, 'j'));
+    for (const p of saison.marchePersonnel || []) maxPersonnel = Math.max(maxPersonnel, idNumerique(p.id, 'staff'));
+    compteurJoueurId = Math.max(compteurJoueurId, maxJoueur + 1);
+    compteurMessageId = Math.max(compteurMessageId, maxMessage + 1);
+    compteurPersonnelId = Math.max(compteurPersonnelId, maxPersonnel + 1);
+    compteurId = Math.max(compteurId, maxClub + 1);
+  }
   function chargerSaison() {
     try {
       const brut = localStorage.getItem(CLE_CLUB);
       if (!brut) return null;
       const saison = JSON.parse(brut);
       if (saison.version !== VERSION_SAUVEGARDE) return null; // ancien format : on repart à zéro plutôt que de planter
+      resynchroniserCompteurs(saison);
       return saison;
     } catch (e) { return null; }
   }

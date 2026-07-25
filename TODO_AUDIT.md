@@ -1,0 +1,110 @@
+# Audit Rugby Manager — backlog permanent
+
+Ce fichier est le backlog permanent de l'audit du projet. Règles de travail :
+
+- Aucun bug n'est déclaré sans reproduction ou démonstration dans le code.
+- Chaque tâche documente : priorité, fichiers concernés, reproduction, cause, correction, critères de validation.
+- Pour chaque correction : un test qui échoue est ajouté d'abord, puis le bug est corrigé, puis toute la suite de tests est revérifiée.
+- Une tâche n'est cochée qu'après validation complète (tests + preuve).
+- Aucune nouvelle fonctionnalité tant que les tâches P0 ne sont pas closes.
+- Un seul patch à la fois, jamais de réécriture générale en même temps qu'une correction.
+
+Statuts possibles : `À FAIRE`, `EN COURS`, `CONFIRMÉ`, `CORRIGÉ`, `FAUX POSITIF`.
+
+---
+
+## P0 — Fiabilité
+
+### P0-1. Identifiants après rechargement (compteurJoueurId, compteurMessageId, compteurPersonnelId, compteurId)
+- **Statut : CORRIGÉ**
+- Priorité : P0 (fiabilité — corruption de données)
+- Fichiers concernés :
+  - `docs/js/club.js` (cause + correction)
+  - `server/test-audit-p0-1.js` (nouveau — reproduction + validation)
+
+**Reproduction.** `compteurJoueurId`, `compteurMessageId`, `compteurPersonnelId` (et `compteurId`, non cité dans le libellé initial mais même défaut) sont des `let x = 1` au niveau du module (`docs/js/club.js` lignes 63-64, 427, 991). Ce sont des variables JS, PAS des données persistées : elles repartent à 1 à chaque exécution du script, donc à chaque rechargement de page (F5), alors que la sauvegarde dans `localStorage` contient déjà des identifiants avancés. Confirmé en simulant un vrai F5 (deux exécutions fraîches et indépendantes de `club.js` partageant le même `localStorage`, cf. `server/test-audit-p0-1.js`) :
+  - Session 1 : `nouvelleSaison` → effectif avec joueurs `j1`…`j24`+, club du joueur `club1`, adversaires `club2`…`club14`. Sauvegarde.
+  - Session 2 (F5 simulé) : `chargerSaison()` retrouve la même sauvegarde, mais `compteurJoueurId`/`compteurId`/`compteurMessageId`/`compteurPersonnelId` valent de nouveau 1.
+  - Signer un joueur du marché après ce rechargement génère un nouvel id `j1` → **collision directe et prouvée** avec le joueur `j1` déjà présent (2 objets `{id:"j1"}` distincts dans le même `effectif`, `nom` différents — "Antoine Garcia" et "Alexandre Morel" dans le test).
+  - Une montée de palier (nouveaux adversaires) après un F5 régénère un adversaire avec l'id `club1` → **collision avec `saison.clubJoueur.id` lui-même**. `RMClub.club(saison, "club1")` retourne alors TOUJOURS le club du joueur au lieu du bon adversaire (le code de `club()` teste `clubJoueur.id` en premier) : la résolution des rencontres de cet adversaire est corrompue (mauvaise identité affichée, mauvais niveau utilisé pour la simulation abstraite/moteur).
+  - Même défaut démontré pour `compteurMessageId` (deux messages différents partageant l'id `msg1`) et `compteurPersonnelId` (deux membres du personnel partageant l'id `staff1`).
+  - Note : le même schéma existe dans `docs/js/world.js` (`compteurClubMondeId`), mais AUCUN chemin de code n'appelle la génération de clubs du monde plus d'une fois par sauvegarde (`assurerMonde` ne régénère que si `!saison.monde`) — non reproductible en l'état, donc **non inclus** dans ce correctif (règle : pas de correction sans reproduction). À surveiller si `world.js` gagne un jour un chemin de régénération.
+
+**Cause.** Aucune resynchronisation des compteurs au chargement d'une sauvegarde existante — `chargerSaison()` se contentait de parser le JSON.
+
+**Correction.** Ajout de `resynchroniserCompteurs(saison)` dans `docs/js/club.js`, appelée systématiquement à la fin de `chargerSaison()` (avant de retourner la saison). Elle scanne tous les identifiants déjà présents dans la sauvegarde rechargée (`clubJoueur.id`, `adversaires[].id`, `effectif[].id`, `jeunes[].id`, `messages[].id`, `personnel[].id`, `marche[].id`, `favoris[].id`, `marchePersonnel[].id`) et porte chaque compteur au-delà du plus grand id déjà utilisé de sa catégorie (`Math.max(compteurX, maxTrouvé + 1)`), jamais en dessous de sa valeur courante. Aucun changement de comportement pour une sauvegarde inexistante ou pour un appel de fonction dans la même session (les compteurs y sont déjà à jour).
+
+**Critères de validation.**
+- `node server/test-audit-p0-1.js` : 4/4 tests passent (0/4 avant le correctif, vérifié par `git stash` sur `docs/js/club.js`).
+- `node server/test-parcours-club.js` : 35/35 (aucune régression).
+- `node server/test-monde.js` : 14/14 (aucune régression).
+- `node server/test-parcours-navigateur.js` (desktop + mobile) : 55/55, zéro erreur console (aucune régression).
+- `node server/test-invariants.js` : 12/12 (moteur non touché).
+
+### P0-2. Sauvegardes supprimées lors des mises à jour (chargerSaison renvoie null si version différente)
+- Statut : À FAIRE
+- Fichiers concernés : `docs/js/club.js`
+
+### P0-3. Injection HTML par le nom du club
+- Statut : À FAIRE
+- Fichiers concernés : `docs/js/clubUI.js`, `docs/js/club.js`, `docs/js/main.js`, `docs/js/ui.js`
+
+### P0-4. Tests absents de la CI
+- Statut : À FAIRE
+- Fichiers concernés : workflow(s) `.github/workflows/*`
+
+### P0-5. Site publié différent du code source (docs/ vs main vs GitHub Pages, Équipe B / Monde)
+- Statut : À FAIRE
+- Fichiers concernés : `docs/`, `.github/workflows/*`
+
+---
+
+## P1 — Parcours utilisateur
+
+### P1-6. Étendre le test navigateur (tous écrans, mobile, modales, bouton journée, retours arrière, rechargement en milieu d'action)
+- Statut : À FAIRE
+- Fichiers concernés : `server/test-parcours-navigateur.js`
+
+### P1-7. Scénarios négatifs (budget insuffisant, effectif incomplet, dernier joueur d'un poste, sauvegarde corrompue, double clic, saison terminée, joueur déjà transféré, action répétée après F5)
+- Statut : À FAIRE
+- Fichiers concernés : `server/test-parcours-club.js`, `server/test-parcours-navigateur.js`
+
+### P1-8. Remplacer progressivement prompt/alert/confirm par des fenêtres intégrées
+- Statut : À FAIRE
+- Fichiers concernés : `docs/js/clubUI.js`, `docs/index.html`, `docs/css/style.css`
+
+### P1-9. Carrière longue (10 saisons+, rechargements réguliers) — aucun id dupliqué, NaN, donnée perdue, composition impossible
+- Statut : À FAIRE
+- Fichiers concernés : `docs/js/club.js`, `server/test-parcours-club.js`
+
+---
+
+## P2 — Maintenabilité et simulation
+
+### P2-10. Découper club.js et clubUI.js par domaine (sans changement de comportement)
+- Statut : À FAIRE
+- Fichiers concernés : `docs/js/club.js`, `docs/js/clubUI.js`, `docs/index.html`
+
+### P2-11. Tests statistiques sur plusieurs centaines de matchs (scores, essais, rucks, mêlées, touches, coups de pied, pénalités, possession, diversité)
+- Statut : À FAIRE
+- Fichiers concernés : `server/test-invariants.js` ou nouveau fichier `server/test-stats-matchs.js`
+
+### P2-12. Accessibilité et responsive (clavier, focus, Échap, tableaux petit écran, tiroir mobile, boutons toujours accessibles)
+- Statut : À FAIRE
+- Fichiers concernés : `docs/index.html`, `docs/css/style.css`, `docs/js/clubUI.js`
+
+---
+
+## Journal des faux positifs
+
+(Tâches infirmées avec preuve, conservées pour traçabilité.)
+
+---
+
+## Journal des corrections appliquées
+
+### P0-1 — Identifiants après rechargement — CORRIGÉ
+- Reproduit dans `server/test-audit-p0-1.js` (4 scénarios : joueur signé, adversaire régénéré après montée de palier, message ajouté, personnel embauché — tous après un F5 simulé).
+- Corrigé par `resynchroniserCompteurs(saison)` dans `docs/js/club.js`, appelée depuis `chargerSaison()`.
+- Tests : `server/test-audit-p0-1.js` 4/4, `server/test-parcours-club.js` 35/35, `server/test-monde.js` 14/14, `server/test-parcours-navigateur.js` 55/55 (desktop+mobile), `server/test-invariants.js` 12/12.
+- Non inclus (non reproductible) : `compteurClubMondeId` dans `docs/js/world.js` — voir note dans P0-1 ci-dessus.
