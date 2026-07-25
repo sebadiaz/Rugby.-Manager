@@ -699,35 +699,47 @@
     return cfg;
   }
 
+  // Meilleur candidat dispo pour un NUMÉRO donné (donc un poste requis) :
+  // priorité aux joueurs de ce poste naturel, mais un joueur d'un autre poste
+  // peut dépanner si le poste naturel n'a plus personne de disponible (cf.
+  // rafraichirTerrain/rafraichirBanc côté UI, qui offre le même choix
+  // manuellement — un vrai effectif de rugby fait tourner ses polyvalents
+  // plutôt que de jouer à 14). Un joueur prêté (cf. preterJoueur) reste une
+  // exclusion DURE : il n'est tout simplement pas dans l'effectif du jour.
+  function meilleurCandidatPourNumero(effectif, poste, utilises) {
+    let candidats = effectif.filter((j) => j.poste === poste && !j.pret && !utilises.has(j.id));
+    if (candidats.length === 0) candidats = effectif.filter((j) => !j.pret && !utilises.has(j.id));
+    if (candidats.length === 0) return null;
+    const disponibles = candidats.filter((j) => !j.blessureJournees);
+    const pool = disponibles.length > 0 ? disponibles : candidats;
+    pool.sort((a, b) => (b.vitesse + b.plaquage) - (a.vitesse + a.plaquage));
+    return pool[0];
+  }
+
   // Compose automatiquement la meilleure équipe disponible : pour chaque
-  // numéro, le joueur du bon poste, NON BLESSÉ, au meilleur niveau
-  // (vitesse+plaquage) qui n'est pas déjà titularisé ailleurs. S'il ne reste
-  // aucun joueur valide à un poste (tous blessés), on titularise quand même
-  // le moins pire plutôt que de laisser un trou dans la composition.
+  // numéro, le meilleur candidat dispo (cf. meilleurCandidatPourNumero),
+  // NON BLESSÉ de préférence, qui n'est pas déjà titularisé ailleurs.
   function meilleureComposition(effectif) {
     const utilises = new Set();
     const composition = {};
     for (const numero of Object.keys(POSTE_REQUIS)) {
-      const poste = POSTE_REQUIS[numero];
-      // Un joueur prêté (cf. preterJoueur) est une exclusion DURE, contrairement
-      // à une blessure : il n'est tout simplement pas dans l'effectif du jour.
-      const candidats = effectif.filter((j) => j.poste === poste && !j.pret && !utilises.has(j.id));
-      if (candidats.length === 0) continue;
-      const disponibles = candidats.filter((j) => !j.blessureJournees);
-      const pool = disponibles.length > 0 ? disponibles : candidats;
-      pool.sort((a, b) => (b.vitesse + b.plaquage) - (a.vitesse + a.plaquage));
-      composition[numero] = pool[0].id;
-      utilises.add(pool[0].id);
+      const meilleur = meilleurCandidatPourNumero(effectif, POSTE_REQUIS[numero], utilises);
+      if (!meilleur) continue;
+      composition[numero] = meilleur.id;
+      utilises.add(meilleur.id);
     }
     return composition;
   }
 
   // Complète une composition PARTIELLE (choix déjà faits par le joueur, ou
   // chargée depuis une saison sauvegardée) sans écraser les choix valides :
-  // ne remplace que les numéros vides ou invalides (joueur libéré, mauvais
-  // poste, doublon) par le meilleur joueur disponible restant. Utilisé à
-  // l'ouverture de l'écran de composition — la version "table rase" reste
-  // meilleureComposition (bouton "meilleure équipe possible").
+  // ne remplace que les numéros vides ou invalides (joueur libéré, doublon)
+  // par le meilleur joueur disponible restant. N'importe quel joueur peut
+  // occuper n'importe quel poste (polyvalence assumée, cf.
+  // meilleurCandidatPourNumero) — un choix manuel hors poste naturel doit
+  // donc survivre au rafraîchissement, pas être écrasé au tour suivant.
+  // Utilisé à l'ouverture de l'écran de composition — la version "table
+  // rase" reste meilleureComposition (bouton "meilleure équipe possible").
   function completerComposition(effectif, compositionPartielle) {
     const parId = {};
     for (const j of effectif) parId[j.id] = j;
@@ -736,21 +748,17 @@
     for (const numero of Object.keys(POSTE_REQUIS)) {
       const id = compositionPartielle && compositionPartielle[numero];
       const j = id && parId[id];
-      if (j && !j.pret && j.poste === POSTE_REQUIS[numero] && !utilises.has(id)) {
+      if (j && !j.pret && !utilises.has(id)) {
         composition[numero] = id;
         utilises.add(id);
       }
     }
     for (const numero of Object.keys(POSTE_REQUIS)) {
       if (composition[numero]) continue;
-      const poste = POSTE_REQUIS[numero];
-      const candidats = effectif.filter((j) => j.poste === poste && !j.pret && !utilises.has(j.id));
-      if (candidats.length === 0) continue;
-      const disponibles = candidats.filter((j) => !j.blessureJournees);
-      const pool = disponibles.length > 0 ? disponibles : candidats;
-      pool.sort((a, b) => (b.vitesse + b.plaquage) - (a.vitesse + a.plaquage));
-      composition[numero] = pool[0].id;
-      utilises.add(pool[0].id);
+      const meilleur = meilleurCandidatPourNumero(effectif, POSTE_REQUIS[numero], utilises);
+      if (!meilleur) continue;
+      composition[numero] = meilleur.id;
+      utilises.add(meilleur.id);
     }
     return composition;
   }
@@ -785,21 +793,18 @@
     for (const numero of Object.keys(POSTE_REQUIS_BANC)) {
       const id = bancPartiel && bancPartiel[numero];
       const j = id && parId[id];
-      if (j && !j.pret && j.poste === POSTE_REQUIS_BANC[numero] && !utilisesTitulaires.has(id) && !utilisesBanc.has(id)) {
+      if (j && !j.pret && !utilisesTitulaires.has(id) && !utilisesBanc.has(id)) {
         banc[numero] = id;
         utilisesBanc.add(id);
       }
     }
     for (const numero of Object.keys(POSTE_REQUIS_BANC)) {
       if (banc[numero]) continue;
-      const poste = POSTE_REQUIS_BANC[numero];
-      const candidats = effectif.filter((j) => j.poste === poste && !j.pret && !utilisesTitulaires.has(j.id) && !utilisesBanc.has(j.id));
-      if (candidats.length === 0) continue;
-      const disponibles = candidats.filter((j) => !j.blessureJournees);
-      const pool = disponibles.length > 0 ? disponibles : candidats;
-      pool.sort((a, b) => (b.vitesse + b.plaquage) - (a.vitesse + a.plaquage));
-      banc[numero] = pool[0].id;
-      utilisesBanc.add(pool[0].id);
+      const exclus = new Set([...utilisesTitulaires, ...utilisesBanc]);
+      const meilleur = meilleurCandidatPourNumero(effectif, POSTE_REQUIS_BANC[numero], exclus);
+      if (!meilleur) continue;
+      banc[numero] = meilleur.id;
+      utilisesBanc.add(meilleur.id);
     }
     return banc;
   }

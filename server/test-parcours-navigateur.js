@@ -103,6 +103,34 @@ function optionsLancement() {
   const selectsVides = await page.$$eval('#clubTerrain select', (els) => els.filter((s) => !s.value).length);
   verifier('composition valide : les 15 postes ont un joueur assigné', selectsVides === 0);
 
+  // 4b) Polyvalence : n'importe quel joueur doit pouvoir dépanner à
+  // n'importe quel poste, regroupé à part des joueurs du poste naturel.
+  const aUnGroupeDepannage = await page.$$eval('#clubTerrain select', (els) =>
+    els.some((s) => s.querySelector('optgroup')));
+  verifier('polyvalence : au moins un poste propose des joueurs hors poste naturel (regroupés à part)', aUnGroupeDepannage);
+  const selectionHorsPoste = await page.evaluate(() => {
+    const selects = [...document.querySelectorAll('#clubTerrain select')];
+    const cible = selects.find((s) => s.querySelector('optgroup'));
+    if (!cible) return null;
+    const option = cible.querySelector('optgroup option');
+    cible.value = option.value;
+    cible.dispatchEvent(new Event('change', { bubbles: true }));
+    return { numero: cible.dataset.numero, id: option.value };
+  });
+  if (selectionHorsPoste) {
+    await page.waitForTimeout(150);
+    // Change d'onglet puis revient : la composition est rafraîchie
+    // (assurerComposition + completerComposition) — le choix hors poste ne
+    // doit pas être silencieusement écrasé au passage.
+    await clicOnglet('dashboard');
+    await page.waitForTimeout(120);
+    await clicOnglet('composition');
+    await page.waitForTimeout(150);
+    const valeurApres = await page.$eval(`#clubTerrain select[data-numero="${selectionHorsPoste.numero}"]`, (s) => s.value);
+    verifier('polyvalence : un choix manuel hors poste naturel survit au rafraîchissement de la composition',
+      valeurApres === selectionHorsPoste.id);
+  }
+
   // 5) Recrutement.
   await clicOnglet('transferts');
   await page.waitForTimeout(150);

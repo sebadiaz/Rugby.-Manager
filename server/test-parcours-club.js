@@ -385,6 +385,44 @@ test('équipe B : rétrocompatibilité — une sauvegarde antérieure sans champ
   assert.strictEqual(saison.competitionB, compB, 'doit être persisté sur saison.competitionB');
 });
 
+// --- 12) Polyvalence : n'importe quel joueur peut dépanner à n'importe
+// quel poste (le poste naturel reste prioritaire, mais n'est plus une
+// obligation) — scénario isolé (nouvelle saison dédiée) pour rester
+// déterministe plutôt que de dépendre de l'effectif déjà bien mélangé par
+// les tests précédents. ---
+test('polyvalence : plus aucun joueur au poste naturel → l\'auto-remplissage dépanne avec un autre poste plutôt que de laisser un trou', () => {
+  const s = RMClub.nouvelleSaison(creerRng(77), 'Test Polyvalence');
+  const c = s.clubJoueur;
+  // Prête tous les deuxième ligne (postes '2L', numéros 4 et 5) : plus aucun
+  // joueur naturel disponible pour ces deux titularisations.
+  for (const j of c.effectif.filter((j) => j.poste === '2L')) {
+    const r = RMClub.preterJoueur(s, j.id, 3);
+    // Le garde-fou "dernier du poste" refuse de prêter le tout dernier —
+    // c'est attendu : on veut justement finir à zéro 2L disponible pour
+    // tester le dépannage, donc on force la fin manuellement si refusé.
+    if (!r.ok) j.pret = { dureeRestante: 3 };
+  }
+  assert.strictEqual(c.effectif.filter((j) => j.poste === '2L' && !j.pret).length, 0, 'plus aucun 2L disponible (scénario du test)');
+  const composition = RMClub.meilleureComposition(c.effectif);
+  assert.ok(composition['4'] && composition['5'], 'les deux titularisations 2L doivent être comblées par un autre poste plutôt que laissées vides');
+  assert.strictEqual(RMClub.validerComposition(composition).length, 0);
+  const joueur4 = c.effectif.find((j) => j.id === composition['4']);
+  assert.notStrictEqual(joueur4.poste, '2L', 'le joueur dépanneur ne doit pas être un 2L (il n\'y en a plus de disponible)');
+});
+
+test('polyvalence : un choix manuel hors poste naturel survit au rafraîchissement de la composition (n\'est pas écrasé)', () => {
+  const s = RMClub.nouvelleSaison(creerRng(88), 'Test Polyvalence 2');
+  const c = s.clubJoueur;
+  const composition = RMClub.meilleureComposition(c.effectif);
+  // Choisit délibérément un pilier pour occuper le numéro 9 (demi de mêlée) —
+  // un dépannage hors poste totalement volontaire du manager.
+  const pilier = c.effectif.find((j) => j.poste === 'P' && j.id !== composition['1'] && j.id !== composition['3']);
+  composition['9'] = pilier.id;
+  const recomplete = RMClub.completerComposition(c.effectif, composition);
+  assert.strictEqual(recomplete['9'], pilier.id, 'le choix manuel hors poste doit survivre à completerComposition, pas être remplacé au tour suivant');
+  assert.strictEqual(RMClub.validerComposition(recomplete).length, 0);
+});
+
 console.log(`\n${nbTests} test(s) exécuté(s).`);
 if (process.exitCode) {
   console.error('ECHEC : au moins un test du parcours club a échoué.');

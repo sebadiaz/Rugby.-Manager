@@ -964,6 +964,25 @@
     return parts.length > 1 ? `${parts[0][0]}. ${parts.slice(1).join(' ')}` : nom;
   }
 
+  // N'importe quel joueur peut dépanner à n'importe quel poste (cf.
+  // RMClub.meilleurCandidatPourNumero côté données, qui applique la même
+  // règle à l'auto-remplissage) — mais les joueurs de ce poste NATUREL
+  // apparaissent en premier, les autres regroupés à part (<optgroup>, avec
+  // leur poste naturel entre parenthèses pour rester lisible) plutôt que
+  // mélangés sans distinction.
+  function optionsGroupeesParPoste(candidats, poste, valeurActuelle, etatDe) {
+    const naturels = candidats.filter((j) => j.poste === poste);
+    const horsPoste = candidats.filter((j) => j.poste !== poste);
+    const optionDe = (j, horsPosteFlag) => {
+      const selectionne = valeurActuelle === j.id ? ' selected' : '';
+      const label = horsPosteFlag ? `${nomCourt(j.nom)} (${j.poste})` : nomCourt(j.nom);
+      return `<option value="${j.id}"${selectionne} title="${j.nom}">${label}${etatDe(j)}</option>`;
+    };
+    const optionsHorsPoste = horsPoste.map((j) => optionDe(j, true)).join('');
+    return naturels.map((j) => optionDe(j, false)).join('') +
+      (optionsHorsPoste ? `<optgroup label="Autres postes (dépannage)">${optionsHorsPoste}</optgroup>` : '');
+  }
+
   function rafraichirTerrain() {
     const effectif = saison.clubJoueur.effectif;
     const composition = assurerComposition();
@@ -976,13 +995,10 @@
       // meilleureComposition) — il ne doit pas non plus apparaître dans la
       // liste déroulante manuelle, sinon la sélection interactive contredit
       // l'auto-remplissage et permettrait d'aligner un joueur indisponible.
-      const candidats = effectif.filter((j) => j.poste === poste && !j.pret && !utiliseAilleurs.has(j.id));
+      const candidats = effectif.filter((j) => !j.pret && !utiliseAilleurs.has(j.id));
       const blesseActuel = effectif.find((j) => j.id === composition[numero] && j.blessureJournees > 0);
-      const options = candidats.map((j) => {
-        const etat = j.blessureJournees > 0 ? ` 🤕${j.blessureJournees}j` : ((j.fatigue || 0) >= 65 ? ' ⚡' : '');
-        const selectionne = composition[numero] === j.id ? ' selected' : '';
-        return `<option value="${j.id}"${selectionne} title="${j.nom}">${nomCourt(j.nom)}${etat}</option>`;
-      }).join('');
+      const options = optionsGroupeesParPoste(candidats, poste, composition[numero],
+        (j) => j.blessureJournees > 0 ? ` 🤕${j.blessureJournees}j` : ((j.fatigue || 0) >= 65 ? ' ⚡' : ''));
       return `<div class="chipTerrain" style="top:${pos.top}%;left:${pos.left}%;">` +
         `<span class="numChip">N°${numero} ${poste}</span>` +
         `<select data-numero="${numero}"${blesseActuel ? ' class="blesseChip"' : ''}>${options}</select></div>`;
@@ -997,12 +1013,9 @@
     document.getElementById('clubBanc').innerHTML = Object.keys(RMClub.POSTE_REQUIS_BANC).map((numero) => {
       const poste = RMClub.POSTE_REQUIS_BANC[numero];
       const utiliseAilleurs = new Set(Object.keys(banc).filter((n) => n !== numero).map((n) => banc[n]));
-      const candidats = effectif.filter((j) => j.poste === poste && !j.pret && !titulaireIds.has(j.id) && !utiliseAilleurs.has(j.id));
-      const options = candidats.map((j) => {
-        const etat = j.blessureJournees > 0 ? ` 🤕${j.blessureJournees}j` : '';
-        const selectionne = banc[numero] === j.id ? ' selected' : '';
-        return `<option value="${j.id}"${selectionne} title="${j.nom}">${nomCourt(j.nom)}${etat}</option>`;
-      }).join('');
+      const candidats = effectif.filter((j) => !j.pret && !titulaireIds.has(j.id) && !utiliseAilleurs.has(j.id));
+      const options = optionsGroupeesParPoste(candidats, poste, banc[numero],
+        (j) => j.blessureJournees > 0 ? ` 🤕${j.blessureJournees}j` : '');
       return `<div class="chipBanc"><span class="numChip">N°${numero} · ${POSTE_COMPLET[poste] || poste}</span>` +
         `<select data-numero="${numero}">${options || '<option value="">—</option>'}</select></div>`;
     }).join('');
