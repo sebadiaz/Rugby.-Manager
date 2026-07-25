@@ -8,6 +8,7 @@ on:
     paths:
       - "docs/**"
       - "engine/**"
+      - "server/**"
       - ".github/workflows/deploy-pages.yml"
   workflow_dispatch:
 
@@ -21,7 +22,44 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Utiliser Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Synchroniser le moteur partagé vers docs/
+        run: cp engine/rugby-engine.js docs/rugby-engine.js
+      - name: Tests moteur et données (sans navigateur)
+        run: |
+          node server/test-invariants.js
+          node server/test-parcours-club.js
+          node server/test-monde.js
+          node server/test-audit-p0-1.js
+          node server/test-audit-p0-2.js
+      - name: Installer Playwright (Chromium)
+        run: |
+          npm install --no-save playwright
+          npx playwright install --with-deps chromium
+      - name: Servir docs/ localement
+        run: |
+          python3 -m http.server 8099 --directory docs &
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:8099/index.html > /dev/null && exit 0
+            sleep 1
+          done
+          echo "Le serveur local docs/ ne répond pas" >&2
+          exit 1
+      - name: Tests navigateur (parcours Mode Club)
+        run: node server/test-parcours-navigateur.js http://localhost:8099
+      - name: Tests navigateur (audit XSS nom de club)
+        run: node server/test-audit-p0-3.js http://localhost:8099
+
   deploy:
+    needs: test
     runs-on: ubuntu-latest
     environment:
       name: github-pages
