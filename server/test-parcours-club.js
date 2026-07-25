@@ -42,11 +42,11 @@ function test(nom, fn) {
 
 // --- 1) Création et chargement d'une carrière ---
 let saison;
-test('création de carrière : club du joueur + 5 adversaires + calendrier complet', () => {
+test('création de carrière : club du joueur débute en Ligue Régionale, avec une vraie division de 14 clubs et un calendrier complet', () => {
   const rng = creerRng(1);
   saison = RMClub.nouvelleSaison(rng, 'Club de Test');
   assert.strictEqual(saison.clubJoueur.nom, 'Club de Test');
-  assert.strictEqual(saison.adversaires.length, 5);
+  assert.strictEqual(saison.adversaires.length, RMClub.TAILLE_DIVISION_FRANCE[3] - 1, 'Ligue Régionale : 14 clubs au total, dont le club du joueur');
   assert.strictEqual(saison.clubJoueur.effectif.length, RMClub.TAILLE_EFFECTIF_CIBLE);
   assert.ok(saison.calendrier.length > 0);
   assert.deepStrictEqual(saison.clubJoueur.messages, []);
@@ -180,6 +180,17 @@ test('club adverse : identité, effectif complet et analyse comparative disponib
 test('fin de saison : vieillissement/renouvellement d\'effectif, archive et remise à zéro de la composition', () => {
   const c = saison.clubJoueur;
   const numeroAvant = saison.numero;
+  const nbAdversairesAvant = saison.adversaires.length;
+  // Force une position bien milieu de tableau (ni promotion ni relégation) :
+  // ce test vérifie la conservation d'IDENTITÉ des adversaires en l'absence
+  // de changement de palier, pas la mécanique de montée/descente elle-même
+  // (couverte séparément par les tests "pyramide"), donc doit rester
+  // déterministe plutôt que dépendre du classement réel déjà accumulé.
+  const idsClassement = Object.keys(saison.classement);
+  idsClassement.forEach((id, i) => { saison.classement[id].pts = 100 - i; });
+  const milieu = idsClassement[Math.floor(idsClassement.length / 2)];
+  [saison.classement[saison.clubJoueur.id].pts, saison.classement[milieu].pts] =
+    [saison.classement[milieu].pts, saison.classement[saison.clubJoueur.id].pts];
   const rng = creerRng(3);
   const { partis, arrivees } = RMClub.avancerSaison(rng, saison);
   assert.strictEqual(saison.numero, numeroAvant + 1);
@@ -187,7 +198,7 @@ test('fin de saison : vieillissement/renouvellement d\'effectif, archive et remi
   assert.strictEqual(c.compositionTitulaires, null, 'la composition doit être remise à zéro (effectif renouvelé)');
   assert.ok(c.historiqueSaisons.length >= 1);
   assert.ok(Array.isArray(partis) && Array.isArray(arrivees));
-  assert.strictEqual(saison.adversaires.length, 5, 'identité des 5 adversaires conservée (pas régénérée de zéro)');
+  assert.strictEqual(saison.adversaires.length, nbAdversairesAvant, 'identité des adversaires conservée (pas régénérée de zéro) en l\'absence de changement de palier');
   assert.ok(saison.adversaires.every((a) => a.budget != null && a.effectif.length === 15));
   // La saison suivante doit rester jouable derechef.
   const compo = RMClub.completerComposition(c.effectif, {});
@@ -200,11 +211,12 @@ test('objectif de la saison : bilan réel en fin de saison, confiance ajustée, 
   assert.ok(c.objectifSaison, 'un objectif doit déjà être fixé pour la saison en cours (saison 2, après le test précédent)');
   assert.ok(c.confiancePresident >= 0 && c.confiancePresident <= 100);
   // Force un classement connu : le club du joueur termine dernier.
+  const nbClubsLigue = Object.keys(saison.classement).length;
   for (const id of Object.keys(saison.classement)) saison.classement[id].pts = 999;
   saison.classement[c.id].pts = 0;
   const confianceAvant = c.confiancePresident;
   RMClub.avancerSaison(creerRng(4), saison);
-  assert.strictEqual(c.historiqueSaisons[c.historiqueSaisons.length - 1].position, 6, 'dernière place bien archivée');
+  assert.strictEqual(c.historiqueSaisons[c.historiqueSaisons.length - 1].position, nbClubsLigue, 'dernière place bien archivée');
   assert.ok(c.confiancePresident < confianceAvant, 'objectif manqué largement : la confiance doit baisser');
   assert.ok(c.messages.some((m) => m.titre.startsWith('Objectif manqué')));
   assert.ok(c.objectifSaison.position >= c.objectifSaison.totalClubs - 1, 'nouvel objectif de maintien après une dernière place');
@@ -501,6 +513,8 @@ test('pyramide : finir dans le top 2 fait monter d\'un palier, avec de nouveaux 
   const idsAdversairesApres = s.adversaires.map((a) => a.id).sort();
   assert.notDeepStrictEqual(idsAdversairesApres, idsAdversairesAvant, 'une montée de palier doit apporter de nouveaux rivaux (nouvelle division)');
   assert.ok(s.adversaires.some((a) => a.niveauClub > 0.5), 'les adversaires de Ligue Nationale doivent être plus forts qu\'en Ligue Régionale');
+  assert.strictEqual(s.adversaires.length, RMClub.TAILLE_DIVISION_FRANCE[2] - 1, 'Ligue Nationale : 16 clubs au total, dont le club du joueur');
+  assert.strictEqual(s.calendrier.length, RMClub.TAILLE_DIVISION_FRANCE[2] * (RMClub.TAILLE_DIVISION_FRANCE[2] - 1), 'calendrier aller-retour complet pour 16 clubs');
 });
 
 test('pyramide : finir dans les 2 dernières places fait descendre d\'un palier (sauf déjà tout en bas)', () => {

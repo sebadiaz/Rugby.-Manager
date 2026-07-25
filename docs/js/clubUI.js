@@ -1864,25 +1864,24 @@
       );
     }
 
-    // Simule les autres rencontres une par une (même écran de génération,
-    // titre différent), puis enchaîne sur la journée d'Équipe B (cf.
-    // simulerRondeEquipeB), puis enfin le match du joueur.
-    function simulerAutre(i) {
-      if (i >= autresMatchs.length) { simulerRondeEquipeB(0, lancerMatchJoueur); return; }
-      const f = autresMatchs[i];
-      const clubA = RMClub.club(saison, f.domicileId);
-      const clubB = RMClub.club(saison, f.exterieurId);
-      window.RMMain.simulerMatchEnArrierePlan(
-        graineAleatoire(), duree,
-        cfgPour(clubA),
-        cfgPour(clubB),
-        `Simulation : ${clubA.nom} vs ${clubB.nom} (${i + 1}/${autresMatchs.length})`,
-        (etat) => {
-          RMClub.enregistrerResultat(saison, f.id, etat.score.A, etat.score.B, etat.stats.A.essais, etat.stats.B.essais);
-          sauvegarder();
-          simulerAutre(i + 1);
-        }
-      );
+    // Résout les autres rencontres de la journée (celles qui ne concernent
+    // pas le club du joueur) de façon ABSTRAITE — formule statistique
+    // dérivée du niveau RÉEL de chaque club (cf. RMWorld.simulerResultatAbstrait,
+    // même principe que l'écosystème mondial, docs/js/world.js), pas le
+    // moteur physique complet. Une vraie division de championnat (jusqu'à 15
+    // adversaires selon le palier, cf. TAILLE_DIVISION_FRANCE) représenterait
+    // sinon des dizaines de matchs à simuler par journée avec le moteur
+    // complet (~3,5s chacun mesuré) : injouable. SEUL le match du club du
+    // joueur reste simulé avec le vrai moteur, exactement comme avant.
+    function simulerAutresMatchsAbstrait() {
+      const rng = creerRng(graineAleatoire());
+      for (const f of autresMatchs) {
+        const clubA = RMClub.club(saison, f.domicileId);
+        const clubB = RMClub.club(saison, f.exterieurId);
+        const r = RMWorld.simulerResultatAbstrait(rng, clubA.niveauClub, clubB.niveauClub);
+        RMClub.enregistrerResultat(saison, f.id, r.scoreA, r.scoreB, r.essaisA, r.essaisB);
+      }
+      sauvegarder();
     }
 
     // Journée d'Équipe B (championnat réservé aux clubs les plus riches, cf.
@@ -1899,11 +1898,20 @@
       const f = rondeB[i];
       const idJoueur = saison.clubJoueur.id;
       const concerneJoueur = f.domicileId === idJoueur || f.exterieurId === idJoueur;
-      let compositionJoueur = null;
-      if (concerneJoueur) {
-        compositionJoueur = RMClub.meilleureComposition(RMClub.effectifDisponiblePourEquipeB(saison));
-        if (RMClub.validerComposition(compositionJoueur).length > 0) { simulerRondeEquipeB(i + 1, suite); return; }
+      if (!concerneJoueur) {
+        // Rencontre d'équipe B qui ne concerne pas le club du joueur :
+        // résolution ABSTRAITE (même principe que simulerAutresMatchsAbstrait
+        // ci-dessus) — inutile de payer le coût du moteur complet pour un
+        // match que le joueur ne voit jamais.
+        const rng = creerRng(graineAleatoire());
+        const clubA = RMClub.club(saison, f.domicileId), clubB = RMClub.club(saison, f.exterieurId);
+        const r = RMWorld.simulerResultatAbstrait(rng, clubA.niveauClub, clubB.niveauClub);
+        RMClub.enregistrerResultatEquipeB(saison, f.id, r.scoreA, r.scoreB, r.essaisA, r.essaisB);
+        simulerRondeEquipeB(i + 1, suite);
+        return;
       }
+      const compositionJoueur = RMClub.meilleureComposition(RMClub.effectifDisponiblePourEquipeB(saison));
+      if (RMClub.validerComposition(compositionJoueur).length > 0) { simulerRondeEquipeB(i + 1, suite); return; }
       const rng = creerRng(graineAleatoire());
       function cfgDe(clubId) {
         if (clubId === idJoueur) return RMClub.compositionVersJoueursCfg(RMClub.effectifDisponiblePourEquipeB(saison), compositionJoueur);
@@ -1916,24 +1924,23 @@
       window.RMMain.simulerMatchEnArrierePlan(
         graineAleatoire(), duree,
         cfgDe(f.domicileId), cfgDe(f.exterieurId),
-        `Équipe B : ${clubDomicile.nom} vs ${clubExterieur.nom} (${i + 1}/${rondeB.length})`,
+        `Équipe B : ${clubDomicile.nom} vs ${clubExterieur.nom}`,
         (etat) => {
           RMClub.enregistrerResultatEquipeB(saison, f.id, etat.score.A, etat.score.B, etat.stats.A.essais, etat.stats.B.essais);
-          if (compositionJoueur) {
-            RMClub.appliquerEffetsMatchEquipeB(saison, compositionJoueur);
-            // Recette de billetterie réelle mais modeste (pas de salaires
-            // redéduits ici : déjà comptés une fois par journée via le match
-            // du premier XV, cf. appliquerFinancesMatchEquipeB).
-            const mouvementB = RMClub.appliquerFinancesMatchEquipeB(saison.clubJoueur, formeApres(f, etat.score.A, etat.score.B));
-            RMClub.enregistrerMouvementFinances(saison.clubJoueur, f.journee, mouvementB);
-          }
+          RMClub.appliquerEffetsMatchEquipeB(saison, compositionJoueur);
+          // Recette de billetterie réelle mais modeste (pas de salaires
+          // redéduits ici : déjà comptés une fois par journée via le match
+          // du premier XV, cf. appliquerFinancesMatchEquipeB).
+          const mouvementB = RMClub.appliquerFinancesMatchEquipeB(saison.clubJoueur, formeApres(f, etat.score.A, etat.score.B));
+          RMClub.enregistrerMouvementFinances(saison.clubJoueur, f.journee, mouvementB);
           sauvegarder();
           simulerRondeEquipeB(i + 1, suite);
         }
       );
     }
 
-    simulerAutre(0);
+    simulerAutresMatchsAbstrait();
+    simulerRondeEquipeB(0, lancerMatchJoueur);
   }
 
   // --- Aperçu du prochain match, façon écran de préparation d'avant-match

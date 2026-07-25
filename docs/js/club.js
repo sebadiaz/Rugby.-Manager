@@ -455,6 +455,12 @@
     1: 'Ligue d\'Excellence', 2: 'Ligue Nationale', 3: 'Ligue Régionale',
   };
   function nomPalierFrance(niveau) { return PALIERS_PYRAMIDE_FRANCE[niveau] || 'Ligue Régionale'; }
+  // Taille RÉELLE de chaque division française (cf. docs/js/world.js, mêmes
+  // chiffres) — le club du joueur occupe UNE de ces places, le reste est
+  // composé d'adversaires IA (donc TAILLE_DIVISION_FRANCE[niveau] - 1
+  // adversaires). Toujours un nombre PAIR au total : genererCalendrier
+  // suppose un appariement par paires, sans "bye".
+  const TAILLE_DIVISION_FRANCE = { 1: 14, 2: 16, 3: 14 };
   // Bande de niveau (0-1) des clubs qu'on affronte à ce palier — plus la
   // division est basse, plus l'opposition (et le club du joueur lui-même,
   // cf. nouvelleSaison) est modeste.
@@ -463,14 +469,15 @@
     if (niveau === 2) return { min: 0.35, max: 0.6 };
     return { min: 0.15, max: 0.45 };
   }
-  // 5 niveaux d'adversaires étalés sur toute la bande du palier (comme le
-  // tirage [0.25, 0.4, 0.5, 0.6, 0.75] historique, mais recentré sur la
-  // bande de CE palier plutôt que fixe) — jamais 5 clones du même niveau.
-  function niveauxAdversairesPourPalier(niveau) {
+  // `n` niveaux d'adversaires étalés sur toute la bande du palier (comme le
+  // tirage [0.25, 0.4, 0.5, 0.6, 0.75] historique à 5 adversaires, mais
+  // recentré sur la bande de CE palier et étalé sur autant d'adversaires que
+  // la vraie taille de division l'exige) — jamais des clones du même niveau.
+  function niveauxAdversairesPourPalier(niveau, n) {
     const bande = bandeNiveauPalier(niveau);
-    const n = 5;
+    const nb = n || (TAILLE_DIVISION_FRANCE[niveau] - 1);
     const niveaux = [];
-    for (let i = 0; i < n; i++) niveaux.push(bande.min + (bande.max - bande.min) * (i / (n - 1)));
+    for (let i = 0; i < nb; i++) niveaux.push(bande.min + (bande.max - bande.min) * (i / Math.max(1, nb - 1)));
     return niveaux;
   }
 
@@ -1930,7 +1937,7 @@
     ENTRAINEMENTS, appliquerEntrainement,
     accumulerStatsJoueurs, classementMarqueurs,
     calculerOffreRenouvellement, renouvelerContrat, negocierRenouvellement, calculerPrimeSignature,
-    assurerCentreFormation, promouvoirJeune, ajouterMessage, nomPalierFrance,
+    assurerCentreFormation, promouvoirJeune, ajouterMessage, nomPalierFrance, TAILLE_DIVISION_FRANCE,
     basculerFavori, analyserAdversaire,
     appliquerMoral, preterJoueur, rappelerJoueur, progresserPrets,
     POSTES_PERSONNEL, genererMarchePersonnel, embaucherPersonnel, licencierPersonnel,
