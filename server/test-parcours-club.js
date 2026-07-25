@@ -238,6 +238,58 @@ test('négociation de contrat : une offre généreuse acceptée met à jour cont
   assert.ok(saison.clubJoueur.messages.some((m) => m.titre === 'Contrat renouvelé'));
 });
 
+// --- 10) Centre de formation (espoirs promouvables en équipe première) ---
+test('centre de formation : le club en dispose dès la création, avec au moins un espoir par ligne de poste', () => {
+  const c = saison.clubJoueur;
+  assert.ok(Array.isArray(c.jeunes) && c.jeunes.length > 0, 'un centre de formation doit exister dès la création du club');
+  const postes = new Set(c.jeunes.map((j) => j.poste));
+  for (const poste of ['P', 'T', '2L', '3L', 'DM', 'OV', 'CE', 'AI', 'AR']) {
+    assert.ok(postes.has(poste), `aucun espoir au poste ${poste}`);
+  }
+  // Le pool a déjà traversé 2 changements de saison (tests précédents) :
+  // un espoir non promu ne dépasse jamais 19 ans (cf. progresserCentreFormation).
+  for (const j of c.jeunes) assert.ok(j.age <= 19, `un espoir du centre de formation ne doit jamais dépasser 19 ans (${j.nom} a ${j.age} ans)`);
+});
+
+test('centre de formation : promouvoir un espoir le fait quitter le vivier et rejoindre l\'effectif pro, utilisable en composition', () => {
+  const c = saison.clubJoueur;
+  const jeune = c.jeunes[0];
+  const effectifAvant = c.effectif.length, jeunesAvant = c.jeunes.length;
+  const res = RMClub.promouvoirJeune(saison, jeune.id);
+  assert.strictEqual(res.ok, true);
+  assert.strictEqual(c.effectif.length, effectifAvant + 1);
+  assert.strictEqual(c.jeunes.length, jeunesAvant - 1);
+  assert.ok(c.effectif.some((j) => j.id === jeune.id), 'l\'espoir promu doit être dans l\'effectif pro');
+  assert.ok(!c.jeunes.some((j) => j.id === jeune.id), 'l\'espoir promu ne doit plus être dans le centre de formation');
+  assert.ok(c.messages.some((m) => m.titre === 'Promotion en équipe première'));
+  const compo = RMClub.completerComposition(c.effectif, {});
+  assert.strictEqual(RMClub.validerComposition(compo).length, 0, 'un espoir promu reste un joueur normal, sélectionnable en composition');
+});
+
+test('centre de formation : rétrocompatibilité — une sauvegarde antérieure sans champ "jeunes" ne plante pas et se reconstitue', () => {
+  const c = saison.clubJoueur;
+  delete c.jeunes;
+  const rng = creerRng(9);
+  let jeunes;
+  assert.doesNotThrow(() => { jeunes = RMClub.assurerCentreFormation(rng, saison); });
+  assert.ok(Array.isArray(jeunes) && jeunes.length > 0);
+  assert.strictEqual(c.jeunes, jeunes, 'le centre de formation reconstitué doit être persisté sur clubJoueur.jeunes');
+});
+
+test('centre de formation : vieillit à chaque fin de saison, un espoir non promu de plus de 19 ans quitte le club', () => {
+  const c = saison.clubJoueur;
+  RMClub.assurerCentreFormation(creerRng(11), saison);
+  // Force un espoir à 19 ans : la prochaine fin de saison doit le faire partir.
+  const cible = c.jeunes[0];
+  cible.age = 19;
+  const nomCible = cible.nom;
+  const poste = cible.poste;
+  RMClub.avancerSaison(creerRng(12), saison);
+  assert.ok(!c.jeunes.some((j) => j.nom === nomCible && j.poste === poste), 'un espoir de plus de 19 ans doit quitter le centre de formation');
+  assert.ok(c.jeunes.some((j) => j.poste === poste), 'la ligne de poste laissée vacante doit être reconstituée');
+  assert.ok(c.messages.some((m) => m.categorie === 'jeunes' && m.corps.includes(nomCible)));
+});
+
 console.log(`\n${nbTests} test(s) exécuté(s).`);
 if (process.exitCode) {
   console.error('ECHEC : au moins un test du parcours club a échoué.');

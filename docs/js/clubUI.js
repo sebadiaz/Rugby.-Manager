@@ -341,6 +341,25 @@
     rafraichirComparaisonEffectif();
   }
 
+  // Centre de formation (Mode Club) : vivier d'espoirs séparé de l'effectif
+  // pro, promouvable à tout moment (cf. RMClub.promouvoirJeune) — en
+  // particulier quand l'effectif senior n'a plus assez de joueurs
+  // disponibles à un poste. RMClub.assurerCentreFormation gère la
+  // rétrocompatibilité (sauvegarde antérieure à cette fonctionnalité).
+  function rafraichirCentreFormation() {
+    if (!saison.clubJoueur.jeunes) {
+      RMClub.assurerCentreFormation(creerRng(graineAleatoire()), saison);
+      sauvegarder();
+    }
+    const ordrePostes = Object.keys(POSTE_COMPLET);
+    const jeunes = saison.clubJoueur.jeunes
+      .slice().sort((a, b) => (ordrePostes.indexOf(a.poste) - ordrePostes.indexOf(b.poste)) || a.age - b.age);
+    document.getElementById('clubCentreFormation').innerHTML = jeunes.length
+      ? jeunes.map((j) => `<div class="ligneJeune"><span class="infosJeune"><b>${j.nom}</b><span>${POSTE_COMPLET[j.poste] || j.poste} · ${j.age} ans · potentiel ${Math.round(j.potentiel)}</span></span>` +
+        `<button class="alt btnPromouvoirJeune" data-joueur="${j.id}" style="flex:0 0 auto;width:auto;padding:6px 10px;font-size:12px;">⬆️ Promouvoir</button></div>`).join('')
+      : '<p>Centre de formation vide.</p>';
+  }
+
   // Comparaison côte à côte de joueurs de L'EFFECTIF sélectionnés (cases à
   // cocher) — données réelles (attributs/contrat/salaire), jamais fabriquées.
   function rafraichirComparaisonEffectif() {
@@ -602,6 +621,11 @@
     const contratsCourts = c.effectif.filter((j) => j.contrat <= 1).length;
     if (contratsCourts > 0) alertes.push({ icone: '📄', texte: `${contratsCourts} contrat(s) expirant en fin de saison`, onglet: 'effectif' });
     if (c.budget < 0) alertes.push({ icone: '💸', texte: `Budget négatif (${c.budget} k€)`, onglet: 'finances' });
+    const postesVides = Object.keys(POSTE_COMPLET).filter((poste) =>
+      !c.effectif.some((j) => j.poste === poste && j.blessureJournees <= 0 && !j.pret));
+    if (postesVides.length > 0) {
+      alertes.push({ icone: '🌱', texte: `Plus aucun ${POSTE_COMPLET[postesVides[0]] || postesVides[0]} disponible — un espoir du centre de formation peut être promu`, onglet: 'effectif' });
+    }
     return alertes;
   }
 
@@ -619,7 +643,7 @@
   // événements déjà produits par la simulation (cf. RMClub.ajouterMessage,
   // appelé depuis club.js à chaque transfert/prêt/contrat/blessure/résultat/
   // saison) — jamais un texte fabriqué uniquement pour l'affichage. ---
-  const ICONE_MESSAGE = { transfert: '🔁', blessure: '🤕', contrat: '📄', match: '🏉', saison: '🏆' };
+  const ICONE_MESSAGE = { transfert: '🔁', blessure: '🤕', contrat: '📄', match: '🏉', saison: '🏆', jeunes: '🌱' };
   function rafraichirMessages() {
     const messages = saison.clubJoueur.messages || [];
     const nonLus = messages.filter((m) => !m.lu).length;
@@ -1093,6 +1117,7 @@
     rafraichirPersonnel();
     rafraichirClassement();
     rafraichirEffectif();
+    rafraichirCentreFormation();
     rafraichirCalendrier();
     rafraichirFinancesTab();
     rafraichirMedical();
@@ -1248,6 +1273,19 @@
     selectionComparaisonEffectif.clear();
     document.querySelectorAll('.caseComparerEffectif').forEach((c) => { c.checked = false; });
     rafraichirComparaisonEffectif();
+  });
+  document.getElementById('clubCentreFormation').addEventListener('click', (e) => {
+    if (!e.target.classList.contains('btnPromouvoirJeune')) return;
+    const id = e.target.dataset.joueur;
+    const jeune = (saison.clubJoueur.jeunes || []).find((j) => j.id === id);
+    if (!jeune) return;
+    if (!window.confirm(`Promouvoir ${jeune.nom} (${POSTE_COMPLET[jeune.poste] || jeune.poste}, ${jeune.age} ans) en équipe première ? Il quittera définitivement le centre de formation.`)) return;
+    RMClub.promouvoirJeune(saison, id);
+    sauvegarder();
+    toast(`✅ ${jeune.nom} rejoint le groupe professionnel`);
+    rafraichirCentreFormation();
+    rafraichirEffectif();
+    rafraichirStatutEffectif();
   });
   // Fiche joueur : boutons régénérés à chaque ouverture (cf. ouvrirFicheJoueur),
   // délégation sur le conteneur parent plutôt qu'un addEventListener par joueur.

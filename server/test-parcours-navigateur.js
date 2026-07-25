@@ -141,6 +141,22 @@ function optionsLancement() {
   await page.click('#btnRenouveler');
   await page.waitForTimeout(200);
   verifier('négociation de contrat : cliquer "Renouveler" ouvre une invite pour proposer un salaire (pas une simple confirmation)', prompteRenouvellementAffiche);
+  await page.click('#btnFermerFicheJoueur').catch(() => {});
+  await page.waitForTimeout(150);
+
+  // 5c) Centre de formation : le vivier d'espoirs est affiché et un espoir
+  // peut être promu en équipe première, ce qui l'ajoute réellement à
+  // l'effectif pro (donc utilisable en composition).
+  const effectifAvantPromotion = await page.evaluate(() => JSON.parse(localStorage.getItem('rugbyManager.club.v1')).clubJoueur.effectif.length);
+  const boutonsJeunes = await page.$$('#clubCentreFormation .btnPromouvoirJeune');
+  verifier('centre de formation : le vivier d\'espoirs est affiché avec au moins un espoir', boutonsJeunes.length > 0);
+  if (boutonsJeunes.length > 0) {
+    page.once('dialog', (d) => d.accept());
+    await boutonsJeunes[0].click();
+    await page.waitForTimeout(200);
+    const effectifApresPromotion = await page.evaluate(() => JSON.parse(localStorage.getItem('rugbyManager.club.v1')).clubJoueur.effectif.length);
+    verifier('centre de formation : promouvoir un espoir l\'ajoute réellement à l\'effectif professionnel', effectifApresPromotion === effectifAvantPromotion + 1);
+  }
 
   // 6) Affichage d'un club adverse + fiche joueur adverse + offre de transfert.
   await clicOnglet('autresclubs');
