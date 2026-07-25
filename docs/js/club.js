@@ -1352,7 +1352,13 @@
 
   function classementInitial(clubs) {
     const table = {};
-    for (const c of clubs) table[c.id] = { clubId: c.id, j: 0, g: 0, n: 0, p: 0, pts: 0, essaisPour: 0, essaisContre: 0, pointsPour: 0, pointsContre: 0 };
+    for (const c of clubs) table[c.id] = {
+      clubId: c.id, j: 0, g: 0, n: 0, p: 0, pts: 0, essaisPour: 0, essaisContre: 0, pointsPour: 0, pointsContre: 0,
+      // Points de bonus RÉELLEMENT comptés séparément (cf. enregistrerResultatDans) —
+      // affichables dans le classement pour que le joueur comprenne d'où vient
+      // chaque point, jamais fondus silencieusement dans `pts`.
+      bonusOffensifs: 0, bonusDefensifs: 0,
+    };
     return table;
   }
 
@@ -1362,6 +1368,13 @@
   // dupliquer la logique de points. enregistrerResultat (championnat
   // principal) délègue simplement à cette version avec saison.calendrier/
   // saison.classement, comportement strictement inchangé.
+  // Points de classement RUGBY (pas juste victoire/nul/défaite) : victoire 4,
+  // nul 2, défaite 0, + bonus offensif (+1, 4 essais marqués ou plus, quel
+  // que soit le résultat) + bonus défensif (+1, défaite par 7 points ou
+  // moins) — la règle standard du rugby à XV professionnel (Top 14, Six
+  // Nations, Coupe du monde...), pas une invention. Les essais nécessaires
+  // au bonus offensif sont déjà transmis par l'appelant (résultat RÉEL du
+  // match simulé), jamais fabriqués ici.
   function enregistrerResultatDans(calendrier, classement, fixtureId, scoreDomicile, scoreExterieur, essaisDomicile, essaisExterieur) {
     const f = calendrier.find((x) => x.id === fixtureId);
     if (!f || f.joue) return;
@@ -1369,14 +1382,35 @@
     f.score = { domicile: scoreDomicile, exterieur: scoreExterieur };
     const td = classement[f.domicileId];
     const te = classement[f.exterieurId];
+    // Rétrocompat : une sauvegarde antérieure au bonus de classement n'a pas
+    // ces deux champs sur ses lignes existantes — les initialise plutôt que
+    // de les corrompre en NaN au premier += sur `undefined`.
+    if (td.bonusOffensifs == null) td.bonusOffensifs = 0;
+    if (td.bonusDefensifs == null) td.bonusDefensifs = 0;
+    if (te.bonusOffensifs == null) te.bonusOffensifs = 0;
+    if (te.bonusDefensifs == null) te.bonusDefensifs = 0;
     td.j++; te.j++;
     td.pointsPour += scoreDomicile; td.pointsContre += scoreExterieur;
     te.pointsPour += scoreExterieur; te.pointsContre += scoreDomicile;
     td.essaisPour += essaisDomicile || 0; td.essaisContre += essaisExterieur || 0;
     te.essaisPour += essaisExterieur || 0; te.essaisContre += essaisDomicile || 0;
-    if (scoreDomicile > scoreExterieur) { td.g++; td.pts += 4; te.p++; }
-    else if (scoreDomicile < scoreExterieur) { te.g++; te.pts += 4; td.p++; }
-    else { td.n++; te.n++; td.pts += 2; te.pts += 2; }
+    const ecart = Math.abs(scoreDomicile - scoreExterieur);
+    const bonusOffDom = (essaisDomicile || 0) >= 4 ? 1 : 0;
+    const bonusOffExt = (essaisExterieur || 0) >= 4 ? 1 : 0;
+    td.bonusOffensifs += bonusOffDom; te.bonusOffensifs += bonusOffExt;
+    if (scoreDomicile > scoreExterieur) {
+      td.g++; td.pts += 4 + bonusOffDom; te.p++;
+      const bonusDefExt = ecart <= 7 ? 1 : 0;
+      te.bonusDefensifs += bonusDefExt;
+      te.pts += bonusOffExt + bonusDefExt;
+    } else if (scoreDomicile < scoreExterieur) {
+      te.g++; te.pts += 4 + bonusOffExt; td.p++;
+      const bonusDefDom = ecart <= 7 ? 1 : 0;
+      td.bonusDefensifs += bonusDefDom;
+      td.pts += bonusOffDom + bonusDefDom;
+    } else {
+      td.n++; te.n++; td.pts += 2 + bonusOffDom; te.pts += 2 + bonusOffExt;
+    }
   }
   function enregistrerResultat(saison, fixtureId, scoreDomicile, scoreExterieur, essaisDomicile, essaisExterieur) {
     enregistrerResultatDans(saison.calendrier, saison.classement, fixtureId, scoreDomicile, scoreExterieur, essaisDomicile, essaisExterieur);
@@ -1784,7 +1818,7 @@
   global.RMClub = {
     genererNomClub, genererClub, genererEffectif, effectifVersJoueursCfg,
     nouvelleSaison, genererCalendrier, classementInitial, enregistrerResultat,
-    classementTrie, classementTrieDe, prochainesFixtures, club,
+    classementTrie, classementTrieDe, enregistrerResultatDans, prochainesFixtures, club,
     determinerEligiblesEquipeB, genererCompetitionB, assurerCompetitionB,
     enregistrerResultatEquipeB, prochaineRondeEquipeB,
     effectifDisponiblePourEquipeB, appliquerEffetsMatchEquipeB,

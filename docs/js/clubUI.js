@@ -245,15 +245,22 @@
     if (labelFlottant) labelFlottant.textContent = matchJoueur ? `Journée ${matchJoueur.journee}` : 'Prochaine journée';
   }
 
+  // Points bonus (offensif : 4 essais marqués ou plus ; défensif : défaite
+  // par 7 points ou moins — cf. RMClub.enregistrerResultatDans) affichés à
+  // part de "Pts" plutôt que fondus dedans, pour que le joueur comprenne
+  // toujours d'où vient chaque point du classement.
   function rafraichirClassement() {
     const lignes = RMClub.classementTrie(saison).map((r, i) => {
       const diff = r.pointsPour - r.pointsContre;
       const classe = estClubJoueur(r.clubId) ? ' class="ligneClubJoueur"' : '';
       return `<tr${classe}><td>${i + 1}</td><td>${nomClub(r.clubId)}</td><td>${r.j}</td><td>${r.g}</td><td>${r.n}</td><td>${r.p}</td>` +
-        `<td>${r.pointsPour}</td><td>${r.pointsContre}</td><td>${diff >= 0 ? '+' : ''}${diff}</td><td><b>${r.pts}</b></td></tr>`;
+        `<td>${r.pointsPour}</td><td>${r.pointsContre}</td><td>${diff >= 0 ? '+' : ''}${diff}</td>` +
+        `<td title="Bonus offensif (4 essais ou plus)">${r.bonusOffensifs || 0}</td>` +
+        `<td title="Bonus défensif (défaite par 7 points ou moins)">${r.bonusDefensifs || 0}</td>` +
+        `<td><b>${r.pts}</b></td></tr>`;
     }).join('');
     document.getElementById('clubClassement').innerHTML =
-      `<table class="tableauClub"><thead><tr><th></th><th>Club</th><th>J</th><th>G</th><th>N</th><th>P</th><th>Pts+</th><th>Pts-</th><th>Diff</th><th>Pts</th></tr></thead><tbody>${lignes}</tbody></table>`;
+      `<table class="tableauClub"><thead><tr><th></th><th>Club</th><th>J</th><th>G</th><th>N</th><th>P</th><th>Pts+</th><th>Pts-</th><th>Diff</th><th title="Bonus offensif">BO</th><th title="Bonus défensif">BD</th><th>Pts</th></tr></thead><tbody>${lignes}</tbody></table>`;
   }
 
   function rafraichirMiniClassement() {
@@ -929,12 +936,14 @@
     carteClassement.style.display = '';
     carteCalendrier.style.display = '';
     const lignes = RMClub.classementTrieDe(compB.classement).map((r, i) => {
-      const diff = r.pointsPour - r.pointsContre;
       const classe = estClubJoueur(r.clubId) ? ' class="ligneClubJoueur"' : '';
-      return `<tr${classe}><td>${i + 1}</td><td>${nomClub(r.clubId)}</td><td>${r.j}</td><td>${r.g}</td><td>${r.n}</td><td>${r.p}</td><td><b>${r.pts}</b></td></tr>`;
+      return `<tr${classe}><td>${i + 1}</td><td>${nomClub(r.clubId)}</td><td>${r.j}</td><td>${r.g}</td><td>${r.n}</td><td>${r.p}</td>` +
+        `<td title="Bonus offensif (4 essais ou plus)">${r.bonusOffensifs || 0}</td>` +
+        `<td title="Bonus défensif (défaite par 7 points ou moins)">${r.bonusDefensifs || 0}</td>` +
+        `<td><b>${r.pts}</b></td></tr>`;
     }).join('');
     document.getElementById('clubEquipeBClassement').innerHTML =
-      `<table class="tableauClub"><thead><tr><th></th><th>Club</th><th>J</th><th>G</th><th>N</th><th>P</th><th>Pts</th></tr></thead><tbody>${lignes}</tbody></table>`;
+      `<table class="tableauClub"><thead><tr><th></th><th>Club</th><th>J</th><th>G</th><th>N</th><th>P</th><th title="Bonus offensif">BO</th><th title="Bonus défensif">BD</th><th>Pts</th></tr></thead><tbody>${lignes}</tbody></table>`;
     document.getElementById('clubEquipeBCalendrier').innerHTML = compB.calendrier.map((f) =>
       `<div${f.joue ? ' style="opacity:.6"' : ''}>${formaterLigneCalendrier(f)}</div>`).join('');
   }

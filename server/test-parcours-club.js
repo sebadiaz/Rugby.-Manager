@@ -385,6 +385,59 @@ test('équipe B : rétrocompatibilité — une sauvegarde antérieure sans champ
   assert.strictEqual(saison.competitionB, compB, 'doit être persisté sur saison.competitionB');
 });
 
+// --- 11b) Points de bonus (offensif : 4 essais ou plus ; défensif : défaite
+// par 7 points ou moins) — règle standard du rugby professionnel, absente
+// jusqu'ici du classement (victoire/nul/défaite = 4/2/0 uniquement). ---
+test('points de bonus : une victoire nette sans bonus offensif ni défensif ne rapporte que 4 points', () => {
+  const clubA = { id: 'ba1', budget: 100 };
+  const clubB = { id: 'ba2', budget: 100 };
+  const classement = RMClub.classementInitial([clubA, clubB]);
+  const calendrier = [{ id: 'fx1', journee: 1, domicileId: 'ba1', exterieurId: 'ba2', joue: false, score: null }];
+  // 15-10 : le perdant (10, 1 essai) n'a pas 4 essais → pas de bonus
+  // offensif, mais l'écart de 5 points (<= 7) lui donne bien un bonus
+  // défensif. Le vainqueur (15, 2 essais) n'a pas non plus de bonus offensif.
+  RMClub.enregistrerResultatDans(calendrier, classement, 'fx1', 15, 10, 2, 1);
+  assert.strictEqual(classement.ba1.pts, 4, 'victoire sans bonus offensif (2 essais < 4) : 4 points, pas plus');
+  assert.strictEqual(classement.ba1.bonusOffensifs, 0);
+  assert.strictEqual(classement.ba2.pts, 1, 'défaite par 5 points (<= 7) : bonus défensif, donc 1 point malgré la défaite');
+  assert.strictEqual(classement.ba2.bonusDefensifs, 1);
+  assert.strictEqual(classement.ba2.bonusOffensifs, 0);
+});
+
+test('points de bonus : une défaite par plus de 7 points ne rapporte aucun bonus défensif', () => {
+  const clubA = { id: 'bb1', budget: 100 };
+  const clubB = { id: 'bb2', budget: 100 };
+  const classement = RMClub.classementInitial([clubA, clubB]);
+  const calendrier = [{ id: 'fx2', journee: 1, domicileId: 'bb1', exterieurId: 'bb2', joue: false, score: null }];
+  RMClub.enregistrerResultatDans(calendrier, classement, 'fx2', 30, 10, 4, 1);
+  assert.strictEqual(classement.bb1.pts, 5, 'victoire + bonus offensif (4 essais) : 5 points');
+  assert.strictEqual(classement.bb1.bonusOffensifs, 1);
+  assert.strictEqual(classement.bb2.pts, 0, 'défaite par 20 points (> 7) : aucun bonus défensif');
+  assert.strictEqual(classement.bb2.bonusDefensifs, 0);
+});
+
+test('points de bonus : le bonus offensif s\'applique même en cas de défaite (4 essais ou plus)', () => {
+  const clubA = { id: 'bc1', budget: 100 };
+  const clubB = { id: 'bc2', budget: 100 };
+  const classement = RMClub.classementInitial([clubA, clubB]);
+  const calendrier = [{ id: 'fx3', journee: 1, domicileId: 'bc1', exterieurId: 'bc2', joue: false, score: null }];
+  // Le perdant marque 4 essais (beaucoup de pénalités manquées côté vainqueur) :
+  // bonus offensif ET défensif cumulables (règle standard, pas exclusifs).
+  RMClub.enregistrerResultatDans(calendrier, classement, 'fx3', 25, 22, 2, 4);
+  assert.strictEqual(classement.bc2.pts, 2, 'défaite par 3 (bonus défensif) + 4 essais (bonus offensif) = 0+1+1 = 2 points');
+  assert.strictEqual(classement.bc2.bonusOffensifs, 1);
+  assert.strictEqual(classement.bc2.bonusDefensifs, 1);
+});
+
+test('points de bonus : rétrocompatibilité — une ligne de classement antérieure sans ces champs ne devient pas NaN', () => {
+  const classement = { bd1: { clubId: 'bd1', j: 0, g: 0, n: 0, p: 0, pts: 0, essaisPour: 0, essaisContre: 0, pointsPour: 0, pointsContre: 0 },
+    bd2: { clubId: 'bd2', j: 0, g: 0, n: 0, p: 0, pts: 0, essaisPour: 0, essaisContre: 0, pointsPour: 0, pointsContre: 0 } };
+  const calendrier = [{ id: 'fx4', journee: 1, domicileId: 'bd1', exterieurId: 'bd2', joue: false, score: null }];
+  RMClub.enregistrerResultatDans(calendrier, classement, 'fx4', 20, 15, 4, 2);
+  assert.ok(Number.isFinite(classement.bd1.pts) && Number.isFinite(classement.bd2.pts), 'pts ne doit jamais devenir NaN sur une ancienne ligne de classement');
+  assert.strictEqual(classement.bd1.pts, 5);
+});
+
 // --- 12) Polyvalence : n'importe quel joueur peut dépanner à n'importe
 // quel poste (le poste naturel reste prioritaire, mais n'est plus une
 // obligation) — scénario isolé (nouvelle saison dédiée) pour rester

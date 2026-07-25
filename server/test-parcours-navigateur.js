@@ -291,6 +291,19 @@ function optionsLancement() {
   verifier('équipe B : le journal financier affiche bien le mouvement Équipe B distinctement',
     (await page.textContent('#clubHistoriqueFinances')).includes('Équipe B'));
 
+  // 7b) Classement : les points de bonus (offensif/défensif) doivent être
+  // affichés à part de "Pts", pas fondus dedans (cf. RMClub.enregistrerResultatDans).
+  await clicOnglet('calendrier');
+  await page.waitForTimeout(150);
+  const enteteClassementTxt = await page.textContent('#clubClassement thead');
+  verifier('classement : les colonnes de bonus offensif/défensif sont affichées',
+    enteteClassementTxt.includes('BO') && enteteClassementTxt.includes('BD'));
+  const journeeJoueeApres1Journee = await page.evaluate(() => {
+    const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
+    return Object.values(s.classement).some((r) => r.j >= 1 && Number.isFinite(r.pts));
+  });
+  verifier('classement : les points restent des nombres valides après un résultat réel (pas de NaN)', journeeJoueeApres1Journee);
+
   // 8) Fin de saison — via le bouton flottant "New Day" (toujours visible,
   // ici depuis un autre onglet que le Dashboard) plutôt que le bouton du
   // Dashboard, pour couvrir les deux points d'entrée vers l'aperçu du match.
