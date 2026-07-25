@@ -66,9 +66,27 @@
     }
   }
 
+  // Audit P0-3 (TODO_AUDIT.md) : échappement HTML centralisé — le nom du
+  // club est la SEULE donnée librement saisie par le joueur (cf.
+  // #inputNomClub) qui est ensuite réaffichée. Un nom contenant du HTML
+  // (ex. `<img src=x onerror=...>`) exécutait réellement ce code dès
+  // l'écran d'accueil, confirmé par reproduction. Toute valeur qui peut
+  // provenir du nom d'un club (le club du joueur en particulier — les noms
+  // de clubs IA et de joueurs sont, eux, toujours générés par le jeu) doit
+  // passer par ici avant d'être interpolée dans un template assigné à
+  // innerHTML — jamais réaffichée telle quelle.
+  function echapperHTML(texte) {
+    return String(texte)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
   function nomClub(clubId) {
     const c = RMClub.club(saison, clubId);
-    return c ? c.nom : '?';
+    return c ? echapperHTML(c.nom) : '?';
   }
 
   function estClubJoueur(clubId) {
@@ -201,7 +219,7 @@
       ? `<span class="badgeQualifEuro">🏆 Qualifié ${c.qualificationEuropeenne === 'continentale' ? 'Continentale' : 'Challenge'}</span>` : '';
     document.getElementById('clubEntete').innerHTML =
       `<div class="clubEntete"><span class="pastilleClub" style="background:${c.couleur}">${initiale}</span>` +
-      `<span class="nomClub">${c.nom}<span class="sousLigne">${RMClub.nomPalierFrance(niveauPalier)}</span></span></div>${badgeEuropeen}`;
+      `<span class="nomClub">${echapperHTML(c.nom)}<span class="sousLigne">${RMClub.nomPalierFrance(niveauPalier)}</span></span></div>${badgeEuropeen}`;
   }
 
   // Barre supérieure persistante (cf. index.html #clubTopBarInfos) : saison,
@@ -1241,7 +1259,7 @@
     const prochaine = RMClub.prochainesFixtures(saison);
     const statut = prochaine.length ? `Journée ${prochaine[0].journee} à jouer` : 'Saison terminée — prête à être avancée';
     document.getElementById('continuerClubInfos').innerHTML =
-      `<span class="nomClubAccueil">${saison.clubJoueur.nom}</span>` +
+      `<span class="nomClubAccueil">${echapperHTML(saison.clubJoueur.nom)}</span>` +
       `<span class="detailClubAccueil">Saison ${saison.numero || 1} · 💰 ${saison.clubJoueur.budget} k€ · ${statut}</span>`;
     carte.style.display = 'block';
     // Une carrière existe déjà : "Continuer ma saison" ci-dessus suffit,
@@ -1993,7 +2011,7 @@
     ].join('');
 
     corps.innerHTML =
-      `<div class="carteClub"><h3>🆚 ${domicile ? `${c.nom} — ${analyse.nom}` : `${analyse.nom} — ${c.nom}`}</h3>` +
+      `<div class="carteClub"><h3>🆚 ${domicile ? `${echapperHTML(c.nom)} — ${echapperHTML(analyse.nom)}` : `${echapperHTML(analyse.nom)} — ${echapperHTML(c.nom)}`}</h3>` +
       `<p style="font-size:12px;color:var(--text-dim);margin:0 0 10px;">Journée ${matchJoueur.journee} · ${domicile ? 'À domicile' : 'À l\'extérieur'} · ${analyse.position}${analyse.position === 1 ? 'er' : 'e'}/${analyse.totalClubs} au classement</p>` +
       `<div class="ligneJoueur"><span>Ma forme</span><b>${formeTxt(maForme)}</b></div>` +
       `<div class="ligneJoueur"><span>Leur forme</span><b>${formeTxt(analyse.forme)}</b></div></div>` +
