@@ -1080,6 +1080,34 @@
     return { ok: true, contrat: joueur.contrat, salaire: joueur.salaire };
   }
 
+  // --- Négociation de contrat : contrairement à renouvelerContrat (accepte
+  // toujours le tarif du marché), le manager propose un montant et le joueur
+  // peut refuser une offre trop basse. L'exigence dépend de son moral RÉEL
+  // (un joueur mécontent réclame davantage pour rester) ; une offre acceptée
+  // remonte le moral, un refus sur une offre trop basse le fait un peu
+  // chuter (frustration). Rien n'est fabriqué : tout dérive de l'état du
+  // joueur (salaire de marché, âge, moral) déjà suivi par la simulation.
+  function negocierRenouvellement(rng, saison, joueurId, salaireOffert, duree) {
+    const joueur = saison.clubJoueur.effectif.find((j) => j.id === joueurId);
+    if (!joueur) return { ok: false, motif: 'introuvable' };
+    const offre = calculerOffreRenouvellement(joueur);
+    const dureeFinale = Math.max(1, Math.min(offre.dureeMax, duree || offre.dureeMax));
+    const moral = joueur.moral != null ? joueur.moral : 60;
+    const facteurExigence = 1 + Math.max(0, 60 - moral) / 200; // moral bas → exige plus pour rester
+    const seuil = offre.salaire * facteurExigence;
+    const ratio = salaireOffert / seuil;
+    const probaAcceptation = Math.max(0.03, Math.min(0.97, (ratio - 0.7) * 2));
+    if (rng() >= probaAcceptation) {
+      if (ratio < 0.9) joueur.moral = Math.max(0, moral - 3);
+      return { ok: false, motif: 'refuse', salaireMinimumEstime: Math.round(seuil) };
+    }
+    joueur.contrat = dureeFinale;
+    joueur.salaire = Math.round(salaireOffert);
+    joueur.moral = Math.min(100, moral + 5);
+    ajouterMessage(saison, 'contrat', 'Contrat renouvelé', `${joueur.nom} prolonge (${dureeFinale} saison(s), ${joueur.salaire} k€).`);
+    return { ok: true, contrat: joueur.contrat, salaire: joueur.salaire };
+  }
+
   // --- Centre de scouting : liste de favoris (Mode Club) — les entrées du
   // marché sont régénérées à chaque rafraîchissement, donc un favori est une
   // COPIE conservée indépendamment (jamais une simple référence qui
@@ -1526,7 +1554,7 @@
     accumulerStats, enregistrerMouvementFinances,
     ENTRAINEMENTS, appliquerEntrainement,
     accumulerStatsJoueurs, classementMarqueurs,
-    calculerOffreRenouvellement, renouvelerContrat, calculerPrimeSignature,
+    calculerOffreRenouvellement, renouvelerContrat, negocierRenouvellement, calculerPrimeSignature,
     basculerFavori, analyserAdversaire,
     appliquerMoral, preterJoueur, rappelerJoueur, progresserPrets,
     POSTES_PERSONNEL, genererMarchePersonnel, embaucherPersonnel, licencierPersonnel,

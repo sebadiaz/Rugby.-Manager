@@ -1258,10 +1258,23 @@
       const joueur = saison.clubJoueur.effectif.find((j) => j.id === joueurAffiche);
       if (!joueur) return;
       const offre = RMClub.calculerOffreRenouvellement(joueur);
-      if (!window.confirm(`Renouveler ${joueur.nom} pour ${offre.dureeMax} an(s) à ${offre.salaire} k€/saison ?`)) return;
-      RMClub.renouvelerContrat(saison, joueurAffiche, offre.dureeMax);
+      const saisie = window.prompt(
+        `Négociation avec ${joueur.nom} — salaire du marché estimé : ${offre.salaire} k€/saison (${offre.dureeMax} an(s)).\nSalaire annuel proposé (k€) :`,
+        String(offre.salaire)
+      );
+      if (saisie == null) return; // annulé
+      const montant = Math.round(Number(saisie));
+      if (!Number.isFinite(montant) || montant <= 0) { window.alert('Montant invalide.'); return; }
+      const rng = creerRng(graineAleatoire());
+      const res = RMClub.negocierRenouvellement(rng, saison, joueurAffiche, montant, offre.dureeMax);
+      if (!res.ok) {
+        window.alert(`${joueur.nom} refuse ${montant} k€/saison — il vise plutôt autour de ${res.salaireMinimumEstime} k€/saison. Propose davantage, ou reviens plus tard.`);
+        sauvegarder();
+        ouvrirFicheJoueur(joueurAffiche);
+        return;
+      }
       sauvegarder();
-      toast(`✅ Contrat renouvelé : ${joueur.nom} (${offre.dureeMax} an(s), ${offre.salaire} k€/saison)`);
+      toast(`✅ Contrat renouvelé : ${joueur.nom} (${res.contrat} an(s), ${res.salaire} k€/saison)`);
       ouvrirFicheJoueur(joueurAffiche);
       rafraichirEffectif();
       rafraichirStatutEffectif();

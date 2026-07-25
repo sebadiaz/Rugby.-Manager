@@ -112,6 +112,36 @@ function optionsLancement() {
   const budgetApresTxt = await page.textContent('#transfertsBudget');
   verifier('recrutement : le budget change après une signature', budgetAvantTxt !== budgetApresTxt);
 
+  // 5b) Négociation de contrat : force un joueur en fin de contrat (état non
+  // exposé par l'UI, modifié directement en localStorage comme le ferait une
+  // vraie fin de saison) pour vérifier que le bouton de renouvellement mène
+  // bien à une vraie négociation salariale (invite pour un montant, pas un
+  // simple bouton "accepter"). L'issue accept/refus dépend du hasard réel du
+  // jeu : elle est couverte de façon déterministe par server/test-parcours-club.js,
+  // ici on vérifie seulement le câblage.
+  const idJoueurContratCourt = await page.evaluate(() => {
+    const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
+    s.clubJoueur.effectif[0].contrat = 1;
+    localStorage.setItem('rugbyManager.club.v1', JSON.stringify(s));
+    return s.clubJoueur.effectif[0].id;
+  });
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.waitForTimeout(200);
+  await page.click('#btnContinuerClub');
+  await page.waitForTimeout(200);
+  await clicOnglet('effectif');
+  await page.waitForTimeout(150);
+  // La liste est triée par poste par défaut : cible ce joueur précis par id
+  // plutôt que la première ligne (qui n'est pas forcément effectif[0]).
+  await page.click(`#clubEffectif tr[data-joueur="${idJoueurContratCourt}"]`);
+  await page.waitForTimeout(150);
+  verifier('négociation de contrat : le bouton de renouvellement est proposé pour un contrat expirant', await page.isVisible('#btnRenouveler'));
+  let prompteRenouvellementAffiche = false;
+  page.once('dialog', (d) => { prompteRenouvellementAffiche = d.type() === 'prompt'; d.dismiss(); });
+  await page.click('#btnRenouveler');
+  await page.waitForTimeout(200);
+  verifier('négociation de contrat : cliquer "Renouveler" ouvre une invite pour proposer un salaire (pas une simple confirmation)', prompteRenouvellementAffiche);
+
   // 6) Affichage d'un club adverse + fiche joueur adverse + offre de transfert.
   await clicOnglet('autresclubs');
   await page.waitForTimeout(150);

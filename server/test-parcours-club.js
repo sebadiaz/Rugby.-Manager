@@ -210,6 +210,34 @@ test('objectif de la saison : bilan réel en fin de saison, confiance ajustée, 
   assert.ok(c.objectifSaison.position >= c.objectifSaison.totalClubs - 1, 'nouvel objectif de maintien après une dernière place');
 });
 
+// --- 9) Négociation de contrat ---
+test('négociation de contrat : une offre dérisoire est refusée, fait baisser le moral, ne change rien au contrat', () => {
+  const joueur = saison.clubJoueur.effectif[0];
+  const contratAvant = joueur.contrat, salaireAvant = joueur.salaire;
+  const moralAvant = joueur.moral;
+  const offre = RMClub.calculerOffreRenouvellement(joueur);
+  const res = RMClub.negocierRenouvellement(() => 0.99, saison, joueur.id, 1, offre.dureeMax);
+  assert.strictEqual(res.ok, false);
+  assert.strictEqual(res.motif, 'refuse');
+  assert.ok(res.salaireMinimumEstime > 0);
+  assert.strictEqual(joueur.contrat, contratAvant, 'un refus ne modifie pas le contrat en cours');
+  assert.strictEqual(joueur.salaire, salaireAvant, 'un refus ne modifie pas le salaire en cours');
+  assert.ok(joueur.moral < moralAvant, 'une offre dérisoire refusée frustre le joueur (moral en baisse)');
+});
+
+test('négociation de contrat : une offre généreuse acceptée met à jour contrat/salaire et améliore le moral', () => {
+  const joueur = saison.clubJoueur.effectif[1];
+  joueur.moral = 50;
+  const offre = RMClub.calculerOffreRenouvellement(joueur);
+  const montant = Math.round(offre.salaire * 1.3);
+  const res = RMClub.negocierRenouvellement(() => 0.01, saison, joueur.id, montant, offre.dureeMax);
+  assert.strictEqual(res.ok, true);
+  assert.strictEqual(joueur.contrat, offre.dureeMax);
+  assert.strictEqual(joueur.salaire, montant);
+  assert.ok(joueur.moral > 50, 'une offre généreuse acceptée redonne confiance au joueur');
+  assert.ok(saison.clubJoueur.messages.some((m) => m.titre === 'Contrat renouvelé'));
+});
+
 console.log(`\n${nbTests} test(s) exécuté(s).`);
 if (process.exitCode) {
   console.error('ECHEC : au moins un test du parcours club a échoué.');
