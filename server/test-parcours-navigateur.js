@@ -109,14 +109,24 @@ function optionsLancement() {
   const budgetApresTxt = await page.textContent('#transfertsBudget');
   verifier('recrutement : le budget change après une signature', budgetAvantTxt !== budgetApresTxt);
 
-  // 6) Affichage d'un club adverse.
+  // 6) Affichage d'un club adverse + fiche joueur adverse + offre de transfert.
   await clicOnglet('autresclubs');
   await page.waitForTimeout(150);
   await page.click('#clubAutresClubsListe tbody tr:nth-child(1)');
   await page.waitForTimeout(150);
   const detailAdversaireTxt = await page.textContent('#clubAutresClubIdentite');
   verifier('club adverse : sa fiche affiche un contenu réel', detailAdversaireTxt.trim().length > 20);
-  await page.click('#btnFermerClubAdversaire');
+  await page.click('#clubAutresClubEffectif tbody tr:nth-child(1)');
+  await page.waitForTimeout(150);
+  verifier('club adverse : le bouton "Faire une offre de transfert" est proposé sur sa fiche joueur',
+    await page.isVisible('#btnApprocherJoueurAdverse'));
+  let prompteAffiche = false;
+  page.once('dialog', (d) => { prompteAffiche = d.type() === 'prompt'; d.dismiss(); });
+  await page.click('#btnApprocherJoueurAdverse');
+  await page.waitForTimeout(200);
+  verifier('club adverse : cliquer "Faire une offre" ouvre bien une invite pour le montant', prompteAffiche);
+  await page.click('#btnFermerFicheJoueurAdversaire').catch(() => {});
+  await page.click('#btnFermerClubAdversaire').catch(() => {});
 
   // 7) Aperçu du prochain match (façon Football Manager), puis progression
   // d'une journée. Le bouton "New Day" flottant doit rester joignable depuis

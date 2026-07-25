@@ -234,6 +234,81 @@
     return effectif;
   }
 
+  // --- Transferts internationaux (Mode Club) : approcher directement un
+  // joueur d'un club ADVERSE (pas seulement le marché des joueurs libres) —
+  // cf. clubUI.js, fiche joueur adverse dans l'onglet Autres clubs. Un club
+  // ne vend jamais à prix cassé : le prix demandé dépend de la valeur du
+  // joueur ET de son importance dans son équipe (un titulaire clé, nettement
+  // au-dessus de la moyenne de son club, coûte plus cher et refuse plus
+  // souvent qu'un remplaçant). ---
+  function calculerPrixDemandeAdverse(joueurAdverse, clubAdverse) {
+    const valeurBase = estimerValeurTransfert(joueurAdverse.vitesse, joueurAdverse.plaquage, joueurAdverse.age);
+    const niveauJoueur = (joueurAdverse.vitesse + joueurAdverse.plaquage) / 2;
+    const niveauMoyenClub = clubAdverse.effectif.reduce((s, j) => s + (j.vitesse + j.plaquage) / 2, 0) / clubAdverse.effectif.length;
+    // Un joueur nettement au-dessus de la moyenne de son équipe (pilier de
+    // l'effectif) coûte une prime réelle ; un remplaçant sous la moyenne se
+    // négocie proche de sa valeur de base — jamais en dessous.
+    const primeCle = Math.max(1, 1 + (niveauJoueur - niveauMoyenClub) / 35);
+    return Math.round(valeurBase * 1.6 * primeCle);
+  }
+
+  // Convertit un joueur adverse (effectif "prêt à jouer", numéro-based) en
+  // joueur d'effectif étendu (id, contrat, statistiques de saison...) une
+  // fois le transfert accepté — mêmes champs que genererJoueurEtendu, à
+  // partir des attributs RÉELS du joueur transféré (jamais régénérés).
+  function convertirJoueurAdverseEnEffectifEtendu(joueurAdverse, rng) {
+    return {
+      id: 'j' + compteurJoueurId++,
+      nom: joueurAdverse.nom,
+      poste: joueurAdverse.poste,
+      age: joueurAdverse.age,
+      vitesse: joueurAdverse.vitesse,
+      plaquage: joueurAdverse.plaquage,
+      adresse: joueurAdverse.adresse,
+      melee: joueurAdverse.melee, touche: joueurAdverse.touche, puissance: joueurAdverse.puissance,
+      endurance: joueurAdverse.endurance, passe: joueurAdverse.passe, jeuPied: joueurAdverse.jeuPied,
+      decision: joueurAdverse.decision, discipline: joueurAdverse.discipline,
+      potentiel: joueurAdverse.potentiel,
+      tendance: joueurAdverse.tendance, couloir: joueurAdverse.couloir,
+      contrat: 2 + Math.floor(rng() * 3),
+      salaire: joueurAdverse.salaire != null ? joueurAdverse.salaire : calculerSalaire(joueurAdverse.vitesse, joueurAdverse.plaquage, joueurAdverse.age),
+      blessureJournees: 0,
+      fatigue: 0,
+      moral: 60,
+      pret: null,
+      matchsJoues: 0,
+      statsSaison: null,
+      attributsDebutSaison: null,
+      entrainementIndividuel: null,
+    };
+  }
+
+  // Tente d'acheter le joueur `index` de l'effectif du club adverse `clubAdverseId`.
+  // L'acceptation n'est jamais garantie même en offrant plus que le prix
+  // demandé (un club refuse parfois de céder un titulaire clé) : la
+  // probabilité croît avec le ratio offre/prix demandé, jamais 0% ni 100%.
+  // Si accepté, le club adverse recrute IMMÉDIATEMENT un remplaçant du même
+  // numéro (même niveau) : son effectif reste toujours complet à 15, sinon
+  // sa composition du prochain match deviendrait impossible à compléter.
+  function approcherJoueurAdverse(rng, saison, clubAdverseId, index, montantOffre) {
+    const adversaire = saison.adversaires.find((a) => a.id === clubAdverseId);
+    if (!adversaire) return { ok: false, motif: 'introuvable' };
+    const joueurAdverse = adversaire.effectif[index];
+    if (!joueurAdverse) return { ok: false, motif: 'introuvable' };
+    if (saison.clubJoueur.budget < montantOffre) return { ok: false, motif: 'budget' };
+    const prixDemande = calculerPrixDemandeAdverse(joueurAdverse, adversaire);
+    const ratio = montantOffre / prixDemande;
+    const probaAcceptation = Math.max(0.05, Math.min(0.95, (ratio - 0.6) * 1.2));
+    if (rng() >= probaAcceptation) return { ok: false, motif: 'refuse', prixDemande };
+    saison.clubJoueur.budget -= montantOffre;
+    const nouveauJoueur = convertirJoueurAdverseEnEffectifEtendu(joueurAdverse, rng);
+    saison.clubJoueur.effectif.push(nouveauJoueur);
+    adversaire.effectif[index] = genererJoueur(joueurAdverse.numero, rng, adversaire.niveauClub);
+    ajouterMessage(saison, 'transfert', 'Transfert international',
+      `${nouveauJoueur.nom} rejoint le club en provenance de ${adversaire.nom} (${montantOffre} k€).`);
+    return { ok: true, joueur: nouveauJoueur, prixDemande };
+  }
+
   let compteurId = 1;
   function genererClub(rng, { nom, niveauClub = 0.5 } = {}) {
     return {
@@ -1396,5 +1471,6 @@
     calculerProgression,
     enregistrerResultatClubJoueur, marquerMessageLu, marquerTousMessagesLus,
     estimerValeurTransfert, validerComposition,
+    calculerPrixDemandeAdverse, approcherJoueurAdverse,
   };
 })(window);

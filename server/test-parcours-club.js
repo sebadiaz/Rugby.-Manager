@@ -105,6 +105,36 @@ test('recrutement : signer un joueur du marché débite le budget et l\'ajoute �
   assert.ok(c.effectif.some((j) => j.id === cible.id));
 });
 
+// --- 4b) Transfert international : approcher un joueur d'un club ADVERSE
+// (pas seulement le marché des joueurs libres) ---
+test('transfert international : une offre dérisoire est refusée sans effet de bord', () => {
+  const adv = saison.adversaires[0];
+  const avantAdv = adv.effectif.length, avantMoi = saison.clubJoueur.effectif.length;
+  const refus = RMClub.approcherJoueurAdverse(() => 0.99, saison, adv.id, 0, 1);
+  assert.strictEqual(refus.ok, false);
+  assert.strictEqual(refus.motif, 'refuse');
+  assert.strictEqual(adv.effectif.length, avantAdv);
+  assert.strictEqual(saison.clubJoueur.effectif.length, avantMoi);
+});
+
+test('transfert international : une offre acceptée débite le budget, transfère le joueur et laisse l\'adversaire à 15', () => {
+  const adv = saison.adversaires[1];
+  const cible = adv.effectif[2];
+  const prixDemande = RMClub.calculerPrixDemandeAdverse(cible, adv);
+  saison.clubJoueur.budget = prixDemande * 3; // s'assure que le budget n'est pas le facteur limitant ici
+  const budgetAvant = saison.clubJoueur.budget;
+  const montant = prixDemande * 2;
+  const res = RMClub.approcherJoueurAdverse(() => 0.01, saison, adv.id, 2, montant);
+  assert.strictEqual(res.ok, true);
+  assert.strictEqual(res.joueur.nom, cible.nom);
+  assert.strictEqual(saison.clubJoueur.budget, budgetAvant - montant);
+  assert.ok(saison.clubJoueur.effectif.some((j) => j.id === res.joueur.id && j.contrat != null));
+  assert.strictEqual(adv.effectif.length, 15, 'le club adverse recrute immédiatement un remplaçant du même numéro');
+  assert.strictEqual(saison.clubJoueur.messages[0].categorie, 'transfert');
+  const compo = RMClub.completerComposition(saison.clubJoueur.effectif, {});
+  assert.strictEqual(RMClub.validerComposition(compo).length, 0, 'le joueur transféré reste utilisable en composition');
+});
+
 // --- 5) Progression d'une journée (le match du club du joueur) ---
 test('progression d\'une journée : résultat enregistré, finances/fatigue/moral/entraînement appliqués', () => {
   const c = saison.clubJoueur;

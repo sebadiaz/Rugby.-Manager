@@ -20,6 +20,9 @@
   // même onglet, sur un joueur repéré par son INDEX dans l'effectif adverse
   // (pas d'id stable requis pour un effectif IA non géré au jour le jour).
   let clubAdversaireAffiche = null;
+  // Index (dans l'effectif adverse) du joueur actuellement affiché dans sa
+  // fiche — sert à "Faire une offre de transfert" (cf. approcherJoueurAdverse).
+  let joueurAdversaireAfficheIndex = null;
   // État des filtres/tri de l'effectif (recherche/poste/disponibilité/tri de
   // colonne) : tenu en mémoire, réappliqué à chaque rendu (pas persisté —
   // ce sont des préférences d'affichage, pas des données de la saison).
@@ -463,6 +466,7 @@
   }
 
   function fermerFicheJoueurAdversaire() {
+    joueurAdversaireAfficheIndex = null;
     const detail = document.getElementById('clubJoueurAdversaireDetail');
     if (detail) detail.style.display = 'none';
     const corps = document.getElementById('clubAutresClubCorps');
@@ -529,6 +533,7 @@
     if (!adv) return;
     const j = adv.effectif[index];
     if (!j) return;
+    joueurAdversaireAfficheIndex = index;
     const moral = j.moral != null ? j.moral : 65;
     const ATTRIBUTS_FICHE = [
       ['vitesse', 'Vitesse'], ['plaquage', 'Plaquage'], ['adresse', 'Adresse au pied'],
@@ -549,7 +554,8 @@
       (j.salaire != null ? `<div class="ligneJoueur"><span>Salaire</span><b>${j.salaire} k€/saison (estimation)</b></div>` : '') +
       (j.valeurEstimee != null ? `<div class="ligneJoueur"><span>Valeur de transfert estimée</span><b>${j.valeurEstimee} k€</b></div>` : '') +
       (j.blessureJournees > 0 ? `<div class="ligneJoueur"><span>Blessure</span><b>${j.blessureJournees} journée(s)</b></div>` : '') +
-      `<button class="alt" id="btnFermerFicheJoueurAdversaire" style="width:100%;margin-top:14px;">← Retour à l'effectif du club</button>`;
+      `<button class="accent" id="btnApprocherJoueurAdverse" style="width:100%;margin-top:14px;">💼 Faire une offre de transfert</button>` +
+      `<button class="alt" id="btnFermerFicheJoueurAdversaire" style="width:100%;margin-top:8px;">← Retour à l'effectif du club</button>`;
     document.getElementById('clubJoueurAdversaireDetail').style.display = '';
     document.getElementById('clubAutresClubCorps').style.display = 'none';
   }
@@ -1138,7 +1144,36 @@
     ouvrirFicheJoueurAdversaire(clubAdversaireAffiche, Number(ligne.dataset.index));
   });
   document.getElementById('clubJoueurAdversaireDetail').addEventListener('click', (e) => {
-    if (e.target.id === 'btnFermerFicheJoueurAdversaire') fermerFicheJoueurAdversaire();
+    if (e.target.id === 'btnFermerFicheJoueurAdversaire') { fermerFicheJoueurAdversaire(); return; }
+    if (e.target.id !== 'btnApprocherJoueurAdverse') return;
+    if (!clubAdversaireAffiche || joueurAdversaireAfficheIndex == null) return;
+    const adv = RMClub.club(saison, clubAdversaireAffiche);
+    const joueurCible = adv && adv.effectif[joueurAdversaireAfficheIndex];
+    if (!adv || !joueurCible) return;
+    const prixDemande = RMClub.calculerPrixDemandeAdverse(joueurCible, adv);
+    const saisie = window.prompt(
+      `${joueurCible.nom} (${adv.nom}) — prix demandé estimé : ${prixDemande} k€.\nMontant de ton offre (k€) :`,
+      String(prixDemande)
+    );
+    if (saisie == null) return; // annulé
+    const montant = Math.round(Number(saisie));
+    if (!Number.isFinite(montant) || montant <= 0) { window.alert('Montant invalide.'); return; }
+    const rng = creerRng(graineAleatoire());
+    const res = RMClub.approcherJoueurAdverse(rng, saison, clubAdversaireAffiche, joueurAdversaireAfficheIndex, montant);
+    if (!res.ok) {
+      if (res.motif === 'budget') window.alert(`Budget insuffisant : il te manque ${montant - saison.clubJoueur.budget} k€.`);
+      else if (res.motif === 'refuse') window.alert(`${adv.nom} refuse ton offre de ${montant} k€ pour ${joueurCible.nom} (prix demandé estimé : ${res.prixDemande} k€). Tente une offre plus généreuse, ou reviens plus tard.`);
+      else window.alert('Transfert impossible.');
+      return;
+    }
+    sauvegarder();
+    toast(`✅ ${res.joueur.nom} rejoint le club en provenance de ${adv.nom} (${montant} k€)`);
+    fermerFicheJoueurAdversaire();
+    fermerClubAdversaire();
+    rafraichirEffectif();
+    rafraichirStatutEffectif();
+    rafraichirTopBarInfos();
+    rafraichirAutresClubs();
   });
 
   document.getElementById('btnCreerClub').addEventListener('click', () => {
