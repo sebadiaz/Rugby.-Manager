@@ -239,13 +239,19 @@ test('négociation de contrat : une offre généreuse acceptée met à jour cont
 });
 
 // --- 10) Centre de formation (espoirs promouvables en équipe première) ---
-test('centre de formation : le club en dispose dès la création, avec au moins un espoir par ligne de poste', () => {
+test('centre de formation : le club en dispose dès la création, avec assez d\'espoirs par ligne de poste pour aligner une équipe B complète à lui seul', () => {
   const c = saison.clubJoueur;
   assert.ok(Array.isArray(c.jeunes) && c.jeunes.length > 0, 'un centre de formation doit exister dès la création du club');
-  const postes = new Set(c.jeunes.map((j) => j.poste));
-  for (const poste of ['P', 'T', '2L', '3L', 'DM', 'OV', 'CE', 'AI', 'AR']) {
-    assert.ok(postes.has(poste), `aucun espoir au poste ${poste}`);
+  // Quota dérivé de POSTE_REQUIS (2 piliers, 2 deuxième ligne, 3 troisième
+  // ligne, 2 centres, 2 ailiers...) — pas seulement "au moins un par poste" :
+  // le centre de formation doit pouvoir fournir une équipe B complète à lui
+  // seul, même sans aucune réserve pro senior disponible ce jour-là.
+  const quotas = { P: 2, T: 1, '2L': 2, '3L': 3, DM: 1, OV: 1, CE: 2, AI: 2, AR: 1 };
+  for (const [poste, quota] of Object.entries(quotas)) {
+    const compte = c.jeunes.filter((j) => j.poste === poste).length;
+    assert.ok(compte >= quota, `poste ${poste} : ${compte} espoir(s), quota attendu ${quota}`);
   }
+  assert.strictEqual(c.jeunes.length, 15, 'centre de formation à quota plein');
   // Le pool a déjà traversé 2 changements de saison (tests précédents) :
   // un espoir non promu ne dépasse jamais 19 ans (cf. progresserCentreFormation).
   for (const j of c.jeunes) assert.ok(j.age <= 19, `un espoir du centre de formation ne doit jamais dépasser 19 ans (${j.nom} a ${j.age} ans)`);
@@ -288,6 +294,79 @@ test('centre de formation : vieillit à chaque fin de saison, un espoir non prom
   assert.ok(!c.jeunes.some((j) => j.nom === nomCible && j.poste === poste), 'un espoir de plus de 19 ans doit quitter le centre de formation');
   assert.ok(c.jeunes.some((j) => j.poste === poste), 'la ligne de poste laissée vacante doit être reconstituée');
   assert.ok(c.messages.some((m) => m.categorie === 'jeunes' && m.corps.includes(nomCible)));
+});
+
+// --- 11) Équipe B (championnat réservé aux clubs les plus riches) ---
+test('équipe B : éligibilité pair, cohérente avec le nombre de clubs, calendrier/classement bien formés', () => {
+  const c = saison.clubJoueur;
+  assert.ok(saison.competitionB, 'competitionB doit être généré dès la création (via nouvelleSaison)');
+  const nbClubs = 1 + saison.adversaires.length;
+  assert.strictEqual(saison.competitionB.eligibles.length % 2, 0, 'un nombre pair de clubs éligibles (round-robin par paires)');
+  assert.ok(saison.competitionB.eligibles.length >= 2 && saison.competitionB.eligibles.length <= nbClubs);
+  const idsValides = new Set([c.id, ...saison.adversaires.map((a) => a.id)]);
+  for (const f of saison.competitionB.calendrier) {
+    assert.ok(idsValides.has(f.domicileId) && idsValides.has(f.exterieurId), 'chaque rencontre B implique deux clubs réels');
+    assert.notStrictEqual(f.domicileId, f.exterieurId, 'un club ne joue jamais contre lui-même');
+    assert.ok(saison.competitionB.eligibles.includes(f.domicileId) && saison.competitionB.eligibles.includes(f.exterieurId));
+  }
+  assert.strictEqual(Object.keys(saison.competitionB.classement).length, saison.competitionB.eligibles.length);
+  // Le championnat principal (6 clubs) reste totalement indépendant.
+  assert.strictEqual(RMClub.classementTrie(saison).length, nbClubs);
+});
+
+test('équipe B : les plus riches clubs sont bien ceux retenus (tri par budget décroissant)', () => {
+  const tousLesClubs = [saison.clubJoueur, ...saison.adversaires];
+  const eligibles = RMClub.determinerEligiblesEquipeB(tousLesClubs);
+  const budgetMinEligible = Math.min(...eligibles.map((c) => c.budget));
+  const nonEligibles = tousLesClubs.filter((c) => !eligibles.some((e) => e.id === c.id));
+  for (const c of nonEligibles) assert.ok(c.budget <= budgetMinEligible, `${c.nom} non éligible devrait avoir un budget <= au plus petit budget éligible`);
+});
+
+test('équipe B : le vivier disponible exclut titulaires/banc du jour, blessés et prêtés, inclut le centre de formation', () => {
+  const c = saison.clubJoueur;
+  c.compositionTitulaires = RMClub.completerComposition(c.effectif, {});
+  c.compositionBanc = RMClub.completerCompositionBanc(c.effectif, c.compositionTitulaires, {});
+  const convoques = new Set([...Object.values(c.compositionTitulaires), ...Object.values(c.compositionBanc)]);
+  const pool = RMClub.effectifDisponiblePourEquipeB(saison);
+  for (const j of pool) {
+    if (c.effectif.includes(j)) assert.ok(!convoques.has(j.id), `${j.nom} est convoqué en premier XV/banc aujourd'hui, ne devrait pas apparaître dans le vivier B`);
+  }
+  for (const j of c.effectif) {
+    if (convoques.has(j.id)) assert.ok(!pool.includes(j), `${j.nom} convoqué aujourd'hui ne doit pas être dans le vivier B`);
+  }
+  for (const j of (c.jeunes || [])) assert.ok(pool.includes(j), `${j.nom} (centre de formation) doit faire partie du vivier B`);
+});
+
+test('équipe B : jouer un match met à jour le classement B, les stats des joueurs alignés, sans toucher au championnat principal', () => {
+  const c = saison.clubJoueur;
+  // Force le club du joueur dans une compétition B à 2 (lui + un adversaire),
+  // pour un scénario entièrement déterministe.
+  const adversaireB = saison.adversaires[0];
+  const tousLesClubs = [c, adversaireB];
+  saison.competitionB = RMClub.genererCompetitionB(tousLesClubs);
+  const fixture = saison.competitionB.calendrier[0];
+  const pool = RMClub.effectifDisponiblePourEquipeB(saison);
+  const composition = RMClub.meilleureComposition(pool);
+  assert.strictEqual(RMClub.validerComposition(composition).length, 0, 'le vivier (réservistes + centre de formation) doit permettre une composition complète');
+  const joueurAligne = pool.find((j) => Object.values(composition).includes(j.id));
+  const matchsAvant = joueurAligne.matchsJoues || 0, fatigueAvant = joueurAligne.fatigue || 0;
+  const classementMainAvant = JSON.stringify(saison.classement);
+  RMClub.enregistrerResultatEquipeB(saison, fixture.id, 24, 10, 3, 1);
+  RMClub.appliquerEffetsMatchEquipeB(saison, composition);
+  assert.strictEqual(fixture.joue, true);
+  const ligne = RMClub.classementTrieDe(saison.competitionB.classement).find((r) => r.clubId === fixture.domicileId);
+  assert.ok(ligne.j >= 1, 'le classement B doit refléter le match joué');
+  assert.strictEqual(joueurAligne.matchsJoues, matchsAvant + 1, 'un joueur aligné en équipe B doit voir son compteur de matchs progresser');
+  assert.ok(joueurAligne.fatigue > fatigueAvant, 'jouer un match B fatigue réellement le joueur');
+  assert.strictEqual(JSON.stringify(saison.classement), classementMainAvant, 'le championnat principal ne doit jamais être affecté par un résultat B');
+});
+
+test('équipe B : rétrocompatibilité — une sauvegarde antérieure sans champ "competitionB" se reconstitue sans planter', () => {
+  delete saison.competitionB;
+  let compB;
+  assert.doesNotThrow(() => { compB = RMClub.assurerCompetitionB(saison); });
+  assert.ok(compB && Array.isArray(compB.eligibles) && compB.eligibles.length >= 2);
+  assert.strictEqual(saison.competitionB, compB, 'doit être persisté sur saison.competitionB');
 });
 
 console.log(`\n${nbTests} test(s) exécuté(s).`);

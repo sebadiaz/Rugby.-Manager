@@ -889,6 +889,49 @@
       }).join('');
   }
 
+  // --- Équipe B (Mode Club) : championnat réservé aux clubs au budget le
+  // plus élevé de la ligue (cf. RMClub.determinerEligiblesEquipeB), rejoué
+  // chaque journée en même temps que le championnat principal (cf.
+  // simulerRondeEquipeB) — jamais un chiffre fabriqué : classement et
+  // calendrier viennent des mêmes fonctions génériques que le championnat
+  // principal (RMClub.classementTrieDe/formaterLigneCalendrier). ---
+  function rafraichirEquipeB() {
+    const existaitDeja = !!saison.competitionB;
+    const compB = RMClub.assurerCompetitionB(saison);
+    if (!existaitDeja) sauvegarder();
+    const c = saison.clubJoueur;
+    const estEligible = compB.eligibles.includes(c.id);
+    const carteClassement = document.getElementById('carteEquipeBClassement');
+    const carteCalendrier = document.getElementById('carteEquipeBCalendrier');
+    if (!estEligible) {
+      document.getElementById('clubEquipeBStatut').innerHTML =
+        `<p>💸 Budget insuffisant pour aligner une équipe B cette saison : seuls les ${compB.eligibles.length} clubs au budget le plus élevé de la ligue s'en offrent une. Fais grandir tes finances pour y accéder la saison prochaine.</p>`;
+      carteClassement.style.display = 'none';
+      carteCalendrier.style.display = 'none';
+      return;
+    }
+    if (!compB.calendrier.length) {
+      document.getElementById('clubEquipeBStatut').innerHTML =
+        `<p>🌱 Ton budget te qualifie pour une équipe B, mais aucun autre club de la ligue n'a les moyens d'en aligner une cette saison — pas de championnat B possible pour l'instant.</p>`;
+      carteClassement.style.display = 'none';
+      carteCalendrier.style.display = 'none';
+      return;
+    }
+    document.getElementById('clubEquipeBStatut').innerHTML =
+      `<p>✅ Ton club fait partie des ${compB.eligibles.length} clubs les plus riches de la ligue : une équipe B est alignée chaque journée, puisée dans tes remplaçants du jour et ton centre de formation.</p>`;
+    carteClassement.style.display = '';
+    carteCalendrier.style.display = '';
+    const lignes = RMClub.classementTrieDe(compB.classement).map((r, i) => {
+      const diff = r.pointsPour - r.pointsContre;
+      const classe = estClubJoueur(r.clubId) ? ' class="ligneClubJoueur"' : '';
+      return `<tr${classe}><td>${i + 1}</td><td>${nomClub(r.clubId)}</td><td>${r.j}</td><td>${r.g}</td><td>${r.n}</td><td>${r.p}</td><td><b>${r.pts}</b></td></tr>`;
+    }).join('');
+    document.getElementById('clubEquipeBClassement').innerHTML =
+      `<table class="tableauClub"><thead><tr><th></th><th>Club</th><th>J</th><th>G</th><th>N</th><th>P</th><th>Pts</th></tr></thead><tbody>${lignes}</tbody></table>`;
+    document.getElementById('clubEquipeBCalendrier').innerHTML = compB.calendrier.map((f) =>
+      `<div${f.joue ? ' style="opacity:.6"' : ''}>${formaterLigneCalendrier(f)}</div>`).join('');
+  }
+
   // --- Composition sur le terrain : 15 postes positionnés selon un vrai plan
   // de jeu (cf. POSITIONS_TERRAIN), banc de 8 remplaçants, encadrement
   // (capitaine/buteur/lanceur en touche). Un joueur blessé reste
@@ -1119,6 +1162,7 @@
     rafraichirEffectif();
     rafraichirCentreFormation();
     rafraichirCalendrier();
+    rafraichirEquipeB();
     rafraichirFinancesTab();
     rafraichirMedical();
     rafraichirFatigueTab();
@@ -1678,9 +1722,10 @@
     }
 
     // Simule les autres rencontres une par une (même écran de génération,
-    // titre différent), puis enchaîne sur le match du joueur.
+    // titre différent), puis enchaîne sur la journée d'Équipe B (cf.
+    // simulerRondeEquipeB), puis enfin le match du joueur.
     function simulerAutre(i) {
-      if (i >= autresMatchs.length) { lancerMatchJoueur(); return; }
+      if (i >= autresMatchs.length) { simulerRondeEquipeB(0, lancerMatchJoueur); return; }
       const f = autresMatchs[i];
       const clubA = RMClub.club(saison, f.domicileId);
       const clubB = RMClub.club(saison, f.exterieurId);
@@ -1693,6 +1738,47 @@
           RMClub.enregistrerResultat(saison, f.id, etat.score.A, etat.score.B, etat.stats.A.essais, etat.stats.B.essais);
           sauvegarder();
           simulerAutre(i + 1);
+        }
+      );
+    }
+
+    // Journée d'Équipe B (championnat réservé aux clubs les plus riches, cf.
+    // RMClub.determinerEligiblesEquipeB) : même traitement en arrière-plan
+    // que les rencontres IA-IA ci-dessus, avancée automatiquement en même
+    // temps que la journée principale. L'équipe B du club du joueur est
+    // composée à la volée (réservistes du jour + centre de formation, cf.
+    // RMClub.effectifDisponiblePourEquipeB) ; si le vivier ne suffit pas à
+    // couvrir les 15 postes ce jour-là (cas rare), la rencontre est passée
+    // plutôt que d'envoyer une composition incomplète au moteur.
+    function simulerRondeEquipeB(i, suite) {
+      const rondeB = RMClub.prochaineRondeEquipeB(saison);
+      if (i >= rondeB.length) { suite(); return; }
+      const f = rondeB[i];
+      const idJoueur = saison.clubJoueur.id;
+      const concerneJoueur = f.domicileId === idJoueur || f.exterieurId === idJoueur;
+      let compositionJoueur = null;
+      if (concerneJoueur) {
+        compositionJoueur = RMClub.meilleureComposition(RMClub.effectifDisponiblePourEquipeB(saison));
+        if (RMClub.validerComposition(compositionJoueur).length > 0) { simulerRondeEquipeB(i + 1, suite); return; }
+      }
+      const rng = creerRng(graineAleatoire());
+      function cfgDe(clubId) {
+        if (clubId === idJoueur) return RMClub.compositionVersJoueursCfg(RMClub.effectifDisponiblePourEquipeB(saison), compositionJoueur);
+        const clubAdverse = RMClub.club(saison, clubId);
+        const niveauB = Math.max(0.1, (clubAdverse.niveauClub != null ? clubAdverse.niveauClub : 0.5) * 0.65);
+        return RMClub.effectifVersJoueursCfg({ effectif: RMClub.genererEffectif(rng, niveauB) });
+      }
+      const clubDomicile = RMClub.club(saison, f.domicileId);
+      const clubExterieur = RMClub.club(saison, f.exterieurId);
+      window.RMMain.simulerMatchEnArrierePlan(
+        graineAleatoire(), duree,
+        cfgDe(f.domicileId), cfgDe(f.exterieurId),
+        `Équipe B : ${clubDomicile.nom} vs ${clubExterieur.nom} (${i + 1}/${rondeB.length})`,
+        (etat) => {
+          RMClub.enregistrerResultatEquipeB(saison, f.id, etat.score.A, etat.score.B, etat.stats.A.essais, etat.stats.B.essais);
+          if (compositionJoueur) RMClub.appliquerEffetsMatchEquipeB(saison, compositionJoueur);
+          sauvegarder();
+          simulerRondeEquipeB(i + 1, suite);
         }
       );
     }

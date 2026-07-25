@@ -79,7 +79,7 @@ function optionsLancement() {
 
   // 2) Navigation dans toutes les pages.
   const onglets = ['dashboard', 'effectif', 'composition', 'tactique', 'entrainement',
-    'transferts', 'personnel', 'autresclubs', 'calendrier', 'finances', 'medical', 'stats'];
+    'transferts', 'personnel', 'autresclubs', 'calendrier', 'equipeb', 'finances', 'medical', 'stats'];
   for (const onglet of onglets) {
     await clicOnglet(onglet);
     await page.waitForTimeout(120);
@@ -177,6 +177,38 @@ function optionsLancement() {
   await page.click('#btnFermerFicheJoueurAdversaire').catch(() => {});
   await page.click('#btnFermerClubAdversaire').catch(() => {});
 
+  // 6b) Équipe B (championnat réservé aux clubs au budget le plus élevé de
+  // la ligue) : force un budget confortable (état non exposé par l'UI,
+  // modifié directement en localStorage comme le ferait une vraie période de
+  // sponsoring) pour garantir l'éligibilité et pouvoir vérifier la branche
+  // "classement/calendrier réels" de façon déterministe, plutôt que de
+  // dépendre du hasard de la génération de carrière.
+  await page.evaluate(() => {
+    const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
+    s.clubJoueur.budget = 5000;
+    s.competitionB = null; // reconstitué à la prochaine consultation (cf. RMClub.assurerCompetitionB)
+    localStorage.setItem('rugbyManager.club.v1', JSON.stringify(s));
+  });
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.waitForTimeout(200);
+  await page.click('#btnContinuerClub');
+  await page.waitForTimeout(200);
+  await clicOnglet('equipeb');
+  await page.waitForTimeout(150);
+  const statutEquipeBTxt = await page.textContent('#clubEquipeBStatut');
+  verifier('équipe B : la carte de statut affiche un contenu réel', statutEquipeBTxt.trim().length > 20);
+  verifier('équipe B : un budget confortable rend bien le club éligible',
+    await page.evaluate(() => {
+      const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
+      return s.competitionB.eligibles.includes(s.clubJoueur.id);
+    }));
+  verifier('équipe B : classement et calendrier affichés quand le club est éligible',
+    await page.isVisible('#carteEquipeBClassement') && await page.isVisible('#carteEquipeBCalendrier'));
+  const rondesJoueesAvant = await page.evaluate(() => {
+    const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
+    return s.competitionB.calendrier.filter((f) => f.joue).length;
+  });
+
   // 7) Aperçu du prochain match (façon Football Manager), puis progression
   // d'une journée. Le bouton "New Day" flottant doit rester joignable depuis
   // n'importe quel onglet ; on vérifie ici depuis le Dashboard, et une
@@ -214,6 +246,12 @@ function optionsLancement() {
   await page.click('#btnResultatFermer');
   await page.waitForTimeout(300);
   verifier('progression d\'une journée : retour au club après le match', await page.isVisible('#panneauClub.visible'));
+  const rondesJoueesApres = await page.evaluate(() => {
+    const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
+    return s.competitionB.calendrier.filter((f) => f.joue).length;
+  });
+  verifier('équipe B : la journée d\'équipe B est simulée en même temps que la journée principale',
+    rondesJoueesApres > rondesJoueesAvant);
 
   // 8) Fin de saison — via le bouton flottant "New Day" (toujours visible,
   // ici depuis un autre onglet que le Dashboard) plutôt que le bouton du

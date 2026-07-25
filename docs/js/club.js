@@ -193,12 +193,27 @@
   // séparé de l'effectif professionnel, qu'on peut promouvoir en équipe
   // première (cf. promouvoirJeune) quand l'effectif senior n'a plus assez de
   // joueurs disponibles à un poste (blessures/prêts cumulés en cours de
-  // saison). Mêmes attributs qu'un joueur pro (donc utilisable normalement en
-  // composition une fois promu), avec un net déficit de niveau actuel — leur
-  // POTENTIEL, lui, n'est pas pénalisé (cf. genererPotentiel : la marge de
-  // progression d'un très jeune joueur est réelle et large), donc certains
-  // deviendront meilleurs que ce que suggère leur niveau d'aujourd'hui. ---
+  // saison) — ou aligner tel quel pour un match d'Équipe B (cf.
+  // effectifDisponiblePourEquipeB) sans les promouvoir. Assez d'espoirs par
+  // ligne de poste pour aligner une équipe B complète à lui seul (cf.
+  // QUOTA_CENTRE_FORMATION), même les jours où l'effectif pro senior est
+  // utilisé à 100% (titulaires + banc). Mêmes attributs qu'un joueur pro
+  // (donc utilisable normalement en composition une fois promu), avec un net
+  // déficit de niveau actuel — leur POTENTIEL, lui, n'est pas pénalisé (cf.
+  // genererPotentiel : la marge de progression d'un très jeune joueur est
+  // réelle et large), donc certains deviendront meilleurs que ce que suggère
+  // leur niveau d'aujourd'hui. ---
   const POSTES_CATEGORIES = ['P', 'T', '2L', '3L', 'DM', 'OV', 'CE', 'AI', 'AR'];
+  // Nombre d'espoirs requis PAR LIGNE DE POSTE pour que le centre de
+  // formation puisse à lui seul aligner une équipe B complète (15 postes),
+  // même quand l'effectif pro senior est utilisé à 100% (titulaires + banc) —
+  // dérivé directement de POSTE_REQUIS (2 piliers, 2 deuxième ligne, 3
+  // troisième ligne, 2 centres, 2 ailiers...), jamais un chiffre arbitraire.
+  const QUOTA_CENTRE_FORMATION = {};
+  for (const numero of Object.keys(POSTE_REQUIS)) {
+    const poste = POSTE_REQUIS[numero];
+    QUOTA_CENTRE_FORMATION[poste] = (QUOTA_CENTRE_FORMATION[poste] || 0) + 1;
+  }
   function genererJeune(poste, rng, niveauClub) {
     const base = ARCHETYPE_PAR_POSTE[poste];
     const ecartNiveau = (niveauClub - 0.5) * 20;
@@ -226,13 +241,18 @@
       pret: null, matchsJoues: 0, statsSaison: null, attributsDebutSaison: null, entrainementIndividuel: null,
     };
   }
-  // Complète un vivier existant pour garantir au moins un espoir par ligne de
-  // poste (jamais de trou total à une ligne) — utilisé aussi bien à la
-  // création du club qu'au renouvellement annuel du centre de formation.
+  // Complète un vivier existant jusqu'au quota par ligne de poste (cf.
+  // QUOTA_CENTRE_FORMATION) — utilisé aussi bien à la création du club qu'au
+  // renouvellement annuel du centre de formation. Le quota (et pas seulement
+  // "au moins un") est essentiel : une équipe B doit pouvoir être alignée
+  // par le centre de formation SEUL un jour où l'effectif pro senior est
+  // utilisé à 100% (titulaires + banc), donc sans aucune réserve pro
+  // disponible à certaines lignes (2e/3e ligne, centres, ailiers...).
   function completerCentreFormation(rng, jeunes, niveauClub) {
-    const present = new Set(jeunes.map((j) => j.poste));
     for (const poste of POSTES_CATEGORIES) {
-      if (!present.has(poste)) jeunes.push(genererJeune(poste, rng, niveauClub));
+      const present = jeunes.filter((j) => j.poste === poste).length;
+      const requis = QUOTA_CENTRE_FORMATION[poste] || 1;
+      for (let i = present; i < requis; i++) jeunes.push(genererJeune(poste, rng, niveauClub));
     }
     return jeunes;
   }
@@ -1316,13 +1336,18 @@
   }
 
   // Points de classement classiques (rugby à XV) : victoire 4, nul 2, défaite 0.
-  function enregistrerResultat(saison, fixtureId, scoreDomicile, scoreExterieur, essaisDomicile, essaisExterieur) {
-    const f = saison.calendrier.find((x) => x.id === fixtureId);
+  // Version générique (calendrier/classement explicites, pas seulement ceux
+  // du championnat principal) — réutilisée par l'Équipe B (cf. plus bas) sans
+  // dupliquer la logique de points. enregistrerResultat (championnat
+  // principal) délègue simplement à cette version avec saison.calendrier/
+  // saison.classement, comportement strictement inchangé.
+  function enregistrerResultatDans(calendrier, classement, fixtureId, scoreDomicile, scoreExterieur, essaisDomicile, essaisExterieur) {
+    const f = calendrier.find((x) => x.id === fixtureId);
     if (!f || f.joue) return;
     f.joue = true;
     f.score = { domicile: scoreDomicile, exterieur: scoreExterieur };
-    const td = saison.classement[f.domicileId];
-    const te = saison.classement[f.exterieurId];
+    const td = classement[f.domicileId];
+    const te = classement[f.exterieurId];
     td.j++; te.j++;
     td.pointsPour += scoreDomicile; td.pointsContre += scoreExterieur;
     te.pointsPour += scoreExterieur; te.pointsContre += scoreDomicile;
@@ -1332,10 +1357,18 @@
     else if (scoreDomicile < scoreExterieur) { te.g++; te.pts += 4; td.p++; }
     else { td.n++; te.n++; td.pts += 2; te.pts += 2; }
   }
+  function enregistrerResultat(saison, fixtureId, scoreDomicile, scoreExterieur, essaisDomicile, essaisExterieur) {
+    enregistrerResultatDans(saison.calendrier, saison.classement, fixtureId, scoreDomicile, scoreExterieur, essaisDomicile, essaisExterieur);
+  }
 
-  function classementTrie(saison) {
-    return Object.values(saison.classement).sort((a, b) =>
+  // Idem : version générique + championnat principal qui délègue (cf.
+  // enregistrerResultatDans ci-dessus pour le même principe).
+  function classementTrieDe(classement) {
+    return Object.values(classement).sort((a, b) =>
       b.pts - a.pts || (b.pointsPour - b.pointsContre) - (a.pointsPour - a.pointsContre) || b.pointsPour - a.pointsPour);
+  }
+  function classementTrie(saison) {
+    return classementTrieDe(saison.classement);
   }
 
   function prochainesFixtures(saison) {
@@ -1347,6 +1380,89 @@
   function club(saison, clubId) {
     if (saison.clubJoueur.id === clubId) return saison.clubJoueur;
     return saison.adversaires.find((c) => c.id === clubId) || null;
+  }
+
+  // --- Équipe B (Mode Club) : championnat réservé aux clubs au budget le
+  // plus élevé de la ligue (recalculé chaque saison depuis les budgets RÉELS,
+  // jamais un seuil fixe déconnecté de l'économie simulée) — un second
+  // calendrier/classement en parallèle du championnat principal, RÉUTILISANT
+  // le même moteur de calendrier round-robin et les mêmes règles de points
+  // (cf. genererCalendrier/classementInitial/enregistrerResultatDans). La
+  // composition de l'équipe B du club du joueur, elle, est puisée dans ses
+  // remplaçants du jour non convoqués en premier XV + son centre de
+  // formation (cf. clubUI.js, effectifDisponiblePourEquipeB) — une vraie
+  // utilité de jeu pour les joueurs qui ne jouent pas le week-end. ---
+  function determinerEligiblesEquipeB(tousLesClubs) {
+    const tries = tousLesClubs.slice().sort((a, b) => b.budget - a.budget);
+    // genererCalendrier suppose un nombre PAIR de clubs (appariement par
+    // paires, sans "bye") : arrondit au nombre pair supérieur, jamais moins
+    // de 2, jamais plus que le total (toujours pair dans ce jeu : 6 clubs).
+    let nbEligibles = Math.max(2, Math.ceil(tousLesClubs.length / 2));
+    if (nbEligibles % 2 === 1) nbEligibles = Math.min(nbEligibles + 1, tousLesClubs.length);
+    return tries.slice(0, nbEligibles);
+  }
+  function genererCompetitionB(tousLesClubs) {
+    const clubsEligibles = determinerEligiblesEquipeB(tousLesClubs);
+    return {
+      eligibles: clubsEligibles.map((c) => c.id),
+      calendrier: clubsEligibles.length >= 2 ? genererCalendrier(clubsEligibles) : [],
+      classement: clubsEligibles.length >= 2 ? classementInitial(clubsEligibles) : {},
+    };
+  }
+  // Backward-compat : une sauvegarde antérieure à cette fonctionnalité n'a
+  // pas de champ `competitionB` — le crée à la première consultation plutôt
+  // que d'attendre la prochaine fin de saison (même principe que
+  // assurerCentreFormation).
+  function assurerCompetitionB(saison) {
+    if (!saison.competitionB) {
+      saison.competitionB = genererCompetitionB([saison.clubJoueur, ...saison.adversaires]);
+    }
+    return saison.competitionB;
+  }
+  function enregistrerResultatEquipeB(saison, fixtureId, scoreDomicile, scoreExterieur, essaisDomicile, essaisExterieur) {
+    if (!saison.competitionB) return;
+    enregistrerResultatDans(saison.competitionB.calendrier, saison.competitionB.classement, fixtureId, scoreDomicile, scoreExterieur, essaisDomicile, essaisExterieur);
+  }
+  // Prochaine RONDE (toutes les rencontres de la plus proche journée non
+  // jouée) du championnat B — même principe que prochainesFixtures, pour
+  // simuler une journée B complète en une fois (comme les autres rencontres
+  // du championnat principal), pas seulement celle du club du joueur.
+  function prochaineRondeEquipeB(saison) {
+    const compB = saison.competitionB;
+    if (!compB || !compB.calendrier.length) return [];
+    const prochaine = compB.calendrier.find((f) => !f.joue);
+    if (!prochaine) return [];
+    return compB.calendrier.filter((f) => f.journee === prochaine.journee);
+  }
+  // Réserves disponibles pour une rencontre d'équipe B : effectif pro non
+  // convoqué en premier XV aujourd'hui (ni titulaire ni banc), non blessé,
+  // non prêté, complété par le centre de formation — jamais un effectif
+  // fabriqué séparément, toujours les vrais joueurs du club.
+  function effectifDisponiblePourEquipeB(saison) {
+    const c = saison.clubJoueur;
+    const convoquesAujourdhui = new Set([
+      ...Object.values(c.compositionTitulaires || {}),
+      ...Object.values(c.compositionBanc || {}),
+    ]);
+    const reservistes = c.effectif.filter((j) => !convoquesAujourdhui.has(j.id) && !j.pret && !j.blessureJournees);
+    return [...reservistes, ...(c.jeunes || [])];
+  }
+  // Conséquences RÉELLES d'un match d'équipe B pour les joueurs alignés
+  // (réservistes ET espoirs du centre de formation partagent le même champ
+  // matchsJoues/fatigue/moral que l'effectif pro) : du temps de jeu, donc de
+  // la fatigue, et un léger regain de moral — jamais un effet décoratif.
+  function appliquerEffetsMatchEquipeB(saison, composition) {
+    const c = saison.clubJoueur;
+    const parId = {};
+    for (const j of c.effectif) parId[j.id] = j;
+    for (const j of (c.jeunes || [])) parId[j.id] = j;
+    for (const id of Object.values(composition)) {
+      const j = parId[id];
+      if (!j) continue;
+      j.matchsJoues = (j.matchsJoues || 0) + 1;
+      j.fatigue = Math.min(100, (j.fatigue || 0) + 15);
+      j.moral = Math.min(100, (j.moral != null ? j.moral : 65) + 2);
+    }
   }
 
   // --- Boîte de réception (Mode Club) : messages RÉELS générés par des
@@ -1566,6 +1682,9 @@
     const tousLesClubs = [saison.clubJoueur, ...adversaires];
     saison.calendrier = genererCalendrier(tousLesClubs);
     saison.classement = classementInitial(tousLesClubs);
+    // Éligibilité à l'Équipe B réévaluée chaque saison (les budgets ont
+    // bougé) — cf. determinerEligiblesEquipeB.
+    saison.competitionB = genererCompetitionB(tousLesClubs);
     saison.marche = genererMarcheTransferts(rng, 0.5, 6);
     saison.marchePersonnel = genererMarchePersonnel(rng, 5);
     saison.numero = (saison.numero || 1) + 1;
@@ -1614,6 +1733,7 @@
       adversaires,
       calendrier: genererCalendrier(tousLesClubs),
       classement: classementInitial(tousLesClubs),
+      competitionB: genererCompetitionB(tousLesClubs),
       marche: genererMarcheTransferts(rng, 0.5, 6),
       marchePersonnel: genererMarchePersonnel(rng, 5),
       favoris: [],
@@ -1643,7 +1763,10 @@
   global.RMClub = {
     genererNomClub, genererClub, genererEffectif, effectifVersJoueursCfg,
     nouvelleSaison, genererCalendrier, classementInitial, enregistrerResultat,
-    classementTrie, prochainesFixtures, club,
+    classementTrie, classementTrieDe, prochainesFixtures, club,
+    determinerEligiblesEquipeB, genererCompetitionB, assurerCompetitionB,
+    enregistrerResultatEquipeB, prochaineRondeEquipeB,
+    effectifDisponiblePourEquipeB, appliquerEffetsMatchEquipeB,
     sauvegarderSaison, chargerSaison, effacerSaison,
     POSTE_REQUIS, POSTE_REQUIS_BANC, TAILLE_EFFECTIF_CIBLE,
     compositionVersJoueursCfg, meilleureComposition,

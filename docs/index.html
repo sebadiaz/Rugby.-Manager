@@ -173,6 +173,7 @@
         <span class="groupeNav" data-cat="competition">Compétition</span>
         <button class="ongletBtn" data-onglet="autresclubs">🏟️ <span>Autres clubs</span></button>
         <button class="ongletBtn" data-onglet="calendrier">📅 <span>Calendrier</span></button>
+        <button class="ongletBtn" data-onglet="equipeb">🥈 <span>Équipe B</span></button>
         <span class="groupeNav" data-cat="gestion">Gestion</span>
         <button class="ongletBtn" data-onglet="finances">💰 <span>Finances</span></button>
         <button class="ongletBtn" data-onglet="medical">🩺 <span>Médical</span></button>
@@ -414,6 +415,22 @@
           <div class="carteClub">
             <h3>📅 Calendrier</h3>
             <div id="clubCalendrier"></div>
+          </div>
+        </div>
+
+        <div class="voletOnglet" data-volet="equipeb" style="display:none;">
+          <div class="enTetePage"><span class="categoriePage">Compétition</span><h2>🥈 Équipe B</h2><p>Championnat réservé aux clubs au budget le plus élevé de la ligue — aligne tes remplaçants du jour et ton centre de formation.</p></div>
+          <div class="carteClub">
+            <h3>💰 Statut</h3>
+            <div id="clubEquipeBStatut"></div>
+          </div>
+          <div class="carteClub" id="carteEquipeBClassement" style="display:none;">
+            <h3>🏆 Classement Équipe B</h3>
+            <div id="clubEquipeBClassement"></div>
+          </div>
+          <div class="carteClub" id="carteEquipeBCalendrier" style="display:none;">
+            <h3>📅 Calendrier Équipe B</h3>
+            <div id="clubEquipeBCalendrier"></div>
           </div>
         </div>
 
