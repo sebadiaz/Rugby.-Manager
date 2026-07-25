@@ -174,6 +174,7 @@
         <button class="ongletBtn" data-onglet="autresclubs">🏟️ <span>Autres clubs</span></button>
         <button class="ongletBtn" data-onglet="calendrier">📅 <span>Calendrier</span></button>
         <button class="ongletBtn" data-onglet="equipeb">🥈 <span>Équipe B</span></button>
+        <button class="ongletBtn" data-onglet="monde">🌍 <span>Monde</span></button>
         <span class="groupeNav" data-cat="gestion">Gestion</span>
         <button class="ongletBtn" data-onglet="finances">💰 <span>Finances</span></button>
         <button class="ongletBtn" data-onglet="medical">🩺 <span>Médical</span></button>
@@ -434,6 +435,24 @@
           </div>
         </div>
 
+        <div class="voletOnglet" data-volet="monde" style="display:none;">
+          <div class="enTetePage"><span class="categoriePage">Compétition</span><h2>🌍 Écosystème mondial</h2><p>Les pyramides professionnelles de 12 nations et les compétitions internationales — un monde vivant qui avance en même temps que ta saison (noms fictifs, structure inspirée du vrai rugby).</p></div>
+          <div class="carteClub">
+            <h3>🌐 Pays</h3>
+            <p style="margin:0 0 10px;font-size:12px;color:var(--text-faint);">Choisis un pays pour voir ses divisions, son système (montées/descentes ou franchises) et son classement réel.</p>
+            <div id="mondePays"></div>
+          </div>
+          <div class="carteClub" id="carteMondeDivision" style="display:none;">
+            <h3 id="mondeDivisionTitre">Division</h3>
+            <div id="mondeDivisionCorps"></div>
+            <button class="alt" id="btnFermerMondeDivision" style="width:100%;margin-top:10px;">← Retour aux pays</button>
+          </div>
+          <div class="carteClub">
+            <h3>🏆 Compétitions internationales</h3>
+            <div id="mondeInternationales"></div>
+          </div>
+        </div>
+
         <div class="voletOnglet" data-volet="finances" style="display:none;">
           <div class="enTetePage"><span class="categoriePage">Gestion</span><h2>Finances</h2><p>Budget, masse salariale et prévisions à court terme.</p></div>
           <div class="carteClub">
@@ -558,6 +577,7 @@
 <script src="js/ui.js"></script>
 <script src="js/main.js"></script>
 <script src="js/club.js"></script>
+<script src="js/world.js"></script>
 <script src="js/clubUI.js"></script>
 </body>
 </html>

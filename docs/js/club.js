@@ -1836,7 +1836,7 @@
     ENTRAINEMENTS, appliquerEntrainement,
     accumulerStatsJoueurs, classementMarqueurs,
     calculerOffreRenouvellement, renouvelerContrat, negocierRenouvellement, calculerPrimeSignature,
-    assurerCentreFormation, promouvoirJeune,
+    assurerCentreFormation, promouvoirJeune, ajouterMessage,
     basculerFavori, analyserAdversaire,
     appliquerMoral, preterJoueur, rappelerJoueur, progresserPrets,
     POSTES_PERSONNEL, genererMarchePersonnel, embaucherPersonnel, licencierPersonnel,

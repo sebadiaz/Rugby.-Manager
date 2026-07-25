@@ -7,6 +7,7 @@
   'use strict';
 
   const RMClub = window.RMClub;
+  const RMWorld = window.RMWorld;
   const { creerRng } = window.RugbyEngine;
 
   let saison = RMClub.chargerSaison();
@@ -650,7 +651,7 @@
   // événements déjà produits par la simulation (cf. RMClub.ajouterMessage,
   // appelé depuis club.js à chaque transfert/prêt/contrat/blessure/résultat/
   // saison) — jamais un texte fabriqué uniquement pour l'affichage. ---
-  const ICONE_MESSAGE = { transfert: '🔁', blessure: '🤕', contrat: '📄', match: '🏉', saison: '🏆', jeunes: '🌱' };
+  const ICONE_MESSAGE = { transfert: '🔁', blessure: '🤕', contrat: '📄', match: '🏉', saison: '🏆', jeunes: '🌱', monde: '🌍' };
   function rafraichirMessages() {
     const messages = saison.clubJoueur.messages || [];
     const nonLus = messages.filter((m) => !m.lu).length;
@@ -948,6 +949,83 @@
       `<div${f.joue ? ' style="opacity:.6"' : ''}>${formaterLigneCalendrier(f)}</div>`).join('');
   }
 
+  // --- Écosystème mondial (onglet Monde, cf. docs/js/world.js) : 12 pays,
+  // leurs pyramides (montées/descentes ou franchises selon le pays) et les
+  // compétitions internationales — un module ADDITIF (n'affecte jamais le
+  // club du joueur ni ses propres compétitions), avancé automatiquement en
+  // même temps que la saison du joueur (cf. lancerLaJournee/btnSaisonSuivante).
+  // Noms fictifs partout, structure inspirée du vrai rugby professionnel. ---
+  const SYSTEME_MONDE_LABEL = {
+    'promotion-relegation': 'Montées/descentes',
+    franchises: 'Franchises (composition fixe)',
+    'franchises-provinces': 'Franchises + provinces (composition fixe)',
+    provinces: 'Provinces (composition fixe)',
+    regions: 'Régions (composition fixe)',
+    mixte: 'Mixte',
+  };
+  let divisionMondeAffichee = null;
+
+  function rafraichirMonde() {
+    if (!saison.monde) {
+      RMWorld.assurerMonde(creerRng(graineAleatoire()), saison);
+      sauvegarder();
+    }
+    const monde = saison.monde;
+    document.getElementById('mondePays').innerHTML = monde.pays.map((pays) => {
+      const boutonsDivisions = pays.divisions.map((d) =>
+        `<button class="alt btnDivisionMonde" data-ref="${d.ref}" style="flex:0 0 auto;width:auto;padding:6px 10px;font-size:11.5px;">${d.nom}</button>`).join('');
+      return `<div class="ligneJeune"><span class="infosJeune"><b>${pays.nom}</b><span>${SYSTEME_MONDE_LABEL[pays.systeme] || pays.systeme}</span></span>` +
+        `<span style="display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end;">${boutonsDivisions}</span></div>`;
+    }).join('');
+    rafraichirInternationalesMonde();
+    if (divisionMondeAffichee) ouvrirDivisionMonde(divisionMondeAffichee);
+  }
+
+  function ouvrirDivisionMonde(ref) {
+    const monde = saison.monde;
+    const div = monde && monde.divisions[ref];
+    if (!div) return;
+    divisionMondeAffichee = ref;
+    const classement = RMClub.classementTrieDe(div.classement);
+    const zonePromoTexte = (div.promus || div.relegues)
+      ? `${div.promus ? `${div.promus} promu(s) (en évidence)` : ''}${div.promus && div.relegues ? ' · ' : ''}${div.relegues ? `${div.relegues} relégué(s) (atténué)` : ''}`
+      : 'Composition fixe (pas de montée/descente).';
+    const lignes = classement.map((r, i) => {
+      const club = div.clubs.find((c) => c.id === r.clubId);
+      const zonePromue = div.promus && i < div.promus;
+      const zoneRelegable = div.relegues && i >= classement.length - div.relegues;
+      const classe = zonePromue ? ' class="ligneClubJoueur"' : zoneRelegable ? ' style="opacity:.6;"' : '';
+      const paysClub = club && div.competitionPartagee ? ` <span style="color:var(--text-faint);">(${club.pays})</span>` : '';
+      return `<tr${classe}><td>${i + 1}</td><td>${club ? club.nom : '?'}${paysClub}</td><td>${r.j}</td><td>${r.g}</td><td>${r.n}</td><td>${r.p}</td><td><b>${r.pts}</b></td></tr>`;
+    }).join('');
+    document.getElementById('mondeDivisionTitre').textContent = div.nom;
+    document.getElementById('mondeDivisionCorps').innerHTML =
+      `<p style="font-size:11.5px;color:var(--text-faint);margin:0 0 8px;">${zonePromoTexte}</p>` +
+      `<table class="tableauClub"><thead><tr><th></th><th>Club</th><th>J</th><th>G</th><th>N</th><th>P</th><th>Pts</th></tr></thead><tbody>${lignes}</tbody></table>`;
+    document.getElementById('carteMondeDivision').style.display = '';
+  }
+
+  function fermerDivisionMonde() {
+    divisionMondeAffichee = null;
+    document.getElementById('carteMondeDivision').style.display = 'none';
+  }
+
+  function rafraichirInternationalesMonde() {
+    const monde = saison.monde;
+    document.getElementById('mondeInternationales').innerHTML = Object.values(monde.internationales).map((c) => {
+      let detail;
+      if (c.dernierVainqueur) {
+        const paysVainqueur = RMWorld.PAYS.find((p) => p.code === c.dernierVainqueur);
+        detail = `Dernier vainqueur : <b>${paysVainqueur ? paysVainqueur.nom : c.dernierVainqueur}</b>`;
+      } else if (c.qualifies) {
+        detail = `${c.qualifies.length} club(s) qualifié(s) pour la prochaine édition`;
+      } else {
+        detail = 'Pas encore disputée cette saison mondiale.';
+      }
+      return `<div class="ligneJeune"><span class="infosJeune"><b>${c.nom}</b><span>${detail}</span></span></div>`;
+    }).join('');
+  }
+
   // --- Composition sur le terrain : 15 postes positionnés selon un vrai plan
   // de jeu (cf. POSITIONS_TERRAIN), banc de 8 remplaçants, encadrement
   // (capitaine/buteur/lanceur en touche). Un joueur blessé reste
@@ -1192,6 +1270,7 @@
     rafraichirCentreFormation();
     rafraichirCalendrier();
     rafraichirEquipeB();
+    rafraichirMonde();
     rafraichirFinancesTab();
     rafraichirMedical();
     rafraichirFatigueTab();
@@ -1360,6 +1439,12 @@
     rafraichirEffectif();
     rafraichirStatutEffectif();
   });
+  document.getElementById('mondePays').addEventListener('click', (e) => {
+    const bouton = e.target.closest('.btnDivisionMonde');
+    if (!bouton) return;
+    ouvrirDivisionMonde(bouton.dataset.ref);
+  });
+  document.getElementById('btnFermerMondeDivision').addEventListener('click', fermerDivisionMonde);
   // Fiche joueur : boutons régénérés à chaque ouverture (cf. ouvrirFicheJoueur),
   // délégation sur le conteneur parent plutôt qu'un addEventListener par joueur.
   document.getElementById('clubJoueurDetail').addEventListener('click', (e) => {
@@ -1630,6 +1715,19 @@
   document.getElementById('btnSaisonSuivante').addEventListener('click', () => {
     const rng = creerRng(graineAleatoire());
     const { partis, arrivees } = RMClub.avancerSaison(rng, saison);
+    // Le monde (12 pays) ne termine sa propre saison que lorsque TOUTES ses
+    // divisions ont fini leur calendrier (des tailles très différentes de
+    // la ligue du joueur, cf. RMWorld.mondeEstTermine) — sinon il continue
+    // simplement à vivre en arrière-plan sur la saison suivante du joueur.
+    if (saison.monde && RMWorld.mondeEstTermine(saison.monde)) {
+      const resMonde = RMWorld.nouvelleSaisonMonde(rng, saison.monde);
+      const lignesMouvements = resMonde.mouvements
+        .map((m) => `${m.pays} : ↑ ${m.monte.join(', ') || '—'} · ↓ ${m.descend.join(', ') || '—'}`);
+      const lignesNations = resMonde.resultatsNations
+        .map((r) => `${r.nom} : ${(RMWorld.PAYS.find((p) => p.code === r.vainqueur) || {}).nom || r.vainqueur} vainqueur`);
+      const corpsMonde = [...lignesMouvements, ...lignesNations].join('\n');
+      if (corpsMonde) RMClub.ajouterMessage(saison, 'monde', 'Bilan du monde du rugby', corpsMonde);
+    }
     sauvegarder();
     rafraichirTout();
     const resume = [
@@ -1670,6 +1768,15 @@
     const autresMatchs = fixtures.filter((f) => f !== matchJoueur);
     const duree = Number(document.getElementById('selDureeClub').value) || 4800;
     document.getElementById('panneauClub').classList.remove('visible');
+
+    // Le monde (12 pays, cf. docs/js/world.js) avance d'une journée en même
+    // temps que la tienne — jamais la division du club du joueur (il n'en
+    // fait pas partie, géré par son propre calendrier ci-dessus), et
+    // seulement si l'onglet Monde a déjà été consulté au moins une fois
+    // (sinon `saison.monde` n'existe pas encore, cf. rafraichirMonde).
+    if (saison.monde) {
+      RMWorld.avancerJourneeMonde(creerRng(graineAleatoire()), saison.monde, null);
+    }
 
     // Forme du club du joueur pour CE match (avant enregistrement du résultat) —
     // sert au calcul des finances (recette boostée en cas de victoire).

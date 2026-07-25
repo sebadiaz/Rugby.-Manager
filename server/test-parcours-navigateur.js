@@ -79,7 +79,7 @@ function optionsLancement() {
 
   // 2) Navigation dans toutes les pages.
   const onglets = ['dashboard', 'effectif', 'composition', 'tactique', 'entrainement',
-    'transferts', 'personnel', 'autresclubs', 'calendrier', 'equipeb', 'finances', 'medical', 'stats'];
+    'transferts', 'personnel', 'autresclubs', 'calendrier', 'equipeb', 'monde', 'finances', 'medical', 'stats'];
   for (const onglet of onglets) {
     await clicOnglet(onglet);
     await page.waitForTimeout(120);
@@ -303,6 +303,31 @@ function optionsLancement() {
     return Object.values(s.classement).some((r) => r.j >= 1 && Number.isFinite(r.pts));
   });
   verifier('classement : les points restent des nombres valides après un résultat réel (pas de NaN)', journeeJoueeApres1Journee);
+
+  // 7c) Écosystème mondial (onglet Monde) : 12 pays réels, une division
+  // ouvrable avec un classement réel dérivé des journées déjà simulées en
+  // arrière-plan (cf. RMWorld.avancerJourneeMonde, appelé à chaque journée
+  // jouée par le club du joueur).
+  await clicOnglet('monde');
+  await page.waitForTimeout(150);
+  const nbPaysAffiches = await page.$$eval('#mondePays .ligneJeune', (els) => els.length);
+  verifier('monde : les 12 pays sont affichés', nbPaysAffiches === 12);
+  const nbDivisionsMonde = await page.evaluate(() => {
+    const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
+    return s.monde ? Object.keys(s.monde.divisions).length : 0;
+  });
+  verifier('monde : le monde est bien persisté avec toutes ses divisions', nbDivisionsMonde > 25);
+  await page.click('.btnDivisionMonde');
+  await page.waitForTimeout(150);
+  verifier('monde : ouvrir une division affiche un classement réel', await page.isVisible('#carteMondeDivision'));
+  const classementMondeTxt = await page.textContent('#mondeDivisionCorps');
+  verifier('monde : le classement de la division contient des clubs réels', classementMondeTxt.trim().length > 30);
+  await page.click('#btnFermerMondeDivision');
+  await page.waitForTimeout(150);
+  verifier('monde : fermer la division revient à la liste des pays', !(await page.isVisible('#carteMondeDivision')));
+  const internationalesTxt = await page.textContent('#mondeInternationales');
+  verifier('monde : les compétitions internationales sont affichées (Couronnes/Hémisphère/Mondiale/Continentale/Challenge)',
+    internationalesTxt.includes('Couronnes') && internationalesTxt.includes('Hémisphère') && internationalesTxt.includes('Mondiale'));
 
   // 8) Fin de saison — via le bouton flottant "New Day" (toujours visible,
   // ici depuis un autre onglet que le Dashboard) plutôt que le bouton du
