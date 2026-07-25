@@ -685,7 +685,14 @@
     }
     const hist = (c.historiqueFinances || []).slice().reverse();
     document.getElementById('clubHistoriqueFinances').innerHTML = hist.length
-      ? hist.map((m) => `<div class="ligneMouvement"><span>J${m.journee}<span class="detailMouvement"> — recette +${m.recette} k€${m.revenuSponsor ? ` (dont sponsor +${m.revenuSponsor} k€)` : ''}, salaires -${m.salaires}${m.salairesPersonnel ? ` -${m.salairesPersonnel} (personnel)` : ''} k€</span></span><span class="soldeMouvement">${m.budgetApres} k€</span></div>`).join('')
+      ? hist.map((m) => {
+          const estEquipeB = m.source === 'equipeB';
+          const label = `J${m.journee}${estEquipeB ? ' (Équipe B)' : ''}`;
+          const detail = estEquipeB
+            ? `recette +${m.recette} k€ (billetterie)`
+            : `recette +${m.recette} k€${m.revenuSponsor ? ` (dont sponsor +${m.revenuSponsor} k€)` : ''}, salaires -${m.salaires}${m.salairesPersonnel ? ` -${m.salairesPersonnel} (personnel)` : ''} k€`;
+          return `<div class="ligneMouvement"><span>${label}<span class="detailMouvement"> — ${detail}</span></span><span class="soldeMouvement">${m.budgetApres} k€</span></div>`;
+        }).join('')
       : '<p>Aucun match joué pour le moment.</p>';
   }
 
@@ -918,7 +925,7 @@
       return;
     }
     document.getElementById('clubEquipeBStatut').innerHTML =
-      `<p>✅ Ton club fait partie des ${compB.eligibles.length} clubs les plus riches de la ligue : une équipe B est alignée chaque journée, puisée dans tes remplaçants du jour et ton centre de formation.</p>`;
+      `<p>✅ Ton club fait partie des ${compB.eligibles.length} clubs les plus riches de la ligue : une équipe B est alignée chaque journée, puisée dans tes remplaçants du jour et ton centre de formation. Chaque match rapporte une petite recette de billetterie (cf. onglet Finances).</p>`;
     carteClassement.style.display = '';
     carteCalendrier.style.display = '';
     const lignes = RMClub.classementTrieDe(compB.classement).map((r, i) => {
@@ -1776,7 +1783,14 @@
         `Équipe B : ${clubDomicile.nom} vs ${clubExterieur.nom} (${i + 1}/${rondeB.length})`,
         (etat) => {
           RMClub.enregistrerResultatEquipeB(saison, f.id, etat.score.A, etat.score.B, etat.stats.A.essais, etat.stats.B.essais);
-          if (compositionJoueur) RMClub.appliquerEffetsMatchEquipeB(saison, compositionJoueur);
+          if (compositionJoueur) {
+            RMClub.appliquerEffetsMatchEquipeB(saison, compositionJoueur);
+            // Recette de billetterie réelle mais modeste (pas de salaires
+            // redéduits ici : déjà comptés une fois par journée via le match
+            // du premier XV, cf. appliquerFinancesMatchEquipeB).
+            const mouvementB = RMClub.appliquerFinancesMatchEquipeB(saison.clubJoueur, formeApres(f, etat.score.A, etat.score.B));
+            RMClub.enregistrerMouvementFinances(saison.clubJoueur, f.journee, mouvementB);
+          }
           sauvegarder();
           simulerRondeEquipeB(i + 1, suite);
         }

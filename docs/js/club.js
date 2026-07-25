@@ -564,6 +564,11 @@
     club.historiqueFinances.push({
       journee, recette: mouvement.recette, revenuSponsor: mouvement.revenuSponsor || 0,
       salaires: mouvement.salaires, salairesPersonnel: mouvement.salairesPersonnel || 0,
+      // Origine du mouvement (cf. appliquerFinancesMatchEquipeB) — permet à
+      // l'onglet Finances de distinguer une recette de billetterie Équipe B
+      // (pas de salaires associés, déjà comptés une fois via le premier XV)
+      // d'un mouvement du championnat principal. null = championnat principal.
+      source: mouvement.source || null,
       budgetApres: club.budget,
     });
     if (club.historiqueFinances.length > 15) club.historiqueFinances.shift();
@@ -998,6 +1003,17 @@
     const salairesPersonnel = Math.round(masseSalarialePersonnel(club) / 10);
     club.budget += recette + revenuSponsor - salaires - salairesPersonnel;
     return { recette, revenuSponsor, salaires, salairesPersonnel };
+  }
+
+  // Recette d'un match d'Équipe B (cf. RMClub.determinerEligiblesEquipeB) :
+  // une billetterie réelle mais nettement plus modeste qu'un match de
+  // première équipe (affluence bien plus faible) — AUCUN salaire redéduit
+  // ici, ils sont déjà comptés une fois par journée via appliquerFinancesMatch
+  // (le club paie son effectif dans son ensemble, pas par match individuel).
+  function appliquerFinancesMatchEquipeB(club, forme) {
+    const recette = Math.round(10 + club.niveauClub * 30 + (forme === 'v' ? 8 : forme === 'n' ? 3 : 0));
+    club.budget += recette;
+    return { recette, revenuSponsor: 0, salaires: 0, salairesPersonnel: 0, source: 'equipeB' };
   }
 
   // Prévision financière RÉELLE : extrapole le solde net moyen des derniers
@@ -1772,7 +1788,7 @@
     compositionVersJoueursCfg, meilleureComposition,
     completerComposition, completerCompositionBanc,
     numeroDuJoueurDansComposition, autoDesignerEncadrement, appliquerFatigue,
-    masseSalariale, appliquerFinancesMatch,
+    masseSalariale, appliquerFinancesMatch, appliquerFinancesMatchEquipeB,
     genererMarcheTransferts, signerJoueur, libererJoueur,
     statsApparentes, estimationEtoiles, scouterJoueur, COUT_SCOUTING,
     faireProgresserBlessures, avancerSaison,

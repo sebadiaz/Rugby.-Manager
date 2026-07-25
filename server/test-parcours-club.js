@@ -361,6 +361,22 @@ test('équipe B : jouer un match met à jour le classement B, les stats des joue
   assert.strictEqual(JSON.stringify(saison.classement), classementMainAvant, 'le championnat principal ne doit jamais être affecté par un résultat B');
 });
 
+test('équipe B : un match rapporte une petite recette de billetterie, sans redéduire les salaires (déjà comptés via le premier XV)', () => {
+  const c = saison.clubJoueur;
+  const budgetAvant = c.budget;
+  const mouvement = RMClub.appliquerFinancesMatchEquipeB(c, 'v');
+  assert.strictEqual(c.budget, budgetAvant + mouvement.recette, 'la recette doit créditer directement le budget');
+  assert.ok(mouvement.recette > 0);
+  assert.strictEqual(mouvement.salaires, 0, 'les salaires ne doivent jamais être redéduits pour un match B (déjà comptés une fois par journée)');
+  assert.strictEqual(mouvement.source, 'equipeB');
+  const mouvementDefaite = RMClub.appliquerFinancesMatchEquipeB(Object.assign({}, c, { budget: 0 }), 'd');
+  assert.ok(mouvementDefaite.recette < mouvement.recette, 'une victoire rapporte davantage qu\'une défaite, comme le championnat principal');
+  const historiqueAvant = (c.historiqueFinances || []).length;
+  RMClub.enregistrerMouvementFinances(c, 7, mouvement);
+  assert.strictEqual(c.historiqueFinances.length, historiqueAvant + 1);
+  assert.strictEqual(c.historiqueFinances[c.historiqueFinances.length - 1].source, 'equipeB', 'le journal financier doit distinguer un mouvement Équipe B du championnat principal');
+});
+
 test('équipe B : rétrocompatibilité — une sauvegarde antérieure sans champ "competitionB" se reconstitue sans planter', () => {
   delete saison.competitionB;
   let compB;

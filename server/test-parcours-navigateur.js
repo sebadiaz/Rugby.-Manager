@@ -252,6 +252,16 @@ function optionsLancement() {
   });
   verifier('équipe B : la journée d\'équipe B est simulée en même temps que la journée principale',
     rondesJoueesApres > rondesJoueesAvant);
+  const mouvementEquipeB = await page.evaluate(() => {
+    const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
+    return (s.clubJoueur.historiqueFinances || []).find((m) => m.source === 'equipeB') || null;
+  });
+  verifier('équipe B : un match du club du joueur génère une recette de billetterie réelle dans le journal financier',
+    !!mouvementEquipeB && mouvementEquipeB.recette > 0 && mouvementEquipeB.salaires === 0);
+  await clicOnglet('finances');
+  await page.waitForTimeout(150);
+  verifier('équipe B : le journal financier affiche bien le mouvement Équipe B distinctement',
+    (await page.textContent('#clubHistoriqueFinances')).includes('Équipe B'));
 
   // 8) Fin de saison — via le bouton flottant "New Day" (toujours visible,
   // ici depuis un autre onglet que le Dashboard) plutôt que le bouton du
