@@ -72,6 +72,9 @@ function optionsLancement() {
   await page.fill('#inputNomClub', 'Parcours Navigateur');
   await page.click('#btnCreerClub');
   await page.waitForTimeout(300);
+  verifier('dashboard : la carte "Objectif de la saison" affiche un objectif réel',
+    (await page.textContent('#clubObjectifSaison')).includes('Confiance du président'));
+  await page.waitForTimeout(300);
   verifier('création de carrière : dashboard affiché', await page.isVisible('[data-volet="dashboard"]'));
 
   // 2) Navigation dans toutes les pages.

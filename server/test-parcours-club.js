@@ -194,6 +194,22 @@ test('fin de saison : vieillissement/renouvellement d\'effectif, archive et remi
   assert.strictEqual(RMClub.validerComposition(compo).length, 0);
 });
 
+// --- 8) Objectif de la saison / confiance du président ---
+test('objectif de la saison : bilan réel en fin de saison, confiance ajustée, nouvel objectif fixé', () => {
+  const c = saison.clubJoueur;
+  assert.ok(c.objectifSaison, 'un objectif doit déjà être fixé pour la saison en cours (saison 2, après le test précédent)');
+  assert.ok(c.confiancePresident >= 0 && c.confiancePresident <= 100);
+  // Force un classement connu : le club du joueur termine dernier.
+  for (const id of Object.keys(saison.classement)) saison.classement[id].pts = 999;
+  saison.classement[c.id].pts = 0;
+  const confianceAvant = c.confiancePresident;
+  RMClub.avancerSaison(creerRng(4), saison);
+  assert.strictEqual(c.historiqueSaisons[c.historiqueSaisons.length - 1].position, 6, 'dernière place bien archivée');
+  assert.ok(c.confiancePresident < confianceAvant, 'objectif manqué largement : la confiance doit baisser');
+  assert.ok(c.messages.some((m) => m.titre.startsWith('Objectif manqué')));
+  assert.ok(c.objectifSaison.position >= c.objectifSaison.totalClubs - 1, 'nouvel objectif de maintien après une dernière place');
+});
+
 console.log(`\n${nbTests} test(s) exécuté(s).`);
 if (process.exitCode) {
   console.error('ECHEC : au moins un test du parcours club a échoué.');

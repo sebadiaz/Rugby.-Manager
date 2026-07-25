@@ -396,6 +396,24 @@
     }).join('');
   }
 
+  // Objectif de la saison + confiance du président : dérivés du classement
+  // RÉEL de la saison précédente (cf. RMClub.determinerObjectifSaison) —
+  // masqué sur une ancienne sauvegarde sans objectif défini (jamais planté).
+  function rafraichirObjectifSaison() {
+    const carte = document.getElementById('carteObjectifSaison');
+    const c = saison.clubJoueur;
+    if (!c.objectifSaison) { carte.style.display = 'none'; return; }
+    carte.style.display = '';
+    const classement = RMClub.classementTrie(saison);
+    const position = classement.findIndex((r) => r.clubId === c.id) + 1;
+    const objectifAtteint = position <= c.objectifSaison.position;
+    const confiance = c.confiancePresident != null ? c.confiancePresident : 60;
+    document.getElementById('clubObjectifSaison').innerHTML =
+      `<div class="ligneJoueur"><span>Ambition du président</span><b>${RMClub.libelleObjectifSaison(c.objectifSaison)}</b></div>` +
+      `<div class="ligneJoueur"><span>Position actuelle</span><b class="${objectifAtteint ? '' : 'deltaNegatif'}">${position}e/${classement.length} ${objectifAtteint ? '✓ en ligne avec l\'objectif' : '— en retard sur l\'objectif'}</b></div>` +
+      `<div class="ligneJoueur"><span>Confiance du président</span><b><span class="barreMoral${confiance < 35 ? ' bas' : confiance >= 65 ? ' haut' : ''}"><span style="width:${confiance}%"></span></span> ${confiance}%</b></div>`;
+  }
+
   // Analyse du prochain adversaire : moyennes d'attributs RÉELLES de son
   // effectif comparées aux tiennes (cf. RMClub.analyserAdversaire), plus sa
   // forme récente réelle — jamais une note fabriquée.
@@ -1060,6 +1078,7 @@
     rafraichirEntete();
     rafraichirTopBarInfos();
     rafraichirProchainMatch();
+    rafraichirObjectifSaison();
     rafraichirAdversaire();
     rafraichirMessages();
     rafraichirAutresClubs();
