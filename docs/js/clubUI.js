@@ -2029,4 +2029,27 @@
   });
 
   rafraichirTout();
+
+  // Audit P0-2 (TODO_AUDIT.md) : si une sauvegarde n'a pas pu être chargée
+  // (version sans migration connue, JSON corrompu, schéma invalide), le
+  // joueur ne doit jamais croire qu'il n'a simplement jamais eu de carrière
+  // — une copie de secours existe (cf. RMClub.consulterAvertissementChargement)
+  // et on le dit clairement, une seule fois.
+  const RAISON_AVERTISSEMENT_LABEL = {
+    version_sans_migration: 'elle vient d\'un format de sauvegarde différent de celui attendu',
+    json_invalide: 'les données étaient corrompues',
+    schema_invalide: 'les données étaient incomplètes',
+    boucle_migration: 'la mise à jour du format a échoué',
+    version_incoherente: 'la mise à jour du format a échoué',
+  };
+  const avertissementChargement = RMClub.consulterAvertissementChargement();
+  if (avertissementChargement) {
+    RMClub.effacerAvertissementChargement();
+    const raison = RAISON_AVERTISSEMENT_LABEL[avertissementChargement.raison] || 'un problème est survenu';
+    window.alert(
+      `⚠️ Ton ancienne carrière n'a pas pu être rechargée automatiquement (${raison}).\n\n` +
+      'Rien n\'a été supprimé : une copie de secours de tes données a été conservée dans le stockage de ton navigateur. ' +
+      'Contacte le support avec le nom de ton club si tu veux la récupérer.'
+    );
+  }
 })();
