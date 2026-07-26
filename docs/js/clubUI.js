@@ -52,6 +52,31 @@
     }, 2600);
   }
 
+  // Fenêtre de confirmation intégrée (TODO_AUDIT.md P1-8) : remplace
+  // window.confirm pour les actions à conséquence (libérer/prêter un
+  // joueur, promouvoir un espoir, licencier du personnel, effacer la
+  // saison...) par une carte cohérente avec le style du jeu. Un seul
+  // couple de boutons est réutilisé pour toutes les confirmations (jamais
+  // deux ouvertes en même temps) ; Échap et le fond assombri annulent,
+  // comme les autres calques du Mode Club (cf. le gestionnaire Échap
+  // plus bas).
+  let resoudreConfirmation = null;
+  function confirmerAction(message) {
+    return new Promise((resolve) => {
+      resoudreConfirmation = resolve;
+      document.getElementById('modalConfirmationTexte').textContent = message;
+      document.getElementById('modalConfirmation').classList.add('visible');
+    });
+  }
+  function fermerConfirmation(reponse) {
+    const modal = document.getElementById('modalConfirmation');
+    if (!modal.classList.contains('visible')) return;
+    modal.classList.remove('visible');
+    const resolve = resoudreConfirmation;
+    resoudreConfirmation = null;
+    if (resolve) resolve(reponse);
+  }
+
   // Sauvegarde + toast d'échec UNE SEULE FOIS par session si le stockage est
   // indisponible (navigation privée, quota dépassé) — sinon la progression se
   // perd silencieusement sans que le joueur ne comprenne pourquoi à la
@@ -1405,8 +1430,8 @@
     rafraichirTout();
   });
 
-  document.getElementById('btnNouvelleSaisonClub').addEventListener('click', () => {
-    if (!window.confirm('Effacer la saison en cours et repartir de zéro (effectif, budget, historique compris) ?')) return;
+  document.getElementById('btnNouvelleSaisonClub').addEventListener('click', async () => {
+    if (!(await confirmerAction('Effacer la saison en cours et repartir de zéro (effectif, budget, historique compris) ?'))) return;
     RMClub.effacerSaison();
     saison = null;
     document.getElementById('inputNomClub').value = '';
@@ -1451,12 +1476,12 @@
     document.querySelectorAll('.caseComparerEffectif').forEach((c) => { c.checked = false; });
     rafraichirComparaisonEffectif();
   });
-  document.getElementById('clubCentreFormation').addEventListener('click', (e) => {
+  document.getElementById('clubCentreFormation').addEventListener('click', async (e) => {
     if (!e.target.classList.contains('btnPromouvoirJeune')) return;
     const id = e.target.dataset.joueur;
     const jeune = (saison.clubJoueur.jeunes || []).find((j) => j.id === id);
     if (!jeune) return;
-    if (!window.confirm(`Promouvoir ${jeune.nom} (${POSTE_COMPLET[jeune.poste] || jeune.poste}, ${jeune.age} ans) en équipe première ? Il quittera définitivement le centre de formation.`)) return;
+    if (!(await confirmerAction(`Promouvoir ${jeune.nom} (${POSTE_COMPLET[jeune.poste] || jeune.poste}, ${jeune.age} ans) en équipe première ? Il quittera définitivement le centre de formation.`))) return;
     RMClub.promouvoirJeune(saison, id);
     sauvegarder();
     toast(`✅ ${jeune.nom} rejoint le groupe professionnel`);
@@ -1472,7 +1497,7 @@
   document.getElementById('btnFermerMondeDivision').addEventListener('click', fermerDivisionMonde);
   // Fiche joueur : boutons régénérés à chaque ouverture (cf. ouvrirFicheJoueur),
   // délégation sur le conteneur parent plutôt qu'un addEventListener par joueur.
-  document.getElementById('clubJoueurDetail').addEventListener('click', (e) => {
+  document.getElementById('clubJoueurDetail').addEventListener('click', async (e) => {
     if (e.target.id === 'btnFermerFicheJoueur') { fermerFicheJoueur(); return; }
     if (e.target.id === 'btnRenouveler') {
       if (!joueurAffiche) return;
@@ -1505,7 +1530,7 @@
       if (!joueurAffiche) return;
       const joueur = saison.clubJoueur.effectif.find((j) => j.id === joueurAffiche);
       if (!joueur) return;
-      if (!window.confirm(`Prêter ${joueur.nom} pour 3 journées ? Il sera indisponible pour la sélection, contre une indemnité immédiate.`)) return;
+      if (!(await confirmerAction(`Prêter ${joueur.nom} pour 3 journées ? Il sera indisponible pour la sélection, contre une indemnité immédiate.`))) return;
       const res = RMClub.preterJoueur(saison, joueurAffiche, 3);
       if (!res.ok) {
         window.alert(res.motif === 'dernier_du_poste'
@@ -1539,7 +1564,7 @@
     if (e.target.id !== 'btnLibererFiche') return;
     if (!joueurAffiche) return;
     const joueur = saison.clubJoueur.effectif.find((j) => j.id === joueurAffiche);
-    if (!joueur || !window.confirm(`Libérer ${joueur.nom} ? Il quittera définitivement l'effectif.`)) return;
+    if (!joueur || !(await confirmerAction(`Libérer ${joueur.nom} ? Il quittera définitivement l'effectif.`))) return;
     const res = RMClub.libererJoueur(saison, joueurAffiche);
     if (!res.ok) { window.alert("Impossible : c'est le dernier joueur de ce poste dans l'effectif."); return; }
     assurerComposition(); // rebouche les trous laissés par le départ (cf. club.js)
@@ -1714,9 +1739,9 @@
     rafraichirPersonnel();
     rafraichirFinancesTab();
   });
-  document.getElementById('clubPersonnelActuel').addEventListener('click', (e) => {
+  document.getElementById('clubPersonnelActuel').addEventListener('click', async (e) => {
     if (!e.target.classList.contains('btnLicencier')) return;
-    if (!window.confirm('Licencier ce membre du personnel ?')) return;
+    if (!(await confirmerAction('Licencier ce membre du personnel ?'))) return;
     RMClub.licencierPersonnel(saison, e.target.dataset.staff);
     sauvegarder();
     toast('✅ Membre du personnel licencié');
@@ -2039,12 +2064,19 @@
   // seul le clic sur leur bouton dédié fonctionnait.
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
+    if (document.getElementById('modalConfirmation').classList.contains('visible')) { fermerConfirmation(false); return; }
     const apercu = document.getElementById('panneauApercuMatch');
     if (apercu.classList.contains('visible')) { apercu.classList.remove('visible'); return; }
     if (document.getElementById('barreOngletsClub').classList.contains('ouvert')) { fermerTiroirNav(); return; }
     if (joueurAffiche) { fermerFicheJoueur(); return; }
     if (clubAdversaireAffiche && joueurAdversaireAfficheIndex != null) { fermerFicheJoueurAdversaire(); return; }
     if (clubAdversaireAffiche) { fermerClubAdversaire(); return; }
+  });
+
+  document.getElementById('modalConfirmationValider').addEventListener('click', () => fermerConfirmation(true));
+  document.getElementById('modalConfirmationAnnuler').addEventListener('click', () => fermerConfirmation(false));
+  document.getElementById('modalConfirmation').addEventListener('click', (e) => {
+    if (e.target.id === 'modalConfirmation') fermerConfirmation(false); // clic sur le fond assombri = annuler
   });
 
   rafraichirTout();

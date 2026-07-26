@@ -266,6 +266,38 @@ function optionsLancement() {
   verifier('retour arrière (Échap) : la fiche joueur se referme au clavier, sans cliquer sur "Retour"',
     !(await page.isVisible('#clubJoueurDetail')) && await page.isVisible('#clubEffectif'));
 
+  // 5e) Fenêtre de confirmation intégrée (TODO_AUDIT.md P1-8) : remplace
+  // window.confirm pour "Libérer ce joueur" — vérifie le cycle complet,
+  // Annuler (rien ne se passe) PUIS Confirmer (l'action s'applique
+  // réellement), pas juste l'un des deux chemins.
+  const cibleLiberation = await page.evaluate(() => {
+    const eff = JSON.parse(localStorage.getItem('rugbyManager.club.v1')).clubJoueur.effectif;
+    const comptes = {};
+    for (const j of eff) comptes[j.poste] = (comptes[j.poste] || 0) + 1;
+    return (eff.find((j) => comptes[j.poste] > 1) || {}).id || null;
+  });
+  if (cibleLiberation) {
+    const effectifAvantLiberation = await page.evaluate(() => JSON.parse(localStorage.getItem('rugbyManager.club.v1')).clubJoueur.effectif.length);
+    await page.click(`#clubEffectif tr[data-joueur="${cibleLiberation}"]`);
+    await page.waitForTimeout(150);
+    await page.click('#btnLibererFiche');
+    await page.waitForTimeout(150);
+    verifier('confirmation intégrée : "Libérer ce joueur" ouvre une fenêtre de confirmation (pas une boîte native)',
+      await page.isVisible('#modalConfirmation.visible'));
+    await page.click('#modalConfirmationAnnuler');
+    await page.waitForTimeout(150);
+    const effectifApresAnnulation = await page.evaluate(() => JSON.parse(localStorage.getItem('rugbyManager.club.v1')).clubJoueur.effectif.length);
+    verifier('confirmation intégrée : "Annuler" referme la fenêtre SANS libérer le joueur',
+      !(await page.isVisible('#modalConfirmation.visible')) && await page.isVisible('#clubJoueurDetail') && effectifApresAnnulation === effectifAvantLiberation);
+    await page.click('#btnLibererFiche');
+    await page.waitForTimeout(150);
+    await page.click('#modalConfirmationValider');
+    await page.waitForTimeout(200);
+    const effectifApresConfirmation = await page.evaluate(() => JSON.parse(localStorage.getItem('rugbyManager.club.v1')).clubJoueur.effectif.length);
+    verifier('confirmation intégrée : "Confirmer" libère bien le joueur',
+      effectifApresConfirmation === effectifAvantLiberation - 1 && !(await page.isVisible('#clubJoueurDetail')));
+  }
+
   // 5c) Centre de formation : le vivier d'espoirs est affiché et un espoir
   // peut être promu en équipe première, ce qui l'ajoute réellement à
   // l'effectif pro (donc utilisable en composition).
@@ -273,8 +305,11 @@ function optionsLancement() {
   const boutonsJeunes = await page.$$('#clubCentreFormation .btnPromouvoirJeune');
   verifier('centre de formation : le vivier d\'espoirs est affiché avec au moins un espoir', boutonsJeunes.length > 0);
   if (boutonsJeunes.length > 0) {
-    page.once('dialog', (d) => d.accept());
     await boutonsJeunes[0].click();
+    await page.waitForTimeout(150);
+    verifier('centre de formation : promouvoir un espoir ouvre une fenêtre de confirmation intégrée (pas une boîte native)',
+      await page.isVisible('#modalConfirmation.visible'));
+    await page.click('#modalConfirmationValider');
     await page.waitForTimeout(200);
     const effectifApresPromotion = await page.evaluate(() => JSON.parse(localStorage.getItem('rugbyManager.club.v1')).clubJoueur.effectif.length);
     verifier('centre de formation : promouvoir un espoir l\'ajoute réellement à l\'effectif professionnel', effectifApresPromotion === effectifAvantPromotion + 1);

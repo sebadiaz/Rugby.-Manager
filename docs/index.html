@@ -569,6 +569,22 @@
   <button class="fermer alt" id="fermerLegende">Fermer</button>
 </div>
 
+<!-- Fenêtre de confirmation intégrée (TODO_AUDIT.md P1-8) : remplace
+     window.confirm pour les actions à conséquence (libérer/prêter un
+     joueur, promouvoir un espoir, licencier du personnel, effacer la
+     saison...), avec un style cohérent avec le reste du jeu plutôt qu'une
+     boîte de dialogue native du navigateur. Piloté par confirmerAction()
+     dans clubUI.js. -->
+<div class="modalOverlay" id="modalConfirmation">
+  <div class="modalCarte">
+    <p id="modalConfirmationTexte"></p>
+    <div class="modalActions">
+      <button id="modalConfirmationAnnuler" class="alt">Annuler</button>
+      <button id="modalConfirmationValider" class="accent">Confirmer</button>
+    </div>
+  </div>
+</div>
+
 <script src="rugby-engine.js"></script>
 <script src="js/constants.js"></script>
 <script src="js/rng.js"></script>

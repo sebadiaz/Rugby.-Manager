@@ -426,6 +426,23 @@ select {
   overflow-y: auto; padding: 16px;
 }
 #panneauApercuMatch.visible { display: block; }
+
+/* Fenêtre de confirmation intégrée (TODO_AUDIT.md P1-8) : remplace
+   window.confirm par une carte centrée cohérente avec le reste du jeu,
+   au-dessus de tout le reste (y compris l'aperçu du match). */
+.modalOverlay {
+  position: fixed; inset: 0; z-index: 1300; display: none;
+  align-items: center; justify-content: center; padding: 16px;
+  background: rgba(6, 11, 8, 0.72);
+}
+.modalOverlay.visible { display: flex; }
+.modalCarte {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow); padding: 20px; max-width: 360px; width: 100%;
+}
+.modalCarte p { margin: 0 0 18px; font-size: 14px; line-height: 1.5; color: var(--text); }
+.modalActions { display: flex; gap: 8px; }
+.modalActions button { flex: 1; }
 #apercuMatchContenu { max-width: 640px; margin: 0 auto; }
 #apercuMatchCorps .carteClub { margin: 0 0 14px; padding: 14px; }
 .clubEntete { display: flex; align-items: center; gap: 12px; padding: 14px 16px; }

@@ -176,8 +176,25 @@ Statuts possibles : `À FAIRE`, `EN COURS`, `CONFIRMÉ`, `CORRIGÉ`, `FAUX POSIT
 - Régression complète sans échec : `test-invariants.js` 12/12, `test-monde.js` 14/14, `test-audit-p0-1.js` 4/4, `test-audit-p0-2.js` 6/6, `test-audit-p0-3.js` 8/8.
 
 ### P1-8. Remplacer progressivement prompt/alert/confirm par des fenêtres intégrées
-- Statut : À FAIRE
-- Fichiers concernés : `docs/js/clubUI.js`, `docs/index.html`, `docs/css/style.css`
+- **Statut : EN COURS (première tranche corrigée — les `window.confirm` ; `alert`/`prompt` restent à traiter dans un futur patch)**
+- Priorité : P1 (parcours utilisateur — immersion/lisibilité)
+- Fichiers concernés :
+  - `docs/js/clubUI.js` (nouvelle fonction `confirmerAction`, 5 appelants convertis)
+  - `docs/index.html` (nouvelle fenêtre `#modalConfirmation`)
+  - `docs/css/style.css` (styles `.modalOverlay`/`.modalCarte`)
+  - `server/test-parcours-navigateur.js` (nouvelle couverture)
+
+**Constat de départ.** 21 appels à `window.alert`/`confirm`/`prompt` dans `docs/js/clubUI.js` : des boîtes de dialogue natives du navigateur, sans le style du jeu, qui cassent l'immersion et sont incohérentes entre navigateurs. Consigne explicite : remplacement **progressif**, pas une réécriture générale en un seul patch — cette tranche traite les 5 `window.confirm` (actions à conséquence : effacer la saison, promouvoir un espoir, prêter/libérer un joueur, licencier du personnel).
+
+**Correction.** Nouvelle fenêtre de confirmation intégrée (`#modalConfirmation`), une carte centrée par-dessus tout le reste (y compris l'aperçu du match), avec le même style visuel que le reste du jeu (boutons `Annuler`/`Confirmer`, fond assombri cliquable pour annuler, Échap pour annuler — intégré au même gestionnaire clavier que les autres calques). Côté JS, `confirmerAction(message)` renvoie une Promise résolue par le clic sur un bouton (ou Échap/fond) ; les 5 gestionnaires d'événements concernés sont passés en `async` et utilisent `await confirmerAction(...)` à la place de `window.confirm(...)`. Aucun changement de comportement des actions elles-mêmes (mêmes messages, mêmes conséquences), uniquement la fenêtre qui les affiche.
+
+**Amélioration visible.** Capture d'écran vérifiée manuellement (Playwright) : la fenêtre "Libérer Tom Fournier ? Il quittera définitivement l'effectif." s'affiche comme une carte cohérente avec le thème sombre du jeu (boutons Annuler/Confirmer stylés), au lieu d'une boîte système grise hors-thème.
+
+**Critères de validation.**
+- `node server/test-parcours-navigateur.js` : 81/81 (77 existants après P1-7 + 4 nouveaux : cycle complet Annuler-puis-Confirmer sur "Libérer ce joueur", ouverture de la fenêtre intégrée pour "Promouvoir un espoir" — remplace l'ancien `page.once('dialog', ...)` qui n'a plus de raison d'être déclenché pour ces actions).
+- Régression complète sans échec : `test-parcours-club.js` 41/41, `test-invariants.js` 12/12, `test-monde.js` 14/14, `test-audit-p0-1.js` 4/4, `test-audit-p0-2.js` 6/6, `test-audit-p0-3.js` 8/8.
+
+**Reste à faire (prochaine tranche de P1-8).** Les `window.alert` (messages d'erreur/info) et les 2 `window.prompt` (offre de transfert international, négociation de salaire — nécessitent un champ numérique avec validation inline, pas juste une confirmation oui/non) n'ont pas encore été convertis.
 
 ### P1-9. Carrière longue (10 saisons+, rechargements réguliers) — aucun id dupliqué, NaN, donnée perdue, composition impossible
 - Statut : À FAIRE
@@ -244,3 +261,9 @@ Statuts possibles : `À FAIRE`, `EN COURS`, `CONFIRMÉ`, `CORRIGÉ`, `FAUX POSIT
 - Prouve des gardes déjà présentes dans `docs/js/club.js` mais jamais testées : budget insuffisant (`signerJoueur`, `approcherJoueurAdverse`), dernier joueur d'un poste pour `libererJoueur` (distinct de `preterJoueur` déjà couvert), déjà prêté (`preterJoueur` rejoué), action répétée/double clic (`signerJoueur` rejoué, y compris deux clics DOM synchrones dans un vrai navigateur), saison terminée (`prochainesFixtures` vide), et — nouveau côté navigateur — l'avertissement de sauvegarde corrompue (P0-2) réellement affiché à l'écran.
 - Aucun changement de comportement du jeu : uniquement de nouveaux tests sur des gardes déjà correctes.
 - Tests : `server/test-parcours-club.js` 41/41 (35+6), `server/test-parcours-navigateur.js` 77/77 (72+5). Régression : `test-invariants.js` 12/12, `test-monde.js` 14/14, `test-audit-p0-1.js` 4/4, `test-audit-p0-2.js` 6/6, `test-audit-p0-3.js` 8/8.
+
+### P1-8 — Remplacer window.confirm par une fenêtre de confirmation intégrée — EN COURS (1ère tranche)
+- Nouvelle fenêtre `#modalConfirmation` (carte centrée, style du jeu) pilotée par `confirmerAction(message)` (Promise résolue par un bouton, Échap, ou clic sur le fond assombri) dans `docs/js/clubUI.js` — remplace les 5 `window.confirm` (effacer la saison, promouvoir un espoir, prêter/libérer un joueur, licencier du personnel).
+- Amélioration visible : boîte de dialogue stylée cohérente avec le thème du jeu au lieu d'une boîte système grise (vérifié par capture d'écran).
+- Reste à faire : les `window.alert` et les 2 `window.prompt` (offre de transfert, négociation de salaire — nécessitent un champ numérique validé) n'ont pas encore été convertis (prochaine tranche du même P1-8).
+- Tests : `server/test-parcours-navigateur.js` 81/81 (77+4). Régression : `test-parcours-club.js` 41/41, `test-invariants.js` 12/12, `test-monde.js` 14/14, `test-audit-p0-1.js` 4/4, `test-audit-p0-2.js` 6/6, `test-audit-p0-3.js` 8/8.
