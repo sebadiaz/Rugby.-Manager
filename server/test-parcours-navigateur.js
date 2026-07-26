@@ -293,6 +293,29 @@ function optionsLancement() {
     await page.waitForTimeout(150);
     verifier('confirmation intégrée : "Libérer ce joueur" ouvre une fenêtre de confirmation (pas une boîte native)',
       await page.isVisible('#modalConfirmation.visible'));
+
+    // Accessibilité clavier (TODO_AUDIT.md P2-12) : rôle ARIA, focus initial
+    // dans la fenêtre, piège Tab (ne s'échappe jamais vers le fond), et
+    // restauration du focus sur le bouton déclencheur à la fermeture.
+    verifier('accessibilité : la fenêtre de confirmation a role="dialog" et aria-modal="true"',
+      await page.evaluate(() => {
+        const m = document.getElementById('modalConfirmation');
+        return m.getAttribute('role') === 'dialog' && m.getAttribute('aria-modal') === 'true';
+      }));
+    verifier('accessibilité : le focus part sur un élément DANS la fenêtre de confirmation à l\'ouverture',
+      await page.evaluate(() => document.getElementById('modalConfirmation').contains(document.activeElement)));
+    await page.keyboard.press('Tab');
+    verifier('accessibilité : Tab déplace le focus vers le bouton suivant, toujours DANS la fenêtre',
+      await page.evaluate(() => document.getElementById('modalConfirmation').contains(document.activeElement)));
+    await page.keyboard.press('Tab');
+    verifier('accessibilité : Tab depuis le dernier bouton reboucle sur le premier (piège de focus actif)',
+      await page.evaluate(() => document.activeElement && document.activeElement.id === 'modalConfirmationAnnuler'));
+    await page.click('#modalConfirmationAnnuler');
+    await page.waitForTimeout(150);
+    verifier('accessibilité : après fermeture, le focus revient sur le bouton qui a ouvert la fenêtre',
+      await page.evaluate(() => document.activeElement && document.activeElement.id === 'btnLibererFiche'));
+    await page.click('#btnLibererFiche');
+    await page.waitForTimeout(150);
     await page.click('#modalConfirmationAnnuler');
     await page.waitForTimeout(150);
     const effectifApresAnnulation = await page.evaluate(() => JSON.parse(localStorage.getItem('rugbyManager.club.v1')).clubJoueur.effectif.length);

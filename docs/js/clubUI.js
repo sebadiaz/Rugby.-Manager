@@ -52,6 +52,42 @@
     }, 2600);
   }
 
+  // Accessibilité clavier des fenêtres modales (TODO_AUDIT.md P2-12) : les 3
+  // fenêtres intégrées ci-dessous (P1-8) sont des <div> custom qui n'ont, par
+  // défaut, ni piège de focus ni restauration du focus à la fermeture —
+  // contrairement aux window.confirm/prompt/alert natifs qu'elles
+  // remplacent, qui géraient ça automatiquement. Bloc générique partagé
+  // plutôt que dupliquer cette logique 3 fois.
+  let elementFocusAvantModale = null;
+  function elementsFocusables(conteneur) {
+    return Array.from(conteneur.querySelectorAll(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    )).filter((el) => !el.disabled && el.offsetParent !== null);
+  }
+  function ouvrirModaleAccessible(conteneur, focaliserEnPremier) {
+    elementFocusAvantModale = document.activeElement;
+    conteneur.classList.add('visible');
+    requestAnimationFrame(() => {
+      if (focaliserEnPremier) { focaliserEnPremier(); return; }
+      const focusables = elementsFocusables(conteneur);
+      if (focusables[0]) focusables[0].focus();
+    });
+  }
+  function fermerModaleAccessible(conteneur) {
+    conteneur.classList.remove('visible');
+    if (elementFocusAvantModale && typeof elementFocusAvantModale.focus === 'function') {
+      elementFocusAvantModale.focus();
+    }
+    elementFocusAvantModale = null;
+  }
+  // Utilisé par le piège Tab du gestionnaire clavier : une seule fenêtre
+  // modale peut être ouverte à la fois (cf. commentaires ci-dessous).
+  function modaleOuverteActuelle() {
+    return ['modalInfo', 'modalMontant', 'modalConfirmation']
+      .map((id) => document.getElementById(id))
+      .find((el) => el && el.classList.contains('visible')) || null;
+  }
+
   // Fenêtre de confirmation intégrée (TODO_AUDIT.md P1-8) : remplace
   // window.confirm pour les actions à conséquence (libérer/prêter un
   // joueur, promouvoir un espoir, licencier du personnel, effacer la
@@ -65,13 +101,13 @@
     return new Promise((resolve) => {
       resoudreConfirmation = resolve;
       document.getElementById('modalConfirmationTexte').textContent = message;
-      document.getElementById('modalConfirmation').classList.add('visible');
+      ouvrirModaleAccessible(document.getElementById('modalConfirmation'));
     });
   }
   function fermerConfirmation(reponse) {
     const modal = document.getElementById('modalConfirmation');
     if (!modal.classList.contains('visible')) return;
-    modal.classList.remove('visible');
+    fermerModaleAccessible(modal);
     const resolve = resoudreConfirmation;
     resoudreConfirmation = null;
     if (resolve) resolve(reponse);
@@ -91,8 +127,7 @@
       document.getElementById('modalMontantErreur').style.display = 'none';
       const input = document.getElementById('modalMontantInput');
       input.value = valeurDefaut != null ? valeurDefaut : '';
-      document.getElementById('modalMontant').classList.add('visible');
-      requestAnimationFrame(() => { input.focus(); input.select(); });
+      ouvrirModaleAccessible(document.getElementById('modalMontant'), () => { input.focus(); input.select(); });
     });
   }
   function validerMontant() {
@@ -110,7 +145,7 @@
   function fermerMontant(reponse) {
     const modal = document.getElementById('modalMontant');
     if (!modal.classList.contains('visible')) return;
-    modal.classList.remove('visible');
+    fermerModaleAccessible(modal);
     const resolve = resoudreMontant;
     resoudreMontant = null;
     if (resolve) resolve(reponse);
@@ -127,13 +162,13 @@
       resoudreInfo = resolve;
       document.getElementById('modalInfoTitre').textContent = titre;
       document.getElementById('modalInfoTexte').textContent = corps;
-      document.getElementById('modalInfo').classList.add('visible');
+      ouvrirModaleAccessible(document.getElementById('modalInfo'));
     });
   }
   function fermerInfo() {
     const modal = document.getElementById('modalInfo');
     if (!modal.classList.contains('visible')) return;
-    modal.classList.remove('visible');
+    fermerModaleAccessible(modal);
     const resolve = resoudreInfo;
     resoudreInfo = null;
     if (resolve) resolve();
@@ -2120,6 +2155,22 @@
   // premier) — aucun des panneaux du Mode Club n'écoutait le clavier jusqu'ici,
   // seul le clic sur leur bouton dédié fonctionnait.
   document.addEventListener('keydown', (e) => {
+    if (e.key === 'Tab') {
+      const modaleOuverte = modaleOuverteActuelle();
+      if (!modaleOuverte) return;
+      const focusables = elementsFocusables(modaleOuverte);
+      if (!focusables.length) { e.preventDefault(); return; }
+      const premier = focusables[0];
+      const dernier = focusables[focusables.length - 1];
+      if (e.shiftKey && document.activeElement === premier) {
+        e.preventDefault();
+        dernier.focus();
+      } else if (!e.shiftKey && document.activeElement === dernier) {
+        e.preventDefault();
+        premier.focus();
+      }
+      return;
+    }
     if (e.key !== 'Escape') return;
     if (document.getElementById('modalInfo').classList.contains('visible')) { fermerInfo(); return; }
     if (document.getElementById('modalMontant').classList.contains('visible')) { fermerMontant(null); return; }

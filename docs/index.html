@@ -279,7 +279,7 @@
               </select>
               <label class="filtreCase"><input type="checkbox" id="filtreEffectifDisponible"> Disponibles seulement</label>
             </div>
-            <div id="clubEffectif"></div>
+            <div id="clubEffectif" tabindex="0" role="region" aria-label="Tableau de l'effectif, défilement horizontal sur petit écran"></div>
             <div id="clubComparaisonEffectif"></div>
             <div id="clubJoueurDetail" style="display:none;"></div>
           </div>
@@ -390,7 +390,7 @@
           <div class="enTetePage"><span class="categoriePage">Compétition</span><h2>Autres clubs</h2><p>Consulte n'importe quel adversaire : effectif, forces/faiblesses, confrontations.</p></div>
           <div class="carteClub">
             <h3>🏟️ Autres clubs</h3>
-            <div id="clubAutresClubsListe"></div>
+            <div id="clubAutresClubsListe" tabindex="0" role="region" aria-label="Liste des autres clubs, défilement horizontal sur petit écran"></div>
           </div>
           <div class="carteClub" id="clubAutresClubDetail" style="display:none;">
             <button id="btnFermerClubAdversaire" class="alt" style="width:100%;margin-bottom:12px;">← Retour à la liste des clubs</button>
@@ -399,7 +399,7 @@
               <h4 style="margin:14px 0 6px;">Comparaison d'effectif</h4>
               <div id="clubAutresClubAnalyse"></div>
               <h4 style="margin:14px 0 6px;">Effectif</h4>
-              <div id="clubAutresClubEffectif"></div>
+              <div id="clubAutresClubEffectif" tabindex="0" role="region" aria-label="Tableau de l'effectif adverse, défilement horizontal sur petit écran"></div>
               <h4 style="margin:14px 0 6px;">Confrontations directes</h4>
               <div id="clubAutresClubConfrontations"></div>
             </div>
@@ -411,7 +411,7 @@
           <div class="enTetePage"><span class="categoriePage">Compétition</span><h2>Calendrier & classement</h2><p>Toutes les rencontres de la saison, y compris celles des autres clubs.</p></div>
           <div class="carteClub">
             <h3>🏆 Classement</h3>
-            <div id="clubClassement"></div>
+            <div id="clubClassement" tabindex="0" role="region" aria-label="Tableau du classement, défilement horizontal sur petit écran"></div>
           </div>
           <div class="carteClub">
             <h3>📅 Calendrier</h3>
@@ -575,7 +575,7 @@
      saison...), avec un style cohérent avec le reste du jeu plutôt qu'une
      boîte de dialogue native du navigateur. Piloté par confirmerAction()
      dans clubUI.js. -->
-<div class="modalOverlay" id="modalConfirmation">
+<div class="modalOverlay" id="modalConfirmation" role="dialog" aria-modal="true" aria-describedby="modalConfirmationTexte">
   <div class="modalCarte">
     <p id="modalConfirmationTexte"></p>
     <div class="modalActions">
@@ -591,7 +591,7 @@
      montant déjà saisi, n'est jamais perdu en cas de valeur invalide,
      contrairement à l'ancien prompt+alert qui obligeait à tout ressaisir).
      Piloté par demanderMontant() dans clubUI.js. -->
-<div class="modalOverlay" id="modalMontant">
+<div class="modalOverlay" id="modalMontant" role="dialog" aria-modal="true" aria-describedby="modalMontantTexte">
   <div class="modalCarte">
     <p id="modalMontantTexte"></p>
     <label class="sr-label" for="modalMontantInput">Montant (k€)</label>
@@ -610,7 +610,7 @@
      corrompue) — les messages d'erreur courts utilisent toast() à la
      place, non bloquant. Pilotée par afficherInfo(titre, corps) dans
      clubUI.js. -->
-<div class="modalOverlay" id="modalInfo">
+<div class="modalOverlay" id="modalInfo" role="dialog" aria-modal="true" aria-labelledby="modalInfoTitre" aria-describedby="modalInfoTexte">
   <div class="modalCarte">
     <h3 id="modalInfoTitre" style="margin:0 0 10px;font-size:15px;"></h3>
     <p id="modalInfoTexte" style="white-space:pre-line;"></p>
