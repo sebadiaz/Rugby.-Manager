@@ -665,6 +665,12 @@
       // Occupation territoriale (où se joue le match), distincte de la
       // possession (qui porte le ballon) : cf. tick().
       this.tempsOccupation = { A: 0, B: 0 };
+      // Entrée dans les 22 m adverses (cf. tick()) : mémorise la dernière
+      // équipe en possession et si CETTE possession a déjà compté une entrée,
+      // pour n'en compter qu'une seule par possession continue (pas une par
+      // tick passé dans la zone, ni une par phase/ruck).
+      this._entree22DernierePossession = null;
+      this._entree22Faite = false;
       this._nouvelleManche('A');
       this.equipeKickPremiereMiTemps = this._dernierEquipeKick;
     }
@@ -690,6 +696,11 @@
         // jeu multi-phases et sorties de camp comme les motifs qui distinguent le
         // mieux marquer vs encaisser). Tous derives d'actions reelles.
         franchissements: 0, kicksRegagnes: 0, exits: 0, exitsRates: 0,
+        // Entrée dans les 22 m adverses (TODO_AUDIT.md P2-13/T6) : une par
+        // possession continue (cf. tick(), pas re-comptee tant que la
+        // possession ne change pas), utile pour suivre la finition en zone
+        // rouge (cf. docs/ANALYSE_MATCH_REEL.md).
+        entrees22: 0,
       };
     }
 
@@ -4640,6 +4651,23 @@
         const xBallon = (this.ballonEnVol || this._receptionEnAttente) ? this.ballonVolX : this.porteur.x;
         if (xBallon > LONGUEUR / 2) this.tempsOccupation.A += dt;
         else this.tempsOccupation.B += dt;
+        // Entrée dans les 22 m adverses (une seule par possession continue) :
+        // sensAttaque de A est toujours +1 (attaque vers x=LONGUEUR), donc ses
+        // 22 m adverses sont x > LONGUEUR-22 ; B attaque vers x=0, ses 22 m
+        // adverses sont x < 22. Le compteur ne se réarme qu'au changement de
+        // possession (turnover, coup de pied, pénalité...), jamais à chaque
+        // tick passé dans la zone.
+        if (this.possession !== this._entree22DernierePossession) {
+          this._entree22DernierePossession = this.possession;
+          this._entree22Faite = false;
+        }
+        if (!this._entree22Faite) {
+          const enZone22Adverse = this.possession === 'A' ? xBallon > LONGUEUR - 22 : xBallon < 22;
+          if (enZone22Adverse) {
+            this._entree22Faite = true;
+            this.stats[this.possession].entrees22++;
+          }
+        }
       }
       this.tempsMatch += dt;
       // Une séquence de marque déjà engagée (essai en attente de transformation,

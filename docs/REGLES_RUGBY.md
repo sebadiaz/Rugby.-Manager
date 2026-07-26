@@ -321,6 +321,7 @@ jouées dans la simulation — aucune n'est fabriquée.**
 | `phases` (Phases jouées) | Nombre de **rucks + mauls** de la possession (une phase par regroupement) | à chaque formation de ruck/maul |
 | `metresGagnes` | Mètres gagnés **ballon en main** dans le sens d'attaque | course du porteur (`_tickPorte`) |
 | `kicks` | Coup de pied en jeu (hors pénalités / coups francs) | `_tenterCoupDePiedJeu` |
+| `entrees22` (Entrées dans les 22 m adverses) | Une par **possession continue** qui atteint les 22 m adverses (pas re-comptée tant que la possession ne change pas) | `tick()`, ballon en jeu |
 | possession % / occupation % | % de temps de contrôle du ballon / d'occupation territoriale | `tempsPossession` / `tempsOccupation` |
 
 ### Motifs de jeu discriminants (étude rorybunker/rugby-sequences)

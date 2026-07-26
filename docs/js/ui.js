@@ -126,6 +126,7 @@
       ligneStat('Possession', `${pct.A}%`, `${pct.B}%`) +
       ligneStat('Occupation', `${occ.A}%`, `${occ.B}%`) +
       ligneStat('Essais', s.A.essais, s.B.essais) +
+      ligneStat('Entrées dans les 22 m', s.A.entrees22, s.B.entrees22) +
       // Statistiques alignées sur les définitions officielles World Rugby
       // (game analysis) — toutes issues d'actions réelles de la simulation.
       ligneStat('Passes réussies', `${s.A.passes}/${s.A.passesTentees}`, `${s.B.passes}/${s.B.passesTentees}`) +
