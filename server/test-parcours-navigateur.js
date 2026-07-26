@@ -170,6 +170,47 @@ function optionsLancement() {
   const budgetApresTxt = await page.textContent('#transfertsBudget');
   verifier('recrutement : le budget change après une signature', budgetAvantTxt !== budgetApresTxt);
 
+  // 5a) Double clic (action répétée, TODO_AUDIT.md P1-7) : signer très
+  // rapidement deux fois de suite un autre joueur du marché ne doit jamais
+  // débiter le budget deux fois ni ajouter deux exemplaires à l'effectif
+  // (cf. server/test-parcours-club.js pour la preuve équivalente côté
+  // données ; ici on rejoue le vrai geste utilisateur dans le navigateur).
+  // Un budget confortable est forcé (état non exposé par l'UI, comme pour
+  // l'Équipe B plus bas) pour garantir qu'un joueur reste abordable après la
+  // première signature ci-dessus, plutôt que de dépendre du hasard des prix.
+  await page.evaluate(() => {
+    const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
+    s.clubJoueur.budget = 100000;
+    localStorage.setItem('rugbyManager.club.v1', JSON.stringify(s));
+  });
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.waitForTimeout(200);
+  await page.click('#btnContinuerClub');
+  await page.waitForTimeout(200);
+  await clicOnglet('transferts');
+  await page.waitForTimeout(150);
+  const idCibleDoubleClic = await page.$eval('#clubMarche .btnSigner:not([disabled])', (b) => b.dataset.joueur);
+  const effectifAvantDoubleClic = await page.evaluate(() => JSON.parse(localStorage.getItem('rugbyManager.club.v1')).clubJoueur.effectif.length);
+  // Deux vrais clics Playwright espacés dans le temps (aller-retour réseau
+  // CDP entre chaque clic) ne reproduisent pas fidèlement un double clic —
+  // ils laissent le temps au premier rendu de retirer/désactiver le bouton
+  // avant le second. Un double clic déclenche deux événements DOM traités
+  // l'un après l'autre SANS repeinture entre les deux (pire cas réel) :
+  // déclenché ici en une seule évaluation synchrone côté navigateur.
+  await page.evaluate((id) => {
+    const bouton = () => document.querySelector(`#clubMarche .btnSigner[data-joueur="${id}"]`);
+    bouton() && bouton().click();
+    bouton() && bouton().click();
+  }, idCibleDoubleClic);
+  await page.waitForTimeout(300);
+  const effectifApresDoubleClic = await page.evaluate(() => JSON.parse(localStorage.getItem('rugbyManager.club.v1')).clubJoueur.effectif.length);
+  verifier('double clic : signer deux fois de suite le même joueur n\'ajoute qu\'un seul exemplaire à l\'effectif',
+    effectifApresDoubleClic === effectifAvantDoubleClic + 1);
+  const occurrencesDoubleClic = await page.evaluate(
+    (id) => JSON.parse(localStorage.getItem('rugbyManager.club.v1')).clubJoueur.effectif.filter((j) => j.id === id).length,
+    idCibleDoubleClic);
+  verifier('double clic : le joueur signé deux fois de suite n\'apparaît qu\'une seule fois dans l\'effectif', occurrencesDoubleClic === 1);
+
   // 5b) Négociation de contrat : force un joueur en fin de contrat (état non
   // exposé par l'UI, modifié directement en localStorage comme le ferait une
   // vraie fin de saison) pour vérifier que le bouton de renouvellement mène
@@ -467,6 +508,31 @@ function optionsLancement() {
   } else {
     console.log('   (fin de saison non atteinte dans ce run — championnat trop long pour un test rapide, mécanisme couvert par server/test-parcours-club.js)');
   }
+
+  // 9) Sauvegarde corrompue (TODO_AUDIT.md P0-2/P1-7) : preuve, dans un vrai
+  // navigateur, que l'avertissement de récupération est réellement montré
+  // au joueur (pas seulement vérifié côté données, cf.
+  // server/test-audit-p0-2.js) et qu'une carrière reste ensuite créable
+  // normalement. Contexte de navigateur isolé pour ne pas perturber la
+  // carrière en cours testée plus haut.
+  const contexteCorrompu = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const pageCorrompue = await contexteCorrompu.newPage();
+  await pageCorrompue.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  await pageCorrompue.evaluate(() => localStorage.setItem('rugbyManager.club.v1', '{ "version": 2, "clubJoueur": { "nom": "Cassé"'));
+  let messageAvertissement = null;
+  pageCorrompue.once('dialog', (d) => { messageAvertissement = d.message(); d.accept(); });
+  await pageCorrompue.reload({ waitUntil: 'networkidle' });
+  await pageCorrompue.waitForTimeout(300);
+  verifier('sauvegarde corrompue : un avertissement explicite est affiché au joueur (pas un écran vide silencieux)',
+    !!messageAvertissement && messageAvertissement.includes('secours'));
+  verifier('sauvegarde corrompue : l\'écran d\'accueil reste normalement utilisable ensuite', await pageCorrompue.isVisible('#btnAccueilModeClub'));
+  await pageCorrompue.click('#btnAccueilModeClub');
+  await pageCorrompue.waitForTimeout(150);
+  await pageCorrompue.fill('#inputNomClub', 'Nouvelle Apres Corruption');
+  await pageCorrompue.click('#btnCreerClub');
+  await pageCorrompue.waitForTimeout(300);
+  verifier('sauvegarde corrompue : une nouvelle carrière se crée normalement après l\'avertissement', await pageCorrompue.isVisible('[data-volet="dashboard"]'));
+  await contexteCorrompu.close();
 
   verifier('aucune erreur console/page sur tout le parcours', erreursConsole.length === 0);
   if (erreursConsole.length) console.error(erreursConsole.join('\n'));

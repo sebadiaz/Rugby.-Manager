@@ -154,8 +154,26 @@ Statuts possibles : `À FAIRE`, `EN COURS`, `CONFIRMÉ`, `CORRIGÉ`, `FAUX POSIT
 - Régression complète sans échec : `test-invariants.js` 12/12, `test-parcours-club.js` 35/35, `test-monde.js` 14/14, `test-audit-p0-1.js` 4/4, `test-audit-p0-2.js` 6/6, `test-audit-p0-3.js` 8/8.
 
 ### P1-7. Scénarios négatifs (budget insuffisant, effectif incomplet, dernier joueur d'un poste, sauvegarde corrompue, double clic, saison terminée, joueur déjà transféré, action répétée après F5)
-- Statut : À FAIRE
-- Fichiers concernés : `server/test-parcours-club.js`, `server/test-parcours-navigateur.js`
+- **Statut : CORRIGÉ**
+- Priorité : P1 (parcours utilisateur — les gardes existent déjà côté moteur de données, mais n'étaient pas prouvées par un test)
+- Fichiers concernés :
+  - `server/test-parcours-club.js` (nouvelle couverture, couche données)
+  - `server/test-parcours-navigateur.js` (nouvelle couverture, navigateur réel)
+
+**Constat de départ.** Les gardes anti-corruption existent déjà dans `docs/js/club.js` (`signerJoueur`, `approcherJoueurAdverse`, `libererJoueur`, `preterJoueur` retournent tous `{ok:false, motif:...}` sans muter l'état en cas de refus) mais aucun test ne le prouvait pour la plupart des scénarios négatifs demandés — seul "prêter le dernier joueur d'un poste" avait un test dédié. Sans preuve, un refactoring futur pourrait silencieusement casser une de ces gardes sans qu'aucun test n'échoue.
+
+**Correction (nouvelle couverture ajoutée, aucun changement de comportement du jeu — uniquement des tests).**
+- **Budget insuffisant** : `signerJoueur` refusé (motif `budget`, effectif/marché/budget inchangés) ; `approcherJoueurAdverse` refusé pour budget insuffisant, distinct d'un refus pour offre dérisoire (motif `refuse`) déjà couvert — le club adverse ne génère pas non plus de remplaçant dans ce cas.
+- **Dernier joueur d'un poste** : `libererJoueur` refusé (motif `dernier_du_poste`) — jusqu'ici seule la variante `preterJoueur` (prêt) était testée pour cette garde, `libererJoueur` a sa propre garde indépendante jamais exercée.
+- **Joueur déjà transféré/prêté** : `preterJoueur` appelé deux fois sur le même joueur refusé la seconde fois (motif `deja_prete`, pas de double indemnité).
+- **Action répétée / double clic** : `signerJoueur` rejoué deux fois avec le même id de joueur (côté données) — la seconde tentative est refusée (motif `introuvable`, le joueur a déjà quitté le marché), budget débité une seule fois, aucun doublon dans l'effectif. Prouvé aussi dans un VRAI navigateur : deux clics DOM synchrones (même tick, sans repeinture entre les deux — le pire cas réaliste) sur le même bouton "Signer" n'ajoutent qu'un seul exemplaire du joueur à l'effectif.
+- **Saison terminée** : `prochainesFixtures` renvoie `[]` une fois toutes les journées jouées (aucune journée fantôme renvoyée).
+- **Sauvegarde corrompue** : preuve, cette fois dans un VRAI navigateur (pas seulement côté données comme dans P0-2), que l'avertissement de récupération s'affiche réellement au joueur, et qu'une nouvelle carrière reste créable normalement ensuite.
+
+**Critères de validation.**
+- `node server/test-parcours-club.js` : 41/41 (35 existants + 6 nouveaux).
+- `node server/test-parcours-navigateur.js` : 77/77 (72 existants après P1-6 + 5 nouveaux : double clic × 2 assertions, sauvegarde corrompue × 3 assertions).
+- Régression complète sans échec : `test-invariants.js` 12/12, `test-monde.js` 14/14, `test-audit-p0-1.js` 4/4, `test-audit-p0-2.js` 6/6, `test-audit-p0-3.js` 8/8.
 
 ### P1-8. Remplacer progressivement prompt/alert/confirm par des fenêtres intégrées
 - Statut : À FAIRE
@@ -221,3 +239,8 @@ Statuts possibles : `À FAIRE`, `EN COURS`, `CONFIRMÉ`, `CORRIGÉ`, `FAUX POSIT
 - Ajoute : couverture mobile (tiroir de navigation 390×844), retours arrière au clavier (Échap sur fiche joueur, aperçu du match, panneau imbriqué fiche joueur adverse/club adverse), rechargement en milieu d'action (fiche joueur et aperçu du match ouverts pendant un F5).
 - Bug réel trouvé en écrivant le test du panneau imbriqué : Échap sur la fiche d'un joueur adverse fermait aussi le club adverse d'un coup (deux niveaux au lieu d'un), car le gestionnaire clavier de `docs/js/clubUI.js` ne testait jamais `joueurAdversaireAfficheIndex`. Corrigé par une branche dédiée avant celle du club adverse.
 - Tests : `server/test-parcours-navigateur.js` 72/72 (71/72 avant le correctif, confirmé par `git stash`), `test-invariants.js` 12/12, `test-parcours-club.js` 35/35, `test-monde.js` 14/14, `test-audit-p0-1.js` 4/4, `test-audit-p0-2.js` 6/6, `test-audit-p0-3.js` 8/8.
+
+### P1-7 — Scénarios négatifs (budget, dernier joueur d'un poste, double clic, sauvegarde corrompue, saison terminée) — CORRIGÉ
+- Prouve des gardes déjà présentes dans `docs/js/club.js` mais jamais testées : budget insuffisant (`signerJoueur`, `approcherJoueurAdverse`), dernier joueur d'un poste pour `libererJoueur` (distinct de `preterJoueur` déjà couvert), déjà prêté (`preterJoueur` rejoué), action répétée/double clic (`signerJoueur` rejoué, y compris deux clics DOM synchrones dans un vrai navigateur), saison terminée (`prochainesFixtures` vide), et — nouveau côté navigateur — l'avertissement de sauvegarde corrompue (P0-2) réellement affiché à l'écran.
+- Aucun changement de comportement du jeu : uniquement de nouveaux tests sur des gardes déjà correctes.
+- Tests : `server/test-parcours-club.js` 41/41 (35+6), `server/test-parcours-navigateur.js` 77/77 (72+5). Régression : `test-invariants.js` 12/12, `test-monde.js` 14/14, `test-audit-p0-1.js` 4/4, `test-audit-p0-2.js` 6/6, `test-audit-p0-3.js` 8/8.

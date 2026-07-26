@@ -135,6 +135,100 @@ test('transfert international : une offre acceptée débite le budget, transfèr
   assert.strictEqual(RMClub.validerComposition(compo).length, 0, 'le joueur transféré reste utilisable en composition');
 });
 
+// --- 4c) Scénarios négatifs (TODO_AUDIT.md P1-7) : budget insuffisant,
+// dernier joueur d'un poste, joueur déjà transféré/prêté, action répétée
+// (double clic / rejouée) — chaque garde doit refuser proprement, sans
+// aucun effet de bord (budget/effectif inchangés), plutôt que planter ou
+// corrompre silencieusement l'état de la carrière. ---
+test('recrutement : signer un joueur du marché est refusé si le budget est insuffisant (aucun effet de bord)', () => {
+  const c = saison.clubJoueur;
+  const cible = saison.marche[0];
+  const budgetAvant = (c.budget = 0); // budget insuffisant, quel que soit le prix du joueur
+  const avantEffectif = c.effectif.length, avantMarche = saison.marche.length;
+  const res = RMClub.signerJoueur(saison, cible.id);
+  assert.strictEqual(res.ok, false);
+  assert.strictEqual(res.motif, 'budget');
+  assert.strictEqual(c.budget, budgetAvant, 'un refus ne doit jamais débiter le budget');
+  assert.strictEqual(c.effectif.length, avantEffectif, 'un refus ne doit jamais ajouter le joueur à l\'effectif');
+  assert.strictEqual(saison.marche.length, avantMarche, 'un refus ne doit jamais retirer le joueur du marché');
+  assert.ok(saison.marche.some((j) => j.id === cible.id), 'le joueur refusé doit rester disponible sur le marché');
+  c.budget = 100000; // restaure un budget confortable pour la suite des tests
+});
+
+test('transfert international : une offre est refusée pour budget insuffisant, distinct d\'un refus pour prix trop bas', () => {
+  const adv = saison.adversaires[2];
+  const budgetAvant = (saison.clubJoueur.budget = 5);
+  const avantMoi = saison.clubJoueur.effectif.length, avantAdv = adv.effectif.length;
+  // Offre largement supérieure au budget disponible (donc pas "dérisoire" :
+  // le refus doit venir du budget, pas d'un tirage de probabilité d'acceptation).
+  const res = RMClub.approcherJoueurAdverse(() => 0.01, saison, adv.id, 3, 500);
+  assert.strictEqual(res.ok, false);
+  assert.strictEqual(res.motif, 'budget');
+  assert.strictEqual(saison.clubJoueur.budget, budgetAvant);
+  assert.strictEqual(saison.clubJoueur.effectif.length, avantMoi);
+  assert.strictEqual(adv.effectif.length, avantAdv, 'le club adverse ne doit pas générer de remplaçant pour une offre refusée côté budget');
+  saison.clubJoueur.budget = 100000;
+});
+
+test('effectif : libérer le dernier joueur disponible à un poste est refusé (rendrait la composition invalide)', () => {
+  const c = saison.clubJoueur;
+  const poste = c.effectif[0].poste;
+  const memePoste = c.effectif.filter((j) => j.poste === poste);
+  for (const j of memePoste.slice(1)) RMClub.libererJoueur(saison, j.id);
+  const dernier = c.effectif.filter((j) => j.poste === poste);
+  assert.strictEqual(dernier.length, 1, 'scénario de test : un seul joueur restant à ce poste');
+  const avantEffectif = c.effectif.length;
+  const refus = RMClub.libererJoueur(saison, dernier[0].id);
+  assert.strictEqual(refus.ok, false);
+  assert.strictEqual(refus.motif, 'dernier_du_poste');
+  assert.strictEqual(c.effectif.length, avantEffectif, 'le dernier joueur du poste doit rester dans l\'effectif après le refus');
+});
+
+test('prêt : prêter un joueur déjà prêté est refusé (pas de double prêt / double indemnité)', () => {
+  const c = saison.clubJoueur;
+  const poste = c.effectif.find((j) => j.poste === 'pilier' && !j.pret) ? 'pilier' : c.effectif[1].poste;
+  const candidats = c.effectif.filter((j) => j.poste === poste && !j.pret);
+  if (candidats.length < 2) return; // scénario non applicable après les libérations du test précédent
+  const joueur = candidats[0];
+  const premierPret = RMClub.preterJoueur(saison, joueur.id, 3);
+  assert.strictEqual(premierPret.ok, true);
+  const budgetApresPremierPret = c.budget;
+  const rePret = RMClub.preterJoueur(saison, joueur.id, 3);
+  assert.strictEqual(rePret.ok, false);
+  assert.strictEqual(rePret.motif, 'deja_prete');
+  assert.strictEqual(c.budget, budgetApresPremierPret, 'un second prêt refusé ne doit pas générer une seconde indemnité');
+  RMClub.rappelerJoueur(saison, joueur.id); // remet le joueur à disposition pour la suite des tests
+});
+
+test('recrutement : signer deux fois le même joueur du marché (double clic / action répétée) ne débite le budget qu\'une seule fois', () => {
+  const c = saison.clubJoueur;
+  c.budget = 100000;
+  const cible = saison.marche[0];
+  const budgetAvant = c.budget;
+  const premiereSignature = RMClub.signerJoueur(saison, cible.id);
+  assert.strictEqual(premiereSignature.ok, true);
+  const budgetApresPremiereSignature = c.budget;
+  const occurrencesApresPremiereSignature = c.effectif.filter((j) => j.id === cible.id).length;
+  assert.strictEqual(occurrencesApresPremiereSignature, 1);
+  // Rejoue exactement la même action (ex. double clic avant le rafraîchissement
+  // de la liste, ou nouvel essai après un rechargement qui n'aurait pas
+  // rafraîchi l'affichage du marché) : le joueur n'est plus sur le marché,
+  // le second appel doit être refusé proprement, jamais dupliquer l'effectif
+  // ni débiter le budget une seconde fois.
+  const secondeSignature = RMClub.signerJoueur(saison, cible.id);
+  assert.strictEqual(secondeSignature.ok, false);
+  assert.strictEqual(secondeSignature.motif, 'introuvable');
+  assert.strictEqual(c.budget, budgetApresPremiereSignature, 'la seconde tentative ne doit pas débiter le budget une seconde fois');
+  assert.strictEqual(c.effectif.filter((j) => j.id === cible.id).length, 1, 'le joueur ne doit jamais apparaître deux fois dans l\'effectif');
+  assert.notStrictEqual(budgetAvant, budgetApresPremiereSignature);
+});
+
+test('saison terminée : une fois toutes les journées jouées, aucune prochaine rencontre n\'est renvoyée (pas de journée fantôme)', () => {
+  const calendrierTest = saison.calendrier.map((f) => Object.assign({}, f, { joue: true }));
+  const saisonTerminee = Object.assign({}, saison, { calendrier: calendrierTest });
+  assert.deepStrictEqual(RMClub.prochainesFixtures(saisonTerminee), []);
+});
+
 // --- 5) Progression d'une journée (le match du club du joueur) ---
 test('progression d\'une journée : résultat enregistré, finances/fatigue/moral/entraînement appliqués', () => {
   const c = saison.clubJoueur;
