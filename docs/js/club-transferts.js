@@ -1,0 +1,152 @@
+// Marché des transferts national (Mode Club) — domaine extrait de club.js
+// (TODO_AUDIT.md P2-10, tranche 7) : génération du marché, scouting,
+// signature, libération, favoris.
+//
+// Dépendances externes, restées dans club.js et appelées ici via RMClub.*
+// (même mécanisme de fusion que les tranches précédentes) : choisir,
+// genererJoueurEtendu, estimerValeurTransfert, ajouterMessage,
+// GABARIT_EFFECTIF (nouvelle exportation de club.js pour ce découpage). Le
+// transfert international (approcherJoueurAdverse/
+// convertirJoueurAdverseEnEffectifEtendu) reste dans club.js : il mute
+// directement compteurJoueurId, une variable de module hors de la fermeture
+// de ce fichier — même genre de dépendance cachée que compteurPersonnelId en
+// tranche 1, traité séparément plutôt que forcé ici.
+(function (global) {
+  'use strict';
+
+  // Repérage façon "scouting" FM : un joueur libre n'est d'abord connu
+  // qu'approximativement (connaissance basse, cf. statsApparentes) — un vrai
+  // rapport de scout se précise avec l'investissement, il ne tombe pas tout
+  // armé avec des statistiques exactes.
+  const COUT_SCOUTING = 8; // k€ par action de repérage
+  const SEUIL_CONNAISSANCE_COMPLETE = 90;
+
+  function genererJoueurLibre(rng, niveauMoyen) {
+    const RMClub = global.RMClub;
+    const poste = RMClub.choisir(rng, RMClub.GABARIT_EFFECTIF);
+    const j = RMClub.genererJoueurEtendu(poste, rng, niveauMoyen);
+    j.prixTransfert = RMClub.estimerValeurTransfert(j.vitesse, j.plaquage, j.age);
+    // Premier repérage : connaissance faible (20-50 %) et incertitude fixe
+    // sur chaque statistique (±15 au max), qui se résorbe avec la connaissance
+    // — cf. statsApparentes. Fixée une fois pour toutes à la génération, pas
+    // recalculée aléatoirement à chaque affichage (sinon le rapport "flotte").
+    j.connaissance = 20 + Math.floor(rng() * 30);
+    j.ecartVitesse = Math.round((rng() * 2 - 1) * 15);
+    j.ecartPlaquage = Math.round((rng() * 2 - 1) * 15);
+    return j;
+  }
+  function genererMarcheTransferts(rng, niveauMoyen, n) {
+    const marche = [];
+    for (let i = 0; i < (n || 6); i++) marche.push(genererJoueurLibre(rng, niveauMoyen));
+    return marche;
+  }
+
+  // Ce que le RAPPORT DE SCOUT affiche pour ce joueur du marché — pas
+  // forcément ses vraies statistiques tant qu'il n'est pas bien connu.
+  // `complet` indique si on peut faire confiance aux valeurs affichées.
+  function statsApparentes(joueur) {
+    const fiabilite = Math.min(1, joueur.connaissance / SEUIL_CONNAISSANCE_COMPLETE);
+    return {
+      vitesse: Math.round(joueur.vitesse - joueur.ecartVitesse * (1 - fiabilite)),
+      plaquage: Math.round(joueur.plaquage - joueur.ecartPlaquage * (1 - fiabilite)),
+      complet: joueur.connaissance >= SEUIL_CONNAISSANCE_COMPLETE,
+    };
+  }
+  // Étoiles (1-5) dérivées du rapport de scout ACTUEL (pas des vraies stats
+  // si le joueur n'est pas encore bien connu) : ce que verrait vraiment un
+  // manager, incertitude comprise.
+  function estimationEtoiles(joueur) {
+    const s = statsApparentes(joueur);
+    const niveau = (s.vitesse + s.plaquage) / 2;
+    return Math.max(1, Math.min(5, Math.round((niveau - 30) / 13)));
+  }
+
+  // Investit dans le repérage d'un joueur du marché : coûte un peu de budget,
+  // fait progresser la connaissance vers un rapport fiable.
+  // Le recruteur (personnel, cf. effetPersonnel) réduit le coût et augmente
+  // le gain de connaissance par action de scouting — sans lui, comportement
+  // historique inchangé (coût plein, +30 de connaissance).
+  function scouterJoueur(saison, joueurId, facteurRecruteur) {
+    const fr = facteurRecruteur != null ? facteurRecruteur : 1;
+    const cout = Math.max(3, Math.round(COUT_SCOUTING / fr));
+    const j = saison.marche.find((x) => x.id === joueurId);
+    if (!j) return { ok: false, motif: 'introuvable' };
+    if (j.connaissance >= 100) return { ok: false, motif: 'deja_complet' };
+    if (saison.clubJoueur.budget < cout) return { ok: false, motif: 'budget' };
+    saison.clubJoueur.budget -= cout;
+    j.connaissance = Math.min(100, j.connaissance + Math.round(30 * fr));
+    return { ok: true, connaissance: j.connaissance, cout };
+  }
+
+  // Prime de signature (Mode Club) : frais d'arrivée réels en plus de
+  // l'indemnité de transfert (agent, prime à la signature), proportionnelle
+  // au salaire — un transfert ne coûte pas QUE l'indemnité, comme en vrai.
+  function calculerPrimeSignature(joueur) {
+    return Math.round(joueur.salaire * 0.2);
+  }
+  function signerJoueur(saison, joueurId) {
+    const i = saison.marche.findIndex((j) => j.id === joueurId);
+    if (i === -1) return { ok: false, motif: 'introuvable' };
+    const joueur = saison.marche[i];
+    const primeSignature = calculerPrimeSignature(joueur);
+    const coutTotal = joueur.prixTransfert + primeSignature;
+    if (saison.clubJoueur.budget < coutTotal) return { ok: false, motif: 'budget' };
+    saison.clubJoueur.budget -= coutTotal;
+    // Une fois signé, c'est TON joueur : plus de brouillard de scouting, ses
+    // vraies statistiques s'affichent directement dans l'effectif.
+    delete joueur.connaissance; delete joueur.ecartVitesse; delete joueur.ecartPlaquage;
+    saison.clubJoueur.effectif.push(joueur);
+    saison.marche.splice(i, 1);
+    // Un favori signé n'est plus "à scouter" : retiré de la liste (cf.
+    // basculerFavori) pour ne pas laisser une entrée déjà recrutée dessus.
+    if (saison.favoris) saison.favoris = saison.favoris.filter((j) => j.id !== joueurId);
+    global.RMClub.ajouterMessage(saison, 'transfert', 'Nouveau transfert', `${joueur.nom} rejoint le club (${coutTotal} k€).`);
+    return { ok: true, primeSignature, coutTotal };
+  }
+
+  // Refuse de libérer un joueur si ça viderait complètement son poste (sinon
+  // la composition automatique ne pourrait plus aligner une équipe complète).
+  function libererJoueur(saison, joueurId) {
+    const effectif = saison.clubJoueur.effectif;
+    const joueur = effectif.find((j) => j.id === joueurId);
+    if (!joueur) return { ok: false, motif: 'introuvable' };
+    const memePoste = effectif.filter((j) => j.poste === joueur.poste);
+    if (memePoste.length <= 1) return { ok: false, motif: 'dernier_du_poste' };
+    saison.clubJoueur.effectif = effectif.filter((j) => j.id !== joueurId);
+    // Nettoie toute référence pendante vers ce joueur (composition, banc,
+    // encadrement) : sinon la config moteur ou l'UI pointerait vers un id
+    // qui n'existe plus (cf. completerComposition/completerCompositionBanc,
+    // qui recomposent proprement autour des trous laissés ici).
+    const c = saison.clubJoueur;
+    if (c.capitaineId === joueurId) c.capitaineId = null;
+    if (c.buteurId === joueurId) c.buteurId = null;
+    if (c.lanceurToucheId === joueurId) c.lanceurToucheId = null;
+    for (const compo of [c.compositionTitulaires, c.compositionBanc]) {
+      if (!compo) continue;
+      for (const numero of Object.keys(compo)) {
+        if (compo[numero] === joueurId) delete compo[numero];
+      }
+    }
+    global.RMClub.ajouterMessage(saison, 'transfert', 'Départ libre', `${joueur.nom} quitte le club librement.`);
+    return { ok: true };
+  }
+
+  // Centre de scouting : liste de favoris (Mode Club) — les entrées du
+  // marché sont régénérées à chaque rafraîchissement, donc un favori est une
+  // COPIE conservée indépendamment (jamais une simple référence qui
+  // disparaîtrait au prochain "Rafraîchir"). Nettoyé automatiquement si le
+  // joueur est finalement signé (cf. signerJoueur).
+  function basculerFavori(saison, joueur) {
+    if (!saison.favoris) saison.favoris = [];
+    const idx = saison.favoris.findIndex((j) => j.id === joueur.id);
+    if (idx >= 0) { saison.favoris.splice(idx, 1); return { ok: true, favori: false }; }
+    saison.favoris.push(joueur);
+    return { ok: true, favori: true };
+  }
+
+  global.RMClub = Object.assign(global.RMClub || {}, {
+    genererJoueurLibre, genererMarcheTransferts,
+    statsApparentes, estimationEtoiles, scouterJoueur, COUT_SCOUTING,
+    calculerPrimeSignature, signerJoueur, libererJoueur, basculerFavori,
+  });
+})(window);
