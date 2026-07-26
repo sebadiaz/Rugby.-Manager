@@ -108,7 +108,7 @@ Statuts possibles : `À FAIRE`, `EN COURS`, `CONFIRMÉ`, `CORRIGÉ`, `FAUX POSIT
 - Toutes les commandes du job `test` ré-exécutées localement avant push (mêmes commandes, même environnement) : `test-invariants.js` 12/12, `test-parcours-club.js` 35/35, `test-monde.js` 14/14, `test-audit-p0-1.js` 4/4, `test-audit-p0-2.js` 6/6, `test-parcours-navigateur.js` 55/55, `test-audit-p0-3.js` 8/8.
 
 ### P0-5. Site publié différent du code source (docs/ vs main vs GitHub Pages, Équipe B / Monde)
-- **Statut : CONFIRMÉ (correction en attente d'arbitrage — voir note)**
+- **Statut : CORRIGÉ**
 - Priorité : P0 (fiabilité — le site public peut régresser silencieusement)
 - Fichiers concernés :
   - `.github/workflows/deploy-pages.yml` (cause)
@@ -123,7 +123,11 @@ Statuts possibles : `À FAIRE`, `EN COURS`, `CONFIRMÉ`, `CORRIGÉ`, `FAUX POSIT
 
 **Cause.** Le workflow de déploiement a été créé dès l'origine (commit `189f054`, avant cette série d'audits) avec deux branches déclenchantes sur la même cible de déploiement, sans mécanisme empêchant qu'une branche en retard écrase silencieusement une branche plus avancée.
 
-**Correction envisagée (nécessite un arbitrage utilisateur, hors du périmètre que je peux décider seul) :** la branche `claude/readme-details-6aj3jt` étant un simple prolongement de `main` sans aucune divergence (fast-forward possible sans conflit), la correction structurelle consiste à faire avancer `main` jusqu'à `claude/readme-details-6aj3jt` (ou à retirer `main` du déclencheur en attendant). Cette action pousse vers une branche différente de celle assignée pour ce travail (`claude/readme-details-6aj3jt`) : conformément à la consigne "ne jamais pousser vers une autre branche sans autorisation explicite", je ne l'exécute pas sans confirmation.
+**Correction.** La branche `claude/readme-details-6aj3jt` étant un simple prolongement de `main` sans aucune divergence, l'utilisateur a explicitement autorisé un fast-forward de `main` vers cette branche (action hors du périmètre "ne jamais pousser vers une autre branche sans autorisation explicite" que je ne pouvais pas décider seul). Exécuté : `git push origin claude/readme-details-6aj3jt:main` (sans `--force`, donc refusé par git lui-même si ç'avait été autre chose qu'un fast-forward) — `main` est passé de `59a9f7f` à `a92ec0f`, désormais strictement identique à la branche de travail : Monde/Équipe B et tous les correctifs P0-1 à P0-4 (dont le garde-fou CI) sont maintenant présents sur `main`.
+
+**Critères de validation.**
+- `git rev-parse origin/main` == `git rev-parse claude/readme-details-6aj3jt` après le push (`a92ec0f` des deux côtés) : confirmé.
+- Ce fast-forward a lui-même déclenché un déploiement réel sur `main` — vérifié via l'API GitHub Actions que le NOUVEAU garde-fou (job `test`, désormais présent sur `main`) s'est exécuté et a réussi avant que `deploy` ne démarre : run [30189945183](https://github.com/sebadiaz/Rugby.-Manager/actions/runs/30189945183) — job `test` 05:47:12→05:50:38 (succès, 5 étapes de test toutes vertes), job `deploy` démarré seulement à 05:50:44 et terminé avec succès à 05:50:59. Preuve que le site publié, `main` et la branche de travail sont maintenant un seul et même état, protégé par les tests.
 
 ---
 
@@ -191,3 +195,8 @@ Statuts possibles : `À FAIRE`, `EN COURS`, `CONFIRMÉ`, `CORRIGÉ`, `FAUX POSIT
 - Reproduit par lecture de `.github/workflows/deploy-pages.yml` : un seul job, aucune étape n'exécutait le moindre test avant déploiement sur `push`.
 - Corrigé en ajoutant un job `test` (moteur/données puis navigateur via Chromium/Playwright) dont dépend désormais le job `deploy` (`needs: test`) — un test en échec bloque le déploiement.
 - Validation : toutes les commandes du job `test` exécutées localement (`test-invariants.js` 12/12, `test-parcours-club.js` 35/35, `test-monde.js` 14/14, `test-audit-p0-1.js` 4/4, `test-audit-p0-2.js` 6/6, `test-parcours-navigateur.js` 55/55, `test-audit-p0-3.js` 8/8), puis confirmation sur GitHub Actions après push.
+
+### P0-5 — Site publié différent du code source (main en retard) — CORRIGÉ
+- Reproduit par comparaison réelle `main` vs `claude/readme-details-6aj3jt` : `main` en retard de 10 commits (ancêtre strict, aucune divergence), sans `docs/js/world.js` (Monde/Équipe B) ni les correctifs P0-1 à P0-4 — un simple push vers `main` aurait republié le site en arrière, sans aucun test (l'ancienne version non gardée du workflow était encore sur `main`).
+- Corrigé, avec autorisation explicite de l'utilisateur, par un fast-forward de `main` vers `claude/readme-details-6aj3jt` (`59a9f7f` → `a92ec0f`, sans `--force` : refusé par git si ç'avait été autre chose qu'un fast-forward).
+- Validation : `main` et la branche de travail strictement identiques après le push ; le déploiement déclenché sur `main` par ce push a lui-même exécuté avec succès le nouveau job `test` (garde-fou P0-4) avant `deploy` — run [30189945183](https://github.com/sebadiaz/Rugby.-Manager/actions/runs/30189945183).
