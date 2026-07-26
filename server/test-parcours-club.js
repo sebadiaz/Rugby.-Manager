@@ -25,6 +25,7 @@ new Function('window', require('fs').readFileSync(require('path').join(__dirname
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-personnel.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-objectif.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-analyse.js'), 'utf8'))(global.window);
+new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-prets.js'), 'utf8'))(global.window);
 const RMClub = global.window.RMClub;
 
 function creerRng(graine) {
@@ -676,6 +677,7 @@ const clubSrcPourRechargement = require('fs').readFileSync(require('path').join(
 const clubPersonnelSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-personnel.js'), 'utf8');
 const clubObjectifSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-objectif.js'), 'utf8');
 const clubAnalyseSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-analyse.js'), 'utf8');
+const clubPretsSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-prets.js'), 'utf8');
 function chargerInstanceFraicheClub() {
   const ctx = {};
   ctx.window = ctx;
@@ -684,6 +686,7 @@ function chargerInstanceFraicheClub() {
   new Function('window', clubPersonnelSrcPourRechargement)(ctx);
   new Function('window', clubObjectifSrcPourRechargement)(ctx);
   new Function('window', clubAnalyseSrcPourRechargement)(ctx);
+  new Function('window', clubPretsSrcPourRechargement)(ctx);
   return ctx.RMClub;
 }
 

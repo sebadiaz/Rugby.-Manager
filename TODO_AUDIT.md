@@ -230,13 +230,13 @@ Après CHAQUE rechargement (48 fois), 4 catégories d'invariants sont vérifiée
 ## P2 — Maintenabilité et simulation
 
 ### P2-10. Découper club.js et clubUI.js par domaine (sans changement de comportement)
-- **Statut : EN COURS (tranche 1 : Personnel, tranche 2 : Objectif de saison, tranche 3 : Analyse adversaire — voir constat de risque et tranches suivantes ci-dessous)**
+- **Statut : EN COURS (tranche 1 : Personnel, tranche 2 : Objectif de saison, tranche 3 : Analyse adversaire, tranche 4 : Prêts — voir constat de risque et tranches suivantes ci-dessous)**
 - Priorité : P2 (maintenabilité — explicitement demandée par l'utilisateur malgré la tension avec la règle CLAUDE.md "jamais un patch purement technique si le gameplay ne s'améliore pas visiblement")
 - Fichiers concernés :
-  - `docs/js/club.js` (export fusionné, deux aides génériques exposées, trois domaines retirés)
-  - `docs/js/club-personnel.js`, `docs/js/club-objectif.js`, `docs/js/club-analyse.js` (nouveaux — domaines extraits)
+  - `docs/js/club.js` (export fusionné, deux aides génériques exposées, quatre domaines retirés)
+  - `docs/js/club-personnel.js`, `docs/js/club-objectif.js`, `docs/js/club-analyse.js`, `docs/js/club-prets.js` (nouveaux — domaines extraits)
   - `docs/index.html` (nouvelles balises `<script>`)
-  - `server/test-parcours-club.js`, `server/test-monde.js`, `server/test-audit-p0-1.js`, `server/test-audit-p0-2.js` (chargent club.js "à la main" pour leurs tests — doivent désormais charger aussi club-personnel.js, club-objectif.js et club-analyse.js)
+  - `server/test-parcours-club.js`, `server/test-monde.js`, `server/test-audit-p0-1.js`, `server/test-audit-p0-2.js` (chargent club.js "à la main" pour leurs tests — doivent désormais charger aussi les 4 fichiers extraits)
 
 **Constat de risque (avant de commencer).** `club.js`/`clubUI.js` sont chacun UNE SEULE fermeture JS (`(function(){...})(window)`) où ~150 fonctions et de nombreuses constantes s'appellent entre elles par identifiant nu (pas via `RMClub.xxx()`), sans outil de bundling ni linter pour vérifier automatiquement qu'aucune référence n'est oubliée après un déplacement — seuls les tests (solides mais pas exhaustifs) peuvent le détecter. Un découpage complet en un seul patch serait donc une vraie "grosse refonte" à haut risque. Décidé avec l'utilisateur : découpage réel, mais domaine par domaine, avec la suite de tests complète relancée à chaque tranche (même approche que P1-8).
 
@@ -257,7 +257,11 @@ Après CHAQUE rechargement (48 fois), 4 catégories d'invariants sont vérifiée
 **Tranche 3 — Analyse du prochain adversaire.** `POSTES_AVANTS`, `moyenneAttribut`, `ATTRIBUTS_ANALYSE`, `analyserAdversaire` déplacés vers un nouveau `docs/js/club-analyse.js`. Domaine autonome à l'exception de deux fonctions du domaine calendrier/classement, restées dans `club.js` (`club`, `classementTrie`), appelées depuis le nouveau fichier via `RMClub.*` — dépendance identifiée et vérifiée avant de couper (pas une surprise comme la tranche 1), aucun état de module à resynchroniser.
 - Suite complète relancée sans aucune régression : `test-parcours-club.js` 42/42, `test-monde.js` 14/14, `test-audit-p0-1.js` 4/4, `test-audit-p0-2.js` 6/6, `test-invariants.js` 12/12, `test-parcours-navigateur.js` 86/86 (fiche du club adverse, analyse comparative incluse), `test-audit-p0-3.js` 8/8.
 
-**Domaines restants (tranches suivantes possibles, non commencées).** Génération de base des joueurs/effectifs, transferts internationaux, génération de club/pyramide, composition/tactique, fatigue/moral/entraînement/blessures, marché des transferts, prêts, contrats, Équipe B, calendrier/classement, messages, sauvegarde/migration — chacun avec ses propres dépendances croisées à vérifier avant de couper, comme pour les tranches précédentes. `clubUI.js` (rendu) n'a pas encore été commencé.
+**Tranche 4 — Prêts.** `preterJoueur`, `rappelerJoueur`, `progresserPrets` déplacés vers un nouveau `docs/js/club-prets.js`. Aucun appelant interne à `club.js` (uniquement consommé depuis `clubUI.js`, déjà namespacé) ; une seule dépendance externe (`ajouterMessage`, resté dans `club.js`), appelée via `RMClub.*`.
+- Note de méthode : `ajouterMessage` lui-même (18 points d'appel dans tout le fichier, dans quasiment tous les domaines) est délibérément resté dans `club.js`, traité comme une utilité "cœur" partagée plutôt qu'un domaine à extraire — l'extraire forcerait à toucher la quasi-totalité des domaines restants d'un coup, contrairement à l'esprit "petites tranches" de ce découpage.
+- Suite complète relancée sans aucune régression : `test-parcours-club.js` 42/42, `test-monde.js` 14/14, `test-audit-p0-1.js` 4/4, `test-audit-p0-2.js` 6/6, `test-invariants.js` 12/12, `test-parcours-navigateur.js` 86/86, `test-audit-p0-3.js` 8/8.
+
+**Domaines restants (tranches suivantes possibles, non commencées).** Génération de base des joueurs/effectifs, transferts internationaux, génération de club/pyramide, composition/tactique, fatigue/moral/entraînement/blessures, marché des transferts, contrats, Équipe B, calendrier/classement, sauvegarde/migration — chacun avec ses propres dépendances croisées à vérifier avant de couper, comme pour les tranches précédentes. `clubUI.js` (rendu) n'a pas encore été commencé.
 
 ### P2-11. Tests statistiques sur plusieurs centaines de matchs (scores, essais, rucks, mêlées, touches, coups de pied, pénalités, possession, diversité)
 - Statut : À FAIRE
@@ -345,3 +349,8 @@ Après CHAQUE rechargement (48 fois), 4 catégories d'invariants sont vérifiée
 - Nouveau `docs/js/club-analyse.js` : `POSTES_AVANTS`, `moyenneAttribut`, `ATTRIBUTS_ANALYSE`, `analyserAdversaire`.
 - Domaine autonome à l'exception de deux fonctions du domaine calendrier/classement (`club`, `classementTrie`), restées dans `club.js`, appelées via `RMClub.*` — dépendance identifiée et vérifiée avant de couper, pas une surprise comme la tranche 1 (aucun état de module ici).
 - Tests (suite complète) : `test-parcours-club.js` 42/42, `test-monde.js` 14/14, `test-audit-p0-1.js` 4/4, `test-audit-p0-2.js` 6/6, `test-invariants.js` 12/12, `test-parcours-navigateur.js` 86/86 (fiche du club adverse, analyse comparative), `test-audit-p0-3.js` 8/8.
+
+### P2-10 — Découpage de club.js par domaine, tranche 4 (Prêts) — EN COURS
+- Nouveau `docs/js/club-prets.js` : `preterJoueur`, `rappelerJoueur`, `progresserPrets`.
+- Aucun appelant interne à `club.js`, une seule dépendance externe (`ajouterMessage`) appelée via `RMClub.*`. `ajouterMessage` lui-même reste délibérément dans `club.js` (18 points d'appel dans presque tous les domaines) — extrait, il forcerait à toucher la quasi-totalité du fichier d'un coup, contrairement à l'esprit "petites tranches".
+- Tests (suite complète) : `test-parcours-club.js` 42/42, `test-monde.js` 14/14, `test-audit-p0-1.js` 4/4, `test-audit-p0-2.js` 6/6, `test-invariants.js` 12/12, `test-parcours-navigateur.js` 86/86, `test-audit-p0-3.js` 8/8.
