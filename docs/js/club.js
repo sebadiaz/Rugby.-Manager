@@ -1258,56 +1258,10 @@
     return { ok: true, favori: true };
   }
 
-  // --- Analyse du prochain adversaire (Mode Club) : moyennes d'attributs
-  // RÉELLES (avants/ensemble de l'effectif) comparées aux tiennes, plus la
-  // forme récente RÉELLE tirée du calendrier — jamais de note fabriquée. ---
-  const POSTES_AVANTS = ['P', 'T', '2L', '3L'];
-  function moyenneAttribut(effectif, attr, postes) {
-    const pool = postes ? effectif.filter((j) => postes.includes(j.poste)) : effectif;
-    if (pool.length === 0) return 0;
-    return Math.round(pool.reduce((s, j) => s + (j[attr] != null ? j[attr] : 60), 0) / pool.length);
-  }
-  const ATTRIBUTS_ANALYSE = [
-    { cle: 'melee', label: 'Mêlée', postes: POSTES_AVANTS },
-    { cle: 'touche', label: 'Touche', postes: POSTES_AVANTS },
-    { cle: 'puissance', label: 'Puissance en contact', postes: null },
-    { cle: 'vitesse', label: 'Vitesse', postes: null },
-    { cle: 'passe', label: 'Jeu de main', postes: null },
-    { cle: 'jeuPied', label: 'Jeu au pied', postes: null },
-    { cle: 'discipline', label: 'Discipline', postes: null },
-  ];
-  // Un analyste vidéo (personnel, cf. effetPersonnel) abaisse le seuil de
-  // détection : il repère des écarts plus fins qu'un manager sans analyste
-  // (seuil par défaut 6 points, comportement historique inchangé sans lui).
-  function analyserAdversaire(saison, clubId, seuilAnalyste) {
-    const adversaire = club(saison, clubId);
-    if (!adversaire) return null;
-    const seuil = seuilAnalyste != null ? seuilAnalyste : 6;
-    const monEffectif = saison.clubJoueur.effectif;
-    const comparaison = ATTRIBUTS_ANALYSE.map((a) => {
-      const moi = moyenneAttribut(monEffectif, a.cle, a.postes);
-      const eux = moyenneAttribut(adversaire.effectif, a.cle, a.postes);
-      return { cle: a.cle, label: a.label, moi, eux, diff: eux - moi };
-    });
-    const forces = comparaison.filter((c) => c.diff >= seuil).sort((a, b) => b.diff - a.diff);
-    const faiblesses = comparaison.filter((c) => c.diff <= -seuil).sort((a, b) => a.diff - b.diff);
-    // Forme récente RÉELLE (5 derniers résultats de cet adversaire, tous
-    // matchs confondus, y compris contre d'autres IA) — jamais fabriquée.
-    const joues = saison.calendrier.filter((f) => f.joue && (f.domicileId === clubId || f.exterieurId === clubId));
-    const forme = joues.slice(-5).map((f) => {
-      const domicile = f.domicileId === clubId;
-      const pour = domicile ? f.score.domicile : f.score.exterieur;
-      const contre = domicile ? f.score.exterieur : f.score.domicile;
-      return pour > contre ? 'v' : pour < contre ? 'd' : 'n';
-    });
-    const classement = classementTrie(saison);
-    const position = classement.findIndex((r) => r.clubId === clubId) + 1;
-    // Historique des confrontations RÉEL contre CE club précis (cf.
-    // enregistrerResultatClubJoueur) — vide tant qu'aucun match ne l'a
-    // opposé au club du joueur, jamais reconstitué après coup.
-    const confrontations = (saison.clubJoueur.historiqueConfrontations || {})[clubId] || [];
-    return { nom: adversaire.nom, comparaison, forces, faiblesses, forme, position, totalClubs: classement.length, confrontations };
-  }
+  // --- Analyse du prochain adversaire : POSTES_AVANTS, moyenneAttribut,
+  // ATTRIBUTS_ANALYSE, analyserAdversaire — déplacés dans
+  // docs/js/club-analyse.js (TODO_AUDIT.md P2-10, tranche 3). Toujours
+  // accessibles via RMClub.*, comportement strictement inchangé. ---
 
   // Calendrier aller-retour complet (méthode du cercle, championnat classique) :
   // TOUS les clubs s'affrontent deux fois chacun (une fois à domicile, une
@@ -1990,7 +1944,7 @@
     accumulerStatsJoueurs, classementMarqueurs,
     calculerOffreRenouvellement, renouvelerContrat, negocierRenouvellement, calculerPrimeSignature,
     assurerCentreFormation, promouvoirJeune, ajouterMessage, nomPalierFrance, TAILLE_DIVISION_FRANCE,
-    basculerFavori, analyserAdversaire,
+    basculerFavori,
     appliquerMoral, preterJoueur, rappelerJoueur, progresserPrets,
     prevoirFinances,
     calculerProgression,
