@@ -230,13 +230,13 @@ Après CHAQUE rechargement (48 fois), 4 catégories d'invariants sont vérifiée
 ## P2 — Maintenabilité et simulation
 
 ### P2-10. Découper club.js et clubUI.js par domaine (sans changement de comportement)
-- **Statut : EN COURS (tranche 1 : Personnel, tranche 2 : Objectif de saison, tranche 3 : Analyse adversaire, tranche 4 : Prêts, tranche 5 : Contrats — voir constat de risque et tranches suivantes ci-dessous)**
+- **Statut : EN COURS (tranche 1 : Personnel, tranche 2 : Objectif de saison, tranche 3 : Analyse adversaire, tranche 4 : Prêts, tranche 5 : Contrats, tranche 6 : Équipe B — voir constat de risque et tranches suivantes ci-dessous)**
 - Priorité : P2 (maintenabilité — explicitement demandée par l'utilisateur malgré la tension avec la règle CLAUDE.md "jamais un patch purement technique si le gameplay ne s'améliore pas visiblement")
 - Fichiers concernés :
-  - `docs/js/club.js` (export fusionné, trois aides génériques exposées, cinq domaines retirés)
-  - `docs/js/club-personnel.js`, `docs/js/club-objectif.js`, `docs/js/club-analyse.js`, `docs/js/club-prets.js`, `docs/js/club-contrats.js` (nouveaux — domaines extraits)
+  - `docs/js/club.js` (export fusionné, trois aides génériques exposées, six domaines retirés)
+  - `docs/js/club-personnel.js`, `docs/js/club-objectif.js`, `docs/js/club-analyse.js`, `docs/js/club-prets.js`, `docs/js/club-contrats.js`, `docs/js/club-equipe-b.js` (nouveaux — domaines extraits)
   - `docs/index.html` (nouvelles balises `<script>`)
-  - `server/test-parcours-club.js`, `server/test-monde.js`, `server/test-audit-p0-1.js`, `server/test-audit-p0-2.js` (chargent club.js "à la main" pour leurs tests — doivent désormais charger aussi les 5 fichiers extraits)
+  - `server/test-parcours-club.js`, `server/test-monde.js`, `server/test-audit-p0-1.js`, `server/test-audit-p0-2.js` (chargent club.js "à la main" pour leurs tests — doivent désormais charger aussi les 6 fichiers extraits)
 
 **Constat de risque (avant de commencer).** `club.js`/`clubUI.js` sont chacun UNE SEULE fermeture JS (`(function(){...})(window)`) où ~150 fonctions et de nombreuses constantes s'appellent entre elles par identifiant nu (pas via `RMClub.xxx()`), sans outil de bundling ni linter pour vérifier automatiquement qu'aucune référence n'est oubliée après un déplacement — seuls les tests (solides mais pas exhaustifs) peuvent le détecter. Un découpage complet en un seul patch serait donc une vraie "grosse refonte" à haut risque. Décidé avec l'utilisateur : découpage réel, mais domaine par domaine, avec la suite de tests complète relancée à chaque tranche (même approche que P1-8).
 
@@ -265,7 +265,10 @@ Après CHAQUE rechargement (48 fois), 4 catégories d'invariants sont vérifiée
 - Note : `calculerPrimeSignature` (adjacente dans l'ancien export mais utilisée par `signerJoueur`, domaine "marché des transferts" pas encore extrait) est délibérément restée dans `club.js` — ce n'est pas le même domaine malgré la proximité dans le code.
 - Suite complète relancée sans aucune régression : `test-parcours-club.js` 42/42, `test-monde.js` 14/14, `test-audit-p0-1.js` 4/4, `test-audit-p0-2.js` 6/6, `test-invariants.js` 12/12, `test-parcours-navigateur.js` 86/86 (les deux tests "négociation de contrat"), `test-audit-p0-3.js` 8/8.
 
-**Domaines restants (tranches suivantes possibles, non commencées).** Génération de base des joueurs/effectifs, transferts internationaux (marché + international), génération de club/pyramide, composition/tactique, fatigue/moral/entraînement/blessures, Équipe B, calendrier/classement, sauvegarde/migration — chacun avec ses propres dépendances croisées à vérifier avant de couper, comme pour les tranches précédentes. `clubUI.js` (rendu) n'a pas encore été commencé.
+**Tranche 6 — Équipe B.** `determinerEligiblesEquipeB`, `genererCompetitionB`, `assurerCompetitionB`, `enregistrerResultatEquipeB`, `prochaineRondeEquipeB`, `effectifDisponiblePourEquipeB`, `appliquerEffetsMatchEquipeB` déplacés vers un nouveau `docs/js/club-equipe-b.js`. Dépend de 3 fonctions du domaine calendrier/classement déjà exportées (`genererCalendrier`, `classementInitial`, `enregistrerResultatDans`) — aucune nouvelle aide générique à exporter, aucun état de module. 2 points d'appel externes (`avancerSaison`, `nouvelleSaison`) adaptés pour passer par `RMClub.genererCompetitionB`.
+- Suite complète relancée sans aucune régression : `test-parcours-club.js` 42/42, `test-monde.js` 14/14, `test-audit-p0-1.js` 4/4, `test-audit-p0-2.js` 6/6, `test-invariants.js` 12/12, `test-parcours-navigateur.js` 86/86 (les 5 tests "équipe B"), `test-audit-p0-3.js` 8/8.
+
+**Domaines restants (tranches suivantes possibles, non commencées).** Génération de base des joueurs/effectifs, transferts internationaux (marché + international), génération de club/pyramide, composition/tactique, fatigue/moral/entraînement/blessures, calendrier/classement, sauvegarde/migration — chacun avec ses propres dépendances croisées à vérifier avant de couper, comme pour les tranches précédentes. `clubUI.js` (rendu) n'a pas encore été commencé.
 
 ### P2-11. Tests statistiques sur plusieurs centaines de matchs (scores, essais, rucks, mêlées, touches, coups de pied, pénalités, possession, diversité)
 - Statut : À FAIRE
@@ -364,3 +367,8 @@ Après CHAQUE rechargement (48 fois), 4 catégories d'invariants sont vérifiée
 - Aucun appelant interne à `club.js`. Nouvelle aide générique exportée : `calculerSalaire` (formule salariale, aussi utilisée par plusieurs fonctions de génération de joueurs restées dans `club.js`).
 - `calculerPrimeSignature` (adjacente dans l'ancien code mais utilisée par `signerJoueur`, domaine marché des transferts pas encore extrait) délibérément restée dans `club.js` — pas le même domaine malgré la proximité.
 - Tests (suite complète) : `test-parcours-club.js` 42/42, `test-monde.js` 14/14, `test-audit-p0-1.js` 4/4, `test-audit-p0-2.js` 6/6, `test-invariants.js` 12/12, `test-parcours-navigateur.js` 86/86 (négociation de contrat), `test-audit-p0-3.js` 8/8.
+
+### P2-10 — Découpage de club.js par domaine, tranche 6 (Équipe B) — EN COURS
+- Nouveau `docs/js/club-equipe-b.js` : `determinerEligiblesEquipeB`, `genererCompetitionB`, `assurerCompetitionB`, `enregistrerResultatEquipeB`, `prochaineRondeEquipeB`, `effectifDisponiblePourEquipeB`, `appliquerEffetsMatchEquipeB`.
+- Dépend de 3 fonctions calendrier/classement déjà exportées (`genererCalendrier`, `classementInitial`, `enregistrerResultatDans`) — rien à exporter en plus, aucun état de module. 2 points d'appel externes (`avancerSaison`, `nouvelleSaison`) adaptés.
+- Tests (suite complète) : `test-parcours-club.js` 42/42, `test-monde.js` 14/14, `test-audit-p0-1.js` 4/4, `test-audit-p0-2.js` 6/6, `test-invariants.js` 12/12, `test-parcours-navigateur.js` 86/86 (les 5 tests "équipe B"), `test-audit-p0-3.js` 8/8.
