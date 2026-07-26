@@ -226,61 +226,18 @@
   // module) : accèdent maintenant à RMClub.genererProchainIdJoueur(). ---
 
   let compteurId = 1;
-  function genererClub(rng, { nom, niveauClub = 0.5 } = {}) {
-    return {
-      id: 'club' + (compteurId++),
-      nom: nom || genererNomClub(rng),
-      couleur: choisir(rng, COULEURS),
-      niveauClub,
-      effectif: genererEffectif(rng, niveauClub),
-      // Budget estimé (rapport de scouting) : même formule que le budget de
-      // départ du club du joueur — régénéré avec l'effectif à chaque saison
-      // (cf. avancerSaison), jamais un chiffre suivi match par match.
-      budget: budgetInitial(niveauClub, rng),
-    };
-  }
+  // Génère le prochain id de club ('club1', 'club2'...) — exporté pour que
+  // des domaines extraits hors de club.js (ex. docs/js/club-pyramide.js)
+  // puissent créer un club avec un id valide sans muter directement
+  // compteurId, une variable de module hors de leur fermeture (même logique
+  // que genererProchainIdJoueur pour compteurJoueurId).
+  function genererProchainIdClub() { return 'club' + compteurId++; }
 
-  // Budget de départ (k€, fictif) : les clubs plus huppés démarrent avec plus
-  // de moyens — cohérent avec le niveauClub qui pilote déjà leur force sportive.
-  function budgetInitial(niveauClub, rng) {
-    return Math.round(150 + niveauClub * 500 + rng() * 100);
-  }
-
-  // --- Pyramide française (Mode Club) : le club du joueur DÉBUTE en petite
-  // division et peut progresser réellement (montée/descente selon le
-  // classement final, cf. avancerSaison) jusqu'à la plus haute — même
-  // principe de pyramide à 3 niveaux que l'écosystème mondial (cf.
-  // docs/js/world.js), dupliqué ici en tout petit pour que club.js reste
-  // autonome (aucune dépendance à world.js, qui lui dépend de club.js). ---
-  const PALIERS_PYRAMIDE_FRANCE = {
-    1: 'Ligue d\'Excellence', 2: 'Ligue Nationale', 3: 'Ligue Régionale',
-  };
-  function nomPalierFrance(niveau) { return PALIERS_PYRAMIDE_FRANCE[niveau] || 'Ligue Régionale'; }
-  // Taille RÉELLE de chaque division française (cf. docs/js/world.js, mêmes
-  // chiffres) — le club du joueur occupe UNE de ces places, le reste est
-  // composé d'adversaires IA (donc TAILLE_DIVISION_FRANCE[niveau] - 1
-  // adversaires). Toujours un nombre PAIR au total : genererCalendrier
-  // suppose un appariement par paires, sans "bye".
-  const TAILLE_DIVISION_FRANCE = { 1: 14, 2: 16, 3: 14 };
-  // Bande de niveau (0-1) des clubs qu'on affronte à ce palier — plus la
-  // division est basse, plus l'opposition (et le club du joueur lui-même,
-  // cf. nouvelleSaison) est modeste.
-  function bandeNiveauPalier(niveau) {
-    if (niveau <= 1) return { min: 0.55, max: 0.85 };
-    if (niveau === 2) return { min: 0.35, max: 0.6 };
-    return { min: 0.15, max: 0.45 };
-  }
-  // `n` niveaux d'adversaires étalés sur toute la bande du palier (comme le
-  // tirage [0.25, 0.4, 0.5, 0.6, 0.75] historique à 5 adversaires, mais
-  // recentré sur la bande de CE palier et étalé sur autant d'adversaires que
-  // la vraie taille de division l'exige) — jamais des clones du même niveau.
-  function niveauxAdversairesPourPalier(niveau, n) {
-    const bande = bandeNiveauPalier(niveau);
-    const nb = n || (TAILLE_DIVISION_FRANCE[niveau] - 1);
-    const niveaux = [];
-    for (let i = 0; i < nb; i++) niveaux.push(bande.min + (bande.max - bande.min) * (i / Math.max(1, nb - 1)));
-    return niveaux;
-  }
+  // --- Génération d'un club adverse (IA) et pyramide française : genererClub,
+  // budgetInitial, PALIERS_PYRAMIDE_FRANCE, nomPalierFrance,
+  // TAILLE_DIVISION_FRANCE, bandeNiveauPalier, niveauxAdversairesPourPalier —
+  // déplacés dans docs/js/club-pyramide.js (TODO_AUDIT.md P2-10, tranche 13).
+  // Toujours accessibles via RMClub.*, comportement strictement inchangé. ---
 
   // Club du joueur : effectif ÉTENDU (24, avec profondeur) + budget + tactique.
   // C'est le seul club géré en détail (composition, transferts, finances,
@@ -299,7 +256,7 @@
       // genererMarcheTransferts, calibré sur ce même niveauClub) — sans quoi
       // le budget d'un tout petit club ne suivrait jamais le prix, même
       // modeste, d'un joueur libre du même niveau.
-      budget: budgetInitial(niveauClub, rng) + 80,
+      budget: global.RMClub.budgetInitial(niveauClub, rng) + 80,
       // Sponsor : revenu récurrent réel par match (cf. appliquerFinancesMatch).
       // Personnel : organigramme vide au départ, à recruter sur marchePersonnel.
       sponsor: genererSponsor(rng, niveauClub),
@@ -871,10 +828,10 @@
     saison.clubJoueur.palierPyramide = { pays: 'FRA', niveau: nouveauNiveauPalier };
     if (mouvementPalier === 'promotion') {
       ajouterMessage(saison, 'saison', 'Promotion !',
-        `${positionFinale}e place : le club monte en ${nomPalierFrance(nouveauNiveauPalier)} la saison prochaine.`);
+        `${positionFinale}e place : le club monte en ${global.RMClub.nomPalierFrance(nouveauNiveauPalier)} la saison prochaine.`);
     } else if (mouvementPalier === 'relegation') {
       ajouterMessage(saison, 'saison', 'Relégation',
-        `${positionFinale}e place : le club descend en ${nomPalierFrance(nouveauNiveauPalier)} la saison prochaine.`);
+        `${positionFinale}e place : le club descend en ${global.RMClub.nomPalierFrance(nouveauNiveauPalier)} la saison prochaine.`);
     }
     // Qualification européenne (cf. docs/js/world.js, mêmes règles) :
     // seulement possible en jouant CETTE saison en Ligue d'Excellence
@@ -902,13 +859,13 @@
     // couleur, id) persiste dans ce second cas, seul l'effectif est
     // régénéré au nouveau niveau (renouvellement d'effectif normal).
     const adversaires = mouvementPalier
-      ? niveauxAdversairesPourPalier(nouveauNiveauPalier).map((niveauClub) => genererClub(rng, { niveauClub }))
+      ? global.RMClub.niveauxAdversairesPourPalier(nouveauNiveauPalier).map((niveauClub) => global.RMClub.genererClub(rng, { niveauClub }))
       : saison.adversaires.map((ancien) => {
         const rang = classementFinal.findIndex((r) => r.clubId === ancien.id) + 1;
         const total = classementFinal.length;
         const delta = rang <= 2 ? 0.05 : rang >= total - 1 ? -0.05 : 0;
         const niveauClub = Math.max(0.15, Math.min(0.9, (ancien.niveauClub != null ? ancien.niveauClub : 0.5) + delta));
-        return { id: ancien.id, nom: ancien.nom, couleur: ancien.couleur, niveauClub, effectif: genererEffectif(rng, niveauClub), budget: budgetInitial(niveauClub, rng) };
+        return { id: ancien.id, nom: ancien.nom, couleur: ancien.couleur, niveauClub, effectif: genererEffectif(rng, niveauClub), budget: global.RMClub.budgetInitial(niveauClub, rng) };
       });
     saison.adversaires = adversaires;
     const tousLesClubs = [saison.clubJoueur, ...adversaires];
@@ -958,12 +915,12 @@
     // PALIERS_PYRAMIDE_FRANCE) : un petit club modeste, comme les adversaires
     // qu'il affronte à ce palier — la progression vers le sommet se fait
     // ensuite réellement, saison après saison (cf. avancerSaison).
-    const niveauDepart = bandeNiveauPalier(3).min + (bandeNiveauPalier(3).max - bandeNiveauPalier(3).min) * 0.5;
+    const niveauDepart = global.RMClub.bandeNiveauPalier(3).min + (global.RMClub.bandeNiveauPalier(3).max - global.RMClub.bandeNiveauPalier(3).min) * 0.5;
     const clubJoueur = genererClubJoueur(rng, { nom: nomClubJoueur, niveauClub: niveauDepart });
     snapshotAttributsDebutSaison(clubJoueur.effectif);
     const adversaires = [];
-    const niveaux = niveauxAdversairesPourPalier(3); // du plus faible au plus fort, pour ce palier
-    for (const niveauClub of niveaux) adversaires.push(genererClub(rng, { niveauClub }));
+    const niveaux = global.RMClub.niveauxAdversairesPourPalier(3); // du plus faible au plus fort, pour ce palier
+    for (const niveauClub of niveaux) adversaires.push(global.RMClub.genererClub(rng, { niveauClub }));
     const tousLesClubs = [clubJoueur, ...adversaires];
     clubJoueur.objectifSaison = global.RMClub.determinerObjectifSaison(clubJoueur.historiqueSaisons, tousLesClubs.length);
     return {
@@ -1137,7 +1094,7 @@
   // en premier (cf. TODO_AUDIT.md P2-10).
   global.RMClub = Object.assign(global.RMClub || {}, {
     choisir, genererNomJoueur, calculerSalaire,
-    genererNomClub, genererClub, genererEffectif,
+    genererNomClub, genererEffectif, COULEURS, genererProchainIdClub,
     nouvelleSaison, genererCalendrier, classementInitial, enregistrerResultat,
     classementTrie, classementTrieDe, enregistrerResultatDans, prochainesFixtures, club,
     sauvegarderSaison, chargerSaison, effacerSaison,
@@ -1148,7 +1105,7 @@
     AXES_TACTIQUE,
     accumulerStats, enregistrerMouvementFinances,
     accumulerStatsJoueurs, classementMarqueurs,
-    ajouterMessage, nomPalierFrance, TAILLE_DIVISION_FRANCE,
+    ajouterMessage,
     prevoirFinances,
     calculerProgression,
     enregistrerResultatClubJoueur, marquerMessageLu, marquerTousMessagesLus,
