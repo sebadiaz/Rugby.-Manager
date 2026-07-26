@@ -134,8 +134,24 @@ Statuts possibles : `À FAIRE`, `EN COURS`, `CONFIRMÉ`, `CORRIGÉ`, `FAUX POSIT
 ## P1 — Parcours utilisateur
 
 ### P1-6. Étendre le test navigateur (tous écrans, mobile, modales, bouton journée, retours arrière, rechargement en milieu d'action)
-- Statut : À FAIRE
-- Fichiers concernés : `server/test-parcours-navigateur.js`
+- **Statut : CORRIGÉ**
+- Priorité : P1 (parcours utilisateur — couverture de test + un bug réel trouvé en l'écrivant)
+- Fichiers concernés :
+  - `server/test-parcours-navigateur.js` (nouvelle couverture)
+  - `docs/js/clubUI.js` (bug réel trouvé et corrigé pendant l'écriture des tests)
+
+**Constat de départ (gaps de couverture, avant ce patch).** `server/test-parcours-navigateur.js` fixait le viewport à 1280×900 (desktop) sur toute sa durée — **aucun test mobile** malgré un vrai tiroir de navigation mobile dédié (`#btnMenuClub`, `#barreOngletsClub.ouvert`, `#navBackdrop`, cf. `docs/css/style.css` `@media (max-width: 899px)`). Le raccourci clavier Échap (commit "Échap referme les calques ouverts : aperçu du match, tiroir mobile, fiche joueur, panneaux du menu") n'était testé nulle part. Les rechargements existants avaient tous lieu entre deux actions, jamais PENDANT qu'un panneau/modale était ouvert.
+
+**Correction (nouvelle couverture ajoutée).**
+- **Mobile** : viewport basculé à 390×844 pour vérifier que le bouton menu est visible, le tiroir fermé par défaut, s'ouvre au clic, affiche son fond assombri, se referme automatiquement après avoir choisi un onglet, et se referme au clavier (Échap) sans changer d'onglet.
+- **Retours arrière (Échap)** : referme la fiche joueur (son propre effectif), l'aperçu du match (sans lancer le match), et — panneau imbriqué — la fiche d'un joueur adverse ouverte À L'INTÉRIEUR de la fiche du club adverse.
+- **Rechargement en milieu d'action** : recharge la page PENDANT que la fiche joueur est ouverte, puis PENDANT que l'aperçu du match est ouvert — vérifie dans les deux cas un retour propre à l'écran d'accueil (aucun panneau ne reste "fantôme" après reprise de la carrière) et que le panneau reste ensuite normalement réutilisable.
+
+**Bug réel trouvé en écrivant le test "retour arrière (Échap) sur panneau imbriqué".** Reproduit : ouvrir la fiche d'un joueur adverse (imbriquée dans la fiche du club adverse) puis appuyer sur Échap fermait les DEUX niveaux d'un coup (retour direct à la liste des clubs) au lieu de ne fermer que le niveau le plus imbriqué — contrairement au même geste sur sa propre fiche joueur, qui ne referme que la fiche. Cause : le gestionnaire clavier (`docs/js/clubUI.js`, `document.addEventListener('keydown', ...)`) testait `clubAdversaireAffiche` mais jamais `joueurAdversaireAfficheIndex`, donc la branche "fiche joueur adverse" n'existait pas et Échap tombait directement sur la branche "fermer tout le club adverse". Corrigé en ajoutant `if (clubAdversaireAffiche && joueurAdversaireAfficheIndex != null) { fermerFicheJoueurAdversaire(); return; }` avant la branche existante.
+
+**Critères de validation.**
+- `node server/test-parcours-navigateur.js` : 72/72 (contre 71/72 avant le correctif — le test "referme uniquement la fiche du joueur adverse, reste sur la fiche du club adverse" échouait, confirmé par `git stash` sur `docs/js/clubUI.js`).
+- Régression complète sans échec : `test-invariants.js` 12/12, `test-parcours-club.js` 35/35, `test-monde.js` 14/14, `test-audit-p0-1.js` 4/4, `test-audit-p0-2.js` 6/6, `test-audit-p0-3.js` 8/8.
 
 ### P1-7. Scénarios négatifs (budget insuffisant, effectif incomplet, dernier joueur d'un poste, sauvegarde corrompue, double clic, saison terminée, joueur déjà transféré, action répétée après F5)
 - Statut : À FAIRE
@@ -200,3 +216,8 @@ Statuts possibles : `À FAIRE`, `EN COURS`, `CONFIRMÉ`, `CORRIGÉ`, `FAUX POSIT
 - Reproduit par comparaison réelle `main` vs `claude/readme-details-6aj3jt` : `main` en retard de 10 commits (ancêtre strict, aucune divergence), sans `docs/js/world.js` (Monde/Équipe B) ni les correctifs P0-1 à P0-4 — un simple push vers `main` aurait republié le site en arrière, sans aucun test (l'ancienne version non gardée du workflow était encore sur `main`).
 - Corrigé, avec autorisation explicite de l'utilisateur, par un fast-forward de `main` vers `claude/readme-details-6aj3jt` (`59a9f7f` → `a92ec0f`, sans `--force` : refusé par git si ç'avait été autre chose qu'un fast-forward).
 - Validation : `main` et la branche de travail strictement identiques après le push ; le déploiement déclenché sur `main` par ce push a lui-même exécuté avec succès le nouveau job `test` (garde-fou P0-4) avant `deploy` — run [30189945183](https://github.com/sebadiaz/Rugby.-Manager/actions/runs/30189945183).
+
+### P1-6 — Étendre le test navigateur (mobile, retours arrière, rechargement en milieu d'action) — CORRIGÉ
+- Ajoute : couverture mobile (tiroir de navigation 390×844), retours arrière au clavier (Échap sur fiche joueur, aperçu du match, panneau imbriqué fiche joueur adverse/club adverse), rechargement en milieu d'action (fiche joueur et aperçu du match ouverts pendant un F5).
+- Bug réel trouvé en écrivant le test du panneau imbriqué : Échap sur la fiche d'un joueur adverse fermait aussi le club adverse d'un coup (deux niveaux au lieu d'un), car le gestionnaire clavier de `docs/js/clubUI.js` ne testait jamais `joueurAdversaireAfficheIndex`. Corrigé par une branche dédiée avant celle du club adverse.
+- Tests : `server/test-parcours-navigateur.js` 72/72 (71/72 avant le correctif, confirmé par `git stash`), `test-invariants.js` 12/12, `test-parcours-club.js` 35/35, `test-monde.js` 14/14, `test-audit-p0-1.js` 4/4, `test-audit-p0-2.js` 6/6, `test-audit-p0-3.js` 8/8.

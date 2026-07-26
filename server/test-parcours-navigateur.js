@@ -89,6 +89,34 @@ function optionsLancement() {
     verifier(`navigation : l'onglet "${onglet}" s'affiche sans page vide`, visible);
   }
 
+  // 2b) Mobile : le tiroir de navigation (masqué par défaut sur petit écran,
+  // cf. docs/css/style.css) doit s'ouvrir via le bouton menu, permettre de
+  // naviguer, se refermer automatiquement après un choix, et être refermable
+  // au clavier (Échap) sans changer d'onglet.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForTimeout(150);
+  verifier('mobile : le bouton menu (tiroir) est visible sur petit écran', await page.isVisible('#btnMenuClub'));
+  verifier('mobile : le tiroir de navigation est fermé par défaut',
+    !(await page.evaluate(() => document.getElementById('barreOngletsClub').classList.contains('ouvert'))));
+  await page.click('#btnMenuClub');
+  await page.waitForTimeout(150);
+  verifier('mobile : cliquer le bouton menu ouvre le tiroir de navigation',
+    await page.evaluate(() => document.getElementById('barreOngletsClub').classList.contains('ouvert')));
+  verifier('mobile : le fond assombri (backdrop) du tiroir est affiché', await page.isVisible('#navBackdrop'));
+  const ongletAvantEchapTiroir = await page.$eval('.ongletBtn.actif', (el) => el.dataset.onglet);
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(150);
+  const ongletApresEchapTiroir = await page.$eval('.ongletBtn.actif', (el) => el.dataset.onglet);
+  verifier('mobile : Échap referme le tiroir sans changer d\'onglet',
+    !(await page.evaluate(() => document.getElementById('barreOngletsClub').classList.contains('ouvert')))
+    && ongletApresEchapTiroir === ongletAvantEchapTiroir);
+  await clicOnglet('effectif');
+  await page.waitForTimeout(150);
+  verifier('mobile : choisir un onglet dans le tiroir navigue ET referme le tiroir automatiquement',
+    await page.isVisible('[data-volet="effectif"]') && !(await page.evaluate(() => document.getElementById('barreOngletsClub').classList.contains('ouvert'))));
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.waitForTimeout(150);
+
   // 3) Sauvegarde et rechargement.
   await page.reload({ waitUntil: 'networkidle' });
   await page.waitForTimeout(200);
@@ -171,8 +199,31 @@ function optionsLancement() {
   await page.click('#btnRenouveler');
   await page.waitForTimeout(200);
   verifier('négociation de contrat : cliquer "Renouveler" ouvre une invite pour proposer un salaire (pas une simple confirmation)', prompteRenouvellementAffiche);
-  await page.click('#btnFermerFicheJoueur').catch(() => {});
+
+  // 5c) Rechargement en milieu d'action : recharger la page PENDANT que la
+  // fiche joueur est ouverte ne doit jamais laisser le jeu dans un état
+  // cassé (fiche fantôme, effectif introuvable) — aucun état d'ouverture de
+  // panneau n'est persisté, un rechargement retourne toujours à l'écran
+  // d'accueil, qu'il faut ensuite pouvoir retraverser normalement.
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.waitForTimeout(200);
+  verifier('rechargement en milieu d\'action (fiche joueur ouverte) : retour propre à l\'écran d\'accueil', await page.isVisible('#btnContinuerClub'));
+  await page.click('#btnContinuerClub');
+  await page.waitForTimeout(200);
+  verifier('rechargement en milieu d\'action : la carrière reprend sur le Dashboard (pas de fiche fantôme)', await page.isVisible('[data-volet="dashboard"]'));
+
+  // 5d) Retour arrière au clavier (Échap) : referme la fiche joueur sans
+  // passer par son bouton dédié "← Retour à l'effectif" (cf. commit "Échap
+  // referme les calques ouverts").
+  await clicOnglet('effectif');
   await page.waitForTimeout(150);
+  await page.click(`#clubEffectif tr[data-joueur="${idJoueurContratCourt}"]`);
+  await page.waitForTimeout(150);
+  verifier('retour arrière : la fiche joueur est bien ouverte avant le test Échap', await page.isVisible('#clubJoueurDetail'));
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(150);
+  verifier('retour arrière (Échap) : la fiche joueur se referme au clavier, sans cliquer sur "Retour"',
+    !(await page.isVisible('#clubJoueurDetail')) && await page.isVisible('#clubEffectif'));
 
   // 5c) Centre de formation : le vivier d'espoirs est affiché et un espoir
   // peut être promu en équipe première, ce qui l'ajoute réellement à
@@ -204,8 +255,21 @@ function optionsLancement() {
   await page.click('#btnApprocherJoueurAdverse');
   await page.waitForTimeout(200);
   verifier('club adverse : cliquer "Faire une offre" ouvre bien une invite pour le montant', prompteAffiche);
-  await page.click('#btnFermerFicheJoueurAdversaire').catch(() => {});
-  await page.click('#btnFermerClubAdversaire').catch(() => {});
+
+  // 6b) Retour arrière (Échap) sur un panneau imbriqué : la fiche d'un
+  // joueur adverse est ouverte À L'INTÉRIEUR de la fiche du club adverse —
+  // Échap ne doit refermer QUE le niveau le plus imbriqué (comme pour la
+  // fiche joueur de son propre effectif, cf. 5d), pas sauter directement à
+  // la liste des clubs en passant par-dessus le niveau intermédiaire.
+  verifier('retour arrière : la fiche du joueur adverse est bien ouverte avant le test Échap', await page.isVisible('#clubJoueurAdversaireDetail'));
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(150);
+  verifier('retour arrière (Échap) : referme uniquement la fiche du joueur adverse, reste sur la fiche du club adverse',
+    !(await page.isVisible('#clubJoueurAdversaireDetail')) && await page.isVisible('#clubAutresClubDetail'));
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(150);
+  verifier('retour arrière (Échap) : un second Échap referme ensuite la fiche du club adverse, retour à la liste',
+    !(await page.isVisible('#clubAutresClubDetail')) && await page.isVisible('#clubAutresClubsListe'));
 
   // 6b) Équipe B (championnat réservé aux clubs au budget le plus élevé de
   // la ligue) : force un budget confortable (état non exposé par l'UI,
@@ -268,6 +332,29 @@ function optionsLancement() {
   await page.click('#btnApercuMatchFlottant');
   await page.waitForTimeout(150);
   verifier('aperçu du match : réouvrable après un aller-retour composition/tactique', await page.isVisible('#panneauApercuMatch.visible'));
+
+  // Retour arrière (Échap) : referme l'aperçu du match sans lancer le match
+  // ni changer d'onglet (cf. commit "Échap referme les calques ouverts").
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(150);
+  verifier('retour arrière (Échap) : referme l\'aperçu du match sans le lancer',
+    !(await page.isVisible('#panneauApercuMatch.visible')) && !(await page.isVisible('#panneauResultat.visible')));
+
+  // Rechargement en milieu d'action : recharger PENDANT que l'aperçu du
+  // match est ouvert ne doit ni le laisser rouvert malgré lui après le
+  // rechargement, ni empêcher de le rouvrir et de jouer la journée ensuite.
+  await page.click('#btnApercuMatchFlottant');
+  await page.waitForSelector('#panneauApercuMatch.visible', { timeout: 5000 });
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.waitForTimeout(200);
+  verifier('rechargement en milieu d\'action (aperçu du match ouvert) : retour propre à l\'écran d\'accueil', await page.isVisible('#btnContinuerClub'));
+  await page.click('#btnContinuerClub');
+  await page.waitForTimeout(200);
+  verifier('rechargement en milieu d\'action : la carrière reprend sans aperçu du match resté ouvert malgré lui',
+    await page.isVisible('[data-volet="dashboard"]') && !(await page.isVisible('#panneauApercuMatch.visible')));
+  await page.click('#btnApercuMatchFlottant');
+  await page.waitForSelector('#panneauApercuMatch.visible', { timeout: 5000 });
+  verifier('rechargement en milieu d\'action : l\'aperçu du match reste utilisable ensuite (pas de calque bloqué)', await page.isVisible('#panneauApercuMatch.visible'));
 
   await page.click('#btnApercuLancerMatch');
   await page.waitForSelector('#panneauResultat.visible', { timeout: 20000 });

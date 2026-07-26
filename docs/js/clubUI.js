@@ -2043,6 +2043,7 @@
     if (apercu.classList.contains('visible')) { apercu.classList.remove('visible'); return; }
     if (document.getElementById('barreOngletsClub').classList.contains('ouvert')) { fermerTiroirNav(); return; }
     if (joueurAffiche) { fermerFicheJoueur(); return; }
+    if (clubAdversaireAffiche && joueurAdversaireAfficheIndex != null) { fermerFicheJoueurAdversaire(); return; }
     if (clubAdversaireAffiche) { fermerClubAdversaire(); return; }
   });
 
