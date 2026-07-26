@@ -2850,11 +2850,6 @@
           avancer(j, cibleX - j.x, slotY - j.y, dt, vitesseMs(j) * 0.8);
         }
       }
-      // Temps sans aucun soutien d'attaque proche du point de ruck (porteur
-      // isolé au sol, ou soutien arrivé en retard) : accru ce tick si AUCUN
-      // coéquipier n'est venu sécuriser le ballon, jamais réinitialisé tant que
-      // le ruck dure — c'est ce cumul qui pèse sur le risque de turnover/pénalité.
-      if (iSoutien === 0) this.ruckTempsSansSoutien = (this.ruckTempsSansSoutien || 0) + dt;
       const dureeCible = this.ruckDureeCible || 1.8 * this._echelleArret;
       // Le ballon ne SORT du ruck que lorsqu'un partenaire est venu le sécuriser
       // (au moins un coéquipier debout, hors le plaqué, est arrivé sur le ballon
@@ -2865,6 +2860,17 @@
       const eqAtt = this.possession === 'A' ? this.equipeA : this.equipeB;
       const soutienArrive = eqAtt.some(j => j !== this.porteur && j.auSol === 0
         && j.sinBin <= 0 && distance(j, pt) < 2.5);
+      // Temps sans aucun soutien d'attaque RÉELLEMENT ARRIVÉ au ruck (porteur
+      // isolé au sol) : accru ce tick tant que personne n'a encore sécurisé le
+      // ballon, jamais réinitialisé tant que le ruck dure — c'est ce cumul qui
+      // pèse sur le risque de turnover/pénalité. Utilise `soutienArrive` (test
+      // de distance réelle au point de ruck), pas `iSoutien` (qui ne comptait
+      // que les 3 coéquipiers les plus proches DÉSIGNÉS comme soutien dès le
+      // premier tick, même à 10-15 m en train de courir) : avec `iSoutien`, ce
+      // compteur ne dépassait jamais 0 dans toute une saison de matchs simulés
+      // (mesuré) — le risque « porteur isolé » n'existait donc jamais en
+      // pratique, malgré le mécanisme écrit pour l'appliquer.
+      if (!soutienArrive) this.ruckTempsSansSoutien = (this.ruckTempsSansSoutien || 0) + dt;
       // Le ballon ne SORT proprement que lorsque le n°9 est ARRIVÉ à la base
       // (son rôle : rejoindre vite le ruck pour jouer le ballon). Avec le ballon
       // rapide, le ruck peut être « mûr » avant que le 9 n'ait fini de courir ;
@@ -2937,19 +2943,26 @@
         // Porteur isolé (pas de soutien arrivé à temps) : risque accru de
         // turnover ou, si le porteur s'accroche au ballon sans soutien,
         // pénalité directe pour "ballon non rendu" plutôt qu'un turnover propre.
-        const bonusIsolement = Math.min(0.12, (this.ruckTempsSansSoutien || 0) * 0.08);
+        // Rééquilibré après la correction de `ruckTempsSansSoutien` (calculé
+        // avant sur un signal toujours nul, cf. plus haut) : ce bonus est
+        // maintenant RÉELLEMENT actif, et gonflait les turnovers (~12,5 -> ~20)
+        // si on gardait le multiplicateur/plafond historiques (0,08 / 0,12) —
+        // plafond abaissé à 0,03 (balayage mesuré) pour rester dans le repère
+        // CLAUDE.md (12-18 turnovers/match) tout en laissant l'isolement peser.
+        const bonusIsolement = Math.min(0.03, (this.ruckTempsSansSoutien || 0) * 0.02);
         // Taux de grattage au ruck : en match réel l'équipe qui attaque conserve
         // ~95 % de ses rucks (turnover ~3-5 %). L'ancienne base de 0.12 donnait
         // ~24 % de turnovers, soit ~122 ballons grattés/match (réel ~20) et un
-        // jeu en va-et-vient permanent irréaliste. Base abaissée à 0.03 ; le
-        // différentiel de force du pack et surtout l'isolement du porteur
-        // (bonusIsolement) restent les vrais moteurs d'un grattage — un porteur
-        // isolé face à un pack costaud peut toujours se faire gratter souvent.
+        // jeu en va-et-vient permanent irréaliste. Base abaissée à 0.012 (plancher
+        // du Math.max ci-dessous) ; le différentiel de force du pack et surtout
+        // l'isolement du porteur (bonusIsolement) restent les vrais moteurs d'un
+        // grattage — un porteur isolé face à un pack costaud peut toujours se
+        // faire gratter souvent.
         // Ballon « sur l'avancée » après un plaquage dominant (cf. _tickPorte) :
         // la défense a gagné le contact, elle conteste avec bien plus de chances
         // de gratter le ballon. Bonus consommé une seule fois (ce ruck).
         const bonusDominant = this.ruckDominant ? 0.035 : 0;
-        const probaTurnover = Math.max(0.012, Math.min(0.20, 0.025 + (forceDef - forceAtt) / 1600 + bonusIsolement + bonusDominant));
+        const probaTurnover = Math.max(0.012, Math.min(0.20, 0.012 + (forceDef - forceAtt) / 1600 + bonusIsolement + bonusDominant));
         const turnover = this.rng() < probaTurnover;
         this.ruckDominant = false;
         if (turnover) {
@@ -2957,7 +2970,7 @@
           this.possession = this.possession === 'A' ? 'B' : 'A';
           this.stats[this.possession].turnovers++;           // équipe qui GAGNE le ballon
           this.log('TURNOVER', this.possession, `Ballon gratte au ruck, equipe ${this.possession} recupere`);
-        } else if ((this.ruckTempsSansSoutien || 0) > 1.5 * this._echelleArret && this.rng() < 0.12) {
+        } else if ((this.ruckTempsSansSoutien || 0) > 1.5 * this._echelleArret && this.rng() < 0.5) {
           this.log('PENALITE_RUCK_ISOLE', equipeOriginale, `Porteur isole au ruck, ballon non rendu, penalite pour l'equipe adverse`);
           this._traiterPenalite(equipeOriginale === 'A' ? 'B' : 'A', pt);
           return;
