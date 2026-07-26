@@ -627,7 +627,7 @@
       // (exception loi 19 sur l'attribution de la mêlée en cas de ballon injouable).
       this.maul = null;
       this._receptionDirecte = false;
-      // Avantage (loi 8) : objet d'état courant (null hors avantage). Quand une
+      // Avantage (loi 7) : objet d'état courant (null hors avantage). Quand une
       // équipe commet une faute, l'arbitre laisse jouer l'équipe non fautive et
       // ne siffle la sanction que si celle-ci n'en tire rien. Stocke la sanction
       // en attente, le bénéficiaire, la marque et le repère de progression.
@@ -1119,7 +1119,7 @@
       return Math.min(12, Math.max(3, pireDistance / vitessePackMin));
     }
 
-    // --- Avantage (loi 8) : au lieu de siffler la faute tout de suite, l'arbitre
+    // --- Avantage (loi 7) : au lieu de siffler la faute tout de suite, l'arbitre
     // laisse l'équipe non fautive (bénéficiaire) jouer. Si elle progresse
     // nettement ou garde le ballon, l'avantage est « joué » et le match continue
     // (la sanction est effacée). Si elle perd le ballon au profit de l'équipe
@@ -2769,7 +2769,7 @@
           const slotY = this._slotDefense.get(j) ?? j.channelY;
           avancer(j, cibleX - j.x, slotY - j.y, dt, vitesseMs(j));
           if (this.timerPhase > delaiGrace && Referee.horsJeuRuck(j, pt, sensAttaque)) {
-            // Hors-jeu défensif au ruck : avantage (loi 8). L'équipe en possession
+            // Hors-jeu défensif au ruck : avantage (loi 7). L'équipe en possession
             // joue ; la pénalité n'est sifflée que si elle n'en tire rien (cf.
             // _tickAvantage). On ne stoppe donc PAS le ruck — il se résout
             // normalement et l'avantage est suivi à partir de là.
@@ -4749,7 +4749,7 @@
       // superposés à l'écran, et l'un semble « avancer à travers » l'autre.
       // Un joueur AU SOL n'est jamais déplacé (il est figé à sa chute).
       this._separerJoueurs();
-      // Suivi de l'avantage (loi 8) APRÈS la phase : on évalue sur l'état mis à
+      // Suivi de l'avantage (loi 7) APRÈS la phase : on évalue sur l'état mis à
       // jour (possession, position du porteur) si l'avantage est joué ou s'il
       // faut revenir à la sanction.
       if (this.avantage) this._tickAvantage(dt);

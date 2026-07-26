@@ -28,6 +28,13 @@
     MELEE_RUCK_INJOUABLE: '🔒',
     MAUL_PEN_ECROULEMENT: '🟨', MAUL_PEN_HORSJEU: '🟨', MAUL_PEN_ENTREE_COTE: '🟨', MAUL_PEN_TECHNIQUE: '🟨', CARTON_JAUNE: '🟡',
     JEU_LARGE: '↔️', PASSE: '👐', PASSE_RATEE: '💥', ENTREE_22: '🚩',
+    // Avantage (loi 7), coup de pied en jeu courant, offload, plaquage manqué,
+    // touche (lancer/ballon gagné) et combinaison : événements réels du moteur
+    // qui retombaient sur le symbole générique '•' faute d'icône dédiée dans
+    // le fil d'événements (cf. docs/js/ui.js) — moins lisible pour le joueur.
+    AVANTAGE: '⏳', AVANTAGE_JOUE: '✅', AVANTAGE_REVIENT: '⏪',
+    COUP_DE_PIED: '🦶', OFFLOAD: '🤲', PLAQUAGE_MANQUE: '💨',
+    TOUCHE_LANCER: '📤', TOUCHE_BALLON_GAGNE: '🙋', RUCK_SORTIE_9: '9️⃣', COMBINAISON: '🧩',
     // Machine à états de la mêlée (loi 19/20, cf. ETATS_MELEE dans le moteur).
     MELEE: '⚪', MELEE_CROUCH: '⬇️', MELEE_BIND: '🤝', MELEE_SET: '💥', MELEE_INTRODUCTION: '↘️',
     MELEE_CONTESTATION: '💪', MELEE_DOMINEE: '🚀', MELEE_GAGNEE: '✅', MELEE_PRESSION: '⚠️',
@@ -75,6 +82,13 @@
     // bannière — sinon il est noyé en quelques secondes par les rucks dans
     // le fil d'événements (5 lignes affichées, écrasées en permanence).
     'JEU_LARGE',
+    // Avantage (loi 7) : l'octroi (le jeu continue malgré une faute) et le
+    // retour à la pénalité (l'avantage n'a pas été concrétisé) changent
+    // visiblement la situation pour le joueur — sans bannière, cette règle
+    // existe dans le moteur mais reste invisible à l'écran. AVANTAGE_JOUE
+    // (l'avantage a marché, le jeu continue normalement) n'apporte rien de
+    // plus que ce que le joueur voit déjà se dérouler : pas de bannière.
+    'AVANTAGE', 'AVANTAGE_REVIENT',
     // Mêlée (loi 19/20) : on bannière l'octroi et les événements rares/notables
     // (poussée dominante, tournée, à refaire, use it, fautes), pas les appels
     // d'arbitre courants (crouch/bind/set) ni les sorties de balle routinières
