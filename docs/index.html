@@ -585,6 +585,25 @@
   </div>
 </div>
 
+<!-- Fenêtre de saisie d'un montant (TODO_AUDIT.md P1-8) : remplace
+     window.prompt pour les offres de transfert international et la
+     négociation de salaire — validation inline (le contexte, notamment le
+     montant déjà saisi, n'est jamais perdu en cas de valeur invalide,
+     contrairement à l'ancien prompt+alert qui obligeait à tout ressaisir).
+     Piloté par demanderMontant() dans clubUI.js. -->
+<div class="modalOverlay" id="modalMontant">
+  <div class="modalCarte">
+    <p id="modalMontantTexte"></p>
+    <label class="sr-label" for="modalMontantInput">Montant (k€)</label>
+    <input type="number" id="modalMontantInput" class="champTexte" min="1" step="1">
+    <p id="modalMontantErreur" class="modalErreur" style="display:none;"></p>
+    <div class="modalActions">
+      <button id="modalMontantAnnuler" class="alt">Annuler</button>
+      <button id="modalMontantValider" class="accent">Valider</button>
+    </div>
+  </div>
+</div>
+
 <script src="rugby-engine.js"></script>
 <script src="js/constants.js"></script>
 <script src="js/rng.js"></script>

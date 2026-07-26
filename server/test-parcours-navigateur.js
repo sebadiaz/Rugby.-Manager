@@ -235,11 +235,20 @@ function optionsLancement() {
   await page.click(`#clubEffectif tr[data-joueur="${idJoueurContratCourt}"]`);
   await page.waitForTimeout(150);
   verifier('négociation de contrat : le bouton de renouvellement est proposé pour un contrat expirant', await page.isVisible('#btnRenouveler'));
-  let prompteRenouvellementAffiche = false;
-  page.once('dialog', (d) => { prompteRenouvellementAffiche = d.type() === 'prompt'; d.dismiss(); });
   await page.click('#btnRenouveler');
   await page.waitForTimeout(200);
-  verifier('négociation de contrat : cliquer "Renouveler" ouvre une invite pour proposer un salaire (pas une simple confirmation)', prompteRenouvellementAffiche);
+  verifier('négociation de contrat : cliquer "Renouveler" ouvre une fenêtre intégrée pour proposer un salaire (pas une simple confirmation)',
+    await page.isVisible('#modalMontant.visible'));
+  const valeurProposeeParDefaut = await page.inputValue('#modalMontantInput');
+  verifier('fenêtre de montant : un salaire par défaut est pré-rempli (pas un champ vide)', Number(valeurProposeeParDefaut) > 0);
+  await page.fill('#modalMontantInput', '0');
+  await page.click('#modalMontantValider');
+  await page.waitForTimeout(150);
+  verifier('fenêtre de montant : un montant invalide (0) affiche une erreur SANS fermer la fenêtre (le contexte n\'est pas perdu)',
+    await page.isVisible('#modalMontant.visible') && await page.isVisible('#modalMontantErreur'));
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(150);
+  verifier('fenêtre de montant : Échap annule proprement (referme sans négocier)', !(await page.isVisible('#modalMontant.visible')));
 
   // 5c) Rechargement en milieu d'action : recharger la page PENDANT que la
   // fiche joueur est ouverte ne doit jamais laisser le jeu dans un état
@@ -326,11 +335,14 @@ function optionsLancement() {
   await page.waitForTimeout(150);
   verifier('club adverse : le bouton "Faire une offre de transfert" est proposé sur sa fiche joueur',
     await page.isVisible('#btnApprocherJoueurAdverse'));
-  let prompteAffiche = false;
-  page.once('dialog', (d) => { prompteAffiche = d.type() === 'prompt'; d.dismiss(); });
   await page.click('#btnApprocherJoueurAdverse');
   await page.waitForTimeout(200);
-  verifier('club adverse : cliquer "Faire une offre" ouvre bien une invite pour le montant', prompteAffiche);
+  verifier('club adverse : cliquer "Faire une offre" ouvre bien une fenêtre intégrée pour le montant (pré-remplie du prix demandé)',
+    await page.isVisible('#modalMontant.visible') && Number(await page.inputValue('#modalMontantInput')) > 0);
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(150);
+  verifier('fenêtre de montant : Échap annule l\'offre sans la soumettre, revient à la fiche du club adverse',
+    !(await page.isVisible('#modalMontant.visible')) && await page.isVisible('#clubJoueurAdversaireDetail'));
 
   // 6b) Retour arrière (Échap) sur un panneau imbriqué : la fiche d'un
   // joueur adverse est ouverte À L'INTÉRIEUR de la fiche du club adverse —

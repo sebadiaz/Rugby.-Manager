@@ -77,6 +77,45 @@
     if (resolve) resolve(reponse);
   }
 
+  // Fenêtre de saisie d'un montant (TODO_AUDIT.md P1-8) : remplace
+  // window.prompt pour les offres de transfert international et la
+  // négociation de salaire. Validation INLINE — contrairement à l'ancien
+  // prompt+alert, une valeur invalide affiche une erreur SANS fermer la
+  // fenêtre : le contexte (montant déjà saisi) n'est jamais perdu. Résout
+  // avec un nombre entier positif valide, ou `null` si annulé.
+  let resoudreMontant = null;
+  function demanderMontant(texte, valeurDefaut) {
+    return new Promise((resolve) => {
+      resoudreMontant = resolve;
+      document.getElementById('modalMontantTexte').textContent = texte;
+      document.getElementById('modalMontantErreur').style.display = 'none';
+      const input = document.getElementById('modalMontantInput');
+      input.value = valeurDefaut != null ? valeurDefaut : '';
+      document.getElementById('modalMontant').classList.add('visible');
+      requestAnimationFrame(() => { input.focus(); input.select(); });
+    });
+  }
+  function validerMontant() {
+    const input = document.getElementById('modalMontantInput');
+    const montant = Math.round(Number(input.value));
+    if (!Number.isFinite(montant) || montant <= 0) {
+      const erreur = document.getElementById('modalMontantErreur');
+      erreur.textContent = 'Indique un montant valide (nombre entier positif).';
+      erreur.style.display = '';
+      input.focus();
+      return;
+    }
+    fermerMontant(montant);
+  }
+  function fermerMontant(reponse) {
+    const modal = document.getElementById('modalMontant');
+    if (!modal.classList.contains('visible')) return;
+    modal.classList.remove('visible');
+    const resolve = resoudreMontant;
+    resoudreMontant = null;
+    if (resolve) resolve(reponse);
+  }
+
   // Sauvegarde + toast d'échec UNE SEULE FOIS par session si le stockage est
   // indisponible (navigation privée, quota dépassé) — sinon la progression se
   // perd silencieusement sans que le joueur ne comprenne pourquoi à la
@@ -1389,7 +1428,7 @@
     if (!ligne || !clubAdversaireAffiche) return;
     ouvrirFicheJoueurAdversaire(clubAdversaireAffiche, Number(ligne.dataset.index));
   });
-  document.getElementById('clubJoueurAdversaireDetail').addEventListener('click', (e) => {
+  document.getElementById('clubJoueurAdversaireDetail').addEventListener('click', async (e) => {
     if (e.target.id === 'btnFermerFicheJoueurAdversaire') { fermerFicheJoueurAdversaire(); return; }
     if (e.target.id !== 'btnApprocherJoueurAdverse') return;
     if (!clubAdversaireAffiche || joueurAdversaireAfficheIndex == null) return;
@@ -1397,13 +1436,11 @@
     const joueurCible = adv && adv.effectif[joueurAdversaireAfficheIndex];
     if (!adv || !joueurCible) return;
     const prixDemande = RMClub.calculerPrixDemandeAdverse(joueurCible, adv);
-    const saisie = window.prompt(
-      `${joueurCible.nom} (${adv.nom}) — prix demandé estimé : ${prixDemande} k€.\nMontant de ton offre (k€) :`,
-      String(prixDemande)
+    const montant = await demanderMontant(
+      `${joueurCible.nom} (${adv.nom}) — prix demandé estimé : ${prixDemande} k€. Montant de ton offre (k€) :`,
+      prixDemande
     );
-    if (saisie == null) return; // annulé
-    const montant = Math.round(Number(saisie));
-    if (!Number.isFinite(montant) || montant <= 0) { window.alert('Montant invalide.'); return; }
+    if (montant == null) return; // annulé
     const rng = creerRng(graineAleatoire());
     const res = RMClub.approcherJoueurAdverse(rng, saison, clubAdversaireAffiche, joueurAdversaireAfficheIndex, montant);
     if (!res.ok) {
@@ -1504,13 +1541,11 @@
       const joueur = saison.clubJoueur.effectif.find((j) => j.id === joueurAffiche);
       if (!joueur) return;
       const offre = RMClub.calculerOffreRenouvellement(joueur);
-      const saisie = window.prompt(
-        `Négociation avec ${joueur.nom} — salaire du marché estimé : ${offre.salaire} k€/saison (${offre.dureeMax} an(s)).\nSalaire annuel proposé (k€) :`,
-        String(offre.salaire)
+      const montant = await demanderMontant(
+        `Négociation avec ${joueur.nom} — salaire du marché estimé : ${offre.salaire} k€/saison (${offre.dureeMax} an(s)). Salaire annuel proposé (k€) :`,
+        offre.salaire
       );
-      if (saisie == null) return; // annulé
-      const montant = Math.round(Number(saisie));
-      if (!Number.isFinite(montant) || montant <= 0) { window.alert('Montant invalide.'); return; }
+      if (montant == null) return; // annulé
       const rng = creerRng(graineAleatoire());
       const res = RMClub.negocierRenouvellement(rng, saison, joueurAffiche, montant, offre.dureeMax);
       if (!res.ok) {
@@ -2064,6 +2099,7 @@
   // seul le clic sur leur bouton dédié fonctionnait.
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
+    if (document.getElementById('modalMontant').classList.contains('visible')) { fermerMontant(null); return; }
     if (document.getElementById('modalConfirmation').classList.contains('visible')) { fermerConfirmation(false); return; }
     const apercu = document.getElementById('panneauApercuMatch');
     if (apercu.classList.contains('visible')) { apercu.classList.remove('visible'); return; }
@@ -2077,6 +2113,15 @@
   document.getElementById('modalConfirmationAnnuler').addEventListener('click', () => fermerConfirmation(false));
   document.getElementById('modalConfirmation').addEventListener('click', (e) => {
     if (e.target.id === 'modalConfirmation') fermerConfirmation(false); // clic sur le fond assombri = annuler
+  });
+
+  document.getElementById('modalMontantValider').addEventListener('click', validerMontant);
+  document.getElementById('modalMontantAnnuler').addEventListener('click', () => fermerMontant(null));
+  document.getElementById('modalMontant').addEventListener('click', (e) => {
+    if (e.target.id === 'modalMontant') fermerMontant(null); // clic sur le fond assombri = annuler
+  });
+  document.getElementById('modalMontantInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); validerMontant(); }
   });
 
   rafraichirTout();

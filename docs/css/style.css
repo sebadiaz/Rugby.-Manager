@@ -441,6 +441,8 @@ select {
   box-shadow: var(--shadow); padding: 20px; max-width: 360px; width: 100%;
 }
 .modalCarte p { margin: 0 0 18px; font-size: 14px; line-height: 1.5; color: var(--text); }
+.modalCarte .champTexte { margin-bottom: 8px; }
+.modalErreur { color: var(--loss); font-size: 12.5px; margin: -4px 0 14px !important; }
 .modalActions { display: flex; gap: 8px; }
 .modalActions button { flex: 1; }
 #apercuMatchContenu { max-width: 640px; margin: 0 auto; }

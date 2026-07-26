@@ -176,25 +176,27 @@ Statuts possibles : `À FAIRE`, `EN COURS`, `CONFIRMÉ`, `CORRIGÉ`, `FAUX POSIT
 - Régression complète sans échec : `test-invariants.js` 12/12, `test-monde.js` 14/14, `test-audit-p0-1.js` 4/4, `test-audit-p0-2.js` 6/6, `test-audit-p0-3.js` 8/8.
 
 ### P1-8. Remplacer progressivement prompt/alert/confirm par des fenêtres intégrées
-- **Statut : EN COURS (première tranche corrigée — les `window.confirm` ; `alert`/`prompt` restent à traiter dans un futur patch)**
+- **Statut : EN COURS (2 tranches corrigées — `confirm` et `prompt` ; les `alert` d'erreur/info restent, 3ᵉ tranche possible)**
 - Priorité : P1 (parcours utilisateur — immersion/lisibilité)
 - Fichiers concernés :
-  - `docs/js/clubUI.js` (nouvelle fonction `confirmerAction`, 5 appelants convertis)
-  - `docs/index.html` (nouvelle fenêtre `#modalConfirmation`)
-  - `docs/css/style.css` (styles `.modalOverlay`/`.modalCarte`)
+  - `docs/js/clubUI.js` (`confirmerAction`, `demanderMontant` — 7 appelants convertis au total)
+  - `docs/index.html` (fenêtres `#modalConfirmation` et `#modalMontant`)
+  - `docs/css/style.css` (styles `.modalOverlay`/`.modalCarte`/`.modalErreur`)
   - `server/test-parcours-navigateur.js` (nouvelle couverture)
 
-**Constat de départ.** 21 appels à `window.alert`/`confirm`/`prompt` dans `docs/js/clubUI.js` : des boîtes de dialogue natives du navigateur, sans le style du jeu, qui cassent l'immersion et sont incohérentes entre navigateurs. Consigne explicite : remplacement **progressif**, pas une réécriture générale en un seul patch — cette tranche traite les 5 `window.confirm` (actions à conséquence : effacer la saison, promouvoir un espoir, prêter/libérer un joueur, licencier du personnel).
+**Constat de départ.** 21 appels à `window.alert`/`confirm`/`prompt` dans `docs/js/clubUI.js` : des boîtes de dialogue natives du navigateur, sans le style du jeu, qui cassent l'immersion et sont incohérentes entre navigateurs. Consigne explicite : remplacement **progressif**, pas une réécriture générale en un seul patch.
 
-**Correction.** Nouvelle fenêtre de confirmation intégrée (`#modalConfirmation`), une carte centrée par-dessus tout le reste (y compris l'aperçu du match), avec le même style visuel que le reste du jeu (boutons `Annuler`/`Confirmer`, fond assombri cliquable pour annuler, Échap pour annuler — intégré au même gestionnaire clavier que les autres calques). Côté JS, `confirmerAction(message)` renvoie une Promise résolue par le clic sur un bouton (ou Échap/fond) ; les 5 gestionnaires d'événements concernés sont passés en `async` et utilisent `await confirmerAction(...)` à la place de `window.confirm(...)`. Aucun changement de comportement des actions elles-mêmes (mêmes messages, mêmes conséquences), uniquement la fenêtre qui les affiche.
+**Tranche 1 — les 5 `window.confirm`** (actions à conséquence : effacer la saison, promouvoir un espoir, prêter/libérer un joueur, licencier du personnel). Nouvelle fenêtre `#modalConfirmation` (carte centrée par-dessus tout le reste, y compris l'aperçu du match, même style visuel que le reste du jeu), boutons `Annuler`/`Confirmer`, fond assombri cliquable et Échap pour annuler (intégré au même gestionnaire clavier que les autres calques). `confirmerAction(message)` renvoie une Promise résolue par le clic/Échap/fond ; les 5 gestionnaires concernés passent en `async`. Aucun changement de comportement des actions elles-mêmes, uniquement la fenêtre qui les affiche.
 
-**Amélioration visible.** Capture d'écran vérifiée manuellement (Playwright) : la fenêtre "Libérer Tom Fournier ? Il quittera définitivement l'effectif." s'affiche comme une carte cohérente avec le thème sombre du jeu (boutons Annuler/Confirmer stylés), au lieu d'une boîte système grise hors-thème.
+**Tranche 2 — les 2 `window.prompt`** (offre de transfert international, négociation de salaire de renouvellement de contrat). Nouvelle fenêtre `#modalMontant` (champ numérique, message d'erreur inline). Amélioration réelle par rapport à l'ancien `prompt`+`alert` : une valeur invalide affiche désormais une erreur SANS fermer la fenêtre — l'ancien flux devait rouvrir le prompt depuis zéro et ressaisir le montant à chaque erreur (le contexte, ex. le montant déjà tapé, était perdu). `demanderMontant(texte, valeurDefaut)` renvoie une Promise résolue par un nombre entier positif validé, ou `null` si annulé (bouton, Échap ou fond).
+
+**Amélioration visible.** Capture d'écran vérifiée manuellement (Playwright) pour les deux fenêtres : "Libérer Tom Fournier ? Il quittera définitivement l'effectif." et une offre de transfert avec erreur inline "Indique un montant valide (nombre entier positif)." — cohérentes avec le thème sombre du jeu, au lieu de boîtes système grises hors-thème.
 
 **Critères de validation.**
-- `node server/test-parcours-navigateur.js` : 81/81 (77 existants après P1-7 + 4 nouveaux : cycle complet Annuler-puis-Confirmer sur "Libérer ce joueur", ouverture de la fenêtre intégrée pour "Promouvoir un espoir" — remplace l'ancien `page.once('dialog', ...)` qui n'a plus de raison d'être déclenché pour ces actions).
+- `node server/test-parcours-navigateur.js` : 85/85 (81 existants après la tranche 1 + 4 nouveaux : pré-remplissage du montant par défaut, erreur inline sur montant invalide sans perte de contexte, annulation au clavier pour les deux fenêtres de montant — remplace l'ancien `page.once('dialog', ...)` qui ne se déclenche plus pour ces deux actions).
 - Régression complète sans échec : `test-parcours-club.js` 41/41, `test-invariants.js` 12/12, `test-monde.js` 14/14, `test-audit-p0-1.js` 4/4, `test-audit-p0-2.js` 6/6, `test-audit-p0-3.js` 8/8.
 
-**Reste à faire (prochaine tranche de P1-8).** Les `window.alert` (messages d'erreur/info) et les 2 `window.prompt` (offre de transfert international, négociation de salaire — nécessitent un champ numérique avec validation inline, pas juste une confirmation oui/non) n'ont pas encore été convertis.
+**Reste à faire (3ᵉ tranche possible de P1-8).** Les 13 `window.alert` restants (messages d'erreur/info courts, ex. "Budget insuffisant") n'ont pas encore été convertis — probablement vers `toast(message, 'erreur')` (déjà existant, non bloquant) plutôt qu'une nouvelle fenêtre modale, sauf pour les messages substantiels (bilan de fin de saison, avertissement de sauvegarde corrompue) qui méritent une vraie fenêtre à lire posément.
 
 ### P1-9. Carrière longue (10 saisons+, rechargements réguliers) — aucun id dupliqué, NaN, donnée perdue, composition impossible
 - Statut : À FAIRE
@@ -262,8 +264,9 @@ Statuts possibles : `À FAIRE`, `EN COURS`, `CONFIRMÉ`, `CORRIGÉ`, `FAUX POSIT
 - Aucun changement de comportement du jeu : uniquement de nouveaux tests sur des gardes déjà correctes.
 - Tests : `server/test-parcours-club.js` 41/41 (35+6), `server/test-parcours-navigateur.js` 77/77 (72+5). Régression : `test-invariants.js` 12/12, `test-monde.js` 14/14, `test-audit-p0-1.js` 4/4, `test-audit-p0-2.js` 6/6, `test-audit-p0-3.js` 8/8.
 
-### P1-8 — Remplacer window.confirm par une fenêtre de confirmation intégrée — EN COURS (1ère tranche)
-- Nouvelle fenêtre `#modalConfirmation` (carte centrée, style du jeu) pilotée par `confirmerAction(message)` (Promise résolue par un bouton, Échap, ou clic sur le fond assombri) dans `docs/js/clubUI.js` — remplace les 5 `window.confirm` (effacer la saison, promouvoir un espoir, prêter/libérer un joueur, licencier du personnel).
-- Amélioration visible : boîte de dialogue stylée cohérente avec le thème du jeu au lieu d'une boîte système grise (vérifié par capture d'écran).
-- Reste à faire : les `window.alert` et les 2 `window.prompt` (offre de transfert, négociation de salaire — nécessitent un champ numérique validé) n'ont pas encore été convertis (prochaine tranche du même P1-8).
-- Tests : `server/test-parcours-navigateur.js` 81/81 (77+4). Régression : `test-parcours-club.js` 41/41, `test-invariants.js` 12/12, `test-monde.js` 14/14, `test-audit-p0-1.js` 4/4, `test-audit-p0-2.js` 6/6, `test-audit-p0-3.js` 8/8.
+### P1-8 — Remplacer window.confirm/prompt par des fenêtres intégrées — EN COURS (2 tranches)
+- Tranche 1 : nouvelle fenêtre `#modalConfirmation` (carte centrée, style du jeu) pilotée par `confirmerAction(message)` (Promise résolue par un bouton, Échap, ou clic sur le fond assombri) — remplace les 5 `window.confirm` (effacer la saison, promouvoir un espoir, prêter/libérer un joueur, licencier du personnel).
+- Tranche 2 : nouvelle fenêtre `#modalMontant` (champ numérique, erreur inline) pilotée par `demanderMontant(texte, valeurDefaut)` — remplace les 2 `window.prompt` (offre de transfert international, négociation de salaire). Amélioration réelle : une valeur invalide affiche une erreur SANS fermer la fenêtre ni perdre le contexte, contrairement à l'ancien prompt+alert qui obligeait à tout ressaisir.
+- Amélioration visible : boîtes de dialogue stylées cohérentes avec le thème du jeu au lieu de boîtes système grises (vérifié par capture d'écran pour les deux fenêtres).
+- Reste à faire : les 13 `window.alert` (erreur/info) n'ont pas encore été convertis (3ᵉ tranche possible du même P1-8, probablement vers `toast()` pour les messages courts).
+- Tests : `server/test-parcours-navigateur.js` 85/85 (81+4). Régression : `test-parcours-club.js` 41/41, `test-invariants.js` 12/12, `test-monde.js` 14/14, `test-audit-p0-1.js` 4/4, `test-audit-p0-2.js` 6/6, `test-audit-p0-3.js` 8/8.
