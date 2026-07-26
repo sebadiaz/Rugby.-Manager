@@ -542,9 +542,12 @@ function optionsLancement() {
     await page.waitForTimeout(200);
     await page.click('#btnContinuerClub');
     await page.waitForTimeout(200);
-    page.once('dialog', (d) => d.accept());
     await page.click('#btnSaisonSuivante');
     await page.waitForTimeout(300);
+    verifier('fin de saison : le bilan de fin de saison s\'affiche dans une fenêtre intégrée (pas une boîte native)',
+      await page.isVisible('#modalInfo.visible') && (await page.textContent('#modalInfoTitre')).includes('Saison'));
+    await page.click('#modalInfoValider');
+    await page.waitForTimeout(150);
     verifier('fin de saison : le club reste jouable en saison 2', await page.isVisible('[data-volet="dashboard"]'));
     const entetApresPromotion = await page.textContent('#clubEntete');
     verifier('pyramide : finir 1er fait bien monter de palier (affiché dans l\'entête)', entetApresPromotion.includes('Ligue Nationale'));
@@ -566,12 +569,13 @@ function optionsLancement() {
   const pageCorrompue = await contexteCorrompu.newPage();
   await pageCorrompue.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
   await pageCorrompue.evaluate(() => localStorage.setItem('rugbyManager.club.v1', '{ "version": 2, "clubJoueur": { "nom": "Cassé"'));
-  let messageAvertissement = null;
-  pageCorrompue.once('dialog', (d) => { messageAvertissement = d.message(); d.accept(); });
   await pageCorrompue.reload({ waitUntil: 'networkidle' });
   await pageCorrompue.waitForTimeout(300);
+  const messageAvertissement = await pageCorrompue.isVisible('#modalInfo.visible') ? await pageCorrompue.textContent('#modalInfoTexte') : null;
   verifier('sauvegarde corrompue : un avertissement explicite est affiché au joueur (pas un écran vide silencieux)',
     !!messageAvertissement && messageAvertissement.includes('secours'));
+  await pageCorrompue.click('#modalInfoValider');
+  await pageCorrompue.waitForTimeout(150);
   verifier('sauvegarde corrompue : l\'écran d\'accueil reste normalement utilisable ensuite', await pageCorrompue.isVisible('#btnAccueilModeClub'));
   await pageCorrompue.click('#btnAccueilModeClub');
   await pageCorrompue.waitForTimeout(150);

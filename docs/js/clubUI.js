@@ -116,6 +116,29 @@
     if (resolve) resolve(reponse);
   }
 
+  // Fenêtre d'information intégrée (TODO_AUDIT.md P1-8) : remplace
+  // window.alert pour les messages substantiels qui méritent d'être lus
+  // posément (bilan de fin de saison, avertissement de sauvegarde
+  // corrompue) — les messages d'erreur courts utilisent toast() à la
+  // place (non bloquant, cf. plus bas).
+  let resoudreInfo = null;
+  function afficherInfo(titre, corps) {
+    return new Promise((resolve) => {
+      resoudreInfo = resolve;
+      document.getElementById('modalInfoTitre').textContent = titre;
+      document.getElementById('modalInfoTexte').textContent = corps;
+      document.getElementById('modalInfo').classList.add('visible');
+    });
+  }
+  function fermerInfo() {
+    const modal = document.getElementById('modalInfo');
+    if (!modal.classList.contains('visible')) return;
+    modal.classList.remove('visible');
+    const resolve = resoudreInfo;
+    resoudreInfo = null;
+    if (resolve) resolve();
+  }
+
   // Sauvegarde + toast d'échec UNE SEULE FOIS par session si le stockage est
   // indisponible (navigation privée, quota dépassé) — sinon la progression se
   // perd silencieusement sans que le joueur ne comprenne pourquoi à la
@@ -1444,9 +1467,9 @@
     const rng = creerRng(graineAleatoire());
     const res = RMClub.approcherJoueurAdverse(rng, saison, clubAdversaireAffiche, joueurAdversaireAfficheIndex, montant);
     if (!res.ok) {
-      if (res.motif === 'budget') window.alert(`Budget insuffisant : il te manque ${montant - saison.clubJoueur.budget} k€.`);
-      else if (res.motif === 'refuse') window.alert(`${adv.nom} refuse ton offre de ${montant} k€ pour ${joueurCible.nom} (prix demandé estimé : ${res.prixDemande} k€). Tente une offre plus généreuse, ou reviens plus tard.`);
-      else window.alert('Transfert impossible.');
+      if (res.motif === 'budget') toast(`Budget insuffisant : il te manque ${montant - saison.clubJoueur.budget} k€.`, 'erreur');
+      else if (res.motif === 'refuse') toast(`${adv.nom} refuse ton offre de ${montant} k€ pour ${joueurCible.nom} (prix demandé estimé : ${res.prixDemande} k€). Tente une offre plus généreuse, ou reviens plus tard.`, 'erreur');
+      else toast('Transfert impossible.', 'erreur');
       return;
     }
     sauvegarder();
@@ -1549,7 +1572,7 @@
       const rng = creerRng(graineAleatoire());
       const res = RMClub.negocierRenouvellement(rng, saison, joueurAffiche, montant, offre.dureeMax);
       if (!res.ok) {
-        window.alert(`${joueur.nom} refuse ${montant} k€/saison — il vise plutôt autour de ${res.salaireMinimumEstime} k€/saison. Propose davantage, ou reviens plus tard.`);
+        toast(`${joueur.nom} refuse ${montant} k€/saison — il vise plutôt autour de ${res.salaireMinimumEstime} k€/saison.`, 'erreur');
         sauvegarder();
         ouvrirFicheJoueur(joueurAffiche);
         return;
@@ -1568,9 +1591,9 @@
       if (!(await confirmerAction(`Prêter ${joueur.nom} pour 3 journées ? Il sera indisponible pour la sélection, contre une indemnité immédiate.`))) return;
       const res = RMClub.preterJoueur(saison, joueurAffiche, 3);
       if (!res.ok) {
-        window.alert(res.motif === 'dernier_du_poste'
+        toast(res.motif === 'dernier_du_poste'
           ? "Impossible : c'est le dernier joueur disponible à ce poste — le prêter rendrait la composition impossible à compléter."
-          : 'Impossible de prêter ce joueur actuellement.');
+          : 'Impossible de prêter ce joueur actuellement.', 'erreur');
         return;
       }
       assurerComposition(); // rebouche les trous laissés par le départ en prêt
@@ -1601,7 +1624,7 @@
     const joueur = saison.clubJoueur.effectif.find((j) => j.id === joueurAffiche);
     if (!joueur || !(await confirmerAction(`Libérer ${joueur.nom} ? Il quittera définitivement l'effectif.`))) return;
     const res = RMClub.libererJoueur(saison, joueurAffiche);
-    if (!res.ok) { window.alert("Impossible : c'est le dernier joueur de ce poste dans l'effectif."); return; }
+    if (!res.ok) { toast("Impossible : c'est le dernier joueur de ce poste dans l'effectif.", 'erreur'); return; }
     assurerComposition(); // rebouche les trous laissés par le départ (cf. club.js)
     sauvegarder();
     toast(`✅ ${joueur.nom} a quitté le club`);
@@ -1716,7 +1739,7 @@
       // Le recruteur (personnel) réduit le coût et augmente le gain de
       // connaissance par action — cf. RMClub.effetPersonnel.
       const res = RMClub.scouterJoueur(saison, id, RMClub.effetPersonnel(saison, 'recruteur'));
-      if (!res.ok) { window.alert('Budget insuffisant pour financer ce repérage.'); return; }
+      if (!res.ok) { toast('Budget insuffisant pour financer ce repérage.', 'erreur'); return; }
       sauvegarder();
       toast(`🔍 Rapport de scouting affiné (connaissance ${res.connaissance}%)`);
       rafraichirMarche();
@@ -1727,7 +1750,7 @@
     if (!e.target.classList.contains('btnSigner')) return;
     const joueurSigne = pool.find((j) => j.id === id);
     const res = RMClub.signerJoueur(saison, id);
-    if (!res.ok) { window.alert('Budget insuffisant pour cette signature.'); return; }
+    if (!res.ok) { toast('Budget insuffisant pour cette signature.', 'erreur'); return; }
     selectionComparaison.delete(id);
     sauvegarder();
     toast(`✅ ${joueurSigne ? joueurSigne.nom : 'Joueur'} rejoint le club (${res.coutTotal} k€)`);
@@ -1768,7 +1791,7 @@
     if (!e.target.classList.contains('btnEmbaucher')) return;
     const candidat = (saison.marchePersonnel || []).find((p) => p.id === e.target.dataset.staff);
     const res = RMClub.embaucherPersonnel(saison, e.target.dataset.staff);
-    if (!res.ok) { window.alert(res.motif === 'poste_pourvu' ? 'Ce poste est déjà pourvu : licencie le titulaire pour en recruter un autre.' : 'Recrutement impossible.'); return; }
+    if (!res.ok) { toast(res.motif === 'poste_pourvu' ? 'Ce poste est déjà pourvu : licencie le titulaire pour en recruter un autre.' : 'Recrutement impossible.', 'erreur'); return; }
     sauvegarder();
     toast(`✅ ${candidat ? candidat.nom : 'Recrue'} rejoint le staff`);
     rafraichirPersonnel();
@@ -1816,11 +1839,10 @@
     sauvegarder();
     rafraichirTout();
     const resume = [
-      `Saison ${saison.numero} !`,
       partis.length ? `Départs (${partis.length}) : ${partis.map((p) => `${p.nom} (${p.motif})`).join(', ')}` : null,
       arrivees.length ? `Arrivées (${arrivees.length}) : ${arrivees.map((a) => a.nom).join(', ')}` : null,
     ].filter(Boolean).join('\n\n');
-    window.alert(resume);
+    afficherInfo(`Saison ${saison.numero} !`, resume || 'Effectif inchangé.');
   });
 
   // Joue la journée ENTIÈRE : tous les clubs jouent en même temps (cf.
@@ -1846,7 +1868,7 @@
       const manquants = RMClub.validerComposition(saison.clubJoueur.compositionTitulaires);
       if (manquants.length > 0) {
         const libelles = manquants.map((m) => `N°${m.numero} (${POSTE_COMPLET[m.poste] || m.poste})`).join(', ');
-        window.alert(`Impossible de jouer la journée : aucun joueur disponible pour ${libelles}. Rappelle un joueur prêté ou ajuste ton effectif avant de continuer.`);
+        toast(`Impossible de jouer la journée : aucun joueur disponible pour ${libelles}. Rappelle un joueur prêté ou ajuste ton effectif.`, 'erreur');
         return;
       }
     }
@@ -2099,6 +2121,7 @@
   // seul le clic sur leur bouton dédié fonctionnait.
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
+    if (document.getElementById('modalInfo').classList.contains('visible')) { fermerInfo(); return; }
     if (document.getElementById('modalMontant').classList.contains('visible')) { fermerMontant(null); return; }
     if (document.getElementById('modalConfirmation').classList.contains('visible')) { fermerConfirmation(false); return; }
     const apercu = document.getElementById('panneauApercuMatch');
@@ -2124,6 +2147,11 @@
     if (e.key === 'Enter') { e.preventDefault(); validerMontant(); }
   });
 
+  document.getElementById('modalInfoValider').addEventListener('click', fermerInfo);
+  document.getElementById('modalInfo').addEventListener('click', (e) => {
+    if (e.target.id === 'modalInfo') fermerInfo(); // clic sur le fond assombri = OK
+  });
+
   rafraichirTout();
 
   // Audit P0-2 (TODO_AUDIT.md) : si une sauvegarde n'a pas pu être chargée
@@ -2142,8 +2170,9 @@
   if (avertissementChargement) {
     RMClub.effacerAvertissementChargement();
     const raison = RAISON_AVERTISSEMENT_LABEL[avertissementChargement.raison] || 'un problème est survenu';
-    window.alert(
-      `⚠️ Ton ancienne carrière n'a pas pu être rechargée automatiquement (${raison}).\n\n` +
+    afficherInfo(
+      '⚠️ Ancienne carrière non rechargée',
+      `Ton ancienne carrière n'a pas pu être rechargée automatiquement (${raison}).\n\n` +
       'Rien n\'a été supprimé : une copie de secours de tes données a été conservée dans le stockage de ton navigateur. ' +
       'Contacte le support avec le nom de ton club si tu veux la récupérer.'
     );

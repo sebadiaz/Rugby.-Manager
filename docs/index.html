@@ -604,6 +604,22 @@
   </div>
 </div>
 
+<!-- Fenêtre d'information intégrée (TODO_AUDIT.md P1-8) : remplace
+     window.alert pour les messages substantiels qui méritent d'être lus
+     posément (bilan de fin de saison, avertissement de sauvegarde
+     corrompue) — les messages d'erreur courts utilisent toast() à la
+     place, non bloquant. Pilotée par afficherInfo(titre, corps) dans
+     clubUI.js. -->
+<div class="modalOverlay" id="modalInfo">
+  <div class="modalCarte">
+    <h3 id="modalInfoTitre" style="margin:0 0 10px;font-size:15px;"></h3>
+    <p id="modalInfoTexte" style="white-space:pre-line;"></p>
+    <div class="modalActions">
+      <button id="modalInfoValider" class="accent">OK</button>
+    </div>
+  </div>
+</div>
+
 <script src="rugby-engine.js"></script>
 <script src="js/constants.js"></script>
 <script src="js/rng.js"></script>
