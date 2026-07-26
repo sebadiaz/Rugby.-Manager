@@ -1509,11 +1509,11 @@
         // TAUX RESTRUCTURÉ selon la situation, comme en vrai : dans un plaquage
         // banal (défense en place), l'offload est RARE (0,04 — l'ancien taux
         // uniforme 0,10 en produisait ~61/match, réel 8-15) ; mais un porteur EN
-        // PERCÉE (vient de battre son vis-à-vis, _percee actif) cherche
-        // SYSTÉMATIQUEMENT la continuité : son offload au trailer est très
-        // probable (0,45) et porte plus loin (rayon 6 m, les soutiens sprintent
-        // dans sa foulée). C'est ce qui convertit un franchissement en avancée
-        // longue au lieu de mourir au premier plaquage de couverture.
+        // PERCÉE (vient de battre son vis-à-vis, _percee actif) cherche la
+        // continuité : son offload au trailer porte plus loin (rayon 6 m, les
+        // soutiens sprintent dans sa foulée). Taux abaissé 0,30 → 0,18
+        // (docs/ANALYSE_MATCH_REEL.md, T3) : à 0,30 la simulation produisait
+        // ~48,7 offloads/match contre 25 en match réel (France-Irlande 2026).
         const enPercee = (porteur._percee || 0) > 0;
         const rayonOffload = enPercee ? 6 : 4;
         // Modulé par l'attribut "passe" du porteur (0-100) : offloader dans le
@@ -1521,7 +1521,7 @@
         // taux historique inchangé.
         const facteurPasse = typeof porteur.passe === 'number'
           ? Math.max(0.5, Math.min(1.6, 1 + (porteur.passe - 60) / 90)) : 1;
-        const tauxOffload = (enPercee ? 0.30 : 0.03) * facteurPasse;
+        const tauxOffload = (enPercee ? 0.18 : 0.03) * facteurPasse;
         const soutiens = att0.filter(j => j !== porteur && distance(j, porteur) < rayonOffload && j.auSol === 0
           && (j.x - porteur.x) * porteur.sensAttaque <= 0.3);
         if (soutiens.length > 0 && this.rng() < tauxOffload) {
