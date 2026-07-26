@@ -1,0 +1,231 @@
+// Composition et tactique (Mode Club) — domaine extrait de club.js
+// (TODO_AUDIT.md P2-10, tranche 11) : conversion tactique → config moteur,
+// conversion effectif/composition → config joueurs pour MatchEngine, choix
+// automatique de composition (titulaires + banc), validation, désignation
+// automatique du capitaine/buteur/lanceur en touche.
+//
+// Domaine le plus autonome à ce jour : aucun état de module (pas de
+// compteur, pas de fermeture partagée) — toutes les dépendances externes
+// (AXES_TACTIQUE, POSTE_REQUIS, POSTE_REQUIS_BANC déplacé ici) sont soit
+// déjà exportées de club.js, soit purement locales à ce fichier.
+(function (global) {
+  'use strict';
+
+  // Config moteur (attaque/défense/mêlée/touche PAR ÉQUIPE) résultant de la
+  // COMBINAISON des 6 axes — `tactique` peut être partiel ou absent, chaque
+  // axe retombe sur son défaut (comportement du moteur inchangé si rien
+  // n'est choisi, et compatible avec une ancienne sauvegarde à 3 axes).
+  function tactiqueVersConfig(tactique) {
+    const AXES_TACTIQUE = global.RMClub.AXES_TACTIQUE;
+    const defauts = {};
+    for (const axe of Object.keys(AXES_TACTIQUE)) defauts[axe] = AXES_TACTIQUE[axe].defaut;
+    const t = Object.assign(defauts, (tactique && typeof tactique === 'object') ? tactique : {});
+    function option(axe) {
+      return AXES_TACTIQUE[axe].options[t[axe]] || AXES_TACTIQUE[axe].options[AXES_TACTIQUE[axe].defaut];
+    }
+    const optStyle = option('style'), optAvants = option('avants'), optRythme = option('rythme'),
+      optPied = option('pied'), optLigne = option('ligneDef'), optToucheMaul = option('toucheMaul');
+    const attaque = Object.assign({}, optStyle.attaque || null, optPied.attaque || null);
+    const cfg = {};
+    if (Object.keys(attaque).length) cfg.attaque = attaque;
+    if (optLigne.defense) cfg.defense = optLigne.defense;
+    if (optAvants.melee) cfg.melee = optAvants.melee;
+    if (optRythme.ruck) cfg.ruck = optRythme.ruck;
+    if (optToucheMaul.touche) cfg.touche = optToucheMaul.touche;
+    return cfg;
+  }
+
+  // Convertit l'effectif d'un club ADVERSAIRE (15, un par numéro) en config
+  // joueursA/joueursB consommée par MatchEngine (cf. engine/rugby-engine.js) :
+  // {numero: {poste, vitesse, plaquage, tendance, couloir}}.
+  function effectifVersJoueursCfg(club) {
+    const cfg = {};
+    for (const j of club.effectif) {
+      cfg[j.numero] = {
+        poste: j.poste, vitesse: j.vitesse, plaquage: j.plaquage, tendance: j.tendance, couloir: j.couloir,
+        adresse: j.adresse, melee: j.melee, touche: j.touche, puissance: j.puissance,
+        endurance: j.endurance, passe: j.passe, jeuPied: j.jeuPied, decision: j.decision, discipline: j.discipline,
+      };
+    }
+    return cfg;
+  }
+
+  // Même conversion, mais pour le club du JOUEUR : `composition` associe
+  // chaque numéro (1-15) à l'id du joueur de l'effectif étendu qui le porte
+  // ce jour-là (cf. meilleureComposition / choix manuel dans l'UI). La fatigue
+  // accumulée (cf. appliquerFatigue) réduit réellement la vitesse/le plaquage
+  // effectifs transmis au moteur — pas un simple badge cosmétique.
+  function compositionVersJoueursCfg(effectif, composition) {
+    const POSTE_REQUIS = global.RMClub.POSTE_REQUIS;
+    const parId = {};
+    for (const j of effectif) parId[j.id] = j;
+    const cfg = {};
+    for (const numero of Object.keys(POSTE_REQUIS)) {
+      const j = parId[composition[numero]];
+      if (!j) continue;
+      const malusFatigue = Math.round(((j.fatigue || 0) / 100) * 12);
+      // Moral (0-100, neutre 60-70 à la génération) : un joueur au moral haut
+      // joue légèrement au-dessus de son niveau, un joueur démoralisé en
+      // dessous — petit effet borné, jamais décoratif (cf. appliquerMoral).
+      const ajustMoral = Math.round((((j.moral != null ? j.moral : 65) - 60) / 100) * 8);
+      const ajustement = ajustMoral - malusFatigue;
+      cfg[numero] = {
+        poste: POSTE_REQUIS[numero],
+        vitesse: Math.max(20, j.vitesse + ajustement),
+        plaquage: Math.max(20, j.plaquage + ajustement),
+        tendance: j.tendance, couloir: j.couloir, adresse: j.adresse,
+        melee: j.melee, touche: j.touche, puissance: j.puissance,
+        endurance: j.endurance, passe: j.passe, jeuPied: j.jeuPied,
+        decision: j.decision, discipline: j.discipline,
+      };
+    }
+    return cfg;
+  }
+
+  // Meilleur candidat dispo pour un NUMÉRO donné (donc un poste requis) :
+  // priorité aux joueurs de ce poste naturel, mais un joueur d'un autre poste
+  // peut dépanner si le poste naturel n'a plus personne de disponible (cf.
+  // rafraichirTerrain/rafraichirBanc côté UI, qui offre le même choix
+  // manuellement — un vrai effectif de rugby fait tourner ses polyvalents
+  // plutôt que de jouer à 14). Un joueur prêté (cf. preterJoueur) reste une
+  // exclusion DURE : il n'est tout simplement pas dans l'effectif du jour.
+  function meilleurCandidatPourNumero(effectif, poste, utilises) {
+    let candidats = effectif.filter((j) => j.poste === poste && !j.pret && !utilises.has(j.id));
+    if (candidats.length === 0) candidats = effectif.filter((j) => !j.pret && !utilises.has(j.id));
+    if (candidats.length === 0) return null;
+    const disponibles = candidats.filter((j) => !j.blessureJournees);
+    const pool = disponibles.length > 0 ? disponibles : candidats;
+    pool.sort((a, b) => (b.vitesse + b.plaquage) - (a.vitesse + a.plaquage));
+    return pool[0];
+  }
+
+  // Compose automatiquement la meilleure équipe disponible : pour chaque
+  // numéro, le meilleur candidat dispo (cf. meilleurCandidatPourNumero),
+  // NON BLESSÉ de préférence, qui n'est pas déjà titularisé ailleurs.
+  function meilleureComposition(effectif) {
+    const POSTE_REQUIS = global.RMClub.POSTE_REQUIS;
+    const utilises = new Set();
+    const composition = {};
+    for (const numero of Object.keys(POSTE_REQUIS)) {
+      const meilleur = meilleurCandidatPourNumero(effectif, POSTE_REQUIS[numero], utilises);
+      if (!meilleur) continue;
+      composition[numero] = meilleur.id;
+      utilises.add(meilleur.id);
+    }
+    return composition;
+  }
+
+  // Complète une composition PARTIELLE (choix déjà faits par le joueur, ou
+  // chargée depuis une saison sauvegardée) sans écraser les choix valides :
+  // ne remplace que les numéros vides ou invalides (joueur libéré, doublon)
+  // par le meilleur joueur disponible restant. N'importe quel joueur peut
+  // occuper n'importe quel poste (polyvalence assumée, cf.
+  // meilleurCandidatPourNumero) — un choix manuel hors poste naturel doit
+  // donc survivre au rafraîchissement, pas être écrasé au tour suivant.
+  // Utilisé à l'ouverture de l'écran de composition — la version "table
+  // rase" reste meilleureComposition (bouton "meilleure équipe possible").
+  function completerComposition(effectif, compositionPartielle) {
+    const POSTE_REQUIS = global.RMClub.POSTE_REQUIS;
+    const parId = {};
+    for (const j of effectif) parId[j.id] = j;
+    const composition = {};
+    const utilises = new Set();
+    for (const numero of Object.keys(POSTE_REQUIS)) {
+      const id = compositionPartielle && compositionPartielle[numero];
+      const j = id && parId[id];
+      if (j && !j.pret && !utilises.has(id)) {
+        composition[numero] = id;
+        utilises.add(id);
+      }
+    }
+    for (const numero of Object.keys(POSTE_REQUIS)) {
+      if (composition[numero]) continue;
+      const meilleur = meilleurCandidatPourNumero(effectif, POSTE_REQUIS[numero], utilises);
+      if (!meilleur) continue;
+      composition[numero] = meilleur.id;
+      utilises.add(meilleur.id);
+    }
+    return composition;
+  }
+
+  // Vérifie qu'un numéro a bien un joueur assigné à CHAQUE poste avant de
+  // lancer un match — completerComposition peut laisser un numéro vide si
+  // aucun joueur de ce poste n'est disponible (tous prêtés/partis), ce qui
+  // enverrait une config incomplète au moteur. Retourne les postes manquants
+  // (liste vide = composition valide).
+  function validerComposition(composition) {
+    const POSTE_REQUIS = global.RMClub.POSTE_REQUIS;
+    const manquants = [];
+    for (const numero of Object.keys(POSTE_REQUIS)) {
+      if (!composition || !composition[numero]) manquants.push({ numero: Number(numero), poste: POSTE_REQUIS[numero] });
+    }
+    return manquants;
+  }
+
+  // Banc de 8 remplaçants (numéros 16-23), choisis parmi les joueurs NON
+  // titularisés. Un par catégorie de poste NON DÉJÀ ÉPUISÉE par les titulaires
+  // (GABARIT_EFFECTIF ne prévoit qu'UN seul joueur de profondeur par poste,
+  // sauf l'aile qui reste en réserve non convoquée ce jour-là — comme un vrai
+  // groupe de 23 sur un effectif de 24-25). Même logique "complète sans
+  // écraser" que completerComposition.
+  const POSTE_REQUIS_BANC = { 16: 'P', 17: 'T', 18: '2L', 19: '3L', 20: 'DM', 21: 'OV', 22: 'CE', 23: 'AR' };
+
+  function completerCompositionBanc(effectif, compositionTitulaires, bancPartiel) {
+    const parId = {};
+    for (const j of effectif) parId[j.id] = j;
+    const utilisesTitulaires = new Set(Object.values(compositionTitulaires || {}));
+    const banc = {};
+    const utilisesBanc = new Set();
+    for (const numero of Object.keys(POSTE_REQUIS_BANC)) {
+      const id = bancPartiel && bancPartiel[numero];
+      const j = id && parId[id];
+      if (j && !j.pret && !utilisesTitulaires.has(id) && !utilisesBanc.has(id)) {
+        banc[numero] = id;
+        utilisesBanc.add(id);
+      }
+    }
+    for (const numero of Object.keys(POSTE_REQUIS_BANC)) {
+      if (banc[numero]) continue;
+      const exclus = new Set([...utilisesTitulaires, ...utilisesBanc]);
+      const meilleur = meilleurCandidatPourNumero(effectif, POSTE_REQUIS_BANC[numero], exclus);
+      if (!meilleur) continue;
+      banc[numero] = meilleur.id;
+      utilisesBanc.add(meilleur.id);
+    }
+    return banc;
+  }
+
+  // Retrouve le numéro de maillot (titulaire) porté par un joueur donné dans
+  // une composition — sert à convertir capitaineId/buteurId/lanceurToucheId
+  // (id joueur) en numéro pour la config moteur (buteurA/toucheLanceurA).
+  function numeroDuJoueurDansComposition(composition, joueurId) {
+    if (!joueurId || !composition) return null;
+    for (const numero of Object.keys(composition)) {
+      if (composition[numero] === joueurId) return numero;
+    }
+    return null;
+  }
+
+  // Désigne automatiquement capitaine (meilleur niveau global), buteur
+  // (meilleure adresse au pied) et lanceur en touche (le talonneur titulaire,
+  // n°2, comme en match réel) parmi les 15 titulaires — utilisé tant que le
+  // joueur n'a rien choisi lui-même, et comme filet de sécurité si son choix
+  // précédent n'est plus titulaire (blessure, transfert...).
+  function autoDesignerEncadrement(effectif, compositionTitulaires) {
+    const parId = {};
+    for (const j of effectif) parId[j.id] = j;
+    const titulaires = Object.values(compositionTitulaires || {}).map((id) => parId[id]).filter(Boolean);
+    if (titulaires.length === 0) return { capitaineId: null, buteurId: null, lanceurToucheId: null };
+    const capitaine = titulaires.slice().sort((a, b) => (b.vitesse + b.plaquage) - (a.vitesse + a.plaquage))[0];
+    const buteur = titulaires.slice().sort((a, b) => (b.adresse || 0) - (a.adresse || 0))[0];
+    const lanceur = parId[compositionTitulaires['2']] || titulaires.find((j) => j.poste === 'T') || titulaires[0];
+    return { capitaineId: capitaine.id, buteurId: buteur.id, lanceurToucheId: lanceur.id };
+  }
+
+  global.RMClub = Object.assign(global.RMClub || {}, {
+    tactiqueVersConfig, effectifVersJoueursCfg, compositionVersJoueursCfg,
+    meilleurCandidatPourNumero, meilleureComposition, completerComposition,
+    validerComposition, POSTE_REQUIS_BANC, completerCompositionBanc,
+    numeroDuJoueurDansComposition, autoDesignerEncadrement,
+  });
+})(window);
