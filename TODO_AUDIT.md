@@ -108,8 +108,22 @@ Statuts possibles : `À FAIRE`, `EN COURS`, `CONFIRMÉ`, `CORRIGÉ`, `FAUX POSIT
 - Toutes les commandes du job `test` ré-exécutées localement avant push (mêmes commandes, même environnement) : `test-invariants.js` 12/12, `test-parcours-club.js` 35/35, `test-monde.js` 14/14, `test-audit-p0-1.js` 4/4, `test-audit-p0-2.js` 6/6, `test-parcours-navigateur.js` 55/55, `test-audit-p0-3.js` 8/8.
 
 ### P0-5. Site publié différent du code source (docs/ vs main vs GitHub Pages, Équipe B / Monde)
-- Statut : À FAIRE
-- Fichiers concernés : `docs/`, `.github/workflows/*`
+- **Statut : CONFIRMÉ (correction en attente d'arbitrage — voir note)**
+- Priorité : P0 (fiabilité — le site public peut régresser silencieusement)
+- Fichiers concernés :
+  - `.github/workflows/deploy-pages.yml` (cause)
+  - `main` (branche) vs `claude/readme-details-6aj3jt` (branche de travail)
+
+**Reproduction.** `.github/workflows/deploy-pages.yml` déclenche un déploiement sur `push` vers **DEUX** branches distinctes (`main` ET `claude/readme-details-6aj3jt`), sur le même environnement `github-pages` — c'est donc le DERNIER push, sur N'IMPORTE LAQUELLE des deux branches, qui décide du contenu publié, indépendamment de la branche la plus à jour ou la plus fiable. Vérifié par comparaison réelle (`git fetch origin main`, `git diff origin/main..claude/readme-details-6aj3jt`, `git merge-base --is-ancestor`) :
+  - `main` est un ancêtre strict de `claude/readme-details-6aj3jt` (aucune divergence, aucun conflit) mais est en retard de 10 commits.
+  - `docs/js/world.js` (écosystème mondial de compétitions : 12 pays, pyramides, Équipe B, montées/descentes) **n'existe pas du tout sur `main`** — ni référencé dans `docs/index.html` sur `main`.
+  - `docs/js/club.js` sur `main` ne contient aucune trace de `competitionB` (Équipe B) : fonctionnalité absente.
+  - Aggravant : `.github/workflows/deploy-pages.yml` sur `main` est aussi l'ANCIENNE version (celle d'avant le correctif P0-4) — sans job `test`, donc **sans aucun garde-fou**. Les nouveaux fichiers de test (`server/test-monde.js`, `server/test-audit-p0-1.js`, `server/test-audit-p0-2.js`, `server/test-audit-p0-3.js`) n'existent pas non plus sur `main`.
+  - Conséquence démontrée : un simple `push` vers `main` (par un autre outil, une autre session, ou manuellement), même totalement indépendant de ce travail, republierait immédiatement et sans aucun test le site public dans un état antérieur — perdant Équipe B, Monde, et les correctifs de sécurité/fiabilité P0-1 à P0-4 déjà déployés.
+
+**Cause.** Le workflow de déploiement a été créé dès l'origine (commit `189f054`, avant cette série d'audits) avec deux branches déclenchantes sur la même cible de déploiement, sans mécanisme empêchant qu'une branche en retard écrase silencieusement une branche plus avancée.
+
+**Correction envisagée (nécessite un arbitrage utilisateur, hors du périmètre que je peux décider seul) :** la branche `claude/readme-details-6aj3jt` étant un simple prolongement de `main` sans aucune divergence (fast-forward possible sans conflit), la correction structurelle consiste à faire avancer `main` jusqu'à `claude/readme-details-6aj3jt` (ou à retirer `main` du déclencheur en attendant). Cette action pousse vers une branche différente de celle assignée pour ce travail (`claude/readme-details-6aj3jt`) : conformément à la consigne "ne jamais pousser vers une autre branche sans autorisation explicite", je ne l'exécute pas sans confirmation.
 
 ---
 
