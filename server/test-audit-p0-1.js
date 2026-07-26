@@ -36,6 +36,7 @@ const clubPersonnelSrc = fs.readFileSync(path.join(__dirname, '../docs/js/club-p
 const clubObjectifSrc = fs.readFileSync(path.join(__dirname, '../docs/js/club-objectif.js'), 'utf8');
 const clubAnalyseSrc = fs.readFileSync(path.join(__dirname, '../docs/js/club-analyse.js'), 'utf8');
 const clubPretsSrc = fs.readFileSync(path.join(__dirname, '../docs/js/club-prets.js'), 'utf8');
+const clubContratsSrc = fs.readFileSync(path.join(__dirname, '../docs/js/club-contrats.js'), 'utf8');
 
 // Charge une instance TOTALEMENT NEUVE de club.js (nouveau contexte JS, donc
 // compteurJoueurId/compteurMessageId/compteurPersonnelId/compteurId repartent
@@ -51,6 +52,7 @@ function chargerInstanceFraiche() {
   new Function('window', clubObjectifSrc)(ctx);
   new Function('window', clubAnalyseSrc)(ctx);
   new Function('window', clubPretsSrc)(ctx);
+  new Function('window', clubContratsSrc)(ctx);
   return ctx.RMClub;
 }
 
