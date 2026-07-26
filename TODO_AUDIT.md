@@ -201,7 +201,7 @@ Statuts possibles : `À FAIRE`, `EN COURS`, `CONFIRMÉ`, `CORRIGÉ`, `FAUX POSIT
 - Régression complète sans échec : `test-parcours-club.js` 41/41, `test-invariants.js` 12/12, `test-monde.js` 14/14, `test-audit-p0-1.js` 4/4, `test-audit-p0-2.js` 6/6, `test-audit-p0-3.js` 8/8.
 - `grep -c "window\.\(alert\|confirm\|prompt\)(" docs/js/clubUI.js` → 0 (aucun appel actif restant, seuls des commentaires les mentionnent).
 
-**Reste à faire (3ᵉ tranche possible de P1-8).** Les 13 `window.alert` restants (messages d'erreur/info courts, ex. "Budget insuffisant") n'ont pas encore été convertis — probablement vers `toast(message, 'erreur')` (déjà existant, non bloquant) plutôt qu'une nouvelle fenêtre modale, sauf pour les messages substantiels (bilan de fin de saison, avertissement de sauvegarde corrompue) qui méritent une vraie fenêtre à lire posément.
+**P1-8 est maintenant complet (3 tranches) :** les 5 `window.confirm`, 2 `window.prompt` et 13 `window.alert` sont tous convertis — `grep -c "window\.\(alert\|confirm\|prompt\)(" docs/js/clubUI.js` renvoie 0.
 
 ### P1-9. Carrière longue (10 saisons+, rechargements réguliers) — aucun id dupliqué, NaN, donnée perdue, composition impossible
 - **Statut : CORRIGÉ**
