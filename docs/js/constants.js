@@ -27,7 +27,7 @@
     MAUL_ARRET_UN: '🅰️', MAUL_ARRET_DEUX: '✋', MAUL_USE_IT: '⏱️', MAUL_BALLON_SORTI: '➡️', MAUL_INJOUABLE: '🔒',
     MELEE_RUCK_INJOUABLE: '🔒',
     MAUL_PEN_ECROULEMENT: '🟨', MAUL_PEN_HORSJEU: '🟨', MAUL_PEN_ENTREE_COTE: '🟨', MAUL_PEN_TECHNIQUE: '🟨', CARTON_JAUNE: '🟡',
-    JEU_LARGE: '↔️', PASSE: '👐', PASSE_RATEE: '💥',
+    JEU_LARGE: '↔️', PASSE: '👐', PASSE_RATEE: '💥', ENTREE_22: '🚩',
     // Machine à états de la mêlée (loi 19/20, cf. ETATS_MELEE dans le moteur).
     MELEE: '⚪', MELEE_CROUCH: '⬇️', MELEE_BIND: '🤝', MELEE_SET: '💥', MELEE_INTRODUCTION: '↘️',
     MELEE_CONTESTATION: '💪', MELEE_DOMINEE: '🚀', MELEE_GAGNEE: '✅', MELEE_PRESSION: '⚠️',

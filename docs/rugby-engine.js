@@ -4666,6 +4666,7 @@
           if (enZone22Adverse) {
             this._entree22Faite = true;
             this.stats[this.possession].entrees22++;
+            this.log('ENTREE_22', this.possession, `L'equipe ${this.possession} entre dans les 22 m adverses`);
           }
         }
       }

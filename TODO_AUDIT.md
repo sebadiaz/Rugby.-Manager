@@ -426,6 +426,7 @@ Après CHAQUE rechargement (48 fois), 4 catégories d'invariants sont vérifiée
 - Objectif (cf. `docs/ANALYSE_MATCH_REEL.md`, T6) : disposer d'une métrique pour piloter un futur chantier "finition en zone rouge" — repère réel ~21 entrées/match, ~33% converties en essai.
 - Vérifié sur un match complet (graine 42) : 15 et 11 entrées pour un total de 6 et 4 essais — taux de conversion 40%/36%, cohérent avec le repère réel (~33%).
 - Affichage : nouvelle ligne "Entrées dans les 22 m" dans le panneau de statistiques du Match rapide (`docs/js/ui.js`, juste après "Essais"), vérifiée par capture d'écran (le joueur voit maintenant cette statistique, pas seulement le moteur qui la calcule). Documentée dans `docs/REGLES_RUGBY.md`.
+- Complément (CLAUDE.md, priorité "affichage clair des événements") : l'entrée en zone rouge est aussi loguée comme un vrai événement de match (`this.log('ENTREE_22', ...)`), avec sa propre icône 🚩 dans `docs/js/constants.js` — visible en direct dans le fil d'événements du HUD, pas seulement dans le récapitulatif de fin de match.
 - Tests : `server/test-invariants.js` 12/12, `server/test-parcours-club.js` 42/42, `server/test-monde.js` 14/14, `server/test-audit-p0-1.js` 4/4, `server/test-audit-p0-2.js` 6/6, `server/test-parcours-navigateur.js` 91/91, `server/test-audit-p0-3.js` 8/8.
 
 ### P2-13 — T7 mesuré (mètres gagnés) et T2 investigué (pas de changement de code, résultat négatif documenté)
