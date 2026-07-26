@@ -155,45 +155,10 @@
     return Math.round((vitesse + plaquage) * 3 + (30 - Math.min(age, 30)) * 5);
   }
 
-  // Génère un joueur pour une CATÉGORIE de poste (effectif étendu, club du
-  // joueur) — pas de numéro fixe : c'est la composition du jour qui choisit
-  // qui porte quel maillot (cf. meilleureComposition).
-  function genererJoueurEtendu(poste, rng, niveauClub) {
-    const base = ARCHETYPE_PAR_POSTE[poste];
-    const ecartNiveau = (niveauClub - 0.5) * 20;
-    const bruit = () => (rng() * 12 - 6);
-    const age = 18 + Math.floor(rng() * 17);
-    const vitesse = borneStat(base.vitesse + ecartNiveau + bruit());
-    const plaquage = borneStat(base.plaquage + ecartNiveau + bruit());
-    const adresse = borneAdresse((base.adresse != null ? base.adresse : 30) + ecartNiveau * 0.5 + bruit());
-    const attributs = genererAttributsProfondeur(base, ecartNiveau, rng);
-    const niveauActuel = (vitesse + plaquage + attributs.melee + attributs.touche
-      + attributs.puissance + attributs.passe + attributs.jeuPied) / 7;
-    return {
-      id: 'j' + compteurJoueurId++,
-      nom: genererNomJoueur(rng),
-      poste, age, vitesse, plaquage, adresse,
-      melee: attributs.melee, touche: attributs.touche, puissance: attributs.puissance,
-      endurance: attributs.endurance, passe: attributs.passe, jeuPied: attributs.jeuPied,
-      decision: attributs.decision, discipline: attributs.discipline,
-      potentiel: genererPotentiel(niveauActuel, age, rng),
-      tendance: base.tendance, couloir: base.couloir,
-      contrat: 1 + Math.floor(rng() * 4), // saisons restantes (1-4)
-      salaire: calculerSalaire(vitesse, plaquage, age),
-      blessureJournees: 0, // >0 = indisponible pour ce nombre de journées
-      fatigue: 0, // 0-100, cf. appliquerFatigue — répercutée sur les stats effectives en match
-      moral: 60 + Math.round(rng() * 10), // 0-100, cf. appliquerMoral — répercuté sur les stats effectives en match
-      pret: null, // {dureeRestante} : joueur prêté, indisponible pour la sélection (cf. preterJoueur)
-      matchsJoues: 0, // compteur RÉEL de titularisations cette saison (fiche joueur)
-      statsSaison: null, // cf. accumulerStatsJoueurs — jamais fabriqué, alimenté match après match
-      attributsDebutSaison: null, // snapshot RÉEL (cf. snapshotAttributsDebutSaison) pour la progression affichée en fiche joueur
-      entrainementIndividuel: null, // cf. appliquerEntrainement — remplace le programme collectif pour CE joueur si défini
-    };
-  }
-
-  function genererEffectifEtendu(rng, niveauClub) {
-    return GABARIT_EFFECTIF.map((poste) => genererJoueurEtendu(poste, rng, niveauClub));
-  }
+  // --- Effectif étendu (club du joueur) : genererJoueurEtendu,
+  // genererEffectifEtendu — déplacés dans docs/js/club-generation-joueurs.js
+  // (TODO_AUDIT.md P2-10, tranche 9). Toujours accessibles via RMClub.*,
+  // comportement strictement inchangé. ---
 
   // --- Centre de formation (Mode Club) : un vivier d'espoirs (16-18 ans),
   // séparé de l'effectif professionnel, qu'on peut promouvoir en équipe
@@ -436,7 +401,7 @@
       nom: nom || genererNomClub(rng),
       couleur: choisir(rng, COULEURS),
       niveauClub,
-      effectif: genererEffectifEtendu(rng, niveauClub),
+      effectif: global.RMClub.genererEffectifEtendu(rng, niveauClub),
       // +80 k€ de capital de départ (repreneur) par rapport à un club IA au
       // même niveau : garantit qu'un petit club de Ligue Régionale garde une
       // vraie marge de manœuvre sur le marché des transferts (cf.
@@ -1248,7 +1213,7 @@
       for (const j of reste) compte[j.poste] = (compte[j.poste] || 0) + 1;
       const posteManquant = GABARIT_EFFECTIF.find((p) => (compte[p] || 0) < GABARIT_EFFECTIF.filter((x) => x === p).length)
         || choisir(rng, GABARIT_EFFECTIF);
-      const jeune = genererJoueurEtendu(posteManquant, rng, saison.clubJoueur.niveauClub);
+      const jeune = global.RMClub.genererJoueurEtendu(posteManquant, rng, saison.clubJoueur.niveauClub);
       jeune.age = 18 + Math.floor(rng() * 3); // jeunes espoirs, 18-20 ans
       jeune.contrat = 2 + Math.floor(rng() * 2);
       jeune.salaire = calculerSalaire(jeune.vitesse, jeune.plaquage, jeune.age);
@@ -1601,7 +1566,8 @@
     calculerProgression,
     enregistrerResultatClubJoueur, marquerMessageLu, marquerTousMessagesLus,
     estimerValeurTransfert, validerComposition,
-    genererJoueurEtendu, GABARIT_EFFECTIF,
+    GABARIT_EFFECTIF, ARCHETYPE_PAR_POSTE,
+    borneStat, borneAdresse, genererAttributsProfondeur, genererPotentiel,
     genererJoueur, genererProchainIdJoueur,
   });
 })(window);
