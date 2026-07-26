@@ -1,0 +1,142 @@
+// Sauvegarde et migration (Mode Club) — domaine extrait de docs/js/club.js
+// (TODO_AUDIT.md P2-10, tranche 15) : persistance localStorage, validation de
+// schéma, migrations versionnées, copie de secours + avertissement en cas de
+// sauvegarde irrécupérable (cf. audit P0-2), chargement/effacement.
+// Comportement strictement inchangé.
+//
+// `resynchroniserCompteurs` (audit P0-1) est délibérément RESTÉE dans
+// club.js : elle mute directement compteurJoueurId/compteurMessageId/
+// compteurId, trois variables de module qui vivent dans la fermeture de
+// club.js (nécessaires à genererProchainIdJoueur, genererProchainIdClub et
+// ajouterMessage, restés là) — les en extraire aurait exigé 3 nouvelles
+// fonctions dédiées de mutation pour un seul appelant (chargerSaison,
+// ci-dessous), plus de surface que de gain. `chargerSaison` l'appelle donc
+// via `global.RMClub.resynchroniserCompteurs(...)`.
+(function (global) {
+  'use strict';
+
+  const CLE_CLUB = 'rugbyManager.club.v1';
+  const CLE_SECOURS = 'rugbyManager.club.secours.v1';
+  const CLE_AVERTISSEMENT = 'rugbyManager.club.avertissement.v1';
+
+  // Retourne true/false (au lieu d'avaler silencieusement l'erreur) : permet
+  // à l'UI de prévenir le joueur UNE FOIS si le stockage est indisponible
+  // (navigation privée, quota dépassé) au lieu de perdre sa progression sans
+  // aucun signal — cf. clubUI.js.
+  function sauvegarderSaison(saison) {
+    try { localStorage.setItem(CLE_CLUB, JSON.stringify(saison)); return true; } catch (e) { return false; }
+  }
+
+  // Extrait le suffixe numérique d'un id préfixé ("j42" -> 42) — 0 si l'id
+  // n'a pas ce préfixe ou n'a pas de suffixe numérique exploitable.
+  function idNumerique(id, prefixe) {
+    if (typeof id !== 'string' || id.slice(0, prefixe.length) !== prefixe) return 0;
+    const n = Number(id.slice(prefixe.length));
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  // Audit P0-2 (TODO_AUDIT.md) : avant ce correctif, une sauvegarde dont la
+  // version ne correspondait plus à VERSION_SAUVEGARDE était silencieusement
+  // traitée comme "aucune carrière" — aucun message, aucune sauvegarde de
+  // secours. Le joueur, ne voyant "rien", créait alors une nouvelle carrière
+  // qui écrasait (même clé localStorage) l'ancienne, PERTE IRRÉCUPÉRABLE
+  // démontrée avec une vraie carrière de plusieurs saisons.
+  //
+  // Registre de migrations versionnées : clé = version de DÉPART, valeur =
+  // fonction qui transforme une sauvegarde de cette version vers la
+  // suivante. Vide aujourd'hui — VERSION_SAUVEGARDE n'a jamais eu besoin
+  // d'être incrémentée depuis la création du jeu (chaque nouveau champ a été
+  // ajouté avec une valeur par défaut défensive dans le code, jamais en
+  // cassant le format) — mais prêt à recevoir une vraie migration le jour où
+  // une évolution du format l'exigera, au lieu de perdre les sauvegardes.
+  const MIGRATIONS = {};
+
+  // Validation minimale du schéma : uniquement les champs structurels SANS
+  // LESQUELS le jeu ne peut pas fonctionner (le moteur a besoin d'un
+  // effectif, d'un calendrier, d'un classement). Ne valide pas chaque champ
+  // optionnel un par un : ceux-là ont déjà leur propre valeur par défaut
+  // défensive disséminée dans le code (cf. assurerCentreFormation,
+  // assurerCompetitionB, palierPyramide dans avancerSaison...).
+  function saisonEstValide(saison) {
+    return !!(saison && typeof saison === 'object'
+      && saison.clubJoueur && typeof saison.clubJoueur === 'object'
+      && Array.isArray(saison.clubJoueur.effectif) && saison.clubJoueur.effectif.length > 0
+      && Array.isArray(saison.adversaires)
+      && Array.isArray(saison.calendrier)
+      && saison.classement && typeof saison.classement === 'object');
+  }
+
+  // Applique les migrations disponibles jusqu'à VERSION_SAUVEGARDE.
+  // { ok:true, saison } si une version valide et à jour est atteinte,
+  // { ok:false, raison } si la sauvegarde est irrécupérable en l'état
+  // (version sans migration connue, boucle anormale, ou schéma invalide
+  // même après migration) — jamais un plantage, jamais un silence.
+  function migrerSaison(saisonBrute) {
+    const VERSION_SAUVEGARDE = global.RMClub.VERSION_SAUVEGARDE;
+    if (!saisonBrute || typeof saisonBrute !== 'object' || typeof saisonBrute.version !== 'number') {
+      return { ok: false, raison: 'schema_invalide' };
+    }
+    let saison = saisonBrute;
+    let garde = 0;
+    while (saison.version < VERSION_SAUVEGARDE) {
+      const migrer = MIGRATIONS[saison.version];
+      if (!migrer) return { ok: false, raison: 'version_sans_migration', version: saison.version };
+      saison = migrer(saison);
+      if (++garde > 50) return { ok: false, raison: 'boucle_migration' }; // garde-fou, ne devrait jamais arriver
+    }
+    if (saison.version !== VERSION_SAUVEGARDE) return { ok: false, raison: 'version_incoherente' };
+    if (!saisonEstValide(saison)) return { ok: false, raison: 'schema_invalide' };
+    return { ok: true, saison };
+  }
+
+  // Sauvegarde de secours : CLÉ DISTINCTE de CLE_CLUB, jamais touchée par
+  // sauvegarderSaison/nouvelleSaison — une carrière créée ensuite n'écrase
+  // donc jamais ce secours. + un avertissement qu'affiche l'UI une seule
+  // fois (cf. clubUI.js) plutôt que de laisser le joueur croire qu'il n'a
+  // simplement jamais eu de carrière.
+  function conserverSecours(brut, raison) {
+    try {
+      localStorage.setItem(CLE_SECOURS, brut);
+      localStorage.setItem(CLE_AVERTISSEMENT, JSON.stringify({ raison, quand: Date.now() }));
+    } catch (e) { /* stockage indisponible : rien de plus à faire */ }
+  }
+  function consulterAvertissementChargement() {
+    try {
+      const brut = localStorage.getItem(CLE_AVERTISSEMENT);
+      return brut ? JSON.parse(brut) : null;
+    } catch (e) { return null; }
+  }
+  function effacerAvertissementChargement() {
+    try { localStorage.removeItem(CLE_AVERTISSEMENT); } catch (e) { /* ignore */ }
+  }
+
+  function chargerSaison() {
+    try {
+      const brut = localStorage.getItem(CLE_CLUB);
+      if (!brut) return null; // pas de sauvegarde : cas normal (1re visite), rien à signaler
+      let saisonBrute;
+      try {
+        saisonBrute = JSON.parse(brut);
+      } catch (e) {
+        conserverSecours(brut, 'json_invalide');
+        return null;
+      }
+      const resultat = migrerSaison(saisonBrute);
+      if (!resultat.ok) {
+        conserverSecours(brut, resultat.raison);
+        return null;
+      }
+      global.RMClub.resynchroniserCompteurs(resultat.saison);
+      return resultat.saison;
+    } catch (e) { return null; }
+  }
+  function effacerSaison() {
+    try { localStorage.removeItem(CLE_CLUB); } catch (e) { /* ignore */ }
+  }
+
+  global.RMClub = Object.assign(global.RMClub || {}, {
+    sauvegarderSaison, idNumerique, saisonEstValide, migrerSaison,
+    consulterAvertissementChargement, effacerAvertissementChargement,
+    chargerSaison, effacerSaison,
+  });
+})(window);
