@@ -33,6 +33,7 @@ const clubSrc = fs.readFileSync(path.join(__dirname, '../docs/js/club.js'), 'utf
 // à chaque instance fraîche pour que embaucherPersonnel/resynchronisation
 // fonctionnent, exactement comme dans docs/index.html.
 const clubPersonnelSrc = fs.readFileSync(path.join(__dirname, '../docs/js/club-personnel.js'), 'utf8');
+const clubObjectifSrc = fs.readFileSync(path.join(__dirname, '../docs/js/club-objectif.js'), 'utf8');
 
 // Charge une instance TOTALEMENT NEUVE de club.js (nouveau contexte JS, donc
 // compteurJoueurId/compteurMessageId/compteurPersonnelId/compteurId repartent
@@ -45,6 +46,7 @@ function chargerInstanceFraiche() {
   ctx.RugbyEngine = RugbyEngine;
   new Function('window', clubSrc)(ctx);
   new Function('window', clubPersonnelSrc)(ctx);
+  new Function('window', clubObjectifSrc)(ctx);
   return ctx.RMClub;
 }
 

@@ -230,13 +230,13 @@ Après CHAQUE rechargement (48 fois), 4 catégories d'invariants sont vérifiée
 ## P2 — Maintenabilité et simulation
 
 ### P2-10. Découper club.js et clubUI.js par domaine (sans changement de comportement)
-- **Statut : EN COURS (tranche 1 : Personnel — voir constat de risque et tranches suivantes ci-dessous)**
+- **Statut : EN COURS (tranche 1 : Personnel, tranche 2 : Objectif de saison — voir constat de risque et tranches suivantes ci-dessous)**
 - Priorité : P2 (maintenabilité — explicitement demandée par l'utilisateur malgré la tension avec la règle CLAUDE.md "jamais un patch purement technique si le gameplay ne s'améliore pas visiblement")
 - Fichiers concernés :
-  - `docs/js/club.js` (export fusionné, deux aides génériques exposées, un domaine retiré)
-  - `docs/js/club-personnel.js` (nouveau — domaine extrait)
-  - `docs/index.html` (nouvelle balise `<script>`)
-  - `server/test-parcours-club.js`, `server/test-monde.js`, `server/test-audit-p0-1.js`, `server/test-audit-p0-2.js` (chargent club.js "à la main" pour leurs tests — doivent désormais charger aussi club-personnel.js)
+  - `docs/js/club.js` (export fusionné, deux aides génériques exposées, deux domaines retirés)
+  - `docs/js/club-personnel.js`, `docs/js/club-objectif.js` (nouveaux — domaines extraits)
+  - `docs/index.html` (nouvelles balises `<script>`)
+  - `server/test-parcours-club.js`, `server/test-monde.js`, `server/test-audit-p0-1.js`, `server/test-audit-p0-2.js` (chargent club.js "à la main" pour leurs tests — doivent désormais charger aussi club-personnel.js et club-objectif.js)
 
 **Constat de risque (avant de commencer).** `club.js`/`clubUI.js` sont chacun UNE SEULE fermeture JS (`(function(){...})(window)`) où ~150 fonctions et de nombreuses constantes s'appellent entre elles par identifiant nu (pas via `RMClub.xxx()`), sans outil de bundling ni linter pour vérifier automatiquement qu'aucune référence n'est oubliée après un déplacement — seuls les tests (solides mais pas exhaustifs) peuvent le détecter. Un découpage complet en un seul patch serait donc une vraie "grosse refonte" à haut risque. Décidé avec l'utilisateur : découpage réel, mais domaine par domaine, avec la suite de tests complète relancée à chaque tranche (même approche que P1-8).
 
@@ -251,7 +251,10 @@ Après CHAQUE rechargement (48 fois), 4 catégories d'invariants sont vérifiée
 - Comportement strictement inchangé : aucune fonction déplacée n'a été modifiée, seuls les points d'appel externes au domaine (3 au total : `masseSalarialePersonnel` dans `appliquerFinancesMatch`, `genererMarchePersonnel` dans `avancerSaison` et `nouvelleSaison`) et la resynchronisation du compteur ont été adaptés pour passer par `RMClub.*`.
 - Suite complète relancée sans aucune régression : `test-parcours-club.js` 42/42, `test-monde.js` 14/14, `test-audit-p0-1.js` 4/4 (dont P0-1d, qui teste précisément la resynchronisation du personnel après un rechargement), `test-audit-p0-2.js` 6/6, `test-invariants.js` 12/12, `test-parcours-navigateur.js` 86/86 (onglet Personnel, embauche/licenciement inclus), `test-audit-p0-3.js` 8/8.
 
-**Domaines restants (tranches suivantes possibles, non commencées).** Génération de base des joueurs/effectifs, transferts internationaux, génération de club/pyramide, composition/tactique, fatigue/moral/entraînement/blessures, marché des transferts, prêts, contrats, Équipe B, calendrier/classement, messages, objectif de saison, sauvegarde/migration — chacun avec ses propres dépendances croisées à vérifier avant de couper, comme pour cette première tranche. `clubUI.js` (rendu) n'a pas encore été commencé.
+**Tranche 2 — Objectif de saison / confiance du président.** `determinerObjectifSaison`, `libelleObjectifSaison`, `evaluerObjectifSaison` déplacés vers un nouveau `docs/js/club-objectif.js`. Le domaine le plus simple à ce jour : 3 fonctions **pures** (aucun état de module, aucune variable `let` à resynchroniser) — contrairement à la tranche 1, aucune dépendance croisée cachée n'a été trouvée en migrant. 4 points d'appel externes adaptés pour passer par `RMClub.*` (2 dans `avancerSaison`, 2 dans `nouvelleSaison`). Même mécanisme de fusion `Object.assign` que la tranche 1, aucune nouvelle aide générique à exporter.
+- Suite complète relancée sans aucune régression : `test-parcours-club.js` 42/42, `test-monde.js` 14/14, `test-audit-p0-1.js` 4/4, `test-audit-p0-2.js` 6/6, `test-invariants.js` 12/12, `test-parcours-navigateur.js` 86/86 (carte "Objectif de la saison" du Dashboard, bilan de fin de saison inclus), `test-audit-p0-3.js` 8/8.
+
+**Domaines restants (tranches suivantes possibles, non commencées).** Génération de base des joueurs/effectifs, transferts internationaux, génération de club/pyramide, composition/tactique, fatigue/moral/entraînement/blessures, marché des transferts, prêts, contrats, Équipe B, calendrier/classement, messages, sauvegarde/migration — chacun avec ses propres dépendances croisées à vérifier avant de couper, comme pour les deux premières tranches. `clubUI.js` (rendu) n'a pas encore été commencé.
 
 ### P2-11. Tests statistiques sur plusieurs centaines de matchs (scores, essais, rucks, mêlées, touches, coups de pied, pénalités, possession, diversité)
 - Statut : À FAIRE
@@ -329,3 +332,8 @@ Après CHAQUE rechargement (48 fois), 4 catégories d'invariants sont vérifiée
 - Aucun comportement changé, seuls 3 points d'appel externes adaptés pour passer par `RMClub.*`. `docs/index.html` et 4 fichiers de test Node mis à jour pour charger le nouveau fichier.
 - Tests (suite complète) : `test-parcours-club.js` 42/42, `test-monde.js` 14/14, `test-audit-p0-1.js` 4/4 (dont le test de resynchronisation du personnel), `test-audit-p0-2.js` 6/6, `test-invariants.js` 12/12, `test-parcours-navigateur.js` 86/86, `test-audit-p0-3.js` 8/8.
 - Domaines restants : nombreux (voir détail dans la section P2-10 ci-dessus), `clubUI.js` pas commencé.
+
+### P2-10 — Découpage de club.js par domaine, tranche 2 (Objectif de saison) — EN COURS
+- Nouveau `docs/js/club-objectif.js` : `determinerObjectifSaison`, `libelleObjectifSaison`, `evaluerObjectifSaison` — 3 fonctions pures, aucun état de module, le domaine le plus simple à ce jour.
+- Contrairement à la tranche 1, aucune dépendance croisée cachée trouvée en migrant : 4 points d'appel externes (dans `avancerSaison`/`nouvelleSaison`) adaptés pour passer par `RMClub.*`, même mécanisme de fusion `Object.assign`, aucune nouvelle aide générique à exporter.
+- Tests (suite complète) : `test-parcours-club.js` 42/42, `test-monde.js` 14/14, `test-audit-p0-1.js` 4/4, `test-audit-p0-2.js` 6/6, `test-invariants.js` 12/12, `test-parcours-navigateur.js` 86/86 (carte "Objectif de la saison", bilan de fin de saison), `test-audit-p0-3.js` 8/8.

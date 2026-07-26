@@ -1581,41 +1581,11 @@
     }
   }
 
-  // --- Objectif de saison / confiance du président (Mode Club) : un vrai
-  // enjeu, dérivé du classement RÉEL de la saison précédente (jamais une
-  // ambition fabriquée sans lien avec l'historique du club). Sans historique
-  // (saison 1), objectif neutre : finir dans la première moitié. Ensuite,
-  // l'ambition suit la forme du club — bien classé = objectif relevé, mal
-  // classé = objectif de maintien. ---
-  function determinerObjectifSaison(historiqueSaisons, totalClubs) {
-    const derniere = historiqueSaisons && historiqueSaisons.length ? historiqueSaisons[historiqueSaisons.length - 1] : null;
-    if (!derniere) return { position: Math.max(1, Math.ceil(totalClubs / 2)), totalClubs };
-    const rang = derniere.position;
-    if (rang <= 2) return { position: 2, totalClubs };
-    if (rang <= Math.ceil(totalClubs / 2)) return { position: Math.max(1, Math.ceil(totalClubs / 2)), totalClubs };
-    return { position: Math.max(1, totalClubs - 1), totalClubs };
-  }
-  function libelleObjectifSaison(objectif) {
-    if (!objectif) return '';
-    if (objectif.position === 1) return 'Remporter le championnat';
-    if (objectif.position === 2) return 'Finir dans le top 2';
-    if (objectif.position <= 3) return `Finir dans le top ${objectif.position}`;
-    if (objectif.position >= objectif.totalClubs - 1) return 'Éviter la dernière place';
-    return `Finir ${objectif.position}e ou mieux`;
-  }
-  // Compare le classement final RÉEL à l'objectif de la saison qui vient de
-  // s'achever, et ajuste la confiance du président en conséquence (bornée
-  // 0-100). Un objectif dépassé largement fait plus progresser la confiance
-  // qu'un objectif tout juste atteint ; un échec sévère (loin de l'objectif)
-  // pèse plus qu'un échec de peu.
-  function evaluerObjectifSaison(objectif, positionFinale, confianceActuelle) {
-    if (!objectif) return null;
-    const reussi = positionFinale <= objectif.position;
-    const ecart = objectif.position - positionFinale; // positif si dépassé, négatif si raté
-    const delta = reussi ? Math.min(20, 8 + ecart * 3) : Math.max(-30, -8 + ecart * 4);
-    const confiance = Math.max(0, Math.min(100, confianceActuelle + Math.round(delta)));
-    return { reussi, delta: Math.round(delta), confiance };
-  }
+  // --- Objectif de saison / confiance du président : determinerObjectifSaison,
+  // libelleObjectifSaison, evaluerObjectifSaison — déplacés dans
+  // docs/js/club-objectif.js (TODO_AUDIT.md P2-10, tranche 2 : fonctions
+  // pures, aucun état de module, le domaine le plus simple à extraire).
+  // Toujours accessibles via RMClub.*, comportement strictement inchangé. ---
 
   // Fin de saison (club du joueur) : vieillissement, fin de contrat, retraite,
   // recrutement de jeunes pour compenser les départs et garder l'effectif à sa
@@ -1709,11 +1679,11 @@
     // la confiance du président — jamais un chiffre fabriqué, dérivé du
     // classement final qu'on vient de calculer.
     const confianceAvant = saison.clubJoueur.confiancePresident != null ? saison.clubJoueur.confiancePresident : 60;
-    const bilanObjectif = evaluerObjectifSaison(saison.clubJoueur.objectifSaison, positionFinale, confianceAvant);
+    const bilanObjectif = global.RMClub.evaluerObjectifSaison(saison.clubJoueur.objectifSaison, positionFinale, confianceAvant);
     if (bilanObjectif) {
       saison.clubJoueur.confiancePresident = bilanObjectif.confiance;
       const verdict = bilanObjectif.reussi ? 'Objectif atteint' : 'Objectif manqué';
-      ajouterMessage(saison, 'saison', `${verdict} : ${libelleObjectifSaison(saison.clubJoueur.objectifSaison)}`,
+      ajouterMessage(saison, 'saison', `${verdict} : ${global.RMClub.libelleObjectifSaison(saison.clubJoueur.objectifSaison)}`,
         `Confiance du président : ${bilanObjectif.confiance}% (${bilanObjectif.delta >= 0 ? '+' : ''}${bilanObjectif.delta}).`);
     }
 
@@ -1787,7 +1757,7 @@
     // Objectif de la saison qui COMMENCE, basé sur le classement RÉEL qu'on
     // vient d'archiver dans historiqueSaisons (donc y compris celui de la
     // saison qui vient de s'achever) — jamais une ambition fabriquée.
-    saison.clubJoueur.objectifSaison = determinerObjectifSaison(saison.clubJoueur.historiqueSaisons, tousLesClubs.length);
+    saison.clubJoueur.objectifSaison = global.RMClub.determinerObjectifSaison(saison.clubJoueur.historiqueSaisons, tousLesClubs.length);
     // Instantané des attributs en DÉBUT de cette nouvelle saison (progression
     // réelle affichée en fiche joueur, cf. calculerProgression) — pris APRÈS
     // vieillissement/départs/arrivées, donc reflète bien le point de départ
@@ -1826,7 +1796,7 @@
     const niveaux = niveauxAdversairesPourPalier(3); // du plus faible au plus fort, pour ce palier
     for (const niveauClub of niveaux) adversaires.push(genererClub(rng, { niveauClub }));
     const tousLesClubs = [clubJoueur, ...adversaires];
-    clubJoueur.objectifSaison = determinerObjectifSaison(clubJoueur.historiqueSaisons, tousLesClubs.length);
+    clubJoueur.objectifSaison = global.RMClub.determinerObjectifSaison(clubJoueur.historiqueSaisons, tousLesClubs.length);
     return {
       version: VERSION_SAUVEGARDE,
       numero: 1,
@@ -2027,6 +1997,5 @@
     enregistrerResultatClubJoueur, marquerMessageLu, marquerTousMessagesLus,
     estimerValeurTransfert, validerComposition,
     calculerPrixDemandeAdverse, approcherJoueurAdverse,
-    determinerObjectifSaison, libelleObjectifSaison, evaluerObjectifSaison,
   });
 })(window);

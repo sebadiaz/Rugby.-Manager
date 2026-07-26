@@ -23,6 +23,7 @@ new Function('window', require('fs').readFileSync(require('path').join(__dirname
 // club-personnel.js (TODO_AUDIT.md P2-10) : domaine extrait de club.js, à
 // charger de la même façon (ordre indifférent, fusion via Object.assign).
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-personnel.js'), 'utf8'))(global.window);
+new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-objectif.js'), 'utf8'))(global.window);
 const RMClub = global.window.RMClub;
 
 function creerRng(graine) {
@@ -672,12 +673,14 @@ test('pyramide : rétrocompatibilité — une sauvegarde antérieure sans "palie
 // saisons), composition toujours complétable après chaque rechargement. ---
 const clubSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club.js'), 'utf8');
 const clubPersonnelSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-personnel.js'), 'utf8');
+const clubObjectifSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-objectif.js'), 'utf8');
 function chargerInstanceFraicheClub() {
   const ctx = {};
   ctx.window = ctx;
   ctx.RugbyEngine = global.window.RugbyEngine;
   new Function('window', clubSrcPourRechargement)(ctx);
   new Function('window', clubPersonnelSrcPourRechargement)(ctx);
+  new Function('window', clubObjectifSrcPourRechargement)(ctx);
   return ctx.RMClub;
 }
 
