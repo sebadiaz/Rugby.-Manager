@@ -204,8 +204,26 @@ Statuts possibles : `À FAIRE`, `EN COURS`, `CONFIRMÉ`, `CORRIGÉ`, `FAUX POSIT
 **Reste à faire (3ᵉ tranche possible de P1-8).** Les 13 `window.alert` restants (messages d'erreur/info courts, ex. "Budget insuffisant") n'ont pas encore été convertis — probablement vers `toast(message, 'erreur')` (déjà existant, non bloquant) plutôt qu'une nouvelle fenêtre modale, sauf pour les messages substantiels (bilan de fin de saison, avertissement de sauvegarde corrompue) qui méritent une vraie fenêtre à lire posément.
 
 ### P1-9. Carrière longue (10 saisons+, rechargements réguliers) — aucun id dupliqué, NaN, donnée perdue, composition impossible
-- Statut : À FAIRE
-- Fichiers concernés : `docs/js/club.js`, `server/test-parcours-club.js`
+- **Statut : CORRIGÉ**
+- Priorité : P1 (parcours utilisateur — confiance sur la durée d'une vraie carrière, pas seulement un scénario court)
+- Fichiers concernés :
+  - `server/test-parcours-club.js` (nouvelle couverture — `docs/js/club.js` n'a pas eu besoin d'être modifié, les gardes existantes suffisent)
+
+**Nature de la tâche.** Contrairement à P0-1/P0-2/P0-3, il ne s'agit pas de reproduire puis corriger un bug précis, mais — comme P1-6/P1-7 — de prouver par un test qu'une carrière RÉELLEMENT longue (12 saisons, largement au-delà des 10 demandées) reste saine sur la durée, avec de VRAIS rechargements de page répétés (pas un seul F5 isolé comme les tests existants).
+
+**Correction (nouvelle couverture).** `server/test-parcours-club.js` : une carrière de 12 saisons, avec une NOUVELLE exécution indépendante de `club.js` (même mécanisme que `server/test-audit-p0-1.js` — les compteurs de module repartent bien à zéro, contrairement à un simple appel de fonction dans le même processus) à **4 points par saison** (début, milieu, fin avant bascule, fin après bascule) — soit 48 rechargements simulés sur toute la carrière. Entre chaque rechargement, des actions réalistes et variées : recrutement (si abordable), prêt puis rappel d'un joueur, renouvellement de contrat, promotion d'un espoir du centre de formation, embauche/licenciement de personnel, scouting, favoris, rafraîchissement des deux marchés (régénère des ids, le geste le plus stressant pour les compteurs). Chaque saison joue l'intégralité de son calendrier (scores synthétisés, comme le fait déjà le test "progression d'une journée" — inutile de repasser par le vrai moteur pour un test de robustesse des données), avec le pipeline complet (finances, blessures, fatigue, moral, prêts, entraînement) appliqué à chaque journée du club du joueur.
+
+Après CHAQUE rechargement (48 fois), 4 catégories d'invariants sont vérifiées :
+1. **Aucun id dupliqué** dans chacun des 4 espaces de noms d'id (joueurs : effectif/jeunes/marché/favoris ; clubs : le sien + tous les adversaires ; messages ; personnel : le sien + le marché).
+2. **Aucun NaN/Infinity** nulle part dans la saison — parcours générique et récursif de TOUTES les valeurs numériques de l'objet saison (plus de 200 à chaque vérification), pas une liste de champs choisis à la main qui pourrait en oublier.
+3. **Composition toujours complétable** après le rechargement (`completerComposition` + `validerComposition` renvoie 0 poste manquant).
+4. **Aucune donnée perdue** : le nom du club ne change jamais tout seul, l'effectif reste toujours alignable (≥15), le numéro de saison progresse d'exactement 1 à chaque bascule.
+
+**Preuve que le test n'est pas vide de sens.** Désactivé temporairement l'appel à `resynchroniserCompteurs()` dans `chargerSaison()` (le correctif de P0-1) : le nouveau test échoue immédiatement, dès le milieu de la première saison, avec des ids de joueurs dupliqués (`j1, j2, j3, j4, j5, j6`) — la preuve que ce test détecterait réellement une régression de ce type, pas seulement qu'il passe par construction. Réactivé ensuite (`git diff` confirme `docs/js/club.js` revenu à l'identique).
+
+**Critères de validation.**
+- `node server/test-parcours-club.js` : 42/42 (41 existants après P1-7 + 1 nouveau, qui couvre à lui seul 48 cycles de rechargement).
+- Régression complète sans échec : `test-invariants.js` 12/12, `test-monde.js` 14/14, `test-audit-p0-1.js` 4/4, `test-audit-p0-2.js` 6/6, `test-audit-p0-3.js` 8/8, `test-parcours-navigateur.js` 86/86 (aucun fichier de rendu touché, vérifié par précaution).
 
 ---
 
@@ -276,3 +294,10 @@ Statuts possibles : `À FAIRE`, `EN COURS`, `CONFIRMÉ`, `CORRIGÉ`, `FAUX POSIT
 - Amélioration visible : boîtes/fenêtres stylées cohérentes avec le thème du jeu au lieu de boîtes système grises (vérifié par capture d'écran pour les trois types de fenêtres).
 - `grep -c "window\.\(alert\|confirm\|prompt\)(" docs/js/clubUI.js` → 0.
 - Tests : `server/test-parcours-navigateur.js` 86/86 (85+1). Régression : `test-parcours-club.js` 41/41, `test-invariants.js` 12/12, `test-monde.js` 14/14, `test-audit-p0-1.js` 4/4, `test-audit-p0-2.js` 6/6, `test-audit-p0-3.js` 8/8.
+
+### P1-9 — Carrière longue (12 saisons, rechargements réguliers) — CORRIGÉ
+- Nouveau test dans `server/test-parcours-club.js` : 12 saisons, 4 rechargements simulés par saison (48 au total, même mécanisme que `test-audit-p0-1.js`), avec des actions réalistes entre chaque (transferts, prêts, contrats, personnel, scouting, favoris, rafraîchissement des marchés) et le calendrier complet joué à chaque saison.
+- Après chaque rechargement : aucun id dupliqué (4 espaces de noms), aucun NaN/Infinity (parcours récursif générique de la saison), composition toujours complétable, aucune donnée perdue (identité du club, progression du numéro de saison).
+- Validité du test prouvée : désactiver temporairement `resynchroniserCompteurs()` (le correctif P0-1) fait échouer le test dès le milieu de la première saison (ids dupliqués) ; réactivé, tout repasse au vert.
+- `docs/js/club.js` n'a pas eu besoin d'être modifié : les gardes existantes suffisent, seule la preuve manquait.
+- Tests : `server/test-parcours-club.js` 42/42 (41+1). Régression : `test-invariants.js` 12/12, `test-monde.js` 14/14, `test-audit-p0-1.js` 4/4, `test-audit-p0-2.js` 6/6, `test-audit-p0-3.js` 8/8, `test-parcours-navigateur.js` 86/86.

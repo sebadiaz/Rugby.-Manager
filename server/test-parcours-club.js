@@ -659,6 +659,194 @@ test('pyramide : rétrocompatibilité — une sauvegarde antérieure sans "palie
   assert.ok(c.palierPyramide && c.palierPyramide.niveau === 1, 'une sauvegarde antérieure à cette fonctionnalité doit repartir au palier le plus haut, pas être rétrogradée rétroactivement');
 });
 
+// --- Carrière longue (TODO_AUDIT.md P1-9) : 12 saisons, avec un VRAI
+// rechargement de page simulé (nouvelle exécution indépendante de club.js,
+// cf. server/test-audit-p0-1.js) plusieurs fois par saison, entrecoupées
+// d'actions réalistes (transferts, prêts, rappels, renouvellements de
+// contrat, personnel, scouting, favoris, promotions du centre de
+// formation). Critères : aucun id dupliqué, aucun NaN/Infinity nulle part
+// dans la saison, aucune donnée perdue (identité du club, progression des
+// saisons), composition toujours complétable après chaque rechargement. ---
+const clubSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club.js'), 'utf8');
+function chargerInstanceFraicheClub() {
+  const ctx = {};
+  ctx.window = ctx;
+  ctx.RugbyEngine = global.window.RugbyEngine;
+  new Function('window', clubSrcPourRechargement)(ctx);
+  return ctx.RMClub;
+}
+
+function walkNombres(valeur, callback, vus) {
+  if (valeur == null || typeof valeur !== 'object') { if (typeof valeur === 'number') callback(valeur); return; }
+  if (vus.has(valeur)) return;
+  vus.add(valeur);
+  for (const cle of Object.keys(valeur)) walkNombres(valeur[cle], callback, vus);
+}
+
+function verifierCarriereSaine(Club, s, label) {
+  // Aucun NaN/Infinity, où que ce soit dans la saison (budget, classement,
+  // attributs des joueurs, finances...).
+  let nombresVerifies = 0;
+  walkNombres(s, (n) => {
+    nombresVerifies++;
+    assert.ok(Number.isFinite(n), `${label} : valeur numérique non finie (NaN/Infinity) trouvée dans la saison`);
+  }, new Set());
+  assert.ok(nombresVerifies > 200, `${label} : scénario de test — une vraie saison doit contenir de nombreuses valeurs numériques`);
+
+  // Aucun id dupliqué, dans chaque espace de noms d'id (cf. P0-1 : un seul
+  // compteur par type, partagé par toutes les collections concernées).
+  const c = s.clubJoueur;
+  const sansDoublons = (ids, quoi) => {
+    const doublons = ids.filter((id, i) => ids.indexOf(id) !== i);
+    assert.deepStrictEqual(doublons, [], `${label} : ids de ${quoi} dupliqués : ${doublons.join(', ')}`);
+  };
+  sansDoublons([
+    ...c.effectif.map((j) => j.id),
+    ...(c.jeunes || []).map((j) => j.id),
+    ...s.marche.map((j) => j.id),
+    ...(s.favoris || []).map((j) => j.id),
+  ], 'joueurs (effectif/jeunes/marché/favoris)');
+  sansDoublons([c.id, ...s.adversaires.map((a) => a.id)], 'clubs');
+  sansDoublons((c.messages || []).map((m) => m.id), 'messages');
+  sansDoublons([...(c.personnel || []).map((p) => p.id), ...(s.marchePersonnel || []).map((p) => p.id)], 'personnel');
+
+  // Composition toujours complétable après un rechargement (aucun trou que
+  // l'auto-remplissage ne saurait combler).
+  const compo = Club.completerComposition(c.effectif, {});
+  assert.deepStrictEqual(Club.validerComposition(compo), [], `${label} : composition incomplète malgré l'auto-remplissage`);
+
+  // Aucune donnée perdue : identité du club et effectif jouable.
+  assert.strictEqual(c.nom, 'Carrière Longue', `${label} : le nom du club ne doit jamais changer tout seul`);
+  assert.ok(c.effectif.length >= 15, `${label} : l'effectif doit toujours permettre d'aligner une équipe complète`);
+}
+
+test('carrière longue : 12 saisons avec rechargements réguliers — aucun id dupliqué, NaN, donnée perdue ni composition impossible', () => {
+  const storeOriginal = global.localStorage;
+  const storeLongue = {};
+  global.localStorage = {
+    getItem: (k) => (k in storeLongue ? storeLongue[k] : null),
+    setItem: (k, v) => { storeLongue[k] = String(v); },
+    removeItem: (k) => { delete storeLongue[k]; },
+  };
+  try {
+    let graine = 5000;
+    const prochainRng = () => creerRng(graine++);
+
+    let Club = chargerInstanceFraicheClub();
+    let s = Club.nouvelleSaison(prochainRng(), 'Carrière Longue');
+    Club.sauvegarderSaison(s);
+
+    const NB_SAISONS = 12;
+    for (let saisonIdx = 0; saisonIdx < NB_SAISONS; saisonIdx++) {
+      // Rechargement (F5) en tout début de saison.
+      Club = chargerInstanceFraicheClub();
+      s = Club.chargerSaison();
+      assert.ok(s, `saison ${saisonIdx} : le rechargement doit réussir`);
+      verifierCarriereSaine(Club, s, `saison ${saisonIdx}, après rechargement initial`);
+
+      const c = s.clubJoueur;
+      const rng = prochainRng();
+
+      // Recrutement si abordable.
+      const cible = s.marche.find((j) => j.prixTransfert + Club.calculerPrimeSignature(j) <= c.budget);
+      if (cible) Club.signerJoueur(s, cible.id);
+
+      // Prêt puis rappel d'un joueur (si l'effectif le permet).
+      const pretable = c.effectif.find((j) => !j.pret);
+      if (pretable) {
+        const resPret = Club.preterJoueur(s, pretable.id, 3);
+        if (resPret.ok) Club.rappelerJoueur(s, pretable.id);
+      }
+
+      // Renouvellement de contrat pour un joueur en fin de contrat.
+      const enFinDeContrat = c.effectif.find((j) => j.contrat <= 1);
+      if (enFinDeContrat) {
+        const offre = Club.calculerOffreRenouvellement(enFinDeContrat);
+        Club.negocierRenouvellement(rng, s, enFinDeContrat.id, offre.salaire, offre.dureeMax);
+      }
+
+      // Centre de formation : promeut un espoir si disponible.
+      Club.assurerCentreFormation(rng, s);
+      if ((c.jeunes || []).length > 0) Club.promouvoirJeune(s, c.jeunes[0].id);
+
+      // Personnel : embauche puis licencie (stresse marchePersonnel/personnel).
+      if ((s.marchePersonnel || []).length > 0) {
+        const candidatStaff = s.marchePersonnel[0];
+        const resEmbauche = Club.embaucherPersonnel(s, candidatStaff.id);
+        if (resEmbauche.ok) Club.licencierPersonnel(s, candidatStaff.id);
+      }
+
+      // Scouting + favoris sur un joueur du marché restant.
+      const aScouter = s.marche[0];
+      if (aScouter && c.budget >= 20) Club.scouterJoueur(s, aScouter.id, 1);
+      if (aScouter) Club.basculerFavori(s, aScouter);
+
+      // Rafraîchit les deux marchés (regénère des ids, comme un vrai clic
+      // "Rafraîchir" en jeu) — stresse davantage compteurJoueurId/compteurPersonnelId.
+      s.marche = Club.genererMarcheTransferts(rng, c.niveauClub, 6);
+      s.marchePersonnel = Club.genererMarchePersonnel(rng, 5);
+
+      Club.sauvegarderSaison(s);
+
+      // Rechargement (F5) en milieu de saison, avant de jouer les journées.
+      Club = chargerInstanceFraicheClub();
+      s = Club.chargerSaison();
+      verifierCarriereSaine(Club, s, `saison ${saisonIdx}, milieu de saison`);
+
+      // Joue toutes les journées de la saison (scores synthétisés, comme
+      // server/test-parcours-club.js le fait déjà pour "progression d'une
+      // journée" — inutile de repasser par le vrai moteur pour ce test de
+      // robustesse des données sur de nombreuses saisons).
+      let fixtures = Club.prochainesFixtures(s);
+      while (fixtures.length > 0) {
+        for (const f of fixtures) {
+          const scoreDomicile = 10 + Math.floor(rng() * 30);
+          const scoreExterieur = 10 + Math.floor(rng() * 30);
+          Club.enregistrerResultat(s, f.id, scoreDomicile, scoreExterieur,
+            Math.floor(scoreDomicile / 7), Math.floor(scoreExterieur / 7));
+          const concerneJoueur = f.domicileId === s.clubJoueur.id || f.exterieurId === s.clubJoueur.id;
+          if (concerneJoueur) {
+            const cc = s.clubJoueur;
+            cc.compositionTitulaires = Club.completerComposition(cc.effectif, cc.compositionTitulaires);
+            cc.compositionBanc = Club.completerCompositionBanc(cc.effectif, cc.compositionTitulaires, {});
+            const forme = f.domicileId === cc.id ? (scoreDomicile >= scoreExterieur ? 'v' : 'd') : (scoreExterieur >= scoreDomicile ? 'v' : 'd');
+            const mouvement = Club.appliquerFinancesMatch(cc, forme);
+            Club.enregistrerMouvementFinances(cc, f.journee, mouvement);
+            Club.faireProgresserBlessures(rng, cc.effectif, cc.compositionTitulaires, 1, s);
+            Club.appliquerFatigue(cc.effectif, cc.compositionTitulaires, 1);
+            Club.appliquerMoral(cc.effectif, cc.compositionTitulaires, forme);
+            Club.progresserPrets(cc.effectif);
+            Club.appliquerEntrainement(rng, cc.effectif, cc.entrainementFocus, 1);
+            const adversaireId = f.domicileId === cc.id ? f.exterieurId : f.domicileId;
+            Club.enregistrerResultatClubJoueur(s, adversaireId, forme === 'v' ? scoreDomicile : scoreExterieur, forme === 'v' ? scoreExterieur : scoreDomicile, f.journee);
+          }
+        }
+        fixtures = Club.prochainesFixtures(s);
+      }
+      Club.sauvegarderSaison(s);
+
+      // Rechargement (F5) juste avant la bascule de fin de saison.
+      Club = chargerInstanceFraicheClub();
+      s = Club.chargerSaison();
+      verifierCarriereSaine(Club, s, `saison ${saisonIdx}, fin de saison avant bascule`);
+
+      const numeroAvant = s.numero;
+      Club.avancerSaison(prochainRng(), s);
+      assert.strictEqual(s.numero, numeroAvant + 1, `saison ${saisonIdx} : le numéro de saison doit progresser d'exactement 1`);
+      Club.sauvegarderSaison(s);
+
+      // Rechargement (F5) juste après la bascule de fin de saison.
+      Club = chargerInstanceFraicheClub();
+      s = Club.chargerSaison();
+      verifierCarriereSaine(Club, s, `saison ${saisonIdx}, après bascule de fin de saison`);
+    }
+
+    assert.strictEqual(s.numero, NB_SAISONS + 1, `la carrière doit avoir atteint la saison ${NB_SAISONS + 1} après ${NB_SAISONS} saisons complètes`);
+  } finally {
+    global.localStorage = storeOriginal;
+  }
+});
+
 console.log(`\n${nbTests} test(s) exécuté(s).`);
 if (process.exitCode) {
   console.error('ECHEC : au moins un test du parcours club a échoué.');
