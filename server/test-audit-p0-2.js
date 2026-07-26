@@ -22,6 +22,7 @@ global.localStorage = {
 global.window = global;
 global.window.RugbyEngine = require('../docs/rugby-engine.js');
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club.js'), 'utf8'))(global.window);
+new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-personnel.js'), 'utf8'))(global.window);
 const RMClub = global.window.RMClub;
 
 function creerRng(graine) {

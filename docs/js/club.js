@@ -975,67 +975,14 @@
     return effectif.reduce((somme, j) => somme + j.salaire, 0);
   }
 
-  // --- Personnel (Mode Club) : entraîneur adjoint, préparateur physique,
-  // médecin, recruteur, analyste vidéo — un poste par rôle, chacun avec un
-  // niveau (0-100) qui module RÉELLEMENT un mécanisme existant (cf.
-  // effetPersonnel ci-dessous), et un salaire qui pèse sur les finances
-  // comme celui des joueurs. Jamais décoratif : sans personnel, comportement
-  // historique inchangé partout où il est branché. ---
-  const POSTES_PERSONNEL = {
-    entraineur: { label: 'Entraîneur adjoint', effet: "Accélère la progression à l'entraînement collectif." },
-    preparateur: { label: 'Préparateur physique', effet: 'Réduit la fatigue accumulée et accélère la récupération.' },
-    medecin: { label: 'Médecin', effet: 'Réduit la durée des blessures.' },
-    recruteur: { label: 'Recruteur', effet: 'Réduit le coût du scouting et affine plus vite les rapports.' },
-    analyste: { label: 'Analyste vidéo', effet: "Affine l'analyse de l'adversaire (écarts plus fins détectés)." },
-  };
-  let compteurPersonnelId = 1;
-  function genererMembrePersonnel(rng, poste) {
-    const niveau = 40 + Math.floor(rng() * 55); // 40-95
-    return {
-      id: 'staff' + compteurPersonnelId++,
-      nom: genererNomJoueur(rng),
-      poste,
-      niveau,
-      salaire: Math.round(10 + niveau * 0.35), // k€/saison, ordre de grandeur d'un joueur modeste
-    };
-  }
-  function genererMarchePersonnel(rng, n) {
-    const postes = Object.keys(POSTES_PERSONNEL);
-    const marche = [];
-    for (let i = 0; i < (n || 5); i++) marche.push(genererMembrePersonnel(rng, choisir(rng, postes)));
-    return marche;
-  }
-  // Un seul membre par poste à la fois (comme un vrai organigramme) : engager
-  // un nouvel entraîneur suppose d'abord licencier l'ancien.
-  function embaucherPersonnel(saison, candidatId) {
-    if (!saison.clubJoueur.personnel) saison.clubJoueur.personnel = [];
-    const i = (saison.marchePersonnel || []).findIndex((p) => p.id === candidatId);
-    if (i === -1) return { ok: false, motif: 'introuvable' };
-    const candidat = saison.marchePersonnel[i];
-    if (saison.clubJoueur.personnel.some((p) => p.poste === candidat.poste)) return { ok: false, motif: 'poste_pourvu' };
-    saison.marchePersonnel.splice(i, 1);
-    saison.clubJoueur.personnel.push(candidat);
-    return { ok: true };
-  }
-  function licencierPersonnel(saison, staffId) {
-    const personnel = saison.clubJoueur.personnel || [];
-    const avant = personnel.length;
-    saison.clubJoueur.personnel = personnel.filter((p) => p.id !== staffId);
-    return { ok: saison.clubJoueur.personnel.length < avant };
-  }
-  function masseSalarialePersonnel(club) {
-    return (club.personnel || []).reduce((s, p) => s + p.salaire, 0);
-  }
-  // Facteur d'effet (>=1, 1 = poste non pourvu, comportement historique
-  // inchangé) dérivé du niveau du membre occupant ce poste — chaque
-  // consommateur (appliquerEntrainement, faireProgresserBlessures,
-  // scouterJoueur, analyserAdversaire, appliquerFatigue) l'applique selon
-  // son propre sens (voir leurs commentaires respectifs).
-  function effetPersonnel(saison, poste) {
-    const membre = (saison.clubJoueur.personnel || []).find((p) => p.poste === poste);
-    if (!membre) return 1;
-    return 1 + membre.niveau / 130; // niveau 95 -> ~1.73x, niveau 40 -> ~1.31x
-  }
+  // --- Personnel (Mode Club) : POSTES_PERSONNEL, genererMembrePersonnel,
+  // genererMarchePersonnel, embaucherPersonnel, licencierPersonnel,
+  // masseSalarialePersonnel, effetPersonnel — déplacés dans
+  // docs/js/club-personnel.js (TODO_AUDIT.md P2-10, tranche 1 : premier
+  // domaine extrait de ce fichier, entièrement autonome à l'exception de
+  // deux aides génériques désormais exportées ci-dessus, choisir et
+  // genererNomJoueur). Toujours accessibles via RMClub.*, comportement
+  // strictement inchangé.
 
   // --- Sponsor (Mode Club) : revenu récurrent réel par match, distinct de la
   // billetterie — proportionnel au standing du club, affiché séparément dans
@@ -1055,7 +1002,7 @@
     const recette = Math.round(40 + club.niveauClub * 120 + (forme === 'v' ? 25 : forme === 'n' ? 10 : 0));
     const revenuSponsor = club.sponsor ? club.sponsor.revenuParMatch : 0;
     const salaires = Math.round(masseSalariale(club.effectif) / 10);
-    const salairesPersonnel = Math.round(masseSalarialePersonnel(club) / 10);
+    const salairesPersonnel = Math.round(global.RMClub.masseSalarialePersonnel(club) / 10);
     club.budget += recette + revenuSponsor - salaires - salairesPersonnel;
     return { recette, revenuSponsor, salaires, salairesPersonnel };
   }
@@ -1835,7 +1782,7 @@
     // (pas un 0.5 fixe) : un petit club de Ligue Régionale n'attire pas les
     // mêmes joueurs libres qu'un cador de Ligue d'Excellence.
     saison.marche = genererMarcheTransferts(rng, saison.clubJoueur.niveauClub, 6);
-    saison.marchePersonnel = genererMarchePersonnel(rng, 5);
+    saison.marchePersonnel = global.RMClub.genererMarchePersonnel(rng, 5);
     saison.numero = (saison.numero || 1) + 1;
     // Objectif de la saison qui COMMENCE, basé sur le classement RÉEL qu'on
     // vient d'archiver dans historiqueSaisons (donc y compris celui de la
@@ -1891,7 +1838,7 @@
       // Marché calibré sur le niveau réel du club (petit club = marché
       // modeste) — jamais un 0.5 fixe déconnecté de la pyramide.
       marche: genererMarcheTransferts(rng, clubJoueur.niveauClub, 6),
-      marchePersonnel: genererMarchePersonnel(rng, 5),
+      marchePersonnel: global.RMClub.genererMarchePersonnel(rng, 5),
       favoris: [],
     };
   }
@@ -1938,7 +1885,11 @@
     for (const p of saison.marchePersonnel || []) maxPersonnel = Math.max(maxPersonnel, idNumerique(p.id, 'staff'));
     compteurJoueurId = Math.max(compteurJoueurId, maxJoueur + 1);
     compteurMessageId = Math.max(compteurMessageId, maxMessage + 1);
-    compteurPersonnelId = Math.max(compteurPersonnelId, maxPersonnel + 1);
+    // compteurPersonnelId vit maintenant dans docs/js/club-personnel.js (cf.
+    // TODO_AUDIT.md P2-10) : resynchronisé via cette fonction exportée plutôt
+    // qu'une mutation directe, impossible depuis ce fichier (variable hors de
+    // sa fermeture). Même logique de resynchronisation qu'avant, déplacée.
+    global.RMClub.resynchroniserCompteurPersonnel(maxPersonnel);
     compteurId = Math.max(compteurId, maxClub + 1);
   }
   // Audit P0-2 (TODO_AUDIT.md) : avant ce correctif, une sauvegarde dont la
@@ -2041,7 +1992,12 @@
     try { localStorage.removeItem(CLE_CLUB); } catch (e) { /* ignore */ }
   }
 
-  global.RMClub = {
+  // Fusionne avec ce que docs/js/club-personnel.js (chargé avant ou après,
+  // l'ordre n'importe pas) a déjà posé sur global.RMClub — jamais une simple
+  // réaffectation, qui écraserait ses fonctions si son <script> était chargé
+  // en premier (cf. TODO_AUDIT.md P2-10).
+  global.RMClub = Object.assign(global.RMClub || {}, {
+    choisir, genererNomJoueur,
     genererNomClub, genererClub, genererEffectif, effectifVersJoueursCfg,
     nouvelleSaison, genererCalendrier, classementInitial, enregistrerResultat,
     classementTrie, classementTrieDe, enregistrerResultatDans, prochainesFixtures, club,
@@ -2066,12 +2022,11 @@
     assurerCentreFormation, promouvoirJeune, ajouterMessage, nomPalierFrance, TAILLE_DIVISION_FRANCE,
     basculerFavori, analyserAdversaire,
     appliquerMoral, preterJoueur, rappelerJoueur, progresserPrets,
-    POSTES_PERSONNEL, genererMarchePersonnel, embaucherPersonnel, licencierPersonnel,
-    effetPersonnel, masseSalarialePersonnel, prevoirFinances,
+    prevoirFinances,
     calculerProgression,
     enregistrerResultatClubJoueur, marquerMessageLu, marquerTousMessagesLus,
     estimerValeurTransfert, validerComposition,
     calculerPrixDemandeAdverse, approcherJoueurAdverse,
     determinerObjectifSaison, libelleObjectifSaison, evaluerObjectifSaison,
-  };
+  });
 })(window);

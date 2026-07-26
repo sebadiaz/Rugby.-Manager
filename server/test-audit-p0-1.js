@@ -28,6 +28,11 @@ global.localStorage = {
 
 const RugbyEngine = require('../docs/rugby-engine.js');
 const clubSrc = fs.readFileSync(path.join(__dirname, '../docs/js/club.js'), 'utf8');
+// club-personnel.js (TODO_AUDIT.md P2-10) : domaine extrait de club.js
+// (personnel/compteurPersonnelId) — doit être chargé dans le même contexte
+// à chaque instance fraîche pour que embaucherPersonnel/resynchronisation
+// fonctionnent, exactement comme dans docs/index.html.
+const clubPersonnelSrc = fs.readFileSync(path.join(__dirname, '../docs/js/club-personnel.js'), 'utf8');
 
 // Charge une instance TOTALEMENT NEUVE de club.js (nouveau contexte JS, donc
 // compteurJoueurId/compteurMessageId/compteurPersonnelId/compteurId repartent
@@ -39,6 +44,7 @@ function chargerInstanceFraiche() {
   ctx.window = ctx;
   ctx.RugbyEngine = RugbyEngine;
   new Function('window', clubSrc)(ctx);
+  new Function('window', clubPersonnelSrc)(ctx);
   return ctx.RMClub;
 }
 

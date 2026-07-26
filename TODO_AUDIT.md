@@ -230,8 +230,28 @@ Après CHAQUE rechargement (48 fois), 4 catégories d'invariants sont vérifiée
 ## P2 — Maintenabilité et simulation
 
 ### P2-10. Découper club.js et clubUI.js par domaine (sans changement de comportement)
-- Statut : À FAIRE
-- Fichiers concernés : `docs/js/club.js`, `docs/js/clubUI.js`, `docs/index.html`
+- **Statut : EN COURS (tranche 1 : Personnel — voir constat de risque et tranches suivantes ci-dessous)**
+- Priorité : P2 (maintenabilité — explicitement demandée par l'utilisateur malgré la tension avec la règle CLAUDE.md "jamais un patch purement technique si le gameplay ne s'améliore pas visiblement")
+- Fichiers concernés :
+  - `docs/js/club.js` (export fusionné, deux aides génériques exposées, un domaine retiré)
+  - `docs/js/club-personnel.js` (nouveau — domaine extrait)
+  - `docs/index.html` (nouvelle balise `<script>`)
+  - `server/test-parcours-club.js`, `server/test-monde.js`, `server/test-audit-p0-1.js`, `server/test-audit-p0-2.js` (chargent club.js "à la main" pour leurs tests — doivent désormais charger aussi club-personnel.js)
+
+**Constat de risque (avant de commencer).** `club.js`/`clubUI.js` sont chacun UNE SEULE fermeture JS (`(function(){...})(window)`) où ~150 fonctions et de nombreuses constantes s'appellent entre elles par identifiant nu (pas via `RMClub.xxx()`), sans outil de bundling ni linter pour vérifier automatiquement qu'aucune référence n'est oubliée après un déplacement — seuls les tests (solides mais pas exhaustifs) peuvent le détecter. Un découpage complet en un seul patch serait donc une vraie "grosse refonte" à haut risque. Décidé avec l'utilisateur : découpage réel, mais domaine par domaine, avec la suite de tests complète relancée à chaque tranche (même approche que P1-8).
+
+**Tranche 1 — Personnel (entraîneur adjoint, préparateur physique, médecin, recruteur, analyste vidéo).** Domaine choisi en premier car le plus autonome (vérifié par un comptage des références croisées avant de commencer, pas juste supposé) : `POSTES_PERSONNEL`, `genererMembrePersonnel`, `genererMarchePersonnel`, `embaucherPersonnel`, `licencierPersonnel`, `masseSalarialePersonnel`, `effetPersonnel` déplacés vers un nouveau `docs/js/club-personnel.js`.
+
+**Correction.**
+- L'export de `club.js` passe d'une réaffectation complète (`global.RMClub = {...}`) à une fusion (`global.RMClub = Object.assign(global.RMClub || {}, {...})`) : sans ce changement, quel que soit l'ordre de chargement des deux fichiers, celui qui s'exécute en second écraserait entièrement l'objet posé par le premier. `club-personnel.js` utilise le même mécanisme de fusion — l'ordre des deux balises `<script>` dans `docs/index.html` n'a donc plus d'importance.
+- Deux aides génériques jusqu'ici internes à `club.js` (`choisir`, `genererNomJoueur`) sont exportées pour que `club-personnel.js` puisse les utiliser sans dupliquer leur code.
+- **Dépendance croisée subtile trouvée en migrant** (pas supposée à l'avance) : `resynchroniserCompteurs` (le correctif P0-1) mutait directement `compteurPersonnelId`, une variable de module qui vient de quitter la fermeture de `club.js`. Impossible de la muter depuis `club.js` une fois déplacée : corrigé en exportant une fonction dédiée `resynchroniserCompteurPersonnel(maxPersonnel)` depuis `club-personnel.js`, appelée par `club.js` à la place de la mutation directe — même logique de resynchronisation, juste déplacée là où l'état vit réellement. Cette dépendance n'était mentionnée dans aucun commentaire proche du code du personnel ; elle n'a été trouvée qu'en grepant systématiquement `compteurPersonnelId` dans tout le fichier avant de couper.
+
+**Critères de validation.**
+- Comportement strictement inchangé : aucune fonction déplacée n'a été modifiée, seuls les points d'appel externes au domaine (3 au total : `masseSalarialePersonnel` dans `appliquerFinancesMatch`, `genererMarchePersonnel` dans `avancerSaison` et `nouvelleSaison`) et la resynchronisation du compteur ont été adaptés pour passer par `RMClub.*`.
+- Suite complète relancée sans aucune régression : `test-parcours-club.js` 42/42, `test-monde.js` 14/14, `test-audit-p0-1.js` 4/4 (dont P0-1d, qui teste précisément la resynchronisation du personnel après un rechargement), `test-audit-p0-2.js` 6/6, `test-invariants.js` 12/12, `test-parcours-navigateur.js` 86/86 (onglet Personnel, embauche/licenciement inclus), `test-audit-p0-3.js` 8/8.
+
+**Domaines restants (tranches suivantes possibles, non commencées).** Génération de base des joueurs/effectifs, transferts internationaux, génération de club/pyramide, composition/tactique, fatigue/moral/entraînement/blessures, marché des transferts, prêts, contrats, Équipe B, calendrier/classement, messages, objectif de saison, sauvegarde/migration — chacun avec ses propres dépendances croisées à vérifier avant de couper, comme pour cette première tranche. `clubUI.js` (rendu) n'a pas encore été commencé.
 
 ### P2-11. Tests statistiques sur plusieurs centaines de matchs (scores, essais, rucks, mêlées, touches, coups de pied, pénalités, possession, diversité)
 - Statut : À FAIRE
@@ -301,3 +321,11 @@ Après CHAQUE rechargement (48 fois), 4 catégories d'invariants sont vérifiée
 - Validité du test prouvée : désactiver temporairement `resynchroniserCompteurs()` (le correctif P0-1) fait échouer le test dès le milieu de la première saison (ids dupliqués) ; réactivé, tout repasse au vert.
 - `docs/js/club.js` n'a pas eu besoin d'être modifié : les gardes existantes suffisent, seule la preuve manquait.
 - Tests : `server/test-parcours-club.js` 42/42 (41+1). Régression : `test-invariants.js` 12/12, `test-monde.js` 14/14, `test-audit-p0-1.js` 4/4, `test-audit-p0-2.js` 6/6, `test-audit-p0-3.js` 8/8, `test-parcours-navigateur.js` 86/86.
+
+### P2-10 — Découpage de club.js par domaine, tranche 1 (Personnel) — EN COURS
+- Nouveau `docs/js/club-personnel.js` : `POSTES_PERSONNEL`, `genererMembrePersonnel`, `genererMarchePersonnel`, `embaucherPersonnel`, `licencierPersonnel`, `masseSalarialePersonnel`, `effetPersonnel`, `resynchroniserCompteurPersonnel`.
+- L'export de `club.js` passe de `global.RMClub = {...}` (réaffectation) à `global.RMClub = Object.assign(global.RMClub || {}, {...})` (fusion) — sinon l'ordre de chargement des deux fichiers casserait tout. `choisir`/`genererNomJoueur` exportés pour que le nouveau fichier puisse s'en servir.
+- Dépendance croisée trouvée en migrant (pas anticipée) : `resynchroniserCompteurs` (P0-1) mutait directement `compteurPersonnelId`, sortie de la fermeture de `club.js` — corrigée par une fonction dédiée exportée `resynchroniserCompteurPersonnel(maxPersonnel)`.
+- Aucun comportement changé, seuls 3 points d'appel externes adaptés pour passer par `RMClub.*`. `docs/index.html` et 4 fichiers de test Node mis à jour pour charger le nouveau fichier.
+- Tests (suite complète) : `test-parcours-club.js` 42/42, `test-monde.js` 14/14, `test-audit-p0-1.js` 4/4 (dont le test de resynchronisation du personnel), `test-audit-p0-2.js` 6/6, `test-invariants.js` 12/12, `test-parcours-navigateur.js` 86/86, `test-audit-p0-3.js` 8/8.
+- Domaines restants : nombreux (voir détail dans la section P2-10 ci-dessus), `clubUI.js` pas commencé.
