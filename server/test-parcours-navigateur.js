@@ -467,10 +467,30 @@ function optionsLancement() {
   await page.waitForSelector('#panneauApercuMatch.visible', { timeout: 5000 });
   verifier('rechargement en milieu d\'action : l\'aperçu du match reste utilisable ensuite (pas de calque bloqué)', await page.isVisible('#panneauApercuMatch.visible'));
 
-  await page.click('#btnApercuLancerMatch');
+  // Audit P1 (anti-double-action) : un double clic RÉEL sur "Lancer le
+  // match" (deux événements DOM traités l'un après l'autre sans repeinture
+  // entre les deux, cf. le même principe que le double clic "signer" plus
+  // haut) démarrait auparavant une DEUXIÈME simulation qui se disputait
+  // l'état partagé de docs/js/main.js avec la première — reproduit : le jeu
+  // restait bloqué indéfiniment sur une simulation Équipe B en arrière-plan,
+  // sans aucune erreur console, sans façon de continuer sans recharger la
+  // page. Corrigé par un verrou anti-ré-entrée (`journeeEnCours`,
+  // docs/js/clubUI.js) — vérifié ici que la journée se déroule normalement
+  // malgré le double clic (une seule journée jouée, pas de blocage).
+  const matchsJouesAvantDoubleClicJournee = await page.evaluate(() =>
+    JSON.parse(localStorage.getItem('rugbyManager.club.v1')).calendrier.filter((f) => f.joue).length);
+  await page.evaluate(() => {
+    const bouton = () => document.getElementById('btnApercuLancerMatch');
+    bouton() && bouton().click();
+    bouton() && bouton().click();
+  });
   await page.waitForSelector('#panneauResultat.visible', { timeout: 20000 });
   const scoreTxt = await page.textContent('#resultatScore');
   verifier('progression d\'une journée : un score réel est affiché', /\d+\s*[—-]\s*\d+/.test(scoreTxt));
+  const matchsJouesApresDoubleClicJournee = await page.evaluate(() =>
+    JSON.parse(localStorage.getItem('rugbyManager.club.v1')).calendrier.filter((f) => f.joue).length);
+  verifier('double clic sur "Lancer le match" : une seule journée est jouée, pas de blocage ni de double simulation',
+    matchsJouesApresDoubleClicJournee === matchsJouesAvantDoubleClicJournee + 7);
   await page.click('#btnResultatFermer');
   await page.waitForTimeout(300);
   verifier('progression d\'une journée : retour au club après le match', await page.isVisible('#panneauClub.visible'));

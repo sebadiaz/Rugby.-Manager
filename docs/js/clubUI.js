@@ -28,6 +28,17 @@
   // colonne) : tenu en mémoire, réappliqué à chaque rendu (pas persisté —
   // ce sont des préférences d'affichage, pas des données de la saison).
   const filtreEffectif = { recherche: '', poste: '', disponible: false, triChamp: 'poste', triSens: 1 };
+  // Anti-double-action (audit P1) : lancerLaJournee() démarre une simulation
+  // (moteur réel pour le match du joueur + résolutions Équipe B/autres clubs)
+  // via l'état global partagé de docs/js/main.js (un seul `match`/`configMatch`
+  // à la fois). Un second déclenchement pendant que le premier tourne encore
+  // (double-clic rapide, ou même bouton ré-activé par un clavier/lecteur
+  // d'accessibilité) fait démarrer une DEUXIÈME simulation qui se dispute cet
+  // état partagé avec la première — reproduit et confirmé : le jeu reste
+  // bloqué indéfiniment sur un match Équipe B en arrière-plan, aucune erreur
+  // console, aucun moyen de continuer sans recharger la page. Ce verrou
+  // bloque toute ré-entrée tant que la journée précédente n'est pas résolue.
+  let journeeEnCours = false;
 
   function graineAleatoire() {
     return Math.floor(window.RMRng.random() * 0xffffffff);
@@ -1880,6 +1891,18 @@
     afficherInfo(`Saison ${saison.numero} !`, resume || 'Effectif inchangé.');
   });
 
+  // Active/désactive les boutons qui déclenchent une journée pendant
+  // qu'une simulation tourne déjà (audit P1, anti-double-action) — en plus
+  // du verrou `journeeEnCours` (la protection réelle contre la ré-entrée),
+  // demandé explicitement : un bouton visible doit refléter qu'il n'est pas
+  // utilisable plutôt que de rester cliquable en apparence.
+  function definirBoutonsJourneeActifs(actif) {
+    for (const id of ['btnJouerMatchClub', 'btnApercuMatchFlottant', 'btnApercuLancerMatch']) {
+      const el = document.getElementById(id);
+      if (el) el.disabled = !actif;
+    }
+  }
+
   // Joue la journée ENTIÈRE : tous les clubs jouent en même temps (cf.
   // RMClub.genererCalendrier), pas seulement le club du joueur. Les autres
   // rencontres (IA contre IA) sont simulées en arrière-plan (invisibles, pas
@@ -1891,6 +1914,10 @@
   // directement — la préparation (forme/composition/tactique/adversaire)
   // passe toujours par là d'abord (cf. rafraichirApercuMatch).
   function lancerLaJournee() {
+    // Verrou anti-double-action : voir le commentaire sur `journeeEnCours`
+    // plus haut. Bloque toute ré-entrée tant que la journée précédente n'est
+    // pas résolue (onResultat, ci-dessous, relâche le verrou).
+    if (journeeEnCours) return;
     const fixtures = RMClub.prochainesFixtures(saison);
     if (fixtures.length === 0) return;
     const matchJoueur = fixtures.find(concerneClubJoueur);
@@ -1907,6 +1934,8 @@
         return;
       }
     }
+    journeeEnCours = true;
+    definirBoutonsJourneeActifs(false);
     const autresMatchs = fixtures.filter((f) => f !== matchJoueur);
     const duree = Number(document.getElementById('selDureeClub').value) || 4800;
     document.getElementById('panneauClub').classList.remove('visible');
@@ -1930,7 +1959,10 @@
     }
 
     function lancerMatchJoueur() {
-      if (!matchJoueur) return; // calendrier à nombre pair de clubs : ne devrait pas arriver
+      // calendrier à nombre pair de clubs : ne devrait pas arriver. Relâche
+      // quand même le verrou anti-double-action (sinon la journée suivante
+      // resterait bloquée indéfiniment, onResultat n'étant jamais atteint).
+      if (!matchJoueur) { journeeEnCours = false; definirBoutonsJourneeActifs(true); return; }
       const clubDomicile = RMClub.club(saison, matchJoueur.domicileId);
       const clubExterieur = RMClub.club(saison, matchJoueur.exterieurId);
       assurerComposition();
@@ -1982,6 +2014,11 @@
             RMClub.progresserPrets(saison.clubJoueur.effectif);
             RMClub.appliquerEntrainement(creerRng(graineAleatoire()), saison.clubJoueur.effectif, saison.clubJoueur.entrainementFocus, RMClub.effetPersonnel(saison, 'entraineur'));
             sauvegarder();
+            // La journée est résolue : relâche le verrou anti-double-action
+            // (cf. `journeeEnCours` plus haut) — la prochaine journée peut
+            // être lancée normalement.
+            journeeEnCours = false;
+            definirBoutonsJourneeActifs(true);
             // NE PAS réinitialiser la config ici : ce callback tourne dès que
             // le résultat est connu, AVANT même que le joueur ait vu l'écran
             // "Match terminé" — effacer joueursA/joueursB/tactique maintenant
