@@ -645,5 +645,18 @@
 <script src="js/club-sauvegarde.js"></script>
 <script src="js/world.js"></script>
 <script src="js/clubUI.js"></script>
+<!-- Identifiant de version (TODO_AUDIT.md P0-5) : version.json est généré
+     UNIQUEMENT pendant le déploiement CI (jamais présent en local ni sur une
+     branche non déployée) — absent volontairement en dehors d'un vrai
+     déploiement, géré silencieusement ci-dessous. -->
+<div id="versionInfo" class="versionInfo" aria-hidden="true"></div>
+<script>
+  fetch('version.json').then((r) => (r.ok ? r.json() : null)).then((v) => {
+    if (v && v.commit) {
+      const el = document.getElementById('versionInfo');
+      if (el) el.textContent = `v${v.commit.slice(0, 7)}`;
+    }
+  }).catch(() => {});
+</script>
 </body>
 </html>

@@ -4,7 +4,12 @@ on:
   push:
     branches:
       - main
-      - claude/readme-details-6aj3jt
+      # Branches de session Claude Code : exécutent les tests (retour rapide
+      # pendant le développement) mais ne déploient JAMAIS en production —
+      # cf. la condition explicite sur le job "deploy" ci-dessous
+      # (TODO_AUDIT.md P0-5). Motif générique plutôt qu'un nom de branche en
+      # dur, pour rester valable au-delà de la session courante.
+      - "claude/**"
     paths:
       - "docs/**"
       - "engine/**"
@@ -19,7 +24,12 @@ permissions:
 
 concurrency:
   group: pages
-  cancel-in-progress: false
+  # true (pas false) : si un nouveau push sur main arrive pendant qu'un
+  # déploiement précédent est encore en cours, on annule l'ancien plutôt que
+  # de le laisser se terminer et écraser APRÈS coup le déploiement plus
+  # récent avec un contenu plus ancien (TODO_AUDIT.md P0-5, point 2 : "empêcher
+  # deux branches de publier successivement des versions différentes").
+  cancel-in-progress: true
 
 jobs:
   test:
@@ -60,10 +70,18 @@ jobs:
 
   deploy:
     needs: test
+    # Condition explicite (TODO_AUDIT.md P0-5) : SEUL "main" peut déployer en
+    # production, quelle que soit la branche qui a déclenché le workflow —
+    # filet de sécurité même si le déclencheur "on.push.branches" ci-dessus
+    # changeait un jour par erreur. Une branche de session Claude peut donc
+    # faire tourner "test" sans jamais atteindre ce job.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
+    outputs:
+      page_url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -71,6 +89,11 @@ jobs:
         uses: actions/configure-pages@v5
       - name: Synchroniser le moteur partagé vers docs/
         run: cp engine/rugby-engine.js docs/rugby-engine.js
+      - name: Générer l'identifiant de version (TODO_AUDIT.md P0-5)
+        run: |
+          printf '{"commit":"%s","ref":"%s","deployedAt":"%s"}\n' \
+            "${{ github.sha }}" "${{ github.ref_name }}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            > docs/version.json
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
@@ -78,3 +101,25 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
+  verify:
+    needs: deploy
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Utiliser Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Attendre la disponibilité du site public déployé
+        run: |
+          for i in $(seq 1 30); do
+            curl -sf "${{ needs.deploy.outputs.page_url }}index.html" > /dev/null && exit 0
+            sleep 2
+          done
+          echo "Le site public ne répond pas après déploiement" >&2
+          exit 1
+      - name: Vérifier le site public réellement déployé (TODO_AUDIT.md P0-5)
+        run: node server/test-deploy-public.js "${{ needs.deploy.outputs.page_url }}" --expect-commit "${{ github.sha }}"

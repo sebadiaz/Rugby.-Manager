@@ -866,3 +866,12 @@ select {
 .toast.visible { opacity: 1; transform: translateY(0); }
 .toast.succes { border-color: var(--win); }
 .toast.erreur { border-color: var(--loss); color: var(--loss); }
+
+/* Identifiant de version (TODO_AUDIT.md P0-5) : discret, coin bas-droit,
+   rempli par le script inline de index.html à partir de version.json
+   (généré pendant le déploiement CI — absent donc invisible ailleurs). */
+#versionInfo {
+  position: fixed; right: 8px; bottom: 6px; z-index: 5;
+  font-size: 10px; color: var(--text-faint); opacity: 0.6;
+  pointer-events: none; user-select: none;
+}
