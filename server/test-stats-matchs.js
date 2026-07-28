@@ -5,74 +5,120 @@
 // (engine/rugby-engine.js), comme l'exige CLAUDE.md (Rôle 6 — Analyste
 // statistiques).
 //
+// Les deux équipes sont générées à un NIVEAU DE CLUB différent à chaque
+// match (docs/js/club.js, genererEffectif(rng, niveauClub), la même
+// génération que le Mode Club réel — pas des joueurs symétriques par
+// défaut) : niveauClub tiré indépendamment pour A et B dans [0.15, 0.85],
+// la fourchette réellement couverte par la pyramide française (Ligue
+// Régionale à Ligue d'Excellence, cf. docs/js/club-pyramide.js). Sert à
+// vérifier la "diversité des vainqueurs" (le niveau doit peser sur le
+// résultat, sans le rendre déterministe) en plus des statistiques brutes.
+//
 // Deux catégories d'assertions, volontairement séparées :
 //
 // 1) DUR (fait échouer le script) : les critères de refus EXPLICITES de
 //    CLAUDE.md — jamais 0 mêlée/touche/essai en moyenne, au moins 20 passes
 //    et 20 rucks par match, des coups de pied présents, des scores qui
 //    varient d'un match à l'autre (pas des clones), une possession qui
-//    reste raisonnablement équilibrée (moteur symétrique par défaut), et
-//    les avants qui ne jouent PAS comme les trois-quarts (différence de
-//    passes/mètres gagnés par joueur, mesurée, pas supposée).
+//    reste raisonnablement équilibrée en moyenne agrégée (les niveaux de A
+//    et B sont tirés de la même distribution, donc aucun biais structurel
+//    ne doit apparaître sur 500 matchs), les avants qui ne jouent PAS comme
+//    les trois-quarts (différence de passes/mètres gagnés par joueur,
+//    mesurée, pas supposée), et l'équipe du niveau le plus élevé qui gagne
+//    plus souvent SANS que le résultat soit jamais déterministe.
 //
 // 2) OBSERVATION (avertissement seulement, n'échoue jamais le script) : la
 //    comparaison aux ordres de grandeur RÉELS de rugby indiqués par
 //    CLAUDE.md (points, essais, mêlées, touches, rucks, plaquages, coups de
-//    pied, pénalités) — CLAUDE.md le dit lui-même, "ces valeurs sont des
-//    repères, pas des règles fixes". Une calibration a été trouvée très
-//    éloignée de ces repères (voir TODO_AUDIT.md P2-11 pour le constat
-//    complet et la tâche de recalibrage du moteur qui en découle,
-//    délibérément hors du périmètre de CE patch — écrire les tests n'est
-//    pas rééquilibrer 4900 lignes de moteur au risque de tout casser).
+//    pied, pénalités, turnovers) — CLAUDE.md le dit lui-même, "ces valeurs
+//    sont des repères, pas des règles fixes". Une calibration a été trouvée
+//    très éloignée de ces repères (voir TODO_AUDIT.md P2-11/P2-13 pour le
+//    constat complet et les incréments de recalibrage du moteur qui en
+//    découlent, délibérément hors du périmètre de CE patch — écrire les
+//    tests n'est pas rééquilibrer 4900 lignes de moteur au risque de tout
+//    casser).
+//
+// Pour chaque statistique suivie : moyenne, médiane et une distribution
+// simplifiée (percentiles 10/50/90) — pas seulement une moyenne qui peut
+// masquer des valeurs aberrantes.
 //
 // Usage : node server/test-stats-matchs.js [n] [seedDepart]
-// Avec le nombre par défaut (200 matchs de 80 minutes), compter environ
-// 6 à 8 minutes d'exécution (mesuré ~2.2s/match dans cet environnement).
+// Avec le nombre par défaut (500 matchs de 80 minutes, niveaux de club
+// variés), compter environ 20-25 minutes d'exécution (mesuré ~2.5s/match
+// dans cet environnement, génération d'effectif incluse).
 'use strict';
 
 const assert = require('assert');
-const { MatchEngine } = require('../engine/rugby-engine.js');
+const fs = require('fs');
+const path = require('path');
 
-const N_MATCHS = Number(process.argv[2]) || 200;
+global.window = global;
+global.window.RugbyEngine = require('../docs/rugby-engine.js');
+const { MatchEngine } = global.window.RugbyEngine;
+new Function('window', fs.readFileSync(path.join(__dirname, '../docs/js/club.js'), 'utf8'))(global.window);
+new Function('window', fs.readFileSync(path.join(__dirname, '../docs/js/club-composition.js'), 'utf8'))(global.window);
+const RMClub = global.window.RMClub;
+
+function creerRng(graine) {
+  let s = graine >>> 0 || 1;
+  return () => { s = (s * 1103515245 + 12345) & 0x7fffffff; return s / 0x7fffffff; };
+}
+
+const N_MATCHS = Number(process.argv[2]) || 500;
 const SEED_DEPART = Number(process.argv[3]) || 1;
 const DUREE_SECONDES = 4800; // 80 minutes
 const DT = 0.2;
 const FORWARDS = [1, 2, 3, 4, 5, 6, 7, 8];
 const BACKS = [9, 10, 11, 12, 13, 14, 15];
+// Fourchette réellement couverte par la pyramide française (cf.
+// docs/js/club-pyramide.js, bandeNiveauPalier : 0.15-0.45 Régionale,
+// 0.35-0.6 Nationale, 0.55-0.85 Excellence) — bout à bout, [0.15, 0.85].
+const NIVEAU_MIN = 0.15, NIVEAU_MAX = 0.85;
 
 const totaux = {
   essais: 0, points: 0, scrums: 0, lineouts: 0, rucks: 0, tacklesAttempted: 0,
-  kicks: 0, penalitesConcedees: 0, carries: 0, passes: 0,
+  kicks: 0, penalitesConcedees: 0, carries: 0, passes: 0, turnovers: 0,
 };
-const scoresParMatch = [];
-const essaisParMatch = [];
+// Séries complètes (pas seulement les totaux) pour calculer médiane et
+// distribution, pas uniquement une moyenne.
+const series = {
+  essais: [], points: [], scrums: [], lineouts: [], rucks: [], tacklesAttempted: [],
+  kicks: [], penalitesConcedees: [], carries: [], passes: [], turnovers: [],
+};
 const possessionA = [];
 let passesJoueursForwards = 0, passesJoueursBacks = 0;
 let metresJoueursForwards = 0, metresJoueursBacks = 0;
+let victoiresNiveauFort = 0, victoiresNiveauFaible = 0, nuls = 0, ecartsNiveauNul = 0;
 
-console.log(`--- Simulation de ${N_MATCHS} match(s) de 80 min (graines ${SEED_DEPART} à ${SEED_DEPART + N_MATCHS - 1}) — patientez, plusieurs minutes ---\n`);
+console.log(`--- Simulation de ${N_MATCHS} match(s) de 80 min (graines ${SEED_DEPART} à ${SEED_DEPART + N_MATCHS - 1}, niveaux de club variés [${NIVEAU_MIN}-${NIVEAU_MAX}]) — patientez, ~20-25 minutes ---\n`);
 
 const debut = process.hrtime.bigint();
 for (let i = 0; i < N_MATCHS; i++) {
   const seed = SEED_DEPART + i;
-  const m = new MatchEngine(seed, DUREE_SECONDES);
+  const rngNiveaux = creerRng(seed * 2 + 1);
+  const niveauA = NIVEAU_MIN + rngNiveaux() * (NIVEAU_MAX - NIVEAU_MIN);
+  const niveauB = NIVEAU_MIN + rngNiveaux() * (NIVEAU_MAX - NIVEAU_MIN);
+  const rngEffectif = creerRng(seed * 2 + 2);
+  const effectifA = RMClub.genererEffectif(rngEffectif, niveauA);
+  const effectifB = RMClub.genererEffectif(rngEffectif, niveauB);
+  const joueursA = RMClub.effectifVersJoueursCfg({ effectif: effectifA });
+  const joueursB = RMClub.effectifVersJoueursCfg({ effectif: effectifB });
+
+  const m = new MatchEngine(seed, DUREE_SECONDES, { joueursA, joueursB });
   for (let t = 0; t < DUREE_SECONDES; t += DT) m.tick(DT);
   const s = m.getState();
   const sa = s.stats.A, sb = s.stats.B;
 
-  totaux.essais += sa.essais + sb.essais;
-  totaux.points += s.score.A + s.score.B;
-  totaux.scrums += sa.scrums + sb.scrums;
-  totaux.lineouts += sa.lineouts + sb.lineouts;
-  totaux.rucks += sa.rucks + sb.rucks;
-  totaux.tacklesAttempted += sa.tacklesAttempted + sb.tacklesAttempted;
-  totaux.kicks += sa.kicks + sb.kicks;
-  totaux.penalitesConcedees += sa.penalitesConcedees + sb.penalitesConcedees;
-  totaux.carries += sa.carries + sb.carries;
-  totaux.passes += sa.passes + sb.passes;
+  const valeurs = {
+    essais: sa.essais + sb.essais, points: s.score.A + s.score.B,
+    scrums: sa.scrums + sb.scrums, lineouts: sa.lineouts + sb.lineouts,
+    rucks: sa.rucks + sb.rucks, tacklesAttempted: sa.tacklesAttempted + sb.tacklesAttempted,
+    kicks: sa.kicks + sb.kicks, penalitesConcedees: sa.penalitesConcedees + sb.penalitesConcedees,
+    carries: sa.carries + sb.carries, passes: sa.passes + sb.passes,
+    turnovers: sa.turnovers + sb.turnovers,
+  };
+  for (const cle of Object.keys(valeurs)) { totaux[cle] += valeurs[cle]; series[cle].push(valeurs[cle]); }
 
-  scoresParMatch.push(s.score.A + s.score.B);
-  essaisParMatch.push(sa.essais + sb.essais);
   possessionA.push(s.possessionPct.A);
 
   for (const equipe of ['A', 'B']) {
@@ -86,21 +132,37 @@ for (let i = 0; i < N_MATCHS; i++) {
     }
   }
 
+  // Diversité des vainqueurs : le niveau le plus élevé doit peser sur le
+  // résultat (l'équipe la plus forte gagne PLUS SOUVENT) sans jamais être
+  // déterministe (l'équipe la plus faible doit pouvoir gagner aussi).
+  if (Math.abs(niveauA - niveauB) < 0.03) {
+    ecartsNiveauNul++; // niveaux quasi identiques : n'apporte rien à la mesure, exclu
+  } else {
+    const forte = niveauA > niveauB ? 'A' : 'B';
+    if (s.score.A === s.score.B) nuls++;
+    else if ((forte === 'A' && s.score.A > s.score.B) || (forte === 'B' && s.score.B > s.score.A)) victoiresNiveauFort++;
+    else victoiresNiveauFaible++;
+  }
+
   if ((i + 1) % 20 === 0) console.log(`  ... ${i + 1}/${N_MATCHS} matchs simulés`);
 }
 const dureeCalcul = Number(process.hrtime.bigint() - debut) / 1e9;
 
-const moy = (total) => total / N_MATCHS;
-const M = {
-  essais: moy(totaux.essais), points: moy(totaux.points), scrums: moy(totaux.scrums),
-  lineouts: moy(totaux.lineouts), rucks: moy(totaux.rucks), tacklesAttempted: moy(totaux.tacklesAttempted),
-  kicks: moy(totaux.kicks), penalitesConcedees: moy(totaux.penalitesConcedees),
-  carries: moy(totaux.carries), passes: moy(totaux.passes),
-};
-const possessionMoyA = possessionA.reduce((a, b) => a + b, 0) / N_MATCHS;
-// 8 avants et 7 trois-quarts par équipe et par match ; nombre total de
-// "joueur-matchs" observés pour chaque groupe (moyenne PAR JOUEUR, pas par
-// équipe, pour comparer des grandeurs homogènes).
+function moyenne(arr) { return arr.reduce((a, b) => a + b, 0) / arr.length; }
+function mediane(arr) {
+  const tri = [...arr].sort((a, b) => a - b);
+  const milieu = Math.floor(tri.length / 2);
+  return tri.length % 2 ? tri[milieu] : (tri[milieu - 1] + tri[milieu]) / 2;
+}
+function percentile(arr, p) {
+  const tri = [...arr].sort((a, b) => a - b);
+  const idx = Math.min(tri.length - 1, Math.max(0, Math.round((p / 100) * (tri.length - 1))));
+  return tri[idx];
+}
+
+const M = {};
+for (const cle of Object.keys(totaux)) M[cle] = moyenne(series[cle]);
+const possessionMoyA = moyenne(possessionA);
 const nbJoueurMatchsForwards = N_MATCHS * 2 * FORWARDS.length;
 const nbJoueurMatchsBacks = N_MATCHS * 2 * BACKS.length;
 const passesParJoueurForward = passesJoueursForwards / nbJoueurMatchsForwards;
@@ -108,20 +170,25 @@ const passesParJoueurBack = passesJoueursBacks / nbJoueurMatchsBacks;
 const metresParJoueurForward = metresJoueursForwards / nbJoueurMatchsForwards;
 const metresParJoueurBack = metresJoueursBacks / nbJoueurMatchsBacks;
 
-console.log(`\n--- Moyennes sur ${N_MATCHS} matchs (calcul : ${dureeCalcul.toFixed(0)}s) ---\n`);
-console.log(`Points (total)         moyenne=${M.points.toFixed(1)}`);
-console.log(`Essais (total)         moyenne=${M.essais.toFixed(1)}`);
-console.log(`Mêlées (scrums)        moyenne=${M.scrums.toFixed(1)}`);
-console.log(`Touches (lineouts)     moyenne=${M.lineouts.toFixed(1)}`);
-console.log(`Rucks                  moyenne=${M.rucks.toFixed(1)}`);
-console.log(`Plaquages tentés       moyenne=${M.tacklesAttempted.toFixed(1)}`);
-console.log(`Coups de pied          moyenne=${M.kicks.toFixed(1)}`);
-console.log(`Pénalités concédées    moyenne=${M.penalitesConcedees.toFixed(1)}`);
+console.log(`\n--- Moyenne / médiane / distribution (P10-P90) sur ${N_MATCHS} matchs (calcul : ${dureeCalcul.toFixed(0)}s) ---\n`);
+const LIBELLES = {
+  points: 'Points (total)', essais: 'Essais (total)', scrums: 'Mêlées (scrums)', lineouts: 'Touches (lineouts)',
+  rucks: 'Rucks', tacklesAttempted: 'Plaquages tentés', kicks: 'Coups de pied', penalitesConcedees: 'Pénalités concédées',
+  carries: 'Courses (carries)', passes: 'Passes', turnovers: 'Turnovers',
+};
+for (const cle of Object.keys(totaux)) {
+  console.log(`${LIBELLES[cle].padEnd(22)} moyenne=${M[cle].toFixed(1).padStart(7)}  médiane=${mediane(series[cle]).toFixed(1).padStart(7)}  P10=${percentile(series[cle], 10).toFixed(0).padStart(5)}  P90=${percentile(series[cle], 90).toFixed(0).padStart(5)}`);
+}
 console.log(`Possession équipe A    moyenne=${possessionMoyA.toFixed(1)}%`);
 console.log(`Passes/joueur avant    moyenne=${passesParJoueurForward.toFixed(2)}`);
 console.log(`Passes/joueur 3/4      moyenne=${passesParJoueurBack.toFixed(2)}`);
 console.log(`Mètres/joueur avant    moyenne=${metresParJoueurForward.toFixed(1)}`);
 console.log(`Mètres/joueur 3/4      moyenne=${metresParJoueurBack.toFixed(1)}`);
+const totalDecisif = victoiresNiveauFort + victoiresNiveauFaible + nuls;
+console.log(`\nDiversité des vainqueurs (matchs avec écart de niveau ≥0.03, ${totalDecisif}/${N_MATCHS}, ${ecartsNiveauNul} exclu(s) niveaux quasi identiques) :`);
+console.log(`  équipe la plus forte gagne   ${victoiresNiveauFort} (${(100 * victoiresNiveauFort / totalDecisif).toFixed(1)}%)`);
+console.log(`  équipe la plus faible gagne  ${victoiresNiveauFaible} (${(100 * victoiresNiveauFaible / totalDecisif).toFixed(1)}%)`);
+console.log(`  match nul                    ${nuls} (${(100 * nuls / totalDecisif).toFixed(1)}%)`);
 
 let nbTests = 0, nbEchecs = 0;
 function test(nom, fn) {
@@ -146,17 +213,18 @@ test('touches : jamais 0 en moyenne', () => assert.ok(M.lineouts > 2, `moyenne=$
 test('passes : au moins 20 par match en moyenne (seuil explicite CLAUDE.md)', () => assert.ok(M.passes >= 20, `moyenne=${M.passes}`));
 test('rucks : au moins 20 par match en moyenne (seuil explicite CLAUDE.md)', () => assert.ok(M.rucks >= 20, `moyenne=${M.rucks}`));
 test('coups de pied : présents, pas quasi absents', () => assert.ok(M.kicks > 5, `moyenne=${M.kicks}`));
+test('turnovers : jamais 0 en moyenne', () => assert.ok(M.turnovers > 1, `moyenne=${M.turnovers}`));
 
 test('scores : ne sont jamais toujours identiques d\'un match à l\'autre', () => {
-  const distincts = new Set(scoresParMatch).size;
+  const distincts = new Set(series.points).size;
   assert.ok(distincts > 1, `${distincts} score(s) total(aux) distinct(s) sur ${N_MATCHS} matchs`);
 });
 test('essais : le nombre total varie aussi d\'un match à l\'autre (pas une action figée)', () => {
-  const distincts = new Set(essaisParMatch).size;
+  const distincts = new Set(series.essais).size;
   assert.ok(distincts > 1, `${distincts} valeur(s) distincte(s) sur ${N_MATCHS} matchs`);
 });
 
-test('possession : aucune équipe ne garde ~95% sans raison (moteur symétrique par défaut)', () => {
+test('possession : aucune équipe ne garde ~95% sans raison en moyenne agrégée (niveaux de A/B tirés de la même distribution, aucun biais structurel attendu)', () => {
   assert.ok(possessionMoyA >= 30 && possessionMoyA <= 70, `possession moyenne équipe A=${possessionMoyA.toFixed(1)}%`);
 });
 
@@ -169,13 +237,26 @@ test('avants et trois-quarts ne jouent PAS pareil : les trois-quarts gagnent net
     `mètres/joueur avant=${metresParJoueurForward.toFixed(1)} vs trois-quarts=${metresParJoueurBack.toFixed(1)}`);
 });
 
+test('diversité des vainqueurs : l\'équipe du niveau le plus élevé gagne PLUS SOUVENT que l\'inverse (le niveau doit peser sur le résultat)', () => {
+  assert.ok(victoiresNiveauFort > victoiresNiveauFaible,
+    `plus fort gagne ${victoiresNiveauFort}, plus faible gagne ${victoiresNiveauFaible}`);
+});
+test('diversité des vainqueurs : l\'équipe du niveau le plus faible gagne AUSSI, pas jamais (le résultat n\'est jamais déterministe)', () => {
+  assert.ok(victoiresNiveauFaible > 0, `plus faible gagne ${victoiresNiveauFaible} fois sur ${totalDecisif}`);
+});
+test('diversité des vainqueurs : le niveau le plus élevé ne gagne pas systématiquement non plus (pas >95%, le hasard du match doit rester réel)', () => {
+  const tauxFort = victoiresNiveauFort / totalDecisif;
+  assert.ok(tauxFort < 0.95, `taux de victoire du niveau le plus élevé=${(100 * tauxFort).toFixed(1)}%`);
+});
+
 // --- 2) Observation par rapport aux repères RÉELS de rugby de CLAUDE.md —
-// avertissement seulement (voir en-tête de fichier et TODO_AUDIT.md P2-11
-// pour le constat détaillé : un écart important a été mesuré ici, qui
+// avertissement seulement (voir en-tête de fichier et TODO_AUDIT.md P2-11/
+// P2-13 pour le constat détaillé : un écart important a été mesuré ici, qui
 // nécessite une tâche de recalibrage du moteur à part entière). ---
 const REPERES = {
   points: [25, 70], essais: [2, 8], scrums: [8, 25], lineouts: [15, 35],
   rucks: [70, 180], tacklesAttempted: [120, 250], kicks: [30, 80], penalitesConcedees: [12, 30],
+  turnovers: [12, 18],
 };
 console.log('\n--- Comparaison aux repères réalistes de CLAUDE.md (avertissement seulement) ---');
 let horsRepere = 0;
