@@ -475,14 +475,26 @@
   // Finances d'un jour de match (club du joueur uniquement) : recette de
   // billetterie (plus élevée pour un grand club, prime en cas de victoire),
   // revenu de sponsoring récurrent, et une part de la masse salariale
-  // annuelle — joueurs ET personnel — répartie sur les 10 journées de la
-  // saison — un budget qui bouge vraiment avec les résultats, sans simuler
-  // des dizaines de lignes comptables.
-  function appliquerFinancesMatch(club, forme) {
+  // annuelle — joueurs ET personnel — répartie sur le vrai nombre de
+  // journées de la saison (cf. RMClub.nombreJourneesSaison — 26 pour la
+  // division de départ à 14 clubs, PAS une constante figée) — un budget qui
+  // bouge vraiment avec les résultats, sans simuler des dizaines de lignes
+  // comptables.
+  //
+  // Audit "économie de saison" : divisait auparavant par 10 (constante
+  // héritée d'un ancien championnat à 10 journées), alors que la division de
+  // départ compte 26 journées depuis l'introduction de la pyramide française
+  // — la masse salariale annuelle était donc prélevée ~2,6× par saison au
+  // lieu d'une fois. `nbJournees` est maintenant fourni par l'appelant (qui
+  // connaît la vraie taille du calendrier de CETTE saison, cf. clubUI.js) ;
+  // le repli à 26 ne sert qu'en dernier recours (ne devrait jamais être
+  // sollicité, le calendrier a toujours au moins une journée).
+  function appliquerFinancesMatch(club, forme, nbJournees) {
     const recette = Math.round(40 + club.niveauClub * 120 + (forme === 'v' ? 25 : forme === 'n' ? 10 : 0));
     const revenuSponsor = club.sponsor ? club.sponsor.revenuParMatch : 0;
-    const salaires = Math.round(masseSalariale(club.effectif) / 10);
-    const salairesPersonnel = Math.round(global.RMClub.masseSalarialePersonnel(club) / 10);
+    const jours = nbJournees > 0 ? nbJournees : 26;
+    const salaires = Math.round(masseSalariale(club.effectif) / jours);
+    const salairesPersonnel = Math.round(global.RMClub.masseSalarialePersonnel(club) / jours);
     club.budget += recette + revenuSponsor - salaires - salairesPersonnel;
     return { recette, revenuSponsor, salaires, salairesPersonnel };
   }
@@ -536,9 +548,11 @@
   // Calendrier aller-retour complet (méthode du cercle, championnat classique) :
   // TOUS les clubs s'affrontent deux fois chacun (une fois à domicile, une
   // fois à l'extérieur), et chaque JOURNÉE fait jouer TOUS les clubs en même
-  // temps (n/2 matchs simultanés) — pas seulement le club du joueur. Avec 6
-  // clubs (le joueur + 5 adversaires) : 3 matchs/journée, 10 journées. Exige
-  // un nombre pair de clubs (sinon un club serait au repos chaque journée).
+  // temps (n/2 matchs simultanés) — pas seulement le club du joueur. Avec n
+  // clubs : n/2 matchs/journée, 2*(n-1) journées (aller + retour) — pour la
+  // division de départ à 14 clubs (Ligue Régionale, cf. club-pyramide.js) :
+  // 7 matchs/journée, 26 journées. Exige un nombre pair de clubs (sinon un
+  // club serait au repos chaque journée).
   // --- Calendrier/classement : genererCalendrier, classementInitial,
   // enregistrerResultatDans, enregistrerResultat, classementTrieDe,
   // classementTrie, prochainesFixtures, club — déplacés dans

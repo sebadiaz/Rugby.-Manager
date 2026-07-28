@@ -122,8 +122,18 @@
     return saison.adversaires.find((c) => c.id === clubId) || null;
   }
 
+  // Nombre RÉEL de journées de la saison, dérivé du calendrier généré (audit
+  // "économie de saison") — jamais une constante figée : dépend de la taille
+  // réelle de la division (14 clubs = 26 journées, 16 clubs = 30 journées,
+  // cf. TAILLE_DIVISION_FRANCE). Fonctionne aussi bien pour une sauvegarde
+  // ancienne, dont la division avait une autre taille : le calendrier stocké
+  // dans CETTE sauvegarde fait foi, aucune migration nécessaire.
+  function nombreJourneesSaison(calendrier) {
+    return new Set((calendrier || []).map((f) => f.journee)).size;
+  }
+
   global.RMClub = Object.assign(global.RMClub || {}, {
     genererCalendrier, classementInitial, enregistrerResultatDans, enregistrerResultat,
-    classementTrieDe, classementTrie, prochainesFixtures, club,
+    classementTrieDe, classementTrie, prochainesFixtures, club, nombreJourneesSaison,
   });
 })(window);

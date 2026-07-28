@@ -838,7 +838,7 @@
     document.getElementById('clubMasseSalariale').innerHTML =
       `<div class="ligneStatut"><span>Salaires joueurs (saison)</span><span class="valeurStatut">${masseJoueurs} k€</span></div>` +
       `<div class="ligneStatut"><span>Salaires personnel (saison)</span><span class="valeurStatut">${massePersonnel} k€</span></div>` +
-      `<div class="ligneStatut"><span>Total / journée</span><span class="valeurStatut">${Math.round((masseJoueurs + massePersonnel) / 10)} k€</span></div>`;
+      `<div class="ligneStatut"><span>Total / journée</span><span class="valeurStatut">${Math.round((masseJoueurs + massePersonnel) / RMClub.nombreJourneesSaison(saison.calendrier))} k€</span></div>`;
     const prevision = RMClub.prevoirFinances(c, 5);
     const cartePrevisions = document.getElementById('cartePrevisions');
     if (prevision) {
@@ -2000,7 +2000,7 @@
             const scorePour = lettreJoueur === 'A' ? etat.score.A : etat.score.B;
             const scoreContre = lettreJoueur === 'A' ? etat.score.B : etat.score.A;
             RMClub.enregistrerResultatClubJoueur(saison, adversaireId, scorePour, scoreContre, matchJoueur.journee);
-            const mouvement = RMClub.appliquerFinancesMatch(saison.clubJoueur, forme);
+            const mouvement = RMClub.appliquerFinancesMatch(saison.clubJoueur, forme, RMClub.nombreJourneesSaison(saison.calendrier));
             RMClub.enregistrerMouvementFinances(saison.clubJoueur, matchJoueur.journee, mouvement);
             RMClub.accumulerStats(saison.clubJoueur, etat.stats[lettreJoueur]);
             RMClub.accumulerStatsJoueurs(saison.clubJoueur.effectif, compositionUtilisee, etat.statsJoueurs && etat.statsJoueurs[lettreJoueur]);

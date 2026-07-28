@@ -274,6 +274,61 @@ test('progression d\'une journée : résultat enregistré, finances/fatigue/mora
   assert.strictEqual(c.historiqueConfrontations[adversaireId].length, 1);
 });
 
+// --- 5bis) Économie de saison (audit) : appliquerFinancesMatch prélevait la
+// masse salariale ANNUELLE divisée par 10 (constante héritée d'un ancien
+// championnat à 10 journées) — la division de départ compte réellement 26
+// journées (14 clubs, aller-retour) depuis l'introduction de la pyramide
+// française, donc la masse salariale était prélevée ~2,6× par saison au
+// lieu d'une fois. Corrigé en dérivant le nombre de journées du calendrier
+// RÉEL de la saison (RMClub.nombreJourneesSaison), plus une constante figée.
+test('économie de saison : le total des salaires prélevés sur une saison complète correspond à la masse salariale annuelle (pas 2,6×)', () => {
+  const s = RMClub.nouvelleSaison(creerRng(201), 'Test Économie');
+  const c = s.clubJoueur;
+  const nbJournees = RMClub.nombreJourneesSaison(s.calendrier);
+  assert.strictEqual(nbJournees, 26, 'scénario de test : la division de départ (14 clubs) doit compter 26 journées');
+  const masseAnnuelleJoueurs = RMClub.masseSalariale(c.effectif);
+  const masseAnnuellePersonnel = RMClub.masseSalarialePersonnel(c);
+  let totalPreleveJoueurs = 0, totalPrelevePersonnel = 0;
+  for (let j = 0; j < nbJournees; j++) {
+    const mouvement = RMClub.appliquerFinancesMatch(c, 'v', nbJournees);
+    totalPreleveJoueurs += mouvement.salaires;
+    totalPrelevePersonnel += mouvement.salairesPersonnel;
+  }
+  // Tolérance ±5% : chaque journée arrondit indépendamment (Math.round), un
+  // léger écart cumulé sur 26 arrondis est normal, pas un signe de bug.
+  const ratioJoueurs = totalPreleveJoueurs / masseAnnuelleJoueurs;
+  assert.ok(ratioJoueurs > 0.95 && ratioJoueurs < 1.05,
+    `total prélevé=${totalPreleveJoueurs} k€, masse annuelle=${masseAnnuelleJoueurs} k€, ratio=${ratioJoueurs.toFixed(3)}`);
+  if (masseAnnuellePersonnel > 0) {
+    const ratioPersonnel = totalPrelevePersonnel / masseAnnuellePersonnel;
+    assert.ok(ratioPersonnel > 0.95 && ratioPersonnel < 1.05,
+      `total prélevé personnel=${totalPrelevePersonnel} k€, masse annuelle=${masseAnnuellePersonnel} k€, ratio=${ratioPersonnel.toFixed(3)}`);
+  }
+});
+
+test('économie de saison : un match d\'Équipe B ne prélève JAMAIS de salaire (déjà compté une fois via appliquerFinancesMatch)', () => {
+  const s = RMClub.nouvelleSaison(creerRng(202), 'Test Équipe B Finances');
+  const mouvementB = RMClub.appliquerFinancesMatchEquipeB(s.clubJoueur, 'v');
+  assert.strictEqual(mouvementB.salaires, 0, 'un match Équipe B ne doit jamais redéduire les salaires joueurs');
+  assert.strictEqual(mouvementB.salairesPersonnel, 0, 'un match Équipe B ne doit jamais redéduire les salaires du personnel');
+});
+
+test('économie de saison : rétrocompatibilité — une "ancienne sauvegarde" avec un calendrier de taille différente n\'utilise PAS la constante figée 26', () => {
+  const s = RMClub.nouvelleSaison(creerRng(203), 'Ancienne Division');
+  // Simule un calendrier hérité d'une division plus petite (comme l'ancien
+  // championnat à 6 clubs, 10 journées) — jamais régénéré, on veut vérifier
+  // que le calcul s'adapte à CE calendrier précis, pas à une constante.
+  const clubsReduits = [s.clubJoueur, ...s.adversaires.slice(0, 5)];
+  s.calendrier = RMClub.genererCalendrier(clubsReduits);
+  const nbJourneesAnciennes = RMClub.nombreJourneesSaison(s.calendrier);
+  assert.strictEqual(nbJourneesAnciennes, 10, 'scénario de test : 6 clubs doivent donner 10 journées');
+  const masseAnnuelle = RMClub.masseSalariale(s.clubJoueur.effectif);
+  const mouvement = RMClub.appliquerFinancesMatch(s.clubJoueur, 'v', nbJourneesAnciennes);
+  const attendu = Math.round(masseAnnuelle / 10);
+  assert.strictEqual(mouvement.salaires, attendu,
+    `prélèvement=${mouvement.salaires} k€, attendu (masse/10 journées)=${attendu} k€ — ne doit pas utiliser 26 en dur`);
+});
+
 // --- 6) Affichage d'un club adverse ---
 test('club adverse : identité, effectif complet et analyse comparative disponibles', () => {
   const adversaireId = saison.adversaires[0].id;

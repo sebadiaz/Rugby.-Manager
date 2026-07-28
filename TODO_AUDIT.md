@@ -131,6 +131,38 @@ Statuts possibles : `À FAIRE`, `EN COURS`, `CONFIRMÉ`, `CORRIGÉ`, `FAUX POSIT
 - `git rev-parse origin/main` == `git rev-parse claude/readme-details-6aj3jt` après le push (`a92ec0f` des deux côtés) : confirmé.
 - Ce fast-forward a lui-même déclenché un déploiement réel sur `main` — vérifié via l'API GitHub Actions que le NOUVEAU garde-fou (job `test`, désormais présent sur `main`) s'est exécuté et a réussi avant que `deploy` ne démarre : run [30189945183](https://github.com/sebadiaz/Rugby.-Manager/actions/runs/30189945183) — job `test` 05:47:12→05:50:38 (succès, 5 étapes de test toutes vertes), job `deploy` démarré seulement à 05:50:44 et terminé avec succès à 05:50:59. Preuve que le site publié, `main` et la branche de travail sont maintenant un seul et même état, protégé par les tests.
 
+### P0-6. Économie de saison : `appliquerFinancesMatch` prélevait ~2,6× la masse salariale annuelle
+- **Statut : CORRIGÉ**
+- Priorité : P0 (fiabilité — budget de carrière faussé sur toute la durée d'une saison)
+- Fichiers concernés :
+  - `docs/js/club.js` (cause + correction : signature et logique de `appliquerFinancesMatch`, commentaire de `genererCalendrier` mis à jour)
+  - `docs/js/club-calendrier.js` (nouvelle fonction `nombreJourneesSaison`)
+  - `docs/js/clubUI.js` (2 points d'appel corrigés : simulation d'une journée + affichage de l'onglet Finances)
+  - `server/test-parcours-club.js` (3 nouveaux tests — reproduction/validation)
+
+**Reproduction.** La division de départ (Ligue Régionale) compte 14 clubs, donc `genererCalendrier` produit `2*(n-1) = 26` journées (confirmé : `new Set(saison.calendrier.map(f=>f.journee)).size === 26`). Or `appliquerFinancesMatch(club, forme)` prélevait `Math.round(masseSalariale(effectif) / 10)` à CHAQUE journée — `10` étant une constante figée héritée d'un ancien championnat à 10 journées (6 clubs), jamais mise à jour après l'introduction de la pyramide française. Simulation d'une saison complète (26 journées, `creerRng(201)`) : masse salariale annuelle joueurs = 612 k€, total réellement prélevé sur la saison = 1586 k€, soit un ratio de **2,59×** — quasiment exactement le "~2,6 fois" signalé. Un second foyer du même bug a été trouvé par grep (`/ 10\b`) : l'onglet Finances (`clubUI.js`, ligne 841) affichait aussi `Math.round((masseJoueurs + massePersonnel) / 10)` comme "Total / journée", donc un chiffre visible au joueur ~2,6× trop élevé, indépendamment du prélèvement réel.
+
+**Cause.** Diviseur `10` en dur, jamais paramétré sur le vrai nombre de journées du calendrier généré ; commentaire de `appliquerFinancesMatch` et de `genererCalendrier` toujours fondés sur l'ancien championnat à 6 clubs/10 journées.
+
+**Correction.**
+- Nouvelle fonction `RMClub.nombreJourneesSaison(calendrier)` (`club-calendrier.js`) : `new Set(calendrier.map(f => f.journee)).size` — dérive le nombre de journées du calendrier RÉEL de la saison en cours, jamais d'une constante figée. Fonctionne aussi bien pour une ancienne sauvegarde dont la division avait une autre taille (ex. 6 clubs/10 journées) : le calendrier stocké dans CETTE sauvegarde fait foi, aucune migration nécessaire (compatibilité descendante, requête #5).
+- `appliquerFinancesMatch(club, forme, nbJournees)` (`club.js`) : accepte désormais `nbJournees` en 3ᵉ paramètre (repli défensif à `26` en dernier recours, jamais sollicité en pratique). Les deux points d'appel (`clubUI.js` : simulation d'une journée + affichage Finances) passent `RMClub.nombreJourneesSaison(saison.calendrier)`.
+- `appliquerFinancesMatchEquipeB` vérifiée : retourne déjà `salaires: 0, salairesPersonnel: 0` — ne redéduit jamais les salaires pour un match d'Équipe B (requête #4, déjà satisfaite, aucun changement nécessaire, confirmé par un nouveau test dédié plutôt que supposé).
+- Prévisions financières et budget initial (requête #7) : `budgetInitial` (`club-pyramide.js`) n'a aucune dépendance à la constante de journées — aucun changement nécessaire. Vérifié par simulation manuelle d'une saison complète (26 journées, résultats alternés) : le budget évolue sainement (401 k€ → 2884 k€) et `prevoirFinances` produit des projections cohérentes avec le nouveau prélèvement.
+
+**Chiffres avant/après (saison complète, 26 journées, `creerRng(201)`).**
+| | Avant | Après |
+|---|---|---|
+| Masse salariale annuelle (joueurs) | 612 k€ | 612 k€ |
+| Total prélevé sur la saison | 1586 k€ | 624 k€ |
+| Ratio prélevé/masse annuelle | 2,59× | 1,02× |
+| Onglet Finances, "Total / journée" (exemple réel, 629 k€ de masse) | ~63 k€ | 24 k€ |
+
+**Critères de validation.**
+- 3 nouveaux tests dans `server/test-parcours-club.js` : total prélevé sur une saison complète ≈ masse salariale annuelle (ratio 0,95-1,05, joueurs et personnel) ; un match d'Équipe B ne prélève jamais de salaire ; rétrocompatibilité (calendrier à 6 clubs/10 journées → diviseur 10, pas 26 en dur). Vérifiés en échec AVANT correctif (`git stash` sur les 3 fichiers de production) : `TypeError: RMClub.nombreJourneesSaison is not a function`, puis en succès après `git stash pop`.
+- `test-parcours-club.js` : 45/45 (42 existants + 3 nouveaux). `test-monde.js` : 14/14. `test-audit-p0-1.js` : 4/4. `test-audit-p0-2.js` : 6/6. `test-textes-accueil.js` : 4/4. `test-invariants.js` : 12/12. `test-audit-p0-3.js` : 8/8. `test-parcours-navigateur.js` : 92/92 (aucune régression, y compris le double-clic P1-10 et l'affichage financier Équipe B).
+- Vérification visuelle (Playwright) de l'onglet Finances d'un club fraîchement créé : "Salaires joueurs (saison) 629 k€", "Total / journée 24 k€" (629/26 ≈ 24,2, correctement arrondi) — capture d'écran confirmée sans anomalie de mise en page.
+
 ---
 
 ## P1 — Parcours utilisateur
