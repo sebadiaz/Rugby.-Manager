@@ -40,6 +40,22 @@
   // bloque toute ré-entrée tant que la journée précédente n'est pas résolue.
   let journeeEnCours = false;
 
+  // Anti-double-action (audit "doubles actions sur les transferts") :
+  // gererClicJoueurMarche (Signer/Scouter, marché des transferts) n'a AUCUNE
+  // fenêtre de confirmation (contrairement aux offres/renouvellements qui
+  // passent par demanderMontant/confirmerAction, déjà protégées) — un clic
+  // signe/scoute IMMÉDIATEMENT puis rafraichirMarche() reconstruit toute la
+  // liste (innerHTML), ce qui décale chaque ligne suivante d'une position.
+  // Reproduit et confirmé (double-clic souris RÉEL à coordonnées fixes, pas
+  // un double appel JS sur le même nœud) : le 2e clic atterrit sur le bouton
+  // "Signer" de la ligne SUIVANTE (désormais à la même position écran que la
+  // ligne signée), signant un second joueur jamais choisi par le joueur. Un
+  // verrou à durée fixe (pas juste "tant que la promesse précédente n'est pas
+  // résolue", cf. journeeEnCours) car l'action est entièrement synchrone —
+  // sans expiration, le verrou se relâcherait avant même que le 2e clic,
+  // déjà en file d'attente côté navigateur, soit traité.
+  let marcheActionVerrouillee = false;
+
   function graineAleatoire() {
     return Math.floor(window.RMRng.random() * 0xffffffff);
   }
@@ -1781,6 +1797,22 @@
       return;
     }
     if (!id) return;
+    if (e.target.classList.contains('btnScouter') || e.target.classList.contains('btnSigner')) {
+      // cf. commentaire sur `marcheActionVerrouillee` : bloque un 2e clic
+      // (Scouter ou Signer, même ligne ou ligne suivante décalée) tant que le
+      // court verrou n'a pas expiré — une VRAIE action distincte suivante
+      // arrive toujours bien après ce délai.
+      if (marcheActionVerrouillee) return;
+      marcheActionVerrouillee = true;
+      // 800 ms, pas 300-400 : sous charge machine réelle (onglet en
+      // arrière-plan, portable lent), l'écart entre les deux clics d'un même
+      // double-clic humain peut dépasser largement le seuil "instantané" —
+      // mesuré empiriquement dans ce dépôt jusqu'à ~500 ms d'écart entre les
+      // deux évènements DOM pour un même geste. Deux actions RÉELLEMENT
+      // distinctes du joueur sont, elles, toujours espacées de plusieurs
+      // secondes (le temps de regarder la ligne suivante), donc jamais gênées.
+      setTimeout(() => { marcheActionVerrouillee = false; }, 800);
+    }
     if (e.target.classList.contains('btnScouter')) {
       // Le recruteur (personnel) réduit le coût et augmente le gain de
       // connaissance par action — cf. RMClub.effetPersonnel.

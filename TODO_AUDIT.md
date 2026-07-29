@@ -163,6 +163,26 @@ Statuts possibles : `À FAIRE`, `EN COURS`, `CONFIRMÉ`, `CORRIGÉ`, `FAUX POSIT
 - `test-parcours-club.js` : 45/45 (42 existants + 3 nouveaux). `test-monde.js` : 14/14. `test-audit-p0-1.js` : 4/4. `test-audit-p0-2.js` : 6/6. `test-textes-accueil.js` : 4/4. `test-invariants.js` : 12/12. `test-audit-p0-3.js` : 8/8. `test-parcours-navigateur.js` : 92/92 (aucune régression, y compris le double-clic P1-10 et l'affichage financier Équipe B).
 - Vérification visuelle (Playwright) de l'onglet Finances d'un club fraîchement créé : "Salaires joueurs (saison) 629 k€", "Total / journée 24 k€" (629/26 ≈ 24,2, correctement arrondi) — capture d'écran confirmée sans anomalie de mise en page.
 
+### P0-7. Double clic réel sur "Signer" (marché des transferts) signe un second joueur non choisi
+- **Statut : CORRIGÉ**
+- Priorité : P0 (fiabilité — action non voulue du joueur, budget dépensé sur un joueur jamais choisi)
+- Fichiers concernés :
+  - `docs/js/clubUI.js` (cause + correction)
+  - `server/test-parcours-navigateur.js` (nouveau test — reproduction + validation, double clic souris à coordonnées écran fixes)
+
+**Contexte de la tâche.** Audit demandé : vérifier d'abord la fiabilité du déploiement (site public = `main`), puis jouer réellement au jeu (desktop + mobile) pour choisir UN SEUL problème visible à corriger. Déploiement vérifié sain (`version.json` public = SHA de `main`, HTML public sans trace de l'ancien texte "6 clubs", dernier run GitHub Actions sur `main` en succès). Parcours joué de bout en bout (création de club, tous les onglets, une journée complète, classement) sans régression. Un agent de recherche dédié a ensuite comparé plusieurs candidats de bug dans les catégories demandées (info incorrecte, écran incomplet, double action sur transferts/contrats, étape peu claire) ; celui retenu est le seul confirmé par une reproduction RÉELLE (pas juste une lecture de code suspecte).
+
+**Reproduction.** Contrairement au renouvellement de contrat/à la libération d'un joueur (fenêtre `demanderMontant`/`confirmerAction`, déjà protégée — vérifié dans un audit précédent), signer (`btnSigner`) ou scouter (`btnScouter`) un joueur du marché des transferts (`gererClicJoueurMarche`, `docs/js/clubUI.js`) n'a AUCUNE fenêtre de confirmation : un clic agit IMMÉDIATEMENT et de façon synchrone, puis `rafraichirMarche()` reconstruit toute la liste (`innerHTML`), ce qui décale chaque ligne suivante d'une position à l'écran. Reproduit avec un VRAI double clic souris Playwright à coordonnées écran FIXES (`page.mouse.click(x,y)` deux fois — pas un double appel JS sur le même nœud, qui ne reproduit rien puisque `querySelector` ne retrouve plus l'id déjà signé) sur le bouton "Signer" de la 1ʳᵉ ligne, budget large pour écarter tout refus par manque de fonds : **2 joueurs rejoignent le club au lieu d'1** — le second (jamais choisi par le joueur) est celui dont le bouton "Signer" se retrouve, après le 1er clic, exactement à la même position écran que le bouton cliqué initialement.
+
+**Cause.** Aucune protection anti-ré-entrée sur `gererClicJoueurMarche` (contrairement à `lancerLaJournee`/`journeeEnCours`, déjà protégée pour un autre geste) — chaque clic sur "Signer"/"Scouter" est traité indépendamment, sans savoir qu'une action vient tout juste d'avoir lieu à cet endroit précis de l'écran.
+
+**Correction.** Nouveau verrou à durée fixe `marcheActionVerrouillee` (`docs/js/clubUI.js`) : posé dès qu'un clic "Signer" ou "Scouter" est traité, relâché après 800 ms. Un délai fixe (pas "tant que la promesse précédente n'est pas résolue", cf. `journeeEnCours`) car l'action est entièrement synchrone — sans expiration différée, le verrou se relâcherait avant même que le 2ᵉ clic, déjà en file d'attente côté navigateur, soit traité. 800 ms (pas 300-400) car mesuré empiriquement dans ce dépôt : sous charge machine réelle, l'écart entre les deux évènements DOM d'un même double-clic peut dépasser 400-500 ms — deux actions RÉELLEMENT distinctes du joueur restent, elles, toujours espacées de plusieurs secondes, donc jamais gênées par ce délai.
+
+**Critères de validation.**
+- Nouveau test Playwright dans `server/test-parcours-navigateur.js` (double clic souris à coordonnées fixes sur la 1ʳᵉ ligne "Signer", budget large). Vérifié en échec AVANT correctif (`git stash` sur `docs/js/clubUI.js`) : 2 joueurs signés au lieu d'1. Après correctif : 1 seul joueur signé, le bon.
+- Suite complète sans régression : `test-parcours-navigateur.js` 94/94 (92 existants + 2 nouveaux), `test-parcours-club.js` 45/45, `test-monde.js` 14/14, `test-audit-p0-1.js` 4/4, `test-audit-p0-2.js` 6/6, `test-textes-accueil.js` 4/4, `test-invariants.js` 12/12, `test-audit-p0-3.js` 8/8.
+- Aucune fonctionnalité supprimée, aucune sauvegarde cassée (le verrou est un état UI éphémère, jamais persisté).
+
 ---
 
 ## P1 — Parcours utilisateur
