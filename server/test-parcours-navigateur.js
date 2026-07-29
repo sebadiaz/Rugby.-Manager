@@ -653,6 +653,52 @@ function optionsLancement() {
   verifier('sauvegarde corrompue : une nouvelle carrière se crée normalement après l\'avertissement', await pageCorrompue.isVisible('[data-volet="dashboard"]'));
   await contexteCorrompu.close();
 
+  // 10) Marché des transferts sur mobile étroit (audit trouvé en vérifiant le
+  // correctif du double-clic ci-dessus) : la ligne d'un joueur (nom, prix,
+  // Scouter, Signer) ne tient pas sur ~390px de large. Avant correctif,
+  // #clubMarche avait overflow-x:visible et un ancêtre masquait le
+  // débordement : le bouton "Signer" — celui qui compte le plus — sortait
+  // de l'écran SANS AUCUN moyen de défilement pour le rattraper (bloquant,
+  // pas juste inesthétique). Contexte de navigateur isolé, viewport mobile
+  // réel (390x844, comme un iPhone standard).
+  const contexteMobileMarche = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const pageMobileMarche = await contexteMobileMarche.newPage();
+  await pageMobileMarche.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  await pageMobileMarche.click('#btnAccueilModeClub');
+  await pageMobileMarche.fill('#inputNomClub', 'Mobile Marché');
+  await pageMobileMarche.click('#btnCreerClub');
+  await pageMobileMarche.waitForTimeout(300);
+  // Budget large pour que "Signer" ne soit jamais désactivé faute de fonds
+  // (le test porte sur l'atteignabilité du bouton, pas sur son abordabilité).
+  await pageMobileMarche.evaluate(() => {
+    const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
+    s.clubJoueur.budget = 100000;
+    localStorage.setItem('rugbyManager.club.v1', JSON.stringify(s));
+  });
+  await pageMobileMarche.reload({ waitUntil: 'networkidle' });
+  await pageMobileMarche.waitForTimeout(200);
+  await pageMobileMarche.click('#btnContinuerClub');
+  await pageMobileMarche.waitForTimeout(300);
+  await pageMobileMarche.click('#btnMenuClub');
+  await pageMobileMarche.waitForTimeout(150);
+  await pageMobileMarche.click('.ongletBtn[data-onglet="transferts"]');
+  await pageMobileMarche.waitForTimeout(200);
+  const scrollInfo = await pageMobileMarche.evaluate(() => {
+    const marche = document.getElementById('clubMarche');
+    return { overflowX: getComputedStyle(marche).overflowX, scrollWidth: marche.scrollWidth, clientWidth: marche.clientWidth };
+  });
+  verifier('marché des transferts (mobile) : la zone défile bien horizontalement (overflow-x auto, contenu plus large que l\'écran)',
+    scrollInfo.overflowX === 'auto' && scrollInfo.scrollWidth > scrollInfo.clientWidth);
+  await pageMobileMarche.evaluate(() => { document.getElementById('clubMarche').scrollLeft = 300; });
+  await pageMobileMarche.waitForTimeout(150);
+  const effectifAvantMobile = await pageMobileMarche.evaluate(() => JSON.parse(localStorage.getItem('rugbyManager.club.v1')).clubJoueur.effectif.length);
+  await pageMobileMarche.click('#clubMarche .ligneMarche:first-child .btnSigner');
+  await pageMobileMarche.waitForTimeout(300);
+  const effectifApresMobile = await pageMobileMarche.evaluate(() => JSON.parse(localStorage.getItem('rugbyManager.club.v1')).clubJoueur.effectif.length);
+  verifier('marché des transferts (mobile) : après défilement, "Signer" est réellement cliquable et recrute le joueur',
+    effectifApresMobile === effectifAvantMobile + 1);
+  await contexteMobileMarche.close();
+
   verifier('aucune erreur console/page sur tout le parcours', erreursConsole.length === 0);
   if (erreursConsole.length) console.error(erreursConsole.join('\n'));
 

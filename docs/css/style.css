@@ -469,7 +469,8 @@ select {
    colonnes coupées à droite (Moral/Fatigue/Contrat/Salaire/Statut...) ne
    laissaient rien deviner qu'il y avait plus à voir en glissant le doigt. */
 @media (max-width: 899px) {
-  #clubEffectif, #clubClassement, #clubAutresClubsListe, #clubAutresClubEffectif {
+  #clubEffectif, #clubClassement, #clubAutresClubsListe, #clubAutresClubEffectif,
+  #clubMarche, #clubFavoris {
     overflow-x: auto; -webkit-overflow-scrolling: touch;
     mask-image: linear-gradient(to right, black calc(100% - 22px), transparent);
     -webkit-mask-image: linear-gradient(to right, black calc(100% - 22px), transparent);
@@ -596,9 +597,19 @@ select {
 .ligneAlerte .iconeAlerte { flex: 0 0 auto; }
 
 /* ---------- Marché des transferts ---------- */
+/* Chaque ligne (nom + stats, favori, prix, Scouter, Signer) ne tient pas sur
+   un mobile étroit (~390px) : "Signer" (le bouton qui compte le plus) sortait
+   entièrement de l'écran, invisible ET inatteignable (le conteneur parent
+   masque le débordement — pas même un défilement de page pour le rattraper).
+   Même traitement que l'effectif étendu ci-dessus (#clubEffectif) : la ligne
+   garde sa largeur naturelle et c'est SA zone qui défile horizontalement,
+   plutôt que de comprimer le contenu jusqu'à l'illisible.
+*/
+#clubMarche, #clubFavoris { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 .ligneMarche {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
   padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 12.5px;
+  min-width: 480px;
 }
 .ligneMarche:last-child { border-bottom: none; }
 .ligneMarche .infosJoueur { display: flex; flex-direction: column; }

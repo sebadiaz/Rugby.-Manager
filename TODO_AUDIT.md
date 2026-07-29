@@ -183,6 +183,26 @@ Statuts possibles : `À FAIRE`, `EN COURS`, `CONFIRMÉ`, `CORRIGÉ`, `FAUX POSIT
 - Suite complète sans régression : `test-parcours-navigateur.js` 94/94 (92 existants + 2 nouveaux), `test-parcours-club.js` 45/45, `test-monde.js` 14/14, `test-audit-p0-1.js` 4/4, `test-audit-p0-2.js` 6/6, `test-textes-accueil.js` 4/4, `test-invariants.js` 12/12, `test-audit-p0-3.js` 8/8.
 - Aucune fonctionnalité supprimée, aucune sauvegarde cassée (le verrou est un état UI éphémère, jamais persisté).
 
+### P0-8. Bouton "Signer" du marché des transferts inatteignable sur mobile étroit
+- **Statut : CORRIGÉ**
+- Priorité : P0 (fiabilité — un joueur sur mobile ne peut tout simplement pas recruter certains joueurs, geste bloquant)
+- Fichiers concernés :
+  - `docs/css/style.css` (cause + correction)
+  - `server/test-parcours-navigateur.js` (nouveau test — reproduction + validation, viewport mobile réel 390×844)
+
+**Contexte.** Découvert en vérifiant visuellement le correctif P0-7 sur une capture mobile (390×844) : capture jointe à la réponse précédente montrant le bouton "Scouter" coupé à l'écran et "Signer" absent.
+
+**Reproduction.** Chaque ligne du marché (`.ligneMarche` : nom + stats, favori, prix, "Scouter", "Signer") ne tient pas sur ~390 px de large. `#clubMarche` avait `overflow-x: visible` (aucun défilement) et un ancêtre masque le débordement (`document.body.scrollWidth` reste à 390 px — la page elle-même ne défile pas non plus). Mesuré : le bouton "Signer" de la 1ʳᵉ ligne a `getBoundingClientRect().left ≈ 415px` pour une fenêtre de 390 px — **entièrement hors écran et strictement inatteignable**, pas seulement esthétiquement coupé (aucun geste de défilement, tactile ou souris, ne le ramène : `overflow-x:visible` n'est pas un conteneur de défilement). Un vrai clic Playwright réussissait quand même à l'atteindre (son auto-scroll interne compense l'absence de défilement CSS) — ce qui masquait le bug tant qu'aucun test ne vérifiait la propriété CSS elle-même, seulement l'issue du clic.
+
+**Cause.** `.ligneMarche` (marché des transferts, `docs/js/clubUI.js`) n'avait jamais reçu le même traitement responsive que l'effectif étendu ou le classement (`#clubEffectif`, `#clubClassement`, déjà en `overflow-x: auto` avec indice visuel de défilement sur petit écran, `docs/css/style.css` lignes 463-478) — un oubli lors de l'ajout du marché, jamais remarqué car jamais testé sur un viewport réellement étroit.
+
+**Correction** (`docs/css/style.css`) : même traitement que l'effectif étendu — `#clubMarche, #clubFavoris { overflow-x: auto; -webkit-overflow-scrolling: touch; }` (persistant, toutes tailles d'écran) + `.ligneMarche { min-width: 480px; }` (garde la ligne lisible plutôt que de la comprimer) + ajout de `#clubMarche, #clubFavoris` à l'indice visuel de défilement (`mask-image`) déjà existant sous `@media (max-width: 899px)`.
+
+**Critères de validation.**
+- Nouveau test Playwright (viewport mobile réel 390×844, `server/test-parcours-navigateur.js`) : vérifie que `#clubMarche` a bien `overflow-x: auto` et un contenu plus large que l'écran (la vraie reproduction — discrimine correctement avant/après, contrairement à un simple test de clic que Playwright réussit de toute façon), puis qu'après un défilement explicite le bouton "Signer" devient réellement cliquable et recrute le joueur. Vérifié en échec AVANT correctif (`git stash` sur `docs/css/style.css`) : `overflow-x` valait `visible`. Après correctif : `auto`, contenu réellement scrollable.
+- Suite complète sans régression : `test-parcours-navigateur.js` 96/96 (94 existants + 2 nouveaux), `test-parcours-club.js` 45/45, `test-monde.js` 14/14, `test-audit-p0-1.js` 4/4, `test-audit-p0-2.js` 6/6, `test-textes-accueil.js` 4/4, `test-invariants.js` 12/12, `test-audit-p0-3.js` 8/8.
+- Aucun changement de comportement desktop (le `min-width` ne s'applique qu'en dessous de la largeur de conteneur disponible ; `#clubEffectif`/`#clubClassement` utilisent déjà ce même mécanisme sans régression connue).
+
 ---
 
 ## P1 — Parcours utilisateur
