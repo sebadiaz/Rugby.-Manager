@@ -275,6 +275,66 @@ test('les joueurs restent dans les limites du terrain (avec marge en-but)', () =
   }
 });
 
+// --- Remplacements planifiés (TODO_AUDIT.md P1-17, config.remplacements) :
+// extension additive et strictement optionnelle du moteur — le banc de 8 du
+// Mode Club était jusqu'ici jamais transmis au moteur. ---
+test('remplacement planifié : s\'applique immédiatement à l\'instant prévu, ET persiste à travers les reprises de jeu suivantes', () => {
+  // Important : _nouvelleManche (coup d'envoi après essai/pénalité/mi-temps)
+  // RECRÉE entièrement equipeA/equipeB depuis this.cfg.joueursA/joueursB à
+  // chaque reprise — l'identité de l'objet joueur n'est donc PAS garantie
+  // sur tout un match (contrairement à sa position/son carton jaune, qui
+  // eux sont explicitement reportés). Ce test vérifie les deux garanties
+  // réellement utiles : l'effet est immédiat au moment prévu, ET il ne
+  // s'efface pas à la prochaine reprise (cf. mise à jour de this.cfg dans
+  // tick(), sans quoi le titulaire d'origine reviendrait sans prévenir).
+  const config = {
+    remplacements: [
+      { equipe: 'A', numero: 10, minute: 1, joueur: { poste: 'OV', vitesse: 95, plaquage: 40, adresse: 90, melee: 40, touche: 40, puissance: 40, endurance: 40, passe: 90, jeuPied: 90, decision: 90, discipline: 90 } },
+    ],
+  };
+  const m = new MatchEngine(55, 300, config);
+  let verifieImmediat = false;
+  for (let t = 0; t < 300; t += 0.1) {
+    m.tick(0.1);
+    // Vérifié DÈS que l'instant est franchi, pas seulement à la fin du match :
+    // this.events est plafonné à 30 entrées (cf. log()) et un match de 5 min
+    // en génère largement plus — l'événement REMPLACEMENT aurait le temps
+    // d'être poussé hors du journal avant la fin de la boucle.
+    if (!verifieImmediat && m.tempsMatch >= 60) {
+      verifieImmediat = true;
+      assert.ok(m.equipeA[9].vitesse > 80, 'le joueur au n°10 doit changer dès l\'instant prévu, pas seulement à la prochaine reprise');
+      const evenement = m.events.find((e) => e.type === 'REMPLACEMENT');
+      assert.ok(evenement, 'un événement REMPLACEMENT réel doit apparaître dans le journal du match');
+      assert.ok(Math.abs(evenement.t - 60) < 1, 'l\'événement doit survenir au bon instant (minute 1 = 60s de jeu simulé)');
+    }
+  }
+  assert.ok(verifieImmediat, 'le test doit avoir atteint la minute prévue');
+  assert.strictEqual(m.cfg.joueursA[10].vitesse, 95, 'la config source doit aussi être mise à jour, sinon une reprise ultérieure ferait revenir le titulaire d\'origine');
+});
+
+test('remplacement planifié : rétrocompatibilité stricte — sans config.remplacements, comportement identique à avant', () => {
+  const a = new MatchEngine(321, 300, null);
+  const b = new MatchEngine(321, 300, { remplacements: [] });
+  for (let t = 0; t < 300; t += 0.1) { a.tick(0.1); b.tick(0.1); }
+  assert.deepStrictEqual(a.score, b.score);
+  assert.strictEqual(a.equipeA[0].vitesse, b.equipeA[0].vitesse);
+  assert.strictEqual(a.events.length, b.events.length);
+});
+
+test('remplacement planifié : un remplacement prévu APRÈS la fin du match choisi ne se produit jamais', () => {
+  const config = { remplacements: [{ equipe: 'B', numero: 5, minute: 50, joueur: { poste: '2L', vitesse: 99, plaquage: 99, adresse: 60, melee: 90, touche: 90, puissance: 90, endurance: 60, passe: 60, jeuPied: 60, decision: 60, discipline: 60 } }] };
+  const m = new MatchEngine(9, 300, config); // 300s = 5 min, la minute 50 (3000s) n'arrivera jamais
+  for (let t = 0; t < 300; t += 0.1) m.tick(0.1);
+  // Note : m.equipeB[4].vitesse n'est PAS un bon témoin ici — même sans
+  // remplacement, ce champ fluctue naturellement à chaque reprise de jeu
+  // (bruit RNG réappliqué à toute l'équipe, cf. _nouvelleManche). Les vrais
+  // témoins d'un remplacement qui ne s'est jamais produit : le flag interne,
+  // la config source (jamais touchée) et l'absence d'événement.
+  assert.strictEqual(m._remplacements[0].applique, false, 'un remplacement dont l\'instant dépasse la durée du match ne doit jamais s\'appliquer');
+  assert.ok(!(m.cfg.joueursB && m.cfg.joueursB[5] && m.cfg.joueursB[5].vitesse === 99), 'la config source ne doit pas non plus être modifiée');
+  assert.ok(!m.events.some((e) => e.type === 'REMPLACEMENT'), 'aucun événement de remplacement ne doit être généré');
+});
+
 console.log(`\n${nbTests} test(s) exécuté(s).`);
 if (process.exitCode) {
   console.error('ECHEC : au moins un invariant violé.');

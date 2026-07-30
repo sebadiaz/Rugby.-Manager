@@ -222,10 +222,62 @@
     return { capitaineId: capitaine.id, buteurId: buteur.id, lanceurToucheId: lanceur.id };
   }
 
+  // Remplacements planifiés (TODO_AUDIT.md P1-17) : traduit le banc de 8
+  // (déjà choisi par le joueur, cf. completerCompositionBanc) en un vrai plan
+  // de remplacements transmis au moteur (cf. engine/rugby-engine.js,
+  // config.remplacements) — jusqu'ici purement cosmétique, jamais utilisé en
+  // match. Une minute fixe par catégorie de poste (avants d'abord, comme un
+  // vrai groupe de 23) ; pour les catégories qui couvrent PLUSIEURS numéros
+  // titulaires (P : 1/3, 2L : 4/5, 3L : 6/7/8, CE : 12/13), toujours le plus
+  // petit numéro du groupe — convention simple et déterministe, pas une
+  // décision tactique fine du joueur dans cette première tranche (cf.
+  // ROADMAP_FOOTBALL_MANAGER.md). L'aile (postes 11/14) n'a volontairement
+  // aucune couverture de banc (même limite déjà connue de l'effectif étendu).
+  const CIBLE_REMPLACEMENT_BANC = { 16: 1, 17: 2, 18: 4, 19: 6, 20: 9, 21: 10, 22: 12, 23: 15 };
+  const MINUTE_REMPLACEMENT_BANC = { 16: 50, 17: 54, 18: 58, 19: 62, 20: 65, 21: 68, 22: 71, 23: 75 };
+
+  function remplacementsVersConfig(effectif, compositionBanc, lettreEquipe) {
+    const parId = {};
+    for (const j of effectif) parId[j.id] = j;
+    const remplacements = [];
+    for (const bancNumero of Object.keys(CIBLE_REMPLACEMENT_BANC)) {
+      const j = compositionBanc && parId[compositionBanc[bancNumero]];
+      if (!j) continue;
+      // Même formule que compositionVersJoueursCfg : un remplaçant fatigué ou
+      // démoralisé apporte réellement moins que sur le papier, pas un simple
+      // clone de sa fiche.
+      const malusFatigue = Math.round(((j.fatigue || 0) / 100) * 12);
+      const ajustMoral = Math.round((((j.moral != null ? j.moral : 65) - 60) / 100) * 8);
+      const ajustement = ajustMoral - malusFatigue;
+      remplacements.push({
+        equipe: lettreEquipe,
+        numero: CIBLE_REMPLACEMENT_BANC[bancNumero],
+        minute: MINUTE_REMPLACEMENT_BANC[bancNumero],
+        // numeroBanc/joueurId : ignorés par le moteur (qui ne lit que
+        // equipe/numero/minute/joueur), utiles côté clubUI.js pour créditer
+        // le bon joueur (fatigue, moral, temps de jeu) une fois le match
+        // résolu — cf. remarque plus bas, "compositionAvecRemplacants".
+        numeroBanc: Number(bancNumero),
+        joueurId: j.id,
+        joueur: {
+          nom: j.nom, poste: j.poste,
+          vitesse: Math.max(20, j.vitesse + ajustement),
+          plaquage: Math.max(20, j.plaquage + ajustement),
+          tendance: j.tendance, couloir: j.couloir, adresse: j.adresse,
+          melee: j.melee, touche: j.touche, puissance: j.puissance,
+          endurance: j.endurance, passe: j.passe, jeuPied: j.jeuPied,
+          decision: j.decision, discipline: j.discipline,
+        },
+      });
+    }
+    return remplacements;
+  }
+
   global.RMClub = Object.assign(global.RMClub || {}, {
     tactiqueVersConfig, effectifVersJoueursCfg, compositionVersJoueursCfg,
     meilleurCandidatPourNumero, meilleureComposition, completerComposition,
     validerComposition, POSTE_REQUIS_BANC, completerCompositionBanc,
     numeroDuJoueurDansComposition, autoDesignerEncadrement,
+    CIBLE_REMPLACEMENT_BANC, MINUTE_REMPLACEMENT_BANC, remplacementsVersConfig,
   });
 })(window);

@@ -2138,6 +2138,11 @@
       if (numeroButeur) tactiqueCfg['buteur' + lettreJoueur] = Number(numeroButeur);
       const numeroLanceur = RMClub.numeroDuJoueurDansComposition(compositionUtilisee, saison.clubJoueur.lanceurToucheId);
       if (numeroLanceur) tactiqueCfg['toucheLanceur' + lettreJoueur] = Number(numeroLanceur);
+      // Remplacements RÉELLEMENT transmis au moteur (TODO_AUDIT.md P1-17) : le
+      // banc de 8 n'était jusqu'ici jamais utilisé en match — cf.
+      // RMClub.remplacementsVersConfig, engine/rugby-engine.js (config.remplacements).
+      const remplacements = RMClub.remplacementsVersConfig(saison.clubJoueur.effectif, saison.clubJoueur.compositionBanc, lettreJoueur);
+      if (remplacements.length) tactiqueCfg.remplacements = remplacements;
       window.RMMain.demarrerMatchClub(
         graineAleatoire(), duree,
         cfgPour(clubDomicile),
@@ -2159,14 +2164,34 @@
             const mouvement = RMClub.appliquerFinancesMatch(saison.clubJoueur, forme, RMClub.nombreJourneesSaison(saison.calendrier));
             RMClub.enregistrerMouvementFinances(saison.clubJoueur, matchJoueur.journee, mouvement);
             RMClub.accumulerStats(saison.clubJoueur, etat.stats[lettreJoueur]);
+            // Remplacements RÉELLEMENT survenus (leur minute peut dépasser la
+            // durée du match choisie, ex. démo courte — dans ce cas ils ne se
+            // sont jamais produits dans le moteur, donc ne comptent pas ici
+            // non plus) : le remplaçant compte comme ayant joué (fatigue,
+            // moral, temps de jeu) au même titre que les titulaires — le
+            // titulaire qu'il a remplacé aussi, il a bien joué une partie du
+            // match. Cf. RMClub.remplacementsVersConfig.
+            const compositionAvecRemplacants = Object.assign({}, compositionUtilisee);
+            for (const r of remplacements) {
+              if (r.minute * 60 <= duree) compositionAvecRemplacants[r.numeroBanc] = r.joueurId;
+            }
+            // Limitation connue (documentée en ROADMAP_FOOTBALL_MANAGER.md) :
+            // le moteur indexe ses statistiques par NUMÉRO de maillot, pas par
+            // identité de joueur (cf. engine/rugby-engine.js, _statJoueur) —
+            // tout le match reste donc attribué au titulaire d'origine, y
+            // compris les actions du remplaçant après son entrée. D'où
+            // `compositionUtilisee` (pas `compositionAvecRemplacants`) ici :
+            // ajouter les entrées banc n'aurait aucun effet (statsJoueursMatch
+            // n'a pas de clé 16-23) mais laisserait croire, à tort, que les
+            // stats sont bien réparties.
             RMClub.accumulerStatsJoueurs(saison.clubJoueur.effectif, compositionUtilisee, etat.statsJoueurs && etat.statsJoueurs[lettreJoueur]);
             // Effets réels du personnel (cf. RMClub.effetPersonnel) : le
             // médecin/l'entraîneur accélèrent (facteur >=1 direct), le
             // préparateur physique réduit la fatigue (facteur <1, donc
             // l'inverse de effetPersonnel qui exprime une qualité >=1).
-            RMClub.faireProgresserBlessures(creerRng(graineAleatoire()), saison.clubJoueur.effectif, compositionUtilisee, RMClub.effetPersonnel(saison, 'medecin'), saison);
-            RMClub.appliquerFatigue(saison.clubJoueur.effectif, compositionUtilisee, 1 / RMClub.effetPersonnel(saison, 'preparateur'));
-            RMClub.appliquerMoral(saison.clubJoueur.effectif, compositionUtilisee, forme);
+            RMClub.faireProgresserBlessures(creerRng(graineAleatoire()), saison.clubJoueur.effectif, compositionAvecRemplacants, RMClub.effetPersonnel(saison, 'medecin'), saison);
+            RMClub.appliquerFatigue(saison.clubJoueur.effectif, compositionAvecRemplacants, 1 / RMClub.effetPersonnel(saison, 'preparateur'));
+            RMClub.appliquerMoral(saison.clubJoueur.effectif, compositionAvecRemplacants, forme);
             RMClub.progresserPrets(saison.clubJoueur.effectif);
             RMClub.appliquerEntrainement(creerRng(graineAleatoire()), saison.clubJoueur.effectif, saison.clubJoueur.entrainementFocus, RMClub.effetPersonnel(saison, 'entraineur'));
             RMClub.appliquerFrustrationTempsDeJeu(saison, compositionUtilisee, saison.clubJoueur.compositionBanc);
@@ -2343,6 +2368,20 @@
       ...fatigues.map((j) => `⚡ ${j.nom} est très fatigué`),
     ];
 
+    // Remplacements prévus (TODO_AUDIT.md P1-17) : le banc de 8 était
+    // purement cosmétique jusqu'ici, jamais transmis au moteur — visible ici
+    // AVANT le coup d'envoi (pas seulement dans le fil d'événements du match),
+    // filtré sur la durée réellement choisie (une démo courte peut ne
+    // déclencher aucun remplacement, comme un vrai match écourté).
+    const dureeChoisie = Number(document.getElementById('selDureeClub').value) || 4800;
+    const remplacementsPrevus = RMClub.remplacementsVersConfig(c.effectif, c.compositionBanc, domicile ? 'A' : 'B')
+      .filter((r) => r.minute * 60 <= dureeChoisie);
+    const remplacementsHTML = remplacementsPrevus.length
+      ? `<div class="carteClub"><h3>🔄 Remplacements prévus</h3>` +
+        remplacementsPrevus.map((r) => `<div class="ligneJoueur"><span>${r.joueur.nom} (n°${r.numero})</span><b>${r.minute}e minute</b></div>`).join('') +
+        `</div>`
+      : '';
+
     const tactiqueActuelle = (c.tactique && typeof c.tactique === 'object') ? c.tactique : {};
     const tactiqueLignes = Object.keys(RMClub.AXES_TACTIQUE).map((axe) => {
       const info = RMClub.AXES_TACTIQUE[axe];
@@ -2377,6 +2416,7 @@
         ? alertesCompo.map((a) => `<p style="font-size:12px;color:var(--loss);margin:6px 0;">${a}</p>`).join('')
         : '<p style="font-size:12px;color:var(--text-dim);margin:6px 0;">Aucun problème d\'effectif détecté pour ce match.</p>') +
       `</div>` +
+      remplacementsHTML +
       `<div class="carteClub"><h3>🎯 Ma tactique</h3>${tactiqueLignes}</div>` +
       `<div class="carteClub"><h3>🔍 Analyse de l'adversaire</h3>` +
       (puces ? `<div class="listeQualitatif">${puces}</div>` : '<p style="font-size:12px;color:var(--text-faint);margin:0;">Aucun écart marqué avec ton effectif.</p>') +

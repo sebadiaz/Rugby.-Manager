@@ -575,6 +575,15 @@
         B: fusionnerConfig(this.cfg.ruck, config && config.ruckB),
       };
       this.rng = creerRng(seed >>> 0 || 1);
+      // Remplacements planifiés (Mode Club, TODO_AUDIT.md P1-17) :
+      // config.remplacements, optionnel — [{equipe:'A'|'B', numero, minute,
+      // joueur:{...attributs}}]. Absent par défaut (tous les appels existants,
+      // Match rapide comme tests headless) : comportement historique
+      // strictement inchangé. Convertit chaque minute en instant (secondes
+      // de jeu simulées, même unité que tempsMatch) et marque chaque entrée
+      // "non appliquée" — cf. tick(), qui les applique une seule fois.
+      this._remplacements = (config && Array.isArray(config.remplacements) ? config.remplacements : [])
+        .map((r) => ({ equipe: r.equipe, numero: r.numero, joueur: r.joueur, instant: r.minute * 60, applique: false }));
       this.score = { A: 0, B: 0 };
       this.events = [];
       this.tempsMatch = 0;
@@ -4671,6 +4680,56 @@
         }
       }
       this.tempsMatch += dt;
+      // Remplacements planifiés (cf. constructeur) : mutation EN PLACE des
+      // attributs de performance du joueur déjà présent à ce numéro — jamais
+      // un nouvel objet. Position (x/y), ballon porté, liaisons de
+      // regroupement en cours (mêlée/ruck/maul, qui gardent une référence
+      // directe vers cet objet) restent celles du joueur remplacé, exactement
+      // comme un remplaçant qui entre à la place précise de celui qu'il
+      // relève, même en pleine phase de jeu.
+      if (this._remplacements.length) {
+        for (const r of this._remplacements) {
+          if (r.applique || this.tempsMatch < r.instant) continue;
+          r.applique = true;
+          const equipe = r.equipe === 'A' ? this.equipeA : this.equipeB;
+          const sortant = equipe && equipe[r.numero - 1];
+          if (!sortant) continue;
+          const c = r.joueur || {};
+          Object.assign(sortant, {
+            label: c.poste || sortant.label,
+            vitesse: (c.vitesse != null ? c.vitesse : sortant.vitesse) + (this.rng() * 10 - 5),
+            plaquage: (c.plaquage != null ? c.plaquage : sortant.plaquage) + (this.rng() * 10 - 5),
+            tendance: c.tendance != null ? c.tendance : sortant.tendance,
+            adresse: c.adresse != null ? c.adresse : sortant.adresse,
+            melee: c.melee != null ? c.melee : sortant.melee,
+            touche: c.touche != null ? c.touche : sortant.touche,
+            puissance: c.puissance != null ? c.puissance : sortant.puissance,
+            endurance: c.endurance != null ? c.endurance : sortant.endurance,
+            passe: c.passe != null ? c.passe : sortant.passe,
+            jeuPied: c.jeuPied != null ? c.jeuPied : sortant.jeuPied,
+            decision: c.decision != null ? c.decision : sortant.decision,
+            discipline: c.discipline != null ? c.discipline : sortant.discipline,
+          });
+          // _nouvelleManche (coup d'envoi après essai/pénalité/mi-temps, cf.
+          // plus haut) RECRÉE entièrement equipeA/equipeB depuis this.cfg.
+          // joueursA/joueursB à chaque reprise — sans cette mise à jour, le
+          // remplacement ci-dessus serait effacé et le titulaire d'origine
+          // reviendrait dès le prochain coup d'envoi. On met donc aussi à
+          // jour la config source, pour que toute reprise future régénère
+          // bien le remplaçant (avec un nouveau bruit RNG, comme n'importe
+          // quel autre joueur à chaque reprise — cohérent, pas un cas
+          // spécial).
+          const cleCfg = r.equipe === 'A' ? 'joueursA' : 'joueursB';
+          if (!this.cfg[cleCfg]) this.cfg[cleCfg] = Object.assign({}, this.cfg.joueurs);
+          this.cfg[cleCfg][r.numero] = c;
+          // `c.nom` (optionnel, ignoré par Object.assign ci-dessus qui ne lit
+          // que les attributs de performance) : purement pour un message
+          // lisible — le moteur n'a sinon aucune notion de nom de joueur.
+          this.log('REMPLACEMENT', r.equipe, c.nom
+            ? `Remplacement equipe ${r.equipe} : ${c.nom} entre en jeu au n°${r.numero}`
+            : `Remplacement equipe ${r.equipe} : nouveau joueur au n°${r.numero}`);
+        }
+      }
       // Une séquence de marque déjà engagée (essai en attente de transformation,
       // tir au but en cours) doit aller à son TERME même si le temps de la
       // période ou du match expire pendant ce temps : en rugby, un essai marqué

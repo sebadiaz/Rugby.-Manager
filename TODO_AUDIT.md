@@ -517,6 +517,35 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 - Vérifié visuellement (captures d'écran desktop, 900px) : la carte affiche les explications en langage clair, le clic sur "Appliquer" met bien à jour la carte "Ma tactique" au-dessus avec un toast de confirmation.
 - Suite complète sans régression : `test-parcours-club.js` 65/65, `test-parcours-navigateur.js` 109/109, `test-monde.js` 14/14, `test-audit-p0-1.js` 4/4, `test-audit-p0-2.js` 6/6, `test-textes-accueil.js` 4/4, `test-invariants.js` 12/12, `test-audit-p0-3.js` 8/8.
 
+### P1-17. Le banc de 8 remplaçants n'était jamais transmis au moteur — purement cosmétique (3ᵉ tranche `ROADMAP_FOOTBALL_MANAGER.md`)
+- **Statut : CORRIGÉ (première tranche)**
+- Priorité : P1 (3ᵉ chantier de la roadmap Football Manager, domaine 3 "tactique, composition et remplacements" — manque le plus criant identifié par l'audit initial)
+- Fichiers concernés :
+  - `engine/rugby-engine.js` (`config.remplacements`, additif et strictement rétrocompatible)
+  - `docs/js/club-composition.js` (`remplacementsVersConfig` — traduit le banc de 8 en plan de remplacement)
+  - `docs/js/clubUI.js` (transmission au moteur avant le match, affichage dans l'aperçu du prochain match)
+  - `docs/js/constants.js` (icône du nouvel événement REMPLACEMENT)
+  - `server/test-invariants.js`, `server/test-parcours-club.js` (nouveaux tests)
+
+**Contexte.** `ROADMAP_FOOTBALL_MANAGER.md` (audit initial) confirmait : un banc de 8 remplaçants était bien choisi dans l'écran Composition (`club-composition.js:completerCompositionBanc`), mais `compositionVersJoueursCfg` ne convertissait QUE les 15 titulaires en config moteur — le banc n'était jamais transmis à `demarrerMatchClub`/`simulerMatchEnArrierePlan`. Un agent de recherche dédié a scoré la façon la moins risquée d'introduire de vrais remplacements sans réécrire le moteur physique (le jeu calcule tout le match en arrière-plan avant que le joueur ne le regarde, cf. `docs/js/main.js` — un remplacement "décision cliquée en direct" est donc incompatible avec l'architecture ; seul un remplacement planifié À L'AVANCE, à une minute fixe, reste compatible).
+
+**Cause.** Aucun mécanisme de remplacement n'existait dans `engine/rugby-engine.js` : les configs joueurs (`joueursA`/`joueursB`) ne sont lues qu'UNE FOIS à la création de chaque joueur, jamais relues en cours de match.
+
+**Correction (première tranche, périmètre volontairement limité).** `config.remplacements` (optionnel, absent par défaut — tous les appels existants inchangés) : `[{equipe, numero, minute, joueur}]`. Dans `tick()`, dès que `tempsMatch` franchit `minute*60`, mutation **en place** des attributs de performance du joueur déjà présent à ce numéro (`Object.assign`, jamais un nouvel objet) — position, ballon porté, liaisons de regroupement en cours restent celles du joueur remplacé, comme un vrai remplaçant qui prend sa place exacte.
+
+**Bug réel trouvé et corrigé pendant l'implémentation (pas seulement audité) :** un premier passage mutait uniquement l'objet joueur EN COURS — mais `_nouvelleManche` (coup d'envoi après essai/pénalité/mi-temps) **recrée entièrement** `equipeA`/`equipeB` depuis `this.cfg.joueursA`/`joueursB`, jamais mutés. Le remplacement était donc effacé dès la reprise de jeu suivante, le titulaire d'origine revenant sans prévenir. Reproduit par 2 tests qui échouaient réellement (identité d'objet + rétrocompatibilité), corrigé en mettant AUSSI à jour `this.cfg.joueursA/B[numero]` au moment du remplacement, pour que toute reprise future régénère bien le remplaçant.
+
+`RMClub.remplacementsVersConfig(effectif, compositionBanc, lettreEquipe)` (`club-composition.js`) traduit le banc en plan concret : une minute fixe par catégorie de poste (avants d'abord, comme un vrai groupe de 23 — 50/54/58/62/65/68/71/75ᵉ minute), le plus petit numéro du groupe pour les catégories à plusieurs titulaires (P, 2L, 3L, CE), même formule fatigue/moral que `compositionVersJoueursCfg` (un remplaçant fatigué apporte réellement moins). Visible AVANT le coup d'envoi (nouvelle carte "🔄 Remplacements prévus" dans l'aperçu du match, filtrée sur la durée réellement choisie) et pendant le match (événement réel dans le fil de commentaire, icône dédiée).
+
+**Explicitement hors périmètre de cette tranche (à faire plus tard) :** un vrai choix du joueur sur QUAND faire entrer chaque remplaçant (aujourd'hui minutes fixes par catégorie) ; des remplacements pour l'IA adverse (ses clubs n'ont pas de banc structuré, cf. domaine 7 de la roadmap) ; des statistiques individuelles correctement réparties entre titulaire et remplaçant (le moteur indexe par numéro de maillot, pas par identité — tout le match reste attribué au titulaire d'origine, limitation documentée).
+
+**Critères de validation.**
+- 3 nouveaux tests moteur dans `server/test-invariants.js` : application immédiate ET persistance à travers les reprises de jeu (le test qui a révélé le bug ci-dessus) ; rétrocompatibilité stricte (sans `config.remplacements`, comportement identique bit à bit) ; un remplacement dont l'instant dépasse la durée du match ne s'applique jamais. Après correctif : 15/15 (12 existants + 3 nouveaux).
+- 4 nouveaux tests dans `server/test-parcours-club.js` : le banc complet produit un plan pour ses 8 postes (bons numéros/minutes, jamais tous à la même minute) ; un banc incomplet ne planifie que ce qui est réellement possible ; un banc vide ne planifie rien (rétrocompatibilité) ; un remplaçant fatigué/démoralisé apporte réellement moins que sur sa fiche. Après correctif : 69/69 (65 existants + 4 nouveaux).
+- Suite navigateur complète sans régression après le correctif du bug de persistance : `test-parcours-navigateur.js` 109/109, 0 échec.
+- Vérifié visuellement (capture d'écran desktop) : la carte "Remplacements prévus" affiche les 8 noms réels et leurs minutes avant le coup d'envoi ; vérifié en direct (benchmark) : aucune régression de performance (1,73s vs 1,80s pour un match complet avec 8 remplacements).
+- Suite complète sans régression : `test-parcours-club.js` 69/69, `test-parcours-navigateur.js` 109/109, `test-monde.js` 14/14, `test-audit-p0-1.js` 4/4, `test-audit-p0-2.js` 6/6, `test-textes-accueil.js` 4/4, `test-invariants.js` 15/15, `test-audit-p0-3.js` 8/8.
+
 ---
 
 ## P2 — Maintenabilité et simulation

@@ -27,7 +27,7 @@
     MAUL_ARRET_UN: '🅰️', MAUL_ARRET_DEUX: '✋', MAUL_USE_IT: '⏱️', MAUL_BALLON_SORTI: '➡️', MAUL_INJOUABLE: '🔒',
     MELEE_RUCK_INJOUABLE: '🔒',
     MAUL_PEN_ECROULEMENT: '🟨', MAUL_PEN_HORSJEU: '🟨', MAUL_PEN_ENTREE_COTE: '🟨', MAUL_PEN_TECHNIQUE: '🟨', CARTON_JAUNE: '🟡',
-    JEU_LARGE: '↔️', PASSE: '👐', PASSE_RATEE: '💥', ENTREE_22: '🚩',
+    JEU_LARGE: '↔️', PASSE: '👐', PASSE_RATEE: '💥', ENTREE_22: '🚩', REMPLACEMENT: '🔄',
     // Avantage (loi 7), coup de pied en jeu courant, offload, plaquage manqué,
     // touche (lancer/ballon gagné) et combinaison : événements réels du moteur
     // qui retombaient sur le symbole générique '•' faute d'icône dédiée dans

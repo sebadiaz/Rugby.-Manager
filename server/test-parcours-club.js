@@ -867,6 +867,61 @@ test('polyvalence : un choix manuel hors poste naturel survit au rafraîchisseme
   assert.strictEqual(RMClub.validerComposition(recomplete).length, 0);
 });
 
+// --- 12b) Remplacements (TODO_AUDIT.md P1-17) : le banc de 8 était jusqu'ici
+// purement cosmétique — jamais transmis au moteur de simulation. ---
+test('remplacements : le banc complet produit un plan de remplacement pour chacun de ses 8 postes, aux bons numéros et minutes', () => {
+  const s = RMClub.nouvelleSaison(creerRng(400), 'Test Remplacements');
+  const c = s.clubJoueur;
+  c.compositionTitulaires = RMClub.meilleureComposition(c.effectif);
+  c.compositionBanc = RMClub.completerCompositionBanc(c.effectif, c.compositionTitulaires, {});
+  const remplacements = RMClub.remplacementsVersConfig(c.effectif, c.compositionBanc, 'A');
+  assert.strictEqual(remplacements.length, 8, 'un effectif frais couvre les 8 postes du banc, donc 8 remplacements planifiés');
+  const numerosAttendus = [1, 2, 4, 6, 9, 10, 12, 15];
+  assert.deepStrictEqual(remplacements.map((r) => r.numero).sort((a, b) => a - b), numerosAttendus);
+  for (const r of remplacements) {
+    assert.strictEqual(r.equipe, 'A');
+    assert.ok(r.minute > 0 && r.minute < 80, `minute réaliste (dans le match) : ${r.minute}`);
+    assert.notStrictEqual(r.joueurId, c.compositionTitulaires[String(r.numero)], 'le remplaçant ne doit jamais être le titulaire qu\'il relève');
+    assert.strictEqual(r.joueurId, c.compositionBanc[String(r.numeroBanc)], 'le remplaçant doit bien être celui choisi au poste correspondant du banc');
+  }
+  // Les remplacements sont étalés dans le temps (jamais tous à la même minute) —
+  // sinon ce serait un changement d'équipe brutal, pas un vrai roulement de match.
+  const minutesUniques = new Set(remplacements.map((r) => r.minute));
+  assert.strictEqual(minutesUniques.size, remplacements.length, 'chaque remplacement doit avoir sa propre minute');
+});
+
+test('remplacements : un banc incomplet ne planifie que les remplacements réellement possibles', () => {
+  const s = RMClub.nouvelleSaison(creerRng(401), 'Test Remplacements Incomplet');
+  const c = s.clubJoueur;
+  c.compositionTitulaires = RMClub.meilleureComposition(c.effectif);
+  const bancComplet = RMClub.completerCompositionBanc(c.effectif, c.compositionTitulaires, {});
+  delete bancComplet['16']; // retire volontairement le pilier de banc
+  const remplacements = RMClub.remplacementsVersConfig(c.effectif, bancComplet, 'A');
+  assert.strictEqual(remplacements.length, 7, 'un poste de banc vide ne doit jamais générer de remplacement fantôme');
+  assert.ok(!remplacements.some((r) => r.numero === 1), 'le numéro couvert par le poste de banc manquant ne doit pas apparaître');
+});
+
+test('remplacements : un banc entièrement vide ne planifie aucun remplacement (comportement historique inchangé)', () => {
+  const s = RMClub.nouvelleSaison(creerRng(402), 'Test Remplacements Vide');
+  assert.deepStrictEqual(RMClub.remplacementsVersConfig(s.clubJoueur.effectif, {}, 'A'), []);
+  assert.deepStrictEqual(RMClub.remplacementsVersConfig(s.clubJoueur.effectif, null, 'A'), []);
+});
+
+test('remplacements : un remplaçant fatigué/démoralisé apporte réellement moins que sur sa fiche, jamais un simple clone', () => {
+  const s = RMClub.nouvelleSaison(creerRng(403), 'Test Remplacements Fatigue');
+  const c = s.clubJoueur;
+  c.compositionTitulaires = RMClub.meilleureComposition(c.effectif);
+  c.compositionBanc = RMClub.completerCompositionBanc(c.effectif, c.compositionTitulaires, {});
+  const idBancPilier = c.compositionBanc['16'];
+  const bancPilier = c.effectif.find((j) => j.id === idBancPilier);
+  bancPilier.fatigue = 100;
+  bancPilier.moral = 0;
+  const remplacements = RMClub.remplacementsVersConfig(c.effectif, c.compositionBanc, 'A');
+  const rPilier = remplacements.find((r) => r.numero === 1);
+  assert.ok(rPilier.joueur.vitesse < bancPilier.vitesse, 'la fatigue/le moral doivent réellement réduire les attributs transmis au moteur');
+  assert.ok(rPilier.joueur.vitesse >= 20, 'jamais en dessous du plancher (même logique que compositionVersJoueursCfg)');
+});
+
 // --- 13) Pyramide française : le club du joueur débute en petite division
 // et progresse réellement (montée/descente selon le classement final,
 // nouveaux adversaires au bon niveau, qualification européenne). Scénarios
