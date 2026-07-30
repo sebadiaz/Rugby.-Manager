@@ -682,6 +682,31 @@
         `<td>${adv.budget != null ? adv.budget + ' k€' : '—'}</td></tr>`;
     }).join('');
     conteneur.innerHTML = `<table class="tableauClub effectifCliquable"><thead><tr><th>Club</th><th>Réputation</th><th>Classement</th><th>Budget (estimé)</th></tr></thead><tbody>${lignes}</tbody></table>`;
+    rafraichirAutresPaliersFrance();
+  }
+
+  // Les 2 paliers de la pyramide française que le club du joueur n'occupe
+  // pas cette saison (cf. docs/js/club-pyramide-france.js) : un classement
+  // réel, simulé une journée à la fois — assurerAutresDivisionsFrance crée
+  // la structure au premier affichage si une vraie journée n'a pas encore
+  // été jouée (carrière toute neuve), sans jamais écraser une progression
+  // déjà en cours.
+  function rafraichirAutresPaliersFrance() {
+    const conteneur = document.getElementById('clubAutresPaliersFrance');
+    if (!conteneur) return;
+    const niveauActuel = (saison.clubJoueur.palierPyramide || { niveau: 3 }).niveau;
+    const existaitDeja = !!saison.autresDivisionsFrance && saison.autresDivisionsFrance.niveauExclu === niveauActuel;
+    const autresDivisions = RMClub.assurerAutresDivisionsFrance(creerRng(graineAleatoire()), saison);
+    if (!existaitDeja) sauvegarder();
+    conteneur.innerHTML = Object.keys(autresDivisions.divisions).sort((a, b) => a - b).map((niveau) => {
+      const div = autresDivisions.divisions[niveau];
+      const lignes = RMClub.classementTrieDe(div.classement).map((r, i) => {
+        const club = div.clubs.find((c) => c.id === r.clubId);
+        return `<tr><td>${i + 1}</td><td>${club ? echapperHTML(club.nom) : '—'}</td><td>${r.j}</td><td>${r.g}</td><td>${r.n}</td><td>${r.p}</td><td><b>${r.pts}</b></td></tr>`;
+      }).join('');
+      return `<h4 style="margin:14px 0 6px;">${div.nom}</h4>` +
+        `<table class="tableauClub"><thead><tr><th></th><th>Club</th><th>J</th><th>G</th><th>N</th><th>P</th><th>Pts</th></tr></thead><tbody>${lignes}</tbody></table>`;
+    }).join('');
   }
 
   function fermerFicheJoueurAdversaire() {
@@ -2011,6 +2036,16 @@
     if (saison.monde) {
       RMWorld.avancerJourneeMonde(creerRng(graineAleatoire()), saison.monde, null);
     }
+
+    // Les 2 autres paliers de la pyramide française (celui que le joueur
+    // n'occupe pas cette saison, cf. docs/js/club-pyramide-france.js)
+    // avancent d'une journée à CHAQUE journée réellement jouée — jamais
+    // conditionné à l'ouverture d'un onglet (contrairement au Monde
+    // ci-dessus, une limite déjà connue, cf. TODO_AUDIT.md).
+    RMClub.avancerJourneeAutresDivisionsFrance(
+      creerRng(graineAleatoire()),
+      RMClub.assurerAutresDivisionsFrance(creerRng(graineAleatoire()), saison)
+    );
 
     // Forme du club du joueur pour CE match (avant enregistrement du résultat) —
     // sert au calcul des finances (recette boostée en cas de victoire).

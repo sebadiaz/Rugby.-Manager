@@ -420,6 +420,13 @@ function optionsLancement() {
   // 6) Affichage d'un club adverse + fiche joueur adverse + offre de transfert.
   await clicOnglet('autresclubs');
   await page.waitForTimeout(150);
+  // Audit ("les autres championnats ne sont jamais simulés") : les 2 autres
+  // paliers de la pyramide française (celui que le joueur n'occupe pas
+  // cette saison) doivent afficher un classement réel, pas une carte vide.
+  const autresPaliersTxt = await page.textContent('#clubAutresPaliersFrance');
+  verifier('autres paliers de la pyramide française : un classement réel est affiché (pas une carte vide)', autresPaliersTxt.trim().length > 20);
+  verifier('autres paliers de la pyramide française : les 2 paliers non occupés par le joueur sont bien nommés',
+    autresPaliersTxt.includes('Ligue') && (autresPaliersTxt.match(/Ligue/g) || []).length >= 2);
   await page.click('#clubAutresClubsListe tbody tr:nth-child(1)');
   await page.waitForTimeout(150);
   const detailAdversaireTxt = await page.textContent('#clubAutresClubIdentite');

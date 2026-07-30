@@ -278,6 +278,31 @@ Statuts possibles : `À FAIRE`, `EN COURS`, `CONFIRMÉ`, `CORRIGÉ`, `FAUX POSIT
 - Vérifié que le test réécrit détecte toujours correctement l'absence du correctif : verrou temporairement neutralisé (`if (marcheActionVerrouillee) return` → `if (false) return`) dans une copie de travail, le test échoue bien comme attendu ; restauré, 2 exécutions consécutives propres (0 échec) là où l'ancienne version avait déjà flaké deux fois (une fois en local, une fois en CI réelle).
 - Suite complète sans régression : `test-parcours-navigateur.js` 100/100, `test-parcours-club.js` 45/45, `test-monde.js` 14/14, `test-audit-p0-1.js` 4/4, `test-audit-p0-2.js` 6/6, `test-textes-accueil.js` 4/4, `test-invariants.js` 12/12, `test-audit-p0-3.js` 8/8.
 
+### P0-13. Les autres paliers de la pyramide française n'étaient jamais simulés
+- **Statut : CORRIGÉ (première tranche)**
+- Priorité : P0 (crédibilité de la progression — la pyramide française ressemblait à une étiquette vide en dehors du palier du joueur)
+- Fichiers concernés :
+  - `docs/js/club-pyramide-france.js` (nouveau — génération + simulation abstraite des 2 autres paliers)
+  - `docs/index.html` (nouvelle carte "Autres paliers de la pyramide", nouveau `<script>`)
+  - `docs/js/clubUI.js` (appel à chaque journée jouée + rendu de la nouvelle carte)
+  - `server/test-parcours-club.js`, `server/test-parcours-navigateur.js` (nouveaux tests — reproduction + validation)
+
+**Contexte.** Signalé par l'utilisateur ("les autres championnats ne sont jamais simulés"), confirmé par un audit dédié (agent de recherche) avant toute correction : `saison.clubJoueur.palierPyramide`/`saison.adversaires`/`saison.calendrier`/`saison.classement` ne représentent QUE le palier occupé par le club du joueur. Les deux autres paliers (Ligue d'Excellence/Nationale/Régionale, cf. `club-pyramide.js`) n'avaient aucune trace persistante (pas de clubs, pas de calendrier) — `avancerSaison` régénérait à chaque montée/descente un tout nouvel effectif d'adversaires depuis zéro, comme si l'ancien palier n'avait jamais existé.
+
+**Cause.** La pyramide française n'a jamais eu d'équivalent au système déjà en place pour les 12 autres pays (`docs/js/world.js` : clubs persistants + calendrier + classement + simulation abstraite `simulerResultatAbstrait`, avancée à chaque journée) — seul le palier du joueur en avait profité.
+
+**Correction (première tranche, périmètre volontairement limité).** Nouveau fichier `club-pyramide-france.js`, reprenant le principe déjà établi par `world.js` (clubs légers, calendrier round-robin, classement, simulation abstraite — dupliquée en local pour ne créer aucune dépendance vers `world.js`, même principe déjà documenté dans `club-pyramide.js`) :
+- `assurerAutresDivisionsFrance(rng, saison)` : crée (ou resynchronise après une montée/descente) `saison.autresDivisionsFrance = { niveauExclu, divisions: {...} }`, peuplant réellement les 2 paliers que le joueur n'occupe PAS cette saison.
+- `avancerJourneeAutresDivisionsFrance(rng, autresDivisions)` : avance chaque division d'une journée — appelée à **CHAQUE** journée réellement jouée par le joueur (`clubUI.js`, `lancerLaJournee`), **jamais conditionnée à l'ouverture d'un onglet** (contrairement au Monde, une limite déjà connue — volontairement pas reproduite ici).
+- Nouvelle carte "Autres paliers de la pyramide" (onglet Autres clubs) : classement réel de chaque palier non occupé, mis à jour à chaque journée.
+
+**Explicitement hors périmètre de cette tranche (à faire plus tard) :** faire persister l'identité des clubs d'un palier à l'autre lors d'une montée/descente du joueur (aujourd'hui, comme pour `saison.adversaires`, le palier quitté est régénéré à neuf plutôt que de rejoindre le palier réellement simulé) — éviter de réconcilier deux modèles de données indépendamment ensemencés était le compromis retenu pour garder cette première tranche petite et sûre.
+
+**Critères de validation.**
+- 4 nouveaux tests dans `server/test-parcours-club.js` : bonne taille de division pour les 2 paliers non occupés ; une journée simulée produit des résultats réels (points > 0, pas des zéros) ; une montée/descente resynchronise correctement (le palier quitté redevient peuplé, le palier rejoint ne l'est plus) ; rétrocompatibilité (sauvegarde antérieure sans le champ, aucun plantage). Vérifié en échec AVANT correctif (fichier temporairement déplacé) : erreur de chargement immédiate. Après correctif : 4/4.
+- 2 nouveaux tests dans `server/test-parcours-navigateur.js` : la carte affiche un classement réel (pas vide), les 2 paliers sont bien nommés. Vérifié en échec AVANT correctif (carte HTML temporairement retirée) : élément introuvable (timeout). Après correctif : 2/2.
+- Suite complète sans régression : `test-parcours-club.js` 49/49 (45 existants + 4 nouveaux), `test-parcours-navigateur.js` 102/102 (100 existants + 2 nouveaux), `test-monde.js` 14/14, `test-audit-p0-1.js` 4/4, `test-audit-p0-2.js` 6/6, `test-textes-accueil.js` 4/4, `test-invariants.js` 12/12, `test-audit-p0-3.js` 8/8.
+
 ---
 
 ## P1 — Parcours utilisateur

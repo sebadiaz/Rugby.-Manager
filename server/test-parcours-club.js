@@ -35,6 +35,7 @@ new Function('window', require('fs').readFileSync(require('path').join(__dirname
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-composition.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-condition-joueurs.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-pyramide.js'), 'utf8'))(global.window);
+new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-pyramide-france.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-calendrier.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-sauvegarde.js'), 'utf8'))(global.window);
 const RMClub = global.window.RMClub;
@@ -731,6 +732,55 @@ test('pyramide : rétrocompatibilité — une sauvegarde antérieure sans "palie
   assert.ok(c.palierPyramide && c.palierPyramide.niveau === 1, 'une sauvegarde antérieure à cette fonctionnalité doit repartir au palier le plus haut, pas être rétrogradée rétroactivement');
 });
 
+// --- Autres paliers de la pyramide française (audit : "les autres
+// championnats ne sont jamais simulés") : les 2 paliers que le club du
+// joueur n'occupe pas doivent avoir de vrais clubs/calendrier/classement,
+// simulés une journée à la fois — jamais de simples noms de palier sans
+// contenu, jamais conditionné à l'ouverture d'un onglet. ---
+test('autres paliers France : les 2 paliers non occupés par le joueur sont réellement peuplés (bonne taille de division)', () => {
+  const s = RMClub.nouvelleSaison(creerRng(120), 'Test Pyramide France');
+  assert.strictEqual(s.clubJoueur.palierPyramide.niveau, 3, 'scénario de test : débute en Ligue Régionale (palier 3)');
+  const autres = RMClub.assurerAutresDivisionsFrance(creerRng(121), s);
+  assert.strictEqual(autres.niveauExclu, 3);
+  assert.deepStrictEqual(Object.keys(autres.divisions).map(Number).sort(), [1, 2], 'seuls les paliers 1 et 2 doivent être peuplés (le 3 est celui du joueur)');
+  assert.strictEqual(autres.divisions[1].clubs.length, RMClub.TAILLE_DIVISION_FRANCE[1]);
+  assert.strictEqual(autres.divisions[2].clubs.length, RMClub.TAILLE_DIVISION_FRANCE[2]);
+  assert.strictEqual(autres.divisions[1].calendrier.length, RMClub.TAILLE_DIVISION_FRANCE[1] * (RMClub.TAILLE_DIVISION_FRANCE[1] - 1));
+});
+
+test('autres paliers France : avancerJourneeAutresDivisionsFrance simule réellement une journée (résultats réels, pas des zéros)', () => {
+  const s = RMClub.nouvelleSaison(creerRng(122), 'Test Simulation France');
+  const autres = RMClub.assurerAutresDivisionsFrance(creerRng(123), s);
+  RMClub.avancerJourneeAutresDivisionsFrance(creerRng(124), autres);
+  const jouesNiveau1 = autres.divisions[1].calendrier.filter((f) => f.joue).length;
+  const jouesNiveau2 = autres.divisions[2].calendrier.filter((f) => f.joue).length;
+  assert.strictEqual(jouesNiveau1, RMClub.TAILLE_DIVISION_FRANCE[1] / 2, 'une journée = la moitié des clubs qui jouent, une fois');
+  assert.strictEqual(jouesNiveau2, RMClub.TAILLE_DIVISION_FRANCE[2] / 2);
+  const classementNiveau1 = RMClub.classementTrieDe(autres.divisions[1].classement);
+  assert.ok(classementNiveau1.some((r) => r.pts > 0), 'au moins un club doit avoir marqué des points réels après une journée');
+});
+
+test('autres paliers France : une montée/descente de palier resynchronise (le nouveau palier du joueur n\'est plus peuplé, l\'ancien l\'est)', () => {
+  const s = RMClub.nouvelleSaison(creerRng(125), 'Test Resynchronisation France');
+  RMClub.assurerAutresDivisionsFrance(creerRng(126), s);
+  assert.deepStrictEqual(Object.keys(s.autresDivisionsFrance.divisions).map(Number).sort(), [1, 2]);
+  // Force une montée en Ligue Nationale (palier 2).
+  for (const id of Object.keys(s.classement)) s.classement[id].pts = 0;
+  s.classement[s.clubJoueur.id].pts = 999;
+  RMClub.avancerSaison(creerRng(127), s);
+  assert.strictEqual(s.clubJoueur.palierPyramide.niveau, 2);
+  RMClub.assurerAutresDivisionsFrance(creerRng(128), s);
+  assert.strictEqual(s.autresDivisionsFrance.niveauExclu, 2, 'le palier exclu doit suivre le nouveau palier du joueur');
+  assert.deepStrictEqual(Object.keys(s.autresDivisionsFrance.divisions).map(Number).sort(), [1, 3], 'le palier 3 (quitté) redevient peuplé, le palier 2 (rejoint) ne l\'est plus');
+});
+
+test('autres paliers France : rétrocompatibilité — une sauvegarde antérieure sans "autresDivisionsFrance" ne plante pas et se reconstitue', () => {
+  const s = RMClub.nouvelleSaison(creerRng(129), 'Ancienne Sauvegarde Pyramide');
+  assert.strictEqual(s.autresDivisionsFrance, undefined, 'scénario de test : simule une sauvegarde antérieure à cette fonctionnalité');
+  assert.doesNotThrow(() => RMClub.assurerAutresDivisionsFrance(creerRng(130), s));
+  assert.ok(s.autresDivisionsFrance);
+});
+
 // --- Carrière longue (TODO_AUDIT.md P1-9) : 12 saisons, avec un VRAI
 // rechargement de page simulé (nouvelle exécution indépendante de club.js,
 // cf. server/test-audit-p0-1.js) plusieurs fois par saison, entrecoupées
@@ -753,6 +803,7 @@ const clubCentreFormationSrcPourRechargement = require('fs').readFileSync(requir
 const clubCompositionSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-composition.js'), 'utf8');
 const clubConditionJoueursSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-condition-joueurs.js'), 'utf8');
 const clubPyramideSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-pyramide.js'), 'utf8');
+const clubPyramideFranceSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-pyramide-france.js'), 'utf8');
 const clubCalendrierSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-calendrier.js'), 'utf8');
 const clubSauvegardeSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-sauvegarde.js'), 'utf8');
 function chargerInstanceFraicheClub() {
@@ -773,6 +824,7 @@ function chargerInstanceFraicheClub() {
   new Function('window', clubCompositionSrcPourRechargement)(ctx);
   new Function('window', clubConditionJoueursSrcPourRechargement)(ctx);
   new Function('window', clubPyramideSrcPourRechargement)(ctx);
+  new Function('window', clubPyramideFranceSrcPourRechargement)(ctx);
   new Function('window', clubCalendrierSrcPourRechargement)(ctx);
   new Function('window', clubSauvegardeSrcPourRechargement)(ctx);
   return ctx.RMClub;

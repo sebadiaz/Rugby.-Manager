@@ -392,6 +392,14 @@
             <h3>🏟️ Autres clubs</h3>
             <div id="clubAutresClubsListe" tabindex="0" role="region" aria-label="Liste des autres clubs, défilement horizontal sur petit écran"></div>
           </div>
+          <!-- Les 2 autres paliers de la pyramide française (celui que tu
+               n'occupes pas cette saison, cf. club-pyramide-france.js) : un
+               classement RÉEL, simulé chaque journée, pas une simple
+               étiquette de palier sans contenu. -->
+          <div class="carteClub">
+            <h3>🇫🇷 Autres paliers de la pyramide</h3>
+            <div id="clubAutresPaliersFrance"></div>
+          </div>
           <div class="carteClub" id="clubAutresClubDetail" style="display:none;">
             <button id="btnFermerClubAdversaire" class="alt" style="width:100%;margin-bottom:12px;">← Retour à la liste des clubs</button>
             <div id="clubAutresClubCorps">
@@ -645,6 +653,7 @@
 <script src="js/club-composition.js"></script>
 <script src="js/club-condition-joueurs.js"></script>
 <script src="js/club-pyramide.js"></script>
+<script src="js/club-pyramide-france.js"></script>
 <script src="js/club-calendrier.js"></script>
 <script src="js/club-sauvegarde.js"></script>
 <script src="js/world.js"></script>
