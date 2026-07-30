@@ -242,6 +242,26 @@ Statuts possibles : `À FAIRE`, `EN COURS`, `CONFIRMÉ`, `CORRIGÉ`, `FAUX POSIT
 - Nouveau test dans `server/test-parcours-navigateur.js` : vérifie que la carte de composition est visible et contient bien 15 lignes de poste. Vérifié en échec AVANT correctif (`git stash` sur `docs/index.html`+`docs/js/clubUI.js`) : élément introuvable (timeout). Après correctif : 15 lignes affichées avec des noms réels.
 - Suite complète sans régression : `test-parcours-navigateur.js` 99/99 (97 existants + 2 nouveaux), `test-parcours-club.js` 45/45, `test-monde.js` 14/14, `test-audit-p0-1.js` 4/4, `test-audit-p0-2.js` 6/6, `test-textes-accueil.js` 4/4, `test-invariants.js` 12/12, `test-audit-p0-3.js` 8/8.
 
+### P0-11. "Renouveler" (contrat) proposé seulement en dernière année — invisible sinon
+- **Statut : CORRIGÉ**
+- Priorité : P0 (fiabilité de l'information — le joueur pensait la gestion de contrat absente du jeu)
+- Fichiers concernés :
+  - `docs/js/clubUI.js` (cause + correction)
+  - `server/test-parcours-navigateur.js` (nouveau test — reproduction + validation)
+
+**Contexte.** Signalé par l'utilisateur ("pas de gestion de contrat") dans le même message que P0-10.
+
+**Reproduction.** Le bouton "Renouveler" (fiche joueur, onglet Effectif) n'était affiché que si `j.contrat <= 1` (dernière année). Or `RMClub.negocierRenouvellement`/`renouvelerContrat` (`docs/js/club-contrats.js`) n'ont AUCUNE condition sur la durée restante — ils fonctionnent pour n'importe quel joueur. Un manager qui renouvelle ses joueurs avant l'expiration (ou qui n'a simplement pas encore de contrat proche de la fin) ne voit donc jamais ce bouton, au point de croire que la fonctionnalité n'existe pas.
+
+**Cause.** Condition d'affichage restrictive côté UI, sans justification de jeu documentée ni contrepartie dans la logique de négociation elle-même.
+
+**Correction** (`docs/js/clubUI.js`) : le bouton "Renouveler" est désormais toujours affiché dans la fiche d'un joueur de l'effectif pro, quelle que soit la durée de contrat restante.
+
+**Critères de validation.**
+- Nouveau test dans `server/test-parcours-navigateur.js` : vérifie que le bouton apparaît pour un joueur à 3 ans de contrat restants (pas seulement à 1 an). Vérifié en échec AVANT correctif (`git stash` sur `docs/js/clubUI.js`), succès après.
+- Suite complète sans régression : `test-parcours-navigateur.js` 100/100 (99 existants + 1 nouveau), `test-parcours-club.js` 45/45, `test-monde.js` 14/14, `test-audit-p0-1.js` 4/4, `test-audit-p0-2.js` 6/6, `test-textes-accueil.js` 4/4, `test-invariants.js` 12/12, `test-audit-p0-3.js` 8/8.
+- Note méthodologique : un run intermédiaire a montré un échec isolé et non reproductible du test P0-7 ("double clic écran sur Signer") — confirmé transitoire (0 échec sur deux ré-exécutions immédiates suivantes), cohérent avec la flakiness déjà documentée en P0-7 (délai fixe de 800 ms parfois dépassé sous charge machine). Sans lien avec ce correctif.
+
 ---
 
 ## P1 — Parcours utilisateur

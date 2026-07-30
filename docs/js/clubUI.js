@@ -986,10 +986,14 @@
     const ligneStatsSaison = s
       ? `<div class="ligneJoueur"><span>Cette saison</span><b>${s.essais} essai(s) · ${s.passes} passe(s) · ${s.tacklesMade}/${s.tacklesAttempted} plaquages</b></div>`
       : '';
+    // Négociable à tout moment (pas seulement en dernière année de contrat —
+    // audit : le joueur pensait qu'aucune gestion de contrat n'existait,
+    // faute de l'avoir jamais rencontrée avant l'expiration). RMClub.
+    // negocierRenouvellement/renouvelerContrat n'ont jamais eu de condition
+    // sur la durée restante : seul ce bouton en avait une, sans raison de
+    // jeu documentée.
     const offre = RMClub.calculerOffreRenouvellement(j);
-    const boutonRenouveler = j.contrat <= 1
-      ? `<button class="accent" id="btnRenouveler" style="width:100%;margin-top:8px;">Renouveler ${offre.dureeMax} an(s) · ${offre.salaire} k€/saison</button>`
-      : '';
+    const boutonRenouveler = `<button class="accent" id="btnRenouveler" style="width:100%;margin-top:8px;">Renouveler ${offre.dureeMax} an(s) · ${offre.salaire} k€/saison</button>`;
     const boutonPret = j.pret
       ? `<button class="alt" id="btnRappelerJoueur" style="width:100%;margin-top:8px;">Rappeler de prêt</button>`
       : `<button class="alt" id="btnPreterJoueur" style="width:100%;margin-top:8px;">Prêter ce joueur (3 journées)</button>`;

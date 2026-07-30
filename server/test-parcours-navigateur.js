@@ -266,17 +266,29 @@ function optionsLancement() {
   // simple bouton "accepter"). L'issue accept/refus dépend du hasard réel du
   // jeu : elle est couverte de façon déterministe par server/test-parcours-club.js,
   // ici on vérifie seulement le câblage.
-  const idJoueurContratCourt = await page.evaluate(() => {
+  const idsContrats = await page.evaluate(() => {
     const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
     s.clubJoueur.effectif[0].contrat = 1;
+    // Audit ("pas de gestion de contrat") : avant correctif, "Renouveler"
+    // n'était proposé QUE pour un contrat expirant (<=1 an) — un joueur qui
+    // ne laisse jamais un contrat filer jusque-là ne voit jamais ce bouton,
+    // au point de penser que la fonctionnalité n'existe pas.
+    s.clubJoueur.effectif[1].contrat = 3;
     localStorage.setItem('rugbyManager.club.v1', JSON.stringify(s));
-    return s.clubJoueur.effectif[0].id;
+    return { court: s.clubJoueur.effectif[0].id, long: s.clubJoueur.effectif[1].id };
   });
+  const idJoueurContratCourt = idsContrats.court;
   await page.reload({ waitUntil: 'networkidle' });
   await page.waitForTimeout(200);
   await page.click('#btnContinuerClub');
   await page.waitForTimeout(200);
   await clicOnglet('effectif');
+  await page.waitForTimeout(150);
+  await page.click(`#clubEffectif tr[data-joueur="${idsContrats.long}"]`);
+  await page.waitForTimeout(150);
+  verifier('négociation de contrat : le bouton de renouvellement est proposé MÊME avec 3 ans de contrat restants (pas seulement en fin de contrat)',
+    await page.isVisible('#btnRenouveler'));
+  await page.click('#btnFermerFicheJoueur');
   await page.waitForTimeout(150);
   // La liste est triée par poste par défaut : cible ce joueur précis par id
   // plutôt que la première ligne (qui n'est pas forcément effectif[0]).
