@@ -1090,11 +1090,13 @@
     if (!existaitDeja) sauvegarder();
     const c = saison.clubJoueur;
     const estEligible = compB.eligibles.includes(c.id);
+    const carteComposition = document.getElementById('carteEquipeBComposition');
     const carteClassement = document.getElementById('carteEquipeBClassement');
     const carteCalendrier = document.getElementById('carteEquipeBCalendrier');
     if (!estEligible) {
       document.getElementById('clubEquipeBStatut').innerHTML =
         `<p>💸 Budget insuffisant pour aligner une équipe B cette saison : seuls les ${compB.eligibles.length} clubs au budget le plus élevé de la ligue s'en offrent une. Fais grandir tes finances pour y accéder la saison prochaine.</p>`;
+      carteComposition.style.display = 'none';
       carteClassement.style.display = 'none';
       carteCalendrier.style.display = 'none';
       return;
@@ -1102,14 +1104,39 @@
     if (!compB.calendrier.length) {
       document.getElementById('clubEquipeBStatut').innerHTML =
         `<p>🌱 Ton budget te qualifie pour une équipe B, mais aucun autre club de la ligue n'a les moyens d'en aligner une cette saison — pas de championnat B possible pour l'instant.</p>`;
+      carteComposition.style.display = 'none';
       carteClassement.style.display = 'none';
       carteCalendrier.style.display = 'none';
       return;
     }
     document.getElementById('clubEquipeBStatut').innerHTML =
       `<p>✅ Ton club fait partie des ${compB.eligibles.length} clubs les plus riches de la ligue : une équipe B est alignée chaque journée, puisée dans tes remplaçants du jour et ton centre de formation. Chaque match rapporte une petite recette de billetterie (cf. onglet Finances).</p>`;
+    carteComposition.style.display = '';
     carteClassement.style.display = '';
     carteCalendrier.style.display = '';
+    // Qui serait réellement aligné AUJOURD'HUI (réservistes non convoqués en
+    // 1er XV + centre de formation, cf. RMClub.effectifDisponiblePourEquipeB) —
+    // calculé en direct, jamais stocké séparément : c'est exactement le vivier
+    // utilisé par simulerRondeEquipeB, jamais une liste fictive. Audit :
+    // l'onglet Équipe B n'affichait avant qu'un classement/calendrier de
+    // clubs, jamais les joueurs réellement sélectionnés.
+    const vivierB = RMClub.effectifDisponiblePourEquipeB(saison);
+    const parIdB = {};
+    for (const j of vivierB) parIdB[j.id] = j;
+    const compoB = RMClub.meilleureComposition(vivierB);
+    const manquantsB = RMClub.validerComposition(compoB);
+    const lignesCompoB = Object.keys(RMClub.POSTE_REQUIS).map((numero) => {
+      const joueur = parIdB[compoB[numero]];
+      const estJeune = joueur && (saison.clubJoueur.jeunes || []).some((j) => j.id === joueur.id);
+      return `<tr><td>${numero}</td><td>${POSTE_COMPLET[RMClub.POSTE_REQUIS[numero]] || RMClub.POSTE_REQUIS[numero]}</td>` +
+        `<td>${joueur ? echapperHTML(joueur.nom) + (estJeune ? ' <span title="Centre de formation">🌱</span>' : '') : '<span class="posteVacant">—</span>'}</td></tr>`;
+    }).join('');
+    const avertissementB = manquantsB.length
+      ? `<p style="color:var(--loss);font-size:12px;">⚠️ Effectif insuffisant pour aligner une équipe B complète : poste(s) ${manquantsB.map((m) => POSTE_COMPLET[m.poste] || m.poste).join(', ')} non pourvu(s) aujourd'hui.</p>`
+      : '';
+    document.getElementById('clubEquipeBComposition').innerHTML =
+      `<p style="font-size:12px;color:var(--text-dim);">Vivier du jour : ${vivierB.length} joueur(s) disponible(s) (réservistes + centre de formation 🌱).</p>` +
+      `<table class="tableauClub"><thead><tr><th>N°</th><th>Poste</th><th>Joueur</th></tr></thead><tbody>${lignesCompoB}</tbody></table>${avertissementB}`;
     const lignes = RMClub.classementTrieDe(compB.classement).map((r, i) => {
       const classe = estClubJoueur(r.clubId) ? ' class="ligneClubJoueur"' : '';
       return `<tr${classe}><td>${i + 1}</td><td>${nomClub(r.clubId)}</td><td>${r.j}</td><td>${r.g}</td><td>${r.n}</td><td>${r.p}</td>` +

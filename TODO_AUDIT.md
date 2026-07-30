@@ -222,6 +222,26 @@ Statuts possibles : `À FAIRE`, `EN COURS`, `CONFIRMÉ`, `CORRIGÉ`, `FAUX POSIT
 - Nouveau test dans `server/test-parcours-navigateur.js` : compare `getComputedStyle` du z-index de `#versionInfo` à celui du `.panneau.visible` courant (structurel — détecterait aussi une régression future si le z-index d'un panneau changeait). Vérifié en échec AVANT correctif (`git stash` sur `docs/css/style.css`), succès après.
 - Suite complète sans régression : `test-parcours-navigateur.js` 97/97 (96 existants + 1 nouveau), `test-parcours-club.js` 45/45, `test-monde.js` 14/14, `test-audit-p0-1.js` 4/4, `test-audit-p0-2.js` 6/6, `test-textes-accueil.js` 4/4, `test-invariants.js` 12/12, `test-audit-p0-3.js` 8/8.
 
+### P0-10. Onglet Équipe B : jamais la liste des joueurs réellement sélectionnés
+- **Statut : CORRIGÉ**
+- Priorité : P0 (fiabilité de l'information — le joueur ne sait jamais qui joue vraiment pour son équipe B)
+- Fichiers concernés :
+  - `docs/index.html` (nouvelle carte `carteEquipeBComposition`)
+  - `docs/js/clubUI.js` (cause + correction : `rafraichirEquipeB`)
+  - `server/test-parcours-navigateur.js` (nouveau test — reproduction + validation)
+
+**Contexte.** Signalé par l'utilisateur ("même pas la liste de joueurs de l'équipe B"), confirmé par un audit dédié (agent de recherche) avant toute correction.
+
+**Reproduction.** `rafraichirEquipeB()` (`docs/js/clubUI.js`) ne construisait que deux blocs : un classement de clubs (`clubEquipeBClassement`) et un calendrier de scores (`clubEquipeBCalendrier`) — jamais les noms des joueurs. Pourtant le vivier réellement utilisé pour simuler le match (réservistes non convoqués en 1er XV + centre de formation, cf. `RMClub.effectifDisponiblePourEquipeB`) est bien calculé ailleurs dans le même fichier (`clubUI.js:2117`, au moment de jouer la journée) — il n'était simplement jamais affiché au joueur.
+
+**Cause.** Oubli lors de l'implémentation initiale de l'Équipe B (P2-10 tranche 6) : le classement/calendrier du championnat B a été construit par analogie avec le championnat principal, mais la composition n'a jamais eu d'équivalent visuel à la "Composition" du 1er XV.
+
+**Correction.** Nouvelle carte "Composition Équipe B" (`docs/index.html`), remplie par `rafraichirEquipeB()` : calcule EN DIRECT (jamais stocké séparément, donc jamais désynchronisé du vivier réel) `RMClub.effectifDisponiblePourEquipeB(saison)` + `RMClub.meilleureComposition(...)`, affiche les 15 postes avec le nom du joueur retenu (badge 🌱 s'il vient du centre de formation), le nombre de joueurs disponibles ce jour-là, et un avertissement explicite si un poste ne peut pas être pourvu (`RMClub.validerComposition`).
+
+**Critères de validation.**
+- Nouveau test dans `server/test-parcours-navigateur.js` : vérifie que la carte de composition est visible et contient bien 15 lignes de poste. Vérifié en échec AVANT correctif (`git stash` sur `docs/index.html`+`docs/js/clubUI.js`) : élément introuvable (timeout). Après correctif : 15 lignes affichées avec des noms réels.
+- Suite complète sans régression : `test-parcours-navigateur.js` 99/99 (97 existants + 2 nouveaux), `test-parcours-club.js` 45/45, `test-monde.js` 14/14, `test-audit-p0-1.js` 4/4, `test-audit-p0-2.js` 6/6, `test-textes-accueil.js` 4/4, `test-invariants.js` 12/12, `test-audit-p0-3.js` 8/8.
+
 ---
 
 ## P1 — Parcours utilisateur

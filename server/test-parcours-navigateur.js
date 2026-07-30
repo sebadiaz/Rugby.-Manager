@@ -457,6 +457,15 @@ function optionsLancement() {
     }));
   verifier('équipe B : classement et calendrier affichés quand le club est éligible',
     await page.isVisible('#carteEquipeBClassement') && await page.isVisible('#carteEquipeBCalendrier'));
+  // Audit ("pas même la liste de joueurs de l'équipe B") : avant correctif,
+  // l'onglet n'affichait qu'un classement de clubs et un calendrier de
+  // scores — jamais les joueurs réellement sélectionnés, alors que ce vivier
+  // (réservistes + centre de formation) est bien calculé en interne pour
+  // simuler le match (cf. RMClub.effectifDisponiblePourEquipeB).
+  verifier('équipe B : la composition (15 joueurs réellement sélectionnés) est affichée', await page.isVisible('#carteEquipeBComposition'));
+  const compoBTexte = await page.textContent('#clubEquipeBComposition');
+  verifier('équipe B : la composition affichée contient bien 15 lignes de poste (une par numéro)',
+    (compoBTexte.match(/Pilier|Talonneur|Deuxième ligne|Troisième ligne|Demi de mêlée|Ouverture|Ailier|Centre|Arrière/g) || []).length >= 15);
   const rondesJoueesAvant = await page.evaluate(() => {
     const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
     return s.competitionB.calendrier.filter((f) => f.joue).length;
