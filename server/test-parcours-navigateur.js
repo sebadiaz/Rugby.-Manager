@@ -853,6 +853,47 @@ function optionsLancement() {
     boutonsDecisionApres === 0 && resultatAffiche === 1);
   await contexteDecision.close();
 
+  // 13) Recommandation tactique dans l'aperçu du prochain match (audit
+  // "stratégie selon l'adversaire : présent mais incomplet", cf.
+  // club-analyse.js/recommanderTactique) : force un écart marqué et
+  // déterministe (notre effectif nettement plus rapide et meilleur en
+  // mêlée) pour garantir qu'au moins une recommandation s'affiche, puis
+  // vérifie que "Appliquer les recommandations" modifie réellement la
+  // tactique utilisée en match (pas juste un texte informatif).
+  const contexteReco = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const pageReco = await contexteReco.newPage();
+  await pageReco.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  await pageReco.click('#btnAccueilModeClub');
+  await pageReco.fill('#inputNomClub', 'Test Recommandation');
+  await pageReco.click('#btnCreerClub');
+  await pageReco.waitForTimeout(300);
+  await pageReco.evaluate(() => {
+    const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
+    for (const j of s.clubJoueur.effectif) {
+      j.vitesse = Math.min(99, j.vitesse + 30);
+      j.melee = Math.min(99, (j.melee || 60) + 30);
+    }
+    localStorage.setItem('rugbyManager.club.v1', JSON.stringify(s));
+  });
+  await pageReco.reload({ waitUntil: 'networkidle' });
+  await pageReco.waitForTimeout(200);
+  await pageReco.click('#btnContinuerClub');
+  await pageReco.waitForTimeout(300);
+  await pageReco.click('#btnJouerMatchClub');
+  await pageReco.waitForTimeout(500);
+  verifier('aperçu du match : un écart marqué avec l\'adversaire affiche une vraie recommandation tactique actionnable',
+    await pageReco.locator('#btnAppliquerRecommandations').isVisible().catch(() => false));
+  const tactiqueAvantReco = await pageReco.evaluate(() => JSON.parse(localStorage.getItem('rugbyManager.club.v1')).clubJoueur.tactique);
+  await pageReco.click('#btnAppliquerRecommandations');
+  await pageReco.waitForTimeout(300);
+  const tactiqueApresReco = await pageReco.evaluate(() => JSON.parse(localStorage.getItem('rugbyManager.club.v1')).clubJoueur.tactique);
+  verifier('aperçu du match : "Appliquer les recommandations" modifie réellement la tactique persistée (pas juste affichée)',
+    JSON.stringify(tactiqueAvantReco) !== JSON.stringify(tactiqueApresReco) && tactiqueApresReco.avants === 'proche');
+  const carteTactiqueApres = await pageReco.locator('#apercuMatchCorps').textContent();
+  verifier('aperçu du match : la carte "Ma tactique" reflète immédiatement le changement, sans rouvrir l\'écran',
+    carteTactiqueApres.includes('Près du ruck'));
+  await contexteReco.close();
+
   verifier('aucune erreur console/page sur tout le parcours', erreursConsole.length === 0);
   if (erreursConsole.length) console.error(erreursConsole.join('\n'));
 

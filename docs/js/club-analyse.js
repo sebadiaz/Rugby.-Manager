@@ -62,7 +62,65 @@
     return { nom: adversaire.nom, comparaison, forces, faiblesses, forme, position, totalClubs: classement.length, confrontations };
   }
 
+  // --- Recommandation tactique (TODO_AUDIT.md P1-16, ROADMAP_FOOTBALL_MANAGER.md
+  // domaines 1+3) : l'analyse de l'adversaire (ci-dessus) était purement
+  // informative — le manager devait interpréter lui-même les écarts et
+  // régler les 6 axes tactiques à la main, sans aucun lien automatique.
+  // Règle simple et déterministe : un écart marqué (>= seuil) sur un
+  // attribut de comparaison propose un réglage précis d'UN axe tactique
+  // (jamais deux attributs sur le même axe, pour rester lisible) — jamais
+  // une note fabriquée, toujours dérivée de la comparaison réelle déjà
+  // calculée par analyserAdversaire. ---
+  function recommanderTactique(analyse) {
+    if (!analyse) return [];
+    const parCle = {};
+    for (const c of analyse.comparaison) parCle[c.cle] = c.diff; // diff = eux - moi (>0 : ils dominent cet attribut)
+    const recommandations = [];
+    function ajouter(axe, option, raison) {
+      const info = global.RMClub.AXES_TACTIQUE[axe].options[option];
+      recommandations.push({ axe, option, libelle: info.nom, raison });
+    }
+    const d = parCle;
+    const seuil = 6;
+    if (d.melee != null) {
+      if (d.melee <= -seuil) ajouter('avants', 'proche', `Ta mêlée domine largement la leur (écart de ${-d.melee}) : joue près du regroupement pour l'exploiter.`);
+      else if (d.melee >= seuil) ajouter('avants', 'large', `Leur mêlée est nettement supérieure (écart de ${d.melee}) : sors vite le ballon, évite le combat direct.`);
+    }
+    if (d.touche != null) {
+      if (d.touche <= -seuil) ajouter('toucheMaul', 'maul', `Ta touche domine largement la leur : cherche le maul après chaque touche gagnée en zone proche.`);
+      else if (d.touche >= seuil) ajouter('toucheMaul', 'sol', `Leur touche est nettement supérieure : évite de contester le maul, sors vite le ballon.`);
+    }
+    if (d.puissance != null) {
+      if (d.puissance <= -seuil) ajouter('ligneDef', 'haute', `Tu domines les contacts : presse haut, tu gagneras la plupart des duels.`);
+      else if (d.puissance >= seuil) ajouter('ligneDef', 'basse', `Ils sont plus puissants au contact : reste groupé, évite la percée directe.`);
+    }
+    if (d.vitesse != null) {
+      if (d.vitesse <= -seuil) ajouter('style', 'large', `Tu es plus rapide qu'eux : cherche l'espace au large à chaque occasion.`);
+      else if (d.vitesse >= seuil) ajouter('style', 'sol', `Ils sont plus rapides que toi : ne leur donne pas d'espace, reste au sol.`);
+    }
+    if (d.jeuPied != null) {
+      if (d.jeuPied <= -seuil) ajouter('pied', 'frequent', `Leur jeu au pied est faible : mets-les sous pression avec des coups de pied fréquents.`);
+      else if (d.jeuPied >= seuil) ajouter('pied', 'rare', `Leur jeu au pied est nettement supérieur : évite la bataille au pied, garde le ballon en main.`);
+    }
+    if (d.discipline != null && d.discipline <= -seuil) {
+      ajouter('rythme', 'rapide', `Ils sont indisciplinés : joue vite pour multiplier les rucks et les fautes.`);
+    }
+    return recommandations;
+  }
+
+  // Applique en un clic les réglages recommandés (cf. ci-dessus) à la
+  // tactique réellement utilisée en match — modifie directement
+  // saison.clubJoueur.tactique, comme un réglage manuel dans l'onglet
+  // Tactique (aucune sauvegarde séparée, le joueur garde la main pour
+  // ajuster/annuler ensuite comme n'importe quel autre réglage).
+  function appliquerRecommandationsTactique(saison, recommandations) {
+    const tactique = Object.assign({}, (saison.clubJoueur.tactique && typeof saison.clubJoueur.tactique === 'object') ? saison.clubJoueur.tactique : {});
+    for (const r of recommandations) tactique[r.axe] = r.option;
+    saison.clubJoueur.tactique = tactique;
+    return tactique;
+  }
+
   global.RMClub = Object.assign(global.RMClub || {}, {
-    moyenneAttribut, analyserAdversaire,
+    moyenneAttribut, analyserAdversaire, recommanderTactique, appliquerRecommandationsTactique,
   });
 })(window);

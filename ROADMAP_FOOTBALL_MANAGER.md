@@ -25,7 +25,7 @@ tranche livrée — jamais en avance sur ce qui est réellement dans `main`.
 | Boîte de réception avec décisions | 🟡 | `club.js`, `club-decisions.js`, `clubUI.js` | **Tranche 1 livrée** : les demandes de temps de jeu des joueurs sont un vrai choix (Rassurer/Ignorer) avec conséquence durable. Les autres messages (transferts, blessures, contrats, résultats...) restent informatifs. |
 | Événements entre les matchs | 🔴 | — | `lancerLaJournee()` saute directement au prochain match ; aucun jour "creux" jouable. |
 | Bouton « Jour suivant » | 🔴 | `clubUI.js` | "Journée suivante" = "prochain match", jamais un vrai jour calendaire indépendant. |
-| Préparation obligatoire avant certaines rencontres | 🟡 | `clubUI.js`, `club-composition.js` | La composition est auto-complétée si incomplète ; aucun match n'impose de préparation spécifique. |
+| Préparation obligatoire avant certaines rencontres | 🟡 | `clubUI.js`, `club-composition.js`, `club-analyse.js` | La composition est auto-complétée si incomplète ; aucun match n'impose de préparation. **Tranche 2 livrée** : l'aperçu d'avant-match propose désormais une vraie recommandation tactique actionnable (pas obligatoire — le joueur garde la main). |
 
 ## 2. Effectif et joueurs
 
@@ -44,7 +44,7 @@ tranche livrée — jamais en avance sur ce qui est réellement dans `main`.
 |---|---|---|---|
 | Rôles propres à chaque poste | 🟡 | `club-composition.js` | Capitaine, buteur, lanceur en touche seulement — aucune instruction individuelle au-delà. |
 | Consignes collectives et individuelles → moteur | 🟢 (collectif) / 🟡 (individuel) | `club.js` (`AXES_TACTIQUE`), `club-composition.js`, `engine/rugby-engine.js` | 6 axes collectifs réellement branchés au moteur. Individuel limité aux 3 rôles ci-dessus. |
-| Stratégie selon l'adversaire | 🟡 | `club-analyse.js` | Analyse comparative réelle, mais purement informative — aucune adaptation tactique automatique/suggérée. |
+| Stratégie selon l'adversaire | 🟡 | `club-analyse.js`, `clubUI.js` | **Tranche 2 livrée** : l'analyse comparative (déjà réelle) alimente désormais `recommanderTactique`, qui propose un vrai réglage des 6 axes tactiques applicable en un clic depuis l'aperçu du match. Reste à faire : recommandations sur les rôles individuels (buteur/lanceur), pas seulement les 6 axes collectifs. |
 | Coups de pied, touches, mêlées, phases arrêtées | 🟡 | `club-composition.js`, `engine/rugby-engine.js` | Buteur unique (pénalité+transfo confondues), lanceur en touche. Pas de composition de mêlée ni de sauteur désigné. |
 | Remplacements réellement effectués pendant le match | 🔴 | `engine/rugby-engine.js` | Le banc de 8 est choisi mais **jamais transmis au moteur** — purement cosmétique. |
 | Changements tactiques en cours de rencontre | 🔴 | — | Pause de mi-temps existe côté animation, aucun hook d'interaction ; tactique figée pour tout le match. |
@@ -115,4 +115,11 @@ tranche livrée — jamais en avance sur ce qui est réellement dans `main`.
 - **Fichiers :** `docs/js/club-decisions.js` (nouveau), `docs/js/club.js` (`ajouterMessage` accepte une décision), `docs/js/club-condition-joueurs.js` (conséquences durables de `veutPartir`), `docs/js/clubUI.js` (déclenchement + rendu des boutons de décision), `docs/index.html`, `docs/css/style.css`.
 - **Ce que le joueur peut désormais faire :** un joueur de qualité laissé sur le banc plusieurs journées de suite vient réclamer du temps de jeu, avec un vrai choix dans la boîte de réception (« Le rassurer » / « Ignorer sa demande »), pas juste un texte à marquer comme lu.
 - **Conséquences réelles :** rassurer améliore le moral (+10) ; ignorer le baisse durablement (−14) et, après une deuxième demande ignorée, le joueur veut quitter le club (badge 🚩 visible dans l'effectif et sa fiche, moral qui ne remonte plus vers la neutralité, progression à l'entraînement stoppée).
-- **Prochaine tranche prioritaire :** préparation complète du prochain match (domaine 1, point 2 de l'ordre de développement demandé) — a minima un vrai scouting tactique de l'adversaire relié à des recommandations actionnables avant le coup d'envoi.
+- **Prochaine tranche prioritaire (à l'époque) :** préparation complète du prochain match — réalisée en tranche 2 (ci-dessous).
+
+### Tranche 2 — Recommandation tactique dans l'aperçu du prochain match (livrée)
+- **Domaines touchés :** 1 (préparation avant match), 3 (stratégie selon l'adversaire).
+- **Fichiers :** `docs/js/club-analyse.js` (`recommanderTactique`, `appliquerRecommandationsTactique`), `docs/js/clubUI.js` (rendu + application dans l'aperçu du match), `docs/css/style.css`.
+- **Ce que le joueur peut désormais faire :** dans l'aperçu du prochain match, une nouvelle carte « 💡 Recommandation tactique » traduit l'analyse de l'adversaire (déjà réelle) en réglages concrets des 6 axes tactiques, avec une explication en langage clair pour chacun, et un bouton « Appliquer les recommandations » qui les règle en un clic.
+- **Conséquences réelles :** la tactique appliquée est bien celle utilisée par le moteur de simulation pour le match — un écart marqué de mêlée/touche/puissance/vitesse/jeu au pied/discipline avec l'adversaire se traduit directement en `avants`/`toucheMaul`/`ligneDef`/`style`/`pied`/`rythme`. Le joueur garde la main : rien n'est appliqué automatiquement, et les réglages restent modifiables ensuite comme n'importe quel réglage manuel.
+- **Prochaine tranche prioritaire :** tactique, composition et remplacements (domaine 3, point 3 de l'ordre demandé) — le banc de 8 est aujourd'hui purement cosmétique (jamais transmis au moteur), ce qui est le manque le plus criant de ce domaine.

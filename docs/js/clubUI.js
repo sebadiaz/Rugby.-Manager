@@ -24,6 +24,11 @@
   // Index (dans l'effectif adverse) du joueur actuellement affiché dans sa
   // fiche — sert à "Faire une offre de transfert" (cf. approcherJoueurAdverse).
   let joueurAdversaireAfficheIndex = null;
+  // Recommandations tactiques du dernier aperçu de match affiché (cf.
+  // rafraichirApercuMatch/RMClub.recommanderTactique) — reprises telles
+  // quelles par le bouton "Appliquer les recommandations", plutôt que de
+  // les recalculer au clic (même analyse, aucune raison de refaire le calcul).
+  let dernieresRecommandationsTactique = [];
   // État des filtres/tri de l'effectif (recherche/poste/disponibilité/tri de
   // colonne) : tenu en mémoire, réappliqué à chaque rendu (pas persisté —
   // ce sont des préférences d'affichage, pas des données de la saison).
@@ -1824,6 +1829,18 @@
     document.getElementById('panneauApercuMatch').classList.remove('visible');
     basculerOnglet('tactique');
   });
+  // Recommandation tactique (TODO_AUDIT.md P1-16) : le bouton vit dans le
+  // innerHTML régénéré à chaque ouverture de l'aperçu (cf. rafraichirApercuMatch)
+  // — délégation d'événements sur le conteneur, même principe que la boîte
+  // de réception (#clubMessages) plus haut.
+  document.getElementById('apercuMatchCorps').addEventListener('click', (e) => {
+    if (!e.target.closest('#btnAppliquerRecommandations')) return;
+    RMClub.appliquerRecommandationsTactique(saison, dernieresRecommandationsTactique);
+    sauvegarder();
+    rafraichirTactique();
+    rafraichirApercuMatch();
+    toast('Recommandations tactiques appliquées.');
+  });
   document.getElementById('btnApercuLancerMatch').addEventListener('click', () => {
     document.getElementById('panneauApercuMatch').classList.remove('visible');
     lancerLaJournee();
@@ -2339,6 +2356,16 @@
       ...analyse.faiblesses.map((cc) => `<span class="puceQualitatif faiblesse">✓ Leur ${cc.label.toLowerCase()} (${cc.diff})</span>`),
     ].join('');
 
+    // Recommandation tactique (TODO_AUDIT.md P1-16) : relie enfin l'analyse
+    // ci-dessus à un vrai réglage actionnable des 6 axes tactiques, plutôt
+    // que de laisser le joueur interpréter seul les écarts.
+    dernieresRecommandationsTactique = RMClub.recommanderTactique(analyse);
+    const recommandationsHTML = dernieresRecommandationsTactique.length
+      ? `<div class="carteClub"><h3>💡 Recommandation tactique</h3>` +
+        dernieresRecommandationsTactique.map((r) => `<p class="raisonRecommandation">${r.raison}</p>`).join('') +
+        `<button class="accent" id="btnAppliquerRecommandations" style="width:100%;margin-top:8px;">Appliquer les recommandations</button></div>`
+      : '';
+
     corps.innerHTML =
       `<div class="carteClub"><h3>🆚 ${domicile ? `${echapperHTML(c.nom)} — ${echapperHTML(analyse.nom)}` : `${echapperHTML(analyse.nom)} — ${echapperHTML(c.nom)}`}</h3>` +
       `<p style="font-size:12px;color:var(--text-dim);margin:0 0 10px;">Journée ${matchJoueur.journee} · ${domicile ? 'À domicile' : 'À l\'extérieur'} · ${analyse.position}${analyse.position === 1 ? 'er' : 'e'}/${analyse.totalClubs} au classement</p>` +
@@ -2353,7 +2380,8 @@
       `<div class="carteClub"><h3>🎯 Ma tactique</h3>${tactiqueLignes}</div>` +
       `<div class="carteClub"><h3>🔍 Analyse de l'adversaire</h3>` +
       (puces ? `<div class="listeQualitatif">${puces}</div>` : '<p style="font-size:12px;color:var(--text-faint);margin:0;">Aucun écart marqué avec ton effectif.</p>') +
-      `</div>`;
+      `</div>` +
+      recommandationsHTML;
   }
 
   function ouvrirApercuMatch() {

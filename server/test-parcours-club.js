@@ -345,6 +345,64 @@ test('club adverse : identité, effectif complet et analyse comparative disponib
   assert.ok(Array.isArray(analyse.confrontations));
 });
 
+// --- 6b) Recommandation tactique (TODO_AUDIT.md P1-16) : relie l'analyse
+// de l'adversaire à un vrai réglage actionnable des 6 axes tactiques ---
+test('recommandation tactique : un écart marqué de mêlée en notre faveur recommande "avants: proche"', () => {
+  const analyse = { comparaison: [{ cle: 'melee', label: 'Mêlée', moi: 80, eux: 60, diff: -20 }] };
+  const recos = RMClub.recommanderTactique(analyse);
+  assert.strictEqual(recos.length, 1);
+  assert.strictEqual(recos[0].axe, 'avants');
+  assert.strictEqual(recos[0].option, 'proche');
+});
+
+test('recommandation tactique : un écart marqué de mêlée en notre défaveur recommande "avants: large"', () => {
+  const analyse = { comparaison: [{ cle: 'melee', label: 'Mêlée', moi: 60, eux: 80, diff: 20 }] };
+  const recos = RMClub.recommanderTactique(analyse);
+  assert.strictEqual(recos.length, 1);
+  assert.strictEqual(recos[0].axe, 'avants');
+  assert.strictEqual(recos[0].option, 'large');
+});
+
+test('recommandation tactique : aucun écart marqué (sous le seuil) ne génère aucune recommandation', () => {
+  const analyse = { comparaison: [{ cle: 'melee', label: 'Mêlée', moi: 65, eux: 68, diff: 3 }] };
+  assert.strictEqual(RMClub.recommanderTactique(analyse).length, 0);
+});
+
+test('recommandation tactique : couvre les 6 axes tactiques à partir des 6 attributs correspondants, toujours avec une vraie explication', () => {
+  const analyse = { comparaison: [
+    { cle: 'melee', diff: 20 }, { cle: 'touche', diff: 20 }, { cle: 'puissance', diff: 20 },
+    { cle: 'vitesse', diff: 20 }, { cle: 'jeuPied', diff: 20 }, { cle: 'discipline', diff: -20 },
+  ] };
+  const recos = RMClub.recommanderTactique(analyse);
+  const axes = recos.map((r) => r.axe).sort();
+  assert.deepStrictEqual(axes, ['avants', 'ligneDef', 'pied', 'rythme', 'style', 'toucheMaul'].sort());
+  for (const r of recos) {
+    assert.ok(RMClub.AXES_TACTIQUE[r.axe].options[r.option], `${r.axe}/${r.option} doit être une option valide du moteur`);
+    assert.ok(r.raison && r.raison.length > 10, 'chaque recommandation doit avoir une vraie explication, pas juste un axe/option bruts');
+  }
+});
+
+test('recommandation tactique : s\'intègre avec une vraie analyse d\'adversaire sans jamais proposer un axe/option invalide', () => {
+  const adversaireId = saison.adversaires[0].id;
+  const analyse = RMClub.analyserAdversaire(saison, adversaireId, 6);
+  const recos = RMClub.recommanderTactique(analyse);
+  for (const r of recos) {
+    assert.ok(RMClub.AXES_TACTIQUE[r.axe], `axe inconnu : ${r.axe}`);
+    assert.ok(RMClub.AXES_TACTIQUE[r.axe].options[r.option], `option inconnue : ${r.axe}/${r.option}`);
+  }
+});
+
+test('appliquerRecommandationsTactique : modifie réellement la tactique utilisée en match, sans toucher aux axes non concernés', () => {
+  const s = RMClub.nouvelleSaison(creerRng(310), 'Test Recommandation');
+  s.clubJoueur.tactique = { style: 'sol', pied: 'rare' };
+  const recos = [{ axe: 'avants', option: 'proche' }, { axe: 'style', option: 'large' }];
+  const resultat = RMClub.appliquerRecommandationsTactique(s, recos);
+  assert.strictEqual(s.clubJoueur.tactique.avants, 'proche');
+  assert.strictEqual(s.clubJoueur.tactique.style, 'large', 'un axe recommandé écrase bien un réglage manuel précédent');
+  assert.strictEqual(s.clubJoueur.tactique.pied, 'rare', 'un axe NON concerné par la recommandation doit rester inchangé');
+  assert.strictEqual(resultat, s.clubJoueur.tactique);
+});
+
 // --- 7) Fin de saison ---
 test('fin de saison : vieillissement/renouvellement d\'effectif, archive et remise à zéro de la composition', () => {
   const c = saison.clubJoueur;

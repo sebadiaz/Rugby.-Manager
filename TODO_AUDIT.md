@@ -491,6 +491,32 @@ Après CHAQUE rechargement (48 fois), 4 catégories d'invariants sont vérifiée
 
 **Doubles signatures/renouvellements : vérifiés déjà protégés (aucun correctif nécessaire).** `demanderMontant`/`confirmerAction` (P1-8) utilisent chacune une seule variable de résolution partagée et se ferment dès le premier clic (`if (!modal.classList.contains('visible')) return;`) — vérifié empiriquement (double/triple clic réel, instrumentation du nombre d'appels) sur la négociation de contrat et la libération d'un joueur : exactement 1 appel dans les deux cas. **P1-10 est maintenant complet.**
 
+### P1-16. Analyse de l'adversaire purement informative — aucun lien avec la tactique réellement jouée (2ᵉ tranche `ROADMAP_FOOTBALL_MANAGER.md`)
+- **Statut : CORRIGÉ (première tranche)**
+- Priorité : P1 (2ᵉ chantier de la roadmap Football Manager, domaines 1 "préparation avant match" + 3 "stratégie selon l'adversaire")
+- Fichiers concernés :
+  - `docs/js/club-analyse.js` (`recommanderTactique`, `appliquerRecommandationsTactique` — nouveau)
+  - `docs/js/clubUI.js` (rendu + application dans l'aperçu du prochain match)
+  - `docs/css/style.css`
+  - `server/test-parcours-club.js`, `server/test-parcours-navigateur.js` (nouveaux tests)
+
+**Contexte.** `ROADMAP_FOOTBALL_MANAGER.md` (audit initial, 2 agents de recherche) confirme : `analyserAdversaire` (`club-analyse.js:34`) calcule une vraie comparaison d'attributs (mêlée, touche, puissance, vitesse, jeu de main, jeu au pied, discipline) affichée dans l'aperçu du prochain match — mais purement informative. Le joueur doit interpréter seul les écarts et régler les 6 axes tactiques (`AXES_TACTIQUE`, `club.js:389`) à la main, sans aucun lien automatique entre l'un et l'autre.
+
+**Cause.** Aucune fonction ne reliait le résultat de `analyserAdversaire` (déjà réel) aux 6 axes de `AXES_TACTIQUE` — le calcul et le réglage vivaient dans deux mondes complètement séparés.
+
+**Correction (première tranche, périmètre volontairement limité).** `RMClub.recommanderTactique(analyse)` — règle simple et déterministe, jamais deux attributs sur le même axe (pour rester lisible) : un écart marqué (≥ 6, même seuil que l'analyse) sur un attribut de comparaison propose un réglage précis d'UN axe tactique, avec une explication en langage clair :
+- **mêlée** → `avants` (proche si on domine, large sinon) ; **touche** → `toucheMaul` (maul si on domine, sol sinon) ; **puissance** → `ligneDef` (haute si on domine, basse sinon) ; **vitesse** → `style` (large si on est plus rapide, sol sinon) ; **jeu au pied** → `pied` (fréquent si le leur est faible, rare si le leur est supérieur) ; **discipline** → `rythme` (rapide s'ils sont indisciplinés).
+
+Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu du prochain match (uniquement si au moins un écart dépasse le seuil), avec un bouton « Appliquer les recommandations » qui règle en un clic `saison.clubJoueur.tactique` via `appliquerRecommandationsTactique` — jamais automatique ni obligatoire, le joueur garde entièrement la main et peut ensuite ajuster manuellement comme n'importe quel réglage.
+
+**Explicitement hors périmètre de cette tranche (à faire plus tard) :** recommandations sur les rôles individuels (buteur/lanceur en touche) ; rendre une préparation réellement obligatoire avant certains matchs (aujourd'hui toujours facultatif, cf. domaine 1 de la roadmap) ; historiser si une recommandation a été suivie pour en mesurer l'effet réel sur le résultat.
+
+**Critères de validation.**
+- 6 nouveaux tests dans `server/test-parcours-club.js` : chaque sens (en notre faveur / défaveur) de l'écart de mêlée ; aucune recommandation sous le seuil ; couverture des 6 axes à partir des 6 attributs correspondants (avec vraie explication, pas juste axe/option bruts) ; intégration avec une vraie analyse (jamais d'axe/option invalide) ; `appliquerRecommandationsTactique` modifie bien la tactique réelle sans toucher aux axes non concernés. Après correctif : 65/65 (59 existants + 6 nouveaux).
+- 3 nouveaux tests dans `server/test-parcours-navigateur.js` : un écart marqué et déterministe (effectif rendu artificiellement plus rapide/fort en mêlée) affiche bien une recommandation actionnable ; cliquer "Appliquer les recommandations" modifie réellement la tactique persistée (pas juste affichée) ; la carte "Ma tactique" reflète immédiatement le changement sans rouvrir l'écran. Après correctif : 109/109 (106 existants + 3 nouveaux), 0 échec (1 échec isolé et non reproductible du test P0-7 sur un premier run, confirmé transitoire par une 2ᵉ exécution propre — cohérent avec la flakiness déjà documentée en P0-12, sans lien avec ce correctif).
+- Vérifié visuellement (captures d'écran desktop, 900px) : la carte affiche les explications en langage clair, le clic sur "Appliquer" met bien à jour la carte "Ma tactique" au-dessus avec un toast de confirmation.
+- Suite complète sans régression : `test-parcours-club.js` 65/65, `test-parcours-navigateur.js` 109/109, `test-monde.js` 14/14, `test-audit-p0-1.js` 4/4, `test-audit-p0-2.js` 6/6, `test-textes-accueil.js` 4/4, `test-invariants.js` 12/12, `test-audit-p0-3.js` 8/8.
+
 ---
 
 ## P2 — Maintenabilité et simulation
