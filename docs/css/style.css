@@ -882,7 +882,14 @@ select {
    rempli par le script inline de index.html à partir de version.json
    (généré pendant le déploiement CI — absent donc invisible ailleurs). */
 #versionInfo {
-  position: fixed; right: 8px; bottom: 6px; z-index: 5;
+  /* z-index 11, pas 5 : .panneau (accueil/Mode Club/match, quasiment
+     toujours affiché) est en z-index 10 — en dessous, ce texte était
+     TOUJOURS masqué derrière le panneau courant, jamais visible en
+     pratique malgré un contenu bien rempli par le fetch ci-dessous
+     (confirmé : document.elementFromPoint() à cet endroit renvoyait le
+     panneau, jamais #versionInfo). Reste sous les tiroirs/modales (900+)
+     pour ne jamais gêner une vraie interaction. */
+  position: fixed; right: 8px; bottom: 6px; z-index: 11;
   font-size: 10px; color: var(--text-faint); opacity: 0.6;
   pointer-events: none; user-select: none;
 }

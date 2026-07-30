@@ -79,6 +79,29 @@ function optionsLancement() {
   const entetTxt = await page.textContent('#clubEntete');
   verifier('pyramide : une nouvelle carrière débute en Ligue Régionale (affiché dans l\'entête du club)', entetTxt.includes('Ligue Régionale'));
 
+  // 1b) Identifiant de version (TODO_AUDIT.md P0-5) : #versionInfo a un
+  // z-index (11) STRICTEMENT SUPÉRIEUR à celui du panneau actuellement
+  // affiché (.panneau, z-index 10, quasiment toujours visible en pratique —
+  // accueil, Mode Club, match). Reproduit et confirmé : avec un z-index de 5
+  // (valeur d'origine), le texte de version était TOUJOURS peint SOUS le
+  // panneau, jamais visible au joueur malgré un contenu bien rempli par le
+  // fetch de version.json — vérifié visuellement (capture d'écran), pas avec
+  // document.elementFromPoint (donne un faux résultat ici : #versionInfo a
+  // `pointer-events:none`, donc exclu du hit-testing même quand il est
+  // peint au-dessus). version.json n'existe qu'après un vrai déploiement CI
+  // (absent en local, cf. commentaire dans index.html) — on simule donc son
+  // contenu directement pour vérifier l'empilement, indépendamment de ça.
+  await page.evaluate(() => { document.getElementById('versionInfo').textContent = 'vTEST123'; });
+  const zIndexInfo = await page.evaluate(() => {
+    const panneauVisible = document.querySelector('.panneau.visible');
+    return {
+      versionInfo: Number(getComputedStyle(document.getElementById('versionInfo')).zIndex),
+      panneau: panneauVisible ? Number(getComputedStyle(panneauVisible).zIndex) : null,
+    };
+  });
+  verifier('identifiant de version : peint AU-DESSUS du panneau courant (pas masqué en permanence)',
+    zIndexInfo.panneau !== null && zIndexInfo.versionInfo > zIndexInfo.panneau);
+
   // 2) Navigation dans toutes les pages.
   const onglets = ['dashboard', 'effectif', 'composition', 'tactique', 'entrainement',
     'transferts', 'personnel', 'autresclubs', 'calendrier', 'equipeb', 'monde', 'finances', 'medical', 'stats'];

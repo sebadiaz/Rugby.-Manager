@@ -203,6 +203,25 @@ Statuts possibles : `À FAIRE`, `EN COURS`, `CONFIRMÉ`, `CORRIGÉ`, `FAUX POSIT
 - Suite complète sans régression : `test-parcours-navigateur.js` 96/96 (94 existants + 2 nouveaux), `test-parcours-club.js` 45/45, `test-monde.js` 14/14, `test-audit-p0-1.js` 4/4, `test-audit-p0-2.js` 6/6, `test-textes-accueil.js` 4/4, `test-invariants.js` 12/12, `test-audit-p0-3.js` 8/8.
 - Aucun changement de comportement desktop (le `min-width` ne s'applique qu'en dessous de la largeur de conteneur disponible ; `#clubEffectif`/`#clubClassement` utilisent déjà ce même mécanisme sans régression connue).
 
+### P0-9. Identifiant de version (P0-5) invisible en pratique — toujours peint SOUS le panneau courant
+- **Statut : CORRIGÉ**
+- Priorité : P0 (fiabilité — l'outil de vérification déployé pour P0-5 ne remplissait jamais son rôle auprès du joueur)
+- Fichiers concernés :
+  - `docs/css/style.css` (cause + correction)
+  - `server/test-parcours-navigateur.js` (nouveau test — reproduction + validation)
+
+**Contexte.** Signalé par l'utilisateur ("y a pas de petit texte") après que je lui ai indiqué de vérifier `#versionInfo` (coin bas-droit, cf. P0-5) pour distinguer un vrai problème de déploiement d'un simple cache navigateur.
+
+**Reproduction.** `#versionInfo` (`docs/css/style.css`) avait `z-index: 5`, alors que `.panneau` (accueil, Mode Club, vue match — quasiment TOUJOURS affiché en pratique) a `z-index: 10`. Le texte de version était donc peint SOUS le panneau, jamais visible, quel que soit l'écran ou l'appareil — pas un problème de cache côté joueur, un vrai bug d'empilement CSS resté invisible depuis l'introduction de P0-5. `document.elementFromPoint()` masquait initialement le diagnostic (il "voit à travers" un élément à `pointer-events:none`, comme `#versionInfo`, et renvoie ce qu'il y a en dessous même quand l'élément est réellement peint au-dessus) — confirmé uniquement par une capture d'écran directe : texte totalement absent avant correctif, "v5e6a9be" bien visible après.
+
+**Cause.** `z-index: 5` choisi sans vérifier qu'il devait dépasser celui du panneau plein écran quasi permanent (`z-index: 10`) — jamais remarqué faute de test visuel sur ce point précis lors de l'implémentation initiale de P0-5.
+
+**Correction.** `#versionInfo` passé à `z-index: 11` (juste au-dessus des panneaux, encore largement en dessous des tiroirs/modales à 900+, qui peuvent légitimement le recouvrir temporairement).
+
+**Critères de validation.**
+- Nouveau test dans `server/test-parcours-navigateur.js` : compare `getComputedStyle` du z-index de `#versionInfo` à celui du `.panneau.visible` courant (structurel — détecterait aussi une régression future si le z-index d'un panneau changeait). Vérifié en échec AVANT correctif (`git stash` sur `docs/css/style.css`), succès après.
+- Suite complète sans régression : `test-parcours-navigateur.js` 97/97 (96 existants + 1 nouveau), `test-parcours-club.js` 45/45, `test-monde.js` 14/14, `test-audit-p0-1.js` 4/4, `test-audit-p0-2.js` 6/6, `test-textes-accueil.js` 4/4, `test-invariants.js` 12/12, `test-audit-p0-3.js` 8/8.
+
 ---
 
 ## P1 — Parcours utilisateur
