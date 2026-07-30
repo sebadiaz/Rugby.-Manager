@@ -260,7 +260,23 @@ Statuts possibles : `À FAIRE`, `EN COURS`, `CONFIRMÉ`, `CORRIGÉ`, `FAUX POSIT
 **Critères de validation.**
 - Nouveau test dans `server/test-parcours-navigateur.js` : vérifie que le bouton apparaît pour un joueur à 3 ans de contrat restants (pas seulement à 1 an). Vérifié en échec AVANT correctif (`git stash` sur `docs/js/clubUI.js`), succès après.
 - Suite complète sans régression : `test-parcours-navigateur.js` 100/100 (99 existants + 1 nouveau), `test-parcours-club.js` 45/45, `test-monde.js` 14/14, `test-audit-p0-1.js` 4/4, `test-audit-p0-2.js` 6/6, `test-textes-accueil.js` 4/4, `test-invariants.js` 12/12, `test-audit-p0-3.js` 8/8.
-- Note méthodologique : un run intermédiaire a montré un échec isolé et non reproductible du test P0-7 ("double clic écran sur Signer") — confirmé transitoire (0 échec sur deux ré-exécutions immédiates suivantes), cohérent avec la flakiness déjà documentée en P0-7 (délai fixe de 800 ms parfois dépassé sous charge machine). Sans lien avec ce correctif.
+- Note méthodologique : un run intermédiaire a montré un échec isolé et non reproductible du test P0-7 ("double clic écran sur Signer") — confirmé transitoire (0 échec sur deux ré-exécutions immédiates suivantes), cohérent avec la flakiness déjà documentée en P0-7 (délai fixe de 800 ms parfois dépassé sous charge machine). Sans lien avec ce correctif. **Confirmé plus tard sur la vraie infrastructure CI (voir P0-12 ci-dessous) : ce n'était pas juste une observation locale, le test a réellement bloqué un déploiement.**
+
+### P0-12. Test P0-7 ("double clic écran sur Signer") réellement flaky en CI — a bloqué un déploiement
+- **Statut : CORRIGÉ**
+- Priorité : P0 (fiabilité de la CI — un test flaky peut bloquer indéfiniment un déploiement légitime)
+- Fichiers concernés :
+  - `server/test-parcours-navigateur.js` (cause + correction — test uniquement, aucun code de jeu modifié)
+
+**Reproduction.** Le commit du correctif P0-10 (liste des joueurs Équipe B), poussé sur `main`, a réellement échoué sur la vraie infrastructure GitHub Actions (run [30545297797](https://github.com/sebadiaz/Rugby.-Manager/actions/runs/30545297797)) — `deploy`/`verify` **skipped**, le correctif n'a temporairement PAS été mis en ligne. Log exact : le seul test en échec était "double clic écran sur 'Signer'" (P0-7), tous les autres (dont les 2 nouveaux tests Équipe B) au vert. Poussé une 2ᵉ fois avec le correctif suivant (P0-11) : run repassé au vert sans changement sur ce test, confirmant la nature transitoire — mais bien réelle, pas une observation locale isolée.
+
+**Cause.** Le test original utilisait deux appels `page.mouse.click(x, y)` séparés (deux allers-retours Playwright/CDP), avec une latence réseau variable entre les deux — sous charge (runner GitHub partagé), cette latence a dépassé le verrou de 800 ms du correctif P0-7, qui s'était donc déjà relâché avant le 2ᵉ clic : le test observait alors, à tort, le SYMPTÔME d'un correctif absent alors que le correctif est bien réel et fonctionnel.
+
+**Correction.** Remplacé les deux `page.mouse.click()` par un seul `page.evaluate()` qui dispatche deux `MouseEvent` synchrones au même point écran (`document.elementFromPoint(x,y).dispatchEvent(...)`, appelé deux fois de suite dans la même exécution JS, sans aller-retour réseau entre les deux) — reproduit fidèlement le pire cas réel (deux clics quasi simultanés) sans dépendre de la latence de l'outil de test.
+
+**Critères de validation.**
+- Vérifié que le test réécrit détecte toujours correctement l'absence du correctif : verrou temporairement neutralisé (`if (marcheActionVerrouillee) return` → `if (false) return`) dans une copie de travail, le test échoue bien comme attendu ; restauré, 2 exécutions consécutives propres (0 échec) là où l'ancienne version avait déjà flaké deux fois (une fois en local, une fois en CI réelle).
+- Suite complète sans régression : `test-parcours-navigateur.js` 100/100, `test-parcours-club.js` 45/45, `test-monde.js` 14/14, `test-audit-p0-1.js` 4/4, `test-audit-p0-2.js` 6/6, `test-textes-accueil.js` 4/4, `test-invariants.js` 12/12, `test-audit-p0-3.js` 8/8.
 
 ---
 

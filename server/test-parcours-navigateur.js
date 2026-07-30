@@ -246,12 +246,22 @@ function optionsLancement() {
   await page.waitForTimeout(900);
   const nomsAvantDoubleClicCoord = await page.$$eval('#clubMarche .ligneMarche .infosJoueur b', (els) => els.map((e) => e.textContent));
   verifier('double clic écran : au moins 2 joueurs sur le marché avant le test (scénario significatif)', nomsAvantDoubleClicCoord.length >= 2);
-  const boiteBoutonSigner = await page.$eval('#clubMarche .ligneMarche:first-child .btnSigner', (b) => {
-    const r = b.getBoundingClientRect();
-    return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+  // Les deux clics sont dispatchés dans UN SEUL page.evaluate (jamais deux
+  // page.mouse.click() séparés) : deux allers-retours Playwright/CDP
+  // introduisent un délai réseau variable entre les deux clics (quelques ms
+  // en local, potentiellement bien plus sous charge — observé en CI : un
+  // run a dépassé le verrou de 800 ms alors qu'aucun humain ne clique aussi
+  // lentement). En dispatchant les deux MouseEvent synchronement au même
+  // point écran, on reproduit fidèlement le pire cas réel (deux clics
+  // quasi simultanés) sans dépendre de la latence de l'outil de test.
+  await page.evaluate(() => {
+    const box = document.querySelector('#clubMarche .ligneMarche:first-child .btnSigner').getBoundingClientRect();
+    const x = box.x + box.width / 2, y = box.y + box.height / 2;
+    for (let i = 0; i < 2; i++) {
+      const el = document.elementFromPoint(x, y);
+      if (el) el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, clientX: x, clientY: y }));
+    }
   });
-  await page.mouse.click(boiteBoutonSigner.x, boiteBoutonSigner.y);
-  await page.mouse.click(boiteBoutonSigner.x, boiteBoutonSigner.y);
   await page.waitForTimeout(300);
   const effectifApresDoubleClicCoord = await page.evaluate(
     (noms) => JSON.parse(localStorage.getItem('rugbyManager.club.v1')).clubJoueur.effectif.filter((j) => noms.includes(j.nom)).map((j) => j.nom),
