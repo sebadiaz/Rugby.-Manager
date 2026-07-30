@@ -801,6 +801,58 @@ function optionsLancement() {
     messagesEspoirs.length === 1 && /\d+ - \d+/.test(messagesEspoirs[0].corps));
   await contexteEspoirs.close();
 
+  // 12) Décision réelle dans la boîte de réception (audit "boîte de réception
+  // avec décisions", cf. club-decisions.js) : injecte directement une
+  // demande de temps de jeu (le déclenchement — plusieurs journées sans
+  // sélection — est déjà couvert par server/test-parcours-club.js) pour
+  // vérifier la partie propre au navigateur : de vrais boutons d'action
+  // s'affichent (pas juste un texte à marquer comme lu), cliquer "Le
+  // rassurer" tranche réellement la décision et se reflète dans la
+  // sauvegarde ET l'affichage.
+  const contexteDecision = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const pageDecision = await contexteDecision.newPage();
+  await pageDecision.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  await pageDecision.click('#btnAccueilModeClub');
+  await pageDecision.fill('#inputNomClub', 'Test Décision');
+  await pageDecision.click('#btnCreerClub');
+  await pageDecision.waitForTimeout(300);
+  await pageDecision.evaluate(() => {
+    const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
+    const joueur = s.clubJoueur.effectif[0];
+    joueur.moral = 50;
+    joueur.demandeTempsDeJeuEnAttente = true;
+    s.clubJoueur.messages.unshift({
+      id: 'msgTestDecision', categorie: 'joueur', titre: 'Demande de temps de jeu',
+      corps: `${joueur.nom} veut plus de temps de jeu.`, saisonNumero: 1, lu: false,
+      decision: {
+        type: 'tempsDeJeu', joueurId: joueur.id, resolu: false,
+        options: [{ id: 'rassurer', libelle: 'Le rassurer' }, { id: 'ignorer', libelle: 'Ignorer sa demande' }],
+      },
+    });
+    localStorage.setItem('rugbyManager.club.v1', JSON.stringify(s));
+  });
+  await pageDecision.reload({ waitUntil: 'networkidle' });
+  await pageDecision.waitForTimeout(200);
+  await pageDecision.click('#btnContinuerClub');
+  await pageDecision.waitForTimeout(300);
+  const boutonsDecisionAvant = await pageDecision.locator('[data-msg="msgTestDecision"] .btnDecisionMessage').count();
+  verifier('boîte de réception : une demande de temps de jeu affiche de vrais boutons d\'action (pas juste un texte)',
+    boutonsDecisionAvant === 2);
+  await pageDecision.click('[data-msg="msgTestDecision"] .btnDecisionMessage[data-option="rassurer"]');
+  await pageDecision.waitForTimeout(200);
+  const apresDecision = await pageDecision.evaluate(() => {
+    const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
+    const message = s.clubJoueur.messages.find((m) => m.id === 'msgTestDecision');
+    return { moral: s.clubJoueur.effectif[0].moral, resolu: message.decision.resolu };
+  });
+  verifier('boîte de réception : cliquer "Le rassurer" tranche réellement la décision (sauvegardé) et améliore le moral',
+    apresDecision.resolu === true && apresDecision.moral === 60);
+  const boutonsDecisionApres = await pageDecision.locator('[data-msg="msgTestDecision"] .btnDecisionMessage').count();
+  const resultatAffiche = await pageDecision.locator('[data-msg="msgTestDecision"] .decisionMessageResultat').count();
+  verifier('boîte de réception : une fois tranchée, les boutons disparaissent au profit d\'un résultat affiché',
+    boutonsDecisionApres === 0 && resultatAffiche === 1);
+  await contexteDecision.close();
+
   verifier('aucune erreur console/page sur tout le parcours', erreursConsole.length === 0);
   if (erreursConsole.length) console.error(erreursConsole.join('\n'));
 

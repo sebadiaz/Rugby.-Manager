@@ -504,8 +504,9 @@
       return `<th class="triable" data-champ="${champ}">${label}<span class="flecheTri">${fleche}</span></th>`;
     }).join('') + '<th>Statut</th>';
     const lignes = effectif.map((j) => {
-      const statut = j.pret ? `<span class="badgePret">📤 Prêté (${j.pret.dureeRestante}j)</span>`
+      const statutBase = j.pret ? `<span class="badgePret">📤 Prêté (${j.pret.dureeRestante}j)</span>`
         : j.blessureJournees > 0 ? `<span class="badgeBlessure">🤕 ${j.blessureJournees}j</span>` : '—';
+      const statut = j.veutPartir ? `<span class="badgeVeutPartir" title="Veut être transféré">🚩</span> ${statutBase}` : statutBase;
       const contratClasse = j.contrat <= 1 ? ' class="badgeContratCourt"' : '';
       const fatigue = j.fatigue || 0;
       const moral = j.moral != null ? j.moral : 65;
@@ -876,10 +877,21 @@
     // Décoratif sinon : rien à marquer comme lu tant que la boîte est vide.
     const boutonToutLu = document.getElementById('btnMessagesTousLus');
     if (boutonToutLu) boutonToutLu.style.display = nonLus > 0 ? '' : 'none';
+    // Décision réelle (TODO_AUDIT.md P1-15) : un message avec `decision` non
+    // résolue propose de vrais boutons d'action (pas juste "marquer comme
+    // lu") — cf. RMClub.resoudreDecisionMessage et le handler de clic
+    // ci-dessous. Une fois tranchée, le résultat reste visible en texte.
+    function decisionHTML(m) {
+      if (!m.decision) return '';
+      if (m.decision.resolu) return `<span class="decisionMessageResultat">${m.decision.resultat || ''}</span>`;
+      return `<span class="decisionMessageActions">${m.decision.options.map((o) =>
+        `<button class="alt btnDecisionMessage" data-msg="${m.id}" data-option="${o.id}">${o.libelle}</button>`
+      ).join('')}</span>`;
+    }
     document.getElementById('clubMessages').innerHTML = messages.length
       ? messages.slice(0, 15).map((m) =>
-          `<div class="ligneMessage${m.lu ? '' : ' nonLu'}" data-msg="${m.id}"><span class="iconeMessage">${ICONE_MESSAGE[m.categorie] || '📬'}</span>` +
-          `<span class="corpsMessage"><b>${m.titre}</b><span>${m.corps}</span><span class="metaMessage">Saison ${m.saisonNumero}</span></span></div>`
+          `<div class="ligneMessage${m.lu ? '' : ' nonLu'}${m.decision && !m.decision.resolu ? ' decisionEnAttente' : ''}" data-msg="${m.id}"><span class="iconeMessage">${ICONE_MESSAGE[m.categorie] || '📬'}</span>` +
+          `<span class="corpsMessage"><b>${m.titre}</b><span>${m.corps}</span>${decisionHTML(m)}<span class="metaMessage">Saison ${m.saisonNumero}</span></span></div>`
         ).join('')
       : '<p style="font-size:12px;color:var(--text-faint);">Aucun message pour le moment.</p>';
   }
@@ -1051,6 +1063,7 @@
       `<div class="ligneJoueur"><span>Matchs joués cette saison</span><b>${j.matchsJoues || 0}</b></div>` +
       ligneStatsSaison +
       `<div class="ligneJoueur"><span>Sélection du jour</span><b>${statutCompo}</b></div>` +
+      (j.veutPartir ? `<div class="ligneJoueur"><span>Statut</span><b class="texteAlerteJoueur">🚩 Souhaite être transféré (mécontent de son temps de jeu)</b></div>` : '') +
       `<div class="ligneJoueur"><span>Contrat</span><b>${j.contrat} an(s) restant(s)</b></div>` +
       `<div class="ligneJoueur"><span>Salaire</span><b>${j.salaire} k€/saison</b></div>` +
       `<div class="ligneJoueur"><span>Disponibilité</span><b>${disponibilite}</b></div>` +
@@ -1559,8 +1572,18 @@
     basculerOnglet(ligne.dataset.onglet);
   });
 
-  // --- Boîte de réception : marquer un message lu au clic, ou tous d'un coup ---
+  // --- Boîte de réception : marquer un message lu au clic, trancher une
+  // décision au clic sur un de ses boutons, ou tous marquer lus d'un coup ---
   document.getElementById('clubMessages').addEventListener('click', (e) => {
+    const boutonDecision = e.target.closest('.btnDecisionMessage');
+    if (boutonDecision) {
+      RMClub.resoudreDecisionMessage(saison, boutonDecision.dataset.msg, boutonDecision.dataset.option);
+      sauvegarder();
+      rafraichirMessages();
+      rafraichirEffectif();
+      if (joueurAffiche) ouvrirFicheJoueur(joueurAffiche);
+      return;
+    }
     const ligne = e.target.closest('.ligneMessage');
     if (!ligne) return;
     RMClub.marquerMessageLu(saison, ligne.dataset.msg);
@@ -2129,6 +2152,7 @@
             RMClub.appliquerMoral(saison.clubJoueur.effectif, compositionUtilisee, forme);
             RMClub.progresserPrets(saison.clubJoueur.effectif);
             RMClub.appliquerEntrainement(creerRng(graineAleatoire()), saison.clubJoueur.effectif, saison.clubJoueur.entrainementFocus, RMClub.effetPersonnel(saison, 'entraineur'));
+            RMClub.appliquerFrustrationTempsDeJeu(saison, compositionUtilisee, saison.clubJoueur.compositionBanc);
             sauvegarder();
             // La journée est résolue : relâche le verrou anti-double-action
             // (cf. `journeeEnCours` plus haut) — la prochaine journée peut

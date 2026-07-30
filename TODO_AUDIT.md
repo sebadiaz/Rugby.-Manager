@@ -333,6 +333,35 @@ Statuts possibles : `À FAIRE`, `EN COURS`, `CONFIRMÉ`, `CORRIGÉ`, `FAUX POSIT
 - 1 nouveau test dans `server/test-parcours-navigateur.js` : calendrier avancé artificiellement (via localStorage) jusqu'à la journée déclencheuse, un vrai message de match espoirs avec un score apparaît bien dans la boîte de réception. Après correctif : 103/103 (102 existants + 1 nouveau), 0 échec.
 - Suite complète sans régression : `test-parcours-club.js` 53/53, `test-parcours-navigateur.js` 103/103, `test-monde.js` 14/14, `test-audit-p0-1.js` 4/4, `test-audit-p0-2.js` 6/6, `test-textes-accueil.js` 4/4, `test-invariants.js` 12/12, `test-audit-p0-3.js` 8/8.
 
+### P0-15. Boîte de réception 100% informative — aucune décision réelle du manager (premier chantier de `ROADMAP_FOOTBALL_MANAGER.md`)
+- **Statut : CORRIGÉ (première tranche)**
+- Priorité : P0 (demande explicite de l'utilisateur — faire de Rugby Manager un vrai jeu de gestion façon Football Manager ; voir `ROADMAP_FOOTBALL_MANAGER.md` pour l'état des lieux complet des 8 domaines)
+- Fichiers concernés :
+  - `docs/js/club-decisions.js` (nouveau — frustration liée au temps de jeu, génération/résolution de la décision)
+  - `docs/js/club.js` (`ajouterMessage` accepte un `decision` optionnel)
+  - `docs/js/club-condition-joueurs.js` (conséquences durables de `veutPartir` : moral qui ne remonte plus, progression stoppée)
+  - `docs/js/clubUI.js` (déclenchement à chaque journée jouée, rendu des boutons de décision, badge "veut partir")
+  - `docs/index.html`, `docs/css/style.css`
+  - `server/test-parcours-club.js`, `server/test-parcours-navigateur.js` (nouveaux tests)
+
+**Contexte.** Après avoir traité les 4 points signalés dans le message précédent de l'utilisateur, celui-ci a demandé explicitement d'arrêter la succession de petits correctifs/audits et de développer Rugby Manager comme un vrai jeu de gestion façon Football Manager, en commençant par un audit complet en 8 domaines (`ROADMAP_FOOTBALL_MANAGER.md`) puis en développant la fonctionnalité manquante la plus profonde en premier. L'audit (2 agents de recherche dédiés, citations fichier:ligne) confirme domaine par domaine : la boîte de réception (`clubUI.js:871`, `rafraichirMessages`) n'affiche QUE du texte informatif — le seul comportement au clic est de marquer un message comme lu (`clubUI.js:1563`) — alors que le manque de "mécontentements, demandes et discussions" côté joueurs est également confirmé absent (aucune plainte, aucune demande, aucun dialogue).
+
+**Cause.** Aucun message généré par le jeu (transferts, blessures, contrats, résultats, changements de saison, match espoirs...) ne porte de choix actionnable — la structure même du message (`club.js:573`, `ajouterMessage`) ne prévoyait pas de champ pour ça.
+
+**Correction (première tranche, périmètre volontairement limité).** `ajouterMessage` accepte désormais un 5ᵉ paramètre optionnel `decision` ({ type, joueurId, options, resolu }). Premier cas d'usage réel, choisi pour son impact direct sur le gameplay (statut/temps de jeu attendu, domaine 2 de la roadmap) : un joueur classé parmi les 2 meilleurs de son poste (`RMClub.estCandidatSelectionAttendue`) mais non sélectionné (ni titulaire ni banc) 3 journées jouées de suite vient réclamer plus de temps de jeu. Le manager doit RÉELLEMENT trancher, avec 2 vrais boutons directement dans la boîte de réception :
+- **« Le rassurer »** : +10 de moral immédiat.
+- **« Ignorer sa demande »** : −14 de moral ; à la 2ᵉ demande ignorée du même joueur, il veut quitter le club (`veutPartir`), avec 3 conséquences durables et visibles : badge 🚩 dans le tableau de l'effectif et sa fiche, moral qui dérive désormais vers 35 (au lieu de 65) tant qu'il ne joue pas, progression à l'entraînement totalement arrêtée (`club-condition-joueurs.js`, `appliquerEntrainement`).
+
+Une fois tranchée, la décision reste visible (texte de résultat), les boutons disparaissent — jamais un message fantôme qu'on peut retrancher deux fois (idempotence vérifiée).
+
+**Explicitement hors périmètre de cette tranche (à faire plus tard, cf. `ROADMAP_FOOTBALL_MANAGER.md`) :** d'autres types de décisions (demande salariale, offre de transfert reçue à arbitrer, conflit vestiaire) ; un indicateur de "temps de jeu attendu" affiché en continu plutôt qu'au moment de la plainte ; relier `veutPartir` au marché des transferts (aujourd'hui la volonté de départ n'a aucun effet sur le prix ou la probabilité d'acceptation d'une offre).
+
+**Critères de validation.**
+- 6 nouveaux tests dans `server/test-parcours-club.js` : heuristique "candidat légitime" (top 2 vs 3ᵉ d'un poste) ; génération réelle de la demande après le seuil de journées (pas avant) ; décision "Rassurer" (moral +10, idempotence au double clic) ; décision "Ignorer" répétée deux fois (moral −14 à chaque fois, `veutPartir` déclenché, message de demande de transfert généré) ; conséquence réelle sur l'entraînement (comparaison directe avec un joueur témoin dans les mêmes conditions) ; conséquence réelle sur la dérive du moral. Après correctif : 59/59 (53 existants + 6 nouveaux).
+- 3 nouveaux tests dans `server/test-parcours-navigateur.js` : de vrais boutons d'action s'affichent (pas un texte) ; cliquer "Le rassurer" tranche réellement la décision (persisté en sauvegarde) et améliore le moral affiché ; une fois tranchée, les boutons disparaissent au profit d'un résultat affiché. Après correctif : 106/106 (103 existants + 3 nouveaux), 0 échec.
+- Vérifié visuellement (captures d'écran desktop et mobile) : les boutons de décision s'affichent correctement dans les deux formats, restent pleinement cliquables sur mobile (390px de large), et le texte de résultat remplace bien les boutons après résolution.
+- Suite complète sans régression : `test-parcours-club.js` 59/59, `test-parcours-navigateur.js` 106/106, `test-monde.js` 14/14, `test-audit-p0-1.js` 4/4, `test-audit-p0-2.js` 6/6, `test-textes-accueil.js` 4/4, `test-invariants.js` 12/12, `test-audit-p0-3.js` 8/8.
+
 ---
 
 ## P1 — Parcours utilisateur

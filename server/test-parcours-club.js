@@ -35,6 +35,7 @@ new Function('window', require('fs').readFileSync(require('path').join(__dirname
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-espoirs.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-composition.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-condition-joueurs.js'), 'utf8'))(global.window);
+new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-decisions.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-pyramide.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-pyramide-france.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-calendrier.js'), 'utf8'))(global.window);
@@ -528,6 +529,106 @@ test('match espoirs : l\'adversaire synthétique reste nettement plus modeste qu
   assert.ok(niveauAdv > 0, 'jamais un niveau nul ou négatif (des joueurs générés injouables)');
 });
 
+// --- 10b) Décisions du manager : demandes de temps de jeu dans la boîte de
+// réception (TODO_AUDIT.md P1-15) — première tranche de la "boîte de
+// réception avec décisions" ---
+test('décision : seuls les 2 meilleurs joueurs d\'un poste sont des candidats légitimes à réclamer une place', () => {
+  const effectifTest = [
+    { id: 'j1', poste: 'P', vitesse: 80, plaquage: 80 },
+    { id: 'j2', poste: 'P', vitesse: 75, plaquage: 75 },
+    { id: 'j3', poste: 'P', vitesse: 50, plaquage: 50 },
+  ];
+  assert.ok(RMClub.estCandidatSelectionAttendue(effectifTest, effectifTest[0]));
+  assert.ok(RMClub.estCandidatSelectionAttendue(effectifTest, effectifTest[1]));
+  assert.ok(!RMClub.estCandidatSelectionAttendue(effectifTest, effectifTest[2]), 'le 3e pilier, nettement moins bon, ne doit pas se sentir légitime à réclamer une place');
+});
+
+test('décision : un joueur de qualité jamais sélectionné plusieurs journées de suite génère une VRAIE demande dans la boîte de réception', () => {
+  const s = RMClub.nouvelleSaison(creerRng(300), 'Test Frustration TDJ');
+  const effectif = s.clubJoueur.effectif;
+  // Le meilleur joueur de tout l'effectif est nécessairement un candidat
+  // légitime à son propre poste (personne ne peut le devancer nulle part).
+  const meilleur = effectif.slice().sort((a, b) => (b.vitesse + b.plaquage) - (a.vitesse + a.plaquage))[0];
+  assert.ok(RMClub.estCandidatSelectionAttendue(effectif, meilleur));
+  const messagesAvant = s.clubJoueur.messages.length;
+  for (let i = 0; i < RMClub.SEUIL_JOURS_SANS_SELECTION - 1; i++) RMClub.appliquerFrustrationTempsDeJeu(s, {}, {});
+  assert.strictEqual(s.clubJoueur.messages.length, messagesAvant, 'pas encore de demande avant le seuil de journées consécutives');
+  RMClub.appliquerFrustrationTempsDeJeu(s, {}, {});
+  const messageDecision = s.clubJoueur.messages.find((m) => m.decision && m.decision.type === 'tempsDeJeu' && m.decision.joueurId === meilleur.id);
+  assert.ok(messageDecision, 'le meilleur joueur de l\'effectif, jamais sélectionné, doit avoir généré une vraie demande de temps de jeu');
+  assert.strictEqual(messageDecision.decision.resolu, false);
+  assert.strictEqual(messageDecision.decision.options.length, 2, 'un vrai choix (pas juste un texte informatif)');
+  // Sélectionné à nouveau ensuite : le compteur retombe à zéro (pas de
+  // deuxième demande immédiate pour la même frustration déjà exprimée).
+  const compo = {}; compo['1'] = meilleur.id;
+  RMClub.appliquerFrustrationTempsDeJeu(s, compo, {});
+  assert.strictEqual(meilleur.joursSansSelection, 0);
+});
+
+test('décision "Le rassurer" : améliore réellement le moral et referme la demande (idempotent au second clic)', () => {
+  const s = RMClub.nouvelleSaison(creerRng(301), 'Test Décision Rassurer');
+  const j = s.clubJoueur.effectif[0];
+  j.moral = 50;
+  j.demandeTempsDeJeuEnAttente = true;
+  RMClub.ajouterMessage(s, 'joueur', 'Demande de temps de jeu', 'texte', {
+    type: 'tempsDeJeu', joueurId: j.id, resolu: false,
+    options: [{ id: 'rassurer', libelle: 'Le rassurer' }, { id: 'ignorer', libelle: 'Ignorer sa demande' }],
+  });
+  const messageId = s.clubJoueur.messages[0].id;
+  assert.ok(RMClub.resoudreDecisionMessage(s, messageId, 'rassurer'), 'la résolution doit réussir');
+  assert.strictEqual(j.moral, 60, 'le moral doit monter de 10 points');
+  assert.strictEqual(j.demandeTempsDeJeuEnAttente, false);
+  assert.strictEqual(s.clubJoueur.messages[0].decision.resolu, true);
+  assert.strictEqual(s.clubJoueur.messages[0].lu, true, 'répondre à la décision marque aussi le message comme lu');
+  assert.ok(s.clubJoueur.messages[0].decision.resultat, 'un texte de résultat réel doit rester visible après coup');
+  // Idempotence : un second clic (même une option différente) ne doit rien changer de plus.
+  assert.strictEqual(RMClub.resoudreDecisionMessage(s, messageId, 'ignorer'), false, 'un message déjà résolu ne doit plus pouvoir être re-tranché');
+  assert.strictEqual(j.moral, 60, 'le moral ne doit pas bouger après une tentative de double résolution');
+});
+
+test('décision "Ignorer" répétée deux fois : le joueur baisse durablement en moral et veut finir par quitter le club', () => {
+  const s = RMClub.nouvelleSaison(creerRng(302), 'Test Décision Ignorer');
+  const j = s.clubJoueur.effectif[0];
+  j.moral = 70;
+  function envoyerDemande() {
+    RMClub.ajouterMessage(s, 'joueur', 'Demande de temps de jeu', 'texte', {
+      type: 'tempsDeJeu', joueurId: j.id, resolu: false,
+      options: [{ id: 'rassurer', libelle: 'Le rassurer' }, { id: 'ignorer', libelle: 'Ignorer sa demande' }],
+    });
+    return s.clubJoueur.messages[0].id;
+  }
+  RMClub.resoudreDecisionMessage(s, envoyerDemande(), 'ignorer');
+  assert.strictEqual(j.moral, 56, 'une première demande ignorée fait baisser le moral de 14 points');
+  assert.ok(!j.veutPartir, 'une seule demande ignorée ne suffit pas à vouloir partir');
+  RMClub.resoudreDecisionMessage(s, envoyerDemande(), 'ignorer');
+  assert.strictEqual(j.moral, 42);
+  assert.strictEqual(j.veutPartir, true, 'une deuxième demande ignorée du même joueur doit le faire vouloir quitter le club');
+  const messageDepart = s.clubJoueur.messages.find((m) => m.titre === 'Demande de transfert');
+  assert.ok(messageDepart, 'un vrai message informant de la volonté de départ doit être généré');
+});
+
+test('conséquence réelle de "veut partir" : arrête de progresser à l\'entraînement, contrairement à un joueur normal dans les mêmes conditions', () => {
+  const s = RMClub.nouvelleSaison(creerRng(303), 'Test Conséquences Départ');
+  const jMecontent = s.clubJoueur.effectif[0];
+  const jNormal = s.clubJoueur.effectif[1];
+  jMecontent.age = 25; jMecontent.potentiel = 99; jMecontent.puissance = 50; jMecontent.veutPartir = true;
+  jNormal.age = 25; jNormal.potentiel = 99; jNormal.puissance = 50; jNormal.veutPartir = false;
+  const rngToujoursProgres = () => 0; // toujours < 0.35*facteur → tenterait de progresser si rien ne l'en empêche
+  RMClub.appliquerEntrainement(rngToujoursProgres, [jMecontent], 'physique', 1);
+  RMClub.appliquerEntrainement(rngToujoursProgres, [jNormal], 'physique', 1);
+  assert.strictEqual(jMecontent.puissance, 50, 'un joueur qui veut partir ne doit plus progresser du tout à l\'entraînement');
+  assert.strictEqual(jNormal.puissance, 51, 'dans les mêmes conditions, un joueur normal progresse bien (preuve que ce n\'est pas juste un hasard de rng)');
+});
+
+test('conséquence réelle de "veut partir" : ne dérive plus vers un moral neutre, contrairement à un joueur normal non sélectionné', () => {
+  const jMecontent = { id: 'jm', moral: 60, veutPartir: true };
+  const jNormal = { id: 'jn', moral: 60 };
+  RMClub.appliquerMoral([jMecontent], {}, 'n');
+  RMClub.appliquerMoral([jNormal], {}, 'n');
+  assert.ok(jMecontent.moral < 60, 'un joueur qui veut partir doit continuer de dériver vers un moral bas (35), pas remonter');
+  assert.strictEqual(jNormal.moral, 63, 'un joueur normal non sélectionné dérive doucement vers la neutralité (65)');
+});
+
 // --- 11) Équipe B (championnat réservé aux clubs les plus riches) ---
 test('équipe B : éligibilité pair, cohérente avec le nombre de clubs, calendrier/classement bien formés', () => {
   const c = saison.clubJoueur;
@@ -856,6 +957,7 @@ const clubCentreFormationSrcPourRechargement = require('fs').readFileSync(requir
 const clubEspoirsSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-espoirs.js'), 'utf8');
 const clubCompositionSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-composition.js'), 'utf8');
 const clubConditionJoueursSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-condition-joueurs.js'), 'utf8');
+const clubDecisionsSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-decisions.js'), 'utf8');
 const clubPyramideSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-pyramide.js'), 'utf8');
 const clubPyramideFranceSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-pyramide-france.js'), 'utf8');
 const clubCalendrierSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-calendrier.js'), 'utf8');
@@ -878,6 +980,7 @@ function chargerInstanceFraicheClub() {
   new Function('window', clubEspoirsSrcPourRechargement)(ctx);
   new Function('window', clubCompositionSrcPourRechargement)(ctx);
   new Function('window', clubConditionJoueursSrcPourRechargement)(ctx);
+  new Function('window', clubDecisionsSrcPourRechargement)(ctx);
   new Function('window', clubPyramideSrcPourRechargement)(ctx);
   new Function('window', clubPyramideFranceSrcPourRechargement)(ctx);
   new Function('window', clubCalendrierSrcPourRechargement)(ctx);

@@ -570,7 +570,12 @@
   // blessures, résultats, changements de saison) — jamais un texte
   // fabriqué uniquement pour l'affichage. Plafonnée à 40 entrées (les plus
   // récentes en tête), comme les autres journaux (historiqueFinances...). ---
-  function ajouterMessage(saison, categorie, titre, corps) {
+  // `decision` (optionnel, 5e paramètre, TODO_AUDIT.md P1-15) : quand fourni,
+  // le message porte un vrai choix ({ type, joueurId, options: [{id,
+  // libelle}], resolu: false }) que le joueur doit trancher directement
+  // depuis la boîte de réception (cf. RMClub.resoudreDecisionMessage) — pas
+  // seulement un texte informatif à marquer comme lu.
+  function ajouterMessage(saison, categorie, titre, corps, decision) {
     const c = saison.clubJoueur;
     if (!c.messages) c.messages = [];
     c.messages.unshift({
@@ -578,6 +583,7 @@
       categorie, titre, corps,
       saisonNumero: saison.numero || 1,
       lu: false,
+      decision: decision || null,
     });
     if (c.messages.length > 40) c.messages.length = 40;
   }

@@ -861,6 +861,20 @@ select {
 .ligneMessage .corpsMessage > span:not(.metaMessage) { color: var(--text-dim); }
 .ligneMessage .metaMessage { color: var(--text-faint); font-size: 10.5px; }
 
+/* Décision réelle dans un message (TODO_AUDIT.md P1-15) : boutons d'action
+   directement dans la boîte de réception, distincts du simple marquage
+   "lu" — cf. RMClub.resoudreDecisionMessage. */
+.ligneMessage.decisionEnAttente { border-left: 3px solid var(--draw); padding-left: 8px; }
+.decisionMessageActions { display: flex; gap: 8px; margin-top: 4px; }
+.decisionMessageActions button { font-size: 11.5px; padding: 5px 10px; width: auto; }
+.decisionMessageResultat { color: var(--text-faint); font-style: italic; }
+
+/* Joueur qui veut quitter le club après une demande de temps de jeu ignorée
+   à deux reprises (cf. club-decisions.js) — visible dans l'effectif ET la
+   fiche joueur, pas seulement dans le message d'origine. */
+.badgeVeutPartir { color: var(--loss); font-size: 11px; }
+.texteAlerteJoueur { color: var(--loss); }
+
 /* Confirmations (toasts) : retour visuel bref après une action — cf.
    clubUI.js, toast(). Empilées en bas d'écran, se referment seules. */
 #toastContainer {

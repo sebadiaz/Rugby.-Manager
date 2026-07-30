@@ -50,8 +50,12 @@
         j.moral = Math.max(0, Math.min(100, actuel + variation));
       } else {
         // Dérive lente vers la neutralité pour qui ne joue pas (ni euphorie
-        // ni frustration durable sans y avoir participé).
-        j.moral = actuel + Math.sign(65 - actuel) * Math.min(3, Math.abs(65 - actuel));
+        // ni frustration durable sans y avoir participé) — SAUF un joueur
+        // qui veut partir (cf. club-decisions.js, demande de temps de jeu
+        // ignorée deux fois) : son mécontentement reste réel et visible, il
+        // ne se résigne pas silencieusement à la neutralité.
+        const cible = j.veutPartir ? 35 : 65;
+        j.moral = actuel + Math.sign(cible - actuel) * Math.min(3, Math.abs(cible - actuel));
       }
     }
   }
@@ -82,6 +86,7 @@
       if (!programme) continue;
       if (programme.postes && !programme.postes.includes(j.poste)) continue;
       if (j.age >= 32) continue; // progression réservée aux joueurs encore en développement
+      if (j.veutPartir) continue; // un joueur qui veut partir ne se donne plus à l'entraînement
       const potentiel = j.potentiel != null ? j.potentiel : 70;
       // Progression graduelle et probabiliste (pas à chaque journée pour
       // chaque joueur, sinon tout le monde plafonnerait en 3 semaines) —
