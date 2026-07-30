@@ -533,6 +533,23 @@
       RMClub.assurerCentreFormation(creerRng(graineAleatoire()), saison);
       sauvegarder();
     }
+    // Prochain match espoirs (audit "pas de tournois junior") : une journée
+    // sur RMClub.PERIODE_JOURNEES_ESPOIRS, contre une académie adverse
+    // synthétique, réellement simulé — pas juste une promesse de fonctionnalité.
+    const prochaine = RMClub.prochainesFixtures(saison).find(concerneClubJoueur);
+    const statutEl = document.getElementById('clubEspoirsStatut');
+    if (statutEl) {
+      if (!prochaine) {
+        statutEl.textContent = '';
+      } else if (!RMClub.eligiblePourMatchEspoirs(saison)) {
+        statutEl.textContent = '⚠️ Effectif espoirs incomplet : pas de match espoirs possible tant que tous les postes ne sont pas couverts.';
+      } else {
+        const journeesAvant = RMClub.PERIODE_JOURNEES_ESPOIRS - (prochaine.journee % RMClub.PERIODE_JOURNEES_ESPOIRS || RMClub.PERIODE_JOURNEES_ESPOIRS);
+        statutEl.textContent = RMClub.journeeDeMatchEspoirs(prochaine.journee)
+          ? '🏉 Match espoirs cette journée !'
+          : `Prochain match espoirs dans ${journeesAvant} journée(s).`;
+      }
+    }
     const ordrePostes = Object.keys(POSTE_COMPLET);
     const jeunes = saison.clubJoueur.jeunes
       .slice().sort((a, b) => (ordrePostes.indexOf(a.poste) - ordrePostes.indexOf(b.poste)) || a.age - b.age);
@@ -1860,14 +1877,15 @@
       // arrive toujours bien après ce délai.
       if (marcheActionVerrouillee) return;
       marcheActionVerrouillee = true;
-      // 800 ms, pas 300-400 : sous charge machine réelle (onglet en
-      // arrière-plan, portable lent), l'écart entre les deux clics d'un même
-      // double-clic humain peut dépasser largement le seuil "instantané" —
-      // mesuré empiriquement dans ce dépôt jusqu'à ~500 ms d'écart entre les
-      // deux évènements DOM pour un même geste. Deux actions RÉELLEMENT
-      // distinctes du joueur sont, elles, toujours espacées de plusieurs
-      // secondes (le temps de regarder la ligne suivante), donc jamais gênées.
-      setTimeout(() => { marcheActionVerrouillee = false; }, 800);
+      // 1500 ms, pas 800 : sous charge machine réelle (onglet en arrière-plan,
+      // portable lent, plusieurs processus concurrents), le setTimeout lui-même
+      // peut être retardé bien au-delà de sa durée nominale — observé deux fois
+      // dans ce dépôt : une fois sur la vraie infrastructure CI (a bloqué un
+      // déploiement, cf. TODO_AUDIT.md P0-12), une fois en local sous charge.
+      // Deux actions RÉELLEMENT distinctes du joueur sont, elles, toujours
+      // espacées de plusieurs secondes (le temps de regarder la ligne
+      // suivante), donc jamais gênées par cette marge plus généreuse.
+      setTimeout(() => { marcheActionVerrouillee = false; }, 1500);
     }
     if (e.target.classList.contains('btnScouter')) {
       // Le recruteur (personnel) réduit le coût et augmente le gain de
@@ -2209,8 +2227,43 @@
       );
     }
 
+    // Match espoirs (audit "pas de tournois junior", cf. club-espoirs.js) :
+    // une journée sur RMClub.PERIODE_JOURNEES_ESPOIRS, le centre de
+    // formation affronte une académie adverse synthétique — réellement
+    // simulé par le moteur complet, jamais un résultat fabriqué. Contrairement
+    // à l'Équipe B, aucune compétition à classement multi-clubs (donner un
+    // centre de formation à chaque club IA est hors périmètre de cette
+    // première tranche) : un match ponctuel, comme un vrai match amical.
+    function simulerMatchEspoirs(suite) {
+      if (!matchJoueur || !RMClub.journeeDeMatchEspoirs(matchJoueur.journee) || !RMClub.eligiblePourMatchEspoirs(saison)) {
+        suite();
+        return;
+      }
+      const compositionEspoirs = RMClub.meilleureComposition(saison.clubJoueur.jeunes);
+      const rng = creerRng(graineAleatoire());
+      const adversaireId = estClubJoueur(matchJoueur.domicileId) ? matchJoueur.exterieurId : matchJoueur.domicileId;
+      const clubAdverse = RMClub.club(saison, adversaireId);
+      const niveauAdv = RMClub.niveauAdversaireEspoirs(clubAdverse.niveauClub);
+      const cfgJoueur = RMClub.compositionVersJoueursCfg(saison.clubJoueur.jeunes, compositionEspoirs);
+      const cfgAdverse = RMClub.effectifVersJoueursCfg({ effectif: RMClub.genererEffectif(rng, niveauAdv) });
+      window.RMMain.simulerMatchEnArrierePlan(
+        graineAleatoire(), duree,
+        cfgJoueur, cfgAdverse,
+        `Espoirs : ${saison.clubJoueur.nom} vs Académie ${clubAdverse.nom}`,
+        (etat) => {
+          RMClub.appliquerEffetsMatchEspoirs(saison, compositionEspoirs);
+          const forme = etat.score.A > etat.score.B ? 'v' : etat.score.A < etat.score.B ? 'd' : 'n';
+          const verbe = forme === 'v' ? 'battent' : forme === 'd' ? "s'inclinent face à" : 'font match nul avec';
+          RMClub.ajouterMessage(saison, 'jeunes', 'Match espoirs',
+            `Tes espoirs ${verbe} l'académie de ${clubAdverse.nom} (${etat.score.A} - ${etat.score.B}).`);
+          sauvegarder();
+          suite();
+        }
+      );
+    }
+
     simulerAutresMatchsAbstrait();
-    simulerRondeEquipeB(0, lancerMatchJoueur);
+    simulerMatchEspoirs(() => simulerRondeEquipeB(0, lancerMatchJoueur));
   }
 
   // --- Aperçu du prochain match, façon écran de préparation d'avant-match

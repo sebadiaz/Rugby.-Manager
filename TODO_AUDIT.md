@@ -303,6 +303,36 @@ Statuts possibles : `À FAIRE`, `EN COURS`, `CONFIRMÉ`, `CORRIGÉ`, `FAUX POSIT
 - 2 nouveaux tests dans `server/test-parcours-navigateur.js` : la carte affiche un classement réel (pas vide), les 2 paliers sont bien nommés. Vérifié en échec AVANT correctif (carte HTML temporairement retirée) : élément introuvable (timeout). Après correctif : 2/2.
 - Suite complète sans régression : `test-parcours-club.js` 49/49 (45 existants + 4 nouveaux), `test-parcours-navigateur.js` 102/102 (100 existants + 2 nouveaux), `test-monde.js` 14/14, `test-audit-p0-1.js` 4/4, `test-audit-p0-2.js` 6/6, `test-textes-accueil.js` 4/4, `test-invariants.js` 12/12, `test-audit-p0-3.js` 8/8.
 
+**Addendum (verrou anti-double-action durci).** En stabilisant les tests de P0-14 (ci-dessous), le test P0-7 a de nouveau flaké localement — cette fois-ci malgré la réécriture synchrone de P0-12. Cause distincte : sous forte charge machine réelle (plusieurs processus concurrents dans ce dépôt), c'est le `setTimeout` de production lui-même (800 ms) qui peut être retardé par l'event loop, pas seulement la latence entre deux clics Playwright. Correction : verrou porté de 800 ms à 1 500 ms dans `docs/js/clubUI.js` (`marcheActionVerrouillee`), et attente préalable du test correspondante portée de 900 ms à 1 700 ms dans `server/test-parcours-navigateur.js`. Deux actions réelles du joueur restent toujours espacées de plusieurs secondes en pratique, donc sans impact perceptible sur le jeu. Validé par une exécution complète propre (103/103, 0 échec) après correctif, là où l'exécution précédente avait flaké sur ce même test.
+
+### P0-14. Aucun tournoi/compétition pour les jeunes du centre de formation — le centre de formation ne "jouait" jamais
+- **Statut : CORRIGÉ (première tranche)**
+- Priorité : P0 (signalé directement par l'utilisateur : "pas de tournois junior")
+- Fichiers concernés :
+  - `docs/js/club-espoirs.js` (nouveau — règles du match espoirs : périodicité, éligibilité, adversaire synthétique, effets)
+  - `docs/js/clubUI.js` (déclenchement du match à chaque journée concernée, affichage du statut dans la carte Centre de formation)
+  - `docs/index.html` (nouveau `<script>`, nouvel élément de statut dans la carte Centre de formation)
+  - `server/test-parcours-club.js`, `server/test-parcours-navigateur.js` (nouveaux tests — reproduction + validation)
+
+**Contexte.** Dernier des 4 points signalés par l'utilisateur dans son message ("pas de tournois junior"). Confirmé avant correction : le centre de formation (`club-centre-formation.js`) génère bien un vivier de jeunes ("espoirs") avec progression et promotion possible vers l'effectif professionnel, mais ces jeunes ne jouaient JAMAIS le moindre match tant qu'ils n'étaient pas promus — aucune compétition, aucun calendrier, aucune trace d'activité pour eux.
+
+**Cause.** Contrairement à l'Équipe B (`club-equipe-b.js`, qui a son propre calendrier réel et simule un vrai match via le moteur à chaque journée), le centre de formation n'avait aucun mécanisme équivalent : c'est une simple liste de joueurs en progression passive, sans jamais de mise en situation de match.
+
+**Correction (première tranche, périmètre volontairement limité — même compromis que P0-13).** Plutôt que de construire un calendrier persistant et une pyramide "espoirs" complète (retenu comme trop risqué pour une première tranche), un match espoirs réel se joue tous les `PERIODE_JOURNEES_ESPOIRS` (4) journées jouées par le club du joueur :
+- `RMClub.journeeDeMatchEspoirs(journee)` : détermine si la journée en cours déclenche un match espoirs.
+- `RMClub.eligiblePourMatchEspoirs(saison)` : un match n'est joué que si les 15 postes du centre de formation sont couverts (`meilleureComposition` + `validerComposition`), sinon le statut affiché explique pourquoi aucun match n'a lieu.
+- `RMClub.niveauAdversaireEspoirs(niveauClubAdverse)` : génère un adversaire synthétique (académie du prochain club adverse réel du calendrier, jamais persisté) nettement plus modeste qu'une équipe première (niveau réduit à 35 % max, avec un plancher).
+- Le match est réellement simulé par le moteur (`window.RMMain.simulerMatchEnArrierePlan`, même mécanisme que l'Équipe B et le match du joueur), pas un jet de dés abstrait — un vrai message de résultat avec un score réel est ajouté à la boîte de réception (catégorie "jeunes").
+- `RMClub.appliquerEffetsMatchEspoirs` : seuls les 15 jeunes réellement alignés dans la composition gagnent du temps de jeu (`matchsJoues`, fatigue, moral) — pas tout le vivier.
+- Nouveau statut visible dans la carte Centre de formation : annonce le prochain match espoirs, ou explique pourquoi aucun n'est possible (effectif incomplet).
+
+**Explicitement hors périmètre de cette tranche (à faire plus tard) :** un vrai championnat espoirs avec classement et calendrier persistants (comme les autres paliers de P0-13) plutôt que des matchs isolés périodiques contre un adversaire synthétique jamais revu ; des statistiques de progression liées aux performances en match espoirs (aujourd'hui la progression du jeune reste uniquement liée à l'entraînement, pas à ses matchs).
+
+**Critères de validation.**
+- 4 nouveaux tests dans `server/test-parcours-club.js` : périodicité correcte ; éligibilité vraie à la création puis fausse si un poste se retrouve sans espoir (isolé via `RMClub.nouvelleSaison(...)` dédiée pour ne pas contaminer la `saison` partagée du fichier de test) ; les effets de match ne s'appliquent qu'aux 15 jeunes alignés, pas aux autres ; l'adversaire synthétique reste nettement plus modeste qu'un adversaire de premier XV. Vérifié en échec AVANT correctif (fichier temporairement absent du chargement) : erreur de chargement immédiate. Après correctif : 53/53 (49 existants + 4 nouveaux).
+- 1 nouveau test dans `server/test-parcours-navigateur.js` : calendrier avancé artificiellement (via localStorage) jusqu'à la journée déclencheuse, un vrai message de match espoirs avec un score apparaît bien dans la boîte de réception. Après correctif : 103/103 (102 existants + 1 nouveau), 0 échec.
+- Suite complète sans régression : `test-parcours-club.js` 53/53, `test-parcours-navigateur.js` 103/103, `test-monde.js` 14/14, `test-audit-p0-1.js` 4/4, `test-audit-p0-2.js` 6/6, `test-textes-accueil.js` 4/4, `test-invariants.js` 12/12, `test-audit-p0-3.js` 8/8.
+
 ---
 
 ## P1 — Parcours utilisateur

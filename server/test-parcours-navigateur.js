@@ -241,9 +241,10 @@ function optionsLancement() {
   // toute la liste (innerHTML) après le 1er clic, ce qui décale la ligne
   // SUIVANTE à la même position écran — le 2e clic (même coordonnée) atterrit
   // alors sur SON bouton "Signer" et signe un second joueur jamais choisi.
-  // Attente > au verrou anti-double-action (cf. clubUI.js, marcheActionVerrouillee)
-  // pour ne pas hériter du verrou encore actif posé par le test précédent.
-  await page.waitForTimeout(900);
+  // Attente > au verrou anti-double-action (cf. clubUI.js, marcheActionVerrouillee,
+  // maintenant 1500 ms) pour ne pas hériter du verrou encore actif posé par
+  // le test précédent.
+  await page.waitForTimeout(1700);
   const nomsAvantDoubleClicCoord = await page.$$eval('#clubMarche .ligneMarche .infosJoueur b', (els) => els.map((e) => e.textContent));
   verifier('double clic écran : au moins 2 joueurs sur le marché avant le test (scénario significatif)', nomsAvantDoubleClicCoord.length >= 2);
   // Les deux clics sont dispatchés dans UN SEUL page.evaluate (jamais deux
@@ -759,6 +760,46 @@ function optionsLancement() {
   verifier('marché des transferts (mobile) : après défilement, "Signer" est réellement cliquable et recrute le joueur',
     effectifApresMobile === effectifAvantMobile + 1);
   await contexteMobileMarche.close();
+
+  // 11) Match espoirs (audit "pas de tournois junior", cf. club-espoirs.js) :
+  // le centre de formation dispute un vrai match RÉSERVÉ à lui seul, une
+  // journée sur RMClub.PERIODE_JOURNEES_ESPOIRS. Contexte isolé : avance le
+  // calendrier directement à la journée 4 (marque les journées 1-3 comme
+  // déjà jouées, technique déjà utilisée ailleurs dans ce fichier) pour ne
+  // pas payer le coût de 3 journées réelles supplémentaires juste pour
+  // atteindre le déclencheur.
+  const contexteEspoirs = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const pageEspoirs = await contexteEspoirs.newPage();
+  await pageEspoirs.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  await pageEspoirs.click('#btnAccueilModeClub');
+  await pageEspoirs.fill('#inputNomClub', 'Test Espoirs');
+  await pageEspoirs.click('#btnCreerClub');
+  await pageEspoirs.waitForTimeout(300);
+  const periode = await pageEspoirs.evaluate(() => window.RMClub && window.RMClub.PERIODE_JOURNEES_ESPOIRS);
+  await pageEspoirs.evaluate((periode) => {
+    const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
+    for (const f of s.calendrier) {
+      if (f.journee < periode) { f.joue = true; f.score = { domicile: 20, exterieur: 15 }; }
+    }
+    localStorage.setItem('rugbyManager.club.v1', JSON.stringify(s));
+  }, periode);
+  await pageEspoirs.reload({ waitUntil: 'networkidle' });
+  await pageEspoirs.waitForTimeout(200);
+  await pageEspoirs.click('#btnContinuerClub');
+  await pageEspoirs.waitForTimeout(300);
+  await pageEspoirs.click('#btnJouerMatchClub');
+  await pageEspoirs.waitForTimeout(800);
+  const btnApercuLancerEspoirs = pageEspoirs.locator('#btnApercuLancerMatch');
+  if (await btnApercuLancerEspoirs.isVisible({ timeout: 3000 }).catch(() => false)) await btnApercuLancerEspoirs.click();
+  await pageEspoirs.waitForFunction(
+    () => document.getElementById('btnJouerMatchClub') && !document.getElementById('btnJouerMatchClub').disabled,
+    { timeout: 30000 }
+  ).catch(() => {});
+  const messagesEspoirs = await pageEspoirs.evaluate(() =>
+    JSON.parse(localStorage.getItem('rugbyManager.club.v1')).clubJoueur.messages.filter((m) => m.categorie === 'jeunes' && m.titre === 'Match espoirs'));
+  verifier('match espoirs : un vrai match espoirs se joue à la journée déclencheuse (message réel avec un score)',
+    messagesEspoirs.length === 1 && /\d+ - \d+/.test(messagesEspoirs[0].corps));
+  await contexteEspoirs.close();
 
   verifier('aucune erreur console/page sur tout le parcours', erreursConsole.length === 0);
   if (erreursConsole.length) console.error(erreursConsole.join('\n'));

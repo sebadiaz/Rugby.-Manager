@@ -32,6 +32,7 @@ new Function('window', require('fs').readFileSync(require('path').join(__dirname
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-transferts-internationaux.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-generation-joueurs.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-centre-formation.js'), 'utf8'))(global.window);
+new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-espoirs.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-composition.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-condition-joueurs.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-pyramide.js'), 'utf8'))(global.window);
@@ -475,6 +476,58 @@ test('centre de formation : vieillit à chaque fin de saison, un espoir non prom
   assert.ok(c.messages.some((m) => m.categorie === 'jeunes' && m.corps.includes(nomCible)));
 });
 
+// --- Match espoirs (audit "pas de tournois junior") : le centre de
+// formation, jusqu'ici seulement mélangé aux réservistes via l'Équipe B,
+// dispute désormais un vrai match RÉSERVÉ à lui seul, une journée sur
+// RMClub.PERIODE_JOURNEES_ESPOIRS. ---
+test('match espoirs : la périodicité est bien "une journée sur PERIODE_JOURNEES_ESPOIRS"', () => {
+  const p = RMClub.PERIODE_JOURNEES_ESPOIRS;
+  assert.ok(p >= 2, 'une périodicité d\'au moins 2 journées (jamais chaque journée, comme Équipe B)');
+  assert.ok(RMClub.journeeDeMatchEspoirs(p), `la journée ${p} (multiple de la période) doit déclencher un match espoirs`);
+  assert.ok(RMClub.journeeDeMatchEspoirs(p * 2), `la journée ${p * 2} aussi`);
+  assert.ok(!RMClub.journeeDeMatchEspoirs(p - 1), `la journée ${p - 1} (juste avant) ne doit pas déclencher de match`);
+});
+
+test('match espoirs : éligible dès la création (centre de formation complet), plus éligible si un poste se retrouve sans espoir', () => {
+  // Saison JETABLE (pas la `saison` partagée des autres tests du fichier,
+  // délibérément cumulative) : ce test mute destructivement `jeunes`, ce qui
+  // corromprait les tests suivants (ex. Équipe B) s'il touchait la vraie.
+  const s = RMClub.nouvelleSaison(creerRng(200), 'Test Espoirs Éligibilité');
+  RMClub.assurerCentreFormation(creerRng(201), s);
+  assert.ok(RMClub.eligiblePourMatchEspoirs(s), 'un centre de formation fraîchement complété doit pouvoir aligner un XV complet');
+  // Vide tous les espoirs d'un poste précis (ex. tous les piliers).
+  const poste = s.clubJoueur.jeunes[0].poste;
+  s.clubJoueur.jeunes = s.clubJoueur.jeunes.filter((j) => j.poste !== poste);
+  assert.ok(!RMClub.eligiblePourMatchEspoirs(s), 'un poste sans aucun espoir disponible doit rendre le match espoirs impossible');
+});
+
+test('match espoirs : appliquerEffetsMatchEspoirs donne réellement du temps de jeu (fatigue/moral) aux espoirs alignés, pas aux autres', () => {
+  const s = RMClub.nouvelleSaison(creerRng(202), 'Test Espoirs Effets');
+  RMClub.assurerCentreFormation(creerRng(203), s);
+  // Un espoir de profondeur (poste déjà couvert par le quota) pour garantir
+  // un espoir NON aligné à comparer — le centre de formation par défaut a
+  // exactement 15 espoirs (un par poste requis), donc tous seraient alignés.
+  s.clubJoueur.jeunes.push(RMClub.genererJeune(s.clubJoueur.jeunes[0].poste, creerRng(204), s.clubJoueur.niveauClub));
+  const composition = RMClub.meilleureComposition(s.clubJoueur.jeunes);
+  const idAligne = Object.values(composition)[0];
+  const idNonAligne = s.clubJoueur.jeunes.find((j) => !Object.values(composition).includes(j.id)).id;
+  const fatigueAvant = s.clubJoueur.jeunes.find((j) => j.id === idNonAligne).fatigue || 0;
+  RMClub.appliquerEffetsMatchEspoirs(s, composition);
+  const aligne = s.clubJoueur.jeunes.find((j) => j.id === idAligne);
+  const nonAligne = s.clubJoueur.jeunes.find((j) => j.id === idNonAligne);
+  assert.strictEqual(aligne.matchsJoues, 1, 'un espoir aligné doit avoir joué un match de plus');
+  assert.ok(aligne.fatigue > 0, 'un espoir aligné doit avoir réellement encaissé de la fatigue');
+  assert.strictEqual(nonAligne.matchsJoues, 0, 'un espoir NON aligné ce jour-là ne doit rien encaisser');
+  assert.strictEqual(nonAligne.fatigue || 0, fatigueAvant, 'la fatigue d\'un espoir non aligné ne doit pas bouger');
+});
+
+test('match espoirs : l\'adversaire synthétique reste nettement plus modeste qu\'un adversaire de premier XV (niveau réduit)', () => {
+  const niveauReel = 0.6;
+  const niveauAdv = RMClub.niveauAdversaireEspoirs(niveauReel);
+  assert.ok(niveauAdv < niveauReel * 0.5, 'des espoirs 16-18 ans ne doivent pas affronter un adversaire au niveau d\'un premier XV');
+  assert.ok(niveauAdv > 0, 'jamais un niveau nul ou négatif (des joueurs générés injouables)');
+});
+
 // --- 11) Équipe B (championnat réservé aux clubs les plus riches) ---
 test('équipe B : éligibilité pair, cohérente avec le nombre de clubs, calendrier/classement bien formés', () => {
   const c = saison.clubJoueur;
@@ -800,6 +853,7 @@ const clubTransfertsSrcPourRechargement = require('fs').readFileSync(require('pa
 const clubTransfertsIntlSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-transferts-internationaux.js'), 'utf8');
 const clubGenerationJoueursSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-generation-joueurs.js'), 'utf8');
 const clubCentreFormationSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-centre-formation.js'), 'utf8');
+const clubEspoirsSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-espoirs.js'), 'utf8');
 const clubCompositionSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-composition.js'), 'utf8');
 const clubConditionJoueursSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-condition-joueurs.js'), 'utf8');
 const clubPyramideSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-pyramide.js'), 'utf8');
@@ -821,6 +875,7 @@ function chargerInstanceFraicheClub() {
   new Function('window', clubTransfertsIntlSrcPourRechargement)(ctx);
   new Function('window', clubGenerationJoueursSrcPourRechargement)(ctx);
   new Function('window', clubCentreFormationSrcPourRechargement)(ctx);
+  new Function('window', clubEspoirsSrcPourRechargement)(ctx);
   new Function('window', clubCompositionSrcPourRechargement)(ctx);
   new Function('window', clubConditionJoueursSrcPourRechargement)(ctx);
   new Function('window', clubPyramideSrcPourRechargement)(ctx);
