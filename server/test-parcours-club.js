@@ -922,6 +922,68 @@ test('remplacements : un remplaçant fatigué/démoralisé apporte réellement m
   assert.ok(rPilier.joueur.vitesse >= 20, 'jamais en dessous du plancher (même logique que compositionVersJoueursCfg)');
 });
 
+// --- 12c) Équipe gérée (TODO_AUDIT.md P1-18) : premier XV, Équipe B et
+// Espoirs gérés par les MÊMES fonctions de composition/tactique — seule
+// change la source (effectif + slot de composition). ---
+test('équipe gérée : equipeGeree vaut "pro" par défaut, et le slot du premier XV EST saison.clubJoueur (aucune duplication)', () => {
+  const s = RMClub.nouvelleSaison(creerRng(410), 'Test Équipe Gérée Défaut');
+  assert.strictEqual(RMClub.slotCompositionPourEquipe(s, 'pro'), s.clubJoueur, 'le premier XV doit réutiliser directement clubJoueur, pas une copie');
+  const secondaires = RMClub.assurerCompositionsSecondaires(s);
+  assert.strictEqual(s.clubJoueur.equipeGeree, 'pro');
+  assert.ok(secondaires.b && secondaires.jeunes, 'les slots Équipe B et Espoirs doivent exister dès la première consultation');
+});
+
+test('équipe gérée : effectifPourEquipe retourne bien la bonne source par équipe', () => {
+  const s = RMClub.nouvelleSaison(creerRng(411), 'Test Effectif Par Équipe');
+  RMClub.assurerCentreFormation(creerRng(412), s);
+  assert.strictEqual(RMClub.effectifPourEquipe(s, 'pro'), s.clubJoueur.effectif);
+  assert.strictEqual(RMClub.effectifPourEquipe(s, 'jeunes'), s.clubJoueur.jeunes);
+  const effectifB = RMClub.effectifPourEquipe(s, 'b');
+  assert.deepStrictEqual(effectifB, RMClub.effectifDisponiblePourEquipeB(s), 'l\'Équipe B doit piocher dans le même vivier que la carte Équipe B existante');
+});
+
+test('équipe gérée : assurerCompositionPourEquipe complète les Espoirs sans jamais toucher au slot du premier XV', () => {
+  const s = RMClub.nouvelleSaison(creerRng(413), 'Test Isolation Slots');
+  RMClub.assurerCentreFormation(creerRng(414), s);
+  // Le premier XV n'a encore JAMAIS été touché sur cette saison isolée —
+  // reste tel quel (généralement absent/vide) tant qu'on ne gère QUE les
+  // Espoirs, preuve directe qu'assurerCompositionPourEquipe('jeunes') ne
+  // touche pas au slot du premier XV.
+  const proIntactAvant = !s.clubJoueur.compositionTitulaires || Object.keys(s.clubJoueur.compositionTitulaires).length === 0;
+  const slotJeunes = RMClub.assurerCompositionPourEquipe(s, 'jeunes');
+  assert.strictEqual(RMClub.validerComposition(slotJeunes.compositionTitulaires).length, 0, 'un centre de formation frais doit permettre une composition Espoirs complète');
+  const proIntactApres = !s.clubJoueur.compositionTitulaires || Object.keys(s.clubJoueur.compositionTitulaires).length === 0;
+  assert.strictEqual(proIntactApres, proIntactAvant, 'gérer les Espoirs ne doit JAMAIS modifier/compléter la composition du premier XV');
+  assert.notStrictEqual(slotJeunes, s.clubJoueur, 'le slot Espoirs doit être un objet distinct de clubJoueur');
+});
+
+test('équipe gérée : un choix manuel dans le slot Équipe B survit à un nouvel appel et reste indépendant du slot Espoirs', () => {
+  const s = RMClub.nouvelleSaison(creerRng(415), 'Test Persistance Slot B');
+  RMClub.assurerCentreFormation(creerRng(416), s);
+  const slotB1 = RMClub.assurerCompositionPourEquipe(s, 'b');
+  const idChoisi = slotB1.compositionTitulaires['9'];
+  assert.ok(idChoisi, 'une composition Équipe B doit avoir été auto-complétée');
+  // Un second appel doit retrouver EXACTEMENT le même choix (pas régénéré à
+  // chaque fois) — comportement attendu de complèterComposition (ne remplace
+  // que les trous), déjà vérifié pour le premier XV, ici pour l'Équipe B.
+  const slotB2 = RMClub.assurerCompositionPourEquipe(s, 'b');
+  assert.strictEqual(slotB2.compositionTitulaires['9'], idChoisi);
+  assert.strictEqual(slotB1, slotB2, 'le slot Équipe B doit être LE MÊME objet persisté, pas régénéré à chaque appel');
+  const slotJeunes = RMClub.assurerCompositionPourEquipe(s, 'jeunes');
+  assert.notStrictEqual(slotJeunes, slotB1, 'le slot Espoirs doit rester un objet distinct du slot Équipe B');
+});
+
+test('équipe gérée : construireTactiqueCfg-like — remplacementsVersConfig/tactiqueVersConfig fonctionnent identiquement sur le slot Équipe B et le slot du premier XV', () => {
+  const s = RMClub.nouvelleSaison(creerRng(417), 'Test Tactique Par Équipe');
+  const slotB = RMClub.assurerCompositionPourEquipe(s, 'b');
+  slotB.tactique = { style: 'large' };
+  const cfgB = RMClub.tactiqueVersConfig(slotB.tactique);
+  assert.ok(cfgB.attaque, 'la tactique du slot Équipe B doit se convertir en config moteur exactement comme celle du premier XV');
+  const effectifB = RMClub.effectifPourEquipe(s, 'b');
+  const remplacementsB = RMClub.remplacementsVersConfig(effectifB, slotB.compositionBanc, 'A');
+  assert.ok(Array.isArray(remplacementsB), 'remplacementsVersConfig doit fonctionner sur le banc de l\'Équipe B comme sur celui du premier XV');
+});
+
 // --- 13) Pyramide française : le club du joueur débute en petite division
 // et progresse réellement (montée/descente selon le classement final,
 // nouveaux adversaires au bon niveau, qualification européenne). Scénarios

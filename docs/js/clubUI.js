@@ -280,6 +280,27 @@
     return RMClub.effectifVersJoueursCfg(c);
   }
 
+  // Config moteur (tactique + encadrement + remplacements) pour UNE équipe
+  // donnée (TODO_AUDIT.md P1-18) — factorisé pour être utilisé identiquement
+  // par le premier XV, l'Équipe B et les Espoirs (`slot` a la même forme
+  // pour les 3, cf. RMClub.slotCompositionPourEquipe) : même mécanique,
+  // aucune différence de traitement entre les équipes.
+  function construireTactiqueCfg(effectif, slot, lettreEquipe) {
+    const cfgTactique = RMClub.tactiqueVersConfig(slot.tactique);
+    const tactiqueCfg = {};
+    if (cfgTactique.attaque) tactiqueCfg['attaque' + lettreEquipe] = cfgTactique.attaque;
+    if (cfgTactique.defense) tactiqueCfg['defense' + lettreEquipe] = cfgTactique.defense;
+    if (cfgTactique.melee) tactiqueCfg['melee' + lettreEquipe] = cfgTactique.melee;
+    if (cfgTactique.touche) tactiqueCfg['touche' + lettreEquipe] = cfgTactique.touche;
+    const numeroButeur = RMClub.numeroDuJoueurDansComposition(slot.compositionTitulaires, slot.buteurId);
+    if (numeroButeur) tactiqueCfg['buteur' + lettreEquipe] = Number(numeroButeur);
+    const numeroLanceur = RMClub.numeroDuJoueurDansComposition(slot.compositionTitulaires, slot.lanceurToucheId);
+    if (numeroLanceur) tactiqueCfg['toucheLanceur' + lettreEquipe] = Number(numeroLanceur);
+    const remplacements = RMClub.remplacementsVersConfig(effectif, slot.compositionBanc, lettreEquipe);
+    if (remplacements.length) tactiqueCfg.remplacements = remplacements;
+    return tactiqueCfg;
+  }
+
   // Victoire/Nul/Défaite du point de vue du club du joueur. Un calendrier
   // complet fait aussi jouer les adversaires entre eux (cf. genererCalendrier) :
   // ces matchs-là n'ont pas de "forme" du point de vue du joueur (null).
@@ -298,13 +319,19 @@
   // choix unique parmi des templates figés : le joueur compose sa tactique
   // comme les instructions d'équipe d'un vrai jeu de gestion. La boucle
   // s'adapte automatiquement au nombre d'axes définis côté modèle.
+  // Équipe gérée (TODO_AUDIT.md P1-18) : même écran pour le premier XV,
+  // l'Équipe B et les Espoirs — cf. RMClub.slotCompositionPourEquipe.
   function rafraichirTactique() {
-    if (!saison.clubJoueur.tactique || typeof saison.clubJoueur.tactique !== 'object') {
+    const equipe = saison.clubJoueur.equipeGeree || 'pro';
+    const slot = RMClub.slotCompositionPourEquipe(saison, equipe);
+    if (!slot.tactique || typeof slot.tactique !== 'object') {
       const defauts = {};
       for (const axe of Object.keys(RMClub.AXES_TACTIQUE)) defauts[axe] = RMClub.AXES_TACTIQUE[axe].defaut;
-      saison.clubJoueur.tactique = defauts;
+      slot.tactique = defauts;
     }
-    const actuelle = saison.clubJoueur.tactique;
+    const selEquipe = document.getElementById('selEquipeGereeTactique');
+    if (selEquipe && selEquipe.value !== equipe) selEquipe.value = equipe;
+    const actuelle = slot.tactique;
     document.getElementById('clubTactique').innerHTML = Object.keys(RMClub.AXES_TACTIQUE).map((axe) => {
       const infosAxe = RMClub.AXES_TACTIQUE[axe];
       const valeurActuelle = actuelle[axe] || infosAxe.defaut;
@@ -450,6 +477,11 @@
       return `<div class="miniClassementLigne${classe}"><span>${i + 1}. ${nomClub(r.clubId)}</span><span>${r.j}J · <b>${r.pts}</b> pts</span></div>`;
     }).join('');
   }
+
+  // Équipe gérée par les écrans Composition/Tactique (TODO_AUDIT.md P1-18) :
+  // premier XV, Équipe B ou Espoirs — MÊMES écrans pour les 3, cf.
+  // RMClub.assurerCompositionPourEquipe/effectifPourEquipe.
+  const LIBELLE_EQUIPE = { pro: 'Première équipe', b: 'Équipe B', jeunes: 'Espoirs' };
 
   // Abréviations de poste (cf. moteur, PROFILS[n].label) traduites en toutes
   // lettres pour l'effectif : "P"/"T" n'est parlant que pour qui connaît déjà
@@ -1335,9 +1367,15 @@
       (optionsHorsPoste ? `<optgroup label="Autres postes (dépannage)">${optionsHorsPoste}</optgroup>` : '');
   }
 
+  // Équipe gérée (TODO_AUDIT.md P1-18) : premier XV, Équipe B ou Espoirs —
+  // même écran, seule la source (effectif + slot de composition) change,
+  // cf. RMClub.effectifPourEquipe/assurerCompositionPourEquipe.
   function rafraichirTerrain() {
-    const effectif = saison.clubJoueur.effectif;
-    const composition = assurerComposition();
+    const equipe = saison.clubJoueur.equipeGeree || 'pro';
+    const effectif = RMClub.effectifPourEquipe(saison, equipe);
+    const composition = RMClub.assurerCompositionPourEquipe(saison, equipe).compositionTitulaires;
+    const selEquipe = document.getElementById('selEquipeGereeComposition');
+    if (selEquipe && selEquipe.value !== equipe) selEquipe.value = equipe;
     document.getElementById('clubTerrain').innerHTML = Object.keys(RMClub.POSTE_REQUIS).map((numero) => {
       const poste = RMClub.POSTE_REQUIS[numero];
       const pos = POSITIONS_TERRAIN[numero];
@@ -1358,10 +1396,11 @@
   }
 
   function rafraichirBanc() {
-    const effectif = saison.clubJoueur.effectif;
-    const c = saison.clubJoueur;
-    const banc = c.compositionBanc || {};
-    const titulaireIds = new Set(Object.values(c.compositionTitulaires || {}));
+    const equipe = saison.clubJoueur.equipeGeree || 'pro';
+    const effectif = RMClub.effectifPourEquipe(saison, equipe);
+    const slot = RMClub.slotCompositionPourEquipe(saison, equipe);
+    const banc = slot.compositionBanc || {};
+    const titulaireIds = new Set(Object.values(slot.compositionTitulaires || {}));
     document.getElementById('clubBanc').innerHTML = Object.keys(RMClub.POSTE_REQUIS_BANC).map((numero) => {
       const poste = RMClub.POSTE_REQUIS_BANC[numero];
       const utiliseAilleurs = new Set(Object.keys(banc).filter((n) => n !== numero).map((n) => banc[n]));
@@ -1374,19 +1413,21 @@
   }
 
   function rafraichirEncadrement() {
-    const c = saison.clubJoueur;
+    const equipe = saison.clubJoueur.equipeGeree || 'pro';
+    const effectif = RMClub.effectifPourEquipe(saison, equipe);
+    const slot = RMClub.slotCompositionPourEquipe(saison, equipe);
     const parId = {};
-    for (const j of c.effectif) parId[j.id] = j;
-    const titulaires = Object.keys(c.compositionTitulaires || {})
-      .map((n) => ({ numero: n, joueur: parId[c.compositionTitulaires[n]] }))
+    for (const j of effectif) parId[j.id] = j;
+    const titulaires = Object.keys(slot.compositionTitulaires || {})
+      .map((n) => ({ numero: n, joueur: parId[slot.compositionTitulaires[n]] }))
       .filter((x) => x.joueur);
     function options(valeurActuelle) {
       return titulaires.map((t) => `<option value="${t.joueur.id}"${t.joueur.id === valeurActuelle ? ' selected' : ''}>N°${t.numero} ${t.joueur.nom}</option>`).join('');
     }
     document.getElementById('clubEncadrement').innerHTML =
-      `<div class="ligneComposition"><span class="numComposition">Capitaine</span><select data-role="capitaineId">${options(c.capitaineId)}</select></div>` +
-      `<div class="ligneComposition"><span class="numComposition">Buteur</span><select data-role="buteurId">${options(c.buteurId)}</select></div>` +
-      `<div class="ligneComposition"><span class="numComposition">Lanceur en touche</span><select data-role="lanceurToucheId">${options(c.lanceurToucheId)}</select></div>`;
+      `<div class="ligneComposition"><span class="numComposition">Capitaine</span><select data-role="capitaineId">${options(slot.capitaineId)}</select></div>` +
+      `<div class="ligneComposition"><span class="numComposition">Buteur</span><select data-role="buteurId">${options(slot.buteurId)}</select></div>` +
+      `<div class="ligneComposition"><span class="numComposition">Lanceur en touche</span><select data-role="lanceurToucheId">${options(slot.lanceurToucheId)}</select></div>`;
   }
 
   // Rapport de scout, pas fiche technique parfaite : tant qu'un joueur du
@@ -1845,12 +1886,17 @@
     document.getElementById('panneauApercuMatch').classList.remove('visible');
     lancerLaJournee();
   });
+  // Équipe gérée (TODO_AUDIT.md P1-18) : chaque handler écrit dans le slot de
+  // l'équipe ACTUELLEMENT sélectionnée (cf. saison.clubJoueur.equipeGeree),
+  // premier XV/Équipe B/Espoirs — même code pour les 3.
   document.getElementById('btnCompositionAuto').addEventListener('click', () => {
-    const c = saison.clubJoueur;
-    c.compositionTitulaires = RMClub.meilleureComposition(c.effectif);
-    c.compositionBanc = RMClub.completerCompositionBanc(c.effectif, c.compositionTitulaires, {});
-    const auto = RMClub.autoDesignerEncadrement(c.effectif, c.compositionTitulaires);
-    c.capitaineId = auto.capitaineId; c.buteurId = auto.buteurId; c.lanceurToucheId = auto.lanceurToucheId;
+    const equipe = saison.clubJoueur.equipeGeree || 'pro';
+    const effectif = RMClub.effectifPourEquipe(saison, equipe);
+    const slot = RMClub.slotCompositionPourEquipe(saison, equipe);
+    slot.compositionTitulaires = RMClub.meilleureComposition(effectif);
+    slot.compositionBanc = RMClub.completerCompositionBanc(effectif, slot.compositionTitulaires, {});
+    const auto = RMClub.autoDesignerEncadrement(effectif, slot.compositionTitulaires);
+    slot.capitaineId = auto.capitaineId; slot.buteurId = auto.buteurId; slot.lanceurToucheId = auto.lanceurToucheId;
     sauvegarder();
     toast('✅ Meilleure équipe possible appliquée');
     rafraichirTerrain(); rafraichirBanc(); rafraichirEncadrement();
@@ -1858,7 +1904,8 @@
   document.getElementById('clubTerrain').addEventListener('change', (e) => {
     const numero = e.target.dataset.numero;
     if (!numero) return;
-    saison.clubJoueur.compositionTitulaires[numero] = e.target.value;
+    const equipe = saison.clubJoueur.equipeGeree || 'pro';
+    RMClub.slotCompositionPourEquipe(saison, equipe).compositionTitulaires[numero] = e.target.value;
     sauvegarder();
     rafraichirTerrain(); // ce joueur n'est plus proposé aux autres numéros
     rafraichirBanc(); // peut libérer/consommer un joueur du vivier du banc
@@ -1867,23 +1914,42 @@
   document.getElementById('clubBanc').addEventListener('change', (e) => {
     const numero = e.target.dataset.numero;
     if (!numero) return;
-    saison.clubJoueur.compositionBanc[numero] = e.target.value;
+    const equipe = saison.clubJoueur.equipeGeree || 'pro';
+    RMClub.slotCompositionPourEquipe(saison, equipe).compositionBanc[numero] = e.target.value;
     sauvegarder();
     rafraichirBanc();
   });
   document.getElementById('clubEncadrement').addEventListener('change', (e) => {
     const role = e.target.dataset.role;
     if (!role) return;
-    saison.clubJoueur[role] = e.target.value;
+    const equipe = saison.clubJoueur.equipeGeree || 'pro';
+    RMClub.slotCompositionPourEquipe(saison, equipe)[role] = e.target.value;
     sauvegarder();
   });
 
-  // --- Tactique : n'affecte QUE le club du joueur (cf. lancerMatchJoueur) ---
+  // --- Équipe gérée : sélecteur partagé entre les onglets Composition et
+  // Tactique (les 2 <select> restent synchronisés, cf. rafraichirTerrain/
+  // rafraichirTactique qui remettent l'autre à jour à chaque rendu). ---
+  function changerEquipeGeree(equipe) {
+    if (!LIBELLE_EQUIPE[equipe] || saison.clubJoueur.equipeGeree === equipe) return;
+    saison.clubJoueur.equipeGeree = equipe;
+    RMClub.assurerCompositionPourEquipe(saison, equipe);
+    sauvegarder();
+    rafraichirTerrain(); rafraichirBanc(); rafraichirEncadrement(); rafraichirTactique();
+  }
+  const selEquipeComposition = document.getElementById('selEquipeGereeComposition');
+  if (selEquipeComposition) selEquipeComposition.addEventListener('change', (e) => changerEquipeGeree(e.target.value));
+  const selEquipeTactique = document.getElementById('selEquipeGereeTactique');
+  if (selEquipeTactique) selEquipeTactique.addEventListener('change', (e) => changerEquipeGeree(e.target.value));
+
+  // --- Tactique : s'applique à l'équipe actuellement gérée (cf. plus haut) ---
   document.getElementById('clubTactique').addEventListener('click', (e) => {
     const bouton = e.target.closest('[data-axe]');
     if (!bouton) return;
-    if (!saison.clubJoueur.tactique || typeof saison.clubJoueur.tactique !== 'object') saison.clubJoueur.tactique = {};
-    saison.clubJoueur.tactique[bouton.dataset.axe] = bouton.dataset.valeur;
+    const equipe = saison.clubJoueur.equipeGeree || 'pro';
+    const slot = RMClub.slotCompositionPourEquipe(saison, equipe);
+    if (!slot.tactique || typeof slot.tactique !== 'object') slot.tactique = {};
+    slot.tactique[bouton.dataset.axe] = bouton.dataset.valeur;
     sauvegarder();
     toast(`✅ Tactique mise à jour : ${bouton.querySelector('b') ? bouton.querySelector('b').textContent : bouton.dataset.valeur}`);
     rafraichirTactique();
@@ -2128,21 +2194,8 @@
       // l'IA adverse — d'où le suffixe A/B dynamique selon le côté du joueur
       // pour ce match précis (domicile/extérieur alterne).
       const lettreJoueur = estClubJoueur(matchJoueur.domicileId) ? 'A' : 'B';
-      const cfgTactique = RMClub.tactiqueVersConfig(saison.clubJoueur.tactique);
-      const tactiqueCfg = {};
-      if (cfgTactique.attaque) tactiqueCfg['attaque' + lettreJoueur] = cfgTactique.attaque;
-      if (cfgTactique.defense) tactiqueCfg['defense' + lettreJoueur] = cfgTactique.defense;
-      if (cfgTactique.melee) tactiqueCfg['melee' + lettreJoueur] = cfgTactique.melee;
-      if (cfgTactique.touche) tactiqueCfg['touche' + lettreJoueur] = cfgTactique.touche;
-      const numeroButeur = RMClub.numeroDuJoueurDansComposition(compositionUtilisee, saison.clubJoueur.buteurId);
-      if (numeroButeur) tactiqueCfg['buteur' + lettreJoueur] = Number(numeroButeur);
-      const numeroLanceur = RMClub.numeroDuJoueurDansComposition(compositionUtilisee, saison.clubJoueur.lanceurToucheId);
-      if (numeroLanceur) tactiqueCfg['toucheLanceur' + lettreJoueur] = Number(numeroLanceur);
-      // Remplacements RÉELLEMENT transmis au moteur (TODO_AUDIT.md P1-17) : le
-      // banc de 8 n'était jusqu'ici jamais utilisé en match — cf.
-      // RMClub.remplacementsVersConfig, engine/rugby-engine.js (config.remplacements).
-      const remplacements = RMClub.remplacementsVersConfig(saison.clubJoueur.effectif, saison.clubJoueur.compositionBanc, lettreJoueur);
-      if (remplacements.length) tactiqueCfg.remplacements = remplacements;
+      const tactiqueCfg = construireTactiqueCfg(saison.clubJoueur.effectif, saison.clubJoueur, lettreJoueur);
+      const remplacements = tactiqueCfg.remplacements || [];
       window.RMMain.demarrerMatchClub(
         graineAleatoire(), duree,
         cfgPour(clubDomicile),
@@ -2264,11 +2317,20 @@
         simulerRondeEquipeB(i + 1, suite);
         return;
       }
-      const compositionJoueur = RMClub.meilleureComposition(RMClub.effectifDisponiblePourEquipeB(saison));
+      // Équipe gérée (TODO_AUDIT.md P1-18) : même mécanique que le premier XV
+      // — composition/tactique/banc RÉELLEMENT choisis par le joueur dans les
+      // onglets Composition/Tactique (équipe "b"), auto-complétés s'il n'a
+      // rien touché (comportement historique préservé pour qui ne gère pas
+      // l'Équipe B en détail).
+      const effectifB = RMClub.effectifPourEquipe(saison, 'b');
+      const slotB = RMClub.assurerCompositionPourEquipe(saison, 'b');
+      const compositionJoueur = slotB.compositionTitulaires;
       if (RMClub.validerComposition(compositionJoueur).length > 0) { simulerRondeEquipeB(i + 1, suite); return; }
+      const lettreB = estClubJoueur(f.domicileId) ? 'A' : 'B';
+      const tactiqueCfgB = construireTactiqueCfg(effectifB, slotB, lettreB);
       const rng = creerRng(graineAleatoire());
       function cfgDe(clubId) {
-        if (clubId === idJoueur) return RMClub.compositionVersJoueursCfg(RMClub.effectifDisponiblePourEquipeB(saison), compositionJoueur);
+        if (clubId === idJoueur) return RMClub.compositionVersJoueursCfg(effectifB, compositionJoueur);
         const clubAdverse = RMClub.club(saison, clubId);
         const niveauB = Math.max(0.1, (clubAdverse.niveauClub != null ? clubAdverse.niveauClub : 0.5) * 0.65);
         return RMClub.effectifVersJoueursCfg({ effectif: RMClub.genererEffectif(rng, niveauB) });
@@ -2289,7 +2351,8 @@
           RMClub.enregistrerMouvementFinances(saison.clubJoueur, f.journee, mouvementB);
           sauvegarder();
           simulerRondeEquipeB(i + 1, suite);
-        }
+        },
+        tactiqueCfgB
       );
     }
 
@@ -2305,12 +2368,19 @@
         suite();
         return;
       }
-      const compositionEspoirs = RMClub.meilleureComposition(saison.clubJoueur.jeunes);
+      // Équipe gérée (TODO_AUDIT.md P1-18) : même mécanique que le premier XV
+      // et l'Équipe B — composition/tactique/banc réellement choisis dans les
+      // onglets Composition/Tactique (équipe "jeunes"), auto-complétés si le
+      // joueur n'a rien touché.
+      const effectifEspoirs = RMClub.effectifPourEquipe(saison, 'jeunes');
+      const slotEspoirs = RMClub.assurerCompositionPourEquipe(saison, 'jeunes');
+      const compositionEspoirs = slotEspoirs.compositionTitulaires;
+      const tactiqueCfgEspoirs = construireTactiqueCfg(effectifEspoirs, slotEspoirs, 'A');
       const rng = creerRng(graineAleatoire());
       const adversaireId = estClubJoueur(matchJoueur.domicileId) ? matchJoueur.exterieurId : matchJoueur.domicileId;
       const clubAdverse = RMClub.club(saison, adversaireId);
       const niveauAdv = RMClub.niveauAdversaireEspoirs(clubAdverse.niveauClub);
-      const cfgJoueur = RMClub.compositionVersJoueursCfg(saison.clubJoueur.jeunes, compositionEspoirs);
+      const cfgJoueur = RMClub.compositionVersJoueursCfg(effectifEspoirs, compositionEspoirs);
       const cfgAdverse = RMClub.effectifVersJoueursCfg({ effectif: RMClub.genererEffectif(rng, niveauAdv) });
       window.RMMain.simulerMatchEnArrierePlan(
         graineAleatoire(), duree,
@@ -2324,7 +2394,8 @@
             `Tes espoirs ${verbe} l'académie de ${clubAdverse.nom} (${etat.score.A} - ${etat.score.B}).`);
           sauvegarder();
           suite();
-        }
+        },
+        tactiqueCfgEspoirs
       );
     }
 

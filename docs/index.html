@@ -293,9 +293,19 @@
 
         <!-- Composition : terrain visuel (1-15), banc de 8, capitaine, buteur,
              lanceur en touche — un vrai écran de sélection, pas une liste
-             déroulante isolée (cf. clubUI.js, rafraichirComposition). -->
+             déroulante isolée (cf. clubUI.js, rafraichirComposition).
+             Sélecteur d'équipe gérée (TODO_AUDIT.md P1-18) : même écran pour
+             le premier XV, l'Équipe B et les Espoirs. -->
         <div class="voletOnglet" data-volet="composition" style="display:none;">
           <div class="enTetePage"><span class="categoriePage">Mon club</span><h2>Composition</h2><p>Titulaires, banc et encadrement pour la prochaine journée.</p></div>
+          <div class="carteClub">
+            <label class="sr-label" for="selEquipeGereeComposition">Équipe gérée</label>
+            <select id="selEquipeGereeComposition" style="width:100%;font-weight:700;">
+              <option value="pro">🏉 Première équipe</option>
+              <option value="b">🥈 Équipe B</option>
+              <option value="jeunes">🌱 Espoirs</option>
+            </select>
+          </div>
           <div class="carteClub">
             <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
               <h3 style="margin:0;">📋 Composition du jour</h3>
@@ -316,9 +326,18 @@
 
         <!-- Tactique : 6 axes indépendants qui se combinent, chacun modifie
              réellement la config transmise au moteur (cf. RMClub.AXES_TACTIQUE
-             et engine/rugby-engine.js cfgAttaque/cfgDefense/cfgMelee/cfgTouche/cfgRuck). -->
+             et engine/rugby-engine.js cfgAttaque/cfgDefense/cfgMelee/cfgTouche/cfgRuck).
+             Même sélecteur d'équipe gérée que l'onglet Composition. -->
         <div class="voletOnglet" data-volet="tactique" style="display:none;">
           <div class="enTetePage"><span class="categoriePage">Mon club</span><h2>Tactique</h2><p>Six réglages indépendants, chacun modifie réellement la config transmise au moteur.</p></div>
+          <div class="carteClub">
+            <label class="sr-label" for="selEquipeGereeTactique">Équipe gérée</label>
+            <select id="selEquipeGereeTactique" style="width:100%;font-weight:700;">
+              <option value="pro">🏉 Première équipe</option>
+              <option value="b">🥈 Équipe B</option>
+              <option value="jeunes">🌱 Espoirs</option>
+            </select>
+          </div>
           <div class="carteClub">
             <h3>🎯 Tactique</h3>
             <div id="clubTactique"></div>

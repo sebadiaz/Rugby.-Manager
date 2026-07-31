@@ -44,6 +44,16 @@
   // Chargée de façon asynchrone au démarrage ; si le chargement échoue (ex.
   // ouverture en file://), on garde le comportement par défaut.
   let configMatch = null;
+  // Réglages tactiques PAR ÉQUIPE (Mode Club) que configMatch peut accumuler
+  // au fil des matchs successifs — cf. simulerMatchEnArrierePlan, qui les
+  // efface avant chaque simulation en arrière-plan pour ne jamais laisser un
+  // réglage du dernier match du premier XV contaminer un match d'Équipe B ou
+  // d'Espoirs (TODO_AUDIT.md P1-18), même liste que reinitialiserConfigClub.
+  const CLES_TACTIQUE_PAR_EQUIPE = [
+    'attaqueA', 'attaqueB', 'defenseA', 'defenseB', 'meleeA', 'meleeB',
+    'toucheA', 'toucheB', 'ruckA', 'ruckB', 'buteurA', 'buteurB',
+    'toucheLanceurA', 'toucheLanceurB', 'remplacements',
+  ];
   // Durée du match choisie par le joueur (menu déroulant). Par défaut la démo
   // de 5 min ; un match complet (80 min) montre un score et des statistiques
   // crédibles (~48-55 pts, 6-7 essais), invisibles sur 5 min faute de temps de
@@ -533,7 +543,15 @@
     // tactiques PAR ÉQUIPE (Mode Club, cf. RMClub.tactiqueVersConfig) —
     // n'affecte que le club du joueur, jamais l'IA adverse.
     demarrerMatchClub(seed, duree, joueursA, joueursB, tactiqueCfg, callbacks) {
-      configMatch = Object.assign({}, configMatch, { joueursA, joueursB }, tactiqueCfg || {});
+      // Repart d'une base sans tactique par équipe avant de réappliquer
+      // celle de CE match : le club du joueur alterne domicile/extérieur
+      // (donc de lettre A/B) d'un match à l'autre — sans ce nettoyage, un
+      // réglage resté sous 'attaqueA' depuis un match précédent où le club
+      // du joueur jouait côté A pourrait contaminer l'ADVERSAIRE du match
+      // suivant si le club du joueur joue cette fois côté B.
+      const base = Object.assign({}, configMatch);
+      for (const cle of CLES_TACTIQUE_PAR_EQUIPE) delete base[cle];
+      configMatch = Object.assign(base, { joueursA, joueursB }, tactiqueCfg || {});
       lancerNouveauMatchAvecGeneration(seed, duree, callbacks);
     },
     // Simule un match COMPLET en arrière-plan sans jamais l'afficher (Mode
@@ -542,8 +560,16 @@
     // génération (même barre de progression, titre personnalisable) mais ne
     // le masque pas à la fin : l'appelant enchaîne d'autres simulations ou
     // passe au match du joueur, qui le masquera lui-même en terminant.
-    simulerMatchEnArrierePlan(seed, duree, joueursA, joueursB, titre, onTermine) {
-      const cfg = Object.assign({}, configMatch, { joueursA, joueursB });
+    // `tactiqueCfg` (optionnel, TODO_AUDIT.md P1-18) : réglages tactiques PAR
+    // ÉQUIPE (mêmes clés que demarrerMatchClub — attaqueA/défenseA/buteurA/
+    // remplacements/...) pour les matchs simulés en arrière-plan qui ne sont
+    // pas celui du premier XV (Équipe B, Espoirs) — sans lui, comportement
+    // historique inchangé (aucune tactique appliquée, réglages par défaut du
+    // moteur).
+    simulerMatchEnArrierePlan(seed, duree, joueursA, joueursB, titre, onTermine, tactiqueCfg) {
+      const base = Object.assign({}, configMatch);
+      for (const cle of CLES_TACTIQUE_PAR_EQUIPE) delete base[cle];
+      const cfg = Object.assign(base, { joueursA, joueursB }, tactiqueCfg || {});
       genererMatchEnArrierePlan(seed, duree, cfg, titre, onTermine);
     },
     // Efface joueursA/joueursB et toute tactique par équipe pour revenir aux
@@ -553,13 +579,7 @@
     reinitialiserConfigClub() {
       if (!configMatch) return;
       delete configMatch.joueursA; delete configMatch.joueursB;
-      delete configMatch.attaqueA; delete configMatch.attaqueB;
-      delete configMatch.defenseA; delete configMatch.defenseB;
-      delete configMatch.meleeA; delete configMatch.meleeB;
-      delete configMatch.toucheA; delete configMatch.toucheB;
-      delete configMatch.ruckA; delete configMatch.ruckB;
-      delete configMatch.buteurA; delete configMatch.buteurB;
-      delete configMatch.toucheLanceurA; delete configMatch.toucheLanceurB;
+      for (const cle of CLES_TACTIQUE_PAR_EQUIPE) delete configMatch[cle];
     },
     etatActuel() {
       return match ? normalizeMatchState(match.getState()) : null;

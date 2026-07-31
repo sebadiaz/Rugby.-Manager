@@ -273,11 +273,68 @@
     return remplacements;
   }
 
+  // --- Équipe gérée (TODO_AUDIT.md P1-18) : premier XV, Équipe B ou Espoirs
+  // (centre de formation) sont désormais gérés par les MÊMES écrans
+  // Composition/Tactique — seule change l'équipe actuellement sélectionnée
+  // (cf. saison.clubJoueur.equipeGeree). Le premier XV réutilise directement
+  // saison.clubJoueur (comportement historique inchangé, zéro risque de
+  // régression) ; les 2 autres équipes un "slot" dédié à la MÊME FORME
+  // ({compositionTitulaires, compositionBanc, tactique, capitaineId,
+  // buteurId, lanceurToucheId}) pour que toute la logique de rendu/édition
+  // déjà écrite pour le premier XV fonctionne SANS aucune modification,
+  // quelle que soit l'équipe sélectionnée. ---
+  function assurerCompositionsSecondaires(saison) {
+    const c = saison.clubJoueur;
+    if (!c.compositionsSecondaires) {
+      const slotVide = () => ({ compositionTitulaires: {}, compositionBanc: {}, tactique: {}, capitaineId: null, buteurId: null, lanceurToucheId: null });
+      c.compositionsSecondaires = { b: slotVide(), jeunes: slotVide() };
+    }
+    if (!c.equipeGeree) c.equipeGeree = 'pro';
+    return c.compositionsSecondaires;
+  }
+
+  // Pool de joueurs de l'équipe `equipe` ('pro'|'b'|'jeunes') — l'Équipe B
+  // n'a pas d'effectif propre : elle pioche parmi les réservistes du jour et
+  // le centre de formation (cf. effectifDisponiblePourEquipeB, déjà exporté
+  // depuis club-equipe-b.js).
+  function effectifPourEquipe(saison, equipe) {
+    const c = saison.clubJoueur;
+    if (equipe === 'jeunes') return c.jeunes || [];
+    if (equipe === 'b') return global.RMClub.effectifDisponiblePourEquipeB(saison);
+    return c.effectif;
+  }
+
+  // Slot de composition de l'équipe `equipe` — même forme que saison.clubJoueur
+  // pour le premier XV (voir commentaire plus haut).
+  function slotCompositionPourEquipe(saison, equipe) {
+    if (equipe === 'pro') return saison.clubJoueur;
+    return assurerCompositionsSecondaires(saison)[equipe];
+  }
+
+  // Version générale de la logique historique d'auto-complétion (jusqu'ici
+  // dupliquée dans clubUI.js UNIQUEMENT pour le premier XV, cf.
+  // assurerComposition) : complète titulaires/banc/encadrement pour
+  // N'IMPORTE QUELLE équipe, sans jamais écraser un choix déjà fait par le
+  // joueur — même garantie que completerComposition/completerCompositionBanc.
+  function assurerCompositionPourEquipe(saison, equipe) {
+    const effectif = effectifPourEquipe(saison, equipe);
+    const slot = slotCompositionPourEquipe(saison, equipe);
+    slot.compositionTitulaires = completerComposition(effectif, slot.compositionTitulaires);
+    slot.compositionBanc = completerCompositionBanc(effectif, slot.compositionTitulaires, slot.compositionBanc);
+    const titulaireIds = new Set(Object.values(slot.compositionTitulaires));
+    const auto = autoDesignerEncadrement(effectif, slot.compositionTitulaires);
+    if (!slot.capitaineId || !titulaireIds.has(slot.capitaineId)) slot.capitaineId = auto.capitaineId;
+    if (!slot.buteurId || !titulaireIds.has(slot.buteurId)) slot.buteurId = auto.buteurId;
+    if (!slot.lanceurToucheId || !titulaireIds.has(slot.lanceurToucheId)) slot.lanceurToucheId = auto.lanceurToucheId;
+    return slot;
+  }
+
   global.RMClub = Object.assign(global.RMClub || {}, {
     tactiqueVersConfig, effectifVersJoueursCfg, compositionVersJoueursCfg,
     meilleurCandidatPourNumero, meilleureComposition, completerComposition,
     validerComposition, POSTE_REQUIS_BANC, completerCompositionBanc,
     numeroDuJoueurDansComposition, autoDesignerEncadrement,
     CIBLE_REMPLACEMENT_BANC, MINUTE_REMPLACEMENT_BANC, remplacementsVersConfig,
+    assurerCompositionsSecondaires, effectifPourEquipe, slotCompositionPourEquipe, assurerCompositionPourEquipe,
   });
 })(window);

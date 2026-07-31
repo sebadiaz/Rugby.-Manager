@@ -801,6 +801,73 @@ function optionsLancement() {
     messagesEspoirs.length === 1 && /\d+ - \d+/.test(messagesEspoirs[0].corps));
   await contexteEspoirs.close();
 
+  // 11b) Équipe gérée (TODO_AUDIT.md P1-18) : le premier XV, l'Équipe B et
+  // les Espoirs sont désormais gérés par les MÊMES écrans Composition/
+  // Tactique (sélecteur d'équipe). Preuve que ce n'est pas qu'un affichage :
+  // un choix manuel fait dans l'écran Composition (équipe "Espoirs") est
+  // RÉELLEMENT celui utilisé au coup d'envoi du match espoirs — injecte un
+  // 2e candidat au poste DM (n°9) pour pouvoir distinguer sans ambiguïté le
+  // choix manuel de l'auto-complétion.
+  const contexteEG = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const pageEG = await contexteEG.newPage();
+  await pageEG.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  await pageEG.click('#btnAccueilModeClub');
+  await pageEG.fill('#inputNomClub', 'Test Équipe Gérée');
+  await pageEG.click('#btnCreerClub');
+  await pageEG.waitForTimeout(300);
+  const periodeEG = await pageEG.evaluate(() => window.RMClub && window.RMClub.PERIODE_JOURNEES_ESPOIRS);
+  const idDoublonDM = await pageEG.evaluate((periode) => {
+    const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
+    for (const f of s.calendrier) {
+      if (f.journee < periode) { f.joue = true; f.score = { domicile: 20, exterieur: 15 }; }
+    }
+    const dmExistant = s.clubJoueur.jeunes.find((j) => j.poste === 'DM');
+    const doublon = Object.assign({}, dmExistant, { id: 'jeuneDoublonDM', nom: 'Doublon Test DM', vitesse: 1, plaquage: 1 });
+    s.clubJoueur.jeunes.push(doublon);
+    localStorage.setItem('rugbyManager.club.v1', JSON.stringify(s));
+    return doublon.id;
+  }, periodeEG);
+  await pageEG.reload({ waitUntil: 'networkidle' });
+  await pageEG.waitForTimeout(200);
+  await pageEG.click('#btnContinuerClub');
+  await pageEG.waitForTimeout(300);
+  await pageEG.click('[data-onglet="composition"]');
+  await pageEG.waitForTimeout(200);
+  await pageEG.selectOption('#selEquipeGereeComposition', 'jeunes');
+  await pageEG.waitForTimeout(200);
+  await pageEG.selectOption('#clubTerrain select[data-numero="9"]', idDoublonDM);
+  await pageEG.waitForTimeout(200);
+  const compoApresChoix = await pageEG.evaluate(() =>
+    JSON.parse(localStorage.getItem('rugbyManager.club.v1')).clubJoueur.compositionsSecondaires.jeunes.compositionTitulaires['9']);
+  verifier('équipe gérée : choisir un joueur dans le terrain Composition (équipe Espoirs) persiste bien dans le slot dédié',
+    compoApresChoix === idDoublonDM);
+  await pageEG.click('[data-onglet="dashboard"]');
+  await pageEG.waitForTimeout(200);
+  await pageEG.click('#btnJouerMatchClub');
+  await pageEG.waitForTimeout(800);
+  const btnApercuLancerEG = pageEG.locator('#btnApercuLancerMatch');
+  if (await btnApercuLancerEG.isVisible({ timeout: 3000 }).catch(() => false)) await btnApercuLancerEG.click();
+  await pageEG.waitForFunction(
+    () => document.getElementById('btnJouerMatchClub') && !document.getElementById('btnJouerMatchClub').disabled,
+    { timeout: 30000 }
+  ).catch(() => {});
+  // Note : on ne vérifie PAS que "l'autre DM" n'a joué aucun match ce
+  // jour-là — il reste un candidat valide pour l'Équipe B (qui pioche aussi
+  // dans les Espoirs, cf. effectifDisponiblePourEquipeB) et sa propre
+  // journée s'est jouée en même temps, sans rapport avec ce test. Seule
+  // preuve recherchée ici : le joueur explicitement choisi dans l'écran
+  // Composition a bien été titularisé au match ESPOIRS lui-même.
+  const messagesEspoirsEG = await pageEG.evaluate(() =>
+    JSON.parse(localStorage.getItem('rugbyManager.club.v1')).clubJoueur.messages.filter((m) => m.categorie === 'jeunes' && m.titre === 'Match espoirs'));
+  const doublonAJoue = await pageEG.evaluate((idDoublon) => {
+    const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
+    const doublon = s.clubJoueur.jeunes.find((j) => j.id === idDoublon);
+    return doublon && doublon.matchsJoues === 1;
+  }, idDoublonDM);
+  verifier('équipe gérée : le choix manuel fait dans l\'écran Composition (Espoirs) est RÉELLEMENT celui utilisé en match, pas recalculé',
+    messagesEspoirsEG.length === 1 && doublonAJoue);
+  await contexteEG.close();
+
   // 12) Décision réelle dans la boîte de réception (audit "boîte de réception
   // avec décisions", cf. club-decisions.js) : injecte directement une
   // demande de temps de jeu (le déclenchement — plusieurs journées sans
