@@ -1436,6 +1436,169 @@ function optionsLancement() {
   if (erreursJours.length) console.error(erreursJours.join('\n'));
   await contexteJours.close();
 
+  // 11d-ter) SEMAINE D'ENTRAÎNEMENT, SCOUTING DIFFÉRÉ ET DÉCISIONS DATÉES
+  // (TODO_AUDIT.md P1-23, tranche 3).
+  const contexteSemaine = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const pageSemaine = await contexteSemaine.newPage();
+  const erreursSemaine = [];
+  pageSemaine.on('pageerror', (e) => erreursSemaine.push(`PAGEERROR: ${e.message}`));
+  pageSemaine.on('console', (m) => { if (m.type() === 'error' && !m.text().includes('404')) erreursSemaine.push(`CONSOLE: ${m.text()}`); });
+  await pageSemaine.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  await pageSemaine.click('#btnAccueilModeClub');
+  await pageSemaine.fill('#inputNomClub', 'Test Semaine');
+  await pageSemaine.click('#btnCreerClub');
+  await pageSemaine.waitForTimeout(400);
+
+  await clicOngletSur(pageSemaine, 'entrainement');
+  await pageSemaine.waitForTimeout(250);
+  const semaineUI = await pageSemaine.evaluate(() => {
+    const lignes = Array.from(document.querySelectorAll('#clubSemaineEntrainement .ligneSeance'));
+    return {
+      nb: lignes.length,
+      jours: lignes.map((l) => l.querySelector('.jourSeance').textContent.trim().toLowerCase()),
+      activites: Array.from(document.querySelectorAll('#clubSemaineEntrainement select')).map((s2) => s2.value),
+      unJourMarque: lignes.some((l) => l.classList.contains('aujourdhui')),
+    };
+  });
+  verifier('semaine d\'entraînement : les 7 jours de la semaine sont affichés, une séance chacun',
+    semaineUI.nb === 7 && semaineUI.activites.length === 7 && semaineUI.activites.every(Boolean));
+  verifier('semaine d\'entraînement : les 7 jours sont bien distincts (du lundi au dimanche)',
+    new Set(semaineUI.jours.map((j) => j.split(' ')[0])).size === 7);
+  verifier('semaine d\'entraînement : le jour courant est mis en évidence', semaineUI.unJourMarque);
+
+  // Modifier une séance persiste réellement.
+  await pageSemaine.selectOption('#clubSemaineEntrainement select[data-jour="2"]', 'melee');
+  await pageSemaine.waitForTimeout(250);
+  verifier('semaine d\'entraînement : changer une séance est réellement persisté dans la sauvegarde',
+    await pageSemaine.evaluate(() =>
+      JSON.parse(localStorage.getItem('rugbyManager.club.v1')).clubJoueur.semaineEntrainement['2'] === 'melee'));
+
+  // Une semaine tout en physique doit RÉELLEMENT fatiguer, contrairement à
+  // une semaine tout en repos : c'est l'arbitrage au cœur de la semaine.
+  const mesurerSemaine = async (activite) => pageSemaine.evaluate((act) => {
+    const K = 'rugbyManager.club.v1';
+    const s = JSON.parse(localStorage.getItem(K));
+    for (let j = 0; j <= 6; j++) s.clubJoueur.semaineEntrainement[j] = act;
+    for (const j of s.clubJoueur.effectif) { j.fatigue = 0; j.blessureJournees = 0; }
+    localStorage.setItem(K, JSON.stringify(s));
+    const saison = JSON.parse(localStorage.getItem(K));
+    const RM = window.RMClub;
+    RM.avancerJusquA(saison, RM.ajouterJours(RM.dateCourante(saison), 7));
+    return Math.max.apply(null, saison.clubJoueur.effectif.map((j) => j.fatigue || 0));
+  }, activite);
+  const fatiguePhysique = await mesurerSemaine('physique');
+  const fatigueRepos = await mesurerSemaine('repos');
+  verifier('semaine d\'entraînement : une semaine intense fatigue réellement, une semaine de repos non',
+    fatiguePhysique > fatigueRepos && fatigueRepos === 0);
+
+  // Scouting DIFFÉRÉ : la connaissance ne bouge pas à la commande.
+  await clicOngletSur(pageSemaine, 'transferts');
+  await pageSemaine.waitForTimeout(250);
+  const avantScout = await pageSemaine.evaluate(() => {
+    const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
+    const bouton = document.querySelector('.btnScouter');
+    const id = bouton ? bouton.dataset.joueur : null;
+    const j = s.marche.find((x) => x.id === id);
+    return { id, connaissance: j ? j.connaissance : null, budget: s.clubJoueur.budget };
+  });
+  if (avantScout.id) {
+    await pageSemaine.click(`.btnScouter[data-joueur="${avantScout.id}"]`);
+    await pageSemaine.waitForTimeout(350);
+    const apresCommande = await pageSemaine.evaluate((id) => {
+      const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
+      const j = s.marche.find((x) => x.id === id);
+      return {
+        connaissance: j.connaissance, budget: s.clubJoueur.budget,
+        rapports: (s.rapportsScouting || []).length,
+        badge: !!document.querySelector('.rapportEnCours'),
+      };
+    }, avantScout.id);
+    verifier('scouting différé : commander un rapport engage le budget MAIS ne change pas encore la connaissance',
+      apresCommande.budget < avantScout.budget && apresCommande.connaissance === avantScout.connaissance
+      && apresCommande.rapports === 1);
+    verifier('scouting différé : le marché signale qu\'un rapport est en cours (avec sa date de remise)',
+      apresCommande.badge);
+    // Puis on laisse passer les jours : le rapport arrive.
+    await clicOngletSur(pageSemaine, 'dashboard');
+    await pageSemaine.waitForTimeout(200);
+    await pageSemaine.click('#btnJouerMatchClub');
+    await pageSemaine.waitForTimeout(1000);
+    const apresRemise = await pageSemaine.evaluate((id) => {
+      const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
+      const j = s.marche.find((x) => x.id === id);
+      return {
+        connaissance: j ? j.connaissance : null,
+        rapports: (s.rapportsScouting || []).length,
+        message: s.clubJoueur.messages.some((m) => m.titre === 'Rapport de scouting'),
+      };
+    }, avantScout.id);
+    verifier('scouting différé : à sa date, le rapport augmente RÉELLEMENT la connaissance et produit un message',
+      apresRemise.connaissance > avantScout.connaissance && apresRemise.rapports === 0 && apresRemise.message);
+  }
+
+  // Décision DATÉE : l'échéance est affichée, et le silence vaut refus.
+  const decision = await pageSemaine.evaluate(() => {
+    const K = 'rugbyManager.club.v1';
+    const s = JSON.parse(localStorage.getItem(K));
+    const RM = window.RMClub;
+    const j = s.clubJoueur.effectif[0];
+    j.moral = 70;
+    j.demandeTempsDeJeuEnAttente = true;
+    RM.ajouterMessage(s, 'joueur', 'Demande de temps de jeu', `${j.nom} veut jouer.`, {
+      type: 'tempsDeJeu', joueurId: j.id, resolu: false,
+      // Échéance au lendemain : le prochain jour réellement traversé la
+      // franchit, quel que soit l'endroit du calendrier où l'on se trouve.
+      dateLimite: RM.dateISO(RM.ajouterJours(RM.dateCourante(s), 1)),
+      options: [{ id: 'rassurer', libelle: 'Le rassurer' }, { id: 'ignorer', libelle: 'Ignorer sa demande' }],
+    });
+    localStorage.setItem(K, JSON.stringify(s));
+    return { nom: j.nom, moral: j.moral };
+  });
+  await pageSemaine.reload({ waitUntil: 'networkidle' });
+  await pageSemaine.waitForTimeout(250);
+  await pageSemaine.click('#btnContinuerClub');
+  await pageSemaine.waitForTimeout(350);
+  verifier('décisions datées : l\'échéance de réponse est affichée dans la boîte de réception',
+    (await pageSemaine.textContent('#clubMessages')).includes('Réponse attendue avant le'));
+  // On se trouve peut-être déjà SUR un jour de match (« Continuer » y reste,
+  // par idempotence) : on le joue d'abord, puis on avance réellement d'un
+  // jour de plus pour franchir l'échéance.
+  await pageSemaine.evaluate(() => { document.getElementById('selDureeClub').value = '300'; });
+  await pageSemaine.click('#btnJouerMatchClub');
+  const apercuOuvertDecision = await pageSemaine.waitForSelector('#panneauApercuMatch.visible', { timeout: 5000 })
+    .then(() => true).catch(() => false);
+  if (apercuOuvertDecision) {
+    await pageSemaine.click('#btnApercuLancerMatch');
+    await pageSemaine.waitForSelector('#panneauResultat.visible', { timeout: 60000 });
+    await pageSemaine.click('#btnResultatFermer');
+  }
+  await pageSemaine.waitForFunction(
+    () => document.getElementById('panneauClub').classList.contains('visible')
+      && !document.getElementById('btnJouerMatchClub').disabled,
+    { timeout: 90000 }
+  ).catch(() => {});
+  await pageSemaine.waitForTimeout(300);
+  await pageSemaine.click('#btnJouerMatchClub');
+  await pageSemaine.waitForFunction(
+    () => document.getElementById('panneauClub').classList.contains('visible')
+      && !document.getElementById('btnJouerMatchClub').disabled,
+    { timeout: 90000 }
+  ).catch(() => {});
+  await pageSemaine.waitForTimeout(400);
+  const apresEcheance = await pageSemaine.evaluate((nom) => {
+    const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
+    const j = s.clubJoueur.effectif.find((x) => x.nom === nom);
+    const m = s.clubJoueur.messages.find((x) => x.decision && x.decision.type === 'tempsDeJeu');
+    return { moral: j ? j.moral : null, resolu: m && m.decision.resolu, expiree: m && !!m.decision.expiree, choix: m && m.decision.choix };
+  }, decision.nom);
+  verifier('décisions datées : une demande non tranchée à l\'échéance se résout comme un refus (conséquence réelle sur le moral)',
+    apresEcheance.resolu && apresEcheance.expiree && apresEcheance.choix === 'ignorer'
+    && apresEcheance.moral < decision.moral);
+  verifier('semaine d\'entraînement : aucune erreur console sur le parcours entraînement/scouting/décisions',
+    erreursSemaine.length === 0);
+  if (erreursSemaine.length) console.error(erreursSemaine.join('\n'));
+  await contexteSemaine.close();
+
   // 11e) Même parcours calendaire sur MOBILE : la date et le bouton
   // « Continuer » doivent rester lisibles et utilisables sur petit écran.
   const contexteMobileTemps = await browser.newContext({ viewport: { width: 390, height: 780 }, isMobile: true, hasTouch: true });

@@ -879,6 +879,26 @@ select {
    relie l'analyse de l'adversaire à un réglage tactique actionnable. */
 .raisonRecommandation { font-size: 12px; color: var(--text-dim); margin: 6px 0; }
 
+/* Semaine d'entraînement (TODO_AUDIT.md P1-23) : une ligne par jour, la
+   séance choisie, et ce qu'elle produit réellement. */
+.ligneSeance {
+  display: grid; grid-template-columns: 110px minmax(140px, 1fr) 2fr; align-items: center;
+  gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--border);
+}
+.ligneSeance:last-child { border-bottom: none; }
+.ligneSeance .jourSeance { font-size: 12.5px; color: var(--text-dim); text-transform: capitalize; }
+.ligneSeance.aujourdhui .jourSeance { color: var(--accent); font-weight: 700; }
+.ligneSeance select { width: 100%; padding: 7px 8px; font-size: 12.5px; }
+.ligneSeance .effetSeance { font-size: 11.5px; color: var(--text-faint); }
+@media (max-width: 720px) {
+  .ligneSeance { grid-template-columns: 1fr 1fr; }
+  .ligneSeance .effetSeance { grid-column: 1 / -1; }
+}
+/* Rapport de scouting commandé mais pas encore rendu (délai réel). */
+.rapportEnCours { font-size: 11.5px; color: var(--text-faint); white-space: nowrap; }
+/* Échéance d'une décision : le silence vaut refus passé ce délai. */
+.echeanceDecision { display: block; margin: 4px 0; font-size: 11.5px; color: var(--accent); }
+
 /* Agenda des 7 prochains jours (TODO_AUDIT.md P1-22) : une ligne par jour,
    les jours de rencontre mis en avant, les jours vides assumés comme tels. */
 .ligneAgenda {

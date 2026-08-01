@@ -36,6 +36,7 @@ new Function('window', require('fs').readFileSync(require('path').join(__dirname
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-composition.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-temps.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-agenda.js'), 'utf8'))(global.window);
+new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-semaine-entrainement.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-evenements.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-equipes.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-condition-joueurs.js'), 'utf8'))(global.window);
@@ -1551,7 +1552,12 @@ test('événements quotidiens : avancerJusquA parcourt exactement les jours voul
   // Rejoué depuis le même état de départ : résultat identique (déterminisme).
   const b = construire();
   const journeesB = RMClub.avancerJusquA(b, RMClub.ajouterJours(RMClub.dateCourante(b), 10));
-  assert.deepStrictEqual(journeesB, journeesA, 'même graine et mêmes dates doivent produire exactement les mêmes journées');
+  // Les identifiants de joueurs viennent d'un compteur global (deux saisons
+  // créées à la suite n'attribuent pas les mêmes) : on compare donc le
+  // CONTENU des journées, ids exclus — c'est le déterminisme du simulateur
+  // qui est vérifié ici, pas l'allocation des ids.
+  const sansIds = (journees) => JSON.parse(JSON.stringify(journees, (cle, valeur) => (cle === 'id' ? undefined : valeur)));
+  assert.deepStrictEqual(sansIds(journeesB), sansIds(journeesA), 'même graine et mêmes dates doivent produire exactement les mêmes journées');
   assert.deepStrictEqual(
     b.clubJoueur.effectif.map((j) => [j.fatigue, j.blessureJournees]),
     a.clubJoueur.effectif.map((j) => [j.fatigue, j.blessureJournees]));
@@ -1563,7 +1569,10 @@ test('événements quotidiens : avancerJusquA parcourt exactement les jours voul
 
 test('événements quotidiens : le résumé ne rapporte que des changements RÉELS', () => {
   const s = saisonPourJours(614, 'Test Résumé');
-  // Effectif frais, aucun blessé, aucun prêt : rien ne doit être rapporté.
+  // Effectif frais, aucun blessé, aucun prêt, et une semaine entièrement au
+  // repos (une séance fatiguerait réellement — cf. tranche 3) : rien ne doit
+  // être rapporté.
+  for (let jour = 0; jour <= 6; jour++) RMClub.definirSeance(s, jour, 'repos');
   for (const j of s.clubJoueur.effectif) { j.fatigue = 0; j.blessureJournees = 0; j.pret = null; }
   for (const j of s.clubJoueur.jeunes) { j.fatigue = 0; j.blessureJournees = 0; }
   const resume = RMClub.resumerJournees(RMClub.avancerJusquA(s, RMClub.ajouterJours(RMClub.dateCourante(s), 5)));
@@ -1603,6 +1612,203 @@ test('événements quotidiens : une sauvegarde v3 est migrée en convertissant l
   } finally {
     global.localStorage = storeOriginal;
   }
+});
+
+// --- 12h) Semaine d'entraînement, scouting différé et décisions datées
+// (TODO_AUDIT.md P1-23, tranche 3). ---
+test('semaine d\'entraînement : sept jours, une activité réelle par jour, modifiable', () => {
+  const s = saisonPourJours(700, 'Test Semaine');
+  const semaine = RMClub.assurerSemaineEntrainement(s);
+  for (let jour = 0; jour <= 6; jour++) {
+    assert.ok(RMClub.ACTIVITES_ENTRAINEMENT[semaine[jour]], `le jour ${jour} doit porter une activité connue`);
+  }
+  RMClub.definirSeance(s, 2, 'melee');
+  assert.strictEqual(RMClub.assurerSemaineEntrainement(s)[2], 'melee');
+  // Une activité inconnue est refusée plutôt que d'effacer la séance.
+  RMClub.definirSeance(s, 2, 'yoga');
+  assert.strictEqual(RMClub.assurerSemaineEntrainement(s)[2], 'melee');
+  // Une sauvegarde bricolée retombe sur le défaut, jamais sur un trou.
+  s.clubJoueur.semaineEntrainement[3] = 'inexistante';
+  assert.strictEqual(RMClub.assurerSemaineEntrainement(s)[3], RMClub.SEMAINE_PAR_DEFAUT[3]);
+  // Rétrocompat : l'ancien programme collectif est repris dans la semaine.
+  const t = RMClub.nouvelleSaison(creerRng(701), 'Ancien Focus');
+  delete t.clubJoueur.semaineEntrainement;
+  t.clubJoueur.entrainementFocus = 'pied';
+  const semaineT = RMClub.assurerSemaineEntrainement(t);
+  assert.ok(Object.values(semaineT).indexOf('pied') !== -1,
+    'le programme collectif historique ne doit pas être perdu : il devient une séance de la semaine');
+});
+
+test('semaine d\'entraînement : le jour de match du premier XV n\'a PAS de séance (le match est la charge du jour)', () => {
+  const s = saisonPourJours(702, 'Test Jour De Match');
+  const samedi = RMClub.dateDeJournee(s.numero, 1, 'pro');
+  assert.strictEqual(RMClub.typeDArret(s, samedi), 'pro');
+  assert.strictEqual(RMClub.seancePourDate(s, samedi), null, 'aucune séance un jour de championnat');
+  const jeudi = RMClub.ajouterJours(samedi, -2);
+  assert.ok(RMClub.seancePourDate(s, jeudi), 'un jour sans match porte bien une séance');
+});
+
+test('semaine d\'entraînement : une séance fatigue réellement, le repos régénère réellement', () => {
+  const s = saisonPourJours(703, 'Test Charge Séance');
+  const rng = creerRng(704);
+  const joueur = s.clubJoueur.effectif[0];
+  joueur.fatigue = 0;
+  RMClub.appliquerSeance(rng, [joueur], 'physique', 1, 1);
+  const apresPhysique = joueur.fatigue;
+  assert.ok(apresPhysique > 0, 'une séance physique doit réellement fatiguer');
+  RMClub.appliquerSeance(rng, [joueur], 'repos', 1, 1);
+  assert.strictEqual(joueur.fatigue, apresPhysique, 'le repos n\'ajoute aucune charge');
+  // Et une semaine intense accumule réellement, là où une semaine douce non.
+  const intense = saisonPourJours(705, 'Semaine Intense');
+  const douce = saisonPourJours(706, 'Semaine Douce');
+  for (let jour = 0; jour <= 6; jour++) {
+    RMClub.definirSeance(intense, jour, 'physique');
+    RMClub.definirSeance(douce, jour, 'repos');
+  }
+  for (const j of intense.clubJoueur.effectif) j.fatigue = 0;
+  for (const j of douce.clubJoueur.effectif) j.fatigue = 0;
+  RMClub.avancerJusquA(intense, RMClub.ajouterJours(RMClub.dateCourante(intense), 7));
+  RMClub.avancerJusquA(douce, RMClub.ajouterJours(RMClub.dateCourante(douce), 7));
+  const fatigueIntense = Math.max.apply(null, intense.clubJoueur.effectif.map((j) => j.fatigue || 0));
+  const fatigueDouce = Math.max.apply(null, douce.clubJoueur.effectif.map((j) => j.fatigue || 0));
+  assert.ok(fatigueIntense > fatigueDouce,
+    `une semaine tout en physique doit fatiguer plus qu'une semaine tout en repos (${fatigueIntense} vs ${fatigueDouce})`);
+  assert.strictEqual(fatigueDouce, 0, 'une semaine entièrement au repos ne fatigue personne');
+});
+
+test('semaine d\'entraînement : la progression est DIFFÉRENCIÉE (âge, potentiel, fatigue, temps de jeu)', () => {
+  // Les facteurs eux-mêmes, d'abord : ils portent toute la différenciation.
+  assert.strictEqual(RMClub.facteurAge(33), 0, 'passé 32 ans, plus de développement');
+  assert.ok(RMClub.facteurAge(19) > RMClub.facteurAge(27), 'un jeune progresse plus vite qu\'un joueur mûr');
+  assert.ok(RMClub.facteurFatigue(85) < RMClub.facteurFatigue(10), 'un joueur cuit retient moins de la séance');
+  assert.ok(RMClub.facteurTempsDeJeu(10) > RMClub.facteurTempsDeJeu(0), 'le temps de jeu réel accélère la progression');
+
+  // Puis le résultat concret : avec un rng toujours favorable, un joueur de
+  // 34 ans ne progresse JAMAIS, un joueur déjà à son potentiel non plus.
+  const rngFavorable = () => 0;
+  const base = { poste: 'P', endurance: 60, matchsJoues: 5, fatigue: 0, puissance: 50, blessureJournees: 0 };
+  const jeune = Object.assign({ id: 'a', nom: 'Jeune', age: 20, potentiel: 90 }, base);
+  const veteran = Object.assign({ id: 'b', nom: 'Vétéran', age: 34, potentiel: 90 }, base);
+  const auPlafond = Object.assign({ id: 'c', nom: 'Plafond', age: 24, potentiel: 50 }, base);
+  const partant = Object.assign({ id: 'd', nom: 'Partant', age: 22, potentiel: 90, veutPartir: true }, base);
+  const blesse = Object.assign({ id: 'e', nom: 'Blessé', age: 22, potentiel: 90 }, base, { blessureJournees: 5 });
+  const progressions = RMClub.appliquerSeance(rngFavorable, [jeune, veteran, auPlafond, partant, blesse], 'physique', 1, 1);
+  const noms = progressions.map((p) => p.nom);
+  assert.ok(noms.indexOf('Jeune') !== -1, 'un jeune sous son potentiel doit progresser');
+  assert.strictEqual(noms.indexOf('Vétéran'), -1, 'un joueur de 34 ans ne progresse plus');
+  assert.strictEqual(noms.indexOf('Plafond'), -1, 'un joueur déjà à son potentiel ne progresse plus');
+  assert.strictEqual(noms.indexOf('Partant'), -1, 'un joueur qui veut partir ne se donne plus à l\'entraînement');
+  assert.strictEqual(noms.indexOf('Blessé'), -1, 'un blessé s\'occupe de se soigner, pas de s\'entraîner');
+  assert.strictEqual(blesse.fatigue, 0, 'un blessé n\'encaisse pas non plus la charge de la séance');
+  assert.ok(jeune.puissance > 50, 'la valeur affichée dans la fiche joueur bouge réellement');
+  assert.ok(jeune.puissance <= jeune.potentiel, 'jamais au-delà du potentiel individuel');
+});
+
+test('semaine d\'entraînement : une séance ne développe que les postes concernés', () => {
+  const rngFavorable = () => 0;
+  const commun = { age: 22, potentiel: 95, endurance: 60, matchsJoues: 5, fatigue: 0, melee: 50, blessureJournees: 0 };
+  const pilier = Object.assign({ id: 'p', nom: 'Pilier', poste: 'P' }, commun);
+  const ailier = Object.assign({ id: 'a', nom: 'Ailier', poste: 'AI' }, commun);
+  const progressions = RMClub.appliquerSeance(rngFavorable, [pilier, ailier], 'melee', 1, 1);
+  assert.deepStrictEqual(progressions.map((p) => p.nom), ['Pilier'], 'seuls les avants travaillent la mêlée');
+  assert.strictEqual(ailier.melee, 50, 'l\'ailier ne gagne rien en mêlée');
+  // Mais il encaisse quand même la charge : il court aussi à l'entraînement.
+  assert.ok(ailier.fatigue > 0, 'toute l\'équipe encaisse la charge de la séance, même hors poste concerné');
+});
+
+test('semaine d\'entraînement : un programme individuel remplace la séance du jour', () => {
+  const commun = { age: 22, potentiel: 95, endurance: 60, matchsJoues: 5, fatigue: 0, blessureJournees: 0 };
+  const suitLeGroupe = Object.assign({ id: 'g', nom: 'Groupe', poste: 'AR', jeuPied: 50 }, commun);
+  const individuel = Object.assign({ id: 'i', nom: 'Individuel', poste: 'AR', jeuPied: 50, entrainementIndividuel: 'pied' }, commun);
+  const groupes = RMClub.repartirParActivite([suitLeGroupe, individuel], 'melee');
+  assert.deepStrictEqual(groupes.melee.map((j) => j.nom), ['Groupe']);
+  assert.deepStrictEqual(groupes.pied.map((j) => j.nom), ['Individuel']);
+  // Un jour de repos reste du repos pour TOUT le monde.
+  const groupesRepos = RMClub.repartirParActivite([suitLeGroupe, individuel], 'repos');
+  assert.strictEqual(groupesRepos.repos.length, 2, 'le repos ne se contourne pas avec un programme individuel');
+});
+
+test('scouting différé : le rapport n\'arrive qu\'à sa date, et fait alors RÉELLEMENT progresser la connaissance', () => {
+  const s = saisonPourJours(707, 'Test Scouting Différé');
+  const cible = s.marche[0];
+  const connaissanceAvant = cible.connaissance;
+  const budgetAvant = s.clubJoueur.budget;
+  const res = RMClub.commanderRapportScouting(s, cible.id, 1);
+  assert.ok(res.ok);
+  assert.ok(res.delai >= 2, 'un rapport prend un vrai délai');
+  assert.strictEqual(s.clubJoueur.budget, budgetAvant - res.cout, 'le déplacement est engagé immédiatement');
+  assert.strictEqual(cible.connaissance, connaissanceAvant, 'la connaissance ne bouge PAS avant la remise du rapport');
+  assert.ok(RMClub.rapportScoutingEnCours(s, cible.id), 'le rapport est bien en cours');
+  // Un second rapport sur le même joueur est refusé (pas de double débit).
+  const budgetApresCommande = s.clubJoueur.budget;
+  assert.strictEqual(RMClub.commanderRapportScouting(s, cible.id, 1).motif, 'deja_commande');
+  assert.strictEqual(s.clubJoueur.budget, budgetApresCommande, 'une commande refusée ne débite rien');
+  // La veille : toujours rien.
+  RMClub.avancerJusquA(s, RMClub.ajouterJours(res.dateRemise, -1));
+  assert.strictEqual(cible.connaissance, connaissanceAvant, 'rien ne doit arriver avant la date de remise');
+  // Le jour dit : la connaissance grimpe et un message réel le signale.
+  const messagesAvant = s.clubJoueur.messages.length;
+  RMClub.avancerJusquA(s, res.dateRemise);
+  assert.ok(cible.connaissance > connaissanceAvant, 'la connaissance doit réellement augmenter à la remise');
+  assert.strictEqual(s.clubJoueur.messages.length, messagesAvant + 1);
+  assert.ok(s.clubJoueur.messages[0].corps.includes(cible.nom));
+  assert.strictEqual(RMClub.rapportScoutingEnCours(s, cible.id), null, 'le rapport remis ne reste pas en attente');
+});
+
+test('scouting différé : un meilleur recruteur rend son rapport plus vite', () => {
+  const lent = saisonPourJours(708, 'Recruteur Lent');
+  const rapide = saisonPourJours(709, 'Recruteur Rapide');
+  const a = RMClub.commanderRapportScouting(lent, lent.marche[0].id, 1);
+  const b = RMClub.commanderRapportScouting(rapide, rapide.marche[0].id, 2);
+  assert.ok(b.delai < a.delai, `un bon recruteur doit être plus rapide (${b.delai} vs ${a.delai})`);
+  assert.ok(b.cout < a.cout, 'et moins cher');
+});
+
+test('décisions datées : une demande non tranchée dans les délais vaut refus, avec la même conséquence réelle', () => {
+  const s = saisonPourJours(710, 'Test Décision Datée');
+  const joueur = s.clubJoueur.effectif[0];
+  joueur.moral = 70;
+  joueur.demandeTempsDeJeuEnAttente = true;
+  const echeance = RMClub.ajouterJours(RMClub.dateCourante(s), 4);
+  RMClub.ajouterMessage(s, 'joueur', 'Demande de temps de jeu', `${joueur.nom} veut jouer.`, {
+    type: 'tempsDeJeu', joueurId: joueur.id, resolu: false,
+    dateLimite: RMClub.dateISO(echeance),
+    options: [{ id: 'rassurer', libelle: 'Le rassurer' }, { id: 'ignorer', libelle: 'Ignorer sa demande' }],
+  });
+  const message = s.clubJoueur.messages[0];
+  // Avant l'échéance : rien ne se passe, la décision reste au manager.
+  RMClub.avancerJusquA(s, RMClub.ajouterJours(echeance, -1));
+  assert.strictEqual(message.decision.resolu, false, 'la décision reste ouverte tant que le délai court');
+  assert.strictEqual(joueur.moral, 70);
+  // À l'échéance : le silence vaut refus, avec la conséquence d'un refus.
+  RMClub.avancerJusquA(s, echeance);
+  assert.strictEqual(message.decision.resolu, true, 'la décision expirée doit être tranchée');
+  assert.strictEqual(message.decision.expiree, true);
+  assert.strictEqual(message.decision.choix, 'ignorer', 'le silence emprunte exactement le chemin du refus');
+  assert.ok(joueur.moral < 70, 'ignorer un joueur doit réellement lui coûter du moral');
+  assert.strictEqual(joueur.avertissementsIgnores, 1);
+  assert.strictEqual(joueur.demandeTempsDeJeuEnAttente, false);
+  assert.ok(message.decision.resultat.includes('pas répondu'));
+});
+
+test('décisions datées : une demande tranchée à temps n\'expire jamais ensuite', () => {
+  const s = saisonPourJours(711, 'Test Décision Tranchée');
+  const joueur = s.clubJoueur.effectif[0];
+  joueur.moral = 70;
+  joueur.demandeTempsDeJeuEnAttente = true;
+  RMClub.ajouterMessage(s, 'joueur', 'Demande de temps de jeu', `${joueur.nom} veut jouer.`, {
+    type: 'tempsDeJeu', joueurId: joueur.id, resolu: false,
+    dateLimite: RMClub.dateISO(RMClub.ajouterJours(RMClub.dateCourante(s), 3)),
+    options: [{ id: 'rassurer', libelle: 'Le rassurer' }, { id: 'ignorer', libelle: 'Ignorer sa demande' }],
+  });
+  const message = s.clubJoueur.messages[0];
+  RMClub.resoudreDecisionMessage(s, message.id, 'rassurer');
+  const moralApres = joueur.moral;
+  assert.ok(moralApres > 70, 'rassurer améliore réellement le moral');
+  RMClub.avancerJusquA(s, RMClub.ajouterJours(RMClub.dateCourante(s), 10));
+  assert.strictEqual(message.decision.choix, 'rassurer', 'une décision déjà tranchée ne doit jamais être réécrite par l\'expiration');
+  assert.ok(!message.decision.expiree);
+  assert.strictEqual(joueur.avertissementsIgnores, undefined);
 });
 
 // --- 13) Pyramide française : le club du joueur débute en petite division
@@ -1760,6 +1966,7 @@ const clubCalendrierSrcPourRechargement = require('fs').readFileSync(require('pa
 const clubSauvegardeSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-sauvegarde.js'), 'utf8');
 const clubTempsSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-temps.js'), 'utf8');
 const clubAgendaSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-agenda.js'), 'utf8');
+const clubSemaineSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-semaine-entrainement.js'), 'utf8');
 const clubEvenementsSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-evenements.js'), 'utf8');
 function chargerInstanceFraicheClub() {
   const ctx = {};
@@ -1786,6 +1993,7 @@ function chargerInstanceFraicheClub() {
   new Function('window', clubSauvegardeSrcPourRechargement)(ctx);
   new Function('window', clubTempsSrcPourRechargement)(ctx);
   new Function('window', clubAgendaSrcPourRechargement)(ctx);
+  new Function('window', clubSemaineSrcPourRechargement)(ctx);
   new Function('window', clubEvenementsSrcPourRechargement)(ctx);
   return ctx.RMClub;
 }

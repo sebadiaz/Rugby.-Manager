@@ -78,6 +78,63 @@
     return { ok: true, connaissance: j.connaissance, cout };
   }
 
+  // --- Rapports de scouting DIFFÉRÉS (TODO_AUDIT.md P1-23) ----------------
+  // Un recruteur ne rend pas son rapport dans la seconde : il part observer
+  // le joueur et revient quelques jours plus tard. Commander un rapport
+  // débite le budget TOUT DE SUITE (le déplacement est engagé) mais la
+  // connaissance n'augmente qu'à la remise — c'est ce qui donne enfin un
+  // sens au calendrier côté recrutement. Un bon recruteur va plus vite.
+  const DELAI_SCOUTING_JOURS = 5;
+
+  function commanderRapportScouting(saison, joueurId, facteurRecruteur) {
+    const RMClub = global.RMClub;
+    const fr = facteurRecruteur != null ? facteurRecruteur : 1;
+    const cout = Math.max(3, Math.round(COUT_SCOUTING / fr));
+    const j = saison.marche.find((x) => x.id === joueurId);
+    if (!j) return { ok: false, motif: 'introuvable' };
+    if (j.connaissance >= 100) return { ok: false, motif: 'deja_complet' };
+    if (!Array.isArray(saison.rapportsScouting)) saison.rapportsScouting = [];
+    if (saison.rapportsScouting.some((r) => r.joueurId === joueurId)) return { ok: false, motif: 'deja_commande' };
+    if (saison.clubJoueur.budget < cout) return { ok: false, motif: 'budget' };
+    saison.clubJoueur.budget -= cout;
+    const delai = Math.max(2, Math.round(DELAI_SCOUTING_JOURS / fr));
+    const remise = RMClub.ajouterJours(RMClub.dateCourante(saison), delai);
+    saison.rapportsScouting.push({
+      joueurId, nom: j.nom, cout, delai,
+      gain: Math.round(30 * fr),
+      dateRemise: RMClub.dateISO(remise),
+    });
+    return { ok: true, cout, delai, dateRemise: remise };
+  }
+
+  // Remet les rapports arrivés à échéance : la connaissance augmente
+  // RÉELLEMENT (les vraies statistiques du joueur deviennent visibles, cf.
+  // statsApparentes) et un message le signale. Un joueur qui a quitté le
+  // marché entre-temps voit son rapport simplement annulé — jamais un
+  // rapport fantôme conservé indéfiniment.
+  function remettreRapportsScouting(saison, date) {
+    const RMClub = global.RMClub;
+    if (!Array.isArray(saison.rapportsScouting) || !saison.rapportsScouting.length) return [];
+    const remis = [];
+    const restants = [];
+    for (const r of saison.rapportsScouting) {
+      const echeance = RMClub.dateDepuisISO(r.dateRemise);
+      if (!echeance || RMClub.comparerDates(date, echeance) < 0) { restants.push(r); continue; }
+      const j = saison.marche.find((x) => x.id === r.joueurId);
+      if (!j) continue; // joueur parti du marché : rapport caduc
+      j.connaissance = Math.min(100, (j.connaissance || 0) + r.gain);
+      remis.push({ nom: j.nom, connaissance: j.connaissance });
+      global.RMClub.ajouterMessage(saison, 'transfert', 'Rapport de scouting',
+        `Ton recruteur a rendu son rapport sur ${j.nom} : connaissance du joueur portée à ${j.connaissance} %.`);
+    }
+    saison.rapportsScouting = restants;
+    return remis;
+  }
+
+  function rapportScoutingEnCours(saison, joueurId) {
+    return (saison.rapportsScouting || []).find((r) => r.joueurId === joueurId) || null;
+  }
+
   // Prime de signature (Mode Club) : frais d'arrivée réels en plus de
   // l'indemnité de transfert (agent, prime à la signature), proportionnelle
   // au salaire — un transfert ne coûte pas QUE l'indemnité, comme en vrai.
@@ -147,6 +204,7 @@
   global.RMClub = Object.assign(global.RMClub || {}, {
     genererJoueurLibre, genererMarcheTransferts,
     statsApparentes, estimationEtoiles, scouterJoueur, COUT_SCOUTING,
+    DELAI_SCOUTING_JOURS, commanderRapportScouting, remettreRapportsScouting, rapportScoutingEnCours,
     calculerPrimeSignature, signerJoueur, libererJoueur, basculerFavori,
   });
 })(window);

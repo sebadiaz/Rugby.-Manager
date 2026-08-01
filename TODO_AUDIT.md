@@ -697,6 +697,33 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 **Tranches suivantes.** 3 : semaine d'entraînement, rapports de scouts différés, décisions et contrats datés. 4 : préparation complète de la rencontre, fenêtres de transfert, événements de direction et de vestiaire.
 
+### P1-23. Semaine d'entraînement, scouting différé et décisions datées — tranche 3 de la carrière calendaire
+- **Statut : CORRIGÉ (tranche 3/4)**
+- Priorité : P1 (découpage imposé par l'utilisateur : « Tranche 3 : semaine d'entraînement ; rapports de scouts différés ; décisions et contrats datés. »)
+- Fichiers concernés : `docs/js/club-semaine-entrainement.js` (**nouveau**), `docs/js/club-evenements.js`, `docs/js/club-transferts.js`, `docs/js/club-decisions.js`, `docs/js/clubUI.js`, `docs/index.html`, `docs/css/style.css`, tests
+
+**Le problème.** Un unique « programme collectif » s'appliquait une fois par match, à tout l'effectif, **de la même façon** : un joueur de 19 ans très en dessous de son potentiel progressait exactement comme un cadre de 30 ans, frais ou épuisé. Le scouting était instantané (cliquer = tout savoir sur-le-champ). Et une demande de temps de jeu pouvait rester ouverte indéfiniment sans aucune conséquence : ne rien décider était strictement gratuit.
+
+**Semaine d'entraînement.** Huit activités (repos, récupération, physique, mêlée, touche, défense, attaque, jeu au pied), une par jour, appliquées à **chaque journée écoulée**. Chacune porte deux effets réels et opposés : une `intensite` (charge de fatigue) et un multiplicateur de `recuperation`. Il n'existe donc pas de semaine optimale universelle — c'est un arbitrage, qui dépend du calendrier et de l'état de l'effectif. Un jour de match du premier XV **n'a pas de séance** : le match EST la charge du jour (y ajouter un entraînement compterait deux fois).
+
+**Progression réellement différenciée** — cinq facteurs se combinent, au lieu d'un tirage uniforme :
+- l'**âge** (plus rien après 32 ans, ×1,5 avant 21) ;
+- la **marge jusqu'au potentiel** (aucune progression au plafond) ;
+- la **fatigue du jour** (×0,25 au-delà de 80 : un joueur cuit ne retient rien) ;
+- le **temps de jeu réel** (`matchsJoues`) ;
+- la qualité de l'**entraîneur** (personnel).
+Un blessé ne s'entraîne pas et n'encaisse pas la charge ; un joueur qui veut partir ne se donne plus ; une séance ne développe que les postes concernés — mais **tout le monde encaisse la charge** (un ailier court aussi pendant la séance de mêlée). Le programme individuel d'un joueur remplace la séance du jour, sauf les jours de repos.
+
+**Scouting différé.** `commanderRapportScouting` engage le budget immédiatement (le déplacement est payé) mais la connaissance n'augmente qu'à la **remise du rapport**, quelques jours plus tard — un bon recruteur va plus vite et coûte moins cher. Le marché signale les rapports en cours avec leur date de remise, et un second rapport sur le même joueur est refusé sans double débit.
+
+**Décisions datées.** Une demande de temps de jeu porte désormais une `dateLimite` affichée dans la boîte de réception. Passée l'échéance, le silence **vaut refus** — et emprunte exactement le même chemin que le refus explicite (`resoudreDecisionMessage(..., 'ignorer')`), donc aucune règle parallèle ne peut diverger. Ne rien décider a maintenant un coût réel.
+
+**Portée volontairement limitée sur les contrats.** Les *décisions* sont datées ; la **négociation** de contrat, elle, reste synchrone. La rendre asynchrone (proposer un salaire, attendre plusieurs jours la réponse du joueur) touche le flux de fenêtres modales existant et mérite d'être traitée avec les autres échanges de vestiaire — c'est renvoyé à la tranche 4, explicitement, plutôt qu'à moitié fait ici.
+
+**Critères de validation.**
+- `server/test-parcours-club.js` : 113/113 — dont 10 nouveaux tests (sept jours porteurs d'une activité connue, refus d'une activité inconnue, reprise de l'ancien programme collectif ; pas de séance un jour de match ; **une semaine intense fatigue réellement, une semaine de repos non** ; progression différenciée vérifiée facteur par facteur ET sur des cas concrets — 34 ans, joueur au plafond, joueur qui veut partir, blessé ; restriction par poste avec charge quand même encaissée ; programme individuel ; **rapport de scouting qui n'arrive qu'à sa date**, refus du double débit, recruteur plus rapide ; **décision expirée traitée comme un refus**, décision déjà tranchée jamais réécrite).
+- `server/test-parcours-navigateur.js` : semaine de 7 jours distincts avec le jour courant mis en évidence, modification persistée, arbitrage fatigue vérifié dans le navigateur, commande de rapport qui débite sans révéler, remise à la date avec message réel, échéance de décision affichée puis expiration avec perte de moral réelle.
+
 ### P2-10. Découper club.js et clubUI.js par domaine (sans changement de comportement)
 - **Statut : EN COURS (tranche 1 : Personnel, tranche 2 : Objectif de saison, tranche 3 : Analyse adversaire, tranche 4 : Prêts, tranche 5 : Contrats, tranche 6 : Équipe B, tranche 7 : Transferts national, tranche 8 : Transferts internationaux, tranche 9 : Effectif étendu, tranche 10 : Centre de formation, tranche 11 : Composition et tactique, tranche 12 : Condition physique des joueurs, tranche 13 : Génération de club/pyramide, tranche 14 : Calendrier et classement, tranche 15 : Sauvegarde et migration — voir constat de risque et tranches suivantes ci-dessous)**
 - Priorité : P2 (maintenabilité — explicitement demandée par l'utilisateur malgré la tension avec la règle CLAUDE.md "jamais un patch purement technique si le gameplay ne s'améliore pas visiblement")

@@ -25,6 +25,10 @@
   const SEUIL_JOURS_SANS_SELECTION = 3;
   // Nombre de demandes ignorées avant qu'un joueur ne veuille quitter le club.
   const SEUIL_AVERTISSEMENTS_AVANT_DEPART = 2;
+  // Délai laissé au manager pour répondre à une demande (TODO_AUDIT.md
+  // P1-23) : au-delà, le joueur considère qu'on l'a ignoré. Le silence a
+  // donc un coût réel, comme un refus assumé.
+  const DELAI_REPONSE_DECISION_JOURS = 10;
 
   // Un joueur "mérite" une place s'il fait partie des 2 meilleurs de son
   // poste (même critère vitesse+plaquage que meilleurCandidatPourNumero,
@@ -65,12 +69,17 @@
       ) {
         j.demandeTempsDeJeuEnAttente = true;
         j.joursSansSelection = 0;
+        // Décision DATÉE (TODO_AUDIT.md P1-23) : un joueur n'attend pas
+        // indéfiniment une réponse. Passée l'échéance, le silence vaut
+        // refus — avec exactement les mêmes conséquences réelles.
+        const echeance = global.RMClub.ajouterJours(global.RMClub.dateCourante(saison), DELAI_REPONSE_DECISION_JOURS);
         global.RMClub.ajouterMessage(saison, 'joueur', 'Demande de temps de jeu',
           `${j.nom} (${j.poste}) n'a plus été sélectionné depuis plusieurs journées alors qu'il en a le niveau. Il vient te voir : il veut plus de temps de jeu.`,
           {
             type: 'tempsDeJeu',
             joueurId: j.id,
             resolu: false,
+            dateLimite: global.RMClub.dateISO(echeance),
             options: [
               { id: 'rassurer', libelle: 'Le rassurer' },
               { id: 'ignorer', libelle: 'Ignorer sa demande' },
@@ -112,8 +121,31 @@
     return true;
   }
 
+  // Résout automatiquement les décisions dont l'échéance est passée : le
+  // silence du manager vaut refus. Réutilise EXACTEMENT le même chemin que
+  // le refus explicite (resoudreDecisionMessage) — aucune règle parallèle,
+  // donc aucune divergence possible entre « ignorer » et « ne rien faire ».
+  function resoudreDecisionsExpirees(saison, date) {
+    const RMClub = global.RMClub;
+    const expirees = [];
+    for (const m of saison.clubJoueur.messages || []) {
+      const d = m.decision;
+      if (!d || d.resolu || !d.dateLimite) continue;
+      const limite = RMClub.dateDepuisISO(d.dateLimite);
+      if (!limite || RMClub.comparerDates(date, limite) < 0) continue;
+      const joueur = (saison.clubJoueur.effectif || []).find((j) => j.id === d.joueurId);
+      if (resoudreDecisionMessage(saison, m.id, 'ignorer')) {
+        d.resultat = `Tu n'as pas répondu à temps : ${joueur ? joueur.nom : 'le joueur'} a pris ton silence pour un refus.`;
+        d.expiree = true;
+        expirees.push(joueur ? joueur.nom : null);
+      }
+    }
+    return expirees.filter(Boolean);
+  }
+
   global.RMClub = Object.assign(global.RMClub || {}, {
-    SEUIL_JOURS_SANS_SELECTION, SEUIL_AVERTISSEMENTS_AVANT_DEPART,
+    SEUIL_JOURS_SANS_SELECTION, SEUIL_AVERTISSEMENTS_AVANT_DEPART, DELAI_REPONSE_DECISION_JOURS,
     estCandidatSelectionAttendue, appliquerFrustrationTempsDeJeu, resoudreDecisionMessage,
+    resoudreDecisionsExpirees,
   });
 })(window);

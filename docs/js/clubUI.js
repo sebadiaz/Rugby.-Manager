@@ -373,20 +373,52 @@
   // programme (ce n'est pas une donnée manquante, c'est la réalité du club).
   // Pour un club adverse, le programme n'est honnêtement pas connu : on le
   // dit au lieu d'en fabriquer un.
+  // Semaine d'entraînement (TODO_AUDIT.md P1-23) : une ligne par jour, avec
+  // la séance choisie. Le jour de match du premier XV est signalé comme tel —
+  // il n'a pas de séance, le match EST la charge du jour.
+  const NOMS_JOURS_SEMAINE = [1, 2, 3, 4, 5, 6, 0]; // affichés du lundi au dimanche
+  function rafraichirSemaineEntrainement() {
+    const ctx = contexte();
+    const carte = document.getElementById('carteSemaineEntrainement');
+    const zone = document.getElementById('clubSemaineEntrainement');
+    if (!zone) return;
+    // Un club qu'on ne dirige pas n'a pas de semaine connue.
+    carte.style.display = ctx.modifiable ? '' : 'none';
+    if (!ctx.modifiable) return;
+    const semaine = RMClub.assurerSemaineEntrainement(saison);
+    const aujourdhui = RMClub.jourSemaine(RMClub.dateCourante(saison));
+    const options = Object.keys(RMClub.ACTIVITES_ENTRAINEMENT).map((cle) => {
+      const a = RMClub.ACTIVITES_ENTRAINEMENT[cle];
+      return { cle, libelle: `${a.icone} ${a.label}` };
+    });
+    zone.innerHTML = NOMS_JOURS_SEMAINE.map((jour) => {
+      const activite = RMClub.ACTIVITES_ENTRAINEMENT[semaine[jour]];
+      const estAujourdhui = jour === aujourdhui;
+      const opts = options.map((o) =>
+        `<option value="${o.cle}"${o.cle === semaine[jour] ? ' selected' : ''}>${echapperHTML(o.libelle)}</option>`).join('');
+      return `<div class="ligneSeance${estAujourdhui ? ' aujourdhui' : ''}">` +
+        `<span class="jourSeance">${echapperHTML(RMClub.NOMS_JOURS[jour])}${estAujourdhui ? ' · aujourd\'hui' : ''}</span>` +
+        `<select data-jour="${jour}">${opts}</select>` +
+        `<span class="effetSeance">${echapperHTML(activite.description)}</span></div>`;
+    }).join('');
+  }
+
   function rafraichirEntrainement() {
     const ctx = contexte();
     const zone = document.getElementById('clubEntrainement');
-    if (ctx.entrainementFocus == null) {
-      zone.innerHTML = `<p class="noteLectureSeule">🔒 Le programme d'entraînement de ${echapperHTML(ctx.label)} n'est pas connu : un club que tu ne diriges pas ne communique pas ses séances. Seule la marge de progression de ses joueurs, ci-dessous, est observable.</p>`;
+    if (!ctx.modifiable) {
+      zone.innerHTML = `<p class="noteLectureSeule">🔒 Les séances de ${echapperHTML(ctx.label)} ne sont pas connues : un club que tu ne diriges pas ne communique pas son travail de la semaine. Seule la marge de progression de ses joueurs, ci-dessous, est observable.</p>`;
       return;
     }
-    const actuel = ctx.entrainementFocus;
-    const inactif = ctx.modifiable ? '' : ' disabled';
-    document.getElementById('clubEntrainement').innerHTML = Object.keys(RMClub.ENTRAINEMENTS).map((cle) => {
-      const p = RMClub.ENTRAINEMENTS[cle];
-      const choisi = cle === actuel ? ' choisie' : '';
-      const postes = p.postes ? p.postes.map((x) => POSTE_COMPLET[x] || x).join(', ') : 'Tout l\'effectif';
-      return `<button class="ligneTactique${choisi}" data-focus="${cle}"${inactif}><b>${p.label}</b><span>${p.description}</span><span style="display:block;margin-top:4px;color:var(--text-faint);font-size:11px;">Concerne : ${postes}</span></button>`;
+    // Détail de ce que chaque séance développe RÉELLEMENT — informatif, pas
+    // un second sélecteur : c'est la semaine ci-dessus qui décide.
+    zone.innerHTML = Object.keys(RMClub.ACTIVITES_ENTRAINEMENT).map((cle) => {
+      const a = RMClub.ACTIVITES_ENTRAINEMENT[cle];
+      const postes = !a.attributs.length ? 'Aucune progression (récupération)'
+        : (a.postes ? a.postes.map((x) => POSTE_COMPLET[x] || x).join(', ') : 'Tout l\'effectif');
+      const charge = a.intensite > 0 ? `Charge : +${a.intensite} de fatigue` : `Récupération ×${a.recuperation}`;
+      return `<div class="ligneJoueur"><span>${a.icone} <b>${echapperHTML(a.label)}</b><span style="display:block;color:var(--text-faint);font-size:11px;">Concerne : ${postes}</span></span>` +
+        `<b style="white-space:nowrap;">${charge}</b></div>`;
     }).join('');
   }
 
@@ -762,6 +794,7 @@
     rafraichirBanc();
     rafraichirEncadrement();
     rafraichirTactique();
+    rafraichirSemaineEntrainement();
     rafraichirEntrainement();
     rafraichirJeunes();
     rafraichirClassement();
@@ -1136,7 +1169,12 @@
     function decisionHTML(m) {
       if (!m.decision) return '';
       if (m.decision.resolu) return `<span class="decisionMessageResultat">${m.decision.resultat || ''}</span>`;
-      return `<span class="decisionMessageActions">${m.decision.options.map((o) =>
+      // Décision DATÉE (TODO_AUDIT.md P1-23) : le joueur n'attend pas
+      // indéfiniment — passée l'échéance, le silence vaut refus.
+      const limite = m.decision.dateLimite ? RMClub.dateDepuisISO(m.decision.dateLimite) : null;
+      const echeance = limite
+        ? `<span class="echeanceDecision">⏳ Réponse attendue avant le ${echapperHTML(RMClub.formaterDateCourte(limite))}</span>` : '';
+      return echeance + `<span class="decisionMessageActions">${m.decision.options.map((o) =>
         `<button class="alt btnDecisionMessage" data-msg="${m.id}" data-option="${o.id}">${o.libelle}</button>`
       ).join('')}</span>`;
     }
@@ -1665,9 +1703,12 @@
     const ligneStats = stats.complet
       ? `Vit.${stats.vitesse}/Plaq.${stats.plaquage}`
       : `${etoiles} <span title="Rapport de scout incomplet, chiffres approximatifs">(estimation)</span>`;
+    const rapportEnCours = RMClub.rapportScoutingEnCours(saison, j.id);
     const boutonScout = stats.complet
       ? ''
-      : `<button class="alt btnScouter" data-joueur="${j.id}"${c.budget >= RMClub.COUT_SCOUTING ? '' : ' disabled'}>🔍 Scouter (${RMClub.COUT_SCOUTING} k€)</button>`;
+      : rapportEnCours
+        ? `<span class="rapportEnCours" title="Rapport commandé, en cours de rédaction">🔍 Rapport le ${echapperHTML(RMClub.formaterDateCourte(RMClub.dateDepuisISO(rapportEnCours.dateRemise)))}</span>`
+        : `<button class="alt btnScouter" data-joueur="${j.id}"${c.budget >= RMClub.COUT_SCOUTING ? '' : ' disabled'}>🔍 Scouter (${RMClub.COUT_SCOUTING} k€)</button>`;
     const enComparaison = selectionComparaison.has(j.id) ? ' checked' : '';
     return `<div class="ligneMarche"><label class="caseComparaison" title="Ajouter à la comparaison"><input type="checkbox" class="caseComparerJoueur" data-joueur="${j.id}"${enComparaison}></label>` +
       `<span class="infosJoueur"><b>${j.nom}</b><span>${POSTE_COMPLET[j.poste] || j.poste} · ${j.age} ans · ${ligneStats}</span></span>` +
@@ -2253,12 +2294,18 @@
       setTimeout(() => { marcheActionVerrouillee = false; }, 1500);
     }
     if (e.target.classList.contains('btnScouter')) {
-      // Le recruteur (personnel) réduit le coût et augmente le gain de
-      // connaissance par action — cf. RMClub.effetPersonnel.
-      const res = RMClub.scouterJoueur(saison, id, RMClub.effetPersonnel(saison, 'recruteur'));
-      if (!res.ok) { toast('Budget insuffisant pour financer ce repérage.', 'erreur'); return; }
+      // Rapport DIFFÉRÉ (TODO_AUDIT.md P1-23) : le recruteur part observer le
+      // joueur et rend son rapport quelques jours plus tard. Le budget est
+      // engagé tout de suite, la connaissance n'augmente qu'à la remise.
+      const res = RMClub.commanderRapportScouting(saison, id, RMClub.effetPersonnel(saison, 'recruteur'));
+      if (!res.ok) {
+        toast(res.motif === 'deja_commande'
+          ? 'Un rapport est déjà en cours sur ce joueur.'
+          : 'Budget insuffisant pour financer ce repérage.', 'erreur');
+        return;
+      }
       sauvegarder();
-      toast(`🔍 Rapport de scouting affiné (connaissance ${res.connaissance}%)`);
+      toast(`🔍 Recruteur envoyé — rapport attendu le ${RMClub.formaterDateCourte(res.dateRemise)} (${res.cout} k€)`);
       rafraichirMarche();
       rafraichirTopBarInfos();
       rafraichirStatutEffectif();
@@ -2326,16 +2373,17 @@
 
   // --- Entraînement : programme choisi, appliqué à chaque journée jouée
   // (cf. onResultat) ---
-  document.getElementById('clubEntrainement').addEventListener('click', (e) => {
-    const bouton = e.target.closest('[data-focus]');
+  // Semaine d'entraînement : le programme est celui du CLUB (un seul staff
+  // pour ses 3 équipes), modifiable jusqu'au début de la journée concernée.
+  document.getElementById('clubSemaineEntrainement').addEventListener('change', (e) => {
+    const jour = e.target.dataset.jour;
     const ctx = contexte();
-    if (!bouton || !ctx.modifiable) return;
-    // Le programme est celui du CLUB (un seul staff pour ses 3 équipes) :
-    // le modifier depuis n'importe laquelle d'entre elles est cohérent.
-    saison.clubJoueur.entrainementFocus = bouton.dataset.focus;
+    if (jour == null || !ctx.modifiable) return;
+    RMClub.definirSeance(saison, Number(jour), e.target.value);
     sauvegarder();
-    toast(`✅ Programme d'entraînement mis à jour : ${bouton.querySelector('b') ? bouton.querySelector('b').textContent : bouton.dataset.focus}`);
-    rafraichirEntrainement();
+    const a = RMClub.ACTIVITES_ENTRAINEMENT[e.target.value];
+    toast(`✅ ${RMClub.NOMS_JOURS[Number(jour)]} : ${a.icone} ${a.label}`);
+    rafraichirSemaineEntrainement();
   });
 
   // --- Fin de saison : vieillissement, fin de contrats, retraites, recrues,
@@ -2509,7 +2557,6 @@
             RMClub.faireProgresserBlessures(creerRng(graineAleatoire()), saison.clubJoueur.effectif, compositionAvecRemplacants, RMClub.effetPersonnel(saison, 'medecin'), saison);
             RMClub.appliquerFatigue(saison.clubJoueur.effectif, compositionAvecRemplacants, 1 / RMClub.effetPersonnel(saison, 'preparateur'));
             RMClub.appliquerMoral(saison.clubJoueur.effectif, compositionAvecRemplacants, forme);
-            RMClub.appliquerEntrainement(creerRng(graineAleatoire()), saison.clubJoueur.effectif, saison.clubJoueur.entrainementFocus, RMClub.effetPersonnel(saison, 'entraineur'));
             RMClub.appliquerFrustrationTempsDeJeu(saison, compositionUtilisee, saison.clubJoueur.compositionBanc);
             sauvegarder();
             // La journée est résolue : relâche le verrou anti-double-action

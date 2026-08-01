@@ -358,9 +358,17 @@
         <div class="voletOnglet" data-volet="entrainement" style="display:none;">
           <div class="enTetePage"><span class="categoriePage">Équipes</span><h2>Entraînement</h2><p>Programme collectif et développement des jeunes joueurs de l'équipe sélectionnée.</p></div>
           <div class="emplacementSelecteurEquipe"></div>
-          <div class="carteClub">
-            <h3>🏋️ Programme d'entraînement</h3>
-            <p style="font-size:12px;color:var(--text-dim);margin:0 0 12px;">Appliqué à chaque journée jouée : fait progresser les attributs concernés des joueurs encore sous leur potentiel (jusqu'à 32 ans), en priorité les jeunes.</p>
+          <!-- Semaine d'entraînement (TODO_AUDIT.md P1-23) : une activité par
+               jour, appliquée RÉELLEMENT chaque jour écoulé. Le jour de match
+               n'a pas de séance (le match est la charge du jour). -->
+          <div class="carteClub" id="carteSemaineEntrainement">
+            <h3>🗓️ Semaine d'entraînement</h3>
+            <p style="font-size:12px;color:var(--text-dim);margin:0 0 12px;">Une séance par jour, appliquée à chaque journée écoulée. Une séance intense fait progresser mais fatigue ; le repos rafraîchit sans rien développer. Modifiable jusqu'au début de la journée concernée.</p>
+            <div id="clubSemaineEntrainement"></div>
+          </div>
+          <div class="carteClub" id="carteEntrainementDetail">
+            <h3>🏋️ Effet des séances</h3>
+            <p style="font-size:12px;color:var(--text-dim);margin:0 0 12px;">Deux joueurs ne progressent jamais pareil : l'âge, la marge restant jusqu'au potentiel, la fatigue du jour, le temps de jeu réel et la qualité de l'entraîneur pèsent tous.</p>
             <div id="clubEntrainement"></div>
           </div>
           <div class="carteClub">
@@ -673,6 +681,7 @@
 <script src="js/club-composition.js"></script>
 <script src="js/club-temps.js"></script>
 <script src="js/club-agenda.js"></script>
+<script src="js/club-semaine-entrainement.js"></script>
 <script src="js/club-evenements.js"></script>
 <script src="js/club-equipes.js"></script>
 <script src="js/club-condition-joueurs.js"></script>

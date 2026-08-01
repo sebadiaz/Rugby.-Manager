@@ -93,14 +93,40 @@
     const facteurPreparateur = 1 / RMClub.effetPersonnel(saison, 'preparateur');
     const facteurMedecin = RMClub.effetPersonnel(saison, 'medecin');
 
+    // Séance du jour (TODO_AUDIT.md P1-23) : elle module la récupération —
+    // une journée de repos régénère bien plus qu'une séance physique — et
+    // fait réellement progresser certains joueurs, jamais tout l'effectif de
+    // la même façon (cf. club-semaine-entrainement.js). Un jour de match du
+    // premier XV n'a pas de séance : le match EST la charge du jour.
+    const cleSeance = RMClub.seancePourDate(saison, date);
+    const seance = cleSeance ? RMClub.ACTIVITES_ENTRAINEMENT[cleSeance] : null;
+    const facteurRecup = seance ? seance.recuperation : 1;
+    const facteurEntraineur = RMClub.effetPersonnel(saison, 'entraineur');
+
     let fatigueRecuperee = 0;
     const retablis = [];
     const retoursDePret = [];
+    const progressions = [];
     for (const effectif of effectifs) {
-      fatigueRecuperee += recupererFatigueDuJour(effectif, facteurPreparateur);
+      fatigueRecuperee += recupererFatigueDuJour(effectif, facteurPreparateur / facteurRecup);
+      if (cleSeance) {
+        // Programme individuel : un joueur peut travailler SON activité
+        // plutôt que celle du jour (cf. repartirParActivite).
+        const groupes = RMClub.repartirParActivite(effectif, cleSeance);
+        for (const cle of Object.keys(groupes)) {
+          for (const p of RMClub.appliquerSeance(rng, groupes[cle], cle, facteurEntraineur, facteurPreparateur)) {
+            progressions.push(p);
+          }
+        }
+      }
       for (const j of soignerBlessuresDuJour(effectif, facteurMedecin)) retablis.push(j);
       for (const j of progresserPretsDuJour(effectif)) retoursDePret.push(j);
     }
+
+    // Rapports de scouting arrivés à échéance et décisions non tranchées
+    // dans les délais : deux événements DATÉS, aux conséquences réelles.
+    const rapports = RMClub.remettreRapportsScouting(saison, date);
+    const decisionsExpirees = RMClub.resoudreDecisionsExpirees(saison, date);
 
     // Un retour de blessure ou de prêt change la composition disponible : le
     // manager doit l'apprendre. Message RÉEL, adossé à un changement réel.
@@ -115,7 +141,11 @@
 
     return {
       date: RMClub.dateISO(date),
+      seance: cleSeance,
       fatigueRecuperee,
+      progressions,
+      rapports,
+      decisionsExpirees,
       retablis: retablis.map((j) => j.nom),
       retoursDePret: retoursDePret.map((j) => j.nom),
       estJourDeMatch: !!opts.estJourDeMatch,
@@ -150,13 +180,19 @@
   function resumerJournees(journees) {
     const retablis = [];
     const retoursDePret = [];
+    const rapports = [];
+    const decisionsExpirees = [];
     let fatigueRecuperee = 0;
+    let nbProgressions = 0;
     for (const j of journees) {
       fatigueRecuperee += j.fatigueRecuperee;
+      nbProgressions += (j.progressions || []).length;
       for (const n of j.retablis) retablis.push(n);
       for (const n of j.retoursDePret) retoursDePret.push(n);
+      for (const r of j.rapports || []) rapports.push(r);
+      for (const d of j.decisionsExpirees || []) decisionsExpirees.push(d);
     }
-    return { nbJours: journees.length, fatigueRecuperee, retablis, retoursDePret };
+    return { nbJours: journees.length, fatigueRecuperee, nbProgressions, retablis, retoursDePret, rapports, decisionsExpirees };
   }
 
   global.RMClub = Object.assign(global.RMClub || {}, {
