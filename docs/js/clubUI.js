@@ -1210,16 +1210,19 @@
     carteComposition.style.display = '';
     carteClassement.style.display = '';
     carteCalendrier.style.display = '';
-    // Qui serait réellement aligné AUJOURD'HUI (réservistes non convoqués en
-    // 1er XV + centre de formation, cf. RMClub.effectifDisponiblePourEquipeB) —
-    // calculé en direct, jamais stocké séparément : c'est exactement le vivier
-    // utilisé par simulerRondeEquipeB, jamais une liste fictive. Audit :
-    // l'onglet Équipe B n'affichait avant qu'un classement/calendrier de
-    // clubs, jamais les joueurs réellement sélectionnés.
-    const vivierB = RMClub.effectifDisponiblePourEquipeB(saison);
+    // Qui serait RÉELLEMENT aligné AUJOURD'HUI — TODO_AUDIT.md P1-18 : depuis
+    // que l'Équipe B a son propre écran Composition/Tactique (sélecteur
+    // "Équipe gérée"), sa composition n'est plus systématiquement la
+    // "meilleure" recalculée à la volée — un choix manuel du joueur doit
+    // rester prioritaire. On lit donc le MÊME slot que celui réellement
+    // utilisé par simulerRondeEquipeB (cf. RMClub.assurerCompositionPourEquipe),
+    // jamais une composition parallèle qui pourrait diverger de ce qui se
+    // joue vraiment.
+    const vivierB = RMClub.effectifPourEquipe(saison, 'b');
     const parIdB = {};
     for (const j of vivierB) parIdB[j.id] = j;
-    const compoB = RMClub.meilleureComposition(vivierB);
+    const slotB = RMClub.assurerCompositionPourEquipe(saison, 'b');
+    const compoB = slotB.compositionTitulaires;
     const manquantsB = RMClub.validerComposition(compoB);
     const lignesCompoB = Object.keys(RMClub.POSTE_REQUIS).map((numero) => {
       const joueur = parIdB[compoB[numero]];
@@ -1231,7 +1234,8 @@
       ? `<p style="color:var(--loss);font-size:12px;">⚠️ Effectif insuffisant pour aligner une équipe B complète : poste(s) ${manquantsB.map((m) => POSTE_COMPLET[m.poste] || m.poste).join(', ')} non pourvu(s) aujourd'hui.</p>`
       : '';
     document.getElementById('clubEquipeBComposition').innerHTML =
-      `<p style="font-size:12px;color:var(--text-dim);">Vivier du jour : ${vivierB.length} joueur(s) disponible(s) (réservistes + centre de formation 🌱).</p>` +
+      `<p style="font-size:12px;color:var(--text-dim);">Vivier du jour : ${vivierB.length} joueur(s) disponible(s) (réservistes + centre de formation 🌱). ` +
+      `<a href="#" data-onglet="composition" class="lienEquipeBCompo">Modifier cette composition →</a></p>` +
       `<table class="tableauClub"><thead><tr><th>N°</th><th>Poste</th><th>Joueur</th></tr></thead><tbody>${lignesCompoB}</tbody></table>${avertissementB}`;
     const lignes = RMClub.classementTrieDe(compB.classement).map((r, i) => {
       const classe = estClubJoueur(r.clubId) ? ' class="ligneClubJoueur"' : '';
@@ -1616,6 +1620,18 @@
     const ligne = e.target.closest('.ligneAlerte');
     if (!ligne) return;
     basculerOnglet(ligne.dataset.onglet);
+  });
+
+  // Lien "Modifier cette composition" (onglet Équipe B, TODO_AUDIT.md P1-18) :
+  // bascule directement sur l'onglet Composition AVEC l'Équipe B déjà
+  // sélectionnée dans le sélecteur d'équipe gérée — pas juste l'onglet, la
+  // bonne équipe dedans.
+  document.getElementById('clubEquipeBComposition').addEventListener('click', (e) => {
+    const lien = e.target.closest('.lienEquipeBCompo');
+    if (!lien) return;
+    e.preventDefault();
+    changerEquipeGeree('b');
+    basculerOnglet('composition');
   });
 
   // --- Boîte de réception : marquer un message lu au clic, trancher une

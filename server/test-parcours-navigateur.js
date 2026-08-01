@@ -496,6 +496,48 @@ function optionsLancement() {
   const compoBTexte = await page.textContent('#clubEquipeBComposition');
   verifier('équipe B : la composition affichée contient bien 15 lignes de poste (une par numéro)',
     (compoBTexte.match(/Pilier|Talonneur|Deuxième ligne|Troisième ligne|Demi de mêlée|Ouverture|Ailier|Centre|Arrière/g) || []).length >= 15);
+
+  // 6c) Équipe gérée (TODO_AUDIT.md P1-18, correctif de cohérence) : la carte
+  // de composition de l'onglet Équipe B doit refléter le MÊME slot que celui
+  // réellement utilisé en match (cf. RMClub.assurerCompositionPourEquipe),
+  // pas une "meilleure équipe" recalculée à la volée qui pourrait diverger
+  // d'un choix manuel fait dans l'onglet Composition. Le lien "Modifier
+  // cette composition" doit aussi amener directement sur la bonne équipe.
+  verifier('équipe B : un lien "Modifier cette composition" est proposé dans la carte',
+    await page.isVisible('#clubEquipeBComposition .lienEquipeBCompo'));
+  await page.click('#clubEquipeBComposition .lienEquipeBCompo');
+  await page.waitForTimeout(200);
+  const ongletEtEquipeApresLien = await page.evaluate(() => ({
+    ongletVisible: document.querySelector('.voletOnglet[data-volet="composition"]').style.display !== 'none',
+    equipeGeree: JSON.parse(localStorage.getItem('rugbyManager.club.v1')).clubJoueur.equipeGeree,
+  }));
+  verifier('équipe B : le lien "Modifier cette composition" ouvre bien l\'onglet Composition avec l\'Équipe B déjà sélectionnée',
+    ongletEtEquipeApresLien.ongletVisible && ongletEtEquipeApresLien.equipeGeree === 'b');
+  // Choisit manuellement un remplaçant différent de l'auto-sélection pour le
+  // n°1 (pilier), si le vivier du jour en propose au moins 2.
+  const optionsN1 = await page.locator('#clubTerrain select[data-numero="1"] option').allTextContents();
+  const nbOptionsN1 = optionsN1.filter((t) => t.trim() && t.trim() !== '—').length;
+  if (nbOptionsN1 >= 2) {
+    const valeurAvant = await page.locator('#clubTerrain select[data-numero="1"]').inputValue();
+    const autreValeur = await page.evaluate((avant) => {
+      const sel = document.querySelector('#clubTerrain select[data-numero="1"]');
+      const opt = Array.from(sel.options).find((o) => o.value && o.value !== avant);
+      return opt ? opt.value : null;
+    }, valeurAvant);
+    if (autreValeur) {
+      await page.selectOption('#clubTerrain select[data-numero="1"]', autreValeur);
+      await page.waitForTimeout(200);
+      await clicOnglet('equipeb');
+      await page.waitForTimeout(200);
+      const idAffiche = await page.evaluate(() => {
+        const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
+        return s.clubJoueur.compositionsSecondaires.b.compositionTitulaires['1'];
+      });
+      verifier('équipe B : un choix manuel dans l\'onglet Composition se reflète bien dans la carte Équipe B (pas de composition parallèle)',
+        idAffiche === autreValeur);
+    }
+  }
+
   const rondesJoueesAvant = await page.evaluate(() => {
     const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
     return s.competitionB.calendrier.filter((f) => f.joue).length;
