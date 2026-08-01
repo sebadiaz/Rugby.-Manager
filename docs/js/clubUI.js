@@ -21,9 +21,6 @@
   // même onglet, sur un joueur repéré par son INDEX dans l'effectif adverse
   // (pas d'id stable requis pour un effectif IA non géré au jour le jour).
   let clubAdversaireAffiche = null;
-  // Index (dans l'effectif adverse) du joueur actuellement affiché dans sa
-  // fiche — sert à "Faire une offre de transfert" (cf. approcherJoueurAdverse).
-  let joueurAdversaireAfficheIndex = null;
   // Recommandations tactiques du dernier aperçu de match affiché (cf.
   // rafraichirApercuMatch/RMClub.recommanderTactique) — reprises telles
   // quelles par le bouton "Appliquer les recommandations", plutôt que de
@@ -304,14 +301,20 @@
   // Victoire/Nul/Défaite du point de vue du club du joueur. Un calendrier
   // complet fait aussi jouer les adversaires entre eux (cf. genererCalendrier) :
   // ces matchs-là n'ont pas de "forme" du point de vue du joueur (null).
-  function formeClubJoueur(f) {
-    if (!f.joue || !concerneClubJoueur(f)) return null;
-    const domicileEstJoueur = estClubJoueur(f.domicileId);
-    const pour = domicileEstJoueur ? f.score.domicile : f.score.exterieur;
-    const contre = domicileEstJoueur ? f.score.exterieur : f.score.domicile;
+  // Victoire/Nul/Défaite du point de vue d'UN club donné — généralisé pour
+  // que le calendrier affiche la forme de l'équipe SÉLECTIONNÉE, y compris
+  // un club adverse (TODO_AUDIT.md P1-19), avec exactement le même composant.
+  function formePourClub(f, clubId) {
+    if (!f.joue || (f.domicileId !== clubId && f.exterieurId !== clubId)) return null;
+    const domicile = f.domicileId === clubId;
+    const pour = domicile ? f.score.domicile : f.score.exterieur;
+    const contre = domicile ? f.score.exterieur : f.score.domicile;
     if (pour > contre) return 'v';
     if (pour < contre) return 'd';
     return 'n';
+  }
+  function formeClubJoueur(f) {
+    return concerneClubJoueur(f) ? formePourClub(f, saison.clubJoueur.id) : null;
   }
   const LIBELLE_FORME = { v: 'V', n: 'N', d: 'D' };
 
@@ -319,26 +322,32 @@
   // choix unique parmi des templates figés : le joueur compose sa tactique
   // comme les instructions d'équipe d'un vrai jeu de gestion. La boucle
   // s'adapte automatiquement au nombre d'axes définis côté modèle.
-  // Équipe gérée (TODO_AUDIT.md P1-18) : même écran pour le premier XV,
-  // l'Équipe B et les Espoirs — cf. RMClub.slotCompositionPourEquipe.
+  // Écran UNIQUE de tactique (TODO_AUDIT.md P1-19) : premier XV, Équipe B,
+  // Espoirs ou club adverse — mêmes 6 axes, même présentation, mêmes
+  // composants. Seule différence pour une équipe non dirigée : les boutons
+  // sont désactivés et la tactique affichée est DÉDUITE de ses attributs
+  // réels (cf. RMClub.deduireTactiqueAdverse), signalée comme telle plutôt
+  // que présentée comme un réglage certain.
   function rafraichirTactique() {
-    const equipe = saison.clubJoueur.equipeGeree || 'pro';
-    const slot = RMClub.slotCompositionPourEquipe(saison, equipe);
+    const ctx = contexte();
+    const slot = ctx.slot;
     if (!slot.tactique || typeof slot.tactique !== 'object') {
       const defauts = {};
       for (const axe of Object.keys(RMClub.AXES_TACTIQUE)) defauts[axe] = RMClub.AXES_TACTIQUE[axe].defaut;
       slot.tactique = defauts;
     }
-    const selEquipe = document.getElementById('selEquipeGereeTactique');
-    if (selEquipe && selEquipe.value !== equipe) selEquipe.value = equipe;
     const actuelle = slot.tactique;
-    document.getElementById('clubTactique').innerHTML = Object.keys(RMClub.AXES_TACTIQUE).map((axe) => {
+    const inactif = ctx.modifiable ? '' : ' disabled';
+    const enTete = ctx.tactiqueDeduite
+      ? `<p class="noteLectureSeule">🔍 Tactique <b>déduite</b> des attributs réels de l'effectif de ${echapperHTML(ctx.label)} — un club que tu ne diriges pas ne publie pas ses consignes.</p>`
+      : '';
+    document.getElementById('clubTactique').innerHTML = enTete + Object.keys(RMClub.AXES_TACTIQUE).map((axe) => {
       const infosAxe = RMClub.AXES_TACTIQUE[axe];
       const valeurActuelle = actuelle[axe] || infosAxe.defaut;
       const boutons = Object.keys(infosAxe.options).map((cle) => {
         const o = infosAxe.options[cle];
         const choisie = cle === valeurActuelle ? ' choisie' : '';
-        return `<button class="ligneTactique${choisie}" data-axe="${axe}" data-valeur="${cle}"><b>${o.nom}</b><span>${o.description}</span></button>`;
+        return `<button class="ligneTactique${choisie}" data-axe="${axe}" data-valeur="${cle}"${inactif}><b>${o.nom}</b><span>${o.description}</span></button>`;
       }).join('');
       const optionActuelle = infosAxe.options[valeurActuelle];
       const compromisActuel = optionActuelle && optionActuelle.compromis
@@ -351,21 +360,35 @@
   // RÉELLEMENT les attributs concernés à chaque journée jouée (cf.
   // RMClub.appliquerEntrainement, appelé depuis onResultat) — même mécanique
   // de sélection que la tactique (boutons ligneTactique). ---
+  // Écran UNIQUE d'entraînement (TODO_AUDIT.md P1-19), piloté par le même
+  // sélecteur d'équipe que les autres. Le staff et le programme collectif
+  // appartiennent au CLUB : les 3 équipes du joueur partagent donc le même
+  // programme (ce n'est pas une donnée manquante, c'est la réalité du club).
+  // Pour un club adverse, le programme n'est honnêtement pas connu : on le
+  // dit au lieu d'en fabriquer un.
   function rafraichirEntrainement() {
-    const actuel = saison.clubJoueur.entrainementFocus || 'physique';
+    const ctx = contexte();
+    const zone = document.getElementById('clubEntrainement');
+    if (ctx.entrainementFocus == null) {
+      zone.innerHTML = `<p class="noteLectureSeule">🔒 Le programme d'entraînement de ${echapperHTML(ctx.label)} n'est pas connu : un club que tu ne diriges pas ne communique pas ses séances. Seule la marge de progression de ses joueurs, ci-dessous, est observable.</p>`;
+      return;
+    }
+    const actuel = ctx.entrainementFocus;
+    const inactif = ctx.modifiable ? '' : ' disabled';
     document.getElementById('clubEntrainement').innerHTML = Object.keys(RMClub.ENTRAINEMENTS).map((cle) => {
       const p = RMClub.ENTRAINEMENTS[cle];
       const choisi = cle === actuel ? ' choisie' : '';
       const postes = p.postes ? p.postes.map((x) => POSTE_COMPLET[x] || x).join(', ') : 'Tout l\'effectif';
-      return `<button class="ligneTactique${choisi}" data-focus="${cle}"><b>${p.label}</b><span>${p.description}</span><span style="display:block;margin-top:4px;color:var(--text-faint);font-size:11px;">Concerne : ${postes}</span></button>`;
+      return `<button class="ligneTactique${choisi}" data-focus="${cle}"${inactif}><b>${p.label}</b><span>${p.description}</span><span style="display:block;margin-top:4px;color:var(--text-faint);font-size:11px;">Concerne : ${postes}</span></button>`;
     }).join('');
   }
 
   // Développement des jeunes : joueurs encore loin de leur potentiel (marge
-  // réelle > 8 points), triés par marge décroissante — priorité visible du
-  // programme d'entraînement en cours.
+  // réelle > 3 points), triés par marge décroissante — calculé sur l'effectif
+  // de l'équipe SÉLECTIONNÉE (y compris un club adverse : sa marge de
+  // progression se déduit de ses attributs réels, déjà consultables).
   function rafraichirJeunes() {
-    const effectif = saison.clubJoueur.effectif;
+    const effectif = contexte().effectif;
     const jeunes = effectif
       .filter((j) => j.age <= 24 && j.potentiel != null)
       .map((j) => ({ j, niveau: Math.round((j.vitesse + j.plaquage) / 2), marge: (j.potentiel || 0) - Math.round((j.vitesse + j.plaquage) / 2) }))
@@ -378,13 +401,19 @@
       : '<p>Aucun jeune joueur avec une marge de progression notable actuellement.</p>';
   }
 
-  function formaterLigneCalendrier(f) {
-    const domicile = nomClub(f.domicileId);
-    const exterieur = nomClub(f.exterieurId);
+  // Une seule fonction de ligne de calendrier pour TOUTES les compétitions
+  // (championnat principal, Équipe B, espoirs) et toutes les équipes : le
+  // club mis en avant est celui du contexte, pas systématiquement celui du
+  // joueur. `libelleExterieur` permet à une rencontre sans club adverse réel
+  // (académie espoirs, cf. RMClub.calendrierEspoirs) d'utiliser la même ligne.
+  function formaterLigneCalendrier(f, clubMisEnAvant) {
+    const cible = clubMisEnAvant || saison.clubJoueur.id;
+    const domicile = f.libelleDomicile ? echapperHTML(f.libelleDomicile) : nomClub(f.domicileId);
+    const exterieur = f.libelleExterieur ? echapperHTML(f.libelleExterieur) : nomClub(f.exterieurId);
     const score = f.joue ? `${f.score.domicile} - ${f.score.exterieur}` : 'à jouer';
-    const forme = formeClubJoueur(f);
+    const forme = formePourClub(f, cible);
     const badge = forme ? `<span class="badgeForme ${forme}">${LIBELLE_FORME[forme]}</span>` : '';
-    const classe = concerneClubJoueur(f) ? ' ligneClubJoueur' : '';
+    const classe = (f.domicileId === cible || f.exterieurId === cible) ? ' ligneClubJoueur' : '';
     return `<div class="ligneCalendrier${classe}"><span>J${f.journee} — ${domicile} vs ${exterieur}</span><span class="scoreCal">${badge}${score}</span></div>`;
   }
 
@@ -456,18 +485,34 @@
   // par 7 points ou moins — cf. RMClub.enregistrerResultatDans) affichés à
   // part de "Pts" plutôt que fondus dedans, pour que le joueur comprenne
   // toujours d'où vient chaque point du classement.
+  // Écran UNIQUE de classement (TODO_AUDIT.md P1-19) : championnat principal
+  // (premier XV ou club adverse — c'est la MÊME division, on met simplement
+  // en avant l'équipe sélectionnée), championnat Équipe B, ou bilan des
+  // espoirs. Même table, mêmes colonnes, mêmes règles de points — plus un
+  // tableau recopié par compétition.
   function rafraichirClassement() {
-    const lignes = RMClub.classementTrie(saison).map((r, i) => {
+    const ctx = contexte();
+    const titre = document.getElementById('titreClubClassement');
+    if (titre) titre.textContent = '🏆 ' + ctx.titreClassement;
+    const zone = document.getElementById('clubClassement');
+    if (!ctx.classement) {
+      zone.innerHTML = `<p>${echapperHTML(ctx.motifIndisponible || 'Aucun classement disponible pour cette équipe.')}</p>`;
+      return;
+    }
+    const lignes = RMClub.classementTrieDe(ctx.classement).map((r, i) => {
       const diff = r.pointsPour - r.pointsContre;
-      const classe = estClubJoueur(r.clubId) ? ' class="ligneClubJoueur"' : '';
+      const classe = r.clubId === ctx.clubId ? ' class="ligneClubJoueur"' : '';
       return `<tr${classe}><td>${i + 1}</td><td>${nomClub(r.clubId)}</td><td>${r.j}</td><td>${r.g}</td><td>${r.n}</td><td>${r.p}</td>` +
         `<td>${r.pointsPour}</td><td>${r.pointsContre}</td><td>${diff >= 0 ? '+' : ''}${diff}</td>` +
         `<td title="Bonus offensif (4 essais ou plus)">${r.bonusOffensifs || 0}</td>` +
         `<td title="Bonus défensif (défaite par 7 points ou moins)">${r.bonusDefensifs || 0}</td>` +
         `<td><b>${r.pts}</b></td></tr>`;
     }).join('');
-    document.getElementById('clubClassement').innerHTML =
-      `<table class="tableauClub"><thead><tr><th></th><th>Club</th><th>J</th><th>G</th><th>N</th><th>P</th><th>Pts+</th><th>Pts-</th><th>Diff</th><th title="Bonus offensif">BO</th><th title="Bonus défensif">BD</th><th>Pts</th></tr></thead><tbody>${lignes}</tbody></table>`;
+    const note = ctx.type === 'jeunes'
+      ? '<p style="font-size:11.5px;color:var(--text-faint);margin:8px 0 0;">Les espoirs disputent des rencontres amicales contre des académies adverses, pas un championnat à classement — voici donc leur bilan réel.</p>'
+      : '';
+    zone.innerHTML =
+      `<table class="tableauClub"><thead><tr><th></th><th>Club</th><th>J</th><th>G</th><th>N</th><th>P</th><th>Pts+</th><th>Pts-</th><th>Diff</th><th title="Bonus offensif">BO</th><th title="Bonus défensif">BD</th><th>Pts</th></tr></thead><tbody>${lignes}</tbody></table>${note}`;
   }
 
   function rafraichirMiniClassement() {
@@ -478,10 +523,103 @@
     }).join('');
   }
 
-  // Équipe gérée par les écrans Composition/Tactique (TODO_AUDIT.md P1-18) :
-  // premier XV, Équipe B ou Espoirs — MÊMES écrans pour les 3, cf.
-  // RMClub.assurerCompositionPourEquipe/effectifPourEquipe.
-  const LIBELLE_EQUIPE = { pro: 'Première équipe', b: 'Équipe B', jeunes: 'Espoirs' };
+  // --- Contexte d'équipe (TODO_AUDIT.md P1-19) -----------------------------
+  // TOUS les écrans de gestion d'équipe (composition, effectif, entraînement,
+  // tactique, calendrier/classement, personnel) lisent CE contexte et rien
+  // d'autre : premier XV, Équipe B, Espoirs ou n'importe quel club adverse
+  // passent donc par les mêmes fonctions de rendu, sans aucune branche par
+  // type d'équipe dans le corps des écrans (cf. docs/js/club-equipes.js).
+  // Une équipe non dirigée par le joueur (`modifiable: false`) utilise le
+  // même écran en lecture seule — jamais un écran parallèle.
+  function contexte() {
+    return RMClub.contexteEquipe(saison);
+  }
+
+  // Onglets pilotés par le sélecteur d'équipe commun — c'est la liste qui
+  // décide où le SEUL nœud #selecteurEquipe est déplacé (cf. basculerOnglet).
+  const ONGLETS_AVEC_EQUIPE = ['effectif', 'composition', 'tactique', 'entrainement', 'calendrier', 'personnel'];
+  let ongletActuel = 'dashboard';
+
+  // Le sélecteur est un composant UNIQUE : un seul <select> dans tout le jeu,
+  // déplacé dans l'emplacement de l'onglet actif plutôt que dupliqué écran
+  // par écran. C'est ce qui garantit mécaniquement que l'équipe choisie est
+  // conservée en passant de la composition à la tactique, à l'entraînement,
+  // au calendrier ou au personnel : il n'existe pas d'autre état à
+  // resynchroniser.
+  function rafraichirSelecteurEquipe() {
+    const ctx = contexte();
+    const sel = document.getElementById('selEquipeContexte');
+    if (!sel) return;
+    const valeurCourante = RMClub.encoderSelection(RMClub.selectionEquipe(saison));
+    const groupes = [];
+    for (const item of RMClub.equipesDisponibles(saison)) {
+      let groupe = groupes.find((g) => g.nom === item.groupe);
+      if (!groupe) { groupe = { nom: item.groupe, options: [] }; groupes.push(groupe); }
+      groupe.options.push(item);
+    }
+    sel.innerHTML = groupes.map((g) =>
+      `<optgroup label="${echapperHTML(g.nom)}">` +
+      g.options.map((o) => `<option value="${echapperHTML(o.valeur)}"${o.valeur === valeurCourante ? ' selected' : ''}>${echapperHTML(o.label)}</option>`).join('') +
+      `</optgroup>`
+    ).join('');
+    sel.value = valeurCourante;
+    const badge = ctx.modifiable
+      ? '<span class="badgeEquipeMode dirigee">Équipe dirigée · modifiable</span>'
+      : '<span class="badgeEquipeMode lecture">Lecture seule</span>';
+    const indispo = ctx.motifIndisponible
+      ? `<p class="avertissementEquipe">⚠️ ${echapperHTML(ctx.motifIndisponible)}</p>` : '';
+    document.getElementById('contexteEquipeInfo').innerHTML =
+      `<p class="sousTitreEquipe">${echapperHTML(ctx.sousTitre)} · ${ctx.effectif.length} joueur(s) ${badge}</p>${indispo}${statutEspoirsHTML(ctx)}`;
+  }
+
+  // Prochain match espoirs : information propre au centre de formation, donc
+  // affichée dans le bandeau du contexte quand c'est cette équipe qui est
+  // sélectionnée — plus une carte séparée dans l'onglet Effectif.
+  function statutEspoirsHTML(ctx) {
+    if (ctx.type !== 'jeunes') return '';
+    const prochaine = RMClub.prochainesFixtures(saison).find(concerneClubJoueur);
+    if (!prochaine) return '';
+    if (!RMClub.eligiblePourMatchEspoirs(saison)) {
+      return '<p class="avertissementEquipe">⚠️ Effectif espoirs incomplet : pas de match espoirs possible tant que tous les postes ne sont pas couverts.</p>';
+    }
+    if (RMClub.journeeDeMatchEspoirs(prochaine.journee)) return '<p class="sousTitreEquipe">🏉 Match espoirs cette journée !</p>';
+    const journeesAvant = RMClub.PERIODE_JOURNEES_ESPOIRS - (prochaine.journee % RMClub.PERIODE_JOURNEES_ESPOIRS || RMClub.PERIODE_JOURNEES_ESPOIRS);
+    return `<p class="sousTitreEquipe">Prochain match espoirs dans ${journeesAvant} journée(s).</p>`;
+  }
+
+  // Change l'équipe affichée par TOUS les écrans d'un coup. Aucun écran n'a
+  // sa propre notion d'équipe courante : il n'y a qu'ici qu'on en change.
+  function changerEquipe(type, clubId) {
+    RMClub.definirSelectionEquipe(saison, type, clubId);
+    if (type !== 'adverse') RMClub.assurerCompositionPourEquipe(saison, type);
+    // Une fiche joueur laissée ouverte appartient à l'équipe PRÉCÉDENTE : la
+    // laisser affichée montrerait un joueur qui n'est plus dans l'effectif
+    // consulté (et masquerait la nouvelle table). On referme, comme au
+    // changement d'onglet.
+    fermerFicheJoueur();
+    // La sélection de comparaison porte sur des joueurs de l'ancienne équipe :
+    // elle n'a plus de sens ici (les ids d'un club adverse sont dérivés).
+    selectionComparaisonEffectif.clear();
+    sauvegarder();
+    rafraichirEcransEquipe();
+  }
+
+  // Re-rend d'un bloc les 6 écrans pilotés par le sélecteur — appelé au
+  // changement d'équipe comme au changement d'onglet, pour que la même
+  // équipe soit affichée partout, tout le temps.
+  function rafraichirEcransEquipe() {
+    rafraichirSelecteurEquipe();
+    rafraichirEffectif();
+    rafraichirTerrain();
+    rafraichirBanc();
+    rafraichirEncadrement();
+    rafraichirTactique();
+    rafraichirEntrainement();
+    rafraichirJeunes();
+    rafraichirClassement();
+    rafraichirCalendrier();
+    rafraichirPersonnel();
+  }
 
   // Abréviations de poste (cf. moteur, PROFILS[n].label) traduites en toutes
   // lettres pour l'effectif : "P"/"T" n'est parlant que pour qui connaît déjà
@@ -494,12 +632,12 @@
   // Badges de rôle (capitaine/buteur/lanceur en touche) affichés à la fois
   // dans le tableau de l'effectif et dans la fiche joueur — la même info,
   // jamais recalculée différemment à deux endroits.
-  function badgesRole(id) {
-    const c = saison.clubJoueur;
+  function badgesRole(id, slot) {
+    const s = slot || contexte().slot;
     let out = '';
-    if (c.capitaineId === id) out += '<span class="badgeRole capitaine" title="Capitaine">C</span>';
-    if (c.buteurId === id) out += '<span class="badgeRole buteur" title="Buteur désigné">BUT</span>';
-    if (c.lanceurToucheId === id) out += '<span class="badgeRole lanceur" title="Lanceur en touche">TOU</span>';
+    if (s.capitaineId === id) out += '<span class="badgeRole capitaine" title="Capitaine">C</span>';
+    if (s.buteurId === id) out += '<span class="badgeRole buteur" title="Buteur désigné">BUT</span>';
+    if (s.lanceurToucheId === id) out += '<span class="badgeRole lanceur" title="Lanceur en touche">TOU</span>';
     return out;
   }
 
@@ -512,15 +650,15 @@
   // selectionComparaison) — sélection par cases à cocher dans le tableau.
   const selectionComparaisonEffectif = new Set();
 
-  // Effectif ÉTENDU du club du joueur (24 avec profondeur, contrats, salaires,
-  // blessures, fatigue, moral) — recherche/tri/filtres (cf. filtreEffectif),
-  // bien plus détaillé que celui, purement sportif, des adversaires IA,
-  // puisque c'est le seul club réellement géré ici. Chaque ligne ouvre la
-  // fiche joueur (cf. ouvrirFicheJoueur) : table dense, actions (libérer)
-  // déportées dans la fiche plutôt qu'un bouton sur chaque ligne.
+  // Écran UNIQUE d'effectif (TODO_AUDIT.md P1-19) : premier XV, vivier
+  // Équipe B, centre de formation ou effectif d'un club adverse — même table,
+  // mêmes colonnes, mêmes filtres, même tri, même fiche joueur au clic. Les
+  // colonnes qu'un effectif IA n'a pas (fatigue, prêt, temps de jeu) tombent
+  // proprement sur "—" : c'est la donnée qui manque, pas l'écran qui change.
   function rafraichirEffectif() {
+    const ctx = contexte();
     const f = filtreEffectif;
-    let effectif = saison.clubJoueur.effectif.filter((j) => {
+    let effectif = ctx.effectif.filter((j) => {
       if (f.recherche && !j.nom.toLowerCase().includes(f.recherche)) return false;
       if (f.poste && j.poste !== f.poste) return false;
       if (f.disponible && (j.blessureJournees > 0 || j.pret)) return false;
@@ -549,52 +687,16 @@
       const moral = j.moral != null ? j.moral : 65;
       const enComparaison = selectionComparaisonEffectif.has(j.id) ? ' checked' : '';
       return `<tr data-joueur="${j.id}"><td><input type="checkbox" class="caseComparerEffectif" data-joueur="${j.id}"${enComparaison}></td>` +
-        `<td>${j.nom}${badgesRole(j.id)}</td><td>${POSTE_COMPLET[j.poste] || j.poste}</td><td>${j.age}</td><td>${j.vitesse}</td><td>${j.plaquage}</td>` +
+        `<td>${echapperHTML(j.nom)}${badgesRole(j.id, ctx.slot)}</td><td>${POSTE_COMPLET[j.poste] || j.poste}</td><td>${j.age}</td><td>${j.vitesse}</td><td>${j.plaquage}</td>` +
         `<td>${j.potentiel != null ? Math.round(j.potentiel) : '—'}</td>` +
         `<td><span class="barreMoral${moral < 45 ? ' bas' : moral >= 80 ? ' haut' : ''}"><span style="width:${moral}%"></span></span></td>` +
         `<td><span class="barreFatigue${fatigue >= 65 ? ' haute' : ''}"><span style="width:${fatigue}%"></span></span></td>` +
-        `<td${contratClasse}>${j.contrat} an(s)</td><td>${j.salaire} k€</td><td>${statut}</td></tr>`;
+        `<td${contratClasse}>${j.contrat != null ? j.contrat + ' an(s)' : '—'}</td><td>${j.salaire != null ? j.salaire + ' k€' : '—'}</td><td>${statut}</td></tr>`;
     }).join('');
     document.getElementById('clubEffectif').innerHTML = effectif.length
       ? `<table class="tableauClub effectifCliquable"><thead><tr>${entetes}</tr></thead><tbody>${lignes}</tbody></table>`
       : '<p>Aucun joueur ne correspond à ces filtres.</p>';
     rafraichirComparaisonEffectif();
-  }
-
-  // Centre de formation (Mode Club) : vivier d'espoirs séparé de l'effectif
-  // pro, promouvable à tout moment (cf. RMClub.promouvoirJeune) — en
-  // particulier quand l'effectif senior n'a plus assez de joueurs
-  // disponibles à un poste. RMClub.assurerCentreFormation gère la
-  // rétrocompatibilité (sauvegarde antérieure à cette fonctionnalité).
-  function rafraichirCentreFormation() {
-    if (!saison.clubJoueur.jeunes) {
-      RMClub.assurerCentreFormation(creerRng(graineAleatoire()), saison);
-      sauvegarder();
-    }
-    // Prochain match espoirs (audit "pas de tournois junior") : une journée
-    // sur RMClub.PERIODE_JOURNEES_ESPOIRS, contre une académie adverse
-    // synthétique, réellement simulé — pas juste une promesse de fonctionnalité.
-    const prochaine = RMClub.prochainesFixtures(saison).find(concerneClubJoueur);
-    const statutEl = document.getElementById('clubEspoirsStatut');
-    if (statutEl) {
-      if (!prochaine) {
-        statutEl.textContent = '';
-      } else if (!RMClub.eligiblePourMatchEspoirs(saison)) {
-        statutEl.textContent = '⚠️ Effectif espoirs incomplet : pas de match espoirs possible tant que tous les postes ne sont pas couverts.';
-      } else {
-        const journeesAvant = RMClub.PERIODE_JOURNEES_ESPOIRS - (prochaine.journee % RMClub.PERIODE_JOURNEES_ESPOIRS || RMClub.PERIODE_JOURNEES_ESPOIRS);
-        statutEl.textContent = RMClub.journeeDeMatchEspoirs(prochaine.journee)
-          ? '🏉 Match espoirs cette journée !'
-          : `Prochain match espoirs dans ${journeesAvant} journée(s).`;
-      }
-    }
-    const ordrePostes = Object.keys(POSTE_COMPLET);
-    const jeunes = saison.clubJoueur.jeunes
-      .slice().sort((a, b) => (ordrePostes.indexOf(a.poste) - ordrePostes.indexOf(b.poste)) || a.age - b.age);
-    document.getElementById('clubCentreFormation').innerHTML = jeunes.length
-      ? jeunes.map((j) => `<div class="ligneJeune"><span class="infosJeune"><b>${j.nom}</b><span>${POSTE_COMPLET[j.poste] || j.poste} · ${j.age} ans · potentiel ${Math.round(j.potentiel)}</span></span>` +
-        `<button class="alt btnPromouvoirJeune" data-joueur="${j.id}" style="flex:0 0 auto;width:auto;padding:6px 10px;font-size:12px;">⬆️ Promouvoir</button></div>`).join('')
-      : '<p>Centre de formation vide.</p>';
   }
 
   // Comparaison côte à côte de joueurs de L'EFFECTIF sélectionnés (cases à
@@ -604,8 +706,9 @@
     bouton.style.display = selectionComparaisonEffectif.size >= 2 ? '' : 'none';
     const zone = document.getElementById('clubComparaisonEffectif');
     if (selectionComparaisonEffectif.size < 2) { zone.innerHTML = ''; return; }
+    const effectifCourant = contexte().effectif;
     const joueurs = [...selectionComparaisonEffectif]
-      .map((id) => saison.clubJoueur.effectif.find((j) => j.id === id))
+      .map((id) => effectifCourant.find((j) => j.id === id))
       .filter(Boolean);
     if (joueurs.length < 2) { zone.innerHTML = ''; return; }
     const CRITERES = [
@@ -764,21 +867,12 @@
     }).join('');
   }
 
-  function fermerFicheJoueurAdversaire() {
-    joueurAdversaireAfficheIndex = null;
-    const detail = document.getElementById('clubJoueurAdversaireDetail');
-    if (detail) detail.style.display = 'none';
-    const corps = document.getElementById('clubAutresClubCorps');
-    if (corps) corps.style.display = '';
-  }
-
   function fermerClubAdversaire() {
     clubAdversaireAffiche = null;
     const detail = document.getElementById('clubAutresClubDetail');
     if (detail) detail.style.display = 'none';
     const liste = document.getElementById('clubAutresClubsListe');
     if (liste) liste.style.display = '';
-    fermerFicheJoueurAdversaire();
   }
 
   function ouvrirClubAdversaire(clubId) {
@@ -802,10 +896,15 @@
           `<div class="ligneCalendrier"><span>Saison ${c.saisonNumero}, J${c.journee}</span><span class="scoreCal"><span class="badgeForme ${c.resultat}">${LIBELLE_FORME[c.resultat]}</span> ${c.scorePour} - ${c.scoreContre}</span></div>`
         ).join('')
       : '<p style="font-size:12px;color:var(--text-faint);">Aucune confrontation directe pour le moment.</p>';
-    const effectifLignes = adv.effectif.map((j, index) =>
-      `<tr data-index="${index}"><td>${j.nom}</td><td>${POSTE_COMPLET[j.poste] || j.poste}</td><td>${j.age}</td>` +
-      `<td>${j.vitesse}</td><td>${j.plaquage}</td><td>${j.potentiel != null ? Math.round(j.potentiel) : '—'}</td></tr>`
-    ).join('');
+    // Effectif/composition/tactique/calendrier/classement de ce club NE SONT
+    // PAS recopiés ici (TODO_AUDIT.md P1-19) : ce sont les mêmes écrans que
+    // pour les équipes du joueur. Ces raccourcis sélectionnent ce club dans
+    // le sélecteur d'équipe commun puis ouvrent l'écran demandé.
+    document.getElementById('clubAutresClubRaccourcis').innerHTML =
+      ['effectif', 'composition', 'tactique', 'calendrier'].map((onglet) => {
+        const libelle = { effectif: '👥 Effectif', composition: '📋 Composition', tactique: '🎯 Tactique', calendrier: '📅 Calendrier' }[onglet];
+        return `<button class="alt btnRaccourciEquipe" data-onglet="${onglet}">${libelle}</button>`;
+      }).join('');
     document.getElementById('clubAutresClubIdentite').innerHTML =
       `<div class="ficheJoueurEntete"><span><span class="nomJoueurFiche">${adv.nom}</span>` +
       `<span class="posteJoueurFiche">${analyse.position}${analyse.position === 1 ? 'er' : 'e'}/${analyse.totalClubs} au classement · Budget estimé ${adv.budget != null ? adv.budget + ' k€' : '—'}</span></span></div>` +
@@ -821,42 +920,7 @@
           `<span class="valAdv">${c.eux}</span></div>`;
       }).join('') +
       (puces ? `<div class="listeQualitatif">${puces}</div>` : '<p style="font-size:11.5px;color:var(--text-faint);margin:10px 0 0;">Aucun écart marqué avec ton effectif.</p>');
-    document.getElementById('clubAutresClubEffectif').innerHTML =
-      `<table class="tableauClub effectifCliquable"><thead><tr><th>Nom</th><th>Poste</th><th>Âge</th><th>Vit.</th><th>Plaq.</th><th>Potentiel</th></tr></thead><tbody>${effectifLignes}</tbody></table>`;
     document.getElementById('clubAutresClubConfrontations').innerHTML = confrontations;
-    fermerFicheJoueurAdversaire();
-  }
-
-  function ouvrirFicheJoueurAdversaire(clubId, index) {
-    const adv = RMClub.club(saison, clubId);
-    if (!adv) return;
-    const j = adv.effectif[index];
-    if (!j) return;
-    joueurAdversaireAfficheIndex = index;
-    const moral = j.moral != null ? j.moral : 65;
-    const ATTRIBUTS_FICHE = [
-      ['vitesse', 'Vitesse'], ['plaquage', 'Plaquage'], ['adresse', 'Adresse au pied'],
-      ['melee', 'Mêlée'], ['touche', 'Touche'], ['puissance', 'Puissance'],
-      ['endurance', 'Endurance'], ['passe', 'Passe'], ['jeuPied', 'Jeu au pied (courant)'],
-      ['decision', 'Décision'], ['discipline', 'Discipline'],
-    ];
-    const lignesAttributs = ATTRIBUTS_FICHE.map(([champ, label]) =>
-      j[champ] != null ? `<div class="ligneJoueur"><span>${label}</span><b>${j[champ]}</b></div>` : ''
-    ).join('');
-    document.getElementById('clubJoueurAdversaireDetail').innerHTML =
-      `<div class="ficheJoueurEntete"><span><span class="nomJoueurFiche">${j.nom}</span>` +
-      `<span class="posteJoueurFiche">${POSTE_COMPLET[j.poste] || j.poste} · ${j.age} ans · ${adv.nom}</span></span></div>` +
-      lignesAttributs +
-      (j.potentiel != null ? `<div class="ligneJoueur"><span>Potentiel estimé</span><b>${Math.round(j.potentiel)}</b></div>` : '') +
-      (j.moral != null ? `<div class="ligneJoueur"><span>Moral</span><b><span class="barreMoral${moral < 45 ? ' bas' : moral >= 80 ? ' haut' : ''}"><span style="width:${moral}%"></span></span> ${moral}%</b></div>` : '') +
-      (j.contrat != null ? `<div class="ligneJoueur"><span>Contrat</span><b>${j.contrat} an(s) restant(s) (estimation)</b></div>` : '') +
-      (j.salaire != null ? `<div class="ligneJoueur"><span>Salaire</span><b>${j.salaire} k€/saison (estimation)</b></div>` : '') +
-      (j.valeurEstimee != null ? `<div class="ligneJoueur"><span>Valeur de transfert estimée</span><b>${j.valeurEstimee} k€</b></div>` : '') +
-      (j.blessureJournees > 0 ? `<div class="ligneJoueur"><span>Blessure</span><b>${j.blessureJournees} journée(s)</b></div>` : '') +
-      `<button class="accent" id="btnApprocherJoueurAdverse" style="width:100%;margin-top:14px;">💼 Faire une offre de transfert</button>` +
-      `<button class="alt" id="btnFermerFicheJoueurAdversaire" style="width:100%;margin-top:8px;">← Retour à l'effectif du club</button>`;
-    document.getElementById('clubJoueurAdversaireDetail').style.display = '';
-    document.getElementById('clubAutresClubCorps').style.display = 'none';
   }
 
   function rafraichirStatutEffectif() {
@@ -1042,15 +1106,22 @@
   // en remplacement de la table le temps de la consultation — pas une fenêtre
   // empilée par-dessus l'onglet. Attributs rugby, forme/fatigue, historique
   // (matchs joués cette saison), contrat, disponibilité et rôle du jour. ---
+  // Fiche joueur UNIQUE (TODO_AUDIT.md P1-19) : un joueur du premier XV, un
+  // réserviste d'Équipe B, un espoir du centre de formation ou un joueur
+  // d'un club adverse s'ouvrent tous dans CETTE fiche, au même endroit, avec
+  // la même présentation. Seules les ACTIONS proposées en bas dépendent de
+  // ce que le joueur a réellement le droit de faire sur cette équipe.
   function ouvrirFicheJoueur(id) {
-    const j = saison.clubJoueur.effectif.find((x) => x.id === id);
+    const ctx = contexte();
+    const j = ctx.effectif.find((x) => x.id === id);
     if (!j) return;
     joueurAffiche = id;
     const c = saison.clubJoueur;
+    const slot = ctx.slot;
     const disponibilite = j.pret ? `En prêt — retour dans ${j.pret.dureeRestante} journée(s)`
       : j.blessureJournees > 0 ? `Blessé — ${j.blessureJournees} journée(s) restantes` : 'Disponible';
-    const titulaire = c.compositionTitulaires && Object.values(c.compositionTitulaires).includes(id);
-    const banc = c.compositionBanc && Object.values(c.compositionBanc).includes(id);
+    const titulaire = slot.compositionTitulaires && Object.values(slot.compositionTitulaires).includes(id);
+    const banc = slot.compositionBanc && Object.values(slot.compositionBanc).includes(id);
     const statutCompo = titulaire ? 'Titulaire ce jour' : banc ? 'Remplaçant ce jour' : 'Non retenu ce jour';
     const fatigue = j.fatigue || 0;
     const moral = j.moral != null ? j.moral : 65;
@@ -1083,16 +1154,39 @@
     // negocierRenouvellement/renouvelerContrat n'ont jamais eu de condition
     // sur la durée restante : seul ce bouton en avait une, sans raison de
     // jeu documentée.
-    const offre = RMClub.calculerOffreRenouvellement(j);
-    const boutonRenouveler = `<button class="accent" id="btnRenouveler" style="width:100%;margin-top:8px;">Renouveler ${offre.dureeMax} an(s) · ${offre.salaire} k€/saison</button>`;
-    const boutonPret = j.pret
-      ? `<button class="alt" id="btnRappelerJoueur" style="width:100%;margin-top:8px;">Rappeler de prêt</button>`
-      : `<button class="alt" id="btnPreterJoueur" style="width:100%;margin-top:8px;">Prêter ce joueur (3 journées)</button>`;
+    // Actions disponibles selon l'équipe affichée — l'écran est le même pour
+    // les 4 types d'équipe, seuls les leviers réellement praticables sont
+    // proposés : contrats/prêts sur l'effectif pro (les seuls joueurs à en
+    // avoir), promotion pour un espoir, offre de transfert pour un joueur
+    // adverse, rien du tout ailleurs.
+    const estEffectifPro = c.effectif.some((x) => x.id === id);
+    const estEspoir = (c.jeunes || []).some((x) => x.id === id);
+    let actions = '';
+    if (ctx.modifiable && estEffectifPro) {
+      const offre = RMClub.calculerOffreRenouvellement(j);
+      actions += `<button class="accent" id="btnRenouveler" style="width:100%;margin-top:8px;">Renouveler ${offre.dureeMax} an(s) · ${offre.salaire} k€/saison</button>`;
+      actions += j.pret
+        ? `<button class="alt" id="btnRappelerJoueur" style="width:100%;margin-top:8px;">Rappeler de prêt</button>`
+        : `<button class="alt" id="btnPreterJoueur" style="width:100%;margin-top:8px;">Prêter ce joueur (3 journées)</button>`;
+    }
+    if (ctx.modifiable && estEspoir) {
+      actions += `<button class="accent" id="btnPromouvoirEspoir" style="width:100%;margin-top:8px;">⬆️ Promouvoir en équipe première</button>`;
+    }
+    if (!ctx.modifiable) {
+      actions += `<button class="accent" id="btnApprocherJoueurAdverse" style="width:100%;margin-top:14px;">💼 Faire une offre de transfert</button>`;
+    }
     const optionsEntrainement = Object.keys(RMClub.ENTRAINEMENTS).map((cle) =>
       `<option value="${cle}"${j.entrainementIndividuel === cle ? ' selected' : ''}>${RMClub.ENTRAINEMENTS[cle].label}</option>`
     ).join('');
+    // L'entraînement individuel n'existe que pour les joueurs réellement
+    // suivis au jour le jour (effectif pro) : proposé là, masqué ailleurs.
+    const blocEntrainementIndividuel = (ctx.modifiable && estEffectifPro)
+      ? `<label class="sr-label" for="selEntrainementIndividuel" style="margin-top:10px;">Entraînement individuel</label>` +
+        `<select id="selEntrainementIndividuel" style="width:100%;"><option value=""${!j.entrainementIndividuel ? ' selected' : ''}>Suivre le collectif</option>${optionsEntrainement}</select>`
+      : '';
     document.getElementById('clubJoueurDetail').innerHTML =
-      `<div class="ficheJoueurEntete"><span><span class="nomJoueurFiche">${j.nom}${badgesRole(id)}</span><span class="posteJoueurFiche">${POSTE_COMPLET[j.poste] || j.poste} · ${j.age} ans</span></span></div>` +
+      `<div class="ficheJoueurEntete"><span><span class="nomJoueurFiche">${echapperHTML(j.nom)}${badgesRole(id, slot)}</span><span class="posteJoueurFiche">${POSTE_COMPLET[j.poste] || j.poste} · ${j.age} ans · ${echapperHTML(ctx.label)}</span></span></div>` +
+      (ctx.modifiable ? '' : `<p class="noteLectureSeule">🔍 Joueur d'un club que tu ne diriges pas : consultation seule. Les valeurs de contrat et de salaire sont des estimations de tes recruteurs.</p>`) +
       lignesAttributs + lignePotentiel +
       `<div class="ligneJoueur"><span>Moral</span><b><span class="barreMoral${moral < 45 ? ' bas' : moral >= 80 ? ' haut' : ''}"><span style="width:${moral}%"></span></span> ${moral}%</b></div>` +
       `<div class="ligneJoueur"><span>Fatigue</span><b><span class="barreFatigue${fatigue >= 65 ? ' haute' : ''}"><span style="width:${fatigue}%"></span></span> ${fatigue}%</b></div>` +
@@ -1101,15 +1195,15 @@
       ligneStatsSaison +
       `<div class="ligneJoueur"><span>Sélection du jour</span><b>${statutCompo}</b></div>` +
       (j.veutPartir ? `<div class="ligneJoueur"><span>Statut</span><b class="texteAlerteJoueur">🚩 Souhaite être transféré (mécontent de son temps de jeu)</b></div>` : '') +
-      `<div class="ligneJoueur"><span>Contrat</span><b>${j.contrat} an(s) restant(s)</b></div>` +
-      `<div class="ligneJoueur"><span>Salaire</span><b>${j.salaire} k€/saison</b></div>` +
+      (j.contrat != null ? `<div class="ligneJoueur"><span>Contrat</span><b>${j.contrat} an(s) restant(s)</b></div>` : '') +
+      (j.salaire != null ? `<div class="ligneJoueur"><span>Salaire</span><b>${j.salaire} k€/saison</b></div>` : '') +
+      (j.valeurEstimee != null && !ctx.modifiable ? `<div class="ligneJoueur"><span>Valeur de transfert estimée</span><b>${j.valeurEstimee} k€</b></div>` : '') +
       `<div class="ligneJoueur"><span>Disponibilité</span><b>${disponibilite}</b></div>` +
-      `<label class="sr-label" for="selEntrainementIndividuel" style="margin-top:10px;">Entraînement individuel</label>` +
-      `<select id="selEntrainementIndividuel" style="width:100%;"><option value=""${!j.entrainementIndividuel ? ' selected' : ''}>Suivre le collectif</option>${optionsEntrainement}</select>` +
-      boutonRenouveler + boutonPret +
+      blocEntrainementIndividuel + actions +
       `<div style="display:flex;gap:8px;margin-top:14px;">` +
       `<button class="alt" id="btnFermerFicheJoueur" style="flex:1;">← Retour à l'effectif</button>` +
-      `<button class="alt warn" id="btnLibererFiche" style="flex:1;">Libérer ce joueur</button></div>`;
+      (ctx.modifiable && estEffectifPro ? `<button class="alt warn" id="btnLibererFiche" style="flex:1;">Libérer ce joueur</button>` : '') +
+      `</div>`;
     document.getElementById('clubJoueurDetail').style.display = '';
     document.getElementById('clubEffectif').style.display = 'none';
     document.getElementById('clubEffectifFiltres').style.display = 'none';
@@ -1145,12 +1239,25 @@
   }
 
   function basculerOnglet(cle) {
+    ongletActuel = cle;
     document.querySelectorAll('#barreOngletsClub .ongletBtn').forEach((b) => {
       b.classList.toggle('actif', b.dataset.onglet === cle);
     });
     document.querySelectorAll('#clubGestion .voletOnglet').forEach((v) => {
       v.style.display = v.dataset.volet === cle ? '' : 'none';
     });
+    // Le sélecteur d'équipe est un composant UNIQUE, déplacé dans l'onglet
+    // actif (TODO_AUDIT.md P1-19) — pas une copie par écran. C'est ce qui
+    // garantit qu'aucune synchronisation n'est nécessaire entre les écrans :
+    // il n'y a littéralement qu'un seul <select> dans le jeu.
+    const selecteur = document.getElementById('selecteurEquipe');
+    if (selecteur) {
+      const volet = document.querySelector(`#clubGestion .voletOnglet[data-volet="${cle}"]`);
+      const emplacement = ONGLETS_AVEC_EQUIPE.indexOf(cle) !== -1 && volet
+        ? volet.querySelector('.emplacementSelecteurEquipe') : null;
+      (emplacement || document.getElementById('porteSelecteurEquipe')).appendChild(selecteur);
+      if (emplacement) rafraichirSelecteurEquipe();
+    }
     fermerFicheJoueur(); // change d'onglet = referme toute fiche laissée ouverte
     fermerClubAdversaire(); // idem pour la fiche d'un club adverse ouverte dans l'onglet Autres clubs
     fermerTiroirNav(); // choisir une section referme le tiroir mobile
@@ -1160,96 +1267,36 @@
   // Groupé par journée (un en-tête toutes les n/2 lignes) : à plat, 30
   // rencontres (championnat complet) étaient impossibles à scanner et
   // noyaient le bouton "Nouvelle saison" tout en bas sous un mur de texte.
+  // Écran UNIQUE de calendrier (TODO_AUDIT.md P1-19) : les rencontres de
+  // l'équipe sélectionnée, quelle que soit sa compétition (championnat
+  // principal, Équipe B, matchs espoirs), avec la même mise en page groupée
+  // par journée et la même ligne de résultat.
   function rafraichirCalendrier() {
+    const ctx = contexte();
+    const zone = document.getElementById('clubCalendrier');
+    if (!ctx.calendrier || !ctx.calendrier.length) {
+      zone.innerHTML = `<p>${echapperHTML(ctx.motifIndisponible || 'Aucune rencontre programmée pour cette équipe.')}</p>`;
+      return;
+    }
     const parJournee = {};
-    for (const f of saison.calendrier) (parJournee[f.journee] = parJournee[f.journee] || []).push(f);
-    document.getElementById('clubCalendrier').innerHTML = Object.keys(parJournee)
+    for (const f of ctx.calendrier) (parJournee[f.journee] = parJournee[f.journee] || []).push(f);
+    zone.innerHTML = Object.keys(parJournee)
       .sort((a, b) => Number(a) - Number(b))
       .map((j) => {
         const lignes = parJournee[j].map((f) => {
           const attenu = f.joue ? ' style="opacity:.6"' : '';
-          return `<div${attenu}>${formaterLigneCalendrier(f)}</div>`;
+          return `<div${attenu}>${formaterLigneCalendrier(f, ctx.clubId)}</div>`;
         }).join('');
         return `<div class="blocJournee"><h4>Journée ${j}</h4>${lignes}</div>`;
       }).join('');
   }
 
-  // --- Équipe B (Mode Club) : championnat réservé aux clubs au budget le
-  // plus élevé de la ligue (cf. RMClub.determinerEligiblesEquipeB), rejoué
-  // chaque journée en même temps que le championnat principal (cf.
-  // simulerRondeEquipeB) — jamais un chiffre fabriqué : classement et
-  // calendrier viennent des mêmes fonctions génériques que le championnat
-  // principal (RMClub.classementTrieDe/formaterLigneCalendrier). ---
-  function rafraichirEquipeB() {
-    const existaitDeja = !!saison.competitionB;
-    const compB = RMClub.assurerCompetitionB(saison);
-    if (!existaitDeja) sauvegarder();
-    const c = saison.clubJoueur;
-    const estEligible = compB.eligibles.includes(c.id);
-    const carteComposition = document.getElementById('carteEquipeBComposition');
-    const carteClassement = document.getElementById('carteEquipeBClassement');
-    const carteCalendrier = document.getElementById('carteEquipeBCalendrier');
-    if (!estEligible) {
-      document.getElementById('clubEquipeBStatut').innerHTML =
-        `<p>💸 Budget insuffisant pour aligner une équipe B cette saison : seuls les ${compB.eligibles.length} clubs au budget le plus élevé de la ligue s'en offrent une. Fais grandir tes finances pour y accéder la saison prochaine.</p>`;
-      carteComposition.style.display = 'none';
-      carteClassement.style.display = 'none';
-      carteCalendrier.style.display = 'none';
-      return;
-    }
-    if (!compB.calendrier.length) {
-      document.getElementById('clubEquipeBStatut').innerHTML =
-        `<p>🌱 Ton budget te qualifie pour une équipe B, mais aucun autre club de la ligue n'a les moyens d'en aligner une cette saison — pas de championnat B possible pour l'instant.</p>`;
-      carteComposition.style.display = 'none';
-      carteClassement.style.display = 'none';
-      carteCalendrier.style.display = 'none';
-      return;
-    }
-    document.getElementById('clubEquipeBStatut').innerHTML =
-      `<p>✅ Ton club fait partie des ${compB.eligibles.length} clubs les plus riches de la ligue : une équipe B est alignée chaque journée, puisée dans tes remplaçants du jour et ton centre de formation. Chaque match rapporte une petite recette de billetterie (cf. onglet Finances).</p>`;
-    carteComposition.style.display = '';
-    carteClassement.style.display = '';
-    carteCalendrier.style.display = '';
-    // Qui serait RÉELLEMENT aligné AUJOURD'HUI — TODO_AUDIT.md P1-18 : depuis
-    // que l'Équipe B a son propre écran Composition/Tactique (sélecteur
-    // "Équipe gérée"), sa composition n'est plus systématiquement la
-    // "meilleure" recalculée à la volée — un choix manuel du joueur doit
-    // rester prioritaire. On lit donc le MÊME slot que celui réellement
-    // utilisé par simulerRondeEquipeB (cf. RMClub.assurerCompositionPourEquipe),
-    // jamais une composition parallèle qui pourrait diverger de ce qui se
-    // joue vraiment.
-    const vivierB = RMClub.effectifPourEquipe(saison, 'b');
-    const parIdB = {};
-    for (const j of vivierB) parIdB[j.id] = j;
-    const slotB = RMClub.assurerCompositionPourEquipe(saison, 'b');
-    const compoB = slotB.compositionTitulaires;
-    const manquantsB = RMClub.validerComposition(compoB);
-    const lignesCompoB = Object.keys(RMClub.POSTE_REQUIS).map((numero) => {
-      const joueur = parIdB[compoB[numero]];
-      const estJeune = joueur && (saison.clubJoueur.jeunes || []).some((j) => j.id === joueur.id);
-      return `<tr><td>${numero}</td><td>${POSTE_COMPLET[RMClub.POSTE_REQUIS[numero]] || RMClub.POSTE_REQUIS[numero]}</td>` +
-        `<td>${joueur ? echapperHTML(joueur.nom) + (estJeune ? ' <span title="Centre de formation">🌱</span>' : '') : '<span class="posteVacant">—</span>'}</td></tr>`;
-    }).join('');
-    const avertissementB = manquantsB.length
-      ? `<p style="color:var(--loss);font-size:12px;">⚠️ Effectif insuffisant pour aligner une équipe B complète : poste(s) ${manquantsB.map((m) => POSTE_COMPLET[m.poste] || m.poste).join(', ')} non pourvu(s) aujourd'hui.</p>`
-      : '';
-    document.getElementById('clubEquipeBComposition').innerHTML =
-      `<p style="font-size:12px;color:var(--text-dim);">Vivier du jour : ${vivierB.length} joueur(s) disponible(s) (réservistes + centre de formation 🌱). ` +
-      `<a href="#" data-onglet="composition" class="lienEquipeBCompo">Modifier cette composition →</a></p>` +
-      `<table class="tableauClub"><thead><tr><th>N°</th><th>Poste</th><th>Joueur</th></tr></thead><tbody>${lignesCompoB}</tbody></table>${avertissementB}`;
-    const lignes = RMClub.classementTrieDe(compB.classement).map((r, i) => {
-      const classe = estClubJoueur(r.clubId) ? ' class="ligneClubJoueur"' : '';
-      return `<tr${classe}><td>${i + 1}</td><td>${nomClub(r.clubId)}</td><td>${r.j}</td><td>${r.g}</td><td>${r.n}</td><td>${r.p}</td>` +
-        `<td title="Bonus offensif (4 essais ou plus)">${r.bonusOffensifs || 0}</td>` +
-        `<td title="Bonus défensif (défaite par 7 points ou moins)">${r.bonusDefensifs || 0}</td>` +
-        `<td><b>${r.pts}</b></td></tr>`;
-    }).join('');
-    document.getElementById('clubEquipeBClassement').innerHTML =
-      `<table class="tableauClub"><thead><tr><th></th><th>Club</th><th>J</th><th>G</th><th>N</th><th>P</th><th title="Bonus offensif">BO</th><th title="Bonus défensif">BD</th><th>Pts</th></tr></thead><tbody>${lignes}</tbody></table>`;
-    document.getElementById('clubEquipeBCalendrier').innerHTML = compB.calendrier.map((f) =>
-      `<div${f.joue ? ' style="opacity:.6"' : ''}>${formaterLigneCalendrier(f)}</div>`).join('');
-  }
-
+  // --- Équipe B : plus d'onglet dédié (TODO_AUDIT.md P1-19). Son effectif,
+  // sa composition, sa tactique, son calendrier et son classement passent
+  // désormais par les MÊMES écrans que le premier XV, via le sélecteur
+  // d'équipe commun — cette fonction n'a plus lieu d'être, son contenu vit
+  // dans contexteEquipe() (docs/js/club-equipes.js) et dans les écrans
+  // unifiés ci-dessus. ---
   // --- Écosystème mondial (onglet Monde, cf. docs/js/world.js) : 12 pays,
   // leurs pyramides (montées/descentes ou franchises selon le pays) et les
   // compétitions internationales — un module ADDITIF (n'affecte jamais le
@@ -1371,15 +1418,21 @@
       (optionsHorsPoste ? `<optgroup label="Autres postes (dépannage)">${optionsHorsPoste}</optgroup>` : '');
   }
 
-  // Équipe gérée (TODO_AUDIT.md P1-18) : premier XV, Équipe B ou Espoirs —
-  // même écran, seule la source (effectif + slot de composition) change,
-  // cf. RMClub.effectifPourEquipe/assurerCompositionPourEquipe.
+  // Écran UNIQUE de composition (TODO_AUDIT.md P1-19) : premier XV, Équipe B,
+  // Espoirs ou club adverse — même terrain, mêmes chips, mêmes listes
+  // déroulantes. Pour une équipe non dirigée, les MÊMES <select> sont
+  // simplement désactivés : le XV affiché est celui qui descend réellement
+  // sur le terrain (cf. RMClub.slotAdverse), jamais un écran différent.
   function rafraichirTerrain() {
-    const equipe = saison.clubJoueur.equipeGeree || 'pro';
-    const effectif = RMClub.effectifPourEquipe(saison, equipe);
-    const composition = RMClub.assurerCompositionPourEquipe(saison, equipe).compositionTitulaires;
-    const selEquipe = document.getElementById('selEquipeGereeComposition');
-    if (selEquipe && selEquipe.value !== equipe) selEquipe.value = equipe;
+    const ctx = contexte();
+    const effectif = ctx.effectif;
+    if (ctx.modifiable) RMClub.assurerCompositionPourEquipe(saison, ctx.type);
+    const composition = ctx.slot.compositionTitulaires;
+    const inactif = ctx.modifiable ? '' : ' disabled';
+    // Un bouton d'action visible sur une équipe non dirigée serait trompeur :
+    // masqué plutôt que laissé cliquable sans effet.
+    const boutonAuto = document.getElementById('btnCompositionAuto');
+    if (boutonAuto) boutonAuto.style.display = ctx.modifiable ? '' : 'none';
     document.getElementById('clubTerrain').innerHTML = Object.keys(RMClub.POSTE_REQUIS).map((numero) => {
       const poste = RMClub.POSTE_REQUIS[numero];
       const pos = POSITIONS_TERRAIN[numero];
@@ -1395,16 +1448,25 @@
         (j) => j.blessureJournees > 0 ? ` 🤕${j.blessureJournees}j` : ((j.fatigue || 0) >= 65 ? ' ⚡' : ''));
       return `<div class="chipTerrain" style="top:${pos.top}%;left:${pos.left}%;">` +
         `<span class="numChip">N°${numero} ${poste}</span>` +
-        `<select data-numero="${numero}"${blesseActuel ? ' class="blesseChip"' : ''}>${options}</select></div>`;
+        `<select data-numero="${numero}"${inactif}${blesseActuel ? ' class="blesseChip"' : ''}>${options}</select></div>`;
     }).join('');
   }
 
   function rafraichirBanc() {
-    const equipe = saison.clubJoueur.equipeGeree || 'pro';
-    const effectif = RMClub.effectifPourEquipe(saison, equipe);
-    const slot = RMClub.slotCompositionPourEquipe(saison, equipe);
+    const ctx = contexte();
+    const effectif = ctx.effectif;
+    const slot = ctx.slot;
     const banc = slot.compositionBanc || {};
+    const inactif = ctx.modifiable ? '' : ' disabled';
     const titulaireIds = new Set(Object.values(slot.compositionTitulaires || {}));
+    // Un club adverse n'a pas de banc modélisé (son effectif fait exactement
+    // 15, cf. genererEffectif) : la carte reste le même composant, elle dit
+    // simplement que l'information n'existe pas — pas un banc inventé.
+    if (!ctx.modifiable) {
+      document.getElementById('clubBanc').innerHTML =
+        `<p class="noteLectureSeule">🔒 Le banc de ${echapperHTML(ctx.label)} n'est pas connu : seuls les quinze joueurs qui débutent la rencontre sont observables.</p>`;
+      return;
+    }
     document.getElementById('clubBanc').innerHTML = Object.keys(RMClub.POSTE_REQUIS_BANC).map((numero) => {
       const poste = RMClub.POSTE_REQUIS_BANC[numero];
       const utiliseAilleurs = new Set(Object.keys(banc).filter((n) => n !== numero).map((n) => banc[n]));
@@ -1412,14 +1474,15 @@
       const options = optionsGroupeesParPoste(candidats, poste, banc[numero],
         (j) => j.blessureJournees > 0 ? ` 🤕${j.blessureJournees}j` : '');
       return `<div class="chipBanc"><span class="numChip">N°${numero} · ${POSTE_COMPLET[poste] || poste}</span>` +
-        `<select data-numero="${numero}">${options || '<option value="">—</option>'}</select></div>`;
+        `<select data-numero="${numero}"${inactif}>${options || '<option value="">—</option>'}</select></div>`;
     }).join('');
   }
 
   function rafraichirEncadrement() {
-    const equipe = saison.clubJoueur.equipeGeree || 'pro';
-    const effectif = RMClub.effectifPourEquipe(saison, equipe);
-    const slot = RMClub.slotCompositionPourEquipe(saison, equipe);
+    const ctx = contexte();
+    const effectif = ctx.effectif;
+    const slot = ctx.slot;
+    const inactif = ctx.modifiable ? '' : ' disabled';
     const parId = {};
     for (const j of effectif) parId[j.id] = j;
     const titulaires = Object.keys(slot.compositionTitulaires || {})
@@ -1428,10 +1491,12 @@
     function options(valeurActuelle) {
       return titulaires.map((t) => `<option value="${t.joueur.id}"${t.joueur.id === valeurActuelle ? ' selected' : ''}>N°${t.numero} ${t.joueur.nom}</option>`).join('');
     }
-    document.getElementById('clubEncadrement').innerHTML =
-      `<div class="ligneComposition"><span class="numComposition">Capitaine</span><select data-role="capitaineId">${options(slot.capitaineId)}</select></div>` +
-      `<div class="ligneComposition"><span class="numComposition">Buteur</span><select data-role="buteurId">${options(slot.buteurId)}</select></div>` +
-      `<div class="ligneComposition"><span class="numComposition">Lanceur en touche</span><select data-role="lanceurToucheId">${options(slot.lanceurToucheId)}</select></div>`;
+    const noteDeduite = ctx.modifiable ? ''
+      : `<p class="noteLectureSeule">🔍 Encadrement <b>déduit</b> de l'effectif de ${echapperHTML(ctx.label)} (meilleur joueur, meilleure adresse au pied, talonneur titulaire) — la désignation réelle de ce club n'est pas publiée.</p>`;
+    document.getElementById('clubEncadrement').innerHTML = noteDeduite +
+      `<div class="ligneComposition"><span class="numComposition">Capitaine</span><select data-role="capitaineId"${inactif}>${options(slot.capitaineId)}</select></div>` +
+      `<div class="ligneComposition"><span class="numComposition">Buteur</span><select data-role="buteurId"${inactif}>${options(slot.buteurId)}</select></div>` +
+      `<div class="ligneComposition"><span class="numComposition">Lanceur en touche</span><select data-role="lanceurToucheId"${inactif}>${options(slot.lanceurToucheId)}</select></div>`;
   }
 
   // Rapport de scout, pas fiche technique parfaite : tant qu'un joueur du
@@ -1456,13 +1521,30 @@
       `<span class="prixMarche" title="Indemnité de transfert + prime de signature">${j.prixTransfert}<span style="color:var(--text-faint);font-weight:400;"> +${primeSignature} k€</span></span>${boutonScout}` +
       `<button class="accent btnSigner" data-joueur="${j.id}"${abordable ? '' : ' disabled'}>Signer</button></span></div>`;
   }
+  // Écran UNIQUE de personnel (TODO_AUDIT.md P1-19) : l'organigramme
+  // appartient au CLUB, donc les 3 équipes du joueur partagent le même staff
+  // (un seul médecin, un seul préparateur — c'est la réalité d'un club, pas
+  // une donnée manquante). Pour un club adverse, le personnel n'est pas
+  // simulé : on le dit clairement au lieu d'inventer un organigramme.
   function rafraichirPersonnel() {
+    const ctx = contexte();
     const c = saison.clubJoueur;
     if (!c.personnel) c.personnel = [];
     if (!saison.marchePersonnel) saison.marchePersonnel = [];
+    const carteMarche = document.getElementById('cartePersonnelMarche');
+    if (carteMarche) carteMarche.style.display = ctx.modifiable ? '' : 'none';
+    if (!ctx.personnel) {
+      document.getElementById('clubPersonnelActuel').innerHTML =
+        `<p class="noteLectureSeule">🔒 L'organigramme de ${echapperHTML(ctx.label)} n'est pas connu : le staff des clubs que tu ne diriges pas n'est pas suivi par tes recruteurs.</p>` +
+        Object.keys(RMClub.POSTES_PERSONNEL).map((poste) => {
+          const info = RMClub.POSTES_PERSONNEL[poste];
+          return `<div class="lignePersonnel"><span class="infosPersonnel"><b class="posteVacant">${info.label} — non connu</b><span>${info.effet}</span></span></div>`;
+        }).join('');
+      return;
+    }
     document.getElementById('clubPersonnelActuel').innerHTML = Object.keys(RMClub.POSTES_PERSONNEL).map((poste) => {
       const info = RMClub.POSTES_PERSONNEL[poste];
-      const membre = c.personnel.find((p) => p.poste === poste);
+      const membre = ctx.personnel.find((p) => p.poste === poste);
       if (membre) {
         return `<div class="lignePersonnel"><span class="infosPersonnel"><b>${info.label} — ${membre.nom}</b><span>Niveau ${membre.niveau} · ${info.effet}</span></span>` +
           `<span class="actionPersonnel"><span>${membre.salaire} k€/saison</span><button class="alt warn btnLicencier" data-staff="${membre.id}">Licencier</button></span></div>`;
@@ -1559,6 +1641,16 @@
     document.getElementById('clubGestion').style.display = enCreation ? 'none' : 'flex';
     if (enCreation) return;
     assurerComposition();
+    // Le centre de formation peut manquer sur une sauvegarde antérieure : il
+    // est désormais une équipe à part entière du sélecteur, donc garanti ici
+    // (avant, c'était rafraichirCentreFormation qui s'en chargeait).
+    // Ces deux structures peuvent manquer sur une sauvegarde antérieure : on
+    // les crée ET on persiste immédiatement (avant, c'étaient les écrans
+    // dédiés qui s'en chargeaient — ils n'existent plus).
+    const aCreeQuelqueChose = !saison.clubJoueur.jeunes || !saison.competitionB;
+    if (!saison.clubJoueur.jeunes) RMClub.assurerCentreFormation(creerRng(graineAleatoire()), saison);
+    RMClub.assurerCompetitionB(saison);
+    if (aCreeQuelqueChose) sauvegarder();
     rafraichirEntete();
     rafraichirTopBarInfos();
     rafraichirProchainMatch();
@@ -1570,16 +1662,7 @@
     rafraichirMiniClassement();
     rafraichirAlertes();
     rafraichirStatutEffectif();
-    rafraichirTactique();
-    rafraichirEntrainement();
-    rafraichirJeunes();
     rafraichirMarche();
-    rafraichirPersonnel();
-    rafraichirClassement();
-    rafraichirEffectif();
-    rafraichirCentreFormation();
-    rafraichirCalendrier();
-    rafraichirEquipeB();
     rafraichirMonde();
     rafraichirFinancesTab();
     rafraichirMedical();
@@ -1587,9 +1670,10 @@
     rafraichirStatsTab();
     rafraichirMarqueurs();
     rafraichirHistoriqueSaisons();
-    rafraichirTerrain();
-    rafraichirBanc();
-    rafraichirEncadrement();
+    // Les 6 écrans pilotés par le sélecteur d'équipe commun, d'un bloc
+    // (TODO_AUDIT.md P1-19) — ils partagent le même contexte, donc le même
+    // rafraîchissement.
+    rafraichirEcransEquipe();
     basculerOnglet('dashboard'); // toujours le Dashboard en entrant dans le club, comme un vrai écran d'accueil
   }
 
@@ -1622,16 +1706,23 @@
     basculerOnglet(ligne.dataset.onglet);
   });
 
-  // Lien "Modifier cette composition" (onglet Équipe B, TODO_AUDIT.md P1-18) :
-  // bascule directement sur l'onglet Composition AVEC l'Équipe B déjà
-  // sélectionnée dans le sélecteur d'équipe gérée — pas juste l'onglet, la
-  // bonne équipe dedans.
-  document.getElementById('clubEquipeBComposition').addEventListener('click', (e) => {
-    const lien = e.target.closest('.lienEquipeBCompo');
-    if (!lien) return;
-    e.preventDefault();
-    changerEquipeGeree('b');
-    basculerOnglet('composition');
+  // --- Sélecteur d'équipe commun : LE point d'entrée unique pour changer
+  // d'équipe affichée, partagé par les 6 écrans (TODO_AUDIT.md P1-19). ---
+  document.getElementById('selEquipeContexte').addEventListener('change', (e) => {
+    const sel = RMClub.decoderSelection(e.target.value);
+    changerEquipe(sel.type, sel.clubId);
+  });
+
+  // Raccourcis de la fiche d'un club adverse : sélectionnent CE club dans le
+  // sélecteur commun puis ouvrent l'écran demandé — les mêmes écrans que
+  // pour les équipes du joueur, jamais une page adverse séparée.
+  document.getElementById('clubAutresClubRaccourcis').addEventListener('click', (e) => {
+    const bouton = e.target.closest('.btnRaccourciEquipe');
+    if (!bouton || !clubAdversaireAffiche) return;
+    const clubCible = clubAdversaireAffiche;
+    const onglet = bouton.dataset.onglet;
+    changerEquipe('adverse', clubCible);
+    basculerOnglet(onglet);
   });
 
   // --- Boîte de réception : marquer un message lu au clic, trancher une
@@ -1659,48 +1750,14 @@
   });
 
   // --- Autres clubs : liste cliquable → détail d'un club → fiche joueur
-  // adverse en lecture seule (cf. ouvrirClubAdversaire/ouvrirFicheJoueurAdversaire) ---
+  // adverse : sa fiche d'identité, puis des raccourcis vers les écrans
+  // unifiés (effectif/composition/tactique/calendrier) — cf. ouvrirClubAdversaire ---
   document.getElementById('clubAutresClubsListe').addEventListener('click', (e) => {
     const ligne = e.target.closest('tr[data-club]');
     if (!ligne) return;
     ouvrirClubAdversaire(ligne.dataset.club);
   });
   document.getElementById('btnFermerClubAdversaire').addEventListener('click', fermerClubAdversaire);
-  document.getElementById('clubAutresClubEffectif').addEventListener('click', (e) => {
-    const ligne = e.target.closest('tr[data-index]');
-    if (!ligne || !clubAdversaireAffiche) return;
-    ouvrirFicheJoueurAdversaire(clubAdversaireAffiche, Number(ligne.dataset.index));
-  });
-  document.getElementById('clubJoueurAdversaireDetail').addEventListener('click', async (e) => {
-    if (e.target.id === 'btnFermerFicheJoueurAdversaire') { fermerFicheJoueurAdversaire(); return; }
-    if (e.target.id !== 'btnApprocherJoueurAdverse') return;
-    if (!clubAdversaireAffiche || joueurAdversaireAfficheIndex == null) return;
-    const adv = RMClub.club(saison, clubAdversaireAffiche);
-    const joueurCible = adv && adv.effectif[joueurAdversaireAfficheIndex];
-    if (!adv || !joueurCible) return;
-    const prixDemande = RMClub.calculerPrixDemandeAdverse(joueurCible, adv);
-    const montant = await demanderMontant(
-      `${joueurCible.nom} (${adv.nom}) — prix demandé estimé : ${prixDemande} k€. Montant de ton offre (k€) :`,
-      prixDemande
-    );
-    if (montant == null) return; // annulé
-    const rng = creerRng(graineAleatoire());
-    const res = RMClub.approcherJoueurAdverse(rng, saison, clubAdversaireAffiche, joueurAdversaireAfficheIndex, montant);
-    if (!res.ok) {
-      if (res.motif === 'budget') toast(`Budget insuffisant : il te manque ${montant - saison.clubJoueur.budget} k€.`, 'erreur');
-      else if (res.motif === 'refuse') toast(`${adv.nom} refuse ton offre de ${montant} k€ pour ${joueurCible.nom} (prix demandé estimé : ${res.prixDemande} k€). Tente une offre plus généreuse, ou reviens plus tard.`, 'erreur');
-      else toast('Transfert impossible.', 'erreur');
-      return;
-    }
-    sauvegarder();
-    toast(`✅ ${res.joueur.nom} rejoint le club en provenance de ${adv.nom} (${montant} k€)`);
-    fermerFicheJoueurAdversaire();
-    fermerClubAdversaire();
-    rafraichirEffectif();
-    rafraichirStatutEffectif();
-    rafraichirTopBarInfos();
-    rafraichirAutresClubs();
-  });
 
   document.getElementById('btnCreerClub').addEventListener('click', () => {
     const nom = document.getElementById('inputNomClub').value.trim();
@@ -1756,19 +1813,6 @@
     document.querySelectorAll('.caseComparerEffectif').forEach((c) => { c.checked = false; });
     rafraichirComparaisonEffectif();
   });
-  document.getElementById('clubCentreFormation').addEventListener('click', async (e) => {
-    if (!e.target.classList.contains('btnPromouvoirJeune')) return;
-    const id = e.target.dataset.joueur;
-    const jeune = (saison.clubJoueur.jeunes || []).find((j) => j.id === id);
-    if (!jeune) return;
-    if (!(await confirmerAction(`Promouvoir ${jeune.nom} (${POSTE_COMPLET[jeune.poste] || jeune.poste}, ${jeune.age} ans) en équipe première ? Il quittera définitivement le centre de formation.`))) return;
-    RMClub.promouvoirJeune(saison, id);
-    sauvegarder();
-    toast(`✅ ${jeune.nom} rejoint le groupe professionnel`);
-    rafraichirCentreFormation();
-    rafraichirEffectif();
-    rafraichirStatutEffectif();
-  });
   document.getElementById('mondePays').addEventListener('click', (e) => {
     const bouton = e.target.closest('.btnDivisionMonde');
     if (!bouton) return;
@@ -1779,6 +1823,57 @@
   // délégation sur le conteneur parent plutôt qu'un addEventListener par joueur.
   document.getElementById('clubJoueurDetail').addEventListener('click', async (e) => {
     if (e.target.id === 'btnFermerFicheJoueur') { fermerFicheJoueur(); return; }
+    // Offre de transfert sur un joueur d'un club adverse — la fiche est la
+    // MÊME que pour ses propres joueurs (TODO_AUDIT.md P1-19), seul ce
+    // bouton diffère. L'index attendu par approcherJoueurAdverse est celui
+    // du joueur dans l'effectif RÉEL du club adverse (l'id affiché est
+    // dérivé, cf. RMClub.effectifAdverseNormalise).
+    if (e.target.id === 'btnApprocherJoueurAdverse') {
+      const ctx = contexte();
+      if (ctx.modifiable || !joueurAffiche) return;
+      const adv = ctx.club;
+      const index = ctx.effectif.findIndex((x) => x.id === joueurAffiche);
+      const joueurCible = adv.effectif[index];
+      if (index < 0 || !joueurCible) return;
+      const prixDemande = RMClub.calculerPrixDemandeAdverse(joueurCible, adv);
+      const montant = await demanderMontant(
+        `${joueurCible.nom} (${adv.nom}) — prix demandé estimé : ${prixDemande} k€. Montant de ton offre (k€) :`,
+        prixDemande
+      );
+      if (montant == null) return; // annulé
+      const rng = creerRng(graineAleatoire());
+      const res = RMClub.approcherJoueurAdverse(rng, saison, adv.id, index, montant);
+      if (!res.ok) {
+        if (res.motif === 'budget') toast(`Budget insuffisant : il te manque ${montant - saison.clubJoueur.budget} k€.`, 'erreur');
+        else if (res.motif === 'refuse') toast(`${adv.nom} refuse ton offre de ${montant} k€ pour ${joueurCible.nom} (prix demandé estimé : ${res.prixDemande} k€). Tente une offre plus généreuse, ou reviens plus tard.`, 'erreur');
+        else toast('Transfert impossible.', 'erreur');
+        return;
+      }
+      sauvegarder();
+      toast(`✅ ${res.joueur.nom} rejoint le club en provenance de ${adv.nom} (${montant} k€)`);
+      fermerFicheJoueur();
+      rafraichirEcransEquipe();
+      rafraichirStatutEffectif();
+      rafraichirTopBarInfos();
+      rafraichirAutresClubs();
+      return;
+    }
+    // Promotion d'un espoir : proposée dans la fiche joueur quand c'est le
+    // centre de formation qui est affiché — plus une liste "Promouvoir"
+    // séparée qui doublonnait l'effectif (TODO_AUDIT.md P1-19).
+    if (e.target.id === 'btnPromouvoirEspoir') {
+      if (!joueurAffiche) return;
+      const jeune = (saison.clubJoueur.jeunes || []).find((x) => x.id === joueurAffiche);
+      if (!jeune) return;
+      if (!(await confirmerAction(`Promouvoir ${jeune.nom} (${POSTE_COMPLET[jeune.poste] || jeune.poste}, ${jeune.age} ans) en équipe première ? Il quittera définitivement le centre de formation.`))) return;
+      RMClub.promouvoirJeune(saison, joueurAffiche);
+      sauvegarder();
+      toast(`✅ ${jeune.nom} rejoint le groupe professionnel`);
+      fermerFicheJoueur();
+      rafraichirEcransEquipe();
+      rafraichirStatutEffectif();
+      return;
+    }
     if (e.target.id === 'btnRenouveler') {
       if (!joueurAffiche) return;
       const joueur = saison.clubJoueur.effectif.find((j) => j.id === joueurAffiche);
@@ -1902,68 +1997,58 @@
     document.getElementById('panneauApercuMatch').classList.remove('visible');
     lancerLaJournee();
   });
-  // Équipe gérée (TODO_AUDIT.md P1-18) : chaque handler écrit dans le slot de
-  // l'équipe ACTUELLEMENT sélectionnée (cf. saison.clubJoueur.equipeGeree),
-  // premier XV/Équipe B/Espoirs — même code pour les 3.
+  // Chaque handler d'édition écrit dans le slot de l'équipe ACTUELLEMENT
+  // sélectionnée (TODO_AUDIT.md P1-19) — premier XV, Équipe B ou Espoirs,
+  // même code pour les 3 — et ne fait rien du tout sur une équipe que le
+  // joueur ne dirige pas (les contrôles sont déjà désactivés côté rendu :
+  // c'est la deuxième barrière, pas la seule).
   document.getElementById('btnCompositionAuto').addEventListener('click', () => {
-    const equipe = saison.clubJoueur.equipeGeree || 'pro';
-    const effectif = RMClub.effectifPourEquipe(saison, equipe);
-    const slot = RMClub.slotCompositionPourEquipe(saison, equipe);
+    const ctx = contexte();
+    if (!ctx.modifiable) return;
+    const effectif = ctx.effectif;
+    const slot = ctx.slot;
     slot.compositionTitulaires = RMClub.meilleureComposition(effectif);
     slot.compositionBanc = RMClub.completerCompositionBanc(effectif, slot.compositionTitulaires, {});
     const auto = RMClub.autoDesignerEncadrement(effectif, slot.compositionTitulaires);
     slot.capitaineId = auto.capitaineId; slot.buteurId = auto.buteurId; slot.lanceurToucheId = auto.lanceurToucheId;
     sauvegarder();
     toast('✅ Meilleure équipe possible appliquée');
-    rafraichirTerrain(); rafraichirBanc(); rafraichirEncadrement();
+    rafraichirTerrain(); rafraichirBanc(); rafraichirEncadrement(); rafraichirEffectif();
   });
   document.getElementById('clubTerrain').addEventListener('change', (e) => {
     const numero = e.target.dataset.numero;
-    if (!numero) return;
-    const equipe = saison.clubJoueur.equipeGeree || 'pro';
-    RMClub.slotCompositionPourEquipe(saison, equipe).compositionTitulaires[numero] = e.target.value;
+    const ctx = contexte();
+    if (!numero || !ctx.modifiable) return;
+    ctx.slot.compositionTitulaires[numero] = e.target.value;
     sauvegarder();
     rafraichirTerrain(); // ce joueur n'est plus proposé aux autres numéros
     rafraichirBanc(); // peut libérer/consommer un joueur du vivier du banc
     rafraichirEncadrement(); // options dépendantes des titulaires
+    rafraichirEffectif(); // badges de rôle et statut de sélection du jour
   });
   document.getElementById('clubBanc').addEventListener('change', (e) => {
     const numero = e.target.dataset.numero;
-    if (!numero) return;
-    const equipe = saison.clubJoueur.equipeGeree || 'pro';
-    RMClub.slotCompositionPourEquipe(saison, equipe).compositionBanc[numero] = e.target.value;
+    const ctx = contexte();
+    if (!numero || !ctx.modifiable) return;
+    ctx.slot.compositionBanc[numero] = e.target.value;
     sauvegarder();
     rafraichirBanc();
   });
   document.getElementById('clubEncadrement').addEventListener('change', (e) => {
     const role = e.target.dataset.role;
-    if (!role) return;
-    const equipe = saison.clubJoueur.equipeGeree || 'pro';
-    RMClub.slotCompositionPourEquipe(saison, equipe)[role] = e.target.value;
+    const ctx = contexte();
+    if (!role || !ctx.modifiable) return;
+    ctx.slot[role] = e.target.value;
     sauvegarder();
+    rafraichirEffectif(); // badges C/BUT/TOU de l'effectif affiché
   });
 
-  // --- Équipe gérée : sélecteur partagé entre les onglets Composition et
-  // Tactique (les 2 <select> restent synchronisés, cf. rafraichirTerrain/
-  // rafraichirTactique qui remettent l'autre à jour à chaque rendu). ---
-  function changerEquipeGeree(equipe) {
-    if (!LIBELLE_EQUIPE[equipe] || saison.clubJoueur.equipeGeree === equipe) return;
-    saison.clubJoueur.equipeGeree = equipe;
-    RMClub.assurerCompositionPourEquipe(saison, equipe);
-    sauvegarder();
-    rafraichirTerrain(); rafraichirBanc(); rafraichirEncadrement(); rafraichirTactique();
-  }
-  const selEquipeComposition = document.getElementById('selEquipeGereeComposition');
-  if (selEquipeComposition) selEquipeComposition.addEventListener('change', (e) => changerEquipeGeree(e.target.value));
-  const selEquipeTactique = document.getElementById('selEquipeGereeTactique');
-  if (selEquipeTactique) selEquipeTactique.addEventListener('change', (e) => changerEquipeGeree(e.target.value));
-
-  // --- Tactique : s'applique à l'équipe actuellement gérée (cf. plus haut) ---
+  // --- Tactique : s'applique à l'équipe actuellement sélectionnée ---
   document.getElementById('clubTactique').addEventListener('click', (e) => {
     const bouton = e.target.closest('[data-axe]');
-    if (!bouton) return;
-    const equipe = saison.clubJoueur.equipeGeree || 'pro';
-    const slot = RMClub.slotCompositionPourEquipe(saison, equipe);
+    const ctx = contexte();
+    if (!bouton || !ctx.modifiable) return;
+    const slot = ctx.slot;
     if (!slot.tactique || typeof slot.tactique !== 'object') slot.tactique = {};
     slot.tactique[bouton.dataset.axe] = bouton.dataset.valeur;
     sauvegarder();
@@ -2085,7 +2170,10 @@
   // (cf. onResultat) ---
   document.getElementById('clubEntrainement').addEventListener('click', (e) => {
     const bouton = e.target.closest('[data-focus]');
-    if (!bouton) return;
+    const ctx = contexte();
+    if (!bouton || !ctx.modifiable) return;
+    // Le programme est celui du CLUB (un seul staff pour ses 3 équipes) :
+    // le modifier depuis n'importe laquelle d'entre elles est cohérent.
     saison.clubJoueur.entrainementFocus = bouton.dataset.focus;
     sauvegarder();
     toast(`✅ Programme d'entraînement mis à jour : ${bouton.querySelector('b') ? bouton.querySelector('b').textContent : bouton.dataset.focus}`);
@@ -2404,6 +2492,11 @@
         `Espoirs : ${saison.clubJoueur.nom} vs Académie ${clubAdverse.nom}`,
         (etat) => {
           RMClub.appliquerEffetsMatchEspoirs(saison, compositionEspoirs);
+          // Résultat ARCHIVÉ (TODO_AUDIT.md P1-19) : jusqu'ici il ne vivait
+          // que dans un message de la boîte de réception, donc l'écran
+          // Calendrier & classement n'avait rien à montrer pour les espoirs.
+          // Le score enregistré est celui réellement produit par le moteur.
+          RMClub.enregistrerMatchEspoirs(saison, matchJoueur.journee, clubAdverse.nom, etat.score.A, etat.score.B);
           const forme = etat.score.A > etat.score.B ? 'v' : etat.score.A < etat.score.B ? 'd' : 'n';
           const verbe = forme === 'v' ? 'battent' : forme === 'd' ? "s'inclinent face à" : 'font match nul avec';
           RMClub.ajouterMessage(saison, 'jeunes', 'Match espoirs',
@@ -2546,7 +2639,6 @@
     if (apercu.classList.contains('visible')) { apercu.classList.remove('visible'); return; }
     if (document.getElementById('barreOngletsClub').classList.contains('ouvert')) { fermerTiroirNav(); return; }
     if (joueurAffiche) { fermerFicheJoueur(); return; }
-    if (clubAdversaireAffiche && joueurAdversaireAfficheIndex != null) { fermerFicheJoueurAdversaire(); return; }
     if (clubAdversaireAffiche) { fermerClubAdversaire(); return; }
   });
 

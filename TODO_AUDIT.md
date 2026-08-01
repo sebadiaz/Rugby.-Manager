@@ -580,6 +580,42 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P1-19. Écrans de gestion d'équipe dupliqués par type d'équipe (premier XV / Équipe B / Espoirs / clubs adverses) — 5ᵉ tranche `ROADMAP_FOOTBALL_MANAGER.md`
+- **Statut : CORRIGÉ**
+- Priorité : P1 (demande explicite de l'utilisateur : « Refactorise toute la gestion des équipes autour d'écrans uniques et réutilisables. [...] l'équipe première, l'équipe B, les jeunes et les équipes adverses ne doivent surtout pas avoir des pages séparées ou des interfaces différentes. [...] un seul écran et un seul composant par fonctionnalité. »)
+- Fichiers concernés :
+  - `docs/js/club-equipes.js` (**nouveau**) — le contexte d'équipe : source unique de vérité consommée par tous les écrans
+  - `docs/js/clubUI.js` — les 6 écrans réécrits pour lire ce contexte ; suppression des rendus dupliqués
+  - `docs/index.html` — sélecteur unique + emplacements ; suppression de l'onglet Équipe B et des blocs dupliqués
+  - `docs/css/style.css` — styles du sélecteur commun, des états lecture seule et des notes « non connu »
+  - `server/test-parcours-club.js`, `server/test-parcours-navigateur.js`
+
+**Le problème.** La tranche P1-18 avait déjà unifié Composition/Tactique pour les 3 équipes du club. Il restait quatre présentations concurrentes pour les mêmes informations :
+- l'**effectif** : table riche pour le premier XV, carte « Centre de formation » séparée pour les espoirs, table réduite recopiée dans l'onglet Autres clubs pour un adversaire — et **deux fiches joueur distinctes** (`#clubJoueurDetail` et `#clubJoueurAdversaireDetail`), avec deux rendus d'attributs à maintenir en parallèle ;
+- le **calendrier et le classement** : un onglet pour le championnat principal, un onglet `equipeb` avec SON classement et SON calendrier, rien du tout pour les espoirs ;
+- l'**entraînement** et le **personnel** : implicitement liés au premier XV, aucun moyen de les consulter pour une autre équipe ;
+- deux `<select>` « Équipe gérée » recopiés (Composition + Tactique) qu'il fallait resynchroniser à la main à chaque rendu.
+
+**La correction.** Un seul objet **contexte d'équipe** (`RMClub.contexteEquipe`) décrit l'équipe affichée quel que soit son type (`'pro' | 'b' | 'jeunes' | 'adverse'`) et expose **toujours la même forme** : `effectif`, `slot` (composition/banc/tactique/encadrement), `calendrier`, `classement`, `personnel`, `entrainementFocus`, `modifiable`. Les 6 écrans lisent ce contexte et **rien d'autre** — il n'y a plus une seule branche « si c'est l'Équipe B alors… » dans le corps d'un écran.
+- Le sélecteur est un **unique nœud DOM** (`#selecteurEquipe`), *déplacé* par `basculerOnglet` dans l'emplacement de l'onglet actif plutôt que dupliqué par écran. C'est ce qui rend la conservation de l'équipe d'un écran à l'autre structurelle : il n'existe aucun autre état à resynchroniser.
+- Une équipe non dirigée passe par les **mêmes** écrans en lecture seule : mêmes `<select>` de terrain, simplement `disabled`. La composition affichée est son XV réel (`RMClub.slotAdverse`), sa tactique est **déduite de ses attributs réels** sur les mêmes 6 axes (`RMClub.deduireTactiqueAdverse`) et signalée comme déduite.
+- **Honnêteté maintenue (CLAUDE.md, rôle 6)** : ce qui n'est pas simulé pour un club IA (son banc, son staff, son programme d'entraînement) est affiché comme **non connu**, jamais fabriqué.
+
+**Doublons réellement supprimés** (pas seulement « factorisés ») :
+- l'onglet `equipeb` entier (bouton de navigation + volet + 4 cartes) ;
+- `#clubEquipeBStatut` / `#clubEquipeBComposition` / `#clubEquipeBClassement` / `#clubEquipeBCalendrier` et leur fonction de rendu `rafraichirEquipeB` (~70 lignes) ;
+- la table d'effectif adverse `#clubAutresClubEffectif` et la **seconde fiche joueur** `#clubJoueurAdversaireDetail` + `ouvrirFicheJoueurAdversaire`/`fermerFicheJoueurAdversaire` (~40 lignes) ;
+- la carte « Centre de formation » `#clubCentreFormation` et `rafraichirCentreFormation` (la promotion d'un espoir vit désormais dans la fiche joueur commune) ;
+- les deux `<select>` « Équipe gérée » et `changerEquipeGeree`.
+
+**Amélioration de fond trouvée en chemin.** Les résultats des matchs espoirs n'étaient archivés nulle part (uniquement un message de boîte de réception) : impossible d'en tirer un calendrier ou un bilan. Ils sont maintenant enregistrés (`RMClub.enregistrerMatchEspoirs`) et alimentent réellement l'écran Calendrier & classement — score produit par le moteur, jamais fabriqué.
+
+**Bug trouvé et corrigé pendant le développement.** Changer d'équipe avec une fiche joueur ouverte laissait affichée la fiche d'un joueur de l'équipe PRÉCÉDENTE (et masquait la nouvelle table d'effectif, `#clubEffectif` restant en `display:none`). `changerEquipe` referme désormais la fiche et vide la sélection de comparaison, comme le fait déjà `basculerOnglet`.
+
+**Critères de validation.**
+- `server/test-parcours-club.js` : 82/82 — dont 8 nouveaux tests dédiés (forme identique du contexte pour les 4 types, droits de modification, XV adverse complet et ids dérivés stables sans mutation des données de saison, tactique déduite réellement dépendante des attributs, calendrier/classement par équipe, bilan espoirs issu de matchs réels, persistance/rétrocompatibilité de la sélection, contenu du sélecteur).
+- `server/test-parcours-navigateur.js` : parcours réel des **4 types d'équipe × 6 écrans** (24 combinaisons), vérifiant que ce sont bien les **mêmes nœuds DOM** qui portent le contenu, qu'il n'existe **qu'un seul** sélecteur dans la page, que chaque écran a un contenu réel pour chaque équipe, que la lecture seule est respectée, que l'équipe est conservée d'un écran à l'autre et après un F5, et que **forcer** un clic sur la tactique d'un club adverse ne modifie rien dans la sauvegarde.
+
 ### P2-10. Découper club.js et clubUI.js par domaine (sans changement de comportement)
 - **Statut : EN COURS (tranche 1 : Personnel, tranche 2 : Objectif de saison, tranche 3 : Analyse adversaire, tranche 4 : Prêts, tranche 5 : Contrats, tranche 6 : Équipe B, tranche 7 : Transferts national, tranche 8 : Transferts internationaux, tranche 9 : Effectif étendu, tranche 10 : Centre de formation, tranche 11 : Composition et tactique, tranche 12 : Condition physique des joueurs, tranche 13 : Génération de club/pyramide, tranche 14 : Calendrier et classement, tranche 15 : Sauvegarde et migration — voir constat de risque et tranches suivantes ci-dessous)**
 - Priorité : P2 (maintenabilité — explicitement demandée par l'utilisateur malgré la tension avec la règle CLAUDE.md "jamais un patch purement technique si le gameplay ne s'améliore pas visiblement")

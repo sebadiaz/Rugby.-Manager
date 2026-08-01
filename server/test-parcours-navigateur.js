@@ -104,7 +104,7 @@ function optionsLancement() {
 
   // 2) Navigation dans toutes les pages.
   const onglets = ['dashboard', 'effectif', 'composition', 'tactique', 'entrainement',
-    'transferts', 'personnel', 'autresclubs', 'calendrier', 'equipeb', 'monde', 'finances', 'medical', 'stats'];
+    'transferts', 'personnel', 'autresclubs', 'calendrier', 'monde', 'finances', 'medical', 'stats'];
   for (const onglet of onglets) {
     await clicOnglet(onglet);
     await page.waitForTimeout(120);
@@ -401,22 +401,38 @@ function optionsLancement() {
       effectifApresConfirmation === effectifAvantLiberation - 1 && !(await page.isVisible('#clubJoueurDetail')));
   }
 
-  // 5c) Centre de formation : le vivier d'espoirs est affiché et un espoir
-  // peut être promu en équipe première, ce qui l'ajoute réellement à
-  // l'effectif pro (donc utilisable en composition).
+  // 5c) Centre de formation (TODO_AUDIT.md P1-19) : plus de liste séparée —
+  // les espoirs sont une ÉQUIPE du sélecteur commun, affichés dans le MÊME
+  // écran Effectif que le premier XV, avec la MÊME fiche joueur. La
+  // promotion vit désormais dans cette fiche.
+  await clicOnglet('effectif');
+  await page.waitForTimeout(150);
+  await page.selectOption('#selEquipeContexte', 'jeunes');
+  await page.waitForTimeout(250);
+  const lignesEspoirs = await page.$$('#clubEffectif tr[data-joueur]');
+  verifier('centre de formation : les espoirs s\'affichent dans le MÊME tableau d\'effectif que le premier XV',
+    lignesEspoirs.length > 0);
   const effectifAvantPromotion = await page.evaluate(() => JSON.parse(localStorage.getItem('rugbyManager.club.v1')).clubJoueur.effectif.length);
-  const boutonsJeunes = await page.$$('#clubCentreFormation .btnPromouvoirJeune');
-  verifier('centre de formation : le vivier d\'espoirs est affiché avec au moins un espoir', boutonsJeunes.length > 0);
-  if (boutonsJeunes.length > 0) {
-    await boutonsJeunes[0].click();
+  if (lignesEspoirs.length > 0) {
+    await lignesEspoirs[0].click();
+    await page.waitForTimeout(200);
+    verifier('centre de formation : un espoir s\'ouvre dans la MÊME fiche joueur (#clubJoueurDetail) que les joueurs pros',
+      await page.isVisible('#clubJoueurDetail'));
+    verifier('centre de formation : la fiche d\'un espoir propose "Promouvoir", et jamais "Libérer" (action réservée à l\'effectif pro)',
+      await page.isVisible('#btnPromouvoirEspoir') && !(await page.isVisible('#btnLibererFiche')));
+    await page.click('#btnPromouvoirEspoir');
     await page.waitForTimeout(150);
     verifier('centre de formation : promouvoir un espoir ouvre une fenêtre de confirmation intégrée (pas une boîte native)',
       await page.isVisible('#modalConfirmation.visible'));
     await page.click('#modalConfirmationValider');
-    await page.waitForTimeout(200);
+    await page.waitForTimeout(250);
     const effectifApresPromotion = await page.evaluate(() => JSON.parse(localStorage.getItem('rugbyManager.club.v1')).clubJoueur.effectif.length);
     verifier('centre de formation : promouvoir un espoir l\'ajoute réellement à l\'effectif professionnel', effectifApresPromotion === effectifAvantPromotion + 1);
   }
+  // Retour au premier XV pour la suite du parcours (le sélecteur conserve
+  // l'équipe choisie d'un écran à l'autre : c'est exactement le but).
+  await page.selectOption('#selEquipeContexte', 'pro');
+  await page.waitForTimeout(200);
 
   // 6) Affichage d'un club adverse + fiche joueur adverse + offre de transfert.
   await clicOnglet('autresclubs');
@@ -432,33 +448,45 @@ function optionsLancement() {
   await page.waitForTimeout(150);
   const detailAdversaireTxt = await page.textContent('#clubAutresClubIdentite');
   verifier('club adverse : sa fiche affiche un contenu réel', detailAdversaireTxt.trim().length > 20);
-  await page.click('#clubAutresClubEffectif tbody tr:nth-child(1)');
-  await page.waitForTimeout(150);
+  // TODO_AUDIT.md P1-19 : l'effectif adverse n'est PLUS recopié dans cet
+  // onglet — il s'affiche dans l'écran Effectif commun. La fiche du club
+  // propose des raccourcis qui y mènent en sélectionnant ce club.
+  verifier('club adverse : son effectif n\'est plus dupliqué dans l\'onglet Autres clubs (écran unique)',
+    await page.evaluate(() => !document.getElementById('clubAutresClubEffectif')));
+  verifier('club adverse : des raccourcis mènent aux écrans communs (effectif/composition/tactique/calendrier)',
+    (await page.$$('#clubAutresClubRaccourcis .btnRaccourciEquipe')).length === 4);
+  await page.click('#clubAutresClubRaccourcis .btnRaccourciEquipe[data-onglet="effectif"]');
+  await page.waitForTimeout(250);
+  const apresRaccourciEffectif = await page.evaluate(() => ({
+    ongletVisible: document.querySelector('.voletOnglet[data-volet="effectif"]').style.display !== 'none',
+    equipe: document.getElementById('selEquipeContexte').value,
+    lignes: document.querySelectorAll('#clubEffectif tr[data-joueur]').length,
+    lectureSeule: !!document.querySelector('#contexteEquipeInfo .badgeEquipeMode.lecture'),
+  }));
+  verifier('club adverse : le raccourci "Effectif" ouvre l\'écran Effectif COMMUN avec ce club sélectionné, en lecture seule',
+    apresRaccourciEffectif.ongletVisible && apresRaccourciEffectif.equipe.indexOf('adverse:') === 0
+    && apresRaccourciEffectif.lignes === 15 && apresRaccourciEffectif.lectureSeule);
+  // Offre de transfert : même fiche joueur que pour ses propres joueurs,
+  // seule l'action proposée diffère.
+  await page.click('#clubEffectif tr[data-joueur]');
+  await page.waitForTimeout(200);
+  verifier('club adverse : un de ses joueurs s\'ouvre dans la MÊME fiche joueur (#clubJoueurDetail) que les siens',
+    await page.isVisible('#clubJoueurDetail'));
   verifier('club adverse : le bouton "Faire une offre de transfert" est proposé sur sa fiche joueur',
     await page.isVisible('#btnApprocherJoueurAdverse'));
+  verifier('club adverse : aucune action de gestion (libérer/renouveler/prêter) n\'est proposée sur un joueur qu\'on ne dirige pas',
+    !(await page.isVisible('#btnLibererFiche')) && !(await page.isVisible('#btnRenouveler'))
+    && !(await page.isVisible('#btnPreterJoueur')));
   await page.click('#btnApprocherJoueurAdverse');
   await page.waitForTimeout(200);
   verifier('club adverse : cliquer "Faire une offre" ouvre bien une fenêtre intégrée pour le montant (pré-remplie du prix demandé)',
     await page.isVisible('#modalMontant.visible') && Number(await page.inputValue('#modalMontantInput')) > 0);
   await page.keyboard.press('Escape');
   await page.waitForTimeout(150);
-  verifier('fenêtre de montant : Échap annule l\'offre sans la soumettre, revient à la fiche du club adverse',
-    !(await page.isVisible('#modalMontant.visible')) && await page.isVisible('#clubJoueurAdversaireDetail'));
-
-  // 6b) Retour arrière (Échap) sur un panneau imbriqué : la fiche d'un
-  // joueur adverse est ouverte À L'INTÉRIEUR de la fiche du club adverse —
-  // Échap ne doit refermer QUE le niveau le plus imbriqué (comme pour la
-  // fiche joueur de son propre effectif, cf. 5d), pas sauter directement à
-  // la liste des clubs en passant par-dessus le niveau intermédiaire.
-  verifier('retour arrière : la fiche du joueur adverse est bien ouverte avant le test Échap', await page.isVisible('#clubJoueurAdversaireDetail'));
-  await page.keyboard.press('Escape');
-  await page.waitForTimeout(150);
-  verifier('retour arrière (Échap) : referme uniquement la fiche du joueur adverse, reste sur la fiche du club adverse',
-    !(await page.isVisible('#clubJoueurAdversaireDetail')) && await page.isVisible('#clubAutresClubDetail'));
-  await page.keyboard.press('Escape');
-  await page.waitForTimeout(150);
-  verifier('retour arrière (Échap) : un second Échap referme ensuite la fiche du club adverse, retour à la liste',
-    !(await page.isVisible('#clubAutresClubDetail')) && await page.isVisible('#clubAutresClubsListe'));
+  verifier('fenêtre de montant : Échap annule l\'offre sans la soumettre, revient à la fiche du joueur',
+    !(await page.isVisible('#modalMontant.visible')) && await page.isVisible('#clubJoueurDetail'));
+  verifier('retour arrière (Échap) : la fiche d\'un joueur adverse se referme comme celle d\'un joueur du club',
+    await (async () => { await page.keyboard.press('Escape'); await page.waitForTimeout(150); return !(await page.isVisible('#clubJoueurDetail')); })());
 
   // 6b) Équipe B (championnat réservé aux clubs au budget le plus élevé de
   // la ligue) : force un budget confortable (état non exposé par l'UI,
@@ -476,45 +504,45 @@ function optionsLancement() {
   await page.waitForTimeout(200);
   await page.click('#btnContinuerClub');
   await page.waitForTimeout(200);
-  await clicOnglet('equipeb');
-  await page.waitForTimeout(150);
-  const statutEquipeBTxt = await page.textContent('#clubEquipeBStatut');
-  verifier('équipe B : la carte de statut affiche un contenu réel', statutEquipeBTxt.trim().length > 20);
   verifier('équipe B : un budget confortable rend bien le club éligible',
     await page.evaluate(() => {
       const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
       return s.competitionB.eligibles.includes(s.clubJoueur.id);
     }));
-  verifier('équipe B : classement et calendrier affichés quand le club est éligible',
-    await page.isVisible('#carteEquipeBClassement') && await page.isVisible('#carteEquipeBCalendrier'));
-  // Audit ("pas même la liste de joueurs de l'équipe B") : avant correctif,
-  // l'onglet n'affichait qu'un classement de clubs et un calendrier de
-  // scores — jamais les joueurs réellement sélectionnés, alors que ce vivier
-  // (réservistes + centre de formation) est bien calculé en interne pour
-  // simuler le match (cf. RMClub.effectifDisponiblePourEquipeB).
-  verifier('équipe B : la composition (15 joueurs réellement sélectionnés) est affichée', await page.isVisible('#carteEquipeBComposition'));
-  const compoBTexte = await page.textContent('#clubEquipeBComposition');
-  verifier('équipe B : la composition affichée contient bien 15 lignes de poste (une par numéro)',
-    (compoBTexte.match(/Pilier|Talonneur|Deuxième ligne|Troisième ligne|Demi de mêlée|Ouverture|Ailier|Centre|Arrière/g) || []).length >= 15);
-
-  // 6c) Équipe gérée (TODO_AUDIT.md P1-18, correctif de cohérence) : la carte
-  // de composition de l'onglet Équipe B doit refléter le MÊME slot que celui
-  // réellement utilisé en match (cf. RMClub.assurerCompositionPourEquipe),
-  // pas une "meilleure équipe" recalculée à la volée qui pourrait diverger
-  // d'un choix manuel fait dans l'onglet Composition. Le lien "Modifier
-  // cette composition" doit aussi amener directement sur la bonne équipe.
-  verifier('équipe B : un lien "Modifier cette composition" est proposé dans la carte',
-    await page.isVisible('#clubEquipeBComposition .lienEquipeBCompo'));
-  await page.click('#clubEquipeBComposition .lienEquipeBCompo');
-  await page.waitForTimeout(200);
-  const ongletEtEquipeApresLien = await page.evaluate(() => ({
-    ongletVisible: document.querySelector('.voletOnglet[data-volet="composition"]').style.display !== 'none',
-    equipeGeree: JSON.parse(localStorage.getItem('rugbyManager.club.v1')).clubJoueur.equipeGeree,
+  // TODO_AUDIT.md P1-19 : plus d'onglet "Équipe B" dédié — son championnat
+  // s'affiche dans l'écran Calendrier & classement COMMUN, et sa composition
+  // dans l'écran Composition COMMUN.
+  verifier('équipe B : l\'onglet dédié a bien disparu (écrans communs, plus de doublon)',
+    await page.evaluate(() => !document.querySelector('.ongletBtn[data-onglet="equipeb"]')
+      && !document.querySelector('.voletOnglet[data-volet="equipeb"]')));
+  await clicOnglet('calendrier');
+  await page.waitForTimeout(150);
+  await page.selectOption('#selEquipeContexte', 'b');
+  await page.waitForTimeout(250);
+  const equipeBCalendrier = await page.evaluate(() => ({
+    titre: document.getElementById('titreClubClassement').textContent,
+    lignesClassement: document.querySelectorAll('#clubClassement tbody tr').length,
+    blocsCalendrier: document.querySelectorAll('#clubCalendrier .blocJournee').length,
   }));
-  verifier('équipe B : le lien "Modifier cette composition" ouvre bien l\'onglet Composition avec l\'Équipe B déjà sélectionnée',
-    ongletEtEquipeApresLien.ongletVisible && ongletEtEquipeApresLien.equipeGeree === 'b');
+  verifier('équipe B : son classement s\'affiche dans le MÊME écran Calendrier & classement que le premier XV',
+    equipeBCalendrier.titre.includes('Équipe B') && equipeBCalendrier.lignesClassement >= 2);
+  verifier('équipe B : son calendrier réel s\'affiche dans ce même écran commun',
+    equipeBCalendrier.blocsCalendrier > 0);
+  // Sa composition passe par l'écran Composition commun (terrain 1-15).
+  await clicOnglet('composition');
+  await page.waitForTimeout(250);
+  const equipeBCompo = await page.evaluate(() => ({
+    equipe: document.getElementById('selEquipeContexte').value,
+    postes: document.querySelectorAll('#clubTerrain .chipTerrain').length,
+    modifiable: !!document.querySelector('#contexteEquipeInfo .badgeEquipeMode.dirigee'),
+  }));
+  verifier('équipe B : l\'équipe sélectionnée est CONSERVÉE en passant du calendrier à la composition',
+    equipeBCompo.equipe === 'b');
+  verifier('équipe B : sa composition s\'édite sur le MÊME terrain 1-15 que le premier XV',
+    equipeBCompo.postes === 15 && equipeBCompo.modifiable);
   // Choisit manuellement un remplaçant différent de l'auto-sélection pour le
-  // n°1 (pilier), si le vivier du jour en propose au moins 2.
+  // n°1 (pilier), si le vivier du jour en propose au moins 2 — et vérifie
+  // que ce choix est bien celui persisté dans le slot réellement joué.
   const optionsN1 = await page.locator('#clubTerrain select[data-numero="1"] option').allTextContents();
   const nbOptionsN1 = optionsN1.filter((t) => t.trim() && t.trim() !== '—').length;
   if (nbOptionsN1 >= 2) {
@@ -526,17 +554,17 @@ function optionsLancement() {
     }, valeurAvant);
     if (autreValeur) {
       await page.selectOption('#clubTerrain select[data-numero="1"]', autreValeur);
-      await page.waitForTimeout(200);
-      await clicOnglet('equipeb');
-      await page.waitForTimeout(200);
-      const idAffiche = await page.evaluate(() => {
+      await page.waitForTimeout(250);
+      const idPersiste = await page.evaluate(() => {
         const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
         return s.clubJoueur.compositionsSecondaires.b.compositionTitulaires['1'];
       });
-      verifier('équipe B : un choix manuel dans l\'onglet Composition se reflète bien dans la carte Équipe B (pas de composition parallèle)',
-        idAffiche === autreValeur);
+      verifier('équipe B : un choix manuel dans l\'écran Composition commun est bien persisté dans le slot réellement joué',
+        idPersiste === autreValeur);
     }
   }
+  await page.selectOption('#selEquipeContexte', 'pro');
+  await page.waitForTimeout(200);
 
   const rondesJoueesAvant = await page.evaluate(() => {
     const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
@@ -875,8 +903,8 @@ function optionsLancement() {
   await pageEG.waitForTimeout(300);
   await pageEG.click('[data-onglet="composition"]');
   await pageEG.waitForTimeout(200);
-  await pageEG.selectOption('#selEquipeGereeComposition', 'jeunes');
-  await pageEG.waitForTimeout(200);
+  await pageEG.selectOption('#selEquipeContexte', 'jeunes');
+  await pageEG.waitForTimeout(250);
   await pageEG.selectOption('#clubTerrain select[data-numero="9"]', idDoublonDM);
   await pageEG.waitForTimeout(200);
   const compoApresChoix = await pageEG.evaluate(() =>
@@ -909,6 +937,169 @@ function optionsLancement() {
   verifier('équipe gérée : le choix manuel fait dans l\'écran Composition (Espoirs) est RÉELLEMENT celui utilisé en match, pas recalculé',
     messagesEspoirsEG.length === 1 && doublonAJoue);
   await contexteEG.close();
+
+  // 11c) ÉCRANS UNIQUES (TODO_AUDIT.md P1-19) — le cœur de la refonte : les
+  // 6 écrans de gestion d'équipe (composition, effectif, entraînement,
+  // tactique, calendrier/classement, personnel) doivent être LES MÊMES pour
+  // les 4 types d'équipe (premier XV, Équipe B, Espoirs, club adverse). On
+  // le vérifie de la seule façon qui compte vraiment : en parcourant
+  // réellement chaque écran avec chaque équipe et en contrôlant que ce sont
+  // les mêmes nœuds DOM qui portent le contenu, jamais des écrans parallèles.
+  const contexteUnif = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const pageUnif = await contexteUnif.newPage();
+  const erreursUnif = [];
+  pageUnif.on('pageerror', (e) => erreursUnif.push(`PAGEERROR: ${e.message}`));
+  pageUnif.on('console', (m) => { if (m.type() === 'error' && !m.text().includes('404')) erreursUnif.push(`CONSOLE: ${m.text()}`); });
+  await pageUnif.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  await pageUnif.click('#btnAccueilModeClub');
+  await pageUnif.fill('#inputNomClub', 'Test Écrans Uniques');
+  await pageUnif.click('#btnCreerClub');
+  await pageUnif.waitForTimeout(300);
+  // Budget confortable : rend l'Équipe B éligible de façon déterministe.
+  await pageUnif.evaluate(() => {
+    const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
+    s.clubJoueur.budget = 5000;
+    s.competitionB = null;
+    localStorage.setItem('rugbyManager.club.v1', JSON.stringify(s));
+  });
+  await pageUnif.reload({ waitUntil: 'networkidle' });
+  await pageUnif.waitForTimeout(200);
+  await pageUnif.click('#btnContinuerClub');
+  await pageUnif.waitForTimeout(300);
+
+  const idAdversaireUnif = await pageUnif.evaluate(() =>
+    JSON.parse(localStorage.getItem('rugbyManager.club.v1')).adversaires[0].id);
+  // Les 4 types d'équipe demandés, dans l'ordre : première équipe, équipe B,
+  // équipe jeune, équipe adverse.
+  const EQUIPES_A_TESTER = [
+    { valeur: 'pro', nom: 'première équipe', modifiable: true },
+    { valeur: 'b', nom: 'équipe B', modifiable: true },
+    { valeur: 'jeunes', nom: 'équipe jeune (espoirs)', modifiable: true },
+    { valeur: 'adverse:' + idAdversaireUnif, nom: 'équipe adverse', modifiable: false },
+  ];
+  // Le nœud qui porte le contenu de chaque écran — c'est LUI qui doit être
+  // partagé par les 4 équipes (s'il en existait un par type d'équipe, la
+  // refonte n'aurait servi à rien).
+  const ECRANS_A_TESTER = [
+    { onglet: 'effectif', nœud: '#clubEffectif', nom: 'effectif' },
+    { onglet: 'composition', nœud: '#clubTerrain', nom: 'composition' },
+    { onglet: 'tactique', nœud: '#clubTactique', nom: 'tactique' },
+    { onglet: 'entrainement', nœud: '#clubEntrainement', nom: 'entraînement' },
+    { onglet: 'calendrier', nœud: '#clubClassement', nom: 'calendrier & classement' },
+    { onglet: 'personnel', nœud: '#clubPersonnelActuel', nom: 'personnel' },
+  ];
+  let toutesEquipesOntTousLesEcrans = true;
+  let selecteurToujoursDansEcran = true;
+  let contenuToujoursReel = true;
+  let lectureSeuleRespectee = true;
+  for (const equipe of EQUIPES_A_TESTER) {
+    for (const ecran of ECRANS_A_TESTER) {
+      await pageUnif.click(`.ongletBtn[data-onglet="${ecran.onglet}"]`);
+      await pageUnif.waitForTimeout(120);
+      await pageUnif.selectOption('#selEquipeContexte', equipe.valeur);
+      await pageUnif.waitForTimeout(200);
+      const etat = await pageUnif.evaluate((args) => {
+        const volet = document.querySelector(`.voletOnglet[data-volet="${args.onglet}"]`);
+        const nœud = document.querySelector(args.nœud);
+        const selecteur = document.getElementById('selecteurEquipe');
+        return {
+          voletVisible: volet && volet.style.display !== 'none',
+          // Le nœud de contenu doit exister ET appartenir à CE volet : preuve
+          // qu'il n'y a pas d'écran parallèle ailleurs dans la page.
+          nœudDansVolet: !!(nœud && volet && volet.contains(nœud)),
+          contenu: nœud ? (nœud.innerText || '').trim().length : 0,
+          // Un seul sélecteur dans toute la page, et il est dans l'écran actif.
+          nbSelecteurs: document.querySelectorAll('#selecteurEquipe').length,
+          selecteurDansVolet: !!(selecteur && volet && volet.contains(selecteur)),
+          valeurSelecteur: document.getElementById('selEquipeContexte').value,
+          modifiable: !!document.querySelector('#contexteEquipeInfo .badgeEquipeMode.dirigee'),
+        };
+      }, { onglet: ecran.onglet, nœud: ecran.nœud });
+      if (!etat.voletVisible || !etat.nœudDansVolet) toutesEquipesOntTousLesEcrans = false;
+      if (etat.nbSelecteurs !== 1 || !etat.selecteurDansVolet || etat.valeurSelecteur !== equipe.valeur) selecteurToujoursDansEcran = false;
+      if (etat.contenu < 15) contenuToujoursReel = false;
+      if (etat.modifiable !== equipe.modifiable) lectureSeuleRespectee = false;
+    }
+  }
+  verifier('écrans uniques : les 4 types d\'équipe (1re, B, jeunes, adverse) passent par les MÊMES 6 écrans (mêmes nœuds DOM)',
+    toutesEquipesOntTousLesEcrans);
+  verifier('écrans uniques : il n\'existe QU\'UN sélecteur d\'équipe dans toute la page, déplacé dans l\'écran actif',
+    selecteurToujoursDansEcran);
+  verifier('écrans uniques : chaque écran affiche un contenu RÉEL pour chacune des 4 équipes (jamais une page vide)',
+    contenuToujoursReel);
+  verifier('écrans uniques : seules les équipes dirigées sont modifiables, un club adverse reste en lecture seule sur les 6 écrans',
+    lectureSeuleRespectee);
+
+  // L'équipe sélectionnée doit être CONSERVÉE en naviguant entre les 6
+  // écrans — c'est explicitement demandé, et c'est ce qui rend la
+  // consultation d'une équipe cohérente d'un écran à l'autre.
+  await pageUnif.click('.ongletBtn[data-onglet="composition"]');
+  await pageUnif.waitForTimeout(120);
+  await pageUnif.selectOption('#selEquipeContexte', 'jeunes');
+  await pageUnif.waitForTimeout(200);
+  let equipeConservee = true;
+  for (const ecran of ECRANS_A_TESTER) {
+    await pageUnif.click(`.ongletBtn[data-onglet="${ecran.onglet}"]`);
+    await pageUnif.waitForTimeout(150);
+    const valeur = await pageUnif.evaluate(() => document.getElementById('selEquipeContexte').value);
+    if (valeur !== 'jeunes') equipeConservee = false;
+  }
+  verifier('écrans uniques : l\'équipe sélectionnée est conservée en passant de la composition à la tactique, l\'entraînement, le calendrier et le personnel',
+    equipeConservee);
+  // ... et elle survit à un rechargement de page (sauvegardée, pas seulement
+  // en mémoire).
+  await pageUnif.reload({ waitUntil: 'networkidle' });
+  await pageUnif.waitForTimeout(200);
+  await pageUnif.click('#btnContinuerClub');
+  await pageUnif.waitForTimeout(300);
+  await pageUnif.click('.ongletBtn[data-onglet="effectif"]');
+  await pageUnif.waitForTimeout(200);
+  verifier('écrans uniques : l\'équipe sélectionnée survit à un rechargement de page (F5)',
+    (await pageUnif.evaluate(() => document.getElementById('selEquipeContexte').value)) === 'jeunes');
+
+  // Une équipe adverse doit être en lecture seule POUR DE VRAI : les
+  // contrôles sont désactivés, et forcer l'action ne modifie rien.
+  await pageUnif.click('.ongletBtn[data-onglet="composition"]');
+  await pageUnif.waitForTimeout(120);
+  await pageUnif.selectOption('#selEquipeContexte', 'adverse:' + idAdversaireUnif);
+  await pageUnif.waitForTimeout(250);
+  const controlesAdverse = await pageUnif.evaluate(() => ({
+    selects: document.querySelectorAll('#clubTerrain select').length,
+    desactives: document.querySelectorAll('#clubTerrain select[disabled]').length,
+    encadrementDesactives: document.querySelectorAll('#clubEncadrement select[disabled]').length,
+    boutonAutoMasque: document.getElementById('btnCompositionAuto').style.display === 'none',
+  }));
+  verifier('écrans uniques : la composition d\'un club adverse est le MÊME terrain 1-15, entièrement désactivé',
+    controlesAdverse.selects === 15 && controlesAdverse.desactives === 15
+    && controlesAdverse.encadrementDesactives === 3 && controlesAdverse.boutonAutoMasque);
+  await pageUnif.click('.ongletBtn[data-onglet="tactique"]');
+  await pageUnif.waitForTimeout(200);
+  const tactiqueAdverse = await pageUnif.evaluate(() => {
+    const axes = document.querySelectorAll('#clubTactique [data-axe]');
+    return {
+      axes: axes.length,
+      desactives: document.querySelectorAll('#clubTactique [data-axe][disabled]').length,
+      choisies: document.querySelectorAll('#clubTactique .ligneTactique.choisie').length,
+      noteDeduite: !!document.querySelector('#clubTactique .noteLectureSeule'),
+    };
+  });
+  verifier('écrans uniques : la tactique d\'un club adverse s\'affiche sur les MÊMES 6 axes, désactivés et signalés comme déduits',
+    tactiqueAdverse.axes === 18 && tactiqueAdverse.desactives === 18
+    && tactiqueAdverse.choisies === 6 && tactiqueAdverse.noteDeduite);
+  // Tenter réellement de modifier la tactique d'un club qu'on ne dirige pas
+  // ne doit RIEN changer dans la sauvegarde.
+  const sauvegardeAvantForcage = await pageUnif.evaluate(() => localStorage.getItem('rugbyManager.club.v1'));
+  await pageUnif.evaluate(() => {
+    const bouton = document.querySelector('#clubTactique .ligneTactique:not(.choisie)');
+    if (bouton) { bouton.disabled = false; bouton.click(); }
+  });
+  await pageUnif.waitForTimeout(250);
+  verifier('écrans uniques : forcer un clic sur la tactique d\'un club adverse ne modifie RIEN (lecture seule réelle, pas cosmétique)',
+    (await pageUnif.evaluate(() => localStorage.getItem('rugbyManager.club.v1'))) === sauvegardeAvantForcage);
+  verifier('écrans uniques : aucune erreur console pendant tout le parcours des 4 équipes sur les 6 écrans',
+    erreursUnif.length === 0);
+  if (erreursUnif.length) console.error(erreursUnif.join('\n'));
+  await contexteUnif.close();
 
   // 12) Décision réelle dans la boîte de réception (audit "boîte de réception
   // avec décisions", cf. club-decisions.js) : injecte directement une

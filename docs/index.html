@@ -173,7 +173,6 @@
         <span class="groupeNav" data-cat="competition">Compétition</span>
         <button class="ongletBtn" data-onglet="autresclubs">🏟️ <span>Autres clubs</span></button>
         <button class="ongletBtn" data-onglet="calendrier">📅 <span>Calendrier</span></button>
-        <button class="ongletBtn" data-onglet="equipeb">🥈 <span>Équipe B</span></button>
         <button class="ongletBtn" data-onglet="monde">🌍 <span>Monde</span></button>
         <span class="groupeNav" data-cat="gestion">Gestion</span>
         <button class="ongletBtn" data-onglet="finances">💰 <span>Finances</span></button>
@@ -255,9 +254,12 @@
         </div>
 
         <!-- Effectif : recherche/tri/filtres, chaque ligne bascule sur une
-             fiche joueur SUR PLACE (cf. clubUI.js) — pas un écran empilé. -->
+             fiche joueur SUR PLACE (cf. clubUI.js) — pas un écran empilé.
+             Écran UNIQUE partagé par les 4 types d'équipe (premier XV,
+             Équipe B, Espoirs, club adverse) via le sélecteur commun. -->
         <div class="voletOnglet" data-volet="effectif" style="display:none;">
-          <div class="enTetePage"><span class="categoriePage">Mon club</span><h2>Effectif</h2><p>Recherche, tri et filtre ton effectif complet — clique un joueur pour sa fiche détaillée.</p></div>
+          <div class="enTetePage"><span class="categoriePage">Équipes</span><h2>Effectif</h2><p>Recherche, tri et filtre l'effectif de l'équipe sélectionnée — clique un joueur pour sa fiche détaillée.</p></div>
+          <div class="emplacementSelecteurEquipe"></div>
           <div class="carteClub">
             <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
               <h3 style="margin:0;">👥 Effectif</h3>
@@ -283,29 +285,17 @@
             <div id="clubComparaisonEffectif"></div>
             <div id="clubJoueurDetail" style="display:none;"></div>
           </div>
-          <div class="carteClub">
-            <h3 style="margin:0 0 4px;">🌱 Centre de formation</h3>
-            <p style="margin:0 0 10px;font-size:12.5px;color:var(--text-faint);">Le vivier d'espoirs du club. Promeus un jeune en équipe première à tout moment — utile en particulier quand l'effectif senior n'a plus assez de joueurs disponibles à un poste.</p>
-            <div id="clubEspoirsStatut" style="margin:0 0 10px;font-size:12.5px;color:var(--text-dim);"></div>
-            <div id="clubCentreFormation"></div>
-          </div>
         </div>
 
         <!-- Composition : terrain visuel (1-15), banc de 8, capitaine, buteur,
              lanceur en touche — un vrai écran de sélection, pas une liste
              déroulante isolée (cf. clubUI.js, rafraichirComposition).
-             Sélecteur d'équipe gérée (TODO_AUDIT.md P1-18) : même écran pour
-             le premier XV, l'Équipe B et les Espoirs. -->
+             Sélecteur d'équipe commun (TODO_AUDIT.md P1-19) : même écran pour
+             le premier XV, l'Équipe B, les Espoirs et n'importe quel club
+             adverse (ce dernier en lecture seule). -->
         <div class="voletOnglet" data-volet="composition" style="display:none;">
-          <div class="enTetePage"><span class="categoriePage">Mon club</span><h2>Composition</h2><p>Titulaires, banc et encadrement pour la prochaine journée.</p></div>
-          <div class="carteClub">
-            <label class="sr-label" for="selEquipeGereeComposition">Équipe gérée</label>
-            <select id="selEquipeGereeComposition" style="width:100%;font-weight:700;">
-              <option value="pro">🏉 Première équipe</option>
-              <option value="b">🥈 Équipe B</option>
-              <option value="jeunes">🌱 Espoirs</option>
-            </select>
-          </div>
+          <div class="enTetePage"><span class="categoriePage">Équipes</span><h2>Composition</h2><p>Titulaires, banc et encadrement de l'équipe sélectionnée.</p></div>
+          <div class="emplacementSelecteurEquipe"></div>
           <div class="carteClub">
             <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
               <h3 style="margin:0;">📋 Composition du jour</h3>
@@ -327,17 +317,10 @@
         <!-- Tactique : 6 axes indépendants qui se combinent, chacun modifie
              réellement la config transmise au moteur (cf. RMClub.AXES_TACTIQUE
              et engine/rugby-engine.js cfgAttaque/cfgDefense/cfgMelee/cfgTouche/cfgRuck).
-             Même sélecteur d'équipe gérée que l'onglet Composition. -->
+             Même sélecteur d'équipe commun que l'onglet Composition. -->
         <div class="voletOnglet" data-volet="tactique" style="display:none;">
-          <div class="enTetePage"><span class="categoriePage">Mon club</span><h2>Tactique</h2><p>Six réglages indépendants, chacun modifie réellement la config transmise au moteur.</p></div>
-          <div class="carteClub">
-            <label class="sr-label" for="selEquipeGereeTactique">Équipe gérée</label>
-            <select id="selEquipeGereeTactique" style="width:100%;font-weight:700;">
-              <option value="pro">🏉 Première équipe</option>
-              <option value="b">🥈 Équipe B</option>
-              <option value="jeunes">🌱 Espoirs</option>
-            </select>
-          </div>
+          <div class="enTetePage"><span class="categoriePage">Équipes</span><h2>Tactique</h2><p>Six réglages indépendants, chacun modifie réellement la config transmise au moteur.</p></div>
+          <div class="emplacementSelecteurEquipe"></div>
           <div class="carteClub">
             <h3>🎯 Tactique</h3>
             <div id="clubTactique"></div>
@@ -348,7 +331,8 @@
              correspondants à chaque journée jouée (cf. RMClub.appliquerEntrainement) —
              borné par le potentiel et l'âge de chaque joueur, jamais un simple badge. -->
         <div class="voletOnglet" data-volet="entrainement" style="display:none;">
-          <div class="enTetePage"><span class="categoriePage">Mon club</span><h2>Entraînement</h2><p>Programme collectif et développement des jeunes joueurs.</p></div>
+          <div class="enTetePage"><span class="categoriePage">Équipes</span><h2>Entraînement</h2><p>Programme collectif et développement des jeunes joueurs de l'équipe sélectionnée.</p></div>
+          <div class="emplacementSelecteurEquipe"></div>
           <div class="carteClub">
             <h3>🏋️ Programme d'entraînement</h3>
             <p style="font-size:12px;color:var(--text-dim);margin:0 0 12px;">Appliqué à chaque journée jouée : fait progresser les attributs concernés des joueurs encore sous leur potentiel (jusqu'à 32 ans), en priorité les jeunes.</p>
@@ -386,13 +370,14 @@
              recruteur, analyste), chacun avec un effet réel sur un mécanisme
              existant (cf. RMClub.effetPersonnel) — jamais décoratif. -->
         <div class="voletOnglet" data-volet="personnel" style="display:none;">
-          <div class="enTetePage"><span class="categoriePage">Recrutement</span><h2>Personnel</h2><p>Organigramme du club et candidats disponibles.</p></div>
+          <div class="enTetePage"><span class="categoriePage">Équipes</span><h2>Personnel</h2><p>Organigramme du club de l'équipe sélectionnée et candidats disponibles.</p></div>
+          <div class="emplacementSelecteurEquipe"></div>
           <div class="carteClub">
             <h3>🧑‍⚕️ Organigramme</h3>
             <p style="font-size:12px;color:var(--text-dim);margin:0 0 10px;">Un poste vacant n'a aucun effet ; recruter dessus module réellement l'entraînement, la fatigue, les blessures, le scouting ou l'analyse — et pèse sur la masse salariale.</p>
             <div id="clubPersonnelActuel"></div>
           </div>
-          <div class="carteClub">
+          <div class="carteClub" id="cartePersonnelMarche">
             <div style="display:flex;justify-content:space-between;align-items:center;">
               <h3 style="margin:0;">📥 Candidats disponibles</h3>
               <button id="btnRafraichirPersonnel" class="alt" style="flex:0 0 auto;width:auto;padding:8px 12px;font-size:12px;">🔄 Rafraîchir</button>
@@ -401,13 +386,14 @@
           </div>
         </div>
 
-        <!-- Autres clubs : consultation de N'IMPORTE quel adversaire (pas
-             seulement le prochain) — identité, effectif complet avec fiche
-             joueur en lecture seule, tactique déduite des attributs réels,
-             forces/faiblesses et historique des confrontations directes
-             (cf. clubUI.js, RMClub.analyserAdversaire/enregistrerResultatClubJoueur). -->
+        <!-- Autres clubs : FICHE D'IDENTITÉ d'un adversaire (réputation,
+             forme, forces/faiblesses, confrontations directes). Son effectif,
+             sa composition, sa tactique, son calendrier et son classement ne
+             sont PAS dupliqués ici : ce sont les mêmes écrans que pour ses
+             propres équipes, via le sélecteur d'équipe commun (TODO_AUDIT.md
+             P1-19) — cette carte propose le raccourci qui l'y emmène. -->
         <div class="voletOnglet" data-volet="autresclubs" style="display:none;">
-          <div class="enTetePage"><span class="categoriePage">Compétition</span><h2>Autres clubs</h2><p>Consulte n'importe quel adversaire : effectif, forces/faiblesses, confrontations.</p></div>
+          <div class="enTetePage"><span class="categoriePage">Compétition</span><h2>Autres clubs</h2><p>Consulte n'importe quel adversaire : identité, forces/faiblesses, confrontations.</p></div>
           <div class="carteClub">
             <h3>🏟️ Autres clubs</h3>
             <div id="clubAutresClubsListe" tabindex="0" role="region" aria-label="Liste des autres clubs, défilement horizontal sur petit écran"></div>
@@ -424,46 +410,29 @@
             <button id="btnFermerClubAdversaire" class="alt" style="width:100%;margin-bottom:12px;">← Retour à la liste des clubs</button>
             <div id="clubAutresClubCorps">
               <div id="clubAutresClubIdentite"></div>
+              <div id="clubAutresClubRaccourcis" class="raccourcisEquipe"></div>
               <h4 style="margin:14px 0 6px;">Comparaison d'effectif</h4>
               <div id="clubAutresClubAnalyse"></div>
-              <h4 style="margin:14px 0 6px;">Effectif</h4>
-              <div id="clubAutresClubEffectif" tabindex="0" role="region" aria-label="Tableau de l'effectif adverse, défilement horizontal sur petit écran"></div>
               <h4 style="margin:14px 0 6px;">Confrontations directes</h4>
               <div id="clubAutresClubConfrontations"></div>
             </div>
-            <div id="clubJoueurAdversaireDetail" style="display:none;"></div>
           </div>
         </div>
 
+        <!-- Calendrier & classement : écran UNIQUE lui aussi — championnat
+             principal (premier XV et clubs adverses), championnat Équipe B ou
+             bilan des espoirs selon l'équipe sélectionnée, jamais un onglet
+             recopié par compétition (TODO_AUDIT.md P1-19). -->
         <div class="voletOnglet" data-volet="calendrier" style="display:none;">
-          <div class="enTetePage"><span class="categoriePage">Compétition</span><h2>Calendrier & classement</h2><p>Toutes les rencontres de la saison, y compris celles des autres clubs.</p></div>
+          <div class="enTetePage"><span class="categoriePage">Équipes</span><h2>Calendrier & classement</h2><p>Les rencontres et le classement de l'équipe sélectionnée.</p></div>
+          <div class="emplacementSelecteurEquipe"></div>
           <div class="carteClub">
-            <h3>🏆 Classement</h3>
+            <h3 id="titreClubClassement">🏆 Classement</h3>
             <div id="clubClassement" tabindex="0" role="region" aria-label="Tableau du classement, défilement horizontal sur petit écran"></div>
           </div>
           <div class="carteClub">
             <h3>📅 Calendrier</h3>
             <div id="clubCalendrier"></div>
-          </div>
-        </div>
-
-        <div class="voletOnglet" data-volet="equipeb" style="display:none;">
-          <div class="enTetePage"><span class="categoriePage">Compétition</span><h2>🥈 Équipe B</h2><p>Championnat réservé aux clubs au budget le plus élevé de la ligue — aligne tes remplaçants du jour et ton centre de formation.</p></div>
-          <div class="carteClub">
-            <h3>💰 Statut</h3>
-            <div id="clubEquipeBStatut"></div>
-          </div>
-          <div class="carteClub" id="carteEquipeBComposition" style="display:none;">
-            <h3>👥 Composition Équipe B</h3>
-            <div id="clubEquipeBComposition"></div>
-          </div>
-          <div class="carteClub" id="carteEquipeBClassement" style="display:none;">
-            <h3>🏆 Classement Équipe B</h3>
-            <div id="clubEquipeBClassement"></div>
-          </div>
-          <div class="carteClub" id="carteEquipeBCalendrier" style="display:none;">
-            <h3>📅 Calendrier Équipe B</h3>
-            <div id="clubEquipeBCalendrier"></div>
           </div>
         </div>
 
@@ -543,6 +512,21 @@
           <button id="btnNouvelleSaisonClub" class="alt warn" style="width:100%;">Recommencer (efface la saison en cours)</button>
         </div>
       </main>
+
+      <!-- Sélecteur d'équipe COMMUN (TODO_AUDIT.md P1-19) : un SEUL nœud DOM
+           pour tout le jeu, déplacé par clubUI.js dans l'emplacement de
+           l'onglet actif (.emplacementSelecteurEquipe) — pas une copie par
+           écran. Toute la gestion d'équipe (composition, effectif,
+           entraînement, tactique, calendrier/classement, personnel) obéit à
+           ce sélecteur, et l'équipe choisie est conservée en changeant
+           d'onglet. Rangé ici tant qu'aucun onglet concerné n'est actif. -->
+      <div id="porteSelecteurEquipe" style="display:none;">
+        <div class="carteClub carteSelecteurEquipe" id="selecteurEquipe">
+          <label class="sr-label" for="selEquipeContexte">Équipe affichée</label>
+          <select id="selEquipeContexte" style="width:100%;font-weight:700;"></select>
+          <div id="contexteEquipeInfo" class="contexteEquipeInfo"></div>
+        </div>
+      </div>
     </div>
 
     <!-- Bouton toujours visible, quel que soit l'onglet actif : façon "New
@@ -672,6 +656,7 @@
 <script src="js/club-centre-formation.js"></script>
 <script src="js/club-espoirs.js"></script>
 <script src="js/club-composition.js"></script>
+<script src="js/club-equipes.js"></script>
 <script src="js/club-condition-joueurs.js"></script>
 <script src="js/club-decisions.js"></script>
 <script src="js/club-pyramide.js"></script>
