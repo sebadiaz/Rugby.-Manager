@@ -11,7 +11,11 @@
   // Incrémenté à chaque changement de forme des données sauvegardées : une
   // sauvegarde d'une version différente est ignorée (repart à zéro) plutôt que
   // de faire planter le jeu sur des champs manquants.
-  const VERSION_SAUVEGARDE = 2;
+  // 3 : introduction du temps calendaire (docs/js/club-temps.js) — chaque
+  // rencontre porte désormais une VRAIE date et la saison une date courante
+  // + une graine. Une sauvegarde v2 est migrée sans perte (cf.
+  // docs/js/club-sauvegarde.js, MIGRATIONS[2]).
+  const VERSION_SAUVEGARDE = 3;
 
   // --- Génération de noms (club fictif, aucune référence à un club/joueur réel) ---
   const PRENOMS = ['Thomas', 'Lucas', 'Hugo', 'Louis', 'Jules', 'Nathan', 'Enzo', 'Léo',
@@ -786,6 +790,14 @@
     saison.marche = global.RMClub.genererMarcheTransferts(rng, saison.clubJoueur.niveauClub, 6);
     saison.marchePersonnel = global.RMClub.genererMarchePersonnel(rng, 5);
     saison.numero = (saison.numero || 1) + 1;
+    // Nouvelle saison sportive = nouvelle année civile : le temps repart à
+    // l'intersaison de l'année suivante et le calendrier tout neuf est daté
+    // (cf. club-temps.js / club-agenda.js). Les matchs espoirs archivés
+    // appartenaient à la saison écoulée : ils repartent à zéro comme les
+    // autres compteurs de saison.
+    saison.clubJoueur.matchsEspoirs = [];
+    global.RMClub.reinitialiserTempsPourSaison(saison, saison.numero);
+    global.RMClub.daterCalendrier(saison);
     // Objectif de la saison qui COMMENCE, basé sur le classement RÉEL qu'on
     // vient d'archiver dans historiqueSaisons (donc y compris celui de la
     // saison qui vient de s'achever) — jamais une ambition fabriquée.
@@ -829,9 +841,15 @@
     for (const niveauClub of niveaux) adversaires.push(global.RMClub.genererClub(rng, { niveauClub }));
     const tousLesClubs = [clubJoueur, ...adversaires];
     clubJoueur.objectifSaison = global.RMClub.determinerObjectifSaison(clubJoueur.historiqueSaisons, tousLesClubs.length);
-    return {
+    // Graine de la SAISON : rend toute la progression quotidienne
+    // reproductible (cf. club-temps.js, grainePourJour) — deux carrières
+    // créées avec la même graine de départ vivent exactement la même saison.
+    // Tirée du rng fourni par l'appelant, jamais de Math.random.
+    const graine = Math.floor(rng() * 0xffffffff) >>> 0;
+    const saison = {
       version: VERSION_SAUVEGARDE,
       numero: 1,
+      graine,
       clubJoueur,
       adversaires,
       calendrier: global.RMClub.genererCalendrier(tousLesClubs),
@@ -843,6 +861,11 @@
       marchePersonnel: global.RMClub.genererMarchePersonnel(rng, 5),
       favoris: [],
     };
+    // Temps calendaire : date de début d'intersaison + dates réelles sur
+    // chaque rencontre (championnat le samedi, Équipe B le dimanche).
+    global.RMClub.reinitialiserTempsPourSaison(saison, 1);
+    global.RMClub.daterCalendrier(saison);
+    return saison;
   }
 
   // Audit P0-1 (TODO_AUDIT.md) : compteurJoueurId/compteurMessageId/

@@ -34,6 +34,8 @@ new Function('window', require('fs').readFileSync(require('path').join(__dirname
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-centre-formation.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-espoirs.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-composition.js'), 'utf8'))(global.window);
+new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-temps.js'), 'utf8'))(global.window);
+new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-agenda.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-equipes.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-condition-joueurs.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-decisions.js'), 'utf8'))(global.window);
@@ -1228,6 +1230,225 @@ test('navigation : la navigation est persistée et rétrocompatible avec l\'anci
     'un club disparu doit faire retomber la navigation sur le club du joueur');
 });
 
+// --- 12f) Temps calendaire (TODO_AUDIT.md P1-21, tranche 1) : la carrière
+// avance jour par jour, chaque rencontre a une VRAIE date, et rien ne peut
+// être joué avant sa date. `journee` est conservé tel quel : la date est une
+// couche additive, pas un remplacement. ---
+test('temps : arithmétique de dates exacte, y compris changements de mois, d\'année et années bissextiles', () => {
+  // Aucun objet Date n'est utilisé : la conversion date <-> jour absolu doit
+  // donc être vérifiée sur les cas limites classiques.
+  assert.deepStrictEqual(RMClub.ajouterJours({ annee: 2024, mois: 1, jour: 31 }, 1), { annee: 2024, mois: 2, jour: 1 });
+  assert.deepStrictEqual(RMClub.ajouterJours({ annee: 2024, mois: 2, jour: 28 }, 1), { annee: 2024, mois: 2, jour: 29 }, '2024 est bissextile');
+  assert.deepStrictEqual(RMClub.ajouterJours({ annee: 2025, mois: 2, jour: 28 }, 1), { annee: 2025, mois: 3, jour: 1 }, '2025 ne l\'est pas');
+  assert.deepStrictEqual(RMClub.ajouterJours({ annee: 2024, mois: 12, jour: 31 }, 1), { annee: 2025, mois: 1, jour: 1 }, 'passage d\'année');
+  assert.deepStrictEqual(RMClub.ajouterJours({ annee: 2025, mois: 1, jour: 1 }, -1), { annee: 2024, mois: 12, jour: 31 }, 'recul d\'année');
+  assert.deepStrictEqual(RMClub.ajouterJours({ annee: 1900, mois: 2, jour: 28 }, 1), { annee: 1900, mois: 3, jour: 1 }, '1900 n\'est pas bissextile (règle des siècles)');
+  assert.deepStrictEqual(RMClub.ajouterJours({ annee: 2000, mois: 2, jour: 28 }, 1), { annee: 2000, mois: 2, jour: 29 }, '2000 l\'est (divisible par 400)');
+  // Aller-retour sur une longue période : aucune dérive.
+  const depart = { annee: 2024, mois: 8, jour: 17 };
+  assert.deepStrictEqual(RMClub.ajouterJours(RMClub.ajouterJours(depart, 3650), -3650), depart);
+  assert.strictEqual(RMClub.ecartJours({ annee: 2024, mois: 9, jour: 7 }, { annee: 2024, mois: 9, jour: 14 }), 7);
+  // Jours de la semaine RÉELS (vérifiables sur un calendrier).
+  assert.strictEqual(RMClub.jourSemaine({ annee: 2024, mois: 9, jour: 7 }), 6, 'le 7 septembre 2024 était un samedi');
+  assert.strictEqual(RMClub.jourSemaine({ annee: 2024, mois: 9, jour: 8 }), 0, 'le 8 septembre 2024 était un dimanche');
+  assert.strictEqual(RMClub.jourSemaine({ annee: 2025, mois: 1, jour: 1 }), 3, 'le 1er janvier 2025 était un mercredi');
+});
+
+test('temps : chaque rencontre porte une vraie date, et les 3 équipes jouent des jours distincts de la même semaine', () => {
+  const s = RMClub.nouvelleSaison(creerRng(500), 'Test Calendrier Daté');
+  assert.ok(s.calendrier.every((f) => typeof f.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(f.date)),
+    'toutes les rencontres de championnat doivent être datées');
+  assert.ok(s.competitionB.calendrier.every((f) => typeof f.date === 'string'),
+    'toutes les rencontres d\'Équipe B doivent être datées');
+  // Championnat le samedi, Équipe B le lendemain, espoirs le mercredi précédent.
+  for (const f of s.calendrier) {
+    assert.strictEqual(RMClub.jourSemaine(RMClub.dateDepuisISO(f.date)), 6, `la journée ${f.journee} de championnat doit tomber un samedi`);
+  }
+  for (const f of s.competitionB.calendrier) {
+    assert.strictEqual(RMClub.jourSemaine(RMClub.dateDepuisISO(f.date)), 0, `la journée ${f.journee} d'Équipe B doit tomber un dimanche`);
+  }
+  assert.strictEqual(RMClub.jourSemaine(RMClub.dateDeJournee(1, 4, 'jeunes')), 3, 'les espoirs jouent le mercredi');
+  // Même journée = même semaine pour les 3 équipes : aucune désynchronisation.
+  for (const journee of [1, 4, 12]) {
+    const pro = RMClub.dateDeJournee(1, journee, 'pro');
+    assert.strictEqual(RMClub.ecartJours(pro, RMClub.dateDeJournee(1, journee, 'b')), 1);
+    assert.strictEqual(RMClub.ecartJours(pro, RMClub.dateDeJournee(1, journee, 'jeunes')), -3);
+  }
+  // Une journée de championnat contient bien PLUSIEURS matchs à la même date.
+  const parDate = {};
+  for (const f of s.calendrier) (parDate[f.date] = parDate[f.date] || []).push(f);
+  assert.ok(Object.values(parDate).every((l) => l.length === (1 + s.adversaires.length) / 2),
+    'chaque date de championnat doit porter toutes les rencontres de sa journée');
+  // Idempotence : redater ne décale jamais un calendrier déjà daté.
+  const avant = s.calendrier.map((f) => f.date).join(',');
+  RMClub.daterCalendrier(s);
+  RMClub.daterCalendrier(s);
+  assert.strictEqual(s.calendrier.map((f) => f.date).join(','), avant);
+});
+
+test('temps : le calendrier et les graines quotidiennes sont reproductibles à graine égale', () => {
+  const a = RMClub.nouvelleSaison(creerRng(501), 'Graine A');
+  const b = RMClub.nouvelleSaison(creerRng(501), 'Graine A');
+  assert.strictEqual(a.graine, b.graine, 'même rng de création = même graine de saison');
+  assert.deepStrictEqual(a.calendrier.map((f) => f.date), b.calendrier.map((f) => f.date));
+  assert.deepStrictEqual(a.temps, b.temps);
+  // La graine d'un jour dépend de la date ET de la graine de saison, jamais
+  // d'un tirage libre : rejouer la même date redonne la même valeur.
+  const jour = { annee: 2024, mois: 9, jour: 7 };
+  assert.strictEqual(RMClub.grainePourJour(a.graine, jour, 1), RMClub.grainePourJour(b.graine, jour, 1));
+  assert.notStrictEqual(RMClub.grainePourJour(a.graine, jour, 1), RMClub.grainePourJour(a.graine, jour, 2),
+    'deux canaux du même jour ne doivent pas partager la même suite');
+  assert.notStrictEqual(RMClub.grainePourJour(a.graine, jour, 1),
+    RMClub.grainePourJour(a.graine, RMClub.ajouterJours(jour, 1), 1), 'deux jours différents donnent des graines différentes');
+  const c = RMClub.nouvelleSaison(creerRng(502), 'Graine B');
+  assert.notStrictEqual(a.graine, c.graine, 'deux carrières distinctes n\'ont pas la même graine');
+});
+
+test('temps : « Continuer » s\'arrête exactement à la prochaine rencontre, jamais avant ni après', () => {
+  const s = RMClub.nouvelleSaison(creerRng(503), 'Test Prochain Arrêt');
+  RMClub.assurerCentreFormation(creerRng(504), s);
+  // Au départ (intersaison), l'arrêt suivant est la 1re journée de championnat.
+  const premier = RMClub.prochainArret(s);
+  assert.ok(premier, 'une saison neuve doit avoir une prochaine échéance');
+  assert.strictEqual(premier.type, 'pro');
+  assert.strictEqual(premier.iso, s.calendrier.find((f) => f.journee === 1 && (f.domicileId === s.clubJoueur.id || f.exterieurId === s.clubJoueur.id)).date);
+  assert.ok(premier.joursRestants > 0, 'la 1re journée ne tombe pas le jour de la création du club');
+  // AUCUN match n'est joué du simple fait d'avoir calculé l'arrêt.
+  assert.strictEqual(s.calendrier.filter((f) => f.joue).length, 0);
+  // Arrivé le jour du match, l'arrêt est CE jour (idempotence : recliquer ne
+  // saute jamais le match).
+  RMClub.definirDateCourante(s, premier.date);
+  const memeJour = RMClub.prochainArret(s);
+  assert.strictEqual(memeJour.iso, premier.iso);
+  assert.strictEqual(memeJour.joursRestants, 0);
+  // Une fois la journée de championnat jouée, l'arrêt suivant est le
+  // lendemain (Équipe B), pas la semaine suivante.
+  for (const f of s.calendrier.filter((f2) => f2.journee === 1)) {
+    RMClub.enregistrerResultat(s, f.id, 20, 15, 3, 2);
+  }
+  const apres = RMClub.prochainArret(s);
+  assert.strictEqual(apres.type, 'b');
+  assert.strictEqual(RMClub.ecartJours(premier.date, apres.date), 1);
+});
+
+test('temps : les rencontres d\'une date donnée sont exactement celles programmées ce jour-là', () => {
+  const s = RMClub.nouvelleSaison(creerRng(505), 'Test Évènements Du Jour');
+  const dateJ1 = RMClub.dateDeJournee(1, 1, 'pro');
+  const e = RMClub.evenementsDuJour(s, dateJ1);
+  const attendus = s.calendrier.filter((f) => f.journee === 1);
+  assert.strictEqual(e.autresPro.length + (e.matchPro ? 1 : 0), attendus.length,
+    'toutes les rencontres de la journée 1, et rien d\'autre, tombent à cette date');
+  assert.ok(e.matchPro && (e.matchPro.domicileId === s.clubJoueur.id || e.matchPro.exterieurId === s.clubJoueur.id));
+  assert.strictEqual(e.rondeB.length, 0, 'l\'Équipe B ne joue pas le même jour que le premier XV');
+  // La veille, plus rien.
+  const veille = RMClub.evenementsDuJour(s, RMClub.ajouterJours(dateJ1, -1));
+  assert.strictEqual(veille.matchPro, null);
+  assert.strictEqual(veille.rondeB.length, 0);
+  assert.strictEqual(veille.journeeEspoirs, null);
+  // Le lendemain, l'Équipe B.
+  const lendemain = RMClub.evenementsDuJour(s, RMClub.ajouterJours(dateJ1, 1));
+  assert.strictEqual(lendemain.matchPro, null);
+  assert.ok(lendemain.rondeB.length > 0, 'l\'Équipe B joue bien le dimanche');
+});
+
+test('temps : une nouvelle saison sportive avance d\'une année civile, sans perdre la progression', () => {
+  const s = RMClub.nouvelleSaison(creerRng(506), 'Test Année Suivante');
+  const anneeDepart = s.temps.annee;
+  assert.strictEqual(s.temps.saisonNumero, 1);
+  for (const id of Object.keys(s.classement)) s.classement[id].pts = 0;
+  RMClub.avancerSaison(creerRng(507), s);
+  assert.strictEqual(s.numero, 2);
+  assert.strictEqual(s.temps.annee, anneeDepart + 1, 'la saison 2 se joue l\'année civile suivante');
+  assert.strictEqual(s.temps.saisonNumero, 2);
+  assert.ok(s.calendrier.every((f) => f.date && RMClub.dateDepuisISO(f.date).annee >= anneeDepart + 1),
+    'le nouveau calendrier est daté sur la nouvelle année');
+  assert.strictEqual(s.calendrier.filter((f) => f.joue).length, 0, 'la nouvelle saison repart sans match joué');
+  // Le temps repart AVANT la première journée : rien n'a encore été joué.
+  const premiere = RMClub.dateDepuisISO(s.calendrier.find((f) => f.journee === 1).date);
+  assert.ok(RMClub.comparerDates(RMClub.dateCourante(s), premiere) < 0);
+});
+
+test('temps : une ancienne sauvegarde (v2, sans dates) est migrée sans AUCUNE perte de progression', () => {
+  const storeOriginal = global.localStorage;
+  global.localStorage = (() => {
+    let store = {};
+    return { getItem: (k) => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = String(v); }, removeItem: (k) => { delete store[k]; } };
+  })();
+  try {
+    // Construit une sauvegarde à l'ANCIEN format : version 2, aucune date,
+    // aucune graine, et une carrière déjà bien entamée.
+    const s = RMClub.nouvelleSaison(creerRng(508), 'Vieille Carrière');
+    // Une VRAIE sauvegarde v2 a toujours ses journées de championnat et
+    // d'Équipe B jouées en même temps (elles étaient résolues d'un seul clic).
+    for (const f of s.calendrier.filter((f2) => f2.journee <= 3)) {
+      RMClub.enregistrerResultat(s, f.id, 24, 12, 3, 1);
+    }
+    for (const f of s.competitionB.calendrier.filter((f2) => f2.journee <= 3)) {
+      RMClub.enregistrerResultatEquipeB(s, f.id, 18, 15, 2, 2);
+    }
+    const pointsAvant = JSON.stringify(s.classement);
+    const effectifAvant = s.clubJoueur.effectif.map((j) => j.id).join(',');
+    const journeesJoueesAvant = s.calendrier.filter((f) => f.joue).length;
+    const v2 = JSON.parse(JSON.stringify(s));
+    v2.version = 2;
+    delete v2.temps;
+    delete v2.graine;
+    for (const f of v2.calendrier) delete f.date;
+    for (const f of v2.competitionB.calendrier) delete f.date;
+    global.localStorage.setItem('rugbyManager.club.v1', JSON.stringify(v2));
+
+    const migree = RMClub.chargerSaison();
+    assert.ok(migree, 'une sauvegarde v2 doit être rechargée, jamais traitée comme inexistante');
+    assert.strictEqual(migree.version, 3);
+    // Rien de la progression sportive n'a bougé.
+    assert.strictEqual(migree.numero, s.numero);
+    assert.strictEqual(JSON.stringify(migree.classement), pointsAvant, 'le classement doit être strictement conservé');
+    assert.strictEqual(migree.clubJoueur.effectif.map((j) => j.id).join(','), effectifAvant, 'l\'effectif doit être strictement conservé');
+    assert.strictEqual(migree.calendrier.filter((f) => f.joue).length, journeesJoueesAvant);
+    // Et le temps a été reconstitué de façon cohérente.
+    assert.ok(Number.isFinite(migree.graine), 'une graine de saison doit être dérivée de données stables de la sauvegarde');
+    assert.ok(migree.calendrier.every((f) => f.date), 'toutes les rencontres doivent être datées après migration');
+    const dateJ3 = RMClub.dateDepuisISO(migree.calendrier.find((f) => f.journee === 3).date);
+    const dateJ4 = RMClub.dateDepuisISO(migree.calendrier.find((f) => f.journee === 4).date);
+    const courante = RMClub.dateCourante(migree);
+    assert.ok(RMClub.comparerDates(courante, dateJ3) > 0 && RMClub.comparerDates(courante, dateJ4) <= 0,
+      'la carrière doit reprendre APRÈS la dernière journée jouée et AVANT la suivante');
+    // La prochaine échéance porte bien sur la journée 4 (jamais une déjà
+    // jouée) — et c'est le match espoirs du mercredi qui vient en premier,
+    // preuve que les trois calendriers s'entrelacent correctement après
+    // migration (la journée 4 est une journée de match espoirs).
+    const arret = RMClub.prochainArret(migree);
+    assert.strictEqual(arret.type, 'jeunes');
+    assert.strictEqual(arret.iso, RMClub.dateISO(RMClub.dateDeJournee(migree.numero, 4, 'jeunes')));
+    // Une fois ce match espoirs disputé, l'échéance suivante est le samedi de
+    // championnat de cette même journée 4.
+    RMClub.enregistrerMatchEspoirs(migree, 4, 'Académie', 21, 17);
+    RMClub.definirDateCourante(migree, arret.date);
+    const arretPro = RMClub.prochainArret(migree);
+    assert.strictEqual(arretPro.type, 'pro');
+    assert.strictEqual(arretPro.iso, migree.calendrier.find((f) => f.journee === 4 && (f.domicileId === migree.clubJoueur.id || f.exterieurId === migree.clubJoueur.id)).date);
+    // Rechargée deux fois, la même sauvegarde donne la même graine.
+    global.localStorage.setItem('rugbyManager.club.v1', JSON.stringify(v2));
+    assert.strictEqual(RMClub.chargerSaison().graine, migree.graine, 'la graine dérivée doit être stable d\'un chargement à l\'autre');
+  } finally {
+    global.localStorage = storeOriginal;
+  }
+});
+
+test('temps : l\'agenda des prochains jours reflète le calendrier réel des 3 équipes', () => {
+  const s = RMClub.nouvelleSaison(creerRng(509), 'Test Agenda');
+  RMClub.assurerCentreFormation(creerRng(510), s);
+  // Positionne le temps au mercredi précédant une journée de match espoirs.
+  const journeeEspoirs = RMClub.PERIODE_JOURNEES_ESPOIRS;
+  RMClub.definirDateCourante(s, RMClub.dateDeJournee(1, journeeEspoirs, 'jeunes'));
+  const jours = RMClub.agenda(s, 7);
+  assert.strictEqual(jours.length, 7);
+  assert.strictEqual(jours[0].type, RMClub.eligiblePourMatchEspoirs(s) ? 'jeunes' : null, 'le mercredi porte le match espoirs');
+  assert.strictEqual(jours[3].type, 'pro', 'le samedi (3 jours plus tard) porte le championnat');
+  assert.strictEqual(jours[4].type, 'b', 'le dimanche porte l\'Équipe B');
+  assert.ok([1, 2, 5, 6].every((i) => jours[i].type === null), 'les autres jours de la semaine n\'ont aucune rencontre');
+});
+
 // --- 13) Pyramide française : le club du joueur débute en petite division
 // et progresse réellement (montée/descente selon le classement final,
 // nouveaux adversaires au bon niveau, qualification européenne). Scénarios
@@ -1381,6 +1602,8 @@ const clubPyramideSrcPourRechargement = require('fs').readFileSync(require('path
 const clubPyramideFranceSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-pyramide-france.js'), 'utf8');
 const clubCalendrierSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-calendrier.js'), 'utf8');
 const clubSauvegardeSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-sauvegarde.js'), 'utf8');
+const clubTempsSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-temps.js'), 'utf8');
+const clubAgendaSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-agenda.js'), 'utf8');
 function chargerInstanceFraicheClub() {
   const ctx = {};
   ctx.window = ctx;
@@ -1404,6 +1627,8 @@ function chargerInstanceFraicheClub() {
   new Function('window', clubPyramideFranceSrcPourRechargement)(ctx);
   new Function('window', clubCalendrierSrcPourRechargement)(ctx);
   new Function('window', clubSauvegardeSrcPourRechargement)(ctx);
+  new Function('window', clubTempsSrcPourRechargement)(ctx);
+  new Function('window', clubAgendaSrcPourRechargement)(ctx);
   return ctx.RMClub;
 }
 

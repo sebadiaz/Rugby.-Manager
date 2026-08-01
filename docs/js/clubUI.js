@@ -24,7 +24,7 @@
   // colonne) : tenu en mémoire, réappliqué à chaque rendu (pas persisté —
   // ce sont des préférences d'affichage, pas des données de la saison).
   const filtreEffectif = { recherche: '', poste: '', disponible: false, triChamp: 'poste', triSens: 1 };
-  // Anti-double-action (audit P1) : lancerLaJournee() démarre une simulation
+  // Anti-double-action (audit P1) : resoudreJour() démarre une simulation
   // (moteur réel pour le match du joueur + résolutions Équipe B/autres clubs)
   // via l'état global partagé de docs/js/main.js (un seul `match`/`configMatch`
   // à la fois). Un second déclenchement pendant que le premier tourne encore
@@ -54,6 +54,19 @@
 
   function graineAleatoire() {
     return Math.floor(window.RMRng.random() * 0xffffffff);
+  }
+
+  // Graine DÉTERMINISTE du jour courant (TODO_AUDIT.md P1-21) : dérivée de la
+  // graine de la saison et de la date, jamais d'un tirage libre — rejouer la
+  // même date donne le même résultat, y compris après un rechargement de
+  // page. `canal` sépare les usages d'un même jour (monde, paliers, match…)
+  // pour qu'ils ne consomment pas la même suite.
+  let compteurCanal = 0;
+  const CANAUX = {};
+  function graineDuJour(canal) {
+    if (CANAUX[canal] == null) CANAUX[canal] = ++compteurCanal;
+    const graine = Number.isFinite(saison.graine) ? saison.graine : 1;
+    return RMClub.grainePourJour(graine, RMClub.dateCourante(saison), CANAUX[canal]);
   }
 
   // Confirmation visuelle brève après une action (entraînement, transfert,
@@ -463,8 +476,10 @@
       const adversaireId = aDomicile ? match.exterieurId : match.domicileId;
       texteMatch = `J${match.journee} ${aDomicile ? 'vs' : '@'} ${lienClub(adversaireId)}`;
     }
+    const aujourdhui = RMClub.dateCourante(saison);
     document.getElementById('clubTopBarInfos').innerHTML =
-      `<span class="chipInfo">📅 Saison <b>${saison.numero || 1}</b></span>` +
+      `<span class="chipInfo chipDate">📅 <b>${RMClub.formaterDateLongue(aujourdhui)}</b></span>` +
+      `<span class="chipInfo">🗓️ Saison <b>${saison.numero || 1}</b></span>` +
       `<span class="chipInfo">🏉 <b>${texteMatch}</b></span>` +
       `<span class="chipInfo">🏆 <b>${position}${position === 1 ? 'er' : 'e'}</b>/${classement.length}</span>` +
       (estMonClub
@@ -493,10 +508,24 @@
     bouton.style.display = '';
     boutonComposition.style.display = '';
     boutonSaisonSuivante.style.display = 'none';
-    zone.innerHTML = fixtures.map(formaterLigneCalendrier).join('');
+    zone.innerHTML = fixtures.map((f) => formaterLigneCalendrier(f)).join('');
     bouton.disabled = false;
-    const matchJoueur = fixtures.find(concerneClubJoueur);
-    if (labelFlottant) labelFlottant.textContent = matchJoueur ? `Journée ${matchJoueur.journee}` : 'Prochaine journée';
+    // Le bouton annonce la PROCHAINE ÉCHÉANCE, pas une journée abstraite
+    // (TODO_AUDIT.md P1-21) : « Continuer jusqu'au samedi 7 septembre ».
+    // Arrivé le jour même, il propose de jouer plutôt que d'avancer.
+    const arret = RMClub.prochainArret(saison);
+    const aujourdhui = RMClub.dateCourante(saison);
+    let libelleCourt = 'Continuer';
+    let libelleLong = 'Continuer';
+    if (arret) {
+      const memeJour = RMClub.comparerDates(arret.date, aujourdhui) === 0;
+      libelleCourt = memeJour ? arret.libelle : `Continuer → ${RMClub.formaterDateCourte(arret.date)}`;
+      libelleLong = memeJour
+        ? `${arret.libelle} — c'est aujourd'hui`
+        : `Continuer jusqu'au ${RMClub.formaterDateLongue(arret.date)}`;
+    }
+    bouton.textContent = `▶ ${libelleLong}`;
+    if (labelFlottant) labelFlottant.textContent = libelleCourt;
   }
 
   // Points bonus (offensif : 4 essais marqués ou plus ; défensif : défaite
@@ -1405,7 +1434,7 @@
   // leurs pyramides (montées/descentes ou franchises selon le pays) et les
   // compétitions internationales — un module ADDITIF (n'affecte jamais le
   // club du joueur ni ses propres compétitions), avancé automatiquement en
-  // même temps que la saison du joueur (cf. lancerLaJournee/btnSaisonSuivante).
+  // même temps que la saison du joueur (cf. resoudreJour/btnSaisonSuivante).
   // Noms fictifs partout, structure inspirée du vrai rugby professionnel. ---
   const SYSTEME_MONDE_LABEL = {
     'promotion-relegation': 'Montées/descentes',
@@ -2071,8 +2100,11 @@
   // --- Aperçu du prochain match : bouton du Dashboard ET bouton flottant
   // (toujours visible, façon "New Day") ouvrent tous les deux la même
   // préparation d'avant-match avant de lancer réellement la simulation. ---
-  document.getElementById('btnJouerMatchClub').addEventListener('click', ouvrirApercuMatch);
-  document.getElementById('btnApercuMatchFlottant').addEventListener('click', ouvrirApercuMatch);
+  // Les deux boutons « Continuer » (celui du tableau de bord et le flottant,
+  // toujours visible) avancent la carrière jusqu'à la prochaine échéance —
+  // ils ne lancent plus un match directement (TODO_AUDIT.md P1-21).
+  document.getElementById('btnJouerMatchClub').addEventListener('click', continuer);
+  document.getElementById('btnApercuMatchFlottant').addEventListener('click', continuer);
   document.getElementById('fermerApercuMatch').addEventListener('click', () => {
     document.getElementById('panneauApercuMatch').classList.remove('visible');
   });
@@ -2098,7 +2130,8 @@
   });
   document.getElementById('btnApercuLancerMatch').addEventListener('click', () => {
     document.getElementById('panneauApercuMatch').classList.remove('visible');
-    lancerLaJournee();
+    document.getElementById('panneauClub').classList.remove('visible');
+    resoudreJour('pro');
   });
   // Chaque handler d'édition écrit dans le slot de l'équipe ACTUELLEMENT
   // sélectionnée (TODO_AUDIT.md P1-19) — premier XV, Équipe B ou Espoirs,
@@ -2332,10 +2365,15 @@
   // depuis le bouton "Lancer le match" de l'aperçu d'avant-match, jamais
   // directement — la préparation (forme/composition/tactique/adversaire)
   // passe toujours par là d'abord (cf. rafraichirApercuMatch).
-  function lancerLaJournee() {
+  // Résout LE JOUR COURANT (TODO_AUDIT.md P1-21). `typeJour` vaut 'pro'
+  // (samedi de championnat), 'b' (dimanche d'Équipe B) ou 'jeunes'
+  // (mercredi de match espoirs) : chaque jour ne résout QUE ce qui lui
+  // revient, au lieu de tout enchaîner en un seul clic. Le calendrier
+  // décide, plus le bouton.
+  function resoudreJour(typeJour) {
     // Verrou anti-double-action : voir le commentaire sur `journeeEnCours`
-    // plus haut. Bloque toute ré-entrée tant que la journée précédente n'est
-    // pas résolue (onResultat, ci-dessous, relâche le verrou).
+    // plus haut. Bloque toute ré-entrée tant que le jour précédent n'est
+    // pas résolu (le callback de fin, plus bas, relâche le verrou).
     if (journeeEnCours) return;
     const fixtures = RMClub.prochainesFixtures(saison);
     if (fixtures.length === 0) return;
@@ -2344,12 +2382,12 @@
     // composition ne peut pas être complétée — par exemple tous les joueurs
     // d'un poste indisponibles (prêtés) — plutôt que d'envoyer une config
     // incomplète au moteur (cf. RMClub.validerComposition).
-    if (matchJoueur) {
+    if (typeJour === 'pro' && matchJoueur) {
       assurerComposition();
       const manquants = RMClub.validerComposition(saison.clubJoueur.compositionTitulaires);
       if (manquants.length > 0) {
         const libelles = manquants.map((m) => `N°${m.numero} (${POSTE_COMPLET[m.poste] || m.poste})`).join(', ');
-        toast(`Impossible de jouer la journée : aucun joueur disponible pour ${libelles}. Rappelle un joueur prêté ou ajuste ton effectif.`, 'erreur');
+        toast(`Impossible de jouer le match : aucun joueur disponible pour ${libelles}. Rappelle un joueur prêté ou ajuste ton effectif.`, 'erreur');
         return;
       }
     }
@@ -2359,24 +2397,21 @@
     const duree = Number(document.getElementById('selDureeClub').value) || 4800;
     document.getElementById('panneauClub').classList.remove('visible');
 
-    // Le monde (12 pays, cf. docs/js/world.js) avance d'une journée en même
-    // temps que la tienne — jamais la division du club du joueur (il n'en
-    // fait pas partie, géré par son propre calendrier ci-dessus), et
-    // seulement si l'onglet Monde a déjà été consulté au moins une fois
-    // (sinon `saison.monde` n'existe pas encore, cf. rafraichirMonde).
-    if (saison.monde) {
-      RMWorld.avancerJourneeMonde(creerRng(graineAleatoire()), saison.monde, null);
+    // Le monde (12 pays, cf. docs/js/world.js) et les 2 autres paliers de la
+    // pyramide française avancent d'une journée à chaque journée de
+    // CHAMPIONNAT réellement jouée — exactement la même cadence qu'avant le
+    // passage au calendrier daté (une journée de championnat par semaine).
+    // Ils sont créés ici s'ils n'existent pas encore : leur progression ne
+    // dépend PLUS de l'ouverture de l'onglet Monde (limite corrigée en
+    // TODO_AUDIT.md P1-21).
+    if (typeJour === 'pro') {
+      RMWorld.assurerMonde(creerRng(graineDuJour('monde')), saison);
+      RMWorld.avancerJourneeMonde(creerRng(graineDuJour('mondeJournee')), saison.monde, null);
+      RMClub.avancerJourneeAutresDivisionsFrance(
+        creerRng(graineDuJour('paliers')),
+        RMClub.assurerAutresDivisionsFrance(creerRng(graineDuJour('paliersCreation')), saison)
+      );
     }
-
-    // Les 2 autres paliers de la pyramide française (celui que le joueur
-    // n'occupe pas cette saison, cf. docs/js/club-pyramide-france.js)
-    // avancent d'une journée à CHAQUE journée réellement jouée — jamais
-    // conditionné à l'ouverture d'un onglet (contrairement au Monde
-    // ci-dessus, une limite déjà connue, cf. TODO_AUDIT.md).
-    RMClub.avancerJourneeAutresDivisionsFrance(
-      creerRng(graineAleatoire()),
-      RMClub.assurerAutresDivisionsFrance(creerRng(graineAleatoire()), saison)
-    );
 
     // Forme du club du joueur pour CE match (avant enregistrement du résultat) —
     // sert au calcul des finances (recette boostée en cas de victoire).
@@ -2611,8 +2646,49 @@
       );
     }
 
+    // Fin de jour pour les rencontres résolues en arrière-plan (Équipe B,
+    // espoirs) : referme l'écran de génération, relâche le verrou et rend la
+    // main au Mode Club — le match du premier XV, lui, passe par l'écran de
+    // résultat puis son propre `onFermer`.
+    function terminerJourEnArrierePlan() {
+      sauvegarder();
+      journeeEnCours = false;
+      definirBoutonsJourneeActifs(true);
+      document.getElementById('panneauGeneration').classList.remove('visible');
+      rafraichirTout();
+      document.getElementById('panneauClub').classList.add('visible');
+    }
+
+    if (typeJour === 'jeunes') { simulerMatchEspoirs(terminerJourEnArrierePlan); return; }
+    if (typeJour === 'b') { simulerRondeEquipeB(0, terminerJourEnArrierePlan); return; }
+    // Jour de championnat : les autres rencontres de la journée se résolvent
+    // en abstrait, puis le match du club du joueur avec le vrai moteur.
     simulerAutresMatchsAbstrait();
-    simulerMatchEspoirs(() => simulerRondeEquipeB(0, lancerMatchJoueur));
+    lancerMatchJoueur();
+  }
+
+  // --- « Continuer » : LE bouton principal de la carrière (TODO_AUDIT.md
+  // P1-21). Un clic avance la date jusqu'à la prochaine échéance qui demande
+  // l'attention du manager — jamais au-delà, donc aucun match ne peut être
+  // joué avant sa date. Idempotent : recliquer un jour de match rouvre sa
+  // préparation au lieu de le sauter (cf. RMClub.prochainArret, qui inclut
+  // le jour courant). ---
+  function continuer() {
+    if (journeeEnCours) return;
+    const arret = RMClub.prochainArret(saison);
+    if (!arret) {
+      // Plus aucune rencontre : la saison sportive est terminée.
+      document.getElementById('btnSaisonSuivante').click();
+      return;
+    }
+    // La date avance RÉELLEMENT jusqu'à l'échéance, puis le jour se résout.
+    RMClub.definirDateCourante(saison, arret.date);
+    sauvegarder();
+    rafraichirTopBarInfos();
+    rafraichirProchainMatch();
+    if (arret.type === 'pro') { ouvrirApercuMatch(); return; }
+    document.getElementById('panneauClub').classList.remove('visible');
+    resoudreJour(arret.type);
   }
 
   // --- Aperçu du prochain match, façon écran de préparation d'avant-match

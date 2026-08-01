@@ -665,12 +665,40 @@ function optionsLancement() {
   await page.click('#btnResultatFermer');
   await page.waitForTimeout(300);
   verifier('progression d\'une journée : retour au club après le match', await page.isVisible('#panneauClub.visible'));
+
+  // Calendrier daté (TODO_AUDIT.md P1-21) : l'Équipe B joue le LENDEMAIN du
+  // championnat, pas le même jour. Elle ne doit donc pas encore avoir joué
+  // au moment où le match du premier XV vient de se terminer — c'est la
+  // preuve directe qu'aucun match n'est simulé avant sa date.
+  const rondesBApresMatchPro = await page.evaluate(() => {
+    const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
+    return s.competitionB.calendrier.filter((f) => f.joue).length;
+  });
+  verifier('calendrier daté : l\'Équipe B n\'a PAS encore joué le jour du match de championnat (sa date est le lendemain)',
+    rondesBApresMatchPro === rondesJoueesAvant);
+  const dateApresMatchPro = await page.evaluate(() => JSON.parse(localStorage.getItem('rugbyManager.club.v1')).temps);
+  verifier('calendrier daté : le match de championnat s\'est bien joué un samedi',
+    await page.evaluate((t) => window.RMClub.jourSemaine(t) === 6, dateApresMatchPro));
+  // Un clic de plus sur « Continuer » avance au dimanche et joue l'Équipe B.
+  const libelleAvantB = await page.textContent('#btnJouerMatchClub');
+  verifier('calendrier daté : le bouton annonce la prochaine échéance datée (« Continuer jusqu\'au dimanche… »)',
+    /Continuer jusqu'au dimanche/.test(libelleAvantB));
+  await page.click('#btnJouerMatchClub');
+  await page.waitForFunction(
+    () => document.getElementById('panneauClub').classList.contains('visible')
+      && !document.getElementById('btnJouerMatchClub').disabled,
+    { timeout: 90000 }
+  ).catch(() => {});
+  await page.waitForTimeout(400);
   const rondesJoueesApres = await page.evaluate(() => {
     const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
     return s.competitionB.calendrier.filter((f) => f.joue).length;
   });
-  verifier('équipe B : la journée d\'équipe B est simulée en même temps que la journée principale',
+  verifier('équipe B : sa journée se joue à SA date (le dimanche), après un clic « Continuer » supplémentaire',
     rondesJoueesApres > rondesJoueesAvant);
+  const dateApresB = await page.evaluate(() => JSON.parse(localStorage.getItem('rugbyManager.club.v1')).temps);
+  verifier('calendrier daté : la journée d\'Équipe B s\'est bien jouée un dimanche',
+    await page.evaluate((t) => window.RMClub.jourSemaine(t) === 0, dateApresB));
   const mouvementEquipeB = await page.evaluate(() => {
     const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
     return (s.clubJoueur.historiqueFinances || []).find((m) => m.source === 'equipeB') || null;
@@ -728,17 +756,35 @@ function optionsLancement() {
   verifier('bouton "New Day" flottant visible depuis un autre onglet que le Dashboard', await page.isVisible('#btnApercuMatchFlottant'));
   // Termine rapidement les journées restantes (résultat non affiché) pour
   // atteindre la fin de saison sans faire dépendre le test de 10 clics UI.
-  while (await page.isVisible('#btnApercuMatchFlottant') && !(await page.isVisible('#btnSaisonSuivante'))) {
+  // Calendrier daté (TODO_AUDIT.md P1-21) : « Continuer » ne tombe plus
+  // systématiquement sur un jour de championnat — il peut aussi s'arrêter le
+  // dimanche (Équipe B) ou le mercredi (espoirs), qui se résolvent en
+  // arrière-plan sans écran de préparation. La boucle gère donc les deux cas.
+  // Durée courte : ce bloc sert à ATTEINDRE la fin de saison, pas à mesurer
+  // un match — inutile de simuler 80 minutes des dizaines de fois.
+  // (le sélecteur de durée vit dans l'onglet Dashboard : on est ici sur un
+  // autre onglet, d'où l'affectation directe plutôt qu'un selectOption)
+  await page.evaluate(() => { document.getElementById('selDureeClub').value = '300'; });
+  let gardeFinSaison = 0;
+  while (gardeFinSaison++ < 250) {
     const dejaTermine = await page.evaluate(() => document.getElementById('btnSaisonSuivante').style.display !== 'none');
     if (dejaTermine) break;
     const fixturesRestantes = await page.evaluate(() => document.getElementById('clubProchainMatch').textContent.includes('à jouer'));
     if (!fixturesRestantes) break;
     await page.click('#btnApercuMatchFlottant');
-    await page.waitForSelector('#panneauApercuMatch.visible', { timeout: 5000 });
-    await page.click('#btnApercuLancerMatch');
-    await page.waitForSelector('#panneauResultat.visible', { timeout: 20000 });
-    await page.click('#btnResultatFermer');
-    await page.waitForTimeout(200);
+    const apercuOuvert = await page.waitForSelector('#panneauApercuMatch.visible', { timeout: 4000 })
+      .then(() => true).catch(() => false);
+    if (apercuOuvert) {
+      await page.click('#btnApercuLancerMatch');
+      await page.waitForSelector('#panneauResultat.visible', { timeout: 30000 });
+      await page.click('#btnResultatFermer');
+    }
+    await page.waitForFunction(
+      () => document.getElementById('panneauClub').classList.contains('visible')
+        && !document.getElementById('btnJouerMatchClub').disabled,
+      { timeout: 90000 }
+    ).catch(() => {});
+    await page.waitForTimeout(120);
   }
   const boutonSaisonSuivanteVisible = await page.isVisible('#btnSaisonSuivante').catch(() => false);
   if (boutonSaisonSuivanteVisible) {
@@ -860,25 +906,35 @@ function optionsLancement() {
   await pageEspoirs.click('#btnCreerClub');
   await pageEspoirs.waitForTimeout(300);
   const periode = await pageEspoirs.evaluate(() => window.RMClub && window.RMClub.PERIODE_JOURNEES_ESPOIRS);
+  // Calendrier daté (TODO_AUDIT.md P1-21) : on avance AUSSI les journées
+  // d'Équipe B (elles tombent le dimanche, elles seraient sinon la prochaine
+  // échéance) et on positionne la date au mercredi du match espoirs — c'est
+  // ce jour-là, et pas un autre, qu'il doit se jouer.
   await pageEspoirs.evaluate((periode) => {
     const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
     for (const f of s.calendrier) {
       if (f.journee < periode) { f.joue = true; f.score = { domicile: 20, exterieur: 15 }; }
     }
+    for (const f of s.competitionB.calendrier) {
+      if (f.journee < periode) { f.joue = true; f.score = { domicile: 18, exterieur: 12 }; }
+    }
+    const mercredi = window.RMClub.dateDeJournee(s.numero, periode, 'jeunes');
+    s.temps = Object.assign({}, s.temps, mercredi);
     localStorage.setItem('rugbyManager.club.v1', JSON.stringify(s));
   }, periode);
   await pageEspoirs.reload({ waitUntil: 'networkidle' });
   await pageEspoirs.waitForTimeout(200);
   await pageEspoirs.click('#btnContinuerClub');
   await pageEspoirs.waitForTimeout(300);
+  // Un seul clic « Continuer » : on est déjà au mercredi, le match espoirs
+  // se résout en arrière-plan (aucun écran de préparation pour lui).
   await pageEspoirs.click('#btnJouerMatchClub');
-  await pageEspoirs.waitForTimeout(800);
-  const btnApercuLancerEspoirs = pageEspoirs.locator('#btnApercuLancerMatch');
-  if (await btnApercuLancerEspoirs.isVisible({ timeout: 3000 }).catch(() => false)) await btnApercuLancerEspoirs.click();
   await pageEspoirs.waitForFunction(
-    () => document.getElementById('btnJouerMatchClub') && !document.getElementById('btnJouerMatchClub').disabled,
-    { timeout: 30000 }
+    () => document.getElementById('panneauClub').classList.contains('visible')
+      && !document.getElementById('btnJouerMatchClub').disabled,
+    { timeout: 60000 }
   ).catch(() => {});
+  await pageEspoirs.waitForTimeout(400);
   const messagesEspoirs = await pageEspoirs.evaluate(() =>
     JSON.parse(localStorage.getItem('rugbyManager.club.v1')).clubJoueur.messages.filter((m) => m.categorie === 'jeunes' && m.titre === 'Match espoirs'));
   verifier('match espoirs : un vrai match espoirs se joue à la journée déclencheuse (message réel avec un score)',
@@ -905,6 +961,12 @@ function optionsLancement() {
     for (const f of s.calendrier) {
       if (f.journee < periode) { f.joue = true; f.score = { domicile: 20, exterieur: 15 }; }
     }
+    // cf. remarque du test précédent : Équipe B avancée elle aussi, et date
+    // positionnée au mercredi du match espoirs (calendrier daté, P1-21).
+    for (const f of s.competitionB.calendrier) {
+      if (f.journee < periode) { f.joue = true; f.score = { domicile: 18, exterieur: 12 }; }
+    }
+    s.temps = Object.assign({}, s.temps, window.RMClub.dateDeJournee(s.numero, periode, 'jeunes'));
     const dmExistant = s.clubJoueur.jeunes.find((j) => j.poste === 'DM');
     const doublon = Object.assign({}, dmExistant, { id: 'jeuneDoublonDM', nom: 'Doublon Test DM', vitesse: 1, plaquage: 1 });
     s.clubJoueur.jeunes.push(doublon);
@@ -928,13 +990,12 @@ function optionsLancement() {
   await pageEG.click('[data-onglet="dashboard"]');
   await pageEG.waitForTimeout(200);
   await pageEG.click('#btnJouerMatchClub');
-  await pageEG.waitForTimeout(800);
-  const btnApercuLancerEG = pageEG.locator('#btnApercuLancerMatch');
-  if (await btnApercuLancerEG.isVisible({ timeout: 3000 }).catch(() => false)) await btnApercuLancerEG.click();
   await pageEG.waitForFunction(
-    () => document.getElementById('btnJouerMatchClub') && !document.getElementById('btnJouerMatchClub').disabled,
-    { timeout: 30000 }
+    () => document.getElementById('panneauClub').classList.contains('visible')
+      && !document.getElementById('btnJouerMatchClub').disabled,
+    { timeout: 60000 }
   ).catch(() => {});
+  await pageEG.waitForTimeout(400);
   // Note : on ne vérifie PAS que "l'autre DM" n'a joué aucun match ce
   // jour-là — il reste un candidat valide pour l'Équipe B (qui pioche aussi
   // dans les Espoirs, cf. effectifDisponiblePourEquipeB) et sa propre
@@ -1143,6 +1204,178 @@ function optionsLancement() {
     erreursUnif.length === 0);
   if (erreursUnif.length) console.error(erreursUnif.join('\n'));
   await contexteUnif.close();
+
+  // 11d) CARRIÈRE CALENDAIRE (TODO_AUDIT.md P1-21, tranche 1) : le jeu avance
+  // désormais jour par jour jusqu'à la prochaine échéance, et un match ne se
+  // joue QUE lorsque la date du calendrier atteint sa date prévue.
+  const contexteTemps = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const pageTemps = await contexteTemps.newPage();
+  const erreursTemps = [];
+  pageTemps.on('pageerror', (e) => erreursTemps.push(`PAGEERROR: ${e.message}`));
+  pageTemps.on('console', (m) => { if (m.type() === 'error' && !m.text().includes('404')) erreursTemps.push(`CONSOLE: ${m.text()}`); });
+  await pageTemps.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  await pageTemps.click('#btnAccueilModeClub');
+  await pageTemps.fill('#inputNomClub', 'Test Carrière Datée');
+  await pageTemps.click('#btnCreerClub');
+  await pageTemps.waitForTimeout(400);
+  await pageTemps.selectOption('#selDureeClub', '300'); // démo courte : le parcours reste rapide
+
+  const etatInitial = await pageTemps.evaluate(() => {
+    const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
+    return {
+      version: s.version, temps: s.temps, graine: s.graine,
+      dates: s.calendrier.map((f) => f.date),
+      datesB: s.competitionB.calendrier.map((f) => f.date),
+      joues: s.calendrier.filter((f) => f.joue).length,
+      barre: document.getElementById('clubTopBarInfos').innerText,
+      bouton: document.getElementById('btnJouerMatchClub').textContent,
+    };
+  });
+  verifier('carrière datée : la saison porte une vraie date persistée (jour/mois/année) et une graine',
+    etatInitial.version === 3 && Number.isFinite(etatInitial.temps.annee)
+    && Number.isFinite(etatInitial.temps.mois) && Number.isFinite(etatInitial.temps.jour)
+    && Number.isFinite(etatInitial.graine));
+  verifier('carrière datée : toutes les rencontres (championnat ET Équipe B) portent une vraie date',
+    etatInitial.dates.length > 0 && etatInitial.dates.every((d) => /^\d{4}-\d{2}-\d{2}$/.test(d))
+    && etatInitial.datesB.every((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)));
+  verifier('carrière datée : la date du jour est affichée en clair dans la barre supérieure',
+    /\b(lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)\b/i.test(etatInitial.barre)
+    && /\b20\d\d\b/.test(etatInitial.barre));
+  verifier('carrière datée : le bouton principal annonce la prochaine échéance datée (« Continuer jusqu\'au … »)',
+    /Continuer jusqu'au /.test(etatInitial.bouton));
+  verifier('carrière datée : AUCUN match n\'est joué tant que la date de la 1re journée n\'est pas atteinte',
+    etatInitial.joues === 0);
+
+  // Double clic RÉEL sur « Continuer » : la date ne doit avancer qu'une fois,
+  // et surtout aucun match ne doit être lancé deux fois.
+  await pageTemps.evaluate(() => {
+    const b = () => document.getElementById('btnJouerMatchClub');
+    if (b()) b().click();
+    if (b()) b().click();
+  });
+  await pageTemps.waitForTimeout(700);
+  const apresDoubleClicContinuer = await pageTemps.evaluate(() => {
+    const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
+    return {
+      temps: s.temps, joues: s.calendrier.filter((f) => f.joue).length,
+      apercu: document.getElementById('panneauApercuMatch').classList.contains('visible'),
+      dateJ1: s.calendrier.find((f) => f.journee === 1).date,
+    };
+  });
+  verifier('carrière datée : « Continuer » avance jusqu\'à la date de la 1re journée, sans la dépasser',
+    `${apresDoubleClicContinuer.temps.annee}-${String(apresDoubleClicContinuer.temps.mois).padStart(2, '0')}-${String(apresDoubleClicContinuer.temps.jour).padStart(2, '0')}`
+    === apresDoubleClicContinuer.dateJ1);
+  verifier('carrière datée : double clic sur « Continuer » ne provoque aucune double progression ni double simulation',
+    apresDoubleClicContinuer.joues === 0 && apresDoubleClicContinuer.apercu);
+
+  // Rechargement de page : la date ne doit pas être perdue.
+  await pageTemps.reload({ waitUntil: 'networkidle' });
+  await pageTemps.waitForTimeout(250);
+  await pageTemps.click('#btnContinuerClub');
+  await pageTemps.waitForTimeout(400);
+  const apresRechargement = await pageTemps.evaluate(() => JSON.parse(localStorage.getItem('rugbyManager.club.v1')).temps);
+  verifier('carrière datée : la date survit à un rechargement de page (F5), sans perte',
+    apresRechargement.annee === apresDoubleClicContinuer.temps.annee
+    && apresRechargement.mois === apresDoubleClicContinuer.temps.mois
+    && apresRechargement.jour === apresDoubleClicContinuer.temps.jour);
+
+  // Le match se joue à SA date, et une seule fois.
+  const mondeAvant = await pageTemps.evaluate(() => {
+    const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
+    const div = s.monde ? Object.values(s.monde.divisions)[0] : null;
+    return {
+      monde: div ? div.calendrier.filter((f) => f.joue).length : null,
+      paliers: s.autresDivisionsFrance
+        ? Object.values(s.autresDivisionsFrance.divisions)[0].calendrier.filter((f) => f.joue).length : null,
+    };
+  });
+  await pageTemps.click('#btnJouerMatchClub'); // rouvre l'aperçu (idempotent : le match n'est pas sauté)
+  await pageTemps.waitForSelector('#panneauApercuMatch.visible', { timeout: 8000 });
+  await pageTemps.click('#btnApercuLancerMatch');
+  await pageTemps.waitForSelector('#panneauResultat.visible', { timeout: 60000 });
+  await pageTemps.click('#btnResultatFermer');
+  await pageTemps.waitForTimeout(500);
+  const apresMatch = await pageTemps.evaluate(() => {
+    const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
+    const div = s.monde ? Object.values(s.monde.divisions)[0] : null;
+    const j1 = s.calendrier.filter((f) => f.journee === 1);
+    return {
+      joueesJ1: j1.filter((f) => f.joue).length, totalJ1: j1.length,
+      joueesApresJ1: s.calendrier.filter((f) => f.journee > 1 && f.joue).length,
+      bJoues: s.competitionB.calendrier.filter((f) => f.joue).length,
+      monde: div ? div.calendrier.filter((f) => f.joue).length : null,
+      paliers: s.autresDivisionsFrance
+        ? Object.values(s.autresDivisionsFrance.divisions)[0].calendrier.filter((f) => f.joue).length : null,
+    };
+  });
+  verifier('carrière datée : exactement la journée du jour est jouée à sa date (toutes ses rencontres, aucune autre)',
+    apresMatch.joueesJ1 === apresMatch.totalJ1 && apresMatch.joueesApresJ1 === 0);
+  verifier('carrière datée : aucune rencontre d\'une journée ULTÉRIEURE n\'est jouée avant sa date',
+    apresMatch.joueesApresJ1 === 0 && apresMatch.bJoues === 0);
+  // Le monde et les autres paliers avancent sans dépendre de l'ouverture de
+  // leur écran (l'onglet Monde n'a jamais été ouvert dans ce parcours).
+  verifier('carrière datée : le monde avance sans qu\'on ait jamais ouvert son écran',
+    apresMatch.monde != null && (mondeAvant.monde == null || apresMatch.monde > mondeAvant.monde));
+  verifier('carrière datée : les autres paliers de la pyramide avancent aussi, sans ouverture d\'écran',
+    apresMatch.paliers != null && apresMatch.paliers > 0);
+
+  // Première équipe, Équipe B et espoirs restent synchronisés sur la même
+  // semaine sportive, chacun à son jour.
+  const semaine = await pageTemps.evaluate(() => {
+    const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
+    const RM = window.RMClub;
+    const pro = RM.dateDeJournee(s.numero, 4, 'pro');
+    return {
+      pro: RM.jourSemaine(pro),
+      b: RM.jourSemaine(RM.dateDeJournee(s.numero, 4, 'b')),
+      jeunes: RM.jourSemaine(RM.dateDeJournee(s.numero, 4, 'jeunes')),
+      ecartB: RM.ecartJours(pro, RM.dateDeJournee(s.numero, 4, 'b')),
+      ecartJeunes: RM.ecartJours(pro, RM.dateDeJournee(s.numero, 4, 'jeunes')),
+    };
+  });
+  verifier('carrière datée : première équipe (samedi), Équipe B (dimanche) et espoirs (mercredi) restent synchronisés sur la même semaine',
+    semaine.pro === 6 && semaine.b === 0 && semaine.jeunes === 3
+    && semaine.ecartB === 1 && semaine.ecartJeunes === -3);
+  verifier('carrière datée : aucune erreur console pendant tout le parcours calendaire',
+    erreursTemps.length === 0);
+  if (erreursTemps.length) console.error(erreursTemps.join('\n'));
+  await contexteTemps.close();
+
+  // 11e) Même parcours calendaire sur MOBILE : la date et le bouton
+  // « Continuer » doivent rester lisibles et utilisables sur petit écran.
+  const contexteMobileTemps = await browser.newContext({ viewport: { width: 390, height: 780 }, isMobile: true, hasTouch: true });
+  const pageMobileTemps = await contexteMobileTemps.newPage();
+  const erreursMobileTemps = [];
+  pageMobileTemps.on('pageerror', (e) => erreursMobileTemps.push(`PAGEERROR: ${e.message}`));
+  await pageMobileTemps.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  await pageMobileTemps.click('#btnAccueilModeClub');
+  await pageMobileTemps.fill('#inputNomClub', 'Test Mobile Daté');
+  await pageMobileTemps.click('#btnCreerClub');
+  await pageMobileTemps.waitForTimeout(400);
+  const mobile = await pageMobileTemps.evaluate(() => {
+    const barre = document.getElementById('clubTopBarInfos');
+    const chip = barre.querySelector('.chipDate');
+    const flottant = document.getElementById('btnApercuMatchFlottant');
+    const r = flottant.getBoundingClientRect();
+    return {
+      dateVisible: !!chip && chip.offsetParent !== null && chip.innerText.trim().length > 5,
+      texteFlottant: document.getElementById('btnApercuMatchLabel').textContent,
+      flottantDansEcran: r.width > 0 && r.right <= window.innerWidth + 1 && r.top >= 0 && r.bottom <= window.innerHeight + 1,
+      debordementHorizontal: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+    };
+  });
+  verifier('mobile : la date courante est visible dans la barre supérieure sur petit écran', mobile.dateVisible);
+  verifier('mobile : le bouton « Continuer » flottant reste entièrement dans l\'écran et annonce sa date',
+    mobile.flottantDansEcran && /Continuer|Match/.test(mobile.texteFlottant));
+  verifier('mobile : l\'ajout de la date ne provoque aucun débordement horizontal de la page',
+    !mobile.debordementHorizontal);
+  // Et « Continuer » fonctionne réellement au doigt.
+  await pageMobileTemps.tap('#btnApercuMatchFlottant');
+  await pageMobileTemps.waitForTimeout(600);
+  verifier('mobile : « Continuer » avance bien la date jusqu\'au jour du match (ouverture de sa préparation)',
+    await pageMobileTemps.isVisible('#panneauApercuMatch.visible'));
+  verifier('mobile : aucune erreur console sur le parcours calendaire mobile', erreursMobileTemps.length === 0);
+  await contexteMobileTemps.close();
 
   // 12) Décision réelle dans la boîte de réception (audit "boîte de réception
   // avec décisions", cf. club-decisions.js) : injecte directement une

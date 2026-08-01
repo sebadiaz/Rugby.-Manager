@@ -879,6 +879,13 @@ select {
    relie l'analyse de l'adversaire à un réglage tactique actionnable. */
 .raisonRecommandation { font-size: 12px; color: var(--text-dim); margin: 6px 0; }
 
+/* Date courante de la carrière (TODO_AUDIT.md P1-21) : le repère le plus
+   important de la barre du haut — le jeu avance désormais jour par jour. */
+.chipInfo.chipDate {
+  background: rgba(255, 183, 3, 0.14); border-color: rgba(255, 183, 3, 0.35);
+  color: var(--accent); text-transform: capitalize;
+}
+
 /* --- Nom de club cliquable (TODO_AUDIT.md P1-20) -------------------------
    Le SEUL moyen d'ouvrir un club dans tout le jeu : son nom, là où il
    apparaît déjà (calendrier, classement, résultats, prochain match, analyse

@@ -44,12 +44,41 @@
   //
   // Registre de migrations versionnées : clé = version de DÉPART, valeur =
   // fonction qui transforme une sauvegarde de cette version vers la
-  // suivante. Vide aujourd'hui — VERSION_SAUVEGARDE n'a jamais eu besoin
-  // d'être incrémentée depuis la création du jeu (chaque nouveau champ a été
-  // ajouté avec une valeur par défaut défensive dans le code, jamais en
-  // cassant le format) — mais prêt à recevoir une vraie migration le jour où
-  // une évolution du format l'exigera, au lieu de perdre les sauvegardes.
-  const MIGRATIONS = {};
+  // suivante.
+  const MIGRATIONS = {
+    // 2 → 3 : introduction du temps calendaire. Une sauvegarde v2 n'a ni
+    // date courante, ni graine de saison, ni date sur ses rencontres — mais
+    // elle a tout ce qu'il faut pour les reconstituer SANS PERTE : son
+    // numéro de saison donne l'année sportive, et ses journées déjà jouées
+    // donnent le point exact où reprendre. La progression sportive
+    // (classement, résultats, effectif, finances) n'est jamais touchée.
+    2: (saison) => {
+      const RMClub = global.RMClub;
+      // Graine de saison : dérivée de données STABLES de la sauvegarde
+      // (identifiant et nom du club), pas d'un tirage aléatoire — deux
+      // chargements de la même sauvegarde donnent ainsi la même graine, donc
+      // la même suite d'événements.
+      if (!Number.isFinite(saison.graine)) {
+        const source = String((saison.clubJoueur && saison.clubJoueur.id) || '') +
+          '|' + String((saison.clubJoueur && saison.clubJoueur.nom) || '') +
+          '|' + String(saison.numero || 1);
+        let h = 0x811c9dc5;
+        for (let i = 0; i < source.length; i++) {
+          h ^= source.charCodeAt(i);
+          h = Math.imul(h, 0x01000193) >>> 0;
+        }
+        saison.graine = h >>> 0;
+      }
+      // Dates réelles sur chaque rencontre (championnat + Équipe B), dérivées
+      // de leur journée : le calendrier sportif reste rigoureusement le même.
+      RMClub.daterCalendrier(saison);
+      // Date courante : reprise au lendemain de la dernière journée jouée
+      // (ou à l'intersaison si la carrière n'a pas encore commencé).
+      RMClub.assurerTemps(saison);
+      saison.version = 3;
+      return saison;
+    },
+  };
 
   // Validation minimale du schéma : uniquement les champs structurels SANS
   // LESQUELS le jeu ne peut pas fonctionner (le moteur a besoin d'un
