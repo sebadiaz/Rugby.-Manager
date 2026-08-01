@@ -37,6 +37,8 @@ new Function('window', require('fs').readFileSync(require('path').join(__dirname
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-temps.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-agenda.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-semaine-entrainement.js'), 'utf8'))(global.window);
+new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-jour-match.js'), 'utf8'))(global.window);
+new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-direction.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-evenements.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-equipes.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-condition-joueurs.js'), 'utf8'))(global.window);
@@ -1811,6 +1813,211 @@ test('décisions datées : une demande tranchée à temps n\'expire jamais ensui
   assert.strictEqual(joueur.avertissementsIgnores, undefined);
 });
 
+// --- 12i) Préparation de match, fenêtres de transfert, direction et
+// vestiaire (TODO_AUDIT.md P1-24, tranche 4). ---
+test('préparation de match : l\'analyse de l\'adversaire demande du temps, et le dit', () => {
+  const s = saisonPourJours(800, 'Test Préparation');
+  const rencontre = RMClub.prochaineRencontre(s);
+  assert.ok(rencontre, 'une saison neuve a bien une prochaine rencontre datée');
+  assert.ok(rencontre.jours > 0);
+  // Loin du match : le rapport n'est pas prêt, et on annonce dans combien de jours il le sera.
+  const loin = RMClub.analyseDisponible(s, rencontre);
+  assert.strictEqual(loin.disponible, false);
+  assert.ok(loin.joursRestants > 0, 'on doit annoncer le délai restant, pas juste « indisponible »');
+  // À quelques jours : disponible.
+  RMClub.definirDateCourante(s, RMClub.ajouterJours(rencontre.date, -1));
+  const proche = RMClub.analyseDisponible(s, RMClub.prochaineRencontre(s));
+  assert.strictEqual(proche.disponible, true);
+  assert.strictEqual(proche.joursRestants, 0);
+});
+
+test('préparation de match : chaque point reflète l\'état RÉEL, et rien ne bloque le coup d\'envoi', () => {
+  const s = saisonPourJours(801, 'Test État Préparation');
+  const etat = RMClub.etatPreparationMatch(s);
+  assert.strictEqual(etat.points.length, 5, 'cinq points de préparation');
+  const par = {};
+  for (const p of etat.points) par[p.cle] = p;
+  assert.ok(par.analyse && par.composition && par.tactique && par.roles && par.banc);
+  // Aucun statut ne peut valoir autre chose que les trois prévus — et aucun
+  // n'empêche quoi que ce soit (il n'existe aucun champ « bloquant »).
+  assert.ok(etat.points.every((p) => ['ok', 'attention', 'nonPrepare'].indexOf(p.statut) !== -1));
+  assert.ok(etat.points.every((p) => !('bloquant' in p)), 'aucun point ne doit prétendre bloquer le match');
+  // Tactique au réglage par défaut : signalée comme non préparée.
+  assert.strictEqual(par.tactique.statut, 'nonPrepare');
+  // Régler un axe la fait passer à « prêt » — un changement réel, pas une case cochée.
+  const slot = RMClub.slotCompositionPourEquipe(s, 'pro');
+  slot.tactique = Object.assign({}, slot.tactique, { style: 'large' });
+  assert.strictEqual(RMClub.etatPreparationMatch(s).points.find((p) => p.cle === 'tactique').statut, 'ok');
+  // Un titulaire blessé fait passer la composition en « attention », jamais en blocage.
+  const compo = RMClub.assurerCompositionPourEquipe(s, 'pro');
+  const titulaire = s.clubJoueur.effectif.find((j) => j.id === compo.compositionTitulaires['1']);
+  titulaire.blessureJournees = 10;
+  const apres = RMClub.etatPreparationMatch(s).points.find((p) => p.cle === 'composition');
+  assert.strictEqual(apres.statut, 'attention');
+  assert.ok(apres.detail.includes('blessé'));
+  // Le pourcentage de préparation reflète bien le nombre de points prêts.
+  const etatFinal = RMClub.etatPreparationMatch(s);
+  const prets = etatFinal.points.filter((p) => p.statut === 'ok').length;
+  assert.strictEqual(etatFinal.pretPct, Math.round((prets / etatFinal.points.length) * 100));
+});
+
+test('fenêtres de transfert : ouvertes à des dates réelles, dérivées du calendrier', () => {
+  const s = saisonPourJours(802, 'Test Fenêtres');
+  const fenetres = RMClub.fenetresTransfert(s);
+  assert.strictEqual(fenetres.length, 2, 'un mercato d\'été et un mercato d\'hiver');
+  for (const f of fenetres) {
+    assert.ok(RMClub.comparerDates(f.debut, f.fin) < 0, `${f.nom} doit avoir une fin après son début`);
+  }
+  assert.ok(RMClub.comparerDates(fenetres[0].fin, fenetres[1].debut) < 0, 'les deux fenêtres ne se chevauchent pas');
+  // Au démarrage de la saison, le mercato d'été est ouvert.
+  const ouverture = RMClub.etatFenetreTransfert(s);
+  assert.strictEqual(ouverture.ouverte, true);
+  assert.ok(ouverture.ferme);
+  // Entre les deux fenêtres, il est fermé — et on sait quand il rouvre.
+  const entreDeux = RMClub.ajouterJours(fenetres[0].fin, 7);
+  const ferme = RMClub.etatFenetreTransfert(s, entreDeux);
+  assert.strictEqual(ferme.ouverte, false);
+  assert.ok(ferme.ouvre, 'une fenêtre fermée doit annoncer sa réouverture');
+  assert.strictEqual(RMClub.dateISO(ferme.ouvre), RMClub.dateISO(fenetres[1].debut));
+});
+
+test('fenêtres de transfert : signer est impossible hors fenêtre, mais le repérage reste ouvert', () => {
+  const s = saisonPourJours(803, 'Test Signature Fenêtre');
+  s.clubJoueur.budget = 10000;
+  const cible = s.marche[0];
+  // Hors fenêtre : la signature est refusée, avec un motif explicite.
+  const fenetres = RMClub.fenetresTransfert(s);
+  RMClub.definirDateCourante(s, RMClub.ajouterJours(fenetres[0].fin, 7));
+  const effectifAvant = s.clubJoueur.effectif.length;
+  const budgetAvant = s.clubJoueur.budget;
+  const refus = RMClub.signerJoueur(s, cible.id);
+  assert.strictEqual(refus.ok, false);
+  assert.strictEqual(refus.motif, 'fenetre_fermee');
+  assert.ok(refus.fenetre.ouvre, 'le refus doit dire quand le marché rouvre');
+  assert.strictEqual(s.clubJoueur.effectif.length, effectifAvant, 'aucun joueur ne rejoint le club hors fenêtre');
+  assert.strictEqual(s.clubJoueur.budget, budgetAvant, 'et rien n\'est débité');
+  // Le repérage, lui, reste possible toute l'année.
+  const scout = RMClub.commanderRapportScouting(s, cible.id, 1);
+  assert.strictEqual(scout.ok, true, 'observer un joueur n\'est pas le recruter : le scouting reste ouvert');
+  // De retour dans une fenêtre : la signature passe.
+  RMClub.definirDateCourante(s, fenetres[1].debut);
+  const signature = RMClub.signerJoueur(s, cible.id);
+  assert.strictEqual(signature.ok, true);
+  assert.strictEqual(s.clubJoueur.effectif.length, effectifAvant + 1);
+});
+
+test('contrat asynchrone : la proposition ne change rien tout de suite, la réponse arrive à sa date', () => {
+  const s = saisonPourJours(804, 'Test Contrat Async');
+  const joueur = s.clubJoueur.effectif[0];
+  const contratAvant = joueur.contrat;
+  const salaireAvant = joueur.salaire;
+  const res = RMClub.proposerContrat(s, joueur.id, salaireAvant * 3, 3); // offre très généreuse
+  assert.strictEqual(res.ok, true);
+  assert.strictEqual(joueur.contrat, contratAvant, 'le contrat ne bouge PAS au moment de la proposition');
+  assert.strictEqual(joueur.salaire, salaireAvant);
+  assert.ok(RMClub.negociationEnCours(s, joueur.id), 'la négociation est bien en cours');
+  // Une seconde proposition sur le même joueur est refusée.
+  assert.strictEqual(RMClub.proposerContrat(s, joueur.id, salaireAvant * 3, 3).motif, 'deja_en_cours');
+  // La veille : toujours rien.
+  RMClub.avancerJusquA(s, RMClub.ajouterJours(res.dateReponse, -1));
+  assert.strictEqual(joueur.contrat, contratAvant, 'aucune réponse avant la date');
+  // Le jour dit : la réponse tombe. On force ici un tirage favorable pour
+  // tester le CHEMIN d'acceptation de façon déterministe — la décision
+  // elle-même reste celle de negocierRenouvellement, déjà couverte ailleurs.
+  const reponses = RMClub.resoudreNegociationsContrat(() => 0, s, res.dateReponse);
+  assert.strictEqual(reponses.length, 1);
+  assert.strictEqual(reponses[0].accepte, true);
+  assert.strictEqual(RMClub.negociationEnCours(s, joueur.id), null, 'la négociation est close');
+  assert.strictEqual(joueur.salaire, salaireAvant * 3, 'le salaire accepté est réellement appliqué');
+  assert.ok(joueur.contrat >= 1, 'et le contrat est réellement prolongé');
+  assert.ok(s.clubJoueur.messages.some((m) => m.titre === 'Contrat renouvelé' && m.corps.includes(joueur.nom)));
+});
+
+test('contrat asynchrone : une offre trop basse est refusée, avec le montant réellement attendu', () => {
+  const s = saisonPourJours(805, 'Test Contrat Refus');
+  const joueur = s.clubJoueur.effectif[0];
+  const contratAvant = joueur.contrat;
+  const res = RMClub.proposerContrat(s, joueur.id, 1, 3); // offre dérisoire
+  // Tirage défavorable forcé : on teste le CHEMIN de refus, pas la
+  // probabilité (déjà couverte par les tests de négociation existants).
+  RMClub.resoudreNegociationsContrat(() => 0.99, s, res.dateReponse);
+  assert.strictEqual(joueur.contrat, contratAvant, 'un refus ne prolonge évidemment pas le contrat');
+  const refus = s.clubJoueur.messages.find((m) => m.titre === 'Proposition refusée');
+  assert.ok(refus, 'le refus doit être annoncé dans la boîte de réception');
+  assert.ok(/\d+ k€\/saison/.test(refus.corps), 'et indiquer le montant réellement attendu');
+  assert.strictEqual(RMClub.negociationEnCours(s, joueur.id), null);
+});
+
+test('direction : le point d\'étape juge la position RÉELLE et ajuste la confiance du président', () => {
+  const s = saisonPourJours(806, 'Test Point Étape');
+  const c = s.clubJoueur;
+  c.confiancePresident = 60;
+  assert.strictEqual(RMClub.pointEtapeAFaire(s), null, 'aucun point d\'étape avant d\'avoir joué');
+  // Fait jouer un bon tiers du championnat, avec le club EN TÊTE.
+  const mesMatchs = s.calendrier.filter((f) => f.domicileId === c.id || f.exterieurId === c.id);
+  for (const f of mesMatchs.slice(0, Math.ceil(mesMatchs.length * 0.4))) {
+    RMClub.enregistrerResultat(s, f.id, f.domicileId === c.id ? 40 : 0, f.domicileId === c.id ? 0 : 40, 5, 0);
+  }
+  const aFaire = RMClub.pointEtapeAFaire(s);
+  assert.ok(aFaire, 'un point d\'étape doit être dû après un tiers du championnat');
+  const res = RMClub.resoudrePointEtape(s);
+  assert.ok(res, 'le point d\'étape doit produire un résultat');
+  assert.strictEqual(res.position, 1, 'le club invaincu doit être en tête');
+  assert.ok(res.reussi, 'être premier remplit largement l\'objectif');
+  assert.ok(c.confiancePresident > 60, 'la confiance du président doit RÉELLEMENT monter');
+  assert.ok(c.messages.some((m) => m.titre === 'Point d\'étape de la direction'));
+  // Il ne se redéclenche pas deux fois pour la même étape.
+  assert.strictEqual(RMClub.resoudrePointEtape(s), null);
+});
+
+test('vestiaire : un moral collectif bas déclenche une décision, dont chaque issue a une conséquence réelle', () => {
+  const s = saisonPourJours(807, 'Test Vestiaire');
+  const aujourdhui = RMClub.dateCourante(s);
+  // Effectif au moral correct : rien ne se déclenche.
+  for (const j of s.clubJoueur.effectif) j.moral = 70;
+  assert.strictEqual(RMClub.moralVestiaire(s), 70);
+  assert.strictEqual(RMClub.reunionVestiaireAFaire(s, aujourdhui), false);
+  // Moral effondré : la réunion s'impose.
+  for (const j of s.clubJoueur.effectif) j.moral = 30;
+  assert.strictEqual(RMClub.reunionVestiaireAFaire(s, aujourdhui), true);
+  const decl = RMClub.declencherReunionVestiaire(s, aujourdhui);
+  assert.ok(decl && decl.moral === 30);
+  const message = s.clubJoueur.messages.find((m) => m.decision && m.decision.type === 'vestiaire');
+  assert.ok(message, 'une vraie décision doit être proposée');
+  assert.ok(message.decision.dateLimite, 'avec une échéance');
+  // Elle ne se redéclenche pas immédiatement.
+  assert.strictEqual(RMClub.reunionVestiaireAFaire(s, aujourdhui), false);
+  // « Réunir » remonte réellement le moral ET coûte la séance du lendemain.
+  RMClub.definirSeance(s, RMClub.jourSemaine(RMClub.ajouterJours(aujourdhui, 1)), 'physique');
+  assert.strictEqual(RMClub.resoudreDecisionMessage(s, message.id, 'reunir'), true);
+  assert.ok(RMClub.moralVestiaire(s) > 30, 'réunir le groupe doit réellement remonter le moral');
+  assert.strictEqual(RMClub.assurerSemaineEntrainement(s)[RMClub.jourSemaine(RMClub.ajouterJours(aujourdhui, 1))], 'recuperation',
+    'la réunion coûte la séance du lendemain — un vrai prix, pas un bonus gratuit');
+  assert.ok(message.decision.resultat.includes('réuni'));
+});
+
+test('vestiaire : laisser filer enfonce réellement le moral, et le silence aussi', () => {
+  const s = saisonPourJours(808, 'Test Vestiaire Ignoré');
+  const aujourdhui = RMClub.dateCourante(s);
+  for (const j of s.clubJoueur.effectif) j.moral = 30;
+  RMClub.declencherReunionVestiaire(s, aujourdhui);
+  const message = s.clubJoueur.messages.find((m) => m.decision && m.decision.type === 'vestiaire');
+  RMClub.resoudreDecisionMessage(s, message.id, 'laisser');
+  assert.ok(RMClub.moralVestiaire(s) < 30, 'laisser passer doit réellement coûter du moral');
+
+  // Et une décision de vestiaire non tranchée à l'échéance revient au même.
+  const t = saisonPourJours(809, 'Test Vestiaire Expiré');
+  const jour = RMClub.dateCourante(t);
+  for (const j of t.clubJoueur.effectif) j.moral = 30;
+  RMClub.declencherReunionVestiaire(t, jour);
+  const msgT = t.clubJoueur.messages.find((m) => m.decision && m.decision.type === 'vestiaire');
+  const moralAvant = RMClub.moralVestiaire(t);
+  RMClub.avancerJusquA(t, RMClub.dateDepuisISO(msgT.decision.dateLimite));
+  assert.strictEqual(msgT.decision.resolu, true);
+  assert.strictEqual(msgT.decision.choix, 'laisser', 'le silence vaut « laisser passer »');
+  assert.ok(RMClub.moralVestiaire(t) < moralAvant);
+});
+
 // --- 13) Pyramide française : le club du joueur débute en petite division
 // et progresse réellement (montée/descente selon le classement final,
 // nouveaux adversaires au bon niveau, qualification européenne). Scénarios
@@ -1967,6 +2174,8 @@ const clubSauvegardeSrcPourRechargement = require('fs').readFileSync(require('pa
 const clubTempsSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-temps.js'), 'utf8');
 const clubAgendaSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-agenda.js'), 'utf8');
 const clubSemaineSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-semaine-entrainement.js'), 'utf8');
+const clubJourMatchSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-jour-match.js'), 'utf8');
+const clubDirectionSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-direction.js'), 'utf8');
 const clubEvenementsSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-evenements.js'), 'utf8');
 function chargerInstanceFraicheClub() {
   const ctx = {};
@@ -1994,6 +2203,8 @@ function chargerInstanceFraicheClub() {
   new Function('window', clubTempsSrcPourRechargement)(ctx);
   new Function('window', clubAgendaSrcPourRechargement)(ctx);
   new Function('window', clubSemaineSrcPourRechargement)(ctx);
+  new Function('window', clubJourMatchSrcPourRechargement)(ctx);
+  new Function('window', clubDirectionSrcPourRechargement)(ctx);
   new Function('window', clubEvenementsSrcPourRechargement)(ctx);
   return ctx.RMClub;
 }

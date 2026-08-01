@@ -135,6 +135,59 @@
     return (saison.rapportsScouting || []).find((r) => r.joueurId === joueurId) || null;
   }
 
+  // --- Fenêtres de transfert (TODO_AUDIT.md P1-24) -----------------------
+  // Un club ne recrute pas n'importe quand : le marché n'est ouvert que sur
+  // des périodes précises. Les dates sont DÉRIVÉES du calendrier réel de la
+  // saison (cf. club-temps.js), pas fixées en dur — elles restent donc
+  // justes quelle que soit la taille de la division.
+  //
+  //   - mercato d'été : de l'intersaison jusqu'à la 4e journée ;
+  //   - mercato d'hiver : quatre semaines autour de la mi-championnat.
+  //
+  // Le REPÉRAGE (scouting) reste possible toute l'année : observer un joueur
+  // n'est pas le recruter. Seules les signatures sont fermées hors fenêtre.
+  const JOURNEE_FIN_MERCATO_ETE = 4;
+  const DUREE_MERCATO_HIVER_JOURS = 28;
+
+  function fenetresTransfert(saison) {
+    const RMClub = global.RMClub;
+    const numero = saison.numero || 1;
+    const journees = new Set((saison.calendrier || []).map((f) => f.journee));
+    const nbJournees = journees.size || 26;
+    const miSaison = Math.max(2, Math.round(nbJournees / 2));
+    const debutHiver = RMClub.dateDeJournee(numero, miSaison, 'pro');
+    return [
+      {
+        cle: 'ete', nom: 'Mercato d\'été',
+        debut: RMClub.debutDeSaison(numero),
+        fin: RMClub.dateDeJournee(numero, Math.min(JOURNEE_FIN_MERCATO_ETE, nbJournees), 'pro'),
+      },
+      {
+        cle: 'hiver', nom: 'Mercato d\'hiver',
+        debut: debutHiver,
+        fin: RMClub.ajouterJours(debutHiver, DUREE_MERCATO_HIVER_JOURS),
+      },
+    ];
+  }
+
+  // État du marché à une date donnée : ouverte ou non, et si non, quand elle
+  // rouvre — pour que le manager sache ce qu'il attend, jamais un simple
+  // « indisponible » sans explication.
+  function etatFenetreTransfert(saison, date) {
+    const RMClub = global.RMClub;
+    const jour = date || RMClub.dateCourante(saison);
+    const fenetres = fenetresTransfert(saison);
+    for (const f of fenetres) {
+      if (RMClub.comparerDates(jour, f.debut) >= 0 && RMClub.comparerDates(jour, f.fin) <= 0) {
+        return { ouverte: true, nom: f.nom, cle: f.cle, ferme: f.fin };
+      }
+    }
+    const prochaine = fenetres
+      .filter((f) => RMClub.comparerDates(jour, f.debut) < 0)
+      .sort((a, b) => RMClub.comparerDates(a.debut, b.debut))[0] || null;
+    return { ouverte: false, nom: null, cle: null, prochaine: prochaine ? prochaine.nom : null, ouvre: prochaine ? prochaine.debut : null };
+  }
+
   // Prime de signature (Mode Club) : frais d'arrivée réels en plus de
   // l'indemnité de transfert (agent, prime à la signature), proportionnelle
   // au salaire — un transfert ne coûte pas QUE l'indemnité, comme en vrai.
@@ -144,6 +197,10 @@
   function signerJoueur(saison, joueurId) {
     const i = saison.marche.findIndex((j) => j.id === joueurId);
     if (i === -1) return { ok: false, motif: 'introuvable' };
+    // Hors fenêtre de transfert, une signature est simplement impossible
+    // (TODO_AUDIT.md P1-24) — le repérage, lui, reste ouvert toute l'année.
+    const fenetre = etatFenetreTransfert(saison);
+    if (!fenetre.ouverte) return { ok: false, motif: 'fenetre_fermee', fenetre };
     const joueur = saison.marche[i];
     const primeSignature = calculerPrimeSignature(joueur);
     const coutTotal = joueur.prixTransfert + primeSignature;
@@ -205,6 +262,7 @@
     genererJoueurLibre, genererMarcheTransferts,
     statsApparentes, estimationEtoiles, scouterJoueur, COUT_SCOUTING,
     DELAI_SCOUTING_JOURS, commanderRapportScouting, remettreRapportsScouting, rapportScoutingEnCours,
+    JOURNEE_FIN_MERCATO_ETE, DUREE_MERCATO_HIVER_JOURS, fenetresTransfert, etatFenetreTransfert,
     calculerPrimeSignature, signerJoueur, libererJoueur, basculerFavori,
   });
 })(window);

@@ -123,10 +123,15 @@
       for (const j of progresserPretsDuJour(effectif)) retoursDePret.push(j);
     }
 
-    // Rapports de scouting arrivés à échéance et décisions non tranchées
-    // dans les délais : deux événements DATÉS, aux conséquences réelles.
+    // Événements DATÉS de la journée, tous à conséquence réelle
+    // (TODO_AUDIT.md P1-23/P1-24) : rapports de scouting remis, réponses des
+    // joueurs aux propositions de contrat, décisions non tranchées dans les
+    // délais, point d'étape de la direction, ambiance du vestiaire.
     const rapports = RMClub.remettreRapportsScouting(saison, date);
+    const reponsesContrat = RMClub.resoudreNegociationsContrat(rng, saison, date);
     const decisionsExpirees = RMClub.resoudreDecisionsExpirees(saison, date);
+    const pointEtape = RMClub.resoudrePointEtape(saison);
+    const reunionVestiaire = RMClub.declencherReunionVestiaire(saison, date);
 
     // Un retour de blessure ou de prêt change la composition disponible : le
     // manager doit l'apprendre. Message RÉEL, adossé à un changement réel.
@@ -145,7 +150,10 @@
       fatigueRecuperee,
       progressions,
       rapports,
+      reponsesContrat,
       decisionsExpirees,
+      pointEtape,
+      reunionVestiaire,
       retablis: retablis.map((j) => j.nom),
       retoursDePret: retoursDePret.map((j) => j.nom),
       estJourDeMatch: !!opts.estJourDeMatch,
@@ -182,17 +190,27 @@
     const retoursDePret = [];
     const rapports = [];
     const decisionsExpirees = [];
+    const reponsesContrat = [];
     let fatigueRecuperee = 0;
     let nbProgressions = 0;
+    let pointEtape = null;
+    let reunionVestiaire = null;
     for (const j of journees) {
       fatigueRecuperee += j.fatigueRecuperee;
       nbProgressions += (j.progressions || []).length;
       for (const n of j.retablis) retablis.push(n);
       for (const n of j.retoursDePret) retoursDePret.push(n);
       for (const r of j.rapports || []) rapports.push(r);
+      for (const r of j.reponsesContrat || []) reponsesContrat.push(r);
       for (const d of j.decisionsExpirees || []) decisionsExpirees.push(d);
+      if (j.pointEtape) pointEtape = j.pointEtape;
+      if (j.reunionVestiaire) reunionVestiaire = j.reunionVestiaire;
     }
-    return { nbJours: journees.length, fatigueRecuperee, nbProgressions, retablis, retoursDePret, rapports, decisionsExpirees };
+    return {
+      nbJours: journees.length, fatigueRecuperee, nbProgressions,
+      retablis, retoursDePret, rapports, reponsesContrat, decisionsExpirees,
+      pointEtape, reunionVestiaire,
+    };
   }
 
   global.RMClub = Object.assign(global.RMClub || {}, {

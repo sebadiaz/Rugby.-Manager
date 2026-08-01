@@ -560,6 +560,44 @@
     if (labelFlottant) labelFlottant.textContent = libelleCourt;
   }
 
+  // Préparation progressive de la rencontre (TODO_AUDIT.md P1-24) : ce qui
+  // est prêt et ce qui ne l'est pas, dès plusieurs jours avant le match.
+  // AUCUN blocage — chaque point est purement informatif, et cliquable pour
+  // aller le régler.
+  const ONGLET_POUR_POINT = { analyse: 'autresclubs', composition: 'composition', tactique: 'tactique', roles: 'composition', banc: 'composition' };
+  const ICONE_STATUT_PREP = { ok: '✅', attention: '⚠️', nonPrepare: '⬜' };
+  function rafraichirPreparationMatch() {
+    const carte = document.getElementById('cartePreparationMatch');
+    const zone = document.getElementById('clubPreparationMatch');
+    if (!carte || !zone) return;
+    if (!RMClub.consulteClubJoueur(saison)) { carte.style.display = 'none'; return; }
+    const etat = RMClub.etatPreparationMatch(saison);
+    if (!etat.rencontre) { carte.style.display = 'none'; return; }
+    carte.style.display = '';
+    const r = etat.rencontre;
+    const quand = r.jours === 0 ? "aujourd'hui" : r.jours === 1 ? 'demain' : `dans ${r.jours} jours`;
+    zone.innerHTML =
+      `<p class="entetePreparation">${lienClub(r.adversaireId)} · ${r.domicile ? 'à domicile' : "à l'extérieur"} · ${echapperHTML(RMClub.formaterDateLongue(r.date))} (${quand})</p>` +
+      `<div class="jaugePreparation"><span style="width:${etat.pretPct}%"></span></div>` +
+      `<p class="pctPreparation">${etat.pretPct} % de la préparation bouclée</p>` +
+      etat.points.map((p) =>
+        `<div class="lignePreparation ${p.statut}" data-onglet="${ONGLET_POUR_POINT[p.cle] || 'dashboard'}">` +
+        `<span class="statutPreparation">${ICONE_STATUT_PREP[p.statut]}</span>` +
+        `<span class="corpsPreparation"><b>${echapperHTML(p.libelle)}</b><span>${echapperHTML(p.detail)}</span></span></div>`
+      ).join('');
+  }
+
+  // Fenêtre de transfert (TODO_AUDIT.md P1-24) : ouverte ou fermée, avec la
+  // date de réouverture — jamais un bouton désactivé sans explication.
+  function rafraichirFenetreTransfert() {
+    const zone = document.getElementById('clubFenetreTransfert');
+    if (!zone) return;
+    const f = RMClub.etatFenetreTransfert(saison);
+    zone.innerHTML = f.ouverte
+      ? `<p class="fenetreOuverte">🟢 <b>${echapperHTML(f.nom)} ouvert</b> — les signatures sont possibles jusqu'au ${echapperHTML(RMClub.formaterDateLongue(f.ferme))}.</p>`
+      : `<p class="fenetreFermee">🔴 <b>Marché fermé.</b> ${f.ouvre ? `Réouverture le ${echapperHTML(RMClub.formaterDateLongue(f.ouvre))} (${echapperHTML(f.prochaine)}).` : 'Plus de fenêtre de transfert cette saison.'} Le repérage, lui, reste possible toute l'année.</p>`;
+  }
+
   // Agenda des 7 prochains jours (TODO_AUDIT.md P1-22) : ce que le manager a
   // devant lui, jour par jour, dérivé du calendrier RÉEL (cf. RMClub.agenda).
   // Aucune ligne inventée : un jour sans rencontre est affiché comme tel.
@@ -1353,7 +1391,10 @@
     let actions = '';
     if (ctx.modifiable && estEffectifPro) {
       const offre = RMClub.calculerOffreRenouvellement(j);
-      actions += `<button class="accent" id="btnRenouveler" style="width:100%;margin-top:8px;">Renouveler ${offre.dureeMax} an(s) · ${offre.salaire} k€/saison</button>`;
+      const negociation = RMClub.negociationEnCours(saison, id);
+      actions += negociation
+        ? `<p class="noteLectureSeule" style="margin-top:8px;">📄 Proposition de ${negociation.salaire} k€/saison transmise — réponse attendue le ${echapperHTML(RMClub.formaterDateCourte(RMClub.dateDepuisISO(negociation.dateReponse)))}.</p>`
+        : `<button class="accent" id="btnRenouveler" style="width:100%;margin-top:8px;">Renouveler ${offre.dureeMax} an(s) · ${offre.salaire} k€/saison</button>`;
       actions += j.pret
         ? `<button class="alt" id="btnRappelerJoueur" style="width:100%;margin-top:8px;">Rappeler de prêt</button>`
         : `<button class="alt" id="btnPreterJoueur" style="width:100%;margin-top:8px;">Prêter ce joueur (3 semaines)</button>`;
@@ -1451,6 +1492,11 @@
       (emplacement || document.getElementById('porteSelecteurEquipe')).appendChild(selecteur);
       if (emplacement) rafraichirSelecteurEquipe();
     }
+    // La préparation du prochain match et l'agenda dépendent d'écrans qu'on
+    // vient peut-être de quitter (composition, tactique) : on les recalcule
+    // en revenant sur la vue d'ensemble, sinon ils afficheraient un état
+    // périmé (TODO_AUDIT.md P1-24).
+    if (cle === 'dashboard') { rafraichirPreparationMatch(); rafraichirAgenda(); }
     fermerFicheJoueur(); // change d'onglet = referme toute fiche laissée ouverte
     fermerTiroirNav(); // choisir une section referme le tiroir mobile
     document.getElementById('clubMain').scrollTop = 0; // repart en haut de la nouvelle page
@@ -1696,6 +1742,7 @@
   // estimation en étoiles plutôt que ses vraies statistiques — un manager ne
   // sait jamais tout d'un joueur qu'il n'a jamais vraiment observé.
   function ligneJoueurMarche(j, c, favori) {
+    const fenetreOuverte = RMClub.etatFenetreTransfert(saison).ouverte;
     const primeSignature = RMClub.calculerPrimeSignature(j);
     const abordable = c.budget >= (j.prixTransfert + primeSignature);
     const stats = RMClub.statsApparentes(j);
@@ -1714,7 +1761,8 @@
       `<span class="infosJoueur"><b>${j.nom}</b><span>${POSTE_COMPLET[j.poste] || j.poste} · ${j.age} ans · ${ligneStats}</span></span>` +
       `<span class="actionMarche"><button class="btnFavori${favori ? ' actif' : ''}" data-joueur="${j.id}" title="Favori">${favori ? '★' : '☆'}</button>` +
       `<span class="prixMarche" title="Indemnité de transfert + prime de signature">${j.prixTransfert}<span style="color:var(--text-faint);font-weight:400;"> +${primeSignature} k€</span></span>${boutonScout}` +
-      `<button class="accent btnSigner" data-joueur="${j.id}"${abordable ? '' : ' disabled'}>Signer</button></span></div>`;
+      `<button class="accent btnSigner" data-joueur="${j.id}"${abordable && fenetreOuverte ? '' : ' disabled'}` +
+      `${fenetreOuverte ? '' : ' title="Marché des transferts fermé"'}>Signer</button></span></div>`;
   }
   // Écran UNIQUE de personnel (TODO_AUDIT.md P1-19) : l'organigramme
   // appartient au CLUB, donc les 3 équipes du joueur partagent le même staff
@@ -1855,7 +1903,9 @@
     rafraichirVueClub();
     rafraichirTopBarInfos();
     rafraichirProchainMatch();
+    rafraichirPreparationMatch();
     rafraichirAgenda();
+    rafraichirFenetreTransfert();
     rafraichirObjectifSaison();
     rafraichirAdversaire();
     rafraichirMessages();
@@ -1902,6 +1952,12 @@
   document.getElementById('navBackdrop').addEventListener('click', fermerTiroirNav);
 
   // --- Alertes du dashboard : cliquer une alerte ouvre l'onglet concerné ---
+  document.getElementById('clubPreparationMatch').addEventListener('click', (e) => {
+    if (e.target.closest('.lienClub')) return; // géré par la délégation des noms de clubs
+    const ligne = e.target.closest('.lignePreparation');
+    if (!ligne) return;
+    basculerOnglet(ligne.dataset.onglet);
+  });
   document.getElementById('clubAlertes').addEventListener('click', (e) => {
     const ligne = e.target.closest('.ligneAlerte');
     if (!ligne) return;
@@ -2079,19 +2135,17 @@
         offre.salaire
       );
       if (montant == null) return; // annulé
-      const rng = creerRng(graineAleatoire());
-      const res = RMClub.negocierRenouvellement(rng, saison, joueurAffiche, montant, offre.dureeMax);
+      // Négociation ASYNCHRONE (TODO_AUDIT.md P1-24) : le joueur consulte son
+      // agent et répond quelques jours plus tard, pendant que le temps
+      // avance. La décision elle-même reste celle de negocierRenouvellement.
+      const res = RMClub.proposerContrat(saison, joueurAffiche, montant, offre.dureeMax);
       if (!res.ok) {
-        toast(`${joueur.nom} refuse ${montant} k€/saison — il vise plutôt autour de ${res.salaireMinimumEstime} k€/saison.`, 'erreur');
-        sauvegarder();
-        ouvrirFicheJoueur(joueurAffiche);
+        toast('Une proposition est déjà en cours pour ce joueur.', 'erreur');
         return;
       }
       sauvegarder();
-      toast(`✅ Contrat renouvelé : ${joueur.nom} (${res.contrat} an(s), ${res.salaire} k€/saison)`);
+      toast(`📄 Proposition transmise à ${joueur.nom} — réponse attendue le ${RMClub.formaterDateCourte(res.dateReponse)}`);
       ouvrirFicheJoueur(joueurAffiche);
-      rafraichirEffectif();
-      rafraichirStatutEffectif();
       return;
     }
     if (e.target.id === 'btnPreterJoueur') {
@@ -2314,7 +2368,16 @@
     if (!e.target.classList.contains('btnSigner')) return;
     const joueurSigne = pool.find((j) => j.id === id);
     const res = RMClub.signerJoueur(saison, id);
-    if (!res.ok) { toast('Budget insuffisant pour cette signature.', 'erreur'); return; }
+    if (!res.ok) {
+      if (res.motif === 'fenetre_fermee') {
+        toast(res.fenetre.ouvre
+          ? `Marché fermé : les signatures rouvrent le ${RMClub.formaterDateCourte(res.fenetre.ouvre)}.`
+          : 'Marché fermé : plus de fenêtre de transfert cette saison.', 'erreur');
+      } else {
+        toast('Budget insuffisant pour cette signature.', 'erreur');
+      }
+      return;
+    }
     selectionComparaison.delete(id);
     sauvegarder();
     toast(`✅ ${joueurSigne ? joueurSigne.nom : 'Joueur'} rejoint le club (${res.coutTotal} k€)`);
@@ -2746,6 +2809,24 @@
     if (resume.retoursDePret.length) {
       toast(`📥 ${resume.retoursDePret.join(', ')} revient de prêt`);
     }
+    for (const r of resume.rapports || []) {
+      toast(`🔍 Rapport de scouting : ${r.nom} (connaissance ${r.connaissance} %)`);
+    }
+    for (const r of resume.reponsesContrat || []) {
+      toast(r.accepte
+        ? `📄 ${r.nom} accepte ta proposition (${r.salaire} k€/saison)`
+        : `📄 ${r.nom} décline ta proposition`, r.accepte ? 'succes' : 'erreur');
+    }
+    if (resume.pointEtape) {
+      toast(`🏛️ Point d'étape de la direction — confiance ${resume.pointEtape.confiance} %`,
+        resume.pointEtape.reussi ? 'succes' : 'erreur');
+    }
+    if (resume.reunionVestiaire) {
+      toast(`💬 Le vestiaire va mal (moral ${resume.reunionVestiaire.moral} %) — une décision t'attend`, 'erreur');
+    }
+    for (const nom of resume.decisionsExpirees || []) {
+      toast(`⏳ Demande de ${nom} restée sans réponse`, 'erreur');
+    }
   }
 
   // --- « Continuer » : LE bouton principal de la carrière (TODO_AUDIT.md
@@ -2771,7 +2852,10 @@
     sauvegarder();
     rafraichirTopBarInfos();
     rafraichirProchainMatch();
+    rafraichirPreparationMatch();
     rafraichirAgenda();
+    rafraichirFenetreTransfert();
+    rafraichirMessages();
     annoncerJoursEcoules(resume);
     if (arret.type === 'pro') { ouvrirApercuMatch(); return; }
     document.getElementById('panneauClub').classList.remove('visible');

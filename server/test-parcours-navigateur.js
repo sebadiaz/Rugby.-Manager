@@ -1599,6 +1599,191 @@ function optionsLancement() {
   if (erreursSemaine.length) console.error(erreursSemaine.join('\n'));
   await contexteSemaine.close();
 
+  // 11d-quater) PRÉPARATION DE MATCH, FENÊTRES DE TRANSFERT, DIRECTION ET
+  // VESTIAIRE (TODO_AUDIT.md P1-24, tranche 4).
+  const contextePrep = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const pagePrep = await contextePrep.newPage();
+  const erreursPrep = [];
+  pagePrep.on('pageerror', (e) => erreursPrep.push(`PAGEERROR: ${e.message}`));
+  pagePrep.on('console', (m) => { if (m.type() === 'error' && !m.text().includes('404')) erreursPrep.push(`CONSOLE: ${m.text()}`); });
+  await pagePrep.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  await pagePrep.click('#btnAccueilModeClub');
+  await pagePrep.fill('#inputNomClub', 'Test Préparation');
+  await pagePrep.click('#btnCreerClub');
+  await pagePrep.waitForTimeout(400);
+
+  const prepLoin = await pagePrep.evaluate(() => ({
+    visible: document.getElementById('cartePreparationMatch').style.display !== 'none',
+    points: document.querySelectorAll('#clubPreparationMatch .lignePreparation').length,
+    texte: document.getElementById('clubPreparationMatch').innerText,
+    pct: (document.querySelector('.pctPreparation') || {}).textContent || '',
+  }));
+  verifier('préparation de match : la carte affiche les 5 points de préparation, plusieurs jours avant la rencontre',
+    prepLoin.visible && prepLoin.points === 5);
+  verifier('préparation de match : loin du match, l\'analyse de l\'adversaire annonce son délai (pas juste « indisponible »)',
+    /analyste a besoin d'encore \d+ jour/.test(prepLoin.texte));
+  verifier('préparation de match : un pourcentage de préparation réel est affiché',
+    /\d+ % de la préparation bouclée/.test(prepLoin.pct));
+  // Aucun blocage : le bouton « Continuer » reste actif malgré des points non préparés.
+  verifier('préparation de match : rien ne bloque — « Continuer » reste utilisable avec des points non préparés',
+    await pagePrep.evaluate(() => !document.getElementById('btnJouerMatchClub').disabled));
+  // Cliquer un point emmène sur l'écran concerné.
+  await pagePrep.click('#clubPreparationMatch .lignePreparation[data-onglet="tactique"]');
+  await pagePrep.waitForTimeout(250);
+  verifier('préparation de match : cliquer un point ouvre l\'écran où le régler',
+    await pagePrep.evaluate(() => document.querySelector('.voletOnglet[data-volet="tactique"]').style.display !== 'none'));
+  // Régler un axe fait réellement basculer le point à « prêt ».
+  await pagePrep.click('#clubTactique [data-axe="style"][data-valeur="large"]');
+  await pagePrep.waitForTimeout(250);
+  await clicOngletSur(pagePrep, 'dashboard');
+  await pagePrep.waitForTimeout(250);
+  verifier('préparation de match : régler la tactique fait réellement passer ce point à « prêt »',
+    await pagePrep.evaluate(() => {
+      const l = Array.from(document.querySelectorAll('#clubPreparationMatch .lignePreparation'))
+        .find((x) => x.textContent.includes('Tactique'));
+      return !!l && l.classList.contains('ok');
+    }));
+  // À l'approche du match, l'analyse devient disponible.
+  await pagePrep.evaluate(() => {
+    const K = 'rugbyManager.club.v1';
+    const s = JSON.parse(localStorage.getItem(K));
+    const RM = window.RMClub;
+    s.temps = Object.assign({}, s.temps, RM.ajouterJours(RM.dateDeJournee(s.numero, 1, 'pro'), -1));
+    localStorage.setItem(K, JSON.stringify(s));
+  });
+  await pagePrep.reload({ waitUntil: 'networkidle' });
+  await pagePrep.waitForTimeout(250);
+  await pagePrep.click('#btnContinuerClub');
+  await pagePrep.waitForTimeout(350);
+  verifier('préparation de match : à l\'approche de la rencontre, le rapport de l\'analyste devient disponible',
+    (await pagePrep.textContent('#clubPreparationMatch')).includes('Rapport de ton analyste disponible'));
+
+  // Fenêtres de transfert.
+  await clicOngletSur(pagePrep, 'transferts');
+  await pagePrep.waitForTimeout(250);
+  const fenetreOuverte = await pagePrep.evaluate(() => ({
+    texte: document.getElementById('clubFenetreTransfert').innerText,
+    signerActifs: document.querySelectorAll('.btnSigner:not([disabled])').length,
+  }));
+  verifier('fenêtres de transfert : la fenêtre ouverte est annoncée avec sa date de fermeture',
+    /ouvert/i.test(fenetreOuverte.texte) && /\b20\d\d\b/.test(fenetreOuverte.texte));
+  verifier('fenêtres de transfert : pendant la fenêtre, les signatures sont bien possibles',
+    fenetreOuverte.signerActifs > 0);
+  // Hors fenêtre : boutons désactivés et explication affichée.
+  await pagePrep.evaluate(() => {
+    const K = 'rugbyManager.club.v1';
+    const s = JSON.parse(localStorage.getItem(K));
+    const RM = window.RMClub;
+    const f = RM.fenetresTransfert(s);
+    s.temps = Object.assign({}, s.temps, RM.ajouterJours(f[0].fin, 7));
+    localStorage.setItem(K, JSON.stringify(s));
+  });
+  await pagePrep.reload({ waitUntil: 'networkidle' });
+  await pagePrep.waitForTimeout(250);
+  await pagePrep.click('#btnContinuerClub');
+  await pagePrep.waitForTimeout(300);
+  await clicOngletSur(pagePrep, 'transferts');
+  await pagePrep.waitForTimeout(250);
+  const fenetreFermee = await pagePrep.evaluate(() => ({
+    texte: document.getElementById('clubFenetreTransfert').innerText,
+    signerActifs: document.querySelectorAll('.btnSigner:not([disabled])').length,
+    scouterActifs: document.querySelectorAll('.btnScouter:not([disabled])').length,
+  }));
+  verifier('fenêtres de transfert : hors fenêtre, le marché est annoncé fermé AVEC sa date de réouverture',
+    /fermé/i.test(fenetreFermee.texte) && /Réouverture le/.test(fenetreFermee.texte));
+  verifier('fenêtres de transfert : hors fenêtre, aucune signature n\'est possible',
+    fenetreFermee.signerActifs === 0);
+  verifier('fenêtres de transfert : le repérage, lui, reste ouvert toute l\'année',
+    fenetreFermee.scouterActifs > 0);
+
+  // Contrat ASYNCHRONE : la proposition part, le contrat ne bouge pas encore.
+  await clicOngletSur(pagePrep, 'effectif');
+  await pagePrep.waitForTimeout(250);
+  await pagePrep.click('#clubEffectif tr[data-joueur]');
+  await pagePrep.waitForTimeout(250);
+  const avantContrat = await pagePrep.evaluate(() => {
+    const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
+    const id = window.__idFiche = document.querySelector('#clubEffectif tr[data-joueur]')
+      ? null : null;
+    return { negociations: (s.negociationsContrat || []).length };
+  });
+  if (await pagePrep.isVisible('#btnRenouveler')) {
+    const salairesAvant = await pagePrep.evaluate(() =>
+      JSON.parse(localStorage.getItem('rugbyManager.club.v1')).clubJoueur.effectif.map((j) => j.salaire).join(','));
+    await pagePrep.click('#btnRenouveler');
+    await pagePrep.waitForSelector('#modalMontant.visible', { timeout: 5000 });
+    await pagePrep.click('#modalMontantValider');
+    await pagePrep.waitForTimeout(350);
+    const apresProposition = await pagePrep.evaluate(() => {
+      const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
+      return {
+        negociations: (s.negociationsContrat || []).length,
+        salaires: s.clubJoueur.effectif.map((j) => j.salaire).join(','),
+        noteAttente: (document.getElementById('clubJoueurDetail') || {}).innerText || '',
+      };
+    });
+    verifier('contrat asynchrone : proposer un contrat ouvre une négociation SANS rien changer immédiatement',
+      apresProposition.negociations === avantContrat.negociations + 1
+      && apresProposition.salaires === salairesAvant);
+    verifier('contrat asynchrone : la fiche joueur annonce la date de réponse attendue au lieu de reproposer',
+      /réponse attendue le/i.test(apresProposition.noteAttente));
+  }
+
+  // Direction : le point d'étape juge la position réelle.
+  const pointEtape = await pagePrep.evaluate(() => {
+    const K = 'rugbyManager.club.v1';
+    const s = JSON.parse(localStorage.getItem(K));
+    const RM = window.RMClub;
+    const c = s.clubJoueur;
+    c.confiancePresident = 60;
+    const miens = s.calendrier.filter((f) => f.domicileId === c.id || f.exterieurId === c.id);
+    for (const f of miens.slice(0, Math.ceil(miens.length * 0.4))) {
+      RM.enregistrerResultat(s, f.id, f.domicileId === c.id ? 40 : 0, f.domicileId === c.id ? 0 : 40, 5, 0);
+    }
+    const res = RM.resoudrePointEtape(s);
+    localStorage.setItem(K, JSON.stringify(s));
+    return { res, confiance: c.confiancePresident, message: c.messages.some((m) => m.titre === "Point d'étape de la direction") };
+  });
+  verifier('direction : le point d\'étape juge la position RÉELLE et fait bouger la confiance du président',
+    pointEtape.res && pointEtape.res.position === 1 && pointEtape.confiance > 60 && pointEtape.message);
+
+  // Vestiaire : moral effondré → décision réelle, avec conséquence.
+  const vestiaire = await pagePrep.evaluate(() => {
+    const K = 'rugbyManager.club.v1';
+    const s = JSON.parse(localStorage.getItem(K));
+    const RM = window.RMClub;
+    for (const j of s.clubJoueur.effectif) j.moral = 28;
+    RM.declencherReunionVestiaire(s, RM.dateCourante(s));
+    localStorage.setItem(K, JSON.stringify(s));
+    return { moralAvant: RM.moralVestiaire(s) };
+  });
+  await pagePrep.reload({ waitUntil: 'networkidle' });
+  await pagePrep.waitForTimeout(250);
+  await pagePrep.click('#btnContinuerClub');
+  await pagePrep.waitForTimeout(350);
+  verifier('vestiaire : un moral collectif effondré déclenche une vraie décision dans la boîte de réception',
+    (await pagePrep.textContent('#clubMessages')).includes('Ambiance du vestiaire'));
+  const boutonReunir = await pagePrep.$('.btnDecisionMessage[data-option="reunir"]');
+  verifier('vestiaire : la décision propose de vrais boutons d\'action', !!boutonReunir);
+  if (boutonReunir) {
+    await boutonReunir.click();
+    await pagePrep.waitForTimeout(350);
+    const apresReunion = await pagePrep.evaluate(() => {
+      const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
+      const RM = window.RMClub;
+      return {
+        moral: RM.moralVestiaire(s),
+        seanceLendemain: s.clubJoueur.semaineEntrainement[RM.jourSemaine(RM.ajouterJours(RM.dateCourante(s), 1))],
+      };
+    });
+    verifier('vestiaire : réunir le groupe remonte RÉELLEMENT le moral et coûte la séance du lendemain',
+      apresReunion.moral > vestiaire.moralAvant && apresReunion.seanceLendemain === 'recuperation');
+  }
+  verifier('tranche 4 : aucune erreur console sur le parcours préparation/transferts/direction/vestiaire',
+    erreursPrep.length === 0);
+  if (erreursPrep.length) console.error(erreursPrep.join('\n'));
+  await contextePrep.close();
+
   // 11e) Même parcours calendaire sur MOBILE : la date et le bouton
   // « Continuer » doivent rester lisibles et utilisables sur petit écran.
   const contexteMobileTemps = await browser.newContext({ viewport: { width: 390, height: 780 }, isMobile: true, hasTouch: true });

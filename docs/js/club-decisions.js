@@ -115,6 +115,12 @@
         }
       }
     }
+    // Vestiaire (TODO_AUDIT.md P1-24) : la conséquence vit dans
+    // club-direction.js — même chemin de résolution que les autres décisions,
+    // donc même garantie d'idempotence.
+    if (decision.type === 'vestiaire') {
+      decision.resultat = global.RMClub.appliquerDecisionVestiaire(saison, optionId);
+    }
     decision.resolu = true;
     decision.choix = optionId;
     message.lu = true;
@@ -134,8 +140,11 @@
       const limite = RMClub.dateDepuisISO(d.dateLimite);
       if (!limite || RMClub.comparerDates(date, limite) < 0) continue;
       const joueur = (saison.clubJoueur.effectif || []).find((j) => j.id === d.joueurId);
-      if (resoudreDecisionMessage(saison, m.id, 'ignorer')) {
-        d.resultat = `Tu n'as pas répondu à temps : ${joueur ? joueur.nom : 'le joueur'} a pris ton silence pour un refus.`;
+      const optionDefaut = d.type === 'vestiaire' ? 'laisser' : 'ignorer';
+      if (resoudreDecisionMessage(saison, m.id, optionDefaut)) {
+        d.resultat = d.type === 'vestiaire'
+          ? "Tu n'as pas réagi à temps : l'ambiance du vestiaire s'est dégradée toute seule."
+          : `Tu n'as pas répondu à temps : ${joueur ? joueur.nom : 'le joueur'} a pris ton silence pour un refus.`;
         d.expiree = true;
         expirees.push(joueur ? joueur.nom : null);
       }

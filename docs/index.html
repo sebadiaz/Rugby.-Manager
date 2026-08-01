@@ -224,6 +224,13 @@
                calendrier réel du club, jour par jour — pas une reprise du
                calendrier complet (onglet Calendrier), juste ce qui arrive
                tout de suite. -->
+          <!-- Préparation progressive de la rencontre (TODO_AUDIT.md P1-24) :
+               ce qui est prêt et ce qui ne l'est pas, dès plusieurs jours
+               avant le match. Rien n'est bloquant — seulement signalé. -->
+          <div class="carteClub carteMonClub" id="cartePreparationMatch" style="display:none;">
+            <h3>🧭 Préparation du prochain match</h3>
+            <div id="clubPreparationMatch"></div>
+          </div>
           <div class="carteClub carteMonClub" id="carteAgenda">
             <h3>📆 Les 7 prochains jours</h3>
             <div id="clubAgenda"></div>
@@ -382,6 +389,10 @@
         <div class="voletOnglet" data-volet="transferts" style="display:none;">
           <div class="enTetePage"><span class="categoriePage">Recrutement</span><h2>Recrutement</h2><p>Marché des transferts, scouting et favoris.</p></div>
           <div id="transfertsBudget" class="carteClub"></div>
+          <!-- Fenêtre de transfert (TODO_AUDIT.md P1-24) : les signatures ne
+               sont possibles que pendant les périodes d'ouverture. Le
+               repérage, lui, reste ouvert toute l'année. -->
+          <div id="clubFenetreTransfert" class="carteClub"></div>
           <div class="carteClub" id="carteFavoris" style="display:none;">
             <div style="display:flex;justify-content:space-between;align-items:center;">
               <h3 style="margin:0;">⭐ Mes favoris</h3>
@@ -682,6 +693,8 @@
 <script src="js/club-temps.js"></script>
 <script src="js/club-agenda.js"></script>
 <script src="js/club-semaine-entrainement.js"></script>
+<script src="js/club-jour-match.js"></script>
+<script src="js/club-direction.js"></script>
 <script src="js/club-evenements.js"></script>
 <script src="js/club-equipes.js"></script>
 <script src="js/club-condition-joueurs.js"></script>

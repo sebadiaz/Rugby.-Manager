@@ -54,7 +54,61 @@
     return { ok: true, contrat: joueur.contrat, salaire: joueur.salaire };
   }
 
+  // --- Négociation ASYNCHRONE (TODO_AUDIT.md P1-24) ----------------------
+  // Un joueur ne répond pas dans la seconde à une proposition de contrat :
+  // il consulte son agent, réfléchit, revient quelques jours plus tard.
+  // `negocierRenouvellement` (synchrone) reste exporté et inchangé — c'est
+  // lui qui décide RÉELLEMENT de l'acceptation, appelé au moment de la
+  // réponse : aucune seconde règle de décision, donc aucune divergence
+  // possible entre les deux chemins.
+  const DELAI_REPONSE_CONTRAT_JOURS = 3;
+
+  function proposerContrat(saison, joueurId, salaireOffert, duree) {
+    const RMClub = global.RMClub;
+    const joueur = saison.clubJoueur.effectif.find((j) => j.id === joueurId);
+    if (!joueur) return { ok: false, motif: 'introuvable' };
+    if (!Array.isArray(saison.negociationsContrat)) saison.negociationsContrat = [];
+    if (saison.negociationsContrat.some((n) => n.joueurId === joueurId)) return { ok: false, motif: 'deja_en_cours' };
+    const dateReponse = RMClub.ajouterJours(RMClub.dateCourante(saison), DELAI_REPONSE_CONTRAT_JOURS);
+    saison.negociationsContrat.push({
+      joueurId, nom: joueur.nom,
+      salaire: Math.round(salaireOffert),
+      duree: duree || null,
+      dateReponse: RMClub.dateISO(dateReponse),
+    });
+    return { ok: true, dateReponse, delai: DELAI_REPONSE_CONTRAT_JOURS };
+  }
+
+  function negociationEnCours(saison, joueurId) {
+    return (saison.negociationsContrat || []).find((n) => n.joueurId === joueurId) || null;
+  }
+
+  // Traite les réponses arrivées à échéance. La décision passe par
+  // `negocierRenouvellement` : mêmes exigences, mêmes effets sur le moral,
+  // même message de prolongation qu'avant — seul le MOMENT change.
+  function resoudreNegociationsContrat(rng, saison, date) {
+    const RMClub = global.RMClub;
+    if (!Array.isArray(saison.negociationsContrat) || !saison.negociationsContrat.length) return [];
+    const reponses = [];
+    const restantes = [];
+    for (const n of saison.negociationsContrat) {
+      const echeance = RMClub.dateDepuisISO(n.dateReponse);
+      if (!echeance || RMClub.comparerDates(date, echeance) < 0) { restantes.push(n); continue; }
+      const joueur = saison.clubJoueur.effectif.find((j) => j.id === n.joueurId);
+      if (!joueur) continue; // parti du club entre-temps : négociation caduque
+      const res = negocierRenouvellement(rng, saison, n.joueurId, n.salaire, n.duree);
+      if (!res.ok) {
+        RMClub.ajouterMessage(saison, 'contrat', 'Proposition refusée',
+          `${joueur.nom} décline ton offre de ${n.salaire} k€/saison. Son agent évoque plutôt ${res.salaireMinimumEstime} k€/saison.`);
+      }
+      reponses.push({ nom: joueur.nom, accepte: !!res.ok, salaire: n.salaire, salaireMinimumEstime: res.salaireMinimumEstime });
+    }
+    saison.negociationsContrat = restantes;
+    return reponses;
+  }
+
   global.RMClub = Object.assign(global.RMClub || {}, {
     calculerOffreRenouvellement, renouvelerContrat, negocierRenouvellement,
+    DELAI_REPONSE_CONTRAT_JOURS, proposerContrat, negociationEnCours, resoudreNegociationsContrat,
   });
 })(window);

@@ -50,6 +50,8 @@ const clubSauvegardeSrc = fs.readFileSync(path.join(__dirname, '../docs/js/club-
 const clubTempsSrc = fs.readFileSync(path.join(__dirname, '../docs/js/club-temps.js'), 'utf8');
 const clubAgendaSrc = fs.readFileSync(path.join(__dirname, '../docs/js/club-agenda.js'), 'utf8');
 const clubSemaineSrc = fs.readFileSync(path.join(__dirname, '../docs/js/club-semaine-entrainement.js'), 'utf8');
+const clubJourMatchSrc = fs.readFileSync(path.join(__dirname, '../docs/js/club-jour-match.js'), 'utf8');
+const clubDirectionSrc = fs.readFileSync(path.join(__dirname, '../docs/js/club-direction.js'), 'utf8');
 const clubEvenementsSrc = fs.readFileSync(path.join(__dirname, '../docs/js/club-evenements.js'), 'utf8');
 
 // Charge une instance TOTALEMENT NEUVE de club.js (nouveau contexte JS, donc
@@ -80,6 +82,8 @@ function chargerInstanceFraiche() {
   new Function('window', clubTempsSrc)(ctx);
   new Function('window', clubAgendaSrc)(ctx);
   new Function('window', clubSemaineSrc)(ctx);
+  new Function('window', clubJourMatchSrc)(ctx);
+  new Function('window', clubDirectionSrc)(ctx);
   new Function('window', clubEvenementsSrc)(ctx);
   return ctx.RMClub;
 }

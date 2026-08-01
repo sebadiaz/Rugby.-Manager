@@ -192,3 +192,14 @@ tranche livrée — jamais en avance sur ce qui est réellement dans `main`.
 - **Décisions datées :** une demande de temps de jeu affiche son échéance. Passée la date, le silence vaut refus, avec exactement la même conséquence qu'un refus assumé. Ne rien décider a désormais un coût.
 - **Portée assumée :** la *négociation* de contrat reste synchrone. La rendre asynchrone touche le flux de fenêtres modales et sera traitée avec les échanges de vestiaire en tranche 4, plutôt qu'à moitié faite ici.
 - **Prochaine tranche :** préparation complète de la rencontre, fenêtres de transfert, événements de direction et de vestiaire.
+
+### Tranche 10 — Préparation de match, fenêtres de transfert, direction et vestiaire (tranche 4/4 livrée)
+- **Demande explicite de l'utilisateur :** « Tranche 4 : préparation complète de la rencontre ; fenêtres de transfert ; événements de direction et de vestiaire. »
+- **Domaines touchés :** 1 (préparation d'avant-match), 6 (recrutement), 2 (relation avec les joueurs), et la direction du club.
+- **Fichiers :** `docs/js/club-jour-match.js` et `docs/js/club-direction.js` (**nouveaux**), `docs/js/club-transferts.js`, `docs/js/club-contrats.js`, `docs/js/club-decisions.js`, `docs/js/club-evenements.js`, `docs/js/clubUI.js`, `docs/index.html`, `docs/css/style.css`, tests.
+- **Ce que le joueur peut désormais faire :** préparer sa rencontre sur plusieurs jours. Une carte « Préparation du prochain match » suit cinq points — analyse de l'adversaire, composition, tactique, coups de pied arrêtés et rôles, banc — avec un pourcentage réel et un clic direct vers l'écran où régler chacun. L'analyse de l'adversaire n'est pas disponible tout de suite : l'analyste a besoin de quelques jours d'observation, et le jeu annonce combien.
+- **Aucun blocage artificiel :** un point non préparé est signalé, jamais empêchant — le manager reste libre de jouer sans avoir rien réglé.
+- **Fenêtres de transfert :** les signatures ne sont possibles que pendant le mercato d'été (jusqu'à la 4ᵉ journée) ou d'hiver (quatre semaines à la mi-saison), dates dérivées du calendrier réel. Hors fenêtre, l'interface annonce la date de réouverture au lieu de griser un bouton sans explication — et le repérage, lui, reste ouvert toute l'année.
+- **Contrats asynchrones :** proposer un salaire n'aboutit plus dans la seconde. Le joueur consulte son agent et répond quelques jours plus tard, pendant que la carrière avance.
+- **Direction et vestiaire :** le président fait deux points d'étape dans la saison, compare la position réelle à l'objectif et ajuste sa confiance. Et quand le moral collectif s'effondre, le capitaine vient demander une réunion — la tenir remonte réellement le moral mais coûte la séance du lendemain.
+- **Le découpage en quatre tranches demandé est terminé.** Restent hors périmètre, documentés : les coupes d'Europe pour le club du joueur, une IA de recrutement pour les clubs adverses, un centre de formation pour les clubs IA.
