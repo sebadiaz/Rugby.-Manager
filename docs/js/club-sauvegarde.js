@@ -78,6 +78,26 @@
       saison.version = 3;
       return saison;
     },
+    // 3 → 4 : le temps s'écoule désormais jour par jour, donc les durées
+    // exprimées en « journées de championnat » deviennent des JOURS. Une
+    // journée valait une semaine (cf. club-temps.js, une journée par
+    // semaine) : les compteurs sont convertis à l'identique, sans jamais
+    // allonger ni raccourcir une indisponibilité déjà en cours.
+    3: (saison) => {
+      const JOURS_PAR_JOURNEE = 7;
+      const convertir = (effectif) => {
+        for (const j of effectif || []) {
+          if (j.blessureJournees > 0) j.blessureJournees *= JOURS_PAR_JOURNEE;
+          if (j.pret && j.pret.dureeRestante > 0) j.pret.dureeRestante *= JOURS_PAR_JOURNEE;
+        }
+      };
+      if (saison.clubJoueur) {
+        convertir(saison.clubJoueur.effectif);
+        convertir(saison.clubJoueur.jeunes);
+      }
+      saison.version = 4;
+      return saison;
+    },
   };
 
   // Validation minimale du schéma : uniquement les champs structurels SANS

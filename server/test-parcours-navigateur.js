@@ -65,6 +65,16 @@ function optionsLancement() {
     await page.click(`.ongletBtn[data-onglet="${cle}"]`);
   }
 
+  // Même principe que clicOnglet, mais sur une page quelconque (les blocs de
+  // test isolés ouvrent leur propre contexte).
+  async function clicOngletSur(p, cle) {
+    if (await p.isVisible('#btnMenuClub')) {
+      await p.click('#btnMenuClub');
+      await p.waitForTimeout(150);
+    }
+    await p.click(`.ongletBtn[data-onglet="${cle}"]`);
+  }
+
   // 1) Création et chargement d'une carrière.
   await page.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
   await page.click('#btnAccueilModeClub');
@@ -1223,7 +1233,7 @@ function optionsLancement() {
   const etatInitial = await pageTemps.evaluate(() => {
     const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
     return {
-      version: s.version, temps: s.temps, graine: s.graine,
+      version: s.version, versionAttendue: window.RMClub.VERSION_SAUVEGARDE, temps: s.temps, graine: s.graine,
       dates: s.calendrier.map((f) => f.date),
       datesB: s.competitionB.calendrier.map((f) => f.date),
       joues: s.calendrier.filter((f) => f.joue).length,
@@ -1232,7 +1242,7 @@ function optionsLancement() {
     };
   });
   verifier('carrière datée : la saison porte une vraie date persistée (jour/mois/année) et une graine',
-    etatInitial.version === 3 && Number.isFinite(etatInitial.temps.annee)
+    etatInitial.version === etatInitial.versionAttendue && Number.isFinite(etatInitial.temps.annee)
     && Number.isFinite(etatInitial.temps.mois) && Number.isFinite(etatInitial.temps.jour)
     && Number.isFinite(etatInitial.graine));
   verifier('carrière datée : toutes les rencontres (championnat ET Équipe B) portent une vraie date',
@@ -1340,6 +1350,91 @@ function optionsLancement() {
     erreursTemps.length === 0);
   if (erreursTemps.length) console.error(erreursTemps.join('\n'));
   await contexteTemps.close();
+
+  // 11d-bis) ÉVÉNEMENTS QUOTIDIENS (TODO_AUDIT.md P1-22, tranche 2) : les
+  // jours traversés par « Continuer » sont réellement simulés — la fatigue
+  // baisse, les blessures se résorbent, les prêts arrivent à terme — et
+  // chaque événement affiché correspond à un changement vérifiable dans la
+  // sauvegarde. Aucune carte décorative.
+  const contexteJours = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const pageJours = await contexteJours.newPage();
+  const erreursJours = [];
+  pageJours.on('pageerror', (e) => erreursJours.push(`PAGEERROR: ${e.message}`));
+  pageJours.on('console', (m) => { if (m.type() === 'error' && !m.text().includes('404')) erreursJours.push(`CONSOLE: ${m.text()}`); });
+  await pageJours.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  await pageJours.click('#btnAccueilModeClub');
+  await pageJours.fill('#inputNomClub', 'Test Jours');
+  await pageJours.click('#btnCreerClub');
+  await pageJours.waitForTimeout(400);
+
+  // Agenda des 7 prochains jours : dérivé du calendrier réel.
+  const agenda = await pageJours.evaluate(() => {
+    const lignes = Array.from(document.querySelectorAll('#clubAgenda .ligneAgenda'));
+    return {
+      nb: lignes.length,
+      premiereEstAujourdhui: lignes.length > 0 && lignes[0].classList.contains('aujourdhui'),
+      dates: lignes.map((l) => l.querySelector('.dateAgenda').textContent.trim()),
+    };
+  });
+  verifier('événements quotidiens : le tableau de bord affiche l\'agenda des 7 prochains jours',
+    agenda.nb === 7 && agenda.premiereEstAujourdhui);
+  verifier('événements quotidiens : l\'agenda affiche 7 jours consécutifs distincts (pas une liste répétée)',
+    new Set(agenda.dates).size === 7);
+
+  // Prépare un état vérifiable : effectif fatigué, un blessé, un prêté.
+  const etatAvantJours = await pageJours.evaluate(() => {
+    const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
+    for (const j of s.clubJoueur.effectif) j.fatigue = 70;
+    s.clubJoueur.effectif[0].blessureJournees = 5;
+    s.clubJoueur.effectif[1].pret = { dureeRestante: 4 };
+    localStorage.setItem('rugbyManager.club.v1', JSON.stringify(s));
+    return {
+      fatigueMoyenne: 70,
+      nomBlesse: s.clubJoueur.effectif[0].nom,
+      nomPrete: s.clubJoueur.effectif[1].nom,
+      messages: s.clubJoueur.messages.length,
+    };
+  });
+  await pageJours.reload({ waitUntil: 'networkidle' });
+  await pageJours.waitForTimeout(200);
+  await pageJours.click('#btnContinuerClub');
+  await pageJours.waitForTimeout(300);
+  // L'onglet Médical doit exprimer l'indisponibilité en JOURS, avec une date
+  // de retour réelle — plus en « journées » de championnat.
+  await clicOngletSur(pageJours, 'medical');
+  await pageJours.waitForTimeout(200);
+  const texteMedical = await pageJours.textContent('#clubMedical');
+  verifier('événements quotidiens : l\'onglet Médical exprime l\'indisponibilité en jours, avec une date de retour réelle',
+    /Retour dans \d+ jour\(s\)/.test(texteMedical)
+    && /\b(lun|mar|mer|jeu|ven|sam|dim)\./i.test(texteMedical));
+
+  await clicOngletSur(pageJours, 'dashboard');
+  await pageJours.waitForTimeout(200);
+  await pageJours.click('#btnJouerMatchClub'); // avance de l'intersaison jusqu'au 1er match
+  await pageJours.waitForTimeout(900);
+  const apresJours = await pageJours.evaluate(() => {
+    const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
+    return {
+      fatigueMax: Math.max.apply(null, s.clubJoueur.effectif.map((j) => j.fatigue || 0)),
+      blesse: s.clubJoueur.effectif[0].blessureJournees,
+      pret: s.clubJoueur.effectif[1].pret,
+      messages: s.clubJoueur.messages.map((m) => m.titre + '|' + m.corps),
+      joues: s.calendrier.filter((f) => f.joue).length,
+    };
+  });
+  verifier('événements quotidiens : les jours écoulés font RÉELLEMENT baisser la fatigue de l\'effectif',
+    apresJours.fatigueMax < etatAvantJours.fatigueMoyenne);
+  verifier('événements quotidiens : une blessure se résorbe pendant les jours écoulés (pas seulement au match)',
+    apresJours.blesse === 0 && apresJours.joues === 0);
+  verifier('événements quotidiens : le retour de blessure produit un message RÉEL dans la boîte de réception',
+    apresJours.messages.some((m) => m.startsWith('Retour de blessure|') && m.includes(etatAvantJours.nomBlesse)));
+  verifier('événements quotidiens : un prêt arrive à terme au fil des jours et le joueur réintègre le groupe',
+    apresJours.pret === null
+    && apresJours.messages.some((m) => m.startsWith('Fin de prêt|') && m.includes(etatAvantJours.nomPrete)));
+  verifier('événements quotidiens : aucune erreur console pendant le parcours quotidien',
+    erreursJours.length === 0);
+  if (erreursJours.length) console.error(erreursJours.join('\n'));
+  await contexteJours.close();
 
   // 11e) Même parcours calendaire sur MOBILE : la date et le bouton
   // « Continuer » doivent rester lisibles et utilisables sur petit écran.

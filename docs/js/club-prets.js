@@ -21,7 +21,11 @@
     // joueur disponible à aligner à ce numéro, cf. completerComposition).
     const memePoste = saison.clubJoueur.effectif.filter((j) => j.poste === joueur.poste && !j.pret);
     if (memePoste.length <= 1) return { ok: false, motif: 'dernier_du_poste' };
-    const duree = Math.max(1, Math.min(10, dureeJournees || 3));
+    // En JOURS depuis le passage à la carrière quotidienne (TODO_AUDIT.md
+    // P1-22) : la progression du prêt est désormais quotidienne (cf.
+    // club-evenements.js, progresserPretsDuJour), plus une décrémentation
+    // par match. 21 jours = les 3 journées de championnat d'avant.
+    const duree = Math.max(1, Math.min(70, dureeJournees || 21));
     const indemnite = Math.round(joueur.salaire * 0.3 * (duree / 10));
     joueur.pret = { dureeRestante: duree };
     saison.clubJoueur.budget += indemnite;

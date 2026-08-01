@@ -1,20 +1,28 @@
 // Condition physique et progression individuelle (Mode Club) — domaine
 // extrait de club.js (TODO_AUDIT.md P2-10, tranche 12) : fatigue, moral,
-// entraînement, blessures. Appelés une fois par journée jouée (cf.
-// clubUI.js, onResultat), répercutés RÉELLEMENT sur les stats effectives
+// entraînement, blessures — répercutés RÉELLEMENT sur les stats effectives
 // transmises au moteur (cf. compositionVersJoueursCfg dans
-// club-composition.js) — jamais de simples badges cosmétiques.
+// club-composition.js), jamais de simples badges cosmétiques.
+//
+// Depuis le passage à la carrière quotidienne (TODO_AUDIT.md P1-22), ce
+// fichier ne garde que ce qui se produit LE JOUR D'UN MATCH : la charge de
+// fatigue encaissée par les titulaires et le tirage de nouvelles blessures.
+// La RÉCUPÉRATION et la GUÉRISON, elles, sont devenues quotidiennes et
+// vivent dans docs/js/club-evenements.js — c'est ce qui donne enfin un sens
+// au repos, et ce qui empêche un titulaire permanent de rester scotché à
+// 100 de fatigue faute de jamais récupérer.
 //
 // Domaine autonome : aucun état de module, une seule dépendance externe
 // (ajouterMessage, déjà exportée de club.js), appelée via RMClub.*.
 (function (global) {
   'use strict';
 
-  // Fatigue (Mode Club) : les titulaires du jour encaissent une charge de
-  // match (répercutée sur leurs stats effectives au match suivant, cf.
-  // compositionVersJoueursCfg), les autres récupèrent — appelé une fois par
-  // journée jouée, comme faireProgresserBlessures. `matchsJoues` est le
-  // compteur RÉEL de titularisations affiché dans la fiche joueur.
+  // Fatigue de MATCH : les titulaires du jour encaissent une charge
+  // (répercutée sur leurs stats effectives au match suivant, cf.
+  // compositionVersJoueursCfg). La récupération des autres est quotidienne
+  // (cf. club-evenements.js, recupererFatigueDuJour) et n'est donc plus
+  // traitée ici. `matchsJoues` est le compteur RÉEL de titularisations
+  // affiché dans la fiche joueur.
   // `facteurPreparateur` (défaut 1 = comportement historique inchangé) :
   // <1 réduit la fatigue encaissée et accélère la récupération, cf. le
   // préparateur physique dans le personnel (effetPersonnel).
@@ -22,18 +30,13 @@
     const fp = facteurPreparateur != null ? facteurPreparateur : 1;
     const titulairesIds = new Set(Object.values(compositionTitulaires || {}));
     for (const j of effectif) {
-      // Endurance (0-100, neutre 60 = comportement historique inchangé) :
-      // un joueur endurant encaisse moins de fatigue et récupère plus vite,
-      // un joueur peu endurant l'inverse — borné pour rester réaliste.
+      if (!titulairesIds.has(j.id)) continue;
+      // Endurance (0-100, neutre 60) : un joueur endurant encaisse moins de
+      // fatigue, un joueur peu endurant davantage — borné pour rester réaliste.
       const endurance = j.endurance != null ? j.endurance : 60;
-      if (titulairesIds.has(j.id)) {
-        const facteurGain = Math.max(0.5, Math.min(1.6, 1 + (60 - endurance) / 75)) * fp;
-        j.fatigue = Math.min(100, (j.fatigue || 0) + Math.round(32 * facteurGain));
-        j.matchsJoues = (j.matchsJoues || 0) + 1;
-      } else {
-        const facteurRecup = Math.max(0.5, Math.min(1.6, 1 + (endurance - 60) / 75)) / fp;
-        j.fatigue = Math.max(0, (j.fatigue || 0) - Math.round(22 * facteurRecup));
-      }
+      const facteurGain = Math.max(0.5, Math.min(1.6, 1 + (60 - endurance) / 75)) * fp;
+      j.fatigue = Math.min(100, (j.fatigue || 0) + Math.round(32 * facteurGain));
+      j.matchsJoues = (j.matchsJoues || 0) + 1;
     }
   }
 
@@ -100,25 +103,25 @@
     }
   }
 
-  // Réduit les blessures d'une journée (appelé une fois par journée jouée) et
-  // tire une petite chance de blessure pour chaque titulaire qui a joué.
-  // `facteurMedecin` (défaut 1 = comportement historique inchangé) : >1
-  // accélère la guérison (récupération plus rapide, nouvelles blessures plus
-  // courtes) — cf. le médecin dans le personnel (effetPersonnel).
+  // Tire une petite chance de blessure pour chaque titulaire qui a joué. La
+  // GUÉRISON est quotidienne (cf. club-evenements.js, soignerBlessuresDuJour) :
+  // elle n'est plus traitée ici. `facteurMedecin` (défaut 1) : >1 raccourcit
+  // les nouvelles blessures — cf. le médecin dans le personnel.
   // `saison` (optionnel, 5e paramètre) : si fourni, une nouvelle blessure
   // génère un message RÉEL dans la boîte de réception — omis dans les
   // scripts/tests qui n'ont pas de saison complète sous la main.
   function faireProgresserBlessures(rng, effectif, composition, facteurMedecin, saison) {
     const fm = facteurMedecin != null ? facteurMedecin : 1;
-    for (const j of effectif) {
-      if (j.blessureJournees > 0) j.blessureJournees = Math.max(0, j.blessureJournees - Math.max(1, Math.round(fm)));
-    }
     const titulairesIds = new Set(Object.values(composition || {}));
     for (const j of effectif) {
       if (!titulairesIds.has(j.id)) continue;
       if (rng() < 0.06) {
-        j.blessureJournees = Math.max(1, Math.round((1 + Math.floor(rng() * 3)) / fm)); // 1-3 journées, réduites par le médecin
-        if (saison) global.RMClub.ajouterMessage(saison, 'blessure', 'Blessure', `${j.nom} est blessé pour ${j.blessureJournees} journée(s).`);
+        // Durée en JOURS depuis le passage au calendrier quotidien
+        // (TODO_AUDIT.md P1-22) : 7 à 28 jours, soit 1 à 4 semaines, au lieu
+        // de 1 à 3 « journées » de championnat. Le médecin raccourcit
+        // réellement l'indisponibilité.
+        j.blessureJournees = Math.max(2, Math.round((7 + Math.floor(rng() * 22)) / fm));
+        if (saison) global.RMClub.ajouterMessage(saison, 'blessure', 'Blessure', `${j.nom} est blessé pour ${j.blessureJournees} jour(s).`);
       }
     }
   }

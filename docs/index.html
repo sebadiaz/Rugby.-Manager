@@ -220,6 +220,14 @@
             </div>
             <button id="btnSaisonSuivante" class="accent" style="width:100%;margin-top:10px;display:none;">Saison suivante →</button>
           </div>
+          <!-- Agenda des 7 prochains jours (TODO_AUDIT.md P1-22) : le
+               calendrier réel du club, jour par jour — pas une reprise du
+               calendrier complet (onglet Calendrier), juste ce qui arrive
+               tout de suite. -->
+          <div class="carteClub carteMonClub" id="carteAgenda">
+            <h3>📆 Les 7 prochains jours</h3>
+            <div id="clubAgenda"></div>
+          </div>
           <div class="carteClub carteMonClub" id="carteAlertes" style="display:none;">
             <h3>⚠️ Décisions & alertes</h3>
             <div id="clubAlertes"></div>
@@ -665,6 +673,7 @@
 <script src="js/club-composition.js"></script>
 <script src="js/club-temps.js"></script>
 <script src="js/club-agenda.js"></script>
+<script src="js/club-evenements.js"></script>
 <script src="js/club-equipes.js"></script>
 <script src="js/club-condition-joueurs.js"></script>
 <script src="js/club-decisions.js"></script>

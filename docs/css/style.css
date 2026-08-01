@@ -879,6 +879,19 @@ select {
    relie l'analyse de l'adversaire à un réglage tactique actionnable. */
 .raisonRecommandation { font-size: 12px; color: var(--text-dim); margin: 6px 0; }
 
+/* Agenda des 7 prochains jours (TODO_AUDIT.md P1-22) : une ligne par jour,
+   les jours de rencontre mis en avant, les jours vides assumés comme tels. */
+.ligneAgenda {
+  display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 12.5px;
+}
+.ligneAgenda:last-child { border-bottom: none; }
+.ligneAgenda .dateAgenda { color: var(--text-dim); text-transform: capitalize; white-space: nowrap; }
+.ligneAgenda .detailAgenda { text-align: right; }
+.ligneAgenda .jourVide { color: var(--text-faint); }
+.ligneAgenda.jourEvenement .detailAgenda { font-weight: 700; color: var(--accent); }
+.ligneAgenda.aujourdhui .dateAgenda { color: var(--text); font-weight: 700; }
+
 /* Date courante de la carrière (TODO_AUDIT.md P1-21) : le repère le plus
    important de la barre du haut — le jeu avance désormais jour par jour. */
 .chipInfo.chipDate {

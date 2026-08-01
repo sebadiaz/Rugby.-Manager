@@ -36,6 +36,7 @@ new Function('window', require('fs').readFileSync(require('path').join(__dirname
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-composition.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-temps.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-agenda.js'), 'utf8'))(global.window);
+new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-evenements.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-equipes.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-condition-joueurs.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-decisions.js'), 'utf8'))(global.window);
@@ -1399,7 +1400,7 @@ test('temps : une ancienne sauvegarde (v2, sans dates) est migrée sans AUCUNE p
 
     const migree = RMClub.chargerSaison();
     assert.ok(migree, 'une sauvegarde v2 doit être rechargée, jamais traitée comme inexistante');
-    assert.strictEqual(migree.version, 3);
+    assert.strictEqual(migree.version, RMClub.VERSION_SAUVEGARDE, 'la sauvegarde doit être amenée à la version courante, quelle qu\'elle soit');
     // Rien de la progression sportive n'a bougé.
     assert.strictEqual(migree.numero, s.numero);
     assert.strictEqual(JSON.stringify(migree.classement), pointsAvant, 'le classement doit être strictement conservé');
@@ -1447,6 +1448,161 @@ test('temps : l\'agenda des prochains jours reflète le calendrier réel des 3 �
   assert.strictEqual(jours[3].type, 'pro', 'le samedi (3 jours plus tard) porte le championnat');
   assert.strictEqual(jours[4].type, 'b', 'le dimanche porte l\'Équipe B');
   assert.ok([1, 2, 5, 6].every((i) => jours[i].type === null), 'les autres jours de la semaine n\'ont aucune rencontre');
+});
+
+// --- 12g) Événements quotidiens (TODO_AUDIT.md P1-22, tranche 2) : chaque
+// jour traversé est réellement simulé — récupération, guérison, retours de
+// prêt — et ne produit un événement QUE s'il a modifié la sauvegarde. ---
+function saisonPourJours(graine, nom) {
+  const s = RMClub.nouvelleSaison(creerRng(graine), nom);
+  RMClub.assurerCentreFormation(creerRng(graine + 1), s);
+  return s;
+}
+
+test('événements quotidiens : une journée de repos réduit RÉELLEMENT la fatigue', () => {
+  const s = saisonPourJours(600, 'Test Récupération');
+  for (const j of s.clubJoueur.effectif) j.fatigue = 60;
+  const rng = creerRng(601);
+  const res = RMClub.resoudreJourneeQuotidienne(s, RMClub.dateCourante(s), rng);
+  assert.ok(res.fatigueRecuperee > 0, 'un jour écoulé doit faire baisser la fatigue de l\'effectif');
+  assert.ok(s.clubJoueur.effectif.every((j) => j.fatigue < 60), 'chaque joueur fatigué doit avoir récupéré');
+  assert.ok(s.clubJoueur.effectif.every((j) => j.fatigue >= 0), 'la fatigue ne descend jamais sous zéro');
+  // Un joueur déjà frais ne « récupère » pas : aucun effet fantôme.
+  for (const j of s.clubJoueur.effectif) j.fatigue = 0;
+  const res2 = RMClub.resoudreJourneeQuotidienne(s, RMClub.dateCourante(s), creerRng(602));
+  assert.strictEqual(res2.fatigueRecuperee, 0, 'un effectif frais ne doit produire aucune récupération');
+});
+
+test('événements quotidiens : un titulaire permanent ne sature plus à 100 de fatigue', () => {
+  // Avant la carrière quotidienne, un titulaire ne récupérait QUE les
+  // journées où il n'était pas aligné : jouer chaque semaine le collait à
+  // 100 en un mois. Une semaine complète (1 match + 6 jours) doit désormais
+  // rester à peu près neutre.
+  const s = saisonPourJours(603, 'Test Charge Hebdomadaire');
+  const c = s.clubJoueur;
+  RMClub.assurerCompositionPourEquipe(s, 'pro');
+  const titulaire = c.effectif.find((j) => j.id === c.compositionTitulaires['1']);
+  titulaire.fatigue = 40;
+  titulaire.endurance = 60; // neutre, pour un calcul lisible
+  RMClub.appliquerFatigue(c.effectif, c.compositionTitulaires, 1); // jour de match
+  const apresMatch = titulaire.fatigue;
+  assert.ok(apresMatch > 40, 'un match doit bien fatiguer le titulaire');
+  for (let i = 0; i < 6; i++) RMClub.recupererFatigueDuJour(c.effectif, 1); // les 6 autres jours
+  assert.ok(titulaire.fatigue < apresMatch, 'les jours sans match doivent réellement le faire récupérer');
+  assert.ok(titulaire.fatigue < 100, 'une semaine complète ne doit pas saturer la fatigue');
+  assert.ok(Math.abs(titulaire.fatigue - 40) <= 15,
+    `une semaine type (1 match + 6 jours de repos) doit rester proche de l'équilibre (obtenu : ${titulaire.fatigue})`);
+});
+
+test('événements quotidiens : une blessure se résorbe jour après jour et libère un vrai message à la guérison', () => {
+  const s = saisonPourJours(604, 'Test Blessures Quotidiennes');
+  const blesse = s.clubJoueur.effectif[0];
+  blesse.blessureJournees = 3;
+  const messagesAvant = s.clubJoueur.messages.length;
+  RMClub.resoudreJourneeQuotidienne(s, RMClub.dateCourante(s), creerRng(605));
+  assert.strictEqual(blesse.blessureJournees, 2, 'la blessure doit perdre un jour par jour écoulé');
+  assert.strictEqual(s.clubJoueur.messages.length, messagesAvant, 'aucun message tant que le joueur n\'est pas rétabli');
+  RMClub.resoudreJourneeQuotidienne(s, RMClub.dateCourante(s), creerRng(606));
+  const res = RMClub.resoudreJourneeQuotidienne(s, RMClub.dateCourante(s), creerRng(607));
+  assert.strictEqual(blesse.blessureJournees, 0);
+  assert.deepStrictEqual(res.retablis, [blesse.nom], 'le jour de la guérison doit être signalé comme un événement réel');
+  assert.strictEqual(s.clubJoueur.messages.length, messagesAvant + 1, 'exactement un message de retour de blessure');
+  assert.ok(s.clubJoueur.messages[0].corps.includes(blesse.nom));
+  // Et le joueur est réellement redevenu sélectionnable.
+  assert.ok(!blesse.blessureJournees);
+});
+
+test('événements quotidiens : les espoirs récupèrent et guérissent comme l\'effectif pro', () => {
+  const s = saisonPourJours(608, 'Test Espoirs Quotidien');
+  const espoir = s.clubJoueur.jeunes[0];
+  espoir.fatigue = 50;
+  espoir.blessureJournees = 1;
+  const res = RMClub.resoudreJourneeQuotidienne(s, RMClub.dateCourante(s), creerRng(609));
+  assert.ok(espoir.fatigue < 50, 'un espoir fatigué doit récupérer comme un professionnel');
+  assert.strictEqual(espoir.blessureJournees, 0);
+  assert.ok(res.retablis.includes(espoir.nom));
+});
+
+test('événements quotidiens : un prêt court en jours et le retour est un événement réel', () => {
+  const s = saisonPourJours(610, 'Test Prêt Quotidien');
+  const res1 = RMClub.preterJoueur(s, s.clubJoueur.effectif[0].id, 2);
+  assert.ok(res1.ok);
+  const prete = s.clubJoueur.effectif[0];
+  assert.strictEqual(prete.pret.dureeRestante, 2);
+  RMClub.resoudreJourneeQuotidienne(s, RMClub.dateCourante(s), creerRng(611));
+  assert.strictEqual(prete.pret.dureeRestante, 1, 'le prêt doit perdre un jour par jour écoulé');
+  const res = RMClub.resoudreJourneeQuotidienne(s, RMClub.dateCourante(s), creerRng(612));
+  assert.strictEqual(prete.pret, null, 'le prêt doit se terminer à échéance');
+  assert.deepStrictEqual(res.retoursDePret, [prete.nom]);
+});
+
+test('événements quotidiens : avancerJusquA parcourt exactement les jours voulus et reste déterministe', () => {
+  const construire = () => {
+    const s = saisonPourJours(613, 'Test Avancer');
+    for (const j of s.clubJoueur.effectif) j.fatigue = 70;
+    s.clubJoueur.effectif[0].blessureJournees = 4;
+    return s;
+  };
+  const a = construire();
+  const cible = RMClub.ajouterJours(RMClub.dateCourante(a), 10);
+  const journeesA = RMClub.avancerJusquA(a, cible);
+  assert.strictEqual(journeesA.length, 10, 'exactement 10 jours doivent être simulés');
+  assert.deepStrictEqual(RMClub.dateCourante(a), cible, 'la date courante doit être exactement la cible');
+  // Rejoué depuis le même état de départ : résultat identique (déterminisme).
+  const b = construire();
+  const journeesB = RMClub.avancerJusquA(b, RMClub.ajouterJours(RMClub.dateCourante(b), 10));
+  assert.deepStrictEqual(journeesB, journeesA, 'même graine et mêmes dates doivent produire exactement les mêmes journées');
+  assert.deepStrictEqual(
+    b.clubJoueur.effectif.map((j) => [j.fatigue, j.blessureJournees]),
+    a.clubJoueur.effectif.map((j) => [j.fatigue, j.blessureJournees]));
+  // Ne recule jamais : une cible déjà passée ne simule aucun jour.
+  const journeesVides = RMClub.avancerJusquA(a, RMClub.ajouterJours(cible, -3));
+  assert.strictEqual(journeesVides.length, 0);
+  assert.deepStrictEqual(RMClub.dateCourante(a), cible, 'la date ne doit jamais reculer');
+});
+
+test('événements quotidiens : le résumé ne rapporte que des changements RÉELS', () => {
+  const s = saisonPourJours(614, 'Test Résumé');
+  // Effectif frais, aucun blessé, aucun prêt : rien ne doit être rapporté.
+  for (const j of s.clubJoueur.effectif) { j.fatigue = 0; j.blessureJournees = 0; j.pret = null; }
+  for (const j of s.clubJoueur.jeunes) { j.fatigue = 0; j.blessureJournees = 0; }
+  const resume = RMClub.resumerJournees(RMClub.avancerJusquA(s, RMClub.ajouterJours(RMClub.dateCourante(s), 5)));
+  assert.strictEqual(resume.nbJours, 5);
+  assert.strictEqual(resume.fatigueRecuperee, 0, 'aucune récupération à rapporter sur un effectif déjà frais');
+  assert.deepStrictEqual(resume.retablis, []);
+  assert.deepStrictEqual(resume.retoursDePret, []);
+});
+
+test('événements quotidiens : une sauvegarde v3 est migrée en convertissant les durées en jours', () => {
+  const storeOriginal = global.localStorage;
+  global.localStorage = (() => {
+    let store = {};
+    return { getItem: (k) => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = String(v); }, removeItem: (k) => { delete store[k]; } };
+  })();
+  try {
+    const s = saisonPourJours(615, 'Test Migration v3');
+    s.clubJoueur.effectif[0].blessureJournees = 2; // 2 journées de championnat
+    s.clubJoueur.effectif[1].pret = { dureeRestante: 3, club: 'Ailleurs' };
+    s.clubJoueur.jeunes[0].blessureJournees = 1;
+    const nomBlesse = s.clubJoueur.effectif[0].nom;
+    const v3 = JSON.parse(JSON.stringify(s));
+    v3.version = 3;
+    global.localStorage.setItem('rugbyManager.club.v1', JSON.stringify(v3));
+
+    const migree = RMClub.chargerSaison();
+    assert.ok(migree, 'une sauvegarde v3 doit être rechargée');
+    assert.strictEqual(migree.version, RMClub.VERSION_SAUVEGARDE);
+    // 1 journée = 1 semaine : les indisponibilités gardent exactement la même
+    // durée réelle, exprimée en jours.
+    assert.strictEqual(migree.clubJoueur.effectif[0].blessureJournees, 14, '2 journées = 14 jours');
+    assert.strictEqual(migree.clubJoueur.effectif[1].pret.dureeRestante, 21, '3 journées = 21 jours');
+    assert.strictEqual(migree.clubJoueur.jeunes[0].blessureJournees, 7, 'le centre de formation est migré lui aussi');
+    assert.strictEqual(migree.clubJoueur.effectif[0].nom, nomBlesse, 'aucune donnée de joueur ne doit être perdue');
+    // Un joueur valide n'est jamais rendu blessé par la migration.
+    assert.ok(migree.clubJoueur.effectif.slice(2).every((j) => !j.blessureJournees));
+  } finally {
+    global.localStorage = storeOriginal;
+  }
 });
 
 // --- 13) Pyramide française : le club du joueur débute en petite division
@@ -1604,6 +1760,7 @@ const clubCalendrierSrcPourRechargement = require('fs').readFileSync(require('pa
 const clubSauvegardeSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-sauvegarde.js'), 'utf8');
 const clubTempsSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-temps.js'), 'utf8');
 const clubAgendaSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-agenda.js'), 'utf8');
+const clubEvenementsSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-evenements.js'), 'utf8');
 function chargerInstanceFraicheClub() {
   const ctx = {};
   ctx.window = ctx;
@@ -1629,6 +1786,7 @@ function chargerInstanceFraicheClub() {
   new Function('window', clubSauvegardeSrcPourRechargement)(ctx);
   new Function('window', clubTempsSrcPourRechargement)(ctx);
   new Function('window', clubAgendaSrcPourRechargement)(ctx);
+  new Function('window', clubEvenementsSrcPourRechargement)(ctx);
   return ctx.RMClub;
 }
 

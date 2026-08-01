@@ -671,6 +671,32 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 **Tranches suivantes (non commencées).** 2 : événements quotidiens, agenda du tableau de bord, récupération/fatigue/blessures au jour le jour. 3 : semaine d'entraînement, rapports de scouts différés, décisions et contrats datés. 4 : préparation complète de la rencontre, fenêtres de transfert, événements de direction et de vestiaire.
 
+### P1-22. Les jours traversés ne produisaient rien — tranche 2 de la carrière calendaire
+- **Statut : CORRIGÉ (tranche 2/4)**
+- Priorité : P1 (suite du découpage imposé par l'utilisateur : « Tranche 2 : événements quotidiens ; agenda du dashboard ; récupération, fatigue et blessures quotidiennes. »)
+- Fichiers concernés : `docs/js/club-evenements.js` (**nouveau**), `docs/js/club-condition-joueurs.js`, `docs/js/club-prets.js`, `docs/js/club.js`, `docs/js/club-sauvegarde.js`, `docs/js/clubUI.js`, `docs/index.html`, `docs/css/style.css`, tests
+
+**Le problème.** La tranche 1 avait donné une date au jeu, mais « Continuer » **sautait** d'une échéance à l'autre : les 21 jours d'intersaison, comme les 6 jours entre deux matchs, ne produisaient strictement rien. Toute la condition physique restait indexée sur le match.
+
+**Un vrai défaut de fond mis au jour au passage.** `appliquerFatigue` ne faisait récupérer QUE les joueurs non alignés. Un titulaire permanent ne récupérait donc **jamais** : il gagnait 32 points de fatigue par match et atteignait 100 en quatre journées, puis y restait toute la saison — ce qui pénalisait en permanence ses stats effectives transmises au moteur. La récupération quotidienne corrige ça sans réglage arbitraire : ~5 points par jour, soit ~30 sur les six jours d'une semaine sans match, contre ~32 encaissés le jour du match. Une semaine type redevient donc à peu près neutre, et un joueur mis au repos redevient réellement frais en quelques jours.
+
+**La correction.**
+- **`club-evenements.js`** : `resoudreJourneeQuotidienne(saison, date, rng)` applique, pour une journée donnée, la récupération de fatigue, la guérison des blessures et la progression des prêts — sur l'effectif pro **et** sur le centre de formation. `avancerJusquA(saison, dateCible)` enchaîne les journées une par une, bornée par un garde-fou, et ne recule jamais.
+- **Séparation nette des cadences** : `club-condition-joueurs.js` ne garde que ce qui appartient au **jour de match** (charge de fatigue des titulaires, tirage de nouvelles blessures) ; récupération et guérison sont devenues quotidiennes.
+- **Durées en jours** : `blessureJournees` et la durée des prêts comptaient des « journées de championnat ». Elles comptent maintenant des **jours** — c'est la seule unité cohérente avec un temps qui s'écoule au jour le jour. Les libellés suivent (« Retour dans 9 jour(s) — mar. 17 sept. », « Prêter ce joueur (3 semaines) »).
+- **Agenda des 7 prochains jours** sur le tableau de bord, dérivé du calendrier réel — un jour sans rencontre est affiché comme tel plutôt que meublé.
+- **Aucune carte décorative** : `resoudreJourneeQuotidienne` ne renvoie que ce qui a **réellement** changé, et l'UI n'affiche rien d'autre. Un effectif déjà frais, sans blessé ni prêt, produit zéro événement.
+- **Événements réels dans la boîte de réception** : retour de blessure et fin de prêt — deux changements de disponibilité que le manager doit connaître, adossés à une modification vérifiable de la sauvegarde.
+- **Déterminisme** : chaque journée tire son rng de `grainePourJour(graine, date, canal)`. Rejouer la même séquence depuis le même état donne exactement les mêmes journées.
+
+**Migration.** `VERSION_SAUVEGARDE` 3 → 4. Une journée valant une semaine, les compteurs sont multipliés par 7 : une indisponibilité en cours garde **exactement la même durée réelle**, ni allongée ni raccourcie. Le centre de formation est migré comme l'effectif pro.
+
+**Critères de validation.**
+- `server/test-parcours-club.js` : 103/103 — dont 8 nouveaux tests (le repos réduit réellement la fatigue ; un effectif frais ne produit aucun effet fantôme ; **un titulaire permanent ne sature plus** — une semaine type reste proche de l'équilibre ; guérison jour après jour avec message au seul jour du rétablissement ; espoirs traités comme l'effectif pro ; prêts en jours ; `avancerJusquA` parcourt exactement les jours voulus, reste déterministe et ne recule jamais ; le résumé ne rapporte que des changements réels ; **migration v3 → v4** conservant les durées).
+- `server/test-parcours-navigateur.js` : agenda de 7 jours consécutifs distincts, indisponibilité exprimée en jours avec date de retour réelle, baisse effective de la fatigue sur les jours traversés, blessure résorbée **sans qu'aucun match ait été joué**, messages réels de retour de blessure et de fin de prêt.
+
+**Tranches suivantes.** 3 : semaine d'entraînement, rapports de scouts différés, décisions et contrats datés. 4 : préparation complète de la rencontre, fenêtres de transfert, événements de direction et de vestiaire.
+
 ### P2-10. Découper club.js et clubUI.js par domaine (sans changement de comportement)
 - **Statut : EN COURS (tranche 1 : Personnel, tranche 2 : Objectif de saison, tranche 3 : Analyse adversaire, tranche 4 : Prêts, tranche 5 : Contrats, tranche 6 : Équipe B, tranche 7 : Transferts national, tranche 8 : Transferts internationaux, tranche 9 : Effectif étendu, tranche 10 : Centre de formation, tranche 11 : Composition et tactique, tranche 12 : Condition physique des joueurs, tranche 13 : Génération de club/pyramide, tranche 14 : Calendrier et classement, tranche 15 : Sauvegarde et migration — voir constat de risque et tranches suivantes ci-dessous)**
 - Priorité : P2 (maintenabilité — explicitement demandée par l'utilisateur malgré la tension avec la règle CLAUDE.md "jamais un patch purement technique si le gameplay ne s'améliore pas visiblement")

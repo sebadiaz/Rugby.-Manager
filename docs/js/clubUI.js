@@ -528,6 +528,27 @@
     if (labelFlottant) labelFlottant.textContent = libelleCourt;
   }
 
+  // Agenda des 7 prochains jours (TODO_AUDIT.md P1-22) : ce que le manager a
+  // devant lui, jour par jour, dérivé du calendrier RÉEL (cf. RMClub.agenda).
+  // Aucune ligne inventée : un jour sans rencontre est affiché comme tel.
+  function rafraichirAgenda() {
+    const zone = document.getElementById('clubAgenda');
+    if (!zone) return;
+    const jours = RMClub.agenda(saison, 7);
+    const aujourdhui = RMClub.dateCourante(saison);
+    const ICONE_AGENDA = { pro: '🏉', b: '🥈', jeunes: '🌱' };
+    zone.innerHTML = jours.map((j, i) => {
+      const estAujourdhui = i === 0 && RMClub.comparerDates(j.date, aujourdhui) === 0;
+      const classe = j.type ? ' jourEvenement' : '';
+      const detail = j.type
+        ? `${ICONE_AGENDA[j.type]} ${echapperHTML(j.libelle)}`
+        : '<span class="jourVide">Rien de prévu</span>';
+      return `<div class="ligneAgenda${classe}${estAujourdhui ? ' aujourdhui' : ''}">` +
+        `<span class="dateAgenda">${echapperHTML(RMClub.formaterDateCourte(j.date))}${estAujourdhui ? ' · aujourd\'hui' : ''}</span>` +
+        `<span class="detailAgenda">${detail}</span></div>`;
+    }).join('');
+  }
+
   // Points bonus (offensif : 4 essais marqués ou plus ; défensif : défaite
   // par 7 points ou moins — cf. RMClub.enregistrerResultatDans) affichés à
   // part de "Pts" plutôt que fondus dedans, pour que le joueur comprenne
@@ -806,7 +827,7 @@
       return `<th class="triable" data-champ="${champ}">${label}<span class="flecheTri">${fleche}</span></th>`;
     }).join('') + '<th>Statut</th>';
     const lignes = effectif.map((j) => {
-      const statutBase = j.pret ? `<span class="badgePret">📤 Prêté (${j.pret.dureeRestante}j)</span>`
+      const statutBase = j.pret ? `<span class="badgePret" title="Jours restants">📤 Prêté (${j.pret.dureeRestante}j)</span>`
         : j.blessureJournees > 0 ? `<span class="badgeBlessure">🤕 ${j.blessureJournees}j</span>` : '—';
       const statut = j.veutPartir ? `<span class="badgeVeutPartir" title="Veut être transféré">🚩</span> ${statutBase}` : statutBase;
       const contratClasse = j.contrat <= 1 ? ' class="badgeContratCourt"' : '';
@@ -1168,7 +1189,7 @@
   function rafraichirMedical() {
     const blesses = saison.clubJoueur.effectif.filter((j) => j.blessureJournees > 0);
     document.getElementById('clubMedical').innerHTML = blesses.length
-      ? blesses.map((j) => `<div class="ligneMedicale"><span><b>${j.nom}</b> — ${POSTE_COMPLET[j.poste] || j.poste}</span><span class="retourMedical">Retour dans ${j.blessureJournees} journée(s)</span></div>`).join('')
+      ? blesses.map((j) => `<div class="ligneMedicale"><span><b>${j.nom}</b> — ${POSTE_COMPLET[j.poste] || j.poste}</span><span class="retourMedical">Retour dans ${j.blessureJournees} jour(s) — ${RMClub.formaterDateCourte(RMClub.ajouterJours(RMClub.dateCourante(saison), j.blessureJournees))}</span></div>`).join('')
       : '<p>Aucun joueur blessé actuellement — effectif au complet.</p>';
   }
 
@@ -1248,8 +1269,8 @@
     joueurAffiche = id;
     const c = saison.clubJoueur;
     const slot = ctx.slot;
-    const disponibilite = j.pret ? `En prêt — retour dans ${j.pret.dureeRestante} journée(s)`
-      : j.blessureJournees > 0 ? `Blessé — ${j.blessureJournees} journée(s) restantes` : 'Disponible';
+    const disponibilite = j.pret ? `En prêt — retour dans ${j.pret.dureeRestante} jour(s)`
+      : j.blessureJournees > 0 ? `Blessé — ${j.blessureJournees} jour(s) restant(s)` : 'Disponible';
     const titulaire = slot.compositionTitulaires && Object.values(slot.compositionTitulaires).includes(id);
     const banc = slot.compositionBanc && Object.values(slot.compositionBanc).includes(id);
     const statutCompo = titulaire ? 'Titulaire ce jour' : banc ? 'Remplaçant ce jour' : 'Non retenu ce jour';
@@ -1297,7 +1318,7 @@
       actions += `<button class="accent" id="btnRenouveler" style="width:100%;margin-top:8px;">Renouveler ${offre.dureeMax} an(s) · ${offre.salaire} k€/saison</button>`;
       actions += j.pret
         ? `<button class="alt" id="btnRappelerJoueur" style="width:100%;margin-top:8px;">Rappeler de prêt</button>`
-        : `<button class="alt" id="btnPreterJoueur" style="width:100%;margin-top:8px;">Prêter ce joueur (3 journées)</button>`;
+        : `<button class="alt" id="btnPreterJoueur" style="width:100%;margin-top:8px;">Prêter ce joueur (3 semaines)</button>`;
     }
     if (ctx.modifiable && estEspoir) {
       actions += `<button class="accent" id="btnPromouvoirEspoir" style="width:100%;margin-top:8px;">⬆️ Promouvoir en équipe première</button>`;
@@ -1793,6 +1814,7 @@
     rafraichirVueClub();
     rafraichirTopBarInfos();
     rafraichirProchainMatch();
+    rafraichirAgenda();
     rafraichirObjectifSaison();
     rafraichirAdversaire();
     rafraichirMessages();
@@ -2035,8 +2057,8 @@
       if (!joueurAffiche) return;
       const joueur = saison.clubJoueur.effectif.find((j) => j.id === joueurAffiche);
       if (!joueur) return;
-      if (!(await confirmerAction(`Prêter ${joueur.nom} pour 3 journées ? Il sera indisponible pour la sélection, contre une indemnité immédiate.`))) return;
-      const res = RMClub.preterJoueur(saison, joueurAffiche, 3);
+      if (!(await confirmerAction(`Prêter ${joueur.nom} pour 3 semaines (21 jours) ? Il sera indisponible pour la sélection, contre une indemnité immédiate.`))) return;
+      const res = RMClub.preterJoueur(saison, joueurAffiche, 21);
       if (!res.ok) {
         toast(res.motif === 'dernier_du_poste'
           ? "Impossible : c'est le dernier joueur disponible à ce poste — le prêter rendrait la composition impossible à compléter."
@@ -2487,7 +2509,6 @@
             RMClub.faireProgresserBlessures(creerRng(graineAleatoire()), saison.clubJoueur.effectif, compositionAvecRemplacants, RMClub.effetPersonnel(saison, 'medecin'), saison);
             RMClub.appliquerFatigue(saison.clubJoueur.effectif, compositionAvecRemplacants, 1 / RMClub.effetPersonnel(saison, 'preparateur'));
             RMClub.appliquerMoral(saison.clubJoueur.effectif, compositionAvecRemplacants, forme);
-            RMClub.progresserPrets(saison.clubJoueur.effectif);
             RMClub.appliquerEntrainement(creerRng(graineAleatoire()), saison.clubJoueur.effectif, saison.clubJoueur.entrainementFocus, RMClub.effetPersonnel(saison, 'entraineur'));
             RMClub.appliquerFrustrationTempsDeJeu(saison, compositionUtilisee, saison.clubJoueur.compositionBanc);
             sauvegarder();
@@ -2667,6 +2688,19 @@
     lancerMatchJoueur();
   }
 
+  // Retour visuel après un « Continuer » — strictement limité à ce qui a
+  // réellement changé dans la sauvegarde (TODO_AUDIT.md P1-22) : aucun
+  // message n'est produit si rien ne s'est passé.
+  function annoncerJoursEcoules(resume) {
+    if (!resume || !resume.nbJours) return;
+    if (resume.retablis.length) {
+      toast(`🩹 ${resume.retablis.join(', ')} de retour de blessure`);
+    }
+    if (resume.retoursDePret.length) {
+      toast(`📥 ${resume.retoursDePret.join(', ')} revient de prêt`);
+    }
+  }
+
   // --- « Continuer » : LE bouton principal de la carrière (TODO_AUDIT.md
   // P1-21). Un clic avance la date jusqu'à la prochaine échéance qui demande
   // l'attention du manager — jamais au-delà, donc aucun match ne peut être
@@ -2681,11 +2715,17 @@
       document.getElementById('btnSaisonSuivante').click();
       return;
     }
-    // La date avance RÉELLEMENT jusqu'à l'échéance, puis le jour se résout.
-    RMClub.definirDateCourante(saison, arret.date);
+    // La carrière avance RÉELLEMENT jour par jour jusqu'à l'échéance
+    // (TODO_AUDIT.md P1-22) : chaque journée traversée est simulée —
+    // récupération, guérison des blessures, retours de prêt — au lieu d'être
+    // sautée. Puis le jour d'échéance se résout.
+    const journees = RMClub.avancerJusquA(saison, arret.date);
+    const resume = RMClub.resumerJournees(journees);
     sauvegarder();
     rafraichirTopBarInfos();
     rafraichirProchainMatch();
+    rafraichirAgenda();
+    annoncerJoursEcoules(resume);
     if (arret.type === 'pro') { ouvrirApercuMatch(); return; }
     document.getElementById('panneauClub').classList.remove('visible');
     resoudreJour(arret.type);

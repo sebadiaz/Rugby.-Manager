@@ -13,9 +13,12 @@
   // de faire planter le jeu sur des champs manquants.
   // 3 : introduction du temps calendaire (docs/js/club-temps.js) — chaque
   // rencontre porte désormais une VRAIE date et la saison une date courante
-  // + une graine. Une sauvegarde v2 est migrée sans perte (cf.
-  // docs/js/club-sauvegarde.js, MIGRATIONS[2]).
-  const VERSION_SAUVEGARDE = 3;
+  // + une graine.
+  // 4 : événements quotidiens (docs/js/club-evenements.js) — `blessureJournees`
+  // et la durée des prêts comptent maintenant des JOURS et non plus des
+  // journées de championnat, puisque le temps s'écoule jour par jour.
+  // Chaque migration est appliquée sans perte (cf. docs/js/club-sauvegarde.js).
+  const VERSION_SAUVEGARDE = 4;
 
   // --- Génération de noms (club fictif, aucune référence à un club/joueur réel) ---
   const PRENOMS = ['Thomas', 'Lucas', 'Hugo', 'Louis', 'Jules', 'Nathan', 'Enzo', 'Léo',
