@@ -24,71 +24,118 @@
 (function (global) {
   'use strict';
 
+  // Une équipe est TOUJOURS une équipe DU CLUB actuellement affiché :
+  // 'pro' | 'b' | 'jeunes'. Le club, lui, n'est jamais choisi dans une liste
+  // — il s'ouvre en cliquant son nom là où il apparaît déjà (calendrier,
+  // classement, analyse d'adversaire, fiche joueur...). Les deux questions
+  // sont donc portées par deux états distincts : `clubConsulteId` répond à
+  // « quel club ? », `equipeConsultee` à « quelle équipe DE ce club ? ».
   const TYPES_EQUIPE = {
-    pro: { label: 'Première équipe', icone: '🏉', modifiable: true },
-    b: { label: 'Équipe B', icone: '🥈', modifiable: true },
-    jeunes: { label: 'Espoirs', icone: '🌱', modifiable: true },
-    adverse: { label: 'Club adverse', icone: '🏟️', modifiable: false },
+    pro: { label: 'Équipe première', icone: '🏉' },
+    b: { label: 'Équipe B', icone: '🥈' },
+    jeunes: { label: 'Espoirs', icone: '🌱' },
   };
 
-  // Valeur du <select> unique ↔ sélection interne. Un club adverse a besoin
-  // de son id en plus du type, d'où l'encodage "adverse:<clubId>".
-  function encoderSelection(selection) {
-    if (!selection || selection.type !== 'adverse') return (selection && selection.type) || 'pro';
-    return 'adverse:' + selection.clubId;
-  }
-  function decoderSelection(valeur) {
-    const brut = String(valeur || 'pro');
-    if (brut.indexOf('adverse:') === 0) return { type: 'adverse', clubId: brut.slice('adverse:'.length) };
-    return { type: TYPES_EQUIPE[brut] ? brut : 'pro', clubId: null };
-  }
-
-  // Sélection courante, normalisée et rétrocompatible : une sauvegarde
-  // antérieure porte l'ancien champ `equipeGeree` ('pro'|'b'|'jeunes'), une
-  // sauvegarde encore plus ancienne n'a rien du tout. Une sélection qui
-  // pointe vers un club adverse disparu (fin de saison, changement de
-  // palier) retombe silencieusement sur le premier XV plutôt que de laisser
-  // les écrans sur une équipe fantôme.
-  function selectionEquipe(saison) {
+  // --- État de navigation -------------------------------------------------
+  // Persisté dans la saison pour survivre à un rechargement. `clubPrecedentId`
+  // / `equipePrecedente` / `ongletPrecedent` mémorisent d'où venait le joueur
+  // au moment où il a ouvert un club adverse, pour que « ← Retour à mon
+  // club » le ramène exactement là (son équipe ET son écran).
+  function navigationClub(saison) {
     const c = saison.clubJoueur;
-    if (!c.equipeSelectionnee || typeof c.equipeSelectionnee !== 'object') {
-      c.equipeSelectionnee = { type: TYPES_EQUIPE[c.equipeGeree] ? c.equipeGeree : 'pro', clubId: null };
+    if (!c.navigationClub || typeof c.navigationClub !== 'object') {
+      c.navigationClub = {
+        clubJoueurId: c.id,
+        clubConsulteId: c.id,
+        // Rétrocompat : reprend l'équipe de l'ancien champ `equipeGeree`
+        // (et de la sélection encore plus ancienne) si elle existe.
+        equipeConsultee: TYPES_EQUIPE[c.equipeGeree] ? c.equipeGeree : 'pro',
+        clubPrecedentId: null,
+        equipePrecedente: 'pro',
+        ongletPrecedent: 'dashboard',
+      };
     }
-    const sel = c.equipeSelectionnee;
-    if (!TYPES_EQUIPE[sel.type]) { sel.type = 'pro'; sel.clubId = null; }
-    if (sel.type === 'adverse' && !global.RMClub.club(saison, sel.clubId)) { sel.type = 'pro'; sel.clubId = null; }
-    return sel;
+    const n = c.navigationClub;
+    n.clubJoueurId = c.id;
+    if (!TYPES_EQUIPE[n.equipeConsultee]) n.equipeConsultee = 'pro';
+    if (!TYPES_EQUIPE[n.equipePrecedente]) n.equipePrecedente = 'pro';
+    // Un club disparu (fin de saison, changement de palier) ne doit jamais
+    // laisser la navigation bloquée sur une équipe fantôme.
+    if (!global.RMClub.club(saison, n.clubConsulteId)) n.clubConsulteId = c.id;
+    // Un club adverse n'a qu'une équipe première dans ses données : ne
+    // jamais rester sur une équipe qui n'existe pas pour lui.
+    if (n.clubConsulteId !== c.id) n.equipeConsultee = 'pro';
+    return n;
   }
 
-  function definirSelectionEquipe(saison, type, clubId) {
-    const sel = selectionEquipe(saison);
-    if (!TYPES_EQUIPE[type]) return sel;
-    if (type === 'adverse' && !global.RMClub.club(saison, clubId)) return sel;
-    sel.type = type;
-    sel.clubId = type === 'adverse' ? clubId : null;
-    // `equipeGeree` reste écrit pour les 3 équipes du club : une sauvegarde
-    // relue par une version antérieure du jeu retrouve son écran.
-    if (type !== 'adverse') saison.clubJoueur.equipeGeree = type;
-    return sel;
+  function consulteClubJoueur(saison) {
+    return navigationClub(saison).clubConsulteId === saison.clubJoueur.id;
   }
 
-  // Toutes les équipes proposables dans le sélecteur unique — les 3 équipes
-  // du club puis TOUS les clubs de la division, dans l'ordre du classement
-  // réel (pas un ordre de génération arbitraire).
-  function equipesDisponibles(saison) {
-    const liste = [
-      { valeur: 'pro', label: TYPES_EQUIPE.pro.icone + ' ' + TYPES_EQUIPE.pro.label, groupe: 'Mon club' },
-      { valeur: 'b', label: TYPES_EQUIPE.b.icone + ' ' + TYPES_EQUIPE.b.label, groupe: 'Mon club' },
-      { valeur: 'jeunes', label: TYPES_EQUIPE.jeunes.icone + ' ' + TYPES_EQUIPE.jeunes.label, groupe: 'Mon club' },
-    ];
-    const rangs = {};
-    global.RMClub.classementTrie(saison).forEach((r, i) => { rangs[r.clubId] = i + 1; });
-    const adversaires = (saison.adversaires || []).slice()
-      .sort((a, b) => (rangs[a.id] || 99) - (rangs[b.id] || 99));
-    for (const adv of adversaires) {
-      liste.push({ valeur: 'adverse:' + adv.id, label: adv.nom, groupe: 'Autres clubs de la division' });
+  // LA fonction centrale d'ouverture d'un club (appelée par tous les noms de
+  // clubs cliquables, quel que soit l'écran) : mémorise d'où l'on vient,
+  // bascule sur le club cliqué et sélectionne son équipe première. L'écran à
+  // ouvrir ensuite (Composition) est décidé côté UI, pas ici.
+  function ouvrirClubDansNavigation(saison, clubId, ongletActuel) {
+    const n = navigationClub(saison);
+    if (!global.RMClub.club(saison, clubId)) return n;
+    if (clubId === n.clubConsulteId) return n;
+    // On ne mémorise un point de retour QUE si l'on quitte réellement son
+    // propre club — enchaîner deux adversaires ne doit pas faire perdre le
+    // chemin du retour.
+    if (n.clubConsulteId === saison.clubJoueur.id) {
+      n.clubPrecedentId = n.clubConsulteId;
+      n.equipePrecedente = n.equipeConsultee;
+      n.ongletPrecedent = ongletActuel || 'dashboard';
     }
-    return liste;
+    n.clubConsulteId = clubId;
+    n.equipeConsultee = 'pro';
+    return n;
+  }
+
+  // Retour à son propre club : restaure l'équipe ET l'écran d'où l'on venait.
+  function retourClubJoueurDansNavigation(saison) {
+    const n = navigationClub(saison);
+    n.clubConsulteId = saison.clubJoueur.id;
+    n.equipeConsultee = TYPES_EQUIPE[n.equipePrecedente] ? n.equipePrecedente : 'pro';
+    const onglet = n.ongletPrecedent || 'dashboard';
+    n.clubPrecedentId = null;
+    return { navigation: n, onglet };
+  }
+
+  function definirEquipeConsultee(saison, equipe) {
+    const n = navigationClub(saison);
+    if (!TYPES_EQUIPE[equipe]) return n;
+    if (equipesDisponiblesPourClub(saison, n.clubConsulteId).every((e) => e.valeur !== equipe)) return n;
+    n.equipeConsultee = equipe;
+    // Écrit aussi dans l'ancien champ : une sauvegarde relue par une version
+    // antérieure du jeu retrouve son écran.
+    if (n.clubConsulteId === saison.clubJoueur.id) saison.clubJoueur.equipeGeree = equipe;
+    return n;
+  }
+
+  // Équipes RÉELLEMENT disponibles dans les données du club affiché — jamais
+  // une entrée fabriquée. Le club du joueur a un effectif pro, un vivier
+  // d'Équipe B et un centre de formation ; un club IA n'a qu'un effectif de
+  // quinze joueurs (cf. genererEffectif), donc une seule équipe.
+  function equipesDisponiblesPourClub(saison, clubId) {
+    if (clubId !== saison.clubJoueur.id) {
+      return [{ valeur: 'pro', label: TYPES_EQUIPE.pro.icone + ' ' + TYPES_EQUIPE.pro.label }];
+    }
+    return ['pro', 'b', 'jeunes'].map((t) => ({ valeur: t, label: TYPES_EQUIPE[t].icone + ' ' + TYPES_EQUIPE[t].label }));
+  }
+
+  // Écrans accessibles pour le club affiché. Pour un club que le joueur ne
+  // dirige pas, les écrans de GESTION (tactique, entraînement, médical,
+  // recrutement, transferts, finances, bilan) sont absents du menu — pas
+  // grisés : ils n'ont simplement aucun sens, et les données correspondantes
+  // n'existent pas pour un club IA.
+  const ONGLETS_CLUB_JOUEUR = ['dashboard', 'effectif', 'composition', 'tactique', 'entrainement',
+    'transferts', 'personnel', 'autresclubs', 'calendrier', 'monde', 'finances', 'medical', 'stats'];
+  const ONGLETS_CLUB_CONSULTE = ['dashboard', 'effectif', 'composition', 'personnel', 'autresclubs', 'calendrier', 'monde'];
+
+  function ongletsDisponibles(saison) {
+    return consulteClubJoueur(saison) ? ONGLETS_CLUB_JOUEUR.slice() : ONGLETS_CLUB_CONSULTE.slice();
   }
 
   // --- Tactique DÉDUITE d'un club adverse ---------------------------------
@@ -218,19 +265,25 @@
   }
 
   // --- Le contexte : ce que consomment TOUS les écrans --------------------
-  function contexteEquipe(saison, selectionForcee) {
-    const sel = selectionForcee || selectionEquipe(saison);
-    const type = sel.type;
-    const infosType = TYPES_EQUIPE[type];
+  // Décrit l'équipe actuellement affichée — une équipe DU club actuellement
+  // consulté. Sa forme est identique que ce soit une équipe du joueur ou
+  // celle d'un club qu'il ne dirige pas : c'est ce qui permet aux écrans
+  // Effectif et Composition d'être les MÊMES composants, la seule différence
+  // étant `modifiable` (consultation et modification / lecture seule).
+  function contexteEquipe(saison, navigationForcee) {
+    const n = navigationForcee || navigationClub(saison);
     const c = saison.clubJoueur;
+    const estClubJoueur = n.clubConsulteId === c.id;
 
-    if (type === 'adverse') {
-      const club = global.RMClub.club(saison, sel.clubId);
+    if (!estClubJoueur) {
+      const club = global.RMClub.club(saison, n.clubConsulteId);
       const effectif = effectifAdverseNormalise(club);
       return {
-        type, clubId: club.id, club, effectif,
-        label: club.nom,
-        sousTitre: 'Club adverse — consultation en lecture seule',
+        type: 'pro', clubId: club.id, club, effectif,
+        estClubJoueur: false,
+        label: TYPES_EQUIPE.pro.label,
+        nomClub: club.nom,
+        sousTitre: 'Club consulté — lecture seule',
         modifiable: false,
         slot: slotAdverse(club, effectif),
         tactiqueDeduite: true,
@@ -246,11 +299,14 @@
       };
     }
 
+    const type = n.equipeConsultee;
     const effectif = global.RMClub.effectifPourEquipe(saison, type);
     const slot = global.RMClub.slotCompositionPourEquipe(saison, type);
     const base = {
       type, clubId: c.id, club: c, effectif, slot,
-      label: infosType.label,
+      estClubJoueur: true,
+      label: TYPES_EQUIPE[type].label,
+      nomClub: c.nom,
       modifiable: true,
       tactiqueDeduite: false,
       personnel: c.personnel || [],
@@ -299,8 +355,10 @@
   }
 
   global.RMClub = Object.assign(global.RMClub || {}, {
-    TYPES_EQUIPE, encoderSelection, decoderSelection,
-    selectionEquipe, definirSelectionEquipe, equipesDisponibles,
+    TYPES_EQUIPE, navigationClub, consulteClubJoueur,
+    ouvrirClubDansNavigation, retourClubJoueurDansNavigation,
+    definirEquipeConsultee, equipesDisponiblesPourClub,
+    ONGLETS_CLUB_JOUEUR, ONGLETS_CLUB_CONSULTE, ongletsDisponibles,
     deduireTactiqueAdverse, effectifAdverseNormalise, slotAdverse,
     enregistrerMatchEspoirs, bilanEspoirs, calendrierEspoirs,
     contexteEquipe,

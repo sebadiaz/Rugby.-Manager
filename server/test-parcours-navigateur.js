@@ -444,30 +444,40 @@ function optionsLancement() {
   verifier('autres paliers de la pyramide française : un classement réel est affiché (pas une carte vide)', autresPaliersTxt.trim().length > 20);
   verifier('autres paliers de la pyramide française : les 2 paliers non occupés par le joueur sont bien nommés',
     autresPaliersTxt.includes('Ligue') && (autresPaliersTxt.match(/Ligue/g) || []).length >= 2);
-  await page.click('#clubAutresClubsListe tbody tr:nth-child(1)');
-  await page.waitForTimeout(150);
-  const detailAdversaireTxt = await page.textContent('#clubAutresClubIdentite');
-  verifier('club adverse : sa fiche affiche un contenu réel', detailAdversaireTxt.trim().length > 20);
-  // TODO_AUDIT.md P1-19 : l'effectif adverse n'est PLUS recopié dans cet
-  // onglet — il s'affiche dans l'écran Effectif commun. La fiche du club
-  // propose des raccourcis qui y mènent en sélectionnant ce club.
-  verifier('club adverse : son effectif n\'est plus dupliqué dans l\'onglet Autres clubs (écran unique)',
-    await page.evaluate(() => !document.getElementById('clubAutresClubEffectif')));
-  verifier('club adverse : des raccourcis mènent aux écrans communs (effectif/composition/tactique/calendrier)',
-    (await page.$$('#clubAutresClubRaccourcis .btnRaccourciEquipe')).length === 4);
-  await page.click('#clubAutresClubRaccourcis .btnRaccourciEquipe[data-onglet="effectif"]');
-  await page.waitForTimeout(250);
-  const apresRaccourciEffectif = await page.evaluate(() => ({
-    ongletVisible: document.querySelector('.voletOnglet[data-volet="effectif"]').style.display !== 'none',
+  // TODO_AUDIT.md P1-20 : la liste des autres clubs n'est PAS un sélecteur —
+  // ce sont des noms cliquables, exactement comme partout ailleurs, et ils
+  // appellent la même fonction centrale d'ouverture de club.
+  verifier('autres clubs : la liste propose des noms de clubs CLIQUABLES (pas un menu déroulant)',
+    (await page.$$('#clubAutresClubsListe .lienClub')).length > 0
+    && await page.evaluate(() => !document.querySelector('#clubAutresClubsListe select')));
+  await page.click('#clubAutresClubsListe .lienClub');
+  await page.waitForTimeout(300);
+  const apresOuvertureClub = await page.evaluate(() => ({
+    ongletVisible: document.querySelector('.voletOnglet[data-volet="composition"]').style.display !== 'none',
+    entete: document.getElementById('clubEntete').innerText,
+    retour: !!document.getElementById('btnRetourMonClub'),
     equipe: document.getElementById('selEquipeContexte').value,
-    lignes: document.querySelectorAll('#clubEffectif tr[data-joueur]').length,
-    lectureSeule: !!document.querySelector('#contexteEquipeInfo .badgeEquipeMode.lecture'),
   }));
-  verifier('club adverse : le raccourci "Effectif" ouvre l\'écran Effectif COMMUN avec ce club sélectionné, en lecture seule',
-    apresRaccourciEffectif.ongletVisible && apresRaccourciEffectif.equipe.indexOf('adverse:') === 0
-    && apresRaccourciEffectif.lignes === 15 && apresRaccourciEffectif.lectureSeule);
+  verifier('autres clubs : cliquer le nom d\'un club l\'ouvre directement sur sa Composition, équipe première sélectionnée',
+    apresOuvertureClub.ongletVisible && apresOuvertureClub.equipe === 'pro');
+  verifier('autres clubs : le nom du club ouvert apparaît en haut à gauche, avec "Club consulté" et le bouton de retour',
+    apresOuvertureClub.entete.includes('Club consulté') && apresOuvertureClub.retour);
+  // Sa vue d'ensemble (identité/forme/comparaison/confrontations) vit dans
+  // l'onglet Vue d'ensemble du club ouvert, pas dans un écran séparé.
+  await clicOnglet('dashboard');
+  await page.waitForTimeout(200);
+  const vueClubTxt = await page.textContent('#clubVueConsulteIdentite');
+  verifier('club consulté : sa vue d\'ensemble affiche un contenu réel (identité, forme, classement)', vueClubTxt.trim().length > 20);
+  verifier('club consulté : les cartes de gestion du tableau de bord sont masquées (aucune donnée du joueur affichée à sa place)',
+    await page.evaluate(() => Array.from(document.querySelectorAll('.voletOnglet[data-volet="dashboard"] .carteMonClub'))
+      .every((el) => el.style.display === 'none')));
   // Offre de transfert : même fiche joueur que pour ses propres joueurs,
   // seule l'action proposée diffère.
+  await clicOnglet('effectif');
+  await page.waitForTimeout(250);
+  verifier('club consulté : son effectif s\'affiche dans l\'écran Effectif COMMUN, en lecture seule',
+    (await page.$$('#clubEffectif tr[data-joueur]')).length === 15
+    && !!(await page.$('#contexteEquipeInfo .badgeEquipeMode.lecture')));
   await page.click('#clubEffectif tr[data-joueur]');
   await page.waitForTimeout(200);
   verifier('club adverse : un de ses joueurs s\'ouvre dans la MÊME fiche joueur (#clubJoueurDetail) que les siens',
@@ -487,6 +497,10 @@ function optionsLancement() {
     !(await page.isVisible('#modalMontant.visible')) && await page.isVisible('#clubJoueurDetail'));
   verifier('retour arrière (Échap) : la fiche d\'un joueur adverse se referme comme celle d\'un joueur du club',
     await (async () => { await page.keyboard.press('Escape'); await page.waitForTimeout(150); return !(await page.isVisible('#clubJoueurDetail')); })());
+  await page.click('#btnRetourMonClub');
+  await page.waitForTimeout(300);
+  verifier('club consulté : "← Retour à mon club" ramène bien sur son propre club',
+    (await page.textContent('#clubEntete')).includes('Mon club') && !(await page.isVisible('#btnRetourMonClub')));
 
   // 6b) Équipe B (championnat réservé aux clubs au budget le plus élevé de
   // la ligue) : force un budget confortable (état non exposé par l'UI,
@@ -969,134 +983,163 @@ function optionsLancement() {
 
   const idAdversaireUnif = await pageUnif.evaluate(() =>
     JSON.parse(localStorage.getItem('rugbyManager.club.v1')).adversaires[0].id);
-  // Les 4 types d'équipe demandés, dans l'ordre : première équipe, équipe B,
-  // équipe jeune, équipe adverse.
-  const EQUIPES_A_TESTER = [
-    { valeur: 'pro', nom: 'première équipe', modifiable: true },
-    { valeur: 'b', nom: 'équipe B', modifiable: true },
-    { valeur: 'jeunes', nom: 'équipe jeune (espoirs)', modifiable: true },
-    { valeur: 'adverse:' + idAdversaireUnif, nom: 'équipe adverse', modifiable: false },
+
+  // --- (a) AUCUN sélecteur de club nulle part (TODO_AUDIT.md P1-20) -------
+  const inventaireSelects = await pageUnif.evaluate(() => {
+    const noms = [];
+    const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
+    noms.push(s.clubJoueur.nom);
+    for (const a of s.adversaires) noms.push(a.nom);
+    const fautifs = [];
+    for (const sel of document.querySelectorAll('#clubGestion select')) {
+      for (const opt of sel.options) {
+        if (noms.some((n) => opt.text.includes(n))) fautifs.push(sel.id + ' → ' + opt.text);
+      }
+    }
+    return { fautifs, valeursEquipe: Array.from(document.getElementById('selEquipeContexte').options).map((o) => o.value) };
+  });
+  verifier('navigation : AUCUN menu déroulant du Mode Club ne contient de nom de club',
+    inventaireSelects.fautifs.length === 0);
+  if (inventaireSelects.fautifs.length) console.error(inventaireSelects.fautifs.join('\n'));
+  verifier('navigation : le sélecteur d\'équipe ne contient que des équipes ("pro"/"b"/"jeunes"), jamais un club encodé',
+    inventaireSelects.valeursEquipe.every((v) => ['pro', 'b', 'jeunes'].indexOf(v) !== -1));
+
+  // --- (b) Tous les noms de clubs sont cliquables, partout ---------------
+  const ECRANS_AVEC_NOMS = [
+    { onglet: 'dashboard', zone: '#clubProchainMatch', nom: 'prochain match' },
+    { onglet: 'dashboard', zone: '#clubMiniClassement', nom: 'classement du tableau de bord' },
+    { onglet: 'calendrier', zone: '#clubClassement', nom: 'classement' },
+    { onglet: 'calendrier', zone: '#clubCalendrier', nom: 'calendrier' },
+    { onglet: 'autresclubs', zone: '#clubAutresClubsListe', nom: 'liste des autres clubs' },
   ];
-  // Le nœud qui porte le contenu de chaque écran — c'est LUI qui doit être
-  // partagé par les 4 équipes (s'il en existait un par type d'équipe, la
-  // refonte n'aurait servi à rien).
-  const ECRANS_A_TESTER = [
-    { onglet: 'effectif', nœud: '#clubEffectif', nom: 'effectif' },
-    { onglet: 'composition', nœud: '#clubTerrain', nom: 'composition' },
-    { onglet: 'tactique', nœud: '#clubTactique', nom: 'tactique' },
-    { onglet: 'entrainement', nœud: '#clubEntrainement', nom: 'entraînement' },
-    { onglet: 'calendrier', nœud: '#clubClassement', nom: 'calendrier & classement' },
-    { onglet: 'personnel', nœud: '#clubPersonnelActuel', nom: 'personnel' },
+  let tousNomsCliquables = true;
+  for (const e of ECRANS_AVEC_NOMS) {
+    await pageUnif.click(`.ongletBtn[data-onglet="${e.onglet}"]`);
+    await pageUnif.waitForTimeout(150);
+    const n = await pageUnif.evaluate((z) => document.querySelectorAll(`${z} .lienClub`).length, e.zone);
+    if (n === 0) { tousNomsCliquables = false; console.error(`aucun nom de club cliquable dans ${e.nom} (${e.zone})`); }
+  }
+  verifier('navigation : les noms de clubs sont cliquables partout où ils apparaissent (calendrier, classement, prochain match, liste des clubs)',
+    tousNomsCliquables);
+
+  // --- (c) Le parcours exigé : travailler sur une équipe, cliquer un nom,
+  // revenir — le club, l'équipe ET l'écran doivent être restaurés. ---------
+  await pageUnif.click('.ongletBtn[data-onglet="tactique"]');
+  await pageUnif.waitForTimeout(150);
+  await pageUnif.selectOption('#selEquipeContexte', 'b');
+  await pageUnif.waitForTimeout(250);
+  await pageUnif.click('.ongletBtn[data-onglet="calendrier"]');
+  await pageUnif.waitForTimeout(200);
+  const cibleClic = await pageUnif.evaluate(() => {
+    const monClub = JSON.parse(localStorage.getItem('rugbyManager.club.v1')).clubJoueur.id;
+    const lien = Array.from(document.querySelectorAll('#clubCalendrier .lienClub')).find((l) => l.dataset.club !== monClub);
+    return lien ? { id: lien.dataset.club, nom: lien.textContent } : null;
+  });
+  await pageUnif.evaluate((id) => document.querySelector(`#clubCalendrier .lienClub[data-club="${id}"]`).click(), cibleClic.id);
+  await pageUnif.waitForTimeout(400);
+  const ouvert = await pageUnif.evaluate(() => ({
+    onglet: Array.from(document.querySelectorAll('#clubGestion .voletOnglet')).filter((v) => v.style.display !== 'none').map((v) => v.dataset.volet),
+    entete: document.getElementById('clubEntete').innerText,
+    retour: !!document.getElementById('btnRetourMonClub'),
+    equipe: document.getElementById('selEquipeContexte').value,
+    optionsEquipe: Array.from(document.getElementById('selEquipeContexte').options).map((o) => o.value),
+    menu: Array.from(document.querySelectorAll('#barreOngletsClub .ongletBtn')).filter((b) => b.style.display !== 'none').map((b) => b.dataset.onglet),
+    postes: document.querySelectorAll('#clubTerrain .chipTerrain').length,
+    clubConsulte: JSON.parse(localStorage.getItem('rugbyManager.club.v1')).clubJoueur.navigationClub.clubConsulteId,
+  }));
+  verifier('navigation : cliquer le nom d\'un club dans le calendrier ouvre CE club immédiatement',
+    ouvert.clubConsulte === cibleClic.id);
+  verifier('navigation : l\'ouverture affiche directement l\'écran Composition de son équipe première',
+    ouvert.onglet.length === 1 && ouvert.onglet[0] === 'composition' && ouvert.equipe === 'pro' && ouvert.postes === 15);
+  verifier('navigation : le nom du club ouvert apparaît en haut à gauche, marqué "Club consulté"',
+    ouvert.entete.includes(cibleClic.nom) && ouvert.entete.includes('Club consulté'));
+  verifier('navigation : le bouton "← Retour à mon club" apparaît pour un club consulté', ouvert.retour);
+  verifier('navigation : le sélecteur ne propose alors QUE les équipes réellement disponibles pour ce club',
+    ouvert.optionsEquipe.length === 1 && ouvert.optionsEquipe[0] === 'pro');
+  verifier('navigation : le menu d\'un club consulté ne contient NI Tactique, NI Entraînement, NI Médical, NI Recrutement (absents, pas grisés)',
+    ['tactique', 'entrainement', 'medical', 'transferts', 'finances', 'stats'].every((o) => ouvert.menu.indexOf(o) === -1));
+  verifier('navigation : le menu d\'un club consulté garde bien Vue d\'ensemble, Effectif, Composition, Calendrier et Personnel',
+    ['dashboard', 'effectif', 'composition', 'calendrier', 'personnel'].every((o) => ouvert.menu.indexOf(o) !== -1));
+  // Un écran interdit ne doit pas non plus être atteignable par un autre chemin.
+  await pageUnif.evaluate(() => {
+    const b = document.querySelector('.ongletBtn[data-onglet="tactique"]');
+    if (b) { b.style.display = ''; b.click(); }
+  });
+  await pageUnif.waitForTimeout(250);
+  verifier('navigation : forcer l\'ouverture d\'un écran de gestion sur un club consulté retombe sur sa vue d\'ensemble',
+    await pageUnif.evaluate(() => document.querySelector('.voletOnglet[data-volet="tactique"]').style.display === 'none'));
+
+  await pageUnif.click('#btnRetourMonClub');
+  await pageUnif.waitForTimeout(400);
+  const revenu = await pageUnif.evaluate(() => ({
+    onglet: Array.from(document.querySelectorAll('#clubGestion .voletOnglet')).filter((v) => v.style.display !== 'none').map((v) => v.dataset.volet),
+    entete: document.getElementById('clubEntete').innerText,
+    retour: !!document.getElementById('btnRetourMonClub'),
+    equipe: document.getElementById('selEquipeContexte').value,
+    menu: Array.from(document.querySelectorAll('#barreOngletsClub .ongletBtn')).filter((b) => b.style.display !== 'none').map((b) => b.dataset.onglet),
+  }));
+  verifier('navigation : "Retour à mon club" restaure le club du joueur (et fait disparaître le bouton)',
+    revenu.entete.includes('Mon club') && !revenu.retour);
+  verifier('navigation : "Retour à mon club" restaure l\'ÉQUIPE sur laquelle le joueur travaillait (Équipe B)',
+    revenu.equipe === 'b');
+  verifier('navigation : "Retour à mon club" restaure l\'ÉCRAN d\'où le joueur venait',
+    revenu.onglet.length === 1 && revenu.onglet[0] === 'calendrier');
+  verifier('navigation : le menu complet de gestion revient sur son propre club',
+    ['tactique', 'entrainement', 'medical', 'transferts', 'finances'].every((o) => revenu.menu.indexOf(o) !== -1));
+
+  // --- (d) Les MÊMES composants servent les deux cas ---------------------
+  // Un club consulté et le club du joueur passent par les mêmes nœuds DOM
+  // d'Effectif et de Composition — la seule différence est modifiable ou non.
+  const ECRANS_COMMUNS = [
+    { onglet: 'effectif', nœud: '#clubEffectif' },
+    { onglet: 'composition', nœud: '#clubTerrain' },
   ];
-  let toutesEquipesOntTousLesEcrans = true;
-  let selecteurToujoursDansEcran = true;
-  let contenuToujoursReel = true;
-  let lectureSeuleRespectee = true;
-  for (const equipe of EQUIPES_A_TESTER) {
-    for (const ecran of ECRANS_A_TESTER) {
-      await pageUnif.click(`.ongletBtn[data-onglet="${ecran.onglet}"]`);
-      await pageUnif.waitForTimeout(120);
-      await pageUnif.selectOption('#selEquipeContexte', equipe.valeur);
+  let memesComposants = true;
+  for (const cas of [{ club: null, modifiable: true }, { club: idAdversaireUnif, modifiable: false }]) {
+    if (cas.club) {
+      await pageUnif.click('.ongletBtn[data-onglet="autresclubs"]');
+      await pageUnif.waitForTimeout(150);
+      await pageUnif.evaluate((id) => document.querySelector(`#clubAutresClubsListe .lienClub[data-club="${id}"]`).click(), cas.club);
+      await pageUnif.waitForTimeout(350);
+    }
+    for (const e of ECRANS_COMMUNS) {
+      await pageUnif.click(`.ongletBtn[data-onglet="${e.onglet}"]`);
       await pageUnif.waitForTimeout(200);
       const etat = await pageUnif.evaluate((args) => {
         const volet = document.querySelector(`.voletOnglet[data-volet="${args.onglet}"]`);
         const nœud = document.querySelector(args.nœud);
-        const selecteur = document.getElementById('selecteurEquipe');
         return {
-          voletVisible: volet && volet.style.display !== 'none',
-          // Le nœud de contenu doit exister ET appartenir à CE volet : preuve
-          // qu'il n'y a pas d'écran parallèle ailleurs dans la page.
-          nœudDansVolet: !!(nœud && volet && volet.contains(nœud)),
+          dansVolet: !!(nœud && volet && volet.contains(nœud)),
           contenu: nœud ? (nœud.innerText || '').trim().length : 0,
-          // Un seul sélecteur dans toute la page, et il est dans l'écran actif.
-          nbSelecteurs: document.querySelectorAll('#selecteurEquipe').length,
-          selecteurDansVolet: !!(selecteur && volet && volet.contains(selecteur)),
-          valeurSelecteur: document.getElementById('selEquipeContexte').value,
           modifiable: !!document.querySelector('#contexteEquipeInfo .badgeEquipeMode.dirigee'),
         };
-      }, { onglet: ecran.onglet, nœud: ecran.nœud });
-      if (!etat.voletVisible || !etat.nœudDansVolet) toutesEquipesOntTousLesEcrans = false;
-      if (etat.nbSelecteurs !== 1 || !etat.selecteurDansVolet || etat.valeurSelecteur !== equipe.valeur) selecteurToujoursDansEcran = false;
-      if (etat.contenu < 15) contenuToujoursReel = false;
-      if (etat.modifiable !== equipe.modifiable) lectureSeuleRespectee = false;
+      }, { onglet: e.onglet, nœud: e.nœud });
+      if (!etat.dansVolet || etat.contenu < 15 || etat.modifiable !== cas.modifiable) memesComposants = false;
     }
   }
-  verifier('écrans uniques : les 4 types d\'équipe (1re, B, jeunes, adverse) passent par les MÊMES 6 écrans (mêmes nœuds DOM)',
-    toutesEquipesOntTousLesEcrans);
-  verifier('écrans uniques : il n\'existe QU\'UN sélecteur d\'équipe dans toute la page, déplacé dans l\'écran actif',
-    selecteurToujoursDansEcran);
-  verifier('écrans uniques : chaque écran affiche un contenu RÉEL pour chacune des 4 équipes (jamais une page vide)',
-    contenuToujoursReel);
-  verifier('écrans uniques : seules les équipes dirigées sont modifiables, un club adverse reste en lecture seule sur les 6 écrans',
-    lectureSeuleRespectee);
-
-  // L'équipe sélectionnée doit être CONSERVÉE en naviguant entre les 6
-  // écrans — c'est explicitement demandé, et c'est ce qui rend la
-  // consultation d'une équipe cohérente d'un écran à l'autre.
-  await pageUnif.click('.ongletBtn[data-onglet="composition"]');
-  await pageUnif.waitForTimeout(120);
-  await pageUnif.selectOption('#selEquipeContexte', 'jeunes');
-  await pageUnif.waitForTimeout(200);
-  let equipeConservee = true;
-  for (const ecran of ECRANS_A_TESTER) {
-    await pageUnif.click(`.ongletBtn[data-onglet="${ecran.onglet}"]`);
-    await pageUnif.waitForTimeout(150);
-    const valeur = await pageUnif.evaluate(() => document.getElementById('selEquipeContexte').value);
-    if (valeur !== 'jeunes') equipeConservee = false;
-  }
-  verifier('écrans uniques : l\'équipe sélectionnée est conservée en passant de la composition à la tactique, l\'entraînement, le calendrier et le personnel',
-    equipeConservee);
-  // ... et elle survit à un rechargement de page (sauvegardée, pas seulement
-  // en mémoire).
-  await pageUnif.reload({ waitUntil: 'networkidle' });
-  await pageUnif.waitForTimeout(200);
-  await pageUnif.click('#btnContinuerClub');
+  verifier('navigation : les écrans Effectif et Composition sont les MÊMES composants pour son club et pour un club consulté (seul le droit de modifier change)',
+    memesComposants);
+  await pageUnif.click('#btnRetourMonClub');
   await pageUnif.waitForTimeout(300);
-  await pageUnif.click('.ongletBtn[data-onglet="effectif"]');
-  await pageUnif.waitForTimeout(200);
-  verifier('écrans uniques : l\'équipe sélectionnée survit à un rechargement de page (F5)',
-    (await pageUnif.evaluate(() => document.getElementById('selEquipeContexte').value)) === 'jeunes');
 
-  // Une équipe adverse doit être en lecture seule POUR DE VRAI : les
-  // contrôles sont désactivés, et forcer l'action ne modifie rien.
-  await pageUnif.click('.ongletBtn[data-onglet="composition"]');
-  await pageUnif.waitForTimeout(120);
-  await pageUnif.selectOption('#selEquipeContexte', 'adverse:' + idAdversaireUnif);
-  await pageUnif.waitForTimeout(250);
-  const controlesAdverse = await pageUnif.evaluate(() => ({
-    selects: document.querySelectorAll('#clubTerrain select').length,
-    desactives: document.querySelectorAll('#clubTerrain select[disabled]').length,
-    encadrementDesactives: document.querySelectorAll('#clubEncadrement select[disabled]').length,
-    boutonAutoMasque: document.getElementById('btnCompositionAuto').style.display === 'none',
-  }));
-  verifier('écrans uniques : la composition d\'un club adverse est le MÊME terrain 1-15, entièrement désactivé',
-    controlesAdverse.selects === 15 && controlesAdverse.desactives === 15
-    && controlesAdverse.encadrementDesactives === 3 && controlesAdverse.boutonAutoMasque);
-  await pageUnif.click('.ongletBtn[data-onglet="tactique"]');
-  await pageUnif.waitForTimeout(200);
-  const tactiqueAdverse = await pageUnif.evaluate(() => {
-    const axes = document.querySelectorAll('#clubTactique [data-axe]');
-    return {
-      axes: axes.length,
-      desactives: document.querySelectorAll('#clubTactique [data-axe][disabled]').length,
-      choisies: document.querySelectorAll('#clubTactique .ligneTactique.choisie').length,
-      noteDeduite: !!document.querySelector('#clubTactique .noteLectureSeule'),
-    };
-  });
-  verifier('écrans uniques : la tactique d\'un club adverse s\'affiche sur les MÊMES 6 axes, désactivés et signalés comme déduits',
-    tactiqueAdverse.axes === 18 && tactiqueAdverse.desactives === 18
-    && tactiqueAdverse.choisies === 6 && tactiqueAdverse.noteDeduite);
-  // Tenter réellement de modifier la tactique d'un club qu'on ne dirige pas
-  // ne doit RIEN changer dans la sauvegarde.
-  const sauvegardeAvantForcage = await pageUnif.evaluate(() => localStorage.getItem('rugbyManager.club.v1'));
-  await pageUnif.evaluate(() => {
-    const bouton = document.querySelector('#clubTactique .ligneTactique:not(.choisie)');
-    if (bouton) { bouton.disabled = false; bouton.click(); }
-  });
-  await pageUnif.waitForTimeout(250);
-  verifier('écrans uniques : forcer un clic sur la tactique d\'un club adverse ne modifie RIEN (lecture seule réelle, pas cosmétique)',
-    (await pageUnif.evaluate(() => localStorage.getItem('rugbyManager.club.v1'))) === sauvegardeAvantForcage);
-  verifier('écrans uniques : aucune erreur console pendant tout le parcours des 4 équipes sur les 6 écrans',
+  // --- (e) Les 3 équipes du club du joueur restent gérables normalement --
+  let equipesJoueurOk = true;
+  for (const equipe of ['pro', 'b', 'jeunes']) {
+    await pageUnif.click('.ongletBtn[data-onglet="composition"]');
+    await pageUnif.waitForTimeout(150);
+    await pageUnif.selectOption('#selEquipeContexte', equipe);
+    await pageUnif.waitForTimeout(250);
+    const etat = await pageUnif.evaluate(() => ({
+      postes: document.querySelectorAll('#clubTerrain .chipTerrain').length,
+      modifiable: !!document.querySelector('#contexteEquipeInfo .badgeEquipeMode.dirigee'),
+      desactives: document.querySelectorAll('#clubTerrain select[disabled]').length,
+    }));
+    if (etat.postes !== 15 || !etat.modifiable || etat.desactives !== 0) equipesJoueurOk = false;
+  }
+  verifier('navigation : les 3 équipes du club du joueur (première, B, espoirs) restent pleinement modifiables',
+    equipesJoueurOk);
+
+  verifier('navigation : aucune erreur console pendant tout le parcours de navigation entre clubs et équipes',
     erreursUnif.length === 0);
   if (erreursUnif.length) console.error(erreursUnif.join('\n'));
   await contexteUnif.close();

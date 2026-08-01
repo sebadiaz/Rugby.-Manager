@@ -15,12 +15,6 @@
   // place dans l'onglet Effectif) — sert au bouton "Libérer ce joueur", qui
   // vit dans l'innerHTML régénéré et est géré par délégation d'événements.
   let joueurAffiche = null;
-  // Club adverse actuellement affiché en détail (onglet Autres clubs) — null
-  // tant qu'on est sur la liste. Indépendant de joueurAffiche (fiche joueur
-  // de SON club) : une fiche joueur adverse se consulte à l'intérieur de ce
-  // même onglet, sur un joueur repéré par son INDEX dans l'effectif adverse
-  // (pas d'id stable requis pour un effectif IA non géré au jour le jour).
-  let clubAdversaireAffiche = null;
   // Recommandations tactiques du dernier aperçu de match affiché (cf.
   // rafraichirApercuMatch/RMClub.recommanderTactique) — reprises telles
   // quelles par le bouton "Appliquer les recommandations", plutôt que de
@@ -408,8 +402,8 @@
   // (académie espoirs, cf. RMClub.calendrierEspoirs) d'utiliser la même ligne.
   function formaterLigneCalendrier(f, clubMisEnAvant) {
     const cible = clubMisEnAvant || saison.clubJoueur.id;
-    const domicile = f.libelleDomicile ? echapperHTML(f.libelleDomicile) : nomClub(f.domicileId);
-    const exterieur = f.libelleExterieur ? echapperHTML(f.libelleExterieur) : nomClub(f.exterieurId);
+    const domicile = f.libelleDomicile ? echapperHTML(f.libelleDomicile) : lienClub(f.domicileId);
+    const exterieur = f.libelleExterieur ? echapperHTML(f.libelleExterieur) : lienClub(f.exterieurId);
     const score = f.joue ? `${f.score.domicile} - ${f.score.exterieur}` : 'à jouer';
     const forme = formePourClub(f, cible);
     const badge = forme ? `<span class="badgeForme ${forme}">${LIBELLE_FORME[forme]}</span>` : '';
@@ -417,7 +411,22 @@
     return `<div class="ligneCalendrier${classe}"><span>J${f.journee} — ${domicile} vs ${exterieur}</span><span class="scoreCal">${badge}${score}</span></div>`;
   }
 
+  // Entête d'identité (TODO_AUDIT.md P1-20) : le nom du club ACTUELLEMENT
+  // AFFICHÉ, en permanence en haut à gauche — le sien ("Mon club") ou celui
+  // qu'il consulte ("Club consulté" + bouton de retour). C'est le seul
+  // endroit qui répond à la question « quel club suis-je en train de
+  // regarder ? » : il n'existe aucune liste ni menu déroulant de clubs.
   function rafraichirEntete() {
+    const nav = RMClub.navigationClub(saison);
+    if (nav.clubConsulteId !== saison.clubJoueur.id) {
+      const adv = RMClub.club(saison, nav.clubConsulteId);
+      const initialeAdv = (adv.nom.match(/\b\w/g) || ['?']).slice(0, 2).join('').toUpperCase();
+      document.getElementById('clubEntete').innerHTML =
+        `<div class="clubEntete consulte"><span class="pastilleClub" style="background:${adv.couleur}">${initialeAdv}</span>` +
+        `<span class="nomClub">${echapperHTML(adv.nom)}<span class="sousLigne">Club consulté</span></span></div>` +
+        `<button class="alt btnRetourMonClub" id="btnRetourMonClub">← Retour à mon club</button>`;
+      return;
+    }
     const c = saison.clubJoueur;
     const initiale = (c.nom.match(/\b\w/g) || ['?']).slice(0, 2).join('').toUpperCase();
     // Palier de la pyramide française (cf. RMClub.nomPalierFrance) : une
@@ -429,29 +438,38 @@
       ? `<span class="badgeQualifEuro">🏆 Qualifié ${c.qualificationEuropeenne === 'continentale' ? 'Continentale' : 'Challenge'}</span>` : '';
     document.getElementById('clubEntete').innerHTML =
       `<div class="clubEntete"><span class="pastilleClub" style="background:${c.couleur}">${initiale}</span>` +
-      `<span class="nomClub">${echapperHTML(c.nom)}<span class="sousLigne">${RMClub.nomPalierFrance(niveauPalier)}</span></span></div>${badgeEuropeen}`;
+      `<span class="nomClub">${echapperHTML(c.nom)}<span class="sousLigne">Mon club · ${RMClub.nomPalierFrance(niveauPalier)}</span></span></div>${badgeEuropeen}`;
   }
 
   // Barre supérieure persistante (cf. index.html #clubTopBarInfos) : saison,
   // prochain match, position au classement, budget — visibles quel que soit
   // l'onglet actif, sans avoir à retourner au Dashboard pour les consulter.
+  // Les repères de la barre du haut suivent le club AFFICHÉ (TODO_AUDIT.md
+  // P1-20) : afficher son propre budget et son propre prochain match pendant
+  // qu'on consulte un autre club serait trompeur. Pour un club consulté, on
+  // n'affiche que ce qui est réellement observable (classement, prochaine
+  // rencontre, budget estimé), jamais une donnée de gestion inventée.
   function rafraichirTopBarInfos() {
-    const c = saison.clubJoueur;
+    const nav = RMClub.navigationClub(saison);
+    const club = RMClub.club(saison, nav.clubConsulteId);
+    const estMonClub = nav.clubConsulteId === saison.clubJoueur.id;
     const classement = RMClub.classementTrie(saison);
-    const position = classement.findIndex((r) => r.clubId === c.id) + 1;
+    const position = classement.findIndex((r) => r.clubId === club.id) + 1;
     const prochaine = RMClub.prochainesFixtures(saison);
-    const matchJoueur = prochaine.find(concerneClubJoueur);
+    const match = prochaine.find((f) => f.domicileId === club.id || f.exterieurId === club.id);
     let texteMatch = 'Saison terminée';
-    if (matchJoueur) {
-      const domicileEstJoueur = estClubJoueur(matchJoueur.domicileId);
-      const adversaireId = domicileEstJoueur ? matchJoueur.exterieurId : matchJoueur.domicileId;
-      texteMatch = `J${matchJoueur.journee} ${domicileEstJoueur ? 'vs' : '@'} ${nomClub(adversaireId)}`;
+    if (match) {
+      const aDomicile = match.domicileId === club.id;
+      const adversaireId = aDomicile ? match.exterieurId : match.domicileId;
+      texteMatch = `J${match.journee} ${aDomicile ? 'vs' : '@'} ${lienClub(adversaireId)}`;
     }
     document.getElementById('clubTopBarInfos').innerHTML =
       `<span class="chipInfo">📅 Saison <b>${saison.numero || 1}</b></span>` +
       `<span class="chipInfo">🏉 <b>${texteMatch}</b></span>` +
       `<span class="chipInfo">🏆 <b>${position}${position === 1 ? 'er' : 'e'}</b>/${classement.length}</span>` +
-      `<span class="chipInfo${c.budget < 0 ? ' alerte' : ''}">💰 <b>${c.budget} k€</b></span>`;
+      (estMonClub
+        ? `<span class="chipInfo${club.budget < 0 ? ' alerte' : ''}">💰 <b>${club.budget} k€</b></span>`
+        : `<span class="chipInfo" title="Estimation de tes recruteurs">💰 <b>${club.budget != null ? club.budget + ' k€' : '—'}</b> (estimé)</span>`);
   }
 
   // La journée fait jouer TOUS les clubs à la fois (n/2 matchs simultanés,
@@ -502,7 +520,7 @@
     const lignes = RMClub.classementTrieDe(ctx.classement).map((r, i) => {
       const diff = r.pointsPour - r.pointsContre;
       const classe = r.clubId === ctx.clubId ? ' class="ligneClubJoueur"' : '';
-      return `<tr${classe}><td>${i + 1}</td><td>${nomClub(r.clubId)}</td><td>${r.j}</td><td>${r.g}</td><td>${r.n}</td><td>${r.p}</td>` +
+      return `<tr${classe}><td>${i + 1}</td><td>${lienClub(r.clubId)}</td><td>${r.j}</td><td>${r.g}</td><td>${r.n}</td><td>${r.p}</td>` +
         `<td>${r.pointsPour}</td><td>${r.pointsContre}</td><td>${diff >= 0 ? '+' : ''}${diff}</td>` +
         `<td title="Bonus offensif (4 essais ou plus)">${r.bonusOffensifs || 0}</td>` +
         `<td title="Bonus défensif (défaite par 7 points ou moins)">${r.bonusDefensifs || 0}</td>` +
@@ -519,7 +537,7 @@
     const classement = RMClub.classementTrie(saison);
     document.getElementById('clubMiniClassement').innerHTML = classement.map((r, i) => {
       const classe = estClubJoueur(r.clubId) ? ' ligneClubJoueur' : '';
-      return `<div class="miniClassementLigne${classe}"><span>${i + 1}. ${nomClub(r.clubId)}</span><span>${r.j}J · <b>${r.pts}</b> pts</span></div>`;
+      return `<div class="miniClassementLigne${classe}"><span>${i + 1}. ${lienClub(r.clubId)}</span><span>${r.j}J · <b>${r.pts}</b> pts</span></div>`;
     }).join('');
   }
 
@@ -546,23 +564,24 @@
   // conservée en passant de la composition à la tactique, à l'entraînement,
   // au calendrier ou au personnel : il n'existe pas d'autre état à
   // resynchroniser.
+  // Le sélecteur ne répond QU'À une seule question : « quelle équipe DU CLUB
+  // ACTUELLEMENT AFFICHÉ consulter ? ». Il ne contient jamais de nom de club
+  // (TODO_AUDIT.md P1-20) — un club s'ouvre en cliquant son nom là où il
+  // apparaît déjà, jamais depuis une liste. Il ne propose que les équipes
+  // réellement présentes dans les données du club affiché : les trois du
+  // joueur, l'équipe première seule pour un club qu'il ne dirige pas.
   function rafraichirSelecteurEquipe() {
     const ctx = contexte();
+    const nav = RMClub.navigationClub(saison);
     const sel = document.getElementById('selEquipeContexte');
     if (!sel) return;
-    const valeurCourante = RMClub.encoderSelection(RMClub.selectionEquipe(saison));
-    const groupes = [];
-    for (const item of RMClub.equipesDisponibles(saison)) {
-      let groupe = groupes.find((g) => g.nom === item.groupe);
-      if (!groupe) { groupe = { nom: item.groupe, options: [] }; groupes.push(groupe); }
-      groupe.options.push(item);
-    }
-    sel.innerHTML = groupes.map((g) =>
-      `<optgroup label="${echapperHTML(g.nom)}">` +
-      g.options.map((o) => `<option value="${echapperHTML(o.valeur)}"${o.valeur === valeurCourante ? ' selected' : ''}>${echapperHTML(o.label)}</option>`).join('') +
-      `</optgroup>`
-    ).join('');
-    sel.value = valeurCourante;
+    const equipes = RMClub.equipesDisponiblesPourClub(saison, nav.clubConsulteId);
+    sel.innerHTML = equipes.map((o) =>
+      `<option value="${echapperHTML(o.valeur)}"${o.valeur === ctx.type ? ' selected' : ''}>${echapperHTML(o.label)}</option>`).join('');
+    sel.value = ctx.type;
+    // Une seule équipe disponible (club consulté) : le sélecteur n'a rien à
+    // arbitrer, il devient une simple étiquette non interactive.
+    sel.disabled = equipes.length < 2;
     const badge = ctx.modifiable
       ? '<span class="badgeEquipeMode dirigee">Équipe dirigée · modifiable</span>'
       : '<span class="badgeEquipeMode lecture">Lecture seule</span>';
@@ -570,6 +589,85 @@
       ? `<p class="avertissementEquipe">⚠️ ${echapperHTML(ctx.motifIndisponible)}</p>` : '';
     document.getElementById('contexteEquipeInfo').innerHTML =
       `<p class="sousTitreEquipe">${echapperHTML(ctx.sousTitre)} · ${ctx.effectif.length} joueur(s) ${badge}</p>${indispo}${statutEspoirsHTML(ctx)}`;
+  }
+
+  // --- Ouverture d'un club : LA fonction centrale (TODO_AUDIT.md P1-20) ----
+  // Tous les noms de clubs cliquables du jeu (calendrier, classement,
+  // résultats, prochain match, analyse de l'adversaire, liste des autres
+  // clubs, fiche joueur, confrontations...) appellent CETTE fonction — la
+  // logique n'est dupliquée dans aucun écran.
+  function ouvrirClub(clubId) {
+    if (!RMClub.club(saison, clubId)) return;
+    const nav = RMClub.navigationClub(saison);
+    if (clubId === nav.clubConsulteId) { basculerOnglet('composition'); return; }
+    RMClub.ouvrirClubDansNavigation(saison, clubId, ongletActuel);
+    fermerFicheJoueur();
+    selectionComparaisonEffectif.clear();
+    sauvegarder();
+    rafraichirEntete();
+    rafraichirTopBarInfos();
+    rafraichirMenuOnglets();
+    rafraichirVueClub();
+    rafraichirEcransEquipe();
+    // Ouvre directement la composition de l'équipe première du club ouvert :
+    // c'est la vue la plus parlante quand on va voir « à quoi ressemble » un
+    // club, et c'est le parcours attendu (clic sur un nom → son XV).
+    basculerOnglet('composition');
+  }
+
+  // Retour à son propre club : restaure le club, l'équipe SUR LAQUELLE il
+  // travaillait et l'écran d'où il venait.
+  function retourMonClub() {
+    const { onglet } = RMClub.retourClubJoueurDansNavigation(saison);
+    fermerFicheJoueur();
+    selectionComparaisonEffectif.clear();
+    sauvegarder();
+    rafraichirEntete();
+    rafraichirTopBarInfos();
+    rafraichirMenuOnglets();
+    rafraichirVueClub();
+    rafraichirEcransEquipe();
+    basculerOnglet(onglet);
+  }
+
+  // Nom de club CLIQUABLE — un seul composant, réutilisé partout où un nom de
+  // club s'affiche. C'est le seul moyen d'ouvrir un club dans tout le jeu.
+  function lienClub(clubId) {
+    const c = RMClub.club(saison, clubId);
+    if (!c) return '?';
+    return `<button type="button" class="lienClub" data-club="${echapperHTML(clubId)}" title="Ouvrir ${echapperHTML(c.nom)}">${echapperHTML(c.nom)}</button>`;
+  }
+
+  // Le menu s'adapte au club affiché : pour un club que le joueur ne dirige
+  // pas, les écrans de gestion (tactique, entraînement, médical, recrutement,
+  // transferts, finances, bilan) sont ABSENTS — pas grisés. Les données
+  // correspondantes n'existent tout simplement pas pour un club IA, et rien
+  // n'est fabriqué pour remplir un écran.
+  const LIBELLE_GROUPE_NAV = {
+    monClub: { club: 'Mon club', recrutement: 'Recrutement', competition: 'Compétition', gestion: 'Gestion' },
+    clubConsulte: { club: 'Club consulté', recrutement: 'Staff', competition: 'Compétition', gestion: 'Gestion' },
+  };
+
+  function rafraichirMenuOnglets() {
+    const autorises = RMClub.ongletsDisponibles(saison);
+    const libelles = LIBELLE_GROUPE_NAV[RMClub.consulteClubJoueur(saison) ? 'monClub' : 'clubConsulte'];
+    document.querySelectorAll('#barreOngletsClub .ongletBtn').forEach((b) => {
+      b.style.display = autorises.indexOf(b.dataset.onglet) !== -1 ? '' : 'none';
+    });
+    // « Mon club » n'a plus de sens quand on regarde le club d'un autre.
+    document.querySelectorAll('#barreOngletsClub .groupeNav').forEach((titre) => {
+      const libelle = libelles[titre.dataset.cat];
+      if (libelle) titre.textContent = libelle;
+    });
+    // Un intitulé de groupe dont plus aucune entrée n'est visible n'a plus
+    // lieu d'être affiché.
+    document.querySelectorAll('#barreOngletsClub .groupeNav').forEach((titre) => {
+      let visible = false;
+      for (let el = titre.nextElementSibling; el && !el.classList.contains('groupeNav'); el = el.nextElementSibling) {
+        if (el.classList.contains('ongletBtn') && el.style.display !== 'none') { visible = true; break; }
+      }
+      titre.style.display = visible ? '' : 'none';
+    });
   }
 
   // Prochain match espoirs : information propre au centre de formation, donc
@@ -589,9 +687,9 @@
 
   // Change l'équipe affichée par TOUS les écrans d'un coup. Aucun écran n'a
   // sa propre notion d'équipe courante : il n'y a qu'ici qu'on en change.
-  function changerEquipe(type, clubId) {
-    RMClub.definirSelectionEquipe(saison, type, clubId);
-    if (type !== 'adverse') RMClub.assurerCompositionPourEquipe(saison, type);
+  function changerEquipe(type) {
+    RMClub.definirEquipeConsultee(saison, type);
+    if (RMClub.consulteClubJoueur(saison)) RMClub.assurerCompositionPourEquipe(saison, type);
     // Une fiche joueur laissée ouverte appartient à l'équipe PRÉCÉDENTE : la
     // laisser affichée montrerait un joueur qui n'est plus dans l'effectif
     // consulté (et masquerait la nouvelle table). On referme, comme au
@@ -750,7 +848,7 @@
       const scoreAdv = domicileEstJoueur ? f.score.exterieur : f.score.domicile;
       const forme = formeClubJoueur(f);
       return `<div class="ligneResultatDash"><span class="badgeForme ${forme}">${LIBELLE_FORME[forme]}</span>` +
-        `<span class="adversaireDash">${domicileEstJoueur ? 'vs' : '@'} ${nomClub(adversaireId)}</span>` +
+        `<span class="adversaireDash">${domicileEstJoueur ? 'vs' : '@'} ${lienClub(adversaireId)}</span>` +
         `<span class="scoreDash">${scoreJoueur} - ${scoreAdv}</span></div>`;
     }).join('');
   }
@@ -805,7 +903,7 @@
       ...analyse.faiblesses.map((c) => `<span class="puceQualitatif faiblesse">✓ ${c.label} (${c.diff})</span>`),
     ].join('');
     document.getElementById('clubAdversaire').innerHTML =
-      `<p style="margin:0 0 8px;font-weight:700;">${analyse.nom} <span style="font-weight:400;color:var(--text-dim);font-size:12px;">— ${analyse.position}${analyse.position === 1 ? 'er' : 'e'}/${analyse.totalClubs} au classement</span></p>` +
+      `<p style="margin:0 0 8px;font-weight:700;">${lienClub(adversaireId)} <span style="font-weight:400;color:var(--text-dim);font-size:12px;">— ${analyse.position}${analyse.position === 1 ? 'er' : 'e'}/${analyse.totalClubs} au classement</span></p>` +
       `<p style="font-size:12px;color:var(--text-dim);margin:0 0 10px;">Forme récente : ${formeTxt}</p>` +
       lignesAttr +
       (puces ? `<div class="listeQualitatif">${puces}</div>` : '<p style="font-size:11.5px;color:var(--text-faint);margin:10px 0 0;">Aucun écart marqué avec ton effectif.</p>');
@@ -831,15 +929,17 @@
     const conteneur = document.getElementById('clubAutresClubsListe');
     if (!conteneur) return;
     const classement = RMClub.classementTrie(saison);
+    // Liste de NOMS CLIQUABLES, pas un sélecteur : chaque nom appelle la même
+    // fonction centrale ouvrirClub() que partout ailleurs (TODO_AUDIT.md P1-20).
     const lignes = saison.adversaires.map((adv) => {
       const rang = classement.findIndex((r) => r.clubId === adv.id) + 1;
       const etoiles = Math.max(1, Math.min(5, Math.round(adv.niveauClub * 5)));
-      return `<tr data-club="${adv.id}"><td><span class="pointCouleurClub" style="background:${adv.couleur}"></span>${adv.nom}</td>` +
+      return `<tr><td><span class="pointCouleurClub" style="background:${adv.couleur}"></span>${lienClub(adv.id)}</td>` +
         `<td>${'★'.repeat(etoiles)}${'☆'.repeat(5 - etoiles)}</td>` +
         `<td>${rang}${rang === 1 ? 'er' : 'e'}/${classement.length}</td>` +
         `<td>${adv.budget != null ? adv.budget + ' k€' : '—'}</td></tr>`;
     }).join('');
-    conteneur.innerHTML = `<table class="tableauClub effectifCliquable"><thead><tr><th>Club</th><th>Réputation</th><th>Classement</th><th>Budget (estimé)</th></tr></thead><tbody>${lignes}</tbody></table>`;
+    conteneur.innerHTML = `<table class="tableauClub"><thead><tr><th>Club</th><th>Réputation</th><th>Classement</th><th>Budget (estimé)</th></tr></thead><tbody>${lignes}</tbody></table>`;
     rafraichirAutresPaliersFrance();
   }
 
@@ -867,23 +967,33 @@
     }).join('');
   }
 
-  function fermerClubAdversaire() {
-    clubAdversaireAffiche = null;
-    const detail = document.getElementById('clubAutresClubDetail');
-    if (detail) detail.style.display = 'none';
-    const liste = document.getElementById('clubAutresClubsListe');
-    if (liste) liste.style.display = '';
-  }
-
-  function ouvrirClubAdversaire(clubId) {
-    const adv = RMClub.club(saison, clubId);
-    if (!adv) return;
-    clubAdversaireAffiche = clubId;
-    document.getElementById('clubAutresClubsListe').style.display = 'none';
-    document.getElementById('clubAutresClubDetail').style.display = '';
+  // Vue d'ensemble d'un club CONSULTÉ (TODO_AUDIT.md P1-20) : ce que le
+  // joueur peut réellement observer d'un club qu'il ne dirige pas —
+  // identité, forme récente, tactique déduite de ses attributs, comparaison
+  // d'effectif et historique RÉEL des confrontations directes. Affichée dans
+  // l'onglet "Vue d'ensemble", à la place du tableau de bord de gestion —
+  // pas dans un écran séparé.
+  function rafraichirVueClub() {
+    const nav = RMClub.navigationClub(saison);
+    const estMonClub = nav.clubConsulteId === saison.clubJoueur.id;
+    const carte = document.getElementById('carteVueClubConsulte');
+    document.querySelectorAll('#clubGestion .voletOnglet[data-volet="dashboard"] .carteMonClub')
+      .forEach((el) => { el.style.display = estMonClub ? '' : 'none'; });
+    const titre = document.getElementById('titreVueDensemble');
+    const sousTitre = document.getElementById('sousTitreVueDensemble');
+    if (estMonClub) {
+      carte.style.display = 'none';
+      if (titre) titre.textContent = 'Dashboard';
+      if (sousTitre) sousTitre.textContent = "Ta saison en un coup d'œil : prochain match, décisions urgentes et alertes.";
+      return;
+    }
+    const adv = RMClub.club(saison, nav.clubConsulteId);
+    carte.style.display = '';
+    if (titre) titre.textContent = adv.nom;
+    if (sousTitre) sousTitre.textContent = 'Ce que tes recruteurs savent de ce club — consultation seule.';
     const facteurAnalyste = RMClub.effetPersonnel(saison, 'analyste');
     const seuilAnalyste = Math.max(2, Math.round(6 - (facteurAnalyste - 1) * 8));
-    const analyse = RMClub.analyserAdversaire(saison, clubId, seuilAnalyste);
+    const analyse = RMClub.analyserAdversaire(saison, adv.id, seuilAnalyste);
     const formeTxt = analyse.forme.length
       ? analyse.forme.map((f) => `<span class="badgeForme ${f}">${LIBELLE_FORME[f]}</span>`).join('')
       : '<span style="color:var(--text-faint);">Aucun match joué</span>';
@@ -896,21 +1006,12 @@
           `<div class="ligneCalendrier"><span>Saison ${c.saisonNumero}, J${c.journee}</span><span class="scoreCal"><span class="badgeForme ${c.resultat}">${LIBELLE_FORME[c.resultat]}</span> ${c.scorePour} - ${c.scoreContre}</span></div>`
         ).join('')
       : '<p style="font-size:12px;color:var(--text-faint);">Aucune confrontation directe pour le moment.</p>';
-    // Effectif/composition/tactique/calendrier/classement de ce club NE SONT
-    // PAS recopiés ici (TODO_AUDIT.md P1-19) : ce sont les mêmes écrans que
-    // pour les équipes du joueur. Ces raccourcis sélectionnent ce club dans
-    // le sélecteur d'équipe commun puis ouvrent l'écran demandé.
-    document.getElementById('clubAutresClubRaccourcis').innerHTML =
-      ['effectif', 'composition', 'tactique', 'calendrier'].map((onglet) => {
-        const libelle = { effectif: '👥 Effectif', composition: '📋 Composition', tactique: '🎯 Tactique', calendrier: '📅 Calendrier' }[onglet];
-        return `<button class="alt btnRaccourciEquipe" data-onglet="${onglet}">${libelle}</button>`;
-      }).join('');
-    document.getElementById('clubAutresClubIdentite').innerHTML =
-      `<div class="ficheJoueurEntete"><span><span class="nomJoueurFiche">${adv.nom}</span>` +
+    document.getElementById('clubVueConsulteIdentite').innerHTML =
+      `<div class="ficheJoueurEntete"><span><span class="nomJoueurFiche">${echapperHTML(adv.nom)}</span>` +
       `<span class="posteJoueurFiche">${analyse.position}${analyse.position === 1 ? 'er' : 'e'}/${analyse.totalClubs} au classement · Budget estimé ${adv.budget != null ? adv.budget + ' k€' : '—'}</span></span></div>` +
       `<p style="font-size:12px;color:var(--text-dim);margin:8px 0;">Forme récente : ${formeTxt}</p>` +
       `<p style="font-size:12px;color:var(--text-dim);margin:0 0 8px;">Tactique habituelle (déduite de l'effectif) : ${deriverTactiqueAdversaire(adv.effectif)}</p>`;
-    document.getElementById('clubAutresClubAnalyse').innerHTML =
+    document.getElementById('clubVueConsulteAnalyse').innerHTML =
       analyse.comparaison.map((c) => {
         const total = Math.max(c.moi, c.eux) + 15;
         const largeurEux = Math.min(100, (c.eux / total) * 100);
@@ -920,7 +1021,7 @@
           `<span class="valAdv">${c.eux}</span></div>`;
       }).join('') +
       (puces ? `<div class="listeQualitatif">${puces}</div>` : '<p style="font-size:11.5px;color:var(--text-faint);margin:10px 0 0;">Aucun écart marqué avec ton effectif.</p>');
-    document.getElementById('clubAutresClubConfrontations').innerHTML = confrontations;
+    document.getElementById('clubVueConsulteConfrontations').innerHTML = confrontations;
   }
 
   function rafraichirStatutEffectif() {
@@ -1185,7 +1286,7 @@
         `<select id="selEntrainementIndividuel" style="width:100%;"><option value=""${!j.entrainementIndividuel ? ' selected' : ''}>Suivre le collectif</option>${optionsEntrainement}</select>`
       : '';
     document.getElementById('clubJoueurDetail').innerHTML =
-      `<div class="ficheJoueurEntete"><span><span class="nomJoueurFiche">${echapperHTML(j.nom)}${badgesRole(id, slot)}</span><span class="posteJoueurFiche">${POSTE_COMPLET[j.poste] || j.poste} · ${j.age} ans · ${echapperHTML(ctx.label)}</span></span></div>` +
+      `<div class="ficheJoueurEntete"><span><span class="nomJoueurFiche">${echapperHTML(j.nom)}${badgesRole(id, slot)}</span><span class="posteJoueurFiche">${POSTE_COMPLET[j.poste] || j.poste} · ${j.age} ans · ${lienClub(ctx.clubId)} <span style="color:var(--text-faint);">(${echapperHTML(ctx.label)})</span></span></span></div>` +
       (ctx.modifiable ? '' : `<p class="noteLectureSeule">🔍 Joueur d'un club que tu ne diriges pas : consultation seule. Les valeurs de contrat et de salaire sont des estimations de tes recruteurs.</p>`) +
       lignesAttributs + lignePotentiel +
       `<div class="ligneJoueur"><span>Moral</span><b><span class="barreMoral${moral < 45 ? ' bas' : moral >= 80 ? ' haut' : ''}"><span style="width:${moral}%"></span></span> ${moral}%</b></div>` +
@@ -1239,6 +1340,10 @@
   }
 
   function basculerOnglet(cle) {
+    // Un écran absent du menu du club affiché ne doit pas non plus être
+    // atteignable par un autre chemin (alerte du dashboard, bouton d'un
+    // autre écran) : on retombe sur la vue d'ensemble.
+    if (RMClub.ongletsDisponibles(saison).indexOf(cle) === -1) cle = 'dashboard';
     ongletActuel = cle;
     document.querySelectorAll('#barreOngletsClub .ongletBtn').forEach((b) => {
       b.classList.toggle('actif', b.dataset.onglet === cle);
@@ -1259,7 +1364,6 @@
       if (emplacement) rafraichirSelecteurEquipe();
     }
     fermerFicheJoueur(); // change d'onglet = referme toute fiche laissée ouverte
-    fermerClubAdversaire(); // idem pour la fiche d'un club adverse ouverte dans l'onglet Autres clubs
     fermerTiroirNav(); // choisir une section referme le tiroir mobile
     document.getElementById('clubMain').scrollTop = 0; // repart en haut de la nouvelle page
   }
@@ -1651,7 +1755,13 @@
     if (!saison.clubJoueur.jeunes) RMClub.assurerCentreFormation(creerRng(graineAleatoire()), saison);
     RMClub.assurerCompetitionB(saison);
     if (aCreeQuelqueChose) sauvegarder();
+    // Entrer dans le Mode Club ramène toujours sur SON club (l'équipe sur
+    // laquelle il travaillait, elle, est conservée) — on ne reprend pas une
+    // consultation d'adversaire laissée en cours à la session précédente.
+    RMClub.navigationClub(saison).clubConsulteId = saison.clubJoueur.id;
     rafraichirEntete();
+    rafraichirMenuOnglets();
+    rafraichirVueClub();
     rafraichirTopBarInfos();
     rafraichirProchainMatch();
     rafraichirObjectifSaison();
@@ -1709,20 +1819,22 @@
   // --- Sélecteur d'équipe commun : LE point d'entrée unique pour changer
   // d'équipe affichée, partagé par les 6 écrans (TODO_AUDIT.md P1-19). ---
   document.getElementById('selEquipeContexte').addEventListener('change', (e) => {
-    const sel = RMClub.decoderSelection(e.target.value);
-    changerEquipe(sel.type, sel.clubId);
+    changerEquipe(e.target.value);
   });
 
-  // Raccourcis de la fiche d'un club adverse : sélectionnent CE club dans le
-  // sélecteur commun puis ouvrent l'écran demandé — les mêmes écrans que
-  // pour les équipes du joueur, jamais une page adverse séparée.
-  document.getElementById('clubAutresClubRaccourcis').addEventListener('click', (e) => {
-    const bouton = e.target.closest('.btnRaccourciEquipe');
-    if (!bouton || !clubAdversaireAffiche) return;
-    const clubCible = clubAdversaireAffiche;
-    const onglet = bouton.dataset.onglet;
-    changerEquipe('adverse', clubCible);
-    basculerOnglet(onglet);
+  // Nom de club cliquable : UNE seule délégation pour tout le Mode Club
+  // (TODO_AUDIT.md P1-20). Tous les noms de clubs, quel que soit l'écran qui
+  // les affiche (calendrier, classement, résultats, prochain match, analyse
+  // de l'adversaire, liste des autres clubs, fiche joueur, confrontations),
+  // passent par ce point unique — la logique n'est dupliquée nulle part.
+  document.getElementById('clubGestion').addEventListener('click', (e) => {
+    const lien = e.target.closest('.lienClub');
+    if (!lien) return;
+    e.preventDefault();
+    ouvrirClub(lien.dataset.club);
+  });
+  document.getElementById('clubEntete').addEventListener('click', (e) => {
+    if (e.target.closest('#btnRetourMonClub')) retourMonClub();
   });
 
   // --- Boîte de réception : marquer un message lu au clic, trancher une
@@ -1749,15 +1861,6 @@
     rafraichirMessages();
   });
 
-  // --- Autres clubs : liste cliquable → détail d'un club → fiche joueur
-  // adverse : sa fiche d'identité, puis des raccourcis vers les écrans
-  // unifiés (effectif/composition/tactique/calendrier) — cf. ouvrirClubAdversaire ---
-  document.getElementById('clubAutresClubsListe').addEventListener('click', (e) => {
-    const ligne = e.target.closest('tr[data-club]');
-    if (!ligne) return;
-    ouvrirClubAdversaire(ligne.dataset.club);
-  });
-  document.getElementById('btnFermerClubAdversaire').addEventListener('click', fermerClubAdversaire);
 
   document.getElementById('btnCreerClub').addEventListener('click', () => {
     const nom = document.getElementById('inputNomClub').value.trim();
@@ -2639,7 +2742,9 @@
     if (apercu.classList.contains('visible')) { apercu.classList.remove('visible'); return; }
     if (document.getElementById('barreOngletsClub').classList.contains('ouvert')) { fermerTiroirNav(); return; }
     if (joueurAffiche) { fermerFicheJoueur(); return; }
-    if (clubAdversaireAffiche) { fermerClubAdversaire(); return; }
+    // Échap depuis un club consulté ramène à son propre club — même geste
+    // que le bouton "← Retour à mon club".
+    if (!RMClub.consulteClubJoueur(saison)) { retourMonClub(); return; }
   });
 
   document.getElementById('modalConfirmationValider').addEventListener('click', () => fermerConfirmation(true));

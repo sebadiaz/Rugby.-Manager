@@ -151,6 +151,10 @@
            (cf. style.css/clubUI.js) : ce bouton l'ouvre. Invisible à partir
            de 900px, où le menu latéral reste toujours affiché. -->
       <button class="alt" id="btnMenuClub" title="Menu">☰</button>
+      <!-- Identité du club ACTUELLEMENT AFFICHÉ (TODO_AUDIT.md P1-20) :
+           le sien ("Mon club") ou celui qu'il est en train de consulter
+           ("Club consulté", avec le bouton de retour). Visible en
+           permanence, en haut à gauche, quel que soit l'écran. -->
       <div id="clubEntete"></div>
       <button class="alt" id="fermerClub" title="Fermer le Mode Club">✕</button>
       <div id="clubTopBarInfos"></div>
@@ -185,9 +189,22 @@
              alertes (blessures/fatigue/contrats/finances), effectif, budget —
              la vue qu'on voit en entrant dans le club (cf. clubUI.js). -->
         <div class="voletOnglet" data-volet="dashboard">
-          <div class="enTetePage"><span class="categoriePage">Accueil</span><h2>Dashboard</h2><p>Ta saison en un coup d'œil : prochain match, décisions urgentes et alertes.</p></div>
-          <p class="sectionDashboard">À faire maintenant</p>
-          <div class="carteClub">
+          <div class="enTetePage"><span class="categoriePage">Accueil</span><h2 id="titreVueDensemble">Dashboard</h2><p id="sousTitreVueDensemble">Ta saison en un coup d'œil : prochain match, décisions urgentes et alertes.</p></div>
+          <!-- Vue d'ensemble d'un club CONSULTÉ (TODO_AUDIT.md P1-20) :
+               identité, forme, comparaison d'effectif et confrontations
+               directes — les seules informations réellement observables d'un
+               club que le joueur ne dirige pas. Masquée sur son propre club,
+               où c'est le tableau de bord de gestion qui s'affiche. -->
+          <div class="carteClub" id="carteVueClubConsulte" style="display:none;">
+            <h3>🏟️ Vue d'ensemble</h3>
+            <div id="clubVueConsulteIdentite"></div>
+            <h4 style="margin:14px 0 6px;">Comparaison d'effectif</h4>
+            <div id="clubVueConsulteAnalyse"></div>
+            <h4 style="margin:14px 0 6px;">Confrontations directes</h4>
+            <div id="clubVueConsulteConfrontations"></div>
+          </div>
+          <p class="sectionDashboard carteMonClub">À faire maintenant</p>
+          <div class="carteClub carteMonClub">
             <h3>🗓️ Prochaine journée</h3>
             <div id="clubProchainMatch"></div>
             <label class="sr-label" for="selDureeClub" style="margin-top:10px;">Durée du match</label>
@@ -203,7 +220,7 @@
             </div>
             <button id="btnSaisonSuivante" class="accent" style="width:100%;margin-top:10px;display:none;">Saison suivante →</button>
           </div>
-          <div class="carteClub" id="carteAlertes" style="display:none;">
+          <div class="carteClub carteMonClub" id="carteAlertes" style="display:none;">
             <h3>⚠️ Décisions & alertes</h3>
             <div id="clubAlertes"></div>
           </div>
@@ -211,7 +228,7 @@
                déjà produits par la simulation (transferts, prêts, contrats,
                blessures, résultats, changements de saison) — cf. clubUI.js,
                RMClub.ajouterMessage (appelé depuis club.js). -->
-          <div class="carteClub" id="carteMessages">
+          <div class="carteClub carteMonClub" id="carteMessages">
             <div style="display:flex;justify-content:space-between;align-items:center;">
               <h3 style="margin:0;">📬 Boîte de réception</h3>
               <button id="btnMessagesTousLus" class="alt" style="flex:0 0 auto;width:auto;padding:8px 12px;font-size:12px;">Tout marquer comme lu</button>
@@ -222,24 +239,24 @@
                son effectif comparées aux tiennes + sa forme récente réelle
                (cf. clubUI.js, RMClub.analyserAdversaire) — jamais une note
                fabriquée. -->
-          <p class="sectionDashboard">Vue d'ensemble</p>
+          <p class="sectionDashboard carteMonClub">Vue d'ensemble</p>
           <!-- Objectif de la saison + confiance du président : dérivés du
                classement RÉEL de la saison précédente (cf. clubUI.js,
                RMClub.determinerObjectifSaison/evaluerObjectifSaison) —
                jamais un objectif ou un score fabriqués. -->
-          <div class="carteClub" id="carteObjectifSaison" style="display:none;">
+          <div class="carteClub carteMonClub" id="carteObjectifSaison" style="display:none;">
             <h3>🎯 Objectif de la saison</h3>
             <div id="clubObjectifSaison"></div>
           </div>
-          <div class="carteClub" id="carteAdversaire" style="display:none;">
+          <div class="carteClub carteMonClub" id="carteAdversaire" style="display:none;">
             <h3>🆚 Prochain adversaire</h3>
             <div id="clubAdversaire"></div>
           </div>
-          <div class="carteClub">
+          <div class="carteClub carteMonClub">
             <h3>📈 5 derniers résultats</h3>
             <div id="clubDerniersResultats"></div>
           </div>
-          <div class="carteClub">
+          <div class="carteClub carteMonClub">
             <h3>🏆 Classement</h3>
             <div id="clubMiniClassement"></div>
           </div>
@@ -247,7 +264,7 @@
                dans la barre du haut : une carte "Finances" séparée ici ne
                montrait rien de plus (doublon pur) — le détail complet reste
                à un clic dans l'onglet Finances. -->
-          <div class="carteClub">
+          <div class="carteClub carteMonClub">
             <h3>🧾 Statut de l'effectif</h3>
             <div id="clubStatutEffectif"></div>
           </div>
@@ -396,6 +413,7 @@
           <div class="enTetePage"><span class="categoriePage">Compétition</span><h2>Autres clubs</h2><p>Consulte n'importe quel adversaire : identité, forces/faiblesses, confrontations.</p></div>
           <div class="carteClub">
             <h3>🏟️ Autres clubs</h3>
+            <p style="margin:0 0 10px;font-size:12px;color:var(--text-faint);">Clique le nom d'un club pour l'ouvrir — comme partout ailleurs dans le jeu (calendrier, classement, résultats, analyse d'adversaire...).</p>
             <div id="clubAutresClubsListe" tabindex="0" role="region" aria-label="Liste des autres clubs, défilement horizontal sur petit écran"></div>
           </div>
           <!-- Les 2 autres paliers de la pyramide française (celui que tu
@@ -405,17 +423,6 @@
           <div class="carteClub">
             <h3>🇫🇷 Autres paliers de la pyramide</h3>
             <div id="clubAutresPaliersFrance"></div>
-          </div>
-          <div class="carteClub" id="clubAutresClubDetail" style="display:none;">
-            <button id="btnFermerClubAdversaire" class="alt" style="width:100%;margin-bottom:12px;">← Retour à la liste des clubs</button>
-            <div id="clubAutresClubCorps">
-              <div id="clubAutresClubIdentite"></div>
-              <div id="clubAutresClubRaccourcis" class="raccourcisEquipe"></div>
-              <h4 style="margin:14px 0 6px;">Comparaison d'effectif</h4>
-              <div id="clubAutresClubAnalyse"></div>
-              <h4 style="margin:14px 0 6px;">Confrontations directes</h4>
-              <div id="clubAutresClubConfrontations"></div>
-            </div>
           </div>
         </div>
 

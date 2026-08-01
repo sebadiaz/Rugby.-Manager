@@ -616,6 +616,36 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 - `server/test-parcours-club.js` : 82/82 — dont 8 nouveaux tests dédiés (forme identique du contexte pour les 4 types, droits de modification, XV adverse complet et ids dérivés stables sans mutation des données de saison, tactique déduite réellement dépendante des attributs, calendrier/classement par équipe, bilan espoirs issu de matchs réels, persistance/rétrocompatibilité de la sélection, contenu du sélecteur).
 - `server/test-parcours-navigateur.js` : parcours réel des **4 types d'équipe × 6 écrans** (24 combinaisons), vérifiant que ce sont bien les **mêmes nœuds DOM** qui portent le contenu, qu'il n'existe **qu'un seul** sélecteur dans la page, que chaque écran a un contenu réel pour chaque équipe, que la lecture seule est respectée, que l'équipe est conservée d'un écran à l'autre et après un F5, et que **forcer** un clic sur la tactique d'un club adverse ne modifie rien dans la sauvegarde.
 
+### P1-20. On choisissait un club dans une liste au lieu de cliquer son nom — 6ᵉ tranche `ROADMAP_FOOTBALL_MANAGER.md`
+- **Statut : CORRIGÉ**
+- Priorité : P1 (demande explicite de l'utilisateur : « Il ne doit exister aucune liste, aucun menu déroulant et aucun sélecteur permettant de choisir un club à consulter. [...] On ne choisit pas un club dans une liste. On ouvre un club en cliquant sur son nom là où il apparaît dans le jeu. »)
+- Fichiers concernés : `docs/js/club-equipes.js`, `docs/js/clubUI.js`, `docs/index.html`, `docs/css/style.css`, `server/test-parcours-club.js`, `server/test-parcours-navigateur.js`
+
+**Le problème.** La tranche P1-19 avait bien unifié les écrans, mais elle avait mélangé deux questions dans un seul contrôle : le sélecteur listait à la fois les équipes du joueur ET tous les clubs de la division (valeurs `adverse:<clubId>`). Conséquences : on « choisissait » un club dans un menu déroulant au lieu de cliquer son nom là où il s'affichait déjà ; les noms de clubs partout ailleurs (calendrier, classement, résultats, prochain match, analyse d'adversaire) restaient du texte mort ; et le menu proposait à un club adverse des écrans de gestion (Tactique, Entraînement, Médical…) qui n'ont aucun sens pour lui.
+
+**La correction — deux états strictement séparés.** `saison.clubJoueur.navigationClub` porte désormais :
+```
+{ clubJoueurId, clubConsulteId, equipeConsultee, clubPrecedentId, equipePrecedente, ongletPrecedent }
+```
+- `clubConsulteId` répond à « **quel club ?** » — changé UNIQUEMENT par `ouvrirClub(clubId)`, jamais par un menu ;
+- `equipeConsultee` répond à « **quelle équipe DE ce club ?** » — `'pro' | 'b' | 'jeunes'`, et rien d'autre. La forme `'adverse:<clubId>'` n'existe plus : le club n'est jamais encodé dans la valeur du sélecteur.
+
+**Deux fonctions centrales, aucune logique dupliquée par écran :**
+- `ouvrirClub(clubId)` — mémorise le club/l'équipe/l'écran courants, bascule sur le club cliqué, sélectionne son équipe première, ouvre l'écran Composition, met à jour l'entête et adapte le menu. **Tous** les noms de clubs du jeu appellent cette seule fonction, via **une seule délégation d'événements** posée sur `#clubGestion` (`.lienClub`).
+- `retourMonClub()` — restaure le club du joueur, l'équipe sur laquelle il travaillait et l'écran d'où il venait.
+
+**Noms de clubs rendus cliquables** (composant unique `lienClub()`) : calendrier, classement, mini-classement du tableau de bord, prochaine journée, derniers résultats, analyse du prochain adversaire, liste des autres clubs, barre du haut, fiche joueur, confrontations directes. Les clubs des autres paliers de la pyramide et du monde restent volontairement non cliquables : ils n'ont pas d'effectif simulé, et rien n'est fabriqué pour faire semblant.
+
+**Menu adapté au club affiché.** Pour un club consulté, les écrans de gestion (Tactique, Entraînement, Médical, Recrutement, Transferts, Finances, Bilan) sont **absents** du menu, pas grisés. `basculerOnglet` refuse en plus d'ouvrir un écran interdit atteint par un autre chemin — la garantie ne repose donc pas seulement sur l'affichage du menu.
+
+**Entête d'identité permanent (haut à gauche).** Nom du club affiché + « Mon club » (avec son palier) ou « Club consulté » + bouton « ← Retour à mon club », visible uniquement dans ce second cas. Les repères de la barre du haut (prochain match, classement, budget) suivent eux aussi le club affiché — le budget d'un club consulté est explicitement marqué « (estimé) ».
+
+**Écran supprimé (doublon).** La carte de détail d'un club dans l'onglet « Autres clubs » disparaît : sa vue d'ensemble (identité, forme, tactique déduite, comparaison d'effectif, confrontations) devient l'onglet « Vue d'ensemble » du club ouvert, et les cartes de gestion du tableau de bord sont masquées à sa place. « Autres clubs » n'est plus qu'une liste de noms cliquables.
+
+**Critères de validation.**
+- `server/test-parcours-club.js` : 87/87 — dont 6 nouveaux tests de navigation (le sélecteur ne contient aucun nom de club ni valeur encodant un club ; un club consulté n'expose que les équipes réellement présentes dans ses données et refuse une équipe qu'il n'a pas ; ouvrir un club mémorise l'origine et sélectionne l'équipe première ; le retour restaure club + équipe + écran ; enchaîner deux clubs ne fait pas perdre le chemin du retour ; les écrans de gestion sont absents — pas grisés — du menu d'un club consulté ; persistance et rétrocompatibilité).
+- `server/test-parcours-navigateur.js` : parcours réel exigé — inventaire de TOUS les `<select>` du Mode Club pour prouver qu'aucun ne contient de nom de club, présence de noms cliquables sur chaque écran concerné, clic → ouverture immédiate sur la Composition de l'équipe première, entête et bouton de retour, menu filtré, tentative forcée d'ouvrir un écran interdit, retour restaurant équipe ET écran, et vérification que les écrans Effectif/Composition sont bien les mêmes nœuds DOM dans les deux cas.
+
 ### P2-10. Découper club.js et clubUI.js par domaine (sans changement de comportement)
 - **Statut : EN COURS (tranche 1 : Personnel, tranche 2 : Objectif de saison, tranche 3 : Analyse adversaire, tranche 4 : Prêts, tranche 5 : Contrats, tranche 6 : Équipe B, tranche 7 : Transferts national, tranche 8 : Transferts internationaux, tranche 9 : Effectif étendu, tranche 10 : Centre de formation, tranche 11 : Composition et tactique, tranche 12 : Condition physique des joueurs, tranche 13 : Génération de club/pyramide, tranche 14 : Calendrier et classement, tranche 15 : Sauvegarde et migration — voir constat de risque et tranches suivantes ci-dessous)**
 - Priorité : P2 (maintenabilité — explicitement demandée par l'utilisateur malgré la tension avec la règle CLAUDE.md "jamais un patch purement technique si le gameplay ne s'améliore pas visiblement")

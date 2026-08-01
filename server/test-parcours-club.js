@@ -985,44 +985,54 @@ test('équipe gérée : construireTactiqueCfg-like — remplacementsVersConfig/t
   assert.ok(Array.isArray(remplacementsB), 'remplacementsVersConfig doit fonctionner sur le banc de l\'Équipe B comme sur celui du premier XV');
 });
 
-// --- 12d) Contexte d'équipe (TODO_AUDIT.md P1-19) : les 4 types d'équipe
-// (premier XV, Équipe B, Espoirs, club adverse) passent par UN SEUL objet de
-// contexte, qui expose toujours la même forme — c'est ce qui permet aux
-// écrans de composition/effectif/entraînement/tactique/calendrier/personnel
-// d'être communs, sans branche par type d'équipe. ---
+// --- 12d) Contexte d'équipe et navigation entre clubs (TODO_AUDIT.md
+// P1-19 puis P1-20). Deux questions strictement séparées :
+//   « quel club ? »        -> navigationClub.clubConsulteId, changé UNIQUEMENT
+//                             en cliquant un nom de club (ouvrirClub)
+//   « quelle équipe ? »    -> navigationClub.equipeConsultee, une équipe DU
+//                             club affiché ('pro'|'b'|'jeunes')
+// Le club n'est jamais encodé dans la valeur du sélecteur d'équipe. ---
 const CHAMPS_CONTEXTE = ['type', 'clubId', 'club', 'effectif', 'slot', 'label', 'sousTitre',
   'modifiable', 'calendrier', 'classement', 'titreClassement', 'personnel', 'entrainementFocus', 'disponible'];
 
-test('contexte d\'équipe : les 4 types exposent EXACTEMENT la même forme (condition de l\'écran unique)', () => {
+function saisonAvecClubOuvert(graine, nom, indexAdversaire) {
+  const s = RMClub.nouvelleSaison(creerRng(graine), nom);
+  RMClub.assurerCentreFormation(creerRng(graine + 1), s);
+  RMClub.ouvrirClubDansNavigation(s, s.adversaires[indexAdversaire || 0].id, 'dashboard');
+  return s;
+}
+
+test('contexte d\'équipe : un club du joueur et un club consulté exposent EXACTEMENT la même forme (condition de l\'écran unique)', () => {
   const s = RMClub.nouvelleSaison(creerRng(420), 'Test Contexte Forme');
   RMClub.assurerCentreFormation(creerRng(421), s);
-  const selections = [
-    { type: 'pro', clubId: null },
-    { type: 'b', clubId: null },
-    { type: 'jeunes', clubId: null },
-    { type: 'adverse', clubId: s.adversaires[0].id },
-  ];
-  for (const sel of selections) {
-    const ctx = RMClub.contexteEquipe(s, sel);
+  const contextes = [];
+  for (const equipe of ['pro', 'b', 'jeunes']) {
+    RMClub.definirEquipeConsultee(s, equipe);
+    contextes.push({ nom: equipe, ctx: RMClub.contexteEquipe(s) });
+  }
+  RMClub.ouvrirClubDansNavigation(s, s.adversaires[0].id, 'dashboard');
+  contextes.push({ nom: 'club consulté', ctx: RMClub.contexteEquipe(s) });
+  for (const { nom, ctx } of contextes) {
     for (const champ of CHAMPS_CONTEXTE) {
-      assert.ok(champ in ctx, `le contexte de l'équipe "${sel.type}" doit exposer le champ "${champ}" comme tous les autres`);
+      assert.ok(champ in ctx, `le contexte "${nom}" doit exposer le champ "${champ}" comme tous les autres`);
     }
-    assert.ok(Array.isArray(ctx.effectif), `l'effectif du contexte "${sel.type}" doit être une liste`);
+    assert.ok(Array.isArray(ctx.effectif), `l'effectif du contexte "${nom}" doit être une liste`);
     // La composition est le composant le plus structurant de l'écran unique :
-    // elle doit avoir la même forme pour les 4 types, sinon le terrain
-    // devrait être rendu différemment selon l'équipe.
-    assert.ok(ctx.slot && typeof ctx.slot.compositionTitulaires === 'object', `le slot du contexte "${sel.type}" doit porter une composition`);
-    assert.ok(ctx.slot.tactique && typeof ctx.slot.tactique === 'object', `le slot du contexte "${sel.type}" doit porter une tactique`);
+    // même forme partout, sinon le terrain devrait être rendu différemment.
+    assert.ok(ctx.slot && typeof ctx.slot.compositionTitulaires === 'object', `le slot du contexte "${nom}" doit porter une composition`);
+    assert.ok(ctx.slot.tactique && typeof ctx.slot.tactique === 'object', `le slot du contexte "${nom}" doit porter une tactique`);
   }
 });
 
-test('contexte d\'équipe : seul un club adverse est en lecture seule, les 3 équipes du club sont modifiables', () => {
+test('contexte d\'équipe : seul un club consulté est en lecture seule, les 3 équipes du club du joueur sont modifiables', () => {
   const s = RMClub.nouvelleSaison(creerRng(422), 'Test Contexte Droits');
   RMClub.assurerCentreFormation(creerRng(423), s);
-  assert.strictEqual(RMClub.contexteEquipe(s, { type: 'pro' }).modifiable, true);
-  assert.strictEqual(RMClub.contexteEquipe(s, { type: 'b' }).modifiable, true);
-  assert.strictEqual(RMClub.contexteEquipe(s, { type: 'jeunes' }).modifiable, true);
-  const ctxAdv = RMClub.contexteEquipe(s, { type: 'adverse', clubId: s.adversaires[0].id });
+  for (const equipe of ['pro', 'b', 'jeunes']) {
+    RMClub.definirEquipeConsultee(s, equipe);
+    assert.strictEqual(RMClub.contexteEquipe(s).modifiable, true, `l'équipe ${equipe} du club du joueur doit être modifiable`);
+  }
+  RMClub.ouvrirClubDansNavigation(s, s.adversaires[0].id, 'dashboard');
+  const ctxAdv = RMClub.contexteEquipe(s);
   assert.strictEqual(ctxAdv.modifiable, false);
   // Ce qui n'est pas simulé pour un club IA est signalé comme inconnu
   // (null), jamais fabriqué.
@@ -1030,64 +1040,64 @@ test('contexte d\'équipe : seul un club adverse est en lecture seule, les 3 éq
   assert.strictEqual(ctxAdv.entrainementFocus, null, 'le programme d\'entraînement d\'un club IA n\'est pas modélisé : inconnu, pas inventé');
 });
 
-test('contexte d\'équipe : le XV d\'un club adverse est bien celui qui joue réellement (15 numéros, aucun trou)', () => {
-  const s = RMClub.nouvelleSaison(creerRng(424), 'Test Compo Adverse');
-  const adv = s.adversaires[0];
-  const ctx = RMClub.contexteEquipe(s, { type: 'adverse', clubId: adv.id });
+test('contexte d\'équipe : le XV d\'un club consulté est bien celui qui joue réellement (15 numéros, aucun trou)', () => {
+  const s = saisonAvecClubOuvert(424, 'Test Compo Consultée');
+  const adv = RMClub.club(s, RMClub.navigationClub(s).clubConsulteId);
+  const ctx = RMClub.contexteEquipe(s);
   assert.strictEqual(RMClub.validerComposition(ctx.slot.compositionTitulaires).length, 0,
-    'les 15 numéros d\'un club adverse doivent tous être pourvus — c\'est son effectif tel qu\'il descend sur le terrain');
-  // Chaque joueur adverse reçoit un id dérivé stable : sans ça, la table
-  // d'effectif et la fiche joueur communes ne pourraient pas le retrouver.
+    'les 15 numéros d\'un club consulté doivent tous être pourvus — c\'est son effectif tel qu\'il descend sur le terrain');
+  // Chaque joueur reçoit un id dérivé stable : sans ça, la table d'effectif
+  // et la fiche joueur communes ne pourraient pas le retrouver.
   const ids = ctx.effectif.map((j) => j.id);
-  assert.strictEqual(new Set(ids).size, ids.length, 'les ids dérivés des joueurs adverses doivent être uniques');
-  const ctxBis = RMClub.contexteEquipe(s, { type: 'adverse', clubId: adv.id });
-  assert.deepStrictEqual(ctxBis.effectif.map((j) => j.id), ids, 'les ids dérivés doivent être stables d\'un rendu à l\'autre');
+  assert.strictEqual(new Set(ids).size, ids.length, 'les ids dérivés doivent être uniques');
+  assert.deepStrictEqual(RMClub.contexteEquipe(s).effectif.map((j) => j.id), ids, 'les ids dérivés doivent être stables d\'un rendu à l\'autre');
   assert.ok(adv.effectif.every((j) => j.id === undefined), 'la normalisation ne doit JAMAIS muter les données de la saison');
 });
 
-test('contexte d\'équipe : la tactique d\'un club adverse est DÉDUITE de ses attributs réels, sur les mêmes 6 axes', () => {
-  const s = RMClub.nouvelleSaison(creerRng(425), 'Test Tactique Déduite');
-  const ctx = RMClub.contexteEquipe(s, { type: 'adverse', clubId: s.adversaires[0].id });
-  assert.strictEqual(ctx.tactiqueDeduite, true, 'la tactique adverse doit être signalée comme déduite, jamais comme un réglage certain');
+test('contexte d\'équipe : la tactique d\'un club consulté est DÉDUITE de ses attributs réels, sur les mêmes 6 axes', () => {
+  const s = saisonAvecClubOuvert(425, 'Test Tactique Déduite');
+  const ctx = RMClub.contexteEquipe(s);
+  assert.strictEqual(ctx.tactiqueDeduite, true, 'la tactique d\'un club consulté doit être signalée comme déduite, jamais comme un réglage certain');
   for (const axe of Object.keys(RMClub.AXES_TACTIQUE)) {
     const valeur = ctx.slot.tactique[axe];
     assert.ok(RMClub.AXES_TACTIQUE[axe].options[valeur],
-      `l'axe "${axe}" déduit doit valoir une option RÉELLE de cet axe (obtenu : ${valeur}) — sinon l'écran commun ne saurait pas l'afficher`);
+      `l'axe "${axe}" déduit doit valoir une option RÉELLE de cet axe (obtenu : ${valeur})`);
   }
-  // Deux effectifs franchement différents doivent produire des déductions
-  // différentes : sinon la « déduction » ne dit rien du club observé.
-  const costauds = s.adversaires[0].effectif.map((j) => Object.assign({}, j, { jeuPied: 90, puissance: 90, plaquage: 90 }));
-  const legers = s.adversaires[0].effectif.map((j) => Object.assign({}, j, { jeuPied: 20, puissance: 20, plaquage: 20 }));
+  const costauds = ctx.club.effectif.map((j) => Object.assign({}, j, { jeuPied: 90, puissance: 90, plaquage: 90 }));
+  const legers = ctx.club.effectif.map((j) => Object.assign({}, j, { jeuPied: 20, puissance: 20, plaquage: 20 }));
   assert.notDeepStrictEqual(RMClub.deduireTactiqueAdverse(costauds), RMClub.deduireTactiqueAdverse(legers),
     'la tactique déduite doit réellement dépendre des attributs, pas être une constante déguisée');
 });
 
-test('contexte d\'équipe : calendrier et classement suivent l\'équipe sélectionnée (championnat, Équipe B, espoirs, adversaire)', () => {
+test('contexte d\'équipe : calendrier et classement suivent l\'équipe/le club affiché', () => {
   const s = RMClub.nouvelleSaison(creerRng(426), 'Test Calendrier Contexte');
   RMClub.assurerCentreFormation(creerRng(427), s);
   RMClub.assurerCompetitionB(s);
   const adv = s.adversaires[0];
 
-  const ctxPro = RMClub.contexteEquipe(s, { type: 'pro' });
+  const ctxPro = RMClub.contexteEquipe(s);
   assert.strictEqual(ctxPro.classement, s.classement, 'le premier XV joue le championnat principal');
   assert.ok(ctxPro.calendrier.length > 0);
 
-  const ctxAdv = RMClub.contexteEquipe(s, { type: 'adverse', clubId: adv.id });
-  assert.ok(ctxAdv.calendrier.length > 0, 'un club adverse a bien un calendrier (le même championnat)');
-  assert.ok(ctxAdv.calendrier.every((f) => f.domicileId === adv.id || f.exterieurId === adv.id),
-    'le calendrier affiché pour un club adverse ne doit contenir QUE ses propres rencontres');
-
-  const ctxB = RMClub.contexteEquipe(s, { type: 'b' });
+  RMClub.definirEquipeConsultee(s, 'b');
+  const ctxB = RMClub.contexteEquipe(s);
   if (ctxB.disponible) {
-    assert.strictEqual(ctxB.classement, s.competitionB.classement, 'l\'Équipe B doit afficher le classement du championnat B, pas celui du premier XV');
+    assert.strictEqual(ctxB.classement, s.competitionB.classement, 'l\'Équipe B doit afficher le classement du championnat B');
     assert.ok(ctxB.calendrier.every((f) => f.domicileId === s.clubJoueur.id || f.exterieurId === s.clubJoueur.id));
   } else {
     assert.ok(ctxB.motifIndisponible, 'un club non éligible à l\'Équipe B doit recevoir une explication, pas un écran vide');
   }
 
-  const ctxJeunes = RMClub.contexteEquipe(s, { type: 'jeunes' });
-  assert.ok(ctxJeunes.calendrier.length > 0, 'les espoirs doivent avoir des rencontres programmées (une journée sur PERIODE_JOURNEES_ESPOIRS)');
+  RMClub.definirEquipeConsultee(s, 'jeunes');
+  const ctxJeunes = RMClub.contexteEquipe(s);
+  assert.ok(ctxJeunes.calendrier.length > 0, 'les espoirs doivent avoir des rencontres programmées');
   assert.ok(ctxJeunes.calendrier.every((f) => RMClub.journeeDeMatchEspoirs(f.journee)));
+
+  RMClub.ouvrirClubDansNavigation(s, adv.id, 'calendrier');
+  const ctxAdv = RMClub.contexteEquipe(s);
+  assert.ok(ctxAdv.calendrier.length > 0, 'un club consulté a bien un calendrier (le même championnat)');
+  assert.ok(ctxAdv.calendrier.every((f) => f.domicileId === adv.id || f.exterieurId === adv.id),
+    'le calendrier affiché pour un club consulté ne doit contenir QUE ses propres rencontres');
 });
 
 test('contexte d\'équipe : le bilan des espoirs vient de matchs RÉELLEMENT joués, jamais fabriqué', () => {
@@ -1104,45 +1114,118 @@ test('contexte d\'équipe : le bilan des espoirs vient de matchs RÉELLEMENT jou
   assert.strictEqual(bilan.pointsPour, 46);
   assert.strictEqual(bilan.pointsContre, 46);
   assert.strictEqual(bilan.pts, 6, 'victoire 4 + nul 2 = 6 points, mêmes règles que les autres compétitions');
-  // Le calendrier espoirs doit refléter ces résultats réels.
   const joues = RMClub.calendrierEspoirs(s).filter((f) => f.joue);
   assert.strictEqual(joues.length, 3, 'les 3 matchs archivés doivent apparaître comme joués dans le calendrier espoirs');
   assert.deepStrictEqual(joues[0].score, { domicile: 24, exterieur: 10 });
 });
 
-test('contexte d\'équipe : la sélection est persistée et rétrocompatible avec l\'ancien champ equipeGeree', () => {
-  const s = RMClub.nouvelleSaison(creerRng(429), 'Test Sélection Persistée');
-  // Sauvegarde antérieure : seul `equipeGeree` existe.
-  delete s.clubJoueur.equipeSelectionnee;
-  s.clubJoueur.equipeGeree = 'jeunes';
-  assert.strictEqual(RMClub.selectionEquipe(s).type, 'jeunes', 'l\'ancien champ equipeGeree doit être repris tel quel');
-
-  RMClub.definirSelectionEquipe(s, 'adverse', s.adversaires[1].id);
-  assert.strictEqual(RMClub.contexteEquipe(s).type, 'adverse');
-  RMClub.sauvegarderSaison(s);
-  const recharge = RMClub.chargerSaison();
-  assert.strictEqual(RMClub.contexteEquipe(recharge).type, 'adverse',
-    'l\'équipe sélectionnée doit survivre à un rechargement — c\'est ce qui la conserve d\'un écran à l\'autre');
-
-  // Une sélection qui pointe vers un club disparu ne doit jamais bloquer les
-  // écrans sur une équipe fantôme.
-  recharge.clubJoueur.equipeSelectionnee = { type: 'adverse', clubId: 'clubQuiNExistePas' };
-  assert.strictEqual(RMClub.selectionEquipe(recharge).type, 'pro', 'une équipe disparue doit retomber sur le premier XV');
+// --- 12e) Navigation entre clubs (TODO_AUDIT.md P1-20) : on n'ouvre JAMAIS
+// un club depuis une liste ou un menu déroulant — uniquement en cliquant son
+// nom. La couche données garantit ici les invariants que l'UI applique. ---
+test('navigation : le sélecteur d\'équipe ne propose QUE des équipes, jamais un club', () => {
+  const s = RMClub.nouvelleSaison(creerRng(440), 'Test Sélecteur Sans Club');
+  const equipesJoueur = RMClub.equipesDisponiblesPourClub(s, s.clubJoueur.id);
+  assert.deepStrictEqual(equipesJoueur.map((e) => e.valeur), ['pro', 'b', 'jeunes'],
+    'le club du joueur a exactement ses 3 équipes, et rien d\'autre');
+  // Aucune valeur ne doit encoder un club ('adverse:clubId' n'existe plus).
+  const nomsClubs = [s.clubJoueur.nom, ...s.adversaires.map((a) => a.nom)];
+  for (const club of [s.clubJoueur, ...s.adversaires]) {
+    for (const e of RMClub.equipesDisponiblesPourClub(s, club.id)) {
+      assert.ok(e.valeur.indexOf(':') === -1, `la valeur "${e.valeur}" ne doit pas encoder de club`);
+      assert.ok(!nomsClubs.some((n) => e.label.includes(n)), `le libellé "${e.label}" ne doit contenir aucun nom de club`);
+    }
+  }
 });
 
-test('contexte d\'équipe : le sélecteur propose bien les 3 équipes du club ET tous les clubs de la division', () => {
-  const s = RMClub.nouvelleSaison(creerRng(430), 'Test Liste Équipes');
-  const liste = RMClub.equipesDisponibles(s);
-  const valeurs = liste.map((e) => e.valeur);
-  assert.ok(valeurs.indexOf('pro') !== -1 && valeurs.indexOf('b') !== -1 && valeurs.indexOf('jeunes') !== -1);
-  for (const adv of s.adversaires) {
-    assert.ok(valeurs.indexOf('adverse:' + adv.id) !== -1, `le club ${adv.nom} doit être proposé dans le sélecteur commun`);
+test('navigation : un club consulté n\'expose que les équipes RÉELLEMENT présentes dans ses données', () => {
+  const s = saisonAvecClubOuvert(441, 'Test Équipes Réelles');
+  const nav = RMClub.navigationClub(s);
+  const equipes = RMClub.equipesDisponiblesPourClub(s, nav.clubConsulteId);
+  // Un club IA n'a qu'un effectif de 15 joueurs (cf. genererEffectif) : pas
+  // d'Équipe B ni de centre de formation à lui proposer — rien n'est fabriqué.
+  assert.deepStrictEqual(equipes.map((e) => e.valeur), ['pro']);
+  // Et il est impossible de forcer une équipe qu'il n'a pas.
+  RMClub.definirEquipeConsultee(s, 'b');
+  assert.strictEqual(RMClub.navigationClub(s).equipeConsultee, 'pro',
+    'sélectionner une équipe inexistante pour ce club ne doit rien changer');
+});
+
+test('navigation : ouvrir un club mémorise d\'où l\'on vient et sélectionne son équipe première', () => {
+  const s = RMClub.nouvelleSaison(creerRng(442), 'Test Ouverture Club');
+  RMClub.assurerCentreFormation(creerRng(443), s);
+  RMClub.definirEquipeConsultee(s, 'b');
+  const adv = s.adversaires[0];
+  RMClub.ouvrirClubDansNavigation(s, adv.id, 'tactique');
+  const nav = RMClub.navigationClub(s);
+  assert.strictEqual(nav.clubConsulteId, adv.id, 'le club cliqué devient le club consulté');
+  assert.strictEqual(nav.equipeConsultee, 'pro', 'ouvrir un club sélectionne toujours son équipe première');
+  assert.strictEqual(nav.clubPrecedentId, s.clubJoueur.id);
+  assert.strictEqual(nav.equipePrecedente, 'b', 'l\'équipe sur laquelle le joueur travaillait doit être mémorisée');
+  assert.strictEqual(nav.ongletPrecedent, 'tactique', 'l\'écran d\'où l\'on vient doit être mémorisé');
+});
+
+test('navigation : "retour à mon club" restaure le club, l\'équipe ET l\'écran précédents', () => {
+  const s = RMClub.nouvelleSaison(creerRng(444), 'Test Retour Mon Club');
+  RMClub.assurerCentreFormation(creerRng(445), s);
+  RMClub.definirEquipeConsultee(s, 'b');
+  RMClub.ouvrirClubDansNavigation(s, s.adversaires[0].id, 'tactique');
+  const { navigation, onglet } = RMClub.retourClubJoueurDansNavigation(s);
+  assert.strictEqual(navigation.clubConsulteId, s.clubJoueur.id);
+  assert.strictEqual(navigation.equipeConsultee, 'b', 'le joueur doit retrouver l\'équipe sur laquelle il travaillait');
+  assert.strictEqual(onglet, 'tactique', 'le joueur doit retrouver l\'écran qu\'il consultait');
+});
+
+test('navigation : enchaîner deux clubs consultés ne fait pas perdre le chemin du retour', () => {
+  const s = RMClub.nouvelleSaison(creerRng(446), 'Test Enchaînement Clubs');
+  RMClub.definirEquipeConsultee(s, 'jeunes');
+  RMClub.ouvrirClubDansNavigation(s, s.adversaires[0].id, 'calendrier');
+  RMClub.ouvrirClubDansNavigation(s, s.adversaires[1].id, 'composition');
+  const nav = RMClub.navigationClub(s);
+  assert.strictEqual(nav.clubConsulteId, s.adversaires[1].id);
+  assert.strictEqual(nav.equipePrecedente, 'jeunes', 'le point de retour reste celui du DÉPART depuis son propre club');
+  assert.strictEqual(nav.ongletPrecedent, 'calendrier');
+  const { navigation } = RMClub.retourClubJoueurDansNavigation(s);
+  assert.strictEqual(navigation.clubConsulteId, s.clubJoueur.id);
+  assert.strictEqual(navigation.equipeConsultee, 'jeunes');
+});
+
+test('navigation : les écrans de GESTION sont absents du menu d\'un club consulté (pas grisés : absents)', () => {
+  const s = RMClub.nouvelleSaison(creerRng(447), 'Test Menu Club Consulté');
+  const ongletsMonClub = RMClub.ongletsDisponibles(s);
+  for (const attendu of ['dashboard', 'effectif', 'composition', 'tactique', 'entrainement', 'calendrier', 'personnel', 'medical', 'transferts', 'finances']) {
+    assert.ok(ongletsMonClub.indexOf(attendu) !== -1, `le menu de mon club doit garder "${attendu}"`);
   }
-  assert.strictEqual(valeurs.length, 3 + s.adversaires.length);
-  // Aller-retour d'encodage : le <select> ne transporte qu'une chaîne.
-  for (const v of valeurs) {
-    assert.strictEqual(RMClub.encoderSelection(RMClub.decoderSelection(v)), v);
+  RMClub.ouvrirClubDansNavigation(s, s.adversaires[0].id, 'dashboard');
+  const ongletsConsulte = RMClub.ongletsDisponibles(s);
+  for (const consultable of ['dashboard', 'effectif', 'composition', 'calendrier', 'personnel']) {
+    assert.ok(ongletsConsulte.indexOf(consultable) !== -1, `le menu d'un club consulté doit proposer "${consultable}"`);
   }
+  for (const interdit of ['tactique', 'entrainement', 'medical', 'transferts', 'finances', 'stats']) {
+    assert.strictEqual(ongletsConsulte.indexOf(interdit), -1,
+      `"${interdit}" ne doit pas exister du tout dans le menu d'un club consulté`);
+  }
+});
+
+test('navigation : la navigation est persistée et rétrocompatible avec l\'ancien champ equipeGeree', () => {
+  const s = RMClub.nouvelleSaison(creerRng(448), 'Test Navigation Persistée');
+  // Sauvegarde antérieure : ni navigationClub ni equipeSelectionnee, seul
+  // l'ancien champ `equipeGeree` existe.
+  delete s.clubJoueur.navigationClub;
+  delete s.clubJoueur.equipeSelectionnee;
+  s.clubJoueur.equipeGeree = 'jeunes';
+  assert.strictEqual(RMClub.navigationClub(s).equipeConsultee, 'jeunes', 'l\'ancien champ equipeGeree doit être repris tel quel');
+  assert.strictEqual(RMClub.navigationClub(s).clubConsulteId, s.clubJoueur.id, 'une sauvegarde ancienne repart toujours sur son propre club');
+
+  RMClub.ouvrirClubDansNavigation(s, s.adversaires[1].id, 'effectif');
+  RMClub.sauvegarderSaison(s);
+  const recharge = RMClub.chargerSaison();
+  assert.strictEqual(RMClub.navigationClub(recharge).clubConsulteId, s.adversaires[1].id,
+    'le club consulté doit survivre à un rechargement');
+
+  // Un club disparu ne doit jamais bloquer la navigation sur un club fantôme.
+  recharge.clubJoueur.navigationClub.clubConsulteId = 'clubQuiNExistePas';
+  assert.strictEqual(RMClub.navigationClub(recharge).clubConsulteId, recharge.clubJoueur.id,
+    'un club disparu doit faire retomber la navigation sur le club du joueur');
 });
 
 // --- 13) Pyramide française : le club du joueur débute en petite division
