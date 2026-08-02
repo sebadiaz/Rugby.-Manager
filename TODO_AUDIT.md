@@ -771,13 +771,20 @@ Le même défaut existait sur le banc (`remplacementsVersConfig`) : un remplaça
 
 **Correctif (limité à deux champs).** Dans `compositionVersJoueursCfg` et `remplacementsVersConfig`, `couloir` et `tendance` sont désormais lus sur le profil du NUMÉRO porté ce jour-là (`DEFAULT_CONFIG.joueurs[numero]`) et non sur la fiche du joueur : le maillot dit où l'on se place, le joueur apporte ses qualités. **Tous les autres attributs restent strictement ceux du joueur** — vitesse, plaquage, mêlée, touche, puissance, endurance, passe, jeu au pied, décision, discipline, adresse — y compris les ajustements réels de fatigue et de moral. Un test dédié vérifie explicitement qu'aucun attribut n'a été aligné sur l'archétype du maillot. **Aucun score n'est plafonné**, aucune probabilité n'a été retouchée, le moteur n'a pas été modifié.
 
-**Résultat mesuré après correctif**, mêmes graines, mêmes scénarios :
+**Résultat mesuré après correctif**, mêmes graines, mêmes scénarios, 30 matchs par ligne. La colonne « témoin IA/IA » est la même confrontation jouée entre deux clubs IA — elle donne le comportement du moteur seul, donc la cible à atteindre :
 
-| Confrontation | Avant | Après |
-|---|---|---|
-| joueur 0.50 vs IA 0.50 | −42,4 (0/30 victoires) | **+3,8 (10/20 victoires)** |
-| grosses défaites à niveau égal | 87 % | **10 %** |
-| couloirs distincts occupés | 7 | **12** (identique à un XV IA) |
+| Confrontation | Avant | Après | Témoin IA/IA |
+|---|---|---|---|
+| joueur 0.50 vs IA **0.50** | −42,4 (0/30 victoires) | **+1,3 (12/30)** | −2,9 (15/30) |
+| joueur 0.50 vs IA **0.20** | −5,4 | **+26,4** | +25,8 |
+| joueur 0.50 vs IA **0.80** | −72,6 | **−19,7** | −27,0 |
+| joueur 0.50 vs IA **0.95** | −83,0 | **−32,6** | −35,9 |
+| grosses défaites à niveau égal | 87 % | **10 %** | 13 % |
+| couloirs distincts occupés | 7 | **12** | 12 |
+
+Le club du joueur suit désormais la courbe du témoin IA/IA sur toute l'échelle de niveau, à quelques points près — c'est la preuve la plus forte que l'asymétrie a disparu, et pas seulement qu'un chiffre a été ramené à zéro au point de mesure choisi.
+
+**Effet secondaire vérifié : la fatigue redevient proportionnée.** Un XV entier à 55 de fatigue perdait de 81,4 points en moyenne contre une équipe fraîche de même niveau (100 % de défaites de plus de 21 points) ; il en perd maintenant 29,8 (77 %). La fatigue reste donc une vraie sanction — c'était l'intention de `appliquerFatigue` — mais elle ne s'ajoutait plus à un handicap de placement qui, lui, n'avait aucune raison d'exister.
 
 **Critères de validation.**
 - `server/test-equilibre-matchs.js` (**nouveau**, 6 tests) : chaque numéro occupe le couloir de son maillot sur 20 tirages ; les deux ailiers ne sont jamais sur la même aile ; le XV du joueur couvre autant de couloirs qu'un XV IA ; **les attributs restent ceux du joueur** ; à niveau égal l'écart moyen reste sous 12 points et les victoires entre 5 et 15 sur 20 ; les défaites de plus de 21 points restent minoritaires. Les 5 premiers échouent avant le correctif (mesures ci-dessus), les 6 passent après.
@@ -788,7 +795,15 @@ Le même défaut existait sur le banc (`remplacementsVersConfig`) : un remplaça
 
 **Bug de CI trouvé au passage (P0-5, 3ᵉ récidive) — CORRIGÉ.** En vérifiant que la tranche 4 était bien déployée, le run `main` [30718554172](https://github.com/sebadiaz/Rugby.-Manager/actions/runs/30718554172) s'avère **`test` ✅, `deploy` ✅, `verify` ❌** — alors que le site public servait bien le bon commit vingt secondes plus tard (`curl .../version.json` → `972d4e2…`). Cause : l'étape « Attendre la disponibilité du site public déployé » attendait que `index.html` RÉPONDE — or il répondait déjà, servi par le déploiement PRÉCÉDENT. Elle sortait donc en 0 s (visible dans les horodatages du job : `deploy` terminé à 21:16:18, attente terminée à 21:16:34 sans délai) et `test-deploy-public.js` interrogeait le CDN avant la propagation du nouveau contenu. **L'étape attend désormais que `version.json` annonce RÉELLEMENT le commit déployé** (60 tentatives, 2 s d'intervalle), et échoue en annonçant le commit effectivement publié. L'expression de lecture a été testée contre le vrai site public avant d'être committée. Le déploiement lui-même n'a jamais été en cause : c'est la preuve qui était fausse — exactement le contraire du symptôme P0-5 d'origine, et donc tout aussi grave puisqu'elle rendait le signal de CI ininterprétable.
 
-**Reste à faire sur ce sujet.** L'axe « échelle » reste à calibrer : un écart de niveau de 0,45 (0,50 contre 0,95) produit encore ~36 points d'écart entre deux IA, ce qui est beaucoup pour un championnat où tous les clubs sont censés être du même palier. À traiter séparément, avec une mesure de la dispersion réelle des `niveauClub` par palier — c'est un sujet de génération de championnat, pas de moteur.
+**Vérifié sur les niveaux RÉELLEMENT rencontrés en jeu, pas seulement sur une échelle théorique.** Les scénarios ci-dessus balaient tout l'intervalle 0,20-0,95 pour isoler le défaut, mais une carrière ne rencontre jamais ces écarts : elle débute en Ligue Régionale, bande `[0,15 ; 0,45]` (`bandeNiveauPalier(3)`), le club du joueur au milieu (0,30) et les adversaires étalés sur toute la bande (`niveauxAdversairesPourPalier`). Mesure sur ces trois confrontations réelles, 25 matchs chacune, après correctif :
+
+| Adversaire réel du palier | Écart moyen | V/N/D | Défaites > 21 pts |
+|---|---|---|---|
+| le plus faible (0,15) | +12,2 | 20/0/5 | 0 % |
+| de même niveau (0,30) | +5,0 | 14/1/10 | 4 % |
+| le plus fort (0,45) | −10,2 | 5/2/18 | 28 % |
+
+C'est un championnat crédible : on bat les derniers, on joue à égalité au milieu, on souffre contre le premier — et une lourde défaite n'arrive plus que face au meilleur club, pas à chaque journée. **Rien ne reste à corriger sur ce sujet.** Il subsiste un léger biais favorable au joueur (+5,0 et 14/10 à niveau strictement égal, +1,3 et 12/18 dans le scénario 0,50) : de l'ordre du bruit à ces tailles d'échantillon, à surveiller si une mesure future le confirme, mais sans commune mesure avec les −42,4 corrigés ici et pas dans le sens qui gênerait le joueur.
 
 ### P2-10. Découper club.js et clubUI.js par domaine (sans changement de comportement)
 - **Statut : EN COURS (tranche 1 : Personnel, tranche 2 : Objectif de saison, tranche 3 : Analyse adversaire, tranche 4 : Prêts, tranche 5 : Contrats, tranche 6 : Équipe B, tranche 7 : Transferts national, tranche 8 : Transferts internationaux, tranche 9 : Effectif étendu, tranche 10 : Centre de formation, tranche 11 : Composition et tactique, tranche 12 : Condition physique des joueurs, tranche 13 : Génération de club/pyramide, tranche 14 : Calendrier et classement, tranche 15 : Sauvegarde et migration — voir constat de risque et tranches suivantes ci-dessous)**
