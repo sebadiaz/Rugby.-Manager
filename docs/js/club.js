@@ -342,24 +342,85 @@
   // (cf. engine/rugby-engine.js _statJoueur) via la composition du jour
   // (numéro -> id), jamais déduit ou estimé après coup. Sert le classement
   // des marqueurs et la fiche joueur (cf. onglet Bilan).
-  function accumulerStatsJoueurs(effectif, composition, statsJoueursMatch) {
+  const CHAMPS_STATS_JOUEUR = ['matchsJoues', 'essais', 'passes', 'tacklesMade', 'tacklesAttempted', 'metresGagnes'];
+  const LIBELLE_COMPETITION = { pro: 'Championnat', b: 'Équipe B', jeunes: 'Espoirs' };
+
+  function statsVides() {
+    const s = {};
+    for (const champ of CHAMPS_STATS_JOUEUR) s[champ] = 0;
+    return s;
+  }
+
+  // `competition` ('pro' | 'b' | 'jeunes', défaut 'pro' — rétrocompatible avec
+  // les appels existants) : les statistiques sont VENTILÉES par compétition
+  // (TODO_AUDIT.md P1-30) en plus du total. Le total reste exactement la
+  // somme des compétitions, jamais un chiffre calculé à part.
+  function accumulerStatsJoueurs(effectif, composition, statsJoueursMatch, competition) {
     if (!statsJoueursMatch || !composition) return;
+    const cle = LIBELLE_COMPETITION[competition] ? competition : 'pro';
     const parId = {};
     for (const j of effectif) parId[j.id] = j;
     for (const numero of Object.keys(composition)) {
       const joueur = parId[composition[numero]];
       const s = statsJoueursMatch[numero];
       if (!joueur || !s) continue;
-      if (!joueur.statsSaison) {
-        joueur.statsSaison = { matchsJoues: 0, essais: 0, passes: 0, tacklesMade: 0, tacklesAttempted: 0, metresGagnes: 0 };
+      if (!joueur.statsSaison) joueur.statsSaison = statsVides();
+      if (!joueur.statsSaison.parCompetition) joueur.statsSaison.parCompetition = {};
+      // Une compétition n'apparaît QUE si le joueur y a réellement joué :
+      // pas de ligne « Équipe B — 0 match » fabriquée pour faire joli.
+      if (!joueur.statsSaison.parCompetition[cle]) joueur.statsSaison.parCompetition[cle] = statsVides();
+      const detail = joueur.statsSaison.parCompetition[cle];
+      const apports = {
+        matchsJoues: 1,
+        essais: s.essais || 0,
+        passes: s.passes || 0,
+        tacklesMade: s.tacklesMade || 0,
+        tacklesAttempted: s.tacklesAttempted || 0,
+        metresGagnes: s.metresGagnes || 0,
+      };
+      for (const champ of CHAMPS_STATS_JOUEUR) {
+        joueur.statsSaison[champ] = (joueur.statsSaison[champ] || 0) + apports[champ];
+        detail[champ] += apports[champ];
       }
-      joueur.statsSaison.matchsJoues++;
-      joueur.statsSaison.essais += s.essais || 0;
-      joueur.statsSaison.passes += s.passes || 0;
-      joueur.statsSaison.tacklesMade += s.tacklesMade || 0;
-      joueur.statsSaison.tacklesAttempted += s.tacklesAttempted || 0;
-      joueur.statsSaison.metresGagnes += s.metresGagnes || 0;
     }
+  }
+
+  // Archive la saison écoulée dans l'historique PERSONNEL d'un joueur, puis
+  // remet son compteur de saison à zéro (TODO_AUDIT.md P1-30). Appelée par
+  // avancerSaison pour tous les effectifs suivis. Rien n'est archivé pour un
+  // joueur qui n'a pas joué : une ligne « 0 match » n'apprend rien.
+  function archiverSaisonJoueur(joueur, saisonNumero, nomClub) {
+    const s = joueur.statsSaison;
+    if (s && s.matchsJoues > 0) {
+      if (!Array.isArray(joueur.historiqueSaisons)) joueur.historiqueSaisons = [];
+      const ligne = { saisonNumero, club: nomClub, age: joueur.age };
+      for (const champ of CHAMPS_STATS_JOUEUR) ligne[champ] = s[champ] || 0;
+      ligne.parCompetition = s.parCompetition || {};
+      joueur.historiqueSaisons.push(ligne);
+      // Borné : une carrière de 20 saisons reste lisible et la sauvegarde
+      // ne gonfle pas indéfiniment.
+      if (joueur.historiqueSaisons.length > 25) joueur.historiqueSaisons.shift();
+    }
+    joueur.statsSaison = null;
+    joueur.matchsJoues = 0;
+    return joueur;
+  }
+
+  // Totaux de CARRIÈRE : toutes les saisons archivées + la saison en cours.
+  // Purement dérivé — jamais un compteur parallèle qui pourrait diverger.
+  function carriereJoueur(joueur) {
+    const total = statsVides();
+    total.saisons = 0;
+    for (const h of (joueur.historiqueSaisons || [])) {
+      total.saisons++;
+      for (const champ of CHAMPS_STATS_JOUEUR) total[champ] += h[champ] || 0;
+    }
+    const s = joueur.statsSaison;
+    if (s && s.matchsJoues > 0) {
+      total.saisons++;
+      for (const champ of CHAMPS_STATS_JOUEUR) total[champ] += s[champ] || 0;
+    }
+    return total;
   }
 
   // Classement des marqueurs (et, plus largement, meilleurs joueurs par
@@ -633,12 +694,18 @@
   function avancerSaison(rng, saison) {
     const effectif = saison.clubJoueur.effectif;
     const partis = [];
+    // Archive la saison écoulée dans l'historique PERSONNEL de chaque joueur
+    // AVANT de remettre ses compteurs à zéro (TODO_AUDIT.md P1-30) — pour
+    // l'effectif pro ET le centre de formation. Sans ça, une carrière de dix
+    // saisons ne laissait aucune trace : seul le total du club survivait.
+    for (const j of effectif) archiverSaisonJoueur(j, saison.numero, saison.clubJoueur.nom);
+    for (const j of (saison.clubJoueur.jeunes || [])) archiverSaisonJoueur(j, saison.numero, saison.clubJoueur.nom);
     const ATTRIBUTS_VIEILLISSEMENT = ['vitesse', 'plaquage', 'melee', 'touche', 'puissance', 'endurance', 'passe', 'jeuPied', 'decision'];
     let reste = effectif.map((j) => {
       // Nouvelle saison, nouvelle fraîcheur : la fatigue et le compteur de
       // matchs (statistique de LA saison) repartent à zéro, comme la vraie
-      // préparation estivale d'un club. Les stats individuelles de la saison
-      // précédente sont archivées ailleurs (historiqueSaisons), pas ici.
+      // préparation estivale d'un club. Les stats individuelles viennent
+      // d'être archivées dans j.historiqueSaisons juste au-dessus.
       const copie = Object.assign({}, j, { age: j.age + 1, contrat: j.contrat - 1, fatigue: 0, matchsJoues: 0, statsSaison: null });
       // Vieillissement RÉEL des attributs (pas seulement le compteur d'âge) :
       // déclin physique après 30 ans, développement estival vers le potentiel
@@ -944,6 +1011,7 @@
     AXES_TACTIQUE,
     accumulerStats, enregistrerMouvementFinances,
     accumulerStatsJoueurs, classementMarqueurs,
+    archiverSaisonJoueur, carriereJoueur, CHAMPS_STATS_JOUEUR, LIBELLE_COMPETITION,
     ajouterMessage,
     prevoirFinances,
     calculerProgression,

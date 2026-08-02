@@ -2947,6 +2947,90 @@ test('effectifs adverses : leur fatigue pèse RÉELLEMENT sur les stats envoyée
   }
 });
 
+// --- P1-30 : vraie page joueur — statistiques PAR COMPÉTITION, historique
+// des saisons et carrière (demande utilisateur, point 5). ---
+
+const STATS_MATCH_FICTIVES = { 1: { essais: 1, passes: 4, tacklesMade: 8, tacklesAttempted: 10, metresGagnes: 30 } };
+
+test('page joueur : les statistiques sont ventilées PAR COMPÉTITION', () => {
+  const s = saisonPourAvance(960);
+  const j = s.clubJoueur.effectif[0];
+  RMClub.accumulerStatsJoueurs(s.clubJoueur.effectif, { 1: j.id }, STATS_MATCH_FICTIVES, 'pro');
+  RMClub.accumulerStatsJoueurs(s.clubJoueur.effectif, { 1: j.id }, STATS_MATCH_FICTIVES, 'b');
+  RMClub.accumulerStatsJoueurs(s.clubJoueur.effectif, { 1: j.id }, STATS_MATCH_FICTIVES, 'b');
+  const par = j.statsSaison.parCompetition;
+  assert.ok(par, 'les statistiques doivent être ventilées par compétition');
+  assert.strictEqual(par.pro.matchsJoues, 1, 'un match de championnat');
+  assert.strictEqual(par.b.matchsJoues, 2, 'deux matchs d\'Équipe B');
+  assert.strictEqual(par.pro.essais + par.b.essais, j.statsSaison.essais,
+    'le total doit être exactement la somme des compétitions — jamais un chiffre à part');
+  assert.strictEqual(j.statsSaison.matchsJoues, 3);
+});
+
+test('page joueur : une compétition non jouée n\'apparaît pas (aucune ligne fabriquée)', () => {
+  const s = saisonPourAvance(961);
+  const j = s.clubJoueur.effectif[0];
+  RMClub.accumulerStatsJoueurs(s.clubJoueur.effectif, { 1: j.id }, STATS_MATCH_FICTIVES, 'pro');
+  assert.ok(!j.statsSaison.parCompetition.b, 'aucune ligne « Équipe B » tant qu\'il n\'y a pas joué');
+  assert.ok(!j.statsSaison.parCompetition.jeunes, 'aucune ligne « Espoirs » tant qu\'il n\'y a pas joué');
+});
+
+test('page joueur : la saison écoulée est ARCHIVÉE dans l\'historique du joueur', () => {
+  const s = saisonPourAvance(962);
+  const j = s.clubJoueur.effectif[0];
+  const idSuivi = j.id;
+  RMClub.accumulerStatsJoueurs(s.clubJoueur.effectif, { 1: j.id }, STATS_MATCH_FICTIVES, 'pro');
+  const numeroAvant = s.numero;
+  RMClub.avancerSaison(creerRng(9620), s);
+  const toujoursLa = s.clubJoueur.effectif.find((x) => x.id === idSuivi);
+  if (!toujoursLa) return; // parti en fin de contrat : rien à vérifier
+  assert.ok(Array.isArray(toujoursLa.historiqueSaisons), 'le joueur doit avoir un historique de saisons');
+  const archive = toujoursLa.historiqueSaisons.find((h) => h.saisonNumero === numeroAvant);
+  assert.ok(archive, `la saison ${numeroAvant} doit être archivée`);
+  assert.strictEqual(archive.essais, 1, 'les chiffres archivés doivent être les chiffres RÉELS de la saison');
+  assert.strictEqual(archive.parCompetition.pro.matchsJoues, 1, 'la ventilation par compétition doit être archivée');
+  assert.ok(archive.club, 'l\'archive doit dire pour quel club il jouait');
+  assert.ok(!toujoursLa.statsSaison || toujoursLa.statsSaison.matchsJoues === 0,
+    'la nouvelle saison doit repartir de zéro');
+});
+
+test('page joueur : la carrière additionne réellement toutes les saisons', () => {
+  const s = saisonPourAvance(963);
+  const j = s.clubJoueur.effectif[0];
+  j.historiqueSaisons = [
+    { saisonNumero: 1, club: 'Ancien Club', age: 22, matchsJoues: 20, essais: 5, passes: 40, tacklesMade: 100, tacklesAttempted: 120, metresGagnes: 300, parCompetition: {} },
+    { saisonNumero: 2, club: 'Ancien Club', age: 23, matchsJoues: 18, essais: 3, passes: 35, tacklesMade: 90, tacklesAttempted: 110, metresGagnes: 250, parCompetition: {} },
+  ];
+  RMClub.accumulerStatsJoueurs(s.clubJoueur.effectif, { 1: j.id }, STATS_MATCH_FICTIVES, 'pro');
+  const carriere = RMClub.carriereJoueur(j);
+  assert.strictEqual(carriere.saisons, 3, 'deux saisons archivées + la saison en cours');
+  assert.strictEqual(carriere.matchsJoues, 39, '20 + 18 + 1');
+  assert.strictEqual(carriere.essais, 9, '5 + 3 + 1');
+  assert.strictEqual(carriere.metresGagnes, 580, '300 + 250 + 30');
+});
+
+test('page joueur : un joueur sans historique a une carrière égale à sa saison en cours', () => {
+  const s = saisonPourAvance(964);
+  const j = s.clubJoueur.effectif[0];
+  const vide = RMClub.carriereJoueur(j);
+  assert.strictEqual(vide.saisons, 0, 'aucun match joué = aucune saison de carrière');
+  assert.strictEqual(vide.essais, 0);
+  RMClub.accumulerStatsJoueurs(s.clubJoueur.effectif, { 1: j.id }, STATS_MATCH_FICTIVES, 'pro');
+  const apres = RMClub.carriereJoueur(j);
+  assert.strictEqual(apres.saisons, 1);
+  assert.strictEqual(apres.essais, 1);
+});
+
+test('page joueur : les matchs d\'Équipe B et des espoirs comptent enfin dans les stats', () => {
+  const s = saisonPourAvance(965);
+  const jeune = (s.clubJoueur.jeunes || [])[0];
+  assert.ok(jeune, 'le centre de formation doit avoir des joueurs');
+  RMClub.accumulerStatsJoueurs(s.clubJoueur.jeunes, { 1: jeune.id }, STATS_MATCH_FICTIVES, 'jeunes');
+  assert.ok(jeune.statsSaison && jeune.statsSaison.matchsJoues === 1,
+    'un espoir qui joue doit voir ses statistiques enregistrées');
+  assert.strictEqual(jeune.statsSaison.parCompetition.jeunes.essais, 1);
+});
+
 console.log(`\n${nbTests} test(s) exécuté(s).`);
 if (process.exitCode) {
   console.error('ECHEC : au moins un test du parcours club a échoué.');

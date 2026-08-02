@@ -1511,6 +1511,43 @@
     const ligneStatsSaison = s
       ? `<div class="ligneJoueur"><span>Cette saison</span><b>${s.essais} essai(s) · ${s.passes} passe(s) · ${s.tacklesMade}/${s.tacklesAttempted} plaquages</b></div>`
       : '';
+
+    // --- Statistiques PAR COMPÉTITION, historique et carrière (P1-30) ------
+    // Trois blocs entièrement dérivés de données RÉELLES : une compétition
+    // n'apparaît que si le joueur y a joué, une saison n'est listée que si
+    // elle a été archivée, et la carrière est la somme des deux. Rien n'est
+    // affiché quand il n'y a rien à dire — pas de tableau vide décoratif.
+    const parCompetition = (s && s.parCompetition) || {};
+    const clesCompetition = Object.keys(parCompetition).filter((k) => parCompetition[k].matchsJoues > 0);
+    const blocCompetitions = clesCompetition.length
+      ? `<h4 class="titreBlocFiche">📊 Par compétition (cette saison)</h4>` +
+        `<table class="tableauClub tableauFiche"><thead><tr><th>Compétition</th><th>M</th><th>Essais</th><th>Passes</th><th>Plaq.</th><th>Mètres</th></tr></thead><tbody>` +
+        clesCompetition.map((k) => {
+          const d = parCompetition[k];
+          return `<tr><td>${echapperHTML(RMClub.LIBELLE_COMPETITION[k] || k)}</td><td>${d.matchsJoues}</td>` +
+            `<td>${d.essais}</td><td>${d.passes}</td><td>${d.tacklesMade}/${d.tacklesAttempted}</td><td>${Math.round(d.metresGagnes)}</td></tr>`;
+        }).join('') + `</tbody></table>`
+      : '';
+
+    const historique = (j.historiqueSaisons || []).slice().reverse();
+    const blocHistorique = historique.length
+      ? `<h4 class="titreBlocFiche">🕓 Historique des saisons</h4>` +
+        `<table class="tableauClub tableauFiche"><thead><tr><th>Saison</th><th>Club</th><th>Âge</th><th>M</th><th>Essais</th><th>Plaq.</th></tr></thead><tbody>` +
+        historique.map((h) => `<tr><td>${h.saisonNumero}</td><td>${echapperHTML(h.club || '—')}</td><td>${h.age != null ? h.age : '—'}</td>` +
+          `<td>${h.matchsJoues}</td><td>${h.essais}</td><td>${h.tacklesMade}/${h.tacklesAttempted}</td></tr>`).join('') +
+        `</tbody></table>`
+      : '';
+
+    const carriere = RMClub.carriereJoueur(j);
+    const blocCarriere = carriere.saisons > 0
+      ? `<h4 class="titreBlocFiche">🏆 Carrière</h4>` +
+        `<div class="ligneJoueur"><span>Saisons jouées</span><b>${carriere.saisons}</b></div>` +
+        `<div class="ligneJoueur"><span>Matchs</span><b>${carriere.matchsJoues}</b></div>` +
+        `<div class="ligneJoueur"><span>Essais</span><b>${carriere.essais}</b></div>` +
+        `<div class="ligneJoueur"><span>Passes</span><b>${carriere.passes}</b></div>` +
+        `<div class="ligneJoueur"><span>Plaquages réussis</span><b>${carriere.tacklesMade}/${carriere.tacklesAttempted}</b></div>` +
+        `<div class="ligneJoueur"><span>Mètres gagnés</span><b>${Math.round(carriere.metresGagnes)}</b></div>`
+      : '';
     // Négociable à tout moment (pas seulement en dernière année de contrat —
     // audit : le joueur pensait qu'aucune gestion de contrat n'existait,
     // faute de l'avoir jamais rencontrée avant l'expiration). RMClub.
@@ -1565,6 +1602,7 @@
       (j.salaire != null ? `<div class="ligneJoueur"><span>Salaire</span><b>${j.salaire} k€/saison</b></div>` : '') +
       (j.valeurEstimee != null && !ctx.modifiable ? `<div class="ligneJoueur"><span>Valeur de transfert estimée</span><b>${j.valeurEstimee} k€</b></div>` : '') +
       `<div class="ligneJoueur"><span>Disponibilité</span><b>${disponibilite}</b></div>` +
+      blocCompetitions + blocHistorique + blocCarriere +
       blocEntrainementIndividuel + actions +
       `<div style="display:flex;gap:8px;margin-top:14px;">` +
       `<button class="alt" id="btnFermerFicheJoueur" style="flex:1;">← Retour à l'effectif</button>` +
@@ -2816,7 +2854,7 @@
             // ajouter les entrées banc n'aurait aucun effet (statsJoueursMatch
             // n'a pas de clé 16-23) mais laisserait croire, à tort, que les
             // stats sont bien réparties.
-            RMClub.accumulerStatsJoueurs(saison.clubJoueur.effectif, compositionUtilisee, etat.statsJoueurs && etat.statsJoueurs[lettreJoueur]);
+            RMClub.accumulerStatsJoueurs(saison.clubJoueur.effectif, compositionUtilisee, etat.statsJoueurs && etat.statsJoueurs[lettreJoueur], 'pro');
             // Effets réels du personnel (cf. RMClub.effetPersonnel) : le
             // médecin/l'entraîneur accélèrent (facteur >=1 direct), le
             // préparateur physique réduit la fatigue (facteur <1, donc
@@ -2921,6 +2959,15 @@
         (etat) => {
           RMClub.enregistrerResultatEquipeB(saison, f.id, etat.score.A, etat.score.B, etat.stats.A.essais, etat.stats.B.essais);
           RMClub.appliquerEffetsMatchEquipeB(saison, compositionJoueur);
+          // Statistiques individuelles de l'Équipe B (TODO_AUDIT.md P1-30) :
+          // jusqu'ici un joueur pouvait disputer toute la saison avec la
+          // réserve sans qu'AUCUN chiffre ne soit enregistré à son nom. Le
+          // vivier de l'Équipe B mêle réservistes pro et espoirs : on
+          // alimente les deux effectifs, chacun ne retenant que les siens.
+          const lettreB = f.domicileId === saison.clubJoueur.id ? 'A' : 'B';
+          const statsB = etat.statsJoueurs && etat.statsJoueurs[lettreB];
+          RMClub.accumulerStatsJoueurs(saison.clubJoueur.effectif, compositionJoueur, statsB, 'b');
+          RMClub.accumulerStatsJoueurs(saison.clubJoueur.jeunes || [], compositionJoueur, statsB, 'b');
           // Recette de billetterie réelle mais modeste (pas de salaires
           // redéduits ici : déjà comptés une fois par journée via le match
           // du premier XV, cf. appliquerFinancesMatchEquipeB).
@@ -2965,6 +3012,11 @@
         `Espoirs : ${saison.clubJoueur.nom} vs Académie ${clubAdverse.nom}`,
         (etat) => {
           RMClub.appliquerEffetsMatchEspoirs(saison, compositionEspoirs);
+          // Idem pour les espoirs (TODO_AUDIT.md P1-30) : le club du joueur
+          // est toujours l'équipe A dans un match d'académie (cf. cfgJoueur
+          // passé en premier).
+          RMClub.accumulerStatsJoueurs(saison.clubJoueur.jeunes || [], compositionEspoirs,
+            etat.statsJoueurs && etat.statsJoueurs.A, 'jeunes');
           // Résultat ARCHIVÉ (TODO_AUDIT.md P1-19) : jusqu'ici il ne vivait
           // que dans un message de la boîte de réception, donc l'écran
           // Calendrier & classement n'avait rien à montrer pour les espoirs.

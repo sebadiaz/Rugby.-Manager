@@ -1046,3 +1046,14 @@ select {
   font-size: 12px;
   margin-left: 6px;
 }
+
+/* Blocs de la page joueur (TODO_AUDIT.md P1-30) : statistiques par
+   compétition, historique des saisons, carrière. Même tableau que partout
+   ailleurs, simplement plus compact — une fiche joueur reste une fiche. */
+.titreBlocFiche {
+  margin: 16px 0 6px;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+.tableauFiche { font-size: 12px; }
+.tableauFiche td, .tableauFiche th { padding: 4px 6px; }

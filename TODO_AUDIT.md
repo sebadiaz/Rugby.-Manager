@@ -917,6 +917,37 @@ C'est un championnat crédible : on bat les derniers, on joue à égalité au mi
 
 **Reste à faire.** Les clubs des autres paliers français et des 12 pays n'ont **toujours pas** d'effectif simulé (cf. P1-28) : leur donner un groupe de 24 chacun représenterait des milliers de joueurs pour des compétitions résolues de façon abstraite. L'écran continue de le dire honnêtement. Par ailleurs, les clubs adverses ne recrutent pas encore : leur groupe vieillit et se régénère entre saisons, mais aucun mercato IA n'existe — c'est le prolongement naturel de ce chantier.
 
+### P1-30. Page joueur : statistiques par compétition, historique des saisons et carrière
+- **Statut : CORRIGÉ**
+- Priorité : P1 (demande utilisateur, point 5 : « Créer une vraie page joueur indépendante : attributs, forme, fatigue, moral, contrat, statistiques par compétition, historique des saisons, progression et carrière. »)
+- Fichiers concernés : `docs/js/club.js`, `docs/js/clubUI.js`, `docs/css/style.css`, `server/test-parcours-club.js`, `server/test-parcours-navigateur.js`
+
+**Ce qui existait déjà.** La fiche joueur affichait déjà attributs, potentiel, **progression réelle depuis le début de saison**, moral, fatigue, contrat, salaire, disponibilité, sélection du jour et statistiques de la saison. Rien de tout cela n'a été refait — la demande portait sur ce qui manquait.
+
+**Ce qui manquait vraiment.**
+1. **Aucune ventilation par compétition** : `statsSaison` était un seul seau, sans distinction championnat / Équipe B / espoirs.
+2. **Pire, deux compétitions sur trois n'enregistraient RIEN.** `accumulerStatsJoueurs` n'était appelée que pour le match du premier XV : un joueur pouvait disputer toute la saison avec l'Équipe B, ou tous les matchs d'académie, **sans qu'un seul chiffre apparaisse à son nom**.
+3. **Aucun historique personnel.** `historiqueSaisons` existait, mais pour le CLUB. Côté joueur, la fin de saison remettait simplement `statsSaison` à `null` — une carrière de dix saisons ne laissait aucune trace. Le commentaire du code affirmait même que ces statistiques étaient « archivées ailleurs », ce qui était faux.
+4. **Aucun total de carrière.**
+
+**Ce qui a été fait.**
+- `accumulerStatsJoueurs` prend un 4ᵉ paramètre `competition` (`'pro'` | `'b'` | `'jeunes'`, défaut `'pro'` — les appels existants restent valides) et alimente `statsSaison.parCompetition` **en plus** du total. Le total reste **exactement la somme** des compétitions : un test le vérifie, il ne peut pas diverger.
+- Elle est désormais appelée pour l'**Équipe B** (sur l'effectif pro ET le centre de formation, puisque le vivier mêle les deux) et pour les **espoirs**.
+- Une compétition n'apparaît **que si le joueur y a réellement joué** : pas de ligne « Équipe B — 0 match » fabriquée.
+- `archiverSaisonJoueur` archive la saison écoulée dans `joueur.historiqueSaisons` (numéro de saison, club, âge, totaux, ventilation) **avant** la remise à zéro, pour l'effectif pro et le centre de formation. Un joueur qui n'a pas joué n'est pas archivé — une ligne « 0 match » n'apprend rien. Borné à 25 saisons.
+- `carriereJoueur` additionne historique + saison en cours. **Purement dérivé**, jamais un compteur parallèle qui pourrait diverger.
+- Trois blocs ajoutés à la fiche : tableau par compétition, tableau d'historique, totaux de carrière. **Aucun ne s'affiche s'il n'y a rien à dire.**
+
+**Défaut de test ancien, enfin diagnostiqué.** Le test « double clic écran sur Signer » échouait par intermittence **depuis plusieurs sessions**, et était traité comme un aléa connu à écarter par simple relance. Il a échoué **deux fois de suite** ici, ce qui a justifié une vraie investigation : reproduit à la main, **un seul toast de signature était émis — la protection anti-double-clic fonctionnait parfaitement**. Le défaut était dans le test, qui comparait les joueurs **par NOM** ; les noms étant tirés de listes finies, deux joueurs déjà à l'effectif portaient le même nom que des joueurs du marché, et le test croyait voir trois recrues. Comparaison passée aux **identifiants**, et une assertion ajoutée (c'est bien le joueur de la ligne cliquée qui signe). **242/242 sur trois exécutions consécutives.** Leçon : « test connu comme instable » n'est pas un diagnostic.
+
+**Critères de validation.**
+- `server/test-parcours-club.js` : 166/166 — dont 6 nouveaux (ventilation par compétition avec total égal à la somme ; aucune ligne pour une compétition non jouée ; saison archivée avec ses chiffres réels, sa ventilation et son club, puis remise à zéro ; carrière additionnant réellement historique + saison en cours ; carrière vide pour un joueur qui n'a rien joué ; **les matchs d'Équipe B et des espoirs comptent enfin**).
+- `server/test-parcours-navigateur.js` : 242/242 — dont 5 nouveaux (aucun tableau pour un joueur qui n'a rien joué ; ventilation Championnat + Équipe B affichée ; historique avec club et âge ; totaux de carrière justes ; aucune erreur console) + 1 assertion supplémentaire sur le double clic.
+- Vérifié **dans le vrai jeu** : Championnat 6 matchs / 3 essais et Équipe B 3 matchs / 1 essai côte à côte, historique « saison 1, 22 matchs, 6 essais », carrière « 2 saisons, 31 matchs, 10 essais, 730 mètres » — chaque total recoupé à la main.
+- Régression complète sans échec.
+
+**Reste à faire, honnêtement.** La fiche reste **dépliée dans l'onglet Effectif**, ce n'est pas encore une page à part entière avec sa propre entrée de navigation. Tout le contenu demandé y est, mais la demande disait « page indépendante » : c'est une présentation, pas une donnée, et elle reste à faire. Par ailleurs les statistiques par compétition ne remontent que du moteur (essais, passes, plaquages, mètres) : cartons, coups de pied réussis et temps de jeu en minutes ne sont pas encore exposés par `etat.statsJoueurs`.
+
 ### P2-10. Découper club.js et clubUI.js par domaine (sans changement de comportement)
 - **Statut : EN COURS (tranche 1 : Personnel, tranche 2 : Objectif de saison, tranche 3 : Analyse adversaire, tranche 4 : Prêts, tranche 5 : Contrats, tranche 6 : Équipe B, tranche 7 : Transferts national, tranche 8 : Transferts internationaux, tranche 9 : Effectif étendu, tranche 10 : Centre de formation, tranche 11 : Composition et tactique, tranche 12 : Condition physique des joueurs, tranche 13 : Génération de club/pyramide, tranche 14 : Calendrier et classement, tranche 15 : Sauvegarde et migration — voir constat de risque et tranches suivantes ci-dessous)**
 - Priorité : P2 (maintenabilité — explicitement demandée par l'utilisateur malgré la tension avec la règle CLAUDE.md "jamais un patch purement technique si le gameplay ne s'améliore pas visiblement")

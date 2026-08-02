@@ -270,8 +270,18 @@ function optionsLancement() {
   // maintenant 1500 ms) pour ne pas hériter du verrou encore actif posé par
   // le test précédent.
   await page.waitForTimeout(1700);
-  const nomsAvantDoubleClicCoord = await page.$$eval('#clubMarche .ligneMarche .infosJoueur b', (els) => els.map((e) => e.textContent));
-  verifier('double clic écran : au moins 2 joueurs sur le marché avant le test (scénario significatif)', nomsAvantDoubleClicCoord.length >= 2);
+  // Comparaison par IDENTIFIANT, jamais par nom : les noms sont tirés de
+  // listes finies, donc un joueur du marché peut parfaitement porter le même
+  // nom qu'un joueur déjà à l'effectif. Ce test comptait les joueurs de
+  // l'effectif « dont le nom figure au marché » et voyait alors 3 recrues
+  // là où une seule avait signé — un faux échec, reproduit et diagnostiqué
+  // (un seul toast de signature émis, protection intacte).
+  const marcheAvantDoubleClic = await page.$$eval('#clubMarche .ligneMarche .btnSigner',
+    (els) => els.map((e) => e.dataset.joueur));
+  verifier('double clic écran : au moins 2 joueurs sur le marché avant le test (scénario significatif)',
+    marcheAvantDoubleClic.length >= 2);
+  const effectifIdsAvant = await page.evaluate(
+    () => JSON.parse(localStorage.getItem('rugbyManager.club.v1')).clubJoueur.effectif.map((j) => j.id));
   // Les deux clics sont dispatchés dans UN SEUL page.evaluate (jamais deux
   // page.mouse.click() séparés) : deux allers-retours Playwright/CDP
   // introduisent un délai réseau variable entre les deux clics (quelques ms
@@ -289,11 +299,14 @@ function optionsLancement() {
     }
   });
   await page.waitForTimeout(300);
-  const effectifApresDoubleClicCoord = await page.evaluate(
-    (noms) => JSON.parse(localStorage.getItem('rugbyManager.club.v1')).clubJoueur.effectif.filter((j) => noms.includes(j.nom)).map((j) => j.nom),
-    nomsAvantDoubleClicCoord);
+  const nouveauxIds = await page.evaluate(
+    (avant) => JSON.parse(localStorage.getItem('rugbyManager.club.v1')).clubJoueur.effectif
+      .map((j) => j.id).filter((id) => !avant.includes(id)),
+    effectifIdsAvant);
   verifier('double clic écran sur "Signer" (1re ligne) : un seul joueur rejoint le club, pas le joueur de la ligne suivante aussi',
-    effectifApresDoubleClicCoord.length === 1 && effectifApresDoubleClicCoord[0] === nomsAvantDoubleClicCoord[0]);
+    nouveauxIds.length === 1);
+  verifier('double clic écran sur "Signer" : c\'est bien le joueur de la LIGNE CLIQUÉE qui signe',
+    nouveauxIds.length === 1 && marcheAvantDoubleClic.indexOf(nouveauxIds[0]) === 0);
 
   // 5b) Négociation de contrat : force un joueur en fin de contrat (état non
   // exposé par l'UI, modifié directement en localStorage comme le ferait une
@@ -2091,6 +2104,66 @@ function optionsLancement() {
     (bancAdverse.match(/N°\d+ · /g) || []).length >= 8);
   verifier('effectifs adverses : aucune erreur console', erreursAdv.length === 0);
   await contexteAdv.close();
+
+  // 11 sexies) Page joueur (TODO_AUDIT.md P1-30) : statistiques par
+  // compétition, historique des saisons et totaux de carrière — tous dérivés
+  // de données réelles, aucun tableau vide décoratif.
+  const contexteFiche = await browser.newContext({ viewport: { width: 1280, height: 1000 } });
+  const pageFiche = await contexteFiche.newPage();
+  const erreursFiche = [];
+  pageFiche.on('pageerror', (e) => erreursFiche.push(`PAGEERROR: ${e.message}`));
+  pageFiche.on('console', (m) => {
+    if (m.type() === 'error' && !m.text().includes('404')) erreursFiche.push(`CONSOLE: ${m.text()}`);
+  });
+  await pageFiche.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  await pageFiche.click('#btnAccueilModeClub');
+  await pageFiche.fill('#inputNomClub', 'Test Page Joueur');
+  await pageFiche.click('#btnCreerClub');
+  await pageFiche.waitForTimeout(400);
+
+  // Un joueur tout neuf n'a RIEN joué : aucun des trois blocs ne doit
+  // apparaître (pas de tableau vide pour faire joli).
+  const idPremier = await pageFiche.evaluate(
+    () => JSON.parse(localStorage.getItem('rugbyManager.club.v1')).clubJoueur.effectif[0].id);
+  await clicOngletSur(pageFiche, 'effectif');
+  await pageFiche.waitForTimeout(300);
+  await pageFiche.click(`#clubEffectif tr[data-joueur="${idPremier}"]`);
+  await pageFiche.waitForTimeout(300);
+  const ficheVierge = await pageFiche.textContent('#clubJoueurDetail');
+  verifier('page joueur : aucun tableau de statistiques pour un joueur qui n\'a rien joué',
+    !/Par compétition/.test(ficheVierge) && !/Historique des saisons/.test(ficheVierge) && !/Carrière/.test(ficheVierge));
+
+  // Puis avec des données RÉELLES injectées dans la sauvegarde.
+  await pageFiche.evaluate((id) => {
+    const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
+    const j = s.clubJoueur.effectif.find((x) => x.id === id);
+    j.statsSaison = { matchsJoues: 9, essais: 4, passes: 31, tacklesMade: 70, tacklesAttempted: 82, metresGagnes: 210,
+      parCompetition: {
+        pro: { matchsJoues: 6, essais: 3, passes: 22, tacklesMade: 50, tacklesAttempted: 58, metresGagnes: 160 },
+        b: { matchsJoues: 3, essais: 1, passes: 9, tacklesMade: 20, tacklesAttempted: 24, metresGagnes: 50 },
+      } };
+    j.historiqueSaisons = [{ saisonNumero: 1, club: 'Test Page Joueur', age: 23, matchsJoues: 22, essais: 6,
+      passes: 80, tacklesMade: 180, tacklesAttempted: 210, metresGagnes: 520, parCompetition: {} }];
+    localStorage.setItem('rugbyManager.club.v1', JSON.stringify(s));
+  }, idPremier);
+  await pageFiche.reload({ waitUntil: 'networkidle' });
+  await pageFiche.waitForTimeout(250);
+  await pageFiche.click('#btnContinuerClub');
+  await pageFiche.waitForTimeout(400);
+  await clicOngletSur(pageFiche, 'effectif');
+  await pageFiche.waitForTimeout(300);
+  await pageFiche.click(`#clubEffectif tr[data-joueur="${idPremier}"]`);
+  await pageFiche.waitForTimeout(400);
+  const fiche = (await pageFiche.textContent('#clubJoueurDetail')).replace(/\s+/g, ' ');
+  verifier('page joueur : les statistiques sont ventilées par compétition (Championnat ET Équipe B)',
+    /Par compétition/.test(fiche) && /Championnat/.test(fiche) && /Équipe B/.test(fiche));
+  verifier('page joueur : l\'historique des saisons est affiché avec le club et l\'âge',
+    /Historique des saisons/.test(fiche) && /Test Page Joueur/.test(fiche));
+  verifier('page joueur : les totaux de carrière additionnent réellement historique + saison en cours',
+    /Carrière/.test(fiche) && /Saisons jouées ?2/.test(fiche.replace(/\s/g, ' '))
+    && fiche.includes('31') && fiche.includes('730'));
+  verifier('page joueur : aucune erreur console', erreursFiche.length === 0);
+  await contexteFiche.close();
 
   // 12) Décision réelle dans la boîte de réception (audit "boîte de réception
   // avec décisions", cf. club-decisions.js) : injecte directement une
