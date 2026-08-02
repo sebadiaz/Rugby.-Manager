@@ -1915,6 +1915,55 @@ function optionsLancement() {
   verifier('avance : aucune erreur console sur le parcours des deux actions', erreursAvance.length === 0);
   await contexteAvance.close();
 
+  // 11 ter) De vraies dates dans TOUS les calendriers (TODO_AUDIT.md P1-27) :
+  // l'écran Calendrier n'affichait que « Journée N », alors que la carrière
+  // est datée depuis P1-21. Vérifié pour les TROIS équipes, via le même
+  // écran unique et le sélecteur d'équipe commun.
+  const contexteDates = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const pageDates = await contexteDates.newPage();
+  const erreursDates = [];
+  pageDates.on('pageerror', (e) => erreursDates.push(`PAGEERROR: ${e.message}`));
+  pageDates.on('console', (m) => {
+    if (m.type() === 'error' && !m.text().includes('404')) erreursDates.push(`CONSOLE: ${m.text()}`);
+  });
+  await pageDates.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  await pageDates.click('#btnAccueilModeClub');
+  await pageDates.fill('#inputNomClub', 'Test Dates Calendrier');
+  await pageDates.click('#btnCreerClub');
+  await pageDates.waitForTimeout(400);
+
+  const MOTIF_DATE = /\b(lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)\b \d{1,2} \p{L}+ 20\d\d/u;
+  const MOTIF_DATE_COURTE = /\b(lun|mar|mer|jeu|ven|sam|dim)\./i;
+
+  verifier('dates : la carte « Prochaine échéance » date chaque rencontre à venir',
+    MOTIF_DATE_COURTE.test(await pageDates.textContent('#clubProchainMatch')));
+
+  const datesParEquipe = {};
+  for (const equipe of ['pro', 'b', 'jeunes']) {
+    await clicOngletSur(pageDates, 'calendrier');
+    await pageDates.waitForTimeout(250);
+    const dispo = await pageDates.evaluate((e) => {
+      const sel = document.getElementById('selEquipeContexte');
+      return !!(sel && Array.from(sel.options).some((o) => o.value === e));
+    }, equipe);
+    if (!dispo) continue;
+    await pageDates.selectOption('#selEquipeContexte', equipe);
+    await pageDates.waitForTimeout(350);
+    const texte = await pageDates.textContent('#clubCalendrier');
+    datesParEquipe[equipe] = (texte.match(MOTIF_DATE) || [])[0] || null;
+    verifier(`dates : le calendrier de l'équipe « ${equipe} » affiche une vraie date en clair`,
+      MOTIF_DATE.test(texte));
+  }
+  // Les trois équipes ne jouent pas le même jour : c'est visible à l'écran,
+  // pas seulement dans les données (mercredi espoirs, samedi pro, dimanche B).
+  const joursDistincts = new Set(Object.values(datesParEquipe).filter(Boolean));
+  verifier('dates : les calendriers des trois équipes affichent des jours DIFFÉRENTS',
+    joursDistincts.size === Object.values(datesParEquipe).filter(Boolean).length);
+  verifier('dates : la rencontre des espoirs est bien annoncée un mercredi',
+    !datesParEquipe.jeunes || /mercredi/.test(datesParEquipe.jeunes));
+  verifier('dates : aucune erreur console sur l\'écran Calendrier daté', erreursDates.length === 0);
+  await contexteDates.close();
+
   // 12) Décision réelle dans la boîte de réception (audit "boîte de réception
   // avec décisions", cf. club-decisions.js) : injecte directement une
   // demande de temps de jeu (le déclenchement — plusieurs journées sans

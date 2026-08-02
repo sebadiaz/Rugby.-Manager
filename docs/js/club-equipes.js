@@ -251,6 +251,15 @@
       fixtures.push({
         id: 'esp' + f.journee,
         journee: f.journee,
+        // Date RÉELLE de la rencontre (TODO_AUDIT.md P1-27), dérivée du même
+        // calendrier daté que le championnat et l'Équipe B : les espoirs
+        // jouent le mercredi qui précède la journée de championnat
+        // (DECALAGE_JOUR_MATCH.jeunes = -3). Sans ce champ, l'écran
+        // Calendrier n'avait aucune date à montrer pour cette équipe et
+        // affichait seulement « Journée N » — la rencontre existait bien à
+        // une date précise (evenementsDuJour la trouve), elle n'était juste
+        // écrite nulle part.
+        date: global.RMClub.dateISO(global.RMClub.dateDeJournee(saison.numero || 1, f.journee, 'jeunes')),
         domicileId: c.id,
         exterieurId: adverseId,
         // L'adversaire est une académie synthétique du club affronté ce

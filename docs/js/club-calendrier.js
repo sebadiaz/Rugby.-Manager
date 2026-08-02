@@ -117,6 +117,22 @@
     return saison.calendrier.filter((f) => f.journee === prochaine.journee);
   }
 
+  // Rencontres de championnat À JOUER à une DATE donnée (TODO_AUDIT.md
+  // P1-27). `prochainesFixtures` ci-dessus répond à « quelle est la prochaine
+  // journée ? », ce qui n'est pas la même question : si une journée n'avait
+  // pas été jouée à sa date, elle serait rejouée telle quelle un autre jour.
+  // Depuis la carrière calendaire, c'est la DATE qui décide — une rencontre
+  // ne se joue qu'à la sienne. Retombe sur `prochainesFixtures` pour une
+  // sauvegarde dont le calendrier n'est pas encore daté (rétrocompatibilité).
+  function fixturesDuJour(saison, date) {
+    const RMClub = global.RMClub;
+    if (!date || !RMClub.dateISO) return prochainesFixtures(saison);
+    const iso = RMClub.dateISO(date);
+    const datees = saison.calendrier.filter((f) => f.date);
+    if (!datees.length) return prochainesFixtures(saison);
+    return saison.calendrier.filter((f) => f.date === iso && !f.joue);
+  }
+
   function club(saison, clubId) {
     if (saison.clubJoueur.id === clubId) return saison.clubJoueur;
     return saison.adversaires.find((c) => c.id === clubId) || null;
@@ -134,6 +150,6 @@
 
   global.RMClub = Object.assign(global.RMClub || {}, {
     genererCalendrier, classementInitial, enregistrerResultatDans, enregistrerResultat,
-    classementTrieDe, classementTrie, prochainesFixtures, club, nombreJourneesSaison,
+    classementTrieDe, classementTrie, prochainesFixtures, fixturesDuJour, club, nombreJourneesSaison,
   });
 })(window);

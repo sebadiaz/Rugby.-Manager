@@ -2566,6 +2566,122 @@ test("entraînement : une blessure survenue à l'entraînement rend réellement 
   assert.ok(msg, 'une blessure doit produire un message réel dans la boîte de réception');
 });
 
+// --- P1-27 : de vraies dates dans TOUS les calendriers, et chaque rencontre
+// jouée uniquement à sa date (demande utilisateur, point 2). ---
+
+test('dates : toutes les rencontres des TROIS équipes portent une vraie date ISO', () => {
+  const s = saisonPourAvance(930);
+  for (const equipe of ['pro', 'b', 'jeunes']) {
+    s.clubJoueur.navigationClub = RMClub.navigationClub(s);
+    s.clubJoueur.navigationClub.equipeConsultee = equipe;
+    const ctx = RMClub.contexteEquipe(s);
+    if (!ctx.disponible || !ctx.calendrier || !ctx.calendrier.length) continue;
+    for (const f of ctx.calendrier) {
+      assert.ok(/^\d{4}-\d{2}-\d{2}$/.test(f.date || ''),
+        `équipe ${equipe}, journée ${f.journee} : date absente ou invalide (${f.date})`);
+    }
+  }
+});
+
+test('dates : la rencontre espoirs tombe le mercredi qui précède la journée de championnat', () => {
+  const s = saisonPourAvance(931);
+  s.clubJoueur.navigationClub = RMClub.navigationClub(s);
+  s.clubJoueur.navigationClub.equipeConsultee = 'jeunes';
+  const ctx = RMClub.contexteEquipe(s);
+  assert.ok(ctx.calendrier.length > 0, 'les espoirs doivent avoir des rencontres');
+  for (const f of ctx.calendrier) {
+    const attendue = RMClub.dateISO(RMClub.dateDeJournee(s.numero || 1, f.journee, 'jeunes'));
+    assert.strictEqual(f.date, attendue, `journée ${f.journee} : date ${f.date} au lieu de ${attendue}`);
+    assert.strictEqual(RMClub.jourSemaine(RMClub.dateDepuisISO(f.date)), 3,
+      `journée ${f.journee} : la rencontre espoirs doit tomber un mercredi`);
+  }
+});
+
+test('dates : les trois équipes ne jouent JAMAIS le même jour', () => {
+  const s = saisonPourAvance(932);
+  const dates = {};
+  for (const equipe of ['pro', 'b', 'jeunes']) {
+    s.clubJoueur.navigationClub = RMClub.navigationClub(s);
+    s.clubJoueur.navigationClub.equipeConsultee = equipe;
+    const ctx = RMClub.contexteEquipe(s);
+    if (!ctx.disponible) continue;
+    dates[equipe] = new Set((ctx.calendrier || [])
+      .filter((f) => f.domicileId === s.clubJoueur.id || f.exterieurId === s.clubJoueur.id)
+      .map((f) => f.date));
+  }
+  for (const a of Object.keys(dates)) {
+    for (const b of Object.keys(dates)) {
+      if (a >= b) continue;
+      for (const d of dates[a]) {
+        assert.ok(!dates[b].has(d), `${a} et ${b} jouent tous les deux le ${d}`);
+      }
+    }
+  }
+});
+
+test('dates : une rencontre espoirs n\'est programmée QUE le jour de sa date', () => {
+  const s = saisonPourAvance(933);
+  s.clubJoueur.navigationClub = RMClub.navigationClub(s);
+  s.clubJoueur.navigationClub.equipeConsultee = 'jeunes';
+  const premiere = RMClub.contexteEquipe(s).calendrier[0];
+  const date = RMClub.dateDepuisISO(premiere.date);
+  assert.strictEqual(RMClub.evenementsDuJour(s, date).journeeEspoirs, premiere.journee,
+    'le jour de sa date, la rencontre espoirs doit être programmée');
+  for (const decalage of [-2, -1, 1, 2]) {
+    const autre = RMClub.ajouterJours(date, decalage);
+    assert.strictEqual(RMClub.evenementsDuJour(s, autre).journeeEspoirs, null,
+      `aucune rencontre espoirs ne doit être programmée à ${RMClub.dateISO(autre)} (décalage ${decalage})`);
+  }
+});
+
+test('dates : une rencontre déjà jouée conserve sa date (pas de recalcul qui la déplace)', () => {
+  const s = saisonPourAvance(934);
+  RMClub.daterCalendrier(s);
+  const avant = s.calendrier.map((f) => f.date);
+  for (const f of s.calendrier) if (f.journee === 1) f.joue = true;
+  RMClub.daterCalendrier(s);
+  assert.deepStrictEqual(s.calendrier.map((f) => f.date), avant,
+    'redater un calendrier ne doit jamais déplacer une rencontre');
+});
+
+test('dates : les rencontres résolues un jour donné sont EXACTEMENT celles datées ce jour-là', () => {
+  const s = saisonPourAvance(935);
+  RMClub.daterCalendrier(s);
+  const j1 = RMClub.dateDeJournee(s.numero || 1, 1, 'pro');
+  const duJour = RMClub.fixturesDuJour(s, j1);
+  assert.ok(duJour.length > 0, 'la journée 1 doit avoir des rencontres à sa date');
+  for (const f of duJour) {
+    assert.strictEqual(f.date, RMClub.dateISO(j1), 'une rencontre hors date ne doit jamais être retenue');
+  }
+  assert.strictEqual(duJour.length, s.calendrier.filter((f) => f.journee === 1).length,
+    'toutes les rencontres de la journée 1 doivent être retenues, ni plus ni moins');
+  // Un jour sans rencontre ne doit RIEN renvoyer, même si des journées
+  // restent à jouer — sinon une journée pourrait être jouée hors de sa date.
+  assert.strictEqual(RMClub.fixturesDuJour(s, RMClub.ajouterJours(j1, 1)).length, 0,
+    'aucune rencontre de championnat ne doit être jouable le lendemain');
+});
+
+test('dates : une journée sautée ne se rejoue pas un autre jour', () => {
+  const s = saisonPourAvance(936);
+  RMClub.daterCalendrier(s);
+  // Journée 1 jamais jouée, on se place le jour de la journée 2.
+  const j2 = RMClub.dateDeJournee(s.numero || 1, 2, 'pro');
+  const duJour = RMClub.fixturesDuJour(s, j2);
+  assert.ok(duJour.length > 0, 'la journée 2 doit avoir des rencontres');
+  for (const f of duJour) {
+    assert.strictEqual(f.journee, 2,
+      `le jour de la journée 2, on ne doit jouer que la journée 2 (trouvé J${f.journee})`);
+  }
+});
+
+test('dates : une sauvegarde sans dates reste jouable (retombe sur la prochaine journée)', () => {
+  const s = saisonPourAvance(937);
+  for (const f of s.calendrier) delete f.date;
+  const duJour = RMClub.fixturesDuJour(s, RMClub.dateCourante(s));
+  assert.ok(duJour.length > 0, 'une sauvegarde non datée doit rester jouable');
+  assert.strictEqual(duJour[0].journee, 1, 'elle retombe sur la prochaine journée à jouer');
+});
+
 console.log(`\n${nbTests} test(s) exécuté(s).`);
 if (process.exitCode) {
   console.error('ECHEC : au moins un test du parcours club a échoué.');

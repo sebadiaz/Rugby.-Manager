@@ -1036,3 +1036,13 @@ select {
   font-size: 10px; color: var(--text-faint); opacity: 0.6;
   pointer-events: none; user-select: none;
 }
+
+/* Date réelle d'une journée de calendrier (TODO_AUDIT.md P1-27) : affichée à
+   côté du numéro de journée, en secondaire — le numéro reste le repère de
+   compétition, la date dit quand ça se joue. */
+.blocJournee h4 .dateJournee {
+  font-weight: 400;
+  color: var(--text-dim);
+  font-size: 12px;
+  margin-left: 6px;
+}

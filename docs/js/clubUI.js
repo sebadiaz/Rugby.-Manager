@@ -463,7 +463,8 @@
   // club mis en avant est celui du contexte, pas systématiquement celui du
   // joueur. `libelleExterieur` permet à une rencontre sans club adverse réel
   // (académie espoirs, cf. RMClub.calendrierEspoirs) d'utiliser la même ligne.
-  function formaterLigneCalendrier(f, clubMisEnAvant) {
+  function formaterLigneCalendrier(f, clubMisEnAvant, options) {
+    const opt = options || {};
     const cible = clubMisEnAvant || saison.clubJoueur.id;
     const domicile = f.libelleDomicile ? echapperHTML(f.libelleDomicile) : lienClub(f.domicileId);
     const exterieur = f.libelleExterieur ? echapperHTML(f.libelleExterieur) : lienClub(f.exterieurId);
@@ -471,7 +472,14 @@
     const forme = formePourClub(f, cible);
     const badge = forme ? `<span class="badgeForme ${forme}">${LIBELLE_FORME[forme]}</span>` : '';
     const classe = (f.domicileId === cible || f.exterieurId === cible) ? ' ligneClubJoueur' : '';
-    return `<div class="ligneCalendrier${classe}"><span>J${f.journee} — ${domicile} vs ${exterieur}</span><span class="scoreCal">${badge}${score}</span></div>`;
+    // Repère de gauche (TODO_AUDIT.md P1-27) : la DATE réelle quand on la
+    // demande — une carrière calendaire doit dire « samedi 21 septembre »,
+    // pas seulement « J3 ». Le numéro de journée reste le repère par défaut
+    // là où la date est déjà portée par l'entête du groupe.
+    const repere = (opt.avecDate && f.date)
+      ? RMClub.formaterDateCourte(RMClub.dateDepuisISO(f.date))
+      : `J${f.journee}`;
+    return `<div class="ligneCalendrier${classe}"><span>${repere} — ${domicile} vs ${exterieur}</span><span class="scoreCal">${badge}${score}</span></div>`;
   }
 
   // Entête d'identité (TODO_AUDIT.md P1-20) : le nom du club ACTUELLEMENT
@@ -560,7 +568,7 @@
     bouton.style.display = '';
     boutonComposition.style.display = '';
     boutonSaisonSuivante.style.display = 'none';
-    zone.innerHTML = fixtures.map((f) => formaterLigneCalendrier(f)).join('');
+    zone.innerHTML = fixtures.map((f) => formaterLigneCalendrier(f, null, { avecDate: true })).join('');
     bouton.disabled = false;
     // Le bouton annonce la PROCHAINE ÉCHÉANCE, pas une journée abstraite
     // (TODO_AUDIT.md P1-21) : « Continuer jusqu'au samedi 7 septembre ».
@@ -1557,7 +1565,15 @@
           const attenu = f.joue ? ' style="opacity:.6"' : '';
           return `<div${attenu}>${formaterLigneCalendrier(f, ctx.clubId)}</div>`;
         }).join('');
-        return `<div class="blocJournee"><h4>Journée ${j}</h4>${lignes}</div>`;
+        // Toutes les rencontres d'une même journée d'une même compétition
+        // partagent leur date : on l'affiche une fois, en clair, dans
+        // l'entête (TODO_AUDIT.md P1-27). Si elles divergeaient (calendrier
+        // incohérent), on n'affiche rien plutôt qu'une date fausse.
+        const datesGroupe = new Set(parJournee[j].map((f) => f.date).filter(Boolean));
+        const dateTitre = datesGroupe.size === 1
+          ? ` <span class="dateJournee">${echapperHTML(RMClub.formaterDateLongue(RMClub.dateDepuisISO(parJournee[j][0].date)))}</span>`
+          : '';
+        return `<div class="blocJournee"><h4>Journée ${j}${dateTitre}</h4>${lignes}</div>`;
       }).join('');
   }
 
@@ -2541,7 +2557,21 @@
     // plus haut. Bloque toute ré-entrée tant que le jour précédent n'est
     // pas résolu (le callback de fin, plus bas, relâche le verrou).
     if (journeeEnCours) return;
-    const fixtures = RMClub.prochainesFixtures(saison);
+    // Le jour d'une journée de CHAMPIONNAT, ce sont les rencontres DATÉES
+    // d'aujourd'hui qui se jouent, pas « celles de la prochaine journée »
+    // (TODO_AUDIT.md P1-27) : c'est la date qui décide, une journée sautée ne
+    // se rejoue pas un autre jour.
+    //
+    // Les jours d'Équipe B (dimanche) et d'espoirs (mercredi) n'ont AUCUNE
+    // rencontre de championnat à leur date : ces deux compétitions se
+    // rattachent à la journée de championnat À VENIR (l'adversaire des
+    // espoirs en est déduit, cf. simulerMatchEspoirs), donc elles gardent
+    // `prochainesFixtures` comme contexte de journée. Leurs propres
+    // rencontres sont, elles, choisies par leur propre calendrier
+    // (prochaineRondeEquipeB / journeeDeMatchEspoirs).
+    const fixtures = typeJour === 'pro'
+      ? RMClub.fixturesDuJour(saison, RMClub.dateCourante(saison))
+      : RMClub.prochainesFixtures(saison);
     if (fixtures.length === 0) return;
     const matchJoueur = fixtures.find(concerneClubJoueur);
     // Garde-fou : bloque le lancement (avec une explication précise) si la
@@ -2916,12 +2946,23 @@
   // le jour courant). ---
   function continuer() {
     if (journeeEnCours) return;
-    if (!verrouillerAvance()) return;
     if (!RMClub.prochainArret(saison)) {
       // Plus aucune rencontre : la saison sportive est terminée.
       document.getElementById('btnSaisonSuivante').click();
       return;
     }
+    // Déjà sur un jour de match : on ne fait que rouvrir sa préparation —
+    // AUCUNE avance, donc aucun verrou. Rouvrir l'aperçu après l'avoir
+    // fermé (Échap, aller-retour composition/tactique) doit rester
+    // instantané ; le verrou ne protège que ce qui fait passer des jours.
+    const typeAujourdhui = RMClub.typeDArret(saison, RMClub.dateCourante(saison));
+    if (typeAujourdhui) {
+      if (typeAujourdhui === 'pro') { ouvrirApercuMatch(); return; }
+      document.getElementById('panneauClub').classList.remove('visible');
+      resoudreJour(typeAujourdhui);
+      return;
+    }
+    if (!verrouillerAvance()) return;
     // Avance jour par jour, mais S'ARRÊTE dès qu'il se passe quelque chose
     // (TODO_AUDIT.md P1-26) : blessure, réponse à une proposition de contrat,
     // rapport de repérage, décision à trancher, événement de direction. Sans
