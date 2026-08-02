@@ -115,12 +115,22 @@ jobs:
         with:
           node-version: 20
       - name: Attendre la disponibilité du site public déployé
+        # Attendre que index.html RÉPONDE ne prouve rien : il répondait déjà,
+        # servi par le déploiement PRÉCÉDENT. Ce test sortait donc en 0 s et
+        # l'étape suivante interrogeait le CDN avant la propagation du nouveau
+        # contenu — c'est ce qui a fait échouer `verify` sur le run 30718554172
+        # (test et deploy verts, site correct 20 s plus tard). On attend
+        # maintenant que version.json annonce RÉELLEMENT le commit déployé.
         run: |
-          for i in $(seq 1 30); do
-            curl -sf "${{ needs.deploy.outputs.page_url }}index.html" > /dev/null && exit 0
+          for i in $(seq 1 60); do
+            publie=$(curl -sf "${{ needs.deploy.outputs.page_url }}version.json" | tr -d ' \n' | sed -n 's/.*"commit":"\([^"]*\)".*/\1/p')
+            if [ "$publie" = "${{ github.sha }}" ]; then
+              echo "Commit ${{ github.sha }} publié après $((i * 2)) s."
+              exit 0
+            fi
             sleep 2
           done
-          echo "Le site public ne répond pas après déploiement" >&2
+          echo "Le site public annonce encore '$publie' au lieu de ${{ github.sha }} après 120 s" >&2
           exit 1
       - name: Vérifier le site public réellement déployé (TODO_AUDIT.md P0-5)
         run: node server/test-deploy-public.js "${{ needs.deploy.outputs.page_url }}" --expect-commit "${{ github.sha }}"
