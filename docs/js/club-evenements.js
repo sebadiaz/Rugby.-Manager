@@ -142,6 +142,12 @@
     // (TODO_AUDIT.md P1-23/P1-24) : rapports de scouting remis, réponses des
     // joueurs aux propositions de contrat, décisions non tranchées dans les
     // délais, point d'étape de la direction, ambiance du vestiaire.
+    // Les clubs ADVERSES vivent aussi (TODO_AUDIT.md P1-29) : leur groupe
+    // récupère et leurs blessés guérissent au même rythme quotidien que
+    // l'effectif du joueur. Sans ça, leur fatigue ne redescendrait jamais et
+    // ils feraient tourner sans raison.
+    RMClub.avancerJourClubsAdverses(saison);
+
     const rapports = RMClub.remettreRapportsScouting(saison, date);
     const reponsesContrat = RMClub.resoudreNegociationsContrat(rng, saison, date);
     const decisionsExpirees = RMClub.resoudreDecisionsExpirees(saison, date);

@@ -173,7 +173,11 @@
   // id à chaque rendu), sur une COPIE — les données de la saison ne sont
   // jamais mutées pour un simple besoin d'affichage.
   function effectifAdverseNormalise(club) {
-    return (club.effectif || []).map((j, i) => Object.assign({}, j, {
+    // XV du jour + banc (TODO_AUDIT.md P1-29) : l'écran de composition doit
+    // pouvoir résoudre les identifiants des DEUX, sinon les remplaçants
+    // s'afficheraient comme des cases vides.
+    const tous = (club.effectif || []).concat(club.banc || []);
+    return tous.map((j, i) => Object.assign({}, j, {
       id: j.id || ('adv-' + club.id + '-' + (j.numero != null ? j.numero : i)),
     }));
   }
@@ -192,9 +196,17 @@
       if (j.numero != null && global.RMClub.POSTE_REQUIS[j.numero]) compositionTitulaires[j.numero] = j.id;
     }
     const encadrement = global.RMClub.autoDesignerEncadrement(effectif, compositionTitulaires);
+    // Banc RÉEL du club adverse (TODO_AUDIT.md P1-29) : il vient de son
+    // groupe de 24, comme le XV. Jusqu'ici cet objet était vide et l'écran
+    // de composition d'un adversaire affichait un banc désespérément blanc,
+    // alors que le joueur, lui, doit composer le sien.
+    const compositionBanc = {};
+    for (const j of (club.banc || [])) {
+      if (j.numero != null) compositionBanc[j.numero] = j.id;
+    }
     return {
       compositionTitulaires,
-      compositionBanc: {},
+      compositionBanc,
       tactique: deduireTactiqueAdverse(effectif),
       capitaineId: encadrement.capitaineId,
       buteurId: encadrement.buteurId,

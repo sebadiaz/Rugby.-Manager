@@ -801,6 +801,13 @@
     saison.clubJoueur.matchsEspoirs = [];
     global.RMClub.reinitialiserTempsPourSaison(saison, saison.numero);
     global.RMClub.daterCalendrier(saison);
+    // Groupe complet + feuille de match de chaque club adverse
+    // (TODO_AUDIT.md P1-29) : ils vivent dès le premier jour. Appel défensif
+    // (comme les autres domaines optionnels) : club.js ne doit jamais
+    // dépendre DUREMENT d'un module chargé après lui — sans ce garde-fou,
+    // une balise <script> manquante casserait la création d'une carrière au
+    // lieu de simplement priver les adversaires de leur banc.
+    if (global.RMClub.assurerEffectifsAdverses) global.RMClub.assurerEffectifsAdverses(saison);
     // Objectif de la saison qui COMMENCE, basé sur le classement RÉEL qu'on
     // vient d'archiver dans historiqueSaisons (donc y compris celui de la
     // saison qui vient de s'achever) — jamais une ambition fabriquée.
@@ -868,6 +875,13 @@
     // chaque rencontre (championnat le samedi, Équipe B le dimanche).
     global.RMClub.reinitialiserTempsPourSaison(saison, 1);
     global.RMClub.daterCalendrier(saison);
+    // Groupe complet + feuille de match de chaque club adverse
+    // (TODO_AUDIT.md P1-29) : ils vivent dès le premier jour. Appel défensif
+    // (comme les autres domaines optionnels) : club.js ne doit jamais
+    // dépendre DUREMENT d'un module chargé après lui — sans ce garde-fou,
+    // une balise <script> manquante casserait la création d'une carrière au
+    // lieu de simplement priver les adversaires de leur banc.
+    if (global.RMClub.assurerEffectifsAdverses) global.RMClub.assurerEffectifsAdverses(saison);
     return saison;
   }
 

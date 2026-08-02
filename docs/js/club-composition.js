@@ -41,8 +41,20 @@
   function effectifVersJoueursCfg(club) {
     const cfg = {};
     for (const j of club.effectif) {
+      // MÊME formule que compositionVersJoueursCfg (TODO_AUDIT.md P1-29) :
+      // depuis que les clubs adverses ont un vrai groupe dont la fatigue et
+      // le moral sont réellement suivis, ces valeurs doivent peser sur leurs
+      // stats effectives comme elles pèsent sur celles du joueur. Sinon la
+      // fatigue adverse serait purement décorative — et le joueur resterait
+      // le seul des deux à être pénalisé par la sienne.
+      const malusFatigue = Math.round(((j.fatigue || 0) / 100) * 12);
+      const ajustMoral = Math.round((((j.moral != null ? j.moral : 65) - 60) / 100) * 8);
+      const ajustement = ajustMoral - malusFatigue;
       cfg[j.numero] = {
-        poste: j.poste, vitesse: j.vitesse, plaquage: j.plaquage, tendance: j.tendance, couloir: j.couloir,
+        poste: j.poste,
+        vitesse: Math.max(20, j.vitesse + ajustement),
+        plaquage: Math.max(20, j.plaquage + ajustement),
+        tendance: j.tendance, couloir: j.couloir,
         adresse: j.adresse, melee: j.melee, touche: j.touche, puissance: j.puissance,
         endurance: j.endurance, passe: j.passe, jeuPied: j.jeuPied, decision: j.decision, discipline: j.discipline,
       };

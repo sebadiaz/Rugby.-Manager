@@ -47,6 +47,7 @@ new Function('window', require('fs').readFileSync(require('path').join(__dirname
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-pyramide-france.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-calendrier.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-competitions.js'), 'utf8'))(global.window);
+new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-effectif-adverse.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-sauvegarde.js'), 'utf8'))(global.window);
 // world.js : nécessaire pour les tests de navigation par pays/championnat
 // (P1-28) — l'écosystème mondial fournit 12 pays et leurs divisions.
@@ -1062,7 +1063,14 @@ test('contexte d\'équipe : le XV d\'un club consulté est bien celui qui joue r
   const ids = ctx.effectif.map((j) => j.id);
   assert.strictEqual(new Set(ids).size, ids.length, 'les ids dérivés doivent être uniques');
   assert.deepStrictEqual(RMClub.contexteEquipe(s).effectif.map((j) => j.id), ids, 'les ids dérivés doivent être stables d\'un rendu à l\'autre');
-  assert.ok(adv.effectif.every((j) => j.id === undefined), 'la normalisation ne doit JAMAIS muter les données de la saison');
+  // Depuis P1-29, les joueurs adverses ont de VRAIS identifiants (ils
+  // appartiennent au groupe de 24 du club, avec fatigue et blessures
+  // suivies) : l'absence d'id n'est plus le bon témoin de non-mutation. On
+  // vérifie donc directement que la normalisation ne touche pas la saison.
+  const avantNormalisation = JSON.stringify(adv.effectif);
+  RMClub.effectifAdverseNormalise(adv);
+  assert.strictEqual(JSON.stringify(adv.effectif), avantNormalisation,
+    'la normalisation ne doit JAMAIS muter les données de la saison');
 });
 
 test('contexte d\'équipe : la tactique d\'un club consulté est DÉDUITE de ses attributs réels, sur les mêmes 6 axes', () => {
@@ -2174,6 +2182,9 @@ const clubConditionJoueursSrcPourRechargement = require('fs').readFileSync(requi
 const clubDecisionsSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-decisions.js'), 'utf8');
 const clubPyramideSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-pyramide.js'), 'utf8');
 const clubPyramideFranceSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-pyramide-france.js'), 'utf8');
+const clubEffectifAdverseSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-effectif-adverse.js'), 'utf8');
+const clubCompetitionsSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-competitions.js'), 'utf8');
+const clubEquipesSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-equipes.js'), 'utf8');
 const clubCalendrierSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-calendrier.js'), 'utf8');
 const clubSauvegardeSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-sauvegarde.js'), 'utf8');
 const clubTempsSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-temps.js'), 'utf8');
@@ -2211,6 +2222,9 @@ function chargerInstanceFraicheClub() {
   new Function('window', clubJourMatchSrcPourRechargement)(ctx);
   new Function('window', clubDirectionSrcPourRechargement)(ctx);
   new Function('window', clubEvenementsSrcPourRechargement)(ctx);
+  new Function('window', clubCompetitionsSrcPourRechargement)(ctx);
+  new Function('window', clubEquipesSrcPourRechargement)(ctx);
+  new Function('window', clubEffectifAdverseSrcPourRechargement)(ctx);
   return ctx.RMClub;
 }
 
@@ -2798,6 +2812,139 @@ test('compétitions : un club du monde reste consultable, sans effectif inventé
   assert.strictEqual(ctx.effectif.length, 0, 'aucun joueur ne doit être inventé pour un club du monde');
   assert.ok(ctx.motifIndisponible && /connu|effectif/i.test(ctx.motifIndisponible),
     'l\'absence d\'effectif doit être expliquée honnêtement, pas laissée vide');
+});
+
+// --- P1-29 : de vrais effectifs complets pour les clubs adverses — 15
+// titulaires, 8 remplaçants, blessures, fatigue et rotations (demande
+// utilisateur, point 6). ---
+
+test('effectifs adverses : chaque club adverse a un groupe complet (23 joueurs minimum)', () => {
+  const s = saisonPourAvance(950);
+  for (const adv of s.adversaires) {
+    const groupe = RMClub.groupeAdverse(s, adv);
+    assert.ok(groupe.length >= 23, `${adv.nom} : groupe de ${groupe.length} joueur(s), 23 minimum attendus`);
+    for (const j of groupe) {
+      assert.ok(j.id, `${adv.nom} : un joueur du groupe sans identifiant`);
+      assert.ok(j.poste, `${adv.nom} : un joueur du groupe sans poste`);
+      assert.ok(typeof j.fatigue === 'number', `${adv.nom} : ${j.nom} n'a pas de fatigue suivie`);
+      assert.ok(typeof j.blessureJournees === 'number', `${adv.nom} : ${j.nom} n'a pas de blessure suivie`);
+    }
+  }
+});
+
+test('effectifs adverses : le XV du jour est TIRÉ du groupe, jamais inventé à côté', () => {
+  const s = saisonPourAvance(951);
+  for (const adv of s.adversaires) {
+    const ids = new Set(RMClub.groupeAdverse(s, adv).map((j) => j.id));
+    const slot = RMClub.slotAdverse(adv, RMClub.effectifAdverseNormalise(adv));
+    const titulaires = Object.values(slot.compositionTitulaires);
+    assert.strictEqual(titulaires.length, 15, `${adv.nom} : ${titulaires.length} titulaires au lieu de 15`);
+    for (const id of titulaires) {
+      assert.ok(ids.has(id), `${adv.nom} : le titulaire ${id} n'appartient pas à son groupe`);
+    }
+  }
+});
+
+test('effectifs adverses : un banc de 8 remplaçants, sans doublon avec le XV', () => {
+  const s = saisonPourAvance(952);
+  for (const adv of s.adversaires) {
+    const slot = RMClub.slotAdverse(adv, RMClub.effectifAdverseNormalise(adv));
+    const banc = Object.values(slot.compositionBanc);
+    assert.strictEqual(banc.length, 8, `${adv.nom} : ${banc.length} remplaçant(s) au lieu de 8`);
+    const titulaires = new Set(Object.values(slot.compositionTitulaires));
+    for (const id of banc) {
+      assert.ok(!titulaires.has(id), `${adv.nom} : ${id} est à la fois titulaire et remplaçant`);
+    }
+    assert.strictEqual(new Set(banc).size, banc.length, `${adv.nom} : un remplaçant apparaît deux fois`);
+  }
+});
+
+test('effectifs adverses : un match fatigue RÉELLEMENT les joueurs alignés', () => {
+  const s = saisonPourAvance(953);
+  const adv = s.adversaires[0];
+  const groupe = RMClub.groupeAdverse(s, adv);
+  for (const j of groupe) j.fatigue = 0;
+  const slot = RMClub.slotAdverse(adv, RMClub.effectifAdverseNormalise(adv));
+  RMClub.appliquerEffetsMatchAdverse(s, adv, slot);
+  const alignes = new Set(Object.values(slot.compositionTitulaires));
+  const fatigues = groupe.filter((j) => alignes.has(j.id) && j.fatigue > 0);
+  assert.strictEqual(fatigues.length, alignes.size, 'tous les titulaires alignés doivent accumuler de la fatigue');
+  const repos = groupe.filter((j) => !alignes.has(j.id)
+    && !Object.values(slot.compositionBanc).includes(j.id));
+  for (const j of repos) assert.strictEqual(j.fatigue, 0, `${j.nom} n'a pas joué et ne doit pas être fatigué`);
+});
+
+test('effectifs adverses : un joueur adverse blessé n\'est PAS aligné la journée suivante', () => {
+  const s = saisonPourAvance(954);
+  const adv = s.adversaires[0];
+  const groupe = RMClub.groupeAdverse(s, adv);
+  const slotAvant = RMClub.slotAdverse(adv, RMClub.effectifAdverseNormalise(adv));
+  const titulaire = groupe.find((j) => Object.values(slotAvant.compositionTitulaires).includes(j.id));
+  titulaire.blessureJournees = 14;
+  RMClub.rafraichirEffectifAdverse(s, adv);
+  const slotApres = RMClub.slotAdverse(adv, RMClub.effectifAdverseNormalise(adv));
+  assert.ok(!Object.values(slotApres.compositionTitulaires).includes(titulaire.id),
+    `${titulaire.nom} est blessé (14 jours) et ne doit plus être aligné`);
+  assert.strictEqual(Object.values(slotApres.compositionTitulaires).length, 15,
+    'le club adverse doit tout de même aligner 15 joueurs');
+});
+
+test('effectifs adverses : la rotation change RÉELLEMENT le XV quand le groupe fatigue', () => {
+  const s = saisonPourAvance(955);
+  const adv = s.adversaires[0];
+  const groupe = RMClub.groupeAdverse(s, adv);
+  const avant = Object.values(RMClub.slotAdverse(adv, RMClub.effectifAdverseNormalise(adv)).compositionTitulaires);
+  // Les titulaires du jour reviennent épuisés : le club doit faire tourner.
+  for (const j of groupe) j.fatigue = avant.includes(j.id) ? 95 : 0;
+  RMClub.rafraichirEffectifAdverse(s, adv);
+  const apres = Object.values(RMClub.slotAdverse(adv, RMClub.effectifAdverseNormalise(adv)).compositionTitulaires);
+  const changements = apres.filter((id) => !avant.includes(id)).length;
+  assert.ok(changements >= 3, `seulement ${changements} changement(s) dans le XV malgré un groupe épuisé`);
+});
+
+test('effectifs adverses : les blessures adverses guérissent avec le temps qui passe', () => {
+  const s = saisonPourAvance(956);
+  const adv = s.adversaires[0];
+  const groupe = RMClub.groupeAdverse(s, adv);
+  groupe[0].blessureJournees = 5;
+  groupe[1].fatigue = 60;
+  for (let i = 0; i < 6; i++) RMClub.avancerUnJour(s);
+  assert.strictEqual(groupe[0].blessureJournees, 0, 'une blessure adverse doit se résorber jour après jour');
+  assert.ok(groupe[1].fatigue < 60, 'la fatigue adverse doit redescendre jour après jour');
+});
+
+test('effectifs adverses : une sauvegarde antérieure (15 joueurs, sans groupe) reste jouable', () => {
+  const s = saisonPourAvance(957);
+  // Simule l'ancien format : un effectif de 15 par numéro, aucun groupe.
+  for (const adv of s.adversaires) {
+    delete adv.groupe;
+    adv.effectif = RMClub.genererEffectif(creerRng(957), adv.niveauClub);
+  }
+  const adv = s.adversaires[0];
+  const groupe = RMClub.groupeAdverse(s, adv);
+  assert.ok(groupe.length >= 23, 'un groupe complet doit être reconstitué à la volée');
+  const slot = RMClub.slotAdverse(adv, RMClub.effectifAdverseNormalise(adv));
+  assert.strictEqual(Object.values(slot.compositionTitulaires).length, 15,
+    'une ancienne sauvegarde doit continuer à aligner un XV complet');
+});
+
+test('effectifs adverses : leur fatigue pèse RÉELLEMENT sur les stats envoyées au moteur', () => {
+  const s = saisonPourAvance(958);
+  const adv = s.adversaires[0];
+  const frais = RMClub.effectifVersJoueursCfg(adv);
+  for (const j of adv.effectif) j.fatigue = 90;
+  const cuit = RMClub.effectifVersJoueursCfg(adv);
+  let baisses = 0;
+  for (const numero of Object.keys(frais)) {
+    assert.ok(cuit[numero].vitesse <= frais[numero].vitesse,
+      `n°${numero} : un joueur épuisé ne doit jamais être plus rapide`);
+    if (cuit[numero].vitesse < frais[numero].vitesse) baisses++;
+  }
+  assert.strictEqual(baisses, 15, 'les 15 joueurs épuisés doivent tous perdre en efficacité');
+  // Le placement, lui, ne bouge pas : la fatigue n'a jamais déplacé personne.
+  for (const numero of Object.keys(frais)) {
+    assert.strictEqual(cuit[numero].couloir, frais[numero].couloir, `n°${numero} : le couloir ne doit pas changer`);
+  }
 });
 
 console.log(`\n${nbTests} test(s) exécuté(s).`);

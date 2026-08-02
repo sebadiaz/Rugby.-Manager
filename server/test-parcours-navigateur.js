@@ -509,8 +509,12 @@ function optionsLancement() {
   // seule l'action proposée diffère.
   await clicOnglet('effectif');
   await page.waitForTimeout(250);
-  verifier('club consulté : son effectif s\'affiche dans l\'écran Effectif COMMUN, en lecture seule',
-    (await page.$$('#clubEffectif tr[data-joueur]')).length === 15
+  // 23 et non 15 depuis TODO_AUDIT.md P1-29 : un club adverse aligne
+  // désormais une vraie feuille de match — 15 titulaires ET 8 remplaçants,
+  // tirés de son groupe de 24. Son banc n'est plus vide.
+  const nbJoueursAdverses = (await page.$$('#clubEffectif tr[data-joueur]')).length;
+  verifier('club consulté : sa feuille de match complète s\'affiche dans l\'écran Effectif COMMUN, en lecture seule',
+    nbJoueursAdverses === 23
     && !!(await page.$('#contexteEquipeInfo .badgeEquipeMode.lecture')));
   await page.click('#clubEffectif tr[data-joueur]');
   await page.waitForTimeout(200);
@@ -2041,6 +2045,52 @@ function optionsLancement() {
     (await pageNav.textContent('#clubEntete')).includes('Test Navigation Monde'));
   verifier('navigation monde : aucune erreur console sur tout le parcours', erreursNav.length === 0);
   await contexteNav.close();
+
+  // 11 quinquies) Effectifs complets des clubs adverses (TODO_AUDIT.md P1-29) :
+  // leur banc doit être RÉEL et visible, et leur groupe persisté.
+  const contexteAdv = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const pageAdv = await contexteAdv.newPage();
+  const erreursAdv = [];
+  pageAdv.on('pageerror', (e) => erreursAdv.push(`PAGEERROR: ${e.message}`));
+  pageAdv.on('console', (m) => {
+    if (m.type() === 'error' && !m.text().includes('404')) erreursAdv.push(`CONSOLE: ${m.text()}`);
+  });
+  await pageAdv.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  await pageAdv.click('#btnAccueilModeClub');
+  await pageAdv.fill('#inputNomClub', 'Test Effectifs Adverses');
+  await pageAdv.click('#btnCreerClub');
+  await pageAdv.waitForTimeout(500);
+
+  const etatAdv = await pageAdv.evaluate(() => {
+    const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
+    return {
+      groupes: s.adversaires.map((a) => (a.groupe || []).length),
+      bancs: s.adversaires.map((a) => (a.banc || []).length),
+      tailleKo: Math.round(localStorage.getItem('rugbyManager.club.v1').length / 1024),
+    };
+  });
+  verifier('effectifs adverses : chaque club adverse a un groupe complet persisté',
+    etatAdv.groupes.length > 0 && etatAdv.groupes.every((n) => n >= 23));
+  verifier('effectifs adverses : chaque club adverse a un banc de 8 persisté',
+    etatAdv.bancs.every((n) => n === 8));
+  verifier('effectifs adverses : la sauvegarde reste d\'une taille raisonnable (< 3 Mo)',
+    etatAdv.tailleKo < 3072);
+
+  await clicOngletSur(pageAdv, 'autresclubs');
+  await pageAdv.waitForTimeout(400);
+  const idJoueurAdv = await pageAdv.evaluate(
+    () => JSON.parse(localStorage.getItem('rugbyManager.club.v1')).clubJoueur.id);
+  await pageAdv.click(`#clubCompetitionClassement .lienClub:not([data-club="${idJoueurAdv}"])`);
+  await pageAdv.waitForTimeout(600);
+  await clicOngletSur(pageAdv, 'composition');
+  await pageAdv.waitForTimeout(500);
+  const bancAdverse = await pageAdv.textContent('#clubBanc');
+  verifier('effectifs adverses : le banc d\'un adversaire est RÉELLEMENT affiché (plus « pas connu »)',
+    /N°16/.test(bancAdverse) && /N°23/.test(bancAdverse) && !/n\'est pas connu/.test(bancAdverse));
+  verifier('effectifs adverses : les remplaçants adverses portent de vrais noms',
+    (bancAdverse.match(/N°\d+ · /g) || []).length >= 8);
+  verifier('effectifs adverses : aucune erreur console', erreursAdv.length === 0);
+  await contexteAdv.close();
 
   // 12) Décision réelle dans la boîte de réception (audit "boîte de réception
   // avec décisions", cf. club-decisions.js) : injecte directement une

@@ -1841,12 +1841,28 @@
     const banc = slot.compositionBanc || {};
     const inactif = ctx.modifiable ? '' : ' disabled';
     const titulaireIds = new Set(Object.values(slot.compositionTitulaires || {}));
-    // Un club adverse n'a pas de banc modélisé (son effectif fait exactement
-    // 15, cf. genererEffectif) : la carte reste le même composant, elle dit
-    // simplement que l'information n'existe pas — pas un banc inventé.
+    // Club consulté : son banc est désormais RÉEL (TODO_AUDIT.md P1-29) — il
+    // vient de son groupe de 24, comme le sien. On l'affiche donc en lecture
+    // seule, avec la même carte, au lieu de l'ancien message « pas connu »
+    // qui n'avait de sens que tant que les adversaires n'avaient que 15
+    // joueurs. Un club dont l'effectif n'est pas simulé du tout (autre
+    // palier, autre pays — P1-28) garde bien un message honnête.
     if (!ctx.modifiable) {
-      document.getElementById('clubBanc').innerHTML =
-        `<p class="noteLectureSeule">🔒 Le banc de ${echapperHTML(ctx.label)} n'est pas connu : seuls les quinze joueurs qui débutent la rencontre sont observables.</p>`;
+      const zoneBanc = document.getElementById('clubBanc');
+      const numerosBanc = Object.keys(banc);
+      if (!numerosBanc.length) {
+        zoneBanc.innerHTML = `<p class="noteLectureSeule">🔒 Le banc de ${echapperHTML(ctx.nomClub || ctx.label)} n'est pas connu : ce club évolue hors de ton championnat, où seuls les résultats sont suivis.</p>`;
+        return;
+      }
+      const parIdBanc = {};
+      for (const j of effectif) parIdBanc[j.id] = j;
+      zoneBanc.innerHTML = numerosBanc.sort((a, b) => Number(a) - Number(b)).map((numero) => {
+        const j = parIdBanc[banc[numero]];
+        const poste = RMClub.POSTE_REQUIS_BANC[numero];
+        const blesse = j && j.blessureJournees > 0 ? ` 🤕${j.blessureJournees}j` : '';
+        return `<div class="chipBanc"><span class="numChip">N°${numero} · ${POSTE_COMPLET[poste] || poste}</span>` +
+          `<b>${j ? echapperHTML(j.nom) + blesse : '—'}</b></div>`;
+      }).join('');
       return;
     }
     document.getElementById('clubBanc').innerHTML = Object.keys(RMClub.POSTE_REQUIS_BANC).map((numero) => {
@@ -2713,6 +2729,19 @@
     // dépend PLUS de l'ouverture de l'onglet Monde (limite corrigée en
     // TODO_AUDIT.md P1-21).
     if (typeJour === 'pro') {
+      // Les clubs adverses subissent RÉELLEMENT leur journée (TODO_AUDIT.md
+      // P1-29) : fatigue des joueurs alignés, blessures tirées sur leurs
+      // titulaires, puis rotation de leur XV pour la journée suivante. Sans
+      // ça, ils alignaient les mêmes quinze hommes, jamais fatigués, toute
+      // la saison — pendant que le joueur gère 24 hommes et leurs
+      // contraintes.
+      const rngAdverses = creerRng(graineDuJour('adversaires'));
+      for (const adverse of saison.adversaires) {
+        if (!RMClub.aUnEffectifSimule(adverse)) continue;
+        const slotAdv = RMClub.slotAdverse(adverse, RMClub.effectifAdverseNormalise(adverse));
+        RMClub.appliquerEffetsMatchAdverse(saison, adverse, slotAdv, rngAdverses);
+      }
+      RMClub.rotationClubsAdverses(saison);
       RMWorld.assurerMonde(creerRng(graineDuJour('monde')), saison);
       RMWorld.avancerJourneeMonde(creerRng(graineDuJour('mondeJournee')), saison.monde, null);
       RMClub.avancerJourneeAutresDivisionsFrance(
