@@ -43,18 +43,19 @@
   // rencontres amicales contre une académie, cf. club-espoirs.js). On les
   // dérive des journées de championnat, comme le fait déjà l'écran
   // Calendrier — jamais une liste parallèle qui pourrait diverger.
-  function journeesEspoirsDuClub(saison) {
+  // Rencontres du championnat ESPOIRS restant à jouer pour le club du joueur
+  // (TODO_AUDIT.md P1-31) : elles viennent désormais du vrai calendrier de
+  // cette compétition, plus d'une déduction faite depuis le calendrier pro.
+  function fixturesEspoirsDuClub(saison) {
     const RMClub = global.RMClub;
     const c = saison.clubJoueur;
-    const dejaJouees = new Set((c.matchsEspoirs || []).map((m) => m.journee));
-    const journees = [];
-    for (const f of saison.calendrier || []) {
-      if (!concerne(f, c.id)) continue;
-      if (!RMClub.journeeDeMatchEspoirs(f.journee)) continue;
-      if (dejaJouees.has(f.journee)) continue;
-      journees.push(f.journee);
-    }
-    return journees;
+    const comp = RMClub.assurerCompetitionEspoirs(saison);
+    return (comp.calendrier || []).filter((f) =>
+      !f.joue && (f.domicileId === c.id || f.exterieurId === c.id));
+  }
+
+  function journeesEspoirsDuClub(saison) {
+    return fixturesEspoirsDuClub(saison).map((f) => f.journeeChampionnat).filter((j) => j != null);
   }
 
   // Tout ce qui est programmé à une date donnée, pour le club du joueur.
@@ -68,8 +69,10 @@
     const pro = (saison.calendrier || []).filter((f) => f.date === iso && !f.joue);
     const compB = saison.competitionB;
     const b = (compB && compB.calendrier ? compB.calendrier : []).filter((f) => f.date === iso && !f.joue);
-    const journeesEspoirs = journeesEspoirsDuClub(saison).filter(
-      (j) => RMClub.dateISO(RMClub.dateDeJournee(saison.numero || 1, j, 'jeunes')) === iso);
+    // La rencontre espoirs du jour est celle DATÉE de ce jour dans le
+    // calendrier du championnat espoirs (TODO_AUDIT.md P1-31).
+    const fixturesEspoirs = fixturesEspoirsDuClub(saison).filter((f) => f.date === iso);
+    const journeesEspoirs = fixturesEspoirs.map((f) => f.journeeChampionnat);
     return {
       date: iso,
       matchPro: pro.find((f) => concerne(f, c.id)) || null,
@@ -77,6 +80,7 @@
       rondeB: b,
       matchBJoueur: b.find((f) => concerne(f, c.id)) || null,
       journeeEspoirs: journeesEspoirs.length ? journeesEspoirs[0] : null,
+      fixtureEspoirs: fixturesEspoirs.length ? fixturesEspoirs[0] : null,
     };
   }
 

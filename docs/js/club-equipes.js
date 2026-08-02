@@ -224,6 +224,21 @@
     const c = saison.clubJoueur;
     if (!Array.isArray(c.matchsEspoirs)) c.matchsEspoirs = [];
     c.matchsEspoirs.push({ journee, adversaire, scorePour, scoreContre });
+    // Marque AUSSI la rencontre correspondante du championnat espoirs
+    // (TODO_AUDIT.md P1-31) : `journee` est la journée de CHAMPIONNAT à
+    // laquelle la rencontre est adossée. Sans ça, l'archive et le calendrier
+    // divergeraient — la rencontre resterait « à jouer » indéfiniment et
+    // « Continuer » s'y arrêterait en boucle.
+    const comp = global.RMClub.assurerCompetitionEspoirs(saison);
+    const fixture = (comp.calendrier || []).find((f) => !f.joue
+      && f.journeeChampionnat === journee
+      && (f.domicileId === c.id || f.exterieurId === c.id));
+    if (fixture) {
+      const domicileEstJoueur = fixture.domicileId === c.id;
+      global.RMClub.enregistrerResultatEspoirs(saison, fixture.id,
+        domicileEstJoueur ? scorePour : scoreContre,
+        domicileEstJoueur ? scoreContre : scorePour, 0, 0);
+    }
     return c.matchsEspoirs;
   }
 
@@ -254,40 +269,17 @@
   // journeeDeMatchEspoirs) pour le club du joueur, à la même forme qu'une
   // fixture de championnat — déjà jouées (score réel archivé) ou à venir.
   function calendrierEspoirs(saison) {
-    const c = saison.clubJoueur;
-    const joues = c.matchsEspoirs || [];
-    const parJournee = {};
-    for (const m of joues) parJournee[m.journee] = m;
-    const fixtures = [];
-    for (const f of saison.calendrier) {
-      if (f.domicileId !== c.id && f.exterieurId !== c.id) continue;
-      if (!global.RMClub.journeeDeMatchEspoirs(f.journee)) continue;
-      const joue = parJournee[f.journee];
-      const adverseId = f.domicileId === c.id ? f.exterieurId : f.domicileId;
-      const clubAdverse = global.RMClub.club(saison, adverseId);
-      fixtures.push({
-        id: 'esp' + f.journee,
-        journee: f.journee,
-        // Date RÉELLE de la rencontre (TODO_AUDIT.md P1-27), dérivée du même
-        // calendrier daté que le championnat et l'Équipe B : les espoirs
-        // jouent le mercredi qui précède la journée de championnat
-        // (DECALAGE_JOUR_MATCH.jeunes = -3). Sans ce champ, l'écran
-        // Calendrier n'avait aucune date à montrer pour cette équipe et
-        // affichait seulement « Journée N » — la rencontre existait bien à
-        // une date précise (evenementsDuJour la trouve), elle n'était juste
-        // écrite nulle part.
-        date: global.RMClub.dateISO(global.RMClub.dateDeJournee(saison.numero || 1, f.journee, 'jeunes')),
-        domicileId: c.id,
-        exterieurId: adverseId,
-        // L'adversaire est une académie synthétique du club affronté ce
-        // jour-là (cf. simulerMatchEspoirs) — nommée telle quelle, pas
-        // confondue avec l'équipe première adverse.
-        libelleExterieur: 'Académie ' + ((joue && joue.adversaire) || (clubAdverse ? clubAdverse.nom : '?')),
-        joue: !!joue,
-        score: joue ? { domicile: joue.scorePour, exterieur: joue.scoreContre } : null,
-      });
-    }
-    return fixtures;
+    // Le vrai calendrier du championnat espoirs (TODO_AUDIT.md P1-31), à la
+    // même forme qu'une fixture de championnat. Avant, ces rencontres
+    // étaient FABRIQUÉES à la volée depuis le calendrier pro, contre une
+    // académie synthétique dont le nom changeait à chaque affichage.
+    const comp = global.RMClub.assurerCompetitionEspoirs(saison);
+    const parId = {};
+    for (const cl of comp.clubs) parId[cl.id] = cl;
+    return comp.calendrier.map((f) => Object.assign({}, f, {
+      libelleDomicile: (parId[f.domicileId] || {}).nom,
+      libelleExterieur: (parId[f.exterieurId] || {}).nom,
+    }));
   }
 
   // --- Le contexte : ce que consomment TOUS les écrans --------------------
@@ -392,9 +384,12 @@
       return Object.assign(base, {
         sousTitre: 'Centre de formation',
         entrainementFocus: c.entrainementFocus || 'physique',
+        // Vrai championnat espoirs (TODO_AUDIT.md P1-31) : calendrier et
+        // classement de la compétition réelle, plus un « bilan » d'un seul
+        // club face à des adversaires jetables.
         calendrier: calendrierEspoirs(saison),
-        classement: { [c.id]: bilanEspoirs(saison) },
-        titreClassement: 'Bilan des espoirs',
+        classement: global.RMClub.assurerCompetitionEspoirs(saison).classement,
+        titreClassement: 'Championnat des espoirs',
         disponible: true,
         motifIndisponible: null,
       });

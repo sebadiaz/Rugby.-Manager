@@ -948,6 +948,31 @@ C'est un championnat crédible : on bat les derniers, on joue à égalité au mi
 
 **Reste à faire, honnêtement.** La fiche reste **dépliée dans l'onglet Effectif**, ce n'est pas encore une page à part entière avec sa propre entrée de navigation. Tout le contenu demandé y est, mais la demande disait « page indépendante » : c'est une présentation, pas une donnée, et elle reste à faire. Par ailleurs les statistiques par compétition ne remontent que du moteur (essais, passes, plaquages, mètres) : cartons, coups de pied réussis et temps de jeu en minutes ne sont pas encore exposés par `etat.statsJoueurs`.
 
+### P1-31. Un vrai championnat des espoirs : académies persistantes, calendrier, classement
+- **Statut : CORRIGÉ**
+- Priorité : P1 (demande utilisateur, point 7 : « Remplacer les matchs Espoirs occasionnels par un vrai championnat junior avec calendrier, classement, clubs persistants et statistiques. »)
+- Fichiers concernés : `docs/js/club-espoirs.js`, `docs/js/club-equipes.js`, `docs/js/club-agenda.js`, `docs/js/clubUI.js`, `server/test-parcours-club.js`, `server/test-parcours-navigateur.js`
+
+**Le constat.** Les espoirs disputaient un match occasionnel contre une académie **synthétique régénérée à chaque rencontre puis jetée** : aucun adversaire ne revenait, son nom changeait d'un affichage à l'autre, et le « classement » affiché était le **bilan du club du joueur tout seul** — une ligne unique. Le calendrier lui-même était déduit à la volée du calendrier professionnel.
+
+**Le championnat.** Des académies **persistantes**, adossées aux clubs adverses réels de la division (« Académie <club> »), avec leur propre `niveauClub` dérivé du club parent — des adversaires qu'on retrouve d'une journée à l'autre et dont le nom reste reconnaissable. Un vrai **aller-retour** (`genererCalendrier` + `classementInitial`, les mêmes fonctions que le championnat d'Équipe B, jamais un moteur parallèle), un vrai **classement multi-clubs**, et un calendrier **entièrement daté** (le mercredi, `DECALAGE_JOUR_MATCH.jeunes`).
+
+**Un choix de dimensionnement assumé.** Une saison n'offre qu'un nombre limité de dates d'espoirs (une journée de championnat sur quatre, soit 6 ou 7 par saison). `tailleCompetitionEspoirs` retient donc le plus grand nombre PAIR d'académies dont l'aller-retour **tient entièrement** dans ces dates. **Mieux vaut une compétition complète — tout le monde rencontre tout le monde, aller et retour — qu'une grande ligue tronquée dont le classement ne voudrait rien dire.**
+
+**Les autres rencontres de la journée sont jouées aussi.** Comme pour l'Équipe B et le championnat principal, seul le match du club du joueur passe par le moteur complet ; les autres sont résolues de façon abstraite à partir du niveau réel de chaque académie. Le classement vit donc réellement, sans payer le coût du moteur pour des matchs jamais regardés. Vérifié : une journée produit bien **plusieurs** rencontres jouées, pas une seule.
+
+**Cohérence archive / calendrier.** `enregistrerMatchEspoirs` (l'archive qui alimente le bilan et l'historique) marque désormais AUSSI la rencontre correspondante du championnat. Sans ça les deux auraient divergé : la rencontre serait restée « à jouer » indéfiniment et **« Continuer » s'y serait arrêté en boucle**.
+
+**Deux textes devenus faux, corrigés.** La note sous le classement affirmait que « les espoirs disputent des rencontres amicales […] pas un championnat à classement » : remplacée. Et les noms d'académies s'affichaient « **?** » dans le classement, parce que `lienClub` ne connaît pas ces clubs — ils sont désormais rendus **en texte**, puisqu'une académie n'a pas de fiche à ouvrir. Les deux défauts ont été trouvés en pilotant le jeu, pas en relisant le code.
+
+**Critères de validation.**
+- `server/test-parcours-club.js` : 173/173 — dont 7 nouveaux (compétition existante avec académies **persistantes d'un appel à l'autre** ; aller-retour complet, entièrement daté, un mercredi, chaque journée sur une seule date et dans l'ordre ; classement couvrant tous les clubs ; un résultat enregistré met réellement à jour le classement ; la ronde regroupe toutes les rencontres de la journée ; chaque académie a un niveau propre et un nom unique ; une sauvegarde antérieure gagne sa compétition sans perdre ses résultats archivés). Quatre tests plus anciens ont été mis à jour : les espoirs ont maintenant leur **propre numérotation de journées** (`journeeChampionnat` dit à quelle journée de championnat la rencontre est adossée).
+- `server/test-parcours-navigateur.js` : 248/248 — dont 6 nouveaux (l'écran annonce un CHAMPIONNAT ; le classement compte plusieurs académies **toutes nommées, aucun « ? »** ; calendrier daté un mercredi ; une journée entière se joue, pas seulement le match du joueur ; le classement bouge réellement ; aucune erreur console).
+- Vérifié **dans le vrai jeu** : « Championnat des espoirs », journée 1 le mercredi 25 septembre 2024, journée 2 le mercredi 23 octobre, et après une journée le tableau montre « Académie Roquebrune Dragons 1 1 0 0 19-4 +15 4 pts » devant « Stade Espoirs 1 1 0 0 6-3 +3 4 pts ».
+- Régression complète sans échec.
+
+**Reste à faire.** Les académies n'ont **pas d'effectif simulé** (seuls leurs résultats le sont) — l'écran le dit. Elles sont régénérées à chaque saison en même temps que les adversaires : il n'y a donc pas encore d'historique pluriannuel du championnat espoirs.
+
 ### P2-10. Découper club.js et clubUI.js par domaine (sans changement de comportement)
 - **Statut : EN COURS (tranche 1 : Personnel, tranche 2 : Objectif de saison, tranche 3 : Analyse adversaire, tranche 4 : Prêts, tranche 5 : Contrats, tranche 6 : Équipe B, tranche 7 : Transferts national, tranche 8 : Transferts internationaux, tranche 9 : Effectif étendu, tranche 10 : Centre de formation, tranche 11 : Composition et tactique, tranche 12 : Condition physique des joueurs, tranche 13 : Génération de club/pyramide, tranche 14 : Calendrier et classement, tranche 15 : Sauvegarde et migration — voir constat de risque et tranches suivantes ci-dessous)**
 - Priorité : P2 (maintenabilité — explicitement demandée par l'utilisateur malgré la tension avec la règle CLAUDE.md "jamais un patch purement technique si le gameplay ne s'améliore pas visiblement")

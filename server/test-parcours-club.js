@@ -1110,7 +1110,13 @@ test('contexte d\'équipe : calendrier et classement suivent l\'équipe/le club 
   RMClub.definirEquipeConsultee(s, 'jeunes');
   const ctxJeunes = RMClub.contexteEquipe(s);
   assert.ok(ctxJeunes.calendrier.length > 0, 'les espoirs doivent avoir des rencontres programmées');
-  assert.ok(ctxJeunes.calendrier.every((f) => RMClub.journeeDeMatchEspoirs(f.journee)));
+  // Depuis P1-31, les espoirs ont leur PROPRE championnat, donc leur propre
+  // numérotation de journées : c'est `journeeChampionnat` qui dit à quelle
+  // journée de championnat la rencontre est adossée.
+  assert.ok(ctxJeunes.calendrier.every((f) => RMClub.journeeDeMatchEspoirs(f.journeeChampionnat)),
+    'chaque rencontre espoirs doit être adossée à une journée de championnat valide');
+  assert.strictEqual(ctxJeunes.classement, s.competitionEspoirs.classement,
+    'les espoirs affichent le classement de LEUR championnat');
 
   RMClub.ouvrirClubDansNavigation(s, adv.id, 'calendrier');
   const ctxAdv = RMClub.contexteEquipe(s);
@@ -1133,9 +1139,22 @@ test('contexte d\'équipe : le bilan des espoirs vient de matchs RÉELLEMENT jou
   assert.strictEqual(bilan.pointsPour, 46);
   assert.strictEqual(bilan.pointsContre, 46);
   assert.strictEqual(bilan.pts, 6, 'victoire 4 + nul 2 = 6 points, mêmes règles que les autres compétitions');
+  // Depuis P1-31, le calendrier espoirs est celui d'un VRAI championnat
+  // (académies persistantes) : c'est enregistrerResultatEspoirs qui y marque
+  // les rencontres jouées, pas l'archive `matchsEspoirs` qui alimente le
+  // bilan ci-dessus. On vérifie donc les deux chemins séparément.
+  // L'archive (`matchsEspoirs`, qui alimente le bilan ci-dessus) et le
+  // CALENDRIER du championnat espoirs doivent rester synchronisés : les 3
+  // matchs enregistrés doivent apparaître comme joués dans les deux.
   const joues = RMClub.calendrierEspoirs(s).filter((f) => f.joue);
-  assert.strictEqual(joues.length, 3, 'les 3 matchs archivés doivent apparaître comme joués dans le calendrier espoirs');
-  assert.deepStrictEqual(joues[0].score, { domicile: 24, exterieur: 10 });
+  assert.strictEqual(joues.length, 3,
+    'les 3 matchs enregistrés doivent aussi être marqués joués dans le championnat espoirs');
+  const comp = RMClub.assurerCompetitionEspoirs(s);
+  const classementJoueur = comp.classement[s.clubJoueur.id];
+  assert.strictEqual(classementJoueur.j, 3, 'le classement du championnat espoirs doit compter les 3 rencontres');
+  assert.strictEqual(classementJoueur.g, 1, 'une victoire');
+  assert.strictEqual(classementJoueur.n, 1, 'un nul');
+  assert.strictEqual(classementJoueur.p, 1, 'une défaite');
 });
 
 // --- 12e) Navigation entre clubs (TODO_AUDIT.md P1-20) : on n'ouvre JAMAIS
@@ -2609,7 +2628,9 @@ test('dates : la rencontre espoirs tombe le mercredi qui précède la journée d
   const ctx = RMClub.contexteEquipe(s);
   assert.ok(ctx.calendrier.length > 0, 'les espoirs doivent avoir des rencontres');
   for (const f of ctx.calendrier) {
-    const attendue = RMClub.dateISO(RMClub.dateDeJournee(s.numero || 1, f.journee, 'jeunes'));
+    // La date suit la journée de CHAMPIONNAT à laquelle la rencontre est
+    // adossée (P1-31 : les espoirs ont leur propre numérotation).
+    const attendue = RMClub.dateISO(RMClub.dateDeJournee(s.numero || 1, f.journeeChampionnat, 'jeunes'));
     assert.strictEqual(f.date, attendue, `journée ${f.journee} : date ${f.date} au lieu de ${attendue}`);
     assert.strictEqual(RMClub.jourSemaine(RMClub.dateDepuisISO(f.date)), 3,
       `journée ${f.journee} : la rencontre espoirs doit tomber un mercredi`);
@@ -2642,9 +2663,13 @@ test('dates : une rencontre espoirs n\'est programmée QUE le jour de sa date', 
   const s = saisonPourAvance(933);
   s.clubJoueur.navigationClub = RMClub.navigationClub(s);
   s.clubJoueur.navigationClub.equipeConsultee = 'jeunes';
-  const premiere = RMClub.contexteEquipe(s).calendrier[0];
+  // La rencontre du club du joueur (le calendrier couvre toute la
+  // compétition, cf. P1-31).
+  const premiere = RMClub.contexteEquipe(s).calendrier
+    .find((f) => f.domicileId === s.clubJoueur.id || f.exterieurId === s.clubJoueur.id);
+  assert.ok(premiere, 'le club du joueur doit avoir des rencontres espoirs');
   const date = RMClub.dateDepuisISO(premiere.date);
-  assert.strictEqual(RMClub.evenementsDuJour(s, date).journeeEspoirs, premiere.journee,
+  assert.strictEqual(RMClub.evenementsDuJour(s, date).journeeEspoirs, premiere.journeeChampionnat,
     'le jour de sa date, la rencontre espoirs doit être programmée');
   for (const decalage of [-2, -1, 1, 2]) {
     const autre = RMClub.ajouterJours(date, decalage);
@@ -3029,6 +3054,103 @@ test('page joueur : les matchs d\'Équipe B et des espoirs comptent enfin dans l
   assert.ok(jeune.statsSaison && jeune.statsSaison.matchsJoues === 1,
     'un espoir qui joue doit voir ses statistiques enregistrées');
   assert.strictEqual(jeune.statsSaison.parCompetition.jeunes.essais, 1);
+});
+
+// --- P1-31 : un vrai championnat espoirs — clubs persistants, calendrier,
+// classement et statistiques (demande utilisateur, point 7). ---
+
+test('championnat espoirs : une vraie compétition existe, avec des académies PERSISTANTES', () => {
+  const s = saisonPourAvance(970);
+  const comp = RMClub.assurerCompetitionEspoirs(s);
+  assert.ok(comp, 'une compétition espoirs doit exister');
+  assert.ok(comp.clubs.length >= 4 && comp.clubs.length % 2 === 0,
+    `nombre de clubs invalide (${comp.clubs.length}) : il en faut au moins 4, en nombre pair`);
+  assert.ok(comp.clubs.some((c) => c.id === s.clubJoueur.id),
+    'le centre de formation du joueur doit disputer sa propre compétition');
+  // Persistance : deux appels renvoient EXACTEMENT les mêmes académies.
+  const idsA = RMClub.assurerCompetitionEspoirs(s).clubs.map((c) => c.id).join(',');
+  const idsB = RMClub.assurerCompetitionEspoirs(s).clubs.map((c) => c.id).join(',');
+  assert.strictEqual(idsA, idsB, 'les académies doivent être persistantes, pas régénérées à chaque consultation');
+});
+
+test('championnat espoirs : le calendrier est un vrai aller-retour, entièrement daté', () => {
+  const s = saisonPourAvance(971);
+  const comp = RMClub.assurerCompetitionEspoirs(s);
+  const n = comp.clubs.length;
+  assert.strictEqual(comp.calendrier.length, n * (n - 1),
+    `un aller-retour à ${n} clubs fait ${n * (n - 1)} rencontres, ${comp.calendrier.length} trouvées`);
+  const ids = new Set(comp.clubs.map((c) => c.id));
+  for (const f of comp.calendrier) {
+    assert.ok(/^\d{4}-\d{2}-\d{2}$/.test(f.date || ''), `rencontre sans date (journée ${f.journee})`);
+    assert.strictEqual(RMClub.jourSemaine(RMClub.dateDepuisISO(f.date)), 3, 'les espoirs jouent le mercredi');
+    assert.ok(ids.has(f.domicileId) && ids.has(f.exterieurId), 'une rencontre oppose des clubs hors compétition');
+  }
+  // Chaque journée tombe à une date distincte, dans l'ordre.
+  const parJournee = {};
+  for (const f of comp.calendrier) (parJournee[f.journee] = parJournee[f.journee] || new Set()).add(f.date);
+  const journees = Object.keys(parJournee).sort((a, b) => Number(a) - Number(b));
+  let precedente = null;
+  for (const j of journees) {
+    assert.strictEqual(parJournee[j].size, 1, `la journée ${j} doit tenir sur une seule date`);
+    const d = Array.from(parJournee[j])[0];
+    if (precedente) assert.ok(d > precedente, `la journée ${j} doit venir après la précédente`);
+    precedente = d;
+  }
+});
+
+test('championnat espoirs : un vrai classement à plusieurs clubs, pas un simple bilan', () => {
+  const s = saisonPourAvance(972);
+  const comp = RMClub.assurerCompetitionEspoirs(s);
+  assert.strictEqual(Object.keys(comp.classement).length, comp.clubs.length,
+    'le classement doit couvrir tous les clubs de la compétition');
+  s.clubJoueur.navigationClub = RMClub.navigationClub(s);
+  s.clubJoueur.navigationClub.equipeConsultee = 'jeunes';
+  const ctx = RMClub.contexteEquipe(s);
+  assert.ok(ctx.classement && Object.keys(ctx.classement).length >= 4,
+    'l\'écran Classement des espoirs doit montrer une vraie table, pas le seul bilan du club');
+});
+
+test('championnat espoirs : un résultat enregistré met à jour le classement RÉELLEMENT', () => {
+  const s = saisonPourAvance(973);
+  const comp = RMClub.assurerCompetitionEspoirs(s);
+  const f = comp.calendrier[0];
+  RMClub.enregistrerResultatEspoirs(s, f.id, 25, 10, 3, 1);
+  assert.ok(f.joue, 'la rencontre doit être marquée jouée');
+  assert.strictEqual(comp.classement[f.domicileId].g, 1, 'le vainqueur doit avoir une victoire');
+  assert.strictEqual(comp.classement[f.exterieurId].p, 1, 'le perdant doit avoir une défaite');
+  assert.ok(comp.classement[f.domicileId].pts > comp.classement[f.exterieurId].pts,
+    'le vainqueur doit avoir plus de points');
+});
+
+test('championnat espoirs : la prochaine ronde regroupe toutes les rencontres de la journée', () => {
+  const s = saisonPourAvance(974);
+  const comp = RMClub.assurerCompetitionEspoirs(s);
+  const ronde = RMClub.prochaineRondeEspoirs(s);
+  assert.strictEqual(ronde.length, comp.clubs.length / 2,
+    `une journée doit compter ${comp.clubs.length / 2} rencontres`);
+  assert.ok(ronde.every((f) => f.journee === ronde[0].journee), 'toutes de la même journée');
+});
+
+test('championnat espoirs : chaque académie adverse a un niveau propre et un nom stable', () => {
+  const s = saisonPourAvance(975);
+  const comp = RMClub.assurerCompetitionEspoirs(s);
+  const academies = comp.clubs.filter((c) => c.id !== s.clubJoueur.id);
+  assert.ok(academies.length >= 3, 'il faut de vraies académies adverses');
+  for (const a of academies) {
+    assert.ok(a.nom && a.nom.length > 3, 'une académie sans nom');
+    assert.ok(a.niveauClub > 0 && a.niveauClub < 1, `niveau invalide pour ${a.nom} : ${a.niveauClub}`);
+  }
+  assert.strictEqual(new Set(academies.map((a) => a.nom)).size, academies.length,
+    'deux académies ne doivent pas porter le même nom');
+});
+
+test('championnat espoirs : une sauvegarde antérieure gagne sa compétition sans rien perdre', () => {
+  const s = saisonPourAvance(976);
+  delete s.competitionEspoirs;
+  s.clubJoueur.matchsEspoirs = [{ journee: 4, adversaire: 'Académie Ancienne', scorePour: 20, scoreContre: 15 }];
+  const comp = RMClub.assurerCompetitionEspoirs(s);
+  assert.ok(comp && comp.calendrier.length > 0, 'la compétition doit être créée à la volée');
+  assert.strictEqual(s.clubJoueur.matchsEspoirs.length, 1, 'les résultats déjà archivés ne doivent pas être perdus');
 });
 
 console.log(`\n${nbTests} test(s) exécuté(s).`);

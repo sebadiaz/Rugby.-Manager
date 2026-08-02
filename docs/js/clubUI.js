@@ -677,17 +677,30 @@
       zone.innerHTML = `<p>${echapperHTML(ctx.motifIndisponible || 'Aucun classement disponible pour cette équipe.')}</p>`;
       return;
     }
+    // Les académies du championnat espoirs (TODO_AUDIT.md P1-31) ne sont pas
+    // des clubs consultables : elles n'ont ni effectif ni fiche. On affiche
+    // donc leur nom EN TEXTE plutôt qu'un lien mort — et surtout jamais le
+    // « ? » que renvoyait lienClub pour un identifiant qu'il ne connaît pas.
+    const nomsCompetition = {};
+    if (ctx.type === 'jeunes') {
+      for (const cl of RMClub.assurerCompetitionEspoirs(saison).clubs) nomsCompetition[cl.id] = cl.nom;
+    }
     const lignes = RMClub.classementTrieDe(ctx.classement).map((r, i) => {
       const diff = r.pointsPour - r.pointsContre;
       const classe = r.clubId === ctx.clubId ? ' class="ligneClubJoueur"' : '';
-      return `<tr${classe}><td>${i + 1}</td><td>${lienClub(r.clubId)}</td><td>${r.j}</td><td>${r.g}</td><td>${r.n}</td><td>${r.p}</td>` +
+      const cellule = nomsCompetition[r.clubId] && r.clubId !== saison.clubJoueur.id
+        ? echapperHTML(nomsCompetition[r.clubId])
+        : lienClub(r.clubId);
+      return `<tr${classe}><td>${i + 1}</td><td>${cellule}</td><td>${r.j}</td><td>${r.g}</td><td>${r.n}</td><td>${r.p}</td>` +
         `<td>${r.pointsPour}</td><td>${r.pointsContre}</td><td>${diff >= 0 ? '+' : ''}${diff}</td>` +
         `<td title="Bonus offensif (4 essais ou plus)">${r.bonusOffensifs || 0}</td>` +
         `<td title="Bonus défensif (défaite par 7 points ou moins)">${r.bonusDefensifs || 0}</td>` +
         `<td><b>${r.pts}</b></td></tr>`;
     }).join('');
+    // Note remplacée (TODO_AUDIT.md P1-31) : les espoirs disputent désormais
+    // un VRAI championnat à classement, contre des académies persistantes.
     const note = ctx.type === 'jeunes'
-      ? '<p style="font-size:11.5px;color:var(--text-faint);margin:8px 0 0;">Les espoirs disputent des rencontres amicales contre des académies adverses, pas un championnat à classement — voici donc leur bilan réel.</p>'
+      ? '<p style="font-size:11.5px;color:var(--text-faint);margin:8px 0 0;">Championnat des espoirs : aller-retour contre les académies des clubs de ta division, une rencontre le mercredi. Les académies adverses n\'ont pas d\'effectif simulé — seuls leurs résultats le sont.</p>'
       : '';
     zone.innerHTML =
       `<table class="tableauClub"><thead><tr><th></th><th>Club</th><th>J</th><th>G</th><th>N</th><th>P</th><th>Pts+</th><th>Pts-</th><th>Diff</th><th title="Bonus offensif">BO</th><th title="Bonus défensif">BD</th><th>Pts</th></tr></thead><tbody>${lignes}</tbody></table>${note}`;
@@ -2988,9 +3001,29 @@
     // centre de formation à chaque club IA est hors périmètre de cette
     // première tranche) : un match ponctuel, comme un vrai match amical.
     function simulerMatchEspoirs(suite) {
-      if (!matchJoueur || !RMClub.journeeDeMatchEspoirs(matchJoueur.journee) || !RMClub.eligiblePourMatchEspoirs(saison)) {
+      // Rencontre du club du joueur dans SON championnat espoirs, à SA date
+      // (TODO_AUDIT.md P1-31) — plus un match ponctuel déduit du calendrier
+      // pro contre une académie jetable.
+      const evenements = RMClub.evenementsDuJour(saison, RMClub.dateCourante(saison));
+      const fixtureEspoirs = evenements.fixtureEspoirs;
+      if (!fixtureEspoirs || !RMClub.eligiblePourMatchEspoirs(saison)) {
         suite();
         return;
+      }
+      // Les autres rencontres de la même journée sont résolues de façon
+      // ABSTRAITE (même principe que l'Équipe B et le championnat principal) :
+      // le classement du championnat espoirs vit réellement, sans payer le
+      // coût du moteur complet pour des matchs que le joueur ne voit pas.
+      const compEspoirs = RMClub.assurerCompetitionEspoirs(saison);
+      const parIdAcademie = {};
+      for (const cl of compEspoirs.clubs) parIdAcademie[cl.id] = cl;
+      const rngAutres = creerRng(graineDuJour('espoirsAutres'));
+      for (const f of compEspoirs.calendrier) {
+        if (f.joue || f.journee !== fixtureEspoirs.journee || f === fixtureEspoirs) continue;
+        const a = parIdAcademie[f.domicileId], bClub = parIdAcademie[f.exterieurId];
+        if (!a || !bClub) continue;
+        const r = RMWorld.simulerResultatAbstrait(rngAutres, a.niveauClub, bClub.niveauClub);
+        RMClub.enregistrerResultatEspoirs(saison, f.id, r.scoreA, r.scoreB, r.essaisA, r.essaisB);
       }
       // Équipe gérée (TODO_AUDIT.md P1-18) : même mécanique que le premier XV
       // et l'Équipe B — composition/tactique/banc réellement choisis dans les
@@ -3001,15 +3034,18 @@
       const compositionEspoirs = slotEspoirs.compositionTitulaires;
       const tactiqueCfgEspoirs = construireTactiqueCfg(effectifEspoirs, slotEspoirs, 'A');
       const rng = creerRng(graineAleatoire());
-      const adversaireId = estClubJoueur(matchJoueur.domicileId) ? matchJoueur.exterieurId : matchJoueur.domicileId;
-      const clubAdverse = RMClub.club(saison, adversaireId);
-      const niveauAdv = RMClub.niveauAdversaireEspoirs(clubAdverse.niveauClub);
+      // L'adversaire est l'ACADÉMIE réellement programmée ce jour-là par le
+      // calendrier du championnat espoirs — un club qui revient d'une saison
+      // à l'autre, avec son propre niveau.
+      const idAcademieAdverse = fixtureEspoirs.domicileId === saison.clubJoueur.id
+        ? fixtureEspoirs.exterieurId : fixtureEspoirs.domicileId;
+      const clubAdverse = parIdAcademie[idAcademieAdverse] || { nom: 'Académie', niveauClub: 0.2 };
       const cfgJoueur = RMClub.compositionVersJoueursCfg(effectifEspoirs, compositionEspoirs);
-      const cfgAdverse = RMClub.effectifVersJoueursCfg({ effectif: RMClub.genererEffectif(rng, niveauAdv) });
+      const cfgAdverse = RMClub.effectifVersJoueursCfg({ effectif: RMClub.genererEffectif(rng, clubAdverse.niveauClub) });
       window.RMMain.simulerMatchEnArrierePlan(
         graineAleatoire(), duree,
         cfgJoueur, cfgAdverse,
-        `Espoirs : ${saison.clubJoueur.nom} vs Académie ${clubAdverse.nom}`,
+        `Espoirs : ${saison.clubJoueur.nom} vs ${clubAdverse.nom}`,
         (etat) => {
           RMClub.appliquerEffetsMatchEspoirs(saison, compositionEspoirs);
           // Idem pour les espoirs (TODO_AUDIT.md P1-30) : le club du joueur
@@ -3021,11 +3057,11 @@
           // que dans un message de la boîte de réception, donc l'écran
           // Calendrier & classement n'avait rien à montrer pour les espoirs.
           // Le score enregistré est celui réellement produit par le moteur.
-          RMClub.enregistrerMatchEspoirs(saison, matchJoueur.journee, clubAdverse.nom, etat.score.A, etat.score.B);
+          RMClub.enregistrerMatchEspoirs(saison, fixtureEspoirs.journeeChampionnat, clubAdverse.nom, etat.score.A, etat.score.B);
           const forme = etat.score.A > etat.score.B ? 'v' : etat.score.A < etat.score.B ? 'd' : 'n';
           const verbe = forme === 'v' ? 'battent' : forme === 'd' ? "s'inclinent face à" : 'font match nul avec';
           RMClub.ajouterMessage(saison, 'jeunes', 'Match espoirs',
-            `Tes espoirs ${verbe} l'académie de ${clubAdverse.nom} (${etat.score.A} - ${etat.score.B}).`);
+            `Tes espoirs ${verbe} ${clubAdverse.nom} (${etat.score.A} - ${etat.score.B}).`);
           sauvegarder();
           suite();
         },

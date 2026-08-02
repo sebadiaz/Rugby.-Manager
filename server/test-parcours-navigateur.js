@@ -2165,6 +2165,66 @@ function optionsLancement() {
   verifier('page joueur : aucune erreur console', erreursFiche.length === 0);
   await contexteFiche.close();
 
+  // 11 septies) Championnat des espoirs (TODO_AUDIT.md P1-31) : un vrai
+  // classement à plusieurs académies, un calendrier daté, et des noms réels.
+  const contexteEsp = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const pageEsp = await contexteEsp.newPage();
+  const erreursEsp = [];
+  pageEsp.on('pageerror', (e) => erreursEsp.push(`PAGEERROR: ${e.message}`));
+  pageEsp.on('console', (m) => {
+    if (m.type() === 'error' && !m.text().includes('404')) erreursEsp.push(`CONSOLE: ${m.text()}`);
+  });
+  await pageEsp.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  await pageEsp.click('#btnAccueilModeClub');
+  await pageEsp.fill('#inputNomClub', 'Test Championnat Espoirs');
+  await pageEsp.click('#btnCreerClub');
+  await pageEsp.waitForTimeout(400);
+  await clicOngletSur(pageEsp, 'calendrier');
+  await pageEsp.waitForTimeout(250);
+  await pageEsp.selectOption('#selEquipeContexte', 'jeunes');
+  await pageEsp.waitForTimeout(400);
+
+  verifier('championnat espoirs : l\'écran annonce un CHAMPIONNAT, plus un simple bilan',
+    (await pageEsp.textContent('#titreClubClassement')).includes('Championnat des espoirs'));
+  const classementEsp = await pageEsp.textContent('#clubClassement');
+  verifier('championnat espoirs : le classement compte plusieurs académies, toutes NOMMÉES (pas de « ? »)',
+    (classementEsp.match(/Académie /g) || []).length >= 3 && !/\?\s*0\s*0/.test(classementEsp));
+  const calendrierEsp = await pageEsp.textContent('#clubCalendrier');
+  verifier('championnat espoirs : son calendrier est daté et tombe un mercredi',
+    /mercredi \d{1,2} \p{L}+ 20\d\d/u.test(calendrierEsp));
+
+  // Jouer jusqu'à la première journée espoirs : le classement doit bouger.
+  await clicOngletSur(pageEsp, 'dashboard');
+  await pageEsp.waitForTimeout(200);
+  await pageEsp.evaluate(() => { document.getElementById('selDureeClub').value = '300'; });
+  let rencontresJouees = 0;
+  for (let i = 0; i < 25 && rencontresJouees === 0; i++) {
+    rencontresJouees = await pageEsp.evaluate(() => {
+      const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
+      return ((s.competitionEspoirs || {}).calendrier || []).filter((f) => f.joue).length;
+    });
+    if (rencontresJouees > 0) break;
+    await pageEsp.click('#btnJouerMatchClub');
+    await pageEsp.waitForTimeout(900);
+    if (await pageEsp.isVisible('#panneauApercuMatch.visible')) {
+      await pageEsp.click('#btnApercuLancerMatch');
+      await pageEsp.waitForSelector('#panneauResultat.visible', { timeout: 60000 });
+      await pageEsp.click('#btnResultatFermer');
+      await pageEsp.waitForTimeout(500);
+    }
+  }
+  verifier('championnat espoirs : une journée entière se joue (pas seulement le match du joueur)',
+    rencontresJouees >= 2);
+  await clicOngletSur(pageEsp, 'calendrier');
+  await pageEsp.waitForTimeout(250);
+  await pageEsp.selectOption('#selEquipeContexte', 'jeunes');
+  await pageEsp.waitForTimeout(400);
+  const classementApresEsp = await pageEsp.textContent('#clubClassement');
+  verifier('championnat espoirs : le classement bouge RÉELLEMENT après une journée',
+    classementApresEsp !== classementEsp && /[1-9]/.test(classementApresEsp));
+  verifier('championnat espoirs : aucune erreur console', erreursEsp.length === 0);
+  await contexteEsp.close();
+
   // 12) Décision réelle dans la boîte de réception (audit "boîte de réception
   // avec décisions", cf. club-decisions.js) : injecte directement une
   // demande de temps de jeu (le déclenchement — plusieurs journées sans
