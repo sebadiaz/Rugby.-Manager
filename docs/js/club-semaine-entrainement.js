@@ -194,6 +194,46 @@
     return progressions;
   }
 
+  // --- Blessures à l'entraînement (TODO_AUDIT.md P1-26) ---
+  // Jusqu'ici, SEUL un match pouvait blesser (cf. faireProgresserBlessures,
+  // appelé une fois le match résolu). Une semaine d'entraînement n'avait donc
+  // aucun risque : choisir « physique » tous les jours ne coûtait que de la
+  // fatigue, jamais un joueur. C'est ce qui donne enfin un vrai prix à une
+  // semaine intense — et la seule chose qui pouvait réellement survenir
+  // entre deux matchs.
+  //
+  // Le risque suit deux choses réelles : l'INTENSITÉ de la séance (le repos
+  // et la récupération ne blessent jamais) et la FATIGUE du joueur (un
+  // effectif épuisé qu'on pousse quand même se blesse trois fois plus). Le
+  // préparateur physique réduit réellement ce risque.
+  // Calibré pour rester nettement sous le risque d'un match : un effectif de
+  // 24 encaisse de l'ordre de 5 à 10 blessures d'entraînement sur une saison
+  // complète, contre une vingtaine côté matchs (15 titulaires, 6 % par match).
+  // L'entraînement doit peser sur les choix du manager, pas décimer le groupe.
+  const RISQUE_BLESSURE_PAR_INTENSITE = 0.00025;
+
+  function blessuresDeSeance(rng, effectif, cleActivite, facteurPreparateur, facteurMedecin) {
+    const activite = ACTIVITES_ENTRAINEMENT[cleActivite];
+    if (!activite || activite.intensite <= 0) return [];
+    const fp = facteurPreparateur != null ? facteurPreparateur : 1;
+    const fm = facteurMedecin != null ? facteurMedecin : 1;
+    const blesses = [];
+    for (const j of effectif) {
+      if (j.blessureJournees > 0) continue; // déjà à l'infirmerie
+      if (j.pret) continue; // prêté ailleurs : il s'entraîne dans son club d'accueil
+      const fatigue = j.fatigue || 0;
+      const risque = RISQUE_BLESSURE_PAR_INTENSITE * activite.intensite * (1 + (fatigue / 100) * 2) * fp;
+      if (rng() >= risque) continue;
+      // Blessure d'entraînement : plus courte qu'une blessure de match
+      // (3 à 12 jours contre 7 à 28), soignée d'autant plus vite que le
+      // médecin est bon — même règle que pour un match.
+      const jours = Math.max(2, Math.round((3 + Math.floor(rng() * 10)) / fm));
+      j.blessureJournees = jours;
+      blesses.push({ id: j.id, nom: j.nom, jours, activite: cleActivite });
+    }
+    return blesses;
+  }
+
   // Un joueur peut suivre un programme individuel : il travaille alors SON
   // activité au lieu de celle du jour (sauf les jours de repos, qui restent
   // du repos pour tout le monde). Regroupe l'effectif par activité effective.
@@ -214,5 +254,6 @@
     assurerSemaineEntrainement, definirSeance, seancePourDate,
     facteurAge, facteurFatigue, facteurTempsDeJeu, CHANCE_BASE_PROGRESSION,
     appliquerSeance, repartirParActivite,
+    RISQUE_BLESSURE_PAR_INTENSITE, blessuresDeSeance,
   });
 })(window);

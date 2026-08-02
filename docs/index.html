@@ -214,10 +214,16 @@
               <option value="2400">40 min (mi-temps)</option>
               <option value="4800" selected>80 min (match complet)</option>
             </select>
+            <!-- Deux actions DISTINCTES (TODO_AUDIT.md P1-26) : avancer d'un
+                 seul jour, ou filer jusqu'au prochain match en s'arrêtant dès
+                 qu'il se passe quelque chose (blessure, décision, rapport,
+                 réponse de contrat). Un seul bouton « Continuer » ne
+                 permettait pas de suivre une semaine jour par jour. -->
             <div style="display:flex;gap:8px;margin-top:10px;">
               <button id="btnComposition" class="alt" style="flex:1;">📋 Composition</button>
-              <button id="btnJouerMatchClub" class="accent" style="flex:2;">▶ Continuer</button>
+              <button id="btnJourSuivant" class="alt" style="flex:1;">→ Jour suivant</button>
             </div>
+            <button id="btnJouerMatchClub" class="accent" style="width:100%;margin-top:8px;">▶ Continuer</button>
             <button id="btnSaisonSuivante" class="accent" style="width:100%;margin-top:10px;display:none;">Saison suivante →</button>
           </div>
           <!-- Agenda des 7 prochains jours (TODO_AUDIT.md P1-22) : le

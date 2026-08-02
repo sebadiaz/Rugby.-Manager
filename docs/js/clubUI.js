@@ -51,6 +51,24 @@
   // sans expiration, le verrou se relâcherait avant même que le 2e clic,
   // déjà en file d'attente côté navigateur, soit traité.
   let marcheActionVerrouillee = false;
+  // Verrou court des DEUX boutons d'avance (TODO_AUDIT.md P1-26). Jusqu'ici
+  // « Continuer » se protégeait tout seul : il visait toujours la même
+  // échéance, donc un second clic ne faisait rien (avance de 0 jour). Depuis
+  // qu'une avance s'ARRÊTE sur le premier événement rencontré, ce n'est plus
+  // vrai : un double clic enchaînerait deux avances et le joueur ne verrait
+  // jamais l'événement qui a interrompu la première. Même mécanique et même
+  // délai que `marcheActionVerrouillee` (cf. son commentaire détaillé).
+  let avanceVerrouillee = false;
+  function verrouillerAvance() {
+    if (avanceVerrouillee) return false;
+    avanceVerrouillee = true;
+    // 350 ms, pas 1500 comme le marché des transferts : ici le joueur a de
+    // bonnes raisons de recliquer vite (avancer plusieurs fois d'affilée). On
+    // ne bloque donc que le double-déclenchement quasi instantané — celui qui
+    // ferait défiler un événement sans jamais l'afficher.
+    setTimeout(() => { avanceVerrouillee = false; }, 350);
+    return true;
+  }
 
   function graineAleatoire() {
     return Math.floor(window.RMRng.random() * 0xffffffff);
@@ -534,6 +552,8 @@
       bouton.style.display = 'none';
       boutonComposition.style.display = 'none';
       boutonSaisonSuivante.style.display = '';
+      const boutonJourFin = document.getElementById('btnJourSuivant');
+      if (boutonJourFin) boutonJourFin.style.display = 'none';
       if (labelFlottant) labelFlottant.textContent = 'Saison suivante';
       return;
     }
@@ -558,6 +578,18 @@
     }
     bouton.textContent = `▶ ${libelleLong}`;
     if (labelFlottant) labelFlottant.textContent = libelleCourt;
+    // « Jour suivant » annonce la DATE qu'il va atteindre (TODO_AUDIT.md
+    // P1-26) — le joueur sait toujours où il met les pieds, comme pour
+    // « Continuer ». Masqué le jour d'un match : il reste à jouer, avancer
+    // d'un jour le sauterait.
+    const boutonJour = document.getElementById('btnJourSuivant');
+    if (boutonJour) {
+      const surUnMatch = !!RMClub.typeDArret(saison, aujourdhui);
+      boutonJour.style.display = surUnMatch ? 'none' : '';
+      boutonJour.disabled = false;
+      boutonJour.textContent = `→ ${RMClub.formaterDateCourte(RMClub.ajouterJours(aujourdhui, 1))}`;
+      boutonJour.title = `Avancer d'un seul jour, jusqu'au ${RMClub.formaterDateLongue(RMClub.ajouterJours(aujourdhui, 1))}`;
+    }
   }
 
   // Préparation progressive de la rencontre (TODO_AUDIT.md P1-24) : ce qui
@@ -2221,6 +2253,7 @@
   // toujours visible) avancent la carrière jusqu'à la prochaine échéance —
   // ils ne lancent plus un match directement (TODO_AUDIT.md P1-21).
   document.getElementById('btnJouerMatchClub').addEventListener('click', continuer);
+  document.getElementById('btnJourSuivant').addEventListener('click', jourSuivant);
   document.getElementById('btnApercuMatchFlottant').addEventListener('click', continuer);
   document.getElementById('fermerApercuMatch').addEventListener('click', () => {
     document.getElementById('panneauApercuMatch').classList.remove('visible');
@@ -2482,7 +2515,7 @@
   // demandé explicitement : un bouton visible doit refléter qu'il n'est pas
   // utilisable plutôt que de rester cliquable en apparence.
   function definirBoutonsJourneeActifs(actif) {
-    for (const id of ['btnJouerMatchClub', 'btnApercuMatchFlottant', 'btnApercuLancerMatch']) {
+    for (const id of ['btnJouerMatchClub', 'btnJourSuivant', 'btnApercuMatchFlottant', 'btnApercuLancerMatch']) {
       const el = document.getElementById(id);
       if (el) el.disabled = !actif;
     }
@@ -2827,6 +2860,52 @@
     for (const nom of resume.decisionsExpirees || []) {
       toast(`⏳ Demande de ${nom} restée sans réponse`, 'erreur');
     }
+    // Blessure survenue À L'ENTRAÎNEMENT (TODO_AUDIT.md P1-26) : le manager
+    // doit l'apprendre au moment où elle arrive, pas la découvrir en ouvrant
+    // sa composition la veille du match.
+    for (const b of resume.blessures || []) {
+      toast(`🤕 ${b.nom} s'est blessé à l'entraînement — ${b.jours} jour(s)`, 'erreur');
+    }
+  }
+
+  // Après une avance de plusieurs jours : rafraîchit tout ce que la date
+  // influence. Factorisé pour que « Jour suivant » et « Continuer » montrent
+  // exactement le même état — aucune différence de traitement entre les deux.
+  function rafraichirApresAvance(resume) {
+    sauvegarder();
+    rafraichirTopBarInfos();
+    rafraichirProchainMatch();
+    rafraichirPreparationMatch();
+    rafraichirAgenda();
+    rafraichirFenetreTransfert();
+    rafraichirMessages();
+    rafraichirVueClub();
+    annoncerJoursEcoules(resume);
+  }
+
+  // --- « Jour suivant » (TODO_AUDIT.md P1-26) : avance d'EXACTEMENT un jour.
+  // Sert à suivre une semaine d'entraînement pas à pas, à voir la fatigue
+  // redescendre, à attendre un retour de blessure. Ne joue jamais un match :
+  // arriver le jour d'une rencontre ouvre sa préparation, comme « Continuer ».
+  function jourSuivant() {
+    if (journeeEnCours) return;
+    if (!verrouillerAvance()) return;
+    if (!RMClub.prochainArret(saison)) {
+      document.getElementById('btnSaisonSuivante').click();
+      return;
+    }
+    const r = RMClub.avancerUnJour(saison);
+    const resume = RMClub.resumerJournees([r.journee]);
+    rafraichirApresAvance(resume);
+    const type = RMClub.typeDArret(saison, RMClub.dateCourante(saison));
+    toast(`📅 ${RMClub.formaterDateLongue(RMClub.dateCourante(saison))}`);
+    if (type === 'pro') { ouvrirApercuMatch(); return; }
+    if (type) {
+      // Match Équipe B ou espoirs : résolu en arrière-plan, comme depuis
+      // toujours — mais seulement le jour venu.
+      document.getElementById('panneauClub').classList.remove('visible');
+      resoudreJour(type);
+    }
   }
 
   // --- « Continuer » : LE bouton principal de la carrière (TODO_AUDIT.md
@@ -2837,29 +2916,37 @@
   // le jour courant). ---
   function continuer() {
     if (journeeEnCours) return;
-    const arret = RMClub.prochainArret(saison);
-    if (!arret) {
+    if (!verrouillerAvance()) return;
+    if (!RMClub.prochainArret(saison)) {
       // Plus aucune rencontre : la saison sportive est terminée.
       document.getElementById('btnSaisonSuivante').click();
       return;
     }
-    // La carrière avance RÉELLEMENT jour par jour jusqu'à l'échéance
-    // (TODO_AUDIT.md P1-22) : chaque journée traversée est simulée —
-    // récupération, guérison des blessures, retours de prêt — au lieu d'être
-    // sautée. Puis le jour d'échéance se résout.
-    const journees = RMClub.avancerJusquA(saison, arret.date);
-    const resume = RMClub.resumerJournees(journees);
-    sauvegarder();
-    rafraichirTopBarInfos();
-    rafraichirProchainMatch();
-    rafraichirPreparationMatch();
-    rafraichirAgenda();
-    rafraichirFenetreTransfert();
-    rafraichirMessages();
-    annoncerJoursEcoules(resume);
-    if (arret.type === 'pro') { ouvrirApercuMatch(); return; }
+    // Avance jour par jour, mais S'ARRÊTE dès qu'il se passe quelque chose
+    // (TODO_AUDIT.md P1-26) : blessure, réponse à une proposition de contrat,
+    // rapport de repérage, décision à trancher, événement de direction. Sans
+    // ça, une blessure et une décision pouvaient survenir puis passer
+    // inaperçues au milieu d'une avance de trois semaines.
+    const r = RMClub.avancerJusquAuProchainMatch(saison);
+    const resume = RMClub.resumerJournees(r.journees);
+    rafraichirApresAvance(resume);
+
+    if (r.raison === 'saison') { document.getElementById('btnSaisonSuivante').click(); return; }
+    if (r.raison !== 'match') {
+      // Arrêt AVANT le match : on dit pourquoi, et combien de jours restent.
+      // La CAUSE vient déjà d'être annoncée en détail par
+      // annoncerJoursEcoules (blessure, rapport, réponse de contrat…) : ce
+      // message-ci dit seulement que l'avance s'est arrêtée et ce qu'il reste
+      // à parcourir, sans répéter mot pour mot le message précédent.
+      const reste = r.arret ? r.arret.joursRestants : null;
+      const combien = r.interruptions.length > 1 ? ` (${r.interruptions.length} événements)` : '';
+      toast(`⏸️ Avance interrompue${combien}${reste != null ? ` — encore ${reste} jour(s) avant le match` : ''}`, 'erreur');
+      return;
+    }
+    const type = RMClub.typeDArret(saison, RMClub.dateCourante(saison));
+    if (type === 'pro') { ouvrirApercuMatch(); return; }
     document.getElementById('panneauClub').classList.remove('visible');
-    resoudreJour(arret.type);
+    resoudreJour(type || 'pro');
   }
 
   // --- Aperçu du prochain match, façon écran de préparation d'avant-match

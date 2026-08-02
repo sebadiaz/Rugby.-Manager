@@ -2380,6 +2380,192 @@ test('carrière longue : 12 saisons avec rechargements réguliers — aucun id d
   }
 });
 
+// --- P1-26 : deux actions distinctes « Jour suivant » et « Jusqu'au
+// prochain match » (demande utilisateur). Avancer d'un jour exactement, ou
+// jour par jour en s'arrêtant sur match, blessure, réponse de contrat,
+// rapport de repérage, décision ou événement important. ---
+
+function saisonPourAvance(graine, options) {
+  const s = RMClub.nouvelleSaison(creerRng(graine), 'Test Avance');
+  RMClub.daterCalendrier(s);
+  // Semaine entièrement au repos par défaut : aucune blessure d'entraînement
+  // possible, donc l'avance ne peut être interrompue que par ce que le test
+  // provoque lui-même. Les tests de blessure repassent en séance intense.
+  if (!options || !options.entrainementReel) {
+    RMClub.assurerSemaineEntrainement(s);
+    for (let jour = 0; jour <= 6; jour++) RMClub.definirSeance(s, jour, 'repos');
+  }
+  return s;
+}
+
+// Ensemble des décisions déjà en attente, tel que le calcule l'avance.
+function decisionsConnues(s) { return RMClub.idsDecisionsEnAttente(s); }
+
+test("avancerUnJour : avance d'EXACTEMENT un jour, jamais plus", () => {
+  const s = saisonPourAvance(901);
+  const avant = RMClub.dateCourante(s);
+  const r = RMClub.avancerUnJour(s);
+  const apres = RMClub.dateCourante(s);
+  assert.strictEqual(RMClub.ecartJours(avant, apres), 1, 'la date doit avancer de 1 jour exactement');
+  assert.ok(r.journee, 'la journée traversée doit être réellement résolue');
+  assert.strictEqual(r.journee.date, RMClub.dateISO(apres), 'la journée résolue doit être celle du nouveau jour');
+});
+
+test("avancerUnJour : arriver un jour de match ne joue PAS le match automatiquement", () => {
+  const s = saisonPourAvance(902);
+  const arret = RMClub.prochainArret(s);
+  assert.ok(arret, 'la saison doit avoir au moins une rencontre');
+  RMClub.definirDateCourante(s, RMClub.ajouterJours(arret.date, -1));
+  const r = RMClub.avancerUnJour(s);
+  assert.strictEqual(RMClub.comparerDates(RMClub.dateCourante(s), arret.date), 0, 'on doit être arrivé le jour du match');
+  assert.ok(r.journee.estJourDeMatch, 'la journée doit être marquée jour de match');
+  const fixture = (s.calendrier || []).find((f) => f.date === RMClub.dateISO(arret.date));
+  if (fixture) assert.ok(!fixture.joue, 'le match ne doit PAS avoir été joué automatiquement');
+});
+
+test("avancerJusquAuProchainMatch : s'arrête le jour du match, sans le dépasser", () => {
+  const s = saisonPourAvance(903);
+  const arret = RMClub.prochainArret(s);
+  const r = RMClub.avancerJusquAuProchainMatch(s);
+  assert.strictEqual(RMClub.comparerDates(RMClub.dateCourante(s), arret.date), 0,
+    "la date doit s'arrêter exactement le jour du match");
+  assert.strictEqual(r.raison, 'match', `raison attendue "match", obtenue "${r.raison}"`);
+  assert.ok(r.journees.length > 0, 'les jours traversés doivent être réellement résolus');
+});
+
+test("avancerJusquAuProchainMatch : déjà sur un jour de match, on n'avance pas (le match reste à jouer)", () => {
+  const s = saisonPourAvance(904);
+  const arret = RMClub.prochainArret(s);
+  RMClub.definirDateCourante(s, arret.date);
+  const r = RMClub.avancerJusquAuProchainMatch(s);
+  assert.strictEqual(r.journees.length, 0, "aucun jour ne doit être traversé : le match du jour n'est pas encore joué");
+  assert.strictEqual(r.raison, 'match', 'la raison doit rester "match"');
+  assert.strictEqual(RMClub.comparerDates(RMClub.dateCourante(s), arret.date), 0, 'la date ne doit pas bouger');
+});
+
+test("avancerJusquAuProchainMatch : une fois le jour réglé, l'avance repart (aucun blocage)", () => {
+  const s = saisonPourAvance(905);
+  const premier = RMClub.prochainArret(s);
+  RMClub.definirDateCourante(s, premier.date);
+  const iso = RMClub.dateISO(premier.date);
+  for (const f of (s.calendrier || [])) if (f.date === iso) f.joue = true;
+  if (s.competitionB && s.competitionB.calendrier) {
+    for (const f of s.competitionB.calendrier) if (f.date === iso) f.joue = true;
+  }
+  s.clubJoueur.jeunes = []; // plus de match espoirs possible ce jour-là
+  assert.strictEqual(RMClub.typeDArret(s, premier.date), null, 'le jour doit être réglé avant de tester la reprise');
+  const r = RMClub.avancerJusquAuProchainMatch(s);
+  assert.ok(r.journees.length > 0, "l'avance doit repartir vers la prochaine échéance");
+  assert.ok(RMClub.comparerDates(RMClub.dateCourante(s), premier.date) > 0, 'la date doit avoir dépassé le match déjà joué');
+});
+
+// --- Détection des interruptions (fonction pure, testée directement) ---
+
+test('interruptions : une journée sans rien de notable n\'interrompt pas', () => {
+  const s = saisonPourAvance(910);
+  const vide = { date: '2024-09-02', fatigueRecuperee: 40, progressions: [], blessures: [], retablis: [], retoursDePret: [], rapports: [], reponsesContrat: [], decisionsExpirees: [] };
+  assert.deepStrictEqual(RMClub.interruptionsDeJournee(s, vide, decisionsConnues(s)), [],
+    'récupération et progressions seules ne doivent jamais interrompre');
+});
+
+test('interruptions : une blessure interrompt', () => {
+  const s = saisonPourAvance(911);
+  const j = { blessures: [{ nom: 'Paul Test', jours: 12 }] };
+  const i = RMClub.interruptionsDeJournee(s, j, decisionsConnues(s));
+  assert.strictEqual(i.length, 1);
+  assert.strictEqual(i[0].raison, 'blessure');
+  assert.ok(i[0].libelle.includes('Paul Test'), 'le libellé doit nommer le joueur réellement blessé');
+});
+
+test('interruptions : une réponse de contrat et un rapport de repérage interrompent', () => {
+  const s = saisonPourAvance(912);
+  const iC = RMClub.interruptionsDeJournee(s, { reponsesContrat: [{ nom: 'Luc Test', accepte: true }] }, decisionsConnues(s));
+  assert.strictEqual(iC[0].raison, 'contrat', 'une réponse à une proposition de contrat doit interrompre');
+  const iR = RMClub.interruptionsDeJournee(s, { rapports: [{ nom: 'Cible Test' }] }, decisionsConnues(s));
+  assert.strictEqual(iR[0].raison, 'rapport', 'un rapport de repérage remis doit interrompre');
+});
+
+test('interruptions : un retour de blessure ou de prêt est un événement à connaître', () => {
+  const s = saisonPourAvance(913);
+  const i = RMClub.interruptionsDeJournee(s, { retablis: ['Jean Test'], retoursDePret: ['Marc Test'] }, decisionsConnues(s));
+  assert.strictEqual(i.length, 2);
+  assert.ok(i.every((x) => x.raison === 'evenement'));
+});
+
+test('interruptions : une décision NOUVELLE interrompt, une décision déjà connue non', () => {
+  const s = saisonPourAvance(914);
+  const connuesAvant = decisionsConnues(s);
+  RMClub.ajouterMessage(s, 'joueur', 'Choix à faire', 'Un joueur demande une réponse.', {
+    type: 'tempsDeJeu', joueurId: s.clubJoueur.effectif[0].id,
+    options: [{ id: 'rassurer', label: 'Le rassurer' }, { id: 'ignorer', label: 'Ignorer' }],
+  });
+  const i = RMClub.interruptionsDeJournee(s, {}, connuesAvant);
+  assert.strictEqual(i.length, 1, 'la décision apparue pendant la journée doit interrompre');
+  assert.strictEqual(i[0].raison, 'decision');
+  // La MÊME décision, désormais connue, ne doit plus interrompre : sinon le
+  // bouton resterait bloqué tant qu'elle n'est pas tranchée.
+  assert.deepStrictEqual(RMClub.interruptionsDeJournee(s, {}, decisionsConnues(s)), [],
+    'une décision déjà en attente au départ ne doit pas rebloquer chaque clic');
+});
+
+test("avancerJusquAuProchainMatch : une décision déjà en attente n'empêche pas de partir", () => {
+  const s = saisonPourAvance(915);
+  RMClub.ajouterMessage(s, 'joueur', 'Choix ancien', 'Décision présente avant de partir.', {
+    type: 'tempsDeJeu', joueurId: s.clubJoueur.effectif[0].id,
+    options: [{ id: 'rassurer', label: 'Le rassurer' }, { id: 'ignorer', label: 'Ignorer' }],
+  });
+  const r = RMClub.avancerJusquAuProchainMatch(s);
+  assert.ok(r.journees.length > 1, `l'avance doit progresser malgré la décision en attente (${r.journees.length} jour(s))`);
+});
+
+// --- Blessures à l'entraînement : ce qui donne un vrai prix à une semaine
+// intense, et la seule chose qui pouvait blesser entre deux matchs. ---
+
+test("entraînement : une semaine intense sur un effectif épuisé finit par blesser", () => {
+  const s = saisonPourAvance(916, { entrainementReel: true });
+  RMClub.assurerSemaineEntrainement(s);
+  for (let jour = 0; jour <= 6; jour++) RMClub.definirSeance(s, jour, 'physique');
+  let blessures = 0;
+  for (let i = 0; i < 60; i++) {
+    for (const j of s.clubJoueur.effectif) { j.fatigue = 90; j.blessureJournees = 0; }
+    blessures += (RMClub.avancerUnJour(s).journee.blessures || []).length;
+  }
+  assert.ok(blessures > 0, "60 jours de séances physiques sur un effectif épuisé doivent produire au moins une blessure");
+});
+
+test('entraînement : le repos ne blesse jamais personne', () => {
+  const s = saisonPourAvance(917, { entrainementReel: true });
+  RMClub.assurerSemaineEntrainement(s);
+  for (let jour = 0; jour <= 6; jour++) RMClub.definirSeance(s, jour, 'repos');
+  let blessures = 0;
+  for (let i = 0; i < 120; i++) {
+    for (const j of s.clubJoueur.effectif) { j.fatigue = 95; j.blessureJournees = 0; }
+    blessures += (RMClub.avancerUnJour(s).journee.blessures || []).length;
+  }
+  assert.strictEqual(blessures, 0, 'le repos ne doit blesser personne, même sur un effectif épuisé');
+});
+
+test("entraînement : une blessure survenue à l'entraînement rend réellement le joueur indisponible", () => {
+  const s = saisonPourAvance(918, { entrainementReel: true });
+  RMClub.assurerSemaineEntrainement(s);
+  for (let jour = 0; jour <= 6; jour++) RMClub.definirSeance(s, jour, 'physique');
+  let trouve = null;
+  for (let i = 0; i < 200 && !trouve; i++) {
+    for (const j of s.clubJoueur.effectif) { j.fatigue = 95; }
+    const bl = RMClub.avancerUnJour(s).journee.blessures || [];
+    if (bl.length) trouve = bl[0];
+  }
+  assert.ok(trouve, 'au moins une blessure doit survenir pour pouvoir vérifier ses effets');
+  // La blessure peut concerner l'effectif pro OU le centre de formation :
+  // les deux s'entraînent réellement (cf. resoudreJourneeQuotidienne).
+  const tous = (s.clubJoueur.effectif || []).concat(s.clubJoueur.jeunes || []);
+  const joueur = tous.find((j) => j.id === trouve.id);
+  assert.ok(joueur.blessureJournees > 0, 'le joueur blessé doit être réellement indisponible, pas seulement annoncé');
+  assert.strictEqual(joueur.blessureJournees, trouve.jours, 'la durée annoncée doit être la durée réelle');
+  const msg = (s.clubJoueur.messages || []).find((m) => m.corps && m.corps.includes(trouve.nom));
+  assert.ok(msg, 'une blessure doit produire un message réel dans la boîte de réception');
+});
+
 console.log(`\n${nbTests} test(s) exécuté(s).`);
 if (process.exitCode) {
   console.error('ECHEC : au moins un test du parcours club a échoué.');

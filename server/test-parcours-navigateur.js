@@ -65,6 +65,21 @@ function optionsLancement() {
     await page.click(`.ongletBtn[data-onglet="${cle}"]`);
   }
 
+  // « Continuer » ne fonce plus jusqu'au match : il s'arrête sur tout
+  // événement réel du chemin (blessure d'entraînement, rapport de repérage,
+  // réponse de contrat, décision — cf. TODO_AUDIT.md P1-26). Un test qui veut
+  // ATTEINDRE le match reclique donc jusqu'à l'aperçu, exactement comme le
+  // joueur. Borné : un blocage réel se traduit toujours par un échec.
+  async function continuerJusquAuMatch(p, selecteur) {
+    const bouton = selecteur || '#btnJouerMatchClub';
+    for (let i = 0; i < 15; i++) {
+      if (await p.isVisible('#panneauApercuMatch.visible')) return true;
+      await p.click(bouton);
+      await p.waitForTimeout(600);
+    }
+    return await p.isVisible('#panneauApercuMatch.visible');
+  }
+
   // Même principe que clicOnglet, mais sur une page quelconque (les blocs de
   // test isolés ouvrent leur propre contexte).
   async function clicOngletSur(p, cle) {
@@ -602,8 +617,7 @@ function optionsLancement() {
   await clicOnglet('dashboard');
   await page.waitForTimeout(150);
   await page.selectOption('#selDureeClub', '300');
-  await page.click('#btnJouerMatchClub');
-  await page.waitForTimeout(200);
+  await continuerJusquAuMatch(page);
   verifier('aperçu du match : la préparation d\'avant-match s\'ouvre', await page.isVisible('#panneauApercuMatch.visible'));
   const apercuTxt = await page.textContent('#apercuMatchCorps');
   verifier('aperçu du match : forme/composition/tactique/adversaire réels affichés',
@@ -1256,14 +1270,34 @@ function optionsLancement() {
   verifier('carrière datée : AUCUN match n\'est joué tant que la date de la 1re journée n\'est pas atteinte',
     etatInitial.joues === 0);
 
-  // Double clic RÉEL sur « Continuer » : la date ne doit avancer qu'une fois,
-  // et surtout aucun match ne doit être lancé deux fois.
-  await pageTemps.evaluate(() => {
+  // Double clic RÉEL sur « Continuer » : une seule avance doit partir.
+  // Mesuré en instrumentant la fonction d'avance elle-même (plus précis que
+  // comparer des dates : depuis TODO_AUDIT.md P1-26 une avance s'arrête sur
+  // le premier événement, donc sa longueur n'est plus prévisible).
+  const appelsAvance = await pageTemps.evaluate(() => {
+    window.__nbAvances = 0;
+    const original = window.RMClub.avancerJusquAuProchainMatch;
+    window.RMClub.avancerJusquAuProchainMatch = function () {
+      window.__nbAvances++;
+      return original.apply(this, arguments);
+    };
     const b = () => document.getElementById('btnJouerMatchClub');
     if (b()) b().click();
     if (b()) b().click();
+    window.RMClub.avancerJusquAuProchainMatch = original;
+    return window.__nbAvances;
   });
   await pageTemps.waitForTimeout(700);
+  verifier('carrière datée : double clic sur « Continuer » ne lance qu\'UNE seule avance',
+    appelsAvance === 1);
+  const jouesApresDoubleClic = await pageTemps.evaluate(
+    () => JSON.parse(localStorage.getItem('rugbyManager.club.v1')).calendrier.filter((f) => f.joue).length);
+  verifier('carrière datée : le double clic ne simule aucun match avant sa date', jouesApresDoubleClic === 0);
+
+  // Puis on rejoint réellement la 1re journée, en recliquant à chaque arrêt
+  // (chaque arrêt est un vrai événement, cf. P1-26) — la date doit tomber
+  // EXACTEMENT sur la date de la journée 1, jamais après.
+  await continuerJusquAuMatch(pageTemps);
   const apresDoubleClicContinuer = await pageTemps.evaluate(() => {
     const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
     return {
@@ -1275,7 +1309,7 @@ function optionsLancement() {
   verifier('carrière datée : « Continuer » avance jusqu\'à la date de la 1re journée, sans la dépasser',
     `${apresDoubleClicContinuer.temps.annee}-${String(apresDoubleClicContinuer.temps.mois).padStart(2, '0')}-${String(apresDoubleClicContinuer.temps.jour).padStart(2, '0')}`
     === apresDoubleClicContinuer.dateJ1);
-  verifier('carrière datée : double clic sur « Continuer » ne provoque aucune double progression ni double simulation',
+  verifier('carrière datée : aucun match n\'a été joué avant l\'ouverture de son aperçu',
     apresDoubleClicContinuer.joues === 0 && apresDoubleClicContinuer.apercu);
 
   // Rechargement de page : la date ne doit pas être perdue.
@@ -1410,8 +1444,9 @@ function optionsLancement() {
 
   await clicOngletSur(pageJours, 'dashboard');
   await pageJours.waitForTimeout(200);
-  await pageJours.click('#btnJouerMatchClub'); // avance de l'intersaison jusqu'au 1er match
-  await pageJours.waitForTimeout(900);
+  // Avance de l'intersaison jusqu'au 1er match, en recliquant à chaque arrêt
+  // (une avance s'interrompt sur tout événement réel, cf. P1-26).
+  await continuerJusquAuMatch(pageJours);
   const apresJours = await pageJours.evaluate(() => {
     const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
     return {
@@ -1813,12 +1848,72 @@ function optionsLancement() {
   verifier('mobile : l\'ajout de la date ne provoque aucun débordement horizontal de la page',
     !mobile.debordementHorizontal);
   // Et « Continuer » fonctionne réellement au doigt.
-  await pageMobileTemps.tap('#btnApercuMatchFlottant');
-  await pageMobileTemps.waitForTimeout(600);
+  // Recliqué à chaque arrêt, comme sur grand écran (une avance s'interrompt
+  // sur tout événement réel, cf. TODO_AUDIT.md P1-26) — mais au doigt.
+  for (let i = 0; i < 15 && !(await pageMobileTemps.isVisible('#panneauApercuMatch.visible')); i++) {
+    await pageMobileTemps.tap('#btnApercuMatchFlottant');
+    await pageMobileTemps.waitForTimeout(600);
+  }
   verifier('mobile : « Continuer » avance bien la date jusqu\'au jour du match (ouverture de sa préparation)',
     await pageMobileTemps.isVisible('#panneauApercuMatch.visible'));
   verifier('mobile : aucune erreur console sur le parcours calendaire mobile', erreursMobileTemps.length === 0);
   await contexteMobileTemps.close();
+
+  // 11 bis) Deux actions distinctes (TODO_AUDIT.md P1-26) : « Jour suivant »
+  // avance d'exactement un jour, « Continuer » file vers le match mais
+  // s'arrête sur tout événement réel (blessure d'entraînement, rapport,
+  // réponse de contrat, décision). Testé dans un contexte propre, sur une
+  // carrière neuve.
+  const contexteAvance = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const pageAvance = await contexteAvance.newPage();
+  const erreursAvance = [];
+  pageAvance.on('pageerror', (e) => erreursAvance.push(`PAGEERROR: ${e.message}`));
+  pageAvance.on('console', (m) => {
+    if (m.type() === 'error' && !m.text().includes('404')) erreursAvance.push(`CONSOLE: ${m.text()}`);
+  });
+  await pageAvance.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  await pageAvance.click('#btnAccueilModeClub');
+  await pageAvance.fill('#inputNomClub', 'Test Avance Jour');
+  await pageAvance.click('#btnCreerClub');
+  await pageAvance.waitForTimeout(400);
+
+  const dateAffichee = () => pageAvance.evaluate(
+    () => window.RMClub.dateISO(window.RMClub.dateCourante(window.RMClub.chargerSaison())));
+
+  verifier('avance : les DEUX boutons existent et sont distincts',
+    (await pageAvance.isVisible('#btnJourSuivant')) && (await pageAvance.isVisible('#btnJouerMatchClub')));
+  const libelleJour = (await pageAvance.textContent('#btnJourSuivant')).trim();
+  verifier('avance : « Jour suivant » annonce la date qu\'il va atteindre (pas un libellé abstrait)',
+    /^→ /.test(libelleJour) && libelleJour.length > 4);
+
+  const dateAvant = await dateAffichee();
+  await pageAvance.click('#btnJourSuivant');
+  await pageAvance.waitForTimeout(350);
+  const dateApres = await dateAffichee();
+  const ecartUnJour = await pageAvance.evaluate(([a, b]) => {
+    const R = window.RMClub;
+    return R.ecartJours(R.dateDepuisISO(a), R.dateDepuisISO(b));
+  }, [dateAvant, dateApres]);
+  verifier('avance : « Jour suivant » avance d\'EXACTEMENT un jour', ecartUnJour === 1);
+  verifier('avance : le libellé du bouton suit la nouvelle date',
+    (await pageAvance.textContent('#btnJourSuivant')).trim() !== libelleJour);
+
+  // « Continuer » : au plus quelques clics doivent mener au match (chaque
+  // arrêt intermédiaire est un vrai événement, jamais un blocage).
+  let clics = 0;
+  let apercuOuvert = false;
+  while (clics < 12 && !apercuOuvert) {
+    await pageAvance.click('#btnJouerMatchClub');
+    await pageAvance.waitForTimeout(700);
+    apercuOuvert = await pageAvance.isVisible('#panneauApercuMatch.visible');
+    clics++;
+  }
+  verifier('avance : « Continuer » finit toujours par atteindre le match (aucun blocage)', apercuOuvert);
+  verifier('avance : le match est atteint en quelques clics, pas en dizaines', clics <= 12);
+  verifier('avance : « Jour suivant » disparaît le jour du match (il le sauterait)',
+    !(await pageAvance.isVisible('#btnJourSuivant')));
+  verifier('avance : aucune erreur console sur le parcours des deux actions', erreursAvance.length === 0);
+  await contexteAvance.close();
 
   // 12) Décision réelle dans la boîte de réception (audit "boîte de réception
   // avec décisions", cf. club-decisions.js) : injecte directement une
@@ -1898,8 +1993,7 @@ function optionsLancement() {
   await pageReco.waitForTimeout(200);
   await pageReco.click('#btnContinuerClub');
   await pageReco.waitForTimeout(300);
-  await pageReco.click('#btnJouerMatchClub');
-  await pageReco.waitForTimeout(500);
+  await continuerJusquAuMatch(pageReco);
   verifier('aperçu du match : un écart marqué avec l\'adversaire affiche une vraie recommandation tactique actionnable',
     await pageReco.locator('#btnAppliquerRecommandations').isVisible().catch(() => false));
   const tactiqueAvantReco = await pageReco.evaluate(() => JSON.parse(localStorage.getItem('rugbyManager.club.v1')).clubJoueur.tactique);
