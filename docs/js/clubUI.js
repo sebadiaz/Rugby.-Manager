@@ -490,7 +490,7 @@
   function rafraichirEntete() {
     const nav = RMClub.navigationClub(saison);
     if (nav.clubConsulteId !== saison.clubJoueur.id) {
-      const adv = RMClub.club(saison, nav.clubConsulteId);
+      const adv = RMClub.clubPartout(saison, nav.clubConsulteId);
       const initialeAdv = (adv.nom.match(/\b\w/g) || ['?']).slice(0, 2).join('').toUpperCase();
       document.getElementById('clubEntete').innerHTML =
         `<div class="clubEntete consulte"><span class="pastilleClub" style="background:${adv.couleur}">${initialeAdv}</span>` +
@@ -522,7 +522,7 @@
   // rencontre, budget estimé), jamais une donnée de gestion inventée.
   function rafraichirTopBarInfos() {
     const nav = RMClub.navigationClub(saison);
-    const club = RMClub.club(saison, nav.clubConsulteId);
+    const club = RMClub.clubPartout(saison, nav.clubConsulteId);
     const estMonClub = nav.clubConsulteId === saison.clubJoueur.id;
     const classement = RMClub.classementTrie(saison);
     const position = classement.findIndex((r) => r.clubId === club.id) + 1;
@@ -757,7 +757,10 @@
   // clubs, fiche joueur, confrontations...) appellent CETTE fonction — la
   // logique n'est dupliquée dans aucun écran.
   function ouvrirClub(clubId) {
-    if (!RMClub.club(saison, clubId)) return;
+    // Recherche LARGE (TODO_AUDIT.md P1-28) : un nom cliquable peut désigner
+    // un club d'un autre palier français ou de l'un des 12 pays, pas
+    // seulement un adversaire direct.
+    if (!RMClub.clubPartout(saison, clubId)) return;
     const nav = RMClub.navigationClub(saison);
     if (clubId === nav.clubConsulteId) { basculerOnglet('composition'); return; }
     RMClub.ouvrirClubDansNavigation(saison, clubId, ongletActuel);
@@ -771,8 +774,12 @@
     rafraichirEcransEquipe();
     // Ouvre directement la composition de l'équipe première du club ouvert :
     // c'est la vue la plus parlante quand on va voir « à quoi ressemble » un
-    // club, et c'est le parcours attendu (clic sur un nom → son XV).
-    basculerOnglet('composition');
+    // club, et c'est le parcours attendu (clic sur un nom → son XV). Sauf
+    // pour un club dont l'effectif n'est PAS simulé (autre palier, autre
+    // pays — TODO_AUDIT.md P1-28) : sa composition serait une page vide, on
+    // ouvre alors sa vue d'ensemble, où son classement et son calendrier
+    // réels sont visibles.
+    basculerOnglet(RMClub.contexteEquipe(saison).disponible ? 'composition' : 'dashboard');
   }
 
   // Retour à son propre club : restaure le club, l'équipe SUR LAQUELLE il
@@ -793,7 +800,11 @@
   // Nom de club CLIQUABLE — un seul composant, réutilisé partout où un nom de
   // club s'affiche. C'est le seul moyen d'ouvrir un club dans tout le jeu.
   function lienClub(clubId) {
-    const c = RMClub.club(saison, clubId);
+    // Recherche LARGE (TODO_AUDIT.md P1-28) : un nom de club doit être
+    // cliquable PARTOUT où il apparaît — y compris dans le classement d'un
+    // championnat japonais ou d'un autre palier français, pas seulement
+    // parmi les adversaires directs. Sans ça, ces écrans affichaient « ? ».
+    const c = RMClub.clubPartout(saison, clubId);
     if (!c) return '?';
     return `<button type="button" class="lienClub" data-club="${echapperHTML(clubId)}" title="Ouvrir ${echapperHTML(c.nom)}">${echapperHTML(c.nom)}</button>`;
   }
@@ -1086,46 +1097,109 @@
     return traits.join(' · ');
   }
 
+  // --- Navigation PAYS -> CHAMPIONNAT (TODO_AUDIT.md P1-28) ---------------
+  // Un seul écran pour les trois sources de compétitions (championnat du
+  // joueur, autres paliers français, 12 pays du monde), toutes présentées
+  // par RMClub.competitionsParPays sous la MÊME forme. Chaque championnat
+  // affiche son classement ET son calendrier, et TOUS les noms de clubs sont
+  // cliquables — c'est le point de la demande : il faut bien un endroit où
+  // les noms apparaissent pour qu'on puisse les ouvrir.
+  //
+  // Choisir un pays ou un championnat n'est PAS choisir un club (règle
+  // P1-20) : on se déplace entre compétitions, on ouvre toujours un club en
+  // cliquant son nom.
+  let paysNavChoisi = 'FRA';
+  let competitionNavChoisie = null;
+
   function rafraichirAutresClubs() {
-    const conteneur = document.getElementById('clubAutresClubsListe');
-    if (!conteneur) return;
-    const classement = RMClub.classementTrie(saison);
-    // Liste de NOMS CLIQUABLES, pas un sélecteur : chaque nom appelle la même
-    // fonction centrale ouvrirClub() que partout ailleurs (TODO_AUDIT.md P1-20).
-    const lignes = saison.adversaires.map((adv) => {
-      const rang = classement.findIndex((r) => r.clubId === adv.id) + 1;
-      const etoiles = Math.max(1, Math.min(5, Math.round(adv.niveauClub * 5)));
-      return `<tr><td><span class="pointCouleurClub" style="background:${adv.couleur}"></span>${lienClub(adv.id)}</td>` +
-        `<td>${'★'.repeat(etoiles)}${'☆'.repeat(5 - etoiles)}</td>` +
-        `<td>${rang}${rang === 1 ? 'er' : 'e'}/${classement.length}</td>` +
-        `<td>${adv.budget != null ? adv.budget + ' k€' : '—'}</td></tr>`;
+    const conteneurPays = document.getElementById('clubNavPays');
+    if (!conteneurPays) return;
+    // Le monde et les autres paliers sont créés au besoin : consulter une
+    // compétition ne doit pas dépendre d'avoir ouvert un autre onglet avant.
+    let creation = false;
+    if (!saison.monde) { RMWorld.assurerMonde(creerRng(graineAleatoire()), saison); creation = true; }
+    const niveauActuel = (saison.clubJoueur.palierPyramide || { niveau: 3 }).niveau;
+    if (!saison.autresDivisionsFrance || saison.autresDivisionsFrance.niveauExclu !== niveauActuel) {
+      RMClub.assurerAutresDivisionsFrance(creerRng(graineAleatoire()), saison);
+      creation = true;
+    }
+    if (creation) sauvegarder();
+
+    const pays = RMClub.competitionsParPays(saison);
+    if (!pays.some((p) => p.code === paysNavChoisi)) paysNavChoisi = pays[0].code;
+    const paysActif = pays.find((p) => p.code === paysNavChoisi);
+    if (!paysActif.championnats.some((ch) => ch.ref === competitionNavChoisie)) {
+      // Par défaut : le championnat du joueur s'il est dans ce pays, sinon
+      // l'élite du pays choisi.
+      const sien = paysActif.championnats.find((ch) => ch.estCelleDuJoueur);
+      competitionNavChoisie = (sien || paysActif.championnats[0]).ref;
+    }
+
+    conteneurPays.innerHTML = pays.map((p) => {
+      const actif = p.code === paysNavChoisi ? ' ligneClubJoueur' : '';
+      const marque = p.championnats.some((ch) => ch.estCelleDuJoueur) ? ' ⭐' : '';
+      return `<button class="alt btnPaysNav${actif}" data-pays="${echapperHTML(p.code)}" ` +
+        `style="flex:0 0 auto;width:auto;padding:6px 10px;font-size:11.5px;margin:0 6px 6px 0;">` +
+        `${echapperHTML(p.nom)}${marque}</button>`;
     }).join('');
-    conteneur.innerHTML = `<table class="tableauClub"><thead><tr><th>Club</th><th>Réputation</th><th>Classement</th><th>Budget (estimé)</th></tr></thead><tbody>${lignes}</tbody></table>`;
-    rafraichirAutresPaliersFrance();
+
+    document.getElementById('clubNavChampionnats').innerHTML = paysActif.championnats.map((ch) => {
+      const actif = ch.ref === competitionNavChoisie ? ' ligneClubJoueur' : '';
+      return `<button class="alt btnChampionnatNav${actif}" data-ref="${echapperHTML(ch.ref)}" ` +
+        `style="flex:0 0 auto;width:auto;padding:6px 10px;font-size:11.5px;">${echapperHTML(ch.nom)}` +
+        `${ch.estCelleDuJoueur ? ' ⭐' : ''}</button>`;
+    }).join('');
+
+    rafraichirCompetitionChoisie();
   }
 
-  // Les 2 paliers de la pyramide française que le club du joueur n'occupe
-  // pas cette saison (cf. docs/js/club-pyramide-france.js) : un classement
-  // réel, simulé une journée à la fois — assurerAutresDivisionsFrance crée
-  // la structure au premier affichage si une vraie journée n'a pas encore
-  // été jouée (carrière toute neuve), sans jamais écraser une progression
-  // déjà en cours.
-  function rafraichirAutresPaliersFrance() {
-    const conteneur = document.getElementById('clubAutresPaliersFrance');
-    if (!conteneur) return;
-    const niveauActuel = (saison.clubJoueur.palierPyramide || { niveau: 3 }).niveau;
-    const existaitDeja = !!saison.autresDivisionsFrance && saison.autresDivisionsFrance.niveauExclu === niveauActuel;
-    const autresDivisions = RMClub.assurerAutresDivisionsFrance(creerRng(graineAleatoire()), saison);
-    if (!existaitDeja) sauvegarder();
-    conteneur.innerHTML = Object.keys(autresDivisions.divisions).sort((a, b) => a - b).map((niveau) => {
-      const div = autresDivisions.divisions[niveau];
-      const lignes = RMClub.classementTrieDe(div.classement).map((r, i) => {
-        const club = div.clubs.find((c) => c.id === r.clubId);
-        return `<tr><td>${i + 1}</td><td>${club ? echapperHTML(club.nom) : '—'}</td><td>${r.j}</td><td>${r.g}</td><td>${r.n}</td><td>${r.p}</td><td><b>${r.pts}</b></td></tr>`;
-      }).join('');
-      return `<h4 style="margin:14px 0 6px;">${div.nom}</h4>` +
-        `<table class="tableauClub"><thead><tr><th></th><th>Club</th><th>J</th><th>G</th><th>N</th><th>P</th><th>Pts</th></tr></thead><tbody>${lignes}</tbody></table>`;
+  function rafraichirCompetitionChoisie() {
+    const comp = RMClub.competition(saison, competitionNavChoisie);
+    const zoneClassement = document.getElementById('clubCompetitionClassement');
+    const zoneCalendrier = document.getElementById('clubCompetitionCalendrier');
+    const titre = document.getElementById('titreCompetitionChoisie');
+    if (!comp) {
+      titre.textContent = '🏆 Championnat';
+      zoneClassement.innerHTML = '<p style="color:var(--text-dim);">Championnat indisponible.</p>';
+      zoneCalendrier.innerHTML = '';
+      return;
+    }
+    titre.textContent = `🏆 ${comp.nom}${comp.estCelleDuJoueur ? ' — ton championnat' : ''}`;
+
+    const lignes = comp.classement.map((r) => {
+      const zonePromue = comp.promus && r.rang <= comp.promus;
+      const zoneRelegable = comp.relegues && r.rang > comp.classement.length - comp.relegues;
+      const estJoueur = r.clubId === saison.clubJoueur.id;
+      const classe = estJoueur ? ' class="ligneClubJoueur"'
+        : zonePromue ? ' class="ligneClubJoueur"' : zoneRelegable ? ' style="opacity:.6;"' : '';
+      const paysClub = comp.partagee && r.club && r.club.pays ? ` <span style="color:var(--text-faint);">(${echapperHTML(r.club.pays)})</span>` : '';
+      // Nom CLIQUABLE — c'est tout l'objet de cet écran.
+      const nom = r.club ? lienClub(r.club.id) : '—';
+      return `<tr${classe}><td>${r.rang}</td><td>${nom}${paysClub}</td>` +
+        `<td>${r.j}</td><td>${r.g}</td><td>${r.n}</td><td>${r.p}</td><td><b>${r.pts}</b></td></tr>`;
     }).join('');
+    zoneClassement.innerHTML = `<table class="tableauClub"><thead><tr><th></th><th>Club</th><th>J</th><th>G</th><th>N</th><th>P</th><th>Pts</th></tr></thead><tbody>${lignes}</tbody></table>`;
+
+    // Calendrier : groupé par journée, comme l'écran Calendrier des équipes,
+    // avec la date réelle quand la compétition en a une (P1-27). Les
+    // compétitions du monde et des autres paliers sont simulées de façon
+    // abstraite et n'ont pas de dates : on n'en invente pas.
+    const parJournee = {};
+    for (const f of comp.calendrier) (parJournee[f.journee] = parJournee[f.journee] || []).push(f);
+    const journees = Object.keys(parJournee).sort((a, b) => Number(a) - Number(b));
+    zoneCalendrier.innerHTML = journees.length === 0
+      ? '<p style="color:var(--text-dim);">Aucune rencontre programmée.</p>'
+      : journees.map((j) => {
+        const datesGroupe = new Set(parJournee[j].map((f) => f.date).filter(Boolean));
+        const dateTitre = datesGroupe.size === 1
+          ? ` <span class="dateJournee">${echapperHTML(RMClub.formaterDateLongue(RMClub.dateDepuisISO(parJournee[j][0].date)))}</span>`
+          : '';
+        const rangs = parJournee[j].map((f) => {
+          const attenu = f.joue ? ' style="opacity:.6"' : '';
+          return `<div${attenu}>${formaterLigneCalendrier(f, saison.clubJoueur.id)}</div>`;
+        }).join('');
+        return `<div class="blocJournee"><h4>Journée ${j}${dateTitre}</h4>${rangs}</div>`;
+      }).join('');
   }
 
   // Vue d'ensemble d'un club CONSULTÉ (TODO_AUDIT.md P1-20) : ce que le
@@ -1148,13 +1222,35 @@
       if (sousTitre) sousTitre.textContent = "Ta saison en un coup d'œil : prochain match, décisions urgentes et alertes.";
       return;
     }
-    const adv = RMClub.club(saison, nav.clubConsulteId);
+    const adv = RMClub.clubPartout(saison, nav.clubConsulteId);
     carte.style.display = '';
     if (titre) titre.textContent = adv.nom;
     if (sousTitre) sousTitre.textContent = 'Ce que tes recruteurs savent de ce club — consultation seule.';
     const facteurAnalyste = RMClub.effetPersonnel(saison, 'analyste');
     const seuilAnalyste = Math.max(2, Math.round(6 - (facteurAnalyste - 1) * 8));
     const analyse = RMClub.analyserAdversaire(saison, adv.id, seuilAnalyste);
+    // Club dont l'effectif n'est PAS simulé (autre palier français, autre
+    // pays — TODO_AUDIT.md P1-28) : aucune analyse comparative n'est
+    // possible, et on n'en fabrique pas. On montre ce qui est réellement
+    // connu — son identité, sa compétition, son rang et sa réputation — et
+    // on dit clairement ce qui ne l'est pas. Son classement et son
+    // calendrier complets restent consultables dans leurs écrans.
+    if (!analyse) {
+      const comp = RMClub.competitionDuClub(saison, adv.id);
+      const ligne = comp ? comp.classement.find((r) => r.clubId === adv.id) : null;
+      const etoiles = Math.max(1, Math.min(5, Math.round((adv.niveauClub != null ? adv.niveauClub : 0.5) * 5)));
+      document.getElementById('clubVueConsulteIdentite').innerHTML =
+        `<div class="ficheJoueurEntete"><span><span class="nomJoueurFiche">${echapperHTML(adv.nom)}</span>` +
+        `<span class="posteJoueurFiche">${comp ? echapperHTML(comp.nom) : 'Compétition inconnue'}` +
+        `${ligne ? ` · ${ligne.rang}${ligne.rang === 1 ? 'er' : 'e'}/${comp.classement.length}` : ''}` +
+        ` · Réputation ${'★'.repeat(etoiles)}${'☆'.repeat(5 - etoiles)}</span></span></div>` +
+        (ligne ? `<p style="font-size:12px;color:var(--text-dim);margin:8px 0;">Bilan : ${ligne.j} joué(s), ${ligne.g} gagné(s), ${ligne.n} nul(s), ${ligne.p} perdu(s) — ${ligne.pts} pts.</p>` : '');
+      document.getElementById('clubVueConsulteAnalyse').innerHTML =
+        '<p style="font-size:12px;color:var(--text-dim);margin:0;">Ce club évolue hors de ton championnat : ses résultats et son classement sont réels et suivis, mais son effectif n\'est pas simulé — il n\'y a donc aucune analyse joueur par joueur à te montrer, et rien ne sera inventé.</p>';
+      document.getElementById('clubVueConsulteConfrontations').innerHTML =
+        '<p style="font-size:12px;color:var(--text-faint);margin:0;">Aucune confrontation possible : vous ne jouez pas la même compétition.</p>';
+      return;
+    }
     const formeTxt = analyse.forme.length
       ? analyse.forme.map((f) => `<span class="badgeForme ${f}">${LIBELLE_FORME[f]}</span>`).join('')
       : '<span style="color:var(--text-faint);">Aucun match joué</span>';
@@ -2268,6 +2364,22 @@
   // Les deux boutons « Continuer » (celui du tableau de bord et le flottant,
   // toujours visible) avancent la carrière jusqu'à la prochaine échéance —
   // ils ne lancent plus un match directement (TODO_AUDIT.md P1-21).
+  // Navigation pays/championnat (TODO_AUDIT.md P1-28) : deux écouteurs
+  // délégués, comme le clic sur un nom de club — jamais un écouteur par
+  // bouton régénéré à chaque rafraîchissement.
+  document.getElementById('clubNavPays').addEventListener('click', (e) => {
+    const bouton = e.target.closest('.btnPaysNav');
+    if (!bouton) return;
+    paysNavChoisi = bouton.dataset.pays;
+    competitionNavChoisie = null;
+    rafraichirAutresClubs();
+  });
+  document.getElementById('clubNavChampionnats').addEventListener('click', (e) => {
+    const bouton = e.target.closest('.btnChampionnatNav');
+    if (!bouton) return;
+    competitionNavChoisie = bouton.dataset.ref;
+    rafraichirAutresClubs();
+  });
   document.getElementById('btnJouerMatchClub').addEventListener('click', continuer);
   document.getElementById('btnJourSuivant').addEventListener('click', jourSuivant);
   document.getElementById('btnApercuMatchFlottant').addEventListener('click', continuer);

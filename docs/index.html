@@ -444,18 +444,23 @@
              P1-19) — cette carte propose le raccourci qui l'y emmène. -->
         <div class="voletOnglet" data-volet="autresclubs" style="display:none;">
           <div class="enTetePage"><span class="categoriePage">Compétition</span><h2>Autres clubs</h2><p>Consulte n'importe quel adversaire : identité, forces/faiblesses, confrontations.</p></div>
+          <!-- Navigation PAYS puis CHAMPIONNAT (TODO_AUDIT.md P1-28) : on ne
+               choisit jamais un CLUB dans une liste (règle P1-20), mais il
+               faut bien pouvoir se déplacer entre compétitions pour que des
+               noms de clubs apparaissent quelque part où on puisse les
+               cliquer. Un seul écran pour les trois sources : le championnat
+               du joueur, les autres paliers français, les 12 pays. -->
           <div class="carteClub">
-            <h3>🏟️ Autres clubs</h3>
-            <p style="margin:0 0 10px;font-size:12px;color:var(--text-faint);">Clique le nom d'un club pour l'ouvrir — comme partout ailleurs dans le jeu (calendrier, classement, résultats, analyse d'adversaire...).</p>
-            <div id="clubAutresClubsListe" tabindex="0" role="region" aria-label="Liste des autres clubs, défilement horizontal sur petit écran"></div>
+            <h3>🌍 Pays</h3>
+            <p style="margin:0 0 10px;font-size:12px;color:var(--text-faint);">Choisis un pays, puis un championnat. Le nom de n'importe quel club est cliquable : il ouvre sa fiche, comme partout ailleurs dans le jeu.</p>
+            <div id="clubNavPays"></div>
           </div>
-          <!-- Les 2 autres paliers de la pyramide française (celui que tu
-               n'occupes pas cette saison, cf. club-pyramide-france.js) : un
-               classement RÉEL, simulé chaque journée, pas une simple
-               étiquette de palier sans contenu. -->
-          <div class="carteClub">
-            <h3>🇫🇷 Autres paliers de la pyramide</h3>
-            <div id="clubAutresPaliersFrance"></div>
+          <div class="carteClub" id="carteCompetitionChoisie">
+            <h3 id="titreCompetitionChoisie">🏆 Championnat</h3>
+            <div id="clubNavChampionnats" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;"></div>
+            <div id="clubCompetitionClassement" tabindex="0" role="region" aria-label="Classement du championnat, défilement horizontal sur petit écran"></div>
+            <h4 style="margin:16px 0 6px;">🗓️ Calendrier</h4>
+            <div id="clubCompetitionCalendrier"></div>
           </div>
         </div>
 
@@ -708,6 +713,7 @@
 <script src="js/club-pyramide.js"></script>
 <script src="js/club-pyramide-france.js"></script>
 <script src="js/club-calendrier.js"></script>
+    <script src="js/club-competitions.js"></script>
 <script src="js/club-sauvegarde.js"></script>
 <script src="js/world.js"></script>
 <script src="js/clubUI.js"></script>

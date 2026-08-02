@@ -465,17 +465,26 @@ function optionsLancement() {
   // Audit ("les autres championnats ne sont jamais simulés") : les 2 autres
   // paliers de la pyramide française (celui que le joueur n'occupe pas
   // cette saison) doivent afficher un classement réel, pas une carte vide.
-  const autresPaliersTxt = await page.textContent('#clubAutresPaliersFrance');
-  verifier('autres paliers de la pyramide française : un classement réel est affiché (pas une carte vide)', autresPaliersTxt.trim().length > 20);
-  verifier('autres paliers de la pyramide française : les 2 paliers non occupés par le joueur sont bien nommés',
-    autresPaliersTxt.includes('Ligue') && (autresPaliersTxt.match(/Ligue/g) || []).length >= 2);
-  // TODO_AUDIT.md P1-20 : la liste des autres clubs n'est PAS un sélecteur —
+  // Navigation pays -> championnat (TODO_AUDIT.md P1-28) : la France est
+  // ouverte par défaut, avec ses 3 paliers (celui du joueur marqué ⭐).
+  const championnatsFrTxt = await page.textContent('#clubNavChampionnats');
+  verifier('autres paliers de la pyramide française : les 3 paliers sont proposés à la navigation',
+    (championnatsFrTxt.match(/Ligue/g) || []).length >= 3);
+  const classementNavTxt = await page.textContent('#clubCompetitionClassement');
+  verifier('navigation par championnat : un classement réel est affiché (pas une carte vide)',
+    classementNavTxt.trim().length > 20);
+  verifier('navigation par championnat : le calendrier du championnat est affiché',
+    (await page.textContent('#clubCompetitionCalendrier')).includes('Journée'));
+  // TODO_AUDIT.md P1-20 : les clubs ne sont PAS choisis dans un sélecteur —
   // ce sont des noms cliquables, exactement comme partout ailleurs, et ils
   // appellent la même fonction centrale d'ouverture de club.
-  verifier('autres clubs : la liste propose des noms de clubs CLIQUABLES (pas un menu déroulant)',
-    (await page.$$('#clubAutresClubsListe .lienClub')).length > 0
-    && await page.evaluate(() => !document.querySelector('#clubAutresClubsListe select')));
-  await page.click('#clubAutresClubsListe .lienClub');
+  verifier('autres clubs : le classement propose des noms de clubs CLIQUABLES (pas un menu déroulant)',
+    (await page.$$('#clubCompetitionClassement .lienClub')).length > 0
+    && await page.evaluate(() => !document.querySelector('#clubCompetitionClassement select')));
+  // Le club du joueur est en tête du classement au départ : on ouvre le
+  // SUIVANT, sinon on « ouvrirait » son propre club.
+  await page.click('#clubCompetitionClassement .lienClub:not([data-club="' +
+    (await page.evaluate(() => JSON.parse(localStorage.getItem('rugbyManager.club.v1')).clubJoueur.id)) + '"])');
   await page.waitForTimeout(300);
   const apresOuvertureClub = await page.evaluate(() => ({
     ongletVisible: document.querySelector('.voletOnglet[data-volet="composition"]').style.display !== 'none',
@@ -1095,7 +1104,7 @@ function optionsLancement() {
     { onglet: 'dashboard', zone: '#clubMiniClassement', nom: 'classement du tableau de bord' },
     { onglet: 'calendrier', zone: '#clubClassement', nom: 'classement' },
     { onglet: 'calendrier', zone: '#clubCalendrier', nom: 'calendrier' },
-    { onglet: 'autresclubs', zone: '#clubAutresClubsListe', nom: 'liste des autres clubs' },
+    { onglet: 'autresclubs', zone: '#clubCompetitionClassement', nom: 'classement du championnat consulté' },
   ];
   let tousNomsCliquables = true;
   for (const e of ECRANS_AVEC_NOMS) {
@@ -1184,7 +1193,7 @@ function optionsLancement() {
     if (cas.club) {
       await pageUnif.click('.ongletBtn[data-onglet="autresclubs"]');
       await pageUnif.waitForTimeout(150);
-      await pageUnif.evaluate((id) => document.querySelector(`#clubAutresClubsListe .lienClub[data-club="${id}"]`).click(), cas.club);
+      await pageUnif.evaluate((id) => document.querySelector(`#clubCompetitionClassement .lienClub[data-club="${id}"]`).click(), cas.club);
       await pageUnif.waitForTimeout(350);
     }
     for (const e of ECRANS_COMMUNS) {
@@ -1963,6 +1972,75 @@ function optionsLancement() {
     !datesParEquipe.jeunes || /mercredi/.test(datesParEquipe.jeunes));
   verifier('dates : aucune erreur console sur l\'écran Calendrier daté', erreursDates.length === 0);
   await contexteDates.close();
+
+  // 11 quater) Navigation PAYS -> CHAMPIONNAT (TODO_AUDIT.md P1-28) : on doit
+  // pouvoir parcourir les 12 pays, ouvrir n'importe quel championnat avec son
+  // classement ET son calendrier, et cliquer le nom de n'importe quel club —
+  // y compris à l'autre bout du monde.
+  const contexteNav = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const pageNav = await contexteNav.newPage();
+  const erreursNav = [];
+  pageNav.on('pageerror', (e) => erreursNav.push(`PAGEERROR: ${e.message}`));
+  pageNav.on('console', (m) => {
+    if (m.type() === 'error' && !m.text().includes('404')) erreursNav.push(`CONSOLE: ${m.text()}`);
+  });
+  await pageNav.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  await pageNav.click('#btnAccueilModeClub');
+  await pageNav.fill('#inputNomClub', 'Test Navigation Monde');
+  await pageNav.click('#btnCreerClub');
+  await pageNav.waitForTimeout(400);
+  await clicOngletSur(pageNav, 'autresclubs');
+  await pageNav.waitForTimeout(400);
+
+  const nbPays = await pageNav.evaluate(() => document.querySelectorAll('.btnPaysNav').length);
+  verifier('navigation monde : les 12 pays sont proposés', nbPays >= 12);
+  verifier('navigation monde : le championnat du joueur est signalé (⭐)',
+    (await pageNav.textContent('#clubNavChampionnats')).includes('⭐'));
+  verifier('navigation monde : aucun SÉLECTEUR de club (règle P1-20)',
+    await pageNav.evaluate(() => !document.querySelector('#clubCompetitionClassement select')
+      && !document.querySelector('#clubNavPays select')));
+
+  // Aller au Japon : un pays où le joueur n'a aucun club.
+  await pageNav.locator('.btnPaysNav', { hasText: 'Japon' }).first().click();
+  await pageNav.waitForTimeout(400);
+  const titreJapon = await pageNav.textContent('#titreCompetitionChoisie');
+  verifier('navigation monde : ouvrir un pays étranger affiche son championnat',
+    titreJapon.length > 3 && !titreJapon.includes('ton championnat'));
+  const classementJapon = await pageNav.textContent('#clubCompetitionClassement');
+  verifier('navigation monde : le classement étranger affiche de VRAIS noms de clubs (pas « ? »)',
+    classementJapon.trim().length > 40 && !/\?\s*0\s*0/.test(classementJapon));
+  verifier('navigation monde : le calendrier du championnat étranger est affiché',
+    (await pageNav.textContent('#clubCompetitionCalendrier')).includes('Journée'));
+  const clubsCliquablesJapon = await pageNav.evaluate(
+    () => document.querySelectorAll('#clubCompetitionClassement .lienClub').length);
+  verifier('navigation monde : les clubs étrangers sont cliquables', clubsCliquablesJapon >= 8);
+
+  // Ouvrir un club étranger : il doit s'ouvrir réellement, et dire
+  // honnêtement que son effectif n'est pas connu — sans rien inventer.
+  const nomClubEtranger = (await pageNav.locator('#clubCompetitionClassement .lienClub').first().textContent()).trim();
+  await pageNav.locator('#clubCompetitionClassement .lienClub').first().click();
+  await pageNav.waitForTimeout(600);
+  const enteteEtranger = await pageNav.textContent('#clubEntete');
+  verifier('navigation monde : cliquer un club étranger ouvre RÉELLEMENT sa fiche',
+    enteteEtranger.includes(nomClubEtranger) && enteteEtranger.includes('Club consulté'));
+  verifier('navigation monde : un retour vers son propre club est proposé',
+    await pageNav.isVisible('#btnRetourMonClub'));
+  const vueEtranger = await pageNav.textContent('#clubVueConsulteAnalyse');
+  verifier('navigation monde : l\'effectif inconnu est annoncé honnêtement, jamais fabriqué',
+    /n\'est pas simulé|pas connu/i.test(vueEtranger));
+  await clicOngletSur(pageNav, 'effectif');
+  await pageNav.waitForTimeout(300);
+  const effectifEtranger = await pageNav.textContent('#clubEffectif');
+  verifier('navigation monde : aucun joueur inventé pour un club étranger',
+    !/\d+\s*an\(s\)/.test(effectifEtranger));
+
+  // Retour à son club : la carrière reprend normalement.
+  await pageNav.click('#btnRetourMonClub');
+  await pageNav.waitForTimeout(400);
+  verifier('navigation monde : « Retour à mon club » ramène bien à son propre club',
+    (await pageNav.textContent('#clubEntete')).includes('Test Navigation Monde'));
+  verifier('navigation monde : aucune erreur console sur tout le parcours', erreursNav.length === 0);
+  await contexteNav.close();
 
   // 12) Décision réelle dans la boîte de réception (audit "boîte de réception
   // avec décisions", cf. club-decisions.js) : injecte directement une

@@ -46,8 +46,13 @@ new Function('window', require('fs').readFileSync(require('path').join(__dirname
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-pyramide.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-pyramide-france.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-calendrier.js'), 'utf8'))(global.window);
+new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-competitions.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-sauvegarde.js'), 'utf8'))(global.window);
+// world.js : nécessaire pour les tests de navigation par pays/championnat
+// (P1-28) — l'écosystème mondial fournit 12 pays et leurs divisions.
+new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/world.js'), 'utf8'))(global.window);
 const RMClub = global.window.RMClub;
+const RMWorld = global.window.RMWorld;
 
 function creerRng(graine) {
   let s = graine >>> 0 || 1;
@@ -2680,6 +2685,119 @@ test('dates : une sauvegarde sans dates reste jouable (retombe sur la prochaine 
   const duJour = RMClub.fixturesDuJour(s, RMClub.dateCourante(s));
   assert.ok(duJour.length > 0, 'une sauvegarde non datée doit rester jouable');
   assert.strictEqual(duJour[0].journee, 1, 'elle retombe sur la prochaine journée à jouer');
+});
+
+// --- P1-28 : « Autres clubs » devient une navigation par PAYS puis
+// CHAMPIONNAT, avec classement, calendrier et clubs cliquables partout
+// (demande utilisateur, point 4). ---
+
+function saisonAvecMonde(graine) {
+  const s = saisonPourAvance(graine);
+  RMWorld.assurerMonde(creerRng(graine + 1), s);
+  RMClub.assurerAutresDivisionsFrance(creerRng(graine + 2), s);
+  return s;
+}
+
+test('compétitions : la navigation liste TOUS les pays, chacun avec ses championnats', () => {
+  const s = saisonAvecMonde(940);
+  const pays = RMClub.competitionsParPays(s);
+  assert.ok(pays.length >= 12, `au moins 12 pays attendus, ${pays.length} trouvés`);
+  const france = pays.find((p) => p.code === 'FRA');
+  assert.ok(france, 'la France doit figurer dans la navigation');
+  assert.ok(france.championnats.length >= 3, 'la France doit exposer ses 3 paliers');
+  for (const p of pays) {
+    assert.ok(p.nom && p.championnats.length > 0, `${p.code} : pays sans championnat`);
+    for (const ch of p.championnats) {
+      assert.ok(ch.ref && ch.nom, `${p.code} : championnat sans référence ou sans nom`);
+    }
+  }
+});
+
+test('compétitions : le championnat du JOUEUR est signalé comme tel, et une seule fois', () => {
+  const s = saisonAvecMonde(941);
+  const tous = RMClub.competitionsParPays(s).flatMap((p) => p.championnats);
+  const siens = tous.filter((ch) => ch.estCelleDuJoueur);
+  assert.strictEqual(siens.length, 1, `exactement un championnat doit être celui du joueur (${siens.length} trouvés)`);
+  const comp = RMClub.competition(s, siens[0].ref);
+  assert.ok(comp.clubs.some((c) => c.id === s.clubJoueur.id),
+    'le championnat du joueur doit réellement contenir son club');
+});
+
+test('compétitions : chaque championnat expose un classement ET un calendrier réels', () => {
+  const s = saisonAvecMonde(942);
+  for (const p of RMClub.competitionsParPays(s)) {
+    for (const ch of p.championnats) {
+      const comp = RMClub.competition(s, ch.ref);
+      assert.ok(comp, `${ch.ref} : compétition introuvable`);
+      assert.ok(comp.clubs.length > 1, `${ch.ref} : ${comp.clubs.length} club(s)`);
+      assert.ok(comp.classement.length === comp.clubs.length,
+        `${ch.ref} : classement de ${comp.classement.length} lignes pour ${comp.clubs.length} clubs`);
+      assert.ok(comp.calendrier.length > 0, `${ch.ref} : aucun calendrier`);
+      // Le calendrier doit désigner des clubs de CETTE compétition.
+      const ids = new Set(comp.clubs.map((c) => c.id));
+      for (const f of comp.calendrier) {
+        assert.ok(ids.has(f.domicileId) && ids.has(f.exterieurId),
+          `${ch.ref} : une rencontre oppose des clubs hors de la compétition`);
+      }
+    }
+  }
+});
+
+test('compétitions : tout club affiché est retrouvable — donc cliquable', () => {
+  const s = saisonAvecMonde(943);
+  let verifies = 0;
+  for (const p of RMClub.competitionsParPays(s)) {
+    for (const ch of p.championnats) {
+      for (const c of RMClub.competition(s, ch.ref).clubs) {
+        assert.ok(RMClub.clubPartout(s, c.id), `club ${c.id} (${c.nom}) introuvable : son nom ne serait pas cliquable`);
+        verifies++;
+      }
+    }
+  }
+  assert.ok(verifies > 100, `trop peu de clubs vérifiés (${verifies})`);
+});
+
+test('compétitions : clubPartout trouve aussi les clubs des autres paliers français', () => {
+  const s = saisonAvecMonde(944);
+  const divisions = s.autresDivisionsFrance.divisions;
+  const premiere = divisions[Object.keys(divisions)[0]];
+  const c = premiere.clubs[0];
+  const trouve = RMClub.clubPartout(s, c.id);
+  assert.ok(trouve, 'un club d\'un autre palier français doit être retrouvable');
+  assert.strictEqual(trouve.nom, c.nom);
+});
+
+test('compétitions : clubPartout ne confond jamais deux clubs (identifiants uniques)', () => {
+  const s = saisonAvecMonde(945);
+  const vus = new Map();
+  for (const p of RMClub.competitionsParPays(s)) {
+    for (const ch of p.championnats) {
+      for (const c of RMClub.competition(s, ch.ref).clubs) {
+        if (vus.has(c.id)) {
+          assert.strictEqual(vus.get(c.id), c.nom,
+            `identifiant ${c.id} partagé par « ${vus.get(c.id)} » et « ${c.nom} »`);
+        }
+        vus.set(c.id, c.nom);
+      }
+    }
+  }
+});
+
+test('compétitions : un club du monde reste consultable, sans effectif inventé', () => {
+  const s = saisonAvecMonde(946);
+  // Une compétition d'un pays autre que la France, prise dans la navigation
+  // elle-même (pas en devinant une référence interne).
+  const paysEtranger = RMClub.competitionsParPays(s).find((p) => p.code !== 'FRA');
+  const mondial = RMClub.competition(s, paysEtranger.championnats[0].ref).clubs[0];
+  s.clubJoueur.navigationClub = RMClub.navigationClub(s);
+  s.clubJoueur.navigationClub.clubConsulteId = mondial.id;
+  s.clubJoueur.navigationClub.equipeConsultee = 'pro';
+  const ctx = RMClub.contexteEquipe(s);
+  assert.strictEqual(ctx.club.id, mondial.id, 'le club consulté doit être celui du monde');
+  assert.ok(!ctx.modifiable, 'un club du monde n\'est jamais modifiable');
+  assert.strictEqual(ctx.effectif.length, 0, 'aucun joueur ne doit être inventé pour un club du monde');
+  assert.ok(ctx.motifIndisponible && /connu|effectif/i.test(ctx.motifIndisponible),
+    'l\'absence d\'effectif doit être expliquée honnêtement, pas laissée vide');
 });
 
 console.log(`\n${nbTests} test(s) exécuté(s).`);

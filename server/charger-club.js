@@ -38,6 +38,7 @@ const MODULES = [
   'club-pyramide.js',
   'club-pyramide-france.js',
   'club-calendrier.js',
+  'club-competitions.js',
   'club-sauvegarde.js',
 ];
 

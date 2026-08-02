@@ -60,8 +60,11 @@
     if (!TYPES_EQUIPE[n.equipeConsultee]) n.equipeConsultee = 'pro';
     if (!TYPES_EQUIPE[n.equipePrecedente]) n.equipePrecedente = 'pro';
     // Un club disparu (fin de saison, changement de palier) ne doit jamais
-    // laisser la navigation bloquée sur une équipe fantôme.
-    if (!global.RMClub.club(saison, n.clubConsulteId)) n.clubConsulteId = c.id;
+    // laisser la navigation bloquée sur une équipe fantôme. Recherche LARGE
+    // (TODO_AUDIT.md P1-28) : un club d'un autre palier français ou de l'un
+    // des 12 pays existe bel et bien — il ne doit pas être traité comme
+    // disparu sous prétexte qu'il ne joue pas le championnat du joueur.
+    if (!global.RMClub.clubPartout(saison, n.clubConsulteId)) n.clubConsulteId = c.id;
     // Un club adverse n'a qu'une équipe première dans ses données : ne
     // jamais rester sur une équipe qui n'existe pas pour lui.
     if (n.clubConsulteId !== c.id) n.equipeConsultee = 'pro';
@@ -78,7 +81,9 @@
   // ouvrir ensuite (Composition) est décidé côté UI, pas ici.
   function ouvrirClubDansNavigation(saison, clubId, ongletActuel) {
     const n = navigationClub(saison);
-    if (!global.RMClub.club(saison, clubId)) return n;
+    // Recherche LARGE (TODO_AUDIT.md P1-28) : ouvrir un club d'un autre
+    // palier français ou de l'un des 12 pays est un parcours légitime.
+    if (!global.RMClub.clubPartout(saison, clubId)) return n;
     if (clubId === n.clubConsulteId) return n;
     // On ne mémorise un point de retour QUE si l'on quitte réellement son
     // propre club — enchaîner deux adversaires ne doit pas faire perdre le
@@ -286,6 +291,35 @@
 
     if (!estClubJoueur) {
       const club = global.RMClub.club(saison, n.clubConsulteId);
+      // Club HORS du championnat du joueur (autre palier français, ou l'un
+      // des 12 pays de l'écosystème mondial — TODO_AUDIT.md P1-28) : il
+      // existe réellement, il a un nom, un niveau, un classement et un
+      // calendrier, mais AUCUN effectif n'est simulé pour lui. On le dit,
+      // on ne fabrique pas quinze joueurs pour remplir l'écran. Le même
+      // écran sert, avec sa carte d'effectif vide et son motif expliqué —
+      // exactement comme une Équipe B non qualifiée.
+      if (!club) {
+        const lointain = global.RMClub.clubPartout(saison, n.clubConsulteId);
+        if (!lointain) return contexteEquipe(saison, Object.assign({}, n, { clubConsulteId: c.id }));
+        const comp = global.RMClub.competitionDuClub(saison, lointain.id);
+        return {
+          type: 'pro', clubId: lointain.id, club: lointain, effectif: [],
+          estClubJoueur: false,
+          label: TYPES_EQUIPE.pro.label,
+          nomClub: lointain.nom,
+          sousTitre: comp ? `${comp.nom} — club consulté` : 'Club consulté',
+          modifiable: false,
+          slot: { compositionTitulaires: {}, compositionBanc: {}, tactique: {}, capitaineId: null, buteurId: null, lanceurToucheId: null },
+          tactiqueDeduite: false,
+          calendrier: comp ? comp.calendrier.filter((f) => f.domicileId === lointain.id || f.exterieurId === lointain.id) : [],
+          classement: comp ? comp.classement : null,
+          titreClassement: comp ? `Classement — ${comp.nom}` : 'Classement',
+          personnel: null,
+          entrainementFocus: null,
+          disponible: false,
+          motifIndisponible: "L'effectif de ce club n'est pas connu : il évolue hors de ton championnat, où seuls les résultats et le classement sont suivis. Son calendrier et sa position, eux, sont réels.",
+        };
+      }
       const effectif = effectifAdverseNormalise(club);
       return {
         type: 'pro', clubId: club.id, club, effectif,
