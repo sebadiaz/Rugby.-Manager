@@ -748,6 +748,46 @@ Chaque point est cliquable et ouvre l'écran où le régler.
 
 **Le découpage en quatre tranches demandé est terminé.** Reste hors périmètre et documenté comme tel : les compétitions internationales du club du joueur (coupes d'Europe), une IA de recrutement pour les clubs adverses, et un centre de formation pour les clubs IA.
 
+### P1-25. Grosses défaites trop fréquentes : le XV du joueur se plaçait à 7 couloirs au lieu de 12
+- **Statut : CORRIGÉ**
+- Priorité : P1 (demande utilisateur, formulée deux fois : « Corriger les grosses défaites trop fréquentes. Simuler plusieurs centaines de matchs, mesurer les écarts de score selon le niveau des équipes et corriger les causes réelles sans plafonner artificiellement les scores » et « mes adversaires gagnent trop souvent avec beaucoup d'écart »)
+- Fichiers concernés : `docs/js/club-composition.js`, `server/simulate-ecarts.js` (**nouveau**), `server/test-equilibre-matchs.js` (**nouveau**), `server/charger-club.js` (**nouveau**), `.github/workflows/deploy-pages.yml`
+
+**L'outil de mesure qui manquait.** `server/simulate-batch.js` mesurait déjà les volumes d'un match (essais, rucks, plaquages…), mais toujours en CUMULANT les deux équipes — il ne pouvait donc structurellement pas voir un déséquilibre entre elles. Nouveau `server/simulate-ecarts.js` : il mesure le DIFFÉRENTIEL de score sur des centaines de matchs, dans deux axes distincts — symétrie (club du joueur contre IA de niveau strictement égal) et échelle (écart de niveau croissant) — avec un témoin IA contre IA pour séparer un défaut du moteur d'un défaut du câblage du mode Club.
+
+**Ce que la mesure a montré (baseline, avant tout correctif).** Sur 30 matchs de 80 minutes par scénario :
+
+| Confrontation | Écart moyen | V/N/D | Défaites > 21 pts |
+|---|---|---|---|
+| joueur 0.50 vs IA 0.50 | **−42,4** | **0/0/30** | **87 %** |
+| IA 0.50 vs IA 0.50 (témoin) | −2,9 | 15/0/15 | 13 % |
+| joueur 0.50 vs IA 0.20 | −5,4 | 14/0/16 | 23 % |
+
+Le témoin IA contre IA étant équilibré, **le moteur n'était pas en cause** : le défaut était entièrement dans la façon dont le club du JOUEUR était transmis au moteur. Il fallait affronter une équipe de niveau 0,20 pour qu'un club de niveau 0,50 fasse jeu égal — un handicap d'environ 40 points par match, invisible jusqu'ici parce qu'aucun outil ne comparait les deux camps.
+
+**Cause racine : le placement suivait le joueur au lieu de suivre le maillot.** `couloir` (couloir latéral au repos, de 0 à 70 m de large) est défini par NUMÉRO dans le moteur : le n°11 se place sur une aile (7), le n°14 sur l'autre (63). Mais l'effectif du club du joueur est généré par CATÉGORIE de poste (`GABARIT_EFFECTIF`), et `ARCHETYPE_PAR_POSTE` retient **le premier numéro rencontré** pour chaque catégorie. Résultat : tous les ailiers héritaient du couloir du n°11, tous les piliers de celui du n°1, les deux deuxièmes lignes du n°4, les trois troisièmes lignes du n°6, les deux centres du n°12. Le XV du joueur n'occupait plus que **7 couloirs distincts au lieu de 12** — neuf joueurs entassés sur un tiers du terrain, une aile entière laissée libre à chaque phase de jeu. Les clubs IA, eux, sont générés par NUMÉRO (`genererJoueur(numero, …)`) et n'ont jamais eu le problème : d'où l'asymétrie.
+
+Le même défaut existait sur le banc (`remplacementsVersConfig`) : un remplaçant entrait avec le couloir de SA catégorie, pas celui du maillot qu'il relevait. Il se manifestait à partir de la 50ᵉ minute et à chaque reprise de jeu, le moteur rechargeant la config des joueurs à chaque nouvelle manche (`_nouvelleManche`).
+
+**Correctif (limité à deux champs).** Dans `compositionVersJoueursCfg` et `remplacementsVersConfig`, `couloir` et `tendance` sont désormais lus sur le profil du NUMÉRO porté ce jour-là (`DEFAULT_CONFIG.joueurs[numero]`) et non sur la fiche du joueur : le maillot dit où l'on se place, le joueur apporte ses qualités. **Tous les autres attributs restent strictement ceux du joueur** — vitesse, plaquage, mêlée, touche, puissance, endurance, passe, jeu au pied, décision, discipline, adresse — y compris les ajustements réels de fatigue et de moral. Un test dédié vérifie explicitement qu'aucun attribut n'a été aligné sur l'archétype du maillot. **Aucun score n'est plafonné**, aucune probabilité n'a été retouchée, le moteur n'a pas été modifié.
+
+**Résultat mesuré après correctif**, mêmes graines, mêmes scénarios :
+
+| Confrontation | Avant | Après |
+|---|---|---|
+| joueur 0.50 vs IA 0.50 | −42,4 (0/30 victoires) | **+3,8 (10/20 victoires)** |
+| grosses défaites à niveau égal | 87 % | **10 %** |
+| couloirs distincts occupés | 7 | **12** (identique à un XV IA) |
+
+**Critères de validation.**
+- `server/test-equilibre-matchs.js` (**nouveau**, 6 tests) : chaque numéro occupe le couloir de son maillot sur 20 tirages ; les deux ailiers ne sont jamais sur la même aile ; le XV du joueur couvre autant de couloirs qu'un XV IA ; **les attributs restent ceux du joueur** ; à niveau égal l'écart moyen reste sous 12 points et les victoires entre 5 et 15 sur 20 ; les défaites de plus de 21 points restent minoritaires. Les 5 premiers échouent avant le correctif (mesures ci-dessus), les 6 passent après.
+- Vérifié **dans le vrai jeu** (Playwright, carrière créée depuis l'accueil) et pas seulement en simulation : la config réellement envoyée au moteur pour le XV du joueur affiche bien 12 couloirs distincts, chacun conforme au profil de son numéro, sans erreur console.
+- Régression complète sans échec : `test-invariants.js` 15/15, `test-parcours-club.js` 122/122, `test-monde.js` 14/14, `test-audit-p0-1.js` 4/4, `test-audit-p0-2.js` 6/6, `test-audit-p0-3.js` 8/8, `test-textes-accueil.js` 4/4, `test-parcours-navigateur.js` 199/199.
+
+**Effet de bord utile.** `server/charger-club.js` (nouveau) centralise le chargement des 26 modules `docs/js/club*.js` sous Node — chaque outil ou test recopiait jusqu'ici la même liste de `new Function('window', …)`, qu'il fallait modifier partout à chaque nouveau domaine. Les fichiers de tests existants n'ont pas été touchés (aucun risque de régression) ; seuls les nouveaux outils l'utilisent.
+
+**Reste à faire sur ce sujet.** L'axe « échelle » reste à calibrer : un écart de niveau de 0,45 (0,50 contre 0,95) produit encore ~36 points d'écart entre deux IA, ce qui est beaucoup pour un championnat où tous les clubs sont censés être du même palier. À traiter séparément, avec une mesure de la dispersion réelle des `niveauClub` par palier — c'est un sujet de génération de championnat, pas de moteur.
+
 ### P2-10. Découper club.js et clubUI.js par domaine (sans changement de comportement)
 - **Statut : EN COURS (tranche 1 : Personnel, tranche 2 : Objectif de saison, tranche 3 : Analyse adversaire, tranche 4 : Prêts, tranche 5 : Contrats, tranche 6 : Équipe B, tranche 7 : Transferts national, tranche 8 : Transferts internationaux, tranche 9 : Effectif étendu, tranche 10 : Centre de formation, tranche 11 : Composition et tactique, tranche 12 : Condition physique des joueurs, tranche 13 : Génération de club/pyramide, tranche 14 : Calendrier et classement, tranche 15 : Sauvegarde et migration — voir constat de risque et tranches suivantes ci-dessous)**
 - Priorité : P2 (maintenabilité — explicitement demandée par l'utilisateur malgré la tension avec la règle CLAUDE.md "jamais un patch purement technique si le gameplay ne s'améliore pas visiblement")

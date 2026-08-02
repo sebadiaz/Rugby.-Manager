@@ -50,6 +50,7 @@ jobs:
           node server/test-monde.js
           node server/test-audit-p0-1.js
           node server/test-audit-p0-2.js
+          node server/test-equilibre-matchs.js
       - name: Installer Playwright (Chromium)
         run: |
           npm install --no-save playwright

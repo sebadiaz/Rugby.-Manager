@@ -57,12 +57,16 @@
   // effectifs transmis au moteur — pas un simple badge cosmétique.
   function compositionVersJoueursCfg(effectif, composition) {
     const POSTE_REQUIS = global.RMClub.POSTE_REQUIS;
+    // Placement de départ du MAILLOT, pas du joueur (cf. plus bas) :
+    // DEFAULT_CONFIG.joueurs est indexé par NUMÉRO côté moteur.
+    const PROFIL_MAILLOT = global.RugbyEngine.DEFAULT_CONFIG.joueurs;
     const parId = {};
     for (const j of effectif) parId[j.id] = j;
     const cfg = {};
     for (const numero of Object.keys(POSTE_REQUIS)) {
       const j = parId[composition[numero]];
       if (!j) continue;
+      const maillot = PROFIL_MAILLOT[numero];
       const malusFatigue = Math.round(((j.fatigue || 0) / 100) * 12);
       // Moral (0-100, neutre 60-70 à la génération) : un joueur au moral haut
       // joue légèrement au-dessus de son niveau, un joueur démoralisé en
@@ -73,7 +77,21 @@
         poste: POSTE_REQUIS[numero],
         vitesse: Math.max(20, j.vitesse + ajustement),
         plaquage: Math.max(20, j.plaquage + ajustement),
-        tendance: j.tendance, couloir: j.couloir, adresse: j.adresse,
+        // `couloir` (couloir latéral au repos, 0-70 m) et `tendance`
+        // (proximité au ballon) décrivent le POSTE OCCUPÉ CE JOUR-LÀ, pas
+        // l'individu : c'est le maillot qui dit où se place un joueur, comme
+        // sur une vraie feuille de match. L'effectif du joueur étant généré
+        // par CATÉGORIE de poste (cf. GABARIT_EFFECTIF), tous les joueurs
+        // d'une même catégorie héritaient du couloir du PREMIER numéro de
+        // cette catégorie (ARCHETYPE_PAR_POSTE) : les deux ailiers se
+        // plaçaient tous les deux sur l'aile du n°11, les deux piliers, les
+        // deux deuxièmes lignes, les trois troisièmes lignes et les deux
+        // centres se superposaient aussi. Le XV du joueur n'occupait que 7
+        // couloirs distincts au lieu de 12, laissant une aile entière libre —
+        // il encaissait ~43 points de plus qu'un XV IA de niveau identique
+        // (mesuré par server/simulate-ecarts.js). Les ATTRIBUTS, eux, restent
+        // ceux du joueur : il apporte ses qualités, le maillot son placement.
+        tendance: maillot.tendance, couloir: maillot.couloir, adresse: j.adresse,
         melee: j.melee, touche: j.touche, puissance: j.puissance,
         endurance: j.endurance, passe: j.passe, jeuPied: j.jeuPied,
         decision: j.decision, discipline: j.discipline,
@@ -249,9 +267,16 @@
       const malusFatigue = Math.round(((j.fatigue || 0) / 100) * 12);
       const ajustMoral = Math.round((((j.moral != null ? j.moral : 65) - 60) / 100) * 8);
       const ajustement = ajustMoral - malusFatigue;
+      const numeroCible = CIBLE_REMPLACEMENT_BANC[bancNumero];
+      // Même règle que compositionVersJoueursCfg : le remplaçant prend la
+      // PLACE du maillot qu'il relève, pas celle de sa catégorie de poste.
+      // Sans ça, chaque entrée en jeu (à partir de la 50ᵉ minute) déformait
+      // à nouveau la ligne — le moteur recharge la config à chaque reprise
+      // de jeu (cf. _nouvelleManche dans engine/rugby-engine.js).
+      const maillot = global.RugbyEngine.DEFAULT_CONFIG.joueurs[numeroCible];
       remplacements.push({
         equipe: lettreEquipe,
-        numero: CIBLE_REMPLACEMENT_BANC[bancNumero],
+        numero: numeroCible,
         minute: MINUTE_REMPLACEMENT_BANC[bancNumero],
         // numeroBanc/joueurId : ignorés par le moteur (qui ne lit que
         // equipe/numero/minute/joueur), utiles côté clubUI.js pour créditer
@@ -263,7 +288,7 @@
           nom: j.nom, poste: j.poste,
           vitesse: Math.max(20, j.vitesse + ajustement),
           plaquage: Math.max(20, j.plaquage + ajustement),
-          tendance: j.tendance, couloir: j.couloir, adresse: j.adresse,
+          tendance: maillot.tendance, couloir: maillot.couloir, adresse: j.adresse,
           melee: j.melee, touche: j.touche, puissance: j.puissance,
           endurance: j.endurance, passe: j.passe, jeuPied: j.jeuPied,
           decision: j.decision, discipline: j.discipline,
