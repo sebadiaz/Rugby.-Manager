@@ -2225,6 +2225,85 @@ function optionsLancement() {
   verifier('championnat espoirs : aucune erreur console', erreursEsp.length === 0);
   await contexteEsp.close();
 
+  // 11 octies) Match amical (TODO_AUDIT.md P1-32) : proposé depuis la page du
+  // club consulté, programmé sur une date libre, joué à SA date, sans jamais
+  // toucher le championnat.
+  const contexteAmi = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const pageAmi = await contexteAmi.newPage();
+  const erreursAmi = [];
+  pageAmi.on('pageerror', (e) => erreursAmi.push(`PAGEERROR: ${e.message}`));
+  pageAmi.on('console', (m) => {
+    if (m.type() === 'error' && !m.text().includes('404')) erreursAmi.push(`CONSOLE: ${m.text()}`);
+  });
+  await pageAmi.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  await pageAmi.click('#btnAccueilModeClub');
+  await pageAmi.fill('#inputNomClub', 'Test Amical');
+  await pageAmi.click('#btnCreerClub');
+  await pageAmi.waitForTimeout(400);
+  await pageAmi.evaluate(() => { document.getElementById('selDureeClub').value = '300'; });
+
+  // On ouvre un club en cliquant son NOM (jamais un sélecteur d'adversaire).
+  await clicOngletSur(pageAmi, 'autresclubs');
+  await pageAmi.waitForTimeout(400);
+  const idJoueurAmi = await pageAmi.evaluate(
+    () => JSON.parse(localStorage.getItem('rugbyManager.club.v1')).clubJoueur.id);
+  await pageAmi.click(`#clubCompetitionClassement .lienClub:not([data-club="${idJoueurAmi}"])`);
+  await pageAmi.waitForTimeout(600);
+  await clicOngletSur(pageAmi, 'dashboard');
+  await pageAmi.waitForTimeout(400);
+
+  verifier('amical : la proposition vit sur la page du club consulté (pas de sélecteur d\'adversaire)',
+    (await pageAmi.isVisible('#btnProposerAmical'))
+    && await pageAmi.evaluate(() => !document.querySelector('#clubVueConsulteAmical select[id*="Club"]')));
+  const nbDatesLibres = await pageAmi.evaluate(() => document.querySelectorAll('#selDateAmical option').length);
+  verifier('amical : de vraies dates libres sont proposées', nbDatesLibres > 0);
+
+  await pageAmi.selectOption('#selDateAmical', { index: 0 });
+  const dateChoisie = await pageAmi.evaluate(() => document.getElementById('selDateAmical').value);
+  await pageAmi.click('#btnProposerAmical');
+  await pageAmi.waitForTimeout(500);
+  const amicalEnregistre = await pageAmi.evaluate(
+    () => (JSON.parse(localStorage.getItem('rugbyManager.club.v1')).amicaux || [])[0]);
+  verifier('amical : la rencontre est RÉELLEMENT programmée à la date choisie',
+    !!amicalEnregistre && amicalEnregistre.date === dateChoisie && !amicalEnregistre.joue);
+
+  await pageAmi.click('#btnRetourMonClub');
+  await pageAmi.waitForTimeout(400);
+  await clicOngletSur(pageAmi, 'dashboard');
+  await pageAmi.waitForTimeout(400);
+  verifier('amical : il devient une vraie échéance annoncée par le bouton principal',
+    (await pageAmi.textContent('#btnJouerMatchClub')).includes('Continuer jusqu\'au'));
+
+  let amicalJoue = false;
+  for (let i = 0; i < 12 && !amicalJoue; i++) {
+    amicalJoue = await pageAmi.evaluate(
+      () => ((JSON.parse(localStorage.getItem('rugbyManager.club.v1')).amicaux || [])[0] || {}).joue === true);
+    if (amicalJoue) break;
+    await pageAmi.click('#btnJouerMatchClub');
+    await pageAmi.waitForTimeout(900);
+    if (await pageAmi.isVisible('#panneauResultat.visible')) {
+      await pageAmi.click('#btnResultatFermer');
+      await pageAmi.waitForTimeout(600);
+    } else if (await pageAmi.isVisible('#panneauApercuMatch.visible')) {
+      await pageAmi.click('#btnApercuLancerMatch');
+      await pageAmi.waitForSelector('#panneauResultat.visible', { timeout: 60000 });
+      await pageAmi.click('#btnResultatFermer');
+      await pageAmi.waitForTimeout(600);
+    }
+  }
+  const bilanAmi = await pageAmi.evaluate(() => {
+    const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
+    return { amical: (s.amicaux || [])[0], journees: s.calendrier.filter((f) => f.joue).length,
+      fatigueMax: Math.max.apply(null, s.clubJoueur.effectif.map((j) => j.fatigue || 0)) };
+  });
+  verifier('amical : il se joue RÉELLEMENT à sa date, avec un score du moteur',
+    !!bilanAmi.amical && bilanAmi.amical.joue === true && bilanAmi.amical.score
+    && Number.isFinite(bilanAmi.amical.score.pour));
+  verifier('amical : il ne fait avancer AUCUNE journée de championnat', bilanAmi.journees === 0);
+  verifier('amical : il fatigue réellement les joueurs alignés', bilanAmi.fatigueMax > 0);
+  verifier('amical : aucune erreur console', erreursAmi.length === 0);
+  await contexteAmi.close();
+
   // 12) Décision réelle dans la boîte de réception (audit "boîte de réception
   // avec décisions", cf. club-decisions.js) : injecte directement une
   // demande de temps de jeu (le déclenchement — plusieurs journées sans

@@ -1292,6 +1292,41 @@
       }).join('') +
       (puces ? `<div class="listeQualitatif">${puces}</div>` : '<p style="font-size:11.5px;color:var(--text-faint);margin:10px 0 0;">Aucun écart marqué avec ton effectif.</p>');
     document.getElementById('clubVueConsulteConfrontations').innerHTML = confrontations;
+    rafraichirPropositionAmical(adv);
+  }
+
+  // --- Proposer un match amical (TODO_AUDIT.md P1-32) ---------------------
+  // Sur la page du club consulté : les prochaines dates RÉELLEMENT libres de
+  // son calendrier, et rien d'autre. Aucune date n'est proposée si elle
+  // entre en conflit avec une rencontre officielle — l'impossibilité vient
+  // du calendrier, pas d'une règle inventée.
+  function rafraichirPropositionAmical(adversaire) {
+    const zone = document.getElementById('clubVueConsulteAmical');
+    if (!zone) return;
+    if (!adversaire || !RMClub.aUnEffectifSimule(adversaire)) {
+      zone.innerHTML = '';
+      return;
+    }
+    const dejaPrevu = (saison.amicaux || []).find((a) => !a.joue && a.adversaireId === adversaire.id);
+    if (dejaPrevu) {
+      zone.innerHTML = `<h4 style="margin:14px 0 6px;">🤝 Match amical</h4>` +
+        `<p class="noteLectureSeule">Rencontre déjà convenue le ${echapperHTML(RMClub.formaterDateLongue(RMClub.dateDepuisISO(dejaPrevu.date)))}.</p>` +
+        `<button class="alt" id="btnAnnulerAmical" data-amical="${echapperHTML(dejaPrevu.id)}" style="width:100%;margin-top:8px;">Annuler cette rencontre</button>`;
+      return;
+    }
+    const libres = RMClub.datesLibresPourAmical(saison, 45);
+    if (!libres.length) {
+      zone.innerHTML = `<h4 style="margin:14px 0 6px;">🤝 Match amical</h4>` +
+        `<p class="noteLectureSeule">Aucune date libre dans les six prochaines semaines : ton calendrier est plein.</p>`;
+      return;
+    }
+    const options = libres.slice(0, 20).map((d) =>
+      `<option value="${echapperHTML(d.iso)}">${echapperHTML(d.libelle)} (dans ${d.joursRestants} j)</option>`).join('');
+    zone.innerHTML = `<h4 style="margin:14px 0 6px;">🤝 Match amical</h4>` +
+      `<p style="font-size:12px;color:var(--text-dim);margin:0 0 8px;">Propose une rencontre à ${echapperHTML(adversaire.nom)} sur une date libre de ton calendrier. Un amical ne rapporte aucun point, mais il fatigue, use et fait jouer.</p>` +
+      `<label class="sr-label" for="selDateAmical">Date de la rencontre</label>` +
+      `<select id="selDateAmical" style="width:100%;">${options}</select>` +
+      `<button class="accent" id="btnProposerAmical" data-club="${echapperHTML(adversaire.id)}" style="width:100%;margin-top:8px;">Proposer cette rencontre</button>`;
   }
 
   function rafraichirStatutEffectif() {
@@ -2449,6 +2484,25 @@
   });
   document.getElementById('btnJouerMatchClub').addEventListener('click', continuer);
   document.getElementById('btnJourSuivant').addEventListener('click', jourSuivant);
+  // Proposition / annulation d'un amical (TODO_AUDIT.md P1-32) : écouteur
+  // délégué sur la vue du club consulté, comme partout ailleurs.
+  document.getElementById('clubVueConsulteAmical').addEventListener('click', (e) => {
+    const proposer = e.target.closest('#btnProposerAmical');
+    if (proposer) {
+      const dateISO = document.getElementById('selDateAmical').value;
+      const r = RMClub.proposerAmical(saison, proposer.dataset.club, dateISO);
+      toast(r.message, r.accepte ? 'succes' : 'erreur');
+      if (r.accepte) { sauvegarder(); rafraichirVueClub(); rafraichirProchainMatch(); rafraichirAgenda(); }
+      return;
+    }
+    const annuler = e.target.closest('#btnAnnulerAmical');
+    if (annuler) {
+      if (RMClub.annulerAmical(saison, annuler.dataset.amical)) {
+        toast('Rencontre amicale annulée.');
+        sauvegarder(); rafraichirVueClub(); rafraichirProchainMatch(); rafraichirAgenda();
+      }
+    }
+  });
   document.getElementById('btnApercuMatchFlottant').addEventListener('click', continuer);
   document.getElementById('fermerApercuMatch').addEventListener('click', () => {
     document.getElementById('panneauApercuMatch').classList.remove('visible');
@@ -2731,6 +2785,62 @@
   // (mercredi de match espoirs) : chaque jour ne résout QUE ce qui lui
   // revient, au lieu de tout enchaîner en un seul clic. Le calendrier
   // décide, plus le bouton.
+  // --- Match amical : joué à SA date, avec le moteur complet, exactement
+  // comme un match officiel (TODO_AUDIT.md P1-32). Ses conséquences sont
+  // réelles — fatigue, blessures, temps de jeu, moral — mais il ne rapporte
+  // AUCUN point au championnat et n'entre dans aucun classement.
+  function resoudreAmicalDuJour() {
+    const amical = RMClub.amicalDuJour(saison, RMClub.dateCourante(saison));
+    if (!amical || journeeEnCours) return;
+    const adversaire = RMClub.club(saison, amical.adversaireId);
+    if (!adversaire) { RMClub.annulerAmical(saison, amical.id); sauvegarder(); return; }
+    assurerComposition();
+    const manquants = RMClub.validerComposition(saison.clubJoueur.compositionTitulaires);
+    if (manquants.length > 0) {
+      toast('Impossible de disputer ce match amical : ta composition est incomplète.', 'erreur');
+      return;
+    }
+    journeeEnCours = true;
+    definirBoutonsJourneeActifs(false);
+    const duree = Number(document.getElementById('selDureeClub').value) || 4800;
+    document.getElementById('panneauClub').classList.remove('visible');
+    const c = saison.clubJoueur;
+    const slot = RMClub.slotCompositionPourEquipe(saison, 'pro');
+    const tactiqueCfg = construireTactiqueCfg(c.effectif, slot, 'A');
+    const compositionUtilisee = Object.assign({}, c.compositionTitulaires);
+    window.RMMain.demarrerMatchClub(
+      graineAleatoire(), duree,
+      RMClub.compositionVersJoueursCfg(c.effectif, compositionUtilisee),
+      RMClub.effectifVersJoueursCfg(adversaire),
+      tactiqueCfg,
+      {
+        noms: { A: c.nom, B: adversaire.nom },
+        equipeJoueur: 'A',
+        onResultat(etat) {
+          RMClub.enregistrerResultatAmical(saison, amical.id, etat.score.A, etat.score.B);
+          // Conséquences RÉELLES, les mêmes qu'un match officiel : c'est ce
+          // qui fait d'un amical une décision et non un bouton gratuit.
+          RMClub.appliquerFatigue(c.effectif, compositionUtilisee);
+          RMClub.faireProgresserBlessures(creerRng(graineAleatoire()), c.effectif, compositionUtilisee,
+            RMClub.effetPersonnel(saison, 'medecin'), saison);
+          const forme = etat.score.A > etat.score.B ? 'v' : etat.score.A < etat.score.B ? 'd' : 'n';
+          RMClub.appliquerMoral(c.effectif, compositionUtilisee, forme);
+          RMClub.accumulerStatsJoueurs(c.effectif, compositionUtilisee,
+            etat.statsJoueurs && etat.statsJoueurs.A, 'pro');
+          // L'adversaire aussi encaisse sa rencontre (cf. P1-29).
+          const slotAdv = RMClub.slotAdverse(adversaire, RMClub.effectifAdverseNormalise(adversaire));
+          RMClub.appliquerEffetsMatchAdverse(saison, adversaire, slotAdv, creerRng(graineAleatoire()));
+          RMClub.ajouterMessage(saison, 'match', 'Match amical',
+            `${c.nom} ${forme === 'v' ? 'bat' : forme === 'd' ? "s'incline face à" : 'fait match nul avec'} ${adversaire.nom} (${etat.score.A} - ${etat.score.B}) en match amical. Aucun point au championnat.`);
+          sauvegarder();
+          journeeEnCours = false;
+          definirBoutonsJourneeActifs(true);
+          rafraichirTout();
+        },
+      }
+    );
+  }
+
   function resoudreJour(typeJour) {
     // Verrou anti-double-action : voir le commentaire sur `journeeEnCours`
     // plus haut. Bloque toute ré-entrée tant que le jour précédent n'est
@@ -2748,6 +2858,10 @@
     // `prochainesFixtures` comme contexte de journée. Leurs propres
     // rencontres sont, elles, choisies par leur propre calendrier
     // (prochaineRondeEquipeB / journeeDeMatchEspoirs).
+    // Un match AMICAL (TODO_AUDIT.md P1-32) ne dépend d'aucune journée de
+    // championnat : il a sa propre date et son propre adversaire. Il est donc
+    // résolu par son propre chemin, plus bas.
+    if (typeJour === 'amical') { resoudreAmicalDuJour(); return; }
     const fixtures = typeJour === 'pro'
       ? RMClub.fixturesDuJour(saison, RMClub.dateCourante(saison))
       : RMClub.prochainesFixtures(saison);

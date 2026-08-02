@@ -48,6 +48,7 @@ new Function('window', require('fs').readFileSync(require('path').join(__dirname
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-calendrier.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-competitions.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-effectif-adverse.js'), 'utf8'))(global.window);
+new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-amicaux.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-sauvegarde.js'), 'utf8'))(global.window);
 // world.js : nécessaire pour les tests de navigation par pays/championnat
 // (P1-28) — l'écosystème mondial fournit 12 pays et leurs divisions.
@@ -3151,6 +3152,95 @@ test('championnat espoirs : une sauvegarde antérieure gagne sa compétition san
   const comp = RMClub.assurerCompetitionEspoirs(s);
   assert.ok(comp && comp.calendrier.length > 0, 'la compétition doit être créée à la volée');
   assert.strictEqual(s.clubJoueur.matchsEspoirs.length, 1, 'les résultats déjà archivés ne doivent pas être perdus');
+});
+
+// --- P1-32 : organiser un match amical sur une date libre (demande
+// utilisateur, point 8). ---
+
+test('amicaux : les dates libres excluent les jours de match et leurs veilles', () => {
+  const s = saisonPourAvance(980);
+  const libres = RMClub.datesLibresPourAmical(s, 60);
+  assert.ok(libres.length > 0, 'une intersaison doit offrir des dates libres');
+  for (const d of libres) {
+    const date = RMClub.dateDepuisISO(d.iso);
+    assert.strictEqual(RMClub.typeDArret(s, date), null, `${d.iso} : une rencontre y est déjà programmée`);
+    const veille = RMClub.ajouterJours(date, 1);
+    assert.strictEqual(RMClub.typeDArret(s, veille), null,
+      `${d.iso} : un amical la veille d'un match officiel n'a pas de sens`);
+    assert.ok(RMClub.comparerDates(date, RMClub.dateCourante(s)) > 0, `${d.iso} : une date libre est toujours à venir`);
+  }
+});
+
+test('amicaux : proposer un amical le programme RÉELLEMENT au calendrier', () => {
+  const s = saisonPourAvance(981);
+  const adv = s.adversaires[0];
+  const libre = RMClub.datesLibresPourAmical(s, 60)[0];
+  const r = RMClub.proposerAmical(s, adv.id, libre.iso);
+  assert.ok(r.accepte, `l'amical doit être accepté (motif : ${r.motif})`);
+  assert.ok(Array.isArray(s.amicaux) && s.amicaux.length === 1, 'l\'amical doit être persisté');
+  const a = s.amicaux[0];
+  assert.strictEqual(a.date, libre.iso);
+  assert.strictEqual(a.adversaireId, adv.id);
+  assert.ok(!a.joue, 'un amical programmé n\'est pas encore joué');
+  // Il devient un vrai jour d'arrêt, comme un match officiel.
+  assert.strictEqual(RMClub.typeDArret(s, RMClub.dateDepuisISO(libre.iso)), 'amical',
+    'le jour de l\'amical doit devenir une échéance');
+});
+
+test('amicaux : impossible d\'en programmer deux le même jour, ni sur un jour de match', () => {
+  const s = saisonPourAvance(982);
+  const libre = RMClub.datesLibresPourAmical(s, 60)[0];
+  RMClub.proposerAmical(s, s.adversaires[0].id, libre.iso);
+  const doublon = RMClub.proposerAmical(s, s.adversaires[1].id, libre.iso);
+  assert.ok(!doublon.accepte, 'deux rencontres le même jour doivent être refusées');
+  assert.strictEqual(s.amicaux.length, 1, 'aucun second amical ne doit être enregistré');
+  // Sur une date de championnat : refus aussi.
+  const arret = RMClub.prochainArret(s);
+  const surMatch = RMClub.proposerAmical(s, s.adversaires[1].id, RMClub.dateISO(arret.date));
+  assert.ok(!surMatch.accepte, 'un amical le jour d\'un match officiel doit être refusé');
+});
+
+test('amicaux : une date passée est refusée', () => {
+  const s = saisonPourAvance(983);
+  const hier = RMClub.dateISO(RMClub.ajouterJours(RMClub.dateCourante(s), -1));
+  const r = RMClub.proposerAmical(s, s.adversaires[0].id, hier);
+  assert.ok(!r.accepte, 'on ne programme pas un match dans le passé');
+});
+
+test('amicaux : un amical peut être annulé tant qu\'il n\'est pas joué', () => {
+  const s = saisonPourAvance(984);
+  const libre = RMClub.datesLibresPourAmical(s, 60)[0];
+  RMClub.proposerAmical(s, s.adversaires[0].id, libre.iso);
+  const id = s.amicaux[0].id;
+  assert.ok(RMClub.annulerAmical(s, id), 'l\'annulation doit réussir');
+  assert.strictEqual(s.amicaux.length, 0, 'l\'amical doit disparaître du calendrier');
+  assert.strictEqual(RMClub.typeDArret(s, RMClub.dateDepuisISO(libre.iso)), null,
+    'le jour redevient libre après annulation');
+});
+
+test('amicaux : le résultat est enregistré et ne touche JAMAIS le classement', () => {
+  const s = saisonPourAvance(985);
+  const adv = s.adversaires[0];
+  const libre = RMClub.datesLibresPourAmical(s, 60)[0];
+  RMClub.proposerAmical(s, adv.id, libre.iso);
+  const classementAvant = JSON.stringify(s.classement);
+  RMClub.enregistrerResultatAmical(s, s.amicaux[0].id, 30, 12);
+  const a = s.amicaux[0];
+  assert.ok(a.joue, 'l\'amical doit être marqué joué');
+  assert.deepStrictEqual(a.score, { pour: 30, contre: 12 });
+  assert.strictEqual(JSON.stringify(s.classement), classementAvant,
+    'un match amical ne rapporte AUCUN point au championnat');
+  assert.strictEqual(RMClub.typeDArret(s, RMClub.dateDepuisISO(libre.iso)), null,
+    'une fois joué, le jour n\'est plus une échéance');
+});
+
+test('amicaux : les amicaux passés sont nettoyés au changement de saison', () => {
+  const s = saisonPourAvance(986);
+  const libre = RMClub.datesLibresPourAmical(s, 60)[0];
+  RMClub.proposerAmical(s, s.adversaires[0].id, libre.iso);
+  RMClub.avancerSaison(creerRng(9860), s);
+  assert.strictEqual((s.amicaux || []).length, 0,
+    'les amicaux d\'une saison écoulée ne doivent pas encombrer la suivante');
 });
 
 console.log(`\n${nbTests} test(s) exécuté(s).`);

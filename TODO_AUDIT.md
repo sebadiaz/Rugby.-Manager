@@ -973,6 +973,27 @@ C'est un championnat crédible : on bat les derniers, on joue à égalité au mi
 
 **Reste à faire.** Les académies n'ont **pas d'effectif simulé** (seuls leurs résultats le sont) — l'écran le dit. Elles sont régénérées à chaque saison en même temps que les adversaires : il n'y a donc pas encore d'historique pluriannuel du championnat espoirs.
 
+### P1-32. Organiser un match amical sur une date libre
+- **Statut : CORRIGÉ**
+- Priorité : P1 (demande utilisateur, point 8 : « Permettre d'organiser des matchs amicaux sur une date libre. »)
+- Fichiers concernés : `docs/js/club-amicaux.js` (**nouveau**), `docs/js/club-agenda.js`, `docs/js/club.js`, `docs/js/clubUI.js`, `docs/index.html`, `server/charger-club.js`, tests
+
+**Le manque.** Le calendrier était daté depuis P1-21, mais ne comportait que des rencontres **imposées**. Aucun moyen d'occuper une date libre — ni pour préparer une reprise après l'intersaison, ni pour redonner du temps de jeu à un joueur qui revient de blessure, ni simplement pour se tester face à un club d'un autre niveau.
+
+**Une date libre est calculée, pas déclarée.** `datesLibresPourAmical` ne propose que des jours où aucune des trois équipes ne joue, où aucun amical n'est déjà prévu, **et dont le lendemain est lui aussi dégagé** — un club ne dispute pas un amical la veille d'un match officiel. Les refus portent toujours un motif explicite (date passée, date occupée, adversaire sans effectif simulé) : jamais un échec silencieux ni un bouton grisé sans explication.
+
+**La navigation reste intacte (règle P1-20).** On ne choisit **pas** un adversaire dans une liste : on ouvre un club en cliquant son nom, et c'est depuis **sa page** qu'on lui propose une rencontre. L'action vit sur le club qu'on regarde. Un test vérifie qu'aucun sélecteur de club n'apparaît.
+
+**C'est une vraie rencontre.** Elle devient une échéance annoncée par le bouton principal (« Continuer jusqu'au dimanche 18 août 2024 »), se joue à sa date avec le **moteur complet**, et a des conséquences réelles : fatigue, blessures, moral, temps de jeu, statistiques individuelles — et l'adversaire encaisse la sienne aussi (cf. P1-29). Ce qu'elle ne fait **jamais** : rapporter le moindre point au championnat, ni entrer dans un classement. Un test le vérifie explicitement.
+
+**Critères de validation.**
+- `server/test-parcours-club.js` : 180/180 — dont 7 nouveaux (les dates libres excluent les jours de match, leurs veilles et le passé ; proposer programme réellement la rencontre et crée une échéance ; refus du doublon le même jour et du jour d'un match officiel ; refus d'une date passée ; annulation possible tant que la rencontre n'est pas jouée, le jour redevenant libre ; résultat enregistré **sans toucher au classement**, et le jour cesse d'être une échéance ; les amicaux d'une saison écoulée sont nettoyés).
+- `server/test-parcours-navigateur.js` : 256/256 — dont 8 nouveaux (la proposition vit sur la page du club consulté sans sélecteur d'adversaire ; de vraies dates libres ; rencontre programmée à la date choisie ; échéance annoncée par le bouton principal ; jouée à sa date avec un score du moteur ; **aucune journée de championnat avancée** ; les joueurs alignés sont réellement fatigués ; aucune erreur console).
+- Vérifié **dans le vrai jeu** : rencontre proposée à Fontclair Étoiles le dimanche 18 août, bouton passé à « Continuer jusqu'au dimanche 18 août 2024 », match joué 13-9, et **0 journée de championnat jouée**.
+- Régression complète sans échec.
+
+**Reste à faire.** L'adversaire accepte toujours (aucune négociation, aucun refus lié à son propre calendrier ou à son intérêt sportif), et un amical se joue toujours à domicile. Les amicaux sont remis à zéro au changement de saison, comme le championnat espoirs — dont la régénération a été ajoutée ici au passage (elle manquait).
+
 ### P2-10. Découper club.js et clubUI.js par domaine (sans changement de comportement)
 - **Statut : EN COURS (tranche 1 : Personnel, tranche 2 : Objectif de saison, tranche 3 : Analyse adversaire, tranche 4 : Prêts, tranche 5 : Contrats, tranche 6 : Équipe B, tranche 7 : Transferts national, tranche 8 : Transferts internationaux, tranche 9 : Effectif étendu, tranche 10 : Centre de formation, tranche 11 : Composition et tactique, tranche 12 : Condition physique des joueurs, tranche 13 : Génération de club/pyramide, tranche 14 : Calendrier et classement, tranche 15 : Sauvegarde et migration — voir constat de risque et tranches suivantes ci-dessous)**
 - Priorité : P2 (maintenabilité — explicitement demandée par l'utilisateur malgré la tension avec la règle CLAUDE.md "jamais un patch purement technique si le gameplay ne s'améliore pas visiblement")

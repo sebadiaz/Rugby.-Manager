@@ -854,6 +854,12 @@
     // Éligibilité à l'Équipe B réévaluée chaque saison (les budgets ont
     // bougé) — cf. determinerEligiblesEquipeB.
     saison.competitionB = global.RMClub.genererCompetitionB(tousLesClubs);
+    // Amicaux de la saison écoulée (TODO_AUDIT.md P1-32) : le calendrier est
+    // entièrement redaté, une rencontre programmée l'an dernier n'a plus de
+    // date valable. On repart d'une feuille blanche.
+    if (global.RMClub.reinitialiserAmicaux) global.RMClub.reinitialiserAmicaux(saison);
+    // Championnat des espoirs : régénéré avec les nouveaux adversaires.
+    saison.competitionEspoirs = null;
     // Marché des transferts calibré sur le NIVEAU RÉEL du club du joueur
     // (pas un 0.5 fixe) : un petit club de Ligue Régionale n'attire pas les
     // mêmes joueurs libres qu'un cador de Ligue d'Excellence.

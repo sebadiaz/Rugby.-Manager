@@ -81,6 +81,7 @@
       matchBJoueur: b.find((f) => concerne(f, c.id)) || null,
       journeeEspoirs: journeesEspoirs.length ? journeesEspoirs[0] : null,
       fixtureEspoirs: fixturesEspoirs.length ? fixturesEspoirs[0] : null,
+      amical: RMClub.amicalDuJour ? RMClub.amicalDuJour(saison, date) : null,
     };
   }
 
@@ -91,15 +92,21 @@
     // Le match espoirs n'a lieu que si un XV complet peut être aligné : sans
     // ça, rien ne se produirait ce jour-là et s'y arrêter n'aurait aucun sens.
     const espoirsJouable = e.journeeEspoirs != null && global.RMClub.eligiblePourMatchEspoirs(saison);
-    return !!(e.matchPro || e.matchBJoueur || espoirsJouable);
+    return !!(e.matchPro || e.matchBJoueur || espoirsJouable || e.amical);
   }
 
-  const LIBELLE_ARRET = { pro: 'Match de championnat', b: 'Match de l\'Équipe B', jeunes: 'Match des espoirs' };
+  const LIBELLE_ARRET = {
+    pro: 'Match de championnat', b: 'Match de l\'Équipe B', jeunes: 'Match des espoirs',
+    // Amical organisé par le manager (TODO_AUDIT.md P1-32) : une vraie
+    // rencontre, à sa date, avec des conséquences réelles.
+    amical: 'Match amical',
+  };
 
   function typeDArret(saison, date) {
     const e = evenementsDuJour(saison, date);
     if (e.matchPro) return 'pro';
     if (e.matchBJoueur) return 'b';
+    if (e.amical) return 'amical';
     if (e.journeeEspoirs != null && global.RMClub.eligiblePourMatchEspoirs(saison)) return 'jeunes';
     return null;
   }
