@@ -994,6 +994,27 @@ C'est un championnat crédible : on bat les derniers, on joue à égalité au mi
 
 **Reste à faire.** L'adversaire accepte toujours (aucune négociation, aucun refus lié à son propre calendrier ou à son intérêt sportif), et un amical se joue toujours à domicile. Les amicaux sont remis à zéro au changement de saison, comme le championnat espoirs — dont la régénération a été ajoutée ici au passage (elle manquait).
 
+### P1-33. Classement et Calendrier deviennent deux pages distinctes
+- **Statut : CORRIGÉ**
+- Priorité : P1 (demande utilisateur : « changer autre club et calendrier par classement et calendrier. ce sont deux choses séparés pas dans la même page »)
+- Fichiers concernés : `docs/index.html`, `docs/js/clubUI.js`, `docs/js/club-competitions.js`, `docs/js/club-equipes.js`, `server/test-parcours-navigateur.js`, `server/test-parcours-club.js`
+
+**Ce qui n'allait pas.** Deux écrans mélangeaient chacun deux choses : « Autres clubs » (devenu la navigation par pays/championnat en P1-28) affichait classement **et** calendrier dans la même carte, et « Calendrier & classement » faisait la même chose pour l'équipe sélectionnée. Deux endroits différents pour lire un classement, deux pour lire un calendrier.
+
+**Deux onglets, une seule chose chacun.** « Autres clubs » devient **🏆 Classement** et « Calendrier & classement » devient **📅 Calendrier**. La page Classement ne contient plus aucun calendrier, la page Calendrier plus aucun classement — deux tests le vérifient explicitement, en cherchant l'élément de l'autre écran dans le volet.
+
+**Une seule navigation, partagée.** La barre pays → championnat est désormais **UN SEUL composant DOM** (`#navigationCompetition`), déplacé dans l'onglet actif par `basculerOnglet` — exactement le mécanisme déjà utilisé pour le sélecteur d'équipe depuis P1-19. Les deux pages parlent donc toujours de la même compétition choisie : changer de championnat sur l'une le change sur l'autre, sans aucune synchronisation à écrire.
+
+**Toutes les compétitions au même endroit.** Le championnat d'**Équipe B** et le **championnat des espoirs** rejoignent la navigation, à la suite de la pyramide française et marqués ⭐ comme celle du joueur. Il n'y a donc plus qu'un seul chemin pour lire n'importe quel classement ou calendrier du jeu — celui de sa division, ceux de ses deux autres équipes, les deux autres paliers français et les 36 divisions des 12 pays. Le sélecteur d'équipe disparaît de ces deux écrans (il n'y a plus rien à y sélectionner) et reste sur Effectif, Composition, Tactique, Entraînement et Personnel.
+
+**Régression trouvée et corrigée en cours de route.** En unifiant les deux tableaux de classement, les colonnes **bonus offensif / bonus défensif** avaient disparu — un test existant l'a détecté immédiatement. Rétablies.
+
+**Critères de validation.**
+- `server/test-parcours-navigateur.js` : 258/258 — dont 2 nouveaux (**la page Classement ne contient aucun calendrier**, **la page Calendrier ne contient aucun classement**). Onze tests existants ont été adaptés au nouveau modèle : ils passaient par le sélecteur d'équipe pour choisir un calendrier ou un classement, ils passent maintenant par la navigation de compétitions. Le test « l'équipe sélectionnée est CONSERVÉE d'un écran à l'autre » vérifie désormais le trajet Effectif → Composition, le sélecteur ne vivant plus sur le Calendrier.
+- `server/test-parcours-club.js` : 180/180 — deux tests mis à jour : les **trois** compétitions du joueur sont maintenant marquées comme siennes (sa division reste unique), et les académies du championnat espoirs sont explicitement exclues de l'exigence « tout club affiché est cliquable » — elles n'ont pas de fiche, leur nom est affiché en texte.
+- Vérifié **dans le vrai jeu** : les onglets « 🏆 Classement » et « 📅 Calendrier » se suivent dans le menu, la navigation propose « Ligue d'Excellence | Ligue Nationale | Ligue Régionale ⭐ | Championnat Équipe B ⭐ | Championnat des espoirs ⭐ », et choisir le championnat des espoirs met à jour les deux pages de façon cohérente (calendrier au mercredi 25 septembre, classement à quatre académies).
+- Régression complète sans échec.
+
 ### P2-10. Découper club.js et clubUI.js par domaine (sans changement de comportement)
 - **Statut : EN COURS (tranche 1 : Personnel, tranche 2 : Objectif de saison, tranche 3 : Analyse adversaire, tranche 4 : Prêts, tranche 5 : Contrats, tranche 6 : Équipe B, tranche 7 : Transferts national, tranche 8 : Transferts internationaux, tranche 9 : Effectif étendu, tranche 10 : Centre de formation, tranche 11 : Composition et tactique, tranche 12 : Condition physique des joueurs, tranche 13 : Génération de club/pyramide, tranche 14 : Calendrier et classement, tranche 15 : Sauvegarde et migration — voir constat de risque et tranches suivantes ci-dessous)**
 - Priorité : P2 (maintenabilité — explicitement demandée par l'utilisateur malgré la tension avec la règle CLAUDE.md "jamais un patch purement technique si le gameplay ne s'améliore pas visiblement")

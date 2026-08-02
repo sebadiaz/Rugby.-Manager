@@ -604,7 +604,7 @@
   // est prêt et ce qui ne l'est pas, dès plusieurs jours avant le match.
   // AUCUN blocage — chaque point est purement informatif, et cliquable pour
   // aller le régler.
-  const ONGLET_POUR_POINT = { analyse: 'autresclubs', composition: 'composition', tactique: 'tactique', roles: 'composition', banc: 'composition' };
+  const ONGLET_POUR_POINT = { analyse: 'classement', composition: 'composition', tactique: 'tactique', roles: 'composition', banc: 'composition' };
   const ICONE_STATUT_PREP = { ok: '✅', attention: '⚠️', nonPrepare: '⬜' };
   function rafraichirPreparationMatch() {
     const carte = document.getElementById('cartePreparationMatch');
@@ -668,43 +668,12 @@
   // en avant l'équipe sélectionnée), championnat Équipe B, ou bilan des
   // espoirs. Même table, mêmes colonnes, mêmes règles de points — plus un
   // tableau recopié par compétition.
-  function rafraichirClassement() {
-    const ctx = contexte();
-    const titre = document.getElementById('titreClubClassement');
-    if (titre) titre.textContent = '🏆 ' + ctx.titreClassement;
-    const zone = document.getElementById('clubClassement');
-    if (!ctx.classement) {
-      zone.innerHTML = `<p>${echapperHTML(ctx.motifIndisponible || 'Aucun classement disponible pour cette équipe.')}</p>`;
-      return;
-    }
-    // Les académies du championnat espoirs (TODO_AUDIT.md P1-31) ne sont pas
-    // des clubs consultables : elles n'ont ni effectif ni fiche. On affiche
-    // donc leur nom EN TEXTE plutôt qu'un lien mort — et surtout jamais le
-    // « ? » que renvoyait lienClub pour un identifiant qu'il ne connaît pas.
-    const nomsCompetition = {};
-    if (ctx.type === 'jeunes') {
-      for (const cl of RMClub.assurerCompetitionEspoirs(saison).clubs) nomsCompetition[cl.id] = cl.nom;
-    }
-    const lignes = RMClub.classementTrieDe(ctx.classement).map((r, i) => {
-      const diff = r.pointsPour - r.pointsContre;
-      const classe = r.clubId === ctx.clubId ? ' class="ligneClubJoueur"' : '';
-      const cellule = nomsCompetition[r.clubId] && r.clubId !== saison.clubJoueur.id
-        ? echapperHTML(nomsCompetition[r.clubId])
-        : lienClub(r.clubId);
-      return `<tr${classe}><td>${i + 1}</td><td>${cellule}</td><td>${r.j}</td><td>${r.g}</td><td>${r.n}</td><td>${r.p}</td>` +
-        `<td>${r.pointsPour}</td><td>${r.pointsContre}</td><td>${diff >= 0 ? '+' : ''}${diff}</td>` +
-        `<td title="Bonus offensif (4 essais ou plus)">${r.bonusOffensifs || 0}</td>` +
-        `<td title="Bonus défensif (défaite par 7 points ou moins)">${r.bonusDefensifs || 0}</td>` +
-        `<td><b>${r.pts}</b></td></tr>`;
-    }).join('');
-    // Note remplacée (TODO_AUDIT.md P1-31) : les espoirs disputent désormais
-    // un VRAI championnat à classement, contre des académies persistantes.
-    const note = ctx.type === 'jeunes'
-      ? '<p style="font-size:11.5px;color:var(--text-faint);margin:8px 0 0;">Championnat des espoirs : aller-retour contre les académies des clubs de ta division, une rencontre le mercredi. Les académies adverses n\'ont pas d\'effectif simulé — seuls leurs résultats le sont.</p>'
-      : '';
-    zone.innerHTML =
-      `<table class="tableauClub"><thead><tr><th></th><th>Club</th><th>J</th><th>G</th><th>N</th><th>P</th><th>Pts+</th><th>Pts-</th><th>Diff</th><th title="Bonus offensif">BO</th><th title="Bonus défensif">BD</th><th>Pts</th></tr></thead><tbody>${lignes}</tbody></table>${note}`;
-  }
+  // --- rafraichirClassement supprimée (TODO_AUDIT.md P1-33) --------------
+  // Le classement n'est plus une carte de l'écran « Calendrier & classement »
+  // pilotée par le sélecteur d'équipe : il a sa PROPRE page, alimentée par
+  // rafraichirCompetitionChoisie à partir de la compétition choisie dans la
+  // navigation partagée. Une seule fonction rend désormais un classement,
+  // pour toutes les compétitions du jeu.
 
   function rafraichirMiniClassement() {
     const classement = RMClub.classementTrie(saison);
@@ -728,7 +697,11 @@
 
   // Onglets pilotés par le sélecteur d'équipe commun — c'est la liste qui
   // décide où le SEUL nœud #selecteurEquipe est déplacé (cf. basculerOnglet).
-  const ONGLETS_AVEC_EQUIPE = ['effectif', 'composition', 'tactique', 'entrainement', 'calendrier', 'personnel'];
+  // 'calendrier' n'y figure plus (TODO_AUDIT.md P1-33) : le Calendrier suit
+  // désormais la COMPÉTITION choisie dans la navigation partagée, pas
+  // l'équipe sélectionnée — les compétitions du club (championnat, Équipe B,
+  // espoirs) y figurent toutes, au même titre que celles des 12 pays.
+  const ONGLETS_AVEC_EQUIPE = ['effectif', 'composition', 'tactique', 'entrainement', 'personnel'];
   let ongletActuel = 'dashboard';
 
   // Le sélecteur est un composant UNIQUE : un seul <select> dans tout le jeu,
@@ -899,7 +872,6 @@
     rafraichirSemaineEntrainement();
     rafraichirEntrainement();
     rafraichirJeunes();
-    rafraichirClassement();
     rafraichirCalendrier();
     rafraichirPersonnel();
   }
@@ -1169,51 +1141,49 @@
   function rafraichirCompetitionChoisie() {
     const comp = RMClub.competition(saison, competitionNavChoisie);
     const zoneClassement = document.getElementById('clubCompetitionClassement');
-    const zoneCalendrier = document.getElementById('clubCompetitionCalendrier');
     const titre = document.getElementById('titreCompetitionChoisie');
+    const titreCal = document.getElementById('titreCalendrierCompetition');
     if (!comp) {
-      titre.textContent = '🏆 Championnat';
-      zoneClassement.innerHTML = '<p style="color:var(--text-dim);">Championnat indisponible.</p>';
-      zoneCalendrier.innerHTML = '';
+      if (titre) titre.textContent = '🏆 Championnat';
+      if (titreCal) titreCal.textContent = '📅 Calendrier';
+      if (zoneClassement) zoneClassement.innerHTML = '<p style="color:var(--text-dim);">Championnat indisponible.</p>';
+      rafraichirCalendrier();
       return;
     }
-    titre.textContent = `🏆 ${comp.nom}${comp.estCelleDuJoueur ? ' — ton championnat' : ''}`;
+    const suffixe = comp.estCelleDuJoueur ? ' — ta compétition' : '';
+    if (titre) titre.textContent = `🏆 ${comp.nom}${suffixe}`;
+    if (titreCal) titreCal.textContent = `📅 ${comp.nom}${suffixe}`;
 
+    // Les académies du championnat espoirs (P1-31) n'ont pas de fiche à
+    // ouvrir : leur nom est affiché EN TEXTE, jamais un lien mort.
+    const nomsCompetition = {};
+    for (const cl of comp.clubs) {
+      if (cl.id !== saison.clubJoueur.id && !RMClub.clubPartout(saison, cl.id)) nomsCompetition[cl.id] = cl.nom;
+    }
     const lignes = comp.classement.map((r) => {
       const zonePromue = comp.promus && r.rang <= comp.promus;
       const zoneRelegable = comp.relegues && r.rang > comp.classement.length - comp.relegues;
       const estJoueur = r.clubId === saison.clubJoueur.id;
-      const classe = estJoueur ? ' class="ligneClubJoueur"'
-        : zonePromue ? ' class="ligneClubJoueur"' : zoneRelegable ? ' style="opacity:.6;"' : '';
+      const classe = (estJoueur || zonePromue) ? ' class="ligneClubJoueur"'
+        : zoneRelegable ? ' style="opacity:.6;"' : '';
       const paysClub = comp.partagee && r.club && r.club.pays ? ` <span style="color:var(--text-faint);">(${echapperHTML(r.club.pays)})</span>` : '';
-      // Nom CLIQUABLE — c'est tout l'objet de cet écran.
-      const nom = r.club ? lienClub(r.club.id) : '—';
+      const nom = nomsCompetition[r.clubId] ? echapperHTML(nomsCompetition[r.clubId]) : lienClub(r.clubId);
+      const diff = r.pointsPour - r.pointsContre;
       return `<tr${classe}><td>${r.rang}</td><td>${nom}${paysClub}</td>` +
-        `<td>${r.j}</td><td>${r.g}</td><td>${r.n}</td><td>${r.p}</td><td><b>${r.pts}</b></td></tr>`;
+        `<td>${r.j}</td><td>${r.g}</td><td>${r.n}</td><td>${r.p}</td>` +
+        `<td>${r.pointsPour}</td><td>${r.pointsContre}</td><td>${diff >= 0 ? '+' : ''}${diff}</td>` +
+        `<td title="Bonus offensif (4 essais ou plus)">${r.bonusOffensifs || 0}</td>` +
+        `<td title="Bonus défensif (défaite par 7 points ou moins)">${r.bonusDefensifs || 0}</td>` +
+        `<td><b>${r.pts}</b></td></tr>`;
     }).join('');
-    zoneClassement.innerHTML = `<table class="tableauClub"><thead><tr><th></th><th>Club</th><th>J</th><th>G</th><th>N</th><th>P</th><th>Pts</th></tr></thead><tbody>${lignes}</tbody></table>`;
-
-    // Calendrier : groupé par journée, comme l'écran Calendrier des équipes,
-    // avec la date réelle quand la compétition en a une (P1-27). Les
-    // compétitions du monde et des autres paliers sont simulées de façon
-    // abstraite et n'ont pas de dates : on n'en invente pas.
-    const parJournee = {};
-    for (const f of comp.calendrier) (parJournee[f.journee] = parJournee[f.journee] || []).push(f);
-    const journees = Object.keys(parJournee).sort((a, b) => Number(a) - Number(b));
-    zoneCalendrier.innerHTML = journees.length === 0
-      ? '<p style="color:var(--text-dim);">Aucune rencontre programmée.</p>'
-      : journees.map((j) => {
-        const datesGroupe = new Set(parJournee[j].map((f) => f.date).filter(Boolean));
-        const dateTitre = datesGroupe.size === 1
-          ? ` <span class="dateJournee">${echapperHTML(RMClub.formaterDateLongue(RMClub.dateDepuisISO(parJournee[j][0].date)))}</span>`
-          : '';
-        const rangs = parJournee[j].map((f) => {
-          const attenu = f.joue ? ' style="opacity:.6"' : '';
-          return `<div${attenu}>${formaterLigneCalendrier(f, saison.clubJoueur.id)}</div>`;
-        }).join('');
-        return `<div class="blocJournee"><h4>Journée ${j}${dateTitre}</h4>${rangs}</div>`;
-      }).join('');
+    if (zoneClassement) {
+      zoneClassement.innerHTML = '<table class="tableauClub"><thead><tr><th></th><th>Club</th><th>J</th><th>G</th><th>N</th><th>P</th>' +
+        '<th>Pts+</th><th>Pts-</th><th>Diff</th><th title="Bonus offensifs">BO</th><th title="Bonus défensifs">BD</th><th>Pts</th></tr></thead>' +
+        `<tbody>${lignes}</tbody></table>`;
+    }
+    rafraichirCalendrier();
   }
+
 
   // Vue d'ensemble d'un club CONSULTÉ (TODO_AUDIT.md P1-20) : ce que le
   // joueur peut réellement observer d'un club qu'il ne dirige pas —
@@ -1714,6 +1684,17 @@
       (emplacement || document.getElementById('porteSelecteurEquipe')).appendChild(selecteur);
       if (emplacement) rafraichirSelecteurEquipe();
     }
+    // Même principe pour la navigation par pays/championnat (TODO_AUDIT.md
+    // P1-33) : un SEUL composant, partagé par les écrans Classement et
+    // Calendrier — qui sont désormais deux pages distinctes, mais parlent de
+    // la même compétition choisie.
+    const navCompetition = document.getElementById('navigationCompetition');
+    if (navCompetition) {
+      const volet = document.querySelector(`#clubGestion .voletOnglet[data-volet="${cle}"]`);
+      const emplacementNav = volet ? volet.querySelector('.emplacementNavigationCompetition') : null;
+      (emplacementNav || document.getElementById('porteSelecteurEquipe')).appendChild(navCompetition);
+      if (emplacementNav) rafraichirAutresClubs();
+    }
     // La préparation du prochain match et l'agenda dépendent d'écrans qu'on
     // vient peut-être de quitter (composition, tactique) : on les recalcule
     // en revenant sur la vue d'ensemble, sinon ils afficheraient un état
@@ -1732,29 +1713,41 @@
   // principal, Équipe B, matchs espoirs), avec la même mise en page groupée
   // par journée et la même ligne de résultat.
   function rafraichirCalendrier() {
-    const ctx = contexte();
     const zone = document.getElementById('clubCalendrier');
-    if (!ctx.calendrier || !ctx.calendrier.length) {
-      zone.innerHTML = `<p>${echapperHTML(ctx.motifIndisponible || 'Aucune rencontre programmée pour cette équipe.')}</p>`;
+    if (!zone) return;
+    // Le calendrier suit la compétition choisie dans la navigation partagée
+    // (TODO_AUDIT.md P1-33), exactement comme le classement — mais sur SA
+    // propre page : ce sont deux choses distinctes.
+    const comp = RMClub.competition(saison, competitionNavChoisie);
+    if (!comp || !comp.calendrier.length) {
+      zone.innerHTML = '<p style="color:var(--text-dim);">Aucune rencontre programmée pour cette compétition.</p>';
       return;
     }
+    const nomsCompetition = {};
+    for (const cl of comp.clubs) {
+      if (cl.id !== saison.clubJoueur.id && !RMClub.clubPartout(saison, cl.id)) nomsCompetition[cl.id] = cl.nom;
+    }
     const parJournee = {};
-    for (const f of ctx.calendrier) (parJournee[f.journee] = parJournee[f.journee] || []).push(f);
+    for (const f of comp.calendrier) (parJournee[f.journee] = parJournee[f.journee] || []).push(f);
     zone.innerHTML = Object.keys(parJournee)
       .sort((a, b) => Number(a) - Number(b))
       .map((j) => {
-        const lignes = parJournee[j].map((f) => {
-          const attenu = f.joue ? ' style="opacity:.6"' : '';
-          return `<div${attenu}>${formaterLigneCalendrier(f, ctx.clubId)}</div>`;
-        }).join('');
-        // Toutes les rencontres d'une même journée d'une même compétition
-        // partagent leur date : on l'affiche une fois, en clair, dans
-        // l'entête (TODO_AUDIT.md P1-27). Si elles divergeaient (calendrier
-        // incohérent), on n'affiche rien plutôt qu'une date fausse.
+        // Toutes les rencontres d'une même journée partagent leur date : on
+        // l'affiche une fois en clair. Si elles divergeaient (compétition
+        // simulée de façon abstraite, sans dates), on n'affiche rien plutôt
+        // qu'une date fausse (TODO_AUDIT.md P1-27).
         const datesGroupe = new Set(parJournee[j].map((f) => f.date).filter(Boolean));
         const dateTitre = datesGroupe.size === 1
           ? ` <span class="dateJournee">${echapperHTML(RMClub.formaterDateLongue(RMClub.dateDepuisISO(parJournee[j][0].date)))}</span>`
           : '';
+        const lignes = parJournee[j].map((f) => {
+          const attenu = f.joue ? ' style="opacity:.6"' : '';
+          const enrichie = Object.assign({}, f, {
+            libelleDomicile: f.libelleDomicile || nomsCompetition[f.domicileId],
+            libelleExterieur: f.libelleExterieur || nomsCompetition[f.exterieurId],
+          });
+          return `<div${attenu}>${formaterLigneCalendrier(enrichie, saison.clubJoueur.id)}</div>`;
+        }).join('');
         return `<div class="blocJournee"><h4>Journée ${j}${dateTitre}</h4>${lignes}</div>`;
       }).join('');
   }

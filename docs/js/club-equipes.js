@@ -136,8 +136,8 @@
   // grisés : ils n'ont simplement aucun sens, et les données correspondantes
   // n'existent pas pour un club IA.
   const ONGLETS_CLUB_JOUEUR = ['dashboard', 'effectif', 'composition', 'tactique', 'entrainement',
-    'transferts', 'personnel', 'autresclubs', 'calendrier', 'monde', 'finances', 'medical', 'stats'];
-  const ONGLETS_CLUB_CONSULTE = ['dashboard', 'effectif', 'composition', 'personnel', 'autresclubs', 'calendrier', 'monde'];
+    'transferts', 'personnel', 'classement', 'calendrier', 'monde', 'finances', 'medical', 'stats'];
+  const ONGLETS_CLUB_CONSULTE = ['dashboard', 'effectif', 'composition', 'personnel', 'classement', 'calendrier', 'monde'];
 
   function ongletsDisponibles(saison) {
     return consulteClubJoueur(saison) ? ONGLETS_CLUB_JOUEUR.slice() : ONGLETS_CLUB_CONSULTE.slice();

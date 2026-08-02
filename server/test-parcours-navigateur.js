@@ -129,7 +129,7 @@ function optionsLancement() {
 
   // 2) Navigation dans toutes les pages.
   const onglets = ['dashboard', 'effectif', 'composition', 'tactique', 'entrainement',
-    'transferts', 'personnel', 'autresclubs', 'calendrier', 'monde', 'finances', 'medical', 'stats'];
+    'transferts', 'personnel', 'classement', 'calendrier', 'monde', 'finances', 'medical', 'stats'];
   for (const onglet of onglets) {
     await clicOnglet(onglet);
     await page.waitForTimeout(120);
@@ -473,7 +473,7 @@ function optionsLancement() {
   await page.waitForTimeout(200);
 
   // 6) Affichage d'un club adverse + fiche joueur adverse + offre de transfert.
-  await clicOnglet('autresclubs');
+  await clicOnglet('classement');
   await page.waitForTimeout(150);
   // Audit ("les autres championnats ne sont jamais simulés") : les 2 autres
   // paliers de la pyramide française (celui que le joueur n'occupe pas
@@ -487,7 +487,7 @@ function optionsLancement() {
   verifier('navigation par championnat : un classement réel est affiché (pas une carte vide)',
     classementNavTxt.trim().length > 20);
   verifier('navigation par championnat : le calendrier du championnat est affiché',
-    (await page.textContent('#clubCompetitionCalendrier')).includes('Journée'));
+    (await page.textContent('#clubCalendrier')).includes('Journée'));
   // TODO_AUDIT.md P1-20 : les clubs ne sont PAS choisis dans un sélecteur —
   // ce sont des noms cliquables, exactement comme partout ailleurs, et ils
   // appellent la même fonction centrale d'ouverture de club.
@@ -580,20 +580,45 @@ function optionsLancement() {
   verifier('équipe B : l\'onglet dédié a bien disparu (écrans communs, plus de doublon)',
     await page.evaluate(() => !document.querySelector('.ongletBtn[data-onglet="equipeb"]')
       && !document.querySelector('.voletOnglet[data-volet="equipeb"]')));
+  // Depuis TODO_AUDIT.md P1-33, Classement et Calendrier sont DEUX pages
+  // distinctes, pilotées par la même navigation de compétitions — le
+  // championnat d'Équipe B y figure comme n'importe quel autre.
+  await clicOnglet('classement');
+  await page.waitForTimeout(200);
+  await page.locator('.btnChampionnatNav', { hasText: 'Équipe B' }).first().click();
+  await page.waitForTimeout(300);
+  const classementB = await page.evaluate(() => ({
+    titre: document.getElementById('titreCompetitionChoisie').textContent,
+    lignes: document.querySelectorAll('#clubCompetitionClassement tbody tr').length,
+    calendrierDansLaPage: !!document.querySelector('.voletOnglet[data-volet="classement"] #clubCalendrier'),
+  }));
+  verifier('classement : la page Classement ne contient AUCUN calendrier (deux écrans distincts)',
+    !classementB.calendrierDansLaPage);
   await clicOnglet('calendrier');
-  await page.waitForTimeout(150);
+  await page.waitForTimeout(300);
+  const classementLignesB = classementB.lignes;
+  const equipeBCalendrier = await page.evaluate((n) => ({
+    titre: document.getElementById('titreCalendrierCompetition').textContent,
+    lignesClassement: n,
+    blocsCalendrier: document.querySelectorAll('#clubCalendrier .blocJournee').length,
+    classementDansLaPage: !!document.querySelector('.voletOnglet[data-volet="calendrier"] #clubCompetitionClassement'),
+  }), classementLignesB);
+  verifier('calendrier : la page Calendrier ne contient AUCUN classement (deux écrans distincts)',
+    !equipeBCalendrier.classementDansLaPage);
+  verifier('équipe B : son classement s\'affiche dans l\'écran Classement COMMUN, via la navigation de compétitions',
+    classementB.titre.includes('Équipe B') && equipeBCalendrier.lignesClassement >= 2);
+  verifier('équipe B : son calendrier réel s\'affiche dans l\'écran Calendrier COMMUN',
+    equipeBCalendrier.titre.includes('Équipe B') && equipeBCalendrier.blocsCalendrier > 0);
+  // Sa composition passe par l'écran Composition commun (terrain 1-15). Le
+  // sélecteur d'équipe ne vit plus sur les écrans Classement/Calendrier
+  // (P1-33, ils suivent la compétition) : on sélectionne l'Équipe B depuis
+  // l'écran Effectif, puis on vérifie qu'elle est CONSERVÉE jusqu'à la
+  // Composition — c'est toujours le même invariant : un seul sélecteur,
+  // partagé, jamais réinitialisé en changeant d'écran.
+  await clicOnglet('effectif');
+  await page.waitForTimeout(200);
   await page.selectOption('#selEquipeContexte', 'b');
   await page.waitForTimeout(250);
-  const equipeBCalendrier = await page.evaluate(() => ({
-    titre: document.getElementById('titreClubClassement').textContent,
-    lignesClassement: document.querySelectorAll('#clubClassement tbody tr').length,
-    blocsCalendrier: document.querySelectorAll('#clubCalendrier .blocJournee').length,
-  }));
-  verifier('équipe B : son classement s\'affiche dans le MÊME écran Calendrier & classement que le premier XV',
-    equipeBCalendrier.titre.includes('Équipe B') && equipeBCalendrier.lignesClassement >= 2);
-  verifier('équipe B : son calendrier réel s\'affiche dans ce même écran commun',
-    equipeBCalendrier.blocsCalendrier > 0);
-  // Sa composition passe par l'écran Composition commun (terrain 1-15).
   await clicOnglet('composition');
   await page.waitForTimeout(250);
   const equipeBCompo = await page.evaluate(() => ({
@@ -601,7 +626,7 @@ function optionsLancement() {
     postes: document.querySelectorAll('#clubTerrain .chipTerrain').length,
     modifiable: !!document.querySelector('#contexteEquipeInfo .badgeEquipeMode.dirigee'),
   }));
-  verifier('équipe B : l\'équipe sélectionnée est CONSERVÉE en passant du calendrier à la composition',
+  verifier('équipe B : l\'équipe sélectionnée est CONSERVÉE en passant de l\'effectif à la composition',
     equipeBCompo.equipe === 'b');
   verifier('équipe B : sa composition s\'édite sur le MÊME terrain 1-15 que le premier XV',
     equipeBCompo.postes === 15 && equipeBCompo.modifiable);
@@ -764,7 +789,7 @@ function optionsLancement() {
   // affichés à part de "Pts", pas fondus dedans (cf. RMClub.enregistrerResultatDans).
   await clicOnglet('calendrier');
   await page.waitForTimeout(150);
-  const enteteClassementTxt = await page.textContent('#clubClassement thead');
+  const enteteClassementTxt = await page.textContent('#clubCompetitionClassement thead');
   verifier('classement : les colonnes de bonus offensif/défensif sont affichées',
     enteteClassementTxt.includes('BO') && enteteClassementTxt.includes('BD'));
   const journeeJoueeApres1Journee = await page.evaluate(() => {
@@ -1119,9 +1144,9 @@ function optionsLancement() {
   const ECRANS_AVEC_NOMS = [
     { onglet: 'dashboard', zone: '#clubProchainMatch', nom: 'prochain match' },
     { onglet: 'dashboard', zone: '#clubMiniClassement', nom: 'classement du tableau de bord' },
-    { onglet: 'calendrier', zone: '#clubClassement', nom: 'classement' },
     { onglet: 'calendrier', zone: '#clubCalendrier', nom: 'calendrier' },
-    { onglet: 'autresclubs', zone: '#clubCompetitionClassement', nom: 'classement du championnat consulté' },
+    { onglet: 'calendrier', zone: '#clubCalendrier', nom: 'calendrier' },
+    { onglet: 'classement', zone: '#clubCompetitionClassement', nom: 'classement du championnat choisi' },
   ];
   let tousNomsCliquables = true;
   for (const e of ECRANS_AVEC_NOMS) {
@@ -1208,7 +1233,7 @@ function optionsLancement() {
   let memesComposants = true;
   for (const cas of [{ club: null, modifiable: true }, { club: idAdversaireUnif, modifiable: false }]) {
     if (cas.club) {
-      await pageUnif.click('.ongletBtn[data-onglet="autresclubs"]');
+      await pageUnif.click('.ongletBtn[data-onglet="classement"]');
       await pageUnif.waitForTimeout(150);
       await pageUnif.evaluate((id) => document.querySelector(`#clubCompetitionClassement .lienClub[data-club="${id}"]`).click(), cas.club);
       await pageUnif.waitForTimeout(350);
@@ -1966,14 +1991,16 @@ function optionsLancement() {
 
   const datesParEquipe = {};
   for (const equipe of ['pro', 'b', 'jeunes']) {
+    // Depuis P1-33, le Calendrier suit la COMPÉTITION choisie dans la
+    // navigation partagée, plus l'équipe sélectionnée.
     await clicOngletSur(pageDates, 'calendrier');
     await pageDates.waitForTimeout(250);
-    const dispo = await pageDates.evaluate((e) => {
-      const sel = document.getElementById('selEquipeContexte');
-      return !!(sel && Array.from(sel.options).some((o) => o.value === e));
-    }, equipe);
-    if (!dispo) continue;
-    await pageDates.selectOption('#selEquipeContexte', equipe);
+    // Le championnat du joueur porte ⭐ : « Ligue » seul matcherait aussi les
+    // deux autres paliers français, dont les calendriers sont abstraits.
+    const libelleCompetition = { pro: 'Ligue Régionale', b: 'Équipe B', jeunes: 'espoirs' }[equipe];
+    const bouton = pageDates.locator('.btnChampionnatNav', { hasText: libelleCompetition }).first();
+    if (!(await bouton.count())) continue;
+    await bouton.click();
     await pageDates.waitForTimeout(350);
     const texte = await pageDates.textContent('#clubCalendrier');
     datesParEquipe[equipe] = (texte.match(MOTIF_DATE) || [])[0] || null;
@@ -2006,7 +2033,7 @@ function optionsLancement() {
   await pageNav.fill('#inputNomClub', 'Test Navigation Monde');
   await pageNav.click('#btnCreerClub');
   await pageNav.waitForTimeout(400);
-  await clicOngletSur(pageNav, 'autresclubs');
+  await clicOngletSur(pageNav, 'classement');
   await pageNav.waitForTimeout(400);
 
   const nbPays = await pageNav.evaluate(() => document.querySelectorAll('.btnPaysNav').length);
@@ -2027,7 +2054,7 @@ function optionsLancement() {
   verifier('navigation monde : le classement étranger affiche de VRAIS noms de clubs (pas « ? »)',
     classementJapon.trim().length > 40 && !/\?\s*0\s*0/.test(classementJapon));
   verifier('navigation monde : le calendrier du championnat étranger est affiché',
-    (await pageNav.textContent('#clubCompetitionCalendrier')).includes('Journée'));
+    (await pageNav.textContent('#clubCalendrier')).includes('Journée'));
   const clubsCliquablesJapon = await pageNav.evaluate(
     () => document.querySelectorAll('#clubCompetitionClassement .lienClub').length);
   verifier('navigation monde : les clubs étrangers sont cliquables', clubsCliquablesJapon >= 8);
@@ -2089,7 +2116,7 @@ function optionsLancement() {
   verifier('effectifs adverses : la sauvegarde reste d\'une taille raisonnable (< 3 Mo)',
     etatAdv.tailleKo < 3072);
 
-  await clicOngletSur(pageAdv, 'autresclubs');
+  await clicOngletSur(pageAdv, 'classement');
   await pageAdv.waitForTimeout(400);
   const idJoueurAdv = await pageAdv.evaluate(
     () => JSON.parse(localStorage.getItem('rugbyManager.club.v1')).clubJoueur.id);
@@ -2179,16 +2206,18 @@ function optionsLancement() {
   await pageEsp.fill('#inputNomClub', 'Test Championnat Espoirs');
   await pageEsp.click('#btnCreerClub');
   await pageEsp.waitForTimeout(400);
-  await clicOngletSur(pageEsp, 'calendrier');
+  await clicOngletSur(pageEsp, 'classement');
   await pageEsp.waitForTimeout(250);
-  await pageEsp.selectOption('#selEquipeContexte', 'jeunes');
+  await pageEsp.locator('.btnChampionnatNav', { hasText: 'espoirs' }).first().click();
   await pageEsp.waitForTimeout(400);
 
   verifier('championnat espoirs : l\'écran annonce un CHAMPIONNAT, plus un simple bilan',
-    (await pageEsp.textContent('#titreClubClassement')).includes('Championnat des espoirs'));
-  const classementEsp = await pageEsp.textContent('#clubClassement');
+    (await pageEsp.textContent('#titreCompetitionChoisie')).includes('Championnat des espoirs'));
+  const classementEsp = await pageEsp.textContent('#clubCompetitionClassement');
   verifier('championnat espoirs : le classement compte plusieurs académies, toutes NOMMÉES (pas de « ? »)',
     (classementEsp.match(/Académie /g) || []).length >= 3 && !/\?\s*0\s*0/.test(classementEsp));
+  await clicOngletSur(pageEsp, 'calendrier');
+  await pageEsp.waitForTimeout(350);
   const calendrierEsp = await pageEsp.textContent('#clubCalendrier');
   verifier('championnat espoirs : son calendrier est daté et tombe un mercredi',
     /mercredi \d{1,2} \p{L}+ 20\d\d/u.test(calendrierEsp));
@@ -2215,11 +2244,11 @@ function optionsLancement() {
   }
   verifier('championnat espoirs : une journée entière se joue (pas seulement le match du joueur)',
     rencontresJouees >= 2);
-  await clicOngletSur(pageEsp, 'calendrier');
+  await clicOngletSur(pageEsp, 'classement');
   await pageEsp.waitForTimeout(250);
-  await pageEsp.selectOption('#selEquipeContexte', 'jeunes');
+  await pageEsp.locator('.btnChampionnatNav', { hasText: 'espoirs' }).first().click();
   await pageEsp.waitForTimeout(400);
-  const classementApresEsp = await pageEsp.textContent('#clubClassement');
+  const classementApresEsp = await pageEsp.textContent('#clubCompetitionClassement');
   verifier('championnat espoirs : le classement bouge RÉELLEMENT après une journée',
     classementApresEsp !== classementEsp && /[1-9]/.test(classementApresEsp));
   verifier('championnat espoirs : aucune erreur console', erreursEsp.length === 0);
@@ -2243,7 +2272,7 @@ function optionsLancement() {
   await pageAmi.evaluate(() => { document.getElementById('selDureeClub').value = '300'; });
 
   // On ouvre un club en cliquant son NOM (jamais un sélecteur d'adversaire).
-  await clicOngletSur(pageAmi, 'autresclubs');
+  await clicOngletSur(pageAmi, 'classement');
   await pageAmi.waitForTimeout(400);
   const idJoueurAmi = await pageAmi.evaluate(
     () => JSON.parse(localStorage.getItem('rugbyManager.club.v1')).clubJoueur.id);

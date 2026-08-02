@@ -175,7 +175,7 @@
         <button class="ongletBtn" data-onglet="transferts">🔁 <span>Recrutement</span></button>
         <button class="ongletBtn" data-onglet="personnel">🧑‍⚕️ <span>Personnel</span></button>
         <span class="groupeNav" data-cat="competition">Compétition</span>
-        <button class="ongletBtn" data-onglet="autresclubs">🏟️ <span>Autres clubs</span></button>
+        <button class="ongletBtn" data-onglet="classement">🏆 <span>Classement</span></button>
         <button class="ongletBtn" data-onglet="calendrier">📅 <span>Calendrier</span></button>
         <button class="ongletBtn" data-onglet="monde">🌍 <span>Monde</span></button>
         <span class="groupeNav" data-cat="gestion">Gestion</span>
@@ -447,25 +447,18 @@
              sont PAS dupliqués ici : ce sont les mêmes écrans que pour ses
              propres équipes, via le sélecteur d'équipe commun (TODO_AUDIT.md
              P1-19) — cette carte propose le raccourci qui l'y emmène. -->
-        <div class="voletOnglet" data-volet="autresclubs" style="display:none;">
-          <div class="enTetePage"><span class="categoriePage">Compétition</span><h2>Autres clubs</h2><p>Consulte n'importe quel adversaire : identité, forces/faiblesses, confrontations.</p></div>
+        <div class="voletOnglet" data-volet="classement" style="display:none;">
+          <div class="enTetePage"><span class="categoriePage">Compétition</span><h2>Classement</h2><p>Le classement de n'importe quel championnat. Clique le nom d'un club pour l'ouvrir.</p></div>
+          <div class="emplacementNavigationCompetition"></div>
           <!-- Navigation PAYS puis CHAMPIONNAT (TODO_AUDIT.md P1-28) : on ne
                choisit jamais un CLUB dans une liste (règle P1-20), mais il
                faut bien pouvoir se déplacer entre compétitions pour que des
                noms de clubs apparaissent quelque part où on puisse les
                cliquer. Un seul écran pour les trois sources : le championnat
                du joueur, les autres paliers français, les 12 pays. -->
-          <div class="carteClub">
-            <h3>🌍 Pays</h3>
-            <p style="margin:0 0 10px;font-size:12px;color:var(--text-faint);">Choisis un pays, puis un championnat. Le nom de n'importe quel club est cliquable : il ouvre sa fiche, comme partout ailleurs dans le jeu.</p>
-            <div id="clubNavPays"></div>
-          </div>
           <div class="carteClub" id="carteCompetitionChoisie">
             <h3 id="titreCompetitionChoisie">🏆 Championnat</h3>
-            <div id="clubNavChampionnats" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;"></div>
             <div id="clubCompetitionClassement" tabindex="0" role="region" aria-label="Classement du championnat, défilement horizontal sur petit écran"></div>
-            <h4 style="margin:16px 0 6px;">🗓️ Calendrier</h4>
-            <div id="clubCompetitionCalendrier"></div>
           </div>
         </div>
 
@@ -473,15 +466,16 @@
              principal (premier XV et clubs adverses), championnat Équipe B ou
              bilan des espoirs selon l'équipe sélectionnée, jamais un onglet
              recopié par compétition (TODO_AUDIT.md P1-19). -->
+        <!-- Calendrier : UNIQUEMENT les rencontres (TODO_AUDIT.md P1-33).
+             Le classement a sa propre page — ce sont deux choses différentes,
+             elles ne partagent plus le même écran. La navigation par pays et
+             championnat est le MÊME composant que dans l'onglet Classement,
+             déplacé dans l'onglet actif (comme le sélecteur d'équipe). -->
         <div class="voletOnglet" data-volet="calendrier" style="display:none;">
-          <div class="enTetePage"><span class="categoriePage">Équipes</span><h2>Calendrier & classement</h2><p>Les rencontres et le classement de l'équipe sélectionnée.</p></div>
-          <div class="emplacementSelecteurEquipe"></div>
+          <div class="enTetePage"><span class="categoriePage">Compétition</span><h2>Calendrier</h2><p>Les rencontres de n'importe quel championnat, à leur date réelle.</p></div>
+          <div class="emplacementNavigationCompetition"></div>
           <div class="carteClub">
-            <h3 id="titreClubClassement">🏆 Classement</h3>
-            <div id="clubClassement" tabindex="0" role="region" aria-label="Tableau du classement, défilement horizontal sur petit écran"></div>
-          </div>
-          <div class="carteClub">
-            <h3>📅 Calendrier</h3>
+            <h3 id="titreCalendrierCompetition">📅 Calendrier</h3>
             <div id="clubCalendrier"></div>
           </div>
         </div>
@@ -571,6 +565,16 @@
            ce sélecteur, et l'équipe choisie est conservée en changeant
            d'onglet. Rangé ici tant qu'aucun onglet concerné n'est actif. -->
       <div id="porteSelecteurEquipe" style="display:none;">
+        <!-- Navigation par pays puis championnat : UN SEUL composant, déplacé
+             dans l'onglet actif (Classement ou Calendrier) par basculerOnglet,
+             exactement comme le sélecteur d'équipe (TODO_AUDIT.md P1-33). -->
+        <div class="carteClub carteNavigationCompetition" id="navigationCompetition">
+          <h3 style="margin-top:0;">🌍 Pays et championnats</h3>
+          <p style="margin:0 0 10px;font-size:12px;color:var(--text-faint);">Choisis un pays, puis un championnat. Le nom de n'importe quel club est cliquable : il ouvre sa fiche, comme partout ailleurs dans le jeu.</p>
+          <div id="clubNavPays"></div>
+          <div id="clubNavChampionnats" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;"></div>
+        </div>
+
         <div class="carteClub carteSelecteurEquipe" id="selecteurEquipe">
           <label class="sr-label" for="selEquipeContexte">Équipe affichée</label>
           <select id="selEquipeContexte" style="width:100%;font-weight:700;"></select>

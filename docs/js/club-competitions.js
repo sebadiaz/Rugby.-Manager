@@ -42,6 +42,13 @@
   // Le palier du joueur vient de sa propre saison (données complètes, avec
   // dates) ; les deux autres de `autresDivisionsFrance` (simulés de façon
   // abstraite). On les présente dans le même ordre que la vraie pyramide.
+  // Les compétitions PROPRES au club du joueur (Équipe B, Espoirs) viennent
+  // s'ajouter à celles de son pays (TODO_AUDIT.md P1-33) : elles n'ont pas
+  // d'autre endroit où vivre, et les écrans Classement et Calendrier doivent
+  // pouvoir les afficher par le MÊME chemin que n'importe quel championnat.
+  const REF_EQUIPE_B = 'equipeB';
+  const REF_ESPOIRS = 'espoirs';
+
   function championnatsFrance(saison) {
     const RMClub = global.RMClub;
     const niveauJoueur = niveauPalierJoueur(saison);
@@ -64,6 +71,16 @@
           estCelleDuJoueur: false,
         });
       }
+    }
+    // Les deux autres compétitions du club du joueur, à la suite de sa
+    // pyramide — uniquement si elles existent réellement.
+    const compB = saison.competitionB;
+    if (compB && compB.calendrier && compB.calendrier.length) {
+      liste.push({ ref: REF_EQUIPE_B, nom: 'Championnat Équipe B', niveau: null, estCelleDuJoueur: true });
+    }
+    const compEsp = RMClub.assurerCompetitionEspoirs ? RMClub.assurerCompetitionEspoirs(saison) : null;
+    if (compEsp && compEsp.calendrier && compEsp.calendrier.length) {
+      liste.push({ ref: REF_ESPOIRS, nom: 'Championnat des espoirs', niveau: null, estCelleDuJoueur: true });
     }
     return liste;
   }
@@ -116,6 +133,28 @@
         estCelleDuJoueur: true,
         promus: 0, relegues: 0,
       }, clubs);
+    }
+
+    if (ref === REF_EQUIPE_B) {
+      const compB = saison.competitionB;
+      if (!compB || !compB.calendrier || !compB.calendrier.length) return null;
+      const ids = new Set(compB.eligibles || []);
+      const clubs = [saison.clubJoueur].concat(saison.adversaires || []).filter((c) => ids.has(c.id));
+      return assembler({
+        ref, nom: 'Championnat Équipe B', pays: 'FRA', clubs,
+        classementBrut: compB.classement, calendrier: compB.calendrier,
+        estCelleDuJoueur: true, promus: 0, relegues: 0,
+      }, clubs);
+    }
+
+    if (ref === REF_ESPOIRS) {
+      const compEsp = global.RMClub.assurerCompetitionEspoirs(saison);
+      if (!compEsp || !compEsp.calendrier.length) return null;
+      return assembler({
+        ref, nom: 'Championnat des espoirs', pays: 'FRA', clubs: compEsp.clubs,
+        classementBrut: compEsp.classement, calendrier: compEsp.calendrier,
+        estCelleDuJoueur: true, promus: 0, relegues: 0,
+      }, compEsp.clubs);
     }
 
     if (ref.indexOf(PREFIXE_FRANCE) === 0) {
@@ -207,6 +246,6 @@
 
   global.RMClub = Object.assign(global.RMClub || {}, {
     competitionsParPays, competition, clubPartout, competitionDuClub,
-    REF_COMPETITION_JOUEUR: REF_JOUEUR,
+    REF_COMPETITION_JOUEUR: REF_JOUEUR, REF_COMPETITION_EQUIPE_B: REF_EQUIPE_B, REF_COMPETITION_ESPOIRS: REF_ESPOIRS,
   });
 })(window);

@@ -2756,11 +2756,20 @@ test('compétitions : la navigation liste TOUS les pays, chacun avec ses champio
 test('compétitions : le championnat du JOUEUR est signalé comme tel, et une seule fois', () => {
   const s = saisonAvecMonde(941);
   const tous = RMClub.competitionsParPays(s).flatMap((p) => p.championnats);
+  // Depuis P1-33, les TROIS compétitions du club du joueur (sa division, son
+  // championnat d'Équipe B et celui des espoirs) figurent dans la même
+  // navigation et sont toutes marquées comme siennes.
   const siens = tous.filter((ch) => ch.estCelleDuJoueur);
-  assert.strictEqual(siens.length, 1, `exactement un championnat doit être celui du joueur (${siens.length} trouvés)`);
-  const comp = RMClub.competition(s, siens[0].ref);
-  assert.ok(comp.clubs.some((c) => c.id === s.clubJoueur.id),
-    'le championnat du joueur doit réellement contenir son club');
+  assert.ok(siens.length >= 1 && siens.length <= 3,
+    `entre 1 et 3 compétitions doivent être celles du joueur (${siens.length} trouvées)`);
+  assert.strictEqual(siens.filter((ch) => ch.ref === RMClub.REF_COMPETITION_JOUEUR).length, 1,
+    'sa division principale doit apparaître exactement une fois');
+  for (const ch of siens) {
+    const comp = RMClub.competition(s, ch.ref);
+    assert.ok(comp, `${ch.ref} : compétition introuvable`);
+    assert.ok(comp.clubs.some((c) => c.id === s.clubJoueur.id),
+      `${ch.nom} doit réellement contenir le club du joueur`);
+  }
 });
 
 test('compétitions : chaque championnat expose un classement ET un calendrier réels', () => {
@@ -2789,6 +2798,13 @@ test('compétitions : tout club affiché est retrouvable — donc cliquable', ()
   for (const p of RMClub.competitionsParPays(s)) {
     for (const ch of p.championnats) {
       for (const c of RMClub.competition(s, ch.ref).clubs) {
+        // Les académies du championnat espoirs (P1-31) n'ont volontairement
+        // pas de fiche : leur nom est affiché EN TEXTE, jamais un lien mort.
+        // Tout autre club doit, lui, être retrouvable donc cliquable.
+        if (c.academie) {
+          assert.ok(c.nom && c.nom.length > 3, `académie sans nom affichable : ${c.id}`);
+          continue;
+        }
         assert.ok(RMClub.clubPartout(s, c.id), `club ${c.id} (${c.nom}) introuvable : son nom ne serait pas cliquable`);
         verifies++;
       }
