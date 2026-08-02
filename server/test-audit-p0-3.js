@@ -79,7 +79,15 @@ function verifier(nom, condition) {
   // Aperçu du match (façon Football Manager) : affiche aussi "Mon club — Adversaire".
   await page.click('#btnContinuerClub');
   await page.waitForTimeout(200);
-  await page.click('#btnApercuMatchFlottant');
+  // « Continuer » ne fonce plus jusqu'au match : il s'arrête sur tout
+  // événement réel du chemin (blessure d'entraînement, rapport de repérage,
+  // décision — cf. TODO_AUDIT.md P1-26). On reclique donc jusqu'à l'aperçu,
+  // exactement comme le joueur. Borné : un vrai blocage échoue quand même.
+  for (let i = 0; i < 15; i++) {
+    if (await page.isVisible('#panneauApercuMatch.visible')) break;
+    await page.click('#btnApercuMatchFlottant');
+    await page.waitForTimeout(600);
+  }
   await page.waitForSelector('#panneauApercuMatch.visible', { timeout: 5000 });
   await page.evaluate(() => { window.__p03xss = false; });
   await page.waitForTimeout(200);
