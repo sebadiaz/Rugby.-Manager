@@ -1408,3 +1408,142 @@ C'est un championnat crédible : on bat les derniers, on joue à égalité au mi
 - **Différence avec le bug de "Lancer le match" corrigé en tranche 2** : ce bug-là ne passait PAS par une fenêtre `demanderMontant`/`confirmerAction` pour son geste final (`btnApercuLancerMatch` appelle `lancerLaJournee()` directement) et la duplication touchait un état global partagé (`match`/`configMatch` de `docs/js/main.js`, pas une simple donnée de saison) — un cas structurellement différent, qui restait donc non protégé par le mécanisme des fenêtres intégrées.
 - Aucun fichier de production modifié : vérification uniquement, avec un script Playwright ad hoc (non conservé dans le dépôt, la protection existante étant confirmée suffisante par le résultat).
 - **P1-10 (les trois tranches) est maintenant complet** : texte obsolète corrigé, accueil/boucle principale audités (déjà corrects), bug de double-clic corrigé, doubles signatures/renouvellements vérifiés déjà protégés.
+---
+
+## Tranche « Une semaine complète dans la peau du manager » (P1-35 → P1-38)
+
+Demande utilisateur : « rendre la carrière fluide, compréhensible et
+intéressante, pas d'ajouter encore des fonctionnalités isolées ».
+
+**Méthode imposée et suivie :** une semaine réelle rejouée dans une carrière
+neuve AVANT d'écrire du code, avec mesures dans un vrai navigateur (hauteurs
+en pixels, nombre de cartes visibles, position de chaque zone) sur ordinateur
+1280×1000 et mobile 390×844. Puis, pour chaque point : un test qui échoue
+réellement, une correction limitée, toutes les suites existantes, un test
+navigateur, et un commit séparé.
+
+**Deux fausses pistes écartées avant d'être rapportées** — un désaccord
+apparent d'adversaire entre deux cartes (c'étaient deux carrières
+différentes) et `carteVueClubConsulte` supposée visible sur mobile
+(`display:none` vérifié sur les deux tailles). Mesurer avant d'affirmer,
+même quand la lecture du code semble concluante.
+
+### P1-35. « Prochaine échéance » : la carte et le bouton doivent parler de la MÊME rencontre
+- **Statut : CORRIGÉ**
+- Priorité : P1 (parcours quotidien : étape 1 « voir immédiatement la date, la prochaine échéance et les décisions urgentes »)
+- Fichiers concernés : `docs/js/club-agenda.js`, `docs/js/clubUI.js`, `docs/css/style.css`, tests
+
+**Le défaut, mesuré.** La carte listait les **7 rencontres de la journée de
+championnat** — six ne concernaient pas le joueur. 469 px de tableau de bord
+consacrés aux matchs des autres, qui repoussaient hors écran ce que le
+manager doit réellement faire.
+
+**Le défaut aggravant.** La carte et le bouton « Continuer » appelaient
+`prochainArret()` **séparément** : la carte annonçait la journée de
+championnat pendant que le bouton visait un amical ou un tour de coupe plus
+proche. Deux dates différentes sur le même écran.
+
+**La correction.** Nouvelle `descriptionRencontre(saison, date, type)` dans
+`club-agenda.js` : elle nomme l'adversaire, le lieu, la compétition et
+l'équipe concernée à partir du calendrier réel, toutes compétitions
+confondues. `prochainArret` la fusionne dans son retour. Côté UI, la carte
+rend cette seule rencontre et **le bouton lit le MÊME objet** — la
+divergence devient impossible par construction, pas seulement corrigée.
+
+### P1-36. Une seule zone « À traiter » : les décisions ne doivent plus se cacher
+- **Statut : CORRIGÉ**
+- Priorité : P1 (parcours quotidien : étapes 1 et 2 « lire les messages et décider »)
+- Fichiers concernés : `docs/js/club-a-traiter.js` (**nouveau**), `docs/js/club.js`, `docs/js/clubUI.js`, `docs/index.html`, `docs/css/style.css`, `server/charger-club.js`, tests
+
+**Le défaut, mesuré.** Une **décision non tranchée** — ce qu'un manager doit
+traiter en priorité — n'apparaissait **nulle part** dans les alertes. Elle
+dormait dans la boîte de réception, mesurée à **1586 px de défilement sur
+mobile**, avec 5 messages tous non lus et aucun signal sur le premier écran.
+En parallèle, « Décisions & alertes » et « Boîte de réception » disaient des
+choses de même nature à deux endroits, sans dire laquelle presse.
+
+**La correction.** `club-a-traiter.js`, sans aucune dépendance au DOM,
+produit **une** liste ordonnée dérivée de l'état réel. **Pas de second
+système** : les décisions viennent de `saison.clubJoueur.messages`, seul
+endroit où elles existent ; les alertes de l'effectif et des finances réels.
+
+Quatre niveaux **portés par la donnée**, pas par l'affichage : `decision`,
+`urgent`, `recommande`, `info`. La carte les rend avec un badge **en toutes
+lettres** — le joueur n'a pas à déduire l'urgence d'une nuance de couleur.
+
+`POSTE_COMPLET` remonte de `clubUI.js` vers `club.js` : la couche données en
+a besoin, on ne la duplique pas.
+
+### P1-37. Le tableau de bord doit être un écran « Aujourd'hui », pas un empilement de rappels
+- **Statut : CORRIGÉ**
+- Priorité : P1 (demande utilisateur : « éviter les cartes redondantes et les informations répétées »)
+- Fichiers concernés : `docs/index.html`, `docs/js/clubUI.js`, tests
+
+**Le défaut, mesuré sur une carrière neuve.** 10 cartes, **2853 px** sur
+ordinateur, **3,6 écrans** sur mobile. Ce qu'il y a à FAIRE arrivait à
+**1110 px** — hors écran. Trois cartes ne disaient rien qu'on ne lise déjà
+ailleurs : le mini-classement (461 px) répétait la page Classement et la
+barre du haut (« 9e /14 ») ; « Statut de l'effectif » listait blessés,
+contrats et budget, tous présents dans « À traiter » ou dans la barre du
+haut ; « 5 derniers résultats » occupait un bloc pour annoncer « Aucun match
+joué pour le moment ».
+
+**La correction.** Les deux premières sont retirées (avec leurs 9 appels),
+la troisième se masque tant qu'il n'y a rien à montrer et revient au premier
+résultat. Aucune donnée n'est perdue — un commentaire dans `index.html`
+indique à chaque endroit où elle vit désormais. « À traiter » passe en
+première carte.
+
+**Résultat mesuré.** 7 cartes, **1926 px** sur ordinateur (1,93 écran),
+**2064 px** sur mobile (2,45 écrans contre 3,6), « À traiter » à **145 px**
+sur ordinateur et **164 px** sur mobile — visible sans défiler. Aucune
+erreur console, aucun débordement horizontal.
+
+### P1-38. Préparation : distinguer ce qu'on doit FAIRE de ce qu'on doit ATTENDRE
+- **Statut : CORRIGÉ**
+- Priorité : P1 (demande utilisateur : « afficher clairement ce qui est urgent, recommandé, terminé ou facultatif »)
+- Fichiers concernés : `docs/js/club-jour-match.js`, `docs/js/clubUI.js`, `docs/css/style.css`, tests
+
+**Le défaut, mesuré à J-21 d'une carrière neuve.** « 60 % de la préparation
+bouclée », avec un **⬜ devant « Analyse de l'adversaire »** — exactement le
+même symbole que devant « Tactique ». Or l'une demande 17 jours d'attente et
+l'autre un seul clic. Le manager ne pouvait pas distinguer ce qu'il devait
+faire de ce qu'il devait subir. Et le pourcentage lui comptait comme un
+échec une chose impossible : tout ce qui était réglable l'était déjà.
+
+**La correction.** Chaque point porte une `nature` dérivée de l'état réel :
+`termine`, `urgent`, `recommande`, `facultatif`, `enAttente`.
+
+- L'analyse hors délai est **en attente**, pas « non préparée » : elle sort
+  du dénominateur du pourcentage et s'affiche en retrait.
+- Une **composition incomplète** est urgente : le seul point qui compromet
+  vraiment la rencontre.
+- Un **banc incomplet** ou des titulaires diminués sont recommandés.
+- La **tactique au réglage neutre** est facultative. Le code le disait déjà
+  en commentaire (« ce n'est pas un mauvais choix ») ; l'affichage le dit
+  enfin aussi.
+
+`statut` est **conservé tel quel** — extension additive, les consommateurs
+existants fonctionnent sans modification (même principe que `parCompetition`
+et le `groupe`/`banc` des clubs adverses).
+
+**Après :** « 75 % de ce qui est réglable aujourd'hui (3/4) · 1 point(s) en
+attente », avec un badge FAIT / URGENT / RECOMMANDÉ / FACULTATIF / EN
+ATTENTE sur chaque ligne.
+
+**Un test existant mis à jour, à raison.** L'assertion sur `pretPct`
+comparait au ratio sur *tous* les points ; elle porte désormais sur les
+seuls points réglables. Ce n'est pas un test affaibli pour faire passer le
+patch : c'est l'ancienne définition du pourcentage qui était le défaut.
+
+### Ce qui reste ouvert après cette tranche
+- **Le parcours « préparer l'adversaire » reste réparti sur deux écrans** (la
+  carte Prochain adversaire du tableau de bord et l'aperçu d'avant-match) :
+  fusionner les deux demanderait de retoucher l'aperçu, hors périmètre ici.
+- **Équipe B et Espoirs** partagent bien les mêmes écrans, mais la
+  préparation de match (`etatPreparationMatch`) ne décrit toujours que le
+  **premier XV** : elle appelle `assurerCompositionPourEquipe(saison, 'pro')`
+  en dur. Un manager qui prépare un match d'Équipe B n'a pas l'équivalent.
+  C'est la suite naturelle la plus utile.
+- **La boîte de réception reste 🟡** : une seule catégorie de message porte
+  une vraie décision (temps de jeu). Les autres restent informatifs.

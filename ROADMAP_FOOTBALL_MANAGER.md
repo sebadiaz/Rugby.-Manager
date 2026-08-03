@@ -15,17 +15,27 @@ Chaque ligne indexe le(s) fichier(s) concerné(s) et, si pertinent, la
 tranche qui l'a fait passer d'un statut à un autre. Mis à jour à chaque
 tranche livrée — jamais en avance sur ce qui est réellement dans `main`.
 
+> **Statuts revérifiés dans le code à la tranche 11.** Ce document avait
+> pris du retard : huit lignes marquées 🔴 ou 🟡 décrivaient un état
+> antérieur à ce qui était réellement livré (dates réelles, jour suivant,
+> événements entre les matchs, historique par joueur, fenêtres de
+> transfert, effectifs adverses vivants, semaine d'entraînement,
+> championnat espoirs), et deux fonctionnalités entières manquaient
+> (coupes, amicaux). Ne pas se fier à une ligne sans l'avoir confrontée au
+> code — c'est ce qui a été fait ici, fichier par fichier.
+
 ---
 
 ## 1. Boucle quotidienne
 
 | Fonctionnalité | Statut | Fichiers | Détail |
 |---|---|---|---|
-| Vraie date et calendrier | 🔴 | `club-calendrier.js` | Uniquement des numéros de `journee` entiers, aucune date calendaire (mois/semaine). |
+| Vraie date et calendrier | 🟢 | `club-temps.js`, `club-calendrier.js`, `club-agenda.js` | Dates civiles réelles (`dateDeJournee`, `formaterDateLongue`), arithmétique pure sans objet `Date`. Chaque rencontre a une date et ne se joue QUE ce jour-là ; équipe première le samedi, Équipe B le dimanche, Espoirs le mercredi. |
 | Boîte de réception avec décisions | 🟡 | `club.js`, `club-decisions.js`, `clubUI.js` | **Tranche 1 livrée** : les demandes de temps de jeu des joueurs sont un vrai choix (Rassurer/Ignorer) avec conséquence durable. Les autres messages (transferts, blessures, contrats, résultats...) restent informatifs. |
-| Événements entre les matchs | 🔴 | — | `lancerLaJournee()` saute directement au prochain match ; aucun jour "creux" jouable. |
-| Bouton « Jour suivant » | 🔴 | `clubUI.js` | "Journée suivante" = "prochain match", jamais un vrai jour calendaire indépendant. |
-| Préparation obligatoire avant certaines rencontres | 🟡 | `clubUI.js`, `club-composition.js`, `club-analyse.js` | La composition est auto-complétée si incomplète ; aucun match n'impose de préparation. **Tranche 2 livrée** : l'aperçu d'avant-match propose désormais une vraie recommandation tactique actionnable (pas obligatoire — le joueur garde la main). |
+| Événements entre les matchs | 🟢 | `club-evenements.js`, `clubUI.js` | `avancerUnJour` fait vivre chaque jour creux ; `interruptionsDeJournee` ARRÊTE l'avance quand un événement survient (blessure, décision, rapport de scouting), au lieu de le noyer dans un saut jusqu'au match. |
+| Bouton « Jour suivant » | 🟢 | `club-evenements.js`, `clubUI.js` | « Jour suivant » et « Jusqu'au prochain match » sont deux actions distinctes et réelles (`avancerUnJour`, `avancerJusquAuProchainMatch`). |
+| Préparation obligatoire avant certaines rencontres | 🟡 | `club-jour-match.js`, `clubUI.js`, `club-composition.js`, `club-analyse.js` | Volontairement jamais obligatoire : un point non préparé est signalé, jamais bloquant. **Tranche 11** : chaque point porte une `nature` (terminé / urgent / recommandé / facultatif / en attente) et le pourcentage ne compte que ce que le manager peut régler aujourd'hui — l'attente du rapport d'analyste n'est plus comptée comme un échec. |
+| Zone « À traiter » du tableau de bord | 🟢 | `club-a-traiter.js`, `clubUI.js` | **Tranche 11** : une liste unique et ordonnée dérivée de l'état réel (décisions non tranchées, blessés, poste sans titulaire, budget, fatigue, messages non lus, contrats), quatre niveaux portés par la donnée, chaque ligne cliquable vers l'écran qui la résout. |
 
 ## 2. Effectif et joueurs
 
@@ -36,7 +46,7 @@ tranche livrée — jamais en avance sur ce qui est réellement dans `main`.
 | Statut dans l'équipe et temps de jeu attendu | 🟡 | `clubUI.js`, `club-decisions.js` | **Tranche 1 livrée** : un joueur de qualité non sélectionné plusieurs journées de suite exprime réellement sa frustration (message + conséquence moral/entraînement). Reste à faire : un vrai indicateur "temps de jeu attendu" affiché en continu (pas seulement au moment de la plainte). |
 | Hiérarchie du vestiaire (capitaine, leaders) | 🟡 | `club-composition.js` | Capitaine désigné, purement décoratif (aucun effet mécanique, pas de "leaders"). |
 | Mécontentements, demandes et discussions | 🟡 | `club-decisions.js` | **Tranche 1 livrée** : demande de temps de jeu = premier cas réel. Manque : demandes salariales, demandes de départ pour d'autres raisons (ambition sportive, rôle tactique...). |
-| Historique des saisons et statistiques (par joueur) | 🔴 | `club.js` (`avancerSaison`) | `statsSaison` remis à `null` à chaque nouvelle saison — aucune stat de carrière cumulée par joueur. |
+| Historique des saisons et statistiques (par joueur) | 🟢 | `club.js` (`archiverSaisonJoueur`, `carriereJoueur`), `clubUI.js` | Chaque saison est archivée avec le club et l'âge du joueur ; les totaux de carrière additionnent réellement historique + saison en cours, et les stats sont ventilées par compétition (`statsSaison.parCompetition`). Page joueur autonome. |
 
 ## 3. Composition et tactique
 
@@ -58,14 +68,14 @@ tranche livrée — jamais en avance sur ce qui est réellement dans `main`.
 | Rapports de scouts | 🟡 | `club-transferts.js` | Étoiles + stats approximatives, aucun commentaire narratif qualitatif. |
 | Favoris et listes de recrutement | 🟢 | `club-transferts.js` | Liste `saison.favoris` réelle. |
 | Négociation transfert/salaire/durée/statut | 🟡 | `club-transferts.js`, `club-transferts-internationaux.js`, `club-contrats.js` | Trois flux, tous "un seul montant à prendre ou laisser" — aucun vrai va-et-vient multi-tours. |
-| Fenêtres de transferts | 🔴 | — | Marché accessible en permanence, aucune période ouverte/fermée. |
+| Fenêtres de transferts | 🟢 | `club-transferts.js` (`fenetresTransfert`, `etatFenetreTransfert`) | Périodes ouvertes/fermées dérivées de dates réelles du calendrier. Hors fenêtre, signer est impossible mais le repérage reste ouvert, avec la date de réouverture affichée — jamais un bouton grisé sans explication. |
 | Concurrence avec les clubs IA | 🔴 | — | Marché régénéré uniquement à la demande du joueur ; aucun club IA ne recrute en parallèle. |
 
 ## 5. Entraînement et médical
 
 | Fonctionnalité | Statut | Fichiers | Détail |
 |---|---|---|---|
-| Programme hebdomadaire | 🟡 | `club-condition-joueurs.js` | Un focus collectif unique, actif tant qu'il n'est pas changé — pas de calendrier d'entraînement distinct des jours de match. |
+| Programme hebdomadaire | 🟢 | `club-semaine-entrainement.js` | Semaine d'entraînement réellement programmable séance par séance, avec une intensité qui pèse sur la fatigue et un risque de blessure mesuré (`RISQUE_BLESSURE_PAR_INTENSITE`, calibré à 7-10 blessures d'entraînement par saison). |
 | Entraînement collectif ET individuel | 🟢 | `club-condition-joueurs.js` | `entrainementIndividuel` par joueur, prioritaire sur le collectif. |
 | Progression liée au temps de jeu et aux entraîneurs | 🟡 | `club-condition-joueurs.js`, `club-personnel.js` | Effet entraîneur réel. Progression appliquée à TOUT l'effectif, sans lien avec le temps de jeu réel. **Tranche 1** : un joueur qui `veutPartir` s'arrête de progresser — premier lien réel entre état du joueur et entraînement. |
 | Blessures crédibles | 🟡 | `club-condition-joueurs.js` | Probabilité uniforme (6%/titulaire/journée), aucune variation par poste/âge/fatigue. |
@@ -89,11 +99,13 @@ tranche livrée — jamais en avance sur ce qui est réellement dans `main`.
 | Fonctionnalité | Statut | Fichiers | Détail |
 |---|---|---|---|
 | Vraies compétitions simulées même hors écran | 🟡 | `world.js`, `club-pyramide-france.js` | La pyramide française avance systématiquement ; le Monde (12 pays) nécessite une première ouverture manuelle de l'onglet avant de s'activer. |
-| Effectifs et tactiques des clubs adverses | 🟡 | `club-pyramide.js`, `world.js` | Effectif réel pour les adversaires du palier du joueur ; matchs IA-IA résolus abstraitement (niveau seul, pas d'effectif/tactique). Clubs du Monde sans effectif du tout. |
+| Effectifs et tactiques des clubs adverses | 🟡 | `club-effectif-adverse.js`, `club-pyramide.js`, `world.js` | Chaque adversaire du palier du joueur a un groupe complet et persistant (15 + 8 remplaçants nommés, réellement affichés — plus de « pas connu »). Reste incomplet : les matchs IA-IA sont toujours résolus abstraitement (niveau seul, sans effectif ni tactique), et les clubs du Monde n'ont pas d'effectif. |
 | Transferts entre clubs IA | 🔴 | — | Effectifs adverses régénérés en bloc chaque saison, aucun mercato IA-IA. |
-| Rotation, fatigue et blessures des équipes IA | 🔴 | — | Fatigue/blessures appliquées uniquement à l'effectif du joueur. |
+| Rotation, fatigue et blessures des équipes IA | 🟢 | `club-effectif-adverse.js` | Les clubs adverses ont un vrai groupe (15 + 8 sur le banc), qui fatigue (`FATIGUE_MATCH_TITULAIRE`/`REMPLACANT`), se blesse (`RISQUE_BLESSURE_MATCH`), guérit jour après jour (`avancerJourClubsAdverses`) et tourne selon la fatigue (`rotationClubsAdverses`). |
 | Montée, descente, palmarès et historique | 🟡 | `club.js`, `world.js` | Montées/descentes réelles ; aucun palmarès cumulé (seul le dernier vainqueur international est gardé, écrasé chaque saison). |
-| Championnat espoirs complet (calendrier + classement) | 🟡 | `club-espoirs.js` | Un match ponctuel tous les 4 journées contre une académie synthétique jamais revue — pas un vrai championnat à classement persistant. |
+| Championnat espoirs complet (calendrier + classement) | 🟢 | `club-espoirs.js` | Vrai championnat : plusieurs académies nommées, calendrier daté (le mercredi), journée entière jouée — pas seulement le match du joueur — et classement persistant qui bouge réellement. |
+| Coupes à élimination directe | 🟢 | `club-coupes.js` | Moteur générique (`genererCoupe`) et quatre coupes réelles (nationale, continentale, continentale secondaire, espoirs) : tours nommés et datés, aucun match nul, résultat qui produit un vrai message (qualifié / éliminé). Une coupe annonce explicitement qu'elle n'a PAS de classement, au lieu d'afficher une table inventée. |
+| Matchs amicaux | 🟢 | `club-amicaux.js` | Rencontre proposée à un club depuis SA page, sur une date réellement libre du calendrier (`datesLibresPourAmical`). Elle devient une échéance annoncée, se joue à sa date avec un score du moteur, fatigue les joueurs alignés et n'avance aucune journée de championnat. |
 
 ## 8. Carrière du manager
 
@@ -203,3 +215,19 @@ tranche livrée — jamais en avance sur ce qui est réellement dans `main`.
 - **Contrats asynchrones :** proposer un salaire n'aboutit plus dans la seconde. Le joueur consulte son agent et répond quelques jours plus tard, pendant que la carrière avance.
 - **Direction et vestiaire :** le président fait deux points d'étape dans la saison, compare la position réelle à l'objectif et ajuste sa confiance. Et quand le moral collectif s'effondre, le capitaine vient demander une réunion — la tenir remonte réellement le moral mais coûte la séance du lendemain.
 - **Le découpage en quatre tranches demandé est terminé.** Restent hors périmètre, documentés : les coupes d'Europe pour le club du joueur, une IA de recrutement pour les clubs adverses, un centre de formation pour les clubs IA.
+
+### Tranche 11 — Une semaine complète dans la peau du manager (livrée)
+- **Demande explicite de l'utilisateur :** « rendre la carrière fluide, compréhensible et intéressante, pas d'ajouter encore des fonctionnalités isolées » — transformer le tableau de bord en véritable écran « Aujourd'hui », montrer clairement ce qui est urgent / recommandé / terminé / facultatif, regrouper les décisions dans une vraie zone dédiée, éviter les cartes redondantes, et ne jamais créer un second système parallèle à une fonctionnalité existante.
+- **Méthode :** une semaine réelle rejouée dans une carrière neuve AVANT d'écrire la moindre ligne, avec mesures dans un vrai navigateur (hauteurs en pixels, nombre de cartes, position de chaque zone) sur ordinateur 1280×1000 et mobile 390×844.
+- **Domaines touchés :** 1 (boucle quotidienne, préparation d'avant-match). Aucune fonctionnalité supprimée.
+- **Fichiers :** `docs/js/club-a-traiter.js` (**nouveau**), `docs/js/club-agenda.js` (`descriptionRencontre`), `docs/js/club-jour-match.js` (`nature` des points de préparation), `docs/js/club.js` (`POSTE_COMPLET` remonté dans la couche données), `docs/js/clubUI.js`, `docs/index.html`, `docs/css/style.css`, tests.
+
+**Les quatre défauts trouvés, et ce qui a changé :**
+
+1. **La carte « Prochaine échéance » annonçait les 7 rencontres de la journée**, dont 6 ne concernaient pas le joueur (469 px). Pire, elle et le bouton « Continuer » appelaient `prochainArret()` séparément et pouvaient annoncer deux dates différentes. La carte décrit désormais UNE rencontre — la sienne, toutes compétitions confondues — et le bouton lit le MÊME objet : la divergence est devenue impossible par construction.
+2. **Une décision non tranchée n'apparaissait nulle part dans les alertes.** Elle dormait dans la boîte de réception, mesurée à 1586 px de défilement sur mobile. Nouveau module `club-a-traiter.js` : une liste unique et ordonnée, dérivée de l'état réel (décisions, blessés, poste sans titulaire, budget, fatigue, messages non lus, contrats), avec quatre niveaux portés par la donnée et un badge en toutes lettres. Les décisions viennent de `saison.clubJoueur.messages`, seule source — aucun système parallèle.
+3. **Le tableau de bord répétait la même information sur trois cartes** (mini-classement, statut de l'effectif, résultats vides). Retirées : leur contenu vit déjà dans la page Classement, la barre du haut et « À traiter ». Mesuré : 10 cartes → 7, 2853 px → 1926 px, 3,6 écrans mobile → 2,45, et « À traiter » passe de 1110 px à 164 px — visible sans défiler.
+4. **La préparation mélangeait ce qu'on doit faire et ce qu'on doit attendre.** « 60 % de la préparation bouclée » avec le même ⬜ devant « Analyse de l'adversaire » (17 jours d'attente) et « Tactique » (un clic). Chaque point porte désormais une `nature` — terminé / urgent / recommandé / facultatif / en attente — et le pourcentage ne compte que le réglable : « 75 % de ce qui est réglable aujourd'hui (3/4) · 1 point en attente ».
+
+- **Statuts corrigés dans ce document après vérification dans le code** (plusieurs fonctionnalités marquées 🔴 étaient en réalité livrées) : vraie date et calendrier, événements entre les matchs, bouton « Jour suivant », historique/statistiques par joueur, fenêtres de transferts, rotation/fatigue/blessures des équipes IA, programme hebdomadaire, championnat espoirs. Deux lignes manquantes ajoutées : coupes à élimination directe et matchs amicaux.
+- **Reste hors périmètre, non traité :** matchs IA-IA toujours résolus abstraitement, clubs du Monde sans effectif, palmarès non cumulé, mercato entre clubs IA, carrière du manager (domaine 8) entièrement absente.
