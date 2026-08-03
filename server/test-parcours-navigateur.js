@@ -1720,7 +1720,33 @@ function optionsLancement() {
   verifier('préparation de match : loin du match, l\'analyse de l\'adversaire annonce son délai (pas juste « indisponible »)',
     /analyste a besoin d'encore \d+ jour/.test(prepLoin.texte));
   verifier('préparation de match : un pourcentage de préparation réel est affiché',
-    /\d+ % de la préparation bouclée/.test(prepLoin.pct));
+    /\d+ %/.test(prepLoin.pct));
+
+  // --- P1-38 : distinguer ce qu'on doit FAIRE de ce qu'on doit ATTENDRE.
+  // Mesuré avant : à J-21, « 60 % de la préparation bouclée » et un ⬜ devant
+  // « Analyse de l'adversaire » — le même symbole que devant « Tactique »,
+  // alors que l'un demande 17 jours d'attente et l'autre un seul clic. ---
+  const niveaux = await pagePrep.evaluate(() => Array.from(
+    document.querySelectorAll('#clubPreparationMatch .lignePreparation')).map((l) => ({
+      libelle: (l.querySelector('b') || {}).textContent || '',
+      nature: l.dataset.nature || null,
+      badge: (l.querySelector('.badgeNature') || {}).textContent || null,
+    })));
+  verifier('préparation : chaque point porte sa nature (terminé / urgent / recommandé / facultatif / en attente)',
+    niveaux.length === 5 && niveaux.every((n) => !!n.nature && !!n.badge));
+  verifier('préparation : le point hors de portée du manager est marqué « en attente », pas « à faire »',
+    (niveaux.find((n) => n.libelle.includes('Analyse')) || {}).nature === 'enAttente');
+  verifier('préparation : ce qui attend et ce qui se règle ne portent PAS le même libellé',
+    (niveaux.find((n) => n.libelle.includes('Analyse')) || {}).badge
+      !== (niveaux.find((n) => n.libelle.includes('Tactique')) || {}).badge);
+  verifier('préparation : la tactique par défaut est annoncée FACULTATIVE, pas comme un manque',
+    (niveaux.find((n) => n.libelle.includes('Tactique')) || {}).nature === 'facultatif');
+  verifier('préparation : le pourcentage annonce sur quoi il porte (le réglable, pas l\'attente)',
+    /r[ée]glable|aujourd'hui|de pr[eé]t/i.test(prepLoin.pct));
+  // Le compte est honnête : 3 points réglés sur 4 réglables = 75 %, et non
+  // 60 % obtenus en comptant l'attente de l'analyste comme un échec.
+  verifier('préparation : le pourcentage ne compte plus l\'attente de l\'analyste comme un point raté',
+    /\b75 %/.test(prepLoin.pct));
   // Aucun blocage : le bouton « Continuer » reste actif malgré des points non préparés.
   verifier('préparation de match : rien ne bloque — « Continuer » reste utilisable avec des points non préparés',
     await pagePrep.evaluate(() => !document.getElementById('btnJouerMatchClub').disabled));

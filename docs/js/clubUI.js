@@ -634,6 +634,17 @@
   // aller le régler.
   const ONGLET_POUR_POINT = { analyse: 'classement', composition: 'composition', tactique: 'tactique', roles: 'composition', banc: 'composition' };
   const ICONE_STATUT_PREP = { ok: '✅', attention: '⚠️', nonPrepare: '⬜' };
+  // TODO_AUDIT.md P1-38 — la nature du point, en toutes lettres. Avant, tout
+  // ce qui n'était pas fait portait le même ⬜ : « Analyse de l'adversaire »
+  // (17 jours d'attente, rien à faire) était indiscernable de « Tactique »
+  // (un clic). Le manager doit voir d'un coup d'œil ce qui l'attend, LUI.
+  const NATURE_PREP = {
+    termine: { icone: '✅', libelle: 'Fait' },
+    urgent: { icone: '❗', libelle: 'Urgent' },
+    recommande: { icone: '⚠️', libelle: 'Recommandé' },
+    facultatif: { icone: '⬜', libelle: 'Facultatif' },
+    enAttente: { icone: '⏳', libelle: 'En attente' },
+  };
   function rafraichirPreparationMatch() {
     const carte = document.getElementById('cartePreparationMatch');
     const zone = document.getElementById('clubPreparationMatch');
@@ -647,12 +658,20 @@
     zone.innerHTML =
       `<p class="entetePreparation">${lienClub(r.adversaireId)} · ${r.domicile ? 'à domicile' : "à l'extérieur"} · ${echapperHTML(RMClub.formaterDateLongue(r.date))} (${quand})</p>` +
       `<div class="jaugePreparation"><span style="width:${etat.pretPct}%"></span></div>` +
-      `<p class="pctPreparation">${etat.pretPct} % de la préparation bouclée</p>` +
-      etat.points.map((p) =>
-        `<div class="lignePreparation ${p.statut}" data-onglet="${ONGLET_POUR_POINT[p.cle] || 'dashboard'}">` +
-        `<span class="statutPreparation">${ICONE_STATUT_PREP[p.statut]}</span>` +
-        `<span class="corpsPreparation"><b>${echapperHTML(p.libelle)}</b><span>${echapperHTML(p.detail)}</span></span></div>`
-      ).join('');
+      // Le pourcentage dit sur quoi il porte : sinon « 60 % » se lit comme un
+      // reproche alors que tout le réglable était réglé. Ce qui n'est
+      // qu'attente est annoncé à part, jamais compté comme un point raté.
+      `<p class="pctPreparation">${etat.pretPct} % de ce qui est réglable aujourd'hui ` +
+      `(${etat.resume.faits}/${etat.resume.actionnables})` +
+      (etat.resume.enAttente ? ` · ${etat.resume.enAttente} point(s) en attente` : '') + `</p>` +
+      etat.points.map((p) => {
+        const n = NATURE_PREP[p.nature] || NATURE_PREP.facultatif;
+        return `<div class="lignePreparation ${p.statut} nature-${p.nature}" data-nature="${p.nature}"` +
+          ` data-onglet="${ONGLET_POUR_POINT[p.cle] || 'dashboard'}">` +
+          `<span class="statutPreparation">${n.icone}</span>` +
+          `<span class="corpsPreparation"><b>${echapperHTML(p.libelle)}</b><span>${echapperHTML(p.detail)}</span></span>` +
+          `<span class="badgeNature nature-${p.nature}">${n.libelle}</span></div>`;
+      }).join('');
   }
 
   // Fenêtre de transfert (TODO_AUDIT.md P1-24) : ouverte ou fermée, avec la

@@ -1890,10 +1890,88 @@ test('préparation de match : chaque point reflète l\'état RÉEL, et rien ne b
   const apres = RMClub.etatPreparationMatch(s).points.find((p) => p.cle === 'composition');
   assert.strictEqual(apres.statut, 'attention');
   assert.ok(apres.detail.includes('blessé'));
-  // Le pourcentage de préparation reflète bien le nombre de points prêts.
+  // Le pourcentage de préparation reflète les points prêts — parmi ceux que
+  // le manager peut réellement régler aujourd'hui (P1-38 : l'attente du
+  // rapport d'analyse ne compte plus comme un point raté).
   const etatFinal = RMClub.etatPreparationMatch(s);
-  const prets = etatFinal.points.filter((p) => p.statut === 'ok').length;
-  assert.strictEqual(etatFinal.pretPct, Math.round((prets / etatFinal.points.length) * 100));
+  const actionnables = etatFinal.points.filter((p) => p.nature !== 'enAttente');
+  const prets = actionnables.filter((p) => p.statut === 'ok').length;
+  assert.strictEqual(etatFinal.pretPct, Math.round((prets / actionnables.length) * 100));
+});
+
+// --- P1-38 : « urgent, recommandé, terminé, facultatif » (demande
+// utilisateur). Mesuré sur une carrière neuve à J-21 : « 60 % de la
+// préparation bouclée », avec un ⬜ devant « Analyse de l'adversaire » —
+// exactement le même symbole que devant « Tactique ». Or la tactique est à
+// un clic, l'analyse à 17 jours d'attente. Le manager ne peut pas
+// distinguer ce qu'il doit faire de ce qu'il doit attendre, et le
+// pourcentage lui compte comme un échec quelque chose d'impossible. ---
+
+test('préparation : chaque point dit sa NATURE, pas seulement son statut', () => {
+  const s = saisonPourJours(803, 'Test Nature Prépa');
+  const etat = RMClub.etatPreparationMatch(s);
+  const NATURES = ['termine', 'urgent', 'recommande', 'facultatif', 'enAttente'];
+  assert.ok(etat.points.every((p) => NATURES.indexOf(p.nature) !== -1),
+    'chaque point doit porter une nature parmi ' + NATURES.join('/') +
+    ' — sinon l\'interface ne peut pas dire ce qui est urgent, recommandé, terminé ou facultatif');
+});
+
+test('préparation : ce que le manager NE PEUT PAS faire aujourd\'hui est « en attente », pas « non fait »', () => {
+  const s = saisonPourJours(804, 'Test Attente Prépa');
+  const etat = RMClub.etatPreparationMatch(s);
+  const analyse = etat.points.find((p) => p.cle === 'analyse');
+  assert.ok(etat.rencontre.jours > RMClub.joursAvantAnalyse(s),
+    'ce test suppose qu\'on est loin du match');
+  assert.strictEqual(analyse.nature, 'enAttente',
+    'loin du match, l\'analyse ne dépend pas du manager : la présenter comme non préparée lui reproche l\'impossible');
+  // …et elle ne doit PAS peser sur le pourcentage, qui mesure ce qui est
+  // réglable maintenant.
+  const actionnables = etat.points.filter((p) => p.nature !== 'enAttente');
+  const faits = actionnables.filter((p) => p.nature === 'termine').length;
+  assert.strictEqual(etat.pretPct, Math.round((faits / actionnables.length) * 100),
+    'le pourcentage doit porter sur les seuls points réglables aujourd\'hui');
+  // Quand le rapport arrive, le point rejoint le décompte et vaut « terminé ».
+  RMClub.definirDateCourante(s, RMClub.ajouterJours(etat.rencontre.date, -1));
+  const proche = RMClub.etatPreparationMatch(s);
+  assert.strictEqual(proche.points.find((p) => p.cle === 'analyse').nature, 'termine');
+});
+
+test('préparation : une composition incomplète est URGENTE, un banc vide seulement RECOMMANDÉ', () => {
+  const s = saisonPourJours(805, 'Test Urgence Prépa');
+  // Vraie impasse : plus assez de joueurs pour remplir un XV. On ne vide pas
+  // un poste à la main — la composition se recomplète toute seule, c'est
+  // exactement ce qui doit se passer.
+  const tousLesJoueurs = s.clubJoueur.effectif.slice();
+  s.clubJoueur.effectif = tousLesJoueurs.slice(0, 14);
+  RMClub.slotCompositionPourEquipe(s, 'pro').compositionTitulaires = {};
+  let par = {};
+  for (const p of RMClub.etatPreparationMatch(s).points) par[p.cle] = p;
+  assert.ok(par.composition.detail.includes('non pourvu'),
+    'ce test suppose une composition réellement incomplète, or : ' + par.composition.detail);
+  assert.strictEqual(par.composition.nature, 'urgent',
+    'un poste non pourvu compromet vraiment la rencontre');
+  s.clubJoueur.effectif = tousLesJoueurs;
+  // Un banc incomplet n'empêche pas de jouer : il prive de remplacements.
+  // Même logique : on réduit l'effectif réel plutôt que de vider un champ
+  // que le jeu recomplète aussitôt.
+  s.clubJoueur.effectif = tousLesJoueurs.slice(0, 18);
+  RMClub.slotCompositionPourEquipe(s, 'pro').compositionBanc = {};
+  par = {};
+  for (const p of RMClub.etatPreparationMatch(s).points) par[p.cle] = p;
+  assert.strictEqual(par.banc.nature, 'recommande');
+});
+
+test('préparation : la tactique par défaut est FACULTATIVE, pas un échec', () => {
+  const s = saisonPourJours(806, 'Test Tactique Prépa');
+  const par = {};
+  for (const p of RMClub.etatPreparationMatch(s).points) par[p.cle] = p;
+  assert.strictEqual(par.tactique.nature, 'facultatif',
+    'le réglage neutre est un choix valable — le code le dit déjà, l\'affichage doit le dire aussi');
+  // La régler la fait passer à « terminé » : c'est bien une vraie préparation.
+  const slot = RMClub.slotCompositionPourEquipe(s, 'pro');
+  slot.tactique = Object.assign({}, slot.tactique, { style: 'large' });
+  const apres = RMClub.etatPreparationMatch(s).points.find((p) => p.cle === 'tactique');
+  assert.strictEqual(apres.nature, 'termine');
 });
 
 test('fenêtres de transfert : ouvertes à des dates réelles, dérivées du calendrier', () => {

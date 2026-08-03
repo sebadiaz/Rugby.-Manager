@@ -898,6 +898,23 @@ select {
 .lignePreparation .corpsPreparation span { font-size: 11.5px; color: var(--text-faint); }
 .lignePreparation.attention .corpsPreparation b { color: var(--draw); }
 .lignePreparation.nonPrepare .corpsPreparation b { color: var(--text-dim); }
+/* Nature du point de préparation (TODO_AUDIT.md P1-38) : le badge dit en
+   toutes lettres s'il faut agir maintenant, si c'est facultatif, ou s'il
+   n'y a qu'à attendre. La couleur ne fait que refléter la donnée. */
+.lignePreparation .corpsPreparation { flex: 1 1 auto; }
+.badgeNature {
+  flex: 0 0 auto; align-self: center; font-size: 10.5px; text-transform: uppercase;
+  letter-spacing: .03em; padding: 2px 7px; border-radius: 999px;
+  border: 1px solid transparent; white-space: nowrap;
+}
+.badgeNature.nature-termine { color: #9ad9a4; border-color: #245c2e; background: #0f2a14; }
+.badgeNature.nature-urgent { color: #ff9d9d; border-color: #7a2020; background: #3a0f0f; }
+.badgeNature.nature-recommande { color: #ffd479; border-color: #7a5c14; background: #3a2c07; }
+.badgeNature.nature-facultatif { color: var(--text-dim); border-color: #333; background: #1c1c1c; }
+/* En attente : volontairement en retrait — il n'y a rien à y faire. */
+.badgeNature.nature-enAttente { color: #9fb4c4; border-color: #2b3a45; background: #131b21; }
+.lignePreparation.nature-enAttente { opacity: .72; }
+.lignePreparation.nature-urgent { border-left: 3px solid #b04040; padding-left: 7px; }
 /* Fenêtre de transfert : ouverte ou fermée, avec la date de réouverture. */
 .fenetreOuverte, .fenetreFermee { margin: 0; font-size: 12.5px; }
 .fenetreOuverte { color: var(--win); }

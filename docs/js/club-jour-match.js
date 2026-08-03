@@ -78,6 +78,23 @@
   //
   // `statut` vaut 'ok', 'attention' (préparable, mais discutable) ou
   // 'nonPrepare' (rien n'a été fait). Aucun ne bloque le coup d'envoi.
+  //
+  // Chaque point porte AUSSI une `nature` (TODO_AUDIT.md P1-38), qui répond
+  // à la seule question que se pose le manager devant la liste : « est-ce
+  // que j'ai quelque chose à faire, là, maintenant ? »
+  //
+  //   'termine'    — c'est réglé, plus rien à faire ;
+  //   'urgent'     — ça compromet vraiment la rencontre ;
+  //   'recommande' — à traiter avant le coup d'envoi, sans gravité ;
+  //   'facultatif' — un choix possible, pas un manque ;
+  //   'enAttente'  — HORS de portée du manager aujourd'hui (le rapport de
+  //                  l'analyste n'est pas prêt) : lui présenter ça comme
+  //                  « non préparé » lui reproche l'impossible.
+  //
+  // `statut` est conservé tel quel : les consommateurs existants continuent
+  // de fonctionner sans modification.
+  const NATURES_PREPARATION = ['termine', 'urgent', 'recommande', 'facultatif', 'enAttente'];
+
   function etatPreparationMatch(saison) {
     const RMClub = global.RMClub;
     const rencontre = prochaineRencontre(saison);
@@ -96,6 +113,9 @@
       cle: 'analyse',
       libelle: 'Analyse de l\'adversaire',
       statut: analyse.disponible ? 'ok' : 'nonPrepare',
+      // Rien à faire tant que l'analyste observe : c'est une attente, pas un
+      // oubli. C'est le seul point de la liste que le manager ne contrôle pas.
+      nature: analyse.disponible ? 'termine' : 'enAttente',
       detail: analyse.disponible
         ? 'Rapport de ton analyste disponible.'
         : `Ton analyste a besoin d'encore ${analyse.joursRestants} jour(s) d'observation.`,
@@ -106,18 +126,23 @@
     const blesses = titulaires.filter((j) => j.blessureJournees > 0);
     const fatigues = titulaires.filter((j) => !(j.blessureJournees > 0) && (j.fatigue || 0) >= 65);
     let statutCompo = 'ok';
+    let natureCompo = 'termine';
     let detailCompo = 'Quinze titulaires disponibles et en état.';
     if (manquants.length) {
       statutCompo = 'nonPrepare';
+      // Un poste non pourvu, c'est un XV qu'on ne peut pas aligner tel quel :
+      // le seul point de la liste qui compromet réellement la rencontre.
+      natureCompo = 'urgent';
       detailCompo = `Poste(s) non pourvu(s) : ${manquants.map((m) => 'n°' + m.numero).join(', ')}.`;
     } else if (blesses.length || fatigues.length) {
       statutCompo = 'attention';
+      natureCompo = 'recommande';
       detailCompo = [
         blesses.length ? `${blesses.length} titulaire(s) blessé(s)` : null,
         fatigues.length ? `${fatigues.length} titulaire(s) très fatigué(s)` : null,
       ].filter(Boolean).join(', ') + '.';
     }
-    points.push({ cle: 'composition', libelle: 'Composition', statut: statutCompo, detail: detailCompo });
+    points.push({ cle: 'composition', libelle: 'Composition', statut: statutCompo, nature: natureCompo, detail: detailCompo });
 
     // 3. Tactique — le réglage par défaut est signalé comme non préparé :
     // ce n'est pas un mauvais choix, c'est simplement un choix pas encore
@@ -129,6 +154,10 @@
       cle: 'tactique',
       libelle: 'Tactique',
       statut: axesRegles.length ? 'ok' : 'nonPrepare',
+      // Le commentaire ci-dessus le dit déjà : le réglage neutre n'est pas un
+      // mauvais choix. L'affichage doit le dire aussi, au lieu de laisser
+      // croire à un oubli.
+      nature: axesRegles.length ? 'termine' : 'facultatif',
       detail: axesRegles.length
         ? `${axesRegles.length} axe(s) réglé(s) spécifiquement pour ce match.`
         : 'Tous les axes sont au réglage neutre par défaut.',
@@ -150,6 +179,9 @@
       cle: 'roles',
       libelle: 'Coups de pied arrêtés et rôles',
       statut: rolesManquants.length ? 'nonPrepare' : (rolesDiminues.length ? 'attention' : 'ok'),
+      // Sans buteur désigné, les points au pied ne sont plus tentés par le
+      // bon joueur : la conséquence est immédiate et se paie au score.
+      nature: rolesManquants.length ? 'urgent' : (rolesDiminues.length ? 'recommande' : 'termine'),
       detail: rolesManquants.length
         ? `Rôle(s) sans titulaire désigné : ${rolesManquants.join(', ')}.`
         : rolesDiminues.length
@@ -164,22 +196,37 @@
       cle: 'banc',
       libelle: 'Banc et remplacements',
       statut: banc.length >= 8 ? 'ok' : (banc.length ? 'attention' : 'nonPrepare'),
+      // Un banc incomplet n'empêche pas de jouer : il prive de remplacements.
+      nature: banc.length >= 8 ? 'termine' : 'recommande',
       detail: banc.length >= 8
         ? 'Banc de 8 complet : les remplacements sont planifiés.'
         : `${banc.length} remplaçant(s) sur 8 — les places vides ne produiront aucun remplacement.`,
     });
 
-    const prets = points.filter((p) => p.statut === 'ok').length;
+    // Le pourcentage ne porte QUE sur ce que le manager peut régler
+    // aujourd'hui : compter l'attente de l'analyste dans le dénominateur
+    // affichait 60 % à un club dont tout le réglable était fait.
+    const actionnables = points.filter((p) => p.nature !== 'enAttente');
+    const faits = actionnables.filter((p) => p.nature === 'termine').length;
     return {
       rencontre,
       analyse,
       points,
-      pretPct: Math.round((prets / points.length) * 100),
+      // Compteurs dérivés de la MÊME liste, pour que l'entête de la carte ne
+      // recalcule jamais l'urgence de son côté.
+      resume: {
+        actionnables: actionnables.length,
+        faits,
+        urgents: points.filter((p) => p.nature === 'urgent').length,
+        recommandes: points.filter((p) => p.nature === 'recommande').length,
+        enAttente: points.filter((p) => p.nature === 'enAttente').length,
+      },
+      pretPct: actionnables.length ? Math.round((faits / actionnables.length) * 100) : 100,
     };
   }
 
   global.RMClub = Object.assign(global.RMClub || {}, {
-    JOURS_ANALYSE_ADVERSAIRE, joursAvantAnalyse, prochaineRencontre,
+    JOURS_ANALYSE_ADVERSAIRE, NATURES_PREPARATION, joursAvantAnalyse, prochaineRencontre,
     analyseDisponible, etatPreparationMatch,
   });
 })(window);
