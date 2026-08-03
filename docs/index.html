@@ -278,22 +278,25 @@
             <h3>🆚 Prochain adversaire</h3>
             <div id="clubAdversaire"></div>
           </div>
-          <div class="carteClub carteMonClub">
+          <!-- Masquée tant qu'aucun match n'a été joué (P1-37) : en début de
+               carrière elle n'annonçait qu'« Aucun match joué pour le moment »,
+               en repoussant vers le bas ce qu'il y a réellement à faire. -->
+          <div class="carteClub carteMonClub" id="carteDerniersResultats" style="display:none;">
             <h3>📈 5 derniers résultats</h3>
             <div id="clubDerniersResultats"></div>
           </div>
-          <div class="carteClub carteMonClub">
-            <h3>🏆 Classement</h3>
-            <div id="clubMiniClassement"></div>
-          </div>
+          <!-- Mini-classement retiré (TODO_AUDIT.md P1-37) : il occupait 461 px
+               pour répéter ce que la page Classement montre en entier et ce que
+               la barre du haut résume déjà (« 9e /14 »). Rien n'est perdu :
+               l'entrée « Classement » du menu mène au tableau complet. -->
           <!-- Le budget est déjà affiché ci-dessous (Statut de l'effectif) et
                dans la barre du haut : une carte "Finances" séparée ici ne
                montrait rien de plus (doublon pur) — le détail complet reste
                à un clic dans l'onglet Finances. -->
-          <div class="carteClub carteMonClub">
-            <h3>🧾 Statut de l'effectif</h3>
-            <div id="clubStatutEffectif"></div>
-          </div>
+          <!-- « Statut de l'effectif » retiré (TODO_AUDIT.md P1-37) : blessés et
+               contrats expirants sont désormais dans « À traiter », le budget
+               dans la barre du haut, et la taille de l'effectif dans l'onglet
+               Effectif. La carte ne disait plus rien de neuf. -->
         </div>
 
         <!-- Effectif : recherche/tri/filtres, chaque ligne bascule sur une

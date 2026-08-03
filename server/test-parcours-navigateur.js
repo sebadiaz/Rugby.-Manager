@@ -1153,7 +1153,8 @@ function optionsLancement() {
   // --- (b) Tous les noms de clubs sont cliquables, partout ---------------
   const ECRANS_AVEC_NOMS = [
     { onglet: 'dashboard', zone: '#clubProchainMatch', nom: 'prochain match' },
-    { onglet: 'dashboard', zone: '#clubMiniClassement', nom: 'classement du tableau de bord' },
+    // Le mini-classement du tableau de bord a été retiré (P1-37) : il répétait
+    // la page Classement, qui est vérifiée ci-dessous. Rien n'est perdu.
     { onglet: 'calendrier', zone: '#clubCalendrier', nom: 'calendrier' },
     { onglet: 'calendrier', zone: '#clubCalendrier', nom: 'calendrier' },
     { onglet: 'classement', zone: '#clubCompetitionClassement', nom: 'classement du championnat choisi' },
@@ -2551,6 +2552,63 @@ function optionsLancement() {
     await pageTr.isVisible('[data-volet="medical"]'));
   verifier('à traiter : aucune erreur console', erreursTr.length === 0);
   await contexteTr.close();
+
+  // 11 duodecies) Écran « Aujourd'hui » (TODO_AUDIT.md P1-37) : ce qu'il y a
+  // à FAIRE vient en premier, et rien n'est répété d'une carte à l'autre.
+  const contexteAuj = await browser.newContext({ viewport: { width: 1280, height: 1000 } });
+  const pageAuj = await contexteAuj.newPage();
+  const erreursAuj = [];
+  pageAuj.on('pageerror', (e) => erreursAuj.push(`PAGEERROR: ${e.message}`));
+  pageAuj.on('console', (m) => {
+    if (m.type() === 'error' && !m.text().includes('404')) erreursAuj.push(`CONSOLE: ${m.text()}`);
+  });
+  await pageAuj.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  await pageAuj.click('#btnAccueilModeClub');
+  await pageAuj.fill('#inputNomClub', 'Test Aujourdhui');
+  await pageAuj.click('#btnCreerClub');
+  await pageAuj.waitForTimeout(600);
+
+  const auj = await pageAuj.evaluate(() => {
+    const volet = document.querySelector('.voletOnglet[data-volet="dashboard"]');
+    const visibles = [...volet.querySelectorAll('.carteClub')].filter((c) => c.offsetHeight > 0);
+    return {
+      titres: visibles.map((c) => (c.querySelector('h3') || {}).textContent || '?'),
+      hauteur: document.getElementById('clubMain').scrollHeight,
+      classementPresent: !!volet.querySelector('#clubMiniClassement'),
+      derniersResultats: !!(volet.querySelector('#clubDerniersResultats') || {}).offsetHeight,
+    };
+  });
+  verifier('aujourd\'hui : le tableau de bord tient en moins de 2400 px (mesuré à 2853 px avant)',
+    auj.hauteur < 2400);
+  verifier('aujourd\'hui : pas plus de 7 cartes visibles sur une carrière neuve (10 avant)',
+    auj.titres.length <= 7);
+  verifier('aujourd\'hui : le mini-classement du tableau de bord ne double plus la page Classement',
+    !auj.classementPresent);
+  verifier('aujourd\'hui : « 5 derniers résultats » n\'occupe pas l\'écran quand aucun match n\'a été joué',
+    !auj.derniersResultats);
+
+  // Avec quelque chose à traiter, cette zone passe AVANT le reste.
+  await pageAuj.evaluate(() => {
+    const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
+    s.clubJoueur.effectif[0].blessureJournees = 12;
+    localStorage.setItem('rugbyManager.club.v1', JSON.stringify(s));
+  });
+  await pageAuj.reload({ waitUntil: 'networkidle' });
+  await pageAuj.waitForTimeout(250);
+  await pageAuj.click('#btnContinuerClub');
+  await pageAuj.waitForTimeout(600);
+  const ordre = await pageAuj.evaluate(() => {
+    const volet = document.querySelector('.voletOnglet[data-volet="dashboard"]');
+    const visibles = [...volet.querySelectorAll('.carteClub')].filter((c) => c.offsetHeight > 0);
+    return { premier: (visibles[0].querySelector('h3') || {}).textContent || '',
+      positionATraiter: document.getElementById('carteAlertes').offsetTop };
+  });
+  verifier('aujourd\'hui : quand il y a quelque chose à traiter, cette zone est la PREMIÈRE carte',
+    /À traiter/.test(ordre.premier));
+  verifier('aujourd\'hui : la zone « À traiter » est visible sans défiler (mesurée à 1110 px avant)',
+    ordre.positionATraiter < 500);
+  verifier('aujourd\'hui : aucune erreur console', erreursAuj.length === 0);
+  await contexteAuj.close();
 
   // 12) Décision réelle dans la boîte de réception (audit "boîte de réception
   // avec décisions", cf. club-decisions.js) : injecte directement une

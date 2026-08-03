@@ -703,13 +703,6 @@
   // navigation partagée. Une seule fonction rend désormais un classement,
   // pour toutes les compétitions du jeu.
 
-  function rafraichirMiniClassement() {
-    const classement = RMClub.classementTrie(saison);
-    document.getElementById('clubMiniClassement').innerHTML = classement.map((r, i) => {
-      const classe = estClubJoueur(r.clubId) ? ' ligneClubJoueur' : '';
-      return `<div class="miniClassementLigne${classe}"><span>${i + 1}. ${lienClub(r.clubId)}</span><span>${r.j}J · <b>${r.pts}</b> pts</span></div>`;
-    }).join('');
-  }
 
   // --- Contexte d'équipe (TODO_AUDIT.md P1-19) -----------------------------
   // TOUS les écrans de gestion d'équipe (composition, effectif, entraînement,
@@ -1024,7 +1017,11 @@
     const joues = saison.calendrier.filter((f) => f.joue && concerneClubJoueur(f));
     const derniers = joues.slice(-5).reverse();
     const zone = document.getElementById('clubDerniersResultats');
-    if (derniers.length === 0) { zone.innerHTML = '<p>Aucun match joué pour le moment.</p>'; return; }
+    const carte = document.getElementById('carteDerniersResultats');
+    // Rien de joué : la carte disparaît au lieu d'occuper un écran pour dire
+    // qu'elle n'a rien à dire. Elle revient d'elle-même au premier résultat.
+    if (derniers.length === 0) { carte.style.display = 'none'; zone.innerHTML = ''; return; }
+    carte.style.display = '';
     zone.innerHTML = derniers.map((f) => {
       const domicileEstJoueur = estClubJoueur(f.domicileId);
       const adversaireId = domicileEstJoueur ? f.exterieurId : f.domicileId;
@@ -1342,16 +1339,10 @@
       `<button class="accent" id="btnProposerAmical" data-club="${echapperHTML(adversaire.id)}" style="width:100%;margin-top:8px;">Proposer cette rencontre</button>`;
   }
 
-  function rafraichirStatutEffectif() {
-    const effectif = saison.clubJoueur.effectif;
-    const blesses = effectif.filter((j) => j.blessureJournees > 0).length;
-    const contratsCourts = effectif.filter((j) => j.contrat <= 1).length;
-    document.getElementById('clubStatutEffectif').innerHTML = `<div class="grilleStatut">` +
-      `<div class="ligneStatut"><span>Effectif</span><span class="valeurStatut">${effectif.length} joueurs</span></div>` +
-      `<div class="ligneStatut"><span>Blessés</span><span class="valeurStatut${blesses > 0 ? ' alerte' : ''}">${blesses}</span></div>` +
-      `<div class="ligneStatut"><span>Contrats expirant fin de saison</span><span class="valeurStatut${contratsCourts > 0 ? ' alerte' : ''}">${contratsCourts}</span></div>` +
-      `<div class="ligneStatut"><span>Budget</span><span class="valeurStatut${saison.clubJoueur.budget < 0 ? ' critique' : ''}">${saison.clubJoueur.budget} k€</span></div></div>`;
-  }
+  // --- rafraichirMiniClassement / rafraichirStatutEffectif supprimées
+  // (TODO_AUDIT.md P1-37) : leurs cartes doublaient la page Classement, la
+  // barre du haut et la zone « À traiter ». Aucune donnée n'est perdue —
+  // elle est simplement affichée une seule fois, là où elle a du sens.
 
   // --- Zone « À traiter » (TODO_AUDIT.md P1-36) ---------------------------
   // Remplace l'ancienne carte « Décisions & alertes », qui ignorait les
@@ -2202,9 +2193,7 @@
     rafraichirMessages();
     rafraichirAutresClubs();
     rafraichirDerniersResultats();
-    rafraichirMiniClassement();
     rafraichirAlertes();
-    rafraichirStatutEffectif();
     rafraichirMarche();
     rafraichirMonde();
     rafraichirFinancesTab();
@@ -2395,7 +2384,6 @@
       toast(`✅ ${res.joueur.nom} rejoint le club en provenance de ${adv.nom} (${montant} k€)`);
       fermerFicheJoueur();
       rafraichirEcransEquipe();
-      rafraichirStatutEffectif();
       rafraichirTopBarInfos();
       rafraichirAutresClubs();
       return;
@@ -2413,7 +2401,6 @@
       toast(`✅ ${jeune.nom} rejoint le groupe professionnel`);
       fermerFicheJoueur();
       rafraichirEcransEquipe();
-      rafraichirStatutEffectif();
       return;
     }
     if (e.target.id === 'btnRenouveler') {
@@ -2456,7 +2443,6 @@
       toast(`✅ ${joueur.nom} part en prêt (indemnité ${res.indemnite} k€)`);
       ouvrirFicheJoueur(joueurAffiche);
       rafraichirEffectif();
-      rafraichirStatutEffectif();
       rafraichirTopBarInfos();
       rafraichirTerrain();
       rafraichirBanc();
@@ -2471,7 +2457,6 @@
       if (joueurRappele) toast(`✅ ${joueurRappele.nom} est rappelé de prêt`);
       ouvrirFicheJoueur(joueurAffiche);
       rafraichirEffectif();
-      rafraichirStatutEffectif();
       return;
     }
     if (e.target.id !== 'btnLibererFiche') return;
@@ -2485,7 +2470,6 @@
     toast(`✅ ${joueur.nom} a quitté le club`);
     fermerFicheJoueur();
     rafraichirEffectif();
-    rafraichirStatutEffectif();
     rafraichirTerrain();
     rafraichirBanc();
     rafraichirEncadrement();
@@ -2689,7 +2673,6 @@
       toast(`🔍 Recruteur envoyé — rapport attendu le ${RMClub.formaterDateCourte(res.dateRemise)} (${res.cout} k€)`);
       rafraichirMarche();
       rafraichirTopBarInfos();
-      rafraichirStatutEffectif();
       return;
     }
     if (!e.target.classList.contains('btnSigner')) return;
@@ -2711,7 +2694,6 @@
     rafraichirMarche();
     rafraichirEffectif();
     rafraichirTopBarInfos();
-    rafraichirStatutEffectif();
   }
   document.getElementById('clubMarche').addEventListener('click', (e) => gererClicJoueurMarche(e, saison.marche));
   document.getElementById('clubFavoris').addEventListener('click', (e) => gererClicJoueurMarche(e, saison.favoris || []));
