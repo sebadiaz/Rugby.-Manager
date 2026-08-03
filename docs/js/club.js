@@ -44,6 +44,13 @@
   }
 
   // --- Postes : quel numéro de maillot exige quelle catégorie de poste ---
+  // Libellé complet d'un poste — dans la couche DONNÉES et non dans l'UI :
+  // les modules sans DOM en ont besoin aussi (cf. club-a-traiter.js). Une
+  // seule table, jamais deux listes à garder en phase.
+  const POSTE_COMPLET = {
+    P: 'Pilier', T: 'Talonneur', '2L': 'Deuxième ligne', '3L': 'Troisième ligne',
+    DM: 'Demi de mêlée', OV: 'Ouverture', AI: 'Ailier', CE: 'Centre', AR: 'Arrière',
+  };
   const POSTE_REQUIS = {
     1: 'P', 2: 'T', 3: 'P', 4: '2L', 5: '2L', 6: '3L', 7: '3L', 8: '3L',
     9: 'DM', 10: 'OV', 11: 'AI', 12: 'CE', 13: 'CE', 14: 'AI', 15: 'AR',
@@ -1011,7 +1018,7 @@
   // en premier (cf. TODO_AUDIT.md P2-10).
   global.RMClub = Object.assign(global.RMClub || {}, {
     choisir, genererNomJoueur, calculerSalaire,
-    genererNomClub, genererEffectif, COULEURS, genererProchainIdClub,
+    genererNomClub, genererEffectif, COULEURS, genererProchainIdClub, POSTE_COMPLET,
     nouvelleSaison,
     resynchroniserCompteurs, VERSION_SAUVEGARDE,
     POSTE_REQUIS, TAILLE_EFFECTIF_CIBLE,

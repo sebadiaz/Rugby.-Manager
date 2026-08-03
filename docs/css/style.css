@@ -1067,3 +1067,19 @@ select {
 .echeanceDetail { font-size: 12.5px; color: var(--text-dim); }
 .echeanceContexte { font-size: 11.5px; color: var(--text-faint); }
 
+/* Zone « À traiter » (TODO_AUDIT.md P1-36) : le niveau d'urgence est PORTÉ
+   par la donnée (cf. club-a-traiter.js), la couleur ne fait que le refléter.
+   Un badge dit en toutes lettres s'il faut décider, agir, ou seulement
+   savoir — le joueur n'a pas à deviner à partir d'une nuance de couleur. */
+.ligneAlerte { display: flex; align-items: center; gap: 8px; }
+.ligneAlerte .texteAlerte { flex: 1 1 auto; }
+.badgeNiveau {
+  flex: 0 0 auto; font-size: 10.5px; text-transform: uppercase; letter-spacing: .03em;
+  padding: 2px 7px; border-radius: 999px; border: 1px solid transparent; white-space: nowrap;
+}
+.badgeNiveau.niveau-decision { color: #ffd479; border-color: #7a5c14; background: #3a2c07; }
+.badgeNiveau.niveau-urgent { color: #ff9d9d; border-color: #7a2020; background: #3a0f0f; }
+.badgeNiveau.niveau-recommande { color: #9fd4ff; border-color: #1d4a6b; background: #0d2333; }
+.badgeNiveau.niveau-info { color: var(--text-dim); border-color: #333; background: #1c1c1c; }
+.ligneAlerte.niveau-decision { border-left: 3px solid #c99a2e; padding-left: 7px; }
+.ligneAlerte.niveau-urgent { border-left: 3px solid #b04040; padding-left: 7px; }

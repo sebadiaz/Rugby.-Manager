@@ -50,6 +50,7 @@ new Function('window', require('fs').readFileSync(require('path').join(__dirname
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-effectif-adverse.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-amicaux.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-coupes.js'), 'utf8'))(global.window);
+new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-a-traiter.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-sauvegarde.js'), 'utf8'))(global.window);
 // world.js : nécessaire pour les tests de navigation par pays/championnat
 // (P1-28) — l'écosystème mondial fournit 12 pays et leurs divisions.
@@ -3455,6 +3456,66 @@ test('échéance : carte et bouton parlent TOUJOURS de la même rencontre', () =
     }
     RMClub.definirDateCourante(s, RMClub.ajouterJours(arret.date, 1));
   }
+});
+
+// --- P1-36 : une seule zone « À traiter » — décisions, alertes et messages
+// non lus au même endroit, classés par urgence (demande utilisateur). ---
+
+test('à traiter : une DÉCISION à trancher passe avant tout le reste', () => {
+  const s = saisonPourAvance(1010);
+  // Un blessé : alerte réelle mais pas une décision.
+  s.clubJoueur.effectif[0].blessureJournees = 10;
+  RMClub.ajouterMessage(s, 'joueur', 'Temps de jeu', 'Un joueur demande une réponse.', {
+    type: 'tempsDeJeu', joueurId: s.clubJoueur.effectif[1].id,
+    options: [{ id: 'rassurer', label: 'Le rassurer' }, { id: 'ignorer', label: 'Ignorer' }],
+  });
+  const liste = RMClub.elementsATraiter(s);
+  assert.ok(liste.length >= 2, 'la liste doit contenir la décision ET l\'alerte blessure');
+  assert.strictEqual(liste[0].niveau, 'decision', 'une décision à trancher passe en premier');
+  assert.ok(liste[0].onglet, 'chaque élément doit dire quel écran le résout');
+  assert.ok(liste.some((e) => e.niveau === 'urgent' && /bless/i.test(e.texte)),
+    'une blessure réelle doit apparaître comme urgente');
+});
+
+test('à traiter : chaque élément porte un niveau connu et un écran de résolution', () => {
+  const s = saisonPourAvance(1011);
+  s.clubJoueur.effectif[0].blessureJournees = 10;
+  s.clubJoueur.effectif[1].fatigue = 85;
+  s.clubJoueur.budget = -50;
+  const niveaux = ['decision', 'urgent', 'recommande', 'info'];
+  const liste = RMClub.elementsATraiter(s);
+  assert.ok(liste.length >= 3, `au moins 3 éléments attendus, ${liste.length} trouvé(s)`);
+  for (const e of liste) {
+    assert.ok(niveaux.indexOf(e.niveau) !== -1, `niveau inconnu : ${e.niveau}`);
+    assert.ok(e.onglet, `« ${e.texte} » n'indique aucun écran pour le résoudre`);
+    assert.ok(e.texte && e.texte.length > 3, 'un élément sans texte lisible');
+  }
+  // L'ordre est celui de l'urgence : jamais un « info » avant un « urgent ».
+  const rangs = liste.map((e) => niveaux.indexOf(e.niveau));
+  for (let i = 1; i < rangs.length; i++) {
+    assert.ok(rangs[i] >= rangs[i - 1], 'la liste doit être triée du plus urgent au moins urgent');
+  }
+});
+
+test('à traiter : les messages NON LUS sont signalés, avec leur nombre réel', () => {
+  const s = saisonPourAvance(1012);
+  assert.ok(!RMClub.elementsATraiter(s).some((e) => e.cle === 'messages'),
+    'aucune ligne « messages » tant qu\'il n\'y a rien à lire');
+  RMClub.ajouterMessage(s, 'match', 'Résultat', 'Victoire.');
+  RMClub.ajouterMessage(s, 'blessure', 'Blessure', 'Un joueur est blessé.');
+  const ligne = RMClub.elementsATraiter(s).find((e) => e.cle === 'messages');
+  assert.ok(ligne, 'les messages non lus doivent apparaître dans la zone à traiter');
+  assert.ok(/2/.test(ligne.texte), `le nombre réel de non-lus doit être affiché (« ${ligne.texte} »)`);
+  assert.strictEqual(ligne.onglet, 'dashboard', 'la boîte de réception vit sur le tableau de bord');
+});
+
+test('à traiter : un club sain n\'affiche AUCUNE ligne inventée', () => {
+  const s = saisonPourAvance(1013);
+  for (const j of s.clubJoueur.effectif) { j.blessureJournees = 0; j.fatigue = 0; j.contrat = 3; }
+  s.clubJoueur.budget = 500;
+  s.clubJoueur.messages = [];
+  assert.deepStrictEqual(RMClub.elementsATraiter(s), [],
+    'rien à traiter doit vouloir dire une liste vide, pas une carte décorative');
 });
 
 console.log(`\n${nbTests} test(s) exécuté(s).`);

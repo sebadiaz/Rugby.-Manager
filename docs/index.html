@@ -209,6 +209,10 @@
             <div id="clubVueConsulteAmical"></div>
           </div>
           <p class="sectionDashboard carteMonClub">À faire maintenant</p>
+          <div class="carteClub carteMonClub" id="carteAlertes" style="display:none;">
+            <h3>📋 À traiter</h3>
+            <div id="clubAlertes"></div>
+          </div>
           <div class="carteClub carteMonClub">
             <h3>🗓️ Prochaine échéance</h3>
             <div id="clubProchainMatch"></div>
@@ -245,10 +249,6 @@
           <div class="carteClub carteMonClub" id="carteAgenda">
             <h3>📆 Les 7 prochains jours</h3>
             <div id="clubAgenda"></div>
-          </div>
-          <div class="carteClub carteMonClub" id="carteAlertes" style="display:none;">
-            <h3>⚠️ Décisions & alertes</h3>
-            <div id="clubAlertes"></div>
           </div>
           <!-- Boîte de réception : messages RÉELS générés par les événements
                déjà produits par la simulation (transferts, prêts, contrats,
@@ -726,6 +726,7 @@
     <script src="js/club-effectif-adverse.js"></script>
     <script src="js/club-amicaux.js"></script>
     <script src="js/club-coupes.js"></script>
+    <script src="js/club-a-traiter.js"></script>
 <script src="js/club-sauvegarde.js"></script>
 <script src="js/world.js"></script>
 <script src="js/clubUI.js"></script>

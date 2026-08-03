@@ -907,10 +907,9 @@
   // Abréviations de poste (cf. moteur, PROFILS[n].label) traduites en toutes
   // lettres pour l'effectif : "P"/"T" n'est parlant que pour qui connaît déjà
   // la numérotation du rugby à XV, or le Mode Club vise aussi les néophytes.
-  const POSTE_COMPLET = {
-    P: 'Pilier', T: 'Talonneur', '2L': 'Deuxième ligne', '3L': 'Troisième ligne',
-    DM: 'Demi de mêlée', OV: 'Ouverture', AI: 'Ailier', CE: 'Centre', AR: 'Arrière',
-  };
+  // Table partagée avec la couche données (cf. club.js) : les modules sans
+  // DOM en ont besoin aussi, on ne la duplique donc pas ici.
+  const POSTE_COMPLET = RMClub.POSTE_COMPLET;
 
   // Badges de rôle (capitaine/buteur/lanceur en touche) affichés à la fois
   // dans le tableau de l'effectif et dans la fiche joueur — la même info,
@@ -1354,34 +1353,40 @@
       `<div class="ligneStatut"><span>Budget</span><span class="valeurStatut${saison.clubJoueur.budget < 0 ? ' critique' : ''}">${saison.clubJoueur.budget} k€</span></div></div>`;
   }
 
-  // Alertes/décisions urgentes : dérivées UNIQUEMENT de l'état réel du club
-  // (jamais fabriquées) — blessures, fatigue, contrats, budget. Cliquer une
-  // alerte ouvre directement l'onglet concerné.
-  function genererAlertes() {
-    const c = saison.clubJoueur;
-    const alertes = [];
-    const blesses = c.effectif.filter((j) => j.blessureJournees > 0).length;
-    if (blesses > 0) alertes.push({ icone: '🤕', texte: `${blesses} joueur(s) blessé(s)`, onglet: 'medical' });
-    const fatigues = c.effectif.filter((j) => (j.fatigue || 0) >= 70).length;
-    if (fatigues > 0) alertes.push({ icone: '⚡', texte: `${fatigues} joueur(s) très fatigué(s) — pense à les laisser au repos`, onglet: 'composition' });
-    const contratsCourts = c.effectif.filter((j) => j.contrat <= 1).length;
-    if (contratsCourts > 0) alertes.push({ icone: '📄', texte: `${contratsCourts} contrat(s) expirant en fin de saison`, onglet: 'effectif' });
-    if (c.budget < 0) alertes.push({ icone: '💸', texte: `Budget négatif (${c.budget} k€)`, onglet: 'finances' });
-    const postesVides = Object.keys(POSTE_COMPLET).filter((poste) =>
-      !c.effectif.some((j) => j.poste === poste && j.blessureJournees <= 0 && !j.pret));
-    if (postesVides.length > 0) {
-      alertes.push({ icone: '🌱', texte: `Plus aucun ${POSTE_COMPLET[postesVides[0]] || postesVides[0]} disponible — un espoir du centre de formation peut être promu`, onglet: 'effectif' });
-    }
-    return alertes;
-  }
+  // --- Zone « À traiter » (TODO_AUDIT.md P1-36) ---------------------------
+  // Remplace l'ancienne carte « Décisions & alertes », qui ignorait les
+  // décisions réellement en attente et laissait les messages non lus
+  // invisibles jusqu'à 1586 px de défilement sur mobile. La liste vient
+  // entièrement de RMClub.elementsATraiter : aucune règle d'affichage ne
+  // décide ici de ce qui est urgent — c'est l'état de la carrière qui le dit.
+  const LIBELLE_NIVEAU = {
+    decision: 'À décider', urgent: 'Urgent', recommande: 'Recommandé', info: 'Bon à savoir',
+  };
 
   function rafraichirAlertes() {
-    const alertes = genererAlertes();
     const carte = document.getElementById('carteAlertes');
-    if (alertes.length === 0) { carte.style.display = 'none'; return; }
+    const zone = document.getElementById('clubAlertes');
+    if (!carte || !zone) return;
+    const elements = RMClub.elementsATraiter(saison);
+    // Rien à traiter = pas de carte. Une carte « tout va bien » serait
+    // décorative : elle occuperait de la place sans rien apprendre.
+    if (elements.length === 0) { carte.style.display = 'none'; return; }
     carte.style.display = '';
-    document.getElementById('clubAlertes').innerHTML = alertes.map((a) =>
-      `<div class="ligneAlerte" data-onglet="${a.onglet}"><span class="iconeAlerte">${a.icone}</span><span>${a.texte}</span></div>`
+    const resume = RMClub.resumeATraiter(saison);
+    const titre = carte.querySelector('h3');
+    if (titre) {
+      const parts = [];
+      if (resume.decisions) parts.push(`${resume.decisions} à décider`);
+      if (resume.urgents) parts.push(`${resume.urgents} urgent${resume.urgents > 1 ? 's' : ''}`);
+      titre.textContent = `📋 À traiter${parts.length ? ` — ${parts.join(', ')}` : ` (${resume.total})`}`;
+    }
+    zone.innerHTML = elements.map((e) =>
+      `<div class="ligneAlerte niveau-${e.niveau}" data-onglet="${echapperHTML(e.onglet)}"` +
+      (e.messageId ? ` data-message="${echapperHTML(e.messageId)}"` : '') + '>' +
+      `<span class="iconeAlerte">${e.icone}</span>` +
+      `<span class="texteAlerte">${echapperHTML(e.texte)}</span>` +
+      `<span class="badgeNiveau niveau-${e.niveau}">${LIBELLE_NIVEAU[e.niveau] || e.niveau}</span>` +
+      '</div>'
     ).join('');
   }
 

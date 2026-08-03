@@ -2428,6 +2428,8 @@ function optionsLancement() {
   verifier('coupes : le résultat produit un message réel (qualifié ou éliminé)',
     !!bilanCoupe.message);
   verifier('coupes : aucune erreur console', erreursCoupe.length === 0);
+  await contexteCoupe.close();
+
   // 11 decies) Carte « Prochaine échéance » (TODO_AUDIT.md P1-35) : UNE
   // rencontre, la même que celle visée par le bouton « Continuer ».
   const contexteEch = await browser.newContext({ viewport: { width: 1280, height: 1000 } });
@@ -2491,7 +2493,64 @@ function optionsLancement() {
   verifier('échéance : aucune erreur console', erreursEch.length === 0);
   await contexteEch.close();
 
-  await contexteCoupe.close();
+  // 11 undecies) Zone « À traiter » (TODO_AUDIT.md P1-36) : décisions,
+  // urgences et messages non lus au même endroit, classés, cliquables.
+  const contexteTr = await browser.newContext({ viewport: { width: 1280, height: 1000 } });
+  const pageTr = await contexteTr.newPage();
+  const erreursTr = [];
+  pageTr.on('pageerror', (e) => erreursTr.push(`PAGEERROR: ${e.message}`));
+  pageTr.on('console', (m) => {
+    if (m.type() === 'error' && !m.text().includes('404')) erreursTr.push(`CONSOLE: ${m.text()}`);
+  });
+  await pageTr.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  await pageTr.click('#btnAccueilModeClub');
+  await pageTr.fill('#inputNomClub', 'Test A Traiter');
+  await pageTr.click('#btnCreerClub');
+  await pageTr.waitForTimeout(500);
+  // État RÉEL injecté dans la sauvegarde : un blessé, un joueur cuit, une
+  // décision en attente, deux messages non lus.
+  await pageTr.evaluate(() => {
+    const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
+    s.clubJoueur.effectif[0].blessureJournees = 12;
+    s.clubJoueur.effectif[1].fatigue = 85;
+    s.clubJoueur.messages = [
+      { id: 'm1', categorie: 'match', titre: 'Victoire', corps: 'x', lu: false, decision: null, saisonNumero: 1 },
+      { id: 'm2', categorie: 'joueur', titre: 'Temps de jeu insuffisant', corps: 'y', lu: false, saisonNumero: 1,
+        decision: { type: 'tempsDeJeu', joueurId: s.clubJoueur.effectif[2].id,
+          options: [{ id: 'rassurer', label: 'Le rassurer' }, { id: 'ignorer', label: 'Ignorer' }] } },
+    ];
+    localStorage.setItem('rugbyManager.club.v1', JSON.stringify(s));
+  });
+  await pageTr.reload({ waitUntil: 'networkidle' });
+  await pageTr.waitForTimeout(250);
+  await pageTr.click('#btnContinuerClub');
+  await pageTr.waitForTimeout(600);
+
+  const zoneTr = await pageTr.evaluate(() => ({
+    titre: document.querySelector('#carteAlertes h3').textContent,
+    lignes: [...document.querySelectorAll('#clubAlertes .ligneAlerte')].map((l) => ({
+      niveau: [...l.classList].find((c) => c.startsWith('niveau-')),
+      badge: l.querySelector('.badgeNiveau').textContent,
+      onglet: l.dataset.onglet,
+    })),
+  }));
+  verifier('à traiter : la décision à trancher est en TÊTE de liste',
+    zoneTr.lignes.length > 0 && zoneTr.lignes[0].niveau === 'niveau-decision');
+  verifier('à traiter : l\'entête annonce le nombre réel de décisions et d\'urgences',
+    /à décider/.test(zoneTr.titre) && /urgent/.test(zoneTr.titre));
+  verifier('à traiter : chaque ligne porte un badge de niveau EN TOUTES LETTRES',
+    zoneTr.lignes.every((l) => l.badge && l.badge.length > 3));
+  verifier('à traiter : les messages non lus sont signalés dans la zone',
+    zoneTr.lignes.some((l) => l.niveau === 'niveau-info'));
+  verifier('à traiter : chaque ligne indique un écran de résolution',
+    zoneTr.lignes.every((l) => !!l.onglet));
+  // Le lien mène RÉELLEMENT à l'écran qui résout l'alerte.
+  await pageTr.click('#clubAlertes .ligneAlerte[data-onglet="medical"]');
+  await pageTr.waitForTimeout(400);
+  verifier('à traiter : cliquer une alerte ouvre l\'écran qui la résout',
+    await pageTr.isVisible('[data-volet="medical"]'));
+  verifier('à traiter : aucune erreur console', erreursTr.length === 0);
+  await contexteTr.close();
 
   // 12) Décision réelle dans la boîte de réception (audit "boîte de réception
   // avec décisions", cf. club-decisions.js) : injecte directement une
