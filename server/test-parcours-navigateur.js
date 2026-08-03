@@ -1994,10 +1994,12 @@ function optionsLancement() {
   await pageDates.waitForTimeout(400);
 
   const MOTIF_DATE = /\b(lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)\b \d{1,2} \p{L}+ 20\d\d/u;
-  const MOTIF_DATE_COURTE = /\b(lun|mar|mer|jeu|ven|sam|dim)\./i;
 
-  verifier('dates : la carte « Prochaine échéance » date chaque rencontre à venir',
-    MOTIF_DATE_COURTE.test(await pageDates.textContent('#clubProchainMatch')));
+  // Depuis P1-35 la carte n'annonce plus qu'UNE rencontre : elle la date donc
+  // en toutes lettres (« samedi 7 septembre 2024 ») plutôt qu'en abrégé, qui
+  // n'avait de sens que pour une liste de sept lignes.
+  verifier('dates : la carte « Prochaine échéance » date la rencontre en clair',
+    MOTIF_DATE.test(await pageDates.textContent('#clubProchainMatch')));
 
   const datesParEquipe = {};
   for (const equipe of ['pro', 'b', 'jeunes']) {
@@ -2426,6 +2428,69 @@ function optionsLancement() {
   verifier('coupes : le résultat produit un message réel (qualifié ou éliminé)',
     !!bilanCoupe.message);
   verifier('coupes : aucune erreur console', erreursCoupe.length === 0);
+  // 11 decies) Carte « Prochaine échéance » (TODO_AUDIT.md P1-35) : UNE
+  // rencontre, la même que celle visée par le bouton « Continuer ».
+  const contexteEch = await browser.newContext({ viewport: { width: 1280, height: 1000 } });
+  const pageEch = await contexteEch.newPage();
+  const erreursEch = [];
+  pageEch.on('pageerror', (e) => erreursEch.push(`PAGEERROR: ${e.message}`));
+  pageEch.on('console', (m) => {
+    if (m.type() === 'error' && !m.text().includes('404')) erreursEch.push(`CONSOLE: ${m.text()}`);
+  });
+  await pageEch.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  await pageEch.click('#btnAccueilModeClub');
+  await pageEch.fill('#inputNomClub', 'Test Echeance');
+  await pageEch.click('#btnCreerClub');
+  await pageEch.waitForTimeout(500);
+  await pageEch.evaluate(() => { document.getElementById('selDureeClub').value = '300'; });
+
+  verifier('échéance : la carte n\'affiche QU\'UNE rencontre, pas toute la journée de championnat',
+    await pageEch.evaluate(() => document.querySelectorAll('#clubProchainMatch .echeancePrincipale').length === 1
+      && document.querySelectorAll('#clubProchainMatch .ligneCalendrier').length === 0));
+  verifier('échéance : la carte nomme l\'adversaire, le lieu et la date',
+    /à domicile|à l'extérieur/.test(await pageEch.textContent('#clubProchainMatch'))
+    && /\b(lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)\b \d{1,2} \p{L}+ 20\d\d/u.test(
+      await pageEch.textContent('#clubProchainMatch')));
+
+  // Cohérence carte / bouton, y compris APRÈS le match de championnat —
+  // c'est là que la carte annonçait le samedi suivant pendant que le bouton
+  // visait l'Équipe B du dimanche.
+  async function datesCarteEtBouton() {
+    return pageEch.evaluate(() => {
+      const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
+      const arret = window.RMClub.prochainArret(s);
+      return {
+        attendue: window.RMClub.formaterDateLongue(arret.date),
+        carte: document.getElementById('clubProchainMatch').textContent,
+        bouton: document.getElementById('btnJouerMatchClub').textContent,
+      };
+    });
+  }
+  const echAvant = await datesCarteEtBouton();
+  verifier('échéance : avant le match, carte et bouton annoncent la même date',
+    echAvant.carte.includes(echAvant.attendue) && echAvant.bouton.includes(echAvant.attendue));
+
+  for (let i = 0; i < 20; i++) {
+    await pageEch.evaluate(() => document.getElementById('btnJouerMatchClub').click());
+    await pageEch.waitForTimeout(900);
+    if (await pageEch.isVisible('#panneauApercuMatch.visible')) {
+      await pageEch.click('#btnApercuLancerMatch');
+      await pageEch.waitForSelector('#panneauResultat.visible', { timeout: 60000 });
+      await pageEch.click('#btnResultatFermer');
+      await pageEch.waitForTimeout(800);
+      break;
+    }
+    if (await pageEch.isVisible('#panneauResultat.visible')) {
+      await pageEch.click('#btnResultatFermer');
+      await pageEch.waitForTimeout(800);
+    }
+  }
+  const echApres = await datesCarteEtBouton();
+  verifier('échéance : APRÈS le match de championnat, carte et bouton restent d\'accord',
+    echApres.carte.includes(echApres.attendue) && echApres.bouton.includes(echApres.attendue));
+  verifier('échéance : aucune erreur console', erreursEch.length === 0);
+  await contexteEch.close();
+
   await contexteCoupe.close();
 
   // 12) Décision réelle dans la boîte de réception (audit "boîte de réception

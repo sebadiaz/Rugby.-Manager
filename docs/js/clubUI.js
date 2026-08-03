@@ -568,13 +568,41 @@
     bouton.style.display = '';
     boutonComposition.style.display = '';
     boutonSaisonSuivante.style.display = 'none';
-    zone.innerHTML = fixtures.map((f) => formaterLigneCalendrier(f, null, { avecDate: true })).join('');
+    // LA prochaine échéance du club, et elle seule (TODO_AUDIT.md P1-35).
+    // Avant : les 7 rencontres de la journée de championnat, dont 6 ne
+    // concernaient pas le joueur — 469 px qui repoussaient tout le reste du
+    // tableau de bord hors écran, et une rencontre annoncée qui n'était même
+    // pas celle que le bouton visait. Le calendrier complet de la division
+    // reste consultable dans l'écran Calendrier, qui est fait pour ça.
+    const arretCarte = RMClub.prochainArret(saison);
+    const aujourdhuiCarte = RMClub.dateCourante(saison);
+    if (arretCarte) {
+      const memeJourCarte = RMClub.comparerDates(arretCarte.date, aujourdhuiCarte) === 0;
+      const quand = memeJourCarte
+        ? "aujourd'hui"
+        : `${RMClub.formaterDateLongue(arretCarte.date)} · dans ${arretCarte.joursRestants} jour(s)`;
+      const lieu = arretCarte.domicile ? 'à domicile' : "à l'extérieur";
+      const adversaire = arretCarte.adversaireNom
+        ? (arretCarte.adversaireId ? lienClub(arretCarte.adversaireId) : echapperHTML(arretCarte.adversaireNom))
+        : '<span style="color:var(--text-faint);">adversaire à déterminer</span>';
+      const contexte = [arretCarte.equipe, arretCarte.competition, arretCarte.tour]
+        .filter(Boolean).map(echapperHTML).join(' · ');
+      zone.innerHTML =
+        `<div class="echeancePrincipale">` +
+        `<span class="echeanceType">${echapperHTML(arretCarte.libelle)}</span>` +
+        `<span class="echeanceAdversaire">${adversaire}</span>` +
+        `<span class="echeanceDetail">${lieu} · ${echapperHTML(quand)}</span>` +
+        (contexte ? `<span class="echeanceContexte">${contexte}</span>` : '') +
+        `</div>`;
+    } else {
+      zone.innerHTML = '<p style="color:var(--text-dim);">Aucune échéance à venir.</p>';
+    }
     bouton.disabled = false;
     // Le bouton annonce la PROCHAINE ÉCHÉANCE, pas une journée abstraite
     // (TODO_AUDIT.md P1-21) : « Continuer jusqu'au samedi 7 septembre ».
     // Arrivé le jour même, il propose de jouer plutôt que d'avancer.
-    const arret = RMClub.prochainArret(saison);
-    const aujourdhui = RMClub.dateCourante(saison);
+    const arret = arretCarte;
+    const aujourdhui = aujourdhuiCarte;
     let libelleCourt = 'Continuer';
     let libelleLong = 'Continuer';
     if (arret) {

@@ -140,14 +140,61 @@
       const date = RMClub.dateDepuisJourAbsolu(n);
       const type = typeDArret(saison, date);
       if (type) {
-        return {
+        // La carte « Prochaine échéance » et le bouton « Continuer » lisent
+        // le MÊME objet (TODO_AUDIT.md P1-35). Avant, la carte affichait la
+        // journée de CHAMPIONNAT pendant que le bouton visait la prochaine
+        // échéance réelle (qui pouvait être l'Équipe B le lendemain) : deux
+        // rencontres différentes annoncées dans la même carte. En décrivant
+        // la rencontre ici, une seule fois, la divergence devient impossible.
+        return Object.assign({
           date, iso: RMClub.dateISO(date), type,
           libelle: LIBELLE_ARRET[type],
           joursRestants: n - RMClub.jourAbsolu(depart),
-        };
+        }, descriptionRencontre(saison, date, type));
       }
     }
     return null; // saison terminée : plus aucune rencontre à jouer
+  }
+
+  // Qui joue, contre qui, et où — pour l'échéance d'un jour donné. Tout vient
+  // de la rencontre RÉELLEMENT programmée ce jour-là : rien n'est déduit du
+  // numéro de journée ni supposé.
+  function descriptionRencontre(saison, date, type) {
+    const RMClub = global.RMClub;
+    const c = saison.clubJoueur;
+    const e = evenementsDuJour(saison, date);
+    const LIBELLE_EQUIPE = { pro: 'Équipe première', b: 'Équipe B', jeunes: 'Espoirs', amical: 'Équipe première', coupe: 'Équipe première' };
+    function depuisFixture(f, nomAdverse) {
+      const domicile = f.domicileId === c.id;
+      const adverseId = domicile ? f.exterieurId : f.domicileId;
+      const adverse = nomAdverse || ((RMClub.clubPartout && RMClub.clubPartout(saison, adverseId)) || {}).nom || null;
+      return { adversaireNom: adverse, adversaireId: adverseId, domicile, equipe: LIBELLE_EQUIPE[type] || null };
+    }
+    if (type === 'pro' && e.matchPro) return depuisFixture(e.matchPro);
+    if (type === 'b' && e.matchBJoueur) return depuisFixture(e.matchBJoueur);
+    if (type === 'jeunes' && e.fixtureEspoirs) {
+      const comp = RMClub.assurerCompetitionEspoirs(saison);
+      const f = e.fixtureEspoirs;
+      const domicile = f.domicileId === c.id;
+      const adverseId = domicile ? f.exterieurId : f.domicileId;
+      const club = (comp.clubs || []).find((x) => x.id === adverseId);
+      return { adversaireNom: club ? club.nom : null, adversaireId: adverseId, domicile, equipe: LIBELLE_EQUIPE.jeunes };
+    }
+    if (type === 'amical' && e.amical) {
+      return { adversaireNom: e.amical.adversaireNom, adversaireId: e.amical.adversaireId,
+        domicile: e.amical.domicile !== false, equipe: LIBELLE_EQUIPE.amical };
+    }
+    if (type === 'coupe' && e.coupe) {
+      const r = e.coupe.rencontre;
+      const domicile = r.domicileId === c.id;
+      const adverseId = domicile ? r.exterieurId : r.domicileId;
+      const club = (e.coupe.coupe.clubs || []).find((x) => x.id === adverseId)
+        || (RMClub.clubPartout && RMClub.clubPartout(saison, adverseId));
+      return { adversaireNom: club ? club.nom : null, adversaireId: adverseId, domicile,
+        equipe: LIBELLE_EQUIPE.coupe, competition: e.coupe.coupe.nom,
+        tour: (e.coupe.coupe.tours[r.tour] || {}).nom };
+    }
+    return { adversaireNom: null, adversaireId: null, domicile: true, equipe: LIBELLE_EQUIPE[type] || null };
   }
 
   // Agenda des prochains jours (utilisé par le libellé du bouton et, dès la
@@ -172,6 +219,7 @@
 
   global.RMClub = Object.assign(global.RMClub || {}, {
     daterCalendrier, evenementsDuJour, estJourDArret, typeDArret, prochainArret, agenda,
+    descriptionRencontre,
     LIBELLE_ARRET,
   });
 })(window);

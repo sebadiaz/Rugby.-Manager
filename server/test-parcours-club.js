@@ -3418,6 +3418,45 @@ test('coupes : une rencontre de coupe du joueur devient une échéance datée', 
   assert.ok(info && info.rencontre.id === trouve.r.id, 'la rencontre du jour doit être retrouvée');
 });
 
+// --- P1-35 : « une semaine dans la peau du manager » — la carte
+// « Prochaine échéance » annonce la MÊME échéance que le bouton, et elle
+// seule (demande utilisateur : parcours fluide, pas de carte redondante). ---
+
+test('échéance : prochainArret décrit la rencontre (adversaire, lieu, équipe concernée)', () => {
+  const s = saisonPourAvance(1000);
+  const arret = RMClub.prochainArret(s);
+  assert.ok(arret, 'une saison neuve doit avoir une prochaine échéance');
+  assert.ok(arret.adversaireNom, 'l\'échéance doit nommer l\'adversaire — sinon la carte doit le recalculer elle-même');
+  assert.strictEqual(typeof arret.domicile, 'boolean', 'l\'échéance doit dire si la rencontre est à domicile');
+  assert.ok(arret.libelle, 'l\'échéance doit porter un libellé lisible');
+});
+
+test('échéance : carte et bouton parlent TOUJOURS de la même rencontre', () => {
+  const s = saisonPourAvance(1001);
+  // On balaie toute la saison : à chaque jour, la rencontre décrite par
+  // prochainArret doit être celle que le bouton vise. Un seul objet, donc
+  // aucune divergence possible — c'est ce que ce test verrouille.
+  for (let i = 0; i < 60; i++) {
+    const arret = RMClub.prochainArret(s);
+    if (!arret) break;
+    const evenements = RMClub.evenementsDuJour(s, arret.date);
+    const typeAttendu = RMClub.typeDArret(s, arret.date);
+    assert.strictEqual(arret.type, typeAttendu,
+      `${RMClub.dateISO(arret.date)} : la carte annoncerait « ${arret.type} » alors que ce jour-là c'est « ${typeAttendu} »`);
+    if (arret.type === 'pro') {
+      assert.ok(evenements.matchPro, 'une échéance « pro » doit correspondre à une vraie rencontre de championnat');
+      const f = evenements.matchPro;
+      const adverseId = f.domicileId === s.clubJoueur.id ? f.exterieurId : f.domicileId;
+      const adverse = RMClub.clubPartout(s, adverseId);
+      assert.strictEqual(arret.adversaireNom, adverse.nom,
+        'l\'adversaire annoncé doit être celui de la rencontre réellement programmée');
+      assert.strictEqual(arret.domicile, f.domicileId === s.clubJoueur.id,
+        'le lieu annoncé doit être le lieu réel');
+    }
+    RMClub.definirDateCourante(s, RMClub.ajouterJours(arret.date, 1));
+  }
+});
+
 console.log(`\n${nbTests} test(s) exécuté(s).`);
 if (process.exitCode) {
   console.error('ECHEC : au moins un test du parcours club a échoué.');

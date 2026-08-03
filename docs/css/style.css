@@ -1057,3 +1057,13 @@ select {
 }
 .tableauFiche { font-size: 12px; }
 .tableauFiche td, .tableauFiche th { padding: 4px 6px; }
+
+/* Échéance principale du tableau de bord (TODO_AUDIT.md P1-35) : UNE
+   rencontre, lisible d'un coup d'œil — plus une liste de sept lignes dont
+   six ne concernent pas le joueur. */
+.echeancePrincipale { display: flex; flex-direction: column; gap: 3px; padding: 4px 0; }
+.echeanceType { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-dim); }
+.echeanceAdversaire { font-size: 17px; font-weight: 700; }
+.echeanceDetail { font-size: 12.5px; color: var(--text-dim); }
+.echeanceContexte { font-size: 11.5px; color: var(--text-faint); }
+
