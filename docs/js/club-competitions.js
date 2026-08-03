@@ -46,6 +46,7 @@
   // s'ajouter à celles de son pays (TODO_AUDIT.md P1-33) : elles n'ont pas
   // d'autre endroit où vivre, et les écrans Classement et Calendrier doivent
   // pouvoir les afficher par le MÊME chemin que n'importe quel championnat.
+  const PREFIXE_COUPE = 'coupe:';
   const REF_EQUIPE_B = 'equipeB';
   const REF_ESPOIRS = 'espoirs';
 
@@ -81,6 +82,16 @@
     const compEsp = RMClub.assurerCompetitionEspoirs ? RMClub.assurerCompetitionEspoirs(saison) : null;
     if (compEsp && compEsp.calendrier && compEsp.calendrier.length) {
       liste.push({ ref: REF_ESPOIRS, nom: 'Championnat des espoirs', niveau: null, estCelleDuJoueur: true });
+    }
+    // Les coupes (TODO_AUDIT.md P1-34) rejoignent la même navigation : un
+    // tableau à élimination directe n'a pas de classement, mais il a un
+    // calendrier — et il n'existe qu'UN écran Calendrier dans le jeu.
+    const coupes = saison.coupes || {};
+    for (const cle of Object.keys(coupes)) {
+      const coupe = coupes[cle];
+      if (!coupe || !coupe.tours || !coupe.tours.length) continue;
+      const engage = coupe.clubs.some((c) => c.id === saison.clubJoueur.id);
+      liste.push({ ref: PREFIXE_COUPE + cle, nom: coupe.nom, niveau: null, estCelleDuJoueur: engage, coupe: true });
     }
     return liste;
   }
@@ -155,6 +166,37 @@
         classementBrut: compEsp.classement, calendrier: compEsp.calendrier,
         estCelleDuJoueur: true, promus: 0, relegues: 0,
       }, compEsp.clubs);
+    }
+
+    // Une COUPE (TODO_AUDIT.md P1-34) : pas de classement (l'élimination
+    // directe n'en produit pas), mais un calendrier bien réel — chaque tour
+    // devient une « journée », avec sa date et ses rencontres. Le classement
+    // renvoyé est vide : l'écran Classement le dit au lieu d'inventer une
+    // table de points qui n'existe pas dans une coupe.
+    if (ref.indexOf(PREFIXE_COUPE) === 0) {
+      const coupe = (saison.coupes || {})[ref.slice(PREFIXE_COUPE.length)];
+      if (!coupe || !coupe.tours.length) return null;
+      const calendrier = [];
+      for (const t of coupe.tours) {
+        for (const r of t.rencontres) {
+          if (!r.domicileId || !r.exterieurId) continue;
+          calendrier.push({
+            id: r.id, journee: t.index + 1, nomTour: t.nom, date: t.date,
+            domicileId: r.domicileId, exterieurId: r.exterieurId,
+            joue: r.joue,
+            score: r.joue ? { domicile: r.score.domicile, exterieur: r.score.exterieur } : null,
+          });
+        }
+      }
+      return {
+        ref, nom: coupe.nom, pays: null, partagee: true,
+        estCelleDuJoueur: coupe.clubs.some((c) => c.id === saison.clubJoueur.id),
+        promus: 0, relegues: 0, estCoupe: true,
+        vainqueurId: global.RMClub.vainqueurCoupe(coupe),
+        clubs: coupe.clubs.slice(),
+        classement: [],
+        calendrier,
+      };
     }
 
     if (ref.indexOf(PREFIXE_FRANCE) === 0) {

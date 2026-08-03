@@ -82,6 +82,9 @@
       journeeEspoirs: journeesEspoirs.length ? journeesEspoirs[0] : null,
       fixtureEspoirs: fixturesEspoirs.length ? fixturesEspoirs[0] : null,
       amical: RMClub.amicalDuJour ? RMClub.amicalDuJour(saison, date) : null,
+      // Rencontre de coupe du club du joueur ce jour-là (TODO_AUDIT.md
+      // P1-34) : c'est la DATE du tour qui décide, comme pour tout le reste.
+      coupe: RMClub.rencontreCoupeDuJoueur ? RMClub.rencontreCoupeDuJoueur(saison, date) : null,
     };
   }
 
@@ -92,7 +95,7 @@
     // Le match espoirs n'a lieu que si un XV complet peut être aligné : sans
     // ça, rien ne se produirait ce jour-là et s'y arrêter n'aurait aucun sens.
     const espoirsJouable = e.journeeEspoirs != null && global.RMClub.eligiblePourMatchEspoirs(saison);
-    return !!(e.matchPro || e.matchBJoueur || espoirsJouable || e.amical);
+    return !!(e.matchPro || e.matchBJoueur || espoirsJouable || e.amical || e.coupe);
   }
 
   const LIBELLE_ARRET = {
@@ -100,11 +103,13 @@
     // Amical organisé par le manager (TODO_AUDIT.md P1-32) : une vraie
     // rencontre, à sa date, avec des conséquences réelles.
     amical: 'Match amical',
+    coupe: 'Match de coupe',
   };
 
   function typeDArret(saison, date) {
     const e = evenementsDuJour(saison, date);
     if (e.matchPro) return 'pro';
+    if (e.coupe) return 'coupe';
     if (e.matchBJoueur) return 'b';
     if (e.amical) return 'amical';
     if (e.journeeEspoirs != null && global.RMClub.eligiblePourMatchEspoirs(saison)) return 'jeunes';

@@ -49,6 +49,7 @@ new Function('window', require('fs').readFileSync(require('path').join(__dirname
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-competitions.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-effectif-adverse.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-amicaux.js'), 'utf8'))(global.window);
+new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-coupes.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-sauvegarde.js'), 'utf8'))(global.window);
 // world.js : nécessaire pour les tests de navigation par pays/championnat
 // (P1-28) — l'écosystème mondial fournit 12 pays et leurs divisions.
@@ -3257,6 +3258,164 @@ test('amicaux : les amicaux passés sont nettoyés au changement de saison', () 
   RMClub.avancerSaison(creerRng(9860), s);
   assert.strictEqual((s.amicaux || []).length, 0,
     'les amicaux d\'une saison écoulée ne doivent pas encombrer la suivante');
+});
+
+// --- P1-34 : moteur GÉNÉRIQUE de coupes à élimination directe, puis quatre
+// coupes réelles (demande utilisateur, point 9). ---
+
+test('coupes : le moteur construit un tableau à élimination directe complet', () => {
+  const clubs = [];
+  for (let i = 0; i < 8; i++) clubs.push({ id: 'c' + i, nom: 'Club ' + i, niveauClub: 0.4 + i * 0.05 });
+  const coupe = RMClub.genererCoupe({ cle: 'test', nom: 'Coupe Test', clubs, dates: ['2024-10-02', '2024-11-06', '2024-12-04'] });
+  assert.strictEqual(coupe.tours.length, 3, '8 clubs = quarts, demies, finale');
+  assert.strictEqual(coupe.tours[0].rencontres.length, 4, '4 quarts de finale');
+  assert.strictEqual(coupe.tours[1].rencontres.length, 2, '2 demi-finales');
+  assert.strictEqual(coupe.tours[2].rencontres.length, 1, 'une finale');
+  assert.strictEqual(coupe.tours[2].nom, 'Finale');
+  assert.strictEqual(coupe.tours[1].nom, 'Demi-finales');
+  // Chaque tour est daté, dans l'ordre.
+  assert.strictEqual(coupe.tours[0].date, '2024-10-02');
+  assert.strictEqual(coupe.tours[2].date, '2024-12-04');
+  // Tous les clubs entrent au premier tour, une seule fois.
+  const engages = coupe.tours[0].rencontres.flatMap((r) => [r.domicileId, r.exterieurId]);
+  assert.strictEqual(new Set(engages).size, 8, 'les 8 clubs doivent être engagés une seule fois');
+});
+
+test('coupes : un nombre de clubs non puissance de 2 est ramené à la puissance inférieure', () => {
+  const clubs = [];
+  for (let i = 0; i < 13; i++) clubs.push({ id: 'c' + i, nom: 'Club ' + i, niveauClub: 0.3 + i * 0.04 });
+  const coupe = RMClub.genererCoupe({ cle: 't2', nom: 'T2', clubs, dates: ['2024-10-02', '2024-11-06', '2024-12-04'] });
+  const engages = coupe.tours[0].rencontres.flatMap((r) => [r.domicileId, r.exterieurId]);
+  assert.strictEqual(engages.length, 8, '13 clubs -> 8 qualifiés, jamais de rencontre bancale');
+  assert.strictEqual(new Set(engages).size, 8);
+  // Les MEILLEURS sont retenus : c'est une qualification, pas un tirage au hasard.
+  const niveaux = engages.map((id) => clubs.find((c) => c.id === id).niveauClub);
+  assert.ok(Math.min.apply(null, niveaux) > clubs[0].niveauClub, 'les clubs les plus faibles ne sont pas qualifiés');
+});
+
+test('coupes : un résultat fait RÉELLEMENT avancer le vainqueur au tour suivant', () => {
+  const clubs = [];
+  for (let i = 0; i < 4; i++) clubs.push({ id: 'c' + i, nom: 'Club ' + i, niveauClub: 0.5 });
+  const coupe = RMClub.genererCoupe({ cle: 't3', nom: 'T3', clubs, dates: ['2024-10-02', '2024-11-06'] });
+  const demi = coupe.tours[0].rencontres[0];
+  assert.strictEqual(coupe.tours[1].rencontres[0].domicileId, null, 'la finale est vide avant les demies');
+  RMClub.enregistrerResultatCoupe(coupe, demi.id, 25, 12);
+  assert.ok(demi.joue);
+  assert.strictEqual(demi.vainqueurId, demi.domicileId, 'le vainqueur est celui qui a marqué le plus');
+  assert.strictEqual(coupe.tours[1].rencontres[0].domicileId, demi.domicileId,
+    'le vainqueur doit réellement apparaître au tour suivant');
+});
+
+test('coupes : jamais de match nul — une prolongation départage', () => {
+  const clubs = [];
+  for (let i = 0; i < 2; i++) clubs.push({ id: 'c' + i, nom: 'Club ' + i, niveauClub: 0.5 });
+  const coupe = RMClub.genererCoupe({ cle: 't4', nom: 'T4', clubs, dates: ['2024-10-02'] });
+  const finale = coupe.tours[0].rencontres[0];
+  RMClub.enregistrerResultatCoupe(coupe, finale.id, 17, 17);
+  assert.ok(finale.vainqueurId, 'une coupe ne peut pas se terminer sur un nul : un vainqueur doit être désigné');
+  assert.ok(finale.apresProlongation, 'le départage doit être annoncé comme tel');
+  assert.strictEqual(RMClub.vainqueurCoupe(coupe), finale.vainqueurId, 'le vainqueur de la finale gagne la coupe');
+});
+
+test('coupes : le vainqueur n\'existe qu\'une fois la finale jouée', () => {
+  const clubs = [];
+  for (let i = 0; i < 4; i++) clubs.push({ id: 'c' + i, nom: 'C' + i, niveauClub: 0.5 });
+  const coupe = RMClub.genererCoupe({ cle: 't5', nom: 'T5', clubs, dates: ['2024-10-02', '2024-11-06'] });
+  assert.strictEqual(RMClub.vainqueurCoupe(coupe), null, 'aucun vainqueur tant que la finale n\'est pas jouée');
+  for (const r of coupe.tours[0].rencontres) RMClub.enregistrerResultatCoupe(coupe, r.id, 20, 10);
+  assert.strictEqual(RMClub.vainqueurCoupe(coupe), null, 'toujours pas de vainqueur après les demies');
+  RMClub.enregistrerResultatCoupe(coupe, coupe.tours[1].rencontres[0].id, 30, 15);
+  assert.ok(RMClub.vainqueurCoupe(coupe), 'la finale jouée désigne enfin un vainqueur');
+});
+
+test('coupes : les QUATRE coupes existent réellement dans une saison', () => {
+  const s = saisonAvecMonde(990);
+  const coupes = RMClub.assurerCoupes(s);
+  const cles = Object.keys(coupes);
+  assert.ok(cles.length >= 4, `quatre coupes attendues, ${cles.length} trouvée(s) : ${cles.join(', ')}`);
+  for (const cle of cles) {
+    const c = coupes[cle];
+    assert.ok(c.nom && c.nom.length > 3, `${cle} : coupe sans nom`);
+    assert.ok(c.tours.length >= 2, `${cle} : ${c.tours.length} tour(s), il en faut au moins 2`);
+    for (const t of c.tours) {
+      assert.ok(/^\d{4}-\d{2}-\d{2}$/.test(t.date || ''), `${cle} / ${t.nom} : tour sans date`);
+    }
+  }
+});
+
+test('coupes : le club du joueur est engagé dans la coupe nationale', () => {
+  const s = saisonAvecMonde(991);
+  const coupes = RMClub.assurerCoupes(s);
+  const nationale = coupes.nationale;
+  assert.ok(nationale, 'une coupe nationale doit exister');
+  const engages = nationale.tours[0].rencontres.flatMap((r) => [r.domicileId, r.exterieurId]);
+  assert.ok(engages.indexOf(s.clubJoueur.id) !== -1, 'le club du joueur doit disputer la coupe nationale');
+});
+
+test('coupes : les tours tombent sur des dates SANS match de championnat', () => {
+  const s = saisonAvecMonde(992);
+  const coupes = RMClub.assurerCoupes(s);
+  for (const cle of Object.keys(coupes)) {
+    for (const t of coupes[cle].tours) {
+      const engages = t.rencontres.flatMap((r) => [r.domicileId, r.exterieurId]).filter(Boolean);
+      if (engages.indexOf(s.clubJoueur.id) === -1) continue;
+      const date = RMClub.dateDepuisISO(t.date);
+      assert.notStrictEqual(RMClub.typeDArret(s, date), 'pro',
+        `${coupes[cle].nom} / ${t.nom} : tombe le jour d'un match de championnat`);
+    }
+  }
+});
+
+test('coupes : une coupe se joue entièrement et désigne un vainqueur, sans nul', () => {
+  const s = saisonAvecMonde(993);
+  const coupes = RMClub.assurerCoupes(s);
+  const c = coupes.nationale;
+  const rng = creerRng(9930);
+  for (const t of c.tours) {
+    for (const r of t.rencontres) {
+      assert.ok(r.domicileId && r.exterieurId,
+        `${t.nom} : rencontre incomplète — un vainqueur n'a pas été reporté`);
+      const a = c.clubs.find((x) => x.id === r.domicileId);
+      const b = c.clubs.find((x) => x.id === r.exterieurId);
+      const res = RMWorld.simulerResultatAbstrait(rng, a.niveauClub, b.niveauClub);
+      RMClub.enregistrerResultatCoupe(c, r.id, res.scoreA, res.scoreB);
+    }
+  }
+  assert.ok(c.tours.every((t) => t.rencontres.every((r) => r.joue)), 'tous les tours doivent être joués');
+  assert.strictEqual(c.tours.flatMap((t) => t.rencontres).filter((r) => r.joue && !r.vainqueurId).length, 0,
+    'aucune rencontre de coupe ne peut rester sans vainqueur');
+  assert.ok(RMClub.vainqueurCoupe(c), 'la coupe doit avoir un vainqueur');
+});
+
+test('coupes : les coupes sont régénérées au changement de saison', () => {
+  const s = saisonAvecMonde(994);
+  RMClub.assurerCoupes(s);
+  const avant = Object.keys(s.coupes).length;
+  assert.ok(avant >= 4);
+  RMClub.avancerSaison(creerRng(9940), s);
+  assert.strictEqual(Object.keys(s.coupes || {}).length, 0,
+    'les coupes de la saison écoulée ne doivent pas encombrer la suivante');
+});
+
+test('coupes : une rencontre de coupe du joueur devient une échéance datée', () => {
+  const s = saisonAvecMonde(995);
+  const coupes = RMClub.assurerCoupes(s);
+  let trouve = null;
+  for (const cle of Object.keys(coupes)) {
+    for (const t of coupes[cle].tours) {
+      for (const r of t.rencontres) {
+        if (!trouve && (r.domicileId === s.clubJoueur.id || r.exterieurId === s.clubJoueur.id)) {
+          trouve = { t, r };
+        }
+      }
+    }
+  }
+  assert.ok(trouve, 'le club du joueur doit disputer au moins une rencontre de coupe');
+  const date = RMClub.dateDepuisISO(trouve.t.date);
+  assert.strictEqual(RMClub.typeDArret(s, date), 'coupe',
+    'le jour de sa rencontre de coupe doit être une échéance');
+  const info = RMClub.rencontreCoupeDuJoueur(s, date);
+  assert.ok(info && info.rencontre.id === trouve.r.id, 'la rencontre du jour doit être retrouvée');
 });
 
 console.log(`\n${nbTests} test(s) exécuté(s).`);

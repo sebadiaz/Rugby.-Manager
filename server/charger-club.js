@@ -41,6 +41,7 @@ const MODULES = [
   'club-competitions.js',
   'club-effectif-adverse.js',
   'club-amicaux.js',
+  'club-coupes.js',
   'club-sauvegarde.js',
 ];
 
@@ -60,6 +61,14 @@ function chargerRMClub() {
   for (const nom of MODULES) {
     const code = fs.readFileSync(path.join(__dirname, '../docs/js/', nom), 'utf8');
     new Function('window', code)(global.window);
+  }
+  // world.js n'est pas un domaine RMClub mais RMWorld, et il CAPTURE RMClub
+  // à son chargement (`const RMClub = global.RMClub`) : il doit donc venir
+  // APRÈS tous les domaines club. Les coupes continentales et la résolution
+  // abstraite en dépendent.
+  if (!global.window.RMWorld) {
+    const codeMonde = fs.readFileSync(path.join(__dirname, '../docs/js/world.js'), 'utf8');
+    new Function('window', codeMonde)(global.window);
   }
   return global.window.RMClub;
 }

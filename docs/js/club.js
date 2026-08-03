@@ -858,6 +858,9 @@
     // entièrement redaté, une rencontre programmée l'an dernier n'a plus de
     // date valable. On repart d'une feuille blanche.
     if (global.RMClub.reinitialiserAmicaux) global.RMClub.reinitialiserAmicaux(saison);
+    // Coupes (TODO_AUDIT.md P1-34) : régénérées avec les nouveaux
+    // adversaires et les nouvelles dates, comme le championnat espoirs.
+    if (global.RMClub.reinitialiserCoupes) global.RMClub.reinitialiserCoupes(saison);
     // Championnat des espoirs : régénéré avec les nouveaux adversaires.
     saison.competitionEspoirs = null;
     // Marché des transferts calibré sur le NIVEAU RÉEL du club du joueur

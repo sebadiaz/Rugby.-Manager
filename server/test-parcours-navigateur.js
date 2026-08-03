@@ -846,13 +846,23 @@ function optionsLancement() {
     if (dejaTermine) break;
     const fixturesRestantes = await page.evaluate(() => document.getElementById('clubProchainMatch').textContent.includes('à jouer'));
     if (!fixturesRestantes) break;
-    await page.click('#btnApercuMatchFlottant');
+    // Un jour de COUPE ou d'AMICAL (P1-32/P1-34) ne passe pas par l'aperçu :
+    // le match démarre directement et c'est l'écran de résultat qui s'ouvre.
+    // Le bouton flottant est alors invisible — on le clique via evaluate,
+    // puis on traite l'un OU l'autre des deux écrans possibles.
+    await page.evaluate(() => {
+      const b = document.getElementById('btnApercuMatchFlottant');
+      if (b) b.click();
+    });
     const apercuOuvert = await page.waitForSelector('#panneauApercuMatch.visible', { timeout: 4000 })
       .then(() => true).catch(() => false);
     if (apercuOuvert) {
       await page.click('#btnApercuLancerMatch');
       await page.waitForSelector('#panneauResultat.visible', { timeout: 30000 });
       await page.click('#btnResultatFermer');
+    } else if (await page.isVisible('#panneauResultat.visible')) {
+      await page.click('#btnResultatFermer');
+      await page.waitForTimeout(400);
     }
     await page.waitForFunction(
       () => document.getElementById('panneauClub').classList.contains('visible')
@@ -2332,6 +2342,91 @@ function optionsLancement() {
   verifier('amical : il fatigue réellement les joueurs alignés', bilanAmi.fatigueMax > 0);
   verifier('amical : aucune erreur console', erreursAmi.length === 0);
   await contexteAmi.close();
+
+  // 11 nonies) Coupes (TODO_AUDIT.md P1-34) : les quatre compétitions à
+  // élimination directe existent, sont navigables, et se jouent réellement.
+  const contexteCoupe = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const pageCoupe = await contexteCoupe.newPage();
+  const erreursCoupe = [];
+  pageCoupe.on('pageerror', (e) => erreursCoupe.push(`PAGEERROR: ${e.message}`));
+  pageCoupe.on('console', (m) => {
+    if (m.type() === 'error' && !m.text().includes('404')) erreursCoupe.push(`CONSOLE: ${m.text()}`);
+  });
+  await pageCoupe.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  await pageCoupe.click('#btnAccueilModeClub');
+  await pageCoupe.fill('#inputNomClub', 'Test Coupes');
+  await pageCoupe.click('#btnCreerClub');
+  await pageCoupe.waitForTimeout(400);
+  await pageCoupe.evaluate(() => { document.getElementById('selDureeClub').value = '300'; });
+  await clicOngletSur(pageCoupe, 'classement');
+  await pageCoupe.waitForTimeout(700);
+
+  const championnatsCoupe = await pageCoupe.textContent('#clubNavChampionnats');
+  verifier('coupes : les QUATRE coupes figurent dans la navigation des compétitions',
+    /Coupe Nationale/.test(championnatsCoupe) && /Coupe des Champions/.test(championnatsCoupe)
+    && /Coupe Challenge/.test(championnatsCoupe) && /Coupe des Espoirs/.test(championnatsCoupe));
+
+  await pageCoupe.locator('.btnChampionnatNav', { hasText: 'Coupe Nationale' }).first().click();
+  await pageCoupe.waitForTimeout(400);
+  const classementCoupe = await pageCoupe.textContent('#clubCompetitionClassement');
+  verifier('coupes : une coupe annonce qu\'elle n\'a PAS de classement (pas de table inventée)',
+    /élimination directe/.test(classementCoupe) && !/<table/.test(classementCoupe));
+  await clicOngletSur(pageCoupe, 'calendrier');
+  await pageCoupe.waitForTimeout(400);
+  const calendrierCoupe = await pageCoupe.textContent('#clubCalendrier');
+  verifier('coupes : son calendrier nomme les tours et les date',
+    /(Seizièmes|Huitièmes|Quarts) de finale/.test(calendrierCoupe)
+    && /\b(lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)\b \d{1,2} \p{L}+ 20\d\d/u.test(calendrierCoupe));
+  verifier('coupes : le club du joueur est engagé dans la coupe nationale',
+    calendrierCoupe.includes('Test Coupes'));
+
+  // Jouer jusqu'à la première rencontre de coupe du club du joueur.
+  await pageCoupe.evaluate(() => document.querySelector('.ongletBtn[data-onglet="dashboard"]').click());
+  await pageCoupe.waitForTimeout(500);
+  let coupeJouee = false;
+  for (let i = 0; i < 30 && !coupeJouee; i++) {
+    coupeJouee = await pageCoupe.evaluate(() => {
+      const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
+      const coupes = s.coupes || {};
+      return Object.keys(coupes).some((k) => coupes[k].tours.some(
+        (t) => t.rencontres.some((r) => r.joue && (r.domicileId === s.clubJoueur.id || r.exterieurId === s.clubJoueur.id))));
+    });
+    if (coupeJouee) break;
+    await pageCoupe.evaluate(() => document.getElementById('btnJouerMatchClub').click());
+    await pageCoupe.waitForTimeout(1000);
+    if (await pageCoupe.isVisible('#panneauResultat.visible')) {
+      await pageCoupe.click('#btnResultatFermer');
+      await pageCoupe.waitForTimeout(600);
+    } else if (await pageCoupe.isVisible('#panneauApercuMatch.visible')) {
+      await pageCoupe.click('#btnApercuLancerMatch');
+      await pageCoupe.waitForSelector('#panneauResultat.visible', { timeout: 60000 });
+      await pageCoupe.click('#btnResultatFermer');
+      await pageCoupe.waitForTimeout(600);
+    }
+  }
+  verifier('coupes : une rencontre de coupe du joueur se joue RÉELLEMENT à sa date', coupeJouee);
+  const bilanCoupe = await pageCoupe.evaluate(() => {
+    const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
+    const coupes = s.coupes || {};
+    let jouees = 0, sansVainqueur = 0;
+    for (const k of Object.keys(coupes)) {
+      for (const t of coupes[k].tours) {
+        for (const r of t.rencontres) {
+          if (!r.joue) continue;
+          jouees++;
+          if (!r.vainqueurId) sansVainqueur++;
+        }
+      }
+    }
+    return { jouees, sansVainqueur,
+      message: (s.clubJoueur.messages || []).map((m) => m.corps).find((x) => /Qualifié|Éliminé/.test(x)) };
+  });
+  verifier('coupes : AUCUNE rencontre jouée ne reste sans vainqueur (pas de nul en coupe)',
+    bilanCoupe.jouees > 0 && bilanCoupe.sansVainqueur === 0);
+  verifier('coupes : le résultat produit un message réel (qualifié ou éliminé)',
+    !!bilanCoupe.message);
+  verifier('coupes : aucune erreur console', erreursCoupe.length === 0);
+  await contexteCoupe.close();
 
   // 12) Décision réelle dans la boîte de réception (audit "boîte de réception
   // avec décisions", cf. club-decisions.js) : injecte directement une

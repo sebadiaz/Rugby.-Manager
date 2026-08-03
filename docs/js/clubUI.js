@@ -1108,6 +1108,7 @@
       RMClub.assurerAutresDivisionsFrance(creerRng(graineAleatoire()), saison);
       creation = true;
     }
+    if (!saison.coupes || !Object.keys(saison.coupes).length) { RMClub.assurerCoupes(saison); creation = true; }
     if (creation) sauvegarder();
 
     const pays = RMClub.competitionsParPays(saison);
@@ -1176,6 +1177,21 @@
         `<td title="Bonus défensif (défaite par 7 points ou moins)">${r.bonusDefensifs || 0}</td>` +
         `<td><b>${r.pts}</b></td></tr>`;
     }).join('');
+    if (comp.estCoupe && zoneClassement) {
+      // Une coupe n'a pas de classement : c'est un tableau. On le dit, et on
+      // annonce le vainqueur dès que la finale est jouée — jamais une table
+      // de points fabriquée pour remplir l'écran.
+      const nomsCoupe = {};
+      for (const cl of comp.clubs) nomsCoupe[cl.id] = cl.nom;
+      const vainqueur = comp.vainqueurId ? (nomsCoupe[comp.vainqueurId] || '') : null;
+      zoneClassement.innerHTML =
+        `<p style="font-size:12.5px;color:var(--text-dim);margin:0 0 10px;">Compétition à élimination directe : pas de classement, un tableau. ${comp.clubs.length} clubs engagés — le calendrier montre chaque tour.</p>` +
+        (vainqueur
+          ? `<p class="noteLectureSeule">🏆 Vainqueur : <b>${echapperHTML(vainqueur)}</b></p>`
+          : '<p class="noteLectureSeule">La compétition est en cours : aucun vainqueur pour l\'instant.</p>');
+      rafraichirCalendrier();
+      return;
+    }
     if (zoneClassement) {
       zoneClassement.innerHTML = '<table class="tableauClub"><thead><tr><th></th><th>Club</th><th>J</th><th>G</th><th>N</th><th>P</th>' +
         '<th>Pts+</th><th>Pts-</th><th>Diff</th><th title="Bonus offensifs">BO</th><th title="Bonus défensifs">BD</th><th>Pts</th></tr></thead>' +
@@ -1748,7 +1764,10 @@
           });
           return `<div${attenu}>${formaterLigneCalendrier(enrichie, saison.clubJoueur.id)}</div>`;
         }).join('');
-        return `<div class="blocJournee"><h4>Journée ${j}${dateTitre}</h4>${lignes}</div>`;
+        // Une coupe nomme ses tours (« Quarts de finale ») plutôt que de les
+        // numéroter — c'est ainsi qu'on en parle (TODO_AUDIT.md P1-34).
+        const titreGroupe = parJournee[j][0].nomTour || `Journée ${j}`;
+        return `<div class="blocJournee"><h4>${echapperHTML(titreGroupe)}${dateTitre}</h4>${lignes}</div>`;
       }).join('');
   }
 
@@ -2782,6 +2801,86 @@
   // comme un match officiel (TODO_AUDIT.md P1-32). Ses conséquences sont
   // réelles — fatigue, blessures, temps de jeu, moral — mais il ne rapporte
   // AUCUN point au championnat et n'entre dans aucun classement.
+  // --- Match de coupe (TODO_AUDIT.md P1-34) : joué à la date de son tour,
+  // avec le moteur complet. Un seul résultat possible — il n'y a pas de nul
+  // en élimination directe : gagner ou sortir. Les autres rencontres du même
+  // tour sont résolues de façon abstraite, comme partout ailleurs.
+  function resoudreCoupeDuJour() {
+    if (journeeEnCours) return;
+    const date = RMClub.dateCourante(saison);
+    const info = RMClub.rencontreCoupeDuJoueur(saison, date);
+    if (!info) return;
+    const adversaireId = info.rencontre.domicileId === saison.clubJoueur.id
+      ? info.rencontre.exterieurId : info.rencontre.domicileId;
+    const adversaire = RMClub.clubPartout(saison, adversaireId)
+      || info.coupe.clubs.find((c) => c.id === adversaireId);
+    if (!adversaire) return;
+    assurerComposition();
+    if (RMClub.validerComposition(saison.clubJoueur.compositionTitulaires).length > 0) {
+      toast('Impossible de disputer ce match de coupe : ta composition est incomplète.', 'erreur');
+      return;
+    }
+    journeeEnCours = true;
+    definirBoutonsJourneeActifs(false);
+    const duree = Number(document.getElementById('selDureeClub').value) || 4800;
+    document.getElementById('panneauClub').classList.remove('visible');
+    const c = saison.clubJoueur;
+    const slot = RMClub.slotCompositionPourEquipe(saison, 'pro');
+    const compositionUtilisee = Object.assign({}, c.compositionTitulaires);
+    const domicileEstJoueur = info.rencontre.domicileId === c.id;
+    const lettre = domicileEstJoueur ? 'A' : 'B';
+    const tactiqueCfg = construireTactiqueCfg(c.effectif, slot, lettre);
+    // L'adversaire peut être un club sans effectif simulé (autre palier,
+    // club étranger, académie) : on dérive alors un XV de son NIVEAU réel,
+    // jamais un effectif inventé et conservé.
+    const cfgAdverse = RMClub.aUnEffectifSimule(adversaire)
+      ? RMClub.effectifVersJoueursCfg(adversaire)
+      : RMClub.effectifVersJoueursCfg({
+        effectif: RMClub.genererEffectif(creerRng(graineAleatoire()), adversaire.niveauClub || 0.5),
+      });
+    const cfgJoueur = RMClub.compositionVersJoueursCfg(c.effectif, compositionUtilisee);
+    window.RMMain.demarrerMatchClub(
+      graineAleatoire(), duree,
+      domicileEstJoueur ? cfgJoueur : cfgAdverse,
+      domicileEstJoueur ? cfgAdverse : cfgJoueur,
+      tactiqueCfg,
+      {
+        noms: domicileEstJoueur ? { A: c.nom, B: adversaire.nom } : { A: adversaire.nom, B: c.nom },
+        equipeJoueur: lettre,
+        onResultat(etat) {
+          RMClub.enregistrerResultatCoupe(info.coupe, info.rencontre.id, etat.score.A, etat.score.B);
+          // Les autres rencontres du même tour, en arrière-plan.
+          RMClub.resoudreCoupesAbstraites(saison, date, creerRng(graineDuJour('coupes')), info.rencontre.id);
+          RMClub.appliquerFatigue(c.effectif, compositionUtilisee);
+          RMClub.faireProgresserBlessures(creerRng(graineAleatoire()), c.effectif, compositionUtilisee,
+            RMClub.effetPersonnel(saison, 'medecin'), saison);
+          const gagne = info.rencontre.vainqueurId === c.id;
+          RMClub.appliquerMoral(c.effectif, compositionUtilisee, gagne ? 'v' : 'd');
+          RMClub.accumulerStatsJoueurs(c.effectif, compositionUtilisee,
+            etat.statsJoueurs && etat.statsJoueurs[lettre], 'pro');
+          const tourNom = info.coupe.tours[info.rencontre.tour].nom;
+          const prolongation = info.rencontre.apresProlongation ? ' après prolongation' : '';
+          RMClub.ajouterMessage(saison, 'match', info.coupe.nom,
+            gagne
+              ? `Qualifié ! ${c.nom} élimine ${adversaire.nom} (${etat.score.A} - ${etat.score.B})${prolongation} en ${tourNom.toLowerCase()}.`
+              : `Éliminé. ${c.nom} s'incline face à ${adversaire.nom} (${etat.score.A} - ${etat.score.B})${prolongation} en ${tourNom.toLowerCase()}.`);
+          sauvegarder();
+          journeeEnCours = false;
+          definirBoutonsJourneeActifs(true);
+          rafraichirTout();
+        },
+        // Sans ce rappel, fermer l'écran de résultat laissait le joueur sur
+        // un écran VIDE : le panneau du club avait été masqué au coup
+        // d'envoi et personne ne le remontrait. Même mécanique que le match
+        // de championnat (cf. onFermer plus bas).
+        onFermer() {
+          rafraichirTout();
+          document.getElementById('panneauClub').classList.add('visible');
+        },
+      }
+    );
+  }
+
   function resoudreAmicalDuJour() {
     const amical = RMClub.amicalDuJour(saison, RMClub.dateCourante(saison));
     if (!amical || journeeEnCours) return;
@@ -2830,6 +2929,14 @@
           definirBoutonsJourneeActifs(true);
           rafraichirTout();
         },
+        // Sans ce rappel, fermer l'écran de résultat laissait le joueur sur
+        // un écran VIDE : le panneau du club avait été masqué au coup
+        // d'envoi et personne ne le remontrait. Même mécanique que le match
+        // de championnat (cf. onFermer plus bas).
+        onFermer() {
+          rafraichirTout();
+          document.getElementById('panneauClub').classList.add('visible');
+        },
       }
     );
   }
@@ -2855,6 +2962,7 @@
     // championnat : il a sa propre date et son propre adversaire. Il est donc
     // résolu par son propre chemin, plus bas.
     if (typeJour === 'amical') { resoudreAmicalDuJour(); return; }
+    if (typeJour === 'coupe') { resoudreCoupeDuJour(); return; }
     const fixtures = typeJour === 'pro'
       ? RMClub.fixturesDuJour(saison, RMClub.dateCourante(saison))
       : RMClub.prochainesFixtures(saison);

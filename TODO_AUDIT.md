@@ -1015,6 +1015,43 @@ C'est un championnat crédible : on bat les derniers, on joue à égalité au mi
 - Vérifié **dans le vrai jeu** : les onglets « 🏆 Classement » et « 📅 Calendrier » se suivent dans le menu, la navigation propose « Ligue d'Excellence | Ligue Nationale | Ligue Régionale ⭐ | Championnat Équipe B ⭐ | Championnat des espoirs ⭐ », et choisir le championnat des espoirs met à jour les deux pages de façon cohérente (calendrier au mercredi 25 septembre, classement à quatre académies).
 - Régression complète sans échec.
 
+### P1-34. Moteur générique de coupes, et quatre coupes réelles
+- **Statut : CORRIGÉ**
+- Priorité : P1 (demande utilisateur, point 9 : « Créer un moteur générique de coupes, puis ajouter : une coupe nationale à élimination directe ; une coupe continentale principale inspirée de la Champions Cup ; une coupe continentale secondaire inspirée de la Challenge Cup ; une coupe Espoirs. »)
+- Fichiers concernés : `docs/js/club-coupes.js` (**nouveau**), `docs/js/club-agenda.js`, `docs/js/club-competitions.js`, `docs/js/club.js`, `docs/js/clubUI.js`, `docs/index.html`, `server/charger-club.js`, tests
+
+**Le manque.** Le jeu ne connaissait que des championnats : des poules où tout le monde rencontre tout le monde et où un classement départage. Aucune compétition à élimination directe — donc aucun match couperet, aucun parcours, aucun trophée.
+
+**Un moteur qui ne connaît aucune coupe.** `club-coupes.js` sait construire un tableau à partir d'une liste de clubs et d'une liste de dates, faire avancer les vainqueurs et désigner un lauréat. **Les quatre coupes ne sont que des configurations** : chacune dit d'où viennent ses participants, rien d'autre ne les distingue. En ajouter une cinquième ne demandera pas une ligne de logique.
+
+**Deux règles propres à l'élimination directe**, absentes des championnats :
+- **Il n'y a jamais de match nul.** Une prolongation départage, et c'est annoncé (`apresProlongation`). Le départage est **déterministe**, dérivé des identifiants : deux chargements de la même sauvegarde donnent le même vainqueur, jamais un tirage relancé à chaque affichage.
+- **Un club éliminé ne rejoue plus.** Les tours au-delà du premier naissent **vides** et se remplissent au fur et à mesure des résultats : le tableau reflète toujours l'état réel, jamais une projection.
+
+**Un nombre de clubs qui n'est pas une puissance de 2** est ramené à la puissance inférieure par **qualification au mérite** — plutôt que d'inventer des tours préliminaires ou des exemptions. Seule exception : le club du joueur est **engagé d'office** dans ses propres coupes (nationale, espoirs). Il n'est pas spectateur de son pays.
+
+**Les quatre coupes, mesurées sur une vraie saison.**
+
+| Coupe | Clubs | Tours | Participants |
+|---|---|---|---|
+| Coupe Nationale | 32 | 5 (seizièmes → finale) | division du joueur + les deux autres paliers français |
+| Coupe des Champions | 16 | 4 | les 2 meilleurs de chaque division de niveau 1 du monde + l'élite française |
+| Coupe Challenge | 16 | 4 | les 2 meilleurs de chaque division de niveau 2 |
+| Coupe des Espoirs | 4 | 2 | les académies du championnat espoirs |
+
+**Elles se jouent vraiment.** Chaque tour a une date, choisie **en semaine et décalée tant qu'elle tombe sur une échéance existante** du club — on ne joue pas deux matchs le même jour. Une rencontre de coupe du club du joueur devient une échéance annoncée par le bouton principal, jouée avec le **moteur complet** ; les autres rencontres du même tour sont résolues de façon abstraite, comme partout ailleurs. Fatigue, blessures, moral et statistiques individuelles s'appliquent normalement. Le message annonce « Qualifié ! » ou « Éliminé », avec le nom du tour et la mention de la prolongation le cas échéant.
+
+**Dans la navigation unifiée (P1-33).** Les quatre coupes rejoignent la liste des compétitions. Une coupe n'a **pas de classement** : l'écran Classement le dit (« Compétition à élimination directe : pas de classement, un tableau ») et annonce le vainqueur dès la finale jouée — **jamais une table de points fabriquée pour remplir l'écran**. Le calendrier, lui, nomme ses tours (« Quarts de finale ») au lieu de les numéroter.
+
+**Bug trouvé en pilotant le jeu, pas en relisant le code.** Après un match de coupe (et, même défaut, après un match amical de P1-32), fermer l'écran de résultat laissait le joueur sur un **écran totalement vide** : le panneau du club avait été masqué au coup d'envoi et personne ne le remontrait. Le match de championnat, lui, avait depuis toujours un rappel `onFermer` pour ça. Ajouté aux deux. Le symptôme est apparu comme un blocage de la boucle de fin de saison dans les tests navigateur — c'est en instrumentant l'état des panneaux jour par jour que la cause est devenue évidente.
+
+**Critères de validation.**
+- `server/test-parcours-club.js` : 191/191 — dont 11 nouveaux (tableau complet à 8 clubs avec les bons noms de tours et les bonnes dates ; 13 clubs ramenés à 8 par qualification au mérite ; un résultat fait réellement avancer le vainqueur au tour suivant ; **jamais de nul**, une prolongation départage ; pas de vainqueur tant que la finale n'est pas jouée ; **les quatre coupes existent** avec des tours tous datés ; le club du joueur est engagé dans la coupe nationale ; les tours ne tombent jamais sur un match de championnat ; une coupe entière se joue et désigne un vainqueur **sans laisser une seule rencontre sans vainqueur** ; les coupes sont régénérées au changement de saison ; une rencontre de coupe devient une échéance datée retrouvable).
+- `server/test-parcours-navigateur.js` : les quatre coupes figurent dans la navigation, une coupe annonce qu'elle n'a pas de classement, son calendrier nomme et date ses tours, le club du joueur y est engagé, une rencontre se joue réellement, aucune rencontre jouée ne reste sans vainqueur, et un message réel est produit.
+- Régression complète sans échec côté données.
+
+**Reste à faire.** Les coupes ne rapportent encore **ni argent ni confiance du président** : gagner la Coupe Nationale n'a pas de conséquence économique ou sportive au-delà du trophée. Les qualifications continentales ne dépendent pas non plus du classement de la saison précédente (les participants sont choisis sur le niveau des clubs). Ce sont les deux prolongements naturels.
+
 ### P2-10. Découper club.js et clubUI.js par domaine (sans changement de comportement)
 - **Statut : EN COURS (tranche 1 : Personnel, tranche 2 : Objectif de saison, tranche 3 : Analyse adversaire, tranche 4 : Prêts, tranche 5 : Contrats, tranche 6 : Équipe B, tranche 7 : Transferts national, tranche 8 : Transferts internationaux, tranche 9 : Effectif étendu, tranche 10 : Centre de formation, tranche 11 : Composition et tactique, tranche 12 : Condition physique des joueurs, tranche 13 : Génération de club/pyramide, tranche 14 : Calendrier et classement, tranche 15 : Sauvegarde et migration — voir constat de risque et tranches suivantes ci-dessous)**
 - Priorité : P2 (maintenabilité — explicitement demandée par l'utilisateur malgré la tension avec la règle CLAUDE.md "jamais un patch purement technique si le gameplay ne s'améliore pas visiblement")
