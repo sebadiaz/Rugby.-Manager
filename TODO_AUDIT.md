@@ -1590,3 +1590,97 @@ court, et la carte le dit au lieu de le masquer.
 - **L'analyse de l'adversaire est la même pour les trois équipes** : le délai
   de l'analyste ne distingue pas un adversaire de championnat d'une académie
   espoirs. Correct fonctionnellement, mais grossier.
+
+---
+
+## Tranche « Centre médical 2.0 et reprise progressive » (P1-40)
+
+Demande utilisateur : remplacer le compteur `blessureJournees` par de vraies
+blessures persistantes, avec un risque qui dépend réellement du joueur et un
+parcours de reprise en cinq étapes. **Sans créer d'écran parallèle** : on
+améliore l'onglet Médical existant et on réutilise fatigue, entraînement,
+personnel, composition, messages et « À traiter ».
+
+### État actuel constaté dans le code (étape 1)
+
+`j.blessureJournees` est un **entier nu**, utilisé à 77 endroits dans 15
+fichiers de production. Il ne porte ni type, ni zone, ni gravité, ni date, ni
+cause, ni risque de rechute, ni état de récupération.
+
+**Défaut 1 — le risque de blessure ne dépend de presque rien.**
+`faireProgresserBlessures` (club-condition-joueurs.js:118) tire un `rng() < 0.06`
+**plat** pour chaque titulaire : un pilier de 34 ans cuit à 95 de fatigue et
+un ailier de 21 ans frais ont exactement la même probabilité. Ni le poste, ni
+l'âge, ni la fatigue, ni les antécédents n'entrent en compte. Seul
+l'entraînement (`blessuresDeSeance`) tient compte de la fatigue et de
+l'intensité.
+
+**Défaut 2 — la durée est un simple tirage divisé par le médecin.**
+`Math.max(2, Math.round((7 + rng() * 22) / facteurMedecin))` : 7 à 28 jours.
+Aucune notion de gravité ; le diagnostic est exact et immédiat, donc le
+médecin ne sert qu'à raccourcir, jamais à mieux voir.
+
+**Défaut 3 — les quatre types de match ne se comportent PAS pareil.**
+Mesuré dans clubUI.js :
+
+| Match | fatigue | blessures | facteur préparateur |
+|---|---|---|---|
+| Championnat (1er XV) | oui | oui | oui |
+| Coupe (l. 2902) | oui | oui | **non** |
+| Amical (l. 2963) | oui | oui | **non** |
+| **Équipe B** (l. 3245) | **NON** | **NON** | — |
+| **Espoirs** (l. 3317) | +15 fixe | **NON** | — |
+
+Un joueur peut donc disputer **toute la saison avec la réserve sans jamais
+fatiguer ni se blesser**. C'est le manquement le plus grave, et il contredit
+directement l'exigence de comportement identique entre les trois équipes.
+
+**Défaut 4 — le retour est instantané et à pleine puissance.**
+`soignerBlessuresDuJour` décrémente le compteur ; à zéro le joueur est
+immédiatement sélectionnable, avec ses statistiques intactes. Aucune reprise,
+aucun risque de rechute, aucun antécédent conservé.
+
+**Défaut 5 — l'onglet Médical n'affiche qu'une ligne par blessé.**
+`rafraichirMedical` (clubUI.js:1492) : nom, poste, « Retour dans N jour(s) ».
+Aucune décision possible depuis cet écran.
+
+### Choix technique retenu
+
+`j.blessure` (objet riche) devient **la seule source de vérité**.
+`j.blessureJournees` est conservé comme **miroir DÉRIVÉ**, écrit par une
+unique fonction (`synchroniserBlessure`) et par personne d'autre : les 77
+sites de lecture existants continuent de fonctionner sans modification, et
+il n'existe toujours qu'un seul endroit qui *décide* de l'état médical.
+Réécrire les 77 sites serait une refonte massive à risque de régression, ce
+que CLAUDE.md proscrit explicitement.
+
+### Fichiers concernés
+
+- `docs/js/club-medical.js` (**nouveau**) — modèle, tirage, diagnostic, reprise
+- `docs/js/club-condition-joueurs.js` — `faireProgresserBlessures` délègue
+- `docs/js/club-semaine-entrainement.js` — `blessuresDeSeance` délègue
+- `docs/js/club-evenements.js` — guérison quotidienne + progression de reprise
+- `docs/js/club-composition.js` — malus de reprise transmis au moteur
+- `docs/js/club-sauvegarde.js` — migration v4 → v5
+- `docs/js/club.js` — `VERSION_SAUVEGARDE`, création des joueurs
+- `docs/js/club-espoirs.js`, `docs/js/clubUI.js` — unification des 4 chemins
+- `docs/js/club-a-traiter.js` — alertes médicales réelles
+- `docs/index.html`, `docs/css/style.css`, `server/charger-club.js`, tests
+
+### Critères de validation
+
+1. Une blessure a un diagnostic **stable après rechargement** (durée réelle
+   tirée une fois, jamais re-tirée à l'affichage).
+2. Deux blessures différentes ne donnent pas toujours la même durée.
+3. Un joueur **fatigué se blesse davantage** qu'un joueur frais — mesuré sur
+   un grand nombre de tirages, pas affirmé.
+4. Le médecin **réduit réellement** l'indisponibilité et **resserre**
+   la fourchette du diagnostic.
+5. Le préparateur réduit réellement le risque de blessure et de rechute.
+6. Une reprise anticipée **augmente réellement** le risque de rechute.
+7. Un joueur en reprise joue avec un **malus mesurable** transmis au moteur.
+8. Le retour progressif peut passer par l'Équipe B ou les Espoirs.
+9. Les anciennes sauvegardes (v4) restent chargeables.
+10. **Aucun nouvel écran médical** n'est créé.
+11. Les quatre types de match appliquent fatigue ET blessures.
+12. Toutes les suites de tests restent vertes.
