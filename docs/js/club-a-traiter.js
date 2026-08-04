@@ -54,10 +54,31 @@
     }
 
     // 2. Ce qui compromet la prochaine rencontre.
-    const blesses = c.effectif.filter((j) => j.blessureJournees > 0).length;
-    if (blesses > 0) {
+    // Infirmerie : on annonce ce qui EST, pas un compte générique — le
+    // dossier médical (P1-40) permet de nommer la blessure la plus grave.
+    const blessesListe = c.effectif.filter((j) => RMClub.joursIndisponible(j) > 0);
+    if (blessesListe.length > 0) {
+      const pire = blessesListe.slice().sort((a, b) => (b.blessure.gravite || 0) - (a.blessure.gravite || 0))[0];
+      const d = RMClub.descriptionBlessure(pire);
       liste.push({ cle: 'blesses', niveau: 'urgent', icone: '🤕',
-        texte: `${blesses} joueur(s) blessé(s)`, onglet: 'medical' });
+        texte: blessesListe.length === 1
+          ? `${pire.nom} blessé — ${d.libelle} (${d.zone}), retour dans ${d.joursMin} à ${d.joursMax} j`
+          : `${blessesListe.length} joueurs blessés — le plus touché : ${pire.nom} (${d.libelle})`,
+        onglet: 'medical' });
+    }
+    // Reprise en cours : ce n'est PAS une urgence, mais le manager doit
+    // savoir qu'un joueur n'est pas encore à son niveau avant de l'aligner.
+    const enReprise = c.effectif.filter((j) => {
+      const e = RMClub.etapeReprise(j);
+      return e && e !== 'soins';
+    });
+    if (enReprise.length > 0) {
+      const limites = enReprise.filter((j) => !RMClub.peutJouer(j, 'pro'));
+      liste.push({ cle: 'reprise', niveau: 'recommande', icone: '🔄',
+        texte: limites.length
+          ? `${enReprise.length} joueur(s) en reprise, dont ${limites.length} pas encore alignable(s) en équipe première`
+          : `${enReprise.length} joueur(s) en reprise — pas encore à 100 %`,
+        onglet: 'medical' });
     }
     // Un poste sans aucun joueur disponible empêche littéralement d'aligner
     // un XV : c'est le plus grave, mais ça reste rare.

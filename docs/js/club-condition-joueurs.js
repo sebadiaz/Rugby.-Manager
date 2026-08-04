@@ -140,7 +140,41 @@
     return nouvelles;
   }
 
+  // --- Conséquences d'un match : UN SEUL point d'entrée (P1-40) -----------
+  // Mesuré avant cette tranche, dans clubUI.js : les quatre types de match ne
+  // se comportaient PAS pareil.
+  //
+  //   Championnat (1er XV)  fatigue oui   blessures oui   préparateur oui
+  //   Coupe                 fatigue oui   blessures oui   préparateur NON
+  //   Amical                fatigue oui   blessures oui   préparateur NON
+  //   Équipe B              fatigue NON   blessures NON   —
+  //   Espoirs               +15 fixe      blessures NON   —
+  //
+  // Un joueur pouvait donc disputer TOUTE la saison avec la réserve sans
+  // jamais fatiguer ni se blesser. Les quatre chemins passent désormais par
+  // ici : une seule règle, appliquée partout, quelle que soit l'équipe.
+  function appliquerEffetsMatch(saison, effectif, composition, rng, options) {
+    const RMClub = global.RMClub;
+    const o = options || {};
+    const facteurPreparateur = o.facteurPreparateur != null ? o.facteurPreparateur
+      : (saison && RMClub.effetPersonnel ? 1 / RMClub.effetPersonnel(saison, 'preparateur') : 1);
+    const facteurMedecin = o.facteurMedecin != null ? o.facteurMedecin
+      : (saison && RMClub.effetPersonnel ? RMClub.effetPersonnel(saison, 'medecin') : 1);
+    appliquerFatigue(effectif, composition, facteurPreparateur);
+    const blessures = faireProgresserBlessures(rng, effectif, composition,
+      facteurMedecin, o.saisonPourMessages !== undefined ? o.saisonPourMessages : saison,
+      facteurPreparateur);
+    // Un match compte comme un palier franchi pour qui est en reprise : c'est
+    // le sens même du « temps de jeu limité » (cf. club-medical.js).
+    const titulaires = new Set(Object.values(composition || {}));
+    for (const j of effectif) {
+      if (titulaires.has(j.id) && j.reprise) RMClub.avancerJourMedical(saison, j);
+    }
+    return { fatigues: titulaires.size, blessures };
+  }
+
   global.RMClub = Object.assign(global.RMClub || {}, {
     appliquerFatigue, appliquerMoral, ENTRAINEMENTS, appliquerEntrainement, faireProgresserBlessures,
+    appliquerEffetsMatch,
   });
 })(window);

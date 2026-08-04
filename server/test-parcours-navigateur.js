@@ -1501,7 +1501,11 @@ function optionsLancement() {
   await pageJours.waitForTimeout(200);
   const texteMedical = await pageJours.textContent('#clubMedical');
   verifier('événements quotidiens : l\'onglet Médical exprime l\'indisponibilité en jours, avec une date de retour réelle',
-    /Retour dans \d+ jour\(s\)/.test(texteMedical)
+    // Depuis P1-40 le libellé annonce une FOURCHETTE (« Retour estimé entre
+    // X et Y jour(s) ») plutôt qu'un compteur exact : l'intention du test —
+    // des JOURS et une vraie date, plus des « journées » de championnat —
+    // reste vérifiée, avec le vocabulaire actuel.
+    /Retour estim[ée] .*\d+ jour\(s\)/.test(texteMedical)
     && /\b(lun|mar|mer|jeu|ven|sam|dim)\./i.test(texteMedical));
 
   await clicOngletSur(pageJours, 'dashboard');
@@ -1618,8 +1622,28 @@ function optionsLancement() {
     // Puis on laisse passer les jours : le rapport arrive.
     await clicOngletSur(pageSemaine, 'dashboard');
     await pageSemaine.waitForTimeout(200);
-    await pageSemaine.click('#btnJouerMatchClub');
-    await pageSemaine.waitForTimeout(1000);
+    // Boucle BORNÉE plutôt qu'un clic unique : depuis P1-26 une avance
+    // s'ARRÊTE dès qu'un événement survient, et P1-40 en produit davantage
+    // (blessures avec diagnostic). Le nombre de clics nécessaires dépend donc
+    // de la graine — un test qui en suppose un seul est faux par construction,
+    // pas « instable ». On avance jusqu'à la remise, au plus 25 fois.
+    for (let essai = 0; essai < 25; essai++) {
+      const livre = await pageSemaine.evaluate((id) => {
+        const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
+        return (s.rapportsScouting || []).length === 0;
+      }, avantScout.id);
+      if (livre) break;
+      if (await pageSemaine.isVisible('#btnJouerMatchClub')) {
+        await pageSemaine.click('#btnJouerMatchClub');
+      } else if (await pageSemaine.isVisible('#btnContinuerClub')) {
+        await pageSemaine.click('#btnContinuerClub');
+      }
+      await pageSemaine.waitForTimeout(450);
+      if (await pageSemaine.isVisible('#btnApercuFermer')) {
+        await pageSemaine.click('#btnApercuFermer');
+        await pageSemaine.waitForTimeout(200);
+      }
+    }
     const apresRemise = await pageSemaine.evaluate((id) => {
       const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
       const j = s.marche.find((x) => x.id === id);
@@ -1823,6 +1847,65 @@ function optionsLancement() {
     !/dans -\d+ jour/.test(jourB.prep));
   verifier('préparation par équipe : aucune erreur console', erreursB.length === 0);
   await ctxB.close();
+
+  // --- P1-40 : Centre médical 2.0. Le diagnostic doit SURVIVRE au
+  // rechargement (durée tirée une fois, jamais re-tirée à l'affichage), et la
+  // décision d'accélérer doit avoir une conséquence réelle et persistée. ---
+  const ctxMed = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const pageMed = await ctxMed.newPage();
+  const erreursMed = [];
+  pageMed.on('pageerror', (e) => erreursMed.push(`PAGEERROR: ${e.message}`));
+  pageMed.on('console', (m) => { if (m.type() === 'error' && !m.text().includes('404')) erreursMed.push(`CONSOLE: ${m.text()}`); });
+  await pageMed.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  await pageMed.click('#btnAccueilModeClub');
+  await pageMed.fill('#inputNomClub', 'Test Médical');
+  await pageMed.click('#btnCreerClub');
+  await pageMed.waitForTimeout(500);
+  const diagPose = await pageMed.evaluate(() => {
+    const K = 'rugbyManager.club.v1';
+    const s = JSON.parse(localStorage.getItem(K));
+    const j = s.clubJoueur.effectif[0];
+    let seed = 24680;
+    const rng = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
+    const b = window.RMClub.infligerBlessure(s, j, 'match', rng);
+    localStorage.setItem(K, JSON.stringify(s));
+    return { nom: j.nom, type: b.type, zone: b.zone, jours: b.joursReels, rechute: b.risqueRechute };
+  });
+  await pageMed.reload({ waitUntil: 'networkidle' });
+  await pageMed.waitForTimeout(250);
+  await pageMed.click('#btnContinuerClub');
+  await pageMed.waitForTimeout(500);
+  await clicOngletSur(pageMed, 'medical');
+  await pageMed.waitForTimeout(350);
+  const ecranMed = await pageMed.evaluate(() => ({
+    texte: (document.getElementById('clubMedical') || {}).innerText || '',
+    bouton: !!document.querySelector('.btnAccelerer'),
+    badge: (document.querySelector('.badgeGravite') || {}).textContent || '',
+  }));
+  verifier('médical : le diagnostic (type et zone) survit au rechargement',
+    ecranMed.texte.includes(diagPose.zone) && /Déchirure|Entorse|Contusion|Fracture|Luxation|Commotion/i.test(ecranMed.texte));
+  verifier('médical : l\'écran annonce une FOURCHETTE de retour, pas un compteur nu',
+    /Retour estimé/.test(ecranMed.texte) && /jour\(s\)/.test(ecranMed.texte));
+  verifier('médical : la gravité est affichée en toutes lettres',
+    /Légère|Modérée|Sérieuse|Grave/i.test(ecranMed.badge));
+  verifier('médical : le risque de rechute est affiché', /Risque de rechute/.test(ecranMed.texte));
+  // La décision d'accélérer : conséquence RÉELLE et persistée.
+  const joursAvant = await pageMed.evaluate(() =>
+    JSON.parse(localStorage.getItem('rugbyManager.club.v1')).clubJoueur.effectif[0].blessureJournees);
+  await pageMed.click('.btnAccelerer');
+  await pageMed.waitForTimeout(250);
+  await pageMed.click('#modalConfirmationValider');
+  await pageMed.waitForTimeout(400);
+  const apresAccel = await pageMed.evaluate(() => {
+    const j = JSON.parse(localStorage.getItem('rugbyManager.club.v1')).clubJoueur.effectif[0];
+    return { jours: j.blessureJournees, rechute: j.blessure.risqueRechute, precipite: j.blessure.reprisePrecipitee };
+  });
+  verifier('médical : accélérer le retour raccourcit RÉELLEMENT l\'indisponibilité (sauvegardé)',
+    apresAccel.jours < joursAvant);
+  verifier('médical : accélérer augmente RÉELLEMENT le risque de rechute (sauvegardé)',
+    apresAccel.rechute > diagPose.rechute && apresAccel.precipite === true);
+  verifier('médical : aucune erreur console', erreursMed.length === 0);
+  await ctxMed.close();
 
   // Fenêtres de transfert.
   await clicOngletSur(pagePrep, 'transferts');

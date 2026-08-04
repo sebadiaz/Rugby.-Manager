@@ -3631,8 +3631,10 @@ test('échéance : carte et bouton parlent TOUJOURS de la même rencontre', () =
 
 test('à traiter : une DÉCISION à trancher passe avant tout le reste', () => {
   const s = saisonPourAvance(1010);
-  // Un blessé : alerte réelle mais pas une décision.
-  s.clubJoueur.effectif[0].blessureJournees = 10;
+  // Un blessé : alerte réelle mais pas une décision. On passe par l'API
+  // médicale réelle (P1-40) plutôt que d'écrire le miroir dérivé à la main —
+  // c'est ainsi que le jeu blesse un joueur depuis cette tranche.
+  RMClub.infligerBlessure(s, s.clubJoueur.effectif[0], 'match', creerRng(88));
   RMClub.ajouterMessage(s, 'joueur', 'Temps de jeu', 'Un joueur demande une réponse.', {
     type: 'tempsDeJeu', joueurId: s.clubJoueur.effectif[1].id,
     options: [{ id: 'rassurer', label: 'Le rassurer' }, { id: 'ignorer', label: 'Ignorer' }],
@@ -3860,6 +3862,76 @@ test('médical : une sauvegarde v4 (compteur nu) migre sans perte', () => {
   assert.ok(jm.blessure, 'le compteur nu doit devenir une vraie blessure');
   assert.strictEqual(RMClub.joursIndisponible(jm), 9, 'l\'indisponibilité restante est PRÉSERVÉE');
   assert.ok(Array.isArray(jm.historiqueBlessures));
+});
+
+
+
+test('médical : les conséquences d\'un match sont les MÊMES pour les trois équipes', () => {
+  // Mesuré avant P1-40 : l'Équipe B n'appliquait NI fatigue NI blessure, et
+  // les Espoirs aucune blessure. Un joueur pouvait disputer toute la saison
+  // avec la réserve sans jamais fatiguer ni se blesser.
+  const s = saisonPourAvance(1411);
+  for (const equipe of ['pro', 'b', 'jeunes']) {
+    const groupe = RMClub.effectifPourEquipe(s, equipe).slice(0, 15);
+    assert.ok(groupe.length >= 15, `l'équipe ${equipe} doit avoir un XV`);
+    const compo = {};
+    groupe.forEach((j, i) => { compo[String(i + 1)] = j.id; j.fatigue = 0; j.blessure = null; j.blessureJournees = 0; });
+    const avant = groupe.map((j) => j.fatigue || 0);
+    RMClub.appliquerEffetsMatch(s, groupe, compo, creerRng(400 + equipe.length), { equipe });
+    const apres = groupe.map((j) => j.fatigue || 0);
+    assert.ok(apres.every((f, i) => f > avant[i]),
+      `tout titulaire de l'équipe ${equipe} doit encaisser de la fatigue`);
+  }
+});
+
+test('médical : les quatre types de match peuvent TOUS blesser', () => {
+  const s = saisonPourAvance(1412);
+  const compte = {};
+  for (const type of ['pro', 'coupe', 'amical', 'b']) {
+    let n = 0;
+    const rng = creerRng(777);
+    for (let i = 0; i < 400; i++) {
+      const groupe = s.clubJoueur.effectif.slice(0, 15).map((j) =>
+        Object.assign({}, j, { fatigue: 60, blessure: null, blessureJournees: 0, reprise: null, historiqueBlessures: [] }));
+      const compo = {};
+      groupe.forEach((j, k) => { compo[String(k + 1)] = j.id; });
+      n += RMClub.appliquerEffetsMatch(s, groupe, compo, rng, { equipe: type === 'b' ? 'b' : 'pro' }).blessures.length;
+    }
+    compte[type] = n;
+  }
+  for (const type of Object.keys(compte)) {
+    assert.ok(compte[type] > 0, `un match « ${type} » doit pouvoir blesser (obtenu ${compte[type]})`);
+  }
+});
+
+test('médical : le préparateur physique réduit RÉELLEMENT le risque de blessure', () => {
+  const s = saisonPourAvance(1413);
+  const modele = s.clubJoueur.effectif[0];
+  function compter(facteurPreparateur) {
+    const rng = creerRng(4242);
+    let n = 0;
+    for (let i = 0; i < 5000; i++) {
+      const j = Object.assign({}, modele, { fatigue: 55, blessure: null, blessureJournees: 0, historiqueBlessures: [] });
+      if (RMClub.tirerBlessure(rng, j, { cause: 'match', facteurPreparateur })) n++;
+    }
+    return n;
+  }
+  const sans = compter(1), avec = compter(1 / 1.7); // préparateur de niveau élevé
+  assert.ok(avec < sans * 0.8,
+    `un bon préparateur doit réduire nettement le risque : sans=${sans}, avec=${avec}`);
+});
+
+test('médical : un joueur en reprise limitée ne peut jouer QU\'avec l\'Équipe B ou les Espoirs', () => {
+  const s = saisonPourAvance(1414);
+  const j = s.clubJoueur.effectif[0];
+  RMClub.infligerBlessure(s, j, 'match', creerRng(61));
+  while (RMClub.etapeReprise(j) !== 'tempsDeJeuLimite') {
+    if (!RMClub.avancerJourMedical(s, j) && !j.blessure && !j.reprise) break;
+  }
+  assert.strictEqual(RMClub.etapeReprise(j), 'tempsDeJeuLimite');
+  assert.strictEqual(RMClub.peutJouer(j, 'pro'), false, 'pas encore avec le premier XV');
+  assert.strictEqual(RMClub.peutJouer(j, 'b'), true, 'mais oui avec l\'Équipe B');
+  assert.strictEqual(RMClub.peutJouer(j, 'jeunes'), true, 'ou avec les Espoirs');
 });
 
 

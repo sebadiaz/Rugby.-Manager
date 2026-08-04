@@ -226,7 +226,13 @@
 
   function joursIndisponible(joueur) {
     const b = joueur.blessure;
-    return b ? Math.max(0, b.joursReels - b.joursEcoules) : 0;
+    if (b) return Math.max(0, b.joursReels - b.joursEcoules);
+    // Repli sur le compteur nu : les effectifs adverses n'ont pas de dossier
+    // (abstraction volontaire), et une sauvegarde exotique pourrait en garder
+    // un. Sans ce repli, l'écran Médical afficherait « effectif au complet »
+    // pendant que le reste du jeu, qui lit `blessureJournees`, refuserait de
+    // sélectionner le joueur — une contradiction silencieuse.
+    return joueur.blessureJournees > 0 ? joueur.blessureJournees : 0;
   }
 
   function estBlesse(joueur) {
@@ -334,7 +340,19 @@
   // --- Lecture pour l'interface (aucun calcul caché côté UI) --------------
   function descriptionBlessure(joueur) {
     const b = joueur.blessure;
-    if (!b) return null;
+    // Joueur indisponible SANS dossier (cf. joursIndisponible) : on décrit ce
+    // qu'on sait, et rien de plus. Mieux vaut « nature non précisée » qu'un
+    // diagnostic inventé.
+    if (!b) {
+      const restant = joursIndisponible(joueur);
+      if (!restant) return null;
+      return {
+        libelle: 'Blessure', zone: 'nature non précisée', gravite: 1,
+        graviteLibelle: LIBELLE_GRAVITE[1], cause: 'match', causeLibelle: LIBELLE_CAUSE.match,
+        dateBlessure: null, joursMin: restant, joursMax: restant,
+        risqueRechute: 0, reprisePrecipitee: false, etape: 'soins', sansDossier: true,
+      };
+    }
     return {
       libelle: b.libelle, zone: b.zone, gravite: b.gravite,
       graviteLibelle: LIBELLE_GRAVITE[b.gravite] || '?',
