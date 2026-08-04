@@ -1536,14 +1536,57 @@ comparait au ratio sur *tous* les points ; elle porte désormais sur les
 seuls points réglables. Ce n'est pas un test affaibli pour faire passer le
 patch : c'est l'ancienne définition du pourcentage qui était le défaut.
 
-### Ce qui reste ouvert après cette tranche
+### P1-39. La préparation doit décrire l'équipe qui joue, pas toujours le premier XV
+- **Statut : CORRIGÉ**
+- Priorité : P1 (suite directe de P1-38, identifiée comme la prochaine étape)
+- Fichiers concernés : `docs/js/club-jour-match.js`, `docs/js/clubUI.js`, tests
+
+**Le manque.** Le sélecteur d'équipe (tranche 4) fait bien basculer
+Composition et Tactique sur l'Équipe B et les Espoirs, mais
+`etatPreparationMatch` appelait `assurerCompositionPourEquipe(saison, 'pro')`
+**en dur** et `prochaineRencontre` ne lisait que `saison.calendrier`. Un
+manager qui prépare un match d'Équipe B n'avait aucune carte de préparation.
+
+**Le défaut trouvé en le mesurant, pas en lisant le code.** Le jour d'un
+match d'Équipe B, les deux cartes du **même écran** annonçaient deux
+rencontres différentes :
+
+    Prochaine échéance   : MATCH DE L'ÉQUIPE B / Castelnau Étoiles / aujourd'hui
+    Préparation du match : Riverange Taureaux · samedi 7 septembre 2024 (dans -1 jours)
+
+C'est exactement la classe de bug corrigée en P1-35, une carte plus bas sur
+le même écran — et elle exhibait en prime un **compte à rebours négatif**.
+
+**Les deux corrections.**
+
+1. `prochaineRencontre(saison, equipe)` et `etatPreparationMatch(saison,
+   equipe)` sont paramétrées par équipe, `'pro'` par défaut : tous les
+   appelants historiques fonctionnent sans modification. Chaque équipe lit
+   SON calendrier (`saison.calendrier`, `saison.competitionB.calendrier`,
+   championnat espoirs) et SON effectif via `effectifPourEquipe` — aucune
+   source nouvelle, aucun écran parallèle.
+2. `!f.joue` ne suffisait pas : une rencontre non jouée peut être
+   **derrière** nous (journée sautée). Une prochaine rencontre est désormais,
+   au plus tôt, aujourd'hui — d'où la disparition du « dans -1 jours ».
+
+Côté UI, la carte lit `prochainArret()` — **la même source que la carte
+« Prochaine échéance »** — et en déduit l'équipe via `equipePourArret`
+(coupes et amicaux se jouent avec le premier XV). L'accord entre les deux
+cartes est donc acquis par construction, pas rétabli au cas par cas. Le
+titre nomme l'équipe préparée : « 🧭 Préparation — Équipe B ».
+
+**Vérifié dans le navigateur, sur les deux tailles.** Le jour du match
+d'Équipe B : « Préparation — Équipe B / Castelnau Dragons · à domicile ·
+dimanche 8 septembre 2024 (aujourd'hui) », identique à l'échéance. Le banc
+y ressort en RECOMMANDÉ (« 1 remplaçant sur 8 ») — l'effectif B est plus
+court, et la carte le dit au lieu de le masquer.
+
+### Ce qui reste ouvert
 - **Le parcours « préparer l'adversaire » reste réparti sur deux écrans** (la
   carte Prochain adversaire du tableau de bord et l'aperçu d'avant-match) :
   fusionner les deux demanderait de retoucher l'aperçu, hors périmètre ici.
-- **Équipe B et Espoirs** partagent bien les mêmes écrans, mais la
-  préparation de match (`etatPreparationMatch`) ne décrit toujours que le
-  **premier XV** : elle appelle `assurerCompositionPourEquipe(saison, 'pro')`
-  en dur. Un manager qui prépare un match d'Équipe B n'a pas l'équivalent.
-  C'est la suite naturelle la plus utile.
 - **La boîte de réception reste 🟡** : une seule catégorie de message porte
   une vraie décision (temps de jeu). Les autres restent informatifs.
+- **L'analyse de l'adversaire est la même pour les trois équipes** : le délai
+  de l'analyste ne distingue pas un adversaire de championnat d'une académie
+  espoirs. Correct fonctionnellement, mais grossier.

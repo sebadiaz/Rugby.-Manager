@@ -638,6 +638,8 @@
   // ce qui n'était pas fait portait le même ⬜ : « Analyse de l'adversaire »
   // (17 jours d'attente, rien à faire) était indiscernable de « Tactique »
   // (un clic). Le manager doit voir d'un coup d'œil ce qui l'attend, LUI.
+  // Quelle équipe la carte de préparation décrit (TODO_AUDIT.md P1-39).
+  const LIBELLE_EQUIPE_PREP = { pro: 'Équipe première', b: 'Équipe B', jeunes: 'Espoirs' };
   const NATURE_PREP = {
     termine: { icone: '✅', libelle: 'Fait' },
     urgent: { icone: '❗', libelle: 'Urgent' },
@@ -650,11 +652,23 @@
     const zone = document.getElementById('clubPreparationMatch');
     if (!carte || !zone) return;
     if (!RMClub.consulteClubJoueur(saison)) { carte.style.display = 'none'; return; }
-    const etat = RMClub.etatPreparationMatch(saison);
+    // On prépare LA rencontre que la carte « Prochaine échéance » annonce —
+    // même source, donc accord par construction (même principe qu'en P1-35).
+    // Avant, le jour d'un match d'Équipe B, l'échéance annonçait l'Équipe B
+    // pendant que la préparation décrivait le match de championnat.
+    const arretPrep = RMClub.prochainArret(saison);
+    const equipePrep = arretPrep ? RMClub.equipePourArret(arretPrep.type) : 'pro';
+    const etat = RMClub.etatPreparationMatch(saison, equipePrep);
     if (!etat.rencontre) { carte.style.display = 'none'; return; }
     carte.style.display = '';
     const r = etat.rencontre;
     const quand = r.jours === 0 ? "aujourd'hui" : r.jours === 1 ? 'demain' : `dans ${r.jours} jours`;
+    // Le titre dit QUELLE équipe est préparée : sans ça, un match d'Équipe B
+    // et un match de championnat se ressemblent trop sur la même carte.
+    const titrePrep = carte.querySelector('h3');
+    if (titrePrep) {
+      titrePrep.textContent = '🧭 Préparation — ' + (LIBELLE_EQUIPE_PREP[etat.equipe] || 'Équipe première');
+    }
     zone.innerHTML =
       `<p class="entetePreparation">${lienClub(r.adversaireId)} · ${r.domicile ? 'à domicile' : "à l'extérieur"} · ${echapperHTML(RMClub.formaterDateLongue(r.date))} (${quand})</p>` +
       `<div class="jaugePreparation"><span style="width:${etat.pretPct}%"></span></div>` +

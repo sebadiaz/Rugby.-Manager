@@ -1781,6 +1781,49 @@ function optionsLancement() {
   verifier('préparation de match : à l\'approche de la rencontre, le rapport de l\'analyste devient disponible',
     (await pagePrep.textContent('#clubPreparationMatch')).includes('Rapport de ton analyste disponible'));
 
+  // --- P1-39 : le jour d'un match d'Équipe B, la préparation doit préparer
+  // CE match. Mesuré avant : l'échéance annonçait « MATCH DE L'ÉQUIPE B /
+  // Castelnau Étoiles / aujourd'hui » pendant que la préparation affichait
+  // « Riverange Taureaux · samedi 7 septembre 2024 (dans -1 jours) ». ---
+  const ctxB = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const pageB = await ctxB.newPage();
+  const erreursB = [];
+  pageB.on('pageerror', (e) => erreursB.push(`PAGEERROR: ${e.message}`));
+  pageB.on('console', (m) => { if (m.type() === 'error' && !m.text().includes('404')) erreursB.push(`CONSOLE: ${m.text()}`); });
+  await pageB.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  await pageB.click('#btnAccueilModeClub');
+  await pageB.fill('#inputNomClub', 'Test Jour Équipe B');
+  await pageB.click('#btnCreerClub');
+  await pageB.waitForTimeout(500);
+  await pageB.evaluate(() => {
+    const K = 'rugbyManager.club.v1';
+    const s = JSON.parse(localStorage.getItem(K));
+    const moi = s.clubJoueur.id;
+    const f = (s.competitionB.calendrier || []).find((x) => x.domicileId === moi || x.exterieurId === moi);
+    s.temps = Object.assign({}, s.temps, window.RMClub.dateDepuisISO(f.date));
+    localStorage.setItem(K, JSON.stringify(s));
+  });
+  await pageB.reload({ waitUntil: 'networkidle' });
+  await pageB.waitForTimeout(250);
+  await pageB.click('#btnContinuerClub');
+  await pageB.waitForTimeout(650);
+  const jourB = await pageB.evaluate(() => ({
+    echeance: (document.getElementById('clubProchainMatch') || {}).innerText || '',
+    prep: (document.getElementById('clubPreparationMatch') || {}).innerText || '',
+    titrePrep: (document.querySelector('#cartePreparationMatch h3') || {}).textContent || '',
+  }));
+  verifier('préparation par équipe : le jour d\'un match d\'Équipe B, la carte prépare CETTE équipe',
+    jourB.titrePrep.includes('Équipe B'));
+  verifier('préparation par équipe : elle nomme le MÊME adversaire que la carte « Prochaine échéance »',
+    (() => {
+      const m = jourB.echeance.split('\n').map((l) => l.trim()).filter(Boolean)[1];
+      return !!m && jourB.prep.includes(m);
+    })());
+  verifier('préparation par équipe : plus jamais de compte à rebours négatif (« dans -1 jours »)',
+    !/dans -\d+ jour/.test(jourB.prep));
+  verifier('préparation par équipe : aucune erreur console', erreursB.length === 0);
+  await ctxB.close();
+
   // Fenêtres de transfert.
   await clicOngletSur(pagePrep, 'transferts');
   await pagePrep.waitForTimeout(250);

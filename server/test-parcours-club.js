@@ -1974,6 +1974,93 @@ test('préparation : la tactique par défaut est FACULTATIVE, pas un échec', ()
   assert.strictEqual(apres.nature, 'termine');
 });
 
+// --- P1-39 : la préparation ne décrivait QUE le premier XV. Le sélecteur
+// d'équipe (tranche 4) fait bien basculer Composition et Tactique sur
+// l'Équipe B et les Espoirs, mais `etatPreparationMatch` appelait
+// `assurerCompositionPourEquipe(saison, 'pro')` en dur : un manager qui
+// prépare un match d'Équipe B n'avait aucune carte de préparation. ---
+
+test('préparation : elle sait décrire la rencontre de l\'Équipe B, pas seulement celle du premier XV', () => {
+  const s = saisonPourJours(807, 'Test Prépa Équipe B');
+  const pro = RMClub.prochaineRencontre(s, 'pro');
+  const b = RMClub.prochaineRencontre(s, 'b');
+  assert.ok(b, 'l\'Équipe B a bien une prochaine rencontre datée');
+  assert.notStrictEqual(RMClub.dateISO(b.date), RMClub.dateISO(pro.date),
+    'l\'Équipe B joue le dimanche, le premier XV le samedi : deux dates distinctes');
+  // La rencontre trouvée doit vraiment venir du calendrier de l'Équipe B.
+  assert.ok((s.competitionB.calendrier || []).some((f) => f.date === RMClub.dateISO(b.date)
+    && (f.domicileId === s.clubJoueur.id || f.exterieurId === s.clubJoueur.id)));
+});
+
+test('préparation : chaque équipe est jugée sur SA composition, pas sur celle du premier XV', () => {
+  const s = saisonPourJours(808, 'Test Prépa Par Équipe');
+  // On règle la tactique du PREMIER XV seulement. Si la préparation de
+  // l'Équipe B lisait le slot « pro », elle se croirait réglée elle aussi.
+  const slotPro = RMClub.slotCompositionPourEquipe(s, 'pro');
+  slotPro.tactique = Object.assign({}, slotPro.tactique, { style: 'large' });
+  const tacPro = RMClub.etatPreparationMatch(s, 'pro').points.find((p) => p.cle === 'tactique');
+  const tacB = RMClub.etatPreparationMatch(s, 'b').points.find((p) => p.cle === 'tactique');
+  assert.strictEqual(tacPro.nature, 'termine');
+  assert.strictEqual(tacB.nature, 'facultatif',
+    'la tactique de l\'Équipe B n\'a pas été touchée : elle ne peut pas être déclarée réglée');
+  // …et régler celle de l'Équipe B ne doit pas non plus déteindre sur le pro.
+  const slotB = RMClub.slotCompositionPourEquipe(s, 'b');
+  slotB.tactique = Object.assign({}, slotB.tactique, { style: 'ferme' });
+  assert.strictEqual(RMClub.etatPreparationMatch(s, 'b').points.find((p) => p.cle === 'tactique').nature, 'termine');
+});
+
+test('préparation : les Espoirs ont eux aussi leur préparation, avec leur propre rencontre', () => {
+  const s = saisonPourJours(809, 'Test Prépa Espoirs');
+  const etat = RMClub.etatPreparationMatch(s, 'jeunes');
+  assert.ok(etat.rencontre, 'les Espoirs ont un championnat daté (P1-31) : ils ont donc une prochaine rencontre');
+  assert.strictEqual(etat.equipe, 'jeunes');
+  assert.strictEqual(etat.points.length, 5, 'les mêmes cinq points, pas un écran parallèle');
+  const NATURES = ['termine', 'urgent', 'recommande', 'facultatif', 'enAttente'];
+  assert.ok(etat.points.every((p) => NATURES.indexOf(p.nature) !== -1));
+});
+
+test('préparation : appelée sans équipe, elle décrit toujours le premier XV (rétrocompatible)', () => {
+  const s = saisonPourJours(810, 'Test Prépa Défaut');
+  const sansArgument = RMClub.etatPreparationMatch(s);
+  const explicite = RMClub.etatPreparationMatch(s, 'pro');
+  assert.strictEqual(sansArgument.equipe, 'pro');
+  assert.strictEqual(RMClub.dateISO(sansArgument.rencontre.date), RMClub.dateISO(explicite.rencontre.date));
+  assert.strictEqual(sansArgument.pretPct, explicite.pretPct);
+});
+
+test('préparation : jamais une rencontre DÉJÀ PASSÉE (« dans -1 jours »)', () => {
+  const s = saisonPourJours(811, 'Test Prépa Passé');
+  const première = RMClub.prochaineRencontre(s, 'pro');
+  // On saute par-dessus la rencontre sans la jouer : elle reste `!joue`,
+  // mais elle est derrière nous. La proposer comme « prochaine » affichait
+  // « dans -1 jours » sur la carte — mesuré dans le navigateur.
+  RMClub.definirDateCourante(s, RMClub.ajouterJours(première.date, 1));
+  const suivante = RMClub.prochaineRencontre(s, 'pro');
+  if (suivante) {
+    assert.ok(suivante.jours >= 0,
+      `une « prochaine » rencontre ne peut pas être dans le passé (jours = ${suivante.jours})`);
+  }
+  const etat = RMClub.etatPreparationMatch(s, 'pro');
+  if (etat.rencontre) assert.ok(etat.rencontre.jours >= 0);
+});
+
+test('préparation : la carte prépare la MÊME rencontre que celle annoncée par l\'échéance', () => {
+  const s = saisonPourJours(812, 'Test Accord Cartes');
+  // On se place au jour du premier match d'Équipe B : l'échéance annonce
+  // l'Équipe B, la préparation doit préparer l'Équipe B — pas le premier XV.
+  const moi = s.clubJoueur.id;
+  const fB = (s.competitionB.calendrier || []).find((f) => f.domicileId === moi || f.exterieurId === moi);
+  assert.ok(fB, 'le club a bien un match d\'Équipe B au calendrier');
+  RMClub.definirDateCourante(s, RMClub.dateDepuisISO(fB.date));
+  const arret = RMClub.prochainArret(s);
+  assert.strictEqual(arret.type, 'b', 'ce jour-là, l\'échéance est bien le match d\'Équipe B');
+  const equipe = RMClub.equipePourArret(arret.type);
+  assert.strictEqual(equipe, 'b');
+  const etat = RMClub.etatPreparationMatch(s, equipe);
+  assert.strictEqual(RMClub.dateISO(etat.rencontre.date), RMClub.dateISO(arret.date),
+    'les deux cartes du même écran doivent parler de la même rencontre');
+});
+
 test('fenêtres de transfert : ouvertes à des dates réelles, dérivées du calendrier', () => {
   const s = saisonPourJours(802, 'Test Fenêtres');
   const fenetres = RMClub.fenetresTransfert(s);

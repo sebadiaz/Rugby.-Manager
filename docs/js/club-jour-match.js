@@ -35,15 +35,38 @@
     return Math.round(JOURS_ANALYSE_ADVERSAIRE * facteur);
   }
 
-  // Prochaine rencontre du premier XV, avec sa date et le nombre de jours
-  // qui nous en séparent — la base de toute la préparation.
-  function prochaineRencontre(saison) {
+  // Calendrier de l'équipe demandée. Chaque équipe a le sien, déjà daté par
+  // le reste du jeu (TODO_AUDIT.md P1-39) — on ne recrée aucune source, on
+  // lit celles qui existent : championnat pour le premier XV, `competitionB`
+  // pour l'Équipe B, championnat espoirs pour les jeunes.
+  function calendrierDeLEquipe(saison, equipe) {
+    if (equipe === 'b') {
+      const comp = saison.competitionB;
+      return (comp && comp.calendrier) ? comp.calendrier : [];
+    }
+    if (equipe === 'jeunes') {
+      const comp = global.RMClub.assurerCompetitionEspoirs(saison);
+      return (comp && comp.calendrier) ? comp.calendrier : [];
+    }
+    return saison.calendrier || [];
+  }
+
+  // Prochaine rencontre de l'équipe demandée (le premier XV par défaut), avec
+  // sa date et le nombre de jours qui nous en séparent — la base de toute la
+  // préparation.
+  function prochaineRencontre(saison, equipe) {
     const RMClub = global.RMClub;
     RMClub.daterCalendrier(saison);
     const c = saison.clubJoueur;
     const aujourdhui = RMClub.dateCourante(saison);
-    const fixtures = (saison.calendrier || [])
-      .filter((f) => !f.joue && (f.domicileId === c.id || f.exterieurId === c.id) && f.date)
+    // `!f.joue` ne suffit pas : une rencontre non jouée peut être DERRIÈRE
+    // nous (journée sautée). La présenter comme « prochaine » affichait
+    // « dans -1 jours » sur la carte. Une prochaine rencontre est, au plus
+    // tôt, aujourd'hui.
+    const isoAujourdhui = RMClub.dateISO(aujourdhui);
+    const fixtures = calendrierDeLEquipe(saison, equipe || 'pro')
+      .filter((f) => !f.joue && (f.domicileId === c.id || f.exterieurId === c.id) && f.date
+        && f.date >= isoAujourdhui)
       .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
     if (!fixtures.length) return null;
     const f = fixtures[0];
@@ -95,15 +118,30 @@
   // de fonctionner sans modification.
   const NATURES_PREPARATION = ['termine', 'urgent', 'recommande', 'facultatif', 'enAttente'];
 
-  function etatPreparationMatch(saison) {
-    const RMClub = global.RMClub;
-    const rencontre = prochaineRencontre(saison);
-    if (!rencontre) return { rencontre: null, points: [], pretPct: 100 };
+  // Quelle équipe joue l'échéance annoncée (TODO_AUDIT.md P1-39) ? La carte
+  // de préparation doit préparer LA rencontre que le tableau de bord annonce,
+  // pas systématiquement celle du premier XV — mesuré : le jour d'un match
+  // d'Équipe B, l'échéance annonçait « Match de l'Équipe B, aujourd'hui »
+  // pendant que la préparation décrivait le match de championnat.
+  // Coupes et amicaux se jouent avec le premier XV.
+  const EQUIPE_POUR_ARRET = { pro: 'pro', coupe: 'pro', amical: 'pro', b: 'b', jeunes: 'jeunes' };
+  function equipePourArret(type) {
+    return EQUIPE_POUR_ARRET[type] || 'pro';
+  }
 
-    const c = saison.clubJoueur;
-    const slot = RMClub.assurerCompositionPourEquipe(saison, 'pro');
+  function etatPreparationMatch(saison, equipe) {
+    const RMClub = global.RMClub;
+    // Le premier XV par défaut : tous les appelants historiques continuent de
+    // fonctionner sans être modifiés.
+    const eq = equipe || 'pro';
+    const rencontre = prochaineRencontre(saison, eq);
+    if (!rencontre) return { rencontre: null, equipe: eq, points: [], pretPct: 100 };
+
+    // Chaque équipe est jugée sur SON effectif et SA composition — sinon
+    // l'Équipe B se croirait préparée parce que le premier XV l'est.
+    const slot = RMClub.assurerCompositionPourEquipe(saison, eq);
     const parId = {};
-    for (const j of c.effectif) parId[j.id] = j;
+    for (const j of RMClub.effectifPourEquipe(saison, eq)) parId[j.id] = j;
     const titulaires = Object.values(slot.compositionTitulaires || {}).map((id) => parId[id]).filter(Boolean);
     const points = [];
 
@@ -210,6 +248,7 @@
     const faits = actionnables.filter((p) => p.nature === 'termine').length;
     return {
       rencontre,
+      equipe: eq,
       analyse,
       points,
       // Compteurs dérivés de la MÊME liste, pour que l'entête de la carte ne
@@ -227,6 +266,6 @@
 
   global.RMClub = Object.assign(global.RMClub || {}, {
     JOURS_ANALYSE_ADVERSAIRE, NATURES_PREPARATION, joursAvantAnalyse, prochaineRencontre,
-    analyseDisponible, etatPreparationMatch,
+    analyseDisponible, etatPreparationMatch, equipePourArret,
   });
 })(window);
