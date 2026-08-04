@@ -1642,8 +1642,30 @@
     joueurAffiche = id;
     const c = saison.clubJoueur;
     const slot = ctx.slot;
+    // Disponibilité tirée du dossier médical réel (TODO_AUDIT.md P1-40) :
+    // le diagnostic et l'étape de reprise, pas un compteur nu.
+    const dMed = RMClub.descriptionBlessure(j);
+    const etapeMed = RMClub.etapeReprise(j);
     const disponibilite = j.pret ? `En prêt — retour dans ${j.pret.dureeRestante} jour(s)`
-      : j.blessureJournees > 0 ? `Blessé — ${j.blessureJournees} jour(s) restant(s)` : 'Disponible';
+      : dMed ? `Blessé — ${dMed.libelle} (${dMed.zone}), retour estimé ` +
+        (dMed.joursMin === dMed.joursMax ? `dans ${dMed.joursMin} jour(s)` : `entre ${dMed.joursMin} et ${dMed.joursMax} jour(s)`)
+      : (etapeMed && etapeMed !== 'complet')
+        ? `En reprise — ${RMClub.LIBELLE_ETAPE[etapeMed]} (${Math.round(RMClub.coefficientReprise(j) * 100)} % de son niveau)`
+        : etapeMed === 'complet' ? `Retour complet — ${Math.round(RMClub.coefficientReprise(j) * 100)} % de son niveau`
+        : 'Disponible';
+    // Antécédents (TODO_AUDIT.md P1-40) : ils ne sont PAS décoratifs — ils
+    // pèsent réellement sur le risque de blessure futur (cf.
+    // facteurAntecedents), le manager doit donc pouvoir les consulter avant
+    // d'aligner un joueur fragile.
+    const antecedents = j.historiqueBlessures || [];
+    const blocAntecedents = antecedents.length
+      ? `<h4 class="titreBlocFiche">Antécédents médicaux (${antecedents.length})</h4>` +
+        `<p class="noteLectureSeule" style="margin:0 0 6px;">Un passé chargé augmente réellement le risque de nouvelle blessure.</p>` +
+        antecedents.slice(0, 6).map((b) =>
+          `<div class="ligneJoueur"><span>${echapperHTML(b.libelle || 'Blessure')} · ${echapperHTML(b.zone || '?')}</span>` +
+          `<b>${echapperHTML(RMClub.LIBELLE_GRAVITE[b.gravite] || '')} · ${b.joursReels || '?'} j` +
+          (b.reprisePrecipitee ? ' · retour précipité' : '') + `</b></div>`).join('')
+      : '';
     const titulaire = slot.compositionTitulaires && Object.values(slot.compositionTitulaires).includes(id);
     const banc = slot.compositionBanc && Object.values(slot.compositionBanc).includes(id);
     const statutCompo = titulaire ? 'Titulaire ce jour' : banc ? 'Remplaçant ce jour' : 'Non retenu ce jour';
@@ -1763,7 +1785,7 @@
       (j.salaire != null ? `<div class="ligneJoueur"><span>Salaire</span><b>${j.salaire} k€/saison</b></div>` : '') +
       (j.valeurEstimee != null && !ctx.modifiable ? `<div class="ligneJoueur"><span>Valeur de transfert estimée</span><b>${j.valeurEstimee} k€</b></div>` : '') +
       `<div class="ligneJoueur"><span>Disponibilité</span><b>${disponibilite}</b></div>` +
-      blocCompetitions + blocHistorique + blocCarriere +
+      blocAntecedents + blocCompetitions + blocHistorique + blocCarriere +
       blocEntrainementIndividuel + actions +
       `<div style="display:flex;gap:8px;margin-top:14px;">` +
       `<button class="alt" id="btnFermerFicheJoueur" style="flex:1;">← Retour à l'effectif</button>` +

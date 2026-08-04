@@ -1684,3 +1684,68 @@ que CLAUDE.md proscrit explicitement.
 10. **Aucun nouvel écran médical** n'est créé.
 11. Les quatre types de match appliquent fatigue ET blessures.
 12. Toutes les suites de tests restent vertes.
+
+### Résultat mesuré (étapes 4 à 8)
+
+**Risque de blessure — blessures par match, XV titulaire :**
+
+| Situation | Avant (modèle plat) | Après |
+|---|---|---|
+| Effectif frais (fatigue 0) | 0,900 | **0,615** |
+| Effectif normal (fatigue 40) | 0,900 | **0,999** |
+| Effectif cuit (fatigue 90) | 0,900 | **1,433** |
+
+Le cas typique retrouve exactement le niveau d'avant ; l'écart frais/cuit
+vaut désormais **2,3×**, là où il était rigoureusement nul. Le calibrage a
+été obtenu PAR MESURE : une première tentative multipliait le risque
+d'entraînement par 55 et produisait 6 messages parasites — corrigé après
+mesure, pas après coup.
+
+Entraînement : **8,8 blessures par saison**, dans la bande 7-10 mesurée en
+P1-26. Durées : médiane 15 j, étendue 3 à 59 j, six types réellement tirés.
+
+**Parcours de reprise, vérifié jour par jour sur une commotion de 25 j :**
+
+```
+j+ 0  soins
+j+25  entraînement individuel réduit   rendement 72 %   injouable
+j+31  reprise collective, sans match   rendement 82 %   injouable
+j+36  temps de jeu limité              rendement 90 %   Équipe B / Espoirs SEULEMENT
+j+40  retour complet                   rendement 96 %   sélectionnable partout
+j+43  rétabli, antécédent conservé
+```
+
+**Migration v4 → v5** : un compteur nu de 11 jours devient un dossier dont
+l'indisponibilité restante vaut exactement 11 jours. Aucun joueur soigné ni
+blessé par la migration.
+
+### Les 12 critères de validation
+
+1. ✅ Diagnostic stable après rechargement — `joursReels` tiré une fois.
+2. ✅ Durées variées — médiane 15 j, étendue 3 à 59 j, 6 types.
+3. ✅ Joueur fatigué plus exposé — 0,615 → 1,433 (×2,3).
+4. ✅ Médecin : raccourcit ET resserre le diagnostic (deux assertions).
+5. ✅ Préparateur : réduit risque et rechute (test dédié).
+6. ✅ Reprise anticipée : risque de rechute ×2,2, vérifié en navigateur.
+7. ✅ Malus mesurable — vitesse et plaquage transmis au moteur multipliés.
+8. ✅ Retour possible par l'Équipe B ou les Espoirs — palier dédié.
+9. ✅ Sauvegardes v4 chargeables — migration testée.
+10. ✅ Aucun écran médical séparé — l'onglet existant est enrichi.
+11. ✅ Les cinq chemins de match appliquent fatigue ET blessures.
+12. ✅ Toutes les suites vertes : 222 données, 298 navigateur, 7 autres.
+
+### Limites restantes, assumées
+
+- **Les effectifs adverses n'ont pas de dossier médical** : ils gardent un
+  compteur nu (24 joueurs × 14 clubs, sauvegarde déjà proche du mégaoctet).
+  Un repli documenté empêche toute contradiction d'affichage.
+- **Le moteur de match n'a pas été modifié** : le malus de reprise passe par
+  `compositionVersJoueursCfg` (vitesse et plaquage), comme la fatigue et le
+  moral. Une blessure ne peut donc pas survenir PENDANT un match, seulement
+  être tirée à la fin — limite héritée de l'architecture (le match est
+  simulé en entier avant d'être regardé, cf. tranche 3).
+- **La gravité ne module pas encore le type de reprise** : une commotion et
+  une fracture de gravité 3 suivent le même parcours en cinq étapes, aux
+  durées près. Un protocole commotion distinct serait la suite naturelle.
+- **Le préparateur physique ne réduit pas la durée de la reprise**, seulement
+  le risque de blessure et de rechute.

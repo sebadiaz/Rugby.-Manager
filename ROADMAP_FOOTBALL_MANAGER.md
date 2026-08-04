@@ -78,8 +78,8 @@ tranche livrée — jamais en avance sur ce qui est réellement dans `main`.
 | Programme hebdomadaire | 🟢 | `club-semaine-entrainement.js` | Semaine d'entraînement réellement programmable séance par séance, avec une intensité qui pèse sur la fatigue et un risque de blessure mesuré (`RISQUE_BLESSURE_PAR_INTENSITE`, calibré à 7-10 blessures d'entraînement par saison). |
 | Entraînement collectif ET individuel | 🟢 | `club-condition-joueurs.js` | `entrainementIndividuel` par joueur, prioritaire sur le collectif. |
 | Progression liée au temps de jeu et aux entraîneurs | 🟡 | `club-condition-joueurs.js`, `club-personnel.js` | Effet entraîneur réel. Progression appliquée à TOUT l'effectif, sans lien avec le temps de jeu réel. **Tranche 1** : un joueur qui `veutPartir` s'arrête de progresser — premier lien réel entre état du joueur et entraînement. |
-| Blessures crédibles | 🟡 | `club-condition-joueurs.js` | Probabilité uniforme (6%/titulaire/journée), aucune variation par poste/âge/fatigue. |
-| Diagnostic, durée d'absence, reprise progressive | 🔴 | `club-condition-joueurs.js` | Compteur générique de journées, retour instantané à pleine forme. |
+| Blessures crédibles | 🟢 | `club-medical.js` | **Tranche 12** : six types (entorse, déchirure, contusion, commotion, luxation, fracture), zone, gravité, cause. Le risque dépend réellement du poste (pilier 1,45 contre arrière 0,80), de l'âge, de la fatigue et des antécédents — mesuré : 0,615 blessure par match pour un XV frais contre 1,433 pour un XV cuit, là où l'ancien modèle donnait 0,900 dans tous les cas. |
+| Diagnostic, durée d'absence, reprise progressive | 🟢 | `club-medical.js` | **Tranche 12** : le diagnostic est une FOURCHETTE que le médecin resserre autour d'une durée réelle tirée une seule fois (donc stable après rechargement). Reprise en cinq paliers — soins, individuel, collectif, temps de jeu limité en Équipe B/Espoirs, retour complet — avec un rendement (72 % à 96 %) réellement transmis au moteur. Le manager peut accélérer le retour contre un risque de rechute plus que doublé. |
 | Gestion de la fatigue et rotation de l'effectif | 🟡 | `club-composition.js` | Fatigue réelle et répercutée en match, mais rien n'aide/n'oblige à faire tourner l'effectif. |
 
 ## 6. Club et direction
@@ -231,3 +231,16 @@ tranche livrée — jamais en avance sur ce qui est réellement dans `main`.
 
 - **Statuts corrigés dans ce document après vérification dans le code** (plusieurs fonctionnalités marquées 🔴 étaient en réalité livrées) : vraie date et calendrier, événements entre les matchs, bouton « Jour suivant », historique/statistiques par joueur, fenêtres de transferts, rotation/fatigue/blessures des équipes IA, programme hebdomadaire, championnat espoirs. Deux lignes manquantes ajoutées : coupes à élimination directe et matchs amicaux.
 - **Reste hors périmètre, non traité :** matchs IA-IA toujours résolus abstraitement, clubs du Monde sans effectif, palmarès non cumulé, mercato entre clubs IA, carrière du manager (domaine 8) entièrement absente.
+
+### Tranche 12 — Centre médical 2.0 et reprise progressive (livrée)
+- **Demande explicite de l'utilisateur :** remplacer le compteur `blessureJournees` par de vraies blessures persistantes (type, zone, gravité, date, estimation min/max, cause, risque de rechute, état de récupération, niveau de reprise autorisé), avec un risque dépendant réellement du poste, de l'âge, de la fatigue, de l'intensité d'entraînement et des antécédents — **sans créer d'écran parallèle**.
+- **Domaines touchés :** 5 (entraînement et médical), 2 (effectif), 3 (composition), 1 (boucle quotidienne).
+- **Fichiers :** `docs/js/club-medical.js` (**nouveau**), `club-condition-joueurs.js`, `club-semaine-entrainement.js`, `club-evenements.js`, `club-composition.js`, `club-espoirs.js`, `club-a-traiter.js`, `club-sauvegarde.js`, `club.js`, `clubUI.js`, `docs/index.html`, `docs/css/style.css`, tests.
+
+**Le défaut le plus grave, trouvé en lisant clubUI.js.** Les cinq types de match ne se comportaient pas pareil : l'**Équipe B n'appliquait NI fatigue NI blessure**, les Espoirs une fatigue forfaitaire de +15 sans aucune blessure, et coupe et amical oubliaient le facteur préparateur. Un joueur pouvait donc disputer **toute la saison avec la réserve sans jamais s'user ni se blesser**. Les cinq chemins passent désormais par un point d'entrée unique.
+
+**Ce que le joueur voit de mieux :** l'onglet Médical (le même, enrichi) annonce le diagnostic complet et une fourchette de retour honnête plutôt qu'un compteur exact que le staff n'aurait aucun moyen de connaître ; une carte suit les joueurs en reprise avec le malus exact appliqué au moteur ; la fiche joueur porte les antécédents, qui pèsent réellement sur le risque futur ; « À traiter » nomme la blessure la plus grave au lieu d'un compte générique.
+
+**Une vraie décision :** « Accélérer le retour » annonce sa conséquence avant qu'on la prenne (jours gagnés, risque de rechute avant/après) et l'applique réellement — une rechute renvoie à l'infirmerie pour une blessure complète.
+
+**Choix technique :** `j.blessure` est la source de vérité ; `blessureJournees` survit en **miroir dérivé** écrit par une seule fonction, ce qui laisse fonctionner les 77 sites de lecture existants sans les réécrire — la refonte massive que CLAUDE.md proscrit.
