@@ -1715,6 +1715,18 @@ j+40  retour complet                   rendement 96 %   sélectionnable partout
 j+43  rétabli, antécédent conservé
 ```
 
+**Rechute — conséquence réelle de l'accélération, sur 5 000 cas simulés
+avec un match par semaine pendant la reprise :**
+
+| Retour | Rechute pendant la reprise |
+|---|---|
+| Normal | **6,8 %** |
+| Accéléré deux fois | **9,3 %** (×1,37) |
+
+Une première mesure faisait jouer un match CHAQUE JOUR de la reprise et
+donnait 70,9 % contre 82,6 % : chiffres saturés et irréalistes, écartés.
+Le rythme d'un match hebdomadaire est le seul honnête ici.
+
 **Migration v4 → v5** : un compteur nu de 11 jours devient un dossier dont
 l'indisponibilité restante vaut exactement 11 jours. Aucun joueur soigné ni
 blessé par la migration.
