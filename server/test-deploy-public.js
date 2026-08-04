@@ -3,10 +3,17 @@
 // deploy-pages.yml déclenchait un déploiement en production sur CHAQUE push
 // vers une branche de session Claude, pas seulement "main" (aucune condition
 // sur le job "deploy"). Ce script vérifie la VRAIE URL publique après
-// déploiement (pas seulement les fichiers sources) : présence des onglets
-// Équipe B / Monde, présence d'un identifiant de version (docs/version.json,
-// généré pendant le déploiement), et chargement sans erreur des scripts
-// principaux réellement référencés par index.html.
+// déploiement (pas seulement les fichiers sources) : présence du sélecteur
+// d'équipe et de tous les onglets attendus, présence d'un identifiant de
+// version (docs/version.json, généré pendant le déploiement), et chargement
+// sans erreur des scripts principaux réellement référencés par index.html.
+//
+// Les onglets vérifiés doivent suivre la navigation RÉELLE : ce fichier a
+// longtemps exigé un onglet « Équipe B » supprimé depuis P1-19, ce qui
+// faisait échouer le job `verify` de CHAQUE déploiement alors que le site
+// était correctement publié. Un test de déploiement périmé est pire qu'un
+// test absent : il crie au loup à chaque mise en ligne, et on finit par ne
+// plus regarder.
 //
 // Usage :
 //   node server/test-deploy-public.js [URL] [--expect-commit <sha>]
@@ -54,14 +61,34 @@ async function recupererTexte(chemin) {
     indexHtml = corps;
   });
 
-  await test('onglet "Équipe B" présent sur le site public', () => {
-    assert.ok(/data-onglet="equipeb"/.test(indexHtml), 'bouton onglet Équipe B introuvable dans le HTML public');
-    assert.ok(indexHtml.includes('Équipe B'), 'libellé "Équipe B" introuvable dans le HTML public');
+  // Ce test cherchait `data-onglet="equipeb"` — un onglet SUPPRIMÉ depuis
+  // P1-19 : l'Équipe B et les Espoirs ne sont plus des onglets séparés, ils
+  // se choisissent dans le sélecteur d'équipe commun à tous les écrans. Le
+  // test n'avait jamais été mis à jour, et faisait donc échouer le job
+  // `verify` de CHAQUE déploiement — alors que `test` et `deploy`, eux,
+  // passaient. On vérifie désormais ce qui existe réellement.
+  await test('le sélecteur d\'équipe commun est présent sur le site public', () => {
+    assert.ok(/id="selEquipeContexte"/.test(indexHtml),
+      'sélecteur d\'équipe introuvable — c\'est LUI qui donne accès à l\'Équipe B et aux Espoirs depuis P1-19');
   });
 
-  await test('onglet "Monde" présent sur le site public', () => {
-    assert.ok(/data-onglet="monde"/.test(indexHtml), 'bouton onglet Monde introuvable dans le HTML public');
-    assert.ok(indexHtml.includes('>Monde<'), 'libellé "Monde" introuvable dans le HTML public');
+  // Les onglets réellement attendus. Une régression de navigation (onglet
+  // disparu d'un déploiement) doit se voir ici, sur le site public.
+  const ONGLETS_ATTENDUS = [
+    'dashboard', 'effectif', 'composition', 'tactique', 'entrainement',
+    'transferts', 'personnel', 'classement', 'calendrier', 'monde',
+    'finances', 'medical', 'stats',
+  ];
+  await test('tous les onglets attendus sont présents sur le site public', () => {
+    const absents = ONGLETS_ATTENDUS.filter((o) => !indexHtml.includes(`data-onglet="${o}"`));
+    assert.strictEqual(absents.length, 0, `onglet(s) absent(s) du HTML public : ${absents.join(', ')}`);
+  });
+
+  await test('Classement et Calendrier sont bien DEUX onglets distincts (P1-33)', () => {
+    assert.ok(indexHtml.includes('>Classement<'), 'libellé "Classement" introuvable dans le HTML public');
+    assert.ok(indexHtml.includes('>Calendrier<'), 'libellé "Calendrier" introuvable dans le HTML public');
+    assert.ok(!/data-onglet="autresclubs"/.test(indexHtml),
+      'l\'ancien onglet "Autres clubs" est encore là : le site public est en retard sur main');
   });
 
   await test('version.json présent et contient un commit exploitable', async () => {
