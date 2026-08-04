@@ -51,6 +51,7 @@ new Function('window', require('fs').readFileSync(require('path').join(__dirname
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-amicaux.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-coupes.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-a-traiter.js'), 'utf8'))(global.window);
+new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-medical.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-sauvegarde.js'), 'utf8'))(global.window);
 // world.js : nécessaire pour les tests de navigation par pays/championnat
 // (P1-28) — l'écosystème mondial fournit 12 pays et leurs divisions.
@@ -2380,6 +2381,7 @@ const clubSemaineSrcPourRechargement = require('fs').readFileSync(require('path'
 const clubJourMatchSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-jour-match.js'), 'utf8');
 const clubDirectionSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-direction.js'), 'utf8');
 const clubEvenementsSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-evenements.js'), 'utf8');
+const clubMedicalSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-medical.js'), 'utf8');
 function chargerInstanceFraicheClub() {
   const ctx = {};
   ctx.window = ctx;
@@ -2408,6 +2410,7 @@ function chargerInstanceFraicheClub() {
   new Function('window', clubSemaineSrcPourRechargement)(ctx);
   new Function('window', clubJourMatchSrcPourRechargement)(ctx);
   new Function('window', clubDirectionSrcPourRechargement)(ctx);
+  new Function('window', clubMedicalSrcPourRechargement)(ctx);
   new Function('window', clubEvenementsSrcPourRechargement)(ctx);
   new Function('window', clubCompetitionsSrcPourRechargement)(ctx);
   new Function('window', clubEquipesSrcPourRechargement)(ctx);
@@ -3682,6 +3685,183 @@ test('à traiter : un club sain n\'affiche AUCUNE ligne inventée', () => {
   assert.deepStrictEqual(RMClub.elementsATraiter(s), [],
     'rien à traiter doit vouloir dire une liste vide, pas une carte décorative');
 });
+
+
+// --- P1-40 : Centre médical 2.0 et reprise progressive ---------------------
+// Écrits AVANT le code, chacun vérifié en échec sur le modèle actuel.
+
+test('médical : une blessure est un OBJET persistant, pas un simple compteur', () => {
+  const s = saisonPourAvance(1400);
+  const j = s.clubJoueur.effectif[0];
+  const b = RMClub.infligerBlessure(s, j, 'match', creerRng(7));
+  assert.ok(b, 'infligerBlessure doit renvoyer la blessure créée');
+  for (const champ of ['type', 'zone', 'gravite', 'dateBlessure', 'joursMin', 'joursMax',
+                       'cause', 'risqueRechute', 'etape']) {
+    assert.ok(b[champ] != null, `la blessure doit porter « ${champ} »`);
+  }
+  assert.strictEqual(b.cause, 'match');
+  assert.strictEqual(j.blessure, b, 'la blessure vit SUR le joueur');
+  assert.ok(j.blessureJournees > 0, 'le miroir dérivé doit refléter l\'indisponibilité');
+});
+
+test('médical : le diagnostic est STABLE après un aller-retour de sauvegarde', () => {
+  const s = saisonPourAvance(1401);
+  const j = s.clubJoueur.effectif[0];
+  RMClub.infligerBlessure(s, j, 'match', creerRng(11));
+  const avant = JSON.parse(JSON.stringify(j.blessure));
+  const recharge = JSON.parse(JSON.stringify(s));
+  const jApres = recharge.clubJoueur.effectif.find((x) => x.id === j.id);
+  assert.deepStrictEqual(jApres.blessure, avant,
+    'un rechargement ne doit RIEN retirer au hasard : même type, même zone, même durée');
+  assert.strictEqual(RMClub.joursIndisponible(jApres), RMClub.joursIndisponible(j));
+});
+
+test('médical : deux blessures ne donnent pas toujours la même durée', () => {
+  const s = saisonPourAvance(1402);
+  const durees = new Set(), types = new Set();
+  const rng = creerRng(3);
+  for (let i = 0; i < 40; i++) {
+    const j = s.clubJoueur.effectif[i % s.clubJoueur.effectif.length];
+    j.blessure = null; j.blessureJournees = 0;
+    const b = RMClub.infligerBlessure(s, j, 'match', rng);
+    durees.add(RMClub.joursIndisponible(j)); types.add(b.type);
+  }
+  assert.ok(durees.size >= 5, `des durées variées attendues, obtenu ${durees.size} valeur(s)`);
+  assert.ok(types.size >= 3, `des types de blessure variés attendus, obtenu ${types.size}`);
+});
+
+test('médical : un joueur FATIGUÉ se blesse davantage qu\'un joueur frais', () => {
+  const s = saisonPourAvance(1403);
+  const modele = s.clubJoueur.effectif.find((j) => j.poste === 'P') || s.clubJoueur.effectif[0];
+  function compter(fatigue) {
+    const rng = creerRng(99);
+    let n = 0;
+    for (let i = 0; i < 4000; i++) {
+      const j = Object.assign({}, modele, { fatigue, blessure: null, blessureJournees: 0, historiqueBlessures: [] });
+      if (RMClub.tirerBlessure(rng, j, { cause: 'match' })) n++;
+    }
+    return n;
+  }
+  const frais = compter(0), cuit = compter(95);
+  assert.ok(cuit > frais * 1.4,
+    `un joueur cuit doit se blesser NETTEMENT plus : frais=${frais}, cuit=${cuit}`);
+});
+
+test('médical : le poste, l\'âge et les antécédents pèsent sur le risque', () => {
+  const s = saisonPourAvance(1404);
+  const base = s.clubJoueur.effectif[0];
+  function compter(patch) {
+    const rng = creerRng(1234);
+    let n = 0;
+    for (let i = 0; i < 4000; i++) {
+      const j = Object.assign({}, base, { fatigue: 40, blessure: null, blessureJournees: 0, historiqueBlessures: [] }, patch);
+      if (RMClub.tirerBlessure(rng, j, { cause: 'match' })) n++;
+    }
+    return n;
+  }
+  assert.ok(compter({ poste: 'P' }) > compter({ poste: 'AR' }),
+    'un pilier doit se blesser plus qu\'un arrière');
+  assert.ok(compter({ age: 35 }) > compter({ age: 22 }),
+    'un joueur de 35 ans doit se blesser plus qu\'un joueur de 22 ans');
+  const antecedents = [{ type: 'dechirure', zone: 'ischio', gravite: 3 }, { type: 'entorse', zone: 'cheville', gravite: 2 }];
+  assert.ok(compter({ historiqueBlessures: antecedents }) > compter({ historiqueBlessures: [] }),
+    'des antécédents doivent augmenter le risque');
+});
+
+test('médical : le médecin raccourcit l\'indisponibilité ET resserre le diagnostic', () => {
+  const s = saisonPourAvance(1405);
+  function mesurer(niveauMedecin) {
+    s.clubJoueur.personnel = niveauMedecin ? [{ poste: 'medecin', niveau: niveauMedecin, nom: 'Doc', salaire: 10 }] : [];
+    let total = 0, fourchette = 0;
+    const rng = creerRng(555);
+    for (let i = 0; i < 60; i++) {
+      const j = s.clubJoueur.effectif[i % s.clubJoueur.effectif.length];
+      j.blessure = null; j.blessureJournees = 0;
+      const b = RMClub.infligerBlessure(s, j, 'match', rng);
+      total += RMClub.joursIndisponible(j);
+      fourchette += (b.joursMax - b.joursMin);
+    }
+    return { duree: total / 60, fourchette: fourchette / 60 };
+  }
+  const sans = mesurer(0), avec = mesurer(95);
+  assert.ok(avec.duree < sans.duree, `le médecin doit raccourcir : sans=${sans.duree}, avec=${avec.duree}`);
+  assert.ok(avec.fourchette < sans.fourchette,
+    `le médecin doit resserrer le diagnostic : sans=±${sans.fourchette}, avec=±${avec.fourchette}`);
+});
+
+test('médical : reprise en 5 étapes, franchies dans l\'ordre', () => {
+  const s = saisonPourAvance(1406);
+  const j = s.clubJoueur.effectif[0];
+  RMClub.infligerBlessure(s, j, 'match', creerRng(21));
+  const vues = [];
+  for (let i = 0; i < 120; i++) {
+    const e = RMClub.etapeReprise(j);
+    if (e && vues[vues.length - 1] !== e) vues.push(e);
+    RMClub.avancerJourMedical(s, j);
+  }
+  assert.deepStrictEqual(vues, RMClub.ETAPES_REPRISE,
+    `les cinq étapes doivent être franchies dans l'ordre, obtenu : ${vues.join(' -> ')}`);
+});
+
+test('médical : un joueur en reprise joue avec un MALUS mesurable', () => {
+  const s = saisonPourAvance(1407);
+  const j = s.clubJoueur.effectif[0];
+  const sain = RMClub.coefficientReprise(j);
+  assert.strictEqual(sain, 1, 'un joueur sain ne subit aucun malus');
+  RMClub.infligerBlessure(s, j, 'match', creerRng(31));
+  while (RMClub.joursIndisponible(j) > 0) RMClub.avancerJourMedical(s, j);
+  const enReprise = RMClub.coefficientReprise(j);
+  assert.ok(enReprise < 1, `un joueur tout juste rétabli doit être diminué (obtenu ${enReprise})`);
+  // …et le malus doit RÉELLEMENT descendre jusqu'au moteur, pas rester
+  // affiché dans l'onglet Médical.
+  const sansReprise = Object.assign({}, j, { reprise: null, blessure: null });
+  const cfgSain = RMClub.compositionVersJoueursCfg([sansReprise], { 1: j.id });
+  const cfgReprise = RMClub.compositionVersJoueursCfg([j], { 1: j.id });
+  assert.ok(cfgReprise['1'].vitesse < cfgSain['1'].vitesse,
+    `la vitesse transmise au moteur doit baisser (sain ${cfgSain['1'].vitesse}, reprise ${cfgReprise['1'].vitesse})`);
+  assert.ok(cfgReprise['1'].plaquage < cfgSain['1'].plaquage,
+    'le plaquage transmis au moteur doit baisser aussi');
+});
+
+test('médical : accélérer le retour augmente RÉELLEMENT le risque de rechute', () => {
+  const s = saisonPourAvance(1408);
+  const j = s.clubJoueur.effectif[0];
+  RMClub.infligerBlessure(s, j, 'match', creerRng(41));
+  const avant = j.blessure.risqueRechute;
+  const joursAvant = RMClub.joursIndisponible(j);
+  const ok = RMClub.accelererRetour(s, j);
+  assert.strictEqual(ok, true, 'accélérer doit être possible sur un joueur blessé');
+  assert.ok(RMClub.joursIndisponible(j) < joursAvant, 'le retour doit être réellement avancé');
+  assert.ok(j.blessure.risqueRechute > avant,
+    `le risque de rechute doit monter (avant ${avant}, après ${j.blessure.risqueRechute})`);
+  assert.strictEqual(j.blessure.reprisePrecipitee, true);
+});
+
+test('médical : une blessure guérie laisse un ANTÉCÉDENT', () => {
+  const s = saisonPourAvance(1409);
+  const j = s.clubJoueur.effectif[0];
+  RMClub.infligerBlessure(s, j, 'match', creerRng(51));
+  const type = j.blessure.type;
+  for (let i = 0; i < 200 && (j.blessure || RMClub.etapeReprise(j)); i++) RMClub.avancerJourMedical(s, j);
+  assert.ok((j.historiqueBlessures || []).length >= 1, 'la blessure doit rester dans l\'historique');
+  assert.strictEqual(j.historiqueBlessures[0].type, type);
+});
+
+test('médical : une sauvegarde v4 (compteur nu) migre sans perte', () => {
+  const s = saisonPourAvance(1410);
+  const j = s.clubJoueur.effectif[0];
+  // Sauvegarde à l'ancienne : un compteur, aucun objet blessure.
+  j.blessureJournees = 9; delete j.blessure; delete j.historiqueBlessures;
+  const brute = JSON.parse(JSON.stringify(s));
+  brute.version = 4;
+  const res = RMClub.migrerSaison(brute);
+  assert.strictEqual(res.ok, true, `la migration doit réussir (${res.raison || ''})`);
+  const jm = res.saison.clubJoueur.effectif.find((x) => x.id === j.id);
+  assert.ok(jm.blessure, 'le compteur nu doit devenir une vraie blessure');
+  assert.strictEqual(RMClub.joursIndisponible(jm), 9, 'l\'indisponibilité restante est PRÉSERVÉE');
+  assert.ok(Array.isArray(jm.historiqueBlessures));
+});
+
 
 console.log(`\n${nbTests} test(s) exécuté(s).`);
 if (process.exitCode) {

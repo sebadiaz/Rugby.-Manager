@@ -110,20 +110,34 @@
   // `saison` (optionnel, 5e paramètre) : si fourni, une nouvelle blessure
   // génère un message RÉEL dans la boîte de réception — omis dans les
   // scripts/tests qui n'ont pas de saison complète sous la main.
-  function faireProgresserBlessures(rng, effectif, composition, facteurMedecin, saison) {
-    const fm = facteurMedecin != null ? facteurMedecin : 1;
+  // Depuis P1-40, ni le TIRAGE ni la DURÉE ne vivent ici : tout passe par
+  // club-medical.js, seule source de vérité. Avant, c'était un `rng() < 0.06`
+  // PLAT — un pilier de 34 ans cuit à 95 de fatigue et un ailier de 21 ans
+  // frais se blessaient exactement autant. Le risque dépend désormais
+  // réellement du poste, de l'âge, de la fatigue et des antécédents.
+  // `facteurPreparateur` (<1 pour un bon préparateur) réduit le risque ;
+  // `facteurMedecin` (>=1) raccourcit la convalescence et affine le
+  // diagnostic. Un joueur en reprise peut RECHUTER, et d'autant plus que le
+  // manager a précipité son retour.
+  function faireProgresserBlessures(rng, effectif, composition, facteurMedecin, saison, facteurPreparateur) {
+    const RMClub = global.RMClub;
     const titulairesIds = new Set(Object.values(composition || {}));
+    const nouvelles = [];
     for (const j of effectif) {
       if (!titulairesIds.has(j.id)) continue;
-      if (rng() < 0.06) {
-        // Durée en JOURS depuis le passage au calendrier quotidien
-        // (TODO_AUDIT.md P1-22) : 7 à 28 jours, soit 1 à 4 semaines, au lieu
-        // de 1 à 3 « journées » de championnat. Le médecin raccourcit
-        // réellement l'indisponibilité.
-        j.blessureJournees = Math.max(2, Math.round((7 + Math.floor(rng() * 22)) / fm));
-        if (saison) global.RMClub.ajouterMessage(saison, 'blessure', 'Blessure', `${j.nom} est blessé pour ${j.blessureJournees} jour(s).`);
+      if (!RMClub.tirerBlessure(rng, j, { cause: 'match', facteurPreparateur })) continue;
+      const rechute = !!j.reprise;
+      const b = RMClub.infligerBlessure(saison, j, 'match', rng, { facteurMedecin, facteurPreparateur });
+      nouvelles.push({ joueur: j, blessure: b, rechute });
+      if (saison) {
+        const d = RMClub.descriptionBlessure(j);
+        global.RMClub.ajouterMessage(saison, 'blessure', rechute ? 'Rechute' : 'Blessure',
+          `${j.nom} — ${d.libelle} (${d.zone}), gravité ${d.graviteLibelle.toLowerCase()}. ` +
+          `Indisponibilité estimée entre ${d.joursMin} et ${d.joursMax} jour(s).` +
+          (rechute ? ' Il était encore en phase de reprise.' : ''));
       }
     }
+    return nouvelles;
   }
 
   global.RMClub = Object.assign(global.RMClub || {}, {

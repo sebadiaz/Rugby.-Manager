@@ -85,10 +85,21 @@
       // dessous — petit effet borné, jamais décoratif (cf. appliquerMoral).
       const ajustMoral = Math.round((((j.moral != null ? j.moral : 65) - 60) / 100) * 8);
       const ajustement = ajustMoral - malusFatigue;
+      // Reprise après blessure (TODO_AUDIT.md P1-40) : un joueur qui sort de
+      // l'infirmerie n'est PAS celui d'avant. Son coefficient de reprise
+      // (0,72 au premier palier, 0,96 au dernier) multiplie réellement ce que
+      // le moteur reçoit — c'est ce qui rend le retour progressif mesurable
+      // en match, et pas seulement affiché dans l'onglet Médical.
+      const coefReprise = global.RMClub.coefficientReprise ? global.RMClub.coefficientReprise(j) : 1;
+      const enReprise = coefReprise > 0 && coefReprise < 1;
+      const app = (valeur) => {
+        const base = Math.max(20, valeur + ajustement);
+        return enReprise ? Math.max(20, Math.round(base * coefReprise)) : base;
+      };
       cfg[numero] = {
         poste: POSTE_REQUIS[numero],
-        vitesse: Math.max(20, j.vitesse + ajustement),
-        plaquage: Math.max(20, j.plaquage + ajustement),
+        vitesse: app(j.vitesse),
+        plaquage: app(j.plaquage),
         // `couloir` (couloir latéral au repos, 0-70 m) et `tendance`
         // (proximité au ballon) décrivent le POSTE OCCUPÉ CE JOUR-LÀ, pas
         // l'individu : c'est le maillot qui dit où se place un joueur, comme
