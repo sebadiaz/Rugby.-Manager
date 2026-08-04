@@ -444,12 +444,14 @@
           </div>
         </div>
 
-        <!-- Autres clubs : FICHE D'IDENTITÉ d'un adversaire (réputation,
-             forme, forces/faiblesses, confrontations directes). Son effectif,
-             sa composition, sa tactique, son calendrier et son classement ne
-             sont PAS dupliqués ici : ce sont les mêmes écrans que pour ses
-             propres équipes, via le sélecteur d'équipe commun (TODO_AUDIT.md
-             P1-19) — cette carte propose le raccourci qui l'y emmène. -->
+        <!-- Classement : UNIQUEMENT le classement (TODO_AUDIT.md P1-33).
+             Cet onglet a remplacé l'ancien « Autres clubs » — on ne choisit
+             jamais un club dans une liste (règle P1-20) : on clique son nom
+             là où il apparaît déjà, ici dans le tableau. La fiche d'identité
+             d'un adversaire (réputation, forme, forces/faiblesses,
+             confrontations) vit désormais dans #carteVueClubConsulte, sur la
+             page du club ouvert — elle n'a pas disparu, elle a déménagé.
+             Le calendrier a sa propre page : deux choses différentes. -->
         <div class="voletOnglet" data-volet="classement" style="display:none;">
           <div class="enTetePage"><span class="categoriePage">Compétition</span><h2>Classement</h2><p>Le classement de n'importe quel championnat. Clique le nom d'un club pour l'ouvrir.</p></div>
           <div class="emplacementNavigationCompetition"></div>
@@ -465,10 +467,6 @@
           </div>
         </div>
 
-        <!-- Calendrier & classement : écran UNIQUE lui aussi — championnat
-             principal (premier XV et clubs adverses), championnat Équipe B ou
-             bilan des espoirs selon l'équipe sélectionnée, jamais un onglet
-             recopié par compétition (TODO_AUDIT.md P1-19). -->
         <!-- Calendrier : UNIQUEMENT les rencontres (TODO_AUDIT.md P1-33).
              Le classement a sa propre page — ce sont deux choses différentes,
              elles ne partagent plus le même écran. La navigation par pays et
