@@ -648,6 +648,8 @@
     enAttente: { icone: '⏳', libelle: 'En attente' },
   };
   function rafraichirPreparationMatch() {
+    // Carte retirée du tableau de bord en P1-41 : la fonction reste, inerte,
+    // pour ne rien casser si un autre écran la rappelle.
     const carte = document.getElementById('cartePreparationMatch');
     const zone = document.getElementById('clubPreparationMatch');
     if (!carte || !zone) return;
@@ -687,6 +689,152 @@
           `<span class="badgeNature nature-${p.nature}">${n.libelle}</span></div>`;
       }).join('');
   }
+
+  // --- ÉCRAN UNIQUE « Préparer le match » (TODO_AUDIT.md P1-41) -----------
+  // Huit sections dans l'ordre, toutes alimentées par RMClub.dossierPreparation
+  // — qui lit lui-même prochainArret(). Aucun écran par équipe : la Première,
+  // l'Équipe B, les Espoirs, les coupes et les amicaux passent tous par ici.
+  function sectionPreparer(titre, corps, classe) {
+    return `<div class="carteClub blocPreparer${classe ? ' ' + classe : ''}"><h3>${titre}</h3>${corps}</div>`;
+  }
+
+  function rafraichirPreparerMatch() {
+    const zone = document.getElementById('clubPreparer');
+    if (!zone) return;
+    if (!RMClub.consulteClubJoueur(saison)) { zone.innerHTML = ''; return; }
+    const d = RMClub.dossierPreparation(saison);
+    if (!d) {
+      zone.innerHTML = '<div class="carteClub"><p>Aucune rencontre à préparer pour le moment.</p></div>';
+      return;
+    }
+    const quand = d.joursRestants === 0 ? "aujourd'hui"
+      : d.joursRestants === 1 ? 'demain' : `dans ${d.joursRestants} jours`;
+    // Le nom, TOUJOURS. `lienClub` renvoie « ? » pour une entité qui n'est
+    // pas un club consultable — une académie du championnat espoirs, par
+    // exemple : mesuré, le nom de l'adversaire disparaissait purement et
+    // simplement de la vue pour un match de jeunes. Le dossier, lui, connaît
+    // ce nom : on le montre, cliquable seulement quand ça a un sens.
+    const lien = d.adversaireId ? lienClub(d.adversaireId) : '?';
+    const adversaire = d.adversaireNom
+      ? (lien !== '?' ? lien : echapperHTML(d.adversaireNom))
+      : '<span style="color:var(--text-faint);">adversaire à déterminer</span>';
+
+    // 1) La rencontre exacte.
+    const html = [];
+    html.push(sectionPreparer('🗓️ La rencontre',
+      `<div class="echeancePrincipale">` +
+      `<span class="echeanceType">${echapperHTML(d.competition)}${d.tour ? ' · ' + echapperHTML(d.tour) : ''}</span>` +
+      `<span class="echeanceAdversaire">${adversaire}</span>` +
+      `<span class="echeanceDetail">${d.domicile ? 'à domicile' : "à l'extérieur"} · ` +
+      `${echapperHTML(RMClub.formaterDateLongue(d.rencontre.date))} · ${echapperHTML(quand)}</span>` +
+      `<span class="echeanceContexte">${echapperHTML(d.libelleEquipe)}</span></div>`));
+
+    // 2) Actions urgentes ou recommandées — la MÊME liste que partout
+    // ailleurs, avec les natures de P1-38.
+    const aRegler = d.etat.points.filter((p) => p.nature === 'urgent' || p.nature === 'recommande');
+    const lignes = (pts) => pts.map((p) => {
+      const n = NATURE_PREP[p.nature] || NATURE_PREP.facultatif;
+      return `<div class="lignePreparation ${p.statut} nature-${p.nature}" data-nature="${p.nature}"` +
+        ` data-onglet="${ONGLET_POUR_POINT[p.cle] || 'dashboard'}">` +
+        `<span class="statutPreparation">${n.icone}</span>` +
+        `<span class="corpsPreparation"><b>${echapperHTML(p.libelle)}</b><span>${echapperHTML(p.detail)}</span></span>` +
+        `<span class="badgeNature nature-${p.nature}">${n.libelle}</span></div>`;
+    }).join('');
+    html.push(sectionPreparer(`✅ À régler (${d.etat.resume.faits}/${d.etat.resume.actionnables})`,
+      `<div class="jaugePreparation"><span style="width:${d.etat.pretPct}%"></span></div>` +
+      `<p class="pctPreparation">${d.etat.pretPct} % de ce qui est réglable aujourd'hui` +
+      (d.etat.resume.enAttente ? ` · ${d.etat.resume.enAttente} point(s) en attente` : '') + `</p>` +
+      (aRegler.length ? lignes(aRegler)
+        : '<p style="color:var(--text-dim);margin:0;">Rien d\'urgent : tout ce qui pouvait être réglé l\'est.</p>')));
+
+    // 3) et 4) Composition, rôles, banc, puis l'état de l'effectif — le
+    // reste des points de préparation, sans les dupliquer.
+    const autres = d.etat.points.filter((p) => p.nature !== 'urgent' && p.nature !== 'recommande');
+    if (autres.length) {
+      html.push(sectionPreparer('📋 Composition, rôles et banc', lignes(autres)));
+    }
+
+    // 5) Analyse réelle de l'adversaire et forme récente.
+    if (!d.analyse) {
+      html.push(sectionPreparer('🔍 L\'adversaire',
+        '<p style="color:var(--text-dim);margin:0;">Cet adversaire n\'a pas d\'effectif comparable dans le jeu — aucune analyse à afficher. Rien n\'est inventé ici.</p>'));
+    } else if (!d.analyseDisponible) {
+      html.push(sectionPreparer('🔍 L\'adversaire',
+        `<p style="color:var(--text-dim);margin:0;">Ton analyste a besoin d'encore ${d.joursAvantAnalyse} jour(s) d'observation. Le rapport complet arrivera avant la rencontre.</p>`));
+    } else {
+      const a = d.analyse;
+      const formeTxt = a.forme.length
+        ? a.forme.map((f) => `<span class="badgeForme ${f}">${LIBELLE_FORME[f]}</span>`).join('')
+        : '<span style="color:var(--text-faint);">Aucun match joué</span>';
+      const lignesAttr = a.comparaison.map((c) => {
+        const total = Math.max(c.moi, c.eux) + 15;
+        const largeurEux = Math.min(100, (c.eux / total) * 100);
+        return `<div class="ligneAdversaireAttr"><span class="labelAdvAttr">${c.label}</span>` +
+          `<span class="barreComparaison"><span class="${c.diff < 0 ? 'faible' : ''}" style="width:${largeurEux}%"></span></span>` +
+          `<span class="valAdv">${c.eux}</span></div>`;
+      }).join('');
+      const puces = [
+        ...a.forces.map((c) => `<span class="puceQualitatif force">⚠️ ${c.label} (+${c.diff})</span>`),
+        ...a.faiblesses.map((c) => `<span class="puceQualitatif faiblesse">✓ ${c.label} (${c.diff})</span>`),
+      ].join('');
+      html.push(sectionPreparer('🔍 L\'adversaire',
+        `<p style="font-size:12px;color:var(--text-dim);margin:0 0 10px;">${a.position}${a.position === 1 ? 'er' : 'e'}/${a.totalClubs} au classement · Forme récente : ${formeTxt}</p>` +
+        lignesAttr +
+        (puces ? `<div class="listeQualitatif">${puces}</div>`
+          : '<p style="font-size:11.5px;color:var(--text-faint);margin:10px 0 0;">Aucun écart marqué avec ton effectif.</p>')));
+    }
+
+    // 6) Recommandation tactique, applicable en un clic.
+    if (d.recommandations && d.recommandations.length) {
+      html.push(sectionPreparer('💡 Recommandation tactique',
+        // Même forme que dans l'aperçu d'avant-match (cf. recommanderTactique) :
+        // `libelle` est l'option recommandée, `raison` l'explique en clair.
+        d.recommandations.map((r) =>
+          `<div class="ligneRecoTactique"><b>${echapperHTML(RMClub.AXES_TACTIQUE[r.axe].label)} → ${echapperHTML(r.libelle)}</b>` +
+          `<span>${echapperHTML(r.raison)}</span></div>`).join('') +
+        `<button class="accent" id="btnAppliquerRecoPreparer" style="width:100%;margin-top:10px;">Appliquer les recommandations</button>`));
+    }
+
+    // 7) et 8) Les deux écrans de réglage, puis le coup d'envoi.
+    html.push(sectionPreparer('🎬 Passer à l\'action',
+      `<div class="actionsPreparer">` +
+      `<button class="alt" data-vers="composition">📋 Composition</button>` +
+      `<button class="alt" data-vers="tactique">🎯 Tactique</button>` +
+      `</div>` +
+      (d.jouable
+        ? `<button class="accent" id="btnLancerDepuisPreparer" style="width:100%;margin-top:10px;">▶ Jouer ce match</button>`
+        : `<p class="noteLectureSeule" style="margin:10px 0 0;">Le match se joue ${echapperHTML(quand)} — ${echapperHTML(RMClub.formaterDateLongue(d.rencontre.date))}. Avance les jours depuis le tableau de bord.</p>`)));
+
+    zone.innerHTML = html.join('');
+  }
+
+  // Boutons de l'écran « Préparer le match » (P1-41). Une seule délégation :
+  // les lignes de préparation, les deux raccourcis de réglage, l'application
+  // des recommandations et le coup d'envoi.
+  document.getElementById('btnVersPreparer').addEventListener('click', () => basculerOnglet('preparer'));
+
+  document.getElementById('clubPreparer').addEventListener('click', (e) => {
+    const vers = e.target.closest('[data-vers]');
+    if (vers) { basculerOnglet(vers.dataset.vers); return; }
+    const ligne = e.target.closest('.lignePreparation');
+    if (ligne && ligne.dataset.onglet) { basculerOnglet(ligne.dataset.onglet); return; }
+    if (e.target.closest('#btnAppliquerRecoPreparer')) {
+      const d = RMClub.dossierPreparation(saison);
+      if (!d || !d.recommandations) return;
+      RMClub.appliquerRecommandationsTactique(saison, d.recommandations);
+      sauvegarder();
+      rafraichirPreparerMatch();
+      rafraichirTactique();
+      toast('Recommandations appliquées à ta tactique');
+      return;
+    }
+    if (e.target.closest('#btnLancerDepuisPreparer')) {
+      // On réutilise EXACTEMENT le même chemin que le bouton du tableau de
+      // bord : pas de second lancement de match dans le jeu.
+      const bouton = document.getElementById('btnJouerMatchClub');
+      if (bouton) { basculerOnglet('dashboard'); bouton.click(); }
+    }
+  });
 
   // Fenêtre de transfert (TODO_AUDIT.md P1-24) : ouverte ou fermée, avec la
   // date de réouverture — jamais un bouton désactivé sans explication.
@@ -1089,7 +1237,12 @@
   // effectif comparées aux tiennes (cf. RMClub.analyserAdversaire), plus sa
   // forme récente réelle — jamais une note fabriquée.
   function rafraichirAdversaire() {
+    // Carte retirée du tableau de bord en P1-41 (toute l'analyse vit dans
+    // « Préparer le match », qui la tire de prochainArret — cette fonction
+    // résolvait la rencontre par prochainesFixtures et pouvait donc décrire
+    // un AUTRE match que les autres cartes).
     const carte = document.getElementById('carteAdversaire');
+    if (!carte) return;
     const prochaine = RMClub.prochainesFixtures(saison);
     const matchJoueur = prochaine.find(concerneClubJoueur);
     if (!matchJoueur) { carte.style.display = 'none'; return; }
@@ -1773,6 +1926,10 @@
     // en revenant sur la vue d'ensemble, sinon ils afficheraient un état
     // périmé (TODO_AUDIT.md P1-24).
     if (cle === 'dashboard') { rafraichirPreparationMatch(); rafraichirAgenda(); }
+    // « Préparer le match » se recalcule à chaque ouverture : c'est ce qui
+    // garantit qu'un réglage fait dans Composition ou Tactique est visible
+    // en revenant, sans qu'aucun état ne soit conservé de son côté.
+    if (cle === 'preparer') rafraichirPreparerMatch();
     fermerFicheJoueur(); // change d'onglet = referme toute fiche laissée ouverte
     fermerTiroirNav(); // choisir une section referme le tiroir mobile
     document.getElementById('clubMain').scrollTop = 0; // repart en haut de la nouvelle page
@@ -2265,12 +2422,17 @@
   document.getElementById('navBackdrop').addEventListener('click', fermerTiroirNav);
 
   // --- Alertes du dashboard : cliquer une alerte ouvre l'onglet concerné ---
-  document.getElementById('clubPreparationMatch').addEventListener('click', (e) => {
-    if (e.target.closest('.lienClub')) return; // géré par la délégation des noms de clubs
-    const ligne = e.target.closest('.lignePreparation');
-    if (!ligne) return;
-    basculerOnglet(ligne.dataset.onglet);
-  });
+  // La carte « Préparation du prochain match » a quitté le tableau de bord
+  // (TODO_AUDIT.md P1-41) : ses lignes cliquables vivent désormais dans
+  // l'onglet « Préparer le match », qui a sa propre délégation ci-dessus.
+  // On garde une garde défensive pour une ancienne page en cache.
+  const zonePrepDash = document.getElementById('clubPreparationMatch');
+  if (zonePrepDash) {
+    zonePrepDash.addEventListener('click', (e) => {
+      const ligne = e.target.closest('.lignePreparation');
+      if (ligne && ligne.dataset.onglet) basculerOnglet(ligne.dataset.onglet);
+    });
+  }
   document.getElementById('clubAlertes').addEventListener('click', (e) => {
     const ligne = e.target.closest('.ligneAlerte');
     if (!ligne) return;

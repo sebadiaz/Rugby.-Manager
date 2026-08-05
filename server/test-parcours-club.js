@@ -3683,6 +3683,104 @@ test('à traiter : un club sain n\'affiche AUCUNE ligne inventée', () => {
     'rien à traiter doit vouloir dire une liste vide, pas une carte décorative');
 });
 
+
+// --- P1-41 : une seule vue « Préparer le match » ---------------------------
+// Mesuré sur une carrière neuve AVANT d'écrire le code : le même adversaire,
+// le même lieu et la MÊME date apparaissaient dans trois cartes du tableau
+// de bord (« Prochaine échéance » 305 px, « Préparation » 353 px, « Prochain
+// adversaire » 343 px, soit 1001 px) ET dans l'aperçu d'avant-match.
+
+test('préparation : UN dossier unique assemblé depuis prochainArret()', () => {
+  const s = saisonPourAvance(1500);
+  const d = RMClub.dossierPreparation(s);
+  assert.ok(d, 'une carrière neuve a une rencontre à préparer');
+  const arret = RMClub.prochainArret(s);
+  // La rencontre du dossier est EXACTEMENT celle de prochainArret : c'est la
+  // source unique exigée, pas une seconde résolution parallèle.
+  assert.strictEqual(RMClub.dateISO(d.rencontre.date), RMClub.dateISO(arret.date));
+  assert.strictEqual(d.type, arret.type);
+  assert.strictEqual(d.equipe, RMClub.equipePourArret(arret.type));
+  assert.strictEqual(d.adversaireNom, arret.adversaireNom);
+  assert.strictEqual(d.domicile, arret.domicile);
+  for (const champ of ['competition', 'libelleEquipe', 'joursRestants', 'jouable']) {
+    assert.ok(d[champ] !== undefined, `le dossier doit porter « ${champ} »`);
+  }
+});
+
+test('préparation : le dossier ne STOCKE rien dans la saison', () => {
+  const s = saisonPourAvance(1501);
+  const avant = JSON.stringify(s);
+  RMClub.dossierPreparation(s);
+  RMClub.dossierPreparation(s);
+  // `daterCalendrier` peut compléter des dates manquantes au premier appel :
+  // on compare donc deux appels SUCCESSIFS, qui doivent être identiques.
+  const apres1 = JSON.stringify(s);
+  RMClub.dossierPreparation(s);
+  assert.strictEqual(JSON.stringify(s), apres1,
+    'appeler le dossier ne doit créer aucun second état de préparation');
+  assert.ok(avant.length > 0);
+});
+
+test('préparation : le dossier réutilise l\'état existant, sans le recalculer', () => {
+  const s = saisonPourAvance(1502);
+  const d = RMClub.dossierPreparation(s);
+  const etat = RMClub.etatPreparationMatch(s, d.equipe);
+  assert.strictEqual(d.etat.points.length, etat.points.length);
+  assert.strictEqual(d.etat.pretPct, etat.pretPct);
+  assert.deepStrictEqual(d.etat.points.map((x) => x.cle), etat.points.map((x) => x.cle));
+});
+
+test('préparation : « jouable » seulement quand la date est atteinte', () => {
+  const s = saisonPourAvance(1503);
+  const d = RMClub.dossierPreparation(s);
+  assert.ok(d.joursRestants > 0, 'ce test suppose une rencontre à venir');
+  assert.strictEqual(d.jouable, false, 'on ne lance pas un match avant sa date');
+  RMClub.definirDateCourante(s, d.rencontre.date);
+  assert.strictEqual(RMClub.dossierPreparation(s).jouable, true, 'le jour dit, le match est lançable');
+});
+
+test('préparation : jamais de compte à rebours NÉGATIF', () => {
+  const s = saisonPourAvance(1504);
+  for (let i = 0; i < 60; i++) {
+    const d = RMClub.dossierPreparation(s);
+    if (!d) break;
+    assert.ok(d.joursRestants >= 0, `joursRestants négatif (${d.joursRestants})`);
+    RMClub.avancerUnJour(s);
+  }
+});
+
+test('préparation : le MÊME dossier sert les cinq types de rencontre', () => {
+  const s = saisonPourAvance(1505);
+  const vus = {};
+  for (let i = 0; i < 200; i++) {
+    const d = RMClub.dossierPreparation(s);
+    if (d) {
+      vus[d.type] = d;
+      // Quelle que soit la compétition, le dossier porte les mêmes champs.
+      assert.ok(d.equipe && d.libelleEquipe && d.competition,
+        `dossier incomplet pour « ${d.type} »`);
+      assert.ok(['pro', 'b', 'jeunes'].indexOf(d.equipe) !== -1);
+    }
+    RMClub.avancerUnJour(s);
+  }
+  // Sur deux mois de calendrier, on doit rencontrer plusieurs types.
+  assert.ok(Object.keys(vus).length >= 2,
+    `plusieurs types de rencontre attendus, vus : ${Object.keys(vus).join(', ')}`);
+});
+
+test('préparation : l\'analyse de l\'adversaire porte sur CE match, pas un autre', () => {
+  const s = saisonPourAvance(1506);
+  const d = RMClub.dossierPreparation(s);
+  if (d.analyse) {
+    assert.strictEqual(d.analyse.clubId, d.adversaireId,
+      'l\'analyse doit porter sur l\'adversaire de la rencontre préparée');
+  }
+  // Et quand l'analyste n'a pas fini son travail, on le DIT au lieu
+  // d'afficher une analyse à moitié fausse.
+  assert.strictEqual(typeof d.analyseDisponible, 'boolean');
+});
+
+
 console.log(`\n${nbTests} test(s) exécuté(s).`);
 if (process.exitCode) {
   console.error('ECHEC : au moins un test du parcours club a échoué.');

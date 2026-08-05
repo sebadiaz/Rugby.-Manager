@@ -1590,3 +1590,72 @@ court, et la carte le dit au lieu de le masquer.
 - **L'analyse de l'adversaire est la même pour les trois équipes** : le délai
   de l'analyste ne distingue pas un adversaire de championnat d'une académie
   espoirs. Correct fonctionnellement, mais grossier.
+
+---
+
+### P1-41. Une seule vue « Préparer le match »
+- **Statut : CORRIGÉ**
+- Priorité : P1 (demande utilisateur : « créer un parcours de préparation du match clair et centralisé »)
+- Fichiers concernés : `docs/js/club-jour-match.js` (`dossierPreparation`), `docs/js/clubUI.js`, `docs/js/club-equipes.js`, `docs/index.html`, `docs/css/style.css`, tests
+
+**Mesuré en jouant une carrière neuve, AVANT d'écrire du code.** Le même
+adversaire, le même lieu et la MÊME date apparaissaient dans **trois cartes
+du tableau de bord** puis dans l'aperçu d'avant-match :
+
+```
+305 px  🗓️ Prochaine échéance      Hautecombe Chamois · à domicile · samedi 7 septembre
+353 px  🧭 Préparation             Hautecombe Chamois · à domicile · samedi 7 septembre
+343 px  🆚 Prochain adversaire     Hautecombe Chamois — 14e/14, forme, 6 attributs
+─────
+1001 px pour trois fois la même rencontre, sur un tableau de bord de 1926 px
+```
+
+**Défaut aggravant, de la même classe qu'en P1-35 et P1-39.**
+`rafraichirAdversaire` résolvait la rencontre par `prochainesFixtures()` et
+non par `prochainArret()` : la carte adversaire pouvait décrire un **autre
+match** que les deux autres. Troisième occurrence du même défaut.
+
+**La correction.** `dossierPreparation(saison)` ASSEMBLE la vue à partir de
+`prochainArret()` — source unique — en réutilisant `etatPreparationMatch`,
+`analyserAdversaire` et `recommanderTactique`. Elle ne décide de rien et **ne
+stocke rien** : aucun second état de préparation (test dédié qui compare la
+saison sérialisée avant/après deux appels).
+
+Un onglet unique « Préparer le match », réutilisé pour la Première, l'Équipe
+B, les Espoirs, les coupes et les amicaux — **aucun écran par équipe**, c'est
+`prochainArret` qui décide seul de qui joue. Le tableau de bord garde un
+résumé compact et un bouton principal.
+
+**Défaut trouvé en testant les cinq types.** Pour un match d'**Espoirs**, le
+nom de l'adversaire DISPARAISSAIT : `lienClub` renvoie « ? » pour une
+académie, qui n'est pas un club consultable. Le dossier connaît pourtant ce
+nom — il est désormais affiché, cliquable seulement quand ça a du sens.
+
+**Résultat mesuré :**
+
+| | Avant | Après |
+|---|---|---|
+| Cartes du tableau de bord | 7 | **5** |
+| Hauteur (ordinateur) | 1926 px | **1250 px** (1,25 écran) |
+| Hauteur (mobile 390×844) | — | **1327 px** (1,57 écran) |
+| Rencontre décrite à | 3 cartes + aperçu | **1 vue** |
+
+Les cinq types vérifiés sur les deux tailles : type, équipe et adversaire
+corrects, aucun compte à rebours négatif, aucun débordement horizontal,
+aucune erreur console.
+
+**Tests existants retargetés, à raison.** Sept tests visaient la carte du
+tableau de bord ; la fonctionnalité a déménagé, leur intention est
+inchangée. L'un comparait le texte d'un élément MASQUÉ (innerText d'un
+élément caché est vide, la comparaison portait donc sur du vide) : il
+compare désormais à `prochainArret`, la source.
+
+**Limites restantes :**
+- L'**aperçu d'avant-match** (`panneauApercuMatch`) existe toujours et répète
+  une partie de la vue. Le fusionner touche le flux de lancement du match,
+  hors périmètre de cette tranche ; il reste le dernier doublon.
+- `rafraichirPreparationMatch` et `rafraichirAdversaire` subsistent, inertes
+  (garde défensive), au cas où une page en cache les rappellerait.
+- Les sections « composition » et « effectif diminué » sont fusionnées en un
+  seul bloc : les points de préparation les portent déjà ensemble, les
+  séparer aurait dupliqué l'information que cette tranche cherche à réduire.

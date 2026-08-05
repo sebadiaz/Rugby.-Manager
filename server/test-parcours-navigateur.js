@@ -1709,10 +1709,15 @@ function optionsLancement() {
   await pagePrep.click('#btnCreerClub');
   await pagePrep.waitForTimeout(400);
 
+  // Depuis P1-41, la préparation ne vit plus sur le tableau de bord mais dans
+  // l'onglet « Préparer le match » — une seule vue pour toutes les équipes.
+  // L'intention de ces tests est inchangée ; seule leur cible a bougé.
+  await clicOngletSur(pagePrep, 'preparer');
+  await pagePrep.waitForTimeout(350);
   const prepLoin = await pagePrep.evaluate(() => ({
-    visible: document.getElementById('cartePreparationMatch').style.display !== 'none',
-    points: document.querySelectorAll('#clubPreparationMatch .lignePreparation').length,
-    texte: document.getElementById('clubPreparationMatch').innerText,
+    visible: document.querySelector('.voletOnglet[data-volet="preparer"]').style.display !== 'none',
+    points: document.querySelectorAll('#clubPreparer .lignePreparation').length,
+    texte: document.getElementById('clubPreparer').innerText,
     pct: (document.querySelector('.pctPreparation') || {}).textContent || '',
   }));
   verifier('préparation de match : la carte affiche les 5 points de préparation, plusieurs jours avant la rencontre',
@@ -1727,7 +1732,7 @@ function optionsLancement() {
   // « Analyse de l'adversaire » — le même symbole que devant « Tactique »,
   // alors que l'un demande 17 jours d'attente et l'autre un seul clic. ---
   const niveaux = await pagePrep.evaluate(() => Array.from(
-    document.querySelectorAll('#clubPreparationMatch .lignePreparation')).map((l) => ({
+    document.querySelectorAll('#clubPreparer .lignePreparation')).map((l) => ({
       libelle: (l.querySelector('b') || {}).textContent || '',
       nature: l.dataset.nature || null,
       badge: (l.querySelector('.badgeNature') || {}).textContent || null,
@@ -1751,18 +1756,18 @@ function optionsLancement() {
   verifier('préparation de match : rien ne bloque — « Continuer » reste utilisable avec des points non préparés',
     await pagePrep.evaluate(() => !document.getElementById('btnJouerMatchClub').disabled));
   // Cliquer un point emmène sur l'écran concerné.
-  await pagePrep.click('#clubPreparationMatch .lignePreparation[data-onglet="tactique"]');
+  await pagePrep.click('#clubPreparer .lignePreparation[data-onglet="tactique"]');
   await pagePrep.waitForTimeout(250);
   verifier('préparation de match : cliquer un point ouvre l\'écran où le régler',
     await pagePrep.evaluate(() => document.querySelector('.voletOnglet[data-volet="tactique"]').style.display !== 'none'));
   // Régler un axe fait réellement basculer le point à « prêt ».
   await pagePrep.click('#clubTactique [data-axe="style"][data-valeur="large"]');
   await pagePrep.waitForTimeout(250);
-  await clicOngletSur(pagePrep, 'dashboard');
-  await pagePrep.waitForTimeout(250);
+  await clicOngletSur(pagePrep, 'preparer');
+  await pagePrep.waitForTimeout(300);
   verifier('préparation de match : régler la tactique fait réellement passer ce point à « prêt »',
     await pagePrep.evaluate(() => {
-      const l = Array.from(document.querySelectorAll('#clubPreparationMatch .lignePreparation'))
+      const l = Array.from(document.querySelectorAll('#clubPreparer .lignePreparation'))
         .find((x) => x.textContent.includes('Tactique'));
       return !!l && l.classList.contains('ok');
     }));
@@ -1778,8 +1783,10 @@ function optionsLancement() {
   await pagePrep.waitForTimeout(250);
   await pagePrep.click('#btnContinuerClub');
   await pagePrep.waitForTimeout(350);
+  await clicOngletSur(pagePrep, 'preparer');
+  await pagePrep.waitForTimeout(350);
   verifier('préparation de match : à l\'approche de la rencontre, le rapport de l\'analyste devient disponible',
-    (await pagePrep.textContent('#clubPreparationMatch')).includes('Rapport de ton analyste disponible'));
+    (await pagePrep.textContent('#clubPreparer')).includes('Rapport de ton analyste disponible'));
 
   // --- P1-39 : le jour d'un match d'Équipe B, la préparation doit préparer
   // CE match. Mesuré avant : l'échéance annonçait « MATCH DE L'ÉQUIPE B /
@@ -1807,22 +1814,166 @@ function optionsLancement() {
   await pageB.waitForTimeout(250);
   await pageB.click('#btnContinuerClub');
   await pageB.waitForTimeout(650);
+  // P1-41 : la préparation vit dans son onglet, plus sur le tableau de bord.
+  if (await pageB.isVisible('#btnMenuClub')) { await pageB.click('#btnMenuClub'); await pageB.waitForTimeout(200); }
+  await pageB.click('.ongletBtn[data-onglet="preparer"]');
+  await pageB.waitForTimeout(400);
   const jourB = await pageB.evaluate(() => ({
-    echeance: (document.getElementById('clubProchainMatch') || {}).innerText || '',
-    prep: (document.getElementById('clubPreparationMatch') || {}).innerText || '',
-    titrePrep: (document.querySelector('#cartePreparationMatch h3') || {}).textContent || '',
+    // On compare à prochainArret, la SOURCE, plutôt qu'à la carte du tableau
+    // de bord : celle-ci est masquée pendant qu'on regarde l'onglet Préparer,
+    // et innerText d'un élément caché est vide — la comparaison porterait
+    // alors sur du vide au lieu de vérifier l'accord.
+    echeance: (() => {
+      const s2 = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
+      const a = window.RMClub.prochainArret(s2);
+      return a ? `${a.adversaireNom} ${window.RMClub.dateISO(a.date)} ${a.type}` : '';
+    })(),
+    prep: (document.getElementById('clubPreparer') || {}).innerText || '',
+    titrePrep: (document.getElementById('clubPreparer') || {}).innerText || '',
   }));
   verifier('préparation par équipe : le jour d\'un match d\'Équipe B, la carte prépare CETTE équipe',
     jourB.titrePrep.includes('Équipe B'));
   verifier('préparation par équipe : elle nomme le MÊME adversaire que la carte « Prochaine échéance »',
     (() => {
-      const m = jourB.echeance.split('\n').map((l) => l.trim()).filter(Boolean)[1];
-      return !!m && jourB.prep.includes(m);
+      const adv = jourB.echeance.split(' ')[0];
+      return !!adv && jourB.prep.includes(adv);
     })());
   verifier('préparation par équipe : plus jamais de compte à rebours négatif (« dans -1 jours »)',
     !/dans -\d+ jour/.test(jourB.prep));
   verifier('préparation par équipe : aucune erreur console', erreursB.length === 0);
   await ctxB.close();
+
+  // --- P1-41 : UNE vue « Préparer le match ». Mesuré avant : le même
+  // adversaire, le même lieu et la MÊME date dans trois cartes du tableau de
+  // bord (1001 px cumulés) et dans l'aperçu d'avant-match. ---
+  const ctxPrep2 = await browser.newContext({ viewport: { width: 1280, height: 1000 } });
+  const pageP = await ctxPrep2.newPage();
+  const erreursP = [];
+  pageP.on('pageerror', (e) => erreursP.push(`PAGEERROR: ${e.message}`));
+  pageP.on('console', (m) => { if (m.type() === 'error' && !m.text().includes('404')) erreursP.push(`CONSOLE: ${m.text()}`); });
+  await pageP.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  await pageP.click('#btnAccueilModeClub');
+  await pageP.fill('#inputNomClub', 'Test Préparer');
+  await pageP.click('#btnCreerClub');
+  await pageP.waitForTimeout(600);
+
+  // Le tableau de bord ne répète plus toute l'analyse de l'adversaire.
+  const dash = await pageP.evaluate(() => {
+    const v = document.querySelector('.voletOnglet[data-volet="dashboard"]');
+    return {
+      cartes: [...v.querySelectorAll('.carteClub')].filter((c) => c.offsetHeight > 0)
+        .map((c) => ((c.querySelector('h3') || {}).textContent || '').trim()),
+      hauteur: document.getElementById('clubMain').scrollHeight,
+      bouton: !!document.getElementById('btnVersPreparer'),
+      analyseComplete: !!v.querySelector('.ligneAdversaireAttr'),
+    };
+  });
+  verifier('préparer : le tableau de bord propose un bouton « Préparer le match »', dash.bouton);
+  verifier('préparer : le tableau de bord ne répète plus toute l\'analyse de l\'adversaire',
+    !dash.analyseComplete);
+  verifier('préparer : le tableau de bord tient en moins de 1600 px (mesuré à 1926 px avant)',
+    dash.hauteur < 1600);
+
+  // Le bouton mène à la vue unique.
+  await pageP.click('#btnVersPreparer');
+  await pageP.waitForTimeout(450);
+  const vue = await pageP.evaluate(() => {
+    const v = document.querySelector('.voletOnglet[data-volet="preparer"]');
+    return {
+      visible: v && v.style.display !== 'none',
+      titres: [...v.querySelectorAll('.blocPreparer h3')].map((h) => h.textContent.trim()),
+      texte: (document.getElementById('clubPreparer') || {}).innerText || '',
+      boutonJouer: !!document.getElementById('btnLancerDepuisPreparer'),
+      versCompo: !!v.querySelector('[data-vers="composition"]'),
+      versTactique: !!v.querySelector('[data-vers="tactique"]'),
+    };
+  });
+  verifier('préparer : le bouton ouvre la vue unique', vue.visible);
+  verifier('préparer : les sections apparaissent dans l\'ordre demandé',
+    vue.titres.length >= 4 && /rencontre/i.test(vue.titres[0]) && /régler/i.test(vue.titres[1]));
+  verifier('préparer : la vue offre les raccourcis vers Composition ET Tactique',
+    vue.versCompo && vue.versTactique);
+  verifier('préparer : loin du match, AUCUN bouton « Jouer » n\'est proposé', !vue.boutonJouer);
+  verifier('préparer : aucun compte à rebours négatif', !/dans -\d+/.test(vue.texte));
+
+  // La date, l'adversaire et l'équipe sont IDENTIQUES entre le résumé du
+  // tableau de bord et la vue de préparation.
+  const coherence = await pageP.evaluate(() => {
+    const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
+    const d = window.RMClub.dossierPreparation(s);
+    const arret = window.RMClub.prochainArret(s);
+    return {
+      memeDate: window.RMClub.dateISO(d.rencontre.date) === window.RMClub.dateISO(arret.date),
+      memeAdv: d.adversaireNom === arret.adversaireNom,
+      memeType: d.type === arret.type,
+      vueContientAdv: (document.getElementById('clubPreparer').innerText || '').includes(d.adversaireNom || '@@'),
+    };
+  });
+  verifier('préparer : la vue décrit la MÊME rencontre que prochainArret (date, adversaire, type)',
+    coherence.memeDate && coherence.memeAdv && coherence.memeType && coherence.vueContientAdv);
+
+  // Un réglage fait dans Tactique est CONSERVÉ au retour.
+  await pageP.click('[data-vers="tactique"]');
+  await pageP.waitForTimeout(350);
+  await pageP.click('#clubTactique [data-axe="style"][data-valeur="large"]');
+  await pageP.waitForTimeout(300);
+  await clicOngletSur(pageP, 'preparer');
+  await pageP.waitForTimeout(400);
+  const conserve = await pageP.evaluate(() => {
+    const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
+    const slot = window.RMClub.slotCompositionPourEquipe(s, 'pro');
+    return { style: slot.tactique && slot.tactique.style,
+      texte: (document.getElementById('clubPreparer') || {}).innerText || '' };
+  });
+  verifier('préparer : un réglage fait dans Tactique est CONSERVÉ au retour',
+    conserve.style === 'large' && /Tactique/.test(conserve.texte));
+  // Les CINQ types de rencontre, y compris ceux dont l'adversaire n'est pas
+  // un club consultable. Mesuré : pour un match d'Espoirs, `lienClub`
+  // renvoyait « ? » et le nom de l'académie DISPARAISSAIT de la vue.
+  const parType = await pageP.evaluate(() => {
+    const K = 'rugbyManager.club.v1';
+    const s = JSON.parse(localStorage.getItem(K));
+    const moi = s.clubJoueur.id;
+    const out = {};
+    const fB = ((s.competitionB || {}).calendrier || []).find((f) => f.domicileId === moi || f.exterieurId === moi);
+    if (fB) out.b = fB.date;
+    window.RMClub.assurerCompetitionEspoirs(s);
+    const fE = ((s.competitionEspoirs || {}).calendrier || []).find((f) => f.domicileId === moi || f.exterieurId === moi);
+    if (fE) out.jeunes = fE.date;
+    localStorage.setItem(K, JSON.stringify(s));
+    return out;
+  });
+  for (const type of Object.keys(parType)) {
+    await pageP.evaluate((iso) => {
+      const K = 'rugbyManager.club.v1';
+      const s = JSON.parse(localStorage.getItem(K));
+      s.temps = Object.assign({}, s.temps, window.RMClub.dateDepuisISO(iso));
+      localStorage.setItem(K, JSON.stringify(s));
+    }, parType[type]);
+    await pageP.reload({ waitUntil: 'networkidle' });
+    await pageP.waitForTimeout(250);
+    await pageP.click('#btnContinuerClub');
+    await pageP.waitForTimeout(450);
+    await pageP.evaluate(() => {
+      const e = document.getElementById('panneauApercuMatch');
+      if (e) e.classList.remove('visible');
+    });
+    await clicOngletSur(pageP, 'preparer');
+    await pageP.waitForTimeout(400);
+    const r = await pageP.evaluate(() => {
+      const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
+      const d = window.RMClub.dossierPreparation(s);
+      const z = document.getElementById('clubPreparer');
+      return { type: d && d.type, equipe: d && d.equipe, adv: d && d.adversaireNom,
+        nomme: !!(d && d.adversaireNom && z.innerText.includes(d.adversaireNom)),
+        neg: /dans -\d+/.test(z.innerText) };
+    });
+    verifier(`préparer : la vue NOMME l'adversaire d'un match « ${type} » (${r.adv || '?'})`, r.nomme);
+    verifier(`préparer : le type « ${type} » est bien reconnu`, r.type === type && !r.neg);
+  }
+
+  verifier('préparer : aucune erreur console', erreursP.length === 0);
+  await ctxPrep2.close();
 
   // Fenêtres de transfert.
   await clicOngletSur(pagePrep, 'transferts');

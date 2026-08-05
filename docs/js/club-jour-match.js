@@ -264,8 +264,69 @@
     };
   }
 
+  // --- Dossier de préparation : UNE vue, UNE source (TODO_AUDIT.md P1-41) --
+  //
+  // Mesuré sur une carrière neuve : le même adversaire, le même lieu et la
+  // MÊME date apparaissaient dans trois cartes du tableau de bord
+  // (« Prochaine échéance » 305 px, « Préparation » 353 px, « Prochain
+  // adversaire » 343 px — 1001 px au total) ET dans l'aperçu d'avant-match.
+  // Pire, la carte adversaire résolvait la rencontre par `prochainesFixtures`
+  // et non par `prochainArret` : elle pouvait décrire un AUTRE match que les
+  // deux autres cartes (même classe de défaut qu'en P1-35 et P1-39).
+  //
+  // Cette fonction ASSEMBLE, elle ne décide de rien et ne STOCKE rien : la
+  // rencontre vient de `prochainArret`, l'état de `etatPreparationMatch`,
+  // l'analyse de `analyserAdversaire`, la recommandation de
+  // `recommanderTactique`. Aucun second état de préparation n'est créé.
+  function dossierPreparation(saison) {
+    const RMClub = global.RMClub;
+    const arret = RMClub.prochainArret(saison);
+    if (!arret) return null;
+    const equipe = equipePourArret(arret.type);
+    const etat = etatPreparationMatch(saison, equipe);
+
+    // Analyse de l'adversaire : la MÊME que celle du tableau de bord, mais
+    // portant explicitement sur l'adversaire de CETTE rencontre. Elle n'a de
+    // sens que pour un club du championnat (un adversaire d'académie espoirs
+    // n'a pas d'effectif comparable) — sinon on le dit, on n'invente pas.
+    const facteurAnalyste = RMClub.effetPersonnel(saison, 'analyste');
+    const seuilAnalyste = Math.max(2, Math.round(6 - (facteurAnalyste - 1) * 8));
+    const brute = arret.adversaireId && RMClub.analyserAdversaire
+      ? RMClub.analyserAdversaire(saison, arret.adversaireId, seuilAnalyste) : null;
+    const analyse = brute ? Object.assign({ clubId: arret.adversaireId }, brute) : null;
+    // Le rapport de l'analyste demande du temps (cf. analyseDisponible) : on
+    // distingue « pas encore prêt » de « pas d'analyse possible ».
+    const dispo = analyseDisponible(saison, { jours: arret.joursRestants });
+    const recommandations = (analyse && dispo.disponible && RMClub.recommanderTactique)
+      ? RMClub.recommanderTactique(analyse) : null;
+
+    return {
+      // 1. La rencontre exacte.
+      rencontre: { date: arret.date, iso: arret.iso },
+      type: arret.type,
+      libelle: arret.libelle,
+      equipe,
+      libelleEquipe: arret.equipe || 'Équipe première',
+      competition: arret.competition || arret.libelle,
+      tour: arret.tour || null,
+      adversaireNom: arret.adversaireNom,
+      adversaireId: arret.adversaireId,
+      domicile: arret.domicile,
+      joursRestants: Math.max(0, arret.joursRestants),
+      // 8. On ne lance un match qu'à sa date.
+      jouable: arret.joursRestants <= 0,
+      // 2, 3, 4 — points de préparation, composition et effectif diminué.
+      etat,
+      // 5, 6 — analyse réelle et recommandation.
+      analyse,
+      analyseDisponible: !!(analyse && dispo.disponible),
+      joursAvantAnalyse: dispo.joursRestants,
+      recommandations,
+    };
+  }
+
   global.RMClub = Object.assign(global.RMClub || {}, {
     JOURS_ANALYSE_ADVERSAIRE, NATURES_PREPARATION, joursAvantAnalyse, prochaineRencontre,
-    analyseDisponible, etatPreparationMatch, equipePourArret,
+    analyseDisponible, etatPreparationMatch, equipePourArret, dossierPreparation,
   });
 })(window);

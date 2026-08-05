@@ -166,6 +166,7 @@
       <div id="navBackdrop"></div>
       <nav class="barreOnglets" id="barreOngletsClub">
         <button class="ongletBtn actif" data-onglet="dashboard">🏠 <span>Dashboard</span></button>
+        <button class="ongletBtn" data-onglet="preparer">🧭 <span>Préparer le match</span></button>
         <span class="groupeNav" data-cat="club">Mon club</span>
         <button class="ongletBtn" data-onglet="effectif">👥 <span>Effectif</span></button>
         <button class="ongletBtn" data-onglet="composition">📋 <span>Composition</span></button>
@@ -228,7 +229,11 @@
                  qu'il se passe quelque chose (blessure, décision, rapport,
                  réponse de contrat). Un seul bouton « Continuer » ne
                  permettait pas de suivre une semaine jour par jour. -->
-            <div style="display:flex;gap:8px;margin-top:10px;">
+            <!-- Action PRINCIPALE de l'avant-match (TODO_AUDIT.md P1-41) :
+                 tout ce qu'il faut régler vit dans l'onglet « Préparer le
+                 match », plus éparpillé sur trois cartes du tableau de bord. -->
+            <button id="btnVersPreparer" class="accent" style="width:100%;margin-top:10px;">🧭 Préparer le match</button>
+            <div style="display:flex;gap:8px;margin-top:8px;">
               <button id="btnComposition" class="alt" style="flex:1;">📋 Composition</button>
               <button id="btnJourSuivant" class="alt" style="flex:1;">→ Jour suivant</button>
             </div>
@@ -242,10 +247,6 @@
           <!-- Préparation progressive de la rencontre (TODO_AUDIT.md P1-24) :
                ce qui est prêt et ce qui ne l'est pas, dès plusieurs jours
                avant le match. Rien n'est bloquant — seulement signalé. -->
-          <div class="carteClub carteMonClub" id="cartePreparationMatch" style="display:none;">
-            <h3>🧭 Préparation du prochain match</h3>
-            <div id="clubPreparationMatch"></div>
-          </div>
           <div class="carteClub carteMonClub" id="carteAgenda">
             <h3>📆 Les 7 prochains jours</h3>
             <div id="clubAgenda"></div>
@@ -274,10 +275,12 @@
             <h3>🎯 Objectif de la saison</h3>
             <div id="clubObjectifSaison"></div>
           </div>
-          <div class="carteClub carteMonClub" id="carteAdversaire" style="display:none;">
-            <h3>🆚 Prochain adversaire</h3>
-            <div id="clubAdversaire"></div>
-          </div>
+          <!-- « Préparation du prochain match » et « Prochain adversaire »
+               retirées du tableau de bord (TODO_AUDIT.md P1-41) : elles
+               répétaient l'adversaire, le lieu et la date déjà annoncés par
+               « Prochaine échéance » — 1001 px cumulés pour trois fois la
+               même rencontre. Tout vit désormais dans l'onglet « Préparer le
+               match », atteint par le bouton ci-dessus. Rien n'est perdu. -->
           <!-- Masquée tant qu'aucun match n'a été joué (P1-37) : en début de
                carrière elle n'annonçait qu'« Aucun match joué pour le moment »,
                en repoussant vers le bas ce qu'il y a réellement à faire. -->
@@ -303,6 +306,18 @@
              fiche joueur SUR PLACE (cf. clubUI.js) — pas un écran empilé.
              Écran UNIQUE partagé par les 4 types d'équipe (premier XV,
              Équipe B, Espoirs, club adverse) via le sélecteur commun. -->
+        <!-- PRÉPARER LE MATCH (TODO_AUDIT.md P1-41) : UNE seule vue, réutilisée
+             pour la Première, l'Équipe B, les Espoirs, les coupes et les
+             amicaux. Aucun écran par équipe : la rencontre vient de
+             prochainArret(), qui décide seul de quelle équipe joue.
+             Les huit sections sont rendues dans l'ordre par
+             rafraichirPreparerMatch() (clubUI.js), à partir du dossier
+             assemblé par RMClub.dossierPreparation — aucun second état. -->
+        <div class="voletOnglet" data-volet="preparer" style="display:none;">
+          <div class="enTetePage"><span class="categoriePage">Avant-match</span><h2>Préparer le match</h2><p>Tout ce qu'il faut régler avant le coup d'envoi, au même endroit.</p></div>
+          <div id="clubPreparer"></div>
+        </div>
+
         <div class="voletOnglet" data-volet="effectif" style="display:none;">
           <div class="enTetePage"><span class="categoriePage">Équipes</span><h2>Effectif</h2><p>Recherche, tri et filtre l'effectif de l'équipe sélectionnée — clique un joueur pour sa fiche détaillée.</p></div>
           <div class="emplacementSelecteurEquipe"></div>

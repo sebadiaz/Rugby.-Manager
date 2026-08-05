@@ -135,7 +135,10 @@
   // recrutement, transferts, finances, bilan) sont absents du menu — pas
   // grisés : ils n'ont simplement aucun sens, et les données correspondantes
   // n'existent pas pour un club IA.
-  const ONGLETS_CLUB_JOUEUR = ['dashboard', 'effectif', 'composition', 'tactique', 'entrainement',
+  // « Préparer le match » (TODO_AUDIT.md P1-41) n'existe que pour le club
+  // DIRIGÉ : on ne prépare pas la rencontre d'un club qu'on se contente de
+  // consulter. Absent du menu, pas grisé — comme Tactique ou Entraînement.
+  const ONGLETS_CLUB_JOUEUR = ['dashboard', 'preparer', 'effectif', 'composition', 'tactique', 'entrainement',
     'transferts', 'personnel', 'classement', 'calendrier', 'monde', 'finances', 'medical', 'stats'];
   const ONGLETS_CLUB_CONSULTE = ['dashboard', 'effectif', 'composition', 'personnel', 'classement', 'calendrier', 'monde'];
 
