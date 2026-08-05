@@ -83,6 +83,27 @@
     // journée valait une semaine (cf. club-temps.js, une journée par
     // semaine) : les compteurs sont convertis à l'identique, sans jamais
     // allonger ni raccourcir une indisponibilité déjà en cours.
+    // 4 → 5 : Centre médical 2.0 (TODO_AUDIT.md P1-40). Une sauvegarde v4
+    // ne connaît qu'un entier `blessureJournees` par joueur. On ne peut pas
+    // inventer rétroactivement le type et la zone d'une blessure : on crée
+    // un dossier honnête, générique, dont la SEULE donnée certaine — le
+    // nombre de jours restants — est rigoureusement préservée. Aucun joueur
+    // n'est soigné ni blessé par la migration.
+    4: (saison) => {
+      const RMClub = global.RMClub;
+      const groupes = [
+        saison.clubJoueur && saison.clubJoueur.effectif,
+        saison.clubJoueur && saison.clubJoueur.jeunes,
+      ];
+      for (const a of saison.adversaires || []) groupes.push(a.effectif, a.groupe, a.banc);
+      for (const groupe of groupes) {
+        if (!Array.isArray(groupe)) continue;
+        for (const j of groupe) { if (j && typeof j === 'object') RMClub.migrerJoueurV4(j); }
+      }
+      saison.version = 5;
+      return saison;
+    },
+
     3: (saison) => {
       const JOURS_PAR_JOURNEE = 7;
       const convertir = (effectif) => {

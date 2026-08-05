@@ -1642,11 +1642,81 @@
 
   // --- Médical : vue filtrée de l'effectif (façon Medical Centre FM), plus
   // la charge de fatigue de l'effectif (réellement répercutée en match). ---
+  // Infirmerie + reprise (TODO_AUDIT.md P1-40). Tout vient du dossier
+  // médical réel (club-medical.js) : rien n'est recalculé ici, et la
+  // fourchette affichée est le DIAGNOSTIC du staff, pas la durée cachée.
+  // Les jeunes du centre de formation figurent au même endroit : un blessé
+  // est un blessé, quelle que soit l'équipe où il joue.
+  function groupesMedicaux() {
+    return [
+      { cle: 'pro', libelle: 'Effectif professionnel', joueurs: saison.clubJoueur.effectif || [] },
+      { cle: 'jeunes', libelle: 'Centre de formation', joueurs: saison.clubJoueur.jeunes || [] },
+    ];
+  }
+
+  function ligneBlesse(j) {
+    const d = RMClub.descriptionBlessure(j);
+    if (!d) return '';
+    const retourMin = RMClub.formaterDateCourte(RMClub.ajouterJours(RMClub.dateCourante(saison), d.joursMin));
+    const retourMax = RMClub.formaterDateCourte(RMClub.ajouterJours(RMClub.dateCourante(saison), d.joursMax));
+    const fourchette = d.joursMin === d.joursMax
+      ? `${d.joursMin} jour(s) — ${retourMin}`
+      : `entre ${d.joursMin} et ${d.joursMax} jour(s) — ${retourMin} à ${retourMax}`;
+    const rechute = Math.round(d.risqueRechute * 100);
+    return `<div class="ligneMedicale blessure gravite-${d.gravite}">` +
+      `<div class="medicalTitre"><b>${echapperHTML(j.nom)}</b> — ${POSTE_COMPLET[j.poste] || j.poste}` +
+      `<span class="badgeGravite g${d.gravite}">${echapperHTML(d.graviteLibelle)}</span></div>` +
+      `<div class="medicalDiag">${echapperHTML(d.libelle)} · ${echapperHTML(d.zone)} · ${echapperHTML(d.causeLibelle)}</div>` +
+      `<div class="medicalRetour">Retour estimé ${echapperHTML(fourchette)}</div>` +
+      `<div class="medicalRechute">Risque de rechute : ${rechute} %` +
+      (d.reprisePrecipitee ? ' <b>(retour précipité)</b>' : '') + `</div>` +
+      `<button class="alt btnAccelerer" data-joueur="${echapperHTML(j.id)}">⏩ Accélérer le retour</button>` +
+      `</div>`;
+  }
+
   function rafraichirMedical() {
-    const blesses = saison.clubJoueur.effectif.filter((j) => j.blessureJournees > 0);
-    document.getElementById('clubMedical').innerHTML = blesses.length
-      ? blesses.map((j) => `<div class="ligneMedicale"><span><b>${j.nom}</b> — ${POSTE_COMPLET[j.poste] || j.poste}</span><span class="retourMedical">Retour dans ${j.blessureJournees} jour(s) — ${RMClub.formaterDateCourte(RMClub.ajouterJours(RMClub.dateCourante(saison), j.blessureJournees))}</span></div>`).join('')
-      : '<p>Aucun joueur blessé actuellement — effectif au complet.</p>';
+    const zone = document.getElementById('clubMedical');
+    if (!zone) return;
+    let html = '';
+    for (const g of groupesMedicaux()) {
+      const blesses = g.joueurs.filter((j) => RMClub.joursIndisponible(j) > 0);
+      if (!blesses.length) continue;
+      html += `<h4 class="sousTitreMedical">${g.libelle} (${blesses.length})</h4>` +
+        blesses.map(ligneBlesse).join('');
+    }
+    zone.innerHTML = html || '<p>Aucun joueur blessé actuellement — effectif au complet.</p>';
+    rafraichirReprise();
+  }
+
+  // Les joueurs SORTIS de l'infirmerie mais pas encore à 100 % : c'est la
+  // partie que le jeu ignorait totalement avant P1-40 (retour instantané et
+  // à pleine puissance). Le malus affiché est celui réellement transmis au
+  // moteur (cf. compositionVersJoueursCfg).
+  function rafraichirReprise() {
+    const carte = document.getElementById('carteReprise');
+    const zone = document.getElementById('clubReprise');
+    if (!carte || !zone) return;
+    const lignes = [];
+    for (const g of groupesMedicaux()) {
+      for (const j of g.joueurs) {
+        const etape = RMClub.etapeReprise(j);
+        if (!etape || etape === 'soins') continue;
+        const coef = RMClub.coefficientReprise(j);
+        const malus = Math.round((1 - coef) * 100);
+        const dispo = RMClub.peutJouer(j, 'pro')
+          ? 'Sélectionnable partout'
+          : (RMClub.peutJouer(j, 'b') ? 'Équipe B ou Espoirs seulement' : 'Pas encore sélectionnable');
+        lignes.push(`<div class="ligneMedicale reprise">` +
+          `<div class="medicalTitre"><b>${echapperHTML(j.nom)}</b> — ${POSTE_COMPLET[j.poste] || j.poste}` +
+          `<span class="badgeEtape">${echapperHTML(RMClub.LIBELLE_ETAPE[etape] || etape)}</span></div>` +
+          `<div class="medicalDiag">${echapperHTML(dispo)} · ${j.reprise.joursRestants} jour(s) à ce palier</div>` +
+          `<div class="medicalRechute">Rendement : ${Math.round(coef * 100)} % de son niveau` +
+          (malus > 0 ? ` <b>(−${malus} % transmis au moteur)</b>` : '') + `</div></div>`);
+      }
+    }
+    if (!lignes.length) { carte.style.display = 'none'; return; }
+    carte.style.display = '';
+    zone.innerHTML = lignes.join('');
   }
 
   function rafraichirFatigueTab() {
@@ -1725,8 +1795,30 @@
     joueurAffiche = id;
     const c = saison.clubJoueur;
     const slot = ctx.slot;
+    // Disponibilité tirée du dossier médical réel (TODO_AUDIT.md P1-40) :
+    // le diagnostic et l'étape de reprise, pas un compteur nu.
+    const dMed = RMClub.descriptionBlessure(j);
+    const etapeMed = RMClub.etapeReprise(j);
     const disponibilite = j.pret ? `En prêt — retour dans ${j.pret.dureeRestante} jour(s)`
-      : j.blessureJournees > 0 ? `Blessé — ${j.blessureJournees} jour(s) restant(s)` : 'Disponible';
+      : dMed ? `Blessé — ${dMed.libelle} (${dMed.zone}), retour estimé ` +
+        (dMed.joursMin === dMed.joursMax ? `dans ${dMed.joursMin} jour(s)` : `entre ${dMed.joursMin} et ${dMed.joursMax} jour(s)`)
+      : (etapeMed && etapeMed !== 'complet')
+        ? `En reprise — ${RMClub.LIBELLE_ETAPE[etapeMed]} (${Math.round(RMClub.coefficientReprise(j) * 100)} % de son niveau)`
+        : etapeMed === 'complet' ? `Retour complet — ${Math.round(RMClub.coefficientReprise(j) * 100)} % de son niveau`
+        : 'Disponible';
+    // Antécédents (TODO_AUDIT.md P1-40) : ils ne sont PAS décoratifs — ils
+    // pèsent réellement sur le risque de blessure futur (cf.
+    // facteurAntecedents), le manager doit donc pouvoir les consulter avant
+    // d'aligner un joueur fragile.
+    const antecedents = j.historiqueBlessures || [];
+    const blocAntecedents = antecedents.length
+      ? `<h4 class="titreBlocFiche">Antécédents médicaux (${antecedents.length})</h4>` +
+        `<p class="noteLectureSeule" style="margin:0 0 6px;">Un passé chargé augmente réellement le risque de nouvelle blessure.</p>` +
+        antecedents.slice(0, 6).map((b) =>
+          `<div class="ligneJoueur"><span>${echapperHTML(b.libelle || 'Blessure')} · ${echapperHTML(b.zone || '?')}</span>` +
+          `<b>${echapperHTML(RMClub.LIBELLE_GRAVITE[b.gravite] || '')} · ${b.joursReels || '?'} j` +
+          (b.reprisePrecipitee ? ' · retour précipité' : '') + `</b></div>`).join('')
+      : '';
     const titulaire = slot.compositionTitulaires && Object.values(slot.compositionTitulaires).includes(id);
     const banc = slot.compositionBanc && Object.values(slot.compositionBanc).includes(id);
     const statutCompo = titulaire ? 'Titulaire ce jour' : banc ? 'Remplaçant ce jour' : 'Non retenu ce jour';
@@ -1846,7 +1938,7 @@
       (j.salaire != null ? `<div class="ligneJoueur"><span>Salaire</span><b>${j.salaire} k€/saison</b></div>` : '') +
       (j.valeurEstimee != null && !ctx.modifiable ? `<div class="ligneJoueur"><span>Valeur de transfert estimée</span><b>${j.valeurEstimee} k€</b></div>` : '') +
       `<div class="ligneJoueur"><span>Disponibilité</span><b>${disponibilite}</b></div>` +
-      blocCompetitions + blocHistorique + blocCarriere +
+      blocAntecedents + blocCompetitions + blocHistorique + blocCarriere +
       blocEntrainementIndividuel + actions +
       `<div style="display:flex;gap:8px;margin-top:14px;">` +
       `<button class="alt" id="btnFermerFicheJoueur" style="flex:1;">← Retour à l'effectif</button>` +
@@ -2422,6 +2514,38 @@
   document.getElementById('navBackdrop').addEventListener('click', fermerTiroirNav);
 
   // --- Alertes du dashboard : cliquer une alerte ouvre l'onglet concerné ---
+  // Accélérer un retour (TODO_AUDIT.md P1-40) : VRAIE décision, avec une
+  // conséquence réelle et annoncée AVANT de la prendre — on gagne des jours,
+  // on paie en risque de rechute, et la rechute est ensuite réellement plus
+  // probable (cf. risqueBlessure, facteur `rechute`).
+  document.getElementById('clubMedical').addEventListener('click', async (e) => {
+    const bouton = e.target.closest('.btnAccelerer');
+    if (!bouton) return;
+    const id = bouton.dataset.joueur;
+    const joueur = [].concat(saison.clubJoueur.effectif || [], saison.clubJoueur.jeunes || [])
+      .find((j) => j.id === id);
+    if (!joueur || !joueur.blessure) return;
+    const restant = RMClub.joursIndisponible(joueur);
+    const gagne = Math.max(1, Math.round(restant * 0.35));
+    const avant = Math.round(joueur.blessure.risqueRechute * 100);
+    const apres = Math.min(95, Math.round(joueur.blessure.risqueRechute * 2.2 * 100));
+    const ok = await confirmerAction(
+      `Accélérer le retour de ${joueur.nom} ? Il reviendrait ${gagne} jour(s) plus tôt ` +
+      `(${restant} → ${restant - gagne} jour(s)). En contrepartie, son risque de rechute ` +
+      `passerait de ${avant} % à ${apres} %, et une rechute le renverrait à l'infirmerie ` +
+      `pour une nouvelle blessure complète.`);
+    if (!ok) return;
+    RMClub.accelererRetour(saison, joueur);
+    RMClub.ajouterMessage(saison, 'blessure', 'Retour accéléré',
+      `${joueur.nom} reprend plus tôt que prévu, contre l'avis du staff médical. ` +
+      `Risque de rechute porté à ${Math.round(joueur.blessure.risqueRechute * 100)} %.`);
+    sauvegarder();
+    rafraichirMedical();
+    rafraichirAlertes();
+    rafraichirEffectif();
+    toast(`${joueur.nom} : retour avancé de ${gagne} jour(s)`);
+  });
+
   // La carte « Préparation du prochain match » a quitté le tableau de bord
   // (TODO_AUDIT.md P1-41) : ses lignes cliquables vivent désormais dans
   // l'onglet « Préparer le match », qui a sa propre délégation ci-dessus.
@@ -3061,9 +3185,10 @@
           RMClub.enregistrerResultatCoupe(info.coupe, info.rencontre.id, etat.score.A, etat.score.B);
           // Les autres rencontres du même tour, en arrière-plan.
           RMClub.resoudreCoupesAbstraites(saison, date, creerRng(graineDuJour('coupes')), info.rencontre.id);
-          RMClub.appliquerFatigue(c.effectif, compositionUtilisee);
-          RMClub.faireProgresserBlessures(creerRng(graineAleatoire()), c.effectif, compositionUtilisee,
-            RMClub.effetPersonnel(saison, 'medecin'), saison);
+          // Point d'entrée UNIQUE (P1-40) : fatigue + blessures + reprise, avec
+          // le facteur préparateur, que la coupe et l'amical oubliaient.
+          RMClub.appliquerEffetsMatch(saison, c.effectif, compositionUtilisee,
+            creerRng(graineAleatoire()), { equipe: 'pro' });
           const gagne = info.rencontre.vainqueurId === c.id;
           RMClub.appliquerMoral(c.effectif, compositionUtilisee, gagne ? 'v' : 'd');
           RMClub.accumulerStatsJoueurs(c.effectif, compositionUtilisee,
@@ -3122,9 +3247,10 @@
           RMClub.enregistrerResultatAmical(saison, amical.id, etat.score.A, etat.score.B);
           // Conséquences RÉELLES, les mêmes qu'un match officiel : c'est ce
           // qui fait d'un amical une décision et non un bouton gratuit.
-          RMClub.appliquerFatigue(c.effectif, compositionUtilisee);
-          RMClub.faireProgresserBlessures(creerRng(graineAleatoire()), c.effectif, compositionUtilisee,
-            RMClub.effetPersonnel(saison, 'medecin'), saison);
+          // Point d'entrée UNIQUE (P1-40) : fatigue + blessures + reprise, avec
+          // le facteur préparateur, que la coupe et l'amical oubliaient.
+          RMClub.appliquerEffetsMatch(saison, c.effectif, compositionUtilisee,
+            creerRng(graineAleatoire()), { equipe: 'pro' });
           const forme = etat.score.A > etat.score.B ? 'v' : etat.score.A < etat.score.B ? 'd' : 'n';
           RMClub.appliquerMoral(c.effectif, compositionUtilisee, forme);
           RMClub.accumulerStatsJoueurs(c.effectif, compositionUtilisee,
@@ -3297,8 +3423,8 @@
             // médecin/l'entraîneur accélèrent (facteur >=1 direct), le
             // préparateur physique réduit la fatigue (facteur <1, donc
             // l'inverse de effetPersonnel qui exprime une qualité >=1).
-            RMClub.faireProgresserBlessures(creerRng(graineAleatoire()), saison.clubJoueur.effectif, compositionAvecRemplacants, RMClub.effetPersonnel(saison, 'medecin'), saison);
-            RMClub.appliquerFatigue(saison.clubJoueur.effectif, compositionAvecRemplacants, 1 / RMClub.effetPersonnel(saison, 'preparateur'));
+            RMClub.appliquerEffetsMatch(saison, saison.clubJoueur.effectif, compositionAvecRemplacants,
+              creerRng(graineAleatoire()), { equipe: 'pro' });
             RMClub.appliquerMoral(saison.clubJoueur.effectif, compositionAvecRemplacants, forme);
             RMClub.appliquerFrustrationTempsDeJeu(saison, compositionUtilisee, saison.clubJoueur.compositionBanc);
             sauvegarder();
@@ -3406,6 +3532,16 @@
           const statsB = etat.statsJoueurs && etat.statsJoueurs[lettreB];
           RMClub.accumulerStatsJoueurs(saison.clubJoueur.effectif, compositionJoueur, statsB, 'b');
           RMClub.accumulerStatsJoueurs(saison.clubJoueur.jeunes || [], compositionJoueur, statsB, 'b');
+          // Fatigue et blessures RÉELLES (TODO_AUDIT.md P1-40) : jusqu'ici un
+          // match d'Équipe B n'en produisait AUCUNE, donc un joueur pouvait
+          // enchaîner toute la saison avec la réserve sans jamais s'user ni
+          // se blesser. Le vivier mêle réservistes pro et espoirs : les deux
+          // effectifs passent par le même point d'entrée, chacun ne retenant
+          // que les siens (la composition ne cite que les joueurs alignés).
+          RMClub.appliquerEffetsMatch(saison, saison.clubJoueur.effectif, compositionJoueur,
+            creerRng(graineAleatoire()), { equipe: 'b' });
+          RMClub.appliquerEffetsMatch(saison, saison.clubJoueur.jeunes || [], compositionJoueur,
+            creerRng(graineAleatoire()), { equipe: 'b' });
           // Recette de billetterie réelle mais modeste (pas de salaires
           // redéduits ici : déjà comptés une fois par journée via le match
           // du premier XV, cf. appliquerFinancesMatchEquipeB).
@@ -3472,7 +3608,7 @@
         cfgJoueur, cfgAdverse,
         `Espoirs : ${saison.clubJoueur.nom} vs ${clubAdverse.nom}`,
         (etat) => {
-          RMClub.appliquerEffetsMatchEspoirs(saison, compositionEspoirs);
+          RMClub.appliquerEffetsMatchEspoirs(saison, compositionEspoirs, creerRng(graineAleatoire()));
           // Idem pour les espoirs (TODO_AUDIT.md P1-30) : le club du joueur
           // est toujours l'équipe A dans un match d'académie (cf. cfgJoueur
           // passé en premier).

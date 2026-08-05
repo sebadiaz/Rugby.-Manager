@@ -210,26 +210,35 @@
   // 24 encaisse de l'ordre de 5 à 10 blessures d'entraînement sur une saison
   // complète, contre une vingtaine côté matchs (15 titulaires, 6 % par match).
   // L'entraînement doit peser sur les choix du manager, pas décimer le groupe.
-  const RISQUE_BLESSURE_PAR_INTENSITE = 0.00025;
+  const RISQUE_BLESSURE_PAR_INTENSITE = 0.00037;
 
-  function blessuresDeSeance(rng, effectif, cleActivite, facteurPreparateur, facteurMedecin) {
+  function blessuresDeSeance(rng, effectif, cleActivite, facteurPreparateur, facteurMedecin, saison) {
     const activite = ACTIVITES_ENTRAINEMENT[cleActivite];
     if (!activite || activite.intensite <= 0) return [];
     const fp = facteurPreparateur != null ? facteurPreparateur : 1;
     const fm = facteurMedecin != null ? facteurMedecin : 1;
     const blesses = [];
+    const RMClub = global.RMClub;
     for (const j of effectif) {
-      if (j.blessureJournees > 0) continue; // déjà à l'infirmerie
+      if (j.blessure) continue; // déjà à l'infirmerie
       if (j.pret) continue; // prêté ailleurs : il s'entraîne dans son club d'accueil
-      const fatigue = j.fatigue || 0;
-      const risque = RISQUE_BLESSURE_PAR_INTENSITE * activite.intensite * (1 + (fatigue / 100) * 2) * fp;
-      if (rng() >= risque) continue;
-      // Blessure d'entraînement : plus courte qu'une blessure de match
-      // (3 à 12 jours contre 7 à 28), soignée d'autant plus vite que le
-      // médecin est bon — même règle que pour un match.
-      const jours = Math.max(2, Math.round((3 + Math.floor(rng() * 10)) / fm));
-      j.blessureJournees = jours;
-      blesses.push({ id: j.id, nom: j.nom, jours, activite: cleActivite });
+      // Le risque de séance passe désormais par le MÊME modèle que les
+      // blessures de match (TODO_AUDIT.md P1-40) : poste, âge, fatigue et
+      // antécédents comptent ici aussi. L'intensité de la séance module la
+      // base, comme avant — une séance de repos ne blesse jamais.
+      // La base reste EXACTEMENT celle calibrée en P1-26 (7 à 10 blessures
+      // d'entraînement par saison, mesuré) : le modèle P1-40 n'ajoute que la
+      // modulation par poste, âge et antécédents, il ne relève pas le niveau
+      // général. La fatigue, elle, est désormais portée par risqueBlessure.
+      const base = RISQUE_BLESSURE_PAR_INTENSITE * activite.intensite;
+      if (!RMClub.tirerBlessure(rng, j, {
+        cause: 'entrainement', risqueBase: base, facteurPreparateur: fp,
+      })) continue;
+      const b = RMClub.infligerBlessure(saison, j, 'entrainement', rng, {
+        facteurMedecin: fm, facteurPreparateur: fp,
+      });
+      blesses.push({ id: j.id, nom: j.nom, jours: RMClub.joursIndisponible(j),
+        activite: cleActivite, libelle: b.libelle, zone: b.zone, gravite: b.gravite });
     }
     return blesses;
   }

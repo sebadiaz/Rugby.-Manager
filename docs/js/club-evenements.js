@@ -56,12 +56,30 @@
   // résorbe jour après jour au lieu d'attendre le prochain match. Retourne
   // les joueurs qui redeviennent disponibles AUJOURD'HUI — un vrai
   // événement, pas un compteur qui bouge en silence.
-  function soignerBlessuresDuJour(effectif, facteurMedecin) {
-    const fm = facteurMedecin != null ? facteurMedecin : 1;
+  // Depuis P1-40, la guérison NE décrémente plus un compteur : elle fait
+  // avancer d'un jour le dossier médical (cf. club-medical.js), qui reste la
+  // seule source de vérité. Le médecin a déjà raccourci la durée au moment du
+  // diagnostic — le raccourcir une SECONDE fois ici le comptait deux fois.
+  // `retablis` ne contient que les joueurs qui sortent réellement de
+  // l'infirmerie ce jour-là ; la reprise progressive continue ensuite.
+  function soignerBlessuresDuJour(effectif) {
+    const RMClub = global.RMClub;
     const retablis = [];
     for (const j of effectif) {
+      if (j.blessure || j.reprise) {
+        const evenement = RMClub.avancerJourMedical(null, j);
+        if (evenement && evenement.type === 'finSoins') retablis.push(j);
+        continue;
+      }
+      // Repli pour les joueurs SANS dossier médical : les effectifs adverses
+      // restent volontairement une abstraction légère (24 joueurs × 14 clubs
+      // — la sauvegarde frôle déjà le mégaoctet, cf. le test qui la borne à
+      // 3 Mo), et un dossier complet par joueur adverse coûterait cher pour
+      // quelque chose que le manager ne consulte jamais. Ce n'est PAS une
+      // seconde source de vérité : dès qu'un joueur a un dossier, c'est lui
+      // qui décide, et ce repli ne s'applique plus.
       if (!(j.blessureJournees > 0)) continue;
-      j.blessureJournees = Math.max(0, j.blessureJournees - Math.max(1, Math.round(fm)));
+      j.blessureJournees = Math.max(0, j.blessureJournees - 1);
       if (j.blessureJournees === 0) retablis.push(j);
     }
     return retablis;
@@ -120,7 +138,7 @@
           }
         }
       }
-      for (const j of soignerBlessuresDuJour(effectif, facteurMedecin)) retablis.push(j);
+      for (const j of soignerBlessuresDuJour(effectif)) retablis.push(j);
       for (const j of progresserPretsDuJour(effectif)) retoursDePret.push(j);
       // Risque de blessure de la séance (TODO_AUDIT.md P1-26), tiré en
       // DERNIER, après la charge (la fatigue ajoutée par la séance du jour
@@ -131,7 +149,7 @@
       if (cleSeance) {
         const groupesRisque = RMClub.repartirParActivite(effectif, cleSeance);
         for (const cle of Object.keys(groupesRisque)) {
-          for (const b of RMClub.blessuresDeSeance(rng, groupesRisque[cle], cle, facteurPreparateur, facteurMedecin)) {
+          for (const b of RMClub.blessuresDeSeance(rng, groupesRisque[cle], cle, facteurPreparateur, facteurMedecin, saison)) {
             blessures.push(b);
           }
         }

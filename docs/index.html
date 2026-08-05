@@ -538,9 +538,18 @@
              (blessé, depuis quand, retour estimé, fatigue). -->
         <div class="voletOnglet" data-volet="medical" style="display:none;">
           <div class="enTetePage"><span class="categoriePage">Gestion</span><h2>Médical</h2><p>Blessures en cours et charge de fatigue de l'effectif.</p></div>
+          <!-- Infirmerie ENRICHIE (TODO_AUDIT.md P1-40) : même carte, même
+               onglet — on n'ajoute aucun écran médical parallèle. Elle porte
+               désormais le diagnostic réel (type, zone, gravité, cause), la
+               fourchette de retour, l'étape de reprise et la décision
+               d'accélérer, avec sa conséquence affichée. -->
           <div class="carteClub">
-            <h3>🤕 Joueurs blessés</h3>
+            <h3>🤕 Infirmerie</h3>
             <div id="clubMedical"></div>
+          </div>
+          <div class="carteClub" id="carteReprise" style="display:none;">
+            <h3>🔄 Reprise en cours</h3>
+            <div id="clubReprise"></div>
           </div>
           <div class="carteClub">
             <h3>⚡ Charge de fatigue</h3>
@@ -743,6 +752,7 @@
     <script src="js/club-amicaux.js"></script>
     <script src="js/club-coupes.js"></script>
     <script src="js/club-a-traiter.js"></script>
+    <script src="js/club-medical.js"></script>
 <script src="js/club-sauvegarde.js"></script>
 <script src="js/world.js"></script>
 <script src="js/clubUI.js"></script>

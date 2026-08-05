@@ -38,14 +38,22 @@
   // Conséquences réelles pour les espoirs alignés (même principe qu'Équipe
   // B, cf. appliquerEffetsMatchEquipeB) : du temps de jeu → fatigue, un
   // léger regain de moral — jamais un effet décoratif.
-  function appliquerEffetsMatchEspoirs(saison, composition) {
+  // Un match espoirs use et blesse comme les autres (TODO_AUDIT.md P1-40).
+  // Avant, il ajoutait +15 de fatigue FORFAITAIRES — sans tenir compte de
+  // l'endurance de chacun — et ne pouvait blesser PERSONNE. Les jeunes
+  // passent désormais par le même point d'entrée que les deux autres
+  // équipes ; seul le moral reste propre à ce niveau (jouer avec l'académie
+  // fait plaisir, même en perdant).
+  function appliquerEffetsMatchEspoirs(saison, composition, rng) {
+    const RMClub = global.RMClub;
+    const jeunes = saison.clubJoueur.jeunes || [];
+    RMClub.appliquerEffetsMatch(saison, jeunes, composition,
+      rng || (global.Math && (() => 0.5)), { equipe: 'jeunes' });
     const parId = {};
-    for (const j of (saison.clubJoueur.jeunes || [])) parId[j.id] = j;
+    for (const j of jeunes) parId[j.id] = j;
     for (const id of Object.values(composition)) {
       const j = parId[id];
       if (!j) continue;
-      j.matchsJoues = (j.matchsJoues || 0) + 1;
-      j.fatigue = Math.min(100, (j.fatigue || 0) + 15);
       j.moral = Math.min(100, (j.moral != null ? j.moral : 65) + 2);
     }
   }
