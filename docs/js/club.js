@@ -18,7 +18,7 @@
   // et la durée des prêts comptent maintenant des JOURS et non plus des
   // journées de championnat, puisque le temps s'écoule jour par jour.
   // Chaque migration est appliquée sans perte (cf. docs/js/club-sauvegarde.js).
-  const VERSION_SAUVEGARDE = 5;
+  const VERSION_SAUVEGARDE = 6;
 
   // --- Génération de noms (club fictif, aucune référence à un club/joueur réel) ---
   const PRENOMS = ['Thomas', 'Lucas', 'Hugo', 'Louis', 'Jules', 'Nathan', 'Enzo', 'Léo',
@@ -820,6 +820,34 @@
       ajouterMessage(saison, 'saison', 'Relégation',
         `${positionFinale}e place : le club descend en ${global.RMClub.nomPalierFrance(nouveauNiveauPalier)} la saison prochaine.`);
     }
+
+    // Carrière du manager (TODO_AUDIT.md P1-42) : on enregistre la saison qui
+    // s'achève avec le bilan RÉEL déjà calculé ci-dessus — aucune donnée
+    // recalculée — puis on en tire la conséquence sur son emploi. Appel
+    // défensif, comme les autres domaines chargés après club.js.
+    if (global.RMClub.enregistrerSaisonManager) {
+      const budgetAvantSaison = (saison.clubJoueur.historiqueSaisons.length > 1)
+        ? saison.clubJoueur.historiqueSaisons[saison.clubJoueur.historiqueSaisons.length - 2].budget
+        : saison.clubJoueur.budget;
+      global.RMClub.enregistrerSaisonManager(saison, {
+        numeroSaison: saison.numero || 1,
+        position: positionFinale, totalClubs: classementFinal.length,
+        objectifAtteint: bilanObjectif ? bilanObjectif.reussi : null,
+        mouvement: mouvementPalier,
+        niveauDivision: palierAvant.niveau,
+        budgetFin: saison.clubJoueur.budget,
+        deltaBudget: saison.clubJoueur.budget - budgetAvantSaison,
+      });
+      const securite = global.RMClub.securiteEmploi(saison);
+      if (securite.niveau === 'licenciement') {
+        global.RMClub.licencierManager(saison, securite.explication);
+      } else if (securite.niveau === 'avertissement') {
+        saison.manager.avertissements.push({
+          type: 'avertissement', saison: saison.numero || 1, raison: securite.explication,
+        });
+        ajouterMessage(saison, 'direction', 'Avertissement de la direction', securite.explication);
+      }
+    }
     // Qualification européenne (cf. docs/js/world.js, mêmes règles) :
     // seulement possible en jouant CETTE saison en Ligue d'Excellence
     // (palier 1), dérivée du classement final réel — jamais fabriquée.
@@ -921,7 +949,7 @@
   // Crée une nouvelle saison complète : le club du joueur (effectif étendu +
   // budget) + 5 adversaires IA de niveaux variés, calendrier aller-retour,
   // classement à zéro, marché des transferts initial.
-  function nouvelleSaison(rng, nomClubJoueur) {
+  function nouvelleSaison(rng, nomClubJoueur, nomManager) {
     // Débute tout en bas de la pyramide française (Ligue Régionale, cf.
     // PALIERS_PYRAMIDE_FRANCE) : un petit club modeste, comme les adversaires
     // qu'il affronte à ce palier — la progression vers le sommet se fait
@@ -965,6 +993,10 @@
     // une balise <script> manquante casserait la création d'une carrière au
     // lieu de simplement priver les adversaires de leur banc.
     if (global.RMClub.assurerEffectifsAdverses) global.RMClub.assurerEffectifsAdverses(saison);
+    // Profil de manager (TODO_AUDIT.md P1-42) : créé À CÔTÉ du club, jamais
+    // dedans — c'est ce qui permet d'en changer sans perdre la carrière.
+    // Appel défensif, comme les autres domaines chargés après club.js.
+    if (global.RMClub.assurerManager) global.RMClub.assurerManager(saison, nomManager);
     return saison;
   }
 

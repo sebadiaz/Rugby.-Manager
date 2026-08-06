@@ -111,12 +111,12 @@ tranche livrée — jamais en avance sur ce qui est réellement dans `main`.
 
 | Fonctionnalité | Statut | Fichiers | Détail |
 |---|---|---|---|
-| Profil et réputation | 🔴 | — | Aucune structure de données ni écran dédié. |
-| Bilan de carrière | 🔴 | — | Impossible structurellement tant qu'on ne peut pas changer de club. |
-| Licenciement | 🔴 | — | La confiance du président (domaine 6) ne déclenche aucune conséquence. |
-| Offres d'autres clubs | 🔴 | — | Aucun mécanisme. |
+| Profil et réputation | 🟢 | `club-carriere-manager.js` | **Tranche 13** : `saison.manager` hors du club (id, nom, réputation, statut, historique des clubs, résultats par saison, promotions, trophées). Réputation dérivée uniquement de résultats réels — rang final, objectif, promotion/relégation pondérée par la division, coupes, budget — sans aucun tirage. |
+| Bilan de carrière | 🟢 | `club-carriere-manager.js`, `clubUI.js` | **Tranche 13** : section « Carrière du manager » dans l'onglet Bilan existant — identité, club actuel, réputation, sécurité de l'emploi, clubs dirigés, saison par saison, promotions et trophées. |
+| Licenciement | 🟢 | `club-carriere-manager.js`, `club.js` | **Tranche 13** : la confiance du président pilote enfin une vraie progression — satisfaite, sous pression, avertissement officiel, licenciement. Un licenciement exige une confiance sous 15 % ET au moins deux saisons d'objectif manqué : jamais un seul mauvais match. Le manager licencié accède immédiatement au marché de l'emploi. |
+| Offres d'autres clubs | 🟡 | `club-carriere-manager.js` | **Tranche 13** : jusqu'à quatre offres de clubs RÉELS de la pyramide, avec division, classement, objectif, budget, confiance initiale et raison de l'intérêt. Accepter appelle `changerClubManager` : même monde, même saison, même date. Reste incomplet : les offres ne viennent que de la division en cours (les autres paliers ne figurent pas au calendrier de la saison), et aucun manager IA ne concurrence le joueur. |
 | Marché des entraîneurs (managers IA) | 🔴 | — | Aucune entité "manager IA" dans le jeu. |
-| Changement de club sans recommencer | 🔴 | — | `saison.clubJoueur` n'est jamais réassigné à un autre club. |
+| Changement de club sans recommencer | 🟢 | `club-carriere-manager.js` (`changerClubManager`) | **Tranche 13** : l'ancien club redevient un club IA avec son identité, ses joueurs et ses résultats ; le nouveau garde son groupe réel de 24 joueurs. Aucun identifiant de l'ancien club ne survit dans la composition ou le contexte. Testable sans DOM. |
 
 ---
 

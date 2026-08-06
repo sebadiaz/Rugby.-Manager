@@ -136,6 +136,11 @@
       <p>Crée ton club pour démarrer une saison en Ligue Régionale (14 clubs, aller-retour, tout le monde joue à chaque journée) avec le même moteur que le Match rapide. Monte vers la Ligue Nationale puis la Ligue d'Excellence selon ton classement, dispute les compétitions mondiales, et débloque une Équipe B si ton budget te le permet.</p>
       <label class="sr-label" for="inputNomClub">Nom du club</label>
       <input type="text" id="inputNomClub" class="champTexte" placeholder="Laisser vide pour un nom généré">
+      <!-- Nom du MANAGER (TODO_AUDIT.md P1-42) : la carrière personnelle est
+           désormais distincte du club, on demande donc qui la mène. Le
+           parcours de création reste identique par ailleurs. -->
+      <label class="sr-label" for="inputNomManager" style="margin-top:10px;">Ton nom (manager)</label>
+      <input type="text" id="inputNomManager" class="champTexte" placeholder="Laisser vide pour « Manager »">
       <button id="btnCreerClub" class="accent" style="width:100%;margin-top:12px;">Créer le club et démarrer la saison</button>
     </div>
     <button class="fermer alt" id="fermerClubCreation" style="width:calc(100% - 32px);margin:8px 16px;">Fermer</button>
@@ -563,6 +568,18 @@
              historiqueSaisons). -->
         <div class="voletOnglet" data-volet="stats" style="display:none;">
           <div class="enTetePage"><span class="categoriePage">Gestion</span><h2>Bilan</h2><p>Statistiques de la saison, classement des marqueurs et évolution pluriannuelle.</p></div>
+          <!-- Carrière du manager (TODO_AUDIT.md P1-42) : enrichit l'onglet
+               Bilan EXISTANT — aucun écran parallèle. Identité, club actuel,
+               réputation, sécurité de l'emploi, historique des clubs, bilan
+               global, promotions/trophées et offres, au même endroit. -->
+          <div class="carteClub" id="carteCarriereManager">
+            <h3>🎖️ Carrière du manager</h3>
+            <div id="clubCarriereManager"></div>
+          </div>
+          <div class="carteClub" id="carteOffresManager" style="display:none;">
+            <h3>📨 Postes disponibles</h3>
+            <div id="clubOffresManager"></div>
+          </div>
           <div class="carteClub">
             <h3>📊 Statistiques de la saison</h3>
             <div id="clubStats"></div>
@@ -753,6 +770,7 @@
     <script src="js/club-coupes.js"></script>
     <script src="js/club-a-traiter.js"></script>
     <script src="js/club-medical.js"></script>
+    <script src="js/club-carriere-manager.js"></script>
 <script src="js/club-sauvegarde.js"></script>
 <script src="js/world.js"></script>
 <script src="js/clubUI.js"></script>

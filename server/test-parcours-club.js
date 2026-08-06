@@ -52,6 +52,7 @@ new Function('window', require('fs').readFileSync(require('path').join(__dirname
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-coupes.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-a-traiter.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-medical.js'), 'utf8'))(global.window);
+new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-carriere-manager.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-sauvegarde.js'), 'utf8'))(global.window);
 // world.js : nécessaire pour les tests de navigation par pays/championnat
 // (P1-28) — l'écosystème mondial fournit 12 pays et leurs divisions.
@@ -2382,6 +2383,7 @@ const clubJourMatchSrcPourRechargement = require('fs').readFileSync(require('pat
 const clubDirectionSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-direction.js'), 'utf8');
 const clubEvenementsSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-evenements.js'), 'utf8');
 const clubMedicalSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-medical.js'), 'utf8');
+const clubCarriereSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-carriere-manager.js'), 'utf8');
 function chargerInstanceFraicheClub() {
   const ctx = {};
   ctx.window = ctx;
@@ -2411,6 +2413,7 @@ function chargerInstanceFraicheClub() {
   new Function('window', clubJourMatchSrcPourRechargement)(ctx);
   new Function('window', clubDirectionSrcPourRechargement)(ctx);
   new Function('window', clubMedicalSrcPourRechargement)(ctx);
+  new Function('window', clubCarriereSrcPourRechargement)(ctx);
   new Function('window', clubEvenementsSrcPourRechargement)(ctx);
   new Function('window', clubCompetitionsSrcPourRechargement)(ctx);
   new Function('window', clubEquipesSrcPourRechargement)(ctx);
@@ -4028,6 +4031,228 @@ test('préparation : l\'analyse de l\'adversaire porte sur CE match, pas un autr
   // Et quand l'analyste n'a pas fini son travail, on le DIT au lieu
   // d'afficher une analyse à moitié fausse.
   assert.strictEqual(typeof d.analyseDisponible, 'boolean');
+});
+
+
+
+// --- P1-42 : première vraie carrière de manager ----------------------------
+// Le joueur créait un club et y restait POUR TOUJOURS. La confiance du
+// président évoluait sans la moindre conséquence, et tout le domaine
+// « Carrière du manager » (ROADMAP domaine 8) était vide.
+
+test('manager : une nouvelle partie possède un profil de manager', () => {
+  const s = RMClub.nouvelleSaison(creerRng(1600), 'Test Manager', 'Alex Dupont');
+  assert.ok(s.manager, 'saison.manager doit exister');
+  assert.strictEqual(s.manager.nom, 'Alex Dupont');
+  assert.strictEqual(s.manager.clubActuelId, s.clubJoueur.id);
+  assert.strictEqual(s.manager.statut, 'enPoste');
+  for (const champ of ['id', 'reputation', 'saisonsDirigees', 'historiqueClubs', 'saisons',
+                       'promotions', 'relegations', 'trophees']) {
+    assert.ok(s.manager[champ] !== undefined, `le profil doit porter « ${champ} »`);
+  }
+  // Le profil ne vit PAS dans le club : c'est ce qui permet d'en changer.
+  assert.strictEqual(s.clubJoueur.manager, undefined);
+  assert.strictEqual(s.manager.historiqueClubs.length, 1);
+  assert.strictEqual(s.manager.historiqueClubs[0].clubId, s.clubJoueur.id);
+});
+
+test('manager : une ancienne sauvegarde est migrée SANS PERTE', () => {
+  const s = saisonPourAvance(1601);
+  // Sauvegarde d'avant la tranche : aucun manager.
+  delete s.manager;
+  const brute = JSON.parse(JSON.stringify(s));
+  brute.version = 5;
+  const avant = {
+    club: brute.clubJoueur.id, nom: brute.clubJoueur.nom,
+    joueurs: brute.clubJoueur.effectif.length,
+    budget: brute.clubJoueur.budget,
+    calendrier: brute.calendrier.length,
+    adversaires: brute.adversaires.length,
+  };
+  const res = RMClub.migrerSaison(brute);
+  assert.strictEqual(res.ok, true, `la migration doit réussir (${res.raison || ''})`);
+  const m = res.saison;
+  assert.ok(m.manager, 'la migration doit créer le profil de manager');
+  assert.strictEqual(m.manager.clubActuelId, avant.club, 'le manager dirige le club existant');
+  // RIEN d'autre ne bouge.
+  assert.strictEqual(m.clubJoueur.id, avant.club);
+  assert.strictEqual(m.clubJoueur.nom, avant.nom);
+  assert.strictEqual(m.clubJoueur.effectif.length, avant.joueurs);
+  assert.strictEqual(m.clubJoueur.budget, avant.budget);
+  assert.strictEqual(m.calendrier.length, avant.calendrier);
+  assert.strictEqual(m.adversaires.length, avant.adversaires);
+});
+
+test('manager : la réputation MONTE après une vraie réussite', () => {
+  const avant = 50;
+  const apres = RMClub.appliquerReputation(avant, {
+    position: 1, totalClubs: 14, objectifAtteint: true,
+    mouvement: 'promotion', niveauDivision: 3, deltaBudget: 120,
+  });
+  assert.ok(apres > avant, `une promotion doit faire monter la réputation (${avant} -> ${apres})`);
+});
+
+test('manager : la réputation BAISSE après un vrai échec', () => {
+  const avant = 50;
+  const apres = RMClub.appliquerReputation(avant, {
+    position: 14, totalClubs: 14, objectifAtteint: false,
+    mouvement: 'relegation', niveauDivision: 1, deltaBudget: -200,
+  });
+  assert.ok(apres < avant, `une relégation doit faire baisser la réputation (${avant} -> ${apres})`);
+});
+
+test('manager : une promotion avec un PETIT club rapporte plus qu\'une saison moyenne dans un grand', () => {
+  const petitPromu = RMClub.gainReputation({
+    position: 1, totalClubs: 14, objectifAtteint: true, mouvement: 'promotion',
+    niveauDivision: 3, deltaBudget: 0,
+  });
+  const grandMoyen = RMClub.gainReputation({
+    position: 7, totalClubs: 14, objectifAtteint: true, mouvement: null,
+    niveauDivision: 1, deltaBudget: 0,
+  });
+  assert.ok(petitPromu > grandMoyen,
+    `promotion en Régionale (${petitPromu}) doit rapporter plus qu'un milieu de tableau en Excellence (${grandMoyen})`);
+});
+
+test('manager : la réputation ne dépend d\'AUCUN tirage aléatoire', () => {
+  const bilan = { position: 3, totalClubs: 14, objectifAtteint: true, mouvement: null, niveauDivision: 2, deltaBudget: 40 };
+  const a = RMClub.gainReputation(bilan);
+  for (let i = 0; i < 20; i++) assert.strictEqual(RMClub.gainReputation(bilan), a);
+});
+
+test('manager : une confiance basse produit un AVERTISSEMENT, pas un licenciement immédiat', () => {
+  const s = saisonPourAvance(1602);
+  RMClub.assurerManager(s, 'Test');
+  s.clubJoueur.confiancePresident = 25;
+  const etat = RMClub.securiteEmploi(s);
+  assert.strictEqual(etat.niveau, 'avertissement', `attendu « avertissement », obtenu « ${etat.niveau} »`);
+  assert.ok(etat.libelle && etat.explication, 'l\'état doit être expliqué au manager');
+  // Une seule mauvaise saison ne suffit pas à licencier.
+  assert.notStrictEqual(etat.niveau, 'licenciement');
+});
+
+test('manager : le licenciement demande une confiance BASSE et une mauvaise DURÉE', () => {
+  const s = saisonPourAvance(1603);
+  RMClub.assurerManager(s, 'Test');
+  s.clubJoueur.confiancePresident = 8;
+  // Une seule saison ratée : pas encore de licenciement.
+  s.manager.saisons = [{ numeroSaison: 1, objectifAtteint: false }];
+  assert.notStrictEqual(RMClub.securiteEmploi(s).niveau, 'licenciement',
+    'un seul échec ne doit pas suffire');
+  // Deux saisons ratées d'affilée avec une confiance au plancher : oui.
+  s.manager.saisons = [{ numeroSaison: 1, objectifAtteint: false }, { numeroSaison: 2, objectifAtteint: false }];
+  assert.strictEqual(RMClub.securiteEmploi(s).niveau, 'licenciement');
+});
+
+test('manager : un licenciement ouvre RÉELLEMENT des possibilités d\'emploi', () => {
+  const s = saisonPourAvance(1604);
+  RMClub.assurerManager(s, 'Test');
+  s.manager.reputation = 55;
+  RMClub.licencierManager(s, 'Résultats insuffisants');
+  assert.strictEqual(s.manager.statut, 'sansClub');
+  assert.strictEqual(s.manager.clubActuelId, null);
+  const offres = RMClub.offresDisponibles(s);
+  assert.ok(offres.length > 0, 'un manager libre doit voir des postes');
+  assert.ok(offres.length <= 5, `quelques offres pertinentes, pas toute la ligue (${offres.length})`);
+  for (const o of offres) {
+    assert.ok((s.adversaires || []).some((a) => a.id === o.clubId),
+      'une offre doit venir d\'un club RÉEL de la pyramide');
+    for (const champ of ['clubNom', 'division', 'position', 'objectif', 'budget', 'confianceInitiale', 'raison']) {
+      assert.ok(o[champ] !== undefined, `l'offre doit montrer « ${champ} »`);
+    }
+  }
+});
+
+test('manager : une offre REFUSÉE ne change rien', () => {
+  const s = saisonPourAvance(1605);
+  RMClub.assurerManager(s, 'Test');
+  RMClub.licencierManager(s, 'test');
+  const offres = RMClub.offresDisponibles(s);
+  const avant = JSON.stringify({ club: s.clubJoueur.id, statut: s.manager.statut, hist: s.manager.historiqueClubs.length });
+  RMClub.refuserOffre(s, offres[0].id);
+  const apres = JSON.stringify({ club: s.clubJoueur.id, statut: s.manager.statut, hist: s.manager.historiqueClubs.length });
+  assert.strictEqual(apres, avant, 'refuser ne doit rien changer au club ni à la carrière');
+  assert.ok(!RMClub.offresDisponibles(s).some((o) => o.id === offres[0].id),
+    'une offre refusée ne doit plus être proposée');
+});
+
+test('manager : une offre ACCEPTÉE change réellement de club, sans repartir de zéro', () => {
+  const s = saisonPourAvance(1606);
+  RMClub.assurerManager(s, 'Test');
+  const ancienId = s.clubJoueur.id;
+  const ancienNom = s.clubJoueur.nom;
+  const numeroAvant = s.numero;
+  const dateAvant = RMClub.dateISO(RMClub.dateCourante(s));
+  const calendrierAvant = s.calendrier.length;
+  RMClub.licencierManager(s, 'test');
+  const offre = RMClub.offresDisponibles(s)[0];
+  const cible = s.adversaires.find((a) => a.id === offre.clubId);
+  // On vérifie qu'AUCUN joueur du club n'est remplacé — pas que la liste est
+  // identique au caractère près : un club dirigé a besoin d'un banc, donc le
+  // groupe réel (24 joueurs persistés, cf. P1-29) sert de base et la
+  // profondeur peut être complétée.
+  const joueursCible = cible.effectif.map((j) => j.id);
+  const nomCible = cible.nom;
+
+  RMClub.accepterOffre(s, offre.id);
+
+  // 8. le club change RÉELLEMENT
+  assert.strictEqual(s.clubJoueur.id, offre.clubId);
+  assert.strictEqual(s.clubJoueur.nom, nomCible);
+  assert.strictEqual(s.manager.clubActuelId, offre.clubId);
+  assert.strictEqual(s.manager.statut, 'enPoste');
+  // 9. l'ancien club reste dans le monde, avec son identité et ses joueurs
+  const ancien = s.adversaires.find((a) => a.id === ancienId);
+  assert.ok(ancien, 'l\'ancien club doit rester un club du monde');
+  assert.strictEqual(ancien.nom, ancienNom);
+  assert.ok(ancien.effectif.length > 0, 'il garde ses joueurs');
+  assert.ok(s.classement[ancienId], 'et ses résultats');
+  // 10. le nouveau club garde SON véritable effectif
+  const idsApres = new Set(s.clubJoueur.effectif.map((j) => j.id));
+  for (const id of joueursCible) {
+    assert.ok(idsApres.has(id), `le joueur ${id} du club repris a disparu — effectif régénéré ?`);
+  }
+  assert.ok(s.clubJoueur.effectif.length >= 23,
+    'un club dirigé doit pouvoir aligner un XV et un banc');
+  // 11. la saison et la date ne repartent pas à zéro
+  assert.strictEqual(s.numero, numeroAvant);
+  assert.strictEqual(RMClub.dateISO(RMClub.dateCourante(s)), dateAvant);
+  assert.strictEqual(s.calendrier.length, calendrierAvant);
+  // 12. l'historique du manager conserve les DEUX clubs
+  assert.strictEqual(s.manager.historiqueClubs.length, 2);
+  assert.strictEqual(s.manager.historiqueClubs[0].clubId, ancienId);
+  assert.strictEqual(s.manager.historiqueClubs[1].clubId, offre.clubId);
+  // Le club cible ne doit plus figurer parmi les adversaires.
+  assert.ok(!s.adversaires.some((a) => a.id === offre.clubId));
+});
+
+test('manager : aucun identifiant de l\'ancien club ne survit au changement', () => {
+  const s = saisonPourAvance(1607);
+  RMClub.assurerManager(s, 'Test');
+  RMClub.assurerCompositionPourEquipe(s, 'pro');
+  const ancienId = s.clubJoueur.id;
+  const ancienJoueurs = new Set(s.clubJoueur.effectif.map((j) => j.id));
+  const cible = s.adversaires[0];
+  RMClub.changerClubManager(s, cible.id);
+  const slot = RMClub.slotCompositionPourEquipe(s, 'pro');
+  for (const id of Object.values(slot.compositionTitulaires || {})) {
+    assert.ok(!ancienJoueurs.has(id), 'aucun joueur de l\'ancien club ne peut rester dans la composition');
+  }
+  for (const champ of ['capitaineId', 'buteurId', 'lanceurToucheId']) {
+    if (slot[champ]) assert.ok(!ancienJoueurs.has(slot[champ]), `${champ} pointe encore l'ancien club`);
+  }
+  assert.notStrictEqual(s.clubJoueur.id, ancienId);
+});
+
+test('manager : sauvegarder puis recharger après un changement de club donne le MÊME état', () => {
+  const s = saisonPourAvance(1608);
+  RMClub.assurerManager(s, 'Test Recharge');
+  RMClub.changerClubManager(s, s.adversaires[0].id);
+  const avant = JSON.stringify(s);
+  const res = RMClub.migrerSaison(JSON.parse(avant));
+  assert.strictEqual(res.ok, true);
+  assert.strictEqual(JSON.stringify(res.saison), avant,
+    'un aller-retour de sauvegarde ne doit RIEN changer après un changement de club');
 });
 
 

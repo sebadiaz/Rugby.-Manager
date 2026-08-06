@@ -44,6 +44,7 @@ const MODULES = [
   'club-coupes.js',
   'club-a-traiter.js',
   'club-medical.js',
+  'club-carriere-manager.js',
   'club-sauvegarde.js',
 ];
 

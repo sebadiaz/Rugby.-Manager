@@ -104,6 +104,18 @@
       return saison;
     },
 
+    // 5 → 6 : carrière du manager (TODO_AUDIT.md P1-42). Une sauvegarde v5
+    // n'a aucun profil : le joueur était collé à son club. On en crée un,
+    // rattaché au club actuellement dirigé, en reprenant le nombre de saisons
+    // DÉJÀ jouées pour ne pas faire passer un vétéran pour un débutant.
+    // Rien d'autre n'est touché : club, joueurs, calendriers, finances et
+    // historiques restent strictement identiques.
+    5: (saison) => {
+      global.RMClub.assurerManager(saison);
+      saison.version = 6;
+      return saison;
+    },
+
     3: (saison) => {
       const JOURS_PAR_JOURNEE = 7;
       const convertir = (effectif) => {

@@ -813,6 +813,30 @@
   // des recommandations et le coup d'envoi.
   document.getElementById('btnVersPreparer').addEventListener('click', () => basculerOnglet('preparer'));
 
+  // Offres d'emploi (TODO_AUDIT.md P1-42) : accepter change RÉELLEMENT de
+  // club — même monde, même saison, même date — refuser retire l'offre.
+  document.getElementById('clubOffresManager').addEventListener('click', async (e) => {
+    const refus = e.target.closest('[data-refuser]');
+    if (refus) {
+      RMClub.refuserOffre(saison, refus.dataset.refuser);
+      sauvegarder(); rafraichirCarriereManager(); toast('Offre refusée');
+      return;
+    }
+    const accept = e.target.closest('[data-accepter]');
+    if (!accept) return;
+    const offre = RMClub.offresDisponibles(saison).find((o) => o.id === accept.dataset.accepter);
+    if (!offre) return;
+    const ok = await confirmerAction(
+      `Prendre les commandes de ${offre.clubNom} ? Tu quittes ton club actuel — ta carrière ` +
+      `personnelle, la saison en cours et le calendrier continuent, mais tu diriges désormais ` +
+      `cet effectif et cet objectif.`);
+    if (!ok) return;
+    RMClub.accepterOffre(saison, offre.id);
+    sauvegarder();
+    rafraichirTout();
+    toast(`Tu diriges désormais ${offre.clubNom}`);
+  });
+
   document.getElementById('clubPreparer').addEventListener('click', (e) => {
     const vers = e.target.closest('[data-vers]');
     if (vers) { basculerOnglet(vers.dataset.vers); return; }
@@ -1727,6 +1751,80 @@
       : '<p>Aucune fatigue notable dans l\'effectif actuellement.</p>';
   }
 
+  // --- Carrière du manager (TODO_AUDIT.md P1-42) --------------------------
+  // Tout vient de `saison.manager`, la source unique — jamais du club.
+  const LIBELLE_SECURITE = {
+    satisfaite: '🟢', sousPression: '🟡', avertissement: '🟠',
+    licenciement: '🔴', sansClub: '⚪',
+  };
+
+  function rafraichirCarriereManager() {
+    const zone = document.getElementById('clubCarriereManager');
+    if (!zone) return;
+    const m = RMClub.assurerManager(saison);
+    const s = RMClub.securiteEmploi(saison);
+    const clubActuel = m.statut === 'enPoste' ? saison.clubJoueur.nom : 'Sans club';
+    const bilanTotal = m.saisons.reduce((acc, x) => {
+      acc.n++; if (x.objectifAtteint === true) acc.reussies++;
+      return acc;
+    }, { n: 0, reussies: 0 });
+
+    const historique = m.historiqueClubs.map((h) => {
+      const periode = h.jusquaSaison ? `saisons ${h.depuisSaison}–${h.jusquaSaison}` : `depuis la saison ${h.depuisSaison}`;
+      return `<div class="ligneJoueur"><span>${echapperHTML(h.clubNom || h.clubId)}</span><b>${echapperHTML(periode)}</b></div>`;
+    }).join('');
+
+    const parSaison = m.saisons.slice(-8).reverse().map((x) => {
+      const verdict = x.objectifAtteint === true ? '✅' : x.objectifAtteint === false ? '❌' : '—';
+      const mvt = x.mouvement === 'promotion' ? ' ⬆️' : x.mouvement === 'relegation' ? ' ⬇️' : '';
+      return `<div class="ligneJoueur"><span>S${x.numeroSaison} · ${echapperHTML(x.clubNom || '?')}</span>` +
+        `<b>${x.position}e/${x.totalClubs} ${verdict}${mvt}</b></div>`;
+    }).join('');
+
+    zone.innerHTML =
+      `<div class="ligneJoueur"><span>Manager</span><b>${echapperHTML(m.nom)}</b></div>` +
+      `<div class="ligneJoueur"><span>Club actuel</span><b>${echapperHTML(clubActuel)}</b></div>` +
+      `<div class="ligneJoueur"><span>Réputation</span><b>${m.reputation} / 100</b></div>` +
+      `<div class="ligneJoueur"><span>Sécurité de l'emploi</span>` +
+      `<b>${LIBELLE_SECURITE[s.niveau] || ''} ${echapperHTML(s.libelle)}</b></div>` +
+      `<p class="noteLectureSeule" style="margin:4px 0 10px;">${echapperHTML(s.explication)}</p>` +
+      `<div class="ligneJoueur"><span>Saisons dirigées</span><b>${m.saisonsDirigees}</b></div>` +
+      `<div class="ligneJoueur"><span>Objectifs atteints</span><b>${bilanTotal.reussies} / ${bilanTotal.n}</b></div>` +
+      `<div class="ligneJoueur"><span>Promotions · Relégations</span><b>${m.promotions} · ${m.relegations}</b></div>` +
+      `<div class="ligneJoueur"><span>Trophées</span><b>${m.trophees.length}</b></div>` +
+      (historique ? `<h4 class="titreBlocFiche">Clubs dirigés</h4>${historique}` : '') +
+      (parSaison ? `<h4 class="titreBlocFiche">Saison par saison</h4>${parSaison}` : '');
+    rafraichirOffresManager();
+  }
+
+  // Les offres : présentées comme des DÉCISIONS, avec ce qu'il faut pour
+  // trancher. Empilées verticalement — pas de tableau horizontal, pour rester
+  // lisible sur un téléphone.
+  function rafraichirOffresManager() {
+    const carte = document.getElementById('carteOffresManager');
+    const zone = document.getElementById('clubOffresManager');
+    if (!carte || !zone) return;
+    const offres = RMClub.offresDisponibles(saison);
+    if (!offres.length) { carte.style.display = 'none'; return; }
+    carte.style.display = '';
+    const m = RMClub.assurerManager(saison);
+    const entete = m.statut === 'sansClub'
+      ? '<p class="noteLectureSeule" style="margin:0 0 10px;">Tu es libre : ces clubs sont prêts à te confier leur équipe.</p>'
+      : '<p class="noteLectureSeule" style="margin:0 0 10px;">Ces clubs s\'intéressent à toi. Accepter met fin à ton poste actuel.</p>';
+    zone.innerHTML = entete + offres.map((o) =>
+      `<div class="offreManager">` +
+      `<div class="offreTitre"><b>${echapperHTML(o.clubNom)}</b>` +
+      `<span class="badgeNiveau niveau-info">${echapperHTML(o.division)}</span></div>` +
+      `<div class="offreLigne">Classement actuel : ${o.position != null ? o.position + 'e/' + o.totalClubs : 'non connu'}</div>` +
+      `<div class="offreLigne">Objectif proposé : ${echapperHTML(o.objectif)}</div>` +
+      `<div class="offreLigne">Budget : ${o.budget != null ? o.budget + ' k€' : 'non communiqué'} · Confiance initiale : ${o.confianceInitiale} %</div>` +
+      `<div class="offreRaison">${echapperHTML(o.raison)}</div>` +
+      `<div class="actionsOffre">` +
+      `<button class="accent" data-accepter="${echapperHTML(o.id)}">Accepter ce poste</button>` +
+      `<button class="alt" data-refuser="${echapperHTML(o.id)}">Refuser</button>` +
+      `</div></div>`).join('');
+  }
+
   // --- Statistiques : cumul RÉEL des actions produites en match cette saison
   // (cf. RMClub.accumulerStats) — jamais inventé, uniquement les matchs du
   // club du joueur, pas ceux simulés entre adversaires IA. ---
@@ -2022,6 +2120,7 @@
     // garantit qu'un réglage fait dans Composition ou Tactique est visible
     // en revenant, sans qu'aucun état ne soit conservé de son côté.
     if (cle === 'preparer') rafraichirPreparerMatch();
+    if (cle === 'stats') rafraichirCarriereManager();
     fermerFicheJoueur(); // change d'onglet = referme toute fiche laissée ouverte
     fermerTiroirNav(); // choisir une section referme le tiroir mobile
     document.getElementById('clubMain').scrollTop = 0; // repart en haut de la nouvelle page
@@ -2474,6 +2573,7 @@
     rafraichirAdversaire();
     rafraichirMessages();
     rafraichirAutresClubs();
+    rafraichirCarriereManager();
     rafraichirDerniersResultats();
     rafraichirAlertes();
     rafraichirMarche();
@@ -2611,8 +2711,10 @@
 
   document.getElementById('btnCreerClub').addEventListener('click', () => {
     const nom = document.getElementById('inputNomClub').value.trim();
+    const champManager = document.getElementById('inputNomManager');
+    const nomManager = champManager ? champManager.value.trim() : '';
     const rng = creerRng(graineAleatoire());
-    saison = RMClub.nouvelleSaison(rng, nom || null);
+    saison = RMClub.nouvelleSaison(rng, nom || null, nomManager || null);
     sauvegarder();
     rafraichirTout();
   });

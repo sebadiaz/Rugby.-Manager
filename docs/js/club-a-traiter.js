@@ -117,6 +117,28 @@
         texte: `${contratsCourts} contrat(s) expirant en fin de saison`, onglet: 'effectif' });
     }
 
+    // Carrière du manager (TODO_AUDIT.md P1-42) : un poste à saisir ou un
+    // avertissement de la direction sont des choses à TRAITER, pas des
+    // informations à découvrir par hasard dans l'onglet Bilan.
+    if (RMClub.assurerManager && saison.manager) {
+      const m = saison.manager;
+      const securite = RMClub.securiteEmploi(saison);
+      if (m.statut === 'sansClub') {
+        liste.push({ cle: 'sansClub', niveau: 'decision', icone: '🎖️',
+          texte: 'Tu es sans club — choisis ton prochain poste', onglet: 'stats' });
+      } else if (securite.niveau === 'avertissement') {
+        liste.push({ cle: 'avertissementDirection', niveau: 'urgent', icone: '⚠️',
+          texte: `Avertissement de la direction — confiance ${securite.confiance} %`, onglet: 'stats' });
+      } else if (securite.niveau === 'sousPression') {
+        liste.push({ cle: 'pressionDirection', niveau: 'recommande', icone: '🎖️',
+          texte: `La direction attend mieux — confiance ${securite.confiance} %`, onglet: 'stats' });
+      }
+      // Volontairement PAS de ligne « des clubs s'intéressent à toi » quand le
+      // manager est en poste et que tout va bien : une offre non sollicitée
+      // n'est pas quelque chose à TRAITER, et « rien à traiter » doit rester
+      // une liste vide. Les offres restent consultables dans l'onglet Bilan.
+    }
+
     liste.sort((a, b) => rang(a.niveau) - rang(b.niveau));
     return liste;
   }

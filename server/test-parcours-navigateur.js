@@ -2058,6 +2058,126 @@ function optionsLancement() {
   verifier('préparer : aucune erreur console', erreursP.length === 0);
   await ctxPrep2.close();
 
+  // --- P1-42 : première vraie carrière de manager. Le joueur restait collé
+  // à son club pour toujours ; la confiance du président n'avait aucune
+  // conséquence et le domaine 8 de la roadmap était vide. ---
+  for (const vpMgr of [{ width: 1280, height: 1000, n: 'ordinateur' },
+                       { width: 390, height: 844, n: 'mobile' }]) {
+    const ctxMgr = await browser.newContext({ viewport: vpMgr });
+    const pageMgr = await ctxMgr.newPage();
+    const erreursMgr = [];
+    pageMgr.on('pageerror', (e) => erreursMgr.push(`PAGEERROR: ${e.message}`));
+    pageMgr.on('console', (m) => { if (m.type() === 'error' && !m.text().includes('404')) erreursMgr.push(`CONSOLE: ${m.text()}`); });
+    await pageMgr.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+    await pageMgr.click('#btnAccueilModeClub');
+    await pageMgr.fill('#inputNomClub', 'Club Carrière');
+    await pageMgr.fill('#inputNomManager', 'Camille Roche');
+    await pageMgr.click('#btnCreerClub');
+    await pageMgr.waitForTimeout(700);
+    verifier(`carrière (${vpMgr.n}) : le nom du manager saisi est RÉELLEMENT enregistré`,
+      await pageMgr.evaluate(() =>
+        JSON.parse(localStorage.getItem('rugbyManager.club.v1')).manager.nom === 'Camille Roche'));
+
+    await clicOngletSur(pageMgr, 'stats');
+    await pageMgr.waitForTimeout(400);
+    const profil = await pageMgr.evaluate(() => ({
+      txt: (document.getElementById('clubCarriereManager') || {}).innerText || '',
+      deborde: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+    }));
+    verifier(`carrière (${vpMgr.n}) : le profil s'affiche dans l'onglet Bilan`,
+      /Camille Roche/.test(profil.txt) && /Réputation/.test(profil.txt)
+      && /Sécurité de l'emploi/.test(profil.txt));
+    verifier(`carrière (${vpMgr.n}) : aucun débordement horizontal`, !profil.deborde);
+
+    // Avertissement de la direction : confiance réellement basse.
+    await pageMgr.evaluate(() => {
+      const K = 'rugbyManager.club.v1';
+      const s = JSON.parse(localStorage.getItem(K));
+      s.clubJoueur.confiancePresident = 20;
+      localStorage.setItem(K, JSON.stringify(s));
+    });
+    await pageMgr.reload({ waitUntil: 'networkidle' });
+    await pageMgr.waitForTimeout(300);
+    await pageMgr.click('#btnContinuerClub');
+    await pageMgr.waitForTimeout(500);
+    const alerte = await pageMgr.evaluate(() =>
+      (document.getElementById('clubAlertes') || {}).innerText || '');
+    verifier(`carrière (${vpMgr.n}) : l'avertissement de la direction apparaît dans « À traiter »`,
+      /[Aa]vertissement/.test(alerte));
+
+    // Offres : on libère le manager pour qu'il en reçoive.
+    await pageMgr.evaluate(() => {
+      const K = 'rugbyManager.club.v1';
+      const s = JSON.parse(localStorage.getItem(K));
+      window.RMClub.licencierManager(s, 'test navigateur');
+      localStorage.setItem(K, JSON.stringify(s));
+    });
+    await pageMgr.reload({ waitUntil: 'networkidle' });
+    await pageMgr.waitForTimeout(300);
+    await pageMgr.click('#btnContinuerClub');
+    await pageMgr.waitForTimeout(500);
+    await clicOngletSur(pageMgr, 'stats');
+    await pageMgr.waitForTimeout(400);
+    const avecOffres = await pageMgr.evaluate(() => ({
+      nb: document.querySelectorAll('#clubOffresManager .offreManager').length,
+      txt: (document.getElementById('clubOffresManager') || {}).innerText || '',
+      deborde: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+    }));
+    verifier(`carrière (${vpMgr.n}) : les offres s'affichent avec club, objectif et budget`,
+      avecOffres.nb > 0 && /Objectif proposé/.test(avecOffres.txt) && /Budget/.test(avecOffres.txt));
+    verifier(`carrière (${vpMgr.n}) : l'offre reste lisible sans tableau horizontal`, !avecOffres.deborde);
+
+    // Refuser : l'offre disparaît, le club ne change pas.
+    const clubAvant = await pageMgr.evaluate(() =>
+      JSON.parse(localStorage.getItem('rugbyManager.club.v1')).clubJoueur.id);
+    // On suit l'offre PRÉCISE qu'on refuse : le nombre affiché, lui, peut
+    // rester le même — une autre candidature prend la place libérée, ce qui
+    // est le comportement voulu.
+    const offreRefusee = await pageMgr.evaluate(() => {
+      const b = document.querySelector('#clubOffresManager [data-refuser]');
+      return b ? b.dataset.refuser : null;
+    });
+    await pageMgr.click('#clubOffresManager [data-refuser]');
+    await pageMgr.waitForTimeout(400);
+    const apresRefus = await pageMgr.evaluate(() => ({
+      club: JSON.parse(localStorage.getItem('rugbyManager.club.v1')).clubJoueur.id,
+      ids: [...document.querySelectorAll('#clubOffresManager [data-accepter]')].map((b) => b.dataset.accepter),
+    }));
+    verifier(`carrière (${vpMgr.n}) : refuser une offre ne change PAS le club`,
+      apresRefus.club === clubAvant);
+    verifier(`carrière (${vpMgr.n}) : l'offre refusée n'est plus proposée`,
+      !!offreRefusee && apresRefus.ids.indexOf(offreRefusee) === -1);
+
+    // Accepter : le club affiché change RÉELLEMENT.
+    const cible = await pageMgr.evaluate(() => {
+      const b = document.querySelector('#clubOffresManager [data-accepter]');
+      return b ? b.dataset.accepter : null;
+    });
+    await pageMgr.click('#clubOffresManager [data-accepter]');
+    await pageMgr.waitForTimeout(300);
+    await pageMgr.click('#modalConfirmationValider');
+    await pageMgr.waitForTimeout(800);
+    const apresAccept = await pageMgr.evaluate(() => {
+      const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
+      return {
+        club: s.clubJoueur.id, nom: s.clubJoueur.nom,
+        managerClub: s.manager.clubActuelId, statut: s.manager.statut,
+        histo: s.manager.historiqueClubs.length,
+        entete: (document.getElementById('clubEntete') || {}).innerText || '',
+      };
+    });
+    verifier(`carrière (${vpMgr.n}) : accepter une offre change RÉELLEMENT de club`,
+      !!cible && apresAccept.club !== clubAvant && apresAccept.statut === 'enPoste'
+      && apresAccept.managerClub === apresAccept.club);
+    verifier(`carrière (${vpMgr.n}) : le nouveau club est celui affiché à l'écran`,
+      apresAccept.entete.includes(apresAccept.nom));
+    verifier(`carrière (${vpMgr.n}) : l'historique du manager conserve les deux clubs`,
+      apresAccept.histo >= 2);
+    verifier(`carrière (${vpMgr.n}) : aucune erreur console`, erreursMgr.length === 0);
+    if (erreursMgr.length) console.error(erreursMgr.slice(0, 3).join('\n'));
+    await ctxMgr.close();
+  }
+
   // Fenêtres de transfert.
   await clicOngletSur(pagePrep, 'transferts');
   await pagePrep.waitForTimeout(250);

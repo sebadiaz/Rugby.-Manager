@@ -1828,3 +1828,84 @@ compare désormais à `prochainArret`, la source.
 - Les sections « composition » et « effectif diminué » sont fusionnées en un
   seul bloc : les points de préparation les portent déjà ensemble, les
   séparer aurait dupliqué l'information que cette tranche cherche à réduire.
+
+---
+
+### P1-42. Première vraie carrière de manager, indépendante du club
+- **Statut : CORRIGÉ**
+- Priorité : P1 (demande utilisateur ; domaine 8 de la roadmap, entièrement vide)
+- Fichiers : `docs/js/club-carriere-manager.js` (**nouveau**), `club.js`, `club-sauvegarde.js`, `club-a-traiter.js`, `clubUI.js`, `docs/index.html`, `docs/css/style.css`, `server/charger-club.js`, tests
+
+**Avant.** Le joueur créait un club et y restait POUR TOUJOURS. La confiance
+du président montait et descendait — et n'avait **aucune conséquence** :
+aucun avertissement, aucun licenciement. Il n'existait ni profil, ni
+réputation, ni offre, ni moyen de changer de club sans recommencer une partie.
+
+**Après.** `saison.manager` est la source de vérité, **délibérément hors de
+`saison.clubJoueur`** : c'est ce qui permet de changer de club sans rien
+perdre de la carrière personnelle.
+
+**Réputation** — dérivée uniquement de résultats réels, aucun tirage (test
+dédié : 20 appels identiques donnent le même gain). Rang final, objectif
+atteint ou manqué, promotion/relégation pondérée par le niveau de division,
+parcours en coupe, évolution du budget. Une promotion en Ligue Régionale
+rapporte **+14** contre **+8** au maximum pour un milieu de tableau en
+Excellence : l'exploit d'un petit club vaut plus que la routine d'un grand.
+
+**Sécurité de l'emploi** — réutilise la confiance du président déjà
+existante, sans créer de seconde jauge :
+
+| Confiance | État |
+|---|---|
+| ≥ 55 | Direction satisfaite |
+| ≥ 35 | Sous pression |
+| ≥ 15 | Avertissement officiel |
+| < 15 **et** ≥ 2 saisons d'objectif manqué | Licenciement |
+
+Un seul mauvais résultat ne licencie jamais : le test le verrouille
+(confiance 8 avec un seul échec → avertissement, pas licenciement).
+
+**Offres** — uniquement des clubs qui existent réellement dans
+`saison.adversaires` : aucun club fictif, aucun monde parallèle. Éligibilité
+dérivée de la réputation face à l'exigence du club, elle-même dérivée de son
+niveau et de sa situation au classement — un club en difficulté est moins
+regardant, ce qui garantit qu'un manager licencié a toujours une porte de
+sortie. Quatre offres au maximum, jamais toute la ligue.
+
+**`changerClubManager(saison, clubId)`** — testable sans DOM. L'ancien club
+redevient un club IA avec son identité, ses joueurs, son niveau et son
+budget ; ses résultats vivent déjà dans `saison.classement`, indexé par id,
+donc rien n'est recopié. Le nouveau club part de son **groupe réel de 24
+joueurs** (persisté depuis P1-29) — aucun joueur remplacé. Le monde, le
+numéro de saison, la date, le calendrier et les compétitions continuent.
+Les compositions et le contexte d'équipe sont effacés pour qu'aucun
+identifiant de l'ancien club ne survive.
+
+**Migration v5 → v6** : une sauvegarde sans manager en reçoit un, rattaché
+au club dirigé, avec le nombre de saisons DÉJÀ jouées — pour ne pas faire
+passer un vétéran pour un débutant. Rien d'autre n'est touché.
+
+**Interface** : l'onglet Bilan existant est enrichi de deux cartes, aucun
+écran parallèle. Les offres sont empilées verticalement — vérifié sans
+débordement horizontal sur 390×844.
+
+**Un choix d'interface assumé.** « Des clubs s'intéressent à toi » n'apparaît
+PAS dans « À traiter » quand le manager est en poste et que tout va bien :
+une offre non sollicitée n'est pas quelque chose à *traiter*, et « rien à
+traiter » doit rester une liste vide (test existant). Les offres restent
+consultables dans Bilan. Seuls le statut sans club, l'avertissement et la
+pression y figurent.
+
+**Limites restantes, assumées :**
+- **Les offres viennent de la division du joueur uniquement.** Les clubs des
+  autres paliers existent (`autresDivisionsFrance`) mais ne figurent pas dans
+  le calendrier de la saison en cours : y basculer en cours de saison
+  laisserait le manager sans rencontres. Les offres inter-divisions
+  supposent un changement de club à l'intersaison — étape suivante logique.
+- **Aucun manager IA** : les autres clubs n'ont pas d'entraîneur modélisé,
+  donc aucune concurrence pour un poste.
+- **La boîte de réception suit le poste, pas la personne** : on arrive dans
+  un club sans hériter des messages du précédent. C'est un choix, pas un
+  oubli — l'historique personnel, lui, est intégralement conservé.
+- **Les trophées sont une liste vide** : le moteur de coupes existe (P1-34)
+  mais rien ne relie encore une victoire finale au palmarès du manager.
