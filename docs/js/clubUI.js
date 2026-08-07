@@ -2473,12 +2473,40 @@
         `<span class="actionPersonnel"><span>${p.salaire} k€/saison</span><button class="accent btnEmbaucher" data-staff="${p.id}"${pourvu ? ' disabled title="Licencie d\'abord le titulaire de ce poste"' : ''}>Embaucher</button></span></div>`;
     }).join('') || '<p>Aucun candidat disponible pour le moment.</p>';
   }
+  // Mercato de la division (TODO_AUDIT.md P1-43a) : ce que les clubs rivaux
+  // ont RÉELLEMENT fait pendant l'intersaison. Chaque ligne correspond à un
+  // mouvement enregistré dans la sauvegarde (saison.mercato) — jamais un
+  // texte d'ambiance. Ces joueurs existent toujours : le manager peut les
+  // repérer et tenter de les recruter (cf. approcherJoueurAdverse).
+  function rafraichirMercatoDivision() {
+    const carte = document.getElementById('carteMercatoDivision');
+    if (!carte) return;
+    const m = saison.mercato;
+    if (!m || (!m.mouvements || !m.mouvements.length)) { carte.style.display = 'none'; return; }
+    carte.style.display = '';
+    const lignes = m.mouvements.map((t) => {
+      const prix = t.montant > 0
+        ? `<b>${t.montant} k€</b>`
+        : '<span style="color:var(--text-faint);">libre</span>';
+      return `<div class="ligneJeune"><span class="infosJeune"><b>${t.joueurNom}</b>` +
+        `<span>${t.poste} · ${t.age} ans · ${t.deClubNom} → ${t.versClubNom}</span></span>` +
+        `<span style="flex:0 0 auto;">${prix}</span></div>`;
+    }).join('');
+    const retraites = m.retraites && m.retraites.length
+      ? `<p style="margin:10px 0 0;font-size:11.5px;color:var(--text-faint);">${m.retraites.length} joueur(s) ont pris leur retraite dans la division.</p>`
+      : '';
+    document.getElementById('clubMercatoDivision').innerHTML =
+      `<p style="margin:0 0 8px;font-size:12px;color:var(--text-dim);">Intersaison ${m.saison} → ${m.saison + 1} : ${m.mouvements.length} changement(s) de club chez tes rivaux.</p>`
+      + lignes + retraites;
+  }
+
   function rafraichirMarche() {
     const c = saison.clubJoueur;
     document.getElementById('transfertsBudget').innerHTML =
       `<div class="ligneFinances"><span>Budget disponible</span><span class="budgetValeur${c.budget < 0 ? ' negatif' : ''}">${c.budget} k€</span></div>`;
     document.getElementById('clubMarche').innerHTML = saison.marche.map((j) => ligneJoueurMarche(j, c, false)).join('')
       || '<p>Aucun joueur libre pour le moment.</p>';
+    rafraichirMercatoDivision();
     rafraichirFavoris();
   }
 

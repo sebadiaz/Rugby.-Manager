@@ -698,21 +698,20 @@
   // recrutement de jeunes pour compenser les départs et garder l'effectif à sa
   // taille cible. Le budget et l'identité du club sont conservés ; calendrier
   // et classement repartent à zéro avec de nouveaux adversaires.
-  function avancerSaison(rng, saison) {
-    const effectif = saison.clubJoueur.effectif;
-    const partis = [];
-    // Archive la saison écoulée dans l'historique PERSONNEL de chaque joueur
-    // AVANT de remettre ses compteurs à zéro (TODO_AUDIT.md P1-30) — pour
-    // l'effectif pro ET le centre de formation. Sans ça, une carrière de dix
-    // saisons ne laissait aucune trace : seul le total du club survivait.
-    for (const j of effectif) archiverSaisonJoueur(j, saison.numero, saison.clubJoueur.nom);
-    for (const j of (saison.clubJoueur.jeunes || [])) archiverSaisonJoueur(j, saison.numero, saison.clubJoueur.nom);
-    const ATTRIBUTS_VIEILLISSEMENT = ['vitesse', 'plaquage', 'melee', 'touche', 'puissance', 'endurance', 'passe', 'jeuPied', 'decision'];
+  // Vieillissement d'un effectif d'une saison à l'autre (TODO_AUDIT.md
+  // P1-43a). Extrait TEL QUEL d'avancerSaison, où il ne servait qu'au club du
+  // joueur : les clubs IA repartaient chaque été avec 24 inconnus. Une seule
+  // règle de vieillissement dans tout le jeu, appelée aux deux endroits —
+  // surtout pas une seconde copie qui divergerait.
+  //
+  // L'ordre des tirages `rng()` est strictement celui d'origine : la
+  // trajectoire d'une carrière existante ne bouge pas d'un pouce.
+  const ATTRIBUTS_VIEILLISSEMENT = ['vitesse', 'plaquage', 'melee', 'touche', 'puissance', 'endurance', 'passe', 'jeuPied', 'decision'];
+  function vieillirEffectif(rng, effectif, niveauClub) {
     let reste = effectif.map((j) => {
       // Nouvelle saison, nouvelle fraîcheur : la fatigue et le compteur de
       // matchs (statistique de LA saison) repartent à zéro, comme la vraie
-      // préparation estivale d'un club. Les stats individuelles viennent
-      // d'être archivées dans j.historiqueSaisons juste au-dessus.
+      // préparation estivale d'un club.
       const copie = Object.assign({}, j, { age: j.age + 1, contrat: j.contrat - 1, fatigue: 0, matchsJoues: 0, statsSaison: null });
       // Vieillissement RÉEL des attributs (pas seulement le compteur d'âge) :
       // déclin physique après 30 ans, développement estival vers le potentiel
@@ -732,13 +731,18 @@
       }
       return copie;
     });
+    const partis = [];
     reste = reste.filter((j) => {
       const retraite = j.age >= 37 || (j.age >= 34 && rng() < 0.25);
       const finDeContrat = j.contrat <= 0;
       if (retraite || finDeContrat) {
         const memePoste = reste.filter((x) => x.poste === j.poste).length;
         if (memePoste <= 1 && !retraite) { j.contrat = 1; return true; } // évite un poste à 0 joueur
-        partis.push({ nom: j.nom, poste: j.poste, motif: retraite ? 'retraite' : 'fin de contrat' });
+        // `joueur` est ajouté pour le mercato des clubs IA (P1-43a), qui a
+        // besoin du joueur RÉEL pour le faire changer de club au lieu de le
+        // faire disparaître. Champ additionnel : les appelants historiques ne
+        // lisent que nom/poste/motif et ne changent pas de comportement.
+        partis.push({ nom: j.nom, poste: j.poste, motif: retraite ? 'retraite' : 'fin de contrat', joueur: j });
         return false;
       }
       return true;
@@ -749,13 +753,28 @@
       for (const j of reste) compte[j.poste] = (compte[j.poste] || 0) + 1;
       const posteManquant = GABARIT_EFFECTIF.find((p) => (compte[p] || 0) < GABARIT_EFFECTIF.filter((x) => x === p).length)
         || choisir(rng, GABARIT_EFFECTIF);
-      const jeune = global.RMClub.genererJoueurEtendu(posteManquant, rng, saison.clubJoueur.niveauClub);
+      const jeune = global.RMClub.genererJoueurEtendu(posteManquant, rng, niveauClub);
       jeune.age = 18 + Math.floor(rng() * 3); // jeunes espoirs, 18-20 ans
       jeune.contrat = 2 + Math.floor(rng() * 2);
       jeune.salaire = calculerSalaire(jeune.vitesse, jeune.plaquage, jeune.age);
       reste.push(jeune);
       arrivees.push({ nom: jeune.nom, poste: jeune.poste });
     }
+    return { reste, partis, arrivees };
+  }
+
+  function avancerSaison(rng, saison) {
+    const effectif = saison.clubJoueur.effectif;
+    // Archive la saison écoulée dans l'historique PERSONNEL de chaque joueur
+    // AVANT de remettre ses compteurs à zéro (TODO_AUDIT.md P1-30) — pour
+    // l'effectif pro ET le centre de formation. Sans ça, une carrière de dix
+    // saisons ne laissait aucune trace : seul le total du club survivait.
+    for (const j of effectif) archiverSaisonJoueur(j, saison.numero, saison.clubJoueur.nom);
+    for (const j of (saison.clubJoueur.jeunes || [])) archiverSaisonJoueur(j, saison.numero, saison.clubJoueur.nom);
+    const evolution = vieillirEffectif(rng, effectif, saison.clubJoueur.niveauClub);
+    const reste = evolution.reste;
+    const partis = evolution.partis;
+    const arrivees = evolution.arrivees;
     saison.clubJoueur.effectif = reste;
 
     // Centre de formation : vieillit et se reconstitue indépendamment de
@@ -880,9 +899,28 @@
         const total = classementFinal.length;
         const delta = rang <= 2 ? 0.05 : rang >= total - 1 ? -0.05 : 0;
         const niveauClub = Math.max(0.15, Math.min(0.9, (ancien.niveauClub != null ? ancien.niveauClub : 0.5) + delta));
-        return { id: ancien.id, nom: ancien.nom, couleur: ancien.couleur, niveauClub, effectif: genererEffectif(rng, niveauClub), budget: global.RMClub.budgetInitial(niveauClub, rng) };
+        // TODO_AUDIT.md P1-43a : on CONSERVE le club tel qu'il est — ses 24
+        // joueurs réels (groupe), sa feuille de match, son budget. Avant, cette
+        // ligne re-tirait `effectif` et abandonnait `groupe`/`banc` : mesuré,
+        // 24 partis et 24 arrivées sur chaque club chaque été, donc aucun
+        // joueur du monde ne gardait son identité. Le vieillissement, les
+        // retraites et les transferts sont appliqués juste après, par
+        // avancerIntersaisonClubsIA.
+        return Object.assign({}, ancien, { niveauClub });
       });
     saison.adversaires = adversaires;
+    // Intersaison des clubs IA (TODO_AUDIT.md P1-43a) : ils vieillissent,
+    // perdent leurs anciens, comblent leurs trous et s'échangent réellement
+    // des joueurs. Appel défensif comme les autres domaines chargés après
+    // club.js — sans le module, le monde reste simplement figé comme avant.
+    // En cas de promotion/relégation, les adversaires sont de NOUVEAUX clubs
+    // tout juste générés : rien à faire vieillir cette année-là.
+    if (!mouvementPalier && global.RMClub.avancerIntersaisonClubsIA) {
+      const mercato = global.RMClub.avancerIntersaisonClubsIA(rng, saison);
+      if (global.RMClub.messageMercato) global.RMClub.messageMercato(saison, mercato);
+    } else {
+      saison.mercato = { saison: (saison.numero || 1) + 1, transferts: [], retraites: [] };
+    }
     const tousLesClubs = [saison.clubJoueur, ...adversaires];
     saison.calendrier = global.RMClub.genererCalendrier(tousLesClubs);
     saison.classement = global.RMClub.classementInitial(tousLesClubs);
@@ -1055,7 +1093,7 @@
     resynchroniserCompteurs, VERSION_SAUVEGARDE,
     POSTE_REQUIS, TAILLE_EFFECTIF_CIBLE,
     masseSalariale, appliquerFinancesMatch, appliquerFinancesMatchEquipeB,
-    avancerSaison,
+    avancerSaison, vieillirEffectif,
     AXES_TACTIQUE,
     accumulerStats, enregistrerMouvementFinances,
     accumulerStatsJoueurs, classementMarqueurs,

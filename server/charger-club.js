@@ -22,6 +22,7 @@ const MODULES = [
   'club-equipe-b.js',
   'club-transferts.js',
   'club-transferts-internationaux.js',
+  'club-mercato.js',
   'club-generation-joueurs.js',
   'club-centre-formation.js',
   'club-espoirs.js',

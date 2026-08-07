@@ -30,6 +30,7 @@ new Function('window', require('fs').readFileSync(require('path').join(__dirname
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-equipe-b.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-transferts.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-transferts-internationaux.js'), 'utf8'))(global.window);
+new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-mercato.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-generation-joueurs.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-centre-formation.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-espoirs.js'), 'utf8'))(global.window);
@@ -2384,6 +2385,7 @@ const clubDirectionSrcPourRechargement = require('fs').readFileSync(require('pat
 const clubEvenementsSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-evenements.js'), 'utf8');
 const clubMedicalSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-medical.js'), 'utf8');
 const clubCarriereSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-carriere-manager.js'), 'utf8');
+const clubMercatoSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-mercato.js'), 'utf8');
 function chargerInstanceFraicheClub() {
   const ctx = {};
   ctx.window = ctx;
@@ -2397,6 +2399,7 @@ function chargerInstanceFraicheClub() {
   new Function('window', clubEquipeBSrcPourRechargement)(ctx);
   new Function('window', clubTransfertsSrcPourRechargement)(ctx);
   new Function('window', clubTransfertsIntlSrcPourRechargement)(ctx);
+  new Function('window', clubMercatoSrcPourRechargement)(ctx);
   new Function('window', clubGenerationJoueursSrcPourRechargement)(ctx);
   new Function('window', clubCentreFormationSrcPourRechargement)(ctx);
   new Function('window', clubEspoirsSrcPourRechargement)(ctx);
@@ -4363,6 +4366,226 @@ test('ultimatum : aucune part d\'aléatoire', () => {
   const ub = RMClub.poserUltimatum(b, { position: 11, total: 14 });
   assert.strictEqual(ua.matchsRestants, ub.matchsRestants);
   assert.strictEqual(ua.positionCible, ub.positionCible);
+});
+
+
+
+// --- P1-43a : le monde ne se réinitialise plus chaque été -------------------
+// Mesuré AVANT : à chaque intersaison, un club IA perdait ses 24 joueurs et en
+// recevait 24 inconnus (`effectif: genererEffectif(...)` dans club.js). Aucun
+// joueur du monde ne gardait son identité, et aucun transfert n'avait jamais
+// lieu entre deux clubs IA.
+
+// Fait jouer TOUT le calendrier puis clôt réellement la saison, sans
+// promotion ni relégation (position volontairement médiane), pour observer
+// l'intersaison des clubs IA seule.
+function saisonPuisIntersaison(graine) {
+  const s = saisonPourAvance(graine);
+  const id = s.clubJoueur.id;
+  // Le club du joueur perd tout et finit DERNIER. Une carrière neuve démarre
+  // au palier 3 (Ligue Régionale), d'où l'on ne peut pas descendre : ni
+  // montée ni descente, donc la division garde EXACTEMENT les mêmes clubs
+  // d'une saison à l'autre. C'est la seule façon d'observer l'intersaison
+  // des clubs IA isolément.
+  for (const f of s.calendrier) {
+    if (f.domicileId === id) RMClub.enregistrerResultat(s, f.id, 3, 30, 0, 4);
+    else if (f.exterieurId === id) RMClub.enregistrerResultat(s, f.id, 30, 3, 4, 0);
+    else RMClub.enregistrerResultat(s, f.id, 20, 20, 2, 2);
+  }
+  return s;
+}
+
+function groupesParClub(saison) {
+  const m = {};
+  for (const a of saison.adversaires || []) m[a.id] = RMClub.groupeAdverse(saison, a).map((j) => j.id);
+  return m;
+}
+
+test('mercato IA : un club IA GARDE ses joueurs d\'une saison à l\'autre', () => {
+  const s = saisonPuisIntersaison(4301);
+  const avant = groupesParClub(s);
+  RMClub.avancerSaison(creerRng(1), s);
+  const apres = groupesParClub(s);
+  const communs = [];
+  for (const id of Object.keys(avant)) {
+    if (!apres[id]) continue;
+    const set = new Set(apres[id]);
+    communs.push(avant[id].filter((x) => set.has(x)).length / avant[id].length);
+  }
+  assert.ok(communs.length > 0, 'les mêmes clubs doivent être là (ni montée ni descente)');
+  const moyenne = communs.reduce((a, b) => a + b, 0) / communs.length;
+  assert.ok(moyenne >= 0.6,
+    `un club IA doit conserver la majorité de son groupe (mesuré ${Math.round(moyenne * 100)} %)`);
+});
+
+test('mercato IA : les joueurs des clubs IA VIEILLISSENT d\'un an', () => {
+  const s = saisonPuisIntersaison(4302);
+  const club = s.adversaires[0];
+  const avant = {};
+  for (const j of RMClub.groupeAdverse(s, club)) avant[j.id] = j.age;
+  RMClub.avancerSaison(creerRng(2), s);
+  const memeClub = s.adversaires.find((a) => a.id === club.id);
+  const survivants = RMClub.groupeAdverse(s, memeClub).filter((j) => avant[j.id] != null);
+  assert.ok(survivants.length > 0, 'au moins un joueur doit survivre à l\'intersaison');
+  for (const j of survivants) {
+    assert.strictEqual(j.age, avant[j.id] + 1, `${j.nom} doit avoir exactement un an de plus`);
+  }
+});
+
+test('mercato IA : les plus vieux prennent leur retraite', () => {
+  let s = saisonPuisIntersaison(4303);
+  for (let i = 0; i < 4; i++) {
+    RMClub.avancerSaison(creerRng(10 + i), s);
+    for (const f of s.calendrier) RMClub.enregistrerResultat(s, f.id, 20, 20, 2, 2);
+  }
+  for (const a of s.adversaires) {
+    for (const j of RMClub.groupeAdverse(s, a)) {
+      assert.ok(j.age < 40, `${j.nom} (${j.age} ans) aurait dû prendre sa retraite`);
+    }
+  }
+});
+
+test('mercato IA : l\'effectif d\'un club IA reste complet après l\'intersaison', () => {
+  const s = saisonPuisIntersaison(4304);
+  RMClub.avancerSaison(creerRng(3), s);
+  for (const a of s.adversaires) {
+    const g = RMClub.groupeAdverse(s, a);
+    assert.ok(g.length >= 23, `${a.nom} n'a que ${g.length} joueurs`);
+    assert.ok(a.effectif && a.effectif.length >= 15,
+      `${a.nom} doit garder une feuille de match complète (${(a.effectif || []).length})`);
+    const postes = new Set(g.map((j) => j.poste));
+    assert.ok(postes.size >= 8, `${a.nom} ne couvre que ${postes.size} postes différents`);
+  }
+});
+
+test('mercato IA : de VRAIS mouvements ont lieu entre clubs IA', () => {
+  const s = saisonPuisIntersaison(4305);
+  RMClub.avancerSaison(creerRng(4), s);
+  const mercato = s.mercato;
+  assert.ok(mercato, 'l\'intersaison doit produire un mercato dans la sauvegarde');
+  assert.ok(Array.isArray(mercato.mouvements) && mercato.mouvements.length > 0,
+    'au moins un joueur doit changer de club chez les rivaux');
+  for (const t of mercato.mouvements) {
+    assert.ok(t.joueurNom, 'un mouvement nomme le joueur');
+    assert.ok(t.deClubId && t.versClubId, 'un mouvement a un club de départ et un club d\'arrivée');
+    assert.notStrictEqual(t.deClubId, t.versClubId, 'un club ne se signe pas un joueur à lui-même');
+    assert.ok(t.montant >= 0, 'un mouvement a un montant (0 pour un joueur libre)');
+    assert.ok(t.type === 'libre' || t.type === undefined || t.montant > 0,
+      'un mouvement payant doit avoir un montant strictement positif');
+  }
+});
+
+test('mercato IA : un mouvement DÉPLACE réellement le joueur', () => {
+  const s = saisonPuisIntersaison(4306);
+  RMClub.avancerSaison(creerRng(5), s);
+  const t = s.mercato.mouvements[0];
+  const vendeur = s.adversaires.find((a) => a.id === t.deClubId);
+  const acheteur = s.adversaires.find((a) => a.id === t.versClubId);
+  assert.ok(vendeur && acheteur, 'les deux clubs existent toujours');
+  const chezVendeur = RMClub.groupeAdverse(s, vendeur).some((j) => j.id === t.joueurId);
+  const chezAcheteur = RMClub.groupeAdverse(s, acheteur).some((j) => j.id === t.joueurId);
+  assert.strictEqual(chezVendeur, false, 'le joueur a QUITTÉ son ancien club');
+  assert.strictEqual(chezAcheteur, true, 'le joueur est ARRIVÉ dans son nouveau club');
+});
+
+// Une indemnité de transfert vaut 325 a 711 k€ mesuré, pour des budgets de
+// 246 a 446 k€ en Ligue Régionale : à ce niveau, un transfert PAYANT est
+// normalement hors de portée (le marché des joueurs libres du jeu ne facture
+// d'ailleurs aucune indemnité). On vérifie donc le chemin payant là où il
+// existe VRAIMENT : sur des clubs qui en ont les moyens.
+test('mercato IA : un transfert PAYANT coûte à l\'acheteur et rapporte au vendeur', () => {
+  const s = saisonPuisIntersaison(4307);
+  // Des clubs réellement riches : le chemin payant devient atteignable.
+  for (const a of s.adversaires) a.budget = 4000;
+  RMClub.avancerSaison(creerRng(6), s);
+  const payants = s.mercato.transferts;
+  assert.ok(payants.length > 0,
+    'avec des budgets suffisants, de vrais transferts payants doivent avoir lieu');
+  for (const t of payants) {
+    assert.ok(t.montant > 0, 'un transfert payant a un montant réel');
+    assert.strictEqual(t.budgetAcheteurAvant - t.budgetAcheteurApres, t.montant,
+      'l\'acheteur paie EXACTEMENT le montant');
+    assert.strictEqual(t.budgetVendeurApres - t.budgetVendeurAvant, t.montant,
+      'le vendeur encaisse EXACTEMENT le montant');
+  }
+});
+
+test('mercato IA : aucun club ne dépense plus qu\'il n\'a', () => {
+  const s = saisonPuisIntersaison(4308);
+  RMClub.avancerSaison(creerRng(7), s);
+  for (const a of s.adversaires) {
+    assert.ok(a.budget >= 0, `${a.nom} a un budget négatif (${a.budget})`);
+  }
+});
+
+// Les effectifs des clubs IA sont tirés d'une graine dérivée de l'ID du club,
+// et ces ID viennent d'un compteur global au processus : deux mondes créés
+// l'un après l'autre n'ont donc PAS les mêmes joueurs. La propriété qui
+// compte réellement — et celle dont dépend un rechargement de sauvegarde —
+// est qu'un MÊME monde produise toujours le même mercato. C'est ce qu'on
+// vérifie, en clonant le monde avant de faire tourner l'intersaison.
+test('mercato IA : entièrement déterministe (aucun Math.random)', () => {
+  const a = saisonPuisIntersaison(4309);
+  const b = JSON.parse(JSON.stringify(a));
+  RMClub.avancerSaison(creerRng(8), a);
+  RMClub.avancerSaison(creerRng(8), b);
+  // Les identifiants de club viennent d'un compteur global au processus :
+  // deux mondes créés l'un après l'autre en reçoivent forcément de
+  // différents. On compare donc ce qui décrit le mercato lui-même — qui
+  // bouge, d'où, vers où, pour combien.
+  const resume = (s) => s.mercato.mouvements.map((t) =>
+    `${t.type}|${t.joueurNom}|${t.poste}|${t.age}|${t.deClubNom}|${t.versClubNom}|${t.montant}`);
+  assert.deepStrictEqual(resume(a), resume(b),
+    'deux mondes identiques doivent produire le MÊME mercato');
+  assert.ok(resume(a).length > 0, 'le scénario doit produire des mouvements à comparer');
+});
+
+test('mercato IA : le mercato survit à un rechargement de sauvegarde', () => {
+  const s = saisonPuisIntersaison(4310);
+  RMClub.avancerSaison(creerRng(9), s);
+  const recharge = JSON.parse(JSON.stringify(s));
+  assert.deepStrictEqual(recharge.mercato, s.mercato);
+});
+
+test('mercato IA : le manager en est RÉELLEMENT informé', () => {
+  const s = saisonPuisIntersaison(4311);
+  RMClub.avancerSaison(creerRng(12), s);
+  const msg = (s.clubJoueur.messages || []).find((m) => /mercato/i.test(m.titre));
+  assert.ok(msg, 'un message de mercato doit exister');
+  const t = s.mercato.mouvements[0];
+  assert.ok(msg.corps.indexOf(t.joueurNom) !== -1,
+    `le résumé doit citer un transfert RÉEL (« ${t.joueurNom} » absent de : ${msg.corps})`);
+});
+
+test('mercato IA : un joueur repéré chez un rival existe encore la saison suivante', () => {
+  const s = saisonPuisIntersaison(4312);
+  const club = s.adversaires[0];
+  // Le meilleur joueur du club : exactement ce qu'un manager repère.
+  const cible = RMClub.groupeAdverse(s, club)
+    .slice().sort((x, y) => (y.vitesse + y.plaquage) - (x.vitesse + x.plaquage))[0];
+  RMClub.avancerSaison(creerRng(13), s);
+  const present = (s.adversaires || []).some((a) =>
+    RMClub.groupeAdverse(s, a).some((j) => j.id === cible.id));
+  assert.ok(present,
+    `${cible.nom} doit toujours exister quelque part dans le monde (il peut avoir changé de club)`);
+});
+
+test('mercato IA : une promotion donne bien de NOUVEAUX adversaires, sans casse', () => {
+  const s = saisonPourAvance(4313);
+  const id = s.clubJoueur.id;
+  // Le club gagne tout : il finit 1er et monte d'un palier.
+  for (const f of s.calendrier) {
+    if (f.domicileId === id) RMClub.enregistrerResultat(s, f.id, 40, 3, 6, 0);
+    else if (f.exterieurId === id) RMClub.enregistrerResultat(s, f.id, 3, 40, 0, 6);
+    else RMClub.enregistrerResultat(s, f.id, 15, 15, 1, 1);
+  }
+  const avant = (s.adversaires || []).map((a) => a.id).join(',');
+  RMClub.avancerSaison(creerRng(14), s);
+  assert.ok((s.adversaires || []).length > 0, 'une nouvelle division a des adversaires');
+  for (const a of s.adversaires) {
+    const g = RMClub.groupeAdverse(s, a);
+    assert.ok(g.length >= 23, `${a.nom} doit avoir un groupe complet (${g.length})`);
+  }
 });
 
 

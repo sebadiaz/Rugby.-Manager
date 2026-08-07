@@ -1974,3 +1974,74 @@ licenciement, qui débouche sur le marché de l'emploi de P1-42.
 décompté par match réel ; cible dérivée du classement réel ; réussite et
 échec produisent chacun leur conséquence ; survit à un rechargement ; visible
 dans « À traiter » ; aucune décision aléatoire.
+
+---
+
+## P1-43a — Le monde ne se réinitialise plus chaque été (mercato IA)
+
+### Le problème MESURÉ (working tree `3dc2924`, mesures reproductibles)
+
+Audit comportemental joué sur une carrière réelle, pas une lecture de code :
+
+| Mesure | Résultat |
+| --- | --- |
+| Effectifs des clubs IA après 300 jours simulés | **figés** (aucun mouvement) |
+| Marché des transferts après 300 jours | **figé** — 6 joueurs, les mêmes |
+| Effectif d'un club IA après une intersaison | **24 partis, 24 arrivées** |
+| Transferts entre deux clubs IA | **aucun, jamais** |
+| Cible du manager reprise par un rival en 200 jours | **jamais** |
+
+La cause est localisée précisément — `docs/js/club.js`, branche d'intersaison
+des adversaires :
+
+```js
+return { id: ancien.id, nom: ancien.nom, couleur: ancien.couleur, niveauClub,
+         effectif: genererEffectif(rng, niveauClub), budget: ... };
+```
+
+L'objet reconstruit abandonne `groupe` et `banc`, et re-tire `effectif` : les
+24 joueurs réels du club (persistés depuis P1-29) sont jetés et remplacés par
+24 inconnus. Le nom, la couleur et l'id du club survivent — **ses joueurs,
+non**.
+
+### Pourquoi c'est le manque le plus important
+
+Ce n'est pas un défaut cosmétique, il détruit trois mécaniques DÉJÀ écrites :
+
+1. `approcherJoueurAdverse` (club-transferts-internationaux.js) permet
+   d'acheter un joueur à un club IA, à un prix dérivé de son importance
+   réelle. Le joueur repéré cette saison **n'existe plus** la suivante.
+2. `analyserAdversaire` compare les attributs réels de l'adversaire. L'analyse
+   accumulée sur une saison ne vaut plus rien à la saison suivante.
+3. Le centre de formation, les prêts et le scouting produisent une valeur
+   qu'aucun club IA ne convoite jamais : le manager est le seul acteur d'un
+   monde immobile.
+
+Et surtout : **rien ne peut circuler entre des clubs dont personne ne
+persiste.** Tant que ce point n'est pas réglé, aucun mercato vivant n'est
+possible.
+
+### Ce que cette tranche livre
+
+- Les clubs IA **gardent leurs joueurs** d'une saison à l'autre : identité,
+  attributs, âge, contrat.
+- Ils **vieillissent** avec exactement les mêmes règles que l'effectif du
+  joueur (déclin après 31 ans, progression vers le potentiel avant 23 ans),
+  via une fonction unique partagée — aucun second système de vieillissement.
+- Les plus vieux **prennent leur retraite**, les fins de contrat partent, et
+  le club **comble ses trous**.
+- De **vrais transferts** ont lieu entre clubs IA : un club faible à un poste
+  achète, dans son budget, le meilleur joueur disponible d'un club en surplus.
+  Argent débité chez l'acheteur, crédité chez le vendeur, joueur réellement
+  déplacé.
+- Le manager **lit le mercato** : qui a signé où, pour combien.
+
+### Critères de validation
+
+Un club IA conserve la majorité de ses joueurs d'une saison à l'autre ; les
+survivants ont un an de plus ; aucun joueur au-delà de l'âge de retraite ;
+l'effectif reste complet et couvre tous les postes ; au moins un transfert
+réel par intersaison ; le transféré quitte le vendeur ET arrive chez
+l'acheteur ; les budgets bougent des deux côtés ; aucun club ne dépense plus
+qu'il n'a ; le tout déterministe et sauvegardable ; promotion/relégation
+continue de donner de nouveaux adversaires sans casse.
