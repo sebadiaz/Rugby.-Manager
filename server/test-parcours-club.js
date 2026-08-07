@@ -4256,6 +4256,116 @@ test('manager : sauvegarder puis recharger après un changement de club donne le
 });
 
 
+
+// --- P1-42a : l'ultimatum de la direction ----------------------------------
+// Le point d'étape écrivait « Confiance −4 (31 %) » : un chiffre, sans la
+// moindre conséquence. La confiance pouvait tomber à 5 % sans que rien
+// n'arrive avant la fin de saison.
+
+function saisonSousPression(graine, position) {
+  const s = saisonPourAvance(graine);
+  RMClub.assurerManager(s, 'Test Ultimatum');
+  s.clubJoueur.objectifSaison = { position: 6, totalClubs: 14 };
+  s.clubJoueur.confiancePresident = 31;
+  return s;
+}
+
+test('ultimatum : rien tant que la confiance reste correcte', () => {
+  const s = saisonSousPression(1700);
+  s.clubJoueur.confiancePresident = 60;
+  assert.strictEqual(RMClub.ultimatumEnCours(s), null,
+    'une direction satisfaite ne pose pas d\'ultimatum');
+  assert.strictEqual(RMClub.poserUltimatum(s, { position: 12, total: 14 }), null);
+});
+
+test('ultimatum : sous le seuil, la direction pose un vrai ultimatum chiffré', () => {
+  const s = saisonSousPression(1701);
+  const u = RMClub.poserUltimatum(s, { position: 12, total: 14 });
+  assert.ok(u, 'sous le seuil, un ultimatum doit être posé');
+  assert.ok(u.matchsRestants >= 2, 'il doit laisser un nombre de matchs réel');
+  assert.ok(u.positionCible < 12, `la cible doit être meilleure que la position actuelle (${u.positionCible})`);
+  assert.strictEqual(u.positionDepart, 12);
+  // Il vit dans la SAUVEGARDE, pas seulement à l'écran.
+  assert.strictEqual(RMClub.ultimatumEnCours(s), u);
+  assert.ok(u.explication && /12e/.test(u.explication) && /6e/.test(u.explication),
+    `l'explication doit dire la position ET l'objectif : « ${u.explication} »`);
+});
+
+test('ultimatum : un seul à la fois', () => {
+  const s = saisonSousPression(1702);
+  const premier = RMClub.poserUltimatum(s, { position: 12, total: 14 });
+  const second = RMClub.poserUltimatum(s, { position: 13, total: 14 });
+  assert.strictEqual(second, null, 'on ne cumule pas deux ultimatums');
+  assert.strictEqual(RMClub.ultimatumEnCours(s), premier);
+});
+
+test('ultimatum : il se décompte à chaque match RÉEL', () => {
+  const s = saisonSousPression(1703);
+  const u = RMClub.poserUltimatum(s, { position: 12, total: 14 });
+  const depart = u.matchsRestants;
+  RMClub.avancerUltimatum(s, { position: 12, total: 14 });
+  assert.strictEqual(RMClub.ultimatumEnCours(s).matchsRestants, depart - 1);
+  RMClub.avancerUltimatum(s, { position: 12, total: 14 });
+  assert.strictEqual(RMClub.ultimatumEnCours(s).matchsRestants, depart - 2);
+});
+
+test('ultimatum : cible atteinte AVANT la fin -> confiance restaurée, ultimatum levé', () => {
+  const s = saisonSousPression(1704);
+  const u = RMClub.poserUltimatum(s, { position: 12, total: 14 });
+  const confianceAvant = s.clubJoueur.confiancePresident;
+  const res = RMClub.avancerUltimatum(s, { position: u.positionCible, total: 14 });
+  assert.strictEqual(res.issue, 'reussi');
+  assert.strictEqual(RMClub.ultimatumEnCours(s), null, 'un ultimatum réussi est levé');
+  assert.ok(s.clubJoueur.confiancePresident > confianceAvant,
+    'réussir doit RÉELLEMENT restaurer la confiance');
+  assert.ok(s.clubJoueur.messages.some((m) => /ultimatum|soutien|confiance/i.test(m.titre + m.corps)));
+});
+
+test('ultimatum : échoué à la fin du compte -> licenciement RÉEL', () => {
+  const s = saisonSousPression(1705);
+  const u = RMClub.poserUltimatum(s, { position: 12, total: 14 });
+  const aJouer = u.matchsRestants;
+  let res = null;
+  for (let i = 0; i < aJouer; i++) {
+    res = RMClub.avancerUltimatum(s, { position: 13, total: 14 });
+  }
+  assert.strictEqual(res.issue, 'echoue');
+  assert.strictEqual(s.manager.statut, 'sansClub', 'échouer doit licencier pour de bon');
+  assert.strictEqual(RMClub.ultimatumEnCours(s), null);
+  // …et le manager ne reste pas sans issue : le marché existe.
+  assert.ok(RMClub.offresDisponibles(s).length > 0,
+    'un manager licencié doit accéder au marché de l\'emploi');
+});
+
+test('ultimatum : il survit à un rechargement de sauvegarde', () => {
+  const s = saisonSousPression(1706);
+  const u = RMClub.poserUltimatum(s, { position: 12, total: 14 });
+  const recharge = JSON.parse(JSON.stringify(s));
+  const apres = RMClub.ultimatumEnCours(recharge);
+  assert.ok(apres, 'l\'ultimatum doit être dans la sauvegarde');
+  assert.strictEqual(apres.matchsRestants, u.matchsRestants);
+  assert.strictEqual(apres.positionCible, u.positionCible);
+});
+
+test('ultimatum : il apparaît dans « À traiter » avec les matchs restants', () => {
+  const s = saisonSousPression(1707);
+  RMClub.poserUltimatum(s, { position: 12, total: 14 });
+  const ligne = RMClub.elementsATraiter(s).find((e) => e.cle === 'ultimatum');
+  assert.ok(ligne, 'l\'ultimatum doit figurer dans la zone à traiter');
+  assert.strictEqual(ligne.niveau, 'urgent');
+  assert.ok(/match/.test(ligne.texte), `le compte à rebours doit être visible : « ${ligne.texte} »`);
+});
+
+test('ultimatum : aucune part d\'aléatoire', () => {
+  const a = saisonSousPression(1708);
+  const b = saisonSousPression(1708);
+  const ua = RMClub.poserUltimatum(a, { position: 11, total: 14 });
+  const ub = RMClub.poserUltimatum(b, { position: 11, total: 14 });
+  assert.strictEqual(ua.matchsRestants, ub.matchsRestants);
+  assert.strictEqual(ua.positionCible, ub.positionCible);
+});
+
+
 console.log(`\n${nbTests} test(s) exécuté(s).`);
 if (process.exitCode) {
   console.error('ECHEC : au moins un test du parcours club a échoué.');

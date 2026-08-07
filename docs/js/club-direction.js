@@ -96,11 +96,120 @@
       ? `Après ${aFaire.joues} journée(s), le club est ${position}e sur ${total}. La direction est satisfaite : l'objectif « ${objectifTxt} » est en bonne voie. Confiance ${delta >= 0 ? '+' : ''}${delta} (${c.confiancePresident} %).`
       : `Après ${aFaire.joues} journée(s), le club n'est que ${position}e sur ${total}. La direction rappelle son objectif : « ${objectifTxt} ». Confiance ${delta >= 0 ? '+' : ''}${delta} (${c.confiancePresident} %).`;
     RMClub.ajouterMessage(saison, 'saison', 'Point d\'étape de la direction', corps);
+    // Sous le seuil, le chiffre ne suffit plus : la direction pose un
+    // ultimatum qui dit ce qu'elle attend et ce qui arrivera sinon.
+    const ultimatum = poserUltimatum(saison, { position, total });
     return {
       position, total, delta,
       confiance: c.confiancePresident,
       reussi: evaluation.reussi,
+      ultimatum,
     };
+  }
+
+  // --- Ultimatum de la direction (TODO_AUDIT.md P1-42a) -------------------
+  //
+  // AVANT, un point d'étape écrivait « Confiance −4 (31 %) » : un chiffre,
+  // sans la moindre conséquence. La confiance pouvait descendre à 5 % sans
+  // que rien n'arrive avant la fin de saison, et le manager ne savait ni ce
+  // qu'on attendait de lui, ni ce qu'il risquait.
+  //
+  // Un ultimatum répond aux trois questions : POURQUOI (position réelle
+  // contre objectif), QUELLE DÉCISION (regagner N places en M matchs), et
+  // QUELLE CONSÉQUENCE (licenciement). Il vit dans la sauvegarde, se
+  // décompte à chaque rencontre RÉELLE du premier XV, et se résout tout
+  // seul. Aucun tirage : deux situations identiques donnent le même
+  // ultimatum.
+  const SEUIL_ULTIMATUM = 35;
+  const MATCHS_ULTIMATUM = 3;
+  const PLACES_A_REGAGNER = 2;
+  const BONUS_CONFIANCE_REUSSITE = 12;
+
+  function ultimatumEnCours(saison) {
+    const u = (saison.clubJoueur || {}).ultimatum;
+    return u && u.actif ? u : null;
+  }
+
+  // Posé UNIQUEMENT sous le seuil, et jamais deux fois de suite.
+  function poserUltimatum(saison, situation) {
+    const RMClub = global.RMClub;
+    const c = saison.clubJoueur;
+    const confiance = c.confiancePresident != null ? c.confiancePresident : 60;
+    if (confiance >= SEUIL_ULTIMATUM) return null;
+    if (ultimatumEnCours(saison)) return null;
+    const position = situation.position;
+    const total = situation.total;
+    const objectifTxt = c.objectifSaison ? RMClub.libelleObjectifSaison(c.objectifSaison) : null;
+    // Cible : regagner deux places, sans jamais exiger mieux que l'objectif
+    // de la saison — la direction ne demande pas l'impossible.
+    const viseObjectif = c.objectifSaison ? c.objectifSaison.position : 1;
+    const positionCible = Math.max(viseObjectif, position - PLACES_A_REGAGNER);
+    const u = {
+      actif: true,
+      poseSaison: saison.numero || 1,
+      poseISO: RMClub.dateISO ? RMClub.dateISO(RMClub.dateCourante(saison)) : null,
+      positionDepart: position,
+      positionCible,
+      totalClubs: total,
+      matchsRestants: MATCHS_ULTIMATUM,
+      matchsTotal: MATCHS_ULTIMATUM,
+      confianceALaPose: confiance,
+      explication: `Confiance ${confiance} % — la direction juge la ${position}e place insuffisante` +
+        (objectifTxt ? ` par rapport à l'objectif « ${objectifTxt} »` : '') +
+        `. ${MATCHS_ULTIMATUM} matchs pour remonter au moins ${positionCible}e, sous peine de licenciement.`,
+    };
+    c.ultimatum = u;
+    RMClub.ajouterMessage(saison, 'direction', 'Ultimatum de la direction', u.explication);
+    return u;
+  }
+
+  // Appelé après CHAQUE rencontre du premier XV. `situation` porte le
+  // classement réel du moment — jamais une estimation.
+  function avancerUltimatum(saison, situation) {
+    const RMClub = global.RMClub;
+    const c = saison.clubJoueur;
+    const u = ultimatumEnCours(saison);
+    if (!u) return null;
+    // Cible atteinte : on lève l'ultimatum immédiatement, sans attendre la
+    // fin du compte — c'est le sens même d'un redressement.
+    if (situation.position <= u.positionCible) {
+      u.actif = false;
+      u.issue = 'reussi';
+      const avant = c.confiancePresident != null ? c.confiancePresident : 60;
+      c.confiancePresident = Math.max(0, Math.min(100, avant + BONUS_CONFIANCE_REUSSITE));
+      RMClub.ajouterMessage(saison, 'direction', 'Ultimatum levé — la direction te soutient',
+        `${situation.position}e place : la cible (${u.positionCible}e) est atteinte. ` +
+        `La direction renouvelle sa confiance (${avant} % → ${c.confiancePresident} %).`);
+      return { issue: 'reussi', ultimatum: u };
+    }
+    u.matchsRestants -= 1;
+    if (u.matchsRestants > 0) {
+      RMClub.ajouterMessage(saison, 'direction', 'Ultimatum en cours',
+        `${situation.position}e place. Il reste ${u.matchsRestants} match(s) pour remonter au moins ${u.positionCible}e.`);
+      return { issue: 'enCours', ultimatum: u };
+    }
+    // Compte épuisé sans redressement : licenciement RÉEL. Le manager
+    // atterrit sur le marché de l'emploi (cf. club-carriere-manager.js), il
+    // ne se retrouve jamais devant un écran sans issue.
+    u.actif = false;
+    u.issue = 'echoue';
+    const raison = `${MATCHS_ULTIMATUM} matchs pour remonter ${u.positionCible}e, et le club est toujours ` +
+      `${situation.position}e. La direction met fin à ta mission.`;
+    if (RMClub.licencierManager) RMClub.licencierManager(saison, raison);
+    else RMClub.ajouterMessage(saison, 'direction', 'Licenciement', raison);
+    return { issue: 'echoue', ultimatum: u, raison };
+  }
+
+  // Point d'entrée de la BOUCLE DE JEU : appelé une fois par rencontre du
+  // premier XV, une fois le classement de la journée complet. Il dérive la
+  // position réelle lui-même pour que l'UI n'ait aucun calcul à refaire —
+  // sinon deux endroits décideraient de la même chose (le défaut récurrent
+  // corrigé en P1-35/39/41).
+  function avancerUltimatumApresMatch(saison) {
+    if (!ultimatumEnCours(saison)) return null;
+    const { position, total } = positionActuelle(saison);
+    if (!position) return null;
+    return avancerUltimatum(saison, { position, total });
   }
 
   // --- Vestiaire ----------------------------------------------------------
@@ -162,6 +271,8 @@
   }
 
   global.RMClub = Object.assign(global.RMClub || {}, {
+    SEUIL_ULTIMATUM, MATCHS_ULTIMATUM,
+    ultimatumEnCours, poserUltimatum, avancerUltimatum, avancerUltimatumApresMatch,
     FRACTIONS_POINT_ETAPE, SEUIL_MORAL_VESTIAIRE, DELAI_ENTRE_REUNIONS_JOURS,
     assurerJournalDirection, moralVestiaire, positionActuelle,
     pointEtapeAFaire, resoudrePointEtape,

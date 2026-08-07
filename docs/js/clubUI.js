@@ -1251,10 +1251,19 @@
     const position = classement.findIndex((r) => r.clubId === c.id) + 1;
     const objectifAtteint = position <= c.objectifSaison.position;
     const confiance = c.confiancePresident != null ? c.confiancePresident : 60;
+    // Ultimatum en cours (TODO_AUDIT.md P1-42a) : un pourcentage seul ne dit
+    // ni pourquoi il est bas, ni ce qu'il faut faire, ni ce qu'on risque. Ici
+    // le manager lit les trois d'un coup, avec le compte à rebours réel.
+    const ultimatum = RMClub.ultimatumEnCours(saison);
+    const blocUltimatum = ultimatum
+      ? `<div class="encartUltimatum"><b>⏳ Ultimatum de la direction — ${ultimatum.matchsRestants} match(s) restant(s)</b>` +
+        `<p>${ultimatum.explication}</p></div>`
+      : '';
     document.getElementById('clubObjectifSaison').innerHTML =
       `<div class="ligneJoueur"><span>Ambition du président</span><b>${RMClub.libelleObjectifSaison(c.objectifSaison)}</b></div>` +
       `<div class="ligneJoueur"><span>Position actuelle</span><b class="${objectifAtteint ? '' : 'deltaNegatif'}">${position}e/${classement.length} ${objectifAtteint ? '✓ en ligne avec l\'objectif' : '— en retard sur l\'objectif'}</b></div>` +
-      `<div class="ligneJoueur"><span>Confiance du président</span><b><span class="barreMoral${confiance < 35 ? ' bas' : confiance >= 65 ? ' haut' : ''}"><span style="width:${confiance}%"></span></span> ${confiance}%</b></div>`;
+      `<div class="ligneJoueur"><span>Confiance du président</span><b><span class="barreMoral${confiance < 35 ? ' bas' : confiance >= 65 ? ' haut' : ''}"><span style="width:${confiance}%"></span></span> ${confiance}%</b></div>` +
+      blocUltimatum;
   }
 
   // Analyse du prochain adversaire : moyennes d'attributs RÉELLES de son
@@ -3497,6 +3506,21 @@
             const scorePour = lettreJoueur === 'A' ? etat.score.A : etat.score.B;
             const scoreContre = lettreJoueur === 'A' ? etat.score.B : etat.score.A;
             RMClub.enregistrerResultatClubJoueur(saison, adversaireId, scorePour, scoreContre, matchJoueur.journee);
+            // Ultimatum de la direction (TODO_AUDIT.md P1-42a) : il se
+            // décompte ICI, une fois le classement de la journée complet
+            // (les autres rencontres ont déjà été résolues, cf.
+            // simulerAutresMatchsAbstrait appelé AVANT ce match). Réussi, il
+            // est levé ; échoué, il licencie réellement.
+            const suiteUltimatum = RMClub.avancerUltimatumApresMatch(saison);
+            if (suiteUltimatum) {
+              if (suiteUltimatum.issue === 'reussi') {
+                toast('🏛️ Ultimatum levé — la direction te renouvelle sa confiance', 'succes');
+              } else if (suiteUltimatum.issue === 'echoue') {
+                toast('🏛️ La direction met fin à ta mission', 'erreur');
+              } else {
+                toast(`⏳ Ultimatum : ${suiteUltimatum.ultimatum.matchsRestants} match(s) restant(s)`, 'erreur');
+              }
+            }
             const mouvement = RMClub.appliquerFinancesMatch(saison.clubJoueur, forme, RMClub.nombreJourneesSaison(saison.calendrier));
             RMClub.enregistrerMouvementFinances(saison.clubJoueur, matchJoueur.journee, mouvement);
             RMClub.accumulerStats(saison.clubJoueur, etat.stats[lettreJoueur]);

@@ -117,6 +117,17 @@
         texte: `${contratsCourts} contrat(s) expirant en fin de saison`, onglet: 'effectif' });
     }
 
+    // Ultimatum de la direction (P1-42a) : c'est LA chose la plus urgente
+    // qui puisse arriver à un manager, avec un compte à rebours réel. On
+    // affiche le compte, pas seulement un état.
+    const ultimatum = RMClub.ultimatumEnCours ? RMClub.ultimatumEnCours(saison) : null;
+    if (ultimatum) {
+      liste.push({ cle: 'ultimatum', niveau: 'urgent', icone: '⏳',
+        texte: `Ultimatum de la direction — ${ultimatum.matchsRestants} match(s) pour remonter ` +
+          `au moins ${ultimatum.positionCible}e, sous peine de licenciement`,
+        onglet: 'dashboard' });
+    }
+
     // Carrière du manager (TODO_AUDIT.md P1-42) : un poste à saisir ou un
     // avertissement de la direction sont des choses à TRAITER, pas des
     // informations à découvrir par hasard dans l'onglet Bilan.

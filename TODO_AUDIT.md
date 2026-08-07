@@ -1909,3 +1909,68 @@ pression y figurent.
   oubli — l'historique personnel, lui, est intégralement conservé.
 - **Les trophées sont une liste vide** : le moteur de coupes existe (P1-34)
   mais rien ne relie encore une victoire finale au palmarès du manager.
+
+---
+
+## Tranche P1-42 — Vraie carrière de manager, découpée en sous-étapes
+
+**Audit de l'existant avant tout code.** Deux briques sont DÉJÀ là et ne
+doivent pas être recréées :
+
+| Brique | Où | État |
+|---|---|---|
+| Profil, réputation, licenciement, offres, `changerClubManager` | `club-carriere-manager.js` | livré |
+| Points d'étape de la direction (34 % et 67 % des journées) | `club-direction.js` | livré |
+| Confiance du président, objectif de saison | `club.js`, `club-objectif.js` | livré |
+
+**Ce qui manque réellement.** Le point d'étape ajuste la confiance et écrit
+« Confiance −4 (31 %) » — un chiffre, sans conséquence. Il n'existe **aucun
+ultimatum**, **aucun licenciement en cours de saison**, et le manager ne
+sait ni *pourquoi* la direction s'inquiète, ni *ce qu'il doit faire*, ni
+*ce qui arrivera s'il échoue*.
+
+### Sous-étapes
+
+- **P1-42a — L'ultimatum de la direction.** ← *celle-ci, livrée*
+  Le point d'étape devient explicable et déclenche, sous un seuil de
+  confiance, un ultimatum daté en NOMBRE DE MATCHS avec une cible chiffrée.
+  Suivi dans la boucle quotidienne, visible dans « À traiter », résolu
+  réellement : réussi → confiance restaurée ; échoué → licenciement, qui
+  atterrit sur le marché de l'emploi déjà existant.
+- **P1-42b — Candidature spontanée.** Le manager sans club peut postuler à
+  un poste au lieu d'attendre une offre ; le club accepte ou refuse selon
+  réputation et niveau.
+- **P1-42c — Palmarès et trophées.** Relier une victoire en coupe (moteur
+  P1-34) au palmarès du manager, aujourd'hui une liste vide.
+- **P1-42d — Offres entre divisions, à l'intersaison.** Les autres paliers
+  existent mais ne figurent pas au calendrier de la saison en cours :
+  basculer en cours de route laisserait le manager sans rencontres.
+- **P1-42e — Âge du manager et fin de carrière.**
+
+### P1-42a — L'ultimatum de la direction (livrée)
+
+**Le problème mesuré.** `resoudrePointEtape` produisait :
+
+> « Après 9 journée(s), le club n'est que 12e sur 14. La direction rappelle
+> son objectif : « Finir 6e ou mieux ». Confiance −4 (31 %). »
+
+Le manager apprend un chiffre. Il ne sait pas ce qu'on attend de lui, ni ce
+qu'il risque. La confiance pouvait descendre à 5 % sans que rien n'arrive
+avant la fin de saison.
+
+**Ce qui change.** Sous `SEUIL_ULTIMATUM` (35 %) à un point d'étape, la
+direction pose un ultimatum RÉEL, stocké dans la sauvegarde :
+
+- un nombre de matchs (3) ;
+- une cible chiffrée (regagner au moins 2 places) ;
+- une conséquence annoncée (licenciement).
+
+Il est décompté à chaque rencontre du premier XV, affiché dans « À traiter »
+avec les matchs restants, et résolu automatiquement :
+**réussi** → confiance +12 et message de soutien ; **échoué** →
+licenciement, qui débouche sur le marché de l'emploi de P1-42.
+
+**Critères de validation.** Ultimatum créé seulement sous le seuil ;
+décompté par match réel ; cible dérivée du classement réel ; réussite et
+échec produisent chacun leur conséquence ; survit à un rechargement ; visible
+dans « À traiter » ; aucune décision aléatoire.
