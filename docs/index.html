@@ -351,7 +351,15 @@
         <div class="voletOnglet" data-volet="effectif" style="display:none;">
           <div class="enTetePage"><span class="categoriePage">Équipes</span><h2>Effectif</h2><p>Recherche, tri et filtre l'effectif de l'équipe sélectionnée — clique un joueur pour sa fiche détaillée.</p></div>
           <div class="emplacementSelecteurEquipe"></div>
-          <div class="carteClub">
+          <div class="barreSousOnglets" data-sousonglets="effectif"></div>
+          <!-- « Inscriptions » de l'architecture cible n'est PAS déclaré : le
+               jeu n'a aucun modèle de liste d'inscrits en compétition. Un
+               onglet vide n'apprendrait rien — il reste à construire. -->
+          <div class="carteClub" id="carteEffectifOnglet" style="display:none;">
+            <h3 id="titreEffectifOnglet"></h3>
+            <div id="clubEffectifOnglet"></div>
+          </div>
+          <div class="carteClub" id="carteEffectifTable">
             <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
               <h3 style="margin:0;">👥 Effectif</h3>
               <button id="btnComparerEffectif" class="alt" style="flex:0 0 auto;width:auto;padding:8px 12px;font-size:12px;display:none;">⚖️ Comparer la sélection</button>

@@ -1194,7 +1194,103 @@
   // mêmes colonnes, mêmes filtres, même tri, même fiche joueur au clic. Les
   // colonnes qu'un effectif IA n'a pas (fatigue, prêt, temps de jeu) tombent
   // proprement sur "—" : c'est la donnée qui manque, pas l'écran qui change.
+  // Les onglets de l'écran Effectif. Chacun lit l'effectif de l'ÉQUIPE
+  // CONSULTÉE (ctx.effectif) : première, B, Espoirs ou club adverse — mêmes
+  // composants, seules les données changent.
+  function rendreOngletEffectif(ctx) {
+    const carte = document.getElementById('carteEffectifOnglet');
+    const table = document.getElementById('carteEffectifTable');
+    const zone = document.getElementById('clubEffectifOnglet');
+    const titre = document.getElementById('titreEffectifOnglet');
+    if (!carte || !table || !zone || !titre) return;
+    const sous = sousOngletCourant('effectif');
+    table.style.display = (sous === 'joueurs' || sous === 'apercu') ? '' : 'none';
+    carte.style.display = sous === 'joueurs' ? 'none' : '';
+    const eff = ctx.effectif || [];
+    if (!eff.length) {
+      titre.textContent = 'Effectif';
+      zone.innerHTML = `<p style="color:var(--text-dim);">${echapperHTML(ctx.motifIndisponible || 'Aucun effectif simulé pour cette équipe.')}</p>`;
+      return;
+    }
+
+    if (sous === 'apercu') {
+      const age = eff.reduce((t, j) => t + (j.age || 0), 0) / eff.length;
+      const salaires = eff.reduce((t, j) => t + (j.salaire || 0), 0);
+      const parPoste = {};
+      for (const j of eff) parPoste[j.poste] = (parPoste[j.poste] || 0) + 1;
+      const cible = {};
+      for (const p of (RMClub.GABARIT_EFFECTIF || [])) cible[p] = (cible[p] || 0) + 1;
+      const lignesPostes = Object.keys(cible).map((p) => {
+        const n = parPoste[p] || 0;
+        const manque = n < cible[p];
+        return `<div class="ligneJoueur"><span>${echapperHTML(p)}</span>` +
+          `<b class="${manque ? 'deltaNegatif' : ''}">${n} / ${cible[p]}${manque ? ' ⚠️' : ''}</b></div>`;
+      }).join('');
+      const finContrat = eff.filter((j) => (j.contrat || 0) <= 1).length;
+      titre.textContent = '📊 Forme du groupe';
+      zone.innerHTML =
+        `<div class="ligneJoueur"><span>Joueurs</span><b>${eff.length}</b></div>` +
+        `<div class="ligneJoueur"><span>Âge moyen</span><b>${Math.round(age * 10) / 10} ans</b></div>` +
+        `<div class="ligneJoueur"><span>Masse salariale</span><b>${salaires} k€/saison</b></div>` +
+        `<div class="ligneJoueur"><span>Contrats expirant</span><b class="${finContrat ? 'deltaNegatif' : ''}">${finContrat}</b></div>` +
+        `<h4 class="sousTitreMedical">Profondeur par poste</h4>${lignesPostes}`;
+    } else if (sous === 'selection') {
+      const slot = ctx.estClubJoueur && RMClub.assurerCompositionPourEquipe
+        ? RMClub.assurerCompositionPourEquipe(saison, ctx.type) : null;
+      const compo = slot ? slot.compositionTitulaires : null;
+      const banc = slot ? slot.compositionBanc : null;
+      if (!compo) {
+        titre.textContent = '📋 Sélection';
+        zone.innerHTML = '<p style="color:var(--text-dim);">Aucune sélection : cette équipe n\'est pas dirigée par toi.</p>';
+        return;
+      }
+      const parId = {};
+      for (const j of eff) parId[j.id] = j;
+      const lignes = Object.keys(RMClub.POSTE_REQUIS).map((n) => {
+        const j = parId[compo[n]];
+        const poste = RMClub.POSTE_REQUIS[n];
+        if (!j) return `<div class="ligneJoueur"><span>n°${n} · ${poste}</span><b class="deltaNegatif">à pourvoir</b></div>`;
+        const note = RMClub.noteAuPoste ? RMClub.noteAuPoste(j, poste) : null;
+        const horsPoste = j.poste !== poste ? ' ⚠️ hors poste' : '';
+        return `<div class="ligneJoueur"><span>n°${n} · ${poste}</span>` +
+          `<b>${echapperHTML(j.nom)}${horsPoste}${note != null ? ` <span style="color:var(--text-dim);font-weight:400;">${note}</span>` : ''}</b></div>`;
+      }).join('');
+      const lignesBanc = banc ? Object.keys(banc).map((n) => {
+        const j = parId[banc[n]];
+        return j ? `<div class="ligneJoueur"><span>n°${n}</span><b>${echapperHTML(j.nom)} <span style="color:var(--text-dim);font-weight:400;">${echapperHTML(j.poste)}</span></b></div>` : '';
+      }).join('') : '';
+      titre.textContent = '📋 Sélection retenue';
+      zone.innerHTML = lignes + (lignesBanc ? `<h4 class="sousTitreMedical">Banc</h4>${lignesBanc}` : '');
+    } else if (sous === 'disponibilite') {
+      const blesses = [], reprise = [], pretes = [], fatigues = [], dispo = [];
+      for (const j of eff) {
+        if (j.pret) pretes.push(j);
+        else if (RMClub.joursIndisponible(j) > 0) blesses.push(j);
+        else if (j.reprise) reprise.push(j);
+        else if ((j.fatigue || 0) >= 70) fatigues.push(j);
+        else dispo.push(j);
+      }
+      const bloc = (titreBloc, liste, detail) => liste.length
+        ? `<h4 class="sousTitreMedical">${titreBloc} (${liste.length})</h4>` + liste.map((j) =>
+          `<div class="ligneJoueur"><span>${echapperHTML(j.nom)} <span style="color:var(--text-faint);">${echapperHTML(j.poste)}</span></span>` +
+          `<b>${detail(j)}</b></div>`).join('')
+        : '';
+      titre.textContent = '✅ Disponibilité';
+      zone.innerHTML =
+        bloc('Indisponibles', blesses, (j) => `${RMClub.joursIndisponible(j)} jour(s)`) +
+        bloc('En reprise', reprise, (j) => {
+          const e = RMClub.etapeReprise ? RMClub.etapeReprise(j) : null;
+          return e ? echapperHTML(String(e)) : 'reprise';
+        }) +
+        bloc('Prêtés', pretes, (j) => `${(j.pret && j.pret.dureeRestante) || 0} jour(s)`) +
+        bloc('Très fatigués', fatigues, (j) => `${Math.round(j.fatigue)} %`) +
+        `<h4 class="sousTitreMedical">Disponibles (${dispo.length})</h4>` +
+        `<p style="color:var(--text-dim);font-size:12px;margin:0;">${dispo.length} joueur(s) prêts à jouer sans réserve.</p>`;
+    }
+  }
+
   function rafraichirEffectif() {
+    rafraichirSousOnglets('effectif');
     const ctx = contexte();
     const f = filtreEffectif;
     let effectif = ctx.effectif.filter((j) => {
@@ -1236,6 +1332,7 @@
       ? `<table class="tableauClub effectifCliquable"><thead><tr>${entetes}</tr></thead><tbody>${lignes}</tbody></table>`
       : '<p>Aucun joueur ne correspond à ces filtres.</p>';
     rafraichirComparaisonEffectif();
+    rendreOngletEffectif(ctx);
   }
 
   // Comparaison côte à côte de joueurs de L'EFFECTIF sélectionnés (cases à
@@ -2312,6 +2409,12 @@
   // Aucun sous-onglet n'est déclaré tant qu'il n'a pas de VRAIES données à
   // montrer — pas de route vide, pas de placeholder.
   const SOUS_ONGLETS = {
+    effectif: [
+      { cle: 'apercu', label: 'Vue d\'ensemble', aide: 'La forme du groupe : âge, postes, salaires.' },
+      { cle: 'joueurs', label: 'Joueurs', aide: 'La liste complète, filtrable.' },
+      { cle: 'selection', label: 'Sélection', aide: 'Le XV et le banc retenus pour cette équipe.' },
+      { cle: 'disponibilite', label: 'Disponibilité', aide: 'Qui peut jouer, qui ne peut pas, et pourquoi.' },
+    ],
     medical: [
       { cle: 'apercu', label: 'Vue d\'ensemble', aide: 'L\'état de santé du groupe en un coup d\'œil.' },
       { cle: 'risques', label: 'Risques', aide: 'Qui risque le plus de se blesser, et pourquoi.' },
@@ -2356,6 +2459,7 @@
     rafraichirSousOnglets(menu);
     if (menu === 'calendrier') rafraichirCalendrier();
     if (menu === 'medical') rafraichirMedical();
+    if (menu === 'effectif') rafraichirEffectif();
   });
 
   // Amicaux (saison.amicaux) : source distincte du championnat, donc rendu
