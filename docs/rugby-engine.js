@@ -4885,6 +4885,58 @@
       return 'CARRIED';
     }
 
+    // --- Décisions du manager PENDANT la rencontre -------------------------
+    //
+    // Le match était intégralement calculé avant que le manager le regarde
+    // (docs/js/main.js : genererMatchEnArrierePlan puis relecture à
+    // l'identique). Il assistait à un film : aucune de ses décisions ne
+    // pouvait changer quoi que ce soit, le résultat étant déjà enregistré
+    // dans la sauvegarde avant la première image.
+    //
+    // Ces deux méthodes sont le point d'entrée d'une décision prise EN COURS
+    // de jeu. Elles n'inventent aucune règle : elles écrivent dans les mêmes
+    // structures que la configuration d'avant-match (cfgAttaque, cfgDefense,
+    // cfgMelee, cfgTouche, cfgRuck, buteur, lanceur) et dans la même file de
+    // remplacements — le moteur les lit ensuite exactement comme d'habitude.
+    //
+    // Le déterminisme est intact : sans appel, le match se déroule au tick
+    // près comme avant (vérifié par server/test-match-interactif.js).
+
+    // `consignes` accepte les mêmes clés que la config d'avant-match :
+    //   { attaque, defense, melee, touche, ruck, buteur, toucheLanceur }
+    // Chaque bloc est FUSIONNÉ par-dessus le réglage courant de l'équipe, donc
+    // une consigne partielle (ex. juste `probaKick`) ne fait pas perdre le
+    // reste. Retourne false si l'équipe est inconnue.
+    appliquerTactiqueEnCours(equipe, consignes) {
+      if (equipe !== 'A' && equipe !== 'B') return false;
+      const c = consignes || {};
+      if (c.attaque) this.cfgAttaque[equipe] = fusionnerConfig(this.cfgAttaque[equipe], c.attaque);
+      if (c.defense) this.cfgDefense[equipe] = fusionnerConfig(this.cfgDefense[equipe], c.defense);
+      if (c.melee) this.cfgMelee[equipe] = fusionnerConfig(this.cfgMelee[equipe], c.melee);
+      if (c.touche) this.cfgTouche[equipe] = fusionnerConfig(this.cfgTouche[equipe], c.touche);
+      if (c.ruck) this.cfgRuck[equipe] = fusionnerConfig(this.cfgRuck[equipe], c.ruck);
+      if (c.buteur != null) this.buteurNumero[equipe] = c.buteur;
+      if (c.toucheLanceur != null) this.toucheLanceurNumero[equipe] = c.toucheLanceur;
+      this.log('TACTIQUE', equipe, `Consigne de touche pour l'équipe ${equipe}`);
+      return true;
+    }
+
+    // Fait entrer `joueur` (mêmes attributs qu'en config) sur le numéro
+    // `numero`. On ne duplique PAS la mécanique de remplacement : on empile
+    // dans la même file que les remplacements planifiés, avec pour instant le
+    // temps courant, donc le prochain tick l'applique par le chemin déjà
+    // éprouvé (mise à jour du joueur vivant ET de la config source, pour que
+    // le remplaçant survive au prochain coup d'envoi).
+    remplacerJoueurEnCours(equipe, numero, joueur) {
+      if (equipe !== 'A' && equipe !== 'B') return false;
+      if (!(numero >= 1 && numero <= 15)) return false;
+      this._remplacements.push({
+        equipe, numero: Math.round(numero), joueur: joueur || {},
+        instant: this.tempsMatch, applique: false,
+      });
+      return true;
+    }
+
     getState() {
       const enVol = this.ballonEnVol;
       // Ballon au sol après un coup de pied tactique, pas encore récupéré :
