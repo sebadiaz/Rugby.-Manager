@@ -1596,7 +1596,11 @@ test('événements quotidiens : avancerJusquA parcourt exactement les jours voul
   // créées à la suite n'attribuent pas les mêmes) : on compare donc le
   // CONTENU des journées, ids exclus — c'est le déterminisme du simulateur
   // qui est vérifié ici, pas l'allocation des ids.
-  const sansIds = (journees) => JSON.parse(JSON.stringify(journees, (cle, valeur) => (cle === 'id' ? undefined : valeur)));
+  // `joueurId`/`clubId` (signature rivale, cf. P1-43b) viennent du même
+  // compteur global que `id` : même exclusion, même raison. Tout le reste —
+  // noms, montants, dates — est bien comparé.
+  const CLES_ID = ['id', 'joueurId', 'clubId'];
+  const sansIds = (journees) => JSON.parse(JSON.stringify(journees, (cle, valeur) => (CLES_ID.indexOf(cle) !== -1 ? undefined : valeur)));
   assert.deepStrictEqual(sansIds(journeesB), sansIds(journeesA), 'même graine et mêmes dates doivent produire exactement les mêmes journées');
   assert.deepStrictEqual(
     b.clubJoueur.effectif.map((j) => [j.fatigue, j.blessureJournees]),
@@ -4586,6 +4590,135 @@ test('mercato IA : une promotion donne bien de NOUVEAUX adversaires, sans casse'
     const g = RMClub.groupeAdverse(s, a);
     assert.ok(g.length >= 23, `${a.nom} doit avoir un groupe complet (${g.length})`);
   }
+});
+
+
+
+// --- P1-43b : la concurrence pour une recrue --------------------------------
+// Mesuré AVANT : une cible du marché n'était JAMAIS reprise par un club IA
+// (200 jours simulés), et le bouton « Rafraîchir » régénérait instantanément
+// tout le marché autant de fois qu'on voulait. Repérer un joueur, hésiter, ne
+// coûtait donc rigoureusement rien.
+
+function saisonMarcheOuvert(graine) {
+  const s = saisonPourAvance(graine);
+  // On se place dans la fenêtre de transfert réelle du jeu.
+  assert.ok(RMClub.etatFenetreTransfert(s).ouverte,
+    'le scénario suppose le mercato ouvert au premier jour de saison');
+  return s;
+}
+
+test('concurrence : un club IA signe RÉELLEMENT un joueur du marché', () => {
+  const s = saisonMarcheOuvert(4401);
+  const avant = s.marche.map((j) => j.id);
+  let signatures = [];
+  for (let i = 0; i < 60 && signatures.length === 0; i++) {
+    RMClub.avancerUnJour(s);
+    signatures = (s.signaturesRivales || []);
+  }
+  assert.ok(signatures.length > 0,
+    'en 60 jours de mercato ouvert, un rival doit avoir signé au moins un joueur libre');
+  const sig = signatures[0];
+  assert.ok(sig.joueurNom && sig.clubNom, 'la signature nomme le joueur ET le club');
+  assert.ok(avant.indexOf(sig.joueurId) !== -1, 'le joueur signé venait bien du marché');
+  assert.strictEqual(s.marche.some((j) => j.id === sig.joueurId), false,
+    'le joueur signé DISPARAÎT réellement du marché');
+});
+
+test('concurrence : le joueur signé rejoint RÉELLEMENT l\'effectif du rival', () => {
+  const s = saisonMarcheOuvert(4402);
+  let sig = null;
+  for (let i = 0; i < 60 && !sig; i++) {
+    RMClub.avancerUnJour(s);
+    sig = (s.signaturesRivales || [])[0] || null;
+  }
+  assert.ok(sig, 'une signature rivale doit se produire');
+  const club = s.adversaires.find((a) => a.id === sig.clubId);
+  assert.ok(club, 'le club signataire existe');
+  assert.ok(RMClub.groupeAdverse(s, club).some((j) => j.id === sig.joueurId),
+    'le joueur doit être dans le groupe de son nouveau club, pas simplement supprimé');
+});
+
+test('concurrence : le rival PAIE le joueur qu\'il signe', () => {
+  const s = saisonMarcheOuvert(4403);
+  const budgets = {};
+  for (const a of s.adversaires) budgets[a.id] = a.budget;
+  let sig = null;
+  for (let i = 0; i < 60 && !sig; i++) {
+    RMClub.avancerUnJour(s);
+    sig = (s.signaturesRivales || [])[0] || null;
+  }
+  assert.ok(sig, 'une signature rivale doit se produire');
+  const club = s.adversaires.find((a) => a.id === sig.clubId);
+  assert.strictEqual(budgets[sig.clubId] - club.budget, sig.montant,
+    'le rival doit débourser EXACTEMENT le prix du joueur');
+  assert.ok(club.budget >= 0, 'un club ne signe jamais au-delà de ses moyens');
+});
+
+test('concurrence : le manager est PRÉVENU quand il perd une cible', () => {
+  const s = saisonMarcheOuvert(4404);
+  // Le manager repère un joueur : il devient une cible identifiée.
+  const cible = s.marche[0];
+  RMClub.basculerFavori(s, cible);
+  let perdu = null;
+  for (let i = 0; i < 90 && !perdu; i++) {
+    RMClub.avancerUnJour(s);
+    perdu = (s.signaturesRivales || []).find((x) => x.joueurId === cible.id) || null;
+  }
+  if (!perdu) return; // ce tirage-là ne visait pas cette cible : rien à vérifier
+  const msg = (s.clubJoueur.messages || []).find((m) => m.corps.indexOf(cible.nom) !== -1);
+  assert.ok(msg, `perdre une cible REPÉRÉE doit produire un message citant ${cible.nom}`);
+  assert.strictEqual((s.favoris || []).some((j) => j.id === cible.id), false,
+    'un favori parti chez un rival ne doit pas rester dans la liste des favoris');
+});
+
+test('concurrence : le marché ne se vide pas (il se réalimente)', () => {
+  const s = saisonMarcheOuvert(4405);
+  for (let i = 0; i < 120; i++) RMClub.avancerUnJour(s);
+  assert.ok(s.marche.length >= 3,
+    `le marché doit rester vivant, pas s'assécher (${s.marche.length} joueur(s) restant(s))`);
+});
+
+test('concurrence : les rivaux ne raflent pas tout le marché', () => {
+  const s = saisonMarcheOuvert(4406);
+  for (let i = 0; i < 120; i++) RMClub.avancerUnJour(s);
+  const n = (s.signaturesRivales || []).length;
+  assert.ok(n <= 12,
+    `le rythme doit rester crédible sur 120 jours (${n} signatures rivales)`);
+});
+
+test('concurrence : hors fenêtre de transfert, aucun rival ne signe', () => {
+  const s = saisonMarcheOuvert(4407);
+  // On avance jusqu'à la fermeture du mercato, puis on repart à zéro.
+  let gardeFou = 0;
+  while (RMClub.etatFenetreTransfert(s).ouverte && gardeFou < 400) { RMClub.avancerUnJour(s); gardeFou++; }
+  assert.ok(gardeFou < 400, 'le mercato doit finir par fermer');
+  s.signaturesRivales = [];
+  for (let i = 0; i < 30; i++) {
+    if (RMClub.etatFenetreTransfert(s).ouverte) break;
+    RMClub.avancerUnJour(s);
+  }
+  assert.strictEqual((s.signaturesRivales || []).length, 0,
+    'mercato fermé = aucune signature rivale, exactement comme pour le manager');
+});
+
+test('concurrence : entièrement déterministe', () => {
+  const a = saisonMarcheOuvert(4408);
+  const b = JSON.parse(JSON.stringify(a));
+  for (let i = 0; i < 40; i++) { RMClub.avancerUnJour(a); RMClub.avancerUnJour(b); }
+  const resume = (s) => (s.signaturesRivales || []).map((x) => `${x.joueurNom}|${x.clubNom}|${x.montant}`);
+  assert.deepStrictEqual(resume(a), resume(b),
+    'deux mondes identiques doivent produire les MÊMES signatures rivales');
+});
+
+test('concurrence : rafraîchir le marché n\'est plus un reroll gratuit et illimité', () => {
+  const s = saisonMarcheOuvert(4409);
+  const premier = RMClub.rafraichirMarcheManuel(s);
+  assert.strictEqual(premier.ok, true, 'le premier rafraîchissement reste possible');
+  const second = RMClub.rafraichirMarcheManuel(s);
+  assert.strictEqual(second.ok, false,
+    'enchaîner deux rafraîchissements le même jour doit être refusé');
+  assert.ok(second.prochainLe, 'le refus doit dire QUAND ce sera à nouveau possible');
 });
 
 

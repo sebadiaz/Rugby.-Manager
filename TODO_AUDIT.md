@@ -2045,3 +2045,62 @@ réel par intersaison ; le transféré quitte le vendeur ET arrive chez
 l'acheteur ; les budgets bougent des deux côtés ; aucun club ne dépense plus
 qu'il n'a ; le tout déterministe et sauvegardable ; promotion/relégation
 continue de donner de nouveaux adversaires sans casse.
+
+---
+
+## P1-43b — La concurrence pour une recrue (livrée)
+
+### Correction d'une affirmation de P1-43a
+
+Le commit P1-43a affirme que « le marché des joueurs libres du jeu ne facture
+aucune indemnité, seulement un salaire ». **C'est faux.** La sonde lisait
+`joueur.prix` alors que le champ réel est `joueur.prixTransfert`. Mesuré :
+
+| | Valeurs réelles |
+| --- | --- |
+| Indemnité d'un joueur du marché | 302 – 434 k€ |
+| Budget d'un club IA (Ligue Régionale) | 262 – 457 k€ |
+| Indemnité demandée par un club IA pour un des siens | ~568 k€ |
+
+La conclusion de P1-43a tient malgré tout, mais pour une raison plus étroite
+que celle écrite : c'est le prix **entre clubs** (~568 k€, avec la prime de
+débauchage ×1,6) qui dépasse les budgets, pas le marché des joueurs libres.
+Les fins de contrat restent donc le bon moteur du mercato IA à ce niveau — et
+le marché libre, lui, est bel et bien accessible aux clubs IA. C'est
+exactement ce que P1-43b exploite.
+
+### Le problème mesuré
+
+Une cible du marché n'était **jamais** reprise par un club IA (200 jours
+simulés). Et « Rafraîchir » régénérait la totalité du marché, gratuitement et
+autant de fois qu'on voulait. Repérer un joueur puis hésiter ne coûtait donc
+strictement rien.
+
+### Ce qui change
+
+- Les clubs rivaux se servent au **même marché** que le manager, aux **mêmes
+  conditions** : même prix (`prixTransfert`), même fenêtre de transfert, argent
+  réellement débité, joueur réellement intégré à leur groupe.
+- Un joueur **suivi** (favori) qui signe ailleurs produit un message nommant
+  le club et le montant, et sort de la liste des favoris.
+- Le marché se **réalimente** lentement (un joueur libre tous les 5 jours)
+  pour ne pas s'assécher.
+- « Rafraîchir » reste possible mais **une fois par semaine** : sinon perdre
+  une cible se rattrapait d'un clic, et la concurrence n'aurait eu aucune
+  conséquence.
+- Un joueur sur lequel un **rapport de repérage est en cours** est intouchable
+  jusqu'à la remise : le manager a payé pour cette information. Les favoris,
+  eux, restent pleinement disputables.
+
+### Rythme mesuré (20 carrières, 60 premiers jours)
+
+`1 0 0 3 2 3 2 1 6 5 2 3 2 1 3 4 2 4 4 2` → moyenne **2,5** signatures
+rivales par fenêtre, **10 %** des carrières n'en voient aucune. Assez pour
+mettre la pression, trop lent pour rafler le marché.
+
+### Point technique
+
+Le mercato tire ses aléas sur **son propre flux** (sel 31), jamais sur le rng
+partagé de la journée. Mesuré : sans cette séparation, ajouter un tirage
+décalait toute la séquence quotidienne en aval et faisait tomber deux tests
+existants (déterminisme de l'avance, date de remise d'un rapport).

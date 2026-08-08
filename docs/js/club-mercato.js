@@ -378,7 +378,174 @@
     return corps;
   }
 
+  // --- La concurrence pour une recrue (TODO_AUDIT.md P1-43b) ---------------
+  //
+  // MESURÉ avant : une cible du marché n'était JAMAIS reprise par un club IA
+  // (200 jours simulés), et « Rafraîchir » régénérait tout le marché autant de
+  // fois qu'on voulait. Repérer un joueur puis hésiter ne coûtait rien.
+  //
+  // Désormais les rivaux se servent au même marché que le manager, aux mêmes
+  // conditions : même prix (`prixTransfert`), même fenêtre de transfert, même
+  // argent réellement débité. Hésiter peut coûter la recrue.
+
+  // Rythme : environ une signature rivale tous les huit jours de mercato
+  // ouvert. Assez pour mettre la pression, trop lent pour rafler le marché —
+  // borne vérifiée par test (≤ 12 signatures sur 120 jours).
+  const PROBA_SIGNATURE_RIVALE = 0.125;
+  // Le marché se réalimente doucement : un joueur libre de plus tous les
+  // cinq jours tant qu'il n'a pas retrouvé sa taille normale. Sans ça, la
+  // concurrence l'assécherait.
+  const JOURS_REAPPRO = 5;
+  const TAILLE_MARCHE = 6;
+  // Un rafraîchissement manuel du marché redevient possible au bout d'une
+  // semaine : c'est une prospection, pas un bouton à marteler.
+  const JOURS_ENTRE_RAFRAICHISSEMENTS = 7;
+
+  function journalMercato(saison) {
+    if (!saison.mercatoJournal) saison.mercatoJournal = { dernierAppro: null, dernierRafraichissement: null };
+    return saison.mercatoJournal;
+  }
+
+  // Un club IA signe un joueur libre si celui-ci comble RÉELLEMENT son point
+  // faible et qu'il peut le payer. Mêmes règles que pour le manager.
+  function signatureRivaleDuJour(rng, saison, date) {
+    const RMClub = global.RMClub;
+    if (!saison.marche || !saison.marche.length) return null;
+    // Même fenêtre de transfert que le manager — jamais une règle à part.
+    const fenetre = RMClub.etatFenetreTransfert(saison, date);
+    if (!fenetre.ouverte) return null;
+    if (rng() >= PROBA_SIGNATURE_RIVALE) return null;
+
+    // Un club signe un joueur libre qui AMÉLIORE son groupe à ce poste,
+    // c'est-à-dire meilleur que le plus faible qu'il y aligne — pas seulement
+    // meilleur que son titulaire. MESURÉ : exiger de dépasser le meilleur
+    // joueur du poste le plus faible ne laissait quasiment jamais de candidat
+    // (0 ou 1 sur tout le marché), donc aucune concurrence réelle. Le rythme
+    // n'est pas piloté par ce critère mais par PROBA_SIGNATURE_RIVALE.
+    let meilleur = null;
+    for (const club of (saison.adversaires || [])) {
+      const groupe = groupeDe(saison, club);
+      for (const j of saison.marche) {
+        const prix = j.prixTransfert || 0;
+        if (prix > (club.budget || 0)) continue;
+        // Un joueur sur lequel le manager a un rapport de repérage EN COURS
+        // est intouchable jusqu'à la remise : il a payé pour cette
+        // information, il doit la recevoir. Sinon le rapport s'évaporait en
+        // silence, argent déjà débité — mesuré sur un test existant. Les
+        // FAVORIS, eux, restent pleinement disputables : c'est là que se joue
+        // la concurrence.
+        if (RMClub.rapportScoutingEnCours && RMClub.rapportScoutingEnCours(saison, j.id)) continue;
+        const memePoste = groupe.filter((x) => x.poste === j.poste);
+        const plusFaible = memePoste.length
+          ? Math.min.apply(null, memePoste.map(niveauJoueur))
+          : 0;
+        const gain = niveauJoueur(j) - plusFaible;
+        if (gain < GAIN_MINIMAL) continue;
+        if (!meilleur || gain > meilleur.gain) meilleur = { club, joueur: j, prix, gain };
+      }
+    }
+    if (!meilleur) return null;
+
+    const club = meilleur.club, j = meilleur.joueur;
+    club.budget = (club.budget || 0) - meilleur.prix;
+    saison.marche = saison.marche.filter((x) => x.id !== j.id);
+    // Le joueur ne s'évapore pas : il rejoint RÉELLEMENT son nouveau club, où
+    // le manager pourra le retrouver (et tenter de le lui reprendre).
+    const recrue = Object.assign({}, j, { contrat: j.contrat || 3, fatigue: 0, matchsJoues: 0 });
+    delete recrue.connaissance; delete recrue.ecartVitesse; delete recrue.ecartPlaquage;
+    ajouterAuClub(saison, club, recrue);
+
+    const signature = {
+      joueurId: j.id, joueurNom: j.nom, poste: j.poste, age: j.age,
+      clubId: club.id, clubNom: club.nom, montant: meilleur.prix,
+      dateISO: RMClub.dateISO ? RMClub.dateISO(date) : null,
+    };
+    if (!saison.signaturesRivales) saison.signaturesRivales = [];
+    saison.signaturesRivales.push(signature);
+    if (saison.signaturesRivales.length > 20) saison.signaturesRivales.shift();
+
+    // Le manager n'est prévenu que pour ce qu'il SUIVAIT réellement : sinon
+    // chaque signature d'un rival deviendrait une notification de plus.
+    const suivi = (saison.favoris || []).some((f) => f.id === j.id);
+    signature.suivi = suivi;
+    if (suivi) {
+      saison.favoris = saison.favoris.filter((f) => f.id !== j.id);
+      RMClub.ajouterMessage(saison, 'transfert', 'Tu perds une cible',
+        `${j.nom} (${j.poste}, ${j.age} ans), que tu suivais, signe à ${club.nom} pour ${meilleur.prix} k€. ` +
+        `Il n'est plus disponible sur le marché.`);
+    }
+    return signature;
+  }
+
+  // Réalimentation lente du marché : un joueur libre de plus tous les
+  // JOURS_REAPPRO jours, calibré sur le niveau RÉEL du club du joueur (comme
+  // genererMarcheTransferts le fait déjà à l'intersaison).
+  function reapprovisionnerMarche(rng, saison, date) {
+    const RMClub = global.RMClub;
+    const journal = journalMercato(saison);
+    if (!saison.marche) saison.marche = [];
+    if (saison.marche.length >= TAILLE_MARCHE) return null;
+    const iso = RMClub.dateISO ? RMClub.dateISO(date) : null;
+    if (journal.dernierAppro) {
+      const ecart = RMClub.ecartJours
+        ? RMClub.ecartJours(RMClub.dateDepuisISO(journal.dernierAppro), date)
+        : JOURS_REAPPRO;
+      if (ecart < JOURS_REAPPRO) return null;
+    }
+    journal.dernierAppro = iso;
+    const nouveaux = RMClub.genererMarcheTransferts(rng, saison.clubJoueur.niveauClub, 1);
+    if (!nouveaux || !nouveaux.length) return null;
+    saison.marche.push(nouveaux[0]);
+    return nouveaux[0];
+  }
+
+  // Appelé une fois par jour par la boucle quotidienne.
+  //
+  // Le mercato tire ses aléas sur SON PROPRE flux, dérivé du jour (sel 31),
+  // et jamais sur le rng partagé de la journée. Sans ça, ajouter un tirage
+  // ici décalait toute la séquence quotidienne en aval — mesuré : deux tests
+  // existants (déterminisme de l'avance, date d'arrivée d'un rapport de
+  // repérage) tombaient aussitôt. Le comportement du reste de la journée est
+  // donc rigoureusement inchangé.
+  function avancerJourMercato(saison, date) {
+    const RMClub = global.RMClub;
+    const graine = Number.isFinite(saison.graine) ? saison.graine : 1;
+    const rng = global.RugbyEngine.creerRng(RMClub.grainePourJour(graine, date, 31));
+    const signature = signatureRivaleDuJour(rng, saison, date);
+    const arrivee = reapprovisionnerMarche(rng, saison, date);
+    return { signature, arrivee };
+  }
+
+  // Rafraîchissement manuel du marché : conservé (c'est une vraie action de
+  // prospection), mais plus illimité — sinon perdre une cible se rattraperait
+  // d'un clic et la concurrence n'aurait aucune conséquence.
+  function rafraichirMarcheManuel(saison) {
+    const RMClub = global.RMClub;
+    const journal = journalMercato(saison);
+    const date = RMClub.dateCourante(saison);
+    if (journal.dernierRafraichissement) {
+      const precedent = RMClub.dateDepuisISO(journal.dernierRafraichissement);
+      const ecart = RMClub.ecartJours ? RMClub.ecartJours(precedent, date) : JOURS_ENTRE_RAFRAICHISSEMENTS;
+      if (ecart < JOURS_ENTRE_RAFRAICHISSEMENTS) {
+        const prochain = RMClub.ajouterJours(precedent, JOURS_ENTRE_RAFRAICHISSEMENTS);
+        return {
+          ok: false, motif: 'delai',
+          prochainLe: RMClub.dateISO(prochain),
+          jours: JOURS_ENTRE_RAFRAICHISSEMENTS - ecart,
+        };
+      }
+    }
+    journal.dernierRafraichissement = RMClub.dateISO(date);
+    const rng = global.RugbyEngine.creerRng(
+      RMClub.grainePourJour(Number.isFinite(saison.graine) ? saison.graine : 1, date, 23));
+    saison.marche = RMClub.genererMarcheTransferts(rng, saison.clubJoueur.niveauClub, TAILLE_MARCHE);
+    return { ok: true, marche: saison.marche };
+  }
+
   global.RMClub = Object.assign(global.RMClub || {}, {
+    PROBA_SIGNATURE_RIVALE, JOURS_ENTRE_RAFRAICHISSEMENTS,
+    signatureRivaleDuJour, reapprovisionnerMarche, avancerJourMercato,
+    rafraichirMarcheManuel,
     PART_BUDGET_MAX_MERCATO: PART_BUDGET_MAX,
     RECRUES_MAX_PAR_CLUB, VENTES_MAX_PAR_CLUB,
     besoinsDe, cessiblesDe, completerGroupe, mercatoClubsIA,

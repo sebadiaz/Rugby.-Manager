@@ -3082,8 +3082,14 @@
   // même délégation d'événements pour le marché ET la liste de favoris (les
   // deux affichent des lignes identiques, cf. ligneJoueurMarche). ---
   document.getElementById('btnRafraichirMarche').addEventListener('click', () => {
-    const rng = creerRng(graineAleatoire());
-    saison.marche = RMClub.genererMarcheTransferts(rng, saison.clubJoueur.niveauClub, 6);
+    // TODO_AUDIT.md P1-43b : prospecter reste possible, mais plus en boucle.
+    // Sans délai, perdre une cible au profit d'un rival se rattrapait d'un
+    // clic — la concurrence n'aurait alors eu aucune conséquence réelle.
+    const res = RMClub.rafraichirMarcheManuel(saison);
+    if (!res.ok) {
+      toast(`🔍 Tes recruteurs sont déjà sur le terrain — nouvelle prospection dans ${res.jours} jour(s)`, 'erreur');
+      return;
+    }
     sauvegarder();
     rafraichirMarche();
   });
@@ -3827,6 +3833,12 @@
     if (resume.pointEtape) {
       toast(`🏛️ Point d'étape de la direction — confiance ${resume.pointEtape.confiance} %`,
         resume.pointEtape.reussi ? 'succes' : 'erreur');
+    }
+    // Cible perdue au profit d'un rival (TODO_AUDIT.md P1-43b) : on ne le
+    // signale que pour un joueur RÉELLEMENT suivi (un message a été produit),
+    // sinon chaque signature d'un rival deviendrait une notification de plus.
+    for (const sig of resume.signaturesRivales || []) {
+      toast(`🤝 ${sig.joueurNom} signe à ${sig.clubNom} (${sig.montant} k€) — tu le suivais`, 'erreur');
     }
     if (resume.reunionVestiaire) {
       toast(`💬 Le vestiaire va mal (moral ${resume.reunionVestiaire.moral} %) — une décision t'attend`, 'erreur');

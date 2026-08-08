@@ -165,6 +165,12 @@
     // l'effectif du joueur. Sans ça, leur fatigue ne redescendrait jamais et
     // ils feraient tourner sans raison.
     RMClub.avancerJourClubsAdverses(saison);
+    // Concurrence pour une recrue (TODO_AUDIT.md P1-43b) : les clubs rivaux se
+    // servent au MÊME marché que le manager, dans la même fenêtre de
+    // transfert. Une cible repérée peut donc lui passer sous le nez.
+    // Appel défensif comme les autres domaines chargés après club.js.
+    const mercatoDuJour = RMClub.avancerJourMercato
+      ? RMClub.avancerJourMercato(saison, date) : null;
 
     const rapports = RMClub.remettreRapportsScouting(saison, date);
     const reponsesContrat = RMClub.resoudreNegociationsContrat(rng, saison, date);
@@ -200,6 +206,7 @@
       decisionsExpirees,
       pointEtape,
       reunionVestiaire,
+      signatureRivale: mercatoDuJour ? mercatoDuJour.signature : null,
       retablis: retablis.map((j) => j.nom),
       retoursDePret: retoursDePret.map((j) => j.nom),
       estJourDeMatch: !!opts.estJourDeMatch,
@@ -366,6 +373,7 @@
     let nbProgressions = 0;
     let pointEtape = null;
     let reunionVestiaire = null;
+    const signaturesRivales = [];
     const blessures = [];
     for (const j of journees) {
       fatigueRecuperee += j.fatigueRecuperee;
@@ -378,11 +386,15 @@
       for (const d of j.decisionsExpirees || []) decisionsExpirees.push(d);
       if (j.pointEtape) pointEtape = j.pointEtape;
       if (j.reunionVestiaire) reunionVestiaire = j.reunionVestiaire;
+      // Cible perdue au profit d'un rival (P1-43b) : on ne remonte QUE les
+      // joueurs que le manager suivait réellement — les autres signatures
+      // vivent dans la carte « Mercato de la division », sans le harceler.
+      if (j.signatureRivale && j.signatureRivale.suivi) signaturesRivales.push(j.signatureRivale);
     }
     return {
       nbJours: journees.length, fatigueRecuperee, nbProgressions, blessures,
       retablis, retoursDePret, rapports, reponsesContrat, decisionsExpirees,
-      pointEtape, reunionVestiaire,
+      pointEtape, reunionVestiaire, signaturesRivales,
     };
   }
 
