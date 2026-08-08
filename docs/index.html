@@ -584,6 +584,15 @@
              (blessé, depuis quand, retour estimé, fatigue). -->
         <div class="voletOnglet" data-volet="medical" style="display:none;">
           <div class="enTetePage"><span class="categoriePage">Gestion</span><h2>Médical</h2><p>Blessures en cours et charge de fatigue de l'effectif.</p></div>
+          <div class="emplacementSelecteurEquipe"></div>
+          <div class="barreSousOnglets" data-sousonglets="medical"></div>
+          <!-- Onglets alimentés par le dossier médical de P1-40 : risque réel
+               par joueur, blessures en cours, antécédents, bilan de saison.
+               Aucun onglet n'existe sans données derrière. -->
+          <div class="carteClub" id="carteMedicalOnglet" style="display:none;">
+            <h3 id="titreMedicalOnglet"></h3>
+            <div id="clubMedicalOnglet"></div>
+          </div>
           <!-- Infirmerie ENRICHIE (TODO_AUDIT.md P1-40) : même carte, même
                onglet — on n'ajoute aucun écran médical parallèle. Elle porte
                désormais le diagnostic réel (type, zone, gravité, cause), la

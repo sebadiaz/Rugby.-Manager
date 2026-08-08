@@ -1766,9 +1766,56 @@
       `</div>`;
   }
 
+  // Tous les joueurs suivis médicalement, groupe par groupe.
+  function tousJoueursMedicaux() {
+    const liste = [];
+    for (const g of groupesMedicaux()) for (const j of g.joueurs) liste.push({ joueur: j, groupe: g.libelle });
+    return liste;
+  }
+
+  // Une ligne « risque » : le chiffre RÉEL issu de risqueBlessure(), avec ce
+  // qui le fait monter — poste, âge, fatigue, antécédents. Le manager doit
+  // comprendre POURQUOI ce joueur est exposé, pas seulement le voir en rouge.
+  function ligneRisque(entree) {
+    const j = entree.joueur;
+    const risque = RMClub.risqueBlessure(j, { intensite: 1 });
+    const pct = Math.round(risque * 1000) / 10;
+    const causes = [];
+    if ((j.fatigue || 0) >= 60) causes.push(`fatigue ${Math.round(j.fatigue)} %`);
+    if ((j.age || 0) >= 31) causes.push(`${j.age} ans`);
+    const ant = (j.historiqueBlessures || []).length;
+    if (ant) causes.push(`${ant} antécédent(s)`);
+    const niveau = pct >= 6 ? 'urgent' : pct >= 3.5 ? 'recommande' : 'info';
+    return `<div class="ligneAlerte niveau-${niveau}"><span class="texteAlerte"><b>${echapperHTML(j.nom)}</b> ` +
+      `<span style="color:var(--text-dim);">${echapperHTML(j.poste)}${causes.length ? ' · ' + causes.join(' · ') : ''}</span></span>` +
+      `<span class="badgeNiveau niveau-${niveau}">${pct} %</span></div>`;
+  }
+
+  function ligneAntecedent(entree) {
+    const j = entree.joueur;
+    const h = j.historiqueBlessures || [];
+    if (!h.length) return '';
+    const detail = h.slice(0, 4).map((b) =>
+      `${echapperHTML(b.type || 'blessure')}${b.zone ? ' (' + echapperHTML(b.zone) + ')' : ''}`).join(', ');
+    return `<div class="ligneJeune"><span class="infosJeune"><b>${echapperHTML(j.nom)}</b>` +
+      `<span>${detail}${h.length > 4 ? ` …et ${h.length - 4} autre(s)` : ''}</span></span>` +
+      `<span style="flex:0 0 auto;">${h.length}</span></div>`;
+  }
+
   function rafraichirMedical() {
     const zone = document.getElementById('clubMedical');
     if (!zone) return;
+    rafraichirSousOnglets('medical');
+    const sous = sousOngletCourant('medical');
+    const carte = document.getElementById('carteMedicalOnglet');
+    const zoneOnglet = document.getElementById('clubMedicalOnglet');
+    const titre = document.getElementById('titreMedicalOnglet');
+    // L'infirmerie historique reste l'onglet « Blessures en cours » : on ne
+    // crée pas un second écran médical, on range celui qui existe.
+    const carteInfirmerie = zone.closest('.carteClub');
+    const montrerInfirmerie = sous === 'blessures' || sous === 'apercu';
+    if (carteInfirmerie) carteInfirmerie.style.display = montrerInfirmerie ? '' : 'none';
+
     let html = '';
     for (const g of groupesMedicaux()) {
       const blesses = g.joueurs.filter((j) => RMClub.joursIndisponible(j) > 0);
@@ -1777,17 +1824,71 @@
         blesses.map(ligneBlesse).join('');
     }
     zone.innerHTML = html || '<p>Aucun joueur blessé actuellement — effectif au complet.</p>';
-    rafraichirReprise();
+    rafraichirReprise(sous === 'blessures' || sous === 'apercu');
+
+    if (!carte || !zoneOnglet || !titre) return;
+    const tous = tousJoueursMedicaux();
+    if (sous === 'apercu') {
+      const blesses = tous.filter((e) => RMClub.joursIndisponible(e.joueur) > 0).length;
+      const enReprise = tous.filter((e) => e.joueur.reprise).length;
+      const fatigues = tous.filter((e) => (e.joueur.fatigue || 0) >= 60).length;
+      const risqueMoyen = tous.length
+        ? tous.reduce((t, e) => t + RMClub.risqueBlessure(e.joueur, { intensite: 1 }), 0) / tous.length : 0;
+      titre.textContent = '🩺 État de santé du groupe';
+      zoneOnglet.innerHTML =
+        `<div class="ligneJoueur"><span>Joueurs suivis</span><b>${tous.length}</b></div>` +
+        `<div class="ligneJoueur"><span>Indisponibles</span><b class="${blesses ? 'deltaNegatif' : ''}">${blesses}</b></div>` +
+        `<div class="ligneJoueur"><span>En reprise progressive</span><b>${enReprise}</b></div>` +
+        `<div class="ligneJoueur"><span>Au-dessus de 60 % de fatigue</span><b class="${fatigues ? 'deltaNegatif' : ''}">${fatigues}</b></div>` +
+        `<div class="ligneJoueur"><span>Risque moyen par séance</span><b>${Math.round(risqueMoyen * 1000) / 10} %</b></div>`;
+    } else if (sous === 'risques') {
+      const tries = tous.slice().sort((a, b) =>
+        RMClub.risqueBlessure(b.joueur, { intensite: 1 }) - RMClub.risqueBlessure(a.joueur, { intensite: 1 }));
+      titre.textContent = '⚠️ Joueurs les plus exposés';
+      zoneOnglet.innerHTML = tries.slice(0, 12).map(ligneRisque).join('')
+        || '<p style="color:var(--text-dim);">Aucun joueur suivi.</p>';
+    } else if (sous === 'historique') {
+      const avecHistorique = tous.filter((e) => (e.joueur.historiqueBlessures || []).length);
+      titre.textContent = '📚 Antécédents';
+      zoneOnglet.innerHTML = avecHistorique.length
+        ? avecHistorique.sort((a, b) => (b.joueur.historiqueBlessures || []).length - (a.joueur.historiqueBlessures || []).length)
+          .map(ligneAntecedent).join('')
+        : '<p style="color:var(--text-dim);">Aucun antécédent enregistré : personne ne s\'est encore blessé.</p>';
+    } else if (sous === 'bilan') {
+      // Bilan RÉEL : on compte les antécédents datés de la saison en cours.
+      const saisonNum = saison.numero || 1;
+      let nb = 0, jours = 0;
+      const parType = {};
+      for (const e of tous) {
+        for (const b of (e.joueur.historiqueBlessures || [])) {
+          if (b.saison != null && b.saison !== saisonNum) continue;
+          nb++; jours += b.jours || 0;
+          parType[b.type || 'autre'] = (parType[b.type || 'autre'] || 0) + 1;
+        }
+      }
+      titre.textContent = '📉 Bilan de la saison';
+      const types = Object.keys(parType).sort((a, b) => parType[b] - parType[a])
+        .map((t) => `<div class="ligneJoueur"><span>${echapperHTML(t)}</span><b>${parType[t]}</b></div>`).join('');
+      zoneOnglet.innerHTML = nb
+        ? `<div class="ligneJoueur"><span>Blessures cette saison</span><b>${nb}</b></div>` +
+          `<div class="ligneJoueur"><span>Jours d'indisponibilité cumulés</span><b>${jours}</b></div>` + types
+        : '<p style="color:var(--text-dim);">Aucune blessure enregistrée cette saison.</p>';
+    }
+    carte.style.display = sous === 'blessures' ? 'none' : '';
   }
 
   // Les joueurs SORTIS de l'infirmerie mais pas encore à 100 % : c'est la
   // partie que le jeu ignorait totalement avant P1-40 (retour instantané et
   // à pleine puissance). Le malus affiché est celui réellement transmis au
   // moteur (cf. compositionVersJoueursCfg).
-  function rafraichirReprise() {
+  // `visible` : la reprise appartient à l'onglet « Blessures en cours » (et à
+  // la vue d'ensemble). Sur les autres onglets médicaux, on la range plutôt
+  // que de la répéter partout.
+  function rafraichirReprise(visible) {
     const carte = document.getElementById('carteReprise');
     const zone = document.getElementById('clubReprise');
     if (!carte || !zone) return;
+    if (visible === false) { carte.style.display = 'none'; return; }
     const lignes = [];
     for (const g of groupesMedicaux()) {
       for (const j of g.joueurs) {
@@ -2211,6 +2312,13 @@
   // Aucun sous-onglet n'est déclaré tant qu'il n'a pas de VRAIES données à
   // montrer — pas de route vide, pas de placeholder.
   const SOUS_ONGLETS = {
+    medical: [
+      { cle: 'apercu', label: 'Vue d\'ensemble', aide: 'L\'état de santé du groupe en un coup d\'œil.' },
+      { cle: 'risques', label: 'Risques', aide: 'Qui risque le plus de se blesser, et pourquoi.' },
+      { cle: 'blessures', label: 'Blessures en cours', aide: 'L\'infirmerie et la reprise.' },
+      { cle: 'historique', label: 'Historique', aide: 'Les antécédents de chaque joueur.' },
+      { cle: 'bilan', label: 'Bilan saison', aide: 'Ce que les blessures ont coûté cette saison.' },
+    ],
     calendrier: [
       { cle: 'matchs', label: 'Matchs', aide: 'Les rencontres à venir de cette équipe.' },
       { cle: 'calendrier', label: 'Calendrier', aide: 'Toute la compétition, journée par journée.' },
@@ -2247,6 +2355,7 @@
     sousOngletActif[menu] = btn.dataset.sous;
     rafraichirSousOnglets(menu);
     if (menu === 'calendrier') rafraichirCalendrier();
+    if (menu === 'medical') rafraichirMedical();
   });
 
   // Amicaux (saison.amicaux) : source distincte du championnat, donc rendu
