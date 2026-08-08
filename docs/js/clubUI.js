@@ -935,7 +935,15 @@
   // désormais la COMPÉTITION choisie dans la navigation partagée, pas
   // l'équipe sélectionnée — les compétitions du club (championnat, Équipe B,
   // espoirs) y figurent toutes, au même titre que celles des 12 pays.
-  const ONGLETS_AVEC_EQUIPE = ['effectif', 'composition', 'tactique', 'entrainement', 'personnel'];
+  // 'calendrier' réintégré : il avait été retiré en P1-33, quand le
+  // calendrier est passé de « les rencontres de l'ÉQUIPE sélectionnée » à
+  // « les rencontres de la COMPÉTITION choisie ». Conséquence mesurée : pour
+  // voir le calendrier de l'Équipe B ou des Espoirs, il fallait passer par
+  // une navigation qui liste douze pays AVANT les championnats — le chemin
+  // évident (choisir son équipe) avait disparu. Les deux coexistent
+  // désormais : choisir une équipe sélectionne SA compétition, et la
+  // navigation par pays reste là pour aller voir ailleurs.
+  const ONGLETS_AVEC_EQUIPE = ['effectif', 'composition', 'tactique', 'entrainement', 'personnel', 'calendrier'];
   let ongletActuel = 'dashboard';
 
   // Le sélecteur est un composant UNIQUE : un seul <select> dans tout le jeu,
@@ -1078,6 +1086,14 @@
 
   // Change l'équipe affichée par TOUS les écrans d'un coup. Aucun écran n'a
   // sa propre notion d'équipe courante : il n'y a qu'ici qu'on en change.
+  // Compétition correspondant à une équipe du club : c'est ce qui relie le
+  // sélecteur d'équipe à l'écran Calendrier, sans créer de second état.
+  const COMPETITION_POUR_EQUIPE = {
+    pro: RMClub.REF_COMPETITION_JOUEUR,
+    b: RMClub.REF_COMPETITION_EQUIPE_B,
+    jeunes: RMClub.REF_COMPETITION_ESPOIRS,
+  };
+
   function changerEquipe(type) {
     RMClub.definirEquipeConsultee(saison, type);
     if (RMClub.consulteClubJoueur(saison)) RMClub.assurerCompositionPourEquipe(saison, type);
@@ -1091,6 +1107,21 @@
     selectionComparaisonEffectif.clear();
     sauvegarder();
     rafraichirEcransEquipe();
+    // Sur l'écran Calendrier, choisir une équipe doit montrer SES rencontres :
+    // c'est le geste naturel, et il était devenu impossible. L'ordre compte —
+    // rafraichirAutresClubs() réaligne la navigation sur la compétition du
+    // club, donc on impose notre choix APRÈS elle, jamais avant.
+    if (ongletActuel === 'calendrier') {
+      const ref = COMPETITION_POUR_EQUIPE[type];
+      // Jamais vers une page vide : une Équipe B non éligible n'a pas de
+      // championnat, on laisse alors la compétition en cours. On choisit
+      // AVANT de redessiner : c'est rafraichirAutresClubs() qui écrit le
+      // titre de la page, donc l'assigner après lui laissait le titre en
+      // retard d'un cran sur le contenu.
+      if (ref && RMClub.competition(saison, ref)) competitionNavChoisie = ref;
+      rafraichirAutresClubs();
+      rafraichirCalendrier();
+    }
   }
 
   // Re-rend d'un bloc les 6 écrans pilotés par le sélecteur — appelé au
