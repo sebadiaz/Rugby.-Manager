@@ -1157,3 +1157,18 @@ select {
 }
 .btnConsigneMiTemps.choisie b::after { content: ' ✓'; color: #6fd39b; }
 .btnRemplacantMiTemps.choisie b::after { content: ' ✓ entré'; color: #6fd39b; font-size: 11px; }
+
+/* Barre de sous-onglets (profondeur de navigation) : un seul composant,
+   réutilisé par chaque menu qui en déclare. Défile horizontalement sur
+   mobile plutôt que de faire déborder la page. */
+.barreSousOnglets {
+  display: flex; gap: 6px; margin: 0 0 12px; overflow-x: auto;
+  -webkit-overflow-scrolling: touch; padding-bottom: 4px;
+}
+.barreSousOnglets::-webkit-scrollbar { height: 3px; }
+.barreSousOnglets::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+.btnSousOnglet {
+  flex: 0 0 auto; width: auto; padding: 7px 12px; font-size: 12px;
+  border-radius: 999px; white-space: nowrap;
+}
+.btnSousOnglet.actif { border-color: var(--accent, #e8a33d); color: #ffce7a; background: #2a1f0c; }

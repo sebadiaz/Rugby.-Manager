@@ -2201,9 +2201,85 @@
   // l'équipe sélectionnée, quelle que soit sa compétition (championnat
   // principal, Équipe B, matchs espoirs), avec la même mise en page groupée
   // par journée et la même ligne de résultat.
+  // --- Sous-onglets : la PROFONDEUR de navigation --------------------------
+  //
+  // Audit mesuré : 14 menus, tous cliquables, mais ZÉRO sous-onglet dans tout
+  // le jeu — le Calendrier empilait 10 595 caractères en un seul bloc.
+  //
+  // Ce composant est GÉNÉRIQUE : chaque menu déclare ses sous-onglets ici, la
+  // barre se dessine toute seule, et l'onglet actif est mémorisé par menu.
+  // Aucun sous-onglet n'est déclaré tant qu'il n'a pas de VRAIES données à
+  // montrer — pas de route vide, pas de placeholder.
+  const SOUS_ONGLETS = {
+    calendrier: [
+      { cle: 'matchs', label: 'Matchs', aide: 'Les rencontres à venir de cette équipe.' },
+      { cle: 'calendrier', label: 'Calendrier', aide: 'Toute la compétition, journée par journée.' },
+      { cle: 'resultats', label: 'Résultats', aide: 'Les rencontres déjà jouées.' },
+      { cle: 'amicaux', label: 'Amicaux', aide: 'Les matchs amicaux programmés ou joués.' },
+    ],
+  };
+  // Onglet actif par menu. Vit en mémoire d'écran : c'est une position de
+  // navigation, pas un état de carrière — rien à sauvegarder.
+  const sousOngletActif = {};
+
+  function sousOngletCourant(menu) {
+    const liste = SOUS_ONGLETS[menu];
+    if (!liste || !liste.length) return null;
+    if (!sousOngletActif[menu]) sousOngletActif[menu] = liste[0].cle;
+    return sousOngletActif[menu];
+  }
+
+  function rafraichirSousOnglets(menu) {
+    const barre = document.querySelector(`.barreSousOnglets[data-sousonglets="${menu}"]`);
+    if (!barre) return;
+    const liste = SOUS_ONGLETS[menu] || [];
+    const actif = sousOngletCourant(menu);
+    barre.innerHTML = liste.map((o) =>
+      `<button class="alt btnSousOnglet${o.cle === actif ? ' actif' : ''}" data-menu="${menu}" ` +
+      `data-sous="${echapperHTML(o.cle)}" title="${echapperHTML(o.aide)}">${echapperHTML(o.label)}</button>`).join('');
+  }
+
+  // Un seul écouteur pour toutes les barres de sous-onglets du jeu.
+  document.getElementById('clubGestion').addEventListener('click', (e) => {
+    const btn = e.target.closest('.btnSousOnglet');
+    if (!btn) return;
+    const menu = btn.dataset.menu;
+    sousOngletActif[menu] = btn.dataset.sous;
+    rafraichirSousOnglets(menu);
+    if (menu === 'calendrier') rafraichirCalendrier();
+  });
+
+  // Amicaux (saison.amicaux) : source distincte du championnat, donc rendu
+  // distinct. On n'affiche que ce qui existe réellement — jamais un tableau
+  // vide déguisé en écran.
+  function rendreAmicaux(zone) {
+    const amicaux = saison.amicaux || [];
+    if (!amicaux.length) {
+      zone.innerHTML = '<p style="color:var(--text-dim);">Aucun match amical programmé. '
+        + 'Tu peux en proposer un depuis la fiche d\'un club adverse.</p>';
+      return;
+    }
+    zone.innerHTML = amicaux.slice().sort((a, b) => (a.date < b.date ? -1 : 1)).map((a) => {
+      const adv = RMClub.club(saison, a.adversaireId);
+      const nom = adv ? lienClub(a.adversaireId) : 'Adversaire';
+      const date = a.date ? RMClub.formaterDateCourte(RMClub.dateDepuisISO(a.date)) : 'date à définir';
+      const score = a.joue && a.score
+        ? `<b>${a.score.pour} - ${a.score.contre}</b>`
+        : '<span style="color:var(--text-faint);">à jouer</span>';
+      return `<div class="ligneJeune"><span class="infosJeune"><b>${nom}</b>`
+        + `<span>${date}${a.domicile ? ' · à domicile' : ' · à l\'extérieur'}</span></span>`
+        + `<span style="flex:0 0 auto;">${score}</span></div>`;
+    }).join('');
+  }
+
   function rafraichirCalendrier() {
     const zone = document.getElementById('clubCalendrier');
     if (!zone) return;
+    rafraichirSousOnglets('calendrier');
+    const sous = sousOngletCourant('calendrier');
+    // « Amicaux » ne vit pas dans une compétition : il a sa propre source
+    // (saison.amicaux), donc son propre rendu.
+    if (sous === 'amicaux') { rendreAmicaux(zone); return; }
     // Le calendrier suit la compétition choisie dans la navigation partagée
     // (TODO_AUDIT.md P1-33), exactement comme le classement — mais sur SA
     // propre page : ce sont deux choses distinctes.
@@ -2216,8 +2292,31 @@
     for (const cl of comp.clubs) {
       if (cl.id !== saison.clubJoueur.id && !RMClub.clubPartout(saison, cl.id)) nomsCompetition[cl.id] = cl.nom;
     }
+    // Filtrage RÉEL selon le sous-onglet — pas trois fois la même liste.
+    //   Matchs     : ce qui reste à jouer, et seulement les rencontres de
+    //                l'équipe consultée (c'est SON programme) ;
+    //   Calendrier : toute la compétition, journée par journée ;
+    //   Résultats  : ce qui a déjà été joué.
+    const idJoueur = saison.clubJoueur.id;
+    const concerneMonClub = (f) => f.domicileId === idJoueur || f.exterieurId === idJoueur;
+    // Sur une compétition où le club du joueur ne joue PAS (championnat
+    // étranger, autre palier), « Matchs » n'aurait aucun sens filtré sur lui :
+    // on montre alors les rencontres à venir de toute la compétition. Sans ce
+    // repli, consulter un championnat étranger donnait un écran vide.
+    const jyJoue = comp.calendrier.some(concerneMonClub);
+    let rencontres = comp.calendrier;
+    if (sous === 'matchs') {
+      rencontres = rencontres.filter((f) => !f.joue && (!jyJoue || concerneMonClub(f)));
+    } else if (sous === 'resultats') rencontres = rencontres.filter((f) => f.joue);
+    if (!rencontres.length) {
+      const vide = sous === 'matchs'
+        ? 'Aucune rencontre à venir pour cette équipe dans cette compétition.'
+        : 'Aucune rencontre déjà jouée dans cette compétition.';
+      zone.innerHTML = `<p style="color:var(--text-dim);">${vide}</p>`;
+      return;
+    }
     const parJournee = {};
-    for (const f of comp.calendrier) (parJournee[f.journee] = parJournee[f.journee] || []).push(f);
+    for (const f of rencontres) (parJournee[f.journee] = parJournee[f.journee] || []).push(f);
     zone.innerHTML = Object.keys(parJournee)
       .sort((a, b) => Number(a) - Number(b))
       .map((j) => {
