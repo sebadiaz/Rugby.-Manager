@@ -185,6 +185,155 @@
     });
   }
 
+  // --- Match JOUÉ (P0-match) ----------------------------------------------
+  //
+  // Le chemin historique (genererMatchEnArrierePlan puis relecture) laisse le
+  // résultat ACQUIS avant la première image : le manager regarde un film.
+  // Ici, le match n'est simulé QUE par la boucle de rendu, et `onResultat`
+  // n'est appelé qu'au coup de sifflet final. Tout ce que le manager décide
+  // en route change donc réellement la suite (cf.
+  // server/test-match-interactif.js).
+  //
+  // Le chemin instantané reste disponible et par défaut : jouer un match dure
+  // le temps d'un match, ce n'est pas toujours ce que le joueur veut.
+  let matchLive = null;
+
+  // Consignes de seconde période. Chacune écrit dans les VRAIES clés du
+  // moteur (cf. DEFAULT_CONFIG.attaque/defense), jamais dans un champ
+  // décoratif — c'est ce qui fait qu'elles changent le jeu.
+  const CONSIGNES_MI_TEMPS = [
+    {
+      cle: 'occuper', libelle: '🦶 Occuper au pied',
+      detail: 'On joue au pied pour sortir de son camp et mettre la pression sur leur arrière.',
+      consignes: { attaque: { tauxJeuAuPied: 4, jeuLargeTaux: { pression: 1.1, calme: 0.9 } } },
+    },
+    {
+      cle: 'main', libelle: '🤾 Garder le ballon à la main',
+      detail: 'On enchaîne les temps de jeu et on écarte : plus de rucks, moins de ballons rendus.',
+      consignes: { attaque: { tauxJeuAuPied: 0.6, jeuLargeTaux: { pression: 2.3, calme: 1.9 } } },
+    },
+    {
+      cle: 'monter', libelle: '⚡ Monter très vite en défense',
+      detail: 'La ligne monte sans temps mort : on étouffe leur ouvreur, au risque de laisser des espaces derrière.',
+      consignes: { defense: { rampeMontee: 0.4, reculRuck: 3 } },
+    },
+    {
+      cle: 'fermer', libelle: '🛡️ Défendre en retrait',
+      detail: 'On recule et on couvre le fond du terrain : moins de brèches, mais on rend du terrain.',
+      consignes: { defense: { rampeMontee: 4.5, profondeurArriereJeu: 26 } },
+    },
+  ];
+
+  function libelleConsigneAppliquee(cle) {
+    const c = CONSIGNES_MI_TEMPS.find((x) => x.cle === cle);
+    return c ? c.libelle : cle;
+  }
+
+  // Affiche la mi-temps : le match est EN PAUSE, rien n'est encore décidé.
+  function ouvrirMiTemps() {
+    const L = matchLive;
+    enCours = false;
+    document.getElementById('btnPlay').textContent = 'Play';
+    const e = normalizeMatchState(match.getState());
+    const nomA = (L.noms && L.noms.A) || 'Equipe A';
+    const nomB = (L.noms && L.noms.B) || 'Equipe B';
+    document.getElementById('miTempsScore').textContent =
+      `${nomA} ${e.score.A} — ${e.score.B} ${nomB}`;
+    const s = e.stats;
+    document.getElementById('miTempsDetail').textContent = s
+      ? `${s.A.essais} essai(s) contre ${s.B.essais} · possession ${e.possessionPct.A}% / ${e.possessionPct.B}%`
+      : '';
+    document.getElementById('miTempsConsignes').innerHTML = CONSIGNES_MI_TEMPS.map((c) =>
+      `<button class="alt btnConsigneMiTemps${L.consignesPrises.indexOf(c.cle) !== -1 ? ' choisie' : ''}" data-cle="${c.cle}">` +
+      `<b>${c.libelle}</b><span>${c.detail}</span></button>`).join('');
+    const banc = L.remplacants || [];
+    document.getElementById('miTempsRemplacants').innerHTML = banc.length
+      ? banc.map((r, i) =>
+        `<button class="alt btnRemplacantMiTemps${L.remplacementsFaits.indexOf(i) !== -1 ? ' choisie' : ''}" data-index="${i}"` +
+        `${L.remplacementsFaits.indexOf(i) !== -1 ? ' disabled' : ''}>` +
+        `<b>${r.nom} (${r.poste})</b><span>entre à la place du n°${r.numeroSortant}</span></button>`).join('')
+      : '<p style="font-size:12px;color:var(--text-faint);margin:0;">Aucun remplaçant disponible.</p>';
+    document.getElementById('panneauMiTemps').classList.add('visible');
+  }
+
+  function fermerMiTemps() {
+    document.getElementById('panneauMiTemps').classList.remove('visible');
+    enCours = true;
+    document.getElementById('btnPlay').textContent = 'Pause';
+  }
+
+  // Coup de sifflet final d'un match JOUÉ : c'est SEULEMENT ici que le
+  // résultat devient acquis et part vers la sauvegarde.
+  function terminerMatchLive() {
+    const L = matchLive;
+    L.resultatEnvoye = true;
+    const etatFinal = normalizeMatchState(match.getState());
+    if (L.onResultat) L.onResultat(etatFinal);
+    const nomA = (L.noms && L.noms.A) || 'Equipe A';
+    const nomB = (L.noms && L.noms.B) || 'Equipe B';
+    document.getElementById('resultatScore').textContent =
+      `${nomA} ${etatFinal.score.A} — ${etatFinal.score.B} ${nomB}`;
+    const s = etatFinal.stats;
+    document.getElementById('resultatDetail').textContent = s
+      ? `${s.A.essais} essai(s) contre ${s.B.essais} · possession ${etatFinal.possessionPct.A}% / ${etatFinal.possessionPct.B}%`
+      : '';
+    const badge = document.getElementById('resultatBadge');
+    if (L.equipeJoueur) {
+      const autre = L.equipeJoueur === 'A' ? 'B' : 'A';
+      const pour = etatFinal.score[L.equipeJoueur], contre = etatFinal.score[autre];
+      const forme = pour > contre ? 'v' : pour < contre ? 'd' : 'n';
+      badge.textContent = forme === 'v' ? 'Victoire' : forme === 'd' ? 'Défaite' : 'Match nul';
+      badge.className = `badgeResultat ${forme}`;
+      badge.style.display = '';
+    } else badge.style.display = 'none';
+    // Le match vient d'être joué : plus rien à « voir », et surtout pas un
+    // second moteur qui rejouerait sans les décisions prises.
+    document.getElementById('btnResultatVoir').style.display = 'none';
+    document.getElementById('panneauResultat').classList.add('visible');
+    const onFermer = L.onFermer;
+    document.getElementById('btnResultatFermer').onclick = () => {
+      document.getElementById('panneauResultat').classList.remove('visible');
+      document.getElementById('btnResultatVoir').style.display = '';
+      if (onFermer) onFermer();
+    };
+    matchLive = null;
+  }
+
+  function lancerMatchJoue(seed, duree, opts) {
+    const o = opts || {};
+    matchLive = {
+      onResultat: o.onResultat, onFermer: o.onFermer, noms: o.noms,
+      equipeJoueur: o.equipeJoueur, equipe: o.equipeJoueur || 'A',
+      remplacants: o.remplacants || [],
+      consignesPrises: [], remplacementsFaits: [],
+      miTempsTraitee: false, resultatEnvoye: false,
+    };
+    demarrerLectureReelle(seed, duree, o.noms);
+  }
+
+  document.getElementById('miTempsConsignes').addEventListener('click', (e) => {
+    const b = e.target.closest('.btnConsigneMiTemps');
+    if (!b || !matchLive || !match) return;
+    const c = CONSIGNES_MI_TEMPS.find((x) => x.cle === b.dataset.cle);
+    if (!c) return;
+    match.appliquerTactiqueEnCours(matchLive.equipe, c.consignes);
+    if (matchLive.consignesPrises.indexOf(c.cle) === -1) matchLive.consignesPrises.push(c.cle);
+    ouvrirMiTemps();
+  });
+
+  document.getElementById('miTempsRemplacants').addEventListener('click', (e) => {
+    const b = e.target.closest('.btnRemplacantMiTemps');
+    if (!b || !matchLive || !match) return;
+    const i = Number(b.dataset.index);
+    const r = (matchLive.remplacants || [])[i];
+    if (!r || matchLive.remplacementsFaits.indexOf(i) !== -1) return;
+    match.remplacerJoueurEnCours(matchLive.equipe, r.numeroSortant, r.joueur);
+    matchLive.remplacementsFaits.push(i);
+    ouvrirMiTemps();
+  });
+
+  document.getElementById('btnMiTempsReprendre').addEventListener('click', fermerMiTemps);
+
   function demarrerNouveauMatch(seed, duree) {
     seedActuel = seed;
     dureeMatchActuel = duree;
@@ -353,6 +502,16 @@
         if (dist > 1e-4) { ballonRendu.x += (dx / dist) * pas; ballonRendu.y += (dy / dist) * pas; }
       }
       etatRendu.ballonRendu = { x: ballonRendu.x, y: ballonRendu.y };
+    }
+    // Match JOUÉ (P0-match) : la mi-temps met le jeu en pause pour laisser le
+    // manager décider, et le coup de sifflet final est le SEUL moment où le
+    // résultat part vers la sauvegarde.
+    if (matchLive) {
+      if (!matchLive.miTempsTraitee && match.miTempsJouee) {
+        matchLive.miTempsTraitee = true;
+        ouvrirMiTemps();
+      }
+      if (!matchLive.resultatEnvoye && match.phase === 'TERMINE') terminerMatchLive();
     }
     UI.majAffichage(etatCourant, dureeMatchActuel);
     Renderer.dessiner(etatRendu);
@@ -552,7 +711,11 @@
       const base = Object.assign({}, configMatch);
       for (const cle of CLES_TACTIQUE_PAR_EQUIPE) delete base[cle];
       configMatch = Object.assign(base, { joueursA, joueursB }, tactiqueCfg || {});
-      lancerNouveauMatchAvecGeneration(seed, duree, callbacks);
+      // `callbacks.live` : le match est JOUÉ (P0-match) — rien n'est calculé
+      // d'avance, et les décisions de mi-temps changent réellement la suite.
+      // Sans ce drapeau, comportement historique strictement inchangé.
+      if (callbacks && callbacks.live) lancerMatchJoue(seed, duree, callbacks);
+      else lancerNouveauMatchAvecGeneration(seed, duree, callbacks);
     },
     // Simule un match COMPLET en arrière-plan sans jamais l'afficher (Mode
     // Club : les autres rencontres de la journée, jouées par l'IA en même

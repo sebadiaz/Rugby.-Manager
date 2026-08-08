@@ -3014,7 +3014,19 @@
     rafraichirApercuMatch();
     toast('Recommandations tactiques appliquées.');
   });
+  // Match JOUÉ (P0-match) : le résultat n'est PAS calculé d'avance. Le manager
+  // suit la rencontre et décide à la mi-temps ; ses consignes et ses
+  // remplacements changent réellement la seconde période. « Simuler » reste
+  // le chemin par défaut (jouer un match prend le temps d'un match).
+  let matchJoueEnDirect = false;
   document.getElementById('btnApercuLancerMatch').addEventListener('click', () => {
+    matchJoueEnDirect = false;
+    document.getElementById('panneauApercuMatch').classList.remove('visible');
+    document.getElementById('panneauClub').classList.remove('visible');
+    resoudreJour('pro');
+  });
+  document.getElementById('btnApercuJouerMatch').addEventListener('click', () => {
+    matchJoueEnDirect = true;
     document.getElementById('panneauApercuMatch').classList.remove('visible');
     document.getElementById('panneauClub').classList.remove('visible');
     resoudreJour('pro');
@@ -3530,6 +3542,21 @@
         {
           noms: { A: clubDomicile.nom, B: clubExterieur.nom },
           equipeJoueur: estClubJoueur(matchJoueur.domicileId) ? 'A' : 'B',
+          // Match JOUÉ (P0-match) : rien n'est calculé d'avance, onResultat
+          // n'arrive qu'au coup de sifflet final.
+          live: matchJoueEnDirect,
+          // Le banc RÉEL du joueur, proposé à la mi-temps. Mêmes objets que
+          // les remplacements planifiés (remplacementsVersConfig) : aucune
+          // seconde source, et le remplaçant entre avec ses vrais attributs,
+          // fatigue et moral compris.
+          remplacants: remplacements.map((r) => {
+            const j = saison.clubJoueur.effectif.find((x) => x.id === r.joueurId);
+            return {
+              nom: j ? j.nom : 'Remplaçant', poste: j ? j.poste : '',
+              numeroSortant: r.numero, numeroBanc: r.numeroBanc,
+              joueurId: r.joueurId, joueur: r.joueur,
+            };
+          }),
           onResultat(etat) {
             RMClub.enregistrerResultat(saison, matchJoueur.id, etat.score.A, etat.score.B, etat.stats.A.essais, etat.stats.B.essais);
             const forme = formeApres(matchJoueur, etat.score.A, etat.score.B);

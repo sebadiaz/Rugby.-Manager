@@ -1141,3 +1141,19 @@ select {
 .offreRaison { font-size: 11.5px; color: var(--text-faint); margin-top: 4px; font-style: italic; }
 .actionsOffre { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 9px; }
 .actionsOffre button { flex: 1 1 140px; width: auto; padding: 7px 10px; font-size: 12px; }
+
+/* Mi-temps d'un match JOUÉ (P0-match) : chaque bouton porte la consigne ET sa
+   conséquence, pour que le manager choisisse en connaissance de cause. */
+.btnConsigneMiTemps, .btnRemplacantMiTemps {
+  display: block; width: 100%; text-align: left; margin-bottom: 8px;
+  padding: 10px 12px; line-height: 1.35;
+}
+.btnConsigneMiTemps b, .btnRemplacantMiTemps b { display: block; font-size: 13px; }
+.btnConsigneMiTemps span, .btnRemplacantMiTemps span {
+  display: block; margin-top: 3px; font-size: 11.5px; color: var(--text-dim); font-weight: 400;
+}
+.btnConsigneMiTemps.choisie, .btnRemplacantMiTemps.choisie {
+  border-color: #2e7d52; background: #12261c;
+}
+.btnConsigneMiTemps.choisie b::after { content: ' ✓'; color: #6fd39b; }
+.btnRemplacantMiTemps.choisie b::after { content: ' ✓ entré'; color: #6fd39b; font-size: 11px; }

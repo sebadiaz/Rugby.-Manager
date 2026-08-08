@@ -68,6 +68,24 @@
   </div>
 </div>
 
+<!-- Mi-temps d'un match JOUÉ (P0-match) : le résultat n'est pas encore acquis,
+     les consignes prises ici modifient réellement la seconde période. -->
+<div class="panneau" id="panneauMiTemps">
+  <div class="accueilContenu">
+    <div class="carteAction carteHero">
+      <h2>Mi-temps</h2>
+      <div id="miTempsScore" class="grosScore"></div>
+      <p id="miTempsDetail" class="detailResultat"></p>
+      <p class="noteFacultatif">Rien n'est joué : tes consignes s'appliquent dès le coup d'envoi.</p>
+      <h3 style="margin:14px 0 6px;font-size:13px;">Consigne pour la seconde période</h3>
+      <div id="miTempsConsignes"></div>
+      <h3 style="margin:14px 0 6px;font-size:13px;">Remplacements</h3>
+      <div id="miTempsRemplacants"></div>
+      <button id="btnMiTempsReprendre" class="accent" style="margin-top:12px;">Reprendre le match</button>
+    </div>
+  </div>
+</div>
+
 <div class="panneau" id="panneauResultat">
   <div class="accueilContenu">
     <div class="carteAction carteHero">
@@ -654,7 +672,10 @@
           <button id="btnApercuModifierCompo" class="alt" style="flex:1;">📋 Composition</button>
           <button id="btnApercuModifierTactique" class="alt" style="flex:1;">🎯 Tactique</button>
         </div>
-        <button id="btnApercuLancerMatch" class="accent" style="width:100%;margin-top:8px;">Lancer le match</button>
+        <button id="btnApercuLancerMatch" class="accent" style="width:100%;margin-top:8px;">⚡ Simuler le match</button>
+        <!-- Match JOUÉ (P0-match) : rien n'est calculé d'avance, les décisions
+             de mi-temps changent réellement la seconde période. -->
+        <button id="btnApercuJouerMatch" class="accent" style="width:100%;margin-top:8px;">▶ Jouer le match (décisions à la mi-temps)</button>
         <button class="fermer alt" id="fermerApercuMatch" style="width:100%;margin-top:10px;">Fermer</button>
       </div>
     </div>
