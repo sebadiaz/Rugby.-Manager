@@ -203,7 +203,7 @@
         <button class="ongletBtn" data-onglet="transferts">🔁 <span>Recrutement</span></button>
         <button class="ongletBtn" data-onglet="personnel">🧑‍⚕️ <span>Personnel</span></button>
         <span class="groupeNav" data-cat="competition">Compétition</span>
-        <button class="ongletBtn" data-onglet="classement">🏆 <span>Classement</span></button>
+        <button class="ongletBtn" data-onglet="classement">🏆 <span>Compétitions</span></button>
         <button class="ongletBtn" data-onglet="calendrier">📅 <span>Calendrier</span></button>
         <button class="ongletBtn" data-onglet="monde">🌍 <span>Monde</span></button>
         <span class="groupeNav" data-cat="gestion">Gestion</span>
@@ -515,8 +515,13 @@
              page du club ouvert — elle n'a pas disparu, elle a déménagé.
              Le calendrier a sa propre page : deux choses différentes. -->
         <div class="voletOnglet" data-volet="classement" style="display:none;">
-          <div class="enTetePage"><span class="categoriePage">Compétition</span><h2>Classement</h2><p>Le classement de n'importe quel championnat. Clique le nom d'un club pour l'ouvrir.</p></div>
+          <div class="enTetePage"><span class="categoriePage">Compétition</span><h2>Compétitions</h2><p>N'importe quel championnat du monde : classement, équipes, statistiques et règles. Clique le nom d'un club pour l'ouvrir.</p></div>
+          <div class="barreSousOnglets" data-sousonglets="classement"></div>
           <div class="emplacementNavigationCompetition"></div>
+          <div class="carteClub" id="carteCompetitionOnglet" style="display:none;">
+            <h3 id="titreCompetitionOnglet"></h3>
+            <div id="clubCompetitionOnglet"></div>
+          </div>
           <!-- Navigation PAYS puis CHAMPIONNAT (TODO_AUDIT.md P1-28) : on ne
                choisit jamais un CLUB dans une liste (règle P1-20), mais il
                faut bien pouvoir se déplacer entre compétitions pour que des

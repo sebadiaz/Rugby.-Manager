@@ -85,7 +85,9 @@ async function recupererTexte(chemin) {
   });
 
   await test('Classement et Calendrier sont bien DEUX onglets distincts (P1-33)', () => {
-    assert.ok(indexHtml.includes('>Classement<'), 'libellé "Classement" introuvable dans le HTML public');
+    // Renommé « Compétitions » (plan A) : l'écran couvre désormais classement,
+    // équipes, statistiques et règles de n'importe quel championnat.
+    assert.ok(indexHtml.includes('>Compétitions<'), 'libellé "Compétitions" introuvable dans le HTML public');
     assert.ok(indexHtml.includes('>Calendrier<'), 'libellé "Calendrier" introuvable dans le HTML public');
     assert.ok(!/data-onglet="autresclubs"/.test(indexHtml),
       'l\'ancien onglet "Autres clubs" est encore là : le site public est en retard sur main');

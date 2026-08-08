@@ -1608,8 +1608,73 @@
     rafraichirCompetitionChoisie();
   }
 
+  // Onglets de l'écran Compétitions. Chacun lit la compétition CHOISIE dans la
+  // navigation — championnat du joueur, autre palier français, ou l'un des 12
+  // pays : mêmes composants, seules les données changent.
+  function rendreOngletCompetition(comp) {
+    const carte = document.getElementById('carteCompetitionOnglet');
+    const zone = document.getElementById('clubCompetitionOnglet');
+    const titre = document.getElementById('titreCompetitionOnglet');
+    const carteClassement = document.getElementById('carteCompetitionChoisie');
+    if (!carte || !zone || !titre) return;
+    const sous = sousOngletCourant('classement');
+    if (carteClassement) carteClassement.style.display = (sous === 'classement' || sous === 'apercu') ? '' : 'none';
+    carte.style.display = sous === 'classement' ? 'none' : '';
+    if (!comp) { zone.innerHTML = '<p style="color:var(--text-dim);">Championnat indisponible.</p>'; titre.textContent = 'Compétition'; return; }
+    const rangs = RMClub.classementTrieDe ? RMClub.classementTrieDe(comp.classementBrut || comp.classement) : [];
+    const lignes = rangs.length ? rangs : [];
+    const nomDe = (id) => {
+      const cl = (comp.clubs || []).find((c) => c.id === id);
+      return cl ? cl.nom : id;
+    };
+
+    if (sous === 'apercu') {
+      const joues = (comp.calendrier || []).filter((f) => f.joue).length;
+      const leader = lignes[0];
+      titre.textContent = `🏆 ${comp.nom}`;
+      zone.innerHTML =
+        `<div class="ligneJoueur"><span>Clubs engagés</span><b>${(comp.clubs || []).length}</b></div>` +
+        `<div class="ligneJoueur"><span>Rencontres jouées</span><b>${joues} / ${(comp.calendrier || []).length}</b></div>` +
+        (leader ? `<div class="ligneJoueur"><span>En tête</span><b>${echapperHTML(nomDe(leader.clubId))} · ${leader.pts} pt(s)</b></div>` : '') +
+        `<div class="ligneJoueur"><span>Ta compétition ?</span><b>${comp.estCelleDuJoueur ? 'oui' : 'non'}</b></div>`;
+    } else if (sous === 'equipes') {
+      titre.textContent = '🏟️ Clubs engagés';
+      zone.innerHTML = (comp.clubs || []).length
+        ? (comp.clubs || []).map((c) =>
+          `<div class="ligneJoueur"><span>${lienClub(c.id)}</span>` +
+          `<b>${c.id === saison.clubJoueur.id ? 'ton club' : ''}</b></div>`).join('')
+        : '<p style="color:var(--text-dim);">Aucun club listé pour cette compétition.</p>';
+    } else if (sous === 'stats') {
+      titre.textContent = '📊 Statistiques de la compétition';
+      if (!lignes.length) { zone.innerHTML = '<p style="color:var(--text-dim);">Aucun résultat enregistré pour l\'instant.</p>'; return; }
+      // Champs RÉELS du classement (cf. classementInitial) : pointsPour /
+      // pointsContre / pts. Une première version lisait `pour`/`contre`, qui
+      // n'existent pas — l'écran affichait « meilleure attaque · 0 pts ».
+      const parPour = lignes.slice().sort((a2, b2) => (b2.pointsPour || 0) - (a2.pointsPour || 0));
+      const parContre = lignes.slice().sort((a2, b2) => (a2.pointsContre || 0) - (b2.pointsContre || 0));
+      const totalPts = lignes.reduce((t, r) => t + (r.pointsPour || 0), 0);
+      const joues = (comp.calendrier || []).filter((f) => f.joue).length;
+      zone.innerHTML =
+        `<div class="ligneJoueur"><span>Meilleure attaque</span><b>${echapperHTML(nomDe(parPour[0].clubId))} · ${parPour[0].pointsPour || 0} pts</b></div>` +
+        `<div class="ligneJoueur"><span>Meilleure défense</span><b>${echapperHTML(nomDe(parContre[0].clubId))} · ${parContre[0].pointsContre || 0} encaissés</b></div>` +
+        `<div class="ligneJoueur"><span>Points marqués au total</span><b>${totalPts}</b></div>` +
+        `<div class="ligneJoueur"><span>Moyenne par rencontre</span><b>${joues ? Math.round(totalPts / joues) : 0} pts</b></div>`;
+    } else if (sous === 'regles') {
+      titre.textContent = '📜 Format et règles';
+      const promus = comp.promus || 0, relegues = comp.relegues || 0;
+      zone.innerHTML =
+        `<div class="ligneJoueur"><span>Format</span><b>${comp.estCoupe ? 'élimination directe' : 'championnat aller-retour'}</b></div>` +
+        `<div class="ligneJoueur"><span>Clubs</span><b>${(comp.clubs || []).length}</b></div>` +
+        `<div class="ligneJoueur"><span>Montées</span><b>${promus || 'aucune'}</b></div>` +
+        `<div class="ligneJoueur"><span>Descentes</span><b>${relegues || 'aucune'}</b></div>` +
+        (comp.partagee ? '<p style="font-size:12px;color:var(--text-dim);margin:8px 0 0;">Compétition partagée entre plusieurs pays.</p>' : '');
+    }
+  }
+
   function rafraichirCompetitionChoisie() {
+    rafraichirSousOnglets('classement');
     const comp = RMClub.competition(saison, competitionNavChoisie);
+    rendreOngletCompetition(comp);
     const zoneClassement = document.getElementById('clubCompetitionClassement');
     const titre = document.getElementById('titreCompetitionChoisie');
     const titreCal = document.getElementById('titreCalendrierCompetition');
@@ -2480,6 +2545,13 @@
   // Aucun sous-onglet n'est déclaré tant qu'il n'a pas de VRAIES données à
   // montrer — pas de route vide, pas de placeholder.
   const SOUS_ONGLETS = {
+    classement: [
+      { cle: 'apercu', label: 'Vue d\'ensemble', aide: 'La compétition en un coup d\'œil.' },
+      { cle: 'classement', label: 'Classement', aide: 'Le classement complet.' },
+      { cle: 'equipes', label: 'Équipes', aide: 'Les clubs engagés.' },
+      { cle: 'stats', label: 'Statistiques', aide: 'Meilleure attaque, meilleure défense, écarts.' },
+      { cle: 'regles', label: 'Règles', aide: 'Montées, descentes, format.' },
+    ],
     developpement: [
       { cle: 'apercu', label: 'Vue d\'ensemble', aide: 'Ce que le club produit et fait progresser.' },
       { cle: 'b', label: 'Équipe B', aide: 'Le vivier de la réserve.' },
@@ -2539,6 +2611,7 @@
     if (menu === 'medical') rafraichirMedical();
     if (menu === 'effectif') rafraichirEffectif();
     if (menu === 'developpement') rafraichirDeveloppement();
+    if (menu === 'classement') rafraichirCompetitionChoisie();
   });
 
   // Amicaux (saison.amicaux) : source distincte du championnat, donc rendu
