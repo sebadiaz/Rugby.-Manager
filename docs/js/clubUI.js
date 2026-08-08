@@ -607,10 +607,18 @@
     let libelleLong = 'Continuer';
     if (arret) {
       const memeJour = RMClub.comparerDates(arret.date, aujourdhui) === 0;
-      libelleCourt = memeJour ? arret.libelle : `Continuer → ${RMClub.formaterDateCourte(arret.date)}`;
+      // Combien de jours ce bouton va-t-il RÉELLEMENT avaler ? Mesuré : 3 en
+      // moyenne en cours de saison, mais 21 sur le premier clic d'une
+      // carrière neuve. Le joueur doit le savoir AVANT de cliquer — c'est la
+      // différence entre avancer et se faire sauter trois semaines.
+      const nbJours = RMClub.ecartJours(aujourdhui, arret.date);
+      // La barre flottante est l'élément le plus visible de l'écran : elle
+      // doit dire elle aussi combien de jours elle saute, sinon elle reste le
+      // raccourci qu'on prend sans y penser.
+      libelleCourt = memeJour ? arret.libelle : `Continuer · ${nbJours} j → ${RMClub.formaterDateCourte(arret.date)}`;
       libelleLong = memeJour
         ? `${arret.libelle} — c'est aujourd'hui`
-        : `Continuer jusqu'au ${RMClub.formaterDateLongue(arret.date)}`;
+        : `Passer ${nbJours} jour(s) — Continuer jusqu'au ${RMClub.formaterDateLongue(arret.date)}`;
     }
     bouton.textContent = `▶ ${libelleLong}`;
     if (labelFlottant) labelFlottant.textContent = libelleCourt;
@@ -623,7 +631,7 @@
       const surUnMatch = !!RMClub.typeDArret(saison, aujourdhui);
       boutonJour.style.display = surUnMatch ? 'none' : '';
       boutonJour.disabled = false;
-      boutonJour.textContent = `→ ${RMClub.formaterDateCourte(RMClub.ajouterJours(aujourdhui, 1))}`;
+      boutonJour.textContent = `→ Jour suivant (${RMClub.formaterDateCourte(RMClub.ajouterJours(aujourdhui, 1))})`;
       boutonJour.title = `Avancer d'un seul jour, jusqu'au ${RMClub.formaterDateLongue(RMClub.ajouterJours(aujourdhui, 1))}`;
     }
   }

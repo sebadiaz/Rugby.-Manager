@@ -260,11 +260,14 @@
                  tout ce qu'il faut régler vit dans l'onglet « Préparer le
                  match », plus éparpillé sur trois cartes du tableau de bord. -->
             <button id="btnVersPreparer" class="accent" style="width:100%;margin-top:10px;">🧭 Préparer le match</button>
-            <div style="display:flex;gap:8px;margin-top:8px;">
-              <button id="btnComposition" class="alt" style="flex:1;">📋 Composition</button>
-              <button id="btnJourSuivant" class="alt" style="flex:1;">→ Jour suivant</button>
-            </div>
-            <button id="btnJouerMatchClub" class="accent" style="width:100%;margin-top:8px;">▶ Continuer</button>
+            <!-- Le JOUR PAR JOUR est le rythme de la carrière : c'est lui
+                 l'action principale. « Continuer » reste disponible pour
+                 filer jusqu'à la prochaine échéance, mais annonce désormais
+                 combien de jours il va sauter — mesuré, le premier saut d'une
+                 carrière neuve en avale 21 d'un coup. -->
+            <button id="btnJourSuivant" class="accent" style="width:100%;margin-top:10px;">→ Jour suivant</button>
+            <button id="btnComposition" class="alt" style="width:100%;margin-top:8px;">📋 Composition</button>
+            <button id="btnJouerMatchClub" class="alt" style="width:100%;margin-top:8px;">▶ Continuer</button>
             <button id="btnSaisonSuivante" class="accent" style="width:100%;margin-top:10px;display:none;">Saison suivante →</button>
           </div>
           <!-- Agenda des 7 prochains jours (TODO_AUDIT.md P1-22) : le
