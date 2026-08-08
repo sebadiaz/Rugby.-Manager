@@ -209,6 +209,7 @@
         <span class="groupeNav" data-cat="gestion">Gestion</span>
         <button class="ongletBtn" data-onglet="finances">💰 <span>Finances</span></button>
         <button class="ongletBtn" data-onglet="medical">🩺 <span>Médical</span></button>
+        <button class="ongletBtn" data-onglet="developpement">🌱 <span>Développement</span></button>
         <button class="ongletBtn" data-onglet="stats">📊 <span>Bilan</span></button>
       </nav>
 
@@ -590,6 +591,15 @@
 
         <!-- Médical : vue filtrée de l'effectif, façon Medical Centre FM
              (blessé, depuis quand, retour estimé, fatigue). -->
+        <div class="voletOnglet" data-volet="developpement" style="display:none;">
+          <div class="enTetePage"><span class="categoriePage">Équipes</span><h2>Centre de développement</h2><p>La réserve, le centre de formation, les prêts et la progression réelle des jeunes.</p></div>
+          <div class="barreSousOnglets" data-sousonglets="developpement"></div>
+          <div class="carteClub">
+            <h3 id="titreDeveloppement"></h3>
+            <div id="clubDeveloppement"></div>
+          </div>
+        </div>
+
         <div class="voletOnglet" data-volet="medical" style="display:none;">
           <div class="enTetePage"><span class="categoriePage">Gestion</span><h2>Médical</h2><p>Blessures en cours et charge de fatigue de l'effectif.</p></div>
           <div class="emplacementSelecteurEquipe"></div>

@@ -139,7 +139,7 @@
   // DIRIGÉ : on ne prépare pas la rencontre d'un club qu'on se contente de
   // consulter. Absent du menu, pas grisé — comme Tactique ou Entraînement.
   const ONGLETS_CLUB_JOUEUR = ['dashboard', 'preparer', 'effectif', 'composition', 'tactique', 'entrainement',
-    'transferts', 'personnel', 'classement', 'calendrier', 'monde', 'finances', 'medical', 'stats'];
+    'transferts', 'personnel', 'classement', 'calendrier', 'monde', 'finances', 'medical', 'developpement', 'stats'];
   const ONGLETS_CLUB_CONSULTE = ['dashboard', 'effectif', 'composition', 'personnel', 'classement', 'calendrier', 'monde'];
 
   function ongletsDisponibles(saison) {

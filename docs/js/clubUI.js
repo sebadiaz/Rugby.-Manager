@@ -1289,6 +1289,76 @@
     }
   }
 
+  // --- Centre de développement --------------------------------------------
+  // Réunit ce qui existait déjà mais était éparpillé : réserve, centre de
+  // formation, prêts, progression. Toutes les sources sont existantes — rien
+  // n'est fabriqué pour remplir l'écran.
+  function ligneJeuneDev(j) {
+    const pot = j.potentiel != null ? j.potentiel : null;
+    const niveau = Math.round(((j.vitesse || 0) + (j.plaquage || 0)) / 2);
+    const marge = pot != null ? pot - niveau : null;
+    return `<div class="ligneJeune"><span class="infosJeune"><b>${echapperHTML(j.nom)}</b>` +
+      `<span>${echapperHTML(j.poste)} · ${j.age} ans · niveau ${niveau}` +
+      `${pot != null ? ` · potentiel ${pot}` : ''}</span></span>` +
+      `<span style="flex:0 0 auto;">${marge != null && marge > 0 ? `+${marge}` : '—'}</span></div>`;
+  }
+
+  function rafraichirDeveloppement() {
+    const zone = document.getElementById('clubDeveloppement');
+    const titre = document.getElementById('titreDeveloppement');
+    if (!zone || !titre) return;
+    rafraichirSousOnglets('developpement');
+    const sous = sousOngletCourant('developpement');
+    const c = saison.clubJoueur;
+    const jeunes = c.jeunes || [];
+    const pro = c.effectif || [];
+    const pretes = pro.filter((j) => j.pret);
+    const effB = RMClub.effectifPourEquipe ? (RMClub.effectifPourEquipe(saison, 'b') || []) : [];
+
+    if (sous === 'apercu') {
+      const progressent = pro.concat(jeunes)
+        .filter((j) => (RMClub.calculerProgression(j) || []).some((p) => p.delta > 0)).length;
+      titre.textContent = '🌱 Ce que le club produit';
+      zone.innerHTML =
+        `<div class="ligneJoueur"><span>Vivier Équipe B</span><b>${effB.length} joueur(s)</b></div>` +
+        `<div class="ligneJoueur"><span>Centre de formation</span><b>${jeunes.length} jeune(s)</b></div>` +
+        `<div class="ligneJoueur"><span>Joueurs prêtés</span><b>${pretes.length}</b></div>` +
+        `<div class="ligneJoueur"><span>Joueurs en progression</span><b>${progressent}</b></div>`;
+    } else if (sous === 'b') {
+      titre.textContent = '🥈 Vivier de l\'Équipe B';
+      zone.innerHTML = effB.length
+        ? effB.slice().sort((a, b2) => (a.age || 0) - (b2.age || 0)).map(ligneJeuneDev).join('')
+        : '<p style="color:var(--text-dim);">Aucun joueur disponible pour l\'Équipe B aujourd\'hui.</p>';
+    } else if (sous === 'jeunes') {
+      titre.textContent = '🌱 Centre de formation';
+      zone.innerHTML = jeunes.length
+        ? jeunes.slice().sort((a, b2) => (b2.potentiel || 0) - (a.potentiel || 0)).map(ligneJeuneDev).join('')
+        : '<p style="color:var(--text-dim);">Aucun jeune au centre de formation.</p>';
+    } else if (sous === 'prets') {
+      titre.textContent = '📤 Joueurs prêtés';
+      zone.innerHTML = pretes.length
+        ? pretes.map((j) => `<div class="ligneJeune"><span class="infosJeune"><b>${echapperHTML(j.nom)}</b>` +
+          `<span>${echapperHTML(j.poste)} · ${j.age} ans</span></span>` +
+          `<span style="flex:0 0 auto;">${(j.pret && j.pret.dureeRestante) || 0} jour(s)</span></div>`).join('')
+        : '<p style="color:var(--text-dim);">Aucun joueur prêté actuellement.</p>';
+    } else if (sous === 'progression') {
+      const avec = pro.concat(jeunes)
+        .map((j) => ({ j, p: (RMClub.calculerProgression(j) || []).filter((x) => x.delta > 0) }))
+        .filter((x) => x.p.length)
+        .sort((a, b2) => b2.p.reduce((t, x) => t + x.delta, 0) - a.p.reduce((t, x) => t + x.delta, 0));
+      titre.textContent = '📈 Progression depuis le début de saison';
+      zone.innerHTML = avec.length
+        ? avec.slice(0, 15).map((e2) => {
+          const total = e2.p.reduce((t, x) => t + x.delta, 0);
+          const detail = e2.p.slice(0, 3).map((x) => `${echapperHTML(x.attr)} +${x.delta}`).join(', ');
+          return `<div class="ligneJeune"><span class="infosJeune"><b>${echapperHTML(e2.j.nom)}</b>` +
+            `<span>${echapperHTML(e2.j.poste)} · ${e2.j.age} ans · ${detail}</span></span>` +
+            `<span style="flex:0 0 auto;color:#6fd39b;">+${total}</span></div>`;
+        }).join('')
+        : '<p style="color:var(--text-dim);">Aucune progression mesurée pour l\'instant.</p>';
+    }
+  }
+
   function rafraichirEffectif() {
     rafraichirSousOnglets('effectif');
     const ctx = contexte();
@@ -2387,6 +2457,7 @@
     // en revenant, sans qu'aucun état ne soit conservé de son côté.
     if (cle === 'preparer') rafraichirPreparerMatch();
     if (cle === 'stats') rafraichirCarriereManager();
+    if (cle === 'developpement') rafraichirDeveloppement();
     fermerFicheJoueur(); // change d'onglet = referme toute fiche laissée ouverte
     fermerTiroirNav(); // choisir une section referme le tiroir mobile
     document.getElementById('clubMain').scrollTop = 0; // repart en haut de la nouvelle page
@@ -2409,6 +2480,13 @@
   // Aucun sous-onglet n'est déclaré tant qu'il n'a pas de VRAIES données à
   // montrer — pas de route vide, pas de placeholder.
   const SOUS_ONGLETS = {
+    developpement: [
+      { cle: 'apercu', label: 'Vue d\'ensemble', aide: 'Ce que le club produit et fait progresser.' },
+      { cle: 'b', label: 'Équipe B', aide: 'Le vivier de la réserve.' },
+      { cle: 'jeunes', label: 'Jeunes', aide: 'Le centre de formation et ses potentiels.' },
+      { cle: 'prets', label: 'Joueurs prêtés', aide: 'Qui est parti, et pour combien de temps.' },
+      { cle: 'progression', label: 'Progression', aide: 'Qui a réellement progressé depuis le début de saison.' },
+    ],
     effectif: [
       { cle: 'apercu', label: 'Vue d\'ensemble', aide: 'La forme du groupe : âge, postes, salaires.' },
       { cle: 'joueurs', label: 'Joueurs', aide: 'La liste complète, filtrable.' },
@@ -2460,6 +2538,7 @@
     if (menu === 'calendrier') rafraichirCalendrier();
     if (menu === 'medical') rafraichirMedical();
     if (menu === 'effectif') rafraichirEffectif();
+    if (menu === 'developpement') rafraichirDeveloppement();
   });
 
   // Amicaux (saison.amicaux) : source distincte du championnat, donc rendu
