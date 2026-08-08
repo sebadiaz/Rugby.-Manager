@@ -977,6 +977,26 @@
       ? `<p class="avertissementEquipe">⚠️ ${echapperHTML(ctx.motifIndisponible)}</p>` : '';
     document.getElementById('contexteEquipeInfo').innerHTML =
       `<p class="sousTitreEquipe">${echapperHTML(ctx.sousTitre)} · ${ctx.effectif.length} joueur(s) ${badge}</p>${indispo}${statutEspoirsHTML(ctx)}`;
+    nommerEquipeDansTitre(equipes, ctx);
+  }
+
+  // Le titre de la page nomme l'ÉQUIPE consultée. Sans ça, « Effectif »,
+  // « Composition » ou « Calendrier » s'affichaient à l'identique pour
+  // l'équipe première, l'Équipe B et les Espoirs : le contenu changeait bien
+  // (mesuré — 3940 / 1977 / 1770 caractères sur Composition), mais rien à
+  // l'écran ne disait laquelle on regardait, à part un petit menu déroulant.
+  // On mémorise le titre d'origine dans un data-attribut pour ne jamais
+  // empiler les suffixes au fil des changements d'équipe.
+  function nommerEquipeDansTitre(equipes, ctx) {
+    const volet = document.querySelector(`#clubGestion .voletOnglet[data-volet="${ongletActuel}"]`);
+    const titre = volet ? volet.querySelector('.enTetePage h2') : null;
+    if (!titre) return;
+    if (!titre.dataset.titreBase) titre.dataset.titreBase = titre.textContent.trim();
+    const base = titre.dataset.titreBase;
+    // Un club qu'on ne dirige pas n'a qu'une équipe : le suffixe n'apprendrait
+    // rien, on garde le titre nu.
+    const option = equipes.find((o) => o.valeur === ctx.type);
+    titre.textContent = (equipes.length > 1 && option) ? `${base} — ${option.label}` : base;
   }
 
   // --- Ouverture d'un club : LA fonction centrale (TODO_AUDIT.md P1-20) ----
