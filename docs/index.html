@@ -73,7 +73,7 @@
 <div class="panneau" id="panneauMiTemps">
   <div class="accueilContenu">
     <div class="carteAction carteHero">
-      <h2>Mi-temps</h2>
+      <h2 id="miTempsTitre">Mi-temps</h2>
       <div id="miTempsScore" class="grosScore"></div>
       <p id="miTempsDetail" class="detailResultat"></p>
       <p class="noteFacultatif">Rien n'est joué : tes consignes s'appliquent dès le coup d'envoi.</p>
@@ -121,6 +121,10 @@
     <div class="controlsRangee principale">
       <button id="btnPlay">Pause</button>
       <button id="btnSpeed" class="alt">Vitesse x1</button>
+      <!-- Consigne EN COURS de jeu (P0-match) : visible uniquement quand le
+           match est réellement joué, donc quand une décision peut encore
+           changer la suite. -->
+      <button id="btnConsigneMatch" class="alt" style="display:none;">🎯 Consigne</button>
       <button id="btnSauver" class="accent" style="display:none;">Enregistrer</button>
       <button id="btnMenu" class="alt">☰ Menu</button>
     </div>

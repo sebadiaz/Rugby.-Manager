@@ -230,8 +230,17 @@
   }
 
   // Affiche la mi-temps : le match est EN PAUSE, rien n'est encore décidé.
-  function ouvrirMiTemps() {
+  function ouvrirMiTemps(contexte) {
     const L = matchLive;
+    // `contexte` : 'miTemps' (arrêt imposé) ou 'enCours' (le manager ouvre le
+    // panneau de lui-même pendant le jeu). Même écran, mêmes conséquences —
+    // une consigne prise à la 62e minute vaut celle prise à la mi-temps.
+    const ctx = contexte || 'miTemps';
+    L.contexte = ctx;
+    const titre = document.getElementById('miTempsTitre');
+    if (titre) titre.textContent = ctx === 'enCours' ? 'Consigne en cours de jeu' : 'Mi-temps';
+    const btnReprendre = document.getElementById('btnMiTempsReprendre');
+    if (btnReprendre) btnReprendre.textContent = ctx === 'enCours' ? 'Retour au match' : 'Reprendre le match';
     enCours = false;
     document.getElementById('btnPlay').textContent = 'Play';
     const e = normalizeMatchState(match.getState());
@@ -288,6 +297,8 @@
     } else badge.style.display = 'none';
     // Le match vient d'être joué : plus rien à « voir », et surtout pas un
     // second moteur qui rejouerait sans les décisions prises.
+    const btnConsigne = document.getElementById('btnConsigneMatch');
+    if (btnConsigne) btnConsigne.style.display = 'none';
     document.getElementById('btnResultatVoir').style.display = 'none';
     document.getElementById('panneauResultat').classList.add('visible');
     const onFermer = L.onFermer;
@@ -308,6 +319,8 @@
       consignesPrises: [], remplacementsFaits: [],
       miTempsTraitee: false, resultatEnvoye: false,
     };
+    const btn = document.getElementById('btnConsigneMatch');
+    if (btn) btn.style.display = '';
     demarrerLectureReelle(seed, duree, o.noms);
   }
 
@@ -318,7 +331,7 @@
     if (!c) return;
     match.appliquerTactiqueEnCours(matchLive.equipe, c.consignes);
     if (matchLive.consignesPrises.indexOf(c.cle) === -1) matchLive.consignesPrises.push(c.cle);
-    ouvrirMiTemps();
+    ouvrirMiTemps(matchLive.contexte);
   });
 
   document.getElementById('miTempsRemplacants').addEventListener('click', (e) => {
@@ -329,10 +342,18 @@
     if (!r || matchLive.remplacementsFaits.indexOf(i) !== -1) return;
     match.remplacerJoueurEnCours(matchLive.equipe, r.numeroSortant, r.joueur);
     matchLive.remplacementsFaits.push(i);
-    ouvrirMiTemps();
+    ouvrirMiTemps(matchLive.contexte);
   });
 
   document.getElementById('btnMiTempsReprendre').addEventListener('click', fermerMiTemps);
+
+  // Consigne PENDANT le jeu : le manager n'attend pas la mi-temps pour réagir
+  // au score. Le moteur accepte déjà un changement à tout instant
+  // (appliquerTactiqueEnCours) — il ne manquait que l'accès.
+  document.getElementById('btnConsigneMatch').addEventListener('click', () => {
+    if (!matchLive || !match || matchLive.resultatEnvoye) return;
+    ouvrirMiTemps('enCours');
+  });
 
   function demarrerNouveauMatch(seed, duree) {
     seedActuel = seed;
@@ -509,7 +530,7 @@
     if (matchLive) {
       if (!matchLive.miTempsTraitee && match.miTempsJouee) {
         matchLive.miTempsTraitee = true;
-        ouvrirMiTemps();
+        ouvrirMiTemps('miTemps');
       }
       if (!matchLive.resultatEnvoye && match.phase === 'TERMINE') terminerMatchLive();
     }
