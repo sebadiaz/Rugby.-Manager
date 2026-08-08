@@ -130,13 +130,75 @@
   // manuellement — un vrai effectif de rugby fait tourner ses polyvalents
   // plutôt que de jouer à 14). Un joueur prêté (cf. preterJoueur) reste une
   // exclusion DURE : il n'est tout simplement pas dans l'effectif du jour.
+  // --- Évaluation PAR POSTE (TODO_AUDIT.md P0-composition) ------------------
+  //
+  // Avant, le tri était :
+  //     pool.sort((a, b) => (b.vitesse + b.plaquage) - (a.vitesse + a.plaquage));
+  // Deux attributs, les mêmes pour les quinze postes. Mêlée, touche,
+  // puissance, endurance, passe, jeu au pied, décision et discipline ne
+  // pesaient RIEN — alors qu'ils existent sur chaque joueur et que le moteur,
+  // lui, les utilise. Un pilier 90 vitesse / 90 plaquage / 25 mêlée passait
+  // devant un pilier 60 / 65 / 85 : le travail de recrutement du manager ne
+  // se traduisait pas dans l'équipe alignée.
+  //
+  // Chaque poste a maintenant sa propre grille de lecture. Les poids somment
+  // à 1, donc une note reste sur la même échelle 0-100 que les attributs et
+  // se compare d'un poste à l'autre.
+  const POIDS_PAR_POSTE = {
+    // Première ligne : la mêlée d'abord, puis le gabarit.
+    P: { melee: 0.40, puissance: 0.25, plaquage: 0.15, endurance: 0.10, discipline: 0.05, vitesse: 0.05 },
+    // Talonneur : il lance en touche — c'est ce qui le distingue d'un pilier.
+    T: { touche: 0.30, melee: 0.25, puissance: 0.15, plaquage: 0.12, adresse: 0.08, endurance: 0.05, discipline: 0.05 },
+    // Deuxième ligne : sauteur en touche et puissance de poussée.
+    '2L': { touche: 0.28, puissance: 0.27, plaquage: 0.18, endurance: 0.12, melee: 0.10, vitesse: 0.05 },
+    // Troisième ligne : le volume de plaquage et l'endurance, avec de la
+    // vitesse pour arriver sur les rucks.
+    '3L': { plaquage: 0.28, puissance: 0.22, endurance: 0.18, vitesse: 0.15, melee: 0.10, decision: 0.07 },
+    // Demi de mêlée : la qualité de passe commande tout le jeu.
+    DM: { passe: 0.35, decision: 0.20, vitesse: 0.15, jeuPied: 0.12, adresse: 0.10, plaquage: 0.08 },
+    // Ouvreur : le pied et la lecture du jeu, pas le plaquage.
+    OV: { jeuPied: 0.28, decision: 0.25, passe: 0.20, adresse: 0.12, vitesse: 0.10, plaquage: 0.05 },
+    // Centre : percuter et défendre au centre du terrain.
+    CE: { plaquage: 0.25, puissance: 0.22, vitesse: 0.20, passe: 0.13, decision: 0.12, adresse: 0.08 },
+    // Ailier : la vitesse, très largement, et les mains.
+    AI: { vitesse: 0.40, adresse: 0.20, plaquage: 0.15, puissance: 0.12, decision: 0.08, jeuPied: 0.05 },
+    // Arrière : dernier rempart et jeu au pied de dégagement.
+    AR: { jeuPied: 0.28, vitesse: 0.22, adresse: 0.20, decision: 0.15, plaquage: 0.15 },
+  };
+
+  // Avants / trois-quarts : dépanner un ailier au centre coûte moins cher que
+  // le faire jouer pilier. La pénalité hors poste n'est donc pas uniforme.
+  const AVANTS = new Set(['P', 'T', '2L', '3L']);
+  const PENALITE_MEME_FAMILLE = 0.92;
+  const PENALITE_AUTRE_FAMILLE = 0.80;
+
+  // Note d'un joueur POUR UN POSTE donné, sur 100. Exportée : c'est elle qui
+  // doit être testable, pas seulement le résultat du tri.
+  function noteAuPoste(joueur, poste) {
+    const poids = POIDS_PAR_POSTE[poste];
+    if (!joueur) return 0;
+    if (!poids) return ((joueur.vitesse || 0) + (joueur.plaquage || 0)) / 2;
+    let note = 0;
+    for (const attr of Object.keys(poids)) {
+      // Un attribut absent (vieille sauvegarde, joueur adverse simplifié) vaut
+      // 60, la valeur neutre de génération — jamais 0, qui écraserait la note.
+      const v = joueur[attr] != null ? joueur[attr] : 60;
+      note += v * poids[attr];
+    }
+    if (joueur.poste && joueur.poste !== poste) {
+      const memeFamille = AVANTS.has(joueur.poste) === AVANTS.has(poste);
+      note *= memeFamille ? PENALITE_MEME_FAMILLE : PENALITE_AUTRE_FAMILLE;
+    }
+    return Math.round(note * 10) / 10;
+  }
+
   function meilleurCandidatPourNumero(effectif, poste, utilises) {
     let candidats = effectif.filter((j) => j.poste === poste && !j.pret && !utilises.has(j.id));
     if (candidats.length === 0) candidats = effectif.filter((j) => !j.pret && !utilises.has(j.id));
     if (candidats.length === 0) return null;
     const disponibles = candidats.filter((j) => !j.blessureJournees);
     const pool = disponibles.length > 0 ? disponibles : candidats;
-    pool.sort((a, b) => (b.vitesse + b.plaquage) - (a.vitesse + a.plaquage));
+    pool.sort((a, b) => noteAuPoste(b, poste) - noteAuPoste(a, poste));
     return pool[0];
   }
 
@@ -379,7 +441,7 @@
 
   global.RMClub = Object.assign(global.RMClub || {}, {
     tactiqueVersConfig, effectifVersJoueursCfg, compositionVersJoueursCfg,
-    meilleurCandidatPourNumero, meilleureComposition, completerComposition,
+    meilleurCandidatPourNumero, noteAuPoste, POIDS_PAR_POSTE, meilleureComposition, completerComposition,
     validerComposition, POSTE_REQUIS_BANC, completerCompositionBanc,
     numeroDuJoueurDansComposition, autoDesignerEncadrement,
     CIBLE_REMPLACEMENT_BANC, MINUTE_REMPLACEMENT_BANC, remplacementsVersConfig,
