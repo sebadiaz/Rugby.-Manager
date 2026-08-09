@@ -210,7 +210,7 @@
         <button class="ongletBtn" data-onglet="finances">💰 <span>Finances</span></button>
         <button class="ongletBtn" data-onglet="medical">🩺 <span>Médical</span></button>
         <button class="ongletBtn" data-onglet="developpement">🌱 <span>Développement</span></button>
-        <button class="ongletBtn" data-onglet="stats">📊 <span>Bilan</span></button>
+        <button class="ongletBtn" data-onglet="stats">📊 <span>Data Hub</span></button>
       </nav>
 
       <main id="clubMain">
@@ -640,7 +640,12 @@
              évolution sur plusieurs saisons (cf. RMClub.classementMarqueurs/
              historiqueSaisons). -->
         <div class="voletOnglet" data-volet="stats" style="display:none;">
-          <div class="enTetePage"><span class="categoriePage">Gestion</span><h2>Bilan</h2><p>Statistiques de la saison, classement des marqueurs et évolution pluriannuelle.</p></div>
+          <div class="enTetePage"><span class="categoriePage">Gestion</span><h2>Data Hub</h2><p>Ce que les matchs joués ont réellement produit : équipe, joueurs, rencontres, saisons.</p></div>
+          <div class="barreSousOnglets" data-sousonglets="stats"></div>
+          <div class="carteClub" id="carteDataHub" style="display:none;">
+            <h3 id="titreDataHub"></h3>
+            <div id="clubDataHub"></div>
+          </div>
           <!-- Carrière du manager (TODO_AUDIT.md P1-42) : enrichit l'onglet
                Bilan EXISTANT — aucun écran parallèle. Identité, club actuel,
                réputation, sécurité de l'emploi, historique des clubs, bilan

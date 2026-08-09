@@ -1303,6 +1303,79 @@
       `<span style="flex:0 0 auto;">${marge != null && marge > 0 ? `+${marge}` : '—'}</span></div>`;
   }
 
+  // --- Data Hub -------------------------------------------------------------
+  // Tout vient des statistiques RÉELLEMENT accumulées par les matchs joués
+  // (accumulerStats pour le club, accumulerStatsJoueurs pour chaque joueur,
+  // historiqueSaisons pour l'évolution). Aucun chiffre recalculé après coup.
+  const LIBELLE_STAT_CLUB = {
+    essais: 'Essais', passes: 'Passes réussies', passesTentees: 'Passes tentées',
+    metresGagnes: 'Mètres gagnés', tacklesMade: 'Plaquages réussis',
+    tacklesAttempted: 'Plaquages tentés', turnovers: 'Turnovers',
+    penalitesConcedees: 'Pénalités concédées', kicks: 'Coups de pied',
+  };
+
+  function rafraichirDataHub() {
+    const zone = document.getElementById('clubDataHub');
+    const titre = document.getElementById('titreDataHub');
+    if (!zone || !titre) return;
+    rafraichirSousOnglets('stats');
+    const sous = sousOngletCourant('stats');
+    const carte = document.getElementById('carteDataHub');
+    if (carte) carte.style.display = sous === 'apercu' ? 'none' : '';
+    const c = saison.clubJoueur;
+    const st = c.statsCumulees;
+    const joues = st ? (st.matchsJoues || 0) : 0;
+
+    if (sous === 'equipe') {
+      titre.textContent = '🏉 Production du collectif';
+      if (!joues) { zone.innerHTML = '<p style="color:var(--text-dim);">Aucun match joué : rien à mesurer pour l\'instant.</p>'; return; }
+      zone.innerHTML = `<div class="ligneJoueur"><span>Matchs joués</span><b>${joues}</b></div>` +
+        Object.keys(LIBELLE_STAT_CLUB).filter((k) => st[k] != null).map((k) =>
+          `<div class="ligneJoueur"><span>${LIBELLE_STAT_CLUB[k]}</span>` +
+          `<b>${st[k]} <span style="color:var(--text-dim);font-weight:400;">${Math.round((st[k] / joues) * 10) / 10}/match</span></b></div>`).join('');
+    } else if (sous === 'joueurs') {
+      titre.textContent = '⭐ Meilleurs de la saison';
+      const tous = (c.effectif || []).concat(c.jeunes || []).filter((j) => j.statsSaison && j.statsSaison.matchsJoues);
+      if (!tous.length) { zone.innerHTML = '<p style="color:var(--text-dim);">Aucune statistique individuelle enregistrée.</p>'; return; }
+      const top = (champ, libelle) => {
+        const l = tous.slice().sort((a2, b2) => (b2.statsSaison[champ] || 0) - (a2.statsSaison[champ] || 0));
+        return l[0] && l[0].statsSaison[champ]
+          ? `<div class="ligneJoueur"><span>${libelle}</span><b>${echapperHTML(l[0].nom)} · ${l[0].statsSaison[champ]}</b></div>` : '';
+      };
+      zone.innerHTML =
+        top('essais', 'Meilleur marqueur') + top('metresGagnes', 'Plus de mètres gagnés') +
+        top('tacklesMade', 'Plus de plaquages') + top('passes', 'Plus de passes') +
+        top('matchsJoues', 'Plus de matchs joués') +
+        `<h4 class="sousTitreMedical">Temps de jeu (${tous.length} joueurs utilisés)</h4>` +
+        tous.slice().sort((a2, b2) => (b2.statsSaison.matchsJoues || 0) - (a2.statsSaison.matchsJoues || 0))
+          .slice(0, 10).map((j) =>
+            `<div class="ligneJoueur"><span>${echapperHTML(j.nom)} <span style="color:var(--text-faint);">${echapperHTML(j.poste)}</span></span>` +
+            `<b>${j.statsSaison.matchsJoues} match(s)</b></div>`).join('');
+    } else if (sous === 'matchs') {
+      titre.textContent = '📋 Rencontres jouées';
+      const id = c.id;
+      const miens = (saison.calendrier || []).filter((f) => f.joue && (f.domicileId === id || f.exterieurId === id));
+      if (!miens.length) { zone.innerHTML = '<p style="color:var(--text-dim);">Aucune rencontre jouée.</p>'; return; }
+      zone.innerHTML = miens.map((f) => {
+        const dom = f.domicileId === id;
+        const pour = dom ? f.score.domicile : f.score.exterieur;
+        const contre = dom ? f.score.exterieur : f.score.domicile;
+        const forme = pour > contre ? 'v' : pour < contre ? 'd' : 'n';
+        return `<div class="ligneResultatDash"><span class="badgeForme ${forme}">${LIBELLE_FORME[forme]}</span>` +
+          `<span class="adversaireDash">${dom ? 'vs' : '@'} ${lienClub(dom ? f.exterieurId : f.domicileId)}</span>` +
+          `<span class="scoreDash">${pour} - ${contre}</span></div>`;
+      }).join('');
+    } else if (sous === 'saisons') {
+      titre.textContent = '📚 Évolution du club';
+      const h = c.historiqueSaisons || [];
+      zone.innerHTML = h.length
+        ? h.slice().reverse().map((e2) =>
+          `<div class="ligneJoueur"><span>Saison ${e2.numero} — ${e2.position}e/${e2.totalClubs}</span>` +
+          `<b>${e2.victoires}V ${e2.nuls}N ${e2.defaites}D · ${e2.points} pts</b></div>`).join('')
+        : '<p style="color:var(--text-dim);">Première saison en cours : l\'historique se remplira à la fin.</p>';
+    }
+  }
+
   function rafraichirDeveloppement() {
     const zone = document.getElementById('clubDeveloppement');
     const titre = document.getElementById('titreDeveloppement');
@@ -2523,6 +2596,7 @@
     if (cle === 'preparer') rafraichirPreparerMatch();
     if (cle === 'stats') rafraichirCarriereManager();
     if (cle === 'developpement') rafraichirDeveloppement();
+    if (cle === 'stats') rafraichirDataHub();
     fermerFicheJoueur(); // change d'onglet = referme toute fiche laissée ouverte
     fermerTiroirNav(); // choisir une section referme le tiroir mobile
     document.getElementById('clubMain').scrollTop = 0; // repart en haut de la nouvelle page
@@ -2545,6 +2619,13 @@
   // Aucun sous-onglet n'est déclaré tant qu'il n'a pas de VRAIES données à
   // montrer — pas de route vide, pas de placeholder.
   const SOUS_ONGLETS = {
+    stats: [
+      { cle: 'apercu', label: 'Vue d\'ensemble', aide: 'Le bilan de la saison en cours.' },
+      { cle: 'equipe', label: 'Équipe', aide: 'Ce que le collectif a produit, par match.' },
+      { cle: 'joueurs', label: 'Joueurs', aide: 'Les meilleurs de la saison, chiffres réels.' },
+      { cle: 'matchs', label: 'Matchs', aide: 'Les rencontres jouées et leur résultat.' },
+      { cle: 'saisons', label: 'Saisons', aide: 'L\'évolution du club d\'une saison à l\'autre.' },
+    ],
     classement: [
       { cle: 'apercu', label: 'Vue d\'ensemble', aide: 'La compétition en un coup d\'œil.' },
       { cle: 'classement', label: 'Classement', aide: 'Le classement complet.' },
@@ -2612,6 +2693,7 @@
     if (menu === 'effectif') rafraichirEffectif();
     if (menu === 'developpement') rafraichirDeveloppement();
     if (menu === 'classement') rafraichirCompetitionChoisie();
+    if (menu === 'stats') rafraichirDataHub();
   });
 
   // Amicaux (saison.amicaux) : source distincte du championnat, donc rendu
