@@ -17,6 +17,18 @@
 
 const URL_BASE = process.argv[2] || 'http://localhost:8099';
 
+// GRAINE FIXE — docs/js/rng.js initialise le RNG d'interface avec Date.now(),
+// donc chaque exécution créait une carrière DIFFÉRENTE : blessures, rapports
+// et décisions tombaient à des jours différents, le nombre de clics
+// « Continuer » nécessaires pour atteindre le match variait, et plusieurs
+// vérifications basculaient au hasard d'une exécution à l'autre. Mesuré : sur
+// du code strictement identique, trois exécutions consécutives ont donné 2, 1
+// puis 0 échec, avec des tests fautifs différents à chaque fois.
+// RMRng.setSeed (déjà exposé par le jeu) rend chaque parcours reproductible.
+// Aucune assertion n'est affaiblie : c'est la mise en scène qui devient
+// déterministe, pas la vérification.
+const GRAINE_TEST = 20240817;
+
 function resoudreChromium() {
   try { return require('playwright').chromium; } catch (e) { /* essaie playwright-core ensuite */ }
   try { return require('playwright-core').chromium; } catch (e) {
@@ -92,6 +104,7 @@ function optionsLancement() {
 
   // 1) Création et chargement d'une carrière.
   await page.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  await page.evaluate((g) => window.RMRng.setSeed(g), GRAINE_TEST);
   await page.click('#btnAccueilModeClub');
   await page.waitForTimeout(150);
   await page.fill('#inputNomClub', 'Parcours Navigateur');
@@ -913,6 +926,7 @@ function optionsLancement() {
   const contexteCorrompu = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   const pageCorrompue = await contexteCorrompu.newPage();
   await pageCorrompue.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  await pageCorrompue.evaluate((g) => window.RMRng.setSeed(g), GRAINE_TEST);
   await pageCorrompue.evaluate(() => localStorage.setItem('rugbyManager.club.v1', '{ "version": 2, "clubJoueur": { "nom": "Cassé"'));
   await pageCorrompue.reload({ waitUntil: 'networkidle' });
   await pageCorrompue.waitForTimeout(300);
@@ -941,6 +955,7 @@ function optionsLancement() {
   const contexteMobileMarche = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   const pageMobileMarche = await contexteMobileMarche.newPage();
   await pageMobileMarche.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  await pageMobileMarche.evaluate((g) => window.RMRng.setSeed(g), GRAINE_TEST);
   await pageMobileMarche.click('#btnAccueilModeClub');
   await pageMobileMarche.fill('#inputNomClub', 'Mobile Marché');
   await pageMobileMarche.click('#btnCreerClub');
@@ -986,6 +1001,7 @@ function optionsLancement() {
   const contexteEspoirs = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   const pageEspoirs = await contexteEspoirs.newPage();
   await pageEspoirs.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  await pageEspoirs.evaluate((g) => window.RMRng.setSeed(g), GRAINE_TEST);
   await pageEspoirs.click('#btnAccueilModeClub');
   await pageEspoirs.fill('#inputNomClub', 'Test Espoirs');
   await pageEspoirs.click('#btnCreerClub');
@@ -1036,6 +1052,7 @@ function optionsLancement() {
   const contexteEG = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   const pageEG = await contexteEG.newPage();
   await pageEG.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  await pageEG.evaluate((g) => window.RMRng.setSeed(g), GRAINE_TEST);
   await pageEG.click('#btnAccueilModeClub');
   await pageEG.fill('#inputNomClub', 'Test Équipe Gérée');
   await pageEG.click('#btnCreerClub');
@@ -1111,6 +1128,7 @@ function optionsLancement() {
   pageUnif.on('pageerror', (e) => erreursUnif.push(`PAGEERROR: ${e.message}`));
   pageUnif.on('console', (m) => { if (m.type() === 'error' && !m.text().includes('404')) erreursUnif.push(`CONSOLE: ${m.text()}`); });
   await pageUnif.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  await pageUnif.evaluate((g) => window.RMRng.setSeed(g), GRAINE_TEST);
   await pageUnif.click('#btnAccueilModeClub');
   await pageUnif.fill('#inputNomClub', 'Test Écrans Uniques');
   await pageUnif.click('#btnCreerClub');
@@ -1300,6 +1318,7 @@ function optionsLancement() {
   pageTemps.on('pageerror', (e) => erreursTemps.push(`PAGEERROR: ${e.message}`));
   pageTemps.on('console', (m) => { if (m.type() === 'error' && !m.text().includes('404')) erreursTemps.push(`CONSOLE: ${m.text()}`); });
   await pageTemps.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  await pageTemps.evaluate((g) => window.RMRng.setSeed(g), GRAINE_TEST);
   await pageTemps.click('#btnAccueilModeClub');
   await pageTemps.fill('#inputNomClub', 'Test Carrière Datée');
   await pageTemps.click('#btnCreerClub');
@@ -1458,6 +1477,7 @@ function optionsLancement() {
   pageJours.on('pageerror', (e) => erreursJours.push(`PAGEERROR: ${e.message}`));
   pageJours.on('console', (m) => { if (m.type() === 'error' && !m.text().includes('404')) erreursJours.push(`CONSOLE: ${m.text()}`); });
   await pageJours.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  await pageJours.evaluate((g) => window.RMRng.setSeed(g), GRAINE_TEST);
   await pageJours.click('#btnAccueilModeClub');
   await pageJours.fill('#inputNomClub', 'Test Jours');
   await pageJours.click('#btnCreerClub');
@@ -1545,6 +1565,7 @@ function optionsLancement() {
   pageSemaine.on('pageerror', (e) => erreursSemaine.push(`PAGEERROR: ${e.message}`));
   pageSemaine.on('console', (m) => { if (m.type() === 'error' && !m.text().includes('404')) erreursSemaine.push(`CONSOLE: ${m.text()}`); });
   await pageSemaine.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  await pageSemaine.evaluate((g) => window.RMRng.setSeed(g), GRAINE_TEST);
   await pageSemaine.click('#btnAccueilModeClub');
   await pageSemaine.fill('#inputNomClub', 'Test Semaine');
   await pageSemaine.click('#btnCreerClub');
@@ -1728,6 +1749,7 @@ function optionsLancement() {
   pagePrep.on('pageerror', (e) => erreursPrep.push(`PAGEERROR: ${e.message}`));
   pagePrep.on('console', (m) => { if (m.type() === 'error' && !m.text().includes('404')) erreursPrep.push(`CONSOLE: ${m.text()}`); });
   await pagePrep.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  await pagePrep.evaluate((g) => window.RMRng.setSeed(g), GRAINE_TEST);
   await pagePrep.click('#btnAccueilModeClub');
   await pagePrep.fill('#inputNomClub', 'Test Préparation');
   await pagePrep.click('#btnCreerClub');
@@ -1822,6 +1844,7 @@ function optionsLancement() {
   pageB.on('pageerror', (e) => erreursB.push(`PAGEERROR: ${e.message}`));
   pageB.on('console', (m) => { if (m.type() === 'error' && !m.text().includes('404')) erreursB.push(`CONSOLE: ${m.text()}`); });
   await pageB.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  await pageB.evaluate((g) => window.RMRng.setSeed(g), GRAINE_TEST);
   await pageB.click('#btnAccueilModeClub');
   await pageB.fill('#inputNomClub', 'Test Jour Équipe B');
   await pageB.click('#btnCreerClub');
@@ -1876,6 +1899,7 @@ function optionsLancement() {
   pageMed.on('pageerror', (e) => erreursMed.push(`PAGEERROR: ${e.message}`));
   pageMed.on('console', (m) => { if (m.type() === 'error' && !m.text().includes('404')) erreursMed.push(`CONSOLE: ${m.text()}`); });
   await pageMed.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  await pageMed.evaluate((g) => window.RMRng.setSeed(g), GRAINE_TEST);
   await pageMed.click('#btnAccueilModeClub');
   await pageMed.fill('#inputNomClub', 'Test Médical');
   await pageMed.click('#btnCreerClub');
@@ -1935,6 +1959,7 @@ function optionsLancement() {
   pageP.on('pageerror', (e) => erreursP.push(`PAGEERROR: ${e.message}`));
   pageP.on('console', (m) => { if (m.type() === 'error' && !m.text().includes('404')) erreursP.push(`CONSOLE: ${m.text()}`); });
   await pageP.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  await pageP.evaluate((g) => window.RMRng.setSeed(g), GRAINE_TEST);
   await pageP.click('#btnAccueilModeClub');
   await pageP.fill('#inputNomClub', 'Test Préparer');
   await pageP.click('#btnCreerClub');
@@ -2069,6 +2094,7 @@ function optionsLancement() {
     pageMgr.on('pageerror', (e) => erreursMgr.push(`PAGEERROR: ${e.message}`));
     pageMgr.on('console', (m) => { if (m.type() === 'error' && !m.text().includes('404')) erreursMgr.push(`CONSOLE: ${m.text()}`); });
     await pageMgr.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+    await pageMgr.evaluate((g) => window.RMRng.setSeed(g), GRAINE_TEST);
     await pageMgr.click('#btnAccueilModeClub');
     await pageMgr.fill('#inputNomClub', 'Club Carrière');
     await pageMgr.fill('#inputNomManager', 'Camille Roche');
@@ -2311,6 +2337,7 @@ function optionsLancement() {
   const erreursMobileTemps = [];
   pageMobileTemps.on('pageerror', (e) => erreursMobileTemps.push(`PAGEERROR: ${e.message}`));
   await pageMobileTemps.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  await pageMobileTemps.evaluate((g) => window.RMRng.setSeed(g), GRAINE_TEST);
   await pageMobileTemps.click('#btnAccueilModeClub');
   await pageMobileTemps.fill('#inputNomClub', 'Test Mobile Daté');
   await pageMobileTemps.click('#btnCreerClub');
@@ -2357,6 +2384,7 @@ function optionsLancement() {
     if (m.type() === 'error' && !m.text().includes('404')) erreursAvance.push(`CONSOLE: ${m.text()}`);
   });
   await pageAvance.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  await pageAvance.evaluate((g) => window.RMRng.setSeed(g), GRAINE_TEST);
   await pageAvance.click('#btnAccueilModeClub');
   await pageAvance.fill('#inputNomClub', 'Test Avance Jour');
   await pageAvance.click('#btnCreerClub');
@@ -2412,6 +2440,7 @@ function optionsLancement() {
     if (m.type() === 'error' && !m.text().includes('404')) erreursDates.push(`CONSOLE: ${m.text()}`);
   });
   await pageDates.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  await pageDates.evaluate((g) => window.RMRng.setSeed(g), GRAINE_TEST);
   await pageDates.click('#btnAccueilModeClub');
   await pageDates.fill('#inputNomClub', 'Test Dates Calendrier');
   await pageDates.click('#btnCreerClub');
@@ -2465,6 +2494,7 @@ function optionsLancement() {
     if (m.type() === 'error' && !m.text().includes('404')) erreursNav.push(`CONSOLE: ${m.text()}`);
   });
   await pageNav.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  await pageNav.evaluate((g) => window.RMRng.setSeed(g), GRAINE_TEST);
   await pageNav.click('#btnAccueilModeClub');
   await pageNav.fill('#inputNomClub', 'Test Navigation Monde');
   await pageNav.click('#btnCreerClub');
@@ -2532,6 +2562,7 @@ function optionsLancement() {
     if (m.type() === 'error' && !m.text().includes('404')) erreursAdv.push(`CONSOLE: ${m.text()}`);
   });
   await pageAdv.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  await pageAdv.evaluate((g) => window.RMRng.setSeed(g), GRAINE_TEST);
   await pageAdv.click('#btnAccueilModeClub');
   await pageAdv.fill('#inputNomClub', 'Test Effectifs Adverses');
   await pageAdv.click('#btnCreerClub');
@@ -2579,6 +2610,7 @@ function optionsLancement() {
     if (m.type() === 'error' && !m.text().includes('404')) erreursFiche.push(`CONSOLE: ${m.text()}`);
   });
   await pageFiche.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  await pageFiche.evaluate((g) => window.RMRng.setSeed(g), GRAINE_TEST);
   await pageFiche.click('#btnAccueilModeClub');
   await pageFiche.fill('#inputNomClub', 'Test Page Joueur');
   await pageFiche.click('#btnCreerClub');
@@ -2638,6 +2670,7 @@ function optionsLancement() {
     if (m.type() === 'error' && !m.text().includes('404')) erreursEsp.push(`CONSOLE: ${m.text()}`);
   });
   await pageEsp.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  await pageEsp.evaluate((g) => window.RMRng.setSeed(g), GRAINE_TEST);
   await pageEsp.click('#btnAccueilModeClub');
   await pageEsp.fill('#inputNomClub', 'Test Championnat Espoirs');
   await pageEsp.click('#btnCreerClub');
@@ -2701,6 +2734,7 @@ function optionsLancement() {
     if (m.type() === 'error' && !m.text().includes('404')) erreursAmi.push(`CONSOLE: ${m.text()}`);
   });
   await pageAmi.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  await pageAmi.evaluate((g) => window.RMRng.setSeed(g), GRAINE_TEST);
   await pageAmi.click('#btnAccueilModeClub');
   await pageAmi.fill('#inputNomClub', 'Test Amical');
   await pageAmi.click('#btnCreerClub');
@@ -2779,6 +2813,7 @@ function optionsLancement() {
     if (m.type() === 'error' && !m.text().includes('404')) erreursCoupe.push(`CONSOLE: ${m.text()}`);
   });
   await pageCoupe.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  await pageCoupe.evaluate((g) => window.RMRng.setSeed(g), GRAINE_TEST);
   await pageCoupe.click('#btnAccueilModeClub');
   await pageCoupe.fill('#inputNomClub', 'Test Coupes');
   await pageCoupe.click('#btnCreerClub');
@@ -2864,6 +2899,7 @@ function optionsLancement() {
     if (m.type() === 'error' && !m.text().includes('404')) erreursEch.push(`CONSOLE: ${m.text()}`);
   });
   await pageEch.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  await pageEch.evaluate((g) => window.RMRng.setSeed(g), GRAINE_TEST);
   await pageEch.click('#btnAccueilModeClub');
   await pageEch.fill('#inputNomClub', 'Test Echeance');
   await pageEch.click('#btnCreerClub');
@@ -2927,6 +2963,7 @@ function optionsLancement() {
     if (m.type() === 'error' && !m.text().includes('404')) erreursTr.push(`CONSOLE: ${m.text()}`);
   });
   await pageTr.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  await pageTr.evaluate((g) => window.RMRng.setSeed(g), GRAINE_TEST);
   await pageTr.click('#btnAccueilModeClub');
   await pageTr.fill('#inputNomClub', 'Test A Traiter');
   await pageTr.click('#btnCreerClub');
@@ -2986,6 +3023,7 @@ function optionsLancement() {
     if (m.type() === 'error' && !m.text().includes('404')) erreursAuj.push(`CONSOLE: ${m.text()}`);
   });
   await pageAuj.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  await pageAuj.evaluate((g) => window.RMRng.setSeed(g), GRAINE_TEST);
   await pageAuj.click('#btnAccueilModeClub');
   await pageAuj.fill('#inputNomClub', 'Test Aujourdhui');
   await pageAuj.click('#btnCreerClub');
@@ -3044,6 +3082,7 @@ function optionsLancement() {
   const contexteDecision = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   const pageDecision = await contexteDecision.newPage();
   await pageDecision.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  await pageDecision.evaluate((g) => window.RMRng.setSeed(g), GRAINE_TEST);
   await pageDecision.click('#btnAccueilModeClub');
   await pageDecision.fill('#inputNomClub', 'Test Décision');
   await pageDecision.click('#btnCreerClub');
@@ -3095,6 +3134,7 @@ function optionsLancement() {
   const contexteReco = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   const pageReco = await contexteReco.newPage();
   await pageReco.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  await pageReco.evaluate((g) => window.RMRng.setSeed(g), GRAINE_TEST);
   await pageReco.click('#btnAccueilModeClub');
   await pageReco.fill('#inputNomClub', 'Test Recommandation');
   await pageReco.click('#btnCreerClub');
