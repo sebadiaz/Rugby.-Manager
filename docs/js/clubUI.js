@@ -1376,6 +1376,63 @@
     }
   }
 
+  // --- Infrastructures (P1-44) ---------------------------------------------
+  // Le budget servait UNIQUEMENT à acheter des joueurs. Ici, chaque ligne dit
+  // ce que l'infrastructure apporte aujourd'hui, ce que coûterait le niveau
+  // suivant, combien de temps il prendrait, et POURQUOI c'est possible ou non.
+  const MOTIF_BLOCAGE = {
+    niveauMax: 'Niveau maximum atteint',
+    chantierEnCours: 'Un autre chantier est déjà en cours',
+    budget: 'Budget insuffisant',
+  };
+
+  function rafraichirInfrastructures() {
+    const zone = document.getElementById('clubInfrastructures');
+    const carteCh = document.getElementById('carteChantier');
+    const zoneCh = document.getElementById('clubChantier');
+    if (!zone) return;
+    const d = RMClub.dossierInfrastructures(saison);
+    if (carteCh && zoneCh) {
+      if (d.chantier) {
+        carteCh.style.display = '';
+        const fait = d.chantier.joursTotal - d.chantier.joursRestants;
+        const pct = Math.round((fait / d.chantier.joursTotal) * 100);
+        zoneCh.innerHTML =
+          `<p style="margin:0 0 8px;"><b>${echapperHTML(d.chantier.label)}</b> → niveau ${d.chantier.niveauVise}</p>` +
+          `<span class="barreMoral"><span style="width:${pct}%"></span></span> ` +
+          `<span style="font-size:12px;color:var(--text-dim);">${d.chantier.joursRestants} jour(s) restant(s) sur ${d.chantier.joursTotal}</span>`;
+      } else carteCh.style.display = 'none';
+    }
+    zone.innerHTML =
+      `<p style="margin:0 0 10px;font-size:12px;color:var(--text-dim);">Budget disponible : <b>${d.budget} k€</b>. ` +
+      `Un seul chantier à la fois — investir ici, c'est renoncer à recruter maintenant.</p>` +
+      d.lignes.map((l) => {
+        const action = l.blocage
+          ? `<span class="badgeNiveau niveau-info">${MOTIF_BLOCAGE[l.blocage]}${l.blocage === 'budget' ? ` (−${l.manque} k€)` : ''}</span>`
+          : `<button class="alt btnTravaux" data-cle="${echapperHTML(l.cle)}" style="flex:0 0 auto;width:auto;padding:7px 12px;font-size:12px;">Lancer · ${l.cout} k€ · ${l.duree} j</button>`;
+        return `<div class="ligneJeune"><span class="infosJeune"><b>${l.icone} ${echapperHTML(l.label)} — niveau ${l.niveau}/${l.niveauMax}</b>` +
+          `<span>${echapperHTML(l.effet)}${l.gainActuel ? ` · +${l.gainActuel} % aujourd'hui` : ''}` +
+          `${l.gainSuivant ? ` · le niveau suivant ajoute +${l.gainSuivant} %` : ''}</span></span>` +
+          `<span style="flex:0 0 auto;">${action}</span></div>`;
+      }).join('');
+  }
+
+  document.getElementById('clubGestion').addEventListener('click', (e) => {
+    const btn = e.target.closest('.btnTravaux');
+    if (!btn) return;
+    const res = RMClub.lancerTravaux(saison, btn.dataset.cle);
+    if (!res.ok) {
+      toast(res.motif === 'budget'
+        ? `Budget insuffisant : il manque ${res.manque} k€`
+        : 'Impossible de lancer ces travaux maintenant', 'erreur');
+      return;
+    }
+    sauvegarder();
+    rafraichirInfrastructures();
+    rafraichirTopBarInfos();
+    toast(`🚧 Travaux lancés — livraison dans ${res.duree} jour(s), ${res.cout} k€ engagés`);
+  });
+
   function rafraichirDeveloppement() {
     const zone = document.getElementById('clubDeveloppement');
     const titre = document.getElementById('titreDeveloppement');
@@ -2083,7 +2140,7 @@
   // comprendre POURQUOI ce joueur est exposé, pas seulement le voir en rouge.
   function ligneRisque(entree) {
     const j = entree.joueur;
-    const risque = RMClub.risqueBlessure(j, { intensite: 1 });
+    const risque = RMClub.risqueBlessure(j, { intensite: 1, saison });
     const pct = Math.round(risque * 1000) / 10;
     const causes = [];
     if ((j.fatigue || 0) >= 60) causes.push(`fatigue ${Math.round(j.fatigue)} %`);
@@ -2138,7 +2195,7 @@
       const enReprise = tous.filter((e) => e.joueur.reprise).length;
       const fatigues = tous.filter((e) => (e.joueur.fatigue || 0) >= 60).length;
       const risqueMoyen = tous.length
-        ? tous.reduce((t, e) => t + RMClub.risqueBlessure(e.joueur, { intensite: 1 }), 0) / tous.length : 0;
+        ? tous.reduce((t, e) => t + RMClub.risqueBlessure(e.joueur, { intensite: 1, saison }), 0) / tous.length : 0;
       titre.textContent = '🩺 État de santé du groupe';
       zoneOnglet.innerHTML =
         `<div class="ligneJoueur"><span>Joueurs suivis</span><b>${tous.length}</b></div>` +
@@ -2148,7 +2205,7 @@
         `<div class="ligneJoueur"><span>Risque moyen par séance</span><b>${Math.round(risqueMoyen * 1000) / 10} %</b></div>`;
     } else if (sous === 'risques') {
       const tries = tous.slice().sort((a, b) =>
-        RMClub.risqueBlessure(b.joueur, { intensite: 1 }) - RMClub.risqueBlessure(a.joueur, { intensite: 1 }));
+        RMClub.risqueBlessure(b.joueur, { intensite: 1, saison }) - RMClub.risqueBlessure(a.joueur, { intensite: 1, saison }));
       titre.textContent = '⚠️ Joueurs les plus exposés';
       zoneOnglet.innerHTML = tries.slice(0, 12).map(ligneRisque).join('')
         || '<p style="color:var(--text-dim);">Aucun joueur suivi.</p>';
@@ -2597,6 +2654,7 @@
     if (cle === 'stats') rafraichirCarriereManager();
     if (cle === 'developpement') rafraichirDeveloppement();
     if (cle === 'stats') rafraichirDataHub();
+    if (cle === 'club') rafraichirInfrastructures();
     fermerFicheJoueur(); // change d'onglet = referme toute fiche laissée ouverte
     fermerTiroirNav(); // choisir une section referme le tiroir mobile
     document.getElementById('clubMain').scrollTop = 0; // repart en haut de la nouvelle page

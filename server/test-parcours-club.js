@@ -31,6 +31,7 @@ new Function('window', require('fs').readFileSync(require('path').join(__dirname
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-transferts.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-transferts-internationaux.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-mercato.js'), 'utf8'))(global.window);
+new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-infrastructures.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-generation-joueurs.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-centre-formation.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-espoirs.js'), 'utf8'))(global.window);
@@ -2390,6 +2391,7 @@ const clubEvenementsSrcPourRechargement = require('fs').readFileSync(require('pa
 const clubMedicalSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-medical.js'), 'utf8');
 const clubCarriereSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-carriere-manager.js'), 'utf8');
 const clubMercatoSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-mercato.js'), 'utf8');
+const clubInfraSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-infrastructures.js'), 'utf8');
 function chargerInstanceFraicheClub() {
   const ctx = {};
   ctx.window = ctx;
@@ -2404,6 +2406,7 @@ function chargerInstanceFraicheClub() {
   new Function('window', clubTransfertsSrcPourRechargement)(ctx);
   new Function('window', clubTransfertsIntlSrcPourRechargement)(ctx);
   new Function('window', clubMercatoSrcPourRechargement)(ctx);
+  new Function('window', clubInfraSrcPourRechargement)(ctx);
   new Function('window', clubGenerationJoueursSrcPourRechargement)(ctx);
   new Function('window', clubCentreFormationSrcPourRechargement)(ctx);
   new Function('window', clubEspoirsSrcPourRechargement)(ctx);

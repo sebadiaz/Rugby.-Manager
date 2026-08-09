@@ -46,6 +46,20 @@
   // fonction qui transforme une sauvegarde de cette version vers la
   // suivante.
   const MIGRATIONS = {
+    // 6 → 7 : infrastructures du club (P1-44). Une sauvegarde antérieure n'a
+    // aucune structure ; elle démarre simplement au niveau 1 partout, ce qui
+    // reproduit EXACTEMENT son comportement d'avant (tous les facteurs valent
+    // 1 au niveau 1). Rien d'autre n'est touché : ni budget, ni effectif, ni
+    // résultats.
+    6: (saison) => {
+      if (global.RMClub.assurerInfrastructures) global.RMClub.assurerInfrastructures(saison);
+      if (saison.clubJoueur && saison.clubJoueur.chantier === undefined) saison.clubJoueur.chantier = null;
+      // La boucle de migration s'appuie sur ce numéro pour avancer : l'oublier
+      // fait tourner la migration à vide jusqu'au garde-fou, et la sauvegarde
+      // est alors rejetée comme irrécupérable.
+      saison.version = 7;
+      return saison;
+    },
     // 2 → 3 : introduction du temps calendaire. Une sauvegarde v2 n'a ni
     // date courante, ni graine de saison, ni date sur ses rencontres — mais
     // elle a tout ce qu'il faut pour les reconstituer SANS PERTE : son

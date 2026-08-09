@@ -125,7 +125,9 @@
     const nouvelles = [];
     for (const j of effectif) {
       if (!titulairesIds.has(j.id)) continue;
-      if (!RMClub.tirerBlessure(rng, j, { cause: 'match', facteurPreparateur })) continue;
+      // `saison` transmise pour que le niveau du centre médical (P1-44)
+      // s'applique RÉELLEMENT au tirage, pas seulement à l'affichage.
+      if (!RMClub.tirerBlessure(rng, j, { cause: 'match', facteurPreparateur, saison })) continue;
       const rechute = !!j.reprise;
       const b = RMClub.infligerBlessure(saison, j, 'match', rng, { facteurMedecin, facteurPreparateur });
       nouvelles.push({ joueur: j, blessure: b, rechute });

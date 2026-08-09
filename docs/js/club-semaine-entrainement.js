@@ -232,7 +232,9 @@
       // général. La fatigue, elle, est désormais portée par risqueBlessure.
       const base = RISQUE_BLESSURE_PAR_INTENSITE * activite.intensite;
       if (!RMClub.tirerBlessure(rng, j, {
-        cause: 'entrainement', risqueBase: base, facteurPreparateur: fp,
+        // `saison` : le niveau du centre médical (P1-44) doit peser sur le
+        // TIRAGE, sinon son effet ne serait qu'un chiffre affiché.
+        cause: 'entrainement', risqueBase: base, facteurPreparateur: fp, saison,
       })) continue;
       const b = RMClub.infligerBlessure(saison, j, 'entrainement', rng, {
         facteurMedecin: fm, facteurPreparateur: fp,

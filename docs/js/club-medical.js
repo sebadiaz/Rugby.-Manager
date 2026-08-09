@@ -127,6 +127,10 @@
       * facteurAge(joueur.age)
       * facteurFatigue(joueur.fatigue)
       * facteurAntecedents(joueur)
+      // Centre médical (P1-44) : un meilleur centre réduit RÉELLEMENT le
+      // risque. Niveau 1 = diviseur 1, donc comportement inchangé sans
+      // investissement.
+      / (o.saison && RMClub.effetInfrastructure ? RMClub.effetInfrastructure(o.saison, 'medical') : 1)
       * rechute * preparateur * intensite;
   }
 

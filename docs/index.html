@@ -210,6 +210,7 @@
         <button class="ongletBtn" data-onglet="finances">💰 <span>Finances</span></button>
         <button class="ongletBtn" data-onglet="medical">🩺 <span>Médical</span></button>
         <button class="ongletBtn" data-onglet="developpement">🌱 <span>Développement</span></button>
+        <button class="ongletBtn" data-onglet="club">🏗️ <span>Club</span></button>
         <button class="ongletBtn" data-onglet="stats">📊 <span>Data Hub</span></button>
       </nav>
 
@@ -596,6 +597,18 @@
 
         <!-- Médical : vue filtrée de l'effectif, façon Medical Centre FM
              (blessé, depuis quand, retour estimé, fatigue). -->
+        <div class="voletOnglet" data-volet="club" style="display:none;">
+          <div class="enTetePage"><span class="categoriePage">Gestion</span><h2>Club</h2><p>Investir dans les infrastructures : un gain durable, payé maintenant.</p></div>
+          <div class="carteClub" id="carteChantier" style="display:none;">
+            <h3>🚧 Chantier en cours</h3>
+            <div id="clubChantier"></div>
+          </div>
+          <div class="carteClub">
+            <h3>🏗️ Infrastructures</h3>
+            <div id="clubInfrastructures"></div>
+          </div>
+        </div>
+
         <div class="voletOnglet" data-volet="developpement" style="display:none;">
           <div class="enTetePage"><span class="categoriePage">Équipes</span><h2>Centre de développement</h2><p>La réserve, le centre de formation, les prêts et la progression réelle des jeunes.</p></div>
           <div class="barreSousOnglets" data-sousonglets="developpement"></div>
@@ -830,6 +843,7 @@
 <script src="js/club-transferts.js"></script>
 <script src="js/club-transferts-internationaux.js"></script>
   <script src="js/club-mercato.js"></script>
+  <script src="js/club-infrastructures.js"></script>
 <script src="js/club-generation-joueurs.js"></script>
 <script src="js/club-centre-formation.js"></script>
 <script src="js/club-espoirs.js"></script>

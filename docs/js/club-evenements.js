@@ -171,6 +171,10 @@
     // Appel défensif comme les autres domaines chargés après club.js.
     const mercatoDuJour = RMClub.avancerJourMercato
       ? RMClub.avancerJourMercato(saison, date) : null;
+    // Travaux d'infrastructure (P1-44) : ils avancent d'un jour, comme tout le
+    // reste de la carrière, et se livrent d'eux-mêmes.
+    const travaux = RMClub.avancerJourInfrastructures
+      ? RMClub.avancerJourInfrastructures(saison) : null;
 
     const rapports = RMClub.remettreRapportsScouting(saison, date);
     const reponsesContrat = RMClub.resoudreNegociationsContrat(rng, saison, date);
@@ -207,6 +211,7 @@
       pointEtape,
       reunionVestiaire,
       signatureRivale: mercatoDuJour ? mercatoDuJour.signature : null,
+      travaux,
       retablis: retablis.map((j) => j.nom),
       retoursDePret: retoursDePret.map((j) => j.nom),
       estJourDeMatch: !!opts.estJourDeMatch,

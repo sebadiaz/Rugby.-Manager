@@ -18,7 +18,7 @@
   // et la durée des prêts comptent maintenant des JOURS et non plus des
   // journées de championnat, puisque le temps s'écoule jour par jour.
   // Chaque migration est appliquée sans perte (cf. docs/js/club-sauvegarde.js).
-  const VERSION_SAUVEGARDE = 6;
+  const VERSION_SAUVEGARDE = 7;
 
   // --- Génération de noms (club fictif, aucune référence à un club/joueur réel) ---
   const PRENOMS = ['Thomas', 'Lucas', 'Hugo', 'Louis', 'Jules', 'Nathan', 'Enzo', 'Léo',
@@ -565,7 +565,14 @@
   // le repli à 26 ne sert qu'en dernier recours (ne devrait jamais être
   // sollicité, le calendrier a toujours au moins une journée).
   function appliquerFinancesMatch(club, forme, nbJournees) {
-    const recette = Math.round(40 + club.niveauClub * 120 + (forme === 'v' ? 25 : forme === 'n' ? 10 : 0));
+    // Stade (P1-44) : le niveau des tribunes multiplie RÉELLEMENT la recette.
+    // Niveau 1 = facteur 1, donc une carrière qui n'investit jamais encaisse
+    // exactement comme avant. Lu depuis le club lui-même : cette fonction ne
+    // reçoit pas la saison.
+    const infraStade = club.infrastructures && club.infrastructures.stade
+      ? club.infrastructures.stade.niveau : 1;
+    const facteurStade = 1 + (Math.max(1, infraStade) - 1) * 0.18;
+    const recette = Math.round((40 + club.niveauClub * 120 + (forme === 'v' ? 25 : forme === 'n' ? 10 : 0)) * facteurStade);
     const revenuSponsor = club.sponsor ? club.sponsor.revenuParMatch : 0;
     const jours = nbJournees > 0 ? nbJournees : 26;
     const salaires = Math.round(masseSalariale(club.effectif) / jours);
