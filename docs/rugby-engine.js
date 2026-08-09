@@ -444,6 +444,31 @@
     return base + (j.plaquage - 60) * 0.1 + (touche - 60) * 0.4;
   }
 
+  // Tirage du sauteur PONDÉRÉ par son attribut `touche` (TODO_AUDIT.md P1-50).
+  //
+  // Avant, le tirage était uniforme : un sauteur à 88 et un à 45 étaient visés
+  // aussi souvent l'un que l'autre, et l'attribut `touche` d'un joueur donné
+  // n'existait que noyé dans la somme des huit avants. Mesuré : désigner le
+  // SEUL bon sauteur d'un pack ne changeait rien du tout (120/115 touches
+  // gagnées dans les deux cas, 0,0 point d'écart).
+  //
+  // Le poids plancher (25) garantit qu'un sauteur médiocre reste une option :
+  // une équipe qui ne viserait qu'un seul homme deviendrait illisible pour le
+  // moteur comme pour l'adversaire, alors qu'en vrai on varie les appels.
+  const POIDS_SAUTEUR_PLANCHER = 25;
+  function tirerSauteurPondere(pool, rng) {
+    if (!pool || !pool.length) return null;
+    const poids = pool.map((j) => Math.max(POIDS_SAUTEUR_PLANCHER,
+      typeof j.touche === 'number' ? j.touche : 60));
+    const total = poids.reduce((a, b) => a + b, 0);
+    let r = rng() * total;
+    for (let i = 0; i < pool.length; i++) {
+      r -= poids[i];
+      if (r <= 0) return pool[i];
+    }
+    return pool[pool.length - 1];
+  }
+
   // Discipline moyenne (0-100) des avants sur le terrain d'une équipe — sert à
   // moduler la fréquence des fautes de mêlée/maul (cf. _meleeDetecterFautes/
   // _maulDetecterFautes). Neutre (60, comportement historique) si l'attribut
@@ -4290,7 +4315,29 @@
       let forceLanceur = 0, forceAdverse = 0;
       for (const j of eqLanceur) if (j.numero <= 8) forceLanceur += forceTouche(j);
       for (const j of eqAdverse) if (j.numero <= 8) forceAdverse += forceTouche(j);
-      const probaVolAdverse = Math.max(0.06, Math.min(0.30, 0.14 + (forceAdverse - forceLanceur) / 900));
+      // Le sauteur VISÉ par l'équipe qui lance est tiré AVANT de savoir si la
+      // touche est volée : c'est lui qui monte au ballon, sa qualité propre
+      // doit donc peser sur l'issue — en plus de la force collective du pack,
+      // qui reste. Sans ça, désigner un sauteur ne changeait rien (mesuré).
+      // `this.cfgTouche[lanceur]`, PAS `this.cfg.touche` : le pool de sauteurs
+      // se règle par équipe (config.toucheA/toucheB). L'ancien code lisait la
+      // config PARTAGÉE, si bien que `toucheA.sauteurs` n'était jamais lu —
+      // c'est la seconde raison pour laquelle désigner un sauteur ne changeait
+      // rien du tout (mesuré : 0,0 point d'écart).
+      const poolLanceur = (this.cfgTouche[lanceur] || this.cfg.touche).sauteurs;
+      const poolLanceurSauteurs = eqLanceur.filter(j =>
+        poolLanceur.indexOf(j.numero) >= 0 && j.sinBin <= 0 && j.auSol === 0 && j !== this.porteur);
+      const poolLanceurAvants = eqLanceur.filter(j => j.numero <= 8 && j.sinBin <= 0 && j.auSol === 0 && j !== this.porteur);
+      const sauteurVise = tirerSauteurPondere(
+        (poolLanceurSauteurs.length ? poolLanceurSauteurs
+          : (poolLanceurAvants.length ? poolLanceurAvants : eqLanceur)), this.rng);
+      // `forceTouche` d'un avant vaut ~64 (touche 20) à ~94 (touche 95) :
+      // divisé par 400, l'écart pèse ~7,5 points de probabilité sur une
+      // échelle bornée 6-30 % — assez pour que le choix compte, jamais assez
+      // pour écraser la domination collective du pack.
+      const qualiteSauteur = sauteurVise ? forceTouche(sauteurVise) : 80;
+      const probaVolAdverse = Math.max(0.06, Math.min(0.30,
+        0.14 + (forceAdverse - forceLanceur) / 900 - (qualiteSauteur - 80) / 400));
       const vole = this.rng() < probaVolAdverse;
       const gagnant = vole ? adversaire : lanceur;
       this.stats[gagnant].lineoutsGagnes++;
@@ -4301,14 +4348,14 @@
       // n°4-8 - jamais la 1ere ligne qui lie/lève sans sauter). Tous les
       // candidats sont déjà alignés en courant (cf. _touchePlacerLignes).
       const eqGagnante = gagnant === 'A' ? this.equipeA : this.equipeB;
-      const poolSauteurs = this.cfg.touche.sauteurs;
+      const poolSauteurs = (this.cfgTouche[gagnant] || this.cfg.touche).sauteurs;
       const tirerSauteur = (equipe, exclu) => {
         const sauteurs = equipe.filter(j => poolSauteurs.indexOf(j.numero) >= 0 && j.sinBin <= 0 && j.auSol === 0 && j !== exclu);
         const avants = equipe.filter(j => j.numero <= 8 && j.sinBin <= 0 && j.auSol === 0 && j !== exclu);
         const pool = sauteurs.length ? sauteurs : (avants.length ? avants : equipe);
-        return pool[Math.floor(this.rng() * pool.length)];
+        return tirerSauteurPondere(pool, this.rng);
       };
-      const sauteur = tirerSauteur(eqGagnante, vole ? null : this.porteur);
+      const sauteur = vole ? tirerSauteur(eqGagnante, null) : sauteurVise;
       // On NE résout PAS la touche tout de suite : le ballon doit voler du
       // lanceur (sur la ligne de touche) jusqu'au sauteur, à vue, avant d'être
       // capté. Sans ça le ballon "sautait" instantanément de la touche jusque
@@ -5068,5 +5115,6 @@
     }
   }
 
-  return { MatchEngine, LONGUEUR, LARGEUR, creerRng, distance, DEFAULT_CONFIG, fusionnerConfig };
+  return { MatchEngine, LONGUEUR, LARGEUR, creerRng, distance, DEFAULT_CONFIG, fusionnerConfig,
+    tirerSauteurPondere, forceTouche };
 });

@@ -2460,3 +2460,85 @@ passée sous la ligne de flottaison : `elementFromPoint` renvoyait null et le
 double clic ne partait nulle part. Le bouton est désormais amené dans le
 viewport avant la mesure — la protection anti-double-signature, elle, n'a
 jamais bougé.
+
+## P1-50 — Le sauteur en touche compte enfin (livrée)
+
+`server/test-touche.js` — 7 vérifications, 5 rouges avant ce patch (T2 à T6),
+toutes vertes après. Plus un pilotage réel du jeu.
+
+### Le problème mesuré
+
+Deux packs identiques où un SEUL avant sait sauter (n°5, touche 95 ; les sept
+autres à 20). Dix matchs complets, d'abord sans rien désigner, puis en forçant
+`toucheA.sauteurs = [5]` — c'est-à-dire en disant au moteur de ne viser que le
+bon sauteur :
+
+```
+sans désigner de sauteur         : 120/115 touches gagnées
+en désignant le SEUL bon sauteur : 120/115 touches gagnées
+=> écart : 0,0 point
+```
+
+**Strictement aucune différence.** Trois causes, toutes dans le moteur :
+
+1. `tirerSauteur` choisissait **uniformément** dans le pool : un sauteur à 88
+   et un à 45 étaient visés aussi souvent l'un que l'autre ;
+2. `probaVolAdverse` ne regardait que la **somme** de `forceTouche` sur les
+   huit avants — la qualité de celui qui monte réellement au ballon n'entrait
+   nulle part ;
+3. le pool était lu dans `this.cfg.touche.sauteurs`, la config **partagée** :
+   `config.toucheA.sauteurs` existait mais **n'était jamais lu**. Le réglage
+   par équipe était donc inopérant depuis toujours.
+
+C'est ce qui rendait la touche muette alors que, depuis P1-49, le manager
+recrute un deuxième ligne en regardant précisément cet attribut.
+
+### Ce qui change
+
+- **Tirage pondéré** (`tirerSauteurPondere`) : le sauteur visé l'est
+  proportionnellement à sa `touche`, avec un poids plancher de 25 pour qu'un
+  sauteur médiocre reste une option — en vrai on varie les appels, et une
+  équipe qui ne viserait qu'un seul homme deviendrait lisible.
+- **Le sauteur visé est tiré AVANT** de savoir si la touche est volée, et sa
+  qualité propre entre dans la probabilité : `(forceTouche(sauteur) − 80)/400`,
+  soit environ 7,5 points sur une échelle bornée 6–30 %. Assez pour que le
+  choix compte, jamais assez pour écraser la domination collective du pack.
+- **Le pool est lu par équipe** (`this.cfgTouche[equipe]`), ce qui rend enfin
+  `toucheA/toucheB.sauteurs` opérant.
+- **Mode Club** : le manager désigne jusqu'à 3 sauteurs parmi ses n°4 à 8,
+  depuis l'écran Composition. Persisté sur le slot de composition, donc
+  disponible pour l'équipe première, la B et les Espoirs sans code en double.
+  Un sauteur qui n'est plus titulaire est ignoré, jamais propagé — sinon son
+  ancien numéro ferait sauter quelqu'un d'autre.
+
+À l'écran :
+
+```
+Sauteurs en touche
+n°4 · Tom Roux 2L            Touche 78   [Désigner]
+n°5 · Mathis Chevalier 2L    Touche 75   [Désigner]
+n°6 · Tom Legrand 3L         Touche 57   [Désigner]
+n°8 · Kevin Laurent 3L       Touche 56   [Désigner]
+n°7 · Antoine Laurent 3L     Touche 49   [Désigner]
+Aucun sauteur imposé : le lancer vise les n°4 à 8, en ciblant plus souvent
+les meilleurs. Maximum 3 désignations.
+```
+
+### Ce qui n'est PAS un bug
+
+En mesurant, j'ai d'abord cru voir « 104,3 % de touches gagnées ». C'était mon
+calcul qui était faux : `lineouts` compte les **lancers de cette équipe**,
+`lineoutsGagnes` les **touches gagnées par elle** (y compris volées sur le
+lancer adverse). Vérifié : total gagnées = total lancers, toujours. L'écran
+(docs/js/ui.js) rapporte d'ailleurs bien au total des deux équipes.
+
+### Statistiques : contrôle sur 500 matchs
+
+`server/test-stats-matchs.js` (500 matchs, ~20 min) : 16 tests, 0 échec.
+Les touches sortent à **27,8 par match** en moyenne (repère CLAUDE.md 15-35),
+donc le changement de tirage n'a pas dérivé le volume de la phase.
+
+Les quatre catégories hors repère signalées par la suite (rucks 518, plaquages
+642, coups de pied 142, pénalités 11,6) sont **antérieures et connues** : c'est
+le sujet « T2 (temps mort / ballon en jeu) » déjà instruit plus haut dans ce
+fichier, sans rapport avec la touche.

@@ -318,6 +318,17 @@
     if (numeroButeur) tactiqueCfg['buteur' + lettreEquipe] = Number(numeroButeur);
     const numeroLanceur = RMClub.numeroDuJoueurDansComposition(slot.compositionTitulaires, slot.lanceurToucheId);
     if (numeroLanceur) tactiqueCfg['toucheLanceur' + lettreEquipe] = Number(numeroLanceur);
+    // Sauteurs désignés (P1-50) : FUSIONNÉS dans la config de touche déjà
+    // posée par l'axe tactique « touche/maul » — l'écraser ferait perdre le
+    // réglage de maul. `null` quand rien n'est désigné : le moteur garde son
+    // pool par défaut (4-8).
+    const sauteurs = RMClub.sauteursVersConfigSlot
+      ? RMClub.sauteursVersConfigSlot(slot)
+      : null;
+    if (sauteurs) {
+      const cle = 'touche' + lettreEquipe;
+      tactiqueCfg[cle] = Object.assign({}, tactiqueCfg[cle] || null, { sauteurs });
+    }
     const remplacements = RMClub.remplacementsVersConfig(effectif, slot.compositionBanc, lettreEquipe);
     if (remplacements.length) tactiqueCfg.remplacements = remplacements;
     return tactiqueCfg;
@@ -3200,7 +3211,31 @@
     document.getElementById('clubEncadrement').innerHTML = noteDeduite +
       `<div class="ligneComposition"><span class="numComposition">Capitaine</span><select data-role="capitaineId"${inactif}>${options(slot.capitaineId)}</select></div>` +
       `<div class="ligneComposition"><span class="numComposition">Buteur</span><select data-role="buteurId"${inactif}>${options(slot.buteurId)}</select></div>` +
-      `<div class="ligneComposition"><span class="numComposition">Lanceur en touche</span><select data-role="lanceurToucheId"${inactif}>${options(slot.lanceurToucheId)}</select></div>`;
+      `<div class="ligneComposition"><span class="numComposition">Lanceur en touche</span><select data-role="lanceurToucheId"${inactif}>${options(slot.lanceurToucheId)}</select></div>` +
+      blocSauteurs(ctx);
+  }
+
+  // Sauteurs en touche (TODO_AUDIT.md P1-50) : le manager restreint le pool
+  // que le moteur vise. Sans désignation, le moteur garde les n°4 à 8 —
+  // pondérés par leur attribut `touche`, donc le meilleur sort déjà le plus
+  // souvent. Désigner sert à FORCER un choix, pas à réparer un défaut.
+  function blocSauteurs(ctx) {
+    if (!ctx.estClubJoueur || !RMClub.dossierSauteurs) return '';
+    const d = RMClub.dossierSauteurs(saison, ctx.type);
+    if (!d.candidats.length) return '';
+    const lignes = d.candidats.map((c) =>
+      `<div class="ligneJoueur"><span>n°${c.numero} · ${echapperHTML(c.nom)} ` +
+      `<span style="color:var(--text-faint);">${echapperHTML(c.poste)}</span></span>` +
+      `<b>Touche ${c.touche} ` +
+      (ctx.modifiable
+        ? `<button class="alt btnSauteur${c.designe ? ' actif' : ''}" data-joueur="${echapperHTML(c.id)}" ` +
+          `style="width:auto;padding:4px 10px;font-size:11px;margin-left:8px;">${c.designe ? '✓ sauteur' : 'Désigner'}</button>`
+        : (c.designe ? '· sauteur désigné' : '')) +
+      `</b></div>`).join('');
+    const note = d.designes.length
+      ? `<p class="noteLectureSeule" style="margin:4px 0 0;">Le lancer visera ${d.designes.map((c) => 'n°' + c.numero).join(' et ')}. Restreindre l'alignement rend la touche plus fiable si le sauteur est bon — et plus lisible pour l'adversaire s'il ne l'est pas.</p>`
+      : `<p class="noteLectureSeule" style="margin:4px 0 0;">Aucun sauteur imposé : le lancer vise les n°4 à 8, en ciblant plus souvent les meilleurs. Maximum ${d.max} désignations.</p>`;
+    return `<h4 class="sousTitreMedical">Sauteurs en touche</h4>${lignes}${note}`;
   }
 
   // Rapport de scout, pas fiche technique parfaite : tant qu'un joueur du
@@ -3987,6 +4022,17 @@
     sauvegarder();
     toast(`✅ ${res.joueur.nom} n'est plus en vente`);
     rafraichirDeparts();
+  });
+  document.getElementById('clubEncadrement').addEventListener('click', (e) => {
+    const btn = e.target.closest('.btnSauteur');
+    if (!btn) return;
+    const ctx = contexte();
+    if (!ctx.modifiable) return;
+    const res = RMClub.basculerSauteur(saison, btn.dataset.joueur, ctx.type);
+    if (!res.ok) return;
+    sauvegarder();
+    toast(res.designe ? '✅ Sauteur désigné pour la touche' : '✅ Sauteur retiré de l\'alignement');
+    rafraichirEncadrement();
   });
   document.getElementById('btnRafraichirMarche').addEventListener('click', () => {
     // TODO_AUDIT.md P1-43b : prospecter reste possible, mais plus en boucle.

@@ -348,6 +348,94 @@
     return { capitaineId: capitaine.id, buteurId: buteur.id, lanceurToucheId: lanceur.id };
   }
 
+  // --- Sauteurs en touche (TODO_AUDIT.md P1-50) ---------------------------
+  //
+  // Le moteur tire son sauteur dans un pool de numéros (`cfg.touche.sauteurs`,
+  // par défaut 4-8) désormais PONDÉRÉ par l'attribut `touche` de chacun. Le
+  // manager peut restreindre ce pool à ses vrais spécialistes : c'est ce qui
+  // donne enfin un usage en match à l'attribut sur lequel il recrute (P1-49).
+  //
+  // Mesuré avant : désigner le seul bon sauteur d'un pack ne changeait
+  // strictement rien (120/115 touches gagnées dans les deux cas).
+  const NUMEROS_ALIGNEMENT = [4, 5, 6, 7, 8];
+  const SAUTEURS_MAX = 3;
+
+  function slotPourSauteurs(saison, equipe) {
+    return global.RMClub.slotCompositionPourEquipe
+      ? global.RMClub.slotCompositionPourEquipe(saison, equipe || 'pro')
+      : saison.clubJoueur;
+  }
+
+  // Les titulaires qui portent un numéro de l'alignement, triés par qualité
+  // en touche — le manager voit immédiatement qui sait sauter.
+  function dossierSauteurs(saison, equipe) {
+    const slot = slotPourSauteurs(saison, equipe);
+    const effectif = global.RMClub.effectifPourEquipe
+      ? global.RMClub.effectifPourEquipe(saison, equipe || 'pro')
+      : (saison.clubJoueur.effectif || []);
+    const parId = {};
+    for (const j of effectif) parId[j.id] = j;
+    const compo = (slot && slot.compositionTitulaires) || {};
+    const designes = new Set(slotSauteurs(slot));
+    const candidats = NUMEROS_ALIGNEMENT
+      .map((numero) => ({ numero, joueur: parId[compo[numero]] }))
+      .filter((x) => x.joueur)
+      .map((x) => ({
+        id: x.joueur.id, nom: x.joueur.nom, poste: x.joueur.poste, numero: x.numero,
+        touche: x.joueur.touche != null ? x.joueur.touche : 60,
+        designe: designes.has(x.joueur.id),
+      }))
+      .sort((a, b) => b.touche - a.touche);
+    return { candidats, max: SAUTEURS_MAX, designes: candidats.filter((c) => c.designe) };
+  }
+
+  function slotSauteurs(slot) {
+    return (slot && Array.isArray(slot.sauteursIds)) ? slot.sauteursIds : [];
+  }
+  function sauteursDesignes(saison, equipe) {
+    return slotSauteurs(slotPourSauteurs(saison, equipe)).slice();
+  }
+
+  // Ajoute/retire un sauteur. Au-delà de SAUTEURS_MAX, le plus ancien sort :
+  // restreindre l'alignement à un seul homme est déjà une décision forte, en
+  // désigner cinq revient à ne rien décider.
+  function basculerSauteur(saison, joueurId, equipe) {
+    const slot = slotPourSauteurs(saison, equipe);
+    if (!slot) return { ok: false, motif: 'aucuneComposition', designe: false };
+    const liste = slotSauteurs(slot);
+    const i = liste.indexOf(joueurId);
+    if (i >= 0) {
+      liste.splice(i, 1);
+      slot.sauteursIds = liste;
+      return { ok: true, designe: false, sauteurs: liste.slice() };
+    }
+    liste.push(joueurId);
+    while (liste.length > SAUTEURS_MAX) liste.shift();
+    slot.sauteursIds = liste;
+    return { ok: true, designe: true, sauteurs: liste.slice() };
+  }
+
+  // Traduction pour le moteur : des NUMÉROS de maillot, jamais des ids. Un
+  // sauteur qui n'est plus titulaire (blessure, changement de compo) est
+  // ignoré — transmettre son ancien numéro ferait sauter quelqu'un d'autre.
+  // `null` quand rien n'est désigné : le moteur garde son pool par défaut,
+  // une liste vide casserait la touche.
+  function sauteursVersConfig(saison, equipe) {
+    return sauteursVersConfigSlot(slotPourSauteurs(saison, equipe));
+  }
+  // Même conversion à partir d'un slot déjà résolu — utilisée par la
+  // construction de config moteur, qui travaille équipe par équipe.
+  function sauteursVersConfigSlot(slot) {
+    const compo = (slot && slot.compositionTitulaires) || {};
+    const numeros = [];
+    for (const id of slotSauteurs(slot)) {
+      const numero = numeroDuJoueurDansComposition(compo, id);
+      const n = Number(numero);
+      if (n && NUMEROS_ALIGNEMENT.indexOf(n) >= 0) numeros.push(n);
+    }
+    return numeros.length ? numeros : null;
+  }
+
   // Remplacements planifiés (TODO_AUDIT.md P1-17) : traduit le banc de 8
   // (déjà choisi par le joueur, cf. completerCompositionBanc) en un vrai plan
   // de remplacements transmis au moteur (cf. engine/rugby-engine.js,
@@ -468,6 +556,8 @@
     attributsClesDuPoste, meilleureComposition, completerComposition,
     validerComposition, POSTE_REQUIS_BANC, completerCompositionBanc,
     numeroDuJoueurDansComposition, autoDesignerEncadrement,
+    NUMEROS_ALIGNEMENT, SAUTEURS_MAX, dossierSauteurs, sauteursDesignes,
+    basculerSauteur, sauteursVersConfig, sauteursVersConfigSlot,
     CIBLE_REMPLACEMENT_BANC, MINUTE_REMPLACEMENT_BANC, remplacementsVersConfig,
     assurerCompositionsSecondaires, effectifPourEquipe, slotCompositionPourEquipe, assurerCompositionPourEquipe,
   });
