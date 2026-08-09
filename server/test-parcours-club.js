@@ -46,6 +46,7 @@ new Function('window', require('fs').readFileSync(require('path').join(__dirname
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-condition-joueurs.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-decisions.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-statuts.js'), 'utf8'))(global.window);
+new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-feuille-de-route.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-pyramide.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-pyramide-france.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-calendrier.js'), 'utf8'))(global.window);
@@ -90,7 +91,13 @@ test('création de carrière : club du joueur débute en Ligue Régionale, avec 
   assert.strictEqual(saison.adversaires.length, RMClub.TAILLE_DIVISION_FRANCE[3] - 1, 'Ligue Régionale : 14 clubs au total, dont le club du joueur');
   assert.strictEqual(saison.clubJoueur.effectif.length, RMClub.TAILLE_EFFECTIF_CIBLE);
   assert.ok(saison.calendrier.length > 0);
-  assert.deepStrictEqual(saison.clubJoueur.messages, []);
+  // Depuis P1-46, une carrière ne démarre plus avec une boîte vide : la
+  // direction annonce sa feuille de route dès le premier jour, pour que le
+  // manager sache sur quoi il est jugé au-delà du classement. C'est le SEUL
+  // message d'ouverture — rien d'autre ne doit s'y glisser.
+  assert.strictEqual(saison.clubJoueur.messages.length, 1,
+    'une carrière neuve n\'a qu\'un message : la feuille de route');
+  assert.strictEqual(saison.clubJoueur.messages[0].titre, 'Feuille de route de la direction');
 });
 
 // --- 2) Sauvegarde et rechargement ---
@@ -2394,6 +2401,7 @@ const clubCarriereSrcPourRechargement = require('fs').readFileSync(require('path
 const clubMercatoSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-mercato.js'), 'utf8');
 const clubInfraSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-infrastructures.js'), 'utf8');
 const clubStatutsSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-statuts.js'), 'utf8');
+const clubRouteSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-feuille-de-route.js'), 'utf8');
 function chargerInstanceFraicheClub() {
   const ctx = {};
   ctx.window = ctx;
@@ -2416,6 +2424,7 @@ function chargerInstanceFraicheClub() {
   new Function('window', clubConditionJoueursSrcPourRechargement)(ctx);
   new Function('window', clubDecisionsSrcPourRechargement)(ctx);
   new Function('window', clubStatutsSrcPourRechargement)(ctx);
+  new Function('window', clubRouteSrcPourRechargement)(ctx);
   new Function('window', clubPyramideSrcPourRechargement)(ctx);
   new Function('window', clubPyramideFranceSrcPourRechargement)(ctx);
   new Function('window', clubCalendrierSrcPourRechargement)(ctx);
@@ -3685,6 +3694,9 @@ test('à traiter : chaque élément porte un niveau connu et un écran de résol
 
 test('à traiter : les messages NON LUS sont signalés, avec leur nombre réel', () => {
   const s = saisonPourAvance(1012);
+  // La feuille de route annoncée à l'ouverture (P1-46) est un vrai message
+  // non lu : on la lit d'abord, puis on vérifie que plus rien ne traîne.
+  RMClub.marquerTousMessagesLus(s);
   assert.ok(!RMClub.elementsATraiter(s).some((e) => e.cle === 'messages'),
     'aucune ligne « messages » tant qu\'il n\'y a rien à lire');
   RMClub.ajouterMessage(s, 'match', 'Résultat', 'Victoire.');

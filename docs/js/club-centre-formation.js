@@ -99,6 +99,12 @@
     const idx = c.jeunes.findIndex((j) => j.id === jeuneId);
     if (idx === -1) return { ok: false, motif: 'introuvable' };
     const jeune = c.jeunes.splice(idx, 1)[0];
+    // Marqueur définitif « formé au club » : c'est ce qui permet à la
+    // direction de mesurer l'axe formation de sa feuille de route sur des
+    // titularisations RÉELLES (cf. club-feuille-de-route.js). Sans lui, un
+    // joueur de 19 ans acheté au mercato serait indiscernable d'un produit du
+    // centre. Il suit le joueur, y compris s'il est vendu puis racheté.
+    jeune.issuDuCentre = true;
     c.effectif.push(jeune);
     RMClub.ajouterMessage(saison, 'jeunes', 'Promotion en équipe première',
       `${jeune.nom} (${jeune.age} ans, ${jeune.poste}) quitte le centre de formation pour rejoindre le groupe professionnel.`);

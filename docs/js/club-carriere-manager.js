@@ -371,6 +371,11 @@
       RMClub.ajouterMessage(saison, 'direction', 'Nouveau poste',
         `Tu prends les commandes de ${nouveau.nom}. Confiance initiale : ${nouveau.confiancePresident} %.`);
     }
+    // Nouveau club, nouvelle direction, nouvelles attentes : la feuille de
+    // route de l'ancien club n'a plus aucun sens ici (budget, centre de
+    // formation et objectif sont ceux d'un autre club).
+    delete nouveau.feuilleDeRoute;
+    if (RMClub.annoncerFeuilleDeRoute) RMClub.annoncerFeuilleDeRoute(saison);
     return true;
   }
 

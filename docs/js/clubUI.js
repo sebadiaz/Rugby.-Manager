@@ -1663,11 +1663,25 @@
       ? `<div class="encartUltimatum"><b>⏳ Ultimatum de la direction — ${ultimatum.matchsRestants} match(s) restant(s)</b>` +
         `<p>${ultimatum.explication}</p></div>`
       : '';
+    // Feuille de route (TODO_AUDIT.md P1-46) : le classement n'est plus la
+    // seule chose que le président regarde, il faut donc que le manager voie
+    // les autres axes ET son avancement réel dessus. L'axe « résultats » est
+    // déjà détaillé par les deux lignes au-dessus : on n'affiche ici que ce
+    // qui n'était visible nulle part.
+    const dossierRoute = RMClub.dossierFeuilleDeRoute ? RMClub.dossierFeuilleDeRoute(saison) : null;
+    const axesGestion = dossierRoute ? dossierRoute.axes.filter((a) => a.cle !== 'resultats') : [];
+    const blocRoute = axesGestion.length
+      ? `<h4 class="sousTitreMedical">Feuille de route de la direction</h4>` +
+        axesGestion.map((a) =>
+          `<div class="ligneJoueur"><span>${echapperHTML(a.libelle)}<br>` +
+          `<span style="color:var(--text-faint);font-size:11px;">${echapperHTML(a.description)}</span></span>` +
+          `<b class="${a.atteint ? 'deltaPositif' : 'deltaNegatif'}">${a.mesure} / ${a.cible} ${echapperHTML(a.unite)} ${a.atteint ? '✓' : '✗'}</b></div>`).join('')
+      : '';
     document.getElementById('clubObjectifSaison').innerHTML =
       `<div class="ligneJoueur"><span>Ambition du président</span><b>${RMClub.libelleObjectifSaison(c.objectifSaison)}</b></div>` +
       `<div class="ligneJoueur"><span>Position actuelle</span><b class="${objectifAtteint ? '' : 'deltaNegatif'}">${position}e/${classement.length} ${objectifAtteint ? '✓ en ligne avec l\'objectif' : '— en retard sur l\'objectif'}</b></div>` +
       `<div class="ligneJoueur"><span>Confiance du président</span><b><span class="barreMoral${confiance < 35 ? ' bas' : confiance >= 65 ? ' haut' : ''}"><span style="width:${confiance}%"></span></span> ${confiance}%</b></div>` +
-      blocUltimatum;
+      blocUltimatum + blocRoute;
   }
 
   // Analyse du prochain adversaire : moyennes d'attributs RÉELLES de son

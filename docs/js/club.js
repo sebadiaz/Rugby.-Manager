@@ -825,6 +825,16 @@
       ajouterMessage(saison, 'saison', `${verdict} : ${global.RMClub.libelleObjectifSaison(saison.clubJoueur.objectifSaison)}`,
         `Confiance du président : ${bilanObjectif.confiance}% (${bilanObjectif.delta >= 0 ? '+' : ''}${bilanObjectif.delta}).`);
     }
+    // Feuille de route (TODO_AUDIT.md P1-46) : le classement n'est plus la
+    // SEULE chose que le président regarde. La formation et la tenue des
+    // comptes ajustent aussi sa confiance — c'est ce qui donne un enjeu aux
+    // arbitrages d'infrastructures, de mercato et de centre de formation.
+    // Appelé APRÈS evaluerObjectifSaison, sur la confiance qu'il vient de
+    // fixer, et AVANT que le budget/l'effectif ne soient remaniés plus bas :
+    // la mesure porte bien sur la saison écoulée.
+    // Appel défensif, comme les autres domaines chargés après club.js : une
+    // balise <script> manquante ne doit jamais casser la bascule de saison.
+    if (global.RMClub.evaluerFeuilleDeRoute) global.RMClub.evaluerFeuilleDeRoute(saison);
 
     // Promotion/relégation RÉELLE dans la pyramide française (cf.
     // PALIERS_PYRAMIDE_FRANCE) — dérivée du classement final qu'on vient de
@@ -968,6 +978,10 @@
     // vient d'archiver dans historiqueSaisons (donc y compris celui de la
     // saison qui vient de s'achever) — jamais une ambition fabriquée.
     saison.clubJoueur.objectifSaison = global.RMClub.determinerObjectifSaison(saison.clubJoueur.historiqueSaisons, tousLesClubs.length);
+    // Nouvelle feuille de route, fixée sur le nouvel objectif et le budget
+    // réel du jour — puis annoncée, pour que le manager sache dès le premier
+    // jour sur quoi il sera jugé.
+    if (global.RMClub.annoncerFeuilleDeRoute) global.RMClub.annoncerFeuilleDeRoute(saison);
     // Instantané des attributs en DÉBUT de cette nouvelle saison (progression
     // réelle affichée en fiche joueur, cf. calculerProgression) — pris APRÈS
     // vieillissement/départs/arrivées, donc reflète bien le point de départ
@@ -1042,6 +1056,10 @@
     // dedans — c'est ce qui permet d'en changer sans perdre la carrière.
     // Appel défensif, comme les autres domaines chargés après club.js.
     if (global.RMClub.assurerManager) global.RMClub.assurerManager(saison, nomManager);
+    // Feuille de route de la direction (TODO_AUDIT.md P1-46) : le manager
+    // doit savoir dès son arrivée sur quoi il sera jugé, pas seulement quel
+    // classement viser. Appel défensif comme les autres domaines.
+    if (global.RMClub.annoncerFeuilleDeRoute) global.RMClub.annoncerFeuilleDeRoute(saison);
     return saison;
   }
 

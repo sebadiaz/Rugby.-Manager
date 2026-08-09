@@ -2172,3 +2172,66 @@ place. La composition auto reste réglée sur la seule valeur sportive au poste.
    Corrigé : figurer sur la feuille suffit à faire compter le match ; une
    blessure *longue* continue, elle, de ne pas compter contre le manager.
    Verrouillé par test (B9quater).
+
+## P1-46 — La direction ne juge plus QUE le classement (livrée)
+
+`server/test-feuille-de-route.js` — 11 vérifications, **toutes rouges avant ce
+patch**, vertes après. Plus un pilotage réel du jeu dans le navigateur, de la
+promotion d'un espoir jusqu'à l'axe qui bouge sur le tableau de bord.
+
+### Le problème mesuré
+
+`confiancePresident` n'était modifiée qu'à deux endroits — `resoudrePointEtape`
+(club-direction.js) et le bilan de fin de saison (club.js, `avancerSaison`) —
+et les deux ne regardaient que la **position au classement**, via
+`evaluerObjectifSaison`.
+
+Conséquence : tous les arbitrages de gestion construits jusqu'ici —
+infrastructures (P1-44), mercato (P1-43), centre de formation, statuts promis
+(P1-45) — n'avaient **aucun poids** sur la seule jauge qui décide si le
+manager garde son poste. À classement égal, vider la caisse et ne jamais
+aligner un joueur formé au club coûtait exactement zéro. Et le manager ne
+savait pas sur quoi il était jugé, en dehors du classement.
+
+### Ce qui change
+
+La direction annonce en début de saison une feuille de route sur trois axes,
+avec des cibles **dérivées du club lui-même**, jamais un barème fixe :
+
+- **Résultats** — `objectifSaison`, l'objectif qui existait déjà. Réutilisé
+  tel quel : jamais une seconde règle qui divergerait.
+- **Formation** — nombre de titularisations accordées à des joueurs
+  **promus du centre** (`promouvoirJeune` pose désormais `issuDuCentre`).
+  Cible `6 + (1 − niveauClub) × 8` : un petit club compte davantage sur son
+  centre, c'est souvent tout ce qu'il a. Acheter un joueur de 19 ans ne
+  compte pas — ce n'est pas le former.
+- **Finances** — plancher fixé à la moitié du budget au moment où la feuille
+  est établie. La direction accepte qu'on investisse, pas qu'on dilapide.
+
+En fin de saison, formation et finances ajustent réellement la confiance
+(+6/−6 et +5/−10). L'axe résultats n'est **pas** recompté : `evaluerObjectifSaison`
+s'en charge déjà, le doubler punirait deux fois la même chose. Les effets sont
+volontairement plus faibles que le classement (−30 à +20) : la gestion pèse,
+elle ne remplace pas les résultats.
+
+Le manager voit son avancement chiffré sur la carte « Objectif » du tableau de
+bord, en permanence — pas seulement au bilan.
+
+### Ce que ça change pour le joueur
+
+Promouvoir un espoir puis l'aligner devient un vrai arbitrage : il est moins
+bon que le titulaire en place (la composition automatique le sait, cf.
+`noteAuPoste`), mais ne jamais le faire jouer coûte de la confiance. Idem pour
+le budget : acheter un joueur de plus peut faire passer sous le plancher.
+
+Mesuré en pilotant le jeu : espoir promu → `issuDuCentre` posé → il est
+retenu par la composition automatique → l'axe passe de `0 / 12` à `2 / 12`
+sur le tableau de bord, et le budget affiché suit la trésorerie réelle.
+
+### Deux tests existants ont changé d'attente
+
+Une carrière neuve ne démarre plus avec une boîte de réception vide : la
+feuille de route y est annoncée dès le premier jour, parce que c'est le moment
+où le manager en a le plus besoin. `test-parcours-club` vérifie maintenant que
+c'est le **seul** message d'ouverture, et le test de la zone « à traiter » lit
+d'abord ce message avant de vérifier qu'il ne reste rien.
