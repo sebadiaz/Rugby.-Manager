@@ -87,10 +87,21 @@
   // Graine stable d'un club : dérivée de la graine de la saison et de son
   // identifiant, jamais d'un tirage libre — le même club regénère toujours
   // les mêmes remplaçants.
+  // La clé est le NOM du club, pas son id (TODO_AUDIT.md P1-49). Les ids
+  // viennent d'un compteur GLOBAL au module : deux carrières créées à la
+  // suite dans la même session reçoivent des ids différents, et donnaient
+  // donc des effectifs adverses différents À GRAINE IDENTIQUE — ce qui
+  // contredit la promesse du jeu (« deux carrières créées avec la même graine
+  // vivent exactement la même saison », cf. club.js). Le nom, lui, est dérivé
+  // de la graine : il est stable d'une construction à l'autre.
+  //
+  // Mesuré : deux saisons de graine 613 construites à la suite donnaient des
+  // budgets adverses divergents après dix jours, parce que ce n'était pas le
+  // même club qui recrutait sur le marché.
   function grainePourClub(saison, club) {
     const base = Number.isFinite(saison.graine) ? saison.graine : 1;
     let h = base >>> 0;
-    const cle = String(club.id || '');
+    const cle = String(club.nom || club.id || '');
     for (let i = 0; i < cle.length; i++) h = (h * 31 + cle.charCodeAt(i)) >>> 0;
     return h || 1;
   }

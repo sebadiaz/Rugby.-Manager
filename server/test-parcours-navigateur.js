@@ -303,6 +303,17 @@ function optionsLancement() {
   // lentement). En dispatchant les deux MouseEvent synchronement au même
   // point écran, on reproduit fidèlement le pire cas réel (deux clics
   // quasi simultanés) sans dépendre de la latence de l'outil de test.
+  // Le bouton doit être DANS le viewport avant de calculer son point écran :
+  // `elementFromPoint` renvoie null pour des coordonnées hors écran, et le
+  // double clic ne partait alors nulle part. L'écran Recrutement s'est
+  // allongé (carte Départs en P1-48, rapport de scout détaillé en P1-49), ce
+  // qui a fini par pousser la première ligne du marché sous la ligne de
+  // flottaison — un faux échec, pas une régression de la protection.
+  await page.evaluate(() => {
+    document.querySelector('#clubMarche .ligneMarche:first-child .btnSigner')
+      .scrollIntoView({ block: 'center' });
+  });
+  await page.waitForTimeout(150);
   await page.evaluate(() => {
     const box = document.querySelector('#clubMarche .ligneMarche:first-child .btnSigner').getBoundingClientRect();
     const x = box.x + box.width / 2, y = box.y + box.height / 2;

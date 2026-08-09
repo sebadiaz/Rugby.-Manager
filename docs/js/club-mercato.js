@@ -453,6 +453,7 @@
     // le manager pourra le retrouver (et tenter de le lui reprendre).
     const recrue = Object.assign({}, j, { contrat: j.contrat || 3, fatigue: 0, matchsJoues: 0 });
     delete recrue.connaissance; delete recrue.ecartVitesse; delete recrue.ecartPlaquage;
+    delete recrue.ecarts;
     ajouterAuClub(saison, club, recrue);
 
     const signature = {

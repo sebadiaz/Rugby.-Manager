@@ -20,6 +20,36 @@
   // armé avec des statistiques exactes.
   const COUT_SCOUTING = 8; // k€ par action de repérage
   const SEUIL_CONNAISSANCE_COMPLETE = 90;
+  // TOUS les attributs sur lesquels un scout peut se tromper — donc tous ceux
+  // que le moteur utilise. Avant (TODO_AUDIT.md P1-49), le rapport n'en
+  // exposait que deux : mesuré, les cinq piliers d'un même marché affichaient
+  // la MÊME note (2★) alors que leur mêlée allait de 77 à 86. Recruter un
+  // pilier était un tirage au sort, alors que la mêlée décide seule s'il
+  // jouera (cf. noteAuPoste, correctif P0-composition).
+  const ATTRIBUTS_SCOUTES = ['vitesse', 'plaquage', 'adresse', 'melee', 'touche',
+    'puissance', 'endurance', 'passe', 'jeuPied', 'decision', 'discipline'];
+  const AMPLITUDE_INCERTITUDE = 15;
+
+  // Incertitude du rapport, attribut par attribut. Pour une sauvegarde
+  // antérieure (qui n'a que `ecartVitesse`/`ecartPlaquage`), les écarts
+  // manquants sont DÉRIVÉS de l'identifiant du joueur : une fonction pure,
+  // donc deux lectures du même rapport donnent le même chiffre — un rapport
+  // qui « flotte » à chaque affichage serait inutilisable. On fabrique ici
+  // l'INCERTITUDE, jamais une statistique : la valeur réelle du joueur, elle,
+  // n'est pas touchée.
+  function ecartsDe(joueur) {
+    if (joueur.ecarts) return joueur.ecarts;
+    const base = { vitesse: joueur.ecartVitesse || 0, plaquage: joueur.ecartPlaquage || 0 };
+    let h = 0x811c9dc5;
+    const graine = String(joueur.id || joueur.nom || '');
+    for (let i = 0; i < graine.length; i++) { h ^= graine.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+    for (const attr of ATTRIBUTS_SCOUTES) {
+      if (base[attr] != null && (attr === 'vitesse' || attr === 'plaquage')) continue;
+      for (let i = 0; i < attr.length; i++) { h ^= attr.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+      base[attr] = Math.round(((h % 2001) / 1000 - 1) * AMPLITUDE_INCERTITUDE);
+    }
+    return base;
+  }
 
   function genererJoueurLibre(rng, niveauMoyen) {
     const RMClub = global.RMClub;
@@ -31,8 +61,14 @@
     // — cf. statsApparentes. Fixée une fois pour toutes à la génération, pas
     // recalculée aléatoirement à chaque affichage (sinon le rapport "flotte").
     j.connaissance = 20 + Math.floor(rng() * 30);
-    j.ecartVitesse = Math.round((rng() * 2 - 1) * 15);
-    j.ecartPlaquage = Math.round((rng() * 2 - 1) * 15);
+    j.ecarts = {};
+    for (const attr of ATTRIBUTS_SCOUTES) {
+      j.ecarts[attr] = Math.round((rng() * 2 - 1) * AMPLITUDE_INCERTITUDE);
+    }
+    // Conservés pour les anciennes sauvegardes et les écrans qui les lisent
+    // encore : ce sont exactement les mêmes valeurs, pas un second tirage.
+    j.ecartVitesse = j.ecarts.vitesse;
+    j.ecartPlaquage = j.ecarts.plaquage;
     return j;
   }
   function genererMarcheTransferts(rng, niveauMoyen, n) {
@@ -44,21 +80,71 @@
   // Ce que le RAPPORT DE SCOUT affiche pour ce joueur du marché — pas
   // forcément ses vraies statistiques tant qu'il n'est pas bien connu.
   // `complet` indique si on peut faire confiance aux valeurs affichées.
-  function statsApparentes(joueur) {
-    const fiabilite = Math.min(1, joueur.connaissance / SEUIL_CONNAISSANCE_COMPLETE);
-    return {
-      vitesse: Math.round(joueur.vitesse - joueur.ecartVitesse * (1 - fiabilite)),
-      plaquage: Math.round(joueur.plaquage - joueur.ecartPlaquage * (1 - fiabilite)),
-      complet: joueur.connaissance >= SEUIL_CONNAISSANCE_COMPLETE,
-    };
+  function fiabiliteRapport(joueur) {
+    if (joueur.connaissance == null) return 1; // joueur du club : rien à cacher
+    return Math.min(1, joueur.connaissance / SEUIL_CONNAISSANCE_COMPLETE);
   }
-  // Étoiles (1-5) dérivées du rapport de scout ACTUEL (pas des vraies stats
-  // si le joueur n'est pas encore bien connu) : ce que verrait vraiment un
-  // manager, incertitude comprise.
-  function estimationEtoiles(joueur) {
-    const s = statsApparentes(joueur);
-    const niveau = (s.vitesse + s.plaquage) / 2;
-    return Math.max(1, Math.min(5, Math.round((niveau - 30) / 13)));
+  function statsApparentes(joueur) {
+    const fiabilite = fiabiliteRapport(joueur);
+    const ecarts = ecartsDe(joueur);
+    const out = { complet: fiabilite >= 1, fiabilite };
+    for (const attr of ATTRIBUTS_SCOUTES) {
+      const reel = joueur[attr];
+      if (reel == null) continue;
+      out[attr] = Math.max(1, Math.min(99,
+        Math.round(reel - (ecarts[attr] || 0) * (1 - fiabilite))));
+    }
+    return out;
+  }
+
+  // Note AU POSTE telle que le rapport la donne — même grille que la
+  // composition (noteAuPoste), appliquée aux valeurs APPARENTES. C'est le
+  // chiffre qui permet de choisir : les étoiles, elles, écrasent trop.
+  function noteApparenteAuPoste(joueur, poste) {
+    const RMClub = global.RMClub;
+    const cible = poste || joueur.poste;
+    const apparent = statsApparentes(joueur);
+    // `poste` du joueur conservé : c'est ce qui déclenche la pénalité hors
+    // poste de noteAuPoste (un pilier aligné à l'aile perd beaucoup).
+    return RMClub.noteAuPoste(Object.assign({ poste: joueur.poste }, apparent), cible);
+  }
+
+  // Étoiles (1-5) : le résumé d'un coup d'œil, dérivé de la MÊME note au
+  // poste. Grossier par nature — deux joueurs séparés de deux points de note
+  // partagent la même étoile — c'est pourquoi l'écran affiche aussi la note.
+  function estimationEtoiles(joueur, poste) {
+    const note = noteApparenteAuPoste(joueur, poste);
+    return Math.max(1, Math.min(5, Math.round((note - 30) / 13)));
+  }
+
+  // Dossier complet présenté au manager pour un joueur du marché : ce que le
+  // scout croit savoir, ce qui compte à ce poste, et ce que ça donnerait
+  // comparé au meilleur joueur RÉELLEMENT présent au même poste.
+  function rapportScouting(saison, joueurId, poste) {
+    const RMClub = global.RMClub;
+    const j = (saison.marche || []).find((x) => x.id === joueurId);
+    if (!j) return null;
+    const cible = poste || j.poste;
+    const apparent = statsApparentes(j);
+    const cles = RMClub.attributsClesDuPoste(cible).map((a) => Object.assign({}, a, {
+      valeur: apparent[a.attr] != null ? apparent[a.attr] : null,
+    }));
+    const effectif = (saison.clubJoueur && saison.clubJoueur.effectif) || [];
+    const auPoste = effectif.filter((x) => x.poste === cible);
+    const meilleurActuel = auPoste.length
+      ? Math.max(...auPoste.map((x) => RMClub.noteAuPoste(x, cible)))
+      : null;
+    const note = noteApparenteAuPoste(j, cible);
+    return {
+      joueurId, nom: j.nom, poste: cible, posteNaturel: j.poste,
+      note, etoiles: estimationEtoiles(j, cible),
+      attributsCles: cles,
+      fiabilite: apparent.fiabilite,
+      complet: apparent.complet,
+      meilleurActuel,
+      ameliore: meilleurActuel == null ? null : note > meilleurActuel,
+      prixTransfert: j.prixTransfert,
+    };
   }
 
   // Investit dans le repérage d'un joueur du marché : coûte un peu de budget,
@@ -210,6 +296,7 @@
     // Une fois signé, c'est TON joueur : plus de brouillard de scouting, ses
     // vraies statistiques s'affichent directement dans l'effectif.
     delete joueur.connaissance; delete joueur.ecartVitesse; delete joueur.ecartPlaquage;
+    delete joueur.ecarts;
     saison.clubJoueur.effectif.push(joueur);
     saison.marche.splice(i, 1);
     // Un favori signé n'est plus "à scouter" : retiré de la liste (cf.
@@ -261,7 +348,8 @@
 
   global.RMClub = Object.assign(global.RMClub || {}, {
     genererJoueurLibre, genererMarcheTransferts,
-    statsApparentes, estimationEtoiles, scouterJoueur, COUT_SCOUTING,
+    statsApparentes, estimationEtoiles, noteApparenteAuPoste, rapportScouting,
+    ATTRIBUTS_SCOUTES, scouterJoueur, COUT_SCOUTING,
     DELAI_SCOUTING_JOURS, commanderRapportScouting, remettreRapportsScouting, rapportScoutingEnCours,
     JOURNEE_FIN_MERCATO_ETE, DUREE_MERCATO_HIVER_JOURS, fenetresTransfert, etatFenetreTransfert,
     calculerPrimeSignature, signerJoueur, libererJoueur, basculerFavori,

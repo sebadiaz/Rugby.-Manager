@@ -2386,3 +2386,77 @@ rafraîchissement complet.
 `libererJoueur` n'est pas supprimé : libérer reste un départ **libre**, sans
 indemnité. C'est une option distincte, pas un doublon — et parfois la seule
 possible (dernier joueur de son poste, joueur que personne ne veut).
+
+## P1-49 — Le rapport de scout parle enfin du poste (livrée)
+
+`server/test-scouting.js` — 11 vérifications, 8 rouges avant ce patch (S8 et
+S9 passaient déjà, gardées en non-régression), toutes vertes après. Plus un
+pilotage réel du jeu.
+
+### Le problème mesuré
+
+```
+Piliers du marché (5) — ce que le scout dit vs ce qu'ils valent :
+  2★ (vit 42/plaq 73) — mêlée 77 -> note au poste 72
+  2★ (vit 39/plaq 76) — mêlée 86 -> note au poste 74.8
+  2★ (vit 44/plaq 65) — mêlée 84 -> note au poste 73.2
+  2★ (vit 48/plaq 65) — mêlée 81 -> note au poste 72.2
+  2★ (vit 43/plaq 67) — mêlée 83 -> note au poste 73.5
+```
+
+**Les cinq affichaient la même note.** Leur mêlée — l'attribut qui décide
+seul si un pilier joue, depuis le correctif P0-composition — allait de 77 à
+86, et le rapport n'en disait pas un mot : `statsApparentes` n'exposait que
+`vitesse`, `plaquage` et `complet`. Les neuf autres attributs du joueur
+n'apparaissaient nulle part. Sur 501 comparaisons, le joueur le mieux noté
+par le scout n'était pas le meilleur au poste dans **347 cas (69 %)**.
+
+C'était la dernière poche où le jeu se contredisait : la composition classe au
+poste (P0), les réclamations aussi (P1-45), mais le recrutement — la décision
+la plus chère du jeu — se faisait encore sur deux attributs génériques.
+
+### Ce qui change
+
+- `statsApparentes` expose **les onze attributs**, chacun avec sa propre
+  incertitude, qui se résorbe avec la connaissance.
+- `noteApparenteAuPoste(joueur, poste)` applique **exactement** la grille de
+  la composition (`noteAuPoste`) aux valeurs apparentes.
+- `estimationEtoiles(joueur, poste)` en découle — et accepte un autre poste :
+  un pilier évalué à l'aile perd beaucoup, c'est tout l'intérêt.
+- `attributsClesDuPoste(poste)` (club-composition.js, à côté des poids) dit
+  ce qui compte vraiment : mêlée d'abord pour un pilier, vitesse pour un
+  ailier.
+- `rapportScouting(saison, joueurId)` assemble le dossier et le compare au
+  **meilleur joueur réellement présent** au même poste.
+
+À l'écran, une ligne de marché est passée de `Vit.42/Plaq.73` à :
+
+```
+Gabriel Fontaine · Pilier · 31 ans · ★★★☆☆ 70 · Mêlée 82 · Puissance 71 ·
+Plaquage 67  ↓ ton meilleur P : 71.3   (estimation)
+```
+
+Et la comparaison de deux joueurs porte sur la note au poste puis sur les
+quatre attributs qui comptent à ce poste, au lieu de vitesse/plaquage.
+
+### Un bug de déterminisme antérieur, mis au jour et corrigé
+
+En rejouant les suites, un test de déterminisme est tombé : deux carrières de
+**même graine** construites à la suite donnaient des budgets adverses
+différents après dix jours. Cause : `grainePourClub` (club-effectif-adverse.js)
+hachait l'**id** du club — un compteur GLOBAL au module, donc différent d'une
+construction à l'autre dans la même session. Les effectifs adverses n'étaient
+donc pas reproductibles, ce qui contredit la promesse écrite dans club.js
+(« deux carrières créées avec la même graine vivent exactement la même
+saison »). La clé est maintenant le **nom** du club, lui-même dérivé de la
+graine. Le patch de scouting n'a pas créé ce défaut, il l'a rendu visible.
+
+### Une fragilité de test corrigée
+
+Le test de double clic sur « Signer » calculait un point écran sans s'assurer
+que le bouton était visible. L'écran Recrutement s'étant allongé (carte
+Départs en P1-48, rapport détaillé ici), la première ligne du marché est
+passée sous la ligne de flottaison : `elementFromPoint` renvoyait null et le
+double clic ne partait nulle part. Le bouton est désormais amené dans le
+viewport avant la mesure — la protection anti-double-signature, elle, n'a
+jamais bougé.

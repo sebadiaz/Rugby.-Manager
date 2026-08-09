@@ -166,6 +166,29 @@
     AR: { jeuPied: 0.28, vitesse: 0.22, adresse: 0.20, decision: 0.15, plaquage: 0.15 },
   };
 
+  // Libellés lisibles des attributs — vivent ici, à côté des poids, pour que
+  // tout écran qui parle d'un poste (recrutement, fiche, comparaison) nomme
+  // les mêmes choses de la même façon.
+  const LIBELLE_ATTRIBUT = {
+    vitesse: 'Vitesse', plaquage: 'Plaquage', adresse: 'Adresse au pied',
+    melee: 'Mêlée', touche: 'Touche', puissance: 'Puissance',
+    endurance: 'Endurance', passe: 'Passe', jeuPied: 'Jeu au pied',
+    decision: 'Décision', discipline: 'Discipline',
+  };
+
+  // Ce qui compte RÉELLEMENT à un poste, du plus important au moins
+  // important — la grille de lecture de noteAuPoste, rendue lisible. C'est
+  // elle qu'un rapport de recrutement doit afficher : dire d'un pilier qu'il
+  // court vite n'apprend rien, dire qu'il pousse à 86 en mêlée décide tout.
+  function attributsClesDuPoste(poste, limite) {
+    const poids = POIDS_PAR_POSTE[poste];
+    if (!poids) return [];
+    return Object.keys(poids)
+      .map((attr) => ({ attr, poids: poids[attr], libelle: LIBELLE_ATTRIBUT[attr] || attr }))
+      .sort((a, b) => b.poids - a.poids)
+      .slice(0, limite || 5);
+  }
+
   // Avants / trois-quarts : dépanner un ailier au centre coûte moins cher que
   // le faire jouer pilier. La pénalité hors poste n'est donc pas uniforme.
   const AVANTS = new Set(['P', 'T', '2L', '3L']);
@@ -441,7 +464,8 @@
 
   global.RMClub = Object.assign(global.RMClub || {}, {
     tactiqueVersConfig, effectifVersJoueursCfg, compositionVersJoueursCfg,
-    meilleurCandidatPourNumero, noteAuPoste, POIDS_PAR_POSTE, meilleureComposition, completerComposition,
+    meilleurCandidatPourNumero, noteAuPoste, POIDS_PAR_POSTE, LIBELLE_ATTRIBUT,
+    attributsClesDuPoste, meilleureComposition, completerComposition,
     validerComposition, POSTE_REQUIS_BANC, completerCompositionBanc,
     numeroDuJoueurDansComposition, autoDesignerEncadrement,
     CIBLE_REMPLACEMENT_BANC, MINUTE_REMPLACEMENT_BANC, remplacementsVersConfig,

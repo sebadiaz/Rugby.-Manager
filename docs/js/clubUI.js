@@ -3211,11 +3211,29 @@
     const fenetreOuverte = RMClub.etatFenetreTransfert(saison).ouverte;
     const primeSignature = RMClub.calculerPrimeSignature(j);
     const abordable = c.budget >= (j.prixTransfert + primeSignature);
+    // Rapport de scout AU POSTE (TODO_AUDIT.md P1-49) : avant, cette ligne
+    // n'affichait que vitesse et plaquage. Mesuré : les cinq piliers d'un
+    // même marché portaient la même note (2★) alors que leur mêlée allait de
+    // 77 à 86 — l'attribut qui décide seul s'ils joueront. On affiche
+    // maintenant la note au poste et les attributs qui comptent VRAIMENT
+    // à ce poste (cf. attributsClesDuPoste).
+    const rapport = RMClub.rapportScouting(saison, j.id);
     const stats = RMClub.statsApparentes(j);
-    const etoiles = '★'.repeat(RMClub.estimationEtoiles(j)) + '☆'.repeat(5 - RMClub.estimationEtoiles(j));
-    const ligneStats = stats.complet
-      ? `Vit.${stats.vitesse}/Plaq.${stats.plaquage}`
-      : `${etoiles} <span title="Rapport de scout incomplet, chiffres approximatifs">(estimation)</span>`;
+    const nbEtoiles = rapport ? rapport.etoiles : RMClub.estimationEtoiles(j);
+    const etoiles = '★'.repeat(nbEtoiles) + '☆'.repeat(5 - nbEtoiles);
+    const clesTexte = rapport
+      ? rapport.attributsCles.slice(0, 3)
+        .filter((a) => a.valeur != null)
+        .map((a) => `${echapperHTML(a.libelle)} ${a.valeur}`).join(' · ')
+      : '';
+    const comparaison = rapport && rapport.meilleurActuel != null
+      ? ` <span class="${rapport.ameliore ? 'deltaPositif' : 'deltaNegatif'}" ` +
+        `title="Note au poste comparée à ton meilleur joueur actuel à ce poste">` +
+        `${rapport.ameliore ? '↑' : '↓'} ton meilleur ${echapperHTML(j.poste)} : ${rapport.meilleurActuel}</span>`
+      : '';
+    const ligneStats = `${etoiles} <b title="Note au poste, même grille que la composition">${rapport ? rapport.note : '?'}</b>` +
+      (clesTexte ? ` · ${clesTexte}` : '') + comparaison +
+      (stats.complet ? '' : ` <span title="Rapport de scout incomplet : ${Math.round((stats.fiabilite || 0) * 100)} % de fiabilité">(estimation)</span>`);
     const rapportEnCours = RMClub.rapportScoutingEnCours(saison, j.id);
     const boutonScout = stats.complet
       ? ''
@@ -3363,13 +3381,19 @@
     for (const j of pool) parId[j.id] = j;
     const joueurs = [...selectionComparaison].map((id) => parId[id]).filter(Boolean);
     if (joueurs.length < 2) { zone.innerHTML = ''; return; }
+    // Comparer deux joueurs sur vitesse et plaquage ne servait à rien pour un
+    // pilier (P1-49). On compare maintenant la NOTE AU POSTE, puis les
+    // attributs qui comptent réellement — ceux du poste du premier joueur
+    // sélectionné, puisque c'est le poste qu'on cherche à pourvoir.
+    const posteVise = joueurs[0].poste;
+    const clesPoste = RMClub.attributsClesDuPoste(posteVise, 4);
     const CRITERES = [
       ['poste', 'Poste', (j) => POSTE_COMPLET[j.poste] || j.poste, false],
       ['age', 'Âge', (j) => j.age, false],
-      ['vitesse', 'Vitesse', (j) => RMClub.statsApparentes(j).vitesse, true],
-      ['plaquage', 'Plaquage', (j) => RMClub.statsApparentes(j).plaquage, true],
-      ['prixTransfert', 'Prix', (j) => `${j.prixTransfert} k€`, false],
-    ];
+      ['note', `Note au poste (${posteVise})`, (j) => RMClub.noteApparenteAuPoste(j, posteVise), true],
+    ].concat(clesPoste.map((a) => [a.attr, a.libelle,
+      (j) => { const v = RMClub.statsApparentes(j)[a.attr]; return v == null ? '—' : v; }, true]))
+      .concat([['prixTransfert', 'Prix', (j) => `${j.prixTransfert} k€`, false]]);
     const entetes = joueurs.map((j) => `<th>${j.nom}</th>`).join('');
     const lignes = CRITERES.map(([cle, label, get, meilleurHaut]) => {
       const valeurs = joueurs.map((j) => get(j));
