@@ -73,7 +73,7 @@
     if (!j) return { ok: false, motif: 'introuvable' };
     if (j.connaissance >= 100) return { ok: false, motif: 'deja_complet' };
     if (saison.clubJoueur.budget < cout) return { ok: false, motif: 'budget' };
-    saison.clubJoueur.budget -= cout;
+    global.RMClub.tresorerie(saison, 'scouting', `Repérage de ${j.nom}`, -cout);
     j.connaissance = Math.min(100, j.connaissance + Math.round(30 * fr));
     return { ok: true, connaissance: j.connaissance, cout };
   }
@@ -96,7 +96,7 @@
     if (!Array.isArray(saison.rapportsScouting)) saison.rapportsScouting = [];
     if (saison.rapportsScouting.some((r) => r.joueurId === joueurId)) return { ok: false, motif: 'deja_commande' };
     if (saison.clubJoueur.budget < cout) return { ok: false, motif: 'budget' };
-    saison.clubJoueur.budget -= cout;
+    RMClub.tresorerie(saison, 'scouting', `Rapport de repérage sur ${j.nom}`, -cout);
     const delai = Math.max(2, Math.round(DELAI_SCOUTING_JOURS / fr));
     const remise = RMClub.ajouterJours(RMClub.dateCourante(saison), delai);
     saison.rapportsScouting.push({
@@ -205,7 +205,8 @@
     const primeSignature = calculerPrimeSignature(joueur);
     const coutTotal = joueur.prixTransfert + primeSignature;
     if (saison.clubJoueur.budget < coutTotal) return { ok: false, motif: 'budget' };
-    saison.clubJoueur.budget -= coutTotal;
+    global.RMClub.tresorerie(saison, 'transfertAchat',
+      `Transfert de ${joueur.nom} (${joueur.poste})`, -coutTotal);
     // Une fois signé, c'est TON joueur : plus de brouillard de scouting, ses
     // vraies statistiques s'affichent directement dans l'effectif.
     delete joueur.connaissance; delete joueur.ecartVitesse; delete joueur.ecartPlaquage;

@@ -111,7 +111,10 @@
     const c = saison.clubJoueur;
     if ((c.budget || 0) < cout) return { ok: false, motif: 'budget', cout, manque: cout - (c.budget || 0) };
     const duree = dureeAmelioration(saison, cle);
-    c.budget -= cout;
+    // Le débit passe par le grand livre (cf. club-comptes.js) : un chantier
+    // de plusieurs centaines de k€ ne doit pas disparaître de la trésorerie
+    // sans laisser de trace, c'est le plus gros poste de dépense du jeu.
+    RMClub.tresorerie(saison, 'travaux', `Travaux — ${def.label} niveau ${n + 1}`, -cout);
     c.chantier = {
       cle, niveauVise: n + 1, cout, joursTotal: duree, joursRestants: duree,
       debutISO: RMClub.dateISO ? RMClub.dateISO(RMClub.dateCourante(saison)) : null,

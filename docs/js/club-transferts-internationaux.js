@@ -79,7 +79,8 @@
     const ratio = montantOffre / prixDemande;
     const probaAcceptation = Math.max(0.05, Math.min(0.95, (ratio - 0.6) * 1.2));
     if (rng() >= probaAcceptation) return { ok: false, motif: 'refuse', prixDemande };
-    saison.clubJoueur.budget -= montantOffre;
+    global.RMClub.tresorerie(saison, 'transfertAchat',
+      `Transfert de ${joueurAdverse.nom} (${adversaire.nom})`, -montantOffre);
     const nouveauJoueur = convertirJoueurAdverseEnEffectifEtendu(joueurAdverse, rng);
     saison.clubJoueur.effectif.push(nouveauJoueur);
     adversaire.effectif[index] = RMClub.genererJoueur(joueurAdverse.numero, rng, adversaire.niveauClub);

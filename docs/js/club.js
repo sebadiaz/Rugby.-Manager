@@ -439,6 +439,20 @@
       .slice(0, limite || 10);
   }
 
+  // Point d'entrée UNIQUE pour toucher la trésorerie (TODO_AUDIT.md P1-47).
+  // Route vers le grand livre (club-comptes.js) quand il est chargé, et
+  // retombe sur un débit direct sinon : un module absent ne doit jamais faire
+  // DISPARAÎTRE une dépense — le budget resterait faux, ce qui est bien pire
+  // qu'une ligne de journal manquante.
+  function tresorerie(saisonOuClub, categorie, libelle, montant) {
+    if (global.RMClub.mouvementTresorerie) {
+      return global.RMClub.mouvementTresorerie(saisonOuClub, categorie, libelle, montant);
+    }
+    const club = saisonOuClub.clubJoueur || saisonOuClub;
+    club.budget = (club.budget || 0) + Math.round(montant || 0);
+    return null;
+  }
+
   // Ajoute un mouvement au journal financier (borné aux 15 derniers, pour
   // l'onglet Finances) — appelé après appliquerFinancesMatch avec son résultat.
   function enregistrerMouvementFinances(club, journee, mouvement) {
@@ -577,7 +591,14 @@
     const jours = nbJournees > 0 ? nbJournees : 26;
     const salaires = Math.round(masseSalariale(club.effectif) / jours);
     const salairesPersonnel = Math.round(global.RMClub.masseSalarialePersonnel(club) / jours);
-    club.budget += recette + revenuSponsor - salaires - salairesPersonnel;
+    // Quatre lignes distinctes au grand livre (cf. club-comptes.js) plutôt
+    // qu'un solde net : le manager doit pouvoir voir ce que rapporte sa
+    // billetterie et ce que lui coûte sa masse salariale, séparément.
+    tresorerie(club, 'billetterie', 'Recette de match', recette);
+    tresorerie(club, 'sponsor', 'Revenu sponsor', revenuSponsor);
+    tresorerie(club, 'salaires', 'Salaires des joueurs', -salaires);
+    tresorerie(club, 'salairesPersonnel', 'Salaires du personnel', -salairesPersonnel);
+    if (global.RMClub.compterJourneeFinanciere) global.RMClub.compterJourneeFinanciere(club);
     return { recette, revenuSponsor, salaires, salairesPersonnel };
   }
 
@@ -588,23 +609,17 @@
   // (le club paie son effectif dans son ensemble, pas par match individuel).
   function appliquerFinancesMatchEquipeB(club, forme) {
     const recette = Math.round(10 + club.niveauClub * 30 + (forme === 'v' ? 8 : forme === 'n' ? 3 : 0));
-    club.budget += recette;
+    tresorerie(club, 'billetterie', 'Recette de match — Équipe B', recette);
     return { recette, revenuSponsor: 0, salaires: 0, salairesPersonnel: 0, source: 'equipeB' };
   }
 
-  // Prévision financière RÉELLE : extrapole le solde net moyen des derniers
-  // mouvements enregistrés (jamais une estimation fabriquée) sur N journées.
-  function prevoirFinances(club, nJournees) {
-    const hist = club.historiqueFinances || [];
-    if (hist.length === 0) return null;
-    const recents = hist.slice(-5);
-    const soldeNetMoyen = recents.reduce((s, m) => s + (m.recette + (m.revenuSponsor || 0) - m.salaires - (m.salairesPersonnel || 0)), 0) / recents.length;
-    return {
-      soldeNetMoyen: Math.round(soldeNetMoyen),
-      projection: Math.round(club.budget + soldeNetMoyen * nJournees),
-      nJournees,
-    };
-  }
+  // --- prevoirFinances : REMPLACÉE par RMClub.previsionTresorerie
+  // (club-comptes.js, TODO_AUDIT.md P1-47). L'ancienne version extrapolait
+  // les cinq derniers mouvements de MATCH et ignorait complètement les
+  // engagements en cours : un chantier de 260 k€ déjà lancé n'apparaissait
+  // pas dans la projection, alors que c'est la dépense la plus lourde du
+  // jeu. La nouvelle lit le grand livre et affiche les engagements à part.
+  // Fonction supprimée, pas dépréciée : plus aucun appelant. ---
 
   // --- Marché des transferts national : genererJoueurLibre,
   // genererMarcheTransferts, statsApparentes, estimationEtoiles,
@@ -991,6 +1006,12 @@
     // le journal financier, lui, garde son historique récent (utile pour voir
     // la transition entre deux saisons dans l'onglet Finances).
     saison.clubJoueur.statsCumulees = null;
+    // Grand livre (TODO_AUDIT.md P1-47) : les totaux de la saison écoulée
+    // sont ARCHIVÉS (jamais perdus — c'est ce qui permet de comparer un
+    // exercice à l'autre) puis remis à zéro pour la saison qui commence.
+    if (global.RMClub.archiverComptesSaison) {
+      global.RMClub.archiverComptesSaison(saison, saison.numero);
+    }
     // Composition/banc/encadrement de l'an dernier n'ont plus de sens avec un
     // effectif qui a bougé (départs/arrivées) : repartent à zéro, recomposés
     // automatiquement à la prochaine ouverture de l'écran de composition.
@@ -1117,14 +1138,13 @@
     nouvelleSaison,
     resynchroniserCompteurs, VERSION_SAUVEGARDE,
     POSTE_REQUIS, TAILLE_EFFECTIF_CIBLE,
-    masseSalariale, appliquerFinancesMatch, appliquerFinancesMatchEquipeB,
+    masseSalariale, tresorerie, appliquerFinancesMatch, appliquerFinancesMatchEquipeB,
     avancerSaison, vieillirEffectif,
     AXES_TACTIQUE,
     accumulerStats, enregistrerMouvementFinances,
     accumulerStatsJoueurs, classementMarqueurs,
     archiverSaisonJoueur, carriereJoueur, CHAMPS_STATS_JOUEUR, LIBELLE_COMPETITION,
     ajouterMessage,
-    prevoirFinances,
     calculerProgression,
     enregistrerResultatClubJoueur, marquerMessageLu, marquerTousMessagesLus,
     estimerValeurTransfert,

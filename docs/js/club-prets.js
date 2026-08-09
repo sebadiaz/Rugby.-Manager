@@ -28,7 +28,8 @@
     const duree = Math.max(1, Math.min(70, dureeJournees || 21));
     const indemnite = Math.round(joueur.salaire * 0.3 * (duree / 10));
     joueur.pret = { dureeRestante: duree };
-    saison.clubJoueur.budget += indemnite;
+    global.RMClub.tresorerie(saison, 'pret',
+      `Indemnité de prêt — ${joueur.nom} (${duree} j)`, indemnite);
     const c = saison.clubJoueur;
     if (c.capitaineId === joueurId) c.capitaineId = null;
     if (c.buteurId === joueurId) c.buteurId = null;

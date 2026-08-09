@@ -2235,3 +2235,80 @@ feuille de route y est annoncée dès le premier jour, parce que c'est le moment
 où le manager en a le plus besoin. `test-parcours-club` vérifie maintenant que
 c'est le **seul** message d'ouverture, et le test de la zone « à traiter » lit
 d'abord ce message avant de vérifier qu'il ne reste rien.
+
+## P1-47 — Où est passé l'argent ? Le grand livre du club (livrée)
+
+`server/test-comptes.js` — 11 vérifications, **toutes rouges avant ce patch**,
+vertes après. Plus un pilotage réel du jeu, qui a trouvé un bug de projection
+que les tests ne voyaient pas.
+
+### Le problème mesuré
+
+Sur une carrière neuve : un repérage (8 k€) puis un chantier au centre médical
+(260 k€) font tomber le budget de **434 à 166 k€**. Le journal financier
+contient alors **zéro ligne**. 268 k€ ont quitté la caisse sans laisser la
+moindre trace.
+
+La raison : `historiqueFinances` n'était alimenté que par
+`enregistrerMouvementFinances`, appelé uniquement après un match. Or onze
+endroits modifiaient `club.budget` — infrastructures, mercato, prêts,
+transferts nationaux et internationaux, repérage ×2, signatures, et les deux
+fonctions de match. **Neuf n'écrivaient nulle part.**
+
+Depuis que la direction impose un plancher de trésorerie (P1-46), le manager
+était jugé sur un chiffre dont il ne pouvait pas expliquer les variations.
+
+### Ce qui change
+
+Un point d'entrée unique, `RMClub.tresorerie(cible, categorie, libelle,
+montant)` : il débite ou crédite **et** inscrit au grand livre. Neuf
+catégories nommées (billetterie, sponsors, ventes, prêts, salaires joueurs,
+salaires personnel, achats, infrastructures, repérage), chacune avec un
+libellé qui dit la cause — « Travaux — Centre médical niveau 2 », « Transfert
+de Untel (3L) ».
+
+L'invariant, tenu par les tests **et vérifié en pilotant le jeu** :
+
+```
+budget_final − budget_initial === somme des totaux du grand livre
+```
+
+Les totaux ne sont jamais bornés (seule la liste affichée l'est, à 60 lignes),
+donc l'invariant tient sur une saison entière. Les totaux sont archivés puis
+remis à zéro à chaque bascule de saison, ce qui permet enfin de comparer deux
+exercices.
+
+`historiqueFinances` n'est pas supprimé : il reste le résumé **par journée**.
+Le grand livre est la trace **ligne à ligne**. Deux granularités, pas deux
+vérités — les deux découlent des mêmes appels.
+
+`prevoirFinances` est **supprimée** (plus aucun appelant) et remplacée par
+`previsionTresorerie`, qui lit le grand livre.
+
+### L'écran Finances
+
+Avant : une liste de mouvements de jour de match. Maintenant :
+
+- **Où va l'argent** — ventilation par poste sur la saison, avec le solde ;
+- **Exercices précédents** — solde et clôture de chaque saison archivée ;
+- **Dernières opérations** — chaque ligne avec sa cause et le solde après.
+
+Relevé réel obtenu en pilotant le jeu (14 journées, un chantier, un repérage) :
+`Billetterie +240 · Sponsors +68 · Salaires −46 · Infrastructures −320 ·
+Repérage −8 · Solde de la saison −66 k€`.
+
+### Un bug de projection trouvé en pilotant
+
+Première version : la projection retranchait le coût du chantier en cours.
+Mais ce coût est débité **d'un coup à la commande** — il était donc déjà sorti
+du budget affiché. Avec 401 k€ en caisse et un chantier de 320 k€ payé, la
+projection annonçait **736 k€ au lieu de 1056**. Le chantier est désormais
+rappelé comme contexte (« déjà payé · livraison dans 16 j ») sans peser une
+seconde fois. Verrouillé par C11.
+
+### Hors périmètre, volontairement
+
+Les transferts **entre clubs IA** (club-mercato.js) ne passent pas par le
+grand livre : ils ne touchent jamais la trésorerie du club dirigé, et donner
+un livre de comptes à chaque club adverse alourdirait la sauvegarde sans rien
+apporter au manager.

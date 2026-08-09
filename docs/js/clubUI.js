@@ -2133,27 +2133,58 @@
       `<div class="ligneStatut"><span>Salaires joueurs (saison)</span><span class="valeurStatut">${masseJoueurs} k€</span></div>` +
       `<div class="ligneStatut"><span>Salaires personnel (saison)</span><span class="valeurStatut">${massePersonnel} k€</span></div>` +
       `<div class="ligneStatut"><span>Total / journée</span><span class="valeurStatut">${Math.round((masseJoueurs + massePersonnel) / RMClub.nombreJourneesSaison(saison.calendrier))} k€</span></div>`;
-    const prevision = RMClub.prevoirFinances(c, 5);
+    // Prévisionnel : previsionTresorerie (P1-47) remplace prevoirFinances —
+    // il tient compte du chantier engagé, ce que l'ancien extrapolateur
+    // ignorait alors que c'est la plus grosse dépense du jeu.
+    const prevision = RMClub.previsionTresorerie(saison, 5);
     const cartePrevisions = document.getElementById('cartePrevisions');
     if (prevision) {
       cartePrevisions.style.display = '';
       document.getElementById('clubPrevisions').innerHTML =
         `<div class="ligneStatut"><span>Solde net moyen / journée</span><span class="valeurStatut${prevision.soldeNetMoyen < 0 ? ' alerte' : ''}">${prevision.soldeNetMoyen >= 0 ? '+' : ''}${prevision.soldeNetMoyen} k€</span></div>` +
+        (prevision.chantier
+          ? `<div class="ligneStatut"><span>Chantier en cours (déjà payé)</span><span class="valeurStatut">${prevision.chantier.cout} k€ · livraison dans ${prevision.chantier.joursRestants} j</span></div>`
+          : '') +
+        (prevision.engagements ? `<div class="ligneStatut"><span>Reste à décaisser</span><span class="valeurStatut alerte">${prevision.engagements} k€</span></div>` : '') +
         `<div class="ligneStatut"><span>Budget projeté dans ${prevision.nJournees} journées</span><span class="valeurStatut${prevision.projection < 0 ? ' critique' : ''}">${prevision.projection} k€</span></div>`;
     } else {
       cartePrevisions.style.display = 'none';
     }
-    const hist = (c.historiqueFinances || []).slice().reverse();
-    document.getElementById('clubHistoriqueFinances').innerHTML = hist.length
-      ? hist.map((m) => {
-          const estEquipeB = m.source === 'equipeB';
-          const label = `J${m.journee}${estEquipeB ? ' (Équipe B)' : ''}`;
-          const detail = estEquipeB
-            ? `recette +${m.recette} k€ (billetterie)`
-            : `recette +${m.recette} k€${m.revenuSponsor ? ` (dont sponsor +${m.revenuSponsor} k€)` : ''}, salaires -${m.salaires}${m.salairesPersonnel ? ` -${m.salairesPersonnel} (personnel)` : ''} k€`;
-          return `<div class="ligneMouvement"><span>${label}<span class="detailMouvement"> — ${detail}</span></span><span class="soldeMouvement">${m.budgetApres} k€</span></div>`;
+    // Grand livre (P1-47) : d'abord OÙ va l'argent (ventilation par poste sur
+    // la saison), puis le détail opération par opération. Avant, cet écran ne
+    // montrait que les mouvements de jour de match — transferts et travaux,
+    // pourtant les plus gros postes, n'y figuraient nulle part.
+    const dossier = RMClub.dossierComptes(saison);
+    const ventilation = dossier.categories.length
+      ? dossier.categories.map((cat) =>
+          `<div class="ligneStatut" title="${echapperHTML(cat.description)}">` +
+          `<span>${echapperHTML(cat.libelle)}</span>` +
+          `<span class="valeurStatut${cat.montant < 0 ? ' alerte' : ''}">${cat.montant > 0 ? '+' : ''}${cat.montant} k€</span></div>`).join('') +
+        `<div class="ligneStatut" style="border-top:1px solid var(--bordure);margin-top:6px;padding-top:6px;">` +
+        `<span><b>Solde de la saison</b></span>` +
+        `<span class="valeurStatut${dossier.solde < 0 ? ' alerte' : ''}"><b>${dossier.solde > 0 ? '+' : ''}${dossier.solde} k€</b></span></div>`
+      : '<p>Aucun mouvement enregistré cette saison.</p>';
+    const lignes = dossier.lignes.length
+      ? dossier.lignes.map((l) =>
+          `<div class="ligneMouvement"><span>${echapperHTML(RMClub.CATEGORIES_COMPTE[l.categorie].libelle)}` +
+          `<span class="detailMouvement"> — ${echapperHTML(l.libelle)}</span></span>` +
+          `<span class="soldeMouvement">${l.montant > 0 ? '+' : ''}${l.montant} k€ → ${l.budgetApres} k€</span></div>`).join('')
+      : '<p>Aucun mouvement enregistré pour le moment.</p>';
+    // Comparaison d'un exercice à l'autre — uniquement des saisons réellement
+    // archivées, jamais une projection présentée comme un historique.
+    const exercices = (dossier.historique || []).slice().reverse();
+    const blocExercices = exercices.length
+      ? `<h4 class="sousTitreMedical">Exercices précédents</h4>` +
+        exercices.map((e) => {
+          const solde = RMClub.CLES_CATEGORIE_COMPTE.reduce((t, cle) => t + (e[cle] || 0), 0);
+          return `<div class="ligneStatut"><span>Saison ${e.saisonNumero}</span>` +
+            `<span class="valeurStatut${solde < 0 ? ' alerte' : ''}">solde ${solde > 0 ? '+' : ''}${solde} k€ · clôture ${e.budgetFin} k€</span></div>`;
         }).join('')
-      : '<p>Aucun match joué pour le moment.</p>';
+      : '';
+    document.getElementById('clubHistoriqueFinances').innerHTML =
+      `<h4 class="sousTitreMedical">Où va l'argent (saison ${dossier.saisonNumero || 1})</h4>` +
+      ventilation + blocExercices +
+      `<h4 class="sousTitreMedical">Dernières opérations</h4>` + lignes;
   }
 
   // --- Médical : vue filtrée de l'effectif (façon Medical Centre FM), plus
