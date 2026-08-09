@@ -137,6 +137,12 @@
     if (decision.type === 'statut') {
       decision.resultat = global.RMClub.appliquerDecisionStatut(saison, decision.joueurId, optionId);
     }
+    // Offre reçue pour un de mes joueurs (club-ventes.js) : même chemin de
+    // résolution, donc même idempotence et même traitement du silence — une
+    // offre laissée sans réponse expire, comme dans un vrai mercato.
+    if (decision.type === 'offreAchat') {
+      decision.resultat = global.RMClub.appliquerDecisionOffre(saison, decision, optionId);
+    }
     decision.resolu = true;
     decision.choix = optionId;
     message.lu = true;
@@ -156,11 +162,18 @@
       const limite = RMClub.dateDepuisISO(d.dateLimite);
       if (!limite || RMClub.comparerDates(date, limite) < 0) continue;
       const joueur = (saison.clubJoueur.effectif || []).find((j) => j.id === d.joueurId);
-      const optionDefaut = d.type === 'vestiaire' ? 'laisser' : 'ignorer';
+      // Chaque type de décision a SA façon de traiter le silence, et elle
+      // doit exister parmi ses options — sinon resoudreDecisionMessage refuse
+      // l'option et la décision resterait en attente pour toujours (une offre
+      // jamais expirée bloquerait toute nouvelle offre sur ce joueur).
+      const optionDefaut = d.type === 'vestiaire' ? 'laisser'
+        : d.type === 'offreAchat' ? 'refuser' : 'ignorer';
       if (resoudreDecisionMessage(saison, m.id, optionDefaut)) {
         d.resultat = d.type === 'vestiaire'
           ? "Tu n'as pas réagi à temps : l'ambiance du vestiaire s'est dégradée toute seule."
-          : `Tu n'as pas répondu à temps : ${joueur ? joueur.nom : 'le joueur'} a pris ton silence pour un refus.`;
+          : d.type === 'offreAchat'
+            ? `Tu n'as pas répondu à temps : ${d.clubNom || 'le club'} retire son offre pour ${d.joueurNom || 'ton joueur'}.`
+            : `Tu n'as pas répondu à temps : ${joueur ? joueur.nom : 'le joueur'} a pris ton silence pour un refus.`;
         d.expiree = true;
         expirees.push(joueur ? joueur.nom : null);
       }

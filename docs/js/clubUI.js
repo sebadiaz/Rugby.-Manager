@@ -2629,6 +2629,21 @@
       actions += j.pret
         ? `<button class="alt" id="btnRappelerJoueur" style="width:100%;margin-top:8px;">Rappeler de prêt</button>`
         : `<button class="alt" id="btnPreterJoueur" style="width:100%;margin-top:8px;">Prêter ce joueur (3 semaines)</button>`;
+      // Liste des transferts (P1-48) : vendre est enfin une option, à côté du
+      // départ libre qui, lui, ne rapporte toujours rien.
+      const motifVente = RMClub.motifIncessible(saison, j);
+      if (motifVente) {
+        actions += `<p class="noteLectureSeule" style="margin-top:8px;">` +
+          (motifVente === 'pret' ? 'Joueur prêté : impossible à vendre tant qu\'il est ailleurs.'
+            : 'Dernier joueur de son poste : le vendre laisserait le club à découvert.') + `</p>`;
+      } else {
+        const valeur = RMClub.valeurMarchande(saison, j);
+        actions += j.surListeTransfert
+          ? `<button class="alt" id="btnListeTransfertFiche" style="width:100%;margin-top:8px;">Retirer de la liste des transferts</button>` +
+            `<p class="noteLectureSeule" style="margin:4px 0 0;">En vente · valeur estimée ${valeur} k€ (rabais de vendeur inclus).</p>`
+          : `<button class="alt" id="btnListeTransfertFiche" style="width:100%;margin-top:8px;">📤 Mettre sur la liste des transferts</button>` +
+            `<p class="noteLectureSeule" style="margin:4px 0 0;">Valeur estimée ${valeur} k€. Le mettre en vente attire les offres mais fait baisser son prix.</p>`;
+      }
     }
     if (ctx.modifiable && estEspoir) {
       actions += `<button class="accent" id="btnPromouvoirEspoir" style="width:100%;margin-top:8px;">⬆️ Promouvoir en équipe première</button>`;
@@ -3286,7 +3301,42 @@
     document.getElementById('clubMarche').innerHTML = saison.marche.map((j) => ligneJoueurMarche(j, c, false)).join('')
       || '<p>Aucun joueur libre pour le moment.</p>';
     rafraichirMercatoDivision();
+    rafraichirDeparts();
     rafraichirFavoris();
+  }
+
+  // --- Départs (TODO_AUDIT.md P1-48) : vendre est enfin possible. Tout vient
+  // de RMClub.dossierVentes — valeurs calculées sur les attributs réels,
+  // offres réellement reçues de clubs qui ont réellement le budget. ---
+  function rafraichirDeparts() {
+    const zone = document.getElementById('clubDeparts');
+    if (!zone) return;
+    const d = RMClub.dossierVentes(saison);
+    const blocOffres = d.offres.length
+      ? `<h4 class="sousTitreMedical">Offres reçues (${d.offres.length})</h4>` +
+        d.offres.map((o) =>
+          `<div class="ligneJoueur"><span>${echapperHTML(o.joueurNom)} <span style="color:var(--text-faint);">${echapperHTML(o.clubNom)}</span></span>` +
+          `<b>${o.montant} k€ · <span style="color:var(--text-dim);font-weight:400;">à traiter dans la boîte de réception</span></b></div>`).join('')
+      : '';
+    const blocListe = d.surListe.length
+      ? `<h4 class="sousTitreMedical">Sur la liste des transferts (${d.surListe.length})</h4>` +
+        d.surListe.map((j) =>
+          `<div class="ligneJoueur"><span>${echapperHTML(j.nom)} <span style="color:var(--text-faint);">${echapperHTML(j.poste)} · ${j.age} ans</span>` +
+          (j.veutPartir ? ' <span class="texteAlerteJoueur">🚩 veut partir</span>' : '') + `</span>` +
+          `<b>${j.valeur} k€ <button class="alt btnListeTransfert" data-joueur="${echapperHTML(j.id)}" ` +
+          `style="width:auto;padding:4px 8px;font-size:11px;margin-left:8px;">Retirer</button></b></div>`).join('')
+      : `<p class="noteLectureSeule" style="margin:0 0 6px;">Aucun joueur sur la liste. Mettre un joueur en vente depuis sa fiche multiplie les offres, mais fait baisser son prix : le marché sait que tu es vendeur.</p>`;
+    const cessiblesHorsListe = d.cessibles.filter((j) => !j.surListe).slice(0, 8);
+    const blocCessibles = cessiblesHorsListe.length
+      ? `<h4 class="sousTitreMedical">Ce que vaut ton effectif</h4>` +
+        cessiblesHorsListe.map((j) =>
+          `<div class="ligneJoueur"><span>${echapperHTML(j.nom)} <span style="color:var(--text-faint);">${echapperHTML(j.poste)}</span>` +
+          (j.veutPartir ? ' <span class="texteAlerteJoueur">🚩</span>' : '') + `</span><b>${j.valeur} k€</b></div>`).join('')
+      : '';
+    zone.innerHTML =
+      `<div class="ligneJoueur"><span>Valeur totale de l'effectif</span><b>${d.valeurEffectif} k€</b></div>` +
+      `<div class="ligneJoueur"><span>Demandes de transfert en cours</span><b class="${d.demandesDepart ? 'deltaNegatif' : ''}">${d.demandesDepart}</b></div>` +
+      blocOffres + blocListe + blocCessibles;
   }
 
   // --- Centre de scouting : favoris (persistés, survivent au rafraîchissement
@@ -3507,8 +3557,13 @@
     if (boutonDecision) {
       RMClub.resoudreDecisionMessage(saison, boutonDecision.dataset.msg, boutonDecision.dataset.option);
       sauvegarder();
-      rafraichirMessages();
-      rafraichirEffectif();
+      // Rafraîchissement COMPLET, pas seulement messages + effectif : une
+      // décision peut désormais déplacer de l'argent et retirer un joueur du
+      // groupe (accepter une offre, cf. club-ventes.js). Mesuré en pilotant
+      // le jeu : après une vente à 270 k€, l'onglet Finances affichait encore
+      // le budget et le grand livre d'AVANT, et la composition gardait un
+      // titulaire qui venait de partir.
+      rafraichirTout();
       if (joueurAffiche) ouvrirFicheJoueur(joueurAffiche);
       return;
     }
@@ -3638,6 +3693,17 @@
       toast(`✅ ${jeune.nom} rejoint le groupe professionnel`);
       fermerFicheJoueur();
       rafraichirEcransEquipe();
+      return;
+    }
+    if (e.target.id === 'btnListeTransfertFiche') {
+      if (!joueurAffiche) return;
+      const res = RMClub.basculerListeTransfert(saison, joueurAffiche);
+      if (!res.ok) { toast('Action impossible.', 'erreur'); return; }
+      sauvegarder();
+      toast(res.surListe
+        ? `✅ ${res.joueur.nom} est sur la liste des transferts (${RMClub.valeurMarchande(saison, res.joueur)} k€)`
+        : `✅ ${res.joueur.nom} n'est plus en vente`);
+      ouvrirFicheJoueur(joueurAffiche);
       return;
     }
     if (e.target.id === 'btnRenouveler') {
@@ -3888,6 +3954,16 @@
   // --- Marché des transferts (onglet Recrutement) : signer/scouter/favoris,
   // même délégation d'événements pour le marché ET la liste de favoris (les
   // deux affichent des lignes identiques, cf. ligneJoueurMarche). ---
+  // Retirer un joueur de la liste des transferts depuis l'écran Départs.
+  document.getElementById('clubDeparts').addEventListener('click', (e) => {
+    const btn = e.target.closest('.btnListeTransfert');
+    if (!btn) return;
+    const res = RMClub.basculerListeTransfert(saison, btn.dataset.joueur);
+    if (!res.ok) return;
+    sauvegarder();
+    toast(`✅ ${res.joueur.nom} n'est plus en vente`);
+    rafraichirDeparts();
+  });
   document.getElementById('btnRafraichirMarche').addEventListener('click', () => {
     // TODO_AUDIT.md P1-43b : prospecter reste possible, mais plus en boucle.
     // Sans délai, perdre une cible au profit d'un rival se rattrapait d'un

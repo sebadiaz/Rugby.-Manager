@@ -175,6 +175,11 @@
     // reste de la carrière, et se livrent d'eux-mêmes.
     const travaux = RMClub.avancerJourInfrastructures
       ? RMClub.avancerJourInfrastructures(saison) : null;
+    // Offres reçues pour MES joueurs (P1-48) : le marché ne va plus dans un
+    // seul sens. Tirage sur son propre canal (37), jamais sur le flux
+    // quotidien partagé — le partager décalerait toute la séquence en aval.
+    const offreRecue = RMClub.avancerJourVentes
+      ? RMClub.avancerJourVentes(saison, date) : null;
 
     const rapports = RMClub.remettreRapportsScouting(saison, date);
     const reponsesContrat = RMClub.resoudreNegociationsContrat(rng, saison, date);
@@ -211,6 +216,7 @@
       pointEtape,
       reunionVestiaire,
       signatureRivale: mercatoDuJour ? mercatoDuJour.signature : null,
+      offreRecue,
       travaux,
       retablis: retablis.map((j) => j.nom),
       retoursDePret: retoursDePret.map((j) => j.nom),

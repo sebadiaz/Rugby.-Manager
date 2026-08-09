@@ -2312,3 +2312,77 @@ Les transferts **entre clubs IA** (club-mercato.js) ne passent pas par le
 grand livre : ils ne touchent jamais la trésorerie du club dirigé, et donner
 un livre de comptes à chaque club adverse alourdirait la sauvegarde sans rien
 apporter au manager.
+
+## P1-48 — Vendre un joueur (livrée)
+
+`server/test-ventes.js` — 12 vérifications, **toutes rouges avant ce patch**,
+vertes après. Plus un pilotage réel du jeu, de la mise en vente jusqu'à
+l'encaissement — qui a trouvé un bug d'affichage que les tests ne voyaient pas.
+
+### Le problème mesuré
+
+Le club pouvait **acheter** (`signerJoueur`, `approcherJoueurAdverse`) mais
+jamais **vendre**. La seule sortie était `libererJoueur` — mesuré : budget
+439 → 439, **gain 0 k€**. Et `Object.keys(RMClub).filter(k => /vend|ceder/i)`
+ne renvoyait rien. Le grand livre (P1-47) déclarait même une catégorie
+« Ventes de joueurs » sans aucun producteur.
+
+Trois conséquences concrètes :
+
+- la direction impose un plancher de trésorerie (P1-46) et le seul levier
+  pour rentrer de l'argent était la billetterie ;
+- les statuts promis (P1-45) produisent des joueurs qui demandent leur
+  transfert, et la seule issue était de les lâcher pour rien ;
+- arbitrer entre garder un cadre et encaisser son prix, c'est la moitié du
+  travail d'un manager. Ce levier n'existait pas.
+
+### Ce qui change
+
+Deux moitiés, symétriques de l'achat :
+
+- **La liste des transferts** — depuis la fiche d'un joueur. Un signal envoyé
+  au marché : les offres se multiplient (6 % par jour au lieu de 0,6 %) mais
+  le prix baisse de 15 %, parce que tout le monde sait qu'on est vendeur. Un
+  joueur qui a lui-même demandé son transfert perd 20 % de plus.
+- **Les offres reçues** — un club adverse vient, et ça arrive comme une vraie
+  décision : *Accepter 270 k€* / *Exiger 378 k€* / *Refuser*. Le silence vaut
+  refus, et le club retire son offre.
+
+Aucun acheteur fabriqué : le club vient de `saison.adversaires`, son budget
+est vérifié, son besoin au poste vient de `besoinsDe` (club-mercato.js). Il
+**paie réellement** — son budget baisse — et le joueur **rejoint réellement**
+son groupe : le manager pourra le retrouver en face, et tenter de le racheter.
+
+Refuser un joueur qui voulait partir lui coûte 10 points de moral. Vendre un
+joueur à qui on avait promis un rôle de **cadre** coûte 4 points de moral à
+tout le vestiaire : la parole du manager vaut pour tout le monde.
+
+### Calibrage mesuré, pas deviné
+
+Première version, avec un coefficient de vente de 1,5 : sur trois carrières,
+le club IA **le plus riche** ne pouvait s'offrir que **0 à 1 joueur sur 24**.
+La fonctionnalité aurait été morte au palier de départ.
+
+Cause : le marché des joueurs libres vend à `estimerValeurTransfert(...)`
+**sans multiplicateur**. Vendre 50 % au-dessus de ce que coûte un joueur
+équivalent en accès libre n'a aucun sens — personne n'achète. Coefficient
+ramené à 1, et un club peut engager 85 % de sa trésorerie pour une occasion
+(son mercato de routine reste plafonné à 35 %). Après recalibrage : **13 à 22
+joueurs sur 24** sont dans les moyens de la division, et 30 carrières sur 30
+reçoivent une offre en 120 jours.
+
+### Un bug d'affichage trouvé en pilotant
+
+Le gestionnaire de décision ne rafraîchissait que `rafraichirMessages()` et
+`rafraichirEffectif()`. C'était suffisant tant qu'une décision ne faisait que
+changer un moral — plus du tout depuis qu'elle peut **déplacer de l'argent et
+retirer un joueur du groupe**. Mesuré : après une vente à 270 k€, l'onglet
+Finances affichait encore le budget et le grand livre d'AVANT, et la
+composition gardait un titulaire qui venait de partir. Remplacé par un
+rafraîchissement complet.
+
+### Hors périmètre
+
+`libererJoueur` n'est pas supprimé : libérer reste un départ **libre**, sans
+indemnité. C'est une option distincte, pas un doublon — et parfois la seule
+possible (dernier joueur de son poste, joueur que personne ne veut).
