@@ -31,13 +31,23 @@
   const DELAI_REPONSE_DECISION_JOURS = 10;
 
   // Un joueur "mérite" une place s'il fait partie des 2 meilleurs de son
-  // poste (même critère vitesse+plaquage que meilleurCandidatPourNumero,
-  // cf. club-composition.js) parmi les coéquipiers réellement disponibles
-  // ce jour-là — sans ça, n'importe quel remplaçant de fond de banc se
-  // plaindrait, ce qui ne serait pas crédible.
+  // poste parmi les coéquipiers réellement disponibles ce jour-là — sans ça,
+  // n'importe quel remplaçant de fond de banc se plaindrait, ce qui ne serait
+  // pas crédible.
+  //
+  // Le classement doit être EXACTEMENT celui de la sélection automatique
+  // (noteAuPoste, cf. club-composition.js). Il est resté sur l'ancien critère
+  // `vitesse + plaquage` après le correctif P0-composition, et le jeu se
+  // contredisait : un pilier 95 vitesse / 95 plaquage / 20 mêlée n'était plus
+  // aligné (à raison) mais venait réclamer sa place tous les trois matchs,
+  // pendant que le vrai deuxième pilier du poste ne se plaignait jamais. Le
+  // manager était puni pour avoir fait le bon choix.
   function estCandidatSelectionAttendue(effectif, joueur) {
-    const concurrents = effectif.filter((j) => j.poste === joueur.poste && !j.pret && !j.blessureJournees);
-    concurrents.sort((a, b) => (b.vitesse + b.plaquage) - (a.vitesse + a.plaquage));
+    const noteAuPoste = global.RMClub.noteAuPoste
+      || ((j) => ((j.vitesse || 0) + (j.plaquage || 0)) / 2);
+    const poste = joueur.poste;
+    const concurrents = effectif.filter((j) => j.poste === poste && !j.pret && !j.blessureJournees);
+    concurrents.sort((a, b) => noteAuPoste(b, poste) - noteAuPoste(a, poste));
     return concurrents.slice(0, 2).some((j) => j.id === joueur.id);
   }
 
@@ -120,6 +130,12 @@
     // donc même garantie d'idempotence.
     if (decision.type === 'vestiaire') {
       decision.resultat = global.RMClub.appliquerDecisionVestiaire(saison, optionId);
+    }
+    // Statut promis (club-statuts.js) : même chemin de résolution, donc même
+    // idempotence et même traitement du silence (cf. resoudreDecisionsExpirees,
+    // dont l'option par défaut « ignorer » est justement une des trois issues).
+    if (decision.type === 'statut') {
+      decision.resultat = global.RMClub.appliquerDecisionStatut(saison, decision.joueurId, optionId);
     }
     decision.resolu = true;
     decision.choix = optionId;

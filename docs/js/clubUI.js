@@ -1286,6 +1286,54 @@
         bloc('Très fatigués', fatigues, (j) => `${Math.round(j.fatigue)} %`) +
         `<h4 class="sousTitreMedical">Disponibles (${dispo.length})</h4>` +
         `<p style="color:var(--text-dim);font-size:12px;margin:0;">${dispo.length} joueur(s) prêts à jouer sans réserve.</p>`;
+    } else if (sous === 'dynamique') {
+      titre.textContent = '🤝 Dynamique du vestiaire';
+      // Même écran pour toutes les équipes, mais pas les mêmes données : un
+      // club que le joueur ne dirige pas n'a AUCUN statut promis à afficher.
+      // On le dit, plutôt que d'inventer une hiérarchie plausible.
+      if (!ctx.estClubJoueur || ctx.type !== 'pro') {
+        zone.innerHTML =
+          `<p style="color:var(--text-dim);">Les statuts promis n'existent que pour l'effectif professionnel du club que tu diriges : ` +
+          `c'est un engagement que TU prends devant tes joueurs. Ce que le vestiaire d'un autre club se promet n'est pas connu.</p>`;
+        return;
+      }
+      const dossier = RMClub.dossierDynamique(saison);
+      const rangDe = (l) => (l.statut ? RMClub.STATUTS[l.statut].rang : 0);
+      const lignes = dossier.lignes.slice().sort((a, b) =>
+        (rangDe(b) - rangDe(a)) || (b.moral - a.moral) || a.nom.localeCompare(b.nom));
+      const etat = (l) => {
+        if (l.veutPartir) return '<b class="texteAlerteJoueur">🚩 veut partir</b>';
+        if (l.demandeEnAttente) return '<b class="texteAlerteJoueur">❗ te demande des comptes</b>';
+        if (l.demandeTempsDeJeu) return '<b class="texteAlerteJoueur">❗ réclame du temps de jeu</b>';
+        if (!l.statut) return '<b style="color:var(--text-faint);">aucune promesse</b>';
+        if (l.promesseTenue === null) {
+          return `<b style="color:var(--text-dim);">pas encore jugeable (${l.matchsDepuisPromesse}/${RMClub.MATCHS_MINIMUM_EVALUATION} matchs)</b>`;
+        }
+        const pct = Math.round((l.partTempsDeJeu || 0) * 100);
+        return l.promesseTenue
+          ? `<b class="deltaPositif">promesse tenue · ${pct} %</b>`
+          : `<b class="deltaNegatif">promesse rompue · ${pct} % (attendu ${Math.round(l.tauxAttendu * 100)} %)</b>`;
+      };
+      const corps = lignes.map((l) =>
+        `<tr><td>${echapperHTML(l.nom)}</td><td>${echapperHTML(l.poste)}</td>` +
+        `<td>${echapperHTML(l.libelleStatut)}</td>` +
+        `<td>${l.matchsDepuisPromesse != null ? `${l.titularisationsDepuisPromesse}+${l.bancDepuisPromesse} / ${l.matchsDepuisPromesse}` : '—'}</td>` +
+        `<td>${l.moral} %</td><td>${etat(l)}</td></tr>`).join('');
+      const resumeStatuts = RMClub.CLES_STATUT.map((cle) =>
+        `<div class="ligneJoueur"><span>${echapperHTML(RMClub.STATUTS[cle].libelle)}</span><b>${dossier.parStatut[cle]}</b></div>`).join('');
+      zone.innerHTML =
+        `<p class="noteLectureSeule" style="margin:0 0 8px;">Un statut se promet depuis la fiche d'un joueur. ` +
+        `Il ne change PAS la sélection automatique : c'est un engagement que tu dois tenir toi-même, ` +
+        `mesuré sur les feuilles de match de l'équipe première.</p>` +
+        resumeStatuts +
+        `<div class="ligneJoueur"><span>Sans statut promis</span><b>${dossier.sansStatut}</b></div>` +
+        `<div class="ligneJoueur"><span>Promesses rompues</span><b class="${dossier.promessesRompues ? 'deltaNegatif' : ''}">${dossier.promessesRompues}</b></div>` +
+        `<div class="ligneJoueur"><span>Joueurs mécontents</span><b class="${dossier.mecontents ? 'deltaNegatif' : ''}">${dossier.mecontents}</b></div>` +
+        `<div class="ligneJoueur"><span>Moral moyen</span><b>${dossier.moralMoyen != null ? dossier.moralMoyen + ' %' : 'non connu'}</b></div>` +
+        `<h4 class="sousTitreMedical">Effectif et engagements</h4>` +
+        `<table class="tableauClub tableauFiche"><thead><tr><th>Joueur</th><th>Poste</th><th>Statut promis</th>` +
+        `<th title="Titularisations + entrées en jeu sur les matchs où il était disponible">XV+banc / matchs</th>` +
+        `<th>Moral</th><th>État</th></tr></thead><tbody>${corps}</tbody></table>`;
     }
   }
 
@@ -2552,6 +2600,28 @@
       ? `<label class="sr-label" for="selEntrainementIndividuel" style="margin-top:10px;">Entraînement individuel</label>` +
         `<select id="selEntrainementIndividuel" style="width:100%;"><option value=""${!j.entrainementIndividuel ? ' selected' : ''}>Suivre le collectif</option>${optionsEntrainement}</select>`
       : '';
+    // Statut promis (club-statuts.js) : le seul endroit du jeu où le manager
+    // s'ENGAGE devant un joueur. Le bilan affiché juste en dessous vient des
+    // feuilles de match réelles, jamais d'une estimation.
+    const bilanStatut = (RMClub.bilanPromesse && estEffectifPro) ? RMClub.bilanPromesse(j) : null;
+    const optionsStatut = RMClub.CLES_STATUT.map((cle) =>
+      `<option value="${cle}"${j.statutPromis === cle ? ' selected' : ''}>` +
+      `${echapperHTML(RMClub.STATUTS[cle].libelle)}</option>`).join('');
+    const detailStatut = (bilanStatut && bilanStatut.statut)
+      ? (bilanStatut.part == null
+        ? `<p class="noteLectureSeule" style="margin:4px 0 0;">${echapperHTML(RMClub.STATUTS[bilanStatut.statut].description)} Aucun match joué depuis cette promesse.</p>`
+        : `<p class="noteLectureSeule" style="margin:4px 0 0;">${echapperHTML(RMClub.STATUTS[bilanStatut.statut].description)} ` +
+          `Depuis cette promesse : ${bilanStatut.titulaire} titularisation(s) et ${bilanStatut.banc} entrée(s) en jeu sur ${bilanStatut.matchs} match(s) où il était disponible ` +
+          `— soit ${Math.round(bilanStatut.part * 100)} % du temps de jeu attendu ${Math.round(bilanStatut.attendu * 100)} %. ` +
+          (bilanStatut.jugeable
+            ? (bilanStatut.tenue ? '<b class="deltaPositif">Promesse tenue.</b>' : '<b class="deltaNegatif">Promesse rompue.</b>')
+            : 'Trop tôt pour juger.') + `</p>`)
+      : '';
+    const blocStatutPromis = (ctx.modifiable && estEffectifPro)
+      ? `<label class="sr-label" for="selStatutPromis" style="margin-top:10px;">Statut promis</label>` +
+        `<select id="selStatutPromis" style="width:100%;"><option value=""${!j.statutPromis ? ' selected' : ''}>Ne rien promettre</option>${optionsStatut}</select>` +
+        detailStatut
+      : '';
     document.getElementById('clubJoueurDetail').innerHTML =
       `<div class="ficheJoueurEntete"><span><span class="nomJoueurFiche">${echapperHTML(j.nom)}${badgesRole(id, slot)}</span><span class="posteJoueurFiche">${POSTE_COMPLET[j.poste] || j.poste} · ${j.age} ans · ${lienClub(ctx.clubId)} <span style="color:var(--text-faint);">(${echapperHTML(ctx.label)})</span></span></span></div>` +
       (ctx.modifiable ? '' : `<p class="noteLectureSeule">🔍 Joueur d'un club que tu ne diriges pas : consultation seule. Les valeurs de contrat et de salaire sont des estimations de tes recruteurs.</p>`) +
@@ -2568,7 +2638,7 @@
       (j.valeurEstimee != null && !ctx.modifiable ? `<div class="ligneJoueur"><span>Valeur de transfert estimée</span><b>${j.valeurEstimee} k€</b></div>` : '') +
       `<div class="ligneJoueur"><span>Disponibilité</span><b>${disponibilite}</b></div>` +
       blocAntecedents + blocCompetitions + blocHistorique + blocCarriere +
-      blocEntrainementIndividuel + actions +
+      blocStatutPromis + blocEntrainementIndividuel + actions +
       `<div style="display:flex;gap:8px;margin-top:14px;">` +
       `<button class="alt" id="btnFermerFicheJoueur" style="flex:1;">← Retour à l'effectif</button>` +
       (ctx.modifiable && estEffectifPro ? `<button class="alt warn" id="btnLibererFiche" style="flex:1;">Libérer ce joueur</button>` : '') +
@@ -2703,6 +2773,7 @@
       { cle: 'joueurs', label: 'Joueurs', aide: 'La liste complète, filtrable.' },
       { cle: 'selection', label: 'Sélection', aide: 'Le XV et le banc retenus pour cette équipe.' },
       { cle: 'disponibilite', label: 'Disponibilité', aide: 'Qui peut jouer, qui ne peut pas, et pourquoi.' },
+      { cle: 'dynamique', label: 'Dynamique', aide: 'Statuts promis, promesses tenues ou rompues, mécontents.' },
     ],
     medical: [
       { cle: 'apercu', label: 'Vue d\'ensemble', aide: 'L\'état de santé du groupe en un coup d\'œil.' },
@@ -3596,15 +3667,31 @@
     rafraichirEncadrement();
   });
   document.getElementById('clubJoueurDetail').addEventListener('change', (e) => {
-    if (e.target.id !== 'selEntrainementIndividuel') return;
     if (!joueurAffiche) return;
     const joueur = saison.clubJoueur.effectif.find((j) => j.id === joueurAffiche);
     if (!joueur) return;
-    joueur.entrainementIndividuel = e.target.value || null;
-    sauvegarder();
-    toast(joueur.entrainementIndividuel
-      ? `✅ ${joueur.nom} suit un entraînement individuel dédié`
-      : `✅ ${joueur.nom} suit de nouveau le programme collectif`);
+    if (e.target.id === 'selEntrainementIndividuel') {
+      joueur.entrainementIndividuel = e.target.value || null;
+      sauvegarder();
+      toast(joueur.entrainementIndividuel
+        ? `✅ ${joueur.nom} suit un entraînement individuel dédié`
+        : `✅ ${joueur.nom} suit de nouveau le programme collectif`);
+      return;
+    }
+    // Statut promis : l'annonce a un effet immédiat sur le moral — on le
+    // MONTRE, sinon le manager ne saurait pas qu'il vient d'engager le club.
+    if (e.target.id === 'selStatutPromis') {
+      const res = RMClub.definirStatutPromis(saison, joueur.id, e.target.value || null);
+      if (!res.ok) { toast('❌ Statut impossible à promettre'); return; }
+      sauvegarder();
+      const signe = res.effetMoral > 0 ? `+${res.effetMoral}` : `${res.effetMoral}`;
+      toast(res.statut
+        ? `✅ ${joueur.nom} est annoncé ${RMClub.STATUTS[res.statut].libelle.toLowerCase()}` +
+          (res.effetMoral ? ` · moral ${signe}` : '')
+        : `✅ ${joueur.nom} n'a plus de statut promis` + (res.effetMoral ? ` · moral ${signe}` : ''));
+      ouvrirFicheJoueur(joueur.id);
+      rafraichirEffectif();
+    }
   });
 
   // --- Composition : navigation depuis le Dashboard vers l'onglet dédié
@@ -4277,6 +4364,19 @@
               creerRng(graineAleatoire()), { equipe: 'pro' });
             RMClub.appliquerMoral(saison.clubJoueur.effectif, compositionAvecRemplacants, forme);
             RMClub.appliquerFrustrationTempsDeJeu(saison, compositionUtilisee, saison.clubJoueur.compositionBanc);
+            // Statut promis (club-statuts.js) : la feuille de match de
+            // l'équipe première est la SEULE qui juge une promesse — un cadre
+            // qui joue tous les matchs de la réserve n'a pas le temps de jeu
+            // qu'on lui a promis.
+            //
+            // `compositionAvecRemplacants`, PAS `compositionUtilisee` : c'est
+            // exactement ce que reçoit appliquerFatigue, qui vient
+            // d'incrémenter matchsJoues. Avec le XV de départ, un remplaçant
+            // entré en jeu était compté DEUX fois (une titularisation via
+            // matchsJoues + une entrée en jeu ici), soit 1,5 match pour une
+            // seule feuille — mesuré en pilotant le jeu : titu 1 / banc 1
+            // après un unique match.
+            RMClub.evaluerPromessesStatut(saison, compositionAvecRemplacants, saison.clubJoueur.compositionBanc);
             sauvegarder();
             // La journée est résolue : relâche le verrou anti-double-action
             // (cf. `journeeEnCours` plus haut) — la prochaine journée peut

@@ -2104,3 +2104,71 @@ Le mercato tire ses aléas sur **son propre flux** (sel 31), jamais sur le rng
 partagé de la journée. Mesuré : sans cette séparation, ajouter un tirage
 décalait toute la séquence quotidienne en aval et faisait tomber deux tests
 existants (déterminisme de l'avance, date de remise d'un rapport).
+
+## P1-45 — Le statut promis : le manager s'engage devant ses joueurs (livrée)
+
+`server/test-dynamique.js` — 13 vérifications, **toutes rouges avant ce
+patch**, vertes après. Plus un pilotage réel du jeu dans le navigateur, qui a
+trouvé deux bugs que les tests Node ne voyaient pas (voir plus bas).
+
+### Partie A — une incohérence introduite par le correctif P0-composition
+
+`meilleurCandidatPourNumero` classe les joueurs avec `noteAuPoste` depuis le
+correctif P0. Mais `estCandidatSelectionAttendue` (club-decisions.js) était
+restée sur `vitesse + plaquage`, et son commentaire affirmait encore suivre
+« le même critère ».
+
+Conséquence en jeu : un pilier 95 vitesse / 95 plaquage / 20 mêlée n'était
+plus aligné — à raison — mais venait quand même réclamer sa place tous les
+trois matchs, pendant que le vrai deuxième pilier du poste ne se plaignait
+jamais. **Le manager était puni pour avoir fait le bon choix.** Corrigé : le
+même classement sert des deux côtés.
+
+### Partie B — ce qui manquait : promettre quelque chose
+
+Avant, la seule dynamique de vestiaire était **subie** (frustration après
+trois journées sans sélection). Le manager ne pouvait rien promettre à
+personne : aligner ou non un joueur n'engageait sur rien.
+
+- **Trois statuts** — cadre (60 % de temps de jeu promis), joueur de rotation
+  (30 %), espoir (aucune attente). Persistés sur le joueur, donc sauvegardés
+  sans migration (l'absence de statut = « rien promis », ce qui est exact pour
+  une ancienne partie).
+- **Effet immédiat** : l'annonce fait bouger le moral (+8 pour un premier rôle
+  de cadre, −8 par rang perdu en cas de déclassement, −6 pour un joueur de
+  25 ans qu'on annonce « espoir »). Le moral pèse réellement sur les stats
+  transmises au moteur (`compositionVersJoueursCfg`).
+- **Jugé sur les feuilles de match réelles** : `matchsJoues` (titularisations,
+  incrémenté par `appliquerFatigue`) et `matchsSurLeBanc`, rapportés aux
+  matchs où le joueur était sélectionnable. Une entrée en jeu non utilisée
+  vaut une demi-participation. Jamais un compteur fabriqué pour l'écran.
+- **Une promesse tenue ne déclenche rien.** Sinon le système punirait un
+  manager irréprochable.
+- **Une promesse rompue** (au minimum 6 matchs après l'annonce) ramène le
+  joueur dans le bureau, avec trois issues qui ne se valent pas :
+  *maintenir* (moral +10, mais une seconde rupture casse la relation),
+  *revoir son statut* (déclassement réel d'un cran, moral −6, pas de spirale
+  de départ), *ignorer* (moral −15, compte comme un avertissement ignoré).
+  Le silence vaut « ignorer », comme pour les autres décisions.
+- **Écran dédié** : Effectif → Dynamique. Une ligne par joueur, le bilan
+  chiffré de chaque promesse, les mécontents. Sur un club qu'on ne dirige pas,
+  l'écran dit que l'information n'est pas connue plutôt que d'inventer.
+
+Le statut ne modifie **pas** la sélection automatique : c'est une promesse que
+le manager doit tenir lui-même, pas une consigne que le jeu appliquerait à sa
+place. La composition auto reste réglée sur la seule valeur sportive au poste.
+
+### Deux bugs trouvés en pilotant le jeu, invisibles pour les tests Node
+
+1. **Double comptage.** Après un seul match, un joueur affichait
+   1 titularisation *et* 1 entrée en jeu — 1,5 match pour une feuille. Cause :
+   `appliquerFatigue` reçoit le XV **après** remplacements, l'évaluation
+   recevait le XV de départ. Un remplaçant entré en jeu était compté deux
+   fois. Corrigé + verrouillé par test (B9bis/B9ter).
+2. **Dénominateur figé.** Un titulaire sorti sur blessure voyait
+   `matchsJoues` passer à 1 pendant que le nombre de matchs disponibles
+   restait à 0 (les blessures sont appliquées avant l'évaluation) : bilan
+   absurde de 2 titularisations sur 0 match, promesse jamais jugeable.
+   Corrigé : figurer sur la feuille suffit à faire compter le match ; une
+   blessure *longue* continue, elle, de ne pas compter contre le manager.
+   Verrouillé par test (B9quater).
