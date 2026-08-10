@@ -376,17 +376,31 @@
     const parId = {};
     for (const j of effectif) parId[j.id] = j;
     const compo = (slot && slot.compositionTitulaires) || {};
-    const designes = new Set(slotSauteurs(slot));
+    const idsDesignes = new Set(slotSauteurs(slot));
     const candidats = NUMEROS_ALIGNEMENT
       .map((numero) => ({ numero, joueur: parId[compo[numero]] }))
       .filter((x) => x.joueur)
       .map((x) => ({
         id: x.joueur.id, nom: x.joueur.nom, poste: x.joueur.poste, numero: x.numero,
         touche: x.joueur.touche != null ? x.joueur.touche : 60,
-        designe: designes.has(x.joueur.id),
+        designe: idsDesignes.has(x.joueur.id),
       }))
       .sort((a, b) => b.touche - a.touche);
-    return { candidats, max: SAUTEURS_MAX, designes: candidats.filter((c) => c.designe) };
+    // Lisibilité de l'alignement (P1-50b) : restreindre le pool rend la
+    // touche plus fiable si le sauteur est bon, et plus prévisible pour
+    // l'adversaire dans tous les cas. Le chiffre affiché est EXACTEMENT
+    // celui que le moteur applique (COEF_LISIBILITE_TOUCHE), jamais une
+    // estimation décorative.
+    const designes = candidats.filter((c) => c.designe);
+    const poolDefaut = NUMEROS_ALIGNEMENT.length;
+    const taillePool = designes.length || poolDefaut;
+    const lisibilite = Math.max(0, (poolDefaut - taillePool) / poolDefaut);
+    const coef = (global.RugbyEngine && global.RugbyEngine.COEF_LISIBILITE_TOUCHE) || 0.03;
+    return {
+      candidats, max: SAUTEURS_MAX, designes,
+      lisibilite: Math.round(lisibilite * 100) / 100,
+      risqueVolSupplementaire: Math.round(lisibilite * coef * 1000) / 10,
+    };
   }
 
   function slotSauteurs(slot) {

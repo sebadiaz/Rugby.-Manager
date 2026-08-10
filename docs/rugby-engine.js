@@ -456,6 +456,9 @@
   // une équipe qui ne viserait qu'un seul homme deviendrait illisible pour le
   // moteur comme pour l'adversaire, alors qu'en vrai on varie les appels.
   const POIDS_SAUTEUR_PLANCHER = 25;
+  // Surcroît de risque de vol quand l'alignement est totalement prévisible
+  // (un seul sauteur possible). Proportionnel à la part du pool retirée.
+  const COEF_LISIBILITE_TOUCHE = 0.03;
   function tirerSauteurPondere(pool, rng) {
     if (!pool || !pool.length) return null;
     const poids = pool.map((j) => Math.max(POIDS_SAUTEUR_PLANCHER,
@@ -467,6 +470,34 @@
       if (r <= 0) return pool[i];
     }
     return pool[pool.length - 1];
+  }
+
+  // Probabilité qu'une touche soit volée par la défense. Fonction PURE et
+  // exportée : c'est une règle du jeu, elle doit pouvoir être vérifiée
+  // directement plutôt que devinée à travers la moyenne bruitée de quelques
+  // matchs (un effet de 2 points sur 145 touches ne se distingue pas du
+  // hasard).
+  //
+  // Trois termes :
+  //   - la domination COLLECTIVE du pack (somme des forceTouche) ;
+  //   - la qualité PROPRE du sauteur visé — sans elle, désigner un sauteur ne
+  //     changeait rien (mesuré : 0,0 point d'écart, cf. P1-50) ;
+  //   - la LISIBILITÉ de l'alignement : restreindre le pool rend le lancer
+  //     prévisible. Sans ce terme, désigner n'avait QUE des avantages, donc
+  //     n'était pas un choix (mesuré : 95,1 % -> 97,8 % à qualité égale).
+  //
+  // COEF_LISIBILITE_TOUCHE (0,03 à pool réduit à un homme, soit +0,024 de
+  // risque) est calibré SOUS le gain d'un vrai spécialiste (~0,038 quand il
+  // domine nettement ses coéquipiers) : désigner un bon sauteur reste payant,
+  // désigner à qualité égale coûte des ballons.
+  function probaVolTouche({ forceLanceur, forceAdverse, qualiteSauteur, taillePool }) {
+    const poolDefaut = DEFAULT_CONFIG.touche.sauteurs.length;
+    const taille = taillePool > 0 ? taillePool : poolDefaut;
+    const lisibilite = Math.max(0, (poolDefaut - taille) / poolDefaut);
+    return Math.max(0.06, Math.min(0.30,
+      0.14 + (forceAdverse - forceLanceur) / 900
+      - ((qualiteSauteur != null ? qualiteSauteur : 80) - 80) / 400
+      + lisibilite * COEF_LISIBILITE_TOUCHE));
   }
 
   // Discipline moyenne (0-100) des avants sur le terrain d'une équipe — sert à
@@ -4336,8 +4367,22 @@
       // échelle bornée 6-30 % — assez pour que le choix compte, jamais assez
       // pour écraser la domination collective du pack.
       const qualiteSauteur = sauteurVise ? forceTouche(sauteurVise) : 80;
-      const probaVolAdverse = Math.max(0.06, Math.min(0.30,
-        0.14 + (forceAdverse - forceLanceur) / 900 - (qualiteSauteur - 80) / 400));
+      // Lisibilité de l'alignement (TODO_AUDIT.md P1-50b) : plus le pool de
+      // sauteurs est restreint, plus la défense anticipe le lancer. Sans ce
+      // terme, désigner un sauteur n'avait QUE des avantages — mesuré : avec
+      // cinq sauteurs strictement équivalents (donc aucun gain de qualité),
+      // n'en désigner qu'un faisait passer le taux de 95,1 % à 97,8 %. Un
+      // choix sans contrepartie n'est pas un choix.
+      //
+      // Le coefficient (0,03 pour un alignement réduit à un seul homme) est
+      // calibré pour rester INFÉRIEUR au gain de qualité d'un vrai
+      // spécialiste (~0,038 quand il domine ses coéquipiers) : désigner un
+      // sauteur nettement meilleur reste payant, désigner à qualité égale
+      // coûte des ballons.
+      const probaVolAdverse = probaVolTouche({
+        forceLanceur, forceAdverse, qualiteSauteur,
+        taillePool: poolLanceurSauteurs.length,
+      });
       const vole = this.rng() < probaVolAdverse;
       const gagnant = vole ? adversaire : lanceur;
       this.stats[gagnant].lineoutsGagnes++;
@@ -5116,5 +5161,5 @@
   }
 
   return { MatchEngine, LONGUEUR, LARGEUR, creerRng, distance, DEFAULT_CONFIG, fusionnerConfig,
-    tirerSauteurPondere, forceTouche };
+    tirerSauteurPondere, forceTouche, probaVolTouche, COEF_LISIBILITE_TOUCHE };
 });

@@ -209,4 +209,76 @@ test('T7 — les touches restent dans les ordres de grandeur d\'un vrai match', 
     `un match de rugby compte 15 à 35 touches (moyenne mesurée ${moyenne.toFixed(1)})`);
 });
 
+test('T8 — PREUVE : restreindre l\'alignement a un COÛT quand il n\'apporte rien', () => {
+  // Mesuré avant ce patch, en jouant : avec cinq sauteurs STRICTEMENT
+  // équivalents (donc aucun gain de qualité), n'en désigner qu'un faisait
+  // passer le taux de touches gagnées de 95,1 % à 97,8 %. Désigner était
+  // GRATUIT, donc toujours gagnant — un choix sans contrepartie n'est pas un
+  // choix.
+  //
+  // La règle est vérifiée DIRECTEMENT, pas à travers la moyenne de quelques
+  // matchs : un écart de deux points sur 145 touches ne se distingue pas du
+  // bruit (constaté en essayant, 140/145 contre 136/143 — inexploitable).
+  const commun = { forceLanceur: 700, forceAdverse: 700, qualiteSauteur: 80 };
+  const libre = RugbyEngine.probaVolTouche(Object.assign({ taillePool: 5 }, commun));
+  const restreint = RugbyEngine.probaVolTouche(Object.assign({ taillePool: 1 }, commun));
+  assert.ok(restreint > libre,
+    `à qualité égale, un alignement lisible doit augmenter le risque de vol ` +
+    `(${restreint.toFixed(4)} vs ${libre.toFixed(4)})`);
+  // Et le coût doit être PROPORTIONNEL : trois sauteurs se situent entre les deux.
+  const trois = RugbyEngine.probaVolTouche(Object.assign({ taillePool: 3 }, commun));
+  assert.ok(trois > libre && trois < restreint,
+    `le coût doit croître à mesure qu'on restreint (${libre.toFixed(4)} / ${trois.toFixed(4)} / ${restreint.toFixed(4)})`);
+});
+
+test('T8bis — le compromis penche du bon côté pour un VRAI spécialiste', () => {
+  // Un sauteur nettement au-dessus (forceTouche 94, soit touche ~95) désigné
+  // seul, contre un alignement libre dont le sauteur moyen vaut 80 : le gain
+  // de qualité doit l'emporter sur le coût de lisibilité.
+  const specialisteSeul = RugbyEngine.probaVolTouche({
+    forceLanceur: 700, forceAdverse: 700, qualiteSauteur: 94, taillePool: 1 });
+  const alignementLibre = RugbyEngine.probaVolTouche({
+    forceLanceur: 700, forceAdverse: 700, qualiteSauteur: 80, taillePool: 5 });
+  assert.ok(specialisteSeul < alignementLibre,
+    `désigner un vrai spécialiste doit rester payant ` +
+    `(${specialisteSeul.toFixed(4)} vs ${alignementLibre.toFixed(4)})`);
+  // À qualité identique, en revanche, c'est perdant — c'est tout l'arbitrage.
+  const banalSeul = RugbyEngine.probaVolTouche({
+    forceLanceur: 700, forceAdverse: 700, qualiteSauteur: 80, taillePool: 1 });
+  assert.ok(banalSeul > alignementLibre,
+    'désigner un sauteur banal doit coûter des ballons');
+});
+
+test('T9 — mais désigner un VRAI spécialiste reste payant', () => {
+  // Le compromis doit pencher du bon côté quand le sauteur désigné est
+  // nettement meilleur que les autres : sinon la désignation ne servirait
+  // jamais à rien, ce qui serait le défaut inverse.
+  let libre = { l: 0, g: 0 }, restreint = { l: 0, g: 0 };
+  for (let g = 1; g <= 12; g++) {
+    const a = jouer(g, { joueursA: pack(5, 95, 20), joueursB: pack(5, 95, 20) });
+    libre.l += a.A.lineouts; libre.g += a.A.lineoutsGagnes;
+    const b = jouer(g, { joueursA: pack(5, 95, 20), joueursB: pack(5, 95, 20),
+      toucheA: { sauteurs: [5] } });
+    restreint.l += b.A.lineouts; restreint.g += b.A.lineoutsGagnes;
+  }
+  const part = (x) => (x.l ? x.g / x.l : 0);
+  assert.ok(part(restreint) > part(libre),
+    `désigner le seul vrai sauteur doit rester gagnant malgré la lisibilité ` +
+    `(${restreint.g}/${restreint.l} vs ${libre.g}/${libre.l})`);
+});
+
+test('T10 — le compromis est ANNONCÉ au manager, chiffré', () => {
+  const s = RMClub.nouvelleSaison(creerRng(503), 'AS Touche');
+  RMClub.daterCalendrier(s);
+  RMClub.assurerCompositionPourEquipe(s, 'pro');
+  const avant = RMClub.dossierSauteurs(s);
+  assert.strictEqual(avant.lisibilite, 0, 'un alignement complet n\'est pas lisible');
+  RMClub.basculerSauteur(s, avant.candidats[0].id);
+  const apres = RMClub.dossierSauteurs(s);
+  assert.ok(apres.lisibilite > 0,
+    `restreindre l'alignement doit être annoncé comme lisible (${apres.lisibilite})`);
+  assert.ok(apres.risqueVolSupplementaire > 0,
+    'le surcroît de risque doit être chiffré, pas seulement suggéré');
+});
+
 console.log(`\n${nbTests} test(s) exécuté(s).`);

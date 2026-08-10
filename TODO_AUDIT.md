@@ -2542,3 +2542,62 @@ Les quatre catégories hors repère signalées par la suite (rucks 518, plaquage
 642, coups de pied 142, pénalités 11,6) sont **antérieures et connues** : c'est
 le sujet « T2 (temps mort / ballon en jeu) » déjà instruit plus haut dans ce
 fichier, sans rapport avec la touche.
+
+## P1-50b — Le coût de la prévisibilité en touche (livrée)
+
+Complète P1-50, dont j'avais moi-même noté le défaut : « désigner un seul
+sauteur n'a que des avantages, ce qui n'est pas un vrai choix ».
+
+### Le problème mesuré
+
+Cinq sauteurs **strictement équivalents** (tous à touche 80, donc aucun gain
+de qualité possible), douze matchs complets :
+
+```
+alignement LIBRE      : 136/143 touches gagnées (95,1 %)
+UN SEUL désigné       : 136/139 (97,8 %)
+```
+
+Restreindre l'alignement était **gratuit**, donc toujours gagnant. Le texte à
+l'écran promettait pourtant un compromis (« plus lisible pour l'adversaire »)
+que rien ne modélisait — le jeu disait une chose et en faisait une autre.
+
+### Ce qui change
+
+Un troisième terme dans la probabilité de vol : la **lisibilité** de
+l'alignement, proportionnelle à la part du pool retirée. Un alignement réduit
+à un seul homme ajoute 2,4 points de risque ; à trois hommes, 1,2 point.
+
+Le coefficient (0,03) est calibré **sous** le gain d'un vrai spécialiste
+(~0,038 quand il domine nettement ses coéquipiers) :
+
+- désigner un sauteur **nettement meilleur** reste payant ;
+- désigner **à qualité égale** coûte des ballons.
+
+C'est l'arbitrage qui manquait.
+
+### Une règle extraite, testable directement
+
+La probabilité de vol devient une fonction pure exportée,
+`RugbyEngine.probaVolTouche({forceLanceur, forceAdverse, qualiteSauteur,
+taillePool})`, appelée par `_tickTouche`.
+
+**Pourquoi :** j'ai d'abord essayé de vérifier le coût de la prévisibilité en
+jouant des matchs. Résultat : 140/145 contre 136/143 — un écart de 1,5 point
+sur ~145 touches, indistinguable du bruit (erreur type ≈ 1,7 point). Mesurer
+un effet de 2 points de cette façon aurait demandé des centaines de matchs,
+pour une suite déjà lente. La règle est donc vérifiée **directement**, ce qui
+est à la fois plus rapide et plus honnête : on teste ce que le code décide,
+pas la moyenne d'un échantillon trop petit.
+
+### À l'écran, le compromis est chiffré
+
+```
+Le lancer visera n°4. Alignement plus fiable si tes sauteurs sont meilleurs
+que les autres — mais aussi plus lisible : +2,4 point(s) de risque de ballon
+volé par l'adversaire.
+```
+
+Avec deux sauteurs désignés, le même bandeau affiche +1,8. Le chiffre est
+celui que le moteur applique (`COEF_LISIBILITE_TOUCHE`), pas une estimation —
+vérifié en pilotant le jeu.

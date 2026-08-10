@@ -3232,9 +3232,13 @@
           `style="width:auto;padding:4px 10px;font-size:11px;margin-left:8px;">${c.designe ? '✓ sauteur' : 'Désigner'}</button>`
         : (c.designe ? '· sauteur désigné' : '')) +
       `</b></div>`).join('');
+    // Le compromis est CHIFFRÉ, pas suggéré : le surcroît de risque affiché
+    // est exactement celui que le moteur applique (P1-50b).
     const note = d.designes.length
-      ? `<p class="noteLectureSeule" style="margin:4px 0 0;">Le lancer visera ${d.designes.map((c) => 'n°' + c.numero).join(' et ')}. Restreindre l'alignement rend la touche plus fiable si le sauteur est bon — et plus lisible pour l'adversaire s'il ne l'est pas.</p>`
-      : `<p class="noteLectureSeule" style="margin:4px 0 0;">Aucun sauteur imposé : le lancer vise les n°4 à 8, en ciblant plus souvent les meilleurs. Maximum ${d.max} désignations.</p>`;
+      ? `<p class="noteLectureSeule" style="margin:4px 0 0;">Le lancer visera ${d.designes.map((c) => 'n°' + c.numero).join(' et ')}. ` +
+        `Alignement plus fiable si tes sauteurs sont meilleurs que les autres — mais aussi plus lisible : ` +
+        `<b class="deltaNegatif">+${d.risqueVolSupplementaire} point(s) de risque de ballon volé</b> par l'adversaire.</p>`
+      : `<p class="noteLectureSeule" style="margin:4px 0 0;">Aucun sauteur imposé : le lancer vise les n°4 à 8, en ciblant plus souvent les meilleurs, et reste imprévisible. Maximum ${d.max} désignations — chacune rend la touche plus lisible.</p>`;
     return `<h4 class="sousTitreMedical">Sauteurs en touche</h4>${lignes}${note}`;
   }
 
