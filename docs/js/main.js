@@ -142,6 +142,68 @@
   // terminée (opts.onResultat reçoit l'état final tout de suite, que le
   // joueur regarde le match ou non) ; « voir le match » n'est qu'une option
   // proposée ensuite — le joueur peut fermer directement sur le résultat.
+
+  // --- Feuille de match (TODO_AUDIT.md P1-52) ------------------------------
+  //
+  // Avant, la fin d'un match affichait un badge, un score et une ligne de
+  // détail. Le manager ne savait ni qui avait marqué, ni quand, ni si le
+  // match s'était joué en première ou en seconde période. Un score seul n'est
+  // pas un match.
+  //
+  // Tout ce qui s'affiche ici vient de `state.chronologie` (les faits
+  // marquants réellement produits par la simulation) et de `state.stats` (des
+  // compteurs réellement incrémentés). Rien n'est reconstitué après coup.
+  function echapperTexte(t) {
+    return String(t == null ? '' : t)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+  function rendreFeuilleDeMatch(etatFinal, nomA, nomB) {
+    const zone = document.getElementById('resultatFeuille');
+    if (!zone) return;
+    const RM = window.RMClub;
+    if (!RM || !RM.feuilleDeMatch) { zone.innerHTML = ''; return; }
+    const f = RM.feuilleDeMatch(etatFinal, { nomA, nomB });
+    if (!f.chronologie.length) { zone.innerHTML = ''; return; }
+
+    // Chronologie : les faits qui pèsent (points, cartons, repères), pas le
+    // détail de chaque pénalité — sinon le compte rendu devient illisible.
+    const lignes = f.chronologie.filter((l) => !l.mineur).map((l) => {
+      const cote = l.camp === 'A' ? 'gauche' : l.camp === 'B' ? 'droite' : 'centre';
+      const score = l.points > 0 ? `<span class="scoreFeuille">${l.scoreA}-${l.scoreB}</span>` : '';
+      const equipe = l.equipe ? `<span class="equipeFeuille">${echapperTexte(l.equipe)}</span>` : '';
+      return `<div class="ligneFeuille ${cote}${l.repere ? ' repere' : ''}">` +
+        `<span class="minuteFeuille">${l.minute}'</span>` +
+        `<span class="faitFeuille">${l.icone} ${echapperTexte(l.libelle)} ${equipe}</span>` +
+        score + `</div>`;
+    }).join('');
+
+    const marqueurs = ['A', 'B'].map((camp) => {
+      const liste = f.marqueurs[camp];
+      if (!liste.length) return '';
+      const nom = camp === 'A' ? f.nomA : f.nomB;
+      return `<div class="ligneStat"><span>${echapperTexte(nom)}</span>` +
+        `<b>${liste.map((m) => m.minute + "'").join(', ')}</b></div>`;
+    }).join('');
+
+    const stats = f.statistiques.map((s) =>
+      `<div class="ligneStatMatch">` +
+      `<span class="valA${s.avantage === 'A' ? ' fort' : ''}">${s.a}</span>` +
+      `<span class="libelleStat">${echapperTexte(s.libelle)}</span>` +
+      `<span class="valB${s.avantage === 'B' ? ' fort' : ''}">${s.b}</span></div>`).join('');
+
+    const possession = f.possession
+      ? `<div class="ligneStatMatch"><span class="valA">${f.possession.a} %</span>` +
+        `<span class="libelleStat" title="Estimée par la ${echapperTexte(f.possession.source)} — le moteur ne chronomètre pas la possession">Possession (est.)</span>` +
+        `<span class="valB">${f.possession.b} %</span></div>`
+      : '';
+
+    zone.innerHTML =
+      `<h3 class="titreFeuille">Feuille de match</h3>` +
+      (marqueurs ? `<h4 class="sousTitreFeuille">Essais marqués (minutes)</h4>${marqueurs}` : '') +
+      `<h4 class="sousTitreFeuille">Le fil du match</h4><div class="chronoFeuille">${lignes}</div>` +
+      `<h4 class="sousTitreFeuille">Statistiques</h4>${possession}${stats}`;
+  }
+
   // opts.direct=true saute l'écran de choix et lance la lecture tout de
   // suite (utilisé pour « Revoir » un match déjà connu depuis l'historique).
   // opts.noms ({A,B}) : noms de club à afficher (Mode Club uniquement).
@@ -162,6 +224,7 @@
       document.getElementById('resultatDetail').textContent = s
         ? `${s.A.essais} essai(s) contre ${s.B.essais} · possession ${etatFinal.possessionPct.A}% / ${etatFinal.possessionPct.B}%`
         : '';
+      rendreFeuilleDeMatch(etatFinal, nomA, nomB);
       const badge = document.getElementById('resultatBadge');
       if (equipeJoueur) {
         const autre = equipeJoueur === 'A' ? 'B' : 'A';
@@ -286,6 +349,7 @@
     document.getElementById('resultatDetail').textContent = s
       ? `${s.A.essais} essai(s) contre ${s.B.essais} · possession ${etatFinal.possessionPct.A}% / ${etatFinal.possessionPct.B}%`
       : '';
+    rendreFeuilleDeMatch(etatFinal, nomA, nomB);
     const badge = document.getElementById('resultatBadge');
     if (L.equipeJoueur) {
       const autre = L.equipeJoueur === 'A' ? 'B' : 'A';

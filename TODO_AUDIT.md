@@ -2683,3 +2683,92 @@ Poussée en mêlée
 échoué tant que le nouvel axe n'y était pas. La consigne d'un club consulté
 est maintenant déduite de la mêlée moyenne de son groupe — la même donnée que
 celle sur laquelle le manager recrute.
+
+## P1-52 — La feuille de match : le match raconte enfin ce qu'il s'est passé
+
+`server/test-feuille-de-match.js` — 9 vérifications, 7 rouges avant ce patch
+(E1 et E9 documentent le comportement existant et servent de non-régression),
+toutes vertes après. Plus un pilotage réel du jeu, capture d'écran à l'appui.
+
+### Le problème mesuré
+
+```js
+// engine/rugby-engine.js, log()
+this.events.push({...});
+if (this.events.length > 30) this.events.shift();
+```
+
+Sur un match complet (graine 7), `getState().events` contient 30 entrées,
+**toutes postérieures à la 78ᵉ minute**. Tout le reste du match a été jeté.
+L'interface, elle, n'en affiche que 5.
+
+Et après un match simulé en Mode Club, le panneau de résultat affichait un
+badge, un score et une ligne de détail. **Aucune chronologie, aucun marqueur,
+aucun compte rendu.** Le manager ne pouvait ni comprendre le résultat, ni
+juger sa tactique, ni raconter sa saison.
+
+### Ce qui change
+
+- **Moteur** : une `chronologie` conserve les faits marquants de TOUT le match
+  (essais, transformations, pénalités, drops, cartons, mi-temps, coup de
+  sifflet final, remplacements), datés à la minute, bornée à 400 entrées. Le
+  fil « live » de 30 événements est inchangé — il sert l'affichage temps réel,
+  pas le compte rendu.
+- **Mode Club** : `feuilleDeMatch(etat, {nomA, nomB})` assemble le compte
+  rendu — chronologie avec score courant ligne à ligne, marqueurs par équipe,
+  quinze statistiques comparées.
+- **Écran** : la feuille s'affiche à la fin de tout match, simulé comme joué.
+
+Relevé réel obtenu en pilotant le jeu :
+
+```
+AS Feuille 33 — 17 Castelnau Taureaux
+Essais marqués : AS Feuille 14', 33', 41', 77' · Castelnau 9', 27'
+
+ 9'  🏉 Essai Castelnau Taureaux            0-5
+10'  🎯 Transformation Castelnau Taureaux   0-7
+14'  🏉 Essai AS Feuille                    5-7
+15'  ✖️ Transformation manquée AS Feuille
+23'  🎯 Pénalité AS Feuille                 8-7
+24'  🟨 Carton jaune Castelnau Taureaux
+...
+40'  ⏸️ Mi-temps
+...
+80'  ⏹️ Coup de sifflet final
+```
+
+### La possession est annoncée pour ce qu'elle est
+
+Le moteur ne chronomètre pas la possession. Plutôt que d'inventer un
+pourcentage, la feuille affiche « Possession (est.) » avec, en infobulle, sa
+source réelle : la part des rucks joués.
+
+### Une erreur de fichier, corrigée
+
+J'ai d'abord écrit le CSS dans `docs/style.css` — un fichier qui n'existait
+pas et que la page ne charge pas (`docs/css/style.css`). La première capture
+montrait un compte rendu correct mais entièrement centré et illisible, scores
+collés au texte. Fichier parasite supprimé, styles déplacés au bon endroit,
+vérifié par capture d'écran.
+
+### Ce que la feuille rend visible : les volumes ne sont pas crédibles
+
+Maintenant que les statistiques sont affichées côte à côte, l'écart aux
+repères de CLAUDE.md saute aux yeux sur un match réel :
+
+| Statistique | Mesuré (total) | Repère CLAUDE.md |
+|---|---|---|
+| Rucks | **646** | 70-180 |
+| Plaquages réussis | **690** | 120-250 |
+| Passes | **1127** | (≈250-300 attendu) |
+| Coups de pied | **119** | 30-80 |
+| Mètres gagnés (une équipe) | **3251 m** | (≈500-600 attendu) |
+| Essais / Points | 6 / 50 | 2-8 / 25-70 ✅ |
+| Mêlées / Touches | 15 / 25 | 8-25 / 15-35 ✅ |
+
+Le score, les essais, les mêlées et les touches sont justes. Le **volume de
+jeu courant** est trois à cinq fois trop élevé : le match est un enchaînement
+de rucks quasi ininterrompu. C'est le sujet « T2 » déjà instruit plus haut
+dans ce fichier (le balayage de `rampeMontee` avait été documenté comme
+insuffisant, sans changement appliqué). **Ce patch ne le corrige pas** — il le
+rend enfin visible et chiffré à l'écran.

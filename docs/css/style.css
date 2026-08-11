@@ -1172,3 +1172,49 @@ select {
   border-radius: 999px; white-space: nowrap;
 }
 .btnSousOnglet.actif { border-color: var(--accent, #e8a33d); color: #ffce7a; background: #2a1f0c; }
+
+/* --- Feuille de match (TODO_AUDIT.md P1-52) -----------------------------
+   Le compte rendu affiché à la fin d'un match : chronologie réelle des faits
+   marquants, marqueurs, statistiques comparées. Avant, la fin d'un match
+   n'affichait qu'un score et une ligne de détail.
+   `text-align: left` est explicite : la carte parente est centrée, et un
+   compte rendu centré est illisible. */
+.feuilleDeMatch { text-align: left; margin: 16px 0 6px; }
+.titreFeuille { margin: 0 0 10px; font-size: 15px; text-align: center; }
+.sousTitreFeuille {
+  margin: 16px 0 6px; font-size: 11px; text-transform: uppercase;
+  letter-spacing: .08em; color: var(--text-dim); text-align: left;
+}
+.chronoFeuille { max-height: 320px; overflow-y: auto; }
+.ligneFeuille {
+  display: flex; align-items: baseline; gap: 10px;
+  padding: 5px 10px; border-radius: 6px; font-size: 13px; text-align: left;
+}
+.ligneFeuille + .ligneFeuille { margin-top: 3px; }
+.ligneFeuille.gauche { background: rgba(120, 170, 255, .12); }
+.ligneFeuille.droite { background: rgba(255, 150, 120, .12); }
+.ligneFeuille.repere {
+  background: none; border-top: 1px dashed var(--bordure, #333);
+  justify-content: center; color: var(--text-dim); font-size: 12px;
+  margin-top: 8px; padding-top: 10px;
+}
+.minuteFeuille {
+  font-variant-numeric: tabular-nums; color: var(--text-dim);
+  min-width: 36px; flex: 0 0 auto;
+}
+.faitFeuille { flex: 1 1 auto; }
+.equipeFeuille { color: var(--text-dim); }
+.scoreFeuille {
+  font-weight: 700; font-variant-numeric: tabular-nums;
+  flex: 0 0 auto; margin-left: 10px;
+}
+.ligneStatMatch {
+  display: grid; grid-template-columns: 4rem 1fr 4rem;
+  align-items: center; gap: 10px; padding: 5px 0; font-size: 13px;
+}
+.ligneStatMatch + .ligneStatMatch { border-top: 1px solid rgba(255,255,255,.05); }
+.ligneStatMatch .libelleStat { text-align: center; color: var(--text-dim); font-size: 12px; }
+.ligneStatMatch .valA { text-align: right; font-variant-numeric: tabular-nums; }
+.ligneStatMatch .valB { text-align: left; font-variant-numeric: tabular-nums; }
+.ligneStatMatch .fort { font-weight: 700; color: var(--accent, #7ab8ff); }
+.feuilleDeMatch .ligneStat { text-align: left; }

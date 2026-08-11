@@ -429,6 +429,28 @@
     return base + (j.plaquage - 60) * 0.2 + (puissance - 60) * 0.25;
   }
 
+  // --- Chronologie du match (TODO_AUDIT.md P1-52) --------------------------
+  //
+  // `events` est une FENÊTRE GLISSANTE de 30 entrées, dimensionnée pour le fil
+  // temps réel (5 lignes à l'écran). Mesuré sur un match complet : les 30
+  // événements restants sont TOUS postérieurs à la 78e minute — tout le reste
+  // du match a été jeté. Impossible, donc, de raconter la rencontre : ni
+  // marqueurs, ni minutes, ni compte rendu après une simulation.
+  //
+  // La chronologie garde, elle, les FAITS MARQUANTS de tout le match : ce
+  // qu'un journal de match imprimerait. Bornée aussi (un match en produit une
+  // vingtaine, jamais des milliers), mais assez large pour n'en perdre aucun.
+  const CHRONOLOGIE_MAX = 400;
+  const TYPES_CHRONOLOGIE = new Set([
+    // Points marqués ou manqués
+    'ESSAI', 'ESSAI_PENALITE', 'TRANSFORMATION_REUSSIE', 'TRANSFORMATION_RATEE',
+    'PENALITE_REUSSIE', 'PENALITE_RATEE', 'DROP_GOAL_REUSSI', 'DROP_GOAL_RATE',
+    // Discipline
+    'CARTON_JAUNE', 'PENALITE', 'PENALITE_RUCK_ISOLE',
+    // Repères de lecture et mouvements
+    'MI_TEMPS', 'FIN_MATCH', 'REMPLACEMENT',
+  ]);
+
   // Force spécifique de mêlée (technique de poussée organisée), distincte du
   // maul : pondérée par l'attribut "melee" (0-100) plutôt que par la
   // puissance brute — un pack technique domine même sans être le plus lourd.
@@ -683,6 +705,7 @@
         .map((r) => ({ equipe: r.equipe, numero: r.numero, joueur: r.joueur, instant: r.minute * 60, applique: false }));
       this.score = { A: 0, B: 0 };
       this.events = [];
+      this.chronologie = [];
       this.tempsMatch = 0;
       this.dureeMatch = dureeMatch;
       // Échelle des temps d'arrêt (essai/transformation/pénalité au but) : ces
@@ -827,8 +850,17 @@
     // id : identifiant croissant, pour détecter côté client "un nouvel événement vient
     // d'arriver" même après que le tableau ait été tronqué (shift) à 30 entrées.
     log(type, team, message) {
-      this.events.push({ id: ++this._sequenceEvenement, type, team, message, t: this.tempsMatch });
+      const evenement = { id: ++this._sequenceEvenement, type, team, message, t: this.tempsMatch };
+      this.events.push(evenement);
       if (this.events.length > 30) this.events.shift();
+      // Fait marquant : conservé pour TOUT le match (cf. CHRONOLOGIE_MAX).
+      // C'est cette liste, et pas `events`, qui permet de raconter la
+      // rencontre après coup.
+      if (TYPES_CHRONOLOGIE.has(type) && this.chronologie.length < CHRONOLOGIE_MAX) {
+        this.chronologie.push(Object.assign({
+          minute: Math.max(0, Math.floor(evenement.t / 60)),
+        }, evenement));
+      }
     }
 
     // Coup d'envoi / remise en jeu (loi 12) : l'équipe "equipeReceptrice" est
@@ -5191,6 +5223,7 @@
         dureeMatch: this.dureeMatch,
         periode: this.miTempsJouee ? 2 : 1,
         events: this.events.slice(),
+        chronologie: this.chronologie.slice(),
         // Statistiques agrégées réelles (cf. constructeur) : pour outillage de
         // calibrage (simulateBatch) et affichage éventuel, jamais recalculées
         // après coup à partir d'autre chose que ces compteurs.
@@ -5221,5 +5254,5 @@
 
   return { MatchEngine, LONGUEUR, LARGEUR, creerRng, distance, DEFAULT_CONFIG, fusionnerConfig,
     tirerSauteurPondere, forceTouche, probaVolTouche, COEF_LISIBILITE_TOUCHE,
-    effetPousseeMelee };
+    effetPousseeMelee, CHRONOLOGIE_MAX, TYPES_CHRONOLOGIE };
 });

@@ -42,6 +42,10 @@
       ball: rawState.ball,
       currentEvent: rawState.events.length ? rawState.events[rawState.events.length - 1] : null,
       eventLog: rawState.events,
+      // Faits marquants de TOUT le match (cf. CHRONOLOGIE_MAX) : `eventLog`
+      // est une fenêtre glissante de 30 entrées, dimensionnée pour le fil
+      // temps réel, et ne peut donc pas servir de compte rendu.
+      chronologie: rawState.chronologie || [],
       ruck: rawState.ruck,
       maul: rawState.maul,
       melee: rawState.melee,
