@@ -2601,3 +2601,85 @@ volé par l'adversaire.
 Avec deux sauteurs désignés, le même bandeau affiche +1,8. Le chiffre est
 celui que le moteur applique (`COEF_LISIBILITE_TOUCHE`), pas une estimation —
 vérifié en pilotant le jeu.
+
+## P1-51 — La poussée en mêlée (livrée)
+
+`server/test-melee.js` — 9 vérifications, 7 rouges avant ce patch (seul M8,
+l'ordre de grandeur, passait déjà), toutes vertes après. Plus un pilotage réel
+du jeu.
+
+### Le problème mesuré
+
+`_meleeCalculerDiff` calcule l'issue de la mêlée à partir des joueurs (somme
+des `forceMelee`, bonus piliers, technique du talonneur), du score, des
+conditions et du hasard. Elle ne lit **aucune clé de `cfgMelee`**.
+
+Vérifié en jouant : poser `meleeA.reculTroisQuarts = 12` donne exactement le
+même résultat que le défaut (**81/94 mêlées gagnées dans les deux cas**) — la
+clé traverse toute la chaîne de config mais n'atteint jamais la contestation.
+Le seul réglage que le Mode Club posait sur la mêlée (`pickAndGoHuit`, axe
+« Jeu d'avants ») décide de ce qu'on fait du ballon **une fois sorti**.
+
+Depuis P1-49 le manager recrute ses piliers sur leur `melee` (40 % de leur
+note au poste) et le moteur s'en sert — mais le manager ne pouvait rien
+choisir. La touche venait de recevoir son arbitrage (P1-50/50b) ; la mêlée
+n'en avait aucun.
+
+### Ce qui change
+
+Un **7ᵉ axe tactique**, « Poussée en mêlée » : *Dominer* / *Équilibré* /
+*Sortir vite*. Réglable par équipe, converti en `meleeA/meleeB.poussee`,
+déduit aussi pour les clubs consultés (à partir de la mêlée moyenne réelle de
+leur groupe).
+
+### Une première version inerte, corrigée
+
+Ma première implémentation n'ajoutait qu'un bonus de différentiel (+10).
+Mesuré : le taux de mêlées gagnées **baissait** de 85,9 % à 79,6 %.
+
+Diagnostic : `probaVol = 0,05 − diff/300`, **borné à 0,02**. Or l'avantage
+d'introduction vaut déjà 18 :
+
+```
+diff   0 -> 0,050     diff   8 -> 0,023
+diff  18 -> 0,020     diff  28 -> 0,020
+```
+
+À packs égaux, la valeur est **déjà au plancher** : un bonus de différentiel
+n'y change rien. Seul le coût (facteur de faute) s'appliquait — l'option était
+strictement mauvaise. J'ai ajouté un terme **dédié**, `bonusVol`, qui agit
+directement sur la contestation : un pack qui pousse contre l'introduction
+adverse contre réellement plus (0,02 → 0,07).
+
+### Ce que je n'ai PAS pu mesurer
+
+L'ampleur de l'effet en match reste invérifiable à cette échelle : selon la
+consigne, le nombre même de mêlées change (115 contre 134 sur douze matchs),
+donc les taux ne sont pas comparables. Les pénalités concédées oscillent entre
+6,2 et 7,0 par match toutes causes confondues — l'effet spécifique à la mêlée
+y est dilué.
+
+La règle est donc vérifiée **directement** (M1bis, M3), et le test de match
+(M7) n'affirme que ce qu'il démontre : la consigne produit un déroulé
+différent. Même méthode qu'en P1-50b, pour la même raison.
+
+### À l'écran
+
+```
+Poussée en mêlée
+  Dominer      Le pack pousse à fond : il fait reculer l'adversaire et
+               conteste ses introductions.
+  Équilibré    Poussée normale, sans surengagement.
+  Sortir vite  Le pack sécurise et libère le ballon sans chercher le duel.
+
+⚖️ Contre bien plus souvent les mêlées adverses et gagne du terrain — mais
+   quand c'est TON pack qui recule, il s'écroule et pousse en travers 50 %
+   plus souvent, et ce sont des PÉNALITÉS.
+```
+
+### Un oubli attrapé par un test existant
+
+`deduireTactiqueAdverse` doit couvrir TOUS les axes : le test de parcours a
+échoué tant que le nouvel axe n'y était pas. La consigne d'un club consulté
+est maintenant déduite de la mêlée moyenne de son groupe — la même donnée que
+celle sur laquelle le manager recrute.

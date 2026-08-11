@@ -65,7 +65,7 @@
   // --- Recommandation tactique (TODO_AUDIT.md P1-16, ROADMAP_FOOTBALL_MANAGER.md
   // domaines 1+3) : l'analyse de l'adversaire (ci-dessus) était purement
   // informative — le manager devait interpréter lui-même les écarts et
-  // régler les 6 axes tactiques à la main, sans aucun lien automatique.
+  // régler les 7 axes tactiques à la main, sans aucun lien automatique.
   // Règle simple et déterministe : un écart marqué (>= seuil) sur un
   // attribut de comparaison propose un réglage précis d'UN axe tactique
   // (jamais deux attributs sur le même axe, pour rester lisible) — jamais

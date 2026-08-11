@@ -354,12 +354,12 @@
   }
   const LIBELLE_FORME = { v: 'V', n: 'N', d: 'D' };
 
-  // 6 axes INDÉPENDANTS qui se combinent (cf. RMClub.AXES_TACTIQUE) — pas un
+  // 7 axes INDÉPENDANTS qui se combinent (cf. RMClub.AXES_TACTIQUE) — pas un
   // choix unique parmi des templates figés : le joueur compose sa tactique
   // comme les instructions d'équipe d'un vrai jeu de gestion. La boucle
   // s'adapte automatiquement au nombre d'axes définis côté modèle.
   // Écran UNIQUE de tactique (TODO_AUDIT.md P1-19) : premier XV, Équipe B,
-  // Espoirs ou club adverse — mêmes 6 axes, même présentation, mêmes
+  // Espoirs ou club adverse — mêmes 7 axes, même présentation, mêmes
   // composants. Seule différence pour une équipe non dirigée : les boutons
   // sont désactivés et la tactique affichée est DÉDUITE de ses attributs
   // réels (cf. RMClub.deduireTactiqueAdverse), signalée comme telle plutôt
@@ -4995,7 +4995,7 @@
     ].join('');
 
     // Recommandation tactique (TODO_AUDIT.md P1-16) : relie enfin l'analyse
-    // ci-dessus à un vrai réglage actionnable des 6 axes tactiques, plutôt
+    // ci-dessus à un vrai réglage actionnable des 7 axes tactiques, plutôt
     // que de laisser le joueur interpréter seul les écarts.
     dernieresRecommandationsTactique = RMClub.recommanderTactique(analyse);
     const recommandationsHTML = dernieresRecommandationsTactique.length

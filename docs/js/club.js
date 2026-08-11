@@ -274,7 +274,7 @@
       // Personnel : organigramme vide au départ, à recruter sur marchePersonnel.
       sponsor: genererSponsor(rng, niveauClub),
       personnel: [],
-      tactique: { style: 'equilibre', avants: 'equilibre', rythme: 'normal', ligneDef: 'normale', pied: 'normal', toucheMaul: 'equilibre' },
+      tactique: { style: 'equilibre', avants: 'equilibre', rythme: 'normal', ligneDef: 'normale', pied: 'normal', toucheMaul: 'equilibre', poussee: 'equilibre' },
       // Historique financier (derniers mouvements, pour l'onglet Finances) et
       // statistiques cumulées de la saison (pour l'onglet Statistiques) — vides
       // au départ, alimentés au fil des matchs joués par le club du joueur.
@@ -522,6 +522,18 @@
         sol: { nom: 'Jeu au sol', description: 'Sort vite le ballon de touche, évite le maul.', compromis: 'Ballon disponible plus vite pour le jeu au large, mais renonce à l\'avancée physique du maul.', touche: { tauxMaul: { proche: 0.15, loin: 0.02 } } },
         equilibre: { nom: 'Équilibré', description: 'Maul selon l\'opportunité, comme la moyenne.', compromis: 'Réglage neutre du moteur — aucun compromis appliqué.', touche: null },
         maul: { nom: 'Conquête (maul)', description: 'Cherche systématiquement le maul après une touche gagnée en zone proche.', compromis: 'Très efficace près de la ligne adverse (essais de maul), mais expose à l\'écroulement/pénalité si le pack est dominé.', touche: { tauxMaul: { proche: 0.85, loin: 0.15 } } },
+      },
+    },
+    // Poussée en mêlée (TODO_AUDIT.md P1-51) — le premier levier du manager
+    // sur la CONTESTATION elle-même. Avant, aucun réglage n'atteignait
+    // `_meleeCalculerDiff` : l'axe « Jeu d'avants » ci-dessus ne décide que de
+    // ce qu'on fait du ballon une fois sorti.
+    poussee: {
+      label: 'Poussée en mêlée', defaut: 'equilibre',
+      options: {
+        dominer: { nom: 'Dominer', description: 'Le pack pousse à fond : il fait reculer l\'adversaire et conteste ses introductions.', compromis: 'Contre bien plus souvent les mêlées adverses et gagne du terrain — mais quand c\'est TON pack qui recule, il s\'écroule et pousse en travers 50 % plus souvent, et ce sont des PÉNALITÉS.', melee: { poussee: 'dominer' } },
+        equilibre: { nom: 'Équilibré', description: 'Poussée normale, sans surengagement.', compromis: 'Réglage neutre du moteur — aucun compromis appliqué.', melee: null },
+        sortirVite: { nom: 'Sortir vite', description: 'Le pack sécurise et libère le ballon sans chercher le duel de poussée.', compromis: 'Près de deux fois moins de pénalités concédées en mêlée, et moins de risque de se faire contrer — mais cède du terrain, et ne conteste plus les introductions adverses.', melee: { poussee: 'sortirVite' } },
       },
     },
   };

@@ -168,6 +168,11 @@
       pied: jeuPied >= 58 ? 'frequent' : jeuPied <= 46 ? 'rare' : 'normal',
       ligneDef: plaquage >= 62 ? 'haute' : plaquage <= 50 ? 'basse' : 'normale',
       toucheMaul: (melee + touche) / 2 >= 60 ? 'maul' : (melee + touche) / 2 <= 50 ? 'sol' : 'equilibre',
+      // Poussée en mêlée (P1-51) : déduite de la mêlée MOYENNE du groupe, la
+      // même donnée que celle sur laquelle le manager recrute ses piliers.
+      // Un pack qui pousse fort cherche le duel ; un pack faible sort vite
+      // plutôt que de concéder des pénalités.
+      poussee: melee >= 62 ? 'dominer' : melee <= 50 ? 'sortirVite' : 'equilibre',
     };
   }
 

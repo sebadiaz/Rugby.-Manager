@@ -12,7 +12,7 @@
   'use strict';
 
   // Config moteur (attaque/défense/mêlée/touche PAR ÉQUIPE) résultant de la
-  // COMBINAISON des 6 axes — `tactique` peut être partiel ou absent, chaque
+  // COMBINAISON des 7 axes — `tactique` peut être partiel ou absent, chaque
   // axe retombe sur son défaut (comportement du moteur inchangé si rien
   // n'est choisi, et compatible avec une ancienne sauvegarde à 3 axes).
   function tactiqueVersConfig(tactique) {
@@ -24,12 +24,17 @@
       return AXES_TACTIQUE[axe].options[t[axe]] || AXES_TACTIQUE[axe].options[AXES_TACTIQUE[axe].defaut];
     }
     const optStyle = option('style'), optAvants = option('avants'), optRythme = option('rythme'),
-      optPied = option('pied'), optLigne = option('ligneDef'), optToucheMaul = option('toucheMaul');
+      optPied = option('pied'), optLigne = option('ligneDef'), optToucheMaul = option('toucheMaul'),
+      optPoussee = option('poussee');
     const attaque = Object.assign({}, optStyle.attaque || null, optPied.attaque || null);
+    // Deux axes écrivent dans `melee` (« Jeu d'avants » pose le pick-and-go,
+    // « Poussée en mêlée » la consigne de poussée) : ils FUSIONNENT. Les
+    // écraser l'un l'autre ferait perdre silencieusement un réglage choisi.
+    const melee = Object.assign({}, optAvants.melee || null, optPoussee.melee || null);
     const cfg = {};
     if (Object.keys(attaque).length) cfg.attaque = attaque;
     if (optLigne.defense) cfg.defense = optLigne.defense;
-    if (optAvants.melee) cfg.melee = optAvants.melee;
+    if (Object.keys(melee).length) cfg.melee = melee;
     if (optRythme.ruck) cfg.ruck = optRythme.ruck;
     if (optToucheMaul.touche) cfg.touche = optToucheMaul.touche;
     return cfg;

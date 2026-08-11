@@ -143,6 +143,9 @@
     melee: {
       reculTroisQuarts: 7.5,
       pickAndGoHuit: { dominant: 0.35, normal: 0.12 },
+      // Consigne de poussée (P1-51), réglable par équipe via meleeA/meleeB :
+      // 'dominer', 'equilibre' (défaut, comportement historique), 'sortirVite'.
+      poussee: 'equilibre',
     },
     // Organisation d'attaque : taux de jeu au large (écarter vers le centre en
     // espace) sous pression / au calme. Cadence ~1 passe/s max : un receveur
@@ -433,6 +436,44 @@
     const base = j.numero <= 8 ? 80 : 40;
     const melee = typeof j.melee === 'number' ? j.melee : 60;
     return base + (j.plaquage - 60) * 0.15 + (melee - 60) * 0.35;
+  }
+
+  // --- Consigne de poussée en mêlée (TODO_AUDIT.md P1-51) ------------------
+  //
+  // Avant, `_meleeCalculerDiff` ne lisait AUCUNE clé de `cfgMelee` : l'issue
+  // de la mêlée dépendait des joueurs, du score, des conditions et du hasard,
+  // et le manager ne pouvait rien décider. Vérifié en jouant : poser
+  // `meleeA.reculTroisQuarts = 12` donnait exactement le même résultat que le
+  // défaut (81/94 mêlées gagnées dans les deux cas). Le seul réglage
+  // disponible (`pickAndGoHuit`) décide de ce qu'on fait du ballon UNE FOIS
+  // SORTI, jamais de la poussée.
+  //
+  // Comme pour la touche (P1-50b), la consigne doit avoir un COÛT, sinon
+  // « dominer » serait toujours le bon choix et il n'y aurait pas d'arbitrage.
+  // Pousser fort gagne du terrain et des ballons, mais expose à l'écroulement
+  // et au pilier en travers — deux pénalités, pas des coups francs.
+  //
+  // Fonction PURE et exportée : c'est une règle du jeu, elle se vérifie
+  // directement plutôt qu'à travers la moyenne bruitée de quelques matchs.
+  // `bonusVol` agit DIRECTEMENT sur la probabilité de contre en mêlée, et pas
+  // seulement via `bonusDiff`. Raison mesurée : `probaVol` vaut
+  // `0,05 - diff/300` borné à 0,02, et l'avantage d'introduction (18) suffit
+  // déjà à coller la valeur au plancher — un bonus de différentiel n'y change
+  // donc RIEN dans des conditions normales. Vérifié :
+  //     diff   0 -> 0,050    diff   8 -> 0,023
+  //     diff  18 -> 0,020    diff  28 -> 0,020
+  // Première version de ce patch : +10 de différentiel et rien d'autre. Le
+  // taux de mêlées gagnées passait de 85,9 % à 79,6 % — l'effet était inerte
+  // et seul le coût s'appliquait. Un pack qui pousse fort CONTRE
+  // l'introduction doit vraiment contrer davantage : c'est ce que `bonusVol`
+  // exprime.
+  const EFFETS_POUSSEE_MELEE = {
+    dominer: { bonusDiff: 10, bonusVol: 0.05, facteurFaute: 1.5 },
+    equilibre: { bonusDiff: 0, bonusVol: 0, facteurFaute: 1 },
+    sortirVite: { bonusDiff: -8, bonusVol: -0.02, facteurFaute: 0.6 },
+  };
+  function effetPousseeMelee(poussee) {
+    return EFFETS_POUSSEE_MELEE[poussee] || EFFETS_POUSSEE_MELEE.equilibre;
   }
 
   // Force de contestation en touche : pondérée par l'attribut "touche"
@@ -3859,8 +3900,15 @@
       const fatigue = (this.dureeMatch === Infinity || this.dureeMatch <= 0) ? 0 : Math.min(1, this.tempsMatch / this.dureeMatch);
       const moral = Math.max(-4, Math.min(4, (this.score[m.equipeIntroduction] - this.score[m.equipeNonIntroduction]) / 5));
       const avantageIntroduction = 18;
+      // Consigne de poussée de CHAQUE camp (P1-51) : c'est le premier levier
+      // du manager sur la contestation elle-même. Le neutre vaut 0 des deux
+      // côtés, donc le comportement historique est strictement inchangé tant
+      // que rien n'est réglé.
+      const pousseeIntro = effetPousseeMelee(this.cfgMelee[m.equipeIntroduction].poussee).bonusDiff;
+      const pousseeDef = effetPousseeMelee(this.cfgMelee[m.equipeNonIntroduction].poussee).bonusDiff;
       return (puissanceIntro - puissanceDef) + (piliersIntro - piliersDef) * 0.5
         + techniqueTalonneur + moral + avantageIntroduction
+        + (pousseeIntro - pousseeDef)
         + m.conditions * 40 + (this.rng() - 0.5) * (10 + fatigue * 10);
     }
 
@@ -3910,11 +3958,15 @@
         // (écroulement/pilier en travers) : un pack indiscipliné y cède
         // nettement plus souvent qu'un pack rigoureux.
         const facteurDiscEcroulement = facteurDiscipline(campEnDifficulte === 'A' ? this.equipeA : this.equipeB);
-        seuil += (distLigneDef < 5 ? 0.05 * dt : 0.008 * dt) * facteurDiscEcroulement;
+        // Le COÛT de la consigne (P1-51) : un pack qui pousse à fond
+        // s'écroule et se met en travers plus souvent. C'est ce qui fait de
+        // « dominer » un arbitrage et non une option gratuite.
+        const facteurPoussee = effetPousseeMelee(this.cfgMelee[campEnDifficulte].poussee).facteurFaute;
+        seuil += (distLigneDef < 5 ? 0.05 * dt : 0.008 * dt) * facteurDiscEcroulement * facteurPoussee;
         if (r < seuil) {
           return { type: 'ECROULEMENT', equipeFautive: campEnDifficulte, gravite: 'PENALITE', message: 'ecroulement volontaire de la melee', delibere: true };
         }
-        seuil += 0.0025 * dt * facteurDiscEcroulement;
+        seuil += 0.0025 * dt * facteurDiscEcroulement * facteurPoussee;
         if (r < seuil) {
           return { type: 'PILIER_TRAVERS', equipeFautive: campEnDifficulte, gravite: 'PENALITE', message: 'pilier qui pousse en travers (boring in)', delibere: false };
         }
@@ -4043,7 +4095,14 @@
     _meleeResoudreContestation() {
       const m = this.melee;
       const intro = m.equipeIntroduction, nonIntro = m.equipeNonIntroduction;
-      const probaVol = Math.max(0.02, Math.min(0.35, 0.05 - m.diff / 300));
+      // Consigne de poussée (P1-51) : le camp qui pousse à fond CONTRE
+      // l'introduction contre davantage ; celui qui cherche à sortir vite se
+      // protège. Terme séparé du différentiel, qui est déjà saturé (cf.
+      // EFFETS_POUSSEE_MELEE).
+      const volDef = effetPousseeMelee(this.cfgMelee[nonIntro].poussee).bonusVol;
+      const volIntro = effetPousseeMelee(this.cfgMelee[intro].poussee).bonusVol;
+      const probaVol = Math.max(0.02, Math.min(0.35,
+        0.05 - m.diff / 300 + volDef - volIntro));
       if (this.rng() < probaVol) {
         m.vainqueur = nonIntro; m.qualite = 'VOLE';
         this.stats[nonIntro].turnovers++;
@@ -5161,5 +5220,6 @@
   }
 
   return { MatchEngine, LONGUEUR, LARGEUR, creerRng, distance, DEFAULT_CONFIG, fusionnerConfig,
-    tirerSauteurPondere, forceTouche, probaVolTouche, COEF_LISIBILITE_TOUCHE };
+    tirerSauteurPondere, forceTouche, probaVolTouche, COEF_LISIBILITE_TOUCHE,
+    effetPousseeMelee };
 });
