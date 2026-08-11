@@ -2950,3 +2950,157 @@ pas de ballons (marge 4 points ≈ 2 erreurs-types). La preuve *positive* que la
 désignation est payante existe déjà au bon endroit : **T8bis**, qui la vérifie
 directement sur la règle `probaVolTouche`, sans moyenne bruitée — la méthode
 retenue depuis P1-50b. T8bis passe avant comme après.
+
+---
+
+## G1 — L'effectif ne doit plus devenir une pouponnière (livrée)
+
+### Comportement actuel observé (mesuré, pas déduit)
+
+Carrière de 8 saisons, graine 2026, effectif du club du joueur :
+
+| Saison | Âge moyen | Âge max | < 23 ans | > 29 ans | Niveau moyen | Masse salariale |
+|---|---|---|---|---|---|---|
+| 1 | 26,8 | 34 | 5/24 | 8/24 | 55,1 | 594 k€ |
+| 3 | 25,3 | 34 | 10/24 | 8/24 | 52,5 | 583 k€ |
+| 4 | 23,7 | 34 | 15/24 | 6/24 | 51,4 | 537 k€ |
+| **5** | **19,4** | **21** | **24/24** | **0/24** | 51,4 | 477 k€ |
+| 8 | 19,8 | 21 | 24/24 | 0/24 | 48,7 | 483 k€ |
+
+Au bout de quatre saisons, **il ne reste plus un seul joueur de plus de
+22 ans**, et l'effectif ne s'en relève jamais.
+
+Le monde entier suivait, puisque les clubs IA vieillissent par la MÊME
+fonction (`vieillirClubIA` appelle `RMClub.vieillirEffectif`) — 13 clubs,
+~325 joueurs suivis :
+
+| Saison | Âge moyen IA | Doyen | Joueurs de plus de 29 ans |
+|---|---|---|---|
+| 1 | 25,5 | 34 | 79 |
+| 5 | 24,0 | 36 | 68 |
+| 7 | **20,5** | 36 | **9** |
+
+Le championnat devenait une compétition de juniors.
+
+### Pourquoi c'était insuffisant pour le joueur
+
+Un effectif de rugby à XV, c'est une pyramide : quelques espoirs, un gros bloc
+de joueurs confirmés, quelques cadres de 30-34 ans qui tiennent la mêlée et le
+vestiaire. Ici, au bout de quatre saisons, le manager dirigeait une équipe de
+juniors et affrontait des équipes de juniors. Plus de cadres, plus de
+hiérarchie : le statut promis (cadre/rotation/espoir, P1-45) perd son sens
+quand tout le monde a 19 ans, la masse salariale s'effondre de 20 % et avec
+elle tout arbitrage financier, et le mercato perd son objet. La carrière
+longue — la raison d'être d'un jeu de gestion — se vidait.
+
+### Fonction exacte responsable
+
+`docs/js/club.js`, `vieillirEffectif`, la boucle de remplacement :
+
+```js
+const jeune = global.RMClub.genererJoueurEtendu(posteManquant, rng, niveauClub);
+jeune.age = 18 + Math.floor(rng() * 3); // jeunes espoirs, 18-20 ans
+jeune.contrat = 2 + Math.floor(rng() * 2);
+```
+
+**Tous** les départs — retraites et fins de contrat, à tout âge — étaient
+remplacés par des joueurs de 18 à 20 ans. La pyramide ne pouvait que
+s'effondrer.
+
+Effet de bord de la même ligne : `genererJoueurEtendu` avait déjà calculé
+`potentiel` à partir de l'âge qu'il avait tiré (18-35). Écraser l'âge **après
+coup** laissait un espoir de 18 ans avec le potentiel d'un joueur de 30 ans —
+mesuré : **potentiel 53 pour un niveau de 55,8**, soit un espoir sans aucune
+marge de progression.
+
+### Scénario de reproduction
+
+Jouer huit saisons complètes et relever la répartition des âges de l'effectif
+à chaque intersaison. Conservé sous forme de test.
+
+### Test qui devait échouer AVANT la correction
+
+`server/test-pyramide-ages.js` — 8 vérifications, **6 rouges avant ce patch** :
+
+```
+FAIL Y1  une pyramide cible doit exister
+FAIL Y2  RMClub.ageRecrueIntersaison is not a function
+FAIL Y3  l'âge moyen d'un effectif pro tient entre 23 et 29 ans
+         (S5 : 19.4 ans, max 21, 0 de plus de 29 ...)
+FAIL Y4  un effectif de 24 compte au moins deux joueurs de 30 ans et plus
+FAIL Y5  un joueur de 18 ans doit avoir une marge de progression
+         (potentiel 53, niveau 55.8)
+FAIL Y7  les clubs adverses gardent eux aussi une pyramide
+         (S1 25.5 | S5 24.0 | S7 20.5 | S8 20.8)
+OK   Y6  les contrats n'expirent pas tous en même temps
+OK   Y8  taille d'effectif et couverture des postes intactes
+```
+
+Y6 et Y8 étaient verts **avant** : ce sont les garde-fous du patch, pas ses
+preuves.
+
+### La correction
+
+Une pyramide cible explicite, et une règle **pure et exportée** qui comble la
+tranche la plus déficitaire — la règle se vérifie directement, sans jouer une
+carrière entière (même méthode que P1-50b/P1-51/P1-53) :
+
+```js
+const PYRAMIDE_AGES = [
+  { min: 18, max: 21, part: 0.18 }, // espoirs
+  { min: 22, max: 25, part: 0.30 }, // en développement
+  { min: 26, max: 29, part: 0.32 }, // au sommet
+  { min: 30, max: 34, part: 0.20 }, // cadres
+];
+ageRecrueIntersaison(effectif, rng)   // comble la tranche qui manque
+contratRecrueIntersaison(age, rng)    // 3-4 saisons pour un espoir, 1-2 pour un cadre
+```
+
+L'âge est désormais décidé **avant** la génération : `genererJoueurEtendu`
+accepte `options.age` et calcule le potentiel à partir de l'âge réel. Le
+tirage d'âge interne reste consommé dans tous les cas, pour que l'ordre des
+appels à `rng()` ne dépende pas du chemin d'appel.
+
+### Résultat mesuré (même protocole)
+
+Club du joueur :
+
+| Saison | Âge moyen | Doyen | > 29 ans | Niveau moyen | Masse |
+|---|---|---|---|---|---|
+| 1 | 26,8 | 34 | 8 | 55,1 | 594 |
+| 3 | 27,8 | 36 | 11 | 54,0 | 633 |
+| 5 | **26,0** | **32** | **5** | 54,4 | 660 |
+| 8 | **26,0** | **34** | **5** | **54,6** | 641 |
+
+Le monde : âge moyen IA **26,0** en S8 (contre 20,5), et **71 joueurs de plus
+de 29 ans sur 328** (22 %) contre 9 sur 325 (2,8 %).
+
+Le niveau moyen ne s'érode plus (54-55 stable contre 55,1 → 48,7).
+
+### Coût financier vérifié
+
+La masse salariale remonte vers son niveau de départ (594 → 622-660 k€) au
+lieu de s'effondrer à 477. Mesuré sur 8 saisons avec `appliquerFinancesMatch`,
+le **même appel que le jeu réel** : excédent annuel **6 110-6 385 k€ avant,
+5 890-6 220 après, soit −4 %**. Le club reste très largement bénéficiaire ;
+aucun risque de faillite introduit.
+
+### Deux erreurs de mesure de ma part, corrigées
+
+1. Mon premier harnais lisait le budget après `enregistrerResultatClubJoueur`
+   et le trouvait **figé à 390 k€ sur 8 saisons**. Faux : les finances ne
+   s'appliquent qu'à la résolution réelle d'une journée
+   (`appliquerFinancesMatch`, appelé depuis `clubUI.js`), que ce chemin
+   court-circuite. Ce n'est pas un défaut du jeu.
+2. Y5 échouait encore après correction : je comparais le potentiel à une
+   moyenne de **quatre** attributs alors que `genererPotentiel` le calcule sur
+   **sept**. C'était mon test qui était faux, pas le code — corrigé dans le
+   test, pas dans le moteur.
+
+### Observation NON établie, à vérifier séparément
+
+Sur ce même harnais, le club accumule de l'ordre de 6 M€ d'excédent par saison
+(50 M€ après huit saisons) pour un budget de départ de 390 k€. Le chiffre
+absolu n'est **pas** fiable ici : le harnais compte 60 journées financières par
+saison, ce qui doit être confronté au déroulé réel dans l'interface avant d'en
+conclure quoi que ce soit. À instruire à part.

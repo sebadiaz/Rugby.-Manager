@@ -16,12 +16,22 @@
   // Génère un joueur pour une CATÉGORIE de poste (effectif étendu, club du
   // joueur) — pas de numéro fixe : c'est la composition du jour qui choisit
   // qui porte quel maillot (cf. meilleureComposition).
-  function genererJoueurEtendu(poste, rng, niveauClub) {
+  // `options.age` : impose l'âge de la recrue AVANT le calcul du potentiel.
+  // Sans lui, le seul moyen de choisir l'âge était d'écraser `age` après coup
+  // — ce que faisait vieillirEffectif, laissant un espoir de 18 ans avec le
+  // potentiel calculé pour l'âge tiré au hasard (mesuré : potentiel 53 pour un
+  // niveau de 55,8, soit aucune marge de progression). Cf. TODO_AUDIT.md G1.
+  function genererJoueurEtendu(poste, rng, niveauClub, options) {
     const RMClub = global.RMClub;
     const base = RMClub.ARCHETYPE_PAR_POSTE[poste];
     const ecartNiveau = (niveauClub - 0.5) * 20;
     const bruit = () => (rng() * 12 - 6);
-    const age = 18 + Math.floor(rng() * 17);
+    const ageImpose = options && typeof options.age === 'number' ? options.age : null;
+    // Le tirage est consommé dans TOUS les cas : l'ordre des appels à rng()
+    // ne doit pas dépendre de la présence de l'option, sinon deux carrières
+    // de même graine divergeraient selon le chemin d'appel.
+    const ageTire = 18 + Math.floor(rng() * 17);
+    const age = ageImpose != null ? ageImpose : ageTire;
     const vitesse = RMClub.borneStat(base.vitesse + ecartNiveau + bruit());
     const plaquage = RMClub.borneStat(base.plaquage + ecartNiveau + bruit());
     const adresse = RMClub.borneAdresse((base.adresse != null ? base.adresse : 30) + ecartNiveau * 0.5 + bruit());

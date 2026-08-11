@@ -741,6 +741,57 @@
   // L'ordre des tirages `rng()` est strictement celui d'origine : la
   // trajectoire d'une carrière existante ne bouge pas d'un pouce.
   const ATTRIBUTS_VIEILLISSEMENT = ['vitesse', 'plaquage', 'melee', 'touche', 'puissance', 'endurance', 'passe', 'jeuPied', 'decision'];
+
+  // PYRAMIDE DES ÂGES d'un effectif professionnel de rugby à XV.
+  //
+  // Ce qui existait avant : tous les départs d'intersaison — retraites ET fins
+  // de contrat, à tout âge — étaient remplacés par des joueurs de 18 à 20 ans
+  // (`jeune.age = 18 + Math.floor(rng() * 3)`). La pyramide ne pouvait que
+  // s'effondrer. Mesuré sur une carrière de 8 saisons (graine 2026) :
+  //
+  //     S1  26,8 ans  (max 34, 8 joueurs de plus de 29 ans)
+  //     S5  19,4 ans  (max 21, AUCUN joueur de plus de 22 ans)
+  //     S8  19,8 ans  (max 21, idem — l'effectif ne s'en relève jamais)
+  //
+  // Le monde entier suivait, puisque les clubs IA vieillissent par cette même
+  // fonction (cf. club-mercato.js vieillirClubIA) : 25,5 ans de moyenne en
+  // S1, 20,5 en S7, et les joueurs de plus de 29 ans passaient de 79 à 9 sur
+  // ~325 suivis. Le championnat devenait une compétition de juniors.
+  //
+  // Les parts visent un effectif de club professionnel : un quart d'espoirs en
+  // formation, un gros bloc de joueurs confirmés, et des cadres de 30-34 ans
+  // qui tiennent la mêlée et le vestiaire.
+  const PYRAMIDE_AGES = [
+    { min: 18, max: 21, part: 0.18 }, // espoirs
+    { min: 22, max: 25, part: 0.30 }, // en développement
+    { min: 26, max: 29, part: 0.32 }, // au sommet
+    { min: 30, max: 34, part: 0.20 }, // cadres
+  ];
+
+  // Âge d'une recrue d'intersaison : on comble la tranche la plus DÉFICITAIRE
+  // par rapport à la pyramide cible. Fonction PURE et exportée — la règle se
+  // vérifie directement, sans passer par une carrière entière.
+  function ageRecrueIntersaison(effectif, rng) {
+    const liste = effectif || [];
+    const n = Math.max(1, liste.length);
+    let cible = PYRAMIDE_AGES[0], pireEcart = -Infinity;
+    for (const t of PYRAMIDE_AGES) {
+      let presents = 0;
+      for (const j of liste) if (j && j.age >= t.min && j.age <= t.max) presents++;
+      const ecart = t.part - presents / n;
+      if (ecart > pireEcart) { pireEcart = ecart; cible = t; }
+    }
+    return cible.min + Math.floor(rng() * (cible.max - cible.min + 1));
+  }
+
+  // Durée de contrat d'une recrue, cohérente avec son âge : un espoir signe
+  // long, un cadre de 32 ans signe court. Corrige au passage les vagues de
+  // départs synchronisées (toutes les recrues signaient 2 ou 3 saisons).
+  function contratRecrueIntersaison(age, rng) {
+    if (age <= 21) return 3 + Math.floor(rng() * 2); // 3-4 saisons
+    if (age <= 29) return 2 + Math.floor(rng() * 3); // 2-4 saisons
+    return 1 + Math.floor(rng() * 2);                // 1-2 saisons
+  }
   function vieillirEffectif(rng, effectif, niveauClub) {
     let reste = effectif.map((j) => {
       // Nouvelle saison, nouvelle fraîcheur : la fatigue et le compteur de
@@ -787,12 +838,16 @@
       for (const j of reste) compte[j.poste] = (compte[j.poste] || 0) + 1;
       const posteManquant = GABARIT_EFFECTIF.find((p) => (compte[p] || 0) < GABARIT_EFFECTIF.filter((x) => x === p).length)
         || choisir(rng, GABARIT_EFFECTIF);
-      const jeune = global.RMClub.genererJoueurEtendu(posteManquant, rng, niveauClub);
-      jeune.age = 18 + Math.floor(rng() * 3); // jeunes espoirs, 18-20 ans
-      jeune.contrat = 2 + Math.floor(rng() * 2);
-      jeune.salaire = calculerSalaire(jeune.vitesse, jeune.plaquage, jeune.age);
-      reste.push(jeune);
-      arrivees.push({ nom: jeune.nom, poste: jeune.poste });
+      // L'âge est décidé AVANT la génération : le potentiel du joueur est
+      // calculé à partir de son âge réel (cf. genererJoueurEtendu). L'écraser
+      // après coup, comme avant, donnait des espoirs de 18 ans sans aucune
+      // marge de progression (mesuré : potentiel 53 pour un niveau de 55,8).
+      const age = ageRecrueIntersaison(reste, rng);
+      const recrue = global.RMClub.genererJoueurEtendu(posteManquant, rng, niveauClub, { age });
+      recrue.contrat = contratRecrueIntersaison(recrue.age, rng);
+      recrue.salaire = calculerSalaire(recrue.vitesse, recrue.plaquage, recrue.age);
+      reste.push(recrue);
+      arrivees.push({ nom: recrue.nom, poste: recrue.poste });
     }
     return { reste, partis, arrivees };
   }
@@ -1152,6 +1207,7 @@
     POSTE_REQUIS, TAILLE_EFFECTIF_CIBLE,
     masseSalariale, tresorerie, appliquerFinancesMatch, appliquerFinancesMatchEquipeB,
     avancerSaison, vieillirEffectif,
+    PYRAMIDE_AGES, ageRecrueIntersaison, contratRecrueIntersaison,
     AXES_TACTIQUE,
     accumulerStats, enregistrerMouvementFinances,
     accumulerStatsJoueurs, classementMarqueurs,
