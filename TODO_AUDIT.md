@@ -2772,3 +2772,181 @@ de rucks quasi ininterrompu. C'est le sujet « T2 » déjà instruit plus haut
 dans ce fichier (le balayage de `rampeMontee` avait été documenté comme
 insuffisant, sans changement appliqué). **Ce patch ne le corrige pas** — il le
 rend enfin visible et chiffré à l'écran.
+
+---
+
+## P1-53 — Le ballon lent existe enfin au ruck (livrée)
+
+### Comportement actuel observé (mesuré, pas déduit)
+
+`DEFAULT_CONFIG.ruck` annonce, commentaire à l'appui, « exactement la
+distribution mesurée au France-Irlande 2026 », et `ANALYSE_MATCH_REEL.md`
+enregistrait cette calibration comme acquise (ligne « 47/39/14 % ✅ »).
+
+Instrumentation de l'entrée et de la sortie de la phase RUCK, 5 matchs
+complets (graines 7/11/23/42/99, 3100 rucks) :
+
+| | < 3 s | 3-6 s | > 6 s | moyenne |
+|---|---|---|---|---|
+| Durée **tirée** du profil | 54,8 % | 33,2 % | 12,0 % | 3,57 s |
+| Durée **réellement jouée** | **72,2 %** | 26,1 % | **1,7 %** | **2,52 s** |
+| Référence France-Irlande 2026 | 52-63 % | 21-33 % | ~10 % | — |
+
+**71,1 % des rucks étaient raccourcis en cours de phase**, et les rucks tirés
+à 6 s et plus étaient joués en **4,29 s** de moyenne. Le palier « ballon
+lent » du profil n'arrivait donc jamais à l'écran : 12 % annoncés, 1,7 %
+joués.
+
+### Pourquoi c'était insuffisant pour le joueur
+
+Le ballon lent est ce qui fait respirer un match : un ruck disputé, une
+défense qui a le temps de se replacer, une attaque obligée de changer de
+solution. Sans lui, tous les rucks se ressemblent, le match s'emballe et il
+n'y a plus de temps forts — c'est exactement le « enchaînement de rucks quasi
+ininterrompu » constaté en P1-52.
+
+### Fonction exacte responsable
+
+`engine/rugby-engine.js`, `_tickRuck` :
+
+```js
+const dureeEffective = serviceRapide
+  ? Math.min(dureeCible, Math.max(1.6 * this._echelleArret, dureeCible * 0.55))
+  : dureeCible;
+```
+
+Ce facteur 0,55 s'applique à la durée **déjà tirée**, alors que le profil
+contient déjà son palier de ballon rapide (55 % en 1,5-3 s) : la vitesse était
+comptée deux fois, et un ballon tiré à 7 s ressortait servi en 3,85 s.
+
+### Scénario de reproduction
+
+Jouer un match complet en enregistrant `tempsMatch` à l'entrée et à la sortie
+de `phase === 'RUCK'`, comparer à `ruckDureeCible`. Script conservé sous forme
+de test.
+
+### Test qui devait échouer AVANT la correction
+
+`server/test-ruck.js` — 7 vérifications, **7 rouges avant ce patch** :
+
+```
+FAIL R1  le moteur doit exposer la règle de sortie de ruck
+FAIL R2  RugbyEngine.dureeSortieRuck is not a function
+FAIL R3  RugbyEngine.dureeSortieRuck is not a function
+FAIL R4  RugbyEngine.dureeSortieRuck is not a function
+FAIL R5  tirée 3.57s 54.8/33.2/12.0 % | jouée 2.52s 72.2/26.1/1.7 %
+FAIL R6  un vrai match compte ~10 % de ballons lents (mesuré 1.7 %)
+FAIL R7  le volume de rucks doit se rapprocher d'un vrai match (620/match)
+```
+
+### La correction
+
+La mécanique de service rapide n'est **pas supprimée** — elle est bornée. En
+termes de rugby : un 9 déjà à la base *gagne du temps de sortie*, il ne
+transforme pas un ruck disputé en ballon rapide.
+
+Règle extraite en fonction **pure et exportée** (`dureeSortieRuck`), comme en
+P1-50b et P1-51 — l'effet est plus petit que le bruit d'un match, il se vérifie
+donc sur la règle et pas sur une moyenne :
+
+- gain borné à **0,9 s** (à l'échelle des arrêts de jeu) ;
+- jamais sous le **plancher du profil lui-même** (`_plancherSortieRuck`, début
+  du palier le plus rapide) ;
+- récompense intacte sur les ballons déjà rapides : 2,4 s → 1,5 s, donc sous le
+  seuil de 1,8 s qui ouvre la fenêtre « défense pas replacée »
+  (`_defenseTardive`).
+
+### Résultat mesuré (même protocole, 5 matchs)
+
+| | < 3 s | 3-6 s | > 6 s | moyenne |
+|---|---|---|---|---|
+| Avant | 72,2 % | 26,1 % | 1,7 % | 2,52 s |
+| **Après** | **60,4 %** | **31,6 %** | **7,9 %** | **3,04 s** |
+| Référence réelle | 52-63 % | 21-33 % | ~10 % | — |
+
+Les rucks tirés lents (cible ≥ 6 s) sont désormais joués **6,27 s** au lieu de
+4,29 s. En match dans le navigateur (graine 7) : durées de ruck de **1,50 s à
+7,75 s**, moyenne 3,04 s — avant, le maximum tenait sous 4,5 s.
+
+### Effet sur les volumes (16 matchs par version, graines 7×1..16)
+
+| | Avant | Après | Repère |
+|---|---|---|---|
+| Rucks | 649 | **595** | 70-180 |
+| Passes | 1462 | **1422** | ≈250-300 |
+| Plaquages | 660 | **643** | 120-250 |
+| Cycle de phase | 4,73 s | **5,21 s** | ~11,5 s |
+| Ballon en jeu | 61 % | **65 %** | ~44 % |
+| Essais / Points | 5,9 / 47,3 | 5,9 / 48,6 | 2-8 / 25-70 ✅ |
+| Mêlées / Touches | 20,5 / 23,5 | 18,2 / 23,6 | 8-25 / 15-35 ✅ |
+
+Le volume reste **très au-dessus** du réel : ce patch corrige une règle, il ne
+referme pas l'écart de tempo (−8 % de rucks). Il ne faut pas le lire comme la
+calibration de volume.
+
+### Régression assumée et chiffrée : −2 pénalités par match
+
+20 matchs par version (graines 13×1..20) :
+
+```
+AVANT  moyenne 12,65  écart-type 3,07
+APRÈS  moyenne 10,60  écart-type 3,69
+écart -2,05  erreur-type 1,07  soit 1,9 erreur-type
+```
+
+La baisse est concentrée sur `PENALITE_RUCK_ISOLE` (7,8 → 5,0/match) et fait
+passer le total sous le repère CLAUDE.md (12-30). **Elle n'a pas été
+compensée, et c'est délibéré** : la seule faute de regroupement modélisée est
+le « ballon non rendu » du porteur isolé. Calibrer aujourd'hui les fautes
+manquantes (mains dans le ruck, non-libération, hors-jeu au ruck) reviendrait
+à les régler sur un dénominateur faux — 595 rucks/match au lieu de ~180. Un
+taux réaliste (~4 % par ruck) donnerait ici 25 pénalités au lieu de 8.
+**Ordre correct : volume de rucks d'abord, fautes de regroupement ensuite.**
+
+### Une documentation corrigée
+
+`docs/ANALYSE_MATCH_REEL.md` affichait « Rucks < 3 s / 3-6 s / 6 s+ :
+47/39/14 % ✅ ». C'était faux pour le match joué. Le fichier porte désormais
+la mesure réelle, avant et après, ainsi que le fait que deux autres chiffres
+de ce tableau (rucks 519, passes 1112) ne se retrouvent plus dans le moteur
+actuel — des patchs postérieurs au balayage ont regonflé les volumes.
+
+### Un test rouge, et pourquoi il ne fallait PAS l'assouplir
+
+`server/test-touche.js` T9 (« désigner un VRAI spécialiste reste payant »)
+**passait au commit précédent et échouait après ce patch** :
+
+```
+FAIL T9  désigner le seul vrai sauteur doit rester gagnant malgré la lisibilité
+         (146/144 vs 139/137)
+```
+
+P1-53 ne touche pas la touche : il redistribue seulement le tirage aléatoire.
+Avant de conclure quoi que ce soit, deux vérifications ont été faites.
+
+**1. La grandeur mesurée était fausse.** Le moteur fait
+`this.stats[gagnant].lineoutsGagnes++` — il compte aussi les touches **volées
+sur le lancer adverse**. Le rapport `lineoutsGagnes / lineouts` n'est donc pas
+un taux de conservation, et il dépasse 1 : d'où « 146 gagnées pour 144
+lancées ».
+
+**2. L'effet testé était du bruit, avant comme après.** Mesuré sur la bonne
+grandeur (appariement `TOUCHE_LANCER` / `TOUCHE_BALLON_GAGNE`), 30 matchs par
+configuration, sur les deux versions du moteur :
+
+| | alignement libre | sauteur unique | écart | erreurs-types |
+|---|---|---|---|---|
+| Avant (989dd7e) | 84,8 % | 87,1 % | +2,31 pt | **0,9** |
+| Après (P1-53) | 87,0 % | 86,3 % | −0,70 pt | **0,2** |
+
+Dans les deux versions, l'effet est indiscernable de zéro sur 12 matchs. **Le
+test passait par chance.** Ce n'est pas le patch qui a cassé la mécanique,
+c'est le test qui lisait une pièce de monnaie comme une preuve.
+
+**Ce qui a été fait** : T9 mesure désormais la conservation **sur son propre
+lancer** (grandeur valide, plafonnée à 100 %) sur 16 matchs, et vérifie ce
+qu'un match peut réellement établir — que désigner un spécialiste ne **coûte**
+pas de ballons (marge 4 points ≈ 2 erreurs-types). La preuve *positive* que la
+désignation est payante existe déjà au bon endroit : **T8bis**, qui la vérifie
+directement sur la règle `probaVolTouche`, sans moyenne bruitée — la méthode
+retenue depuis P1-50b. T8bis passe avant comme après.

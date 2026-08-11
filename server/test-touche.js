@@ -249,22 +249,72 @@ test('T8bis — le compromis penche du bon côté pour un VRAI spécialiste', ()
     'désigner un sauteur banal doit coûter des ballons');
 });
 
-test('T9 — mais désigner un VRAI spécialiste reste payant', () => {
-  // Le compromis doit pencher du bon côté quand le sauteur désigné est
-  // nettement meilleur que les autres : sinon la désignation ne servirait
-  // jamais à rien, ce qui serait le défaut inverse.
+// Taux de CONSERVATION sur son propre lancer, mesuré en appariant les
+// événements. `stats.lineoutsGagnes` ne peut PAS servir à ça : le moteur
+// l'incrémente pour l'équipe qui gagne le ballon, y compris quand elle VOLE le
+// lancer adverse (`this.stats[gagnant].lineoutsGagnes++`). Le rapport
+// `lineoutsGagnes / lineouts` mélange donc conservation et vols, et dépasse
+// régulièrement 1 (mesuré : 146 « gagnées » pour 144 lancées).
+function conservationPropreLancer(graine, cfg) {
+  const m = new RugbyEngine.MatchEngine(graine, 4800, cfg);
+  const res = { A: { l: 0, g: 0 }, B: { l: 0, g: 0 } };
+  let lanceur = null;
+  const orig = m.log.bind(m);
+  m.log = function (type, team, msg) {
+    if (type === 'TOUCHE_LANCER') { lanceur = team; if (team) res[team].l++; }
+    else if (type === 'TOUCHE_BALLON_GAGNE' && lanceur) {
+      if (team === lanceur) res[lanceur].g++;
+      lanceur = null;
+    }
+    return orig(type, team, msg);
+  };
+  for (let i = 0; i < 400000 && m.getState().phase !== 'TERMINE'; i++) m.tick(1 / 20);
+  return res;
+}
+
+test('T9 — désigner un spécialiste ne COÛTE pas de ballons sur son lancer', () => {
+  // CE QUE CE TEST MESURAIT AVANT, ET POURQUOI IL A ÉTÉ REFAIT (P1-53).
+  //
+  // Il affirmait « désigner le seul vrai sauteur doit rester gagnant malgré la
+  // lisibilité » et comparait `lineoutsGagnes / lineouts` sur 12 matchs. Deux
+  // défauts, tous deux mesurés :
+  //
+  //   1. La grandeur est mal définie (cf. conservationPropreLancer ci-dessus) :
+  //      le numérateur compte les touches VOLÉES sur le lancer adverse.
+  //   2. L'écart annoncé était du bruit. Mesuré sur la bonne grandeur, 30 matchs
+  //      par configuration, avant ET après le patch P1-53 :
+  //         avant  libre 84,8 %  spécialiste 87,1 %  écart +2,31 pt (0,9 é.-t.)
+  //         après  libre 87,0 %  spécialiste 86,3 %  écart -0,70 pt (0,2 é.-t.)
+  //      Dans les DEUX versions l'effet est indiscernable de zéro. Le test
+  //      passait donc au hasard : P1-53 (durée de sortie de ruck) ne touche pas
+  //      la touche, il a seulement redistribué le tirage aléatoire, et le sens
+  //      de l'inégalité s'est retourné.
+  //
+  // La preuve POSITIVE que désigner un vrai spécialiste est payant existe déjà,
+  // et au bon endroit : T8bis la vérifie DIRECTEMENT sur la règle
+  // (`probaVolTouche`), sans passer par une moyenne bruitée — même méthode
+  // qu'en P1-50b et P1-51. Ce test-ci garde donc ce qu'un match peut réellement
+  // établir : la désignation ne doit pas COÛTER de ballons.
   let libre = { l: 0, g: 0 }, restreint = { l: 0, g: 0 };
-  for (let g = 1; g <= 12; g++) {
-    const a = jouer(g, { joueursA: pack(5, 95, 20), joueursB: pack(5, 95, 20) });
-    libre.l += a.A.lineouts; libre.g += a.A.lineoutsGagnes;
-    const b = jouer(g, { joueursA: pack(5, 95, 20), joueursB: pack(5, 95, 20),
+  const N = 16;
+  for (let g = 1; g <= N; g++) {
+    const a = conservationPropreLancer(g, { joueursA: pack(5, 95, 20), joueursB: pack(5, 95, 20) });
+    libre.l += a.A.l; libre.g += a.A.g;
+    const b = conservationPropreLancer(g, { joueursA: pack(5, 95, 20), joueursB: pack(5, 95, 20),
       toucheA: { sauteurs: [5] } });
-    restreint.l += b.A.lineouts; restreint.g += b.A.lineoutsGagnes;
+    restreint.l += b.A.l; restreint.g += b.A.g;
   }
-  const part = (x) => (x.l ? x.g / x.l : 0);
-  assert.ok(part(restreint) > part(libre),
-    `désigner le seul vrai sauteur doit rester gagnant malgré la lisibilité ` +
-    `(${restreint.g}/${restreint.l} vs ${libre.g}/${libre.l})`);
+  assert.ok(libre.l > 50 && restreint.l > 50,
+    `assez de touches pour conclure (${libre.l} / ${restreint.l})`);
+  const tLibre = libre.g / libre.l, tRestreint = restreint.g / restreint.l;
+  const detail = `spécialiste ${(100 * tRestreint).toFixed(1)} % (${restreint.g}/${restreint.l}) ` +
+    `vs libre ${(100 * tLibre).toFixed(1)} % (${libre.g}/${libre.l})`;
+  // Le taux se lit sur son PROPRE lancer : il ne peut pas dépasser 100 %.
+  assert.ok(tLibre <= 1 && tRestreint <= 1, `un taux de conservation reste ≤ 100 % (${detail})`);
+  // Marge de 4 points : ~2 erreurs-types sur cet effectif (é.-t. mesuré 2,7 pt
+  // sur 30 matchs). Au-delà, ce ne serait plus du bruit mais un vrai coût.
+  assert.ok(tRestreint >= tLibre - 0.04,
+    `désigner le seul vrai sauteur ne doit pas coûter de ballons (${detail})`);
 });
 
 test('T10 — le compromis est ANNONCÉ au manager, chiffré', () => {

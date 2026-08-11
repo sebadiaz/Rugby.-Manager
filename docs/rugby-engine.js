@@ -498,6 +498,37 @@
     return EFFETS_POUSSEE_MELEE[poussee] || EFFETS_POUSSEE_MELEE.equilibre;
   }
 
+  // SORTIE DE RUCK : ce que le service rapide du n°9 fait vraiment gagner.
+  //
+  // Le profil de durées (cf. DEFAULT_CONFIG.ruck) contient DÉJÀ son palier de
+  // ballon rapide (55 % des rucks en 1,5-3 s). L'ancienne règle multipliait en
+  // plus la durée tirée par 0,55 quand le 9 était à la base : la vitesse était
+  // comptée deux fois, et un ballon tiré LENT ressortait servi comme un ballon
+  // rapide. Mesuré sur 5 matchs complets (3100 rucks) :
+  //     tiré   3,57 s   -   54,8 % < 3 s | 33,2 % en 3-6 s | 12,0 % > 6 s
+  //     joué   2,52 s   -   72,2 % < 3 s | 26,1 % en 3-6 s |  1,7 % > 6 s
+  // 71,1 % des rucks étaient raccourcis, et les rucks tirés à 6 s et plus
+  // étaient joués en 4,29 s : le ballon lent avait disparu du match.
+  //
+  // La règle correcte, en termes de rugby : un 9 déjà à la base GAGNE du temps
+  // de sortie, il ne transforme pas un ruck disputé en ballon rapide. Le gain
+  // est donc BORNÉ (~0,9 s, à l'échelle des arrêts de jeu) et ne descend jamais
+  // sous le plancher du profil lui-même. La récompense reste entière sur les
+  // ballons déjà rapides : 2,4 s -> 1,5 s passe sous le seuil de 1,8 s qui
+  // ouvre la fenêtre « défense pas replacée » (_defenseTardive).
+  //
+  // Fonction PURE et exportée : même méthode qu'en P1-50b / P1-51, la règle se
+  // vérifie directement au lieu d'être jugée sur une moyenne bruitée.
+  const GAIN_SERVICE_RAPIDE_RUCK = 0.9;
+  function dureeSortieRuck(opts) {
+    const o = opts || {};
+    const cible = Math.max(0, Number(o.dureeCible) || 0);
+    if (!o.serviceRapide) return cible;
+    const echelle = o.echelle != null ? o.echelle : 1;
+    const plancher = Math.min(cible, Math.max(0, Number(o.plancher) || 0));
+    return Math.max(plancher, cible - GAIN_SERVICE_RAPIDE_RUCK * echelle);
+  }
+
   // Force de contestation en touche : pondérée par l'attribut "touche"
   // (détente/timing du sauteur, soutien du lever) plutôt que par la
   // puissance brute.
@@ -2716,17 +2747,31 @@
       }
     }
 
-    // Tire une durée de recyclage de ruck dans le profil configuré
-    // (cfg.ruck.profil = liste de paliers [part, minimum, étendue]) : la part
-    // est la fraction des rucks concernée, la durée = minimum + alea*étendue,
-    // le tout à l'échelle des arrêts de jeu (_echelleArret). Le profil par
-    // défaut est calibré par balayage de simulations pour reproduire les
-    // vitesses de ruck réelles ET les volumes réels de rucks/passes/plaquages
-    // (France-Irlande 2026, cf. docs/ANALYSE_MATCH_REEL.md).
-    _tirerDureeRuck(team) {
+    // Profil de durées de ruck en vigueur pour une équipe
+    // (cfg.ruck.profil = liste de paliers [part, minimum, étendue]). Calibré par
+    // balayage de simulations sur les vitesses de ruck réelles ET les volumes
+    // réels de rucks/passes/plaquages (France-Irlande 2026, cf.
+    // docs/ANALYSE_MATCH_REEL.md).
+    _profilRuck(team) {
       const cfgR = team ? this.cfgRuck[team] : this.cfg.ruck;
-      const profil = (cfgR && cfgR.profil)
+      return (cfgR && cfgR.profil)
         || [[0.70, 0.7, 0.9], [0.22, 1.6, 1.2], [0.08, 2.8, 1.7]];
+    }
+
+    // Plancher de sortie : le début du palier le plus rapide du profil. Rien ne
+    // doit sortir plus vite que le ballon rapide décrit par le profil lui-même
+    // (sinon le service du 9 recompte une vitesse déjà comptée, cf.
+    // dureeSortieRuck).
+    _plancherSortieRuck(team) {
+      const profil = this._profilRuck(team);
+      return (profil[0] && profil[0][1] ? profil[0][1] : 0) * this._echelleArret;
+    }
+
+    // Tire une durée de recyclage dans le profil : la part est la fraction des
+    // rucks concernée, la durée = minimum + alea*étendue, le tout à l'échelle
+    // des arrêts de jeu (_echelleArret).
+    _tirerDureeRuck(team) {
+      const profil = this._profilRuck(team);
       const r = this.rng();
       let cumul = 0;
       for (const [part, minimum, etendue] of profil) {
@@ -3044,9 +3089,16 @@
       // exactement la dynamique réelle du ballon rapide.
       const serviceRapide = soutienArrive && !this.ruckDominant
         && neuf9 && distance(neuf9, pt) < 3;
-      const dureeEffective = serviceRapide
-        ? Math.min(dureeCible, Math.max(1.6 * this._echelleArret, dureeCible * 0.55))
-        : dureeCible;
+      // Le gain du service rapide est BORNÉ et plafonné par le plancher du
+      // profil : un ballon déjà rapide sort encore plus tôt (et déclenche
+      // _defenseTardive), un ballon disputé reste un ballon lent. Cf.
+      // dureeSortieRuck pour la mesure qui a imposé cette règle.
+      const dureeEffective = dureeSortieRuck({
+        dureeCible,
+        serviceRapide,
+        plancher: this._plancherSortieRuck(this.possession),
+        echelle: this._echelleArret,
+      });
       if (this.timerPhase >= dureeEffective) {
         if (!soutienArrive && this.timerPhase < dureeEffective + 4 * this._echelleArret) return;
         if (!neufPret && this.timerPhase < dureeEffective + 1.2 * this._echelleArret) return;
@@ -5254,5 +5306,6 @@
 
   return { MatchEngine, LONGUEUR, LARGEUR, creerRng, distance, DEFAULT_CONFIG, fusionnerConfig,
     tirerSauteurPondere, forceTouche, probaVolTouche, COEF_LISIBILITE_TOUCHE,
-    effetPousseeMelee, CHRONOLOGIE_MAX, TYPES_CHRONOLOGIE };
+    effetPousseeMelee, dureeSortieRuck, GAIN_SERVICE_RAPIDE_RUCK,
+    CHRONOLOGIE_MAX, TYPES_CHRONOLOGIE };
 });

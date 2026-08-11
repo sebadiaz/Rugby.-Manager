@@ -72,6 +72,28 @@ Le reste de l'écart (×2,9 sur les volumes) vient du **ballon en jeu à 66 %**
 tempo en jeu courant sont épuisés (mesuré : la cadence de passe est plate,
 le pied au-delà de ×2 déborde le réel sans réduire les rucks).
 
+#### Correction (P1-53) — la ligne « 47/39/14 % ✅ » était fausse
+
+Re-mesuré depuis, en instrumentant l'entrée et la sortie de la phase RUCK
+(5 matchs complets, graines 7/11/23/42/99, 3100 rucks) : **le profil était
+bien TIRÉ à 55/33/12 %, mais JOUÉ à 72/26/2 %**. Le raccourci « service
+rapide » de `_tickRuck` multipliait par 0,55 la durée déjà tirée, alors que le
+profil contient déjà son palier de ballon rapide : 71 % des rucks étaient
+raccourcis et les rucks tirés à 6 s et plus étaient joués en 4,29 s. Le ballon
+lent avait disparu du match (1,7 % au lieu de ~10 %).
+
+La règle a été rendue explicite et bornée (`dureeSortieRuck`, exportée et
+testée directement par `server/test-ruck.js`). Mesuré après correction, même
+protocole : **jouée 3,04 s — 60/32/8 %**, rucks tirés lents joués à 6,27 s.
+
+Deux autres chiffres de ce tableau ne se retrouvent plus dans la version
+actuelle du moteur (mesure de contrôle, 16 matchs, graines 7×1..16) : rucks
+**649** et passes **1462** avant P1-53, contre 519 et 1112 annoncés ici. Des
+patchs postérieurs au balayage ont donc regonflé les volumes ; la colonne
+« Après » est à lire comme l'état du moteur **à la date du balayage**, pas
+comme l'état courant. L'état courant après P1-53 est : rucks **595**, passes
+**1422**, plaquages **643**, ballon en jeu **65 %**, cycle de phase 5,2 s.
+
 ### T2 — Équilibre mêlées/touches 🟠
 - Réel : ~13 mêlées / ~25 touches. Sim : 23,6 / 14,2 — inversé.
 - Réduire encore les sources de mêlée (en-avant au contact, ballon injouable).
@@ -92,6 +114,16 @@ le pied au-delà de ×2 déborde le réel sans réduire les rucks).
 - 6,8 vs 10 réelles. Renforcer les fautes de ruck (hors-jeu, plongeon,
   ballon non lâché) qui sont la source n°1 en vrai. Se combine avec T2
   (pénalité → touche). Objectif : 9-14, avec conséquences visibles.
+- **Mesure P1-53** (20 matchs par version, graines 13×1..20) : **12,65 avant,
+  10,60 après** (écart −2,05, erreur-type 1,07, soit 1,9 erreur-type). La
+  baisse est concentrée sur `PENALITE_RUCK_ISOLE` (7,8 → 5,0/match). Elle n'a
+  **pas** été compensée dans P1-53, et c'est délibéré : la seule faute de
+  regroupement modélisée est le « ballon non rendu » du porteur isolé, et
+  calibrer les fautes de ruck manquantes (mains dans le ruck, non-libération,
+  hors-jeu) aujourd'hui reviendrait à les régler sur un dénominateur faux —
+  595 rucks/match au lieu de ~180. Un taux réaliste (~4 % par ruck) donnerait
+  ici 25 pénalités. **Ordre correct : volume de rucks d'abord, fautes de
+  regroupement ensuite.**
 
 ### T6 — Instrumenter les entrées dans les 22 m ⚪
 - Nouvelle statistique `entrees22` (comptée quand la possession franchit la
