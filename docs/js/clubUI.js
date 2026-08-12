@@ -4527,7 +4527,14 @@
                 toast(`⏳ Ultimatum : ${suiteUltimatum.ultimatum.matchsRestants} match(s) restant(s)`, 'erreur');
               }
             }
-            const mouvement = RMClub.appliquerFinancesMatch(saison.clubJoueur, forme, RMClub.nombreJourneesSaison(saison.calendrier));
+            // Le côté du match compte : la billetterie n'existe qu'à domicile,
+            // le déplacement ne se paie qu'à l'extérieur (cf.
+            // appliquerFinancesMatch). L'information est déjà calculée plus
+            // haut pour le moteur (`lettreJoueur`) ; elle n'était simplement
+            // jamais transmise aux finances.
+            const mouvement = RMClub.appliquerFinancesMatch(
+              saison.clubJoueur, forme, RMClub.nombreJourneesSaison(saison.calendrier),
+              { domicile: estClubJoueur(matchJoueur.domicileId) });
             RMClub.enregistrerMouvementFinances(saison.clubJoueur, matchJoueur.journee, mouvement);
             RMClub.accumulerStats(saison.clubJoueur, etat.stats[lettreJoueur]);
             // Remplacements RÉELLEMENT survenus (leur minute peut dépasser la

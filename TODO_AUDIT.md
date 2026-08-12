@@ -3104,3 +3104,118 @@ Sur ce même harnais, le club accumule de l'ordre de 6 M€ d'excédent par sais
 absolu n'est **pas** fiable ici : le harnais compte 60 journées financières par
 saison, ce qui doit être confronté au déroulé réel dans l'interface avant d'en
 conclure quoi que ce soit. À instruire à part.
+
+---
+
+## G2 — La billetterie n'est plus encaissée à l'extérieur (livrée)
+
+### Comportement actuel observé (mesuré, pas déduit)
+
+`docs/js/club.js`, `appliquerFinancesMatch(club, forme, nbJournees)` : la
+signature ne recevait **pas** le côté du match. La recette de billetterie était
+donc créditée aux 26 journées, les 13 déplacements compris.
+
+Décomposition d'une saison de championnat, avec le MÊME appel que le jeu
+(graine 2026, 26 rencontres) :
+
+| Poste | Montant |
+|---|---|
+| Billetterie | **+2 341 k€** (26 matchs) |
+| Sponsor | +728 k€ |
+| Salaires joueurs | −598 k€ |
+| **Solde** | **+2 471 k€** |
+
+Pour un budget de départ de **390 k€** : le club multipliait sa trésorerie par
+7,3 en une saison, et les salaires ne pesaient que **19 % des recettes** (un
+vrai club : 55-60 %).
+
+Le jeu se contredisait lui-même : le chantier « Stade » annonce au manager
+« Recette de billetterie à chaque match **à domicile** »
+(`club-infrastructures.js`). Le code la créditait partout.
+
+Et l'information existait : `clubUI.js` calcule
+`estClubJoueur(matchJoueur.domicileId)` deux lignes plus haut pour choisir la
+lettre d'équipe du moteur. Elle n'était simplement jamais transmise aux
+finances.
+
+### Pourquoi c'était insuffisant pour le joueur
+
+La trésorerie n'était jamais une contrainte. Un budget qui monte tout seul de
+2,5 M€ par saison vide de tout enjeu ce qui touche à l'argent — le mercato, les
+ventes (P1-48), les chantiers (320 k€ le stade, 260 k€ le centre médical), la
+prévision de trésorerie (P1-47) qui n'affichait jamais que du vert. Et le
+calendrier perdait un de ses reliefs : une série à l'extérieur devrait serrer
+les comptes, une série à domicile les desserrer.
+
+### Test qui devait échouer AVANT la correction
+
+`server/test-recettes-domicile.js` — 7 vérifications, **5 rouges avant** :
+
+```
+FAIL R1  un déplacement ne rapporte AUCUNE billetterie (101)
+FAIL R2  un déplacement doit avoir un coût chiffré
+FAIL R4  départ 390 k€ ; billetterie 2341, sponsor 728, salaires -598,
+         déplacements undefined, solde 2471
+FAIL R6  cinq réceptions doivent peser plus que cinq déplacements (0 k€)
+FAIL R7  l'appel doit transmettre le côté du match
+OK   R3  sponsor et salaires courent à chaque journée
+OK   R5  le grand livre reste exact
+```
+
+R6 à 0 k€ résume tout : domicile et extérieur étaient financièrement
+identiques.
+
+### La correction
+
+`appliquerFinancesMatch(club, forme, nbJournees, options)` reçoit
+`options.domicile`. À domicile, billetterie comme avant ; à l'extérieur,
+billetterie nulle et **coût de déplacement** réel (voyage et hébergement du
+groupe), inscrit dans sa propre catégorie au grand livre. Le sponsor et les
+salaires, eux, courent à chaque journée.
+
+`options.domicile` vaut `true` par défaut : les appelants historiques (tests
+d'économie et d'infrastructures) mesurent tous la recette d'une réception,
+leur sens ne change pas. Le seul appelant de jeu transmet le côté réel.
+
+Coût calibré sur l'échelle monétaire du jeu — salaires 18 à 34 k€/saison,
+budget de départ 390 k€, budgets IA 262 à 474 k€ — soit ~13 k€ par voyage au
+niveau de départ, ~170 k€ sur les 13 déplacements d'une saison.
+
+### Résultat mesuré (même protocole)
+
+| Poste | Avant | Après |
+|---|---|---|
+| Billetterie | 2 341 | **1 213** |
+| Sponsor | 728 | 728 |
+| Salaires | −598 | −598 |
+| Déplacements | — | **−169** |
+| **Solde de saison** | **+2 471** | **+1 174** |
+| Solde net moyen / journée | +95 k€ | **+49 k€** |
+
+Vérifié à l'écran dans le navigateur : l'onglet Finances affiche
+« Déplacements −169 k€ » comme poste distinct (le panneau est construit depuis
+les catégories du grand livre, aucune retouche d'interface nécessaire), aucune
+erreur page.
+
+### CE QUE CE PATCH NE CORRIGE PAS
+
+Le club gagne **encore +1 174 k€ par saison**, soit trois fois son budget de
+départ. La trésorerie n'est donc **toujours pas** une contrainte. La cause
+restante n'est plus le côté du match, c'est l'**échelle** : sur une saison,
+1 941 k€ de recettes contre 767 k€ de charges — les salaires pèsent 31 % des
+recettes quand un vrai club est à 55-60 %. Il faudrait des recettes de l'ordre
+de 900 k€ à 1,1 M€ pour un effectif payé 598 k€.
+
+Ce n'est pas corrigé ici parce que c'est un autre patch : il touche la base de
+billetterie, la génération du sponsor (donc les sauvegardes) et la rentabilité
+des chantiers d'infrastructures. Le test R4 **verrouille l'écart constaté**
+pour qu'il ne s'aggrave pas en silence.
+
+### Deux erreurs de mesure de ma part, corrigées
+
+1. J'ai d'abord lu `c.journeesFinancieres` et l'ai trouvé `undefined`, en
+   croyant à un compteur cassé. Faux : il vit dans `c.comptes`, et il compte
+   bien 26. Rien à corriger.
+2. `RMClub.valeurMarchande(joueur)` me renvoyait 0 pour tout l'effectif. Ma
+   signature était fausse — la fonction est `valeurMarchande(saison, joueur)`.
+   Aucun défaut du code.

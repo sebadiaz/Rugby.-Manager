@@ -590,7 +590,31 @@
   // connaît la vraie taille du calendrier de CETTE saison, cf. clubUI.js) ;
   // le repli à 26 ne sert qu'en dernier recours (ne devrait jamais être
   // sollicité, le calendrier a toujours au moins une journée).
-  function appliquerFinancesMatch(club, forme, nbJournees) {
+  // Coût d'un déplacement (voyage et hébergement du groupe). Contrepartie
+  // naturelle de la billetterie : sur la route on ne vend pas de billets ET on
+  // paie le voyage. Calibré sur l'échelle monétaire du jeu — les salaires vont
+  // de 18 à 34 k€/saison et le budget de départ est de 390 k€ — pour qu'une
+  // série de déplacements se sente sans étrangler le club : ~13 k€ par voyage
+  // au niveau de départ, soit de l'ordre de 170 k€ sur les 13 déplacements
+  // d'une saison.
+  const COUT_DEPLACEMENT_BASE = 10;
+  function coutDeplacement(club) {
+    return Math.round(COUT_DEPLACEMENT_BASE + (club.niveauClub || 0) * 10);
+  }
+
+  // `options.domicile` : le club reçoit-il ? La billetterie n'existe qu'à
+  // domicile — c'est ce que le jeu annonce déjà lui-même au manager dans le
+  // chantier « Stade » (« Recette de billetterie à chaque match à domicile »,
+  // cf. club-infrastructures.js), mais la signature ne recevait pas le côté du
+  // match et créditait donc la recette aux 26 journées, déplacements compris.
+  // Mesuré sur une saison : billetterie 2 341 k€ au lieu de ~1 170, solde
+  // +2 471 k€ sur un budget de départ de 390 k€. Cf. TODO_AUDIT.md G2.
+  //
+  // Défaut par défaut à `true` : les appelants historiques (tests d'économie et
+  // d'infrastructures) mesurent tous la recette d'une réception, leur sens ne
+  // change pas. Le seul appelant de jeu (clubUI.js) transmet le côté réel.
+  function appliquerFinancesMatch(club, forme, nbJournees, options) {
+    const aDomicile = !options || options.domicile !== false;
     // Stade (P1-44) : le niveau des tribunes multiplie RÉELLEMENT la recette.
     // Niveau 1 = facteur 1, donc une carrière qui n'investit jamais encaisse
     // exactement comme avant. Lu depuis le club lui-même : cette fonction ne
@@ -598,20 +622,24 @@
     const infraStade = club.infrastructures && club.infrastructures.stade
       ? club.infrastructures.stade.niveau : 1;
     const facteurStade = 1 + (Math.max(1, infraStade) - 1) * 0.18;
-    const recette = Math.round((40 + club.niveauClub * 120 + (forme === 'v' ? 25 : forme === 'n' ? 10 : 0)) * facteurStade);
+    const recette = aDomicile
+      ? Math.round((40 + club.niveauClub * 120 + (forme === 'v' ? 25 : forme === 'n' ? 10 : 0)) * facteurStade)
+      : 0;
+    const deplacement = aDomicile ? 0 : coutDeplacement(club);
     const revenuSponsor = club.sponsor ? club.sponsor.revenuParMatch : 0;
     const jours = nbJournees > 0 ? nbJournees : 26;
     const salaires = Math.round(masseSalariale(club.effectif) / jours);
     const salairesPersonnel = Math.round(global.RMClub.masseSalarialePersonnel(club) / jours);
-    // Quatre lignes distinctes au grand livre (cf. club-comptes.js) plutôt
-    // qu'un solde net : le manager doit pouvoir voir ce que rapporte sa
-    // billetterie et ce que lui coûte sa masse salariale, séparément.
+    // Des lignes distinctes au grand livre (cf. club-comptes.js) plutôt qu'un
+    // solde net : le manager doit pouvoir voir ce que rapporte sa billetterie
+    // et ce que lui coûtent sa masse salariale et ses voyages, séparément.
     tresorerie(club, 'billetterie', 'Recette de match', recette);
     tresorerie(club, 'sponsor', 'Revenu sponsor', revenuSponsor);
     tresorerie(club, 'salaires', 'Salaires des joueurs', -salaires);
     tresorerie(club, 'salairesPersonnel', 'Salaires du personnel', -salairesPersonnel);
+    tresorerie(club, 'deplacement', 'Déplacement du groupe', -deplacement);
     if (global.RMClub.compterJourneeFinanciere) global.RMClub.compterJourneeFinanciere(club);
-    return { recette, revenuSponsor, salaires, salairesPersonnel };
+    return { recette, revenuSponsor, salaires, salairesPersonnel, deplacement };
   }
 
   // Recette d'un match d'Équipe B (cf. RMClub.determinerEligiblesEquipeB) :

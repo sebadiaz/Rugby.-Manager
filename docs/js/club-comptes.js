@@ -40,6 +40,8 @@
       description: 'Masse salariale de l\'effectif, répartie sur la saison.' },
     salairesPersonnel: { libelle: 'Salaires du personnel', sens: 'depense',
       description: 'Staff technique, médical et de recrutement.' },
+    deplacement: { libelle: 'Déplacements', sens: 'depense',
+      description: 'Voyage et hébergement du groupe sur les matchs à l\'extérieur.' },
     transfertAchat: { libelle: 'Achats de joueurs', sens: 'depense',
       description: 'Indemnités versées pour recruter.' },
     travaux: { libelle: 'Infrastructures', sens: 'depense',
