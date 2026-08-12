@@ -42,6 +42,8 @@
       description: 'Staff technique, médical et de recrutement.' },
     deplacement: { libelle: 'Déplacements', sens: 'depense',
       description: 'Voyage et hébergement du groupe sur les matchs à l\'extérieur.' },
+    entretien: { libelle: 'Exploitation des installations', sens: 'depense',
+      description: 'Entretien du stade, du centre médical, du centre de formation et des terrains.' },
     transfertAchat: { libelle: 'Achats de joueurs', sens: 'depense',
       description: 'Indemnités versées pour recruter.' },
     travaux: { libelle: 'Infrastructures', sens: 'depense',

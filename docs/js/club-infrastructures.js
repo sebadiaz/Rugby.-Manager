@@ -53,6 +53,57 @@
   };
   const CLES_INFRASTRUCTURE = Object.keys(INFRASTRUCTURES);
 
+  // COÛT D'EXPLOITATION (TODO_AUDIT.md G3).
+  //
+  // Ce qui manquait : une infrastructure était du PUR BÉNÉFICE. On payait le
+  // chantier une fois, le gain était acquis pour toujours et ne coûtait plus
+  // jamais rien. Monter un niveau était donc toujours le bon choix, ce qui
+  // n'est pas un choix. Aucun club ne fonctionne ainsi : un stade, un centre
+  // de formation, un centre médical et des terrains, ça s'exploite —
+  // personnel d'entretien, énergie, matériel, assurances.
+  //
+  // Le niveau 1 coûte déjà : le club POSSÈDE ces installations dès le départ,
+  // il ne les découvre pas en montant de niveau. Chaque niveau supplémentaire
+  // ajoute la même charge, ce qui donne enfin son prix au gain.
+  //
+  // Conséquence recherchée, et c'est tout l'intérêt : le stade reste rentable
+  // (sa recette croît plus vite que son entretien), mais le centre de
+  // formation, le centre médical et les terrains ne rapportent AUCUNE recette
+  // — les monter est un pari sportif qu'il faut financer. C'est l'arbitrage
+  // qui n'existait pas.
+  //
+  // DEUX charges distinctes, et la distinction compte.
+  //
+  // `COUT_ENTRETIEN_BASE` est incompressible : le club possède ses quatre
+  // installations dès le départ et les fait tourner, quel que soit leur
+  // niveau. 1,7 k€ par installation et par journée, soit ~7 k€/journée et
+  // ~180 k€ sur une saison de 26 journées — à comparer à une masse salariale
+  // de ~600 k€. C'est cette part qui ramène l'exercice à l'équilibre.
+  //
+  // `COUT_ENTRETIEN_PAR_NIVEAU_SUP` est le surcoût de chaque niveau au-dessus
+  // de 1. Il est volontairement PLUS FAIBLE que la base, et la première
+  // calibration l'a prouvé : à 1,7 k€ également, monter le stade au niveau 2
+  // rapportait +104 k€/saison de recette pour +44 k€ d'entretien, soit un
+  // retour sur investissement de 6,2 saisons sur un chantier à 320 k€ —
+  // personne ne l'aurait construit. À 0,7 k€, le surcoût tombe à ~18 k€/saison
+  // et le retour à ~3,7 saisons : l'investissement redevient un vrai pari,
+  // au lieu d'un piège.
+  const COUT_ENTRETIEN_BASE = 1.7;
+  const COUT_ENTRETIEN_PAR_NIVEAU_SUP = 0.7;
+
+  // Charge d'exploitation d'une journée, en k€. Fonction PURE : elle ne lit
+  // que les niveaux réellement construits.
+  function coutEntretienInfrastructures(club) {
+    if (!club) return 0;
+    const infra = club.infrastructures || {};
+    let total = 0;
+    for (const cle of CLES_INFRASTRUCTURE) {
+      const n = Math.max(1, (infra[cle] && infra[cle].niveau) || 1);
+      total += COUT_ENTRETIEN_BASE + (n - 1) * COUT_ENTRETIEN_PAR_NIVEAU_SUP;
+    }
+    return Math.round(total);
+  }
+
   // Structure créée à la demande, comme les autres domaines : une carrière
   // existante n'a rien à perdre, elle démarre simplement au niveau 1.
   function assurerInfrastructures(saison) {
@@ -191,5 +242,6 @@
     coutAmelioration, dureeAmelioration, chantierEnCours,
     lancerTravaux, avancerJourInfrastructures, effetInfrastructure,
     dossierInfrastructures,
+    COUT_ENTRETIEN_BASE, COUT_ENTRETIEN_PAR_NIVEAU_SUP, coutEntretienInfrastructures,
   });
 })(window);

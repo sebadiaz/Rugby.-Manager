@@ -46,6 +46,24 @@
   // fonction qui transforme une sauvegarde de cette version vers la
   // suivante.
   const MIGRATIONS = {
+    // 7 → 8 : échelle de l'économie du club (G3). Le sponsor est tiré UNE
+    // SEULE FOIS à la création et stocké ; une carrière déjà commencée
+    // garderait donc son revenu à l'ancienne échelle et resterait riche alors
+    // que la billetterie, elle, est recalculée à chaque match. On convertit
+    // donc le revenu stocké avec le même rapport que le nouveau barème
+    // (~28 → ~16 k€/match au niveau de départ). Le partenaire lui-même, son
+    // nom, le budget, l'effectif et les résultats ne sont pas touchés.
+    7: (saison) => {
+      const c = saison.clubJoueur;
+      if (c && c.sponsor && typeof c.sponsor.revenuParMatch === 'number') {
+        c.sponsor.revenuParMatch = Math.max(1, Math.round(c.sponsor.revenuParMatch * 0.57));
+      }
+      // Les installations existent déjà (migration 6 → 7) ; elles ont
+      // désormais un coût d'exploitation, lu à chaque journée depuis les
+      // niveaux en place. Rien à écrire ici.
+      saison.version = 8;
+      return saison;
+    },
     // 6 → 7 : infrastructures du club (P1-44). Une sauvegarde antérieure n'a
     // aucune structure ; elle démarre simplement au niveau 1 partout, ce qui
     // reproduit EXACTEMENT son comportement d'avant (tous les facteurs valent

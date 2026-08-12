@@ -3219,3 +3219,62 @@ pour qu'il ne s'aggrave pas en silence.
 2. `RMClub.valeurMarchande(joueur)` me renvoyait 0 pour tout l'effectif. Ma
    signature était fausse — la fonction est `valeurMarchande(saison, joueur)`.
    Aucun défaut du code.
+
+---
+
+## G3 — L'économie du club à l'échelle, et les installations qui s'exploitent (livrée)
+
+### Comportement observé (mesuré, après G2)
+
+Saison de championnat, graine 2026 : billetterie +1 213, sponsor +728,
+salaires −598, déplacements −169 → **solde +1 174 k€** pour un budget de départ
+de 390 k€. Les salaires pesaient **31 % des recettes** (un vrai club : 55-60 %).
+Sur huit saisons : **9 193 k€** de trésorerie, +1 100 k€ par exercice, comme
+une horloge.
+
+Second manque, de la même famille : les infrastructures (stade, centre
+médical, centre de formation, terrains — cinq niveaux chacune) étaient du
+**pur bénéfice**. On payait le chantier une fois, le gain était acquis pour
+toujours et ne coûtait plus jamais rien. Monter un niveau était donc toujours
+le bon choix, ce qui n'est pas un choix.
+
+### La correction
+
+1. **Barème des recettes ramené à l'échelle des salaires** : billetterie
+   `(22 + niveauClub*65 + prime)` au lieu de `(40 + niveauClub*120 + prime)`,
+   sponsor `8 + niveauClub*22 + alea*5` au lieu de `15 + niveauClub*40 +
+   alea*10`. Le sponsor étant tiré une seule fois et stocké, migration 7 → 8.
+2. **Charge d'exploitation** (`coutEntretienInfrastructures`, pure et
+   exportée), nouveau poste `entretien` au grand livre : le club paie chaque
+   journée pour faire tourner ses installations.
+
+### Résultat mesuré (8 saisons)
+
+| | Avant | Après |
+|---|---|---|
+| Billetterie | 1 213 | 628-644 |
+| Sponsor | 728 | 390 |
+| Entretien | — | −182 |
+| **Solde de saison** | **+1 174** | **+15 à +79** |
+| Trésorerie après 8 saisons | **9 193** | **704** |
+| Salaires / recettes | 31 % | **59-64 %** |
+
+Le manager a de vrais leviers : vendre un joueur rapporte 435 à 503 k€, un
+chantier coûte 220 à 320 k€. Vendre pour construire devient un arbitrage réel.
+Tout monter au niveau 5 coûterait 468 k€ d'exploitation par saison — un
+engagement qu'il faut financer.
+
+### Une erreur de calibrage de ma part, que seule la mesure a montrée
+
+Première version : surcoût d'entretien à 1,7 k€ par niveau, comme la charge de
+base. Le stade niveau 2 rapportait +104 k€/saison pour +44 k€ d'entretien, soit
+un **retour sur investissement de 6,2 saisons** sur un chantier à 320 k€ —
+techniquement « rentable », concrètement un piège que personne n'aurait
+construit. La charge de base (incompressible, 1,7 k€) a donc été séparée du
+surcoût par niveau (0,7 k€) : retour ramené à **4,1 saisons**. Le test E5
+verrouille désormais le retour sur investissement, pas seulement la
+rentabilité.
+
+Et un bug dans mon propre test : je lisais `coutAmelioration` sur un club déjà
+monté au niveau 2, donc le prix du niveau 3 (496 k€) au lieu du niveau 2
+(320 k€). Corrigé dans le test.

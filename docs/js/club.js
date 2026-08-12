@@ -18,7 +18,7 @@
   // et la durée des prêts comptent maintenant des JOURS et non plus des
   // journées de championnat, puisque le temps s'écoule jour par jour.
   // Chaque migration est appliquée sans perte (cf. docs/js/club-sauvegarde.js).
-  const VERSION_SAUVEGARDE = 7;
+  const VERSION_SAUVEGARDE = 8;
 
   // --- Génération de noms (club fictif, aucune référence à un club/joueur réel) ---
   const PRENOMS = ['Thomas', 'Lucas', 'Hugo', 'Louis', 'Jules', 'Nathan', 'Enzo', 'Léo',
@@ -569,8 +569,17 @@
   // billetterie — proportionnel au standing du club, affiché séparément dans
   // le journal financier. ---
   const SPONSORS = ["RugbyCorp", 'Ovalie Assurances', 'Groupe Essai', "Touche d'Or", 'Maillot Plus', 'Ligue Ambre'];
+  // Échelle du sponsoring (TODO_AUDIT.md G3). L'ancienne formule
+  // (15 + niveauClub*40 + alea*10) donnait ~28 k€/match, soit 728 k€ sur une
+  // saison — plus que la masse salariale entière de l'effectif (598 k€). Avec
+  // la billetterie, les recettes atteignaient 1 941 k€ contre 767 k€ de
+  // charges : les salaires ne pesaient que 31 % des recettes, quand un vrai
+  // club est à 55-60 %. Le club triplait sa trésorerie chaque saison sans rien
+  // décider. Barème ramené à l'échelle du reste du jeu — salaires 18 à
+  // 34 k€/saison, budget de départ 390 k€, budgets IA 262 à 474 k€.
+  // Les sauvegardes antérieures sont converties (migration 7 -> 8).
   function genererSponsor(rng, niveauClub) {
-    return { nom: choisir(rng, SPONSORS), revenuParMatch: Math.round(15 + niveauClub * 40 + rng() * 10) };
+    return { nom: choisir(rng, SPONSORS), revenuParMatch: Math.round(8 + niveauClub * 22 + rng() * 5) };
   }
 
   // Finances d'un jour de match (club du joueur uniquement) : recette de
@@ -622,10 +631,23 @@
     const infraStade = club.infrastructures && club.infrastructures.stade
       ? club.infrastructures.stade.niveau : 1;
     const facteurStade = 1 + (Math.max(1, infraStade) - 1) * 0.18;
+    // Barème de billetterie ramené à l'échelle des salaires (TODO_AUDIT.md
+    // G3) : l'ancien (40 + niveauClub*120 + prime) rapportait ~93 k€ par
+    // réception, soit plus de deux fois le salaire ANNUEL du joueur le mieux
+    // payé du club. Les recettes d'une saison valaient trois fois la masse
+    // salariale ; elles en valent maintenant un peu moins du double, comme
+    // dans un vrai club. La prime de résultat est conservée : gagner rapporte
+    // toujours plus.
     const recette = aDomicile
-      ? Math.round((40 + club.niveauClub * 120 + (forme === 'v' ? 25 : forme === 'n' ? 10 : 0)) * facteurStade)
+      ? Math.round((22 + club.niveauClub * 65 + (forme === 'v' ? 14 : forme === 'n' ? 6 : 0)) * facteurStade)
       : 0;
     const deplacement = aDomicile ? 0 : coutDeplacement(club);
+    // Exploitation des installations : le club paie tous les jours pour faire
+    // tourner son stade, son centre médical, son centre de formation et ses
+    // terrains. Sans cette ligne, monter une infrastructure était du pur
+    // bénéfice — donc jamais un choix (cf. coutEntretienInfrastructures).
+    const entretien = global.RMClub.coutEntretienInfrastructures
+      ? global.RMClub.coutEntretienInfrastructures(club) : 0;
     const revenuSponsor = club.sponsor ? club.sponsor.revenuParMatch : 0;
     const jours = nbJournees > 0 ? nbJournees : 26;
     const salaires = Math.round(masseSalariale(club.effectif) / jours);
@@ -638,8 +660,9 @@
     tresorerie(club, 'salaires', 'Salaires des joueurs', -salaires);
     tresorerie(club, 'salairesPersonnel', 'Salaires du personnel', -salairesPersonnel);
     tresorerie(club, 'deplacement', 'Déplacement du groupe', -deplacement);
+    tresorerie(club, 'entretien', 'Exploitation des installations', -entretien);
     if (global.RMClub.compterJourneeFinanciere) global.RMClub.compterJourneeFinanciere(club);
-    return { recette, revenuSponsor, salaires, salairesPersonnel, deplacement };
+    return { recette, revenuSponsor, salaires, salairesPersonnel, deplacement, entretien };
   }
 
   // Recette d'un match d'Équipe B (cf. RMClub.determinerEligiblesEquipeB) :
