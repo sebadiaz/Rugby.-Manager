@@ -3485,3 +3485,78 @@ exactement la raison d'être de cette fonction. Le comportement testé n'a pas
 bougé, c'est le trajet de la graine qui a changé. Le test relance donc l'avance
 jusqu'au match, comme le manager reclique après avoir traité l'événement, au
 lieu de supposer qu'une graine traverse la semaine sans rien rencontrer.
+
+---
+
+## G6 — Le marché vient aussi vers le manager (livrée)
+
+### Comportement observé (mesuré, pas déduit)
+
+300 jours simulés, graine 1234, messages réellement reçus :
+
+```
+19 × Retour de blessure
+16 × Blessure à l'entraînement
+ 3 × Offre reçue              <- un rival veut MON joueur
+ 2 × Transfert dans la division
+décisions proposées : offreAchat, offreAchat, offreAchat
+un club m'a-t-il PROPOSÉ un joueur ? NON
+```
+
+Le manager pouvait aller chercher un joueur chez un rival (G4), les rivaux
+venaient lui acheter les siens (P1-48), et depuis G5 ils s'échangent des
+joueurs entre eux. Mais **aucun club ne lui proposait jamais** un joueur dont
+il veut se défaire — alors qu'ils en ont : `cessiblesDe` en trouve à tous les
+postes, et c'est exactement ce qu'ils se vendent entre eux.
+
+### Pourquoi c'était insuffisant
+
+Le manager devait tout initier. Un vrai marché vient aussi vers lui — un club
+qui dégraisse, un agent qui appelle. Sans ça, l'onglet Recrutement est un
+catalogue qu'on consulte, jamais une place de marché, et le manager n'a aucune
+occasion de saisir une opportunité qu'il n'aurait pas cherchée.
+
+### La correction
+
+`propositionVenteRivaleDuJour` (club-negociations.js), appelée chaque jour par
+la boucle quotidienne avec un canal de tirage **dédié** (47) :
+
+- une proposition n'arrive pas au hasard — un club qui a un **surplus**
+  (`cessiblesDe`) à un poste où le manager a un **besoin réel** (`besoinsDe`,
+  la même règle que pour les clubs IA), et seulement si le joueur améliore
+  vraiment l'effectif ;
+- **une seule grille tarifaire** : `prixDemandeAuManager`, désormais utilisée
+  par le catalogue (`joueursDesClubsAdverses`) **et** par les propositions —
+  le manager ne peut pas voir deux prix pour le même joueur selon l'écran ;
+- une vraie décision dans la boîte de réception : **payer**, **proposer moins**
+  (ouvre une négociation réelle via `proposerOffreTransfert`), ou **décliner** ;
+- une échéance : sans réponse, le club retire son joueur ;
+- un seul dossier ouvert à la fois, et **jamais deux fois le même joueur**.
+
+### Un défaut trouvé en écrivant le test
+
+Le même joueur était proposé deux fois dans la saison (`adv-club14-3`) : je ne
+regardais que les propositions **non résolues**, donc décliner un joueur
+permettait au club de revenir à la charge avec lui. Corrigé (`dejaPropose`).
+
+### Résultat mesuré
+
+| | Avant | Après |
+|---|---|---|
+| Propositions reçues (300 j) | **0** | **2** |
+| Types de décisions reçues | offreAchat seul | offreAchat + propositionVente |
+
+Vérifié dans le navigateur (mobile 390×844), de bout en bout : la proposition
+apparaît au dashboard — « Bellerive Dragons accepterait de céder Arthur Simon
+(OV, 19 ans) pour 119 k€ » — avec ses trois boutons ; « Payer 119 k€ » fait
+passer l'effectif de 24 à 25 et le budget de 3000 à 2881 k€, et produit le
+message « Transfert conclu ». Aucune erreur page. Aucun code d'affichage
+spécifique n'a été nécessaire : la boîte de réception rend les options de
+n'importe quelle décision.
+
+### Au passage
+
+Un commentaire de `club-mercato.js` affirmait encore que `prixDe` utilisait
+« exactement la formule déjà utilisée quand c'est le MANAGER qui achète ».
+C'était devenu faux avec G5 (les clubs de la même division ne paient plus la
+surcote destinée à un acheteur extérieur). Commentaire retiré.

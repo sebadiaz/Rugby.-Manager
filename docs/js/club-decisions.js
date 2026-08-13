@@ -152,6 +152,11 @@
     if (decision.type === 'offreSortante') {
       decision.resultat = global.RMClub.appliquerDecisionOffreSortante(saison, decision, optionId);
     }
+    // Un club vient me PROPOSER un joueur : acheter, négocier à la baisse, ou
+    // décliner (club-negociations.js).
+    if (decision.type === 'propositionVente') {
+      decision.resultat = global.RMClub.appliquerDecisionPropositionVente(saison, decision, optionId);
+    }
     decision.resolu = true;
     decision.choix = optionId;
     message.lu = true;
@@ -175,13 +180,18 @@
       // doit exister parmi ses options — sinon resoudreDecisionMessage refuse
       // l'option et la décision resterait en attente pour toujours (une offre
       // jamais expirée bloquerait toute nouvelle offre sur ce joueur).
+      // Chaque type a SA façon de traiter le silence, et elle doit exister
+      // parmi ses options.
       const optionDefaut = d.type === 'vestiaire' ? 'laisser'
-        : d.type === 'offreAchat' ? 'refuser' : 'ignorer';
+        : d.type === 'offreAchat' ? 'refuser'
+        : d.type === 'propositionVente' ? 'refuser' : 'ignorer';
       if (resoudreDecisionMessage(saison, m.id, optionDefaut)) {
         d.resultat = d.type === 'vestiaire'
           ? "Tu n'as pas réagi à temps : l'ambiance du vestiaire s'est dégradée toute seule."
           : d.type === 'offreAchat'
             ? `Tu n'as pas répondu à temps : ${d.clubNom || 'le club'} retire son offre pour ${d.joueurNom || 'ton joueur'}.`
+            : d.type === 'propositionVente'
+              ? `Tu n'as pas répondu à temps : ${d.clubNom || 'le club'} ne propose plus ${d.joueurNom || 'son joueur'}.`
             : d.type === 'offreSortante'
               ? `Tu n'as pas répondu à temps : ${d.clubNom || 'le club'} retire ${d.joueurNom || 'son joueur'} du marché.`
               : d.type === 'negociationContrat'

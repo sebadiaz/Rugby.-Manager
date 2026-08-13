@@ -194,6 +194,16 @@
     // transfert (accepter, contre-proposer, refuser).
     const reponsesTransfert = RMClub.avancerOffresSortantes
       ? RMClub.avancerOffresSortantes(saison, date) : [];
+    // Et le marché vient AUSSI vers le manager : un club qui a un surplus à un
+    // poste où son effectif est juste vient lui proposer un joueur. Canal de
+    // tirage DÉDIÉ (47) — le greffer sur un canal existant décalerait tous les
+    // tirages déjà en place.
+    const propositionRecue = RMClub.propositionVenteRivaleDuJour
+      ? RMClub.propositionVenteRivaleDuJour(
+          global.RugbyEngine.creerRng(RMClub.grainePourJour(
+            Number.isFinite(saison.graine) ? saison.graine : 1, date, 47)),
+          saison, date)
+      : null;
     const decisionsExpirees = RMClub.resoudreDecisionsExpirees(saison, date);
     const pointEtape = RMClub.resoudrePointEtape(saison);
     const reunionVestiaire = RMClub.declencherReunionVestiaire(saison, date);

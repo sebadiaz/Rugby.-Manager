@@ -47,10 +47,6 @@
     return RMClub.groupeAdverse ? RMClub.groupeAdverse(saison, club) : (club.effectif || []);
   }
 
-  // Prix demandé pour un joueur : exactement la formule déjà utilisée quand
-  // c'est le MANAGER qui achète (calculerPrixDemandeAdverse), pour qu'un club
-  // IA et le joueur paient le même prix pour le même joueur. Aucune seconde
-  // grille tarifaire.
   // Prix entre DEUX CLUBS DE LA MÊME DIVISION. `calculerPrixDemandeAdverse`
   // applique une surcote de 1,6 qui vise le manager — un acheteur extérieur au
   // marché, qu'on fait payer plus cher. Entre clubs rivaux qui se connaissent

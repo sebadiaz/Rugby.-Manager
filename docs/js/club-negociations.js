@@ -467,8 +467,20 @@
   // Joueurs réellement recrutables chez les adversaires : ceux de leur groupe,
   // avec le prix qu'il faudrait mettre. Rien d'inventé — le groupe est celui
   // que le moteur utilise pour composer leurs équipes.
-  function joueursDesClubsAdverses(saison, options) {
+  // LE prix qu'un club de la division demande AU MANAGER pour un de ses
+  // joueurs. Une seule fonction : le catalogue (`joueursDesClubsAdverses`) et
+  // les propositions spontanées (`propositionVenteRivaleDuJour`) doivent
+  // annoncer exactement le même chiffre, sinon le manager verrait deux prix
+  // pour le même joueur selon l'écran.
+  function prixDemandeAuManager(saison, club, joueur) {
     const RMClub = global.RMClub;
+    if (!joueur) return 0;
+    const valeur = RMClub.estimerValeurTransfert
+      ? RMClub.estimerValeurTransfert(joueur.vitesse, joueur.plaquage, joueur.age) : 0;
+    return Math.max(1, Math.round(valeur * SURCOTE_VENDEUR));
+  }
+
+  function joueursDesClubsAdverses(saison, options) {
     const o = options || {};
     const lignes = [];
     for (const club of saison.adversaires || []) {
@@ -476,14 +488,12 @@
       for (const j of groupe) {
         if (!j || !j.id) continue;
         if (o.poste && j.poste !== o.poste) continue;
-        const valeur = RMClub.estimerValeurTransfert
-          ? RMClub.estimerValeurTransfert(j.vitesse, j.plaquage, j.age) : 0;
         lignes.push({
           joueurId: j.id, nom: j.nom, poste: j.poste, age: j.age,
           vitesse: j.vitesse, plaquage: j.plaquage,
           salaire: j.salaire, contrat: j.contrat,
           clubId: club.id, clubNom: club.nom,
-          prixDemande: Math.max(1, Math.round(valeur * SURCOTE_VENDEUR)),
+          prixDemande: prixDemandeAuManager(saison, club, j),
         });
       }
     }
@@ -655,6 +665,123 @@
     return `${res.joueur.nom} rejoint le club pour ${res.prix} k€.`;
   }
 
+  // --- 5bis. Les clubs viennent AUSSI vers le manager ---------------------
+  //
+  // Ce qui manquait : le manager pouvait aller chercher un joueur chez un
+  // rival (G4) et les rivaux venaient lui acheter les siens (P1-48), mais
+  // aucun club ne lui proposait jamais un joueur dont il veut se défaire.
+  // Mesuré sur 300 jours : 3 offres reçues pour mes joueurs, 2 nouvelles du
+  // marché, ZÉRO proposition d'achat. Le manager devait tout initier.
+  //
+  // Une proposition n'arrive pas au hasard : un club qui a un SURPLUS à un
+  // poste où le manager a un BESOIN réel. Mêmes fonctions que le marché entre
+  // clubs (`cessiblesDe`, `besoinsDe`), même grille de prix que le catalogue
+  // (`prixDemandeAuManager`).
+  const PROBA_PROPOSITION_RIVALE = 0.05;
+  const DELAI_PROPOSITION_JOURS = 5;
+  // Ce que le manager peut espérer gratter en négociant plutôt qu'en payant
+  // le prix affiché.
+  const RABAIS_NEGOCIATION_PROPOSITION = 0.85;
+
+  // Une proposition est-elle EN COURS (quel que soit le joueur) ? Sert à
+  // n'avoir qu'un dossier ouvert à la fois : un marché, pas du démarchage.
+  function propositionEnAttente(saison) {
+    return (clubJoueurDe(saison).messages || []).some((m) => m.decision
+      && m.decision.type === 'propositionVente' && !m.decision.resolu);
+  }
+
+  // Ce joueur a-t-il DÉJÀ été proposé, même si le manager a décliné ? Un club
+  // ne revient pas à la charge avec le même joueur — sans ce garde-fou, le
+  // même nom revenait plusieurs fois dans la saison (constaté en écrivant le
+  // test : deux propositions pour adv-club14-3).
+  function dejaPropose(saison, joueurId) {
+    return (clubJoueurDe(saison).messages || []).some((m) => m.decision
+      && m.decision.type === 'propositionVente' && m.decision.joueurId === joueurId);
+  }
+
+  // Les postes où le manager est réellement le plus faible, par la MÊME règle
+  // que les clubs IA.
+  function besoinsDuManager(saison) {
+    const RMClub = global.RMClub;
+    if (!RMClub.besoinsDe) return [];
+    return RMClub.besoinsDe(saison, clubJoueurDe(saison)) || [];
+  }
+
+  function propositionVenteRivaleDuJour(rng, saison, date) {
+    const RMClub = global.RMClub;
+    const c = clubJoueurDe(saison);
+    if (!c || !RMClub.cessiblesDe) return null;
+    const fenetre = RMClub.etatFenetreTransfert(saison, date);
+    if (!fenetre.ouverte) return null;
+    if (rng() >= PROBA_PROPOSITION_RIVALE) return null;
+    // Une seule proposition à la fois : un marché, pas du démarchage.
+    if (propositionEnAttente(saison)) return null;
+    const besoins = besoinsDuManager(saison).slice(0, 3);
+    if (!besoins.length) return null;
+    // Le meilleur joueur qu'un club accepte de céder à l'un de ces postes, et
+    // qui améliorerait réellement l'effectif.
+    let meilleur = null;
+    for (const club of saison.adversaires || []) {
+      for (const j of RMClub.cessiblesDe(saison, club)) {
+        const besoin = besoins.find((b) => b.poste === j.poste);
+        if (!besoin) continue;
+        const niveau = ((j.vitesse || 0) + (j.plaquage || 0)) / 2;
+        if (niveau <= besoin.meilleur) continue; // n'apporterait rien
+        if (dejaPropose(saison, j.id)) continue;
+        if ((saison.offresSortantes || []).some((o) => o.joueurId === j.id)) continue;
+        if (!meilleur || niveau > meilleur.niveau) meilleur = { club, joueur: j, niveau };
+      }
+    }
+    if (!meilleur) return null;
+    const montant = prixDemandeAuManager(saison, meilleur.club, meilleur.joueur);
+    const j = meilleur.joueur;
+    RMClub.ajouterMessage(saison, 'transfert', 'Un club te propose un joueur',
+      `${meilleur.club.nom} accepterait de céder ${j.nom} (${j.poste}, ${j.age} ans) ` +
+      `pour ${montant} k€. C'est un poste où ton effectif est le plus juste. ` +
+      `Ton budget : ${c.budget} k€.`,
+      {
+        type: 'propositionVente',
+        joueurId: j.id, joueurNom: j.nom, poste: j.poste,
+        clubId: meilleur.club.id, clubNom: meilleur.club.nom,
+        montant,
+        resolu: false,
+        dateLimite: RMClub.dateISO(RMClub.ajouterJours(date, DELAI_PROPOSITION_JOURS)),
+        options: [
+          { id: 'acheter', libelle: `Payer ${montant} k€` },
+          { id: 'negocier', libelle: `Proposer ${Math.round(montant * RABAIS_NEGOCIATION_PROPOSITION)} k€` },
+          { id: 'refuser', libelle: 'Décliner' },
+        ],
+      });
+    return { joueurId: j.id, clubId: meilleur.club.id, montant };
+  }
+
+  function appliquerDecisionPropositionVente(saison, decision, optionId) {
+    const RMClub = global.RMClub;
+    if (optionId === 'refuser') {
+      return `Tu déclines l'offre de ${decision.clubNom} pour ${decision.joueurNom}.`;
+    }
+    if (optionId === 'negocier') {
+      const montant = Math.round(decision.montant * RABAIS_NEGOCIATION_PROPOSITION);
+      const res = proposerOffreTransfert(saison, decision.clubId, decision.joueurId, montant);
+      if (!res.ok) {
+        return res.motif === 'budget'
+          ? `Impossible : il te manque ${res.manque} k€ pour offrir ${montant} k€.`
+          : `Impossible d'ouvrir la discussion (${res.motif}).`;
+      }
+      return `Tu proposes ${montant} k€ à ${decision.clubNom} pour ${decision.joueurNom}. ` +
+        `Réponse sous ${DELAI_REPONSE_TRANSFERT_JOURS} jours.`;
+    }
+    const res = finaliserAchat(saison,
+      { clubId: decision.clubId, joueurId: decision.joueurId, montant: decision.montant });
+    if (!res.ok) {
+      // Refus EXPLIQUÉ et chiffré, jamais un bouton qui ne fait rien.
+      return res.motif === 'budget'
+        ? `Impossible : il te manque ${res.manque} k€ pour payer ${decision.montant} k€.`
+        : `L'opération n'a pas pu se faire (${res.motif}).`;
+    }
+    return `${res.joueur.nom} rejoint le club pour ${res.prix} k€.`;
+  }
+
   // --- 6. Les clubs IA gèrent leurs contrats ------------------------------
 
   // À l'intersaison, un club IA prolonge les joueurs dont il a besoin, dans la
@@ -762,7 +889,9 @@
     negociationDe, ouvrirNegociation, conclureContrat, avancerNegociations,
     appliquerDecisionNegociation,
     basculerNonRenouvellement, indemniteRupture, rompreContrat,
-    joueursDesClubsAdverses, proposerOffreTransfert, decisionVendeur,
+    prixDemandeAuManager, joueursDesClubsAdverses, proposerOffreTransfert, decisionVendeur,
+    PROBA_PROPOSITION_RIVALE, DELAI_PROPOSITION_JOURS, RABAIS_NEGOCIATION_PROPOSITION,
+    propositionVenteRivaleDuJour, appliquerDecisionPropositionVente, dejaPropose,
     finaliserAchat, avancerOffresSortantes, appliquerDecisionOffreSortante,
     prolongationsClubIA, prolongationsClubsIA,
     dossierContrats,
