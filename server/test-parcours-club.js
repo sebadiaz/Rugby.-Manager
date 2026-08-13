@@ -2672,11 +2672,23 @@ test("avancerUnJour : arriver un jour de match ne joue PAS le match automatiquem
 test("avancerJusquAuProchainMatch : s'arrête le jour du match, sans le dépasser", () => {
   const s = saisonPourAvance(903);
   const arret = RMClub.prochainArret(s);
-  const r = RMClub.avancerJusquAuProchainMatch(s);
+  // L'avance s'arrête AUSSI sur tout événement réel du chemin (blessure,
+  // offre reçue, rapport de repérage…) : c'est sa raison d'être. Le test ne
+  // doit donc pas supposer qu'une graine donnée traverse la semaine sans rien
+  // rencontrer — il relance jusqu'au match, exactement comme le manager
+  // reclique après avoir traité l'événement. Constaté : la graine 903
+  // rencontrait bien le match d'un trait jusqu'à ce que le barème des
+  // transferts change (G5) et décale le tirage ; le comportement testé, lui,
+  // n'a pas bougé.
+  let r = null, tours = 0, joursTotal = 0;
+  do {
+    r = RMClub.avancerJusquAuProchainMatch(s);
+    joursTotal += r.journees.length;
+  } while (r.raison !== 'match' && r.raison !== 'saison' && tours++ < 30);
+  assert.strictEqual(r.raison, 'match', `raison attendue "match", obtenue "${r.raison}"`);
   assert.strictEqual(RMClub.comparerDates(RMClub.dateCourante(s), arret.date), 0,
     "la date doit s'arrêter exactement le jour du match");
-  assert.strictEqual(r.raison, 'match', `raison attendue "match", obtenue "${r.raison}"`);
-  assert.ok(r.journees.length > 0, 'les jours traversés doivent être réellement résolus');
+  assert.ok(joursTotal > 0, 'les jours traversés doivent être réellement résolus');
 });
 
 test("avancerJusquAuProchainMatch : déjà sur un jour de match, on n'avance pas (le match reste à jouer)", () => {

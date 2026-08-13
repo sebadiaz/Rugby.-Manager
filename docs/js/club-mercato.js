@@ -51,14 +51,21 @@
   // c'est le MANAGER qui achète (calculerPrixDemandeAdverse), pour qu'un club
   // IA et le joueur paient le même prix pour le même joueur. Aucune seconde
   // grille tarifaire.
+  // Prix entre DEUX CLUBS DE LA MÊME DIVISION. `calculerPrixDemandeAdverse`
+  // applique une surcote de 1,6 qui vise le manager — un acheteur extérieur au
+  // marché, qu'on fait payer plus cher. Entre clubs rivaux qui se connaissent
+  // et se vendent des joueurs tous les ans, la prime est bien plus faible : on
+  // garde la prime de « joueur clé » (primeCle), pas la surcote d'étranger.
+  const SURCOTE_ENTRE_CLUBS = 1.15;
   function prixDe(saison, club, joueur) {
     const RMClub = global.RMClub;
-    if (RMClub.calculerPrixDemandeAdverse) {
-      // La fonction lit `clubAdverse.effectif` pour situer le joueur dans son
-      // équipe : on lui passe le groupe complet, qui est la vraie référence.
-      return RMClub.calculerPrixDemandeAdverse(joueur, { effectif: groupeDe(saison, club) });
-    }
-    return Math.round(RMClub.estimerValeurTransfert(joueur.vitesse, joueur.plaquage, joueur.age) * 1.6);
+    const base = RMClub.estimerValeurTransfert(joueur.vitesse, joueur.plaquage, joueur.age);
+    const groupe = groupeDe(saison, club);
+    const niveau = niveauJoueur(joueur);
+    const moyen = groupe.length
+      ? groupe.reduce((t, j) => t + niveauJoueur(j), 0) / groupe.length : niveau;
+    const primeCle = Math.max(1, 1 + (niveau - moyen) / 35);
+    return Math.max(1, Math.round(base * SURCOTE_ENTRE_CLUBS * primeCle));
   }
 
   // Effectif attendu à chaque poste, dérivé du gabarit commun — jamais une
@@ -162,62 +169,88 @@
   // d'abord — c'est aussi ce qui rend l'ordre déterministe), cherche à
   // renforcer son poste le plus faible en achetant le meilleur joueur
   // cessible du monde à ce poste, dans la limite de son budget.
+  // PAS ÉLÉMENTAIRE d'un transfert entre deux clubs adverses : un acheteur qui
+  // a un besoin réel et les moyens, un vendeur en surplus, un prix, et le
+  // joueur ET l'argent qui changent de main.
+  //
+  // Extrait de `mercatoClubsIA` (TODO_AUDIT.md G5) pour être appelé aussi EN
+  // COURS DE SAISON (`transfertRivalDuJour`). Une seule règle, donc : sans
+  // cette extraction, le marché de saison aurait eu son propre barème et les
+  // deux auraient fini par diverger.
+  //
+  // `options.acheteur` impose le club acheteur (l'intersaison boucle dessus) ;
+  // sans lui, on essaie les clubs du plus riche au plus pauvre.
+  // `options.ventes` est le compteur de ventes par club, pour qu'un même club
+  // ne vide pas son effectif en une intersaison.
+  function tenterTransfertRival(rng, saison, options) {
+    const o = options || {};
+    const clubs = (saison.adversaires || []).slice();
+    if (clubs.length < 2) return null;
+    const ventes = o.ventes || {};
+    const acheteurs = o.acheteur ? [o.acheteur]
+      : clubs.slice().sort((a, b) => (b.budget || 0) - (a.budget || 0) || (a.id < b.id ? -1 : 1));
+    for (const acheteur of acheteurs) {
+      const besoin = besoinsDe(saison, acheteur)[0];
+      if (!besoin) continue;
+      const plafond = Math.floor((acheteur.budget || 0) * PART_BUDGET_MAX);
+      if (plafond <= 0) continue;
+
+      // Le meilleur joueur disponible à ce poste, chez un autre club, qui
+      // améliore RÉELLEMENT l'acheteur et qu'il peut payer.
+      let meilleur = null;
+      for (const vendeur of clubs) {
+        if (vendeur.id === acheteur.id) continue;
+        if ((ventes[vendeur.id] || 0) >= VENTES_MAX_PAR_CLUB) continue;
+        for (const j of cessiblesDe(saison, vendeur)) {
+          if (j.poste !== besoin.poste) continue;
+          if (niveauJoueur(j) < besoin.meilleur + GAIN_MINIMAL) continue;
+          const prix = prixDe(saison, vendeur, j);
+          if (prix > plafond) continue;
+          if (!meilleur || niveauJoueur(j) > niveauJoueur(meilleur.joueur)) {
+            meilleur = { vendeur, joueur: j, prix };
+          }
+        }
+      }
+      if (!meilleur) continue;
+
+      // Un club ne cède pas toujours : la probabilité dépend de ce que le
+      // joueur représente pour lui. Un club en surplus vend plus volontiers.
+      const surplus = cessiblesDe(saison, meilleur.vendeur).filter((j) => j.poste === besoin.poste).length;
+      const probaVente = Math.max(0.25, Math.min(0.9, 0.35 + surplus * 0.2));
+      if (rng() >= probaVente) continue;
+
+      const budgetAcheteurAvant = acheteur.budget || 0;
+      const budgetVendeurAvant = meilleur.vendeur.budget || 0;
+      acheteur.budget = budgetAcheteurAvant - meilleur.prix;
+      meilleur.vendeur.budget = budgetVendeurAvant + meilleur.prix;
+      retirerDuClub(saison, meilleur.vendeur, meilleur.joueur);
+      ajouterAuClub(saison, acheteur, meilleur.joueur);
+      ventes[meilleur.vendeur.id] = (ventes[meilleur.vendeur.id] || 0) + 1;
+      return {
+        joueurId: meilleur.joueur.id, joueurNom: meilleur.joueur.nom, poste: meilleur.joueur.poste,
+        age: meilleur.joueur.age,
+        deClubId: meilleur.vendeur.id, deClubNom: meilleur.vendeur.nom,
+        versClubId: acheteur.id, versClubNom: acheteur.nom,
+        montant: meilleur.prix,
+        budgetAcheteurAvant, budgetAcheteurApres: acheteur.budget,
+        budgetVendeurAvant, budgetVendeurApres: meilleur.vendeur.budget,
+      };
+    }
+    return null;
+  }
+
   function mercatoClubsIA(rng, saison) {
     const clubs = (saison.adversaires || []).slice();
     if (clubs.length < 2) return [];
     const transferts = [];
-    const ventes = {}, recrues = {};
-    for (const c of clubs) { ventes[c.id] = 0; recrues[c.id] = 0; }
-
+    const ventes = {};
+    for (const c of clubs) ventes[c.id] = 0;
     const ordre = clubs.slice().sort((a, b) => (b.budget || 0) - (a.budget || 0) || (a.id < b.id ? -1 : 1));
     for (const acheteur of ordre) {
       for (let tour = 0; tour < RECRUES_MAX_PAR_CLUB; tour++) {
-        const besoin = besoinsDe(saison, acheteur)[0];
-        if (!besoin) break;
-        const plafond = Math.floor((acheteur.budget || 0) * PART_BUDGET_MAX);
-        if (plafond <= 0) break;
-
-        // Le meilleur joueur disponible à ce poste, chez un autre club, qui
-        // améliore RÉELLEMENT l'acheteur et qu'il peut payer.
-        let meilleur = null;
-        for (const vendeur of clubs) {
-          if (vendeur.id === acheteur.id) continue;
-          if (ventes[vendeur.id] >= VENTES_MAX_PAR_CLUB) continue;
-          for (const j of cessiblesDe(saison, vendeur)) {
-            if (j.poste !== besoin.poste) continue;
-            if (niveauJoueur(j) < besoin.meilleur + GAIN_MINIMAL) continue;
-            const prix = prixDe(saison, vendeur, j);
-            if (prix > plafond) continue;
-            if (!meilleur || niveauJoueur(j) > niveauJoueur(meilleur.joueur)) {
-              meilleur = { vendeur, joueur: j, prix };
-            }
-          }
-        }
-        if (!meilleur) break;
-
-        // Un club ne cède pas toujours : la probabilité dépend de ce que le
-        // joueur représente pour lui. Un club en surplus vend plus volontiers.
-        const surplus = cessiblesDe(saison, meilleur.vendeur).filter((j) => j.poste === besoin.poste).length;
-        const probaVente = Math.max(0.25, Math.min(0.9, 0.35 + surplus * 0.2));
-        if (rng() >= probaVente) break;
-
-        const budgetAcheteurAvant = acheteur.budget || 0;
-        const budgetVendeurAvant = meilleur.vendeur.budget || 0;
-        acheteur.budget = budgetAcheteurAvant - meilleur.prix;
-        meilleur.vendeur.budget = budgetVendeurAvant + meilleur.prix;
-        retirerDuClub(saison, meilleur.vendeur, meilleur.joueur);
-        ajouterAuClub(saison, acheteur, meilleur.joueur);
-        ventes[meilleur.vendeur.id] += 1;
-        recrues[acheteur.id] += 1;
-        transferts.push({
-          joueurId: meilleur.joueur.id, joueurNom: meilleur.joueur.nom, poste: meilleur.joueur.poste,
-          age: meilleur.joueur.age,
-          deClubId: meilleur.vendeur.id, deClubNom: meilleur.vendeur.nom,
-          versClubId: acheteur.id, versClubNom: acheteur.nom,
-          montant: meilleur.prix,
-          budgetAcheteurAvant, budgetAcheteurApres: acheteur.budget,
-          budgetVendeurAvant, budgetVendeurApres: meilleur.vendeur.budget,
-        });
+        const t = tenterTransfertRival(rng, saison, { acheteur, ventes });
+        if (!t) break;
+        transferts.push(t);
       }
     }
     return transferts;
@@ -490,6 +523,34 @@
   // Réalimentation lente du marché : un joueur libre de plus tous les
   // JOURS_REAPPRO jours, calibré sur le niveau RÉEL du club du joueur (comme
   // genererMarcheTransferts le fait déjà à l'intersaison).
+  // Probabilité qu'un transfert entre deux clubs adverses se conclue un jour
+  // donné, fenêtre ouverte. Calibrée pour un marché VIVANT sans chaos : sur
+  // une saison, quelques joueurs changent de maillot, pas des dizaines.
+  const PROBA_TRANSFERT_RIVAL = 0.08;
+
+  // Le marché ne s'arrête plus entre deux intersaisons (TODO_AUDIT.md G5).
+  // Mesuré avant : sur 300 jours simulés, ZÉRO joueur ne changeait de club
+  // adverse — les rivaux savaient signer un joueur libre et s'échanger des
+  // joueurs à l'intersaison, mais jamais entre les deux. Une cible repérée
+  // chez un rival y était encore six mois plus tard, quoi qu'il arrive.
+  //
+  // Même fenêtre de transfert que le manager, et le MÊME pas élémentaire que
+  // l'intersaison (tenterTransfertRival) : aucune règle parallèle.
+  function transfertRivalDuJour(rng, saison, date) {
+    const RMClub = global.RMClub;
+    const fenetre = RMClub.etatFenetreTransfert(saison, date);
+    if (!fenetre.ouverte) return null;
+    if (rng() >= PROBA_TRANSFERT_RIVAL) return null;
+    const t = tenterTransfertRival(rng, saison, {});
+    if (!t) return null;
+    // Le manager doit VOIR que le marché bouge autour de lui : c'est ce qui
+    // rend la concurrence réelle.
+    RMClub.ajouterMessage(saison, 'transfert', 'Transfert dans la division',
+      `${t.joueurNom} (${t.poste}, ${t.age} ans) quitte ${t.deClubNom} pour ` +
+      `${t.versClubNom} — ${t.montant} k€.`);
+    return t;
+  }
+
   function reapprovisionnerMarche(rng, saison, date) {
     const RMClub = global.RMClub;
     const journal = journalMercato(saison);
@@ -523,7 +584,12 @@
     const rng = global.RugbyEngine.creerRng(RMClub.grainePourJour(graine, date, 31));
     const signature = signatureRivaleDuJour(rng, saison, date);
     const arrivee = reapprovisionnerMarche(rng, saison, date);
-    return { signature, arrivee };
+    // Le marché entre clubs adverses vit aussi pendant la saison (G5). Canal
+    // de tirage DÉDIÉ (43) : greffé sur le canal 31, il décalerait tous les
+    // tirages déjà en place et changerait les carrières existantes.
+    const rngTransferts = global.RugbyEngine.creerRng(RMClub.grainePourJour(graine, date, 43));
+    const transfert = transfertRivalDuJour(rngTransferts, saison, date);
+    return { signature, arrivee, transfert };
   }
 
   // Rafraîchissement manuel du marché : conservé (c'est une vraie action de
@@ -555,6 +621,7 @@
   global.RMClub = Object.assign(global.RMClub || {}, {
     PROBA_SIGNATURE_RIVALE, JOURS_ENTRE_RAFRAICHISSEMENTS,
     signatureRivaleDuJour, reapprovisionnerMarche, avancerJourMercato,
+    PROBA_TRANSFERT_RIVAL, tenterTransfertRival, transfertRivalDuJour,
     rafraichirMarcheManuel,
     PART_BUDGET_MAX_MERCATO: PART_BUDGET_MAX,
     RECRUES_MAX_PAR_CLUB, VENTES_MAX_PAR_CLUB,

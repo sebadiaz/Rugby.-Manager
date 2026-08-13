@@ -164,8 +164,27 @@
   // libre du marché et pour un joueur d'un club adverse (fiche joueur
   // adverse) — dérivée uniquement de vitesse/plaquage/âge, jamais un chiffre
   // décoratif distinct de ce qui est utilisé ailleurs pour ce même calcul.
+  // Une indemnité de transfert se compte en ANNÉES DE SALAIRE, pas en valeur
+  // absolue (TODO_AUDIT.md G5). L'ancienne formule
+  // `(vitesse + plaquage) * 3 + (30 - age) * 5` donnait 415 k€ de valeur de
+  // base, soit ~16 fois le salaire annuel du même joueur — et 523 à 621 k€ de
+  // prix demandé, pour des budgets de clubs de 263 à 398 k€.
+  //
+  // Conséquence MESURÉE : sur 5 184 paires (club qui cherche à un poste × joueur
+  // cédable à ce poste), 754 étaient assez bonnes pour intéresser l'acheteur
+  // et **ZÉRO** était payable. Le marché des transferts entre clubs était
+  // inerte, à l'intersaison comme en saison. Depuis que les recettes ont été
+  // ramenées à l'échelle des salaires (G3), le manager lui-même ne pouvait
+  // plus rien acheter : une seule recrue coûtait plus qu'une saison entière de
+  // budget.
+  //
+  // Barème repris sur le salaire : 4,5 années pour un joueur dans sa force de
+  // l'âge, moins ensuite — un ordre de grandeur cohérent avec le rugby, où
+  // l'indemnité reste modeste devant le salaire.
   function estimerValeurTransfert(vitesse, plaquage, age) {
-    return Math.round((vitesse + plaquage) * 3 + (30 - Math.min(age, 30)) * 5);
+    const salaire = calculerSalaire(vitesse, plaquage, age);
+    const anneesDeSalaire = age <= 26 ? 4.5 : age <= 29 ? 3.5 : age <= 32 ? 2.5 : 1.8;
+    return Math.max(1, Math.round(salaire * anneesDeSalaire));
   }
 
   // --- Effectif étendu (club du joueur) : genererJoueurEtendu,

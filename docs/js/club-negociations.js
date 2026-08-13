@@ -49,6 +49,10 @@
   // Indemnité de rupture : rompre un contrat en cours coûte le reste dû,
   // ramené à une part négociée. On ne licencie pas gratuitement.
   const PART_INDEMNITE_RUPTURE = 0.6;
+  // Au-delà de ce montant, la direction considère la rupture comme une erreur
+  // de gestion et retire de la confiance. En dessous (contrat qui s'achevait,
+  // petit salaire), elle laisse faire.
+  const SEUIL_RUPTURE_NOTABLE = 40;
 
   const CANAL_NEGOCIATIONS = 41;
 
@@ -438,10 +442,24 @@
     for (const j of c.effectif) {
       j.moral = borneMoral((j.moral != null ? j.moral : 65) - 2);
     }
+    // La DIRECTION regarde aussi : payer pour se séparer d'un joueur sous
+    // contrat est un aveu d'erreur de gestion. La sanction est proportionnée à
+    // ce que ça coûte — une rupture anodine (fin de contrat proche, petit
+    // salaire) ne l'émeut pas.
+    let confiancePerdue = 0;
+    if (indemnite >= SEUIL_RUPTURE_NOTABLE) {
+      const avant = c.confiancePresident != null ? c.confiancePresident : 60;
+      confiancePerdue = Math.max(1, Math.min(8, Math.round(indemnite / 25)));
+      c.confiancePresident = Math.max(0, avant - confiancePerdue);
+    }
     RMClub.ajouterMessage(saison, 'contrat', 'Contrat rompu',
       `${joueur.nom} quitte le club. Indemnité de rupture : ${indemnite} k€. ` +
-      `Le vestiaire a pris note.`);
-    return { ok: true, indemnite, joueur };
+      `Le vestiaire a pris note.` +
+      (confiancePerdue
+        ? ` La direction n'apprécie pas de payer pour un joueur qui ne joue plus ` +
+          `(confiance ${c.confiancePresident} %, ${-confiancePerdue}).`
+        : ''));
+    return { ok: true, indemnite, joueur, confiancePerdue };
   }
 
   // --- 5. Offres SORTANTES : acheter le joueur d'un club adverse ---------
@@ -737,6 +755,7 @@
   global.RMClub = Object.assign(global.RMClub || {}, {
     DELAI_REPONSE_JOURS, DELAI_REFLEXION_JOURS, REFUS_AVANT_RUPTURE,
     DELAI_REPONSE_TRANSFERT_JOURS, SURCOTE_VENDEUR, PART_INDEMNITE_RUPTURE,
+    SEUIL_RUPTURE_NOTABLE,
     CANAL_NEGOCIATIONS, VOLONTES,
     saisonFinContrat, salaireDeMarche, interetExterieur, satisfactionContrat,
     volonteProlonger, exigenceSalariale, evaluerOffreContrat, contrePropositionDe,

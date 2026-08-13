@@ -3395,3 +3395,93 @@ test qui mentait.
 - La confiance de la direction ne réagit pas encore spécifiquement à une
   rupture de contrat coûteuse (le budget, lui, est bien impacté et suivi par le
   plancher financier existant).
+
+---
+
+## G5 — Le marché ne s'arrête plus, et il redevient payable (livrée)
+
+### Comportement observé (mesuré, pas déduit)
+
+**1. Le marché s'arrêtait entre deux intersaisons.** 300 jours simulés,
+graine 777 :
+
+```
+joueurs ayant changé de club IA en cours de saison : 0
+clubs IA dont le budget a bougé                    : 3 / 13
+```
+
+Les rivaux savaient signer un joueur **libre** en saison
+(`signatureRivaleDuJour`) et s'échanger des joueurs **à l'intersaison**
+(`mercatoClubsIA`). Entre les deux, rien : une cible repérée chez un rival y
+était encore six mois plus tard, quoi qu'il arrive.
+
+**2. Et en cherchant pourquoi, un défaut bien plus large.** Instrumentation de
+5 184 paires (club qui cherche à un poste × joueur cédable à ce poste), sur
+20 saisons :
+
+| | |
+|---|---|
+| paires examinées | 5 184 |
+| dont assez bonnes pour intéresser l'acheteur | **754** |
+| dont **payables** | **0** |
+
+Prix demandés : **523 à 621 k€**, pour des budgets de clubs IA de **263 à
+398 k€** et un plafond d'achat de 92 à 139 k€. Le marché entre clubs était
+donc inerte **partout**, intersaison comprise — `mercatoClubsIA` tournait à
+vide depuis toujours.
+
+Et depuis que les recettes ont été ramenées à l'échelle des salaires (G3), le
+**manager lui-même** ne pouvait plus rien acheter : une seule recrue coûtait
+plus qu'une saison entière de budget. G4 le masquait en forçant le budget dans
+ses tests.
+
+### La cause
+
+`estimerValeurTransfert` valait `(vitesse + plaquage) * 3 + (30 - âge) * 5`,
+soit ~415 k€ de valeur de base — **environ 16 fois le salaire annuel du même
+joueur** (18 à 34 k€/saison). Une indemnité de transfert se compte en années
+de salaire ; celle-ci n'était rattachée à rien.
+
+### La correction
+
+1. **Barème repris sur le salaire** : 4,5 années pour un joueur dans sa force
+   de l'âge, 3,5 puis 2,5 puis 1,8 ensuite.
+2. **`prixDe` (entre clubs de la même division)** n'applique plus la surcote
+   de 1,6 de `calculerPrixDemandeAdverse` : celle-ci vise le manager, acheteur
+   extérieur au marché. Entre rivaux qui se vendent des joueurs tous les ans,
+   la prime tombe à 1,15 — la prime de « joueur clé » est conservée.
+3. **`tenterTransfertRival`** : le pas élémentaire d'un transfert entre deux
+   clubs, **extrait** de `mercatoClubsIA` pour être appelé aussi en saison.
+   Une seule règle, donc — sans cette extraction, le marché de saison aurait eu
+   son propre barème.
+4. **`transfertRivalDuJour`** : appelé chaque jour par `avancerJourMercato`,
+   même fenêtre de transfert que le manager, canal de tirage **dédié** (43)
+   pour ne pas décaler les tirages existants. Le manager reçoit un message
+   « Transfert dans la division » : il voit le marché bouger autour de lui.
+5. **La direction réagit à une rupture de contrat coûteuse** (au-delà de
+   40 k€ d'indemnité) : c'est un aveu d'erreur de gestion, la confiance baisse
+   proportionnellement. Une rupture anodine ne l'émeut pas.
+
+### Résultat mesuré
+
+| | Avant | Après |
+|---|---|---|
+| Transferts entre clubs IA en saison (300 j) | **0** | **9** |
+| Clubs IA dont le budget bouge | 3/13 | **12/13** |
+| Candidats au transfert payables | 0 / 754 | **163 / 754** |
+| Prix demandés | 523-621 k€ | **48-203 k€** |
+
+Pour le manager (budget de départ 434 k€) : **100 cibles sur 100 sont
+abordables**, ses propres joueurs valent 104 k€ (médiane) à 171 k€, et un
+chantier coûte 220 à 320 k€. Acheter, vendre et construire deviennent enfin
+des arbitrages entre eux.
+
+### Un test rendu robuste, pas assoupli
+
+`avancerJusquAuProchainMatch : s'arrête le jour du match` échouait après le
+changement : la graine 903 rencontrait désormais une blessure d'entraînement
+et une offre reçue avant le match. **Les deux arrêts sont légitimes** — c'est
+exactement la raison d'être de cette fonction. Le comportement testé n'a pas
+bougé, c'est le trajet de la graine qui a changé. Le test relance donc l'avance
+jusqu'au match, comme le manager reclique après avoir traité l'événement, au
+lieu de supposer qu'une graine traverse la semaine sans rien rencontrer.
