@@ -19,6 +19,7 @@ const MODULES = [
   'club-analyse.js',
   'club-prets.js',
   'club-contrats.js',
+  'club-negociations.js',
   'club-equipe-b.js',
   'club-transferts.js',
   'club-transferts-internationaux.js',

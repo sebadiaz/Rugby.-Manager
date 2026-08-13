@@ -38,9 +38,15 @@
     if (!joueur) return { ok: false, motif: 'introuvable' };
     const offre = calculerOffreRenouvellement(joueur);
     const dureeFinale = Math.max(1, Math.min(offre.dureeMax, duree || offre.dureeMax));
+    // Le seuil vient de `exigenceSalariale` (club-negociations.js) : c'est LE
+    // barème du jeu, celui qu'utilise aussi la négociation à étapes. Deux
+    // formules séparées finiraient par diverger, et le joueur n'aurait pas le
+    // même prix selon le chemin emprunté. Repli sur la règle historique
+    // (moral seul) si le module n'est pas chargé.
     const moral = joueur.moral != null ? joueur.moral : 60;
-    const facteurExigence = 1 + Math.max(0, 60 - moral) / 200; // moral bas → exige plus pour rester
-    const seuil = offre.salaire * facteurExigence;
+    const seuil = global.RMClub.exigenceSalariale
+      ? global.RMClub.exigenceSalariale(saison, joueur, { duree: dureeFinale })
+      : offre.salaire * (1 + Math.max(0, 60 - moral) / 200);
     const ratio = salaireOffert / seuil;
     const probaAcceptation = Math.max(0.03, Math.min(0.97, (ratio - 0.7) * 2));
     if (rng() >= probaAcceptation) {
@@ -63,20 +69,14 @@
   // possible entre les deux chemins.
   const DELAI_REPONSE_CONTRAT_JOURS = 3;
 
-  function proposerContrat(saison, joueurId, salaireOffert, duree) {
+  // Délègue à `ouvrirNegociation` (club-negociations.js) : même file, même
+  // barème, mêmes étapes. Signature et retour inchangés pour les appelants
+  // historiques, avec la prime en option supplémentaire.
+  function proposerContrat(saison, joueurId, salaireOffert, duree, prime) {
     const RMClub = global.RMClub;
-    const joueur = saison.clubJoueur.effectif.find((j) => j.id === joueurId);
-    if (!joueur) return { ok: false, motif: 'introuvable' };
-    if (!Array.isArray(saison.negociationsContrat)) saison.negociationsContrat = [];
-    if (saison.negociationsContrat.some((n) => n.joueurId === joueurId)) return { ok: false, motif: 'deja_en_cours' };
-    const dateReponse = RMClub.ajouterJours(RMClub.dateCourante(saison), DELAI_REPONSE_CONTRAT_JOURS);
-    saison.negociationsContrat.push({
-      joueurId, nom: joueur.nom,
-      salaire: Math.round(salaireOffert),
-      duree: duree || null,
-      dateReponse: RMClub.dateISO(dateReponse),
-    });
-    return { ok: true, dateReponse, delai: DELAI_REPONSE_CONTRAT_JOURS };
+    if (!RMClub.ouvrirNegociation) return { ok: false, motif: 'indisponible' };
+    return RMClub.ouvrirNegociation(saison, joueurId,
+      { salaire: salaireOffert, duree: duree, prime: prime || 0 });
   }
 
   function negociationEnCours(saison, joueurId) {
@@ -86,25 +86,22 @@
   // Traite les réponses arrivées à échéance. La décision passe par
   // `negocierRenouvellement` : mêmes exigences, mêmes effets sur le moral,
   // même message de prolongation qu'avant — seul le MOMENT change.
+  // UN SEUL résolveur : celui de club-negociations.js, qui gère les cinq
+  // issues (acceptation, contre-proposition, réflexion, refus, rupture).
+  // Cette fonction garde son nom et sa forme de retour historiques
+  // (`{nom, accepte, salaire, salaireMinimumEstime}`) — l'interface et les
+  // tests existants s'appuient dessus — mais ne décide plus elle-même. Sans
+  // ça, deux résolveurs liraient la même file et pourraient diverger.
   function resoudreNegociationsContrat(rng, saison, date) {
     const RMClub = global.RMClub;
-    if (!Array.isArray(saison.negociationsContrat) || !saison.negociationsContrat.length) return [];
-    const reponses = [];
-    const restantes = [];
-    for (const n of saison.negociationsContrat) {
-      const echeance = RMClub.dateDepuisISO(n.dateReponse);
-      if (!echeance || RMClub.comparerDates(date, echeance) < 0) { restantes.push(n); continue; }
-      const joueur = saison.clubJoueur.effectif.find((j) => j.id === n.joueurId);
-      if (!joueur) continue; // parti du club entre-temps : négociation caduque
-      const res = negocierRenouvellement(rng, saison, n.joueurId, n.salaire, n.duree);
-      if (!res.ok) {
-        RMClub.ajouterMessage(saison, 'contrat', 'Proposition refusée',
-          `${joueur.nom} décline ton offre de ${n.salaire} k€/saison. Son agent évoque plutôt ${res.salaireMinimumEstime} k€/saison.`);
-      }
-      reponses.push({ nom: joueur.nom, accepte: !!res.ok, salaire: n.salaire, salaireMinimumEstime: res.salaireMinimumEstime });
-    }
-    saison.negociationsContrat = restantes;
-    return reponses;
+    if (!RMClub.avancerNegociations) return [];
+    return RMClub.avancerNegociations(rng, saison, date).map((r) => ({
+      nom: r.nom,
+      accepte: r.verdict === 'accepte',
+      verdict: r.verdict,
+      salaire: r.salaire,
+      salaireMinimumEstime: r.exigence != null ? r.exigence : r.demande,
+    }));
   }
 
   global.RMClub = Object.assign(global.RMClub || {}, {

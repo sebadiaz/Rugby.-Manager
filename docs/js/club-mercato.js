@@ -324,6 +324,13 @@
   function avancerIntersaisonClubsIA(rng, saison) {
     const retraites = [];
     const libres = [];
+    // AVANT tout : chaque club IA décide s'il PROLONGE ses joueurs en fin de
+    // contrat (club-negociations.js). C'est distinct de recruterJoueursLibres
+    // plus bas, qui signe les libres DES AUTRES : ici un club retient les
+    // SIENS avant qu'ils n'atteignent le marché. Sans cette étape, un club IA
+    // perdait chaque année tous ses fins de contrat sans jamais réagir.
+    const prolongationsIA = global.RMClub.prolongationsClubsIA
+      ? global.RMClub.prolongationsClubsIA(rng, saison) : [];
     for (const club of (saison.adversaires || [])) {
       const evolution = vieillirClubIA(rng, saison, club);
       for (const p of evolution.partis) {
@@ -347,6 +354,8 @@
     const mercato = {
       saison: saison.numero || 1,
       mouvements, transferts, signaturesLibres, prolongations, retraites,
+      // Prolongations décidées par les clubs IA eux-mêmes, avant l'expiration.
+      prolongationsIA,
       // Joueurs libres que personne n'a voulu : ils quittent réellement le
       // monde (fin de carrière), on ne fait pas semblant qu'ils existent.
       nonRetenus: libres.length,

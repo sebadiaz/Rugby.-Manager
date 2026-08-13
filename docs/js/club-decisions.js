@@ -143,6 +143,15 @@
     if (decision.type === 'offreAchat') {
       decision.resultat = global.RMClub.appliquerDecisionOffre(saison, decision, optionId);
     }
+    // Contre-proposition d'un joueur sur son contrat (club-negociations.js) :
+    // accepter ses conditions, revenir avec un compromis, ou arrêter là.
+    if (decision.type === 'negociationContrat') {
+      decision.resultat = global.RMClub.appliquerDecisionNegociation(saison, decision, optionId);
+    }
+    // Contre-proposition d'un club adverse sur MON offre de transfert.
+    if (decision.type === 'offreSortante') {
+      decision.resultat = global.RMClub.appliquerDecisionOffreSortante(saison, decision, optionId);
+    }
     decision.resolu = true;
     decision.choix = optionId;
     message.lu = true;
@@ -173,7 +182,11 @@
           ? "Tu n'as pas réagi à temps : l'ambiance du vestiaire s'est dégradée toute seule."
           : d.type === 'offreAchat'
             ? `Tu n'as pas répondu à temps : ${d.clubNom || 'le club'} retire son offre pour ${d.joueurNom || 'ton joueur'}.`
-            : `Tu n'as pas répondu à temps : ${joueur ? joueur.nom : 'le joueur'} a pris ton silence pour un refus.`;
+            : d.type === 'offreSortante'
+              ? `Tu n'as pas répondu à temps : ${d.clubNom || 'le club'} retire ${d.joueurNom || 'son joueur'} du marché.`
+              : d.type === 'negociationContrat'
+                ? `Tu n'as pas répondu à temps : l'agent de ${d.joueurNom || 'ton joueur'} a classé le dossier.`
+                : `Tu n'as pas répondu à temps : ${joueur ? joueur.nom : 'le joueur'} a pris ton silence pour un refus.`;
         d.expiree = true;
         expirees.push(joueur ? joueur.nom : null);
       }

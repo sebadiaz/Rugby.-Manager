@@ -27,6 +27,7 @@ new Function('window', require('fs').readFileSync(require('path').join(__dirname
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-analyse.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-prets.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-contrats.js'), 'utf8'))(global.window);
+new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-negociations.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-equipe-b.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-transferts.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-transferts-internationaux.js'), 'utf8'))(global.window);
@@ -2377,6 +2378,7 @@ const clubObjectifSrcPourRechargement = require('fs').readFileSync(require('path
 const clubAnalyseSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-analyse.js'), 'utf8');
 const clubPretsSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-prets.js'), 'utf8');
 const clubContratsSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-contrats.js'), 'utf8');
+const clubNegociationsSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-negociations.js'), 'utf8');
 const clubEquipeBSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-equipe-b.js'), 'utf8');
 const clubTransfertsSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-transferts.js'), 'utf8');
 const clubTransfertsIntlSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-transferts-internationaux.js'), 'utf8');
@@ -2418,6 +2420,7 @@ function chargerInstanceFraicheClub() {
   new Function('window', clubAnalyseSrcPourRechargement)(ctx);
   new Function('window', clubPretsSrcPourRechargement)(ctx);
   new Function('window', clubContratsSrcPourRechargement)(ctx);
+  new Function('window', clubNegociationsSrcPourRechargement)(ctx);
   new Function('window', clubEquipeBSrcPourRechargement)(ctx);
   new Function('window', clubTransfertsSrcPourRechargement)(ctx);
   new Function('window', clubTransfertsIntlSrcPourRechargement)(ctx);

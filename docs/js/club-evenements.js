@@ -182,7 +182,18 @@
       ? RMClub.avancerJourVentes(saison, date) : null;
 
     const rapports = RMClub.remettreRapportsScouting(saison, date);
-    const reponsesContrat = RMClub.resoudreNegociationsContrat(rng, saison, date);
+    // Négociations de contrat à étapes (club-negociations.js) : acceptation,
+    // refus, contre-proposition, réflexion, rupture. `avancerNegociations`
+    // REMPLACE l'ancien resoudreNegociationsContrat dans la boucle de jeu —
+    // ce dernier reste exporté (chemin synchrone) mais s'appuie sur le MÊME
+    // barème, il n'existe pas deux règles de décision.
+    const reponsesContrat = RMClub.avancerNegociations
+      ? RMClub.avancerNegociations(rng, saison, date)
+      : RMClub.resoudreNegociationsContrat(rng, saison, date);
+    // Offres SORTANTES : réponse des clubs adverses à mes propositions de
+    // transfert (accepter, contre-proposer, refuser).
+    const reponsesTransfert = RMClub.avancerOffresSortantes
+      ? RMClub.avancerOffresSortantes(saison, date) : [];
     const decisionsExpirees = RMClub.resoudreDecisionsExpirees(saison, date);
     const pointEtape = RMClub.resoudrePointEtape(saison);
     const reunionVestiaire = RMClub.declencherReunionVestiaire(saison, date);

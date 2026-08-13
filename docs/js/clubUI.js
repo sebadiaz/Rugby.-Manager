@@ -1216,7 +1216,16 @@
     if (!carte || !table || !zone || !titre) return;
     const sous = sousOngletCourant('effectif');
     table.style.display = (sous === 'joueurs' || sous === 'apercu') ? '' : 'none';
-    carte.style.display = sous === 'joueurs' ? 'none' : '';
+    carte.style.display = (sous === 'joueurs' || sous === 'contrats') ? 'none' : '';
+    // L'écran Contrats est un sous-onglet à part entière : il ne doit pas
+    // s'empiler sous « Vue d'ensemble ». Il n'a de sens que pour une équipe
+    // qu'on dirige — on ne négocie pas les contrats d'un club adverse.
+    const carteContrats = document.getElementById('carteContrats');
+    if (carteContrats) {
+      const afficher = sous === 'contrats' && ctx.modifiable;
+      carteContrats.style.display = afficher ? '' : 'none';
+      if (afficher) rafraichirContrats();
+    }
     const eff = ctx.effectif || [];
     if (!eff.length) {
       titre.textContent = 'Effectif';
@@ -1548,6 +1557,90 @@
     }
   }
 
+  // --- CONTRATS (TODO_AUDIT.md G4) ---------------------------------------
+  // Même effectif que le tableau ci-dessus, lu par l'échéance : salaire,
+  // valeur, fin de contrat, satisfaction, volonté de prolonger. Un clic ouvre
+  // la MÊME fiche joueur — aucune seconde interface.
+  const filtreContrats = { expirants: false, risque: false, triChamp: 'contrat', triSens: 1 };
+  const LIBELLE_VOLONTE_COURT = { souhaite: 'Veut rester', ouvert: 'Ouvert', reticent: 'Réticent', refuse: 'Veut partir' };
+
+  function rafraichirContrats() {
+    const zone = document.getElementById('clubContrats');
+    if (!zone || !RMClub.dossierContrats) return;
+    const d = RMClub.dossierContrats(saison);
+    let lignes = d.lignes.slice();
+    if (filtreContrats.expirants) lignes = lignes.filter((l) => l.expire);
+    if (filtreContrats.risque) lignes = lignes.filter((l) => l.expire && (l.volonte === 'refuse' || l.volonte === 'reticent'));
+    const f = filtreContrats;
+    const valeurTri = (l) => {
+      if (f.triChamp === 'nom' || f.triChamp === 'poste' || f.triChamp === 'volonte') return String(l[f.triChamp]);
+      return Number(l[f.triChamp]) || 0;
+    };
+    lignes.sort((a2, b2) => {
+      const va = valeurTri(a2), vb = valeurTri(b2);
+      let cmp = typeof va === 'string' ? va.localeCompare(vb) : va - vb;
+      if (cmp === 0) cmp = b2.niveau - a2.niveau;
+      return cmp * f.triSens;
+    });
+    document.getElementById('clubContratsResume').textContent =
+      `${d.lignes.length} contrats · masse ${d.masseSalariale} k€/saison · ` +
+      `${d.expirants} expirant(s)` + (d.aRisque ? ` · ${d.aRisque} à risque` : '') +
+      (d.negociationsEnCours ? ` · ${d.negociationsEnCours} négociation(s) en cours` : '');
+    const colonnes = [
+      ['nom', 'Nom'], ['poste', 'Poste'], ['age', 'Âge'], ['niveau', 'Niveau'],
+      ['salaire', 'Salaire'], ['valeur', 'Valeur'], ['saisonFin', 'Fin'],
+      ['moral', 'Moral'], ['satisfaction', 'Satisf.'], ['volonte', 'Avenir'],
+    ];
+    const entetes = colonnes.map(([champ, label]) => {
+      const fleche = f.triChamp === champ ? (f.triSens === 1 ? '▲' : '▼') : '';
+      return `<th class="triableContrat" data-champ="${champ}">${label}<span class="flecheTri">${fleche}</span></th>`;
+    }).join('') + '<th>Statut</th>';
+    const corps = lignes.map((l) => {
+      const alerte = l.expire ? ' class="badgeContratCourt"' : '';
+      const etat = l.negociationEnCours ? '💬 en négociation'
+        : l.rompue ? '⛔ discussions rompues'
+        : l.nonRenouvele ? '🚪 non renouvelé'
+        : l.surListeTransfert ? '📤 sur la liste'
+        : l.veutPartir ? '🚩 veut partir' : '—';
+      return `<tr data-joueur="${echapperHTML(l.id)}">` +
+        `<td>${echapperHTML(l.nom)}</td><td>${POSTE_COMPLET[l.poste] || l.poste}</td>` +
+        `<td>${l.age}</td><td>${l.niveau}</td><td>${l.salaire} k€</td><td>${l.valeur} k€</td>` +
+        `<td${alerte}>S${l.saisonFin}${l.expire ? ' ⚠️' : ''}</td>` +
+        `<td><span class="barreMoral${l.moral < 45 ? ' bas' : l.moral >= 80 ? ' haut' : ''}"><span style="width:${l.moral}%"></span></span></td>` +
+        `<td><span class="barreMoral${l.satisfaction < 45 ? ' bas' : l.satisfaction >= 80 ? ' haut' : ''}"><span style="width:${l.satisfaction}%"></span></span></td>` +
+        `<td>${l.volonteIcone} ${LIBELLE_VOLONTE_COURT[l.volonte] || l.volonteLibelle}</td>` +
+        `<td>${etat}</td></tr>`;
+    }).join('');
+    zone.innerHTML = lignes.length
+      ? `<table class="tableauClub effectifCliquable"><thead><tr>${entetes}</tr></thead><tbody>${corps}</tbody></table>`
+      : '<p>Aucun contrat ne correspond à ces filtres.</p>';
+  }
+
+  // --- JOUEURS DES CLUBS DE LA DIVISION ----------------------------------
+  const filtreCibles = { poste: '' };
+  function rafraichirCibles() {
+    const zone = document.getElementById('clubCibles');
+    if (!zone || !RMClub.joueursDesClubsAdverses) return;
+    const cibles = RMClub.joueursDesClubsAdverses(saison, { poste: filtreCibles.poste, limite: 25 });
+    const enCours = (saison.offresSortantes || []).length;
+    document.getElementById('clubCiblesResume').textContent =
+      `Budget ${saison.clubJoueur.budget} k€` + (enCours ? ` · ${enCours} offre(s) en cours` : '');
+    const corps = cibles.map((c2) => {
+      const offre = (saison.offresSortantes || []).find((o) => o.joueurId === c2.joueurId);
+      const action = offre
+        ? `<span class="detailMouvement">offre de ${offre.montant} k€ en cours</span>`
+        : `<button class="alt btnOffreCible" data-joueur="${echapperHTML(c2.joueurId)}" data-club="${echapperHTML(c2.clubId)}" ` +
+          `style="width:auto;padding:4px 8px;font-size:11px;">Faire une offre</button>`;
+      return `<tr><td>${echapperHTML(c2.nom)}</td><td>${POSTE_COMPLET[c2.poste] || c2.poste}</td>` +
+        `<td>${c2.age}</td><td>${Math.round((c2.vitesse + c2.plaquage) / 2)}</td>` +
+        `<td>${echapperHTML(c2.clubNom)}</td><td>${c2.prixDemande} k€</td><td>${action}</td></tr>`;
+    }).join('');
+    zone.innerHTML = cibles.length
+      ? `<table class="tableauClub"><thead><tr><th>Nom</th><th>Poste</th><th>Âge</th><th>Niveau</th>` +
+        `<th>Club</th><th>Prix demandé</th><th></th></tr></thead><tbody>${corps}</tbody></table>`
+      : '<p>Aucun joueur ne correspond à ce filtre.</p>';
+  }
+
   function rafraichirEffectif() {
     rafraichirSousOnglets('effectif');
     const ctx = contexte();
@@ -1591,6 +1684,8 @@
       ? `<table class="tableauClub effectifCliquable"><thead><tr>${entetes}</tr></thead><tbody>${lignes}</tbody></table>`
       : '<p>Aucun joueur ne correspond à ces filtres.</p>';
     rafraichirComparaisonEffectif();
+    // rendreOngletEffectif décide quel sous-onglet est visible, Contrats
+    // compris : un seul endroit gère cet affichage.
     rendreOngletEffectif(ctx);
   }
 
@@ -2634,9 +2729,37 @@
     if (ctx.modifiable && estEffectifPro) {
       const offre = RMClub.calculerOffreRenouvellement(j);
       const negociation = RMClub.negociationEnCours(saison, id);
-      actions += negociation
-        ? `<p class="noteLectureSeule" style="margin-top:8px;">📄 Proposition de ${negociation.salaire} k€/saison transmise — réponse attendue le ${echapperHTML(RMClub.formaterDateCourte(RMClub.dateDepuisISO(negociation.dateReponse)))}.</p>`
-        : `<button class="accent" id="btnRenouveler" style="width:100%;margin-top:8px;">Renouveler ${offre.dureeMax} an(s) · ${offre.salaire} k€/saison</button>`;
+      // Ce que le joueur pense de sa situation, et ce qu'il demanderait —
+      // deux chiffres RÉELS (cf. club-negociations.js), pour que le manager
+      // ne négocie pas à l'aveugle.
+      const satisfaction = RMClub.satisfactionContrat ? RMClub.satisfactionContrat(saison, j) : null;
+      const volonte = RMClub.volonteProlonger ? RMClub.volonteProlonger(saison, j) : null;
+      const exigence = RMClub.exigenceSalariale ? RMClub.exigenceSalariale(saison, j, { duree: offre.dureeMax }) : null;
+      const interet = RMClub.interetExterieur ? RMClub.interetExterieur(saison, j) : 0;
+      if (satisfaction != null) {
+        actions += `<div class="ligneJoueur" style="margin-top:10px;"><span>Fin de contrat</span>` +
+          `<b>saison ${RMClub.saisonFinContrat(saison, j)} (${j.contrat} an(s))</b></div>` +
+          `<div class="ligneJoueur"><span>Satisfaction contractuelle</span><b>${satisfaction}/100</b></div>` +
+          `<div class="ligneJoueur"><span>Avenir</span><b>${RMClub.VOLONTES[volonte].icone} ${echapperHTML(RMClub.VOLONTES[volonte].libelle)}</b></div>` +
+          `<div class="ligneJoueur"><span>Prétentions estimées</span><b>${exigence} k€/saison</b></div>` +
+          (interet ? `<div class="ligneJoueur"><span>Clubs intéressés</span><b class="deltaNegatif">${interet}</b></div>` : '');
+      }
+      if (j.negociationRompue) {
+        actions += `<p class="noteLectureSeule" style="margin-top:8px;">⛔ Son agent a mis fin aux discussions : plus aucune proposition possible cette saison.</p>`;
+      } else if (negociation) {
+        actions += `<p class="noteLectureSeule" style="margin-top:8px;">📄 Proposition de ${negociation.salaire} k€/saison transmise — réponse attendue le ${echapperHTML(RMClub.formaterDateCourte(RMClub.dateDepuisISO(negociation.dateReponse)))}.</p>`;
+      } else {
+        actions += `<button class="accent" id="btnRenouveler" style="width:100%;margin-top:8px;">Renouveler ${offre.dureeMax} an(s) · ${offre.salaire} k€/saison</button>` +
+          `<button class="alt" id="btnNegocierContrat" style="width:100%;margin-top:8px;">💬 Négocier (salaire, durée, prime)</button>`;
+      }
+      // Ne pas renouveler / rompre : les deux façons de se séparer d'un joueur,
+      // avec leur coût annoncé AVANT le clic.
+      actions += j.nonRenouvele
+        ? `<button class="alt" id="btnNonRenouvellement" style="width:100%;margin-top:8px;">Revenir sur le non-renouvellement</button>`
+        : `<button class="alt" id="btnNonRenouvellement" style="width:100%;margin-top:8px;">🚪 Ne pas renouveler</button>`;
+      if (RMClub.indemniteRupture) {
+        actions += `<button class="alt" id="btnRompreContrat" style="width:100%;margin-top:8px;">✂️ Rompre le contrat (${RMClub.indemniteRupture(j)} k€)</button>`;
+      }
       actions += j.pret
         ? `<button class="alt" id="btnRappelerJoueur" style="width:100%;margin-top:8px;">Rappeler de prêt</button>`
         : `<button class="alt" id="btnPreterJoueur" style="width:100%;margin-top:8px;">Prêter ce joueur (3 semaines)</button>`;
@@ -2845,6 +2968,7 @@
       { cle: 'selection', label: 'Sélection', aide: 'Le XV et le banc retenus pour cette équipe.' },
       { cle: 'disponibilite', label: 'Disponibilité', aide: 'Qui peut jouer, qui ne peut pas, et pourquoi.' },
       { cle: 'dynamique', label: 'Dynamique', aide: 'Statuts promis, promesses tenues ou rompues, mécontents.' },
+      { cle: 'contrats', label: 'Contrats', aide: 'Échéances, salaires, valeur, satisfaction et volonté de prolonger.' },
     ],
     medical: [
       { cle: 'apercu', label: 'Vue d\'ensemble', aide: 'L\'état de santé du groupe en un coup d\'œil.' },
@@ -3352,6 +3476,7 @@
   }
 
   function rafraichirMarche() {
+    rafraichirCibles();
     const c = saison.clubJoueur;
     document.getElementById('transfertsBudget').innerHTML =
       `<div class="ligneFinances"><span>Budget disponible</span><span class="budgetValeur${c.budget < 0 ? ' negatif' : ''}">${c.budget} k€</span></div>`;
@@ -3662,6 +3787,76 @@
   });
 
   // --- Effectif : recherche/tri/filtres ---
+  // --- Écran Contrats : filtres, tri, ouverture de la fiche --------------
+  const caseExpirants = document.getElementById('filtreContratsExpirants');
+  if (caseExpirants) {
+    caseExpirants.addEventListener('change', (e) => {
+      filtreContrats.expirants = e.target.checked; rafraichirContrats();
+    });
+  }
+  const caseRisque = document.getElementById('filtreContratsRisque');
+  if (caseRisque) {
+    caseRisque.addEventListener('change', (e) => {
+      filtreContrats.risque = e.target.checked; rafraichirContrats();
+    });
+  }
+  const zoneContrats = document.getElementById('clubContrats');
+  if (zoneContrats) {
+    zoneContrats.addEventListener('click', (e) => {
+      const entete = e.target.closest('.triableContrat');
+      if (entete) {
+        const champ = entete.dataset.champ;
+        if (filtreContrats.triChamp === champ) filtreContrats.triSens *= -1;
+        else { filtreContrats.triChamp = champ; filtreContrats.triSens = 1; }
+        rafraichirContrats();
+        return;
+      }
+      // Un clic sur une ligne ouvre la MÊME fiche joueur que l'effectif.
+      const ligne = e.target.closest('tr[data-joueur]');
+      if (ligne) ouvrirFicheJoueur(ligne.dataset.joueur);
+    });
+  }
+  // --- Joueurs des clubs de la division : filtre et offre ----------------
+  const selCibles = document.getElementById('filtreCiblesPoste');
+  if (selCibles) {
+    for (const cle of Object.keys(POSTE_COMPLET)) {
+      const opt = document.createElement('option');
+      opt.value = cle; opt.textContent = POSTE_COMPLET[cle];
+      selCibles.appendChild(opt);
+    }
+    selCibles.addEventListener('change', (e) => {
+      filtreCibles.poste = e.target.value; rafraichirCibles();
+    });
+  }
+  const zoneCibles = document.getElementById('clubCibles');
+  if (zoneCibles) {
+    zoneCibles.addEventListener('click', async (e) => {
+      const bouton = e.target.closest('.btnOffreCible');
+      if (!bouton) return;
+      const cible = RMClub.joueursDesClubsAdverses(saison, {})
+        .find((x) => x.joueurId === bouton.dataset.joueur);
+      if (!cible) return;
+      const montant = await demanderMontant(
+        `${cible.nom} (${cible.clubNom}) — prix demandé ${cible.prixDemande} k€. ` +
+        `Montant de ton offre (k€), budget disponible ${saison.clubJoueur.budget} k€ :`,
+        cible.prixDemande);
+      if (montant == null) return;
+      const res = RMClub.proposerOffreTransfert(saison, bouton.dataset.club, bouton.dataset.joueur, montant);
+      if (!res.ok) {
+        // Chaque refus est EXPLIQUÉ : le manager doit savoir pourquoi.
+        const texte = res.motif === 'budget'
+          ? `Budget insuffisant : il te manque ${res.manque} k€ pour offrir ${res.prix} k€.`
+          : res.motif === 'deja_en_cours' ? 'Une offre est déjà en cours pour ce joueur.'
+          : res.motif === 'fenetreFermee' ? 'Le marché des transferts est fermé.'
+          : 'Offre impossible.';
+        toast(texte, 'erreur');
+        return;
+      }
+      toast(`Offre de ${res.prix} k€ transmise. Réponse sous ${RMClub.DELAI_REPONSE_TRANSFERT_JOURS} jours.`, 'succes');
+      rafraichirTout();
+    });
+  }
+
   document.getElementById('filtreEffectifRecherche').addEventListener('input', (e) => {
     filtreEffectif.recherche = e.target.value.trim().toLowerCase();
     rafraichirEffectif();
@@ -3727,20 +3922,24 @@
         prixDemande
       );
       if (montant == null) return; // annulé
-      const rng = creerRng(graineAleatoire());
-      const res = RMClub.approcherJoueurAdverse(rng, saison, adv.id, index, montant);
+      // La fiche passe désormais par le MÊME flux que la liste des joueurs de
+      // la division (proposerOffreTransfert) : le club répond sous quelques
+      // jours, peut contre-proposer, et le vendeur encaisse réellement.
+      // L'ancien chemin instantané (`approcherJoueurAdverse`) reste exporté,
+      // mais il ne créditait PAS le club vendeur et remplaçait aussitôt le
+      // joueur par un clone du même numéro : l'adversaire ne perdait
+      // personne, et l'argent disparaissait.
+      const res = RMClub.proposerOffreTransfert(saison, adv.id, joueurCible.id, montant);
       if (!res.ok) {
-        if (res.motif === 'budget') toast(`Budget insuffisant : il te manque ${montant - saison.clubJoueur.budget} k€.`, 'erreur');
-        else if (res.motif === 'refuse') toast(`${adv.nom} refuse ton offre de ${montant} k€ pour ${joueurCible.nom} (prix demandé estimé : ${res.prixDemande} k€). Tente une offre plus généreuse, ou reviens plus tard.`, 'erreur');
+        if (res.motif === 'budget') toast(`Budget insuffisant : il te manque ${res.manque} k€.`, 'erreur');
+        else if (res.motif === 'deja_en_cours') toast('Une offre est déjà en cours pour ce joueur.', 'erreur');
+        else if (res.motif === 'fenetreFermee') toast('Le marché des transferts est fermé.', 'erreur');
         else toast('Transfert impossible.', 'erreur');
         return;
       }
       sauvegarder();
-      toast(`✅ ${res.joueur.nom} rejoint le club en provenance de ${adv.nom} (${montant} k€)`);
-      fermerFicheJoueur();
-      rafraichirEcransEquipe();
-      rafraichirTopBarInfos();
-      rafraichirAutresClubs();
+      toast(`💼 Offre de ${res.prix} k€ transmise à ${adv.nom} — réponse sous ${RMClub.DELAI_REPONSE_TRANSFERT_JOURS} jours`, 'succes');
+      rafraichirTout();
       return;
     }
     // Promotion d'un espoir : proposée dans la fiche joueur quand c'est le
@@ -3790,6 +3989,81 @@
       sauvegarder();
       toast(`📄 Proposition transmise à ${joueur.nom} — réponse attendue le ${RMClub.formaterDateCourte(res.dateReponse)}`);
       ouvrirFicheJoueur(joueurAffiche);
+      return;
+    }
+    // Négociation détaillée : salaire, durée ET prime. La prime peut emporter
+    // une décision que le salaire seul ne suffit pas à emporter (cf.
+    // evaluerOffreContrat) — c'est un vrai levier, pas un champ décoratif.
+    if (e.target.id === 'btnNegocierContrat') {
+      if (!joueurAffiche) return;
+      const joueur = saison.clubJoueur.effectif.find((j) => j.id === joueurAffiche);
+      if (!joueur) return;
+      const exigence = RMClub.exigenceSalariale(saison, joueur, { duree: 2 });
+      const montant = await demanderMontant(
+        `${joueur.nom} — ses prétentions sont estimées à ${exigence} k€/saison. Salaire annuel proposé (k€) :`,
+        exigence);
+      if (montant == null) return;
+      const duree = await demanderMontant(
+        `Durée du contrat proposée à ${joueur.nom}, en saisons (1 à 5) :`, 3);
+      if (duree == null) return;
+      const prime = await demanderMontant(
+        `Prime de signature pour ${joueur.nom} (k€, 0 pour aucune). Budget disponible : ${saison.clubJoueur.budget} k€.`, 0);
+      if (prime == null) return;
+      const res = RMClub.ouvrirNegociation(saison, joueurAffiche,
+        { salaire: montant, duree, prime });
+      if (!res.ok) {
+        toast(res.motif === 'rompue'
+          ? `${joueur.nom} a mis fin aux discussions : plus de proposition possible cette saison.`
+          : 'Une proposition est déjà en cours pour ce joueur.', 'erreur');
+        return;
+      }
+      sauvegarder();
+      toast(`📄 Proposition transmise à ${joueur.nom} (${res.salaire} k€ × ${res.duree} an(s)` +
+        `${res.prime ? `, prime ${res.prime} k€` : ''}) — réponse le ${RMClub.formaterDateCourte(res.dateReponse)}`);
+      ouvrirFicheJoueur(joueurAffiche);
+      return;
+    }
+    if (e.target.id === 'btnNonRenouvellement') {
+      if (!joueurAffiche) return;
+      const joueur = saison.clubJoueur.effectif.find((j) => j.id === joueurAffiche);
+      if (!joueur) return;
+      if (!joueur.nonRenouvele && !(await confirmerAction(
+        `Annoncer à ${joueur.nom} qu'il ne sera pas prolongé ? Il partira libre à la fin de son ` +
+        `contrat (saison ${RMClub.saisonFinContrat(saison, joueur)}) et le prendra mal.`))) return;
+      const res = RMClub.basculerNonRenouvellement(saison, joueurAffiche);
+      if (!res.ok) { toast('Action impossible.', 'erreur'); return; }
+      sauvegarder();
+      toast(res.nonRenouvele
+        ? `🚪 ${joueur.nom} ne sera pas prolongé`
+        : `↩️ ${joueur.nom} peut de nouveau être prolongé`);
+      rafraichirTout();
+      ouvrirFicheJoueur(joueurAffiche);
+      return;
+    }
+    if (e.target.id === 'btnRompreContrat') {
+      if (!joueurAffiche) return;
+      const joueur = saison.clubJoueur.effectif.find((j) => j.id === joueurAffiche);
+      if (!joueur) return;
+      const indemnite = RMClub.indemniteRupture(joueur);
+      if (!(await confirmerAction(
+        `Rompre le contrat de ${joueur.nom} ? Il quitte le club immédiatement et l'indemnité ` +
+        `de ${indemnite} k€ est décaissée (budget actuel ${saison.clubJoueur.budget} k€). ` +
+        `Le vestiaire le remarquera.`))) return;
+      const res = RMClub.rompreContrat(saison, joueurAffiche);
+      if (!res.ok) {
+        // Refus EXPLIQUÉ, jamais un bouton qui ne fait rien.
+        toast(res.motif === 'budget'
+          ? `Budget insuffisant : il te manque ${res.manque} k€ pour l'indemnité de ${res.indemnite} k€.`
+          : res.motif === 'dernierAuPoste'
+            ? 'Dernier joueur de son poste : le club se retrouverait à découvert.'
+            : 'Rupture impossible.', 'erreur');
+        return;
+      }
+      sauvegarder();
+      toast(`✂️ ${res.joueur.nom} quitte le club (${res.indemnite} k€ d'indemnité)`, 'succes');
+      document.getElementById('clubJoueurDetail').style.display = 'none';
+      joueurAffiche = null;
+      rafraichirTout();
       return;
     }
     if (e.target.id === 'btnPreterJoueur') {

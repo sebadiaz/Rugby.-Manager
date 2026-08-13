@@ -389,6 +389,22 @@
             <div id="clubComparaisonEffectif"></div>
             <div id="clubJoueurDetail" style="display:none;"></div>
           </div>
+          <!-- CONTRATS : la vue par échéance, avec valeur, satisfaction et
+               volonté de prolonger. Elle vit DANS l'onglet Effectif plutôt
+               que dans un onglet de plus : c'est le même effectif, lu par une
+               autre entrée. Un clic sur une ligne ouvre la MÊME fiche joueur
+               que le tableau ci-dessus (cf. clubUI.js, ouvrirFicheJoueur). -->
+          <div class="carteClub" id="carteContrats" style="display:none;">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+              <h3 style="margin:0;">📄 Contrats</h3>
+              <span id="clubContratsResume" class="detailMouvement"></span>
+            </div>
+            <div class="ligneFiltres" style="margin:8px 0;">
+              <label class="filtreCase"><input type="checkbox" id="filtreContratsExpirants"> Expirant bientôt seulement</label>
+              <label class="filtreCase"><input type="checkbox" id="filtreContratsRisque"> À risque seulement</label>
+            </div>
+            <div id="clubContrats" tabindex="0" role="region" aria-label="Tableau des contrats, défilement horizontal sur petit écran"></div>
+          </div>
         </div>
 
         <!-- Composition : terrain visuel (1-15), banc de 8, capitaine, buteur,
@@ -479,6 +495,19 @@
           <div class="carteClub" id="carteDeparts">
             <h3 style="margin:0 0 8px;">📤 Départs</h3>
             <div id="clubDeparts"></div>
+          </div>
+          <!-- Joueurs des clubs adverses (TODO_AUDIT.md G4) : jusqu'ici le
+               marché ne contenait QUE des joueurs libres. On peut désormais
+               faire une offre à un club pour un joueur sous contrat. -->
+          <div class="carteClub">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+              <h3 style="margin:0;">🎯 Joueurs des clubs de la division</h3>
+              <span id="clubCiblesResume" class="detailMouvement"></span>
+            </div>
+            <div class="ligneFiltres" style="margin:8px 0;">
+              <select id="filtreCiblesPoste" class="champTexte" style="flex:1 1 140px;"><option value="">Tous les postes</option></select>
+            </div>
+            <div id="clubCibles" tabindex="0" role="region" aria-label="Joueurs des clubs adverses, défilement horizontal sur petit écran"></div>
           </div>
           <div class="carteClub">
             <div style="display:flex;justify-content:space-between;align-items:center;">
@@ -849,6 +878,7 @@
 <script src="js/club-analyse.js"></script>
 <script src="js/club-prets.js"></script>
 <script src="js/club-contrats.js"></script>
+    <script src="js/club-negociations.js"></script>
 <script src="js/club-equipe-b.js"></script>
 <script src="js/club-transferts.js"></script>
 <script src="js/club-transferts-internationaux.js"></script>

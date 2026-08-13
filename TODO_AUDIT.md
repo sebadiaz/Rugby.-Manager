@@ -3278,3 +3278,120 @@ rentabilité.
 Et un bug dans mon propre test : je lisais `coutAmelioration` sur un club déjà
 monté au niveau 2, donc le prix du niveau 3 (496 k€) au lieu du niveau 2
 (320 k€). Corrigé dans le test.
+
+---
+
+## G4 — Effectif → contrats → négociations → transferts → finances (livrée)
+
+### Audit de l'existant, vérifié dans le code (pas supposé)
+
+**Ce qui marchait déjà, et n'a pas été refait :**
+- Écran Effectif : tableau triable (10 colonnes), filtres recherche/poste/
+  disponibilité, comparaison, fiche joueur cliquable.
+- Contrats : `contrat` (saisons restantes) + `salaire`, expiration **réelle**
+  à l'intersaison (`vieillirEffectif` fait partir tout contrat à zéro).
+- Proposition asynchrone : `proposerContrat` → réponse 3 jours plus tard.
+- Offres **reçues** : les clubs adverses achètent mes joueurs, décision dans la
+  boîte de réception, budgets des deux clubs réellement débités.
+- Finances : grand livre complet, invariant vérifié.
+- Sauvegarde versionnée avec migrations.
+- Clubs IA : mercato d'intersaison (achats/ventes entre eux), signature de
+  joueurs libres, un rival peut signer un joueur du marché avant moi.
+
+**Ce qui n'existait pas :**
+- Une négociation n'avait que **deux issues** : oui ou non. Ni
+  contre-proposition, ni délai de réflexion, ni rupture des discussions.
+- Aucune prime, aucune satisfaction contractuelle, aucune volonté exprimée de
+  prolonger, aucune saison d'échéance lisible.
+- Impossible de **rompre** un contrat en cours ni d'annoncer un
+  non-renouvellement.
+- Les clubs IA ne **prolongeaient jamais** personne avant expiration : ils
+  subissaient leur effectif.
+
+**Une erreur de mon audit, corrigée :** j'avais noté « impossible de faire une
+offre pour le joueur d'un club adverse ». **Faux** : `approcherJoueurAdverse`
+(club-transferts-internationaux.js) existait. Mais en le lisant, il s'avère
+superficiel — instantané, sans négociation, il **ne créditait pas le club
+vendeur** et remplaçait aussitôt le joueur par un clone du même numéro. Le
+rival ne perdait donc personne et l'argent disparaissait. Il reste exporté (des
+tests s'appuient dessus) mais l'interface passe désormais par le vrai flux.
+
+### Ce qui a été ajouté
+
+`docs/js/club-negociations.js` (nouveau) :
+- **Champs de contrat** : `saisonFinContrat`, `salaireDeMarche`,
+  `satisfactionContrat` (dérivée du salaire face au marché, du statut promis
+  face au temps de jeu réel, du moral), `volonteProlonger` (souhaite / ouvert /
+  réticent / veut partir), `interetExterieur` (clubs qui ont un besoin réel au
+  poste ET les moyens), prime de contrat.
+- **`evaluerOffreContrat`** — fonction pure et exportée, **cinq issues** :
+  acceptation, contre-proposition, délai de réflexion, refus, rupture. Les
+  facteurs exigés sont tous là : salaire, niveau/valeur, statut, temps de jeu,
+  moral, réputation du club, durée, intérêt d'autres clubs.
+- **Offres sortantes** : `proposerOffreTransfert` → réponse du club sous 4
+  jours (accepte / contre-propose / refuse) → `finaliserAchat` déplace
+  réellement le joueur ET l'argent dans les deux sens.
+- **Rupture et non-renouvellement** : `indemniteRupture`, `rompreContrat`
+  (indemnité décaissée, vestiaire affecté, garde-fou « dernier au poste »),
+  `basculerNonRenouvellement`.
+- **Clubs IA** : `prolongationsClubsIA`, appelée **avant** le vieillissement
+  dans `avancerIntersaisonClubsIA`. Distincte de `recruterJoueursLibres` (qui
+  signe les libres **des autres**) : ici un club retient **les siens**.
+
+### Une seule règle de décision
+
+`negocierRenouvellement` et `resoudreNegociationsContrat` (club-contrats.js) ne
+décident plus : ils délèguent à `exigenceSalariale` et `avancerNegociations`.
+Leur signature et leur forme de retour sont inchangées pour les appelants
+historiques. Sans ça, deux barèmes auraient fini par diverger et un joueur
+n'aurait pas eu le même prix selon le chemin emprunté.
+
+### Interface
+
+- **Sous-onglet « Contrats »** dans l'onglet Effectif (pas un onglet de plus) :
+  nom, poste, âge, niveau, salaire, valeur, fin de contrat, moral,
+  satisfaction, avenir, statut. Tri sur toutes les colonnes, filtres
+  « expirant » et « à risque », alerte visuelle sur les échéances.
+- Un clic sur une ligne ouvre **la même** fiche joueur que l'effectif — aucune
+  seconde interface.
+- Fiche joueur : fin de contrat, satisfaction, avenir, prétentions estimées,
+  clubs intéressés, puis **Négocier (salaire, durée, prime)**, **Ne pas
+  renouveler**, **Rompre le contrat (N k€)**.
+- **Joueurs des clubs de la division** dans Recrutement, filtrables par poste,
+  avec prix demandé et bouton d'offre.
+- Chaque refus est **expliqué** et chiffré (budget manquant, fenêtre fermée,
+  offre déjà en cours, dernier joueur du poste).
+
+### Un défaut trouvé en écrivant le test
+
+La rupture n'arrivait qu'au **troisième** refus alors que la règle annoncée est
+« au-delà de deux refus » : `refusPrecedents` valait 1 au deuxième passage,
+donc jamais 2. Corrigé dans `evaluerOffreContrat`.
+
+### Tests
+
+`server/test-contrats-transferts.js` — 20 vérifications couvrant les douze cas
+exigés : prolongation acceptée, contre-proposition (et compromis), refus,
+contrat expiré, départ libre, liste des transferts, offre d'un club IA,
+transfert finalisé, budget insuffisant, masse salariale, sauvegarde/
+rechargement d'une négociation, décisions autonomes des clubs IA.
+
+Parcours public complet piloté dans Chromium, **ordinateur (1440×900) et
+mobile (390×844)** : accueil → reprise de saison → onglet Effectif →
+sous-onglet Contrats → clic sur une ligne → fiche → négociation → réponse dans
+la boîte de réception → finances mises à jour → sauvegarde/rechargement. Aucune
+erreur console, aucun débordement horizontal sur mobile.
+
+**Deux erreurs de mon harnais de test, corrigées** : je créais la carrière dans
+une variable à part sans recharger la page (l'interface montrait l'accueil), et
+je naviguais avec `[data-menu]` alors que l'application utilise
+`.ongletBtn[data-onglet]`. Dans les deux cas le produit allait bien, c'est le
+test qui mentait.
+
+### Points restants
+
+- Les clubs IA ne formulent pas encore d'offre pour un joueur **d'un autre club
+  IA** en cours de saison (leur marché reste l'intersaison).
+- La confiance de la direction ne réagit pas encore spécifiquement à une
+  rupture de contrat coûteuse (le budget, lui, est bien impacté et suivi par le
+  plancher financier existant).
