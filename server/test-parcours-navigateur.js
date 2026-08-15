@@ -141,8 +141,13 @@ function optionsLancement() {
     zIndexInfo.panneau !== null && zIndexInfo.versionInfo > zIndexInfo.panneau);
 
   // 2) Navigation dans toutes les pages.
-  const onglets = ['dashboard', 'effectif', 'composition', 'tactique', 'entrainement',
-    'transferts', 'personnel', 'classement', 'calendrier', 'monde', 'finances', 'medical', 'stats'];
+  // TOUS les onglets déclarés dans docs/index.html. Il y en a 16 ; cette liste
+  // s'arrêtait à 13 — « club », « developpement » et « preparer » n'étaient
+  // donc jamais ouverts par aucun test, alors qu'ils rendent respectivement
+  // les infrastructures, le centre de développement et l'écran d'avant-match.
+  const onglets = ['dashboard', 'preparer', 'effectif', 'composition', 'tactique',
+    'entrainement', 'developpement', 'transferts', 'personnel', 'club',
+    'classement', 'calendrier', 'monde', 'finances', 'medical', 'stats'];
   for (const onglet of onglets) {
     await clicOnglet(onglet);
     await page.waitForTimeout(120);

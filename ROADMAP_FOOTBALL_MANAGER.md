@@ -55,7 +55,7 @@ tranche livrée — jamais en avance sur ce qui est réellement dans `main`.
 | Rôles propres à chaque poste | 🟡 | `club-composition.js` | Capitaine, buteur, lanceur en touche seulement — aucune instruction individuelle au-delà. |
 | Consignes collectives et individuelles → moteur | 🟢 (collectif) / 🟡 (individuel) | `club.js` (`AXES_TACTIQUE`), `club-composition.js`, `engine/rugby-engine.js` | 6 axes collectifs réellement branchés au moteur. Individuel limité aux 3 rôles ci-dessus. |
 | Stratégie selon l'adversaire | 🟡 | `club-analyse.js`, `clubUI.js` | **Tranche 2 livrée** : l'analyse comparative (déjà réelle) alimente désormais `recommanderTactique`, qui propose un vrai réglage des 6 axes tactiques applicable en un clic depuis l'aperçu du match. Reste à faire : recommandations sur les rôles individuels (buteur/lanceur), pas seulement les 6 axes collectifs. |
-| Coups de pied, touches, mêlées, phases arrêtées | 🟡 | `club-composition.js`, `engine/rugby-engine.js` | Buteur unique (pénalité+transfo confondues), lanceur en touche. Pas de composition de mêlée ni de sauteur désigné. |
+| Coups de pied, touches, mêlées, phases arrêtées | 🟢 | `club-composition.js`, `engine/rugby-engine.js` | Buteur, lanceur en touche, **sauteurs désignés** (`dossierSauteurs`/`basculerSauteur`, avec le coût réel de la prévisibilité) et **consigne de poussée en mêlée** (axe tactique `poussee`, effet chiffré sur la contestation et sur les fautes). Reste : pas de composition nominative de la mêlée poste par poste. |
 | Remplacements réellement effectués pendant le match | 🟡 | `engine/rugby-engine.js`, `docs/js/club-composition.js` | **Tranche 3 livrée** : les 8 remplaçants entrent réellement en jeu à des minutes planifiées (avant-match, pas une décision dynamique en direct — hors périmètre de cette tranche, cf. limite architecturale documentée dans `TODO_AUDIT.md`). |
 | Changements tactiques en cours de rencontre | 🔴 | — | Pause de mi-temps existe côté animation, aucun hook d'interaction ; tactique figée pour tout le match. |
 
@@ -67,7 +67,7 @@ tranche livrée — jamais en avance sur ce qui est réellement dans `main`.
 | Connaissance partielle des joueurs (brouillard) | 🟢 | `club-transferts.js` | Connaissance 20-50%, stats floutées, progression via scouting réel. |
 | Rapports de scouts | 🟡 | `club-transferts.js` | Étoiles + stats approximatives, aucun commentaire narratif qualitatif. |
 | Favoris et listes de recrutement | 🟢 | `club-transferts.js` | Liste `saison.favoris` réelle. |
-| Négociation transfert/salaire/durée/statut | 🟡 | `club-transferts.js`, `club-transferts-internationaux.js`, `club-contrats.js` | Trois flux, tous "un seul montant à prendre ou laisser" — aucun vrai va-et-vient multi-tours. |
+| Négociation transfert/salaire/durée/statut | 🟢 | `club-negociations.js`, `club-contrats.js`, `club-ventes.js` | **Va-et-vient réel** : `evaluerOffreContrat` a cinq issues (acceptation, contre-proposition, délai de réflexion, refus motivé, rupture définitive), sur salaire **et** durée **et** prime. Les offres de transfert sortantes ont leur propre aller-retour (accepter / contre-proposer / refuser), et un club peut venir proposer un joueur. Une seule règle de décision partagée par tous les chemins. |
 | Fenêtres de transferts | 🟢 | `club-transferts.js` (`fenetresTransfert`, `etatFenetreTransfert`) | Périodes ouvertes/fermées dérivées de dates réelles du calendrier. Hors fenêtre, signer est impossible mais le repérage reste ouvert, avec la date de réouverture affichée — jamais un bouton grisé sans explication. |
 | Concurrence avec les clubs IA | 🔴 | — | Marché régénéré uniquement à la demande du joueur ; aucun club IA ne recrute en parallèle. |
 
@@ -87,10 +87,10 @@ tranche livrée — jamais en avance sur ce qui est réellement dans `main`.
 | Fonctionnalité | Statut | Fichiers | Détail |
 |---|---|---|---|
 | Objectifs du président | 🟢 | `club-objectif.js` | Objectif réel dérivé du classement, évalué en fin de saison. |
-| Confiance de la direction | 🟡 | `club.js` | Jauge réelle et ajustée, mais sans aucune conséquence (pas de licenciement — cf. domaine 8). |
-| Budgets détaillés | 🟡 | `club.js` | Un seul solde global, 4 lignes de mouvement distinctes — pas de sous-budgets séparés. |
-| Masse salariale et projections | 🟡 | `club.js` | Masse salariale réelle + projection à N journées ; aucun plafond salarial, aucune projection pluriannuelle. |
-| Sponsors, billetterie, infrastructures (revenus) | 🟡 | `club.js` | Sponsor + billetterie réels ; aucune autre source (merchandising, droits TV, primes). |
+| Confiance de la direction | 🟢 | `club-direction.js` | Jauge réelle, points d'étape datés, **ultimatum et licenciement effectifs**, et sanction d'une rupture de contrat coûteuse. |
+| Budgets détaillés | 🟡 | `club-comptes.js` | Grand livre à **11 catégories** (billetterie, sponsors, ventes, prêts, salaires joueurs et personnel, déplacements, exploitation, achats, travaux, repérage), avec l'invariant `budget_final − budget_initial = somme des totaux`. Reste : pas de sous-budgets alloués par poste. |
+| Masse salariale et projections | 🟡 | `club-comptes.js`, `club-negociations.js` | Masse salariale réelle + projection à N journées, tenant compte des engagements en cours. Aucun plafond salarial, aucune projection pluriannuelle. |
+| Sponsors, billetterie, infrastructures (revenus) | 🟡 | `club.js`, `club-infrastructures.js` | Sponsor et billetterie réels — cette dernière **uniquement à domicile**, le stade la multipliant. Côté dépenses : déplacements et exploitation des installations. Aucune autre source (merchandising, droits TV, primes). |
 | Amélioration stade/centre d'entraînement/formation | 🔴 | — | Aucun mécanisme d'investissement — niveaux fixes, jamais améliorables. |
 | Recrutement et compétences du personnel | 🟢 | `club-personnel.js` | 5 postes, niveau/salaire/effet mesurable, embauche/licenciement réels. |
 
