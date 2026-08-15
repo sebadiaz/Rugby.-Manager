@@ -235,8 +235,8 @@
   }
 
   global.RMClub = Object.assign(global.RMClub || {}, {
-    CATEGORIES_COMPTE, CLES_CATEGORIE_COMPTE, LIGNES_CONSERVEES,
-    assurerComptes, mouvementTresorerie, compterJourneeFinanciere, totauxComptes, lignesComptes,
-    dossierComptes, previsionTresorerie, archiverComptesSaison,
+    CATEGORIES_COMPTE, CLES_CATEGORIE_COMPTE, assurerComptes, mouvementTresorerie,
+    compterJourneeFinanciere, totauxComptes, lignesComptes, dossierComptes,
+    previsionTresorerie, archiverComptesSaison,
   });
 })(window);

@@ -166,6 +166,6 @@
   }
 
   global.RMClub = Object.assign(global.RMClub || {}, {
-    ORDRE_NIVEAUX_A_TRAITER: ORDRE_NIVEAUX, decisionsEnAttente, elementsATraiter, resumeATraiter,
+    elementsATraiter, resumeATraiter,
   });
 })(window);

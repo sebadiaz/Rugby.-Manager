@@ -135,5 +135,6 @@
 
 
   global.RMClub = Object.assign(global.RMClub || {}, {
-    FAITS_MATCH, STATS_COMPAREES, feuilleDeMatch, });
+    feuilleDeMatch,
+  });
 })(window);

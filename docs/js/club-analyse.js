@@ -121,6 +121,6 @@
   }
 
   global.RMClub = Object.assign(global.RMClub || {}, {
-    moyenneAttribut, analyserAdversaire, recommanderTactique, appliquerRecommandationsTactique,
+    analyserAdversaire, recommanderTactique, appliquerRecommandationsTactique,
   });
 })(window);

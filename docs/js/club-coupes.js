@@ -350,9 +350,7 @@
   }
 
   global.RMClub = Object.assign(global.RMClub || {}, {
-    NOMS_TOURS, nomDuTour, puissanceDeDeuxInferieure, genererCoupe,
-    rencontreCoupe, enregistrerResultatCoupe, vainqueurCoupe, rencontresCoupeDuJour,
-    DEFINITIONS_COUPES, assurerCoupes, reinitialiserCoupes, datesDeCoupe, nbToursPour,
-    rencontreCoupeDuJoueur, resoudreCoupesAbstraites,
+    genererCoupe, enregistrerResultatCoupe, vainqueurCoupe, assurerCoupes,
+    reinitialiserCoupes, rencontreCoupeDuJoueur, resoudreCoupesAbstraites,
   });
 })(window);

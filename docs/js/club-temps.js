@@ -194,12 +194,9 @@
   }
 
   global.RMClub = Object.assign(global.RMClub || {}, {
-    jourAbsolu, dateDepuisJourAbsolu, ajouterJours, ecartJours, comparerDates, jourSemaine,
-    NOMS_JOURS, NOMS_JOURS_COURTS, NOMS_MOIS, NOMS_MOIS_COURTS,
-    formaterDateLongue, formaterDateCourte, dateISO, dateDepuisISO,
-    ANNEE_BASE, anneeDeSaison, premierSamediDeSeptembre,
-    DECALAGE_JOUR_MATCH, dateDeJournee, JOURS_AVANT_PREMIERE_JOURNEE, debutDeSaison,
-    grainePourJour,
-    assurerTemps, dateCourante, definirDateCourante, reinitialiserTempsPourSaison,
+    jourAbsolu, dateDepuisJourAbsolu, ajouterJours, ecartJours, comparerDates,
+    jourSemaine, NOMS_JOURS, formaterDateLongue, formaterDateCourte, dateISO,
+    dateDepuisISO, dateDeJournee, debutDeSaison, grainePourJour, assurerTemps,
+    dateCourante, definirDateCourante, reinitialiserTempsPourSaison,
   });
 })(window);

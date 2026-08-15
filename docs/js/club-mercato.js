@@ -615,13 +615,8 @@
   }
 
   global.RMClub = Object.assign(global.RMClub || {}, {
-    PROBA_SIGNATURE_RIVALE, JOURS_ENTRE_RAFRAICHISSEMENTS,
-    signatureRivaleDuJour, reapprovisionnerMarche, avancerJourMercato,
-    PROBA_TRANSFERT_RIVAL, tenterTransfertRival, transfertRivalDuJour,
-    rafraichirMarcheManuel,
-    PART_BUDGET_MAX_MERCATO: PART_BUDGET_MAX,
-    RECRUES_MAX_PAR_CLUB, VENTES_MAX_PAR_CLUB,
-    besoinsDe, cessiblesDe, completerGroupe, mercatoClubsIA,
-    avancerIntersaisonClubsIA, messageMercato,
+    avancerJourMercato, tenterTransfertRival, transfertRivalDuJour, rafraichirMarcheManuel,
+    besoinsDe, cessiblesDe, mercatoClubsIA, avancerIntersaisonClubsIA,
+    messageMercato,
   });
 })(window);

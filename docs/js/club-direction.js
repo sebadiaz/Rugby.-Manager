@@ -271,11 +271,8 @@
   }
 
   global.RMClub = Object.assign(global.RMClub || {}, {
-    SEUIL_ULTIMATUM, MATCHS_ULTIMATUM,
     ultimatumEnCours, poserUltimatum, avancerUltimatum, avancerUltimatumApresMatch,
-    FRACTIONS_POINT_ETAPE, SEUIL_MORAL_VESTIAIRE, DELAI_ENTRE_REUNIONS_JOURS,
-    assurerJournalDirection, moralVestiaire, positionActuelle,
-    pointEtapeAFaire, resoudrePointEtape,
-    reunionVestiaireAFaire, declencherReunionVestiaire, appliquerDecisionVestiaire,
+    moralVestiaire, pointEtapeAFaire, resoudrePointEtape, reunionVestiaireAFaire,
+    declencherReunionVestiaire, appliquerDecisionVestiaire,
   });
 })(window);

@@ -210,7 +210,5 @@
 
   global.RMClub = Object.assign(global.RMClub || {}, {
     daterCalendrier, evenementsDuJour, typeDArret, prochainArret, agenda,
-    descriptionRencontre,
-    LIBELLE_ARRET,
   });
 })(window);

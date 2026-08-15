@@ -237,11 +237,9 @@
   }
 
   global.RMClub = Object.assign(global.RMClub || {}, {
-    INFRASTRUCTURES, CLES_INFRASTRUCTURE, NIVEAU_MAX_INFRASTRUCTURE: NIVEAU_MAX,
-    assurerInfrastructures, niveauInfrastructure,
-    coutAmelioration, dureeAmelioration, chantierEnCours,
-    lancerTravaux, avancerJourInfrastructures, effetInfrastructure,
-    dossierInfrastructures,
-    COUT_ENTRETIEN_BASE, COUT_ENTRETIEN_PAR_NIVEAU_SUP, coutEntretienInfrastructures,
+    CLES_INFRASTRUCTURE, assurerInfrastructures, niveauInfrastructure,
+    coutAmelioration, dureeAmelioration, chantierEnCours, lancerTravaux,
+    avancerJourInfrastructures, effetInfrastructure, dossierInfrastructures,
+    coutEntretienInfrastructures,
   });
 })(window);

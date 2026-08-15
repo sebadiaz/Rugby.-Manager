@@ -412,10 +412,8 @@
   }
 
   global.RMClub = Object.assign(global.RMClub || {}, {
-    REPUTATION_DEPART, creerManager, assurerManager,
-    gainReputation, appliquerReputation,
-    securiteEmploi, echecsConsecutifs, licencierManager,
-    offresDisponibles, refuserOffre, accepterOffre, changerClubManager,
+    assurerManager, gainReputation, appliquerReputation, securiteEmploi,
+    licencierManager, offresDisponibles, refuserOffre, accepterOffre, changerClubManager,
     enregistrerSaisonManager,
   });
 })(window);

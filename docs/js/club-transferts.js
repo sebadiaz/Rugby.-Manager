@@ -347,11 +347,10 @@
   }
 
   global.RMClub = Object.assign(global.RMClub || {}, {
-    genererJoueurLibre, genererMarcheTransferts,
-    statsApparentes, estimationEtoiles, noteApparenteAuPoste, rapportScouting,
-    ATTRIBUTS_SCOUTES, scouterJoueur, COUT_SCOUTING,
-    DELAI_SCOUTING_JOURS, commanderRapportScouting, remettreRapportsScouting, rapportScoutingEnCours,
-    JOURNEE_FIN_MERCATO_ETE, DUREE_MERCATO_HIVER_JOURS, fenetresTransfert, etatFenetreTransfert,
-    calculerPrimeSignature, signerJoueur, libererJoueur, basculerFavori,
+    genererMarcheTransferts, statsApparentes, estimationEtoiles, noteApparenteAuPoste,
+    rapportScouting, scouterJoueur, COUT_SCOUTING, commanderRapportScouting,
+    remettreRapportsScouting, rapportScoutingEnCours, fenetresTransfert,
+    etatFenetreTransfert, calculerPrimeSignature, signerJoueur, libererJoueur,
+    basculerFavori,
   });
 })(window);

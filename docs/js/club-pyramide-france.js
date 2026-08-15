@@ -111,7 +111,6 @@
   }
 
   global.RMClub = Object.assign(global.RMClub || {}, {
-    genererDivisionFrance, genererAutresDivisionsFrance,
     assurerAutresDivisionsFrance, avancerJourneeAutresDivisionsFrance,
   });
 })(window);

@@ -90,6 +90,6 @@
   }
 
   global.RMClub = Object.assign(global.RMClub || {}, {
-    calculerPrixDemandeAdverse, convertirJoueurAdverseEnEffectifEtendu, approcherJoueurAdverse,
+    calculerPrixDemandeAdverse, approcherJoueurAdverse,
   });
 })(window);

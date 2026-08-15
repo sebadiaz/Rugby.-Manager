@@ -95,7 +95,7 @@
   }
 
   global.RMClub = Object.assign(global.RMClub || {}, {
-    calculerOffreRenouvellement, negocierRenouvellement,
-    DELAI_REPONSE_CONTRAT_JOURS, proposerContrat, negociationEnCours, resoudreNegociationsContrat,
+    calculerOffreRenouvellement, negocierRenouvellement, proposerContrat,
+    negociationEnCours, resoudreNegociationsContrat,
   });
 })(window);

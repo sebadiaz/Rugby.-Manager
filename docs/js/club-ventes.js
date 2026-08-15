@@ -325,11 +325,8 @@
   }
 
   global.RMClub = Object.assign(global.RMClub || {}, {
-    COEFFICIENT_VENTE, PART_BUDGET_ACHETEUR, SURCOTE_EXIGENCE, DELAI_REPONSE_OFFRE_JOURS,
-    peutPayer,
-    valeurMarchande, motifIncessible, joueursCessibles,
-    basculerListeTransfert, vendreJoueur,
-    enregistrerOffreAchat, offresEnAttente, appliquerDecisionOffre,
-    avancerJourVentes, dossierVentes,
+    peutPayer, valeurMarchande, motifIncessible, basculerListeTransfert,
+    vendreJoueur, enregistrerOffreAchat, appliquerDecisionOffre, avancerJourVentes,
+    dossierVentes,
   });
 })(window);

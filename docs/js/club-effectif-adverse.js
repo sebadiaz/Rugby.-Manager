@@ -256,9 +256,8 @@
   }
 
   global.RMClub = Object.assign(global.RMClub || {}, {
-    FATIGUE_MATCH_TITULAIRE, FATIGUE_MATCH_REMPLACANT, SEUIL_ROTATION_FATIGUE,
     groupeAdverse, rafraichirEffectifAdverse, appliquerEffetsMatchAdverse,
-    avancerJourClubsAdverses, aUnEffectifSimule,
-    assurerEffectifsAdverses, rotationClubsAdverses,
+    avancerJourClubsAdverses, aUnEffectifSimule, assurerEffectifsAdverses,
+    rotationClubsAdverses,
   });
 })(window);

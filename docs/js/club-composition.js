@@ -571,13 +571,11 @@
 
   global.RMClub = Object.assign(global.RMClub || {}, {
     tactiqueVersConfig, effectifVersJoueursCfg, compositionVersJoueursCfg,
-    meilleurCandidatPourNumero, noteAuPoste, POIDS_PAR_POSTE, LIBELLE_ATTRIBUT,
-    attributsClesDuPoste, meilleureComposition, completerComposition,
-    validerComposition, POSTE_REQUIS_BANC, completerCompositionBanc,
-    numeroDuJoueurDansComposition, autoDesignerEncadrement,
-    NUMEROS_ALIGNEMENT, SAUTEURS_MAX, dossierSauteurs, sauteursDesignes,
-    basculerSauteur, sauteursVersConfig, sauteursVersConfigSlot,
-    CIBLE_REMPLACEMENT_BANC, MINUTE_REMPLACEMENT_BANC, remplacementsVersConfig,
-    assurerCompositionsSecondaires, effectifPourEquipe, slotCompositionPourEquipe, assurerCompositionPourEquipe,
+    meilleurCandidatPourNumero, noteAuPoste, attributsClesDuPoste, meilleureComposition,
+    completerComposition, validerComposition, POSTE_REQUIS_BANC, completerCompositionBanc,
+    numeroDuJoueurDansComposition, autoDesignerEncadrement, dossierSauteurs,
+    sauteursDesignes, basculerSauteur, sauteursVersConfig, sauteursVersConfigSlot,
+    remplacementsVersConfig, assurerCompositionsSecondaires, effectifPourEquipe,
+    slotCompositionPourEquipe, assurerCompositionPourEquipe,
   });
 })(window);

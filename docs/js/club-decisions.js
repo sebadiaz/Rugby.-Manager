@@ -205,8 +205,7 @@
   }
 
   global.RMClub = Object.assign(global.RMClub || {}, {
-    SEUIL_JOURS_SANS_SELECTION, SEUIL_AVERTISSEMENTS_AVANT_DEPART, DELAI_REPONSE_DECISION_JOURS,
-    estCandidatSelectionAttendue, appliquerFrustrationTempsDeJeu, resoudreDecisionMessage,
-    resoudreDecisionsExpirees,
+    SEUIL_JOURS_SANS_SELECTION, SEUIL_AVERTISSEMENTS_AVANT_DEPART, estCandidatSelectionAttendue,
+    appliquerFrustrationTempsDeJeu, resoudreDecisionMessage, resoudreDecisionsExpirees,
   });
 })(window);

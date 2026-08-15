@@ -79,8 +79,7 @@
   }
 
   global.RMClub = Object.assign(global.RMClub || {}, {
-    POSTES_PERSONNEL, genererMembrePersonnel, genererMarchePersonnel,
-    embaucherPersonnel, licencierPersonnel, masseSalarialePersonnel,
-    effetPersonnel, resynchroniserCompteurPersonnel,
+    POSTES_PERSONNEL, genererMarchePersonnel, embaucherPersonnel, licencierPersonnel,
+    masseSalarialePersonnel, effetPersonnel, resynchroniserCompteurPersonnel,
   });
 })(window);

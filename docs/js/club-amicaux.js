@@ -144,7 +144,7 @@
   }
 
   global.RMClub = Object.assign(global.RMClub || {}, {
-    JOURS_REPOS_APRES_AMICAL, amicalDuJour, dateEstLibre, datesLibresPourAmical,
-    proposerAmical, annulerAmical, enregistrerResultatAmical, reinitialiserAmicaux, resynchroniserCompteurAmicaux,
+    amicalDuJour, datesLibresPourAmical, proposerAmical, annulerAmical,
+    enregistrerResultatAmical, reinitialiserAmicaux,
   });
 })(window);

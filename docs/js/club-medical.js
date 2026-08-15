@@ -397,10 +397,9 @@
   }
 
   global.RMClub = Object.assign(global.RMClub || {}, {
-    TYPES_BLESSURE, LIBELLE_GRAVITE, LIBELLE_CAUSE, ETAPES_REPRISE, LIBELLE_ETAPE,
-    FACTEUR_POSTE, RISQUE_MATCH_BASE, COEFFICIENT_ETAPE,
-    risqueBlessure, tirerBlessure, infligerBlessure,
-    synchroniserBlessure, joursIndisponible, etapeReprise, coefficientReprise, peutJouer, avancerJourMedical,
-    accelererRetour, descriptionBlessure, migrerJoueurV4,
+    LIBELLE_GRAVITE, ETAPES_REPRISE, LIBELLE_ETAPE, risqueBlessure, tirerBlessure,
+    infligerBlessure, joursIndisponible, etapeReprise, coefficientReprise,
+    peutJouer, avancerJourMedical, accelererRetour, descriptionBlessure,
+    migrerJoueurV4,
   });
 })(window);

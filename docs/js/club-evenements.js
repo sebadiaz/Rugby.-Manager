@@ -431,9 +431,8 @@
   }
 
   global.RMClub = Object.assign(global.RMClub || {}, {
-    RECUPERATION_PAR_JOUR, recupererFatigueDuJour, soignerBlessuresDuJour, progresserPretsDuJour,
-    resoudreJourneeQuotidienne, avancerJusquA, resumerJournees,
-    avancerUnJour, avancerJusquAuProchainMatch, interruptionsDeJournee,
-    idsDecisionsEnAttente, LIBELLE_RAISON,
+    recupererFatigueDuJour, soignerBlessuresDuJour, resoudreJourneeQuotidienne,
+    avancerJusquA, resumerJournees, avancerUnJour, avancerJusquAuProchainMatch,
+    interruptionsDeJournee, idsDecisionsEnAttente,
   });
 })(window);

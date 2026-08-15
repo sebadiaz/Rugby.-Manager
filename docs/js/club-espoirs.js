@@ -153,9 +153,8 @@
   }
 
   global.RMClub = Object.assign(global.RMClub || {}, {
-    PERIODE_JOURNEES_ESPOIRS, journeeDeMatchEspoirs,
-    eligiblePourMatchEspoirs, niveauAdversaireEspoirs, appliquerEffetsMatchEspoirs,
-    journeesEspoirsDisponibles, tailleCompetitionEspoirs, genererCompetitionEspoirs,
-    assurerCompetitionEspoirs, enregistrerResultatEspoirs, prochaineRondeEspoirs,
+    PERIODE_JOURNEES_ESPOIRS, journeeDeMatchEspoirs, eligiblePourMatchEspoirs,
+    niveauAdversaireEspoirs, appliquerEffetsMatchEspoirs, assurerCompetitionEspoirs,
+    enregistrerResultatEspoirs, prochaineRondeEspoirs,
   });
 })(window);

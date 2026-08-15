@@ -879,20 +879,13 @@
   }
 
   global.RMClub = Object.assign(global.RMClub || {}, {
-    DELAI_REPONSE_JOURS, DELAI_REFLEXION_JOURS, REFUS_AVANT_RUPTURE,
-    DELAI_REPONSE_TRANSFERT_JOURS, SURCOTE_VENDEUR, PART_INDEMNITE_RUPTURE,
-    SEUIL_RUPTURE_NOTABLE,
-    CANAL_NEGOCIATIONS, VOLONTES,
-    saisonFinContrat, salaireDeMarche, interetExterieur, satisfactionContrat,
-    volonteProlonger, exigenceSalariale, evaluerOffreContrat, contrePropositionDe,
-    negociationDe, ouvrirNegociation, conclureContrat, avancerNegociations,
-    appliquerDecisionNegociation,
-    basculerNonRenouvellement, indemniteRupture, rompreContrat,
-    prixDemandeAuManager, joueursDesClubsAdverses, proposerOffreTransfert, decisionVendeur,
-    PROBA_PROPOSITION_RIVALE, DELAI_PROPOSITION_JOURS, RABAIS_NEGOCIATION_PROPOSITION,
-    propositionVenteRivaleDuJour, appliquerDecisionPropositionVente, dejaPropose,
-    finaliserAchat, avancerOffresSortantes, appliquerDecisionOffreSortante,
-    prolongationsClubIA, prolongationsClubsIA,
-    dossierContrats,
+    DELAI_REPONSE_TRANSFERT_JOURS, VOLONTES, saisonFinContrat, salaireDeMarche,
+    interetExterieur, satisfactionContrat, volonteProlonger, exigenceSalariale,
+    evaluerOffreContrat, negociationDe, ouvrirNegociation, avancerNegociations,
+    appliquerDecisionNegociation, basculerNonRenouvellement, indemniteRupture,
+    rompreContrat, prixDemandeAuManager, joueursDesClubsAdverses, proposerOffreTransfert,
+    decisionVendeur, propositionVenteRivaleDuJour, appliquerDecisionPropositionVente,
+    avancerOffresSortantes, appliquerDecisionOffreSortante, prolongationsClubIA,
+    prolongationsClubsIA, dossierContrats,
   });
 })(window);

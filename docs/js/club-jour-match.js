@@ -326,7 +326,7 @@
   }
 
   global.RMClub = Object.assign(global.RMClub || {}, {
-    JOURS_ANALYSE_ADVERSAIRE, NATURES_PREPARATION, joursAvantAnalyse, prochaineRencontre,
-    analyseDisponible, etatPreparationMatch, equipePourArret, dossierPreparation,
+    joursAvantAnalyse, prochaineRencontre, analyseDisponible, etatPreparationMatch,
+    equipePourArret, dossierPreparation,
   });
 })(window);

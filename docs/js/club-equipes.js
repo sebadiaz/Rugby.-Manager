@@ -415,12 +415,9 @@
   }
 
   global.RMClub = Object.assign(global.RMClub || {}, {
-    TYPES_EQUIPE, navigationClub, consulteClubJoueur,
-    ouvrirClubDansNavigation, retourClubJoueurDansNavigation,
-    definirEquipeConsultee, equipesDisponiblesPourClub,
-    ONGLETS_CLUB_JOUEUR, ONGLETS_CLUB_CONSULTE, ongletsDisponibles,
-    deduireTactiqueAdverse, effectifAdverseNormalise, slotAdverse,
-    enregistrerMatchEspoirs, bilanEspoirs, calendrierEspoirs,
-    contexteEquipe,
+    navigationClub, consulteClubJoueur, ouvrirClubDansNavigation, retourClubJoueurDansNavigation,
+    definirEquipeConsultee, equipesDisponiblesPourClub, ongletsDisponibles,
+    deduireTactiqueAdverse, effectifAdverseNormalise, slotAdverse, enregistrerMatchEspoirs,
+    bilanEspoirs, calendrierEspoirs, contexteEquipe,
   });
 })(window);

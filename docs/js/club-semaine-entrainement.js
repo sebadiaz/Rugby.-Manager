@@ -261,10 +261,8 @@
   }
 
   global.RMClub = Object.assign(global.RMClub || {}, {
-    ACTIVITES_ENTRAINEMENT, SEMAINE_PAR_DEFAUT, CORRESPONDANCE_ANCIEN_FOCUS,
-    assurerSemaineEntrainement, definirSeance, seancePourDate,
-    facteurAge, facteurFatigue, facteurTempsDeJeu, CHANCE_BASE_PROGRESSION,
-    appliquerSeance, repartirParActivite,
-    RISQUE_BLESSURE_PAR_INTENSITE, blessuresDeSeance,
+    ACTIVITES_ENTRAINEMENT, SEMAINE_PAR_DEFAUT, assurerSemaineEntrainement,
+    definirSeance, seancePourDate, facteurAge, facteurFatigue, facteurTempsDeJeu,
+    appliquerSeance, repartirParActivite, blessuresDeSeance,
   });
 })(window);

@@ -133,7 +133,7 @@
   }
 
   global.RMClub = Object.assign(global.RMClub || {}, {
-    genererJeune, completerCentreFormation, genererCentreFormation,
-    assurerCentreFormation, promouvoirJeune, progresserCentreFormation,
+    genererJeune, genererCentreFormation, assurerCentreFormation, promouvoirJeune,
+    progresserCentreFormation,
   });
 })(window);

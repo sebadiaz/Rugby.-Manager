@@ -294,8 +294,7 @@
   }
 
   global.RMClub = Object.assign(global.RMClub || {}, {
-    STATUTS, CLES_STATUT, MATCHS_MINIMUM_EVALUATION, DELAI_REPONSE_STATUT_JOURS,
-    libelleStatut, effetMoralAnnonce, definirStatutPromis, bilanPromesse,
-    evaluerPromessesStatut, appliquerDecisionStatut, statutInferieur, dossierDynamique,
+    STATUTS, CLES_STATUT, MATCHS_MINIMUM_EVALUATION, libelleStatut, definirStatutPromis,
+    bilanPromesse, evaluerPromessesStatut, appliquerDecisionStatut, dossierDynamique,
   });
 })(window);
