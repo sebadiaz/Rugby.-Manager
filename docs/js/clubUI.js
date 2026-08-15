@@ -70,6 +70,27 @@
     return true;
   }
 
+  // LIGNE D'INFORMATION — le composant le plus utilisé de l'interface.
+  //
+  // Il existait sous DEUX formes incompatibles, construites à la main partout :
+  //   `${ligneInfo(`X`, `Y`)}`      (95 fois)
+  //   `${ligneInfo(`X`, `Y`, { compact: true })}` (11 fois)
+  // Deux classes CSS quasi identiques (flex, space-between, 13 px), deux
+  // conventions de balisage pour la même information, et 106 chaînes à
+  // maintenir une par une. `opts.etat` remplace les variantes `alerte` /
+  // `critique` / `deltaNegatif` éparpillées.
+  //
+  // `label` et `valeur` sont insérés TELS QUELS : les appelants passent déjà
+  // du HTML construit (icônes, badges, texte échappé). Utiliser
+  // `echapperHTML()` sur les données brutes reste à leur charge, comme avant.
+  function ligneInfo(label, valeur, opts) {
+    const o = opts || {};
+    const classes = 'ligneInfo' + (o.compact ? ' compact' : '');
+    const etat = o.etat ? ` class="${o.etat}"` : '';
+    const titre = o.titre ? ` title="${o.titre}"` : '';
+    return `<div class="${classes}"${titre}><span>${label}</span><b${etat}>${valeur}</b></div>`;
+  }
+
   function graineAleatoire() {
     return Math.floor(window.RMRng.random() * 0xffffffff);
   }
@@ -446,7 +467,7 @@
       const postes = !a.attributs.length ? 'Aucune progression (récupération)'
         : (a.postes ? a.postes.map((x) => POSTE_COMPLET[x] || x).join(', ') : 'Tout l\'effectif');
       const charge = a.intensite > 0 ? `Charge : +${a.intensite} de fatigue` : `Récupération ×${a.recuperation}`;
-      return `<div class="ligneJoueur"><span>${a.icone} <b>${echapperHTML(a.label)}</b><span style="display:block;color:var(--text-faint);font-size:11px;">Concerne : ${postes}</span></span>` +
+      return `<div class="ligneInfo"><span>${a.icone} <b>${echapperHTML(a.label)}</b><span style="display:block;color:var(--text-faint);font-size:11px;">Concerne : ${postes}</span></span>` +
         `<b style="white-space:nowrap;">${charge}</b></div>`;
     }).join('');
   }
@@ -1243,16 +1264,16 @@
       const lignesPostes = Object.keys(cible).map((p) => {
         const n = parPoste[p] || 0;
         const manque = n < cible[p];
-        return `<div class="ligneJoueur"><span>${echapperHTML(p)}</span>` +
+        return `<div class="ligneInfo"><span>${echapperHTML(p)}</span>` +
           `<b class="${manque ? 'deltaNegatif' : ''}">${n} / ${cible[p]}${manque ? ' ⚠️' : ''}</b></div>`;
       }).join('');
       const finContrat = eff.filter((j) => (j.contrat || 0) <= 1).length;
       titre.textContent = '📊 Forme du groupe';
       zone.innerHTML =
-        `<div class="ligneJoueur"><span>Joueurs</span><b>${eff.length}</b></div>` +
-        `<div class="ligneJoueur"><span>Âge moyen</span><b>${Math.round(age * 10) / 10} ans</b></div>` +
-        `<div class="ligneJoueur"><span>Masse salariale</span><b>${salaires} k€/saison</b></div>` +
-        `<div class="ligneJoueur"><span>Contrats expirant</span><b class="${finContrat ? 'deltaNegatif' : ''}">${finContrat}</b></div>` +
+        `${ligneInfo(`Joueurs`, `${eff.length}`)}` +
+        `${ligneInfo(`Âge moyen`, `${Math.round(age * 10) / 10} ans`)}` +
+        `${ligneInfo(`Masse salariale`, `${salaires} k€/saison`)}` +
+        `${ligneInfo(`Contrats expirant`, `${finContrat}`, { etat: `${finContrat ? 'deltaNegatif' : ''}` })}` +
         `<h4 class="sousTitreMedical">Profondeur par poste</h4>${lignesPostes}`;
     } else if (sous === 'selection') {
       const slot = ctx.estClubJoueur && RMClub.assurerCompositionPourEquipe
@@ -1269,15 +1290,15 @@
       const lignes = Object.keys(RMClub.POSTE_REQUIS).map((n) => {
         const j = parId[compo[n]];
         const poste = RMClub.POSTE_REQUIS[n];
-        if (!j) return `<div class="ligneJoueur"><span>n°${n} · ${poste}</span><b class="deltaNegatif">à pourvoir</b></div>`;
+        if (!j) return `${ligneInfo(`n°${n} · ${poste}`, `à pourvoir`, { etat: `deltaNegatif` })}`;
         const note = RMClub.noteAuPoste ? RMClub.noteAuPoste(j, poste) : null;
         const horsPoste = j.poste !== poste ? ' ⚠️ hors poste' : '';
-        return `<div class="ligneJoueur"><span>n°${n} · ${poste}</span>` +
+        return `<div class="ligneInfo"><span>n°${n} · ${poste}</span>` +
           `<b>${echapperHTML(j.nom)}${horsPoste}${note != null ? ` <span style="color:var(--text-dim);font-weight:400;">${note}</span>` : ''}</b></div>`;
       }).join('');
       const lignesBanc = banc ? Object.keys(banc).map((n) => {
         const j = parId[banc[n]];
-        return j ? `<div class="ligneJoueur"><span>n°${n}</span><b>${echapperHTML(j.nom)} <span style="color:var(--text-dim);font-weight:400;">${echapperHTML(j.poste)}</span></b></div>` : '';
+        return j ? `${ligneInfo(`n°${n}`, `${echapperHTML(j.nom)} <span style="color:var(--text-dim);font-weight:400;">${echapperHTML(j.poste)}</span>`)}` : '';
       }).join('') : '';
       titre.textContent = '📋 Sélection retenue';
       zone.innerHTML = lignes + (lignesBanc ? `<h4 class="sousTitreMedical">Banc</h4>${lignesBanc}` : '');
@@ -1292,7 +1313,7 @@
       }
       const bloc = (titreBloc, liste, detail) => liste.length
         ? `<h4 class="sousTitreMedical">${titreBloc} (${liste.length})</h4>` + liste.map((j) =>
-          `<div class="ligneJoueur"><span>${echapperHTML(j.nom)} <span style="color:var(--text-faint);">${echapperHTML(j.poste)}</span></span>` +
+          `<div class="ligneInfo"><span>${echapperHTML(j.nom)} <span style="color:var(--text-faint);">${echapperHTML(j.poste)}</span></span>` +
           `<b>${detail(j)}</b></div>`).join('')
         : '';
       titre.textContent = '✅ Disponibilité';
@@ -1340,16 +1361,16 @@
         `<td>${l.matchsDepuisPromesse != null ? `${l.titularisationsDepuisPromesse}+${l.bancDepuisPromesse} / ${l.matchsDepuisPromesse}` : '—'}</td>` +
         `<td>${l.moral} %</td><td>${etat(l)}</td></tr>`).join('');
       const resumeStatuts = RMClub.CLES_STATUT.map((cle) =>
-        `<div class="ligneJoueur"><span>${echapperHTML(RMClub.STATUTS[cle].libelle)}</span><b>${dossier.parStatut[cle]}</b></div>`).join('');
+        `${ligneInfo(`${echapperHTML(RMClub.STATUTS[cle].libelle)}`, `${dossier.parStatut[cle]}`)}`).join('');
       zone.innerHTML =
         `<p class="noteLectureSeule" style="margin:0 0 8px;">Un statut se promet depuis la fiche d'un joueur. ` +
         `Il ne change PAS la sélection automatique : c'est un engagement que tu dois tenir toi-même, ` +
         `mesuré sur les feuilles de match de l'équipe première.</p>` +
         resumeStatuts +
-        `<div class="ligneJoueur"><span>Sans statut promis</span><b>${dossier.sansStatut}</b></div>` +
-        `<div class="ligneJoueur"><span>Promesses rompues</span><b class="${dossier.promessesRompues ? 'deltaNegatif' : ''}">${dossier.promessesRompues}</b></div>` +
-        `<div class="ligneJoueur"><span>Joueurs mécontents</span><b class="${dossier.mecontents ? 'deltaNegatif' : ''}">${dossier.mecontents}</b></div>` +
-        `<div class="ligneJoueur"><span>Moral moyen</span><b>${dossier.moralMoyen != null ? dossier.moralMoyen + ' %' : 'non connu'}</b></div>` +
+        `${ligneInfo(`Sans statut promis`, `${dossier.sansStatut}`)}` +
+        `${ligneInfo(`Promesses rompues`, `${dossier.promessesRompues}`, { etat: `${dossier.promessesRompues ? 'deltaNegatif' : ''}` })}` +
+        `${ligneInfo(`Joueurs mécontents`, `${dossier.mecontents}`, { etat: `${dossier.mecontents ? 'deltaNegatif' : ''}` })}` +
+        `${ligneInfo(`Moral moyen`, `${dossier.moralMoyen != null ? dossier.moralMoyen + ' %' : 'non connu'}`)}` +
         `<h4 class="sousTitreMedical">Effectif et engagements</h4>` +
         `<table class="tableauClub tableauFiche"><thead><tr><th>Joueur</th><th>Poste</th><th>Statut promis</th>` +
         `<th title="Titularisations + entrées en jeu sur les matchs où il était disponible">XV+banc / matchs</th>` +
@@ -1397,9 +1418,9 @@
     if (sous === 'equipe') {
       titre.textContent = '🏉 Production du collectif';
       if (!joues) { zone.innerHTML = '<p style="color:var(--text-dim);">Aucun match joué : rien à mesurer pour l\'instant.</p>'; return; }
-      zone.innerHTML = `<div class="ligneJoueur"><span>Matchs joués</span><b>${joues}</b></div>` +
+      zone.innerHTML = `${ligneInfo(`Matchs joués`, `${joues}`)}` +
         Object.keys(LIBELLE_STAT_CLUB).filter((k) => st[k] != null).map((k) =>
-          `<div class="ligneJoueur"><span>${LIBELLE_STAT_CLUB[k]}</span>` +
+          `<div class="ligneInfo"><span>${LIBELLE_STAT_CLUB[k]}</span>` +
           `<b>${st[k]} <span style="color:var(--text-dim);font-weight:400;">${Math.round((st[k] / joues) * 10) / 10}/match</span></b></div>`).join('');
     } else if (sous === 'joueurs') {
       titre.textContent = '⭐ Meilleurs de la saison';
@@ -1408,7 +1429,7 @@
       const top = (champ, libelle) => {
         const l = tous.slice().sort((a2, b2) => (b2.statsSaison[champ] || 0) - (a2.statsSaison[champ] || 0));
         return l[0] && l[0].statsSaison[champ]
-          ? `<div class="ligneJoueur"><span>${libelle}</span><b>${echapperHTML(l[0].nom)} · ${l[0].statsSaison[champ]}</b></div>` : '';
+          ? `${ligneInfo(`${libelle}`, `${echapperHTML(l[0].nom)} · ${l[0].statsSaison[champ]}`)}` : '';
       };
       zone.innerHTML =
         top('essais', 'Meilleur marqueur') + top('metresGagnes', 'Plus de mètres gagnés') +
@@ -1417,7 +1438,7 @@
         `<h4 class="sousTitreMedical">Temps de jeu (${tous.length} joueurs utilisés)</h4>` +
         tous.slice().sort((a2, b2) => (b2.statsSaison.matchsJoues || 0) - (a2.statsSaison.matchsJoues || 0))
           .slice(0, 10).map((j) =>
-            `<div class="ligneJoueur"><span>${echapperHTML(j.nom)} <span style="color:var(--text-faint);">${echapperHTML(j.poste)}</span></span>` +
+            `<div class="ligneInfo"><span>${echapperHTML(j.nom)} <span style="color:var(--text-faint);">${echapperHTML(j.poste)}</span></span>` +
             `<b>${j.statsSaison.matchsJoues} match(s)</b></div>`).join('');
     } else if (sous === 'matchs') {
       titre.textContent = '📋 Rencontres jouées';
@@ -1438,7 +1459,7 @@
       const h = c.historiqueSaisons || [];
       zone.innerHTML = h.length
         ? h.slice().reverse().map((e2) =>
-          `<div class="ligneJoueur"><span>Saison ${e2.numero} — ${e2.position}e/${e2.totalClubs}</span>` +
+          `<div class="ligneInfo"><span>Saison ${e2.numero} — ${e2.position}e/${e2.totalClubs}</span>` +
           `<b>${e2.victoires}V ${e2.nuls}N ${e2.defaites}D · ${e2.points} pts</b></div>`).join('')
         : '<p style="color:var(--text-dim);">Première saison en cours : l\'historique se remplira à la fin.</p>';
     }
@@ -1518,10 +1539,10 @@
         .filter((j) => (RMClub.calculerProgression(j) || []).some((p) => p.delta > 0)).length;
       titre.textContent = '🌱 Ce que le club produit';
       zone.innerHTML =
-        `<div class="ligneJoueur"><span>Vivier Équipe B</span><b>${effB.length} joueur(s)</b></div>` +
-        `<div class="ligneJoueur"><span>Centre de formation</span><b>${jeunes.length} jeune(s)</b></div>` +
-        `<div class="ligneJoueur"><span>Joueurs prêtés</span><b>${pretes.length}</b></div>` +
-        `<div class="ligneJoueur"><span>Joueurs en progression</span><b>${progressent}</b></div>`;
+        `${ligneInfo(`Vivier Équipe B`, `${effB.length} joueur(s)`)}` +
+        `${ligneInfo(`Centre de formation`, `${jeunes.length} jeune(s)`)}` +
+        `${ligneInfo(`Joueurs prêtés`, `${pretes.length}`)}` +
+        `${ligneInfo(`Joueurs en progression`, `${progressent}`)}`;
     } else if (sous === 'b') {
       titre.textContent = '🥈 Vivier de l\'Équipe B';
       zone.innerHTML = effB.length
@@ -1779,14 +1800,14 @@
     const blocRoute = axesGestion.length
       ? `<h4 class="sousTitreMedical">Feuille de route de la direction</h4>` +
         axesGestion.map((a) =>
-          `<div class="ligneJoueur"><span>${echapperHTML(a.libelle)}<br>` +
+          `<div class="ligneInfo"><span>${echapperHTML(a.libelle)}<br>` +
           `<span style="color:var(--text-faint);font-size:11px;">${echapperHTML(a.description)}</span></span>` +
           `<b class="${a.atteint ? 'deltaPositif' : 'deltaNegatif'}">${a.mesure} / ${a.cible} ${echapperHTML(a.unite)} ${a.atteint ? '✓' : '✗'}</b></div>`).join('')
       : '';
     document.getElementById('clubObjectifSaison').innerHTML =
-      `<div class="ligneJoueur"><span>Ambition du président</span><b>${RMClub.libelleObjectifSaison(c.objectifSaison)}</b></div>` +
-      `<div class="ligneJoueur"><span>Position actuelle</span><b class="${objectifAtteint ? '' : 'deltaNegatif'}">${position}e/${classement.length} ${objectifAtteint ? '✓ en ligne avec l\'objectif' : '— en retard sur l\'objectif'}</b></div>` +
-      `<div class="ligneJoueur"><span>Confiance du président</span><b><span class="barreMoral${confiance < 35 ? ' bas' : confiance >= 65 ? ' haut' : ''}"><span style="width:${confiance}%"></span></span> ${confiance}%</b></div>` +
+      `${ligneInfo(`Ambition du président`, `${RMClub.libelleObjectifSaison(c.objectifSaison)}`)}` +
+      `${ligneInfo(`Position actuelle`, `${position}e/${classement.length} ${objectifAtteint ? '✓ en ligne avec l\'objectif' : '— en retard sur l\'objectif'}`, { etat: `${objectifAtteint ? '' : 'deltaNegatif'}` })}` +
+      `${ligneInfo(`Confiance du président`, `<span class="barreMoral${confiance < 35 ? ' bas' : confiance >= 65 ? ' haut' : ''}"><span style="width:${confiance}%"></span></span> ${confiance}%`)}` +
       blocUltimatum + blocRoute;
   }
 
@@ -1931,15 +1952,15 @@
       const leader = lignes[0];
       titre.textContent = `🏆 ${comp.nom}`;
       zone.innerHTML =
-        `<div class="ligneJoueur"><span>Clubs engagés</span><b>${(comp.clubs || []).length}</b></div>` +
-        `<div class="ligneJoueur"><span>Rencontres jouées</span><b>${joues} / ${(comp.calendrier || []).length}</b></div>` +
-        (leader ? `<div class="ligneJoueur"><span>En tête</span><b>${echapperHTML(nomDe(leader.clubId))} · ${leader.pts} pt(s)</b></div>` : '') +
-        `<div class="ligneJoueur"><span>Ta compétition ?</span><b>${comp.estCelleDuJoueur ? 'oui' : 'non'}</b></div>`;
+        `${ligneInfo(`Clubs engagés`, `${(comp.clubs || []).length}`)}` +
+        `${ligneInfo(`Rencontres jouées`, `${joues} / ${(comp.calendrier || []).length}`)}` +
+        (leader ? `${ligneInfo(`En tête`, `${echapperHTML(nomDe(leader.clubId))} · ${leader.pts} pt(s)`)}` : '') +
+        `${ligneInfo(`Ta compétition ?`, `${comp.estCelleDuJoueur ? 'oui' : 'non'}`)}`;
     } else if (sous === 'equipes') {
       titre.textContent = '🏟️ Clubs engagés';
       zone.innerHTML = (comp.clubs || []).length
         ? (comp.clubs || []).map((c) =>
-          `<div class="ligneJoueur"><span>${lienClub(c.id)}</span>` +
+          `<div class="ligneInfo"><span>${lienClub(c.id)}</span>` +
           `<b>${c.id === saison.clubJoueur.id ? 'ton club' : ''}</b></div>`).join('')
         : '<p style="color:var(--text-dim);">Aucun club listé pour cette compétition.</p>';
     } else if (sous === 'stats') {
@@ -1953,18 +1974,18 @@
       const totalPts = lignes.reduce((t, r) => t + (r.pointsPour || 0), 0);
       const joues = (comp.calendrier || []).filter((f) => f.joue).length;
       zone.innerHTML =
-        `<div class="ligneJoueur"><span>Meilleure attaque</span><b>${echapperHTML(nomDe(parPour[0].clubId))} · ${parPour[0].pointsPour || 0} pts</b></div>` +
-        `<div class="ligneJoueur"><span>Meilleure défense</span><b>${echapperHTML(nomDe(parContre[0].clubId))} · ${parContre[0].pointsContre || 0} encaissés</b></div>` +
-        `<div class="ligneJoueur"><span>Points marqués au total</span><b>${totalPts}</b></div>` +
-        `<div class="ligneJoueur"><span>Moyenne par rencontre</span><b>${joues ? Math.round(totalPts / joues) : 0} pts</b></div>`;
+        `${ligneInfo(`Meilleure attaque`, `${echapperHTML(nomDe(parPour[0].clubId))} · ${parPour[0].pointsPour || 0} pts`)}` +
+        `${ligneInfo(`Meilleure défense`, `${echapperHTML(nomDe(parContre[0].clubId))} · ${parContre[0].pointsContre || 0} encaissés`)}` +
+        `${ligneInfo(`Points marqués au total`, `${totalPts}`)}` +
+        `${ligneInfo(`Moyenne par rencontre`, `${joues ? Math.round(totalPts / joues) : 0} pts`)}`;
     } else if (sous === 'regles') {
       titre.textContent = '📜 Format et règles';
       const promus = comp.promus || 0, relegues = comp.relegues || 0;
       zone.innerHTML =
-        `<div class="ligneJoueur"><span>Format</span><b>${comp.estCoupe ? 'élimination directe' : 'championnat aller-retour'}</b></div>` +
-        `<div class="ligneJoueur"><span>Clubs</span><b>${(comp.clubs || []).length}</b></div>` +
-        `<div class="ligneJoueur"><span>Montées</span><b>${promus || 'aucune'}</b></div>` +
-        `<div class="ligneJoueur"><span>Descentes</span><b>${relegues || 'aucune'}</b></div>` +
+        `${ligneInfo(`Format`, `${comp.estCoupe ? 'élimination directe' : 'championnat aller-retour'}`)}` +
+        `${ligneInfo(`Clubs`, `${(comp.clubs || []).length}`)}` +
+        `${ligneInfo(`Montées`, `${promus || 'aucune'}`)}` +
+        `${ligneInfo(`Descentes`, `${relegues || 'aucune'}`)}` +
         (comp.partagee ? '<p style="font-size:12px;color:var(--text-dim);margin:8px 0 0;">Compétition partagée entre plusieurs pays.</p>' : '');
     }
   }
@@ -2232,13 +2253,13 @@
     const c = saison.clubJoueur;
     document.getElementById('clubBudgetDetail').innerHTML =
       `<div class="ligneFinances"><span>Budget actuel</span><span class="budgetValeur${c.budget < 0 ? ' negatif' : ''}">${c.budget} k€</span></div>` +
-      (c.sponsor ? `<div class="ligneStatut" style="margin-top:8px;"><span>Sponsor</span><span class="valeurStatut">${c.sponsor.nom} · +${c.sponsor.revenuParMatch} k€/match</span></div>` : '');
+      (c.sponsor ? `<div class="ligneInfo compact" style="margin-top:8px;"><span>Sponsor</span><b>${c.sponsor.nom} · +${c.sponsor.revenuParMatch} k€/match</b></div>` : '');
     const masseJoueurs = RMClub.masseSalariale(c.effectif);
     const massePersonnel = RMClub.masseSalarialePersonnel(c);
     document.getElementById('clubMasseSalariale').innerHTML =
-      `<div class="ligneStatut"><span>Salaires joueurs (saison)</span><span class="valeurStatut">${masseJoueurs} k€</span></div>` +
-      `<div class="ligneStatut"><span>Salaires personnel (saison)</span><span class="valeurStatut">${massePersonnel} k€</span></div>` +
-      `<div class="ligneStatut"><span>Total / journée</span><span class="valeurStatut">${Math.round((masseJoueurs + massePersonnel) / RMClub.nombreJourneesSaison(saison.calendrier))} k€</span></div>`;
+      `${ligneInfo(`Salaires joueurs (saison)`, `${masseJoueurs} k€`, { compact: true })}` +
+      `${ligneInfo(`Salaires personnel (saison)`, `${massePersonnel} k€`, { compact: true })}` +
+      `${ligneInfo(`Total / journée`, `${Math.round((masseJoueurs + massePersonnel) / RMClub.nombreJourneesSaison(saison.calendrier))} k€`, { compact: true })}`;
     // Prévisionnel : previsionTresorerie (P1-47) remplace prevoirFinances —
     // il tient compte du chantier engagé, ce que l'ancien extrapolateur
     // ignorait alors que c'est la plus grosse dépense du jeu.
@@ -2247,12 +2268,12 @@
     if (prevision) {
       cartePrevisions.style.display = '';
       document.getElementById('clubPrevisions').innerHTML =
-        `<div class="ligneStatut"><span>Solde net moyen / journée</span><span class="valeurStatut${prevision.soldeNetMoyen < 0 ? ' alerte' : ''}">${prevision.soldeNetMoyen >= 0 ? '+' : ''}${prevision.soldeNetMoyen} k€</span></div>` +
+        `${ligneInfo(`Solde net moyen / journée`, `${prevision.soldeNetMoyen >= 0 ? '+' : ''}${prevision.soldeNetMoyen} k€`, { compact: true, etat: `${prevision.soldeNetMoyen < 0 ? ' alerte' : ''}` })}` +
         (prevision.chantier
-          ? `<div class="ligneStatut"><span>Chantier en cours (déjà payé)</span><span class="valeurStatut">${prevision.chantier.cout} k€ · livraison dans ${prevision.chantier.joursRestants} j</span></div>`
+          ? `${ligneInfo(`Chantier en cours (déjà payé)`, `${prevision.chantier.cout} k€ · livraison dans ${prevision.chantier.joursRestants} j`, { compact: true })}`
           : '') +
-        (prevision.engagements ? `<div class="ligneStatut"><span>Reste à décaisser</span><span class="valeurStatut alerte">${prevision.engagements} k€</span></div>` : '') +
-        `<div class="ligneStatut"><span>Budget projeté dans ${prevision.nJournees} journées</span><span class="valeurStatut${prevision.projection < 0 ? ' critique' : ''}">${prevision.projection} k€</span></div>`;
+        (prevision.engagements ? `${ligneInfo(`Reste à décaisser`, `${prevision.engagements} k€`, { compact: true, etat: `alerte` })}` : '') +
+        `${ligneInfo(`Budget projeté dans ${prevision.nJournees} journées`, `${prevision.projection} k€`, { compact: true, etat: `${prevision.projection < 0 ? ' critique' : ''}` })}`;
     } else {
       cartePrevisions.style.display = 'none';
     }
@@ -2263,12 +2284,12 @@
     const dossier = RMClub.dossierComptes(saison);
     const ventilation = dossier.categories.length
       ? dossier.categories.map((cat) =>
-          `<div class="ligneStatut" title="${echapperHTML(cat.description)}">` +
+          `<div class="ligneInfo compact" title="${echapperHTML(cat.description)}">` +
           `<span>${echapperHTML(cat.libelle)}</span>` +
-          `<span class="valeurStatut${cat.montant < 0 ? ' alerte' : ''}">${cat.montant > 0 ? '+' : ''}${cat.montant} k€</span></div>`).join('') +
-        `<div class="ligneStatut" style="border-top:1px solid var(--bordure);margin-top:6px;padding-top:6px;">` +
+          `<b class="${cat.montant < 0 ? 'alerte' : ''}">${cat.montant > 0 ? '+' : ''}${cat.montant} k€</b></div>`).join('') +
+        `<div class="ligneInfo compact" style="border-top:1px solid var(--bordure);margin-top:6px;padding-top:6px;">` +
         `<span><b>Solde de la saison</b></span>` +
-        `<span class="valeurStatut${dossier.solde < 0 ? ' alerte' : ''}"><b>${dossier.solde > 0 ? '+' : ''}${dossier.solde} k€</b></span></div>`
+        `<b class="${dossier.solde < 0 ? 'alerte' : ''}">${dossier.solde > 0 ? '+' : ''}${dossier.solde} k€</b></div>`
       : '<p>Aucun mouvement enregistré cette saison.</p>';
     const lignes = dossier.lignes.length
       ? dossier.lignes.map((l) =>
@@ -2283,8 +2304,8 @@
       ? `<h4 class="sousTitreMedical">Exercices précédents</h4>` +
         exercices.map((e) => {
           const solde = RMClub.CLES_CATEGORIE_COMPTE.reduce((t, cle) => t + (e[cle] || 0), 0);
-          return `<div class="ligneStatut"><span>Saison ${e.saisonNumero}</span>` +
-            `<span class="valeurStatut${solde < 0 ? ' alerte' : ''}">solde ${solde > 0 ? '+' : ''}${solde} k€ · clôture ${e.budgetFin} k€</span></div>`;
+          return `<div class="ligneInfo compact"><span>Saison ${e.saisonNumero}</span>` +
+            `<b class="${solde < 0 ? 'alerte' : ''}">solde ${solde > 0 ? '+' : ''}${solde} k€ · clôture ${e.budgetFin} k€</b></div>`;
         }).join('')
       : '';
     document.getElementById('clubHistoriqueFinances').innerHTML =
@@ -2397,11 +2418,11 @@
         ? tous.reduce((t, e) => t + RMClub.risqueBlessure(e.joueur, { intensite: 1, saison }), 0) / tous.length : 0;
       titre.textContent = '🩺 État de santé du groupe';
       zoneOnglet.innerHTML =
-        `<div class="ligneJoueur"><span>Joueurs suivis</span><b>${tous.length}</b></div>` +
-        `<div class="ligneJoueur"><span>Indisponibles</span><b class="${blesses ? 'deltaNegatif' : ''}">${blesses}</b></div>` +
-        `<div class="ligneJoueur"><span>En reprise progressive</span><b>${enReprise}</b></div>` +
-        `<div class="ligneJoueur"><span>Au-dessus de 60 % de fatigue</span><b class="${fatigues ? 'deltaNegatif' : ''}">${fatigues}</b></div>` +
-        `<div class="ligneJoueur"><span>Risque moyen par séance</span><b>${Math.round(risqueMoyen * 1000) / 10} %</b></div>`;
+        `${ligneInfo(`Joueurs suivis`, `${tous.length}`)}` +
+        `${ligneInfo(`Indisponibles`, `${blesses}`, { etat: `${blesses ? 'deltaNegatif' : ''}` })}` +
+        `${ligneInfo(`En reprise progressive`, `${enReprise}`)}` +
+        `${ligneInfo(`Au-dessus de 60 % de fatigue`, `${fatigues}`, { etat: `${fatigues ? 'deltaNegatif' : ''}` })}` +
+        `${ligneInfo(`Risque moyen par séance`, `${Math.round(risqueMoyen * 1000) / 10} %`)}`;
     } else if (sous === 'risques') {
       const tries = tous.slice().sort((a, b) =>
         RMClub.risqueBlessure(b.joueur, { intensite: 1, saison }) - RMClub.risqueBlessure(a.joueur, { intensite: 1, saison }));
@@ -2429,10 +2450,10 @@
       }
       titre.textContent = '📉 Bilan de la saison';
       const types = Object.keys(parType).sort((a, b) => parType[b] - parType[a])
-        .map((t) => `<div class="ligneJoueur"><span>${echapperHTML(t)}</span><b>${parType[t]}</b></div>`).join('');
+        .map((t) => `${ligneInfo(`${echapperHTML(t)}`, `${parType[t]}`)}`).join('');
       zoneOnglet.innerHTML = nb
-        ? `<div class="ligneJoueur"><span>Blessures cette saison</span><b>${nb}</b></div>` +
-          `<div class="ligneJoueur"><span>Jours d'indisponibilité cumulés</span><b>${jours}</b></div>` + types
+        ? `${ligneInfo(`Blessures cette saison`, `${nb}`)}` +
+          `${ligneInfo(`Jours d'indisponibilité cumulés`, `${jours}`)}` + types
         : '<p style="color:var(--text-dim);">Aucune blessure enregistrée cette saison.</p>';
     }
     carte.style.display = sous === 'blessures' ? 'none' : '';
@@ -2501,27 +2522,27 @@
 
     const historique = m.historiqueClubs.map((h) => {
       const periode = h.jusquaSaison ? `saisons ${h.depuisSaison}–${h.jusquaSaison}` : `depuis la saison ${h.depuisSaison}`;
-      return `<div class="ligneJoueur"><span>${echapperHTML(h.clubNom || h.clubId)}</span><b>${echapperHTML(periode)}</b></div>`;
+      return `${ligneInfo(`${echapperHTML(h.clubNom || h.clubId)}`, `${echapperHTML(periode)}`)}`;
     }).join('');
 
     const parSaison = m.saisons.slice(-8).reverse().map((x) => {
       const verdict = x.objectifAtteint === true ? '✅' : x.objectifAtteint === false ? '❌' : '—';
       const mvt = x.mouvement === 'promotion' ? ' ⬆️' : x.mouvement === 'relegation' ? ' ⬇️' : '';
-      return `<div class="ligneJoueur"><span>S${x.numeroSaison} · ${echapperHTML(x.clubNom || '?')}</span>` +
+      return `<div class="ligneInfo"><span>S${x.numeroSaison} · ${echapperHTML(x.clubNom || '?')}</span>` +
         `<b>${x.position}e/${x.totalClubs} ${verdict}${mvt}</b></div>`;
     }).join('');
 
     zone.innerHTML =
-      `<div class="ligneJoueur"><span>Manager</span><b>${echapperHTML(m.nom)}</b></div>` +
-      `<div class="ligneJoueur"><span>Club actuel</span><b>${echapperHTML(clubActuel)}</b></div>` +
-      `<div class="ligneJoueur"><span>Réputation</span><b>${m.reputation} / 100</b></div>` +
-      `<div class="ligneJoueur"><span>Sécurité de l'emploi</span>` +
+      `${ligneInfo(`Manager`, `${echapperHTML(m.nom)}`)}` +
+      `${ligneInfo(`Club actuel`, `${echapperHTML(clubActuel)}`)}` +
+      `${ligneInfo(`Réputation`, `${m.reputation} / 100`)}` +
+      `<div class="ligneInfo"><span>Sécurité de l'emploi</span>` +
       `<b>${LIBELLE_SECURITE[s.niveau] || ''} ${echapperHTML(s.libelle)}</b></div>` +
       `<p class="noteLectureSeule" style="margin:4px 0 10px;">${echapperHTML(s.explication)}</p>` +
-      `<div class="ligneJoueur"><span>Saisons dirigées</span><b>${m.saisonsDirigees}</b></div>` +
-      `<div class="ligneJoueur"><span>Objectifs atteints</span><b>${bilanTotal.reussies} / ${bilanTotal.n}</b></div>` +
-      `<div class="ligneJoueur"><span>Promotions · Relégations</span><b>${m.promotions} · ${m.relegations}</b></div>` +
-      `<div class="ligneJoueur"><span>Trophées</span><b>${m.trophees.length}</b></div>` +
+      `${ligneInfo(`Saisons dirigées`, `${m.saisonsDirigees}`)}` +
+      `${ligneInfo(`Objectifs atteints`, `${bilanTotal.reussies} / ${bilanTotal.n}`)}` +
+      `${ligneInfo(`Promotions · Relégations`, `${m.promotions} · ${m.relegations}`)}` +
+      `${ligneInfo(`Trophées`, `${m.trophees.length}`)}` +
       (historique ? `<h4 class="titreBlocFiche">Clubs dirigés</h4>${historique}` : '') +
       (parSaison ? `<h4 class="titreBlocFiche">Saison par saison</h4>${parSaison}` : '');
     rafraichirOffresManager();
@@ -2643,7 +2664,7 @@
       ? `<h4 class="titreBlocFiche">Antécédents médicaux (${antecedents.length})</h4>` +
         `<p class="noteLectureSeule" style="margin:0 0 6px;">Un passé chargé augmente réellement le risque de nouvelle blessure.</p>` +
         antecedents.slice(0, 6).map((b) =>
-          `<div class="ligneJoueur"><span>${echapperHTML(b.libelle || 'Blessure')} · ${echapperHTML(b.zone || '?')}</span>` +
+          `<div class="ligneInfo"><span>${echapperHTML(b.libelle || 'Blessure')} · ${echapperHTML(b.zone || '?')}</span>` +
           `<b>${echapperHTML(RMClub.LIBELLE_GRAVITE[b.gravite] || '')} · ${b.joursReels || '?'} j` +
           (b.reprisePrecipitee ? ' · retour précipité' : '') + `</b></div>`).join('')
       : '';
@@ -2660,20 +2681,20 @@
       ['decision', 'Décision'], ['discipline', 'Discipline'],
     ];
     const lignesAttributs = ATTRIBUTS_FICHE.map(([champ, label]) =>
-      j[champ] != null ? `<div class="ligneJoueur"><span>${label}</span><b>${j[champ]}</b></div>` : ''
+      j[champ] != null ? `${ligneInfo(`${label}`, `${j[champ]}`)}` : ''
     ).join('');
     const lignePotentiel = j.potentiel != null
-      ? `<div class="ligneJoueur"><span>Potentiel</span><b>${Math.round(j.potentiel)} <span class="jaugePotentiel"><span style="width:${Math.round((j.vitesse + j.plaquage) / 2)}%"></span></span></b></div>` : '';
+      ? `${ligneInfo(`Potentiel`, `${Math.round(j.potentiel)} <span class="jaugePotentiel"><span style="width:${Math.round((j.vitesse + j.plaquage) / 2)}%"></span></span>`)}` : '';
     // Progression RÉELLE depuis le début de la saison (cf. RMClub.calculerProgression) —
     // vide si rien n'a bougé ou si aucun instantané n'existe (ancienne sauvegarde).
     const ATTR_LABEL_COURT = { vitesse: 'Vitesse', plaquage: 'Plaquage', melee: 'Mêlée', touche: 'Touche', puissance: 'Puissance', endurance: 'Endurance', passe: 'Passe', jeuPied: 'Jeu au pied', decision: 'Décision' };
     const progression = RMClub.calculerProgression(j);
     const ligneProgression = progression.length
-      ? `<div class="ligneJoueur"><span>Progression cette saison</span><b></b></div>` +
+      ? `${ligneInfo(`Progression cette saison`, ``)}` +
         progression.map((p) => `<div class="ligneProgression"><span>${ATTR_LABEL_COURT[p.attr] || p.attr}</span><span class="${p.delta > 0 ? 'deltaPositif' : 'deltaNegatif'}">${p.delta > 0 ? '+' : ''}${p.delta} (${p.avant}→${p.apres})</span></div>`).join('')
       : '';
     const ligneStatsSaison = s
-      ? `<div class="ligneJoueur"><span>Cette saison</span><b>${s.essais} essai(s) · ${s.passes} passe(s) · ${s.tacklesMade}/${s.tacklesAttempted} plaquages</b></div>`
+      ? `${ligneInfo(`Cette saison`, `${s.essais} essai(s) · ${s.passes} passe(s) · ${s.tacklesMade}/${s.tacklesAttempted} plaquages`)}`
       : '';
 
     // --- Statistiques PAR COMPÉTITION, historique et carrière (P1-30) ------
@@ -2705,12 +2726,12 @@
     const carriere = RMClub.carriereJoueur(j);
     const blocCarriere = carriere.saisons > 0
       ? `<h4 class="titreBlocFiche">🏆 Carrière</h4>` +
-        `<div class="ligneJoueur"><span>Saisons jouées</span><b>${carriere.saisons}</b></div>` +
-        `<div class="ligneJoueur"><span>Matchs</span><b>${carriere.matchsJoues}</b></div>` +
-        `<div class="ligneJoueur"><span>Essais</span><b>${carriere.essais}</b></div>` +
-        `<div class="ligneJoueur"><span>Passes</span><b>${carriere.passes}</b></div>` +
-        `<div class="ligneJoueur"><span>Plaquages réussis</span><b>${carriere.tacklesMade}/${carriere.tacklesAttempted}</b></div>` +
-        `<div class="ligneJoueur"><span>Mètres gagnés</span><b>${Math.round(carriere.metresGagnes)}</b></div>`
+        `${ligneInfo(`Saisons jouées`, `${carriere.saisons}`)}` +
+        `${ligneInfo(`Matchs`, `${carriere.matchsJoues}`)}` +
+        `${ligneInfo(`Essais`, `${carriere.essais}`)}` +
+        `${ligneInfo(`Passes`, `${carriere.passes}`)}` +
+        `${ligneInfo(`Plaquages réussis`, `${carriere.tacklesMade}/${carriere.tacklesAttempted}`)}` +
+        `${ligneInfo(`Mètres gagnés`, `${Math.round(carriere.metresGagnes)}`)}`
       : '';
     // Négociable à tout moment (pas seulement en dernière année de contrat —
     // audit : le joueur pensait qu'aucune gestion de contrat n'existait,
@@ -2737,12 +2758,12 @@
       const exigence = RMClub.exigenceSalariale ? RMClub.exigenceSalariale(saison, j, { duree: offre.dureeMax }) : null;
       const interet = RMClub.interetExterieur ? RMClub.interetExterieur(saison, j) : 0;
       if (satisfaction != null) {
-        actions += `<div class="ligneJoueur" style="margin-top:10px;"><span>Fin de contrat</span>` +
+        actions += `<div class="ligneInfo" style="margin-top:10px;"><span>Fin de contrat</span>` +
           `<b>saison ${RMClub.saisonFinContrat(saison, j)} (${j.contrat} an(s))</b></div>` +
-          `<div class="ligneJoueur"><span>Satisfaction contractuelle</span><b>${satisfaction}/100</b></div>` +
-          `<div class="ligneJoueur"><span>Avenir</span><b>${RMClub.VOLONTES[volonte].icone} ${echapperHTML(RMClub.VOLONTES[volonte].libelle)}</b></div>` +
-          `<div class="ligneJoueur"><span>Prétentions estimées</span><b>${exigence} k€/saison</b></div>` +
-          (interet ? `<div class="ligneJoueur"><span>Clubs intéressés</span><b class="deltaNegatif">${interet}</b></div>` : '');
+          `${ligneInfo(`Satisfaction contractuelle`, `${satisfaction}/100`)}` +
+          `${ligneInfo(`Avenir`, `${RMClub.VOLONTES[volonte].icone} ${echapperHTML(RMClub.VOLONTES[volonte].libelle)}`)}` +
+          `${ligneInfo(`Prétentions estimées`, `${exigence} k€/saison`)}` +
+          (interet ? `${ligneInfo(`Clubs intéressés`, `${interet}`, { etat: `deltaNegatif` })}` : '');
       }
       if (j.negociationRompue) {
         actions += `<p class="noteLectureSeule" style="margin-top:8px;">⛔ Son agent a mis fin aux discussions : plus aucune proposition possible cette saison.</p>`;
@@ -2820,17 +2841,17 @@
       `<div class="ficheJoueurEntete"><span><span class="nomJoueurFiche">${echapperHTML(j.nom)}${badgesRole(id, slot)}</span><span class="posteJoueurFiche">${POSTE_COMPLET[j.poste] || j.poste} · ${j.age} ans · ${lienClub(ctx.clubId)} <span style="color:var(--text-faint);">(${echapperHTML(ctx.label)})</span></span></span></div>` +
       (ctx.modifiable ? '' : `<p class="noteLectureSeule">🔍 Joueur d'un club que tu ne diriges pas : consultation seule. Les valeurs de contrat et de salaire sont des estimations de tes recruteurs.</p>`) +
       lignesAttributs + lignePotentiel +
-      `<div class="ligneJoueur"><span>Moral</span><b><span class="barreMoral${moral < 45 ? ' bas' : moral >= 80 ? ' haut' : ''}"><span style="width:${moral}%"></span></span> ${moral}%</b></div>` +
-      `<div class="ligneJoueur"><span>Fatigue</span><b><span class="barreFatigue${fatigue >= 65 ? ' haute' : ''}"><span style="width:${fatigue}%"></span></span> ${fatigue}%</b></div>` +
+      `${ligneInfo(`Moral`, `<span class="barreMoral${moral < 45 ? ' bas' : moral >= 80 ? ' haut' : ''}"><span style="width:${moral}%"></span></span> ${moral}%`)}` +
+      `${ligneInfo(`Fatigue`, `<span class="barreFatigue${fatigue >= 65 ? ' haute' : ''}"><span style="width:${fatigue}%"></span></span> ${fatigue}%`)}` +
       ligneProgression +
-      `<div class="ligneJoueur"><span>Matchs joués cette saison</span><b>${j.matchsJoues || 0}</b></div>` +
+      `${ligneInfo(`Matchs joués cette saison`, `${j.matchsJoues || 0}`)}` +
       ligneStatsSaison +
-      `<div class="ligneJoueur"><span>Sélection du jour</span><b>${statutCompo}</b></div>` +
-      (j.veutPartir ? `<div class="ligneJoueur"><span>Statut</span><b class="texteAlerteJoueur">🚩 Souhaite être transféré (mécontent de son temps de jeu)</b></div>` : '') +
-      (j.contrat != null ? `<div class="ligneJoueur"><span>Contrat</span><b>${j.contrat} an(s) restant(s)</b></div>` : '') +
-      (j.salaire != null ? `<div class="ligneJoueur"><span>Salaire</span><b>${j.salaire} k€/saison</b></div>` : '') +
-      (j.valeurEstimee != null && !ctx.modifiable ? `<div class="ligneJoueur"><span>Valeur de transfert estimée</span><b>${j.valeurEstimee} k€</b></div>` : '') +
-      `<div class="ligneJoueur"><span>Disponibilité</span><b>${disponibilite}</b></div>` +
+      `${ligneInfo(`Sélection du jour`, `${statutCompo}`)}` +
+      (j.veutPartir ? `${ligneInfo(`Statut`, `🚩 Souhaite être transféré (mécontent de son temps de jeu)`, { etat: `texteAlerteJoueur` })}` : '') +
+      (j.contrat != null ? `${ligneInfo(`Contrat`, `${j.contrat} an(s) restant(s)`)}` : '') +
+      (j.salaire != null ? `${ligneInfo(`Salaire`, `${j.salaire} k€/saison`)}` : '') +
+      (j.valeurEstimee != null && !ctx.modifiable ? `${ligneInfo(`Valeur de transfert estimée`, `${j.valeurEstimee} k€`)}` : '') +
+      `${ligneInfo(`Disponibilité`, `${disponibilite}`)}` +
       blocAntecedents + blocCompetitions + blocHistorique + blocCarriere +
       blocStatutPromis + blocEntrainementIndividuel + actions +
       `<div style="display:flex;gap:8px;margin-top:14px;">` +
@@ -3348,7 +3369,7 @@
     const d = RMClub.dossierSauteurs(saison, ctx.type);
     if (!d.candidats.length) return '';
     const lignes = d.candidats.map((c) =>
-      `<div class="ligneJoueur"><span>n°${c.numero} · ${echapperHTML(c.nom)} ` +
+      `<div class="ligneInfo"><span>n°${c.numero} · ${echapperHTML(c.nom)} ` +
       `<span style="color:var(--text-faint);">${echapperHTML(c.poste)}</span></span>` +
       `<b>Touche ${c.touche} ` +
       (ctx.modifiable
@@ -3497,13 +3518,13 @@
     const blocOffres = d.offres.length
       ? `<h4 class="sousTitreMedical">Offres reçues (${d.offres.length})</h4>` +
         d.offres.map((o) =>
-          `<div class="ligneJoueur"><span>${echapperHTML(o.joueurNom)} <span style="color:var(--text-faint);">${echapperHTML(o.clubNom)}</span></span>` +
+          `<div class="ligneInfo"><span>${echapperHTML(o.joueurNom)} <span style="color:var(--text-faint);">${echapperHTML(o.clubNom)}</span></span>` +
           `<b>${o.montant} k€ · <span style="color:var(--text-dim);font-weight:400;">à traiter dans la boîte de réception</span></b></div>`).join('')
       : '';
     const blocListe = d.surListe.length
       ? `<h4 class="sousTitreMedical">Sur la liste des transferts (${d.surListe.length})</h4>` +
         d.surListe.map((j) =>
-          `<div class="ligneJoueur"><span>${echapperHTML(j.nom)} <span style="color:var(--text-faint);">${echapperHTML(j.poste)} · ${j.age} ans</span>` +
+          `<div class="ligneInfo"><span>${echapperHTML(j.nom)} <span style="color:var(--text-faint);">${echapperHTML(j.poste)} · ${j.age} ans</span>` +
           (j.veutPartir ? ' <span class="texteAlerteJoueur">🚩 veut partir</span>' : '') + `</span>` +
           `<b>${j.valeur} k€ <button class="alt btnListeTransfert" data-joueur="${echapperHTML(j.id)}" ` +
           `style="width:auto;padding:4px 8px;font-size:11px;margin-left:8px;">Retirer</button></b></div>`).join('')
@@ -3512,12 +3533,12 @@
     const blocCessibles = cessiblesHorsListe.length
       ? `<h4 class="sousTitreMedical">Ce que vaut ton effectif</h4>` +
         cessiblesHorsListe.map((j) =>
-          `<div class="ligneJoueur"><span>${echapperHTML(j.nom)} <span style="color:var(--text-faint);">${echapperHTML(j.poste)}</span>` +
+          `<div class="ligneInfo"><span>${echapperHTML(j.nom)} <span style="color:var(--text-faint);">${echapperHTML(j.poste)}</span>` +
           (j.veutPartir ? ' <span class="texteAlerteJoueur">🚩</span>' : '') + `</span><b>${j.valeur} k€</b></div>`).join('')
       : '';
     zone.innerHTML =
-      `<div class="ligneJoueur"><span>Valeur totale de l'effectif</span><b>${d.valeurEffectif} k€</b></div>` +
-      `<div class="ligneJoueur"><span>Demandes de transfert en cours</span><b class="${d.demandesDepart ? 'deltaNegatif' : ''}">${d.demandesDepart}</b></div>` +
+      `${ligneInfo(`Valeur totale de l'effectif`, `${d.valeurEffectif} k€`)}` +
+      `${ligneInfo(`Demandes de transfert en cours`, `${d.demandesDepart}`, { etat: `${d.demandesDepart ? 'deltaNegatif' : ''}` })}` +
       blocOffres + blocListe + blocCessibles;
   }
 
@@ -5258,7 +5279,7 @@
       .filter((r) => r.minute * 60 <= dureeChoisie);
     const remplacementsHTML = remplacementsPrevus.length
       ? `<div class="carteClub"><h3>🔄 Remplacements prévus</h3>` +
-        remplacementsPrevus.map((r) => `<div class="ligneJoueur"><span>${r.joueur.nom} (n°${r.numero})</span><b>${r.minute}e minute</b></div>`).join('') +
+        remplacementsPrevus.map((r) => `${ligneInfo(`${r.joueur.nom} (n°${r.numero})`, `${r.minute}e minute`)}`).join('') +
         `</div>`
       : '';
 
@@ -5267,7 +5288,7 @@
       const info = RMClub.AXES_TACTIQUE[axe];
       const valeur = tactiqueActuelle[axe] || info.defaut;
       const option = info.options[valeur];
-      return `<div class="ligneJoueur"><span>${info.label}</span><b>${option ? option.nom : valeur}</b></div>`;
+      return `${ligneInfo(`${info.label}`, `${option ? option.nom : valeur}`)}`;
     }).join('');
 
     const puces = [
@@ -5288,10 +5309,10 @@
     corps.innerHTML =
       `<div class="carteClub"><h3>🆚 ${domicile ? `${echapperHTML(c.nom)} — ${echapperHTML(analyse.nom)}` : `${echapperHTML(analyse.nom)} — ${echapperHTML(c.nom)}`}</h3>` +
       `<p style="font-size:12px;color:var(--text-dim);margin:0 0 10px;">Journée ${matchJoueur.journee} · ${domicile ? 'À domicile' : 'À l\'extérieur'} · ${analyse.position}${analyse.position === 1 ? 'er' : 'e'}/${analyse.totalClubs} au classement</p>` +
-      `<div class="ligneJoueur"><span>Ma forme</span><b>${formeTxt(maForme)}</b></div>` +
-      `<div class="ligneJoueur"><span>Leur forme</span><b>${formeTxt(analyse.forme)}</b></div></div>` +
+      `${ligneInfo(`Ma forme`, `${formeTxt(maForme)}`)}` +
+      `${ligneInfo(`Leur forme`, `${formeTxt(analyse.forme)}`)}</div>` +
       `<div class="carteClub"><h3>📋 Ma composition</h3>` +
-      `<div class="ligneJoueur"><span>Capitaine</span><b>${capitaine ? capitaine.nom : '—'}</b></div>` +
+      `${ligneInfo(`Capitaine`, `${capitaine ? capitaine.nom : '—'}`)}` +
       (alertesCompo.length
         ? alertesCompo.map((a) => `<p style="font-size:12px;color:var(--loss);margin:6px 0;">${a}</p>`).join('')
         : '<p style="font-size:12px;color:var(--text-dim);margin:6px 0;">Aucun problème d\'effectif détecté pour ce match.</p>') +

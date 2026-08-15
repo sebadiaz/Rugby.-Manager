@@ -35,6 +35,12 @@
 
   function choisir(rng, liste) { return liste[Math.floor(rng() * liste.length)]; }
 
+  // Moral et satisfaction sont bornés 0-100 partout dans le jeu. Cette règle
+  // était recopiée à l'identique dans club-ventes.js, club-statuts.js et
+  // club-negociations.js : trois copies d'une même borne, donc trois endroits
+  // à corriger le jour où l'échelle change.
+  function borneMoral(v) { return Math.max(0, Math.min(100, Math.round(v))); }
+
   function genererNomJoueur(rng) {
     return `${choisir(rng, PRENOMS)} ${choisir(rng, NOMS)}`;
   }
@@ -1270,7 +1276,7 @@
   // réaffectation, qui écraserait ses fonctions si son <script> était chargé
   // en premier (cf. TODO_AUDIT.md P2-10).
   global.RMClub = Object.assign(global.RMClub || {}, {
-    choisir, genererNomJoueur, calculerSalaire,
+    choisir, borneMoral, genererNomJoueur, calculerSalaire,
     genererNomClub, genererEffectif, COULEURS, genererProchainIdClub, POSTE_COMPLET,
     nouvelleSaison,
     resynchroniserCompteurs, VERSION_SAUVEGARDE,

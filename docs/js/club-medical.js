@@ -239,9 +239,6 @@
     return joueur.blessureJournees > 0 ? joueur.blessureJournees : 0;
   }
 
-  function estBlesse(joueur) {
-    return joursIndisponible(joueur) > 0;
-  }
 
   // --- Reprise progressive ------------------------------------------------
   // Étape courante : « soins » tant que l'indisponibilité court, puis les
@@ -403,8 +400,7 @@
     TYPES_BLESSURE, LIBELLE_GRAVITE, LIBELLE_CAUSE, ETAPES_REPRISE, LIBELLE_ETAPE,
     FACTEUR_POSTE, RISQUE_MATCH_BASE, COEFFICIENT_ETAPE,
     risqueBlessure, tirerBlessure, infligerBlessure,
-    synchroniserBlessure, joursIndisponible, estBlesse,
-    etapeReprise, coefficientReprise, peutJouer, avancerJourMedical,
+    synchroniserBlessure, joursIndisponible, etapeReprise, coefficientReprise, peutJouer, avancerJourMedical,
     accelererRetour, descriptionBlessure, migrerJoueurV4,
   });
 })(window);

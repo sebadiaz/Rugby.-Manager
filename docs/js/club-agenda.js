@@ -88,15 +88,6 @@
     };
   }
 
-  // Une date « demande l'attention du manager » si le club du joueur y joue —
-  // avec l'une quelconque de ses trois équipes.
-  function estJourDArret(saison, date) {
-    const e = evenementsDuJour(saison, date);
-    // Le match espoirs n'a lieu que si un XV complet peut être aligné : sans
-    // ça, rien ne se produirait ce jour-là et s'y arrêter n'aurait aucun sens.
-    const espoirsJouable = e.journeeEspoirs != null && global.RMClub.eligiblePourMatchEspoirs(saison);
-    return !!(e.matchPro || e.matchBJoueur || espoirsJouable || e.amical || e.coupe);
-  }
 
   const LIBELLE_ARRET = {
     pro: 'Match de championnat', b: 'Match de l\'Équipe B', jeunes: 'Match des espoirs',
@@ -218,7 +209,7 @@
   }
 
   global.RMClub = Object.assign(global.RMClub || {}, {
-    daterCalendrier, evenementsDuJour, estJourDArret, typeDArret, prochainArret, agenda,
+    daterCalendrier, evenementsDuJour, typeDArret, prochainArret, agenda,
     descriptionRencontre,
     LIBELLE_ARRET,
   });

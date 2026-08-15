@@ -68,7 +68,6 @@
   const MORAL_STATUT_REVU = -6;
   const MORAL_PROMESSE_IGNOREE = -15;
 
-  function borneMoral(v) { return Math.max(0, Math.min(100, Math.round(v))); }
   function moralDe(j) { return j.moral != null ? j.moral : 65; }
   function rangDe(statut) { return statut && STATUTS[statut] ? STATUTS[statut].rang : 0; }
 
@@ -116,7 +115,7 @@
     if (ancien === cible) return { ok: true, motif: 'inchange', statut: cible, effetMoral: 0 };
     const effet = effetMoralAnnonce(j, ancien, cible);
     j.statutPromis = cible;
-    j.moral = borneMoral(moralDe(j) + effet);
+    j.moral = global.RMClub.borneMoral(moralDe(j) + effet);
     reinitialiserSuivi(j);
     return { ok: true, motif: null, statut: cible, effetMoral: effet };
   }
@@ -229,17 +228,17 @@
     let resultat;
     if (optionId === 'maintenir') {
       j.promessesMaintenues = (j.promessesMaintenues || 0) + 1;
-      j.moral = borneMoral(moralDe(j) + MORAL_PROMESSE_MAINTENUE);
+      j.moral = global.RMClub.borneMoral(moralDe(j) + MORAL_PROMESSE_MAINTENUE);
       resultat = `Tu confirmes à ${j.nom} qu'il reste ${libelleAvant.toLowerCase()} dans ton projet. Il repart rassuré — mais il te regardera composer.`;
     } else if (optionId === 'revoir') {
       const nouveau = statutInferieur(statutAvant);
       j.statutPromis = nouveau;
-      j.moral = borneMoral(moralDe(j) + MORAL_STATUT_REVU);
+      j.moral = global.RMClub.borneMoral(moralDe(j) + MORAL_STATUT_REVU);
       resultat = nouveau
         ? `Tu assumes : ${j.nom} passe de ${libelleAvant.toLowerCase()} à ${libelleStatut(nouveau).toLowerCase()}. Il encaisse, mais il sait à quoi s'en tenir.`
         : `Tu retires son statut à ${j.nom}. Il n'a plus de garantie, mais plus de faux espoirs non plus.`;
     } else {
-      j.moral = borneMoral(moralDe(j) + MORAL_PROMESSE_IGNOREE);
+      j.moral = global.RMClub.borneMoral(moralDe(j) + MORAL_PROMESSE_IGNOREE);
       j.avertissementsIgnores = (j.avertissementsIgnores || 0) + 1;
       resultat = `Tu ne réponds rien à ${j.nom}. Il retourne au vestiaire, et il en parle.`;
       const rupture = dejaRenouvelee

@@ -133,19 +133,7 @@
     };
   }
 
-  // Résumé en une phrase, dérivé des faits réels — utilisé là où il n'y a pas
-  // la place d'afficher toute la feuille.
-  function resumeMatch(feuille, camp) {
-    if (!feuille) return '';
-    const pour = camp === 'B' ? feuille.score.B : feuille.score.A;
-    const contre = camp === 'B' ? feuille.score.A : feuille.score.B;
-    const essais = camp === 'B' ? feuille.marqueurs.B.length : feuille.marqueurs.A.length;
-    const essaisAdv = camp === 'B' ? feuille.marqueurs.A.length : feuille.marqueurs.B.length;
-    const issue = pour > contre ? 'Victoire' : pour < contre ? 'Défaite' : 'Match nul';
-    return `${issue} ${pour}-${contre} · ${essais} essai(s) contre ${essaisAdv}`;
-  }
 
   global.RMClub = Object.assign(global.RMClub || {}, {
-    FAITS_MATCH, STATS_COMPAREES, feuilleDeMatch, resumeMatch,
-  });
+    FAITS_MATCH, STATS_COMPAREES, feuilleDeMatch, });
 })(window);

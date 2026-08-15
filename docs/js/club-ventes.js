@@ -63,7 +63,6 @@
   // déterminisme existants.
   const CANAL_VENTES = 37;
 
-  function borneMoral(v) { return Math.max(0, Math.min(100, Math.round(v))); }
 
   // Un club peut-il réellement payer ce prix ? Une seule règle, partagée par
   // l'offre spontanée, l'enregistrement et la vente — sinon une offre
@@ -160,7 +159,7 @@
     // Un cadre vendu, c'est une promesse qui saute devant tout le vestiaire.
     if (joueur.statutPromis === 'cadre') {
       for (const autre of c.effectif) {
-        autre.moral = borneMoral((autre.moral != null ? autre.moral : 65) + MORAL_VESTIAIRE_CADRE_VENDU);
+        autre.moral = global.RMClub.borneMoral((autre.moral != null ? autre.moral : 65) + MORAL_VESTIAIRE_CADRE_VENDU);
       }
     }
     // Toute offre encore en attente sur ce joueur n'a plus d'objet.
@@ -252,7 +251,7 @@
     }
     // Refus pur et simple.
     if (joueur.veutPartir) {
-      joueur.moral = borneMoral((joueur.moral != null ? joueur.moral : 65) + MORAL_REFUS_JOUEUR_MECONTENT);
+      joueur.moral = global.RMClub.borneMoral((joueur.moral != null ? joueur.moral : 65) + MORAL_REFUS_JOUEUR_MECONTENT);
       return `Tu refuses l'offre de ${decision.clubNom}. ${joueur.nom} voulait partir : il le prend très mal.`;
     }
     return `Tu refuses l'offre de ${decision.clubNom} pour ${joueur.nom}.`;

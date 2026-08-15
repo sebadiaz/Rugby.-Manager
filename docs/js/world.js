@@ -17,7 +17,8 @@
 
   const RMClub = global.RMClub;
 
-  function choisir(rng, liste) { return liste[Math.floor(rng() * liste.length)]; }
+  // Tirage dans une liste : la fonction du jeu (club.js), pas une copie.
+  const choisir = (rng, liste) => global.RMClub.choisir(rng, liste);
   function melanger(rng, liste) {
     const copie = liste.slice();
     for (let i = copie.length - 1; i > 0; i--) {

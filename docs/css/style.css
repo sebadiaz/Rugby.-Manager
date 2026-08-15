@@ -310,17 +310,6 @@ select {
 }
 
 /* Widgets d'aperçu : forme récente, statut d'effectif, résumé financier. */
-.rangeeForme { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
-.rangeeForme .badgeForme { width: 26px; height: 26px; font-size: 12px; }
-.rangeeForme .resumeForme { margin-left: 6px; font-size: 12.5px; color: var(--text-dim); }
-.grilleStatut { display: flex; flex-direction: column; gap: 8px; }
-.ligneStatut {
-  display: flex; justify-content: space-between; align-items: center; font-size: 13px;
-  padding: 4px 0;
-}
-.ligneStatut .valeurStatut { font-weight: 700; font-variant-numeric: tabular-nums; }
-.ligneStatut .valeurStatut.alerte { color: var(--draw); }
-.ligneStatut .valeurStatut.critique { color: var(--loss); }
 
 /* Finances */
 .ligneMouvement {
@@ -337,7 +326,6 @@ select {
   padding: 9px 0; border-bottom: 1px solid var(--border); font-size: 13px;
 }
 .ligneMedicale:last-child { border-bottom: none; }
-.ligneMedicale .retourMedical { color: var(--loss); font-weight: 700; font-size: 12px; white-space: nowrap; }
 
 /* Statistiques cumulées de la saison */
 .grilleStats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
@@ -349,9 +337,23 @@ select {
 .ficheJoueurEntete { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
 .ficheJoueurEntete .nomJoueurFiche { font-size: 18px; font-weight: 800; display: block; }
 .ficheJoueurEntete .posteJoueurFiche { color: var(--text-dim); font-size: 13px; }
-.ligneJoueur { display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
-.ligneJoueur:last-of-type { border-bottom: none; }
-.ligneJoueur b { font-variant-numeric: tabular-nums; }
+/* LIGNE D'INFORMATION — le composant clé/valeur de tout le Mode Club.
+   Remplace .ligneJoueur ET .ligneStatut, deux classes quasi identiques (même
+   flex, même 13 px) qui coexistaient avec deux conventions de balisage
+   incompatibles : <b> d'un côté, <span class="valeurStatut"> de l'autre.
+   Une seule classe, une seule convention, un variant `compact` pour les
+   listes denses (l'ancien .ligneStatut, sans bordure). */
+.ligneInfo { display: flex; justify-content: space-between; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+.ligneInfo:last-of-type { border-bottom: none; }
+.ligneInfo b { font-variant-numeric: tabular-nums; font-weight: 700; }
+.ligneInfo.compact { padding: 4px 0; border-bottom: none; }
+/* États d'une valeur. Trois noms coexistaient pour la même idée — `alerte`,
+   `critique` et `deltaNegatif`/`deltaPositif` — et les deux derniers
+   n'étaient stylés QUE dans .ligneProgression : mesuré, 14 valeurs censées
+   être colorées dans les lignes d'information ne l'étaient pas du tout. */
+.ligneInfo b.alerte, .ligneInfo b.deltaNegatif { color: var(--draw); }
+.ligneInfo b.critique { color: var(--loss); }
+.ligneInfo b.deltaPositif { color: var(--win); }
 .effectifCliquable tbody tr { cursor: pointer; }
 .effectifCliquable tbody tr:hover { background: var(--surface-hover); }
 .carteClub {
@@ -487,7 +489,6 @@ select {
 .tableauClub tr:last-child td { border-bottom: none; }
 .tableauClub tr.ligneClubJoueur { background: rgba(255, 183, 3, 0.1); }
 .tableauClub tr.ligneClubJoueur td:first-child { border-left: 2px solid var(--accent); }
-.tableauClub tr.ligneJouee { opacity: 0.55; }
 .badgeBlessure { color: var(--loss); font-size: 11px; white-space: nowrap; }
 .badgeContratCourt { color: var(--draw); }
 .btnLiberer {
@@ -582,12 +583,6 @@ select {
 .ligneResultatDash:last-child { border-bottom: none; }
 .ligneResultatDash .adversaireDash { color: var(--text-dim); }
 .ligneResultatDash .scoreDash { font-variant-numeric: tabular-nums; font-weight: 700; }
-.miniClassementLigne {
-  display: flex; justify-content: space-between; align-items: center;
-  padding: 6px 4px; font-size: 12.5px; border-bottom: 1px solid var(--border); border-radius: var(--radius-sm);
-}
-.miniClassementLigne:last-child { border-bottom: none; }
-.miniClassementLigne.ligneClubJoueur { background: rgba(255, 183, 3, 0.1); font-weight: 700; }
 .ligneAlerte {
   display: flex; align-items: flex-start; gap: 8px; padding: 9px 4px;
   border-bottom: 1px solid var(--border); font-size: 12.5px; cursor: pointer; border-radius: var(--radius-sm);
@@ -684,7 +679,6 @@ select {
 }
 .carteAction select { width: 100%; margin-bottom: 12px; }
 .carteAction button { width: 100%; padding: 15px; font-size: 15px; }
-.notemini { font-size: 11.5px; color: var(--text-faint); margin: 8px 0 0; text-align: center; }
 
 .carteContinuerClub { border-color: var(--accent); }
 #continuerClubInfos .nomClubAccueil { font-size: 17px; font-weight: 800; display: block; }
@@ -841,10 +835,6 @@ select {
 
 /* Autres clubs : pastille de couleur simple (liste), pas l'avatar à
    initiales de .clubEntete .pastilleClub — contexte différent. */
-.pointCouleurClub {
-  display: inline-block; width: 10px; height: 10px; border-radius: 50%;
-  margin-right: 7px; vertical-align: middle;
-}
 
 /* Boîte de réception : messages réels, non lus mis en avant par une barre
    d'accent à gauche (même logique que .ligneAlerte). */

@@ -134,15 +134,6 @@
     return amical;
   }
 
-  // Amicaux à venir, du plus proche au plus lointain — pour l'agenda et la
-  // carte « Prochaine échéance ».
-  function amicauxAVenir(saison) {
-    const RMClub = global.RMClub;
-    const aujourdhui = RMClub.dateISO(RMClub.dateCourante(saison));
-    return amicaux(saison)
-      .filter((a) => !a.joue && a.date >= aujourdhui)
-      .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
-  }
 
   // Fin de saison : les amicaux de la saison écoulée ne doivent pas encombrer
   // la suivante (dont le calendrier est entièrement redaté).
@@ -154,7 +145,6 @@
 
   global.RMClub = Object.assign(global.RMClub || {}, {
     JOURS_REPOS_APRES_AMICAL, amicalDuJour, dateEstLibre, datesLibresPourAmical,
-    proposerAmical, annulerAmical, enregistrerResultatAmical, amicauxAVenir,
-    reinitialiserAmicaux, resynchroniserCompteurAmicaux,
+    proposerAmical, annulerAmical, enregistrerResultatAmical, reinitialiserAmicaux, resynchroniserCompteurAmicaux,
   });
 })(window);

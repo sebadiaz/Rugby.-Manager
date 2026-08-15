@@ -23,16 +23,6 @@
     const salaire = global.RMClub.calculerSalaire(joueur.vitesse, joueur.plaquage, joueur.age);
     return { dureeMax, salaire };
   }
-  function renouvelerContrat(saison, joueurId, duree) {
-    const joueur = saison.clubJoueur.effectif.find((j) => j.id === joueurId);
-    if (!joueur) return { ok: false, motif: 'introuvable' };
-    const offre = calculerOffreRenouvellement(joueur);
-    const dureeFinale = Math.max(1, Math.min(offre.dureeMax, duree || offre.dureeMax));
-    joueur.contrat = dureeFinale;
-    joueur.salaire = offre.salaire;
-    global.RMClub.ajouterMessage(saison, 'contrat', 'Contrat renouvelé', `${joueur.nom} prolonge (${dureeFinale} saison(s), ${offre.salaire} k€).`);
-    return { ok: true, contrat: joueur.contrat, salaire: joueur.salaire };
-  }
   function negocierRenouvellement(rng, saison, joueurId, salaireOffert, duree) {
     const joueur = saison.clubJoueur.effectif.find((j) => j.id === joueurId);
     if (!joueur) return { ok: false, motif: 'introuvable' };
@@ -105,7 +95,7 @@
   }
 
   global.RMClub = Object.assign(global.RMClub || {}, {
-    calculerOffreRenouvellement, renouvelerContrat, negocierRenouvellement,
+    calculerOffreRenouvellement, negocierRenouvellement,
     DELAI_REPONSE_CONTRAT_JOURS, proposerContrat, negociationEnCours, resoudreNegociationsContrat,
   });
 })(window);

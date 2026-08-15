@@ -73,7 +73,6 @@
       }
     }
   }
-  function borneMoral(v) { return borne(Math.round(v), 0, 100); }
   function clubJoueurDe(saison) { return saison && saison.clubJoueur; }
 
   // Saison à laquelle le contrat s'achève réellement. `contrat` est un nombre
@@ -272,7 +271,7 @@
     joueur.contrat = Math.max(1, offre.duree || 1);
     joueur.salaire = Math.max(1, Math.round(offre.salaire));
     joueur.primeContrat = Math.max(0, Math.round(offre.prime || 0));
-    joueur.moral = borneMoral((joueur.moral != null ? joueur.moral : 65) + 6);
+    joueur.moral = global.RMClub.borneMoral((joueur.moral != null ? joueur.moral : 65) + 6);
     joueur.refusContratSaison = 0;
     joueur.negociationRompue = false;
     joueur.nonRenouvele = false;
@@ -347,7 +346,7 @@
       }
       // Refus, ou rupture.
       joueur.refusContratSaison = (joueur.refusContratSaison || 0) + 1;
-      joueur.moral = borneMoral((joueur.moral != null ? joueur.moral : 65) - (res.ratio < 0.7 ? 5 : 2));
+      joueur.moral = global.RMClub.borneMoral((joueur.moral != null ? joueur.moral : 65) - (res.ratio < 0.7 ? 5 : 2));
       if (res.verdict === 'rompt') {
         joueur.negociationRompue = true;
         // Même titre qu'un refus simple : une rupture EST un refus, et
@@ -391,7 +390,7 @@
     }
     // Arrêt des discussions.
     joueur.negociationRompue = true;
-    joueur.moral = borneMoral((joueur.moral != null ? joueur.moral : 65) - 6);
+    joueur.moral = global.RMClub.borneMoral((joueur.moral != null ? joueur.moral : 65) - 6);
     return `Tu arrêtes les discussions avec ${joueur.nom}. Il ira au bout de son contrat.`;
   }
 
@@ -408,7 +407,7 @@
       return { ok: true, nonRenouvele: false, joueur };
     }
     joueur.nonRenouvele = true;
-    joueur.moral = borneMoral((joueur.moral != null ? joueur.moral : 65) - 8);
+    joueur.moral = global.RMClub.borneMoral((joueur.moral != null ? joueur.moral : 65) - 8);
     global.RMClub.ajouterMessage(saison, 'contrat', 'Contrat non renouvelé',
       `Tu as informé ${joueur.nom} qu'il ne serait pas prolongé. Il quittera le club ` +
       `librement à la fin de son contrat.`);
@@ -440,7 +439,7 @@
     detacherDuClub(c, joueurId);
     // Le vestiaire regarde : rompre le contrat d'un joueur n'est jamais neutre.
     for (const j of c.effectif) {
-      j.moral = borneMoral((j.moral != null ? j.moral : 65) - 2);
+      j.moral = global.RMClub.borneMoral((j.moral != null ? j.moral : 65) - 2);
     }
     // La DIRECTION regarde aussi : payer pour se séparer d'un joueur sous
     // contrat est un aveu d'erreur de gestion. La sanction est proportionnée à
