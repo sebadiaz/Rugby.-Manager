@@ -1392,7 +1392,7 @@
       `<span style="flex:0 0 auto;">${marge != null && marge > 0 ? `+${marge}` : '—'}</span></div>`;
   }
 
-  // --- Data Hub -------------------------------------------------------------
+  // --- Statistiques (onglet « stats ») -------------------------------------------------------------
   // Tout vient des statistiques RÉELLEMENT accumulées par les matchs joués
   // (accumulerStats pour le club, accumulerStatsJoueurs pour chaque joueur,
   // historiqueSaisons pour l'évolution). Aucun chiffre recalculé après coup.
@@ -1403,13 +1403,13 @@
     penalitesConcedees: 'Pénalités concédées', kicks: 'Coups de pied',
   };
 
-  function rafraichirDataHub() {
-    const zone = document.getElementById('clubDataHub');
-    const titre = document.getElementById('titreDataHub');
+  function rafraichirStatistiques() {
+    const zone = document.getElementById('clubStatistiques');
+    const titre = document.getElementById('titreStatistiques');
     if (!zone || !titre) return;
     rafraichirSousOnglets('stats');
     const sous = sousOngletCourant('stats');
-    const carte = document.getElementById('carteDataHub');
+    const carte = document.getElementById('carteStatistiques');
     if (carte) carte.style.display = sous === 'apercu' ? 'none' : '';
     const c = saison.clubJoueur;
     const st = c.statsCumulees;
@@ -2938,7 +2938,7 @@
     if (cle === 'preparer') rafraichirPreparerMatch();
     if (cle === 'stats') rafraichirCarriereManager();
     if (cle === 'developpement') rafraichirDeveloppement();
-    if (cle === 'stats') rafraichirDataHub();
+    if (cle === 'stats') rafraichirStatistiques();
     if (cle === 'club') rafraichirInfrastructures();
     fermerFicheJoueur(); // change d'onglet = referme toute fiche laissée ouverte
     fermerTiroirNav(); // choisir une section referme le tiroir mobile
@@ -3038,7 +3038,7 @@
     if (menu === 'effectif') rafraichirEffectif();
     if (menu === 'developpement') rafraichirDeveloppement();
     if (menu === 'classement') rafraichirCompetitionChoisie();
-    if (menu === 'stats') rafraichirDataHub();
+    if (menu === 'stats') rafraichirStatistiques();
   });
 
   // Amicaux (saison.amicaux) : source distincte du championnat, donc rendu

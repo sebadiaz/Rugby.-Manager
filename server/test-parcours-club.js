@@ -1735,9 +1735,9 @@ test('semaine d\'entraînement : une séance fatigue réellement, le repos rég�
 
 test('semaine d\'entraînement : la progression est DIFFÉRENCIÉE (âge, potentiel, fatigue, temps de jeu)', () => {
   // Les facteurs eux-mêmes, d'abord : ils portent toute la différenciation.
-  assert.strictEqual(RMClub.facteurAge(33), 0, 'passé 32 ans, plus de développement');
-  assert.ok(RMClub.facteurAge(19) > RMClub.facteurAge(27), 'un jeune progresse plus vite qu\'un joueur mûr');
-  assert.ok(RMClub.facteurFatigue(85) < RMClub.facteurFatigue(10), 'un joueur cuit retient moins de la séance');
+  assert.strictEqual(RMClub.facteurAgeProgression(33), 0, 'passé 32 ans, plus de développement');
+  assert.ok(RMClub.facteurAgeProgression(19) > RMClub.facteurAgeProgression(27), 'un jeune progresse plus vite qu\'un joueur mûr');
+  assert.ok(RMClub.facteurFatigueProgression(85) < RMClub.facteurFatigueProgression(10), 'un joueur cuit retient moins de la séance');
   assert.ok(RMClub.facteurTempsDeJeu(10) > RMClub.facteurTempsDeJeu(0), 'le temps de jeu réel accélère la progression');
 
   // Puis le résultat concret : avec un rng toujours favorable, un joueur de

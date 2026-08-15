@@ -89,7 +89,10 @@
   // niveau, tout en ouvrant un vrai écart entre un XV frais et un XV cuit.
   const RISQUE_MATCH_BASE = 0.030;
 
-  function facteurAge(age) {
+  // Multiplie un RISQUE de blessure : il CROÎT avec l'âge. À ne pas
+  // confondre avec `facteurAgeProgression` (club-semaine-entrainement.js), qui
+  // module un GAIN d'entraînement et DÉCROÎT — même nom, sens opposé.
+  function facteurAgeRisque(age) {
     const a = age != null ? age : 26;
     if (a <= 21) return 0.92;      // jeunes : récupèrent vite, moins de casse
     if (a <= 28) return 1;
@@ -107,7 +110,7 @@
     return 1 + Math.min(0.75, charge);
   }
 
-  function facteurFatigue(fatigue) {
+  function facteurFatigueRisque(fatigue) {
     return 1 + (Math.max(0, Math.min(100, fatigue || 0)) / 100) * 1.7;
   }
 
@@ -124,8 +127,8 @@
       ? 1 + joueur.reprise.risqueRechute * 2.5 : 1;
     return base
       * (FACTEUR_POSTE[joueur.poste] || 1)
-      * facteurAge(joueur.age)
-      * facteurFatigue(joueur.fatigue)
+      * facteurAgeRisque(joueur.age)
+      * facteurFatigueRisque(joueur.fatigue)
       * facteurAntecedents(joueur)
       // Centre médical (P1-44) : un meilleur centre réduit RÉELLEMENT le
       // risque. Niveau 1 = diviseur 1, donc comportement inchangé sans

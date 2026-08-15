@@ -128,14 +128,15 @@
   // Deux joueurs ne progressent JAMAIS de la même façon : l'âge, la marge qui
   // reste jusqu'au potentiel, la fatigue du jour, le temps de jeu réel et la
   // qualité de l'entraîneur pèsent tous, et se combinent.
-  function facteurAge(age) {
+  // Module un GAIN d'entraînement : il DÉCROÎT avec l'âge (nul passé 32 ans).
+  function facteurAgeProgression(age) {
     if (age >= 32) return 0; // plus de développement, seulement de l'entretien
     if (age <= 21) return 1.5; // les jeunes emmagasinent vite
     if (age <= 25) return 1.2;
     if (age <= 29) return 1;
     return 0.6;
   }
-  function facteurFatigue(fatigue) {
+  function facteurFatigueProgression(fatigue) {
     const f = fatigue || 0;
     if (f >= 80) return 0.25; // un joueur cuit ne retient rien de la séance
     if (f >= 60) return 0.6;
@@ -177,8 +178,8 @@
       if (activite.postes && activite.postes.indexOf(j.poste) === -1) continue;
       if (j.veutPartir) continue; // un joueur qui veut partir ne se donne plus
       const chance = CHANCE_BASE_PROGRESSION * fe
-        * facteurAge(j.age)
-        * facteurFatigue(j.fatigue)
+        * facteurAgeProgression(j.age)
+        * facteurFatigueProgression(j.fatigue)
         * facteurTempsDeJeu(j.matchsJoues);
       if (chance <= 0 || rng() >= chance) continue;
       const potentiel = j.potentiel != null ? j.potentiel : 70;
@@ -262,7 +263,8 @@
 
   global.RMClub = Object.assign(global.RMClub || {}, {
     ACTIVITES_ENTRAINEMENT, SEMAINE_PAR_DEFAUT, assurerSemaineEntrainement,
-    definirSeance, seancePourDate, facteurAge, facteurFatigue, facteurTempsDeJeu,
+    definirSeance, seancePourDate, facteurAgeProgression, facteurFatigueProgression,
+    facteurTempsDeJeu,
     appliquerSeance, repartirParActivite, blessuresDeSeance,
   });
 })(window);
