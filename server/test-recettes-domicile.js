@@ -202,9 +202,15 @@ test('R6 — le calendrier a un relief financier', () => {
 test('R7 — l\'appelant RÉEL transmet bien le côté du match', () => {
   // Sans ça, la règle serait juste mais jamais appliquée en jeu (défaut de
   // câblage, cf. P1-51 où la consigne de mêlée n'atteignait pas le contest).
-  const src = fs.readFileSync(path.join(__dirname, '..', 'docs', 'js', 'clubUI.js'), 'utf8');
+  //
+  // L'appel de jeu vivait dans clubUI.js ; il a été déplacé dans
+  // club-jour-match.js (`appliquerConsequencesMatchJoueur`, N6) avec toute la
+  // chaîne de conséquences d'après-match. L'assertion est INCHANGÉE dans son
+  // intention — le site d'appel réel doit transmettre le côté du match — seul
+  // le fichier où le chercher a changé.
+  const src = fs.readFileSync(path.join(__dirname, '..', 'docs', 'js', 'club-jour-match.js'), 'utf8');
   const i = src.indexOf('appliquerFinancesMatch(');
-  assert.ok(i !== -1, 'clubUI.js doit appeler appliquerFinancesMatch');
+  assert.ok(i !== -1, 'club-jour-match.js doit appeler appliquerFinancesMatch');
   const appel = src.slice(i, i + 260);
   assert.ok(/domicile/.test(appel),
     `l'appel doit transmettre le côté du match :\n     ${appel.split('\n')[0]}`);

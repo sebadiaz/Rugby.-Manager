@@ -4797,21 +4797,22 @@
             };
           }),
           onResultat(etat) {
-            RMClub.enregistrerResultat(saison, matchJoueur.id, etat.score.A, etat.score.B, etat.stats.A.essais, etat.stats.B.essais);
-            const forme = formeApres(matchJoueur, etat.score.A, etat.score.B);
-            // Historique des confrontations + message de résultat RÉEL (cf.
-            // RMClub.enregistrerResultatClubJoueur) — uniquement pour le match
-            // du club du joueur, pas les rencontres IA-IA simulées à côté.
-            const adversaireId = estClubJoueur(matchJoueur.domicileId) ? matchJoueur.exterieurId : matchJoueur.domicileId;
-            const scorePour = lettreJoueur === 'A' ? etat.score.A : etat.score.B;
-            const scoreContre = lettreJoueur === 'A' ? etat.score.B : etat.score.A;
-            RMClub.enregistrerResultatClubJoueur(saison, adversaireId, scorePour, scoreContre, matchJoueur.journee);
-            // Ultimatum de la direction (TODO_AUDIT.md P1-42a) : il se
-            // décompte ICI, une fois le classement de la journée complet
-            // (les autres rencontres ont déjà été résolues, cf.
-            // simulerAutresMatchsAbstrait appelé AVANT ce match). Réussi, il
-            // est levé ; échoué, il licencie réellement.
-            const suiteUltimatum = RMClub.avancerUltimatumApresMatch(saison);
+            // Toutes les conséquences métier d'un match du club vivent dans
+            // club-jour-match.js (`appliquerConsequencesMatchJoueur`) : ordre
+            // des opérations, finances, statistiques, fatigue, moral,
+            // promesses de statut. L'interface ne garde que ce qui la
+            // regarde — annoncer, relâcher le verrou, sauvegarder.
+            const compositionAvecRemplacants = Object.assign({}, compositionUtilisee);
+            for (const r of remplacements) {
+              if (r.minute * 60 <= duree) compositionAvecRemplacants[r.numeroBanc] = r.joueurId;
+            }
+            const suite = RMClub.appliquerConsequencesMatchJoueur(saison, {
+              fixture: matchJoueur, etat, lettreJoueur,
+              forme: formeApres(matchJoueur, etat.score.A, etat.score.B),
+              compositionUtilisee, compositionAvecRemplacants,
+              rng: creerRng(graineAleatoire()),
+            });
+            const suiteUltimatum = suite.ultimatum;
             if (suiteUltimatum) {
               if (suiteUltimatum.issue === 'reussi') {
                 toast('🏛️ Ultimatum levé — la direction te renouvelle sa confiance', 'succes');
@@ -4821,58 +4822,6 @@
                 toast(`⏳ Ultimatum : ${suiteUltimatum.ultimatum.matchsRestants} match(s) restant(s)`, 'erreur');
               }
             }
-            // Le côté du match compte : la billetterie n'existe qu'à domicile,
-            // le déplacement ne se paie qu'à l'extérieur (cf.
-            // appliquerFinancesMatch). L'information est déjà calculée plus
-            // haut pour le moteur (`lettreJoueur`) ; elle n'était simplement
-            // jamais transmise aux finances.
-            const mouvement = RMClub.appliquerFinancesMatch(
-              saison.clubJoueur, forme, RMClub.nombreJourneesSaison(saison.calendrier),
-              { domicile: estClubJoueur(matchJoueur.domicileId) });
-            RMClub.enregistrerMouvementFinances(saison.clubJoueur, matchJoueur.journee, mouvement);
-            RMClub.accumulerStats(saison.clubJoueur, etat.stats[lettreJoueur]);
-            // Remplacements RÉELLEMENT survenus (leur minute peut dépasser la
-            // durée du match choisie, ex. démo courte — dans ce cas ils ne se
-            // sont jamais produits dans le moteur, donc ne comptent pas ici
-            // non plus) : le remplaçant compte comme ayant joué (fatigue,
-            // moral, temps de jeu) au même titre que les titulaires — le
-            // titulaire qu'il a remplacé aussi, il a bien joué une partie du
-            // match. Cf. RMClub.remplacementsVersConfig.
-            const compositionAvecRemplacants = Object.assign({}, compositionUtilisee);
-            for (const r of remplacements) {
-              if (r.minute * 60 <= duree) compositionAvecRemplacants[r.numeroBanc] = r.joueurId;
-            }
-            // Limitation connue (documentée en ROADMAP_FOOTBALL_MANAGER.md) :
-            // le moteur indexe ses statistiques par NUMÉRO de maillot, pas par
-            // identité de joueur (cf. engine/rugby-engine.js, _statJoueur) —
-            // tout le match reste donc attribué au titulaire d'origine, y
-            // compris les actions du remplaçant après son entrée. D'où
-            // `compositionUtilisee` (pas `compositionAvecRemplacants`) ici :
-            // ajouter les entrées banc n'aurait aucun effet (statsJoueursMatch
-            // n'a pas de clé 16-23) mais laisserait croire, à tort, que les
-            // stats sont bien réparties.
-            RMClub.accumulerStatsJoueurs(saison.clubJoueur.effectif, compositionUtilisee, etat.statsJoueurs && etat.statsJoueurs[lettreJoueur], 'pro');
-            // Effets réels du personnel (cf. RMClub.effetPersonnel) : le
-            // médecin/l'entraîneur accélèrent (facteur >=1 direct), le
-            // préparateur physique réduit la fatigue (facteur <1, donc
-            // l'inverse de effetPersonnel qui exprime une qualité >=1).
-            RMClub.appliquerEffetsMatch(saison, saison.clubJoueur.effectif, compositionAvecRemplacants,
-              creerRng(graineAleatoire()), { equipe: 'pro' });
-            RMClub.appliquerMoral(saison.clubJoueur.effectif, compositionAvecRemplacants, forme);
-            RMClub.appliquerFrustrationTempsDeJeu(saison, compositionUtilisee, saison.clubJoueur.compositionBanc);
-            // Statut promis (club-statuts.js) : la feuille de match de
-            // l'équipe première est la SEULE qui juge une promesse — un cadre
-            // qui joue tous les matchs de la réserve n'a pas le temps de jeu
-            // qu'on lui a promis.
-            //
-            // `compositionAvecRemplacants`, PAS `compositionUtilisee` : c'est
-            // exactement ce que reçoit appliquerFatigue, qui vient
-            // d'incrémenter matchsJoues. Avec le XV de départ, un remplaçant
-            // entré en jeu était compté DEUX fois (une titularisation via
-            // matchsJoues + une entrée en jeu ici), soit 1,5 match pour une
-            // seule feuille — mesuré en pilotant le jeu : titu 1 / banc 1
-            // après un unique match.
-            RMClub.evaluerPromessesStatut(saison, compositionAvecRemplacants, saison.clubJoueur.compositionBanc);
             sauvegarder();
             // La journée est résolue : relâche le verrou anti-double-action
             // (cf. `journeeEnCours` plus haut) — la prochaine journée peut

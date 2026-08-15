@@ -325,7 +325,83 @@
     };
   }
 
+  // CONSÉQUENCES D'UN MATCH DU CLUB DU JOUEUR (TODO_AUDIT.md N6).
+  //
+  // Cette chaîne vivait dans `clubUI.js`, à l'intérieur du callback
+  // `onResultat` de `resoudreJour` : 77 lignes qui enregistraient le résultat,
+  // décomptaient l'ultimatum, appliquaient les finances, les statistiques
+  // d'équipe et de joueurs, la fatigue, le moral, la frustration de temps de
+  // jeu et les promesses de statut. Quinze appels métier et trois `toast` —
+  // autrement dit, de la règle du jeu logée dans le fichier d'interface, sur
+  // le chemin le plus critique du jeu, et testable seulement en pilotant un
+  // navigateur.
+  //
+  // Elle est ICI parce que c'est ce module qui possède déjà le jour de match.
+  // L'ORDRE des opérations est rigoureusement celui d'origine : plusieurs
+  // étapes en dépendent (l'ultimatum se décompte une fois le classement
+  // complet ; les promesses de statut se jugent après `appliquerEffetsMatch`,
+  // qui vient d'incrémenter `matchsJoues`).
+  //
+  // L'interface garde ce qui la regarde : afficher les messages, relâcher le
+  // verrou de journée, sauvegarder. D'où le retour de `ultimatum` plutôt qu'un
+  // `toast` appelé d'ici.
+  function appliquerConsequencesMatchJoueur(saison, params) {
+    const RMClub = global.RMClub;
+    const p = params || {};
+    const c = saison.clubJoueur;
+    const f = p.fixture;
+    const etat = p.etat;
+    const lettre = p.lettreJoueur;
+    const domicile = f.domicileId === c.id;
+
+    RMClub.enregistrerResultat(saison, f.id, etat.score.A, etat.score.B,
+      etat.stats.A.essais, etat.stats.B.essais);
+    // Historique des confrontations + message de résultat RÉEL — uniquement
+    // pour le match du club du joueur, pas les rencontres IA-IA simulées.
+    const adversaireId = domicile ? f.exterieurId : f.domicileId;
+    const scorePour = lettre === 'A' ? etat.score.A : etat.score.B;
+    const scoreContre = lettre === 'A' ? etat.score.B : etat.score.A;
+    RMClub.enregistrerResultatClubJoueur(saison, adversaireId, scorePour, scoreContre, f.journee);
+
+    // Ultimatum de la direction : il se décompte ICI, une fois le classement
+    // de la journée complet (les autres rencontres ont déjà été résolues).
+    const ultimatum = RMClub.avancerUltimatumApresMatch(saison);
+
+    // La billetterie n'existe qu'à domicile, le déplacement ne se paie qu'à
+    // l'extérieur (cf. appliquerFinancesMatch).
+    const mouvement = RMClub.appliquerFinancesMatch(c, p.forme,
+      RMClub.nombreJourneesSaison(saison.calendrier), { domicile });
+    RMClub.enregistrerMouvementFinances(c, f.journee, mouvement);
+    RMClub.accumulerStats(c, etat.stats[lettre]);
+
+    // Limitation connue : le moteur indexe ses statistiques par NUMÉRO de
+    // maillot, pas par identité (cf. engine/rugby-engine.js, _statJoueur) —
+    // tout le match reste attribué au titulaire d'origine. D'où
+    // `compositionUtilisee` ici, et non la composition avec remplaçants :
+    // ajouter les entrées de banc n'aurait aucun effet mais laisserait croire
+    // que les statistiques sont bien réparties.
+    RMClub.accumulerStatsJoueurs(c.effectif, p.compositionUtilisee,
+      etat.statsJoueurs && etat.statsJoueurs[lettre], 'pro');
+
+    // Effets réels du personnel : le médecin et l'entraîneur accélèrent, le
+    // préparateur physique réduit la fatigue.
+    RMClub.appliquerEffetsMatch(saison, c.effectif, p.compositionAvecRemplacants,
+      p.rng, { equipe: 'pro' });
+    RMClub.appliquerMoral(c.effectif, p.compositionAvecRemplacants, p.forme);
+    RMClub.appliquerFrustrationTempsDeJeu(saison, p.compositionUtilisee, c.compositionBanc);
+
+    // Statut promis : la feuille de match de l'équipe première est la SEULE
+    // qui juge une promesse. On passe la composition AVEC remplaçants, celle
+    // que vient de recevoir appliquerEffetsMatch — avec le seul XV de départ,
+    // un remplaçant entré en jeu était compté deux fois (mesuré : titu 1 /
+    // banc 1 après un unique match).
+    RMClub.evaluerPromessesStatut(saison, p.compositionAvecRemplacants, c.compositionBanc);
+
+    return { ultimatum, mouvement };
+  }
+
   global.RMClub = Object.assign(global.RMClub || {}, {
+    appliquerConsequencesMatchJoueur,
     joursAvantAnalyse, prochaineRencontre, analyseDisponible, etatPreparationMatch,
     equipePourArret, dossierPreparation,
   });
