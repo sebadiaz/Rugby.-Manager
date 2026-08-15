@@ -4095,8 +4095,11 @@ test('manager : une nouvelle partie possède un profil de manager', () => {
   assert.strictEqual(s.manager.nom, 'Alex Dupont');
   assert.strictEqual(s.manager.clubActuelId, s.clubJoueur.id);
   assert.strictEqual(s.manager.statut, 'enPoste');
+  // `trophees` a ete retire du profil : il etait initialise a [] et JAMAIS
+  // ecrit, tout en s'affichant au manager comme « Trophees : 0 » a perpetuite.
+  // Un palmares cumule reste a construire (cf. ROADMAP, domaine 7).
   for (const champ of ['id', 'reputation', 'saisonsDirigees', 'historiqueClubs', 'saisons',
-                       'promotions', 'relegations', 'trophees']) {
+                       'promotions', 'relegations']) {
     assert.ok(s.manager[champ] !== undefined, `le profil doit porter « ${champ} »`);
   }
   // Le profil ne vit PAS dans le club : c'est ce qui permet d'en changer.

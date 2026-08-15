@@ -2542,7 +2542,6 @@
       `${ligneInfo(`Saisons dirigées`, `${m.saisonsDirigees}`)}` +
       `${ligneInfo(`Objectifs atteints`, `${bilanTotal.reussies} / ${bilanTotal.n}`)}` +
       `${ligneInfo(`Promotions · Relégations`, `${m.promotions} · ${m.relegations}`)}` +
-      `${ligneInfo(`Trophées`, `${m.trophees.length}`)}` +
       (historique ? `<h4 class="titreBlocFiche">Clubs dirigés</h4>${historique}` : '') +
       (parSaison ? `<h4 class="titreBlocFiche">Saison par saison</h4>${parSaison}` : '');
     rafraichirOffresManager();

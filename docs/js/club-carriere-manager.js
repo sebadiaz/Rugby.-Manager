@@ -39,7 +39,6 @@
       saisons: [],
       promotions: 0,
       relegations: 0,
-      trophees: [],
       avertissements: [],
       // Offres reçues. `statut` : 'ouverte' | 'refusee' | 'acceptee'.
       offres: [],
