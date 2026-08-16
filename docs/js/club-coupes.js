@@ -458,8 +458,47 @@
     return { gagne, tourNom, message: texte, score: { A: res.scoreA, B: res.scoreB } };
   }
 
+  // Parcours du club du joueur dans CHAQUE coupe de la saison qui s'achève :
+  // le tour où il s'est arrêté, et le vainqueur si la finale a été jouée.
+  // Appelé par avancerSaison AVANT reinitialiserCoupes — les tableaux sont
+  // donc encore intacts. Rien n'est déduit : le tour vient de la dernière
+  // rencontre réellement disputée par le club.
+  function palmaresCoupesDeLaSaison(saison) {
+    const RMClub = global.RMClub;
+    const idJoueur = saison.clubJoueur.id;
+    const resultat = [];
+    for (const cle of Object.keys(saison.coupes || {})) {
+      const coupe = saison.coupes[cle];
+      if (!coupe || !coupe.tours || !coupe.tours.length) continue;
+      const engage = (coupe.clubs || []).some((c) => c.id === idJoueur);
+      if (!engage) continue;
+      let dernierTour = null, elimine = false;
+      for (const tour of coupe.tours) {
+        for (const r of (tour.rencontres || [])) {
+          if (!r.joue) continue;
+          if (r.domicileId !== idJoueur && r.exterieurId !== idJoueur) continue;
+          dernierTour = tour.nom;
+          elimine = r.vainqueurId !== idJoueur;
+        }
+      }
+      const vainqueurId = vainqueurCoupe(coupe);
+      const vainqueur = vainqueurId
+        ? (coupe.clubs.find((c) => c.id === vainqueurId) || {}).nom || null : null;
+      resultat.push({
+        cle, nom: coupe.nom,
+        equipe: equipePourCoupe(cle),
+        tourAtteint: dernierTour,
+        elimine,
+        gagnee: vainqueurId === idJoueur,
+        vainqueur,
+      });
+    }
+    return resultat;
+  }
+
   global.RMClub = Object.assign(global.RMClub || {}, {
     genererCoupe, enregistrerResultatCoupe, vainqueurCoupe, assurerCoupes,
+    palmaresCoupesDeLaSaison,
     reinitialiserCoupes, rencontreCoupeDuJoueur, resoudreCoupesAbstraites,
     appliquerConsequencesMatchCoupe, equipePourCoupe, resoudreCoupeSansEquipe,
   });

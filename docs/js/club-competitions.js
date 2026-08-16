@@ -565,8 +565,66 @@
     return { ref: comp.ref, nom: comp.nom, estCoupe: !!comp.estCoupe, equipes, joueurs, limites };
   }
 
+  // --- Historique d'une compétition ---------------------------------------
+  //
+  // Les saisons précédentes du club dans CETTE compétition. Tout vient de
+  // `historiqueSaisons`, enregistré à chaque fin de saison — rien n'est
+  // reconstitué après coup.
+  //
+  // Deux réserves honnêtes, portées par `limites` :
+  //   - une saison antérieure à cette fonctionnalité n'a ni palier, ni
+  //     champion, ni parcours de coupe : ses champs valent null et l'écran
+  //     affiche « — » plutôt qu'une valeur fabriquée ;
+  //   - le championnat Équipe B et celui des espoirs ne sont pas archivés en
+  //     fin de saison (seul le championnat du premier XV l'est). On le dit au
+  //     lieu d'afficher une page vide sans explication.
+  function historiqueCompetition(saison, ref) {
+    const comp = competition(saison, ref);
+    if (!comp) return null;
+    const saisons = (saison.clubJoueur.historiqueSaisons || []).slice().reverse();
+    const limites = [];
+
+    if (ref === REF_JOUEUR) {
+      const lignes = saisons.map((h) => ({
+        numero: h.numero,
+        palier: h.palierNom || null,
+        position: h.position, totalClubs: h.totalClubs,
+        bilan: `${h.victoires}V ${h.nuls}N ${h.defaites}D`,
+        points: h.points,
+        champion: h.champion || null,
+        titre: !!h.titre,
+      }));
+      if (lignes.some((l) => !l.palier)) {
+        limites.push('Les saisons jouées avant cette version n\'ont pas gardé leur palier ni le champion.');
+      }
+      return { ref, nom: comp.nom, type: 'championnat', lignes,
+               titres: lignes.filter((l) => l.titre).length, limites };
+    }
+
+    if (ref.indexOf(PREFIXE_COUPE) === 0) {
+      const cle = ref.slice(PREFIXE_COUPE.length);
+      const lignes = [];
+      for (const h of saisons) {
+        const c = (h.coupes || []).find((x) => x.cle === cle);
+        if (!c) continue;
+        lignes.push({ numero: h.numero, tourAtteint: c.tourAtteint,
+                      gagnee: !!c.gagnee, vainqueur: c.vainqueur || null });
+      }
+      if (!lignes.length && saisons.length) {
+        limites.push('Aucune saison archivée ne garde de parcours pour cette coupe.');
+      }
+      return { ref, nom: comp.nom, type: 'coupe', lignes,
+               titres: lignes.filter((l) => l.gagnee).length, limites };
+    }
+
+    limites.push('Le championnat de cette équipe n\'est pas archivé en fin de saison : '
+      + 'seul celui de l\'équipe première l\'est.');
+    return { ref, nom: comp.nom, type: 'aucun', lignes: [], titres: 0, limites };
+  }
+
   global.RMClub = Object.assign(global.RMClub || {}, {
     competitionsParPays, competition, clubPartout, competitionDuClub,
+    historiqueCompetition,
     statistiquesCompetition,
     competitionsDeLEquipe, resumeCompetition, journeesDe, journeeCouranteDe,
     REF_COMPETITION_JOUEUR: REF_JOUEUR, REF_COMPETITION_EQUIPE_B: REF_EQUIPE_B, REF_COMPETITION_ESPOIRS: REF_ESPOIRS,

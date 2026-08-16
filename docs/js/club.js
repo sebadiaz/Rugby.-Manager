@@ -958,6 +958,20 @@
     const classementFinal = global.RMClub.classementTrie(saison);
     const positionFinale = classementFinal.findIndex((r) => r.clubId === saison.clubJoueur.id) + 1;
     const bilanClub = saison.classement[saison.clubJoueur.id];
+    // Palmarès de la saison qui s'achève. Avant, cette entrée ne retenait que
+    // le championnat, et sans son PALIER : une 3e place en Ligue Régionale y
+    // était indistinguable d'une 3e place en Ligue d'Excellence, et aucun
+    // parcours de coupe n'y laissait de trace. On enregistre donc aussi le
+    // palier, le champion réel et le parcours dans chaque coupe — toutes
+    // données déjà calculées à cet instant, aucune n'est recalculée ni
+    // inventée. L'ordre compte : ce bloc s'exécute AVANT reinitialiserCoupes,
+    // les tableaux sont donc encore intacts.
+    const palierSaison = saison.clubJoueur.palierPyramide || { niveau: 3 };
+    // Appel DÉFENSIF, comme les autres domaines chargés après club.js : ce
+    // module peut ne pas être présent (harnais de test partiel), et une fin
+    // de saison ne doit jamais échouer pour un champ d'affichage.
+    const champion = (classementFinal[0] && global.RMClub.clubPartout)
+      ? global.RMClub.clubPartout(saison, classementFinal[0].clubId) : null;
     saison.clubJoueur.historiqueSaisons.push({
       numero: saison.numero || 1,
       position: positionFinale,
@@ -966,6 +980,13 @@
       points: bilanClub.pts,
       essais: saison.clubJoueur.statsCumulees ? saison.clubJoueur.statsCumulees.essais : 0,
       budget: saison.clubJoueur.budget,
+      palierNiveau: palierSaison.niveau,
+      palierNom: global.RMClub.nomPalierFrance
+        ? global.RMClub.nomPalierFrance(palierSaison.niveau) : null,
+      champion: champion ? champion.nom : null,
+      titre: positionFinale === 1,
+      coupes: global.RMClub.palmaresCoupesDeLaSaison
+        ? global.RMClub.palmaresCoupesDeLaSaison(saison) : [],
     });
     if (saison.clubJoueur.historiqueSaisons.length > 20) saison.clubJoueur.historiqueSaisons.shift();
     ajouterMessage(saison, 'saison', `Fin de saison ${saison.numero || 1}`,

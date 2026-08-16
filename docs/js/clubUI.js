@@ -2113,6 +2113,30 @@
         `${ligneInfo(`Montées`, `${promus || 'aucune'}`)}` +
         `${ligneInfo(`Descentes`, `${relegues || 'aucune'}`)}` +
         (comp.partagee ? '<p style="font-size:12px;color:var(--text-dim);margin:8px 0 0;">Compétition partagée entre plusieurs pays.</p>' : '');
+    } else if (sous === 'historique') {
+      titre.textContent = '🕓 Historique';
+      const h = RMClub.historiqueCompetition(saison, comp.ref);
+      if (!h || !h.lignes.length) {
+        zone.innerHTML = '<p style="color:var(--text-dim);">Aucune saison archivée pour cette compétition.</p>'
+          + noteLimites(h);
+        return;
+      }
+      const entete = h.type === 'coupe'
+        ? '<tr><th>Saison</th><th>Parcours</th><th>Vainqueur</th></tr>'
+        : '<tr><th>Saison</th><th>Palier</th><th>Pos.</th><th>Bilan</th><th>Pts</th><th>Champion</th></tr>';
+      const corps = h.lignes.map((l) => h.type === 'coupe'
+        ? `<tr${l.gagnee ? ' class="ligneClubJoueur"' : ''}><td>S${l.numero}</td>` +
+          `<td>${l.gagnee ? '🏆 Vainqueur' : echapperHTML(l.tourAtteint || '—')}</td>` +
+          `<td>${echapperHTML(l.vainqueur || '—')}</td></tr>`
+        : `<tr${l.titre ? ' class="ligneClubJoueur"' : ''}><td>S${l.numero}</td>` +
+          `<td>${echapperHTML(l.palier || '—')}</td>` +
+          `<td>${l.titre ? '🏆 ' : ''}${l.position}<sup>${l.position === 1 ? 'er' : 'e'}</sup>/${l.totalClubs}</td>` +
+          `<td>${echapperHTML(l.bilan)}</td><td><b>${l.points}</b></td>` +
+          `<td>${echapperHTML(l.champion || '—')}</td></tr>`).join('');
+      zone.innerHTML = ligneInfo('Saisons archivées', `${h.lignes.length}`)
+        + ligneInfo('Titres', `${h.titres}`)
+        + `<table class="tableauClub"><thead>${entete}</thead><tbody>${corps}</tbody></table>`
+        + noteLimites(h);
     }
   }
 
@@ -3214,6 +3238,7 @@
       { cle: 'equipes', label: 'Équipes', aide: 'Les clubs engagés.' },
       { cle: 'stats', label: 'Statistiques', aide: 'Meilleure attaque, meilleure défense, écarts.' },
       { cle: 'regles', label: 'Règles', aide: 'Montées, descentes, format.' },
+      { cle: 'historique', label: 'Historique', aide: 'Les saisons précédentes du club dans cette compétition.' },
     ],
     developpement: [
       { cle: 'apercu', label: 'Vue d\'ensemble', aide: 'Ce que le club produit et fait progresser.' },
