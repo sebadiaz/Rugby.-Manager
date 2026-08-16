@@ -3263,6 +3263,51 @@
     }).join('');
   }
 
+  // Journée choisie, PAR compétition : passer d'un championnat à l'autre ne
+  // doit pas conserver le numéro de journée du précédent. Réinitialisé quand
+  // la compétition affichée change.
+  let journeeAffichee = { ref: null, numero: null };
+
+  function rendreJourneeCalendrier(zone, comp, nomsCompetition) {
+    const journees = RMClub.journeesDe(comp);
+    if (!journees.length) {
+      zone.innerHTML = '<p style="color:var(--text-dim);">Aucune rencontre programmée pour cette compétition.</p>';
+      return;
+    }
+    // Ouvre là où en est la compétition, pas sur la journée 1.
+    if (journeeAffichee.ref !== comp.ref || journeeAffichee.numero == null
+        || !journees.some((j) => j.numero === journeeAffichee.numero)) {
+      journeeAffichee = { ref: comp.ref, numero: RMClub.journeeCouranteDe(comp) };
+    }
+    const index = journees.findIndex((j) => j.numero === journeeAffichee.numero);
+    const journee = journees[index];
+    const precedente = journees[index - 1] || null;
+    const suivante = journees[index + 1] || null;
+    const dateTitre = journee.date
+      ? `<span class="dateJournee">${echapperHTML(RMClub.formaterDateLongue(RMClub.dateDepuisISO(journee.date)))}</span>`
+      : '';
+    const lignes = journee.rencontres.map((f) => {
+      const attenu = f.joue ? ' style="opacity:.6"' : '';
+      const enrichie = Object.assign({}, f, {
+        libelleDomicile: f.libelleDomicile || nomsCompetition[f.domicileId],
+        libelleExterieur: f.libelleExterieur || nomsCompetition[f.exterieurId],
+      });
+      return `<div${attenu}>${formaterLigneCalendrier(enrichie, saison.clubJoueur.id)}</div>`;
+    }).join('');
+    zone.innerHTML =
+      `<div class="navJournee">` +
+      `<button class="alt btnJournee" data-sens="-1"${precedente ? '' : ' disabled'} ` +
+      `title="${precedente ? echapperHTML(precedente.nom) : 'Première journée'}">←</button>` +
+      `<span class="titreJournee"><b>${echapperHTML(journee.nom)}</b>${dateTitre}` +
+      `<span class="etatJournee">${journee.terminee ? 'terminée'
+        : journee.commencee ? `${journee.jouees} / ${journee.total} jouée(s)` : 'à venir'}</span></span>` +
+      `<button class="alt btnJournee" data-sens="1"${suivante ? '' : ' disabled'} ` +
+      `title="${suivante ? echapperHTML(suivante.nom) : 'Dernière journée'}">→</button>` +
+      `</div>` +
+      `<div class="blocJournee">${lignes}</div>` +
+      `<p class="noteFacultatif">${index + 1} / ${journees.length}</p>`;
+  }
+
   function rafraichirCalendrier() {
     const zone = document.getElementById('clubCalendrier');
     if (!zone) return;
@@ -3306,6 +3351,11 @@
       zone.innerHTML = `<p style="color:var(--text-dim);">${vide}</p>`;
       return;
     }
+    // Sous-onglet « Calendrier » : UNE journée à la fois, avec sa navigation.
+    // Avant, les 182 rencontres d'un championnat à 14 clubs en aller-retour
+    // étaient empilées d'un bloc — impossible à parcourir, et rien ne disait
+    // où en était la compétition.
+    if (sous === 'calendrier') { rendreJourneeCalendrier(zone, comp, nomsCompetition); return; }
     const parJournee = {};
     for (const f of rencontres) (parJournee[f.journee] = parJournee[f.journee] || []).push(f);
     zone.innerHTML = Object.keys(parJournee)
@@ -4387,6 +4437,21 @@
     competitionNavChoisie = bouton.dataset.ref;
     rafraichirAutresClubs();
   });
+  // Navigation par journée : écouteur délégué, comme partout ailleurs — les
+  // deux boutons sont régénérés à chaque rendu.
+  document.getElementById('clubCalendrier').addEventListener('click', (e) => {
+    const bouton = e.target.closest('.btnJournee');
+    if (!bouton || bouton.disabled) return;
+    const comp = RMClub.competition(saison, competitionNavChoisie);
+    if (!comp) return;
+    const journees = RMClub.journeesDe(comp);
+    const index = journees.findIndex((j) => j.numero === journeeAffichee.numero);
+    const cible = journees[index + Number(bouton.dataset.sens)];
+    if (!cible) return;
+    journeeAffichee = { ref: comp.ref, numero: cible.numero };
+    rafraichirCalendrier();
+  });
+
   // Les compétitions de l'équipe sélectionnée : même mécanique déléguée, et
   // surtout la MÊME cible (`competitionNavChoisie`) que la navigation par
   // pays — il n'existe qu'un seul état de compétition choisie dans le jeu.

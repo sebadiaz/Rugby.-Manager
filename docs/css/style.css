@@ -1221,3 +1221,20 @@ select {
 .ligneStatMatch .valB { text-align: left; font-variant-numeric: tabular-nums; }
 .ligneStatMatch .fort { font-weight: 700; color: var(--accent, #7ab8ff); }
 .feuilleDeMatch .ligneStat { text-align: left; }
+
+/* Navigation par journée (écran Calendrier d'une compétition). Avant, les
+   182 rencontres d'un championnat à 14 clubs en aller-retour étaient
+   empilées d'un seul bloc. */
+.navJournee {
+  display: flex; align-items: center; gap: 10px; margin-bottom: 10px;
+  padding-bottom: 8px; border-bottom: 1px solid var(--border);
+}
+.navJournee .btnJournee {
+  flex: 0 0 auto; width: auto; min-width: 40px; padding: 6px 12px; font-size: 15px;
+}
+.navJournee .btnJournee[disabled] { opacity: .3; cursor: default; }
+.navJournee .titreJournee {
+  flex: 1 1 auto; display: flex; flex-direction: column; align-items: center;
+  gap: 2px; text-align: center; font-size: 14px;
+}
+.navJournee .etatJournee { font-size: 11px; color: var(--text-dim); }

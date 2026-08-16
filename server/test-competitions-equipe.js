@@ -198,4 +198,84 @@ test('E10 — l\'interface propose bien le sélecteur d\'équipe sur Compétitio
     'ainsi que la carte listant les compétitions de l\'équipe');
 });
 
+// ------------------------------------------------- JOURNÉES (C3) ---------
+//
+// Défaut mesuré : le sous-onglet « Calendrier » empilait TOUTES les journées
+// d'un coup — 182 rencontres pour un championnat à 14 clubs en aller-retour.
+
+test('J1 — une compétition se découpe en journées réelles', () => {
+  const s = carriere();
+  const comp = RMClub.competition(s, 'joueur');
+  const journees = RMClub.journeesDe(comp);
+  assert.strictEqual(journees.length, 26, 'aller-retour à 14 clubs : 26 journées');
+  const total = journees.reduce((t, j) => t + j.total, 0);
+  assert.strictEqual(total, comp.calendrier.length,
+    'aucune rencontre perdue ni comptée deux fois');
+  for (const j of journees) {
+    assert.strictEqual(j.total, 7, `${j.nom} : 14 clubs = 7 rencontres`);
+    assert.ok(j.date, 'chaque journée porte sa date');
+    assert.strictEqual(j.terminee, false, 'rien n\'est joué au départ');
+  }
+});
+
+test('J2 — une coupe nomme ses tours au lieu de les numéroter', () => {
+  const s = carriere();
+  const comp = RMClub.competition(s, 'coupe:nationale');
+  const journees = RMClub.journeesDe(comp);
+  assert.ok(journees.length, 'la coupe a au moins un tour');
+  for (const j of journees) {
+    assert.ok(!/^Journée /.test(j.nom), `un tour de coupe se nomme (${j.nom})`);
+  }
+});
+
+test('J3 — on ouvre là où EN EST la compétition, pas sur la journée 1', () => {
+  const s = carriere();
+  const comp0 = RMClub.competition(s, 'joueur');
+  assert.strictEqual(RMClub.journeeCouranteDe(comp0), 1,
+    'saison neuve : la journée 1');
+  // Joue entièrement les trois premières journées.
+  for (const f of s.calendrier) {
+    if (f.journee <= 3) RMClub.enregistrerResultat(s, f.id, 20, 15, 2, 1);
+  }
+  const comp = RMClub.competition(s, 'joueur');
+  assert.strictEqual(RMClub.journeeCouranteDe(comp), 4,
+    'trois journées jouées : on ouvre sur la 4e');
+  const journees = RMClub.journeesDe(comp);
+  assert.strictEqual(journees[0].terminee, true, 'la J1 est terminée');
+  assert.strictEqual(journees[3].commencee, false, 'la J4 n\'a pas commencé');
+});
+
+test('J4 — une journée partiellement jouée est signalée comme telle', () => {
+  const s = carriere();
+  const premiere = s.calendrier.filter((f) => f.journee === 1);
+  RMClub.enregistrerResultat(s, premiere[0].id, 20, 15, 2, 1);
+  const comp = RMClub.competition(s, 'joueur');
+  const j1 = RMClub.journeesDe(comp)[0];
+  assert.strictEqual(j1.commencee, true);
+  assert.strictEqual(j1.terminee, false);
+  assert.strictEqual(j1.jouees, 1);
+  assert.strictEqual(RMClub.journeeCouranteDe(comp), 1,
+    'une journée entamée reste la journée courante');
+});
+
+test('J5 — en fin de saison, on ouvre sur la DERNIÈRE journée', () => {
+  const s = carriere();
+  for (const f of s.calendrier) RMClub.enregistrerResultat(s, f.id, 20, 15, 2, 1);
+  const comp = RMClub.competition(s, 'joueur');
+  assert.strictEqual(RMClub.journeeCouranteDe(comp), 26,
+    'tout joué : on reste sur la dernière, jamais null');
+});
+
+test('J6 — l\'interface affiche UNE journée, avec sa navigation', () => {
+  const fs = require('fs');
+  const ui = fs.readFileSync(__dirname + '/../docs/js/clubUI.js', 'utf8');
+  assert.ok(ui.indexOf('function rendreJourneeCalendrier') !== -1,
+    'un rendu dédié à une seule journée doit exister');
+  assert.ok(ui.indexOf('RMClub.journeeCouranteDe') !== -1,
+    'et il doit ouvrir sur la journée courante réelle');
+  assert.ok(ui.indexOf('btnJournee') !== -1, 'avec des boutons de navigation');
+  const css = fs.readFileSync(__dirname + '/../docs/css/style.css', 'utf8');
+  assert.ok(css.indexOf('.navJournee') !== -1, 'stylés une seule fois dans la feuille de style');
+});
+
 console.log(`\n${nbTests} test(s) exécuté(s).`);

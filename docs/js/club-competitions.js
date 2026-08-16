@@ -428,9 +428,54 @@
     });
   }
 
+  // --- Les journées d'une compétition -------------------------------------
+  //
+  // Défaut mesuré : le sous-onglet « Calendrier » empilait TOUTES les
+  // journées d'un coup — 182 rencontres pour un championnat à 14 clubs en
+  // aller-retour. Impossible à parcourir, et rien ne disait où l'on en est.
+  //
+  // Une journée porte son numéro, sa date, son nom quand la compétition en
+  // donne un (une coupe dit « Quarts de finale », pas « Journée 3 »), et son
+  // état réel. Aucune numérotation inventée : tout vient du calendrier.
+  function journeesDe(comp) {
+    if (!comp || !comp.calendrier) return [];
+    const par = new Map();
+    for (const f of comp.calendrier) {
+      const n = f.journee != null ? f.journee : 1;
+      if (!par.has(n)) par.set(n, []);
+      par.get(n).push(f);
+    }
+    return [...par.keys()].sort((a, b) => a - b).map((numero) => {
+      const rencontres = par.get(numero);
+      const dates = new Set(rencontres.map((f) => f.date).filter(Boolean));
+      const jouees = rencontres.filter((f) => f.joue).length;
+      return {
+        numero,
+        nom: rencontres[0].nomTour || `Journée ${numero}`,
+        // Une date n'est affichable que si toute la journée la partage :
+        // sinon on préfère ne rien dire plutôt qu'annoncer une date fausse.
+        date: dates.size === 1 ? rencontres[0].date : null,
+        rencontres,
+        jouees,
+        total: rencontres.length,
+        terminee: jouees === rencontres.length,
+        commencee: jouees > 0,
+      };
+    });
+  }
+
+  // La journée sur laquelle OUVRIR l'écran : la première non terminée, sinon
+  // la dernière (compétition finie). C'est « où en est la compétition », pas
+  // un numéro arbitraire.
+  function journeeCouranteDe(comp) {
+    const journees = journeesDe(comp);
+    if (!journees.length) return null;
+    return (journees.find((j) => !j.terminee) || journees[journees.length - 1]).numero;
+  }
+
   global.RMClub = Object.assign(global.RMClub || {}, {
     competitionsParPays, competition, clubPartout, competitionDuClub,
-    competitionsDeLEquipe, resumeCompetition,
+    competitionsDeLEquipe, resumeCompetition, journeesDe, journeeCouranteDe,
     REF_COMPETITION_JOUEUR: REF_JOUEUR, REF_COMPETITION_EQUIPE_B: REF_EQUIPE_B, REF_COMPETITION_ESPOIRS: REF_ESPOIRS,
   });
 })(window);
