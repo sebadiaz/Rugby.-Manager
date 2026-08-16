@@ -555,7 +555,17 @@
              page du club ouvert — elle n'a pas disparu, elle a déménagé.
              Le calendrier a sa propre page : deux choses différentes. -->
         <div class="voletOnglet" data-volet="classement" style="display:none;">
-          <div class="enTetePage"><span class="categoriePage">Compétition</span><h2>Compétitions</h2><p>N'importe quel championnat du monde : classement, équipes, statistiques et règles. Clique le nom d'un club pour l'ouvrir.</p></div>
+          <div class="enTetePage"><span class="categoriePage">Compétition</span><h2>Compétitions</h2><p>Les compétitions de chacune de tes équipes, et n'importe quel championnat du monde : classement, équipes, statistiques et règles. Clique le nom d'un club pour l'ouvrir.</p></div>
+          <!-- Choisir son équipe (Première / B / Espoirs) affiche SES
+               compétitions — le même composant unique que dans Calendrier,
+               Composition ou Tactique. Sans lui, il fallait retrouver le
+               championnat de la réserve dans une liste plate de 21 entrées
+               mélangeant 12 pays. -->
+          <div class="emplacementSelecteurEquipe"></div>
+          <div class="carteClub" id="carteCompetitionsEquipe">
+            <h3 id="titreCompetitionsEquipe">🏆 Ses compétitions</h3>
+            <div id="clubCompetitionsEquipe"></div>
+          </div>
           <div class="barreSousOnglets" data-sousonglets="classement"></div>
           <div class="emplacementNavigationCompetition"></div>
           <div class="carteClub" id="carteCompetitionOnglet" style="display:none;">

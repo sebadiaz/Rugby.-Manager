@@ -286,8 +286,145 @@
     return null;
   }
 
+  // --- Les compétitions D'UNE ÉQUIPE --------------------------------------
+  //
+  // Audit mesuré : pour ouvrir le championnat de son Équipe B, le manager
+  // devait choisir dans une liste PLATE de 21 entrées mélangeant 12 pays, les
+  // 3 paliers français, ses deux championnats de club et les 4 coupes. Rien
+  // ne disait « voici les compétitions de ton Équipe B ». Le sélecteur
+  // Première / B / Espoirs existait pourtant déjà — mais seulement dans
+  // l'écran Calendrier.
+  //
+  // Cette fonction répond à la seule question qui compte pour ce parcours :
+  // « à quoi CETTE équipe participe-t-elle ? ». Une seule logique, aucune
+  // branche par équipe dans l'interface. Elle ne liste que des compétitions
+  // qui EXISTENT réellement dans les données.
+  function competitionsDeLEquipe(saison, equipe) {
+    const RMClub = global.RMClub;
+    const type = equipe || 'pro';
+    const liste = [];
+    const ajouter = (ref) => {
+      const comp = competition(saison, ref);
+      if (comp) liste.push({ ref, nom: comp.nom, estCoupe: !!comp.estCoupe });
+    };
+    if (type === 'pro') ajouter(REF_JOUEUR);
+    else if (type === 'b') ajouter(REF_EQUIPE_B);
+    else if (type === 'jeunes') ajouter(REF_ESPOIRS);
+
+    // Les coupes suivent la MÊME règle que les matchs : celle qui décide
+    // quelle équipe les dispute (cf. club-coupes.js, equipePourCoupe). Le
+    // manager ne peut donc pas voir sa Coupe des Espoirs classée avec les
+    // compétitions de son équipe première.
+    const coupes = saison.coupes || {};
+    for (const cle of Object.keys(coupes)) {
+      const coupe = coupes[cle];
+      if (!coupe || !coupe.tours || !coupe.tours.length) continue;
+      if (!(coupe.clubs || []).some((c) => c.id === saison.clubJoueur.id)) continue;
+      if (RMClub.equipePourCoupe(cle) !== type) continue;
+      ajouter(PREFIXE_COUPE + cle);
+    }
+    return liste;
+  }
+
+  // --- Le résumé d'une compétition POUR UN CLUB ----------------------------
+  //
+  // Tout est dérivé des données réelles (classement enregistré, calendrier
+  // daté, scores produits par le moteur) : aucune valeur n'est fabriquée. Un
+  // champ vaut `null` quand la donnée n'existe pas encore — l'écran dit alors
+  // qu'il n'y a rien, il n'invente pas un zéro.
+  //
+  // Même fonction pour un championnat et pour une coupe : `estCoupe` change
+  // ce qui est renseigné, pas la façon de l'obtenir.
+  function resumeCompetition(saison, ref, clubId) {
+    const comp = competition(saison, ref);
+    if (!comp) return null;
+    const id = clubId || saison.clubJoueur.id;
+    const nomDe = (cid) => {
+      const cl = (comp.clubs || []).find((c) => c.id === cid);
+      return cl ? cl.nom : null;
+    };
+    const rencontres = (comp.calendrier || []).filter(
+      (f) => f.domicileId === id || f.exterieurId === id);
+    const jouees = rencontres.filter((f) => f.joue && f.score);
+    const aVenir = rencontres.filter((f) => !f.joue);
+
+    // Forme : les 5 dernières rencontres RÉELLEMENT jouées, dans l'ordre du
+    // calendrier. Un nul est impossible en coupe, la lettre s'en moque.
+    const issue = (f) => {
+      const dom = f.domicileId === id;
+      const pour = dom ? f.score.domicile : f.score.exterieur;
+      const contre = dom ? f.score.exterieur : f.score.domicile;
+      return { pour, contre, lettre: pour > contre ? 'V' : pour < contre ? 'D' : 'N',
+               adversaireId: dom ? f.exterieurId : f.domicileId, domicile: dom };
+    };
+    const forme = jouees.slice(-5).map((f) => issue(f).lettre);
+    const dernier = jouees.length ? (() => {
+      const f = jouees[jouees.length - 1];
+      const r = issue(f);
+      return { lettre: r.lettre, pour: r.pour, contre: r.contre,
+               adversaire: nomDe(r.adversaireId), domicile: r.domicile,
+               date: f.date || null, tour: f.nomTour || null };
+    })() : null;
+    const prochain = aVenir.length ? (() => {
+      const f = aVenir[0];
+      const dom = f.domicileId === id;
+      return { adversaire: nomDe(dom ? f.exterieurId : f.domicileId),
+               domicile: dom, date: f.date || null, tour: f.nomTour || null,
+               journee: f.journee != null ? f.journee : null };
+    })() : null;
+
+    const base = {
+      ref: comp.ref, nom: comp.nom, estCoupe: !!comp.estCoupe,
+      nbClubs: (comp.clubs || []).length,
+      engage: (comp.clubs || []).some((c) => c.id === id),
+      joueesParLeClub: jouees.length, restantesPourLeClub: aVenir.length,
+      forme, dernier, prochain,
+    };
+
+    if (comp.estCoupe) {
+      // Une coupe n'a pas de classement : ce qui compte, c'est le tour atteint
+      // et si l'on est encore en lice.
+      const derniereJouee = jouees.length ? jouees[jouees.length - 1] : null;
+      const elimine = !!(derniereJouee && issue(derniereJouee).lettre === 'D');
+      return Object.assign(base, {
+        tourActuel: prochain ? prochain.tour : (derniereJouee ? derniereJouee.nomTour : null),
+        encoreEnLice: base.engage && !elimine && !comp.vainqueurId,
+        elimine,
+        vainqueur: comp.vainqueurId ? nomDe(comp.vainqueurId) : null,
+        encoreQualifies: (comp.calendrier || [])
+          .filter((f) => !f.joue).reduce((set, f) => {
+            set.add(f.domicileId); set.add(f.exterieurId); return set;
+          }, new Set()).size || null,
+      });
+    }
+
+    const ligne = (comp.classement || []).find((l) => l.clubId === id) || null;
+    const leader = (comp.classement || [])[0] || null;
+    const journees = (comp.calendrier || []).reduce(
+      (m, f) => Math.max(m, f.journee || 0), 0);
+    const journeeCourante = (comp.calendrier || [])
+      .filter((f) => f.joue).reduce((m, f) => Math.max(m, f.journee || 0), 0);
+    return Object.assign(base, {
+      rang: ligne ? ligne.rang : null,
+      pts: ligne ? ligne.pts : null,
+      j: ligne ? ligne.j : null, g: ligne ? ligne.g : null,
+      n: ligne ? ligne.n : null, p: ligne ? ligne.p : null,
+      pointsPour: ligne ? ligne.pointsPour : null,
+      pointsContre: ligne ? ligne.pointsContre : null,
+      difference: ligne ? (ligne.pointsPour || 0) - (ligne.pointsContre || 0) : null,
+      bonusOffensifs: ligne ? (ligne.bonusOffensifs || 0) : null,
+      bonusDefensifs: ligne ? (ligne.bonusDefensifs || 0) : null,
+      leader: leader ? { nom: nomDe(leader.clubId), pts: leader.pts,
+                         estLeClub: leader.clubId === id } : null,
+      journees, journeeCourante,
+      journeesRestantes: Math.max(0, journees - journeeCourante),
+      promus: comp.promus || 0, relegues: comp.relegues || 0,
+    });
+  }
+
   global.RMClub = Object.assign(global.RMClub || {}, {
     competitionsParPays, competition, clubPartout, competitionDuClub,
+    competitionsDeLEquipe, resumeCompetition,
     REF_COMPETITION_JOUEUR: REF_JOUEUR, REF_COMPETITION_EQUIPE_B: REF_EQUIPE_B, REF_COMPETITION_ESPOIRS: REF_ESPOIRS,
   });
 })(window);

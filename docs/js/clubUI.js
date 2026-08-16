@@ -975,7 +975,13 @@
   // évident (choisir son équipe) avait disparu. Les deux coexistent
   // désormais : choisir une équipe sélectionne SA compétition, et la
   // navigation par pays reste là pour aller voir ailleurs.
-  const ONGLETS_AVEC_EQUIPE = ['effectif', 'composition', 'tactique', 'entrainement', 'personnel', 'calendrier'];
+  // 'classement' (l'écran Compétitions) rejoint la liste : mesuré, pour
+  // ouvrir le championnat de son Équipe B le manager devait le retrouver dans
+  // une liste PLATE de 21 entrées mélangeant 12 pays, 3 paliers français, ses
+  // deux championnats de club et 4 coupes — alors que le sélecteur d'équipe
+  // existait déjà juste à côté, dans Calendrier. Choisir son équipe montre
+  // désormais SES compétitions (cf. RMClub.competitionsDeLEquipe).
+  const ONGLETS_AVEC_EQUIPE = ['effectif', 'composition', 'tactique', 'entrainement', 'personnel', 'calendrier', 'classement'];
   let ongletActuel = 'dashboard';
 
   // Le sélecteur est un composant UNIQUE : un seul <select> dans tout le jeu,
@@ -1163,6 +1169,13 @@
     // c'est le geste naturel, et il était devenu impossible. L'ordre compte —
     // rafraichirAutresClubs() réaligne la navigation sur la compétition du
     // club, donc on impose notre choix APRÈS elle, jamais avant.
+    // Même geste sur l'écran Compétitions : choisir une équipe montre SES
+    // compétitions et ouvre la première (son championnat).
+    if (ongletActuel === 'classement') {
+      const premiere = RMClub.competitionsDeLEquipe(saison, type)[0];
+      if (premiere) choisirCompetition(premiere.ref);
+      else rafraichirAutresClubs();
+    }
     if (ongletActuel === 'calendrier') {
       const ref = COMPETITION_POUR_EQUIPE[type];
       // Jamais vers une page vide : une Équipe B non éligible n'a pas de
@@ -1990,8 +2003,93 @@
     }
   }
 
+  // --- Les compétitions de l'ÉQUIPE sélectionnée ---------------------------
+  //
+  // Le point d'entrée du parcours « Compétitions → Première/B/Espoirs →
+  // compétition ». Chaque ligne porte un vrai résumé tiré des données
+  // réelles (rang, points, forme, prochain adversaire / tour de coupe) — rien
+  // n'est fabriqué, et un champ absent ne s'affiche pas.
+  //
+  // Une seule fonction pour les trois équipes et pour les deux formats
+  // (championnat, coupe) : c'est `RMClub.resumeCompetition` qui décide de ce
+  // qui est renseigné, pas une branche par équipe ici.
+  function resumeCourtCompetition(r) {
+    if (r.estCoupe) {
+      if (r.vainqueur) return `Vainqueur : ${echapperHTML(r.vainqueur)}`;
+      if (r.elimine) return 'Éliminé';
+      if (r.tourActuel) return `${echapperHTML(r.tourActuel)} · ${r.encoreQualifies || 0} clubs en lice`;
+      return 'Tableau à venir';
+    }
+    if (r.rang == null) return 'Pas encore engagé';
+    return `${r.rang}<sup>${r.rang === 1 ? 'er' : 'e'}</sup> / ${r.nbClubs} · ${r.pts} pt(s) · ${r.j} match(s)`;
+  }
+  function detailCompetition(r) {
+    const bouts = [];
+    if (r.forme.length) bouts.push(`Forme ${r.forme.join(' ')}`);
+    if (r.dernier) {
+      bouts.push(`Dernier : ${r.dernier.pour}-${r.dernier.contre} ` +
+        `${r.dernier.domicile ? 'contre' : 'à'} ${echapperHTML(r.dernier.adversaire || '?')}`);
+    }
+    if (r.prochain) {
+      bouts.push(`Prochain : ${r.prochain.domicile ? 'reçoit' : 'se déplace à'} ` +
+        `${echapperHTML(r.prochain.adversaire || '?')}` +
+        (r.prochain.tour ? ` (${echapperHTML(r.prochain.tour)})` : ''));
+    }
+    if (!r.estCoupe && r.journeesRestantes != null) {
+      bouts.push(`${r.journeesRestantes} journée(s) restante(s)`);
+    }
+    return bouts.join(' · ');
+  }
+
+  // Ouvre une compétition en la DÉSIGNANT par sa référence. Le pays suit :
+  // sans ça, rafraichirAutresClubs() remettait la compétition du pays
+  // actuellement affiché (mesuré en cliquant une compétition de son club
+  // après avoir consulté le Japon).
+  function choisirCompetition(ref) {
+    if (!ref) return;
+    for (const p of RMClub.competitionsParPays(saison)) {
+      if (p.championnats.some((ch) => ch.ref === ref)) { paysNavChoisi = p.code; break; }
+    }
+    competitionNavChoisie = ref;
+    rafraichirAutresClubs();
+  }
+
+  function rafraichirCompetitionsEquipe() {
+    const zone = document.getElementById('clubCompetitionsEquipe');
+    const titre = document.getElementById('titreCompetitionsEquipe');
+    if (!zone) return;
+    const ctx = contexte();
+    const nav = RMClub.navigationClub(saison);
+    const carte = document.getElementById('carteCompetitionsEquipe');
+    // Un club qu'on ne dirige pas n'a pas d'Équipe B ni d'espoirs simulés :
+    // cette carte n'aurait rien de vrai à montrer, on la retire plutôt que
+    // d'afficher une liste vide.
+    if (carte) carte.style.display = RMClub.consulteClubJoueur(saison) ? '' : 'none';
+    if (!RMClub.consulteClubJoueur(saison)) return;
+    if (titre) titre.textContent = `🏆 Compétitions — ${ctx.label || 'équipe'}`;
+    const liste = RMClub.competitionsDeLEquipe(saison, ctx.type);
+    if (!liste.length) {
+      zone.innerHTML = '<p style="color:var(--text-dim);">Cette équipe ne dispute aucune compétition cette saison.</p>';
+      return;
+    }
+    zone.innerHTML = liste.map((c) => {
+      const r = RMClub.resumeCompetition(saison, c.ref, nav.clubConsulteId);
+      if (!r) return '';
+      const actif = c.ref === competitionNavChoisie ? ' ligneClubJoueur' : '';
+      const detail = detailCompetition(r);
+      return `<button class="alt btnCompetitionEquipe${actif}" data-ref="${echapperHTML(c.ref)}" ` +
+        `style="width:100%;text-align:left;margin-bottom:6px;padding:9px 11px;">` +
+        `<span style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;">` +
+        `<b>${c.estCoupe ? '🏆' : '📊'} ${echapperHTML(c.nom)}</b>` +
+        `<span style="font-size:12px;">${resumeCourtCompetition(r)}</span></span>` +
+        (detail ? `<span style="display:block;font-size:11.5px;color:var(--text-dim);margin-top:3px;">${detail}</span>` : '') +
+        `</button>`;
+    }).join('');
+  }
+
   function rafraichirCompetitionChoisie() {
     rafraichirSousOnglets('classement');
+    rafraichirCompetitionsEquipe();
     const comp = RMClub.competition(saison, competitionNavChoisie);
     rendreOngletCompetition(comp);
     const zoneClassement = document.getElementById('clubCompetitionClassement');
@@ -4186,6 +4284,14 @@
     if (!bouton) return;
     competitionNavChoisie = bouton.dataset.ref;
     rafraichirAutresClubs();
+  });
+  // Les compétitions de l'équipe sélectionnée : même mécanique déléguée, et
+  // surtout la MÊME cible (`competitionNavChoisie`) que la navigation par
+  // pays — il n'existe qu'un seul état de compétition choisie dans le jeu.
+  document.getElementById('clubCompetitionsEquipe').addEventListener('click', (e) => {
+    const bouton = e.target.closest('.btnCompetitionEquipe');
+    if (!bouton) return;
+    choisirCompetition(bouton.dataset.ref);
   });
   document.getElementById('btnJouerMatchClub').addEventListener('click', continuer);
   document.getElementById('btnJourSuivant').addEventListener('click', jourSuivant);
