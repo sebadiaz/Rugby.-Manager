@@ -142,7 +142,9 @@
         classementBrut: saison.classement,
         calendrier: saison.calendrier || [],
         estCelleDuJoueur: true,
-        promus: 0, relegues: 0,
+        // Montées et descentes RÉELLES du palier, lues à la règle du moteur
+        // (club-pyramide.js) — celle-là même qu'applique avancerSaison.
+        places: RMClub.placesPyramideFrance(niveauPalierJoueur(saison)),
       }, clubs);
     }
 
@@ -229,6 +231,10 @@
 
   function assembler(base, clubs) {
     const RMClub = global.RMClub;
+    // `places` (montées/descentes) vient de la règle du moteur quand la
+    // compétition en a une ; les compétitions sans pyramide (Équipe B,
+    // espoirs) n'en passent pas, et valent donc zéro — ce qui est vrai.
+    const places = base.places || { promus: base.promus || 0, relegues: base.relegues || 0 };
     const parId = {};
     for (const c of clubs) parId[c.id] = c;
     const classement = RMClub.classementTrieDe(base.classementBrut || {})
@@ -237,7 +243,7 @@
       ref: base.ref, nom: base.nom, pays: base.pays || null,
       partagee: !!base.partagee,
       estCelleDuJoueur: !!base.estCelleDuJoueur,
-      promus: base.promus || 0, relegues: base.relegues || 0,
+      promus: places.promus || 0, relegues: places.relegues || 0,
       clubs: clubs.slice(),
       classement,
       calendrier: base.calendrier,

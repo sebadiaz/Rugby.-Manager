@@ -1004,8 +1004,17 @@
     const totalClubsLigue = classementFinal.length;
     let nouveauNiveauPalier = palierAvant.niveau;
     let mouvementPalier = null;
-    if (palierAvant.niveau > 1 && positionFinale <= 2) { nouveauNiveauPalier = palierAvant.niveau - 1; mouvementPalier = 'promotion'; }
-    else if (palierAvant.niveau < 3 && positionFinale >= totalClubsLigue - 1) { nouveauNiveauPalier = palierAvant.niveau + 1; mouvementPalier = 'relegation'; }
+    // Les places montantes et descendantes viennent de la RÈGLE (ci-dessus,
+    // placesPyramideFrance) et de nulle part ailleurs : c'est la même
+    // fonction que lit l'écran « Règles » de la compétition. Avant, cet écran
+    // annonçait « Montées aucune / Descentes aucune » pendant que ce bloc
+    // promouvait bel et bien les deux premiers.
+    const places = global.RMClub.placesPyramideFrance(palierAvant.niveau);
+    if (places.promus > 0 && positionFinale <= places.promus) {
+      nouveauNiveauPalier = palierAvant.niveau - 1; mouvementPalier = 'promotion';
+    } else if (places.relegues > 0 && positionFinale > totalClubsLigue - places.relegues) {
+      nouveauNiveauPalier = palierAvant.niveau + 1; mouvementPalier = 'relegation';
+    }
     saison.clubJoueur.palierPyramide = { pays: 'FRA', niveau: nouveauNiveauPalier };
     if (mouvementPalier === 'promotion') {
       ajouterMessage(saison, 'saison', 'Promotion !',

@@ -44,6 +44,29 @@
     1: 'Ligue d\'Excellence', 2: 'Ligue Nationale', 3: 'Ligue Régionale',
   };
   function nomPalierFrance(niveau) { return PALIERS_PYRAMIDE_FRANCE[niveau] || 'Ligue Régionale'; }
+
+  // Places montantes et descendantes d'un palier — la SEULE source de cette
+  // règle dans tout le jeu.
+  //
+  // Défaut mesuré avant : `avancerSaison` promouvait les 2 premiers et
+  // reléguait les 2 derniers, pendant que l'écran « Règles » de la
+  // compétition annonçait « Montées aucune / Descentes aucune » (il lisait
+  // `promus: 0, relegues: 0`, écrit en dur dans club-competitions.js). Deux
+  // sources, dont une fausse, sur une règle que le manager doit connaître
+  // pour décider de sa saison.
+  //
+  // On ne monte pas depuis le sommet, on ne descend pas depuis la base.
+  const PLACES_MONTANTES = 2;
+  const PLACES_DESCENDANTES = 2;
+  const NIVEAU_SOMMET = 1;
+  const NIVEAU_BASE = 3;
+  function placesPyramideFrance(niveau) {
+    const n = Number(niveau) || NIVEAU_BASE;
+    return {
+      promus: n > NIVEAU_SOMMET ? PLACES_MONTANTES : 0,
+      relegues: n < NIVEAU_BASE ? PLACES_DESCENDANTES : 0,
+    };
+  }
   // Taille RÉELLE de chaque division française (cf. docs/js/world.js, mêmes
   // chiffres) — le club du joueur occupe UNE de ces places, le reste est
   // composé d'adversaires IA (donc TAILLE_DIVISION_FRANCE[niveau] - 1
@@ -72,6 +95,7 @@
 
   global.RMClub = Object.assign(global.RMClub || {}, {
     genererClub, budgetInitial, nomPalierFrance, TAILLE_DIVISION_FRANCE,
+    placesPyramideFrance,
     bandeNiveauPalier, niveauxAdversairesPourPalier,
   });
 })(window);

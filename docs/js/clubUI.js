@@ -1940,6 +1940,74 @@
     rafraichirCompetitionChoisie();
   }
 
+  // Le résumé du CLUB CONSULTÉ dans la compétition affichée. Une seule
+  // fonction pour un championnat et pour une coupe : c'est
+  // `RMClub.resumeCompetition` qui décide de ce qui est renseigné, et un
+  // champ absent ne produit aucune ligne — jamais un zéro inventé.
+  function blocResumeClub(comp) {
+    const nav = RMClub.navigationClub(saison);
+    const r = RMClub.resumeCompetition(saison, comp.ref, nav.clubConsulteId);
+    if (!r || !r.engage) return '';
+    const club = RMClub.clubPartout(saison, nav.clubConsulteId);
+    const nom = club ? club.nom : 'Ce club';
+    const l = [];
+    if (r.estCoupe) {
+      if (r.vainqueur) l.push(ligneInfo('Vainqueur', echapperHTML(r.vainqueur)));
+      else if (r.elimine) l.push(ligneInfo(`Parcours de ${echapperHTML(nom)}`, `éliminé en ${echapperHTML((r.tourActuel || '').toLowerCase())}`));
+      else if (r.tourActuel) l.push(ligneInfo(`Parcours de ${echapperHTML(nom)}`, `${echapperHTML(r.tourActuel)}`));
+      if (r.encoreQualifies) l.push(ligneInfo('Clubs encore en lice', `${r.encoreQualifies}`));
+    } else if (r.rang != null) {
+      l.push(ligneInfo(`Position de ${echapperHTML(nom)}`,
+        `${r.rang}<sup>${r.rang === 1 ? 'er' : 'e'}</sup> sur ${r.nbClubs}`));
+      l.push(ligneInfo('Points', `${r.pts}`));
+      l.push(ligneInfo('Bilan', `${r.g} V · ${r.n} N · ${r.p} D sur ${r.j} match(s)`));
+      l.push(ligneInfo('Points marqués / encaissés',
+        `${r.pointsPour} / ${r.pointsContre} (${r.difference >= 0 ? '+' : ''}${r.difference})`));
+      if (r.bonusOffensifs || r.bonusDefensifs) {
+        l.push(ligneInfo('Bonus', `${r.bonusOffensifs} offensif(s) · ${r.bonusDefensifs} défensif(s)`));
+      }
+      // La zone où l'on se trouve, déduite du RÈGLEMENT réel de la
+      // compétition (cf. placesPyramideFrance) — jamais de positions codées
+      // dans l'interface.
+      const zone = zoneClassement(r.rang, r.nbClubs, comp);
+      if (zone) l.push(ligneInfo('Situation', zone));
+      if (r.journeesRestantes != null) {
+        l.push(ligneInfo('Journées restantes', `${r.journeesRestantes} sur ${r.journees}`));
+      }
+    }
+    if (r.forme.length) {
+      l.push(ligneInfo('Forme (5 derniers)', r.forme.map(pastilleForme).join(' ')));
+    }
+    if (r.dernier) {
+      l.push(ligneInfo('Dernier résultat',
+        `${r.dernier.pour} - ${r.dernier.contre} ${r.dernier.domicile ? 'contre' : 'à'} ` +
+        `${echapperHTML(r.dernier.adversaire || '?')}`));
+    }
+    if (r.prochain) {
+      l.push(ligneInfo('Prochain match',
+        `${r.prochain.domicile ? 'reçoit' : 'se déplace à'} ${echapperHTML(r.prochain.adversaire || '?')}` +
+        (r.prochain.tour ? ` — ${echapperHTML(r.prochain.tour)}` : '')));
+    }
+    return l.length ? l.join('') + '<hr style="border:none;border-top:1px solid var(--border);margin:10px 0;">' : '';
+  }
+
+  // Une lettre de forme, colorée comme le reste du jeu (victoire / nul /
+  // défaite) — pas un simple « V D N V V » illisible.
+  function pastilleForme(lettre) {
+    const couleur = lettre === 'V' ? 'var(--win)' : lettre === 'D' ? 'var(--loss)' : 'var(--draw)';
+    return `<span style="color:${couleur};font-weight:700;">${lettre}</span>`;
+  }
+
+  // La zone du classement où tombe un rang, d'après le RÈGLEMENT réel de la
+  // compétition. Renvoie null quand la compétition n'a ni montée ni descente
+  // (Équipe B, espoirs) : on n'invente pas de zone là où il n'y en a pas.
+  function zoneClassement(rang, total, comp) {
+    if (comp.promus && rang <= comp.promus) return 'zone de montée';
+    if (comp.relegues && rang > total - comp.relegues) return 'zone de relégation';
+    if (comp.promus || comp.relegues) return 'maintien';
+    return null;
+  }
+
   // Onglets de l'écran Compétitions. Chacun lit la compétition CHOISIE dans la
   // navigation — championnat du joueur, autre palier français, ou l'un des 12
   // pays : mêmes composants, seules les données changent.
@@ -1964,7 +2032,12 @@
       const joues = (comp.calendrier || []).filter((f) => f.joue).length;
       const leader = lignes[0];
       titre.textContent = `🏆 ${comp.nom}`;
-      zone.innerHTML =
+      // Le résumé parle d'abord du CLUB CONSULTÉ dans cette compétition —
+      // sa position, sa forme, son prochain match — avant de parler de la
+      // compétition en général. Avant, il ne disait que « clubs engagés,
+      // rencontres jouées, en tête, ta compétition ? oui » : quatre lignes
+      // dont aucune ne concernait l'équipe du manager.
+      zone.innerHTML = blocResumeClub(comp) +
         `${ligneInfo(`Clubs engagés`, `${(comp.clubs || []).length}`)}` +
         `${ligneInfo(`Rencontres jouées`, `${joues} / ${(comp.calendrier || []).length}`)}` +
         (leader ? `${ligneInfo(`En tête`, `${echapperHTML(nomDe(leader.clubId))} · ${leader.pts} pt(s)`)}` : '') +
@@ -2112,12 +2185,31 @@
     for (const cl of comp.clubs) {
       if (cl.id !== saison.clubJoueur.id && !RMClub.clubPartout(saison, cl.id)) nomsCompetition[cl.id] = cl.nom;
     }
+    // Forme de CHAQUE club de la compétition, lue une seule fois depuis son
+    // calendrier réel — la colonne manquait, alors que la donnée existait.
+    const formeParClub = {};
+    for (const f of (comp.calendrier || [])) {
+      if (!f.joue || !f.score) continue;
+      const dom = f.score.domicile, ext = f.score.exterieur;
+      (formeParClub[f.domicileId] = formeParClub[f.domicileId] || [])
+        .push(dom > ext ? 'V' : dom < ext ? 'D' : 'N');
+      (formeParClub[f.exterieurId] = formeParClub[f.exterieurId] || [])
+        .push(ext > dom ? 'V' : ext < dom ? 'D' : 'N');
+    }
     const lignes = comp.classement.map((r) => {
+      // Zones lues au RÈGLEMENT réel de la compétition (comp.promus /
+      // comp.relegues, cf. placesPyramideFrance). Avant, « zone de montée »
+      // et « mon club » portaient la MÊME classe : impossible de distinguer
+      // le club du joueur d'un promu — et comme le championnat du joueur
+      // annonçait 0 montée et 0 descente, aucune zone n'apparaissait jamais.
       const zonePromue = comp.promus && r.rang <= comp.promus;
       const zoneRelegable = comp.relegues && r.rang > comp.classement.length - comp.relegues;
       const estJoueur = r.clubId === saison.clubJoueur.id;
-      const classe = (estJoueur || zonePromue) ? ' class="ligneClubJoueur"'
-        : zoneRelegable ? ' style="opacity:.6;"' : '';
+      const classes = ['ligneCompetition'];
+      if (estJoueur) classes.push('ligneClubJoueur');
+      if (zonePromue) classes.push('zoneMontee');
+      else if (zoneRelegable) classes.push('zoneRelegation');
+      const classe = ` class="${classes.join(' ')}"`;
       const paysClub = comp.partagee && r.club && r.club.pays ? ` <span style="color:var(--text-faint);">(${echapperHTML(r.club.pays)})</span>` : '';
       const nom = nomsCompetition[r.clubId] ? echapperHTML(nomsCompetition[r.clubId]) : lienClub(r.clubId);
       const diff = r.pointsPour - r.pointsContre;
@@ -2126,7 +2218,8 @@
         `<td>${r.pointsPour}</td><td>${r.pointsContre}</td><td>${diff >= 0 ? '+' : ''}${diff}</td>` +
         `<td title="Bonus offensif (4 essais ou plus)">${r.bonusOffensifs || 0}</td>` +
         `<td title="Bonus défensif (défaite par 7 points ou moins)">${r.bonusDefensifs || 0}</td>` +
-        `<td><b>${r.pts}</b></td></tr>`;
+        `<td><b>${r.pts}</b></td>` +
+        `<td style="white-space:nowrap;">${(formeParClub[r.clubId] || []).slice(-5).map(pastilleForme).join(' ')}</td></tr>`;
     }).join('');
     if (comp.estCoupe && zoneClassement) {
       // Une coupe n'a pas de classement : c'est un tableau. On le dit, et on
@@ -2144,9 +2237,18 @@
       return;
     }
     if (zoneClassement) {
+      // Légende : les zones ne veulent rien dire sans elle, et elles doivent
+      // annoncer le nombre RÉEL de places (cf. règlement de la compétition).
+      const legende = (comp.promus || comp.relegues)
+        ? `<div class="legendeZones">` +
+          (comp.promus ? `<span class="zMontee">${comp.promus} place(s) de montée</span>` : '') +
+          (comp.relegues ? `<span class="zRelegation">${comp.relegues} place(s) de relégation</span>` : '') +
+          `</div>`
+        : '';
       zoneClassement.innerHTML = '<table class="tableauClub"><thead><tr><th></th><th>Club</th><th>J</th><th>G</th><th>N</th><th>P</th>' +
-        '<th>Pts+</th><th>Pts-</th><th>Diff</th><th title="Bonus offensifs">BO</th><th title="Bonus défensifs">BD</th><th>Pts</th></tr></thead>' +
-        `<tbody>${lignes}</tbody></table>`;
+        '<th>Pts+</th><th>Pts-</th><th>Diff</th><th title="Bonus offensifs">BO</th><th title="Bonus défensifs">BD</th><th>Pts</th>' +
+        '<th title="Les 5 derniers résultats">Forme</th></tr></thead>' +
+        `<tbody>${lignes}</tbody></table>${legende}`;
     }
     rafraichirCalendrier();
   }

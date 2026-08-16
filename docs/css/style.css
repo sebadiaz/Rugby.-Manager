@@ -489,6 +489,19 @@ select {
 .tableauClub tr:last-child td { border-bottom: none; }
 .tableauClub tr.ligneClubJoueur { background: rgba(255, 183, 3, 0.1); }
 .tableauClub tr.ligneClubJoueur td:first-child { border-left: 2px solid var(--accent); }
+/* Zones du classement, tirées du RÈGLEMENT réel de la compétition (montées et
+   descentes réellement appliquées par le moteur). Un liseré à gauche du rang,
+   distinct du surlignage « mon club » qui reste le fond ambré : les deux
+   peuvent coïncider, il faut pouvoir les lire ensemble. */
+.tableauClub tr.zoneMontee td:first-child { box-shadow: inset 3px 0 0 var(--win); }
+.tableauClub tr.zoneRelegation td:first-child { box-shadow: inset 3px 0 0 var(--loss); }
+.legendeZones { display: flex; flex-wrap: wrap; gap: 12px; font-size: 11.5px; color: var(--text-dim); margin-top: 8px; }
+.legendeZones span::before {
+  content: ''; display: inline-block; width: 3px; height: 11px; margin-right: 5px;
+  vertical-align: -1px; border-radius: 1px; background: currentColor;
+}
+.legendeZones .zMontee { color: var(--win); }
+.legendeZones .zRelegation { color: var(--loss); }
 .badgeBlessure { color: var(--loss); font-size: 11px; white-space: nowrap; }
 .badgeContratCourt { color: var(--draw); }
 .btnLiberer {
