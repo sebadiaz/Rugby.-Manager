@@ -278,4 +278,99 @@ test('J6 — l\'interface affiche UNE journée, avec sa navigation', () => {
   assert.ok(css.indexOf('.navJournee') !== -1, 'stylés une seule fois dans la feuille de style');
 });
 
+
+// ------------------------------------------- STATISTIQUES (C5) -----------
+//
+// Mesuré : après trois journées, 15 joueurs du club ont des statistiques
+// individuelles et ZÉRO joueur adverse en a — les rencontres entre clubs IA
+// sont résolues sans simulation détaillée. Un classement des buteurs de toute
+// la compétition serait donc inventé aux trois quarts.
+
+function avecTroisJournees() {
+  const s = carriere();
+  const slot = RMClub.slotCompositionPourEquipe(s, 'pro');
+  const c = s.clubJoueur;
+  let n = 0;
+  for (const f of s.calendrier) {
+    if (!(f.domicileId === c.id || f.exterieurId === c.id) || n >= 3) continue;
+    n++;
+    const lettre = f.domicileId === c.id ? 'A' : 'B';
+    const sj = {}; let i = 0;
+    for (const num of Object.keys(slot.compositionTitulaires)) {
+      i++;
+      sj[num] = { essais: i % 5 === 0 ? 1 : 0, passes: 10 + i, tacklesMade: 8 + (i % 4),
+                  tacklesAttempted: 10, metresGagnes: 30 + i * 3 };
+    }
+    RMClub.appliquerConsequencesMatchJoueur(s, {
+      fixture: f, etat: { score: { A: 25, B: 12 }, stats: { A: { essais: 3 }, B: { essais: 1 } },
+                          statsJoueurs: { [lettre]: sj } },
+      lettreJoueur: lettre, forme: 'v',
+      compositionUtilisee: slot.compositionTitulaires,
+      compositionAvecRemplacants: slot.compositionTitulaires,
+      nomA: 'D', nomB: 'E', rng: creerRng(n),
+    });
+  }
+  return s;
+}
+
+test('S1 — les classements d\'équipes couvrent TOUTE la compétition', () => {
+  const s = avecTroisJournees();
+  const st = RMClub.statistiquesCompetition(s, 'joueur');
+  assert.ok(st.equipes, 'des statistiques d\'équipes doivent exister');
+  assert.ok(st.equipes.meilleureAttaque.length > 1,
+    'plusieurs clubs, pas seulement celui du joueur');
+  assert.ok(st.equipes.meilleureAttaque[0].valeur > 0, 'des points réels');
+  // Ordre correct : décroissant pour l'attaque, croissant pour la défense.
+  const att = st.equipes.meilleureAttaque.map((x) => x.valeur);
+  assert.deepStrictEqual(att, att.slice().sort((a, b) => b - a), 'attaque décroissante');
+  const def = st.equipes.meilleureDefense.map((x) => x.valeur);
+  assert.deepStrictEqual(def, def.slice().sort((a, b) => a - b), 'défense croissante');
+});
+
+test('S2 — chaque classement garde SA valeur (piège des objets partagés)', () => {
+  // Une première version écrivait `valeur` sur les objets d'origine, partagés
+  // entre tous les classements : le dernier appel écrasait les précédents et
+  // « meilleure attaque » affichait 0 point.
+  const s = avecTroisJournees();
+  const st = RMClub.statistiquesCompetition(s, 'joueur');
+  const club = st.equipes.meilleureAttaque[0];
+  assert.strictEqual(club.valeur, club.pointsPour,
+    'la valeur classée doit être celle du critère demandé');
+  const defense = st.equipes.meilleureDefense[0];
+  assert.strictEqual(defense.valeur, defense.pointsContre);
+  assert.ok(st.joueurs.metres[0].valeur === st.joueurs.metres[0].metresGagnes);
+  assert.ok(st.joueurs.marqueurs[0].valeur === st.joueurs.marqueurs[0].essais);
+});
+
+test('S3 — les statistiques joueurs sont RÉELLES et annoncent leur portée', () => {
+  const s = avecTroisJournees();
+  const st = RMClub.statistiquesCompetition(s, 'joueur');
+  assert.ok(st.joueurs, 'des statistiques joueurs doivent exister');
+  assert.strictEqual(st.joueurs.nbSuivis, 15, 'les 15 titulaires suivis');
+  assert.ok(st.joueurs.marqueurs.length, 'des marqueurs');
+  assert.ok(st.joueurs.marqueurs.every((j) => j.essais > 0),
+    'aucun joueur à zéro essai dans un classement de marqueurs');
+  assert.ok(st.limites.some((l) => /Seuls les joueurs de ton club/.test(l)),
+    'la portée réelle doit être annoncée, pas tue');
+});
+
+test('S4 — aucun joueur adverse n\'est inventé', () => {
+  const s = avecTroisJournees();
+  const idsClub = new Set(s.clubJoueur.effectif.map((j) => j.id));
+  const st = RMClub.statistiquesCompetition(s, 'joueur');
+  for (const bloc of ['marqueurs', 'plaqueurs', 'metres', 'passeurs']) {
+    for (const j of st.joueurs[bloc]) {
+      assert.ok(idsClub.has(j.id),
+        `${bloc} : ${j.nom} n'appartient pas au club du joueur`);
+    }
+  }
+});
+
+test('S5 — une compétition sans résultat ne fabrique rien', () => {
+  const s = carriere();
+  const st = RMClub.statistiquesCompetition(s, 'joueur');
+  assert.strictEqual(st.equipes, null, 'aucun classement sans match joué');
+  assert.strictEqual(st.joueurs, null, 'aucun palmarès de joueurs non plus');
+});
+
 console.log(`\n${nbTests} test(s) exécuté(s).`);

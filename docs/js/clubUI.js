@@ -2018,6 +2018,14 @@
     return null;
   }
 
+  // Les réserves de portée, affichées au lieu d'être tues : un classement des
+  // buteurs qui ne couvre qu'un club doit le DIRE.
+  function noteLimites(st) {
+    if (!st || !st.limites || !st.limites.length) return '';
+    return `<p style="font-size:11.5px;color:var(--text-dim);margin:12px 0 0;">`
+      + st.limites.map((l) => echapperHTML(l)).join('<br>') + `</p>`;
+  }
+
   // Onglets de l'écran Compétitions. Chacun lit la compétition CHOISIE dans la
   // navigation — championnat du joueur, autre palier français, ou l'un des 12
   // pays : mêmes composants, seules les données changent.
@@ -2061,19 +2069,41 @@
         : '<p style="color:var(--text-dim);">Aucun club listé pour cette compétition.</p>';
     } else if (sous === 'stats') {
       titre.textContent = '📊 Statistiques de la compétition';
-      if (!lignes.length) { zone.innerHTML = '<p style="color:var(--text-dim);">Aucun résultat enregistré pour l\'instant.</p>'; return; }
-      // Champs RÉELS du classement (cf. classementInitial) : pointsPour /
-      // pointsContre / pts. Une première version lisait `pour`/`contre`, qui
-      // n'existent pas — l'écran affichait « meilleure attaque · 0 pts ».
-      const parPour = lignes.slice().sort((a2, b2) => (b2.pointsPour || 0) - (a2.pointsPour || 0));
-      const parContre = lignes.slice().sort((a2, b2) => (a2.pointsContre || 0) - (b2.pointsContre || 0));
-      const totalPts = lignes.reduce((t, r) => t + (r.pointsPour || 0), 0);
-      const joues = (comp.calendrier || []).filter((f) => f.joue).length;
-      zone.innerHTML =
-        `${ligneInfo(`Meilleure attaque`, `${echapperHTML(nomDe(parPour[0].clubId))} · ${parPour[0].pointsPour || 0} pts`)}` +
-        `${ligneInfo(`Meilleure défense`, `${echapperHTML(nomDe(parContre[0].clubId))} · ${parContre[0].pointsContre || 0} encaissés`)}` +
-        `${ligneInfo(`Points marqués au total`, `${totalPts}`)}` +
-        `${ligneInfo(`Moyenne par rencontre`, `${joues ? Math.round(totalPts / joues) : 0} pts`)}`;
+      // Deux portées DIFFÉRENTES, et on le dit (cf. statistiquesCompetition) :
+      // les équipes couvrent toute la compétition, les joueurs seulement le
+      // club du joueur — les rencontres entre clubs IA n'ont pas de
+      // statistiques individuelles à montrer.
+      const st = RMClub.statistiquesCompetition(saison, comp.ref);
+      if (!st || (!st.equipes && !st.joueurs)) {
+        zone.innerHTML = '<p style="color:var(--text-dim);">Aucun résultat enregistré pour l\'instant.</p>'
+          + noteLimites(st);
+        return;
+      }
+      const palmares = (titreBloc, entrees, suffixe) => {
+        if (!entrees || !entrees.length) return '';
+        return `<h4 class="sousTitreFeuille">${echapperHTML(titreBloc)}</h4>` + entrees.map((e, i) =>
+          `<div class="ligneInfo compact"><span>${i + 1}. ${e.clubId ? lienClub(e.clubId) : echapperHTML(e.nom || '?')}` +
+          `${e.poste ? ` <span style="color:var(--text-faint);">${echapperHTML(e.poste)}</span>` : ''}</span>` +
+          `<b>${e.valeur}${suffixe ? ' ' + suffixe : ''}</b></div>`).join('');
+      };
+      let html = '';
+      if (st.equipes) {
+        html += ligneInfo('Rencontres jouées', `${st.equipes.rencontresJouees}`)
+          + ligneInfo('Points par rencontre', `${st.equipes.pointsParRencontre}`)
+          + palmares('Meilleures attaques', st.equipes.meilleureAttaque, 'pts')
+          + palmares('Meilleures défenses', st.equipes.meilleureDefense, 'encaissés')
+          + palmares('Plus d\'essais marqués', st.equipes.plusDEssais, 'essais')
+          + palmares('Meilleures différences', st.equipes.meilleureDifference, 'pts')
+          + palmares('Bonus offensifs', st.equipes.plusDeBonusOffensifs, 'bonus');
+      }
+      if (st.joueurs) {
+        html += `<h3 style="margin:16px 0 4px;font-size:12px;color:var(--text-faint);">JOUEURS — TON CLUB</h3>`
+          + palmares('Meilleurs marqueurs', st.joueurs.marqueurs, 'essai(s)')
+          + palmares('Meilleurs plaqueurs', st.joueurs.plaqueurs, 'plaquages')
+          + palmares('Plus de mètres gagnés', st.joueurs.metres, 'm')
+          + palmares('Plus de passes', st.joueurs.passeurs, 'passes');
+      }
+      zone.innerHTML = html + noteLimites(st);
     } else if (sous === 'regles') {
       titre.textContent = '📜 Format et règles';
       const promus = comp.promus || 0, relegues = comp.relegues || 0;

@@ -473,8 +473,101 @@
     return (journees.find((j) => !j.terminee) || journees[journees.length - 1]).numero;
   }
 
+  // --- Statistiques d'une compétition -------------------------------------
+  //
+  // Deux parties, et deux portées DIFFÉRENTES — c'est la mesure qui l'impose,
+  // pas un choix de présentation :
+  //
+  //   ÉQUIPES  : toute la compétition. Chaque ligne de classement porte déjà
+  //              points pour/contre, essais pour/contre et bonus, pour TOUS
+  //              les clubs — ce sont de vraies données, enregistrées match
+  //              après match.
+  //   JOUEURS  : le club du joueur SEULEMENT. Mesuré : après trois journées,
+  //              15 de ses joueurs ont des statistiques individuelles, et
+  //              ZÉRO joueur adverse en a. Les rencontres entre clubs IA sont
+  //              résolues de façon abstraite (un score, pas un match simulé) :
+  //              il n'existe aucune statistique individuelle à leur sujet.
+  //              Classer « les meilleurs marqueurs de la compétition » serait
+  //              donc inventer les trois quarts du tableau. On annonce la
+  //              portée réelle au lieu de fabriquer un classement.
+  //
+  // `limites` porte ces réserves pour que l'écran les affiche au lieu de les
+  // taire.
+  const COMPETITION_STATS_JOUEUR = { joueur: 'pro', equipeB: 'b', espoirs: 'jeunes' };
+
+  // Un classement RENVOIE des copies : plusieurs classements partagent les
+  // mêmes joueurs et les mêmes clubs, et écrire `valeur` sur l'objet d'origine
+  // faisait que le dernier appel écrasait la valeur de tous les précédents
+  // (mesuré : « meilleure attaque · 0 point » alors que le club en avait 75).
+  function classer(liste, champ, croissant) {
+    return liste
+      .map((x) => Object.assign({}, x, { valeur: Number(x[champ]) || 0 }))
+      .sort((a, b) => (croissant ? a.valeur - b.valeur : b.valeur - a.valeur))
+      .slice(0, 5);
+  }
+
+  function statistiquesCompetition(saison, ref) {
+    const comp = competition(saison, ref);
+    if (!comp) return null;
+    const parId = {};
+    for (const c of (comp.clubs || [])) parId[c.id] = c;
+    const nomDe = (id) => (parId[id] ? parId[id].nom : null);
+
+    // --- Équipes : sur toute la compétition, depuis le classement réel.
+    const lignes = (comp.classement || []).filter((l) => l.j > 0).map((l) => ({
+      clubId: l.clubId, nom: nomDe(l.clubId),
+      pointsPour: l.pointsPour || 0, pointsContre: l.pointsContre || 0,
+      essaisPour: l.essaisPour || 0, essaisContre: l.essaisContre || 0,
+      difference: (l.pointsPour || 0) - (l.pointsContre || 0),
+      bonusOffensifs: l.bonusOffensifs || 0, bonusDefensifs: l.bonusDefensifs || 0,
+      j: l.j || 0,
+    }));
+    const joues = (comp.calendrier || []).filter((f) => f.joue).length;
+    const totalPoints = lignes.reduce((t, l) => t + l.pointsPour, 0);
+    const equipes = lignes.length ? {
+      meilleureAttaque: classer(lignes, 'pointsPour'),
+      meilleureDefense: classer(lignes, 'pointsContre', true),
+      plusDEssais: classer(lignes, 'essaisPour'),
+      meilleureDifference: classer(lignes, 'difference'),
+      plusDeBonusOffensifs: classer(lignes, 'bonusOffensifs'),
+      rencontresJouees: joues,
+      pointsParRencontre: joues ? Math.round(totalPoints / joues) : 0,
+    } : null;
+
+    // --- Joueurs : uniquement ceux dont les statistiques EXISTENT.
+    const cleStats = COMPETITION_STATS_JOUEUR[ref] || null;
+    let joueurs = null;
+    const limites = [];
+    if (cleStats) {
+      const effectif = global.RMClub.effectifPourEquipe(saison,
+        cleStats === 'b' ? 'b' : cleStats === 'jeunes' ? 'jeunes' : 'pro');
+      const suivis = (effectif || [])
+        .filter((j) => j.statsSaison && j.statsSaison.parCompetition && j.statsSaison.parCompetition[cleStats])
+        .map((j) => Object.assign({ id: j.id, nom: j.nom, poste: j.poste },
+          j.statsSaison.parCompetition[cleStats]));
+      if (suivis.length) {
+        joueurs = {
+          marqueurs: classer(suivis.filter((j) => j.essais > 0), 'essais'),
+          plaqueurs: classer(suivis, 'tacklesMade'),
+          metres: classer(suivis, 'metresGagnes'),
+          passeurs: classer(suivis, 'passes'),
+          nbSuivis: suivis.length,
+        };
+      }
+      limites.push('Seuls les joueurs de ton club sont suivis individuellement : '
+        + 'les rencontres entre clubs adverses sont résolues sans simulation détaillée.');
+      limites.push('Les rencontres de coupe comptent dans le total de l\'équipe concernée.');
+    } else if (comp.estCoupe) {
+      limites.push('Les statistiques individuelles d\'une coupe sont comptées avec '
+        + 'celles du championnat de l\'équipe qui la dispute.');
+    }
+
+    return { ref: comp.ref, nom: comp.nom, estCoupe: !!comp.estCoupe, equipes, joueurs, limites };
+  }
+
   global.RMClub = Object.assign(global.RMClub || {}, {
     competitionsParPays, competition, clubPartout, competitionDuClub,
+    statistiquesCompetition,
     competitionsDeLEquipe, resumeCompetition, journeesDe, journeeCouranteDe,
     REF_COMPETITION_JOUEUR: REF_JOUEUR, REF_COMPETITION_EQUIPE_B: REF_EQUIPE_B, REF_COMPETITION_ESPOIRS: REF_ESPOIRS,
   });
