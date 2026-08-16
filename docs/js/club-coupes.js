@@ -349,8 +349,53 @@
     return saison.coupes;
   }
 
+  // Toutes les conséquences d'un match de coupe DISPUTÉ par le joueur, dans
+  // l'ordre exact où elles doivent s'appliquer. Cette chaîne vivait dans le
+  // callback `onResultat` de l'interface : elle n'y avait rien à faire — pas
+  // une ligne de DOM, mais l'enregistrement du résultat, la résolution du
+  // reste du tour, la fatigue, le moral et le message du fil d'actualité.
+  //
+  // L'ordre n'est pas décoratif : `enregistrerResultatCoupe` désigne le
+  // vainqueur, donc il doit précéder la lecture de `vainqueurId` qui décide
+  // du moral et du texte. Les autres rencontres du tour se résolvent ensuite,
+  // avec leur propre générateur — jamais celui du match du joueur.
+  //
+  // Aucune dépendance au DOM : l'interface ne garde que l'affichage.
+  function appliquerConsequencesMatchCoupe(saison, params) {
+    const RMClub = global.RMClub;
+    const p = params || {};
+    const c = saison.clubJoueur;
+    const etat = p.etat;
+    const lettre = p.lettreJoueur;
+    const rencontre = p.rencontre;
+
+    enregistrerResultatCoupe(p.coupe, rencontre.id, etat.score.A, etat.score.B);
+    // Les autres rencontres du même tour, en arrière-plan.
+    resoudreCoupesAbstraites(saison, p.date, p.rngCoupes, rencontre.id);
+
+    // Point d'entrée UNIQUE (P1-40) : fatigue + blessures + reprise, avec
+    // le facteur préparateur, que la coupe et l'amical oubliaient.
+    RMClub.appliquerEffetsMatch(saison, c.effectif, p.compositionUtilisee,
+      p.rng, { equipe: 'pro' });
+    const gagne = rencontre.vainqueurId === c.id;
+    RMClub.appliquerMoral(c.effectif, p.compositionUtilisee, gagne ? 'v' : 'd');
+    RMClub.accumulerStatsJoueurs(c.effectif, p.compositionUtilisee,
+      etat.statsJoueurs && etat.statsJoueurs[lettre], 'pro');
+
+    const tourNom = p.coupe.tours[rencontre.tour].nom;
+    const prolongation = rencontre.apresProlongation ? ' après prolongation' : '';
+    const adversaireNom = (p.adversaire && p.adversaire.nom) || 'son adversaire';
+    const texte = gagne
+      ? `Qualifié ! ${c.nom} élimine ${adversaireNom} (${etat.score.A} - ${etat.score.B})${prolongation} en ${tourNom.toLowerCase()}.`
+      : `Éliminé. ${c.nom} s'incline face à ${adversaireNom} (${etat.score.A} - ${etat.score.B})${prolongation} en ${tourNom.toLowerCase()}.`;
+    RMClub.ajouterMessage(saison, 'match', p.coupe.nom, texte);
+
+    return { gagne, tourNom, message: texte };
+  }
+
   global.RMClub = Object.assign(global.RMClub || {}, {
     genererCoupe, enregistrerResultatCoupe, vainqueurCoupe, assurerCoupes,
     reinitialiserCoupes, rencontreCoupeDuJoueur, resoudreCoupesAbstraites,
+    appliquerConsequencesMatchCoupe,
   });
 })(window);

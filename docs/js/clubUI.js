@@ -4527,6 +4527,15 @@
   // (mercredi de match espoirs) : chaque jour ne résout QUE ce qui lui
   // revient, au lieu de tout enchaîner en un seul clic. Le calendrier
   // décide, plus le bouton.
+  // Sans ce rappel, fermer l'écran de résultat laissait le joueur sur un écran
+  // VIDE : le panneau du club avait été masqué au coup d'envoi et personne ne
+  // le remontrait. Les trois matchs joués avec le moteur complet (championnat,
+  // coupe, amical) partagent exactement le même retour.
+  function revenirAuPanneauClub() {
+    rafraichirTout();
+    document.getElementById('panneauClub').classList.add('visible');
+  }
+
   // --- Match amical : joué à SA date, avec le moteur complet, exactement
   // comme un match officiel (TODO_AUDIT.md P1-32). Ses conséquences sont
   // réelles — fatigue, blessures, temps de jeu, moral — mais il ne rapporte
@@ -4578,36 +4587,21 @@
         noms: domicileEstJoueur ? { A: c.nom, B: adversaire.nom } : { A: adversaire.nom, B: c.nom },
         equipeJoueur: lettre,
         onResultat(etat) {
-          RMClub.enregistrerResultatCoupe(info.coupe, info.rencontre.id, etat.score.A, etat.score.B);
-          // Les autres rencontres du même tour, en arrière-plan.
-          RMClub.resoudreCoupesAbstraites(saison, date, creerRng(graineDuJour('coupes')), info.rencontre.id);
-          // Point d'entrée UNIQUE (P1-40) : fatigue + blessures + reprise, avec
-          // le facteur préparateur, que la coupe et l'amical oubliaient.
-          RMClub.appliquerEffetsMatch(saison, c.effectif, compositionUtilisee,
-            creerRng(graineAleatoire()), { equipe: 'pro' });
-          const gagne = info.rencontre.vainqueurId === c.id;
-          RMClub.appliquerMoral(c.effectif, compositionUtilisee, gagne ? 'v' : 'd');
-          RMClub.accumulerStatsJoueurs(c.effectif, compositionUtilisee,
-            etat.statsJoueurs && etat.statsJoueurs[lettre], 'pro');
-          const tourNom = info.coupe.tours[info.rencontre.tour].nom;
-          const prolongation = info.rencontre.apresProlongation ? ' après prolongation' : '';
-          RMClub.ajouterMessage(saison, 'match', info.coupe.nom,
-            gagne
-              ? `Qualifié ! ${c.nom} élimine ${adversaire.nom} (${etat.score.A} - ${etat.score.B})${prolongation} en ${tourNom.toLowerCase()}.`
-              : `Éliminé. ${c.nom} s'incline face à ${adversaire.nom} (${etat.score.A} - ${etat.score.B})${prolongation} en ${tourNom.toLowerCase()}.`);
+          // Toute la règle métier vit dans club-coupes.js : résultat, reste du
+          // tour, fatigue, moral, statistiques, message. L'interface ne garde
+          // que ce qui la concerne — sauvegarde, verrou et rafraîchissement.
+          RMClub.appliquerConsequencesMatchCoupe(saison, {
+            coupe: info.coupe, rencontre: info.rencontre, adversaire, date, etat,
+            lettreJoueur: lettre, compositionUtilisee,
+            rng: creerRng(graineAleatoire()),
+            rngCoupes: creerRng(graineDuJour('coupes')),
+          });
           sauvegarder();
           journeeEnCours = false;
           definirBoutonsJourneeActifs(true);
           rafraichirTout();
         },
-        // Sans ce rappel, fermer l'écran de résultat laissait le joueur sur
-        // un écran VIDE : le panneau du club avait été masqué au coup
-        // d'envoi et personne ne le remontrait. Même mécanique que le match
-        // de championnat (cf. onFermer plus bas).
-        onFermer() {
-          rafraichirTout();
-          document.getElementById('panneauClub').classList.add('visible');
-        },
+        onFermer: revenirAuPanneauClub,
       }
     );
   }
@@ -4640,35 +4634,18 @@
         noms: { A: c.nom, B: adversaire.nom },
         equipeJoueur: 'A',
         onResultat(etat) {
-          RMClub.enregistrerResultatAmical(saison, amical.id, etat.score.A, etat.score.B);
-          // Conséquences RÉELLES, les mêmes qu'un match officiel : c'est ce
-          // qui fait d'un amical une décision et non un bouton gratuit.
-          // Point d'entrée UNIQUE (P1-40) : fatigue + blessures + reprise, avec
-          // le facteur préparateur, que la coupe et l'amical oubliaient.
-          RMClub.appliquerEffetsMatch(saison, c.effectif, compositionUtilisee,
-            creerRng(graineAleatoire()), { equipe: 'pro' });
-          const forme = etat.score.A > etat.score.B ? 'v' : etat.score.A < etat.score.B ? 'd' : 'n';
-          RMClub.appliquerMoral(c.effectif, compositionUtilisee, forme);
-          RMClub.accumulerStatsJoueurs(c.effectif, compositionUtilisee,
-            etat.statsJoueurs && etat.statsJoueurs.A, 'pro');
-          // L'adversaire aussi encaisse sa rencontre (cf. P1-29).
-          const slotAdv = RMClub.slotAdverse(adversaire, RMClub.effectifAdverseNormalise(adversaire));
-          RMClub.appliquerEffetsMatchAdverse(saison, adversaire, slotAdv, creerRng(graineAleatoire()));
-          RMClub.ajouterMessage(saison, 'match', 'Match amical',
-            `${c.nom} ${forme === 'v' ? 'bat' : forme === 'd' ? "s'incline face à" : 'fait match nul avec'} ${adversaire.nom} (${etat.score.A} - ${etat.score.B}) en match amical. Aucun point au championnat.`);
+          // Toute la règle métier vit dans club-amicaux.js.
+          RMClub.appliquerConsequencesMatchAmical(saison, {
+            amical, adversaire, etat, compositionUtilisee,
+            rng: creerRng(graineAleatoire()),
+            rngAdverse: creerRng(graineAleatoire()),
+          });
           sauvegarder();
           journeeEnCours = false;
           definirBoutonsJourneeActifs(true);
           rafraichirTout();
         },
-        // Sans ce rappel, fermer l'écran de résultat laissait le joueur sur
-        // un écran VIDE : le panneau du club avait été masqué au coup
-        // d'envoi et personne ne le remontrait. Même mécanique que le match
-        // de championnat (cf. onFermer plus bas).
-        onFermer() {
-          rafraichirTout();
-          document.getElementById('panneauClub').classList.add('visible');
-        },
+        onFermer: revenirAuPanneauClub,
       }
     );
   }
@@ -4837,10 +4814,7 @@
             // déjà annoncé. La remise à zéro se fait uniquement en démarrant
             // un vrai Match rapide (cf. main.js, reinitialiserConfigClub).
           },
-          onFermer() {
-            rafraichirTout();
-            document.getElementById('panneauClub').classList.add('visible');
-          },
+          onFermer: revenirAuPanneauClub,
         }
       );
     }

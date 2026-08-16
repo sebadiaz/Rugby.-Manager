@@ -143,8 +143,47 @@
     return saison.amicaux;
   }
 
+  // Toutes les conséquences d'un match amical DISPUTÉ par le joueur. Comme
+  // pour la coupe, cette chaîne vivait dans le callback `onResultat` de
+  // l'interface alors qu'elle ne contient aucune ligne de DOM.
+  //
+  // Conséquences RÉELLES, les mêmes qu'un match officiel : c'est ce qui fait
+  // d'un amical une décision et non un bouton gratuit. Seule différence avec
+  // le championnat : aucun point, aucun classement, aucune recette.
+  //
+  // Aucune dépendance au DOM.
+  function appliquerConsequencesMatchAmical(saison, params) {
+    const RMClub = global.RMClub;
+    const p = params || {};
+    const c = saison.clubJoueur;
+    const etat = p.etat;
+    const adversaire = p.adversaire;
+
+    enregistrerResultatAmical(saison, p.amical.id, etat.score.A, etat.score.B);
+
+    // Point d'entrée UNIQUE (P1-40) : fatigue + blessures + reprise, avec
+    // le facteur préparateur, que la coupe et l'amical oubliaient.
+    RMClub.appliquerEffetsMatch(saison, c.effectif, p.compositionUtilisee,
+      p.rng, { equipe: 'pro' });
+    const forme = etat.score.A > etat.score.B ? 'v' : etat.score.A < etat.score.B ? 'd' : 'n';
+    RMClub.appliquerMoral(c.effectif, p.compositionUtilisee, forme);
+    RMClub.accumulerStatsJoueurs(c.effectif, p.compositionUtilisee,
+      etat.statsJoueurs && etat.statsJoueurs.A, 'pro');
+
+    // L'adversaire aussi encaisse sa rencontre (cf. P1-29).
+    const slotAdv = RMClub.slotAdverse(adversaire, RMClub.effectifAdverseNormalise(adversaire));
+    RMClub.appliquerEffetsMatchAdverse(saison, adversaire, slotAdv, p.rngAdverse);
+
+    const verbe = forme === 'v' ? 'bat' : forme === 'd' ? "s'incline face à" : 'fait match nul avec';
+    const texte = `${c.nom} ${verbe} ${adversaire.nom} (${etat.score.A} - ${etat.score.B}) en match amical. Aucun point au championnat.`;
+    RMClub.ajouterMessage(saison, 'match', 'Match amical', texte);
+
+    return { forme, message: texte };
+  }
+
   global.RMClub = Object.assign(global.RMClub || {}, {
     amicalDuJour, datesLibresPourAmical, proposerAmical, annulerAmical,
     enregistrerResultatAmical, reinitialiserAmicaux,
+    appliquerConsequencesMatchAmical,
   });
 })(window);
