@@ -3560,3 +3560,91 @@ Un commentaire de `club-mercato.js` affirmait encore que `prixDe` utilisait
 « exactement la formule déjà utilisée quand c'est le MANAGER qui achète ».
 C'était devenu faux avec G5 (les clubs de la même division ne paient plus la
 surcote destinée à un acheteur extérieur). Commentaire retiré.
+
+---
+
+## G7 — La Coupe des Espoirs se joue enfin avec les espoirs (livrée)
+
+### Comportement observé (mesuré, pas déduit)
+
+Carrière neuve, graine 4242. Le club du joueur est engagé d'office dans sa
+Coupe des Espoirs — une compétition d'ACADÉMIES (cf. `genererCompetitionEspoirs`).
+Son adversaire en demi-finale : « Académie Hautecombe Sangliers », niveau 0,052.
+
+```
+niveau du club joueur DANS CETTE COUPE : 0.105   (son niveau pro réel : 0.300)
+effectif pro    : 24 joueurs, âge moyen 26.6
+effectif espoirs: 15 joueurs, âge moyen 17.1
+
+AVANT le match   pro:   0 fatigue,  0 matchs | espoirs: 0 fatigue, 0 matchs
+APRÈS le match   pro: 451 fatigue, 15 matchs | espoirs: 0 fatigue, 0 matchs
+```
+
+Le tableau savait déjà que c'était une compétition de jeunes : il inscrivait le
+club à un niveau dérivé (0,105, cf. `niveauAdversaireEspoirs`) et non à son
+niveau pro. Mais l'interface faisait quand même jouer le **premier XV**.
+
+### Pourquoi c'était insuffisant
+
+Trois conséquences, toutes visibles en jeu :
+
+1. Le manager voyait son équipe première rentrer **épuisée d'un match qu'elle
+   n'avait pas à disputer** — 451 points de fatigue et un match de plus au
+   compteur de quinze professionnels, à trois jours d'une journée de
+   championnat.
+2. Ses **espoirs ne jouaient jamais leur propre coupe** : aucune minute, aucune
+   statistique, aucune progression. Le centre de formation restait décoratif
+   dans la seule compétition qui lui était destinée.
+3. Le résultat était une **farce** : des pros de 26,6 ans contre une académie
+   de 17 ans. Mesuré après correction, sur de vraies rencontres jouées dans le
+   navigateur : 3-8, 0-13, 0-0 après prolongation. Une coupe des jeunes
+   redevient un match.
+
+### Fonction exacte responsable
+
+`resoudreCoupeDuJour` (docs/js/clubUI.js) :
+
+```js
+const slot = RMClub.slotCompositionPourEquipe(saison, 'pro');   // pour TOUTES les coupes
+```
+
+puis `appliquerConsequencesMatchCoupe` qui appliquait `{ equipe: 'pro' }` sur
+`c.effectif`.
+
+### Scénario de reproduction
+
+Créer une carrière, avancer jusqu'au 26 septembre (demi-finale de la Coupe des
+Espoirs), jouer le match : le compteur `matchsJoues` des quinze titulaires
+professionnels augmente de 1, celui des espoirs reste à 0.
+
+### La correction
+
+- `equipePourCoupe(cle)` (club-coupes.js) — **source unique** de la règle,
+  `espoirs → jeunes`, tout le reste `pro`, une coupe inconnue reste `pro`.
+- `appliquerConsequencesMatchCoupe` prend `equipe` et applique fatigue, moral et
+  statistiques à l'effectif correspondant (`effectifPourEquipe`).
+- `resoudreCoupeDuJour` lit la règle et utilise le slot, l'effectif et la
+  tactique de cette équipe — plus rien n'est codé en dur.
+- Le message dit **qui a joué** : « Tes espoirs éliminent … », même voix que le
+  championnat espoirs.
+- Nouveau cas honnête : un club sans XV alignable (centre de formation vidé)
+  bloquait la journée — l'interface refusait de jouer et personne ne résolvait
+  la rencontre. `resoudreCoupeSansEquipe` la résout comme les autres du tour,
+  sur les niveaux réels du tableau, et prévient le manager.
+
+### Résultat mesuré
+
+| | Avant | Après |
+|---|---|---|
+| Matchs comptés au XV pro | **15** | **0** |
+| Fatigue du XV pro | **+451** | **0** (delta 67, sous les 138 d'un jour ordinaire) |
+| Matchs comptés aux espoirs | **0** | **15** |
+| Score type | pros vs académie | 3-8, 0-13, 0-0 a.p. |
+| Jour bloqué sans XV espoirs | **oui** | non, rencontre résolue |
+
+Vérifié dans le navigateur (bureau 1280×900 et mobile 390×844), en jouant
+réellement la demi-finale du 26 septembre : zéro erreur console, retour au
+panneau du club, message « Tes espoirs s'inclinent face à Académie … ».
+
+Couverture : `server/test-consequences-coupe-amical.js`, cas K7 à K11 (les
+trois premiers écrivaient rouge avant la correction).

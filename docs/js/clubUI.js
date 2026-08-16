@@ -4536,6 +4536,20 @@
     document.getElementById('panneauClub').classList.add('visible');
   }
 
+  // Le club ne peut pas aligner l'équipe que cette coupe réclame : la
+  // rencontre se résout sans lui plutôt que de bloquer la journée
+  // (cf. RMClub.resoudreCoupeSansEquipe).
+  function forfaitCoupe(info, adversaire, date) {
+    const r = RMClub.resoudreCoupeSansEquipe(saison, {
+      coupe: info.coupe, rencontre: info.rencontre, adversaire, date,
+      rng: creerRng(graineDuJour('coupeForfait')),
+      rngCoupes: creerRng(graineDuJour('coupes')),
+    });
+    toast(r.message, 'erreur');
+    sauvegarder();
+    rafraichirTout();
+  }
+
   // --- Match amical : joué à SA date, avec le moteur complet, exactement
   // comme un match officiel (TODO_AUDIT.md P1-32). Ses conséquences sont
   // réelles — fatigue, blessures, temps de jeu, moral — mais il ne rapporte
@@ -4554,8 +4568,20 @@
     const adversaire = RMClub.clubPartout(saison, adversaireId)
       || info.coupe.clubs.find((c) => c.id === adversaireId);
     if (!adversaire) return;
-    assurerComposition();
-    if (RMClub.validerComposition(saison.clubJoueur.compositionTitulaires).length > 0) {
+    // Une coupe se dispute avec l'équipe à laquelle elle s'adresse : la Coupe
+    // des Espoirs oppose des ACADÉMIES, elle ne se joue donc pas avec le
+    // premier XV (cf. RMClub.equipePourCoupe).
+    const equipe = RMClub.equipePourCoupe(info.cle);
+    if (equipe === 'pro') assurerComposition();
+    const slot = RMClub.assurerCompositionPourEquipe(saison, equipe);
+    const effectifEnLice = RMClub.effectifPourEquipe(saison, equipe);
+    if (RMClub.validerComposition(slot.compositionTitulaires).length > 0) {
+      // Sans XV alignable, le tableau ne doit pas rester bloqué : la rencontre
+      // se résout comme les autres du tour, et le manager est prévenu.
+      if (equipe !== 'pro') {
+        forfaitCoupe(info, adversaire, date);
+        return;
+      }
       toast('Impossible de disputer ce match de coupe : ta composition est incomplète.', 'erreur');
       return;
     }
@@ -4564,11 +4590,12 @@
     const duree = Number(document.getElementById('selDureeClub').value) || 4800;
     document.getElementById('panneauClub').classList.remove('visible');
     const c = saison.clubJoueur;
-    const slot = RMClub.slotCompositionPourEquipe(saison, 'pro');
-    const compositionUtilisee = Object.assign({}, c.compositionTitulaires);
+    const compositionUtilisee = Object.assign({}, slot.compositionTitulaires);
+    const nomAffiche = equipe === 'jeunes' ? `${c.nom} (espoirs)`
+      : equipe === 'b' ? `${c.nom} (B)` : c.nom;
     const domicileEstJoueur = info.rencontre.domicileId === c.id;
     const lettre = domicileEstJoueur ? 'A' : 'B';
-    const tactiqueCfg = construireTactiqueCfg(c.effectif, slot, lettre);
+    const tactiqueCfg = construireTactiqueCfg(effectifEnLice, slot, lettre);
     // L'adversaire peut être un club sans effectif simulé (autre palier,
     // club étranger, académie) : on dérive alors un XV de son NIVEAU réel,
     // jamais un effectif inventé et conservé.
@@ -4577,14 +4604,17 @@
       : RMClub.effectifVersJoueursCfg({
         effectif: RMClub.genererEffectif(creerRng(graineAleatoire()), adversaire.niveauClub || 0.5),
       });
-    const cfgJoueur = RMClub.compositionVersJoueursCfg(c.effectif, compositionUtilisee);
+    const cfgJoueur = RMClub.compositionVersJoueursCfg(effectifEnLice, compositionUtilisee);
     window.RMMain.demarrerMatchClub(
       graineAleatoire(), duree,
       domicileEstJoueur ? cfgJoueur : cfgAdverse,
       domicileEstJoueur ? cfgAdverse : cfgJoueur,
       tactiqueCfg,
       {
-        noms: domicileEstJoueur ? { A: c.nom, B: adversaire.nom } : { A: adversaire.nom, B: c.nom },
+        // Le nom affiché au tableau d'affichage doit dire QUI joue : sans ça,
+        // une demi-finale d'espoirs s'annonçait sous le nom du club, comme un
+        // match de l'équipe première.
+        noms: domicileEstJoueur ? { A: nomAffiche, B: adversaire.nom } : { A: adversaire.nom, B: nomAffiche },
         equipeJoueur: lettre,
         onResultat(etat) {
           // Toute la règle métier vit dans club-coupes.js : résultat, reste du
@@ -4592,7 +4622,7 @@
           // que ce qui la concerne — sauvegarde, verrou et rafraîchissement.
           RMClub.appliquerConsequencesMatchCoupe(saison, {
             coupe: info.coupe, rencontre: info.rencontre, adversaire, date, etat,
-            lettreJoueur: lettre, compositionUtilisee,
+            lettreJoueur: lettre, compositionUtilisee, equipe,
             rng: creerRng(graineAleatoire()),
             rngCoupes: creerRng(graineDuJour('coupes')),
           });

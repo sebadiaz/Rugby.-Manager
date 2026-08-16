@@ -349,6 +349,20 @@
     return saison.coupes;
   }
 
+  // À QUELLE équipe une coupe s'adresse. La Coupe des Espoirs oppose des
+  // ACADÉMIES (cf. genererCompetitionEspoirs) : le tableau inscrivait déjà le
+  // club du joueur à un niveau dérivé de jeunes — 0,105 mesuré contre 0,300
+  // pour son équipe première — mais l'interface faisait quand même jouer le
+  // XV pro. Résultat mesuré (graine 4242) : 451 points de fatigue et 15 matchs
+  // sur des joueurs de 26,6 ans de moyenne face à une académie de 17 ans,
+  // pendant que les espoirs ne jouaient jamais leur propre coupe.
+  //
+  // Source UNIQUE de cette règle : personne ne redécide ailleurs.
+  const EQUIPE_PAR_COUPE = { espoirs: 'jeunes' };
+  function equipePourCoupe(cle) {
+    return EQUIPE_PAR_COUPE[cle] || 'pro';
+  }
+
   // Toutes les conséquences d'un match de coupe DISPUTÉ par le joueur, dans
   // l'ordre exact où elles doivent s'appliquer. Cette chaîne vivait dans le
   // callback `onResultat` de l'interface : elle n'y avait rien à faire — pas
@@ -368,6 +382,10 @@
     const etat = p.etat;
     const lettre = p.lettreJoueur;
     const rencontre = p.rencontre;
+    // L'équipe qui vient de jouer — le premier XV pour les coupes des grands,
+    // les espoirs pour la leur (cf. equipePourCoupe).
+    const equipe = p.equipe || 'pro';
+    const effectif = RMClub.effectifPourEquipe(saison, equipe);
 
     enregistrerResultatCoupe(p.coupe, rencontre.id, etat.score.A, etat.score.B);
     // Les autres rencontres du même tour, en arrière-plan.
@@ -375,27 +393,65 @@
 
     // Point d'entrée UNIQUE (P1-40) : fatigue + blessures + reprise, avec
     // le facteur préparateur, que la coupe et l'amical oubliaient.
-    RMClub.appliquerEffetsMatch(saison, c.effectif, p.compositionUtilisee,
-      p.rng, { equipe: 'pro' });
+    RMClub.appliquerEffetsMatch(saison, effectif, p.compositionUtilisee,
+      p.rng, { equipe });
     const gagne = rencontre.vainqueurId === c.id;
-    RMClub.appliquerMoral(c.effectif, p.compositionUtilisee, gagne ? 'v' : 'd');
-    RMClub.accumulerStatsJoueurs(c.effectif, p.compositionUtilisee,
-      etat.statsJoueurs && etat.statsJoueurs[lettre], 'pro');
+    RMClub.appliquerMoral(effectif, p.compositionUtilisee, gagne ? 'v' : 'd');
+    RMClub.accumulerStatsJoueurs(effectif, p.compositionUtilisee,
+      etat.statsJoueurs && etat.statsJoueurs[lettre], equipe);
 
     const tourNom = p.coupe.tours[rencontre.tour].nom;
     const prolongation = rencontre.apresProlongation ? ' après prolongation' : '';
     const adversaireNom = (p.adversaire && p.adversaire.nom) || 'son adversaire';
+    // Qui a joué doit se lire dans le message : sans ça, le manager croyait que
+    // son équipe première venait de disputer un match d'académie.
+    // « Tes espoirs » : la même voix que le championnat espoirs (cf.
+    // simulerMatchEspoirs), et pas de « de AS Mesure » bancal.
+    const nomEquipe = equipe === 'jeunes' ? 'Tes espoirs' : c.nom;
+    const verbe = gagne
+      ? (equipe === 'jeunes' ? 'éliminent' : 'élimine')
+      : (equipe === 'jeunes' ? "s'inclinent face à" : "s'incline face à");
     const texte = gagne
-      ? `Qualifié ! ${c.nom} élimine ${adversaireNom} (${etat.score.A} - ${etat.score.B})${prolongation} en ${tourNom.toLowerCase()}.`
-      : `Éliminé. ${c.nom} s'incline face à ${adversaireNom} (${etat.score.A} - ${etat.score.B})${prolongation} en ${tourNom.toLowerCase()}.`;
+      ? `Qualifié ! ${nomEquipe} ${verbe} ${adversaireNom} (${etat.score.A} - ${etat.score.B})${prolongation} en ${tourNom.toLowerCase()}.`
+      : `Éliminé. ${nomEquipe} ${verbe} ${adversaireNom} (${etat.score.A} - ${etat.score.B})${prolongation} en ${tourNom.toLowerCase()}.`;
     RMClub.ajouterMessage(saison, 'match', p.coupe.nom, texte);
 
     return { gagne, tourNom, message: texte };
   }
 
+  // Le club ne peut PAS aligner l'équipe que cette coupe réclame (typiquement :
+  // un centre de formation trop dégarni pour sortir quinze espoirs). La
+  // rencontre se résout alors comme les autres du tour — formule abstraite sur
+  // les niveaux RÉELS du tableau, jamais un forfait inventé qui bloquerait le
+  // calendrier. Sans ça, le jour ne s'écoulait plus : l'interface refusait de
+  // jouer, et personne ne résolvait la rencontre.
+  function resoudreCoupeSansEquipe(saison, params) {
+    const RMClub = global.RMClub;
+    const p = params || {};
+    const c = saison.clubJoueur;
+    const rencontre = p.rencontre;
+    const parId = {};
+    for (const cl of (p.coupe.clubs || [])) parId[cl.id] = cl;
+    const dom = parId[rencontre.domicileId] || { niveauClub: 0.5 };
+    const ext = parId[rencontre.exterieurId] || { niveauClub: 0.5 };
+    const res = global.RMWorld.simulerResultatAbstrait(p.rng,
+      dom.niveauClub || 0.5, ext.niveauClub || 0.5);
+    enregistrerResultatCoupe(p.coupe, rencontre.id, res.scoreA, res.scoreB);
+    resoudreCoupesAbstraites(saison, p.date, p.rngCoupes, rencontre.id);
+
+    const gagne = rencontre.vainqueurId === c.id;
+    const tourNom = p.coupe.tours[rencontre.tour].nom;
+    const adversaireNom = (p.adversaire && p.adversaire.nom) || 'son adversaire';
+    const texte = `Faute d'un XV alignable, ${c.nom} n'a pas pu présenter d'équipe`
+      + ` face à ${adversaireNom} en ${tourNom.toLowerCase()} : la rencontre a été jouée sans toi`
+      + ` (${res.scoreA} - ${res.scoreB}). ${gagne ? 'Le tableau continue.' : 'Le parcours s\'arrête là.'}`;
+    RMClub.ajouterMessage(saison, 'match', p.coupe.nom, texte);
+    return { gagne, tourNom, message: texte, score: { A: res.scoreA, B: res.scoreB } };
+  }
+
   global.RMClub = Object.assign(global.RMClub || {}, {
     genererCoupe, enregistrerResultatCoupe, vainqueurCoupe, assurerCoupes,
     reinitialiserCoupes, rencontreCoupeDuJoueur, resoudreCoupesAbstraites,
-    appliquerConsequencesMatchCoupe,
+    appliquerConsequencesMatchCoupe, equipePourCoupe, resoudreCoupeSansEquipe,
   });
 })(window);

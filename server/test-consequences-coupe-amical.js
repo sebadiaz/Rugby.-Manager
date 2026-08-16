@@ -191,6 +191,120 @@ test('K6 — un message de coupe est publié au fil d\'actualité', () => {
     `le tour doit être nommé dans le message (${msg.corps})`);
 });
 
+// ------------------------------------------- COUPE DES ESPOIRS (N8) ------
+//
+// Mesuré avant correction, graine 4242 : le match de Coupe des Espoirs contre
+// « Académie Hautecombe Sangliers » (niveau 0,052) faisait jouer le XV PRO —
+// 451 points de fatigue et 15 matchs sur des joueurs de 26,6 ans de moyenne,
+// et ZÉRO sur les espoirs. Le tableau, lui, savait déjà que c'était une
+// compétition de jeunes : il inscrivait le club du joueur au niveau 0,105
+// (dérivé, cf. niveauAdversaireEspoirs) et non à son niveau pro de 0,300.
+
+function contexteCoupeEspoirs() {
+  const s = RMClub.nouvelleSaison(creerRng(graine++), 'AS Espoirs');
+  RMClub.daterCalendrier(s);
+  RMClub.assurerCompositionPourEquipe(s, 'pro');
+  const slotJeunes = RMClub.assurerCompositionPourEquipe(s, 'jeunes');
+  RMClub.assurerCoupes(s);
+  const c = s.clubJoueur;
+  const coupe = s.coupes.espoirs;
+  assert.ok(coupe && coupe.tours && coupe.tours.length, 'la Coupe des Espoirs doit exister');
+  let rencontre = null;
+  for (const tour of coupe.tours) {
+    rencontre = (tour.rencontres || []).find(
+      (x) => !x.joue && (x.domicileId === c.id || x.exterieurId === c.id));
+    if (rencontre) break;
+  }
+  assert.ok(rencontre, 'le club du joueur est engagé d\'office dans sa Coupe des Espoirs');
+  const domicile = rencontre.domicileId === c.id;
+  const advId = domicile ? rencontre.exterieurId : rencontre.domicileId;
+  const adversaire = coupe.clubs.find((x) => x.id === advId);
+  return { s, c, coupe, rencontre, adversaire,
+           lettre: domicile ? 'A' : 'B',
+           compo: slotJeunes.compositionTitulaires,
+           date: RMClub.dateDepuisISO(coupe.tours[rencontre.tour].date) };
+}
+const somme = (liste, champ) => (liste || []).reduce((t, j) => t + (j[champ] || 0), 0);
+
+test('K7 — chaque coupe sait à QUELLE équipe elle s\'adresse', () => {
+  assert.strictEqual(typeof RMClub.equipePourCoupe, 'function',
+    'la règle doit être exportée, pas dispersée dans l\'interface');
+  assert.strictEqual(RMClub.equipePourCoupe('espoirs'), 'jeunes',
+    'la Coupe des Espoirs se dispute avec les espoirs');
+  for (const cle of ['nationale', 'continentale', 'continentaleSecondaire']) {
+    assert.strictEqual(RMClub.equipePourCoupe(cle), 'pro', `${cle} reste au premier XV`);
+  }
+  assert.strictEqual(RMClub.equipePourCoupe('inconnue'), 'pro',
+    'une coupe inconnue reste au premier XV, jamais rien de fantaisiste');
+});
+
+test('K8 — la Coupe des Espoirs fatigue les ESPOIRS, pas le XV pro', () => {
+  const ctx = contexteCoupeEspoirs();
+  const avant = { pro: somme(ctx.c.effectif, 'fatigue'), jeunes: somme(ctx.c.jeunes, 'fatigue'),
+                  mPro: somme(ctx.c.effectif, 'matchsJoues'), mJeunes: somme(ctx.c.jeunes, 'matchsJoues') };
+  RMClub.appliquerConsequencesMatchCoupe(ctx.s, {
+    coupe: ctx.coupe, rencontre: ctx.rencontre, adversaire: ctx.adversaire,
+    date: ctx.date, etat: { score: { A: 24, B: 3 }, statsJoueurs: { A: {}, B: {} } },
+    lettreJoueur: ctx.lettre, compositionUtilisee: ctx.compo, equipe: 'jeunes',
+    rng: creerRng(21), rngCoupes: creerRng(23),
+  });
+  const apres = { pro: somme(ctx.c.effectif, 'fatigue'), jeunes: somme(ctx.c.jeunes, 'fatigue'),
+                  mPro: somme(ctx.c.effectif, 'matchsJoues'), mJeunes: somme(ctx.c.jeunes, 'matchsJoues') };
+  assert.strictEqual(apres.pro, avant.pro,
+    `le XV pro ne doit pas fatiguer sur un match d'espoirs (${avant.pro} → ${apres.pro})`);
+  assert.strictEqual(apres.mPro, avant.mPro,
+    `le XV pro ne doit compter aucun match (${avant.mPro} → ${apres.mPro})`);
+  assert.ok(apres.jeunes > avant.jeunes,
+    `les espoirs doivent fatiguer (${avant.jeunes} → ${apres.jeunes})`);
+  assert.ok(apres.mJeunes > avant.mJeunes,
+    `et compter leurs matchs (${avant.mJeunes} → ${apres.mJeunes})`);
+});
+
+test('K9 — la coupe nationale reste au premier XV', () => {
+  // La correction ne doit pas déplacer ce qui était juste.
+  const ctx = contexteCoupe();
+  const avantJeunes = somme(ctx.c.jeunes, 'fatigue');
+  appliquerCoupe(ctx);
+  assert.ok(somme(ctx.c.effectif, 'fatigue') > 0, 'le premier XV joue bien sa coupe');
+  assert.strictEqual(somme(ctx.c.jeunes, 'fatigue'), avantJeunes,
+    'les espoirs ne jouent pas la coupe des grands');
+});
+
+test('K11 — sans XV alignable, la rencontre se résout au lieu de bloquer le jour', () => {
+  // Avant : l'interface refusait de jouer et personne ne résolvait la
+  // rencontre — la journée ne s'écoulait plus. Un centre de formation vidé
+  // (blessures, effectif trop mince) suffisait à figer le calendrier.
+  const ctx = contexteCoupeEspoirs();
+  ctx.c.jeunes = [];   // plus aucun espoir alignable
+  assert.ok(RMClub.validerComposition(
+    RMClub.meilleureComposition(ctx.c.jeunes)).length > 0, 'aucun XV possible');
+  const messagesAvant = (ctx.c.messages || []).length;
+  const r = RMClub.resoudreCoupeSansEquipe(ctx.s, {
+    coupe: ctx.coupe, rencontre: ctx.rencontre, adversaire: ctx.adversaire,
+    date: ctx.date, rng: creerRng(29), rngCoupes: creerRng(31),
+  });
+  assert.ok(ctx.rencontre.joue, 'la rencontre DOIT être résolue');
+  assert.ok(ctx.rencontre.vainqueurId, 'et désigner un vainqueur');
+  assert.ok((ctx.c.messages || []).length > messagesAvant,
+    'le manager doit être prévenu, pas laissé devant un jour bloqué');
+  assert.ok(/n'a pas pu présenter d'équipe/.test(r.message),
+    `le message doit dire pourquoi (${r.message})`);
+  assert.strictEqual(somme(ctx.c.effectif, 'fatigue'), 0,
+    'et surtout : le XV pro ne joue pas à la place des espoirs');
+});
+
+test('K10 — l\'interface choisit l\'équipe par la RÈGLE, pas en dur', () => {
+  const fs = require('fs');
+  const ui = fs.readFileSync(__dirname + '/../docs/js/clubUI.js', 'utf8');
+  const bloc = ui.slice(ui.indexOf('function resoudreCoupeDuJour'));
+  const fin = bloc.indexOf('\n  function ', 10);
+  const corps = bloc.slice(0, fin === -1 ? bloc.length : fin);
+  assert.ok(corps.indexOf('equipePourCoupe') !== -1,
+    'resoudreCoupeDuJour doit demander l\'équipe à club-coupes.js');
+  assert.ok(corps.indexOf("slotCompositionPourEquipe(saison, 'pro')") === -1,
+    'le premier XV ne doit plus être codé en dur pour toutes les coupes');
+});
+
 // --------------------------------------------------------------- AMICAL ---
 
 test('A1 — le résultat de l\'amical est enregistré sur l\'amical lui-même', () => {
