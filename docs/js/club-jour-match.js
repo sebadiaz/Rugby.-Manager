@@ -397,6 +397,16 @@
     // banc 1 après un unique match).
     RMClub.evaluerPromessesStatut(saison, p.compositionAvecRemplacants, c.compositionBanc);
 
+    // Compte rendu archivé (C4) : sans ça, la feuille de match n'existait
+    // qu'une fois, sur l'écran de fin de match, et disparaissait à sa
+    // fermeture. Rouvrir une rencontre du calendrier ne pouvait rien montrer.
+    RMClub.archiverFeuilleDeMatch(saison, {
+      cle: RMClub.cleFeuille(RMClub.REF_COMPETITION_JOUEUR, f.id),
+      etat, date: f.date || null,
+      nomA: p.nomA || c.nom, nomB: p.nomB || 'Adversaire',
+      libelle: f.journee != null ? `Journée ${f.journee}` : null,
+    });
+
     return { ultimatum, mouvement };
   }
 

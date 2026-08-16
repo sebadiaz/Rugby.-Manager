@@ -134,7 +134,58 @@
   }
 
 
+  function echapperTexte(t) {
+    return String(t == null ? '' : t)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  // Mise en forme de la feuille. Elle vivait dans main.js, donc uniquement
+  // sur l'écran de fin de match : rouvrir une rencontre du calendrier aurait
+  // demandé d'en écrire une seconde. Elle est ici, à côté des données
+  // qu'elle affiche, et les deux écrans l'appellent.
+  //
+  // Renvoie une CHAÎNE : aucun accès au DOM, l'appelant décide où l'insérer.
+  function htmlFeuilleDeMatch(f) {
+    if (!f || !f.chronologie.length) return '';
+    // Chronologie : les faits qui pèsent (points, cartons, repères), pas le
+    // détail de chaque pénalité — sinon le compte rendu devient illisible.
+    const lignes = f.chronologie.filter((l) => !l.mineur).map((l) => {
+      const cote = l.camp === 'A' ? 'gauche' : l.camp === 'B' ? 'droite' : 'centre';
+      const score = l.points > 0 ? `<span class="scoreFeuille">${l.scoreA}-${l.scoreB}</span>` : '';
+      const equipe = l.equipe ? `<span class="equipeFeuille">${echapperTexte(l.equipe)}</span>` : '';
+      return `<div class="ligneFeuille ${cote}${l.repere ? ' repere' : ''}">` +
+        `<span class="minuteFeuille">${l.minute}'</span>` +
+        `<span class="faitFeuille">${l.icone} ${echapperTexte(l.libelle)} ${equipe}</span>` +
+        score + `</div>`;
+    }).join('');
+
+    const marqueurs = ['A', 'B'].map((camp) => {
+      const liste = f.marqueurs[camp];
+      if (!liste.length) return '';
+      const nom = camp === 'A' ? f.nomA : f.nomB;
+      return `<div class="ligneStat"><span>${echapperTexte(nom)}</span>` +
+        `<b>${liste.map((m) => m.minute + "'").join(', ')}</b></div>`;
+    }).join('');
+
+    const stats = f.statistiques.map((s) =>
+      `<div class="ligneStatMatch">` +
+      `<span class="valA${s.avantage === 'A' ? ' fort' : ''}">${s.a}</span>` +
+      `<span class="libelleStat">${echapperTexte(s.libelle)}</span>` +
+      `<span class="valB${s.avantage === 'B' ? ' fort' : ''}">${s.b}</span></div>`).join('');
+
+    const possession = f.possession
+      ? `<div class="ligneStatMatch"><span class="valA">${f.possession.a} %</span>` +
+        `<span class="libelleStat" title="Estimée par la ${echapperTexte(f.possession.source)} — le moteur ne chronomètre pas la possession">Possession (est.)</span>` +
+        `<span class="valB">${f.possession.b} %</span></div>`
+      : '';
+
+    return `<h3 class="titreFeuille">Feuille de match</h3>` +
+      (marqueurs ? `<h4 class="sousTitreFeuille">Essais marqués (minutes)</h4>${marqueurs}` : '') +
+      `<h4 class="sousTitreFeuille">Le fil du match</h4><div class="chronoFeuille">${lignes}</div>` +
+      `<h4 class="sousTitreFeuille">Statistiques</h4>${possession}${stats}`;
+  }
+
   global.RMClub = Object.assign(global.RMClub || {}, {
-    feuilleDeMatch,
+    feuilleDeMatch, htmlFeuilleDeMatch,
   });
 })(window);

@@ -18,7 +18,7 @@
   // et la durée des prêts comptent maintenant des JOURS et non plus des
   // journées de championnat, puisque le temps s'écoule jour par jour.
   // Chaque migration est appliquée sans perte (cf. docs/js/club-sauvegarde.js).
-  const VERSION_SAUVEGARDE = 8;
+  const VERSION_SAUVEGARDE = 9;
 
   // --- Génération de noms (club fictif, aucune référence à un club/joueur réel) ---
   const PRENOMS = ['Thomas', 'Lucas', 'Hugo', 'Louis', 'Jules', 'Nathan', 'Enzo', 'Léo',
@@ -1126,6 +1126,11 @@
     saison.marche = global.RMClub.genererMarcheTransferts(rng, saison.clubJoueur.niveauClub, 6);
     saison.marchePersonnel = global.RMClub.genererMarchePersonnel(rng, 5);
     saison.numero = (saison.numero || 1) + 1;
+    // Feuilles de match archivées (C4) : celles de la saison écoulée ne
+    // servent plus qu'à alourdir une sauvegarde qui, elle, doit rester
+    // chargeable. APRÈS l'incrément du numéro : la purge garde les comptes
+    // rendus de la saison qui commence, pas de celle qui s'achève.
+    if (global.RMClub.purgerFeuillesAnciennes) global.RMClub.purgerFeuillesAnciennes(saison);
     // Nouvelle saison sportive = nouvelle année civile : le temps repart à
     // l'intersaison de l'année suivante et le calendrier tout neuf est daté
     // (cf. club-temps.js / club-agenda.js). Les matchs espoirs archivés

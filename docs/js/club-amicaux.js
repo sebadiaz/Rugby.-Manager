@@ -178,6 +178,14 @@
     const texte = `${c.nom} ${verbe} ${adversaire.nom} (${etat.score.A} - ${etat.score.B}) en match amical. Aucun point au championnat.`;
     RMClub.ajouterMessage(saison, 'match', 'Match amical', texte);
 
+    // Compte rendu archivé (C4) — un amical est une vraie rencontre, il a
+    // donc droit à sa feuille comme les autres.
+    RMClub.archiverFeuilleDeMatch(saison, {
+      cle: RMClub.cleFeuille('amical', p.amical.id),
+      etat, date: p.amical.date || null,
+      nomA: c.nom, nomB: adversaire.nom, libelle: 'Match amical',
+    });
+
     return { forme, message: texte };
   }
 

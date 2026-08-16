@@ -161,47 +161,10 @@
     const zone = document.getElementById('resultatFeuille');
     if (!zone) return;
     const RM = window.RMClub;
-    if (!RM || !RM.feuilleDeMatch) { zone.innerHTML = ''; return; }
-    const f = RM.feuilleDeMatch(etatFinal, { nomA, nomB });
-    if (!f.chronologie.length) { zone.innerHTML = ''; return; }
-
-    // Chronologie : les faits qui pèsent (points, cartons, repères), pas le
-    // détail de chaque pénalité — sinon le compte rendu devient illisible.
-    const lignes = f.chronologie.filter((l) => !l.mineur).map((l) => {
-      const cote = l.camp === 'A' ? 'gauche' : l.camp === 'B' ? 'droite' : 'centre';
-      const score = l.points > 0 ? `<span class="scoreFeuille">${l.scoreA}-${l.scoreB}</span>` : '';
-      const equipe = l.equipe ? `<span class="equipeFeuille">${echapperTexte(l.equipe)}</span>` : '';
-      return `<div class="ligneFeuille ${cote}${l.repere ? ' repere' : ''}">` +
-        `<span class="minuteFeuille">${l.minute}'</span>` +
-        `<span class="faitFeuille">${l.icone} ${echapperTexte(l.libelle)} ${equipe}</span>` +
-        score + `</div>`;
-    }).join('');
-
-    const marqueurs = ['A', 'B'].map((camp) => {
-      const liste = f.marqueurs[camp];
-      if (!liste.length) return '';
-      const nom = camp === 'A' ? f.nomA : f.nomB;
-      return `<div class="ligneStat"><span>${echapperTexte(nom)}</span>` +
-        `<b>${liste.map((m) => m.minute + "'").join(', ')}</b></div>`;
-    }).join('');
-
-    const stats = f.statistiques.map((s) =>
-      `<div class="ligneStatMatch">` +
-      `<span class="valA${s.avantage === 'A' ? ' fort' : ''}">${s.a}</span>` +
-      `<span class="libelleStat">${echapperTexte(s.libelle)}</span>` +
-      `<span class="valB${s.avantage === 'B' ? ' fort' : ''}">${s.b}</span></div>`).join('');
-
-    const possession = f.possession
-      ? `<div class="ligneStatMatch"><span class="valA">${f.possession.a} %</span>` +
-        `<span class="libelleStat" title="Estimée par la ${echapperTexte(f.possession.source)} — le moteur ne chronomètre pas la possession">Possession (est.)</span>` +
-        `<span class="valB">${f.possession.b} %</span></div>`
-      : '';
-
-    zone.innerHTML =
-      `<h3 class="titreFeuille">Feuille de match</h3>` +
-      (marqueurs ? `<h4 class="sousTitreFeuille">Essais marqués (minutes)</h4>${marqueurs}` : '') +
-      `<h4 class="sousTitreFeuille">Le fil du match</h4><div class="chronoFeuille">${lignes}</div>` +
-      `<h4 class="sousTitreFeuille">Statistiques</h4>${possession}${stats}`;
+    if (!RM || !RM.feuilleDeMatch || !RM.htmlFeuilleDeMatch) { zone.innerHTML = ''; return; }
+    // Un seul rendu dans le jeu (cf. club-feuille-de-match.js) : le même
+    // compte rendu s'affiche ici et en rouvrant la rencontre au calendrier.
+    zone.innerHTML = RM.htmlFeuilleDeMatch(RM.feuilleDeMatch(etatFinal, { nomA, nomB }));
   }
 
   // opts.direct=true saute l'écran de choix et lance la lecture tout de

@@ -416,6 +416,15 @@
       : `Éliminé. ${nomEquipe} ${verbe} ${adversaireNom} (${etat.score.A} - ${etat.score.B})${prolongation} en ${tourNom.toLowerCase()}.`;
     RMClub.ajouterMessage(saison, 'match', p.coupe.nom, texte);
 
+    // Compte rendu archivé (C4) — même chemin que le championnat.
+    RMClub.archiverFeuilleDeMatch(saison, {
+      cle: RMClub.cleFeuille('coupe:' + (p.coupe.cle || ''), rencontre.id),
+      etat, date: p.coupe.tours[rencontre.tour].date || null,
+      nomA: lettre === 'A' ? c.nom : adversaireNom,
+      nomB: lettre === 'A' ? adversaireNom : c.nom,
+      libelle: tourNom,
+    });
+
     return { gagne, tourNom, message: texte };
   }
 

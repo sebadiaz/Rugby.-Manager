@@ -154,6 +154,15 @@
   <button class="fermer alt" id="fermerMenu">Fermer</button>
 </div>
 
+<!-- Feuille de match d'une rencontre PASSÉE (C4). Le compte rendu ne vivait
+     que sur l'écran de fin de match et disparaissait à sa fermeture ; il est
+     désormais archivé et se rouvre depuis le calendrier, avec le même rendu. -->
+<div class="panneau" id="panneauFeuilleMatch">
+  <h2 id="titreFeuilleMatch">Feuille de match</h2>
+  <div id="corpsFeuilleMatch" class="feuilleDeMatch" style="margin:0 16px;"></div>
+  <button class="fermer alt" id="fermerFeuilleMatch">Fermer</button>
+</div>
+
 <div class="panneau" id="panneauClub">
   <div id="clubCreation">
     <div class="carteClub" style="margin-top:16px;">
@@ -912,6 +921,7 @@
 <script src="js/club-comptes.js"></script>
 <script src="js/club-ventes.js"></script>
 <script src="js/club-feuille-de-match.js"></script>
+<script src="js/club-archives-matchs.js"></script>
 <script src="js/club-pyramide.js"></script>
 <script src="js/club-pyramide-france.js"></script>
 <script src="js/club-calendrier.js"></script>

@@ -46,6 +46,16 @@
   // fonction qui transforme une sauvegarde de cette version vers la
   // suivante.
   const MIGRATIONS = {
+    // 8 → 9 : archives des feuilles de match (C4). Une sauvegarde antérieure
+    // n'en a aucune — c'est le cas NORMAL, pas une perte : les rencontres
+    // déjà jouées n'ont jamais eu de compte rendu enregistré, et l'interface
+    // le dit au lieu d'en fabriquer un. Les nouvelles rencontres, elles,
+    // seront archivées. Rien d'autre n'est touché.
+    8: (saison) => {
+      if (!Array.isArray(saison.feuillesMatch)) saison.feuillesMatch = [];
+      saison.version = 9;
+      return saison;
+    },
     // 7 → 8 : échelle de l'économie du club (G3). Le sponsor est tiré UNE
     // SEULE FOIS à la création et stocké ; une carrière déjà commencée
     // garderait donc son revenu à l'ancienne échelle et resterait riche alors

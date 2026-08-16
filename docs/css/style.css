@@ -1238,3 +1238,15 @@ select {
   gap: 2px; text-align: center; font-size: 14px;
 }
 .navJournee .etatJournee { font-size: 11px; color: var(--text-dim); }
+
+/* La feuille d'une rencontre passée se superpose au panneau du club, qui
+   reste affiché dessous. Sans z-index propre, les deux valaient 10 : le
+   panneau du club, PLUS BAS dans le document, interceptait les clics — le
+   bouton « Fermer » de la feuille était inatteignable (mesuré au navigateur). */
+#panneauFeuilleMatch { z-index: 1200; }
+
+/* Rencontre dont le compte rendu est archivé : elle s'ouvre. Les autres ne
+   prétendent pas être cliquables (cf. club-archives-matchs.js). */
+.ligneCalendrier.ligneOuvrable { cursor: pointer; }
+.ligneCalendrier.ligneOuvrable:hover { background: rgba(255, 255, 255, 0.04); }
+.ligneCalendrier .chevronFeuille { color: var(--text-faint); font-weight: 700; }

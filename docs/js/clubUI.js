@@ -511,7 +511,17 @@
     const repere = (opt.avecDate && f.date)
       ? RMClub.formaterDateCourte(RMClub.dateDepuisISO(f.date))
       : `J${f.journee}`;
-    return `<div class="ligneCalendrier${classe}"><span>${repere} — ${domicile} vs ${exterieur}</span><span class="scoreCal">${badge}${score}</span></div>`;
+    // Rencontre dont le compte rendu est ARCHIVÉ (cf. club-archives-matchs.js) :
+    // elle s'ouvre. Les autres — rencontres entre clubs IA, résolues de façon
+    // abstraite, ou jouées avant cette fonctionnalité — n'ont rien à montrer,
+    // et ne prétendent donc pas être cliquables.
+    const cleFeuille = opt.refCompetition && f.id
+      ? RMClub.cleFeuille(opt.refCompetition, f.id) : null;
+    const ouvrable = cleFeuille && RMClub.feuilleArchivee(saison, cleFeuille);
+    const attrs = ouvrable
+      ? ` class="ligneCalendrier${classe} ligneOuvrable" data-feuille="${echapperHTML(cleFeuille)}" title="Voir la feuille de match"`
+      : ` class="ligneCalendrier${classe}"`;
+    return `<div${attrs}><span>${repere} — ${domicile} vs ${exterieur}</span><span class="scoreCal">${badge}${score}${ouvrable ? ' <span class="chevronFeuille">›</span>' : ''}</span></div>`;
   }
 
   // Entête d'identité (TODO_AUDIT.md P1-20) : le nom du club ACTUELLEMENT
@@ -3292,7 +3302,7 @@
         libelleDomicile: f.libelleDomicile || nomsCompetition[f.domicileId],
         libelleExterieur: f.libelleExterieur || nomsCompetition[f.exterieurId],
       });
-      return `<div${attenu}>${formaterLigneCalendrier(enrichie, saison.clubJoueur.id)}</div>`;
+      return `<div${attenu}>${formaterLigneCalendrier(enrichie, saison.clubJoueur.id, { refCompetition: comp.ref })}</div>`;
     }).join('');
     zone.innerHTML =
       `<div class="navJournee">` +
@@ -3375,7 +3385,7 @@
             libelleDomicile: f.libelleDomicile || nomsCompetition[f.domicileId],
             libelleExterieur: f.libelleExterieur || nomsCompetition[f.exterieurId],
           });
-          return `<div${attenu}>${formaterLigneCalendrier(enrichie, saison.clubJoueur.id)}</div>`;
+          return `<div${attenu}>${formaterLigneCalendrier(enrichie, saison.clubJoueur.id, { refCompetition: comp.ref })}</div>`;
         }).join('');
         // Une coupe nomme ses tours (« Quarts de finale ») plutôt que de les
         // numéroter — c'est ainsi qu'on en parle (TODO_AUDIT.md P1-34).
@@ -4437,6 +4447,39 @@
     competitionNavChoisie = bouton.dataset.ref;
     rafraichirAutresClubs();
   });
+  // Feuille de match d'une rencontre PASSÉE. Le compte rendu ne vivait
+  // jusqu'ici que sur l'écran de fin de match, et disparaissait à sa
+  // fermeture : il est désormais archivé (club-archives-matchs.js) et se
+  // rouvre depuis le calendrier, avec le MÊME rendu.
+  function ouvrirFeuilleArchivee(cle) {
+    const f = RMClub.feuilleDeMatchArchivee(saison, cle);
+    const panneau = document.getElementById('panneauFeuilleMatch');
+    const corps = document.getElementById('corpsFeuilleMatch');
+    const titre = document.getElementById('titreFeuilleMatch');
+    if (!panneau || !corps) return;
+    if (!f) {
+      corps.innerHTML = '<p style="color:var(--text-dim);">Aucun compte rendu enregistré pour cette rencontre.</p>';
+    } else {
+      const sousTitre = [f.libelle, f.date ? RMClub.formaterDateLongue(RMClub.dateDepuisISO(f.date)) : null]
+        .filter(Boolean).join(' — ');
+      if (titre) titre.textContent = `${f.nomA} ${f.score.A} - ${f.score.B} ${f.nomB}`;
+      corps.innerHTML = (sousTitre ? `<p class="noteFacultatif">${echapperHTML(sousTitre)}</p>` : '')
+        + RMClub.htmlFeuilleDeMatch(f);
+    }
+    panneau.classList.add('visible');
+  }
+
+  document.getElementById('clubGestion').addEventListener('click', (e) => {
+    const ligne = e.target.closest('.ligneOuvrable');
+    // Un nom de club reste cliquable DANS la ligne : son propre écouteur a la
+    // priorité, on ne veut pas ouvrir la feuille en visant le club.
+    if (!ligne || e.target.closest('.lienClub')) return;
+    ouvrirFeuilleArchivee(ligne.dataset.feuille);
+  });
+  document.getElementById('fermerFeuilleMatch').addEventListener('click', () => {
+    document.getElementById('panneauFeuilleMatch').classList.remove('visible');
+  });
+
   // Navigation par journée : écouteur délégué, comme partout ailleurs — les
   // deux boutons sont régénérés à chaque rendu.
   document.getElementById('clubCalendrier').addEventListener('click', (e) => {
@@ -5090,6 +5133,9 @@
               fixture: matchJoueur, etat, lettreJoueur,
               forme: formeApres(matchJoueur, etat.score.A, etat.score.B),
               compositionUtilisee, compositionAvecRemplacants,
+              // Noms réels des deux camps : la feuille de match archivée doit
+              // pouvoir se relire sans le contexte du jour du match.
+              nomA: clubDomicile.nom, nomB: clubExterieur.nom,
               rng: creerRng(graineAleatoire()),
             });
             const suiteUltimatum = suite.ultimatum;
