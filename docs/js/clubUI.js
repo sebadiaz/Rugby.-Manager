@@ -3188,7 +3188,12 @@
       const volet = document.querySelector(`#clubGestion .voletOnglet[data-volet="${cle}"]`);
       const emplacementNav = volet ? volet.querySelector('.emplacementNavigationCompetition') : null;
       (emplacementNav || document.getElementById('porteSelecteurEquipe')).appendChild(navCompetition);
-      if (emplacementNav) rafraichirAutresClubs();
+      // L'écran Compétitions n'affiche plus cette navigation, mais il a
+      // TOUJOURS besoin du travail qu'elle déclenche : création du monde, des
+      // autres paliers et des coupes au besoin, puis rendu de la compétition
+      // choisie. Sans cet appel, ouvrir Compétitions laissait un écran figé
+      // sur l'état précédent.
+      if (emplacementNav || cle === 'classement') rafraichirAutresClubs();
     }
     // La préparation du prochain match et l'agenda dépendent d'écrans qu'on
     // vient peut-être de quitter (composition, tactique) : on les recalcule

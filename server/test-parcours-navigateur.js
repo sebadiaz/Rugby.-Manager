@@ -610,11 +610,15 @@ function optionsLancement() {
     await page.evaluate(() => !document.querySelector('.ongletBtn[data-onglet="equipeb"]')
       && !document.querySelector('.voletOnglet[data-volet="equipeb"]')));
   // Depuis TODO_AUDIT.md P1-33, Classement et Calendrier sont DEUX pages
-  // distinctes, pilotées par la même navigation de compétitions — le
-  // championnat d'Équipe B y figure comme n'importe quel autre.
+  // distinctes. Le chemin vers le championnat d'Équipe B a changé : on ne le
+  // cherche plus dans une liste plate de 21 entrées mélangeant 12 pays, on
+  // CHOISIT SON ÉQUIPE puis l'une de ses compétitions. La carte « Pays et
+  // championnats » a quitté cet écran (elle reste dans Calendrier et Monde).
   await clicOnglet('classement');
   await page.waitForTimeout(200);
-  await page.locator('.btnChampionnatNav', { hasText: 'Équipe B' }).first().click();
+  await page.selectOption('#selEquipeContexte', 'b');
+  await page.waitForTimeout(300);
+  await page.locator('.btnCompetitionEquipe[data-ref="equipeB"]').first().click();
   await page.waitForTimeout(300);
   const classementB = await page.evaluate(() => ({
     titre: document.getElementById('titreCompetitionChoisie').textContent,
@@ -623,6 +627,15 @@ function optionsLancement() {
   }));
   verifier('classement : la page Classement ne contient AUCUN calendrier (deux écrans distincts)',
     !classementB.calendrierDansLaPage);
+  // Retrait demandé : la navigation par PAYS n'a plus sa place dans
+  // Compétitions — on y choisit son équipe puis SA compétition. Elle reste
+  // disponible dans Calendrier et dans l'onglet Monde.
+  verifier('compétitions : la carte « Pays et championnats » a quitté cet écran',
+    await page.evaluate(() => {
+      const v = document.querySelector('.voletOnglet[data-volet="classement"]');
+      const nav = document.getElementById('navigationCompetition');
+      return !v.contains(nav) && !/Pays et championnats/.test(v.innerText);
+    }));
   await clicOnglet('calendrier');
   await page.waitForTimeout(300);
   const classementLignesB = classementB.lignes;
@@ -2515,7 +2528,9 @@ function optionsLancement() {
   await pageNav.fill('#inputNomClub', 'Test Navigation Monde');
   await pageNav.click('#btnCreerClub');
   await pageNav.waitForTimeout(400);
-  await clicOngletSur(pageNav, 'classement');
+  // La navigation par pays vit désormais dans Calendrier (et dans Monde) :
+  // l'écran Compétitions est réservé aux compétitions de SES équipes.
+  await clicOngletSur(pageNav, 'calendrier');
   await pageNav.waitForTimeout(400);
 
   const nbPays = await pageNav.evaluate(() => document.querySelectorAll('.btnPaysNav').length);
@@ -2526,8 +2541,14 @@ function optionsLancement() {
     await pageNav.evaluate(() => !document.querySelector('#clubCompetitionClassement select')
       && !document.querySelector('#clubNavPays select')));
 
-  // Aller au Japon : un pays où le joueur n'a aucun club.
+  // Aller au Japon : un pays où le joueur n'a aucun club. On choisit depuis
+  // Calendrier, puis on revient sur Compétitions pour lire son classement :
+  // la compétition choisie est un état PARTAGÉ entre les deux écrans.
   await pageNav.locator('.btnPaysNav', { hasText: 'Japon' }).first().click();
+  await pageNav.waitForTimeout(400);
+  verifier('navigation monde : le calendrier du championnat étranger est affiché',
+    (await pageNav.textContent('#clubCalendrier')).includes('Journée'));
+  await clicOngletSur(pageNav, 'classement');
   await pageNav.waitForTimeout(400);
   const titreJapon = await pageNav.textContent('#titreCompetitionChoisie');
   verifier('navigation monde : ouvrir un pays étranger affiche son championnat',
@@ -2535,8 +2556,6 @@ function optionsLancement() {
   const classementJapon = await pageNav.textContent('#clubCompetitionClassement');
   verifier('navigation monde : le classement étranger affiche de VRAIS noms de clubs (pas « ? »)',
     classementJapon.trim().length > 40 && !/\?\s*0\s*0/.test(classementJapon));
-  verifier('navigation monde : le calendrier du championnat étranger est affiché',
-    (await pageNav.textContent('#clubCalendrier')).includes('Journée'));
   const clubsCliquablesJapon = await pageNav.evaluate(
     () => document.querySelectorAll('#clubCompetitionClassement .lienClub').length);
   verifier('navigation monde : les clubs étrangers sont cliquables', clubsCliquablesJapon >= 8);
@@ -2691,9 +2710,12 @@ function optionsLancement() {
   await pageEsp.fill('#inputNomClub', 'Test Championnat Espoirs');
   await pageEsp.click('#btnCreerClub');
   await pageEsp.waitForTimeout(400);
+  // Nouveau chemin : on choisit son équipe (Espoirs), puis SA compétition.
   await clicOngletSur(pageEsp, 'classement');
   await pageEsp.waitForTimeout(250);
-  await pageEsp.locator('.btnChampionnatNav', { hasText: 'espoirs' }).first().click();
+  await pageEsp.selectOption('#selEquipeContexte', 'jeunes');
+  await pageEsp.waitForTimeout(300);
+  await pageEsp.locator('.btnCompetitionEquipe[data-ref="espoirs"]').first().click();
   await pageEsp.waitForTimeout(400);
 
   verifier('championnat espoirs : l\'écran annonce un CHAMPIONNAT, plus un simple bilan',
@@ -2731,7 +2753,9 @@ function optionsLancement() {
     rencontresJouees >= 2);
   await clicOngletSur(pageEsp, 'classement');
   await pageEsp.waitForTimeout(250);
-  await pageEsp.locator('.btnChampionnatNav', { hasText: 'espoirs' }).first().click();
+  await pageEsp.selectOption('#selEquipeContexte', 'jeunes');
+  await pageEsp.waitForTimeout(300);
+  await pageEsp.locator('.btnCompetitionEquipe[data-ref="espoirs"]').first().click();
   await pageEsp.waitForTimeout(400);
   const classementApresEsp = await pageEsp.textContent('#clubCompetitionClassement');
   verifier('championnat espoirs : le classement bouge RÉELLEMENT après une journée',
@@ -2835,7 +2859,9 @@ function optionsLancement() {
   await pageCoupe.click('#btnCreerClub');
   await pageCoupe.waitForTimeout(400);
   await pageCoupe.evaluate(() => { document.getElementById('selDureeClub').value = '300'; });
-  await clicOngletSur(pageCoupe, 'classement');
+  // La navigation par pays/compétitions vit dans Calendrier : c'est là qu'on
+  // vérifie que les quatre coupes y figurent.
+  await clicOngletSur(pageCoupe, 'calendrier');
   await pageCoupe.waitForTimeout(700);
 
   const championnatsCoupe = await pageCoupe.textContent('#clubNavChampionnats');
@@ -2843,7 +2869,13 @@ function optionsLancement() {
     /Coupe Nationale/.test(championnatsCoupe) && /Coupe des Champions/.test(championnatsCoupe)
     && /Coupe Challenge/.test(championnatsCoupe) && /Coupe des Espoirs/.test(championnatsCoupe));
 
-  await pageCoupe.locator('.btnChampionnatNav', { hasText: 'Coupe Nationale' }).first().click();
+  // Et dans Compétitions, la Coupe Nationale s'ouvre depuis les compétitions
+  // de l'équipe première — le chemin que suit réellement le manager.
+  await clicOngletSur(pageCoupe, 'classement');
+  await pageCoupe.waitForTimeout(400);
+  await pageCoupe.selectOption('#selEquipeContexte', 'pro');
+  await pageCoupe.waitForTimeout(300);
+  await pageCoupe.locator('.btnCompetitionEquipe[data-ref="coupe:nationale"]').first().click();
   await pageCoupe.waitForTimeout(400);
   const classementCoupe = await pageCoupe.textContent('#clubCompetitionClassement');
   verifier('coupes : une coupe annonce qu\'elle n\'a PAS de classement (pas de table inventée)',
