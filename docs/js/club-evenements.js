@@ -133,7 +133,7 @@
         // plutôt que celle du jour (cf. repartirParActivite).
         const groupes = RMClub.repartirParActivite(effectif, cleSeance);
         for (const cle of Object.keys(groupes)) {
-          for (const p of RMClub.appliquerSeance(rng, groupes[cle], cle, facteurEntraineur, facteurPreparateur)) {
+          for (const p of RMClub.appliquerSeance(rng, groupes[cle], cle, facteurEntraineur, facteurPreparateur, saison)) {
             progressions.push(p);
           }
         }

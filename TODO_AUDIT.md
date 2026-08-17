@@ -3702,3 +3702,52 @@ Zéro erreur console. Couverture : `server/test-inscriptions.js`, 12 cas — les
 Avant la date limite : quels 30 joueurs engager, sachant qu'un jeune de 22 ans
 n'est plus éligible en espoirs et qu'une recrue de janvier ne jouera pas la
 compétition. Le choix se fige et engage la saison.
+
+---
+
+## G9 — Deux installations sur quatre ne servaient à rien (livrée)
+
+### Comportement observé (mesuré, pas déduit)
+
+Niveau 1 contre niveau 3, sur la même carrière :
+
+```
+stade         effet déclaré ×1,36   recette d'un match  56 → 75   BRANCHÉ
+medical       effet déclaré ×1,18   risque de blessure divisé     BRANCHÉ
+formation     effet déclaré ×1,40   AUCUN consommateur            décoratif
+entrainement  effet déclaré ×1,24   AUCUN consommateur            décoratif
+```
+
+`effetInfrastructure` n'avait que **deux** appelants dans tout le projet :
+`club-medical.js` et une ligne d'affichage de son propre module. Le centre de
+formation (300 k€, 60 jours de travaux) et les terrains d'entraînement
+(220 k€, 30 jours) affichaient un gain, coûtaient un chantier ET un entretien
+à chaque journée — sans rien changer au jeu. Le manager payait pour rien.
+
+### La correction
+
+- **Terrains** : `appliquerSeance` multiplie la chance de progression par le
+  facteur de l'installation, exactement comme le facteur entraîneur.
+- **Centre de formation** : les jeunes déjà présents voient leur potentiel
+  s'affiner à chaque intersaison, et les jeunes recrutés arrivent avec un
+  meilleur potentiel (`genererJeune` reçoit le facteur).
+
+### Résultat mesuré
+
+| | Niveau 1 | Niveau 2 | Niveau 3 |
+|---|---|---|---|
+| Terrains — progressions sur 60 séances | **155** | 177 | **193** |
+| Formation — potentiel moyen des jeunes | **51,1** | 53,1 | **55,1** |
+
+### Un piège de mesure, et ce qu'il a appris
+
+Première mesure : 3 progressions au niveau 1 comme au niveau 3, et le compte
+restait à 3 sur 40, 200 ou 600 séances. Cause réelle : un joueur ne progresse
+jamais au-delà de son potentiel (`actuel >= potentiel`), et un effectif de
+départ sature après trois séances utiles. Le test donne donc désormais une
+marge de progression explicite — sans quoi il aurait validé n'importe quoi.
+
+Couverture : `server/test-infrastructures-effets.js`, 5 cas. **F4 est le
+garde-fou de fond** : il relit tout `docs/js` et échoue si une installation
+n'est lue par aucun module autre que le sien — un futur bonus décoratif ne
+peut plus passer inaperçu.

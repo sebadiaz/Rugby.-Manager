@@ -158,11 +158,14 @@
   // Applique la séance du jour à UN effectif. Retourne la liste des
   // progressions RÉELLEMENT survenues — jamais un effet annoncé sans
   // changement de valeur derrière.
-  function appliquerSeance(rng, effectif, cleActivite, facteurEntraineur, facteurPreparateur) {
+  function appliquerSeance(rng, effectif, cleActivite, facteurEntraineur, facteurPreparateur, saison) {
     const activite = ACTIVITES_ENTRAINEMENT[cleActivite];
     if (!activite) return [];
     const fe = facteurEntraineur != null ? facteurEntraineur : 1;
     const fp = facteurPreparateur != null ? facteurPreparateur : 1;
+    // Appel défensif : ce module peut être chargé sans les infrastructures.
+    const facteurTerrains = (saison && global.RMClub.effetInfrastructure)
+      ? global.RMClub.effetInfrastructure(saison, 'entrainement') : 1;
     const progressions = [];
     for (const j of effectif) {
       // Un blessé ne s'entraîne pas : il se soigne (cf. club-evenements.js).
@@ -177,7 +180,11 @@
       if (!activite.attributs.length) continue;
       if (activite.postes && activite.postes.indexOf(j.poste) === -1) continue;
       if (j.veutPartir) continue; // un joueur qui veut partir ne se donne plus
-      const chance = CHANCE_BASE_PROGRESSION * fe
+      // Terrains d'entraînement : l'installation affichait un gain de +24 % au
+      // niveau 3 mais n'était LUE par aucun module — le manager payait 220 k€
+      // et 30 jours de travaux pour rien. Elle multiplie désormais la chance
+      // de progression, exactement comme le facteur entraîneur.
+      const chance = CHANCE_BASE_PROGRESSION * fe * facteurTerrains
         * facteurAgeProgression(j.age)
         * facteurFatigueProgression(j.fatigue)
         * facteurTempsDeJeu(j.matchsJoues);

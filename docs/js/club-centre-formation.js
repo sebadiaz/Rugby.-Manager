@@ -36,7 +36,7 @@
     QUOTA_CENTRE_FORMATION[poste] = (QUOTA_CENTRE_FORMATION[poste] || 0) + 1;
   }
 
-  function genererJeune(poste, rng, niveauClub) {
+  function genererJeune(poste, rng, niveauClub, facteurCentre) {
     const base = RMClub.ARCHETYPE_PAR_POSTE[poste];
     const ecartNiveau = (niveauClub - 0.5) * 20;
     const bruit = () => (rng() * 12 - 6);
@@ -55,7 +55,12 @@
       melee: attributs.melee, touche: attributs.touche, puissance: attributs.puissance,
       endurance: attributs.endurance, passe: attributs.passe, jeuPied: attributs.jeuPied,
       decision: attributs.decision, discipline: attributs.discipline,
-      potentiel: RMClub.genererPotentiel(niveauActuel, age, rng),
+      // Un meilleur centre repère et forme mieux : le potentiel des recrues
+      // suit le niveau de l'installation. C'est le SEUL endroit où ce facteur
+      // agit sur un nouvel arrivant.
+      potentiel: Math.min(99, Math.round(
+        RMClub.genererPotentiel(niveauActuel, age, rng)
+        * (facteurCentre != null ? facteurCentre : 1))),
       tendance: base.tendance, couloir: base.couloir,
       contrat: 2 + Math.floor(rng() * 2), // contrat espoir (formation)
       salaire: Math.max(3, Math.round(RMClub.calculerSalaire(vitesse, plaquage, age) * 0.4)),
@@ -70,23 +75,25 @@
   // par le centre de formation SEUL un jour où l'effectif pro senior est
   // utilisé à 100% (titulaires + banc), donc sans aucune réserve pro
   // disponible à certaines lignes (2e/3e ligne, centres, ailiers...).
-  function completerCentreFormation(rng, jeunes, niveauClub) {
+  function completerCentreFormation(rng, jeunes, niveauClub, facteurCentre) {
     for (const poste of POSTES_CATEGORIES) {
       const present = jeunes.filter((j) => j.poste === poste).length;
       const requis = QUOTA_CENTRE_FORMATION[poste] || 1;
-      for (let i = present; i < requis; i++) jeunes.push(genererJeune(poste, rng, niveauClub));
+      for (let i = present; i < requis; i++) jeunes.push(genererJeune(poste, rng, niveauClub, facteurCentre));
     }
     return jeunes;
   }
-  function genererCentreFormation(rng, niveauClub) {
-    return completerCentreFormation(rng, [], niveauClub);
+  function genererCentreFormation(rng, niveauClub, facteurCentre) {
+    return completerCentreFormation(rng, [], niveauClub, facteurCentre);
   }
   // Backward-compat : une sauvegarde antérieure à cette fonctionnalité n'a
   // pas de champ `jeunes` — le crée à la première consultation plutôt que
   // d'attendre la prochaine fin de saison (cf. clubUI.js).
   function assurerCentreFormation(rng, saison) {
     const c = saison.clubJoueur;
-    if (!c.jeunes) c.jeunes = completerCentreFormation(rng, [], c.niveauClub);
+    const facteur = global.RMClub.effetInfrastructure
+      ? global.RMClub.effetInfrastructure(saison, 'formation') : 1;
+    if (!c.jeunes) c.jeunes = completerCentreFormation(rng, [], c.niveauClub, facteur);
     return c.jeunes;
   }
   // Promotion définitive d'un espoir vers l'effectif professionnel — il
@@ -125,7 +132,20 @@
       if (j.age > 19) { partis.push(j.nom); return false; }
       return true;
     });
-    completerCentreFormation(rng, c.jeunes, c.niveauClub);
+    // Centre de formation : l'installation affichait +40 % au niveau 3 mais
+    // n'était LUE par aucun module — 300 k€ et 60 jours de travaux sans le
+    // moindre effet. Elle fait désormais deux choses réelles, mesurables :
+    //   - les jeunes DÉJÀ présents progressent (leur potentiel s'affine) ;
+    //   - les jeunes RECRUTÉS arrivent avec un meilleur potentiel.
+    const facteur = global.RMClub.effetInfrastructure
+      ? global.RMClub.effetInfrastructure(saison, 'formation') : 1;
+    if (facteur > 1) {
+      for (const j of c.jeunes) {
+        const bonus = Math.round((facteur - 1) * 10);
+        if (bonus > 0) j.potentiel = Math.min(99, (j.potentiel != null ? j.potentiel : 70) + bonus);
+      }
+    }
+    completerCentreFormation(rng, c.jeunes, c.niveauClub, facteur);
     if (partis.length) {
       RMClub.ajouterMessage(saison, 'jeunes', 'Centre de formation',
         `${partis.join(', ')} quitte(nt) le centre de formation sans avoir été promu(s) en équipe première.`);
