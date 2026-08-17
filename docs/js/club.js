@@ -18,7 +18,7 @@
   // et la durée des prêts comptent maintenant des JOURS et non plus des
   // journées de championnat, puisque le temps s'écoule jour par jour.
   // Chaque migration est appliquée sans perte (cf. docs/js/club-sauvegarde.js).
-  const VERSION_SAUVEGARDE = 9;
+  const VERSION_SAUVEGARDE = 10;
 
   // --- Génération de noms (club fictif, aucune référence à un club/joueur réel) ---
   const PRENOMS = ['Thomas', 'Lucas', 'Hugo', 'Louis', 'Jules', 'Nathan', 'Enzo', 'Léo',
@@ -1139,6 +1139,10 @@
     // Coupes (TODO_AUDIT.md P1-34) : régénérées avec les nouveaux
     // adversaires et les nouvelles dates, comme le championnat espoirs.
     if (global.RMClub.reinitialiserCoupes) global.RMClub.reinitialiserCoupes(saison);
+    // Listes d'inscription : les compétitions sont régénérées et les effectifs
+    // ont bougé, celles de la saison écoulée n'ont plus de sens. La nouvelle
+    // fenêtre s'ouvre avec la saison (cf. club-inscriptions.js).
+    if (global.RMClub.reinitialiserInscriptions) global.RMClub.reinitialiserInscriptions(saison);
     // Championnat des espoirs : régénéré avec les nouveaux adversaires.
     saison.competitionEspoirs = null;
     // Marché des transferts calibré sur le NIVEAU RÉEL du club du joueur

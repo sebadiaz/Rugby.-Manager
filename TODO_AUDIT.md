@@ -3648,3 +3648,57 @@ panneau du club, message « Tes espoirs s'inclinent face à Académie … ».
 
 Couverture : `server/test-consequences-coupe-amical.js`, cas K7 à K11 (les
 trois premiers écrivaient rouge avant la correction).
+
+---
+
+## G8 — Inscrire ses joueurs aux compétitions (livrée)
+
+### Comportement observé (mesuré, pas déduit)
+
+Recherche sur tout `docs/js` : **aucune occurrence** d'inscription ou
+d'éligibilité à une compétition. Conséquences réelles en jeu :
+
+- un joueur recruté la veille d'une finale pouvait la disputer ;
+- un joueur de 32 ans pouvait jouer le championnat des espoirs ;
+- la taille du groupe n'était contrainte par rien ;
+- donc **recruter tard ne coûtait rien**, et le manager n'avait aucune
+  décision d'effectif à prendre en début de saison.
+
+### La correction
+
+`club-inscriptions.js` : une liste d'inscrits par compétition, un plafond de
+places, une **vraie date limite** du calendrier, et une limite d'âge pour les
+espoirs. La règle d'équipe d'une coupe vient de `equipePourCoupe` — il
+n'existe pas deux endroits qui décident quelle équipe joue quoi.
+
+Trois garde-fous pour ne casser aucune partie :
+
+1. l'effectif éligible est inscrit d'office **tant que la fenêtre est
+   ouverte** — une carrière en cours ne se retrouve jamais sans équipe ;
+2. au-delà du plafond, les places vont aux **meilleurs**, jamais au hasard ;
+3. tout refus porte un motif ET un message lisible (`age`, `horsEffectif`,
+   `plafond`, `fenetreFermee`).
+
+Branchements réels : `verifierInscriptions` bloque le coup d'envoi du
+championnat et des coupes en **nommant** les joueurs fautifs ;
+`assurerInscriptions` tourne à chaque jour écoulé (une recrue arrivée avant la
+limite est inscrite d'office, après elle ne l'est plus) ;
+`reinitialiserInscriptions` à la fin de saison ; migration v9 → v10.
+
+### Résultat mesuré (navigateur, bureau et mobile)
+
+```
+Ligue Régionale  fenêtre ouverte jusqu'au lundi 16 septembre 2024
+                 Inscrits 24 / 30 (6 places libres)          48 boutons d'action
+Championnat des espoirs   Inscrits 15 / 26   Limite d'âge 21 ans
+retrait d'un inscrit : 24 → 23   après rechargement : 23
+```
+
+Zéro erreur console. Couverture : `server/test-inscriptions.js`, 12 cas — les
+12 écrivaient rouge avant la correction.
+
+### La décision de manager créée
+
+Avant la date limite : quels 30 joueurs engager, sachant qu'un jeune de 22 ans
+n'est plus éligible en espoirs et qu'une recrue de janvier ne jouera pas la
+compétition. Le choix se fige et engage la saison.

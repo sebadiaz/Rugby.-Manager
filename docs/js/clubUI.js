@@ -1277,6 +1277,55 @@
       return;
     }
 
+    if (sous === 'inscriptions') {
+      // Inscriptions aux compétitions : la décision d'effectif du début de
+      // saison. Un joueur non inscrit ne peut pas être aligné, et la liste se
+      // fige à la date limite (cf. club-inscriptions.js).
+      titre.textContent = '📝 Inscriptions aux compétitions';
+      if (!ctx.modifiable) {
+        zone.innerHTML = '<p style="color:var(--text-dim);">Les listes d\'inscription ne concernent que tes propres équipes.</p>';
+        return;
+      }
+      const refs = (RMClub.competitionsDeLEquipe(saison, ctx.type) || []).map((c) => c.ref);
+      if (!refs.length) {
+        zone.innerHTML = '<p style="color:var(--text-dim);">Cette équipe ne dispute aucune compétition cette saison.</p>';
+        return;
+      }
+      zone.innerHTML = refs.map((ref) => {
+        const d = RMClub.dossierInscriptions(saison, ref);
+        if (!d) return '';
+        const comp = RMClub.competition(saison, ref);
+        const limite = RMClub.formaterDateLongue(RMClub.dateDepuisISO(d.dateLimite));
+        const etat = d.ouverte
+          ? `<b class="deltaPositif">ouverte jusqu'au ${echapperHTML(limite)}</b>`
+          : `<b class="alerte">fermée depuis le ${echapperHTML(limite)}</b>`;
+        const lignes = d.candidats.map((c) => {
+          const action = !d.ouverte
+            ? ''
+            : c.inscrit
+              ? `<button class="alt btnInscription" data-ref="${echapperHTML(ref)}" data-joueur="${echapperHTML(c.id)}" data-action="retirer" style="width:auto;padding:3px 8px;font-size:11px;">Retirer</button>`
+              : c.eligible
+                ? `<button class="alt btnInscription" data-ref="${echapperHTML(ref)}" data-joueur="${echapperHTML(c.id)}" data-action="inscrire" style="width:auto;padding:3px 8px;font-size:11px;">Inscrire</button>`
+                : '';
+          const statut = c.inscrit
+            ? '<b class="deltaPositif">inscrit</b>'
+            : c.eligible ? '<b style="color:var(--text-faint);">non inscrit</b>'
+              : `<b class="alerte" title="${echapperHTML(c.message || '')}">inéligible</b>`;
+          return `<div class="ligneInfo"><span>${echapperHTML(c.nom)} ` +
+            `<span style="color:var(--text-faint);">${echapperHTML(c.poste)} · ${c.age} ans</span></span>` +
+            `<span style="display:flex;gap:8px;align-items:center;">${statut}${action}</span></div>`;
+        }).join('');
+        return `<h4 class="sousTitreMedical">${echapperHTML(comp ? comp.nom : d.nom)}</h4>` +
+          ligneInfo('Fenêtre d\'inscription', etat) +
+          ligneInfo('Inscrits', `${d.inscrits.length} / ${d.maxJoueurs}` +
+            (d.placesRestantes ? ` (${d.placesRestantes} place(s) libre(s))` : ' — liste complète')) +
+          (d.ageMax ? ligneInfo('Limite d\'âge', `${d.ageMax} ans`) : '') +
+          (d.nonEligibles ? ligneInfo('Inéligibles', `${d.nonEligibles}`, { etat: 'alerte' }) : '') +
+          lignes;
+      }).join('');
+      return;
+    }
+
     if (sous === 'apercu') {
       const age = eff.reduce((t, j) => t + (j.age || 0), 0) / eff.length;
       const salaires = eff.reduce((t, j) => t + (j.salaire || 0), 0);
@@ -1920,6 +1969,10 @@
       creation = true;
     }
     if (!saison.coupes || !Object.keys(saison.coupes).length) { RMClub.assurerCoupes(saison); creation = true; }
+    // Listes d'inscription : complétées tant que la fenêtre est ouverte, pour
+    // qu'une recrue arrivée AVANT la date limite soit inscrite d'office. Après
+    // la limite, cet appel ne change plus rien (cf. club-inscriptions.js).
+    if (RMClub.assurerInscriptions) RMClub.assurerInscriptions(saison);
     if (creation) sauvegarder();
 
     const pays = RMClub.competitionsParPays(saison);
@@ -3259,6 +3312,7 @@
       { cle: 'disponibilite', label: 'Disponibilité', aide: 'Qui peut jouer, qui ne peut pas, et pourquoi.' },
       { cle: 'dynamique', label: 'Dynamique', aide: 'Statuts promis, promesses tenues ou rompues, mécontents.' },
       { cle: 'contrats', label: 'Contrats', aide: 'Échéances, salaires, valeur, satisfaction et volonté de prolonger.' },
+      { cle: 'inscriptions', label: 'Inscriptions', aide: 'Qui est inscrit à quelle compétition, et jusqu\'à quand.' },
     ],
     medical: [
       { cle: 'apercu', label: 'Vue d\'ensemble', aide: 'L\'état de santé du groupe en un coup d\'œil.' },
@@ -4507,6 +4561,17 @@
     competitionNavChoisie = bouton.dataset.ref;
     rafraichirAutresClubs();
   });
+  // Inscription / retrait d'un joueur : écouteur délégué, comme partout.
+  document.getElementById('clubGestion').addEventListener('click', (e) => {
+    const b = e.target.closest('.btnInscription');
+    if (!b) return;
+    const r = b.dataset.action === 'inscrire'
+      ? RMClub.inscrireJoueur(saison, b.dataset.ref, b.dataset.joueur)
+      : RMClub.desinscrireJoueur(saison, b.dataset.ref, b.dataset.joueur);
+    toast(r.message, r.ok ? 'succes' : 'erreur');
+    if (r.ok) { sauvegarder(); rafraichirEffectif(); }
+  });
+
   // Feuille de match d'une rencontre PASSÉE. Le compte rendu ne vivait
   // jusqu'ici que sur l'écran de fin de match, et disparaissait à sa
   // fermeture : il est désormais archivé (club-archives-matchs.js) et se
@@ -4912,6 +4977,18 @@
     document.getElementById('panneauClub').classList.add('visible');
   }
 
+  // Inscription : un joueur non inscrit à la compétition ne peut pas être
+  // aligné. On le dit AVANT le coup d'envoi, en nommant les joueurs — jamais
+  // un refus muet. Renvoie true si la rencontre peut se jouer.
+  function verifierInscriptions(refCompetition, composition) {
+    if (!RMClub.joueursNonInscrits) return true;
+    const manquants = RMClub.joueursNonInscrits(saison, refCompetition, composition);
+    if (!manquants.length) return true;
+    const noms = manquants.map((m) => m.nom).join(', ');
+    toast(`Composition impossible : ${noms} ${manquants.length > 1 ? 'ne sont pas inscrits' : "n'est pas inscrit"} à cette compétition.`, 'erreur');
+    return false;
+  }
+
   // Le club ne peut pas aligner l'équipe que cette coupe réclame : la
   // rencontre se résout sans lui plutôt que de bloquer la journée
   // (cf. RMClub.resoudreCoupeSansEquipe).
@@ -4961,6 +5038,7 @@
       toast('Impossible de disputer ce match de coupe : ta composition est incomplète.', 'erreur');
       return;
     }
+    if (!verifierInscriptions('coupe:' + info.cle, slot.compositionTitulaires)) return;
     journeeEnCours = true;
     definirBoutonsJourneeActifs(false);
     const duree = Number(document.getElementById('selDureeClub').value) || 4800;
@@ -5095,6 +5173,10 @@
         toast(`Impossible de jouer le match : aucun joueur disponible pour ${libelles}. Rappelle un joueur prêté ou ajuste ton effectif.`, 'erreur');
         return;
       }
+      // Inscription à la compétition : un joueur non inscrit ne peut pas
+      // jouer, quelle que soit sa forme.
+      if (!verifierInscriptions(RMClub.REF_COMPETITION_JOUEUR,
+        saison.clubJoueur.compositionTitulaires)) return;
     }
     journeeEnCours = true;
     definirBoutonsJourneeActifs(false);
@@ -5476,6 +5558,11 @@
   // influence. Factorisé pour que « Jour suivant » et « Continuer » montrent
   // exactement le même état — aucune différence de traitement entre les deux.
   function rafraichirApresAvance(resume) {
+    // Listes d'inscription : complétées à chaque jour écoulé tant que la
+    // fenêtre est ouverte, pour qu'une recrue arrivée avant la date limite
+    // soit inscrite d'office. Après la limite, cet appel ne change plus rien
+    // — et c'est précisément ce qui donne du poids au choix (club-inscriptions.js).
+    if (RMClub.assurerInscriptions) RMClub.assurerInscriptions(saison);
     sauvegarder();
     rafraichirTopBarInfos();
     rafraichirProchainMatch();

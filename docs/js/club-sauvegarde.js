@@ -46,6 +46,17 @@
   // fonction qui transforme une sauvegarde de cette version vers la
   // suivante.
   const MIGRATIONS = {
+    // 9 → 10 : inscription des joueurs aux compétitions. Une carrière déjà
+    // commencée n'a aucune liste — on la crée en inscrivant son effectif
+    // ÉLIGIBLE, ce qui reproduit exactement son comportement d'avant (tout le
+    // monde pouvait jouer). Sans ça, un manager en cours de saison se
+    // retrouverait subitement incapable d'aligner une équipe.
+    9: (saison) => {
+      if (!saison.inscriptions || typeof saison.inscriptions !== 'object') saison.inscriptions = {};
+      if (global.RMClub.assurerInscriptions) global.RMClub.assurerInscriptions(saison);
+      saison.version = 10;
+      return saison;
+    },
     // 8 → 9 : archives des feuilles de match (C4). Une sauvegarde antérieure
     // n'en a aucune — c'est le cas NORMAL, pas une perte : les rencontres
     // déjà jouées n'ont jamais eu de compte rendu enregistré, et l'interface
