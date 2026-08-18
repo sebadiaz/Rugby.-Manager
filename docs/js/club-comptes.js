@@ -32,6 +32,10 @@
       description: 'Recettes des jours de match, tribunes comprises.' },
     sponsor: { libelle: 'Sponsors', sens: 'recette',
       description: 'Revenu récurrent des partenaires.' },
+    droitsTV: { libelle: 'Droits TV', sens: 'recette',
+      description: 'Versés à chaque journée de championnat, selon le palier.' },
+    primes: { libelle: 'Primes de compétition', sens: 'recette',
+      description: 'Classement final et parcours en coupe, versés en fin de saison.' },
     transfertVente: { libelle: 'Ventes de joueurs', sens: 'recette',
       description: 'Indemnités encaissées sur les départs.' },
     pret: { libelle: 'Prêts', sens: 'recette',
@@ -107,12 +111,23 @@
 
   // LE point d'entrée. Débite (montant négatif) ou crédite (positif) le
   // budget ET l'inscrit au grand livre. Renvoie la ligne créée.
+  // Rétrocompatibilité : `assurerComptes` sort tôt quand les comptes existent
+  // déjà, donc une sauvegarde antérieure à l'ajout d'une catégorie n'a pas sa
+  // clé dans `totaux`. Sans ce filet, `totaux[categorie] += montant` sur
+  // `undefined` produit NaN et contamine le budget affiché.
+  function assurerCategories(comptes) {
+    for (const cle of CLES_CATEGORIE_COMPTE) {
+      if (typeof comptes.totaux[cle] !== 'number') comptes.totaux[cle] = 0;
+    }
+    return comptes;
+  }
+
   function mouvementTresorerie(saisonOuClub, categorie, libelle, montant, extra) {
     const c = clubDe(saisonOuClub);
     if (!c) return null;
     const m = Math.round(montant || 0);
     if (!m) return null;
-    const comptes = assurerComptes(saisonOuClub);
+    const comptes = assurerCategories(assurerComptes(saisonOuClub));
     if (!CATEGORIES_COMPTE[categorie]) {
       // Catégorie inconnue : on refuse plutôt que d'inventer une case, sinon
       // le total ne correspondrait plus à la ventilation affichée.

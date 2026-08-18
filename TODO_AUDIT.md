@@ -3807,3 +3807,101 @@ injectable plutôt qu'à un tri en amont sans effet.
 Couverture : `server/test-rotation.js`, 9 cas, tous rouges avant. **R8** est
 le garde-fou : il vérifie qu'aucune de ces fonctions ne touche à la
 composition ni à la fatigue.
+
+---
+
+## G11 — Le sportif finance enfin le club (livrée)
+
+### Comportement observé (mesuré, pas déduit)
+
+Une saison complète de Ligue Régionale, 26 journées :
+
+```
+billetterie   728 k€  (65 %)
+sponsor       390 k€  (35 %)
+droits TV       0     — zéro occurrence dans tout docs/js
+primes          0     — zéro occurrence dans tout docs/js
+-------------------------------------------------------
+total        1118 k€   dépenses 975 k€   solde +143 k€
+```
+
+Conséquence directe : **finir 1er ou 14e ne changeait rien au budget**, gagner
+une coupe ne rapportait rien, monter d'un palier n'apportait aucune ressource.
+Le manager n'avait aucune raison financière de viser haut.
+
+### La correction
+
+`club-revenus-competition.js` — deux sources qui relient le sportif à l'argent :
+
+- **droits TV**, versés à chaque journée, selon le palier ;
+- **primes**, versées en fin de saison, sur le classement final ET sur le
+  parcours réel en coupe (lu depuis `palmaresCoupesDeLaSaison`, livré en C6).
+
+Tout passe par `mouvementTresorerie` : les deux catégories apparaissent au
+grand livre avec un libellé qui dit d'où vient l'argent, et l'écran Finances
+les affiche sans une ligne de code en plus — il est piloté par les données.
+
+### Calibration mesurée
+
+Saison complète de 26 journées, même graine pour les trois paliers :
+
+| Palier | Droits TV / saison | Part des recettes | Solde avant | Solde après |
+|---|---|---|---|---|
+| 3 — Régionale | 130 k€ | 10 % | +167 k€ | +297 k€ |
+| 2 — Nationale | 234 k€ | 17 % | +193 k€ | +427 k€ |
+| 1 — Excellence | 364 k€ | 24 % | +219 k€ | +583 k€ |
+
+La billetterie (674 k€ sur la même saison) reste de loin la première recette :
+le stade et le remplissage gardent tout leur intérêt.
+
+Primes de classement en Régionale : 85 k€ pour le titre, 61 pour la 3e place,
+36 pour la 5e, 12 pour la 7e, 0 au-delà de la moitié du tableau. À l'échelle
+du palier : 140 k€ pour un titre en Nationale, 240 en Excellence. Coupe
+Nationale (3 tours) : 12 k€ en quarts, 20 en demies, 35 en finale, 135 en la
+gagnant.
+
+### La calibration a dû être refaite, pas le garde-fou
+
+Ma première calibration (30 k€ de droits TV par journée au sommet, 520 k€ pour
+un titre en Excellence) a fait **passer au rouge deux cas déjà en place** de
+`server/test-economie-club.js` : **E2** (une saison sans aucune décision de
+gestion ne doit pas quasi doubler la trésorerie — solde borné à 90 % du budget
+de départ) et surtout **E6** (trésorerie bornée à 6 000 k€ sur 8 saisons).
+
+Je n'ai pas touché à ces bornes. J'ai mesuré d'où venait le dépassement :
+
+```
+trésorerie sur 8 saisons, avant la tranche      1 959 k€
+marge disponible avant la borne E6              4 041 k€
+consommé par ma première calibration des PRIMES 3 940 k€
+consommé par les droits TV                        ~100 k€
+```
+
+Le coupable n'était donc pas les droits TV mais les primes, une fois cumulées
+sur huit saisons. Les deux barèmes ont été resserrés (TV 34→14 k€ au sommet,
+titre 520→240 k€) jusqu'à ce que `test-economie-club.js` repasse entièrement
+au vert sans que sa moindre borne bouge.
+
+Honnêteté sur ce qui reste : un scénario que je me suis fabriqué à part — le
+club gagne **tous** ses matchs pendant 8 saisons — atteint 6 363 k€, au-dessus
+de la borne. Ce n'est pas le scénario d'E6 (graines `700 + n` / `3000 + n`,
+résultats réalistes) et E6 passe, mais l'économie du jeu n'a toujours presque
+aucun puits de dépenses : c'est le vrai point faible restant, pas le barème.
+
+### Deux erreurs de placement, trouvées par les tests
+
+1. J'avais versé les primes **après** `reinitialiserCoupes` — les tableaux
+   étaient déjà vidés, aucune prime de coupe n'aurait jamais été payée. Et
+   mon commentaire affirmait le contraire. Le parcours est désormais **capturé
+   avant** la réinitialisation, dans une variable locale.
+2. Les primes étaient versées **avant** `archiverComptesSaison`, qui remet le
+   grand livre à zéro : elles étaient créditées puis immédiatement effacées.
+   Elles sont maintenant versées après, et atterrissent dans le grand livre de
+   la saison qui commence.
+
+Couverture : `server/test-finances-competition.js`, 8 cas, tous rouges avant.
+**D7** couvre le piège de rétrocompatibilité : `assurerComptes` sort tôt quand
+les comptes existent, donc une sauvegarde antérieure n'a pas les nouvelles
+clés et `totaux[categorie] += montant` sur `undefined` produisait NaN.
+**D8** borne la calibration pour qu'aucune tranche future ne rende le club
+trivialement riche.

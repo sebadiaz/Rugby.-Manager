@@ -686,8 +686,16 @@
     tresorerie(club, 'salairesPersonnel', 'Salaires du personnel', -salairesPersonnel);
     tresorerie(club, 'deplacement', 'Déplacement du groupe', -deplacement);
     tresorerie(club, 'entretien', 'Exploitation des installations', -entretien);
+    // Droits TV (G11) : versés à CHAQUE journée, à domicile comme à
+    // l'extérieur, et proportionnés au palier — c'est ce qui donne enfin un
+    // enjeu financier à la montée. Le palier se lit sur le club lui-même :
+    // cette fonction ne reçoit pas toujours la saison.
+    const niveauPalier = (club.palierPyramide && club.palierPyramide.niveau) || 3;
+    const droitsTV = global.RMClub.droitsTVParJournee
+      ? global.RMClub.droitsTVParJournee(niveauPalier) : 0;
+    if (droitsTV) tresorerie(club, 'droitsTV', 'Droits TV', droitsTV);
     if (global.RMClub.compterJourneeFinanciere) global.RMClub.compterJourneeFinanciere(club);
-    return { recette, revenuSponsor, salaires, salairesPersonnel, deplacement, entretien };
+    return { recette, revenuSponsor, salaires, salairesPersonnel, deplacement, entretien, droitsTV };
   }
 
   // Recette d'un match d'Équipe B (cf. RMClub.determinerEligiblesEquipeB) :
@@ -1138,6 +1146,12 @@
     if (global.RMClub.reinitialiserAmicaux) global.RMClub.reinitialiserAmicaux(saison);
     // Coupes (TODO_AUDIT.md P1-34) : régénérées avec les nouveaux
     // adversaires et les nouvelles dates, comme le championnat espoirs.
+    // Parcours réel en coupe, LU AVANT que les tableaux soient régénérés :
+    // après reinitialiserCoupes il n'y a plus rien à lire. Les primes, elles,
+    // sont versées plus bas (après l'archivage des comptes) pour atterrir
+    // dans le grand livre de la saison qui commence.
+    const palmaresCoupesSaison = global.RMClub.palmaresCoupesDeLaSaison
+      ? global.RMClub.palmaresCoupesDeLaSaison(saison) : [];
     if (global.RMClub.reinitialiserCoupes) global.RMClub.reinitialiserCoupes(saison);
     // Listes d'inscription : les compétitions sont régénérées et les effectifs
     // ont bougé, celles de la saison écoulée n'ont plus de sens. La nouvelle
@@ -1193,6 +1207,17 @@
     // exercice à l'autre) puis remis à zéro pour la saison qui commence.
     if (global.RMClub.archiverComptesSaison) {
       global.RMClub.archiverComptesSaison(saison, saison.numero);
+    }
+    // Primes de fin de saison (G11) : classement final et parcours en coupe
+    // capturé plus haut. Versées APRÈS l'archivage des comptes — sinon elles
+    // seraient créditées puis immédiatement effacées par la remise à zéro du
+    // grand livre, et le manager ne verrait jamais d'où vient l'argent.
+    if (global.RMClub.verserPrimesDeFinDeSaison) {
+      global.RMClub.verserPrimesDeFinDeSaison(saison, {
+        position: positionFinale,
+        totalClubs: classementFinal.length,
+        coupes: palmaresCoupesSaison,
+      });
     }
     // Composition/banc/encadrement de l'an dernier n'ont plus de sens avec un
     // effectif qui a bougé (départs/arrivées) : repartent à zéro, recomposés
