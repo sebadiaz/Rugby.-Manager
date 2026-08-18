@@ -34,18 +34,30 @@
   // en quelques jours.
   const RECUPERATION_PAR_JOUR = 5;
 
-  function recupererFatigueDuJour(effectif, facteurPreparateur) {
+  // Fatigue d'UN joueur après une journée de récupération. Fonction PURE :
+  // c'est elle qui porte la règle, et elle seule. L'aide à la rotation
+  // (club-rotation.js) projette la récupération à venir en la rappelant jour
+  // après jour — une seconde formule finirait par diverger de celle-ci et
+  // afficherait au manager une prévision fausse.
+  //
+  // Endurance (neutre 60) : un joueur endurant récupère plus vite. Le
+  // préparateur physique (fp < 1) accélère encore la récupération — même
+  // convention que la charge de match.
+  function fatigueApresUnJourDeRepos(joueur, facteurPreparateur) {
+    const avant = (joueur && joueur.fatigue) || 0;
+    if (avant <= 0) return 0;
     const fp = facteurPreparateur != null ? facteurPreparateur : 1;
+    const endurance = joueur.endurance != null ? joueur.endurance : 60;
+    const facteur = Math.max(0.5, Math.min(1.6, 1 + (endurance - 60) / 75)) / fp;
+    return Math.max(0, avant - Math.round(RECUPERATION_PAR_JOUR * facteur));
+  }
+
+  function recupererFatigueDuJour(effectif, facteurPreparateur) {
     let total = 0;
     for (const j of effectif) {
       const avant = j.fatigue || 0;
       if (avant <= 0) continue;
-      // Endurance (neutre 60) : un joueur endurant récupère plus vite. Le
-      // préparateur physique (fp < 1) accélère encore la récupération —
-      // même convention que la charge de match.
-      const endurance = j.endurance != null ? j.endurance : 60;
-      const facteur = Math.max(0.5, Math.min(1.6, 1 + (endurance - 60) / 75)) / fp;
-      j.fatigue = Math.max(0, avant - Math.round(RECUPERATION_PAR_JOUR * facteur));
+      j.fatigue = fatigueApresUnJourDeRepos(j, facteurPreparateur);
       total += avant - j.fatigue;
     }
     return total;
@@ -431,7 +443,7 @@
   }
 
   global.RMClub = Object.assign(global.RMClub || {}, {
-    recupererFatigueDuJour, soignerBlessuresDuJour, resoudreJourneeQuotidienne,
+    recupererFatigueDuJour, fatigueApresUnJourDeRepos, soignerBlessuresDuJour, resoudreJourneeQuotidienne,
     avancerJusquA, resumerJournees, avancerUnJour, avancerJusquAuProchainMatch,
     interruptionsDeJournee, idsDecisionsEnAttente,
   });

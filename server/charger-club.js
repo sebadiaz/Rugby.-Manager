@@ -45,6 +45,7 @@ const MODULES = [
   'club-feuille-de-match.js',
   'club-archives-matchs.js',
   'club-inscriptions.js',
+  'club-rotation.js',
   'club-pyramide.js',
   'club-pyramide-france.js',
   'club-calendrier.js',

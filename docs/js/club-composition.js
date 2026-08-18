@@ -220,25 +220,33 @@
     return Math.round(note * 10) / 10;
   }
 
-  function meilleurCandidatPourNumero(effectif, poste, utilises) {
+  // `score` (facultatif) : critère de classement des candidats à un poste.
+  // Par défaut la note au poste, comme depuis toujours. L'aide à la rotation
+  // (club-rotation.js) y injecte une note DIMINUÉE de la fatigue, ce qui lui
+  // évite d'écrire un second algorithme de composition — il n'en existe
+  // qu'un seul dans le jeu, et les règles qu'il applique (poste naturel,
+  // repli hors poste, blessés en dernier recours, pas de doublon) restent
+  // partagées.
+  function meilleurCandidatPourNumero(effectif, poste, utilises, score) {
     let candidats = effectif.filter((j) => j.poste === poste && !j.pret && !utilises.has(j.id));
     if (candidats.length === 0) candidats = effectif.filter((j) => !j.pret && !utilises.has(j.id));
     if (candidats.length === 0) return null;
     const disponibles = candidats.filter((j) => !j.blessureJournees);
     const pool = disponibles.length > 0 ? disponibles : candidats;
-    pool.sort((a, b) => noteAuPoste(b, poste) - noteAuPoste(a, poste));
+    const critere = typeof score === 'function' ? score : noteAuPoste;
+    pool.sort((a, b) => critere(b, poste) - critere(a, poste));
     return pool[0];
   }
 
   // Compose automatiquement la meilleure équipe disponible : pour chaque
   // numéro, le meilleur candidat dispo (cf. meilleurCandidatPourNumero),
   // NON BLESSÉ de préférence, qui n'est pas déjà titularisé ailleurs.
-  function meilleureComposition(effectif) {
+  function meilleureComposition(effectif, score) {
     const POSTE_REQUIS = global.RMClub.POSTE_REQUIS;
     const utilises = new Set();
     const composition = {};
     for (const numero of Object.keys(POSTE_REQUIS)) {
-      const meilleur = meilleurCandidatPourNumero(effectif, POSTE_REQUIS[numero], utilises);
+      const meilleur = meilleurCandidatPourNumero(effectif, POSTE_REQUIS[numero], utilises, score);
       if (!meilleur) continue;
       composition[numero] = meilleur.id;
       utilises.add(meilleur.id);

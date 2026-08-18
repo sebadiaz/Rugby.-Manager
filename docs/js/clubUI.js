@@ -1277,6 +1277,59 @@
       return;
     }
 
+    if (sous === 'rotation') {
+      // Aide à la rotation : profondeur, alertes de charge et SUGGESTION.
+      // Le manager garde la décision — rien n'est appliqué ici (cf.
+      // club-rotation.js, qui ne modifie jamais une composition).
+      titre.textContent = '🔁 Rotation de l\'effectif';
+      if (!ctx.modifiable) {
+        zone.innerHTML = '<p style="color:var(--text-dim);">L\'aide à la rotation ne concerne que tes propres équipes.</p>';
+        return;
+      }
+      const d = RMClub.dossierRotation(saison, ctx.type);
+      const badge = (r) => r === 'titulaire' ? '<b>1</b>' : r === 'doublure' ? '2' : r === 'troisieme' ? '3' : '·';
+      const lignesPostes = d.profondeur.postes.map((p) => {
+        const noms = p.joueurs.map((j) =>
+          `<span style="white-space:nowrap;">${badge(j.role)} ${echapperHTML(j.nom)}` +
+          `<span style="color:${j.fatigue >= d.seuilAlerte ? 'var(--loss)' : j.fatigue >= d.seuilRepos ? 'var(--draw)' : 'var(--text-faint)'};"> ${j.fatigue}</span>` +
+          `${j.disponible ? '' : ' <span style="color:var(--loss);">✚</span>'}</span>`).join(' · ');
+        return `<div class="ligneInfo"><span><b>${echapperHTML(p.poste)}</b> ` +
+          `<span style="color:var(--text-faint);">${p.disponibles}/${p.requis} dispo</span>` +
+          `${p.fragile ? ' <span class="alerte">⚠️ sans doublure</span>' : ''}</span>` +
+          `<span style="font-size:11.5px;text-align:right;">${noms || '—'}</span></div>`;
+      }).join('');
+
+      const lignesCharge = d.charge.surcharges.map((x) =>
+        `<div class="ligneInfo"><span>${echapperHTML(x.nom)} <span style="color:var(--text-faint);">${echapperHTML(x.poste)}</span></span>` +
+        `<span style="font-size:11.5px;text-align:right;color:var(--text-dim);">${echapperHTML(x.motif)}</span></div>`).join('');
+      const lignesSous = d.charge.sousUtilises.map((x) =>
+        `<div class="ligneInfo"><span>${echapperHTML(x.nom)} <span style="color:var(--text-faint);">${echapperHTML(x.poste)}</span></span>` +
+        `<span style="font-size:11.5px;color:var(--text-dim);">${echapperHTML(x.motif)}</span></div>`).join('');
+
+      const sug = d.suggestion;
+      const lignesChangements = sug.changements.map((c) =>
+        `<div class="ligneInfo"><span>N°${echapperHTML(c.numero)} ${echapperHTML(c.sort.nom)} → <b>${echapperHTML(c.entre.nom)}</b></span>` +
+        `<span style="font-size:11.5px;text-align:right;color:var(--text-dim);">${echapperHTML(c.raison)}</span></div>`).join('');
+
+      zone.innerHTML =
+        ligneInfo('Matchs joués en moyenne', `${d.charge.moyenneMatchs}`) +
+        (d.profondeur.postesFragiles.length
+          ? ligneInfo('Postes sans doublure', d.profondeur.postesFragiles.join(', '), { etat: 'alerte' })
+          : ligneInfo('Postes sans doublure', 'aucun')) +
+        `<h4 class="sousTitreMedical">Profondeur par poste</h4>${lignesPostes}` +
+        (lignesCharge ? `<h4 class="sousTitreMedical">Surcharge</h4>${lignesCharge}` : '') +
+        (lignesSous ? `<h4 class="sousTitreMedical">Trop peu utilisés</h4>${lignesSous}` : '') +
+        `<h4 class="sousTitreMedical">Suggestion de rotation</h4>` +
+        ligneInfo('Fatigue moyenne du XV', `${sug.fatigueMoyenneActuelle} → ${sug.fatigueMoyenneProposee}`,
+          { etat: sug.fatigueMoyenneProposee < sug.fatigueMoyenneActuelle ? 'deltaPositif' : '' }) +
+        (lignesChangements || '<p style="color:var(--text-dim);font-size:12px;">Ton XV est déjà le plus frais possible.</p>') +
+        (sug.changements.length
+          ? `<button class="alt" id="btnAppliquerRotation" style="width:100%;margin-top:10px;">Appliquer cette rotation</button>`
+          + `<p class="noteFacultatif">Suggestion seulement : tant que tu ne cliques pas, ta composition ne change pas.</p>`
+          : '');
+      return;
+    }
+
     if (sous === 'inscriptions') {
       // Inscriptions aux compétitions : la décision d'effectif du début de
       // saison. Un joueur non inscrit ne peut pas être aligné, et la liste se
@@ -3313,6 +3366,7 @@
       { cle: 'dynamique', label: 'Dynamique', aide: 'Statuts promis, promesses tenues ou rompues, mécontents.' },
       { cle: 'contrats', label: 'Contrats', aide: 'Échéances, salaires, valeur, satisfaction et volonté de prolonger.' },
       { cle: 'inscriptions', label: 'Inscriptions', aide: 'Qui est inscrit à quelle compétition, et jusqu\'à quand.' },
+      { cle: 'rotation', label: 'Rotation', aide: 'Profondeur par poste, surcharge, et une suggestion de repos.' },
     ],
     medical: [
       { cle: 'apercu', label: 'Vue d\'ensemble', aide: 'L\'état de santé du groupe en un coup d\'œil.' },
@@ -4561,6 +4615,22 @@
     competitionNavChoisie = bouton.dataset.ref;
     rafraichirAutresClubs();
   });
+  // La suggestion de rotation ne s'applique QUE sur un clic explicite : le
+  // module qui la calcule ne modifie jamais rien lui-même.
+  document.getElementById('clubGestion').addEventListener('click', (e) => {
+    if (!e.target.closest('#btnAppliquerRotation')) return;
+    const ctx = contexte();
+    const sug = RMClub.suggestionRotation(saison, ctx.type);
+    const slot = RMClub.slotCompositionPourEquipe(saison, ctx.type);
+    slot.compositionTitulaires = Object.assign({}, sug.composition);
+    slot.compositionBanc = RMClub.completerCompositionBanc(
+      RMClub.effectifPourEquipe(saison, ctx.type), slot.compositionTitulaires, {});
+    sauvegarder();
+    toast(`Rotation appliquée : ${sug.changements.length} changement(s).`);
+    rafraichirEcransEquipe();
+    rafraichirEffectif();
+  });
+
   // Inscription / retrait d'un joueur : écouteur délégué, comme partout.
   document.getElementById('clubGestion').addEventListener('click', (e) => {
     const b = e.target.closest('.btnInscription');

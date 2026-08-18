@@ -3751,3 +3751,59 @@ Couverture : `server/test-infrastructures-effets.js`, 5 cas. **F4 est le
 garde-fou de fond** : il relit tout `docs/js` et échoue si une installation
 n'est lue par aucun module autre que le sien — un futur bonus décoratif ne
 peut plus passer inaperçu.
+
+---
+
+## G10 — Aider le manager à faire tourner son effectif (livrée)
+
+### Comportement observé (mesuré, pas déduit)
+
+Toute la donnée existait — fatigue, endurance, `matchsJoues`, statut promis,
+gabarit de 24 places sur 9 postes, récupération de 5 points par jour — mais
+rien ne l'agrégeait :
+
+```
+profondeurEffectif  -> undefined
+suggestionRotation  -> undefined
+recuperationPrevue  -> undefined
+```
+
+Le manager voyait une barre de fatigue par joueur et devait faire lui-même le
+calcul : qui reposer, qui est doublure à quel poste, et dans combien de jours
+un titulaire cuit redevient alignable.
+
+### La correction
+
+`club-rotation.js`, qui **ne modifie rien** :
+
+- **profondeur par poste** : titulaire / doublure / troisième choix, avec les
+  postes sans doublure disponible signalés comme fragiles ;
+- **charge** : surcharge (fatigue ≥ 75, ou 4 matchs de plus que la moyenne du
+  groupe) et sous-utilisation, chaque alerte portant son motif chiffré ;
+- **récupération projetée** jour par jour, sur une COPIE ;
+- **suggestion de XV** pénalisant la fatigue, avec la liste des changements
+  et leur raison.
+
+Deux points de discipline, vérifiés par des tests :
+
+1. **Une seule règle de récupération.** `fatigueApresUnJourDeRepos` est
+   extraite de `club-evenements.js` comme fonction pure ; la projection la
+   rappelle jour après jour. R3 vérifie que la prévision affichée égale
+   exactement ce que le moteur applique — une seconde formule aurait fini par
+   afficher au manager une prévision fausse.
+2. **Un seul algorithme de composition.** `meilleureComposition` accepte
+   désormais un critère de classement facultatif (par défaut la note au
+   poste, comportement inchangé). La rotation y injecte « note − 0,45 ×
+   fatigue » au lieu d'écrire un second sélecteur — les règles de poste
+   naturel, de repli, de blessés et de doublons restent partagées.
+
+### Ce que la première version ratait
+
+`meilleureComposition` re-triait les candidats par note et **ignorait**
+l'effectif que je lui passais pré-trié : cinq joueurs à 90 de fatigue
+restaient tous les cinq dans le XV suggéré. C'est ce qui a conduit au critère
+injectable plutôt qu'à un tri en amont sans effet.
+
+Couverture : `server/test-rotation.js`, 9 cas, tous rouges avant. **R8** est
+le garde-fou : il vérifie qu'aucune de ces fonctions ne touche à la
+composition ni à la fatigue.
