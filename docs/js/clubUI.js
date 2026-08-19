@@ -3818,6 +3818,15 @@
   // marché n'est pas assez CONNU (cf. RMClub.scouterJoueur), on affiche une
   // estimation en étoiles plutôt que ses vraies statistiques — un manager ne
   // sait jamais tout d'un joueur qu'il n'a jamais vraiment observé.
+  // Marque d'où vient un joueur ramené par une mission (G12) : le manager a
+  // payé pour le voir, il doit pouvoir le distinguer du marché national que
+  // tous les clubs consultent gratuitement.
+  function badgeZoneDecouverte(j) {
+    if (!j.zoneDecouverte) return '';
+    const z = (RMClub.ZONES_SCOUTING || {})[j.zoneDecouverte];
+    if (!z) return '';
+    return ` <span class="badgeNiveau niveau-info" title="Repéré par ton réseau — ce joueur n'apparaît que pour ton club">🌍 ${echapperHTML(z.nom)}</span>`;
+  }
   function ligneJoueurMarche(j, c, favori) {
     const fenetreOuverte = RMClub.etatFenetreTransfert(saison).ouverte;
     const primeSignature = RMClub.calculerPrimeSignature(j);
@@ -3853,7 +3862,7 @@
         : `<button class="alt btnScouter" data-joueur="${j.id}"${c.budget >= RMClub.COUT_SCOUTING ? '' : ' disabled'}>🔍 Scouter (${RMClub.COUT_SCOUTING} k€)</button>`;
     const enComparaison = selectionComparaison.has(j.id) ? ' checked' : '';
     return `<div class="ligneMarche"><label class="caseComparaison" title="Ajouter à la comparaison"><input type="checkbox" class="caseComparerJoueur" data-joueur="${j.id}"${enComparaison}></label>` +
-      `<span class="infosJoueur"><b>${j.nom}</b><span>${POSTE_COMPLET[j.poste] || j.poste} · ${j.age} ans · ${ligneStats}</span></span>` +
+      `<span class="infosJoueur"><b>${j.nom}</b>${badgeZoneDecouverte(j)}<span>${POSTE_COMPLET[j.poste] || j.poste} · ${j.age} ans · ${ligneStats}</span></span>` +
       `<span class="actionMarche"><button class="btnFavori${favori ? ' actif' : ''}" data-joueur="${j.id}" title="Favori">${favori ? '★' : '☆'}</button>` +
       `<span class="prixMarche" title="Indemnité de transfert + prime de signature">${j.prixTransfert}<span style="color:var(--text-faint);font-weight:400;"> +${primeSignature} k€</span></span>${boutonScout}` +
       `<button class="accent btnSigner" data-joueur="${j.id}"${abordable && fenetreOuverte ? '' : ' disabled'}` +
@@ -3933,6 +3942,66 @@
     rafraichirMercatoDivision();
     rafraichirDeparts();
     rafraichirFavoris();
+    rafraichirReseauScouting();
+  }
+
+  // --- Réseau de recrutement (G12) : la seule décision de repérage qui
+  // engage vraiment le club. Un recruteur, une zone, une durée, un coût payé
+  // d'avance — et des joueurs que le marché national n'aurait jamais montrés.
+  // Tout vient de RMClub.dossierReseau : aucune règle n'est réécrite ici. ---
+  function rafraichirReseauScouting() {
+    const zoneMission = document.getElementById('clubMissionScouting');
+    const zoneZones = document.getElementById('clubZonesScouting');
+    const zoneRapports = document.getElementById('clubRapportsReseau');
+    const selDuree = document.getElementById('dureeMissionScouting');
+    if (!zoneMission || !zoneZones || !RMClub.dossierReseau) return;
+
+    // Durée choisie par le manager, conservée entre deux rafraîchissements :
+    // c'est elle qui pilote les coûts affichés sur chaque zone.
+    if (selDuree && !selDuree.options.length) {
+      selDuree.innerHTML = (RMClub.DUREES_MISSION || [15, 30, 60, 90])
+        .map((j) => `<option value="${j}"${j === 30 ? ' selected' : ''}>Mission de ${j} jours</option>`).join('');
+    }
+    const jours = selDuree ? Number(selDuree.value) || 30 : 30;
+    const d = RMClub.dossierReseau(saison, jours);
+
+    if (d.mission) {
+      const fait = d.mission.duree - d.mission.joursRestants;
+      const pct = Math.round((fait / d.mission.duree) * 100);
+      zoneMission.innerHTML =
+        `<p style="margin:0 0 8px;">Ton recruteur est en mission en <b>${echapperHTML(d.mission.nomZone)}</b> ` +
+        `(${d.mission.cout} k€ engagés).</p>` +
+        `<span class="barreMoral"><span style="width:${pct}%"></span></span> ` +
+        `<span style="font-size:12px;color:var(--text-dim);">${d.mission.joursRestants} jour(s) restant(s) sur ${d.mission.duree}</span>` +
+        `<div style="margin-top:8px;"><button id="btnRappelerRecruteur" class="alt" ` +
+        `style="width:auto;padding:7px 12px;font-size:12px;">Rappeler le recruteur</button> ` +
+        `<span style="font-size:11.5px;color:var(--text-faint);">La mission déjà payée n'est pas remboursée.</span></div>`;
+      zoneZones.innerHTML = '';
+    } else {
+      zoneMission.innerHTML =
+        `<p style="margin:0 0 10px;font-size:12px;color:var(--text-dim);">Un seul recruteur : l'envoyer quelque part, ` +
+        `c'est renoncer à toutes les autres zones pendant ce temps. Ce qu'il ramène n'existe que pour ton club.` +
+        (d.recruteur ? '' : ' <b>Aucun recruteur au staff</b> — les missions coûtent plus cher et rapportent moins.') +
+        `</p>`;
+      zoneZones.innerHTML = d.zones.map((z) => {
+        const postes = z.postes.length ? z.postes.join(' · ') : 'tous postes';
+        return `<div class="ligneJeune"><span class="infosJeune">` +
+          `<b>${echapperHTML(z.nom)} — connue à ${z.connaissance} %</b>` +
+          `<span>${echapperHTML(z.reputation)}<br>Profils typiques : ${echapperHTML(postes)} · ${z.coutParJour} k€/jour</span></span>` +
+          `<span style="flex:0 0 auto;"><button class="alt btnMissionScouting" data-zone="${echapperHTML(z.code)}" ` +
+          `style="width:auto;padding:7px 12px;font-size:12px;">Envoyer · ${z.coutMission} k€</button></span></div>`;
+      }).join('');
+    }
+
+    if (zoneRapports) {
+      zoneRapports.innerHTML = d.rapports.length
+        ? `<h4 class="sousTitreMedical">Rapports du réseau (${d.rapports.length})</h4>` +
+          d.rapports.map((r) =>
+            `<div class="ligneInfo" style="align-items:flex-start;"><span style="flex:1 1 auto;">` +
+            `<b>${echapperHTML(r.nomZone)}</b> <span style="color:var(--text-faint);">${echapperHTML(r.date || '')} · ${r.duree} j · ${r.cout} k€</span><br>` +
+            `<span style="font-size:12px;color:var(--text-dim);">${echapperHTML(r.texte)}</span></span></div>`).join('')
+        : `<p class="noteLectureSeule" style="margin:0;">Aucune mission menée pour l'instant. Le marché national est le même pour tous les clubs — le réseau est ce qui te donne des joueurs que les autres ne voient pas.</p>`;
+    }
   }
 
   // --- Départs (TODO_AUDIT.md P1-48) : vendre est enfin possible. Tout vient
@@ -4843,6 +4912,32 @@
     toast(res.designe ? '✅ Sauteur désigné pour la touche' : '✅ Sauteur retiré de l\'alignement');
     rafraichirEncadrement();
   });
+  // Réseau de recrutement (G12) : délégation sur la carte entière — la liste
+  // des zones est reconstruite à chaque rafraîchissement, un écouteur par
+  // bouton serait perdu au premier rendu.
+  document.getElementById('carteReseauScouting').addEventListener('click', (e) => {
+    const btnZone = e.target.closest('.btnMissionScouting');
+    if (btnZone) {
+      const sel = document.getElementById('dureeMissionScouting');
+      const jours = sel ? Number(sel.value) || 30 : 30;
+      const res = RMClub.lancerMissionScouting(saison, btnZone.dataset.zone, jours);
+      if (!res.ok) { toast(res.message || 'Mission impossible', 'erreur'); return; }
+      sauvegarder();
+      rafraichirMarche();
+      rafraichirTopBarInfos();
+      toast(`🌍 Recruteur envoyé pour ${res.duree} jour(s) — ${res.cout} k€ engagés`);
+      return;
+    }
+    if (e.target.id === 'btnRappelerRecruteur') {
+      const res = RMClub.rappelerRecruteur(saison);
+      if (!res.ok) return;
+      sauvegarder();
+      rafraichirMarche();
+      toast(`↩️ Recruteur rappelé après ${res.joursEffectues} jour(s) — la mission n'est pas remboursée`);
+    }
+  });
+  document.getElementById('dureeMissionScouting').addEventListener('change', rafraichirReseauScouting);
+
   document.getElementById('btnRafraichirMarche').addEventListener('click', () => {
     // TODO_AUDIT.md P1-43b : prospecter reste possible, mais plus en boucle.
     // Sans délai, perdre une cible au profit d'un rival se rattrapait d'un
@@ -5595,6 +5690,9 @@
     for (const r of resume.rapports || []) {
       toast(`🔍 Rapport de scouting : ${r.nom} (connaissance ${r.connaissance} %)`);
     }
+    for (const m of resume.missionsReseau || []) {
+      toast(`🌍 Ton recruteur rentre de ${m.nomZone} avec ${m.joueurs.length} profil(s)`);
+    }
     for (const r of resume.reponsesContrat || []) {
       toast(r.accepte
         ? `📄 ${r.nom} accepte ta proposition (${r.salaire} k€/saison)`
@@ -5641,6 +5739,12 @@
     rafraichirFenetreTransfert();
     rafraichirMessages();
     rafraichirVueClub();
+    // Le marché change TOUS LES JOURS (arrivées, signatures rivales, retour
+    // de mission du recruteur) : sans ce rafraîchissement, l'écran
+    // Recrutement restait figé sur l'état du chargement — mesuré avec le
+    // réseau de recrutement (G12), dont les joueurs ramenés n'apparaissaient
+    // qu'après un rechargement complet de la page.
+    rafraichirMarche();
     annoncerJoursEcoules(resume);
   }
 

@@ -490,6 +490,19 @@
                sont possibles que pendant les périodes d'ouverture. Le
                repérage, lui, reste ouvert toute l'année. -->
           <div id="clubFenetreTransfert" class="carteClub"></div>
+          <!-- Réseau de recrutement (G12) : le manager n'avait aucune
+               décision de réseau à prendre — le marché montrait 6 joueurs à
+               tout le monde, gratuitement, dès le premier jour. Un seul
+               recruteur, une zone, une durée, un coût réel. -->
+          <div class="carteClub" id="carteReseauScouting">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+              <h3 style="margin:0;">🌍 Réseau de recrutement</h3>
+              <select id="dureeMissionScouting" class="champTexte" style="flex:0 0 auto;width:auto;padding:7px 10px;font-size:12px;"></select>
+            </div>
+            <div id="clubMissionScouting"></div>
+            <div id="clubZonesScouting"></div>
+            <div id="clubRapportsReseau" style="margin-top:10px;"></div>
+          </div>
           <div class="carteClub" id="carteFavoris" style="display:none;">
             <div style="display:flex;justify-content:space-between;align-items:center;">
               <h3 style="margin:0;">⭐ Mes favoris</h3>
@@ -929,6 +942,7 @@
 <script src="js/club-inscriptions.js"></script>
 <script src="js/club-rotation.js"></script>
 <script src="js/club-revenus-competition.js"></script>
+<script src="js/club-reseau-scouting.js"></script>
 <script src="js/club-pyramide.js"></script>
 <script src="js/club-pyramide-france.js"></script>
 <script src="js/club-calendrier.js"></script>

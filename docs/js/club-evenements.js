@@ -187,6 +187,11 @@
     // reste de la carrière, et se livrent d'eux-mêmes.
     const travaux = RMClub.avancerJourInfrastructures
       ? RMClub.avancerJourInfrastructures(saison) : null;
+    // Mission du recruteur (G12) : elle avance d'un jour et se livre
+    // d'elle-même, exactement comme les travaux. Le manager a payé au départ,
+    // il ne doit pas avoir à cliquer pour que son recruteur rentre.
+    const missionReseau = RMClub.avancerJourReseauScouting
+      ? RMClub.avancerJourReseauScouting(saison, date) : null;
     // Offres reçues pour MES joueurs (P1-48) : le marché ne va plus dans un
     // seul sens. Tirage sur son propre canal (37), jamais sur le flux
     // quotidien partagé — le partager décalerait toute la séquence en aval.
@@ -251,6 +256,7 @@
       signatureRivale: mercatoDuJour ? mercatoDuJour.signature : null,
       offreRecue,
       travaux,
+      missionReseau,
       retablis: retablis.map((j) => j.nom),
       retoursDePret: retoursDePret.map((j) => j.nom),
       estJourDeMatch: !!opts.estJourDeMatch,
@@ -327,6 +333,10 @@
     }
     for (const n of j.retoursDePret || []) {
       liste.push({ raison: 'evenement', libelle: `${n} revient de prêt` });
+    }
+    if (j.missionReseau) {
+      liste.push({ raison: 'rapport',
+        libelle: `Ton recruteur est rentré de ${j.missionReseau.nomZone} avec ${j.missionReseau.joueurs.length} profil(s)` });
     }
     if (j.pointEtape) liste.push({ raison: 'evenement', libelle: "Le président a fait le point sur l'objectif" });
     // Décisions APPARUES pendant la journée (vestiaire, temps de jeu…) : la
@@ -418,6 +428,7 @@
     let pointEtape = null;
     let reunionVestiaire = null;
     const signaturesRivales = [];
+    const missionsReseau = [];
     const blessures = [];
     for (const j of journees) {
       fatigueRecuperee += j.fatigueRecuperee;
@@ -434,11 +445,14 @@
       // joueurs que le manager suivait réellement — les autres signatures
       // vivent dans la carte « Mercato de la division », sans le harceler.
       if (j.signatureRivale && j.signatureRivale.suivi) signaturesRivales.push(j.signatureRivale);
+      // Retour de mission du recruteur (G12) : le manager a payé pour ça, il
+      // doit l'apprendre à l'instant où ça rentre, pas en fouillant un écran.
+      if (j.missionReseau) missionsReseau.push(j.missionReseau);
     }
     return {
       nbJours: journees.length, fatigueRecuperee, nbProgressions, blessures,
       retablis, retoursDePret, rapports, reponsesContrat, decisionsExpirees,
-      pointEtape, reunionVestiaire, signaturesRivales,
+      pointEtape, reunionVestiaire, signaturesRivales, missionsReseau,
     };
   }
 

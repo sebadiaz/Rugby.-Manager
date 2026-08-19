@@ -46,6 +46,17 @@
   // fonction qui transforme une sauvegarde de cette version vers la
   // suivante.
   const MIGRATIONS = {
+    // 10 → 11 : réseau de recrutement (G12). Une carrière déjà commencée
+    // n'a évidemment envoyé personne nulle part : elle hérite d'un réseau
+    // VIERGE — connaissances de départ du catalogue, aucune mission en cours,
+    // aucun rapport. Inventer un historique rétroactif serait une statistique
+    // fabriquée ; ne rien créer du tout laisserait `zonesScouting` sans zones.
+    10: (saison) => {
+      if (global.RMClub.assurerReseauScouting) global.RMClub.assurerReseauScouting(saison);
+      else saison.reseauScouting = { zones: {}, mission: null, rapports: [] };
+      saison.version = 11;
+      return saison;
+    },
     // 9 → 10 : inscription des joueurs aux compétitions. Une carrière déjà
     // commencée n'a aucune liste — on la crée en inscrivant son effectif
     // ÉLIGIBLE, ce qui reproduit exactement son comportement d'avant (tout le

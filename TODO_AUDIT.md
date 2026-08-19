@@ -3810,6 +3810,117 @@ composition ni à la fatigue.
 
 ---
 
+## G12 — Un réseau de recrutement, pas un catalogue (livrée)
+
+### Comportement observé (mesuré, pas déduit)
+
+```
+« zone de recrutement », « mission », « réseau »   0 occurrence dans docs/js
+joueurs du marché visibles dès le premier jour     6 / 6, gratuitement
+coût pour voir le marché                           0 k€
+joueurs qu'un club peut voir et pas un autre       0
+```
+
+Le scouting existant (`club-transferts.js`, 8 k€) ne fait que **préciser** un
+rapport sur un joueur **déjà affiché** : il n'a jamais fait découvrir
+personne. Et le poste « Recruteur » du personnel promettait « réduit le coût
+du scouting » — un effet réel, mais sur une action à 8 k€.
+
+Conséquence en jeu : **aucune décision de réseau à prendre**. Tous les clubs
+regardaient le même marché, en même temps, sans rien dépenser.
+
+### La correction
+
+`club-reseau-scouting.js` — la décision manquante : *j'envoie mon recruteur
+où, combien de temps, pour combien ?*
+
+- **12 zones**, mêmes codes pays que `docs/js/world.js`. Chacune a un coût
+  journalier (l'éloignement se paie), un niveau de talent, des postes qu'elle
+  produit réellement, et une réputation qui dit ce qu'on y trouve. Le triangle
+  coût / talent / connaissance est ce qui fait l'arbitrage : la zone la plus
+  riche est aussi la plus chère et la moins connue.
+- **Un seul recruteur**, donc une seule mission à la fois. L'envoyer en
+  Nouvelle-Zélande, c'est renoncer à tout le reste pendant ce temps.
+- **Mission de 15 à 90 jours, payée d'avance** au grand livre (catégorie
+  `scouting`, qui existait déjà). Rappeler le recruteur avant terme est
+  possible, sans remboursement — sinon annuler serait toujours gratuit.
+- Au retour : **1 à 4 joueurs qui n'existent que pour ce club**, ajoutés en
+  tête du marché et marqués de leur zone, plus un **rapport rédigé** ajouté à
+  un historique de 20.
+- **La connaissance de la zone se construit** : y retourner paie (chiffres
+  mesurés plus bas).
+- **Aucune information parfaite** : un joueur ramené plafonne à 88 % de
+  connaissance. Il reste à scouter comme n'importe quelle recrue.
+
+Calibration mesurée, sans recruteur au staff :
+
+| Zone | 15 j | 30 j | 60 j | 90 j |
+|---|---|---|---|---|
+| France | 18 k€ | 36 k€ | 72 k€ | 108 k€ |
+| Italie | 35 k€ | 69 k€ | 138 k€ | 207 k€ |
+| Argentine | 51 k€ | 102 k€ | 204 k€ | 306 k€ |
+| Nouvelle-Zélande | 68 k€ | 135 k€ | 270 k€ | 405 k€ |
+
+À comparer aux ~400 k€ de trésorerie d'un club de Régionale en début de
+saison : c'est cher, et c'est le but. Le réseau est le premier vrai puits de
+dépenses récurrent du jeu — exactement ce que la tranche G11 avait identifié
+comme manquant. Un recruteur de niveau 95 ramène la mission de 90 jours en
+Nouvelle-Zélande de 405 à 234 k€.
+
+Progression mesurée sur trois missions de 40 jours en Nouvelle-Zélande :
+
+```
+mission 1 : zone   8 % ->  30 %   rapports ramenés à 45 % de connaissance
+mission 2 : zone  30 % ->  52 %   rapports ramenés à 61 %
+mission 3 : zone  52 % ->  74 %   rapports ramenés à 74 %
+```
+
+### Deux défauts trouvés en le regardant tourner, pas en le relisant
+
+- **Les joueurs ramenés n'étaient pas exclusifs.** Le module annonçait « des
+  joueurs que les autres ne voient pas » — et `signatureRivaleDuJour` les
+  prenait comme n'importe quel joueur libre. Mesuré : un profil ramené de
+  Nouvelle-Zélande pour 135 k€ était **signé par un rival trois jours plus
+  tard**. Le manager payait le repérage, un autre encaissait. Les joueurs
+  découverts sont maintenant hors d'atteinte des clubs IA, et **N15** le
+  verrouille — avec sa contre-preuve : les rivaux doivent quand même signer
+  sur le marché national pendant les mêmes 90 jours, sinon le test serait
+  vert par accident.
+- **Les noms ne suivaient pas la zone.** Une mission en Nouvelle-Zélande
+  revenait avec « Paul Dubois » et « Louis Guerin ». Le mécanisme était juste,
+  mais rien à l'écran ne justifiait d'avoir payé pour aller à l'autre bout du
+  monde. Onze pools de noms par zone, verrouillés par **N14**.
+
+### Trois défauts trouvés en le branchant
+
+1. **`rafraichirMarcheManuel` balayait les découvertes.** Il réassignait
+   `saison.marche` en entier : les joueurs que le manager venait de payer
+   disparaissaient au premier clic sur « Rafraîchir ». Ils sont désormais
+   conservés en tête.
+2. **Le plafond du marché gelait le réapprovisionnement.**
+   `reapprovisionnerMarche` s'arrête à 6 joueurs — en comptant les
+   découvertes, réussir une mission faisait disparaître le marché national.
+   Le plafond ne compte plus que ce dernier.
+3. **L'écran Recrutement ne se rafraîchissait pas d'un jour à l'autre.**
+   `rafraichirApresAvance` ne rappelait pas `rafraichirMarche` : mesuré au
+   navigateur, la mission rentrait bien (sauvegarde : `mission: null`,
+   `rapports: 1`, 1 joueur découvert) mais l'écran affichait encore « Aucune
+   mission menée ». Défaut **antérieur** à cette tranche — le marché change
+   tous les jours (signatures rivales, arrivées) — que le réseau a rendu
+   visible. Corrigé, plus un toast au retour de mission.
+
+Couverture : `server/test-reseau-scouting.js`, 15 cas, **12 rouges avant**
+(les trois derniers sont nés des défauts trouvés en cours de route). **N13**, était vert dès le départ : c'est le garde-fou de
+non-régression — un manager qui n'envoie jamais personne doit retrouver
+exactement le jeu d'avant, marché national compris, sans une seule dépense de
+réseau ni un seul joueur venu de nulle part.
+
+Sauvegarde : version 10 → 11. Une carrière commencée avant hérite d'un réseau
+**vierge** — connaissances de départ, aucune mission fantôme, aucun rapport
+inventé rétroactivement (**N12**).
+
+---
+
 ## G11 — Le sportif finance enfin le club (livrée)
 
 ### Comportement observé (mesuré, pas déduit)

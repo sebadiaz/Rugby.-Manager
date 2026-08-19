@@ -55,6 +55,7 @@ new Function('window', require('fs').readFileSync(require('path').join(__dirname
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-inscriptions.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-rotation.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-revenus-competition.js'), 'utf8'))(global.window);
+new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-reseau-scouting.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-pyramide.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-pyramide-france.js'), 'utf8'))(global.window);
 new Function('window', require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-calendrier.js'), 'utf8'))(global.window);
@@ -2418,6 +2419,7 @@ const clubArchivesMatchsSrcPourRechargement = require('fs').readFileSync(require
 const clubInscriptionsSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-inscriptions.js'), 'utf8');
 const clubRotationSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-rotation.js'), 'utf8');
 const clubRevenusSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-revenus-competition.js'), 'utf8');
+const clubReseauSrcPourRechargement = require('fs').readFileSync(require('path').join(__dirname, '../docs/js/club-reseau-scouting.js'), 'utf8');
 function chargerInstanceFraicheClub() {
   const ctx = {};
   ctx.window = ctx;
@@ -2449,6 +2451,7 @@ function chargerInstanceFraicheClub() {
   new Function('window', clubInscriptionsSrcPourRechargement)(ctx);
   new Function('window', clubRotationSrcPourRechargement)(ctx);
   new Function('window', clubRevenusSrcPourRechargement)(ctx);
+  new Function('window', clubReseauSrcPourRechargement)(ctx);
   new Function('window', clubPyramideSrcPourRechargement)(ctx);
   new Function('window', clubPyramideFranceSrcPourRechargement)(ctx);
   new Function('window', clubCalendrierSrcPourRechargement)(ctx);

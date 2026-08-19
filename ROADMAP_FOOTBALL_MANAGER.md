@@ -63,7 +63,7 @@ tranche livrée — jamais en avance sur ce qui est réellement dans `main`.
 
 | Fonctionnalité | Statut | Fichiers | Détail |
 |---|---|---|---|
-| Réseau de recrutement (scouts par zone) | 🔴 | `club-personnel.js` | Un seul rôle générique "Recruteur", aucune zone géographique. |
+| Réseau de recrutement (scouts par zone) | 🟢 | `club-reseau-scouting.js`, `clubUI.js`, `club-mercato.js` | **12 zones géographiques** (mêmes codes pays que `world.js`), chacune avec son coût journalier (1,2 à 4,5 k€), son niveau de talent, ses postes typiques et une **connaissance qui se construit mission après mission**. Un seul recruteur : l'envoyer quelque part, c'est renoncer aux autres zones — mission de 15 à 90 jours, payée d'avance au grand livre. Ce qu'il ramène (1 à 4 joueurs) **n'existe que pour ce club** et survit au rafraîchissement du marché. Aucune information parfaite : un joueur ramené arrive à 88 % de connaissance au mieux. Rapports rédigés et historisés (20 derniers). Le poste « Recruteur » du personnel pilote enfin une vraie dépense et un vrai rendement. |
 | Connaissance partielle des joueurs (brouillard) | 🟢 | `club-transferts.js` | Connaissance 20-50%, stats floutées, progression via scouting réel. |
 | Rapports de scouts | 🟡 | `club-transferts.js` | Étoiles + stats approximatives, aucun commentaire narratif qualitatif. |
 | Favoris et listes de recrutement | 🟢 | `club-transferts.js` | Liste `saison.favoris` réelle. |

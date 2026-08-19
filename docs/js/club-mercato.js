@@ -473,6 +473,13 @@
         // FAVORIS, eux, restent pleinement disputables : c'est là que se joue
         // la concurrence.
         if (RMClub.rapportScoutingEnCours && RMClub.rapportScoutingEnCours(saison, j.id)) continue;
+        // Même principe, poussé plus loin, pour un joueur RAMENÉ PAR UNE
+        // MISSION du réseau (G12) : il n'est connu que du club qui a payé
+        // pour aller le voir. Un rival qui n'a envoyé personne là-bas n'a
+        // aucune raison d'avoir son nom. Mesuré sans ce filtre : un profil
+        // ramené de Nouvelle-Zélande pour 135 k€ était signé par un rival
+        // trois jours plus tard — l'exclusivité annoncée était fausse.
+        if (j.zoneDecouverte) continue;
         const memePoste = groupe.filter((x) => x.poste === j.poste);
         const plusFaible = memePoste.length
           ? Math.min.apply(null, memePoste.map(niveauJoueur))
@@ -551,7 +558,10 @@
     const RMClub = global.RMClub;
     const journal = journalMercato(saison);
     if (!saison.marche) saison.marche = [];
-    if (saison.marche.length >= TAILLE_MARCHE) return null;
+    // Le plafond ne compte QUE le marché national : sans ça, une mission
+    // réussie gèlerait le réapprovisionnement normal — découvrir des joueurs
+    // en ferait disparaître d'autres.
+    if (saison.marche.filter((j) => !j.zoneDecouverte).length >= TAILLE_MARCHE) return null;
     const iso = RMClub.dateISO ? RMClub.dateISO(date) : null;
     if (journal.dernierAppro) {
       const ecart = RMClub.ecartJours
@@ -610,7 +620,12 @@
     journal.dernierRafraichissement = RMClub.dateISO(date);
     const rng = global.RugbyEngine.creerRng(
       RMClub.grainePourJour(Number.isFinite(saison.graine) ? saison.graine : 1, date, 23));
-    saison.marche = RMClub.genererMarcheTransferts(rng, saison.clubJoueur.niveauClub, TAILLE_MARCHE);
+    // Les joueurs RAMENÉS PAR UNE MISSION (G12) survivent au rafraîchissement :
+    // le manager les a payés, les balayer avec le marché national reviendrait
+    // à lui reprendre ce qu'il vient d'acheter.
+    const decouverts = (saison.marche || []).filter((j) => j.zoneDecouverte);
+    saison.marche = decouverts.concat(
+      RMClub.genererMarcheTransferts(rng, saison.clubJoueur.niveauClub, TAILLE_MARCHE));
     return { ok: true, marche: saison.marche };
   }
 
