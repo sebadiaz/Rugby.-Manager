@@ -157,6 +157,13 @@
     if (decision.type === 'propositionVente') {
       decision.resultat = global.RMClub.appliquerDecisionPropositionVente(saison, decision, optionId);
     }
+    // Arbitrage posé par le conseil d'administration (club-direction.js, G13)
+    // : rallonge de budget contre objectif relevé, ou vente exigée pour
+    // équilibrer les comptes. Même chemin que les autres, donc même
+    // idempotence et même traitement du silence.
+    if (decision.type === 'conseil') {
+      decision.resultat = global.RMClub.appliquerDecisionConseil(saison, decision, optionId);
+    }
     decision.resolu = true;
     decision.choix = optionId;
     message.lu = true;
@@ -184,7 +191,11 @@
       // parmi ses options.
       const optionDefaut = d.type === 'vestiaire' ? 'laisser'
         : d.type === 'offreAchat' ? 'refuser'
-        : d.type === 'propositionVente' ? 'refuser' : 'ignorer';
+        : d.type === 'propositionVente' ? 'refuser'
+        // Conseil d'administration (G13) : ne pas répondre, c'est refuser —
+        // et cela coûte la même confiance qu'un refus assumé. Un manager qui
+        // laisse traîner un dossier du conseil ne s'en tire pas mieux.
+        : d.type === 'conseil' ? 'refuser' : 'ignorer';
       if (resoudreDecisionMessage(saison, m.id, optionDefaut)) {
         d.resultat = d.type === 'vestiaire'
           ? "Tu n'as pas réagi à temps : l'ambiance du vestiaire s'est dégradée toute seule."
@@ -192,13 +203,20 @@
             ? `Tu n'as pas répondu à temps : ${d.clubNom || 'le club'} retire son offre pour ${d.joueurNom || 'ton joueur'}.`
             : d.type === 'propositionVente'
               ? `Tu n'as pas répondu à temps : ${d.clubNom || 'le club'} ne propose plus ${d.joueurNom || 'son joueur'}.`
+            : d.type === 'conseil'
+              ? `Tu n'as pas répondu au conseil d'administration à temps : il a considéré que c'était non.`
             : d.type === 'offreSortante'
               ? `Tu n'as pas répondu à temps : ${d.clubNom || 'le club'} retire ${d.joueurNom || 'son joueur'} du marché.`
               : d.type === 'negociationContrat'
                 ? `Tu n'as pas répondu à temps : l'agent de ${d.joueurNom || 'ton joueur'} a classé le dossier.`
                 : `Tu n'as pas répondu à temps : ${joueur ? joueur.nom : 'le joueur'} a pris ton silence pour un refus.`;
         d.expiree = true;
-        expirees.push(joueur ? joueur.nom : null);
+        // Libellé COMPLET, pas seulement un nom de joueur : toutes les
+        // décisions ne portent pas sur quelqu'un. Mesuré en branchant le
+        // conseil d'administration (G13) — une décision sans `joueurId`
+        // poussait `null`, était filtrée, et disparaissait donc de la liste :
+        // elle expirait en silence, sans que le manager l'apprenne jamais.
+        expirees.push(joueur ? `Demande de ${joueur.nom}` : (m.titre || 'Une décision'));
       }
     }
     return expirees.filter(Boolean);

@@ -224,6 +224,11 @@
     const decisionsExpirees = RMClub.resoudreDecisionsExpirees(saison, date);
     const pointEtape = RMClub.resoudrePointEtape(saison);
     const reunionVestiaire = RMClub.declencherReunionVestiaire(saison, date);
+    // Le conseil d'administration (G13) : il propose ou il exige, selon
+    // l'état RÉEL du club. Appel défensif comme les autres domaines chargés
+    // après club.js.
+    const propositionConseil = RMClub.propositionConseilDuJour
+      ? RMClub.propositionConseilDuJour(saison, date) : null;
 
     // Un retour de blessure ou de prêt change la composition disponible : le
     // manager doit l'apprendre. Message RÉEL, adossé à un changement réel.
@@ -253,6 +258,7 @@
       decisionsExpirees,
       pointEtape,
       reunionVestiaire,
+      propositionConseil,
       signatureRivale: mercatoDuJour ? mercatoDuJour.signature : null,
       offreRecue,
       travaux,

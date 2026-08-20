@@ -5711,8 +5711,8 @@
     if (resume.reunionVestiaire) {
       toast(`💬 Le vestiaire va mal (moral ${resume.reunionVestiaire.moral} %) — une décision t'attend`, 'erreur');
     }
-    for (const nom of resume.decisionsExpirees || []) {
-      toast(`⏳ Demande de ${nom} restée sans réponse`, 'erreur');
+    for (const libelle of resume.decisionsExpirees || []) {
+      toast(`⏳ ${libelle} — sans réponse de ta part`, 'erreur');
     }
     // Blessure survenue À L'ENTRAÎNEMENT (TODO_AUDIT.md P1-26) : le manager
     // doit l'apprendre au moment où elle arrive, pas la découvrir en ouvrant

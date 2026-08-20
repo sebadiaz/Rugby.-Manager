@@ -3810,6 +3810,118 @@ composition ni à la fatigue.
 
 ---
 
+## G13 — La direction met enfin le manager devant ses choix (livrée)
+
+### Comportement observé (mesuré, pas déduit)
+
+Douze saisons simulées (4 carrières × 3), toutes les décisions comptées :
+
+```
+offreAchat            115   (9,6 / saison)
+propositionVente       36   (3,0 / saison)
+--------------------------------------------
+TOTAL                 151   — et rien d'autre.
+```
+
+Sept types de décision existent pourtant dans le code (`tempsDeJeu`,
+`vestiaire`, `statut`, `offreAchat`, `negociationContrat`, `offreSortante`,
+`propositionVente`). Mais trois d'entre eux sont des **réponses** à une
+action du manager : ils n'existent que s'il a déjà proposé un contrat, fait
+une offre ou promis un statut. En pratique, la boîte de réception ne lui
+proposait donc **que des mouvements de joueurs**.
+
+Et la direction, elle, ne lui demandait **jamais rien** : son point d'étape
+est un message avec un chiffre (« Confiance -4 (31 %) »), son ultimatum est
+imposé, pas arbitré. **Aucune décision du jeu ne touchait à la confiance du
+président ni à la trajectoire de la carrière** — les deux leviers que le
+cahier des charges cite pourtant en premier.
+
+### La correction
+
+Deux arbitrages qu'un conseil d'administration pose réellement à un manager,
+dans `club-direction.js` — un seul type de décision (`conseil`), deux
+variantes, **aucun tirage aléatoire** : les deux naissent d'un état mesuré du
+club, donc deux carrières identiques reçoivent la même proposition le même
+jour.
+
+- **Rallonge** — quand la confiance est à 60 % ou plus et qu'il reste de la
+  marge au-dessus de l'objectif : « on met 130 k€ sur la table (350 en
+  Excellence), mais l'objectif passe de 7e à 3e ». Accepter crédite
+  réellement le budget (nouvelle catégorie `direction` au grand livre) **et
+  change réellement `objectifSaison`**, que la fin de saison jugera avec le
+  même barème qu'avant — c'est une vraie conséquence de carrière, pas un
+  bonus. Refuser ne coûte rien, sauf 5 points de confiance.
+- **Économies** — quand le budget ne couvre plus la moitié de la masse
+  salariale : le conseil désigne le **salaire le plus lourd cessible** et un
+  acheteur qui a vraiment les moyens. Accepter vend le joueur pour de bon
+  (via `vendreJoueur`, le club adverse paie et le récupère dans son groupe).
+  Refuser le garde et coûte 14 points de confiance — nettement plus que
+  refuser une ambition : ici ce sont les comptes du club qui sont en jeu.
+
+Un seul dossier ouvert à la fois, 45 jours entre deux, 10 jours pour
+répondre, et le silence vaut refus par le **chemin générique** des décisions
+expirées — aucune règle parallèle.
+
+### Les deux variantes répondent à des managers différents
+
+```
+manager passif (12 saisons)          conseil:rallonge   1,3 / saison
+                                     conseil:economies  0
+manager qui investit (4 saisons)     conseil:economies  4,0 / saison
+                                     conseil:rallonge   0
+```
+
+C'est exactement la dynamique voulue : la direction propose de l'argent à
+celui qui gagne et en réclame à celui qui dépense. Le manager passif ne voit
+jamais l'exigence d'économies — non par un défaut du code, mais parce que sa
+trésorerie ne fait que monter (le constat de G11). Dès qu'il envoie
+réellement son recruteur au bout du monde (G12), le conseil se manifeste.
+
+### Trois défauts trouvés par les tests, dont deux dans du code ANTÉRIEUR
+
+1. **Une décision sans joueur expirait en silence.**
+   `resoudreDecisionsExpirees` poussait `joueur ? joueur.nom : null` puis
+   filtrait les `null` : une décision qui ne porte sur personne — comme celles
+   du conseil — disparaissait de la liste, donc n'interrompait jamais l'avance
+   et n'était jamais annoncée. Le manager ne l'apprenait pas. La liste porte
+   désormais un libellé complet.
+2. **L'option par défaut du silence n'existait pas pour ce type.** Le
+   `optionDefaut` retombait sur `'ignorer'`, que `resoudreDecisionMessage`
+   refuse pour une décision qui n'a pas cette option — la décision serait
+   restée en attente pour toujours. Le cas **C10** l'a attrapé, parce que le
+   test a été écrit avant le code.
+3. **Le conseil parlait dès le premier jour d'une carrière neuve.** Deux
+   garanties déjà en place dans `test-parcours-club` sont passées au rouge —
+   une journée qui ne devait produire aucun message, une avance qui ne devait
+   pas être interrompue d'entrée. Elles avaient raison : un conseil
+   d'administration qui parle d'objectif avant le premier match n'a rien à
+   juger. Je n'ai pas touché à ces deux tests ; j'ai ajouté la borne qui
+   manquait (trois journées jouées) et le cas **C0** qui la verrouille.
+
+### Un troisième défaut, dans mon propre banc d'essai
+
+Ma première mesure ne voyait aucune décision du conseil et j'ai failli en
+conclure que la borne « trois journées jouées » était trop stricte. En
+regardant plutôt que déduire : `enregistrerResultatClubJoueur` **ne marque
+pas la rencontre jouée** — il ne fait que consigner la confrontation et
+poster un message. C'est `enregistrerResultat` (club-calendrier.js) qui pose
+`f.joue` et met le classement à jour. Mon harnais rejouait donc des saisons
+où `f.joue` restait faux du premier au dernier jour. Corrigé, les chiffres
+ci-dessus sont ceux d'une saison réellement disputée. À retenir pour les
+prochains bancs d'essai.
+
+Couverture : `server/test-conseil-direction.js`, 15 cas, **tous rouges
+avant**. **C13** est le garde-fou : sans objectif défini et avec des comptes
+sains, le conseil ne propose rien — rien n'est inventé pour meubler. **C0**
+verrouille la borne d'entrée : trois journées jouées avant que le conseil
+n'ouvre la bouche.
+
+Aucune migration de sauvegarde : le journal de direction accueille son
+nouveau champ à la volée, et la nouvelle catégorie du grand livre est couverte
+par `assurerCategories` (livrée en G11).
+
+---
+
 ## G12 — Un réseau de recrutement, pas un catalogue (livrée)
 
 ### Comportement observé (mesuré, pas déduit)

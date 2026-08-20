@@ -36,6 +36,8 @@
       description: 'Versés à chaque journée de championnat, selon le palier.' },
     primes: { libelle: 'Primes de compétition', sens: 'recette',
       description: 'Classement final et parcours en coupe, versés en fin de saison.' },
+    direction: { libelle: 'Apports de la direction', sens: 'recette',
+      description: 'Rallonges votées par le conseil d\'administration.' },
     transfertVente: { libelle: 'Ventes de joueurs', sens: 'recette',
       description: 'Indemnités encaissées sur les départs.' },
     pret: { libelle: 'Prêts', sens: 'recette',
