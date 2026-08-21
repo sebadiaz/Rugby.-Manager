@@ -3810,6 +3810,110 @@ composition ni à la fatigue.
 
 ---
 
+## G14 — Une carrière d'entraîneur qui peut changer de division (livrée)
+
+### Comportement observé (mesuré, pas déduit)
+
+Un manager porté à 85 de réputation (l'échelle démarre à 45), dans une
+carrière où les trois divisions françaises sont réellement simulées dans la
+**même sauvegarde** :
+
+```
+offres reçues                                     4
+offres venant de MA division                      4 / 4
+clubs réellement simulés dans les 2 autres       30
+offres venant de ces 30 clubs                     0
+divisions annoncées, valeurs distinctes          ["Ligue Régionale"]
+exigence la plus haute parmi les offres          37   (pour 85 de réputation)
+```
+
+`offresDisponibles` ne lisait que `saison.adversaires`. Pire, le champ
+`division` de chaque offre était rempli avec le palier du **JOUEUR** — ce qui
+était juste par accident, puisque toutes les offres en venaient.
+
+Conséquence en jeu : **un entraîneur ne pouvait jamais changer de division.**
+Le seul moyen de monter était d'y emmener son club ; un manager licencié ne
+pouvait pas rebondir plus bas ; et une réputation d'élite n'ouvrait aucune
+porte, alors que 30 clubs d'autres divisions vivaient dans la même partie.
+
+### La correction
+
+- `clubsRecruteurs` rassemble **tous** les clubs qui peuvent recruter un
+  entraîneur : ceux de la division du joueur, et ceux des deux autres
+  divisions françaises (`club-pyramide-france.js`, qui leur donne déjà clubs,
+  calendrier et classement propres). Chaque club apporte sa **vraie position
+  dans son propre classement**, jamais une place inventée.
+- `exigenceClub` gagne une **marche par division** (+30 pour l'élite, +14
+  pour la Nationale, 0 en Régionale). Sans elle, la seule variable était
+  `niveauClub`, dont les bandes se recouvrent d'un palier à l'autre : un
+  débutant aurait pu être appelé par l'élite.
+- Chaque offre porte `niveauCible` et le **vrai** nom de sa division.
+- **Deux offres par division au maximum**, six au total. Mesuré avec l'ancien
+  plafond de quatre : à 85 de réputation, l'élite et la Nationale raflaient
+  les quatre places et le manager ne recevait plus une seule offre de sa
+  propre division — il perdait le mouvement latéral, le plus courant dans une
+  vraie carrière.
+
+Échelle obtenue, mesurée depuis la Ligue Régionale :
+
+```
+réputation 45   Régionale (37, 35)   Nationale (38, 38)
+réputation 60   Régionale (37, 35)   Nationale (58, 57)
+réputation 85   Régionale (37, 35)   Nationale (68, 66)   Excellence (85, 83)
+réputation 95   Régionale (…)        Nationale (68, 66)   Excellence (94, 94)
+```
+
+### Signer ailleurs, c'est signer pour la saison prochaine
+
+Une offre de **sa propre division** se prend séance tenante, comme avant :
+les deux clubs échangent de rôle, le championnat, le calendrier et les
+classements ne bougent pas (`changerClubManager`, inchangé).
+
+Une offre d'une **autre division** ne peut pas fonctionner ainsi : il
+faudrait remplacer en cours de route un championnat déjà à moitié joué, son
+calendrier et son classement — et priver le manager de la fin de saison qu'il
+est en train de disputer. Elle est donc enregistrée comme un **engagement
+pour la saison prochaine**, et se réalise dans `avancerSaison`, une fois la
+saison écoulée portée au palmarès du manager sous les couleurs de son ancien
+club. Le club rejoint impose son palier et la régénération des adversaires
+suit **exactement** le chemin déjà emprunté par une promotion ou une
+relégation : aucune seconde mécanique de division.
+
+Un engagement signé **ferme les autres portes** tant qu'il court — on ne
+s'engage pas deux fois le même été.
+
+### Deux petits défauts trouvés en pilotant le navigateur
+
+1. **L'écran Carrière pouvait ne montrer que sa propre division.** Les deux
+   autres divisions sont créées à la demande, depuis l'onglet Compétitions.
+   Ouvrir Carrière avant d'avoir ouvert une compétition ne montrait donc que
+   des offres locales, **silencieusement**. La création est maintenant
+   assurée aussi depuis cet écran, avec la même graine déterministe.
+2. **Les offres périmées restaient dans le DOM.** `rafraichirOffresManager`
+   masquait la carte sans vider son contenu : après une signature, les six
+   offres étaient invisibles à l'œil mais toujours présentes dans le
+   document — donc atteignables au clavier.
+
+### Limite assumée
+
+Au changement de division, l'ancien club du manager n'est pas conservé dans
+le monde — exactement comme lors d'une promotion ou d'une relégation
+sportive, et pour la même raison déjà documentée dans
+`club-pyramide-france.js` : les paliers ne font pas persister l'identité de
+leurs clubs d'une saison à l'autre. Les clubs des deux autres divisions sont
+par ailleurs volontairement abstraits (identité, niveau, budget — pas
+d'effectif nominatif) : rejoindre l'un d'eux génère son effectif à son
+niveau, comme le fait déjà une promotion pour ses nouveaux adversaires.
+
+Couverture : `server/test-carriere-divisions.js`, 13 cas, **9 rouges avant**.
+Les quatre autres étaient verts dès le départ, et c'est leur rôle : **K3**
+(un débutant n'est pas appelé par l'élite), **K6** (une offre de sa division
+se prend toujours immédiatement), **K12** (sans engagement, la saison change
+exactement comme avant) et **K13** (une promotion sportive fonctionne
+toujours).
+
+---
+
 ## G13 — La direction met enfin le manager devant ses choix (livrée)
 
 ### Comportement observé (mesuré, pas déduit)

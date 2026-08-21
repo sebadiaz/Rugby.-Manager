@@ -1097,6 +1097,21 @@
         'Le club valide sa place en Coupe Challenge Continentale la saison prochaine.');
     }
 
+    // Engagement pris auprès d'un club d'une AUTRE division (G14) : il se
+    // réalise ici, au changement de saison, une fois la saison écoulée
+    // enregistrée au palmarès du manager sous les couleurs de son ancien
+    // club. Le club rejoint impose son palier, et la régénération des
+    // adversaires ci-dessous suit exactement le chemin déjà emprunté par une
+    // promotion ou une relégation — aucune seconde mécanique de division.
+    if (global.RMClub.realiserEngagementProchaineSaison) {
+      const niveauRejoint = global.RMClub.realiserEngagementProchaineSaison(saison);
+      if (niveauRejoint != null) {
+        nouveauNiveauPalier = niveauRejoint;
+        mouvementPalier = 'transfertManager';
+        saison.clubJoueur.palierPyramide = { pays: 'FRA', niveau: nouveauNiveauPalier };
+      }
+    }
+
     // Évolution des clubs adverses d'une saison à l'autre : si le palier du
     // joueur change, ce sont de NOUVEAUX rivaux (nouvelle division, cf.
     // niveauxAdversairesPourPalier) — sinon, évolution RÉELLE des mêmes

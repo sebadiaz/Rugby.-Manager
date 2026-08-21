@@ -876,15 +876,20 @@
     if (!accept) return;
     const offre = RMClub.offresDisponibles(saison).find((o) => o.id === accept.dataset.accepter);
     if (!offre) return;
-    const ok = await confirmerAction(
-      `Prendre les commandes de ${offre.clubNom} ? Tu quittes ton club actuel — ta carrière ` +
-      `personnelle, la saison en cours et le calendrier continuent, mais tu diriges désormais ` +
-      `cet effectif et cet objectif.`);
+    const ok = await confirmerAction(offre.immediat
+      ? `Prendre les commandes de ${offre.clubNom} ? Tu quittes ton club actuel — ta carrière ` +
+        `personnelle, la saison en cours et le calendrier continuent, mais tu diriges désormais ` +
+        `cet effectif et cet objectif.`
+      : `Signer à ${offre.clubNom} (${offre.division}) pour la saison prochaine ? Tu termines la ` +
+        `saison en cours à ${saison.clubJoueur.nom}, puis tu prends ce poste — dans une autre ` +
+        `division, avec un autre effectif. Les autres offres seront closes.`);
     if (!ok) return;
     RMClub.accepterOffre(saison, offre.id);
     sauvegarder();
     rafraichirTout();
-    toast(`Tu diriges désormais ${offre.clubNom}`);
+    toast(offre.immediat
+      ? `Tu diriges désormais ${offre.clubNom}`
+      : `Engagé à ${offre.clubNom} pour la saison prochaine`);
   });
 
   document.getElementById('clubPreparer').addEventListener('click', (e) => {
@@ -2882,8 +2887,19 @@
   function rafraichirCarriereManager() {
     const zone = document.getElementById('clubCarriereManager');
     if (!zone) return;
+    // Les deux autres divisions françaises sont créées à la demande (cf.
+    // onglet Compétitions). Le marché des entraîneurs les lit désormais
+    // (G14) : sans cet appel, ouvrir l'écran Carrière AVANT d'avoir ouvert
+    // une compétition ne montrait que des offres de sa propre division,
+    // silencieusement. Graine déterministe, la même que l'autre point de
+    // création — deux carrières identiques ont le même monde.
+    if (RMClub.assurerAutresDivisionsFrance) {
+      RMClub.assurerAutresDivisionsFrance(creerRng(graineDuJour('paliersCreation')), saison);
+    }
     const m = RMClub.assurerManager(saison);
     const s = RMClub.securiteEmploi(saison);
+    const engagement = RMClub.engagementProchaineSaison
+      ? RMClub.engagementProchaineSaison(saison) : null;
     const clubActuel = m.statut === 'enPoste' ? saison.clubJoueur.nom : 'Sans club';
     const bilanTotal = m.saisons.reduce((acc, x) => {
       acc.n++; if (x.objectifAtteint === true) acc.reussies++;
@@ -2905,6 +2921,12 @@
     zone.innerHTML =
       `${ligneInfo(`Manager`, `${echapperHTML(m.nom)}`)}` +
       `${ligneInfo(`Club actuel`, `${echapperHTML(clubActuel)}`)}` +
+      // Engagement déjà signé ailleurs (G14) : le manager doit s'en souvenir
+      // pendant toute la fin de saison, pas seulement au moment de signer.
+      (engagement
+        ? `<div class="ligneInfo"><span>Saison prochaine</span>` +
+          `<b>${echapperHTML(engagement.clubNom)} · ${echapperHTML(engagement.division)}</b></div>`
+        : '') +
       `${ligneInfo(`Réputation`, `${m.reputation} / 100`)}` +
       `<div class="ligneInfo"><span>Sécurité de l'emploi</span>` +
       `<b>${LIBELLE_SECURITE[s.niveau] || ''} ${echapperHTML(s.libelle)}</b></div>` +
@@ -2925,22 +2947,30 @@
     const zone = document.getElementById('clubOffresManager');
     if (!carte || !zone) return;
     const offres = RMClub.offresDisponibles(saison);
-    if (!offres.length) { carte.style.display = 'none'; return; }
+    // On VIDE aussi la zone : masquer la carte sans effacer son contenu
+    // laissait les anciennes offres dans le DOM. Invisibles pour l'œil, mais
+    // toujours là — donc toujours cliquables au clavier et trompeuses pour
+    // tout ce qui lit la page. Constaté en pilotant le navigateur après une
+    // signature : la carte était bien masquée, les six offres toujours
+    // présentes dans le document.
+    if (!offres.length) { carte.style.display = 'none'; zone.innerHTML = ''; return; }
     carte.style.display = '';
     const m = RMClub.assurerManager(saison);
     const entete = m.statut === 'sansClub'
       ? '<p class="noteLectureSeule" style="margin:0 0 10px;">Tu es libre : ces clubs sont prêts à te confier leur équipe.</p>'
-      : '<p class="noteLectureSeule" style="margin:0 0 10px;">Ces clubs s\'intéressent à toi. Accepter met fin à ton poste actuel.</p>';
+      : '<p class="noteLectureSeule" style="margin:0 0 10px;">Ces clubs s\'intéressent à toi. Un club de ta division te prend '
+        + 'tout de suite ; un club d\'une autre division t\'engage pour la saison prochaine — tu termines celle-ci là où tu es.</p>';
     zone.innerHTML = entete + offres.map((o) =>
       `<div class="offreManager">` +
       `<div class="offreTitre"><b>${echapperHTML(o.clubNom)}</b>` +
       `<span class="badgeNiveau niveau-info">${echapperHTML(o.division)}</span></div>` +
       `<div class="offreLigne">Classement actuel : ${o.position != null ? o.position + 'e/' + o.totalClubs : 'non connu'}</div>` +
       `<div class="offreLigne">Objectif proposé : ${echapperHTML(o.objectif)}</div>` +
+      `<div class="offreLigne">Prise de poste : <b>${o.immediat ? 'immédiate' : 'la saison prochaine'}</b></div>` +
       `<div class="offreLigne">Budget : ${o.budget != null ? o.budget + ' k€' : 'non communiqué'} · Confiance initiale : ${o.confianceInitiale} %</div>` +
       `<div class="offreRaison">${echapperHTML(o.raison)}</div>` +
       `<div class="actionsOffre">` +
-      `<button class="accent" data-accepter="${echapperHTML(o.id)}">Accepter ce poste</button>` +
+      `<button class="accent" data-accepter="${echapperHTML(o.id)}">${o.immediat ? 'Accepter ce poste' : 'Signer pour la saison prochaine'}</button>` +
       `<button class="alt" data-refuser="${echapperHTML(o.id)}">Refuser</button>` +
       `</div></div>`).join('');
   }

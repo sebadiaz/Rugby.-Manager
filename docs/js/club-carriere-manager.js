@@ -172,7 +172,13 @@
   // --- Offres d'emploi ----------------------------------------------------
   // Uniquement des clubs qui EXISTENT dans la pyramide (saison.adversaires) :
   // aucun club fictif créé pour l'occasion, aucun monde parallèle.
-  const MAX_OFFRES = 4;
+  // Deux postes par division au plus (cf. offresDisponibles), donc six au
+  // total quand un manager est courtisé aux trois étages de la pyramide.
+  // Mesuré avec l'ancien plafond de 4 : à 85 de réputation, l'élite et la
+  // Nationale raflaient les quatre places et le manager ne recevait plus une
+  // seule offre de sa PROPRE division — il perdait le mouvement latéral, qui
+  // est pourtant le plus courant dans une vraie carrière.
+  const MAX_OFFRES = 6;
 
   function positionDe(saison, clubId) {
     const classement = global.RMClub.classementTrie(saison);
@@ -183,9 +189,17 @@
   // Un club vise un manager dont la réputation correspond à son niveau. Un
   // club en difficulté est moins regardant : c'est ce qui donne toujours une
   // porte de sortie à un manager licencié.
-  function exigenceClub(club, position, total) {
+  // Ce qu'une DIVISION exige en plus, quel que soit le club : diriger en
+  // Ligue d'Excellence n'est pas la même chose que diriger en Régionale, même
+  // pour un club modeste de l'élite. Sans cette marche, la seule variable
+  // était `niveauClub`, dont les bandes se recouvrent d'un palier à l'autre —
+  // un manager débutant aurait pu être appelé par l'élite.
+  const MARCHE_PAR_DIVISION = { 1: 30, 2: 14, 3: 0 };
+
+  function exigenceClub(club, position, total, niveauDivision) {
     const niveau = club.niveauClub != null ? club.niveauClub : 0.5;
-    let exigence = 20 + niveau * 60;
+    const marche = MARCHE_PAR_DIVISION[niveauDivision] != null ? MARCHE_PAR_DIVISION[niveauDivision] : 0;
+    let exigence = 20 + niveau * 60 + marche;
     if (position != null && total) {
       const bas = position / total;
       if (bas > 0.75) exigence -= 18;       // lanterne rouge : prend qui veut
@@ -205,32 +219,96 @@
     return 'Le club cherche un manager capable de stabiliser ses résultats.';
   }
 
+  // TOUS les clubs qui peuvent recruter un entraîneur : ceux de la division
+  // du joueur (saison.adversaires) ET ceux des deux autres divisions
+  // françaises, qui sont réellement simulées dans la même sauvegarde
+  // (club-pyramide-france.js : clubs, calendrier et classement propres).
+  //
+  // Mesuré avant : `offresDisponibles` ne lisait que `saison.adversaires`,
+  // donc un manager à 85 de réputation recevait 4 offres, toutes de sa
+  // propre division — pendant que 30 clubs d'autres divisions vivaient dans
+  // la même partie sans jamais l'appeler. Un entraîneur ne pouvait donc
+  // JAMAIS changer de division autrement qu'en y emmenant son club.
+  function clubsRecruteurs(saison) {
+    const RMClub = global.RMClub;
+    const niveauJoueur = (saison.clubJoueur.palierPyramide || { niveau: 3 }).niveau;
+    const liste = [];
+    const classement = RMClub.classementTrie(saison);
+    for (const club of (saison.adversaires || [])) {
+      liste.push({ club, niveau: niveauJoueur, position: positionDe(saison, club.id), total: classement.length });
+    }
+    const autres = (saison.autresDivisionsFrance || {}).divisions || {};
+    for (const cle of Object.keys(autres)) {
+      const division = autres[cle];
+      if (!division || !division.clubs) continue;
+      const niveau = Number(division.niveau) || Number(cle);
+      // Position RÉELLE dans le classement de SA division — pas une place
+      // inventée, et pas celle du championnat du joueur.
+      const trie = RMClub.classementTrieDe
+        ? RMClub.classementTrieDe(division.classement || {}) : [];
+      for (const club of division.clubs) {
+        const i = trie.findIndex((r) => r.clubId === club.id);
+        liste.push({
+          club, niveau,
+          position: i === -1 ? null : i + 1,
+          total: trie.length || (division.clubs || []).length,
+        });
+      }
+    }
+    return liste;
+  }
+
   // Les offres sont DÉRIVÉES de l'état du monde, pas stockées : on ne garde
   // que les décisions déjà prises (refus/acceptation), pour qu'une offre
   // refusée ne revienne pas.
   function offresDisponibles(saison) {
     const RMClub = global.RMClub;
     const m = assurerManager(saison);
+    // Un engagement déjà signé pour la saison prochaine ferme les autres
+    // portes : on ne s'engage pas deux fois le même été.
+    if (m.engagementProchaineSaison) return [];
     const decidees = new Set((m.offres || []).filter((o) => o.statut !== 'ouverte').map((o) => o.clubId));
-    const classement = RMClub.classementTrie(saison);
-    const total = classement.length;
     const candidats = [];
-    for (const club of (saison.adversaires || [])) {
+    for (const entree of clubsRecruteurs(saison)) {
+      const club = entree.club;
       if (decidees.has(club.id)) continue;
-      const position = positionDe(saison, club.id);
-      const exigence = exigenceClub(club, position, total);
+      const exigence = exigenceClub(club, entree.position, entree.total, entree.niveau);
       if (m.reputation < exigence) continue;
-      candidats.push({ club, position, exigence });
+      candidats.push({ club, position: entree.position, total: entree.total, exigence, niveau: entree.niveau });
     }
     // Les postes les plus flatteurs d'abord : un club exigeant qui t'accepte
     // vaut mieux qu'un club au bord du gouffre.
     candidats.sort((a, b) => b.exigence - a.exigence);
-    return candidats.slice(0, MAX_OFFRES).map(({ club, position, exigence }) => ({
+    // Mais jamais QUE les plus flatteurs. Mesuré en branchant les autres
+    // divisions : un manager à 85 de réputation voyait ses quatre offres
+    // accaparées par la Ligue d'Excellence, et plus une seule de sa propre
+    // division — il ne lui restait qu'un choix binaire « tout ou rien ».
+    // Deux postes par division au maximum : l'écran montre un éventail réel.
+    const OFFRES_MAX_PAR_DIVISION = 2;
+    const parDivision = {};
+    const retenus = [];
+    for (const c of candidats) {
+      const n = parDivision[c.niveau] || 0;
+      if (n >= OFFRES_MAX_PAR_DIVISION) continue;
+      parDivision[c.niveau] = n + 1;
+      retenus.push(c);
+    }
+    candidats.length = 0;
+    for (const c of retenus) candidats.push(c);
+    const niveauJoueur = (saison.clubJoueur.palierPyramide || { niveau: 3 }).niveau;
+    return candidats.slice(0, MAX_OFFRES).map(({ club, position, total, exigence, niveau }) => ({
       id: 'offre-' + club.id + '-' + (saison.numero || 1),
       clubId: club.id,
       clubNom: club.nom,
-      division: RMClub.nomPalierFrance
-        ? RMClub.nomPalierFrance((saison.clubJoueur.palierPyramide || { niveau: 3 }).niveau) : 'Championnat',
+      // La VRAIE division du club qui recrute. Avant, ce champ était rempli
+      // avec le palier du JOUEUR : toutes les offres annonçaient la même,
+      // ce qui était juste par accident (elles en venaient toutes) et serait
+      // devenu un mensonge dès la première offre venue d'ailleurs.
+      niveauCible: niveau,
+      division: RMClub.nomPalierFrance ? RMClub.nomPalierFrance(niveau) : 'Championnat',
+      // Un poste dans une autre division ne se prend qu'à l'intersaison : on
+      // ne change pas de championnat au milieu d'un calendrier à moitié joué.
+      immediat: niveau === niveauJoueur,
       position,
       totalClubs: total,
       objectif: position != null && total && position / total > 0.75
@@ -257,12 +335,117 @@
   }
 
   function accepterOffre(saison, offreId) {
+    const RMClub = global.RMClub;
     const offre = enregistrerDecisionOffre(saison, offreId, 'acceptee');
     if (!offre) return false;
-    changerClubManager(saison, offre.clubId, {
-      confianceInitiale: offre.confianceInitiale, objectifLibelle: offre.objectif,
-    });
+    // Même division : le manager change de club séance tenante, comme avant —
+    // le championnat, le calendrier et les classements ne bougent pas, les
+    // deux clubs échangent simplement de rôle.
+    if (offre.immediat) {
+      changerClubManager(saison, offre.clubId, {
+        confianceInitiale: offre.confianceInitiale, objectifLibelle: offre.objectif,
+      });
+      return true;
+    }
+    // Autre division : on signe pour LA SAISON PROCHAINE. Basculer en cours
+    // de route obligerait à remplacer le championnat, son calendrier déjà à
+    // moitié joué et son classement — et priverait le manager de la fin de
+    // saison qu'il est en train de disputer.
+    const m = assurerManager(saison);
+    m.engagementProchaineSaison = {
+      clubId: offre.clubId, clubNom: offre.clubNom,
+      niveau: offre.niveauCible, division: offre.division,
+      confianceInitiale: offre.confianceInitiale, objectif: offre.objectif,
+      signeSaison: saison.numero || 1,
+    };
+    if (RMClub.ajouterMessage) {
+      RMClub.ajouterMessage(saison, 'direction', 'Accord pour la saison prochaine',
+        `Tu es engagé par ${offre.clubNom} (${offre.division}) à partir de la saison prochaine. ` +
+        `Tu termines la saison en cours à ${saison.clubJoueur.nom}.`);
+    }
     return true;
+  }
+
+  function engagementProchaineSaison(saison) {
+    const m = saison && saison.manager;
+    return (m && m.engagementProchaineSaison) || null;
+  }
+
+  // Réalise l'engagement au CHANGEMENT DE SAISON (appelée par avancerSaison,
+  // juste avant que les adversaires soient régénérés pour le nouveau palier).
+  // Renvoie le niveau de division rejoint, ou null s'il n'y a rien à faire.
+  //
+  // Le club rejoint vient d'une des deux autres divisions françaises, où les
+  // clubs sont volontairement abstraits (identité, niveau et budget, pas
+  // d'effectif nominatif — cf. club-pyramide-france.js). On génère donc son
+  // effectif à SON niveau, comme le fait déjà une promotion sportive pour les
+  // nouveaux adversaires. Son identité réelle, elle, est conservée.
+  function realiserEngagementProchaineSaison(saison) {
+    const RMClub = global.RMClub;
+    const m = assurerManager(saison);
+    const e = m.engagementProchaineSaison;
+    if (!e) return null;
+    const autres = (saison.autresDivisionsFrance || {}).divisions || {};
+    let cible = null;
+    for (const cle of Object.keys(autres)) {
+      const trouve = ((autres[cle] || {}).clubs || []).find((c) => c.id === e.clubId);
+      if (trouve) { cible = trouve; break; }
+    }
+    // Le club a disparu du monde entre-temps : on ne fabrique pas un club
+    // fantôme pour tenir la promesse, on annule et on le dit.
+    if (!cible) {
+      m.engagementProchaineSaison = null;
+      if (RMClub.ajouterMessage) {
+        RMClub.ajouterMessage(saison, 'direction', 'Accord annulé',
+          `${e.clubNom} n'a finalement pas donné suite. Tu restes à ${saison.clubJoueur.nom}.`);
+      }
+      return null;
+    }
+    const rng = (global.RugbyEngine && global.RugbyEngine.creerRng)
+      ? global.RugbyEngine.creerRng(((saison.graine || 1) ^ hachage(cible.id)) >>> 0)
+      : () => 0.5;
+    const ancien = saison.clubJoueur;
+    const nouveau = Object.assign({}, ancien, {
+      id: cible.id, nom: cible.nom,
+      couleur: cible.couleur || ancien.couleur,
+      niveauClub: cible.niveauClub,
+      budget: cible.budget != null ? cible.budget : ancien.budget,
+      effectif: RMClub.genererEffectifEtendu
+        ? RMClub.genererEffectifEtendu(rng, cible.niveauClub) : ancien.effectif,
+      // Tout ce qui appartenait à l'ANCIEN club et n'a plus de sens ici.
+      sponsor: RMClub.genererSponsor ? RMClub.genererSponsor(rng, cible.niveauClub) : null,
+      personnel: [],
+      historiqueFinances: [],
+      historiqueSaisons: [],
+      historiqueConfrontations: {},
+      statsCumulees: null,
+      compositionTitulaires: null, compositionBanc: null,
+      capitaineId: null, buteurId: null, lanceurToucheId: null,
+      messages: ancien.messages || [],
+      confiancePresident: e.confianceInitiale != null ? e.confianceInitiale : 55,
+      jeunes: RMClub.genererCentreFormation ? RMClub.genererCentreFormation(rng, cible.niveauClub) : [],
+      palierPyramide: { pays: 'FRA', niveau: e.niveau },
+    });
+    delete nouveau.feuilleDeRoute;
+    saison.clubJoueur = nouveau;
+    saison.compositions = null;
+
+    const enCours = m.historiqueClubs[m.historiqueClubs.length - 1];
+    if (enCours && enCours.jusquaSaison == null) enCours.jusquaSaison = saison.numero || 1;
+    m.historiqueClubs.push({
+      clubId: nouveau.id, clubNom: nouveau.nom,
+      depuisSaison: (saison.numero || 1) + 1, jusquaSaison: null,
+      arriveeISO: (RMClub.dateISO && RMClub.dateCourante) ? RMClub.dateISO(RMClub.dateCourante(saison)) : null,
+    });
+    m.clubActuelId = nouveau.id;
+    m.statut = 'enPoste';
+    m.engagementProchaineSaison = null;
+    if (RMClub.ajouterMessage) {
+      RMClub.ajouterMessage(saison, 'direction', 'Nouveau poste',
+        `Tu prends les commandes de ${nouveau.nom} en ${e.division}. ` +
+        `Confiance initiale : ${nouveau.confiancePresident} %.`);
+    }
+    return e.niveau;
   }
 
   // --- Changement de club : LA fonction centrale --------------------------
@@ -413,6 +596,7 @@
   global.RMClub = Object.assign(global.RMClub || {}, {
     assurerManager, gainReputation, appliquerReputation, securiteEmploi,
     licencierManager, offresDisponibles, refuserOffre, accepterOffre, changerClubManager,
-    enregistrerSaisonManager,
+    enregistrerSaisonManager, clubsRecruteurs,
+    engagementProchaineSaison, realiserEngagementProchaineSaison,
   });
 })(window);
