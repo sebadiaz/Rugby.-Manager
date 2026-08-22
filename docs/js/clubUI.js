@@ -5543,13 +5543,22 @@
     // sinon des dizaines de matchs à simuler par journée avec le moteur
     // complet (~3,5s chacun mesuré) : injouable. SEUL le match du club du
     // joueur reste simulé avec le vrai moteur, exactement comme avant.
+    // Les autres rencontres de la journée (G18) : la règle vit dans
+    // club-effectif-adverse.js, pas ici. Le résultat dépend du groupe
+    // réellement disponible de chaque club, et le match LAISSE UNE TRACE —
+    // fatigue, blessures, temps de jeu. Mesuré avant : 156 matchs IA par
+    // saison ne touchaient aucun des 312 joueurs concernés.
     function simulerAutresMatchsAbstrait() {
       const rng = creerRng(graineAleatoire());
-      for (const f of autresMatchs) {
-        const clubA = RMClub.club(saison, f.domicileId);
-        const clubB = RMClub.club(saison, f.exterieurId);
-        const r = RMWorld.simulerResultatAbstrait(rng, clubA.niveauClub, clubB.niveauClub);
-        RMClub.enregistrerResultat(saison, f.id, r.scoreA, r.scoreB, r.essaisA, r.essaisB);
+      if (RMClub.resoudreMatchsAdverses) {
+        RMClub.resoudreMatchsAdverses(rng, saison, autresMatchs);
+      } else {
+        for (const f of autresMatchs) {
+          const clubA = RMClub.club(saison, f.domicileId);
+          const clubB = RMClub.club(saison, f.exterieurId);
+          const r = RMWorld.simulerResultatAbstrait(rng, clubA.niveauClub, clubB.niveauClub);
+          RMClub.enregistrerResultat(saison, f.id, r.scoreA, r.scoreB, r.essaisA, r.essaisB);
+        }
       }
       sauvegarder();
     }

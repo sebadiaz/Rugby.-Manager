@@ -3810,6 +3810,113 @@ composition ni à la fatigue.
 
 ---
 
+## G18 — Les matchs entre clubs IA arrivent enfin à leurs joueurs (livrée)
+
+### Comportement observé (mesuré, pas déduit)
+
+Sur une saison complète :
+
+```
+156 matchs disputés entre clubs adverses
+312 joueurs dans leurs groupes
+  ayant accumulé de la fatigue       : 0
+  blessés                            : 0
+  avec au moins un match au compteur : 0
+```
+
+Ces 26 journées ne laissaient **aucune trace**. Le résultat d'un match IA-IA
+ne dépendait que de `niveauClub` — ni de qui était disponible, ni de qui était
+blessé, ni de qui venait d'enchaîner trois matchs. Les groupes de 24 joueurs,
+la fatigue, les blessures et la rotation que le jeu entretient pour chaque
+club adverse ne servaient **qu'à son unique rencontre contre le club du
+joueur** : une sur vingt-six.
+
+### Ce qui a été mesuré et ÉCARTÉ
+
+J'avais annoncé « faire jouer les matchs IA-IA avec le vrai moteur ». Mesuré
+avant de m'y mettre : la corrélation de rang entre `niveauClub` et la force
+réelle des groupes reste de **0,80 à 0,91 sur sept saisons**, écart de rang
+moyen de 1,0 à 1,8 place sur 13. Le coût — 156 matchs moteur par saison pour
+le seul championnat du joueur — serait élevé pour un écart marginal, et le
+risque de régression important.
+
+Ce qui manquait n'était pas la finesse du calcul, **c'était que ces matchs
+arrivent vraiment aux joueurs.**
+
+### La correction
+
+`club-effectif-adverse.js` :
+
+- `niveauEffectifDuJour` — le niveau réellement employé pour une rencontre :
+  celui du club, **corrigé par l'état de son groupe**. Exprimé comme un écart
+  au nominal plutôt qu'en valeur absolue : un club au complet retrouve
+  exactement son `niveauClub`, donc le comportement d'avant est conservé au
+  point près, sans constante d'étalonnage à deviner.
+- `resoudreMatchsAdverses` — résout les rencontres d'une journée et **applique
+  les conséquences** : fatigue, blessures, temps de jeu, puis rafraîchit la
+  feuille de match de chaque club pour que sa rotation suive.
+- `clubUI.simulerAutresMatchsAbstrait` délègue à cette fonction : la règle
+  vit dans le domaine, plus dans l'interface.
+
+### Deux erreurs de barème, trouvées par les tests
+
+1. **Mauvaise référence nominale.** J'avais pris « les quinze meilleurs
+   joueurs du groupe ». Mais une composition doit couvrir chaque poste : un
+   talonneur moyen y entre là où un troisième ligne supérieur reste dehors.
+   Résultat, **tous** les clubs étaient rabaissés — un club au complet tombait
+   de 0,15 à 0,06 de niveau et les scores moyens des matchs IA à 9 points. La
+   référence est maintenant le meilleur XV *par poste*, tout le monde frais.
+2. **Fatigue comptée deux fois.** J'appliquais le malus de −25 utilisé pour la
+   *sélection*. Mais ce chiffre exprime le choix d'un entraîneur qui préfère
+   un remplaçant frais, pas la baisse de rendement sur le terrain — laquelle
+   vaut −12 (le même barème que pour le club du joueur, cf.
+   `club-composition.js`). Le barème du moteur est désormais employé ici.
+
+### Après
+
+Une saison complète, 156 matchs entre clubs IA :
+
+```
+                                        avant     après
+joueurs ayant joué au moins un match       0      296 / 312  (95 %)
+joueurs portant de la fatigue              0       10
+joueurs blessés                            0       15
+maximum de matchs pour un joueur           0       24
+```
+
+Et la disponibilité pèse vraiment : huit blessés font passer un club de
+**0,150 à 0,050** de niveau employé.
+
+Non-régression vérifiée sur la même saison, mêmes graines : score moyen d'une
+équipe **13,5 avant, 13,1 après**, maximum 25 puis 24. Le barème des scores
+n'a pas bougé.
+
+Vérifié au navigateur, desktop et mobile, sur **14 journées réellement
+jouées** : 0 → **293 joueurs adverses sur 315** (93 %) avec des matchs au
+compteur, 309 portant de la fatigue, 41 blessés, et une rotation visible
+(« Léo Mercier 3 matchs » contre « Hugo Michel 0 »). Zéro erreur JS. Taille
+des groupes vérifiée : 24 avant, 24 après une saison — aucune dérive.
+
+### Ce qui reste
+
+Les clubs des deux autres divisions françaises n'ont pas d'effectif nominatif
+(ce sont des clubs volontairement abstraits, cf. `club-pyramide-france.js`) :
+leurs rencontres continuent donc de se jouer sur le seul `niveauClub`, et
+`niveauEffectifDuJour` le dit explicitement en retombant sur cette valeur.
+
+Note d'observation, sans rapport avec cette tranche : les scores des matchs
+abstraits en Ligue Régionale tournent autour de **13 points par équipe**, loin
+des 25-70 points par match visés dans `CLAUDE.md`. C'est une propriété de
+`simulerResultatAbstrait` aux bas niveaux de club (`base = 18 + (nA+nB)×14`),
+antérieure à cette tranche et inchangée par elle.
+
+Couverture : `server/test-matchs-ia.js`, 10 cas, **9 rouges avant**. **R5**
+(un club sans effectif simulé garde son ancien traitement), **R6**
+(déterminisme) et **R10** (scores crédibles sur une saison) sont les
+garde-fous — R10 est celui qui a fait tomber les deux erreurs de barème.
+
+---
+
 ## G17 — La pyramide vit toute seule (livrée)
 
 ### Comportement observé (mesuré, pas déduit)

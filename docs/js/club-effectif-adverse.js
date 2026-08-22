@@ -255,9 +255,140 @@
     return soignes;
   }
 
+  // --- Les matchs entre clubs IA arrivent enfin à leurs joueurs (G18) -----
+  //
+  // Mesuré avant, sur une saison complète : 156 rencontres disputées entre
+  // clubs adverses, 312 joueurs dans leurs groupes, et sur ces 312 joueurs
+  // ZÉRO fatigue accumulée, ZÉRO blessure, ZÉRO match au compteur. Ces 26
+  // journées ne laissaient aucune trace. Le résultat d'un match IA-IA ne
+  // dépendait que de `niveauClub` — ni de qui était disponible, ni de qui
+  // était blessé, ni de qui venait d'enchaîner trois matchs.
+  //
+  // Autrement dit, les groupes de 24 joueurs, la fatigue, les blessures et la
+  // rotation que le jeu entretient pour chaque club adverse ne servaient QUE
+  // lors de son unique match contre le club du joueur.
+  //
+  // Ce qui a été mesuré et ÉCARTÉ : remplacer la simulation abstraite par le
+  // vrai moteur pour ces 156 matchs. La corrélation de rang entre
+  // `niveauClub` et la force réelle des groupes reste de 0,80 à 0,91 sur sept
+  // saisons — le coût serait élevé pour un écart marginal. Ce qui manquait
+  // n'était pas la finesse du calcul, c'était que ces matchs arrivent
+  // vraiment aux joueurs.
+
+  const ATTRIBUTS_FORCE = ['vitesse', 'plaquage', 'puissance', 'endurance'];
+  // Combien un point d'attribut perdu pèse sur le niveau employé par la
+  // simulation. `simulerResultatAbstrait` traduit un écart de niveau en
+  // points au marquoir (× 22) : 4 points d'attribut en moins valent donc
+  // environ 4,4 points de retard, l'ordre de grandeur d'un XV amoindri.
+  const ECHELLE_ATTRIBUT_VERS_NIVEAU = 20;
+  // Même barème que celui appliqué au club du joueur quand ses stats partent
+  // au moteur (cf. club-composition.js).
+  const MALUS_FATIGUE_MOTEUR = 12;
+
+  function moyenneForce(joueurs) {
+    if (!joueurs || !joueurs.length) return null;
+    let total = 0;
+    for (const j of joueurs) {
+      let somme = 0;
+      for (const a of ATTRIBUTS_FORCE) somme += (j[a] || 0);
+      total += somme / ATTRIBUTS_FORCE.length;
+    }
+    return total / joueurs.length;
+  }
+
+  // Niveau RÉELLEMENT employé pour une rencontre : celui du club, corrigé par
+  // l'état de son groupe. Exprimé comme un ÉCART au nominal plutôt qu'en
+  // valeur absolue — ainsi, un club au complet retrouve exactement son
+  // `niveauClub` et le comportement d'avant cette tranche est conservé au
+  // point près, sans constante d'étalonnage à deviner.
+  function niveauEffectifDuJour(saison, club) {
+    const RMClub = global.RMClub;
+    const base = club && club.niveauClub != null ? club.niveauClub : 0.5;
+    if (!aUnEffectifSimule(club)) return base;
+    const groupe = groupeAdverse(saison, club);
+    if (!groupe || groupe.length < 15) return base;
+    // Nominal : le MEILLEUR XV que ce club puisse aligner, tout le monde
+    // disponible et frais. Attention, ce n'est pas « les quinze meilleurs
+    // joueurs » : une composition doit couvrir chaque poste, et un talonneur
+    // moyen y entre là où un troisième ligne supérieur reste dehors. Prendre
+    // les quinze meilleurs comme référence rabaissait TOUS les clubs — mesuré,
+    // un club au complet tombait de 0,15 à 0,06 de niveau, et les scores
+    // moyens des matchs IA à 9 points.
+    const parIdNominal = {};
+    for (const j of groupe) parIdNominal[j.id] = j;
+    const compositionNominale = RMClub.meilleureComposition(groupe);
+    const nominalXV = Object.keys(compositionNominale)
+      .map((numero) => parIdNominal[compositionNominale[numero]]).filter(Boolean);
+    const nominal = moyenneForce(nominalXV);
+    // Réel : le XV que le club peut réellement aligner aujourd'hui, avec la
+    // même pénalité de fatigue que celle qui pilote déjà sa rotation.
+    const composition = choisirXVAdverse(club, groupe);
+    const parId = {};
+    for (const j of groupe) parId[j.id] = j;
+    const alignes = Object.keys(composition).map((numero) => parId[composition[numero]]).filter(Boolean);
+    if (!alignes.length) return base;
+    // Malus de fatigue à l'échelle du MOTEUR (12 points au maximum, cf.
+    // club-composition.js), pas à celle de la sélection (25). Les deux ne
+    // disent pas la même chose : 25 exprime le choix d'un entraîneur qui
+    // préfère un remplaçant frais, 12 la baisse de rendement réelle sur le
+    // terrain. Employer 25 ici revenait à compter deux fois la fatigue —
+    // mesuré, les scores moyens des matchs IA tombaient à 9 points.
+    const penalises = alignes.map((j) => {
+      const copie = { };
+      for (const a of ATTRIBUTS_FORCE) {
+        copie[a] = Math.max(20, (j[a] || 0) - Math.round(((j.fatigue || 0) / 100) * MALUS_FATIGUE_MOTEUR));
+      }
+      return copie;
+    });
+    const reel = moyenneForce(penalises);
+    if (nominal == null || reel == null) return base;
+    const ecart = (reel - nominal) / ECHELLE_ATTRIBUT_VERS_NIVEAU;
+    return Math.max(0.05, Math.min(0.95, base + ecart));
+  }
+
+  // Le « slot » de composition attendu par appliquerEffetsMatchAdverse :
+  // le XV du jour et son banc, tirés du groupe réel.
+  function slotDuJour(club, groupe) {
+    const RMClub = global.RMClub;
+    const composition = choisirXVAdverse(club, groupe);
+    return {
+      compositionTitulaires: composition,
+      compositionBanc: RMClub.completerCompositionBanc(groupe, composition, {}),
+    };
+  }
+
+  // Résout les rencontres d'une journée qui n'impliquent PAS le club du
+  // joueur. Deux choses à la fois, et c'est le point de la tranche :
+  //   - le résultat dépend du groupe réellement disponible de chaque club ;
+  //   - le match LAISSE UNE TRACE (fatigue, blessures, temps de jeu).
+  function resoudreMatchsAdverses(rng, saison, fixtures) {
+    const RMClub = global.RMClub;
+    const tirage = rng || global.RugbyEngine.creerRng(1);
+    const resolus = [];
+    for (const f of (fixtures || [])) {
+      if (!f || f.joue) continue;
+      const domicile = RMClub.clubPartout ? RMClub.clubPartout(saison, f.domicileId) : null;
+      const exterieur = RMClub.clubPartout ? RMClub.clubPartout(saison, f.exterieurId) : null;
+      if (!domicile || !exterieur) continue;
+      const r = global.window.RMWorld.simulerResultatAbstrait(tirage,
+        niveauEffectifDuJour(saison, domicile), niveauEffectifDuJour(saison, exterieur));
+      RMClub.enregistrerResultat(saison, f.id, r.scoreA, r.scoreB, r.essaisA, r.essaisB);
+      // Le match a eu lieu : il doit se voir dans les deux groupes.
+      for (const club of [domicile, exterieur]) {
+        if (!aUnEffectifSimule(club)) continue;
+        const groupe = groupeAdverse(saison, club);
+        appliquerEffetsMatchAdverse(saison, club, slotDuJour(club, groupe), tirage);
+        // La feuille de match du club suit sa rotation réelle.
+        rafraichirEffectifAdverse(saison, club);
+      }
+      resolus.push({ id: f.id, scoreA: r.scoreA, scoreB: r.scoreB });
+    }
+    return resolus;
+  }
+
   global.RMClub = Object.assign(global.RMClub || {}, {
     groupeAdverse, rafraichirEffectifAdverse, appliquerEffetsMatchAdverse,
     avancerJourClubsAdverses, aUnEffectifSimule, assurerEffectifsAdverses,
-    rotationClubsAdverses,
+    rotationClubsAdverses, niveauEffectifDuJour, resoudreMatchsAdverses,
   });
 })(window);
