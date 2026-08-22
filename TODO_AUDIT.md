@@ -3810,6 +3810,97 @@ composition ni à la fatigue.
 
 ---
 
+## G19 — Le barème des matchs abstraits, ancré sur le moteur (livrée)
+
+### Comportement observé (mesuré, pas déduit)
+
+Tous les matchs que le joueur ne dispute pas lui-même passent par ce barème :
+les 156 rencontres IA-IA de son championnat, les deux autres divisions
+françaises, les tours de coupe qu'il ne joue pas, et les douze pays du monde.
+C'est donc lui qui écrit la **quasi-totalité des classements que le jeu
+affiche**.
+
+4 000 tirages par cas :
+
+```
+palier                niveaux      total moyen   % dans 25-70
+Régionale (bas)       0,15 / 0,20      22,8          43 %
+Régionale (haut)      0,40 / 0,45      29,8          73 %
+Nationale             0,45 / 0,55      31,9          80 %
+Excellence            0,70 / 0,80      38,9          96 %
+```
+
+`base = 18 + (nA + nB) × 14` faisait dépendre **linéairement** le nombre de
+points du niveau des clubs. Le barème tenait donc au sommet de la pyramide et
+s'effondrait en bas. Or un match de division inférieure n'est pas un
+demi-match : il oppose des joueurs moins bons, ce qui change la **qualité** du
+jeu, pas le nombre de points au tableau d'affichage.
+
+### Le vrai repère n'était pas CLAUDE.md, c'était le moteur du jeu
+
+En pilotant le navigateur pour vérifier la correction, un chiffre a sauté aux
+yeux : le club du joueur menait avec **171 points marqués en 4 matchs**
+(43 par match) pendant que les rencontres IA de son championnat en
+produisaient 30 **à deux**. Les matchs du joueur passent par le vrai moteur,
+ceux de ses rivaux par le barème abstrait — et la colonne « points pour » du
+classement comparait donc des choses incomparables, d'un facteur deux.
+
+Mesure du moteur, sur 500 matchs (`server/test-stats-matchs.js`) :
+
+```
+points (total)   moyenne 43,3   médiane 43   P10 26   P90 63
+essais (total)   moyenne  5,4
+soit 8,0 points par essai, conversions et pénalités comprises
+```
+
+La calibration n'est donc **pas devinée** : elle est ancrée sur cette mesure.
+
+```
+                   avant (18/14/6,5)      après (35/6/8)
+Régionale bas      22,8 pts · 3,5 essais  37,0 pts · 4,7 essais
+Régionale haut     29,8 pts · 4,6         40,0 pts · 5,2
+Nationale          31,9 pts · 4,9         40,9 pts · 5,3
+Excellence         38,9 pts · 6,0         43,9 pts · 5,7
+(moteur)                                  43,3 pts · 5,4
+```
+
+`POINTS_PAR_ESSAI` passe de 6,5 à **8** : l'ancienne valeur traitait presque
+chaque point comme un essai et en gonflait le nombre d'un tiers. 8,0 est le
+rapport réellement mesuré sur le moteur.
+
+`ECART_NIVEAU` et `AMPLITUDE_BRUIT` sont **inchangés** : ils réglaient déjà
+correctement la hiérarchie (un club nettement supérieur gagne 90 % du temps)
+et le suspense (écart moyen de 6,7 points à niveau égal).
+
+### Une source, plus deux
+
+Le barème vivait en **deux exemplaires** — `world.js` et
+`club-pyramide-france.js` — la duplication étant assumée pour éviter une
+dépendance. Deux copies, donc deux barèmes à corriger le jour où l'un change :
+exactement le défaut que ce projet corrige partout ailleurs. Il n'existe plus
+qu'une implémentation, dans `club-pyramide-france.js` ;
+`RMWorld.simulerResultatAbstrait` y délègue et ne garde sa propre copie que
+comme **repli** pour les harnais qui chargent `world.js` sans ce module. **S9**
+vérifie que les deux chemins rendent exactement le même résultat.
+
+### Ce que le banc d'essai a appris
+
+Deux suites navigateur (`test-audit-p0-3`, `test-parcours-navigateur`) sont
+passées au rouge dans le lot avec `exit 1` et **zéro FAIL**. J'ai d'abord cru
+à une contention Chromium ; en regardant l'erreur plutôt qu'en la supposant :
+`ERR_CONNECTION_REFUSED` — le petit serveur local avait été recyclé par le
+conteneur. Les deux suites passent (8/8 et 341/341) une fois le serveur
+relancé. Le diagnostic « exit 1 sans FAIL » ne veut pas dire « Chromium
+indisponible » : il faut lire le message.
+
+Couverture : `server/test-scores-abstraits.js`, 11 cas, **4 rouges avant**.
+Les sept autres sont les garde-fous et ils encadrent la recalibration :
+**S4** (un club supérieur gagne encore 90 % du temps), **S5** (un match à
+niveau égal reste serré), **S6** (les nuls restent rares), **S7** (aucun score
+aberrant), **S8** (déterminisme). **S11** verrouille l'ancrage sur le moteur.
+
+---
+
 ## G18 — Les matchs entre clubs IA arrivent enfin à leurs joueurs (livrée)
 
 ### Comportement observé (mesuré, pas déduit)

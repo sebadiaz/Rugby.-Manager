@@ -260,7 +260,16 @@
   // complet à chaque journée) : score dérivé du niveauClub RÉEL de chaque
   // club + aléa borné, jamais un résultat fabriqué sans base. Calibré pour
   // rester dans les ordres de grandeur d'un vrai match (15-45 points). ---
+  // Le barème vit désormais dans club-pyramide-france.js, en un seul
+  // exemplaire (G19) : il était dupliqué ici, donc à corriger deux fois. On y
+  // délègue, et le corps ci-dessous n'est plus qu'un REPLI pour les harnais
+  // qui chargent world.js sans ce module — il reproduit alors l'ancien
+  // barème, ce qui reste préférable à une exception.
   function simulerResultatAbstrait(rng, niveauA, niveauB) {
+    const RMClub = global.RMClub;
+    if (RMClub && RMClub.simulerResultatAbstrait) {
+      return RMClub.simulerResultatAbstrait(rng, niveauA, niveauB);
+    }
     const base = 18 + (niveauA + niveauB) * 14;
     const ecartForce = (niveauA - niveauB) * 22;
     const bruitA = (rng() - 0.5) * 20;

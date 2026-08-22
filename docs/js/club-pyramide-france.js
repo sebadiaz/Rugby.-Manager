@@ -16,22 +16,76 @@
 (function (global) {
   'use strict';
 
-  // Résultat ABSTRAIT (statistique, pas le moteur physique) — même formule
-  // que RMWorld.simulerResultatAbstrait, DUPLIQUÉE ici (pas importée) pour
-  // ne créer aucune dépendance vers world.js. Une trentaine de clubs sur 2
-  // divisions ne peuvent pas tourner sur le moteur complet à chaque journée
-  // du joueur, sans quoi une seule journée prendrait des minutes à générer.
-  function simulerResultatAbstraitFrance(rng, niveauA, niveauB) {
-    const base = 18 + (niveauA + niveauB) * 14;
-    const ecartForce = (niveauA - niveauB) * 22;
-    const bruitA = (rng() - 0.5) * 20;
-    const bruitB = (rng() - 0.5) * 20;
+  // --- LE barème des matchs résolus en abstrait (G19) ---------------------
+  //
+  // Résultat statistique, pas le moteur physique : une trentaine de clubs sur
+  // deux divisions ne peuvent pas tourner sur le moteur complet à chaque
+  // journée du joueur, sans quoi une seule journée prendrait des minutes.
+  // Mais c'est ce barème qui écrit la QUASI-TOTALITÉ des classements que le
+  // jeu affiche : les 156 rencontres IA-IA du championnat du joueur, les deux
+  // autres divisions françaises, les tours de coupe qu'il ne dispute pas, et
+  // les douze pays du monde.
+  //
+  // Il vivait en DEUX exemplaires — ici et dans world.js — pour éviter une
+  // dépendance. Deux copies, donc deux barèmes à corriger le jour où l'un
+  // change : exactement le défaut que ce projet corrige partout ailleurs.
+  // C'est désormais la seule implémentation ; `RMWorld.simulerResultatAbstrait`
+  // y délègue et ne garde sa propre copie que comme repli, pour les harnais
+  // qui chargent world.js sans ce module.
+  //
+  // La calibration n'est pas devinée : elle est ANCRÉE SUR LE MOTEUR du jeu.
+  // Mesuré sur 500 matchs joués par le vrai moteur (`test-stats-matchs`) :
+  // 43,3 points au total par match, 5,4 essais — soit 8,0 points par essai,
+  // conversions et pénalités comprises.
+  //
+  // Le barème abstrait doit produire les mêmes ordres de grandeur, sans quoi
+  // le club du joueur (dont les matchs passent par le moteur) écrase toutes
+  // les colonnes « points pour / contre » du classement face à des rivaux
+  // résolus en abstrait. Mesuré avant : le joueur marquait 43 points par
+  // match pendant que les rencontres IA de son championnat en produisaient
+  // 23 à deux — un facteur deux sur la même page.
+  //
+  //                    avant (18/14/6,5)      après (35/6/8)
+  //   Régionale bas    22,8 pts · 3,5 essais  37,0 pts · 4,7 essais
+  //   Régionale haut   29,8 pts · 4,6         40,0 pts · 5,2
+  //   Nationale        31,9 pts · 4,9         40,9 pts · 5,3
+  //   Excellence       38,9 pts · 6,0         43,9 pts · 5,7
+  //   (moteur, pour comparaison)              43,3 pts · 5,4
+  //
+  // La correction porte surtout sur la PENTE : `base` dépendait linéairement
+  // du niveau des clubs (× 14), si bien qu'un championnat de division
+  // inférieure produisait des matchs à 22 points. Or un match de Régionale
+  // n'est pas un demi-match : il oppose des joueurs moins bons, ce qui change
+  // la QUALITÉ du jeu, pas le nombre de points au tableau d'affichage. La
+  // pente tombe de 14 à 6 et la base monte de 18 à 35 — un gradient demeure
+  // (37 points en bas, 44 en haut), et les deux extrémités tiennent dans la
+  // fourchette du rugby réel comme dans celle du moteur.
+  //
+  // `ECART_NIVEAU` et `AMPLITUDE_BRUIT` sont INCHANGÉS : ils réglaient déjà
+  // correctement la hiérarchie (un club nettement supérieur gagne 90 % du
+  // temps) et le suspense (écart moyen de 6,7 points à niveau égal).
+  const BASE_SCORE = 35;
+  const PENTE_NIVEAU = 6;
+  const ECART_NIVEAU = 22;
+  const AMPLITUDE_BRUIT = 20;
+  // Points par essai, MESURÉS sur le moteur (43,3 / 5,4 = 8,0) plutôt que
+  // supposés : l'ancienne valeur de 6,5 traitait presque chaque point comme
+  // un essai et gonflait donc leur nombre d'un tiers.
+  const POINTS_PAR_ESSAI = 8;
+
+  function simulerResultatAbstrait(rng, niveauA, niveauB) {
+    const base = BASE_SCORE + (niveauA + niveauB) * PENTE_NIVEAU;
+    const ecartForce = (niveauA - niveauB) * ECART_NIVEAU;
+    const bruitA = (rng() - 0.5) * AMPLITUDE_BRUIT;
+    const bruitB = (rng() - 0.5) * AMPLITUDE_BRUIT;
     const scoreA = Math.max(0, Math.round(base / 2 + ecartForce / 2 + bruitA));
     const scoreB = Math.max(0, Math.round(base / 2 - ecartForce / 2 + bruitB));
-    const essaisA = Math.max(0, Math.round(scoreA / 6.5));
-    const essaisB = Math.max(0, Math.round(scoreB / 6.5));
+    const essaisA = Math.max(0, Math.round(scoreA / POINTS_PAR_ESSAI));
+    const essaisB = Math.max(0, Math.round(scoreB / POINTS_PAR_ESSAI));
     return { scoreA, scoreB, essaisA, essaisB };
   }
+  // Nom historique conservé pour les appels internes de ce module.
+  const simulerResultatAbstraitFrance = simulerResultatAbstrait;
 
   // Club léger (pas d'effectif complet — inutile pour une simulation
   // abstraite, cf. RMWorld.genererClubMonde, même principe) pour peupler
@@ -517,7 +571,7 @@
 
   global.RMClub = Object.assign(global.RMClub || {}, {
     assurerAutresDivisionsFrance, avancerJourneeAutresDivisionsFrance,
-    echangerPalierFrance, enregistrerSaisonClubsFrance,
+    echangerPalierFrance, enregistrerSaisonClubsFrance, simulerResultatAbstrait,
     nouvelleSaisonAutresDivisionsFrance,
     historiqueClub, palmaresClub, MAX_SAISONS_HISTORIQUE_CLUB,
   });
