@@ -3810,6 +3810,108 @@ composition ni à la fatigue.
 
 ---
 
+## G16 — Les clubs du monde ont enfin une histoire (livrée)
+
+### Comportement observé (mesuré, pas déduit)
+
+Après quatre saisons jouées :
+
+```
+club du joueur       historiqueSaisons = 4 entrées
+club adverse         historiqueSaisons = ABSENT
+                     palmares          = ABSENT
+                     champs : id, nom, couleur, niveauClub, effectif,
+                              budget, groupe, banc
+club d'une autre division : id, nom, niveauClub, budget
+```
+
+Et pourtant la simulation **produisait déjà des histoires** : sur ces quatre
+saisons, « Valfleur Ours » avait été champion **quatre fois de suite**. Ce
+n'était écrit nulle part — l'information n'existait que sous forme d'une
+chaîne `champion` dans les propres lignes d'historique du joueur, et
+disparaissait dès qu'il changeait de division.
+
+Depuis G15, les clubs survivent aux montées et aux descentes. Il leur
+manquait la mémoire de ce qu'ils ont vécu.
+
+### La correction
+
+- `enregistrerSaisonClubsFrance` consigne la saison écoulée pour **tous** les
+  clubs français : ceux du championnat du joueur (position lue dans son
+  classement réel) et ceux des deux autres divisions (position lue dans **leur**
+  classement). Entrée volontairement maigre — cinq champs — parce qu'elle est
+  écrite pour 43 clubs chaque saison.
+- `palmaresClub` **dérive** titres, montées, descentes, meilleure place et
+  divisions fréquentées de cet historique. Jamais un compteur tenu à part qui
+  pourrait diverger : une seule source, valable pour le club du joueur comme
+  pour un club IA.
+- Un seul bloc d'affichage, `blocPalmaresClub`, utilisé **à la fois** sur la
+  fiche d'un club consulté (tableau de bord) et sur celle du joueur
+  (Statistiques → Évolution du club). La fiche d'un adversaire n'est pas une
+  version pauvre de la sienne.
+
+### Deux défauts trouvés parce que le palmarès les a rendus visibles
+
+1. **Les deux autres divisions ne rejouaient jamais.** Sans changement de
+   palier, elles n'étaient pas réinitialisées : leur calendrier restait à
+   182/182 rencontres jouées, `avancerJourneeAutresDivisionsFrance` ne trouvait
+   plus rien à jouer, et leur classement restait figé sur celui de la saison 1
+   **pour toute la carrière**. La Ligue d'Excellence que le manager consultait
+   affichait le même tableau final année après année. Défaut **antérieur** à
+   cette tranche ; `nouvelleSaisonAutresDivisionsFrance` leur rend un
+   calendrier et un classement neufs chaque saison, et fait dériver le niveau
+   des clubs selon leur classement final — la **même règle** que pour les
+   adversaires du joueur. Verrouillé par **P13**.
+2. **Mon propre code sacrait des champions qui n'avaient pas joué.** Le
+   classement d'une division existe dès sa création, à zéro partout ; le trier
+   renvoie un ordre arbitraire mais **stable**. Sans garde-fou, son premier
+   était sacré chaque saison — un titre fabriqué, exactement ce que le cahier
+   des charges interdit. On ne consigne désormais que les divisions qui ont
+   réellement disputé au moins une rencontre (**P14**).
+
+### Après
+
+Huit saisons simulées avec la **simulation du jeu** (`simulerResultatAbstrait`,
+celle qu'utilise `clubUI.simulerAutresMatchsAbstrait`), les trois divisions
+jouées :
+
+```
+clubs ayant au moins un titre : 10
+  Aiglemont Béliers      5 titres   (Ligue d'Excellence)
+  Montorel Sangliers     5 titres   (Ligue Nationale)
+  Roquebrune Loups       4 titres   (Ligue Régionale)
+  Hautecombe Sangliers   3 titres
+  Bourgnac Guerriers     2 titres
+  … et cinq clubs à un titre
+```
+
+Un palmarès crédible : des dynasties et des vainqueurs d'un soir. Avant la
+correction du défaut n°1, la même mesure donnait **un seul champion par
+division, huit fois sur huit** — le classement gelé de la saison 1.
+
+Poids : sauvegarde de 345 Ko à la saison 1, **436 Ko à la saison 13**, dont
+37 Ko d'historiques de clubs (8,5 %). Rechargement vérifié.
+
+Vérifié au navigateur, desktop et mobile : ouvrir la fiche d'un rival affiche
+« Saisons suivies 2 · Titres 2 🏆 · Meilleure place 1e · Ligue Régionale »
+puis le détail saison par saison ; la fiche du joueur affiche le même bloc par
+la même fonction ; zéro erreur JS.
+
+### Ce qui reste
+
+Les deux divisions que le joueur ne fréquente pas ne connaissent toujours
+**pas de montées/descentes entre elles** (limite déjà notée en G15) : mesuré
+sur huit saisons, aucun club du monde n'a changé de division sans que le
+joueur bouge lui-même.
+
+Couverture : `server/test-palmares-clubs.js`, 14 cas, **12 rouges avant** ;
+les deux derniers sont nés des défauts ci-dessus. **P8**, **P9** et **P12**
+sont les garde-fous contre l'invention : un club sans passé le dit, un club
+inconnu ne fait pas planter la lecture, et une sauvegarde antérieure ne se
+voit pas reconstituer un historique.
+
+---
+
 ## G15 — La pyramide cesse d'effacer son monde (livrée)
 
 ### Comportement observé (mesuré, pas déduit)

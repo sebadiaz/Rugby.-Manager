@@ -1586,12 +1586,11 @@
       }).join('');
     } else if (sous === 'saisons') {
       titre.textContent = '📚 Évolution du club';
-      const h = c.historiqueSaisons || [];
-      zone.innerHTML = h.length
-        ? h.slice().reverse().map((e2) =>
-          `<div class="ligneInfo"><span>Saison ${e2.numero} — ${e2.position}e/${e2.totalClubs}</span>` +
-          `<b>${e2.victoires}V ${e2.nuls}N ${e2.defaites}D · ${e2.points} pts</b></div>`).join('')
-        : '<p style="color:var(--text-dim);">Première saison en cours : l\'historique se remplira à la fin.</p>';
+      // MÊME bloc que sur la fiche d'un club consulté (G16) : titres,
+      // montées, descentes, divisions fréquentées, saison par saison. Une
+      // seule fonction, donc aucun risque que les deux écrans racontent deux
+      // histoires différentes du même club.
+      zone.innerHTML = blocPalmaresClub(c.id);
     }
   }
 
@@ -2435,6 +2434,33 @@
   // d'effectif et historique RÉEL des confrontations directes. Affichée dans
   // l'onglet "Vue d'ensemble", à la place du tableau de bord de gestion —
   // pas dans un écran séparé.
+  // --- Palmarès et parcours d'un club (G16) --------------------------------
+  // UNE seule fonction pour le club du joueur et pour un club consulté : la
+  // fiche d'un adversaire ne doit pas être une version pauvre de la sienne.
+  // Tout vient de RMClub.palmaresClub / historiqueClub, dérivés de
+  // l'historique réellement enregistré — un club sans passé le DIT.
+  function blocPalmaresClub(clubId) {
+    if (!RMClub.palmaresClub) return '';
+    const p = RMClub.palmaresClub(saison, clubId);
+    if (!p || !p.saisons) {
+      return '<p class="noteLectureSeule" style="margin:0;">Aucune saison enregistrée pour ce club : ' +
+        'son histoire commencera à la fin de la saison en cours.</p>';
+    }
+    const paliers = (p.paliers || []).map((n2) => RMClub.nomPalierFrance(n2)).join(', ');
+    const lignes = RMClub.historiqueClub(saison, clubId).slice().reverse().map((h) =>
+      `<div class="ligneInfo"><span>Saison ${h.numero}${h.palierNiveau != null
+        ? ` · ${echapperHTML(RMClub.nomPalierFrance(h.palierNiveau))}` : ''}</span>` +
+      `<b>${h.position}e/${h.totalClubs}${h.titre ? ' 🏆' : ''}` +
+      (h.victoires != null ? ` <span style="color:var(--text-dim);font-weight:400;">${h.victoires}V ${h.nuls}N ${h.defaites}D</span>` : '') +
+      `</b></div>`).join('');
+    return `${ligneInfo('Saisons suivies', `${p.saisons}`)}` +
+      `${ligneInfo('Titres', `${p.titres}${p.titres ? ' 🏆' : ''}`)}` +
+      `${ligneInfo('Montées · Descentes', `${p.montees} · ${p.descentes}`)}` +
+      (p.meilleurePosition != null ? `${ligneInfo('Meilleure place', `${p.meilleurePosition}e`)}` : '') +
+      (paliers ? `${ligneInfo('Divisions fréquentées', echapperHTML(paliers))}` : '') +
+      lignes;
+  }
+
   function rafraichirVueClub() {
     const nav = RMClub.navigationClub(saison);
     const estMonClub = nav.clubConsulteId === saison.clubJoueur.id;
@@ -2453,6 +2479,9 @@
     carte.style.display = '';
     if (titre) titre.textContent = adv.nom;
     if (sousTitre) sousTitre.textContent = 'Ce que tes recruteurs savent de ce club — consultation seule.';
+    // Palmarès et parcours (G16) : le MÊME bloc que sur sa propre fiche.
+    const zonePalmares = document.getElementById('clubVueConsultePalmares');
+    if (zonePalmares) zonePalmares.innerHTML = blocPalmaresClub(adv.id);
     const facteurAnalyste = RMClub.effetPersonnel(saison, 'analyste');
     const seuilAnalyste = Math.max(2, Math.round(6 - (facteurAnalyste - 1) * 8));
     const analyse = RMClub.analyserAdversaire(saison, adv.id, seuilAnalyste);

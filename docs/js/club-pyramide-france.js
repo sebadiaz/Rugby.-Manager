@@ -229,8 +229,183 @@
     return adversaires;
   }
 
+  // --- Les clubs du monde ont enfin une histoire (G16) --------------------
+  //
+  // Mesuré avant, après quatre saisons jouées : le club du joueur avait 4
+  // entrées d'historique, chaque club adverse en avait ZÉRO
+  // (`historiqueSaisons` absent, `palmares` absent). Et pourtant la
+  // simulation produisait déjà des histoires — sur ces quatre saisons,
+  // « Valfleur Ours » avait été champion QUATRE FOIS DE SUITE. Ce n'était
+  // écrit nulle part : l'information n'existait que sous forme d'une chaîne
+  // `champion` dans les lignes d'historique du joueur, et disparaissait dès
+  // qu'il changeait de division.
+  //
+  // Depuis G15, les clubs SURVIVENT aux montées et aux descentes. Il leur
+  // manquait la mémoire de ce qu'ils ont vécu.
+  //
+  // Une entrée volontairement MAIGRE (5 champs) : elle est écrite pour 43
+  // clubs à chaque saison, et une sauvegarde doit rester chargeable.
+
+  const MAX_SAISONS_HISTORIQUE_CLUB = 12;
+
+  function ajouterSaisonClub(club, entree) {
+    if (!club) return;
+    if (!Array.isArray(club.historiqueSaisons)) club.historiqueSaisons = [];
+    // Idempotence : rejouer une fin de saison ne doit pas doubler la ligne.
+    if (club.historiqueSaisons.some((h) => h.numero === entree.numero)) return;
+    club.historiqueSaisons.push(entree);
+    while (club.historiqueSaisons.length > MAX_SAISONS_HISTORIQUE_CLUB) club.historiqueSaisons.shift();
+  }
+
+  // Enregistre la saison écoulée pour TOUS les clubs français : ceux du
+  // palier du joueur (classement réel de son championnat) et ceux des deux
+  // autres divisions (classement réel de LEUR championnat). Les positions
+  // sont lues, jamais recalculées ni tirées.
+  //
+  // Appelée par avancerSaison AVANT que les paliers soient échangés : les
+  // classements sont encore ceux de la saison qui s'achève.
+  function enregistrerSaisonClubsFrance(saison, numeroSaison) {
+    const RMClub = global.RMClub;
+    const niveauJoueur = (saison.clubJoueur.palierPyramide || { niveau: 3 }).niveau;
+
+    // 1. Le championnat du joueur — son club compris : il a déjà son propre
+    //    historique riche (cf. club.js), on n'y touche pas, mais les clubs
+    //    adverses, eux, n'avaient rien.
+    const trie = RMClub.classementTrie(saison);
+    const parId = {};
+    for (const a of (saison.adversaires || [])) parId[a.id] = a;
+    trie.forEach((ligne, i) => {
+      const club = parId[ligne.clubId];
+      if (!club) return; // le club du joueur : traité par avancerSaison
+      ajouterSaisonClub(club, {
+        numero: numeroSaison,
+        position: i + 1,
+        totalClubs: trie.length,
+        palierNiveau: niveauJoueur,
+        titre: i === 0,
+      });
+    });
+
+    // 2. Les deux autres divisions, chacune avec SON classement.
+    const autres = (saison.autresDivisionsFrance || {}).divisions || {};
+    for (const cle of Object.keys(autres)) {
+      const division = autres[cle];
+      if (!division || !division.clubs) continue;
+      const niveau = Number(division.niveau) || Number(cle);
+      const classe = RMClub.classementTrieDe
+        ? RMClub.classementTrieDe(division.classement || {}) : [];
+      if (!classe.length) continue;
+      // Une division dont la saison n'a PAS été disputée n'a pas de champion.
+      // Son classement existe pourtant (il est initialisé à zéro), et le
+      // trier renvoie un ordre arbitraire mais stable : enregistrer son
+      // premier comme champion fabriquerait un titre, et le MÊME club aurait
+      // été sacré chaque saison. On ne consigne donc que ce qui a été joué.
+      const journeesJouees = (division.calendrier || []).filter((f) => f.joue).length;
+      if (!journeesJouees) continue;
+      const index = {};
+      for (const c of division.clubs) index[c.id] = c;
+      classe.forEach((ligne, i) => {
+        ajouterSaisonClub(index[ligne.clubId], {
+          numero: numeroSaison,
+          position: i + 1,
+          totalClubs: classe.length,
+          palierNiveau: niveau,
+          titre: i === 0,
+        });
+      });
+    }
+  }
+
+  // Historique d'un club, où qu'il soit dans le monde. Renvoie toujours un
+  // tableau : un club sans passé n'est pas une erreur, et un club inconnu
+  // non plus.
+  function historiqueClub(saison, clubId) {
+    const RMClub = global.RMClub;
+    const club = RMClub.clubPartout ? RMClub.clubPartout(saison, clubId) : null;
+    if (!club || !Array.isArray(club.historiqueSaisons)) return [];
+    return club.historiqueSaisons;
+  }
+
+  // Palmarès DÉRIVÉ de l'historique — jamais un compteur tenu à part, qui
+  // pourrait diverger. Une seule source de vérité, valable aussi bien pour
+  // le club du joueur (dont les lignes sont plus riches) que pour un club IA.
+  function palmaresClub(saison, clubId) {
+    const lignes = historiqueClub(saison, clubId);
+    const out = {
+      saisons: lignes.length, titres: 0, montees: 0, descentes: 0,
+      meilleurePosition: null, dernierePosition: null, paliers: [],
+    };
+    let palierPrecedent = null;
+    for (const h of lignes) {
+      if (h.titre) out.titres++;
+      if (h.position != null) {
+        if (out.meilleurePosition == null || h.position < out.meilleurePosition) out.meilleurePosition = h.position;
+        out.dernierePosition = h.position;
+      }
+      const niveau = h.palierNiveau;
+      if (niveau != null) {
+        if (out.paliers.indexOf(niveau) === -1) out.paliers.push(niveau);
+        // Un palier qui DIMINUE est une montée (1 = sommet de la pyramide).
+        if (palierPrecedent != null && niveau < palierPrecedent) out.montees++;
+        if (palierPrecedent != null && niveau > palierPrecedent) out.descentes++;
+        palierPrecedent = niveau;
+      }
+    }
+    return out;
+  }
+
+  // Nouvelle saison pour les deux divisions que le joueur ne fréquente pas.
+  //
+  // Défaut MESURÉ, antérieur à cette tranche et rendu visible par le
+  // palmarès : sans changement de palier, ces divisions n'étaient JAMAIS
+  // réinitialisées. Leur calendrier restait à 182/182 rencontres jouées, donc
+  // `avancerJourneeAutresDivisionsFrance` ne trouvait plus rien à jouer et
+  // leur classement restait figé sur celui de la saison 1 — pour toute la
+  // carrière. La Ligue d'Excellence que le manager consultait affichait le
+  // même tableau final année après année.
+  //
+  // Les clubs sont CONSERVÉS (c'est l'acquis de G15) ; leur niveau dérive
+  // selon leur classement final, avec exactement la même règle que les
+  // adversaires du joueur (cf. avancerSaison) : finir en tête renforce un peu,
+  // finir dernier affaiblit un peu.
+  const DERIVE_NIVEAU_HAUT = 0.05;
+  const DERIVE_NIVEAU_BAS = -0.05;
+
+  function nouvelleSaisonAutresDivisionsFrance(saison) {
+    const RMClub = global.RMClub;
+    const autres = saison.autresDivisionsFrance;
+    if (!autres || !autres.divisions) return null;
+    let rejouees = 0;
+    for (const cle of Object.keys(autres.divisions)) {
+      const division = autres.divisions[cle];
+      if (!division || !division.clubs) continue;
+      const classe = RMClub.classementTrieDe
+        ? RMClub.classementTrieDe(division.classement || {}) : [];
+      const total = classe.length;
+      if (total) {
+        const rang = {};
+        classe.forEach((r, i) => { rang[r.clubId] = i + 1; });
+        for (const club of division.clubs) {
+          const r = rang[club.id];
+          if (!r) continue;
+          const delta = r <= 2 ? DERIVE_NIVEAU_HAUT : r >= total - 1 ? DERIVE_NIVEAU_BAS : 0;
+          if (delta) {
+            club.niveauClub = Math.max(0.05, Math.min(0.95,
+              (club.niveauClub != null ? club.niveauClub : 0.5) + delta));
+          }
+        }
+      }
+      division.calendrier = RMClub.genererCalendrier(division.clubs);
+      division.classement = RMClub.classementInitial(division.clubs);
+      rejouees++;
+    }
+    return rejouees;
+  }
+
   global.RMClub = Object.assign(global.RMClub || {}, {
     assurerAutresDivisionsFrance, avancerJourneeAutresDivisionsFrance,
-    echangerPalierFrance,
+    echangerPalierFrance, enregistrerSaisonClubsFrance,
+    nouvelleSaisonAutresDivisionsFrance,
+    historiqueClub, palmaresClub, MAX_SAISONS_HISTORIQUE_CLUB,
   });
 })(window);

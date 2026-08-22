@@ -997,6 +997,14 @@
         ? global.RMClub.palmaresCoupesDeLaSaison(saison) : [],
     });
     if (saison.clubJoueur.historiqueSaisons.length > 20) saison.clubJoueur.historiqueSaisons.shift();
+    // Le reste du monde aussi (G16) : les clubs adverses et ceux des deux
+    // autres divisions gardent la trace de leur saison. Ici, PAS plus loin :
+    // les classements sont encore ceux de la saison qui s'achève, alors que
+    // l'échange de paliers, plus bas, va les remplacer. Appel défensif comme
+    // les autres domaines chargés après club.js.
+    if (global.RMClub.enregistrerSaisonClubsFrance) {
+      global.RMClub.enregistrerSaisonClubsFrance(saison, saison.numero || 1);
+    }
     ajouterMessage(saison, 'saison', `Fin de saison ${saison.numero || 1}`,
       `Classement final : ${positionFinale}e/${classementFinal.length}. ${arrivees.length} arrivée(s), ${partis.length} départ(s).`);
 
@@ -1139,6 +1147,13 @@
     }
     if (mouvementPalier) {
       saison.clubJoueur.palierPyramide = { pays: 'FRA', niveau: nouveauNiveauPalier };
+    }
+    // Les deux autres divisions repartent elles aussi pour une saison neuve
+    // (G16). `echangerPalierFrance` l'a déjà fait quand il a tourné ; sans
+    // mouvement de palier, personne ne le faisait — leur calendrier restait
+    // intégralement joué et leur classement figé pour toute la carrière.
+    if (!adversairesEchanges && global.RMClub.nouvelleSaisonAutresDivisionsFrance) {
+      global.RMClub.nouvelleSaisonAutresDivisionsFrance(saison);
     }
     const adversaires = adversairesEchanges ? adversairesEchanges : mouvementPalier
       ? global.RMClub.niveauxAdversairesPourPalier(nouveauNiveauPalier).map((niveauClub) => global.RMClub.genererClub(rng, { niveauClub }))
