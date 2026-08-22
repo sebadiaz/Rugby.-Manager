@@ -3810,6 +3810,95 @@ composition ni à la fatigue.
 
 ---
 
+## G20 — Le contrôle qui manquait sur les scores du moteur (livrée)
+
+### Ce que j'avais annoncé, et ce que la mesure a dit
+
+J'avais annoncé « corriger les scores aberrants du moteur », après avoir vu un
+**10-100** pendant une session de QA. Première mesure, 200 matchs, niveaux
+tirés sur toute la pyramide :
+
+```
+total du match     moyenne 43,5 · médiane 43 · P90 63 · P99 76 · MAX 91
+score d'une équipe moyenne 21,7 · P99 67 · MAX 84
+écart              moyenne 22,0 · P90 46 · P99 71 · MAX 77
+part des matchs au-dessus de 70 points : 3 %
+```
+
+Un écart moyen de **22 points** semblait accablant. Mais ce harnais tire les
+deux niveaux **indépendamment sur [0,15-0,85]**, c'est-à-dire qu'il fait
+s'affronter la Ligue d'Excellence et la Régionale — un appariement qui
+n'existe jamais dans le jeu.
+
+Deuxième mesure, appariements **RÉELS** (deux clubs d'une même division, cf.
+`bandeNiveauPalier`) :
+
+```
+matchs au-dessus de 70 points          :  1 %
+matchs à plus de 30 points d'écart     : 12 %
+matchs à plus de 50 points d'écart     :  0 %
+équipes tenues à zéro                  :  3,8 %
+matchs sous 25 points au total         :  9 %
+essais par match                       :  5,1 (P99 9, max 10)
+```
+
+Ce sont des ordres de grandeur **crédibles pour du rugby de club**. Le
+déséquilibre venait donc du tirage de mon banc d'essai, pas du moteur.
+**Le défaut annoncé n'est pas confirmé, et je n'ai rien recalibré.**
+
+### Ce qui manquait vraiment
+
+En revanche, le constat qui a lancé cette tranche tient toujours : **toutes**
+les assertions de score de `test-stats-matchs` portaient sur une **moyenne**.
+Une moyenne ne dit rien des queues — et c'est là qu'un déséquilibre se voit en
+premier, aussi bien pour le joueur que pour un futur correctif du moteur.
+
+Trois contrôles ajoutés, avec des bornes mesurées sur ce même harnais :
+
+- **queue de distribution** : P99 du total ≤ 95, match le plus prolifique
+  ≤ 130, score d'équipe le plus élevé ≤ 110 ;
+- **écarts** : écart moyen ≤ 30, P99 ≤ 90, et **au moins 10 % des matchs
+  joués à 7 points ou moins** (le suspense doit exister) ;
+- **blanchissages** : au plus 15 % des matchs avec une équipe à zéro.
+
+Le rapport imprime désormais ces chiffres à chaque exécution.
+
+### Un garde-fou qui ne mord pas ne sert à rien
+
+Vérifié en soumettant aux mêmes bornes des distributions **volontairement
+dégradées** :
+
+```
+distribution saine           -> aucun échec
+un match sur dix à 100 pts   -> queue de scores + écarts détectés
+                                (moyenne du total : 45,0 — INVISIBLE pour
+                                 les anciens tests, qui n'auraient rien vu)
+plus aucun match serré       -> écarts détectés (total moyen 47,9, toujours
+                                 dans la fourchette : moyenne inchangée)
+un match sur trois blanchi   -> blanchissages détectés
+```
+
+Le deuxième cas est celui qui justifie la tranche : un moteur qui produirait
+un match sur dix à cent points garderait exactement la même moyenne, et
+aucun test existant ne l'aurait signalé.
+
+### Mesures relevées sur 120 matchs après ajout
+
+```
+écart moyen 20,6 · P90 41 · P99 67 · max 77
+total du match  P99 69 · max 91 · blanchissages 9,2 %
+matchs serrés (≤ 7 pts) : 26,7 %
+```
+
+Les bornes laissent 35 à 45 % de marge au-dessus des valeurs observées :
+elles détectent une dérive, elles ne figent pas la calibration au point près.
+
+Aucun code de jeu n'a été modifié dans cette tranche — uniquement le banc
+d'essai. C'est délibéré : je n'avais pas de défaut à corriger, j'avais un
+angle mort à couvrir.
+
+---
+
 ## G19 — Le barème des matchs abstraits, ancré sur le moteur (livrée)
 
 ### Comportement observé (mesuré, pas déduit)

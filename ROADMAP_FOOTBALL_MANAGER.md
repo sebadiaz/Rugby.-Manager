@@ -127,6 +127,12 @@ tranche livrée — jamais en avance sur ce qui est réellement dans `main`.
 
 ## Historique des tranches livrées
 
+### G20 — Le contrôle qui manquait sur les scores du moteur (livrée)
+- **Domaines touchés :** aucun code de jeu. Uniquement le banc d'essai (`server/test-stats-matchs.js`).
+- **Ce qui a été mesuré :** le défaut annoncé — « des scores aberrants » — **n'a pas été confirmé**. Avec des appariements réels (deux clubs d'une même division), le moteur produit 1 % de matchs au-dessus de 70 points, 0 % à plus de 50 d'écart, 3,8 % de blanchissages : des ordres de grandeur crédibles. L'écart moyen de 22 points relevé d'abord venait de mon banc d'essai, qui faisait s'affronter l'élite et la Régionale.
+- **Ce qui manquait réellement :** toutes les assertions de score portaient sur une **moyenne**. Trois contrôles de distribution ajoutés — queue (P99 et maximum), écarts (moyenne, P99, et au moins 10 % de matchs joués à 7 points ou moins), blanchissages (≤ 15 %).
+- **Preuve que le garde-fou mord :** soumis à des distributions dégradées, il détecte « un match sur dix à 100 points » alors que **la moyenne reste à 45,0** — invisible pour les anciens tests — ainsi que « plus aucun match serré » et « un match sur trois blanchi ».
+
 ### Tranche 1 — Décisions du manager : demandes de temps de jeu (livrée)
 - **Domaines touchés :** 1 (boîte de réception avec décisions), 2 (mécontentements/demandes, statut/temps de jeu attendu), 5 (progression liée au temps de jeu — premier lien réel).
 - **Fichiers :** `docs/js/club-decisions.js` (nouveau), `docs/js/club.js` (`ajouterMessage` accepte une décision), `docs/js/club-condition-joueurs.js` (conséquences durables de `veutPartir`), `docs/js/clubUI.js` (déclenchement + rendu des boutons de décision), `docs/index.html`, `docs/css/style.css`.

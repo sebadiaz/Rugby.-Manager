@@ -89,6 +89,10 @@ const possessionA = [];
 let passesJoueursForwards = 0, passesJoueursBacks = 0;
 let metresJoueursForwards = 0, metresJoueursBacks = 0;
 let victoiresNiveauFort = 0, victoiresNiveauFaible = 0, nuls = 0, ecartsNiveauNul = 0;
+// Distribution des scores (G20) : les tests ne contrôlaient que des
+// moyennes, donc rien ne surveillait les queues.
+const ecartsScore = [], scoresEquipe = [];
+let blanchissages = 0;
 
 console.log(`--- Simulation de ${N_MATCHS} match(s) de 80 min (graines ${SEED_DEPART} à ${SEED_DEPART + N_MATCHS - 1}, niveaux de club variés [${NIVEAU_MIN}-${NIVEAU_MAX}]) — patientez, ~20-25 minutes ---\n`);
 
@@ -120,6 +124,13 @@ for (let i = 0; i < N_MATCHS; i++) {
   for (const cle of Object.keys(valeurs)) { totaux[cle] += valeurs[cle]; series[cle].push(valeurs[cle]); }
 
   possessionA.push(s.possessionPct.A);
+  // Distribution des SCORES, pas seulement leur moyenne (G20) : écart entre
+  // les deux équipes, score de chaque équipe, et blanchissages. Une moyenne
+  // ne dit rien des queues — un moteur qui produirait un match sur dix à
+  // 80 points d'écart garderait exactement la même moyenne.
+  ecartsScore.push(Math.abs(s.score.A - s.score.B));
+  scoresEquipe.push(s.score.A, s.score.B);
+  if (s.score.A === 0 || s.score.B === 0) blanchissages++;
 
   for (const equipe of ['A', 'B']) {
     for (const n of FORWARDS) {
@@ -224,9 +235,65 @@ test('essais : le nombre total varie aussi d\'un match à l\'autre (pas une acti
   assert.ok(distincts > 1, `${distincts} valeur(s) distincte(s) sur ${N_MATCHS} matchs`);
 });
 
+// --- Distribution des scores (G20) ---------------------------------------
+//
+// Jusqu'ici, TOUTES les assertions de score portaient sur une moyenne. Or une
+// moyenne ne dit rien des queues : un moteur qui produirait un match sur dix
+// à 80 points d'écart garderait exactement la même moyenne de 43 points. Le
+// contrôle manquant, ce sont les extrêmes — c'est là qu'un déséquilibre se
+// voit d'abord, et c'est ce que le joueur remarque en premier.
+//
+// Bornes MESURÉES sur ce même harnais (500 matchs, niveaux tirés sur toute la
+// pyramide [0,15-0,85], donc appariements volontairement plus déséquilibrés
+// qu'un vrai championnat) :
+//
+//   total du match     moyenne 43,5 · médiane 43 · P90 63 · P99 76 · max 91
+//   score d'une équipe moyenne 21,7 · P99 67 · max 84
+//   écart              moyenne 22,0 · P90 46 · P99 71 · max 77
+//
+// Les bornes ci-dessous laissent de la marge au-dessus de ces valeurs : elles
+// servent à détecter une DÉRIVE, pas à figer la calibration au point près.
+//
+// À titre de repère, avec des appariements RÉELS (deux clubs d'une même
+// division, cf. bandeNiveauPalier), la distribution est nettement plus sage :
+// 1 % des matchs au-dessus de 70 points, 12 % avec plus de 30 points d'écart,
+// 0 % au-dessus de 50, et 3,8 % de blanchissages — des ordres de grandeur
+// crédibles pour du rugby de club. Le déséquilibre visible ci-dessus vient
+// donc surtout du tirage du harnais, pas du moteur.
+test('scores : la QUEUE de distribution reste bornée, pas seulement la moyenne', () => {
+  const p99 = percentile(series.points, 99);
+  const max = Math.max.apply(null, series.points);
+  assert.ok(p99 <= 95, `P99 du total d'un match = ${p99} (borne 95)`);
+  assert.ok(max <= 130, `match le plus prolifique = ${max} points (borne 130)`);
+  const maxEquipe = Math.max.apply(null, scoresEquipe);
+  assert.ok(maxEquipe <= 110, `score d'équipe le plus élevé = ${maxEquipe} (borne 110)`);
+});
+
+test('écarts : un match sur deux ne se joue pas à sens unique', () => {
+  const moyEcart = moyenne(ecartsScore);
+  assert.ok(moyEcart <= 30,
+    `écart moyen entre les deux équipes = ${moyEcart.toFixed(1)} points (borne 30)`);
+  const p99 = percentile(ecartsScore, 99);
+  assert.ok(p99 <= 90, `P99 de l'écart = ${p99} points (borne 90)`);
+  // Et le suspense existe : une part notable des matchs se joue de peu.
+  const serres = ecartsScore.filter((e) => e <= 7).length / ecartsScore.length;
+  assert.ok(serres >= 0.1,
+    `seulement ${Math.round(serres * 100)} % des matchs se jouent à 7 points ou moins`);
+});
+
+test('blanchissages : être tenu à zéro reste l\'exception', () => {
+  const part = blanchissages / N_MATCHS;
+  assert.ok(part <= 0.15,
+    `${Math.round(part * 100)} % des matchs voient une équipe à zéro point (borne 15 %)`);
+});
+
 test('possession : aucune équipe ne garde ~95% sans raison en moyenne agrégée (niveaux de A/B tirés de la même distribution, aucun biais structurel attendu)', () => {
   assert.ok(possessionMoyA >= 30 && possessionMoyA <= 70, `possession moyenne équipe A=${possessionMoyA.toFixed(1)}%`);
 });
+
+console.log(`\ndistribution des scores : écart moyen=${moyenne(ecartsScore).toFixed(1)}  P90=${percentile(ecartsScore, 90).toFixed(0)}  P99=${percentile(ecartsScore, 99).toFixed(0)}  max=${Math.max.apply(null, ecartsScore)}`);
+console.log(`total du match          : P99=${percentile(series.points, 99).toFixed(0)}  max=${Math.max.apply(null, series.points)}  ·  blanchissages=${Math.round(1000 * blanchissages / N_MATCHS) / 10} %`);
+console.log(`matchs serrés (≤ 7 pts) : ${Math.round(1000 * ecartsScore.filter((e) => e <= 7).length / ecartsScore.length) / 10} %\n`);
 
 test('avants et trois-quarts ne jouent PAS pareil : les trois-quarts passent nettement plus que les avants', () => {
   assert.ok(passesParJoueurBack > passesParJoueurForward * 3,
