@@ -1140,20 +1140,22 @@
     // cohérentes. Il rend null si le monde français n'a jamais été peuplé
     // (sauvegarde antérieure, division jamais ouverte) : on retombe alors
     // exactement sur l'ancien chemin, des adversaires tout neufs.
+    // La pyramide française applique ses montées et ses descentes — dans
+    // TOUTES ses divisions, chaque saison, que le joueur bouge ou non (G17).
+    // Avant, seul son propre mouvement déplaçait des clubs : mesuré sur huit
+    // saisons, aucun club du monde n'avait jamais changé de division tout
+    // seul. La fonction rend aussi le palier où le club du joueur atterrit —
+    // et il vaut mieux le lire là que le recalculer ici : une seule règle.
     let adversairesEchanges = null;
-    if (mouvementPalier && global.RMClub.echangerPalierFrance) {
+    if (global.RMClub.echangerPalierFrance) {
       adversairesEchanges = global.RMClub.echangerPalierFrance(rng, saison, nouveauNiveauPalier,
         { clubQuitte: clubQuitteParManager, ancienNiveau: palierAvant.niveau });
     }
-    if (mouvementPalier) {
-      saison.clubJoueur.palierPyramide = { pays: 'FRA', niveau: nouveauNiveauPalier };
+    if (adversairesEchanges && adversairesEchanges.niveauJoueur != null) {
+      nouveauNiveauPalier = adversairesEchanges.niveauJoueur;
     }
-    // Les deux autres divisions repartent elles aussi pour une saison neuve
-    // (G16). `echangerPalierFrance` l'a déjà fait quand il a tourné ; sans
-    // mouvement de palier, personne ne le faisait — leur calendrier restait
-    // intégralement joué et leur classement figé pour toute la carrière.
-    if (!adversairesEchanges && global.RMClub.nouvelleSaisonAutresDivisionsFrance) {
-      global.RMClub.nouvelleSaisonAutresDivisionsFrance(saison);
+    if (mouvementPalier || (adversairesEchanges && nouveauNiveauPalier !== palierAvant.niveau)) {
+      saison.clubJoueur.palierPyramide = { pays: 'FRA', niveau: nouveauNiveauPalier };
     }
     const adversaires = adversairesEchanges ? adversairesEchanges : mouvementPalier
       ? global.RMClub.niveauxAdversairesPourPalier(nouveauNiveauPalier).map((niveauClub) => global.RMClub.genererClub(rng, { niveauClub }))

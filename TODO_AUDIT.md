@@ -3810,6 +3810,97 @@ composition ni à la fatigue.
 
 ---
 
+## G17 — La pyramide vit toute seule (livrée)
+
+### Comportement observé (mesuré, pas déduit)
+
+Sur huit saisons réellement simulées dans les trois divisions françaises :
+
+```
+clubs ayant connu une montée ou une descente : 0
+```
+
+Les clubs persistaient (G15) et se souvenaient de leurs saisons (G16), mais
+leur destin sportif ne dépendait **que des mouvements du joueur** : quand il
+montait, un seul club faisait le chemin inverse pour garder les tailles
+justes ; quand il restait, personne ne bougeait. Un club pouvait finir dernier
+de Ligue d'Excellence dix saisons de suite sans jamais descendre.
+
+La règle, elle, existait déjà — et était même **affichée au manager** :
+`placesPyramideFrance`, deux montées et deux descentes par palier, sauf le
+sommet (aucune montée) et la base (aucune descente).
+
+### La correction
+
+`echangerPalierFrance` applique désormais cette règle à **toute** la pyramide,
+**chaque saison**, que le joueur bouge ou non :
+
+- les mouvements se font par **paire de divisions voisines**, et seulement si
+  les **deux** ont réellement disputé leur saison ;
+- autant de montées que de descentes entre deux paliers, donc les tailles se
+  conservent d'elles-mêmes ;
+- le club du joueur est traité **comme les autres** : il entre dans le
+  classement de sa division et la règle générale l'emmène — plus de chemin
+  parallèle ;
+- la **dérive de niveau** par classement final (finir en tête renforce, finir
+  dernier affaiblit) s'applique maintenant à toute la pyramide, alors qu'elle
+  ne valait que pour les rivaux du joueur, et seulement les saisons sans
+  mouvement de palier.
+
+Repli conservé : quand la division voisine n'a pas joué, le club du joueur
+rejoint quand même le palier que son classement lui a valu — la promotion lui
+a déjà été annoncée — et un seul club fait le chemin inverse, exactement comme
+avant cette tranche. C'est ce qui garde les douze cas de G15 verts sans en
+retoucher un seul.
+
+### Le défaut que la première version cachait
+
+Ma première implémentation appliquait la règle division par division, pas par
+paire. Résultat mesuré immédiatement par `test-monde-persistant` : quand la
+Ligue Nationale n'avait pas joué, elle **recevait deux promus sans reléguer
+personne** et passait à **18 clubs**. Les tailles ne se conservaient que si
+toutes les divisions jouaient — une hypothèse que rien ne garantissait. La
+symétrie par paire la rend vraie par construction.
+
+Quatre cas de `test-palmares-clubs` sont passés au rouge au passage, et ils
+avaient raison : ils supposaient qu'un club pouvait gagner sa division quatre
+années de suite. Avec la vraie règle, c'est **impossible** hors du sommet — un
+champion de Régionale monte. Leurs prémisses ont été replacées en Ligue
+d'Excellence, où il n'y a rien au-dessus.
+
+### Après
+
+Huit saisons simulées avec la simulation du jeu, les trois divisions jouées :
+
+```
+                                    avant        après
+clubs ayant au moins un titre         10           17
+clubs ayant changé de division         0           25
+```
+
+Et des trajectoires lisibles apparaissent dans les palmarès :
+
+```
+Bellerive Faucons     2 titres   paliers [2, 1]   champion de Nationale, puis sacré dans l'élite
+Montorel Guerriers    2 titres   paliers [3, 2]   parti de Régionale
+Roquebrune Loups      1 titre    paliers [3, 2]
+```
+
+Vérifié au navigateur, desktop et mobile, sur trois saisons enchaînées :
+tailles exactes (14 / 16 / 14), **8 à 10 clubs ont changé de division**,
+**aucun club perdu**, les trois championnats français listés dans l'onglet
+Compétitions, zéro erreur JS. Les fiches montrent des parcours réels —
+« Riverange Aiglons · paliers [2, 3] » (descendu), « Hautecombe Dragons ·
+paliers [3, 2] » (monté).
+
+Couverture : `server/test-montees-descentes.js`, 12 cas, **4 rouges avant**.
+Les huit autres sont les garde-fous, et ils ont servi : **Q3** (tailles
+exactes) et **Q7** (aucun club perdu, aucun doublon) sont ce qui a fait
+tomber la première version. **Q10** verrouille la retenue : une division qui
+n'a pas joué n'envoie personne nulle part.
+
+---
+
 ## G16 — Les clubs du monde ont enfin une histoire (livrée)
 
 ### Comportement observé (mesuré, pas déduit)

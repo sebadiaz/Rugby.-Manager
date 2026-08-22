@@ -132,6 +132,12 @@
   // effectif nominatif tant que personne ne l'affrontait. Le jour où il
   // devient un adversaire réel, on le lui donne — à SON niveau, sans toucher
   // à son identité.
+  // Dérive de niveau d'un club selon son classement final — la règle qui
+  // existait déjà pour les rivaux du joueur (cf. avancerSaison), désormais
+  // appliquée à toute la pyramide.
+  const DERIVE_NIVEAU_HAUT = 0.05;
+  const DERIVE_NIVEAU_BAS = -0.05;
+
   function assurerEffectifClub(rng, club) {
     const RMClub = global.RMClub;
     if (Array.isArray(club.effectif) && club.effectif.length >= 15) return club;
@@ -174,7 +180,6 @@
     // club). L'appelant, lui, sait d'où l'on vient.
     const ancienNiveau = o.ancienNiveau != null
       ? o.ancienNiveau : (saison.clubJoueur.palierPyramide || { niveau: 3 }).niveau;
-    if (ancienNiveau === nouveauNiveau) return null;
     const autres = saison.autresDivisionsFrance;
     // Pas de monde à préserver (sauvegarde antérieure, ou divisions jamais
     // créées) : on laisse l'appelant retomber sur son ancien chemin.
@@ -190,33 +195,143 @@
     if (!parNiveau[nouveauNiveau] || !parNiveau[ancienNiveau]) return null;
 
     if (o.clubQuitte) {
-      // L'entraîneur part, son club reste : il rejoint sa propre division.
+      // L'entraîneur part, son club RESTE dans sa division : ce n'est pas le
+      // club qui change de palier, c'est l'homme qui change de club. Le club
+      // rejoint est déjà dans la liste de SA division (realiserEngagement ne
+      // l'en retire pas) : il en sortira plus bas, au moment de composer les
+      // adversaires.
       parNiveau[ancienNiveau].push(o.clubQuitte);
-      // Et le club qu'il rejoint quitte la liste des adversaires du palier.
-      parNiveau[nouveauNiveau] = parNiveau[nouveauNiveau].filter((c) => c.id !== saison.clubJoueur.id);
     } else {
-      // Mouvement sportif : un club fait le chemin inverse pour que les deux
-      // divisions gardent leur taille. Le joueur monte → c'est le dernier du
-      // palier supérieur qui descend ; le joueur descend → c'est le premier
-      // du palier inférieur qui monte.
+      // Mouvement SPORTIF : le club du joueur fait partie de sa division
+      // comme les autres. C'est la règle générale ci-dessous qui l'emmène,
+      // exactement comme n'importe quel rival.
+      parNiveau[ancienNiveau].push(saison.clubJoueur);
+    }
+
+    // Montées et descentes RÉELLES dans toute la pyramide (G17).
+    //
+    // Mesuré avant : sur huit saisons simulées, ZÉRO club avait changé de
+    // division sans que le joueur bouge. Un club pouvait finir dernier de
+    // Ligue d'Excellence dix saisons de suite sans jamais descendre — alors
+    // que la règle existait déjà, et était même affichée au manager
+    // (placesPyramideFrance : deux montées et deux descentes par palier, sauf
+    // le sommet et la base).
+    //
+    // On applique donc CETTE règle, à toutes les divisions, sans exception.
+    // Les tailles se conservent d'elles-mêmes : la division 2 perd 2 promus
+    // et 2 relégués, et reçoit 2 relégués de la 1 et 2 promus de la 3.
+    const ordres = {};
+    for (const niveau of [1, 2, 3]) {
+      if (!parNiveau[niveau]) continue;
+      if (niveau === ancienNiveau) {
+        // Le championnat du joueur : son classement réel, encore intact.
+        const trie = RMClub.classementTrie(saison);
+        const index = {};
+        for (const c of parNiveau[niveau]) index[c.id] = c;
+        const liste = trie.map((r) => index[r.clubId]).filter(Boolean);
+        if (liste.length === parNiveau[niveau].length) ordres[niveau] = liste;
+      } else if (autres.divisions[niveau]) {
+        // Une division qui n'a disputé AUCUNE rencontre n'a ni champion ni
+        // relégué : son classement est à zéro partout et le trier donnerait
+        // un ordre arbitraire. On n'invente pas de mouvement (cf. P14/Q10).
+        const jouees = (autres.divisions[niveau].calendrier || []).filter((f) => f.joue).length;
+        if (jouees) ordres[niveau] = clubsOrdonnes(autres.divisions[niveau]);
+      }
+    }
+    // Dérive de niveau selon le classement final, appliquée à TOUTE la
+    // pyramide (elle ne valait jusqu'ici que pour les rivaux du joueur, et
+    // seulement les saisons sans mouvement de palier) : finir en tête
+    // renforce un peu, finir dernier affaiblit un peu. C'est ce qui empêche
+    // une division de se figer sur le même champion année après année.
+    for (const cle of Object.keys(ordres)) {
+      const liste = ordres[cle];
+      const total = liste.length;
+      liste.forEach((club, i) => {
+        const rang = i + 1;
+        const delta = rang <= 2 ? DERIVE_NIVEAU_HAUT : rang >= total - 1 ? DERIVE_NIVEAU_BAS : 0;
+        if (!delta || !club) return;
+        club.niveauClub = Math.max(0.05, Math.min(0.95,
+          (club.niveauClub != null ? club.niveauClub : 0.5) + delta));
+      });
+    }
+
+    // Les mouvements se font par PAIRE de divisions voisines, et seulement
+    // si les DEUX ont réellement disputé leur saison. C'est ce qui conserve
+    // les tailles en toute circonstance : autant de montées que de descentes
+    // entre deux paliers. Sans cette symétrie, une division au repos recevait
+    // deux promus sans reléguer personne — mesuré, la Ligue Nationale passait
+    // à 18 clubs.
+    const echanges = [];
+    for (const bas of [2, 3]) {
+      const haut = bas - 1;
+      if (!ordres[bas] || !ordres[haut]) continue;
+      const nb = Math.min(
+        RMClub.placesPyramideFrance(bas).promus,
+        RMClub.placesPyramideFrance(haut).relegues);
+      if (nb <= 0) continue;
+      echanges.push({
+        haut, bas,
+        montent: ordres[bas].slice(0, nb),
+        descendent: ordres[haut].slice(ordres[haut].length - nb),
+      });
+    }
+
+    // Repli quand le voisin n'a pas joué : le club du JOUEUR doit tout de
+    // même rejoindre le palier que son classement lui a valu — la promotion
+    // lui a déjà été annoncée. Un seul club fait alors le chemin inverse,
+    // comme avant cette tranche.
+    const idJoueur = saison.clubJoueur.id;
+    const clubMobile = o.clubQuitte ? null : saison.clubJoueur;
+    const dejaDeplace = echanges.some((e) =>
+      e.montent.concat(e.descendent).some((c) => c.id === idJoueur));
+    if (clubMobile && !dejaDeplace && nouveauNiveau !== ancienNiveau
+        && parNiveau[nouveauNiveau] && parNiveau[ancienNiveau]) {
       const ordonnes = autres.divisions[nouveauNiveau]
         ? clubsOrdonnes(autres.divisions[nouveauNiveau]) : parNiveau[nouveauNiveau].slice();
       const monte = nouveauNiveau < ancienNiveau;
-      const echange = monte ? ordonnes[ordonnes.length - 1] : ordonnes[0];
-      if (!echange) return null;
-      parNiveau[nouveauNiveau] = parNiveau[nouveauNiveau].filter((c) => c.id !== echange.id);
-      parNiveau[ancienNiveau].push(echange);
+      const echange = ordonnes.filter((c) => c.id !== idJoueur);
+      const contrepartie = monte ? echange[echange.length - 1] : echange[0];
+      if (contrepartie) {
+        echanges.push(monte
+          ? { haut: nouveauNiveau, bas: ancienNiveau, montent: [clubMobile], descendent: [contrepartie] }
+          : { haut: ancienNiveau, bas: nouveauNiveau, montent: [contrepartie], descendent: [clubMobile] });
+      }
     }
 
-    // 2. Les clubs du palier rejoint deviennent de VRAIS adversaires.
-    const adversaires = parNiveau[nouveauNiveau].map((c) => assurerEffectifClub(rng, c));
+    const deplaces = new Set();
+    for (const e of echanges) {
+      for (const c of e.montent.concat(e.descendent)) deplaces.add(c.id);
+    }
+    for (const niveau of [1, 2, 3]) {
+      if (!parNiveau[niveau]) continue;
+      parNiveau[niveau] = parNiveau[niveau].filter((c) => !deplaces.has(c.id));
+    }
+    for (const e of echanges) {
+      for (const c of e.montent) if (parNiveau[e.haut]) parNiveau[e.haut].push(c);
+      for (const c of e.descendent) if (parNiveau[e.bas]) parNiveau[e.bas].push(c);
+    }
+
+    // Où le joueur se retrouve-t-il ? Pour un mouvement sportif, c'est la
+    // division où la règle a emmené SON club. Pour un changement
+    // d'entraîneur, c'est celle du club qu'il rejoint.
+    let niveauJoueur = null;
+    for (const niveau of [1, 2, 3]) {
+      if (parNiveau[niveau] && parNiveau[niveau].some((c) => c.id === idJoueur)) { niveauJoueur = niveau; break; }
+    }
+    if (niveauJoueur == null) niveauJoueur = nouveauNiveau;
+
+    // 2. Les clubs du palier du joueur deviennent de VRAIS adversaires — lui
+    //    excepté, évidemment.
+    const adversaires = (parNiveau[niveauJoueur] || [])
+      .filter((c) => c.id !== idJoueur)
+      .map((c) => assurerEffectifClub(rng, c));
 
     // 3. Les deux autres divisions repartent avec leurs clubs RÉELS, un
     //    calendrier et un classement tout neufs — comme le championnat du
     //    joueur, qui est régénéré juste après par avancerSaison.
     const divisions = {};
     for (const niveau of [1, 2, 3]) {
-      if (niveau === nouveauNiveau) continue;
+      if (niveau === niveauJoueur) continue;
       const clubs = parNiveau[niveau];
       if (!clubs) continue;
       divisions[niveau] = {
@@ -225,7 +340,8 @@
         classement: RMClub.classementInitial(clubs),
       };
     }
-    saison.autresDivisionsFrance = { niveauExclu: nouveauNiveau, divisions };
+    saison.autresDivisionsFrance = { niveauExclu: niveauJoueur, divisions };
+    adversaires.niveauJoueur = niveauJoueur;
     return adversaires;
   }
 
@@ -368,9 +484,6 @@
   // selon leur classement final, avec exactement la même règle que les
   // adversaires du joueur (cf. avancerSaison) : finir en tête renforce un peu,
   // finir dernier affaiblit un peu.
-  const DERIVE_NIVEAU_HAUT = 0.05;
-  const DERIVE_NIVEAU_BAS = -0.05;
-
   function nouvelleSaisonAutresDivisionsFrance(saison) {
     const RMClub = global.RMClub;
     const autres = saison.autresDivisionsFrance;
