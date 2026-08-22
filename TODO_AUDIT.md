@@ -3810,6 +3810,105 @@ composition ni à la fatigue.
 
 ---
 
+## G15 — La pyramide cesse d'effacer son monde (livrée)
+
+### Comportement observé (mesuré, pas déduit)
+
+```
+saison SANS changement de palier   clubs conservés   14/14, 16/16, 13/13
+saison AVEC promotion (3 -> 2)     clubs conservés    0/14,  0/16,  0/13
+
+mes nouveaux adversaires qui existaient déjà en Ligue Nationale :  0/15
+mes anciens rivaux de Régionale encore présents                :  0/13
+```
+
+**Monter d'un palier effaçait 43 clubs et en créait 43 autres.** Les
+adversaires du nouveau palier étaient tirés à neuf
+(`niveauxAdversairesPourPalier` + `genererClub`), et les deux autres
+divisions étaient régénérées par `assurerAutresDivisionsFrance`, dont le
+garde-fou repart de zéro dès que `niveauExclu` change.
+
+Conséquence en jeu : la Ligue Nationale qu'on regardait toute la saison
+**n'était pas celle qu'on rejoignait**, et le club qui vous avait battu l'an
+dernier n'existait plus. Une montée effaçait le monde au lieu d'y faire
+monter le club. C'est ce mur que les tranches G12, G13 et G14 avaient
+rencontré chacune à leur tour.
+
+### La correction
+
+`echangerPalierFrance` (club-pyramide-france.js) : les clubs ne sont **ni
+créés ni détruits, ils changent de division**.
+
+- Photographie des trois divisions sous la même forme (celle du joueur =
+  `saison.adversaires`, les deux autres = `autresDivisionsFrance`).
+- **Mouvement sportif** : un club fait le chemin inverse pour que les deux
+  divisions gardent leur taille exacte — le joueur monte, c'est le **dernier**
+  du palier supérieur qui descend ; le joueur descend, c'est le **premier** du
+  palier inférieur qui monte. Le rang vient du **classement réel** de cette
+  division, jamais d'un tirage.
+- **Changement d'entraîneur** (G14) : le club quitté rejoint sa propre
+  division comme club IA, le club rejoint quitte la liste des adversaires, et
+  personne d'autre ne bouge.
+- Un club d'une division abstraite qui devient un adversaire réel **reçoit un
+  effectif à son niveau** — son identité, elle, est intacte.
+- `avancerSaison` pose désormais le palier **après** l'échange, et lui passe
+  explicitement le palier de départ : au moment de l'appel, le club du joueur
+  peut déjà avoir été remplacé (un entraîneur qui signe ailleurs arrive avec
+  le palier de son nouveau club).
+- L'intersaison des clubs IA (vieillissement, retraites, mercato) tourne
+  maintenant **aussi** les années de montée ou de descente : les clubs
+  persistent, ils doivent vieillir comme les autres.
+
+Repli assuré : sans monde français peuplé (sauvegarde antérieure, division
+jamais ouverte), la fonction rend `null` et `avancerSaison` retombe **exactement**
+sur l'ancien chemin.
+
+### Après
+
+```
+saison AVEC promotion (3 -> 2)     clubs conservés   14/14, 15/16, 13/13
+
+mes nouveaux adversaires qui existaient déjà en Ligue Nationale : 15/15
+mes anciens rivaux de Régionale encore présents                : 13/13
+```
+
+Le 16e club de Nationale n'a pas disparu : c'est celui qui est descendu, et
+on le retrouve en Régionale.
+
+Vérifié au navigateur, desktop et mobile, sur une vraie montée jouée depuis
+l'interface : palier 3 → 2, **15/15** des nouveaux adversaires déjà connus,
+divisions à 14 / 16 / 14, les trois championnats français listés dans
+l'onglet Compétitions, zéro erreur JS.
+
+### Ce que le banc d'essai a appris
+
+Un premier jet a rendu 14 adversaires au lieu de 15, dont **un seul** connu :
+`avancerSaison` posait le nouveau palier sur le club **avant** d'appeler
+l'échange, qui lisait donc le palier d'arrivée comme palier de départ et se
+retrouvait à échanger une division avec elle-même. La fonction refuse
+maintenant explicitement `ancienNiveau === nouveauNiveau`.
+
+Un autre détour vaut d'être noté : mon script de QA marquait les rencontres
+`joue: true` **sans score**, et la reprise de partie plantait sur
+`f.score.exterieur`. Ce n'est pas un défaut du jeu — `enregistrerResultatDans`
+écrit toujours un score — mais c'est un état qu'aucun écran ne tolère, et
+c'est mon banc d'essai qui était faux.
+
+### Ce qui reste
+
+Les clubs du monde n'ont toujours **ni historique de saisons ni palmarès**
+(`historiqueSaisons: null`, `palmares: null`) : ils persistent désormais, mais
+n'accumulent encore rien. Et les deux divisions que le joueur ne fréquente pas
+ne connaissent **pas de montées/descentes entre elles** — seul le palier du
+joueur échange un club avec le sien.
+
+Couverture : `server/test-monde-persistant.js`, 12 cas, **7 rouges avant**.
+Les cinq autres étaient verts dès le départ et c'est leur rôle : **M9**
+(sans mouvement de palier, rien ne change), **M7**, **M8**, **M10** et
+**M11**.
+
+---
+
 ## G14 — Une carrière d'entraîneur qui peut changer de division (livrée)
 
 ### Comportement observé (mesuré, pas déduit)

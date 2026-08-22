@@ -373,7 +373,8 @@
 
   // Réalise l'engagement au CHANGEMENT DE SAISON (appelée par avancerSaison,
   // juste avant que les adversaires soient régénérés pour le nouveau palier).
-  // Renvoie le niveau de division rejoint, ou null s'il n'y a rien à faire.
+  // Renvoie { niveau, clubQuitte } — le palier rejoint et le club abandonné,
+  // qui doit rester dans le monde — ou null s'il n'y a rien à faire.
   //
   // Le club rejoint vient d'une des deux autres divisions françaises, où les
   // clubs sont volontairement abstraits (identité, niveau et budget, pas
@@ -427,6 +428,16 @@
       palierPyramide: { pays: 'FRA', niveau: e.niveau },
     });
     delete nouveau.feuilleDeRoute;
+    // Le club qu'on quitte redevient un club du monde, avec son identité, son
+    // effectif et son budget RÉELS — comme le fait déjà changerClubManager
+    // pour un transfert à l'intérieur d'une même division.
+    const clubIA = {
+      id: ancien.id, nom: ancien.nom, couleur: ancien.couleur,
+      niveauClub: ancien.niveauClub, effectif: ancien.effectif, budget: ancien.budget,
+      historiqueSaisons: ancien.historiqueSaisons || [],
+    };
+    if (ancien.groupe) clubIA.groupe = ancien.groupe;
+    if (ancien.banc) clubIA.banc = ancien.banc;
     saison.clubJoueur = nouveau;
     saison.compositions = null;
 
@@ -445,7 +456,10 @@
         `Tu prends les commandes de ${nouveau.nom} en ${e.division}. ` +
         `Confiance initiale : ${nouveau.confiancePresident} %.`);
     }
-    return e.niveau;
+    // Le club quitté ne disparaît pas : il reprend sa place de club IA dans
+    // sa propre division (cf. echangerPalierFrance, G15). On le renvoie plutôt
+    // que de le ranger ici : c'est avancerSaison qui orchestre le palier.
+    return { niveau: e.niveau, clubQuitte: clubIA };
   }
 
   // --- Changement de club : LA fonction centrale --------------------------

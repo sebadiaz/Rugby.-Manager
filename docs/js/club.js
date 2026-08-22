@@ -1044,7 +1044,10 @@
     } else if (places.relegues > 0 && positionFinale > totalClubsLigue - places.relegues) {
       nouveauNiveauPalier = palierAvant.niveau + 1; mouvementPalier = 'relegation';
     }
-    saison.clubJoueur.palierPyramide = { pays: 'FRA', niveau: nouveauNiveauPalier };
+    // Le palier n'est PAS appliqué ici : echangerPalierFrance (G15) a besoin
+    // de connaître celui de départ, et le club du joueur peut lui-même avoir
+    // changé entre-temps. Il est posé plus bas, juste avant que les
+    // adversaires soient remplacés.
     if (mouvementPalier === 'promotion') {
       ajouterMessage(saison, 'saison', 'Promotion !',
         `${positionFinale}e place : le club monte en ${global.RMClub.nomPalierFrance(nouveauNiveauPalier)} la saison prochaine.`);
@@ -1103,12 +1106,15 @@
     // club. Le club rejoint impose son palier, et la régénération des
     // adversaires ci-dessous suit exactement le chemin déjà emprunté par une
     // promotion ou une relégation — aucune seconde mécanique de division.
+    let clubQuitteParManager = null;
     if (global.RMClub.realiserEngagementProchaineSaison) {
-      const niveauRejoint = global.RMClub.realiserEngagementProchaineSaison(saison);
-      if (niveauRejoint != null) {
-        nouveauNiveauPalier = niveauRejoint;
+      const rejoint = global.RMClub.realiserEngagementProchaineSaison(saison);
+      if (rejoint != null) {
+        nouveauNiveauPalier = rejoint.niveau;
+        clubQuitteParManager = rejoint.clubQuitte || null;
         mouvementPalier = 'transfertManager';
-        saison.clubJoueur.palierPyramide = { pays: 'FRA', niveau: nouveauNiveauPalier };
+        // Le palier n'est appliqué qu'APRÈS l'échange : echangerPalierFrance
+        // a besoin de savoir d'où l'on vient.
       }
     }
 
@@ -1120,7 +1126,21 @@
     // légèrement, finir en bas les affaiblit. L'identité du club (nom,
     // couleur, id) persiste dans ce second cas, seul l'effectif est
     // régénéré au nouveau niveau (renouvellement d'effectif normal).
-    const adversaires = mouvementPalier
+    // Changement de palier (G15) : les clubs ne sont plus effacés et
+    // recréés, ils CHANGENT DE DIVISION. `echangerPalierFrance` rend les
+    // clubs RÉELS du palier rejoint et laisse les deux autres divisions
+    // cohérentes. Il rend null si le monde français n'a jamais été peuplé
+    // (sauvegarde antérieure, division jamais ouverte) : on retombe alors
+    // exactement sur l'ancien chemin, des adversaires tout neufs.
+    let adversairesEchanges = null;
+    if (mouvementPalier && global.RMClub.echangerPalierFrance) {
+      adversairesEchanges = global.RMClub.echangerPalierFrance(rng, saison, nouveauNiveauPalier,
+        { clubQuitte: clubQuitteParManager, ancienNiveau: palierAvant.niveau });
+    }
+    if (mouvementPalier) {
+      saison.clubJoueur.palierPyramide = { pays: 'FRA', niveau: nouveauNiveauPalier };
+    }
+    const adversaires = adversairesEchanges ? adversairesEchanges : mouvementPalier
       ? global.RMClub.niveauxAdversairesPourPalier(nouveauNiveauPalier).map((niveauClub) => global.RMClub.genererClub(rng, { niveauClub }))
       : saison.adversaires.map((ancien) => {
         const rang = classementFinal.findIndex((r) => r.clubId === ancien.id) + 1;
@@ -1141,9 +1161,11 @@
     // perdent leurs anciens, comblent leurs trous et s'échangent réellement
     // des joueurs. Appel défensif comme les autres domaines chargés après
     // club.js — sans le module, le monde reste simplement figé comme avant.
-    // En cas de promotion/relégation, les adversaires sont de NOUVEAUX clubs
-    // tout juste générés : rien à faire vieillir cette année-là.
-    if (!mouvementPalier && global.RMClub.avancerIntersaisonClubsIA) {
+    // Depuis G15, un changement de palier CONSERVE les clubs (ils changent de
+    // division au lieu d'être recréés) : ils doivent donc vieillir comme les
+    // autres. On ne saute l'intersaison que dans le cas de repli, où les
+    // adversaires viennent bel et bien d'être tirés à neuf.
+    if ((!mouvementPalier || adversairesEchanges) && global.RMClub.avancerIntersaisonClubsIA) {
       const mercato = global.RMClub.avancerIntersaisonClubsIA(rng, saison);
       if (global.RMClub.messageMercato) global.RMClub.messageMercato(saison, mercato);
     } else {
