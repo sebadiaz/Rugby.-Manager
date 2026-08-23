@@ -88,8 +88,55 @@ jobs:
       - name: Tests navigateur (audit XSS nom de club)
         run: node server/test-audit-p0-3.js http://localhost:8099
 
+  # Les 6 suites du job « test » ci-dessus ne couvraient que 9 des 47 fichiers
+  # de server/. Mesuré (TODO_AUDIT.md G23) en cassant trois règles de jeu
+  # réelles — l'exclusivité des joueurs ramenés par le réseau de recrutement,
+  # le délai entre deux propositions du conseil, le poids du niveau dans les
+  # résultats des divisions IA : chaque fois la suite propriétaire rougissait
+  # et la CI restait ENTIÈREMENT VERTE. Le déploiement serait parti.
+  #
+  # Ce job rattrape les 36 suites rapides (261 s mesurées en local). Il tourne
+  # EN PARALLÈLE du job « test » qui, lui, dure ~8 min avec ses tests
+  # navigateur : le délai de mise en ligne ne bouge donc pas d'une seconde.
+  #
+  # La liste est DÉRIVÉE du dossier, jamais écrite à la main : une suite
+  # ajoutée demain est protégée d'office. C'est précisément l'oubli qui a
+  # laissé 38 fichiers de test sans surveillance.
+  test-complet:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Utiliser Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Synchroniser le moteur partagé vers docs/
+        run: cp engine/rugby-engine.js docs/rugby-engine.js
+      - name: Toutes les autres suites de server/
+        run: |
+          # Exclusions, chacune pour une raison précise :
+          #   - les 6 du job « test »      : déjà couvertes, inutile de payer deux fois
+          #   - parcours-navigateur, audit-p0-3 : besoin de Chromium, dans « test »
+          #   - deploy-public             : interroge le site EN LIGNE, c'est le job « verify »
+          #   - stats-matchs, touche      : ~35 min à eux deux, cf. tests-longs.yml
+          DEJA_COUVERTES='test-(invariants|parcours-club|monde|audit-p0-1|audit-p0-2|equilibre-matchs|parcours-navigateur|audit-p0-3|deploy-public|stats-matchs|touche)\.js'
+          suites=$(ls server/test-*.js | grep -vE "$DEJA_COUVERTES")
+          echo "$(echo "$suites" | wc -l) suite(s) à exécuter."
+          echec=0
+          for f in $suites; do
+            if node "$f" > /tmp/sortie.log 2>&1; then
+              echo "  ok  $(basename $f)"
+            else
+              echo "FAIL  $(basename $f)"
+              tail -25 /tmp/sortie.log
+              echec=1
+            fi
+          done
+          exit $echec
+
   deploy:
-    needs: test
+    needs: [test, test-complet]
     # Condition explicite (TODO_AUDIT.md P0-5) : SEUL "main" peut déployer en
     # production, quelle que soit la branche qui a déclenché le workflow —
     # filet de sécurité même si le déclencheur "on.push.branches" ci-dessus

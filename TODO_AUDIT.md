@@ -3810,6 +3810,117 @@ composition ni à la fatigue.
 
 ---
 
+## G23 — La CI ne protégeait que 9 fichiers de test sur 47 (livrée)
+
+### Ce que j'avais recommandé, et ce que la mesure a dit
+
+À la fin de la tranche précédente j'avais noté, en passant : « la CI n'exécute
+que 6 des ~45 suites ». Avant de livrer quoi que ce soit, je l'ai mesuré —
+parce qu'un constat de comptage ne dit pas si ça coûte quelque chose.
+
+Protocole : casser une **vraie règle de jeu**, vérifier que sa suite
+propriétaire la voit, puis lancer les 6 suites de la CI.
+
+| règle cassée | suite propriétaire | les 6 suites de la CI |
+|---|---|---|
+| exclusivité des joueurs ramenés par le réseau de recrutement | `test-reseau-scouting` ROUGE | **TOUT VERT** |
+| délai entre deux propositions du conseil de direction | `test-conseil-direction` ROUGE | **TOUT VERT** |
+| poids du niveau dans les résultats des divisions IA | `test-scores-abstraits`, `test-matchs-ia` ROUGES | **TOUT VERT** |
+
+Trois régressions de gameplay parfaitement visibles en jeu — un rival qui
+signe le joueur qu'on est allé chercher à l'autre bout du monde, un conseil
+qui harcèle le manager, une Régionale qui tient tête à l'élite — et le
+déploiement serait parti sans un mot. La recommandation tenait.
+
+### Un quatrième trou, trouvé pendant la mesure
+
+En cherchant des règles à casser, j'ai mis `SEUIL_FATIGUE_ALERTE` et
+`SEUIL_FATIGUE_REPOS` à 999 dans `club-rotation.js` — c'est-à-dire supprimé
+la notion même de joueur cuit. **Les neuf tests de `test-rotation` sont restés
+verts.** Le trou n'était pas dans la CI, il était dans la suite elle-même :
+
+- **R4** mettait le joueur fatigué à `matchsJoues = 14` contre 8 de moyenne.
+  Il était donc signalé par la règle du **nombre de matchs**, jamais par celle
+  de fatigue. Le motif de l'alerte n'était pas vérifié.
+- **R6** se contentait de « au moins un des cinq cuits sort du XV ». Quatre
+  joueurs à 90 de fatigue pouvaient rester alignés sans rien casser.
+
+Deux contrôles ajoutés, qui épinglent chaque seuil à sa **frontière** :
+
+- **R10** : tout le monde au même nombre de matchs — la règle du nombre de
+  matchs ne peut donc parler — un joueur pile au seuil doit être signalé
+  **et pour le bon motif**, un joueur un point en dessous ne doit pas l'être.
+  Plus une contrainte de domaine : un seuil hors de l'échelle 0-100 ne se
+  déclenche jamais, c'est ce qui laissait passer 999.
+- **R11** : le jour de fraîcheur annoncé au manager doit vraiment ramener sous
+  le seuil de repos — et la veille, être encore au-dessus. Sinon le compte est
+  faux.
+
+Vérifié en dégradant, un cas à la fois :
+
+```
+seuils à 999 (règle supprimée)        -> R10 et R11 ROUGES
+recalibration 75 -> 76 (légitime)     -> 11 verts, rien ne bouge
+seuils inversés (frais > alerte)      -> R10 ROUGE
+code intact                           -> 11 verts
+```
+
+Le point important est la troisième ligne : un test qui rougit quand on règle
+un curseur ne protège rien, il empêche de travailler. R10 tient la **règle**,
+pas la valeur.
+
+### Ce qui est livré
+
+**Un job `test-complet`, en parallèle.** Les 36 suites rapides — 261 s
+mesurées en local. Il tourne à côté du job `test`, qui dure ~8 min avec ses
+tests navigateur : **le délai de mise en ligne ne bouge pas d'une seconde**.
+`deploy` dépend maintenant des deux.
+
+La liste des suites est **dérivée du dossier**, jamais écrite à la main. Une
+suite ajoutée demain est protégée d'office — c'est exactement l'oubli qui a
+laissé 38 fichiers sans surveillance. Chaque exclusion porte sa raison :
+
+```
+les 6 du job « test »              déjà couvertes
+parcours-navigateur, audit-p0-3    ont besoin de Chromium, sont dans « test »
+deploy-public                      interroge le site EN LIGNE : c'est « verify »
+stats-matchs, touche               ~35 min à eux deux
+```
+
+**Un workflow `tests-longs.yml`, chaque nuit.** `test-stats-matchs` simule 500
+matchs complets (~25 min) et `test-touche` une centaine (~10 min). Les mettre
+dans le chemin du déploiement ajouterait une demi-heure à **chaque** mise en
+ligne. Ils ne sont pas facultatifs pour autant : `test-stats-matchs` est le
+seul contrôle qui tienne les ordres de grandeur exigés par CLAUDE.md — essais,
+mêlées, touches, rucks, plaquages, coups de pied, possession, et la différence
+de jeu entre avants et trois-quarts.
+
+### Le job a été exercé, pas seulement écrit
+
+La commande exacte du job a été extraite du YAML et lancée sur chaque
+régression :
+
+```
+exclusivité du réseau cassée     -> exit 1, FAIL test-reseau-scouting.js
+délai du conseil cassé           -> exit 1, FAIL test-conseil-direction.js
+poids du niveau cassé            -> exit 1, FAIL test-matchs-ia.js
+                                            FAIL test-scores-abstraits.js
+seuils de fatigue hors échelle   -> exit 1, FAIL test-rotation.js
+code intact                      -> exit 0, 36 suites, 36 vertes
+```
+
+### La leçon
+
+J'ai passé trois tranches à réparer des garde-fous : un qui criait au loup à
+chaque exécution (G21), des documents qui annonçaient absent ce qui était
+livré (G22), et maintenant une CI qui regardait 9 fichiers sur 47. À chaque
+fois le défaut n'était pas l'absence de contrôle — les 38 suites existaient,
+elles étaient bonnes, elles étaient vertes — mais le fait que **personne ne
+les regardait au moment où ça compte**. Un test qui ne tourne pas dans le
+chemin du déploiement est de la documentation.
+
+---
+
 ## G22 — Trois des quatre « il manque » étaient faux (livrée)
 
 ### Comportement observé (mesuré, pas déduit)

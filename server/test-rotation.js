@@ -171,6 +171,75 @@ test('R8 — SUGGESTION seulement : rien n\'est modifié', () => {
     'ni la fatigue');
 });
 
+// R4 et R6 ci-dessus ne tenaient PAS la règle de fatigue. Mesuré en mettant
+// SEUIL_FATIGUE_ALERTE et SEUIL_FATIGUE_REPOS à 999 — donc en supprimant
+// purement et simplement la notion de joueur cuit — : les neuf tests
+// restaient VERTS.
+//   - R4 alignait le joueur fatigué sur matchsJoues = 14 contre 8 de moyenne :
+//     il était signalé par la règle de NOMBRE DE MATCHS, jamais par celle de
+//     fatigue. Le bon motif n'était pas vérifié.
+//   - R6 se contentait de « au moins un des cinq cuits sort du XV » : quatre
+//     joueurs à 90 de fatigue pouvaient rester alignés sans rien casser.
+// Les deux contrôles ci-dessous épinglent chaque seuil à sa FRONTIÈRE, avec
+// un témoin juste en dessous — la seule forme qui rougisse quand le seuil
+// bouge.
+test('R10 — le seuil de fatigue est tenu à sa frontière, motif compris', () => {
+  const s = carriere();
+  const eff = s.clubJoueur.effectif;
+  const seuil = RMClub.SEUIL_FATIGUE_ALERTE;
+  const seuilRepos = RMClub.SEUIL_FATIGUE_REPOS;
+  // Le contrôle du dessous compare le seuil à LUI-MÊME : il tient la règle,
+  // pas la valeur — recalibrer 75 en 76 doit rester permis. Mais un seuil
+  // hors du domaine réel de la fatigue (0-100) ne se déclenche JAMAIS : la
+  // règle disparaît sans qu'aucune assertion relative ne s'en aperçoive.
+  // C'est exactement ce qui laissait passer SEUIL_FATIGUE_ALERTE = 999.
+  assert.ok(seuil > 0 && seuil <= 100,
+    `un seuil d'alerte hors de l'échelle de fatigue 0-100 ne se déclenche jamais (${seuil})`);
+  assert.ok(seuilRepos > 0 && seuilRepos <= 100,
+    `un seuil de repos hors de l'échelle 0-100 ne se déclenche jamais (${seuilRepos})`);
+  assert.ok(seuilRepos < seuil,
+    `on doit être « frais » (${seuilRepos}) SOUS le niveau où l'on est alerté (${seuil})`);
+  // Tout le monde a joué le MÊME nombre de matchs : la règle du nombre de
+  // matchs ne peut donc signaler personne. Seule la fatigue peut parler.
+  for (const j of eff) { j.matchsJoues = 8; j.fatigue = 20; }
+  const auDessus = eff[0];
+  const juste = eff[1];
+  auDessus.fatigue = seuil;
+  juste.fatigue = seuil - 1;
+
+  const c = RMClub.chargeEffectif(s, 'pro');
+  const alerte = c.surcharges.find((x) => x.id === auDessus.id);
+  assert.ok(alerte, `un joueur à ${seuil} de fatigue doit être signalé en surcharge`);
+  assert.ok(/[Ff]atigue/.test(alerte.motif),
+    `et pour la BONNE raison : motif obtenu « ${alerte.motif} »`);
+  assert.ok(!c.surcharges.some((x) => x.id === juste.id),
+    `un joueur à ${seuil - 1} — un point sous le seuil — ne doit PAS être signalé`);
+});
+
+test('R11 — « frais » veut dire sous le seuil de repos, pas autre chose', () => {
+  const s = carriere();
+  const j = s.clubJoueur.effectif[0];
+  const seuilRepos = RMClub.SEUIL_FATIGUE_REPOS;
+
+  // Déjà frais : aucun jour de repos n'est nécessaire.
+  j.fatigue = seuilRepos;
+  const dejaFrais = RMClub.recuperationPrevue(j, 30);
+  assert.strictEqual(dejaFrais.joursPourEtreFrais, 1,
+    `à ${seuilRepos} pile, le joueur est frais dès le premier jour de repos`);
+
+  // Cuit : il faut des jours, et à ce moment-là il est RÉELLEMENT sous le seuil.
+  j.fatigue = 95;
+  const cuit = RMClub.recuperationPrevue(j, 30);
+  assert.ok(cuit.joursPourEtreFrais > dejaFrais.joursPourEtreFrais,
+    'un joueur à 95 doit demander plus de repos qu\'un joueur déjà frais');
+  const valeurAuJourAnnonce = cuit.dans[cuit.joursPourEtreFrais - 1];
+  assert.ok(valeurAuJourAnnonce <= seuilRepos,
+    `le jour annoncé doit vraiment ramener sous ${seuilRepos} (obtenu ${valeurAuJourAnnonce})`);
+  const veilleAnnoncee = cuit.dans[cuit.joursPourEtreFrais - 2];
+  assert.ok(veilleAnnoncee > seuilRepos,
+    `et la veille il devait être encore au-dessus (obtenu ${veilleAnnoncee}) : sinon le compte est faux`);
+});
+
 test('R9 — le dossier marche pour les TROIS équipes, sans branche par équipe', () => {
   const s = carriere();
   RMClub.assurerCompetitionB(s);

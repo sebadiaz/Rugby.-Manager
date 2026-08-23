@@ -1,0 +1,44 @@
+# Les deux suites que le déploiement ne peut pas se permettre d'attendre.
+#
+# Mesuré (TODO_AUDIT.md G23) : test-stats-matchs simule 500 matchs complets
+# (~25 min) et test-touche une centaine (~10 min). Les mettre dans le chemin
+# du déploiement ajouterait plus d'une demi-heure à CHAQUE mise en ligne.
+#
+# Elles ne sont pas facultatives pour autant : test-stats-matchs est le seul
+# contrôle qui tienne les ordres de grandeur d'un vrai match de rugby à XV
+# exigés par CLAUDE.md — essais, mêlées, touches, rucks, plaquages, coups de
+# pied, possession, et la différence de jeu entre avants et trois-quarts.
+# Elles tournent donc chaque nuit sur main, et à la demande.
+name: Tests longs (simulation de masse)
+
+on:
+  schedule:
+    # 03:17 UTC : une heure creuse, et pas une heure ronde — les minutes
+    # rondes sont les plus encombrées chez GitHub, ce qui décale les runs.
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-longs
+  cancel-in-progress: true
+
+jobs:
+  simulation-de-masse:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Utiliser Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Synchroniser le moteur partagé vers docs/
+        run: cp engine/rugby-engine.js docs/rugby-engine.js
+      - name: Statistiques de match sur 500 matchs (seuils de CLAUDE.md)
+        run: node server/test-stats-matchs.js
+      - name: Touches — spécialistes, alignement, ordres de grandeur
+        run: node server/test-touche.js
