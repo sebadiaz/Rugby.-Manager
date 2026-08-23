@@ -3810,6 +3810,84 @@ composition ni à la fatigue.
 
 ---
 
+## G22 — Trois des quatre « il manque » étaient faux (livrée)
+
+### Comportement observé (mesuré, pas déduit)
+
+`ROADMAP_FOOTBALL_MANAGER.md` sert à choisir la tranche suivante. J'allais y
+prendre la mienne. Avant de coder, j'ai vérifié ses quatre lignes 🔴 — « rien
+n'existe » — une par une. **Trois étaient fausses.**
+
+```
+« Concurrence avec les clubs IA : aucun club IA ne recrute en parallèle »
+  mesuré : 5 des 6 joueurs libres du départ signés par des rivaux en 200 jours
+           avancerJourMercato et avancerIntersaisonClubsIA exportées
+  faux depuis P1-43b
+
+« Amélioration stade/centre : aucun mécanisme d'investissement —
+  niveaux fixes, jamais améliorables »
+  mesuré : 4 installations améliorables (220-320 k€, 30-60 j)
+           lancerTravaux : budget 412 -> 92 k€, chantier ouvert
+  faux depuis P1-44, et G9 y a branché des effets réels
+
+« Changements tactiques en cours de rencontre : aucun hook d'interaction ;
+  tactique figée pour tout le match »
+  mesuré : 4 consignes de mi-temps écrivant dans les VRAIES clés du moteur
+           (attaque.tauxJeuAuPied, defense.rampeMontee…), plus un mode
+           « consigne en cours de jeu », couverts par test-match-interactif
+
+« Marché des entraîneurs : aucune entité manager IA »
+  mesuré : exact — aucun club adverse ne porte de manager
+```
+
+J'ai failli reconstruire un écran de mi-temps qui existe, fonctionne et est
+déjà testé. C'est le symétrique exact du piège que le cahier des charges
+signale (« ne réponds jamais c'est déjà fait parce qu'une fonction existe ») :
+ici le document annonçait comme absent ce qui était livré, et ça envoie le
+travail au mauvais endroit tout aussi sûrement.
+
+### La correction
+
+Les trois lignes sont corrigées, chacune avec le chiffre qui la fonde. Mais
+corriger l'instantané ne sert à rien si le document repart en dérive à la
+tranche suivante — d'où le vrai livrable : **un garde-fou**.
+
+`server/test-roadmap-a-jour.js` :
+
+- **R1** — chaque ligne 🔴 doit avoir un démenti déclaré. Ajouter une ligne
+  « rien n'existe » sans dire ce qui la contredirait fait échouer le test :
+  impossible d'écrire une affirmation d'absence que personne ne vérifie.
+- **R2** — rien de ce que le document annonce comme absent ne doit exister.
+  C'est le contrôle qui aurait attrapé les trois mensonges le jour où ils sont
+  apparus.
+- **R3** — le symétrique : un fichier cité par une ligne 🟢 doit exister dans
+  le dépôt, sinon le document annonce une fonctionnalité livrée qui n'est
+  nulle part.
+
+### Un garde-fou qui ne mord pas ne sert à rien
+
+Vérifié en dégradant volontairement le document, un cas à la fois :
+
+```
+ligne 🔴 sans démenti déclaré        -> R1 échoue, R2 et R3 passent
+ligne vraie repassée à tort en 🔴    -> R2 échoue en la nommant, R1 et R3 passent
+fichier cité mais inexistant         -> R3 échoue en le nommant, R1 et R2 passent
+document remis en état               -> 3/3
+```
+
+Chacun mord seul et pour la bonne raison.
+
+### Ce qui reste
+
+La seule ligne 🔴 encore exacte est **« Marché des entraîneurs (managers IA) »**
+— aucun club adverse ne porte de manager, et les cinq fonctions `*Manager*`
+de `RMClub` ne concernent que celui du joueur.
+
+Aucun code de jeu modifié : un document faux et un test manquant, ça se
+corrige dans le document et dans les tests.
+
+---
+
 ## G21 — Le seul test rouge du projet disait vrai, mais pas ce qu'on croyait (livrée)
 
 ### Comportement observé (mesuré, pas déduit)
