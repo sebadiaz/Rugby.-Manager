@@ -3888,33 +3888,37 @@ corrige dans le document et dans les tests.
 
 ---
 
-## G21 — Le seul test rouge du projet disait vrai, mais pas ce qu'on croyait (livrée)
+## G21 — Le seul test rouge du projet disait vrai, mais pas ce qu'on croyait (livrée, **conclusion corrigée le 23/08**)
 
-### Comportement observé (mesuré, pas déduit)
+> **Avertissement.** La première rédaction de cette section concluait :
+> « GitHub Pages sert **la branche**, pas l'artefact de la CI ; tout le
+> mécanisme `deploy` + `verify` est décoratif ; `version.json` ne peut par
+> construction jamais apparaître. » **Cette conclusion était fausse**, et le
+> premier déploiement de production réussi de la session l'a démentie en
+> quelques minutes. Les deux défauts corrigés (concurrence, analyse des
+> arguments) étaient bien réels. Le mécanisme, lui, a été mal lu. La section
+> est réécrite ci-dessous avec ce qui a été **mesuré**, pas déduit.
+
+### Le point de départ
 
 `server/test-deploy-public.js` échouait à chaque exécution depuis des dizaines
 de tranches, toujours sur le même point : `version.json` absent du site public
 (HTTP 404). Je l'avais noté « non lié » sept fois de suite sans l'ouvrir.
-
-En l'ouvrant :
 
 ```
 https://sebadiaz.github.io/Rugby.-Manager/index.html     200
 https://sebadiaz.github.io/Rugby.-Manager/version.json   404
 ```
 
-Le workflow génère pourtant bien `version.json` depuis le 7 août 2026, et
-`main` a été poussée jusqu'au 18 août. Trois mesures ont suffi à comprendre :
-
-**1. Le dernier déploiement de main a été ANNULÉ.**
+### Défaut 1 — la concurrence (réel, corrigé)
 
 ```
 2026-08-18T18:39:06  main                          cancelled
 2026-08-18T18:43:14  claude/readme-details-6aj3jt  success
 ```
 
-Le job `test` de main a été annulé à 18:43:34 — vingt secondes après le
-démarrage du run de branche. La cause est dans le workflow :
+Le job `test` de `main` a été annulé à 18:43:34, vingt secondes après le
+démarrage du run de branche. La cause était dans le workflow :
 
 ```yaml
 concurrency:
@@ -3925,26 +3929,17 @@ concurrency:
 Les branches `claude/**` exécutent les tests et **ne déploient jamais** (une
 condition explicite le garantit sur le job `deploy`). Mais elles partageaient
 le groupe de concurrence de la production : **un push sur une branche de
-session annulait le déploiement de main en cours.** La mise en ligne de la
-tranche G10 n'a jamais eu lieu.
+session annulait le déploiement de main en cours.**
 
-**2. Et pourtant le site sert bien le contenu de G10.**
+Vérifié dans le détail des jobs du run 32172189678 : `deploy` et `verify` ont
+été créés puis annulés dans la même seconde (18:43:37), sans jamais démarrer.
+La mise en ligne de la tranche G10 par la CI n'a donc pas eu lieu.
 
-```
-club-rotation.js référencé par le site public : oui
-club-rotation.js présent dans 13f22a2 (G9, dernier déploiement réussi) : non
-club-rotation.js présent dans 5819d25 (G10, déploiement annulé)        : oui
-```
+**Correction :** le groupe `pages` est réservé à `main`. Chaque branche de test
+a le sien (`tests-<ref>`) : elles continuent de s'annuler entre elles — c'est
+le retour rapide voulu — sans jamais toucher à la production.
 
-Le site publie donc un commit dont l'artefact n'a **jamais** été déployé.
-Conclusion : GitHub Pages sert **la branche**, pas l'artefact de la CI. Tout
-le mécanisme `deploy` + `verify` est décoratif, et `version.json` — qui
-n'existe nulle part dans le dépôt, puisqu'il est écrit pendant le job — ne
-peut par construction jamais apparaître.
-
-**3. Un troisième défaut, trouvé en vérifiant le premier.**
-
-En essayant de reproduire l'échec dur du mode CI :
+### Défaut 2 — l'analyse des arguments (réel, corrigé)
 
 ```
 node server/test-deploy-public.js --expect-commit deadbeefcafe
@@ -3956,47 +3951,145 @@ node server/test-deploy-public.js --expect-commit deadbeefcafe
 arguments, donc ce défaut ne s'était jamais montré — mais il rendait le script
 inutilisable à la main dans le seul mode où il est censé être strict.
 
-### Les corrections
+**Correction :** l'URL est le premier argument qui n'est ni une option **ni la
+valeur d'une option**.
 
-- **Concurrence** : le groupe `pages` est désormais réservé à `main`. Chaque
-  branche de test a le sien (`tests-<ref>`) : elles continuent de s'annuler
-  entre elles — c'est le retour rapide voulu — sans jamais toucher à la
-  production.
-- **Analyse des arguments** : l'URL est le premier argument qui n'est ni une
-  option **ni la valeur d'une option**.
-- **Le test dit la vérité** : sans `--expect-commit` (contrôle manuel), un
-  `version.json` absent n'est plus un échec mais un **signalement de
-  configuration**, affiché en clair avec le réglage à corriger. Avec
-  `--expect-commit` (CI, juste après un déploiement réel), c'est de nouveau
-  un **échec dur** : à ce moment-là l'artefact doit être en ligne.
+### Défaut 3 — le correctif du défaut 2 (trouvé le 23/08 en le vérifiant)
 
-Vérifié dans les deux modes :
+En rejouant les quatre formes d'appel pour valider la correction ci-dessus,
+le mode manuel a testé la **production** alors que je lui avais passé une URL
+locale :
 
 ```
-sans --expect-commit : 6/6 verts + « À CORRIGER HORS DU DÉPÔT : … Settings →
-                       Pages → Source doit être GitHub Actions »
-avec --expect-commit : échec dur sur version.json, les cinq autres verts
+$ node server/test-deploy-public.js http://127.0.0.1:8099
+Verification du site public : https://sebadiaz.github.io/Rugby.-Manager/   <-- pas la mienne
 ```
 
-### Ce qui reste, et qui ne peut pas être corrigé depuis le dépôt
+`argv.indexOf('--expect-commit')` renvoie `-1` quand l'option est absente,
+donc l'indice exclu — `idxExpect + 1` — valait **0** : l'URL passée seule
+était ignorée en silence. Mon correctif de G21 avait échangé un défaut contre
+son symétrique, et le mode manuel annonçait tranquillement des résultats
+portant sur un autre site que celui demandé.
 
-Le réglage **Settings → Pages → Source** doit passer de « Deploy from a
-branch » à « GitHub Actions ». C'est une action sur le dépôt, pas un fichier :
-je ne l'ai pas faite. Tant qu'elle ne l'est pas :
+Cette analyse ayant maintenant été fausse **deux fois, dans les deux sens**,
+et la CI passant toujours les deux arguments — donc ne l'exerçant jamais là
+où on regarde — elle est extraite en fonction pure `analyserArguments(argv)`
+et couverte par deux contrôles **sans réseau**, placés en tête de campagne :
+si l'URL est mal lue, tous les contrôles suivants portent sur le mauvais site
+et le disent avec aplomb.
 
-- l'artefact produit par la CI est ignoré ;
-- `version.json` restera absent et rien ne dira quel commit est en ligne ;
-- le job `verify`, qui attend ce fichier, ne protège rien ;
-- le site continuera de publier **tout ce qui atterrit sur main**, y compris
-  un commit dont les tests ont été annulés — ce qui est exactement le
-  scénario que l'audit P0-5 avait voulu empêcher.
+Chaque contrôle mord séparément, vérifié en réintroduisant les deux défauts
+un par un :
+
+```
+défaut d'avant G21 (valeur d'option prise pour l'URL)
+  -> FAIL « --expect-commit ne peut pas être pris pour l'URL du site »
+défaut introduit par G21 (indice 0 exclu à tort)
+  -> FAIL « l'URL passée seule est bien celle qui est vérifiée »
+code restauré -> les deux au vert
+```
+
+Les quatre formes d'appel, après correction :
+
+| appel | site vérifié | résultat |
+|---|---|---|
+| `<URL locale>` | l'URL locale | 8/8 verts + signalement `version.json` absent |
+| `<URL locale> --expect-commit <sha>` | l'URL locale | **échec dur** sur `version.json` |
+| `<URL prod>` | la production | 8/8 verts, aucun signalement |
+| `--expect-commit deadbeefcafe` | la production (repli) | échec dur sur le commit, pas sur une URL inventée |
+
+### Ce que j'avais conclu, et pourquoi c'était faux
+
+Observation exacte, à l'époque : le site servait le contenu de `5819d25`
+(`club-rotation.js` référencé par le `index.html` public) alors que ce commit
+n'avait **jamais** été déployé par la CI. Vérifié à nouveau aujourd'hui, le
+fait tient :
+
+```
+club-rotation.js présent dans 13f22a2 (dernier artefact déployé avec succès) : non
+club-rotation.js présent dans 5819d25 (déploiement annulé)                   : oui
+index.html de 13f22a2 mentionne « rotation »                                 : non
+```
+
+L'observation était juste. **La conclusion tirée de cette observation ne
+l'était pas.** J'en ai déduit « l'artefact est ignoré » alors que le fait
+n'établissait que « quelque chose d'autre publie aussi ».
+
+Le démenti est arrivé au premier déploiement de production réussi de la
+session (`fe459c4`, run 32629789851, `test` + `deploy` + `verify` verts) :
+
+```
+$ curl https://sebadiaz.github.io/Rugby.-Manager/version.json
+{"commit":"fe459c469cc862db93b169e1d47611309ffa282a","ref":"main","deployedAt":"2026-08-23T09:08:32Z"}
+$ git log -1 --format=%H
+fe459c469cc862db93b169e1d47611309ffa282a
+```
+
+`version.json` n'est écrit que par le job `deploy` et **n'a jamais été commité
+dans le dépôt** (`git log --all -- docs/version.json version.json` est vide).
+S'il est en ligne, c'est que l'artefact de la CI est bien servi. Le job
+`verify`, qui vérifie ce fichier depuis le site public, est passé au vert dans
+la foulée : il ne protège pas rien.
+
+### Le mécanisme réel (mesuré)
+
+Le dépôt a **deux** workflows, pas un :
+
+```
+.github/workflows/deploy-pages.yml        (le nôtre)
+dynamic/pages/pages-build-deployment      (celui de GitHub)
+```
+
+Le second est le constructeur de GitHub Pages en mode « Deploy from a
+branch ». Ses exécutions, comparées aux nôtres :
+
+```
+                              build-deployment          notre deploy
+fe459c4 (23/08)  push 09:00:20 → succès 09:01:04   →  succès 09:08:40
+5819d25 (18/08)  push 18:39:06 → succès 18:40:05   →  ANNULÉ  18:43:37
+13f22a2 (17/08)  push 21:07:33 → succès 21:13:14   →  succès
+```
+
+Deux publieurs visent donc le même site :
+
+1. **le constructeur de branche**, déclenché par le push lui-même, en ligne en
+   une minute, qui publie `docs/` **sans attendre le moindre test** ;
+2. **notre artefact**, publié après les tests, huit minutes plus tard, et qui
+   contient `version.json`.
+
+Le dernier arrivé gagne. Le 18/08 le second n'est jamais arrivé (annulé) :
+le premier est resté seul en ligne — d'où `club-rotation.js` servi sans
+`version.json`. Le 23/08 les deux ont tourné, l'artefact a atterri après, il a
+gagné.
+
+### Ce qui reste réellement à faire hors du dépôt
+
+Le réglage **Settings → Pages → Source** reste à basculer sur « GitHub
+Actions » — mais **pas pour la raison que j'avais écrite**. Ce n'est pas que
+l'artefact serait ignoré : il ne l'est pas. C'est que le constructeur de
+branche publie **du code non testé une minute après chaque push sur `main`**,
+et que l'artefact ne le recouvre que **si les tests passent**. Si les tests
+échouent ou sont annulés, la version non testée reste en ligne.
+
+C'est exactement le scénario que l'audit P0-5 voulait empêcher, et il n'est
+pas encore fermé — pour une autre cause que celle annoncée.
 
 ### La leçon
 
+Deux, et la seconde est la plus coûteuse.
+
 J'ai écrit « non lié » sept fois dans mes rapports à propos de ce test. Il
-était rouge pour une raison réelle, et il en cachait deux autres. Un
-garde-fou en permanence rouge ne protège plus rien — non pas parce qu'il a
+était rouge pour une raison réelle, et il en cachait deux autres : un
+garde-fou en permanence rouge ne protège plus rien, non pas parce qu'il a
 tort, mais parce qu'on cesse de le lire.
+
+Puis, l'ayant enfin ouvert, j'ai transformé une observation exacte
+(« le site sert un commit non déployé ») en conclusion générale fausse
+(« l'artefact est ignoré, le mécanisme est décoratif ») — et je l'ai écrite
+dans deux documents, avec une action recommandée justifiée par cette
+conclusion. Un fait négatif (« ce déploiement-là n'a pas eu lieu ») ne
+démontre pas une règle (« aucun déploiement n'a lieu ») ; il demandait une
+mesure de plus — la liste des workflows du dépôt — qui tenait en un appel.
 
 ---
 

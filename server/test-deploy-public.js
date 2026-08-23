@@ -25,16 +25,27 @@
 
 const assert = require('assert');
 
-const argv = process.argv.slice(2);
-const idxExpect = argv.indexOf('--expect-commit');
-const EXPECT_COMMIT = idxExpect >= 0 ? argv[idxExpect + 1] : null;
 // L'URL est le premier argument qui n'est ni une option, ni la VALEUR d'une
-// option. Sans cette seconde condition, `--expect-commit abc123` sans URL
-// faisait prendre « abc123 » pour l'adresse du site : les six contrôles
-// échouaient alors sur une URL inventée, en annonçant que le site public
-// était cassé. La CI passe toujours les deux arguments, donc le défaut ne
-// s'était jamais montré (TODO_AUDIT.md G21).
-const urlArg = argv.find((a, i) => !a.startsWith('--') && i !== idxExpect + 1);
+// option. Cette analyse a été fausse DEUX fois, dans les deux sens :
+//   - avant G21 : `--expect-commit abc123` sans URL faisait prendre
+//     « abc123 » pour l'adresse du site ; les six contrôles échouaient sur
+//     une URL inventée en annonçant que le site public était cassé ;
+//   - le correctif de G21 : sans `--expect-commit`, `indexOf` renvoie -1 et
+//     l'indice exclu devenait 0, donc l'URL passée seule était ignorée en
+//     silence et le script vérifiait le site de production à la place.
+// La CI passe toujours les deux arguments : aucun des deux défauts ne s'est
+// jamais montré là où on regardait. D'où la fonction pure ci-dessous, et les
+// deux contrôles qui l'exercent en tête de la campagne (TODO_AUDIT.md G21).
+function analyserArguments(argv) {
+  const idxExpect = argv.indexOf('--expect-commit');
+  const expectCommit = idxExpect >= 0 ? argv[idxExpect + 1] || null : null;
+  // -1 quand l'option est absente : n'exclut alors AUCUN indice réel.
+  const idxValeurOption = idxExpect >= 0 ? idxExpect + 1 : -1;
+  const url = argv.find((a, i) => !a.startsWith('--') && i !== idxValeurOption) || null;
+  return { url, expectCommit };
+}
+
+const { url: urlArg, expectCommit: EXPECT_COMMIT } = analyserArguments(process.argv.slice(2));
 const BASE_URL = (urlArg || 'https://sebadiaz.github.io/Rugby.-Manager/').replace(/\/?$/, '/');
 
 let nbTests = 0;
@@ -63,6 +74,33 @@ async function recupererTexte(chemin) {
 
 (async () => {
   console.log(`Verification du site public : ${BASE_URL}`);
+
+  // Contrôles purs, sans réseau : ils exercent l'analyse des arguments sur
+  // les deux formes d'appel réellement utilisées. Ils sont en tête parce que,
+  // si elle est fausse, TOUS les contrôles suivants portent sur le mauvais
+  // site — et le disent avec aplomb.
+  await test('l\'URL passée seule est bien celle qui est vérifiée', async () => {
+    assert.deepStrictEqual(analyserArguments(['http://127.0.0.1:8099']),
+      { url: 'http://127.0.0.1:8099', expectCommit: null },
+      'une URL passée sans --expect-commit doit être retenue telle quelle');
+    assert.deepStrictEqual(analyserArguments([]),
+      { url: null, expectCommit: null },
+      'sans argument, aucune URL : l\'appelant retombe sur le site de production');
+  });
+
+  await test('--expect-commit ne peut pas être pris pour l\'URL du site', async () => {
+    assert.deepStrictEqual(analyserArguments(['--expect-commit', 'deadbeefcafe']),
+      { url: null, expectCommit: 'deadbeefcafe' },
+      'la valeur de --expect-commit ne doit jamais servir d\'adresse');
+    assert.deepStrictEqual(
+      analyserArguments(['http://127.0.0.1:8099', '--expect-commit', 'deadbeefcafe']),
+      { url: 'http://127.0.0.1:8099', expectCommit: 'deadbeefcafe' },
+      'forme utilisée par la CI : URL puis --expect-commit');
+    assert.deepStrictEqual(
+      analyserArguments(['--expect-commit', 'deadbeefcafe', 'http://127.0.0.1:8099']),
+      { url: 'http://127.0.0.1:8099', expectCommit: 'deadbeefcafe' },
+      'ordre inverse : le résultat doit être le même');
+  });
 
   let indexHtml = '';
   await test('index.html se charge (HTTP 200, contenu non vide)', async () => {
@@ -106,16 +144,26 @@ async function recupererTexte(chemin) {
 
   // `version.json` n'est écrit QUE par le job « deploy » de
   // .github/workflows/deploy-pages.yml : il n'existe nulle part dans le dépôt.
-  // Son absence ne veut donc pas dire « le site est cassé », elle veut dire
-  // « ce site n'est pas servi par ce workflow » — typiquement, GitHub Pages
-  // est configuré sur « Deploy from a branch » plutôt que « GitHub Actions ».
+  // Sa présence ou son absence dit donc QUI a publié la version en ligne.
   //
-  // Mesuré (TODO_AUDIT.md G21) : le site public sert bien le contenu de main,
-  // y compris des commits dont le déploiement a été ANNULÉ — donc l'artefact
-  // produit par la CI est ignoré. Ce cas est signalé comme une CONFIGURATION
-  // à corriger, pas comme un échec de test : un garde-fou qui crie au loup à
-  // chaque exécution finit par n'être plus lu (c'est déjà arrivé ici, cf.
-  // l'onglet « Équipe B » périmé mentionné plus haut).
+  // Mesuré (TODO_AUDIT.md G21) : DEUX publieurs visent le même site.
+  //   1. le constructeur de branche de GitHub (workflow « dynamic »
+  //      pages-build-deployment), déclenché par le push, en ligne en une
+  //      minute, qui publie docs/ SANS attendre le moindre test ;
+  //   2. l'artefact de ce workflow, publié après les tests (~8 min), et qui
+  //      est le seul à contenir version.json.
+  // Le dernier arrivé gagne. version.json absent = la version en ligne vient
+  // du constructeur de branche, donc du code qui n'a pas été testé.
+  //
+  // Attention à ne pas relire ce contrôle à l'envers : version.json présent
+  // prouve que l'artefact a gagné CETTE fois, pas que le constructeur de
+  // branche a cessé de publier. C'est l'erreur de raisonnement corrigée le
+  // 23/08 dans TODO_AUDIT.md G21.
+  //
+  // Ce cas est signalé comme une CONFIGURATION à corriger, pas comme un échec
+  // de test : un garde-fou qui crie au loup à chaque exécution finit par
+  // n'être plus lu (c'est déjà arrivé ici, cf. l'onglet « Équipe B » périmé
+  // mentionné plus haut).
   //
   // En CI, avec --expect-commit, l'absence redevient un ÉCHEC DUR : à ce
   // moment-là on vient de déployer, l'artefact doit être en ligne.
@@ -123,11 +171,12 @@ async function recupererTexte(chemin) {
     const { statut, corps } = await recupererTexte('version.json');
     if (statut !== 200 && !EXPECT_COMMIT) {
       configurationsASignaler.push(
-        `version.json absent du site public (HTTP ${statut}). Ce fichier est généré par le job ` +
-        '« deploy » du workflow : son absence signifie que GitHub Pages ne sert PAS l\'artefact ' +
-        'de la CI. À vérifier dans Settings → Pages → Source, qui doit être « GitHub Actions » ' +
-        'et non « Deploy from a branch ». Tant que ce réglage n\'est pas corrigé, aucun ' +
-        'déploiement de la CI n\'atteint le public et rien ne permet de savoir quel commit est en ligne.');
+        `version.json absent du site public (HTTP ${statut}). Ce fichier n'est écrit que par le ` +
+        'job « deploy » du workflow : son absence signifie que la version EN LIGNE ne vient pas ' +
+        'de l\'artefact testé, mais du constructeur de branche de GitHub, qui publie docs/ une ' +
+        'minute après le push SANS attendre les tests. À corriger dans Settings → Pages → Source, ' +
+        'qui doit être « GitHub Actions » et non « Deploy from a branch » : tant que les deux ' +
+        'publient, du code non testé peut rester en ligne dès que les tests échouent ou sont annulés.');
       return;
     }
     assert.strictEqual(statut, 200, `version.json absent du site public (HTTP ${statut}) — aucun moyen de savoir quel commit est réellement déployé`);

@@ -31,8 +31,10 @@ concurrency:
   # branche de session ANNULAIT donc le déploiement de production en cours.
   # C'est exactement ce qui est arrivé le 18 août 2026 : le run de main
   # (18:39:06) a été annulé à 18:43:34, quatre minutes après le démarrage
-  # d'un run de branche à 18:43:14. La mise en production de cette tranche
-  # n'a jamais eu lieu.
+  # d'un run de branche à 18:43:14. L'artefact TESTÉ de cette tranche n'a donc
+  # jamais été publié — et c'est la version non testée, mise en ligne par le
+  # constructeur de branche de GitHub une minute après le push, qui est restée
+  # seule en production.
   #
   # Chaque branche de test a désormais son propre groupe : elles s'annulent
   # entre elles (retour rapide, comportement voulu) sans jamais toucher à
