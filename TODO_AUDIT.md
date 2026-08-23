@@ -4062,6 +4062,32 @@ le premier est resté seul en ligne — d'où `club-rotation.js` servi sans
 `version.json`. Le 23/08 les deux ont tourné, l'artefact a atterri après, il a
 gagné.
 
+### La course, prise sur le fait
+
+L'explication ci-dessus a été vérifiée **en direct**, sur le push du commit qui
+corrige cette section (`874e81b`). Pas une reconstitution : une mesure toutes
+les trente secondes, pendant que la CI tournait.
+
+```
+10:34:30  push sur main
+10:34:55  pages-build-deployment démarre — et réussit dans la minute
+10:38:39  version.json -> HTTP 404      <-- l'artefact précédent a été ÉCRASÉ
+10:39:20  version.json -> HTTP 404          par la version non testée, alors
+10:40:52  version.json -> HTTP 404          que les tests tournent encore
+10:42:53  version.json -> HTTP 404
+10:43:04  notre job « deploy » publie l'artefact
+10:43:24  version.json -> HTTP 200 {"commit":"874e81b…","ref":"main"}
+```
+
+**Plus de huit minutes** pendant lesquelles le site public a servi du code
+qu'aucun test n'avait encore vu — sur un push parfaitement ordinaire, tests
+verts au bout du compte. Si les tests avaient échoué, cette fenêtre ne se
+serait jamais refermée.
+
+C'est la démonstration que l'ancienne conclusion inversait les rôles :
+l'artefact n'est pas ignoré, il **arrive en retard**. Et c'est aussi la mesure
+qui manquait à la section suivante pour chiffrer ce qui reste à faire.
+
 ### Ce qui reste réellement à faire hors du dépôt
 
 Le réglage **Settings → Pages → Source** reste à basculer sur « GitHub
