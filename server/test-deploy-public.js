@@ -66,10 +66,33 @@ async function test(nom, fn) {
   }
 }
 
+// Le CDN de GitHub Pages répond 503 (avec un corps de page d'erreur) pendant
+// qu'il propage un nouveau déploiement. Mesuré sur le run 32634140367 : `test`
+// et `deploy` verts, version.json déjà à jour — donc l'étape d'attente sort
+// aussitôt — mais `js/club-revenus-competition.js` répondait encore 503 vingt
+// secondes après. `verify` a échoué sur un déploiement parfaitement bon.
+//
+// On réessaie donc les statuts TRANSITOIRES, et eux seuls : un fichier
+// réellement absent répond 404, un script cassé répond 200 avec un mauvais
+// contenu — aucun des deux n'est masqué ici. Les réessais sont affichés, pour
+// qu'un CDN durablement instable reste visible au lieu d'être avalé.
+const STATUTS_TRANSITOIRES = new Set([429, 500, 502, 503, 504]);
+const REESSAIS_MAX = 5;
+const ATTENTE_ENTRE_REESSAIS_MS = 3000;
+
 async function recupererTexte(chemin) {
-  const reponse = await fetch(new URL(chemin, BASE_URL));
-  const corps = await reponse.text();
-  return { statut: reponse.status, corps };
+  let dernier = null;
+  for (let essai = 0; essai <= REESSAIS_MAX; essai += 1) {
+    const reponse = await fetch(new URL(chemin, BASE_URL));
+    const corps = await reponse.text();
+    dernier = { statut: reponse.status, corps };
+    if (!STATUTS_TRANSITOIRES.has(reponse.status)) return dernier;
+    if (essai < REESSAIS_MAX) {
+      console.log(`     ... ${chemin} : HTTP ${reponse.status} (propagation du CDN ?), nouvel essai ${essai + 1}/${REESSAIS_MAX}`);
+      await new Promise((r) => setTimeout(r, ATTENTE_ENTRE_REESSAIS_MS));
+    }
+  }
+  return dernier;
 }
 
 (async () => {

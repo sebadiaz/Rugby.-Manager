@@ -4088,6 +4088,54 @@ C'est la démonstration que l'ancienne conclusion inversait les rôles :
 l'artefact n'est pas ignoré, il **arrive en retard**. Et c'est aussi la mesure
 qui manquait à la section suivante pour chiffrer ce qui reste à faire.
 
+### Deux défauts de plus, trouvés en regardant cette course
+
+**1. `verify` échouait sur un déploiement parfaitement bon.**
+
+Le run `32634140367` : `test` vert, `deploy` vert, et `verify` **rouge**.
+
+```
+10:43:27  OK   version.json présent et contient un commit exploitable
+10:43:33  FAIL les scripts principaux se chargent sans erreur
+          scripts en échec : js/club-revenus-competition.js (HTTP 503, 54887 octets)
+```
+
+Un 503 du CDN de GitHub Pages pendant la propagation. L'étape d'attente du
+workflow, elle, avait bien fait son travail : elle attend que `version.json`
+annonce le commit déployé — ce qu'il faisait déjà. Mais les **autres** fichiers
+n'étaient pas encore propagés. Le contrôle sortait donc trop tôt, et rendait
+rouge une mise en ligne réussie : exactement le « garde-fou qui crie au loup »
+que cette tranche entière raconte.
+
+Correction : les statuts **transitoires** (429, 500, 502, 503, 504) sont
+réessayés cinq fois à trois secondes, en affichant chaque réessai. Rien
+d'autre n'est réessayé — un fichier absent répond 404, un script cassé répond
+200 avec un mauvais contenu. Vérifié sur un faux CDN qui renvoie 503 à la
+demande :
+
+```
+503 transitoire (3 fois)  -> 3 réessais affichés, puis VERT
+503 permanent (99 fois)   -> ROUGE, pas avalé
+404 réel                  -> ROUGE immédiat, 0 réessai
+```
+
+**2. Un push de documentation laissait la version non testée en ligne, pour
+toujours.**
+
+Le commit `57c7e44` ne modifiait que deux fichiers Markdown. Le filtre
+`on.push.paths` du workflow (`docs/**`, `engine/**`, `server/**`, le workflow
+lui-même) ne s'y reconnaissait pas : **aucun run**. Le constructeur de
+branche, lui, n'a aucun filtre — il a republié `docs/` et écrasé l'artefact.
+Résultat mesuré vingt minutes après le push :
+
+```
+version.json -> HTTP 404 (durablement : plus aucun run ne viendra le remettre)
+```
+
+Le filtre `paths` est donc activement nuisible tant que les deux publieurs
+coexistent : il ne fait pas économiser un déploiement, il en **empêche un qui
+est nécessaire**. Il est supprimé — tout push sur `main` redéploie.
+
 ### Ce qui reste réellement à faire hors du dépôt
 
 Le réglage **Settings → Pages → Source** reste à basculer sur « GitHub

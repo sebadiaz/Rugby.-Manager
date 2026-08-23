@@ -10,11 +10,14 @@ on:
       # (TODO_AUDIT.md P0-5). Motif générique plutôt qu'un nom de branche en
       # dur, pour rester valable au-delà de la session courante.
       - "claude/**"
-    paths:
-      - "docs/**"
-      - "engine/**"
-      - "server/**"
-      - ".github/workflows/deploy-pages.yml"
+    # PAS de filtre "paths". Mesuré (TODO_AUDIT.md G21) : le constructeur de
+    # branche de GitHub republie docs/ à CHAQUE push sur main, sans filtre et
+    # sans attendre les tests — et il écrase l'artefact au passage. Si notre
+    # workflow, lui, ne se déclenche pas (push ne touchant que des .md, par
+    # exemple), l'artefact TESTÉ ne revient jamais : la version non testée
+    # reste en ligne indéfiniment. C'est exactement ce qui est arrivé au
+    # commit 57c7e44, qui ne modifiait que deux fichiers Markdown.
+    # Tout push sur main doit donc redéployer.
   workflow_dispatch:
 
 permissions:
