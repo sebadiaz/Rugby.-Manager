@@ -3909,6 +3909,22 @@ seuils de fatigue hors échelle   -> exit 1, FAIL test-rotation.js
 code intact                      -> exit 0, 36 suites, 36 vertes
 ```
 
+### Le coût réel, mesuré en production
+
+L'argument « ça ne coûte rien » méritait mieux qu'une estimation. Premier run
+avec le nouveau job (`32641604284`, commit `332e906`) :
+
+```
+test-complet   13:11:46 -> 13:17:07   5 min 21   36 suites
+test           13:11:46 -> 13:17:49   6 min 03   (dont 3 min 20 de navigateur)
+deploy démarre          13:17:53
+```
+
+Le nouveau job a fini **42 secondes avant** l'ancien. C'est toujours `test`
+qui commande le départ du déploiement : le coût en attente est bien nul, et
+il le restera tant que les suites rapides tiennent sous les six minutes.
+Quatre jobs verts, `verify` compris.
+
 ### La leçon
 
 J'ai passé trois tranches à réparer des garde-fous : un qui criait au loup à
