@@ -127,6 +127,12 @@ tranche livrée — jamais en avance sur ce qui est réellement dans `main`.
 
 ## Historique des tranches livrées
 
+### G21 — Le seul test rouge du projet disait vrai (livrée)
+- **Domaines touchés :** déploiement. `.github/workflows/deploy-pages.yml`, `server/test-deploy-public.js`.
+- **Ce qui a été mesuré :** `test-deploy-public` échouait depuis des dizaines de tranches sur `version.json` absent (404), noté « non lié » sept fois. En l'ouvrant : (1) le dernier déploiement de `main` (18/08) a été **annulé** vingt secondes après le démarrage d'un run de branche `claude/**`, parce que toutes les branches partageaient `concurrency: group: pages` avec `cancel-in-progress` — alors que ces branches ne déploient jamais ; (2) le site publie pourtant le contenu de ce commit non déployé (`club-rotation.js` y est référencé), donc **GitHub Pages sert la branche, pas l'artefact de la CI** ; (3) l'analyse des arguments du script prenait la valeur de `--expect-commit` pour l'URL du site.
+- **Corrections :** groupe de concurrence `pages` réservé à `main` (chaque branche de test a le sien) ; analyse des arguments corrigée ; le test signale désormais l'absence de `version.json` comme une **configuration à corriger** en mode manuel, et reste un **échec dur** en CI juste après un déploiement.
+- **Reste à faire hors du dépôt :** basculer **Settings → Pages → Source** sur « GitHub Actions ». Tant que ce réglage n'est pas changé, l'artefact de la CI est ignoré et le site publie tout ce qui atterrit sur `main`, tests annulés compris.
+
 ### G20 — Le contrôle qui manquait sur les scores du moteur (livrée)
 - **Domaines touchés :** aucun code de jeu. Uniquement le banc d'essai (`server/test-stats-matchs.js`).
 - **Ce qui a été mesuré :** le défaut annoncé — « des scores aberrants » — **n'a pas été confirmé**. Avec des appariements réels (deux clubs d'une même division), le moteur produit 1 % de matchs au-dessus de 70 points, 0 % à plus de 50 d'écart, 3,8 % de blanchissages : des ordres de grandeur crédibles. L'écart moyen de 22 points relevé d'abord venait de mon banc d'essai, qui faisait s'affronter l'élite et la Régionale.

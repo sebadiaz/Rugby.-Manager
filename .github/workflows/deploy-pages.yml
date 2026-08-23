@@ -23,7 +23,21 @@ permissions:
   id-token: write
 
 concurrency:
-  group: pages
+  # Le groupe « pages » est réservé à main, la SEULE branche qui déploie.
+  #
+  # Défaut mesuré (TODO_AUDIT.md G21) : toutes les branches partageaient ce
+  # groupe, y compris les branches « claude/** » qui exécutent les tests et
+  # ne déploient JAMAIS. Avec cancel-in-progress, un simple push sur une
+  # branche de session ANNULAIT donc le déploiement de production en cours.
+  # C'est exactement ce qui est arrivé le 18 août 2026 : le run de main
+  # (18:39:06) a été annulé à 18:43:34, quatre minutes après le démarrage
+  # d'un run de branche à 18:43:14. La mise en production de cette tranche
+  # n'a jamais eu lieu.
+  #
+  # Chaque branche de test a désormais son propre groupe : elles s'annulent
+  # entre elles (retour rapide, comportement voulu) sans jamais toucher à
+  # main.
+  group: ${{ github.ref == 'refs/heads/main' && 'pages' || format('tests-{0}', github.ref) }}
   # true (pas false) : si un nouveau push sur main arrive pendant qu'un
   # déploiement précédent est encore en cours, on annule l'ancien plutôt que
   # de le laisser se terminer et écraser APRÈS coup le déploiement plus

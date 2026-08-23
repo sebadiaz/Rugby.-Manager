@@ -3810,6 +3810,118 @@ composition ni à la fatigue.
 
 ---
 
+## G21 — Le seul test rouge du projet disait vrai, mais pas ce qu'on croyait (livrée)
+
+### Comportement observé (mesuré, pas déduit)
+
+`server/test-deploy-public.js` échouait à chaque exécution depuis des dizaines
+de tranches, toujours sur le même point : `version.json` absent du site public
+(HTTP 404). Je l'avais noté « non lié » sept fois de suite sans l'ouvrir.
+
+En l'ouvrant :
+
+```
+https://sebadiaz.github.io/Rugby.-Manager/index.html     200
+https://sebadiaz.github.io/Rugby.-Manager/version.json   404
+```
+
+Le workflow génère pourtant bien `version.json` depuis le 7 août 2026, et
+`main` a été poussée jusqu'au 18 août. Trois mesures ont suffi à comprendre :
+
+**1. Le dernier déploiement de main a été ANNULÉ.**
+
+```
+2026-08-18T18:39:06  main                          cancelled
+2026-08-18T18:43:14  claude/readme-details-6aj3jt  success
+```
+
+Le job `test` de main a été annulé à 18:43:34 — vingt secondes après le
+démarrage du run de branche. La cause est dans le workflow :
+
+```yaml
+concurrency:
+  group: pages          # partagé par TOUTES les branches
+  cancel-in-progress: true
+```
+
+Les branches `claude/**` exécutent les tests et **ne déploient jamais** (une
+condition explicite le garantit sur le job `deploy`). Mais elles partageaient
+le groupe de concurrence de la production : **un push sur une branche de
+session annulait le déploiement de main en cours.** La mise en ligne de la
+tranche G10 n'a jamais eu lieu.
+
+**2. Et pourtant le site sert bien le contenu de G10.**
+
+```
+club-rotation.js référencé par le site public : oui
+club-rotation.js présent dans 13f22a2 (G9, dernier déploiement réussi) : non
+club-rotation.js présent dans 5819d25 (G10, déploiement annulé)        : oui
+```
+
+Le site publie donc un commit dont l'artefact n'a **jamais** été déployé.
+Conclusion : GitHub Pages sert **la branche**, pas l'artefact de la CI. Tout
+le mécanisme `deploy` + `verify` est décoratif, et `version.json` — qui
+n'existe nulle part dans le dépôt, puisqu'il est écrit pendant le job — ne
+peut par construction jamais apparaître.
+
+**3. Un troisième défaut, trouvé en vérifiant le premier.**
+
+En essayant de reproduire l'échec dur du mode CI :
+
+```
+node server/test-deploy-public.js --expect-commit deadbeefcafe
+  -> les SIX contrôles échouent, y compris « index.html se charge »
+```
+
+`urlArg = argv.find((a) => !a.startsWith('--'))` prenait **la valeur de
+`--expect-commit`** pour l'adresse du site. La CI passe toujours les deux
+arguments, donc ce défaut ne s'était jamais montré — mais il rendait le script
+inutilisable à la main dans le seul mode où il est censé être strict.
+
+### Les corrections
+
+- **Concurrence** : le groupe `pages` est désormais réservé à `main`. Chaque
+  branche de test a le sien (`tests-<ref>`) : elles continuent de s'annuler
+  entre elles — c'est le retour rapide voulu — sans jamais toucher à la
+  production.
+- **Analyse des arguments** : l'URL est le premier argument qui n'est ni une
+  option **ni la valeur d'une option**.
+- **Le test dit la vérité** : sans `--expect-commit` (contrôle manuel), un
+  `version.json` absent n'est plus un échec mais un **signalement de
+  configuration**, affiché en clair avec le réglage à corriger. Avec
+  `--expect-commit` (CI, juste après un déploiement réel), c'est de nouveau
+  un **échec dur** : à ce moment-là l'artefact doit être en ligne.
+
+Vérifié dans les deux modes :
+
+```
+sans --expect-commit : 6/6 verts + « À CORRIGER HORS DU DÉPÔT : … Settings →
+                       Pages → Source doit être GitHub Actions »
+avec --expect-commit : échec dur sur version.json, les cinq autres verts
+```
+
+### Ce qui reste, et qui ne peut pas être corrigé depuis le dépôt
+
+Le réglage **Settings → Pages → Source** doit passer de « Deploy from a
+branch » à « GitHub Actions ». C'est une action sur le dépôt, pas un fichier :
+je ne l'ai pas faite. Tant qu'elle ne l'est pas :
+
+- l'artefact produit par la CI est ignoré ;
+- `version.json` restera absent et rien ne dira quel commit est en ligne ;
+- le job `verify`, qui attend ce fichier, ne protège rien ;
+- le site continuera de publier **tout ce qui atterrit sur main**, y compris
+  un commit dont les tests ont été annulés — ce qui est exactement le
+  scénario que l'audit P0-5 avait voulu empêcher.
+
+### La leçon
+
+J'ai écrit « non lié » sept fois dans mes rapports à propos de ce test. Il
+était rouge pour une raison réelle, et il en cachait deux autres. Un
+garde-fou en permanence rouge ne protège plus rien — non pas parce qu'il a
+tort, mais parce qu'on cesse de le lire.
+
+---
+
 ## G20 — Le contrôle qui manquait sur les scores du moteur (livrée)
 
 ### Ce que j'avais annoncé, et ce que la mesure a dit

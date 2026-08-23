@@ -26,12 +26,23 @@
 const assert = require('assert');
 
 const argv = process.argv.slice(2);
-const urlArg = argv.find((a) => !a.startsWith('--'));
-const BASE_URL = (urlArg || 'https://sebadiaz.github.io/Rugby.-Manager/').replace(/\/?$/, '/');
 const idxExpect = argv.indexOf('--expect-commit');
 const EXPECT_COMMIT = idxExpect >= 0 ? argv[idxExpect + 1] : null;
+// L'URL est le premier argument qui n'est ni une option, ni la VALEUR d'une
+// option. Sans cette seconde condition, `--expect-commit abc123` sans URL
+// faisait prendre « abc123 » pour l'adresse du site : les six contrôles
+// échouaient alors sur une URL inventée, en annonçant que le site public
+// était cassé. La CI passe toujours les deux arguments, donc le défaut ne
+// s'était jamais montré (TODO_AUDIT.md G21).
+const urlArg = argv.find((a, i) => !a.startsWith('--') && i !== idxExpect + 1);
+const BASE_URL = (urlArg || 'https://sebadiaz.github.io/Rugby.-Manager/').replace(/\/?$/, '/');
 
 let nbTests = 0;
+// Problèmes de CONFIGURATION du déploiement — signalés, pas transformés en
+// échec de test : ils ne se corrigent pas dans le dépôt (cf. le cas
+// version.json plus bas), et un garde-fou toujours rouge finit par n'être
+// plus lu.
+const configurationsASignaler = [];
 async function test(nom, fn) {
   nbTests++;
   try {
@@ -93,8 +104,32 @@ async function recupererTexte(chemin) {
       'l\'ancien onglet "Autres clubs" est encore là : le site public est en retard sur main');
   });
 
+  // `version.json` n'est écrit QUE par le job « deploy » de
+  // .github/workflows/deploy-pages.yml : il n'existe nulle part dans le dépôt.
+  // Son absence ne veut donc pas dire « le site est cassé », elle veut dire
+  // « ce site n'est pas servi par ce workflow » — typiquement, GitHub Pages
+  // est configuré sur « Deploy from a branch » plutôt que « GitHub Actions ».
+  //
+  // Mesuré (TODO_AUDIT.md G21) : le site public sert bien le contenu de main,
+  // y compris des commits dont le déploiement a été ANNULÉ — donc l'artefact
+  // produit par la CI est ignoré. Ce cas est signalé comme une CONFIGURATION
+  // à corriger, pas comme un échec de test : un garde-fou qui crie au loup à
+  // chaque exécution finit par n'être plus lu (c'est déjà arrivé ici, cf.
+  // l'onglet « Équipe B » périmé mentionné plus haut).
+  //
+  // En CI, avec --expect-commit, l'absence redevient un ÉCHEC DUR : à ce
+  // moment-là on vient de déployer, l'artefact doit être en ligne.
   await test('version.json présent et contient un commit exploitable', async () => {
     const { statut, corps } = await recupererTexte('version.json');
+    if (statut !== 200 && !EXPECT_COMMIT) {
+      configurationsASignaler.push(
+        `version.json absent du site public (HTTP ${statut}). Ce fichier est généré par le job ` +
+        '« deploy » du workflow : son absence signifie que GitHub Pages ne sert PAS l\'artefact ' +
+        'de la CI. À vérifier dans Settings → Pages → Source, qui doit être « GitHub Actions » ' +
+        'et non « Deploy from a branch ». Tant que ce réglage n\'est pas corrigé, aucun ' +
+        'déploiement de la CI n\'atteint le public et rien ne permet de savoir quel commit est en ligne.');
+      return;
+    }
     assert.strictEqual(statut, 200, `version.json absent du site public (HTTP ${statut}) — aucun moyen de savoir quel commit est réellement déployé`);
     const donnees = JSON.parse(corps);
     assert.ok(donnees && typeof donnees.commit === 'string' && /^[0-9a-f]{7,40}$/i.test(donnees.commit),
@@ -120,8 +155,14 @@ async function recupererTexte(chemin) {
   });
 
   console.log(`\n${nbTests} test(s) exécuté(s) sur ${BASE_URL}.`);
+  if (configurationsASignaler.length) {
+    console.log('\nÀ CORRIGER HORS DU DÉPÔT (réglages, pas code) :');
+    for (const c of configurationsASignaler) console.log(`  - ${c}`);
+  }
   if (process.exitCode) {
     console.error('ECHEC : le site public ne correspond pas à ce qui est attendu.');
+  } else if (configurationsASignaler.length) {
+    console.log('OK : le site public charge correctement, mais un réglage de déploiement reste à corriger (ci-dessus).');
   } else {
     console.log('OK : le site public correspond au commit attendu et charge correctement.');
   }
