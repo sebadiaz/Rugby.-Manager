@@ -60,13 +60,27 @@ const mainJs = fs.readFileSync(path.join(__dirname, '../docs/js/main.js'), 'utf8
 const clubUiJs = fs.readFileSync(path.join(__dirname, '../docs/js/clubUI.js'), 'utf8');
 
 // Les lignes du tableau marquées 🔴, c'est-à-dire « rien n'existe ».
-function lignesRouges() {
+function lignesDeStatut(marqueurs) {
   return ROADMAP.split('\n')
-    .filter((l) => l.trim().startsWith('|') && l.includes('🔴'))
+    .filter((l) => l.trim().startsWith('|') && marqueurs.some((m) => l.includes(m)))
     .map((l) => l.split('|').map((c) => c.trim()))
     .filter((c) => c.length >= 5)
-    .map((c) => ({ fonctionnalite: c[1], fichiers: c[3], detail: c[4] }));
+    .map((c) => ({ fonctionnalite: c[1], statut: c[2], fichiers: c[3], detail: c[4] }));
 }
+
+function lignesRouges() { return lignesDeStatut(['🔴']); }
+// TOUTES les lignes de statut, rouges comprises. Sert d'anti-vacuité : si
+// l'analyseur ci-dessus cesse un jour de reconnaître le tableau, R1 et R2
+// n'auraient plus rien à examiner et passeraient au vert en ne vérifiant
+// RIEN.
+//
+// La garde portait d'abord sur le seul compte des lignes 🔴 (« il doit y en
+// avoir au moins une »). Elle a rougi le jour où la dernière ligne rouge a
+// été livrée — sur un état parfaitement sain. Elle confondait deux choses :
+// « l'analyseur trouve le tableau » et « il reste une fonctionnalité
+// absente ». Seule la première est un invariant ; zéro ligne rouge est un
+// but, pas une panne.
+function toutesLesLignesDeStatut() { return lignesDeStatut(['🔴', '🟡', '🟢']); }
 
 // Pour chaque affirmation d'absence, ce qui la DÉMENTIRAIT si ça existait.
 // Volontairement explicite : une liste qu'on tient à la main, qu'on lit, et
@@ -101,7 +115,8 @@ const DEMENTIS = [
 
 test('R1 — chaque ligne 🔴 est reconnue : aucune affirmation d\'absence non vérifiée', () => {
   const rouges = lignesRouges();
-  assert.ok(rouges.length > 0, 'le tableau doit contenir des lignes de statut');
+  assert.ok(toutesLesLignesDeStatut().length > 20,
+    'l\'analyseur ne reconnaît plus le tableau de statuts : R1 et R2 ne vérifieraient plus rien');
   const inconnues = rouges.filter((r) =>
     !DEMENTIS.some((d) => d.motif.test(r.fonctionnalite) || d.motif.test(r.detail)));
   assert.deepStrictEqual(inconnues.map((r) => r.fonctionnalite), [],

@@ -3928,6 +3928,32 @@ mais **aucun poste ouvert** : inventer des limogeages rétroactifs fabriquerait
 un passé qui n'a pas eu lieu. Le marché démarre au prochain changement de
 saison, comme pour tout le monde. Vérifié par E13.
 
+### Le garde-fou de G22 a rougi sur un état sain
+
+Le job `test-complet` livré en G23 a rendu la CI rouge : `test-roadmap-a-jour`
+R1 échouait sur « le tableau doit contenir des lignes de statut ». Il
+échouait **aussi en local** — mes `tail -3` avaient coupé la ligne de mon
+propre affichage. Le job a rattrapé ce que je n'avais pas regardé, ce qui est
+exactement son office.
+
+Le défaut était dans la garde elle-même. R1 exigeait « au moins une ligne
+🔴 », comme protection anti-vacuité : si l'analyseur cessait de reconnaître le
+tableau, R1 et R2 n'auraient plus rien à examiner et passeraient au vert en ne
+vérifiant RIEN. L'intention est juste, la formulation confondait deux choses :
+
+- « l'analyseur trouve le tableau » — un invariant ;
+- « il reste une fonctionnalité absente » — un **but**, pas une panne.
+
+En livrant la dernière ligne rouge, j'ai atteint le but et déclenché l'alarme.
+La garde porte désormais sur **toutes** les lignes de statut (🔴, 🟡, 🟢), et
+zéro ligne rouge est un résultat acceptable. Vérifié dans les deux sens :
+
+```
+analyseur cassé (le tableau n'est plus reconnu)  -> R1 ROUGE
+ligne 🔴 non déclarée réintroduite               -> R1 ROUGE
+document sain, zéro ligne rouge                  -> 3 verts
+```
+
 ### La nouvelle décision de manager
 
 Avant : attendre qu'une offre tombe, sans savoir pourquoi. Maintenant : lire
