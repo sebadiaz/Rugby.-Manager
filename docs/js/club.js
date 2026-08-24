@@ -18,7 +18,7 @@
   // et la durée des prêts comptent maintenant des JOURS et non plus des
   // journées de championnat, puisque le temps s'écoule jour par jour.
   // Chaque migration est appliquée sans perte (cf. docs/js/club-sauvegarde.js).
-  const VERSION_SAUVEGARDE = 11;
+  const VERSION_SAUVEGARDE = 12;
 
   // --- Génération de noms (club fictif, aucune référence à un club/joueur réel) ---
   const PRENOMS = ['Thomas', 'Lucas', 'Hugo', 'Louis', 'Jules', 'Nathan', 'Enzo', 'Léo',
@@ -1005,6 +1005,15 @@
     if (global.RMClub.enregistrerSaisonClubsFrance) {
       global.RMClub.enregistrerSaisonClubsFrance(saison, saison.numero || 1);
     }
+    // Marché des entraîneurs (G24) : les bancs adverses bougent à leur tour.
+    // OBLIGATOIREMENT après enregistrerSaisonClubsFrance, qui vient d'écrire
+    // la position finale de chaque club dans son historique : c'est cette
+    // ligne, et elle seule, qui juge l'entraîneur. Avant elle, on jugerait
+    // sur la saison d'AVANT.
+    if (global.RMClub.resoudreEntraineursFinDeSaison) {
+      global.RMClub.resoudreEntraineursFinDeSaison(rng, saison,
+        { numeroSaison: saison.numero || 1 });
+    }
     ajouterMessage(saison, 'saison', `Fin de saison ${saison.numero || 1}`,
       `Classement final : ${positionFinale}e/${classementFinal.length}. ${arrivees.length} arrivée(s), ${partis.length} départ(s).`);
 
@@ -1342,6 +1351,13 @@
     // doit savoir dès son arrivée sur quoi il sera jugé, pas seulement quel
     // classement viser. Appel défensif comme les autres domaines.
     if (global.RMClub.annoncerFeuilleDeRoute) global.RMClub.annoncerFeuilleDeRoute(saison);
+    // Marché des entraîneurs (G24) : les clubs adverses ont un homme sur le
+    // banc dès le premier jour. Sans ça, un manager licencié tôt ne verrait
+    // aucun poste et la carrière serait une impasse — mesuré par le test
+    // « un licenciement ouvre RÉELLEMENT des possibilités d'emploi ».
+    if (global.RMClub.assurerEntraineursRivaux) {
+      global.RMClub.assurerEntraineursRivaux(rng, saison);
+    }
     return saison;
   }
 

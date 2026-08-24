@@ -229,6 +229,84 @@
   // propre division — pendant que 30 clubs d'autres divisions vivaient dans
   // la même partie sans jamais l'appeler. Un entraîneur ne pouvait donc
   // JAMAIS changer de division autrement qu'en y emmenant son club.
+  // Un club ne recrute pas parce que ta réputation lui plaît : il recrute
+  // parce que SON POSTE EST OUVERT. Défaut mesuré (TODO_AUDIT.md G24) : cette
+  // fonction retenait les 43 clubs du pays, sans condition — les six offres
+  // reçues à 85 de réputation ne correspondaient à aucun départ. Les offres
+  // étaient un tirage ; elles sont maintenant la conséquence d'un limogeage.
+  //
+  // `postesLibres` est appelé défensivement : les modules sont fusionnés sur
+  // RMClub sans ordre garanti, et un banc d'essai partiel peut ne pas charger
+  // le marché des entraîneurs. Sans lui, on retombe sur l'ancien comportement
+  // plutôt que de rendre la carrière muette.
+  function postesOuverts(saison) {
+    const RMClub = global.RMClub;
+    if (!RMClub.postesLibres) return null;
+    const parClub = {};
+    for (const p of RMClub.postesLibres(saison)) parClub[p.clubId] = p;
+    return parClub;
+  }
+
+  // Un manager SANS CLUB ne peut pas attendre l'intersaison : sans cette
+  // règle, un entraîneur licencié dont aucun poste n'est ouvert resterait au
+  // chômage pour toujours, et la carrière serait une impasse. C'est la
+  // régression qu'a signalée le test « un licenciement ouvre RÉELLEMENT des
+  // possibilités d'emploi » quand les offres ont été conditionnées aux postes
+  // ouverts (TODO_AUDIT.md G24).
+  //
+  // Un club dont l'entraîneur SERAIT LIMOGÉ si la saison s'arrêtait maintenant
+  // écoute un homme libre : il est déjà en train de chercher. On applique la
+  // MÊME règle que le couperet de fin de saison, au classement provisoire —
+  // pas un second barème qui finirait par diverger.
+  // Un club « à prendre » pour un homme libre, dans deux cas et deux seulement,
+  // tous deux lus dans des données RÉELLES :
+  //
+  //   1. son entraîneur serait limogé si la saison s'arrêtait maintenant —
+  //      MÊME règle que le couperet de fin de saison, appliquée au classement
+  //      provisoire, jamais un second barème ;
+  //   2. le manager libre n'est pas nettement moins bon que l'entraîneur en
+  //      place — un homme disponible tout de suite vaut d'être écouté.
+  //
+  // Le cas 1 ne vaut que si des journées ont été jouées : sur un classement à
+  // zéro match, les positions sont un ordre arbitraire, et s'en servir
+  // fabriquerait un « sur la sellette » qui ne veut rien dire.
+  //
+  // Le cas 2 a d'abord été écrit à l'envers — « le manager doit dépasser
+  // l'entraîneur en place de 8 points ». Mesuré : un licenciement coûte de la
+  // réputation, donc un manager tout juste limogé (37) se retrouvait sous
+  // TOUS les bancs de sa division (39 à 59) et n'avait plus aucune porte. Le
+  // sens correct est l'inverse : un club écoute un homme libre tant qu'il
+  // n'est pas nettement en dessous du titulaire. Le filtre `exigenceClub`,
+  // lui, était déjà là et continue de trancher.
+  const TOLERANCE_HOMME_LIBRE = 6;
+
+  function postesAPrendre(saison, reputationManager) {
+    const RMClub = global.RMClub;
+    if (!RMClub.enDanger || !RMClub.entraineurDuClub) return {};
+    const journeesJouees = (saison.calendrier || []).filter((f) => f.joue).length;
+    const parClub = {};
+    for (const entree of clubsRecruteurs(saison)) {
+      const club = entree.club;
+      const entraineur = RMClub.entraineurDuClub(saison, club.id);
+      if (!entraineur) continue;
+      if (journeesJouees && entree.position && entree.total
+          && RMClub.enDanger(entree.position, entree.total, entraineur)) {
+        parClub[club.id] = {
+          clubId: club.id, clubNom: club.nom, surLaSellette: true,
+          raison: `${entraineur.nom} est sur la sellette : ${entree.position}e sur ${entree.total}.`,
+        };
+        continue;
+      }
+      if (reputationManager >= entraineur.reputation - TOLERANCE_HOMME_LIBRE) {
+        parClub[club.id] = {
+          clubId: club.id, clubNom: club.nom, hommeLibre: true,
+          raison: `${club.nom} peut se séparer de ${entraineur.nom} (coté ${entraineur.reputation}) pour un entraîneur libre tout de suite.`,
+        };
+      }
+    }
+    return parClub;
+  }
+
   function clubsRecruteurs(saison) {
     const RMClub = global.RMClub;
     const niveauJoueur = (saison.clubJoueur.palierPyramide || { niveau: 3 }).niveau;
@@ -268,13 +346,25 @@
     // portes : on ne s'engage pas deux fois le même été.
     if (m.engagementProchaineSaison) return [];
     const decidees = new Set((m.offres || []).filter((o) => o.statut !== 'ouverte').map((o) => o.clubId));
+    let ouverts = postesOuverts(saison);
+    // Sans club, on regarde aussi les bancs qui vacillent.
+    if (ouverts && m.statut === 'sansClub') {
+      ouverts = Object.assign({}, postesAPrendre(saison, m.reputation), ouverts);
+    }
     const candidats = [];
     for (const entree of clubsRecruteurs(saison)) {
       const club = entree.club;
       if (decidees.has(club.id)) continue;
+      // Le poste doit être réellement à prendre.
+      const poste = ouverts ? ouverts[club.id] : null;
+      if (ouverts && !poste) continue;
       const exigence = exigenceClub(club, entree.position, entree.total, entree.niveau);
       if (m.reputation < exigence) continue;
-      candidats.push({ club, position: entree.position, total: entree.total, exigence, niveau: entree.niveau });
+      candidats.push({
+        club, position: entree.position, total: entree.total,
+        exigence, niveau: entree.niveau,
+        raisonPosteLibre: poste ? poste.raison : null,
+      });
     }
     // Les postes les plus flatteurs d'abord : un club exigeant qui t'accepte
     // vaut mieux qu'un club au bord du gouffre.
@@ -296,7 +386,7 @@
     candidats.length = 0;
     for (const c of retenus) candidats.push(c);
     const niveauJoueur = (saison.clubJoueur.palierPyramide || { niveau: 3 }).niveau;
-    return candidats.slice(0, MAX_OFFRES).map(({ club, position, total, exigence, niveau }) => ({
+    return candidats.slice(0, MAX_OFFRES).map(({ club, position, total, exigence, niveau, raisonPosteLibre }) => ({
       id: 'offre-' + club.id + '-' + (saison.numero || 1),
       clubId: club.id,
       clubNom: club.nom,
@@ -317,6 +407,9 @@
       // Un club qui te veut vraiment démarre plus haut qu'un club résigné.
       confianceInitiale: Math.max(40, Math.min(75, 50 + Math.round((m.reputation - exigence) / 3))),
       raison: raisonInteret(position, total, exigence, m.reputation),
+      // POURQUOI ce poste est libre — le joueur doit pouvoir lire l'offre
+      // comme une conséquence, pas comme un coup de chance.
+      raisonPosteLibre: raisonPosteLibre || null,
       exigence,
     }));
   }

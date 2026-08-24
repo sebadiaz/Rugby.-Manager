@@ -2461,6 +2461,42 @@
       lignes;
   }
 
+  // Marché des entraîneurs (G24) : qui est sur le banc d'en face, depuis
+  // combien de temps, et si sa place est menacée. Le « menacé » n'est pas un
+  // second barème : c'est RMClub.enDanger, soit la règle de limogeage de fin
+  // de saison appliquée au classement provisoire.
+  function blocEntraineurClub(clubId) {
+    if (!RMClub.entraineurDuClub) return '';
+    const e = RMClub.entraineurDuClub(saison, clubId);
+    if (!e) return '';
+    const poste = RMClub.posteOuvert ? RMClub.posteOuvert(saison, clubId) : null;
+    const comp = RMClub.competitionDuClub ? RMClub.competitionDuClub(saison, clubId) : null;
+    const ligne = comp ? (comp.classement || []).find((r) => r.clubId === clubId) : null;
+    const position = ligne ? (comp.classement.indexOf(ligne) + 1) : null;
+    const total = comp ? comp.classement.length : 0;
+    // Sur un classement à ZÉRO journée jouée, les positions ne sont qu'un
+    // ordre arbitraire : afficher « sur la sellette » au coup d'envoi de la
+    // saison serait un verdict fabriqué. Même garde que côté règle
+    // (club-carriere-manager.js, postesAPrendre).
+    const journeesJouees = (saison.calendrier || []).filter((f) => f.joue).length;
+    const menace = journeesJouees && position && total && RMClub.enDanger && !e.interim
+      ? RMClub.enDanger(position, total, e) : false;
+    const anciennete = e.saisonsAuClub === 0
+      ? (e.interim ? 'intérimaire' : 'première saison')
+      : `${e.saisonsAuClub} saison${e.saisonsAuClub > 1 ? 's' : ''} au club`;
+    // `niveau-urgent` et `niveau-info` existent réellement dans la feuille de
+    // style ; `niveau-alerte`, utilisé d'abord ici, n'y est PAS défini — le
+    // badge serait sorti sans couleur ni bordure.
+    const etat = poste
+      ? '<span class="badgeNiveau niveau-urgent">Poste à pourvoir</span>'
+      : (menace ? '<span class="badgeNiveau niveau-urgent">Sur la sellette</span>' : '');
+    return `<div class="offreManager">` +
+      `<div class="offreTitre"><b>Entraîneur : ${echapperHTML(e.nom)}</b> ${etat}</div>` +
+      `<div class="offreLigne">Réputation ${e.reputation} · ${echapperHTML(anciennete)}</div>` +
+      (poste ? `<div class="offreLigne" style="opacity:.85">${echapperHTML(poste.raison)}</div>` : '') +
+      `</div>`;
+  }
+
   function rafraichirVueClub() {
     const nav = RMClub.navigationClub(saison);
     const estMonClub = nav.clubConsulteId === saison.clubJoueur.id;
@@ -2482,6 +2518,8 @@
     // Palmarès et parcours (G16) : le MÊME bloc que sur sa propre fiche.
     const zonePalmares = document.getElementById('clubVueConsultePalmares');
     if (zonePalmares) zonePalmares.innerHTML = blocPalmaresClub(adv.id);
+    const zoneEntraineur = document.getElementById('clubVueConsulteEntraineur');
+    if (zoneEntraineur) zoneEntraineur.innerHTML = blocEntraineurClub(adv.id);
     const facteurAnalyste = RMClub.effetPersonnel(saison, 'analyste');
     const seuilAnalyste = Math.max(2, Math.round(6 - (facteurAnalyste - 1) * 8));
     const analyse = RMClub.analyserAdversaire(saison, adv.id, seuilAnalyste);
@@ -2997,6 +3035,11 @@
       `<div class="offreLigne">Objectif proposé : ${echapperHTML(o.objectif)}</div>` +
       `<div class="offreLigne">Prise de poste : <b>${o.immediat ? 'immédiate' : 'la saison prochaine'}</b></div>` +
       `<div class="offreLigne">Budget : ${o.budget != null ? o.budget + ' k€' : 'non communiqué'} · Confiance initiale : ${o.confianceInitiale} %</div>` +
+      // POURQUOI ce poste est libre (G24). Sans cette ligne, l'offre reste un
+      // coup de chance : c'est elle qui la rattache à un limogeage réel.
+      (o.raisonPosteLibre
+        ? `<div class="offreLigne" style="opacity:.85">Poste libre : ${echapperHTML(o.raisonPosteLibre)}</div>`
+        : '') +
       `<div class="offreRaison">${echapperHTML(o.raison)}</div>` +
       `<div class="actionsOffre">` +
       `<button class="accent" data-accepter="${echapperHTML(o.id)}">${o.immediat ? 'Accepter ce poste' : 'Signer pour la saison prochaine'}</button>` +

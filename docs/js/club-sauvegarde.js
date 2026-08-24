@@ -46,6 +46,26 @@
   // fonction qui transforme une sauvegarde de cette version vers la
   // suivante.
   const MIGRATIONS = {
+    // 11 → 12 : marché des entraîneurs (G24). Une carrière déjà commencée
+    // reçoit des entraîneurs pour TOUS ses clubs — sinon les écrans auraient
+    // des trous et `offresDisponibles` se tairait — mais AUCUN poste ouvert.
+    // Inventer des limogeages rétroactifs fabriquerait un passé qui n'a pas
+    // eu lieu : le marché démarre au prochain changement de saison, comme
+    // pour tout le monde.
+    11: (saison) => {
+      if (global.RMClub.assurerEntraineursRivaux) {
+        // Même fabrique de RNG que partout ailleurs, semée sur la graine de la
+        // carrière : deux migrations de la même sauvegarde donnent les mêmes
+        // entraîneurs.
+        const rng = global.RugbyEngine && global.RugbyEngine.creerRng
+          ? global.RugbyEngine.creerRng((saison.graine || 1) ^ 0x5ea15)
+          : Math.random;
+        global.RMClub.assurerEntraineursRivaux(rng, saison);
+      }
+      if (saison.entraineursRivaux) saison.entraineursRivaux.postes = [];
+      saison.version = 12;
+      return saison;
+    },
     // 10 → 11 : réseau de recrutement (G12). Une carrière déjà commencée
     // n'a évidemment envoyé personne nulle part : elle hérite d'un réseau
     // VIERGE — connaissances de départ du catalogue, aucune mission en cours,

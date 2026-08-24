@@ -68,6 +68,22 @@ function finir(s, position) {
   RMClub.avancerSaison(creerRng(graine++), s);
 }
 
+// G24 — depuis le marché des entraîneurs, une offre suppose un POSTE LIBRE.
+// Ce contrôle porte sur ce que devient le MONDE quand on change de division,
+// pas sur l'existence d'une offre : on ouvre donc les postes par le mécanisme
+// du jeu (une fin de saison où chaque club finit dernier), jamais en écrivant
+// dans l'état à la main.
+function ouvrirTousLesPostes(s) {
+  if (!RMClub.resoudreEntraineursFinDeSaison) return s;
+  const bilans = {};
+  const ajouter = (clubs) => { for (const c of clubs || []) bilans[c.id] = { position: 14, total: 14 }; };
+  ajouter(s.adversaires);
+  const autres = (s.autresDivisionsFrance || {}).divisions || {};
+  for (const cle of Object.keys(autres)) ajouter(autres[cle].clubs);
+  RMClub.resoudreEntraineursFinDeSaison(creerRng(9871), s, { bilans });
+  return s;
+}
+
 test('M1 — PREUVE : la division qu\'on REJOINT est celle qu\'on regardait', () => {
   const s = carriere(3);
   const avant = mondeFrancais(s);
@@ -220,6 +236,7 @@ test('M12 — un changement d\'entraîneur vers une autre division garde le mond
   const s = carriere(3);
   RMClub.assurerManager(s, 'Testeur');
   s.manager.reputation = 95;
+  ouvrirTousLesPostes(s);
   const offre = RMClub.offresDisponibles(s).find((o) => !o.immediat);
   assert.ok(offre, 'il faut une offre d\'une autre division');
   const ancienClubId = s.clubJoueur.id;

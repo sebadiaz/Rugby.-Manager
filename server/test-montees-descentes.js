@@ -85,6 +85,22 @@ function finir(s, position) {
   RMClub.avancerSaison(creerRng(graine++), s);
 }
 
+// G24 — depuis le marché des entraîneurs, une offre suppose un POSTE LIBRE.
+// Ce contrôle porte sur la SANTÉ DE LA PYRAMIDE après un changement de
+// division, pas sur l'existence d'une offre : les postes sont ouverts par le
+// mécanisme du jeu (une fin de saison où chaque club finit dernier), jamais
+// en écrivant dans l'état à la main.
+function ouvrirTousLesPostes(s) {
+  if (!RMClub.resoudreEntraineursFinDeSaison) return s;
+  const bilans = {};
+  const ajouter = (clubs) => { for (const c of clubs || []) bilans[c.id] = { position: 14, total: 14 }; };
+  ajouter(s.adversaires);
+  const autres = (s.autresDivisionsFrance || {}).divisions || {};
+  for (const cle of Object.keys(autres)) ajouter(autres[cle].clubs);
+  RMClub.resoudreEntraineursFinDeSaison(creerRng(9871), s, { bilans });
+  return s;
+}
+
 test('Q1 — PREUVE : des clubs changent de division sans que le joueur bouge', () => {
   const s = carriere(3);
   jouerLesAutresDivisions(s);
@@ -268,6 +284,7 @@ test('Q11 — un changement d\'entraîneur reste compatible', () => {
   jouerLesAutresDivisions(s);
   RMClub.assurerManager(s, 'Testeur');
   s.manager.reputation = 95;
+  ouvrirTousLesPostes(s);
   const offre = RMClub.offresDisponibles(s).find((o) => !o.immediat);
   assert.ok(offre, 'il faut une offre d\'une autre division');
   RMClub.accepterOffre(s, offre.id);

@@ -3810,6 +3810,134 @@ composition ni à la fatigue.
 
 ---
 
+## G24 — Une offre de carrière n'était pas une conséquence (livrée)
+
+### L'audit, avant d'écrire une ligne
+
+C'était la dernière ligne 🔴 de la feuille de route : « Marché des entraîneurs
+(managers IA) — aucune entité manager IA dans le jeu. » Vérifié plutôt que
+cru, sur une carrière où les trois divisions vivent dans la même sauvegarde :
+
+```
+clubs simulés (ma division + les deux autres)     43
+clubs portant un entraîneur                        0
+offres reçues à 85 de réputation                   6
+offres liées à un poste réellement libre           0 / 6
+```
+
+`clubsRecruteurs` retenait les 43 clubs **sans aucune condition**. Une offre
+arrivait parce que la réputation du joueur dépassait l'exigence du club —
+jamais parce que ce club cherchait quelqu'un. En jeu : les offres étaient un
+**tirage**, et l'écran ne pouvait rien dire de mieux que « ce club
+s'intéresse à vous ».
+
+La suite `server/test-marche-entraineurs.js` a été écrite **avant** le
+moindre code de jeu : 13 contrôles, 13 rouges.
+
+### Le modèle
+
+Un club a **toujours** un entraîneur — sinon il ne pourrait pas jouer et
+l'écran des autres divisions aurait des trous. Ce qui varie, c'est que son
+poste soit **ouvert**. Un limogé est remplacé par un intérimaire, et le club
+cherche : c'est ce poste ouvert, et lui seul, qui produit une offre.
+
+Le jugement ne s'invente pas. Il lit la ligne que `enregistrerSaisonClubsFrance`
+vient d'écrire dans l'historique du club — la position réelle dans SA
+division. Une seule source de vérité pour « comment s'est passée la saison »,
+et l'ordre d'appel dans `avancerSaison` est contraint en conséquence :
+juger avant cette écriture, ce serait juger la saison d'avant.
+
+### Trois fois où la règle a dû être corrigée par la mesure
+
+**1. Le sursis qui rendait la règle inerte.** Premier jet : « zone rouge →
+limogé, sauf premier exercice ». Raisonnable sur le papier. Mesuré : au
+démarrage d'une carrière **tous** les entraîneurs ont zéro saison, donc
+aucun poste ne se libérait la première année. Le sursis a sauté ; l'ancienneté
+de départ est désormais tirée entre 0 et 6 saisons, ce qui donne au monde une
+histoire antérieure au joueur.
+
+**2. L'impasse de carrière.** En conditionnant les offres aux postes ouverts,
+dix contrôles existants sont passés au rouge. L'un d'eux disait vrai :
+« manager : un licenciement ouvre RÉELLEMENT des possibilités d'emploi ».
+Un manager licencié sans poste ouvert restait au chômage **pour toujours** —
+la carrière devenait une impasse. Règle ajoutée : un club dont l'entraîneur
+serait limogé si la saison s'arrêtait maintenant écoute un homme libre. C'est
+`enDanger`, soit exactement le couperet de fin de saison appliqué au
+classement provisoire — pas un second barème qui finirait par diverger.
+
+**3. La même règle, écrite à l'envers.** J'ai d'abord exigé que le manager
+libre **dépasse** l'entraîneur en place de 8 points. Mesuré :
+
+```
+réputation après licenciement    37   (un licenciement en coûte)
+cotes des 13 bancs de la division 39,40,41,42,43,44,48,48,50,51,55,57,59
+clubs éligibles                   0   -> impasse, à nouveau
+```
+
+Un licenciement fait perdre de la réputation : le manager se retrouvait sous
+**tous** les bancs de sa propre division. Le sens correct est l'inverse — un
+club écoute un homme libre tant qu'il n'est pas nettement en dessous du
+titulaire. Le filtre `exigenceClub`, lui, était déjà là et continue de
+trancher.
+
+### Les dix tests rouges : un vrai défaut, neuf prémisses périmées
+
+Le premier était un vrai défaut (l'impasse ci-dessus). Les neuf autres —
+`test-carriere-divisions` K1/K2/K4..K8, `test-monde-persistant` M12,
+`test-montees-descentes` Q11 — construisaient une carrière neuve, posaient une
+grosse réputation et attendaient des offres. Ils encodaient l'**ancienne**
+règle. Leur prémisse a été mise à jour, **aucune assertion n'a été touchée**,
+et l'ouverture des postes se fait par le mécanisme du jeu
+(`resoudreEntraineursFinDeSaison` avec de vrais bilans), jamais par une
+écriture directe dans l'état — un raccourci masquerait la régression du jour
+où la règle de limogeage changerait.
+
+### Ce que le joueur voit
+
+Piloté dans le vrai navigateur, sur une sauvegarde produite par une saison
+réellement jouée, en 1400×900 et en 390×844 :
+
+```
+Écran des offres      « Poste libre : Noah Boyer a été limogé après une
+                        12e place sur 14. »                    (2 lignes, les deux formats)
+Fiche d'un club       « Banc de touche »
+                        Entraîneur : Gabriel Laurent  [POSTE À POURVOIR]
+                        Réputation 45 · intérimaire
+                        Paul Guerin a été limogé après une 14e place sur 14.
+Requêtes en échec      version.json uniquement (absent en local, présent en production)
+Erreurs de page        aucune
+```
+
+Deux défauts d'affichage trouvés en regardant, pas en lisant le code :
+
+- `niveau-alerte`, la classe que j'avais utilisée pour le badge, **n'existe
+  pas** dans la feuille de style : le badge serait sorti sans couleur ni
+  bordure. Remplacée par `niveau-urgent`, qui existe.
+- « Sur la sellette » s'affichait **au coup d'envoi de la saison**, sur un
+  classement à zéro journée où les positions ne sont qu'un ordre arbitraire.
+  La garde qui existait déjà côté règle manquait côté écran.
+- Le bloc était rangé sous le titre « Palmarès et parcours » : il annonçait
+  l'entraîneur en poste comme s'il s'agissait d'un titre du club. Il a
+  maintenant sa propre section, « Banc de touche ».
+
+### Sauvegarde
+
+Version 11 → 12. Une carrière déjà commencée reçoit des entraîneurs pour tous
+ses clubs — sinon les écrans auraient des trous et les offres se tairaient —
+mais **aucun poste ouvert** : inventer des limogeages rétroactifs fabriquerait
+un passé qui n'a pas eu lieu. Le marché démarre au prochain changement de
+saison, comme pour tout le monde. Vérifié par E13.
+
+### La nouvelle décision de manager
+
+Avant : attendre qu'une offre tombe, sans savoir pourquoi. Maintenant : lire
+le classement des autres divisions en sachant quels bancs chauffent, et
+choisir entre le poste qui s'ouvre tout de suite et celui qu'on espère voir
+s'ouvrir. Un club qui gagne ne libère jamais rien — viser plus haut, c'est
+attendre qu'un grand échoue.
+
+---
+
 ## G23 — La CI ne protégeait que 9 fichiers de test sur 47 (livrée)
 
 ### Ce que j'avais recommandé, et ce que la mesure a dit

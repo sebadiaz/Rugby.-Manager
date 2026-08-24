@@ -51,8 +51,30 @@ function carriere(reputation, niveau) {
   RMClub.assurerManager(s, 'Testeur');
   RMClub.assurerAutresDivisionsFrance(creerRng(2), s);
   if (reputation != null) s.manager.reputation = reputation;
+  ouvrirTousLesPostes(s);
   return s;
 }
+
+// G24 — depuis le marché des entraîneurs, une offre n'arrive plus parce que
+// la réputation suffit : elle arrive parce qu'un POSTE S'EST LIBÉRÉ. Les
+// contrôles ci-dessous portent sur QUELLES offres apparaissent quand des
+// postes sont ouverts — pas sur le fait qu'il y en ait. Cette prémisse-là est
+// tenue ailleurs (test-marche-entraineurs.js, E4/E7/E8).
+//
+// On ouvre donc les postes par le MÉCANISME DU JEU : une fin de saison où
+// chaque club termine dernier, ce qui coûte sa place à son entraîneur. Aucune
+// écriture directe dans l'état — un raccourci ici masquerait une régression
+// du jour où la règle de limogeage changerait.
+function ouvrirTousLesPostes(s) {
+  const bilans = {};
+  const ajouter = (clubs) => { for (const c of clubs || []) bilans[c.id] = { position: 14, total: 14 }; };
+  ajouter(s.adversaires);
+  const autres = (s.autresDivisionsFrance || {}).divisions || {};
+  for (const cle of Object.keys(autres)) ajouter(autres[cle].clubs);
+  RMClub.resoudreEntraineursFinDeSaison(creerRng(9871), s, { bilans });
+  return s;
+}
+
 function idsDeMaDivision(s) { return new Set((s.adversaires || []).map((a) => a.id)); }
 // Termine la saison à une position donnée, puis passe à la suivante.
 function finirSaison(s, position) {

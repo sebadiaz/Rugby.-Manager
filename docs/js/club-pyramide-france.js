@@ -139,6 +139,15 @@
     if (!saison.autresDivisionsFrance || saison.autresDivisionsFrance.niveauExclu !== niveauActuel) {
       saison.autresDivisionsFrance = genererAutresDivisionsFrance(rng, niveauActuel);
     }
+    // Marché des entraîneurs (G24) : dès que ces divisions existent, leurs
+    // bancs sont occupés. Ici plutôt que dans les trois écrans qui appellent
+    // cette fonction — un club sans entraîneur est invisible pour le marché
+    // (`entraineurDuClub` renvoie null et il est écarté en silence), et
+    // l'oubli ne se verrait nulle part. Appel défensif : un banc d'essai
+    // partiel qui ne charge pas ce module continue de fonctionner.
+    if (global.RMClub.assurerEntraineursRivaux) {
+      global.RMClub.assurerEntraineursRivaux(rng, saison);
+    }
     return saison.autresDivisionsFrance;
   }
 
