@@ -258,4 +258,127 @@ test('E13 — une carrière d\'avant cette tranche est migrée, pas cassée', ()
     'une carrière migrée ne doit pas inventer de limogeages rétroactifs');
 });
 
+// --- E14..E19 : l'entraîneur PÈSE sur le jeu de son club ------------------
+//
+// Audit avant cette partie : `effetEntraineur` n'existait pas, et ni
+// `simulerResultatAbstrait` (autres divisions, coupes, monde) ni
+// `niveauEffectifDuJour` (matchs IA de ma division) ne lisaient le banc. Le
+// nom sur le banc était une ÉTIQUETTE : limoger un entraîneur ne changeait
+// rien à ce qui se passait sur le terrain, et accepter un poste plutôt qu'un
+// autre n'avait aucune conséquence sportive.
+
+test('E14 — l\'effet d\'un entraîneur est borné et centré sur zéro', () => {
+  const s = carriere(null, 3);
+  const A = RMClub.AMPLITUDE_EFFET_ENTRAINEUR;
+  assert.ok(A > 0 && A < 0.2, `amplitude hors de toute échelle plausible (${A})`);
+  const bornes = RMClub.REPUTATION_PAR_NIVEAU[2];
+  const milieu = (bornes.min + bornes.max) / 2;
+  assert.ok(Math.abs(RMClub.effetEntraineur({ reputation: milieu }, 2)) < 0.005,
+    'un entraîneur au milieu de la fourchette de sa division ne doit rien changer');
+  assert.ok(Math.abs(RMClub.effetEntraineur({ reputation: bornes.max }, 2) - A) < 0.005,
+    'le mieux coté de sa division vaut exactement +amplitude');
+  assert.ok(Math.abs(RMClub.effetEntraineur({ reputation: bornes.min }, 2) + A) < 0.005,
+    'le moins bien coté vaut exactement -amplitude');
+  // Une réputation aberrante ne doit pas faire exploser l'échelle.
+  assert.ok(Math.abs(RMClub.effetEntraineur({ reputation: 500 }, 2)) <= A + 1e-9,
+    'l\'effet doit rester borné même pour une réputation hors de tout');
+});
+
+test('E15 — l\'effet se juge dans SA division, pas sur une échelle absolue', () => {
+  // 63 est le BAS de la fourchette de l'élite, 59 le HAUT de celle de la
+  // Régionale. Sur une échelle absolue, le premier serait le meilleur des
+  // deux ; en vérité l'un est le maillon faible de son championnat et
+  // l'autre en est la référence.
+  const basDeLElite = RMClub.effetEntraineur({ reputation: 63 }, 1);
+  const hautDeLaRegionale = RMClub.effetEntraineur({ reputation: 59 }, 3);
+  assert.ok(basDeLElite < 0, `63 en division 1 doit être un handicap (${basDeLElite})`);
+  assert.ok(hautDeLaRegionale > 0, `59 en division 3 doit être un atout (${hautDeLaRegionale})`);
+});
+
+test('E16 — un intérimaire est un handicap, pas un statut décoratif', () => {
+  const s = carriere(null, 3);
+  const cancre = tousLesClubsRivaux(s)[0];
+  const avant = RMClub.effetEntraineurDuClub(s, cancre.id);
+  RMClub.resoudreEntraineursFinDeSaison(creerRng(21), s, {
+    bilans: { [cancre.id]: { position: 14, total: 14 } },
+  });
+  const apres = RMClub.effetEntraineurDuClub(s, cancre.id);
+  assert.ok(RMClub.entraineurDuClub(s, cancre.id).interim, 'prémisse : un intérimaire a pris le banc');
+  assert.ok(apres < avant,
+    `un intérimaire doit peser moins que celui qu'il remplace (avant ${avant.toFixed(3)}, après ${apres.toFixed(3)})`);
+});
+
+test('E17 — le banc atteint les résultats des autres divisions', () => {
+  const bornes = RMClub.REPUTATION_PAR_NIVEAU[1];
+  // On traverse le VRAI chemin : `avancerJourneeAutresDivisionsFrance`, celui
+  // que l'écran appelle chaque jour. Vérifier `niveauAvecEntraineur` seule
+  // prouverait que ma fonction calcule, pas que quelqu'un l'appelle — c'est
+  // exactement ainsi qu'un effet reste décoratif sans qu'aucun test ne bronche.
+  const pointsApres = (reputation) => {
+    const s = carriere(null, 3);
+    const div = (s.autresDivisionsFrance || {}).divisions[1];
+    const club = div.clubs[0];
+    for (const c of div.clubs) RMClub.entraineurDuClub(s, c.id).reputation = bornes.min;
+    RMClub.entraineurDuClub(s, club.id).reputation = reputation;
+    for (let j = 0; j < 8; j++) {
+      RMClub.avancerJourneeAutresDivisionsFrance(creerRng(4400 + j), s.autresDivisionsFrance, s);
+    }
+    const ligne = div.classement[club.id];
+    return ligne ? ligne.pts : null;
+  };
+  const bon = pointsApres(bornes.max);
+  const mauvais = pointsApres(bornes.min);
+  assert.ok(bon != null && mauvais != null, 'le classement de la division doit être tenu');
+  assert.ok(bon > mauvais,
+    `le même club, même graine, doit marquer plus de points avec un meilleur banc (${bon} vs ${mauvais})`);
+});
+
+test('E18 — le banc atteint aussi les matchs IA de MA division', () => {
+  const s = carriere(null, 3);
+  const club = s.adversaires[0];
+  const bornes = RMClub.REPUTATION_PAR_NIVEAU[3];
+  RMClub.entraineurDuClub(s, club.id).reputation = bornes.max;
+  const bon = RMClub.niveauEffectifDuJour(s, club);
+  RMClub.entraineurDuClub(s, club.id).reputation = bornes.min;
+  const mauvais = RMClub.niveauEffectifDuJour(s, club);
+  assert.ok(bon > mauvais,
+    `niveauEffectifDuJour doit tenir compte du banc (${bon.toFixed(3)} vs ${mauvais.toFixed(3)})`);
+});
+
+test('E19 — sur une saison, le banc compte SANS écraser l\'effectif', () => {
+  // La mesure qui a servi à calibrer : une division de 14 clubs de niveaux
+  // réalistes, saison aller-retour, un seul club change d'entraîneur.
+  const niveauxBase = Array.from({ length: 14 }, (_, k) => 0.35 + k * 0.02);
+  const CIBLE = 6;
+  const A = RMClub.AMPLITUDE_EFFET_ENTRAINEUR;
+  const placeMoyenne = (delta) => {
+    let somme = 0;
+    const SAISONS = 200;
+    for (let s = 0; s < SAISONS; s++) {
+      const rng = creerRng(3000 + s);
+      const niveaux = niveauxBase.slice();
+      niveaux[CIBLE] += delta;
+      const pts = new Array(14).fill(0);
+      for (let i = 0; i < 14; i++) for (let j = 0; j < 14; j++) {
+        if (i === j) continue;
+        const r = RMClub.simulerResultatAbstrait(rng, niveaux[i], niveaux[j]);
+        if (r.scoreA > r.scoreB) pts[i] += 4;
+        else if (r.scoreA < r.scoreB) pts[j] += 4;
+        else { pts[i] += 2; pts[j] += 2; }
+      }
+      somme += pts.map((p, i) => ({ p, i })).sort((x, y) => y.p - x.p)
+        .findIndex((x) => x.i === CIBLE) + 1;
+    }
+    return somme / SAISONS;
+  };
+  const ecart = placeMoyenne(-A) - placeMoyenne(A);
+  // Deux échecs possibles, et les DEUX comptent :
+  //   - sous 1 place, l'entraîneur est décoratif : le joueur ne verra rien ;
+  //   - au-delà de 5, il écrase l'effectif : recruter ne servirait plus.
+  assert.ok(ecart >= 1,
+    `un bon entraîneur doit valoir au moins une place au classement (${ecart.toFixed(2)})`);
+  assert.ok(ecart <= 5,
+    `mais pas écraser l'effectif : ${ecart.toFixed(2)} places d'écart, c'est trop`);
+});
+
 console.log(`\n${nbTests} test(s) exécuté(s).`);

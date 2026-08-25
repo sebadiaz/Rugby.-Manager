@@ -3810,6 +3810,124 @@ composition ni à la fatigue.
 
 ---
 
+## G25 — Le nom sur le banc n'était qu'une étiquette (livrée)
+
+### La mesure d'abord : est-ce que ça vaut le coup ?
+
+G24 a peuplé les 43 clubs d'entraîneurs. Aucun n'avait le moindre effet sur le
+jeu de son club : limoger quelqu'un ne changeait rien sur le terrain, et
+accepter un poste plutôt qu'un autre n'avait aucune conséquence sportive.
+
+Avant d'écrire quoi que ce soit, la question de G18 : **un effet de cette
+taille se verrait-il, ou serait-il noyé dans le bruit ?** 400 saisons d'une
+division de 14 clubs aux niveaux réalistes, un seul club recevant un delta :
+
+```
+delta ±0,02  ->  1,35 place d'écart entre le meilleur et le pire banc
+delta ±0,03  ->  2,03
+delta ±0,05  ->  3,32
+delta ±0,08  ->  5,28
+delta ±0,12  ->  7,58
+```
+
+L'effet est bien réel — contrairement à celui que j'avais mesuré puis
+abandonné en G18. Restait à choisir sa taille, et pour ça il fallait connaître
+l'échelle de comparaison :
+
+```
+étendue des niveaux d'effectif dans une division   0,25 à 0,30
+étendue des réputations d'entraîneur               17 à 22 points
+```
+
+**±0,04 retenu** : 0,08 d'étendue, soit environ un tiers de l'écart entre le
+meilleur et le pire effectif de la division. Le banc compte ; il ne remplace
+pas le recrutement.
+
+### La règle
+
+L'effet se juge **dans sa division**, jamais sur une échelle absolue. Un
+entraîneur coté 63 est le maillon faible de l'élite ; coté 59 il est la
+référence de la Régionale. Sur une échelle absolue, le premier passerait pour
+le meilleur des deux — et surtout, **tous** les bancs de Régionale
+deviendraient des handicaps, ce qui n'a aucun sens.
+
+`niveauAvecEntraineur` est la seule fonction qui applique l'effet. Les deux
+chemins qui produisent des résultats l'appellent : les divisions abstraites
+(`avancerJourneeAutresDivisionsFrance`) et les matchs IA de la division du
+joueur (`niveauEffectifDuJour`). Aucun barème recopié.
+
+### Un défaut trouvé par le test de l'intérimaire
+
+E16 exigeait qu'un intérimaire pèse moins que celui qu'il remplace. Il
+échouait : retrancher le malus d'un **tirage neuf** laissait l'intérimaire
+sortir parfois mieux coté que le limogé — autrement dit, **un club gagnait à
+échouer**. L'intérimaire part maintenant du plus faible des deux, le tirage ou
+le sortant, avant le malus.
+
+### Un test qui vérifiait ma fonction, pas le jeu
+
+E17 comparait d'abord les valeurs rendues par `niveauAvecEntraineur`. Ça
+prouve que ma fonction calcule, **pas que quelqu'un l'appelle** — c'est
+exactement ainsi qu'un effet reste décoratif sans qu'aucun test ne bronche. Il
+traverse désormais le vrai chemin : huit journées de la division 1 jouées par
+`avancerJourneeAutresDivisionsFrance`, même graine, et le club marque
+réellement plus de points avec un meilleur banc.
+
+Ce branchement a d'ailleurs révélé que la fonction ne reçoit pas `saison` :
+elle prend `(rng, autresDivisions)`. `saison` a été ajouté en **troisième**
+position, facultatif — les quatre appels existants continuent de fonctionner
+tels quels, et sans lui l'effet est simplement absent, jamais une erreur.
+
+### Chaque contrôle mord, et un seul à la fois
+
+```
+amplitude à 0 (effet supprimé)          -> E14..E19 rouges
+journée des autres divisions débranchée -> E17 SEUL rouge
+matchs IA de ma division débranchés     -> E18 SEUL rouge
+amplitude à 0,15 (banc dominant)        -> E19 rouge : « 8,96 places d'écart, c'est trop »
+```
+
+E19 est le garde-fou de calibration : il refuse **les deux** échecs — sous une
+place d'écart l'entraîneur est décoratif, au-delà de cinq il écrase
+l'effectif et recruter ne sert plus à rien.
+
+### Un test existant mis à jour sans être affaibli
+
+`test-matchs-ia` R3 exigeait qu'un groupe au complet vale **exactement** le
+niveau du club. C'était vrai avant que le banc existe. La tentation était de
+relâcher la tolérance ; ça aurait masqué une vraie dérive du calcul de
+disponibilité. La référence inclut désormais le terme délibéré
+(`niveauClub + effetEntraineurDuClub`), et l'exactitude est conservée —
+vérifié en réintroduisant un biais de 0,05 dans le calcul de disponibilité :
+R3 rougit.
+
+### Ce que le joueur voit
+
+Sur la fiche de chaque club, sous « Banc de touche », une phrase en clair
+plutôt qu'un « +0,04 de niveau » incompréhensible :
+
+```
+Entraîneur : Gabriel Laurent  [POSTE À POURVOIR]
+  Le maillon faible de sa division : son équipe joue en dessous de ses moyens.
+Entraîneur : Paul Boyer
+  Dans la moyenne de sa division.
+Entraîneur : Noah Michel
+  Un peu moins bien coté que la moyenne de sa division.
+```
+
+Vérifié en 1400×1000 et 390×844, aucune erreur de page, seul `version.json`
+manque en local.
+
+### Ce qui reste hors de portée
+
+Les matchs que le joueur dispute lui-même passent par le moteur avec les
+attributs réels des joueurs : l'entraîneur d'en face n'y pèse pas. Un delta de
+niveau ne s'y traduit pas — il faudrait toucher aux entrées du moteur, ce qui
+dépasse cette tranche. L'effet vaut donc pour tout ce qui se joue **sans** le
+joueur, c'est-à-dire l'essentiel du championnat autour de lui.
+
+---
+
 ## G24 — Une offre de carrière n'était pas une conséquence (livrée)
 
 ### L'audit, avant d'écrire une ligne

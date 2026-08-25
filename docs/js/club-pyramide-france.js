@@ -155,7 +155,11 @@
   // appelée une fois par journée RÉELLEMENT jouée par le joueur (cf.
   // clubUI.js, lancerLaJournee), jamais conditionnée à l'ouverture d'un
   // onglet particulier.
-  function avancerJourneeAutresDivisionsFrance(rng, autresDivisions) {
+  // `saison` est facultatif et arrive en TROISIÈME position : les quatre
+  // appels existants passent déjà (rng, autresDivisions) et continuent de
+  // fonctionner tels quels — sans lui, l'effet du banc de touche est
+  // simplement absent, jamais une erreur.
+  function avancerJourneeAutresDivisionsFrance(rng, autresDivisions, saison) {
     if (!autresDivisions) return;
     for (const niveau of Object.keys(autresDivisions.divisions)) {
       const div = autresDivisions.divisions[niveau];
@@ -167,7 +171,13 @@
       for (const f of ronde) {
         const a = parId[f.domicileId], b = parId[f.exterieurId];
         if (!a || !b) continue;
-        const r = simulerResultatAbstraitFrance(rng, a.niveauClub, b.niveauClub);
+        // Le banc de touche compte (G25). `niveauAvecEntraineur` est la seule
+        // fonction qui applique l'effet, ici comme dans les matchs IA de la
+        // division du joueur — jamais un barème recopié.
+        const avecBanc = (club) => (saison && global.RMClub.niveauAvecEntraineur
+          ? global.RMClub.niveauAvecEntraineur(saison, club)
+          : club.niveauClub);
+        const r = simulerResultatAbstraitFrance(rng, avecBanc(a), avecBanc(b));
         global.RMClub.enregistrerResultatDans(div.calendrier, div.classement, f.id, r.scoreA, r.scoreB, r.essaisA, r.essaisB);
       }
     }

@@ -301,12 +301,23 @@
   // valeur absolue — ainsi, un club au complet retrouve exactement son
   // `niveauClub` et le comportement d'avant cette tranche est conservé au
   // point près, sans constante d'étalonnage à deviner.
+  // Le banc de touche compte (G25) : `niveauAvecEntraineur` est la SEULE
+  // fonction qui applique l'effet de l'entraîneur, ici comme dans les
+  // divisions abstraites. Appel défensif — un banc d'essai partiel qui ne
+  // charge pas ce module retombe sur le niveau nu.
+  function avecBanc(saison, club, niveau) {
+    const RMClub = global.RMClub;
+    return RMClub.niveauAvecEntraineur
+      ? RMClub.niveauAvecEntraineur(saison, club, niveau)
+      : niveau;
+  }
+
   function niveauEffectifDuJour(saison, club) {
     const RMClub = global.RMClub;
     const base = club && club.niveauClub != null ? club.niveauClub : 0.5;
-    if (!aUnEffectifSimule(club)) return base;
+    if (!aUnEffectifSimule(club)) return avecBanc(saison, club, base);
     const groupe = groupeAdverse(saison, club);
-    if (!groupe || groupe.length < 15) return base;
+    if (!groupe || groupe.length < 15) return avecBanc(saison, club, base);
     // Nominal : le MEILLEUR XV que ce club puisse aligner, tout le monde
     // disponible et frais. Attention, ce n'est pas « les quinze meilleurs
     // joueurs » : une composition doit couvrir chaque poste, et un talonneur
@@ -341,9 +352,11 @@
       return copie;
     });
     const reel = moyenneForce(penalises);
-    if (nominal == null || reel == null) return base;
+    if (nominal == null || reel == null) return avecBanc(saison, club, base);
     const ecart = (reel - nominal) / ECHELLE_ATTRIBUT_VERS_NIVEAU;
-    return Math.max(0.05, Math.min(0.95, base + ecart));
+    // Le banc s'ajoute à l'état réel de l'effectif : un bon entraîneur ne
+    // remplace pas les joueurs qui manquent, il pèse à côté.
+    return Math.max(0.05, Math.min(0.95, avecBanc(saison, club, base + ecart)));
   }
 
   // Le « slot » de composition attendu par appliquerEffetsMatchAdverse :

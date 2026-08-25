@@ -90,7 +90,16 @@
     const bornes = REPUTATION_PAR_NIVEAU[niveau] || REPUTATION_PAR_NIVEAU[3];
     const opts = options || {};
     let reputation = choisirEntre(rng, bornes.min, bornes.max);
-    if (opts.interim) reputation = Math.max(1, reputation - MALUS_INTERIM);
+    if (opts.interim) {
+      // GARANTI moins bon que celui qu'il remplace. Retrancher le malus d'un
+      // tirage neuf ne suffisait pas : l'intérimaire pouvait sortir mieux
+      // coté que le limogé, et un club gagnait à échouer. On part donc du
+      // plus faible des deux — le tirage ou le sortant — avant le malus.
+      const plafond = opts.reputationSortant != null
+        ? Math.min(reputation, opts.reputationSortant)
+        : reputation;
+      reputation = Math.max(1, plafond - MALUS_INTERIM);
+    }
     return {
       nom: nomLibre(rng, pris),
       reputation,
@@ -133,6 +142,70 @@
         { ancienneteMax: ANCIENNETE_INITIALE_MAX });
     }
     return e;
+  }
+
+  // --- Ce que l'entraîneur PÈSE sur le jeu de son club ---------------------
+  //
+  // Avant (G25) le nom sur le banc était une étiquette : ni les résultats des
+  // autres divisions ni les matchs IA de la division du joueur ne le
+  // lisaient. Limoger quelqu'un ne changeait rien sur le terrain, et choisir
+  // un poste plutôt qu'un autre n'avait aucune conséquence sportive.
+  //
+  // L'effet se juge DANS SA DIVISION, jamais sur une échelle absolue. Un
+  // entraîneur coté 63 est le maillon faible de l'élite ; coté 59 il est la
+  // référence de la Régionale. Sur une échelle absolue le premier passerait
+  // pour le meilleur des deux, ce qui est faux, et surtout : tous les bancs
+  // de Régionale deviendraient des handicaps, ce qui n'a aucun sens.
+  //
+  // Amplitude calibrée par la mesure, pas choisie (TODO_AUDIT.md G25). Sur
+  // 400 saisons d'une division de 14 clubs aux niveaux réalistes :
+  //
+  //   delta ±0,02  ->  1,35 place d'écart entre le meilleur et le pire banc
+  //   delta ±0,03  ->  2,03
+  //   delta ±0,04  ->  ~2,6   <- retenu
+  //   delta ±0,05  ->  3,32
+  //   delta ±0,12  ->  7,58   (l'entraîneur écraserait l'effectif)
+  //
+  // L'étendue réelle des niveaux d'effectif dans une division est de 0,25 à
+  // 0,30. Une amplitude de ±0,04, soit 0,08 d'étendue, fait donc peser le
+  // banc pour environ un tiers de l'écart entre le meilleur et le pire
+  // effectif : il compte, il ne remplace pas le recrutement.
+  const AMPLITUDE_EFFET_ENTRAINEUR = 0.04;
+
+  function effetEntraineur(entraineur, niveau) {
+    if (!entraineur || entraineur.reputation == null) return 0;
+    const bornes = REPUTATION_PAR_NIVEAU[niveau] || REPUTATION_PAR_NIVEAU[3];
+    const milieu = (bornes.min + bornes.max) / 2;
+    const demiEtendue = (bornes.max - bornes.min) / 2;
+    if (!demiEtendue) return 0;
+    const relatif = (entraineur.reputation - milieu) / demiEtendue;
+    // Borné : une réputation hors fourchette (intérimaire très mal coté,
+    // entraîneur qui suit son club dans une division inférieure) ne doit pas
+    // faire exploser l'échelle.
+    const borne = Math.max(-1, Math.min(1, relatif));
+    return borne * AMPLITUDE_EFFET_ENTRAINEUR;
+  }
+
+  function niveauDeDivisionDuClub(saison, clubId) {
+    for (const { club, niveau } of tousLesClubsRivaux(saison)) {
+      if (club.id === clubId) return niveau;
+    }
+    return niveauDuJoueur(saison);
+  }
+
+  function effetEntraineurDuClub(saison, clubId) {
+    return effetEntraineur(entraineurDuClub(saison, clubId), niveauDeDivisionDuClub(saison, clubId));
+  }
+
+  // Le niveau d'un club, banc compris. UN SEUL endroit : les deux chemins qui
+  // produisent des résultats (les divisions abstraites et les matchs IA de la
+  // division du joueur) appellent celui-ci, jamais leur propre barème.
+  function niveauAvecEntraineur(saison, club, niveauDeBase) {
+    if (!club || !club.id) return niveauDeBase != null ? niveauDeBase : 0.5;
+    const base = niveauDeBase != null
+      ? niveauDeBase
+      : (club.niveauClub != null ? club.niveauClub : 0.5);
+    return Math.max(0.02, Math.min(0.98, base + effetEntraineurDuClub(saison, club.id)));
   }
 
   function entraineurDuClub(saison, clubId) {
@@ -231,7 +304,8 @@
         continue;
       }
       const partant = entraineur.nom;
-      e.parClub[club.id] = nouvelEntraineur(rng, niveau, pris, { interim: true });
+      e.parClub[club.id] = nouvelEntraineur(rng, niveau, pris,
+        { interim: true, reputationSortant: entraineur.reputation });
       nouveaux.push({
         clubId: club.id,
         clubNom: club.nom,
@@ -261,6 +335,10 @@
   Object.assign(global.RMClub = global.RMClub || {}, {
     assurerEntraineursRivaux,
     entraineurDuClub,
+    effetEntraineur,
+    effetEntraineurDuClub,
+    niveauAvecEntraineur,
+    AMPLITUDE_EFFET_ENTRAINEUR,
     postesLibres,
     posteOuvert,
     resoudreEntraineursFinDeSaison,

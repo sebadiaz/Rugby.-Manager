@@ -2490,9 +2490,23 @@
     const etat = poste
       ? '<span class="badgeNiveau niveau-urgent">Poste à pourvoir</span>'
       : (menace ? '<span class="badgeNiveau niveau-urgent">Sur la sellette</span>' : '');
+    // Ce que le banc APPORTE, en clair. L'effet est réel (il entre dans les
+    // résultats de ce club) : le taire en ferait une statistique invisible,
+    // et l'afficher en « +0,04 de niveau » serait du jargon. On dit donc ce
+    // que ça vaut par rapport à SA division — la seule comparaison qui ait
+    // un sens, cf. club-entraineurs-rivaux.js.
+    const effet = RMClub.effetEntraineurDuClub ? RMClub.effetEntraineurDuClub(saison, clubId) : 0;
+    const A = RMClub.AMPLITUDE_EFFET_ENTRAINEUR || 1;
+    const part = effet / A;
+    const apport = part > 0.5 ? 'Une référence de sa division : son équipe joue au-dessus de ses moyens.'
+      : part > 0.15 ? 'Un peu mieux coté que la moyenne de sa division.'
+      : part < -0.5 ? 'Le maillon faible de sa division : son équipe joue en dessous de ses moyens.'
+      : part < -0.15 ? 'Un peu moins bien coté que la moyenne de sa division.'
+      : 'Dans la moyenne de sa division.';
     return `<div class="offreManager">` +
       `<div class="offreTitre"><b>Entraîneur : ${echapperHTML(e.nom)}</b> ${etat}</div>` +
       `<div class="offreLigne">Réputation ${e.reputation} · ${echapperHTML(anciennete)}</div>` +
+      `<div class="offreLigne">${echapperHTML(apport)}</div>` +
       (poste ? `<div class="offreLigne" style="opacity:.85">${echapperHTML(poste.raison)}</div>` : '') +
       `</div>`;
   }
@@ -5476,7 +5490,10 @@
       RMWorld.avancerJourneeMonde(creerRng(graineDuJour('mondeJournee')), saison.monde, null);
       RMClub.avancerJourneeAutresDivisionsFrance(
         creerRng(graineDuJour('paliers')),
-        RMClub.assurerAutresDivisionsFrance(creerRng(graineDuJour('paliersCreation')), saison)
+        RMClub.assurerAutresDivisionsFrance(creerRng(graineDuJour('paliersCreation')), saison),
+        // Troisième argument (G25) : sans lui, les journées des autres
+        // divisions se joueraient sans tenir compte de leurs bancs de touche.
+        saison
       );
     }
 

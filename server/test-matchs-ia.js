@@ -114,8 +114,15 @@ test('R3 — la force employée vient du groupe DISPONIBLE, pas d\'un nombre fig
   const club = (s.adversaires || [])[0];
   const nominal = RMClub.niveauEffectifDuJour(s, club);
   assert.ok(nominal != null, 'la fonction doit répondre');
-  assert.ok(Math.abs(nominal - club.niveauClub) < 0.02,
-    `groupe au complet : la force doit valoir le niveau du club (${nominal} vs ${club.niveauClub})`);
+  // Depuis G25, le banc de touche entre AUSSI dans ce niveau. L'invariant
+  // vérifié ici reste le même — un groupe au complet ne subit aucune pénalité
+  // de disponibilité — mais la référence doit inclure le terme délibéré, sinon
+  // ce contrôle rougirait sur un effet voulu. Relâcher la tolérance à la
+  // place aurait masqué une vraie dérive du calcul de disponibilité.
+  const apportBanc = RMClub.effetEntraineurDuClub ? RMClub.effetEntraineurDuClub(s, club.id) : 0;
+  const reference = club.niveauClub + apportBanc;
+  assert.ok(Math.abs(nominal - reference) < 0.02,
+    `groupe au complet : la force doit valoir le niveau du club + son banc (${nominal} vs ${reference})`);
   // On met la moitié du groupe à l'infirmerie.
   const groupe = RMClub.groupeAdverse(s, club);
   groupe.slice(0, Math.floor(groupe.length / 2)).forEach((j) => { j.blessureJournees = 20; });
