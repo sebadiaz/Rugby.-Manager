@@ -445,6 +445,45 @@
     return partants;
   }
 
+  // Les bancs qui chauffent, toutes divisions confondues (G27).
+  //
+  // Le compteur `joursEnDanger` existait déjà et s'affichait — mais sur la
+  // fiche d'UN club à la fois. Pour savoir quels bancs étaient menacés dans
+  // le pays, il fallait ouvrir les 43 fiches une par une : la donnée était
+  // là, elle n'était pas atteignable.
+  //
+  // Rien n'est recalculé ici. On relit `positionsDuMoment` — la même source
+  // que le couperet — et le compteur porté par l'entraîneur lui-même. La
+  // liste ne peut donc pas dire autre chose que la fiche.
+  function bancsQuiChauffent(saison) {
+    const e = etat(saison);
+    const ouverts = new Set(e.postes.map((p) => p.clubId));
+    const liste = [];
+    for (const { club, niveau, position, total, journees } of positionsDuMoment(saison)) {
+      // Un poste déjà vacant n'est plus un banc qui chauffe : c'est une offre,
+      // et elle a son propre écran.
+      if (ouverts.has(club.id)) continue;
+      const entraineur = e.parClub[club.id];
+      if (!entraineur || !entraineur.joursEnDanger) continue;
+      liste.push({
+        clubId: club.id,
+        clubNom: club.nom,
+        niveau,
+        entraineur: entraineur.nom,
+        reputation: entraineur.reputation,
+        interim: !!entraineur.interim,
+        jours: entraineur.joursEnDanger,
+        sursis: JOURS_DE_SURSIS,
+        position,
+        total,
+        journees,
+      });
+    }
+    // Le plus menacé d'abord : c'est celui dont le poste se libérera le plus
+    // tôt, donc celui sur lequel le manager doit se décider.
+    return liste.sort((a, b) => b.jours - a.jours);
+  }
+
   function raisonDuDepart(partant, bilan, entraineur) {
     const part = bilan.position / bilan.total;
     const anciennete = (entraineur && entraineur.saisonsAuClub) || 0;
@@ -468,6 +507,7 @@
     posteOuvert,
     resoudreEntraineursFinDeSaison,
     resoudreLimogeagesEnCours,
+    bancsQuiChauffent,
     JOURNEES_MIN_AVANT_COUPERET,
     JOURS_DE_SURSIS,
     doitEtreLimoge,

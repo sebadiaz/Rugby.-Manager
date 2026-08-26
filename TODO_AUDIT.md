@@ -3810,6 +3810,96 @@ composition ni à la fatigue.
 
 ---
 
+## G27 — La donnée était là, elle n'était pas atteignable (livrée)
+
+### L'audit
+
+G26 a donné un compteur à chaque entraîneur menacé, et l'a affiché. Mais sur
+la fiche d'**un** club à la fois : pour savoir quels bancs chauffaient dans le
+pays, il fallait ouvrir les 43 fiches une par une. Vérifié —
+`entraineurDuClub` et `joursEnDanger` n'apparaissaient qu'à un seul endroit de
+`clubUI.js`, le bloc « Banc de touche ».
+
+### Un défaut trouvé pendant l'audit
+
+En cherchant si l'entraîneur d'en face pouvait peser sur les matchs du joueur,
+j'ai trouvé autre chose. Quand l'adversaire n'a pas d'effectif simulé (autre
+division, coupe, club étranger, académie), son XV est **généré à partir de son
+niveau**. Trois endroits le faisaient, chacun à sa façon, et le premier
+employait `adversaire.niveauClub` **nu** — alors que tous les autres chemins
+du jeu passent par `niveauAvecEntraineur` depuis G25.
+
+Le même club valait donc **deux niveaux différents** selon qu'il jouait contre
+le joueur ou contre l'ordinateur. Les trois sites passent désormais par un
+point d'entrée unique, `niveauAdversePourGeneration`.
+
+Sur la question de départ — l'entraîneur d'en face dans MES matchs quand
+l'adversaire a un vrai effectif — la réponse reste non, et pour une raison
+qu'il faut dire : avec `ECHELLE_ATTRIBUT_VERS_NIVEAU = 20`, un delta de 0,04
+vaut **0,8 point d'attribut**. Sur un match isolé c'est sous le bruit.
+L'effet de l'entraîneur est un agrégat de saison ; le transformer en modificateur
+par match serait de la fausse précision.
+
+### Deux de mes propres contrôles ne vérifiaient rien
+
+En cherchant à faire mordre chaque nouveau test — la vérification d'usage de
+cette session — deux sont restés verts alors que je cassais délibérément le
+code :
+
+**E32 (le tri)** : tous les compteurs valaient la même chose (20, 20), parce
+que les clubs entraient dans la zone au même moment. **N'importe quel ordre
+passait**, tri inversé compris. Corrigé en faisant sombrer deux clubs à des
+moments différents : 28 et 8. Le tri inversé rougit désormais.
+
+**E31 (pas de poste déjà vacant)** : après 300 jours tout le monde était
+limogé, la liste était **vide**, et l'assertion ne portait sur rien. En
+essayant d'atteindre l'état utile, j'ai découvert que l'exclusion que je
+testais est **redondante** : `resoudreLimogeagesEnCours` saute déjà les clubs
+dont le poste est ouvert AVANT d'incrémenter, donc leur intérimaire ne compte
+jamais. Je l'ai conservée comme garde-fou et je l'ai **écrit dans le test**
+plutôt que de fabriquer un état que le jeu ne produit pas.
+
+C'est la deuxième fois dans la session qu'un contrôle passe pour de mauvaises
+raisons (cf. G23, `test-rotation` R4/R6). Un test vert ne prouve rien tant
+qu'on ne l'a pas vu rougir.
+
+### Ce qui est livré
+
+`bancsQuiChauffent(saison)` — la liste des entraîneurs menacés, toutes
+divisions confondues, triée du plus avancé au moins avancé. Rien n'y est
+recalculé : elle relit `positionsDuMoment` (la même source que le couperet) et
+le compteur porté par l'entraîneur lui-même. E32 vérifie explicitement que la
+liste et la fiche affichent le **même** chiffre.
+
+En tête de l'onglet Monde, masquée quand rien ne chauffe — un écran vide
+n'apprend rien.
+
+### Ce que le joueur voit
+
+```
+🔥 Bancs qui chauffent
+  Solerac Chamois     [31 JOUR(S)]  [LIGUE RÉGIONALE]
+    Hugo Lefèvre · réputation 48 · 14e sur 14 après 12 journées
+    Dans les places critiques depuis 14 jour(s) sur 45.
+
+  Bellerive Béliers   [31 JOUR(S)]  [LIGUE D'EXCELLENCE]
+    Arthur André · réputation 78 · 13e sur 14 après 12 journées
+    Dans les places critiques depuis 14 jour(s) sur 45.
+```
+
+Deux divisions différentes dans une seule vue — l'information qui demandait
+43 clics. Le badge passe en rouge sous dix jours restants, et le nom du club
+est cliquable. Identique en 1400×1100 et 390×844, aucune erreur de page.
+
+### La nouvelle décision
+
+Attendre, ou prendre ce qui se présente. Le manager voit qu'un banc d'élite
+lâchera dans trente et un jours et peut refuser une offre de Régionale pour
+ça — en sachant qu'un club peut aussi se sauver et que le compteur repart
+alors à zéro.
+
+---
+
 ## G26 — Un club pouvait sombrer six mois sans que rien ne bouge (livrée)
 
 ### L'audit

@@ -127,6 +127,15 @@ tranche livrée — jamais en avance sur ce qui est réellement dans `main`.
 
 ## Historique des tranches livrées
 
+### G27 — La donnée était là, elle n'était pas atteignable (livrée)
+- **Domaines touchés :** carrière, monde IA, interface. `club-entraineurs-rivaux.js`, `clubUI.js`, `docs/index.html`, `server/test-marche-entraineurs.js`.
+- **L'audit :** G26 donnait un compteur à chaque entraîneur menacé, mais affiché sur la fiche d'**un** club à la fois — il fallait ouvrir les 43 fiches pour savoir quels postes allaient se libérer. Vérifié : `joursEnDanger` n'apparaissait qu'à un seul endroit de `clubUI.js`.
+- **Un défaut trouvé pendant l'audit :** quand l'adversaire n'a pas d'effectif simulé, son XV est **généré depuis son niveau** — et l'un des trois sites employait le niveau **nu** au lieu de `niveauAvecEntraineur`. Le même club valait deux niveaux différents selon qu'il jouait contre le joueur ou contre l'ordinateur. Les trois passent désormais par un point d'entrée unique.
+- **Ce qui reste hors de portée, et pourquoi :** l'entraîneur d'en face dans mes matchs quand l'adversaire a un vrai effectif. Avec `ECHELLE_ATTRIBUT_VERS_NIVEAU = 20`, un delta de 0,04 vaut **0,8 point d'attribut** — sous le bruit d'un match isolé. L'effet de l'entraîneur est un agrégat de saison ; en faire un modificateur par match serait de la fausse précision.
+- **Deux de mes propres contrôles ne vérifiaient rien**, découvert en cherchant à les faire mordre : E32 (le tri) restait vert **tri inversé compris**, parce que tous les compteurs valaient la même chose ; E31 portait sur une liste **vide**. Le premier est corrigé (deux clubs sombrant à des moments différents : 28 et 8, le tri inversé rougit) ; le second a révélé que l'exclusion testée est **redondante** — je l'ai conservée comme garde-fou et écrit dans le test, plutôt que de fabriquer un état que le jeu ne produit pas. Deuxième fois dans la session qu'un test passe pour de mauvaises raisons.
+- **Ce que le joueur voit :** en tête de l'onglet Monde, « 🔥 Bancs qui chauffent » — les entraîneurs menacés de **toutes** les divisions dans une seule vue, triés du plus avancé au moins avancé, badge rouge sous dix jours restants, nom de club cliquable. Masquée quand rien ne chauffe. Vérifié en 1400×1100 et 390×844, aucune erreur de page.
+- **La nouvelle décision :** attendre ou prendre ce qui se présente. On voit qu'un banc d'élite lâchera dans trente et un jours et on peut refuser une offre de Régionale pour ça — en sachant qu'un club peut se sauver et que le compteur repart à zéro.
+
 ### G26 — Un club pouvait sombrer six mois sans que rien ne bouge (livrée)
 - **Domaines touchés :** monde IA, carrière. `club-entraineurs-rivaux.js`, `club-evenements.js`, `club-carriere-manager.js`, `clubUI.js`, `server/test-marche-entraineurs.js`.
 - **L'audit :** `resoudreEntraineursFinDeSaison` n'était appelée que par `avancerSaison`. Le marché ne s'agitait **qu'une fois l'an, d'un bloc**, alors que la règle qui juge le classement du moment (`enDanger`) existait déjà — rien ne la déclenchait. Six contrôles écrits d'abord, cinq rouges.

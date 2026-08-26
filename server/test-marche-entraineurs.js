@@ -392,6 +392,26 @@ test('E19 — sur une saison, le banc compte SANS écraser l\'effectif', () => {
 // Fait jouer N journées du championnat du joueur, pour de vrai, et place le
 // club visé au fond du classement. On ne pose aucun drapeau : c'est le
 // classement RÉEL qui doit condamner l'entraîneur.
+// Joue N journées de plus, le club visé perdant à chaque fois. Incrémental :
+// appelé deux fois avec deux clubs différents, il les fait entrer dans la
+// zone de limogeage à des MOMENTS différents — sans quoi tous les compteurs
+// valent la même chose et les contrôles de tri ne vérifient rien.
+function coulerEncore(s, journees, clubCoule) {
+  const restants = (s.calendrier || []).filter((f) => !f.joue).slice(0, journees * 7);
+  for (const f of restants) {
+    const gagneDomicile = f.exterieurId === clubCoule;
+    RMClub.enregistrerResultat(s, f.id, gagneDomicile ? 30 : 3, gagneDomicile ? 3 : 30, 4, 0);
+  }
+  return s;
+}
+
+function joursQuiPassent(s, n, depuis) {
+  for (let j = 0; j < n; j++) {
+    RMClub.resoudreLimogeagesEnCours(creerRng((depuis || 900) + j), s, RMClub.dateCourante(s));
+  }
+  return s;
+}
+
 function saisonEnCours(s, journees, clubCoule) {
   const fixtures = (s.calendrier || []).filter((f) => !f.joue).slice(0, journees * 7);
   for (const f of fixtures) {
@@ -573,6 +593,155 @@ test('E27 — le rythme des limogeages reste crédible sur une vraie saison', ()
     `marché inerte : ${moyenne.toFixed(1)} limogeage(s) en cours de saison sur ~43 clubs (${parSaison.join(', ')})`);
   assert.ok(moyenne <= 12,
     `marché en convulsion : ${moyenne.toFixed(1)} limogeages en cours de saison sur ~43 clubs (${parSaison.join(', ')})`);
+});
+
+// --- E28..E33 : voir les bancs qui chauffent d'un seul coup d'œil ---------
+//
+// Audit avant cette partie : le compteur `joursEnDanger` existait et était
+// affiché — mais UNIQUEMENT sur la fiche d'un club, un club à la fois. Pour
+// savoir quels bancs étaient menacés dans le pays, il fallait ouvrir les 43
+// fiches une par une. La donnée était là ; elle n'était pas atteignable.
+
+test('E28 — rien ne chauffe tant que personne n\'est menacé', () => {
+  const s = carriere(null, 3);
+  assert.deepStrictEqual(RMClub.bancsQuiChauffent(s), [],
+    'une saison qui commence ne menace aucun banc');
+});
+
+test('E29 — un banc menacé est listé avec de quoi décider', () => {
+  const s = carriere(null, 3);
+  const club = s.adversaires[0];
+  saisonEnCours(s, 9, club.id);
+  for (let j = 0; j < 12; j++) {
+    RMClub.resoudreLimogeagesEnCours(creerRng(900 + j), s, RMClub.dateCourante(s));
+  }
+  const liste = RMClub.bancsQuiChauffent(s);
+  assert.ok(liste.length > 0, 'des bancs doivent chauffer après douze jours en zone critique');
+  const ligne = liste.find((x) => x.clubId === club.id);
+  assert.ok(ligne, `le club coulé doit être listé (${liste.map((x) => x.clubNom).join(', ')})`);
+  for (const champ of ['clubNom', 'entraineur', 'jours', 'sursis', 'position', 'total', 'niveau']) {
+    assert.ok(ligne[champ] != null, `il manque « ${champ} » : impossible de décider sur cette ligne`);
+  }
+  assert.ok(ligne.jours > 0 && ligne.jours < ligne.sursis,
+    `compteur incohérent : ${ligne.jours}/${ligne.sursis}`);
+});
+
+test('E30 — la liste couvre TOUTES les divisions, pas seulement la mienne', () => {
+  const s = carriere(null, 3);
+  // On fait jouer les autres divisions pour de vrai : sans journées disputées,
+  // elles ne peuvent condamner personne, et la liste serait muette par
+  // construction plutôt que par mesure.
+  for (let j = 0; j < 12; j++) {
+    RMClub.avancerJourneeAutresDivisionsFrance(creerRng(5500 + j), s.autresDivisionsFrance, s);
+  }
+  for (let j = 0; j < 20; j++) {
+    RMClub.resoudreLimogeagesEnCours(creerRng(900 + j), s, RMClub.dateCourante(s));
+  }
+  const liste = RMClub.bancsQuiChauffent(s);
+  const niveaux = new Set(liste.map((x) => x.niveau));
+  assert.ok(liste.length > 0, 'des bancs doivent chauffer ailleurs aussi');
+  assert.ok(niveaux.size >= 1, 'au moins une division doit être représentée');
+  const mienne = (s.adversaires || []).map((a) => a.id);
+  const ailleurs = liste.filter((x) => !mienne.includes(x.clubId));
+  assert.ok(ailleurs.length > 0,
+    `la liste ne doit pas se limiter à ma division (${liste.length} ligne(s), toutes chez moi)`);
+});
+
+test('E31 — ni mon club, ni un poste DÉJÀ libre', () => {
+  const s = carriere(null, 3);
+  // Il faut un état où un poste est DÉJÀ ouvert et où un autre entraîneur
+  // compte ENCORE : après 300 jours tout le monde est limogé, la liste est
+  // vide et ce contrôle ne vérifie rien. Mesuré — la première version restait
+  // verte même en supprimant l'exclusion des postes vacants.
+  const premier = s.adversaires[0];
+  const second = s.adversaires[1];
+  saisonEnCours(s, 7, premier.id);
+  joursQuiPassent(s, 40, 900);
+  coulerEncore(s, 4, second.id);
+  joursQuiPassent(s, 10, 2000);
+  assert.ok(RMClub.postesLibres(s).length > 0, 'prémisse : un poste doit être ouvert');
+  // NOTE, mesurée en essayant de faire mordre ce contrôle : l'exclusion des
+  // postes vacants dans `bancsQuiChauffent` est aujourd'hui REDONDANTE.
+  // `resoudreLimogeagesEnCours` saute déjà les clubs dont le poste est ouvert
+  // AVANT d'incrémenter, donc leur intérimaire ne compte jamais et le filtre
+  // sur le compteur suffit à l'écarter. Supprimer l'exclusion ne fait rien
+  // rougir — vérifié. Elle est conservée comme garde-fou : le jour où un
+  // intérimaire comptera à son tour, le même club apparaîtrait dans les deux
+  // écrans à la fois. L'assertion ci-dessous tient l'invariant, même si rien
+  // ne peut le violer pour l'instant.
+  const liste = RMClub.bancsQuiChauffent(s);
+  assert.ok(liste.length > 0, 'prémisse : un banc doit encore chauffer');
+  assert.ok(!liste.some((x) => x.clubId === s.clubJoueur.id),
+    'mon propre banc n\'a rien à faire dans cette liste');
+  const ouverts = new Set(RMClub.postesLibres(s).map((p) => p.clubId));
+  const doublons = liste.filter((x) => ouverts.has(x.clubId));
+  assert.deepStrictEqual(doublons.map((x) => x.clubNom), [],
+    'un poste déjà vacant n\'est plus un banc qui chauffe : c\'est une offre');
+});
+
+test('E32 — la liste est triée par urgence, et dit la MÊME chose que la fiche', () => {
+  const s = carriere(null, 3);
+  // Deux clubs qui sombrent à des MOMENTS différents : sans ça, tous les
+  // compteurs valent la même chose et n'importe quel ordre passe. Mesuré :
+  // la première version de ce contrôle restait verte avec le tri INVERSÉ.
+  const premier = s.adversaires[0];
+  const second = s.adversaires[1];
+  saisonEnCours(s, 7, premier.id);
+  joursQuiPassent(s, 20, 900);
+  coulerEncore(s, 4, second.id);
+  joursQuiPassent(s, 8, 2000);
+  const liste = RMClub.bancsQuiChauffent(s);
+  assert.ok(liste.length > 1, `il faut plusieurs lignes pour vérifier le tri (${liste.length})`);
+  assert.ok(new Set(liste.map((x) => x.jours)).size > 1,
+    `il faut des compteurs DIFFÉRENTS, sinon le tri n'est pas vérifié (${liste.map((x) => x.jours).join(', ')})`);
+  for (let i = 1; i < liste.length; i++) {
+    assert.ok(liste[i - 1].jours >= liste[i].jours,
+      `tri cassé : ${liste[i - 1].jours} avant ${liste[i].jours}`);
+  }
+  // Un seul barème : le compteur listé est celui de l'entraîneur lui-même,
+  // pas un chiffre recalculé pour l'écran.
+  for (const x of liste) {
+    assert.strictEqual(x.jours, RMClub.entraineurDuClub(s, x.clubId).joursEnDanger,
+      `${x.clubNom} : la liste et la fiche doivent afficher le même compteur`);
+  }
+});
+
+test('E33 — un adversaire dérivé de son NIVEAU inclut son banc', () => {
+  // Défaut trouvé pendant l'audit (TODO_AUDIT.md G27) : quand l'adversaire du
+  // joueur n'a pas d'effectif simulé (autre division, coupe, club étranger),
+  // son XV est GÉNÉRÉ à partir de son niveau. clubUI.js employait
+  // `adversaire.niveauClub` nu, alors que tous les autres chemins passent par
+  // `niveauAvecEntraineur`. Le même club valait donc deux niveaux différents
+  // selon qu'il jouait contre le joueur ou contre l'ordinateur.
+  //
+  // Ce contrôle est STRUCTUREL : il vérifie que l'écran appelle la bonne
+  // fonction. Il ne remplace pas une mesure de jeu — un écart de 0,04 sur un
+  // match isolé reste sous le bruit — mais il empêche l'incohérence de
+  // revenir.
+  //
+  // Le contrôle porte sur le POINT D'ENTRÉE UNIQUE, pas sur chaque ligne : une
+  // première version filtrait les lignes contenant à la fois `genererEffectif`
+  // et `niveauClub`, et laissait passer le site qui calculait son niveau sur
+  // la ligne précédente. Une vérification ligne à ligne se contourne sans le
+  // vouloir.
+  const src = require('fs').readFileSync(
+    require('path').join(__dirname, '../docs/js/clubUI.js'), 'utf8');
+  const lignes = src.split('\n');
+  const appels = lignes.map((l, i) => ({ l, i })).filter((x) => /genererEffectif\(/.test(x.l));
+  assert.ok(appels.length >= 3, `prémisse : l'écran doit générer des effectifs (${appels.length} appel(s))`);
+  // Chaque appel doit tirer son niveau de `niveauAdversePourGeneration`, seule
+  // fonction à connaître le banc — dans l'appel lui-même ou dans les trois
+  // lignes qui le précèdent (le niveau y est parfois préparé).
+  const hors = appels.filter((x) => {
+    const bloc = lignes.slice(Math.max(0, x.i - 3), x.i + 3).join(' ');
+    return !/niveauAdversePourGeneration/.test(bloc);
+  });
+  assert.deepStrictEqual(hors.map((x) => x.l.trim()), [],
+    'un effectif adverse généré doit partir du niveau BANC COMPRIS');
+  // Et cette fonction doit réellement passer par la règle partagée.
+  const def = src.slice(src.indexOf('function niveauAdversePourGeneration'));
+  assert.ok(/niveauAvecEntraineur/.test(def.slice(0, 600)),
+    'le point d\'entrée doit appeler niveauAvecEntraineur, sinon il ne sert à rien');
 });
 
 console.log(`\n${nbTests} test(s) exécuté(s).`);

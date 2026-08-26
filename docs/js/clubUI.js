@@ -2465,6 +2465,21 @@
   // combien de temps, et si sa place est menacée. Le « menacé » n'est pas un
   // second barème : c'est RMClub.enDanger, soit la règle de limogeage de fin
   // de saison appliquée au classement provisoire.
+  // Le niveau d'un club adverse dont on doit GÉNÉRER l'effectif (autre
+  // division, coupe, club étranger, académie). Un seul point d'entrée (G27) :
+  // trois endroits le faisaient chacun à leur façon, et le premier employait
+  // le niveau NU alors que tous les autres chemins du jeu passent par
+  // `niveauAvecEntraineur`. Le même club valait donc deux niveaux différents
+  // selon qu'il jouait contre le joueur ou contre l'ordinateur.
+  //
+  // `facteur` sert aux équipes qui ne sont pas le XV premier (réserve à 0,65).
+  function niveauAdversePourGeneration(club, facteur) {
+    const base = club && club.niveauClub != null ? club.niveauClub : 0.5;
+    const avecBanc = RMClub.niveauAvecEntraineur
+      ? RMClub.niveauAvecEntraineur(saison, club, base) : base;
+    return Math.max(0.1, avecBanc * (facteur != null ? facteur : 1));
+  }
+
   function blocEntraineurClub(clubId) {
     if (!RMClub.entraineurDuClub) return '';
     const e = RMClub.entraineurDuClub(saison, clubId);
@@ -3710,11 +3725,38 @@
   };
   let divisionMondeAffichee = null;
 
+  // Bancs qui chauffent (G27) : la liste vient telle quelle de
+  // `RMClub.bancsQuiChauffent`, qui relit le compteur porté par l'entraîneur.
+  // Rien n'est recalculé ici — l'écran ne peut pas dire autre chose que la
+  // fiche du club.
+  function rafraichirBancsQuiChauffent() {
+    const carte = document.getElementById('carteBancsQuiChauffent');
+    if (!carte || !RMClub.bancsQuiChauffent) return;
+    const liste = RMClub.bancsQuiChauffent(saison);
+    // Rien qui chauffe : on masque plutôt que d'afficher un tableau vide.
+    if (!liste.length) { carte.style.display = 'none'; return; }
+    carte.style.display = '';
+    document.getElementById('clubBancsQuiChauffent').innerHTML = liste.map((x) => {
+      const reste = Math.max(0, x.sursis - x.jours);
+      const urgence = reste <= 10 ? ' niveau-urgent' : ' niveau-info';
+      const division = RMClub.nomPalierFrance ? RMClub.nomPalierFrance(x.niveau) : `Division ${x.niveau}`;
+      return `<div class="offreManager">` +
+        `<div class="offreTitre"><b>${lienClub(x.clubId)}</b>` +
+        `<span class="badgeNiveau${urgence}">${reste} jour(s)</span>` +
+        `<span class="badgeNiveau niveau-info">${echapperHTML(division)}</span></div>` +
+        `<div class="offreLigne">${echapperHTML(x.entraineur)}${x.interim ? ' (intérimaire)' : ''}` +
+        ` · réputation ${x.reputation} · ${x.position}e sur ${x.total} après ${x.journees} journées</div>` +
+        `<div class="offreLigne">Dans les places critiques depuis <b>${x.jours}</b> jour(s) sur ${x.sursis}.</div>` +
+        `</div>`;
+    }).join('');
+  }
+
   function rafraichirMonde() {
     if (!saison.monde) {
       RMWorld.assurerMonde(creerRng(graineAleatoire()), saison);
       sauvegarder();
     }
+    rafraichirBancsQuiChauffent();
     const monde = saison.monde;
     document.getElementById('mondePays').innerHTML = monde.pays.map((pays) => {
       const boutonsDivisions = pays.divisions.map((d) =>
@@ -5347,7 +5389,8 @@
     const cfgAdverse = RMClub.aUnEffectifSimule(adversaire)
       ? RMClub.effectifVersJoueursCfg(adversaire)
       : RMClub.effectifVersJoueursCfg({
-        effectif: RMClub.genererEffectif(creerRng(graineAleatoire()), adversaire.niveauClub || 0.5),
+        effectif: RMClub.genererEffectif(creerRng(graineAleatoire()),
+          niveauAdversePourGeneration(adversaire)),
       });
     const cfgJoueur = RMClub.compositionVersJoueursCfg(effectifEnLice, compositionUtilisee);
     window.RMMain.demarrerMatchClub(
@@ -5674,7 +5717,9 @@
       function cfgDe(clubId) {
         if (clubId === idJoueur) return RMClub.compositionVersJoueursCfg(effectifB, compositionJoueur);
         const clubAdverse = RMClub.club(saison, clubId);
-        const niveauB = Math.max(0.1, (clubAdverse.niveauClub != null ? clubAdverse.niveauClub : 0.5) * 0.65);
+        // 0,65 : une équipe réserve, pas le XV premier. Le banc du club
+        // compte quand même — c'est le même entraîneur.
+        const niveauB = niveauAdversePourGeneration(clubAdverse, 0.65);
         return RMClub.effectifVersJoueursCfg({ effectif: RMClub.genererEffectif(rng, niveauB) });
       }
       const clubDomicile = RMClub.club(saison, f.domicileId);
@@ -5765,7 +5810,10 @@
         ? fixtureEspoirs.exterieurId : fixtureEspoirs.domicileId;
       const clubAdverse = parIdAcademie[idAcademieAdverse] || { nom: 'Académie', niveauClub: 0.2 };
       const cfgJoueur = RMClub.compositionVersJoueursCfg(effectifEspoirs, compositionEspoirs);
-      const cfgAdverse = RMClub.effectifVersJoueursCfg({ effectif: RMClub.genererEffectif(rng, clubAdverse.niveauClub) });
+      // Une académie n'a pas d'entraîneur enregistré : `niveauAvecEntraineur`
+      // rend alors son niveau nu, sans traitement particulier.
+      const cfgAdverse = RMClub.effectifVersJoueursCfg({
+        effectif: RMClub.genererEffectif(rng, niveauAdversePourGeneration(clubAdverse)) });
       window.RMMain.simulerMatchEnArrierePlan(
         graineAleatoire(), duree,
         cfgJoueur, cfgAdverse,

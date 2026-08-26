@@ -646,6 +646,16 @@
 
         <div class="voletOnglet" data-volet="monde" style="display:none;">
           <div class="enTetePage"><span class="categoriePage">Compétition</span><h2>🌍 Écosystème mondial</h2><p>Les pyramides professionnelles de 12 nations et les compétitions internationales — un monde vivant qui avance en même temps que ta saison (noms fictifs, structure inspirée du vrai rugby).</p></div>
+          <!-- Bancs qui chauffent (G27) : le compteur `joursEnDanger` existait
+               et s'affichait, mais sur la fiche d'UN club à la fois — il
+               fallait ouvrir 43 fiches pour savoir quels postes allaient se
+               libérer. Carte masquée quand rien ne chauffe : un écran vide
+               n'apprend rien. -->
+          <div class="carteClub" id="carteBancsQuiChauffent" style="display:none;">
+            <h3>🔥 Bancs qui chauffent</h3>
+            <p class="noteLectureSeule" style="margin:0 0 10px;">Les entraîneurs menacés dans tout le pays. Un poste qui se libère, c'est une offre qui arrive — le plus avancé en premier.</p>
+            <div id="clubBancsQuiChauffent"></div>
+          </div>
           <div class="carteClub">
             <h3>🌐 Pays</h3>
             <p style="margin:0 0 10px;font-size:12px;color:var(--text-faint);">Choisis un pays pour voir ses divisions, son système (montées/descentes ou franchises) et son classement réel.</p>
