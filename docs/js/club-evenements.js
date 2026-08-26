@@ -229,6 +229,16 @@
     // après club.js.
     const propositionConseil = RMClub.propositionConseilDuJour
       ? RMClub.propositionConseilDuJour(saison, date) : null;
+    // Limogeages en cours de saison (G26) : les bancs adverses peuvent sauter
+    // avant l'intersaison. Canal de tirage DÉDIÉ (59) — le greffer sur le flux
+    // quotidien décalerait tous les tirages déjà en place, exactement comme
+    // pour les ventes (37) et les propositions rivales (47).
+    const limogeages = RMClub.resoudreLimogeagesEnCours
+      ? RMClub.resoudreLimogeagesEnCours(
+          global.RugbyEngine.creerRng(RMClub.grainePourJour(
+            Number.isFinite(saison.graine) ? saison.graine : 1, date, 59)),
+          saison, date)
+      : [];
 
     // Un retour de blessure ou de prêt change la composition disponible : le
     // manager doit l'apprendre. Message RÉEL, adossé à un changement réel.
@@ -260,6 +270,7 @@
       reunionVestiaire,
       propositionConseil,
       signatureRivale: mercatoDuJour ? mercatoDuJour.signature : null,
+      limogeages,
       offreRecue,
       travaux,
       missionReseau,

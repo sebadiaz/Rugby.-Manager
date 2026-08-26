@@ -320,6 +320,131 @@
     return nouveaux;
   }
 
+  // --- Limogeage EN COURS DE SAISON (G26) ---------------------------------
+  //
+  // Avant : `resoudreEntraineursFinDeSaison` n'était appelée que par
+  // `avancerSaison`. Un club pouvait sombrer pendant six mois sans que rien
+  // ne bouge, et le marché ne s'agitait qu'une fois l'an, d'un bloc. La règle
+  // de jugement existait pourtant déjà et lisait le classement du moment —
+  // rien ne la déclenchait.
+  //
+  // Le verdict est le MÊME qu'en fin de saison (`doitEtreLimoge` via
+  // `enDanger`) : un second barème finirait par diverger, et le « sur la
+  // sellette » affiché au joueur ne prédirait plus rien.
+  //
+  // Deux garde-fous :
+  //   - il faut un ÉCHANTILLON. Condamner sur deux journées serait absurde,
+  //     et le classement d'un début de saison ne veut rien dire.
+  //   - ce n'est jamais une certitude à date fixe : un club au fond craque un
+  //     jour ou un autre, jamais le jour même. D'où un tirage quotidien.
+  const JOURNEES_MIN_AVANT_COUPERET = 6;
+  // Combien de jours un club supporte de rester en zone de limogeage avant
+  // que le banc saute. Une PATIENCE qui s'épuise, pas un tirage à pile ou
+  // face — trois raisons, toutes vérifiées :
+  //
+  //   1. le premier jet était un tirage quotidien à 2 % ; mesuré sur douze
+  //      saisons réellement jouées, il produisait **15 limogeages par saison**
+  //      sur 43 clubs. Le marché aurait été en convulsion permanente et
+  //      presque chaque club aurait fini avec un intérimaire ;
+  //   2. un tirage rend les contrôles instables : ils passent ou non selon le
+  //      nombre de jours qu'on veut bien leur laisser ;
+  //   3. et surtout, une patience se RACONTE. Le joueur voit « sur la
+  //      sellette » puis le couperet tomber, au lieu d'un coup de dé.
+  //
+  // Le compteur repart à zéro dès que le club sort de la zone : gagner deux
+  // matchs sauve réellement un entraîneur.
+  const JOURS_DE_SURSIS = 45;
+  // Nombre de places, en partant du bas, qui déclenchent une crise en cours
+  // de saison. Calibré par la mesure ci-dessous.
+  const PLACES_CRITIQUES = 2;
+
+  function journeesJouees(calendrier, nbClubs) {
+    const jouees = (calendrier || []).filter((f) => f.joue).length;
+    const parJournee = Math.max(1, Math.floor((nbClubs || 2) / 2));
+    return Math.floor(jouees / parJournee);
+  }
+
+  // Position actuelle de chaque club rival, division par division, avec le
+  // nombre de journées réellement disputées. Lu, jamais reconstitué.
+  function positionsDuMoment(saison) {
+    const RMClub = global.RMClub;
+    const liste = [];
+    const maDivision = RMClub.classementTrie ? RMClub.classementTrie(saison) : [];
+    const nbMien = (saison.adversaires || []).length + 1;
+    const journeesMien = journeesJouees(saison.calendrier, nbMien);
+    maDivision.forEach((ligne, i) => {
+      const club = (saison.adversaires || []).find((a) => a.id === ligne.clubId);
+      if (!club) return; // le club du joueur : ce n'est pas lui qu'on limoge
+      liste.push({ club, niveau: niveauDuJoueur(saison),
+        position: i + 1, total: maDivision.length, journees: journeesMien });
+    });
+    const autres = (saison.autresDivisionsFrance || {}).divisions || {};
+    for (const cle of Object.keys(autres)) {
+      const div = autres[cle];
+      if (!div || !div.clubs) continue;
+      const niveau = Number(div.niveau) || Number(cle);
+      const trie = RMClub.classementTrieDe ? RMClub.classementTrieDe(div.classement || {}) : [];
+      const j = journeesJouees(div.calendrier, div.clubs.length);
+      trie.forEach((ligne, i) => {
+        const club = div.clubs.find((c) => c.id === ligne.clubId);
+        if (!club) return;
+        liste.push({ club, niveau, position: i + 1, total: trie.length, journees: j });
+      });
+    }
+    return liste;
+  }
+
+  function resoudreLimogeagesEnCours(rng, saison, date) {
+    const e = etat(saison);
+    const pris = nomsPris(saison);
+    const partants = [];
+    for (const { club, niveau, position, total, journees } of positionsDuMoment(saison)) {
+      if (journees < JOURNEES_MIN_AVANT_COUPERET) continue;
+      const entraineur = e.parClub[club.id];
+      if (!entraineur) continue;
+      // Un poste déjà ouvert ne se rouvre pas : l'intérimaire a le temps de
+      // faire ses preuves jusqu'à la fin de la saison.
+      if (e.postes.some((p) => p.clubId === club.id)) continue;
+      if (!enDanger(position, total, entraineur)) {
+        // Sorti de la zone : la patience se reconstitue entièrement.
+        entraineur.joursEnDanger = 0;
+        continue;
+      }
+      // Mi-saison, la barre est PLUS HAUTE qu'à la fin. Ce n'est pas un
+      // second barème — le verdict reste `enDanger`, donc `doitEtreLimoge` —
+      // mais une condition supplémentaire par-dessus : être 12e sur 14 en
+      // novembre ne coûte pas un poste, être dans les places qui descendent,
+      // oui. Sans ce resserrement, mesuré sur douze saisons réellement
+      // jouées : 15 limogeages par saison sur 43 clubs.
+      if (position < total - (PLACES_CRITIQUES - 1)) { entraineur.joursEnDanger = 0; continue; }
+      entraineur.joursEnDanger = (entraineur.joursEnDanger || 0) + 1;
+      if (entraineur.joursEnDanger < JOURS_DE_SURSIS) continue;
+      const partant = entraineur.nom;
+      e.parClub[club.id] = nouvelEntraineur(rng, niveau, pris,
+        { interim: true, reputationSortant: entraineur.reputation });
+      const poste = {
+        clubId: club.id,
+        clubNom: club.nom,
+        niveau,
+        raison: `${partant} a été limogé en cours de saison : ${position}e sur ${total} après ${journees} journées.`,
+        joursEnDanger: entraineur.joursEnDanger,
+        entraineurParti: partant,
+        interim: e.parClub[club.id].nom,
+        depuisSaison: saison.numero || 1,
+        enCoursDeSaison: true,
+      };
+      e.postes.push(poste);
+      partants.push(poste);
+      // Le manager doit l'apprendre : un marché qui bouge dans son dos ne
+      // lui sert à rien.
+      if (global.RMClub.ajouterMessage) {
+        global.RMClub.ajouterMessage(saison, 'carriere', 'Un banc se libère',
+          `${poste.raison} ${poste.interim} assure l'intérim.`);
+      }
+    }
+    return partants;
+  }
+
   function raisonDuDepart(partant, bilan, entraineur) {
     const part = bilan.position / bilan.total;
     const anciennete = (entraineur && entraineur.saisonsAuClub) || 0;
@@ -342,6 +467,9 @@
     postesLibres,
     posteOuvert,
     resoudreEntraineursFinDeSaison,
+    resoudreLimogeagesEnCours,
+    JOURNEES_MIN_AVANT_COUPERET,
+    JOURS_DE_SURSIS,
     doitEtreLimoge,
     enDanger,
     REPUTATION_PAR_NIVEAU,

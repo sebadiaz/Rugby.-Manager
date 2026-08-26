@@ -3810,6 +3810,118 @@ composition ni à la fatigue.
 
 ---
 
+## G26 — Un club pouvait sombrer six mois sans que rien ne bouge (livrée)
+
+### L'audit
+
+`resoudreEntraineursFinDeSaison` n'était appelée que par `avancerSaison`. Le
+marché ne s'agitait donc **qu'une fois l'an, d'un bloc**. La règle de jugement
+existait pourtant déjà et lisait le classement du moment (`enDanger`) — rien
+ne la déclenchait. Six contrôles écrits d'abord, cinq rouges (E20, le
+garde-fou « un seul barème », passait déjà : c'est ce qu'on veut d'un
+invariant).
+
+### Un tirage à pile ou face, puis une patience
+
+Premier jet : une probabilité quotidienne de 2 % pour un club en zone de
+limogeage. Mesuré sur douze saisons **réellement jouées** (matchs IA résolus,
+autres divisions avancées, sept jours entre deux journées) :
+
+```
+limogeages en cours de saison : 16, 16, 14, 14, 16, 12, 17, 15, 14, 15, 16, 17
+moyenne : 15,2 sur ~43 clubs
+```
+
+Le marché aurait été en convulsion permanente, et presque chaque club aurait
+fini la saison avec un intérimaire. Remplacé par une **patience qui s'épuise**,
+pour trois raisons :
+
+1. un tirage rend les contrôles instables — ils passent ou non selon le nombre
+   de jours qu'on veut bien leur laisser ;
+2. une patience se **raconte** : le joueur voit « sur la sellette », puis le
+   compteur monter, puis le couperet ;
+3. le compteur repart à zéro dès que le club sort de la zone — gagner deux
+   matchs sauve réellement un entraîneur.
+
+### La patience seule ne suffisait pas non plus
+
+```
+patience de 30 jours -> 15,2 limogeages / saison   (inchangé !)
+```
+
+La zone de limogeage, c'est **20 % de chaque division** : une dizaine de clubs
+en permanence sur trois divisions, et ils y restent. Trente jours ne filtrent
+rien. Or être 12e sur 14 en novembre ne coûte pas un poste — être dans les
+places qui descendent, oui. D'où une condition supplémentaire, **par-dessus**
+le verdict partagé (ce n'est pas un second barème : `enDanger` reste seul juge
+de qui mérite le couperet).
+
+Quatre calibrations mesurées :
+
+```
+places critiques = 2, sursis = 30 j  ->  6,83 / saison
+places critiques = 1, sursis = 30 j  ->  3,75
+places critiques = 2, sursis = 45 j  ->  5,92   <- retenu
+places critiques = 3, sursis = 45 j  ->  8,67
+```
+
+**2 places / 45 jours.** Un club doit rester dans les places de relégation un
+mois et demi. E27 épingle la fourchette [2, 12] et refuse les deux dérives,
+vérifié en les provoquant : sursis de 400 jours → « marché inerte : 0,0 » ;
+5 places et 10 jours de sursis → « marché en convulsion : 18,0 ».
+
+### Le défaut que cette tranche a fait remonter
+
+En vérifiant qu'un poste ouvert en cours de saison produit bien une offre, E24
+échouait : le poste s'ouvrait, l'offre n'apparaissait pas. Mesuré sur
+40 carrières :
+
+```
+cas où ≥2 postes étaient ouverts dans ma division           40
+dont le poste du DERNIER, ouvert mais ABSENT des offres     40  (100 %)
+```
+
+Le plafond de deux offres par division se remplissait par exigence
+décroissante — donc toujours par les plus prestigieux. Or c'est exactement le
+poste que le jeu rend le plus accessible : `exigenceClub` retranche 18 points
+à la lanterne rouge, « prend qui veut ». **Une règle en annulait une autre en
+silence**, et le manager en difficulté ne voyait jamais le poste de sauvetage
+qui lui tendait les bras.
+
+Un créneau par division est désormais réservé au poste le plus accessible :
+l'écran montre les deux bouts, l'ambition et le sauvetage.
+
+### Ce que le joueur voit
+
+Sur une sauvegarde produite par une demi-saison réellement jouée — quatre
+limogeages en cours de route, un club sur la sellette :
+
+```
+Écran des offres (onglet Statistiques → Vue d'ensemble)
+  Poste libre : Clément Chevalier a été limogé en cours de saison : 14e sur 14 après 12 journées.
+  Poste libre : Maxime Fontaine  ... 16e sur 16 ...
+  Poste libre : Nathan Moreau    ... 15e sur 16 ...
+  Poste libre : Julien Legrand   ... 13e sur 14 ...
+
+Fiche d'un club, « Banc de touche »
+  Entraîneur : Hugo Lefèvre  [SUR LA SELLETTE]
+  Réputation 48 · 4 saisons au club
+  Dans la moyenne de sa division.
+  Dans les places critiques depuis 14 jour(s) : son club le lâche au-delà de 45.
+```
+
+Identique en 1400×1100 et 390×844, aucune erreur de page, seul `version.json`
+manque en local.
+
+### La nouvelle décision
+
+Un poste ne tombe plus du ciel à l'intersaison : il se voit venir. Le manager
+peut suivre un club qui s'enfonce, laisser passer une offre en sachant qu'un
+meilleur banc va se libérer dans trois semaines — ou se tromper, et voir le
+club se sauver au dernier moment.
+
+---
+
 ## G25 — Le nom sur le banc n'était qu'une étiquette (livrée)
 
 ### La mesure d'abord : est-ce que ça vaut le coup ?

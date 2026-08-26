@@ -374,17 +374,45 @@
     // accaparées par la Ligue d'Excellence, et plus une seule de sa propre
     // division — il ne lui restait qu'un choix binaire « tout ou rien ».
     // Deux postes par division au maximum : l'écran montre un éventail réel.
+    //
+    // Et jamais que les plus flatteurs À L'INTÉRIEUR d'une division non plus.
+    // Mesuré (TODO_AUDIT.md G26) : quand deux autres postes étaient ouverts
+    // dans la même division, celui du DERNIER du classement n'apparaissait
+    // JAMAIS — 40 fois sur 40. Le plafond se remplissait par exigence
+    // décroissante, donc toujours par les plus prestigieux.
+    //
+    // Or c'est exactement le poste que le jeu rend le plus accessible :
+    // `exigenceClub` retranche 18 points à la lanterne rouge, « prend qui
+    // veut ». Une règle en annulait une autre en silence, et le manager en
+    // difficulté ne voyait jamais le poste de sauvetage qui lui tendait les
+    // bras. Un créneau par division est donc réservé au poste le plus
+    // accessible : l'écran montre les deux bouts, l'ambition et le sauvetage.
     const OFFRES_MAX_PAR_DIVISION = 2;
-    const parDivision = {};
-    const retenus = [];
+    const parNiveau = {};
     for (const c of candidats) {
-      const n = parDivision[c.niveau] || 0;
-      if (n >= OFFRES_MAX_PAR_DIVISION) continue;
-      parDivision[c.niveau] = n + 1;
-      retenus.push(c);
+      if (!parNiveau[c.niveau]) parNiveau[c.niveau] = [];
+      parNiveau[c.niveau].push(c);
     }
+    const retenus = [];
+    for (const niveau of Object.keys(parNiveau)) {
+      // `candidats` est déjà trié par exigence décroissante : le premier est
+      // le plus flatteur, le dernier le plus accessible.
+      const liste = parNiveau[niveau];
+      const pris = [liste[0]];
+      const dernier = liste[liste.length - 1];
+      if (liste.length > 1 && OFFRES_MAX_PAR_DIVISION > 1) pris.push(dernier);
+      // S'il reste de la place (plafond > 2), on complète par ordre de
+      // prestige sans jamais reprendre les deux déjà retenus.
+      for (const c of liste) {
+        if (pris.length >= OFFRES_MAX_PAR_DIVISION) break;
+        if (pris.indexOf(c) === -1) pris.push(c);
+      }
+      for (const c of pris) retenus.push(c);
+    }
+    // On restitue l'ordre d'origine (exigence décroissante) : l'écran doit
+    // continuer d'ouvrir sur le poste le plus flatteur.
     candidats.length = 0;
-    for (const c of retenus) candidats.push(c);
+    for (const c of retenus.sort((x, y) => y.exigence - x.exigence)) candidats.push(c);
     const niveauJoueur = (saison.clubJoueur.palierPyramide || { niveau: 3 }).niveau;
     return candidats.slice(0, MAX_OFFRES).map(({ club, position, total, exigence, niveau, raisonPosteLibre }) => ({
       id: 'offre-' + club.id + '-' + (saison.numero || 1),

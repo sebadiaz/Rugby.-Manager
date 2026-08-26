@@ -2490,6 +2490,15 @@
     const etat = poste
       ? '<span class="badgeNiveau niveau-urgent">Poste à pourvoir</span>'
       : (menace ? '<span class="badgeNiveau niveau-urgent">Sur la sellette</span>' : '');
+    // Le compte à rebours (G26) : un entraîneur qui saute en cours de saison
+    // ne doit pas être une surprise. Le joueur voit la patience s'épuiser, et
+    // peut décider d'attendre ce poste-là plutôt qu'un autre.
+    const sursis = RMClub.JOURS_DE_SURSIS || 0;
+    const jours = e.joursEnDanger || 0;
+    const compteARebours = (!poste && jours > 0 && sursis)
+      ? `<div class="offreLigne">Dans les places critiques depuis <b>${jours}</b> jour(s) : `
+        + `son club le lâche au-delà de ${sursis}.</div>`
+      : '';
     // Ce que le banc APPORTE, en clair. L'effet est réel (il entre dans les
     // résultats de ce club) : le taire en ferait une statistique invisible,
     // et l'afficher en « +0,04 de niveau » serait du jargon. On dit donc ce
@@ -2507,6 +2516,7 @@
       `<div class="offreTitre"><b>Entraîneur : ${echapperHTML(e.nom)}</b> ${etat}</div>` +
       `<div class="offreLigne">Réputation ${e.reputation} · ${echapperHTML(anciennete)}</div>` +
       `<div class="offreLigne">${echapperHTML(apport)}</div>` +
+      compteARebours +
       (poste ? `<div class="offreLigne" style="opacity:.85">${echapperHTML(poste.raison)}</div>` : '') +
       `</div>`;
   }

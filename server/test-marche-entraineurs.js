@@ -381,4 +381,198 @@ test('E19 — sur une saison, le banc compte SANS écraser l\'effectif', () => {
     `mais pas écraser l'effectif : ${ecart.toFixed(2)} places d'écart, c'est trop`);
 });
 
+// --- E20..E25 : un banc peut sauter EN COURS DE SAISON --------------------
+//
+// Audit avant cette partie : `resoudreEntraineursFinDeSaison` n'était appelée
+// que par `avancerSaison`. Un club pouvait donc sombrer pendant six mois sans
+// que rien ne bouge, et le marché ne s'agitait qu'une fois l'an, d'un bloc.
+// La règle de jugement, elle, existait déjà et lisait le classement du
+// moment (`enDanger`) — mais rien ne la déclenchait.
+
+// Fait jouer N journées du championnat du joueur, pour de vrai, et place le
+// club visé au fond du classement. On ne pose aucun drapeau : c'est le
+// classement RÉEL qui doit condamner l'entraîneur.
+function saisonEnCours(s, journees, clubCoule) {
+  const fixtures = (s.calendrier || []).filter((f) => !f.joue).slice(0, journees * 7);
+  for (const f of fixtures) {
+    const gagneDomicile = f.exterieurId === clubCoule;
+    RMClub.enregistrerResultat(s, f.id, gagneDomicile ? 30 : 3, gagneDomicile ? 3 : 30, 4, 0);
+  }
+  return s;
+}
+
+test('E20 — la règle du couperet est la MÊME en cours de saison qu\'à la fin', () => {
+  // Un seul barème : `enDanger` doit être exactement `doitEtreLimoge` appliqué
+  // au classement du moment. Deux barèmes finiraient par diverger, et le
+  // joueur verrait « sur la sellette » sur un club qui ne sera pas limogé.
+  const bilan = { position: 13, total: 14 };
+  const e = { reputation: 50, saisonsAuClub: 2, interim: false };
+  assert.strictEqual(RMClub.enDanger(bilan.position, bilan.total, e),
+    RMClub.doitEtreLimoge(bilan, e),
+    'enDanger et doitEtreLimoge doivent rendre le même verdict sur le même bilan');
+});
+
+test('E21 — rien ne bouge tant que la saison n\'a pas assez avancé', () => {
+  const s = carriere(null, 3);
+  const club = s.adversaires[0];
+  saisonEnCours(s, 1, club.id);
+  const avant = RMClub.entraineurDuClub(s, club.id).nom;
+  RMClub.resoudreLimogeagesEnCours(creerRng(31), s, RMClub.dateCourante(s));
+  assert.strictEqual(RMClub.entraineurDuClub(s, club.id).nom, avant,
+    'on ne limoge personne après une seule journée : il faut un échantillon');
+  assert.strictEqual(RMClub.postesLibres(s).length, 0, 'et aucun poste ne s\'ouvre');
+});
+
+// Rejoue des jours jusqu'à ce que CE club précis perde son banc. Plusieurs
+// clubs sont en zone rouge en même temps : prendre le premier limogé venu
+// ferait porter les assertions sur un autre club que celui qu'on a coulé.
+function limogerJusquA(s, clubId, maxJours) {
+  for (let j = 0; j < (maxJours || 120); j++) {
+    const r = RMClub.resoudreLimogeagesEnCours(creerRng(900 + j), s, RMClub.dateCourante(s));
+    const mien = (r || []).find((p) => p.clubId === clubId);
+    if (mien) return mien;
+  }
+  return null;
+}
+
+test('E22 — un club qui coule perd son entraîneur AVANT la fin de saison', () => {
+  const s = carriere(null, 3);
+  const club = s.adversaires[0];
+  saisonEnCours(s, 9, club.id);
+  const avant = RMClub.entraineurDuClub(s, club.id).nom;
+  // Le limogeage est un tirage quotidien, pas une certitude : un club au fond
+  // finit par craquer, mais pas le jour même.
+  const limoge = limogerJusquA(s, club.id);
+  assert.ok(limoge, `un club dernier depuis neuf journées doit finir par changer d'entraîneur`);
+  assert.notStrictEqual(RMClub.entraineurDuClub(s, club.id).nom, avant,
+    'et le banc doit avoir réellement changé');
+  assert.ok(limoge.raison.includes(avant),
+    `la raison doit nommer le partant (${avant}) : « ${limoge.raison} »`);
+});
+
+test('E23 — un club en tête ne limoge JAMAIS son entraîneur en cours de route', () => {
+  const s = carriere(null, 3);
+  const club = s.adversaires[0];
+  saisonEnCours(s, 9, club.id);
+  // Le club coulé est `club` ; on regarde celui qui domine, en haut du tableau.
+  const trie = RMClub.classementTrie(s);
+  const leader = trie[0].clubId;
+  const avant = RMClub.entraineurDuClub(s, leader);
+  if (!avant) return; // le joueur lui-même : rien à vérifier
+  const nom = avant.nom;
+  for (let j = 0; j < 60; j++) RMClub.resoudreLimogeagesEnCours(creerRng(900 + j), s, RMClub.dateCourante(s));
+  assert.strictEqual(RMClub.entraineurDuClub(s, leader).nom, nom,
+    'le premier du classement ne doit pas être limogé');
+});
+
+test('E24 — le poste ouvert en cours de saison produit une offre, avec sa raison', () => {
+  const s = carriere(95, 3);
+  const club = s.adversaires[0];
+  saisonEnCours(s, 9, club.id);
+  const limoge = limogerJusquA(s, club.id);
+  assert.ok(limoge, 'prémisse : un poste doit s\'être ouvert');
+  const offres = RMClub.offresDisponibles(s);
+  const offre = offres.find((o) => o.clubId === club.id);
+  assert.ok(offre, `le poste libéré doit apparaître parmi les offres (${offres.length} offre(s))`);
+  assert.ok(offre.raisonPosteLibre && offre.raisonPosteLibre.includes('limogé'),
+    `l'offre doit dire pourquoi le poste est libre : « ${offre.raisonPosteLibre} »`);
+  assert.ok(offre.immediat, 'un poste libéré dans MA division se prend tout de suite');
+});
+
+test('E25 — le manager l\'apprend, et ça survit au rechargement', () => {
+  const s = carriere(null, 3);
+  const club = s.adversaires[0];
+  saisonEnCours(s, 9, club.id);
+  const avantMessages = (s.clubJoueur.messages || []).length;
+  const limoge = limogerJusquA(s, club.id);
+  assert.ok(limoge, 'prémisse : un limogeage doit avoir eu lieu');
+  const apres = s.clubJoueur.messages || [];
+  assert.ok(apres.length > avantMessages,
+    `aucun message ajouté (${avantMessages} avant, ${apres.length} après)`);
+  // `unshift` : les nouveaux sont en TÊTE de liste, pas en queue.
+  const nouveaux = apres.slice(0, apres.length - avantMessages);
+  assert.ok(nouveaux.some((m) => /banc|entra|limog/i.test(`${m.titre} ${m.corps}`)),
+    `le manager doit recevoir un message : sinon le marché bouge dans son dos (${nouveaux.map((m) => m.titre).join(' | ')})`);
+  RMClub.sauvegarderSaison(s);
+  const relu = RMClub.chargerSaison();
+  assert.ok(relu, 'la sauvegarde doit se relire');
+  assert.strictEqual(RMClub.entraineurDuClub(relu, club.id).nom,
+    RMClub.entraineurDuClub(s, club.id).nom,
+    'l\'intérimaire doit survivre au rechargement');
+  assert.strictEqual(RMClub.postesLibres(relu).length, RMClub.postesLibres(s).length,
+    'et le poste ouvert aussi');
+});
+
+test('E26 — le poste le plus ACCESSIBLE n\'est jamais éclipsé par les prestigieux', () => {
+  // Mesuré (TODO_AUDIT.md G26) : 40 fois sur 40, quand deux autres postes
+  // étaient ouverts dans la même division, celui du DERNIER du classement
+  // n'apparaissait pas. Le plafond de deux offres par division se remplissait
+  // par ordre d'exigence décroissante — donc toujours par les plus flatteurs.
+  //
+  // C'est exactement le poste que le jeu rend le plus accessible : la lanterne
+  // rouge voit son exigence baisser de 18 points, « prend qui veut ». Une
+  // règle en annulait une autre en silence, et le manager en difficulté ne
+  // voyait jamais le poste de sauvetage qui lui tendait les bras.
+  let cas = 0, invisibles = 0;
+  for (let g = 0; g < 12; g++) {
+    const s = carriere(95, 3);
+    const club = s.adversaires[0];
+    saisonEnCours(s, 9, club.id);
+    for (let j = 0; j < 300; j++) {
+      RMClub.resoudreLimogeagesEnCours(creerRng(900 + j), s, RMClub.dateCourante(s));
+    }
+    const dansMaDivision = (id) => (s.adversaires || []).some((a) => a.id === id);
+    const postes = RMClub.postesLibres(s).filter((p) => dansMaDivision(p.clubId));
+    if (postes.length < 2) continue;
+    cas++;
+    const dernier = RMClub.classementTrie(s).slice(-1)[0].clubId;
+    if (!postes.some((p) => p.clubId === dernier)) continue;
+    const offres = RMClub.offresDisponibles(s).map((o) => o.clubId);
+    if (!offres.includes(dernier)) invisibles++;
+  }
+  assert.ok(cas > 0, 'prémisse : il faut des cas où plusieurs postes sont ouverts');
+  assert.strictEqual(invisibles, 0,
+    `${invisibles}/${cas} fois, le poste du dernier était ouvert mais absent des offres`);
+});
+
+test('E27 — le rythme des limogeages reste crédible sur une vraie saison', () => {
+  // Garde-fou de calibration, comme E19 pour l'amplitude. Il refuse LES DEUX
+  // échecs : un marché inerte (le joueur ne verra jamais rien bouger) et un
+  // marché en convulsion (chaque club finirait avec un intérimaire).
+  //
+  // Le premier jet — un tirage quotidien à 2 % — donnait **15 limogeages par
+  // saison sur 43 clubs**. Le resserrement mesuré (places de relégation,
+  // 45 jours de sursis) ramène à ~6.
+  const matchsAdversesDeLaJournee = (s) => {
+    const prochaine = (s.calendrier || []).find((f) => !f.joue);
+    if (!prochaine) return [];
+    return (s.calendrier || []).filter((f) => f.journee === prochaine.journee && !f.joue
+      && f.domicileId !== s.clubJoueur.id && f.exterieurId !== s.clubJoueur.id);
+  };
+  const parSaison = [];
+  for (let g = 0; g < 4; g++) {
+    const s = carriere(null, 3);
+    let n = 0, garde = 0;
+    while (garde++ < 40) {
+      const matchs = matchsAdversesDeLaJournee(s);
+      if (!matchs.length) break;
+      RMClub.resoudreMatchsAdverses(creerRng(graine++), s, matchs);
+      const sienne = (s.calendrier || []).find((f) => !f.joue
+        && (f.domicileId === s.clubJoueur.id || f.exterieurId === s.clubJoueur.id));
+      if (sienne) RMClub.enregistrerResultat(s, sienne.id, 20, 20, 2, 2);
+      RMClub.avancerJourneeAutresDivisionsFrance(creerRng(graine++), s.autresDivisionsFrance, s);
+      for (let jour = 0; jour < 7; jour++) {
+        RMClub.avancerJourClubsAdverses(s);
+        n += RMClub.resoudreLimogeagesEnCours(creerRng(graine++), s, RMClub.dateCourante(s)).length;
+      }
+    }
+    parSaison.push(n);
+  }
+  const moyenne = parSaison.reduce((a, b) => a + b, 0) / parSaison.length;
+  assert.ok(moyenne >= 2,
+    `marché inerte : ${moyenne.toFixed(1)} limogeage(s) en cours de saison sur ~43 clubs (${parSaison.join(', ')})`);
+  assert.ok(moyenne <= 12,
+    `marché en convulsion : ${moyenne.toFixed(1)} limogeages en cours de saison sur ~43 clubs (${parSaison.join(', ')})`);
+});
+
 console.log(`\n${nbTests} test(s) exécuté(s).`);
