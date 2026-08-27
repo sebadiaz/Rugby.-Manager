@@ -127,6 +127,16 @@ tranche livrée — jamais en avance sur ce qui est réellement dans `main`.
 
 ## Historique des tranches livrées
 
+### G28 — Attendre ne coûtait rien (livrée)
+- **Domaines touchés :** carrière, monde IA. `club-entraineurs-rivaux.js`, `club-evenements.js`, `club-carriere-manager.js`, `clubUI.js`, `server/test-marche-entraineurs.js`.
+- **L'audit, chiffré sur six saisons réellement jouées :** 38 postes ouverts en cours de saison, ouverts **70 jours en moyenne** (jusqu'à 102), et **0 refermé**. Trois intérimaires avaient déjà sorti leur club des places critiques sans que rien ne change — leur compteur restait gelé. Un poste ouvert en novembre était encore là en juin.
+- **La règle, miroir exact du couperet :** une patience qui se **remplit** au lieu de s'épuiser. L'intérimaire accumule des jours hors des places critiques ; à 30 jours il est confirmé, le poste se referme, l'offre disparaît. Le compteur repart à zéro si le club replonge. Mesuré : **9 postes refermés sur 38, soit 24 %** — une opportunité sur quatre s'évapore si on ne la saisit pas.
+- **Le défaut que j'ai introduit, et écrit dans un commentaire :** en branchant la règle sur la boucle de jeu, j'ai appelé `resoudreInterimaires` une seconde fois en commentant qu'elle était « idempotente sur un même jour ». **Elle ne l'était pas** — mesuré, le compteur passait de 1 à 2 le même jour : l'intérimaire aurait été confirmé deux fois plus vite que la règle ne l'annonce, et l'avertissement affiché au manager aurait menti. Une garde par date aurait imposé au module un contrat que le reste n'honore pas ; supprimer le second appel est plus simple. E42 l'empêche de revenir (contrôle structurel, vérifié en réintroduisant l'appel).
+- **Une prémisse fausse dans mon propre test :** E38 échouait sur sa prémisse — quatre journées gagnées ne suffisent pas à sortir des deux dernières places. Mesuré : il en faut **six**. Corrigé dans le test, pas dans la règle.
+- **Ce que le joueur voit :** sur l'offre, « ⚠️ Ce poste peut se refermer : Tom André redresse le club depuis 12 jour(s) sur 30 » ; et quand ça arrive, un message « Un banc se referme ». L'avertissement compte autant que le message — sans lui, le coût de l'attente n'apparaîtrait qu'une fois l'offre perdue. Vérifié en 1400×1100 et 390×844, aucune erreur de page.
+- **Le garde-fou :** E39 épingle la part de postes refermés dans ]5 %, 95 %[ et refuse les deux dérives, vérifié en les provoquant (seuil à 9999 → « 0/21 » ; confirmation sans vérifier le classement → « 21/21 »).
+- **La nouvelle décision :** prendre maintenant, ou parier. Un poste de Régionale disponible tout de suite contre un poste d'élite qui chauffe encore — le second peut se libérer dans trois semaines, ou se refermer parce que l'intérimaire aura gagné cinq matchs. Les deux compteurs sont affichés.
+
 ### G27 — La donnée était là, elle n'était pas atteignable (livrée)
 - **Domaines touchés :** carrière, monde IA, interface. `club-entraineurs-rivaux.js`, `clubUI.js`, `docs/index.html`, `server/test-marche-entraineurs.js`.
 - **L'audit :** G26 donnait un compteur à chaque entraîneur menacé, mais affiché sur la fiche d'**un** club à la fois — il fallait ouvrir les 43 fiches pour savoir quels postes allaient se libérer. Vérifié : `joursEnDanger` n'apparaissait qu'à un seul endroit de `clubUI.js`.

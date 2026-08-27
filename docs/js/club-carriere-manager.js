@@ -239,6 +239,17 @@
   // RMClub sans ordre garanti, et un banc d'essai partiel peut ne pas charger
   // le marché des entraîneurs. Sans lui, on retombe sur l'ancien comportement
   // plutôt que de rendre la carrière muette.
+  // Combien de jours l'intérimaire d'un club a déjà tenus hors des places
+  // critiques, et combien il lui en faut. Lu tel quel — c'est le compteur
+  // porté par l'entraîneur, jamais un chiffre recalculé pour l'écran.
+  function interimQuiConvainc(saison, clubId) {
+    const RMClub = global.RMClub;
+    if (!RMClub.entraineurDuClub || !RMClub.JOURS_POUR_CONFIRMER) return null;
+    const e = RMClub.entraineurDuClub(saison, clubId);
+    if (!e || !e.interim || !e.joursHorsDanger) return null;
+    return { jours: e.joursHorsDanger, seuil: RMClub.JOURS_POUR_CONFIRMER, nom: e.nom };
+  }
+
   function postesOuverts(saison) {
     const RMClub = global.RMClub;
     if (!RMClub.postesLibres) return null;
@@ -438,6 +449,10 @@
       // POURQUOI ce poste est libre — le joueur doit pouvoir lire l'offre
       // comme une conséquence, pas comme un coup de chance.
       raisonPosteLibre: raisonPosteLibre || null,
+      // Et si l'intérimaire est en train de convaincre, l'offre va DISPARAÎTRE
+      // (G28). Sans cet avertissement, le coût de l'attente resterait invisible
+      // jusqu'au message qui annonce la confirmation — trop tard pour décider.
+      interimQuiConvainc: interimQuiConvainc(saison, club.id),
       exigence,
     }));
   }

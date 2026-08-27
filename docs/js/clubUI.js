@@ -3079,6 +3079,14 @@
       (o.raisonPosteLibre
         ? `<div class="offreLigne" style="opacity:.85">Poste libre : ${echapperHTML(o.raisonPosteLibre)}</div>`
         : '') +
+      // L'offre peut s'évaporer (G28) : c'est le prix de l'attente, et il doit
+      // se voir AVANT que le poste se referme, pas après.
+      (o.interimQuiConvainc
+        ? `<div class="offreLigne" style="color:var(--text-dim);"><b>⚠️ Ce poste peut se refermer :</b> `
+          + `${echapperHTML(o.interimQuiConvainc.nom)} redresse le club depuis `
+          + `${o.interimQuiConvainc.jours} jour(s) sur ${o.interimQuiConvainc.seuil} — `
+          + `au-delà, il est confirmé et le club ne cherche plus.</div>`
+        : '') +
       `<div class="offreRaison">${echapperHTML(o.raison)}</div>` +
       `<div class="actionsOffre">` +
       `<button class="accent" data-accepter="${echapperHTML(o.id)}">${o.immediat ? 'Accepter ce poste' : 'Signer pour la saison prochaine'}</button>` +

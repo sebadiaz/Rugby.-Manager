@@ -394,16 +394,76 @@
     return liste;
   }
 
+  // Combien de jours HORS des places critiques un intérimaire doit tenir pour
+  // que son club le confirme. Miroir exact du couperet : une patience qui se
+  // remplit au lieu de s'épuiser, et qui repart à zéro si le club replonge.
+  //
+  // Sans cette règle (mesuré sur six saisons réellement jouées) : 38 postes
+  // ouverts en cours de saison, ouverts **70 jours en moyenne** jusqu'à la fin
+  // de saison — jusqu'à 102 — et **aucun** refermé. Attendre ne coûtait rien,
+  // et trois intérimaires avaient déjà sauvé leur club sans que ça change
+  // quoi que ce soit. Calibré par la mesure (TODO_AUDIT.md G28).
+  const JOURS_POUR_CONFIRMER = 30;
+
+  // L'intérimaire fait ses preuves, ou pas. Séparé du couperet parce que les
+  // deux ne peuvent pas s'appliquer au même club : tant que le poste est
+  // ouvert, c'est ici que ça se joue.
+  // UN SEUL APPELANT : `resoudreLimogeagesEnCours`. La boucle de jeu a besoin
+  // de la liste des confirmations pour son résumé de journée, mais elle ne
+  // doit PAS rappeler cette fonction — elle lit `dernieresConfirmations`.
+  //
+  // Mesuré en l'appelant deux fois le même jour : le compteur passait de 0 à
+  // 1 puis à 2. L'intérimaire aurait été confirmé deux fois plus vite que la
+  // règle ne l'annonce, et l'avertissement affiché au manager aurait menti.
+  // Une garde par date aurait imposé au module un contrat que le reste
+  // n'honore pas (`resoudreLimogeagesEnCours` compte par appel) ; supprimer
+  // le second appel est plus simple et ne ment sur rien.
+  function resoudreInterimaires(saison) {
+    const e = etat(saison);
+    const confirmes = [];
+    const parClubPosition = {};
+    for (const x of positionsDuMoment(saison)) parClubPosition[x.club.id] = x;
+    for (const poste of e.postes.slice()) {
+      const info = parClubPosition[poste.clubId];
+      if (!info || info.journees < JOURNEES_MIN_AVANT_COUPERET) continue;
+      const entraineur = e.parClub[poste.clubId];
+      if (!entraineur || !entraineur.interim) continue;
+      // Toujours dans les places critiques : il n'a rien redressé.
+      if (info.position >= info.total - (PLACES_CRITIQUES - 1)) {
+        entraineur.joursHorsDanger = 0;
+        continue;
+      }
+      entraineur.joursHorsDanger = (entraineur.joursHorsDanger || 0) + 1;
+      if (entraineur.joursHorsDanger < JOURS_POUR_CONFIRMER) continue;
+      entraineur.interim = false;
+      entraineur.joursHorsDanger = 0;
+      e.postes = e.postes.filter((p) => p.clubId !== poste.clubId);
+      confirmes.push({ clubId: poste.clubId, clubNom: poste.clubNom, entraineur: entraineur.nom });
+      // Le manager doit l'apprendre : c'est une offre qui lui échappe, et
+      // c'est le prix de son attente.
+      if (global.RMClub.ajouterMessage) {
+        global.RMClub.ajouterMessage(saison, 'carriere', 'Un banc se referme',
+          `${entraineur.nom} a redressé ${poste.clubNom} (${info.position}e sur ${info.total}) : `
+          + 'il est confirmé au poste. Le club ne cherche plus.');
+      }
+    }
+    e.dernieresConfirmations = confirmes;
+    return confirmes;
+  }
+
   function resoudreLimogeagesEnCours(rng, saison, date) {
     const e = etat(saison);
     const pris = nomsPris(saison);
     const partants = [];
+    // D'abord le sort des intérimaires en place : un club dont le poste vient
+    // de se refermer ne doit pas être jugé par le couperet dans la foulée.
+    resoudreInterimaires(saison);
     for (const { club, niveau, position, total, journees } of positionsDuMoment(saison)) {
       if (journees < JOURNEES_MIN_AVANT_COUPERET) continue;
       const entraineur = e.parClub[club.id];
       if (!entraineur) continue;
-      // Un poste déjà ouvert ne se rouvre pas : l'intérimaire a le temps de
-      // faire ses preuves jusqu'à la fin de la saison.
+      // Un poste déjà ouvert ne se rouvre pas : c'est `resoudreInterimaires`
+      // qui décide du sort de l'intérimaire tant qu'il est en fonction.
       if (e.postes.some((p) => p.clubId === club.id)) continue;
       if (!enDanger(position, total, entraineur)) {
         // Sorti de la zone : la patience se reconstitue entièrement.
@@ -507,7 +567,9 @@
     posteOuvert,
     resoudreEntraineursFinDeSaison,
     resoudreLimogeagesEnCours,
+    resoudreInterimaires,
     bancsQuiChauffent,
+    JOURS_POUR_CONFIRMER,
     JOURNEES_MIN_AVANT_COUPERET,
     JOURS_DE_SURSIS,
     doitEtreLimoge,

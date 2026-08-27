@@ -3810,6 +3810,104 @@ composition ni à la fatigue.
 
 ---
 
+## G28 — Attendre ne coûtait rien (livrée)
+
+### L'audit, chiffré
+
+Six saisons réellement jouées — matchs IA résolus, autres divisions avancées,
+sept jours entre deux journées :
+
+```
+postes ouverts en cours de saison                        38
+durée moyenne d'ouverture, jusqu'à la fin de saison      70 jours (jusqu'à 102)
+postes refermés AVANT la fin de saison                    0
+intérimaires ayant déjà sorti leur club des places
+  critiques, poste toujours ouvert                        3
+```
+
+Un poste ouvert en novembre était encore là en juin. Trois intérimaires
+avaient sauvé leur club sans que ça change quoi que ce soit, et leur compteur
+restait gelé — `resoudreLimogeagesEnCours` saute les clubs dont le poste est
+ouvert. **Attendre était gratuit.**
+
+### La règle : le miroir exact du couperet
+
+Une patience qui se **remplit** au lieu de s'épuiser. L'intérimaire accumule
+des jours hors des places critiques ; à 30 jours il est confirmé, le poste se
+referme, et l'offre disparaît. Le compteur repart à zéro si le club replonge —
+comme celui du couperet.
+
+Mesuré après coup : **9 postes refermés sur 38, soit 24 %**. Une opportunité
+sur quatre s'évapore si on ne la saisit pas. E39 épingle la fourchette
+]5 %, 95 %[ et refuse les deux dérives, vérifié en les provoquant :
+
+```
+seuil de confirmation à 9999   ->  « attendre ne coûte toujours rien : 0/21 »
+confirmation sans vérifier le
+  classement (n'importe qui)   ->  « presque tous les postes se referment : 21/21 »
+```
+
+### Le défaut que j'ai introduit, et écrit noir sur blanc dans un commentaire
+
+En branchant la règle sur la boucle de jeu, j'ai appelé `resoudreInterimaires`
+une seconde fois pour récupérer la liste des confirmations, en commentant que
+la fonction était « idempotente sur un même jour ». **Elle ne l'était pas.**
+Mesuré :
+
+```
+départ                                                     0
+après resoudreLimogeagesEnCours                            1
+après un appel SUPPLÉMENTAIRE le même jour                 2
+```
+
+Un intérimaire aurait été confirmé **deux fois plus vite** que la règle ne
+l'annonce, et l'avertissement affiché au manager (« 12 jours sur 30 ») aurait
+menti.
+
+Premier réflexe : ajouter une garde par date. Elle marchait, et elle imposait
+au module un contrat que le reste n'honore pas — `resoudreLimogeagesEnCours`
+compte par appel, pas par date — en cassant au passage tous les bancs d'essai
+qui rejouent des jours sans avancer le calendrier. **Supprimer le second
+appel** est plus simple et ne ment sur rien : la boucle lit
+`dernieresConfirmations` dans l'état.
+
+E42 est le garde-fou structurel : la boucle quotidienne ne doit **pas**
+appeler `resoudreInterimaires`. Vérifié en réintroduisant l'appel — rouge. Un
+futur « juste pour récupérer la liste » ferait revenir le double comptage sans
+qu'aucune assertion de comportement ne bronche.
+
+### Une prémisse fausse dans mon propre test
+
+E38 échouait sur sa prémisse : quatre journées gagnées ne suffisaient pas à
+sortir un club des deux dernières places. Mesuré — il en faut **six** après
+sept journées coulées (14e/14 → 3e/14). Corrigé dans le test, pas dans la
+règle.
+
+### Ce que le joueur voit
+
+```
+Offre — Riverange Aiglons
+  Poste libre : Paul Guerin a été limogé en cours de saison : 14e sur 14…
+  ⚠️ Ce poste peut se refermer : Tom André redresse le club depuis 12 jour(s)
+     sur 30 — au-delà, il est confirmé et le club ne cherche plus.
+```
+
+Et quand ça se produit, un message : « Un banc se referme — Tom André a
+redressé Riverange Aiglons (9e sur 14) : il est confirmé au poste. Le club ne
+cherche plus. » Vérifié en 1400×1100 et 390×844, aucune erreur de page.
+
+L'avertissement compte autant que le message : sans lui, le coût de l'attente
+n'apparaîtrait qu'une fois l'offre perdue — trop tard pour décider.
+
+### La nouvelle décision
+
+Prendre maintenant, ou parier. Un poste de Régionale disponible tout de suite
+contre un poste d'élite qui chauffe encore : le second peut se libérer dans
+trois semaines, ou se refermer parce que l'intérimaire aura gagné cinq matchs.
+Le manager voit les deux compteurs et choisit.
+
+---
+
 ## G27 — La donnée était là, elle n'était pas atteignable (livrée)
 
 ### L'audit

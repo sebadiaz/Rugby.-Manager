@@ -744,4 +744,208 @@ test('E33 — un adversaire dérivé de son NIVEAU inclut son banc', () => {
     'le point d\'entrée doit appeler niveauAvecEntraineur, sinon il ne sert à rien');
 });
 
+// --- E34..E39 : l'intérimaire qui redresse est confirmé -------------------
+//
+// Audit mesuré avant cette partie, sur six saisons réellement jouées :
+//
+//   postes ouverts en cours de saison                   38
+//   durée moyenne d'ouverture, jusqu'à la fin de saison  70 jours (jusqu'à 102)
+//   postes refermés AVANT la fin de saison                0
+//   intérimaires ayant déjà sorti leur club des places
+//     critiques, poste toujours ouvert                    3
+//
+// Attendre ne coûtait donc RIEN : un poste ouvert en novembre était encore là
+// en juin, même si l'intérimaire avait sauvé le club entre-temps. Et son
+// compteur restait gelé, puisque `resoudreLimogeagesEnCours` saute les clubs
+// dont le poste est ouvert.
+
+// Fait remonter un club : il gagne toutes ses rencontres restantes de N
+// journées, ce qui le sort des places critiques par le CLASSEMENT, jamais par
+// un drapeau posé à la main.
+function redresser(s, journees, clubId) {
+  const restants = (s.calendrier || []).filter((f) => !f.joue).slice(0, journees * 7);
+  for (const f of restants) {
+    const gagneDomicile = f.domicileId === clubId;
+    const gagneExterieur = f.exterieurId === clubId;
+    if (!gagneDomicile && !gagneExterieur) { RMClub.enregistrerResultat(s, f.id, 15, 15, 1, 1); continue; }
+    RMClub.enregistrerResultat(s, f.id, gagneDomicile ? 40 : 3, gagneDomicile ? 3 : 40, 6, 0);
+  }
+  return s;
+}
+
+// Ouvre le poste d'un club en le faisant couler, puis rend l'intérimaire.
+function installerInterim(s, clubId) {
+  saisonEnCours(s, 7, clubId);
+  const poste = limogerJusquA(s, clubId, 200);
+  assert.ok(poste, 'prémisse : le poste doit s\'être ouvert');
+  return RMClub.entraineurDuClub(s, clubId);
+}
+
+test('E34 — un intérimaire dont le club reste au fond n\'est PAS confirmé', () => {
+  const s = carriere(null, 3);
+  const club = s.adversaires[0];
+  const interim = installerInterim(s, club.id);
+  joursQuiPassent(s, 200, 4000);
+  assert.ok(RMClub.entraineurDuClub(s, club.id).interim,
+    'un intérimaire qui n\'a rien redressé doit rester intérimaire');
+  assert.ok(RMClub.postesLibres(s).some((p) => p.clubId === club.id),
+    'et le poste doit rester à pourvoir');
+});
+
+test('E35 — un intérimaire qui REDRESSE son club est confirmé, et le poste se referme', () => {
+  const s = carriere(null, 3);
+  const club = s.adversaires[0];
+  const interim = installerInterim(s, club.id);
+  const nom = interim.nom;
+  redresser(s, 8, club.id);
+  joursQuiPassent(s, 200, 4000);
+  const apres = RMClub.entraineurDuClub(s, club.id);
+  assert.strictEqual(apres.nom, nom, 'c\'est bien le MÊME homme qui est confirmé');
+  assert.strictEqual(apres.interim, false, 'il ne doit plus être intérimaire');
+  assert.ok(!RMClub.postesLibres(s).some((p) => p.clubId === club.id),
+    'et son poste ne doit plus être à pourvoir');
+});
+
+test('E36 — la confirmation FAIT DISPARAÎTRE l\'offre : attendre a un coût', () => {
+  const s = carriere(95, 3);
+  const club = s.adversaires[0];
+  installerInterim(s, club.id);
+  assert.ok(RMClub.offresDisponibles(s).some((o) => o.clubId === club.id),
+    'prémisse : le poste ouvert doit produire une offre');
+  redresser(s, 8, club.id);
+  joursQuiPassent(s, 200, 4000);
+  assert.ok(!RMClub.offresDisponibles(s).some((o) => o.clubId === club.id),
+    'une fois l\'intérimaire confirmé, l\'offre doit avoir disparu');
+});
+
+test('E37 — le manager l\'apprend : il doit savoir qu\'il a laissé passer', () => {
+  const s = carriere(null, 3);
+  const club = s.adversaires[0];
+  installerInterim(s, club.id);
+  const avant = (s.clubJoueur.messages || []).length;
+  redresser(s, 8, club.id);
+  joursQuiPassent(s, 200, 4000);
+  const apres = s.clubJoueur.messages || [];
+  const nouveaux = apres.slice(0, apres.length - avant);
+  assert.ok(nouveaux.some((m) => /confirm/i.test(`${m.titre} ${m.corps}`)),
+    `le manager doit être averti de la confirmation (${nouveaux.map((m) => m.titre).join(' | ')})`);
+});
+
+test('E38 — le compteur repart à zéro si le club replonge', () => {
+  const s = carriere(null, 3);
+  const club = s.adversaires[0];
+  installerInterim(s, club.id);
+  // Mesuré : il faut SIX journées gagnées pour sortir des deux dernières
+  // places après sept journées coulées. Quatre n'y suffisent pas — la
+  // première version de ce contrôle échouait sur sa propre prémisse.
+  redresser(s, 6, club.id);
+  joursQuiPassent(s, 20, 4000);
+  const enCours = RMClub.entraineurDuClub(s, club.id);
+  assert.ok(enCours.joursHorsDanger > 0,
+    `l'intérimaire doit avoir commencé à convaincre (${enCours.joursHorsDanger})`);
+  // Le club replonge : on lui fait perdre les journées suivantes.
+  saisonEnCours(s, 6, club.id);
+  joursQuiPassent(s, 5, 5000);
+  assert.strictEqual(RMClub.entraineurDuClub(s, club.id).joursHorsDanger, 0,
+    'replonger dans les places critiques doit effacer le crédit accumulé');
+});
+
+test('E39 — sur de vraies saisons, une part crédible des postes se referme', () => {
+  // Garde-fou de calibration. Il refuse les deux dérives : aucun poste ne se
+  // referme (attendre ne coûte toujours rien) ou tous se referment (une offre
+  // devient inattrapable).
+  const matchsJournee = (s) => {
+    const p = (s.calendrier || []).find((f) => !f.joue);
+    return p ? (s.calendrier || []).filter((f) => f.journee === p.journee && !f.joue
+      && f.domicileId !== s.clubJoueur.id && f.exterieurId !== s.clubJoueur.id) : [];
+  };
+  let ouverts = 0, refermes = 0;
+  for (let g = 0; g < 4; g++) {
+    const s = carriere(null, 3);
+    const vus = new Set();
+    let garde = 0;
+    while (garde++ < 40) {
+      const m = matchsJournee(s);
+      if (!m.length) break;
+      RMClub.resoudreMatchsAdverses(creerRng(graine++), s, m);
+      const mienne = (s.calendrier || []).find((f) => !f.joue
+        && (f.domicileId === s.clubJoueur.id || f.exterieurId === s.clubJoueur.id));
+      if (mienne) RMClub.enregistrerResultat(s, mienne.id, 20, 20, 2, 2);
+      RMClub.avancerJourneeAutresDivisionsFrance(creerRng(graine++), s.autresDivisionsFrance, s);
+      for (let jour = 0; jour < 7; jour++) {
+        RMClub.avancerJourClubsAdverses(s);
+        for (const p of RMClub.resoudreLimogeagesEnCours(creerRng(graine++), s, RMClub.dateCourante(s))) {
+          vus.add(p.clubId);
+        }
+      }
+    }
+    ouverts += vus.size;
+    const encoreOuverts = new Set(RMClub.postesLibres(s).map((p) => p.clubId));
+    for (const id of vus) if (!encoreOuverts.has(id)) refermes++;
+  }
+  assert.ok(ouverts > 0, `prémisse : des postes doivent s'ouvrir (${ouverts})`);
+  const part = refermes / ouverts;
+  assert.ok(part > 0.05,
+    `attendre ne coûte toujours rien : ${refermes}/${ouverts} poste(s) refermé(s) avant la fin de saison`);
+  assert.ok(part < 0.95,
+    `presque tous les postes se referment : ${refermes}/${ouverts}, une offre deviendrait inattrapable`);
+});
+
+test('E40 — l\'offre AVERTIT que le poste peut se refermer', () => {
+  const s = carriere(95, 3);
+  const club = s.adversaires[0];
+  installerInterim(s, club.id);
+  redresser(s, 6, club.id);
+  joursQuiPassent(s, 10, 4000);
+  const offre = RMClub.offresDisponibles(s).find((o) => o.clubId === club.id);
+  assert.ok(offre, 'prémisse : l\'offre doit encore exister');
+  assert.ok(offre.interimQuiConvainc,
+    'une offre dont l\'intérimaire redresse le club doit le dire — sinon le coût de '
+    + 'l\'attente n\'apparaît qu\'au message de confirmation, trop tard pour décider');
+  assert.ok(offre.interimQuiConvainc.jours > 0
+    && offre.interimQuiConvainc.jours < offre.interimQuiConvainc.seuil,
+    `compteur incohérent : ${offre.interimQuiConvainc.jours}/${offre.interimQuiConvainc.seuil}`);
+  assert.strictEqual(offre.interimQuiConvainc.jours,
+    RMClub.entraineurDuClub(s, club.id).joursHorsDanger,
+    'l\'offre et la fiche doivent afficher le même compteur');
+});
+
+test('E41 — la boucle de jeu ne fait pas avancer le compteur deux fois', () => {
+  // `resoudreInterimaires` compte PAR APPEL, comme `resoudreLimogeagesEnCours`
+  // qui l'invoque. Mesuré en l'appelant deux fois le même jour : le compteur
+  // passait de 0 à 1 puis à 2 — un intérimaire confirmé deux fois plus vite
+  // que la règle ne l'annonce, et l'avertissement affiché au manager
+  // mensonger.
+  //
+  // Le contrat retenu : UN SEUL appelant. La boucle de jeu a besoin de la
+  // liste des confirmations pour son résumé, mais elle la LIT dans l'état
+  // (`dernieresConfirmations`) au lieu de rappeler la fonction.
+  const s = carriere(null, 3);
+  const club = s.adversaires[0];
+  installerInterim(s, club.id);
+  redresser(s, 6, club.id);
+  RMClub.resoudreLimogeagesEnCours(creerRng(7000), s, RMClub.dateCourante(s));
+  assert.strictEqual(RMClub.entraineurDuClub(s, club.id).joursHorsDanger, 1,
+    'un passage de la boucle doit compter pour un');
+  assert.ok(Array.isArray(s.entraineursRivaux.dernieresConfirmations),
+    'les confirmations du jour doivent être LISIBLES dans l\'état, sans second appel');
+  RMClub.resoudreLimogeagesEnCours(creerRng(7001), s, RMClub.dateCourante(s));
+  assert.strictEqual(RMClub.entraineurDuClub(s, club.id).joursHorsDanger, 2,
+    'et un passage de plus compte pour un de plus');
+});
+
+test('E42 — la boucle quotidienne n\'appelle PAS resoudreInterimaires', () => {
+  // Contrôle structurel : c'est le seul moyen d'empêcher le double comptage
+  // de revenir. Il ne remplace pas E41, il le protège — un futur appel ajouté
+  // « pour récupérer la liste » ferait avancer le compteur deux fois par jour
+  // sans qu'aucune assertion de comportement ne bronche.
+  const src = require('fs').readFileSync(
+    require('path').join(__dirname, '../docs/js/club-evenements.js'), 'utf8');
+  const appels = src.split('\n').filter((l) => /RMClub\.resoudreInterimaires\(/.test(l));
+  assert.deepStrictEqual(appels.map((l) => l.trim()), [],
+    'la boucle doit LIRE dernieresConfirmations, pas rappeler la fonction');
+  assert.ok(/dernieresConfirmations/.test(src),
+    'et elle doit bien lire la liste quelque part, sinon le résumé du jour est muet');
+});
+
 console.log(`\n${nbTests} test(s) exécuté(s).`);

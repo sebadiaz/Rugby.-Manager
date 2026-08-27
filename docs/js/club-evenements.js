@@ -271,6 +271,11 @@
       propositionConseil,
       signatureRivale: mercatoDuJour ? mercatoDuJour.signature : null,
       limogeages,
+      // Les intérimaires confirmés du jour (G28). LU, jamais recalculé :
+      // `resoudreLimogeagesEnCours` vient de résoudre leur sort en interne et
+      // a déposé la liste ici. La rappeler ferait avancer leur compteur une
+      // seconde fois — mesuré : il passait de 1 à 2 le même jour.
+      confirmations: ((saison.entraineursRivaux || {}).dernieresConfirmations) || [],
       offreRecue,
       travaux,
       missionReseau,
