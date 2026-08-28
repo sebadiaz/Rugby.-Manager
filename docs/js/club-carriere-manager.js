@@ -457,6 +457,115 @@
     }));
   }
 
+  // --- Poser sa candidature (G29) -----------------------------------------
+  //
+  // Mesuré avant cette tranche, sur quatre saisons réellement jouées : à 90 de
+  // réputation, AUCUN poste ouvert n'échappe au manager — il est déjà courtisé
+  // partout. À 50, **un tiers** des postes s'ouvrent sans jamais lui être
+  // proposés. Le manager modeste n'avait donc aucun moyen d'agir : il ne
+  // pouvait qu'attendre qu'on vienne à lui. Postuler est SON levier.
+  //
+  // La réponse est DÉTERMINISTE et lisible : le club dit oui si la réputation
+  // atteint son exigence, à une tolérance près — et cette tolérance grandit
+  // avec sa détresse. C'est déjà l'esprit d'`exigenceClub`, qui retranche 18
+  // points à la lanterne rouge (« prend qui veut ») : la candidature suit la
+  // même logique au lieu d'en inventer une seconde.
+  const TOLERANCE_CANDIDATURE_BASE = 8;
+  const TOLERANCE_CANDIDATURE_CRISE = 14;
+
+  function toleranceCandidature(situation) {
+    const position = situation && situation.position;
+    const total = situation && situation.total;
+    if (!position || !total) return TOLERANCE_CANDIDATURE_BASE;
+    const part = position / total;
+    return TOLERANCE_CANDIDATURE_BASE + (part >= 0.8 ? TOLERANCE_CANDIDATURE_CRISE : 0);
+  }
+
+  function candidaturesDe(saison) {
+    const m = assurerManager(saison);
+    if (!Array.isArray(m.candidatures)) m.candidatures = [];
+    return m.candidatures;
+  }
+
+  // La même forme d'offre que `offresDisponibles`, construite pour un club
+  // précis. Sert uniquement à faire passer une candidature acceptée par le
+  // chemin d'engagement COMMUN.
+  function offreDeCandidature(saison, entree, exigence, poste) {
+    const RMClub = global.RMClub;
+    const m = assurerManager(saison);
+    const niveauJoueur = (saison.clubJoueur.palierPyramide || { niveau: 3 }).niveau;
+    return {
+      id: 'candidature-' + entree.club.id + '-' + (saison.numero || 1),
+      clubId: entree.club.id,
+      clubNom: entree.club.nom,
+      niveauCible: entree.niveau,
+      division: RMClub.nomPalierFrance ? RMClub.nomPalierFrance(entree.niveau) : 'Championnat',
+      immediat: entree.niveau === niveauJoueur,
+      position: entree.position,
+      totalClubs: entree.total,
+      objectif: entree.position != null && entree.total && entree.position / entree.total > 0.75
+        ? 'Assurer le maintien' : 'Faire mieux que la saison passée',
+      budget: entree.club.budget != null ? entree.club.budget : null,
+      // Un club qui te prend sur candidature démarre plus bas qu'un club venu
+      // te chercher : c'est toi qui as demandé.
+      confianceInitiale: Math.max(35, Math.min(65, 45 + Math.round((m.reputation - exigence) / 3))),
+      raison: poste ? poste.raison : null,
+      raisonPosteLibre: poste ? poste.raison : null,
+      exigence,
+    };
+  }
+
+  function poserCandidature(saison, clubId) {
+    const RMClub = global.RMClub;
+    const m = assurerManager(saison);
+    const numero = saison.numero || 1;
+    const deja = candidaturesDe(saison).find((c) => c.clubId === clubId && c.saison === numero);
+    if (deja) {
+      return { statut: 'deja_postule',
+        raison: 'Tu as déjà postulé à ce poste cette saison — réponse : '
+          + (deja.statut === 'acceptee' ? 'accord.' : 'refus.') };
+    }
+    const poste = RMClub.posteOuvert ? RMClub.posteOuvert(saison, clubId) : null;
+    if (!poste) {
+      return { statut: 'impossible',
+        raison: 'Ce club a un entraîneur en poste : il ne cherche personne.' };
+    }
+    // On retrouve le club et sa situation par la MÊME fonction que les offres.
+    const entree = clubsRecruteurs(saison).find((x) => x.club.id === clubId);
+    if (!entree) {
+      return { statut: 'impossible',
+        raison: 'Ce club n\'est pas dans une compétition que tu suis.' };
+    }
+    const exigence = exigenceClub(entree.club, entree.position, entree.total, entree.niveau);
+    // La tolérance se juge sur la situation qui a COÛTÉ le poste, retenue par
+    // le poste lui-même — pas sur la position vivante du club, qui ne veut
+    // rien dire dans une division dont aucune journée n'a été jouée (G29).
+    const tolerance = toleranceCandidature(
+      poste && poste.position && poste.total ? poste : entree);
+    const accepte = m.reputation >= exigence - tolerance;
+    candidaturesDe(saison).push({ clubId, clubNom: entree.club.nom, saison: numero,
+      statut: accepte ? 'acceptee' : 'refusee', exigence, reputation: m.reputation });
+
+    if (!accepte) {
+      const raison = `${entree.club.nom} cherche un profil coté ${exigence} `
+        + `(${tolerance} points de marge vu sa situation). Ta réputation est de ${m.reputation} : `
+        + 'le club a décliné.';
+      if (RMClub.ajouterMessage) {
+        RMClub.ajouterMessage(saison, 'carriere', 'Candidature refusée', raison);
+      }
+      return { statut: 'refusee', raison, exigence, tolerance };
+    }
+
+    // ACCEPTÉE : on emprunte EXACTEMENT le chemin d'une offre acceptée. Écrire
+    // un second chemin d'engagement, c'est se garantir qu'il divergera.
+    const offre = offreDeCandidature(saison, entree, exigence, poste);
+    m.offres.push({ id: offre.id, clubId: offre.clubId, clubNom: offre.clubNom,
+      saison: numero, statut: 'acceptee' });
+    engagerSurOffre(saison, offre);
+    return { statut: 'acceptee', raison: `${entree.club.nom} accepte ta candidature.`,
+      exigence, tolerance };
+  }
+
   function enregistrerDecisionOffre(saison, offreId, statut) {
     const m = assurerManager(saison);
     const offre = offresDisponibles(saison).find((o) => o.id === offreId);
@@ -471,9 +580,16 @@
   }
 
   function accepterOffre(saison, offreId) {
-    const RMClub = global.RMClub;
     const offre = enregistrerDecisionOffre(saison, offreId, 'acceptee');
     if (!offre) return false;
+    return engagerSurOffre(saison, offre);
+  }
+
+  // L'engagement lui-même, PARTAGÉ par les offres et les candidatures (G29).
+  // Deux chemins auraient fini par diverger : la confiance initiale, le
+  // message, la bascule immédiate ou différée sont exactement les mêmes.
+  function engagerSurOffre(saison, offre) {
+    const RMClub = global.RMClub;
     // Même division : le manager change de club séance tenante, comme avant —
     // le championnat, le calendrier et les classements ne bougent pas, les
     // deux clubs échangent simplement de rôle.
@@ -746,6 +862,7 @@
   global.RMClub = Object.assign(global.RMClub || {}, {
     assurerManager, gainReputation, appliquerReputation, securiteEmploi,
     licencierManager, offresDisponibles, refuserOffre, accepterOffre, changerClubManager,
+    poserCandidature, toleranceCandidature,
     enregistrerSaisonManager, clubsRecruteurs,
     engagementProchaineSaison, realiserEngagementProchaineSaison,
   });

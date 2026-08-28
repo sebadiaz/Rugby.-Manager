@@ -865,6 +865,28 @@
 
   // Offres d'emploi (TODO_AUDIT.md P1-42) : accepter change RÉELLEMENT de
   // club — même monde, même saison, même date — refuser retire l'offre.
+  // Candidature spontanée (G29) : le manager se propose au lieu d'attendre.
+  // Une par club et par saison — c'est ce qui en fait une décision et non un
+  // bouton qu'on martèle jusqu'à ce que ça passe.
+  const zonePostes = document.getElementById('clubPostesOuverts');
+  if (zonePostes) zonePostes.addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-postuler]');
+    if (!btn) return;
+    const clubId = btn.dataset.postuler;
+    const poste = RMClub.posteOuvert ? RMClub.posteOuvert(saison, clubId) : null;
+    if (!poste) return;
+    const ok = await confirmerAction(
+      `Poser ta candidature à ${poste.clubNom} ? Tu ne pourras pas retenter ce club cette saison, `
+      + 'et un accord t\'engage aussitôt — immédiatement si c\'est ta division, la saison '
+      + 'prochaine sinon.');
+    if (!ok) return;
+    const r = RMClub.poserCandidature(saison, clubId);
+    sauvegarder();
+    rafraichirTout();
+    if (r.statut === 'acceptee') { afficherInfo('Candidature acceptée', r.raison); }
+    else { toast(r.statut === 'refusee' ? 'Candidature refusée' : r.raison); }
+  });
+
   document.getElementById('clubOffresManager').addEventListener('click', async (e) => {
     const refus = e.target.closest('[data-refuser]');
     if (refus) {
@@ -3759,12 +3781,49 @@
     }).join('');
   }
 
+  // Les postes ouverts auxquels le manager peut POSTULER (G29). Mesuré : à 50
+  // de réputation, un tiers des postes s'ouvrent sans jamais lui être proposés
+  // — il ne pouvait qu'attendre. On liste donc tous les postes ouverts, y
+  // compris ceux que les offres n'ont pas retenus.
+  function rafraichirPostesOuverts() {
+    const carte = document.getElementById('cartePostesOuverts');
+    if (!carte || !RMClub.postesLibres || !RMClub.poserCandidature) return;
+    const postes = RMClub.postesLibres(saison);
+    if (!postes.length) { carte.style.display = 'none'; return; }
+    carte.style.display = '';
+    const proposes = new Set((RMClub.offresDisponibles(saison) || []).map((o) => o.clubId));
+    const candidatures = ((saison.manager || {}).candidatures || [])
+      .filter((c) => c.saison === (saison.numero || 1));
+    document.getElementById('clubPostesOuverts').innerHTML = postes.map((p) => {
+      const deja = candidatures.find((c) => c.clubId === p.clubId);
+      const division = RMClub.nomPalierFrance ? RMClub.nomPalierFrance(p.niveau) : '';
+      const etat = deja
+        ? `<span class="badgeNiveau ${deja.statut === 'acceptee' ? 'niveau-recommande' : 'niveau-urgent'}">`
+          + `${deja.statut === 'acceptee' ? 'Candidature acceptée' : 'Candidature refusée'}</span>`
+        : (proposes.has(p.clubId)
+          ? '<span class="badgeNiveau niveau-recommande">Ils t\'ont contacté</span>' : '');
+      const bouton = deja
+        ? `<div class="offreLigne">${echapperHTML(deja.statut === 'acceptee'
+            ? 'Tu as été retenu.'
+            : `Ils cherchaient un profil coté ${deja.exigence} ; tu étais à ${deja.reputation}.`)}</div>`
+        : `<div class="actionsOffre"><button class="alt" data-postuler="${echapperHTML(p.clubId)}">`
+          + 'Poser ma candidature</button></div>';
+      return `<div class="offreManager">` +
+        `<div class="offreTitre"><b>${lienClub(p.clubId)}</b>` +
+        `<span class="badgeNiveau niveau-info">${echapperHTML(division)}</span>${etat}</div>` +
+        `<div class="offreLigne">${echapperHTML(p.raison || '')}</div>` +
+        bouton +
+        `</div>`;
+    }).join('');
+  }
+
   function rafraichirMonde() {
     if (!saison.monde) {
       RMWorld.assurerMonde(creerRng(graineAleatoire()), saison);
       sauvegarder();
     }
     rafraichirBancsQuiChauffent();
+    rafraichirPostesOuverts();
     const monde = saison.monde;
     document.getElementById('mondePays').innerHTML = monde.pays.map((pays) => {
       const boutonsDivisions = pays.divisions.map((d) =>

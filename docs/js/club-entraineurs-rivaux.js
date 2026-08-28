@@ -310,6 +310,13 @@
         clubId: club.id,
         clubNom: club.nom,
         niveau,
+        // La SITUATION qui a coûté sa place (G29). Sans elle, une candidature
+        // était jugée sur la position vivante du club — qui vaut « 2e sur 16 »
+        // dans une division dont aucune journée n'a été jouée, soit un ordre
+        // arbitraire. L'écran annonçait « 16e sur 16 » et la règle traitait le
+        // club comme un milieu de tableau.
+        position: bilan.position,
+        total: bilan.total,
         raison: raisonDuDepart(partant, bilan, entraineur),
         entraineurParti: partant,
         interim: e.parClub[club.id].nom,
@@ -486,6 +493,8 @@
         clubId: club.id,
         clubNom: club.nom,
         niveau,
+        position,
+        total,
         raison: `${partant} a été limogé en cours de saison : ${position}e sur ${total} après ${journees} journées.`,
         joursEnDanger: entraineur.joursEnDanger,
         entraineurParti: partant,

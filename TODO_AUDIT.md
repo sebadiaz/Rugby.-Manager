@@ -3810,6 +3810,96 @@ composition ni à la fatigue.
 
 ---
 
+## G29 — Le manager modeste ne pouvait qu'attendre (livrée)
+
+### L'audit, chiffré par niveau de réputation
+
+Quatre saisons réellement jouées par palier — part des postes qui s'ouvrent
+**sans jamais être proposés** au manager :
+
+```
+réputation 50 : 19 ouverts, 13 proposés  ->  6 hors de portée (32 %)
+réputation 70 : 15 ouverts, 12 proposés  ->  3 hors de portée (20 %)
+réputation 90 : 18 ouverts, 18 proposés  ->  0 hors de portée (0 %)
+```
+
+Le résultat oriente toute la tranche : **le manager déjà courtisé n'a besoin
+de rien.** À 90 de réputation, aucun poste ne lui échappe. C'est le manager
+modeste — un tiers des postes hors de portée — qui n'avait aucun moyen d'agir.
+Il ne pouvait qu'attendre qu'on vienne à lui.
+
+### La règle
+
+Le club dit oui si la réputation atteint son exigence, **à une tolérance
+près** — et cette tolérance grandit avec sa détresse : 8 points en temps
+normal, 22 pour un club dans les places qui descendent. Ce n'est pas une
+seconde règle : `exigenceClub` retranche déjà 18 points à la lanterne rouge
+(« prend qui veut »). La candidature suit la même logique.
+
+Déterministe, et lisible : un refus dit les chiffres — « Ils cherchaient un
+profil coté 61 ; tu étais à 52 ».
+
+**Le coût :** une candidature par club et par saison. C'est ce qui en fait une
+décision et non un bouton qu'on martèle jusqu'à ce que ça passe.
+
+**Un seul chemin d'engagement.** Une candidature acceptée passe par
+`engagerSurOffre`, extrait de `accepterOffre` — la confiance initiale, le
+message, la bascule immédiate ou différée sont exactement les mêmes. Deux
+chemins auraient fini par diverger. E48 le tient.
+
+### La contradiction trouvée en jouant
+
+Le parcours navigateur a montré une candidature refusée sur un club dont
+l'écran annonçait, deux lignes plus haut, « Léo Dubois a été limogé après une
+**16e place sur 16** ». Un club dernier de sa division jugé comme un milieu de
+tableau. Diagnostic :
+
+```
+poste   : Hautecombe Taureaux | raison : « ... 16e place sur 16 »
+champs du poste : clubId, clubNom, niveau, raison, entraineurParti, interim, depuisSaison
+clubsRecruteurs -> position : 2 / total : 16
+tolérance calculée : 8   (au lieu de 22)
+```
+
+`clubsRecruteurs` lisait la position **vivante**, qui vaut « 2e sur 16 » dans
+une division dont aucune journée n'a été jouée — un ordre arbitraire, pas un
+classement. Le poste, lui, ne retenait pas la situation qui avait coûté sa
+place à l'entraîneur.
+
+Les deux créations de poste (fin de saison et cours de saison) l'enregistrent
+désormais, et c'est elle qui décide de la tolérance. E51 le tient. Rejoué dans
+le navigateur : le club qui finit 16e sur 16 accepte maintenant un manager
+coté 52 — cohérent avec ce que l'écran lui dit.
+
+### Ce que le joueur voit
+
+Dans l'onglet Monde, sous les bancs qui chauffent, une carte **« Postes à
+pourvoir »** : tous les bancs vacants du pays, **y compris ceux qui ne l'ont
+pas contacté**, chacun avec un bouton « Poser ma candidature ».
+
+```
+Hautecombe Ours     [LIGUE NATIONALE]  [CANDIDATURE ACCEPTÉE]
+  Léo Dubois a été limogé après une 16e place sur 16.
+  Tu as été retenu.
+
+Hautecombe Taureaux [LIGUE NATIONALE]
+  Maxime Fontaine a été limogé après une 16e place sur 16.
+  [ Poser ma candidature ]
+```
+
+Vérifié en pilotant réellement le jeu, 1400×1100 et 390×844 : un manager coté
+52 voit trois postes ouverts, **aucun proposé**, postule, et le bouton
+disparaît — remplacé par la réponse chiffrée. Aucune erreur de page.
+
+### La nouvelle décision
+
+Un manager de Régionale à 52 de réputation peut monter en Ligue Nationale en
+allant chercher un club au fond du classement — un club que personne ne lui
+aurait proposé. Mais il n'a qu'un essai par club : viser trop haut, c'est
+brûler sa cartouche pour la saison.
+
+---
+
 ## G28 — Attendre ne coûtait rien (livrée)
 
 ### L'audit, chiffré

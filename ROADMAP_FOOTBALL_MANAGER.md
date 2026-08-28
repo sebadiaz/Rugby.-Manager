@@ -127,6 +127,15 @@ tranche livrée — jamais en avance sur ce qui est réellement dans `main`.
 
 ## Historique des tranches livrées
 
+### G29 — Le manager modeste ne pouvait qu'attendre (livrée)
+- **Domaines touchés :** carrière. `club-carriere-manager.js`, `club-entraineurs-rivaux.js`, `clubUI.js`, `docs/index.html`, `server/test-marche-entraineurs.js`.
+- **L'audit, chiffré par niveau de réputation** (quatre saisons réellement jouées) : à **90**, aucun poste ouvert n'échappe au manager — il est déjà courtisé partout ; à **70**, 20 % lui échappent ; à **50**, **32 %**. Le résultat oriente toute la tranche : le manager déjà installé n'a besoin de rien, c'est le manager **modeste** qui n'avait aucun moyen d'agir.
+- **La règle :** le club dit oui si la réputation atteint son exigence à une tolérance près — 8 points en temps normal, **22 pour un club dans les places qui descendent**. Ce n'est pas un second barème : `exigenceClub` retranche déjà 18 points à la lanterne rouge (« prend qui veut »). Déterministe et lisible : un refus dit les chiffres (« Ils cherchaient un profil coté 61 ; tu étais à 52 »).
+- **Le coût :** une candidature par club et par saison. C'est ce qui en fait une décision et non un bouton qu'on martèle. **Un seul chemin d'engagement** : `engagerSurOffre`, extrait de `accepterOffre` et partagé — deux chemins auraient divergé.
+- **La contradiction trouvée EN JOUANT :** une candidature refusée sur un club dont l'écran annonçait deux lignes plus haut « limogé après une **16e place sur 16** ». `clubsRecruteurs` lisait la position **vivante**, qui vaut « 2e sur 16 » dans une division dont aucune journée n'a été jouée — un ordre arbitraire. Le poste ne retenait pas la situation qui avait coûté sa place à l'entraîneur ; il le fait désormais, dans les deux chemins de création. Rejoué : le club dernier accepte maintenant un manager coté 52.
+- **Ce que le joueur voit :** dans l'onglet Monde, une carte « 📄 Postes à pourvoir » — **tous** les bancs vacants du pays, y compris ceux qui ne l'ont pas contacté, chacun avec un bouton « Poser ma candidature ». Vérifié en pilotant réellement le jeu (1400×1100 et 390×844) : trois postes ouverts, aucun proposé, candidature posée, bouton remplacé par la réponse chiffrée. Aucune erreur de page.
+- **La nouvelle décision :** un manager de Régionale à 52 peut monter en Ligue Nationale en allant chercher un club au fond du classement — que personne ne lui aurait proposé. Mais un seul essai par club : viser trop haut, c'est brûler sa cartouche pour la saison.
+
 ### G28 — Attendre ne coûtait rien (livrée)
 - **Domaines touchés :** carrière, monde IA. `club-entraineurs-rivaux.js`, `club-evenements.js`, `club-carriere-manager.js`, `clubUI.js`, `server/test-marche-entraineurs.js`.
 - **L'audit, chiffré sur six saisons réellement jouées :** 38 postes ouverts en cours de saison, ouverts **70 jours en moyenne** (jusqu'à 102), et **0 refermé**. Trois intérimaires avaient déjà sorti leur club des places critiques sans que rien ne change — leur compteur restait gelé. Un poste ouvert en novembre était encore là en juin.

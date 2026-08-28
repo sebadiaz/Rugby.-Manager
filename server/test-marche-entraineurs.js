@@ -948,4 +948,161 @@ test('E42 — la boucle quotidienne n\'appelle PAS resoudreInterimaires', () => 
     'et elle doit bien lire la liste quelque part, sinon le résumé du jour est muet');
 });
 
+// --- E43..E50 : poser sa candidature -------------------------------------
+//
+// Audit mesuré avant cette partie, sur quatre saisons réellement jouées par
+// niveau de réputation — part des postes qui s'ouvrent SANS jamais être
+// proposés au manager :
+//
+//   réputation 50 : 19 ouverts, 13 proposés ->  6 hors de portée (32 %)
+//   réputation 70 : 15 ouverts, 12 proposés ->  3 hors de portée (20 %)
+//   réputation 90 : 18 ouverts, 18 proposés ->  0 hors de portée (0 %)
+//
+// Le manager déjà courtisé n'a besoin de rien. C'est le manager MODESTE — un
+// tiers des postes hors de portée — qui n'avait aucun moyen d'agir : il ne
+// pouvait qu'attendre qu'on vienne à lui. Postuler est son levier.
+
+function ouvrirPosteDe(s, clubId) {
+  saisonEnCours(s, 7, clubId);
+  const poste = limogerJusquA(s, clubId, 200);
+  assert.ok(poste, 'prémisse : le poste doit s\'être ouvert');
+  return poste;
+}
+
+test('E43 — on ne postule que sur un poste réellement ouvert', () => {
+  const s = carriere(60, 3);
+  const club = s.adversaires[1];
+  const r = RMClub.poserCandidature(s, club.id);
+  assert.ok(r && r.statut === 'impossible',
+    `postuler sur un poste occupé doit être refusé net (${r && r.statut})`);
+  assert.ok(r.raison && r.raison.length > 10, 'et dire pourquoi');
+});
+
+test('E44 — une réputation suffisante est acceptée', () => {
+  const s = carriere(95, 3);
+  const club = s.adversaires[0];
+  ouvrirPosteDe(s, club.id);
+  const r = RMClub.poserCandidature(s, club.id);
+  assert.strictEqual(r.statut, 'acceptee',
+    `un manager à 95 doit être pris par un club en crise (${r.statut} : ${r.raison})`);
+});
+
+test('E45 — une réputation très insuffisante est refusée, chiffres à l\'appui', () => {
+  const s = carriere(5, 3);
+  // Un club de l'ÉLITE : son exigence est hors de portée d'un inconnu.
+  const div = (s.autresDivisionsFrance || {}).divisions[1];
+  const club = div.clubs[0];
+  RMClub.resoudreEntraineursFinDeSaison(creerRng(61), s, {
+    bilans: { [club.id]: { position: 14, total: 14 } },
+  });
+  const r = RMClub.poserCandidature(s, club.id);
+  assert.strictEqual(r.statut, 'refusee',
+    `un manager à 5 de réputation ne peut pas prendre un club d'élite (${r.statut})`);
+  assert.ok(/\d/.test(r.raison), `la raison doit être chiffrée : « ${r.raison} »`);
+});
+
+test('E46 — un club en crise tolère un écart plus grand', () => {
+  // MÊME réputation, MÊME division, deux situations différentes : le club qui
+  // se noie doit être moins regardant. C'est déjà l'esprit d'`exigenceClub`
+  // (« prend qui veut », -18 pour la lanterne rouge) — la candidature doit
+  // suivre la même logique, pas en inventer une autre.
+  const tolerance = (position, total) =>
+    RMClub.toleranceCandidature({ position, total });
+  assert.ok(tolerance(14, 14) > tolerance(5, 14),
+    'un club au fond doit accepter un écart plus grand qu\'un club installé');
+  assert.ok(tolerance(5, 14) >= 0, 'la tolérance ne peut pas être négative');
+});
+
+test('E47 — on ne postule qu\'une fois par club : un refus se paie', () => {
+  const s = carriere(5, 3);
+  const div = (s.autresDivisionsFrance || {}).divisions[1];
+  const club = div.clubs[0];
+  RMClub.resoudreEntraineursFinDeSaison(creerRng(62), s, {
+    bilans: { [club.id]: { position: 14, total: 14 } },
+  });
+  assert.strictEqual(RMClub.poserCandidature(s, club.id).statut, 'refusee');
+  const seconde = RMClub.poserCandidature(s, club.id);
+  assert.strictEqual(seconde.statut, 'deja_postule',
+    `on ne doit pas pouvoir retenter le même club (${seconde.statut})`);
+  assert.ok(seconde.raison.includes('déjà'), `raison peu claire : « ${seconde.raison} »`);
+});
+
+test('E48 — une candidature acceptée engage EXACTEMENT comme une offre', () => {
+  // Une seule source de vérité : la candidature ne doit pas avoir son propre
+  // chemin d'engagement, qui finirait par diverger de celui des offres.
+  const s = carriere(95, 3);
+  const club = s.adversaires[0];
+  ouvrirPosteDe(s, club.id);
+  const avant = s.clubJoueur.id;
+  const r = RMClub.poserCandidature(s, club.id);
+  assert.strictEqual(r.statut, 'acceptee');
+  assert.strictEqual(s.clubJoueur.id, club.id,
+    `même division : le manager doit changer de club sur-le-champ (${avant} -> ${s.clubJoueur.id})`);
+});
+
+test('E49 — postuler donne accès à des postes qui n\'étaient PAS proposés', () => {
+  // Le cœur de la tranche, mesuré : un manager modeste voit un tiers des
+  // postes s'ouvrir sans jamais lui être proposés.
+  const s = carriere(45, 3);
+  const div = (s.autresDivisionsFrance || {}).divisions[2] || (s.autresDivisionsFrance || {}).divisions[1];
+  const bilans = {};
+  for (const c of div.clubs) bilans[c.id] = { position: div.clubs.length, total: div.clubs.length };
+  RMClub.resoudreEntraineursFinDeSaison(creerRng(63), s, { bilans });
+  const ouverts = RMClub.postesLibres(s).map((p) => p.clubId);
+  const proposes = new Set(RMClub.offresDisponibles(s).map((o) => o.clubId));
+  const horsDePortee = ouverts.filter((id) => !proposes.has(id));
+  assert.ok(horsDePortee.length > 0,
+    `prémisse : des postes doivent rester hors de portée (${ouverts.length} ouverts, ${proposes.size} proposés)`);
+  const candidatures = horsDePortee.map((id) => RMClub.poserCandidature(s, id));
+  assert.ok(candidatures.every((r) => r.statut !== 'impossible'),
+    'un poste ouvert doit toujours accepter une candidature, même si le club dit non');
+  assert.ok(candidatures.some((r) => r.statut === 'acceptee' || r.statut === 'refusee'),
+    'et le club doit RÉPONDRE, pas rester muet');
+});
+
+test('E50 — les candidatures survivent au rechargement', () => {
+  const s = carriere(5, 3);
+  const div = (s.autresDivisionsFrance || {}).divisions[1];
+  const club = div.clubs[0];
+  RMClub.resoudreEntraineursFinDeSaison(creerRng(64), s, {
+    bilans: { [club.id]: { position: 14, total: 14 } },
+  });
+  RMClub.poserCandidature(s, club.id);
+  RMClub.sauvegarderSaison(s);
+  const relu = RMClub.chargerSaison();
+  assert.ok(relu, 'la sauvegarde doit se relire');
+  assert.strictEqual(RMClub.poserCandidature(relu, club.id).statut, 'deja_postule',
+    'après rechargement, le club doit se souvenir de la candidature');
+});
+
+test('E51 — la tolérance suit la situation qui a COÛTÉ le poste, pas un ordre arbitraire', () => {
+  // Trouvé en jouant : l'écran annonçait « Léo Dubois a été limogé après une
+  // 16e place sur 16 », et la candidature était jugée avec la tolérance d'un
+  // club de milieu de tableau. `clubsRecruteurs` lisait la position VIVANTE,
+  // qui vaut 2e sur 16 dans une division dont aucune journée n'a été jouée —
+  // un ordre arbitraire, pas un classement.
+  //
+  // Le poste doit donc porter la situation qui a coûté sa place à
+  // l'entraîneur, et c'est elle qui décide de la tolérance.
+  const s = carriere(52, 3);
+  const div = (s.autresDivisionsFrance || {}).divisions[2]
+    || (s.autresDivisionsFrance || {}).divisions[1];
+  const club = div.clubs[0];
+  const total = div.clubs.length;
+  RMClub.resoudreEntraineursFinDeSaison(creerRng(71), s, {
+    bilans: { [club.id]: { position: total, total } },
+  });
+  const poste = RMClub.postesLibres(s).find((p) => p.clubId === club.id);
+  assert.ok(poste, 'prémisse : le poste doit être ouvert');
+  assert.strictEqual(poste.position, total,
+    `le poste doit retenir la position qui a coûté la place (${poste.position})`);
+  assert.strictEqual(poste.total, total, 'et le nombre de clubs de sa division');
+  // Un club qui finit dernier est en crise : la tolérance doit être la haute.
+  assert.strictEqual(RMClub.toleranceCandidature(poste),
+    RMClub.toleranceCandidature({ position: total, total }),
+    'la tolérance lue sur le poste doit valoir celle de sa situation réelle');
+  assert.ok(RMClub.toleranceCandidature(poste) > RMClub.toleranceCandidature({ position: 2, total }),
+    'et être plus large que celle d\'un club de haut de tableau');
+});
+
 console.log(`\n${nbTests} test(s) exécuté(s).`);
