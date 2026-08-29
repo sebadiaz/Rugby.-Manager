@@ -89,7 +89,30 @@
     }
   }
 
+  // Niveau à demander au générateur pour la RÉSERVE d'un club, à partir du
+  // niveau de son XV premier.
+  //
+  // Une réserve n'est pas un XV premier — mais l'ancienne règle
+  // (`niveauClub * 0,65`) ne l'exprimait pas. `genererJoueur` décale les
+  // notes de `(niveauClub - 0,5) * 20` : sur les niveaux d'une division
+  // (0,15 à 0,45), multiplier par 0,65 ne retire qu'UN point de note. La
+  // réserve adverse restait donc un XV premier, et le championnat B était
+  // injouable pour le manager (mesuré : 0-48, 9-70, 3-44, 17-25 quatre
+  // journées d'affilée, pendant que les rencontres B entre clubs IA
+  // restaient serrées).
+  //
+  // L'écart RÉEL entre le XV premier d'un club et sa réserve, mesuré sur 12
+  // carrières générées, est de 13,1 points de note en moyenne (12,1 à 15,2).
+  // Sur l'échelle du générateur, 13 points de note valent 0,65 de niveau —
+  // en SOUSTRACTION. Le niveau obtenu peut être négatif : c'est voulu, et
+  // `borneStat` (plancher 30) empêche de toute façon toute note absurde.
+  const ECART_NIVEAU_RESERVE = 0.65;
+  function niveauReserveDe(niveauPremiere) {
+    return (niveauPremiere != null ? niveauPremiere : 0.5) - ECART_NIVEAU_RESERVE;
+  }
+
   global.RMClub = Object.assign(global.RMClub || {}, {
+    ECART_NIVEAU_RESERVE, niveauReserveDe,
     determinerEligiblesEquipeB, genererCompetitionB, assurerCompetitionB,
     enregistrerResultatEquipeB, prochaineRondeEquipeB,
     effectifDisponiblePourEquipeB, appliquerEffetsMatchEquipeB,

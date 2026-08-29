@@ -5805,9 +5805,11 @@
       function cfgDe(clubId) {
         if (clubId === idJoueur) return RMClub.compositionVersJoueursCfg(effectifB, compositionJoueur);
         const clubAdverse = RMClub.club(saison, clubId);
-        // 0,65 : une équipe réserve, pas le XV premier. Le banc du club
-        // compte quand même — c'est le même entraîneur.
-        const niveauB = niveauAdversePourGeneration(clubAdverse, 0.65);
+        // Une équipe réserve, pas le XV premier (cf. RMClub.niveauReserveDe,
+        // calibré sur l'écart RÉELLEMENT mesuré entre un XV premier et sa
+        // réserve). Le banc du club compte quand même — c'est le même
+        // entraîneur : l'effet entraîneur est appliqué AVANT le retrait.
+        const niveauB = RMClub.niveauReserveDe(niveauAdversePourGeneration(clubAdverse));
         return RMClub.effectifVersJoueursCfg({ effectif: RMClub.genererEffectif(rng, niveauB) });
       }
       const clubDomicile = RMClub.club(saison, f.domicileId);

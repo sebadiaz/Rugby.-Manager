@@ -1214,6 +1214,72 @@ test('espoirs : les essais RÉELLEMENT marqués alimentent le classement du cham
   assert.strictEqual(moi.pts, 5, 'victoire (4) + bonus offensif (1)');
 });
 
+// BUG #6 (chasse aux bugs) : l'Équipe B du joueur affrontait des XV PREMIERS.
+//
+// Mesuré dans le navigateur, quatre journées d'affilée : 0-48, 9-70, 3-44,
+// 17-25 pour mon Équipe B — pendant que les rencontres B entre clubs IA
+// restaient serrées (28-27, 15-16, 24-22, 24-17). Cause mesurée : le niveau
+// demandé au générateur pour la réserve adverse était `niveauClub * 0,65`.
+// Or genererJoueur décale les notes de `(niveauClub - 0,5) * 20` : sur les
+// niveaux d'une division (0,15 à 0,45), multiplier par 0,65 ne retire qu'UN
+// point de note. L'écart réel entre un XV premier et sa réserve, mesuré sur
+// 12 carrières, est de 13,1 points (12,1 à 15,2) — soit 0,65 de niveau, en
+// SOUSTRACTION. Le facteur multiplicatif n'exprimait donc rien.
+test('équipe B : la réserve adverse est générée comme une RÉSERVE, pas comme un XV premier', () => {
+  const niveauMoyen = (effectif) => effectif.reduce((somme, j) =>
+    somme + ((j.vitesse || 0) + (j.plaquage || 0)) / 2, 0) / effectif.length;
+
+  // Prémisse mesurée, sans laquelle le test ne prouverait rien : dans ce jeu,
+  // la réserve d'un club est RÉELLEMENT bien plus faible que son XV premier.
+  const ecarts = [];
+  for (let g = 1; g <= 6; g++) {
+    const s = RMClub.nouvelleSaison(creerRng(6100 + g), 'Écart Réserve ' + g);
+    const xvDe = (equipe) => {
+      const slot = RMClub.assurerCompositionPourEquipe(s, equipe);
+      const parId = {};
+      for (const j of RMClub.effectifPourEquipe(s, equipe)) parId[j.id] = j;
+      return Object.values(slot.compositionTitulaires || {}).map((id) => parId[id]).filter(Boolean);
+    };
+    ecarts.push(niveauMoyen(xvDe('pro')) - niveauMoyen(xvDe('b')));
+  }
+  const ecartReel = ecarts.reduce((a, b) => a + b, 0) / ecarts.length;
+  assert.ok(ecartReel > 8,
+    `prémisse : la réserve du joueur doit être nettement plus faible que son XV premier (mesuré ${ecartReel.toFixed(1)})`);
+
+  // La règle testée est celle que l'interface utilise réellement, pas une
+  // copie : c'est niveauReserveDe qui décide du niveau de la réserve adverse.
+  assert.ok(typeof RMClub.niveauReserveDe === 'function',
+    'la règle du niveau de réserve doit exister et être exportée, pas recopiée dans l\'interface');
+  for (const niveauPremiere of [0.15, 0.3, 0.45]) {
+    const premiere = niveauMoyen(RMClub.genererEffectif(creerRng(77), niveauPremiere));
+    const reserve = niveauMoyen(RMClub.genererEffectif(creerRng(77), RMClub.niveauReserveDe(niveauPremiere)));
+    assert.ok(premiere - reserve > 8,
+      `à niveau ${niveauPremiere}, la réserve générée doit être nettement plus faible que le XV premier `
+      + `(XV ${premiere.toFixed(1)} vs réserve ${reserve.toFixed(1)})`);
+  }
+
+  // Et le point qui décide si le championnat B est jouable : la réserve
+  // adverse doit être du même ordre que la MIENNE, pas 7 points au-dessus.
+  const s = RMClub.nouvelleSaison(creerRng(6199), 'Réserve Jouable');
+  // Le XV premier D'ABORD : le vivier de l'Équipe B est l'effectif NON
+  // convoqué (cf. effectifDisponiblePourEquipeB). Sans cette ligne, la
+  // réserve se remplit avec les meilleurs joueurs du club et la mesure ne
+  // décrit plus une réserve — ce qui est exactement l'état du jeu réel au
+  // moment du match, où la composition du premier XV existe déjà.
+  RMClub.assurerCompositionPourEquipe(s, 'pro');
+  const slotB = RMClub.assurerCompositionPourEquipe(s, 'b');
+  const parIdB = {};
+  for (const j of RMClub.effectifPourEquipe(s, 'b')) parIdB[j.id] = j;
+  const maReserve = niveauMoyen(Object.values(slotB.compositionTitulaires || {})
+    .map((id) => parIdB[id]).filter(Boolean));
+  const rival = s.adversaires[Math.floor(s.adversaires.length / 2)];
+  const saReserve = niveauMoyen(RMClub.genererEffectif(creerRng(88),
+    RMClub.niveauReserveDe(rival.niveauClub)));
+  assert.ok(Math.abs(saReserve - maReserve) < 6,
+    `la réserve adverse doit être du même ordre que la mienne (moi ${maReserve.toFixed(1)}, `
+    + `elle ${saReserve.toFixed(1)}) — sinon le championnat B est injouable`);
+});
+
 // --- 12e) Navigation entre clubs (TODO_AUDIT.md P1-20) : on n'ouvre JAMAIS
 // un club depuis une liste ou un menu déroulant — uniquement en cliquant son
 // nom. La couche données garantit ici les invariants que l'UI applique. ---
