@@ -3331,6 +3331,64 @@ function optionsLancement() {
     neuveApres === 'b');
   await ctxEquipeNeuve.close();
 
+  // --- BUG #4 (chasse aux bugs) : rentrer chez soi en CLIQUANT le nom de son
+  // propre club perd l'équipe sur laquelle on travaillait.
+  //
+  // Le jeu a DEUX portes pour revenir à son club depuis un adversaire :
+  //   - le bouton « ← Retour à mon club » (retourClubJoueurDansNavigation) ;
+  //   - le nom de son propre club, cliquable comme tous les autres, dans le
+  //     classement, le calendrier ou les confrontations du rival (ouvrirClub).
+  // La première restaure l'équipe consultée, la seconde la remet à 'pro'.
+  // Parcours réel reproduit : je gère l'Équipe B, j'ouvre un rival depuis le
+  // classement pour le jauger, je vois mon club dans CE classement et je
+  // clique dessus pour rentrer — je repars sur le XV sans un mot, et
+  // `equipePrecedente` reste à 'b' sans que rien ne puisse plus la consommer.
+  const ctxRetourNom = await browser.newContext({ viewport: { width: 1400, height: 1000 } });
+  const pgRetourNom = await ctxRetourNom.newPage();
+  pgRetourNom.on('pageerror', (e) => erreursConsole.push('PAGEERROR ' + e.message));
+  await pgRetourNom.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  await pgRetourNom.click('#btnAccueilModeClub');
+  await pgRetourNom.fill('#inputNomClub', 'AS Retour Par Le Nom');
+  await pgRetourNom.click('#btnCreerClub');
+  await pgRetourNom.waitForTimeout(700);
+  await pgRetourNom.click('.ongletBtn[data-onglet="composition"]');
+  await pgRetourNom.waitForTimeout(400);
+  await pgRetourNom.selectOption('#selEquipeContexte', 'b');
+  await pgRetourNom.waitForTimeout(600);
+  const monClubRetour = await pgRetourNom.evaluate(() =>
+    JSON.parse(localStorage.getItem('rugbyManager.club.v1')).clubJoueur.id);
+  await pgRetourNom.click('.ongletBtn[data-onglet="classement"]');
+  await pgRetourNom.waitForTimeout(400);
+  const rivalRetour = await pgRetourNom.$$eval('.lienClub',
+    (bs) => bs.map((b) => b.dataset.club)).then((l) => l.find((id) => id !== monClubRetour));
+  await pgRetourNom.click(`.lienClub[data-club="${rivalRetour}"] >> nth=0`);
+  await pgRetourNom.waitForTimeout(600);
+  await pgRetourNom.click('.ongletBtn[data-onglet="classement"]');
+  await pgRetourNom.waitForTimeout(500);
+  // Prémisse explicite : sans ce contrôle, le test passerait sans rien prouver
+  // le jour où mon club cesserait d'être cliquable depuis l'écran du rival.
+  const liensChezRival = await pgRetourNom.$$eval('.lienClub', (bs) => bs.map((b) => b.dataset.club));
+  verifier('contexte : prémisse — mon propre club est bien cliquable depuis l\'écran d\'un rival',
+    liensChezRival.includes(monClubRetour));
+  await pgRetourNom.click(`.lienClub[data-club="${monClubRetour}"] >> nth=0`);
+  await pgRetourNom.waitForTimeout(700);
+  const navRetourNom = await pgRetourNom.evaluate(() => {
+    const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
+    const n = s.clubJoueur.navigationClub || {};
+    return { equipe: n.equipeConsultee, club: n.clubConsulteId, precedent: n.clubPrecedentId, moi: s.clubJoueur.id };
+  });
+  verifier('contexte : cliquer le nom de son propre club ramène bien chez soi',
+    navRetourNom.club === navRetourNom.moi);
+  verifier('contexte : et garde l\'équipe sur laquelle on travaillait (pas de retour forcé au XV)',
+    navRetourNom.equipe === 'b');
+  verifier('contexte : le point de retour est consommé, pas laissé périmé sur son propre club',
+    navRetourNom.precedent === null);
+  await pgRetourNom.click('.ongletBtn[data-onglet="composition"]');
+  await pgRetourNom.waitForTimeout(500);
+  verifier('contexte : le sélecteur d\'équipe affiche l\'Équipe B après ce retour',
+    (await pgRetourNom.locator('#selEquipeContexte').inputValue().catch(() => null)) === 'b');
+  await ctxRetourNom.close();
+
   verifier('aucune erreur console/page sur tout le parcours', erreursConsole.length === 0);
   if (erreursConsole.length) console.error(erreursConsole.join('\n'));
 

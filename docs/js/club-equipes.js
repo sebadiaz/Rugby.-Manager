@@ -85,6 +85,17 @@
     // palier français ou de l'un des 12 pays est un parcours légitime.
     if (!global.RMClub.clubPartout(saison, clubId)) return n;
     if (clubId === n.clubConsulteId) return n;
+    // Cliquer le nom de SON PROPRE club depuis l'écran d'un adversaire (il y
+    // apparaît dans son classement, son calendrier, ses confrontations) n'est
+    // pas « ouvrir un club » : c'est RENTRER. Sans ce cas, la fonction
+    // traitait son propre club comme n'importe quel rival — retour forcé sur
+    // le XV alors qu'on travaillait sur l'Équipe B, et point de retour laissé
+    // périmé sur soi-même. Le bouton « ← Retour à mon club » et le nom
+    // cliquable doivent mener EXACTEMENT au même état.
+    if (clubId === saison.clubJoueur.id) {
+      retourClubJoueurDansNavigation(saison);
+      return n;
+    }
     // On ne mémorise un point de retour QUE si l'on quitte réellement son
     // propre club — enchaîner deux adversaires ne doit pas faire perdre le
     // chemin du retour.
