@@ -1280,6 +1280,80 @@ test('équipe B : la réserve adverse est générée comme une RÉSERVE, pas com
     + `elle ${saReserve.toFixed(1)}) — sinon le championnat B est injouable`);
 });
 
+// BUG #7 (chasse aux bugs) : même défaut que le #6, côté Espoirs.
+//
+// Mesuré dans le navigateur, six rencontres du championnat espoirs :
+//   5-33, 0-30, 9-37, 0-38, 15-39, 7-49 — six défaites lourdes, 0 à 15
+// points marqués. Les académies entre elles, au même moment : 11-9, 11-11,
+// 17-26, 17-20, 23-21, 19-21. `niveauAdversaireEspoirs` multipliait le
+// niveau du club parent par 0,35 en visant explicitement « des espoirs de
+// 16-18 ans n'ont pas le niveau d'une réserve professionnelle » — mais sur
+// l'échelle du générateur, multiplier ne retire presque rien, et le plancher
+// `Math.max(0,1)` de l'interface remontait même le résultat. L'académie
+// adverse était générée autour de 55 face à mes espoirs à 45,7.
+test('espoirs : l\'académie adverse est générée comme une ACADÉMIE, pas comme un XV premier', () => {
+  const niveauMoyen = (effectif) => effectif.reduce((somme, j) =>
+    somme + ((j.vitesse || 0) + (j.plaquage || 0)) / 2, 0) / effectif.length;
+  const xvDe = (s, equipe) => {
+    const slot = RMClub.assurerCompositionPourEquipe(s, equipe);
+    const parId = {};
+    for (const j of RMClub.effectifPourEquipe(s, equipe)) parId[j.id] = j;
+    return Object.values(slot.compositionTitulaires || {}).map((id) => parId[id]).filter(Boolean);
+  };
+
+  // Prémisse mesurée : les espoirs d'un club sont RÉELLEMENT bien plus
+  // faibles que son XV premier. Sans elle, le test ne prouverait rien.
+  const ecarts = [];
+  for (let g = 1; g <= 6; g++) {
+    const s = RMClub.nouvelleSaison(creerRng(7100 + g), 'Écart Espoirs ' + g);
+    RMClub.assurerCompositionPourEquipe(s, 'pro');
+    ecarts.push(niveauMoyen(xvDe(s, 'pro')) - niveauMoyen(xvDe(s, 'jeunes')));
+  }
+  const ecartReel = ecarts.reduce((x, y) => x + y, 0) / ecarts.length;
+  assert.ok(ecartReel > 8,
+    `prémisse : les espoirs doivent être nettement plus faibles que le XV premier (mesuré ${ecartReel.toFixed(1)})`);
+
+  assert.ok(typeof RMClub.niveauXVAcademie === 'function'
+    && typeof RMClub.clubParentAcademie === 'function',
+    'la règle du niveau d\'un XV d\'académie doit exister et être exportée, pas recopiée dans l\'interface');
+
+  const s = RMClub.nouvelleSaison(creerRng(7199), 'Académie Jouable');
+  RMClub.assurerCompositionPourEquipe(s, 'pro');
+  const comp = RMClub.assurerCompetitionEspoirs(s);
+  const academies = (comp.clubs || []).filter((a) => a.id !== s.clubJoueur.id);
+  assert.ok(academies.length >= 2, 'prémisse : le championnat espoirs oppose bien plusieurs académies');
+
+  for (const academie of academies) {
+    // La résolution du club parent est elle aussi la vraie règle exportée :
+    // c'est elle qui décide du niveau de référence, pas un champ recopié.
+    const parent = RMClub.clubParentAcademie(s, academie);
+    assert.ok(parent, 'prémisse : chaque académie est adossée à un club réel');
+    const xvPremier = niveauMoyen(RMClub.genererEffectif(creerRng(91), parent.niveauClub));
+    const xvAcademie = niveauMoyen(RMClub.genererEffectif(creerRng(91),
+      RMClub.niveauXVAcademie(parent.niveauClub)));
+    assert.ok(xvPremier - xvAcademie > 8,
+      `l'académie de ${parent.nom} doit être nettement plus faible que son XV premier `
+      + `(XV ${xvPremier.toFixed(1)} vs académie ${xvAcademie.toFixed(1)})`);
+  }
+
+  // Et le point qui décide si le championnat espoirs est jouable : l'académie
+  // d'un club de MON niveau doit être du même ordre que MES espoirs.
+  const mesEspoirs = niveauMoyen(xvDe(s, 'jeunes'));
+  const monNiveau = s.clubJoueur.niveauClub;
+  const academieComparable = academies.reduce((meilleure, a) => {
+    const p = RMClub.clubParentAcademie(s, a);
+    if (!p) return meilleure;
+    const ecart = Math.abs(p.niveauClub - monNiveau);
+    return (!meilleure || ecart < meilleure.ecart) ? { parent: p, ecart } : meilleure;
+  }, null);
+  assert.ok(academieComparable, 'prémisse : un club adverse de niveau comparable au mien existe');
+  const saAcademie = niveauMoyen(RMClub.genererEffectif(creerRng(92),
+    RMClub.niveauXVAcademie(academieComparable.parent.niveauClub)));
+  assert.ok(Math.abs(saAcademie - mesEspoirs) < 6,
+    `l'académie d'un club de mon niveau doit valoir à peu près mes espoirs (moi ${mesEspoirs.toFixed(1)}, `
+    + `elle ${saAcademie.toFixed(1)}) — sinon le championnat espoirs est injouable`);
+});
+
 // --- 12e) Navigation entre clubs (TODO_AUDIT.md P1-20) : on n'ouvre JAMAIS
 // un club depuis une liste ou un menu déroulant — uniquement en cliquant son
 // nom. La couche données garantit ici les invariants que l'UI applique. ---

@@ -28,9 +28,11 @@
     return global.RMClub.validerComposition(composition).length === 0;
   }
 
-  // Adversaire synthétique nettement plus modeste que le "B" d'Équipe B
-  // (facteur 0,65 côté pro) : des espoirs 16-18 ans n'ont pas le niveau
-  // d'une réserve professionnelle.
+  // Niveau PROPRE d'une académie, celui qui sert à la résolution ABSTRAITE
+  // des rencontres académie-contre-académie (cf. simulerResultatAbstrait, où
+  // le niveau entre dans un barème absolu : un niveau négatif y produirait
+  // des scores nuls). Ce n'est PAS le niveau à donner au générateur pour
+  // composer un XV d'académie — c'est le rôle de niveauXVAcademieDe.
   function niveauAdversaireEspoirs(niveauClubAdverse) {
     return Math.max(0.05, (niveauClubAdverse != null ? niveauClubAdverse : 0.5) * 0.35);
   }
@@ -152,7 +154,43 @@
     return comp.calendrier.filter((f) => f.journee === prochaine.journee);
   }
 
+  // Niveau à demander au générateur pour le XV d'une ACADÉMIE, à partir du
+  // niveau du XV premier de son club parent — exactement la même forme que
+  // RMClub.niveauReserveDe pour l'Équipe B.
+  //
+  // À ne pas confondre avec `niveauClub` de l'académie (ci-dessus), qui sert
+  // à la résolution ABSTRAITE des rencontres académie-contre-académie : ce
+  // barème-là est absolu, un niveau négatif y produirait des scores nuls.
+  // Deux usages différents, deux valeurs.
+  //
+  // Même défaut que pour l'Équipe B : `genererJoueur` décale les notes de
+  // `(niveauClub - 0,5) * 20`, donc MULTIPLIER un niveau de division ne
+  // retire presque rien. Mesuré : six rencontres espoirs perdues 5-33, 0-30,
+  // 9-37, 0-38, 15-39, 7-49 pendant que les académies entre elles restaient
+  // à 11-9, 11-11, 17-26, 17-20, 23-21, 19-21 — mes espoirs valaient 45,7,
+  // l'académie adverse 55.
+  //
+  // L'écart RÉEL entre le XV premier d'un club et ses espoirs, mesuré sur 12
+  // carrières, est de 13,8 points de note — soit 0,69 de niveau, en
+  // SOUSTRACTION.
+  const ECART_NIVEAU_ACADEMIE = 0.69;
+  function niveauXVAcademie(niveauPremiere) {
+    return (niveauPremiere != null ? niveauPremiere : 0.5) - ECART_NIVEAU_ACADEMIE;
+  }
+
+  // Le club RÉEL dont une académie est l'équipe de jeunes. C'est son niveau
+  // qui sert de référence : une académie n'a pas d'entraîneur enregistré, mais
+  // son club parent en a un, et l'effet de cet entraîneur doit compter comme
+  // partout ailleurs (cf. niveauAvecEntraineur). Renvoie null pour l'académie
+  // du club du joueur et pour une sauvegarde antérieure à `clubParentId`.
+  function clubParentAcademie(saison, academie) {
+    const RMClub = global.RMClub;
+    if (!academie || !academie.clubParentId || !RMClub.clubPartout) return null;
+    return RMClub.clubPartout(saison, academie.clubParentId) || null;
+  }
+
   global.RMClub = Object.assign(global.RMClub || {}, {
+    ECART_NIVEAU_ACADEMIE, niveauXVAcademie, clubParentAcademie,
     PERIODE_JOURNEES_ESPOIRS, journeeDeMatchEspoirs, eligiblePourMatchEspoirs,
     niveauAdversaireEspoirs, appliquerEffetsMatchEspoirs, assurerCompetitionEspoirs,
     enregistrerResultatEspoirs, prochaineRondeEspoirs,

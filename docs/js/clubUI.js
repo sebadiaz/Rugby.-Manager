@@ -5902,8 +5902,16 @@
       const cfgJoueur = RMClub.compositionVersJoueursCfg(effectifEspoirs, compositionEspoirs);
       // Une académie n'a pas d'entraîneur enregistré : `niveauAvecEntraineur`
       // rend alors son niveau nu, sans traitement particulier.
+      // Un XV d'ACADÉMIE, pas un XV premier (cf. RMClub.niveauXVAcademie,
+      // calibré sur l'écart réellement mesuré entre un XV premier et les
+      // espoirs du même club). La référence est le CLUB PARENT, et elle passe
+      // par le point d'entrée commun `niveauAdversePourGeneration` : une
+      // académie n'a pas d'entraîneur enregistré, mais son club parent en a
+      // un, et son effet doit compter ici comme partout ailleurs.
+      const clubParentAcademie = RMClub.clubParentAcademie(saison, clubAdverse) || clubAdverse;
       const cfgAdverse = RMClub.effectifVersJoueursCfg({
-        effectif: RMClub.genererEffectif(rng, niveauAdversePourGeneration(clubAdverse)) });
+        effectif: RMClub.genererEffectif(rng,
+          RMClub.niveauXVAcademie(niveauAdversePourGeneration(clubParentAcademie))) });
       window.RMMain.simulerMatchEnArrierePlan(
         graineAleatoire(), duree,
         cfgJoueur, cfgAdverse,
