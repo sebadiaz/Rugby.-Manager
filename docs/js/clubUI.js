@@ -4366,7 +4366,28 @@
     // Entrer dans le Mode Club ramène toujours sur SON club (l'équipe sur
     // laquelle il travaillait, elle, est conservée) — on ne reprend pas une
     // consultation d'adversaire laissée en cours à la session précédente.
-    RMClub.navigationClub(saison).clubConsulteId = saison.clubJoueur.id;
+    //
+    // Cette ligne écrivait `clubConsulteId` EN DIRECT, ce qui ne tenait PAS
+    // la promesse du commentaire. Reproduit dans le navigateur : sur l'Équipe
+    // B, on consulte un adversaire, on recharge, on reprend — et on revient
+    // sur le XV. `equipeConsultee` était resté figé à 'pro' (forcé à
+    // l'ouverture du rival) et `equipePrecedente: 'b'` n'était jamais
+    // consommé ; `clubPrecedentId` restait périmé ; et rien n'était persisté,
+    // si bien que la sauvegarde continuait d'affirmer qu'on consultait le
+    // rival alors que l'entête affichait « Mon club » et que le bouton
+    // « ← Retour à mon club » avait disparu. Plus rien ne pouvait ramener
+    // l'Équipe B.
+    //
+    // `retourClubJoueurDansNavigation` fait exactement ce travail. Il est
+    // appelé UNIQUEMENT si l'on consultait bien un adversaire : sans cette
+    // garde, il écraserait l'équipe courante avec `equipePrecedente` (resté
+    // à 'pro') dans le cas normal — le joueur sur l'Équipe B qui recharge
+    // sans avoir consulté personne perdrait son équipe, ce qui marchait
+    // jusqu'ici.
+    if (!RMClub.consulteClubJoueur(saison)) {
+      RMClub.retourClubJoueurDansNavigation(saison);
+      sauvegarder();
+    }
     rafraichirEntete();
     rafraichirMenuOnglets();
     rafraichirVueClub();

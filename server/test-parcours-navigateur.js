@@ -3213,6 +3213,95 @@ function optionsLancement() {
     carteTactiqueApres.includes('Près du ruck'));
   await contexteReco.close();
 
+  // --- BUG #1 (chasse aux bugs) : l'équipe sur laquelle on travaille est
+  // perdue après consultation d'un adversaire + rechargement.
+  //
+  // Reproduit à la main dans le navigateur : on passe sur l'Équipe B, on
+  // consulte un club adverse, on recharge la page, on reprend la carrière —
+  // et on revient sur le XV, sans un mot. La navigation persistée continue
+  // par ailleurs d'affirmer qu'on consulte le rival, alors que l'entête
+  // affiche « Mon club » et que le bouton « ← Retour à mon club » a disparu :
+  // plus rien ne peut restaurer l'Équipe B.
+  //
+  // clubUI.js écrivait `navigationClub(saison).clubConsulteId` EN DIRECT au
+  // lieu d'appeler `retourClubJoueurDansNavigation`, qui existe pour ça et
+  // qui restaure `equipeConsultee = equipePrecedente`.
+  const ctxEquipeGardee = await browser.newContext({ viewport: { width: 1400, height: 1000 } });
+  const pgEquipeGardee = await ctxEquipeGardee.newPage();
+  pgEquipeGardee.on('pageerror', (e) => erreursConsole.push('PAGEERROR ' + e.message));
+  await pgEquipeGardee.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  await pgEquipeGardee.click('#btnAccueilModeClub');
+  await pgEquipeGardee.fill('#inputNomClub', 'AS Contexte');
+  await pgEquipeGardee.click('#btnCreerClub');
+  await pgEquipeGardee.waitForTimeout(700);
+  await pgEquipeGardee.click('.ongletBtn[data-onglet="composition"]');
+  await pgEquipeGardee.waitForTimeout(400);
+  await pgEquipeGardee.selectOption('#selEquipeContexte', 'b');
+  await pgEquipeGardee.waitForTimeout(600);
+  const equipeGardeeSurB = await pgEquipeGardee.evaluate(() =>
+    JSON.parse(localStorage.getItem('rugbyManager.club.v1')).clubJoueur.navigationClub.equipeConsultee);
+  verifier('contexte : passer sur l\'Équipe B est bien enregistré', equipeGardeeSurB === 'b');
+  await pgEquipeGardee.click('.ongletBtn[data-onglet="classement"]');
+  await pgEquipeGardee.waitForTimeout(400);
+  const equipeGardeeRival = await pgEquipeGardee.$$eval('.lienClub',
+    (els) => (els.filter((e) => e.offsetParent !== null)[0] || {}).dataset.club);
+  await pgEquipeGardee.click(`.lienClub[data-club="${equipeGardeeRival}"] >> nth=0`);
+  await pgEquipeGardee.waitForTimeout(600);
+  await pgEquipeGardee.reload({ waitUntil: 'networkidle' });
+  await pgEquipeGardee.waitForTimeout(300);
+  await pgEquipeGardee.click('#btnContinuerClub');
+  await pgEquipeGardee.waitForTimeout(800);
+  const equipeGardeeApresF5 = await pgEquipeGardee.evaluate(() => {
+    const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
+    const n = s.clubJoueur.navigationClub || {};
+    return { equipe: n.equipeConsultee, club: n.clubConsulteId, moi: s.clubJoueur.id };
+  });
+  verifier('contexte : après consultation d\'un adversaire et rechargement, on revient sur SON club',
+    equipeGardeeApresF5.club === equipeGardeeApresF5.moi);
+  verifier('contexte : et sur l\'ÉQUIPE sur laquelle on travaillait, pas sur le XV par défaut',
+    equipeGardeeApresF5.equipe === 'b');
+  await pgEquipeGardee.click('.ongletBtn[data-onglet="composition"]');
+  await pgEquipeGardee.waitForTimeout(500);
+  verifier('contexte : le sélecteur d\'équipe affiche bien l\'Équipe B après le rechargement',
+    (await pgEquipeGardee.locator('#selEquipeContexte').inputValue().catch(() => null)) === 'b');
+  await ctxEquipeGardee.close();
+
+  // Le piège de la correction : restaurer l'équipe SANS condition écraserait
+  // l'équipe courante avec `equipePrecedente` dans le cas normal.
+  //
+  // Ce contrôle exige une carrière NEUVE, qui n'a JAMAIS consulté
+  // d'adversaire — donc dont `equipePrecedente` vaut encore 'pro'. Rejouer la
+  // scène sur la carrière précédente ne prouvait rien : elle avait déjà
+  // `equipePrecedente = 'b'`, si bien que la correction naïve passait
+  // elle aussi. Vérifié en la réintroduisant : la suite restait verte.
+  const ctxEquipeNeuve = await browser.newContext({ viewport: { width: 1400, height: 1000 } });
+  const pgEquipeNeuve = await ctxEquipeNeuve.newPage();
+  pgEquipeNeuve.on('pageerror', (e) => erreursConsole.push('PAGEERROR ' + e.message));
+  await pgEquipeNeuve.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  await pgEquipeNeuve.click('#btnAccueilModeClub');
+  await pgEquipeNeuve.fill('#inputNomClub', 'AS Sans Rival');
+  await pgEquipeNeuve.click('#btnCreerClub');
+  await pgEquipeNeuve.waitForTimeout(700);
+  await pgEquipeNeuve.click('.ongletBtn[data-onglet="composition"]');
+  await pgEquipeNeuve.waitForTimeout(400);
+  await pgEquipeNeuve.selectOption('#selEquipeContexte', 'b');
+  await pgEquipeNeuve.waitForTimeout(600);
+  const neuveAvant = await pgEquipeNeuve.evaluate(() => {
+    const n = JSON.parse(localStorage.getItem('rugbyManager.club.v1')).clubJoueur.navigationClub;
+    return { equipe: n.equipeConsultee, precedente: n.equipePrecedente };
+  });
+  verifier('contexte : prémisse — une carrière qui n\'a consulté personne garde equipePrecedente à \'pro\'',
+    neuveAvant.equipe === 'b' && neuveAvant.precedente === 'pro');
+  await pgEquipeNeuve.reload({ waitUntil: 'networkidle' });
+  await pgEquipeNeuve.waitForTimeout(300);
+  await pgEquipeNeuve.click('#btnContinuerClub');
+  await pgEquipeNeuve.waitForTimeout(800);
+  const neuveApres = await pgEquipeNeuve.evaluate(() =>
+    JSON.parse(localStorage.getItem('rugbyManager.club.v1')).clubJoueur.navigationClub.equipeConsultee);
+  verifier('contexte : recharger SANS avoir consulté d\'adversaire garde aussi l\'équipe courante',
+    neuveApres === 'b');
+  await ctxEquipeNeuve.close();
+
   verifier('aucune erreur console/page sur tout le parcours', erreursConsole.length === 0);
   if (erreursConsole.length) console.error(erreursConsole.join('\n'));
 
