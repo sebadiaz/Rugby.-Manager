@@ -5917,7 +5917,14 @@
           // que dans un message de la boîte de réception, donc l'écran
           // Calendrier & classement n'avait rien à montrer pour les espoirs.
           // Le score enregistré est celui réellement produit par le moteur.
-          RMClub.enregistrerMatchEspoirs(saison, fixtureEspoirs.journeeChampionnat, clubAdverse.nom, etat.score.A, etat.score.B);
+          // Essais RÉELS produits par le moteur (le club du joueur est
+          // toujours l'équipe A, cf. cfgJoueur passé en premier) : sans eux
+          // le classement espoirs comptait des zéros et interdisait le bonus
+          // offensif à mon club comme à son adversaire du jour.
+          RMClub.enregistrerMatchEspoirs(saison, fixtureEspoirs.journeeChampionnat, clubAdverse.nom,
+            etat.score.A, etat.score.B,
+            (etat.stats && etat.stats.A && etat.stats.A.essais) || 0,
+            (etat.stats && etat.stats.B && etat.stats.B.essais) || 0);
           const forme = etat.score.A > etat.score.B ? 'v' : etat.score.A < etat.score.B ? 'd' : 'n';
           const verbe = forme === 'v' ? 'battent' : forme === 'd' ? "s'inclinent face à" : 'font match nul avec';
           RMClub.ajouterMessage(saison, 'jeunes', 'Match espoirs',

@@ -1182,6 +1182,38 @@ test('contexte d\'équipe : le bilan des espoirs vient de matchs RÉELLEMENT jou
   assert.strictEqual(classementJoueur.p, 1, 'une défaite');
 });
 
+// BUG #5 (chasse aux bugs) : le championnat espoirs comptait les points du
+// club du joueur mais JAMAIS ses essais.
+//
+// Mesuré dans le navigateur sur une vraie rencontre espoirs : mon club marque
+// 20 points et le classement affiche essaisPour = 0 — un score de 20 est
+// impossible sans essai. Les rencontres académie-contre-académie, elles,
+// enregistrent leurs vrais essais. Conséquence : ni mon club ni son
+// adversaire du jour ne peuvent jamais décrocher le bonus offensif (4 essais),
+// alors que les autres le peuvent — le classement est faussé dans un seul
+// sens, et les colonnes essais sont des zéros fabriqués.
+test('espoirs : les essais RÉELLEMENT marqués alimentent le classement du championnat espoirs', () => {
+  const s = RMClub.nouvelleSaison(creerRng(4281), 'Test Essais Espoirs');
+  const comp = RMClub.assurerCompetitionEspoirs(s);
+  const rencontre = comp.calendrier.find((f) => !f.joue
+    && (f.domicileId === s.clubJoueur.id || f.exterieurId === s.clubJoueur.id));
+  assert.ok(rencontre, 'prémisse : le club du joueur a bien une rencontre espoirs à jouer');
+  const idAdverse = rencontre.domicileId === s.clubJoueur.id ? rencontre.exterieurId : rencontre.domicileId;
+  // 4 essais pour, 1 contre : au-dessus du seuil du bonus offensif, pour que
+  // l'oubli des essais se voie AUSSI dans les points, pas seulement dans une
+  // colonne d'affichage.
+  RMClub.enregistrerMatchEspoirs(s, rencontre.journeeChampionnat, 'Académie', 28, 12, 4, 1);
+  const moi = comp.classement[s.clubJoueur.id];
+  const lui = comp.classement[idAdverse];
+  assert.strictEqual(moi.essaisPour, 4, 'les 4 essais marqués doivent arriver au classement espoirs');
+  assert.strictEqual(moi.essaisContre, 1, 'et les essais encaissés aussi');
+  assert.strictEqual(lui.essaisPour, 1, "l'adversaire du jour doit lui aussi garder ses essais");
+  assert.strictEqual(lui.essaisContre, 4);
+  assert.strictEqual(moi.bonusOffensifs, 1,
+    '4 essais marqués = bonus offensif, la même règle que dans les autres championnats');
+  assert.strictEqual(moi.pts, 5, 'victoire (4) + bonus offensif (1)');
+});
+
 // --- 12e) Navigation entre clubs (TODO_AUDIT.md P1-20) : on n'ouvre JAMAIS
 // un club depuis une liste ou un menu déroulant — uniquement en cliquant son
 // nom. La couche données garantit ici les invariants que l'UI applique. ---

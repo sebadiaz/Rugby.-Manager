@@ -241,10 +241,19 @@
   // impossible d'en tirer un calendrier ou un bilan. On les archive donc
   // comme n'importe quel autre résultat — jamais un chiffre fabriqué,
   // toujours le score réellement produit par le moteur.
-  function enregistrerMatchEspoirs(saison, journee, adversaire, scorePour, scoreContre) {
+  //
+  // Les ESSAIS comptent autant que les points : le classement espoirs applique
+  // les mêmes règles de bonus que les autres championnats (4 essais = +1).
+  // Ils étaient passés en dur à 0 — mon club marquait 20 points avec
+  // « 0 essai », et ni lui ni son adversaire du jour ne pouvaient décrocher le
+  // bonus offensif que les rencontres académie-contre-académie, elles,
+  // décrochaient normalement. Par défaut 0 : une sauvegarde ou un appel
+  // antérieur à cette signature garde exactement son comportement.
+  function enregistrerMatchEspoirs(saison, journee, adversaire, scorePour, scoreContre, essaisPour, essaisContre) {
     const c = saison.clubJoueur;
     if (!Array.isArray(c.matchsEspoirs)) c.matchsEspoirs = [];
-    c.matchsEspoirs.push({ journee, adversaire, scorePour, scoreContre });
+    c.matchsEspoirs.push({ journee, adversaire, scorePour, scoreContre,
+      essaisPour: essaisPour || 0, essaisContre: essaisContre || 0 });
     // Marque AUSSI la rencontre correspondante du championnat espoirs
     // (TODO_AUDIT.md P1-31) : `journee` est la journée de CHAMPIONNAT à
     // laquelle la rencontre est adossée. Sans ça, l'archive et le calendrier
@@ -258,7 +267,9 @@
       const domicileEstJoueur = fixture.domicileId === c.id;
       global.RMClub.enregistrerResultatEspoirs(saison, fixture.id,
         domicileEstJoueur ? scorePour : scoreContre,
-        domicileEstJoueur ? scoreContre : scorePour, 0, 0);
+        domicileEstJoueur ? scoreContre : scorePour,
+        domicileEstJoueur ? (essaisPour || 0) : (essaisContre || 0),
+        domicileEstJoueur ? (essaisContre || 0) : (essaisPour || 0));
     }
     return c.matchsEspoirs;
   }

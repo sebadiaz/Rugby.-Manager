@@ -1098,6 +1098,38 @@ function optionsLancement() {
     JSON.parse(localStorage.getItem('rugbyManager.club.v1')).clubJoueur.messages.filter((m) => m.categorie === 'jeunes' && m.titre === 'Match espoirs'));
   verifier('match espoirs : un vrai match espoirs se joue à la journée déclencheuse (message réel avec un score)',
     messagesEspoirs.length === 1 && /\d+ - \d+/.test(messagesEspoirs[0].corps));
+  // BUG #5 (chasse aux bugs) : le classement espoirs recevait le SCORE de la
+  // rencontre du club du joueur, mais des essais codés en dur à 0. Mesuré :
+  // 20 points marqués, « 0 essai » au classement — impossible. Ni mon club ni
+  // son adversaire du jour ne pouvaient décrocher le bonus offensif, que les
+  // rencontres académie-contre-académie décrochaient normalement.
+  const essaisEspoirs = await pageEspoirs.evaluate(() => {
+    const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
+    const moi = s.clubJoueur.id;
+    const archive = (s.clubJoueur.matchsEspoirs || [])[0] || {};
+    const ligne = ((s.competitionEspoirs || {}).classement || {})[moi] || {};
+    const rencontre = ((s.competitionEspoirs || {}).calendrier || [])
+      .find((f) => f.joue && (f.domicileId === moi || f.exterieurId === moi));
+    const idAdverse = rencontre
+      ? (rencontre.domicileId === moi ? rencontre.exterieurId : rencontre.domicileId) : null;
+    const ligneAdverse = idAdverse
+      ? (((s.competitionEspoirs || {}).classement || {})[idAdverse] || {}) : {};
+    return { archive, ligne, ligneAdverse };
+  });
+  verifier('espoirs : le match archivé conserve les essais réellement marqués',
+    typeof essaisEspoirs.archive.essaisPour === 'number'
+    && typeof essaisEspoirs.archive.essaisContre === 'number');
+  verifier('espoirs : le classement du championnat reçoit CES essais-là, pas des zéros',
+    essaisEspoirs.ligne.essaisPour === essaisEspoirs.archive.essaisPour
+    && essaisEspoirs.ligne.essaisContre === essaisEspoirs.archive.essaisContre);
+  verifier('espoirs : l\'adversaire du jour garde lui aussi ses essais (miroir de la rencontre)',
+    essaisEspoirs.ligneAdverse.essaisPour === essaisEspoirs.archive.essaisContre
+    && essaisEspoirs.ligneAdverse.essaisContre === essaisEspoirs.archive.essaisPour);
+  // Un essai vaut au moins 5 points : un nombre d'essais supérieur à ce que le
+  // score autorise signalerait un chiffre fabriqué, pas un chiffre mesuré.
+  verifier('espoirs : les essais comptés restent compatibles avec les points marqués',
+    essaisEspoirs.ligne.essaisPour * 5 <= essaisEspoirs.ligne.pointsPour
+    && essaisEspoirs.ligneAdverse.essaisPour * 5 <= essaisEspoirs.ligneAdverse.pointsPour);
   await contexteEspoirs.close();
 
   // 11b) Équipe gérée (TODO_AUDIT.md P1-18) : le premier XV, l'Équipe B et
