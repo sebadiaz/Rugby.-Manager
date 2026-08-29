@@ -354,6 +354,22 @@
     const lettre = p.lettreJoueur;
     const domicile = f.domicileId === c.id;
 
+    // UNE RENCONTRE NE SE JOUE QU'UNE FOIS.
+    //
+    // `enregistrerResultat` refusait déjà de recompter une rencontre jouée,
+    // mais cette fonction-ci, qui l'englobe, n'avait aucune garde. Mesuré en
+    // l'appelant deux fois : budget 448 -> 483 -> 518, deux lignes de
+    // finances, deux messages de résultat. La recette était encaissée DEUX
+    // FOIS, et la fatigue, les blessures et les statistiques appliquées une
+    // seconde fois — seul le classement était protégé.
+    //
+    // La protection reposait entièrement sur `journeeEnCours`, un drapeau de
+    // l'interface. Une garde placée à un étage du code qu'elle protège finit
+    // par être contournée : celle-ci vit désormais au même endroit que celle
+    // du résultat. Le test lu AVANT l'enregistrement, puisque c'est lui qui
+    // pose `f.joue`.
+    if (f.joue) return { ultimatum: null, mouvement: null, dejaApplique: true };
+
     RMClub.enregistrerResultat(saison, f.id, etat.score.A, etat.score.B,
       etat.stats.A.essais, etat.stats.B.essais);
     // Historique des confrontations + message de résultat RÉEL — uniquement

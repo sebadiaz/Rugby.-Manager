@@ -165,4 +165,62 @@ test('C7 — deux matchs cumulent, ils ne se remplacent pas', () => {
   assert.notStrictEqual(ctx.c.budget, budget1, 'les finances aussi');
 });
 
+// --- BUG (chasse aux bugs) : les conséquences d'un match n'étaient pas
+// idempotentes, alors que son RÉSULTAT l'était.
+//
+// `enregistrerResultat` refuse depuis toujours de recompter une rencontre
+// déjà jouée — vérifié : deuxième appel, classement inchangé. Mais
+// `appliquerConsequencesMatchJoueur`, qui l'englobe, n'avait AUCUNE garde.
+// Mesuré en l'appelant deux fois sur la même rencontre :
+//
+//   avant       budget 448, finances 0, messages 1
+//   1er appel   budget 483, finances 1, messages 2
+//   2e appel    budget 518, finances 2, messages 3
+//
+// La recette du match était encaissée DEUX FOIS, une seconde ligne de
+// finances empilée, un second message de résultat envoyé — et la fatigue,
+// les blessures et les statistiques appliquées une seconde fois. Seul le
+// classement était protégé.
+//
+// La protection reposait entièrement sur un drapeau d'interface
+// (`journeeEnCours` dans clubUI.js). Une garde placée à un étage du code
+// qu'elle protège finit toujours par être contournée : celle-ci vit
+// désormais dans la fonction elle-même, au même endroit que celle du
+// résultat.
+test('IDEM1 — appliquer deux fois les conséquences d\'un match ne double RIEN', () => {
+  const s = RMClub.nouvelleSaison(creerRng(9911), 'AS Idempotence');
+  RMClub.daterCalendrier(s);
+  RMClub.assurerCompositionPourEquipe(s, 'pro');
+  RMClub.assurerInfrastructures(s);
+  const c = s.clubJoueur;
+  const f = (s.calendrier || []).find((x) => x.domicileId === c.id || x.exterieurId === c.id);
+  assert.ok(f, 'prémisse : le club doit avoir une rencontre');
+  const etat = { score: { A: 24, B: 17 }, stats: { A: { essais: 3 }, B: { essais: 2 } },
+    statsJoueurs: { A: {}, B: {} } };
+  const params = () => ({ fixture: f, etat, lettreJoueur: f.domicileId === c.id ? 'A' : 'B',
+    compositionUtilisee: c.compositionTitulaires,
+    compositionAvecRemplacants: c.compositionTitulaires,
+    forme: 'V', nomA: c.nom, nomB: 'Adversaire', rng: creerRng(5) });
+  const lire = () => ({ budget: c.budget, finances: (c.historiqueFinances || []).length,
+    messages: (c.messages || []).length,
+    pts: s.classement[f.domicileId].pts + s.classement[f.exterieurId].pts,
+    j: s.classement[f.domicileId].j + s.classement[f.exterieurId].j });
+
+  RMClub.appliquerConsequencesMatchJoueur(s, params());
+  const apresUn = lire();
+  assert.ok(f.joue, 'prémisse : la rencontre doit être marquée jouée');
+  assert.strictEqual(apresUn.finances, 1, 'une seule ligne de finances après un match');
+
+  RMClub.appliquerConsequencesMatchJoueur(s, params());
+  const apresDeux = lire();
+  assert.strictEqual(apresDeux.budget, apresUn.budget,
+    `la recette du match ne doit pas être encaissée deux fois (${apresUn.budget} -> ${apresDeux.budget})`);
+  assert.strictEqual(apresDeux.finances, apresUn.finances,
+    `une seule ligne de finances par match (${apresUn.finances} -> ${apresDeux.finances})`);
+  assert.strictEqual(apresDeux.messages, apresUn.messages,
+    `un seul message de résultat (${apresUn.messages} -> ${apresDeux.messages})`);
+  assert.strictEqual(apresDeux.pts, apresUn.pts, 'et le classement reste inchangé');
+  assert.strictEqual(apresDeux.j, apresUn.j, 'comme le nombre de matchs joués');
+});
+
 console.log(`\n${nbTests} test(s) exécuté(s).`);
