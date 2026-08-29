@@ -38,6 +38,34 @@ function resoudreChromium() {
 }
 
 let nbTests = 0, nbEchecs = 0;
+// Le filtre des erreurs console ignorait TOUTE ligne contenant « 404 ».
+// Il visait `version.json`, absent en local (il n'est écrit que par le job
+// « deploy »). Mais il rendait la suite AVEUGLE à n'importe quel fichier
+// manquant : mesuré en remplaçant `js/club-rotation.js` par un nom
+// inexistant — un module entier du jeu ne se chargeait plus, le navigateur
+// journalisait son 404, et la suite restait à **347/347 verte**.
+//
+// Le message de console d'une ressource en échec ne contient PAS son URL
+// (« Failed to load resource: the server responded with a status of 404 ») :
+// impossible d'y distinguer `version.json` d'un module du jeu. On l'ignore
+// donc ici, et ce sont les RÉPONSES HTTP qui sont jugées, par URL, via
+// `surveillerRessources` — strictement plus sévère qu'avant : un module
+// manquant rougit, et toutes les AUTRES erreurs console cessent d'être
+// masquées.
+function erreurAttendue(texte) {
+  return /Failed to load resource/.test(texte);
+}
+
+// Toute ressource en échec est une erreur, SAUF `version.json` : ce fichier
+// n'est écrit que par le job « deploy » et n'existe jamais en local.
+function surveillerRessources(page, erreurs) {
+  page.on('response', (r) => {
+    if (r.status() >= 400 && !/version\.json/.test(r.url())) {
+      erreurs.push(`RESSOURCE ${r.status()} ${r.url()}`);
+    }
+  });
+}
+
 function verifier(nom, condition) {
   nbTests++;
   if (condition) { console.log(`OK   ${nom}`); }
@@ -63,8 +91,9 @@ function optionsLancement() {
   const erreursConsole = [];
   page.on('pageerror', (e) => erreursConsole.push(`PAGEERROR: ${e.message}`));
   page.on('console', (m) => {
-    if (m.type() === 'error' && !m.text().includes('404')) erreursConsole.push(`CONSOLE: ${m.text()}`);
+    if (m.type() === 'error' && !erreurAttendue(m.text())) erreursConsole.push(`CONSOLE: ${m.text()}`);
   });
+  surveillerRessources(page, erreursConsole);
 
   // Sur mobile, la navigation vit dans un tiroir masqué par défaut (cf.
   // style.css) : l'ouvrir d'abord si le bouton menu est visible (sans effet
@@ -1155,7 +1184,7 @@ function optionsLancement() {
   const pageUnif = await contexteUnif.newPage();
   const erreursUnif = [];
   pageUnif.on('pageerror', (e) => erreursUnif.push(`PAGEERROR: ${e.message}`));
-  pageUnif.on('console', (m) => { if (m.type() === 'error' && !m.text().includes('404')) erreursUnif.push(`CONSOLE: ${m.text()}`); });
+  pageUnif.on('console', (m) => { if (m.type() === 'error' && !erreurAttendue(m.text())) erreursUnif.push(`CONSOLE: ${m.text()}`); });
   await pageUnif.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
   await pageUnif.evaluate((g) => window.RMRng.setSeed(g), GRAINE_TEST);
   await pageUnif.click('#btnAccueilModeClub');
@@ -1345,7 +1374,7 @@ function optionsLancement() {
   const pageTemps = await contexteTemps.newPage();
   const erreursTemps = [];
   pageTemps.on('pageerror', (e) => erreursTemps.push(`PAGEERROR: ${e.message}`));
-  pageTemps.on('console', (m) => { if (m.type() === 'error' && !m.text().includes('404')) erreursTemps.push(`CONSOLE: ${m.text()}`); });
+  pageTemps.on('console', (m) => { if (m.type() === 'error' && !erreurAttendue(m.text())) erreursTemps.push(`CONSOLE: ${m.text()}`); });
   await pageTemps.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
   await pageTemps.evaluate((g) => window.RMRng.setSeed(g), GRAINE_TEST);
   await pageTemps.click('#btnAccueilModeClub');
@@ -1504,7 +1533,7 @@ function optionsLancement() {
   const pageJours = await contexteJours.newPage();
   const erreursJours = [];
   pageJours.on('pageerror', (e) => erreursJours.push(`PAGEERROR: ${e.message}`));
-  pageJours.on('console', (m) => { if (m.type() === 'error' && !m.text().includes('404')) erreursJours.push(`CONSOLE: ${m.text()}`); });
+  pageJours.on('console', (m) => { if (m.type() === 'error' && !erreurAttendue(m.text())) erreursJours.push(`CONSOLE: ${m.text()}`); });
   await pageJours.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
   await pageJours.evaluate((g) => window.RMRng.setSeed(g), GRAINE_TEST);
   await pageJours.click('#btnAccueilModeClub');
@@ -1592,7 +1621,7 @@ function optionsLancement() {
   const pageSemaine = await contexteSemaine.newPage();
   const erreursSemaine = [];
   pageSemaine.on('pageerror', (e) => erreursSemaine.push(`PAGEERROR: ${e.message}`));
-  pageSemaine.on('console', (m) => { if (m.type() === 'error' && !m.text().includes('404')) erreursSemaine.push(`CONSOLE: ${m.text()}`); });
+  pageSemaine.on('console', (m) => { if (m.type() === 'error' && !erreurAttendue(m.text())) erreursSemaine.push(`CONSOLE: ${m.text()}`); });
   await pageSemaine.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
   await pageSemaine.evaluate((g) => window.RMRng.setSeed(g), GRAINE_TEST);
   await pageSemaine.click('#btnAccueilModeClub');
@@ -1776,7 +1805,7 @@ function optionsLancement() {
   const pagePrep = await contextePrep.newPage();
   const erreursPrep = [];
   pagePrep.on('pageerror', (e) => erreursPrep.push(`PAGEERROR: ${e.message}`));
-  pagePrep.on('console', (m) => { if (m.type() === 'error' && !m.text().includes('404')) erreursPrep.push(`CONSOLE: ${m.text()}`); });
+  pagePrep.on('console', (m) => { if (m.type() === 'error' && !erreurAttendue(m.text())) erreursPrep.push(`CONSOLE: ${m.text()}`); });
   await pagePrep.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
   await pagePrep.evaluate((g) => window.RMRng.setSeed(g), GRAINE_TEST);
   await pagePrep.click('#btnAccueilModeClub');
@@ -1871,7 +1900,7 @@ function optionsLancement() {
   const pageB = await ctxB.newPage();
   const erreursB = [];
   pageB.on('pageerror', (e) => erreursB.push(`PAGEERROR: ${e.message}`));
-  pageB.on('console', (m) => { if (m.type() === 'error' && !m.text().includes('404')) erreursB.push(`CONSOLE: ${m.text()}`); });
+  pageB.on('console', (m) => { if (m.type() === 'error' && !erreurAttendue(m.text())) erreursB.push(`CONSOLE: ${m.text()}`); });
   await pageB.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
   await pageB.evaluate((g) => window.RMRng.setSeed(g), GRAINE_TEST);
   await pageB.click('#btnAccueilModeClub');
@@ -1926,7 +1955,7 @@ function optionsLancement() {
   const pageMed = await ctxMed.newPage();
   const erreursMed = [];
   pageMed.on('pageerror', (e) => erreursMed.push(`PAGEERROR: ${e.message}`));
-  pageMed.on('console', (m) => { if (m.type() === 'error' && !m.text().includes('404')) erreursMed.push(`CONSOLE: ${m.text()}`); });
+  pageMed.on('console', (m) => { if (m.type() === 'error' && !erreurAttendue(m.text())) erreursMed.push(`CONSOLE: ${m.text()}`); });
   await pageMed.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
   await pageMed.evaluate((g) => window.RMRng.setSeed(g), GRAINE_TEST);
   await pageMed.click('#btnAccueilModeClub');
@@ -1986,7 +2015,7 @@ function optionsLancement() {
   const pageP = await ctxPrep2.newPage();
   const erreursP = [];
   pageP.on('pageerror', (e) => erreursP.push(`PAGEERROR: ${e.message}`));
-  pageP.on('console', (m) => { if (m.type() === 'error' && !m.text().includes('404')) erreursP.push(`CONSOLE: ${m.text()}`); });
+  pageP.on('console', (m) => { if (m.type() === 'error' && !erreurAttendue(m.text())) erreursP.push(`CONSOLE: ${m.text()}`); });
   await pageP.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
   await pageP.evaluate((g) => window.RMRng.setSeed(g), GRAINE_TEST);
   await pageP.click('#btnAccueilModeClub');
@@ -2121,7 +2150,7 @@ function optionsLancement() {
     const pageMgr = await ctxMgr.newPage();
     const erreursMgr = [];
     pageMgr.on('pageerror', (e) => erreursMgr.push(`PAGEERROR: ${e.message}`));
-    pageMgr.on('console', (m) => { if (m.type() === 'error' && !m.text().includes('404')) erreursMgr.push(`CONSOLE: ${m.text()}`); });
+    pageMgr.on('console', (m) => { if (m.type() === 'error' && !erreurAttendue(m.text())) erreursMgr.push(`CONSOLE: ${m.text()}`); });
     await pageMgr.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
     await pageMgr.evaluate((g) => window.RMRng.setSeed(g), GRAINE_TEST);
     await pageMgr.click('#btnAccueilModeClub');
@@ -2410,7 +2439,7 @@ function optionsLancement() {
   const erreursAvance = [];
   pageAvance.on('pageerror', (e) => erreursAvance.push(`PAGEERROR: ${e.message}`));
   pageAvance.on('console', (m) => {
-    if (m.type() === 'error' && !m.text().includes('404')) erreursAvance.push(`CONSOLE: ${m.text()}`);
+    if (m.type() === 'error' && !erreurAttendue(m.text())) erreursAvance.push(`CONSOLE: ${m.text()}`);
   });
   await pageAvance.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
   await pageAvance.evaluate((g) => window.RMRng.setSeed(g), GRAINE_TEST);
@@ -2466,7 +2495,7 @@ function optionsLancement() {
   const erreursDates = [];
   pageDates.on('pageerror', (e) => erreursDates.push(`PAGEERROR: ${e.message}`));
   pageDates.on('console', (m) => {
-    if (m.type() === 'error' && !m.text().includes('404')) erreursDates.push(`CONSOLE: ${m.text()}`);
+    if (m.type() === 'error' && !erreurAttendue(m.text())) erreursDates.push(`CONSOLE: ${m.text()}`);
   });
   await pageDates.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
   await pageDates.evaluate((g) => window.RMRng.setSeed(g), GRAINE_TEST);
@@ -2520,7 +2549,7 @@ function optionsLancement() {
   const erreursNav = [];
   pageNav.on('pageerror', (e) => erreursNav.push(`PAGEERROR: ${e.message}`));
   pageNav.on('console', (m) => {
-    if (m.type() === 'error' && !m.text().includes('404')) erreursNav.push(`CONSOLE: ${m.text()}`);
+    if (m.type() === 'error' && !erreurAttendue(m.text())) erreursNav.push(`CONSOLE: ${m.text()}`);
   });
   await pageNav.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
   await pageNav.evaluate((g) => window.RMRng.setSeed(g), GRAINE_TEST);
@@ -2594,7 +2623,7 @@ function optionsLancement() {
   const erreursAdv = [];
   pageAdv.on('pageerror', (e) => erreursAdv.push(`PAGEERROR: ${e.message}`));
   pageAdv.on('console', (m) => {
-    if (m.type() === 'error' && !m.text().includes('404')) erreursAdv.push(`CONSOLE: ${m.text()}`);
+    if (m.type() === 'error' && !erreurAttendue(m.text())) erreursAdv.push(`CONSOLE: ${m.text()}`);
   });
   await pageAdv.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
   await pageAdv.evaluate((g) => window.RMRng.setSeed(g), GRAINE_TEST);
@@ -2642,7 +2671,7 @@ function optionsLancement() {
   const erreursFiche = [];
   pageFiche.on('pageerror', (e) => erreursFiche.push(`PAGEERROR: ${e.message}`));
   pageFiche.on('console', (m) => {
-    if (m.type() === 'error' && !m.text().includes('404')) erreursFiche.push(`CONSOLE: ${m.text()}`);
+    if (m.type() === 'error' && !erreurAttendue(m.text())) erreursFiche.push(`CONSOLE: ${m.text()}`);
   });
   await pageFiche.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
   await pageFiche.evaluate((g) => window.RMRng.setSeed(g), GRAINE_TEST);
@@ -2702,7 +2731,7 @@ function optionsLancement() {
   const erreursEsp = [];
   pageEsp.on('pageerror', (e) => erreursEsp.push(`PAGEERROR: ${e.message}`));
   pageEsp.on('console', (m) => {
-    if (m.type() === 'error' && !m.text().includes('404')) erreursEsp.push(`CONSOLE: ${m.text()}`);
+    if (m.type() === 'error' && !erreurAttendue(m.text())) erreursEsp.push(`CONSOLE: ${m.text()}`);
   });
   await pageEsp.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
   await pageEsp.evaluate((g) => window.RMRng.setSeed(g), GRAINE_TEST);
@@ -2771,7 +2800,7 @@ function optionsLancement() {
   const erreursAmi = [];
   pageAmi.on('pageerror', (e) => erreursAmi.push(`PAGEERROR: ${e.message}`));
   pageAmi.on('console', (m) => {
-    if (m.type() === 'error' && !m.text().includes('404')) erreursAmi.push(`CONSOLE: ${m.text()}`);
+    if (m.type() === 'error' && !erreurAttendue(m.text())) erreursAmi.push(`CONSOLE: ${m.text()}`);
   });
   await pageAmi.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
   await pageAmi.evaluate((g) => window.RMRng.setSeed(g), GRAINE_TEST);
@@ -2850,7 +2879,7 @@ function optionsLancement() {
   const erreursCoupe = [];
   pageCoupe.on('pageerror', (e) => erreursCoupe.push(`PAGEERROR: ${e.message}`));
   pageCoupe.on('console', (m) => {
-    if (m.type() === 'error' && !m.text().includes('404')) erreursCoupe.push(`CONSOLE: ${m.text()}`);
+    if (m.type() === 'error' && !erreurAttendue(m.text())) erreursCoupe.push(`CONSOLE: ${m.text()}`);
   });
   await pageCoupe.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
   await pageCoupe.evaluate((g) => window.RMRng.setSeed(g), GRAINE_TEST);
@@ -2944,7 +2973,7 @@ function optionsLancement() {
   const erreursEch = [];
   pageEch.on('pageerror', (e) => erreursEch.push(`PAGEERROR: ${e.message}`));
   pageEch.on('console', (m) => {
-    if (m.type() === 'error' && !m.text().includes('404')) erreursEch.push(`CONSOLE: ${m.text()}`);
+    if (m.type() === 'error' && !erreurAttendue(m.text())) erreursEch.push(`CONSOLE: ${m.text()}`);
   });
   await pageEch.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
   await pageEch.evaluate((g) => window.RMRng.setSeed(g), GRAINE_TEST);
@@ -3008,7 +3037,7 @@ function optionsLancement() {
   const erreursTr = [];
   pageTr.on('pageerror', (e) => erreursTr.push(`PAGEERROR: ${e.message}`));
   pageTr.on('console', (m) => {
-    if (m.type() === 'error' && !m.text().includes('404')) erreursTr.push(`CONSOLE: ${m.text()}`);
+    if (m.type() === 'error' && !erreurAttendue(m.text())) erreursTr.push(`CONSOLE: ${m.text()}`);
   });
   await pageTr.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
   await pageTr.evaluate((g) => window.RMRng.setSeed(g), GRAINE_TEST);
@@ -3068,7 +3097,7 @@ function optionsLancement() {
   const erreursAuj = [];
   pageAuj.on('pageerror', (e) => erreursAuj.push(`PAGEERROR: ${e.message}`));
   pageAuj.on('console', (m) => {
-    if (m.type() === 'error' && !m.text().includes('404')) erreursAuj.push(`CONSOLE: ${m.text()}`);
+    if (m.type() === 'error' && !erreurAttendue(m.text())) erreursAuj.push(`CONSOLE: ${m.text()}`);
   });
   await pageAuj.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
   await pageAuj.evaluate((g) => window.RMRng.setSeed(g), GRAINE_TEST);
