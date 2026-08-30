@@ -328,6 +328,8 @@
     if (btnConsigne) btnConsigne.style.display = 'none';
     const btnQuitter = document.getElementById('btnQuitterMatch');
     if (btnQuitter) btnQuitter.style.display = 'none';
+    const btnTerminer = document.getElementById('btnTerminerMatch');
+    if (btnTerminer) btnTerminer.style.display = 'none';
     document.getElementById('btnResultatVoir').style.display = 'none';
     document.getElementById('panneauResultat').classList.add('visible');
     const onFermer = L.onFermer;
@@ -356,7 +358,69 @@
     // une relecture, elle, se ferme déjà par son écran de résultat.
     const btnQ = document.getElementById('btnQuitterMatch');
     if (btnQ) btnQ.style.display = '';
+    const btnT = document.getElementById('btnTerminerMatch');
+    if (btnT) btnT.style.display = '';
     demarrerLectureReelle(seed, duree, o.noms);
+  }
+
+  // « Terminer le match » : jouer la fin d'un coup, sans rien perdre.
+  //
+  // Un match JOUE dure le temps d'un match : 80 minutes de jeu font 5 minutes
+  // reelles a la vitesse maximale, 80 a la vitesse normale. Les deux seules
+  // issues etaient de regarder jusqu'au bout ou de quitter — ce qui ANNULE la
+  // rencontre. Il manquait « ca suffit, joue la fin ».
+  //
+  // Point essentiel : on ne relance RIEN. C'est le MEME moteur, deja en
+  // cours, qu'on avance jusqu'au coup de sifflet final — le score acquis, les
+  // consignes donnees et les remplacements faits restent donc en jeu, et le
+  // resultat est celui de CE match. Relancer une simulation neuve donnerait
+  // un autre match, sans les decisions du manager.
+  //
+  // Avance par lots comme la generation en arriere-plan (meme PAS_PAR_LOT,
+  // meme setTimeout) : la page ne se fige pas, et la barre de progression dit
+  // ou on en est.
+  function terminerMatchMaintenant() {
+    if (!matchLive || matchLive.resultatEnvoye || !match) return false;
+    enCours = false; // plus rien a animer : on saute a la fin
+    fermerMiTemps();
+    // Le manager a choisi de ne plus intervenir : la mi-temps ne doit pas
+    // rouvrir au milieu de l'acceleration.
+    matchLive.miTempsTraitee = true;
+    const btnC = document.getElementById('btnConsigneMatch');
+    if (btnC) btnC.style.display = 'none';
+    const btnT2 = document.getElementById('btnTerminerMatch');
+    if (btnT2) btnT2.style.display = 'none';
+    const btnQ2 = document.getElementById('btnQuitterMatch');
+    if (btnQ2) btnQ2.style.display = 'none';
+    const duree = dureeMatchActuel;
+    document.getElementById('panneauGeneration').classList.add('visible');
+    const titreEl = document.getElementById('genTitre');
+    if (titreEl) titreEl.textContent = 'Fin du match en cours…';
+    const barre = document.getElementById('genProgressBar');
+    const label = document.getElementById('genProgressLabel');
+    function lot() {
+      // Le match a pu etre abandonne entre deux lots (retour au club) : on
+      // s'arrete alors sans rien envoyer.
+      if (!matchLive || matchLive.resultatEnvoye) {
+        document.getElementById('panneauGeneration').classList.remove('visible');
+        return;
+      }
+      let i = 0;
+      while (i < PAS_PAR_LOT && match.tempsMatch < duree && match.phase !== 'TERMINE') {
+        match.tick(PAS_FIXE);
+        i++;
+      }
+      const frac = Math.max(0, Math.min(1, match.tempsMatch / duree));
+      barre.style.width = (frac * 100) + '%';
+      label.textContent = `${UI.formaterTemps(match.tempsMatch)} / ${UI.formaterTemps(duree)}`;
+      if (match.tempsMatch < duree && match.phase !== 'TERMINE') { setTimeout(lot, 0); return; }
+      document.getElementById('panneauGeneration').classList.remove('visible');
+      etatPrecedent = null;
+      etatCourant = normalizeMatchState(match.getState());
+      terminerMatchLive();
+    }
+    lot();
+    return true;
   }
 
   // Quitter un match JOUÉ avant le coup de sifflet final.
@@ -376,6 +440,8 @@
     if (btn) btn.style.display = 'none';
     const btnQ = document.getElementById('btnQuitterMatch');
     if (btnQ) btnQ.style.display = 'none';
+    const btnT = document.getElementById('btnTerminerMatch');
+    if (btnT) btnT.style.display = 'none';
     fermerMiTemps();
     if (onAbandon) onAbandon();
     return true;
@@ -639,6 +705,9 @@
     }
     lancerNouveauMatchAvecGeneration(seedActuel, lireDureeChoisie(), { onFermer: afficherAccueil });
   });
+  document.getElementById('btnTerminerMatch').addEventListener('click', () => {
+    terminerMatchMaintenant();
+  });
   document.getElementById('btnQuitterMatch').addEventListener('click', () => {
     if (!window.confirm('Quitter le match en cours ? Il n\'aura pas eu lieu et tu pourras le relancer.')) return;
     abandonnerMatchLive();
@@ -782,6 +851,9 @@
     // appelé par le Mode Club quand le manager revient à son club en cours de
     // match. Renvoie true si un match joué a bien été interrompu.
     abandonnerMatchLive,
+    // Joue la fin d'un match JOUE d'un coup, avec le MEME moteur : rien de ce
+    // qui s'est deja passe n'est perdu (cf. terminerMatchMaintenant).
+    terminerMatchMaintenant,
     // `callbacks.onResultat(etatFinal)` est appelé dès que le match est généré
     // (score connu, avant même que le joueur choisisse de le regarder) : c'est
     // le moment où clubUI.js doit enregistrer le résultat dans la saison — le

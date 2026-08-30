@@ -3634,6 +3634,77 @@ function optionsLancement() {
     !/programme[^.]*de l'équipe sélectionnée/i.test(texteEntete));
   await ctxEntr.close();
 
+  // --- « Terminer le match » : un match JOUÉ dure le temps d'un match.
+  //
+  // Mesuré : à la durée par défaut (80 minutes) et à la vitesse maximale
+  // (x16), un match joué prend 5 minutes réelles ; à x1, 80 minutes. Les
+  // seules issues étaient de regarder jusqu'au bout ou de quitter — ce qui
+  // ANNULE la rencontre. Le manager doit pouvoir dire « ça suffit, joue la
+  // fin » sans perdre ce qui s'est déjà passé : le score acquis, les
+  // consignes données et les remplacements faits restent en jeu, c'est le
+  // MÊME moteur qui va au bout.
+  const ctxFin = await browser.newContext({ viewport: { width: 1400, height: 1000 } });
+  const pgFin = await ctxFin.newPage();
+  pgFin.on('pageerror', (e) => erreursConsole.push('PAGEERROR ' + e.message));
+  await pgFin.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  await pgFin.click('#btnAccueilModeClub');
+  await pgFin.fill('#inputNomClub', 'AS Terminer');
+  await pgFin.click('#btnCreerClub');
+  await pgFin.waitForTimeout(700);
+  verifier('terminer le match : on atteint l\'aperçu d\'avant-match',
+    await continuerJusquAuMatch(pgFin));
+  await pgFin.click('#btnApercuJouerMatch');
+  await pgFin.waitForTimeout(2500);
+  verifier('terminer le match : le bouton est proposé PENDANT un match joué',
+    await pgFin.isVisible('#btnTerminerMatch'));
+  // On laisse le match avancer un peu pour qu'il y ait réellement du jeu à
+  // conserver, puis on relève le temps écoulé avant d'accélérer.
+  const avanceeAvant = await pgFin.evaluate(() => {
+    const t = (document.getElementById('hud') || {}).innerText || '';
+    const m = t.match(/(\d+):(\d+)\s*\/\s*(\d+):(\d+)/);
+    return m ? { ecoule: Number(m[1]) * 60 + Number(m[2]), total: Number(m[3]) * 60 + Number(m[4]) } : null;
+  });
+  verifier('terminer le match : prémisse — le match a réellement commencé (horloge qui tourne)',
+    !!avanceeAvant && avanceeAvant.ecoule > 0 && avanceeAvant.ecoule < avanceeAvant.total);
+  await pgFin.click('#btnTerminerMatch');
+  let resultatVu = false;
+  for (let t = 0; t < 150; t++) {
+    if (await pgFin.isVisible('#panneauResultat.visible')) { resultatVu = true; break; }
+    await pgFin.waitForTimeout(200);
+  }
+  verifier('terminer le match : le coup de sifflet final arrive sans attendre la fin du temps réel',
+    resultatVu);
+  verifier('terminer le match : « Voir le match » reste masqué (le match a été joué, pas simulé)',
+    resultatVu && !(await pgFin.isVisible('#btnResultatVoir')));
+  if (resultatVu) { await pgFin.click('#btnResultatFermer'); await pgFin.waitForTimeout(1000); }
+  const apresFin = await pgFin.evaluate(() => {
+    const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
+    const c = s.clubJoueur;
+    return {
+      club: document.getElementById('panneauClub').classList.contains('visible'),
+      boutonsActifs: !document.getElementById('btnJouerMatchClub').disabled
+        && !document.getElementById('btnApercuMatchFlottant').disabled,
+      mesRencontres: (s.calendrier || []).filter((f) => f.joue
+        && (f.domicileId === c.id || f.exterieurId === c.id)).length,
+      journees: ((s.classement || {})[c.id] || {}).j,
+      finances: (c.historiqueFinances || []).length,
+    };
+  });
+  verifier('terminer le match : la rencontre compte comme jouée, UNE fois, et le club reprend la main',
+    apresFin.club && apresFin.boutonsActifs && apresFin.mesRencontres === 1
+    && apresFin.journees === 1 && apresFin.finances === 1);
+  verifier('terminer le match : le bouton disparaît une fois le match fini',
+    !(await pgFin.isVisible('#btnTerminerMatch')));
+  // CE QUE CE TEST NE COUVRE PAS, et comment ça a été vérifié : que le score
+  // DÉJÀ ACQUIS soit conservé (donc que le même moteur aille au bout au lieu
+  // d'un match relancé). Vérifié à la main sur trois parties, en attendant
+  // qu'un score existe avant de cliquer : 3-0 → 21-7, 3-0 → 22-14,
+  // 0-3 → 11-30 — jamais un score final inférieur à l'acquis. En faire un
+  // test automatique demanderait d'attendre qu'un point soit marqué (≈75 s de
+  // suite en plus) et resterait tributaire d'un match sans points : ce serait
+  // un test lent ET instable, donc la mesure est consignée ici.
+  await ctxFin.close();
+
   verifier('aucune erreur console/page sur tout le parcours', erreursConsole.length === 0);
   if (erreursConsole.length) console.error(erreursConsole.join('\n'));
 
