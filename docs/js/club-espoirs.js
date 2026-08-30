@@ -94,6 +94,42 @@
     return n;
   }
 
+  // Quels clubs de la division ont une académie dans ce championnat ?
+  //
+  // Le championnat espoirs ne peut accueillir que `taille` clubs alors que la
+  // division en compte bien plus : il en retient donc une PARTIE. Cette
+  // sélection se faisait par `adversaires.slice(0, n)` — or cette liste est
+  // ordonnée par niveau CROISSANT. Mesuré sur quatre carrières, division de
+  // 13 rivaux de 0,15 à 0,45, mon club à 0,30 : les académies retenues
+  // étaient à chaque fois celles des trois clubs les plus FAIBLES (0,15,
+  // 0,175, 0,20). Le championnat ne représentait jamais la division, et mon
+  // club en était structurellement le plus fort.
+  //
+  // On prend donc un échantillon ÉTALÉ sur toute la division — le plus
+  // faible, le plus fort, et des paliers réguliers entre les deux. Le club du
+  // joueur y trouve des adversaires au-dessus comme en dessous de lui, selon
+  // son niveau réel.
+  function echantillonnerDivision(clubs, combien) {
+    const tries = clubs.slice().sort((a, b) => (a.niveauClub || 0) - (b.niveauClub || 0));
+    if (combien >= tries.length) return tries;
+    if (combien <= 0) return [];
+    if (combien === 1) return [tries[Math.floor(tries.length / 2)]];
+    const pris = [];
+    const dejaPris = new Set();
+    for (let i = 0; i < combien; i++) {
+      let idx = Math.round((i * (tries.length - 1)) / (combien - 1));
+      // Deux paliers peuvent retomber sur le même club quand l'échantillon est
+      // presque aussi grand que la division : on décale plutôt que de rendre
+      // une liste plus courte que demandée.
+      while (dejaPris.has(idx) && idx < tries.length - 1) idx++;
+      while (dejaPris.has(idx) && idx > 0) idx--;
+      if (dejaPris.has(idx)) continue;
+      dejaPris.add(idx);
+      pris.push(tries[idx]);
+    }
+    return pris;
+  }
+
   function genererCompetitionEspoirs(saison) {
     const RMClub = global.RMClub;
     const dates = journeesEspoirsDisponibles(saison);
@@ -102,7 +138,7 @@
     // « Académie <club> », de niveau dérivé du sien (cf.
     // niveauAdversaireEspoirs) — des adversaires qu'on retrouve d'une
     // journée à l'autre, et dont le nom reste reconnaissable.
-    const sources = (saison.adversaires || []).slice(0, taille - 1);
+    const sources = echantillonnerDivision(saison.adversaires || [], taille - 1);
     const clubs = [{ id: saison.clubJoueur.id, nom: saison.clubJoueur.nom, academie: true,
       niveauClub: niveauAdversaireEspoirs(saison.clubJoueur.niveauClub) }];
     for (const adv of sources) {
@@ -191,6 +227,7 @@
 
   global.RMClub = Object.assign(global.RMClub || {}, {
     ECART_NIVEAU_ACADEMIE, niveauXVAcademie, clubParentAcademie,
+    echantillonnerDivision,
     PERIODE_JOURNEES_ESPOIRS, journeeDeMatchEspoirs, eligiblePourMatchEspoirs,
     niveauAdversaireEspoirs, appliquerEffetsMatchEspoirs, assurerCompetitionEspoirs,
     enregistrerResultatEspoirs, prochaineRondeEspoirs,

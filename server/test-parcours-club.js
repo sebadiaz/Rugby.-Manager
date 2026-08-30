@@ -1354,6 +1354,49 @@ test('espoirs : l\'académie adverse est générée comme une ACADÉMIE, pas com
     + `elle ${saAcademie.toFixed(1)}) — sinon le championnat espoirs est injouable`);
 });
 
+// BUG #8 (chasse aux bugs) : le championnat espoirs opposait TOUJOURS les
+// académies des trois clubs les plus FAIBLES de la division.
+//
+// Mesuré sur quatre carrières, division de 13 rivaux allant de 0,15 à 0,45,
+// mon club à 0,30 : les académies retenues étaient à chaque fois 0,15, 0,175
+// et 0,20. `genererCompetitionEspoirs` prenait `adversaires.slice(0, n)` — or
+// cette liste est ordonnée par niveau CROISSANT. Le championnat espoirs ne
+// représentait donc jamais la division, et mon club en était structurellement
+// le plus fort (avantage résiduel mesuré : 1,6 point de note).
+test('espoirs : le championnat échantillonne la division, pas seulement ses clubs les plus faibles', () => {
+  const s = RMClub.nouvelleSaison(creerRng(9300), 'Échantillon Espoirs');
+  const niveaux = (s.adversaires || []).map((a) => a.niveauClub);
+  const monNiveau = s.clubJoueur.niveauClub;
+
+  // Prémisses mesurées : sans elles, le test passerait sans rien prouver.
+  assert.ok(niveaux.length >= 6,
+    `prémisse : la division doit compter assez de rivaux pour qu'échantillonner soit un choix (${niveaux.length})`);
+  const minDivision = Math.min(...niveaux);
+  const maxDivision = Math.max(...niveaux);
+  assert.ok(maxDivision - minDivision > 0.1,
+    `prémisse : les niveaux de la division doivent être réellement étalés (${minDivision} à ${maxDivision})`);
+  assert.ok(maxDivision > monNiveau,
+    'prémisse : au moins un club de la division est plus fort que le mien');
+
+  const comp = RMClub.assurerCompetitionEspoirs(s);
+  const parents = (comp.clubs || [])
+    .filter((a) => a.id !== s.clubJoueur.id)
+    .map((a) => RMClub.clubParentAcademie(s, a))
+    .filter(Boolean);
+  assert.ok(parents.length >= 2 && parents.length < niveaux.length,
+    `prémisse : le championnat retient une PARTIE de la division (${parents.length} sur ${niveaux.length})`);
+
+  const retenus = parents.map((p) => p.niveauClub);
+  const etendueRetenue = Math.max(...retenus) - Math.min(...retenus);
+  assert.ok(etendueRetenue > (maxDivision - minDivision) * 0.7,
+    `les académies retenues doivent couvrir la division (étendue ${etendueRetenue.toFixed(3)} `
+    + `contre ${(maxDivision - minDivision).toFixed(3)} pour la division entière) — `
+    + `retenus : ${retenus.map((n) => n.toFixed(3)).join(', ')}`);
+  assert.ok(Math.max(...retenus) >= monNiveau,
+    `mon club ne doit pas être d'office le plus fort du championnat espoirs `
+    + `(moi ${monNiveau.toFixed(3)}, meilleur adversaire ${Math.max(...retenus).toFixed(3)})`);
+});
+
 // --- 12e) Navigation entre clubs (TODO_AUDIT.md P1-20) : on n'ouvre JAMAIS
 // un club depuis une liste ou un menu déroulant — uniquement en cliquant son
 // nom. La couche données garantit ici les invariants que l'UI applique. ---
