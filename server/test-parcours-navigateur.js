@@ -3501,6 +3501,81 @@ function optionsLancement() {
     mondeApresAbandon.au_dela === 0);
   await ctxAbandon.close();
 
+  // --- Match JOUÉ en direct, DE BOUT EN BOUT (chasse aux bugs).
+  //
+  // Le chemin que le joueur a réellement emprunté quand il a signalé le
+  // blocage n'avait AUCUNE couverture : la suite ne jouait que des matchs
+  // simulés. On le joue donc en entier — mi-temps comprise — à la durée la
+  // plus courte et à la vitesse maximale.
+  const ctxLive = await browser.newContext({ viewport: { width: 1400, height: 1000 } });
+  const pgLive = await ctxLive.newPage();
+  pgLive.on('pageerror', (e) => erreursConsole.push('PAGEERROR ' + e.message));
+  await pgLive.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  await pgLive.click('#btnAccueilModeClub');
+  await pgLive.fill('#inputNomClub', 'AS Match Joue');
+  await pgLive.click('#btnCreerClub');
+  await pgLive.waitForTimeout(700);
+  await pgLive.selectOption('#selDureeClub', '300');
+  verifier('match joué de bout en bout : on atteint l\'aperçu d\'avant-match',
+    await continuerJusquAuMatch(pgLive));
+  await pgLive.click('#btnApercuJouerMatch');
+  await pgLive.waitForTimeout(1200);
+  for (let i = 0; i < 8; i++) {
+    if (/x16/.test(await pgLive.textContent('#btnSpeed'))) break;
+    await pgLive.click('#btnSpeed').catch(() => {});
+    await pgLive.waitForTimeout(120);
+  }
+  // Mi-temps : le manager donne une consigne et fait entrer un remplaçant.
+  let miTempsVue = false;
+  for (let t = 0; t < 400; t++) {
+    if (await pgLive.isVisible('#panneauResultat.visible')) break;
+    if (await pgLive.isVisible('#btnMiTempsReprendre')) {
+      miTempsVue = true;
+      const consignes = await pgLive.$$('.btnConsigneMiTemps');
+      if (consignes.length) { await consignes[0].click().catch(() => {}); await pgLive.waitForTimeout(250); }
+      const remplacants = await pgLive.$$('.btnRemplacantMiTemps');
+      if (remplacants.length) { await remplacants[0].click().catch(() => {}); await pgLive.waitForTimeout(250); }
+      if (await pgLive.isVisible('#btnMiTempsReprendre')) await pgLive.click('#btnMiTempsReprendre');
+      await pgLive.waitForTimeout(250);
+      break;
+    }
+    await pgLive.waitForTimeout(250);
+  }
+  verifier('match joué de bout en bout : la mi-temps est bien proposée (consigne + banc réels)', miTempsVue);
+  let siffletFinal = false;
+  for (let t = 0; t < 600; t++) {
+    if (await pgLive.isVisible('#panneauResultat.visible')) { siffletFinal = true; break; }
+    await pgLive.waitForTimeout(400);
+  }
+  verifier('match joué de bout en bout : le coup de sifflet final arrive et le résultat s\'affiche', siffletFinal);
+  verifier('match joué : « Voir le match » est masqué — un match joué ne se rejoue pas avec un second moteur',
+    siffletFinal && !(await pgLive.isVisible('#btnResultatVoir')));
+  if (siffletFinal) { await pgLive.click('#btnResultatFermer'); await pgLive.waitForTimeout(1000); }
+  const apresLive = await pgLive.evaluate(() => {
+    const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
+    const c = s.clubJoueur;
+    return {
+      club: document.getElementById('panneauClub').classList.contains('visible'),
+      boutonsActifs: !document.getElementById('btnJouerMatchClub').disabled
+        && !document.getElementById('btnApercuMatchFlottant').disabled,
+      mesRencontres: (s.calendrier || []).filter((f) => f.joue
+        && (f.domicileId === c.id || f.exterieurId === c.id)).length,
+      journeesClassement: ((s.classement || {})[c.id] || {}).j,
+      finances: (c.historiqueFinances || []).length,
+    };
+  });
+  verifier('match joué : on revient au club, boutons réactivés', apresLive.club && apresLive.boutonsActifs);
+  verifier('match joué : la rencontre est comptée UNE fois (calendrier, classement, finances)',
+    apresLive.mesRencontres === 1 && apresLive.journeesClassement === 1 && apresLive.finances === 1);
+  const dateAvantSuite = await pgLive.evaluate(() =>
+    JSON.stringify(JSON.parse(localStorage.getItem('rugbyManager.club.v1')).temps));
+  await pgLive.click('#btnJouerMatchClub');
+  await pgLive.waitForTimeout(1200);
+  verifier('match joué : la carrière repart normalement après le match',
+    (await pgLive.evaluate(() =>
+      JSON.stringify(JSON.parse(localStorage.getItem('rugbyManager.club.v1')).temps))) !== dateAvantSuite);
+  await ctxLive.close();
+
   verifier('aucune erreur console/page sur tout le parcours', erreursConsole.length === 0);
   if (erreursConsole.length) console.error(erreursConsole.join('\n'));
 
