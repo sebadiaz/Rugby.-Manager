@@ -4111,12 +4111,19 @@
         ? `<span class="rapportEnCours" title="Rapport commandé, en cours de rédaction">🔍 Rapport le ${echapperHTML(RMClub.formaterDateCourte(RMClub.dateDepuisISO(rapportEnCours.dateRemise)))}</span>`
         : `<button class="alt btnScouter" data-joueur="${j.id}"${c.budget >= RMClub.COUT_SCOUTING ? '' : ' disabled'}>🔍 Scouter (${RMClub.COUT_SCOUTING} k€)</button>`;
     const enComparaison = selectionComparaison.has(j.id) ? ' checked' : '';
+    // Un FAVORI survit au marché : quand un club rival signe le joueur, le
+    // jeu le retire de `saison.marche` mais pas de la liste des favoris (cf.
+    // club-mercato.js). Sans ce contrôle, l'écran continuait d'afficher un
+    // bouton « Signer » actif pour quelqu'un qui n'existe plus sur le marché
+    // — un clic sans effet, et un refus qui accusait le budget.
+    const surLeMarche = (saison.marche || []).some((x) => x.id === j.id);
     return `<div class="ligneMarche"><label class="caseComparaison" title="Ajouter à la comparaison"><input type="checkbox" class="caseComparerJoueur" data-joueur="${j.id}"${enComparaison}></label>` +
       `<span class="infosJoueur"><b>${j.nom}</b>${badgeZoneDecouverte(j)}<span>${POSTE_COMPLET[j.poste] || j.poste} · ${j.age} ans · ${ligneStats}</span></span>` +
       `<span class="actionMarche"><button class="btnFavori${favori ? ' actif' : ''}" data-joueur="${j.id}" title="Favori">${favori ? '★' : '☆'}</button>` +
       `<span class="prixMarche" title="Indemnité de transfert + prime de signature">${j.prixTransfert}<span style="color:var(--text-faint);font-weight:400;"> +${primeSignature} k€</span></span>${boutonScout}` +
-      `<button class="accent btnSigner" data-joueur="${j.id}"${abordable && fenetreOuverte ? '' : ' disabled'}` +
-      `${fenetreOuverte ? '' : ' title="Marché des transferts fermé"'}>Signer</button></span></div>`;
+      `<button class="accent btnSigner" data-joueur="${j.id}"${abordable && fenetreOuverte && surLeMarche ? '' : ' disabled'}` +
+      `${!surLeMarche ? ' title="Ce joueur n\'est plus disponible : un autre club l\'a signé"'
+        : fenetreOuverte ? '' : ' title="Marché des transferts fermé"'}>Signer</button></span></div>`;
   }
   // Écran UNIQUE de personnel (TODO_AUDIT.md P1-19) : l'organigramme
   // appartient au CLUB, donc les 3 équipes du joueur partagent le même staff
@@ -5279,6 +5286,15 @@
         toast(res.fenetre.ouvre
           ? `Marché fermé : les signatures rouvrent le ${RMClub.formaterDateCourte(res.fenetre.ouvre)}.`
           : 'Marché fermé : plus de fenêtre de transfert cette saison.', 'erreur');
+      } else if (res.motif === 'introuvable') {
+        // Le joueur a quitté le marché (signé par un rival) : accuser le
+        // budget était un mensonge — mesuré à 409 k€ de trésorerie pour un
+        // joueur à 44 k€. On le dit, et on rafraîchit la liste pour que
+        // l'entrée périmée disparaisse.
+        toast(`${joueurSigne ? joueurSigne.nom : 'Ce joueur'} n'est plus disponible : un autre club l'a signé.`, 'erreur');
+        if (saison.favoris) saison.favoris = saison.favoris.filter((j) => j.id !== id);
+        sauvegarder();
+        rafraichirMarche();
       } else {
         toast('Budget insuffisant pour cette signature.', 'erreur');
       }

@@ -3705,6 +3705,61 @@ function optionsLancement() {
   // un test lent ET instable, donc la mesure est consignée ici.
   await ctxFin.close();
 
+  // --- BUG #11 (chasse aux bugs) : un favori déjà parti reste « signable », et
+  // le refus MENT sur sa raison.
+  //
+  // Quand un club rival signe un joueur du marché, le jeu retire ce joueur de
+  // `saison.marche` (club-mercato.js) mais laisse la liste des FAVORIS
+  // intacte. L'écran Recrutement continue donc d'afficher ce joueur avec un
+  // bouton « Signer » actif. Mesuré : budget 409 k€ avant, 409 k€ après,
+  // joueur non recruté — et le message affiché est « Budget insuffisant pour
+  // cette signature » alors que le joueur coûtait 44 k€ et que le budget
+  // n'était pas en cause. Un bouton sans effet, et une raison fausse.
+  const ctxFav = await browser.newContext({ viewport: { width: 1400, height: 1000 } });
+  const pgFav = await ctxFav.newPage();
+  pgFav.on('pageerror', (e) => erreursConsole.push('PAGEERROR ' + e.message));
+  await pgFav.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  await pgFav.click('#btnAccueilModeClub');
+  await pgFav.fill('#inputNomClub', 'AS Favori Parti');
+  await pgFav.click('#btnCreerClub');
+  await pgFav.waitForTimeout(700);
+  await clicOngletSur(pgFav, 'transferts');
+  await pgFav.waitForTimeout(600);
+  const boutonsFavoris = await pgFav.$$('.btnFavori');
+  verifier('favori parti : prémisse — le marché propose des joueurs à mettre en favori',
+    boutonsFavoris.length > 0);
+  if (boutonsFavoris.length) { await boutonsFavoris[0].click(); await pgFav.waitForTimeout(400); }
+  const idFavori = await pgFav.evaluate(() => {
+    const f = JSON.parse(localStorage.getItem('rugbyManager.club.v1')).favoris || [];
+    return f.length ? f[0].id : null;
+  });
+  verifier('favori parti : prémisse — le joueur est bien enregistré en favori', !!idFavori);
+  // On reproduit EXACTEMENT ce que fait le jeu quand un rival signe ce joueur
+  // (docs/js/club-mercato.js : `saison.marche = saison.marche.filter(...)`,
+  // les favoris n'étant pas touchés).
+  await pgFav.evaluate((id) => {
+    const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
+    s.marche = s.marche.filter((x) => x.id !== id);
+    localStorage.setItem('rugbyManager.club.v1', JSON.stringify(s));
+  }, idFavori);
+  await pgFav.reload({ waitUntil: 'networkidle' });
+  await pgFav.waitForTimeout(300);
+  await pgFav.click('#btnContinuerClub');
+  await pgFav.waitForTimeout(600);
+  await clicOngletSur(pgFav, 'transferts');
+  await pgFav.waitForTimeout(700);
+  const boutonFavori = await pgFav.evaluate((id) => {
+    const z = document.getElementById('clubFavoris');
+    const b = z ? z.querySelector(`.btnSigner[data-joueur="${id}"]`) : null;
+    return b ? { existe: true, desactive: b.disabled, titre: b.getAttribute('title') || '' } : { existe: false };
+  }, idFavori);
+  verifier('favori parti : prémisse — le joueur reste affiché dans les favoris', boutonFavori.existe);
+  verifier('favori parti : « Signer » n\'est plus proposé comme actif pour un joueur qui n\'est plus sur le marché',
+    boutonFavori.existe && boutonFavori.desactive === true);
+  verifier('favori parti : le bouton dit POURQUOI il est inactif (le joueur est parti, pas un souci de budget)',
+    /plus disponible|plus sur le marché|signé ailleurs|parti/i.test(boutonFavori.titre || ''));
+  await ctxFav.close();
+
   verifier('aucune erreur console/page sur tout le parcours', erreursConsole.length === 0);
   if (erreursConsole.length) console.error(erreursConsole.join('\n'));
 
