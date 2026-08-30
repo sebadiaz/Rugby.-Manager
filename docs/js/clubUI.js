@@ -435,6 +435,21 @@
     // Un club qu'on ne dirige pas n'a pas de semaine connue.
     carte.style.display = ctx.modifiable ? '' : 'none';
     if (!ctx.modifiable) return;
+    // Portée RÉELLE de cette semaine : il n'existe qu'UN programme, porté par
+    // le club (`clubJoueur.semaineEntrainement`), appliqué chaque jour à
+    // l'effectif pro ET au centre de formation. L'onglet porte pourtant le
+    // sélecteur d'équipe (le développement des jeunes, plus bas, le suit
+    // réellement) : sans cette note, le manager croyait régler la semaine de
+    // sa réserve et modifiait en fait la préparation de son équipe première
+    // avant un match — un écran qui affiche une équipe et écrit pour une
+    // autre. Le dire est la correction ; donner une semaine PROPRE à chaque
+    // équipe serait une fonctionnalité, pas une correction de bug.
+    const portee = document.getElementById('porteeSemaineEntrainement');
+    if (portee) {
+      portee.textContent = ctx.type && ctx.type !== 'pro'
+        ? `⚠️ Ce programme est celui de tout le club : le modifier ici change aussi la semaine de l'équipe première, pas seulement celle de ${ctx.label}.`
+        : 'Ce programme est celui de tout le club : il s\'applique à toutes les équipes, pas seulement à l\'équipe première.';
+    }
     const semaine = RMClub.assurerSemaineEntrainement(saison);
     const aujourdhui = RMClub.jourSemaine(RMClub.dateCourante(saison));
     const options = Object.keys(RMClub.ACTIVITES_ENTRAINEMENT).map((cle) => {
