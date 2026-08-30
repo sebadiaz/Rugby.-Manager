@@ -326,6 +326,8 @@
     // second moteur qui rejouerait sans les décisions prises.
     const btnConsigne = document.getElementById('btnConsigneMatch');
     if (btnConsigne) btnConsigne.style.display = 'none';
+    const btnQuitter = document.getElementById('btnQuitterMatch');
+    if (btnQuitter) btnQuitter.style.display = 'none';
     document.getElementById('btnResultatVoir').style.display = 'none';
     document.getElementById('panneauResultat').classList.add('visible');
     const onFermer = L.onFermer;
@@ -340,7 +342,7 @@
   function lancerMatchJoue(seed, duree, opts) {
     const o = opts || {};
     matchLive = {
-      onResultat: o.onResultat, onFermer: o.onFermer, noms: o.noms,
+      onResultat: o.onResultat, onFermer: o.onFermer, onAbandon: o.onAbandon, noms: o.noms,
       equipeJoueur: o.equipeJoueur, equipe: o.equipeJoueur || 'A',
       remplacants: o.remplacants || [],
       consignesPrises: [], remplacementsFaits: [],
@@ -348,7 +350,35 @@
     };
     const btn = document.getElementById('btnConsigneMatch');
     if (btn) btn.style.display = '';
+    // Sortie EXPLICITE d'un match joué en direct : le manager doit pouvoir
+    // quitter sans aller la chercher dans le menu (signalé en jeu : « je ne
+    // peux plus sortir »). Le bouton n'existe que pendant un match joué —
+    // une relecture, elle, se ferme déjà par son écran de résultat.
+    const btnQ = document.getElementById('btnQuitterMatch');
+    if (btnQ) btnQ.style.display = '';
     demarrerLectureReelle(seed, duree, o.noms);
+  }
+
+  // Quitter un match JOUÉ avant le coup de sifflet final.
+  //
+  // `onResultat` n'arrive qu'à la fin d'un match joué : sortir en route ne
+  // remonte donc RIEN à l'appelant. Sans ce point de sortie, le Mode Club
+  // restait verrouillé sur une journée qui ne se terminerait jamais — bouton
+  // « Continuer » cliquable mais inerte, bouton flottant grisé, carrière
+  // bloquée (signalé en jeu). `onAbandon` prévient l'appelant que la journée
+  // n'a PAS eu lieu, à lui de la rendre rejouable.
+  // Renvoie true si un match joué a réellement été abandonné.
+  function abandonnerMatchLive() {
+    if (!matchLive || matchLive.resultatEnvoye) return false;
+    const onAbandon = matchLive.onAbandon;
+    matchLive = null;
+    const btn = document.getElementById('btnConsigneMatch');
+    if (btn) btn.style.display = 'none';
+    const btnQ = document.getElementById('btnQuitterMatch');
+    if (btnQ) btnQ.style.display = 'none';
+    fermerMiTemps();
+    if (onAbandon) onAbandon();
+    return true;
   }
 
   document.getElementById('miTempsConsignes').addEventListener('click', (e) => {
@@ -587,6 +617,9 @@
     appliquerVitesse(PALIERS_VITESSE[(i + 1) % PALIERS_VITESSE.length]);
   });
   document.getElementById('btnNouveau').addEventListener('click', () => {
+    // Lancer autre chose abandonne le match joué en cours : le prévenir,
+    // sinon la journée de Mode Club resterait verrouillée dans le vide.
+    abandonnerMatchLive();
     // Un vrai Match rapide ne doit jamais hériter d'une config de club
     // laissée par une précédente journée (cf. reinitialiserConfigClub) —
     // fait ici, au moment de démarrer un Match rapide, jamais juste après un
@@ -606,7 +639,15 @@
     }
     lancerNouveauMatchAvecGeneration(seedActuel, lireDureeChoisie(), { onFermer: afficherAccueil });
   });
+  document.getElementById('btnQuitterMatch').addEventListener('click', () => {
+    if (!window.confirm('Quitter le match en cours ? Il n\'aura pas eu lieu et tu pourras le relancer.')) return;
+    abandonnerMatchLive();
+    // Le Mode Club reprend la main via onAbandon ; hors Mode Club, on revient
+    // à l'accueil comme n'importe quelle sortie de match.
+    if (!document.getElementById('panneauClub').classList.contains('visible')) afficherAccueil();
+  });
   document.getElementById('btnAccueil').addEventListener('click', () => {
+    abandonnerMatchLive();
     afficherAccueil();
   });
 
@@ -737,6 +778,10 @@
   // par défaut : tant que rien n'appelle demarrerMatchClub, le Match rapide
   // fonctionne exactement comme avant.
   window.RMMain = {
+    // Quitter un match JOUÉ en direct avant la fin (cf. abandonnerMatchLive) :
+    // appelé par le Mode Club quand le manager revient à son club en cours de
+    // match. Renvoie true si un match joué a bien été interrompu.
+    abandonnerMatchLive,
     // `callbacks.onResultat(etatFinal)` est appelé dès que le match est généré
     // (score connu, avant même que le joueur choisisse de le regarder) : c'est
     // le moment où clubUI.js doit enregistrer le résultat dans la saison — le

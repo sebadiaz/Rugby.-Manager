@@ -3421,6 +3421,86 @@ function optionsLancement() {
     (await pgRetourNom.locator('#selEquipeContexte').inputValue().catch(() => null)) === 'b');
   await ctxRetourNom.close();
 
+  // --- BUG #9 (chasse aux bugs, signalé par le joueur) : choisir « Jouer le
+  // match » puis quitter l'écran de match BLOQUE toute la carrière.
+  //
+  // Reproduit à la main : le match joué en direct n'a aucun bouton de sortie
+  // (seulement Lecture, Vitesse, Consigne et ☰ Menu). Le seul chemin de
+  // retour est ☰ Menu → Mode Club — et il ne fait rien remonter : `onResultat`
+  // n'arrive qu'au coup de sifflet final, donc le verrou `journeeEnCours`
+  // reste pris pour toujours. De retour au club, « ▶ Continuer » a l'air
+  // cliquable mais ne fait RIEN, le bouton flottant reste grisé, et la
+  // journée ne peut plus ni se jouer ni s'avancer.
+  const ctxAbandon = await browser.newContext({ viewport: { width: 1400, height: 1000 } });
+  const pgAbandon = await ctxAbandon.newPage();
+  pgAbandon.on('pageerror', (e) => erreursConsole.push('PAGEERROR ' + e.message));
+  await pgAbandon.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  await pgAbandon.click('#btnAccueilModeClub');
+  await pgAbandon.fill('#inputNomClub', 'AS Match Abandonne');
+  await pgAbandon.click('#btnCreerClub');
+  await pgAbandon.waitForTimeout(700);
+  verifier('match joué : on atteint bien l\'aperçu d\'avant-match',
+    await continuerJusquAuMatch(pgAbandon));
+  // Combien de rencontres le MONDE a-t-il déjà jouées avant cette journée ?
+  const mondeAvantAbandon = await pgAbandon.evaluate(() => {
+    const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
+    const d = (s.monde && s.monde.divisions) || {};
+    return Object.keys(d).reduce((n, k) => n + (d[k].calendrier || []).filter((f) => f.joue).length, 0);
+  });
+  await pgAbandon.click('#btnApercuJouerMatch');
+  await pgAbandon.waitForTimeout(3000);
+  verifier('match joué : le match en direct démarre bien (aucun résultat encore connu)',
+    await pgAbandon.evaluate(() => {
+      const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
+      return !(s.calendrier || []).some((f) => f.joue && (f.domicileId === s.clubJoueur.id || f.exterieurId === s.clubJoueur.id));
+    }));
+  // Le joueur veut sortir : il n'a que le menu.
+  await pgAbandon.click('#btnMenu');
+  await pgAbandon.waitForTimeout(300);
+  await pgAbandon.click('#btnModeClub');
+  await pgAbandon.waitForTimeout(1000);
+  verifier('match abandonné : on revient bien à l\'écran du club',
+    await pgAbandon.evaluate(() => document.getElementById('panneauClub').classList.contains('visible')));
+  verifier('match abandonné : le bouton flottant de journée n\'est plus grisé',
+    await pgAbandon.evaluate(() => !document.getElementById('btnApercuMatchFlottant').disabled));
+  // LE contrôle : la carrière doit repartir. Recliquer « Continuer » doit
+  // rouvrir l'aperçu du match, comme n'importe quel jour de match non joué.
+  await pgAbandon.click('#btnJouerMatchClub');
+  await pgAbandon.waitForTimeout(1200);
+  verifier('match abandonné : « Continuer » relance bien la journée au lieu de ne rien faire',
+    await pgAbandon.isVisible('#panneauApercuMatch.visible'));
+  // Et rejouer la journée ne doit pas faire avancer le monde une SECONDE fois
+  // (le monde et les clubs adverses avancent AVANT le coup d'envoi).
+  await pgAbandon.click('#btnApercuLancerMatch');
+  await pgAbandon.waitForFunction(
+    () => document.getElementById('panneauClub').classList.contains('visible')
+      && !document.getElementById('btnJouerMatchClub').disabled,
+    { timeout: 90000 }
+  ).catch(() => {});
+  await pgAbandon.waitForTimeout(800);
+  // Le monde avance d'UNE ronde par journée de championnat. S'il avait avancé
+  // deux fois pour la même date, des rencontres de la ronde 2 seraient déjà
+  // jouées. (Première version de ce contrôle : je comparais des totaux entre
+  // divisions de tailles différentes — l'assertion était fausse, pas le code.)
+  const mondeApresAbandon = await pgAbandon.evaluate(() => {
+    const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
+    const d = (s.monde && s.monde.divisions) || {};
+    let ronde1 = 0; let au_dela = 0;
+    for (const k of Object.keys(d)) {
+      for (const f of (d[k].calendrier || [])) {
+        if (!f.joue) continue;
+        if (f.journee <= 1) ronde1++; else au_dela++;
+      }
+    }
+    return { ronde1, au_dela, divisions: Object.keys(d).length };
+  });
+  verifier('match abandonné puis rejoué : prémisse — le monde a bien joué sa première ronde',
+    mondeApresAbandon.divisions > 0 && mondeApresAbandon.ronde1 > 0
+    && mondeApresAbandon.ronde1 >= mondeAvantAbandon);
+  verifier('match abandonné puis rejoué : le monde n\'a PAS avancé une seconde fois pour la même date',
+    mondeApresAbandon.au_dela === 0);
+  await ctxAbandon.close();
+
   verifier('aucune erreur console/page sur tout le parcours', erreursConsole.length === 0);
   if (erreursConsole.length) console.error(erreursConsole.join('\n'));
 

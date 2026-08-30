@@ -4424,6 +4424,10 @@
   }
 
   document.getElementById('btnModeClub').addEventListener('click', () => {
+    // Revenir à son club pendant un match JOUÉ en direct l'abandonne : sans
+    // ça, `onResultat` n'arrivait jamais et le verrou de journée restait pris
+    // pour toujours (carrière bloquée, signalée en jeu).
+    if (window.RMMain && window.RMMain.abandonnerMatchLive) window.RMMain.abandonnerMatchLive();
     rafraichirTout();
     document.getElementById('panneauClub').classList.add('visible');
   });
@@ -5556,6 +5560,17 @@
     );
   }
 
+  // La partie « arrière-plan » d'une journée de championnat (monde, autres
+  // paliers, usure des clubs adverses) ne doit se produire QU'UNE fois par
+  // date, même si la journée est relancée. Persisté dans la sauvegarde :
+  // recharger la page ne doit pas non plus rouvrir la porte.
+  function arrierePlanDejaFait(saison, date) {
+    return saison.arrierePlanJournee === RMClub.dateISO(date);
+  }
+  function marquerArrierePlanFait(saison, date) {
+    saison.arrierePlanJournee = RMClub.dateISO(date);
+  }
+
   function resoudreJour(typeJour) {
     // Verrou anti-double-action : voir le commentaire sur `journeeEnCours`
     // plus haut. Bloque toute ré-entrée tant que le jour précédent n'est
@@ -5613,7 +5628,16 @@
     // Ils sont créés ici s'ils n'existent pas encore : leur progression ne
     // dépend PLUS de l'ouverture de l'onglet Monde (limite corrigée en
     // TODO_AUDIT.md P1-21).
-    if (typeJour === 'pro') {
+    //
+    // Cette partie-là n'est PAS rejouable : elle avance le monde et use les
+    // clubs adverses. Une journée peut désormais être relancée (match joué
+    // puis abandonné, cf. onAbandon plus bas) — sans cette garde datée, le
+    // monde avancerait de deux journées et les adversaires encaisseraient
+    // deux fois fatigue et blessures pour la même date. Même idée que le
+    // garde `f.joue` des conséquences de match : la protection vit dans ce
+    // qu'elle protège, pas dans l'interface.
+    if (typeJour === 'pro' && !arrierePlanDejaFait(saison, RMClub.dateCourante(saison))) {
+      marquerArrierePlanFait(saison, RMClub.dateCourante(saison));
       // Les clubs adverses subissent RÉELLEMENT leur journée (TODO_AUDIT.md
       // P1-29) : fatigue des joueurs alignés, blessures tirées sur leurs
       // titulaires, puis rotation de leur XV pour la journée suivante. Sans
@@ -5729,6 +5753,17 @@
             // réellement utilisée, donnant un déroulé différent du résultat
             // déjà annoncé. La remise à zéro se fait uniquement en démarrant
             // un vrai Match rapide (cf. main.js, reinitialiserConfigClub).
+          },
+          // Le manager a quitté le match AVANT le coup de sifflet final (cf.
+          // RMMain.abandonnerMatchLive) : aucun résultat n'existe, la journée
+          // n'a pas eu lieu pour lui. On relâche le verrou pour qu'il puisse
+          // la relancer — sans ça, « Continuer » restait cliquable mais
+          // inerte et la carrière était bloquée pour de bon.
+          onAbandon() {
+            journeeEnCours = false;
+            definirBoutonsJourneeActifs(true);
+            sauvegarder();
+            revenirAuPanneauClub();
           },
           onFermer: revenirAuPanneauClub,
         }
