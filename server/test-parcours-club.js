@@ -1440,6 +1440,32 @@ test('entraînement : chaque équipe suit SON programme, et les groupes ne se m�
     'les espoirs ne travaillaient PAS le physique : leur puissance ne doit pas bouger — c\'est ce qui prouve que le programme de l\'Équipe B ne déborde pas sur eux');
 });
 
+// Rétrocompatibilité des semaines par équipe : une carrière commencée AVANT
+// qu'elles existent ne doit rien voir changer tant que le manager n'y touche
+// pas. Sans ce contrôle, une équipe sans semaine repartirait du programme par
+// défaut et effacerait silencieusement le choix du joueur.
+test('entraînement : une sauvegarde d\'avant les semaines par équipe garde le programme choisi', () => {
+  const s = RMClub.nouvelleSaison(creerRng(31338), 'AS Ancienne Sauvegarde');
+  // Le manager avait réglé SA semaine, à l'époque où il n'y en avait qu'une.
+  for (let jour = 0; jour <= 6; jour++) RMClub.definirSeance(s, jour, 'melee');
+  // Forme exacte d'une sauvegarde d'avant : aucune équipe secondaire n'a de
+  // semaine (et souvent aucune n'a même de slot).
+  delete s.clubJoueur.compositionsSecondaires;
+  assert.strictEqual(RMClub.assurerSemaineEntrainement(s, 'pro')[2], 'melee',
+    'prémisse : le choix historique du manager est bien celui du premier XV');
+  for (const equipe of ['b', 'jeunes']) {
+    assert.strictEqual(RMClub.assurerSemaineEntrainement(s, equipe)[2], 'melee',
+      `${equipe} doit hériter du programme déjà choisi, pas repartir du défaut`);
+  }
+  // Et une fois héritées, les semaines sont bien SÉPARÉES.
+  RMClub.definirSeance(s, 2, 'pied', 'b');
+  assert.strictEqual(RMClub.assurerSemaineEntrainement(s, 'b')[2], 'pied');
+  assert.strictEqual(RMClub.assurerSemaineEntrainement(s, 'pro')[2], 'melee',
+    'régler la semaine de la réserve ne doit pas toucher celle du premier XV');
+  assert.strictEqual(RMClub.assurerSemaineEntrainement(s, 'jeunes')[2], 'melee',
+    'ni celle des espoirs');
+});
+
 // --- 12e) Navigation entre clubs (TODO_AUDIT.md P1-20) : on n'ouvre JAMAIS
 // un club depuis une liste ou un menu déroulant — uniquement en cliquant son
 // nom. La couche données garantit ici les invariants que l'UI applique. ---
