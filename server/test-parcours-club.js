@@ -1397,6 +1397,49 @@ test('espoirs : le championnat échantillonne la division, pas seulement ses clu
     + `(moi ${monNiveau.toFixed(3)}, meilleur adversaire ${Math.max(...retenus).toFixed(3)})`);
 });
 
+// Semaine d'entraînement PAR ÉQUIPE : ce qui compte n'est pas que trois
+// semaines soient stockées, c'est que les joueurs travaillent RÉELLEMENT trois
+// choses différentes selon leur équipe.
+test('entraînement : chaque équipe suit SON programme, et les groupes ne se mélangent pas', () => {
+  const s = RMClub.nouvelleSaison(creerRng(31337), 'AS Trois Semaines');
+  RMClub.assurerCompositionPourEquipe(s, 'pro');
+  RMClub.assurerCompositionPourEquipe(s, 'b');
+  // Trois programmes distinguables : repos ne développe rien, physique
+  // travaille la puissance, touche travaille la touche.
+  for (let jour = 0; jour <= 6; jour++) {
+    RMClub.definirSeance(s, jour, 'repos', 'pro');
+    RMClub.definirSeance(s, jour, 'physique', 'b');
+    RMClub.definirSeance(s, jour, 'touche', 'jeunes');
+  }
+  const tous = [...s.clubJoueur.effectif, ...(s.clubJoueur.jeunes || [])];
+  // La répartition testée est celle que la boucle de jeu utilise vraiment.
+  const groupes = RMClub.repartirParEquipeDEntrainement(s, tous);
+  // Prémisses : sans des groupes réellement peuplés, la mesure ne prouve rien.
+  assert.ok(groupes.pro.length > 0, 'prémisse : des joueurs suivent le programme du premier XV');
+  assert.ok(groupes.jeunes.length > 0,
+    'prémisse : des joueurs suivent le programme des Espoirs (une première version de la règle laissait ce groupe VIDE, le vivier d\'Équipe B absorbant tous les espoirs)');
+  assert.ok(groupes.pro.every((j) => groupes.jeunes.indexOf(j) === -1),
+    'aucun joueur ne peut suivre deux programmes le même jour');
+  const moyenne = (liste, champ) => liste.reduce((t, j) => t + (j[champ] || 0), 0) / liste.length;
+  const avant = {
+    proPuissance: moyenne(groupes.pro, 'puissance'), proFatigue: moyenne(groupes.pro, 'fatigue'),
+    jeunesTouche: moyenne(groupes.jeunes, 'touche'), jeunesPuissance: moyenne(groupes.jeunes, 'puissance'),
+  };
+  for (let i = 0; i < 21; i++) RMClub.avancerUnJour(s);
+  const apres = {
+    proPuissance: moyenne(groupes.pro, 'puissance'), proFatigue: moyenne(groupes.pro, 'fatigue'),
+    jeunesTouche: moyenne(groupes.jeunes, 'touche'), jeunesPuissance: moyenne(groupes.jeunes, 'puissance'),
+  };
+  assert.strictEqual(apres.proPuissance, avant.proPuissance,
+    'le premier XV était au repos : il ne doit avoir rien développé');
+  assert.strictEqual(apres.proFatigue, avant.proFatigue,
+    'le repos ne fatigue pas');
+  assert.ok(apres.jeunesTouche > avant.jeunesTouche,
+    `les espoirs travaillaient la touche : elle doit progresser (${avant.jeunesTouche} -> ${apres.jeunesTouche})`);
+  assert.strictEqual(apres.jeunesPuissance, avant.jeunesPuissance,
+    'les espoirs ne travaillaient PAS le physique : leur puissance ne doit pas bouger — c\'est ce qui prouve que le programme de l\'Équipe B ne déborde pas sur eux');
+});
+
 // --- 12e) Navigation entre clubs (TODO_AUDIT.md P1-20) : on n'ouvre JAMAIS
 // un club depuis une liste ou un menu déroulant — uniquement en cliquant son
 // nom. La couche données garantit ici les invariants que l'UI applique. ---

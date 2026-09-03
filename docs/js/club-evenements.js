@@ -128,9 +128,13 @@
     // fait réellement progresser certains joueurs, jamais tout l'effectif de
     // la même façon (cf. club-semaine-entrainement.js). Un jour de match du
     // premier XV n'a pas de séance : le match EST la charge du jour.
-    const cleSeance = RMClub.seancePourDate(saison, date);
-    const seance = cleSeance ? RMClub.ACTIVITES_ENTRAINEMENT[cleSeance] : null;
-    const facteurRecup = seance ? seance.recuperation : 1;
+    // CHAQUE ÉQUIPE a sa semaine (cf. club-semaine-entrainement.js) : le
+    // premier XV, l'Équipe B et les Espoirs ne jouent pas les mêmes jours et
+    // ne travaillent donc pas la même chose. Un joueur ne suit qu'UN
+    // programme : celui de l'équipe avec laquelle il est convoqué ce jour-là.
+    const EQUIPES_ENTRAINEMENT = ['pro', 'b', 'jeunes'];
+    const seanceParEquipe = {};
+    for (const eq of EQUIPES_ENTRAINEMENT) seanceParEquipe[eq] = RMClub.seancePourDate(saison, date, eq);
     const facteurEntraineur = RMClub.effetPersonnel(saison, 'entraineur');
 
     let fatigueRecuperee = 0;
@@ -139,11 +143,22 @@
     const progressions = [];
     const blessures = [];
     for (const effectif of effectifs) {
-      fatigueRecuperee += recupererFatigueDuJour(effectif, facteurPreparateur / facteurRecup);
-      if (cleSeance) {
+      // Découpage par équipe D'ABORD : la récupération dépend de la séance,
+      // et la séance dépend désormais de l'équipe.
+      const parEquipe = RMClub.repartirParEquipeDEntrainement
+        ? RMClub.repartirParEquipeDEntrainement(saison, effectif)
+        : { pro: effectif, b: [], jeunes: [] };
+      for (const eq of EQUIPES_ENTRAINEMENT) {
+        const groupeEquipe = parEquipe[eq];
+        if (!groupeEquipe || !groupeEquipe.length) continue;
+        const cleSeanceEquipe = seanceParEquipe[eq];
+        const seanceEquipe = cleSeanceEquipe ? RMClub.ACTIVITES_ENTRAINEMENT[cleSeanceEquipe] : null;
+        const recupEquipe = seanceEquipe ? seanceEquipe.recuperation : 1;
+        fatigueRecuperee += recupererFatigueDuJour(groupeEquipe, facteurPreparateur / recupEquipe);
+        if (!cleSeanceEquipe) continue;
         // Programme individuel : un joueur peut travailler SON activité
         // plutôt que celle du jour (cf. repartirParActivite).
-        const groupes = RMClub.repartirParActivite(effectif, cleSeance);
+        const groupes = RMClub.repartirParActivite(groupeEquipe, cleSeanceEquipe);
         for (const cle of Object.keys(groupes)) {
           for (const p of RMClub.appliquerSeance(rng, groupes[cle], cle, facteurEntraineur, facteurPreparateur, saison)) {
             progressions.push(p);
@@ -158,8 +173,11 @@
       // sinon une blessure déclarée aujourd'hui perdait immédiatement son
       // premier jour, et la durée annoncée au manager n'était pas la vraie.
       // Une séance de repos ne blesse jamais.
-      if (cleSeance) {
-        const groupesRisque = RMClub.repartirParActivite(effectif, cleSeance);
+      for (const eq of EQUIPES_ENTRAINEMENT) {
+        const groupeEquipe = parEquipe[eq];
+        const cleSeanceEquipe = seanceParEquipe[eq];
+        if (!groupeEquipe || !groupeEquipe.length || !cleSeanceEquipe) continue;
+        const groupesRisque = RMClub.repartirParActivite(groupeEquipe, cleSeanceEquipe);
         for (const cle of Object.keys(groupesRisque)) {
           for (const b of RMClub.blessuresDeSeance(rng, groupesRisque[cle], cle, facteurPreparateur, facteurMedecin, saison)) {
             blessures.push(b);
@@ -259,7 +277,11 @@
 
     return {
       date: RMClub.dateISO(date),
-      seance: cleSeance,
+      // La séance « du jour » reste celle du premier XV — c'est celle que le
+      // résumé de journée met en avant. Les trois sont exposées à côté :
+      // depuis les semaines par équipe, il n'y a plus UNE séance par jour.
+      seance: seanceParEquipe.pro,
+      seancesParEquipe: seanceParEquipe,
       fatigueRecuperee,
       progressions,
       blessures,

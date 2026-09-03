@@ -90,38 +90,105 @@
     main: 'attaque', pied: 'pied', discipline: 'defense',
   };
 
-  function assurerSemaineEntrainement(saison) {
+  // CHAQUE ÉQUIPE a sa semaine (premier XV, Équipe B, Espoirs) : elles ne
+  // jouent pas les mêmes jours et n'ont pas les mêmes besoins. La semaine du
+  // premier XV reste portée par le club lui-même (`clubJoueur`, champ
+  // historique) ; celles de l'Équipe B et des Espoirs vivent dans leur slot,
+  // exactement comme leur composition et leur tactique.
+  //
+  // Une équipe n'est jamais un porteur inventé : `slotCompositionPourEquipe`
+  // rend le même objet que celui qui porte déjà sa composition.
+  function porteurSemaine(saison, equipe) {
+    const RMClub = global.RMClub;
+    if (!equipe || equipe === 'pro' || !RMClub.slotCompositionPourEquipe) return saison.clubJoueur;
+    return RMClub.slotCompositionPourEquipe(saison, equipe) || saison.clubJoueur;
+  }
+
+  function assurerSemaineEntrainement(saison, equipe) {
     const c = saison.clubJoueur;
-    if (!c.semaineEntrainement || typeof c.semaineEntrainement !== 'object') {
-      const semaine = Object.assign({}, SEMAINE_PAR_DEFAUT);
-      const ancien = CORRESPONDANCE_ANCIEN_FOCUS[c.entrainementFocus];
-      if (ancien) { semaine[2] = ancien; semaine[4] = ancien; }
-      c.semaineEntrainement = semaine;
+    const porteur = porteurSemaine(saison, equipe);
+    if (!porteur.semaineEntrainement || typeof porteur.semaineEntrainement !== 'object') {
+      if (porteur === c) {
+        const semaine = Object.assign({}, SEMAINE_PAR_DEFAUT);
+        const ancien = CORRESPONDANCE_ANCIEN_FOCUS[c.entrainementFocus];
+        if (ancien) { semaine[2] = ancien; semaine[4] = ancien; }
+        c.semaineEntrainement = semaine;
+      } else {
+        // Une équipe qui n'avait pas encore SA semaine reprend celle du
+        // premier XV : passer aux semaines séparées ne change donc RIEN tant
+        // que le manager n'y a pas touché, y compris sur une sauvegarde
+        // existante (même principe qu'assurerCompetitionB).
+        porteur.semaineEntrainement = Object.assign({}, assurerSemaineEntrainement(saison, 'pro'));
+      }
     }
     // Une clé inconnue (sauvegarde bricolée, activité retirée) retombe sur le
     // défaut plutôt que de faire disparaître la séance.
     for (let jour = 0; jour <= 6; jour++) {
-      if (!ACTIVITES_ENTRAINEMENT[c.semaineEntrainement[jour]]) c.semaineEntrainement[jour] = SEMAINE_PAR_DEFAUT[jour];
+      if (!ACTIVITES_ENTRAINEMENT[porteur.semaineEntrainement[jour]]) {
+        porteur.semaineEntrainement[jour] = SEMAINE_PAR_DEFAUT[jour];
+      }
     }
-    return c.semaineEntrainement;
+    return porteur.semaineEntrainement;
   }
 
-  function definirSeance(saison, jourSemaine, activite) {
-    const semaine = assurerSemaineEntrainement(saison);
+  function definirSeance(saison, jourSemaine, activite, equipe) {
+    const semaine = assurerSemaineEntrainement(saison, equipe);
     if (!ACTIVITES_ENTRAINEMENT[activite]) return semaine;
     if (!(jourSemaine >= 0 && jourSemaine <= 6)) return semaine;
     semaine[jourSemaine] = activite;
     return semaine;
   }
 
-  // Séance prévue à une date donnée. Un jour de match du premier XV n'a PAS
-  // de séance : le match EST la charge du jour (il applique déjà la sienne,
-  // cf. appliquerFatigue) — y ajouter un entraînement compterait deux fois.
-  function seancePourDate(saison, date) {
+  // Séance prévue à une date donnée, POUR UNE ÉQUIPE. Le jour de match de
+  // CETTE équipe n'a pas de séance : le match EST la charge du jour (il
+  // applique déjà la sienne, cf. appliquerFatigue) — y ajouter un
+  // entraînement compterait deux fois. Le premier XV joue le samedi,
+  // l'Équipe B le dimanche, les espoirs le mercredi : chacune ne saute que
+  // SON jour, plus celui des autres.
+  function seancePourDate(saison, date, equipe) {
     const RMClub = global.RMClub;
-    const semaine = assurerSemaineEntrainement(saison);
-    if (RMClub.typeDArret(saison, date) === 'pro') return null;
+    const semaine = assurerSemaineEntrainement(saison, equipe);
+    if (RMClub.typeDArret(saison, date) === (equipe || 'pro')) return null;
     return semaine[RMClub.jourSemaine(date)] || null;
+  }
+
+  // Qui s'entraîne avec qui, un jour donné.
+  //
+  // Le club n'a que deux effectifs RÉELS (l'effectif pro et le centre de
+  // formation) : l'Équipe B, elle, se compose à la volée parmi les deux.
+  //
+  // Un joueur du CENTRE DE FORMATION suit toujours le programme des Espoirs :
+  // être aligné avec la réserve un dimanche ne le fait pas cesser d'être un
+  // espoir. Première version de cette règle : la convocation en Équipe B
+  // primait sur tout — mesuré, le vivier B absorbait alors les 15 espoirs et
+  // PLUS PERSONNE ne suivait le programme des Espoirs (groupe à 0 joueur).
+  //
+  // Restent les joueurs de l'effectif pro : ceux qui sont convoqués avec la
+  // réserve suivent le programme de l'Équipe B, les autres celui du premier
+  // XV. Aucun joueur n'appartient à deux groupes.
+  function equipeDEntrainement(saison, joueur, idsEquipeB) {
+    if ((saison.clubJoueur.jeunes || []).some((j) => j.id === joueur.id)) return 'jeunes';
+    return idsEquipeB.has(joueur.id) ? 'b' : 'pro';
+  }
+
+  function idsConvoquesEquipeB(saison) {
+    const RMClub = global.RMClub;
+    const slot = RMClub.slotCompositionPourEquipe
+      ? RMClub.slotCompositionPourEquipe(saison, 'b') : null;
+    if (!slot) return new Set();
+    return new Set([
+      ...Object.values(slot.compositionTitulaires || {}),
+      ...Object.values(slot.compositionBanc || {}),
+    ]);
+  }
+
+  // Découpe un effectif en groupes { equipe -> joueurs }, dans un ordre
+  // stable ('pro', 'b', 'jeunes') pour que la journée reste reproductible.
+  function repartirParEquipeDEntrainement(saison, effectif) {
+    const ids = idsConvoquesEquipeB(saison);
+    const groupes = { pro: [], b: [], jeunes: [] };
+    for (const j of effectif) groupes[equipeDEntrainement(saison, j, ids)].push(j);
+    return groupes;
   }
 
   // --- Effets différenciés ------------------------------------------------
@@ -270,7 +337,7 @@
 
   global.RMClub = Object.assign(global.RMClub || {}, {
     ACTIVITES_ENTRAINEMENT, SEMAINE_PAR_DEFAUT, assurerSemaineEntrainement,
-    definirSeance, seancePourDate, facteurAgeProgression, facteurFatigueProgression,
+    definirSeance, seancePourDate, repartirParEquipeDEntrainement, equipeDEntrainement, facteurAgeProgression, facteurFatigueProgression,
     facteurTempsDeJeu,
     appliquerSeance, repartirParActivite, blessuresDeSeance,
   });

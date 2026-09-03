@@ -3576,62 +3576,61 @@ function optionsLancement() {
       JSON.stringify(JSON.parse(localStorage.getItem('rugbyManager.club.v1')).temps))) !== dateAvantSuite);
   await ctxLive.close();
 
-  // --- BUG #10 (chasse aux bugs) : l'écran Entraînement AFFICHE une équipe et
-  // ÉCRIT pour tout le club.
+  // --- Semaine d'entraînement PAR ÉQUIPE.
   //
-  // L'onglet Entraînement porte le sélecteur d'équipe et annonce « Programme
-  // collectif et développement des jeunes joueurs de l'équipe sélectionnée ».
-  // Mais il n'existe qu'UNE semaine d'entraînement, sur le club
-  // (`clubJoueur.semaineEntrainement`). Reproduit : sélectionner l'Équipe B,
-  // changer la séance du mardi, revenir sur l'Équipe première — le mardi du
-  // XV premier a changé aussi. Le manager croit préparer sa réserve et
-  // modifie en réalité la préparation de son équipe première avant un match.
-  //
-  // La semaine EST collective par construction ; ce qui est faux, c'est ce
-  // que l'écran en dit. La carte doit donc annoncer clairement sa portée.
+  // Auparavant il n'existait qu'UNE semaine, portée par le club : l'écran
+  // affichait « Équipe B » dans son sélecteur et écrivait la préparation de
+  // l'équipe première (mesuré : mardi physique -> repos pour le XV premier
+  // après un réglage fait depuis l'écran B). Chaque équipe a maintenant la
+  // sienne. Ce contrôle exige les deux moitiés : que le réglage de la B
+  // prenne, et qu'il ne déborde PAS sur le premier XV.
   const ctxEntr = await browser.newContext({ viewport: { width: 1400, height: 1000 } });
   const pgEntr = await ctxEntr.newPage();
   pgEntr.on('pageerror', (e) => erreursConsole.push('PAGEERROR ' + e.message));
   await pgEntr.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
   await pgEntr.click('#btnAccueilModeClub');
-  await pgEntr.fill('#inputNomClub', 'AS Entrainement Partage');
+  await pgEntr.fill('#inputNomClub', 'AS Semaine Par Equipe');
   await pgEntr.click('#btnCreerClub');
   await pgEntr.waitForTimeout(700);
   await pgEntr.click('.ongletBtn[data-onglet="entrainement"]');
   await pgEntr.waitForTimeout(500);
-  // La semaine n'est ecrite dans la sauvegarde qu'au premier changement
-  // (creee a la volee par assurerSemaineEntrainement) : on lit donc ce que
-  // l'ecran AFFICHE, ce qui est de toute facon ce que le manager voit.
-  const mardiAvant = await pgEntr.evaluate(() =>
+  const lireMardi = () => pgEntr.evaluate(() =>
     document.querySelector('[data-volet="entrainement"] select[data-jour="2"]').value);
+  const mardiProAvant = await lireMardi();
   await pgEntr.selectOption('#selEquipeContexte', 'b');
   await pgEntr.waitForTimeout(500);
-  const autreSeance = await pgEntr.evaluate(() => {
+  verifier('semaine par équipe : prémisse — une équipe qui n\'a rien réglé hérite de la semaine du premier XV',
+    (await lireMardi()) === mardiProAvant);
+  const nouvelleSeance = await pgEntr.evaluate(() => {
     const sel = document.querySelector('[data-volet="entrainement"] select[data-jour="2"]');
     return [...sel.options].map((o) => o.value).find((v) => v !== sel.value);
   });
-  await pgEntr.selectOption('[data-volet="entrainement"] select[data-jour="2"]', autreSeance);
+  await pgEntr.selectOption('[data-volet="entrainement"] select[data-jour="2"]', nouvelleSeance);
   await pgEntr.waitForTimeout(500);
-  // Prémisse : on documente le comportement RÉEL, sans lequel le contrôle
-  // suivant ne protégerait rien.
-  const mardiApres = await pgEntr.evaluate(() =>
-    JSON.parse(localStorage.getItem('rugbyManager.club.v1')).clubJoueur.semaineEntrainement[2]);
-  verifier('entraînement : prémisse — modifier la semaine depuis l\'Équipe B change la semaine DU CLUB',
-    mardiApres === autreSeance && mardiApres !== mardiAvant);
-  // Le contrôle : l'écran doit dire que cette semaine vaut pour TOUT le club,
-  // pas pour la seule équipe affichée dans le sélecteur.
-  const texteSemaine = await pgEntr.evaluate(() => {
-    const c = document.getElementById('carteSemaineEntrainement');
-    return c ? c.innerText.replace(/\s+/g, ' ') : '';
+  verifier('semaine par équipe : le réglage fait sur l\'Équipe B est bien pris pour l\'Équipe B',
+    (await lireMardi()) === nouvelleSeance);
+  await pgEntr.selectOption('#selEquipeContexte', 'pro');
+  await pgEntr.waitForTimeout(500);
+  verifier('semaine par équipe : et il ne touche PAS la semaine de l\'équipe première',
+    (await lireMardi()) === mardiProAvant);
+  // Et dans la sauvegarde, pas seulement à l'écran.
+  const semainesEnregistrees = await pgEntr.evaluate(() => {
+    const c = JSON.parse(localStorage.getItem('rugbyManager.club.v1')).clubJoueur;
+    const sec = c.compositionsSecondaires || {};
+    return {
+      pro: (c.semaineEntrainement || {})[2],
+      b: ((sec.b || {}).semaineEntrainement || {})[2],
+    };
   });
-  verifier('entraînement : la carte annonce que la semaine vaut pour TOUTES les équipes du club',
-    /tout le club|toutes les équipes|l'ensemble du club/i.test(texteSemaine));
+  verifier('semaine par équipe : les deux semaines sont RÉELLEMENT distinctes dans la sauvegarde',
+    semainesEnregistrees.pro === mardiProAvant && semainesEnregistrees.b === nouvelleSeance
+    && semainesEnregistrees.pro !== semainesEnregistrees.b);
   const texteEntete = await pgEntr.evaluate(() => {
     const e = document.querySelector('[data-volet="entrainement"] .enTetePage');
     return e ? e.innerText.replace(/\s+/g, ' ') : '';
   });
-  verifier('entraînement : l\'en-tête ne promet plus un programme propre à l\'équipe sélectionnée',
-    !/programme[^.]*de l'équipe sélectionnée/i.test(texteEntete));
+  verifier('semaine par équipe : l\'en-tête annonce bien une semaine par équipe',
+    /chaque équipe a sa propre semaine/i.test(texteEntete));
   await ctxEntr.close();
 
   // --- « Terminer le match » : un match JOUÉ dure le temps d'un match.

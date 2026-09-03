@@ -435,22 +435,17 @@
     // Un club qu'on ne dirige pas n'a pas de semaine connue.
     carte.style.display = ctx.modifiable ? '' : 'none';
     if (!ctx.modifiable) return;
-    // Portée RÉELLE de cette semaine : il n'existe qu'UN programme, porté par
-    // le club (`clubJoueur.semaineEntrainement`), appliqué chaque jour à
-    // l'effectif pro ET au centre de formation. L'onglet porte pourtant le
-    // sélecteur d'équipe (le développement des jeunes, plus bas, le suit
-    // réellement) : sans cette note, le manager croyait régler la semaine de
-    // sa réserve et modifiait en fait la préparation de son équipe première
-    // avant un match — un écran qui affiche une équipe et écrit pour une
-    // autre. Le dire est la correction ; donner une semaine PROPRE à chaque
-    // équipe serait une fonctionnalité, pas une correction de bug.
+    // CHAQUE ÉQUIPE a désormais SA semaine : celle qu'on règle ici est celle
+    // de l'équipe affichée dans le sélecteur, et d'elle seule. On le dit,
+    // parce que l'écran a longtemps prétendu le contraire — il affichait une
+    // équipe et écrivait pour tout le club.
     const portee = document.getElementById('porteeSemaineEntrainement');
     if (portee) {
-      portee.textContent = ctx.type && ctx.type !== 'pro'
-        ? `⚠️ Ce programme est celui de tout le club : le modifier ici change aussi la semaine de l'équipe première, pas seulement celle de ${ctx.label}.`
-        : 'Ce programme est celui de tout le club : il s\'applique à toutes les équipes, pas seulement à l\'équipe première.';
+      portee.textContent = `Cette semaine est celle de ${ctx.label}, et d'elle seule : `
+        + 'les autres équipes ont la leur. Un joueur convoqué en Équipe B suit le programme de la B ; '
+        + 'un espoir non convoqué suit celui des Espoirs ; tous les autres celui de l\'équipe première.';
     }
-    const semaine = RMClub.assurerSemaineEntrainement(saison);
+    const semaine = RMClub.assurerSemaineEntrainement(saison, ctx.type);
     const aujourdhui = RMClub.jourSemaine(RMClub.dateCourante(saison));
     const options = Object.keys(RMClub.ACTIVITES_ENTRAINEMENT).map((cle) => {
       const a = RMClub.ACTIVITES_ENTRAINEMENT[cle];
@@ -5363,7 +5358,7 @@
     const jour = e.target.dataset.jour;
     const ctx = contexte();
     if (jour == null || !ctx.modifiable) return;
-    RMClub.definirSeance(saison, Number(jour), e.target.value);
+    RMClub.definirSeance(saison, Number(jour), e.target.value, contexte().type);
     sauvegarder();
     const a = RMClub.ACTIVITES_ENTRAINEMENT[e.target.value];
     toast(`✅ ${RMClub.NOMS_JOURS[Number(jour)]} : ${a.icone} ${a.label}`);
