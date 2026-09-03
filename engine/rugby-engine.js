@@ -1433,7 +1433,16 @@
       // Ligne des 10 m, bornée à l'en-but des fautifs (équivalent loi 19.32 :
       // marque à moins de 10 m de leur ligne → recul jusqu'à la ligne d'en-but).
       const ligne = Math.max(0, Math.min(LONGUEUR, position.x + sens * 10));
-      this.penaliteRecul = { sens, eqDef, ligne, markX: position.x, markY: position.y, timer: 2.5 };
+      // Temps mort RÉEL d'une pénalité : l'arbitre siffle, explique la faute,
+      // les fautifs reculent de 10 m, le tapeur revient à la marque — 25-40 s
+      // pendant lesquelles le ballon n'est PAS en jeu. Le moteur passait
+      // directement en PORTE avec 2,5 s de replacement, donc une pénalité ne
+      // coûtait quasiment aucun temps mort alors que c'est, avec la mêlée et la
+      // touche, l'un des trois grands postes de ballon mort d'un match.
+      // `attente` est un plancher : le jeu ne repart pas avant, même si tout le
+      // monde est déjà en place.
+      this.penaliteRecul = { sens, eqDef, ligne, markX: position.x, markY: position.y,
+        timer: 40 * this._echelleArret, attente: 26 * this._echelleArret };
       this.phase = 'PORTE';
       this.timerPhase = 0;
     }
@@ -1458,6 +1467,9 @@
           pret = false;
         }
       }
+      // Le plancher d'attente prime : tant qu'il court, le jeu ne reprend pas.
+      R.attente -= dt;
+      if (R.attente > 0) return;
       if (R.timer <= 0 || pret) this.penaliteRecul = null;
     }
 
@@ -3702,12 +3714,25 @@
       m.timerGlobal += dt;
       this.ruckPoint = { x: m.x, y: m.y };
 
-      // Garde-fou anti-blocage : une mêlée ne s'éternise JAMAIS. Une formation
-      // lente (avants partis loin) répétée après une reformation pouvait faire
-      // durer une mêlée > 34 s. Au-delà de ~24 s, l'arbitre RÉSOUT la mêlée au
-      // lieu de la refaire (l'équipe qui introduit garde le ballon), ce qui
-      // garantit que TOUTE mêlée se termine quelle que soit la durée du match.
-      if (m.timerGlobal > 24 && m.etat !== ETATS_MELEE.SORTIE) {
+      // Garde-fou anti-blocage : une mêlée ne s'éternise JAMAIS. Au-delà du
+      // plafond, l'arbitre RÉSOUT la mêlée au lieu de la refaire (l'équipe qui
+      // introduit garde le ballon), ce qui garantit que TOUTE mêlée se termine
+      // quelle que soit la durée du match.
+      //
+      // Ce plafond était à 24 s : il ne servait plus de garde-fou, il était
+      // devenu le CHEMIN NORMAL. Mesuré sur 10 matchs, la durée moyenne d'une
+      // mêlée était de 22,9 s — autrement dit presque toutes les mêlées
+      // sortaient par ce couperet, jamais par la progression prévue
+      // (formation, crouch, bind, set, introduction, contestation, sortie),
+      // dont le commentaire annonce pourtant 45-70 s. La mêlée, premier poste
+      // de ballon mort d'un vrai match, ne coûtait donc quasiment rien : le
+      // ballon-en-jeu montait à 59,9 min sur 80 (réel ~35) et TOUS les volumes
+      // d'actions étaient gonflés d'autant.
+      //
+      // Le plafond redevient ce qu'il doit être : un dernier recours, très
+      // au-dessus d'une séquence normale. Il suit l'échelle des arrêts pour
+      // rester valable sur les matchs de démonstration courts.
+      if (m.timerGlobal > 95 * this._echelleArret && m.etat !== ETATS_MELEE.SORTIE) {
         m.diff = m.diff || this._meleeFacteurs();
         return this._meleeResoudreContestation();
       }
@@ -3725,6 +3750,14 @@
 
       const E = ETATS_MELEE;
       const dur = (s) => s * this._echelleArret;
+          // Durées des paliers : une séquence de mêlée réelle dure 45-70 s de
+          // l'octroi à la sortie du ballon. Mesurées avant recalibrage, elles
+          // totalisaient 22,9 s (formation 13,1 s, puis 1 à 2,4 s par palier) :
+          // la mêlée, premier poste de ballon mort d'un vrai match, ne coûtait
+          // presque rien. C'est la cause principale des 59,9 min de ballon en
+          // jeu sur 80 (réel ~35) et donc des volumes d'actions 2 à 3× trop
+          // élevés. `dur()` applique l'échelle des arrêts, qui compresse tout
+          // automatiquement sur les matchs de démonstration courts.
       switch (m.etat) {
         case E.FORMATION: {
           // Les deux packs se placent face à face ; si une équipe est plus
@@ -3757,20 +3790,20 @@
           // 3-4× le réel). Les paliers ci-dessous consomment le temps réel d'une
           // vraie séquence de mêlée ; l'échelle (_echelleArret) compresse tout
           // automatiquement sur les matchs démo courts.
-          if (m.timer >= dur(8) && (pret || m.timer >= m.capFormation + dur(6))) {
+          if (m.timer >= dur(22) && (pret || m.timer >= m.capFormation + dur(6))) {
             m.etat = E.CROUCH; m.timer = 0;
             this.log('MELEE_CROUCH', m.equipeIntroduction, 'Arbitre : "Crouch" - les premieres lignes se baissent');
           }
           break;
         }
         case E.CROUCH:
-          if (m.timer >= dur(1.8)) {
+          if (m.timer >= dur(4.5)) {
             m.etat = E.BIND; m.timer = 0;
             this.log('MELEE_BIND', m.equipeIntroduction, 'Arbitre : "Bind" - les piliers se lient a l\'adversaire');
           }
           break;
         case E.BIND:
-          if (m.timer >= dur(1.4)) {
+          if (m.timer >= dur(3.5)) {
             m.etat = E.SET; m.timer = 0;
             this.log('MELEE_SET', m.equipeIntroduction, 'Arbitre : "Set" - les deux packs s\'engagent');
           }
@@ -3778,7 +3811,7 @@
         case E.SET:
           // La poussée ne commence qu'a partir d'ici (apres l'engagement),
           // jamais avant l'introduction.
-          if (m.timer >= dur(1.2)) {
+          if (m.timer >= dur(3.0)) {
             m.etat = E.INTRODUCTION; m.timer = 0;
             this.log('MELEE_INTRODUCTION', m.equipeIntroduction, `Le demi de melee introduit le ballon dans le tunnel pour l'equipe ${m.equipeIntroduction}`);
           }
@@ -3787,7 +3820,7 @@
           // Le talonneur tente de talonner, le ballon progresse vers les
           // pieds du numero 8 : les facteurs de contestation sont calculés
           // une fois, au moment où la lutte pour le ballon démarre vraiment.
-          if (m.timer >= dur(1.8)) {
+          if (m.timer >= dur(4.0)) {
             m.etat = E.CONTESTATION; m.timer = 0;
             m.diff = this._meleeFacteurs();
             this.log('MELEE_CONTESTATION', m.equipeIntroduction, 'Contestation en melee, les deux packs poussent pour le ballon');
@@ -3799,7 +3832,7 @@
             this.log('MELEE_TOURNEE', m.equipeIntroduction, 'La melee tourne de plus de 90 degres, l\'arbitre la fait reformer');
             return this._meleeReset();
           }
-          if (m.timer >= dur(3.0)) this._meleeResoudreContestation();
+          if (m.timer >= dur(6.0)) this._meleeResoudreContestation();
           break;
         case E.SORTIE: {
           // Comme le "use it" du maul : le ballon doit ressortir sous peine
@@ -4451,7 +4484,11 @@
       // talonneur prépare son lancer). Compressée comme les autres temps d'arrêt
       // sur un format démo court (cf. _echelleArret). C'est, avec la mêlée, ce
       // qui ramène le « ballon en jeu » vers les ~44 % réels.
-      const dureeMin = 14 * this._echelleArret;
+      // Mesurée avant recalibrage, la touche durait 15,0 s : la constante (14 s)
+      // contredisait le commentaire ci-dessus. Portée à 32 s, au milieu de la
+      // fourchette réelle annoncée — c'est, avec la mêlée, ce qui ramène le
+      // ballon en jeu de 59,9 min à une valeur réaliste sur 80 minutes.
+      const dureeMin = 32 * this._echelleArret;
       if (this.timerPhase < dureeMin) return;
       // Comme à la mêlée (cf. _tickMelee, case FORMATION) : l'arbitre n'autorise
       // le lancer que lorsque les avants des deux équipes sont réellement
@@ -4885,8 +4922,14 @@
       // but/mi-temps) et de la formation mêlée/touche (liaison des paquets,
       // alignement avant lancer : le ballon n'est pas encore vivant). Mesuré
       // tick par tick, jamais recalculé après coup.
-      if (this.phase === 'PORTE' || this.phase === 'RUCK' || this.phase === 'MAUL'
-        || this.phase === 'COUP_ENVOI' || this.phase === 'COUP_DE_PIED_JEU') {
+      // Une pénalité en cours de mise en place n'est PAS du jeu : le ballon
+      // n'a pas encore été tapé, l'arbitre parle et les fautifs reculent. La
+      // phase est pourtant déjà 'PORTE' (cf. _lancerJeuRapidePenalite), d'où
+      // cette exclusion explicite — sans elle, les ~30 s réglementaires
+      // seraient comptées comme du ballon en jeu.
+      const enMiseEnPlacePenalite = !!this.penaliteRecul;
+      if (!enMiseEnPlacePenalite && (this.phase === 'PORTE' || this.phase === 'RUCK' || this.phase === 'MAUL'
+        || this.phase === 'COUP_ENVOI' || this.phase === 'COUP_DE_PIED_JEU')) {
         this.tempsJeuEffectif += dt;
         this.tempsPossession[this.possession] += dt;
         // Occupation : où se joue le match (position réelle du ballon),

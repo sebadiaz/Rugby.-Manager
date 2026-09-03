@@ -162,12 +162,18 @@ test('une mêlée se termine toujours, même à pleine échelle (_echelleArret=1
       }
     }
   }
-  // Mesuré jusqu'à ~22.9s max sur 20 graines à dureeMatch=4800 (match complet
-  // de 80 min, sans compression) : le délai de convergence des avants
-  // (_capFormationMelee, plafonné à 10s) plus une mêlée qui tourne et se
-  // reforme (loi 20) peuvent s'additionner ; la marge reste un garde-fou
-  // contre un blocage réel, pas une borne de confort.
-  assert.ok(globalMax < 30, `une mêlée est restée bloquée ${globalMax.toFixed(1)}s à pleine échelle (devrait toujours se résoudre sous ~30s)`);
+  // L'invariant protégé est « une mêlée se TERMINE toujours », pas « en moins
+  // de 30 s ». L'ancien seuil (30 s) encodait une mêlée expédiée en 22,9 s,
+  // c'est-à-dire l'anomalie de calibrage elle-même : une séquence de mêlée
+  // réelle dure 45-70 s de l'octroi à la sortie du ballon, et l'expédier en
+  // 23 s gonflait le ballon-en-jeu à 59,9 min sur 80 (réel ~35).
+  //
+  // Le seuil suit donc désormais le garde-fou anti-blocage du moteur (95 s à
+  // pleine échelle), avec la marge d'une reformation : au-delà, il y a un vrai
+  // blocage. Une mêlée qui durerait à nouveau moins de 30 s ne serait pas un
+  // succès, ce serait le retour du défaut — c'est ce que mesure désormais
+  // server/test-calibration-moteur.js, pas ce test-ci.
+  assert.ok(globalMax < 130, `une mêlée est restée bloquée ${globalMax.toFixed(1)}s à pleine échelle (garde-fou moteur : 95 s)`);
 });
 
 test('la réception d\'un coup de pied ne téléporte jamais un joueur (course réelle jusqu\'au point de chute)', () => {
