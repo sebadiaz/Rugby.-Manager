@@ -1466,6 +1466,62 @@ test('entraînement : une sauvegarde d\'avant les semaines par équipe garde le 
     'ni celle des espoirs');
 });
 
+// Les actions « une seule fois » doivent se protéger ELLES-MÊMES.
+//
+// Deux bugs de cette campagne venaient de là : une recette de match
+// encaissable deux fois, et une journée dont l'arrière-plan pouvait se
+// rejouer. À chaque fois la protection vivait dans l'interface, une couche
+// au-dessus de ce qu'elle protégeait. Ce test appelle DEUX FOIS chaque action
+// à effet unique et exige que le second appel ne change rien.
+//
+// Chaque cas vérifie d'abord que le PREMIER appel a réellement changé quelque
+// chose de mesurable : sans cela la comparaison serait vide de sens (piège
+// rencontré en écrivant ce test — trois cas sur sept ne prouvaient rien).
+test('actions à effet unique : un second appel identique ne doit RIEN doubler', () => {
+  const photo = (s) => JSON.stringify({
+    budget: s.clubJoueur.budget,
+    personnel: (s.clubJoueur.personnel || []).length,
+    effectif: (s.clubJoueur.effectif || []).length,
+    jeunes: (s.clubJoueur.jeunes || []).length,
+    messages: (s.clubJoueur.messages || []).length,
+    tresorerie: (s.clubJoueur.tresorerie || []).length,
+    marche: (s.marche || []).length,
+    marchePersonnel: (s.marchePersonnel || []).length,
+    reseau: JSON.stringify(s.reseauScouting || null),
+    infrastructures: JSON.stringify(s.clubJoueur.infrastructures || null),
+  });
+  const cas = [
+    ['embaucherPersonnel', (s) => {
+      if (!(s.marchePersonnel || []).length) s.marchePersonnel = RMClub.genererMarchePersonnel(creerRng(9), 6);
+      return s.marchePersonnel[0].id;
+    }, (s, id) => RMClub.embaucherPersonnel(s, id)],
+    ['licencierPersonnel', (s) => {
+      s.marchePersonnel = RMClub.genererMarchePersonnel(creerRng(9), 6);
+      RMClub.embaucherPersonnel(s, s.marchePersonnel[0].id);
+      return s.clubJoueur.personnel[0].id;
+    }, (s, id) => RMClub.licencierPersonnel(s, id)],
+    ['lancerTravaux', () => 'stade', (s, cle) => RMClub.lancerTravaux(s, cle)],
+    ['promouvoirJeune', (s) => (s.clubJoueur.jeunes || [])[0].id, (s, id) => RMClub.promouvoirJeune(s, id)],
+    ['lancerMissionScouting', () => 'FRA', (s, code) => RMClub.lancerMissionScouting(s, code, 15)],
+    ['rappelerRecruteur', (s) => { RMClub.lancerMissionScouting(s, 'FRA', 15); return null; },
+      (s) => RMClub.rappelerRecruteur(s)],
+    ['signerJoueur', (s) => (s.marche || [])[0].id, (s, id) => RMClub.signerJoueur(s, id)],
+  ];
+  for (const [nom, preparer, agir] of cas) {
+    const s = RMClub.nouvelleSaison(creerRng(777), 'AS Idempotence');
+    RMClub.assurerCompositionPourEquipe(s, 'pro');
+    const cible = preparer(s);
+    const avant = photo(s);
+    agir(s, cible);
+    const apres1 = photo(s);
+    assert.notStrictEqual(apres1, avant,
+      `prémisse : le premier appel à ${nom} doit changer quelque chose de mesurable, sinon ce cas ne prouve rien`);
+    agir(s, cible);
+    assert.strictEqual(photo(s), apres1,
+      `${nom} : un second appel identique ne doit rien doubler`);
+  }
+});
+
 // --- 12e) Navigation entre clubs (TODO_AUDIT.md P1-20) : on n'ouvre JAMAIS
 // un club depuis une liste ou un menu déroulant — uniquement en cliquant son
 // nom. La couche données garantit ici les invariants que l'UI applique. ---
