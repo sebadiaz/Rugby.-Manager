@@ -3759,6 +3759,71 @@ function optionsLancement() {
     /plus disponible|plus sur le marché|signé ailleurs|parti/i.test(boutonFavori.titre || ''));
   await ctxFav.close();
 
+  // --- BUG (signalé en jeu) : « je reviens sur la page d'accueil du site et je
+  // ne peux plus rentrer dans mon club ».
+  //
+  // La page d'accueil n'est masquée que par afficherVueMatch() (quand on
+  // REGARDE un match). Entrer en Mode Club ne la masque PAS : elle reste
+  // `visible` sous le panneau du club, au MÊME z-index, pendant toute la
+  // carrière. Dès que le panneau du club est masqué — ce que fait chaque
+  // lancement de match — la page d'accueil réapparaît, et le joueur se
+  // retrouve dessus. Au retour, les deux panneaux sont empilés au même niveau
+  // et les clics peuvent atterrir sur le mauvais.
+  const ctxAcc = await browser.newContext({ viewport: { width: 1400, height: 1000 } });
+  const pgAcc = await ctxAcc.newPage();
+  pgAcc.on('pageerror', (e) => erreursConsole.push('PAGEERROR ' + e.message));
+  await pgAcc.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  await pgAcc.click('#btnAccueilModeClub');
+  await pgAcc.fill('#inputNomClub', 'AS Accueil Empile');
+  await pgAcc.click('#btnCreerClub');
+  await pgAcc.waitForTimeout(700);
+  const panneaux = () => pgAcc.evaluate(() => ({
+    accueil: document.getElementById('panneauAccueil').classList.contains('visible'),
+    club: document.getElementById('panneauClub').classList.contains('visible'),
+  }));
+  const enClub = await panneaux();
+  verifier('accueil : prémisse — on est bien entré dans le Mode Club', enClub.club);
+  verifier('accueil : la page d\'accueil est MASQUÉE quand on est dans son club',
+    enClub.accueil === false);
+  // Le parcours signalé : un match, puis retour au club.
+  verifier('accueil : on atteint l\'aperçu du match', await continuerJusquAuMatch(pgAcc));
+  await pgAcc.click('#btnApercuLancerMatch');
+  let resultatAcc = false;
+  for (let i = 0; i < 150; i++) {
+    if (await pgAcc.isVisible('#panneauResultat.visible')) { resultatAcc = true; break; }
+    await pgAcc.waitForTimeout(400);
+  }
+  verifier('accueil : prémisse — le match est allé au bout', resultatAcc);
+  const pendant = await panneaux();
+  verifier('accueil : pendant le match, la page d\'accueil ne réapparaît pas sous l\'écran de résultat',
+    pendant.accueil === false);
+  if (resultatAcc) { await pgAcc.click('#btnResultatFermer'); await pgAcc.waitForTimeout(1200); }
+  const apresAcc = await panneaux();
+  verifier('accueil : après le match on est de retour dans le club, sans accueil empilé dessous',
+    apresAcc.club === true && apresAcc.accueil === false);
+  // Et le club reste pilotable : le bouton de journée répond.
+  await pgAcc.click('#btnApercuMatchFlottant');
+  // Le clic déclenche la journée suivante : l'écran de génération s'affiche
+  // pendant que les autres rencontres se simulent. C'est un ÉTAT DE PASSAGE
+  // légitime — première version de ce contrôle, je ne l'attendais pas et je
+  // concluais à tort à un blocage. On attend donc qu'il se termine.
+  for (let i = 0; i < 60; i++) {
+    if (!(await pgAcc.isVisible('#panneauGeneration.visible'))) break;
+    await pgAcc.waitForTimeout(500);
+  }
+  await pgAcc.waitForTimeout(800);
+  const pilotable = await pgAcc.evaluate(() => ({
+    club: document.getElementById('panneauClub').classList.contains('visible'),
+    apercu: document.getElementById('panneauApercuMatch').classList.contains('visible'),
+    resultat: document.getElementById('panneauResultat').classList.contains('visible'),
+    accueil: document.getElementById('panneauAccueil').classList.contains('visible'),
+  }));
+  verifier('accueil : le club reste pilotable après le match (le bouton de journée répond)',
+    pilotable.club || pilotable.apercu || pilotable.resultat);
+  verifier('accueil : et la page d\'accueil ne revient pas se glisser dessous à la journée suivante',
+    pilotable.accueil === false);
+  await ctxAcc.close();
+
   verifier('aucune erreur console/page sur tout le parcours', erreursConsole.length === 0);
   if (erreursConsole.length) console.error(erreursConsole.join('\n'));
 
