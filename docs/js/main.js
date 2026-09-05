@@ -782,7 +782,8 @@
 
   document.getElementById('btnSauver').addEventListener('click', () => {
     const state = match.getState();
-    UI.enregistrerResultat(seedActuel, dureeMatchActuel, state.score);
+    UI.enregistrerResultat(seedActuel, dureeMatchActuel, state.score,
+      { config: instantaneConfigMatch() });
     UI.rafraichirPanneauHistorique(onRevoirHistorique);
   });
   document.getElementById('btnHistorique').addEventListener('click', () => {
@@ -819,15 +820,66 @@
     }
   });
 
+  // Instantané de ce qui rend un match REJOUABLE : la graine et la durée ne
+  // suffisent pas, il faut la configuration réellement passée au moteur. On ne
+  // capture QUE les clés propres au club (celles que reinitialiserConfigClub
+  // efface) : le reste de la configuration est celle du moteur par défaut,
+  // identique d'un lancement à l'autre. Un Match rapide n'en a aucune —
+  // l'instantané est alors un objet vide, et le replay reste fidèle.
+  function instantaneConfigMatch() {
+    if (!configMatch) return {};
+    const snap = {};
+    if (configMatch.joueursA) snap.joueursA = configMatch.joueursA;
+    if (configMatch.joueursB) snap.joueursB = configMatch.joueursB;
+    for (const cle of CLES_TACTIQUE_PAR_EQUIPE) {
+      if (configMatch[cle] !== undefined) snap[cle] = configMatch[cle];
+    }
+    return JSON.parse(JSON.stringify(snap));
+  }
+
+  // Rejoue une entrée d'historique et VÉRIFIE que le score obtenu est bien
+  // celui enregistré. Renvoie { fidele, score, motif } — jamais un faux
+  // replay silencieux.
+  //
+  // Trois cas honnêtes :
+  //  - pas d'instantané (entrée antérieure, ou match joué en direct dont les
+  //    décisions de mi-temps ne sont pas rejouables) -> non reproductible ;
+  //  - instantané d'une version inconnue -> refusé ;
+  //  - instantané exploitable -> on rejoue et on compare le score.
+  function rejouerDepuisHistorique(entree) {
+    if (!entree || !entree.config || typeof entree.configVersion !== 'number') {
+      return { fidele: false, score: null,
+        motif: 'Ce match a été enregistré sans les détails de sa composition : il ne peut pas être rejoué à l\'identique.' };
+    }
+    if (entree.configVersion !== UI.VERSION_INSTANTANE_MATCH) {
+      return { fidele: false, score: null,
+        motif: 'Ce match a été enregistré par une version antérieure du jeu : son déroulé ne peut plus être reproduit.' };
+    }
+    const cfg = Object.assign({}, configMatch);
+    for (const cle of CLES_TACTIQUE_PAR_EQUIPE) delete cfg[cle];
+    delete cfg.joueursA; delete cfg.joueursB;
+    Object.assign(cfg, entree.config);
+    const moteur = new MatchEngine(entree.seed, entree.duree, cfg);
+    for (let t = 0; t < entree.duree; t += PAS_FIXE) moteur.tick(PAS_FIXE);
+    const score = moteur.getState().score;
+    const fidele = !!(entree.score && score.A === entree.score.A && score.B === entree.score.B);
+    return { fidele, score,
+      motif: fidele ? null : 'Le déroulé enregistré n\'a pas pu être reproduit à l\'identique.' };
+  }
+
   function onRevoirHistorique(entree) {
     document.getElementById('panneauHistorique').classList.remove('visible');
-    // Un historique enregistré ne porte jamais de composition/tactique de
-    // club (seulement seed/durée/score) — sans ce nettoyage, "Revoir"
-    // hériterait d'une config de club encore active depuis une dernière
-    // journée jouée en Mode Club, et rejouerait un déroulé différent de
-    // celui réellement enregistré (même bug que reinitialiserConfigClub
-    // ailleurs dans ce fichier).
+    // On repart d'une base propre, PUIS on réapplique l'instantané du match
+    // enregistré s'il en a un. Sans instantané, le replay ne peut pas être
+    // fidèle : on le DIT au joueur au lieu de lui montrer un autre match.
     window.RMMain.reinitialiserConfigClub();
+    const verdict = rejouerDepuisHistorique(entree);
+    if (!verdict.fidele) {
+      window.alert(verdict.motif
+        + '\n\nLe match affiché ne sera donc pas celui qui a été enregistré.');
+    } else {
+      Object.assign(configMatch, entree.config);
+    }
     // Un match déjà rejoué depuis l'historique va droit à la visualisation
     // (le joueur a déjà choisi « Revoir », pas besoin de reproposer le choix).
     lancerNouveauMatchAvecGeneration(entree.seed, entree.duree, { direct: true });
@@ -879,6 +931,9 @@
     // appelé par le Mode Club quand le manager revient à son club en cours de
     // match. Renvoie true si un match joué a bien été interrompu.
     abandonnerMatchLive,
+    // Rejoue une entrée d'historique et dit si le replay est FIDÈLE
+    // (cf. rejouerDepuisHistorique).
+    rejouerDepuisHistorique,
     // Joue la fin d'un match JOUE d'un coup, avec le MEME moteur : rien de ce
     // qui s'est deja passe n'est perdu (cf. terminerMatchMaintenant).
     terminerMatchMaintenant,

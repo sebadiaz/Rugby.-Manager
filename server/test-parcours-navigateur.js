@@ -3966,6 +3966,76 @@ function optionsLancement() {
     /18/.test(texteAncien) && /15/.test(texteAncien));
   await ctxHist.close();
 
+  // --- P1-3 : « Revoir » un match de club ne rejouait pas le vrai match.
+  //
+  // L'historique ne conservait ni composition, ni tactique, ni configuration
+  // du moteur, et `onRevoirHistorique()` appelait `reinitialiserConfigClub()`
+  // AVANT de recreer le moteur : le replay repartait donc d'une configuration
+  // GENERIQUE. Mesure a graine identique sur 12 matchs de club : 12/12 replays
+  // donnent un AUTRE score, ecart moyen de 15,5 points sur la marge, et
+  // certains inversent le vainqueur (28-0 rejoue en 10-24).
+  const ctxRej = await browser.newContext({ viewport: { width: 1400, height: 1000 } });
+  const pgRej = await ctxRej.newPage();
+  pgRej.on('pageerror', (e) => erreursConsole.push('PAGEERROR ' + e.message));
+  await pgRej.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  await pgRej.click('#btnAccueilModeClub');
+  await pgRej.fill('#inputNomClub', 'AS Replay Fidele');
+  await pgRej.click('#btnCreerClub');
+  await pgRej.waitForTimeout(700);
+  await pgRej.selectOption('#selDureeClub', '300');
+  verifier('replay : on atteint l\'aperçu d\'avant-match', await continuerJusquAuMatch(pgRej));
+  // Match JOUÉ puis mené à son terme SANS prendre de décision : l'écran de
+  // match est alors réellement affiché (c'est le seul chemin où « Enregistrer »
+  // existe), et le match reste reproductible depuis graine + configuration.
+  // Première version de ce contrôle : je passais par « Simuler », où l'écran de
+  // match n'est jamais affiché — `btnSauver` s'y déclenche sur un moteur nul et
+  // lève une erreur. Mon test était en tort, mais ce défaut-là est réel et
+  // relève du garde-fou d'enregistrement (cf. P2-2).
+  await pgRej.click('#btnApercuJouerMatch');
+  await pgRej.waitForTimeout(1500);
+  await pgRej.click('#btnTerminerMatch');
+  let finRej = false;
+  for (let i = 0; i < 200; i++) {
+    if (await pgRej.isVisible('#panneauResultat.visible')) { finRej = true; break; }
+    await pgRej.waitForTimeout(300);
+  }
+  verifier('replay : prémisse — le match de club a bien été joué', finRej);
+  if (finRej) { await pgRej.click('#btnResultatFermer'); await pgRej.waitForTimeout(700); }
+  const scoreEnregistre = await pgRej.evaluate(() => {
+    const b = document.getElementById('btnSauver');
+    if (b) b.click();
+    const liste = JSON.parse(localStorage.getItem('rugbyManager.historique') || '[]');
+    return liste[0] ? liste[0].score : null;
+  });
+  verifier('replay : prémisse — le résultat est bien enregistré dans l\'historique',
+    !!scoreEnregistre);
+  const entreeRej = await pgRej.evaluate(() => {
+    const liste = JSON.parse(localStorage.getItem('rugbyManager.historique') || '[]');
+    return liste[0] || null;
+  });
+  verifier('replay : l\'entrée conserve de quoi REJOUER le match (instantané de configuration versionné)',
+    !!(entreeRej && entreeRej.config && typeof entreeRej.configVersion === 'number'));
+  verifier('replay : l\'instantané contient bien les deux effectifs réellement alignés',
+    !!(entreeRej && entreeRej.config && entreeRej.config.joueursA && entreeRej.config.joueursB));
+  // Le contrôle qui compte : rejouer doit redonner le MÊME score.
+  const rejoue = await pgRej.evaluate((entree) => {
+    if (!window.RMMain || !window.RMMain.rejouerDepuisHistorique) return null;
+    return window.RMMain.rejouerDepuisHistorique(entree);
+  }, entreeRej);
+  verifier('replay : rejouer l\'entrée redonne EXACTEMENT le score enregistré',
+    !!(rejoue && rejoue.fidele === true
+       && rejoue.score && scoreEnregistre
+       && rejoue.score.A === scoreEnregistre.A && rejoue.score.B === scoreEnregistre.B));
+  // Une entrée ancienne, sans instantané, ne doit pas produire un FAUX replay.
+  const ancienne = await pgRej.evaluate(() => {
+    if (!window.RMMain || !window.RMMain.rejouerDepuisHistorique) return null;
+    return window.RMMain.rejouerDepuisHistorique(
+      { id: 1, seed: 7, duree: 300, score: { A: 18, B: 15 }, date: '01/01/2024' });
+  });
+  verifier('replay : une entrée SANS instantané est signalée non reproductible, pas rejouée en faux',
+    !!(ancienne && ancienne.fidele === false && ancienne.motif));
+  await ctxRej.close();
+
   verifier('aucune erreur console/page sur tout le parcours', erreursConsole.length === 0);
   if (erreursConsole.length) console.error(erreursConsole.join('\n'));
 

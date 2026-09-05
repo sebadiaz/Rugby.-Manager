@@ -152,6 +152,11 @@
       ligneStat('Cartons jaunes', s.A.cartonsJaunes, s.B.cartonsJaunes);
   }
 
+  // Version de l'instantané de configuration enregistré avec un match. À
+  // incrémenter si la forme de la configuration moteur change : un instantané
+  // d'une version inconnue est REFUSÉ plutôt que rejoué de travers.
+  const VERSION_INSTANTANE_MATCH = 1;
+
   // --- Historique des résultats (localStorage), pour rejouer un match déjà joué ---
   function chargerHistorique() {
     try { return JSON.parse(localStorage.getItem(CLE_HISTORIQUE)) || []; }
@@ -194,7 +199,14 @@
     return { A: (n && n.A) || 'Equipe A', B: (n && n.B) || 'Equipe B' };
   }
 
-  function enregistrerResultat(seed, duree, score) {
+  // `options.config` : instantané de la configuration RÉELLEMENT utilisée par
+  // le moteur pour ce match (effectifs alignés + tactique par équipe). Sans
+  // lui, « Revoir » rejoue avec la configuration générique du Match rapide et
+  // montre un AUTRE match — mesuré sur 12 matchs de club à graine identique :
+  // 12/12 donnent un score différent, écart moyen de 15,5 points sur la marge,
+  // certains inversant le vainqueur. `options.configVersion` permettra de
+  // refuser proprement un instantané devenu illisible.
+  function enregistrerResultat(seed, duree, score, options) {
     const liste = chargerHistorique();
     liste.unshift({
       id: Date.now(), seed, duree, score,
@@ -203,6 +215,8 @@
       // adversaire redevenait « Equipe A 18 - 15 Equipe B » dans l'historique
       // et rien ne permettait de savoir qui avait joué.
       noms: { A: nomsEquipes.A, B: nomsEquipes.B },
+      config: (options && options.config) || null,
+      configVersion: (options && options.config) ? VERSION_INSTANTANE_MATCH : null,
       date: new Date().toLocaleString('fr-FR'),
     });
     if (liste.length > 20) liste.length = 20;
@@ -211,7 +225,7 @@
 
   global.RMUI = {
     formaterTemps, majAffichage, reinitialiserSuivi, definirNomsEquipes,
-    chargerHistorique, rafraichirPanneauHistorique, enregistrerResultat, nomsHistorique,
+    chargerHistorique, rafraichirPanneauHistorique, enregistrerResultat, nomsHistorique, VERSION_INSTANTANE_MATCH,
     rafraichirPanneauStats,
   };
 })(window);
