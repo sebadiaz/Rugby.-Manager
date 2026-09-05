@@ -3824,6 +3824,81 @@ function optionsLancement() {
     pilotable.accueil === false);
   await ctxAcc.close();
 
+  // --- P1-1 : la barre de temps détruisait les décisions prises pendant un
+  // match JOUÉ.
+  //
+  // `avancerJusqua()` construit un MatchEngine NEUF depuis la graine et la
+  // configuration initiale, puis remplace le moteur en cours. Il ne rejoue ni
+  // les consignes de mi-temps, ni les remplacements, ni les changements
+  // tactiques. Sur un match de compétition joué en direct, le résultat envoyé
+  // à la carrière venait donc d'un moteur qui n'avait jamais vu les décisions
+  // du manager — et `matchLive.miTempsTraitee` restait vrai alors que le
+  // moteur repartait de zéro.
+  //
+  // Une relecture sans enjeu peut garder le seek libre ; un match qui COMPTE,
+  // non.
+  const ctxSeek = await browser.newContext({ viewport: { width: 1400, height: 1000 } });
+  const pgSeek = await ctxSeek.newPage();
+  pgSeek.on('pageerror', (e) => erreursConsole.push('PAGEERROR ' + e.message));
+  await pgSeek.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  await pgSeek.click('#btnAccueilModeClub');
+  await pgSeek.fill('#inputNomClub', 'AS Barre De Temps');
+  await pgSeek.click('#btnCreerClub');
+  await pgSeek.waitForTimeout(700);
+  await pgSeek.selectOption('#selDureeClub', '300');
+  verifier('barre de temps : on atteint l\'aperçu d\'avant-match',
+    await continuerJusquAuMatch(pgSeek));
+  await pgSeek.click('#btnApercuJouerMatch');
+  // On laisse le match avancer NETTEMENT avant de forcer le curseur vers le
+  // début : une première version n'attendait que 2,5 s et forçait à 10 s,
+  // c'est-à-dire à peu près là où le match en était déjà — le contrôle passait
+  // par coïncidence, même sans correction. Vérifié depuis en retirant la garde
+  // du handler : l'horloge recule de 24 s à 8 s, le contrôle mord.
+  await pgSeek.waitForTimeout(6000);
+  const seekPendant = await pgSeek.evaluate(() => {
+    const s = document.getElementById('seek');
+    return { existe: !!s, desactive: s ? s.disabled : null, titre: s ? (s.title || '') : '' };
+  });
+  verifier('barre de temps : prémisse — la barre existe bien sur l\'écran de match',
+    seekPendant.existe);
+  verifier('barre de temps : elle est DÉSACTIVÉE pendant un match joué qui compte',
+    seekPendant.desactive === true);
+  verifier('barre de temps : et elle dit pourquoi (pas un contrôle inerte sans explication)',
+    /décision|decision|compte|joué|joue/i.test(seekPendant.titre));
+  // Défense en profondeur : même forcée, la barre ne doit pas remplacer le
+  // moteur en cours (l'horloge ne doit pas reculer).
+  const avantForce = await pgSeek.evaluate(() => {
+    const t = (document.getElementById('hud') || {}).innerText || '';
+    const m = t.match(/(\d+):(\d+)\s*\//);
+    return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+  });
+  await pgSeek.evaluate(() => {
+    const s = document.getElementById('seek');
+    s.value = '5';
+    s.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await pgSeek.waitForTimeout(600);
+  const apresForce = await pgSeek.evaluate(() => {
+    const t = (document.getElementById('hud') || {}).innerText || '';
+    const m = t.match(/(\d+):(\d+)\s*\//);
+    return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+  });
+  verifier('barre de temps : prémisse — le match était bien en cours (horloge relevée)',
+    avantForce !== null && avantForce > 0);
+  verifier('barre de temps : forcer la barre ne remet PAS le match en arrière',
+    apresForce !== null && apresForce >= avantForce);
+  // Une fois le match fini, la barre redevient utilisable (relecture libre).
+  await pgSeek.click('#btnTerminerMatch');
+  let finSeek = false;
+  for (let i = 0; i < 200; i++) {
+    if (await pgSeek.isVisible('#panneauResultat.visible')) { finSeek = true; break; }
+    await pgSeek.waitForTimeout(200);
+  }
+  verifier('barre de temps : prémisse — le match est allé à son terme', finSeek);
+  verifier('barre de temps : une fois le match terminé, la barre est de nouveau libre',
+    await pgSeek.evaluate(() => document.getElementById('seek').disabled === false));
+  await ctxSeek.close();
+
   verifier('aucune erreur console/page sur tout le parcours', erreursConsole.length === 0);
   if (erreursConsole.length) console.error(erreursConsole.join('\n'));
 

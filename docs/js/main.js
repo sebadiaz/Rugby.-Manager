@@ -330,6 +330,8 @@
     if (btnQuitter) btnQuitter.style.display = 'none';
     const btnTerminer = document.getElementById('btnTerminerMatch');
     if (btnTerminer) btnTerminer.style.display = 'none';
+    // Le match est joué : la relecture redevient libre.
+    definirBarreTempsVerrouillee(false);
     document.getElementById('btnResultatVoir').style.display = 'none';
     document.getElementById('panneauResultat').classList.add('visible');
     const onFermer = L.onFermer;
@@ -360,6 +362,7 @@
     if (btnQ) btnQ.style.display = '';
     const btnT = document.getElementById('btnTerminerMatch');
     if (btnT) btnT.style.display = '';
+    definirBarreTempsVerrouillee(true);
     demarrerLectureReelle(seed, duree, o.noms);
   }
 
@@ -379,6 +382,23 @@
   // Avance par lots comme la generation en arriere-plan (meme PAS_PAR_LOT,
   // meme setTimeout) : la page ne se fige pas, et la barre de progression dit
   // ou on en est.
+  // La barre de temps REJOUE le match depuis la graine (cf. avancerJusqua) :
+  // elle construit un moteur NEUF, qui ignore les consignes de mi-temps, les
+  // remplacements et les changements tactiques. Sur une relecture sans enjeu
+  // c'est sans conséquence ; sur un match JOUÉ qui compte pour la carrière,
+  // cela effacerait silencieusement toutes les décisions du manager — et le
+  // résultat envoyé à la sauvegarde viendrait d'un moteur qui ne les a jamais
+  // vues. On la verrouille donc pendant un match joué, en DISANT pourquoi
+  // plutôt qu'en laissant un curseur inerte.
+  function definirBarreTempsVerrouillee(verrouillee) {
+    const s = document.getElementById('seek');
+    if (!s) return;
+    s.disabled = !!verrouillee;
+    s.title = verrouillee
+      ? 'Indisponible pendant un match joué : revenir en arrière effacerait tes décisions (consignes, remplacements).'
+      : '';
+  }
+
   function terminerMatchMaintenant() {
     if (!matchLive || matchLive.resultatEnvoye || !match) return false;
     enCours = false; // plus rien a animer : on saute a la fin
@@ -442,6 +462,7 @@
     if (btnQ) btnQ.style.display = 'none';
     const btnT = document.getElementById('btnTerminerMatch');
     if (btnT) btnT.style.display = 'none';
+    definirBarreTempsVerrouillee(false);
     fermerMiTemps();
     if (onAbandon) onAbandon();
     return true;
@@ -741,6 +762,13 @@
   });
 
   document.getElementById('seek').addEventListener('input', (e) => {
+    // Deuxième barrière, indépendante de l'attribut `disabled` : le clavier et
+    // un script peuvent déclencher `input` sur un curseur désactivé. Un match
+    // joué ne se rembobine pas — on remet le curseur là où en est le match.
+    if (matchLive && !matchLive.resultatEnvoye) {
+      e.target.value = String(match ? match.tempsMatch : 0);
+      return;
+    }
     const cible = Number(e.target.value);
     match = avancerJusqua(cible);
     accumulateur = 0;
