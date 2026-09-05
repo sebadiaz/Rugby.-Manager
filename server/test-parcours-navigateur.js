@@ -4036,6 +4036,85 @@ function optionsLancement() {
     !!(ancienne && ancienne.fidele === false && ancienne.motif));
   await ctxRej.close();
 
+  // --- P2-1 / P2-2 : enregistrer un résultat.
+  //
+  // P2-1 : chaque clic appelait `liste.unshift()` sans contrôle d'unicité — un
+  //        double clic créait plusieurs entrées identiques et pouvait remplir
+  //        l'historique avec le même match.
+  // P2-2 : `sauvegarderHistorique()` appelait `localStorage.setItem()` en
+  //        direct. Stockage plein, interdit ou indisponible : l'exception
+  //        remontait dans le gestionnaire du bouton, sans message pour le
+  //        joueur — et rien ne distinguait un enregistrement réussi d'un échec.
+  // Et un défaut trouvé en écrivant le test de P1-3 : le bouton
+  //        « Enregistrer » se déclenche sur un moteur NUL quand aucun match
+  //        n'est chargé, et lève « Cannot read properties of null ».
+  const ctxSauv = await browser.newContext({ viewport: { width: 1400, height: 1000 } });
+  const pgSauv = await ctxSauv.newPage();
+  const erreursSauv = [];
+  pgSauv.on('pageerror', (e) => erreursSauv.push('PAGEERROR ' + e.message));
+  pgSauv.on('dialog', (d) => d.accept());
+  await pgSauv.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  // 1) Bouton « Enregistrer » sans match chargé : ne doit pas planter.
+  await pgSauv.evaluate(() => {
+    const b = document.getElementById('btnSauver');
+    if (b) b.click();
+  });
+  await pgSauv.waitForTimeout(400);
+  verifier('enregistrement : cliquer « Enregistrer » sans match chargé ne plante pas',
+    erreursSauv.length === 0);
+  // 2) Un vrai match, puis double clic sur « Enregistrer ».
+  await pgSauv.click('#btnAccueilModeClub');
+  await pgSauv.fill('#inputNomClub', 'AS Double Enregistrement');
+  await pgSauv.click('#btnCreerClub');
+  await pgSauv.waitForTimeout(700);
+  await pgSauv.selectOption('#selDureeClub', '300');
+  verifier('enregistrement : on atteint l\'aperçu d\'avant-match',
+    await continuerJusquAuMatch(pgSauv));
+  await pgSauv.click('#btnApercuJouerMatch');
+  await pgSauv.waitForTimeout(1500);
+  await pgSauv.click('#btnTerminerMatch');
+  let finSauv = false;
+  for (let i = 0; i < 200; i++) {
+    if (await pgSauv.isVisible('#panneauResultat.visible')) { finSauv = true; break; }
+    await pgSauv.waitForTimeout(300);
+  }
+  verifier('enregistrement : prémisse — le match est allé à son terme', finSauv);
+  if (finSauv) { await pgSauv.click('#btnResultatFermer'); await pgSauv.waitForTimeout(700); }
+  const apresTriple = await pgSauv.evaluate(() => {
+    localStorage.setItem('rugbyManager.historique', '[]');
+    const b = document.getElementById('btnSauver');
+    b.click(); b.click(); b.click();
+    return JSON.parse(localStorage.getItem('rugbyManager.historique') || '[]').length;
+  });
+  verifier('enregistrement : trois clics n\'enregistrent le match QU\'UNE fois',
+    apresTriple === 1);
+  // Contrat sans ambiguïté : le bouton est DÉSACTIVÉ. Première version de ce
+  // contrôle : j'acceptais aussi un libellé contenant « enregistr », ce que
+  // « Enregistrer » satisfait déjà — l'assertion passait sans rien prouver.
+  verifier('enregistrement : le bouton est désactivé une fois le match enregistré',
+    await pgSauv.evaluate(() => document.getElementById('btnSauver').disabled === true));
+  // 3) Stockage indisponible : message clair, pas de succès annoncé à tort.
+  const echec = await pgSauv.evaluate(() => {
+    localStorage.setItem('rugbyManager.historique', '[]');
+    const vrai = localStorage.setItem.bind(localStorage);
+    localStorage.setItem = () => { throw new Error('QuotaExceededError'); };
+    let resultat = null;
+    try {
+      resultat = window.RMUI.enregistrerResultat(1, 300, { A: 10, B: 5 }, { config: {} });
+    } catch (e) {
+      resultat = { exception: e.message };
+    }
+    localStorage.setItem = vrai;
+    return resultat;
+  });
+  verifier('enregistrement : un stockage indisponible ne fait pas remonter d\'exception',
+    !!(echec && !echec.exception));
+  verifier('enregistrement : il renvoie un ÉCHEC explicite, avec un message pour le joueur',
+    !!(echec && echec.ok === false && typeof echec.message === 'string' && echec.message.length > 10));
+  verifier('enregistrement : aucune erreur de page sur tout ce parcours',
+    erreursSauv.length === 0);
+  await ctxSauv.close();
+
   verifier('aucune erreur console/page sur tout le parcours', erreursConsole.length === 0);
   if (erreursConsole.length) console.error(erreursConsole.join('\n'));
 
