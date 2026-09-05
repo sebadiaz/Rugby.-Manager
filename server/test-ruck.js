@@ -170,4 +170,35 @@ test('R7 — le match reste dans ses ordres de grandeur', () => {
     `le volume de rucks doit se rapprocher d'un vrai match (${rucksParMatch.toFixed(0)}/match, 620 avant correction)`);
 });
 
+// --- Loi 15 : LE REGROUPEMENT DOIT ETRE ARBITRE ----------------------------
+//
+// Le ruck est, dans un vrai match, la premiere source de penalites : mains
+// dans le ruck, non-liberation du ballon par le plaque, entree sur le cote,
+// joueur qui ne se retire pas. Un match de rugby a XV concede 16 a 28
+// penalites au total (CLAUDE.md Role 6) ; le moteur n'en produisait que 7,5
+// parce que le regroupement n'etait quasiment jamais sanctionne.
+//
+// Consequence directe pour le joueur : la discipline ne coute rien, l'arbitre
+// est invisible au contact, et le match ne connait pas les temps morts qui
+// font respirer une rencontre (marque, tir au but, coup de pied en touche).
+test('loi 15 : le regroupement est arbitre — il produit de vraies penalites', () => {
+  const GRAINES = [1, 2, 3, 4, 5];
+  let penalites = 0;
+  const motifs = new Set();
+  for (const seed of GRAINES) {
+    const m = new RugbyEngine.MatchEngine(seed, 4800, null);
+    for (let t = 0; t < 4800; t += 0.2) m.tick(0.2);
+    const s = m.getState();
+    penalites += s.stats.A.penalitesConcedees + s.stats.B.penalitesConcedees;
+    for (const e of (s.chronologie || [])) {
+      if (e.type === 'PENALITE_RUCK') motifs.add(e.message);
+    }
+  }
+  const parMatch = penalites / GRAINES.length;
+  assert.ok(parMatch >= 14,
+    `un match doit concéder au moins 14 pénalités (mesuré ${parMatch.toFixed(1)})`);
+  assert.ok(motifs.size >= 2,
+    `le regroupement doit produire plusieurs motifs de pénalité distincts (mesuré ${motifs.size} : ${[...motifs].join(' / ')})`);
+});
+
 console.log(`\n${nbTests} test(s) exécuté(s).`);

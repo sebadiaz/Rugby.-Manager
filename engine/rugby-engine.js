@@ -466,7 +466,7 @@
     'ESSAI', 'ESSAI_PENALITE', 'TRANSFORMATION_REUSSIE', 'TRANSFORMATION_RATEE',
     'PENALITE_REUSSIE', 'PENALITE_RATEE', 'DROP_GOAL_REUSSI', 'DROP_GOAL_RATE',
     // Discipline
-    'CARTON_JAUNE', 'PENALITE', 'PENALITE_RUCK_ISOLE',
+    'CARTON_JAUNE', 'PENALITE', 'PENALITE_RUCK_ISOLE', 'PENALITE_RUCK',
     // Repères de lecture et mouvements
     'MI_TEMPS', 'FIN_MATCH', 'REMPLACEMENT',
   ]);
@@ -2839,6 +2839,34 @@
       return (dernier[1] + this.rng() * dernier[2]) * this._echelleArret;
     }
 
+    // Tirage d'une faute au regroupement (loi 15, cf. appel dans _tickRuck).
+    // Renvoie null si le ruck est propre. Les taux de base sont calibrés pour
+    // amener le total de pénalités du match dans la fourchette réelle
+    // (16-28, cf. CLAUDE.md Rôle 6) ; le partage défense/attaque suit celui
+    // d'un vrai match, où la majorité des pénalités de regroupement sanctionne
+    // le camp qui conteste.
+    _tirerFauteRuck(equipeAtt, equipeDef) {
+      const MOTIFS_DEFENSE = [
+        'Mains dans le ruck',
+        'Le plaqueur ne se retire pas',
+        'Entree sur le cote au regroupement',
+      ];
+      const MOTIFS_ATTAQUE = [
+        'Ballon non libere par le joueur plaque',
+        'Regroupement scelle : soutien couche sur le ballon',
+      ];
+      const pDefense = 0.030 * facteurDiscipline(equipeDef);
+      const pAttaque = 0.016 * facteurDiscipline(equipeAtt);
+      const r = this.rng();
+      if (r < pDefense) {
+        return { camp: 'DEFENSE', motif: MOTIFS_DEFENSE[Math.floor(this.rng() * MOTIFS_DEFENSE.length)] };
+      }
+      if (r < pDefense + pAttaque) {
+        return { camp: 'ATTAQUE', motif: MOTIFS_ATTAQUE[Math.floor(this.rng() * MOTIFS_ATTAQUE.length)] };
+      }
+      return null;
+    }
+
     _tickRuck(dt) {
       this.timerPhase += dt;
       const pt = this.ruckPoint;
@@ -3167,6 +3195,29 @@
         const equipeOriginale = this.possession;
         const equipeAtt = equipeOriginale === 'A' ? this.equipeA : this.equipeB;
         const equipeDef = equipeOriginale === 'A' ? this.equipeB : this.equipeA;
+        // LOI 15 — LE REGROUPEMENT EST ARBITRÉ. C'est, dans un vrai match, la
+        // première source de pénalités ; le moteur n'en produisait aucune de ce
+        // type (7,5 pénalités par match au total, contre 16-28 en vrai) : au
+        // contact, la discipline ne coûtait rien et l'arbitre était invisible.
+        // Deux familles, comme sur un terrain :
+        //  - CÔTÉ DÉFENSE (la plus fréquente) : mains dans le ruck (15.12),
+        //    joueur qui ne se retire pas du sol après le plaquage (14.5),
+        //    entrée sur le côté (15.9) ;
+        //  - CÔTÉ ATTAQUE : le plaqué qui ne libère pas (14.3), le soutien qui
+        //    s'écroule sur le ballon pour le sceller (15.16).
+        // Fréquence modulée par l'attribut `discipline` des avants engagés
+        // (facteurDiscipline) : une équipe indisciplinée est bel et bien punie
+        // plus souvent, une équipe propre bien moins — le réglage tactique et
+        // le recrutement se voient donc au tableau d'affichage.
+        const fauteRuck = this._tirerFauteRuck(equipeAtt, equipeDef);
+        if (fauteRuck) {
+          const equipeFautive = fauteRuck.camp === 'DEFENSE'
+            ? (equipeOriginale === 'A' ? 'B' : 'A') : equipeOriginale;
+          const beneficiaire = equipeFautive === 'A' ? 'B' : 'A';
+          this.log('PENALITE_RUCK', beneficiaire, `${fauteRuck.motif} (equipe ${equipeFautive}), penalite pour l'equipe ${beneficiaire}`);
+          this._traiterPenalite(beneficiaire, pt);
+          return;
+        }
         // Les corps SUR le ballon (< 3 m : les 1-2 nettoyeurs/contestants
         // réellement engagés) pèsent bien plus (×1,6) que les avants À PROXIMITÉ
         // (3-8 m : pods, arrivées) : c'est ce qui permet de ne commettre que 2
