@@ -172,7 +172,12 @@
       const div = document.createElement('div');
       div.className = 'entreeHistorique';
       const span = document.createElement('span');
-      span.textContent = `${entree.date} — Equipe A ${entree.score.A} - ${entree.score.B} Equipe B`;
+      // Noms RÉELLEMENT enregistrés avec le match. Les entrées antérieures à
+      // cette sauvegarde n'en ont pas : elles retombent sur les libellés
+      // génériques plutôt que d'afficher « undefined » ou de faire planter la
+      // liste — c'est la migration, il n'y a rien d'autre à convertir.
+      const noms = nomsHistorique(entree);
+      span.textContent = `${entree.date} — ${noms.A} ${entree.score.A} - ${entree.score.B} ${noms.B}`;
       const btn = document.createElement('button');
       btn.textContent = 'Revoir';
       btn.addEventListener('click', () => onRevoir(entree));
@@ -181,10 +186,23 @@
       conteneur.appendChild(div);
     }
   }
+  // Noms d'une entrée d'historique, avec repli sur les libellés génériques.
+  // Une entrée enregistrée avant que les noms soient sauvegardés reste donc
+  // lisible : « Equipe A 18 - 15 Equipe B », comme avant, au lieu de casser.
+  function nomsHistorique(entree) {
+    const n = entree && entree.noms;
+    return { A: (n && n.A) || 'Equipe A', B: (n && n.B) || 'Equipe B' };
+  }
+
   function enregistrerResultat(seed, duree, score) {
     const liste = chargerHistorique();
     liste.unshift({
       id: Date.now(), seed, duree, score,
+      // Les noms des deux clubs, tels qu'affichés pendant le match (cf.
+      // definirNomsEquipes). Sans eux, un match Saint-Malo contre un
+      // adversaire redevenait « Equipe A 18 - 15 Equipe B » dans l'historique
+      // et rien ne permettait de savoir qui avait joué.
+      noms: { A: nomsEquipes.A, B: nomsEquipes.B },
       date: new Date().toLocaleString('fr-FR'),
     });
     if (liste.length > 20) liste.length = 20;
@@ -193,7 +211,7 @@
 
   global.RMUI = {
     formaterTemps, majAffichage, reinitialiserSuivi, definirNomsEquipes,
-    chargerHistorique, rafraichirPanneauHistorique, enregistrerResultat,
+    chargerHistorique, rafraichirPanneauHistorique, enregistrerResultat, nomsHistorique,
     rafraichirPanneauStats,
   };
 })(window);
