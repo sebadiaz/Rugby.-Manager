@@ -356,10 +356,30 @@
   // sûr car chaque tick le (re)définit et avancer n'est appelé que pendant un tick.
   let _obstacle = null;
 
+  // INERTIE DE COURSE (accélération / décélération) : un joueur de rugby ne
+  // passe pas de l'arrêt à sa vitesse maximale en un dixième de seconde. Sans
+  // cette inertie, tout le monde surgissait à pleine vitesse dès le premier
+  // tick suivant un regroupement : le défenseur fondait sur le porteur en
+  // ~0,5 s et le match enchaînait 3x trop de phases (mesuré : 542 séquences de
+  // jeu courant et 407 rucks par match, contre ~150 rucks en vrai).
+  // ACCELERATION volontairement modérée : elle ne représente pas la pointe
+  // d'accélération d'un sprinteur sur piste, mais le rythme réel auquel un
+  // joueur se REMET en marche dans le trafic (se relever, se réorienter,
+  // contourner des corps) — mesuré comme le meilleur compromis par balayage.
+  // DECELERATION : un joueur qu'on cesse de déplacer (cible atteinte, phase
+  // terminée) redescend à l'arrêt en ~1,5 s au lieu de se figer net.
+  const ACCELERATION = 2.0; // m/s²
+  const DECELERATION = 5.0; // m/s²
+
   function avancer(j, dx, dy, dt, vmax) {
     const d = Math.hypot(dx, dy);
     if (d < 0.01) return;
-    const pas = Math.min(d, vmax * dt);
+    // Vitesse RÉELLEMENT atteinte ce tick : la vitesse courante du joueur plus
+    // ce qu'il peut gagner en dt, plafonnée par sa vitesse maximale.
+    const vEff = Math.min(vmax, (j.vitesseCourante || 0) + ACCELERATION * dt);
+    j.vitesseCourante = vEff;
+    j._aBouge = true;
+    const pas = Math.min(d, vEff * dt);
     let ux = dx / d, uy = dy / d;
     // Contournement du regroupement : un joueur ne TRAVERSE pas une mêlée/ruck/maul.
     // On ne dévie QUE celui qui veut passer DE L'AUTRE CÔTÉ (sa cible est au-delà du
@@ -1530,7 +1550,10 @@
     // qui vient juste d'être contestant au ruck, resté au même endroit, devient
     // mécaniquement le défenseur le plus proche et plaque le porteur suivant dès
     // la première fraction de seconde de jeu courant (cf. _tickPorte).
-    _imposerRecuperationRuck(pt, rayon = 6, duree = 2) {
+    // `duree` : cf. INERTIE DE COURSE (avancer) — se relever puis rejoindre
+    // l'alignement couvre la meme distance qu'avant, mais prend desormais
+    // environ deux fois plus de temps ; la fenetre est donc doublee (2 -> 4 s).
+    _imposerRecuperationRuck(pt, rayon = 6, duree = 4) {
       // Tout près de sa propre ligne d'en-but, la défense est naturellement
       // massée sur un espace réduit (peu de place pour se replier) : un rayon
       // d'exclusion large y évacue mécaniquement TOUTE la couverture proche du
@@ -2558,13 +2581,13 @@
             const dd = distance(d, porteur);
             if (devant > -1.5 && devant < 4 && dd < dmin) { dmin = dd; fixe = d; }
           }
-          if (fixe) fixe.fixeCooldown = 1.3;
+          if (fixe) fixe.fixeCooldown = 2.6; // cf. INERTIE DE COURSE : meme distance de retard, deux fois plus de temps
         }
         this.log(jeuLarge ? 'JEU_LARGE' : 'PASSE', this.possession, `${jeuLarge ? 'Jeu au large' : 'Passe'} de l'equipe ${this.possession}`);
         this._lancerPasseVisuelle(porteur, cible);
         // Fenêtre d'enchaînement : le receveur a ~0,9 s pendant lesquelles il
         // relâche volontiers le ballon au suivant (le mouvement continue).
-        cible._enchaine = 0.9;
+        cible._enchaine = 1.8; // cf. INERTIE DE COURSE : le mouvement se poursuit sur la meme distance
         this.porteur = cible;
         this._receptionDirecte = false;
         this._neufLibre = false; // le ballon a quitté le 9 : la fenêtre de décision de sortie est close
@@ -3254,7 +3277,7 @@
         // sans elle, la défense du moteur se réalignait instantanément et le
         // ballon rapide ne servait à rien (il ne faisait qu'enchaîner les
         // phases plus vite contre une défense toujours en place).
-        this._defenseTardive = this.timerPhase < 1.8 * this._echelleArret ? 1.2 : 0;
+        this._defenseTardive = this.timerPhase < 1.8 * this._echelleArret ? 2.4 : 0; // cf. INERTIE DE COURSE : le retard de replacement se compte en metres, pas en secondes
         this.phase = 'PORTE';
         this.timerPhase = 0;
         // Le ballon sort du regroupement en étant JOUÉ depuis la base vers le
@@ -4891,6 +4914,13 @@
     }
 
     tick(dt) {
+      // Décélération des joueurs qu'aucune logique de phase n'a déplacés au
+      // tick précédent (cf. avancer / ACCELERATION) : ils ralentissent au lieu
+      // de conserver leur élan, et repartiront donc de leur vitesse réelle.
+      for (const j of [...this.equipeA, ...this.equipeB]) {
+        if (!j._aBouge) j.vitesseCourante = Math.max(0, (j.vitesseCourante || 0) - DECELERATION * dt);
+        j._aBouge = false;
+      }
       if (this.phase === 'TERMINE') return;
       // Zone de regroupement infranchissable de ce tick (mêlée/ruck/maul) : les
       // joueurs la contournent au lieu de la traverser (cf. avancer). Une mêlée

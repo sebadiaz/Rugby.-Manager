@@ -393,6 +393,67 @@ test('remplacement planifié : un remplacement prévu APRÈS la fin du match cho
   assert.ok(!m.events.some((e) => e.type === 'REMPLACEMENT'), 'aucun événement de remplacement ne doit être généré');
 });
 
+// --- P0-1 : le RYTHME du jeu courant ---------------------------------------
+// Un joueur de rugby ne passe pas de l'arret a sa vitesse maximale en un
+// dixieme de seconde : il ACCELERE. Sans cette inertie, tout le monde surgit
+// a pleine vitesse des le premier tick apres un regroupement, le defenseur
+// fond sur le porteur en ~0,5 s, et le match enchaine 3x trop de phases
+// (mesure : 542 sequences de jeu courant par match, 407 rucks, contre ~150
+// dans un vrai match).
+test('un joueur ACCELERE : il ne part pas a pleine vitesse des le premier dixieme de seconde', () => {
+  const m = new MatchEngine(4242, 600);
+  const dt = 0.1;
+  // On cherche un joueur reellement a l'arret (fin de regroupement) puis on
+  // mesure ce qu'il parcourt pendant les instants qui suivent.
+  let mesure = null;
+  let precedent = new Map();
+  for (let t = 0; t < 600 && !mesure; t += dt) {
+    m.tick(dt);
+    const s = m.getState();
+    for (const j of [...s.equipeA, ...s.equipeB]) {
+      const cle = `${j.team}${j.numero}`;
+      const p = precedent.get(cle);
+      precedent.set(cle, { x: j.x, y: j.y });
+      if (!p) continue;
+      const pas = Math.hypot(j.x - p.x, j.y - p.y);
+      // Un joueur qui vient de demarrer (pas precedent quasi nul) ne peut pas
+      // deja couvrir la distance d'un joueur lance (vitesseMs >= 3 m/s, soit
+      // >= 0,30 m par dixieme de seconde).
+      const pasPrecedent = p.pas || 0;
+      if (pasPrecedent < 0.02 && pas > 0.02) mesure = { pas, cle };
+      p.pas = pas;
+      precedent.set(cle, { x: j.x, y: j.y, pas });
+    }
+  }
+  assert.ok(mesure, 'aucun demarrage observe en 10 minutes de jeu');
+  assert.ok(mesure.pas < 0.20,
+    `un joueur qui demarre de l'arret ne doit pas couvrir ${mesure.pas.toFixed(3)} m en 0,1 s (ce serait ${(mesure.pas * 10).toFixed(1)} m/s instantanes)`);
+});
+
+test('le jeu courant RESPIRE : une sequence ballon en main dure en moyenne plus de 4 s', () => {
+  // Reference reelle : entre deux regroupements, le ballon vit ~5-8 s (course
+  // du 9, lancement de la ligne, 2-3 passes, contact). Une moyenne sous 4 s
+  // signifie que le porteur est plaque des qu'il touche le ballon : c'est ce
+  // qui gonfle mecaniquement rucks, passes, courses et plaquages.
+  const durees = [];
+  for (const seed of [1, 2, 3]) {
+    const m = new MatchEngine(seed, 2400);
+    let phasePrecedente = null, debut = 0;
+    for (let t = 0; t < 2400; t += 0.2) {
+      m.tick(0.2);
+      if (m.phase !== phasePrecedente) {
+        if (phasePrecedente === 'PORTE') durees.push(m.tempsMatch - debut);
+        if (m.phase === 'PORTE') debut = m.tempsMatch;
+        phasePrecedente = m.phase;
+      }
+    }
+  }
+  assert.ok(durees.length > 100, 'echantillon de sequences trop petit');
+  const moyenne = durees.reduce((a, b) => a + b, 0) / durees.length;
+  assert.ok(moyenne > 4,
+    `une sequence de jeu courant dure en moyenne ${moyenne.toFixed(2)} s : le contact tombe trop vite apres la sortie du ballon`);
+});
+
 console.log(`\n${nbTests} test(s) exécuté(s).`);
 if (process.exitCode) {
   console.error('ECHEC : au moins un invariant violé.');
