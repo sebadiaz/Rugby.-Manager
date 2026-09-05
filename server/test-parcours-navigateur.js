@@ -3899,6 +3899,73 @@ function optionsLancement() {
     await pgSeek.evaluate(() => document.getElementById('seek').disabled === false));
   await ctxSeek.close();
 
+  // --- P1-2 : l'historique perdait les noms des clubs.
+  //
+  // `enregistrerResultat()` ne sauvegardait que seed, durée, score et date, et
+  // `rafraichirPanneauHistorique()` affichait toujours « Equipe A » / « Equipe
+  // B ». Un match de club devenait donc « Equipe A 18 - 15 Equipe B », sans
+  // aucun moyen de savoir qui avait joué.
+  const ctxHist = await browser.newContext({ viewport: { width: 1400, height: 1000 } });
+  const pgHist = await ctxHist.newPage();
+  pgHist.on('pageerror', (e) => erreursConsole.push('PAGEERROR ' + e.message));
+  await pgHist.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  await pgHist.click('#btnAccueilModeClub');
+  await pgHist.fill('#inputNomClub', 'Saint-Malo Corsaires');
+  await pgHist.click('#btnCreerClub');
+  await pgHist.waitForTimeout(700);
+  await pgHist.selectOption('#selDureeClub', '300');
+  verifier('historique : on atteint l\'aperçu d\'avant-match',
+    await continuerJusquAuMatch(pgHist));
+  // Un match JOUÉ puis regardé jusqu'au bout : c'est le seul chemin où le
+  // bouton « Enregistrer » du match est accessible.
+  await pgHist.click('#btnApercuJouerMatch');
+  await pgHist.waitForTimeout(1500);
+  await pgHist.click('#btnTerminerMatch');
+  let finHist = false;
+  for (let i = 0; i < 200; i++) {
+    if (await pgHist.isVisible('#panneauResultat.visible')) { finHist = true; break; }
+    await pgHist.waitForTimeout(200);
+  }
+  verifier('historique : prémisse — le match de club est allé à son terme', finHist);
+  const nomsAffiches = await pgHist.evaluate(() =>
+    (document.getElementById('resultatScore') || {}).textContent || '');
+  verifier('historique : prémisse — le match oppose bien des clubs NOMMÉS',
+    /Saint-Malo Corsaires/.test(nomsAffiches));
+  await pgHist.click('#btnResultatFermer');
+  await pgHist.waitForTimeout(800);
+  // On enregistre le résultat depuis l'écran de match, puis on lit l'historique.
+  const enregistre = await pgHist.evaluate(() => {
+    const b = document.getElementById('btnSauver');
+    if (!b) return false;
+    b.click();
+    return true;
+  });
+  verifier('historique : prémisse — le résultat a pu être enregistré', enregistre);
+  const entree = await pgHist.evaluate(() => {
+    const liste = JSON.parse(localStorage.getItem('rugbyManager.historique') || '[]');
+    return liste[0] || null;
+  });
+  verifier('historique : l\'entrée enregistrée CONSERVE les noms des deux clubs',
+    !!(entree && entree.noms && entree.noms.A && entree.noms.B
+       && /Saint-Malo Corsaires/.test(entree.noms.A + ' ' + entree.noms.B)));
+  const texteHistorique = await pgHist.evaluate(() => {
+    window.RMUI.rafraichirPanneauHistorique(() => {});
+    return (document.getElementById('listeHistorique') || {}).textContent || '';
+  });
+  verifier('historique : la liste AFFICHE ces noms au lieu de « Equipe A / Equipe B »',
+    /Saint-Malo Corsaires/.test(texteHistorique) && !/Equipe A/.test(texteHistorique));
+  // Rétrocompatibilité : une entrée ancienne, sans noms, doit rester lisible.
+  const texteAncien = await pgHist.evaluate(() => {
+    localStorage.setItem('rugbyManager.historique', JSON.stringify([
+      { id: 1, seed: 7, duree: 300, score: { A: 18, B: 15 }, date: '01/01/2024 12:00' },
+    ]));
+    window.RMUI.rafraichirPanneauHistorique(() => {});
+    return (document.getElementById('listeHistorique') || {}).textContent || '';
+  });
+  verifier('historique : une entrée ANCIENNE (sans noms) reste lisible, sans planter',
+    /18/.test(texteAncien) && /15/.test(texteAncien));
+  await ctxHist.close();
+
   verifier('aucune erreur console/page sur tout le parcours', erreursConsole.length === 0);
   if (erreursConsole.length) console.error(erreursConsole.join('\n'));
 
