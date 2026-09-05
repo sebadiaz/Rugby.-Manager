@@ -1217,7 +1217,28 @@
 
     // --- Mêlée suite à infraction (passe en avant / en-avant) : avantage + relance
     // pour l'équipe non fautive, conformément à la loi (knock-on / forward pass). ---
+    // RÈGLE UNIQUE (loi 7) : toute nouvelle sanction sifflée pendant un avantage
+    // ANNULE cet avantage. L'arbitre a arrêté le jeu et ordonné une reprise :
+    // il ne peut plus revenir ensuite à une faute antérieure.
+    //
+    // Sans cela, l'avantage restait armé pendant que la sanction contraire
+    // était accordée et jouée ; au tick suivant, `_tickAvantage` constatait que
+    // la possession était passée à l'équipe fautive et « revenait à la
+    // sanction ». Les DEUX équipes repartaient d'une pénalité dans la même
+    // séquence — mesuré : 11 fois sur 20 matchs.
+    //
+    // `_tickAvantage` met déjà `this.avantage` à null AVANT d'appliquer la
+    // sanction en attente : ce point d'entrée ne lui retire donc rien.
+    _annulerAvantagePourNouvelleReprise(motif) {
+      if (!this.avantage) return;
+      const a = this.avantage;
+      this.avantage = null;
+      this.log('AVANTAGE_ANNULE', a.equipeBeneficiaire,
+        `Avantage de l'equipe ${a.equipeBeneficiaire} annule : ${motif}`);
+    }
+
     _accorderMelee(equipeFautive, position) {
+      this._annulerAvantagePourNouvelleReprise('melee sifflee');
       this._formerMelee(equipeFautive === 'A' ? 'B' : 'A', position);
     }
 
@@ -1348,6 +1369,7 @@
     // coup de pied au but (3 points) ou joue rapidement et avance (touche de pénalité
     // simplifiée), conformément aux options réelles de la loi sur les pénalités. ---
     _traiterPenalite(equipeBeneficiaire, position) {
+      this._annulerAvantagePourNouvelleReprise('penalite sifflee');
       this.stats[equipeBeneficiaire === 'A' ? 'B' : 'A'].penalitesConcedees++;
       const sensAttaque = equipeBeneficiaire === 'A' ? 1 : -1;
       const distanceButs = sensAttaque > 0 ? (LONGUEUR - position.x) : position.x;

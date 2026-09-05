@@ -170,6 +170,58 @@ test('une mêlée se termine toujours, même à pleine échelle (_echelleArret=1
   assert.ok(globalMax < 30, `une mêlée est restée bloquée ${globalMax.toFixed(1)}s à pleine échelle (devrait toujours se résoudre sous ~30s)`);
 });
 
+// Loi 7 : une seule reprise réglementaire par séquence de faute.
+//
+// Défaut reproduit (graine 1 puis 20 graines) : l'arbitre laisse l'avantage à
+// A (faute de B), puis siffle une NOUVELLE pénalité contre A — que B joue —
+// et l'avantage de A reste armé. Au tick suivant, `_tickAvantage` voit que la
+// possession est passée à l'équipe fautive et « revient à la sanction » : A
+// obtient à son tour sa pénalité. Les DEUX équipes repartent d'une pénalité
+// dans la même séquence, dont l'une après que l'autre a déjà été jouée.
+//
+//   [AVANTAGE]         [A] Avantage joue pour l'equipe A (faute de B)
+//   [PENALITE]         [B] Penalite, equipe B joue rapidement et avance
+//   [AVANTAGE_REVIENT] [A] Pas d'avantage : retour a la sanction pour A
+//
+// Mesuré avant correction : 11 séquences sur 20 matchs (0,6 par match).
+test('avantage : une nouvelle sanction sifflée annule l\'avantage en cours (jamais deux pénalités contradictoires)', () => {
+  let contradictions = 0;
+  const exemples = [];
+  for (let seed = 1; seed <= 20; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    const journal = [];
+    const logOrigine = m.log.bind(m);
+    m.log = (type, equipe, texte) => {
+      journal.push({ type, equipe, texte });
+      return logOrigine(type, equipe, texte);
+    };
+    for (let t = 0; t < 4800; t += 0.2) m.tick(0.2);
+    const pertinents = journal.filter((e) => /^(AVANTAGE|AVANTAGE_JOUE|AVANTAGE_REVIENT|PENALITE)$/.test(e.type));
+    for (let i = 0; i < pertinents.length; i++) {
+      if (pertinents[i].type !== 'AVANTAGE') continue;
+      const beneficiaire = pertinents[i].equipe;
+      for (let k = i + 1; k < pertinents.length; k++) {
+        const e = pertinents[k];
+        // Un nouvel avantage ou un avantage joué clôt proprement la séquence.
+        if (e.type === 'AVANTAGE' || e.type === 'AVANTAGE_JOUE') break;
+        if (e.type === 'AVANTAGE_REVIENT' && e.equipe === beneficiaire) {
+          const entre = pertinents.slice(i + 1, k);
+          const penaliteContraire = entre.find((x) => x.type === 'PENALITE' && x.equipe !== beneficiaire);
+          if (penaliteContraire) {
+            contradictions++;
+            if (exemples.length < 2) {
+              exemples.push(`graine ${seed} : ${pertinents[i].texte} | ${penaliteContraire.texte} | ${e.texte}`);
+            }
+          }
+          break;
+        }
+      }
+    }
+  }
+  assert.strictEqual(contradictions, 0,
+    `${contradictions} séquence(s) où les DEUX équipes obtiennent une pénalité :\n  ${exemples.join('\n  ')}`);
+});
+
 test('la réception d\'un coup de pied ne téléporte jamais un joueur (course réelle jusqu\'au point de chute)', () => {
   // Avant le passage à l'échelle des durées de ruck, la réception d'un coup
   // de pied tactique plaçait directement le joueur gagnant sur le point de
