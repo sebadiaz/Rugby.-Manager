@@ -4437,7 +4437,28 @@
 
   function fermerPanneauClub() {
     document.getElementById('panneauClub').classList.remove('visible');
+    // On rend la main à la page d'accueil : elle est masquée pendant toute la
+    // carrière (cf. entrerDansLeClub), donc sans ça le joueur se retrouverait
+    // devant un écran vide en fermant son club.
+    document.getElementById('panneauAccueil').classList.add('visible');
     fermerTiroirNav();
+  }
+
+  // Afficher le Mode Club, c'est QUITTER la page d'accueil.
+  //
+  // Signalé en jeu : « je reviens sur la page d'accueil du site et je ne peux
+  // plus rentrer dans mon club ». La page d'accueil n'était masquée que par
+  // afficherVueMatch() (quand on REGARDE un match) : entrer en Mode Club ne la
+  // masquait pas. Elle restait donc `visible` SOUS le panneau du club, au même
+  // z-index, pendant toute la carrière. Chaque lancement de match masque le
+  // panneau du club — et la page d'accueil réapparaissait alors, donnant au
+  // joueur l'impression d'avoir été éjecté de sa saison ; au retour, les deux
+  // panneaux empilés au même niveau se disputaient les clics (mesuré : le
+  // bouton « Continuer ma saison » de l'accueil était intercepté par le
+  // terrain de composition du club).
+  function entrerDansLeClub() {
+    document.getElementById('panneauAccueil').classList.remove('visible');
+    document.getElementById('panneauClub').classList.add('visible');
   }
 
   document.getElementById('btnModeClub').addEventListener('click', () => {
@@ -4446,7 +4467,7 @@
     // pour toujours (carrière bloquée, signalée en jeu).
     if (window.RMMain && window.RMMain.abandonnerMatchLive) window.RMMain.abandonnerMatchLive();
     rafraichirTout();
-    document.getElementById('panneauClub').classList.add('visible');
+    entrerDansLeClub();
   });
   document.getElementById('btnContinuerClub').addEventListener('click', () => {
     document.getElementById('btnModeClub').click();
@@ -5425,7 +5446,7 @@
   // coupe, amical) partagent exactement le même retour.
   function revenirAuPanneauClub() {
     rafraichirTout();
-    document.getElementById('panneauClub').classList.add('visible');
+    entrerDansLeClub();
   }
 
   // Inscription : un joueur non inscrit à la compétition ne peut pas être
@@ -6017,7 +6038,9 @@
       definirBoutonsJourneeActifs(true);
       document.getElementById('panneauGeneration').classList.remove('visible');
       rafraichirTout();
-      document.getElementById('panneauClub').classList.add('visible');
+      // Même point d'entrée que partout ailleurs : revenir au club masque la
+      // page d'accueil, sinon elle resterait empilée dessous.
+      entrerDansLeClub();
     }
 
     if (typeJour === 'jeunes') { simulerMatchEspoirs(terminerJourEnArrierePlan); return; }
