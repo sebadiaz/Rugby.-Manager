@@ -454,6 +454,32 @@ test('le jeu courant RESPIRE : une sequence ballon en main dure en moyenne plus 
     `une sequence de jeu courant dure en moyenne ${moyenne.toFixed(2)} s : le contact tombe trop vite apres la sortie du ballon`);
 });
 
+// --- Lois 11/12 : la faute de main REALISTE --------------------------------
+// Mesure sur 10 matchs avant correction : 11,2 passes en AVANT par match pour
+// seulement 2,6 en-avants au contact et 2,6 passes lachees. C'est l'inverse
+// d'un vrai match (1 a 3 passes en avant, 10 a 15 fautes de main au total).
+// Cause : quand aucune option LEGALE (a hauteur ou en retrait) n'existait, le
+// moteur passait quand meme au premier partenaire venu, forcement en avant.
+// Un joueur ne fait pas ca : il garde le ballon et va au contact.
+test('loi 11 : un joueur sans solution legale GARDE le ballon (pas 11 passes en avant par match)', () => {
+  const GRAINES = [1, 2, 3, 4, 5];
+  let passesAvant = 0, fautesDeMain = 0;
+  for (const seed of GRAINES) {
+    const m = new MatchEngine(seed, 4800);
+    const brut = m.log.bind(m);
+    m.log = (type, team, msg) => { if (type === 'MELEE_AVANT') passesAvant++; brut(type, team, msg); };
+    for (let t = 0; t < 4800; t += 0.2) m.tick(0.2);
+    const s = m.getState();
+    fautesDeMain += s.stats.A.knockOns + s.stats.B.knockOns;
+  }
+  const avantParMatch = passesAvant / GRAINES.length;
+  const mainParMatch = fautesDeMain / GRAINES.length;
+  assert.ok(avantParMatch <= 4,
+    `une passe en avant reste une FAUTE RARE (mesuré ${avantParMatch.toFixed(1)} par match)`);
+  assert.ok(mainParMatch >= 8,
+    `un match produit 10 à 15 fautes de main (en-avant au contact, passe lâchée) : mesuré ${mainParMatch.toFixed(1)}`);
+});
+
 console.log(`\n${nbTests} test(s) exécuté(s).`);
 if (process.exitCode) {
   console.error('ECHEC : au moins un invariant violé.');

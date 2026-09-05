@@ -1691,7 +1691,11 @@
         // plus, un porteur très sûr (90) presque jamais.
         const facteurDecision = typeof porteur.decision === 'number'
           ? Math.max(0.5, Math.min(1.6, 1 + (60 - porteur.decision) / 75)) : 1;
-        if (this.rng() < 0.008 * facteurDecision) {
+        // Taux releve de 0,008 a 0,028 : l'EN-AVANT AU CONTACT est la faute de
+        // main normale d'un match de rugby (10 a 15 fautes de main par match,
+        // cf. CLAUDE.md Role 6). A 0,008 le moteur n'en produisait que 2,6 et
+        // compensait par 12 passes en avant, ce qui n'existe pas en vrai.
+        if (this.rng() < 0.028 * facteurDecision) {
           this.stats[this.possession].knockOns++;
           this.log('MELEE_ENAVANT', this.possession, `En-avant au contact, equipe ${this.possession} - melee adverse`);
           this._accorderMelee(this.possession, porteur);
@@ -2469,7 +2473,22 @@
       // n'existe, comme un joueur sous pression qui tente quand même sa chance.
       const memesTolerance = 0.3;
       const candidatsOnside = candidats.filter(j => (j.x - porteur.x) * porteur.sensAttaque <= memesTolerance);
-      if (candidatsOnside.length > 0) candidats = candidatsOnside;
+      if (candidatsOnside.length > 0) {
+        candidats = candidatsOnside;
+      } else {
+        // AUCUNE option legale : tous les partenaires a portee sont DEVANT le
+        // porteur. Un joueur ne lache pas sciemment une passe en avant — il
+        // GARDE le ballon et va au contact (ou botte). Avant, on retombait sur
+        // la liste complete, donc sur une passe en avant CERTAINE : mesure,
+        // 12,2 passes en avant par match, alors qu'un vrai match en compte 1 a
+        // 3 et que la faute de main normale est l'EN-AVANT au contact.
+        // On garde une part de vraie maladresse (le porteur tente quand meme,
+        // le receveur a survole sa course) : rare, et d'autant plus rare que le
+        // porteur a une bonne prise de decision.
+        const facteurDecision = typeof porteur.decision === 'number'
+          ? Math.max(0.5, Math.min(1.6, 1 + (60 - porteur.decision) / 75)) : 1;
+        if (this.rng() >= 0.08 * facteurDecision) return false;
+      }
       // Une passe se donne à un joueur SUR LE CÔTÉ (composante latérale) :
       // passer droit dans son propre dos est impossible. On écarte les cibles
       // sans décalage latéral (< 1,2 m) tant qu'une option latérale existe.
