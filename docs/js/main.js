@@ -500,6 +500,10 @@
   });
 
   function demarrerNouveauMatch(seed, duree) {
+    // Nouveau match : « Enregistrer » redevient disponible (il est désactivé
+    // après un enregistrement réussi, cf. son gestionnaire).
+    const btnS = document.getElementById('btnSauver');
+    if (btnS) { btnS.disabled = false; btnS.title = ''; }
     seedActuel = seed;
     dureeMatchActuel = duree;
     match = new MatchEngine(seed, duree, configMatch);
@@ -780,11 +784,25 @@
     document.getElementById('tempsLabel').textContent = UI.formaterTemps(cible);
   });
 
-  document.getElementById('btnSauver').addEventListener('click', () => {
+  document.getElementById('btnSauver').addEventListener('click', (e) => {
+    // Aucun match chargé : le bouton ne doit rien tenter. Il se déclenchait sur
+    // un moteur NUL (« Cannot read properties of null (reading 'getState') »)
+    // — un bouton actif alors que l'action est impossible.
+    if (!match) return;
     const state = match.getState();
-    UI.enregistrerResultat(seedActuel, dureeMatchActuel, state.score,
+    const bilan = UI.enregistrerResultat(seedActuel, dureeMatchActuel, state.score,
       { config: instantaneConfigMatch() });
     UI.rafraichirPanneauHistorique(onRevoirHistorique);
+    // On ne dit « enregistré » que si ça l'a réellement été. En cas d'échec de
+    // stockage, le joueur est prévenu et le bouton reste disponible pour
+    // réessayer.
+    if (bilan && bilan.ok) {
+      const b = e.currentTarget;
+      b.disabled = true;
+      b.title = bilan.deja ? 'Ce match est déjà dans ton historique.' : bilan.message;
+    } else if (bilan && bilan.message) {
+      window.alert(bilan.message);
+    }
   });
   document.getElementById('btnHistorique').addEventListener('click', () => {
     UI.rafraichirPanneauHistorique(onRevoirHistorique);

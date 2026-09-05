@@ -162,8 +162,29 @@
     try { return JSON.parse(localStorage.getItem(CLE_HISTORIQUE)) || []; }
     catch { return []; }
   }
+  // Renvoie true si l'écriture a REELLEMENT eu lieu. Le stockage peut être
+  // plein, interdit (navigation privée, réglage du navigateur) ou simplement
+  // indisponible : l'exception remontait jusque dans le gestionnaire du bouton,
+  // sans message pour le joueur, et rien ne distinguait un enregistrement
+  // réussi d'un échec.
   function sauvegarderHistorique(liste) {
-    localStorage.setItem(CLE_HISTORIQUE, JSON.stringify(liste));
+    try {
+      localStorage.setItem(CLE_HISTORIQUE, JSON.stringify(liste));
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // Identifiant STABLE d'un match : la même rencontre enregistrée deux fois
+  // produit la même clé. Graine + durée + score suffisent — deux matchs
+  // distincts ne partagent pas cette combinaison, et elle ne dépend d'aucune
+  // horloge (contrairement à l'ancien `id: Date.now()`, qui rendait chaque
+  // clic unique et laissait donc passer les doublons).
+  function identifiantMatch(seed, duree, score) {
+    const a = score && score.A != null ? score.A : 0;
+    const b = score && score.B != null ? score.B : 0;
+    return `${seed}|${duree}|${a}-${b}`;
   }
   function rafraichirPanneauHistorique(onRevoir) {
     const liste = chargerHistorique();
@@ -206,10 +227,19 @@
   // 12/12 donnent un score différent, écart moyen de 15,5 points sur la marge,
   // certains inversant le vainqueur. `options.configVersion` permettra de
   // refuser proprement un instantané devenu illisible.
+  // Renvoie { ok, message, deja } — jamais une exception, et jamais un succès
+  // annoncé à tort.
   function enregistrerResultat(seed, duree, score, options) {
     const liste = chargerHistorique();
+    const cle = identifiantMatch(seed, duree, score);
+    // Unicité : chaque clic faisait un `unshift` sans contrôle, donc un double
+    // clic créait plusieurs entrées identiques et pouvait remplir l'historique
+    // avec le même match.
+    if (liste.some((e) => e && e.cle === cle)) {
+      return { ok: true, deja: true, message: 'Ce match est déjà dans ton historique.' };
+    }
     liste.unshift({
-      id: Date.now(), seed, duree, score,
+      id: Date.now(), cle, seed, duree, score,
       // Les noms des deux clubs, tels qu'affichés pendant le match (cf.
       // definirNomsEquipes). Sans eux, un match Saint-Malo contre un
       // adversaire redevenait « Equipe A 18 - 15 Equipe B » dans l'historique
@@ -220,12 +250,16 @@
       date: new Date().toLocaleString('fr-FR'),
     });
     if (liste.length > 20) liste.length = 20;
-    sauvegarderHistorique(liste);
+    if (!sauvegarderHistorique(liste)) {
+      return { ok: false, deja: false,
+        message: 'Impossible d\'enregistrer : l\'espace de stockage du navigateur est plein ou indisponible.' };
+    }
+    return { ok: true, deja: false, message: 'Résultat enregistré dans l\'historique.' };
   }
 
   global.RMUI = {
     formaterTemps, majAffichage, reinitialiserSuivi, definirNomsEquipes,
-    chargerHistorique, rafraichirPanneauHistorique, enregistrerResultat, nomsHistorique, VERSION_INSTANTANE_MATCH,
+    chargerHistorique, rafraichirPanneauHistorique, enregistrerResultat, nomsHistorique, VERSION_INSTANTANE_MATCH, identifiantMatch,
     rafraichirPanneauStats,
   };
 })(window);
