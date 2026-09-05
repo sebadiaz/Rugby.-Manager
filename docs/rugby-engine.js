@@ -1596,6 +1596,17 @@
       );
       this.timerPhase += dt;
 
+      // BALLON EN L'AIR : une passe met un vrai temps a parcourir la distance
+      // qui separe le passeur du receveur (cf. _lancerPasseVisuelle). Tant
+      // qu'elle vole, PERSONNE ne porte le ballon : on ne peut donc ni plaquer
+      // le receveur, ni aplatir, ni sortir en touche, ni relancer une decision.
+      // Avant, la passe etait instantanee cote jeu et seul l'affichage voyait
+      // le ballon voyager : le receveur devenait plaquable dans la meme
+      // fraction de seconde. Les joueurs, eux, continuent de courir pendant le
+      // vol — la defense avance donc bel et bien, ce n'est pas un cadeau fait
+      // a l'attaque.
+      const ballonEnVolPasse = !!(this.passeVisuelle && this.passeVisuelle.timer < this.passeVisuelle.duree);
+
       // Combinaison scriptée en cours (sortie de mêlée/touche, cf. playbook) :
       // elle PILOTE les passes ; le porteur ne décide pas librement (kick/passe
       // libre) tant qu'elle dure. Si une passe scriptée est jouée ce tick, le
@@ -1609,7 +1620,7 @@
       // numéro du porteur et du score (cf. choisirActionPorteur). Le coup de
       // pied peut survenir même défenseur tout proche (dégagement sous
       // pression) ; la passe suppose de ne pas être déjà au contact.
-      const action = this.combinaison ? 'RUN' : this.choisirActionPorteur(porteur, defenseurProche, distDef, dt);
+      const action = (this.combinaison || ballonEnVolPasse) ? 'RUN' : this.choisirActionPorteur(porteur, defenseurProche, distDef, dt);
       if (action === 'KICK') { this._executerCoupDePiedJeu(porteur); return; }
       if (distDef >= 2.2 && (action === 'PASS' || action === 'JEU_LARGE') && this._tenterPasse(porteur, action === 'JEU_LARGE')) return;
 
@@ -1622,7 +1633,7 @@
       // suivant contre le même défenseur (sinon le raté n'aurait aucune
       // conséquence : il serait rejoué jusqu'à réussite quelques dixièmes de
       // seconde plus tard).
-      if (distDef < 2.2 && defenseurProche.missCooldown <= 0 && (defenseurProche.fixeCooldown || 0) <= 0) {
+      if (!ballonEnVolPasse && distDef < 2.2 && defenseurProche.missCooldown <= 0 && (defenseurProche.fixeCooldown || 0) <= 0) {
         const att0 = this.attaquants();
         this.stats[this.possession].carries++;
         this.stats[defenseurProche.team].tacklesAttempted++;
@@ -1848,7 +1859,8 @@
       this._statJoueur(porteur).metresGagnes += metresCourus;
 
       // Touche : le ballon porté au-delà de la ligne de touche est mort, jeu arrêté.
-      if (porteur.y <= 0.01 || porteur.y >= LARGEUR - 0.01) {
+      // (Pas pendant qu'une passe vole : le receveur ne porte pas encore le ballon.)
+      if (!ballonEnVolPasse && (porteur.y <= 0.01 || porteur.y >= LARGEUR - 0.01)) {
         this._accorderTouche(this.possession, porteur);
         return;
       }
@@ -2097,8 +2109,8 @@
         avancer(j, cibleX - j.x, cibleY - j.y, dt, vitesseMs(j) * vLigne);
       }
 
-      // Essai
-      if ((porteur.sensAttaque > 0 && porteur.x >= LONGUEUR) || (porteur.sensAttaque < 0 && porteur.x <= 0)) {
+      // Essai (jamais pendant qu'une passe vole : on n'aplatit pas sans ballon)
+      if (!ballonEnVolPasse && ((porteur.sensAttaque > 0 && porteur.x >= LONGUEUR) || (porteur.sensAttaque < 0 && porteur.x <= 0))) {
         // Plaquage de sauvetage in extremis : le contrôle de contact en début
         // de tick utilisait la distance d'AVANT le déplacement ; un défenseur
         // qui a comblé l'écart pendant ce même tick (donc invisible à ce
@@ -4819,10 +4831,14 @@
     _tickEssai(dt) {
       this.timerPhase += dt;
       this._transformationPlacerJoueurs(dt);
-      // Célébration + replacement réalistes (~15 s) : en match réel, entre
-      // l'essai accordé et le début de la routine du buteur, il se passe un
-      // long moment (célébration, replay, retour des équipes).
-      if (this.timerPhase >= 10 * this._echelleArret) {
+      // Célébration + replacement : en match réel, entre l'essai accordé et le
+      // début de la routine du buteur, il se passe un long moment — célébration,
+      // vérification vidéo, retour des deux équipes au centre, le buteur qui va
+      // chercher son tee. Mesuré sur un match télévisé : 30 à 45 s. Le moteur
+      // n'en comptait que 10, ce qui raccourcissait artificiellement le temps
+      // mort et gonflait d'autant le temps de jeu effectif (mesuré 42,6 min
+      // pour 32-42 attendues).
+      if (this.timerPhase >= 32 * this._echelleArret) {
         // Le buteur (l'ouvreur) a couru jusqu'au tee pendant la célébration
         // (cf. _transformationPlacerJoueurs) : il y est déjà, on ne le téléporte
         // plus. Il devient simplement le porteur pour la frappe.
@@ -4846,7 +4862,11 @@
       // sur un angle fermé — mais toujours sous le maximum réglementaire. Le
       // match étant regardé en avance rapide, ce temps réel reste confortable.
       const DUREE_MAX_TRANSFO = 60; // secondes réglementaires (loi 8.8.c : la transformation doit être jouée sous 60 s)
-      const routine = 26 + Math.abs(this.essaiY - LARGEUR / 2) * 0.9; // ~26 s face aux poteaux, jusqu'à ~57 s près de la touche (toujours < 60 s)
+      // Routine réelle d'un buteur international : il pose le tee, recule, se
+      // concentre, prend sa course. C'est 45 à 60 s, pas 26 — le maximum
+      // réglementaire de 60 s est d'ailleurs atteint presque à chaque fois sur
+      // un angle fermé. Le moteur bouclait la séquence en 44 s en moyenne.
+      const routine = 45 + Math.abs(this.essaiY - LARGEUR / 2) * 0.5;
       const duree = Math.min(DUREE_MAX_TRANSFO, routine) * this._echelleArret;
       // Le ballon s'envole vers les poteaux pendant la dernière fraction du
       // temps d'arrêt (le reste, c'est le placement et la course d'élan) :
@@ -4934,7 +4954,10 @@
       this.timerPhase += dt;
       const DUREE_MAX_PENALITE = 60; // secondes réglementaires (loi 20)
       const offsetTir = this.positionTir ? Math.abs(this.positionTir.y - LARGEUR / 2) : 0;
-      const routine = 26 + offsetTir * 0.8; // ~26 s face aux poteaux, jusqu'à ~52 s (plafonné 60)
+      // Même routine réelle qu'à la transformation (45-60 s) : sur une pénalité,
+      // s'y ajoutent la décision du capitaine et la marche jusqu'à la marque,
+      // déjà comptées dans la mise en place de la pénalité (penaliteRecul).
+      const routine = 45 + offsetTir * 0.4;
       const duree = Math.min(DUREE_MAX_PENALITE, routine) * this._echelleArret;
       // Même principe que pour la transformation : le ballon vole vers les
       // poteaux pendant la dernière fraction du temps d'arrêt.

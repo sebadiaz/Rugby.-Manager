@@ -430,11 +430,16 @@ test('un joueur ACCELERE : il ne part pas a pleine vitesse des le premier dixiem
     `un joueur qui demarre de l'arret ne doit pas couvrir ${mesure.pas.toFixed(3)} m en 0,1 s (ce serait ${(mesure.pas * 10).toFixed(1)} m/s instantanes)`);
 });
 
-test('le jeu courant RESPIRE : une sequence ballon en main dure en moyenne plus de 4 s', () => {
-  // Reference reelle : entre deux regroupements, le ballon vit ~5-8 s (course
-  // du 9, lancement de la ligne, 2-3 passes, contact). Une moyenne sous 4 s
-  // signifie que le porteur est plaque des qu'il touche le ballon : c'est ce
-  // qui gonfle mecaniquement rucks, passes, courses et plaquages.
+test('le jeu courant RESPIRE : une sequence ballon en main dure en moyenne plus de 5,5 s', () => {
+  // Reference reelle, calculee : un match international compte ~35 min de
+  // ballon en jeu (2100 s) pour ~150 regroupements. Le regroupement lui-meme
+  // consomme ~3,5 s (ballon au sol -> ballon sorti), les coups de pied, mauls
+  // et coups d'envoi ~7 min. Il reste donc ~7 s par sequence de jeu courant :
+  // course du 9, lancement de la ligne, deux ou trois passes, PLAQUAGE (le
+  // porteur est tenu, porte, mis au sol, il presente le ballon), puis
+  // regroupement. Une moyenne sous 5,5 s signifie que le contact tombe trop
+  // vite : c'est ce qui gonfle mecaniquement rucks, passes, courses et
+  // plaquages, tous mesures a 2 ou 3 fois leur volume reel.
   const durees = [];
   for (const seed of [1, 2, 3]) {
     const m = new MatchEngine(seed, 2400);
@@ -450,7 +455,7 @@ test('le jeu courant RESPIRE : une sequence ballon en main dure en moyenne plus 
   }
   assert.ok(durees.length > 100, 'echantillon de sequences trop petit');
   const moyenne = durees.reduce((a, b) => a + b, 0) / durees.length;
-  assert.ok(moyenne > 4,
+  assert.ok(moyenne > 5.5,
     `une sequence de jeu courant dure en moyenne ${moyenne.toFixed(2)} s : le contact tombe trop vite apres la sortie du ballon`);
 });
 
