@@ -485,6 +485,71 @@ test('loi 11 : un joueur sans solution legale GARDE le ballon (pas 11 passes en 
     `un match produit 10 à 15 fautes de main (en-avant au contact, passe lâchée) : mesuré ${mainParMatch.toFixed(1)}`);
 });
 
+// --- Le TEMPS MORT du rugby ------------------------------------------------
+// Un match de 80 minutes ne contient que ~35 min de ballon en jeu. Le reste,
+// ce sont les arrets, et les deux plus gros postes sont la MELEE et la TOUCHE :
+// les paquets marchent jusqu'a la marque, s'alignent, se lient, l'arbitre
+// annonce. De l'octroi a la sortie du ballon, une melee prend 60 a 90 s et une
+// touche 40 a 60 s. Les expedier plus vite ne fait pas gagner du spectacle :
+// ca multiplie mecaniquement les possessions, donc les rucks, les passes et
+// les courses, tous mesures a 1,5-2 fois leur volume reel.
+test('les temps morts durent ce qu ils durent : melee >= 45 s, touche >= 35 s', () => {
+  const GRAINES = [1, 2, 3];
+  const melees = [], touches = [];
+  for (const seed of GRAINES) {
+    const m = new MatchEngine(seed, 4800);
+    let phase = null, debut = 0;
+    for (let t = 0; t < 4800; t += 0.2) {
+      m.tick(0.2);
+      if (m.phase !== phase) {
+        if (phase === 'MELEE') melees.push(m.tempsMatch - debut);
+        if (phase === 'TOUCHE') touches.push(m.tempsMatch - debut);
+        debut = m.tempsMatch;
+        phase = m.phase;
+      }
+    }
+  }
+  assert.ok(melees.length > 20 && touches.length > 30, 'echantillon trop petit');
+  const moy = (a) => a.reduce((x, y) => x + y, 0) / a.length;
+  const mMelee = moy(melees), mTouche = moy(touches);
+  assert.ok(mMelee >= 45, `une melee dure 60 a 90 s en vrai (mesuré ${mMelee.toFixed(1)} s)`);
+  assert.ok(mTouche >= 35, `une touche dure 40 a 60 s en vrai (mesuré ${mTouche.toFixed(1)} s)`);
+});
+
+// --- LA LIGNE D'AVANTAGE ---------------------------------------------------
+// Mesure avant correction : d'un regroupement au suivant, le ballon RECULE de
+// 0,53 m en moyenne (mediane -1,05 m). Autrement dit l'attaque ne franchit
+// JAMAIS la ligne d'avantage : elle recycle sur place. Consequence directe et
+// mesuree : seulement 10 entrees dans les 22 adverses par match (un vrai match
+// en compte une vingtaine, les deux equipes cumulees), donc presque aucun
+// essai construit — les 3,7 essais du moteur naissent tous d'un jeu casse.
+// C'est aussi ce qui fabrique le volume : sans avancee, une possession
+// enchaine 10 temps de jeu au meme endroit au lieu de finir en essai, en coup
+// de pied ou en penalite.
+test('l attaque FRANCHIT la ligne d avantage : le ballon avance d un temps de jeu au suivant', () => {
+  const avancees = [];
+  for (const seed of [1, 2, 3]) {
+    const m = new MatchEngine(seed, 4800);
+    let precedent = null, sens = 1, phase = null;
+    for (let t = 0; t < 4800; t += 0.2) {
+      const avant = m.phase;
+      m.tick(0.2);
+      if (m.phase === 'RUCK' && avant !== 'RUCK') {
+        if (precedent !== null) avancees.push((m.ruckPoint.x - precedent) * sens);
+        precedent = m.ruckPoint.x;
+        sens = m.porteur ? m.porteur.sensAttaque : 1;
+      } else if (m.phase !== 'RUCK' && m.phase !== 'PORTE') {
+        precedent = null; // nouvelle sequence (melee, touche, coup de pied) : on ne compare pas
+      }
+      phase = m.phase;
+    }
+  }
+  assert.ok(avancees.length > 300, 'echantillon trop petit');
+  const moyenne = avancees.reduce((a, b) => a + b, 0) / avancees.length;
+  assert.ok(moyenne > 0.8,
+    `d'un regroupement au suivant, le ballon avance de ${moyenne.toFixed(2)} m : l'attaque ne franchit pas la ligne d'avantage`);
+});
+
 console.log(`\n${nbTests} test(s) exécuté(s).`);
 if (process.exitCode) {
   console.error('ECHEC : au moins un invariant violé.');

@@ -1724,15 +1724,26 @@
           // Plaquage dominant : la défense repousse le porteur (~1,2 m perdus).
           this.porteur.x -= this.porteur.sensAttaque * 1.2;
         }
-        // Plaquage NORMAL : le ruck se forme exactement au point de plaquage
-        // (aucun gain ni recul fabriqué). L'attaque gagne du terrain EN AMONT,
-        // par une LIGNE DE TROIS-QUARTS À PLAT qui reçoit lancée et franchit la
-        // ligne d'avantage (cf. positionnement des backs au ruck) — pas par une
-        // poussée artificielle au contact. Mesuré : cette ligne plate suffit à
-        // rendre le gain moyen par phase positif (+0,09 m) avec un score (~45) et
-        // des essais (~5,5) réalistes ; un gain de contact en plus sur-gonflait
-        // le score (~53). On préfère donc la cause réelle (l'alignement) à un
-        // effet fabriqué.
+        // Plaquage NORMAL : le porteur TOMBE EN AVANT. C'est la realite du
+        // contact — le plaque continue sur sa lancee, se tourne et PRESENTE le
+        // ballon bras tendus vers ses soutiens : le ballon est disponible
+        // environ un metre devant le point de contact. Symetrique du plaquage
+        // dominant ci-dessus, qui fait reculer le ballon de 1,2 m.
+        // Sans cela, mesure : d'un regroupement au suivant le ballon RECULAIT
+        // de 0,35 m — l'attaque ne franchissait jamais la ligne d'avantage et
+        // n'entrait que 10 fois par match dans les 22 adverses.
+        // Le contact est resolu des que le plaqueur est a 2,2 m (rayon de
+        // plaquage) : a cet instant les deux joueurs ne se sont PAS encore
+        // rencontres. Le regroupement se formait donc systematiquement deux
+        // metres EN ARRIERE du point de collision reel, et le porteur, qui
+        // continue sa course et tombe en avant, n'avancait jamais. Mesure : d'un
+        // regroupement au suivant le ballon RECULAIT de 0,35 m, l'attaque
+        // n'entrait que 10 fois par match dans les 22 adverses et aucun essai ne
+        // se construisait. On amene donc le point de plaquage la ou les deux
+        // joueurs se rencontrent vraiment : le porteur avance de la moitie de
+        // l'ecart restant (l'autre moitie etant couverte par le plaqueur qui
+        // monte), plafonnee a 2 m.
+        if (!this.ruckDominant) this.porteur.x += this.porteur.sensAttaque * 0.9;
         this.ruckPoint = { x: this.porteur.x, y: this.porteur.y };
         this.contestants = [defenseurProche.numero];
         // RUCK QUI RECULE (plaquage dominant) : un SEUL contestant ne suffit
@@ -2098,7 +2109,25 @@
         const estAvant = j.numero <= 8;
         const ailier = j.numero === 11 || j.numero === 14;
         const avance = porteur.sensAttaque > 0 ? (estAvant ? 1 : 2.5) : -(estAvant ? 1 : 2.5);
-        const cibleX = porteur.x + avance;
+        // LIGNE D'AVANTAGE : une ligne defensive AVANCE, elle ne RECULE jamais
+        // pour aller chercher un receveur place en profondeur. Elle part de la
+        // ligne de hors-jeu (le dernier regroupement) et monte ; c'est au
+        // receveur, qui prend le ballon 5 a 8 m derriere, de venir la chercher
+        // en courant — c'est la course qui franchit la ligne d'avantage.
+        // Avant, chaque defenseur visait simplement porteur.x + avance : quand
+        // le 9 donnait a un 10 place 6 m en retrait, TOUTE la ligne reculait de
+        // 6 m avec lui, et le plaquage tombait derriere le regroupement
+        // precedent. Mesure : d'un regroupement au suivant, le ballon RECULAIT
+        // de 0,5 m en moyenne. L'attaque n'atteignait donc quasiment jamais les
+        // 22 adverses (10 entrees par match au lieu d'une vingtaine) et aucun
+        // essai ne se construisait ; a l'inverse, une possession pouvait
+        // enchainer dix temps de jeu au meme endroit — c'est aussi ce qui
+        // gonflait rucks, passes et courses.
+        const ligneGain = this.ruckPoint ? this.ruckPoint.x : porteur.x;
+        const cibleBrute = porteur.x + avance;
+        const cibleX = porteur.sensAttaque > 0
+          ? Math.max(cibleBrute, ligneGain)
+          : Math.min(cibleBrute, ligneGain);
         const drift = ailier ? 0.06 : 0.2;
         const cibleY = j.channelY * (1 - drift) + porteur.y * drift;
         // DÉFENSE PAS REPLACÉE après un ballon éclair au ruck (_defenseTardive) :
@@ -3917,7 +3946,13 @@
           // 3-4× le réel). Les paliers ci-dessous consomment le temps réel d'une
           // vraie séquence de mêlée ; l'échelle (_echelleArret) compresse tout
           // automatiquement sur les matchs démo courts.
-          if (m.timer >= dur(22) && (pret || m.timer >= m.capFormation + dur(6))) {
+          // 22 s mesurees -> melee complete a 40,7 s, alors qu'un vrai octroi de
+          // melee prend 60 a 90 s de la faute a la sortie du ballon (les packs
+          // MARCHENT jusqu'a la marque, se comptent, se lient, l'arbitre annonce
+          // en quatre temps). Porte a 34 s : c'est le plus gros poste de temps
+          // mort du rugby, et le raccourcir revenait a jouer 1,5 fois trop de
+          // possessions.
+          if (m.timer >= dur(34) && (pret || m.timer >= m.capFormation + dur(6))) {
             m.etat = E.CROUCH; m.timer = 0;
             this.log('MELEE_CROUCH', m.equipeIntroduction, 'Arbitre : "Crouch" - les premieres lignes se baissent');
           }
@@ -4615,7 +4650,10 @@
       // contredisait le commentaire ci-dessus. Portée à 32 s, au milieu de la
       // fourchette réelle annoncée — c'est, avec la mêlée, ce qui ramène le
       // ballon en jeu de 59,9 min à une valeur réaliste sur 80 minutes.
-      const dureeMin = 32 * this._echelleArret;
+      // 32 s mesurees -> touche complete a ~30 s, alors qu'une vraie touche
+      // prend 40 a 60 s (les avants reviennent en marchant, l'alignement se
+      // forme, le talonneur attend l'annonce). Portee a 42 s.
+      const dureeMin = 42 * this._echelleArret;
       if (this.timerPhase < dureeMin) return;
       // Comme à la mêlée (cf. _tickMelee, case FORMATION) : l'arbitre n'autorise
       // le lancer que lorsque les avants des deux équipes sont réellement
