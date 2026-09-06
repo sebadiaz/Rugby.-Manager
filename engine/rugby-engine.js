@@ -158,12 +158,15 @@
       // atteignaient 3 passes (le ballon n'était « jamais écarté ») — la
       // diagonale d'attaque donne la profondeur, la cadence fait circuler.
       jeuLargeTaux: { pression: 1.7, calme: 1.3 },
-      // x2 : une équipe réelle botte toutes les ~3 courses (France-Irlande
-      // 2026 : 78 coups de pied / 255 courses) — c'est le régulateur n°1 de la
-      // longueur des possessions. Retenu par balayage : x1 laissait des
-      // possessions interminables (60 coups de pied, 579 rucks), x3 débordait
-      // le réel (141 coups de pied) en écrasant le score.
-      tauxJeuAuPied: 2,
+      // Une équipe réelle botte toutes les ~3 courses (France-Irlande 2026 :
+      // 78 coups de pied / 255 courses) — c'est le régulateur n°1 de la
+      // longueur des possessions. Le x2 avait été retenu quand une possession
+      // pouvait enchaîner dix temps de jeu sans jamais avancer (579 rucks par
+      // match) : il fallait alors ce régulateur brutal. Maintenant que
+      // l'attaque franchit la ligne d'avantage et qu'un franchissement paie,
+      // les possessions se terminent d'elles-mêmes ; x2 sur-bottait (88 coups
+      // de pied par match, réel 35-70). x1,5 ramène à ~67.
+      tauxJeuAuPied: 1.5,
     },
     // Organisation de défense : profondeur de couverture de l'arrière (n°15) en
     // jeu courant et à la mêlée, recul de la ligne au ruck. rampeMontee =
@@ -1657,6 +1660,17 @@
           // Plaquage manqué : le défenseur reste hors-jeu de contact un court
           // instant, le porteur poursuit sa course sans être inquiété par lui.
           defenseurProche.missCooldown = 1.0;
+          // ET IL DOIT SE RETOURNER. Un defenseur qui vient d'etre elimine
+          // courait VERS le porteur : au moment ou celui-ci le passe, sa vitesse
+          // pointe dans le mauvais sens. Il lui faut freiner, pivoter, puis
+          // relancer — pendant ce temps il ne couvre presque aucun terrain. Le
+          // moteur, lui, le faisait repartir a sa vitesse de pointe dans la
+          // foulee : un franchissement ne rapportait que 7,6 m en 6 s et ne
+          // devenait un essai que dans 1 % des cas (en vrai : 15 a 25 m, et une
+          // percee sur quatre ou cinq finit a l'essai). Remettre sa vitesse
+          // courante a zero suffit : l'inertie de course (cf. ACCELERATION) fait
+          // le reste, exactement comme pour un vrai joueur pris a contre-pied.
+          defenseurProche.vitesseCourante = 0;
           this.stats[defenseurProche.team].missedTackles++;
           this.stats[this.possession].defenseursBattus++; // le porteur a battu un défenseur
           // FRANCHISSEMENT (line break) : le porteur bat le plaqueur ET se
@@ -1702,11 +1716,14 @@
         // plus, un porteur très sûr (90) presque jamais.
         const facteurDecision = typeof porteur.decision === 'number'
           ? Math.max(0.5, Math.min(1.6, 1 + (60 - porteur.decision) / 75)) : 1;
-        // Taux releve de 0,008 a 0,028 : l'EN-AVANT AU CONTACT est la faute de
+        // Taux releve de 0,008 a 0,034 : l'EN-AVANT AU CONTACT est la faute de
         // main normale d'un match de rugby (10 a 15 fautes de main par match,
         // cf. CLAUDE.md Role 6). A 0,008 le moteur n'en produisait que 2,6 et
-        // compensait par 12 passes en avant, ce qui n'existe pas en vrai.
-        if (this.rng() < 0.028 * facteurDecision) {
+        // compensait par 12 passes en avant, ce qui n'existe pas en vrai. Le
+        // taux est PAR PLAQUAGE : il a ete remonte une seconde fois (0,028 ->
+        // 0,034) quand le nombre de plaquages par match a baisse vers le reel,
+        // pour garder le total de fautes de main dans sa fourchette.
+        if (this.rng() < 0.034 * facteurDecision) {
           this.stats[this.possession].knockOns++;
           this.log('MELEE_ENAVANT', this.possession, `En-avant au contact, equipe ${this.possession} - melee adverse`);
           this._accorderMelee(this.possession, porteur);
@@ -2170,6 +2187,7 @@
             return;
           }
           sauveteur.missCooldown = 1.0;
+          sauveteur.vitesseCourante = 0; // pris a contre-pied, il doit se retourner (cf. plaquage manque)
           this.stats[sauveteur.team].missedTackles++;
           this.stats[this.possession].defenseursBattus++;
           // Battre le dernier défenseur (plaquage de sauvetage) EST un
@@ -2666,9 +2684,18 @@
       let type;
       const r = this.rng();
       if (zone === 'OWN_22') {
-        type = r < 0.55 ? 'DEGAGEMENT' : r < 0.85 ? 'TOUCHE' : 'CHANDELLE';
+        // Dans SES 22, une equipe vise la TOUCHE avant tout : depuis ses 22 le
+        // coup de pied direct en touche est autorise et rend le ballon a
+        // l'adversaire LOIN de sa ligne — c'est le degagement de reference du
+        // rugby, et il ARRETE le jeu. Le moteur ne visait la touche que 30 % du
+        // temps et rendait le reste en l'air : 98 coups de pied par match pour
+        // 21 touches seulement, c'est-a-dire ~77 relances adverses, autant de
+        // sequences de jeu en plus et un ballon en jeu artificiellement long.
+        type = r < 0.50 ? 'TOUCHE' : r < 0.85 ? 'DEGAGEMENT' : 'CHANDELLE';
       } else if (zone === 'OWN_HALF') {
-        type = r < 0.50 ? 'OCCUPATION' : r < 0.80 ? 'CHANDELLE' : 'TOUCHE';
+        // Dans son camp mais hors des 22, la touche demande un rebond : plus
+        // rare, mais c'est quand meme une option de terrain courante.
+        type = r < 0.30 ? 'TOUCHE' : r < 0.80 ? 'OCCUPATION' : 'CHANDELLE';
       } else if (zone === 'OPP_HALF') {
         type = r < 0.60 ? 'CHANDELLE' : 'CHIP';
       } else {
@@ -2915,8 +2942,12 @@
         'Ballon non libere par le joueur plaque',
         'Regroupement scelle : soutien couche sur le ballon',
       ];
-      const pDefense = 0.030 * facteurDiscipline(equipeDef);
-      const pAttaque = 0.016 * facteurDiscipline(equipeAtt);
+      // Taux PAR REGROUPEMENT : releves une seconde fois (0,030/0,016 ->
+      // 0,038/0,020) quand le nombre de regroupements par match a baisse vers
+      // le reel, pour garder le total de penalites du match dans sa fourchette
+      // (16-28, cf. CLAUDE.md Role 6).
+      const pDefense = 0.038 * facteurDiscipline(equipeDef);
+      const pAttaque = 0.020 * facteurDiscipline(equipeAtt);
       const r = this.rng();
       if (r < pDefense) {
         return { camp: 'DEFENSE', motif: MOTIFS_DEFENSE[Math.floor(this.rng() * MOTIFS_DEFENSE.length)] };
@@ -3952,7 +3983,7 @@
           // en quatre temps). Porte a 34 s : c'est le plus gros poste de temps
           // mort du rugby, et le raccourcir revenait a jouer 1,5 fois trop de
           // possessions.
-          if (m.timer >= dur(34) && (pret || m.timer >= m.capFormation + dur(6))) {
+          if (m.timer >= dur(40) && (pret || m.timer >= m.capFormation + dur(6))) {
             m.etat = E.CROUCH; m.timer = 0;
             this.log('MELEE_CROUCH', m.equipeIntroduction, 'Arbitre : "Crouch" - les premieres lignes se baissent');
           }
@@ -4652,8 +4683,9 @@
       // ballon en jeu de 59,9 min à une valeur réaliste sur 80 minutes.
       // 32 s mesurees -> touche complete a ~30 s, alors qu'une vraie touche
       // prend 40 a 60 s (les avants reviennent en marchant, l'alignement se
-      // forme, le talonneur attend l'annonce). Portee a 42 s.
-      const dureeMin = 42 * this._echelleArret;
+      // forme, le talonneur attend l'annonce). Portee a 48 s : la touche
+      // complete dure alors ~46 s, au milieu de la fourchette reelle.
+      const dureeMin = 48 * this._echelleArret;
       if (this.timerPhase < dureeMin) return;
       // Comme à la mêlée (cf. _tickMelee, case FORMATION) : l'arbitre n'autorise
       // le lancer que lorsque les avants des deux équipes sont réellement
