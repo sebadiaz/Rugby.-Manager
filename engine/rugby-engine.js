@@ -178,10 +178,14 @@
       profondeurArriereJeu: 18,
       profondeurArriereMelee: 20,
       reculRuck: 3,
-      // Retenu par balayage : 2,5 s de mise en route de la montée par temps de
-      // jeu — le porteur lancé court 5-8 m avant le contact comme en vrai, le
-      // score remonte au niveau réel (~46) et les volumes baissent de ~40 %.
-      rampeMontee: 2.5,
+      // 6,5 s. Le réglage précédent (2,5 s) datait d'un moteur où les joueurs
+      // atteignaient leur vitesse maximale instantanément : la ligne était déjà
+      // relancée avant même que le ballon ne sorte. Avec l'inertie de course
+      // (cf. ACCELERATION), une ligne qui se relève d'un regroupement, se
+      // recompte et se réaligne met réellement plusieurs secondes à repartir à
+      // pleine vitesse — et c'est ce temps qui donne au porteur lancé l'espace
+      // de courir avant le contact.
+      rampeMontee: 6.5,
     },
     // Profil des durées de recyclage de ruck : liste de paliers
     // [part, minimum(s), étendue(s)] — la part est la fraction des rucks tirée
@@ -374,6 +378,21 @@
   const ACCELERATION = 2.0; // m/s²
   const DECELERATION = 5.0; // m/s²
 
+  // TEMPS DE PLAQUAGE (loi 14), en secondes : du contact au ballon disponible
+  // au sol. Le plaqueur tient le porteur, l'amene au sol ; le porteur se
+  // retourne et PRESENTE le ballon. Ce temps N'EST PAS du recyclage : la duree
+  // de ruck mesuree (World Rugby : ballon au sol -> ballon sorti, cf.
+  // cfg.ruck.profil et server/test-ruck.js) court a partir d'ici et n'est pas
+  // gonflee. Le moteur enchainait les deux dans le meme dixieme de seconde :
+  // l'horloge du regroupement demarrait alors que rien n'avait encore eu lieu,
+  // et le match jouait ~200 regroupements au lieu de 110-180.
+  // 0,6 s et pas davantage : mesure, au-dela la defense a le temps de se
+  // replacer PARFAITEMENT derriere chaque regroupement et le ballon se remet a
+  // RECULER d'un temps de jeu au suivant (-0,23 m a 1,3 s, +0,27 m a 0,6 s).
+  // Une partie du contact reel est d'ailleurs deja consommee avant : le
+  // plaquage se declenche quand le plaqueur est encore a 2,2 m du porteur.
+  const DUREE_PLAQUAGE = 0.6;
+
   function avancer(j, dx, dy, dt, vmax) {
     const d = Math.hypot(dx, dy);
     if (d < 0.01) return;
@@ -542,7 +561,16 @@
   //
   // Fonction PURE et exportée : même méthode qu'en P1-50b / P1-51, la règle se
   // vérifie directement au lieu d'être jugée sur une moyenne bruitée.
-  const GAIN_SERVICE_RAPIDE_RUCK = 0.9;
+  // Gain du service rapide, en secondes, ramene de 0,9 a 0,7 : un ballon
+  // genuinement LENT (regroupement dispute) ne peut pas etre sorti vite, meme
+  // par le meilleur demi de melee. A 0,9 la moitie des rucks tires « lents »
+  // (>= 6 s) repassaient sous les 6 s a la sortie : le ballon lent, qui fait
+  // respirer un match, ne representait plus que 5,9 % des regroupements joues
+  // contre ~10 % dans un vrai match (cf. server/test-ruck.js R6). Le plancher
+  // est 0,6 s : en deca, un ballon deja rapide (2,4 s) ne passerait plus sous
+  // le seuil de « defense pas replacee » et le service rapide ne servirait
+  // plus a rien (cf. server/test-ruck.js R2).
+  const GAIN_SERVICE_RAPIDE_RUCK = 0.7;
   function dureeSortieRuck(opts) {
     const o = opts || {};
     const cible = Math.max(0, Number(o.dureeCible) || 0);
@@ -798,6 +826,8 @@
       // visuel (la possession change tout de suite côté logique), null hors
       // passe. Cf. _lancerPasseVisuelle / getState.
       this.passeVisuelle = null;
+      // Temps de plaquage restant avant que l'horloge du ruck ne démarre (cf. DUREE_PLAQUAGE).
+      this.ruckPlaquage = 0;
       // Coups de pied au but (pénalité / transformation) : passe à true une fois
       // que TOUS les joueurs ont fini de se replacer. Tant que c'est false, la
       // frappe n'est pas armée (on ne peut pas botter tant que le replacement
@@ -1655,7 +1685,12 @@
         // désormais du FIXAGE/surnombre au large (cf. _tenterPasse), plus d'une
         // défense volontairement affaiblie. On peut donc remettre un taux de
         // plaquage réel tout en gardant un jeu au large qui perce.
-        const probaPlaquage = Math.max(0.80, Math.min(0.95, 0.88 + bonusFraicheur + (defenseurProche.plaquage - this.porteur.vitesse) / 250));
+        // Base ramenee de 0,88 a 0,855 : le taux de reussite mesure passe de
+        // 86,3 % a 84,2 %, dans la fourchette reelle (84-88 %). Chaque plaquage
+        // manque est une tentative de plaquage EN PLUS et un porteur qui
+        // continue : c'est ce qui remet le volume de plaquages du match dans sa
+        // fourchette maintenant que le nombre de regroupements est realiste.
+        const probaPlaquage = Math.max(0.80, Math.min(0.95, 0.855 + bonusFraicheur + (defenseurProche.plaquage - this.porteur.vitesse) / 250));
         if (this.rng() >= probaPlaquage) {
           // Plaquage manqué : le défenseur reste hors-jeu de contact un court
           // instant, le porteur poursuit sa course sans être inquiété par lui.
@@ -1837,7 +1872,7 @@
         // en maul) — la voie PRINCIPALE de formation reste la touche gagnée
         // dans les 22 m adverses (cf. _tickTouche).
         const zone0 = this._zoneTerrain(porteur);
-        const tauxMaul = (zone0 === 'OPP_22' || zone0 === 'CINQ_M') ? 0.05 : 0.012;
+        const tauxMaul = (zone0 === 'OPP_22' || zone0 === 'CINQ_M') ? 0.085 : 0.022; // taux PAR CONTACT, releve avec la baisse du nombre de contacts
         if (soutiens.length > 0 && this.rng() < tauxMaul && Referee.maulForme(porteur, defenseurProche, soutiens.length > 0)) {
           this._formerMaul(porteur, defenseurProche);
         } else {
@@ -1854,6 +1889,7 @@
           // vitesses de ruck du France-Irlande 2026 (cf. _tirerDureeRuck).
           this.ruckDureeCible = this._tirerDureeRuck(this.possession);
           this.ruckTempsSansSoutien = 0;
+          this.ruckPlaquage = DUREE_PLAQUAGE * this._echelleArret;
           this.phase = 'RUCK';
           this._receptionDirecte = false;
         }
@@ -2180,6 +2216,7 @@
             // Profil de durées configurable, cf. l'autre site de création de ruck.
             this.ruckDureeCible = this._tirerDureeRuck(this.possession);
             this.ruckTempsSansSoutien = 0;
+            this.ruckPlaquage = DUREE_PLAQUAGE * this._echelleArret;
             this.ruckDominant = false; // plaquage de sauvetage in extremis, pas un ballon sur l'avancée
             this.phase = 'RUCK';
             this._receptionDirecte = false;
@@ -2946,8 +2983,8 @@
       // 0,038/0,020) quand le nombre de regroupements par match a baisse vers
       // le reel, pour garder le total de penalites du match dans sa fourchette
       // (16-28, cf. CLAUDE.md Role 6).
-      const pDefense = 0.038 * facteurDiscipline(equipeDef);
-      const pAttaque = 0.020 * facteurDiscipline(equipeAtt);
+      const pDefense = 0.046 * facteurDiscipline(equipeDef);
+      const pAttaque = 0.024 * facteurDiscipline(equipeAtt);
       const r = this.rng();
       if (r < pDefense) {
         return { camp: 'DEFENSE', motif: MOTIFS_DEFENSE[Math.floor(this.rng() * MOTIFS_DEFENSE.length)] };
@@ -2959,7 +2996,12 @@
     }
 
     _tickRuck(dt) {
-      this.timerPhase += dt;
+      // Le porteur est tenu et amene au sol : l'horloge du RECYCLAGE n'a pas
+      // encore demarre (cf. DUREE_PLAQUAGE). Les soutiens arrivent et la
+      // defense se replie pendant ce temps — c'est le tick normal ci-dessous,
+      // seule l'horloge attend.
+      if (this.ruckPlaquage > 0) this.ruckPlaquage -= dt;
+      else this.timerPhase += dt;
       const pt = this.ruckPoint;
       const sensAttaque = this.porteur.sensAttaque;
       // Loi 14/15 : le joueur PLAQUÉ (porteur actuel) est au sol et NE PEUT PAS
@@ -3362,7 +3404,7 @@
         // la défense a gagné le contact, elle conteste avec bien plus de chances
         // de gratter le ballon. Bonus consommé une seule fois (ce ruck).
         const bonusDominant = this.ruckDominant ? 0.035 : 0;
-        const probaTurnover = Math.max(0.012, Math.min(0.20, 0.012 + (forceDef - forceAtt) / 1600 + bonusIsolement + bonusDominant));
+        const probaTurnover = Math.max(0.030, Math.min(0.20, 0.030 + (forceDef - forceAtt) / 1600 + bonusIsolement + bonusDominant));
         const turnover = this.rng() < probaTurnover;
         this.ruckDominant = false;
         if (turnover) {

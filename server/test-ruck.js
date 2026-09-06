@@ -60,16 +60,30 @@ function test(nom, fn) {
   catch (e) { process.exitCode = 1; console.error(`FAIL ${nom}`); console.error('     ' + e.message); }
 }
 
-// Instrumentation : durée RÉELLE de chaque ruck (entrée en phase RUCK jusqu'à
-// la sortie) confrontée à la durée CIBLE tirée du profil.
+// Instrumentation : durée RÉELLE de RECYCLAGE de chaque ruck, confrontée à la
+// durée CIBLE tirée du profil.
+//
+// Le chronomètre démarre quand le ballon est DISPONIBLE AU SOL, pas à l'entrée
+// en phase RUCK : entre les deux il y a le TEMPS DE PLAQUAGE (loi 14, cf.
+// DUREE_PLAQUAGE dans le moteur) — le plaqueur tient le porteur, l'amène au
+// sol, le porteur présente le ballon. C'est exactement la convention de la
+// mesure réelle que le profil reproduit (World Rugby : ballon au sol -> ballon
+// sorti, cf. DEFAULT_CONFIG.ruck). Mesurer depuis l'entrée en phase ajouterait
+// ce temps de plaquage à chaque ruck et décalerait toute la distribution.
 function mesurerRucks(graine) {
   const m = new RugbyEngine.MatchEngine(graine, 4800, null);
   const rucks = [];
-  let enRuck = false, t0 = 0, cible = 0, n = 0;
+  let enRuck = false, t0 = null, cible = 0, n = 0;
   while (m.getState().phase !== 'TERMINE' && n < 400000) {
     m.tick(1 / 20); n++;
-    if (m.phase === 'RUCK' && !enRuck) { enRuck = true; t0 = m.tempsMatch; cible = m.ruckDureeCible; }
-    else if (m.phase !== 'RUCK' && enRuck) { enRuck = false; rucks.push({ reelle: m.tempsMatch - t0, cible }); }
+    if (m.phase === 'RUCK') {
+      if (!enRuck) { enRuck = true; t0 = null; cible = m.ruckDureeCible; }
+      // Le recyclage commence quand le temps de plaquage est écoulé.
+      if (t0 === null && !(m.ruckPlaquage > 0)) t0 = m.tempsMatch;
+    } else if (enRuck) {
+      enRuck = false;
+      if (t0 !== null) rucks.push({ reelle: m.tempsMatch - t0, cible });
+    }
   }
   return { rucks, stats: m.getState().stats, score: m.getState().score };
 }
