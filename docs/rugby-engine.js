@@ -332,6 +332,10 @@
       // quoi le défenseur qui vient de sortir du ruck, resté au même endroit, plaque
       // le porteur suivant dès la première fraction de seconde de jeu courant.
       ruckRecovery: 0,
+      // Hors-jeu de coup de pied (loi 10) : secondes restantes, et ligne du coup
+      // de pied a repasser pour etre remis en jeu (cf. _replierHorsJeuKick).
+      horsJeuKick: 0,
+      horsJeuKickX: null,
       // Temps restant au "bin" après un carton jaune : tant qu'il est > 0, ce
       // joueur est exclu de attaquants()/defenseurs() (son équipe joue à 14),
       // conformément à la sanction réelle plutôt qu'un carton purement
@@ -392,6 +396,12 @@
   // Une partie du contact reel est d'ailleurs deja consommee avant : le
   // plaquage se declenche quand le plaqueur est encore a 2,2 m du porteur.
   const DUREE_PLAQUAGE = 0.6;
+
+  // Duree maximale (secondes) pendant laquelle un chasseur reste HORS-JEU
+  // apres un coup de pied (loi 10). Il redevient jouable des qu'il est repasse
+  // derriere la ligne du coup de pied ; ce plafond evite qu'un joueur reste
+  // bloque hors-jeu si le jeu s'est deplace ailleurs entre-temps.
+  const DUREE_HORS_JEU_KICK = 6;
 
   function avancer(j, dx, dy, dt, vmax) {
     const d = Math.hypot(dx, dy);
@@ -1601,6 +1611,39 @@
       }
     }
 
+    // Qui court REELLEMENT vers le ballon apres un coup de pied. Dans un vrai
+    // match, une equipe n'envoie pas quinze joueurs sur le point de chute :
+    // deux ou trois CHASSEURS montent (l'aile et le centre du cote du coup de
+    // pied), et cote receveur l'arriere et un soutien vont au ballon — tout le
+    // reste tient sa ligne et se replace pour la suite. Le moteur faisait
+    // converger les TRENTE joueurs : le receveur etait etouffe (un adversaire a
+    // moins de 3 m sur 20 % des receptions) et aucune relance n'etait possible.
+    _groupeVersBallon(equipe, cibleX, cibleY, nb) {
+      return new Set(
+        equipe.filter((j) => j.auSol === 0 && j.sinBin <= 0 && !(j.horsJeuKick > 0))
+          .sort((a, b) => distance(a, { x: cibleX, y: cibleY }) - distance(b, { x: cibleX, y: cibleY }))
+          .slice(0, nb)
+      );
+    }
+
+    // Placement d'un joueur qui NE va PAS au ballon : il tient son couloir et
+    // se replace en profondeur par rapport au point de chute, pret pour la
+    // phase suivante, au lieu de courir sur le ballon.
+    _tenirLigneCoupDePied(j, cibleX, dt) {
+      const cibleXj = cibleX - j.sensAttaque * 8;
+      avancer(j, cibleXj - j.x, j.channelY - j.y, dt, vitesseMs(j) * 0.7);
+    }
+
+    // Repli d'un chasseur HORS-JEU (loi 10) : il court vers la ligne du coup de
+    // pied et redevient jouable des qu'il l'a repassee.
+    _replierHorsJeuKick(j, dt) {
+      const ligne = j.horsJeuKickX;
+      if (ligne == null) { j.horsJeuKick = 0; return; }
+      const sens = j.sensAttaque;
+      if ((j.x - ligne) * sens <= 0) { j.horsJeuKick = 0; return; }
+      avancer(j, ligne - j.x, 0, dt, vitesseMs(j));
+    }
+
     // Zone du terrain du point de vue de l'équipe en possession (distance à
     // FRANCHIR pour aplatir) : détermine le registre tactique réel (kick très
     // fréquent dans son 22, jeu au sol/maul tout près de la ligne adverse...)
@@ -1623,7 +1666,9 @@
       // mécaniquement le défenseur le plus proche et plaque dès la fraction de
       // seconde suivante. S'ils sont tous en récupération (cas rare), on retombe
       // sur la liste complète plutôt que de ne désigner aucun plaqueur.
-      const defDisponibles = def.filter(j => j.ruckRecovery <= 0);
+      // Un defenseur HORS-JEU sur coup de pied (loi 10) ne peut pas plaquer : il
+      // doit d'abord se remettre en jeu (cf. _replierHorsJeuKick).
+      const defDisponibles = def.filter(j => j.ruckRecovery <= 0 && !(j.horsJeuKick > 0));
       const { joueur: defenseurProche, distance: distDef } = joueurLePlusProche(
         defDisponibles.length > 0 ? defDisponibles : def, porteur.x, porteur.y
       );
@@ -1751,14 +1796,14 @@
         // plus, un porteur très sûr (90) presque jamais.
         const facteurDecision = typeof porteur.decision === 'number'
           ? Math.max(0.5, Math.min(1.6, 1 + (60 - porteur.decision) / 75)) : 1;
-        // Taux releve de 0,008 a 0,034 : l'EN-AVANT AU CONTACT est la faute de
+        // Taux releve de 0,008 a 0,040 : l'EN-AVANT AU CONTACT est la faute de
         // main normale d'un match de rugby (10 a 15 fautes de main par match,
         // cf. CLAUDE.md Role 6). A 0,008 le moteur n'en produisait que 2,6 et
         // compensait par 12 passes en avant, ce qui n'existe pas en vrai. Le
         // taux est PAR PLAQUAGE : il a ete remonte une seconde fois (0,028 ->
         // 0,034) quand le nombre de plaquages par match a baisse vers le reel,
         // pour garder le total de fautes de main dans sa fourchette.
-        if (this.rng() < 0.034 * facteurDecision) {
+        if (this.rng() < 0.040 * facteurDecision) {
           this.stats[this.possession].knockOns++;
           this.log('MELEE_ENAVANT', this.possession, `En-avant au contact, equipe ${this.possession} - melee adverse`);
           this._accorderMelee(this.possession, porteur);
@@ -2106,6 +2151,9 @@
       const rampeDef = cfgDef.rampeMontee || 0;
       const fRampe = rampeDef > 0 ? Math.min(1, 0.35 + this.timerPhase / rampeDef) : 1;
       for (const j of def) {
+        // HORS-JEU sur coup de pied (loi 10) : il se retire vers la ligne du
+        // coup de pied au lieu de defendre, jusqu'a etre remis en jeu.
+        if (j.horsJeuKick > 0) { this._replierHorsJeuKick(j, dt); continue; }
         // Défenseur FIXÉ (battu par une passe, cf. _tenterPasse) : il est hors du
         // coup un court instant, il ne monte plus couvrir le receveur — c'est ce
         // qui laisse le SURNOMBRE (et l'espace) au large.
@@ -2787,6 +2835,20 @@
 
       this.typeCoupDePiedJeu = type;
       this.equipeCoupDePiedJeu = equipe;
+      // LOI 10 — HORS-JEU SUR COUP DE PIED. Seuls les joueurs situes DERRIERE
+      // le botteur au moment ou il frappe peuvent chasser. Tous ceux qui sont
+      // devant sont HORS-JEU : ils doivent se retirer vers la ligne du coup de
+      // pied et ne peuvent pas jouer le ballon ni plaquer tant qu'ils ne sont
+      // pas remis en jeu. Le moteur faisait courir les QUINZE joueurs de
+      // l'equipe botteuse vers le point de chute : mesure, 12,9 d'entre eux
+      // etaient hors-jeu, et le receveur etait etouffe (un adversaire a moins
+      // de 3 m sur 20 % des receptions, a moins de 6 m sur 47 %). Une relance
+      // apres coup de pied etait donc impossible.
+      for (const j of (equipe === 'A' ? this.equipeA : this.equipeB)) {
+        if (j === porteur) { j.horsJeuKick = 0; continue; }
+        j.horsJeuKick = (j.x - porteur.x) * sens > 1 ? DUREE_HORS_JEU_KICK : 0;
+        j.horsJeuKickX = porteur.x;
+      }
       this.xCoupDePiedJeu = porteur.x;
       this.yCoupDePiedJeu = porteur.y;
       this.cibleCoupDePiedX = cibleX;
@@ -2820,7 +2882,13 @@
       const equipeKick = this.equipeCoupDePiedJeu;
       const chasseurs = equipeKick === 'A' ? this.equipeA : this.equipeB;
       const receveurs = equipeKick === 'A' ? this.equipeB : this.equipeA;
+      const versBallonVol = new Set([
+        ...this._groupeVersBallon(chasseurs, this.cibleCoupDePiedX, this.cibleCoupDePiedY, 3),
+        ...this._groupeVersBallon(receveurs, this.cibleCoupDePiedX, this.cibleCoupDePiedY, 2),
+      ]);
       for (const j of [...chasseurs, ...receveurs]) {
+        if (j.horsJeuKick > 0) { this._replierHorsJeuKick(j, dt); continue; }
+        if (!versBallonVol.has(j)) { this._tenirLigneCoupDePied(j, this.cibleCoupDePiedX, dt); continue; }
         avancer(j, this.ballonVolX - j.x, this.ballonVolY - j.y, dt, vitesseMs(j) * 0.85);
       }
 
@@ -2868,12 +2936,21 @@
       const receveurs = equipeKick === 'A' ? this.equipeB : this.equipeA;
       const cibleX = this.ballonVolX, cibleY = this.ballonVolY;
 
+      const versBallon = new Set([
+        ...this._groupeVersBallon(chasseurs, cibleX, cibleY, 3),
+        ...this._groupeVersBallon(receveurs, cibleX, cibleY, 2),
+      ]);
       for (const j of [...chasseurs, ...receveurs]) {
+        if (j.horsJeuKick > 0) { this._replierHorsJeuKick(j, dt); continue; }
+        if (!versBallon.has(j)) { this._tenirLigneCoupDePied(j, cibleX, dt); continue; }
         avancer(j, cibleX - j.x, cibleY - j.y, dt, vitesseMs(j) * 0.85);
       }
 
       const RAYON_RECEPTION = 1.3;
-      const { joueur: chasseurProche, distance: dChasseur } = joueurLePlusProche(chasseurs, cibleX, cibleY);
+      // Un chasseur HORS-JEU ne peut pas jouer le ballon (loi 10) : il ne
+      // compte pas dans la course a la reception.
+      const chasseursOnside = chasseurs.filter((j) => !(j.horsJeuKick > 0));
+      const { joueur: chasseurProche, distance: dChasseur } = joueurLePlusProche(chasseursOnside.length ? chasseursOnside : chasseurs, cibleX, cibleY);
       const { joueur: receveurProche, distance: dReceveur } = joueurLePlusProche(receveurs, cibleX, cibleY);
       const chasseurOk = dChasseur <= RAYON_RECEPTION;
       const receveurOk = dReceveur <= RAYON_RECEPTION;
@@ -4025,7 +4102,7 @@
           // en quatre temps). Porte a 34 s : c'est le plus gros poste de temps
           // mort du rugby, et le raccourcir revenait a jouer 1,5 fois trop de
           // possessions.
-          if (m.timer >= dur(40) && (pret || m.timer >= m.capFormation + dur(6))) {
+          if (m.timer >= dur(44) && (pret || m.timer >= m.capFormation + dur(6))) {
             m.etat = E.CROUCH; m.timer = 0;
             this.log('MELEE_CROUCH', m.equipeIntroduction, 'Arbitre : "Crouch" - les premieres lignes se baissent');
           }
@@ -4725,9 +4802,9 @@
       // ballon en jeu de 59,9 min à une valeur réaliste sur 80 minutes.
       // 32 s mesurees -> touche complete a ~30 s, alors qu'une vraie touche
       // prend 40 a 60 s (les avants reviennent en marchant, l'alignement se
-      // forme, le talonneur attend l'annonce). Portee a 48 s : la touche
-      // complete dure alors ~46 s, au milieu de la fourchette reelle.
-      const dureeMin = 48 * this._echelleArret;
+      // forme, le talonneur attend l'annonce). Portee a 49 s : la touche
+      // complete dure alors ~47 s, au milieu de la fourchette reelle.
+      const dureeMin = 49 * this._echelleArret;
       if (this.timerPhase < dureeMin) return;
       // Comme à la mêlée (cf. _tickMelee, case FORMATION) : l'arbitre n'autorise
       // le lancer que lorsque les avants des deux équipes sont réellement
@@ -5125,6 +5202,10 @@
       for (const j of [...this.equipeA, ...this.equipeB]) {
         if (!j._aBouge) j.vitesseCourante = Math.max(0, (j.vitesseCourante || 0) - DECELERATION * dt);
         j._aBouge = false;
+        // Hors-jeu de coup de pied (loi 10) : plafond de securite, cf.
+        // DUREE_HORS_JEU_KICK. Le joueur est normalement remis en jeu bien
+        // avant, des qu'il repasse derriere la ligne du coup de pied.
+        if (j.horsJeuKick > 0) j.horsJeuKick = Math.max(0, j.horsJeuKick - dt);
       }
       if (this.phase === 'TERMINE') return;
       // Zone de regroupement infranchissable de ce tick (mêlée/ruck/maul) : les

@@ -636,6 +636,77 @@ test('loi 14 : du plaquage au ballon sorti, un regroupement dure plus de 4,5 s',
     `un regroupement dure ${moyenne.toFixed(2)} s du plaquage au ballon sorti : le plaquage lui-meme ne coute rien (cible reelle 5-6 s)`);
 });
 
+// --- Loi 10 : HORS-JEU SUR COUP DE PIED ------------------------------------
+// Au rugby, seuls les joueurs situes DERRIERE le botteur au moment du coup de
+// pied peuvent chasser. Tous ceux qui sont devant sont HORS-JEU : ils doivent
+// se retirer et ne peuvent ni jouer le ballon ni plaquer tant qu'ils ne sont
+// pas remis en jeu (loi 10.1). Et une equipe n'envoie de toute facon pas
+// quinze joueurs sur le point de chute : deux ou trois chasseurs montent, le
+// reste tient sa ligne.
+//
+// Cette regle n'existait PAS dans le moteur. Mesure : a chaque coup de pied,
+// 12,9 joueurs de l'equipe botteuse se trouvaient devant le botteur — tous
+// hors-jeu — et les TRENTE joueurs des deux equipes couraient ensemble vers le
+// point de chute. C'est un des hors-jeu que CLAUDE.md (role 5) demande
+// explicitement de faire exister.
+test('loi 10 : les joueurs devant le botteur sont hors-jeu et ne peuvent pas plaquer', () => {
+  let coupsDePied = 0, marques = 0, plaquagesHorsJeu = 0, convergents = 0, receptions = 0;
+  for (const seed of [1, 2, 3, 4]) {
+    const m = new MatchEngine(seed, 4800);
+    for (let t = 0; t < 4800; t += 0.2) {
+      const phaseAvant = m.phase;
+      const positions = new Map();
+      for (const j of [...m.equipeA, ...m.equipeB]) positions.set(j, { x: j.x, horsJeu: j.horsJeuKick > 0 });
+      const botteur = m.porteur;
+      const avantTk = m.stats.A.tacklesAttempted + m.stats.B.tacklesAttempted;
+      m.tick(0.2);
+      // Coup de pied qui vient d'etre frappe : on compte qui est devant le
+      // botteur, et on verifie que ceux-la sont bien marques hors-jeu.
+      if (phaseAvant !== 'COUP_DE_PIED_JEU' && m.phase === 'COUP_DE_PIED_JEU' && botteur) {
+        const equipe = botteur.team === 'A' ? m.equipeA : m.equipeB;
+        const devant = equipe.filter((j) => j !== botteur && (j.x - botteur.x) * botteur.sensAttaque > 1);
+        if (devant.length > 0) {
+          coupsDePied++;
+          if (devant.every((j) => j.horsJeuKick > 0)) marques++;
+        }
+      }
+      // Aucun plaquage ne doit etre tente par un joueur hors-jeu.
+      const apresTk = m.stats.A.tacklesAttempted + m.stats.B.tacklesAttempted;
+      if (apresTk > avantTk) {
+        for (const [j, p] of positions) if (p.horsJeu && j.horsJeuKick > 0 && j.team !== m.possession) {
+          // le plaqueur potentiel est dans le camp qui defend ; on ne peut pas
+          // l'identifier exactement, on borne par le nombre de hors-jeu proches
+          // du porteur, qui doit rester nul.
+          if (m.porteur && Math.hypot(j.x - m.porteur.x, j.y - m.porteur.y) < 2.2) plaquagesHorsJeu++;
+        }
+      }
+      // Combien de joueurs sont masses autour du ballon AU MOMENT de la
+      // reception : c'est la mesure qui compte pour le joueur, celle qui dit
+      // si une relance est possible ou si le ballon tombe dans une melee
+      // ouverte de vingt joueurs.
+      if (phaseAvant === 'COUP_DE_PIED_JEU' && m.phase === 'PORTE' && m.porteur) {
+        let n = 0;
+        for (const j of [...m.equipeA, ...m.equipeB]) {
+          if (Math.hypot(j.x - m.porteur.x, j.y - m.porteur.y) < 8) n++;
+        }
+        convergents += n; receptions++;
+      }
+    }
+  }
+  assert.ok(coupsDePied > 40, `echantillon trop petit (${coupsDePied})`);
+  assert.strictEqual(marques, coupsDePied,
+    `tout joueur devant le botteur doit etre marque hors-jeu (${marques}/${coupsDePied})`);
+  assert.strictEqual(plaquagesHorsJeu, 0,
+    `un joueur hors-jeu ne doit jamais se trouver en position de plaquer (${plaquagesHorsJeu} cas)`);
+  // Mesure : 8,6 joueurs masses a moins de 8 m du receveur avant le correctif
+  // (mediane 6, jusqu'a 29), 4,9 apres (mediane 4). Un coup de pied n'est plus
+  // une melee ouverte de vingt joueurs : le receveur peut relancer.
+  assert.ok(receptions > 100, `echantillon de receptions trop petit (${receptions})`);
+  const masse = convergents / receptions;
+  assert.ok(masse <= 6,
+    `trop de joueurs masses autour du receveur d'un coup de pied (${masse.toFixed(1)} a moins de 8 m)`);
+});
+
 console.log(`\n${nbTests} test(s) exécuté(s).`);
 if (process.exitCode) {
   console.error('ECHEC : au moins un invariant violé.');
