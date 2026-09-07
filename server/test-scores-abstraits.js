@@ -182,7 +182,7 @@ test('S10 — sur une saison entière, le classement reste crédible', () => {
     `points marqués par équipe et par match : ${parMatch.toFixed(1)} (attendu 15-30)`);
 });
 
-test('S11 — le barème abstrait est ANCRÉ sur le moteur, pas deviné', () => {
+test('S11 — le barème abstrait reste sur son ancrage ENREGISTRÉ (cf. S12 pour le moteur vivant)', () => {
   // Le club du joueur dispute ses matchs avec le vrai moteur ; ses rivaux
   // sont résolus en abstrait. Si les deux barèmes divergent, la colonne
   // « points pour » du classement compare des choses incomparables — mesuré
@@ -191,6 +191,14 @@ test('S11 — le barème abstrait est ANCRÉ sur le moteur, pas deviné', () => 
   //
   // Repères MESURÉS sur 500 matchs du moteur (server/test-stats-matchs.js) :
   // 43,3 points au total, 5,4 essais.
+  //
+  // ATTENTION — ce test ne lance PAS le moteur : il compare le barème à ces
+  // deux CONSTANTES, c'est-à-dire à une mesure figée. Il ne peut donc pas
+  // voir le moteur dériver. C'est exactement ce qui s'est produit : le moteur
+  // est descendu à 33 points par match et S11 est resté VERT tout du long,
+  // alors que le joueur marquait dix points de moins que les rencontres IA de
+  // son propre championnat. La comparaison avec le moteur RÉELLEMENT en place
+  // est faite par S12, qui le fait tourner.
   const MOTEUR_POINTS = 43.3;
   const MOTEUR_ESSAIS = 5.4;
   // Le milieu de la pyramide est le point de comparaison honnête : le moteur
@@ -207,6 +215,56 @@ test('S11 — le barème abstrait est ANCRÉ sur le moteur, pas deviné', () => 
   const parEssai = points / essais;
   assert.ok(parEssai >= 6.5 && parEssai <= 9.5,
     `${parEssai.toFixed(1)} points par essai (attendu 6,5-9,5)`);
+});
+
+// S12 — LE MOTEUR ET LE BAREME DOIVENT RACONTER LA MEME HISTOIRE.
+//
+// Le joueur dispute ses propres matchs avec le MOTEUR ; tout le reste du
+// classement qu'il lit (les 156 rencontres IA-IA de son championnat, les deux
+// autres divisions, les coupes, les 12 pays) est ecrit par ce BAREME. Si les
+// deux divergent, le joueur voit une incoherence permanente : « je marque
+// toujours moins (ou plus) que tous les autres clubs ».
+//
+// C'est exactement ce qui s'etait produit : le bareme avait ete cale sur un
+// moteur qui rendait 43,3 points par match (cf. POINTS_PAR_ESSAI, mesure
+// inscrite dans club-pyramide-france.js), puis le moteur a derive jusqu'a
+// 31,7 points — dix points sous le classement — sans qu'aucun test ne le
+// signale, parce que S1 a S11 verifient le bareme TOUT SEUL.
+//
+// Ce test compare les deux. Il tourne sur des matchs complets (80 min) avec la
+// configuration par defaut du moteur, c'est-a-dire deux equipes equilibrees :
+// on le confronte donc aux paliers du milieu de la pyramide.
+test('S12 — le MOTEUR et le BAREME abstrait produisent des matchs comparables', () => {
+  const { MatchEngine } = global.window.RugbyEngine;
+  const GRAINES = 8, DUREE = 4800, DT = 0.2;
+  let pointsMoteur = 0, essaisMoteur = 0;
+  for (let seed = 1; seed <= GRAINES; seed++) {
+    const m = new MatchEngine(seed, DUREE);
+    for (let t = 0; t < DUREE; t += DT) m.tick(DT);
+    const e = m.getState();
+    pointsMoteur += e.score.A + e.score.B;
+    essaisMoteur += e.stats.A.essais + e.stats.B.essais;
+  }
+  pointsMoteur /= GRAINES; essaisMoteur /= GRAINES;
+
+  // Fourchette du BAREME sur les paliers du milieu de pyramide (equipes
+  // equilibrees, comme la configuration par defaut du moteur).
+  const milieu = PALIERS.filter((p) => p.a >= 0.40);
+  let bas = Infinity, haut = -Infinity, basEssais = Infinity, hautEssais = -Infinity;
+  for (const p of milieu) {
+    const ech = echantillon(RMClub.simulerResultatAbstrait, p.a, p.b, 3000);
+    const mp = moyenne(ech.map((x) => x.scoreA + x.scoreB));
+    const me = moyenne(ech.map((x) => x.essaisA + x.essaisB));
+    bas = Math.min(bas, mp); haut = Math.max(haut, mp);
+    basEssais = Math.min(basEssais, me); hautEssais = Math.max(hautEssais, me);
+  }
+  // Tolerance de 15 % : les deux modeles n'ont pas a coincider au point pres,
+  // mais un ecart plus large se VOIT au classement.
+  const marge = 0.15;
+  assert.ok(pointsMoteur >= bas * (1 - marge) && pointsMoteur <= haut * (1 + marge),
+    `le moteur rend ${pointsMoteur.toFixed(1)} points par match, le bareme ${bas.toFixed(1)}-${haut.toFixed(1)} : le joueur verrait une incoherence au classement`);
+  assert.ok(essaisMoteur >= basEssais * (1 - marge) && essaisMoteur <= hautEssais * (1 + marge),
+    `le moteur rend ${essaisMoteur.toFixed(1)} essais par match, le bareme ${basEssais.toFixed(1)}-${hautEssais.toFixed(1)}`);
 });
 
 console.log(`\n${nbTests} test(s) exécuté(s).`);
