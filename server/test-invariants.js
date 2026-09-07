@@ -4,7 +4,7 @@
 'use strict';
 
 const assert = require('assert');
-const { MatchEngine, LONGUEUR, LARGEUR } = require('../engine/rugby-engine.js');
+const { MatchEngine, Referee, LONGUEUR, LARGEUR } = require('../engine/rugby-engine.js');
 
 let nbTests = 0;
 function test(nom, fn) {
@@ -464,6 +464,33 @@ test('le jeu courant RESPIRE : une sequence ballon en main dure en moyenne plus 
     `une sequence de jeu courant dure en moyenne ${moyenne.toFixed(2)} s : le contact tombe trop vite apres la sortie du ballon (cible reelle ~7 s)`);
 });
 
+
+// --- Loi 11 : L'ARBITRE SAIT RECONNAITRE UNE PASSE EN AVANT ----------------
+// Enonce direct de la loi, pas une statistique de match. Sans ce test, la
+// sanction de la passe en avant pouvait etre PUREMENT ET SIMPLEMENT
+// SUPPRIMEE du moteur sans qu'aucune suite ne devienne rouge : verifie par
+// mutation (Referee.passeEnAvant remplace par `return false`), seul un test
+// de rythme sans rapport reagissait, par ricochet. Le test « loi 11 » qui
+// suit ne posait, lui, qu'une borne HAUTE — satisfaite a zero passe en avant.
+// CLAUDE.md (role 5) est explicite : « refuser le patch si les passes vers
+// l'avant ne sont jamais sanctionnees ».
+test('loi 11 : l arbitre reconnait une passe en avant, dans les deux sens de jeu', () => {
+  assert.strictEqual(typeof Referee.passeEnAvant, 'function',
+    'le moteur doit exposer la regle de la passe en avant');
+  // Equipe qui attaque vers les x croissants.
+  assert.strictEqual(Referee.passeEnAvant(1, { x: 50, y: 30 }, { x: 53, y: 34 }), true,
+    'une passe a un partenaire situe 3 m DEVANT est en avant');
+  assert.strictEqual(Referee.passeEnAvant(1, { x: 50, y: 30 }, { x: 47, y: 34 }), false,
+    'une passe a un partenaire situe 3 m DERRIERE est legale');
+  assert.strictEqual(Referee.passeEnAvant(1, { x: 50, y: 30 }, { x: 50, y: 38 }), false,
+    'une passe strictement laterale est legale');
+  // Equipe qui attaque vers les x decroissants : la regle doit s'inverser.
+  assert.strictEqual(Referee.passeEnAvant(-1, { x: 50, y: 30 }, { x: 47, y: 34 }), true,
+    'dans l autre sens de jeu, 3 m vers les x decroissants est EN AVANT');
+  assert.strictEqual(Referee.passeEnAvant(-1, { x: 50, y: 30 }, { x: 53, y: 34 }), false,
+    'dans l autre sens de jeu, 3 m vers les x croissants est legal');
+});
+
 // --- Lois 11/12 : la faute de main REALISTE --------------------------------
 // Mesure sur 10 matchs avant correction : 11,2 passes en AVANT par match pour
 // seulement 2,6 en-avants au contact et 2,6 passes lachees. C'est l'inverse
@@ -487,6 +514,16 @@ test('loi 11 : un joueur sans solution legale GARDE le ballon (pas 11 passes en 
   }
   const avantParMatch = passesAvant / GRAINES.length;
   const mainParMatch = fautesDeMain / GRAINES.length;
+  // BORNE HAUTE **ET** BASSE. La borne haute seule etait satisfaite a zero :
+  // supprimer la sanction rendait ce test plus vert que jamais.
+  // La borne basse est fixee a ce que le moteur produit REELLEMENT (0,4 par
+  // match) et non a la valeur reelle (1 a 3) : monter le taux de maladresse
+  // pour s'en approcher remplace des touches par des melees et fait retomber
+  // le moteur de 13/14 a 11/14 categories realistes (mesure). L'ecart est
+  // assume et documente dans le moteur ; ce que ce test garde, c'est que la
+  // sanction ne DISPARAISSE pas.
+  assert.ok(avantParMatch >= 0.2,
+    `une passe en avant doit encore etre SANCTIONNEE (mesuré ${avantParMatch.toFixed(1)} par match)`);
   assert.ok(avantParMatch <= 4,
     `une passe en avant reste une FAUTE RARE (mesuré ${avantParMatch.toFixed(1)} par match)`);
   assert.ok(mainParMatch >= 8,

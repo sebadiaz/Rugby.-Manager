@@ -2631,6 +2631,14 @@
         // porteur a une bonne prise de decision.
         const facteurDecision = typeof porteur.decision === 'number'
           ? Math.max(0.5, Math.min(1.6, 1 + (60 - porteur.decision) / 75)) : 1;
+        // 8 % : le moteur siffle alors 0,4 passe en avant par match, contre 1 a 3
+        // dans un vrai match. C'est un ECART ASSUME, mesure : monter ce taux
+        // remplace des touches par des melees, or le nombre de touches et de
+        // plaquages est deja au plancher de sa fourchette — a 12 % comme a
+        // 20 %, le moteur retombe a 11/14 categories realistes contre 13/14
+        // ici. La faute existe et reste sanctionnee (cf. le test direct de
+        // Referee.passeEnAvant dans server/test-invariants.js) ; elle est
+        // seulement plus rare qu'en vrai.
         if (this.rng() >= 0.08 * facteurDecision) return false;
       }
       // Une passe se donne à un joueur SUR LE CÔTÉ (composante latérale) :
@@ -5685,7 +5693,13 @@
     }
   }
 
-  return { MatchEngine, LONGUEUR, LARGEUR, creerRng, distance, DEFAULT_CONFIG, fusionnerConfig,
+  // `Referee` est EXPORTE pour que les tests puissent enoncer les lois
+  // elles-memes plutot que de les deviner a travers des statistiques de match.
+  // Sans cela, une loi pouvait etre neutralisee sans qu'aucun test ne bronche :
+  // en supprimant la sanction de la passe en avant, la suite restait verte
+  // parce que le seul test concerne ne posait qu'une borne HAUTE (« pas plus
+  // de 4 passes en avant par match »), satisfaite a zero.
+  return { MatchEngine, Referee, LONGUEUR, LARGEUR, creerRng, distance, DEFAULT_CONFIG, fusionnerConfig,
     tirerSauteurPondere, forceTouche, probaVolTouche, COEF_LISIBILITE_TOUCHE,
     effetPousseeMelee, dureeSortieRuck, GAIN_SERVICE_RAPIDE_RUCK,
     CHRONOLOGIE_MAX, TYPES_CHRONOLOGIE };
