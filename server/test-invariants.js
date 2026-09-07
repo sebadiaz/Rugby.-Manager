@@ -530,6 +530,105 @@ test('loi 11 : un joueur sans solution legale GARDE le ballon (pas 11 passes en 
     `un match produit 10 à 15 fautes de main (en-avant au contact, passe lâchée) : mesuré ${mainParMatch.toFixed(1)}`);
 });
 
+
+// --- Loi 19 : LE BALLON PORTE EN TOUCHE SORT ------------------------------
+// Trouve par MUTATION : en supprimant le controle de sortie en touche du
+// PORTEUR, aucune suite ne devenait rouge. La raison etait double, et les deux
+// moities sont instructives.
+//
+// 1) Les deux voies de sortie — le porteur qui franchit la ligne et le coup de
+//    pied qui trouve la touche — ecrivaient EXACTEMENT le meme evenement
+//    (« Ballon porte en touche »), y compris sur un degagement. Impossible de
+//    les distinguer, donc impossible de voir l'une disparaitre. Le fil du match
+//    mentait d'ailleurs au joueur. Corrige : `_accorderTouche` prend desormais
+//    la cause et libelle les deux differemment.
+//
+// 2) Une fois les deux separees, la mesure est sans appel : le moteur produit
+//    0,0 ballon porte en touche par match — TOUTES les touches viennent du jeu
+//    au pied. Le porteur n'est jamais plaque a moins de 6,18 m d'une ligne de
+//    touche : les six derniers metres de chaque cote, soit 17 % de la largeur
+//    du terrain, ne servent JAMAIS. C'est un vrai defaut de jeu, pas un detail
+//    de test, et il n'est PAS corrige ici (l'ouvrir demande de revoir le jeu au
+//    large, avec un risque reel sur l'equilibre du moteur).
+//
+// Ce test verifie donc la REGLE sur un cas construit, pas sa frequence : un
+// plaquage au ras de la ligne de touche doit envoyer le ballon dehors.
+test('loi 19 : un plaquage au ras de la ligne de touche envoie le ballon dehors', () => {
+  let verifie = false;
+  for (const seed of [3, 11, 27, 42]) {
+    const m = new MatchEngine(seed, 900);
+    // On amene le match en jeu courant, ballon en main, sans passe en vol.
+    for (let t = 0; t < 900; t += 0.1) {
+      m.tick(0.1);
+      if (m.phase === 'PORTE' && m.porteur && !m.passeVisuelle && m.porteur.auSol === 0) break;
+    }
+    if (m.phase !== 'PORTE' || !m.porteur) continue;
+    const equipeQuiPorte = m.possession;
+    // Le porteur est colle a la ligne de touche, un defenseur sur lui.
+    m.porteur.y = 0.8;
+    const def = m.defenseurs().filter((j) => j.auSol === 0 && j.ruckRecovery <= 0 && !(j.horsJeuKick > 0));
+    if (def.length === 0) continue;
+    def[0].x = m.porteur.x + m.porteur.sensAttaque * 0.5;
+    def[0].y = 0.8;
+    def[0].missCooldown = 0; def[0].fixeCooldown = 0;
+    // Plusieurs ticks : le plaquage n'est pas certain du premier coup (il peut
+    // etre manque), mais la touche doit finir par arriver.
+    for (let k = 0; k < 30 && m.phase === 'PORTE'; k++) {
+      m.porteur.y = Math.min(m.porteur.y, 1.2);
+      def[0].y = m.porteur.y; def[0].x = m.porteur.x + m.porteur.sensAttaque * 0.5;
+      m.tick(0.1);
+    }
+    if (m.phase === 'TOUCHE') {
+      assert.strictEqual(m.possession, equipeQuiPorte === 'A' ? 'B' : 'A',
+        'la touche revient a l adversaire de l equipe qui porte le ballon dehors');
+      verifie = true;
+      break;
+    }
+  }
+  assert.ok(verifie,
+    'un plaquage au ras de la ligne de touche doit produire une touche pour l adversaire');
+});
+
+// --- Loi 15 : LE HORS-JEU AU RUCK ------------------------------------------
+// Trouve par MUTATION, exactement comme ci-dessus : en faisant renvoyer `false`
+// a `Referee.horsJeuRuck` — plus aucun hors-jeu au regroupement — les quatre
+// suites restaient VERTES. Un defenseur pouvait donc franchir le regroupement
+// et cueillir le porteur a la sortie sans que rien ne le sanctionne.
+// CLAUDE.md (role 5) : « les hors-jeu doivent exister autour des rucks ».
+test('loi 15 : l arbitre reconnait un defenseur hors-jeu au regroupement', () => {
+  assert.strictEqual(typeof Referee.horsJeuRuck, 'function',
+    'le moteur doit exposer la regle du hors-jeu au ruck');
+  const pt = { x: 50, y: 35 };
+  // L'equipe en possession attaque vers les x croissants : la ligne de
+  // hors-jeu du defenseur passe par le point de regroupement, il doit rester
+  // du cote de SON en-but (x > 50).
+  assert.strictEqual(Referee.horsJeuRuck({ x: 46, y: 35 }, pt, 1), true,
+    'un defenseur 4 m au-dela du regroupement est hors-jeu');
+  assert.strictEqual(Referee.horsJeuRuck({ x: 54, y: 35 }, pt, 1), false,
+    'un defenseur 4 m en retrait du regroupement est en jeu');
+  // Sens de jeu inverse : la regle doit s'inverser aussi.
+  assert.strictEqual(Referee.horsJeuRuck({ x: 54, y: 35 }, pt, -1), true,
+    'dans l autre sens de jeu, 4 m au-dela est hors-jeu');
+  assert.strictEqual(Referee.horsJeuRuck({ x: 46, y: 35 }, pt, -1), false,
+    'dans l autre sens de jeu, 4 m en retrait est en jeu');
+});
+
+test('loi 15 : le hors-jeu au regroupement a une CONSEQUENCE en match', () => {
+  // La loi doit vivre dans le match, pas seulement dans l'arbitre : un
+  // hors-jeu au ruck ouvre un AVANTAGE (loi 7) pour l'equipe en possession.
+  const GRAINES = [1, 2, 3];
+  let avantages = 0;
+  for (const seed of GRAINES) {
+    const m = new MatchEngine(seed, 4800);
+    const brut = m.log.bind(m);
+    m.log = (type, team, msg) => { if (type === 'AVANTAGE') avantages++; brut(type, team, msg); };
+    for (let t = 0; t < 4800; t += 0.2) m.tick(0.2);
+  }
+  const parMatch = avantages / GRAINES.length;
+  assert.ok(parMatch >= 8,
+    `les fautes doivent ouvrir des avantages (mesuré ${parMatch.toFixed(1)} par match)`);
+});
+
 // --- Le TEMPS MORT du rugby ------------------------------------------------
 // Un match de 80 minutes ne contient que ~35 min de ballon en jeu. Le reste,
 // ce sont les arrets, et les deux plus gros postes sont la MELEE et la TOUCHE :

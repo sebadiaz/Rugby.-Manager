@@ -1307,8 +1307,19 @@
 
     // --- Touche : un ballon porté en touche donne une touche (lancer) à l'équipe
     // adverse de celle qui l'a porté en touche, à l'endroit où il a franchi la ligne. ---
-    _accorderTouche(equipeQuiSort, position) {
-      this.log('TOUCHE', equipeQuiSort, `Ballon porte en touche par l'equipe ${equipeQuiSort}, touche pour l'equipe adverse`);
+    // `cause` : 'PORTE' (le joueur a franchi la ligne de touche ballon en main,
+    // loi 19.1) ou 'COUP_DE_PIED' (le ballon a trouve la touche au pied). Les
+    // deux donnent une touche, mais ce ne sont PAS le meme fait de jeu : le fil
+    // du match annoncait « Ballon porte en touche » y compris sur un
+    // degagement, ce que le joueur lit comme une erreur. C'est aussi ce qui
+    // rendait la loi 19 intestable : les deux voies ecrivaient exactement le
+    // meme evenement, donc supprimer entierement la sortie du PORTEUR ne
+    // faisait bouger aucun compteur (verifie par mutation).
+    _accorderTouche(equipeQuiSort, position, cause) {
+      const message = cause === 'COUP_DE_PIED'
+        ? `Coup de pied de l'equipe ${equipeQuiSort} trouve la touche, lancer pour l'equipe adverse`
+        : `Ballon porte en touche par l'equipe ${equipeQuiSort}, touche pour l'equipe adverse`;
+      this.log('TOUCHE', equipeQuiSort, message);
       this.ruckPoint = { x: position.x, y: position.y };
       this.possession = equipeQuiSort === 'A' ? 'B' : 'A';
       const equipe = this.possession === 'A' ? this.equipeA : this.equipeB;
@@ -1777,6 +1788,20 @@
         }
         this.stats[defenseurProche.team].tacklesMade++;
         this._statJoueur(defenseurProche).tacklesMade++;
+        // LOI 19 — PLAQUE EN TOUCHE. Tout pres de la ligne de touche, le
+        // plaqueur pousse le porteur DEHORS : le ballon est mort, touche pour
+        // l'adversaire. C'est comme cela qu'un ailier sort en touche dans un
+        // vrai match — ce n'est pas lui qui choisit de sortir.
+        // Mesure avant : le moteur produisait 0,0 ballon porte en touche par
+        // match. Le controle de sortie du porteur existait bien mais ne se
+        // declenchait JAMAIS, parce que le porteur pres d'une ligne de touche
+        // crochete systematiquement vers l'interieur (cf. `evite`). Toutes les
+        // touches du match venaient donc du jeu au pied.
+        if (this.porteur.y <= 1.5 || this.porteur.y >= LARGEUR - 1.5) {
+          this.log('PLAQUE_EN_TOUCHE', defenseurProche.team, `Plaque en touche par l'equipe ${defenseurProche.team}`);
+          this._accorderTouche(this.possession, this.porteur, 'PORTE');
+          return;
+        }
         // Définition officielle du plaquage (World Rugby) : le plaqueur amène le
         // porteur au sol ET va LUI-MÊME au sol. On le montre donc brièvement
         // couché À L'ÉCRAN (marqueur PUREMENT VISUEL solVisuel, cf. renderer),
@@ -1970,7 +1995,7 @@
       // Touche : le ballon porté au-delà de la ligne de touche est mort, jeu arrêté.
       // (Pas pendant qu'une passe vole : le receveur ne porte pas encore le ballon.)
       if (!ballonEnVolPasse && (porteur.y <= 0.01 || porteur.y >= LARGEUR - 0.01)) {
-        this._accorderTouche(this.possession, porteur);
+        this._accorderTouche(this.possession, porteur, 'PORTE');
         return;
       }
 
@@ -2914,7 +2939,7 @@
         const zoneKickeur = this._zoneTerrain({ x: this.xCoupDePiedJeu, sensAttaque: equipeKick === 'A' ? 1 : -1 });
         const conserveTouche = zoneKickeur === 'OWN_22';
         const equipeQuiSort = conserveTouche ? (equipeKick === 'A' ? 'B' : 'A') : equipeKick;
-        this._accorderTouche(equipeQuiSort, { x: cibleX, y: cibleY });
+        this._accorderTouche(equipeQuiSort, { x: cibleX, y: cibleY }, 'COUP_DE_PIED');
         return;
       }
 
