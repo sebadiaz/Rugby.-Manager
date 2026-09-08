@@ -531,6 +531,53 @@ test('loi 11 : un joueur sans solution legale GARDE le ballon (pas 11 passes en 
 });
 
 
+
+// --- Loi 16 : UN MAUL SE TERMINE TOUJOURS ---------------------------------
+// Trouve par MUTATION : en retirant la date-limite du « use it » d'un maul
+// arrete (timerUseIt porte a l'infini), AUCUNE suite ne devenait rouge.
+// L'enquete a montre un trou plus large. Le moteur garantit explicitement
+// qu'un RUCK se termine et qu'une MELEE se termine — les deux ont leur
+// garde-fou anti-blocage et leur test ci-dessus. Le MAUL, lui, n'avait ni
+// l'un ni l'autre : sa sortie ne dependait que du hasard. Mesure sur 10
+// matchs : duree moyenne 15,5 s mais un maul observe a 64,8 s, et en figeant
+// le tirage aleatoire le maul ne se termine JAMAIS.
+// C'est a la fois un blocage latent (CLAUDE.md role 7 : « les joueurs restent
+// bloques » est un motif de refus) et une invraisemblance : un arbitre ne
+// laisse pas un maul vivre une minute.
+test('loi 16 : un maul se termine toujours, meme si le hasard ne le denoue jamais', () => {
+  let verifie = false;
+  for (const seed of [5, 12, 33]) {
+    const m = new MatchEngine(seed, 900);
+    for (let t = 0; t < 900; t += 0.1) {
+      m.tick(0.1);
+      if (m.phase === 'PORTE' && m.porteur && !m.passeVisuelle && m.porteur.auSol === 0) break;
+    }
+    if (m.phase !== 'PORTE' || !m.porteur) continue;
+    const def = m.defenseurs().filter((j) => j.auSol === 0)[0];
+    if (!def) continue;
+    m._formerMaul(m.porteur, def);
+    if (m.phase !== 'MAUL') continue;
+    // On FIGE le hasard : plus aucune sortie de ballon tiree au sort. Seule
+    // une regle peut encore mettre fin au maul.
+    m.rng = () => 0.999;
+    const depart = m.tempsMatch;
+    let duree = null;
+    for (let k = 0; k < 1200 && m.phase === 'MAUL'; k++) m.tick(0.1);
+    if (m.phase !== 'MAUL') duree = m.tempsMatch - depart;
+    assert.ok(duree !== null,
+      `un maul doit finir par etre siffle : toujours en cours apres ${(m.tempsMatch - depart).toFixed(0)} s de jeu`);
+    // Le garde-fou du moteur siffle a 45 s ; on borne juste au-dessus. Mesure
+    // sur 50 mauls de match reel : moyenne 14,8 s, maximum 45,0 s (contre
+    // 64,8 s avant le garde-fou), et il ne se declenche que 2 fois sur 50 —
+    // il borne le cas pathologique sans changer le jeu ordinaire.
+    assert.ok(duree <= 50,
+      `un maul ne dure pas ${duree.toFixed(0)} s : l'arbitre le siffle bien avant`);
+    verifie = true;
+    break;
+  }
+  assert.ok(verifie, 'aucun maul n a pu etre forme pour le test');
+});
+
 // --- Loi 19 : LE BALLON PORTE EN TOUCHE SORT ------------------------------
 // Trouve par MUTATION : en supprimant le controle de sortie en touche du
 // PORTEUR, aucune suite ne devenait rouge. La raison etait double, et les deux

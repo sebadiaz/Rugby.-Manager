@@ -3626,6 +3626,21 @@
       m.timerGlobal += dt;
       this.ruckPoint = { x: m.x, y: m.y };
 
+      // GARDE-FOU ANTI-BLOCAGE (loi 16) : un maul ne s'eternise JAMAIS. Le
+      // moteur garantissait deja qu'un ruck et qu'une melee se terminent, mais
+      // pas le maul : sa sortie ne dependait que du tirage aleatoire du demi de
+      // melee. Mesure sur 10 matchs : duree moyenne 15,5 s mais un maul observe
+      // a 64,8 s, et en figeant le hasard le maul ne se terminait JAMAIS.
+      // Un arbitre ne laisse pas un maul vivre une minute : passe ce delai, le
+      // ballon est declare injouable et la melee revient a l'equipe qui n'avait
+      // pas le ballon en entrant dans le maul (comme _maulMeleeInjouable).
+      // Le seuil n'est PAS mis a l'echelle des arrets, contrairement aux autres
+      // temps morts : la date-limite du « use it » qu'il ne doit surtout pas
+      // preempter (m.timerUseIt = 5 s) ne l'est pas non plus. Un premier essai
+      // a 30 s mis a l'echelle donnait 4,5 s sur un match de demo et sifflait
+      // le maul AVANT que la sequence d'arbitrage ait pu se derouler.
+      if (m.timerGlobal > 45) return this._maulMeleeInjouable();
+
       // 1) IA des joueurs : liaisons, poussée dans l'axe, repli des non-engagés.
       this._maulGererLiaisons(dt);
 
