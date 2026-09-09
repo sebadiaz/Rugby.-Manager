@@ -178,4 +178,65 @@ test('M8 — les mêlées restent dans les ordres de grandeur d\'un vrai match',
     `un match compte 8 à 25 mêlées (moyenne mesurée ${moyenne.toFixed(1)})`);
 });
 
+
+// M9 — LA MELEE DOIT RESTER CONTESTABLE (loi 19).
+//
+// Trouve par MUTATION : en supprimant la branche « ballon vole contre
+// l'introduction » — l'equipe qui introduit gagne alors TOUJOURS son ballon —,
+// cette suite restait VERTE. M1 a M8 verifient la CONSIGNE de poussee et son
+// cout, jamais que la melee peut etre perdue. Seul un test sans rapport, dans
+// une autre suite, reagissait par ricochet.
+// Une melee non contestable n'est plus une phase de combat : c'est une remise
+// en jeu automatique, et le pack adverse devient decoratif.
+test('M9 — la mêlée est CONTESTABLE : l\'introduction n\'est pas garantie', () => {
+  // On conduit une vraie melee, puis on FIGE le tirage pour forcer la branche
+  // de contestation : le vainqueur doit alors etre le camp qui N'A PAS
+  // introduit. Sans cette branche, l'introduction gagnerait quand meme.
+  let verifie = false;
+  for (const graine of [3, 7, 11, 19, 23]) {
+    const m = new RugbyEngine.MatchEngine(graine, 900, null);
+    for (let t = 0; t < 900 && !(m.phase === 'MELEE' && m.melee); t += 0.1) m.tick(0.1);
+    if (!m.melee) continue;
+    const intro = m.melee.equipeIntroduction;
+    const nonIntro = m.melee.equipeNonIntroduction;
+    m.rng = () => 0; // le tirage tombe toujours dans la contestation
+    m._meleeResoudreContestation();
+    assert.strictEqual(m.melee.vainqueur, nonIntro,
+      `le camp qui n'introduit pas doit pouvoir gagner le ballon (vainqueur ${m.melee.vainqueur}, introduction ${intro})`);
+    assert.strictEqual(m.melee.qualite, 'VOLE', 'la melee gagnee contre l introduction est un ballon VOLE');
+    verifie = true;
+    break;
+  }
+  assert.ok(verifie, 'aucune mêlée n\'a pu être observée pour le test');
+});
+
+// M10 — ET LA MELEE DOIT PRODUIRE DES FAUTES (loi 19).
+//
+// Meme constat par mutation : en faisant renvoyer `null` a
+// `_meleeDetecterFautes` — plus aucune penalite ni coup franc de melee —,
+// cette suite restait VERTE elle aussi. Or CLAUDE.md (role 5) demande qu'une
+// faute ait une consequence, et la melee est l'une des principales sources de
+// penalites d'un match de rugby.
+// Mesure : 7,4 fautes de melee par match (penalites + coups francs).
+test('M10 — la mêlée produit de vraies fautes (pénalités et coups francs)', () => {
+  let fautes = 0, melees = 0;
+  const motifs = new Set();
+  for (const graine of [1, 2, 3]) {
+    const m = new RugbyEngine.MatchEngine(graine, 4800, null);
+    const brut = m.log.bind(m);
+    m.log = (type, team, msg) => {
+      if (/^MELEE_PEN/.test(type) || type === 'COUP_FRANC') { fautes++; motifs.add(type); }
+      if (type === 'MELEE') melees++;
+      brut(type, team, msg);
+    };
+    for (let t = 0; t < 4800; t += 0.2) m.tick(0.2);
+  }
+  assert.ok(melees > 15, `echantillon de mêlées trop petit (${melees})`);
+  const parMatch = fautes / 3;
+  assert.ok(parMatch >= 2,
+    `la mêlée doit produire des fautes sanctionnées (mesuré ${parMatch.toFixed(1)} par match)`);
+  assert.ok(motifs.size >= 2,
+    `plusieurs motifs de faute distincts doivent exister (mesuré ${motifs.size} : ${[...motifs].join(' / ')})`);
+});
+
 console.log(`\n${nbTests} test(s) exécuté(s).`);

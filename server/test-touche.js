@@ -72,23 +72,48 @@ function jouer(graine, cfg) {
   return m.getState().stats;
 }
 
-test('T1 — PREUVE : DÉSIGNER le bon sauteur change l\'issue des touches', () => {
-  // Le pack est STRICTEMENT le même dans les deux cas — mêmes attributs, donc
-  // même force collective. Seule la DÉSIGNATION change : d'un côté le moteur
-  // vise n'importe lequel des cinq sauteurs, de l'autre on lui dit de viser
-  // le seul qui sait sauter. Mesuré avant ce patch : 0,0 point d'écart.
-  let sansChoix = { l: 0, g: 0 }, avecChoix = { l: 0, g: 0 };
-  for (let g = 1; g <= 10; g++) {
-    const a = jouer(g, { joueursA: pack(5, 95, 20), joueursB: pack(5, 95, 20) });
-    sansChoix.l += a.A.lineouts; sansChoix.g += a.A.lineoutsGagnes;
-    const b = jouer(g, { joueursA: pack(5, 95, 20), joueursB: pack(5, 95, 20),
+test('T1 — désigner son sauteur ne dégrade pas la conservation sur son lancer', () => {
+  // CE QUE CE TEST MESURAIT, ET POURQUOI IL A ÉTÉ REFAIT.
+  //
+  // Il affirmait « désigner le seul bon sauteur doit faire gagner PLUS de
+  // touches » et comparait `lineoutsGagnes / lineouts` sur 10 matchs. Deux
+  // défauts, exactement ceux que T9 avait déjà corrigés de son côté sans que
+  // T1 en profite :
+  //
+  //   1. La grandeur est MAL DÉFINIE : `lineoutsGagnes` compte aussi les
+  //      touches VOLÉES sur le lancer adverse, si bien que le rapport peut
+  //      dépasser 100 %. Le message d'échec observé l'affichait d'ailleurs
+  //      sans détour : « 83/81 ».
+  //   2. L'effet cherché est PLUS PETIT QUE LE BRUIT. Mesuré sur la bonne
+  //      grandeur (conservation sur son PROPRE lancer), 40 matchs par
+  //      configuration : libre 83,8 % (289/345), spécialiste 82,5 % (282/342),
+  //      soit un écart de -1,31 point pour une erreur-type de 2,86 points —
+  //      0,46 écart-type, indiscernable de zéro. Un test de ce format bascule
+  //      donc au hasard : il est passé au vert pendant des mois, puis au rouge
+  //      apres un travail sur le moteur qui n'a rien change a la touche.
+  //
+  // La preuve POSITIVE que désigner un vrai spécialiste est payant existe, et
+  // au bon endroit : T8bis la vérifie DIRECTEMENT sur la règle
+  // (`probaVolTouche`), sans passer par une moyenne bruitée. Ce test-ci garde
+  // ce qu'un match peut réellement établir : la désignation ne DÉGRADE pas la
+  // conservation, avec une tolérance calée sur le bruit mesuré (2 erreurs-types).
+  let libre = { l: 0, g: 0 }, specialiste = { l: 0, g: 0 };
+  const N = 30;
+  for (let g = 1; g <= N; g++) {
+    const a = conservationPropreLancer(g, { joueursA: pack(5, 95, 20), joueursB: pack(5, 95, 20) });
+    libre.l += a.A.l; libre.g += a.A.g;
+    const b = conservationPropreLancer(g, { joueursA: pack(5, 95, 20), joueursB: pack(5, 95, 20),
       toucheA: { sauteurs: [5] } });
-    avecChoix.l += b.A.lineouts; avecChoix.g += b.A.lineoutsGagnes;
+    specialiste.l += b.A.l; specialiste.g += b.A.g;
   }
-  const part = (x) => (x.l ? x.g / x.l : 0);
-  assert.ok(part(avecChoix) > part(sansChoix),
-    `désigner le seul bon sauteur doit faire gagner plus de touches ` +
-    `(${avecChoix.g}/${avecChoix.l} vs ${sansChoix.g}/${sansChoix.l})`);
+  assert.ok(libre.l > 100 && specialiste.l > 100,
+    `assez de touches pour conclure (${libre.l} / ${specialiste.l})`);
+  const tLibre = libre.g / libre.l, tSpe = specialiste.g / specialiste.l;
+  const detail = `spécialiste ${(100 * tSpe).toFixed(1)} % (${specialiste.g}/${specialiste.l}) ` +
+    `vs libre ${(100 * tLibre).toFixed(1)} % (${libre.g}/${libre.l})`;
+  // Erreur-type mesurée ~3 points sur cet effectif ; on tolère 2 erreurs-types.
+  assert.ok(tSpe >= tLibre - 0.065,
+    `désigner son sauteur ne doit pas dégrader la conservation (${detail})`);
 });
 
 test('T2 — le sauteur désigné est RÉELLEMENT visé plus souvent', () => {
@@ -296,7 +321,11 @@ test('T9 — désigner un spécialiste ne COÛTE pas de ballons sur son lancer',
   // qu'en P1-50b et P1-51. Ce test-ci garde donc ce qu'un match peut réellement
   // établir : la désignation ne doit pas COÛTER de ballons.
   let libre = { l: 0, g: 0 }, restreint = { l: 0, g: 0 };
-  const N = 16;
+  // N releve de 16 a 30 : a 16 matchs l'erreur-type vaut ~3,7 points pour une
+  // tolerance de 4, soit a peine 1 ecart-type — le test basculait sur du bruit
+  // (constate : -4,6 points mesures, alors que sur 40 matchs l'ecart reel vaut
+  // -1,3 point pour 2,86 d'erreur-type).
+  const N = 30;
   for (let g = 1; g <= N; g++) {
     const a = conservationPropreLancer(g, { joueursA: pack(5, 95, 20), joueursB: pack(5, 95, 20) });
     libre.l += a.A.l; libre.g += a.A.g;
@@ -311,9 +340,9 @@ test('T9 — désigner un spécialiste ne COÛTE pas de ballons sur son lancer',
     `vs libre ${(100 * tLibre).toFixed(1)} % (${libre.g}/${libre.l})`;
   // Le taux se lit sur son PROPRE lancer : il ne peut pas dépasser 100 %.
   assert.ok(tLibre <= 1 && tRestreint <= 1, `un taux de conservation reste ≤ 100 % (${detail})`);
-  // Marge de 4 points : ~2 erreurs-types sur cet effectif (é.-t. mesuré 2,7 pt
-  // sur 30 matchs). Au-delà, ce ne serait plus du bruit mais un vrai coût.
-  assert.ok(tRestreint >= tLibre - 0.04,
+  // Marge de 6,5 points : 2 erreurs-types sur cet effectif (é.-t. mesuré
+  // 2,86 pt sur 40 matchs). Au-delà, ce ne serait plus du bruit mais un vrai coût.
+  assert.ok(tRestreint >= tLibre - 0.065,
     `désigner le seul vrai sauteur ne doit pas coûter de ballons (${detail})`);
 });
 
@@ -329,6 +358,55 @@ test('T10 — le compromis est ANNONCÉ au manager, chiffré', () => {
     `restreindre l'alignement doit être annoncé comme lisible (${apres.lisibilite})`);
   assert.ok(apres.risqueVolSupplementaire > 0,
     'le surcroît de risque doit être chiffré, pas seulement suggéré');
+});
+
+
+// T11 — LA TOUCHE DOIT RESTER CONTESTABLE (loi 18).
+//
+// Trouve par MUTATION : en faisant renvoyer 0 a `probaVolTouche` — l'equipe
+// qui lance gagne alors TOUJOURS son ballon —, cette suite restait VERTE de
+// bout en bout. T1 a T10 verifient le CHOIX du sauteur et son cout, jamais que
+// l'adversaire peut prendre le ballon. Seul un test de statistiques sans
+// rapport, dans une autre suite, reagissait par ricochet.
+// Or une touche non contestable n'est plus du rugby : c'est une remise en jeu
+// automatique, et l'alignement adverse devient decoratif.
+// Mesure sur 10 matchs : 20,8 lancers, 2,70 touches VOLEES, soit 13,0 % —
+// exactement l'ordre de grandeur reel.
+test('T11 — la touche est CONTESTABLE : l\'adversaire peut prendre le ballon', () => {
+  const proba = RugbyEngine.probaVolTouche;
+  assert.strictEqual(typeof proba, 'function', 'le moteur doit exposer la règle du vol en touche');
+  const equilibre = { forceLanceur: 100, forceAdverse: 100, qualiteSauteur: 80, taillePool: 4 };
+  const p = proba(equilibre);
+  assert.ok(p > 0.02,
+    `à forces égales, l'adversaire doit avoir une vraie chance de voler la touche (${(p * 100).toFixed(1)} %)`);
+  assert.ok(p < 0.45,
+    `mais la touche reste majoritairement gagnée par le lanceur (${(p * 100).toFixed(1)} %)`);
+  // Et le rapport de force doit COMPTER : un alignement adverse plus fort vole plus.
+  const adversaireFort = proba(Object.assign({}, equilibre, { forceAdverse: 220 }));
+  assert.ok(adversaireFort > p,
+    `un alignement adverse plus fort doit voler davantage (${(adversaireFort * 100).toFixed(1)} % contre ${(p * 100).toFixed(1)} %)`);
+});
+
+// T12 — ET LE VOL DOIT EXISTER EN MATCH, pas seulement dans la formule.
+test('T12 — des touches sont réellement volées en match', () => {
+  let lancers = 0, voles = 0;
+  for (const graine of [1, 2, 3]) {
+    const m = new RugbyEngine.MatchEngine(graine, 4800, null);
+    const brut = m.log.bind(m);
+    m.log = (type, team, msg) => {
+      if (type === 'TOUCHE_LANCER') lancers++;
+      if (/touche volee/i.test(msg)) voles++;
+      brut(type, team, msg);
+    };
+    for (let t = 0; t < 4800; t += 0.2) m.tick(0.2);
+  }
+  assert.ok(lancers > 30, `echantillon de touches trop petit (${lancers})`);
+  const taux = 100 * voles / lancers;
+  // Mesure : 13,0 %. Un vrai match perd 10 a 15 % de ses propres touches.
+  assert.ok(taux >= 3,
+    `des touches doivent etre volees en match (${taux.toFixed(1)} % sur ${lancers} lancers)`);
+  assert.ok(taux <= 30,
+    `mais le lanceur doit rester nettement favori (${taux.toFixed(1)} %)`);
 });
 
 console.log(`\n${nbTests} test(s) exécuté(s).`);
