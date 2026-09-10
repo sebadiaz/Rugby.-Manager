@@ -56,6 +56,30 @@ function test(nom, fn) {
   catch (e) { process.exitCode = 1; console.error(`FAIL ${nom}`); console.error('     ' + e.message); }
 }
 
+// SUITE COUPÉE EN DEUX PAR SON COÛT, PAS PAR SON SUJET.
+//
+// Cette suite dure ~10 min : elle est donc reléguée dans le job de NUIT
+// (.github/workflows/tests-longs.yml) et ne tourne PAS sur un patch du moteur.
+// Ça s'est payé : deux de ses tests sont restés ROUGES pendant toute une
+// campagne de travail sur le moteur sans que personne le voie.
+//
+// Or le coût n'est pas réparti également. Les tests qui ÉNONCENT LES LOIS de
+// la touche (T8, T8bis, T11 : la touche est contestable, l'alignement
+// restreint se lit, un vrai spécialiste compense) s'exécutent en quelques
+// millisecondes — ils appellent la règle directement. Ce sont EUX qui doivent
+// tourner à chaque patch. Seuls les tests qui SIMULENT des matchs complets
+// coûtent des minutes.
+//
+// `testSimulation` marque ces derniers. Avec RM_TOUCHE_RAPIDE=1, ils sont
+// sautés et la suite s'exécute en une seconde : c'est ce que lance la CI de
+// déploiement. Le job de nuit, lui, lance tout.
+const RAPIDE = process.env.RM_TOUCHE_RAPIDE === '1';
+let nbSautes = 0;
+function testSimulation(nom, fn) {
+  if (RAPIDE) { nbSautes++; return; }
+  test(nom, fn);
+}
+
 const BASE = RugbyEngine.DEFAULT_CONFIG.joueurs;
 // Pack où UN SEUL avant est un vrai sauteur ; le reste des attributs est
 // inchangé, pour n'isoler QUE la touche.
@@ -72,7 +96,7 @@ function jouer(graine, cfg) {
   return m.getState().stats;
 }
 
-test('T1 — désigner son sauteur ne dégrade pas la conservation sur son lancer', () => {
+testSimulation('T1 — désigner son sauteur ne dégrade pas la conservation sur son lancer', () => {
   // CE QUE CE TEST MESURAIT, ET POURQUOI IL A ÉTÉ REFAIT.
   //
   // Il affirmait « désigner le seul bon sauteur doit faire gagner PLUS de
@@ -116,7 +140,7 @@ test('T1 — désigner son sauteur ne dégrade pas la conservation sur son lance
     `désigner son sauteur ne doit pas dégrader la conservation (${detail})`);
 });
 
-test('T2 — le sauteur désigné est RÉELLEMENT visé plus souvent', () => {
+testSimulation('T2 — le sauteur désigné est RÉELLEMENT visé plus souvent', () => {
   // Trois sauteurs possibles, un seul excellent. On compte qui réceptionne.
   const cfg = { joueursA: pack(5, 95, 20), joueursB: pack(5, 95, 20) };
   const m = new RugbyEngine.MatchEngine(4242, 4800, cfg);
@@ -222,7 +246,7 @@ test('T6 — un sauteur qui n\'est plus titulaire est ignoré, pas propagé', ()
     'un sauteur non titulaire ne doit pas être transmis au moteur');
 });
 
-test('T7 — les touches restent dans les ordres de grandeur d\'un vrai match', () => {
+testSimulation('T7 — les touches restent dans les ordres de grandeur d\'un vrai match', () => {
   let total = 0;
   const n = 6;
   for (let g = 1; g <= n; g++) {
@@ -297,7 +321,7 @@ function conservationPropreLancer(graine, cfg) {
   return res;
 }
 
-test('T9 — désigner un spécialiste ne COÛTE pas de ballons sur son lancer', () => {
+testSimulation('T9 — désigner un spécialiste ne COÛTE pas de ballons sur son lancer', () => {
   // CE QUE CE TEST MESURAIT AVANT, ET POURQUOI IL A ÉTÉ REFAIT (P1-53).
   //
   // Il affirmait « désigner le seul vrai sauteur doit rester gagnant malgré la
@@ -388,7 +412,7 @@ test('T11 — la touche est CONTESTABLE : l\'adversaire peut prendre le ballon',
 });
 
 // T12 — ET LE VOL DOIT EXISTER EN MATCH, pas seulement dans la formule.
-test('T12 — des touches sont réellement volées en match', () => {
+testSimulation('T12 — des touches sont réellement volées en match', () => {
   let lancers = 0, voles = 0;
   for (const graine of [1, 2, 3]) {
     const m = new RugbyEngine.MatchEngine(graine, 4800, null);
@@ -409,4 +433,4 @@ test('T12 — des touches sont réellement volées en match', () => {
     `mais le lanceur doit rester nettement favori (${taux.toFixed(1)} %)`);
 });
 
-console.log(`\n${nbTests} test(s) exécuté(s).`);
+console.log(`\n${nbTests} test(s) exécuté(s)${nbSautes ? ` — ${nbSautes} test(s) de simulation sautés (RM_TOUCHE_RAPIDE=1)` : ''}.`);
