@@ -4466,7 +4466,19 @@
     // ça, `onResultat` n'arrivait jamais et le verrou de journée restait pris
     // pour toujours (carrière bloquée, signalée en jeu).
     if (window.RMMain && window.RMMain.abandonnerMatchLive) window.RMMain.abandonnerMatchLive();
-    rafraichirTout();
+    // Le rafraichissement ne doit JAMAIS empecher d'ENTRER. Il precedait
+    // l'ouverture du panneau : la moindre exception pendant le rendu (un ecran
+    // qui n'arrive pas a s'afficher avec une sauvegarde donnee) tuait le
+    // gestionnaire de clic avant `entrerDansLeClub`, et le joueur restait sur
+    // l'accueil sans rien voir se passer — y compris sans pouvoir atteindre le
+    // bouton « Recommencer », qui vit DANS ce panneau. On ouvre donc d'abord,
+    // et on signale la panne au lieu de la laisser enfermer la partie.
+    try {
+      rafraichirTout();
+    } catch (e) {
+      console.error('Rafraichissement du club impossible :', e);
+      toast("Un ecran n'a pas pu s'afficher. Tu peux quand meme recommencer une saison depuis l'onglet Palmares.", 'erreur');
+    }
     entrerDansLeClub();
   });
   document.getElementById('btnContinuerClub').addEventListener('click', () => {
