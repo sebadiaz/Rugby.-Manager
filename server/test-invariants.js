@@ -1075,6 +1075,54 @@ test("un defenseur qui sort du regroupement ne glisse pas vers le ballon", () =>
     `un defenseur en sortie de regroupement glisse encore de ${glissement.toFixed(2)} m vers le ballon`);
 });
 
+// --- LE PLAQUAGE A DEUX -----------------------------------------------------
+// Un plaquage de rugby est souvent le fait de deux defenseurs, et le releve
+// officiel les compte tous les deux. Le moteur ne creditait que celui qu'il
+// avait DESIGNE : il sous-estimait structurellement le total (215 par match
+// mesures, contre 240 a 360 reels). Le second plaqueur n'est credite que s'il
+// est REELLEMENT dans le rayon de contact — c'est une action simulee, pas un
+// compteur ajoute (CLAUDE.md role 6).
+function scenarioPlaquageADeux(distanceSecondDefenseur) {
+  const m = new MatchEngine(51, 600);
+  for (let t = 0; t < 30; t += 0.2) m.tick(0.2);
+  m.phase = 'PORTE';
+  m.timerPhase = 3;
+  m.possession = 'A';
+  m.passeVisuelle = null;
+  m.combinaison = null;
+  m.penaliteRecul = null;
+  const porteur = m.equipeA.find((j) => j.numero === 12);
+  const sens = porteur.sensAttaque;
+  m.porteur = porteur;
+  porteur.auSol = 0;
+  porteur.x = 50; porteur.y = 30;
+  m.ruckPoint = { x: 48, y: 30 };
+  for (const j of m.equipeB) {
+    j.auSol = 0; j.ruckRecovery = 0; j.horsJeuKick = 0; j.missCooldown = 0; j.fixeCooldown = 0;
+    j.x = porteur.x + sens * 40; j.y = 60;
+  }
+  const plaqueur = m.equipeB.find((j) => j.numero === 6);
+  plaqueur.x = porteur.x + sens * 1.0; plaqueur.y = 30;
+  const second = m.equipeB.find((j) => j.numero === 7);
+  second.x = porteur.x + sens * distanceSecondDefenseur; second.y = 30;
+  // 0,50 : plaquage reussi, pas d'en-avant, pas de maul, pas tenu debout.
+  m.rng = () => 0.5;
+  const avant = m.stats.B.tacklesMade;
+  for (let t = 0; t < 2 && m.phase === 'PORTE'; t += 0.2) m.tick(0.2);
+  return m.stats.B.tacklesMade - avant;
+}
+test('un plaquage a deux credite les DEUX plaqueurs', () => {
+  // Mesure : 1 plaquage compte avant le correctif, 2 apres.
+  assert.strictEqual(scenarioPlaquageADeux(1.6), 2,
+    'le second defenseur, dans le rayon de contact, doit etre credite lui aussi');
+});
+test("un defenseur HORS du rayon de contact n'est PAS credite d'un plaquage", () => {
+  // Le garde-fou de la regle : sans lui, le correctif ci-dessus deviendrait le
+  // compteur fabrique que CLAUDE.md interdit.
+  assert.strictEqual(scenarioPlaquageADeux(4.0), 1,
+    'un defenseur a 4 m du contact ne plaque pas');
+});
+
 console.log(`\n${nbTests} test(s) exécuté(s).`);
 if (process.exitCode) {
   console.error('ECHEC : au moins un invariant violé.');

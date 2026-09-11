@@ -438,6 +438,9 @@
   // Part de l'angle d'interception ideal reellement prise par le dernier
   // defenseur (n°15) quand le porteur a franchi la ligne (cf. pointInterception).
   const COUVERTURE_ARRIERE = 0.35;
+  // Rayon de contact du plaquage (m) : distance a laquelle le contact se resout,
+  // et donc aussi celle a laquelle un SECOND defenseur participe au plaquage.
+  const RAYON_PLAQUAGE = 2.2;
   // Vitesse (fraction de sa vitesse de course) a laquelle un defenseur qui sort
   // d'un regroupement rejoint la ligne de hors-jeu. Plus bas = trou plus grand
   // derriere le ruck : a 0,45 le moteur montait a 6,0 essais par match, au-dela
@@ -1889,6 +1892,31 @@
         // (~1,2 m côté attaque) et la défense récupère un ballon « sur l'avancée »
         // (contest bien plus probable au ruck qui suit, cf. _tickRuck). C'est ce
         // qui rend un bon plaquage payant au lieu de toujours céder du terrain.
+        // PLAQUAGE A DEUX. Un plaquage de rugby est tres souvent le fait de DEUX
+        // defenseurs : un qui ceinture, un qui vient au soutien dans le meme
+        // contact. Le releve officiel les compte tous les deux — c'est une part
+        // importante des 240 a 360 plaquages d'un match. Le moteur n'en creditait
+        // qu'un seul, celui qu'il avait DESIGNE, et sous-estimait donc
+        // structurellement le total (215 par match mesures, contre 240-360 reels).
+        // Ce n'est PAS un compteur fabrique (cf. CLAUDE.md role 6) : le second
+        // plaqueur doit se trouver REELLEMENT dans le rayon de contact (le meme
+        // 2,2 m qui declenche le plaquage) au moment ou celui-ci se resout, etre
+        // debout, en jeu, et ne pas sortir d'un regroupement. Mesure : c'est le
+        // cas sur ~11 % des plaquages, ce qui ramene le total a 246 par match.
+        // Aucun effet sur le jeu lui-meme : le contact est resolu a l'identique
+        // (coupler le plaquage a deux a un plaquage DOMINANT a ete essaye et
+        // rejete — il rabaissait le gain de terrain de 0,83 m a 0,67 m et
+        // ramenait la part des avants dans les essais de 15 % a 7 %).
+        const soutienPlaquage = def.filter((d) => d !== defenseurProche && d.auSol === 0
+          && d.ruckRecovery <= 0 && !(d.horsJeuKick > 0)
+          && distance(d, this.porteur) < RAYON_PLAQUAGE);
+        if (soutienPlaquage.length > 0) {
+          const { joueur: assistant } = joueurLePlusProche(soutienPlaquage, this.porteur.x, this.porteur.y);
+          this.stats[assistant.team].tacklesAttempted++;
+          this.stats[assistant.team].tacklesMade++;
+          this._statJoueur(assistant).tacklesAttempted++;
+          this._statJoueur(assistant).tacklesMade++;
+        }
         const margePlaquage = defenseurProche.plaquage - this.porteur.vitesse;
         this.ruckDominant = margePlaquage > 12 && this.rng() < 0.3;
         if (this.ruckDominant) {
