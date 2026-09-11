@@ -299,6 +299,39 @@
     return out;
   }
 
+  // Point d'INTERCEPTION d'un coureur : l'endroit ou le chasseur doit courir
+  // pour le COUPER, et non l'endroit ou le coureur se trouve maintenant. Un
+  // defenseur qui vise en permanence la position courante d'un coureur plus
+  // rapide que lui court derriere lui jusqu'a l'en-but sans jamais le toucher ;
+  // un vrai dernier defenseur, lui, vise le point de rencontre (« courir au
+  // drapeau de coin »). On resout |R + v.t| = s.t, R etant le vecteur du
+  // chasseur vers le coureur, v la vitesse du coureur et s celle du chasseur.
+  // S'il n'existe aucune solution (le coureur est trop rapide), le chasseur
+  // vise le point ou le coureur franchira la ligne : c'est le mieux qu'il
+  // puisse faire, et c'est exactement ce que fait un arriere debarde.
+  function pointInterception(chasseur, cible, vCible, vChasseur, ligneX) {
+    const rx = cible.x - chasseur.x, ry = cible.y - chasseur.y;
+    const vx = cible.sensAttaque * vCible;
+    const a = vx * vx - vChasseur * vChasseur;
+    const b = 2 * rx * vx;
+    const c = rx * rx + ry * ry;
+    let t = null;
+    if (Math.abs(a) < 1e-6) {
+      if (Math.abs(b) > 1e-6) { const t0 = -c / b; if (t0 > 0) t = t0; }
+    } else {
+      const disc = b * b - 4 * a * c;
+      if (disc >= 0) {
+        const r = Math.sqrt(disc);
+        for (const cand of [(-b - r) / (2 * a), (-b + r) / (2 * a)]) {
+          if (cand > 0 && (t === null || cand < t)) t = cand;
+        }
+      }
+    }
+    if (t === null) t = vCible > 0.1 ? Math.abs(ligneX - cible.x) / vCible : 2;
+    t = Math.max(0, Math.min(6, t));
+    return { x: cible.x + vx * t, y: cible.y };
+  }
+
   function creerJoueur(numero, team, sensAttaque, rng, joueursCfg) {
     const c = (joueursCfg && joueursCfg[numero]) || {};
     const p = PROFILS[numero];
@@ -402,6 +435,12 @@
   // derriere la ligne du coup de pied ; ce plafond evite qu'un joueur reste
   // bloque hors-jeu si le jeu s'est deplace ailleurs entre-temps.
   const DUREE_HORS_JEU_KICK = 6;
+  // Part de l'angle d'interception ideal reellement prise par le dernier
+  // defenseur (n°15) quand le porteur a franchi la ligne (cf. pointInterception).
+  const COUVERTURE_ARRIERE = 0.35;
+  // Probabilite qu'un porteur plaque sur la ligne soit TENU DEBOUT (held up)
+  // au lieu d'aplatir (loi 8).
+  const PROBA_TENU_DEBOUT = 0.35;
 
   function avancer(j, dx, dy, dt, vmax) {
     const d = Math.hypot(dx, dy);
@@ -1475,7 +1514,12 @@
       // pas jusqu'ici.
       const tropLoinPourTir = distanceButs > 45;
       const procheLigneAdverse = distanceButs >= 5 && distanceButs <= 22;
-      if ((tropLoinPourTir && this.rng() < 0.35) || (procheLigneAdverse && this.rng() < 0.15)) {
+      // Taux releve de 0,15 a 0,45 pres de la ligne : a 15 %, une penalite dans
+      // les 22 adverses partait presque toujours au but (3 points) et le moteur
+      // ne construisait quasiment jamais la sequence la plus banale du rugby
+      // moderne — penalite au coin, touche a 5 m, maul penetrant. Mesure : 0,25
+      // maul par match a moins de 5 m de la ligne adverse.
+      if ((tropLoinPourTir && this.rng() < 0.35) || (procheLigneAdverse && this.rng() < 0.45)) {
         this._accorderPenaliteTouche(equipeBeneficiaire, position);
         return;
       }
@@ -1866,6 +1910,35 @@
         // l'ecart restant (l'autre moitie etant couverte par le plaqueur qui
         // monte), plafonnee a 2 m.
         if (!this.ruckDominant) this.porteur.x += this.porteur.sensAttaque * 0.9;
+        // LOI 8 — PLAQUE SUR LA LIGNE : un porteur plaque a moins d'un metre de
+        // l'en-but, et dont l'elan l'emmene quand meme au-dela de la ligne,
+        // TEND LE BRAS ET APLATIT : c'est un essai, pas un regroupement. Avant
+        // ce correctif le moteur formait un ruck DANS L'EN-BUT dans ce cas — la
+        // facon la plus courante de marquer au ballon porte n'existait tout
+        // simplement pas. L'adversaire peut encore le TENIR DEBOUT (held up),
+        // auquel cas le ballon reste en jeu juste devant la ligne.
+        const ligneEnBut = this.porteur.sensAttaque > 0 ? LONGUEUR : 0;
+        const franchitEnAplatissant = this.porteur.sensAttaque > 0
+          ? this.porteur.x >= ligneEnBut : this.porteur.x <= ligneEnBut;
+        if (!this.ruckDominant && franchitEnAplatissant) {
+          if (this.rng() >= PROBA_TENU_DEBOUT) {
+            const marqueur = this.porteur;
+            marqueur.x = ligneEnBut;
+            this.score[this.possession] += 5;
+            this.stats[this.possession].essais++;
+            this.stats[this.possession].carries++;
+            this._statJoueur(marqueur).essais++;
+            this.essaiX = marqueur.x;
+            this.essaiY = marqueur.y;
+            this.essaiEquipe = this.possession;
+            this.log('ESSAI', this.possession, `Essai equipe ${this.possession} !`);
+            this.phase = 'ESSAI';
+            this.timerPhase = 0;
+            return;
+          }
+          // Tenu debout sur la ligne : le regroupement se forme juste devant.
+          this.porteur.x = ligneEnBut - this.porteur.sensAttaque * 0.3;
+        }
         this.ruckPoint = { x: this.porteur.x, y: this.porteur.y };
         this.contestants = [defenseurProche.numero];
         // RUCK QUI RECULE (plaquage dominant) : un SEUL contestant ne suffit
@@ -2200,6 +2273,32 @@
         if (j.numero === 15) {
           const cibleX = porteur.x + porteur.sensAttaque * cfgDef.profondeurArriereJeu;
           const cibleY = j.channelY * 0.7 + porteur.y * 0.3;
+          // DERNIER DEFENSEUR : des que le porteur a FRANCHI la ligne de
+          // defense (plus aucun defenseur devant lui dans son couloir), le
+          // balayage central n'a plus de sens — l'arriere est le seul homme
+          // entre le ballon et l'en-but, il doit COURIR AU POINT DE RENCONTRE.
+          // Mesure avant ce correctif : le marqueur d'un essai recevait le
+          // ballon a 43 m de la ligne en mediane et 82 % des essais partaient
+          // de plus de 20 m — le moteur ne produisait que des essais « en
+          // contre », jamais un essai construit pres de la ligne, et les deux
+          // seuls ailiers marquaient 85 % des essais du match.
+          const franchi = !def.some((d) => d !== j && d.auSol === 0
+            && (d.x - porteur.x) * porteur.sensAttaque > 0.5
+            && Math.abs(d.y - porteur.y) < 12);
+          if (franchi) {
+            const ligneX = porteur.sensAttaque > 0 ? LONGUEUR : 0;
+            const pi = pointInterception(j, porteur, vitesseMs(porteur), vitesseMs(j), ligneX);
+            // Un arriere n'est pas un radar : il LIT la course et corrige son
+            // angle, il ne resout pas l'equation. On ne prend donc qu'une part
+            // de l'angle ideal (0,35), le reste restant sa couverture
+            // habituelle. A 1,0 (interception parfaite) le contre n'existait
+            // plus du tout : 2,8 essais par match au lieu de 5,3, sous le
+            // repere reel (cf. CLAUDE.md role 6).
+            const k = COUVERTURE_ARRIERE;
+            avancer(j, (cibleX + (pi.x - cibleX) * k) - j.x, (cibleY + (pi.y - cibleY) * k) - j.y,
+              dt, vitesseMs(j) * (0.8 + 0.2 * k));
+            continue;
+          }
           avancer(j, cibleX - j.x, cibleY - j.y, dt, vitesseMs(j) * 0.8);
           continue;
         }

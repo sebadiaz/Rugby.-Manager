@@ -86,6 +86,8 @@ const series = {
   kicks: [], penalitesConcedees: [], carries: [], passes: [], turnovers: [],
 };
 const possessionA = [];
+const essaisParNumero = {};
+let essaisMarques = 0;
 let passesJoueursForwards = 0, passesJoueursBacks = 0;
 let metresJoueursForwards = 0, metresJoueursBacks = 0;
 let victoiresNiveauFort = 0, victoiresNiveauFaible = 0, nuls = 0, ecartsNiveauNul = 0;
@@ -140,6 +142,14 @@ for (let i = 0; i < N_MATCHS; i++) {
     for (const n of BACKS) {
       const p = s.statsJoueurs[equipe][n];
       if (p) { passesJoueursBacks += (p.passes || 0); metresJoueursBacks += (p.metresGagnes || 0); }
+    }
+    // Qui MARQUE, poste par poste. Un vrai match de rugby a XV repartit les
+    // essais : ballon porte et pick-and-go pres de la ligne pour les avants,
+    // jeu au large pour les trois-quarts. Si deux joueurs sur trente
+    // concentrent les essais, l'attaque ne joue qu'une seule chose.
+    for (const n of [...FORWARDS, ...BACKS]) {
+      const p = s.statsJoueurs[equipe][n];
+      if (p && p.essais) { essaisParNumero[n] = (essaisParNumero[n] || 0) + p.essais; essaisMarques += p.essais; }
     }
   }
 
@@ -303,6 +313,38 @@ test('avants et trois-quarts ne jouent PAS pareil : les trois-quarts gagnent net
   assert.ok(metresParJoueurBack > metresParJoueurForward * 2,
     `mètres/joueur avant=${metresParJoueurForward.toFixed(1)} vs trois-quarts=${metresParJoueurBack.toFixed(1)}`);
 });
+
+// Qui marque les essais, poste par poste (mesure, pas supposition).
+// CONSTAT OUVERT (avertissement, pas un echec) : le moteur ne construit
+// quasiment jamais un essai PRES DE LA LIGNE. Mesure sur 20 matchs complets :
+// le marqueur recevait le ballon a 43 m de la ligne en mediane, 82 % des essais
+// partaient de plus de 20 m, les deux seuls ailiers en marquaient 85 % et les
+// avants 8 % (repere reel : environ un tiers). La couverture de l'arriere et la
+// loi 8 (plaque sur la ligne, il aplatit) ont ramene la concentration de 56 % a
+// 51 % sur un poste et fait marquer dix numeros differents au lieu de sept,
+// mais le fond du probleme demande une tache a part entiere : l'attaque proche
+// de la ligne (sequences de ballon porte, maul penetrant, tenu debout, melee a
+// 5 m) est trop pauvre pour convertir les positions qu'elle obtient. Mesure
+// associee : seulement 0,6 sequence par match atteint un regroupement a moins
+// de 5 m de la ligne adverse — mais 33 % de celles-la finissent en essai. Ce
+// n'est donc pas la finition qui manque, c'est l'occasion.
+const essaisAvants = FORWARDS.reduce((a, n) => a + (essaisParNumero[n] || 0), 0);
+const partAvants = essaisMarques > 0 ? essaisAvants / essaisMarques : 0;
+const posteMax = Object.keys(essaisParNumero).sort((a, b) => essaisParNumero[b] - essaisParNumero[a])[0];
+const partPosteMax = essaisMarques > 0 ? (essaisParNumero[posteMax] || 0) / essaisMarques : 0;
+console.log(`\nessais par numero de maillot (${essaisMarques} essais) : `
+  + Object.keys(essaisParNumero).sort((a, b) => Number(a) - Number(b))
+      .map((n) => `${n}:${essaisParNumero[n]}`).join(' '));
+console.log(`  part des avants (1-8) : ${(100 * partAvants).toFixed(1)} %  (repere reel ~33 %)`);
+console.log(`  poste le plus prolifique : n°${posteMax} (${(100 * partPosteMax).toFixed(1)} %)`);
+if (partAvants < 0.15) {
+  console.log(`  AVERTISSEMENT : les avants ne marquent que ${(100 * partAvants).toFixed(1)} % des essais `
+    + `(${essaisAvants}/${essaisMarques}) — l'attaque pres de la ligne reste a construire.`);
+}
+if (partPosteMax > 0.35) {
+  console.log(`  AVERTISSEMENT : le n°${posteMax} marque ${(100 * partPosteMax).toFixed(1)} % des essais a lui seul.`);
+}
+console.log('');
 
 test('diversité des vainqueurs : l\'équipe du niveau le plus élevé gagne PLUS SOUVENT que l\'inverse (le niveau doit peser sur le résultat)', () => {
   assert.ok(victoiresNiveauFort > victoiresNiveauFaible,

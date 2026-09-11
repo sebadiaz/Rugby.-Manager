@@ -580,6 +580,35 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-14. Le moteur ne marque que des essais « en contre » : deux ailiers inscrivent 85 % des essais, les avants presque aucun
+- **Statut : CONFIRMÉ (partiellement corrigé — voir « Ce qui a été corrigé »)**
+- Priorité : P2 (crédibilité de la simulation — CLAUDE.md rôle 4 « les avants et les trois-quarts ne doivent pas jouer pareil » et rôle 6 « les mêmes actions ne doivent pas se répéter tout le temps »)
+- Fichiers concernés :
+  - `engine/rugby-engine.js` + `docs/rugby-engine.js` (cause + correctifs partiels)
+  - `server/test-invariants.js` (trois tests de loi ajoutés)
+  - `server/test-stats-matchs.js` (mesure de la répartition des essais par numéro de maillot, en avertissement)
+
+**Reproduction (mesures, pas suppositions).** Sur 20 matchs complets de 80 minutes (graines 1 à 20, 106 essais) :
+- répartition des essais par numéro de maillot : `6:2 7:5 8:1 11:31 13:4 14:59 15:4` — les **deux seuls ailiers marquent 85 %** des essais du match, le n°14 à lui seul 56 %, et **les numéros 1 à 5 n'ont jamais marqué** ;
+- part des avants (1-8) : **8 %** (repère réel : environ un tiers, ballon porté / maul pénétrant / pick-and-go) ;
+- distance à la ligne **au moment où le marqueur reçoit le ballon** : médiane **43 m**, et **82 % des essais partent de plus de 20 m**, 3 % seulement de moins de 5 m. En vrai, c'est l'inverse : l'essai se finit de près, la course de 45 m est l'exception.
+
+**Cause.** Deux défauts distincts, tous deux mesurés :
+1. **Le dernier défenseur ne couvre pas.** L'arrière (n°15) « sweepait » à `porteur.x + 18` avec un `y` resté à 70 % de son couloir central : un porteur lancé le long d'une touche n'était donc jamais couvert. Toute percée devenait mécaniquement un essai, et seuls les joueurs qui reçoivent en bout de ligne (les ailiers) percent.
+2. **L'attaque près de la ligne ne convertit pas les positions qu'elle obtient.** Seulement **0,6 séquence par match** atteint un regroupement à moins de 5 m de la ligne adverse — alors que **33 % de celles-là finissent en essai**. Ce n'est donc pas la finition qui manque, c'est l'occasion. Contributeurs mesurés : une pénalité dans les 22 adverses ne partait au coin que dans 15 % des cas (donc 0,25 maul par match à moins de 5 m), et un porteur plaqué dont l'élan franchissait la ligne formait un **regroupement DANS l'en-but** (`ruckPoint.x = 100,50` sur un terrain de 100 m) au lieu d'aplatir.
+
+**Ce qui a été corrigé (patch « le dernier défenseur couvre le coin »).**
+- L'arrière court au **point d'interception** (`pointInterception`) dès que le porteur a franchi la ligne de défense, à 35 % de l'angle idéal — à 100 % le contre disparaissait complètement (2,8 essais/match, sous le repère réel).
+- **Loi 8** : un porteur plaqué dont l'élan franchit la ligne aplatit (essai), sauf s'il est tenu debout (35 %).
+- Une pénalité dans les 22 adverses part au coin dans 45 % des cas au lieu de 15 %.
+- Effet mesuré (20 matchs) : concentration sur un seul poste **56 % → 51 %**, **dix** numéros différents marquent au lieu de sept, distance médiane de réception **43 m → 41 m**, essais 5,3 → 4,5 (dans la fourchette), 13/14 catégories de calibration conservées.
+
+**Ce qui reste à faire (le fond).** La part des avants reste à 8 % et la médiane de réception à 41 m. Les leviers isolés ont été mesurés un par un et **aucun ne suffit** :
+- servir les avants au ras près de la ligne (taux du 9 porté de 0,18 à 0,45/0,70/0,90 selon la zone) : part des avants 8 % → 5-9 %, **aucun gain**, et +8 rucks/match ;
+- renforcer la couverture de l'arrière au-delà de 35 % : la répartition s'améliore nettement (part des avants 14 %, poste le plus prolifique 45 %, médiane 19 m) mais les essais tombent à **2,9/match** et les points à 31,6, hors repère — la défense devient un mur que l'attaque proche de la ligne ne sait pas percer.
+La vraie tâche est donc l'**attaque près de la ligne** : séquences de ballon porté enchaînées, maul pénétrant depuis une touche à 5 m, tenu debout, mêlée à 5 m. C'est une tâche à part entière, pas un réglage.
+
+
 ### P1-19. Écrans de gestion d'équipe dupliqués par type d'équipe (premier XV / Équipe B / Espoirs / clubs adverses) — 5ᵉ tranche `ROADMAP_FOOTBALL_MANAGER.md`
 - **Statut : CORRIGÉ**
 - Priorité : P1 (demande explicite de l'utilisateur : « Refactorise toute la gestion des équipes autour d'écrans uniques et réutilisables. [...] l'équipe première, l'équipe B, les jeunes et les équipes adverses ne doivent surtout pas avoir des pages séparées ou des interfaces différentes. [...] un seul écran et un seul composant par fonctionnalité. »)

@@ -890,6 +890,104 @@ test('loi 10 : les joueurs devant le botteur sont hors-jeu et ne peuvent pas pla
     `trop de joueurs masses autour du receveur d'un coup de pied (${masse.toFixed(1)} a moins de 8 m)`);
 });
 
+// --- Loi 8 : PLAQUE SUR LA LIGNE, IL APLATIT -------------------------------
+// Un porteur plaque tout pres de l'en-but, et dont l'elan l'emmene malgre tout
+// au-dela de la ligne, aplatit : c'est un essai. Le moteur formait au contraire
+// un REGROUPEMENT DANS L'EN-BUT (mesure sur ce scenario : ruck a x=100,50 sur un
+// terrain de 100 m) — la maniere la plus courante de marquer au ballon porte
+// n'existait tout simplement pas. L'adversaire peut encore le tenir debout.
+
+// Scenario construit : porteur a 40 cm de sa ligne d'en-but, UN defenseur au
+// contact (les quatorze autres sont ecartes pour qu'aucun d'eux ne soit designe
+// plaqueur a sa place), aucune sequence en cours.
+function scenarioPlaqueSurLaLigne(seed, valeurRng) {
+  const m = new MatchEngine(seed, 600);
+  for (let t = 0; t < 30; t += 0.2) m.tick(0.2);
+  m.phase = 'PORTE';
+  m.timerPhase = 3;
+  m.possession = 'A';
+  m.passeVisuelle = null;
+  m.combinaison = null;
+  m.penaliteRecul = null;
+  const porteur = m.equipeA.find((j) => j.numero === 8);
+  const sens = porteur.sensAttaque;
+  const ligne = sens > 0 ? LONGUEUR : 0;
+  m.porteur = porteur;
+  porteur.auSol = 0;
+  porteur.x = ligne - sens * 0.4;
+  porteur.y = 30;
+  for (const j of m.equipeB) {
+    j.auSol = 0; j.ruckRecovery = 0; j.horsJeuKick = 0; j.missCooldown = 0; j.fixeCooldown = 0;
+    if (j.numero !== 6) { j.x = porteur.x - sens * 30; j.y = 60; }
+  }
+  const plaqueur = m.equipeB.find((j) => j.numero === 6);
+  plaqueur.x = porteur.x + sens * 1.0;
+  plaqueur.y = 30;
+  m.rng = () => valeurRng;
+  const scoreAvant = m.score.A;
+  for (let t = 0; t < 2 && m.phase === 'PORTE'; t += 0.2) m.tick(0.2);
+  return { m, sens, ligne, scoreAvant };
+}
+
+test("loi 8 : un porteur plaque dont l'elan franchit la ligne aplatit (essai)", () => {
+  // 0,50 : plaquage reussi (proba >= 0,80), pas d'en-avant au contact (0,04),
+  // pas de maul (0,085), et PAS tenu debout (tirage >= 0,35).
+  const { m, scoreAvant } = scenarioPlaqueSurLaLigne(11, 0.5);
+  assert.strictEqual(m.phase, 'ESSAI', `phase apres le plaquage sur la ligne : ${m.phase}`);
+  assert.strictEqual(m.score.A - scoreAvant, 5, "l'essai doit valoir 5 points");
+});
+
+// Le pendant de la regle : TENU DEBOUT. Le ballon n'est pas aplati, le jeu
+// continue — et surtout le regroupement ne se forme JAMAIS dans l'en-but.
+test("loi 8 : tenu debout sur la ligne, pas d'essai et aucun regroupement dans l'en-but", () => {
+  // 0,20 : plaquage reussi, pas d'en-avant, mais TENU DEBOUT (tirage < 0,35).
+  const { m, sens, scoreAvant } = scenarioPlaqueSurLaLigne(11, 0.2);
+  assert.notStrictEqual(m.phase, 'ESSAI', "tenu debout : pas d'essai");
+  assert.strictEqual(m.score.A, scoreAvant, 'tenu debout : le score ne bouge pas');
+  assert.ok(m.ruckPoint, 'un regroupement doit bien se former');
+  const dansEnBut = sens > 0 ? m.ruckPoint.x >= LONGUEUR : m.ruckPoint.x <= 0;
+  assert.ok(!dansEnBut, `regroupement forme DANS l'en-but (x=${m.ruckPoint.x.toFixed(2)})`);
+});
+
+// --- Le DERNIER DEFENSEUR couvre le coin ----------------------------------
+// Quand le porteur a franchi la ligne de defense, l'arriere (n°15) est le seul
+// homme entre le ballon et l'en-but : il doit COURIR AU POINT DE RENCONTRE, pas
+// rester dans son couloir central. Mesure avant correctif, sur 20 matchs
+// complets : le marqueur d'un essai recevait le ballon a 43 m de la ligne en
+// mediane, 82 % des essais partaient de plus de 20 m, et les deux seuls ailiers
+// marquaient 85 % des essais du match — le moteur ne produisait que des essais
+// « en contre ».
+test('le dernier defenseur (n°15) traverse pour couvrir un porteur qui a franchi', () => {
+  const m = new MatchEngine(21, 600);
+  for (let t = 0; t < 30; t += 0.2) m.tick(0.2);
+  m.phase = 'PORTE';
+  m.timerPhase = 3;
+  m.possession = 'A';
+  m.passeVisuelle = null;
+  m.combinaison = null;
+  m.penaliteRecul = null;
+  const porteur = m.equipeA.find((j) => j.numero === 11);
+  const sens = porteur.sensAttaque;
+  m.porteur = porteur;
+  porteur.auSol = 0;
+  porteur.x = sens > 0 ? LONGUEUR - 45 : 45;
+  porteur.y = 8; // lance le long de la touche
+  // Toute la defense est BATTUE : plus personne devant le porteur, sauf l'arriere.
+  for (const j of m.equipeB) {
+    j.auSol = 0; j.horsJeuKick = 0; j.fixeCooldown = 0; j.ruckRecovery = 0;
+    if (j.numero !== 15) { j.x = porteur.x - sens * 12; j.y = 35; }
+  }
+  const arriere = m.equipeB.find((j) => j.numero === 15);
+  arriere.x = porteur.x + sens * 20;
+  arriere.y = 35;
+  for (let t = 0; t < 2 && m.phase === 'PORTE'; t += 0.2) m.tick(0.2);
+  const ecartLateral = Math.abs(arriere.y - porteur.y);
+  // Mesure sur ce scenario : 20,3 m avant correctif (il tient son couloir),
+  // 15,7 m apres (il traverse). Le seuil refuse l'arriere qui ne traverse pas.
+  assert.ok(ecartLateral < 18,
+    `l'arriere ne traverse pas pour couvrir (ecart lateral ${ecartLateral.toFixed(1)} m)`);
+});
+
 console.log(`\n${nbTests} test(s) exécuté(s).`);
 if (process.exitCode) {
   console.error('ECHEC : au moins un invariant violé.');
