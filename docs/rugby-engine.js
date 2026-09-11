@@ -2263,7 +2263,26 @@
           // porteur ne converge jamais contre un porteur de vitesse égale qui
           // jute latéralement (chaque tick, le défenseur réoriente en retard
           // d'un cran) — un vrai plaqueur lit la trajectoire et coupe l'angle.
-          const cibleInterceptX = porteur.x + porteur.sensAttaque * 1.5;
+          // LOI 15 — LE PLAQUEUR DESIGNE EST HORS-JEU LUI AUSSI. La ligne de
+          // hors-jeu d'un regroupement vaut pour TOUS les defenseurs, y compris
+          // celui qui va plaquer : il ne peut pas se placer DEVANT le ballon
+          // pour venir cueillir le receveur. Le moteur clampait bien la ligne
+          // defensive (cf. ligneGain plus bas) mais PAS le plaqueur designe,
+          // qui visait porteur.x + 1,5 m quelle que soit sa position. Il
+          // partait donc chercher le porteur EN AVANT du regroupement, et le
+          // contact tombait systematiquement sur la ligne de depart : d'un
+          // regroupement au suivant, une equipe qui CONSERVE le ballon
+          // n'avancait que de 0,15 m (mediane negative : elle reculait une fois
+          // sur deux) la ou une vraie equipe avance de plusieurs metres.
+          // Mesure apres correctif (20 matchs) : gain net +0,91 m, part des
+          // regroupements dans les 22 adverses 6,3 % -> 8,3 %.
+          let cibleInterceptX = porteur.x + porteur.sensAttaque * 1.5;
+          if (this.ruckPoint) {
+            const ligneHorsJeu = this.ruckPoint.x;
+            cibleInterceptX = porteur.sensAttaque > 0
+              ? Math.max(cibleInterceptX, ligneHorsJeu)
+              : Math.min(cibleInterceptX, ligneHorsJeu);
+          }
           avancer(j, cibleInterceptX - j.x, porteur.y - j.y, dt, vitesseMs(j) * fRampe);
           continue;
         }

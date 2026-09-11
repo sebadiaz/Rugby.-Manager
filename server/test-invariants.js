@@ -988,6 +988,52 @@ test('le dernier defenseur (n°15) traverse pour couvrir un porteur qui a franch
     `l'arriere ne traverse pas pour couvrir (ecart lateral ${ecartLateral.toFixed(1)} m)`);
 });
 
+// --- Loi 15 : LE PLAQUEUR AUSSI EST HORS-JEU ------------------------------
+// La ligne de hors-jeu d'un regroupement vaut pour TOUS les defenseurs, y
+// compris celui qui va plaquer. Le moteur clampait la ligne defensive mais PAS
+// le plaqueur designe : il visait `porteur.x + 1,5 m` quelle que soit sa
+// position et partait donc chercher le receveur EN AVANT du regroupement.
+// Consequence mesuree : le contact tombait sur la ligne de depart et une equipe
+// qui CONSERVE le ballon n'avancait que de 0,20 m d'un temps de jeu au suivant.
+test("loi 15 : le plaqueur designe ne franchit pas la ligne de hors-jeu du regroupement", () => {
+  const m = new MatchEngine(41, 600);
+  for (let t = 0; t < 30; t += 0.2) m.tick(0.2);
+  m.phase = 'PORTE';
+  m.timerPhase = 1;
+  m.possession = 'A';
+  m.passeVisuelle = null;
+  m.combinaison = null;
+  m.penaliteRecul = null;
+  const porteur = m.equipeA.find((j) => j.numero === 10);
+  const sens = porteur.sensAttaque;
+  m.porteur = porteur;
+  porteur.auSol = 0;
+  // Le porteur a recu le ballon 7 m DERRIERE le regroupement, comme un ouvreur.
+  m.ruckPoint = { x: 55, y: 30, };
+  porteur.x = 55 - sens * 7;
+  porteur.y = 30;
+  for (const j of m.equipeB) {
+    j.auSol = 0; j.horsJeuKick = 0; j.fixeCooldown = 0; j.ruckRecovery = 0;
+    j.x = 55 + sens * 25; j.y = 60; // tout le monde loin, sauf le plaqueur ci-dessous
+  }
+  // Le plaqueur designe est SUR la ligne de hors-jeu, face au porteur.
+  const plaqueur = m.equipeB.find((j) => j.numero === 12);
+  plaqueur.x = 55; plaqueur.y = 30;
+  let franchissementMax = 0;
+  for (let t = 0; t < 1.2; t += 0.2) {
+    m.tick(0.2);
+    if (m.phase !== 'PORTE') break;
+    // De combien le plaqueur est-il passe DEVANT la ligne de hors-jeu
+    // (c'est-a-dire du cote de l'attaque) ?
+    const devant = (m.ruckPoint.x - plaqueur.x) * sens;
+    if (devant > franchissementMax) franchissementMax = devant;
+  }
+  // Mesure sur ce scenario : le plaqueur franchissait la ligne de 2,44 m avant
+  // le correctif (il allait cueillir l'ouvreur dans son camp), 0,00 m apres.
+  assert.ok(franchissementMax < 0.5,
+    `le plaqueur designe passe ${franchissementMax.toFixed(2)} m devant la ligne de hors-jeu du regroupement`);
+});
+
 console.log(`\n${nbTests} test(s) exécuté(s).`);
 if (process.exitCode) {
   console.error('ECHEC : au moins un invariant violé.');

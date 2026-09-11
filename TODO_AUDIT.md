@@ -581,7 +581,7 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 ## P2 — Maintenabilité et simulation
 
 ### P2-15. Le match se joue entièrement au milieu du terrain : une équipe qui conserve le ballon n'avance pas
-- **Statut : CONFIRMÉ (non corrigé — cause racine de P2-14)**
+- **Statut : CONFIRMÉ (partiellement corrigé le 11/09 — voir « Le correctif livré »)**
 - Priorité : P2 (crédibilité de la simulation — CLAUDE.md rôle 6 « les mêmes actions ne doivent pas se répéter tout le temps » et priorité n°8 « essais construits »)
 - Fichiers concernés :
   - `engine/rugby-engine.js` + `docs/rugby-engine.js` (cause)
@@ -625,6 +625,23 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 | calibration | 13/14 | **11/14** | échec (minimum 12) |
 
 C'est donc un vrai progrès de gameplay (l'attaque ne se résume plus à « donner à l'ailier »), **payé par une régression de la ligne d'avantage** — le ballon recule désormais d'un regroupement au suivant — et par une calibration sous le seuil. Adouci (le défenseur n'est hors de la ligne que les 1,5 s où il se relève), il repasse à 12/14 et ne casse plus aucun invariant, mais **plus aucun gain n'est établi** (essais +0,46 ± 0,65) alors qu'il coûte toujours 10 plaquages par match. Les deux versions ont été **annulées**. À reprendre **avec** la correction de la ligne d'avantage, pas avant : seul, il échange un défaut contre un autre.
+
+**LE CORRECTIF LIVRÉ — loi 15 appliquée au plaqueur désigné.** La ligne de hors-jeu d'un regroupement vaut pour TOUS les défenseurs. Le moteur la faisait bien respecter par la ligne défensive (`ligneGain`) mais **pas par le plaqueur désigné**, qui visait `porteur.x + 1,5 m` quelle que soit sa position : il partait donc chercher le receveur **en avant du regroupement** (mesuré sur un scénario construit : 2,44 m devant la ligne), et le contact tombait mécaniquement sur la ligne de départ. C'est ce qui clouait le gain de terrain à zéro.
+
+Mesure en **comparaison appariée par graine sur 80 matchs** :
+
+| | avant | après | établi ? |
+|---|---|---|---|
+| gain par temps de jeu | +0,20 m | **+0,83 m** | **oui** (+0,63 ± 0,23) |
+| regroupements dans les 22 adverses | 7,1 % | **9,1 %** | **oui** (+2,0 ± 1,5 pt) |
+| essais/match | 4,54 | 5,06 | non établi (+0,53 ± 0,62) |
+| points/match | 40,2 | 43,1 | non établi |
+| plaquages/match | 225 | 215 | coût |
+| temps de jeu effectif | 33,3 min | 32,4 min | coût |
+
+Calibration : 13/14 → **12/14** (le minimum exigé). Les plaquages passent sous le plancher interne [220-360] mais restent dans le repère de CLAUDE.md (120-250) ; le temps de jeu effectif reste au-dessus de son plancher avec peu de marge. C'est un échange assumé : une propriété fondamentale du jeu (le ballon avance quand on le conserve) contre une catégorie de volume.
+
+**Ce qui reste.** Le gain est à +0,83 m ; le repère réel est +3 à +5 m. Le ballon part toujours 8,4 m derrière le regroupement et un temps de jeu dure toujours ~20 s pour ~3 passes. La loi n'est d'ailleurs appliquée qu'à moitié : la vraie ligne de hors-jeu est le **pied le plus reculé** du regroupement, encore ~1,5 m derrière le ballon côté défense — le moteur clampe au ballon. Aller jusqu'à la loi exacte donne +1,16 m de gain mais fait tomber les plaquages à 202 et les courses à 208, hors fourchette : à reprendre **avec** une compensation du volume de phases.
 
 **Avertissement de méthode (coûteux, à retenir).** Le gain de terrain par temps de jeu a un écart-type d'environ 8 m. Une moyenne sur 10, 20 ou même 40 matchs ne distingue pas +0,3 m de 0. Toute tentative future sur ce défaut doit se mesurer par **comparaison appariée par graine sur au moins 100 matchs** (même graine, moteur avant / moteur après, différence des moyennes par graine), sans quoi on croit livrer une amélioration qui n'existe pas — c'est arrivé ici.
 
