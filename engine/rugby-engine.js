@@ -438,6 +438,11 @@
   // Part de l'angle d'interception ideal reellement prise par le dernier
   // defenseur (n°15) quand le porteur a franchi la ligne (cf. pointInterception).
   const COUVERTURE_ARRIERE = 0.35;
+  // Vitesse (fraction de sa vitesse de course) a laquelle un defenseur qui sort
+  // d'un regroupement rejoint la ligne de hors-jeu. Plus bas = trou plus grand
+  // derriere le ruck : a 0,45 le moteur montait a 6,0 essais par match, au-dela
+  // du repere reel.
+  const VITESSE_REPLI_SORTIE_RUCK = 0.85;
   // Probabilite qu'un porteur plaque sur la ligne soit TENU DEBOUT (held up)
   // au lieu d'aplatir (loi 8).
   const PROBA_TENU_DEBOUT = 0.35;
@@ -2256,6 +2261,30 @@
         // coup un court instant, il ne monte plus couvrir le receveur — c'est ce
         // qui laisse le SURNOMBRE (et l'espace) au large.
         if ((j.fixeCooldown || 0) > 0) continue;
+        // SORTIE DE REGROUPEMENT : un defenseur qui vient d'etre engage dans le
+        // ruck (ruckRecovery, cf. _imposerRecuperationRuck) n'est PAS dans la
+        // ligne pendant qu'il se releve. Il ne fait que revenir vers la ligne de
+        // hors-jeu, plus lentement qu'un joueur debout.
+        // AVANT : ruckRecovery ne faisait qu'une chose, l'ecarter de la
+        // DESIGNATION du plaqueur. Il continuait a tenir sa place dans le
+        // rideau defensif et a GLISSER vers le ballon comme un joueur frais
+        // (mesure sur scenario construit : 1,79 m de glissement lateral en 1 s).
+        // La defense repartait donc a quinze a chaque temps de jeu et le trou
+        // que cree un ballon rapide n'existait pas.
+        // ORDRE IMPORTANT : ce correctif avait d'abord ete essaye SEUL, avant
+        // que la loi 15 ne soit appliquee au plaqueur designe. Il faisait alors
+        // RECULER le ballon (gain -0,13 m) et tombait a 11/14 : il ouvrait la
+        // defense sans que l'attaque sache avancer. Une fois la ligne
+        // d'avantage positive, les deux s'additionnent (comparaison APPARIEE
+        // sur 80 matchs) : points 43,1 -> 47,4 (+4,3 +/- 3,5, etabli), part des
+        // AVANTS dans les essais 4,8 % -> 10,4 % et poste le plus prolifique
+        // 51 % -> 41 % (~3 ecarts-types), gain de terrain preserve (0,83 ->
+        // 0,89). Ne jamais remettre l'un sans l'autre.
+        if (j.ruckRecovery > 0 && j !== defenseurProche) {
+          const ligneHorsJeuRuck = this.ruckPoint ? this.ruckPoint.x : porteur.x;
+          avancer(j, ligneHorsJeuRuck - j.x, 0, dt, vitesseMs(j) * VITESSE_REPLI_SORTIE_RUCK);
+          continue;
+        }
         if (j === defenseurProche) {
           // Le plaqueur désigné vise un point d'interception légèrement
           // devant le porteur (dans son sens de course), pas sa position
@@ -2782,7 +2811,14 @@
         // ici. La faute existe et reste sanctionnee (cf. le test direct de
         // Referee.passeEnAvant dans server/test-invariants.js) ; elle est
         // seulement plus rare qu'en vrai.
-        if (this.rng() >= 0.08 * facteurDecision) return false;
+        // Taux releve de 0,08 a 0,12 pour COMPENSER, a frequence absolue egale,
+        // l'effet du retrait des sortants de ruck de la ligne defensive : avec
+        // plus d'espace, l'attaque se retrouve beaucoup plus rarement sans
+        // solution legale, et la sanction de la passe en avant tombait de 0,33
+        // a 0,20 par match (30 matchs) — la loi devenait quasi invisible. A
+        // 0,12 elle retrouve exactement son niveau d'avant (0,33), sans rien
+        // changer ailleurs (melees 11,3, touches 21,1, 12/14 categories).
+        if (this.rng() >= 0.12 * facteurDecision) return false;
       }
       // Une passe se donne à un joueur SUR LE CÔTÉ (composante latérale) :
       // passer droit dans son propre dos est impossible. On écarte les cibles

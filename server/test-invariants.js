@@ -1034,6 +1034,47 @@ test("loi 15 : le plaqueur designe ne franchit pas la ligne de hors-jeu du regro
     `le plaqueur designe passe ${franchissementMax.toFixed(2)} m devant la ligne de hors-jeu du regroupement`);
 });
 
+// --- SORTIE DE REGROUPEMENT : la defense ne repart pas a QUINZE ------------
+// Un joueur qui vient d'etre engage dans un ruck est au sol ou en train de se
+// relever : il n'est pas dans le rideau defensif du temps de jeu suivant.
+// AVANT, ruckRecovery ne faisait qu'une chose — empecher ce joueur d'etre
+// DESIGNE plaqueur. Il continuait a tenir sa place dans la ligne et a GLISSER
+// vers le ballon comme n'importe quel defenseur frais : la defense repartait a
+// quinze a chaque temps de jeu et le ballon rapide ne payait pas.
+test("un defenseur qui sort du regroupement ne glisse pas vers le ballon", () => {
+  const m = new MatchEngine(31, 600);
+  for (let t = 0; t < 30; t += 0.2) m.tick(0.2);
+  m.phase = 'PORTE';
+  m.timerPhase = 1;
+  m.possession = 'A';
+  m.passeVisuelle = null;
+  m.combinaison = null;
+  m.penaliteRecul = null;
+  const porteur = m.equipeA.find((j) => j.numero === 12);
+  m.porteur = porteur;
+  porteur.auSol = 0;
+  porteur.x = 50;
+  porteur.y = 20;
+  m.ruckPoint = { x: 55, y: 20 };
+  for (const j of m.equipeB) { j.auSol = 0; j.horsJeuKick = 0; j.fixeCooldown = 0; j.ruckRecovery = 0; }
+  // Quatre defenseurs viennent de sortir du regroupement, places au large.
+  const sortants = m.equipeB.filter((j) => [1, 2, 3, 4].includes(j.numero));
+  for (const j of sortants) {
+    j.ruckRecovery = 4; // valeur reelle posee par _imposerRecuperationRuck
+    j.x = m.ruckPoint.x;
+    j.y = 55; // tres loin du porteur (y = 20)
+  }
+  const yAvant = sortants.map((j) => j.y);
+  for (let t = 0; t < 1; t += 0.2) m.tick(0.2);
+  // Glissement MOYEN SIGNE vers le ballon (le porteur est a y = 20, eux a
+  // y = 55) : c'est le glissement defensif, pas le bruit de replacement.
+  const glissement = sortants.reduce((a, j, i) => a + (yAvant[i] - j.y), 0) / sortants.length;
+  // Mesure sur ce scenario, en 1 s : 1,79 m de glissement vers le ballon avant
+  // le correctif, 0,00 m apres. Un joueur qui se releve ne defend pas la largeur.
+  assert.ok(glissement < 0.5,
+    `un defenseur en sortie de regroupement glisse encore de ${glissement.toFixed(2)} m vers le ballon`);
+});
+
 console.log(`\n${nbTests} test(s) exécuté(s).`);
 if (process.exitCode) {
   console.error('ECHEC : au moins un invariant violé.');

@@ -581,7 +581,7 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 ## P2 — Maintenabilité et simulation
 
 ### P2-15. Le match se joue entièrement au milieu du terrain : une équipe qui conserve le ballon n'avance pas
-- **Statut : CONFIRMÉ (partiellement corrigé le 11/09 — voir « Le correctif livré »)**
+- **Statut : CONFIRMÉ (deux correctifs livrés le 11/09 — voir « Le correctif livré » et « Le second correctif »)**
 - Priorité : P2 (crédibilité de la simulation — CLAUDE.md rôle 6 « les mêmes actions ne doivent pas se répéter tout le temps » et priorité n°8 « essais construits »)
 - Fichiers concernés :
   - `engine/rugby-engine.js` + `docs/rugby-engine.js` (cause)
@@ -641,7 +641,24 @@ Mesure en **comparaison appariée par graine sur 80 matchs** :
 
 Calibration : 13/14 → **12/14** (le minimum exigé). Les plaquages passent sous le plancher interne [220-360] mais restent dans le repère de CLAUDE.md (120-250) ; le temps de jeu effectif reste au-dessus de son plancher avec peu de marge. C'est un échange assumé : une propriété fondamentale du jeu (le ballon avance quand on le conserve) contre une catégorie de volume.
 
-**Ce qui reste.** Le gain est à +0,83 m ; le repère réel est +3 à +5 m. Le ballon part toujours 8,4 m derrière le regroupement et un temps de jeu dure toujours ~20 s pour ~3 passes. La loi n'est d'ailleurs appliquée qu'à moitié : la vraie ligne de hors-jeu est le **pied le plus reculé** du regroupement, encore ~1,5 m derrière le ballon côté défense — le moteur clampe au ballon. Aller jusqu'à la loi exacte donne +1,16 m de gain mais fait tomber les plaquages à 202 et les courses à 208, hors fourchette : à reprendre **avec** une compensation du volume de phases.
+**LE SECOND CORRECTIF — les sortants de ruck quittent la ligne, mais SEULEMENT APRÈS la loi 15.** `ruckRecovery` ne faisait qu'une chose : écarter le joueur de la *désignation* du plaqueur. Il continuait à tenir sa place dans le rideau défensif et à **glisser vers le ballon** comme un joueur frais (1,79 m de glissement latéral en 1 s sur scénario construit). La défense repartait donc à quinze à chaque temps de jeu.
+
+Essayé **seul**, avant la loi 15, ce correctif faisait **reculer** le ballon (gain −0,13 m) et tombait à 11/14 : il ouvrait la défense sans que l'attaque sache avancer. Rejoué **par-dessus** la ligne d'avantage corrigée (comparaison appariée sur 80 matchs) :
+
+| | avant | après | établi ? |
+|---|---|---|---|
+| points/match | 43,1 | **47,4** | **oui** (+4,3 ± 3,5) |
+| part des AVANTS dans les essais | 4,8 % | **10,4 %** | **oui** (~3 σ) |
+| poste le plus prolifique | 51,0 % | **41,0 %** | **oui** (~3 σ) |
+| numéros marqueurs | 13 | 15 | — |
+| gain par temps de jeu | 0,83 m | 0,89 m | préservé |
+| essais/match | 5,06 | 5,66 | non établi |
+
+**C'est la correction de P2-14** : la part des avants double et la concentration sur un poste tombe de moitié. La leçon d'ordre est à retenir : *ouvrir la défense avant de savoir avancer échange un défaut contre un autre.*
+
+Effet secondaire corrigé dans le même patch : avec plus d'espace, l'attaque se retrouve beaucoup plus rarement sans solution légale, et la **sanction de la passe en avant** tombait de 0,33 à 0,20 par match — la loi devenait quasi invisible. Le résidu est passé de 0,08 à 0,12 pour retrouver exactement son niveau d'avant (0,33), sans rien changer ailleurs.
+
+**Ce qui reste.** Le gain est à +0,89 m ; le repère réel est +3 à +5 m. Le ballon part toujours 8,4 m derrière le regroupement et un temps de jeu dure toujours ~20 s pour ~3 passes. La loi n'est d'ailleurs appliquée qu'à moitié : la vraie ligne de hors-jeu est le **pied le plus reculé** du regroupement, encore ~1,5 m derrière le ballon côté défense — le moteur clampe au ballon. Aller jusqu'à la loi exacte donne +1,16 m de gain mais fait tomber les plaquages à 202 et les courses à 208, hors fourchette : à reprendre **avec** une compensation du volume de phases.
 
 **Avertissement de méthode (coûteux, à retenir).** Le gain de terrain par temps de jeu a un écart-type d'environ 8 m. Une moyenne sur 10, 20 ou même 40 matchs ne distingue pas +0,3 m de 0. Toute tentative future sur ce défaut doit se mesurer par **comparaison appariée par graine sur au moins 100 matchs** (même graine, moteur avant / moteur après, différence des moyennes par graine), sans quoi on croit livrer une amélioration qui n'existe pas — c'est arrivé ici.
 
