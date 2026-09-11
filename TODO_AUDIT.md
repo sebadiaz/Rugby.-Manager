@@ -607,9 +607,24 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 | Diagonale au coin restant en jeu (nouveau type, 30-45 %) | rucks 22 : 6,4-7,8 %, aucune touche gagnée dans les 22 |
 | Portage minimum avant la passe de ligne (0,8-1,2 s) | passes 609 → 486, mais gain de terrain inchangé (0,05-0,40 m), rucks 190-196 (hors fourchette), essais 2,8-3,2 |
 | Ballon porté aux avants près de la ligne (18 % → 35-55 %) | gain 0,42 m mais essais 3,9-4,4 et part des avants inchangée |
+| Défenseurs sortant du regroupement retirés de la ligne (`ruckRecovery`) | **le seul levier à avoir produit un gain ÉTABLI** — et il n'est quand même pas livrable, voir ci-dessous |
 | Ligne de trois-quarts moins profonde (10 m → 5/6/7/8 m) | **piège statistique** : +0,27 m apparents sur 40 graines, mais **+0,019 ± 0,178 m sur une comparaison APPARIÉE de 100 graines**, c'est-à-dire rien. Le gain par temps de jeu a un écart-type de ~8 m : en dessous de ~100 matchs appariés, tout écart observé est du bruit. Changement essayé puis **annulé**. |
 
 **Pourquoi la touche au coin ne produit pas de touche dans les 22.** La loi est bien implémentée : un coup de pied direct en touche depuis l'extérieur de ses 22 donne le lancer à l'ADVERSAIRE. Une touche d'attaque dans les 22 adverses vient donc, en vrai comme ici, d'une **pénalité jouée au coin** — or le moteur ne siffle quasiment jamais de pénalité dans les 22 adverses (les 4,5 pénalités par match jouées en touche ont toutes lieu à plus de 46 m de la ligne). Le correctif « pénalité au coin à 45 % » livré précédemment est donc, en pratique, **quasiment inopérant** tant que le territoire n'est pas réglé — c'est une correction juste sur une situation qui n'arrive pas.
+
+**Le levier le plus prometteur, et pourquoi il n'est pas livré.** `ruckRecovery` ne faisait qu'une chose : empêcher un joueur qui sort du ruck d'être *désigné plaqueur*. Il continuait à tenir sa place dans le rideau défensif et à **glisser vers le ballon** comme un joueur frais (mesuré sur un scénario construit : 1,79 m de glissement latéral en 1 s). La défense repartait donc à quinze à chaque temps de jeu, et le trou que crée un ballon rapide n'existait pas. Le retirer de la ligne pendant qu'il se relève est juste au rugby et donne, en **comparaison appariée sur 80 graines** :
+
+| | avant | après | établi ? |
+|---|---|---|---|
+| essais/match | 4,54 | 5,26 | **oui** (+0,73 ± 0,59) |
+| points/match | 40,2 | 45,6 | **oui** (+5,4 ± 3,9) |
+| poste le plus prolifique | 55,8 % | 40,7 % | **oui** (~4 écarts-types) |
+| numéros marqueurs | 13 | 15 | — |
+| gain par temps de jeu | +0,20 m | **−0,13 m** | régression |
+| plaquages/match | 225 | 214 | hors fourchette |
+| calibration | 13/14 | **11/14** | échec (minimum 12) |
+
+C'est donc un vrai progrès de gameplay (l'attaque ne se résume plus à « donner à l'ailier »), **payé par une régression de la ligne d'avantage** — le ballon recule désormais d'un regroupement au suivant — et par une calibration sous le seuil. Adouci (le défenseur n'est hors de la ligne que les 1,5 s où il se relève), il repasse à 12/14 et ne casse plus aucun invariant, mais **plus aucun gain n'est établi** (essais +0,46 ± 0,65) alors qu'il coûte toujours 10 plaquages par match. Les deux versions ont été **annulées**. À reprendre **avec** la correction de la ligne d'avantage, pas avant : seul, il échange un défaut contre un autre.
 
 **Avertissement de méthode (coûteux, à retenir).** Le gain de terrain par temps de jeu a un écart-type d'environ 8 m. Une moyenne sur 10, 20 ou même 40 matchs ne distingue pas +0,3 m de 0. Toute tentative future sur ce défaut doit se mesurer par **comparaison appariée par graine sur au moins 100 matchs** (même graine, moteur avant / moteur après, différence des moyennes par graine), sans quoi on croit livrer une amélioration qui n'existe pas — c'est arrivé ici.
 
