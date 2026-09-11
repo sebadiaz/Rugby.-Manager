@@ -54,7 +54,7 @@ const path = require('path');
 
 global.window = global;
 global.window.RugbyEngine = require('../docs/rugby-engine.js');
-const { MatchEngine } = global.window.RugbyEngine;
+const { MatchEngine, LONGUEUR } = global.window.RugbyEngine;
 new Function('window', fs.readFileSync(path.join(__dirname, '../docs/js/club.js'), 'utf8'))(global.window);
 new Function('window', fs.readFileSync(path.join(__dirname, '../docs/js/club-composition.js'), 'utf8'))(global.window);
 const RMClub = global.window.RMClub;
@@ -88,6 +88,7 @@ const series = {
 const possessionA = [];
 const essaisParNumero = {};
 let essaisMarques = 0;
+const territoire = { rucks: 0, rucks22: 0, touches: 0, touches22: 0, gains: [] };
 let passesJoueursForwards = 0, passesJoueursBacks = 0;
 let metresJoueursForwards = 0, metresJoueursBacks = 0;
 let victoiresNiveauFort = 0, victoiresNiveauFaible = 0, nuls = 0, ecartsNiveauNul = 0;
@@ -111,7 +112,26 @@ for (let i = 0; i < N_MATCHS; i++) {
   const joueursB = RMClub.effectifVersJoueursCfg({ effectif: effectifB });
 
   const m = new MatchEngine(seed, DUREE_SECONDES, { joueursA, joueursB });
-  for (let t = 0; t < DUREE_SECONDES; t += DT) m.tick(DT);
+  // TERRITOIRE : ou se joue reellement le match, et une equipe qui conserve le
+  // ballon avance-t-elle ? (mesure derivee des evenements du moteur, pas d'un
+  // compteur fabrique — cf. CLAUDE.md role 6)
+  let phaseAvant = m.phase, xPrecedent = null, possPrecedente = null;
+  for (let t = 0; t < DUREE_SECONDES; t += DT) {
+    m.tick(DT);
+    const sens = m.possession === 'A' ? 1 : -1;
+    const pt = m.ruckPoint || m.porteur;
+    const dist = pt ? (sens > 0 ? LONGUEUR - pt.x : pt.x) : 99;
+    if (m.phase === 'RUCK' && phaseAvant !== 'RUCK' && m.ruckPoint) {
+      territoire.rucks++; if (dist < 22) territoire.rucks22++;
+      if (xPrecedent !== null && possPrecedente === m.possession) {
+        const gagne = (m.ruckPoint.x - xPrecedent) * sens;
+        if (Math.abs(gagne) < 40) territoire.gains.push(gagne);
+      }
+      xPrecedent = m.ruckPoint.x; possPrecedente = m.possession;
+    }
+    if (m.phase === 'TOUCHE' && phaseAvant !== 'TOUCHE') { territoire.touches++; if (dist < 22) territoire.touches22++; }
+    phaseAvant = m.phase;
+  }
   const s = m.getState();
   const sa = s.stats.A, sb = s.stats.B;
 
@@ -367,6 +387,26 @@ const REPERES = {
   rucks: [70, 180], tacklesAttempted: [120, 250], kicks: [30, 80], penalitesConcedees: [12, 30],
   turnovers: [12, 18],
 };
+// --- TERRITOIRE (observation) ---------------------------------------------
+// Mesure : 94 % des regroupements se formaient dans le tiers central du
+// terrain, 0 touche sur 136 dans les 22 adverses, et une equipe qui CONSERVE
+// le ballon n'avancait que de 0,11 m d'un regroupement au suivant (mediane
+// -0,53 m : elle reculait une fois sur deux) la ou une vraie equipe avance de
+// 3 a 5 m. C'est la cause racine de l'absence d'attaque pres de la ligne :
+// il n'y a presque jamais d'occasion. Voir TODO_AUDIT.md P2-15.
+{
+  const g = territoire.gains.slice().sort((x, y) => x - y);
+  const gainMoyen = g.reduce((a, b) => a + b, 0) / (g.length || 1);
+  const gainMedian = g.length ? g[Math.floor(g.length / 2)] : 0;
+  const partRucks22 = territoire.rucks ? territoire.rucks22 / territoire.rucks : 0;
+  console.log('\n--- Territoire (observation) ---');
+  console.log(`regroupements dans les 22 adverses  : ${(100 * partRucks22).toFixed(1)} %`);
+  console.log(`touches dans les 22 adverses        : ${(territoire.touches22 / N_MATCHS).toFixed(2)} par match sur ${(territoire.touches / N_MATCHS).toFixed(1)}`);
+  console.log(`gain par temps de jeu (conservation) : moyenne ${gainMoyen.toFixed(2)} m, mediane ${gainMedian.toFixed(2)} m  (repere reel +3 a +5 m)`);
+  if (partRucks22 < 0.12) console.log('  AVERTISSEMENT : le jeu reste confine au milieu du terrain (cf. TODO_AUDIT.md P2-15).');
+  if (gainMedian < 0) console.log('  AVERTISSEMENT : une equipe qui conserve le ballon RECULE une fois sur deux.');
+}
+
 console.log('\n--- Comparaison aux repères réalistes de CLAUDE.md (avertissement seulement) ---');
 let horsRepere = 0;
 for (const cle of Object.keys(REPERES)) {

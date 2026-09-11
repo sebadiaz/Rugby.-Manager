@@ -580,6 +580,42 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-15. Le match se joue entièrement au milieu du terrain : une équipe qui conserve le ballon n'avance pas
+- **Statut : CONFIRMÉ (non corrigé — cause racine de P2-14)**
+- Priorité : P2 (crédibilité de la simulation — CLAUDE.md rôle 6 « les mêmes actions ne doivent pas se répéter tout le temps » et priorité n°8 « essais construits »)
+- Fichiers concernés :
+  - `engine/rugby-engine.js` + `docs/rugby-engine.js` (cause)
+  - `server/test-stats-matchs.js` (mesure ajoutée, en observation)
+
+**Reproduction (mesures sur 8 à 40 matchs complets).**
+- **94 % des regroupements** se forment entre 22 et 78 m, c'est-à-dire dans le tiers central. **5 %** seulement dans les 22 adverses, **1 %** dans son propre 22.
+- **0 touche sur 136** se forme dans les 22 adverses (minimum observé : 27,1 m de la ligne, médiane 55,9 m). Les deux équipes réunies n'entrent que **4,3 fois par match** dans un 22 adverse ; en vrai, chaque équipe y entre une dizaine de fois.
+- D'un regroupement au suivant, **à possession conservée**, le ballon avance de **+0,11 m** en moyenne et la **médiane est −0,53 m** : l'attaque recule une fois sur deux. Repère réel : +3 à +5 m par temps de jeu.
+- Décomposition du temps de jeu : le ballon part **8,37 m derrière** le regroupement (9→10→12→13, chaque receveur étant en retrait), puis remonte **8,53 m**. Net : **+0,16 m**. Un temps de jeu dure **19,8 s** pour **3,17 passes** (réel : 5 à 8 s).
+- Conséquence directe : une séquence entrée dans les 22 y fait **2,3 temps de jeu** et meurt en moyenne à **13,7 m** de la ligne. Seules **0,6 séquence par match** atteint un regroupement à moins de 5 m — mais **33 % de celles-là finissent en essai**. Ce n'est pas la finition qui manque, c'est l'occasion.
+
+**Cause.** Deux mécanismes se combinent :
+1. La ligne défensive vise `max(porteur.x + avance, ruckPoint.x)` : elle **attend exactement sur la ligne d'avantage** et n'en bouge pas tant que le porteur est derrière. Le plaquage tombe donc systématiquement sur le point de départ.
+2. La ligne de trois-quarts se place **10 m en retrait** au regroupement (plus un terme latéral) : le ballon doit reparcourir ces 10 m avant de gagner le moindre mètre, ce qu'il n'a pas le temps de faire. Le mécanisme `_enchaine` faisait même l'INVERSE du rugby : un receveur frais passait **2,2× plus vite** au lieu de courir d'abord.
+
+**Leviers essayés et MESURÉS — aucun ne suffit (à ne pas refaire).**
+
+| Levier | Effet mesuré |
+|---|---|
+| Coup de pied en touche plus long (15-30 m → 26-44 m) | rucks dans les 22 : 4,1 % → 6,7 %, mais temps de jeu effectif sous le plancher (31,9 min) |
+| Touche au coin depuis la moitié adverse (30 %) | rucks 22 : 10,2 %, mais plaquages 206 et temps de jeu 31,3 min, hors fourchette |
+| Diagonale au coin restant en jeu (nouveau type, 30-45 %) | rucks 22 : 6,4-7,8 %, aucune touche gagnée dans les 22 |
+| Portage minimum avant la passe de ligne (0,8-1,2 s) | passes 609 → 486, mais gain de terrain inchangé (0,05-0,40 m), rucks 190-196 (hors fourchette), essais 2,8-3,2 |
+| Ballon porté aux avants près de la ligne (18 % → 35-55 %) | gain 0,42 m mais essais 3,9-4,4 et part des avants inchangée |
+| Ligne de trois-quarts moins profonde (10 m → 5/6/7/8 m) | **piège statistique** : +0,27 m apparents sur 40 graines, mais **+0,019 ± 0,178 m sur une comparaison APPARIÉE de 100 graines**, c'est-à-dire rien. Le gain par temps de jeu a un écart-type de ~8 m : en dessous de ~100 matchs appariés, tout écart observé est du bruit. Changement essayé puis **annulé**. |
+
+**Pourquoi la touche au coin ne produit pas de touche dans les 22.** La loi est bien implémentée : un coup de pied direct en touche depuis l'extérieur de ses 22 donne le lancer à l'ADVERSAIRE. Une touche d'attaque dans les 22 adverses vient donc, en vrai comme ici, d'une **pénalité jouée au coin** — or le moteur ne siffle quasiment jamais de pénalité dans les 22 adverses (les 4,5 pénalités par match jouées en touche ont toutes lieu à plus de 46 m de la ligne). Le correctif « pénalité au coin à 45 % » livré précédemment est donc, en pratique, **quasiment inopérant** tant que le territoire n'est pas réglé — c'est une correction juste sur une situation qui n'arrive pas.
+
+**Avertissement de méthode (coûteux, à retenir).** Le gain de terrain par temps de jeu a un écart-type d'environ 8 m. Une moyenne sur 10, 20 ou même 40 matchs ne distingue pas +0,3 m de 0. Toute tentative future sur ce défaut doit se mesurer par **comparaison appariée par graine sur au moins 100 matchs** (même graine, moteur avant / moteur après, différence des moyennes par graine), sans quoi on croit livrer une amélioration qui n'existe pas — c'est arrivé ici.
+
+**La vraie tâche.** Faire avancer une possession : point de collision réel au contact, ligne défensive qui monte ET peut être franchie, regroupement qui avance, porteurs à plat près du ballon. C'est un chantier de simulation, pas un réglage de constantes.
+
+
 ### P2-14. Le moteur ne marque que des essais « en contre » : deux ailiers inscrivent 85 % des essais, les avants presque aucun
 - **Statut : CONFIRMÉ (partiellement corrigé — voir « Ce qui a été corrigé »)**
 - Priorité : P2 (crédibilité de la simulation — CLAUDE.md rôle 4 « les avants et les trois-quarts ne doivent pas jouer pareil » et rôle 6 « les mêmes actions ne doivent pas se répéter tout le temps »)
@@ -601,7 +637,18 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 - L'arrière court au **point d'interception** (`pointInterception`) dès que le porteur a franchi la ligne de défense, à 35 % de l'angle idéal — à 100 % le contre disparaissait complètement (2,8 essais/match, sous le repère réel).
 - **Loi 8** : un porteur plaqué dont l'élan franchit la ligne aplatit (essai), sauf s'il est tenu debout (35 %).
 - Une pénalité dans les 22 adverses part au coin dans 45 % des cas au lieu de 15 %.
-- Effet mesuré (20 matchs) : concentration sur un seul poste **56 % → 51 %**, **dix** numéros différents marquent au lieu de sept, distance médiane de réception **43 m → 41 m**, essais 5,3 → 4,5 (dans la fourchette), 13/14 catégories de calibration conservées.
+- **CORRECTION DU 11/09 — l'effet statistique annoncé était du BRUIT.** Il avait été mesuré sur 20 matchs (~100 essais) : « concentration 56 % → 51 %, dix numéros marqueurs au lieu de sept ». Repris sur **100 matchs par moteur** (482 essais avant, 441 après), le vrai résultat est :
+
+  | | avant (5090be2) | après (be644a5) |
+  |---|---|---|
+  | part des avants | 8,3 % ± 2,5 | 6,3 % ± 2,3 |
+  | poste le plus prolifique | 51,0 % ± 4,5 | 54,9 % ± 4,6 |
+  | numéros marqueurs | 14 | 13 |
+  | essais/match | 4,82 | 4,41 |
+
+  Autrement dit la répartition des essais **n'a pas été améliorée** ; l'écart observé à 20 matchs tenait entièrement à la taille de l'échantillon. Sur ~450 essais, l'intervalle à 95 % d'une part vaut ±4 à 5 points : aucun écart inférieur à ~10 points ne peut être conclu sous cette taille d'échantillon.
+- Ce qui reste ACQUIS de ce patch, parce que vérifié par des scénarios déterministes et non par des moyennes : la **loi 8** (un porteur plaqué dont l'élan franchit la ligne formait un regroupement DANS l'en-but, à x = 100,50 sur un terrain de 100 m — il aplatit désormais, ou est tenu debout), et le fait que le **dernier défenseur traverse** pour couvrir (écart latéral 20,3 m → 15,7 m sur un scénario construit). La calibration reste à 13/14 sur 50 matchs.
+- Le troisième volet du patch (pénalité jouée au coin, 15 % → 45 %) s'est révélé **quasiment inopérant** : le moteur ne siffle presque jamais de pénalité dans les 22 adverses (cf. P2-15).
 
 **Ce qui reste à faire (le fond).** La part des avants reste à 8 % et la médiane de réception à 41 m. Les leviers isolés ont été mesurés un par un et **aucun ne suffit** :
 - servir les avants au ras près de la ligne (taux du 9 porté de 0,18 à 0,45/0,70/0,90 selon la zone) : part des avants 8 % → 5-9 %, **aucun gain**, et +8 rucks/match ;
