@@ -696,7 +696,7 @@ L'échange est assumé et reste favorable — pour 0,70 essai (on reste à 4,8, 
 
 Effet de bord sur un test : sur les graines 1-3, le nombre de mêlées est passé de 33 à 20 (pour une moyenne inchangée de ~12 par match sur 20 graines), ce qui a fait tomber le garde-fou d'échantillon du test de durée des temps morts — sans que les durées, propriété réellement vérifiée, aient bougé. L'échantillon a été **élargi à 6 graines** ; le seuil n'a pas été baissé.
 
-**ERREUR DE MÉTHODE MAJEURE, TROUVÉE PAR UN TÉMOIN — et correction de la « −0,70 essai » annoncée plus haut.**
+**LA RÉSOLUTION DE LA MESURE, ÉTABLIE PAR UN TÉMOIN À EFFET NUL — et deux corrections successives de mes propres annonces.**
 
 En ajoutant l'interception, la comparaison appariée annonçait **+0,71 ± 0,48 essai, « établi »**. Le chiffre était trop beau : 0,75 interception par match ne peut pas produire 0,71 essai. J'ai donc lancé un **témoin** : le même code, mais avec `PROBA_INTERCEPTION = 0` — la mécanique présente, qui ne se déclenche jamais. Effet attendu : exactement zéro.
 
@@ -706,10 +706,27 @@ Mesure du témoin : **+0,575 ± 0,513 essai, « établi »**.
 
 **La méthode correcte** : comparer le candidat à un **TÉMOIN qui suit le même chemin de code** (même nombre d'appels `rng`), pas à l'état d'avant le patch. Pour un taux, cela veut dire comparer `taux = X` à `taux = 0`. Refaite ainsi, la mesure de l'interception donne **+0,138 ± 0,330 essai, non établi** — et tous les intervalles se resserrent d'un facteur 2 à 3 (gain ±0,112 au lieu de ±0,19 ; passes ±6,8 au lieu de ±14,8), ce qui est la signature du bruit supprimé.
 
+**PUIS CORRECTION DE CETTE CORRECTION — la méthode n'est pas cassée, elle a une résolution.** Conclure « la méthode fabrique des effets » à partir d'UN seul tirage était exactement la faute que je venais de dénoncer. J'ai donc monté le témoin correctement et en grand : moteur **sans** interception contre le **même** moteur **avec** la mécanique à taux **zéro** — comportement strictement identique, seul diffère le nombre d'appels `rng`. Effet vrai : exactement 0. Sur **120 graines** :
+
+| | |
+|---|---|
+| estimation | **+0,342** essai |
+| écart-type par graine | **2,51** essais |
+| IC normal 95 % | ±0,448 → **contient 0, correct** |
+| IC bootstrap 95 % | [−0,117 ; 0,792] → **contient 0, correct** |
+| fenêtres de 40 graines déclarant un effet | **0 sur 3** |
+
+Donc : l'intervalle se comporte correctement, et le « +0,575 ± 0,513 » du premier témoin était un **faux positif ordinaire** (~5 % des tirages), pas la signature d'une méthode défaillante.
+
+**La vraie leçon est quantitative.** L'écart-type du nombre d'essais est de **2,51 par match**. À 80 graines, l'intervalle à 95 % vaut donc **±0,55 essai** : *tout effet sur les essais inférieur à ~0,6 est hors de portée de la mesure*. Pour trancher un écart de 0,2 essai il faudrait environ **750 matchs par variante**. J'ai navigué toute la session juste au-dessus de cette limite sans le savoir.
+
+**Et l'alignement des flux reste une vraie amélioration de précision** : quand le témoin suit le même chemin de code, les deux moteurs restent sur la même trajectoire tant que la mécanique ne se déclenche pas, le pairage fonctionne réellement et les intervalles se resserrent d'un facteur 2 à 3 (gain ±0,112 au lieu de ±0,19 ; passes ±6,8 au lieu de ±14,8). À utiliser dès que c'est possible.
+
 **Ce qui doit être corrigé dans ce dossier :**
-- L'**érosion de −0,70 ± 0,57 essai** attribuée plus haut au cumul « passes + loi 15 » a été mesurée avec des flux désalignés. Le plancher de bruit de cette méthode étant de l'ordre de ±0,6 essai, **cette érosion n'est pas établie**. Elle n'est pas infirmée non plus : elle est **non mesurée**.
+- L'**érosion de −0,70 ± 0,57 essai** attribuée plus haut au cumul « passes + loi 15 » tombe pile sur la résolution de la mesure (±0,55 à 80 graines). C'est une **présomption, pas un fait** : à retenir comme un signal à surveiller, pas comme un coût démontré.
 - Les effets **grands devant ce plancher restent valables** : passes −86 (6× le plancher), gain de terrain +0,56 m (3× le plancher). Ce sont aussi les deux effets dont le mécanisme est direct.
-- Les effets **petits** annoncés dans les patchs précédents — variations d'essais de ±0,7, territoire de ±2 points, part des avants — sont **à considérer comme non établis** tant qu'ils n'ont pas été repris contre un témoin aligné.
+- Les effets **petits** annoncés dans les patchs précédents — variations d'essais de ±0,7, territoire de ±2 points, part des avants — sont **au niveau du bruit** : à ne pas revendiquer sans une mesure à 300 graines ou plus, ou contre un témoin aligné.
+- **Règle de travail qui en découle** : sur les essais, aucune conclusion sous ±0,6 à 80 graines ; construire le témoin pour qu'il suive le même chemin de code dès que c'est possible ; et ne jamais conclure d'un seul tirage limite — dans un sens comme dans l'autre.
 
 **Avertissement de méthode (coûteux, à retenir).** Le gain de terrain par temps de jeu a un écart-type d'environ 8 m. Une moyenne sur 10, 20 ou même 40 matchs ne distingue pas +0,3 m de 0. Toute tentative future sur ce défaut doit se mesurer par **comparaison appariée par graine sur au moins 100 matchs** (même graine, moteur avant / moteur après, différence des moyennes par graine), sans quoi on croit livrer une amélioration qui n'existe pas — c'est arrivé ici.
 
