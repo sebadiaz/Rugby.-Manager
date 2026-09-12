@@ -682,6 +682,20 @@ Effet secondaire, corrigé dans le même patch et pour la deuxième fois : moins
 
 Reste : 510 passes contre une cible de 420. Descendre plus bas fait sortir les **rucks** (184 à 189 mesurés sous 0,5/0,4, plafond 180) : la prochaine marche demande d'agir sur le nombre de temps de jeu, pas sur la cadence de passes.
 
+**LA LOI 15 JUSQU'AU BOUT — et un glissement des essais que seul un contrôle CUMULÉ a révélé.** La ligne de hors-jeu d'un regroupement est le **pied le plus reculé** du dernier joueur, soit ~1,5 m derrière le ballon de chaque côté — pas le ballon lui-même. Le moteur clampait les défenseurs sur le ballon, donc 1,5 m trop avancés : l'attaque recevait dans une ligne déjà sur elle. Corrigé (comparaison appariée, 80 matchs) :
+
+| | avant | après | établi ? |
+|---|---|---|---|
+| gain par temps de jeu | 0,90 m | **1,46 m** | **oui** (+0,56 ± 0,20) |
+| regroupements dans les 22 adverses | 8,0 % | **10,2 %** | **oui** (+2,2 ± 1,7) |
+| essais/match | 5,16 | 4,83 | non établi (−0,34 ± 0,56) |
+
+**Le piège méthodologique, et comment il a été attrapé.** Ce patch et le précédent (passes) affichaient chacun une baisse d'essais « non établie » : −0,36 ± 0,56 puis −0,34 ± 0,56. Pris séparément, aucun des deux n'aurait été refusé. Mesuré **cumulativement** sur les mêmes 80 graines, l'écart devient **−0,70 ± 0,57, ÉTABLI** : 5,53 → 4,83 essais par match. Une érosion réelle se cachait derrière deux bruits.
+
+L'échange est assumé et reste favorable — pour 0,70 essai (on reste à 4,8, dans la fourchette réelle) on obtient +0,57 m de gain de terrain, +2,4 points de territoire, −86 passes, la part des avants dans les essais de 9,5 % à 14,1 % et le poste le plus prolifique de 41 % à 33 %. Mais **la leçon compte davantage que l'arbitrage** : une suite de patchs dont chacun est « non établi » peut dériver. Tout enchaînement de réglages sur une même grandeur doit être re-mesuré **de bout en bout**, contre l'état d'avant le premier, pas seulement d'un cran à l'autre.
+
+Effet de bord sur un test : sur les graines 1-3, le nombre de mêlées est passé de 33 à 20 (pour une moyenne inchangée de ~12 par match sur 20 graines), ce qui a fait tomber le garde-fou d'échantillon du test de durée des temps morts — sans que les durées, propriété réellement vérifiée, aient bougé. L'échantillon a été **élargi à 6 graines** ; le seuil n'a pas été baissé.
+
 **Avertissement de méthode (coûteux, à retenir).** Le gain de terrain par temps de jeu a un écart-type d'environ 8 m. Une moyenne sur 10, 20 ou même 40 matchs ne distingue pas +0,3 m de 0. Toute tentative future sur ce défaut doit se mesurer par **comparaison appariée par graine sur au moins 100 matchs** (même graine, moteur avant / moteur après, différence des moyennes par graine), sans quoi on croit livrer une amélioration qui n'existe pas — c'est arrivé ici.
 
 **La vraie tâche.** Faire avancer une possession : point de collision réel au contact, ligne défensive qui monte ET peut être franchie, regroupement qui avance, porteurs à plat près du ballon. C'est un chantier de simulation, pas un réglage de constantes.
