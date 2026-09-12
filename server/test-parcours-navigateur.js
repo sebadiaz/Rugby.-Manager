@@ -4148,6 +4148,61 @@ function optionsLancement() {
     await ctxSec.close();
   }
 
+  // --- ACCELERATION DES TEMPS MORTS ------------------------------------------
+  // Signale en jeu : « les melees et les touches, je les trouve tres longues a
+  // jouer ». Mesure moteur sur 6 matchs de 80 min : la MISE EN PLACE d'une
+  // touche occupe 14,7 min par match et la formation d'une melee 13,8 min —
+  // 28,5 minutes a regarder trente joueurs marcher, plus que le temps de jeu
+  // effectif lui-meme (32,6 min). Les DUREES sont justes (une touche dure 40 a
+  // 60 s en vrai, une melee 60 a 90 s) et des tests de loi les protegent : on
+  // accelere l'AFFICHAGE de la mise en place, pas la simulation.
+  //
+  // On teste la REGLE, pas un chronometre : mesurer des debits en secondes
+  // reelles dans un navigateur donne un test instable (essaye, deux executions
+  // ont donne deux resultats). Ici le verdict est deterministe, et casser la
+  // regle rend bien le test rouge.
+  {
+    const ctxAcc = await browser.newContext({ viewport: { width: 1400, height: 1000 } });
+    const pgAcc = await ctxAcc.newPage();
+    await pgAcc.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+    const m = await pgAcc.evaluate(() => {
+      const f = window.RMMain && window.RMMain.multiplicateurAffichage;
+      if (!f) return null;
+      return {
+        jeuCourant: f({ phase: 'PORTE' }),
+        ruck: f({ phase: 'RUCK' }),
+        toucheMiseEnPlace: f({ phase: 'TOUCHE', toucheLancer: null }),
+        toucheApresLancer: f({ phase: 'TOUCHE', toucheLancer: { de: 2, vers: 4 } }),
+        meleeFormation: f({ phase: 'MELEE', melee: { etat: 'MELEE_FORMATION' } }),
+        meleeSet: f({ phase: 'MELEE', melee: { etat: 'MELEE_SET' } }),
+        meleeIntroduction: f({ phase: 'MELEE', melee: { etat: 'MELEE_INTRODUCTION' } }),
+        essai: f({ phase: 'ESSAI' }),
+        transfoRoutine: f({ phase: 'TRANSFORMATION', ballonEnVol: false }),
+        transfoBallonEnVol: f({ phase: 'TRANSFORMATION', ballonEnVol: true }),
+        penaliteBallonEnVol: f({ phase: 'PENALITE_TIR', ballonEnVol: true }),
+      };
+    });
+    verifier('acceleration : la regle d\'affichage est exposee et appelable', !!m);
+    if (m) {
+      verifier('acceleration : le JEU COURANT n\'est jamais accelere',
+        m.jeuCourant === 1 && m.ruck === 1, `PORTE=${m.jeuCourant} RUCK=${m.ruck}`);
+      verifier('acceleration : la mise en place d\'une touche est acceleree',
+        m.toucheMiseEnPlace > 1, `x${m.toucheMiseEnPlace}`);
+      verifier('acceleration : le LANCER en touche revient a vitesse normale',
+        m.toucheApresLancer === 1, `x${m.toucheApresLancer}`);
+      verifier('acceleration : la FORMATION de la melee est acceleree',
+        m.meleeFormation > 1, `x${m.meleeFormation}`);
+      verifier('acceleration : le crouch-bind-set et l\'introduction restent a vitesse normale',
+        m.meleeSet === 1 && m.meleeIntroduction === 1,
+        `SET=${m.meleeSet} INTRODUCTION=${m.meleeIntroduction}`);
+      verifier('acceleration : le replacement apres un essai est accelere', m.essai > 1, `x${m.essai}`);
+      verifier('acceleration : la routine du buteur est acceleree, le coup de pied ne l\'est pas',
+        m.transfoRoutine > 1 && m.transfoBallonEnVol === 1 && m.penaliteBallonEnVol === 1,
+        `routine=x${m.transfoRoutine} vol=x${m.transfoBallonEnVol}/${m.penaliteBallonEnVol}`);
+    }
+    await ctxAcc.close();
+  }
+
   verifier('aucune erreur console/page sur tout le parcours', erreursConsole.length === 0);
   if (erreursConsole.length) console.error(erreursConsole.join('\n'));
 
