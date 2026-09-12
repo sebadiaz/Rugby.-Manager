@@ -632,6 +632,46 @@
     return st.ballon ? { x: st.ballon.x, y: st.ballon.y } : null;
   }
 
+  // --- ACCELERATION DES TEMPS MORTS ------------------------------------------
+  // Signale en jeu : « les melees et les touches, je les trouve tres longues a
+  // jouer ». Mesure sur 6 matchs complets de 80 minutes : la MISE EN PLACE
+  // d'une touche occupe 14,7 min par match et la formation d'une melee 13,8 min
+  // — 28,5 minutes passees a regarder trente joueurs marcher vers leur place,
+  // soit plus que le temps de jeu effectif lui-meme (32,6 min).
+  //
+  // Les DUREES, elles, sont justes : une touche dure 40 a 60 s en vrai, une
+  // melee 60 a 90 s, et des tests de loi (server/test-invariants.js) les
+  // protegent explicitement. On ne les raccourcit donc pas — ce serait mentir
+  // sur le rugby et fausser le temps de jeu effectif.
+  //
+  // On accelere l'AFFICHAGE, et UNIQUEMENT pendant la mise en place. Le moteur,
+  // le chronometre et les statistiques sont strictement inchanges : c'est la
+  // meme simulation, regardee en avance rapide sur ses temps morts, exactement
+  // comme un resume televise. Des que le rugby commence — le crouch-bind-set,
+  // le lancer en touche, le coup de pied au but — on revient a la vitesse
+  // choisie par le joueur.
+  const ACCEL_MISE_EN_PLACE = 5;
+  function multiplicateurMiseEnPlace(m) {
+    if (!m) return 1;
+    switch (m.phase) {
+      // Touche : les deux alignements se forment et le lanceur rejoint sa
+      // marque en courant. Des que le ballon est lance (toucheLancer), on
+      // repasse en vitesse normale : le duel aerien est ce qu'on vient voir.
+      case 'TOUCHE': return m.toucheLancer ? 1 : ACCEL_MISE_EN_PLACE;
+      // Melee : seule la FORMATION (les deux paquets qui se placent) est un
+      // temps mort. Le crouch-bind-set, l'introduction et la contestation sont
+      // du jeu, et restent a vitesse normale.
+      case 'MELEE': return (m.melee && m.melee.etat === 'MELEE_FORMATION') ? ACCEL_MISE_EN_PLACE : 1;
+      // Apres un essai : replacement des vingt-deux autres joueurs.
+      case 'ESSAI': return ACCEL_MISE_EN_PLACE;
+      // Tir au but : la routine du buteur est acceleree, le coup de pied
+      // lui-meme (ballon en vol) est rendu a vitesse normale.
+      case 'TRANSFORMATION':
+      case 'PENALITE_TIR': return m.ballonEnVol ? 1 : ACCEL_MISE_EN_PLACE;
+      default: return 1;
+    }
+  }
+
   function boucle(ts) {
     if (dernierTs === null) dernierTs = ts;
     const dtReel = Math.min(0.05, (ts - dernierTs) / 1000);
@@ -643,8 +683,9 @@
     }
     const enMiniPause = ts < miniPauseJusqua;
     if (etatCourant === null) etatCourant = normalizeMatchState(match.getState());
+    const vitesseAffichee = vitesseSim * multiplicateurMiseEnPlace(match);
     if (enCours && !enMiniPause) {
-      accumulateur += dtReel * vitesseSim;
+      accumulateur += dtReel * vitesseAffichee;
       while (accumulateur >= PAS_FIXE) {
         etatPrecedent = etatCourant;
         match.tick(PAS_FIXE);
@@ -659,7 +700,7 @@
     // Position rendue du ballon : glisse vers sa cible logique à ~55 m/s de JEU
     // (donc rapide en avance rapide, posé et visible en temps réel). En vol, on
     // colle exactement à la trajectoire (déjà animée). En pause, on colle aussi.
-    const dtGame = (enCours && !enMiniPause) ? dtReel * vitesseSim : 0;
+    const dtGame = (enCours && !enMiniPause) ? dtReel * vitesseAffichee : 0;
     const cibleBallon = positionBallonLogique(etatRendu);
     if (cibleBallon) {
       if (!ballonRendu || cibleBallon.enVol || dtGame === 0) {
@@ -1012,6 +1053,13 @@
     },
     etatActuel() {
       return match ? normalizeMatchState(match.getState()) : null;
+    },
+    // Couture de test : la REGLE d'acceleration des temps morts, testable sans
+    // dependre d'un chronometrage (mesurer des debits en secondes reelles dans
+    // un navigateur donne un test qui tremble — essaye, puis remplace par
+    // celui-ci). La boucle de rendu appelle exactement cette fonction.
+    multiplicateurAffichage(etatMoteur) {
+      return multiplicateurMiseEnPlace(etatMoteur);
     },
   };
 
