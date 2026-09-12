@@ -737,7 +737,13 @@ test('loi 15 : le hors-jeu au regroupement a une CONSEQUENCE en match', () => {
 // ca multiplie mecaniquement les possessions, donc les rucks, les passes et
 // les courses, tous mesures a 1,5-2 fois leur volume reel.
 test('les temps morts durent ce qu ils durent : melee >= 45 s, touche >= 35 s', () => {
-  const GRAINES = [1, 2, 3];
+  // 6 graines et non 3 : le nombre de melees varie fortement d'un match a
+  // l'autre (33 sur les graines 1-3 a un etat du moteur, 20 a un autre — pour
+  // une moyenne inchangee de ~12 par match sur 20 graines). Le garde-fou
+  // d'echantillon de ce test tombait alors a zero sans que les DUREES, qui sont
+  // la propriete verifiee ici, aient bouge d'une seconde. On elargit
+  // l'echantillon ; on ne baisse pas le seuil.
+  const GRAINES = [1, 2, 3, 4, 5, 6];
   const melees = [], touches = [];
   for (const seed of GRAINES) {
     const m = new MatchEngine(seed, 4800);

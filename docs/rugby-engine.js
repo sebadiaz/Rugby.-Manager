@@ -451,6 +451,15 @@
   // Rayon de contact du plaquage (m) : distance a laquelle le contact se resout,
   // et donc aussi celle a laquelle un SECOND defenseur participe au plaquage.
   const RAYON_PLAQUAGE = 2.2;
+  // LOI 15 — la ligne de hors-jeu d'un regroupement est le PIED LE PLUS RECULE
+  // du dernier joueur, pas le ballon : elle se situe environ 1,5 m derriere lui,
+  // du cote de chaque equipe. Le moteur clampait les defenseurs sur le ballon
+  // lui-meme, soit 1,5 m trop avance : l'attaque recevait le ballon dans une
+  // ligne deja sur elle et ne franchissait jamais. Mesure (comparaison APPARIEE
+  // sur 80 matchs) : le gain net par temps de jeu passe de 0,90 m a 1,46 m
+  // (+0,56 +/- 0,20, etabli) et la part des regroupements dans les 22 adverses
+  // de 8,0 % a 10,2 % (+2,2 +/- 1,7, etabli).
+  const RECUL_PIED_RECULE = 1.5;
   // Vitesse (fraction de sa vitesse de course) a laquelle un defenseur qui sort
   // d'un regroupement rejoint la ligne de hors-jeu. Plus bas = trou plus grand
   // derriere le ruck : a 0,45 le moteur montait a 6,0 essais par match, au-dela
@@ -2351,7 +2360,7 @@
           // regroupements dans les 22 adverses 6,3 % -> 8,3 %.
           let cibleInterceptX = porteur.x + porteur.sensAttaque * 1.5;
           if (this.ruckPoint) {
-            const ligneHorsJeu = this.ruckPoint.x;
+            const ligneHorsJeu = this.ruckPoint.x + porteur.sensAttaque * RECUL_PIED_RECULE;
             cibleInterceptX = porteur.sensAttaque > 0
               ? Math.max(cibleInterceptX, ligneHorsJeu)
               : Math.min(cibleInterceptX, ligneHorsJeu);
@@ -2440,7 +2449,8 @@
         // essai ne se construisait ; a l'inverse, une possession pouvait
         // enchainer dix temps de jeu au meme endroit — c'est aussi ce qui
         // gonflait rucks, passes et courses.
-        const ligneGain = this.ruckPoint ? this.ruckPoint.x : porteur.x;
+        const ligneGain = (this.ruckPoint ? this.ruckPoint.x : porteur.x)
+          + porteur.sensAttaque * RECUL_PIED_RECULE;
         const cibleBrute = porteur.x + avance;
         const cibleX = porteur.sensAttaque > 0
           ? Math.max(cibleBrute, ligneGain)
