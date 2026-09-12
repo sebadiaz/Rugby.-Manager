@@ -157,7 +157,17 @@
       // courtes le long de la ligne : mesuré, seulement 29 % des séquences
       // atteignaient 3 passes (le ballon n'était « jamais écarté ») — la
       // diagonale d'attaque donne la profondeur, la cadence fait circuler.
-      jeuLargeTaux: { pression: 1.7, calme: 1.3 },
+      // Cadence ABAISSEE (1,7/1,3 -> 0,7/0,55). Le moteur jouait 600 passes par
+      // match, soit 3,02 par temps de jeu et 2,80 par course, la ou un vrai
+      // match en compte ~1,6 et ~1,1 : le ballon etait relache dans la foulee,
+      // personne ne le PORTAIT. Ce reglage avait ete tente plus tot et refuse —
+      // il coutait alors des essais et faisait exploser les rucks, parce que
+      // l'attaque n'avancait pas et que raccourcir la chaine revenait a mourir
+      // sur place plus vite. Depuis que la ligne d'avantage est positive
+      // (loi 15 appliquee au plaqueur) le meme reglage ne coute plus rien :
+      // comparaison APPARIEE sur 80 matchs, passes 600 -> 510 (-89 +/- 15,
+      // etabli), essais/points/gain de terrain inchanges dans le bruit.
+      jeuLargeTaux: { pression: 0.7, calme: 0.55 },
       // Une équipe réelle botte toutes les ~3 courses (France-Irlande 2026 :
       // 78 coups de pied / 255 courses) — c'est le régulateur n°1 de la
       // longueur des possessions. Le x2 avait été retenu quand une possession
@@ -2688,7 +2698,11 @@
         // 2,2 passes par séquence, 32 % seulement à 3+ passes.
         const cfgAtt = this.cfgAttaque[porteur.team];
         const tauxLigne = (pression ? cfgAtt.jeuLargeTaux.pression : cfgAtt.jeuLargeTaux.calme)
-          * ((porteur._enchaine || 0) > 0 ? 2.2 : 1);
+          // Bonus d'enchainement ramene de 2,2 a 1,5 : un receveur frais relache
+          // toujours le ballon plus volontiers (le mouvement continue), mais
+          // plus deux fois plus vite qu'un porteur installe — c'etait la
+          // deuxieme source du deluge de passes.
+          * ((porteur._enchaine || 0) > 0 ? 1.5 : 1);
         if (suivant && distDef > 2.4 && this.rng() < tauxLigne * dt) {
           this._passeCibleForcee = suivant; return 'PASS';
         }
@@ -2845,14 +2859,20 @@
         // ici. La faute existe et reste sanctionnee (cf. le test direct de
         // Referee.passeEnAvant dans server/test-invariants.js) ; elle est
         // seulement plus rare qu'en vrai.
-        // Taux releve de 0,08 a 0,12 pour COMPENSER, a frequence absolue egale,
+        // Taux releve de 0,08 a 0,12 puis a 0,20 pour COMPENSER, a frequence
+        // absolue egale,
         // l'effet du retrait des sortants de ruck de la ligne defensive : avec
         // plus d'espace, l'attaque se retrouve beaucoup plus rarement sans
         // solution legale, et la sanction de la passe en avant tombait de 0,33
         // a 0,20 par match (30 matchs) — la loi devenait quasi invisible. A
-        // 0,12 elle retrouve exactement son niveau d'avant (0,33), sans rien
-        // changer ailleurs (melees 11,3, touches 21,1, 12/14 categories).
-        if (this.rng() >= 0.12 * facteurDecision) return false;
+        // 0,12 elle retrouvait exactement son niveau d'avant (0,33). La baisse
+        // de la cadence de passes (jeuLargeTaux 1,7 -> 0,7) a reproduit le meme
+        // effet une seconde fois : 0,17 par match mesure, de nouveau sous le
+        // plancher. A 0,20 la sanction remonte a 0,40 par match — au-dessus de
+        // son niveau historique et un peu plus pres du reel (1 a 3), pour un
+        // cout nul ailleurs (chaque passe en avant vaut une melee, soit +0,2
+        // melee par match).
+        if (this.rng() >= 0.20 * facteurDecision) return false;
       }
       // Une passe se donne à un joueur SUR LE CÔTÉ (composante latérale) :
       // passer droit dans son propre dos est impossible. On écarte les cibles
