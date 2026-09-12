@@ -4203,6 +4203,57 @@ function optionsLancement() {
     await ctxAcc.close();
   }
 
+  // --- FIL DU MATCH : les passes ne doivent plus noyer le reste ---------------
+  // Mesure : sur les 30 evenements que le moteur conserve, 14,3 sont des passes
+  // et 29 % d'entre eux repetaient MOT POUR MOT la ligne precedente (jusqu'a
+  // cinq d'affilee). Le fil n'affichant que cinq lignes, le joueur pouvait
+  // n'avoir sous les yeux QUE « Passe de l'equipe A » repete, pendant que
+  // l'essai ou la penalite etaient chasses de la fenetre.
+  {
+    const ctxFil = await browser.newContext({ viewport: { width: 1400, height: 1000 } });
+    const pgFil = await ctxFil.newPage();
+    await pgFil.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+    const r = await pgFil.evaluate(() => {
+      const U = window.RMUI;
+      if (!U || !U.regrouperPasses || !U.texteEvenement) return null;
+      const journal = [
+        { id: 1, type: 'PASSE', team: 'A', message: 'Passe du n°9 au n°10, equipe A', de: 9, vers: 10 },
+        { id: 2, type: 'PASSE', team: 'A', message: 'Passe du n°10 au n°12, equipe A', de: 10, vers: 12 },
+        { id: 3, type: 'JEU_LARGE', team: 'A', message: 'Jeu au large du n°12 au n°13, equipe A', de: 12, vers: 13 },
+        { id: 4, type: 'PLAQUAGE_MANQUE', team: 'A', message: 'Plaquage manque' },
+        { id: 5, type: 'PASSE', team: 'A', message: 'Passe du n°9 au n°10, equipe A', de: 9, vers: 10 },
+        { id: 6, type: 'PASSE', team: 'B', message: 'Passe du n°10 au n°12, equipe B', de: 10, vers: 12 },
+        { id: 7, type: 'PASSE', team: 'A', message: 'Passe sans numeros' },
+      ];
+      const groupe = U.regrouperPasses(journal);
+      return {
+        taille: groupe.length,
+        textes: groupe.map((e) => U.texteEvenement(e)),
+        typeConserve: groupe[0] && groupe[0].type,
+        idConserve: groupe[0] && groupe[0].id,
+      };
+    });
+    verifier('fil : le regroupement des passes est expose et appelable', !!r);
+    if (r) {
+      // 3 passes chainees -> 1 entree ; le plaquage ; la passe isolee ; la
+      // passe de l'AUTRE equipe ; la passe sans numeros. Soit 5 entrees.
+      verifier('fil : une chaine de passes devient UNE seule ligne',
+        r.taille === 5, `${r.taille} entrees pour 7 evenements : ${JSON.stringify(r.textes)}`);
+      verifier('fil : la ligne dit qui a passe a qui, dans l\'ordre',
+        r.textes[0] === 'Equipe A : n°9 → n°10 → n°12 → n°13', r.textes[0]);
+      verifier('fil : un evenement non-passe COUPE la chaine',
+        r.textes[1] === 'Plaquage manque', r.textes[1]);
+      verifier('fil : une passe de l\'AUTRE equipe n\'est jamais chainee a la precedente',
+        r.textes[2] !== r.textes[3], `${r.textes[2]} / ${r.textes[3]}`);
+      verifier('fil : un evenement sans numeros passe tel quel (fil rejoue ancien)',
+        r.textes[4] === 'Passe sans numeros', r.textes[4]);
+      verifier('fil : l\'entree groupee garde le type et l\'identifiant du DERNIER evenement',
+        r.typeConserve === 'JEU_LARGE' && r.idConserve === 3,
+        `type=${r.typeConserve} id=${r.idConserve}`);
+    }
+    await ctxFil.close();
+  }
+
   verifier('aucune erreur console/page sur tout le parcours', erreursConsole.length === 0);
   if (erreursConsole.length) console.error(erreursConsole.join('\n'));
 

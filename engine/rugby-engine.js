@@ -990,8 +990,14 @@
     // l'interface puisse réagir (icône, bannière) sans reparser le message en français.
     // id : identifiant croissant, pour détecter côté client "un nouvel événement vient
     // d'arriver" même après que le tableau ait été tronqué (shift) à 30 entrées.
-    log(type, team, message) {
-      const evenement = { id: ++this._sequenceEvenement, type, team, message, t: this.tempsMatch };
+    // `extra` : champs STRUCTURES attaches a l'evenement (par ex. qui passe a
+    // qui). L'interface peut ainsi raconter l'action sans avoir a analyser le
+    // texte du message, ce qui serait fragile. Optionnel : tous les appels
+    // existants restent valables tels quels.
+    log(type, team, message, extra) {
+      const evenement = Object.assign(
+        { id: ++this._sequenceEvenement, type, team, message, t: this.tempsMatch },
+        extra || null);
       this.events.push(evenement);
       if (this.events.length > 30) this.events.shift();
       // Fait marquant : conservé pour TOUT le match (cf. CHRONOLOGIE_MAX).
@@ -2961,7 +2967,15 @@
           }
           if (fixe) fixe.fixeCooldown = 2.6; // cf. INERTIE DE COURSE : meme distance de retard, deux fois plus de temps
         }
-        this.log(jeuLarge ? 'JEU_LARGE' : 'PASSE', this.possession, `${jeuLarge ? 'Jeu au large' : 'Passe'} de l'equipe ${this.possession}`);
+        // Le fil du match affichait « Passe de l'equipe A » cinq fois d'affilee :
+        // 14,3 des 30 evenements conserves sont des passes, et 29 % d'entre eux
+        // repetaient MOT POUR MOT la ligne precedente. On dit desormais QUI
+        // passe A QUI — le joueur suit le ballon le long de la ligne au lieu de
+        // lire la meme phrase en boucle — et l'interface regroupe la chaine
+        // grace aux champs structures ci-dessous.
+        this.log(jeuLarge ? 'JEU_LARGE' : 'PASSE', this.possession,
+          `${jeuLarge ? 'Jeu au large' : 'Passe'} du n°${porteur.numero} au n°${cible.numero}, equipe ${this.possession}`,
+          { de: porteur.numero, vers: cible.numero });
         this._lancerPasseVisuelle(porteur, cible);
         // Fenêtre d'enchaînement : le receveur a ~0,9 s pendant lesquelles il
         // relâche volontiers le ballon au suivant (le mouvement continue).
