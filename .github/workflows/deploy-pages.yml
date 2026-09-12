@@ -70,6 +70,13 @@ jobs:
           node server/test-audit-p0-1.js
           node server/test-audit-p0-2.js
           node server/test-equilibre-matchs.js
+          # Touche : uniquement les tests qui ENONCENT LES LOIS (contestabilite,
+          # lisibilite d'un alignement restreint, compromis annonce au manager).
+          # Ils s'executent en 2 s. Les tests qui simulent des matchs complets
+          # restent dans le job de nuit (tests-longs.yml, ~10 min).
+          # Sans cette ligne, une loi de la touche pouvait etre neutralisee sans
+          # qu'aucun job de deploiement ne bronche — verifie par mutation.
+          RM_TOUCHE_RAPIDE=1 node server/test-touche.js
       - name: Installer Playwright (Chromium)
         run: |
           npm install --no-save playwright

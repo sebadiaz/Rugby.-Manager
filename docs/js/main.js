@@ -1014,4 +1014,43 @@
       return match ? normalizeMatchState(match.getState()) : null;
     },
   };
+
+  // --- SORTIE DE SECOURS ----------------------------------------------------
+  // Signale en jeu : « mon jeu est bloque, je ne peux ni rentrer dedans ni
+  // supprimer pour continuer ». Le seul bouton de remise a zero du jeu vivait
+  // DANS le panneau du club (onglet Palmares, cf. btnNouvelleSaisonClub) : il
+  // n'etait donc atteignable qu'apres avoir reussi a entrer dans le club. Toute
+  // panne qui empeche cette entree enfermait le joueur sans aucune issue, la
+  // partie et le bouton pour l'effacer etant derriere la meme porte.
+  //
+  // Ce bloc est deliberement AUTONOME : il ne lit ni l'etat du club, ni le
+  // rendu de l'interface (docs/js/clubUI.js), ni aucune fonction chargee apres
+  // lui. Il ne regarde qu'une chose — est-ce qu'une sauvegarde existe — et son
+  // gestionnaire n'appelle que l'effacement puis un rechargement de page. Il
+  // reste donc utilisable quand tout le reste est casse, ce qui est exactement
+  // le cas ou on en a besoin.
+  (function sortieDeSecours() {
+    const CLE = 'rugbyManager.club.v1'; // cf. docs/js/club-sauvegarde.js
+    function auChargement() {
+      let bouton = null;
+      try { bouton = document.getElementById('btnSecoursEffacer'); } catch (e) { return; }
+      if (!bouton) return;
+      let existe = false;
+      try { existe = !!window.localStorage.getItem(CLE); } catch (e) { existe = false; }
+      bouton.style.display = existe ? 'block' : 'none';
+      bouton.addEventListener('click', () => {
+        const message = 'Effacer definitivement ta saison en cours et repartir de zero ?';
+        let ok = false;
+        try { ok = window.confirm(message); } catch (e) { ok = true; }
+        if (!ok) return;
+        try {
+          if (window.RMClub && typeof window.RMClub.effacerSaison === 'function') window.RMClub.effacerSaison();
+          else window.localStorage.removeItem(CLE);
+        } catch (e) { /* rien d'autre a tenter : on recharge quand meme */ }
+        try { window.location.reload(); } catch (e) { /* ignore */ }
+      });
+    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', auChargement);
+    else auChargement();
+  })();
 })();

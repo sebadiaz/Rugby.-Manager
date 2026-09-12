@@ -580,6 +580,135 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-15. Le match se joue entièrement au milieu du terrain : une équipe qui conserve le ballon n'avance pas
+- **Statut : CONFIRMÉ (deux correctifs livrés le 11/09 — voir « Le correctif livré » et « Le second correctif »)**
+- Priorité : P2 (crédibilité de la simulation — CLAUDE.md rôle 6 « les mêmes actions ne doivent pas se répéter tout le temps » et priorité n°8 « essais construits »)
+- Fichiers concernés :
+  - `engine/rugby-engine.js` + `docs/rugby-engine.js` (cause)
+  - `server/test-stats-matchs.js` (mesure ajoutée, en observation)
+
+**Reproduction (mesures sur 8 à 40 matchs complets).**
+- **94 % des regroupements** se forment entre 22 et 78 m, c'est-à-dire dans le tiers central. **5 %** seulement dans les 22 adverses, **1 %** dans son propre 22.
+- **0 touche sur 136** se forme dans les 22 adverses (minimum observé : 27,1 m de la ligne, médiane 55,9 m). Les deux équipes réunies n'entrent que **4,3 fois par match** dans un 22 adverse ; en vrai, chaque équipe y entre une dizaine de fois.
+- D'un regroupement au suivant, **à possession conservée**, le ballon avance de **+0,11 m** en moyenne et la **médiane est −0,53 m** : l'attaque recule une fois sur deux. Repère réel : +3 à +5 m par temps de jeu.
+- Décomposition du temps de jeu : le ballon part **8,37 m derrière** le regroupement (9→10→12→13, chaque receveur étant en retrait), puis remonte **8,53 m**. Net : **+0,16 m**. Un temps de jeu dure **19,8 s** pour **3,17 passes** (réel : 5 à 8 s).
+- Conséquence directe : une séquence entrée dans les 22 y fait **2,3 temps de jeu** et meurt en moyenne à **13,7 m** de la ligne. Seules **0,6 séquence par match** atteint un regroupement à moins de 5 m — mais **33 % de celles-là finissent en essai**. Ce n'est pas la finition qui manque, c'est l'occasion.
+
+**Cause.** Deux mécanismes se combinent :
+1. La ligne défensive vise `max(porteur.x + avance, ruckPoint.x)` : elle **attend exactement sur la ligne d'avantage** et n'en bouge pas tant que le porteur est derrière. Le plaquage tombe donc systématiquement sur le point de départ.
+2. La ligne de trois-quarts se place **10 m en retrait** au regroupement (plus un terme latéral) : le ballon doit reparcourir ces 10 m avant de gagner le moindre mètre, ce qu'il n'a pas le temps de faire. Le mécanisme `_enchaine` faisait même l'INVERSE du rugby : un receveur frais passait **2,2× plus vite** au lieu de courir d'abord.
+
+**Leviers essayés et MESURÉS — aucun ne suffit (à ne pas refaire).**
+
+| Levier | Effet mesuré |
+|---|---|
+| Coup de pied en touche plus long (15-30 m → 26-44 m) | rucks dans les 22 : 4,1 % → 6,7 %, mais temps de jeu effectif sous le plancher (31,9 min) |
+| Touche au coin depuis la moitié adverse (30 %) | rucks 22 : 10,2 %, mais plaquages 206 et temps de jeu 31,3 min, hors fourchette |
+| Diagonale au coin restant en jeu (nouveau type, 30-45 %) | rucks 22 : 6,4-7,8 %, aucune touche gagnée dans les 22 |
+| Portage minimum avant la passe de ligne (0,8-1,2 s) | passes 609 → 486, mais gain de terrain inchangé (0,05-0,40 m), rucks 190-196 (hors fourchette), essais 2,8-3,2 |
+| Ballon porté aux avants près de la ligne (18 % → 35-55 %) | gain 0,42 m mais essais 3,9-4,4 et part des avants inchangée |
+| Défenseurs sortant du regroupement retirés de la ligne (`ruckRecovery`) | **le seul levier à avoir produit un gain ÉTABLI** — et il n'est quand même pas livrable, voir ci-dessous |
+| Ligne de trois-quarts moins profonde (10 m → 5/6/7/8 m) | **piège statistique** : +0,27 m apparents sur 40 graines, mais **+0,019 ± 0,178 m sur une comparaison APPARIÉE de 100 graines**, c'est-à-dire rien. Le gain par temps de jeu a un écart-type de ~8 m : en dessous de ~100 matchs appariés, tout écart observé est du bruit. Changement essayé puis **annulé**. |
+
+**Pourquoi la touche au coin ne produit pas de touche dans les 22.** La loi est bien implémentée : un coup de pied direct en touche depuis l'extérieur de ses 22 donne le lancer à l'ADVERSAIRE. Une touche d'attaque dans les 22 adverses vient donc, en vrai comme ici, d'une **pénalité jouée au coin** — or le moteur ne siffle quasiment jamais de pénalité dans les 22 adverses (les 4,5 pénalités par match jouées en touche ont toutes lieu à plus de 46 m de la ligne). Le correctif « pénalité au coin à 45 % » livré précédemment est donc, en pratique, **quasiment inopérant** tant que le territoire n'est pas réglé — c'est une correction juste sur une situation qui n'arrive pas.
+
+**Le levier le plus prometteur, et pourquoi il n'est pas livré.** `ruckRecovery` ne faisait qu'une chose : empêcher un joueur qui sort du ruck d'être *désigné plaqueur*. Il continuait à tenir sa place dans le rideau défensif et à **glisser vers le ballon** comme un joueur frais (mesuré sur un scénario construit : 1,79 m de glissement latéral en 1 s). La défense repartait donc à quinze à chaque temps de jeu, et le trou que crée un ballon rapide n'existait pas. Le retirer de la ligne pendant qu'il se relève est juste au rugby et donne, en **comparaison appariée sur 80 graines** :
+
+| | avant | après | établi ? |
+|---|---|---|---|
+| essais/match | 4,54 | 5,26 | **oui** (+0,73 ± 0,59) |
+| points/match | 40,2 | 45,6 | **oui** (+5,4 ± 3,9) |
+| poste le plus prolifique | 55,8 % | 40,7 % | **oui** (~4 écarts-types) |
+| numéros marqueurs | 13 | 15 | — |
+| gain par temps de jeu | +0,20 m | **−0,13 m** | régression |
+| plaquages/match | 225 | 214 | hors fourchette |
+| calibration | 13/14 | **11/14** | échec (minimum 12) |
+
+C'est donc un vrai progrès de gameplay (l'attaque ne se résume plus à « donner à l'ailier »), **payé par une régression de la ligne d'avantage** — le ballon recule désormais d'un regroupement au suivant — et par une calibration sous le seuil. Adouci (le défenseur n'est hors de la ligne que les 1,5 s où il se relève), il repasse à 12/14 et ne casse plus aucun invariant, mais **plus aucun gain n'est établi** (essais +0,46 ± 0,65) alors qu'il coûte toujours 10 plaquages par match. Les deux versions ont été **annulées**. À reprendre **avec** la correction de la ligne d'avantage, pas avant : seul, il échange un défaut contre un autre.
+
+**LE CORRECTIF LIVRÉ — loi 15 appliquée au plaqueur désigné.** La ligne de hors-jeu d'un regroupement vaut pour TOUS les défenseurs. Le moteur la faisait bien respecter par la ligne défensive (`ligneGain`) mais **pas par le plaqueur désigné**, qui visait `porteur.x + 1,5 m` quelle que soit sa position : il partait donc chercher le receveur **en avant du regroupement** (mesuré sur un scénario construit : 2,44 m devant la ligne), et le contact tombait mécaniquement sur la ligne de départ. C'est ce qui clouait le gain de terrain à zéro.
+
+Mesure en **comparaison appariée par graine sur 80 matchs** :
+
+| | avant | après | établi ? |
+|---|---|---|---|
+| gain par temps de jeu | +0,20 m | **+0,83 m** | **oui** (+0,63 ± 0,23) |
+| regroupements dans les 22 adverses | 7,1 % | **9,1 %** | **oui** (+2,0 ± 1,5 pt) |
+| essais/match | 4,54 | 5,06 | non établi (+0,53 ± 0,62) |
+| points/match | 40,2 | 43,1 | non établi |
+| plaquages/match | 225 | 215 | coût |
+| temps de jeu effectif | 33,3 min | 32,4 min | coût |
+
+Calibration : 13/14 → **12/14** (le minimum exigé). Les plaquages passent sous le plancher interne [220-360] mais restent dans le repère de CLAUDE.md (120-250) ; le temps de jeu effectif reste au-dessus de son plancher avec peu de marge. C'est un échange assumé : une propriété fondamentale du jeu (le ballon avance quand on le conserve) contre une catégorie de volume.
+
+**LE SECOND CORRECTIF — les sortants de ruck quittent la ligne, mais SEULEMENT APRÈS la loi 15.** `ruckRecovery` ne faisait qu'une chose : écarter le joueur de la *désignation* du plaqueur. Il continuait à tenir sa place dans le rideau défensif et à **glisser vers le ballon** comme un joueur frais (1,79 m de glissement latéral en 1 s sur scénario construit). La défense repartait donc à quinze à chaque temps de jeu.
+
+Essayé **seul**, avant la loi 15, ce correctif faisait **reculer** le ballon (gain −0,13 m) et tombait à 11/14 : il ouvrait la défense sans que l'attaque sache avancer. Rejoué **par-dessus** la ligne d'avantage corrigée (comparaison appariée sur 80 matchs) :
+
+| | avant | après | établi ? |
+|---|---|---|---|
+| points/match | 43,1 | **47,4** | **oui** (+4,3 ± 3,5) |
+| part des AVANTS dans les essais | 4,8 % | **10,4 %** | **oui** (~3 σ) |
+| poste le plus prolifique | 51,0 % | **41,0 %** | **oui** (~3 σ) |
+| numéros marqueurs | 13 | 15 | — |
+| gain par temps de jeu | 0,83 m | 0,89 m | préservé |
+| essais/match | 5,06 | 5,66 | non établi |
+
+**C'est la correction de P2-14** : la part des avants double et la concentration sur un poste tombe de moitié. La leçon d'ordre est à retenir : *ouvrir la défense avant de savoir avancer échange un défaut contre un autre.*
+
+Effet secondaire corrigé dans le même patch : avec plus d'espace, l'attaque se retrouve beaucoup plus rarement sans solution légale, et la **sanction de la passe en avant** tombait de 0,33 à 0,20 par match — la loi devenait quasi invisible. Le résidu est passé de 0,08 à 0,12 pour retrouver exactement son niveau d'avant (0,33), sans rien changer ailleurs.
+
+**LE PLAQUAGE À DEUX — la catégorie perdue, récupérée par une action réelle.** Les deux correctifs ci-dessus ont fait tomber les plaquages de 225 à 215 par match (les possessions avancent, donc il y a moins de phases), sous le plancher interne [220-360]. En cherchant à les récupérer, on a trouvé une sous-estimation STRUCTURELLE : un plaquage de rugby est souvent le fait de **deux** défenseurs, et le relevé officiel les compte tous les deux — le moteur ne créditait que celui qu'il avait *désigné*. Un second défenseur se trouve réellement dans le rayon de contact (2,2 m, celui-là même qui déclenche le plaquage) sur **11 %** des plaquages : les compter ramène le total à **244 par match**, dans la fourchette, sans rien changer d'autre (gain 0,83 m, part des avants 15 %, poste le plus prolifique 38 % — tous identiques). Calibration : 12/14 → **13/14**.
+
+Ce n'est pas un compteur fabriqué (CLAUDE.md rôle 6) : le second plaqueur doit être debout, en jeu, hors récupération de regroupement, et **réellement** dans le rayon de contact. Un test garde-fou vérifie qu'un défenseur à 4 m n'est PAS crédité — sans lui, la règle deviendrait exactement le compteur artificiel que CLAUDE.md interdit. Coupler le plaquage à deux à un plaquage *dominant* a été essayé et **rejeté** : gain de terrain 0,83 → 0,67 m et part des avants 15 % → 7 %.
+
+**Ce qui reste.** Le gain est à +0,89 m ; le repère réel est +3 à +5 m. Le ballon part toujours 8,4 m derrière le regroupement et un temps de jeu dure toujours ~20 s pour ~3 passes. La loi n'est d'ailleurs appliquée qu'à moitié : la vraie ligne de hors-jeu est le **pied le plus reculé** du regroupement, encore ~1,5 m derrière le ballon côté défense — le moteur clampe au ballon. Aller jusqu'à la loi exacte donne +1,16 m de gain mais fait tomber les plaquages à 202 et les courses à 208, hors fourchette : à reprendre **avec** une compensation du volume de phases.
+
+**Avertissement de méthode (coûteux, à retenir).** Le gain de terrain par temps de jeu a un écart-type d'environ 8 m. Une moyenne sur 10, 20 ou même 40 matchs ne distingue pas +0,3 m de 0. Toute tentative future sur ce défaut doit se mesurer par **comparaison appariée par graine sur au moins 100 matchs** (même graine, moteur avant / moteur après, différence des moyennes par graine), sans quoi on croit livrer une amélioration qui n'existe pas — c'est arrivé ici.
+
+**La vraie tâche.** Faire avancer une possession : point de collision réel au contact, ligne défensive qui monte ET peut être franchie, regroupement qui avance, porteurs à plat près du ballon. C'est un chantier de simulation, pas un réglage de constantes.
+
+
+### P2-14. Le moteur ne marque que des essais « en contre » : deux ailiers inscrivent 85 % des essais, les avants presque aucun
+- **Statut : CONFIRMÉ (partiellement corrigé — voir « Ce qui a été corrigé »)**
+- Priorité : P2 (crédibilité de la simulation — CLAUDE.md rôle 4 « les avants et les trois-quarts ne doivent pas jouer pareil » et rôle 6 « les mêmes actions ne doivent pas se répéter tout le temps »)
+- Fichiers concernés :
+  - `engine/rugby-engine.js` + `docs/rugby-engine.js` (cause + correctifs partiels)
+  - `server/test-invariants.js` (trois tests de loi ajoutés)
+  - `server/test-stats-matchs.js` (mesure de la répartition des essais par numéro de maillot, en avertissement)
+
+**Reproduction (mesures, pas suppositions).** Sur 20 matchs complets de 80 minutes (graines 1 à 20, 106 essais) :
+- répartition des essais par numéro de maillot : `6:2 7:5 8:1 11:31 13:4 14:59 15:4` — les **deux seuls ailiers marquent 85 %** des essais du match, le n°14 à lui seul 56 %, et **les numéros 1 à 5 n'ont jamais marqué** ;
+- part des avants (1-8) : **8 %** (repère réel : environ un tiers, ballon porté / maul pénétrant / pick-and-go) ;
+- distance à la ligne **au moment où le marqueur reçoit le ballon** : médiane **43 m**, et **82 % des essais partent de plus de 20 m**, 3 % seulement de moins de 5 m. En vrai, c'est l'inverse : l'essai se finit de près, la course de 45 m est l'exception.
+
+**Cause.** Deux défauts distincts, tous deux mesurés :
+1. **Le dernier défenseur ne couvre pas.** L'arrière (n°15) « sweepait » à `porteur.x + 18` avec un `y` resté à 70 % de son couloir central : un porteur lancé le long d'une touche n'était donc jamais couvert. Toute percée devenait mécaniquement un essai, et seuls les joueurs qui reçoivent en bout de ligne (les ailiers) percent.
+2. **L'attaque près de la ligne ne convertit pas les positions qu'elle obtient.** Seulement **0,6 séquence par match** atteint un regroupement à moins de 5 m de la ligne adverse — alors que **33 % de celles-là finissent en essai**. Ce n'est donc pas la finition qui manque, c'est l'occasion. Contributeurs mesurés : une pénalité dans les 22 adverses ne partait au coin que dans 15 % des cas (donc 0,25 maul par match à moins de 5 m), et un porteur plaqué dont l'élan franchissait la ligne formait un **regroupement DANS l'en-but** (`ruckPoint.x = 100,50` sur un terrain de 100 m) au lieu d'aplatir.
+
+**Ce qui a été corrigé (patch « le dernier défenseur couvre le coin »).**
+- L'arrière court au **point d'interception** (`pointInterception`) dès que le porteur a franchi la ligne de défense, à 35 % de l'angle idéal — à 100 % le contre disparaissait complètement (2,8 essais/match, sous le repère réel).
+- **Loi 8** : un porteur plaqué dont l'élan franchit la ligne aplatit (essai), sauf s'il est tenu debout (35 %).
+- Une pénalité dans les 22 adverses part au coin dans 45 % des cas au lieu de 15 %.
+- **CORRECTION DU 11/09 — l'effet statistique annoncé était du BRUIT.** Il avait été mesuré sur 20 matchs (~100 essais) : « concentration 56 % → 51 %, dix numéros marqueurs au lieu de sept ». Repris sur **100 matchs par moteur** (482 essais avant, 441 après), le vrai résultat est :
+
+  | | avant (5090be2) | après (be644a5) |
+  |---|---|---|
+  | part des avants | 8,3 % ± 2,5 | 6,3 % ± 2,3 |
+  | poste le plus prolifique | 51,0 % ± 4,5 | 54,9 % ± 4,6 |
+  | numéros marqueurs | 14 | 13 |
+  | essais/match | 4,82 | 4,41 |
+
+  Autrement dit la répartition des essais **n'a pas été améliorée** ; l'écart observé à 20 matchs tenait entièrement à la taille de l'échantillon. Sur ~450 essais, l'intervalle à 95 % d'une part vaut ±4 à 5 points : aucun écart inférieur à ~10 points ne peut être conclu sous cette taille d'échantillon.
+- Ce qui reste ACQUIS de ce patch, parce que vérifié par des scénarios déterministes et non par des moyennes : la **loi 8** (un porteur plaqué dont l'élan franchit la ligne formait un regroupement DANS l'en-but, à x = 100,50 sur un terrain de 100 m — il aplatit désormais, ou est tenu debout), et le fait que le **dernier défenseur traverse** pour couvrir (écart latéral 20,3 m → 15,7 m sur un scénario construit). La calibration reste à 13/14 sur 50 matchs.
+- Le troisième volet du patch (pénalité jouée au coin, 15 % → 45 %) s'est révélé **quasiment inopérant** : le moteur ne siffle presque jamais de pénalité dans les 22 adverses (cf. P2-15).
+
+**Ce qui reste à faire (le fond).** La part des avants reste à 8 % et la médiane de réception à 41 m. Les leviers isolés ont été mesurés un par un et **aucun ne suffit** :
+- servir les avants au ras près de la ligne (taux du 9 porté de 0,18 à 0,45/0,70/0,90 selon la zone) : part des avants 8 % → 5-9 %, **aucun gain**, et +8 rucks/match ;
+- renforcer la couverture de l'arrière au-delà de 35 % : la répartition s'améliore nettement (part des avants 14 %, poste le plus prolifique 45 %, médiane 19 m) mais les essais tombent à **2,9/match** et les points à 31,6, hors repère — la défense devient un mur que l'attaque proche de la ligne ne sait pas percer.
+La vraie tâche est donc l'**attaque près de la ligne** : séquences de ballon porté enchaînées, maul pénétrant depuis une touche à 5 m, tenu debout, mêlée à 5 m. C'est une tâche à part entière, pas un réglage.
+
+
 ### P1-19. Écrans de gestion d'équipe dupliqués par type d'équipe (premier XV / Équipe B / Espoirs / clubs adverses) — 5ᵉ tranche `ROADMAP_FOOTBALL_MANAGER.md`
 - **Statut : CORRIGÉ**
 - Priorité : P1 (demande explicite de l'utilisateur : « Refactorise toute la gestion des équipes autour d'écrans uniques et réutilisables. [...] l'équipe première, l'équipe B, les jeunes et les équipes adverses ne doivent surtout pas avoir des pages séparées ou des interfaces différentes. [...] un seul écran et un seul composant par fonctionnalité. »)

@@ -4115,6 +4115,39 @@ function optionsLancement() {
     erreursSauv.length === 0);
   await ctxSauv.close();
 
+  // --- SORTIE DE SECOURS ----------------------------------------------------
+  // Signale en jeu : « mon jeu est bloque, je ne peux ni rentrer dedans ni
+  // supprimer pour continuer ». Le seul bouton de remise a zero vivait DANS le
+  // panneau du club : toute panne empechant d'y entrer enfermait le joueur, la
+  // partie et le bouton pour l'effacer etant derriere la meme porte.
+  const CLE_SAUVEGARDE_CLUB = 'rugbyManager.club.v1';
+  for (const [nomVue, vue] of [['bureau', { width: 1400, height: 1000 }], ['mobile', { width: 390, height: 844 }]]) {
+    const ctxSec = await browser.newContext({ viewport: vue });
+    const pgSec = await ctxSec.newPage();
+    pgSec.on('dialog', (d) => d.accept());
+    await pgSec.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+    verifier(`secours (${nomVue}) : sans sauvegarde, le bouton reste cache`,
+      await pgSec.evaluate(() => getComputedStyle(document.getElementById('btnSecoursEffacer')).display === 'none'));
+    await pgSec.click('#btnAccueilModeClub');
+    await pgSec.fill('#inputNomClub', 'AS Sortie De Secours');
+    await pgSec.click('#btnCreerClub');
+    await pgSec.waitForTimeout(700);
+    await pgSec.reload({ waitUntil: 'networkidle' });
+    verifier(`secours (${nomVue}) : avec une sauvegarde, le bouton est propose sur l'accueil`,
+      await pgSec.evaluate(() => getComputedStyle(document.getElementById('btnSecoursEffacer')).display !== 'none'));
+    // LE CAS QUI COMPTE : la couche club est cassee. Le secours doit marcher
+    // quand meme — sinon il ne sert a rien, puisque c'est precisement quand
+    // tout est casse qu'on en a besoin.
+    await pgSec.evaluate(() => { window.RMClub = undefined; });
+    await pgSec.click('#btnSecoursEffacer');
+    await pgSec.waitForTimeout(900);
+    verifier(`secours (${nomVue}) : la sauvegarde est effacee meme si RMClub est casse`,
+      await pgSec.evaluate((c) => !localStorage.getItem(c), CLE_SAUVEGARDE_CLUB));
+    verifier(`secours (${nomVue}) : le jeu repart sur un ecran jouable`,
+      await pgSec.evaluate(() => !!document.getElementById('btnAccueilModeClub')));
+    await ctxSec.close();
+  }
+
   verifier('aucune erreur console/page sur tout le parcours', erreursConsole.length === 0);
   if (erreursConsole.length) console.error(erreursConsole.join('\n'));
 

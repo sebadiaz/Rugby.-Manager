@@ -60,16 +60,30 @@ function test(nom, fn) {
   catch (e) { process.exitCode = 1; console.error(`FAIL ${nom}`); console.error('     ' + e.message); }
 }
 
-// Instrumentation : durée RÉELLE de chaque ruck (entrée en phase RUCK jusqu'à
-// la sortie) confrontée à la durée CIBLE tirée du profil.
+// Instrumentation : durée RÉELLE de RECYCLAGE de chaque ruck, confrontée à la
+// durée CIBLE tirée du profil.
+//
+// Le chronomètre démarre quand le ballon est DISPONIBLE AU SOL, pas à l'entrée
+// en phase RUCK : entre les deux il y a le TEMPS DE PLAQUAGE (loi 14, cf.
+// DUREE_PLAQUAGE dans le moteur) — le plaqueur tient le porteur, l'amène au
+// sol, le porteur présente le ballon. C'est exactement la convention de la
+// mesure réelle que le profil reproduit (World Rugby : ballon au sol -> ballon
+// sorti, cf. DEFAULT_CONFIG.ruck). Mesurer depuis l'entrée en phase ajouterait
+// ce temps de plaquage à chaque ruck et décalerait toute la distribution.
 function mesurerRucks(graine) {
   const m = new RugbyEngine.MatchEngine(graine, 4800, null);
   const rucks = [];
-  let enRuck = false, t0 = 0, cible = 0, n = 0;
+  let enRuck = false, t0 = null, cible = 0, n = 0;
   while (m.getState().phase !== 'TERMINE' && n < 400000) {
     m.tick(1 / 20); n++;
-    if (m.phase === 'RUCK' && !enRuck) { enRuck = true; t0 = m.tempsMatch; cible = m.ruckDureeCible; }
-    else if (m.phase !== 'RUCK' && enRuck) { enRuck = false; rucks.push({ reelle: m.tempsMatch - t0, cible }); }
+    if (m.phase === 'RUCK') {
+      if (!enRuck) { enRuck = true; t0 = null; cible = m.ruckDureeCible; }
+      // Le recyclage commence quand le temps de plaquage est écoulé.
+      if (t0 === null && !(m.ruckPlaquage > 0)) t0 = m.tempsMatch;
+    } else if (enRuck) {
+      enRuck = false;
+      if (t0 !== null) rucks.push({ reelle: m.tempsMatch - t0, cible });
+    }
   }
   return { rucks, stats: m.getState().stats, score: m.getState().score };
 }
@@ -168,6 +182,37 @@ test('R7 — le match reste dans ses ordres de grandeur', () => {
   const rucksParMatch = RUCKS.length / GRAINES.length;
   assert.ok(rucksParMatch < 620,
     `le volume de rucks doit se rapprocher d'un vrai match (${rucksParMatch.toFixed(0)}/match, 620 avant correction)`);
+});
+
+// --- Loi 15 : LE REGROUPEMENT DOIT ETRE ARBITRE ----------------------------
+//
+// Le ruck est, dans un vrai match, la premiere source de penalites : mains
+// dans le ruck, non-liberation du ballon par le plaque, entree sur le cote,
+// joueur qui ne se retire pas. Un match de rugby a XV concede 16 a 28
+// penalites au total (CLAUDE.md Role 6) ; le moteur n'en produisait que 7,5
+// parce que le regroupement n'etait quasiment jamais sanctionne.
+//
+// Consequence directe pour le joueur : la discipline ne coute rien, l'arbitre
+// est invisible au contact, et le match ne connait pas les temps morts qui
+// font respirer une rencontre (marque, tir au but, coup de pied en touche).
+test('loi 15 : le regroupement est arbitre — il produit de vraies penalites', () => {
+  const GRAINES = [1, 2, 3, 4, 5];
+  let penalites = 0;
+  const motifs = new Set();
+  for (const seed of GRAINES) {
+    const m = new RugbyEngine.MatchEngine(seed, 4800, null);
+    for (let t = 0; t < 4800; t += 0.2) m.tick(0.2);
+    const s = m.getState();
+    penalites += s.stats.A.penalitesConcedees + s.stats.B.penalitesConcedees;
+    for (const e of (s.chronologie || [])) {
+      if (e.type === 'PENALITE_RUCK') motifs.add(e.message);
+    }
+  }
+  const parMatch = penalites / GRAINES.length;
+  assert.ok(parMatch >= 14,
+    `un match doit concéder au moins 14 pénalités (mesuré ${parMatch.toFixed(1)})`);
+  assert.ok(motifs.size >= 2,
+    `le regroupement doit produire plusieurs motifs de pénalité distincts (mesuré ${motifs.size} : ${[...motifs].join(' / ')})`);
 });
 
 console.log(`\n${nbTests} test(s) exécuté(s).`);

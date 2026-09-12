@@ -24,6 +24,15 @@
       <p class="sr-label" style="margin:0 0 8px;">Ta saison en cours</p>
       <div id="continuerClubInfos"></div>
       <button id="btnContinuerClub" class="accent" style="width:100%;margin-top:10px;">Continuer ma saison</button>
+      <!-- SORTIE DE SECOURS. Le seul bouton de remise a zero du jeu vivait
+           DANS le panneau du club (onglet Palmares) : si l'entree dans le club
+           echouait pour une raison quelconque, le joueur ne pouvait ni entrer
+           ni effacer sa sauvegarde pour repartir — signale en jeu. Ce bouton-ci
+           est affiche par docs/js/main.js sur la seule base de la presence
+           d'une sauvegarde, et son gestionnaire n'utilise ni l'etat du club ni
+           le rendu de l'interface : il reste donc disponible meme quand tout le
+           reste est casse. -->
+      <button id="btnSecoursEffacer" class="lienTexte" style="width:100%;margin-top:8px;font-size:12px;display:none;">Ma saison ne s'ouvre pas — repartir de zéro</button>
     </div>
 
     <!-- Mode Club promu en action principale : c'est le vrai jeu de gestion

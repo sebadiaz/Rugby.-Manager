@@ -40,5 +40,9 @@ jobs:
         run: cp engine/rugby-engine.js docs/rugby-engine.js
       - name: Statistiques de match sur 500 matchs (seuils de CLAUDE.md)
         run: node server/test-stats-matchs.js
+      # Suite COMPLETE, tests de simulation compris. Sa partie bon marche
+      # (les lois de la touche) tourne deja a chaque patch via
+      # RM_TOUCHE_RAPIDE=1 dans deploy-pages.yml : ici on ajoute les tests qui
+      # simulent des matchs entiers, trop lents pour le chemin de deploiement.
       - name: Touches — spécialistes, alignement, ordres de grandeur
         run: node server/test-touche.js
