@@ -664,6 +664,24 @@ Ce n'est pas un compteur fabriqué (CLAUDE.md rôle 6) : le second plaqueur doit
 
 **Ce qui reste.** Le gain est à +0,89 m ; le repère réel est +3 à +5 m. Le ballon part toujours 8,4 m derrière le regroupement et un temps de jeu dure toujours ~20 s pour ~3 passes. La loi n'est d'ailleurs appliquée qu'à moitié : la vraie ligne de hors-jeu est le **pied le plus reculé** du regroupement, encore ~1,5 m derrière le ballon côté défense — le moteur clampe au ballon. Aller jusqu'à la loi exacte donne +1,16 m de gain mais fait tomber les plaquages à 202 et les courses à 208, hors fourchette : à reprendre **avec** une compensation du volume de phases.
 
+**LES PASSES — le levier qui ne marchait pas, et qui marche maintenant.** Le moteur jouait **600 passes par match** (repère réel 250-350), soit **3,02 par temps de jeu** et **2,80 par course** là où un vrai match en compte ~1,6 et ~1,1 : le ballon était relâché dans la foulée, personne ne le *portait*. Baisser la cadence (`jeuLargeTaux`) avait été essayé tôt dans la session et **refusé sur mesure** — il coûtait alors des essais et faisait sortir les rucks de leur fourchette.
+
+Reprise **après** la correction de la ligne d'avantage, le même réglage ne coûte plus rien : raccourcir la chaîne ne revient plus à mourir sur place, puisque le porteur avance. Comparaison appariée sur 80 matchs (`jeuLargeTaux` 1,7/1,3 → 0,7/0,55 et bonus d'enchaînement 2,2 → 1,5) :
+
+| | avant | après | établi ? |
+|---|---|---|---|
+| passes/match | 600 | **510** | **oui** (−89 ± 15) |
+| essais/match | 5,53 | 5,16 | non établi (−0,36 ± 0,56) |
+| points/match | 46,6 | 45,6 | non établi |
+| gain par temps de jeu | 0,89 m | 0,86 m | inchangé |
+| part des avants dans les essais | 9,5 % | 15,3 % | ~2,5 σ |
+
+C'est **la troisième fois** qu'un levier rejeté tôt devient livrable une fois la ligne d'avantage corrigée (après la sortie de regroupement et le plaquage à deux). La leçon est générale : *tant que l'attaque n'avance pas, tout réglage qui raccourcit une séquence ne fait qu'accélérer sa mort.*
+
+Effet secondaire, corrigé dans le même patch et pour la deuxième fois : moins de passes ⇒ moins d'occasions de se retrouver sans solution légale ⇒ la sanction de la **passe en avant** retombe sous son plancher (0,17 par match). Le résidu passe de 0,12 à 0,20, ce qui la remonte à 0,40 par match — au-dessus de son niveau historique (0,33) et un peu plus près du réel (1 à 3), pour un coût nul ailleurs.
+
+Reste : 510 passes contre une cible de 420. Descendre plus bas fait sortir les **rucks** (184 à 189 mesurés sous 0,5/0,4, plafond 180) : la prochaine marche demande d'agir sur le nombre de temps de jeu, pas sur la cadence de passes.
+
 **Avertissement de méthode (coûteux, à retenir).** Le gain de terrain par temps de jeu a un écart-type d'environ 8 m. Une moyenne sur 10, 20 ou même 40 matchs ne distingue pas +0,3 m de 0. Toute tentative future sur ce défaut doit se mesurer par **comparaison appariée par graine sur au moins 100 matchs** (même graine, moteur avant / moteur après, différence des moyennes par graine), sans quoi on croit livrer une amélioration qui n'existe pas — c'est arrivé ici.
 
 **La vraie tâche.** Faire avancer une possession : point de collision réel au contact, ligne défensive qui monte ET peut être franchie, regroupement qui avance, porteurs à plat près du ballon. C'est un chantier de simulation, pas un réglage de constantes.
