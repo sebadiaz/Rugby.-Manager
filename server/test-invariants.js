@@ -1181,6 +1181,54 @@ test("un defenseur HORS du rayon de contact n'est PAS credite d'un plaquage", ()
     'un defenseur a 4 m du contact ne plaque pas');
 });
 
+// --- L'INTERCEPTION --------------------------------------------------------
+// Le fait de jeu le plus spectaculaire du rugby n'existait pas : le moteur ne
+// pouvait perdre le ballon sur une passe qu'en la RATANT. Les changements de
+// possession ne venaient que de trois sources (grattage au ruck 6,9, touche
+// volee 1,9, melee contre l'introduction 0,4 = 9,2 par match, contre 12 a 18
+// en vrai).
+//
+// Le defenseur doit etre REELLEMENT dans le couloir de passe. Le second test
+// est le garde-fou : sans lui, la regle deviendrait un changement de possession
+// au hasard.
+function scenarioInterception(yDefenseur) {
+  const m = new MatchEngine(77, 600);
+  for (let t = 0; t < 30; t += 0.2) m.tick(0.2);
+  m.phase = 'PORTE';
+  m.timerPhase = 2;
+  m.possession = 'A';
+  m.passeVisuelle = null;
+  m.combinaison = null;
+  m.penaliteRecul = null;
+  const porteur = m.equipeA.find((j) => j.numero === 10);
+  const cible = m.equipeA.find((j) => j.numero === 12);
+  m.porteur = porteur;
+  // Tous les autres partenaires ecartes : la seule option de passe est `cible`.
+  for (const j of m.equipeA) { j.auSol = 0; j.x = 20; j.y = 5; }
+  porteur.x = 50; porteur.y = 30;
+  cible.x = 49.5; cible.y = 40; // a hauteur, jamais devant (loi 11)
+  for (const j of m.equipeB) { j.auSol = 0; j.horsJeuKick = 0; j.sinBin = 0; j.x = 80; j.y = 65; }
+  const intercepteur = m.equipeB.find((j) => j.numero === 13);
+  intercepteur.x = 49.8;
+  intercepteur.y = yDefenseur;
+  m.rng = () => 0.01; // lecture parfaite : si la position le permet, il la prend
+  m._tenterPasse(porteur, false);
+  return { possession: m.possession, porteur: m.porteur && m.porteur.numero, turnovers: m.stats.B.turnovers };
+}
+test("un defenseur dans le couloir de passe INTERCEPTE et le ballon change de camp", () => {
+  const r = scenarioInterception(35); // pile entre le passeur (y=30) et la cible (y=40)
+  assert.strictEqual(r.possession, 'B', 'la possession doit changer de camp');
+  assert.strictEqual(r.porteur, 13, "l'intercepteur devient le porteur");
+  assert.strictEqual(r.turnovers, 1, 'le turnover doit etre comptabilise');
+});
+test("un defenseur HORS du couloir de passe n'intercepte pas", () => {
+  // Le garde-fou : sans lui, l'interception serait un changement de possession
+  // au hasard plutot qu'une lecture de trajectoire.
+  const r = scenarioInterception(55); // 15 m a cote de la ligne de passe
+  assert.strictEqual(r.possession, 'A', 'la possession ne doit PAS changer');
+  assert.strictEqual(r.porteur, 12, 'la passe arrive normalement a son destinataire');
+});
+
 console.log(`\n${nbTests} test(s) exécuté(s).`);
 if (process.exitCode) {
   console.error('ECHEC : au moins un invariant violé.');
