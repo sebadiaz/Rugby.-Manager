@@ -23,6 +23,9 @@
     PENALITE: '🟨', PENALITE_REUSSIE: '🥅', PENALITE_RATEE: '❌',
     TRANSFORMATION_REUSSIE: '🥅', TRANSFORMATION_RATEE: '❌',
     TOUCHE: '👉', TURNOVER: '🔁', MAUL: '🧱', MI_TEMPS: '⏸️', COUP_ENVOI_COURT: '📏',
+    // Interception : le ballon change de camp en pleine attaque, c'est le fait
+    // de jeu le plus spectaculaire du rugby — il merite sa propre icone.
+    INTERCEPTION: '🎣',
     DROP_GOAL_REUSSI: '🎯', DROP_GOAL_RATE: '😬', ESSAI_PENALITE: '🏉', COUP_FRANC: '🙌', FIN_MATCH: '🏁',
     MAUL_ARRET_UN: '🅰️', MAUL_ARRET_DEUX: '✋', MAUL_USE_IT: '⏱️', MAUL_BALLON_SORTI: '➡️', MAUL_INJOUABLE: '🔒',
     MELEE_RUCK_INJOUABLE: '🔒',

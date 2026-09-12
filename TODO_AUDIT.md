@@ -696,6 +696,21 @@ L'échange est assumé et reste favorable — pour 0,70 essai (on reste à 4,8, 
 
 Effet de bord sur un test : sur les graines 1-3, le nombre de mêlées est passé de 33 à 20 (pour une moyenne inchangée de ~12 par match sur 20 graines), ce qui a fait tomber le garde-fou d'échantillon du test de durée des temps morts — sans que les durées, propriété réellement vérifiée, aient bougé. L'échantillon a été **élargi à 6 graines** ; le seuil n'a pas été baissé.
 
+**ERREUR DE MÉTHODE MAJEURE, TROUVÉE PAR UN TÉMOIN — et correction de la « −0,70 essai » annoncée plus haut.**
+
+En ajoutant l'interception, la comparaison appariée annonçait **+0,71 ± 0,48 essai, « établi »**. Le chiffre était trop beau : 0,75 interception par match ne peut pas produire 0,71 essai. J'ai donc lancé un **témoin** : le même code, mais avec `PROBA_INTERCEPTION = 0` — la mécanique présente, qui ne se déclenche jamais. Effet attendu : exactement zéro.
+
+Mesure du témoin : **+0,575 ± 0,513 essai, « établi »**.
+
+**La méthode fabriquait des effets à partir de rien.** Cause : tout changement qui modifie le NOMBRE d'appels au générateur aléatoire décale le flux, et les deux moteurs divergent dès le premier appel décalé. La comparaison appariée par graine ne compare alors plus deux variantes du même match, mais deux matchs différents — et l'intervalle à 95 % calculé sur 80 graines est trop étroit pour ce bruit-là.
+
+**La méthode correcte** : comparer le candidat à un **TÉMOIN qui suit le même chemin de code** (même nombre d'appels `rng`), pas à l'état d'avant le patch. Pour un taux, cela veut dire comparer `taux = X` à `taux = 0`. Refaite ainsi, la mesure de l'interception donne **+0,138 ± 0,330 essai, non établi** — et tous les intervalles se resserrent d'un facteur 2 à 3 (gain ±0,112 au lieu de ±0,19 ; passes ±6,8 au lieu de ±14,8), ce qui est la signature du bruit supprimé.
+
+**Ce qui doit être corrigé dans ce dossier :**
+- L'**érosion de −0,70 ± 0,57 essai** attribuée plus haut au cumul « passes + loi 15 » a été mesurée avec des flux désalignés. Le plancher de bruit de cette méthode étant de l'ordre de ±0,6 essai, **cette érosion n'est pas établie**. Elle n'est pas infirmée non plus : elle est **non mesurée**.
+- Les effets **grands devant ce plancher restent valables** : passes −86 (6× le plancher), gain de terrain +0,56 m (3× le plancher). Ce sont aussi les deux effets dont le mécanisme est direct.
+- Les effets **petits** annoncés dans les patchs précédents — variations d'essais de ±0,7, territoire de ±2 points, part des avants — sont **à considérer comme non établis** tant qu'ils n'ont pas été repris contre un témoin aligné.
+
 **Avertissement de méthode (coûteux, à retenir).** Le gain de terrain par temps de jeu a un écart-type d'environ 8 m. Une moyenne sur 10, 20 ou même 40 matchs ne distingue pas +0,3 m de 0. Toute tentative future sur ce défaut doit se mesurer par **comparaison appariée par graine sur au moins 100 matchs** (même graine, moteur avant / moteur après, différence des moyennes par graine), sans quoi on croit livrer une amélioration qui n'existe pas — c'est arrivé ici.
 
 **La vraie tâche.** Faire avancer une possession : point de collision réel au contact, ligne défensive qui monte ET peut être franchie, regroupement qui avance, porteurs à plat près du ballon. C'est un chantier de simulation, pas un réglage de constantes.

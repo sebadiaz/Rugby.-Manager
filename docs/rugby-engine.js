@@ -451,6 +451,10 @@
   // Rayon de contact du plaquage (m) : distance a laquelle le contact se resout,
   // et donc aussi celle a laquelle un SECOND defenseur participe au plaquage.
   const RAYON_PLAQUAGE = 2.2;
+  // Interception : distance maximale au couloir de passe (m) pour qu'un
+  // defenseur soit en position, et probabilite de prise quand il l'est.
+  const SEUIL_COULOIR_INTERCEPTION = 1.2;
+  const PROBA_INTERCEPTION = 0.065;
   // LOI 15 — la ligne de hors-jeu d'un regroupement est le PIED LE PLUS RECULE
   // du dernier joueur, pas le ballon : elle se situe environ 1,5 m derriere lui,
   // du cote de chaque equipe. Le moteur clampait les defenseurs sur le ballon
@@ -567,6 +571,8 @@
     'CARTON_JAUNE', 'PENALITE', 'PENALITE_RUCK_ISOLE', 'PENALITE_RUCK',
     // Repères de lecture et mouvements
     'MI_TEMPS', 'FIN_MATCH', 'REMPLACEMENT',
+    // Fait de jeu spectaculaire : le ballon change de camp en pleine attaque.
+    'INTERCEPTION',
   ]);
 
   // Force spécifique de mêlée (technique de poussée organisée), distincte du
@@ -2799,6 +2805,35 @@
     // les statistiques ou les invariants ; seul le dernier saut instantané du
     // ballon lors d'une passe disparaît à l'écran. Durée proportionnelle à la
     // distance (passe courte ~0,15 s, jeu au large ~0,5 s).
+    // Defenseur en position d'intercepter une passe, ou null. Voir le commentaire
+    // detaille au point d'appel (_tenterPasse).
+    _chercherInterception(passeur, cible) {
+      const vx = cible.x - passeur.x, vy = cible.y - passeur.y;
+      const len2 = vx * vx + vy * vy;
+      if (len2 < 0.01) return null;
+      let meilleur = null, distMin = SEUIL_COULOIR_INTERCEPTION;
+      for (const d of this.defenseurs()) {
+        if (d.auSol > 0 || d.horsJeuKick > 0 || d.sinBin > 0) continue;
+        // Derriere le passeur : il ne voit pas partir le ballon.
+        if ((d.x - passeur.x) * passeur.sensAttaque < -0.5) continue;
+        const wx = d.x - passeur.x, wy = d.y - passeur.y;
+        const u = (wx * vx + wy * vy) / len2;
+        // Projection hors du segment : il est a cote du passeur ou colle au
+        // receveur (ou c'est un plaquage, pas une interception).
+        if (u < 0.15 || u > 0.95) continue;
+        const px = passeur.x + vx * u, py = passeur.y + vy * u;
+        const dist = Math.hypot(d.x - px, d.y - py);
+        if (dist < distMin) { distMin = dist; meilleur = d; }
+      }
+      if (!meilleur) return null;
+      // Lecture du jeu : l'attribut "adresse" (0-100, neutre 60) module la
+      // prise. Un defenseur qui lit bien intercepte plus, sans que cela
+      // devienne courant pour autant.
+      const lecture = typeof meilleur.adresse === 'number'
+        ? Math.max(0.5, Math.min(1.6, 1 + (meilleur.adresse - 60) / 80)) : 1;
+      return this.rng() < PROBA_INTERCEPTION * lecture ? meilleur : null;
+    }
+
     _lancerPasseVisuelle(passeur, cible) {
       // Point de départ du vol : normalement les mains du passeur. MAIS si une
       // passe est déjà en vol (ballon pas encore arrivé au receveur précédent),
@@ -2944,6 +2979,41 @@
         this.log('MELEE_AVANT', this.possession, `Passe en avant, equipe ${this.possession} - melee adverse`);
         this._accorderMelee(this.possession, porteur);
         return true;
+      }
+      // INTERCEPTION. Un defenseur place DANS LE COULOIR DE PASSE, a hauteur du
+      // passeur ou devant lui, peut lire la trajectoire et partir dessus. C'est
+      // l'evenement le plus spectaculaire du rugby — et il n'existait pas : le
+      // moteur ne pouvait perdre le ballon sur une passe qu'en la RATANT.
+      // Consequence mesuree, les changements de possession ne venaient que de
+      // trois sources (grattage au ruck 6,9, touche volee 1,9, melee contre
+      // l'introduction 0,4 = 9,2 par match, contre 12 a 18 en vrai).
+      //
+      // Le defenseur doit etre REELLEMENT dans le couloir : proche du SEGMENT
+      // passeur->receveur (pas seulement du receveur), sa projection tombant
+      // entre les deux, debout, en jeu, et pas derriere le passeur. Mesure :
+      // c'est le cas sur 12,3 passes par match (2,3 % d'entre elles). Le taux
+      // de prise est calibre pour produire ~0,8 interception par match, la
+      // frequence reelle.
+      {
+        const interception = this._chercherInterception(porteur, cible);
+        if (interception) {
+          const equipeDef = this.possession === 'A' ? 'B' : 'A';
+          this.stats[this.possession].turnoversConcedes++;
+          this.stats[equipeDef].turnovers++;
+          this.log('INTERCEPTION', equipeDef,
+            `Interception du n°${interception.numero} ! Le ballon change de camp, equipe ${equipeDef}`,
+            { de: porteur.numero, par: interception.numero });
+          this.possession = equipeDef;
+          this.porteur = interception;
+          this.passeVisuelle = null;
+          // Tout le monde court dans l'autre sens : l'intercepteur part dans un
+          // espace reel, comme apres un franchissement (cf. _percee).
+          interception._percee = 2.5;
+          this.phase = 'PORTE';
+          this.timerPhase = 0;
+          this._receptionDirecte = false;
+          return true;
+        }
       }
       const distancePasse = distance(porteur, cible);
       // Réussite de passe réaliste : en match réel une passe se complète à
