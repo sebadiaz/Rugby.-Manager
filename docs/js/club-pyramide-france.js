@@ -64,14 +64,33 @@
   // `ECART_NIVEAU` et `AMPLITUDE_BRUIT` sont INCHANGÉS : ils réglaient déjà
   // correctement la hiérarchie (un club nettement supérieur gagne 90 % du
   // temps) et le suspense (écart moyen de 6,7 points à niveau égal).
-  const BASE_SCORE = 35;
+  // RECALAGE (mesure du moteur ACTUEL). Le barème ci-dessous avait été calé sur
+  // un moteur qui rendait 43,3 points par match. Depuis, le moteur a beaucoup
+  // changé (loi 15 sur le plaqueur, sortants de ruck hors de la ligne, loi 19,
+  // interception) et sa moyenne RÉELLE vaut 47,9 points et 5,7 essais — mesurée
+  // sur 300 matchs appariés au banc A/B, écart-type 12,0 points par match. Le
+  // barème restait donc 5 à 8 points en dessous : le joueur marquait
+  // systématiquement plus que les 156 rencontres IA de son propre championnat,
+  // exactement l'incohérence que ce fichier existe pour éviter.
+  //
+  //   paliers du milieu de pyramide   avant (base 35)   après (base 41)
+  //   Régionale (haut)                40,1 pts          46,1 pts
+  //   Nationale                       41,0 pts          47,0 pts
+  //   Excellence                      44,0 pts          50,0 pts
+  //   (moteur mesuré, 300 matchs)     47,9 pts          47,9 pts
+  //
+  // Seule la BASE bouge : la pente, l'écart de niveau et l'amplitude du bruit
+  // réglaient déjà correctement la hiérarchie et le suspense, et les toucher
+  // changerait qui gagne, pas combien on marque.
+  const BASE_SCORE = 41;
   const PENTE_NIVEAU = 6;
   const ECART_NIVEAU = 22;
   const AMPLITUDE_BRUIT = 20;
-  // Points par essai, MESURÉS sur le moteur (43,3 / 5,4 = 8,0) plutôt que
-  // supposés : l'ancienne valeur de 6,5 traitait presque chaque point comme
-  // un essai et gonflait donc leur nombre d'un tiers.
-  const POINTS_PAR_ESSAI = 8;
+  // Points par essai, MESURÉS sur le moteur plutôt que supposés. Remesuré avec
+  // le recalage ci-dessus : 47,9 / 5,7 = 8,4 (l'ancienne valeur de 6,5 traitait
+  // presque chaque point comme un essai et gonflait leur nombre d'un tiers ;
+  // celle de 8,0 venait de l'ancienne mesure à 43,3 points).
+  const POINTS_PAR_ESSAI = 8.4;
 
   function simulerResultatAbstrait(rng, niveauA, niveauB) {
     const base = BASE_SCORE + (niveauA + niveauB) * PENTE_NIVEAU;

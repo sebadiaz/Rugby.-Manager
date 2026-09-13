@@ -580,6 +580,53 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-21. Le barème des matchs IA était resté calé sur un moteur d'il y a plusieurs correctifs
+- **Statut : CORRIGÉ**
+- Fichiers concernés : `docs/js/club-pyramide-france.js`, `server/test-scores-abstraits.js`
+
+Les matchs du club du joueur sont joués par le MOTEUR ; les 156 rencontres IA de son
+championnat, les deux autres divisions, les coupes et les 12 pays sont écrits par un
+BARÈME abstrait. Ce barème était calé sur une mesure du moteur à **43,3 points**, faite
+avant la loi 15 sur le plaqueur, avant le retrait des sortants de ruck de la ligne, avant
+la loi 19 et avant l'interception. Le moteur vaut aujourd'hui **47,9 points et 5,7 essais**
+(300 matchs appariés au banc A/B ; écart-type 12,0 points par match sur 60 matchs).
+
+Le joueur marquait donc 5 à 8 points de plus que tous les autres clubs de son propre
+classement — exactement l'incohérence que ce fichier existe pour éviter.
+
+| paliers du milieu de pyramide | avant (base 35) | après (base 41) |
+|---|---|---|
+| Régionale (haut) | 40,1 pts | 46,1 pts |
+| Nationale | 41,0 pts | 47,0 pts |
+| Excellence | 44,0 pts | 50,0 pts |
+| moteur mesuré (300 matchs) | 47,9 pts | 47,9 pts |
+
+Seule la BASE bouge (35 → 41) et les points par essai suivent la mesure (8,0 → 8,4).
+La pente, l'écart de niveau et l'amplitude du bruit sont inchangés : ils règlent qui
+gagne et le suspense, pas le nombre de points.
+
+**S12 avait une précision qu'il ne pouvait pas tenir.** Il comparait une quantité
+d'écart-type 12,0 points par match sur **8 matchs**, soit une résolution de **±8,3 points**,
+pour trancher une bande de ±15 % alors que la marge réelle entre le moteur et la borne
+haute valait 2,6 points. Constaté en direct : une variante du moteur SANS effet sur le
+score (+0,23 ± 2,39 sur 300 matchs appariés) déplaçait ces 8 graines de 48,1 à 53,3 et
+faisait passer le test au rouge.
+
+| graines | résolution à 95 % |
+|---|---|
+| 8 | ±8,3 points |
+| 20 | ±5,3 points |
+| **40 (retenu)** | **±3,7 points** |
+| 60 | ±3,0 points |
+
+40 graines : la résolution (±3,7) est nettement plus fine que la marge après recalage
+(~8,8 points de chaque côté). **Le test garde ses dents** — vérifié par mutation (essai
+ramené de 5 à 2 points) : le moteur tombe à 31,7 points, c'est-à-dire exactement la
+dérive historique qui a motivé l'écriture de S12, et le test passe au rouge.
+
+Vérifié : les 12 cas de `test-scores-abstraits.js` au vert, et les 43 autres suites de
+`server/` (harnais complet + job rapide) sans un seul échec.
+
 ### P2-19. Pourquoi le moteur fait 492 passes par match — enquête, mesures, et pourquoi rien n'est livré
 - **Statut : DIAGNOSTIQUÉ, NON LIVRÉ (le correctif est mesuré et fonctionne, mais il casse la cohérence du classement — voir « Pourquoi rien n'est livré »)**
 - Priorité : P2 (dernière catégorie de calibration franchement hors fourchette)
@@ -665,7 +712,7 @@ revendique ; (2) livrer le passage au contact ; (3) faire suivre le barème abst
 une mesure du moteur à 300+ matchs, en mettant à jour les constantes ancrées de S11.
 
 ### P2-20. Le grattage au ruck n'existait quasiment pas (3 % au lieu de 5-7 %)
-- **Statut : MESURÉ, PRÊT — en attente du correctif de S12 (cf. P2-19)**
+- **Statut : CORRIGÉ (débloqué par P2-21)**
 - Fichiers concernés : `engine/rugby-engine.js` (`probaTurnover` dans `_tickRuck`)
 
 En match réel, l'équipe qui attaque conserve 93 à 95 % de ses rucks. Le moteur en

@@ -199,8 +199,12 @@ test('S11 — le barème abstrait reste sur son ancrage ENREGISTRÉ (cf. S12 pou
   // alors que le joueur marquait dix points de moins que les rencontres IA de
   // son propre championnat. La comparaison avec le moteur RÉELLEMENT en place
   // est faite par S12, qui le fait tourner.
-  const MOTEUR_POINTS = 43.3;
-  const MOTEUR_ESSAIS = 5.4;
+  // Remesuré sur le moteur ACTUEL : 47,9 points et 5,7 essais, sur 300 matchs
+  // appariés au banc A/B (server/banc-ab.js), écart-type 12,0 points par match.
+  // L'ancienne paire (43,3 / 5,4) datait d'un moteur d'avant la loi 15, les
+  // sortants de ruck, la loi 19 et l'interception.
+  const MOTEUR_POINTS = 47.9;
+  const MOTEUR_ESSAIS = 5.7;
   // Le milieu de la pyramide est le point de comparaison honnête : le moteur
   // a été mesuré sur des équipes de niveau moyen tirées de la même loi.
   const r = echantillon(RMWorld.simulerResultatAbstrait, 0.45, 0.55, 5000);
@@ -236,7 +240,21 @@ test('S11 — le barème abstrait reste sur son ancrage ENREGISTRÉ (cf. S12 pou
 // on le confronte donc aux paliers du milieu de la pyramide.
 test('S12 — le MOTEUR et le BAREME abstrait produisent des matchs comparables', () => {
   const { MatchEngine } = global.window.RugbyEngine;
-  const GRAINES = 8, DUREE = 4800, DT = 0.2;
+  // 40 graines et non 8. CE TEST N'AVAIT PAS LA PRECISION QU'IL REVENDIQUE :
+  // le total de points d'un match a un ecart-type de 12,0 points (mesure sur
+  // 60 matchs), donc 8 matchs ne le situent qu'a +/-8,3 points pres alors que
+  // le test tranche une bande de +/-15 %. Constate en direct : une variante du
+  // moteur SANS effet sur le score (+0,23 +/- 2,39 sur 300 matchs apparies)
+  // faisait passer ces 8 graines de 48,1 a 53,3 points et le test au rouge.
+  // C'etait un tirage a pile ou face.
+  //   8 graines  -> +/-8,3 points     40 graines -> +/-3,7 points
+  //  20 graines  -> +/-5,3 points     60 graines -> +/-3,0 points
+  // 40 est le compromis retenu : la resolution (+/-3,7) est nettement plus
+  // fine que la marge reelle entre le moteur et les bornes de la bande (~8,8
+  // points depuis le recalage du bareme), et le test garde ses dents — la
+  // derive historique qui a motive son ecriture (moteur tombe a 31,7 points)
+  // reste rouge avec une large marge.
+  const GRAINES = 40, DUREE = 4800, DT = 0.2;
   let pointsMoteur = 0, essaisMoteur = 0;
   for (let seed = 1; seed <= GRAINES; seed++) {
     const m = new MatchEngine(seed, DUREE);
