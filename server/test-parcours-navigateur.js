@@ -4259,6 +4259,55 @@ function optionsLancement() {
     await ctxTer.close();
   }
 
+  // --- LE HUD NE DOIT PAS MORDRE SUR LE TERRAIN ------------------------------
+  // Le bandeau de match (#hud) est en position absolue au-dessus du canvas ; la
+  // place qu'on lui reserve est la marge haute du canvas, calculee par
+  // redimensionner(). Or cette fonction n'est appelee QU'au redimensionnement de
+  // la fenetre et a l'ouverture de la vue match -- jamais quand le HUD GRANDIT,
+  // ce qu'il fait des que le fil d'evenements se remplit.
+  //
+  // Mesure dans le vrai parcours (match rapide, puis « Voir le match ») :
+  //
+  //   1400x1000 : a l'ouverture hud=126 px et marge=108 px ; 15 s plus tard le
+  //               fil est plein, hud=156 px et la marge vaut TOUJOURS 108 px
+  //   390x844   : idem, hud=156 px pour une marge de 122 px
+  //
+  // Soit 34 a 48 px de bandeau ecrits par-dessus la pelouse : la derniere ligne
+  // du fil -- souvent la penalite ou l'essai -- est coupee en deux par le bord
+  // superieur du terrain.
+  for (const gabarit of [
+    { nom: 'bureau 1400x1000', width: 1400, height: 1000 },
+    { nom: 'telephone 390x844', width: 390, height: 844 },
+  ]) {
+    const ctxHud = await browser.newContext({ viewport: { width: gabarit.width, height: gabarit.height } });
+    const pgHud = await ctxHud.newPage();
+    await pgHud.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+    await pgHud.click('#btnAccueilMatchRapide');
+    await pgHud.waitForSelector('#btnResultatVoir', { timeout: 60000 });
+    await pgHud.waitForTimeout(300);
+    await pgHud.click('#btnResultatVoir');
+    await pgHud.waitForSelector('#vueMatch', { state: 'visible', timeout: 20000 });
+    // On attend que le fil soit REELLEMENT rempli : c'est le remplissage qui
+    // fait grandir le HUD, donc le seul moment ou le defaut existe.
+    await pgHud.waitForFunction(() => document.querySelectorAll('#feed li').length >= 4,
+      null, { timeout: 30000 }).catch(() => {});
+    const g = await pgHud.evaluate(() => {
+      const hud = document.getElementById('hud');
+      const c = document.getElementById('pitch');
+      return {
+        hudH: hud.offsetHeight,
+        marge: parseFloat(c.style.marginTop) || 0,
+        lignes: document.querySelectorAll('#feed li').length,
+      };
+    });
+    verifier(`hud (${gabarit.nom}) : le fil s'est bien rempli avant la mesure`, g.lignes >= 4,
+      `${g.lignes} ligne(s)`);
+    verifier(`hud (${gabarit.nom}) : la place reservee au bandeau suit sa hauteur reelle`,
+      Math.abs(g.hudH - g.marge) <= 1,
+      `bandeau ${g.hudH} px, place reservee ${g.marge} px -> ${g.hudH - g.marge} px ecrits sur le terrain`);
+    await ctxHud.close();
+  }
+
   // --- FIL DU MATCH : les passes ne doivent plus noyer le reste ---------------
   // Mesure : sur les 30 evenements que le moteur conserve, 14,3 sont des passes
   // et 29 % d'entre eux repetaient MOT POUR MOT la ligne precedente (jusqu'a

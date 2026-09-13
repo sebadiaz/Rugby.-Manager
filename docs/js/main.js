@@ -35,6 +35,22 @@
     document.getElementById('banner').style.top = (hudH + 8) + 'px';
   }
   window.addEventListener('resize', redimensionner);
+  // Le HUD grandit EN COURS DE MATCH : le fil d'evenements part vide et se
+  // remplit, et le bandeau passe (mesure) de 126 a 156 px. La place qu'on lui
+  // reserve sur le terrain, elle, n'etait recalculee qu'au redimensionnement de
+  // la fenetre et a l'ouverture de la vue match -- jamais a ce moment-la. Le
+  // bandeau ecrivait donc 34 a 48 px par-dessus la pelouse, et sa derniere ligne
+  // (souvent la penalite ou l'essai) etait coupee en deux par le bord superieur
+  // du terrain. `#hud` est en position absolue, hors du flux : deplacer le
+  // canvas ne change pas sa hauteur, il n'y a donc pas de boucle de rebond.
+  if (typeof ResizeObserver === 'function') {
+    const hud = document.getElementById('hud');
+    let hauteurHudConnue = -1;
+    new ResizeObserver(() => {
+      const h = hud.offsetHeight;
+      if (h !== hauteurHudConnue) { hauteurHudConnue = h; redimensionner(); }
+    }).observe(hud);
+  }
 
   let match = null;
   let seedActuel = graineAleatoire();

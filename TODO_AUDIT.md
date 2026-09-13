@@ -580,6 +580,46 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-17. Le bandeau de match écrivait par-dessus la pelouse dès que le fil se remplissait
+- **Statut : CORRIGÉ**
+- Priorité : P2 (lisibilité du match — CLAUDE.md priorité n°10)
+- Fichiers concernés :
+  - `docs/js/main.js` (cause et correctif)
+  - `server/test-parcours-navigateur.js` (2 gabarits mesurés)
+
+**Reproduction (match rapide, puis « Voir le match »).** `#hud` est en position
+absolue au-dessus du canvas ; la place qu'on lui réserve est la marge haute du
+canvas, calculée par `redimensionner()`. Or cette fonction n'était appelée qu'au
+redimensionnement de la fenêtre et à l'ouverture de la vue match — **jamais quand
+le HUD grandit**, ce qu'il fait dès que le fil d'événements se remplit.
+
+| gabarit | à l'ouverture | 15 s plus tard, fil plein |
+|---|---|---|
+| 1400×1000 | bandeau 126 px, place réservée 126 px | bandeau **156 px**, place réservée **108 px** |
+| 390×844 | bandeau 122 px, place réservée 122 px | bandeau **156 px**, place réservée **122 px** |
+
+Soit **34 à 48 px de bandeau écrits par-dessus la pelouse**, et la dernière ligne
+du fil — souvent la pénalité ou l'essai — coupée en deux par le bord supérieur du
+terrain.
+
+**Correctif.** Un `ResizeObserver` sur `#hud` rappelle `redimensionner()` quand sa
+hauteur change. Pas de boucle de rebond possible : `#hud` est hors du flux, donc
+déplacer le canvas ne change pas sa hauteur.
+
+**Ce que ça coûte, honnêtement.** Les 48 px rendus au bandeau étaient du terrain
+*dessiné mais masqué*. En 1400×1000 l'échelle passe donc de 10,24 à **9,63 px/m**
+(−6 %) — mais plus rien n'est caché, alors qu'avant le haut du terrain
+disparaissait sous le dégradé. En 390×844 l'échelle est bornée par la largeur et
+reste à 5,00 px/m : aucun coût.
+
+**Le test mord** : 2 rouges avant (les deux gabarits), 458/458 après.
+
+**Reste ouvert — c'est un défaut DISTINCT, traité à part (P2-18).** Le fil est
+clippé par son propre `max-height: 66px` : `docs/js/ui.js` y insère 5 événements,
+dont **3 seulement** tiennent entièrement (2 sur téléphone, où les lignes passent
+sur deux lignes de texte et montent à 32 px). C'est ce clipping-là qui produit la
+demi-ligne encore visible sur la capture, pas le débordement du bandeau.
+
 ### P2-16. Le terrain n'occupait qu'un tiers de l'écran : tout le match se jouait dans une bande étroite
 - **Statut : CORRIGÉ**
 - Priorité : P2 (lisibilité du match — CLAUDE.md priorité n°10 « affichage clair des événements » et « le joueur comprend mieux ce qui se passe »)
