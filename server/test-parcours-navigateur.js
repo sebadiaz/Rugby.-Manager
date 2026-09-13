@@ -4203,6 +4203,62 @@ function optionsLancement() {
     await ctxAcc.close();
   }
 
+  // --- TAILLE DU TERRAIN A L'ECRAN -------------------------------------------
+  // Le terrain etait TOUJOURS dessine en portrait (la longueur du terrain sur
+  // la hauteur de l'ecran), quelle que soit la forme de la fenetre. Mesure sur
+  // le jeu reel, en regardant un match :
+  //
+  //   fenetre 1400x1000 -> canvas 1400x799, terrain 482x689 px = 30 % de la
+  //                        surface, 1 metre = 6,9 px
+  //   fenetre  900x600  -> canvas  900x399, terrain 241x344 px = 23 % de la
+  //                        surface, 1 metre = 3,4 px (un joueur, dessine sur
+  //                        un rayon fixe de 10 px, couvre alors 6 m de terrain)
+  //
+  // Sur un ecran large, les deux tiers de la fenetre sont donc du vert vide a
+  // gauche et a droite pendant que l'action se joue dans une bande etroite.
+  //
+  // La regle testee ici n'impose PAS une orientation : elle impose que le
+  // terrain soit dessine dans le sens qui le rend LE PLUS GRAND. Un telephone
+  // en portrait doit donc rester en portrait (c'est ce sens qui y gagne), et
+  // c'est exactement ce que verifie le troisieme gabarit.
+  for (const gabarit of [
+    { nom: 'bureau 1400x1000', width: 1400, height: 1000 },
+    { nom: 'portable 900x600', width: 900, height: 600 },
+    { nom: 'telephone 390x844', width: 390, height: 844 },
+  ]) {
+    const ctxTer = await browser.newContext({ viewport: { width: gabarit.width, height: gabarit.height } });
+    const pgTer = await ctxTer.newPage();
+    await pgTer.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+    const t = await pgTer.evaluate(() => {
+      const R = window.RMRenderer;
+      if (!R || !R.versCanvas || !window.RugbyEngine || !window.RMConstants) return null;
+      R.redimensionner(0, 0, 0); // canvas = toute la fenetre, mesure reproductible
+      const c = document.getElementById('pitch');
+      const a = R.versCanvas(0, 0), b = R.versCanvas(1, 0);
+      const echelle = Math.hypot(b.px - a.px, b.py - a.py); // pixels par metre
+      const lg = window.RugbyEngine.LONGUEUR + 2 * window.RMConstants.PROF_EN_BUT;
+      const la = window.RugbyEngine.LARGEUR + 2 * window.RMConstants.MARGE_TOUCHE;
+      const portrait = Math.min(c.width / la, c.height / lg);
+      const paysage = Math.min(c.width / lg, c.height / la);
+      // Surface occupee par le terrain, pour le message d'echec.
+      const coins = [R.versCanvas(0, 0), R.versCanvas(lg, 0), R.versCanvas(0, la), R.versCanvas(lg, la)];
+      const xs = coins.map(p => p.px), ys = coins.map(p => p.py);
+      const surface = (Math.max(...xs) - Math.min(...xs)) * (Math.max(...ys) - Math.min(...ys));
+      return {
+        echelle, meilleure: Math.max(portrait, paysage),
+        occupation: surface / (c.width * c.height),
+      };
+    });
+    verifier(`terrain (${gabarit.nom}) : le rendu est mesurable`, !!t);
+    if (t) {
+      verifier(`terrain (${gabarit.nom}) : dessine dans le sens qui le rend le plus grand`,
+        t.echelle >= t.meilleure - 0.01,
+        `${t.echelle.toFixed(2)} px/m alors que ${t.meilleure.toFixed(2)} px/m est possible `
+        + `(${Math.round(100 * t.occupation)} % de la fenetre occupee)`);
+    }
+    await ctxTer.close();
+  }
+
   // --- FIL DU MATCH : les passes ne doivent plus noyer le reste ---------------
   // Mesure : sur les 30 evenements que le moteur conserve, 14,3 sont des passes
   // et 29 % d'entre eux repetaient MOT POUR MOT la ligne precedente (jusqu'a

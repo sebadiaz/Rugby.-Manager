@@ -580,6 +580,59 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-16. Le terrain n'occupait qu'un tiers de l'écran : tout le match se jouait dans une bande étroite
+- **Statut : CORRIGÉ**
+- Priorité : P2 (lisibilité du match — CLAUDE.md priorité n°10 « affichage clair des événements » et « le joueur comprend mieux ce qui se passe »)
+- Fichiers concernés :
+  - `docs/js/renderer.js` (cause et correctif)
+  - `server/test-parcours-navigateur.js` (3 gabarits mesurés)
+
+**Reproduction — en regardant un vrai match dans le navigateur, pas en lisant le code.**
+Le terrain était dessiné **toujours en portrait** : la longueur du terrain (100 m
+plus les en-buts) suivait la HAUTEUR de la fenêtre, sa largeur (70 m) suivait la
+LARGEUR. Sur un écran large, l'échelle est donc imposée par la hauteur, et les
+deux tiers de la fenêtre restent du vert vide à gauche et à droite.
+
+| fenêtre | canvas | terrain dessiné | surface occupée | 1 m à l'écran |
+|---|---|---|---|---|
+| 1400×1000 (bureau) | 1400×799 | 482×689 px | **30 %** | 6,89 px |
+| 900×600 (portable) | 900×399 | 241×344 px | **23 %** | **3,44 px** |
+| 390×844 (téléphone) | 390×629 | 350×500 px | 71 % | 5,00 px |
+
+À 3,44 px par mètre, un joueur — dessiné sur un rayon FIXE de 10 px — couvre
+**6 mètres de terrain** : la ligne de trois-quarts n'est plus qu'un amas de
+pastilles superposées, et on ne voit ni l'espace au large, ni le trou dans le
+rideau défensif, c'est-à-dire précisément ce que les correctifs de la ligne
+d'avantage et des sortants de ruck ont passé la session à créer.
+
+**Cause.** `versCanvas` mappait en dur `x` (longueur) sur l'axe vertical du
+canvas et `y` (largeur) sur l'axe horizontal. Aucune orientation n'était
+choisie : le portrait était câblé.
+
+**Correctif.** `redimensionner()` calcule les DEUX échelles possibles et retient
+la plus grande ; `versCanvas` est la seule fonction qui connaît l'orientation,
+si bien que tout le reste du rendu (lignes, zones, poteaux, joueurs, ballon,
+arbitre) n'a pas eu à changer. La règle n'impose pas le paysage : elle impose la
+plus grande échelle, et un téléphone en portrait reste donc en portrait de
+lui-même.
+
+| fenêtre | 1 m avant | 1 m après | surface avant → après |
+|---|---|---|---|
+| 1400×1000 | 6,89 px | **10,24 px** (+49 %) | 30 % → **66 %** |
+| 900×600 | 3,44 px | **5,12 px** (+49 %) | 23 % → **51 %** |
+| 390×844 | 5,00 px | 5,00 px (inchangé) | 71 % → 71 % |
+
+**Le test mord.** `server/test-parcours-navigateur.js` mesure l'échelle réellement
+obtenue via `RMRenderer.versCanvas` et la compare au maximum atteignable, sur
+trois gabarits. Avant le correctif : **2 échecs** (bureau et portable), le
+téléphone au vert — ce qui prouve que le test n'exige pas « du paysage » mais
+bien « la plus grande taille possible ». Après : 454/454.
+
+**Reste ouvert (constaté sur la capture, pas corrigé ici).** Le fil d'événements
+du HUD est tronqué en bas : sa dernière ligne est coupée en deux par le bord
+supérieur du terrain. Antérieur à ce correctif, indépendant de l'orientation.
+
+
 ### P2-15. Le match se joue entièrement au milieu du terrain : une équipe qui conserve le ballon n'avance pas
 - **Statut : CONFIRMÉ (deux correctifs livrés le 11/09 — voir « Le correctif livré » et « Le second correctif »)**
 - Priorité : P2 (crédibilité de la simulation — CLAUDE.md rôle 6 « les mêmes actions ne doivent pas se répéter tout le temps » et priorité n°8 « essais construits »)

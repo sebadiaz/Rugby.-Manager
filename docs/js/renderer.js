@@ -8,6 +8,10 @@
 
   let canvas, ctx;
   let scale = 1, offsetX = 0, offsetY = 0;
+  // Sens de dessin du terrain. `false` = portrait (la longueur du terrain suit
+  // la hauteur de l'ecran), `true` = paysage (elle suit la largeur). Choisi a
+  // chaque redimensionnement par redimensionner(), jamais fige.
+  let paysage = false;
 
   function init(canvasEl) {
     canvas = canvasEl;
@@ -23,15 +27,36 @@
     canvas.style.marginTop = hudH + 'px';
     const longueurTotale = LONGUEUR + 2 * PROF_EN_BUT;
     const largeurTotale = LARGEUR + 2 * MARGE_TOUCHE;
-    scale = Math.min(w / largeurTotale, h / longueurTotale);
-    offsetX = w / 2;
-    offsetY = (h - longueurTotale * scale) / 2 + PROF_EN_BUT * scale;
+    // ORIENTATION : le terrain est dessiné dans le sens qui le rend LE PLUS
+    // GRAND à l'écran, au lieu d'être toujours en portrait. Mesuré sur le jeu
+    // réel avant ce choix : dans une fenêtre 1400x1000, le terrain n'occupait
+    // que 482 px de large sur 1400 (30 % de la surface, 1 m = 6,9 px) et les
+    // deux tiers de l'écran étaient du vert vide ; dans une fenêtre 900x600,
+    // 1 m ne valait plus que 3,4 px, si bien qu'un joueur (rayon fixe de 10 px)
+    // couvrait 6 m de terrain et que la ligne de trois-quarts n'était plus
+    // qu'un amas. Un téléphone en portrait reste en portrait : c'est ce sens
+    // qui y donne la plus grande échelle, la règle le choisit toute seule.
+    const echellePortrait = Math.min(w / largeurTotale, h / longueurTotale);
+    const echellePaysage = Math.min(w / longueurTotale, h / largeurTotale);
+    paysage = echellePaysage > echellePortrait;
+    scale = paysage ? echellePaysage : echellePortrait;
+    if (paysage) {
+      offsetX = (w - longueurTotale * scale) / 2 + PROF_EN_BUT * scale;
+      offsetY = h / 2;
+    } else {
+      offsetX = w / 2;
+      offsetY = (h - longueurTotale * scale) / 2 + PROF_EN_BUT * scale;
+    }
   }
 
   // Convertit des coordonnées terrain (mètres, x = longueur en-but à en-but,
-  // y = largeur touche à touche) en coordonnées canvas (pixels).
+  // y = largeur touche à touche) en coordonnées canvas (pixels). Seule cette
+  // fonction connaît l'orientation : tout le reste du rendu (lignes, zones,
+  // joueurs, ballon, arbitre) passe par elle et n'a pas eu à changer.
   function versCanvas(x, y) {
-    return { px: offsetX + (y - LARGEUR / 2) * scale, py: offsetY + x * scale };
+    return paysage
+      ? { px: offsetX + x * scale, py: offsetY + (y - LARGEUR / 2) * scale }
+      : { px: offsetX + (y - LARGEUR / 2) * scale, py: offsetY + x * scale };
   }
 
   function ligneTerrain(x1, y1, x2, y2, { couleur = '#ffffff', largeur = 2, alpha = 1, dash = null } = {}) {
