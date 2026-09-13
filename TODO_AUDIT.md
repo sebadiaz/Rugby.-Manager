@@ -580,6 +580,118 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-19. Pourquoi le moteur fait 492 passes par match — enquête, mesures, et pourquoi rien n'est livré
+- **Statut : DIAGNOSTIQUÉ, NON LIVRÉ (le correctif est mesuré et fonctionne, mais il casse la cohérence du classement — voir « Pourquoi rien n'est livré »)**
+- Priorité : P2 (dernière catégorie de calibration franchement hors fourchette)
+- Fichiers concernés : `engine/rugby-engine.js` (cause), `server/test-scores-abstraits.js` (le garde-fou qui bloque)
+
+**D'abord, une mesure fausse de ma part, corrigée.** J'avais annoncé « un temps de jeu
+dure 22,8 s au lieu de 10-13 s ». C'était faux : la mesure comptait les ARRÊTS DE JEU
+entre deux regroupements. Sur des phases strictement enchaînées (aucun arrêt entre les
+deux rucks), le cycle vaut **8,87 s — dont 3,69 s de ruck et 5,19 s de jeu ouvert**,
+c'est-à-dire une durée réaliste. Le rythme n'est pas le problème ; le nombre de passes l'est.
+
+**D'où viennent les passes.** Moteur instrumenté, 6 matchs complets, une marque sur
+chaque branche de décision qui renvoie `PASS` :
+
+| branche | passes/match | part |
+|---|---|---|
+| **3 — passe avant contact** | **157,5** | 28,3 % |
+| 2b — 9→10 (sortie de regroupement) | 149,0 | 26,7 % |
+| 2c — chaîne de ligne (10→12→13→aile) | 124,5 | 22,3 % |
+| **4b — relais anti-ras** | **57,2** | 10,3 % |
+| 4 — jeu au large | 47,0 | 8,4 % |
+| 9→avant lancé | 22,0 | 3,9 % |
+
+Par numéro, le n°9 passe **175 fois par match** (un vrai demi de mêlée : 70 à 90) et les
+trois-quarts 426,6 fois contre 32,6 aux avants.
+
+**La cause.** Les branches 3 et 4b encodent la même chose : *le porteur ne va jamais au
+contact*. À moins de 2,2 m d'un défenseur, un 9-13 relayait **systématiquement** (aucun
+tirage du tout) ; à moins de 5,5 m il lâchait le ballon à 0,9 par seconde. CLAUDE.md
+(rôle 4) exige pourtant que « aller au contact » fasse partie des décisions du porteur.
+
+**Ce qui a été mesuré (banc A/B, 300 matchs appariés par variante, Bonferroni sur 11 métriques).**
+
+| variante | essais | points | passes | courses | rucks | plaquages | touches |
+|---|---|---|---|---|---|---|---|
+| A — moteur actuel | 5,77 | 47,97 | 491,6 | 212,8 | 161,1 | 239,3 | 22,46 |
+| portage minimum avant la passe de ligne (0,5 s) | 5,57 | 47,35 | 488,2 | — | — | — | — |
+| contact (pPasse −30 %, relais 1 fois sur 2) | 6,75 | 55,31 | **438,3** | 217,3 | 162,7 | 242,9 | 21,68 |
+| contact + chaîne raccourcie (jeuLarge 0,5/0,40) | 6,53 | 53,69 | **419,9** | 224,8 | 168,7 | 251,3 | 21,59 |
+| contact fort + chaîne raccourcie | 7,31 | 58,46 | **416,8** | 220,5 | 164,2 | 245,5 | 21,22 |
+
+Le **portage minimum ne fait rien** (−3,4 ± 10,6 passes) : quand la branche 2c est bloquée,
+la branche 3 passe à sa place. À ne pas refaire.
+
+Le passage au contact, lui, marche : −53 à −75 passes, plus de courses, plus de rucks,
+plus de plaquages, et les regroupements dans les 22 adverses montent de 8,9 % à 10,3 %
+(ÉTABLI). Sur les 20 graines de la calibration, la variante « contact + chaîne » rend
+**passes 416,9 — dans la fourchette pour la première fois**.
+
+**Pourquoi rien n'est livré.** Toutes les variantes qui font baisser les passes font
+MONTER le score (+5,7 à +10,5 points, ÉTABLI). La raison est structurelle : dans ce
+moteur **une passe est un risque** (interception, en-avant, passe en avant) alors que
+**le contact ne coûte rien** — le plaquage ne produit presque jamais de turnover. Moins
+de passes = moins de ballons perdus = plus d'essais.
+
+Et le moteur à 53,7 points par match casse `S12` de `server/test-scores-abstraits.js` :
+les matchs du club du joueur sont joués par le MOTEUR, les 156 rencontres IA de son
+championnat par un BARÈME abstrait calé à 40-44 points. Au-delà de 15 % d'écart, le
+joueur lit un classement où il marque systématiquement plus que tout le monde. Le
+correctif est donc juste au rugby et faux pour le jeu tant que le barème n'a pas suivi.
+
+**Deux contrepoids essayés, tous deux insuffisants :**
+- en-avant au contact 0,040 → 0,046 : rend les fautes de main (7,9 → 9,4) mais fait
+  passer les touches sous leur plancher (19,9 pour un minimum de 20). Échange nul.
+- grattage au ruck 0,030 → 0,042 / 0,050 : ne fait pas redescendre le score.
+
+**Une version « douce » passe S12 — par chance, et elle n'est donc pas livrable non plus.**
+Mesurée à 47,0 points sur les 8 graines de S12 mais à **52,9 points sur 20 graines** :
+elle ne passe le test que par tirage. Livrer ça reviendrait à optimiser le test, pas le jeu.
+
+**Défaut de méthode trouvé au passage : S12 n'a pas la précision qu'il prétend avoir.**
+Il compare une quantité dont l'écart-type vaut ~17 points par match, sur **8 matchs** :
+sa résolution réelle est de l'ordre de **±12 points**, alors qu'il tranche une bande de
+±15 % (≈ ±6,5 points). Mesuré sur le moteur strictement inchangé : 8 graines donnent
+48,1 points, 300 graines appariées 47,97 — mais une simple variante à effet nul sur le
+score (grattage au ruck, cf. P2-20) déplace les 8 graines à 53,3 alors que sa vraie
+moyenne est 48,2. **S12 est aujourd'hui un tirage à pile ou face.** Le corriger (assez
+de graines pour sa bande, ou une bande élargie à sa résolution réelle) est le préalable
+à toute reprise de ce chantier.
+
+**Reprise recommandée, dans cet ordre :** (1) donner à S12 la puissance statistique qu'il
+revendique ; (2) livrer le passage au contact ; (3) faire suivre le barème abstrait sur
+une mesure du moteur à 300+ matchs, en mettant à jour les constantes ancrées de S11.
+
+### P2-20. Le grattage au ruck n'existait quasiment pas (3 % au lieu de 5-7 %)
+- **Statut : MESURÉ, PRÊT — en attente du correctif de S12 (cf. P2-19)**
+- Fichiers concernés : `engine/rugby-engine.js` (`probaTurnover` dans `_tickRuck`)
+
+En match réel, l'équipe qui attaque conserve 93 à 95 % de ses rucks. Le moteur en
+conservait **97 %** (base de grattage 0,030) et ne produisait que 9,5 turnovers par match
+là où CLAUDE.md (rôle 6) en attend 12 à 18. Le grattage — un des faits de jeu les plus
+fréquents du rugby moderne — était donc quasi absent.
+
+Base portée à 0,048. Banc A/B, 300 matchs appariés, Bonferroni sur 11 métriques :
+
+| métrique | A | B | écart | verdict |
+|---|---|---|---|---|
+| turnovers | 9,47 | **11,86** | +2,39 ± 0,63 | **ÉTABLI** |
+| essais | 5,77 | 5,69 | −0,08 ± 0,37 | non établi |
+| points | 47,97 | 48,20 | +0,23 ± 2,39 | non établi |
+| passes | 491,6 | 485,9 | −5,7 ± 9,1 | non établi |
+| rucks, plaquages, courses, touches, mêlées, gain de terrain | — | — | — | tous non établis |
+
+C'est le levier rare qui **ajoute un fait de jeu sans rien déséquilibrer**, et il fait
+passer la calibration de 12/14 à **13/14** (turnovers 11,8, en-avants 8,1 et temps de jeu
+effectif 32,4 rentrent tous dans leur fourchette ; seules les passes restent hautes).
+
+**Pourquoi il n'est pas livré tout de suite** : sur ses 8 graines, S12 le lit à 53,3 points
+et passe au rouge, alors que sa vraie moyenne sur 300 graines appariées est 48,20 —
+inchangée. Livrer ce correctif suppose donc de réparer S12 d'abord (cf. P2-19), sans quoi
+on ne saurait pas distinguer un vrai déséquilibre d'un tirage.
+
 ### P2-18. Le fil d'événements coupait une ligne en son milieu et en cachait deux sur cinq
 - **Statut : CORRIGÉ**
 - Priorité : P2 (lisibilité du match — CLAUDE.md priorité n°10)

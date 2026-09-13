@@ -1130,7 +1130,16 @@ test("un defenseur qui sort du regroupement ne glisse pas vers le ballon", () =>
     j.y = 55; // tres loin du porteur (y = 20)
   }
   const yAvant = sortants.map((j) => j.y);
-  for (let t = 0; t < 1; t += 0.2) m.tick(0.2);
+  // On ne mesure QUE tant que le jeu reste en jeu courant. Si le porteur tape au
+  // pied ou se fait plaquer pendant la seconde mesuree, ce sont les
+  // replacements de la NOUVELLE phase (couverture du coup de pied, formation du
+  // ruck) qui deplacent les joueurs, pas le glissement defensif teste ici.
+  // Confondant reel : le passage du porteur au contact a change sa decision sur
+  // ce scenario (il botte desormais au 3e tick), et le test est passe au rouge a
+  // 0,95 m alors que la mecanique verifiee n'avait pas bouge d'une ligne — en
+  // s'arretant au changement de phase, le glissement mesure vaut 0,00 m.
+  // Le SEUIL n'a pas ete touche : seul le confondant a ete retire.
+  for (let t = 0; t < 1; t += 0.2) { m.tick(0.2); if (m.phase !== 'PORTE') break; }
   // Glissement MOYEN SIGNE vers le ballon (le porteur est a y = 20, eux a
   // y = 55) : c'est le glissement defensif, pas le bruit de replacement.
   const glissement = sortants.reduce((a, j, i) => a + (yAvant[i] - j.y), 0) / sortants.length;
