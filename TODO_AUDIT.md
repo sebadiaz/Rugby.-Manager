@@ -728,6 +728,31 @@ Donc : l'intervalle se comporte correctement, et le « +0,575 ± 0,513 » du pre
 - Les effets **petits** annoncés dans les patchs précédents — variations d'essais de ±0,7, territoire de ±2 points, part des avants — sont **au niveau du bruit** : à ne pas revendiquer sans une mesure à 300 graines ou plus, ou contre un témoin aligné.
 - **Règle de travail qui en découle** : sur les essais, aucune conclusion sous ±0,6 à 80 graines ; construire le témoin pour qu'il suive le même chemin de code dès que c'est possible ; et ne jamais conclure d'un seul tirage limite — dans un sens comme dans l'autre.
 
+**LE BANC A/B (`server/banc-ab.js`) — et ce qu'il a répondu une fois calibré.** Outil de développement : il répartit les matchs sur les cœurs disponibles (80 matchs en 46 s au lieu de ~3 minutes), compare deux moteurs sur onze métriques, et corrige la **multiplicité**. Ce dernier point n'est pas cosmétique : comparer onze métriques à 5 % de risque chacune donne **43 % de chances qu'au moins une sorte « établie » alors qu'il ne se passe rien**. Validé sur un témoin à effet rigoureusement nul, 400 matchs par variante : sans correction, « Points +1,615 ± 1,589, ÉTABLI » ; avec la correction de Bonferroni (z = 2,84), **0 faux positif sur 11**.
+
+Remesure des deux décisions de la veille, 400 matchs par variante, témoin au même chemin de code :
+
+| loi 15 (recul 0 → 1,5 m) | A | B | B−A | verdict |
+|---|---|---|---|---|
+| gain par temps de jeu | 0,84 m | 1,43 m | **+0,59 ± 0,13** | **ÉTABLI** |
+| regroupements dans les 22 | 7,96 % | 10,00 % | **+2,03 ± 1,03** | **ÉTABLI** |
+| essais | 4,83 | 5,16 | +0,33 ± 0,40 | non établi |
+
+→ **La loi 15 est un gain net.** L'« érosion d'essais » que je lui avais imputée n'existe pas : le point estimé est même positif.
+
+| passes (cadence 1,7/1,3 + chaîne 2,2 → 0,7/0,55 + 1,5) | A | B | B−A | verdict |
+|---|---|---|---|---|
+| passes | 588,5 | 516,3 | **−72,1 ± 10,1** | **ÉTABLI** |
+| **essais** | **6,04** | **5,16** | **−0,88 ± 0,37** | **ÉTABLI** |
+| **points** | **49,7** | **46,1** | **−3,60 ± 2,37** | **ÉTABLI** |
+| rucks | 156,9 | 171,1 | +14,2 ± 3,6 | ÉTABLI |
+
+→ **Le coût que la première mesure (80 matchs) avait déclaré « non établi » est bien réel.** L'érosion venait entièrement de ce patch, pas du cumul des deux. Et le gain de 72 passes ne suffisait pas à rentrer dans la fourchette (516 contre 420 visé).
+
+**Décision, et pourquoi elle n'est pas celle qu'on croit.** Ce patch a été annulé... puis **restauré**, parce que l'annulation fait tomber les **touches à 19,6**, sous le plancher de 20 d'une catégorie **essentielle** du test de calibration (et fait décrocher le barème abstrait, points à 55,1). Les trois patchs de la veille interagissent : la baisse des passes compense la perte de touches induite par la loi 15. L'état livré (13/14, tout vert) est donc le seul qui satisfasse les critères d'acceptation du projet — mais **il se paie 0,88 essai**, et c'est écrit ici noir sur blanc plutôt que passé sous silence.
+
+À reprendre : trouver ce qui rend les touches si sensibles, pour pouvoir rendre ces 0,88 essai sans casser une catégorie essentielle.
+
 **Avertissement de méthode (coûteux, à retenir).** Le gain de terrain par temps de jeu a un écart-type d'environ 8 m. Une moyenne sur 10, 20 ou même 40 matchs ne distingue pas +0,3 m de 0. Toute tentative future sur ce défaut doit se mesurer par **comparaison appariée par graine sur au moins 100 matchs** (même graine, moteur avant / moteur après, différence des moyennes par graine), sans quoi on croit livrer une amélioration qui n'existe pas — c'est arrivé ici.
 
 **La vraie tâche.** Faire avancer une possession : point de collision réel au contact, ligne défensive qui monte ET peut être franchie, regroupement qui avance, porteurs à plat près du ballon. C'est un chantier de simulation, pas un réglage de constantes.
