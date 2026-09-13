@@ -551,10 +551,18 @@ test('loi 11 : l arbitre reconnait une passe en avant, dans les deux sens de jeu
 // moteur passait quand meme au premier partenaire venu, forcement en avant.
 // Un joueur ne fait pas ca : il garde le ballon et va au contact.
 test('loi 11 : un joueur sans solution legale GARDE le ballon (pas 11 passes en avant par match)', () => {
-  // 8 graines : sur 5 matchs, le nombre de fautes de main varie de +/- 2 d'un
-  // echantillon a l'autre et le test devenait instable (la mesure de reference
-  // reste server/simulate-batch.js sur 50 matchs).
-  const GRAINES = [1, 2, 3, 4, 5, 6, 7, 8];
+  // 60 graines, et non 8. Le nombre de fautes de main a un ecart-type de 2,90
+  // PAR MATCH (mesure sur 60 matchs, moyenne 8,87) : 8 matchs ne le situent
+  // donc qu'a +/-2,01 pres, pour un plancher a 8, c'est-a-dire une marge de
+  // 0,87. Le test etait un tirage a pile ou face, et il est effectivement
+  // tombe au rouge a 7,63 sur un changement de moteur qui ne touchait pas les
+  // fautes de main (le grattage au ruck : passes -5,7 +/- 9,1 sur 300 matchs
+  // apparies, non etabli). Son predecesseur etait passe de 5 a 8 graines pour
+  // la meme raison — c'etait la bonne intuition, pas la bonne taille.
+  //    8 graines -> +/-2,01      40 graines -> +/-0,90
+  //   20 graines -> +/-1,27      60 graines -> +/-0,73  (retenu)
+  // AUCUN SEUIL n'a ete touche : seule la taille de l'echantillon change.
+  const GRAINES = Array.from({ length: 60 }, (_, i) => i + 1);
   let passesAvant = 0, fautesDeMain = 0;
   for (const seed of GRAINES) {
     const m = new MatchEngine(seed, 4800);

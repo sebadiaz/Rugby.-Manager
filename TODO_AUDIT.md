@@ -734,10 +734,23 @@ C'est le levier rare qui **ajoute un fait de jeu sans rien déséquilibrer**, et
 passer la calibration de 12/14 à **13/14** (turnovers 11,8, en-avants 8,1 et temps de jeu
 effectif 32,4 rentrent tous dans leur fourchette ; seules les passes restent hautes).
 
-**Pourquoi il n'est pas livré tout de suite** : sur ses 8 graines, S12 le lit à 53,3 points
-et passe au rouge, alors que sa vraie moyenne sur 300 graines appariées est 48,20 —
-inchangée. Livrer ce correctif suppose donc de réparer S12 d'abord (cf. P2-19), sans quoi
-on ne saurait pas distinguer un vrai déséquilibre d'un tirage.
+**Livré une fois S12 réparé (cf. P2-21).** Le blocage n'était pas le correctif mais la
+mesure : sur ses 8 graines, S12 lisait 53,3 points là où la vraie moyenne, sur 300 graines
+appariées, valait 48,20 — inchangée.
+
+**Un second test d'échantillon est tombé au passage, et a été corrigé de la même façon.**
+L'invariant « loi 11 : un joueur sans solution légale GARDE le ballon » exige un plancher
+de 8 fautes de main par match. Les fautes de main ont un écart-type de **2,90 par match**
+(moyenne réelle **8,87**, mesure sur 60 matchs) : ses **8 graines** ne situaient donc la
+moyenne qu'à **±2,01** près, pour une marge de 0,87 au-dessus du plancher. Il est
+effectivement passé au rouge à 7,63 sur ce correctif, qui ne touche pas les fautes de
+main. Échantillon porté à **60 graines** (±0,73), **seuil inchangé**. Vérifié par mutation
+(en-avant au contact 0,040 → 0,010) : le test retombe au rouge à 3,7.
+
+Son prédécesseur était déjà passé de 5 à 8 graines pour cette raison : la bonne intuition,
+pas la bonne taille. **Leçon d'ordre** : avant de fixer un plancher sur une statistique de
+match, mesurer son écart-type par match et en déduire le nombre de graines — sinon le
+garde-fou est un tirage.
 
 ### P2-18. Le fil d'événements coupait une ligne en son milieu et en cachait deux sur cinq
 - **Statut : CORRIGÉ**

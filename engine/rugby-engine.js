@@ -3822,7 +3822,17 @@
         // la défense a gagné le contact, elle conteste avec bien plus de chances
         // de gratter le ballon. Bonus consommé une seule fois (ce ruck).
         const bonusDominant = this.ruckDominant ? 0.035 : 0;
-        const probaTurnover = Math.max(0.030, Math.min(0.20, 0.030 + (forceDef - forceAtt) / 1600 + bonusIsolement + bonusDominant));
+        // Base relevée de 0,030 à 0,048. À 3 %, l'équipe qui attaque conservait
+        // 97 % de ses rucks : le grattage, qui est UN DES FAITS DE JEU LES PLUS
+        // FRÉQUENTS du rugby moderne, n'existait quasiment pas. Un vrai match en
+        // perd 5 à 7 % (conservation 93-95 %), et le repère de CLAUDE.md (rôle 6)
+        // demande 12 à 18 turnovers par match quand le moteur n'en produisait que
+        // 9,5. Mesuré au banc A/B sur 300 matchs appariés, avec correction de
+        // Bonferroni sur 11 métriques : turnovers 9,47 -> 11,86 (+2,39 ± 0,63,
+        // ÉTABLI) et AUCUNE autre métrique établie — essais, points, passes,
+        // rucks, plaquages, touches, mêlées et gain de terrain sont inchangés.
+        // C'est le rare levier qui ajoute un fait de jeu sans rien déséquilibrer.
+        const probaTurnover = Math.max(0.048, Math.min(0.20, 0.048 + (forceDef - forceAtt) / 1600 + bonusIsolement + bonusDominant));
         const turnover = this.rng() < probaTurnover;
         this.ruckDominant = false;
         if (turnover) {
