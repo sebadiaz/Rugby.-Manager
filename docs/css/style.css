@@ -81,6 +81,11 @@ h1, h2, h3 { font-weight: 700; letter-spacing: -0.01em; }
 }
 #hud .possession .barre .partA { background: var(--team-a); height: 100%; }
 #hud .possession .barre .partB { background: var(--team-b); height: 100%; }
+/* max-height n'est qu'un REPLI, valable le temps que le premier rafraichissement
+   du HUD ait lieu : passe ce moment, docs/js/ui.js recalcule la hauteur du fil a
+   chaque mise a jour (cf. hauteurFilVisible) pour qu'elle vaille toujours un
+   nombre ENTIER de lignes. En dur a 66 px, elle coupait une ligne en son milieu
+   et cachait 2 des 5 evenements inseres sur telephone. */
 #feed {
   list-style: none; margin: 0; padding: 0; max-height: 66px; overflow-y: auto;
   font-size: 11.5px; color: var(--text-dim);

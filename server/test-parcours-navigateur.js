@@ -4308,6 +4308,95 @@ function optionsLancement() {
     await ctxHud.close();
   }
 
+  // --- LE FIL NE DOIT JAMAIS COUPER UNE LIGNE EN DEUX ------------------------
+  // docs/js/ui.js insere les 5 derniers evenements dans #feed, mais le CSS le
+  // bornait a `max-height: 66px` en dur. Mesure dans le vrai parcours, fil plein :
+  //
+  //   1400x1000 : lignes de 18 px -> 5 inserees, 90 px de contenu,  3 entieres
+  //    390x844  : lignes de 32 px (le texte passe sur deux lignes)
+  //               -> 5 inserees, 146 px de contenu, 2 entieres
+  //
+  // Dans les deux cas une ligne est coupee EN SON MILIEU, et sur telephone plus
+  // de la moitie du fil est hors de vue. C'est exactement ce que le regroupement
+  // des passes voulait eviter -- l'essai ou la penalite chasses de la fenetre --
+  // sauf qu'ici ils sont bien dans le DOM et c'est le CSS qui les coupe.
+  //
+  // La regle testee : aucune ligne partiellement visible, et au moins 3 lignes
+  // entieres quand 5 sont inserees.
+  for (const gabarit of [
+    { nom: 'bureau 1400x1000', width: 1400, height: 1000 },
+    { nom: 'telephone 390x844', width: 390, height: 844 },
+  ]) {
+    const ctxFeed = await browser.newContext({ viewport: { width: gabarit.width, height: gabarit.height } });
+    const pgFeed = await ctxFeed.newPage();
+    await pgFeed.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+    await pgFeed.click('#btnAccueilMatchRapide');
+    await pgFeed.waitForSelector('#btnResultatVoir', { timeout: 60000 });
+    await pgFeed.waitForTimeout(300);
+    await pgFeed.click('#btnResultatVoir');
+    await pgFeed.waitForSelector('#vueMatch', { state: 'visible', timeout: 20000 });
+    await pgFeed.waitForFunction(() => document.querySelectorAll('#feed li').length >= 5,
+      null, { timeout: 30000 }).catch(() => {});
+    const f = await pgFeed.evaluate(() => {
+      const feed = document.getElementById('feed');
+      const boite = feed.getBoundingClientRect();
+      const lis = [...feed.querySelectorAll('li')];
+      let entieres = 0, coupees = 0;
+      for (const li of lis) {
+        const b = li.getBoundingClientRect();
+        const dedans = b.top >= boite.top - 0.5 && b.bottom <= boite.bottom + 0.5;
+        const dehors = b.top >= boite.bottom - 0.5 || b.bottom <= boite.top + 0.5;
+        if (dedans) entieres++;
+        else if (!dehors) coupees++;
+      }
+      return { inserees: lis.length, entieres, coupees, hauteurFil: Math.round(boite.height) };
+    });
+    verifier(`fil (${gabarit.nom}) : les 5 evenements sont bien inseres`, f.inserees === 5,
+      `${f.inserees} ligne(s)`);
+    verifier(`fil (${gabarit.nom}) : aucune ligne n'est coupee en son milieu`, f.coupees === 0,
+      `${f.coupees} ligne(s) coupee(s) (fil haut de ${f.hauteurFil} px)`);
+    verifier(`fil (${gabarit.nom}) : au moins 3 lignes entieres sur les 5 inserees`, f.entieres >= 3,
+      `${f.entieres} ligne(s) entiere(s) sur ${f.inserees}`);
+    await ctxFeed.close();
+  }
+
+  // La REGLE elle-meme, testee seule (deterministe, sans chronometre) : autant
+  // de lignes entieres qu'il en tient dans 15 % de la hauteur de la fenetre, au
+  // plus les 5 inserees, au moins 2, et jamais un total qui coupe une ligne.
+  {
+    const ctxReg = await browser.newContext({ viewport: { width: 1400, height: 1000 } });
+    const pgReg = await ctxReg.newPage();
+    await pgReg.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+    const r = await pgReg.evaluate(() => {
+      const f = window.RMUI && window.RMUI.hauteurFilVisible;
+      if (!f) return null;
+      return {
+        vide: f(1000, []),
+        uneSeule: f(1000, [18]),
+        cinqCourtes: f(1000, [18, 18, 18, 18, 18]),       // 90 <= 150 : les 5
+        cinqLongues: f(844, [32, 32, 32, 32, 32]),        // budget 126 : 3
+        jamaisPlusDeCinq: f(4000, [18, 18, 18, 18, 18, 18, 18]),
+        fenetreMinuscule: f(200, [32, 32, 32, 32, 32]),   // plancher de 2 lignes
+        hauteursMelangees: f(844, [32, 18, 32, 18, 32]),  // 32+18+32 = 82, +18 = 100 <= 126
+      };
+    });
+    verifier('fil : la regle de hauteur est exposee et appelable', !!r);
+    if (r) {
+      verifier('fil : un fil vide ne reserve aucune hauteur', r.vide === 0, `${r.vide}`);
+      verifier('fil : une seule ligne ne reserve que sa hauteur', r.uneSeule === 18, `${r.uneSeule}`);
+      verifier('fil : cinq lignes courtes tiennent entierement', r.cinqCourtes === 90, `${r.cinqCourtes}`);
+      verifier('fil : cinq lignes hautes sont ramenees a un nombre entier de lignes',
+        r.cinqLongues === 96, `${r.cinqLongues} (attendu 96 = 3 lignes de 32)`);
+      verifier('fil : jamais plus de cinq lignes, meme sur un tres grand ecran',
+        r.jamaisPlusDeCinq === 90, `${r.jamaisPlusDeCinq}`);
+      verifier('fil : deux lignes entieres au minimum sur une fenetre minuscule',
+        r.fenetreMinuscule === 64, `${r.fenetreMinuscule}`);
+      verifier('fil : des hauteurs de lignes melangees restent un total exact de lignes',
+        r.hauteursMelangees === 100, `${r.hauteursMelangees}`);
+    }
+    await ctxReg.close();
+  }
+
   // --- FIL DU MATCH : les passes ne doivent plus noyer le reste ---------------
   // Mesure : sur les 30 evenements que le moteur conserve, 14,3 sont des passes
   // et 29 % d'entre eux repetaient MOT POUR MOT la ligne precedente (jusqu'a

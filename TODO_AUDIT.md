@@ -580,6 +580,49 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-18. Le fil d'événements coupait une ligne en son milieu et en cachait deux sur cinq
+- **Statut : CORRIGÉ**
+- Priorité : P2 (lisibilité du match — CLAUDE.md priorité n°10)
+- Fichiers concernés :
+  - `docs/js/ui.js` (règle `hauteurFilVisible`, exposée sur `RMUI`)
+  - `docs/css/style.css` (le `max-height` en dur devient un simple repli)
+  - `server/test-parcours-navigateur.js` (2 gabarits + 7 cas de règle)
+
+**Reproduction (match rapide, puis « Voir le match », fil plein).**
+`docs/js/ui.js` insère les **5** derniers événements dans `#feed`, mais le CSS
+bornait le fil à `max-height: 66px` en dur :
+
+| gabarit | hauteur de ligne | contenu inséré | visible | lignes entières |
+|---|---|---|---|---|
+| 1400×1000 | 18 px | 90 px | 66 px | **3 sur 5** |
+| 390×844 | 32 px (le texte passe sur deux lignes) | 146 px | 66 px | **2 sur 5** |
+
+Dans les deux cas une ligne était coupée **en son milieu**. C'est exactement ce
+que le regroupement des passes voulait éviter — l'essai ou la pénalité chassés de
+la fenêtre — sauf qu'ici ils étaient bien dans le DOM et c'est le CSS qui les
+coupait.
+
+**Correctif.** `hauteurFilVisible(hauteurFenetre, hauteursLignes)` : autant de
+lignes **entières** qu'il en tient dans 15 % de la hauteur de la fenêtre, au plus
+les 5 insérées, au moins 2, calculé sur les hauteurs **réellement rendues** (une
+entrée longue vaut deux lignes de texte) et non sur une hauteur supposée. Le
+`max-height` du CSS ne sert plus que de repli avant le premier rafraîchissement.
+
+| gabarit | lignes entières avant → après | échelle du terrain |
+|---|---|---|
+| 1400×1000 | 3 → **5** | 9,63 → 9,32 px/m (−3 %) |
+| 390×844 | 2 → **5** | 5,00 → 4,72 px/m (−5,6 %) |
+
+**Ce que ça coûte, honnêtement** : le bandeau prend la place qu'il lui faut, donc
+le terrain perd 3 % (bureau) à 5,6 % (téléphone) d'échelle. En échange, les cinq
+événements sont lisibles en entier au lieu de deux ou trois — et plus rien n'est
+tronqué.
+
+**Le test mord** : 2 rouges avant (une ligne coupée sur chaque gabarit), 472/472
+après. La règle est aussi testée seule sur 7 cas déterministes (fil vide, une
+ligne, cinq courtes, cinq hautes, très grand écran, fenêtre minuscule, hauteurs
+mélangées).
+
 ### P2-17. Le bandeau de match écrivait par-dessus la pelouse dès que le fil se remplissait
 - **Statut : CORRIGÉ**
 - Priorité : P2 (lisibilité du match — CLAUDE.md priorité n°10)

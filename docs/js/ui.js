@@ -119,6 +119,16 @@
       if (ev.id > dernierIdEvenementAffiche - 1) li.className = 'recent';
       feed.appendChild(li);
     }
+    // Hauteur du fil : un NOMBRE ENTIER de lignes, jamais une moitié. Le CSS le
+    // bornait à 66 px en dur alors qu'on y insère 5 événements — mesuré fil
+    // plein : 3 lignes entières sur 5 en 1400x1000, et 2 seulement en 390x844
+    // (le texte y passe sur deux lignes, une entrée monte à 32 px), avec dans
+    // les deux cas une ligne coupée en son milieu. On mesure donc les lignes
+    // réellement rendues et on cale la hauteur sur celles qui tiennent.
+    feed.style.maxHeight = hauteurFilVisible(
+      window.innerHeight,
+      [...feed.querySelectorAll('li')].map(li => li.getBoundingClientRect().height),
+    ) + 'px';
 
     // Bannière de décision arbitrale : se déclenche une seule fois par
     // événement neuf. On retient le dernier événement NEUF qui mérite une
@@ -146,6 +156,31 @@
     // un bug plutôt qu'à une action qui n'a pas encore de sens. Il apparaît
     // exactement au moment où il devient pertinent.
     document.getElementById('btnSauver').style.display = state.phase === 'TERMINE' ? '' : 'none';
+  }
+
+  // --- Hauteur visible du fil d'événements ------------------------------------
+  // RÈGLE (exposée sur RMUI pour être testable seule) : le fil montre autant de
+  // lignes ENTIÈRES qu'il en tient dans une part de la hauteur de la fenêtre,
+  // jamais plus que les 5 événements insérés, jamais moins de 2 — et jamais une
+  // demi-ligne. On raisonne sur les hauteurs RÉELLEMENT rendues (une entrée
+  // longue passe sur deux lignes de texte et vaut donc deux fois plus) plutôt
+  // que sur une hauteur de ligne supposée.
+  const PART_FENETRE_FIL = 0.15;
+  const LIGNES_FIL_MIN = 2;
+  const LIGNES_FIL_MAX = 5;
+  function hauteurFilVisible(hauteurFenetre, hauteursLignes) {
+    if (!hauteursLignes || !hauteursLignes.length) return 0;
+    const budget = hauteurFenetre * PART_FENETRE_FIL;
+    let total = 0, n = 0;
+    for (const h of hauteursLignes.slice(0, LIGNES_FIL_MAX)) {
+      // Les LIGNES_FIL_MIN premières passent même si le budget est déjà dépassé
+      // (petite fenêtre) : mieux vaut un bandeau un peu plus haut que deux
+      // lignes illisibles.
+      if (n >= LIGNES_FIL_MIN && total + h > budget) break;
+      total += h;
+      n++;
+    }
+    return total;
   }
 
   // --- Panneau de statistiques de match (toutes issues de state.stats, donc
@@ -303,5 +338,6 @@
     formaterTemps, majAffichage, reinitialiserSuivi, definirNomsEquipes,
     chargerHistorique, rafraichirPanneauHistorique, enregistrerResultat, nomsHistorique, VERSION_INSTANTANE_MATCH, identifiantMatch,
     rafraichirPanneauStats,
+    hauteurFilVisible,
   };
 })(window);
