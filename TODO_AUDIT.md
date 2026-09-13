@@ -753,6 +753,27 @@ Remesure des deux décisions de la veille, 400 matchs par variante, témoin au m
 
 À reprendre : trouver ce qui rend les touches si sensibles, pour pouvoir rendre ces 0,88 essai sans casser une catégorie essentielle.
 
+**LOI 19 — ON PEUT ENFIN ÊTRE PLAQUÉ EN TOUCHE, et c'est ce qui rend les 0,88 essai.** Le porteur crochetait vers l'intérieur dès qu'il passait sous **8 m** de la ligne de touche, c'est-à-dire dans tout le couloir : il s'écartait de la ligne bien avant de l'approcher. Conséquence mesurée, une sortie de rugby parfaitement banale n'existait pas — **0,05 ballon porté en touche par match**, contre 2 à 4 en vrai — et *toutes* les touches du match venaient du jeu au pied ou d'une pénalité jouée au coin.
+
+Seuil ramené à **1,5 m** : le porteur longe réellement la ligne et n'y rentre qu'au dernier moment, donc la défense peut l'y pousser. Banc A/B, 400 matchs par variante, correction de multiplicité :
+
+| | A | B | B−A | verdict |
+|---|---|---|---|---|
+| **essais** | 5,16 | **5,78** | **+0,62 ± 0,41** | **ÉTABLI** |
+| touches | 21,38 | 22,33 | **+0,95 ± 0,76** | **ÉTABLI** |
+| passes | 516,3 | 492,6 | **−23,8 ± 9,4** | **ÉTABLI** |
+| rucks | 171,1 | 161,2 | −9,9 ± 3,6 | ÉTABLI |
+| plaquages | 254,1 | 239,9 | −14,2 ± 5,2 | ÉTABLI |
+| regroupements dans les 22 | 10,00 % | 9,01 % | −0,98 ± 0,94 | ÉTABLI |
+
+**Les 0,88 essai perdus par le patch des passes sont rendus pour l'essentiel** (+0,62), la catégorie « touches » retrouve de la marge au-dessus de son plancher, et les passes se rapprochent encore de la cible. Le seuil de 8 m avait été posé à une époque où le porteur sortait « gratuitement » faute de défense latérale crédible ; ce n'est plus le cas.
+
+**Coût assumé** : la calibration passe de 13/14 à **12/14** — le temps de jeu effectif tombe à 31,4 min (plancher interne 32 ; le réel est 31 à 38, et `CLAUDE.md` ne fixe pas de borne sur cette grandeur). Plus de ballons en touche, donc plus d'arrêts : c'est mécanique et c'est du rugby. L'accélération de l'affichage des temps morts (×5) fait que le joueur ne perd, lui, qu'une dizaine de secondes réelles par match.
+
+**Un test dont la MESURE était faussée, et non la propriété.** L'invariant « le dernier défenseur traverse pour couvrir » est passé au rouge : il mesurait l'**écart final** entre l'arrière et le porteur, qui a grandi de 15,1 à 21,0 m… alors que l'arrière traversait **exactement pareil** (12,6 m dans les deux cas). C'est le *porteur* qui allait désormais jusqu'à la ligne. Le test mesure maintenant le **déplacement latéral de l'arrière** — ce qu'il prétendait vérifier — avec un seuil (> 10 m) qui reste rouge sur le moteur d'avant le correctif de couverture (7,4 m).
+
+**Point ouvert : un test navigateur INSTABLE.** Un échec isolé est apparu une fois sur quatre exécutions consécutives de `server/test-parcours-navigateur.js` (448 tests), les trois autres étant vertes, et le nom du test fautif n'a pas été capturé. À identifier : un test qui tremble finit par masquer une vraie régression.
+
 **Avertissement de méthode (coûteux, à retenir).** Le gain de terrain par temps de jeu a un écart-type d'environ 8 m. Une moyenne sur 10, 20 ou même 40 matchs ne distingue pas +0,3 m de 0. Toute tentative future sur ce défaut doit se mesurer par **comparaison appariée par graine sur au moins 100 matchs** (même graine, moteur avant / moteur après, différence des moyennes par graine), sans quoi on croit livrer une amélioration qui n'existe pas — c'est arrivé ici.
 
 **La vraie tâche.** Faire avancer une possession : point de collision réel au contact, ligne défensive qui monte ET peut être franchie, regroupement qui avance, porteurs à plat près du ballon. C'est un chantier de simulation, pas un réglage de constantes.

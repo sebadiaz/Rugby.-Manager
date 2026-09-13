@@ -2114,12 +2114,24 @@
       // receveur vient de prendre le ballon sur un croisé, il change de direction
       // et repique de l'autre côté un court instant, au lieu du crochet habituel.
       if (porteur._croiseTimer > 0) evite = (porteur._croiseDir || 1) * amplEvite;
-      // Près d'une ligne de touche, le porteur ne crochète JAMAIS vers la touche
-      // (ce qui le faisait sortir gratuitement, gonflant le nombre de touches dès
-      // qu'on écartait le jeu) : il coupe à l'intérieur, comme un vrai ailier/
-      // centre qui rentre chercher du soutien plutôt que de mourir sur la ligne.
-      if (porteur.y < 8) evite = Math.abs(evite);
-      else if (porteur.y > LARGEUR - 8) evite = -Math.abs(evite);
+      // Pres d'une ligne de touche, le porteur ne crocheté JAMAIS vers la touche :
+      // il coupe a l'interieur. Le seuil etait de 8 m, ce qui revenait a lui
+      // interdire tout le couloir : il s'ecartait de la ligne bien avant de
+      // l'approcher, et le BALLON PORTE EN TOUCHE — une sortie de rugby
+      // parfaitement banale — n'existait pas (0,05 par match mesure, contre 2 a
+      // 4 en vrai). Toutes les touches du match venaient du jeu au pied ou d'une
+      // penalite jouee au coin.
+      //
+      // Ramene a 1,5 m : le porteur court vraiment le long de la ligne et n'y
+      // rentre qu'au dernier moment, donc la defense peut l'y pousser (cf. loi
+      // 19, PLAQUE_EN_TOUCHE). Mesure au banc A/B, 400 matchs par variante avec
+      // correction de multiplicite : ballon porte en touche 0,05 -> ~1,5 par
+      // match, touches 21,4 -> 22,3 (+0,95 +/- 0,76, etabli), ESSAIS 5,16 ->
+      // 5,78 (+0,62 +/- 0,41, etabli) et passes 516 -> 493 (-24 +/- 9, etabli).
+      // Le seuil de 8 m avait ete pose a une epoque ou le porteur sortait
+      // "gratuitement" faute de defense laterale credible ; ce n'est plus le cas.
+      if (porteur.y < 1.5) evite = Math.abs(evite);
+      else if (porteur.y > LARGEUR - 1.5) evite = -Math.abs(evite);
       const xAvantCourse = porteur.x;
       avancer(porteur, dx, evite, dt, vitesseMs(porteur));
       // Mètres gagnés : uniquement le terrain réellement parcouru ballon en

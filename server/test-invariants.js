@@ -1038,12 +1038,19 @@ test('le dernier defenseur (n°15) traverse pour couvrir un porteur qui a franch
   const arriere = m.equipeB.find((j) => j.numero === 15);
   arriere.x = porteur.x + sens * 20;
   arriere.y = 35;
+  const yArriereAvant = arriere.y;
   for (let t = 0; t < 2 && m.phase === 'PORTE'; t += 0.2) m.tick(0.2);
-  const ecartLateral = Math.abs(arriere.y - porteur.y);
-  // Mesure sur ce scenario : 20,3 m avant correctif (il tient son couloir),
-  // 15,7 m apres (il traverse). Le seuil refuse l'arriere qui ne traverse pas.
-  assert.ok(ecartLateral < 18,
-    `l'arriere ne traverse pas pour couvrir (ecart lateral ${ecartLateral.toFixed(1)} m)`);
+  // On mesure le DEPLACEMENT LATERAL DE L'ARRIERE, pas l'ecart final qui le
+  // separe du porteur. L'ecart final dependait aussi de la course du PORTEUR :
+  // le jour ou celui-ci a cesse de crocheter vers l'interieur pour longer la
+  // touche (cf. loi 19, plaque en touche), l'ecart a grandi de 15,1 a 21,0 m
+  // alors que l'arriere traversait exactement pareil (12,6 m dans les deux cas)
+  // — le test passait au rouge pour un changement qui ne le concernait pas.
+  const traverse = yArriereAvant - arriere.y;
+  // Mesure sur ce scenario : 7,4 m avant le correctif de couverture (il tient
+  // son couloir), 12,6 m apres (il va chercher le porteur).
+  assert.ok(traverse > 10,
+    `l'arriere ne traverse pas pour couvrir (deplacement lateral ${traverse.toFixed(1)} m)`);
 });
 
 // --- Loi 15 : LE PLAQUEUR AUSSI EST HORS-JEU ------------------------------
@@ -1227,6 +1234,34 @@ test("un defenseur HORS du couloir de passe n'intercepte pas", () => {
   const r = scenarioInterception(55); // 15 m a cote de la ligne de passe
   assert.strictEqual(r.possession, 'A', 'la possession ne doit PAS changer');
   assert.strictEqual(r.porteur, 12, 'la passe arrive normalement a son destinataire');
+});
+
+// --- Loi 19 : ON PEUT ETRE PLAQUE EN TOUCHE --------------------------------
+// Sortie de rugby parfaitement banale — le porteur longe la ligne, la defense
+// le pousse dehors — et elle n'existait pas : 0,05 par match mesure, contre 2 a
+// 4 en vrai. Cause : le porteur crocheta vers l'interieur des qu'il passait
+// sous 8 m de la touche, c'est-a-dire tout le couloir. Il s'ecartait donc de la
+// ligne bien avant de l'approcher, et TOUTES les touches du match venaient du
+// jeu au pied ou d'une penalite jouee au coin.
+test('loi 19 : un porteur peut etre plaque en touche (pas seulement le jeu au pied)', () => {
+  let plaquesEnTouche = 0, touches = 0;
+  const GRAINES = [1, 2, 3, 4, 5, 6];
+  for (const seed of GRAINES) {
+    const m = new MatchEngine(seed, 4800);
+    const brut = m.log.bind(m);
+    m.log = (type, team, msg, extra) => {
+      if (type === 'PLAQUE_EN_TOUCHE') plaquesEnTouche++;
+      if (type === 'TOUCHE') touches++;
+      return brut(type, team, msg, extra);
+    };
+    for (let t = 0; t < 4800; t += 0.2) m.tick(0.2);
+  }
+  const parMatch = plaquesEnTouche / GRAINES.length;
+  assert.ok(touches / GRAINES.length > 10, `echantillon de touches trop petit (${touches})`);
+  // Mesure : 0,05 par match avant le correctif, ~1,5 apres. Le repere reel est
+  // de 2 a 4 : le seuil garde l'EXISTENCE de la sortie, pas sa frequence exacte.
+  assert.ok(parMatch >= 0.5,
+    `le ballon n'est presque jamais porte en touche (${parMatch.toFixed(2)} par match)`);
 });
 
 console.log(`\n${nbTests} test(s) exécuté(s).`);
