@@ -580,6 +580,71 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-22. Le passage au contact : cinq mesures, et la vraie cause trouvée (aller au contact rapporte autant que jouer)
+- **Statut : DIAGNOSTIQUÉ, NON LIVRÉ — la cause profonde est identifiée et n'est pas un réglage**
+- Fichiers concernés : `engine/rugby-engine.js` (cause)
+
+Après le recalage du barème (P2-21), la borne haute de S12 est passée de 50,6 à **57,5 points** :
+le passage au contact, jusque-là bloqué par le classement, redevenait jouable. Cinq variantes
+mesurées au banc A/B, 300 matchs appariés chacune, Bonferroni sur 11 métriques :
+
+| variante | passes | points | essais | touches | mêlées |
+|---|---|---|---|---|---|
+| A — moteur actuel | 485,9 | 48,20 | 5,69 | 22,06 | 10,91 |
+| contact seul | 413,0 | 54,21 | 6,60 | 21,43 | 10,17 |
+| contact + en-avant au contact 0,058 | 397,9 | 52,82 | 6,31 | **20,24** | 13,03 |
+| contact + pénalité d'attaque au sol 0,042 | 404,5 | 53,90 | 6,33 | 21,65 | 10,17 |
+| contact + les deux (en-avant 0,048) | **394,2** | 53,30 | 6,25 | 21,20 | 11,49 |
+
+Le correctif **marche** sur son objectif : −72 à −92 passes, tous ÉTABLIS, et les regroupements
+dans les 22 adverses montent de 8,6 % à ~9,9 %. Mais **toutes** les variantes ajoutent
+0,56 à 0,91 essai et 4,6 à 6,0 points, ÉTABLIS.
+
+**D'où viennent ces essais — mesuré, pas supposé.** Décompte des fins de possession, 16 matchs
+par variante :
+
+| fin de possession | A | contact |
+|---|---|---|
+| passe lâchée | 2,2 | **1,3** |
+| porteur isolé | 2,0 | **1,2** |
+| interception | 0,5 | **0,3** |
+| **essai** | **5,7** | **6,9** |
+
+Les +1,2 essais sont exactement les −1,9 ballons perdus. Autrement dit : **le moteur
+n'atteignait un nombre réaliste de fautes de main que parce qu'il faisait 1,8 fois trop de
+passes.** Ramener les passes au réel fait mécaniquement disparaître les fautes de main, donc
+allonge les possessions, donc marque.
+
+**Pourquoi aucun contrepoids ne suffit.** Les deux leviers disponibles (en-avant au contact,
+pénalité d'attaque au sol) enlèvent des possessions — mais ils en enlèvent *proportionnellement
+aux essais*, si bien que le rapport ne bouge pas. L'en-avant fabrique en plus des mêlées à la
+place des touches : à 0,058 les touches tombent à 20,24 pour un plancher de 20.
+
+**LA VRAIE CAUSE, visible dans une seule ligne du tableau : `gain/temps de jeu` vaut 1,46 m
+pour A et 1,45 à 1,51 m pour TOUTES les variantes.** Le moteur rapporte exactement autant de
+terrain quand le porteur percute que quand il fait circuler le ballon. Aller au contact est
+donc une option *gratuite* : elle ne coûte ni terrain, ni rythme, ni ballon. Cutter les passes
+ne fait alors que convertir des possessions sûres en davantage de temps de jeu, donc de
+territoire, donc d'essais.
+
+Au rugby, c'est l'inverse : une percussion d'un homme dans une défense en place gagne 0 à 1 m
+et rend un ballon lent, tandis qu'un ballon qui circule crée le surnombre et les mètres. Tant
+que le moteur ne fait pas cette différence, la décision « passer ou percuter » n'a aucune
+conséquence — ni pour l'IA, ni pour le joueur qui la regarde.
+
+**Ce qui ne marche pas non plus, et pourquoi (à ne pas refaire) :**
+- **Re-caler le barème une seconde fois** sur 53,3 points. Le barème doit suivre le moteur,
+  mais seulement quand le moteur va vers le rugby réel : un vrai match fait 45 à 50 points,
+  donc 48,2 est PLUS juste que 53,3. Ce serait déplacer la cible pour valider le patch.
+- **Livrer la meilleure variante quand même.** Sur les essais, S12 admet jusqu'à 6,84 et la
+  variante en rend 6,25 : une marge de 0,59 pour une résolution de ±0,66 à 40 graines. Elle ne
+  passerait que par tirage — exactement le reproche fait à la version « douce » de P2-19.
+
+**Prochaine étape, précise :** faire dépendre le gain de terrain de la DÉCISION du porteur —
+percussion au ras dans une défense en place : gain proche de zéro et ballon lent ; ballon qui
+circule : gain réel. C'est le préalable au passage au contact, et c'est aussi ce qui donnera
+enfin un sens visible au choix du porteur.
+
 ### P2-21. Le barème des matchs IA était resté calé sur un moteur d'il y a plusieurs correctifs
 - **Statut : CORRIGÉ**
 - Fichiers concernés : `docs/js/club-pyramide-france.js`, `server/test-scores-abstraits.js`
@@ -628,6 +693,7 @@ Vérifié : les 12 cas de `test-scores-abstraits.js` au vert, et les 43 autres s
 `server/` (harnais complet + job rapide) sans un seul échec.
 
 ### P2-19. Pourquoi le moteur fait 492 passes par match — enquête, mesures, et pourquoi rien n'est livré
+- **SUITE (2e campagne, après le recalage du barème) : voir P2-22 ci-dessous. Le blocage n'est PAS un réglage.**
 - **Statut : DIAGNOSTIQUÉ, NON LIVRÉ (le correctif est mesuré et fonctionne, mais il casse la cohérence du classement — voir « Pourquoi rien n'est livré »)**
 - Priorité : P2 (dernière catégorie de calibration franchement hors fourchette)
 - Fichiers concernés : `engine/rugby-engine.js` (cause), `server/test-scores-abstraits.js` (le garde-fou qui bloque)
