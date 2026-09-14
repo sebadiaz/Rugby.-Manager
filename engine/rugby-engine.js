@@ -2838,7 +2838,22 @@
           // plus deux fois plus vite qu'un porteur installe — c'etait la
           // deuxieme source du deluge de passes.
           * ((porteur._enchaine || 0) > 0 ? 1.5 : 1);
-        if (suivant && distDef > 2.4 && this.rng() < tauxLigne * dt) {
+        // ON NE PASSE QUE SI LE SUIVANT EST MIEUX SERVI QUE SOI. Jusqu'ici la
+        // chaîne se déroulait jusqu'à l'aile à tous les coups : le porteur
+        // cherchait un partenaire onside, à portée, avec un peu d'air, et lui
+        // donnait — sans JAMAIS comparer cet air au sien. Un centre avec neuf
+        // mètres devant lui redonnait donc au large exactement comme un centre
+        // pris au collet, et c'est ce qui faisait marquer 71,2 % des essais aux
+        // deux ailiers (repère réel : environ 28 %).
+        //
+        // Un vrai trois-quarts fait l'inverse : il passe quand le suivant a plus
+        // d'espace que lui, et il y va quand c'est lui qui l'a. La marge de 20 %
+        // évite de transformer la règle en bascule : à espace comparable, la
+        // chaîne continue de vivre comme avant.
+        const espaceSuivant = suivant
+          ? joueurLePlusProche(this.defenseurs(), suivant.x, suivant.y).distance : 0;
+        const suivantMieuxServi = espaceSuivant > distDef * 1.2;
+        if (suivant && suivantMieuxServi && distDef > 2.4 && this.rng() < tauxLigne * dt) {
           this._passeCibleForcee = suivant; return 'PASS';
         }
       }

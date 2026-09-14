@@ -580,6 +580,68 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-27. La chaîne des trois-quarts ne comparait jamais l'espace : elle finissait toujours sur l'aile
+- **Statut : CORRIGÉ**
+- Fichiers concernés : `engine/rugby-engine.js` + `docs/rugby-engine.js`, `server/test-invariants.js`
+
+**Le défaut.** La chaîne `10→12→13→aile` se déroulait jusqu'au bout à tous les coups : le
+porteur cherchait un partenaire onside, à portée et avec un peu d'air, puis lui donnait — **sans
+jamais comparer cet air au sien**. Un centre avec neuf mètres devant lui redonnait au large
+exactement comme un centre pris au collet. Résultat mesuré sur 40 matchs : **les deux ailiers
+marquent 71,2 % des essais** (repère réel ~28 %) et le poste le plus prolifique en signe 36,1 %.
+
+**Le correctif.** On ne passe que si le suivant est **mieux servi que soi** :
+`espaceSuivant > distDef × 1,2`. La marge de 20 % évite la bascule — à espace comparable, la
+chaîne vit comme avant.
+
+**Effet mesuré, 40 matchs appariés :**
+
+| | avant | après |
+|---|---|---|
+| part des deux AILIERS | **71,2 %** | **63,7 %** |
+| poste le plus prolifique | 36,1 % | 33,1 % |
+| numéros marqueurs | 14 | 15 |
+| passes/match | 482,4 | 462,2 |
+
+**Banc A/B, 300 matchs appariés, Bonferroni sur 11 métriques :** passes **485,6 → 457,6
+(−28,0 ± 9,9, ÉTABLI)**, et rien d'autre d'établi — essais +0,41 ± 0,50, points +2,85 ± 3,14,
+courses, rucks, plaquages, touches, mêlées, turnovers et gain tous dans le bruit. C'est la
+première baisse ÉTABLIE des passes de la session qui ne coûte rien ailleurs. Calibration
+**13/14** (seules les passes restent hautes, 474 contre ≤ 420).
+
+**L'instrument a dû être inventé pour ce test, et c'est le point méthodologique.** Trois façons
+de mesurer ont été essayées :
+1. **Proportion sur des centaines de matchs** — l'écart (7,5 points sur les ailiers) est trop
+   petit devant la résolution (±6 points à 40 matchs). Inutilisable comme garde-fou.
+2. **Scénario joué pendant quelques secondes** — le défenseur COURT vers le porteur : au bout
+   d'une seconde ce n'est plus la chaîne qui décide mais la passe avant contact. Le scénario
+   mesurait une tout autre branche et donnait 40 % contre 55 %, **dans le mauvais sens**.
+3. **La décision interrogée en ÉTAT FIGÉ** — `choisirActionPorteur` appelée 400 fois par graine
+   sur 5 graines, sans laisser personne bouger : 2000 décisions par cas, précision ~0,8 point.
+   C'est celle-ci qui isole la règle.
+
+| décision mesurée en état figé | avant | après |
+|---|---|---|
+| le suivant est mieux servi (3 m contre 9 m) → on passe | 30,1 % | 30,5 % |
+| le porteur est mieux servi (9 m contre 3 m) → on passe quand même | **15,1 %** | **3,0 %** |
+
+Mutation vérifiée (`suivantMieuxServi = true`) : rouge à 15,1 %.
+
+**Deux garde-fous voisins réparés au passage, tous deux victimes de leur instrument :**
+- **Interception** : le scénario comparait `stats.B.turnovers` en **valeur absolue**, alors que
+  les 30 s de mise en route qui le précèdent sont un vrai match et peuvent y produire un
+  turnover. Il est passé au rouge sur un correctif qu'il n'a aucune raison de voir (il appelle
+  `_tenterPasse` directement). Il compare désormais un **delta**.
+- **Consigne d'équipe** : son écart se mesure sur une centaine de portages par branche, soit
+  ±6 points de résolution, pour un seuil placé à 15 alors que la valeur mesurée vaut 13 à 14.
+  Il est tombé à 12,6 puis 13,8 sur des correctifs étrangers à la consigne. Échantillon porté
+  de 12 à 24 graines et seuil ramené à 8 points : ce qu'il protège, c'est que la consigne
+  CHANGE le jeu, pas l'amplitude exacte du changement.
+
+**Ce que ça ne corrige pas.** La part des AVANTS dans les essais ne bouge pas (14,6 % → 14,3 %) :
+le ballon repris par les centres profite aux centres et à l'arrière, pas au pack. Et 63,7 %
+d'essais pour deux ailiers reste très au-dessus du réel.
+
 ### P2-26. CORRECTION DE DIAGNOSTIC : ce n'est plus l'occasion qui manque, c'est le marqueur
 - **Statut : DIAGNOSTIC CORRIGÉ — invalide une prémisse de P2-15 et ma propre recommandation de l'étape précédente**
 - Fichiers concernés : aucun (mesure)
