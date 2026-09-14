@@ -773,6 +773,91 @@ test('les temps morts durent ce qu ils durent : melee >= 45 s, touche >= 35 s', 
   assert.ok(mTouche >= 35, `une touche dure 40 a 60 s en vrai (mesuré ${mTouche.toFixed(1)} s)`);
 });
 
+// --- PERCUTER N'EST PAS LA MEME CHOSE QUE TROUVER L'ESPACE -----------------
+// Mesure au banc A/B sur 300 matchs apparies, cinq variantes du passage au
+// contact (cf. TODO_AUDIT.md P2-22) : `gain par temps de jeu` vaut 1,46 m pour
+// le moteur et 1,45 a 1,51 m pour TOUTES les variantes. Autrement dit, le
+// moteur rendait exactement autant de terrain quand le porteur percutait au ras
+// d'une defense en place que quand il attaquait un espace. Aller au contact
+// etait une option GRATUITE, et la decision du porteur — la premiere que
+// CLAUDE.md (role 4) exige de lui — n'avait aucune consequence visible.
+//
+// Au rugby, une percussion d'un homme dans une defense en place gagne 0 a 1 m ;
+// c'est le ballon qui circule et cree le surnombre qui gagne du terrain.
+//
+// Le scenario ci-dessous isole exactement cette difference : meme porteur, meme
+// plaqueur, meme position — seul change ce qu'il y a DEVANT lui.
+test("percuter une defense en place ne rapporte pas autant que trouver l espace", () => {
+  // Gain de terrain au contact selon le nombre de defenseurs (en plus du
+  // plaqueur) postes dans le couloir devant le porteur.
+  function gainAuContact(nbDevant, seed) {
+    const m = new MatchEngine(seed, 600);
+    for (let t = 0; t < 30; t += 0.2) m.tick(0.2);
+    m.phase = 'PORTE';
+    m.timerPhase = 2;
+    m.possession = 'A';
+    m.passeVisuelle = null;
+    m.combinaison = null;
+    m.penaliteRecul = null;
+    m.ruckPoint = null;
+    const porteur = m.equipeA.find((j) => j.numero === 8);
+    m.porteur = porteur;
+    porteur.auSol = 0;
+    porteur.x = 50;
+    porteur.y = 35;
+    // Les coequipiers sont loin : aucune passe possible, le porteur va au contact.
+    for (const j of m.equipeA) {
+      if (j === porteur) continue;
+      j.auSol = 0; j.x = 20; j.y = 5;
+    }
+    // Toute la defense est renvoyee au loin, sauf ceux qu'on place exprès.
+    for (const j of m.equipeB) {
+      j.auSol = 0; j.horsJeuKick = 0; j.fixeCooldown = 0; j.missCooldown = 0;
+      j.ruckRecovery = 0; j.x = 95; j.y = 65;
+    }
+    const defenseurs = m.equipeB.filter((j) => j.numero <= 8);
+    // Le plaqueur, juste dans le rayon de contact.
+    defenseurs[0].x = 52.0;
+    defenseurs[0].y = 35;
+    // Le rideau devant lui (defense en place) ou rien du tout (espace).
+    for (let i = 0; i < nbDevant; i++) {
+      defenseurs[i + 1].x = 53.5 + i * 0.8;
+      defenseurs[i + 1].y = 33 + i * 2;
+    }
+    const xDepart = porteur.x;
+    for (let t = 0; t < 6; t += 0.2) {
+      m.tick(0.2);
+      if (m.phase === 'RUCK' && m.ruckPoint) return m.ruckPoint.x - xDepart;
+      if (m.phase !== 'PORTE') return null; // essai, touche, penalite : hors sujet
+    }
+    return null;
+  }
+  // Plusieurs graines : le plaquage dominant est tire au sort (30 % quand le
+  // plaqueur domine nettement), donc un seul contact ne dit rien.
+  const enPlace = [], espace = [];
+  for (const seed of [31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42]) {
+    const a = gainAuContact(3, seed);
+    const b = gainAuContact(0, seed);
+    if (a !== null) enPlace.push(a);
+    if (b !== null) espace.push(b);
+  }
+  assert.ok(enPlace.length >= 8 && espace.length >= 8,
+    `echantillon trop petit (${enPlace.length} contacts en place, ${espace.length} en espace)`);
+  const moy = (t) => t.reduce((x, y) => x + y, 0) / t.length;
+  const gEnPlace = moy(enPlace), gEspace = moy(espace);
+  // Une seule assertion, et c'est la bonne : l'ECART entre les deux situations.
+  // J'avais d'abord ajoute un plancher absolu (« percuter doit rapporter moins
+  // de 0,6 m »), mais il confondait deux choses : la chute en avant au contact,
+  // qui est le parametre reglé dans le moteur, et le gain NET du scenario, qui
+  // comprend aussi la course du porteur et les ~15 % de plaquages manques. Un
+  // seuil absolu sur la seconde ne dit rien de la premiere. L'ecart, lui, annule
+  // ces termes communs : c'est exactement la propriete mesuree nulle au banc.
+  assert.ok(gEspace - gEnPlace >= 0.6,
+    `percuter une defense en place rapporte ${gEnPlace.toFixed(2)} m et attaquer l espace `
+    + `${gEspace.toFixed(2)} m : l ecart de ${(gEspace - gEnPlace).toFixed(2)} m ne se voit pas. `
+    + `Tant qu il est nul, le choix du porteur entre passer et percuter n a aucune consequence.`);
+});
+
 // --- LA LIGNE D'AVANTAGE ---------------------------------------------------
 // Mesure avant correction : d'un regroupement au suivant, le ballon RECULE de
 // 0,53 m en moyenne (mediane -1,05 m). Autrement dit l'attaque ne franchit

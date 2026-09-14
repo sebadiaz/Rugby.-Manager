@@ -580,6 +580,63 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-23. Percuter rapportait exactement autant que trouver l'espace
+- **Statut : CORRIGÉ**
+- Fichiers concernés : `engine/rugby-engine.js` + `docs/rugby-engine.js`, `server/test-invariants.js`
+
+**Le défaut.** Le gain de terrain au contact ne dépendait QUE du duel (plaquage du défenseur
+contre vitesse du porteur) : le porteur tombait en avant de **0,9 m, toujours**. Percuter au
+ras d'un rideau de quatre défenseurs rapportait exactement autant qu'attaquer un espace vide.
+C'est ce que P2-22 avait établi au banc (`gain par temps de jeu` : 1,46 m pour le moteur et
+1,45 à 1,51 m pour cinq variantes du passage au contact), et le scénario construit le montre
+à l'unité près : **1,11 m dans les deux situations, écart 0,00 m**. La première décision que
+CLAUDE.md (rôle 4) exige du porteur — courir, passer, aller au contact — n'avait donc aucune
+conséquence, ni pour l'IA ni pour le joueur qui regarde.
+
+**Le correctif.** On compte le « rideau » : les défenseurs debout, en jeu, postés dans le
+couloir droit devant le porteur (≤ 7 m devant, ±5 m de large), en plus du plaqueur. L'avancée
+au contact en dépend : **0,55 m contre deux défenseurs ou plus, 1,00 m contre un seul,
+1,55 m dans l'espace.**
+
+**On répartit, on ne baisse pas.** Distribution mesurée du rideau sur 10 matchs complets :
+25,1 % des contacts sans personne devant, 25,3 % contre un défenseur, 49,6 % contre deux ou
+plus. Les trois valeurs sont choisies pour que la moyenne pondérée retombe sur les 0,90 m
+d'avant (0,915 m).
+
+**Deux corrections en cours de route, toutes deux trouvées par les tests, pas par relecture :**
+
+1. **Premier jeu de valeurs trop dur (0,15 / 0,75 / 1,6).** Moyenne pondérée 0,665 m au lieu
+   de 0,900 : il créait bien l'écart mais en RABAISSANT le gain du match (1,46 → 1,22 m,
+   ÉTABLI au banc). Avec des valeurs encore plus marquées, la calibration tombait à **11/14
+   avec les touches à 19,6**, catégorie essentielle — échec franc.
+2. **La couverture qui court en arrière était comptée comme une défense en place.** Le gain
+   après un franchissement tombait de **16,6 m à 10,5 m** sur les mêmes 8 graines : le fait de
+   jeu le plus précieux du rugby, dévalué par un compteur. `_percee` (posé quand le porteur
+   bat son vis-à-vis) marque le jeu déployé ; on ne lui oppose plus aucun rideau, et un
+   défenseur qui vient d'être battu (`missCooldown`) est exclu pour la même raison.
+
+**Résultat.** Un franchissement rapporte désormais **21,1 m** contre 16,6 m avant le patch :
+attaquer l'espace paie enfin davantage que rentrer dedans.
+
+**Effet d'ensemble : rien d'autre ne bouge.** Banc A/B, 300 matchs appariés, Bonferroni sur
+11 métriques — **aucune métrique établie** : essais 5,69 → 5,92, points 48,20 → 49,83, passes
+485,9 → 483,2, rucks, plaquages, touches, mêlées, turnovers et gain par temps de jeu tous dans
+le bruit. La règle redistribue le terrain selon la situation sans déplacer les volumes.
+
+**Le test mord** : le scénario construit oppose deux situations identiques (même porteur, même
+plaqueur, même position) ne différant que par ce qu'il y a devant. Rouge avant le correctif à
+**0,00 m d'écart**, et rouge à nouveau si l'on remet la valeur unique de 0,9 m (mutation
+vérifiée). Une seule assertion, sur l'ÉCART : un plancher absolu avait d'abord été ajouté puis
+retiré, car il confondait la chute en avant au contact (le paramètre réglé) avec le gain net du
+scénario (qui comprend la course et les ~15 % de plaquages manqués).
+
+**Correction d'une affirmation du commit précédent.** J'avais annoncé que le grattage au ruck
+faisait passer la calibration à 13/14, temps de jeu effectif inclus (32,4 min). Mesure sur
+**60 graines** : le temps de jeu effectif vaut **31,34 min avant ce patch et 31,48 min après** —
+il était déjà sous le plancher de 32, et le 32,4 lu alors était un tirage favorable sur
+20 graines (demi-intervalle ±0,98). Le grattage a bien corrigé les turnovers et les en-avants ;
+il n'a pas corrigé le temps de jeu effectif.
+
 ### P2-22. Le passage au contact : cinq mesures, et la vraie cause trouvée (aller au contact rapporte autant que jouer)
 - **Statut : DIAGNOSTIQUÉ, NON LIVRÉ — la cause profonde est identifiée et n'est pas un réglage**
 - Fichiers concernés : `engine/rugby-engine.js` (cause)

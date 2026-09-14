@@ -1948,6 +1948,37 @@
           this._statJoueur(assistant).tacklesAttempted++;
           this._statJoueur(assistant).tacklesMade++;
         }
+        // LE RIDEAU DEVANT LE PORTEUR AU MOMENT DU CONTACT. Jusqu'ici, le gain
+        // de terrain au contact ne dépendait QUE des attributs du duel
+        // (plaquage du défenseur contre vitesse du porteur) : percuter au ras
+        // d'une défense en place rapportait exactement autant qu'attaquer un
+        // espace. Mesuré au banc A/B sur 300 matchs appariés et cinq variantes
+        // du passage au contact (TODO_AUDIT.md P2-22) : `gain par temps de jeu`
+        // valait 1,46 m pour le moteur et 1,45 à 1,51 m pour toutes les
+        // variantes — l'écart était nul. Aller au contact était donc une option
+        // GRATUITE, et la première décision que CLAUDE.md (rôle 4) exige du
+        // porteur — courir, passer, aller au contact — n'avait aucune
+        // conséquence ni pour l'IA ni pour le joueur qui regarde.
+        //
+        // On compte les défenseurs DEBOUT, en jeu, postés dans le couloir droit
+        // devant le porteur (jusqu'à 7 m devant, ±5 m de large), en plus du
+        // plaqueur lui-même. C'est la définition de terrain d'une « défense en
+        // place » : le porteur n'a personne à fixer, il rentre dedans.
+        // UN PORTEUR EN PERCÉE N'AFFRONTE PAS UNE DÉFENSE EN PLACE. Mesuré :
+        // en comptant naïvement tous les défenseurs situés devant, la couverture
+        // qui court EN ARRIÈRE pour revenir était comptée comme un rideau en
+        // place, et le gain après un franchissement tombait de 16,6 m à 10,5 m
+        // sur les mêmes 8 graines — exactement le fait de jeu le plus précieux
+        // du rugby, dévalué par un compteur. `_percee` (posé quand le porteur
+        // bat son vis-à-vis) marque justement le jeu déployé : on ne lui oppose
+        // aucun rideau. Un défenseur qui vient d'être battu (missCooldown) est
+        // exclu pour la même raison.
+        const rideau = (this.porteur._percee || 0) > 0 ? 0 : def.filter((d) => d !== defenseurProche
+          && d.auSol === 0 && d.ruckRecovery <= 0 && !(d.horsJeuKick > 0)
+          && (d.missCooldown || 0) <= 0
+          && (d.x - this.porteur.x) * this.porteur.sensAttaque > -1
+          && (d.x - this.porteur.x) * this.porteur.sensAttaque < 7
+          && Math.abs(d.y - this.porteur.y) < 5).length;
         const margePlaquage = defenseurProche.plaquage - this.porteur.vitesse;
         this.ruckDominant = margePlaquage > 12 && this.rng() < 0.3;
         if (this.ruckDominant) {
@@ -1973,7 +2004,24 @@
         // joueurs se rencontrent vraiment : le porteur avance de la moitie de
         // l'ecart restant (l'autre moitie etant couverte par le plaqueur qui
         // monte), plafonnee a 2 m.
-        if (!this.ruckDominant) this.porteur.x += this.porteur.sensAttaque * 0.9;
+        // AVANCÉE AU CONTACT, selon ce que le porteur avait devant lui. Au
+        // rugby, une percussion d'un homme dans un rideau en place gagne 0 à
+        // 1 m ; c'est le ballon qui circule, crée le surnombre et attaque
+        // l'espace qui gagne du terrain. Valeur unique de 0,9 m auparavant,
+        // quelle que soit la situation.
+        //
+        // ON RÉPARTIT, ON NE BAISSE PAS. Distribution mesurée du rideau au
+        // moment du contact, sur 10 matchs complets : 25,1 % des contacts se
+        // font sans personne devant, 25,3 % contre un seul défenseur, 49,6 %
+        // contre deux ou plus. Les trois valeurs ci-dessous sont choisies pour
+        // que la moyenne pondérée — en tenant compte des 12 % de plaquages
+        // dominants ajoutés au rideau — retombe sur les 0,90 m d'avant. Un
+        // premier jeu de valeurs (0,15 / 0,75 / 1,6) donnait une moyenne de
+        // 0,665 m : il créait bien l'écart, mais en RABAISSANT le gain de
+        // terrain du match (1,46 -> 1,22 m mesuré au banc) et en faisant sortir
+        // le temps de jeu effectif de sa fourchette (32,4 -> 30,9 min).
+        const avanceContact = rideau >= 2 ? 0.55 : rideau === 1 ? 1.0 : 1.55;
+        if (!this.ruckDominant) this.porteur.x += this.porteur.sensAttaque * avanceContact;
         // LOI 8 — PLAQUE SUR LA LIGNE : un porteur plaque a moins d'un metre de
         // l'en-but, et dont l'elan l'emmene quand meme au-dela de la ligne,
         // TEND LE BRAS ET APLATIT : c'est un essai, pas un regroupement. Avant
