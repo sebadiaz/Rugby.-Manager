@@ -773,6 +773,96 @@ test('les temps morts durent ce qu ils durent : melee >= 45 s, touche >= 35 s', 
   assert.ok(mTouche >= 35, `une touche dure 40 a 60 s en vrai (mesuré ${mTouche.toFixed(1)} s)`);
 });
 
+// --- PRES DE LA LIGNE, LES AVANTS PORTENT LE BALLON ------------------------
+// Un PORTAGE se compte comme le moteur le compte lui-meme (stats.carries) :
+// un porteur AMENE AU CONTACT. Un n°9 qui ramasse au pied du regroupement et
+// relaie aussitot n'est pas un porteur — c'est ce que comptait une premiere
+// version de ce test, et elle surevaluait mecaniquement la part des
+// trois-quarts d'un facteur deux.
+//
+// Mesure sur 40 matchs complets, avant correction : dans les cinq derniers
+// metres, les avants ne signaient que 22,9 % des portages, alors qu'un vrai
+// match y joue le pack (60 a 70 %) — il n'y a plus d'espace au large et la
+// defense est massee. Consequence mesuree : les avants ne marquaient que 13,8 %
+// des essais (repere reel ~33 %) pendant que les deux ailiers en marquaient
+// 69,8 %, si bien que le joueur voyait toujours les deux memes maillots aplatir.
+//
+// Cause : a la sortie d'un regroupement, le n°9 donnait au n°10 quasi
+// systematiquement, y compris a 3 m de la ligne d'en-but, l'option « avant
+// lance » n'etant tiree qu'a 18 % partout sur le terrain.
+//
+// Seuil a 29 % : l'echantillon (40 matchs, ~400 portages dans la zone) situe la
+// proportion a +/-4,5 points pres, donc 22,9 % est nettement en dessous et
+// 34,6 % nettement au-dessus. Ce n'est PAS le repere reel (60-70 %) : c'est le
+// garde-fou qui empeche de revenir a une attaque qui ignore ses avants.
+test('pres de la ligne adverse, les AVANTS portent le ballon au contact', () => {
+  let dans5 = 0, dans5Avants = 0;
+  for (let seed = 1; seed <= 40; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    for (let t = 0; t < 4800; t += 0.2) {
+      const cA = m.stats.A.carries, cB = m.stats.B.carries;
+      const porteur = m.porteur, phase = m.phase;
+      m.tick(0.2);
+      if ((m.stats.A.carries > cA || m.stats.B.carries > cB) && porteur && phase === 'PORTE') {
+        const dist = porteur.sensAttaque > 0 ? (100 - porteur.x) : porteur.x;
+        if (dist > 5) continue;
+        dans5++;
+        if (porteur.numero <= 8) dans5Avants++;
+      }
+    }
+  }
+  assert.ok(dans5 >= 200, `echantillon trop petit (${dans5} portages a moins de 5 m)`);
+  const part = dans5Avants / dans5;
+  assert.ok(part >= 0.29,
+    `dans les cinq derniers metres, les avants ne signent que ${(100 * part).toFixed(1)} % des portages `
+    + `(${dans5Avants}/${dans5}) ; a 5 m de la ligne un vrai match joue le pack (60 a 70 %). `
+    + `Mesure avant correction : 22,9 %.`);
+});
+
+// --- DEUX EQUIPES NE JOUENT PAS PAREIL AU MEME ENDROIT ---------------------
+// Un joueur decide de jouer comme il le souhaite : ce n'est pas un jeu de
+// voiture sur rail ou tout le monde suit la meme trajectoire. Le jeu au pres
+// dans les cinq derniers metres est donc un REGLAGE D'EQUIPE
+// (`cfgAttaque.jeuAuPresLigne`, pilotable par le Mode Club via attaqueA /
+// attaqueB), module par l'effectif REELLEMENT aligne (cf. profilJeuAuPres :
+// pack puissant contre ligne rapide).
+//
+// Ce test verifie que la consigne change VRAIMENT le jeu : la meme graine, le
+// meme terrain, la meme situation — mais deux intentions opposees doivent
+// produire deux matchs qui ne se jouent pas de la meme facon pres de la ligne.
+test('la consigne de l equipe change le jeu : deux intentions opposees ne se jouent pas pareil', () => {
+  function partAvantsPresLigne(consigne) {
+    let dans5 = 0, avants = 0;
+    for (let seed = 1; seed <= 12; seed++) {
+      const m = new MatchEngine(seed, 4800, {
+        attaqueA: { jeuAuPresLigne: consigne },
+        attaqueB: { jeuAuPresLigne: consigne },
+      });
+      for (let t = 0; t < 4800; t += 0.2) {
+        const cA = m.stats.A.carries, cB = m.stats.B.carries;
+        const porteur = m.porteur, phase = m.phase;
+        m.tick(0.2);
+        if ((m.stats.A.carries > cA || m.stats.B.carries > cB) && porteur && phase === 'PORTE') {
+          const dist = porteur.sensAttaque > 0 ? (100 - porteur.x) : porteur.x;
+          if (dist > 5) continue;
+          dans5++;
+          if (porteur.numero <= 8) avants++;
+        }
+      }
+    }
+    return { part: dans5 ? avants / dans5 : 0, n: dans5 };
+  }
+  const auLarge = partAvantsPresLigne(0.10);   // « on ecarte, meme a 3 m »
+  const auPres = partAvantsPresLigne(0.95);    // « on joue le pack »
+  assert.ok(auLarge.n >= 60 && auPres.n >= 60,
+    `echantillon trop petit (${auLarge.n} / ${auPres.n} portages a moins de 5 m)`);
+  assert.ok(auPres.part - auLarge.part >= 0.15,
+    `consigne "au large" ${(100 * auLarge.part).toFixed(1)} % d avants contre `
+    + `"au pres" ${(100 * auPres.part).toFixed(1)} % : l ecart de `
+    + `${(100 * (auPres.part - auLarge.part)).toFixed(1)} points ne se voit pas. `
+    + `La consigne de l equipe ne doit pas etre decorative.`);
+});
+
 // --- PERCUTER N'EST PAS LA MEME CHOSE QUE TROUVER L'ESPACE -----------------
 // Mesure au banc A/B sur 300 matchs apparies, cinq variantes du passage au
 // contact (cf. TODO_AUDIT.md P2-22) : `gain par temps de jeu` vaut 1,46 m pour

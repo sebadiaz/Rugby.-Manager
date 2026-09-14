@@ -580,6 +580,71 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-24. Près de la ligne, le moteur ne jouait pas ses avants — et la consigne d'équipe n'existait pas
+- **Statut : CORRIGÉ (partiellement : la part des avants dans les essais reste à 16,4 % contre ~33 % réels)**
+- Fichiers concernés : `engine/rugby-engine.js` + `docs/rugby-engine.js`, `server/test-invariants.js`
+
+**Le défaut.** À la sortie d'un regroupement, le n°9 donnait le ballon à l'ouvreur quasi
+systématiquement — **y compris à 3 m de la ligne d'en-but**. L'option « avant lancé » n'était
+tirée qu'à 18 %, partout sur le terrain. Mesure sur 20 matchs, en comptant un portage comme
+le moteur le compte lui-même (un porteur AMENÉ AU CONTACT, cf. `stats.carries`) :
+
+| zone | portages/match | part des avants |
+|---|---|---|
+| cinq derniers mètres | 8,95 | **22,9 %** |
+| tout le terrain | 208,9 | 34,9 % |
+
+Les avants portaient donc MOINS près de la ligne que partout ailleurs — l'inverse exact d'un
+vrai match, où l'absence d'espace au large et une défense massée font jouer le pack.
+Conséquence mesurée : les avants ne marquaient que **13,8 %** des essais (repère réel ~33 %)
+pendant que les deux ailiers en marquaient **69,8 %** : le joueur voyait toujours les deux
+mêmes maillots aplatir.
+
+**Le correctif, et pourquoi ce n'est PAS une constante.** Première version écrite : un taux
+fixe (0,90 dans les cinq mètres, 0,30 dans les 22). Remarque du joueur, et elle est juste :
+*« un joueur peut décider de jouer comme il le souhaite, ce n'est pas de l'IA de jeu de
+voiture où tout le monde est sur un rail »*. Un taux fixe remplace un rail par un autre — les
+trente joueurs de tous les clubs joueraient la même chose au même endroit.
+
+Le jeu au près est donc devenu un **réglage d'équipe** (`cfgAttaque.jeuAuPresLigne`, défaut
+0,90), pilotable par le Mode Club comme le sont déjà le jeu au large et le jeu au pied via
+`attaqueA` / `attaqueB`, **et modulé par l'effectif réellement aligné** (`profilJeuAuPres`) :
+puissance moyenne du pack contre vitesse moyenne de la ligne, centrées sur le XV de référence
+(les moyennes des `PROFILS` par défaut, si bien qu'un XV standard joue exactement la consigne)
+et bornées à ±35 %. Un club au gros pack joue le ballon porté là où un club à ailiers rapides
+tente encore d'écarter.
+
+**Résultat mesuré.**
+
+| | avant | après |
+|---|---|---|
+| portages à moins de 5 m | 8,95/match | **10,55/match** |
+| dont avants | 22,9 % | **34,6 %** |
+| part des avants dans les essais | 13,8 % | 16,4 % |
+
+**Effet d'ensemble : nul.** Banc A/B, 300 matchs appariés, Bonferroni sur 11 métriques —
+**aucune métrique établie** (essais 5,92 → 5,92, points 49,83 → 49,64, passes, rucks,
+plaquages, touches, mêlées, turnovers, gain : tous dans le bruit). Le patch change QUI joue
+près de la ligne sans déranger aucun volume.
+
+**Ce qui reste.** La part des avants dans les essais ne monte que de 13,8 % à 16,4 % : les
+avants portent bien plus le ballon dans la zone, mais le convertissent peu. Les deux ailiers
+marquent encore 69,5 %. La suite est du côté de la FINITION du pack (maul pénétrant depuis la
+touche à 5 m, séquences de ballon porté qui franchissent réellement), pas de l'occasion.
+
+**Deux tests, et une erreur d'instrument corrigée en route.** Une première version du test
+comptait comme « portage » tout nouveau porteur en jeu courant — donc le n°9 à chaque fois
+qu'il ramasse au pied du regroupement et relaie aussitôt, ce qui surévaluait mécaniquement la
+part des trois-quarts d'un facteur deux. Le test compte désormais comme le moteur : un porteur
+amené au contact. Seuil à 29 % sur 40 matchs (~430 portages dans la zone, soit ±4,5 points) :
+22,9 % est nettement dessous, 34,6 % nettement dessus. Mutation vérifiée (retour au taux de
+18 % partout) : rouge à 19,8 %.
+
+Le second test vérifie que **la consigne n'est pas décorative** : à graine et terrain
+identiques, une équipe à qui l'on demande d'écarter (`jeuAuPresLigne: 0,10`) et une équipe à
+qui l'on demande de jouer le pack (0,95) doivent produire deux matchs qui ne se jouent pas de
+la même façon près de la ligne — au moins 15 points d'écart sur la part des avants.
+
 ### P2-23. Percuter rapportait exactement autant que trouver l'espace
 - **Statut : CORRIGÉ**
 - Fichiers concernés : `engine/rugby-engine.js` + `docs/rugby-engine.js`, `server/test-invariants.js`

@@ -177,6 +177,15 @@
       // les possessions se terminent d'elles-mêmes ; x2 sur-bottait (88 coups
       // de pied par match, réel 35-70). x1,5 ramène à ~67.
       tauxJeuAuPied: 1.5,
+      // JEU AU PRES DANS LES CINQ DERNIERS METRES : probabilité que le n°9
+      // serve un avant lancé plutôt que d'envoyer le ballon à l'ouvreur. Ce
+      // n'est PAS une constante de simulation mais un RÉGLAGE D'ÉQUIPE : deux
+      // clubs ne jouent pas la même chose au même endroit du terrain, et le
+      // Mode Club peut le piloter comme il pilote déjà le jeu au large ou le
+      // jeu au pied. La valeur retenue est en outre modulée par l'effectif
+      // RÉELLEMENT aligné (cf. profilJeuAuPres) : un pack puissant joue le
+      // ballon porté, une ligne rapide écarte même à 3 m de la ligne.
+      jeuAuPresLigne: 0.90,
     },
     // Organisation de défense : profondeur de couverture de l'arrière (n°15) en
     // jeu courant et à la mêlée, recul de la ligne au ruck. rampeMontee =
@@ -540,6 +549,30 @@
     INJOUABLE: 'MAUL_UNPLAYABLE',
     TERMINE: 'MAUL_ENDED',
   };
+
+  // Références de l'effectif PAR DÉFAUT (moyennes des PROFILS ci-dessus) :
+  // puissance du pack (1-8) et vitesse de la ligne (9-15). Elles servent de
+  // point neutre à `profilJeuAuPres` — un XV standard joue donc exactement le
+  // réglage demandé, et seuls les effectifs atypiques s'en écartent.
+  const PUISSANCE_PACK_REF = [1, 2, 3, 4, 5, 6, 7, 8]
+    .reduce((a, n) => a + PROFILS[n].puissance, 0) / 8;
+  const VITESSE_LIGNE_REF = [9, 10, 11, 12, 13, 14, 15]
+    .reduce((a, n) => a + PROFILS[n].vitesse, 0) / 7;
+
+  // Écart de l'effectif aligné par rapport au XV de référence : > 1 quand le
+  // pack est plus puissant et/ou la ligne plus lente que la normale (on joue
+  // davantage au près), < 1 dans le cas inverse. Borné pour qu'aucun effectif
+  // ne bascule dans une seule façon de jouer.
+  function profilJeuAuPres(equipe) {
+    const pack = equipe.filter((j) => j.numero <= 8);
+    const ligne = equipe.filter((j) => j.numero >= 9);
+    if (!pack.length || !ligne.length) return 1;
+    const moy = (l, f) => l.reduce((a, j) => a + f(j), 0) / l.length;
+    const puissance = moy(pack, (j) => (typeof j.puissance === 'number' ? j.puissance : PUISSANCE_PACK_REF));
+    const vitesse = moy(ligne, (j) => (typeof j.vitesse === 'number' ? j.vitesse : VITESSE_LIGNE_REF));
+    const ecart = (puissance - PUISSANCE_PACK_REF) / 90 - (vitesse - VITESSE_LIGNE_REF) / 90;
+    return Math.max(0.65, Math.min(1.35, 1 + ecart));
+  }
 
   // Force de poussée d'un joueur dans le maul : les avants (1-8) poussent
   // nettement plus fort que les arrières ; modulée par le plaquage (contact)
@@ -2673,9 +2706,35 @@
         // 5 %) : l'attaque ALTERNE visiblement percussion dans l'axe et
         // lancement au large, comme une vraie animation offensive — au lieu de
         // sortir mécaniquement vers le 10 à chaque temps de jeu.
+        // Rayon de recherche du percuteur elargi pres de la ligne : a 3 m de
+        // l'en-but les avants sont masses autour du regroupement mais pas
+        // forcement dans les 8 m utiles ailleurs sur le terrain, et le n°9
+        // retombait alors sur la sortie 9->10 faute de candidat.
+        const rayonAvantLance = zone === 'CINQ_M' ? 13 : 8;
         const avantLance = att.find(j => j.numero <= 8 && j.auSol === 0
-          && distance(j, porteur) < 8 && (j.x - porteur.x) * sens <= 0.3 && (j.x - porteur.x) * sens > -5);
-        if (avantLance && r < 0.18) { this._passeCibleForcee = avantLance; return 'PASS'; }
+          && distance(j, porteur) < rayonAvantLance
+          && (j.x - porteur.x) * sens <= 0.3 && (j.x - porteur.x) * sens > -5);
+        // PRES DE LA LIGNE, ON JOUE LE PACK. A 18 % partout, le n°9 servait
+        // l'ouvreur quasi systematiquement (branche 2b ci-dessous) y compris a
+        // 3 m de la ligne d'en-but. Mesure sur 20 matchs : dans les CINQ
+        // DERNIERS METRES, les avants ne portaient le ballon que 6,3 % du temps,
+        // soit MOINS que sur le reste du terrain (15,5 %) — l'inverse exact d'un
+        // vrai match, ou l'absence d'espace au large et une defense massee font
+        // jouer le pack (pick-and-go, ballon porte, maul). Consequence mesuree :
+        // les avants ne marquaient que 13,8 % des essais (repere reel ~33 %)
+        // pendant que les deux ailiers en marquaient 69,8 % — le joueur voyait
+        // toujours les deux memes maillots aplatir.
+        // Le taux vient du RÉGLAGE D'ÉQUIPE, modulé par l'effectif réellement
+        // aligné : à situation identique, un club au gros pack joue le ballon
+        // porté là où un club à ailiers rapides tente encore d'écarter. Sans
+        // cela, les trente joueurs de tous les clubs joueraient la même chose
+        // au même endroit — un rail, pas une décision.
+        const regleAuPres = this.cfgAttaque[porteur.team].jeuAuPresLigne;
+        const basePres = typeof regleAuPres === 'number' ? regleAuPres : 0.90;
+        const tauxPres = Math.max(0.10, Math.min(0.95, basePres * profilJeuAuPres(att)));
+        const tauxAvantLance = zone === 'CINQ_M' ? tauxPres
+          : zone === 'OPP_22' ? tauxPres * 0.35 : 0.18;
+        if (avantLance && r < tauxAvantLance) { this._passeCibleForcee = avantLance; return 'PASS'; }
         // sinon (cas TRÈS majoritaire) : lancement vers l'ouvreur (section 2b).
       }
 
