@@ -580,6 +580,56 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-26. CORRECTION DE DIAGNOSTIC : ce n'est plus l'occasion qui manque, c'est le marqueur
+- **Statut : DIAGNOSTIC CORRIGÉ — invalide une prémisse de P2-15 et ma propre recommandation de l'étape précédente**
+- Fichiers concernés : aucun (mesure)
+
+**Ce que l'audit affirmait (P2-15, et je l'ai répété hier encore).** « Seulement 0,6 séquence par
+match atteint un regroupement à moins de 5 m de la ligne adverse — mais 33 % de celles-là
+finissent en essai. **Ce n'est donc pas la finition qui manque, c'est l'occasion.** » J'avais
+conclu l'étape précédente en recommandant exactement cela : faire venir le jeu près de la ligne.
+
+**Ce que mesure le moteur d'aujourd'hui**, compteur `entrees22` (une entrée par possession, pas
+par tick — vérifié dans le code avant de conclure) :
+
+| | moteur | repère réel |
+|---|---|---|
+| entrées dans les 22 adverses (2 équipes) | **14,5/match** | 16 à 24 |
+| entrées converties en essai | **41,7 %** | 30 à 40 % |
+| points par entrée | **3,49** | 2,5 à 3,5 |
+
+Le travail de cette session (loi 15, sortants de ruck hors de la ligne, loi 19, gain au contact
+conditionnel, jeu des avants près de la ligne) a **triplé** les entrées par rapport aux 4,3 de
+l'audit d'origine. Le moteur arrive donc désormais presque aussi souvent dans les 22 qu'un vrai
+match — et il les convertit **un peu mieux** que la réalité.
+
+**Conséquence directe, et c'est ce qui change la suite :** tout correctif qui ajoute des
+occasions près de la ligne (plus de touches à 5 m, plus de pénalités concédées dans son propre
+22, plus de mauls) pousserait le score **au-dessus** du réalisme, pas vers lui. Ma
+recommandation de l'étape précédente était fausse et ne doit pas être suivie.
+
+**Le défaut restant est DISTRIBUTIONNEL.** Sur 30 matchs : les deux ailiers marquent **69,5 %**
+des essais, les avants **18,3 %** (réel ~33 %), le n°12 **0,6 %**. Le problème n'est pas
+d'arriver dans les 22, c'est que le ballon y finit toujours dans les mêmes mains.
+
+**Mesures complémentaires prises à cette occasion** (instrument branché à l'entrée de
+`_traiterPenalite`, pas sur la position du porteur au moment du log — trois de mes instruments
+se sont révélés faux dans cette session, celui-ci a été vérifié) : les pénalités se répartissent
+à 2,0 % à moins de 5 m, **10,1 % dans son propre 22** (repère réel 20-25 %), 43 % entre 22 et
+50 m, 47 % au-delà de 50 m.
+
+**Piste essayée et mesurée, non livrée : la passe intérieure près de la ligne.** À 3 m de
+l'en-but, un trois-quarts pris par la couverture donne à l'intérieur au soutien qui arrive
+(souvent un avant) plutôt que de mourir sur la ligne de touche. Implémentée et mesurée sur
+40 matchs : part des avants dans les essais **18,3 % → 18,9 %**, c'est-à-dire rien (résolution
+±4 points sur cet échantillon). L'ailier qui reçoit dans les cinq mètres a le plus souvent déjà
+battu la couverture : il n'a personne à fixer, donc rien à redonner.
+
+**Reprise recommandée.** Chercher du côté de ce qui amène le ballon à l'aile plutôt que de ce
+qui se passe une fois qu'il y est : la chaîne `10→12→13→aile` se termine toujours au même
+endroit (`ordreL`), et c'est elle qui fabrique les 69,5 %. Toute tentative devra être neutre en
+nombre d'essais — le moteur en produit déjà assez.
+
 ### P2-25. Le maul pénétrant n'existe pas : le dé pousse deux fois plus que les deux packs
 - **Statut : DIAGNOSTIQUÉ, NON LIVRÉ — trois calibrations mesurées, aucune ne rend plus qu'elle ne coûte**
 - Fichiers concernés : `engine/rugby-engine.js` (`_maulCalculerPoussee`)
