@@ -580,6 +580,53 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-25. Le maul pénétrant n'existe pas : le dé pousse deux fois plus que les deux packs
+- **Statut : DIAGNOSTIQUÉ, NON LIVRÉ — trois calibrations mesurées, aucune ne rend plus qu'elle ne coûte**
+- Fichiers concernés : `engine/rugby-engine.js` (`_maulCalculerPoussee`)
+
+**Le défaut, mesuré sur 20 matchs complets.** Un maul dure 12,3 s pour avancer **1,75 m**, et
+**0,50 m seulement à moins de 10 m de la ligne**. Un maul lancé réel gagne 5 à 15 m. Résultat :
+**zéro essai sur maul par match** — une des deux machines à essais des avants n'existe pas.
+
+**La cause, mesurée en instrumentant 3402 ticks de poussée.** La vitesse vaut
+`(fAtt - fDef) / 200 + (aléa - 0,5) × 0,5`. Or l'écart de force entre les deux packs vaut
+**27 points en moyenne**, soit **0,135 m/s**, quand le terme de hasard vaut **±0,25 m/s**.
+Le dé pèse donc **deux fois plus que les deux paquets d'avants**. Et comme un maul immobile
+une seconde déclenche le « use it », le maul meurt avant d'avoir poussé. L'attaque est en
+supériorité sur 91,8 % des ticks, pour une marge qui ne produit rien.
+
+**Trois calibrations essayées, toutes mesurées (40 matchs pour la zone des 5 m) :**
+
+| variante | avancée du maul | durée | portages dans les 5 m | part des avants |
+|---|---|---|---|---|
+| moteur livré | 1,75 m | 12,3 s | **432** | **31,3 %** |
+| diviseur 200→70, aléa ±0,25→±0,15 | 9,08 m | 22,2 s | — | — |
+| + usure sur la distance (/12) | 4,52 m | 17,6 s | 347 | 27,4 % |
+| + usure sur distance ET temps | 2,96 m | 14,4 s | 368 | 29,3 % |
+
+La deuxième variante donne une avancée réaliste mais un maul qui **ne s'arrête jamais** : 22 s
+de moyenne et 1,20 maul par match finissant sur le garde-fou des 45 s, donc en mêlée. L'usure
+(la défense recule, ramène du monde, les jambes coûtent) corrige la durée — mais **toutes les
+variantes coûtent 15 à 20 % des portages dans les cinq mètres** et deux à quatre points de la
+part des avants, parce que le maul monopolise la possession près de la ligne au lieu de la
+rendre au jeu. Les essais sur maul plafonnent à 0,05-0,20 par match.
+
+**Relever le taux de maul sur touche (0,45 → 0,80) ne sert à rien non plus** : mesuré, les
+mauls à moins de 10 m passent de 12 à 13 sur 20 matchs. Le goulot n'est pas le taux mais le
+NOMBRE de touches près de la ligne — **0,85 par match**, contre 2 à 4 en vrai.
+
+**Deux tests écrits puis retirés, et pourquoi.** « Le maul avance ≥ 3 m » décrivait un défaut
+que je n'ai pas su corriger profitablement : le garder rouge casserait la suite. « Au maul, ce
+sont les deux packs qui décident » passait déjà avant tout correctif (ce n'était donc pas la
+preuve d'un défaut), et surtout son propre écart mesuré — 1,86 m entre un pack à 95 de
+puissance et un pack à 30 — porte une incertitude de ±2,0 m sur 16 graines : il passait à 10
+graines par tirage favorable et échouait à 16. Un garde-fou qui bascule sur du bruit est
+lui-même un bug ; il n'est pas livré.
+
+**Reprise recommandée, dans cet ordre :** (1) faire venir le jeu près de la ligne — 0,85 touche
+par match à moins de 5 m contre 2 à 4 en vrai, c'est là que tout se joue ; (2) seulement
+ensuite rééchelonner la poussée, quand un maul de plus ne prendra plus la place d'autre chose.
+
 ### P2-24. Près de la ligne, le moteur ne jouait pas ses avants — et la consigne d'équipe n'existait pas
 - **Statut : CORRIGÉ (partiellement : la part des avants dans les essais reste à 16,4 % contre ~33 % réels)**
 - Fichiers concernés : `engine/rugby-engine.js` + `docs/rugby-engine.js`, `server/test-invariants.js`
