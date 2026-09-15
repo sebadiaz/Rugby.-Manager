@@ -641,6 +641,61 @@ interceptions, pas leur poids sur le résultat — c'est ce qu'on lui demande.
 
 ---
 
+### P2-30. Le jeu au large : le correctif est bon, sa contrepartie défensive n'existe pas (3ᵉ refus)
+- **Statut : NON LIVRÉ — mesuré, documenté, moteur laissé intact**
+- Fichiers concernés : aucun (le correctif a été écrit, mesuré, puis retiré de l'arbre)
+
+**1. La contre-mesure qui avait bloqué le correctif en P2-28 était fausse.** P2-28 refusait le
+correctif sur deux contreparties : l'effondrement de la couverture du n°15 (8,4 m) et la chute de
+la sanction de la passe en avant. La première était un **artefact d'instrument** — c'est
+précisément le test réparé en P2-29. Refaite avec l'instrument réparé (8 graines, état remis à
+zéro, fenêtre de 6 s) : référence **22,97 m**, correctif **24,30 m**. La couverture est
+**meilleure** avec le correctif, pas pire. Cette correction-là est acquise.
+
+**2. La seconde contrepartie est réelle, et se compense.** Sanction de la passe en avant sur
+200 matchs : référence 0,425 ±0,090, correctif 0,215 ±0,064. Le correctif supprime précisément
+les passes longues, donc les plus souvent en avant. Le résidu relevé de 0,20 à 0,40 la ramène à
+0,450 ±0,093, mêlées 10,5 inchangées.
+
+**3. Ce qui bloque réellement : +1,2 essai par match, et rien pour l'absorber.** Trois variantes
+benchées contre HEAD (300 graines appariées, Bonferroni z = 2,84) :
+
+| variante | essais | points | passes |
+|---|---|---|---|
+| HEAD | 6,33 | 52,50 | 457,6 |
+| V2 — correctif seul | — | 58,37 (**+5,88** ÉTABLI) | 428,9 (−28,7 ÉTABLI) |
+| V3 — + compensation du résidu | 7,54 (**+1,20** ÉTABLI) | 58,97 (**+6,47** ÉTABLI) | 426,7 (−31,0 ÉTABLI) |
+| V4 — + interception par longueur (P2-31) | 7,58 (**+1,25** ÉTABLI) | 59,08 (**+6,58** ÉTABLI) | 430,0 (−27,7 ÉTABLI) |
+
+La compensation du résidu n'y est pour rien (V2 seul inflate déjà de +5,88). L'interception par
+longueur, essayée comme contrepoids, est **neutre sur le score** (turnovers +0,23, non établi) :
+elle change la nature des prises, pas leur nombre utile.
+
+**Diagnostic.** Le correctif est du bon rugby — on n'écarte pas vers un homme plus marqué que soi.
+Mais dans un vrai match, écarter vers un homme libre ne donne pas un essai : on trouve une
+**défense qui glisse** (drift) et un **couverture qui traverse**. Le moteur ne modélise ni l'un ni
+l'autre sur la passe au large : quand le ballon part vers un homme libre, il le reste. Le
+correctif supprime donc un mode d'échec de l'attaque sans rétablir celui qui lui répond en vrai,
+et l'attaque devient mécaniquement plus efficace (+1,2 essai).
+
+**Ce que le correctif contenait** (pour le reprendre tel quel) : dans `choisirActionPorteur`,
+comparer l'espace du soutien large à celui du porteur avant d'écarter —
+`espaceLarge > distDef * 1.2` — exactement la comparaison déjà en place sur la chaîne des
+trois-quarts (P2-27). Mesure en état figé, 2 000 décisions : avec neuf mètres devant lui et
+l'ailier marqué à 2,5 m, le porteur écartait quand même dans **3,0 %** des décisions.
+
+**Défaut jumeau, toujours ouvert.** La branche reste conditionnée à `!pression` : le moteur
+n'écarte **jamais** pour échapper à la pression (0,0 % quand le porteur est pris à 3 m et l'ailier
+libre à 12 m), alors que c'est la raison première de faire circuler un ballon. Lever cette
+condition coûte la part des avants près de la ligne (31,3 % → 17,1 %).
+
+**Préalable avant toute nouvelle tentative : la défense glissante.** Tant qu'une passe au large
+vers un homme libre n'appelle pas de couverture, ce correctif restera un cadeau à l'attaque quelle
+que soit la compensation ajoutée ailleurs. Trois tentatives, trois refus : le problème n'est pas
+le dosage, c'est la pièce manquante.
+
+---
+
 ### P2-29. Trois garde-fous qui basculaient sur du bruit — réparés, seuils intacts
 - **Statut : CORRIGÉ (moteur inchangé : seuls les tests changent)**
 - Fichiers concernés : `server/test-invariants.js`, `server/test-stats-matchs.js`
