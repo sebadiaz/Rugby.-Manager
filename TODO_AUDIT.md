@@ -671,12 +671,35 @@ La compensation du résidu n'y est pour rien (V2 seul inflate déjà de +5,88). 
 longueur, essayée comme contrepoids, est **neutre sur le score** (turnovers +0,23, non établi) :
 elle change la nature des prises, pas leur nombre utile.
 
-**Diagnostic.** Le correctif est du bon rugby — on n'écarte pas vers un homme plus marqué que soi.
-Mais dans un vrai match, écarter vers un homme libre ne donne pas un essai : on trouve une
-**défense qui glisse** (drift) et un **couverture qui traverse**. Le moteur ne modélise ni l'un ni
-l'autre sur la passe au large : quand le ballon part vers un homme libre, il le reste. Le
-correctif supprime donc un mode d'échec de l'attaque sans rétablir celui qui lui répond en vrai,
-et l'attaque devient mécaniquement plus efficace (+1,2 essai).
+**Diagnostic — CORRIGÉ le lendemain, il était faux.** J'avais écrit ici que le moteur « ne
+modélise ni la défense glissante ni la couverture sur la passe au large : quand le ballon part
+vers un homme libre, il le reste », et j'en avais fait le préalable à toute reprise. **C'était une
+hypothèse, pas une mesure, et elle est démentie.**
+
+L'instrument qui semblait la confirmer était faux : au moment où le moteur émet l'événement
+`PASSE` / `JEU_LARGE`, `this.porteur` est **encore le passeur** — la bascule `this.porteur = cible`
+vient deux lignes plus bas. Vérifié directement : sur 137 passes, `m.porteur` est le passeur dans
+**100 %** des cas. Je suivais donc le joueur qui venait de se débarrasser du ballon, et c'est son
+repli en soutien que je lisais comme « l'espace qui s'ouvre » (8,26 m → 8,84 m).
+
+Mesure refaite sur le **vrai receveur** (12 matchs, receveur identifié par `extra.vers`) :
+
+| après… | mètres gagnés vers l'en-but en 1,2 s | espace du receveur |
+|---|---|---|
+| une passe normale (n = 4 747) | **+2,68 m** | 7,90 m → **5,23 m** |
+| une passe au large (n = 554) | **+4,28 m** | 12,25 m → **7,47 m** |
+
+La défense **se referme** sur le receveur, et nettement : −4,8 m d'espace en 1,2 s sur une passe au
+large. Le contrôle latéral séparé le confirme (écart latéral 2,74 m → 2,60 m). **Il n'y a pas de
+défaut de défense glissante.** La pièce que je disais manquante existe et fonctionne.
+
+**Ce qui reste vrai, et ce qui redevient inexpliqué.** Les trois bancs (V2, V3, V4) tiennent : le
+correctif vaut bien +1,2 essai et +6 points. Ce qui tombe, c'est mon explication. L'hypothèse
+restante est celle déjà établie ailleurs dans cet audit : le moteur n'atteint son volume réaliste
+de fautes de main qu'en produisant **1,8 fois trop de passes**, et le correctif fait passer les
+passes au large de 43,9 à 16,3 par match. Il retire donc des passes ratées qui servaient de
+régulateur au score. Ce n'est pas démontré non plus — c'est une piste, et elle est signalée comme
+telle.
 
 **Ce que le correctif contenait** (pour le reprendre tel quel) : dans `choisirActionPorteur`,
 comparer l'espace du soutien large à celui du porteur avant d'écarter —
@@ -689,10 +712,16 @@ n'écarte **jamais** pour échapper à la pression (0,0 % quand le porteur est p
 libre à 12 m), alors que c'est la raison première de faire circuler un ballon. Lever cette
 condition coûte la part des avants près de la ligne (31,3 % → 17,1 %).
 
-**Préalable avant toute nouvelle tentative : la défense glissante.** Tant qu'une passe au large
-vers un homme libre n'appelle pas de couverture, ce correctif restera un cadeau à l'attaque quelle
-que soit la compensation ajoutée ailleurs. Trois tentatives, trois refus : le problème n'est pas
-le dosage, c'est la pièce manquante.
+**Préalable avant toute nouvelle tentative : savoir POURQUOI le score monte.** Le préalable que
+j'avais inscrit ici (« implémenter la défense glissante ») était la conséquence d'un diagnostic
+faux et n'a plus lieu d'être. Trois refus restent trois refus, mais la cause est à chercher du
+côté du rôle régulateur des passes ratées, pas d'une pièce défensive manquante — et il faut la
+**mesurer** avant de coder quoi que ce soit.
+
+**Leçon de méthode.** Deux instruments successifs (`apres-large`, `diag-large`) partageaient le
+même défaut et se confirmaient l'un l'autre. Une mesure qui vient étayer l'hypothèse qu'on avait
+déjà en tête mérite une vérification indépendante AVANT d'être publiée — ici, une ligne suffisait :
+« au moment du log, qui tient le ballon ? ».
 
 ---
 
