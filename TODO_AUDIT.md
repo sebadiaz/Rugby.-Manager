@@ -580,6 +580,61 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-29. Trois garde-fous qui basculaient sur du bruit — réparés, seuils intacts
+- **Statut : CORRIGÉ (moteur inchangé : seuls les tests changent)**
+- Fichiers concernés : `server/test-invariants.js`, `server/test-stats-matchs.js`
+
+P2-28 a montré qu'aucun correctif du moteur ne peut plus être jugé sur ses mérites tant que ces
+garde-fous tombent au hasard. C'est le préalable, traité ici.
+
+**1. « Le n°15 traverse pour couvrir » — trois versions, et la première ne mesurait pas ce
+qu'elle annonçait.**
+- *Version d'origine* : UNE seule graine, 2 s de jeu, aucun état remis à zéro. Mesure sur
+  12 graines du moteur **inchangé** : 12,7 / 12,8 / 9,8 / 10,7 / **4,1** / 11,8 / 12,8 / 12,2 /
+  13,1 / **4,2** / 9,2 / 7,6 — moyenne **10,1** pour un seuil placé à **10**. Il tenait à une
+  graine heureuse. Pire : une fois la vitesse courante remise à zéro, la traversée tombe à
+  **4,9 m** en 2 s — les « 12,6 m » sur lesquels le seuil avait été bâti venaient surtout de
+  l'**élan résiduel** laissé par les 30 s de mise en route, pas de la couverture.
+- *Deuxième version* : contraste entre un porteur le long de la touche et un porteur dans l'axe.
+  Déterministe (écart-type 3,24 → 1,40) mais **creuse** : en neutralisant la branche de
+  couverture (`if (franchi)`), le test restait **VERT**. Quand la branche ne s'applique pas,
+  l'arrière suit quand même le ballon par la voie normale — et c'est ce suivi-là que le
+  contraste mesurait.
+- *Version retenue* : ce que la branche apporte vraiment, mesuré en la neutralisant (8 graines,
+  état remis à zéro, porteur le long de la touche) :
+
+| fenêtre | avec la branche | sans |
+|---|---|---|
+| 4 s | 12,63 m (σ 1,70) | 9,15 m (σ 1,01) |
+| **6 s** | **22,97 m (σ 6,37)** | **9,83 m (σ 0,40)** |
+
+  Sans elle, l'arrière **plafonne à ~9,8 m** : il suit le ballon mais ne va jamais au point de
+  rencontre. Seuil placé à **13 m** — trois écarts-types sous la valeur du moteur correct, très
+  au-dessus des 9,8 m quasi déterministes du moteur amputé. **Mutation vérifiée : rouge à
+  9,8 m.**
+
+**2 et 3. Deux planchers statistiques déplacés là où ils ont de la puissance.** La sanction de
+la passe en avant (≥ 0,2 par match) et les fautes de main (≥ 8) vivaient dans la suite rapide,
+sur 60 matchs. Puissance réelle à cette taille :
+
+| garde-fou | valeur mesurée | résolution à 60 matchs | marge |
+|---|---|---|---|
+| passe en avant sanctionnée | ~0,33/match | ±0,15 | **0,9 σ** |
+| fautes de main | 8,87/match (σ 2,90) | ±0,73 | **1,2 σ** |
+
+Les deux sont effectivement tombés au rouge cette session sur des correctifs qui ne les
+concernaient pas. Ils sont déplacés dans `server/test-stats-matchs.js`, qui tourne sur
+**500 matchs** chaque nuit : les **mêmes seuils** y valent ~5 σ et ~3,5 σ. **Aucun seuil n'a été
+baissé** — il a suffi de donner à chaque question l'échantillon qu'elle exige. Le *plafond* de
+la passe en avant (rare : ≤ 4) reste dans la suite rapide, où il est large et bon marché.
+**Mutation vérifiée** (`Referee.passeEnAvant` neutralisé) : rouge.
+
+**Piège rencontré deux fois de suite, à retenir.** Les suites ne chargent pas toutes la même
+copie du moteur : `test-invariants.js` lit `engine/rugby-engine.js`, `test-stats-matchs.js` et
+`test-scores-abstraits.js` lisent `docs/rugby-engine.js`. Muter la mauvaise copie donne un test
+qui reste **vert** et laisse croire qu'il est creux. Toujours vérifier le `require` de la suite
+avant de conclure qu'une mutation ne mord pas.
+
 ### P2-28. Le jeu au large est à l'envers — et deux garde-fous fragiles empêchent de le corriger
 - **Statut : DIAGNOSTIQUÉ, NON LIVRÉ (deux versions mesurées, toutes deux payées trop cher)**
 - Fichiers concernés : `engine/rugby-engine.js` (branche « jeu au large » de `choisirActionPorteur`)

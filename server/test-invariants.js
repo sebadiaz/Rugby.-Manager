@@ -563,17 +563,14 @@ test('loi 11 : un joueur sans solution legale GARDE le ballon (pas 11 passes en 
   //   20 graines -> +/-1,27      60 graines -> +/-0,73  (retenu)
   // AUCUN SEUIL n'a ete touche : seule la taille de l'echantillon change.
   const GRAINES = Array.from({ length: 60 }, (_, i) => i + 1);
-  let passesAvant = 0, fautesDeMain = 0;
+  let passesAvant = 0;
   for (const seed of GRAINES) {
     const m = new MatchEngine(seed, 4800);
     const brut = m.log.bind(m);
     m.log = (type, team, msg) => { if (type === 'MELEE_AVANT') passesAvant++; brut(type, team, msg); };
     for (let t = 0; t < 4800; t += 0.2) m.tick(0.2);
-    const s = m.getState();
-    fautesDeMain += s.stats.A.knockOns + s.stats.B.knockOns;
   }
   const avantParMatch = passesAvant / GRAINES.length;
-  const mainParMatch = fautesDeMain / GRAINES.length;
   // BORNE HAUTE **ET** BASSE. La borne haute seule etait satisfaite a zero :
   // supprimer la sanction rendait ce test plus vert que jamais.
   // La borne basse est fixee a ce que le moteur produit REELLEMENT (0,4 par
@@ -582,12 +579,23 @@ test('loi 11 : un joueur sans solution legale GARDE le ballon (pas 11 passes en 
   // le moteur de 13/14 a 11/14 categories realistes (mesure). L'ecart est
   // assume et documente dans le moteur ; ce que ce test garde, c'est que la
   // sanction ne DISPARAISSE pas.
-  assert.ok(avantParMatch >= 0.2,
-    `une passe en avant doit encore etre SANCTIONNEE (mesuré ${avantParMatch.toFixed(1)} par match)`);
+  // SEUL LE PLAFOND RESTE ICI. Les deux PLANCHERS (la sanction existe encore ;
+  // un match produit 10 a 15 fautes de main) ont ete deplaces dans
+  // server/test-stats-matchs.js, qui tourne sur 500 matchs chaque nuit. Mesure
+  // de leur puissance a 60 matchs, la taille disponible ici :
+  //   passe en avant : ~0,33 par match, soit ~20 evenements, donc +/-0,15 a
+  //     95 % — le plancher de 0,2 n'etait qu'a 0,9 ecart-type, et il est
+  //     effectivement passe au rouge sur des correctifs etrangers a la loi.
+  //   fautes de main : 8,87 par match, ecart-type 2,90, donc +/-0,73 — le
+  //     plancher de 8 n'etait qu'a 1,2 ecart-type.
+  // A 500 matchs les MEMES seuils valent ~5 et ~3,5 ecarts-types. Aucun seuil
+  // n'a ete baisse : un garde-fou qui bascule sur du bruit ne protege rien, et
+  // il a suffi de lui donner l'echantillon que sa question exige.
+  //
+  // Le PLAFOND, lui, est large (0,33 mesure contre 4 autorise) : il reste ici,
+  // ou il ne coute rien et attrape tout de suite une regression grossiere.
   assert.ok(avantParMatch <= 4,
     `une passe en avant reste une FAUTE RARE (mesuré ${avantParMatch.toFixed(1)} par match)`);
-  assert.ok(mainParMatch >= 8,
-    `un match produit 10 à 15 fautes de main (en-avant au contact, passe lâchée) : mesuré ${mainParMatch.toFixed(1)}`);
 });
 
 
@@ -1267,41 +1275,72 @@ test("loi 8 : tenu debout sur la ligne, pas d'essai et aucun regroupement dans l
 // marquaient 85 % des essais du match — le moteur ne produisait que des essais
 // « en contre ».
 test('le dernier defenseur (n°15) traverse pour couvrir un porteur qui a franchi', () => {
-  const m = new MatchEngine(21, 600);
-  for (let t = 0; t < 30; t += 0.2) m.tick(0.2);
-  m.phase = 'PORTE';
-  m.timerPhase = 3;
-  m.possession = 'A';
-  m.passeVisuelle = null;
-  m.combinaison = null;
-  m.penaliteRecul = null;
-  const porteur = m.equipeA.find((j) => j.numero === 11);
-  const sens = porteur.sensAttaque;
-  m.porteur = porteur;
-  porteur.auSol = 0;
-  porteur.x = sens > 0 ? LONGUEUR - 45 : 45;
-  porteur.y = 8; // lance le long de la touche
-  // Toute la defense est BATTUE : plus personne devant le porteur, sauf l'arriere.
-  for (const j of m.equipeB) {
-    j.auSol = 0; j.horsJeuKick = 0; j.fixeCooldown = 0; j.ruckRecovery = 0;
-    if (j.numero !== 15) { j.x = porteur.x - sens * 12; j.y = 35; }
+  // TROIS VERSIONS DE CE TEST, ET C'EST LA BONNE. Les deux precedentes ne
+  // mesuraient pas ce qu'elles annoncaient :
+  //
+  // 1. UNE SEULE graine, 2 s de jeu, aucun etat remis a zero. Mesure sur 12
+  //    graines du moteur INCHANGE : 12,7 / 12,8 / 9,8 / 10,7 / 4,1 / 11,8 /
+  //    12,8 / 12,2 / 13,1 / 4,2 / 9,2 / 7,6 — moyenne 10,1 pour un seuil a 10.
+  //    Il tenait a une graine heureuse et basculait au moindre changement du
+  //    moteur, qu'il touche ou non a la couverture. Pire : une fois la vitesse
+  //    courante remise a zero, la traversee tombe a 4,9 m en 2 s — les
+  //    « 12,6 m » sur lesquels le seuil avait ete bati venaient surtout de
+  //    l'ELAN RESIDUEL de l'arriere.
+  // 2. Contraste entre un porteur le long de la touche et un porteur dans
+  //    l'axe. Deterministe, mais HOLLOW : en neutralisant la branche de
+  //    couverture (`if (franchi)`), le test restait VERT. Quand la branche ne
+  //    s'applique pas, l'arriere suit quand meme le ballon par la voie normale,
+  //    et c'est ce suivi-la que le contraste mesurait.
+  //
+  // Ce que la branche apporte VRAIMENT, mesure en neutralisant celle-ci (8
+  // graines, etat remis a zero, porteur le long de la touche) :
+  //     fenetre 4 s : 12,63 m avec la branche contre 9,15 m sans
+  //     fenetre 6 s : 22,97 m (ecart-type 6,37) contre 9,83 m (ecart-type 0,40)
+  // Sans elle, l'arriere PLAFONNE a ~9,8 m : il suit le ballon mais ne va
+  // jamais au point de rencontre. Le seuil est place a 13 m — trois
+  // ecarts-types sous la valeur du moteur correct, et tres au-dessus des 9,8 m
+  // quasi deterministes du moteur ampute.
+  function traverseeArriere() {
+    const valeurs = [];
+    for (const seed of [21, 22, 23, 24, 25, 26, 27, 28]) {
+      const m = new MatchEngine(seed, 600);
+      for (let t = 0; t < 30; t += 0.2) m.tick(0.2);
+      m.phase = 'PORTE';
+      m.timerPhase = 3;
+      m.possession = 'A';
+      m.passeVisuelle = null;
+      m.combinaison = null;
+      m.penaliteRecul = null;
+      const porteur = m.equipeA.find((j) => j.numero === 11);
+      const sens = porteur.sensAttaque;
+      m.porteur = porteur;
+      porteur.auSol = 0;
+      porteur.x = sens > 0 ? LONGUEUR - 45 : 45;
+      porteur.y = 8; // lance le long de la touche
+      // Toute la defense est BATTUE : plus personne devant le porteur, sauf l'arriere.
+      for (const j of m.equipeB) {
+        j.auSol = 0; j.horsJeuKick = 0; j.fixeCooldown = 0; j.ruckRecovery = 0;
+        if (j.numero !== 15) { j.x = porteur.x - sens * 12; j.y = 35; }
+      }
+      const arriere = m.equipeB.find((j) => j.numero === 15);
+      arriere.x = porteur.x + sens * 20;
+      arriere.y = 35;
+      // L'ETAT RESIDUEL EST REMIS A ZERO : sans cela ce sont les elans herites
+      // de la mise en route qui dominent la mesure (cf. en-tete).
+      for (const j of [...m.equipeA, ...m.equipeB]) {
+        j.vitesseCourante = 0; j._percee = 0; j.missCooldown = 0;
+      }
+      const yAvant = arriere.y;
+      for (let t = 0; t < 6 && m.phase === 'PORTE'; t += 0.2) m.tick(0.2);
+      valeurs.push(Math.abs(yAvant - arriere.y));
+    }
+    return valeurs.reduce((a, b) => a + b, 0) / valeurs.length;
   }
-  const arriere = m.equipeB.find((j) => j.numero === 15);
-  arriere.x = porteur.x + sens * 20;
-  arriere.y = 35;
-  const yArriereAvant = arriere.y;
-  for (let t = 0; t < 2 && m.phase === 'PORTE'; t += 0.2) m.tick(0.2);
-  // On mesure le DEPLACEMENT LATERAL DE L'ARRIERE, pas l'ecart final qui le
-  // separe du porteur. L'ecart final dependait aussi de la course du PORTEUR :
-  // le jour ou celui-ci a cesse de crocheter vers l'interieur pour longer la
-  // touche (cf. loi 19, plaque en touche), l'ecart a grandi de 15,1 a 21,0 m
-  // alors que l'arriere traversait exactement pareil (12,6 m dans les deux cas)
-  // — le test passait au rouge pour un changement qui ne le concernait pas.
-  const traverse = yArriereAvant - arriere.y;
-  // Mesure sur ce scenario : 7,4 m avant le correctif de couverture (il tient
-  // son couloir), 12,6 m apres (il va chercher le porteur).
-  assert.ok(traverse > 10,
-    `l'arriere ne traverse pas pour couvrir (deplacement lateral ${traverse.toFixed(1)} m)`);
+  const traverse = traverseeArriere();
+  assert.ok(traverse >= 13,
+    `l'arriere ne traverse que ${traverse.toFixed(1)} m pour couvrir un porteur lance le long `
+    + `de la touche. Sans la lecture du point de rencontre il plafonne a 9,8 m : il suit le `
+    + `ballon au lieu d'aller le couper.`);
 });
 
 // --- Loi 15 : LE PLAQUEUR AUSSI EST HORS-JEU ------------------------------

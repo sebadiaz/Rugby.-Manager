@@ -75,6 +75,19 @@ const BACKS = [9, 10, 11, 12, 13, 14, 15];
 // 0.35-0.6 Nationale, 0.55-0.85 Excellence) — bout à bout, [0.15, 0.85].
 const NIVEAU_MIN = 0.15, NIVEAU_MAX = 0.85;
 
+// LOIS RARES, DEPLACEES DEPUIS test-invariants.js. Deux planchers y vivaient
+// sur 60 matchs : la sanction de la passe en avant (>= 0,2 par match) et les
+// fautes de main (>= 8). Mesure de leur puissance reelle a cette taille :
+//   passe en avant : ~0,33 par match, soit ~20 evenements sur 60 matchs, donc
+//     +/-0,15 a 95 % — le plancher de 0,2 n'etait qu'a 0,9 ecart-type, et il
+//     est effectivement tombe au rouge sur des correctifs etrangers a la loi.
+//   fautes de main : 8,87 par match, ecart-type 2,90, donc +/-0,73 sur 60
+//     matchs — le plancher de 8 n'etait qu'a 1,2 ecart-type.
+// Ici, sur 500 matchs, les memes seuils valent respectivement ~5 et ~3,5
+// ecarts-types. LES SEUILS N'ONT PAS BOUGE : seule la taille de l'echantillon
+// change, et avec elle la capacite du garde-fou a dire quelque chose.
+let passesAvantSanctionnees = 0;
+let fautesDeMain = 0;
 const totaux = {
   essais: 0, points: 0, scrums: 0, lineouts: 0, rucks: 0, tacklesAttempted: 0,
   kicks: 0, penalitesConcedees: 0, carries: 0, passes: 0, turnovers: 0,
@@ -112,6 +125,11 @@ for (let i = 0; i < N_MATCHS; i++) {
   const joueursB = RMClub.effectifVersJoueursCfg({ effectif: effectifB });
 
   const m = new MatchEngine(seed, DUREE_SECONDES, { joueursA, joueursB });
+  const logBrut = m.log.bind(m);
+  m.log = (type, team, msg, extra) => {
+    if (type === 'MELEE_AVANT') passesAvantSanctionnees++;
+    return logBrut(type, team, msg, extra);
+  };
   // TERRITOIRE : ou se joue reellement le match, et une equipe qui conserve le
   // ballon avance-t-elle ? (mesure derivee des evenements du moteur, pas d'un
   // compteur fabrique — cf. CLAUDE.md role 6)
@@ -185,6 +203,8 @@ for (let i = 0; i < N_MATCHS; i++) {
     else victoiresNiveauFaible++;
   }
 
+  fautesDeMain += m.getState().stats.A.knockOns + m.getState().stats.B.knockOns;
+
   if ((i + 1) % 20 === 0) console.log(`  ... ${i + 1}/${N_MATCHS} matchs simulés`);
 }
 const dureeCalcul = Number(process.hrtime.bigint() - debut) / 1e9;
@@ -255,6 +275,19 @@ test('passes : au moins 20 par match en moyenne (seuil explicite CLAUDE.md)', ()
 test('rucks : au moins 20 par match en moyenne (seuil explicite CLAUDE.md)', () => assert.ok(M.rucks >= 20, `moyenne=${M.rucks}`));
 test('coups de pied : présents, pas quasi absents', () => assert.ok(M.kicks > 5, `moyenne=${M.kicks}`));
 test('turnovers : jamais 0 en moyenne', () => assert.ok(M.turnovers > 1, `moyenne=${M.turnovers}`));
+// Loi 11 : une passe en avant doit encore etre SANCTIONNEE. Seuil repris tel
+// quel de test-invariants.js, ou il vivait sur 60 matchs sans pouvoir separer
+// 0,33 de 0,10 (cf. en-tete). Le plafond (une faute RARE) reste la-bas : il est
+// large, donc bon marche a verifier.
+test('loi 11 : la sanction de la passe en avant ne disparait pas', () => {
+  const parMatch = passesAvantSanctionnees / N_MATCHS;
+  assert.ok(parMatch >= 0.2,
+    `une passe en avant doit encore etre SANCTIONNEE (mesure ${parMatch.toFixed(2)} par match)`);
+});
+test('fautes de main : un match en produit 10 a 15 (en-avant au contact, passe lachee)', () => {
+  const parMatch = fautesDeMain / N_MATCHS;
+  assert.ok(parMatch >= 8, `mesure ${parMatch.toFixed(2)} par match`);
+});
 
 test('scores : ne sont jamais toujours identiques d\'un match à l\'autre', () => {
   const distincts = new Set(series.points).size;
