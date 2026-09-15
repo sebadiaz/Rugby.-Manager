@@ -580,6 +580,54 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-28. Le jeu au large est à l'envers — et deux garde-fous fragiles empêchent de le corriger
+- **Statut : DIAGNOSTIQUÉ, NON LIVRÉ (deux versions mesurées, toutes deux payées trop cher)**
+- Fichiers concernés : `engine/rugby-engine.js` (branche « jeu au large » de `choisirActionPorteur`)
+
+**Le défaut, mesuré en état figé** (`choisirActionPorteur` interrogée 400 fois par graine sur
+5 graines, sans laisser personne bouger — 2000 décisions par cas, précision ~0,8 point) :
+
+| situation | le ballon est-il écarté ? |
+|---|---|
+| le porteur est **pris** à 3 m, l'ailier est **libre** à 12 m | **0,0 %** |
+| le porteur a **9 m** devant lui, l'ailier est **marqué** à 2,5 m | **3,0 %** |
+
+La règle est **inversée**. La branche exige `!pression`, c'est-à-dire au moins 5 m devant le
+porteur : on écarte donc le ballon quand on a l'espace, et on le garde quand on est pris. Au
+rugby c'est l'inverse — on fait circuler POUR échapper à la pression et servir l'homme libre.
+Et quand elle se déclenche, elle ne regarde jamais si le destinataire est libre : elle prend
+n'importe quel trois-quarts « à moins de 18 m ».
+
+**Version 1 — lever `!pression` et comparer les espaces.** Les deux taux s'inversent
+proprement (0,0 % → 3,3 % et 3,0 % → 0,0 %), mais trois contreparties mesurées :
+- part des avants dans les portages des cinq derniers mètres : **31,3 % → 17,1 %** (le ballon
+  part à l'homme libre jusque dans les 22, et le pack disparaît de nouveau) ;
+- sanction de la passe en avant : **0,33 → 0,10 par match** (le porteur garde le ballon, donc
+  les passes désespérées disparaissent, et la loi devient invisible) ;
+- couverture de l'arrière (n°15) : **10,9 → 8,4 m** sur 8 graines.
+
+Restreindre la règle au plein champ (hors des 22) rend la part des avants, mais laisse les deux
+autres contreparties.
+
+**Version 2 — ne rien ajouter, seulement retirer le tir erroné.** On garde `!pression` et on
+ajoute uniquement la comparaison d'espace : 3,0 % → 0,0 %, et le comportement manquant reste
+manquant. Même ainsi, **la sanction de la passe en avant tombe au plancher (0,2) et la
+couverture de l'arrière reste à 8,4 m**. Pour un gain réel faible — environ 3 % d'une branche
+qui produit 47 passes par match — deux garde-fous passent au rouge. Non livré.
+
+**Le vrai obstacle est la qualité de deux garde-fous, et il faut le dire.** Le test « le n°15
+traverse pour couvrir » est un scénario à **une seule graine** dont la mise en route de 30 s
+laisse aux joueurs une vitesse courante non réinitialisée. Mesuré sur 8 graines, sur le moteur
+**inchangé**, il donne : 12,7 / 12,8 / 9,8 / 10,7 / **4,1** / 11,8 / 12,8 / 12,2 — moyenne
+10,9 pour un seuil à 10. Autrement dit il tient à une graine heureuse, et **n'importe quel
+changement du moteur le fait basculer**, qu'il touche ou non à la couverture. Le test de la
+loi 11 est dans le même état : 0,2 mesuré pour un plancher à 0,2.
+
+**Reprise recommandée, dans cet ordre :** (1) rendre ces deux garde-fous robustes — moyenne sur
+plusieurs graines et remise à zéro de l'état résiduel du scénario, exactement ce qui a été fait
+pour S12, la loi 11 et l'interception ; (2) seulement ensuite corriger le jeu au large, qui est
+un vrai défaut de règle et non un réglage.
+
 ### P2-27. La chaîne des trois-quarts ne comparait jamais l'espace : elle finissait toujours sur l'aile
 - **Statut : CORRIGÉ**
 - Fichiers concernés : `engine/rugby-engine.js` + `docs/rugby-engine.js`, `server/test-invariants.js`
