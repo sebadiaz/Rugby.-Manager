@@ -712,6 +712,28 @@ n'écarte **jamais** pour échapper à la pression (0,0 % quand le porteur est p
 libre à 12 m), alors que c'est la raison première de faire circuler un ballon. Lever cette
 condition coûte la part des avants près de la ligne (31,3 % → 17,1 %).
 
+**4ᵉ passage, avec les portes du dépôt : trois refus MESURÉS, dont deux substantiels.** Le faux
+diagnostic écarté, j'ai simplement appliqué V3 sur le moteur courant (correctif d'interception
+inclus) et lancé les trois suites. Résultat :
+
+| porte | V3 | verdict |
+|---|---|---|
+| loi 19 — plaqué en touche | **0,33 / match** (plancher 0,5 ; réel 2 à 4) | **ÉCHEC** |
+| essais (repère CLAUDE.md [2-8]) | **8,0 / match** | **HORS REPÈRE** |
+| S12 — moteur contre barème | 61,1 pts contre 46,1-50,0 | **ÉCHEC** |
+| points (repère [25-70]) | 61,9 | OK |
+| mêlées, touches, rucks, plaquages, coups de pied, pénalités, turnovers | — | OK |
+
+Le premier motif est le plus instructif, et il est **du rugby, pas de la comptabilité** : être
+plaqué en touche arrive précisément à l'ailier marqué le long de la ligne de touche. En cessant de
+lui donner le ballon, le correctif **supprime un fait de jeu réel** — l'événement passe de ~1,5 à
+0,33 par match. Le second est un **critère de refus explicite de CLAUDE.md**, pas un arbitrage de
+ma part.
+
+Le correctif reste donc refusé, mais pour des raisons désormais mesurées, et non plus pour le
+diagnostic erroné ci-dessus. Il ne s'agit plus de « doser » : tel qu'il est écrit, il fait
+disparaître une action de rugby.
+
 **Préalable avant toute nouvelle tentative : savoir POURQUOI le score monte.** Le préalable que
 j'avais inscrit ici (« implémenter la défense glissante ») était la conséquence d'un diagnostic
 faux et n'a plus lieu d'être. Trois refus restent trois refus, mais la cause est à chercher du
