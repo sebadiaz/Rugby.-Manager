@@ -580,6 +580,67 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-31. Le moteur n'interceptait pas des passes : il ramassait des pops à deux mètres
+- **Statut : CORRIGÉ**
+- Fichiers concernés : `engine/rugby-engine.js`, `docs/rugby-engine.js`, `server/test-invariants.js`
+
+`_chercherInterception` tirait à **taux plat** (`PROBA_INTERCEPTION = 0.065`, modulé par la seule
+adresse du défenseur) dès qu'un défenseur se trouvait à moins de **1,2 m** du couloir de passe.
+La **longueur de la passe n'entrait nulle part** : une sautée de 16 m et un pop de 2 m avaient
+exactement le même risque.
+
+**Mesure (30 matchs, en instrumentant la fonction elle-même).**
+
+| | avant | après |
+|---|---|---|
+| longueur moyenne de la passe interceptée | **4,34 m** | **14,8 m** |
+| médiane | **2,70 m** | — |
+| prises sur passes < 6 m | **0,39 / match** (sur 0,52) | **0,03 / match** |
+| interceptions par match | 0,52 | **0,97 à 1,17** (40 / 30 graines) |
+
+Une passe de 2,70 m de médiane n'est pas une interception : c'est un ballon que le receveur a
+déjà dans les mains. Le fait de jeu le plus spectaculaire du rugby — la sautée lue et prise — ne
+se produisait donc jamais, alors que le compteur, lui, affichait bien des interceptions.
+
+**Cause.** Le modèle ignorait le **temps de vol**, qui est pourtant la raison physique pour
+laquelle une interception existe. Une passe parcourt ~12 m/s : une sautée de 15 m reste en l'air
+~1,25 s, un pop de 2 m ~0,17 s. Ce temps donne au défenseur (a) de quoi **lire** la trajectoire,
+(b) de quoi **couvrir du terrain** latéralement avant l'arrivée du ballon. Deux termes, pas un.
+
+**Correctif.** Les deux constantes plates deviennent fonction de la longueur `L` :
+- couloir = `1.2 + 0.12 * L` (à 15 m : 3,0 m, soit 2,4 m/s de déplacement latéral pendant le vol
+  — conservateur pour un joueur debout et lancé) ;
+- probabilité = `PROBA_INTERCEPTION * (L - 3) / 6`, plafonnée à 2,2, nulle sous 3 m.
+
+Les paramètres n'ont pas été choisis sur le moteur en marche : les géométries de **8 577 passes**
+(30 matchs) ont été relevées une fois, puis seize règles candidates évaluées hors ligne sur ce
+relevé. Le couple retenu est celui qui place la fréquence sur son repère réel (~1 / match) avec
+une passe interceptée moyenne de ~15 m, c'est-à-dire une vraie sautée.
+
+**Test.** `une interception, c est une passe LONGUE, pas un pop a deux metres` — deux volets :
+(1) à géométrie identique (même défenseur, même adresse, même écart au couloir, même position
+relative), la sautée de 16 m contre le pop de 3 m, 2 000 décisions par cas en état figé ;
+(2) sur 12 matchs complets, la longueur moyenne des passes **réellement** interceptées, plus un
+garde-fou de fréquence (0,4 à 2,2 / match). Vérifié rouge avant correctif (6,9 % contre 6,9 % ;
+4,3 m).
+
+**Audit de creusage** (« si je casse la règle, le test devient-il rouge ? ») : `GAIN_COULOIR_PAR_METRE = 0`
+→ rouge (0,08 interception / match) ; `LONGUEUR_ININTERCEPTABLE = 0` → rouge (pop pris à 3,6 %) ;
+`FACTEUR_LONGUEUR_MAX = 99` → **reste vert**. Ce plafond n'est donc pas couvert : au-delà de 16 m
+les passes sont trop rares pour déplacer la moyenne. C'est un garde-corps, pas un comportement
+mesuré — noté comme tel dans le code.
+
+**Ce que ce correctif ne règle PAS (mesuré, hors périmètre).** Les avants font **59 %** des
+interceptions — un deuxième ligne qui lit une sautée n'est pas la scène habituelle du rugby, où
+la prise est le fait des centres et des ailiers. Ce biais est **antérieur** au correctif (57 %
+avant, 59 % après, 40 graines) : il ne vient pas d'ici et n'est pas traité ici.
+
+**Effet sur le reste (banc A/B, 300 graines appariées, Bonferroni).** Aucun : turnovers +0,23
+(±0,76, non établi), essais et points inchangés. Ce correctif change **la nature** des
+interceptions, pas leur poids sur le résultat — c'est ce qu'on lui demande.
+
+---
+
 ### P2-29. Trois garde-fous qui basculaient sur du bruit — réparés, seuils intacts
 - **Statut : CORRIGÉ (moteur inchangé : seuls les tests changent)**
 - Fichiers concernés : `server/test-invariants.js`, `server/test-stats-matchs.js`

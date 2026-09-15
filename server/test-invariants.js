@@ -888,6 +888,87 @@ test('un trois-quarts ne passe que si le suivant est MIEUX SERVI que lui', () =>
     + `va — sinon la chaine finit toujours sur l aile.`);
 });
 
+
+// --- UNE INTERCEPTION, C'EST UNE PASSE LONGUE ------------------------------
+// L'interception etait tiree a TAUX PLAT (PROBA_INTERCEPTION, module par la
+// seule adresse du defenseur) des qu'un defenseur se trouvait a moins de 1,2 m
+// du couloir de passe. La LONGUEUR de la passe n'entrait nulle part.
+//
+// Consequence mesuree sur 30 matchs, en instrumentant la fonction elle-meme :
+// la passe interceptee moyenne faisait 4,3 m, la mediane 2,7 m. Le moteur
+// n'interceptait donc pas des passes : il ramassait des POPS a deux metres,
+// c'est-a-dire des ballons que le receveur a deja dans les mains. Les trois
+// quarts des prises (0,39 sur 0,52 par match) etaient sur des passes de moins
+// de six metres.
+//
+// En rugby, l'interception est l'evenement de la passe LONGUE : la sautee, la
+// croisee, le renversement. Elle existe parce que le ballon reste EN L'AIR
+// assez longtemps pour qu'un defenseur la lise et parte dessus — un pop a deux
+// metres ne dure pas assez pour cela, et personne n'intercepte une passe de
+// fixation. Deux choses doivent donc dependre de la longueur : le temps de
+// lecture (probabilite de prise) et la distance que le defenseur peut couvrir
+// pendant le vol (largeur du couloir).
+test('une interception, c est une passe LONGUE, pas un pop a deux metres', () => {
+  // 1. A GEOMETRIE EGALE, la passe longue doit etre plus interceptable.
+  // Etat fige : meme defenseur, meme adresse, meme ecart perpendiculaire au
+  // couloir, meme position relative (mi-chemin) — seule la longueur change.
+  function tauxPrise(longueurPasse, ecartCouloir) {
+    let pris = 0, n = 0;
+    for (const seed of [11, 12, 13, 14, 15]) {
+      const m = new MatchEngine(seed, 600);
+      for (let t = 0; t < 30; t += 0.2) m.tick(0.2);
+      m.possession = 'A';
+      const passeur = m.equipeA.find((j) => j.numero === 10);
+      const cible = m.equipeA.find((j) => j.numero === 14);
+      passeur.x = 50; passeur.y = 30; passeur.auSol = 0;
+      cible.x = 49; cible.y = 30 + longueurPasse; cible.auSol = 0;
+      for (const j of m.equipeB) {
+        j.auSol = 0; j.horsJeuKick = 0; j.sinBin = 0; j.x = 95; j.y = 68;
+        j.adresse = 60;
+      }
+      const d = m.equipeB.find((j) => j.numero === 13);
+      d.x = (passeur.x + cible.x) / 2 + ecartCouloir;
+      d.y = (passeur.y + cible.y) / 2;
+      for (let k = 0; k < 400; k++) { n++; if (m._chercherInterception(passeur, cible)) pris++; }
+    }
+    return 100 * pris / n;
+  }
+  const courte = tauxPrise(3, 0.6);   // un pop de fixation
+  const longue = tauxPrise(16, 0.6);  // une sautee
+  assert.ok(longue > courte * 3,
+    `a geometrie identique, la sautee de 16 m est prise dans ${longue.toFixed(1)} % des cas `
+    + `et le pop de 3 m dans ${courte.toFixed(1)} % : la longueur de la passe ne change rien `
+    + `(mesure avant correction : 6,9 % contre 6,9 %)`);
+  assert.ok(courte < 1.5,
+    `un pop de 3 m est intercepte dans ${courte.toFixed(1)} % des cas : le receveur a deja `
+    + `le ballon dans les mains (mesure avant correction : 6,9 %)`);
+
+  // 2. SUR DE VRAIS MATCHS, la passe interceptee doit RESSEMBLER a une sautee.
+  // C'est l'assertion qui compte : elle ne lit pas une formule, elle mesure la
+  // longueur des passes que le moteur intercepte reellement en 80 minutes.
+  let sommeL = 0, prises = 0;
+  const GRAINES = 12, DUREE = 4800, DT = 0.2;
+  for (let seed = 1; seed <= GRAINES; seed++) {
+    const m = new MatchEngine(seed, DUREE);
+    const orig = m._chercherInterception.bind(m);
+    m._chercherInterception = function (passeur, cible) {
+      const r = orig(passeur, cible);
+      if (r) { prises++; sommeL += Math.hypot(cible.x - passeur.x, cible.y - passeur.y); }
+      return r;
+    };
+    for (let t = 0; t < DUREE; t += DT) m.tick(DT);
+  }
+  const longueurMoyenne = sommeL / prises;
+  const parMatch = prises / GRAINES;
+  assert.ok(longueurMoyenne >= 9,
+    `la passe interceptee moyenne fait ${longueurMoyenne.toFixed(1)} m : le moteur ramasse des `
+    + `pops, pas des sautees (mesure avant correction : 4,3 m, mediane 2,7 m)`);
+  // Garde-fou de frequence : l'interception est RARE (~1 par match en vrai).
+  // Une pluie d'interceptions se verrait a l'ecran autant qu'une absence.
+  assert.ok(parMatch >= 0.4 && parMatch <= 2.2,
+    `${parMatch.toFixed(2)} interception(s) par match : hors de la fourchette reelle (0,4 a 2,2)`);
+});
+
 // --- DEUX EQUIPES NE JOUENT PAS PAREIL AU MEME ENDROIT ---------------------
 // Un joueur decide de jouer comme il le souhaite : ce n'est pas un jeu de
 // voiture sur rail ou tout le monde suit la meme trajectoire. Le jeu au pres

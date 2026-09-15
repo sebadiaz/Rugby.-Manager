@@ -462,8 +462,38 @@
   const RAYON_PLAQUAGE = 2.2;
   // Interception : distance maximale au couloir de passe (m) pour qu'un
   // defenseur soit en position, et probabilite de prise quand il l'est.
+  //
+  // CES DEUX VALEURS DEPENDENT DE LA LONGUEUR DE LA PASSE (cf. _chercherInterception).
+  // Elles etaient PLATES : une sautee de 16 m et un pop de 2 m avaient
+  // exactement le meme risque. Mesure sur 30 matchs en instrumentant la
+  // fonction : la passe interceptee moyenne faisait 4,3 m et la mediane 2,7 m.
+  // Le moteur ne produisait donc pas des interceptions mais des ramassages de
+  // ballons deja dans les mains du receveur (0,39 prise sur 0,52 par match
+  // sur des passes de moins de six metres).
+  //
+  // La raison physique est le TEMPS DE VOL. Une passe parcourt ~12 m/s : une
+  // sautee de 15 m reste en l'air ~1,25 s, un pop de 2 m ~0,17 s. Ce temps
+  // donne au defenseur (a) de quoi LIRE la trajectoire et partir dessus, (b) de
+  // quoi COUVRIR du terrain lateralement avant l'arrivee du ballon. D'ou deux
+  // termes lies a la longueur L au lieu de deux constantes :
+  //   couloir  = SEUIL_COULOIR_INTERCEPTION + GAIN_COULOIR_PAR_METRE * L
+  //   proba    = PROBA_INTERCEPTION * (L - LONGUEUR_ININTERCEPTABLE) / ECHELLE_LECTURE
+  // A 15 m le couloir vaut 3,0 m, soit 2,4 m/s de deplacement lateral pendant
+  // le vol : conservateur pour un joueur debout et lance.
   const SEUIL_COULOIR_INTERCEPTION = 1.2;
   const PROBA_INTERCEPTION = 0.065;
+  // En dessous de cette longueur (m) la passe n'est pas interceptable : le
+  // receveur a le ballon avant que le defenseur ait pu s'y mettre.
+  const LONGUEUR_ININTERCEPTABLE = 3;
+  // Longueur (m) au-dela du seuil ci-dessus qui vaut le taux historique.
+  const ECHELLE_LECTURE = 6;
+  // Metres de couloir gagnes par metre de passe (deplacement lateral pendant le vol).
+  const GAIN_COULOIR_PAR_METRE = 0.12;
+  // Plafond du facteur de longueur : meme une passe de 40 m n'est pas un cadeau.
+  // NON COUVERT PAR LE TEST (audit de creusage : le mettre a 99 laisse le test
+  // vert) — au-dela de 16 m les passes sont trop rares pour deplacer la moyenne.
+  // C'est un garde-corps, pas un comportement mesure.
+  const FACTEUR_LONGUEUR_MAX = 2.2;
   // LOI 15 — la ligne de hors-jeu d'un regroupement est le PIED LE PLUS RECULE
   // du dernier joueur, pas le ballon : elle se situe environ 1,5 m derriere lui,
   // du cote de chaque equipe. Le moteur clampait les defenseurs sur le ballon
@@ -2945,7 +2975,14 @@
       const vx = cible.x - passeur.x, vy = cible.y - passeur.y;
       const len2 = vx * vx + vy * vy;
       if (len2 < 0.01) return null;
-      let meilleur = null, distMin = SEUIL_COULOIR_INTERCEPTION;
+      // Temps de vol : tout depend de la longueur de la passe (cf. constantes).
+      const longueur = Math.sqrt(len2);
+      const facteurLongueur = Math.max(0, Math.min(FACTEUR_LONGUEUR_MAX,
+        (longueur - LONGUEUR_ININTERCEPTABLE) / ECHELLE_LECTURE));
+      if (facteurLongueur <= 0) return null; // un pop de fixation ne s'intercepte pas
+      // Le couloir s'elargit avec le vol : le defenseur a le temps de s'y mettre.
+      let meilleur = null;
+      let distMin = SEUIL_COULOIR_INTERCEPTION + GAIN_COULOIR_PAR_METRE * longueur;
       for (const d of this.defenseurs()) {
         if (d.auSol > 0 || d.horsJeuKick > 0 || d.sinBin > 0) continue;
         // Derriere le passeur : il ne voit pas partir le ballon.
@@ -2965,7 +3002,7 @@
       // devienne courant pour autant.
       const lecture = typeof meilleur.adresse === 'number'
         ? Math.max(0.5, Math.min(1.6, 1 + (meilleur.adresse - 60) / 80)) : 1;
-      return this.rng() < PROBA_INTERCEPTION * lecture ? meilleur : null;
+      return this.rng() < PROBA_INTERCEPTION * lecture * facteurLongueur ? meilleur : null;
     }
 
     _lancerPasseVisuelle(passeur, cible) {
