@@ -2776,18 +2776,22 @@
         // vers le n°15 10,2 % (-7,12 m). Un vrai demi de melee alterne, et
         // environ un tiers des sorties de regroupement partent au pres.
         //
-        // CE QUE CE CORRECTIF N'APPORTE PAS : du terrain. J'etais parti de la
-        // decomposition du gain par temps de jeu (6 945 phases) — gain net
-        // +1,46 m = course +3,73 m MOINS recul des passes -2,43 m — en me
-        // disant qu'une sortie au pres coute deux metres de moins (-2,45 m
-        // contre -4,51 m) et ferait donc avancer le ballon. C'est faux : le
-        // recul des passes baisse bien (-2,43 -> -2,15 m) mais la course baisse
-        // DAVANTAGE (+3,73 -> +3,31 m), un avant portant moins loin qu'un
-        // trois-quarts. Les deux effets se compensent — comparaison APPARIEE
+        // CE QUE CE CORRECTIF N'APPORTE PAS : du terrain. Comparaison APPARIEE
         // sur 300 graines (Bonferroni) : gain/temps de jeu -0,062 +/- 0,162,
         // NON ETABLI, comme les dix autres metriques du banc. Le patch ne coute
         // ni ne rapporte de terrain ; le jeu confine au milieu (P2-15) reste
         // entier. Son effet est sur QUI joue, pas sur la forme du match.
+        //
+        // NB : une decomposition de ce gain (course contre recul des passes) a
+        // figure ici. Elle etait FAUSSE — elle decoupait les phases sur tout
+        // changement de ruckPoint.x, qui bouge aussi EN COURS de phase, d'ou
+        // des phases fantomes a gain nul. Le bon decoupage est celui du depot
+        // (entree en phase RUCK, cf. server/test-stats-matchs.js) : il donne
+        // 2,60 passes par phase et une mediane de 1,09 m, non 0,78 et 0,08.
+        // Retiree plutot que corrigee : meme bien decoupee, la somme des
+        // composantes ne se reconcilie pas avec le gain (5,71 m contre 1,46),
+        // parce qu'entre deux rucks il peut y avoir un coup de pied, une touche
+        // ou un turnover. Cf. TODO_AUDIT.md P2-33.
         //
         // Ce que le correctif apporte est ailleurs, et c'est un critere
         // explicite de CLAUDE.md : deux equipes ne jouaient pas differemment.

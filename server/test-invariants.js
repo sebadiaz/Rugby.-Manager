@@ -904,16 +904,14 @@ test('un trois-quarts ne passe que si le suivant est MIEUX SERVI que lui', () =>
 // Un vrai demi de melee alterne : environ un tiers des sorties de regroupement
 // partent au pres (pick-and-go, passe a plat a un avant lance).
 //
-// CE QUE CE CORRECTIF N'APPORTE PAS, ET IL FAUT LE DIRE : du terrain. J'etais
-// parti de la decomposition du gain par temps de jeu (6 945 phases) — gain net
-// +1,46 m = course +3,73 m MOINS recul des passes -2,43 m — en me disant qu'une
-// sortie au pres coute deux metres de moins (-2,45 m contre -4,51 m) et ferait
-// donc avancer le ballon. C'est faux : le recul des passes baisse bien
-// (-2,43 -> -2,15 m) mais la course baisse DAVANTAGE (+3,73 -> +3,31 m), un
-// avant portant moins loin qu'un trois-quarts — les deux se compensent.
+// CE QUE CE CORRECTIF N'APPORTE PAS, ET IL FAUT LE DIRE : du terrain.
 // Comparaison APPARIEE sur 300 graines (Bonferroni) : gain/temps de jeu
 // -0,062 +/- 0,162, NON ETABLI, comme les dix autres metriques du banc. Le jeu
 // confine au milieu du terrain (P2-15) reste entier.
+//
+// NB : ce commentaire a porte une decomposition de ce gain (course contre
+// recul des passes). Elle etait FAUSSE et a ete retiree — cf. TODO_AUDIT.md
+// P2-33 pour le detail de l'erreur d'instrument et de ce qui reste etabli.
 //
 // Ce que le correctif apporte est ailleurs, et c'est un critere de refus
 // EXPLICITE de CLAUDE.md : « les avants et les trois-quarts jouent exactement

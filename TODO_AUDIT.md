@@ -580,6 +580,72 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-33. P2-15 élucidé : le gain par temps de jeu est épinglé par la ligne de hors-jeu
+- **Statut : DIAGNOSTIC ÉTABLI — aucun correctif livré, et une erreur d'instrument corrigée**
+- Fichiers concernés : `engine/rugby-engine.js`, `docs/rugby-engine.js`, `server/test-invariants.js`
+  (commentaires seulement — moteur inchangé)
+
+**1. D'abord, une erreur de ma part déjà publiée.** P2-32 et les commentaires du moteur portaient
+une décomposition du gain par temps de jeu : « gain net +1,46 m = course +3,73 m MOINS recul des
+passes −2,43 m, sur 0,78 passe par phase ». Elle est **fausse**. Je découpais les phases sur tout
+changement de `ruckPoint.x`, qui bouge aussi **en cours** de phase (maul qui avance, plaquage de
+sauvetage) : des phases fantômes à gain nul venaient diluer la mesure. Le bon découpage est celui
+du dépôt — entrée en phase `RUCK`, cf. `server/test-stats-matchs.js`.
+
+| | mon découpage (faux) | découpage du dépôt |
+|---|---|---|
+| passes par phase | 0,78 | **2,60** |
+| médiane du gain | 0,08 m | **1,09 m** |
+
+La moyenne tombait juste par hasard (1,29 contre 1,35), les phases fantômes diluant les deux
+côtés. La décomposition a été **retirée, pas corrigée** : même bien découpée, la somme des
+composantes ne se réconcilie pas avec le gain (5,71 m contre 1,46 m), parce qu'entre deux rucks
+il peut y avoir un coup de pied, une touche ou un turnover. L'intervalle ruck→ruck n'est pas une
+séquence d'attaque continue, et aucune somme additive ne s'y ramène.
+
+**2. Quatre leviers testés, aucun ne marche** (14 graines, découpage du dépôt) :
+
+| variante | gain | médiane |
+|---|---|---|
+| référence | 1,47 m | 1,10 |
+| vitesse de montée défensive −30 % | **1,19 m** | 1,06 |
+| défenseurs visant moins loin (2,5 → 1,2 m) | 1,50 m | 1,08 |
+| rampe défensive plus lente au départ | 1,66 m | 1,11 |
+| cadence de passes −30 % | 1,35 m | 1,07 |
+
+La médiane ne bouge pas — 1,06 à 1,11 dans tous les cas. Ralentir la défense **aggrave** même le
+gain. Aucun paramètre athlétique ou décisionnel n'a prise sur cette grandeur.
+
+**3. La cause, elle, est géométrique.** La ligne défensive ne recule jamais derrière
+`ligneGain = ruckPoint.x + sens * RECUL_PIED_RECULE` (loi 15, pied le plus reculé). Le plaquage
+tombe donc **sur cette ligne**, à chaque phase. En faisant varier cette seule constante :
+
+| `RECUL_PIED_RECULE` | médiane du gain |
+|---|---|
+| 0,5 | **0,46 m** |
+| 1,5 (valeur actuelle) | **1,10 m** |
+| 3,0 | **2,23 m** |
+| 5,0 | **4,04 m** |
+
+Le gain suit la constante presque au mètre près. **Le gain par temps de jeu du moteur EST sa
+distance de hors-jeu** — c'est pourquoi P2-15 résiste depuis si longtemps, et pourquoi tout
+réglage de vitesse, de décision ou de cadence est sans effet.
+
+**4. CE QU'IL NE FAUT PAS FAIRE.** Monter `RECUL_PIED_RECULE` à 5 ferait entrer le gain dans sa
+fourchette réelle (+3 à +5 m) en une ligne. Ce serait **fausser la loi 15 pour atteindre une
+statistique** — exactement ce que CLAUDE.md interdit (« ne pas inventer des statistiques non
+reliées au match »). La distance de hors-jeu est une règle du rugby, pas un bouton de calibrage.
+
+**5. Ce qu'il faudrait à la place.** En vrai, une attaque FRANCHIT la ligne d'avantage : le porteur
+attaque la ligne lancé et la collision se produit au-delà du point où le défenseur l'attendait.
+Le moteur modélise déjà une partie de cela (avance au contact 0,55/1,00/1,55 m selon le rideau,
+point de plaquage ramené à mi-chemin), mais le résultat net reste collé à la ligne de hors-jeu.
+La piste à instruire est la **profondeur de réception** : chaque phase commence par un recul du
+ballon vers un ouvreur placé loin derrière, qu'il faut regagner avant de gagner quoi que ce soit.
+Cette piste n'est PAS mesurée ici — c'est une hypothèse, et elle est signalée comme telle.
+
+---
+
 ### P2-32. La sortie de regroupement était un rail : le même n°9 pour tous les clubs
 - **Statut : CORRIGÉ**
 - Fichiers concernés : `engine/rugby-engine.js`, `docs/rugby-engine.js`, `docs/js/club.js`,
@@ -605,7 +671,9 @@ const tauxAvantLance = zone === 'CINQ_M' ? tauxPres
 Un vrai demi de mêlée alterne ; le moteur sortait mécaniquement vers l'ouvreur, à l'identique
 pour tous les clubs.
 
-**La justification par laquelle j'étais arrivé là était FAUSSE, et il faut le dire.** J'étais
+**La justification par laquelle j'étais arrivé là était FAUSSE, et il faut le dire.** (Et la
+décomposition citée ci-dessous s'est elle-même révélée fausse par la suite : découpage des phases
+erroné, cf. **P2-33**. Elle est conservée ici telle qu'elle a été publiée, avec ce renvoi.) J'étais
 parti de la décomposition du gain par temps de jeu (6 945 phases conservées) :
 
 ```
