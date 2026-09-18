@@ -26,7 +26,13 @@
     const optStyle = option('style'), optAvants = option('avants'), optRythme = option('rythme'),
       optPied = option('pied'), optLigne = option('ligneDef'), optToucheMaul = option('toucheMaul'),
       optPoussee = option('poussee');
-    const attaque = Object.assign({}, optStyle.attaque || null, optPied.attaque || null);
+    // TROIS axes ecrivent desormais dans `attaque` : « Largeur du jeu » pose
+    // jeuLargeTaux, « Occupation au pied » tauxJeuAuPied, et « Jeu d'avants »
+    // sortieAvant (la sortie de regroupement). Ils FUSIONNENT, comme `melee`
+    // ci-dessous : omettre optAvants ferait perdre EN SILENCE le reglage que le
+    // manager vient de choisir. Protege par M6b dans server/test-melee.js.
+    const attaque = Object.assign({}, optStyle.attaque || null, optPied.attaque || null,
+      optAvants.attaque || null);
     // Deux axes écrivent dans `melee` (« Jeu d'avants » pose le pick-and-go,
     // « Poussée en mêlée » la consigne de poussée) : ils FUSIONNENT. Les
     // écraser l'un l'autre ferait perdre silencieusement un réglage choisi.

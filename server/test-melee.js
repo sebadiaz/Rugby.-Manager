@@ -148,6 +148,30 @@ test('M6 — l\'axe se traduit en config moteur, sans écraser l\'axe « avants 
     'le neutre ne doit rien forcer');
 });
 
+test('M6b — « Jeu d\'avants » gouverne AUSSI la sortie de regroupement, sans écraser l\'axe « pied »', () => {
+  // L'axe s'appelle « Jeu d'avants » et sa description promet le pick-and-go
+  // au près « plutôt qu'une sortie rapide aux trois-quarts ». Il ne pilotait
+  // pourtant que la MÊLÉE : à la sortie d'un ruck — c'est-à-dire l'immense
+  // majorité des ballons — le n°9 de tous les clubs jouait pareil.
+  //
+  // Le piège de câblage est réel : `tactiqueVersConfig` ne fusionnait dans
+  // `attaque` que les axes « style » et « pied ». Un réglage d'attaque posé
+  // sur « avants » serait SILENCIEUSEMENT PERDU, exactement ce que M6 protège
+  // du côté `melee`.
+  const cfg = RMClub.tactiqueVersConfig({ avants: 'proche', pied: 'frequent' });
+  assert.ok(cfg.attaque, 'une config d\'attaque doit être produite');
+  assert.ok(typeof cfg.attaque.sortieAvant === 'number',
+    'l\'axe « avants » doit poser la sortie de regroupement (sortieAvant)');
+  assert.strictEqual(cfg.attaque.tauxJeuAuPied, 2.5,
+    'le réglage de l\'axe « pied » doit survivre à la fusion');
+  const large = RMClub.tactiqueVersConfig({ avants: 'large' });
+  assert.ok(large.attaque && large.attaque.sortieAvant < cfg.attaque.sortieAvant,
+    '« Ouvert aux 3/4 » doit sortir moins souvent au près que « Près du ruck »');
+  const neutre = RMClub.tactiqueVersConfig({ avants: 'equilibre' });
+  assert.ok(!neutre.attaque || neutre.attaque.sortieAvant === undefined,
+    'le neutre ne doit rien forcer au moteur');
+});
+
 test('M7 — en match, la consigne produit réellement un déroulé différent', () => {
   // Ce test vérifie le CÂBLAGE de bout en bout, pas l'ampleur de l'effet :
   // sur une dizaine de matchs, le nombre même de mêlées change (115 contre

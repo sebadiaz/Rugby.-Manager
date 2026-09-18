@@ -580,6 +580,72 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-32. La sortie de regroupement était un rail : le même n°9 pour tous les clubs
+- **Statut : CORRIGÉ**
+- Fichiers concernés : `engine/rugby-engine.js`, `docs/rugby-engine.js`, `docs/js/club.js`,
+  `docs/js/club-composition.js`, `server/test-invariants.js`, `server/test-melee.js`
+
+P1 avait rendu le jeu au près pilotable **dans les cinq derniers mètres**
+(`cfgAttaque.jeuAuPresLigne`, modulé par `profilJeuAuPres`). Partout ailleurs — les trois quarts
+du terrain — le taux était resté la constante historique, littéralement :
+
+```js
+const tauxAvantLance = zone === 'CINQ_M' ? tauxPres
+  : zone === 'OPP_22' ? tauxPres * 0.35 : 0.18;
+```
+
+**Mesure** (10 matchs, cible réelle de chaque passe du n°9, 1 825 passes) :
+
+| destinataire | part | recul du ballon |
+|---|---|---|
+| n°10 | **63,5 %** | −4,51 m |
+| un AVANT (1-8) | **16,9 %** | −2,45 m |
+| n°15 | 10,2 % | −7,12 m |
+
+Un vrai demi de mêlée alterne ; le moteur sortait mécaniquement vers l'ouvreur, à l'identique
+pour tous les clubs.
+
+**La justification par laquelle j'étais arrivé là était FAUSSE, et il faut le dire.** J'étais
+parti de la décomposition du gain par temps de jeu (6 945 phases conservées) :
+
+```
+gain net par phase   +1,46 m   (médiane +0,08 ; repère réel +3 à +5)
++ course du porteur  +3,73 m
+- recul des passes   −2,43 m   sur 0,78 passe par phase
+```
+
+et j'en avais conclu qu'une sortie au près, moins chère de deux mètres, ferait avancer le ballon.
+Mesuré : **non**. Le recul des passes baisse bien (−2,43 → −2,15 m) mais la course baisse
+**davantage** (+3,73 → +3,31 m), parce qu'un avant porte moins loin qu'un trois-quarts. Gain net
+**1,46 → 1,29 m**, légèrement moins bon. Le jeu confiné au milieu du terrain (P2-15) reste entier.
+
+**Ce que le correctif apporte réellement** est un critère de refus *explicite* de CLAUDE.md —
+« les mêmes actions se répètent tout le temps », « les avants et les trois-quarts jouent
+exactement pareil ». Le taux devient `cfgAttaque.sortieAvant` (défaut 0,34), modulé par
+`profilJeuAuPres` comme le jeu au près près de la ligne. Part des avants **16,9 % → 23,5 %**.
+
+**Et il devient une décision VISIBLE du joueur.** L'axe « Jeu d'avants » du Mode Club existait
+déjà et promettait « le pick-and-go au près plutôt qu'une sortie rapide aux trois-quarts » — mais
+ne pilotait que la **mêlée**. Il gouverne désormais aussi la sortie de regroupement
+(`proche` 0,60 / `équilibré` défaut / `Ouvert aux 3/4` 0,12).
+
+**Piège de câblage, réel et protégé.** `tactiqueVersConfig` ne fusionnait dans `attaque` que les
+axes « Largeur du jeu » et « Occupation au pied ». Un réglage d'attaque posé sur « Jeu d'avants »
+aurait été **perdu en silence** — exactement ce que le test M6 protège déjà du côté `melee`.
+Nouveau test M6b, vérifié rouge avant câblage.
+
+**Tests** (tous vérifiés rouges d'abord) :
+1. le n°9 sert un avant dans ≥ 22 % de ses passes (avant : 16,9 %) ;
+2. la consigne d'équipe change le jeu (avant : 17,1 % contre 17,1 % — sans aucun effet) ;
+3. l'effectif aligné change le jeu (avant : 15,6 % contre 16,0 %) ;
+4. M6b — le réglage traverse `tactiqueVersConfig` sans écraser l'axe « pied ».
+
+**Audit de creusage** : `baseSortie * profilJeuAuPres(att)` → `* 1` ne fait rougir que le test 3 ;
+supprimer la lecture de la consigne ne fait rougir que le test 2. Chaque levier est protégé par
+exactement le test qui le revendique.
+
+---
+
 ### P2-31. Le moteur n'interceptait pas des passes : il ramassait des pops à deux mètres
 - **Statut : CORRIGÉ**
 - Fichiers concernés : `engine/rugby-engine.js`, `docs/rugby-engine.js`, `server/test-invariants.js`

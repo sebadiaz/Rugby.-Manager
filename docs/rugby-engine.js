@@ -177,6 +177,13 @@
       // les possessions se terminent d'elles-mêmes ; x2 sur-bottait (88 coups
       // de pied par match, réel 35-70). x1,5 ramène à ~67.
       tauxJeuAuPied: 1.5,
+      // SORTIE DE REGROUPEMENT HORS DES 22 : part des sorties jouees AU PRES
+      // (passe a plat du n°9 a un avant lance) la ou `jeuAuPresLigne` ci-dessous
+      // ne s'applique pas encore. Meme principe — reglage d'equipe, pilotable
+      // par attaqueA/attaqueB (Mode Club), module par l'effectif aligne
+      // (profilJeuAuPres). Defaut 0,34, soit environ un tiers, le repere reel.
+      // Valait 0,18 EN DUR, identique pour tous les clubs et toutes les zones.
+      sortieAvant: 0.34,
       // JEU AU PRES DANS LES CINQ DERNIERS METRES : probabilité que le n°9
       // serve un avant lancé plutôt que d'envoyer le ballon à l'ouvreur. Ce
       // n'est PAS une constante de simulation mais un RÉGLAGE D'ÉQUIPE : deux
@@ -2762,8 +2769,35 @@
         const regleAuPres = this.cfgAttaque[porteur.team].jeuAuPresLigne;
         const basePres = typeof regleAuPres === 'number' ? regleAuPres : 0.90;
         const tauxPres = Math.max(0.10, Math.min(0.95, basePres * profilJeuAuPres(att)));
+        // PARTOUT AILLEURS, c'etait reste la constante 0,18 — donc un rail : le
+        // n°9 de TOUS les clubs sortait le ballon de la meme facon sur les
+        // trois quarts du terrain. Mesure sur 10 matchs (1 825 passes du 9) :
+        // vers le n°10 63,5 % (recul -4,51 m), vers un AVANT 16,9 % (-2,45 m),
+        // vers le n°15 10,2 % (-7,12 m). Un vrai demi de melee alterne, et
+        // environ un tiers des sorties de regroupement partent au pres.
+        //
+        // CE QUE CE CORRECTIF N'APPORTE PAS : du terrain. J'etais parti de la
+        // decomposition du gain par temps de jeu (6 945 phases) — gain net
+        // +1,46 m = course +3,73 m MOINS recul des passes -2,43 m — en me
+        // disant qu'une sortie au pres coute deux metres de moins (-2,45 m
+        // contre -4,51 m) et ferait donc avancer le ballon. MESURE : c'est
+        // faux. Le recul des passes baisse bien (-2,43 -> -2,15 m) mais la
+        // course baisse DAVANTAGE (+3,73 -> +3,31 m), parce qu'un avant porte
+        // moins loin qu'un trois-quarts. Gain net 1,46 -> 1,29 m : legerement
+        // moins bon. Le jeu confine au milieu du terrain (P2-15) reste entier.
+        //
+        // Ce que le correctif apporte est ailleurs, et c'est un critere
+        // explicite de CLAUDE.md : deux equipes ne jouaient pas differemment.
+        //
+        // Meme forme que le jeu au pres pres de la ligne : REGLAGE D'EQUIPE
+        // module par l'effectif reellement aligne, jamais une constante.
+        const regleSortie = this.cfgAttaque[porteur.team].sortieAvant;
+        const baseSortie = typeof regleSortie === 'number' ? regleSortie : 0.34;
+        const tauxSortie = Math.max(0.05, Math.min(0.85, baseSortie * profilJeuAuPres(att)));
+        // Plus on approche de la ligne, plus on joue le pack : les 22 prennent
+        // le plus eleve des deux taux plutot que le seul taux de zone.
         const tauxAvantLance = zone === 'CINQ_M' ? tauxPres
-          : zone === 'OPP_22' ? tauxPres * 0.35 : 0.18;
+          : zone === 'OPP_22' ? Math.max(tauxPres * 0.35, tauxSortie) : tauxSortie;
         if (avantLance && r < tauxAvantLance) { this._passeCibleForcee = avantLance; return 'PASS'; }
         // sinon (cas TRÈS majoritaire) : lancement vers l'ouvreur (section 2b).
       }

@@ -889,6 +889,92 @@ test('un trois-quarts ne passe que si le suivant est MIEUX SERVI que lui', () =>
 });
 
 
+// --- LE DEMI DE MELEE DOIT SE SERVIR DE SES AVANTS -------------------------
+// P1-xx a rendu le jeu au pres PILOTABLE dans les cinq derniers metres
+// (cfgAttaque.jeuAuPresLigne, module par profilJeuAuPres). Partout AILLEURS le
+// taux est reste la constante historique 0,18 — `tauxAvantLance` vaut
+// litteralement `zone === 'CINQ_M' ? tauxPres : zone === 'OPP_22' ?
+// tauxPres * 0.35 : 0.18`. Sur les trois quarts du terrain, donc, le n°9 de
+// TOUS les clubs sort le ballon exactement de la meme facon.
+//
+// Mesure sur 10 matchs, cible REELLE de chaque passe du n°9 (1 825 passes) :
+//   vers le n°10      63,5 %   recul -4,51 m
+//   vers un AVANT     16,9 %   recul -2,45 m
+//   vers le n°15      10,2 %   recul -7,12 m
+// Un vrai demi de melee alterne : environ un tiers des sorties de regroupement
+// partent au pres (pick-and-go, passe a plat a un avant lance).
+//
+// CE QUE CE CORRECTIF N'APPORTE PAS, ET IL FAUT LE DIRE : du terrain. J'etais
+// parti de la decomposition du gain par temps de jeu (6 945 phases) — gain net
+// +1,46 m = course +3,73 m MOINS recul des passes -2,43 m — en me disant qu'une
+// sortie au pres coute deux metres de moins (-2,45 m contre -4,51 m) et ferait
+// donc avancer le ballon. Mesure : FAUX. Le recul des passes baisse bien
+// (-2,43 -> -2,15 m) mais la course baisse DAVANTAGE (+3,73 -> +3,31 m), un
+// avant portant moins loin qu'un trois-quarts. Gain net 1,46 -> 1,29 m. Le jeu
+// confine au milieu du terrain (P2-15) reste entier.
+//
+// Ce que le correctif apporte est ailleurs, et c'est un critere de refus
+// EXPLICITE de CLAUDE.md : « les avants et les trois-quarts jouent exactement
+// pareil », « les memes actions se repetent tout le temps ». Sur les trois
+// quarts du terrain, le n°9 de tous les clubs sortait le ballon a l'identique.
+//
+// CE N'EST PAS UN RAIL. Comme le jeu au pres pres de la ligne, le taux devient
+// une CONSIGNE D'EQUIPE (`cfgAttaque.sortieAvant`, pilotable par le Mode Club
+// via attaqueA / attaqueB) modulee par l'EFFECTIF REELLEMENT ALIGNE (meme
+// `profilJeuAuPres` : puissance du pack contre vitesse de la ligne). Deux
+// equipes ne sortent donc pas le ballon de la meme facon, et le joueur decide.
+function partAvantsSortieNeuf(config, graines) {
+  let avants = 0, total = 0;
+  for (const seed of graines) {
+    const m = new MatchEngine(seed, 4800, config);
+    let attente = null;
+    const brut = m.log.bind(m);
+    m.log = (type, team, msg, extra) => {
+      if ((type === 'PASSE' || type === 'JEU_LARGE') && extra && extra.de === 9 && m.porteur) {
+        attente = { vers: extra.vers };
+      }
+      return brut(type, team, msg, extra);
+    };
+    for (let t = 0; t < 4800; t += 0.2) {
+      m.tick(0.2);
+      if (attente) { total++; if (attente.vers <= 8) avants++; attente = null; }
+    }
+  }
+  return { part: 100 * avants / total, total };
+}
+test('le demi de melee se sert de ses avants a la sortie du regroupement', () => {
+  const r = partAvantsSortieNeuf(undefined, [1, 2, 3, 4, 5, 6, 7, 8]);
+  assert.ok(r.total > 800, `echantillon trop petit (${r.total} passes du n°9)`);
+  // Seuil a 22 % : la revendication defendable est « un quart a un tiers des
+  // passes du 9 », pas un chiffre au point pres. Il reste mordant — l'ancien
+  // comportement (16,9 %) le fait rougir avec de la marge.
+  assert.ok(r.part >= 22,
+    `le n°9 ne sert un avant que dans ${r.part.toFixed(1)} % de ses passes : il sort `
+    + `mecaniquement vers l ouvreur (mesure avant correctif : 16,9 %)`);
+});
+test('la sortie de regroupement est une CONSIGNE d equipe, pas un rail', () => {
+  const graines = [1, 2, 3, 4, 5, 6];
+  const auPres = partAvantsSortieNeuf({ attaqueA: { sortieAvant: 0.75 }, attaqueB: { sortieAvant: 0.75 } }, graines);
+  const auLarge = partAvantsSortieNeuf({ attaqueA: { sortieAvant: 0.05 }, attaqueB: { sortieAvant: 0.05 } }, graines);
+  assert.ok(auPres.part - auLarge.part >= 15,
+    `consigne « au pres » ${auPres.part.toFixed(1)} % contre « au large » ${auLarge.part.toFixed(1)} % : `
+    + `la consigne d equipe ne change pas assez le jeu pour que le joueur la voie`);
+});
+test('la sortie de regroupement depend de l EFFECTIF aligne, pas seulement de la consigne', () => {
+  // Meme consigne, deux effectifs opposes : un pack lourd devant une ligne
+  // lente doit jouer plus au pres qu'un pack leger devant une ligne rapide.
+  // C'est la garantie que les joueurs du club comptent vraiment.
+  const lourd = {}, leger = {};
+  for (let n = 1; n <= 8; n++) { lourd[n] = { puissance: 95 }; leger[n] = { puissance: 35 }; }
+  for (let n = 9; n <= 15; n++) { lourd[n] = { vitesse: 45 }; leger[n] = { vitesse: 95 }; }
+  const graines = [1, 2, 3, 4, 5, 6];
+  const a = partAvantsSortieNeuf({ joueursA: lourd, joueursB: lourd }, graines);
+  const b = partAvantsSortieNeuf({ joueursA: leger, joueursB: leger }, graines);
+  assert.ok(a.part - b.part >= 5,
+    `pack lourd/ligne lente ${a.part.toFixed(1)} % contre pack leger/ligne rapide ${b.part.toFixed(1)} % : `
+    + `l effectif reellement aligne ne change pas la sortie de regroupement`);
+});
+
 // --- UNE INTERCEPTION, C'EST UNE PASSE LONGUE ------------------------------
 // L'interception etait tiree a TAUX PLAT (PROBA_INTERCEPTION, module par la
 // seule adresse du defenseur) des qu'un defenseur se trouvait a moins de 1,2 m

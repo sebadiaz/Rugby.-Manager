@@ -512,9 +512,9 @@
     avants: {
       label: 'Jeu d\'avants', defaut: 'equilibre',
       options: {
-        proche: { nom: 'Près du ruck', description: 'Le n°8 privilégie le pick-and-go au près plutôt qu\'une sortie rapide aux trois-quarts.', compromis: 'Conserve mieux le ballon près du regroupement, mais le jeu avance plus lentement (moins de rythme).', melee: { pickAndGoHuit: { dominant: 0.6, normal: 0.22 } } },
-        equilibre: { nom: 'Équilibré', description: 'Sortie de mêlée standard, décision au cas par cas.', compromis: 'Réglage neutre du moteur — aucun compromis appliqué.', melee: null },
-        large: { nom: 'Ouvert aux 3/4', description: 'Sort vite le ballon aux trois-quarts, peu de pick-and-go.', compromis: 'Exploite mieux la vitesse des trois-quarts, mais moins de temps de jeu conservé par les avants.', melee: { pickAndGoHuit: { dominant: 0.15, normal: 0.05 } } },
+        proche: { nom: 'Près du ruck', description: 'Le n°8 privilégie le pick-and-go au près, et le n°9 sert un avant lancé plutôt que l\'ouvreur à la sortie des regroupements.', compromis: 'Conserve mieux le ballon près du regroupement, mais le jeu avance plus lentement (moins de rythme) — un avant porte moins loin qu\'un trois-quarts.', melee: { pickAndGoHuit: { dominant: 0.6, normal: 0.22 } }, attaque: { sortieAvant: 0.60 } },
+        equilibre: { nom: 'Équilibré', description: 'Sortie de mêlée et de regroupement standard, décision au cas par cas.', compromis: 'Réglage neutre du moteur — aucun compromis appliqué.', melee: null, attaque: null },
+        large: { nom: 'Ouvert aux 3/4', description: 'Sort vite le ballon aux trois-quarts, peu de pick-and-go et peu de ballons donnés aux avants au ruck.', compromis: 'Exploite mieux la vitesse des trois-quarts, mais moins de temps de jeu conservé par les avants et des sorties de regroupement plus coûteuses en terrain.', melee: { pickAndGoHuit: { dominant: 0.15, normal: 0.05 } }, attaque: { sortieAvant: 0.12 } },
       },
     },
     rythme: {
