@@ -2780,11 +2780,14 @@
         // decomposition du gain par temps de jeu (6 945 phases) — gain net
         // +1,46 m = course +3,73 m MOINS recul des passes -2,43 m — en me
         // disant qu'une sortie au pres coute deux metres de moins (-2,45 m
-        // contre -4,51 m) et ferait donc avancer le ballon. MESURE : c'est
-        // faux. Le recul des passes baisse bien (-2,43 -> -2,15 m) mais la
-        // course baisse DAVANTAGE (+3,73 -> +3,31 m), parce qu'un avant porte
-        // moins loin qu'un trois-quarts. Gain net 1,46 -> 1,29 m : legerement
-        // moins bon. Le jeu confine au milieu du terrain (P2-15) reste entier.
+        // contre -4,51 m) et ferait donc avancer le ballon. C'est faux : le
+        // recul des passes baisse bien (-2,43 -> -2,15 m) mais la course baisse
+        // DAVANTAGE (+3,73 -> +3,31 m), un avant portant moins loin qu'un
+        // trois-quarts. Les deux effets se compensent — comparaison APPARIEE
+        // sur 300 graines (Bonferroni) : gain/temps de jeu -0,062 +/- 0,162,
+        // NON ETABLI, comme les dix autres metriques du banc. Le patch ne coute
+        // ni ne rapporte de terrain ; le jeu confine au milieu (P2-15) reste
+        // entier. Son effet est sur QUI joue, pas sur la forme du match.
         //
         // Ce que le correctif apporte est ailleurs, et c'est un critere
         // explicite de CLAUDE.md : deux equipes ne jouaient pas differemment.

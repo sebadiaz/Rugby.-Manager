@@ -615,9 +615,30 @@ gain net par phase   +1,46 m   (médiane +0,08 ; repère réel +3 à +5)
 ```
 
 et j'en avais conclu qu'une sortie au près, moins chère de deux mètres, ferait avancer le ballon.
-Mesuré : **non**. Le recul des passes baisse bien (−2,43 → −2,15 m) mais la course baisse
-**davantage** (+3,73 → +3,31 m), parce qu'un avant porte moins loin qu'un trois-quarts. Gain net
-**1,46 → 1,29 m**, légèrement moins bon. Le jeu confiné au milieu du terrain (P2-15) reste entier.
+C'est faux : le recul des passes baisse bien (−2,43 → −2,15 m) mais la course baisse **davantage**
+(+3,73 → +3,31 m), parce qu'un avant porte moins loin qu'un trois-quarts.
+
+**Et j'ai sur-lu la suite, ce qu'il faut corriger aussi.** J'en avais déduit « gain net 1,46 →
+1,29 m, légèrement moins bon » — à partir d'exécutions NON appariées. La comparaison appariée
+sur 300 graines dit : **−0,062 ± 0,162, non établi**. Les deux effets se compensent. Le patch ne
+coûte pas de terrain ; il n'en rapporte pas non plus. Le jeu confiné au milieu (P2-15) reste
+entier.
+
+**Banc A/B, 300 graines appariées, Bonferroni (z = 2,84) — AUCUNE métrique établie :**
+
+| métrique | avant | après | écart |
+|---|---|---|---|
+| Essais | 6,48 | 6,46 | −0,017 ±0,477 |
+| Points | 52,77 | 52,64 | −0,133 ±2,884 |
+| Passes | 454,8 | 452,7 | −2,16 ±9,62 |
+| Courses | 213,2 | 214,4 | +1,19 ±4,39 |
+| Rucks | 160,8 | 162,3 | +1,51 ±3,84 |
+| Plaquages | 238,1 | 237,7 | −0,40 ±5,37 |
+| Gain/temps de jeu | 1,43 | 1,37 | −0,062 ±0,162 |
+
+C'est le résultat recherché : le correctif change **qui joue**, pas la forme statistique du
+match. La variété des décisions augmente à réalisme constant — ce que le banc, qui n'agrège que
+des volumes, ne peut pas voir, et que les tests de consigne et d'effectif mesurent directement.
 
 **Ce que le correctif apporte réellement** est un critère de refus *explicite* de CLAUDE.md —
 « les mêmes actions se répètent tout le temps », « les avants et les trois-quarts jouent
@@ -643,6 +664,11 @@ Nouveau test M6b, vérifié rouge avant câblage.
 **Audit de creusage** : `baseSortie * profilJeuAuPres(att)` → `* 1` ne fait rougir que le test 3 ;
 supprimer la lecture de la consigne ne fait rougir que le test 2. Chaque levier est protégé par
 exactement le test qui le revendique.
+
+**Portes** : invariants 48/48, calibration 500 matchs 21/21 (0 échec, tous les repères CLAUDE.md
+dans leur fourchette — rucks 161,3 pour [70-180], le risque redouté ne s'est pas matérialisé),
+S12 12/12, test-melee 12/12. Navigateur 1400×1000 et 390×844 : `sortieAvant` arrive au moteur
+(0,60 / défaut / 0,12) et le réglage « Occupation au pied » survit à la fusion.
 
 ---
 
