@@ -580,6 +580,58 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-39. Variabilité dans les duels : trois variantes testées, aucune ne marche — et ma propre alarme était mal cadrée
+- **Statut : AUCUN CORRECTIF — et correction du cadrage de P2-37**
+- Fichiers concernés : aucun (arbre de travail intact pendant tout l'essai)
+
+Suite à la décision de donner de la variabilité aux duels plutôt que de toucher aux attributs.
+
+**Trois variantes essayées, toutes sur des COPIES du moteur** (jamais l'arbre de travail — cf.
+l'incident de P2-36), toutes tirées du **RNG semé**, donc « même graine = même match » préservé et
+vérifié à chaque essai :
+
+| variante | ±3 | ±10 |
+|---|---|---|
+| référence | 75 % de victoires A | **100 %** |
+| A — forme redessinée chaque seconde (±6 %) | 75 % | **100 %** |
+| B — forme par joueur, tirée une fois par match | 83 % | **100 %** |
+| C — forme d'ÉQUIPE, tirée une fois par match | 63 % | **100 %** |
+
+**Aucune ne rétablit la moindre surprise à ±10.** La variante A échoue pour la raison annoncée
+avant la mesure : un bruit indépendant se moyenne sur les milliers de courses d'un match. La
+variante B échoue parce que quinze tirages indépendants se moyennent au niveau de l'équipe. Et la
+variante C — un dé d'équipe, que j'avais annoncé refuser par principe parce qu'il décide avant le
+coup d'envoi sans qu'aucune action ne l'explique — **ne marche pas davantage** : un avantage de
+8 % de vitesse appliqué des milliers de fois ne se renverse pas avec ±6 %.
+
+**MA PROPRE ALARME ÉTAIT MAL CADRÉE, et c'est le résultat le plus utile de cette entrée.** P2-37
+titrait « `vitesse` décide les matchs » sur la base des cas ±10 et ±20. Or dans
+`club-pyramide-france.js`, les bandes de niveau par division sont :
+
+| palier | bande `niveauClub` | écart de vitesse interne |
+|---|---|---|
+| 1 | 0,55 – 0,85 | ~6 points, soit **±3** |
+| 2 | 0,35 – 0,60 | ~5 points |
+| 3 | 0,15 – 0,45 | ~6 points |
+
+**L'écart entre le premier et le dernier d'une même division vaut ±3**, pas ±10. Et à ±3 le moteur
+donne **75 % de victoires** pour le meilleur — ce qui est réaliste pour un premier contre un
+dernier, et descend vers 55-60 % entre clubs de milieu de tableau. Les cas à ±10 et ±20 sont des
+écarts **inter-divisions** (premier du palier 1 contre dernier du palier 3), où une démonstration
+est le résultat normal.
+
+**Conclusion.** Le rapport de domination entre `vitesse` et les autres attributs (4,4 contre 1)
+reste exact et documenté. Mais la conséquence que j'en tirais — « le match est joué d'avance » —
+**n'existe pas à l'échelle que le joueur rencontre**. Il n'y a donc pas de correctif honnête à
+livrer sur ce levier, et le rééquilibrage que j'allais entreprendre aurait été fondé sur un cas
+extrême qui ne se produit pas en jeu.
+
+**Leçon de méthode.** Un balayage d'attributs mesure une *sensibilité*, pas une *situation de
+jeu*. Avant d'en tirer un défaut, il faut vérifier **quelle plage de valeurs le jeu produit
+réellement** — ici, la réponse tenait dans une fonction de douze lignes.
+
+---
+
 ### P2-38. Renforcer les autres attributs : la mesure dit qu'ils ne sont pas sous-câblés
 - **Statut : MESURE — aucun correctif, la direction demande un arbitrage**
 - Fichiers concernés : aucun
@@ -636,7 +688,12 @@ la simulation du rugby au lieu de l'en rapprocher. Ce n'est pas une décision qu
 
 ---
 
-### P2-37. `vitesse` décide les matchs : dose-effet, ablation, et pourquoi je ne livre pas de correctif
+### P2-37. `vitesse` domine les autres attributs : dose-effet, ablation, et pourquoi je ne livre pas de correctif
+
+> **Cadrage corrigé (cf. P2-39)** : le titre disait d'abord « décide les matchs ». Les cas ±10 et
+> ±20 utilisés ici sont des écarts INTER-DIVISIONS ; entre deux clubs d'une même division l'écart
+> vaut ±3, où le meilleur gagne 75 % du temps — un résultat réaliste. La domination sur les autres
+> attributs est réelle ; la conclusion « le match est joué d'avance » ne l'était pas.
 - **Statut : DIAGNOSTIC ÉTABLI — aucun correctif, la suite est une décision de conception**
 - Fichiers concernés : aucun (moteur inchangé)
 
