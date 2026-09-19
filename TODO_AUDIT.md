@@ -580,6 +580,53 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-35. Le plaqueur compte déjà : une étape recommandée, mesurée, et abandonnée
+- **Statut : PAS DE DÉFAUT — aucun correctif, et une recommandation de ma part corrigée**
+- Fichiers concernés : aucun
+
+À la fin de P2-34 j'avais recommandé comme étape suivante de « faire compter le plaqueur autant
+que le porteur », en écrivant qu'« un plaqueur d'élite et un plaqueur médiocre cèdent la même
+distance ». **C'était faux, et la mesure le dit.**
+
+**Ce que j'avais lu.** Le plaquage du défenseur n'apparaît dans la résolution du contact que via
+un seuil binaire : `ruckDominant = (defenseurProche.plaquage - porteur.vitesse) > 12 && rng() < 0.3`.
+Mesure sur 10 matchs (1 765 contacts) : la marge va de −38 (p10) à +24 (p90), médiane −1, et
+seuls **28 %** des contacts dépassent le seuil. J'en avais conclu que dans 72 % des cas le
+plaqueur ne changeait rien.
+
+**Ce que la mesure dit.** Ce 28 % concerne le seul `ruckDominant`, pas l'influence totale du
+plaqueur. En contact construit (même géométrie, même porteur, même rideau, 40 graines), en ne
+faisant varier que le plaquage du défenseur :
+
+| plaquage | terrain concédé |
+|---|---|
+| 20 | 1,482 m |
+| 40 | 1,482 m |
+| 55 | 1,482 m |
+| 68 | 1,223 m |
+| 80 | 0,855 m |
+| 95 | **0,361 m** |
+
+Le terrain concédé varie d'un **facteur quatre**. L'influence est forte et graduée — elle passe
+notamment par le taux de plaquages manqués, pas seulement par `ruckDominant`, ce que ma lecture
+du seul site de décision ne montrait pas.
+
+**Le palier bas n'est pas un oubli, c'est une saturation.** En dessous de ~55, le plaqueur ne
+freine plus du tout le porteur : il n'y a plus rien à concéder au-delà de l'avancée complète
+permise par le rideau. C'est physiquement sensé, et ce n'est pas un défaut à corriger.
+
+**Le test correspondant a été écrit, puis retiré.** Comparant un plaqueur à 68 et un à 40, il
+était **VERT sur le moteur non corrigé** — comme le test sur l'élan retiré en P2-34. Deux fois de
+suite, une étape recommandée sur la base d'une lecture de code s'est révélée sans objet à la
+mesure.
+
+**Leçon de méthode, la même que P2-33 sous une autre forme :** lire le site de décision d'un
+attribut ne suffit pas à conclure qu'il est ignoré — il peut agir par d'autres canaux (ici, les
+plaquages manqués). Avant de recommander une étape, il faut **mesurer l'effet total de l'attribut
+sur la sortie**, pas inspecter l'endroit où on s'attend à le trouver.
+
+---
+
 ### P2-34. Au contact, le moteur créditait OÙ l'on percute, jamais QUI percute
 - **Statut : CORRIGÉ**
 - Fichiers concernés : `engine/rugby-engine.js`, `docs/rugby-engine.js`, `server/test-invariants.js`
