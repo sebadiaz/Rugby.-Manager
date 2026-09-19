@@ -580,6 +580,78 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-37. `vitesse` décide les matchs : dose-effet, ablation, et pourquoi je ne livre pas de correctif
+- **Statut : DIAGNOSTIC ÉTABLI — aucun correctif, la suite est une décision de conception**
+- Fichiers concernés : aucun (moteur inchangé)
+
+P2-36 avait mesuré que `vitesse` pèse +73,4 points pour ±20, six fois le deuxième attribut. Cette
+entrée instruit le *pourquoi*.
+
+**1. Courbe dose-effet** (20 graines appariées, A reçoit +δ, B reçoit −δ) :
+
+| écart | qui | écart de score | victoires A |
+|---|---|---|---|
+| *(témoin)* | — | *−2,9* | *40 %* |
+| ±3 | tous | **+15,4** | 80 % |
+| ±6 | tous | +25,3 | 85 % |
+| ±10 | tous | +41,5 | **100 %** |
+| ±20 | tous | +71,8 | 100 % |
+| ±20 | avants seuls | +30,1 | 100 % |
+| ±20 | trois-quarts seuls | +48,0 | 100 % |
+
+**±3 points d'attribut — soit 0,15 m/s, 2,4 % — donnent déjà +15,4 points et 80 % de victoires.**
+À ±10, plus aucune surprise en 20 matchs. La direction avants/trois-quarts est juste (48,0 contre
+30,1 : la vitesse des lignes arrière pèse davantage), mais l'ampleur ne l'est pas.
+
+**2. Ce n'est pas théorique : c'est l'écart que le jeu produit lui-même.** Dans
+`club-generation-joueurs.js`, `ecartNiveau = (niveauClub − 0,5) * 20` : le meilleur club de la
+pyramide a **+10 de vitesse** sur le plus faible — exactement le cas mesuré à +41,9 points et
+100 % de victoires.
+
+**3. Ablation des cinq canaux** (duel ±10, 16 graines, un canal figé à 65 à la fois) :
+
+| canal neutralisé | écart restant |
+|---|---|
+| aucun (référence) | +41,9 |
+| **a) déplacement (`vitesseMs`)** | **+6,8** |
+| b) réussite du plaquage | +35,9 |
+| c) plaquage dominant | +37,3 |
+| d) amplitude du crochet | +36,4 |
+| e) plaquage de sauvetage | +41,9 |
+| f) le rapide garde le ballon | +33,8 |
+
+**84 % de l'effet vient du seul déplacement.** J'avais soupçonné le canal (d) — `amplEvite` va de
+1,0 à 3,5 selon la vitesse, ce qui ressemblait au même attribut payé deux fois : il ne pèse que
+~5 points sur 42. **Troisième fois cette semaine qu'une lecture de code désigne le mauvais endroit
+et que la mesure corrige.**
+
+**4. Pourquoi aucun correctif n'est livré.** Le mapping actuel est
+`3,0 + (vitesse/100) × 5,0`, soit 5,25 m/s pour un pilier (45) et 7,5 m/s pour un ailier (90).
+Le *rapport* (1,43) est proche du réel (~9,5 / 7 = 1,36) : **la plage n'est pas aberrante**, et la
+comprimer rendrait le moteur moins réaliste, pas plus. L'hypertrophie vient de la structure — dans
+une simulation où tout se décide par les positions, un avantage de vitesse systématique gagne
+chaque course, chaque soutien, chaque couverture, des centaines de fois par match.
+
+Les deux issues possibles sont l'une et l'autre **des décisions de conception, pas des
+correctifs** :
+- donner de la variabilité aux duels, pour qu'un avantage marginal gagne *souvent* et non
+  *toujours* — mais cela touche au déterminisme par graine, garanti par un invariant ;
+- renforcer les canaux des autres attributs, pour que recruter un bon talonneur, un bon passeur ou
+  un bon buteur pèse autant que recruter un rapide — c'est un rééquilibrage large de la
+  progression du Mode Club.
+
+**Ce qui est en jeu pour le joueur** : tant que la vitesse domine 6 contre 1, la profondeur de
+recrutement du Mode Club est largement décorative — améliorer son effectif revient à acheter de la
+vitesse.
+
+**Contrôle fait en passant** : `adresse` et `passe` ne sont PAS morts (contrairement à
+`endurance`, cf. P2-36). `adresse` pilote la réussite des tirs au but,
+`skill = (adresse − 70) × 0,004` borné [−0,22 ; +0,10], soit ~4 points par match sur ±20 — réel,
+mais sous la résolution du balayage (±7 points avec Bonferroni à 24 graines). La prudence de P2-36
+(« la question reste ouverte ») était justifiée.
+
+---
+
 ### P2-36. Balayage des attributs : `endurance` ne jouait pas, `vitesse` écrase tout
 - **Statut : CORRIGÉ pour `endurance` — `vitesse` mesuré et documenté, non traité**
 - Fichiers concernés : `engine/rugby-engine.js`, `docs/rugby-engine.js`, `server/test-invariants.js`
