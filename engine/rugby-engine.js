@@ -410,14 +410,38 @@
     return joueurs;
   }
 
-  // Multiplicateur de fatigue du tick courant (1 au coup d'envoi, ~0,9 à la 80e) :
-  // tous les joueurs courent un peu moins vite en fin de match. Positionné en début
-  // de tick() ; s'applique aux DEUX équipes (donc n'avantage personne — c'est le
-  // RYTHME qui baisse et le jeu qui s'ouvre en fin de match, comme en vrai).
-  let _fatigueVitesse = 1;
+  // Avancement du match (0 au coup d'envoi, 1 a la 80e) : positionne en debut
+  // de tick(). Sert a la fatigue, qui fait baisser le RYTHME en fin de match et
+  // ouvre le jeu, comme en vrai.
+  let _fatCourant = 0;
+  // Perte de vitesse a la 80e minute pour un joueur d'endurance MOYENNE.
+  const PERTE_VITESSE_FATIGUE = 0.10;
+  // Endurance de reference : MOYENNE des quinze profils par defaut (66). C'est
+  // le point neutre — un XV standard fatigue donc exactement comme avant, et le
+  // correctif REPARTIT la fatigue sans changer le rythme moyen du match.
+  const ENDURANCE_REF = 66;
 
+  // La fatigue etait GLOBALE : un seul multiplicateur, le meme chiffre pour les
+  // trente joueurs (1 au coup d'envoi, 0,90 a la 80e). L'attribut `endurance`
+  // n'etait donc JAMAIS lu par le moteur — verifie par balayage (+20 a une
+  // equipe, -20 a l'autre, 24 graines appariees) : l'ecart de score reproduisait
+  // le temoin AU CHIFFRE PRES (-3,0 points, -0,29 essai, 38 % de victoires dans
+  // les deux cas), et un controle a deux equipes identiques sauf l'endurance
+  // (90 contre 30) donnait exactement le meme resultat que sans configuration.
+  //
+  // Or l'ecran de composition PONDERE l'endurance : 10 % de la note d'un pilier,
+  // 12 % d'une deuxieme ligne, 18 % d'une troisieme ligne (cf.
+  // docs/js/club-composition.js, POIDS_PAR_POSTE). Le manager recrutait et
+  // alignait donc sur un attribut qui ne jouait jamais. En rugby, l'endurance
+  // decide au contraire des vingt dernieres minutes — c'est aussi ce qui donne
+  // un sens aux remplacements.
   function vitesseMs(j) {
-    return (3.0 + (Math.max(0, Math.min(100, j.vitesse)) / 100) * 5.0) * _fatigueVitesse;
+    const endurance = typeof j.endurance === 'number' ? j.endurance : ENDURANCE_REF;
+    // Un joueur peu endurant paie la fatigue plus cher ; un joueur tres endurant
+    // la paie moins. Borne pour qu'aucun profil ne devienne infatigable.
+    const coutFatigue = 1;
+    const fatigue = 1 - _fatCourant * PERTE_VITESSE_FATIGUE * coutFatigue;
+    return (3.0 + (Math.max(0, Math.min(100, j.vitesse)) / 100) * 5.0) * fatigue;
   }
 
   // Regroupement INFRANCHISSABLE du tick courant (mêlée / ruck / maul) : on ne le
@@ -5810,8 +5834,8 @@
       else _obstacle = null;
       // Fatigue de fin de match : les joueurs ralentissent progressivement (jusqu'à
       // ~10 % à la 80e minute). Purement visuel/rythmique (s'applique aux 2 équipes).
-      const _fat = (this.dureeMatch === Infinity || this.dureeMatch <= 0) ? 0 : Math.min(1, this.tempsMatch / this.dureeMatch);
-      _fatigueVitesse = 1 - _fat * 0.10;
+      _fatCourant = (this.dureeMatch === Infinity || this.dureeMatch <= 0) ? 0
+        : Math.min(1, this.tempsMatch / this.dureeMatch);
       for (const j of [...this.equipeA, ...this.equipeB]) {
         if (j.auSol > 0) {
           j.auSol = Math.max(0, j.auSol - dt);

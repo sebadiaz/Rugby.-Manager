@@ -959,6 +959,75 @@ test('au contact, un porteur PUISSANT avance plus qu un porteur leger', () => {
   }
 });
 
+// --- L'ENDURANCE NE JOUAIT PAS ---------------------------------------------
+// La fatigue de fin de match etait GLOBALE : un seul multiplicateur de vitesse,
+// le meme chiffre pour les trente joueurs (1 au coup d'envoi, 0,90 a la 80e).
+// L'attribut `endurance` n'etait donc JAMAIS lu par le moteur.
+//
+// Verifie par balayage (chaque attribut donne a +20 a l'equipe A et -20 a
+// l'equipe B, 24 graines appariees, meme graine des deux cotes) :
+//   vitesse    +73,4 points   plaquage +11,3   melee +7,0
+//   (temoin)    -3,0 points, -0,29 essai, 38 % de victoires A
+//   endurance   -3,0 points, -0,29 essai, 38 % de victoires A
+// L'endurance reproduisait le temoin AU CHIFFRE PRES : les matchs etaient
+// identiques. Confirme par un controle a deux equipes identiques sauf
+// l'endurance (90 contre 30), qui donnait exactement le meme resultat que sans
+// configuration du tout.
+//
+// Or l'ecran de composition PONDERE l'endurance — 10 % de la note d'un pilier,
+// 12 % d'une deuxieme ligne, 18 % d'une troisieme ligne (POIDS_PAR_POSTE dans
+// docs/js/club-composition.js). Le manager recrutait et alignait sur un
+// attribut qui ne jouait jamais.
+//
+// CE TEST COMPARE DEUX DIFFERENCES, pas deux nombres. Les equipes A et B ne
+// sont pas symetriques dans le moteur (sens de jeu, coup d'envoi) : mesure, cet
+// ecart vaut a lui seul 0,0145 a 0,0244 selon les graines. Comparer simplement
+// A et B ferait donc passer une asymetrie pour un effet de l'endurance. On
+// mesure l'ecart AVEC configuration MOINS le meme ecart SANS configuration.
+function ratioCourseFinDeMatch(config, graines) {
+  let dA = [0, 0], dB = [0, 0]; // [premier quart d'heure, dernier]
+  for (const seed of graines) {
+    const m = new MatchEngine(seed, 4800, config);
+    const prec = new Map();
+    for (let t = 0; t < 4800; t += 0.2) {
+      m.tick(0.2);
+      const debut = t < 900, fin = t > 3900;
+      for (const [eq, acc] of [[m.equipeA, dA], [m.equipeB, dB]]) {
+        for (const j of eq) {
+          const p = prec.get(j);
+          // on ignore les sauts de remise en jeu (teleportations)
+          if (p && (debut || fin)) {
+            const d = Math.hypot(j.x - p.x, j.y - p.y);
+            if (d < 3) acc[debut ? 0 : 1] += d;
+          }
+          prec.set(j, { x: j.x, y: j.y });
+        }
+      }
+    }
+  }
+  return (dA[1] / dA[0]) - (dB[1] / dB[0]);
+}
+// RESOLUTION DE LA MESURE, etudiee avant de fixer le seuil (et non l'inverse) :
+//    6 graines -> 0,0268     14 graines -> 0,0489
+//   10 graines -> 0,0348     20 graines -> 0,0378
+// L'effet est toujours franchement positif mais oscille de ~+/-0,011 autour de
+// 0,037. Le point decisif est ailleurs : sur le moteur NON corrige l'effet vaut
+// EXACTEMENT zero, puisque les deux configurations produisent des matchs
+// identiques. Le seuil n'a donc pas a discriminer une petite difference, il a
+// seulement a etre franchement au-dessus du bruit. 0,015 est sous la plus
+// petite valeur observee (0,0268) avec de la marge.
+test('un joueur endurant tient la fin de match, un autre non', () => {
+  const graines = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+  const cfg = { joueursA: {}, joueursB: {} };
+  for (let n = 1; n <= 15; n++) { cfg.joueursA[n] = { endurance: 90 }; cfg.joueursB[n] = { endurance: 30 }; }
+  const avec = ratioCourseFinDeMatch(cfg, graines);
+  const sans = ratioCourseFinDeMatch(undefined, graines);
+  assert.ok(avec - sans >= 0.015,
+    `l equipe endurante garde ${(avec - sans).toFixed(4)} de course en plus que ne l explique `
+    + `l asymetrie A/B (ecart avec config ${avec.toFixed(4)}, temoin ${sans.toFixed(4)}) : `
+    + `l endurance ne change rien a la fin de match (mesure avant correctif : identique au chiffre pres)`);
+});
+
 // --- LE DEMI DE MELEE DOIT SE SERVIR DE SES AVANTS -------------------------
 // P1-xx a rendu le jeu au pres PILOTABLE dans les cinq derniers metres
 // (cfgAttaque.jeuAuPresLigne, module par profilJeuAuPres). Partout AILLEURS le

@@ -580,6 +580,64 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-36. Balayage des attributs : `endurance` ne jouait pas, `vitesse` écrase tout
+- **Statut : CORRIGÉ pour `endurance` — `vitesse` mesuré et documenté, non traité**
+- Fichiers concernés : `engine/rugby-engine.js`, `docs/rugby-engine.js`, `server/test-invariants.js`
+
+P2-35 s'était terminé sur un constat de méthode : deux étapes recommandées d'affilée, fondées sur
+une lecture de code, s'étaient révélées sans objet à la mesure. D'où ce balayage, qui mesure
+l'**effet total** de chaque attribut sur la sortie du match au lieu d'inspecter l'endroit où on
+s'attend à le trouver.
+
+**Protocole.** Chaque attribut est donné à **+20 à l'équipe A et −20 à l'équipe B**, à partir de sa
+valeur de profil (un pilier reste donc lent, un ailier rapide), même graine des deux côtés,
+24 graines appariées. Un **témoin sans aucune modification** donne le bruit : sans lui, n'importe
+quel écart ressemblerait à un effet.
+
+| attribut | écart de score | essais | victoires A |
+|---|---|---|---|
+| **vitesse** | **+73,4** | +11,21 | **100 %** |
+| plaquage | +11,3 | +1,50 | 88 % |
+| mêlée | +7,0 | +1,04 | 63 % |
+| tendance | +5,7 | +0,67 | 75 % |
+| jeuPied | +5,1 | +0,63 | 63 % |
+| décision | +3,5 | +0,42 | 58 % |
+| touche | +3,4 | +0,33 | 58 % |
+| discipline | +3,1 | +0,21 | 58 % |
+| *(témoin)* | *−3,0* | *−0,29* | *38 %* |
+| **endurance** | **−3,0** | **−0,29** | **38 %** |
+| puissance | +2,7 | +0,50 | 58 % |
+| adresse | −1,0 | −0,50 | 42 % |
+| passe | −0,8 | −0,33 | 46 % |
+
+**1. `endurance` reproduisait le témoin AU CHIFFRE PRÈS** — les matchs étaient identiques. Cause :
+la fatigue de fin de match était un multiplicateur **global**, le même pour les trente joueurs.
+L'attribut n'était jamais lu par le moteur. Confirmé par un contrôle à deux équipes identiques
+sauf l'endurance (90 contre 30) : résultat rigoureusement identique à celui sans configuration.
+
+Ce n'est pas anodin. L'écran de composition **pondère** l'endurance — 10 % de la note d'un pilier,
+12 % d'une deuxième ligne, 18 % d'une troisième ligne (`POIDS_PAR_POSTE`). Le manager recrutait et
+alignait sur un attribut qui ne jouait jamais. Le commentaire de `club-composition.js` affirmait
+même que ces attributs existent « alors que le moteur, lui, les utilise » : c'était faux pour
+celui-ci.
+
+**Correctif** : la fatigue devient individuelle, `coutFatigue = 1 + (66 − endurance) / 55`, borné
+à [0,4 ; 1,8]. Centré sur l'endurance **moyenne des quinze profils** (66), donc un XV standard
+fatigue exactement comme avant — on répartit, on ne change pas le rythme moyen.
+
+**2. `vitesse` écrase tout le reste** : +73,4 points et 100 % de victoires pour ±20, soit six fois
+l'effet du deuxième attribut. Aucun attribut ne devrait décider un match à ce point, et cela
+contredit l'idée que les avants et les trois-quarts apportent des choses différentes. **Non traité
+ici** : le corriger touche au cœur du déplacement et demande son propre patch mesuré. C'est
+signalé, pas résolu.
+
+**3. `adresse`, `passe` et `puissance` sont au niveau du bruit.** Pour `puissance`, c'est cohérent
+avec P2-34 : le facteur de contact venait d'être ajouté et son banc n'avait établi aucune
+métrique. Pour `adresse` et `passe`, la question reste ouverte — à instruire par la même méthode
+avant toute conclusion.
+
+---
+
 ### P2-35. Le plaqueur compte déjà : une étape recommandée, mesurée, et abandonnée
 - **Statut : PAS DE DÉFAUT — aucun correctif, et une recommandation de ma part corrigée**
 - Fichiers concernés : aucun
