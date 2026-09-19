@@ -439,7 +439,7 @@
     const endurance = typeof j.endurance === 'number' ? j.endurance : ENDURANCE_REF;
     // Un joueur peu endurant paie la fatigue plus cher ; un joueur tres endurant
     // la paie moins. Borne pour qu'aucun profil ne devienne infatigable.
-    const coutFatigue = 1;
+    const coutFatigue = Math.max(0.4, Math.min(1.8, 1 + (ENDURANCE_REF - endurance) / 55));
     const fatigue = 1 - _fatCourant * PERTE_VITESSE_FATIGUE * coutFatigue;
     return (3.0 + (Math.max(0, Math.min(100, j.vitesse)) / 100) * 5.0) * fatigue;
   }
