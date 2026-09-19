@@ -580,6 +580,64 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-34. Au contact, le moteur créditait OÙ l'on percute, jamais QUI percute
+- **Statut : CORRIGÉ**
+- Fichiers concernés : `engine/rugby-engine.js`, `docs/rugby-engine.js`, `server/test-invariants.js`
+
+`avanceContact` ne dépendait que du **rideau défensif** (0,55 / 1,00 / 1,55 m selon le nombre de
+défenseurs devant le porteur). La puissance du porteur n'entrait nulle part.
+
+**Mesure en contact construit** (même géométrie, même plaqueur, 40 graines) :
+
+| | puissance 90 | puissance 35 |
+|---|---|---|
+| rideau de 0 | 1,50 m | 1,50 m |
+| rideau de 2 | 0,53 m | 0,53 m |
+
+Identique au centième. Un pilier et un ailier percutant le même rideau gagnaient exactement le
+même terrain, alors que CLAUDE.md (rôle 4) demande explicitement que « les avants soient meilleurs
+pour les contacts ».
+
+**J'avais mal cadré le défaut au départ, et il faut le dire.** J'avais présenté comme anomalie le
+fait que les porteurs puissants gagnent **moins** de terrain en agrégé (0,50 m contre 1,07 m,
+terciles de puissance sur 1 998 contacts). C'est en réalité normal : les avants percutent près du
+regroupement, donc face à un rideau fourni, les trois-quarts dans l'espace — et en vrai rugby
+aussi les trois-quarts font plus de mètres par portage. Le vrai défaut était l'effet **nul à
+situation égale**. L'écart agrégé reste négatif après correctif (−0,18 m), et c'est attendu.
+
+**Correctif.** Facteur de puissance centré sur la puissance **mesurée** au contact
+(`PUISSANCE_CONTACT_REF = 57`, moyenne pondérée de 1 666 contacts : 75 côté avants, 44 côté
+trois-quarts), borné à ±70 %. Un porteur moyen gagne donc exactement ce qu'il gagnait avant : on
+répartit, on ne gonfle pas — même principe que le rideau lui-même.
+
+**Un test creux retiré plutôt que livré.** J'avais aussi écrit « un porteur lancé avance plus
+qu'un porteur à l'arrêt ». Il était **vert sur le moteur non corrigé** : l'élan agit déjà, non par
+une règle de contact mais par la distance que le porteur parcourt avant que le contact ne se
+résolve (rideau de 2 : 1,17 m lancé contre 0,53 m à l'arrêt). Il n'y a donc pas de défaut de ce
+côté, et un test qui passe sans correctif ne protège rien. La raison est consignée dans le fichier
+de test, pour qu'on ne le réécrive pas.
+
+**Audit de creusage** : neutraliser le facteur (coefficient à zéro) **ou** écraser ses bornes à
+`[1, 1]` fait rougir le test ; le moteur restauré repasse au vert.
+
+**Portes** : invariants **49/49**, calibration 500 matchs **21/21, 0 échec** (tous les repères
+CLAUDE.md dans leur fourchette — rucks 164,7 et plaquages 240,6 montent mais restent dedans),
+S12 **12/12**. Navigateur 1400×1000 et 390×844 : le match se joue, la feuille de match affiche des
+statistiques réelles, un seul 404 (`version.json`, artefact de déploiement absent en local).
+
+Le risque annoncé — l'avancée moyenne au contact passe de 0,80 à 0,75 m, et un commentaire du
+moteur avertissait qu'une telle baisse avait déjà fait sortir le temps de jeu effectif de sa
+fourchette — **ne s'est pas matérialisé**.
+
+**Banc A/B, 300 graines appariées, Bonferroni — aucune métrique établie :** essais
+−0,383 ±0,488, points −1,837 ±2,898, rucks +3,58 ±4,12, plaquages +4,09 ±5,93, gain/temps de jeu
+−0,019 ±0,163. **Réserve honnête** : l'écart sur les essais vaut 78 % de l'intervalle. Il n'est pas
+établi, mais une légère baisse des essais ne peut pas être exclue — le banc dit lui-même qu'un
+effet plus petit que sa résolution est *invisible, pas nul*. À re-mesurer si un correctif ultérieur
+va dans le même sens.
+
+---
+
 ### P2-33. P2-15 élucidé : le gain par temps de jeu est épinglé par la ligne de hors-jeu
 - **Statut : DIAGNOSTIC ÉTABLI — aucun correctif livré, et une erreur d'instrument corrigée**
 - Fichiers concernés : `engine/rugby-engine.js`, `docs/rugby-engine.js`, `server/test-invariants.js`
