@@ -631,6 +631,28 @@ contredit l'idée que les avants et les trois-quarts apportent des choses diffé
 ici** : le corriger touche au cœur du déplacement et demande son propre patch mesuré. C'est
 signalé, pas résolu.
 
+**Portes** : invariants **50/50**, calibration 500 matchs **21/21, 0 échec** (tous les repères
+CLAUDE.md dans leur fourchette), S12 **12/12**. Navigateur 1400×1000 et 390×844 : zéro erreur de
+page, seul le 404 `version.json` (artefact de déploiement absent en local), et l'effet est
+**visible** — deux équipes identiques sauf l'endurance (90 contre 30) donnent 26,5 points contre
+20,3 sur 4 matchs.
+
+**Banc A/B, 300 graines appariées, Bonferroni — aucune métrique établie** : essais +0,200 ±0,479,
+points +1,253 ±3,049, rucks −0,073 ±4,335, gain/temps de jeu +0,017 ±0,146. Le correctif change
+**qui tient la fin de match**, pas la forme statistique du match — le résultat recherché.
+
+**Audit de creusage** : neutraliser `coutFatigue` donne **exactement 0,0000** d'effet (écart avec
+configuration 0,0233, témoin 0,0233 — le même chiffre), ce qui montre que le test protège
+précisément cette règle et rien d'autre.
+
+**INCIDENT, et sa leçon.** Le premier commit de ce correctif a poussé `engine/rugby-engine.js`
+**avec la mutation de l'audit encore en place** (`coutFatigue = 1`), pendant que
+`docs/rugby-engine.js` gardait la bonne version : les deux moteurs avaient divergé. Cause : j'ai
+commité pendant que l'audit de creusage — destructeur par construction — tournait sur l'arbre de
+travail. Réparé au commit suivant. **Règle à retenir : un audit de creusage doit travailler sur
+une copie**, comme les bancs A/B le font déjà via le scratchpad ; à défaut, aucune écriture git ne
+doit avoir lieu tant qu'il tourne.
+
 **3. `adresse`, `passe` et `puissance` sont au niveau du bruit.** Pour `puissance`, c'est cohérent
 avec P2-34 : le facteur de contact venait d'être ajouté et son banc n'avait établi aucune
 métrique. Pour `adresse` et `passe`, la question reste ouverte — à instruire par la même méthode
