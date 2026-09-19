@@ -580,6 +580,62 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-38. Renforcer les autres attributs : la mesure dit qu'ils ne sont pas sous-câblés
+- **Statut : MESURE — aucun correctif, la direction demande un arbitrage**
+- Fichiers concernés : aucun
+
+Suite à la décision de renforcer les autres attributs plutôt que de toucher à `vitesse`. Premier
+travail : refaire le balayage **à la résolution nécessaire**, celui de P2-36 ayant ±7 points
+d'intervalle, ce qui ne permettait pas de classer les attributs faibles.
+
+**Balayage à 60 graines** (±20, Bonferroni sur 13, quatre lots en parallèle) :
+
+| attribut | écart de score | IC 95 % |
+|---|---|---|
+| **vitesse** | **+75,5** | ±5,8 |
+| plaquage | +14,1 | ±7,0 |
+| **endurance** | **+8,2** | ±5,5 |
+| tendance | +7,0 | ±5,8 |
+| mêlée | +6,0 | ±6,6 |
+| jeuPied | +5,8 | ±5,7 |
+| passe | +4,6 | ±5,9 |
+| discipline | +3,4 | ±5,6 |
+| puissance | +2,8 | ±6,6 |
+| touche | +2,3 | ±6,1 |
+| décision | +1,9 | ±6,4 |
+| adresse | +0,3 | ±6,2 |
+| *(témoin)* | *−3,7* | *±6,0* |
+
+`endurance` remonte en troisième position : le correctif de P2-36 se voit ici, alors que
+l'attribut était collé au témoin avant.
+
+**Puis vérification, attribut par attribut, de l'hypothèse « ils sont sous-câblés ». Elle ne tient
+pas.**
+
+- **`touche`** agit fortement là où il doit agir : conservation sur lancer propre **94,1 % contre
+  71,6 %** entre une équipe à 90 et une à 30 (témoin : 86,7 / 95,0). La fourchette réelle est
+  ~92 % à ~80 % : le moteur couvre donc déjà plus large que le rugby. Son faible poids au SCORE est
+  arithmétique — 22 points de conservation sur ~10 lancers font ~2 ballons perdus de plus par
+  match. Une saturation existe (95/5 donne exactement 90/30, les bornes [0,06 ; 0,30] de
+  `probaVolTouche` mordent déjà), mais elle borne l'attribut là où le rugby le borne aussi.
+- **`adresse`** pilote les tirs au but, `skill = (adresse − 70) × 0,004` borné [−0,22 ; +0,10],
+  soit ~0,16 d'écart de réussite sur ±20. Sur ~6 tirs par match, cela fait ~4 points — exactement
+  ce que le balayage mesure.
+- **`passe`** est lu à deux endroits (réussite de passe, probabilité de passe en avant).
+- Seul **`endurance`** était réellement mort, et c'est corrigé (P2-36).
+
+**Ce que cela implique pour la direction choisie.** Les autres attributs ne sont pas sous-câblés :
+leur effet est **proportionné à la fréquence de ce qu'ils décident** — ~20 touches, ~10 mêlées,
+~6 tirs au but par match. `vitesse` domine parce qu'elle s'applique à **chaque déplacement de
+chaque joueur à chaque tick**, des milliers de fois par match. Ce n'est pas un défaut de câblage,
+c'est un rapport de fréquence.
+
+Renforcer les autres attributs reviendrait donc à **augmenter le poids des touches, mêlées et tirs
+au but au-delà de ce qu'ils pèsent en rugby réel** — un choix de jeu assumable, mais qui éloigne
+la simulation du rugby au lieu de l'en rapprocher. Ce n'est pas une décision que je prends seul.
+
+---
+
 ### P2-37. `vitesse` décide les matchs : dose-effet, ablation, et pourquoi je ne livre pas de correctif
 - **Statut : DIAGNOSTIC ÉTABLI — aucun correctif, la suite est une décision de conception**
 - Fichiers concernés : aucun (moteur inchangé)
