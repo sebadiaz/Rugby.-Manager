@@ -467,6 +467,12 @@
   // Rayon de contact du plaquage (m) : distance a laquelle le contact se resout,
   // et donc aussi celle a laquelle un SECOND defenseur participe au plaquage.
   const RAYON_PLAQUAGE = 2.2;
+  // Puissance de reference au contact : MOYENNE MESUREE des porteurs amenes au
+  // contact sur 10 matchs (1 666 contacts) — 75 cote avants, 44 cote
+  // trois-quarts, 57 en moyenne ponderee. C'est le point neutre de
+  // `facteurPuissance` : un porteur moyen gagne exactement ce qu'il gagnait
+  // avant l'introduction du facteur, donc le correctif REPARTIT sans gonfler.
+  const PUISSANCE_CONTACT_REF = 57;
   // Interception : distance maximale au couloir de passe (m) pour qu'un
   // defenseur soit en position, et probabilite de prise quand il l'est.
   //
@@ -2090,7 +2096,28 @@
         // 0,665 m : il créait bien l'écart, mais en RABAISSANT le gain de
         // terrain du match (1,46 -> 1,22 m mesuré au banc) et en faisant sortir
         // le temps de jeu effectif de sa fourchette (32,4 -> 30,9 min).
-        const avanceContact = rideau >= 2 ? 0.55 : rideau === 1 ? 1.0 : 1.55;
+        //
+        // ET SELON QUI PERCUTE. Le rideau decrit OU l'on percute ; il ne disait
+        // rien de QUI percute. Mesure en contact construit (meme geometrie,
+        // meme plaqueur, 40 graines) : un porteur de 90 de puissance et un de
+        // 35 gagnaient EXACTEMENT le meme terrain — 1,50 m contre un rideau
+        // vide, 0,53 m contre un rideau de deux, au centieme pres.
+        //
+        // Sur des matchs complets l'effet etait meme INVERSE : terciles de
+        // puissance sur 1 998 contacts, les plus puissants gagnaient 0,50 m
+        // contre 1,07 m pour les plus legers — parce que les avants percutent
+        // pres du regroupement (rideau fourni) et les trois-quarts dans
+        // l'espace. C'est l'exact contraire du rugby, ou l'on donne le ballon au
+        // plus lourd precisement pour avancer dans le trafic (CLAUDE.md role 4).
+        //
+        // Centre sur la puissance MESUREE au contact (57) : un porteur moyen
+        // gagne exactement ce qu'il gagnait avant — on repartit, on ne gonfle
+        // pas. Borne a +/-70 % pour qu'un pilier ne traverse pas le rideau.
+        const puissPorteur = typeof this.porteur.puissance === 'number'
+          ? this.porteur.puissance : PUISSANCE_CONTACT_REF;
+        const facteurPuissance = Math.max(0.3, Math.min(1.7,
+          1 + (puissPorteur - PUISSANCE_CONTACT_REF) / 90));
+        const avanceContact = (rideau >= 2 ? 0.55 : rideau === 1 ? 1.0 : 1.55) * facteurPuissance;
         if (!this.ruckDominant) this.porteur.x += this.porteur.sensAttaque * avanceContact;
         // LOI 8 — PLAQUE SUR LA LIGNE : un porteur plaque a moins d'un metre de
         // l'en-but, et dont l'elan l'emmene quand meme au-dela de la ligne,

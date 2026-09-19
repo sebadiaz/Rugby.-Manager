@@ -889,6 +889,76 @@ test('un trois-quarts ne passe que si le suivant est MIEUX SERVI que lui', () =>
 });
 
 
+// --- AU CONTACT, LA PUISSANCE DU PORTEUR NE COMPTAIT PAS -------------------
+// `avanceContact` ne dependait que du RIDEAU defensif (0,55 / 1,00 / 1,55 m
+// selon le nombre de defenseurs devant). Ni la puissance du porteur, ni son
+// elan n'entraient dans le calcul : un pilier de 90 de puissance et un ailier
+// de 35 percutant le MEME rideau gagnaient exactement le meme terrain.
+//
+// Mesure en contact construit (meme geometrie, meme plaqueur, 40 graines) :
+//   rideau de 0 : puissance 90 -> 1,50 m   puissance 35 -> 1,50 m
+//   rideau de 2 : puissance 90 -> 0,53 m   puissance 35 -> 0,53 m
+// Identique au centieme.
+//
+// Sur des matchs complets l'effet est meme INVERSE : les porteurs les plus
+// puissants gagnent MOINS de terrain au contact que les plus legers (0,50 m
+// contre 1,07 m, terciles de puissance sur 1 998 contacts). La raison est
+// mecanique : les avants percutent pres du regroupement, donc face a un rideau
+// fourni, et les trois-quarts dans l'espace. Le moteur creditait DONC OU l'on
+// percute, jamais QUI percute — l'exact contraire du rugby, ou l'on donne le
+// ballon au plus lourd precisement pour avancer dans le trafic
+// (cf. CLAUDE.md role 4 : « les avants doivent etre meilleurs pour les
+// contacts »).
+//
+// ON REPARTIT, ON NE GONFLE PAS : le facteur est centre sur la puissance
+// MESUREE au contact (moyenne 57), de sorte qu'un porteur moyen gagne
+// exactement ce qu'il gagnait avant.
+//
+// SEULE LA PUISSANCE EST AJOUTEE, PAS L'ELAN. J'avais ecrit un second test
+// (« un porteur lance avance plus qu'un porteur a l'arret ») : il etait VERT
+// sur le moteur NON corrige. L'elan agit deja, non par une regle de contact
+// mais par la distance que le porteur parcourt avant que le contact ne se
+// resolve (rideau de 2 : 1,17 m lance contre 0,53 m a l'arret). Il n'y a donc
+// pas de defaut de ce cote, et un test qui passe sans correctif ne protege
+// rien : il a ete retire plutot que livre.
+function gainContactConstruit(puissance, vitesse, nbRideau) {
+  let total = 0, n = 0;
+  for (let seed = 1; seed <= 40; seed++) {
+    const m = new MatchEngine(seed, 600);
+    for (let t = 0; t < 30; t += 0.2) m.tick(0.2);
+    m.phase = 'PORTE'; m.timerPhase = 3; m.possession = 'A';
+    m.passeVisuelle = null; m.combinaison = null; m.penaliteRecul = null;
+    m.ruckPoint = null; m._neufLibre = false; m.maul = null;
+    const porteur = m.equipeA.find((j) => j.numero === 12);
+    m.porteur = porteur;
+    porteur.auSol = 0; porteur.x = 50; porteur.y = 35; porteur._enchaine = 0;
+    porteur._percee = 0; porteur.puissance = puissance; porteur.vitesseCourante = vitesse;
+    for (const j of m.equipeA) if (j !== porteur) { j.auSol = 0; j.x = 40; j.y = 35; }
+    for (const j of m.equipeB) {
+      j.auSol = 0; j.horsJeuKick = 0; j.fixeCooldown = 0; j.missCooldown = 0;
+      j.ruckRecovery = 0; j.sinBin = 0; j.x = 95; j.y = 68;
+    }
+    const pl = m.equipeB.find((j) => j.numero === 6);
+    pl.x = 52.0; pl.y = 35; pl.plaquage = 70;
+    m.equipeB.filter((j) => j.numero <= 5).slice(0, nbRideau)
+      .forEach((j, i) => { j.x = 53 + i; j.y = 34 + i; });
+    const x0 = porteur.x;
+    for (let k = 0; k < 6 && !m.ruckPoint; k++) m.tick(0.2);
+    if (m.ruckPoint) { total += (m.ruckPoint.x - x0) * porteur.sensAttaque; n++; }
+  }
+  return n ? total / n : NaN;
+}
+test('au contact, un porteur PUISSANT avance plus qu un porteur leger', () => {
+  for (const rideau of [0, 2]) {
+    const lourd = gainContactConstruit(90, 5.3, rideau);
+    const leger = gainContactConstruit(35, 5.3, rideau);
+    assert.ok(lourd - leger >= 0.30,
+      `rideau de ${rideau} : puissance 90 gagne ${lourd.toFixed(2)} m contre ${leger.toFixed(2)} m `
+      + `pour puissance 35 — la puissance du porteur ne compte pas au contact `
+      + `(mesure avant correctif : identique au centieme)`);
+  }
+});
+
 // --- LE DEMI DE MELEE DOIT SE SERVIR DE SES AVANTS -------------------------
 // P1-xx a rendu le jeu au pres PILOTABLE dans les cinq derniers metres
 // (cfgAttaque.jeuAuPresLigne, module par profilJeuAuPres). Partout AILLEURS le
