@@ -1116,6 +1116,105 @@ test('la portee de la penalite en touche depend du BUTEUR, pas du hasard seul', 
     + `tirage sans attribut)`);
 });
 
+// --- LE MAUL PENETRANT : LE DE POUSSAIT PLUS FORT QUE LES DEUX PACKS -------
+// La poussee valait `(fAtt - fDef) / 200 + (alea - 0,5) * 0,5`. L'ecart de
+// force entre les deux packs vaut 27 points en moyenne, soit 0,135 m/s, quand
+// le terme de hasard vaut +/-0,25 m/s : LE DE PESAIT DEUX FOIS LES TRENTE
+// AVANTS. Et comme « use it » se declenche apres 1 s sous 0,2 m/s, le maul
+// mourait des que le tirage tombait mal.
+//
+// Mesure sur 20 matchs : le maul avancait de 2,38 m (repere reel 5 a 15 m),
+// 0,79 m seulement a moins de 10 m de la ligne, et produisait ZERO essai par
+// match — une des deux machines a essais des avants n'existait pas.
+//
+// CE QUE J'AI CRU, ET QUE LA MESURE A DEMENTI. J'ai d'abord craint qu'inverser
+// le rapport (packs 5x le de) rende l'issue deterministe. C'est le contraire :
+// plus il y a de hasard, plus le maul OSCILLE autour du seuil d'arret, ni
+// n'avance franchement ni ne s'arrete proprement. Dosages intermediaires
+// mesures (rapport packs/de) :
+//   0,54x (avant)  avancee 2,38 m  duree 14,3 s  essais 0,00  melee  9 %
+//   1,7x           avancee 4,73 m  duree 20,9 s  essais 0,05  melee 24 %
+//   2,2x           avancee 6,84 m  duree 23,6 s  essais 0,20  melee 24 %
+//   3,0x           avancee 6,52 m  duree 20,8 s  essais 0,25  melee 21 %
+//   5,0x (retenu)  avancee 7,61 m  duree 18,9 s  essais 0,20  melee 13 %
+// Le dosage retenu est le seul qui donne une avancee reelle SANS faire finir un
+// maul sur quatre en melee. Et ce n'est pas un rail : deux packs equivalents
+// donnent un ecart nul, donc un maul qui ne bouge pas — c'est du rugby.
+//
+// LE BLOCAGE DE P2-25 EST LEVE, ET DANS L'AUTRE SENS. Cette entree avait refuse
+// trois calibrations parce qu'elles coutaient 15 a 20 % des portages dans les
+// cinq metres, le maul monopolisant la possession pres de la ligne. Mesure ici :
+//   portages a moins de 5 m  8,55 -> 10,10 par match (+18 %)
+//   part des avants          28,7 % -> 32,7 %
+// En avancant reellement, le maul AMENE le ballon dans les cinq metres au lieu
+// d'y mourir quinze metres plus loin : il en cree au lieu d'en consommer.
+test('un maul penetrant avance vraiment, et un pack dominant le pousse plus loin', () => {
+  // L'INSTRUMENT MESURE L'AVANCEE DE L'EQUIPE QU'ON FAIT VARIER. Premiere
+  // version : je moyennais TOUS les mauls du match. Quand on donne le pack
+  // lourd a A, les mauls de B (pack leger) entraient dans la meme moyenne, et
+  // l'ecart mesure sortait a l'envers (8,69 m contre 10,68 m). On filtre donc
+  // sur maul.equipePossession, et on prend le sens du maul lui-meme.
+  function avanceeMaul(config, graines, equipe) {
+    let total = 0, n = 0;
+    for (const seed of graines) {
+      const m = new MatchEngine(seed, 4800, config);
+      let cur = null, phaseAvant = m.phase;
+      for (let t = 0; t < 4800; t += 0.2) {
+        m.tick(0.2);
+        if (m.phase === 'MAUL' && phaseAvant !== 'MAUL' && m.maul) {
+          cur = (!equipe || m.maul.equipePossession === equipe)
+            ? { x0: m.maul.x, sens: m.maul.sens, xFin: m.maul.x } : null;
+        } else if (m.phase !== 'MAUL' && phaseAvant === 'MAUL' && cur) {
+          total += (cur.xFin - cur.x0) * cur.sens; n++; cur = null;
+        }
+        if (m.phase === 'MAUL' && m.maul && cur) cur.xFin = m.maul.x;
+        phaseAvant = m.phase;
+      }
+    }
+    return n ? total / n : NaN;
+  }
+  const graines = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+  // 1. Le maul doit AVANCER. Repere reel : 5 a 15 m pour un maul lance.
+  //    Seuil a 4 m, sous la valeur mesuree sur le moteur livre (7,44 m sur 59
+  //    mauls) avec de la marge, et tres au-dessus de l'ancienne (2,88 m sur ces
+  //    memes graines, 2,38 m sur 20 matchs).
+  const avance = avanceeMaul(undefined, graines);
+  assert.ok(avance >= 4,
+    `un maul n avance que de ${avance.toFixed(2)} m (mesure avant correctif : 2,38 m ; `
+    + `repere reel 5 a 15 m) : le maul penetrant n existe pas`);
+  // 2. CE SONT LES PACKS QUI DECIDENT, PAS LE DE. Deux packs opposes en
+  //    puissance doivent produire des mauls tres differents. Avant le
+  //    correctif, le terme de hasard ecrasait cet ecart.
+  //
+  //    LE SEUIL VIENT D'UN AUDIT DE CREUSAGE, PAS D'UNE INTUITION. J'ai
+  //    fabrique deux moteurs AVEUGLES AUX PACKS (poussee constante 0,35 puis
+  //    0,45 au lieu de (fAtt - fDef)/70), qui passent l'assertion 1 — le maul
+  //    avance bien — mais ou la force des packs ne joue plus aucun role. Ecart
+  //    residuel mesure : +1,00 m et -1,34 m. Ce residu n'est pas nul parce
+  //    qu'un pack lourd change quand meme OU et COMBIEN DE TEMPS le maul vit.
+  //    Le moteur livre donne +23,07 m (pack lourd 21,45 m contre pack leger
+  //    -1,62 m : le pack leger RECULE). Le seuil de 2 m est donc au-dessus du
+  //    residu aveugle et dix fois sous la valeur reelle.
+  //
+  //    P2-25 avait retire une version de ce garde-fou parce que son ecart
+  //    mesure (1,86 m) portait une incertitude de +/-2,0 m : il basculait au
+  //    tirage. Ici l'ecart est douze fois plus grand que cette incertitude.
+  //
+  //    VERIFIE HORS DE SES PROPRES GRAINES (lecon des garde-fous fragiles
+  //    precedents : un seuil cale sur un seul jeu de graines bascule ailleurs).
+  //    Sur les graines 11-20, disjointes de celles du test : avancee 7,83 m
+  //    (seuil 4) et ecart 18,04 m (seuil 2). Les deux assertions tiennent
+  //    largement des deux cotes.
+  const lourd = {}, leger = {};
+  for (let n = 1; n <= 8; n++) { lourd[n] = { puissance: 95 }; leger[n] = { puissance: 25 }; }
+  const packFort = avanceeMaul({ joueursA: lourd, joueursB: leger }, graines, 'A');
+  const packFaible = avanceeMaul({ joueursA: leger, joueursB: lourd }, graines, 'A');
+  assert.ok(packFort - packFaible >= 2,
+    `pack lourd ${packFort.toFixed(2)} m contre pack leger ${packFaible.toFixed(2)} m : `
+    + `l ecart de ${(packFort - packFaible).toFixed(2)} m ne se voit pas — au maul, ce sont les `
+    + `deux packs qui doivent decider, pas le tirage`);
+});
+
 // --- LE DEMI DE MELEE DOIT SE SERVIR DE SES AVANTS -------------------------
 // P1-xx a rendu le jeu au pres PILOTABLE dans les cinq derniers metres
 // (cfgAttaque.jeuAuPresLigne, module par profilJeuAuPres). Partout AILLEURS le

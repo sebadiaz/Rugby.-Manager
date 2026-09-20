@@ -4354,6 +4354,37 @@
     // Calcul de la poussée : déséquilibre des forces des deux paquets liés, borné
     // et bruité — un maul ne garantit jamais une avancée nette. Renvoie l'avancée
     // (mètres ce tick, positive = vers la ligne adverse).
+    //
+    // LE DÉ POUSSAIT PLUS FORT QUE LES TRENTE AVANTS. La formule valait
+    // `(fAtt - fDef) / 200 + (aléa - 0,5) * 0,5`. L'écart de force entre les
+    // deux paquets vaut ~27 points en moyenne, soit 0,135 m/s, face à un terme
+    // de hasard de ±0,25 m/s : le tirage pesait DEUX FOIS les deux packs
+    // réunis. Et comme « use it » se déclenche après 1 s sous 0,2 m/s, le maul
+    // mourait dès que le dé tombait mal. Mesure sur 20 matchs : avancée 2,38 m
+    // (repère réel 5 à 15 m), 0,79 m à moins de 10 m de la ligne, et ZÉRO essai
+    // sur maul par match — une des deux machines à essais des avants
+    // n'existait pas.
+    //
+    // CE QUE J'AI CRU, ET QUE LA MESURE A DÉMENTI : je craignais qu'en donnant
+    // le poids aux packs l'issue devienne un rail. C'est l'inverse. Plus il y a
+    // de hasard, plus le maul OSCILLE autour du seuil d'arrêt, sans jamais
+    // avancer franchement ni s'arrêter proprement — et il finit en mêlée.
+    // Dosages mesurés (rapport packs/dé — avancée, durée, essais, % mêlée) :
+    //   0,54x (avant)  2,38 m  14,3 s  0,00  9 %
+    //   1,7x           4,73 m  20,9 s  0,05  24 %
+    //   2,2x           6,84 m  23,6 s  0,20  24 %
+    //   3,0x           6,52 m  20,8 s  0,25  21 %
+    //   5,0x (retenu)  7,61 m  18,9 s  0,20  13 %
+    // Le dosage retenu est le seul qui donne une avancée réelle SANS faire
+    // finir un maul sur quatre en mêlée. Ce n'est pas un rail non plus : deux
+    // packs équivalents donnent un écart nul, donc un maul qui piétine.
+    //
+    // LE BLOCAGE DE P2-25 EST LEVÉ, ET DANS L'AUTRE SENS. Cette entrée avait
+    // refusé trois calibrations parce qu'elles coûtaient 15 à 20 % des portages
+    // dans les cinq mètres. Mesuré ici : portages à moins de 5 m 8,55 -> 10,10
+    // par match (+18 %), part des avants 28,7 % -> 32,7 %. En avançant
+    // réellement, le maul AMÈNE le ballon dans les cinq mètres au lieu d'y
+    // mourir quinze mètres plus loin : il en crée au lieu d'en consommer.
     _maulCalculerPoussee(dt) {
       const m = this.maul;
       const att = m.equipePossession === 'A' ? this.equipeA : this.equipeB;
@@ -4361,7 +4392,7 @@
       let fAtt = 0, fDef = 0;
       for (const j of att) if (j.auSol === 0 && Math.hypot(j.x - m.x, j.y - m.y) < 4) fAtt += forceMaul(j);
       for (const j of def) if (j.auSol === 0 && Math.hypot(j.x - m.x, j.y - m.y) < 4) fDef += forceMaul(j);
-      const net = (fAtt - fDef) / 200 + (this.rng() - 0.5) * 0.5;
+      const net = (fAtt - fDef) / 70 + (this.rng() - 0.5) * 0.15;
       m.vitesse = Math.max(-0.5, Math.min(0.8, net));
       return m.vitesse * dt;
     }

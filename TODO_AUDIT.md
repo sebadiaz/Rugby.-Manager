@@ -1493,51 +1493,78 @@ endroit (`ordreL`), et c'est elle qui fabrique les 69,5 %. Toute tentative devra
 nombre d'essais — le moteur en produit déjà assez.
 
 ### P2-25. Le maul pénétrant n'existe pas : le dé pousse deux fois plus que les deux packs
-- **Statut : DIAGNOSTIQUÉ, NON LIVRÉ — trois calibrations mesurées, aucune ne rend plus qu'elle ne coûte**
-- Fichiers concernés : `engine/rugby-engine.js` (`_maulCalculerPoussee`)
+- **Statut : CORRIGÉ — le blocage identifié ici était réel, mais son coût annoncé s'est révélé être un gain**
+- Fichiers concernés : `engine/rugby-engine.js` + `docs/rugby-engine.js` (`_maulCalculerPoussee`),
+  `server/test-invariants.js`
 
-**Le défaut, mesuré sur 20 matchs complets.** Un maul dure 12,3 s pour avancer **1,75 m**, et
-**0,50 m seulement à moins de 10 m de la ligne**. Un maul lancé réel gagne 5 à 15 m. Résultat :
-**zéro essai sur maul par match** — une des deux machines à essais des avants n'existe pas.
+**Le défaut, mesuré sur 20 matchs.** Un maul durait 14,3 s pour avancer **2,38 m**, et
+**0,79 m seulement à moins de 10 m de la ligne**. Un maul lancé réel gagne 5 à 15 m. Résultat :
+**zéro essai sur maul par match** — une des deux machines à essais des avants n'existait pas.
 
-**La cause, mesurée en instrumentant 3402 ticks de poussée.** La vitesse vaut
+**La cause, mesurée en instrumentant 3402 ticks de poussée.** La vitesse valait
 `(fAtt - fDef) / 200 + (aléa - 0,5) × 0,5`. Or l'écart de force entre les deux packs vaut
 **27 points en moyenne**, soit **0,135 m/s**, quand le terme de hasard vaut **±0,25 m/s**.
-Le dé pèse donc **deux fois plus que les deux paquets d'avants**. Et comme un maul immobile
-une seconde déclenche le « use it », le maul meurt avant d'avoir poussé. L'attaque est en
-supériorité sur 91,8 % des ticks, pour une marge qui ne produit rien.
+Le dé pesait donc **deux fois plus que les deux paquets d'avants réunis**. Et comme un maul
+sous 0,2 m/s pendant une seconde déclenche le « use it », le maul mourait dès que le tirage
+tombait mal. L'attaque était en supériorité sur 91,8 % des ticks, pour une marge qui ne
+produisait rien.
 
-**Trois calibrations essayées, toutes mesurées (40 matchs pour la zone des 5 m) :**
+**Le correctif : `(fAtt - fDef) / 70 + (aléa - 0,5) × 0,15`.** Les packs pèsent désormais cinq
+fois le dé, au lieu de la moitié.
 
-| variante | avancée du maul | durée | portages dans les 5 m | part des avants |
+**CE QUE J'AI CRU, ET QUE LA MESURE A DÉMENTI.** Je craignais qu'en donnant le poids aux packs
+l'issue devienne un rail — le reproche exact que le joueur m'a fait sur les décisions. C'est
+l'inverse : **plus il y a de hasard, plus le maul est mauvais**, parce qu'il oscille autour du
+seuil d'arrêt sans jamais ni avancer franchement ni s'arrêter proprement, et finit en mêlée.
+Cinq dosages mesurés (20 matchs chacun) :
+
+| rapport packs/dé | avancée | durée | essais sur maul | fin en mêlée |
 |---|---|---|---|---|
-| moteur livré | 1,75 m | 12,3 s | **432** | **31,3 %** |
-| diviseur 200→70, aléa ±0,25→±0,15 | 9,08 m | 22,2 s | — | — |
-| + usure sur la distance (/12) | 4,52 m | 17,6 s | 347 | 27,4 % |
-| + usure sur distance ET temps | 2,96 m | 14,4 s | 368 | 29,3 % |
+| 0,54x (moteur d'avant) | 2,38 m | 14,3 s | 0,00 | 9 % |
+| 1,7x | 4,73 m | 20,9 s | 0,05 | **24 %** |
+| 2,2x | 6,84 m | 23,6 s | 0,20 | **24 %** |
+| 3,0x | 6,52 m | 20,8 s | 0,25 | 21 % |
+| **5,0x (retenu)** | **7,61 m** | 18,9 s | 0,20 | 13 % |
 
-La deuxième variante donne une avancée réaliste mais un maul qui **ne s'arrête jamais** : 22 s
-de moyenne et 1,20 maul par match finissant sur le garde-fou des 45 s, donc en mêlée. L'usure
-(la défense recule, ramène du monde, les jambes coûtent) corrige la durée — mais **toutes les
-variantes coûtent 15 à 20 % des portages dans les cinq mètres** et deux à quatre points de la
-part des avants, parce que le maul monopolise la possession près de la ligne au lieu de la
-rendre au jeu. Les essais sur maul plafonnent à 0,05-0,20 par match.
+Le dosage retenu est le seul qui donne une avancée réaliste SANS faire finir un maul sur quatre
+en mêlée. Et ce n'est pas un rail : deux packs équivalents donnent un écart nul, donc un maul
+qui piétine — ce qui est exactement ce que fait un maul entre deux packs équivalents.
 
-**Relever le taux de maul sur touche (0,45 → 0,80) ne sert à rien non plus** : mesuré, les
-mauls à moins de 10 m passent de 12 à 13 sur 20 matchs. Le goulot n'est pas le taux mais le
-NOMBRE de touches près de la ligne — **0,85 par match**, contre 2 à 4 en vrai.
+**LE BLOCAGE DE CETTE ENTRÉE EST LEVÉ, ET DANS LE SENS INVERSE DE CE QU'ELLE CRAIGNAIT.** La
+version précédente refusait ses trois calibrations parce qu'elles **coûtaient 15 à 20 % des
+portages dans les cinq mètres**, le maul monopolisant la possession près de la ligne. Mesuré
+sur le correctif retenu (20 matchs) :
 
-**Deux tests écrits puis retirés, et pourquoi.** « Le maul avance ≥ 3 m » décrivait un défaut
-que je n'ai pas su corriger profitablement : le garder rouge casserait la suite. « Au maul, ce
-sont les deux packs qui décident » passait déjà avant tout correctif (ce n'était donc pas la
-preuve d'un défaut), et surtout son propre écart mesuré — 1,86 m entre un pack à 95 de
-puissance et un pack à 30 — porte une incertitude de ±2,0 m sur 16 graines : il passait à 10
-graines par tirage favorable et échouait à 16. Un garde-fou qui bascule sur du bruit est
-lui-même un bug ; il n'est pas livré.
+| | avant | après |
+|---|---|---|
+| portages à moins de 5 m | 8,55/match | **10,10/match (+18 %)** |
+| part des avants dans ces portages | 28,7 % | **32,7 %** |
+| essais | 6,20 | 6,90 |
+| points | 53,0 | 56,6 |
 
-**Reprise recommandée, dans cet ordre :** (1) faire venir le jeu près de la ligne — 0,85 touche
-par match à moins de 5 m contre 2 à 4 en vrai, c'est là que tout se joue ; (2) seulement
-ensuite rééchelonner la poussée, quand un maul de plus ne prendra plus la place d'autre chose.
+En avançant réellement, le maul **AMÈNE** le ballon dans les cinq mètres au lieu d'y mourir
+quinze mètres plus loin : il en crée au lieu d'en consommer. Le point à surveiller est la
+hausse du score (53,0 → 56,6), qui reste dans le repère 25-70 mais s'en rapproche par le haut.
+
+**Le garde-fou livré, et son audit de creusage.** `server/test-invariants.js` :
+« un maul pénétrant avance vraiment, et un pack dominant le pousse plus loin ».
+
+1. *Une erreur d'instrument d'abord.* Ma première version moyennait TOUS les mauls du match.
+   En donnant le pack lourd à A, les mauls de B (pack léger) entraient dans la même moyenne :
+   l'écart sortait **à l'envers** (8,69 m contre 10,68 m) et le test échouait sur le moteur
+   corrigé. L'instrument filtre maintenant sur `maul.equipePossession`.
+2. *Le seuil vient d'une mesure, pas d'une intuition.* J'ai fabriqué deux moteurs **aveugles aux
+   packs** (poussée constante 0,35 puis 0,45), qui passent l'assertion « le maul avance » mais où
+   la force des packs ne joue plus : écart résiduel **+1,00 m** et **−1,34 m**. Le moteur livré
+   donne **+23,07 m** (pack lourd 21,45 m, pack léger **−1,62 m** : il recule). Le seuil de 2 m
+   est donc au-dessus du résidu aveugle et dix fois sous la valeur réelle.
+3. *Pourquoi ce garde-fou tient là où le précédent avait été retiré.* La version retirée mesurait
+   un écart de 1,86 m avec une incertitude de ±2,0 m : elle basculait au tirage. Ici l'écart est
+   douze fois plus grand que cette incertitude.
+
+**Ce qui reste vrai de l'ancien diagnostic.** Relever le taux de maul sur touche (0,45 → 0,80)
+ne sert toujours à rien : le goulot n'est pas le taux mais le NOMBRE de touches près de la ligne
+— **0,85 par match**, contre 2 à 4 en vrai. C'est la suite à traiter.
 
 ### P2-24. Près de la ligne, le moteur ne jouait pas ses avants — et la consigne d'équipe n'existait pas
 - **Statut : CORRIGÉ (partiellement : la part des avants dans les essais reste à 16,4 % contre ~33 % réels)**
