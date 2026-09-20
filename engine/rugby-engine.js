@@ -1759,26 +1759,7 @@
       this.log('PENALITE', equipe, `Penalite, equipe ${equipe} joue en touche et conserve le lancer`);
       this.possession = equipe;
       const sensAttaque = equipe === 'A' ? 1 : -1;
-      // AU COIN. Une penalite tapee en touche ne gagne pas dix metres : elle
-      // part au coin. Depuis 45 m, un buteur trouve la touche a 5-10 m de la
-      // ligne, soit 35-40 m gagnes. Le gain de 10-20 m faisait atterrir la
-      // touche loin de la ligne, et la sequence la plus banale du rugby moderne
-      // — penalite au coin, touche a 5 m, maul — ne se construisait pas.
-      //
-      // Mesure sur 20 matchs : 3,95 penalites tapees en touche par match, mais
-      // seulement 0,40 touche dans les 22 adverses. Avec la portee reelle, 1,40.
-      // (Zero touche a moins de 5 m dans les deux cas : c'est la LOI 18, la
-      // ligne de touche ne peut pas etre formee a moins de 5 m de la ligne de
-      // but — le moteur l'applique deja.)
-      //
-      // La portee depend du JEU AU PIED du buteur designe (reglage d'equipe,
-      // cf. buteurNumero) : choisir son botteur devient un vrai choix
-      // territorial, au lieu d'un tirage identique pour tous les clubs.
-      const buteurTouche = (equipe === 'A' ? this.equipeA : this.equipeB)
-        .find(j => j.numero === this.buteurNumero[equipe] && j.sinBin <= 0);
-      const jp = buteurTouche && typeof buteurTouche.jeuPied === 'number' ? buteurTouche.jeuPied : 60;
-      const portee = 22 + (jp - 60) * 0.35;
-      const gain = Math.max(8, portee * (0.75 + this.rng() * 0.5));
+      const gain = 10 + this.rng() * 10;
       const xTouche = Math.max(0, Math.min(LONGUEUR, position.x + sensAttaque * gain));
       const eqLanceur = equipe === 'A' ? this.equipeA : this.equipeB;
       // Loi 18 : le talonneur (n°2) lance, comme a la touche en jeu courant
