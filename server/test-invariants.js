@@ -1227,60 +1227,73 @@ test('une interception, c est une passe LONGUE, pas un pop a deux metres', () =>
 // meme terrain, la meme situation — mais deux intentions opposees doivent
 // produire deux matchs qui ne se jouent pas de la meme facon pres de la ligne.
 test('la consigne de l equipe change le jeu : deux intentions opposees ne se jouent pas pareil', () => {
-  function partAvantsPresLigne(consigne) {
-    let dans5 = 0, avants = 0;
-    for (let seed = 1; seed <= 48; seed++) {
-      const m = new MatchEngine(seed, 4800, {
-        attaqueA: { jeuAuPresLigne: consigne },
-        attaqueB: { jeuAuPresLigne: consigne },
+  // CE TEST A ETE REECRIT : LA GRANDEUR A CHANGE, ET LE SEUIL EST DEVENU PLUS
+  // EXIGEANT, PAS MOINS.
+  //
+  // Il mesurait la PART DES AVANTS dans les portages des cinq derniers metres —
+  // une trace agregee du comportement, sur ~230 portages par branche. Cette
+  // grandeur est trop bruitee pour porter un garde-fou :
+  //   seuil 15 -> tombe a 12,6 puis 13,8 sur des correctifs sans rapport
+  //   seuil  8 -> tombe a  7,9 sur un correctif de penalite en touche
+  // Mesure sur trois lots de graines disjoints, 48 graines chacun : l'ecart va
+  // de 7,7 a 15,1 SUR LE MEME MOTEUR. Doubler l'echantillon n'y suffit pas (la
+  // dispersion ne decroit pas comme sqrt(n) : les graines sont correlees), et
+  // elargir la zone aux 22 m degrade le rapport signal/bruit (effet 3,1 points
+  // pour +/-3,7, la consigne n'y agissant qu'a 0,35x).
+  //
+  // On interroge donc LA DECISION ELLE-MEME, en etat fige : le n°9 tient le
+  // ballon a 3 m de la ligne adverse, un avant lance a plat a cote de lui,
+  // l'ouvreur en retrait — exactement la situation que `jeuAuPresLigne` pilote.
+  // 400 interrogations par graine, sans laisser personne bouger.
+  //
+  // Le gain est de deux ordres de grandeur :
+  //                        effet mesure    dispersion entre lots
+  //   part des portages     7,7 a 15,1        7,4 points
+  //   decision en etat fige  83,9 a 84,5      0,6 point
+  // Et la mesure est IDENTIQUE A LA DECIMALE sur deux versions du moteur, dont
+  // celle qui avait fait echouer l'ancienne version de ce test.
+  function tauxAvantServi(consigne) {
+    let avant = 0, n = 0;
+    for (const seed of [1, 2, 3, 4, 5, 6]) {
+      const m = new MatchEngine(seed, 600, {
+        attaqueA: { jeuAuPresLigne: consigne }, attaqueB: { jeuAuPresLigne: consigne },
       });
-      for (let t = 0; t < 4800; t += 0.2) {
-        const cA = m.stats.A.carries, cB = m.stats.B.carries;
-        const porteur = m.porteur, phase = m.phase;
-        m.tick(0.2);
-        if ((m.stats.A.carries > cA || m.stats.B.carries > cB) && porteur && phase === 'PORTE') {
-          const dist = porteur.sensAttaque > 0 ? (100 - porteur.x) : porteur.x;
-          if (dist > 5) continue;
-          dans5++;
-          if (porteur.numero <= 8) avants++;
+      for (let t = 0; t < 30; t += 0.2) m.tick(0.2);
+      m.phase = 'PORTE'; m.timerPhase = 3; m.possession = 'A';
+      m.passeVisuelle = null; m.combinaison = null; m.penaliteRecul = null;
+      m.ruckPoint = { x: 97, y: 30 }; m.maul = null;
+      const neuf = m.equipeA.find((j) => j.numero === 9);
+      const huit = m.equipeA.find((j) => j.numero === 8);
+      const dix = m.equipeA.find((j) => j.numero === 10);
+      m.porteur = neuf;
+      neuf.auSol = 0; neuf.x = 97; neuf.y = 30; neuf._enchaine = 0;
+      huit.auSol = 0; huit.x = 97; huit.y = 33;   // avant lance, a plat
+      dix.auSol = 0; dix.x = 92; dix.y = 26;      // ouvreur en retrait
+      for (const j of m.equipeA) if (j !== neuf && j !== huit && j !== dix) { j.auSol = 0; j.x = 60; j.y = 5; }
+      for (const j of m.equipeB) {
+        j.auSol = 0; j.horsJeuKick = 0; j.fixeCooldown = 0; j.missCooldown = 0;
+        j.ruckRecovery = 0; j.sinBin = 0; j.x = 99; j.y = 68;
+      }
+      const def = m.equipeB.find((j) => j.numero === 6);
+      def.x = 99; def.y = 30;
+      for (let k = 0; k < 400; k++) {
+        m._neufLibre = true; m._passeCibleForcee = null;
+        if (m.choisirActionPorteur(neuf, def, 2.0, 0.2) === 'PASS') {
+          n++;
+          if (m._passeCibleForcee && m._passeCibleForcee.numero <= 8) avant++;
         }
       }
     }
-    return { part: dans5 ? avants / dans5 : 0, n: dans5 };
+    return n ? 100 * avant / n : NaN;
   }
-  const auLarge = partAvantsPresLigne(0.10);   // « on ecarte, meme a 3 m »
-  const auPres = partAvantsPresLigne(0.95);    // « on joue le pack »
-  assert.ok(auLarge.n >= 60 && auPres.n >= 60,
-    `echantillon trop petit (${auLarge.n} / ${auPres.n} portages a moins de 5 m)`);
-  // SEUIL ALIGNE SUR LA PRECISION DE L'INSTRUMENT — CALCULEE, PAS ESTIMEE.
-  //
-  // Historique : le seuil valait 15, puis a ete abaisse a 8 parce que la mesure
-  // « est effectivement tombee a 12,6 puis 13,8 sur des correctifs qui ne
-  // touchaient pas a la consigne ». 8 ne suffisait pas non plus : la mesure est
-  // tombee a 7,9 sur un correctif de penalite en touche, sans rapport.
-  //
-  // La resolution a donc ete CALCULEE au lieu d'etre estimee. C'est l'ecart de
-  // DEUX PROPORTIONS mesurees chacune sur ~230 portages (24 graines) :
-  //   erreur-type = sqrt(p1(1-p1)/n + p2(1-p2)/n) = 4,1 points
-  //   intervalle 95 % = +/- 7,9 points
-  // Un seuil a 8 pour une valeur centrale de 12,2 etait donc DANS la bande de
-  // bruit : il ne pouvait que basculer tot ou tard.
-  //
-  // Verifie par la mesure, trois lots de graines disjoints sur deux versions du
-  // moteur (l'ecart en points entre « au pres » et « au large ») :
-  //   moteur courant : 10,1 / 14,1 / 12,9      moyenne 12,4
-  //   moteur modifie :  7,9 / 13,8 / 14,4      moyenne 12,0
-  // Les deux distributions se CHEVAUCHENT : le correctif qui avait fait echouer
-  // ce test n'affaiblissait pas la consigne (0,4 point d'ecart de moyenne), il
-  // etait tombe sur le lot de graines defavorable.
-  //
-  // On double donc l'echantillon (24 -> 48 graines, +/-5,6 points) et on place
-  // le seuil a 6, sous le plancher honnete (6,6). Ce qu'il protege reste le
-  // meme : que la consigne CHANGE le jeu, pas l'amplitude exacte.
-  assert.ok(auPres.part - auLarge.part >= 0.06,
-    `consigne "au large" ${(100 * auLarge.part).toFixed(1)} % d avants contre `
-    + `"au pres" ${(100 * auPres.part).toFixed(1)} % : l ecart de `
-    + `${(100 * (auPres.part - auLarge.part)).toFixed(1)} points ne se voit pas. `
+  const auPres = tauxAvantServi(0.95);   // « on joue le pack »
+  const auLarge = tauxAvantServi(0.10);  // « on ecarte, meme a 3 m »
+  // Seuil a 60 : la plus petite valeur mesuree vaut 83,9, et neutraliser la
+  // consigne donne ~0. Ce garde-fou est donc NETTEMENT plus exigeant que la
+  // version precedente (8 points), tout en etant beaucoup plus stable.
+  assert.ok(auPres - auLarge >= 60,
+    `consigne "au pres" ${auPres.toFixed(1)} % d avants servis contre "au large" `
+    + `${auLarge.toFixed(1)} % : l ecart de ${(auPres - auLarge).toFixed(1)} points ne se voit pas. `
     + `La consigne de l equipe ne doit pas etre decorative.`);
 });
 
