@@ -4219,15 +4219,33 @@
       // pas le maul : sa sortie ne dependait que du tirage aleatoire du demi de
       // melee. Mesure sur 10 matchs : duree moyenne 15,5 s mais un maul observe
       // a 64,8 s, et en figeant le hasard le maul ne se terminait JAMAIS.
-      // Un arbitre ne laisse pas un maul vivre une minute : passe ce delai, le
-      // ballon est declare injouable et la melee revient a l'equipe qui n'avait
-      // pas le ballon en entrant dans le maul (comme _maulMeleeInjouable).
-      // Le seuil n'est PAS mis a l'echelle des arrets, contrairement aux autres
-      // temps morts : la date-limite du « use it » qu'il ne doit surtout pas
-      // preempter (m.timerUseIt = 5 s) ne l'est pas non plus. Un premier essai
-      // a 30 s mis a l'echelle donnait 4,5 s sur un match de demo et sifflait
-      // le maul AVANT que la sequence d'arbitrage ait pu se derouler.
-      if (m.timerGlobal > 45) return this._maulMeleeInjouable();
+      //
+      // IL SIFFLAIT UNE MELEE SUR DES MAULS QUI AVANCENT — ET C'EST ILLEGAL.
+      // Ce garde-fou appelait directement `_maulMeleeInjouable()` a 45 s. Or la
+      // loi 16.16/16.17 ne permet de terminer un maul par une melee que sur
+      // ballon injouable, ecroulement, ou « use it » non execute : JAMAIS parce
+      // que le maul dure. Tant que les mauls mouraient a 8,4 s le cas etait
+      // marginal (2 % des mauls) ; en les allongeant a 23 s, le correctif de
+      // poussee en a fait la sortie PRINCIPALE. Mesure sur 20 matchs au pas
+      // reel du jeu (0,1 s, cf. docs/js/constants.js PAS_FIXE) :
+      //   27 mauls sur 104 (26 %) termines par ce garde-fou, dont 24 EN
+      //   MOUVEMENT. A 0,2 s : 13 sur 103, dont 13 en mouvement.
+      // La possession changeait donc sans declencheur legal, et toujours au
+      // detriment du pack qui domine — c'est justement parce qu'il pousse que
+      // le maul dure.
+      //
+      // LE MAUL TROP LONG PASSE DESORMAIS PAR LA SEQUENCE LEGALE : second
+      // arret -> « use it » (5 s) -> et melee SEULEMENT si le ballon ne sort
+      // pas. Mesure apres correctif : 0 melee sur maul en mouvement aux deux
+      // pas, duree maximale 40,0 s au lieu de 44,9 s (sous la borne de 50 s
+      // assertee par server/test-invariants.js), avancee 8,51 m a 0,1 s.
+      // Le seuil passe a 35 s pour laisser les 5 s du « use it » tenir sous la
+      // meme borne. Il n'est PAS mis a l'echelle des arrets : la date-limite du
+      // « use it » (m.timerUseIt = 5 s) ne l'est pas non plus.
+      if (m.timerGlobal > 35 && m.etat !== ETATS_MAUL.SECOND_ARRET
+          && m.etat !== ETATS_MAUL.USE_IT) {
+        m.nbArrets = 2; m.etat = ETATS_MAUL.SECOND_ARRET; m.timer = 0;
+      }
 
       // 1) IA des joueurs : liaisons, poussée dans l'axe, repli des non-engagés.
       this._maulGererLiaisons(dt);
@@ -4246,7 +4264,12 @@
         // Le ballon est transféré vers l'arrière du maul (côté de son propre camp).
         this.porteur.x = Math.max(0, Math.min(LONGUEUR, m.x - m.sens * 0.8));
         this.porteur.y = m.y;
-        const enMouvement = avance >= 0.04;
+        // EN METRES PAR SECONDE, PAS PAR TICK. `avance` vaut `m.vitesse * dt` :
+        // compare a une constante, le seuil valait 0,20 m/s a dt=0,2 mais
+        // 0,40 m/s a dt=0,1 — le pas REEL du jeu (docs/js/constants.js
+        // PAS_FIXE). La loi 16.14/16.15 et la condition d'essai ci-dessous ne
+        // s'appliquaient donc pas pareil selon la boucle appelante.
+        const enMouvement = m.vitesse >= 0.2;
         if (enMouvement) { m.tempsMouvement += dt; m.tempsImmobile = 0; }
         else { m.tempsImmobile += dt; m.tempsMouvement = 0; }
         // Essai sur maul pénétrant : seulement s'il avance réellement jusqu'à la
@@ -4375,6 +4398,15 @@
     //   2,2x           6,84 m  23,6 s  0,20  24 %
     //   3,0x           6,52 m  20,8 s  0,25  21 %
     //   5,0x (retenu)  7,61 m  18,9 s  0,20  13 %
+    //
+    // CE QUE LA COLONNE « % MELEE » MESURAIT VRAIMENT. En choisissant ce
+    // dosage j'ai ecrit que c'etait « le seul qui ne fait pas finir un maul sur
+    // quatre en melee ». Le controle d'arbitrage qui a suivi a montre que ces
+    // 13 % (comme les 21-24 % des autres dosages) n'etaient PAS des melees de
+    // loi 16.17 : c'etaient les coups de sifflet du garde-fou anti-blocage, sur
+    // des mauls qui avançaient encore — 13 sur 13 a dt=0,2. Le classement des
+    // dosages reste valable (un maul qui dure moins se fait moins siffler),
+    // mais l'argument etait mal nomme. Le garde-fou est corrige plus haut.
     // Le dosage retenu est le seul qui donne une avancée réelle SANS faire
     // finir un maul sur quatre en mêlée. Ce n'est pas un rail non plus : deux
     // packs équivalents donnent un écart nul, donc un maul qui piétine.
@@ -4560,8 +4592,13 @@
       this.log('ESSAI', poss, `Essai sur maul penetrant, equipe ${poss} !`);
       // Le MARQUEUR est le porteur RÉEL du maul : pendant toute la poussée,
       // _tickMaul l'a maintenu collé à l'arrière du maul (this.porteur, cf.
-      // lignes « this.porteur.x = m.x - m.sens*0.8 »), il est donc DÉJÀ sur la
-      // ligne. On l'aplatit d'un pas par-dessus la ligne. AVANT, on réassignait
+      // lignes « this.porteur.x = m.x - m.sens*0.8 »), il est donc au CONTACT
+      // de la ligne — à 1,1 m en deçà, mesuré : le centre du maul est déclaré
+      // arrivé à `LONGUEUR - 0,3` et le porteur se tient 0,8 m derrière lui.
+      // C'est licite au titre de la loi 8.2.b (c'est le MAUL qui doit atteindre
+      // la ligne), mais le repositionnement ci-dessous n'est pas d'un pas : il
+      // avance le marqueur de ces 1,1 m. Ne pas croire, en relisant, qu'aucun
+      // déplacement n'a lieu. AVANT, on réassignait
       // this.porteur à un n°8 nominal (eq[7]) placé ailleurs sur le terrain puis
       // on le TÉLÉPORTAIT sur la marque (saut mesuré ~20 m) — le porteur réel,
       // lui, était pourtant déjà au bon endroit. On garde donc le porteur courant.

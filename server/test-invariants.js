@@ -634,10 +634,19 @@ test('loi 16 : un maul se termine toujours, meme si le hasard ne le denoue jamai
     if (m.phase !== 'MAUL') duree = m.tempsMatch - depart;
     assert.ok(duree !== null,
       `un maul doit finir par etre siffle : toujours en cours apres ${(m.tempsMatch - depart).toFixed(0)} s de jeu`);
-    // Le garde-fou du moteur siffle a 45 s ; on borne juste au-dessus. Mesure
-    // sur 50 mauls de match reel : moyenne 14,8 s, maximum 45,0 s (contre
-    // 64,8 s avant le garde-fou), et il ne se declenche que 2 fois sur 50 —
-    // il borne le cas pathologique sans changer le jeu ordinaire.
+    // Le garde-fou du moteur force la sequence legale a 35 s, qui ajoute au
+    // plus 5 s de « use it » : on borne a 50 s, au-dessus des 40,0 s mesurees
+    // comme maximum reel.
+    //
+    // CE COMMENTAIRE A MENTI PENDANT UN TEMPS, et il faut savoir pourquoi.
+    // Il annoncait « il ne se declenche que 2 fois sur 50 — il borne le cas
+    // pathologique sans changer le jeu ordinaire ». C'etait vrai quand un maul
+    // durait 8,4 s. Apres le correctif de poussee, le garde-fou est passe a
+    // 26 % des mauls au pas reel du jeu : il etait devenu le jeu ordinaire, et
+    // il sifflait une melee sur des mauls qui avancaient encore (illegal, cf.
+    // le test « loi 16 : un maul qui AVANCE... » plus bas). Un chiffre ecrit
+    // dans un commentaire vaut pour l'etat du moteur au jour ou il a ete
+    // mesure, pas pour toujours.
     assert.ok(duree <= 50,
       `un maul ne dure pas ${duree.toFixed(0)} s : l'arbitre le siffle bien avant`);
     verifie = true;
@@ -1137,6 +1146,12 @@ test('la portee de la penalite en touche depend du BUTEUR, pas du hasard seul', 
 //   2,2x           avancee 6,84 m  duree 23,6 s  essais 0,20  melee 24 %
 //   3,0x           avancee 6,52 m  duree 20,8 s  essais 0,25  melee 21 %
 //   5,0x (retenu)  avancee 7,61 m  duree 18,9 s  essais 0,20  melee 13 %
+// ATTENTION A LA DERNIERE COLONNE : en choisissant ce dosage j'ai ecrit qu'il
+// etait « le seul a ne pas faire finir un maul sur quatre en melee ». Le
+// controle d'arbitrage a montre que ces melees n'etaient pas des melees de loi
+// 16.17 mais les coups de sifflet du garde-fou anti-blocage, sur des mauls qui
+// avancaient encore. Le classement tient, l'argument etait mal nomme ; le
+// garde-fou est corrige et garde par le test de loi 16 plus haut.
 // Le dosage retenu est le seul qui donne une avancee reelle SANS faire finir un
 // maul sur quatre en melee. Et ce n'est pas un rail : deux packs equivalents
 // donnent un ecart nul, donc un maul qui ne bouge pas — c'est du rugby.
@@ -1213,6 +1228,59 @@ test('un maul penetrant avance vraiment, et un pack dominant le pousse plus loin
     `pack lourd ${packFort.toFixed(2)} m contre pack leger ${packFaible.toFixed(2)} m : `
     + `l ecart de ${(packFort - packFaible).toFixed(2)} m ne se voit pas — au maul, ce sont les `
     + `deux packs qui doivent decider, pas le tirage`);
+});
+
+// --- LOI 16 : UNE MELEE NE SE SIFFLE PAS SUR UN MAUL QUI AVANCE ------------
+// Trouve par un CONTROLE D'ARBITRAGE apres le correctif de poussee du maul,
+// pas par la suite de tests : aucun test ne regardait la CAUSE de la fin d'un
+// maul. Le garde-fou anti-blocage appelait `_maulMeleeInjouable()` des 45 s.
+// La loi 16.16/16.17 ne permet la melee que sur ballon injouable, ecroulement
+// ou « use it » non execute — jamais parce que le maul dure.
+//
+// CE QUE MON PROPRE CORRECTIF AVAIT FAIT. Tant que les mauls mouraient a 8,4 s
+// le garde-fou ne servait presque jamais (2 % des mauls). En les allongeant a
+// 23 s, il est devenu la sortie PRINCIPALE : 27 mauls sur 104 (26 %) au pas
+// reel du jeu, dont 24 EN MOUVEMENT. La possession changeait sans declencheur
+// legal, et systematiquement au detriment du pack dominant.
+//
+// LE TEST INTERROGE LES DEUX PAS DE SIMULATION, ET C'EST VOULU. Le moteur
+// tourne a 0,1 s dans le navigateur (docs/js/constants.js PAS_FIXE) mais a
+// 0,2 s sur les bancs de mesure (server/test-calibration-moteur.js). Le defaut
+// etait DEUX FOIS PLUS FREQUENT au pas reel qu'au pas du banc (26 % contre
+// 13 %) : un test qui n'aurait regarde que 0,2 s aurait sous-estime de moitie
+// ce que le joueur subit.
+//
+// ROUGE PUIS VERT, verifie : 11 mauls illegaux sur 50 avant correctif, 0 apres.
+test('loi 16 : un maul qui AVANCE ne peut pas etre termine par une melee', () => {
+  function meleesSurMaulEnMouvement(pas, graines) {
+    let mauls = 0, illegales = 0;
+    for (const seed of graines) {
+      const m = new MatchEngine(seed, 4800);
+      let avant = m.phase;
+      for (let t = 0; t < 4800; t += pas) {
+        // L'etat est lu AVANT le tick : _maulMeleeInjouable() detruit l'objet
+        // maul pendant le tick. Premiere version de cet instrument : je lisais
+        // maul.timerGlobal apres coup et je comparais a 45 — le tick exact du
+        // coup de sifflet etait rate, et l'instrument annoncait 0 %.
+        const etatAvant = m.maul ? m.maul.etat : null;
+        m.tick(pas);
+        if (avant === 'MAUL' && m.phase !== 'MAUL') {
+          mauls++;
+          if (m.phase === 'MELEE' && etatAvant === 'MAUL_MOVING') illegales++;
+        }
+        avant = m.phase;
+      }
+    }
+    return { mauls, illegales };
+  }
+  const graines = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+  for (const pas of [0.1, 0.2]) {
+    const r = meleesSurMaulEnMouvement(pas, graines);
+    assert.strictEqual(r.illegales, 0,
+      `pas de simulation ${pas} : ${r.illegales} maul(s) sur ${r.mauls} se terminent par une `
+      + `melee alors qu'ils AVANCENT encore. La loi 16 ne permet la melee que sur ballon `
+      + `injouable, ecroulement, ou "use it" non execute — jamais parce que le maul dure.`);
+  }
 });
 
 // --- LE DEMI DE MELEE DOIT SE SERVIR DE SES AVANTS -------------------------

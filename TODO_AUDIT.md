@@ -580,6 +580,67 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-40. Mon correctif du maul a rendu ILLÉGALE la principale sortie de maul — trouvé par un contrôle d'arbitrage, pas par les tests
+- **Statut : CORRIGÉ (loi 16) — une sensibilité au pas de simulation reste ouverte**
+- Fichiers concernés : `engine/rugby-engine.js` + `docs/rugby-engine.js` (`_tickMaul`),
+  `server/test-invariants.js`
+
+**Comment le défaut a été trouvé, et pourquoi ça compte.** P2-25 (poussée du maul) est passé au
+vert sur 53 invariants, la calibration, l'équilibre des matchs et la QA navigateur. Le défaut
+ci-dessous est ressorti d'un **contrôle d'arbitrage** lancé après coup, qui lit les lois et le
+code plutôt que d'exécuter la suite. **Aucun test ne regardait la CAUSE de la fin d'un maul** —
+seulement qu'il finissait.
+
+**Le défaut.** Le garde-fou anti-blocage appelait directement `_maulMeleeInjouable()` dès 45 s.
+La loi 16.16/16.17 ne permet de terminer un maul par une mêlée que sur ballon injouable,
+écroulement, ou « use it » non exécuté — **jamais parce que le maul dure**. Tant que les mauls
+mouraient à 8,4 s, le cas était marginal (2 % des mauls). **En les allongeant à 23 s, P2-25 en a
+fait la sortie principale.**
+
+| pas de simulation | mauls | terminés par le garde-fou | dont EN MOUVEMENT |
+|---|---|---|---|
+| 0,2 s (les bancs) | 103 | 13 (13 %) | **13 / 13** |
+| **0,1 s (le jeu réel)** | 104 | **27 (26 %)** | **24 / 27** |
+
+La possession changeait donc sans déclencheur légal, et systématiquement au détriment du pack
+qui domine — c'est justement parce qu'il pousse que le maul dure. C'est le critère de refus
+« la possession change sans raison ».
+
+**Le correctif.** Le maul trop long passe par la séquence légale : second arrêt → « use it »
+(5 s) → et mêlée **seulement** si le ballon ne sort pas. Seuil ramené à 35 s pour que les 5 s du
+« use it » tiennent sous la borne de 50 s déjà assertée. Mesuré : **0 mêlée sur maul en
+mouvement aux deux pas**, durée maximale 40,0 s au lieu de 44,9 s, avancée 8,51 m à 0,1 s.
+Garde-fou livré : `loi 16 : un maul qui AVANCE ne peut pas être terminé par une mêlée`, rouge à
+11 mauls illégaux sur 50 avant, vert après, **interrogé aux deux pas de simulation**.
+
+**CE QUE MA COLONNE « % MÊLÉE » MESURAIT VRAIMENT.** En choisissant le dosage de P2-25 j'ai
+écrit qu'il était « le seul à ne pas faire finir un maul sur quatre en mêlée ». Ces 13 %, comme
+les 21-24 % des autres dosages, **n'étaient pas des mêlées de loi 16.17** : c'étaient ces coups
+de sifflet illégaux. Le classement des dosages tient (un maul qui dure moins se fait moins
+siffler), l'argument était mal nommé. Rectifié dans les trois endroits qui le citaient.
+
+**DÉFAUT OUVERT : le moteur ne se joue pas pareil selon le pas de simulation.** Le navigateur
+tourne à 0,1 s (`docs/js/constants.js` `PAS_FIXE`), les bancs à 0,2 s
+(`server/test-calibration-moteur.js`). Sur le maul, l'écart est massif : avancée 10,16 m contre
+7,61 m, durée 23,0 s contre 18,7 s, défaut ci-dessus deux fois plus fréquent.
+
+*Deux causes examinées, une seule confirmée.* J'ai d'abord accusé `const enMouvement = avance >=
+0.04`, qui compare une distance **par tick** à une constante (seuil effectif 0,20 m/s à 0,2 s
+mais 0,40 m/s à 0,1 s). C'est un vrai défaut, corrigé ici en `m.vitesse >= 0.2` — **mais il
+n'expliquait presque rien** : 9,94 m au lieu de 10,16 m. La vraie cause est que
+`m.tempsImmobile >= 1.0` est un **détecteur de séquence** : 5 ticks immobiles consécutifs à
+0,2 s, mais **10** à 0,1 s. Avec un tirage indépendant par tick, dix échecs d'affilée sont bien
+plus rares que cinq — plus le pas est fin, plus le maul survit.
+
+*Une variante testée et REFUSÉE.* Juger l'arrêt sur l'élan lissé sur 1 s plutôt que sur le
+tirage du tick : avancée 8,27 / 7,20 m aux deux pas, soit 15 % d'écart contre 16 % sans elle.
+Elle ne corrige bien que le *nombre* de mauls (103 / 100 contre 84 / 102) et demande un état
+supplémentaire dans l'objet maul. Pas quatre lignes de machinerie pour un point de pourcentage
+sur la mauvaise grandeur.
+
+*Conséquence pratique à retenir :* les chiffres de `test-calibration-moteur.js` décrivent le
+banc, pas la partie jouée. Pour toute grandeur sensible à la durée des phases, mesurer à 0,1 s.
+
 ### P2-39. Variabilité dans les duels : trois variantes testées, aucune ne marche — et ma propre alarme était mal cadrée
 - **Statut : AUCUN CORRECTIF — et correction du cadrage de P2-37**
 - Fichiers concernés : aucun (arbre de travail intact pendant tout l'essai)
