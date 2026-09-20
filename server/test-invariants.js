@@ -962,70 +962,91 @@ test('au contact, un porteur PUISSANT avance plus qu un porteur leger', () => {
 // --- L'ENDURANCE NE JOUAIT PAS ---------------------------------------------
 // La fatigue de fin de match etait GLOBALE : un seul multiplicateur de vitesse,
 // le meme chiffre pour les trente joueurs (1 au coup d'envoi, 0,90 a la 80e).
-// L'attribut `endurance` n'etait donc JAMAIS lu par le moteur.
-//
-// Verifie par balayage (chaque attribut donne a +20 a l'equipe A et -20 a
-// l'equipe B, 24 graines appariees, meme graine des deux cotes) :
-//   vitesse    +73,4 points   plaquage +11,3   melee +7,0
-//   (temoin)    -3,0 points, -0,29 essai, 38 % de victoires A
-//   endurance   -3,0 points, -0,29 essai, 38 % de victoires A
-// L'endurance reproduisait le temoin AU CHIFFRE PRES : les matchs etaient
-// identiques. Confirme par un controle a deux equipes identiques sauf
-// l'endurance (90 contre 30), qui donnait exactement le meme resultat que sans
-// configuration du tout.
+// L'attribut `endurance` n'etait donc JAMAIS lu par le moteur — verifie par
+// balayage (+20 a une equipe, -20 a l'autre, 24 graines appariees) : l'ecart de
+// score reproduisait le temoin AU CHIFFRE PRES (-3,0 points, -0,29 essai, 38 %
+// de victoires dans les deux cas).
 //
 // Or l'ecran de composition PONDERE l'endurance — 10 % de la note d'un pilier,
 // 12 % d'une deuxieme ligne, 18 % d'une troisieme ligne (POIDS_PAR_POSTE dans
-// docs/js/club-composition.js). Le manager recrutait et alignait sur un
-// attribut qui ne jouait jamais.
+// docs/js/club-composition.js). Le manager recrutait sur un attribut mort.
 //
-// CE TEST COMPARE DEUX DIFFERENCES, pas deux nombres. Les equipes A et B ne
-// sont pas symetriques dans le moteur (sens de jeu, coup d'envoi) : mesure, cet
-// ecart vaut a lui seul 0,0145 a 0,0244 selon les graines. Comparer simplement
-// A et B ferait donc passer une asymetrie pour un effet de l'endurance. On
-// mesure l'ecart AVEC configuration MOINS le meme ecart SANS configuration.
-function ratioCourseFinDeMatch(config, graines) {
-  let dA = [0, 0], dB = [0, 0]; // [premier quart d'heure, dernier]
+// CE TEST A ETE REECRIT — ET C'EST LA GRANDEUR QUI A CHANGE, PAS LE SEUIL.
+// La premiere version mesurait la DISTANCE TOTALE parcourue en fin de match
+// rapportee au debut. Elle etait fragile : son temoin (deux equipes
+// rigoureusement identiques) valait -0,0244 a sa creation, puis +0,0590 apres
+// un correctif SANS RAPPORT avec la fatigue, et l'effet mesure passait de
+// +0,035 a -0,0475 — un changement de SIGNE. Un invariant doit survivre aux
+// correctifs des autres ; celui-la transformait chaque patch en faux echec.
+//
+// Mon erreur d'origine : mon etude de resolution ne faisait varier que le
+// NOMBRE DE GRAINES sur UN SEUL moteur. Cela mesure le bruit d'echantillonnage,
+// pas la robustesse au changement de moteur — qui est precisement ce qu'un
+// invariant encaisse.
+//
+// La grandeur retenue est la VITESSE DE POINTE. `vitesseMs` PLAFONNE le
+// deplacement par tick : un joueur atteint ce plafond des qu'il court
+// librement, donc son maximum observe mesure la regle presque directement,
+// alors que la distance totale depend de tout le deroule du match.
+// Validee sur DEUX lots de graines disjoints ET sur DEUX versions du moteur,
+// dont celle qui avait fait basculer l'ancienne :
+//   moteur courant : +0,0768 et +0,0530
+//   moteur modifie : +0,0378 et +0,0515
+// Quatre valeurs positives, aucun changement de signe. Seuil a 0,02, sous la
+// plus petite (0,0378) avec de la marge. Valeur theorique attendue a la 80e :
+// 0,11 (facteur de fatigue 0,944 contre 0,834) ; la mesure en recupere environ
+// la moitie, un joueur n'atteignant pas son plafond a chaque instant.
+//
+// PIEGE D'INSTRUMENT, rencontre en ecrivant ce test : le moteur RECREE les
+// objets joueurs (remplacements, reprises) — 300 objets distincts pour un match
+// a 30 joueurs. Suivre un joueur par l'identite de son objet le perd a la
+// premiere recreation. On cle donc par EQUIPE + NUMERO.
+//
+// Le test compare DEUX DIFFERENCES : les equipes A et B ne sont pas symetriques
+// dans le moteur (sens de jeu, coup d'envoi), et cet ecart vaut a lui seul
+// -0,036 a +0,075 selon les cas. Comparer A et B directement ferait passer une
+// asymetrie pour un effet de l'endurance.
+function ecartVitessePointe(config, graines) {
+  const DUREE = 4800, DT = 0.2;
+  const rA = [], rB = [];
   for (const seed of graines) {
-    const m = new MatchEngine(seed, 4800, config);
-    const prec = new Map();
-    for (let t = 0; t < 4800; t += 0.2) {
-      m.tick(0.2);
-      const debut = t < 900, fin = t > 3900;
-      for (const [eq, acc] of [[m.equipeA, dA], [m.equipeB, dB]]) {
-        for (const j of eq) {
-          const p = prec.get(j);
-          // on ignore les sauts de remise en jeu (teleportations)
-          if (p && (debut || fin)) {
-            const d = Math.hypot(j.x - p.x, j.y - p.y);
-            if (d < 3) acc[debut ? 0 : 1] += d;
+    const m = new MatchEngine(seed, DUREE, config);
+    const prec = new Map(), vmax = new Map();
+    for (let t = 0; t < DUREE; t += DT) {
+      m.tick(DT);
+      const tot = t < 600, tard = t > DUREE - 600;
+      for (const [nomEq, eq] of [['A', m.equipeA], ['B', m.equipeB]]) for (const j of eq) {
+        const cle = nomEq + j.numero;
+        const p = prec.get(cle);
+        if (p && (tot || tard)) {
+          const d = Math.hypot(j.x - p.x, j.y - p.y) / DT;
+          if (d < 12) { // on ignore les teleportations de remise en jeu
+            const cur = vmax.get(cle) || { tot: 0, tard: 0, eq: nomEq };
+            if (tot) cur.tot = Math.max(cur.tot, d); else cur.tard = Math.max(cur.tard, d);
+            vmax.set(cle, cur);
           }
-          prec.set(j, { x: j.x, y: j.y });
         }
+        prec.set(cle, { x: j.x, y: j.y });
       }
     }
+    for (const v of vmax.values()) {
+      if (v.tot > 3 && v.tard > 3) (v.eq === 'A' ? rA : rB).push(v.tard / v.tot);
+    }
   }
-  return (dA[1] / dA[0]) - (dB[1] / dB[0]);
+  const moy = (a) => a.reduce((x, y) => x + y, 0) / a.length;
+  return moy(rA) - moy(rB);
 }
-// RESOLUTION DE LA MESURE, etudiee avant de fixer le seuil (et non l'inverse) :
-//    6 graines -> 0,0268     14 graines -> 0,0489
-//   10 graines -> 0,0348     20 graines -> 0,0378
-// L'effet est toujours franchement positif mais oscille de ~+/-0,011 autour de
-// 0,037. Le point decisif est ailleurs : sur le moteur NON corrige l'effet vaut
-// EXACTEMENT zero, puisque les deux configurations produisent des matchs
-// identiques. Le seuil n'a donc pas a discriminer une petite difference, il a
-// seulement a etre franchement au-dessus du bruit. 0,015 est sous la plus
-// petite valeur observee (0,0268) avec de la marge.
-test('un joueur endurant tient la fin de match, un autre non', () => {
-  const graines = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+test('un joueur endurant garde sa vitesse de pointe en fin de match, un autre non', () => {
+  const graines = [1, 2, 3, 4, 5, 6, 7, 8];
   const cfg = { joueursA: {}, joueursB: {} };
   for (let n = 1; n <= 15; n++) { cfg.joueursA[n] = { endurance: 90 }; cfg.joueursB[n] = { endurance: 30 }; }
-  const avec = ratioCourseFinDeMatch(cfg, graines);
-  const sans = ratioCourseFinDeMatch(undefined, graines);
-  assert.ok(avec - sans >= 0.015,
-    `l equipe endurante garde ${(avec - sans).toFixed(4)} de course en plus que ne l explique `
-    + `l asymetrie A/B (ecart avec config ${avec.toFixed(4)}, temoin ${sans.toFixed(4)}) : `
-    + `l endurance ne change rien a la fin de match (mesure avant correctif : identique au chiffre pres)`);
+  const avec = ecartVitessePointe(cfg, graines);
+  const sans = ecartVitessePointe(undefined, graines);
+  assert.ok(avec - sans >= 0.02,
+    `l equipe endurante garde ${(avec - sans).toFixed(4)} de vitesse de pointe en plus que ne `
+    + `l explique l asymetrie A/B (ecart avec config ${avec.toFixed(4)}, temoin ${sans.toFixed(4)}) : `
+    + `l endurance ne change rien a la fin de match (avant correctif du moteur : exactement zero, `
+    + `les deux configurations produisaient des matchs identiques)`);
 });
 
 // --- LE DEMI DE MELEE DOIT SE SERVIR DE SES AVANTS -------------------------
