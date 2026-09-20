@@ -1229,7 +1229,7 @@ test('une interception, c est une passe LONGUE, pas un pop a deux metres', () =>
 test('la consigne de l equipe change le jeu : deux intentions opposees ne se jouent pas pareil', () => {
   function partAvantsPresLigne(consigne) {
     let dans5 = 0, avants = 0;
-    for (let seed = 1; seed <= 24; seed++) {
+    for (let seed = 1; seed <= 48; seed++) {
       const m = new MatchEngine(seed, 4800, {
         attaqueA: { jeuAuPresLigne: consigne },
         attaqueB: { jeuAuPresLigne: consigne },
@@ -1252,14 +1252,32 @@ test('la consigne de l equipe change le jeu : deux intentions opposees ne se jou
   const auPres = partAvantsPresLigne(0.95);    // « on joue le pack »
   assert.ok(auLarge.n >= 60 && auPres.n >= 60,
     `echantillon trop petit (${auLarge.n} / ${auPres.n} portages a moins de 5 m)`);
-  // SEUIL ALIGNE SUR LA PRECISION DE L'INSTRUMENT. Cet ecart se mesure sur une
-  // centaine de portages par branche, soit une resolution de l'ordre de +/-6
-  // points : un seuil a 15 alors que la valeur mesuree vaut 13 a 14 fait de ce
-  // garde-fou un tirage, et il est effectivement tombe a 12,6 puis 13,8 sur des
-  // correctifs qui ne touchaient pas a la consigne. On le place donc nettement
-  // sous la valeur mesuree : ce qu'il protege, c'est que la consigne CHANGE le
-  // jeu, pas l'amplitude exacte du changement.
-  assert.ok(auPres.part - auLarge.part >= 0.08,
+  // SEUIL ALIGNE SUR LA PRECISION DE L'INSTRUMENT — CALCULEE, PAS ESTIMEE.
+  //
+  // Historique : le seuil valait 15, puis a ete abaisse a 8 parce que la mesure
+  // « est effectivement tombee a 12,6 puis 13,8 sur des correctifs qui ne
+  // touchaient pas a la consigne ». 8 ne suffisait pas non plus : la mesure est
+  // tombee a 7,9 sur un correctif de penalite en touche, sans rapport.
+  //
+  // La resolution a donc ete CALCULEE au lieu d'etre estimee. C'est l'ecart de
+  // DEUX PROPORTIONS mesurees chacune sur ~230 portages (24 graines) :
+  //   erreur-type = sqrt(p1(1-p1)/n + p2(1-p2)/n) = 4,1 points
+  //   intervalle 95 % = +/- 7,9 points
+  // Un seuil a 8 pour une valeur centrale de 12,2 etait donc DANS la bande de
+  // bruit : il ne pouvait que basculer tot ou tard.
+  //
+  // Verifie par la mesure, trois lots de graines disjoints sur deux versions du
+  // moteur (l'ecart en points entre « au pres » et « au large ») :
+  //   moteur courant : 10,1 / 14,1 / 12,9      moyenne 12,4
+  //   moteur modifie :  7,9 / 13,8 / 14,4      moyenne 12,0
+  // Les deux distributions se CHEVAUCHENT : le correctif qui avait fait echouer
+  // ce test n'affaiblissait pas la consigne (0,4 point d'ecart de moyenne), il
+  // etait tombe sur le lot de graines defavorable.
+  //
+  // On double donc l'echantillon (24 -> 48 graines, +/-5,6 points) et on place
+  // le seuil a 6, sous le plancher honnete (6,6). Ce qu'il protege reste le
+  // meme : que la consigne CHANGE le jeu, pas l'amplitude exacte.
+  assert.ok(auPres.part - auLarge.part >= 0.06,
     `consigne "au large" ${(100 * auLarge.part).toFixed(1)} % d avants contre `
     + `"au pres" ${(100 * auPres.part).toFixed(1)} % : l ecart de `
     + `${(100 * (auPres.part - auLarge.part)).toFixed(1)} points ne se voit pas. `
