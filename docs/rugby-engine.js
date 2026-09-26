@@ -11,6 +11,12 @@
   'use strict';
 
   const LONGUEUR = 100; // m, en-but à en-but
+
+  // Facteur de rattrapage du jeu au pied, cf. son unique usage dans
+  // choisirActionPorteur : les taux de base ont ete balayes a 0,2 s, le jeu
+  // tourne a 0,1 s.
+  const RECALAGE_PIED_PAS_REEL = 1.15;
+
   const LARGEUR = 70;   // m, touche à touche
 
   // --- RNG seedé (mulberry32) pour des matchs reproductibles ---
@@ -2898,6 +2904,47 @@
         // 2026) — c'est LE régulateur de la longueur des possessions. Calibré
         // par balayage (cf. docs/ANALYSE_MATCH_REEL.md).
         pParSeconde *= (this.cfgAttaque[porteur.team].tauxJeuAuPied || 1);
+        // RECALAGE AU PAS REEL DU JEU. Les taux ci-dessus ont ete balayes sur un
+        // banc tournant a 0,2 s (server/test-calibration-moteur.js), alors que le
+        // navigateur fait tourner le moteur a 0,1 s (docs/js/constants.js,
+        // PAS_FIXE). Le balayage a donc regle une partie que personne ne joue.
+        //
+        // POURQUOI LE PAS CHANGE LE RESULTAT, alors que le tirage est
+        // correctement normalise (`rng() < pParSeconde * dt`). Mesure sur 20
+        // matchs, avec des compteurs poses dans le moteur :
+        //                                   0,1 s (le jeu)   0,2 s (le banc)
+        //   temps de jeu porte                  1135 s           1221 s
+        //   temps ou le porteur DECIDE           605 s            724 s
+        //   esperance cumulee de coup de pied     49,3             59,4
+        //   coups de pied observes                47,6             59,0
+        // L'esperance colle a l'observe a 3 % pres des deux cotes : la formule
+        // fait ce qu'elle dit. Ce qui manque au pas fin, c'est le TEMPS DE
+        // DECISION. Pendant qu'une passe vole ou qu'une combinaison se deroule,
+        // le porteur ne decide pas, et le nombre de ticks bloques vaut
+        // `ceil(duree / pas) - 1` : une passe de 0,12 s bloque UN tick a 0,1 s
+        // et ZERO a 0,2 s. Le pas grossier arrondit le blocage vers le bas et
+        // rend au porteur du temps de decision qu'il n'a pas en vrai. Cette
+        // quantification explique environ 30 s des 119 s d'ecart ; le reste
+        // n'est pas elucide (cf. TODO_AUDIT.md P2-41).
+        //
+        // Consequence mesuree AVANT recalage, au pas reel : 47,6 coups de pied
+        // (le balayage visait ~59) et 18,1 touches, sous la fourchette [20-35] —
+        // le moteur ECHOUAIT sa propre calibration sur une categorie essentielle.
+        // Le facteur ci-dessous a ete rebalaye AU PAS REEL, quatre dosages sur
+        // 20 matchs chacun :
+        //   1,00  47,6 pieds  18,1 touches  13,4 melees  7,2 essais  ECHEC 11/14
+        //   1,15  59,3        21,1          11,0         6,8         OK    12/14
+        //   1,25  63,3        21,3          10,0         6,9         OK    12/14
+        //   1,35  64,0        22,9           8,8         8,0         ECHEC 11/14
+        // 1,15 est le plus petit dosage qui restitue le volume vise. Au-dela,
+        // les touches PLAFONNENT (21,1 puis 21,3) : les coups de pied en plus
+        // restent en jeu au lieu de trouver la touche, et on ne paie que le
+        // ballon en main. A 1,35 le moteur decroche.
+        //
+        // A SUPPRIMER le jour ou les taux de base seront rebalayes directement
+        // au pas reel : ce facteur ne fait que rattraper un balayage fait au
+        // mauvais pas, il n'a aucune justification de jeu.
+        pParSeconde *= RECALAGE_PIED_PAS_REEL;
         if (this.rng() < pParSeconde * dt) return 'KICK';
       }
 

@@ -39,7 +39,16 @@ const LABELS = {
 const CATEGORIES_MINIMUM = 12;
 const N = Number(process.env.RM_CALIBRATION_N) || 20;
 const DUREE = 4800;
-const DT = 0.2;
+// LE PAS DE SIMULATION DU BANC DOIT ETRE CELUI DU JEU. Il valait 0,2 s alors
+// que le navigateur fait tourner le moteur a 0,1 s (docs/js/constants.js,
+// PAS_FIXE) : ce banc n'a donc jamais mesure la partie que le joueur joue.
+// L'ecart n'est pas theorique — mesure sur 20 matchs, le meme moteur donne
+// 47,6 coups de pied a 0,1 s contre 59,0 a 0,2 s, et 18,1 touches contre 21,3.
+// Au pas reel, le moteur ECHOUAIT cette calibration (11/14, categorie
+// essentielle « lineouts » hors fourchette) pendant que le banc annoncait
+// 12/14. Cf. TODO_AUDIT.md P2-41. Un invariant verifie desormais que ces deux
+// pas restent egaux.
+const DT = 0.1;
 
 function mesurer(n) {
   const totaux = {};

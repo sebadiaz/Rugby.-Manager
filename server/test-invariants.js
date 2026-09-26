@@ -1230,6 +1230,36 @@ test('un maul penetrant avance vraiment, et un pack dominant le pousse plus loin
     + `deux packs qui doivent decider, pas le tirage`);
 });
 
+// --- LE BANC DE MESURE DOIT TOURNER AU PAS DU JEU --------------------------
+// Defaut trouve en faisant tourner la calibration au pas REEL du navigateur :
+// elle tournait a 0,2 s, le jeu tourne a 0,1 s (docs/js/constants.js PAS_FIXE),
+// et au pas reel le moteur ECHOUAIT sa propre calibration — 11/14, categorie
+// essentielle « lineouts » a 18,1 pour une fourchette [20-35] — pendant que le
+// banc annoncait 12/14. Le match affiche a l'ecran n'avait jamais ete calibre.
+//
+// Le pas change VRAIMENT le jeu : meme moteur, memes graines, 47,6 coups de
+// pied a 0,1 s contre 59,0 a 0,2 s, 18,1 touches contre 21,3. Ce n'est donc pas
+// un detail d'outil. Ce test empeche les deux pas de diverger a nouveau en
+// silence : c'est la seule chose qui garantit que ce qu'on mesure est ce qu'on
+// joue. Cf. TODO_AUDIT.md P2-41.
+test('le banc de calibration tourne au PAS DE SIMULATION DU JEU', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const racine = path.join(__dirname, '..');
+  const lire = (fichier, motif, quoi) => {
+    const texte = fs.readFileSync(path.join(racine, fichier), 'utf8');
+    const m = texte.match(motif);
+    assert.ok(m, `impossible de lire ${quoi} dans ${fichier} — le motif a change, ce test ne protege plus rien`);
+    return parseFloat(m[1]);
+  };
+  const pasDuJeu = lire('docs/js/constants.js', /const PAS_FIXE\s*=\s*([0-9.]+)/, 'PAS_FIXE');
+  const pasDuBanc = lire('server/test-calibration-moteur.js', /^const DT = ([0-9.]+);/m, 'DT');
+  assert.strictEqual(pasDuBanc, pasDuJeu,
+    `le banc de calibration mesure a ${pasDuBanc} s alors que le jeu tourne a ${pasDuJeu} s. `
+    + `Mesure : le meme moteur produit 47,6 coups de pied et 18,1 touches a 0,1 s, contre 59,0 `
+    + `et 21,3 a 0,2 s. Calibrer a un pas qu'on ne joue pas, c'est regler une partie qui n'existe pas.`);
+});
+
 // --- LOI 16 : UNE MELEE NE SE SIFFLE PAS SUR UN MAUL QUI AVANCE ------------
 // Trouve par un CONTROLE D'ARBITRAGE apres le correctif de poussee du maul,
 // pas par la suite de tests : aucun test ne regardait la CAUSE de la fin d'un

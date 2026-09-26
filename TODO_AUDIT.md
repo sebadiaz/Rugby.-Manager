@@ -580,6 +580,88 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-41. Le banc de calibration mesurait une partie que personne ne joue — et à ce pas, le moteur échouait sa propre calibration
+- **Statut : CORRIGÉ (banc au pas du jeu, jeu au pied rebalayé, invariant qui empêche la divergence)**
+- Fichiers concernés : `server/test-calibration-moteur.js`, `engine/rugby-engine.js` +
+  `docs/rugby-engine.js` (`choisirActionPorteur`), `server/test-invariants.js`
+
+**Le défaut.** `server/test-calibration-moteur.js` faisait tourner le moteur à **0,2 s** par pas.
+Le navigateur, lui, le fait tourner à **0,1 s** (`docs/js/constants.js`, `PAS_FIXE`). Toutes les
+calibrations du dépôt — et tous les balayages qui en découlent — décrivaient donc une partie que
+personne ne joue. Ce n'est pas un détail d'outil : au pas réel, **le moteur ÉCHOUAIT sa propre
+calibration**.
+
+| | banc (0,2 s) | **jeu réel (0,1 s)** | fourchette |
+|---|---|---|---|
+| Coups de pied | 59,0 | **47,6** | 35-70 |
+| **Touches** | 21,3 | **18,1** | **20-35** |
+| Mêlées | 11,0 | 13,4 | 6-15 |
+| Temps de jeu effectif | 31,1 | 29,2 | 32-42 |
+| **verdict** | 12/14 OK | **11/14, ÉCHEC sur `lineouts`** | |
+
+**La cause, établie et non devinée.** Trois mesures successives, chacune réfutant la précédente.
+
+1. *Écarté — un taux non normalisé.* J'avais d'abord annoncé « 30 tirages non mis à l'échelle du
+   pas ». En les ouvrant un par un, la plupart sont des tirages d'ÉVÉNEMENT (un par plaquage, un
+   par ruck), légitimement indépendants du pas ; et la décision de taper au pied est correctement
+   normalisée (`rng() < pParSeconde * dt`).
+2. *Écarté — la sortie en touche.* Elle est décidée au moment où le botteur VISE
+   (`cibleCoupDePiedY` hors des lignes), pas pendant le vol : aucun tirage par tick ne donne plus
+   d'occasions de rattraper le ballon au pas fin. Et la part des coups de pied qui trouvent la
+   touche est stable (0,380 à 0,1 s contre 0,361 à 0,2 s) : **toute la chute des touches vient de
+   la chute des coups de pied**, un seul défaut et non deux.
+3. *Écarté — la répartition du terrain.* Le taux varie d'un facteur 26 entre ses 22 (0,26/s) et
+   les 22 adverses (0,01/s), donc un déplacement du jeu suffirait. Mesuré : le mélange de zones
+   ne prédit que **−5 %** (76,3 contre 80,3 attendus), là où les coups de pied chutent de −19 %.
+
+*La cause réelle,* trouvée en posant trois compteurs dans une copie du moteur :
+
+| | 0,1 s (le jeu) | 0,2 s (le banc) |
+|---|---|---|
+| temps de jeu porté | 1135 s | 1221 s |
+| **temps où le porteur DÉCIDE** | **605 s (53 %)** | **724 s (59 %)** |
+| espérance cumulée de coups de pied | 49,3 | 59,4 |
+| coups de pied observés | 47,6 | 59,0 |
+
+L'espérance colle à l'observé à 3 % près **des deux côtés** : la branche fait exactement ce que sa
+formule dit. Ce qui manque au pas fin, c'est le **temps de décision**. Pendant qu'une passe vole ou
+qu'une combinaison se déroule, le porteur ne décide pas, et le nombre de ticks bloqués vaut
+`ceil(durée / pas) − 1` : une passe de 0,12 s bloque **un tick à 0,1 s et zéro à 0,2 s**. Le pas
+grossier arrondit le blocage vers le bas et rend au porteur du temps de décision qu'il n'a pas.
+
+**Ce que je ne sais pas.** Cette quantification chiffre environ **30 s des 119 s** d'écart de temps
+de décision. Les 90 s restantes ne sont pas élucidées. Je le note plutôt que de présenter une
+explication partielle comme complète.
+
+**Le correctif.** (1) Le banc passe à 0,1 s. (2) Les taux de jeu au pied reçoivent un facteur de
+rattrapage `RECALAGE_PIED_PAS_REEL`, rebalayé AU PAS RÉEL sur 20 matchs par dosage :
+
+| facteur | coups de pied | touches | mêlées | essais | verdict |
+|---|---|---|---|---|---|
+| 1,00 (avant) | 47,6 | **18,1** | 13,4 | 7,2 | **ÉCHEC 11/14** |
+| **1,15 (retenu)** | **59,3** | **21,1** | 11,0 | 6,8 | **OK 12/14** |
+| 1,25 | 63,3 | 21,3 | 10,0 | 6,9 | OK 12/14 |
+| 1,35 | 64,0 | 22,9 | 8,8 | 8,0 | **ÉCHEC 11/14** |
+
+1,15 est le plus petit dosage qui restitue le volume visé par le balayage d'origine (~59). Au-delà,
+**les touches plafonnent** (21,1 puis 21,3) : les coups de pied supplémentaires restent en jeu au
+lieu de trouver la touche, et on ne paie que le ballon en main.
+
+(3) Un invariant compare le pas du banc à `PAS_FIXE` et rougit s'ils divergent — vérifié rouge en
+remettant le banc à 0,2 s, vert à 0,1 s.
+
+**Ce facteur est une dette, pas un réglage de jeu.** Il ne fait que rattraper un balayage fait au
+mauvais pas. Le jour où les taux de base seront rebalayés directement au pas réel, il doit
+disparaître ; c'est écrit à son point d'usage.
+
+**Ce qui reste hors fourchette au pas réel :** passes 431,9 (contre ≤ 420) et temps de jeu effectif
+30,0 min (contre ≥ 32). Les deux l'étaient déjà avant ce travail.
+
+**Une correction de cadrage, au passage.** J'ai répété que le goulot était « 0,85 touche par match à
+moins de 5 m de la ligne ». C'est faux : la loi 18 interdit une touche à moins de 5 m de la ligne de
+but, et le moteur l'applique — j'en mesure **0,00**, ce qui est correct. La vraie mesure du goulot
+est **2,10 touches par match dans les 22 m adverses**, contre 4 à 6 en vrai.
+
 ### P2-40. Mon correctif du maul a rendu ILLÉGALE la principale sortie de maul — trouvé par un contrôle d'arbitrage, pas par les tests
 - **Statut : CORRIGÉ (loi 16) — une sensibilité au pas de simulation reste ouverte**
 - Fichiers concernés : `engine/rugby-engine.js` + `docs/rugby-engine.js` (`_tickMaul`),
