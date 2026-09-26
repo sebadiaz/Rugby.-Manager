@@ -580,6 +580,73 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-42. « Amener le jeu dans les 22 adverses » : trois hypothèses de défaut, trois réfutations par la mesure
+- **Statut : AUCUN CORRECTIF — l'étape que j'avais moi-même recommandée ne tient pas à l'examen**
+- Fichiers concernés : aucun (enquête)
+
+P2-25 puis P2-41 désignaient le même goulot comme prochaine étape : trop peu de jeu dans les 22 m
+adverses, d'où trop peu de touches offensives, de mauls pénétrants et d'essais d'avants. Mesuré au
+pas réel du jeu (0,1 s), 20 matchs : **le goulot n'existe pas sous la forme annoncée.**
+
+**Ce qui est établi.**
+
+| mesure | moteur | repère réel |
+|---|---|---|
+| entrées dans les 22 adverses (2 équipes) | 16,5/match | ~20-24 |
+| part des entrées finissant en essai | **41 %** | 35-50 % |
+| séjours dans la zone rouge | 8,3/match, **47,3 s** de moyenne | siège multi-temps |
+| dont plus de 30 s | **66 %** | — |
+| fin du séjour | turnover 47 %, essai 30 %, pied 13 %, tir 9 % | — |
+| touches jouées dans les 22 adverses | 2,10/match | 4-6 |
+
+Les entrées sont **modestement** basses ; tout le reste est sain. La finition est réaliste, et les
+possessions près de la ligne sont de vrais sièges, pas des passages.
+
+**Hypothèse 1, réfutée — la défense ne craquerait pas près de sa ligne.** Premier relevé : taux de
+pénalité plat sur tout le camp adverse (1,24 / 1,36 / 1,35 par minute). **Faux, et l'erreur était
+dans ma mesure** : la zone de la pénalité était calculée du point de vue du BÉNÉFICIAIRE, l'exposition
+du point de vue du PORTEUR — deux repères en sens opposés quand c'est l'attaque qui est pénalisée.
+En séparant les pénalités contre la défense de celles contre l'attaque, le gradient apparaît et il
+va dans le bon sens :
+
+| zone de l'attaque | pénalités défensives / min |
+|---|---|
+| propres 22 | 0,20 |
+| propre moitié | 0,48 |
+| moitié adverse | 0,77 |
+| **22 m adverses** | **1,04** |
+| cinq derniers mètres | 0,71 |
+
+Reste le creux des cinq mètres (1,04 → 1,04 puis 0,71) là où le vrai rugby culmine — mais il repose
+sur **0,20 pénalité par match, soit quatre évènements sur vingt matchs**. Trop peu pour affirmer
+quoi que ce soit, et je ne construis pas un correctif dessus.
+
+**Hypothèse 2, réfutée — l'attaque « rebondirait » hors de la zone en cinq secondes.** Premier
+relevé : 25,8 séjours par match, 11,2 s de moyenne, **66 % sous 5 s**, et 49 % finissant en phase
+PORTE (ni mêlée, ni touche, ni turnover, ni essai). **Artefact d'instrument** : dans les 22 m la
+ligne d'attaque est étagée en profondeur, et mon compteur prenait une simple passe à un joueur placé
+à 23 m pour une sortie de zone. Avec une hystérésis (entrée à 22 m, sortie au-delà de 27 m) et le
+suivi du point de jeu plutôt que du seul porteur : **8,3 séjours, 47,3 s de moyenne, 10 % sous 5 s,
+66 % au-delà de 30 s, 0 % finissant en PORTE.**
+
+**Hypothèse 3, réfutée plus tôt (P2-41) — le goulot serait « 0,85 touche à moins de 5 m ».** La loi
+18 interdit une touche à moins de 5 m de la ligne de but et le moteur l'applique : j'en mesure 0,00,
+ce qui est correct.
+
+**Ce qui reste vrai, et ce qu'il faudrait mesurer ensuite.** Deux chiffres seulement restent sous
+leur repère : **16,5 entrées dans les 22 contre ~20-24**, et **2,10 touches offensives dans les 22
+contre 4-6**. Le second ne découle pas du premier : avec 8,3 sièges de 47 s par match, l'occasion
+existe ; ce qui manque, c'est la sortie en touche DEPUIS la zone rouge. Et **47 % des séjours
+finissent en turnover** — c'est le chiffre le plus suspect du lot, celui par lequel reprendre, en
+décomposant d'abord ce que ce « turnover » recouvre réellement (en-avant, grattage, pénalité contre
+l'attaque, mêlée perdue) avant de toucher quoi que ce soit.
+
+**La leçon de méthode, qui est la partie réutilisable.** Deux instruments sur trois étaient faux
+dans cette enquête, et les deux fois ils faisaient apparaître un défaut spectaculaire qui n'existait
+pas. Le signe commun : **un chiffre qui contredit une autre mesure déjà validée** (34,8 pénalités
+contre les 19,6 de la calibration ; 0,7 temps de jeu pour 11 s de possession). Avant de croire un
+relevé qui annonce un gros défaut, le confronter à une grandeur que le moteur compte lui-même.
+
 ### P2-41. Le banc de calibration mesurait une partie que personne ne joue — et à ce pas, le moteur échouait sa propre calibration
 - **Statut : CORRIGÉ (banc au pas du jeu, jeu au pied rebalayé, invariant qui empêche la divergence)**
 - Fichiers concernés : `server/test-calibration-moteur.js`, `engine/rugby-engine.js` +
