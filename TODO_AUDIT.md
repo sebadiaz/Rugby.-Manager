@@ -580,6 +580,44 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-43. Le renvoi aux 22 m était annoncé « coup d'envoi » — et deux mesures de P2-41/P2-42 à rectifier
+- **Statut : CORRIGÉ (affichage des règles) + rectifications**
+- Fichiers concernés : `engine/rugby-engine.js` + `docs/rugby-engine.js` (`_nouvelleManche`,
+  `getState`), `docs/js/constants.js`, `docs/js/ui.js`, `server/test-invariants.js`
+
+**Le défaut.** Après une pénalité au but ou un drop manqués, le ballon repart de la ligne des 22 m
+de l'équipe qui défendait — le moteur le faisait bien. Mais il l'annonçait « Coup d'envoi botté par
+l'équipe B, l'équipe A doit rester à 10 m ». Mesuré sur 20 matchs : **2,75 remises en jeu par match
+partaient des 22 m** (1,95 après une pénalité manquée, 0,80 après un drop manqué), toutes annoncées
+comme un coup d'envoi, avec la consigne des 10 m qui n'est pas celle du renvoi (au renvoi aux 22 m,
+les adversaires ne franchissent pas la ligne des 22 m avant le coup de pied). Et la phase affichée
+à l'écran disait elle aussi « Coup d'envoi ».
+
+**Le correctif.** Un évènement distinct `RENVOI_22` avec le bon texte et sa propre icône, et la
+phase affichée « Renvoi aux 22 m » pendant cette remise en jeu (`renvoi22` exposé par `getState`).
+La mécanique de jeu n'est pas touchée.
+
+**Le garde-fou, vérifié dans les deux sens.** Le libellé doit suivre le point de départ : rouge sur
+le moteur d'avant (aucun renvoi annoncé, un « coup d'envoi » botté depuis x = 78), rouge aussi sur
+un mutant qui annonce TOUT en renvoi.
+
+**Trouvé comment.** En décomposant les pertes de balle en zone rouge (suite de P2-42) : 0,20 des
+« turnovers » par match étaient des drops manqués suivis d'un « COUP_ENVOI ». La même décomposition
+a montré que 0,20 autres étaient des **essais de pénalité** (un score, pas une perte) : une fois ces
+deux lignes retirées, 42 % des séjours en zone rouge finissent sur une vraie perte, causée par des
+mécanismes génériques (en-avant au contact 1,00/match, ballon gratté 1,20/match, pénalités contre
+l'attaque au ruck ~0,65/match) qui s'appliquent au même taux partout. Je n'ai pas de référence
+réelle MESURÉE pour ce taux ; je n'en fais donc pas un défaut.
+
+**Rectification de P2-41 : « le porteur passe 47 % de son temps de ballon sans rien décider ».**
+Trompeur. Sur 1135 s de phase PORTE par match, **359 s sont le temps mort d'une pénalité jouée
+rapidement** (l'arbitre siffle, les fautifs reculent de 10 m), que le moteur modélise délibérément
+à 25-40 s tout en laissant la phase à PORTE ; `_tickPorte` n'y est même pas appelé. Rapporté au jeu
+réellement en mouvement (776 s), le porteur décide **78 %** du temps (605 s) ; la passe en vol et
+les combinaisons font le reste. **Les combinaisons scriptées ne pèsent que 13 s par match (1 %)** :
+ce ne sont pas elles, les « rails ». Le cœur de P2-41 tient — il comptait directement les décisions,
+et le temps mort de pénalité est exclu aux deux pas.
+
 ### P2-42. « Amener le jeu dans les 22 adverses » : trois hypothèses de défaut, trois réfutations par la mesure
 - **Statut : AUCUN CORRECTIF — l'étape que j'avais moi-même recommandée ne tient pas à l'examen**
 - Fichiers concernés : aucun (enquête)

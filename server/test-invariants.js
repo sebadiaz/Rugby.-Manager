@@ -1230,6 +1230,42 @@ test('un maul penetrant avance vraiment, et un pack dominant le pousse plus loin
     + `deux packs qui doivent decider, pas le tirage`);
 });
 
+// --- UNE REMISE EN JEU DEPUIS LES 22 M N'EST PAS UN COUP D'ENVOI -----------
+// Apres une penalite au but ou un drop manques, le ballon repart de la ligne
+// des 22 m de l'equipe qui defendait — le moteur le faisait bien. Mais il
+// l'annonçait « Coup d'envoi botte par l'equipe B, l'equipe A doit rester a
+// 10 m » : 2,75 remises en jeu par match sur 20 matchs (1,95 apres une penalite
+// manquee, 0,80 apres un drop manque). Le joueur lisait « coup d'envoi » en
+// voyant le ballon partir des 22 m, avec la consigne des 10 m qui n'est pas
+// celle du renvoi.
+//
+// L'assertion est SYMETRIQUE et c'est verifie dans les deux sens : rouge sur le
+// moteur d'avant (aucun renvoi annonce, un « coup d'envoi » botte depuis
+// x = 78), rouge aussi sur un mutant qui annonce TOUT en renvoi (aucun coup
+// d'envoi observe). Le libelle doit suivre le point de depart, dans les deux sens.
+test("une remise en jeu depuis les 22 m est annoncee RENVOI AUX 22 M, pas coup d'envoi", () => {
+  let envois = 0, renvois = 0;
+  const fautifs = [];
+  for (let seed = 1; seed <= 4; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    const orig = m.log.bind(m);
+    m.log = (type, eq, txt) => {
+      if (type === 'COUP_ENVOI' || type === 'RENVOI_22') {
+        const x = m.ballonVolX;
+        const auMilieu = Math.abs(x - LONGUEUR / 2) < 0.5;
+        if (type === 'COUP_ENVOI') envois++; else renvois++;
+        if ((type === 'COUP_ENVOI') !== auMilieu) fautifs.push(`${type} depuis x=${x.toFixed(1)} : « ${txt} »`);
+      }
+      return orig(type, eq, txt);
+    };
+    for (let t = 0; t < 4800; t += 0.1) m.tick(0.1);
+  }
+  assert.ok(envois > 0, 'aucun coup d envoi observe : le test ne mesure rien');
+  assert.ok(renvois > 0, `aucun renvoi aux 22 m annonce sur 4 matchs alors que le moteur en joue ~2,75 par `
+    + `match : ils sont annonces « Coup d'envoi ». Exemple : ${fautifs[0] || '-'}`);
+  assert.strictEqual(fautifs.length, 0, `${fautifs.length} remise(s) en jeu mal annoncee(s), ex. ${fautifs[0]}`);
+});
+
 // --- LE BANC DE MESURE DOIT TOURNER AU PAS DU JEU --------------------------
 // Defaut trouve en faisant tourner la calibration au pas REEL du navigateur :
 // elle tournait a 0,2 s, le jeu tourne a 0,1 s (docs/js/constants.js PAS_FIXE),

@@ -1254,7 +1254,23 @@
       this.ballonVolX = xCentre;
       this.ballonVolY = LARGEUR / 2;
       this.ballonVolHauteur = 0;
-      this.log('COUP_ENVOI', equipeKick, `Coup d'envoi botte par l'equipe ${equipeKick}, l'equipe ${equipeReceptrice} doit rester a 10m`);
+      // RENVOI AUX 22 M, PAS COUP D'ENVOI. Cette fonction sert aussi a la remise
+      // en jeu apres une penalite au but ou un drop manques : le ballon repart
+      // alors de la ligne des 22 m de l'equipe qui defendait, comme le veut la
+      // loi. Mais l'evenement annonçait toujours « Coup d'envoi ... doit rester
+      // a 10 m » : mesure sur 20 matchs, 2,75 remises en jeu par match partaient
+      // des 22 m (1,95 apres une penalite manquee, 0,80 apres un drop manque) et
+      // le joueur lisait « coup d'envoi » en voyant le ballon botte depuis les
+      // 22 m. Et la consigne des 10 m est celle du coup d'envoi ; au renvoi aux
+      // 22 m, les adversaires ne doivent pas franchir la ligne des 22 m avant le
+      // coup de pied. `renvoi22` est expose par getState pour que l'interface
+      // affiche aussi la bonne phase.
+      this.renvoi22 = Math.abs(xCentre - LONGUEUR / 2) > 0.5;
+      if (this.renvoi22) {
+        this.log('RENVOI_22', equipeKick, `Renvoi aux 22 m botte par l'equipe ${equipeKick}, l'equipe ${equipeReceptrice} ne franchit pas la ligne des 22 m avant le coup de pied`);
+      } else {
+        this.log('COUP_ENVOI', equipeKick, `Coup d'envoi botte par l'equipe ${equipeKick}, l'equipe ${equipeReceptrice} doit rester a 10m`);
+      }
     }
 
     // Réception du coup d'envoi : le ballon, en l'air pendant le vol, peut être
@@ -6386,6 +6402,8 @@
         arbitre: { x: this.arbitrePos.x, y: this.arbitrePos.y },
         possession: this.possession,
         phase: this.phase,
+        // Remise en jeu en cours depuis la ligne des 22 m (cf. _nouvelleManche).
+        renvoi22: this.phase === 'COUP_ENVOI' && !!this.renvoi22,
         // État détaillé du maul en cours (null hors maul), pour l'affichage.
         maul: this.maul ? { etat: this.maul.etat, x: this.maul.x, y: this.maul.y } : null,
         // État détaillé de la mêlée en cours (null hors mêlée), pour l'affichage.

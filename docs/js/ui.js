@@ -83,11 +83,16 @@
     const phaseEl = document.getElementById('phase');
     // Pendant un maul ou une mêlée, afficher l'état détaillé de la machine à
     // états (loi 17 pour le maul, loi 19/20 pour la mêlée).
+    // Une remise en jeu depuis la ligne des 22 m (apres une penalite ou un
+    // drop manques) n'est pas un coup d'envoi : la phase moteur est la meme,
+    // le libelle ne doit pas l'etre (cf. _nouvelleManche, renvoi22).
     phaseEl.textContent = (state.phase === 'MAUL' && state.maul && ETATS_MAUL_LABEL[state.maul.etat])
       ? ETATS_MAUL_LABEL[state.maul.etat]
       : (state.phase === 'MELEE' && state.melee && ETATS_MELEE_LABEL[state.melee.etat])
         ? ETATS_MELEE_LABEL[state.melee.etat]
-        : infosPhase.label;
+        : (state.phase === 'COUP_ENVOI' && state.renvoi22)
+          ? 'Renvoi aux 22 m'
+          : infosPhase.label;
     phaseEl.style.background = infosPhase.couleur;
     document.getElementById('horloge').textContent =
       `${formaterTemps(state.clock.time)} / ${formaterTemps(state.clock.duration === Infinity ? dureeAffichee : state.clock.duration)} · ${state.clock.period === 2 ? '2e pér.' : '1ère pér.'}`;
