@@ -580,6 +580,53 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-44. Le jeu rapide attend 26 s — et le raccourcir révèle un jeu trop dense par minute
+- **Statut : AUCUN CORRECTIF — défaut réel, mais le corriger seul dégrade la calibration**
+- Fichiers concernés : `engine/rugby-engine.js` (`_lancerJeuRapidePenalite`) — non modifié
+
+**Le défaut.** Une pénalité ou un coup franc « joué rapidement » est annoncé ainsi (« l'équipe joue
+rapidement et avance »), puis le moteur impose un plancher de **26 s** avant que le ballon soit tapé.
+Le commentaire du code le justifie par le temps mort réel d'une pénalité (l'arbitre explique, les
+fautifs reculent : 25-40 s). C'est vrai d'une pénalité tirée au but ou en touche ; **un jeu rapide
+se définit précisément par le fait qu'on n'attend pas.** Mesuré au pas réel, 20 matchs : 13,0 jeux
+rapides par match, 25,8 s d'attente chacun — 359 s de temps mort, qui font l'essentiel de l'écart du
+temps de jeu effectif (30,0 min pour une fourchette 32-42).
+
+**Les variantes, calibration complète au pas réel (la condition « fautifs repliés à 10 m » gardée) :**
+
+| plancher | attente réelle | temps effectif | rucks | essais | points | verdict |
+|---|---|---|---|---|---|---|
+| 26 s (actuel) | 25,8 s | **30,0 HORS** | 165,4 | 6,8 | 55,8 | 12/14 |
+| 12 s | 12,1 s | 31,6 | — | 8,3 | 65,5 | (mesure partielle) |
+| 8 s | 8,1 s | 33,1 OK | **186,6 HORS** | 7,9 | 63,4 | 12/14 |
+| 4 s | — | 32,1 OK | 178,2 | **8,3 HORS** | **67,5 HORS** | **ÉCHEC 11/14** |
+
+À 8 s on échange une catégorie hors fourchette contre une autre et on pousse essais et points contre
+leurs bornes — avec ±0,6 essai de bruit sur vingt matchs, un autre jeu de graines peut échouer. À 4 s
+le banc échoue. **Refusé.** Ce ne sont pas les jeux rapides eux-mêmes qui marquent : la part suivie
+d'un essai dans la minute reste à 4-5 % dans toutes les variantes. C'est le surplus de jeu en
+mouvement qui produit davantage de tout.
+
+**Ce que ça révèle : le temps mort MASQUE un jeu trop dense par minute.** Rapporté à la minute de
+ballon en jeu, contre la référence réelle du dépôt (`docs/ANALYSE_MATCH_REEL.md`, France-Irlande
+2026, ~35 min de ballon en jeu) :
+
+| par minute de ballon en jeu | réel | moteur (26 s) | moteur (8 s) |
+|---|---|---|---|
+| rucks | 5,2 | 5,5 | 5,6 |
+| essais | 0,20 | 0,23 | 0,24 |
+| **passes** | **9,9** | **14,4** | **14,0** |
+
+Les rucks sont justes par minute — **la borne à 180 du banc rejetterait d'ailleurs le match réel
+lui-même** (181 rucks) dès que le temps de jeu devient réaliste. Les essais sont un peu hauts
+(+13 %). **Les passes sont 40 % trop nombreuses par minute** : c'est le défaut qui empêche de rendre
+du temps de jeu au match sans que tout déborde, et la cible suivante.
+
+**Une erreur à ne pas reproduire.** J'avais d'abord annoncé une attaque « 1,7 fois trop efficace
+par minute », en comparant à « 4-5 essais par match réel » tiré de ma mémoire. La référence du dépôt
+en compte 7 : l'écart réel n'est que de 13 %. Toujours prendre la référence écrite, jamais un
+souvenir.
+
 ### P2-43. Le renvoi aux 22 m était annoncé « coup d'envoi » — et deux mesures de P2-41/P2-42 à rectifier
 - **Statut : CORRIGÉ (affichage des règles) + rectifications**
 - Fichiers concernés : `engine/rugby-engine.js` + `docs/rugby-engine.js` (`_nouvelleManche`,
