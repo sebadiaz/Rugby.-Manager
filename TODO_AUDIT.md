@@ -580,6 +580,79 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-45. Les passes en trop sont un FREIN : les retirer fait exploser les essais — le vrai défaut est l'attaque trop productive
+- **Statut : AUCUN CORRECTIF — défaut réel, mais on ne peut pas le corriger seul ; cause racine identifiée**
+- Fichiers concernés : `engine/rugby-engine.js` (`choisirActionPorteur`) — non modifié
+
+**Point de départ (P2-44).** Par minute de ballon en jeu, contre la référence réelle du dépôt
+(`docs/ANALYSE_MATCH_REEL.md`, France-Irlande 2026) : courses 7,4 contre 7,3 et rucks 5,5 contre
+5,2 — justes ; **passes 14,4 contre 9,9, soit +45 %**. Les passes ne remplacent rien, elles
+s'ajoutent entre deux contacts.
+
+**Où elles partent.** Compteur posé sur chaque branche de décision du porteur, dans une copie du
+moteur, validé en retrouvant exactement les 431,9 passes et 221,7 courses de la calibration :
+
+| branche | décisions/match |
+|---|---|
+| passe avant contact (taux par seconde) | 144,6 |
+| n°9 → ouvreur (sortie de ruck, structurelle) | 129,3 |
+| relais | 80,5 — **aucune ne devient une passe**, cf. plus bas |
+| circulation le long des trois-quarts (taux par seconde) | 79,5 |
+| n°9 → avant lancé (structurelle) | 48,1 |
+| jeu au large (taux par seconde) | 32,3 |
+| offloads | 5,0 (réel 25 : désormais trop BAS, l'ancienne analyse est périmée) |
+
+**Balayage d'un facteur unique sur les trois taux par seconde, au pas réel, 20 matchs :**
+
+| facteur | passes/min | courses/min | rucks/min | essais/min | essais | points |
+|---|---|---|---|---|---|---|
+| 1,0 (actuel) | 14,4 | 7,4 | 5,5 | 0,23 | 6,8 | 55,8 |
+| 0,6 | 11,7 | 7,9 | 6,0 | 0,29 | 8,7 | 66,8 |
+| 0,45 | **10,2 ≈ réel** | 8,0 | 5,9 | **0,31** | **9,4** | **74,7** |
+| 0,3 | 8,9 | 7,9 | 5,8 | 0,36 | 10,7 | 81,4 |
+| *réel* | *9,9* | *7,3* | *5,2* | *0,20* | *7* | *50* |
+
+**Moins de passes, plus d'essais.** Au nombre de passes réel, le moteur marque 56 % d'essais de
+trop par minute. La circulation latérale sert de FREIN : un porteur qui garde le ballon avance et
+marque. L'excès de passes ne crée pas le défaut, **il le cache**. Refusé.
+
+**La cause racine, mesurée.** Productivité de l'attaque contre la même référence (976 m ballon en
+main, 18 franchissements, 7 essais, ~35 min de ballon en jeu) :
+
+| | réel | moteur |
+|---|---|---|
+| mètres ballon en main par minute de jeu | 28 | **87 (×3,1)** |
+| franchissements | 18 | **6,5** (trop bas) |
+| essais | 7 | 6,8 |
+
+`metresGagnes` compte bien la progression dans le sens d'attaque, ballon en main, comme le relevé
+réel. L'attaque gagne donc trois fois trop de terrain en courant, **sans pour autant franchir** —
+cohérent avec P2-15/P2-33 (le gain de ruck à ruck est faible) : le ballon part vers l'arrière par
+les passes et le porteur regagne en courant le terrain perdu. Hypothèse à vérifier ensuite, et
+la seule qui explique les trois chiffres à la fois : **un alignement offensif trop profond**.
+
+**Trois masques, un seul défaut.** Le temps mort de 26 s des jeux rapides (P2-44), l'excès de
+passes (ici) et, sans doute, la profondeur d'alignement compensent tous une attaque trop
+productive. Aucun ne peut être retiré seul sans faire déborder les scores. L'ordre de reprise :
+d'abord mesurer la profondeur de réception par rapport à la ligne d'avantage, puis aplatir, puis
+seulement retirer les masques.
+
+**Deux défauts de code relevés au passage, non corrigés (effet faible, et les corriger ne se
+verrait pas à l'écran) :**
+- La branche « relais » (demi ou trois-quarts à moins de 2,2 m d'un défenseur) décide une passe,
+  mais l'exécution exige un défenseur à 2,2 m ou plus : **80,5 décisions par match, zéro passe**.
+  Le commentaire promet de « garder le ballon vivant » ; en réalité le porteur va au contact.
+- Cette décision morte laisse `_passeCibleForcee` armée. Elle n'est remise à zéro que par le
+  prochain appel à `_tenterPasse`, et peut donc détourner la passe d'un AUTRE porteur, plusieurs
+  phases plus tard, si le joueur visé fait partie de ses options légales.
+
+**Une erreur d'instrument, à nouveau.** Ma première pose de compteurs avait supprimé un `return`
+dans la branche du jeu au large : la décision était comptée, puis le porteur continuait vers les
+branches suivantes. Symptôme : 438,4 passes et 236,9 courses au lieu de 431,9 et 221,7 sur les
+mêmes graines. **Règle ajoutée : un instrument doit reproduire exactement les chiffres du moteur
+non instrumenté avant qu'on lise ce qu'il répartit**, et la copie doit être vérifiée identique au
+moteur par `diff`, compteurs mis à part.
+
 ### P2-44. Le jeu rapide attend 26 s — et le raccourcir révèle un jeu trop dense par minute
 - **Statut : AUCUN CORRECTIF — défaut réel, mais le corriger seul dégrade la calibration**
 - Fichiers concernés : `engine/rugby-engine.js` (`_lancerJeuRapidePenalite`) — non modifié
