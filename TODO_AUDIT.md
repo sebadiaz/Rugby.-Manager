@@ -580,6 +580,35 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-46. Profondeur d'alignement : mesurée et cohérente, mais la comparaison au réel bute sur une définition
+- **Statut : AUCUN CORRECTIF — hypothèse de P2-45 vérifiée en interne, non validable contre la référence**
+- Fichiers concernés : aucun (enquête)
+
+**Mesure, validée** (l'instrument retrouve exactement les 431,9 passes du moteur), 20 matchs au pas
+réel, bilan par match dans le sens d'attaque :
+
+| poste du bilan | par match |
+|---|---|
+| mètres gagnés en courant (`metresGagnes`) | +2617 m |
+| terrain rendu par les passes | **−1698 m** (−3,93 m par passe) |
+| solde | +919 m |
+
+Profondeur de réception derrière la ligne d'avantage (dernier point de regroupement) : moyenne 5,9 m,
+médiane 5,4 m, et elle **se creuse à chaque passe** — 4,9 m à la 1re passe depuis le regroupement,
+5,9 m à la 2e, 6,4 m à la 3e, 7,3 m au-delà. L'hypothèse de P2-45 se vérifie donc en interne : le
+ballon recule par les passes et le porteur regagne en courant le terrain perdu.
+
+**Pourquoi je ne corrige pas.** La comparaison au réel dépend de ce que compte exactement la
+statistique « mètres ballon en main » du match de référence (976 m). Si elle mesure la progression
+brute depuis le point de réception — la lecture courante —, le moteur court 2,7 fois trop et
+l'alignement est trop profond. Si elle est nette des passes, le solde du moteur (919 m) est juste.
+Je n'ai pas trouvé de définition primaire qui tranche (recherche faite, résultat non concluant), et
+**le dépôt n'a aucune donnée réelle de profondeur d'alignement**. Aplatir l'attaque sur cette base,
+ce serait régler le moteur sur une hypothèse, exactement ce que le rôle « statistiques » interdit.
+
+**Ce qu'il faudrait pour reprendre :** une source primaire de la définition des mètres portés, ou
+des données de profondeur de réception réelles.
+
 ### P2-45. Les passes en trop sont un FREIN : les retirer fait exploser les essais — le vrai défaut est l'attaque trop productive
 - **Statut : AUCUN CORRECTIF — défaut réel, mais on ne peut pas le corriger seul ; cause racine identifiée**
 - Fichiers concernés : `engine/rugby-engine.js` (`choisirActionPorteur`) — non modifié
