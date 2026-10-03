@@ -580,6 +580,48 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-47. Offloads 5 par match contre 25 : tout relèvement casse les touches — le banc est tenu par des compensations
+- **Statut : AUCUN CORRECTIF — trois dosages, aucun ne passe la calibration**
+- Fichiers concernés : `engine/rugby-engine.js` (`tauxOffload`, résolution du plaquage) — non modifié
+
+**Le défaut.** Au pas réel, **5,0 offloads par match** contre **25** dans le match réel de référence
+(`docs/ANALYSE_MATCH_REEL.md`). `CLAUDE.md` le demande explicitement (« les passes doivent arriver
+avant ou pendant le contact »). Le taux au plaquage banal est de **3 %** — et son commentaire annonce
+0,04 : code et commentaire divergent.
+
+**Balayage, 20 matchs au pas réel, puis calibration complète et graines disjointes (21-40) :**
+
+| taux | offloads | essais 1-20 | essais 21-40 | touches | calibration |
+|---|---|---|---|---|---|
+| 3 % (actuel) | 5,0 | 6,8 | 6,8 | 21,1 | 12/14 |
+| 8 % | 9,8 | 6,9 | 7,0 | **19,9 HORS** | **ÉCHEC 11/14** |
+| 14 % | 15,3 | 7,2 | **8,0** | **19,6 HORS** | **ÉCHEC 11/14** |
+| 20 % | 20,6 | **8,1 HORS** | — | — | — |
+
+Le score supporte un doublement des offloads (8 %) ; ce sont **les touches** qui cèdent, catégorie
+déclarée essentielle. La chaîne est cohérente : un ballon gardé vivant par l'offload, c'est moins de
+coups de pied (59,3 → 54,6 → 55,5), donc moins de touches. Et le réglage à 14 %, qui semblait tenir
+sur les graines 1-20, fait monter les essais de +1,2 sur les graines 21-40 : il ne tenait que sur les
+graines qui l'avaient choisi.
+
+**Je n'abaisse pas la borne des touches pour faire passer le correctif** : 20 reste en dessous des
+~25 touches typiques du Tournoi cités par le dépôt.
+
+**LE CONSTAT D'ENSEMBLE, après P2-44, P2-45 et ici.** Trois améliorations de réalisme mesurées, trois
+refus pour la même raison : rendre au match du temps de jeu (P2-44), retirer les passes en trop
+(P2-45) ou rendre les offloads (ici) fait chaque fois basculer une autre catégorie. **La calibration
+actuelle tient par des compensations** — un temps mort irréaliste, des passes en excès, des offloads
+trop rares — qui équilibrent une attaque trop productive (87 m ballon en main par minute contre 28).
+Les petits correctifs isolés ne peuvent plus faire avancer le réalisme : chacun retire une
+compensation et révèle le défaut qu'elle cachait. La suite demande un **rééquilibrage coordonné**,
+validé comme un tout sur la calibration au pas réel : réduire d'abord la productivité de l'attaque à
+sa source, puis retirer les compensations une à une.
+
+**Instrument : un faux positif de plus.** Un balayage interrompu par un redémarrage de
+l'environnement a été annoncé « en cours » : `pgrep -f` trouvait son propre shell, dont la ligne de
+commande contenait le motif. Vérifier avec `ps` sur les processus `node`, ou attendre la
+notification de fin, jamais `pgrep -f` avec un motif présent dans la commande qui l'appelle.
+
 ### P2-46. Profondeur d'alignement : mesurée et cohérente, mais la comparaison au réel bute sur une définition
 - **Statut : AUCUN CORRECTIF — hypothèse de P2-45 vérifiée en interne, non validable contre la référence**
 - Fichiers concernés : aucun (enquête)
