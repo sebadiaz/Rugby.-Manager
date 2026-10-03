@@ -580,6 +580,72 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-52. Rééquilibrage coordonné : tous les volumes se rapprochent du réel, mais le jeu courant raccourcit — non livré
+- **Statut : NON LIVRÉ (régression mesurée sur un invariant de réalisme) ; cause en amont identifiée**
+- Fichiers concernés : aucun en production. Le paquet est décrit ici pour pouvoir être refait.
+
+**Le paquet de P2-49, réessayé.** Il avait été retiré parce que les touches passaient sous leur
+plancher. Depuis P2-50, les touches ont de la marge. Réessayé seul : 11/14 sur les graines 1-20
+(passes 439, rucks 180,6), car il ajoute des phases, donc des passes. Il fallait retirer en même
+temps les compensations décrites en P2-45 et P2-47, comme le demandait la décision
+« rééquilibrage coordonné ».
+
+**La combinaison essayée :**
+1. le défenseur de face monte au contact en jeu décousu (P2-49) ;
+2. la défense arrive lancée après un coup de pied rattrapé (P2-49) ;
+3. un jeu rapide sur pénalité se joue en 8 s, pas en 26 s (P2-49) ;
+4. offloads au plaquage banal 0,03 -> 0,12 (refusé seul en P2-47) ;
+5. un facteur 0,7 sur les trois taux de passe « par seconde » (refusé seul en P2-45).
+
+**Contre le match réel de référence** (`docs/ANALYSE_MATCH_REEL.md`), 40 matchs au pas réel :
+
+| | réel | actuel | combinaison |
+|---|---|---|---|
+| passes | 347 | 422 | 386 |
+| courses ballon en main | 255 | 219 | 255 |
+| rucks | 181 | 167 | 185 |
+| plaquages réussis | 294 | 208 | 242 |
+| offloads | 25 | 4,4 | 14,9 |
+| essais | 7 | 7,2 | 6,7 |
+| franchissements | 18 | 5,3 | 6,0 |
+| mètres ballon en main | 976 | 2573 | 2361 |
+
+Forme des essais (20 matchs, instrument validé : 136 essais détectés sur 139) : courses de 30 m ou
+plus 57 % -> 51 %, essais sans aucun ruck 36 % -> 30 %, essais marqués par un avant 14 % -> 23 %.
+
+Calibration 12/14 sur quatre jeux de graines disjoints (1-20, 21-40, 41-60, 61-80), avec les rucks
+hors de la fourchette interne partout (181 à 191 ; le réel en compte 181). Passes ×0,8 au lieu de
+×0,7 : 12-13/14, mais les passes n'avaient que 7 à 20 de marge pour un bruit de ±15 entre jeux de
+graines.
+
+**Pourquoi ce n'est pas livré.** L'invariant « le jeu courant RESPIRE » passe au rouge : la séquence
+ballon vivant tombe de 3,49 s à 3,10 s (graines 1-6 ; 3,51 -> 3,03 sur 7-12), alors que la cible
+réelle est ~6-7 s. Les deux moitiés y contribuent pour environ 0,2 s chacune (sans le facteur de
+passes : 3,24 / 3,28 ; sans le monteur : 3,24 / 3,04). Aucun dosage n'y échappe : réduire seulement
+les passes le long de la ligne et au large, en gardant la passe avant contact, donne 3,04 à 3,14 s.
+Dans ce moteur, retirer des passes raccourcit forcément la séquence, parce que ce sont les passes
+qui remplissent le temps entre deux contacts. Je ne baisse pas ce seuil : je l'ai posé pour
+protéger un vrai écart au réel, et la combinaison l'aggrave.
+
+**Un second rouge, qui était du bruit.** « Percuter une défense en place ne rapporte pas autant que
+trouver l'espace » est tombé à 0,52 m d'écart (seuil 0,6). Sur 36 graines neuves, l'écart vaut
+0,91 m sur le moteur actuel et 0,99 m avec la combinaison : la propriété tient. Le test n'utilise
+que 12 graines, et son scénario hérite de 30 s d'échauffement, si bien que toute modification du
+moteur change l'état de départ. Le moteur actuel lui-même tombe à 0,72 m sur un autre jeu de
+12 graines. **À fiabiliser** (plus de graines) avant la prochaine modification qui le touchera.
+
+**La cause en amont, mesurée.** À la sortie de ruck (moteur actuel, 1502 sorties sur 10 matchs) :
+ligne de défense à 3,0 m devant le point de ruck (médiane), trois-quarts n°10-13 à 8,0 m derrière,
+puis 3,25 s et 2,0 passes jusqu'à l'événement suivant. La géométrie est plausible et le nombre de
+passes par séquence est proche du réel (347 passes pour ~150 séquences, soit ~2,3). C'est le **temps
+par action** qui est deux fois trop court : ~1,6 s entre deux événements, contre ~3 s en réel. Tant
+que cela n'est pas corrigé, chaque correctif qui retire une passe ou fait monter la défense
+raccourcit encore le jeu.
+
+**Prochaine étape :** décomposer ces 3,25 s (sortie du n°9, vol des passes, course du porteur,
+montée de la défense) et trouver lequel est trop rapide par rapport au réel, avant de retoucher le
+moindre taux.
+
 ### P2-51. Le score annoncé en fin de match perdait la dernière transformation ou le dernier tir au but
 - **Statut : CORRIGÉ**
 - Fichiers concernés : `docs/js/main.js` (génération, « Terminer le match », replay),
