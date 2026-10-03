@@ -580,6 +580,80 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-49. Rééquilibrage, étapes 1 et 2 : un paquet qui casse enfin le « jeu de poursuite » — non livré, et un invariant qui mesurait du temps mort
+- **Statut : PAQUET NON LIVRÉ (calibration à la limite) ; invariant « le jeu courant RESPIRE » CORRIGÉ**
+- Fichiers concernés : `server/test-invariants.js` (instrument corrigé). Le paquet moteur a été
+  retiré de l'arbre ; il est décrit ici pour pouvoir être refait.
+
+**Le mécanisme trouvé, par scénario et non par moyenne.** Pour chaque essai long (≥ 30 m), les
+défenseurs placés DEVANT le futur marqueur dans son couloir à la réception (3,8 en moyenne) ont été
+suivis branche par branche dans le code de placement. Ils passent **62 % de la course à « tenir leur
+ligne »**, 16 % seulement comme plaqueur désigné, 16 % en récupération — et **90 % finissent plus
+loin du porteur qu'au départ**. Cause : seul le défenseur le plus proche monte ; une fois le premier
+rideau battu, le plus proche est un défenseur DÉPASSÉ, juste derrière le porteur, et ceux de devant
+reculent dans leur couloir sans jamais attaquer.
+
+**Le paquet (trois règles, à livrer ensemble) :**
+1. *Monteur* — en jeu décousu seulement (le défenseur le plus proche est déjà derrière le porteur),
+   le défenseur le plus proche DEVANT lui (couloir de 15 m, libre de jouer) monte aussi, en visant
+   le POINT DE RENCONTRE (`pointInterception`, déjà utilisé par l'arrière). Viser un point collé au
+   porteur ne suffisait pas : décalé de 6 m, il passait derrière lui (3,5 m au plus près, scénario).
+2. *Défense lancée après un coup de pied* — pas de rampe défensive (`rampeMontee`) sur une phase
+   PORTE née d'une réception de coup de pied ou de coup d'envoi (drapeau posé aux trois transitions
+   réception → PORTE, éteint dès que la phase change).
+3. *Jeu rapide rapide* — plancher d'attente du jeu rapide sur pénalité 26 s → 8 s.
+
+Chacune seule ne changeait rien aux essais longs ou faisait déborder le score (P2-44, P2-48) :
+deux verrous pesaient sur le même défenseur.
+
+**Ce que le paquet produit** (au pas réel, 20 matchs) :
+
+| | moteur actuel | paquet | réel |
+|---|---|---|---|
+| essais longs | 3,65/match | **2,50 (−32 %)** | — |
+| part des essais longs | 60 % | 48 % | — |
+| essais des avants | 16 % | **22 %** | ~33 % |
+| essais des ailiers | 50 % | **43 %** | ~28 % |
+| plaquages tentés | 240 | 274 | 294 réussis |
+| temps de jeu effectif | 30,0 | 32,8 | ~35 |
+| essais / points | 6,8 / 55,8 | 6,0 / 55,7 | 7 / 50 |
+
+Trois tests de comportement l'accompagnaient, tous vérifiés ROUGES sur le moteur actuel et VERTS
+avec le paquet (défenseur de face qui atteint le porteur dans 6 scénarios sur 6 ; défenseur lancé
+qui court plus vite après un coup de pied qu'après un regroupement ; jeu rapide < 15 s, contre 26 s).
+
+**Pourquoi il n'est pas livré.** Calibration : 12/14 sur les graines 21-40, mais **11/14 sur les
+graines 1-20 — touches 19,9 pour une borne de 20**, catégorie essentielle, et c'est ce jeu de graines
+que la CI exécute. Rucks (191) et passes (453) restent hors fourchette. Et la séquence de jeu de phase
+(après un ruck) raccourcit de 5 % (3,64 → 3,47 s ballon vivant), dans le mauvais sens.
+
+**Deux versions intermédiaires, refusées en route.** Le monteur actif PARTOUT (pas seulement en jeu
+décousu) divisait les essais longs par deux mais écrasait les phases : quatre invariants rouges
+(séquence 3,56 s, percée qui ne rapporte plus que 11,7 m, interceptions 0,33/match, garde-fou de
+l'endurance), essais 4,5. Restreint au jeu décousu, il n'en reste qu'un — et celui-là était faux.
+
+**L'INVARIANT « LE JEU COURANT RESPIRE » MESURAIT DU TEMPS MORT — CORRIGÉ.** Il faisait la moyenne
+des phases PORTE. Or la mise en place d'un jeu rapide (l'arbitre siffle, les fautifs reculent, le
+ballon n'est PAS en jeu) se déroule DANS la phase PORTE :
+
+| | brute (ancien test) | ballon vivant |
+|---|---|---|
+| moteur actuel, graines 1-6 | 4,38 s | **3,48 s** |
+| moteur actuel, graines 7-12 | 4,21 s | 3,33 s |
+| mutant sans rampe défensive | 3,72 s | 3,09 s |
+
+**Le seuil de 3,8 s n'était atteint que grâce au temps mort** : sur la grandeur qu'il annonçait, le
+moteur était déjà en dessous. Et il bloquait tout raccourcissement du jeu rapide — un temps mort —
+sans que la séquence réelle change. La séquence est désormais comptée à partir du ballon vivant, le
+seuil posé à 3,2 s (acquis 3,48 / 3,33 s ; mutant sans rampe 3,09 s, rouge — vérifié), et le titre
+du test ne prétend plus « plus de 5,5 s ». L'écart entre l'acquis et la régression est mince (~0,3 s)
+et c'est écrit dans le test.
+
+**Reprise.** Le paquet est le bon chemin pour la forme des essais. Il bute sur les touches (19,9 sur
+les graines de la CI) : un ballon gardé vivant, c'est moins de coups de pied en touche. L'étape
+suivante est de trouver ce que le paquet retire aux touches — la décomposition des touches par
+origine (P2-42) est l'instrument tout prêt.
+
 ### P2-48. Rééquilibrage, étape 1 : d'où viennent les essais — et quinze règles qui n'en sont PAS la source
 - **Statut : DIAGNOSTIC — aucun correctif ; la source de l'excès offensif n'est pas encore trouvée**
 - Fichiers concernés : aucun (enquête sur copies du moteur)

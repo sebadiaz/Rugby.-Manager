@@ -482,7 +482,7 @@ test('un joueur ACCELERE : il ne part pas a pleine vitesse des le premier dixiem
     `un joueur qui demarre de l'arret ne doit pas couvrir ${mesure.pas.toFixed(3)} m en 0,1 s (ce serait ${(mesure.pas * 10).toFixed(1)} m/s instantanes)`);
 });
 
-test('le jeu courant RESPIRE : une sequence ballon en main dure en moyenne plus de 5,5 s', () => {
+test('le jeu courant RESPIRE : la sequence ballon vivant ne raccourcit pas (non-regression, cible reelle ~7 s)', () => {
   // Reference reelle, calculee : un match international compte ~35 min de
   // ballon en jeu (2100 s) pour ~150 regroupements. Le regroupement lui-meme
   // consomme ~3,5 s (ballon au sol -> ballon sorti), les coups de pied, mauls
@@ -492,28 +492,43 @@ test('le jeu courant RESPIRE : une sequence ballon en main dure en moyenne plus 
   // regroupement. Une moyenne sous 5,5 s signifie que le contact tombe trop
   // vite : c'est ce qui gonfle mecaniquement rucks, passes, courses et
   // plaquages, tous mesures a 2 ou 3 fois leur volume reel.
+  //
+  // CE TEST MESURAIT DU TEMPS MORT (P2-49). La mise en place d'un jeu rapide
+  // sur penalite — l'arbitre siffle, les fautifs reculent, le ballon n'est PAS
+  // en jeu — se deroule DANS la phase PORTE (cf. _lancerJeuRapidePenalite). La
+  // premiere version comptait donc ce temps mort comme du jeu courant :
+  //     sur ces six graines, 4,38 s mesurees, dont 0,90 s de temps mort ;
+  //     ballon reellement vivant : 3,48 s (3,33 s sur les graines 7-12).
+  // Le seuil de 3,8 s n'etait atteint QUE grace au temps mort : le moteur etait
+  // deja sous la valeur que le test pretendait garder. Et toute modification
+  // de la duree du jeu rapide — un temps mort, pas du jeu — faisait bouger le
+  // test sans que la sequence reelle change d'une seconde.
+  // La sequence est desormais comptee a partir du moment ou le ballon est
+  // vivant (coup de pied tape, pas sifflet).
   const durees = [];
   for (const seed of [1, 2, 3, 4, 5, 6]) {
     const m = new MatchEngine(seed, 2400);
-    let phasePrecedente = null, debut = 0;
+    let phasePrecedente = null, debutVivant = null;
     for (let t = 0; t < 2400; t += 0.2) {
       m.tick(0.2);
+      if (m.phase === 'PORTE' && !m.penaliteRecul && debutVivant === null) debutVivant = m.tempsMatch;
       if (m.phase !== phasePrecedente) {
-        if (phasePrecedente === 'PORTE') durees.push(m.tempsMatch - debut);
-        if (m.phase === 'PORTE') debut = m.tempsMatch;
+        if (phasePrecedente === 'PORTE' && debutVivant !== null) durees.push(m.tempsMatch - debutVivant);
+        if (m.phase === 'PORTE') debutVivant = m.penaliteRecul ? null : m.tempsMatch;
         phasePrecedente = m.phase;
       }
     }
   }
   assert.ok(durees.length > 100, 'echantillon de sequences trop petit');
   const moyenne = durees.reduce((a, b) => a + b, 0) / durees.length;
-  // SEUIL DE NON-REGRESSION, pas la cible. Mesure au fil du travail : 2,20 s
-  // au depart, 4,10 s aujourd'hui (inertie de course, vol du ballon, ligne
-  // d'avantage). La cible reelle calculee ci-dessus reste ~7 s : le moteur
-  // n'y est PAS. Ce seuil garde l'acquis (aucune modification ne doit
-  // reraccourcir la sequence) sans faire croire que la cible est atteinte.
-  assert.ok(moyenne > 3.8,
-    `une sequence de jeu courant dure en moyenne ${moyenne.toFixed(2)} s : le contact tombe trop vite apres la sortie du ballon (cible reelle ~7 s)`);
+  // SEUIL DE NON-REGRESSION, pas la cible (~7 s, le moteur n'y est PAS).
+  // Pose sur la grandeur honnete : 3,48 s ici, 3,33 s sur d'autres graines ;
+  // un moteur ou la defense monte sans rampe (contact plus precoce, mutation
+  // verifiee) tombe a 3,09 s et rougit. L'ecart entre l'acquis et la
+  // regression est mince (~0,3 s) : un seuil plus haut basculerait sur un
+  // changement de graines.
+  assert.ok(moyenne > 3.2,
+    `une sequence de jeu courant dure en moyenne ${moyenne.toFixed(2)} s ballon vivant : le contact tombe trop vite apres la sortie du ballon (cible reelle ~7 s)`);
 });
 
 
