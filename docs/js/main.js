@@ -110,6 +110,19 @@
   // Ne masque PAS le panneau à la fin : laissé aux appelants, pour pouvoir
   // enchaîner plusieurs simulations (une journée entière) sans clignoter.
   const PAS_PAR_LOT = 400; // ~40 s de jeu par lot : fluide (plusieurs lots/s), UI jamais bloquée longtemps
+  // Un match joué d'un coup s'arrête au COUP DE SIFFLET (phase TERMINE), pas
+  // au chronomètre. Le moteur laisse une séquence de marque engagée — la
+  // transformation d'un essai de la dernière seconde, un tir au but accordé
+  // avant la fin — se jouer après le temps écoulé (loi du jeu : le temps ne
+  // s'arrête qu'au ballon mort). Couper à `duree` perdait ces points dans le
+  // score annoncé (6 % des matchs de 5 min), alors que la lecture du même match
+  // les montrait : le résultat enregistré n'était pas celui qu'on voyait jouer.
+  // La marge n'est qu'un garde-fou : mesuré, le sifflet vient au plus 11,5 s
+  // de jeu après le temps écoulé.
+  const MARGE_SIFFLET = 120;
+  function avantSifflet(moteur, duree) {
+    return moteur.phase !== 'TERMINE' && moteur.tempsMatch < duree + MARGE_SIFFLET;
+  }
   function genererMatchEnArrierePlan(seed, duree, cfg, titre, onTermine) {
     // Referme le menu s'il était ouvert (ex. la durée vient d'être changée
     // depuis le menu) : sinon il resterait affiché AU-DESSUS de l'écran de
@@ -125,14 +138,14 @@
     const genEngine = new MatchEngine(seed, duree, cfg);
     function lot() {
       let i = 0;
-      while (i < PAS_PAR_LOT && genEngine.tempsMatch < duree && genEngine.phase !== 'TERMINE') {
+      while (i < PAS_PAR_LOT && avantSifflet(genEngine, duree)) {
         genEngine.tick(PAS_FIXE);
         i++;
       }
       const frac = Math.max(0, Math.min(1, genEngine.tempsMatch / duree));
       barre.style.width = (frac * 100) + '%';
       label.textContent = `${UI.formaterTemps(genEngine.tempsMatch)} / ${UI.formaterTemps(duree)}`;
-      if (genEngine.tempsMatch < duree && genEngine.phase !== 'TERMINE') {
+      if (avantSifflet(genEngine, duree)) {
         setTimeout(lot, 0);
       } else {
         onTermine(normalizeMatchState(genEngine.getState()));
@@ -417,8 +430,14 @@
 
   function terminerMatchMaintenant() {
     if (!matchLive || matchLive.resultatEnvoye || !match) return false;
-    enCours = false; // plus rien a animer : on saute a la fin
     fermerMiTemps();
+    // APRES fermerMiTemps, qui relance la lecture (enCours = true) : dans
+    // l'autre ordre, la boucle d'affichage continuait de faire avancer le
+    // moteur pendant et apres l'envoi du resultat — un tir au but de fin de
+    // match pouvait alors s'ajouter au score APRES que le club eut enregistre
+    // le resultat, et « Enregistrer » sauvait un autre score que celui annonce.
+    enCours = false; // plus rien a animer : on saute a la fin
+    document.getElementById('btnPlay').textContent = 'Lecture';
     // Le manager a choisi de ne plus intervenir : la mi-temps ne doit pas
     // rouvrir au milieu de l'acceleration.
     matchLive.miTempsTraitee = true;
@@ -442,14 +461,14 @@
         return;
       }
       let i = 0;
-      while (i < PAS_PAR_LOT && match.tempsMatch < duree && match.phase !== 'TERMINE') {
+      while (i < PAS_PAR_LOT && avantSifflet(match, duree)) {
         match.tick(PAS_FIXE);
         i++;
       }
       const frac = Math.max(0, Math.min(1, match.tempsMatch / duree));
       barre.style.width = (frac * 100) + '%';
       label.textContent = `${UI.formaterTemps(match.tempsMatch)} / ${UI.formaterTemps(duree)}`;
-      if (match.tempsMatch < duree && match.phase !== 'TERMINE') { setTimeout(lot, 0); return; }
+      if (avantSifflet(match, duree)) { setTimeout(lot, 0); return; }
       document.getElementById('panneauGeneration').classList.remove('visible');
       etatPrecedent = null;
       etatCourant = normalizeMatchState(match.getState());
@@ -935,7 +954,7 @@
     delete cfg.joueursA; delete cfg.joueursB;
     Object.assign(cfg, entree.config);
     const moteur = new MatchEngine(entree.seed, entree.duree, cfg);
-    for (let t = 0; t < entree.duree; t += PAS_FIXE) moteur.tick(PAS_FIXE);
+    while (avantSifflet(moteur, entree.duree)) moteur.tick(PAS_FIXE);
     const score = moteur.getState().score;
     const fidele = !!(entree.score && score.A === entree.score.A && score.B === entree.score.B);
     return { fidele, score,

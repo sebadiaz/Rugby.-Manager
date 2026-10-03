@@ -580,6 +580,39 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-51. Le score annoncé en fin de match perdait la dernière transformation ou le dernier tir au but
+- **Statut : CORRIGÉ**
+- Fichiers concernés : `docs/js/main.js` (génération, « Terminer le match », replay),
+  `server/test-parcours-navigateur.js`.
+
+**Ce que le joueur voyait.** Un essai marqué à la dernière seconde, ou une pénalité accordée juste
+avant la fin : le moteur laisse la transformation ou le tir se jouer après le temps écoulé (le temps
+ne s'arrête qu'au ballon mort). Mais les boucles qui jouent un match d'un coup s'arrêtaient au
+**chronomètre**, pas au **coup de sifflet**. Résultat : le score annoncé (et enregistré dans la
+saison du club) ignorait ces points, alors que la lecture du même match les montrait. Mesuré sur 300
+matchs de 5 min : 25 scores faux sur le moteur d'avant P2-50, 18 après (6 %).
+
+**Second défaut, trouvé en reproduisant l'échec.** `terminerMatchMaintenant` mettait `enCours = false`
+puis appelait `fermerMiTemps()`, qui remet `enCours = true` : la boucle d'affichage continuait de
+faire avancer le moteur pendant et après l'envoi du résultat. Le tir au but s'ajoutait donc APRÈS que
+le club eut enregistré le résultat — reproduit dans le navigateur : écran de résultat 7-6, score
+enregistré dans l'historique 7-9, replay 7-6 (1 parcours sur 10).
+
+**Correctif.** Une seule règle, `avantSifflet(moteur, duree)`, pour les trois boucles : on joue
+jusqu'à la phase `TERMINE` (garde-fou : 120 s de jeu après le temps écoulé ; mesuré, le sifflet vient
+au plus 11,5 s après). Et `enCours = false` est posé APRÈS `fermerMiTemps()`.
+
+**Tests.** Nouveau contrôle navigateur déterministe : il cherche, avec la configuration réellement
+chargée par la page, une graine dont la dernière séquence de marque se joue après le temps écoulé
+(graine 5 : 3-6 au chronomètre, 6-6 au sifflet), puis exige que le replay retrouve le score du
+sifflet. Rouge avant (replay 3-6), vert après. Le contrôle « replay fidèle » du parcours club affiche
+désormais le détail en cas d'échec ; c'est très probablement le test instable « sans nom » signalé
+plus bas dans ce fichier.
+
+**Conséquence assumée.** Une entrée d'historique enregistrée avant ce correctif, dont le score avait
+été coupé au chronomètre, est désormais signalée « non reproductible à l'identique » au lieu d'être
+rejouée en silence avec un autre score.
+
 ### P2-49. Rééquilibrage, étapes 1 et 2 : un paquet qui casse enfin le « jeu de poursuite » — non livré, et un invariant qui mesurait du temps mort
 - **Statut : PAQUET NON LIVRÉ (calibration à la limite) ; invariant « le jeu courant RESPIRE » CORRIGÉ**
 - Fichiers concernés : `server/test-invariants.js` (instrument corrigé). Le paquet moteur a été

@@ -4026,6 +4026,50 @@ function optionsLancement() {
     !!(rejoue && rejoue.fidele === true
        && rejoue.score && scoreEnregistre
        && rejoue.score.A === scoreEnregistre.A && rejoue.score.B === scoreEnregistre.B));
+  if (!(rejoue && rejoue.fidele === true)) {
+    // Échec déjà vu une fois en suite complète, jamais en isolé : sans ce
+    // détail, l'échec reste muet et impossible à reproduire.
+    console.error('     detail replay : enregistre=' + JSON.stringify(scoreEnregistre)
+      + ' rejoue=' + JSON.stringify(rejoue)
+      + ' seed=' + (entreeRej && entreeRej.seed) + ' duree=' + (entreeRej && entreeRej.duree)
+      + ' cles=' + (entreeRej && entreeRej.config ? Object.keys(entreeRej.config).join(',') : '-'));
+  }
+  // Le replay doit aller jusqu'au COUP DE SIFFLET, pas au chronomètre. Le
+  // moteur laisse une séquence de marque engagée (transformation d'un essai de
+  // la dernière seconde, tir au but accordé avant la fin) se jouer après le
+  // temps écoulé ; une boucle qui coupe à `duree` perd ces points. Mesuré :
+  // 18 matchs de 5 min sur 300 (6 %). On cherche une graine où c'est le cas,
+  // avec la configuration réellement chargée par la page, puis on vérifie que
+  // le replay retrouve le score du coup de sifflet.
+  const sifflet = await pgRej.evaluate(async () => {
+    const cfg = await fetch('rugby-config.json').then((r) => r.json()).catch(() => ({}));
+    delete cfg._lisezMoi;
+    const { MatchEngine } = window.RugbyEngine;
+    const PAS = window.RMConstants.PAS_FIXE;
+    for (let seed = 1; seed <= 120; seed++) {
+      const m = new MatchEngine(seed, 300, cfg);
+      while (m.tempsMatch < 300 && m.phase !== 'TERMINE') m.tick(PAS);
+      const coupe = Object.assign({}, m.getState().score);
+      let garde = 0;
+      while (m.phase !== 'TERMINE' && garde++ < 2000) m.tick(PAS);
+      const fin = m.getState().score;
+      if (m.phase === 'TERMINE' && (fin.A !== coupe.A || fin.B !== coupe.B)) {
+        window.RMMain.reinitialiserConfigClub();
+        const r = window.RMMain.rejouerDepuisHistorique({ id: 1, seed, duree: 300,
+          score: { A: fin.A, B: fin.B }, config: {}, configVersion: window.RMUI.VERSION_INSTANTANE_MATCH });
+        return { seed, coupe, fin, rejoue: r };
+      }
+    }
+    return null;
+  });
+  verifier('replay : prémisse — une graine dont la dernière séquence de marque se joue après le temps écoulé existe',
+    !!sifflet);
+  verifier('replay : rejouer va jusqu\'au COUP DE SIFFLET (transformation / tir au but de fin de match comptés)',
+    !!(sifflet && sifflet.rejoue && sifflet.rejoue.fidele === true
+       && sifflet.rejoue.score.A === sifflet.fin.A && sifflet.rejoue.score.B === sifflet.fin.B));
+  if (sifflet && !(sifflet.rejoue && sifflet.rejoue.fidele)) {
+    console.error('     detail sifflet : ' + JSON.stringify(sifflet));
+  }
   // Une entrée ancienne, sans instantané, ne doit pas produire un FAUX replay.
   const ancienne = await pgRej.evaluate(() => {
     if (!window.RMMain || !window.RMMain.rejouerDepuisHistorique) return null;
