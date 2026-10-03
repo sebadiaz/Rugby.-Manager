@@ -580,6 +580,95 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-48. Rééquilibrage, étape 1 : d'où viennent les essais — et quinze règles qui n'en sont PAS la source
+- **Statut : DIAGNOSTIC — aucun correctif ; la source de l'excès offensif n'est pas encore trouvée**
+- Fichiers concernés : aucun (enquête sur copies du moteur)
+
+Première étape du rééquilibrage coordonné décidé avec le joueur (cf. P2-47) : trouver la source de
+l'attaque trop productive avant de retirer les compensations. Toutes les mesures au pas réel, sur 20
+matchs, avec des instruments qui retrouvent exactement les totaux du moteur non instrumenté.
+
+**Ce qui est ÉTABLI sur la forme des essais.**
+
+| voie de l'essai | essais/match |
+|---|---|
+| porteur qui franchit la ligne sans être plaqué | **6,10 (90 %)** |
+| élan du porteur plaqué | 0,30 |
+| maul pénétrant | 0,15 |
+| essais de pénalité | 0,25 |
+
+| longueur de la course finale | part |
+|---|---|
+| < 5 m | 2 % |
+| 5-15 m | 17 % |
+| 15-30 m | 23 % |
+| **≥ 30 m** | **57 %** |
+
+Marqueurs : ailiers 54 % (repère du dépôt ~28 %), avants 16 % (~33 %). **Le moteur marque surtout
+sur de longues chevauchées d'ailiers**, pas sur des essais construits près de la ligne — la
+définition même du « jeu de poursuite » que `CLAUDE.md` refuse.
+
+| origine de la possession | essais longs | essais courts |
+|---|---|---|
+| **réception de coup de pied** | **51 %** | **41 %** |
+| ballon gratté / ruck perdu | 21 % | 27 % |
+| coup d'envoi / renvoi | 12 % | 5 % |
+| mêlée | 11 % | 14 % |
+| **touche** | **1 %** | **5 %** |
+
+**44 % des essais longs sont marqués sans un seul ruck** dans la possession. Et **la touche, première
+plateforme de marque du rugby moderne, ne produit presque aucun essai.**
+
+À la réception, le futur marqueur d'un essai long a en moyenne **3,8 défenseurs devant lui dans son
+couloir**, à ~7 m, aussi rapides que lui (couloir vide dans 8 % des cas seulement). Pendant la
+course, il subit **0,40 tentative de plaquage**, et la distance des trois défenseurs les plus proches
+**grandit** (5,4 → 9,6 m pour le premier) : c'est une poursuite perdue, pas une défense absente.
+
+**Le compteur de franchissements ne voit pas ces percées.** Il ne s'incrémente que sur un plaquage
+MANQUÉ ; un ailier qui file sans que personne ne tente de le plaquer n'est jamais compté. D'où
+6,5 franchissements contre 18 en réel malgré l'excès de terrain gagné.
+
+**QUINZE VARIANTES, AUCUNE N'EST LA SOURCE** (essais longs par match ; actuel 3,65) :
+
+| règle modifiée | essais | essais longs | effet |
+|---|---|---|---|
+| récupération après regroupement 6 m → 3 m | 5,45 | ~3,7 | tue les essais COURTS (avants 7 %) |
+| récupération 4 s → 2 s | 6,30 | ~3,7 | idem, plus faible |
+| récupération 3 m / 2 s | 4,40 | ~2,8 | idem |
+| couverture des défenseurs dépassés (10/20/35 m) | 6,0-7,1 | ~3,4-3,6 | quasi nul |
+| poursuite au point de rencontre (plaqueur désigné) | **10,70** | — | désastre : il quitte le plaquage de face |
+| même chose, défenseurs dépassés seulement | 9,15 | — | idem, moindre |
+| « monteur » (le défenseur de face monte au contact) | 6,20 | ~3,7 | nul sur la forme |
+| monteur + couverture | 4,45 | ~2,8 | tue les essais courts |
+| ligne de chasse sur coup de pied, 3 ou 5 chasseurs | 6,65-7,30 | 3,6-3,9 | nul |
+| pas de rampe défensive après réception de coup de pied | 6,90 | 3,75 | nul |
+| rampe défensive 6,5 → 3,5 s | 7,05 | 3,20 | partiel |
+| défenseur fixé exclu de la désignation du plaqueur | **7,75** | 3,80 | inverse |
+| idem + fixation 2,6 → 1 s | 6,90 | 3,35 | faible |
+| évitement du porteur ×0,5 | **8,20** | 4,15 | inverse |
+| évitement du porteur ×0 | 7,50 | 4,30 | inverse |
+
+Deux familles d'effets, toujours les mêmes : **renforcer la défense près du regroupement supprime
+les essais courts** (ceux qu'on veut garder) ; **tout ce qui rend la course plus droite ou plus libre
+ajoute des essais longs**. Le mécanisme des longues chevauchées résiste à chaque règle défensive
+prise isolément.
+
+**Une observation qui ne mène nulle part encore.** Pendant les courses longues, la plus courte
+distance moyenne d'un défenseur vaut 2,2 m, exactement le rayon de plaquage. J'y ai vu l'effet de
+l'évitement du porteur ; la mesure l'a démenti (moins d'évitement, PLUS d'essais longs : l'évitement
+est un frein, il fait courir en biais).
+
+**Défaut de logique relevé, non corrigé** (le corriger seul fait monter les essais, cf. tableau) : un
+défenseur « fixé » par une passe ne bouge plus et n'a pas le droit de plaquer pendant 2,6 s, mais il
+reste éligible comme plaqueur désigné — il peut donc occuper le rôle de plaqueur sans pouvoir ni
+bouger ni plaquer. La récupération après regroupement, elle, exclut ses joueurs de la désignation.
+
+**Reprise recommandée.** Les ablations règle par règle ont atteint leur limite. Construire un
+SCÉNARIO reproductible — un receveur attrape un coup de pied face à une ligne de chasse à distance
+connue — et observer image par image ce que fait chaque défenseur de devant, au lieu d'agréger. Les
+quatre essais filmés pour cette entrée l'ont montré : c'est le seul instrument qui ait fait voir un
+mécanisme (le défenseur fixé) que les moyennes masquaient.
+
 ### P2-47. Offloads 5 par match contre 25 : tout relèvement casse les touches — le banc est tenu par des compensations
 - **Statut : AUCUN CORRECTIF — trois dosages, aucun ne passe la calibration**
 - Fichiers concernés : `engine/rugby-engine.js` (`tauxOffload`, résolution du plaquage) — non modifié
