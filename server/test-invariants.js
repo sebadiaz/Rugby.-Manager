@@ -1245,6 +1245,33 @@ test('un maul penetrant avance vraiment, et un pack dominant le pousse plus loin
     + `deux packs qui doivent decider, pas le tirage`);
 });
 
+// --- UNE PENALITE HORS DE PORTEE SE JOUE EN TOUCHE --------------------------
+// Hors de portee de tir, le moteur ne tapait en touche que 35 % du temps : le
+// reste partait en jeu rapide a la main. Mesure au pas reel : 8,6 jeux rapides
+// par match pour 4,3 coups de pied en touche. Le joueur voyait une equipe
+// jouer a la main une penalite sifflee dans son propre camp, presque a chaque
+// fois. Verifie ROUGE avant correctif (49 % de jeux rapides, 21 % en touche
+// sur 81 penalites), VERT apres. Cf. TODO_AUDIT.md P2-50.
+test('une penalite hors de portee se joue EN TOUCHE, le jeu rapide reste l exception', () => {
+  const choix = { touche: 0, but: 0, rapide: 0 };
+  for (const seed of [1, 2, 3, 4]) {
+    const m = new MatchEngine(seed, 4800);
+    const orig = m.log.bind(m);
+    m.log = (t, e, x) => {
+      if (t === 'PENALITE') {
+        if (/touche/.test(x)) choix.touche++; else if (/coup de pied au but/.test(x)) choix.but++; else if (/rapidement/.test(x)) choix.rapide++;
+      }
+      return orig(t, e, x);
+    };
+    for (let t = 0; t < 4800; t += 0.1) m.tick(0.1);
+  }
+  const total = choix.touche + choix.but + choix.rapide;
+  assert.ok(total > 40, `trop peu de penalites observees (${total})`);
+  const partRapide = choix.rapide / total, partTouche = choix.touche / total;
+  assert.ok(partRapide < 0.25 && partTouche > 0.35,
+    `sur ${total} penalites : ${choix.rapide} jeux rapides (${(100 * partRapide).toFixed(0)} %), ${choix.touche} en touche (${(100 * partTouche).toFixed(0)} %), ${choix.but} au but — une penalite dans son camp se joue en touche, pas a la main`);
+});
+
 // --- UNE REMISE EN JEU DEPUIS LES 22 M N'EST PAS UN COUP D'ENVOI -----------
 // Apres une penalite au but ou un drop manques, le ballon repart de la ligne
 // des 22 m de l'equipe qui defendait — le moteur le faisait bien. Mais il

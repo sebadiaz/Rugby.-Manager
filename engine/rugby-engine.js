@@ -1680,7 +1680,22 @@
       // ne construisait quasiment jamais la sequence la plus banale du rugby
       // moderne — penalite au coin, touche a 5 m, maul penetrant. Mesure : 0,25
       // maul par match a moins de 5 m de la ligne adverse.
-      if ((tropLoinPourTir && this.rng() < 0.35) || (procheLigneAdverse && this.rng() < 0.45)) {
+      // HORS DE PORTÉE DE TIR, ON TAPE EN TOUCHE. Le taux était de 35 % : les
+      // 65 % restants partaient en jeu rapide à la main. Mesuré au pas réel,
+      // 20 matchs : sur 19,6 pénalités par match, 8,6 jeux rapides, 6,7 tirs au
+      // but et seulement 4,3 coups de pied en touche. Une pénalité dans son
+      // camp se joue en touche (on gagne 30-40 m et on garde le lancer) ; le jeu
+      // rapide est l'exception. Conséquences mesurées à 85 % :
+      //   pénalités : 5,8 au but, 9,9 en touche, 2,8 en jeu rapide
+      //   touches dans les 22 adverses   1,75 -> 3,40 par match (réel 4 à 6)
+      //   touches au total               21,1 -> 26,3 (repère du Tournoi ~25)
+      //   essais 6,8 -> 7,0 (réel 7), points 55,8 -> 55,3
+      // Et la calibration devient ROBUSTE : 12/14 sur les graines 1-20 ET sur
+      // les graines 21-40, là où l'ancien taux échouait sur le second jeu
+      // (touches 19,1, catégorie essentielle) et ne passait la CI que grâce
+      // au jeu de graines qu'elle exécute. 65 % donnait 13/14 mais des essais
+      // à 7,5-7,8, à 0,2 de la borne : trop peu de marge.
+      if ((tropLoinPourTir && this.rng() < 0.85) || (procheLigneAdverse && this.rng() < 0.45)) {
         this._accorderPenaliteTouche(equipeBeneficiaire, position);
         return;
       }

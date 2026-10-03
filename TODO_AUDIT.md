@@ -613,6 +613,54 @@ plus bas dans ce fichier.
 été coupé au chronomètre, est désormais signalée « non reproductible à l'identique » au lieu d'être
 rejouée en silence avec un autre score.
 
+### P2-50. Une pénalité hors de portée se jouait à la main une fois sur deux : elle va maintenant en touche
+- **Statut : CORRIGÉ**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_traiterPenalite`),
+  `server/test-invariants.js` (nouvel invariant).
+
+**Ce que le joueur voyait.** Une pénalité obtenue au milieu du terrain, trop loin pour tenter les
+perches, se jouait le plus souvent « à la main » : le capitaine tapait vite et repartait au contact.
+Mesuré sur les graines 1 à 4 (80 min, pas réel 0,1 s) : 81 pénalités, dont **40 jeux rapides (49 %)**,
+17 en touche (21 %), 24 au but. En rugby à XV moderne, la pénalité hors de portée part très
+majoritairement en touche : on gagne 30 à 40 m et on récupère le lancer. Le jeu rapide existe, mais
+il reste l'exception.
+
+**Cause.** La règle de choix ne mettait le ballon en touche que dans **35 %** des cas hors de portée ;
+le reste tombait sur le jeu rapide. Ce n'est pas une décision issue des attributs, c'est un seuil
+fixe — et il produisait 8,6 jeux rapides par match.
+
+**Correctif.** 85 % en touche quand le tir est hors de portée (la branche « près de la ligne
+adverse » est inchangée). Effets mesurés, calibration au pas réel, 20 matchs :
+
+| grandeur | avant | après |
+|---|---|---|
+| pénalités au but / en touche / jeu rapide (par match) | — / — / 8,6 | 5,8 / 9,9 / 2,8 |
+| touches | 21,1 | 26,3 |
+| touches dans les 22 adverses | 1,75 | 3,40 |
+| essais | 6,8 | 7,0 |
+| points | 55,8 | 55,3 |
+
+**Robustesse.** Le moteur d'avant tombait sous le plancher des touches sur les graines 21-40
+(19,1). Avec 85 % : 12/14 sur les graines 1-20 (touches 26,3) **et** 12/14 sur les graines 21-40
+(touches 23,9, essais 7,3). Les deux catégories hors fourchette sont les mêmes qu'avant (passes
+422 pour 420, temps de jeu effectif ~30 min) — elles ne viennent pas de ce correctif.
+
+**Refusé : 65 %.** Donne 13/14, mais les essais montent à 7,5-7,8 (borne haute 8) : trop près du
+plafond pour être sûr.
+
+**Invariant ajouté** : « une pénalité hors de portée se joue EN TOUCHE, le jeu rapide reste
+l'exception » (graines 1-4 : moins de 25 % de jeux rapides, plus de 35 % en touche). Rouge sur le
+moteur d'avant (49 % / 21 %), vert après.
+
+**Ce que ça ne change pas.** La forme des essais (courses longues après réception de coup de pied,
+cf. P2-48/P2-49) est intacte : ce correctif rend de la marge aux touches, il ne règle pas le
+« jeu de poursuite ». Il rend en revanche le paquet défensif de P2-49 à nouveau envisageable.
+
+**Test navigateur « replay fidèle ».** Un échec isolé de « rejouer l'entrée redonne EXACTEMENT le
+score enregistré » est apparu sur une exécution complète de la suite navigateur avec ce correctif.
+Ce n'était pas ce correctif, ni un test instable : c'est un défaut ancien de l'interface, présent
+sur le moteur d'avant (cf. P2-51).
+
 ### P2-49. Rééquilibrage, étapes 1 et 2 : un paquet qui casse enfin le « jeu de poursuite » — non livré, et un invariant qui mesurait du temps mort
 - **Statut : PAQUET NON LIVRÉ (calibration à la limite) ; invariant « le jeu courant RESPIRE » CORRIGÉ**
 - Fichiers concernés : `server/test-invariants.js` (instrument corrigé). Le paquet moteur a été
