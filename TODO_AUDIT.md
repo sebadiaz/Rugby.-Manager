@@ -580,6 +580,53 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-53. La cible « séquence de jeu courant ~7 s » était fausse : le réel est 2,8 à 3,7 s
+- **Statut : CORRIGÉ (test et documentation)**
+- Fichiers concernés : `server/test-invariants.js` (invariants « le jeu courant RESPIRE » et
+  « percuter une défense en place »).
+
+**Pourquoi j'ai rouvert la question.** P2-52 a été refusé sur la seule foi de cet invariant. Avant
+de chercher « pourquoi le contact arrive trop vite », j'ai décomposé la séquence (moteur actuel,
+1502 sorties de ruck, instrument validé : même total de 3,25 s) : 0,49 s avant la première passe du
+n°9, 0,91 s de ballon en vol, 2,25 s de ballon tenu ; le dernier porteur est plaqué 1,54 s après
+réception, après 5,9 m à 3,8 m/s. Rien d'aberrant. Puis le budget du temps de jeu effectif par
+phase (validé contre `tempsJeuEffectif` : 29,3 min) :
+
+| phase | min/match | entrées/match | s par entrée |
+|---|---|---|---|
+| jeu courant (PORTE) | 12,6 | 240 | 3,15 |
+| ruck | 10,8 | 167 | 3,89 |
+| coup d'envoi | 2,1 | 15 | 8,5 |
+| coup de pied dans le jeu | 2,1 | 51 | 2,43 |
+| maul | 1,7 | 6 | 16,4 |
+
+**L'erreur de la cible.** Elle divisait le temps de jeu par ~150 regroupements. Or une séquence de
+jeu courant commence à chaque remise en mouvement : sortie de ruck, réception de coup de pied,
+touche ou mêlée, coup d'envoi. Avec les chiffres réels du dépôt (`docs/ANALYSE_MATCH_REEL.md`) :
+2100 s de ballon en jeu, moins 181 rucks × 3 à 4 s (profil réel 55/33/12 % : 3,57 s en moyenne),
+moins 78 coups de pied × 2,5 à 4 s, moins mauls (~90 s) et coups d'envoi (~14 × 8 s), le tout réparti
+sur ~311 séquences : **2,8 à 3,7 s, ~3,3 s au milieu**. Même vérification sur le cycle complet :
+moteur 10,5 s de ruck à ruck, réel 11,6 s. **La durée des séquences n'est pas un défaut** ; le
+moteur (3,49 s) est dans la fourchette.
+
+**Ce que le budget montre vraiment.** Le temps de jeu manquant (29,3 min pour ~35) se trouve d'abord
+dans le **jeu au pied** : 51 coups de pied dans le jeu par match contre 78 en réel, de 2,43 s en
+moyenne. C'est la piste suivante.
+
+**Correctifs de test.**
+- « Le jeu courant RESPIRE » : fourchette réelle, seuil bas 2,8 s et seuil haut 4,5 s. Contrôle de
+  non-vacuité : sans inertie de course (`ACCELERATION` ×10), le contact tombe en 2,62 s et le test
+  rougit. Une défense sans rampe de montée donne 3,10 s : c'était la « régression » de l'ancien
+  seuil, c'est en fait du rugby réel.
+- « Percuter une défense en place » : 36 graines au lieu de 12. Sur 12 graines, l'écart variait de
+  0,72 à 1,23 m pour le même moteur (le scénario hérite de 30 s d'échauffement). Contrôle de
+  non-vacuité : si le gain au contact ne dépend plus du rideau défensif, l'écart tombe à 0,00 m et le
+  test rougit.
+
+**Conflit d'intérêt, dit.** Ce garde-fou bloquait mon propre patch (P2-52). Il est corrigé dans un
+commit séparé, avant toute modification du moteur, avec un seuil tiré du calcul réel et non de la
+valeur que donne la combinaison.
+
 ### P2-52. Rééquilibrage coordonné : tous les volumes se rapprochent du réel, mais le jeu courant raccourcit — non livré
 - **Statut : NON LIVRÉ (régression mesurée sur un invariant de réalisme) ; cause en amont identifiée**
 - Fichiers concernés : aucun en production. Le paquet est décrit ici pour pouvoir être refait.

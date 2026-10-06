@@ -482,29 +482,28 @@ test('un joueur ACCELERE : il ne part pas a pleine vitesse des le premier dixiem
     `un joueur qui demarre de l'arret ne doit pas couvrir ${mesure.pas.toFixed(3)} m en 0,1 s (ce serait ${(mesure.pas * 10).toFixed(1)} m/s instantanes)`);
 });
 
-test('le jeu courant RESPIRE : la sequence ballon vivant ne raccourcit pas (non-regression, cible reelle ~7 s)', () => {
-  // Reference reelle, calculee : un match international compte ~35 min de
-  // ballon en jeu (2100 s) pour ~150 regroupements. Le regroupement lui-meme
-  // consomme ~3,5 s (ballon au sol -> ballon sorti), les coups de pied, mauls
-  // et coups d'envoi ~7 min. Il reste donc ~7 s par sequence de jeu courant :
-  // course du 9, lancement de la ligne, deux ou trois passes, PLAQUAGE (le
-  // porteur est tenu, porte, mis au sol, il presente le ballon), puis
-  // regroupement. Une moyenne sous 5,5 s signifie que le contact tombe trop
-  // vite : c'est ce qui gonfle mecaniquement rucks, passes, courses et
-  // plaquages, tous mesures a 2 ou 3 fois leur volume reel.
+test('le jeu courant RESPIRE : la sequence ballon vivant reste dans la fourchette reelle (2,8 a 3,7 s)', () => {
+  // CIBLE REELLE, RECALCULEE (P2-53). La premiere version visait ~7 s : elle
+  // divisait le temps de jeu par ~150 regroupements seulement. Or une
+  // sequence de jeu courant commence a CHAQUE remise en mouvement du ballon :
+  // sortie de ruck, reception de coup de pied, touche ou melee gagnee, coup
+  // d'envoi. Avec les chiffres reels du depot (docs/ANALYSE_MATCH_REEL.md,
+  // France-Irlande 2026) :
+  //   ballon en jeu ~35 min = 2100 s ;
+  //   181 rucks x 3 a 4 s (profil reel 55/33/12 % -> 3,57 s en moyenne) ;
+  //   78 coups de pied x 2,5 a 4 s (frappe -> reception) ;
+  //   mauls ~90 s, coups d'envoi ~14 x 8 s ;
+  //   sequences : 181 + 78 + ~38 phases statiques + ~14 coups d'envoi = ~311.
+  // Reste 860 a 1160 s de jeu courant, soit 2,8 a 3,7 s par sequence (~3,3 s
+  // au milieu). Le meme calcul sur le moteur donne un cycle ruck-a-ruck de
+  // 10,5 s contre 11,6 s en reel : la duree des sequences n'est PAS le
+  // defaut qu'on croyait.
   //
-  // CE TEST MESURAIT DU TEMPS MORT (P2-49). La mise en place d'un jeu rapide
-  // sur penalite — l'arbitre siffle, les fautifs reculent, le ballon n'est PAS
-  // en jeu — se deroule DANS la phase PORTE (cf. _lancerJeuRapidePenalite). La
-  // premiere version comptait donc ce temps mort comme du jeu courant :
-  //     sur ces six graines, 4,38 s mesurees, dont 0,90 s de temps mort ;
-  //     ballon reellement vivant : 3,48 s (3,33 s sur les graines 7-12).
-  // Le seuil de 3,8 s n'etait atteint QUE grace au temps mort : le moteur etait
-  // deja sous la valeur que le test pretendait garder. Et toute modification
-  // de la duree du jeu rapide — un temps mort, pas du jeu — faisait bouger le
-  // test sans que la sequence reelle change d'une seconde.
-  // La sequence est desormais comptee a partir du moment ou le ballon est
-  // vivant (coup de pied tape, pas sifflet).
+  // CE TEST MESURAIT AUSSI DU TEMPS MORT (P2-49). La mise en place d'un jeu
+  // rapide sur penalite (l'arbitre siffle, les fautifs reculent, le ballon
+  // n'est PAS en jeu) se deroule DANS la phase PORTE. La sequence est comptee
+  // a partir du moment ou le ballon est vivant (coup de pied tape, pas
+  // sifflet).
   const durees = [];
   for (const seed of [1, 2, 3, 4, 5, 6]) {
     const m = new MatchEngine(seed, 2400);
@@ -521,14 +520,15 @@ test('le jeu courant RESPIRE : la sequence ballon vivant ne raccourcit pas (non-
   }
   assert.ok(durees.length > 100, 'echantillon de sequences trop petit');
   const moyenne = durees.reduce((a, b) => a + b, 0) / durees.length;
-  // SEUIL DE NON-REGRESSION, pas la cible (~7 s, le moteur n'y est PAS).
-  // Pose sur la grandeur honnete : 3,48 s ici, 3,33 s sur d'autres graines ;
-  // un moteur ou la defense monte sans rampe (contact plus precoce, mutation
-  // verifiee) tombe a 3,09 s et rougit. L'ecart entre l'acquis et la
-  // regression est mince (~0,3 s) : un seuil plus haut basculerait sur un
-  // changement de graines.
-  assert.ok(moyenne > 3.2,
-    `une sequence de jeu courant dure en moyenne ${moyenne.toFixed(2)} s ballon vivant : le contact tombe trop vite apres la sortie du ballon (cible reelle ~7 s)`);
+  // Seuil = borne basse de la fourchette reelle. Moteur au moment de l'ecrire :
+  // 3,49 s (graines 1-6), 3,51 s (7-12). Mutant verifie : sans inertie de
+  // course (ACCELERATION x10), le contact tombe en 2,62 s et le test rougit.
+  // Une defense sans rampe de montee donne 3,10 s : c'est encore du rugby
+  // reel, ce n'est plus une regression.
+  assert.ok(moyenne > 2.8,
+    `une sequence de jeu courant dure en moyenne ${moyenne.toFixed(2)} s ballon vivant : le contact tombe trop vite apres la sortie du ballon (fourchette reelle 2,8 a 3,7 s)`);
+  assert.ok(moyenne < 4.5,
+    `une sequence de jeu courant dure en moyenne ${moyenne.toFixed(2)} s ballon vivant : les porteurs courent sans jamais etre plaques (fourchette reelle 2,8 a 3,7 s)`);
 });
 
 
@@ -1701,7 +1701,12 @@ test("percuter une defense en place ne rapporte pas autant que trouver l espace"
   // Plusieurs graines : le plaquage dominant est tire au sort (30 % quand le
   // plaqueur domine nettement), donc un seul contact ne dit rien.
   const enPlace = [], espace = [];
-  for (const seed of [31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42]) {
+  // 36 graines, pas 12 : le scenario herite de 30 s d'echauffement, donc toute
+  // modification du moteur change l'etat de depart. Sur 12 graines, l'ecart
+  // variait de 0,72 a 1,23 m d'un jeu de graines a l'autre pour le MEME
+  // moteur, et une modification sans rapport le faisait passer sous le seuil
+  // (P2-52). Sur 36 graines : 0,99 m.
+  for (let seed = 31; seed <= 66; seed++) {
     const a = gainAuContact(3, seed);
     const b = gainAuContact(0, seed);
     if (a !== null) enPlace.push(a);
