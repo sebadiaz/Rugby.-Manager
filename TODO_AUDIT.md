@@ -580,6 +580,33 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-54. Loi 20.14 : un fautif au sol dans les 10 m n'empêchait pas la reprise d'un jeu rapide
+- **Statut : CORRIGÉ**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_tickJeuRapidePenalite`,
+  `_lancerJeuRapidePenalite`), `server/test-invariants.js`.
+
+**Trouvé par le contrôle d'arbitrage du paquet P2-52.** La mise en place d'un jeu rapide attend que
+les fautifs soient repliés à 10 m, mais sautait les joueurs au sol (`if (j.auSol > 0) continue`). Un
+fautif encore à terre dans les 10 m ne retenait donc pas la reprise : il se relevait ensuite DANS
+les 10 m, libre de plaquer — ce que la loi 20.14 interdit. Avec un plancher de 26 s, il était presque
+toujours relevé et replié avant la reprise ; avec 8 s (P2-52), plus forcément.
+
+**Second écart, mineur.** Le drapeau « phase née d'un coup de pied » (pas de rampe défensive) survivait
+à une pénalité jouée vite, car la phase reste PORTE pendant la mise en place. Il est remis à zéro au
+lancement du jeu rapide, comme le disait le commentaire.
+
+**Correctif.** Un fautif au sol en deçà de la ligne des 10 m bloque la reprise jusqu'à ce qu'il se
+relève et recule (plafond de 40 s inchangé). Drapeau remis à zéro dans `_lancerJeuRapidePenalite`.
+
+**Test.** Scénario sur un match complet (les temps morts sont à l'échelle de la durée) : jeu rapide
+avec un fautif au sol pour 12 s à 5 m de la marque. Rouge avant (« le jeu reprend après 8,1 s avec
+n°6 (au sol) encore dans les 10 m »), vert après. Le drapeau est vérifié dans le même test (rouge
+avant).
+
+**Non corrigé (relevé, mineur) :** la tolérance de 0,3 m vers l'avant du filtre d'offload (loi 11)
+n'est pas sifflée ; quatre fois plus d'offloads la rendent quatre fois plus fréquente, pour moins de
+0,3 m. À passer à 0 si un test le justifie.
+
 ### P2-53. La cible « séquence de jeu courant ~7 s » était fausse : le réel est 2,8 à 3,7 s
 - **Statut : CORRIGÉ (test et documentation)**
 - Fichiers concernés : `server/test-invariants.js` (invariants « le jeu courant RESPIRE » et

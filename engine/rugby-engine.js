@@ -1757,6 +1757,9 @@
     // ce qui crée enfin l'espace réel de la pénalité (sans lui, le tapeur se
     // faisait plaquer aussitôt par un défenseur resté sur la marque).
     _lancerJeuRapidePenalite(equipeBeneficiaire, position) {
+      // La faute arrete le jeu : une phase nee d'un coup de pied cesse de
+      // l'etre, la defense repart avec sa rampe normale apres la reprise.
+      this._porteApresPied = false;
       const sens = equipeBeneficiaire === 'A' ? 1 : -1;
       const eqDef = equipeBeneficiaire === 'A' ? this.equipeB : this.equipeA;
       // Ligne des 10 m, bornée à l'en-but des fautifs (équivalent loi 19.32 :
@@ -1798,7 +1801,14 @@
         if (distance(this.porteur, { x: R.markX, y: R.markY }) > 1) pret = false;
       }
       for (const j of R.eqDef) {
-        if (j.auSol > 0) continue;
+        // Un fautif AU SOL dans les 10 m bloque aussi la reprise (loi 20.14) :
+        // l'ignorer le laissait se relever DANS les 10 m une fois le jeu repris,
+        // libre de plaquer. Il ne peut pas bouger tant qu'il est a terre ; on
+        // attend qu'il se releve et recule (plafond de 40 s inchange).
+        if (j.auSol > 0) {
+          if ((j.x - R.ligne) * R.sens < -0.5) pret = false;
+          continue;
+        }
         // En deçà de la ligne des 10 m (entre la marque et la ligne) → se replie
         // en reculant (x vers la ligne), en gardant sa largeur (y inchangé).
         if ((j.x - R.ligne) * R.sens < -0.5) {

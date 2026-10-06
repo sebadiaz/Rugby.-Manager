@@ -1383,6 +1383,33 @@ test('le ballon VIT dans le contact : des offloads a chaque match, pas une raret
   assert.ok(parMatch > 9, `${parMatch.toFixed(1)} offloads par match (reel : 25) : le porteur plaque ne libere presque jamais le ballon dans le contact`);
 });
 
+test('loi 20.14 : un jeu rapide ne reprend pas tant qu un fautif AU SOL reste dans les 10 m', () => {
+  // Signale par le controle d'arbitrage du paquet P2-52 : la mise en place du
+  // jeu rapide ignorait les fautifs au sol (`if (j.auSol > 0) continue`). Un
+  // fautif encore a terre dans les 10 m ne bloquait pas la reprise ; il se
+  // relevait ensuite DANS les 10 m, libre de plaquer. Avec un plancher de
+  // 26 s il etait presque toujours releve et replie avant ; a 8 s, non.
+  const m = new MatchEngine(7, 4800) // match complet : les temps morts sont a l'echelle de la duree;
+  for (let t = 0; t < 30; t += 0.1) m.tick(0.1);
+  m.avantage = null; m._passeCibleForcee = null; m.passeVisuelle = null; m.combinaison = null;
+  m.possession = 'A';
+  const tapeur = m.equipeA.find(j => j.numero === 9);
+  m.porteur = tapeur; tapeur.auSol = 0; tapeur.x = 50; tapeur.y = 35;
+  for (const j of m.equipeB) { j.auSol = 0; j.sinBin = 0; j.x = 75; j.y = j.channelY; }
+  const fautif = m.equipeB.find(j => j.numero === 6);
+  fautif.x = 55; fautif.y = 36; fautif.auSol = 12; fautif._solX = 55; fautif._solY = 36;
+  m._porteApresPied = true; // phase nee d'un coup de pied juste avant la faute
+  m._lancerJeuRapidePenalite('A', { x: 50, y: 35 });
+  assert.ok(!m._porteApresPied, 'apres une penalite, la defense ne doit plus etre consideree « lancee » apres un coup de pied');
+  const ligne = m.penaliteRecul.ligne, sens = m.penaliteRecul.sens;
+  let t = 0;
+  while (m.penaliteRecul && t < 60) { m.tick(0.1); t += 0.1; }
+  assert.ok(!m.penaliteRecul, 'la mise en place du jeu rapide ne se termine jamais');
+  const enDeca = m.equipeB.filter(j => (j.x - ligne) * sens < -0.5);
+  assert.ok(enDeca.length === 0 || t >= 40,
+    `le jeu reprend apres ${t.toFixed(1)} s avec ${enDeca.map(j => 'n°' + j.numero + (j.auSol > 0 ? ' (au sol)' : '')).join(', ')} encore dans les 10 m (loi 20.14)`);
+});
+
 // --- UNE REMISE EN JEU DEPUIS LES 22 M N'EST PAS UN COUP D'ENVOI -----------
 // Apres une penalite au but ou un drop manques, le ballon repart de la ligne
 // des 22 m de l'equipe qui defendait — le moteur le faisait bien. Mais il
