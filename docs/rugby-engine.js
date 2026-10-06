@@ -15,6 +15,17 @@
   // Facteur de rattrapage du jeu au pied, cf. son unique usage dans
   // choisirActionPorteur : les taux de base ont ete balayes a 0,2 s, le jeu
   // tourne a 0,1 s.
+  // RYTHME DES PASSES « par seconde » (ligne, avant contact, jeu au large).
+  // Le moteur passait 45 % de trop par minute de jeu (14,4 contre 9,9 dans le
+  // match réel de référence, P2-45) ; retirer ces passes seules faisait
+  // exploser les essais, car la circulation latérale freinait une attaque trop
+  // productive. Avec la défense de face qui monte et la défense lancée après
+  // un coup de pied (P2-49), et les offloads rendus au contact, le frein n'est
+  // plus nécessaire : passes 422 -> 386 (réel 347), courses 219 -> 255 (réel
+  // 255), essais inchangés (7,2 -> 6,7 ; réel 7). Cf. TODO_AUDIT.md P2-52.
+  // Facteur unique : les réglages tactiques (jeuLargeTaux) gardent leur effet
+  // relatif.
+  const RYTHME_PASSES = 0.7;
   const RECALAGE_PIED_PAS_REEL = 1.15;
 
   const LARGEUR = 70;   // m, touche à touche
@@ -1363,6 +1374,7 @@
         this.possession = joueur.team;
         this.ruckPoint = { x: joueur.x, y: joueur.y };
         if (joueur.team !== this.equipeReceptriceAttendue) {
+          this._porteApresPied = true; // défense lancée, cf. rampe dans _tickPorte
           this.phase = 'PORTE';
           this.timerPhase = 0;
           this.log('CONTRE_COUP_ENVOI', joueur.team, `Coup d'envoi contre, equipe ${joueur.team} recupere le ballon`);
@@ -1381,6 +1393,7 @@
         // la foulée, l'exception de la loi 19 attribuera la mêlée (ballon
         // injouable) à l'équipe du réceptionneur, pas à la défense.
         this._receptionDirecte = true;
+        this._porteApresPied = true; // défense lancée, cf. rampe dans _tickPorte
         this.phase = 'PORTE';
         this.timerPhase = 0;
       }
@@ -1749,16 +1762,26 @@
       // Ligne des 10 m, bornée à l'en-but des fautifs (équivalent loi 19.32 :
       // marque à moins de 10 m de leur ligne → recul jusqu'à la ligne d'en-but).
       const ligne = Math.max(0, Math.min(LONGUEUR, position.x + sens * 10));
-      // Temps mort RÉEL d'une pénalité : l'arbitre siffle, explique la faute,
-      // les fautifs reculent de 10 m, le tapeur revient à la marque — 25-40 s
-      // pendant lesquelles le ballon n'est PAS en jeu. Le moteur passait
-      // directement en PORTE avec 2,5 s de replacement, donc une pénalité ne
-      // coûtait quasiment aucun temps mort alors que c'est, avec la mêlée et la
-      // touche, l'un des trois grands postes de ballon mort d'un match.
-      // `attente` est un plancher : le jeu ne repart pas avant, même si tout le
-      // monde est déjà en place.
+      // Temps mort d'une pénalité JOUÉE RAPIDEMENT : 8 s de plancher.
+      //
+      // Le plancher était de 26 s, justifié par le temps mort réel d'une
+      // pénalité (l'arbitre explique, les fautifs reculent : 25-40 s). C'est
+      // vrai d'une pénalité tirée au but ou en touche ; mais un jeu rapide se
+      // définit précisément par le fait qu'on n'attend pas — on tape pendant
+      // que la défense recule encore. L'évènement annonçait « l'équipe joue
+      // rapidement et avance » et le joueur voyait ensuite une demi-minute sans
+      // rien. Mesuré au pas réel : 13,0 jeux rapides par match, 25,8 s chacun,
+      // soit 359 s de temps mort — l'essentiel du déficit de temps de jeu
+      // effectif (30,0 min pour une fourchette 32-42).
+      //
+      // Raccourci SEUL, ce plancher faisait déborder les essais (P2-44) : le
+      // temps mort masquait une attaque trop productive. Il n'est livré
+      // qu'avec la défense de face qui monte au contact et la défense lancée
+      // après un coup de pied (cf. _tickPorte, P2-49), qui retirent d'abord
+      // cet excès. La condition « fautifs repliés à 10 m » reste en place, et
+      // le plafond de 40 s aussi.
       this.penaliteRecul = { sens, eqDef, ligne, markX: position.x, markY: position.y,
-        timer: 40 * this._echelleArret, attente: 26 * this._echelleArret };
+        timer: 40 * this._echelleArret, attente: 8 * this._echelleArret };
       this.phase = 'PORTE';
       this.timerPhase = 0;
     }
@@ -2261,6 +2284,11 @@
         // soutiens sprintent dans sa foulée). Taux abaissé 0,30 → 0,18
         // (docs/ANALYSE_MATCH_REEL.md, T3) : à 0,30 la simulation produisait
         // ~48,7 offloads/match contre 25 en match réel (France-Irlande 2026).
+        // Plaquage banal : 0,03 -> 0,12 (P2-52). À 0,03 (le commentaire annonçait
+        // 0,04), le moteur ne produisait que 4,4 offloads par match contre 25 :
+        // le ballon ne vivait presque jamais dans le contact. Refusé seul en
+        // P2-47 (les touches tombaient sous 20) ; livrable depuis que les
+        // pénalités hors de portée vont en touche (P2-50). Mesuré : 14,9 par match.
         const enPercee = (porteur._percee || 0) > 0;
         const rayonOffload = enPercee ? 6 : 4;
         // Modulé par l'attribut "passe" du porteur (0-100) : offloader dans le
@@ -2268,7 +2296,7 @@
         // taux historique inchangé.
         const facteurPasse = typeof porteur.passe === 'number'
           ? Math.max(0.5, Math.min(1.6, 1 + (porteur.passe - 60) / 90)) : 1;
-        const tauxOffload = (enPercee ? 0.18 : 0.03) * facteurPasse;
+        const tauxOffload = (enPercee ? 0.18 : 0.12) * facteurPasse;
         const soutiens = att0.filter(j => j !== porteur && distance(j, porteur) < rayonOffload && j.auSol === 0
           && (j.x - porteur.x) * porteur.sensAttaque <= 0.3);
         if (soutiens.length > 0 && this.rng() < tauxOffload) {
@@ -2548,7 +2576,49 @@
       // 4x trop de phases). 0 = montée immédiate (comportement historique).
       const cfgDef = this.cfgDefense[porteur.team === 'A' ? 'B' : 'A'];
       const rampeDef = cfgDef.rampeMontee || 0;
-      const fRampe = rampeDef > 0 ? Math.min(1, 0.35 + this.timerPhase / rampeDef) : 1;
+      // PAS DE RAMPE QUAND LE JEU NAÎT D'UN COUP DE PIED. La montée en charge
+      // modélise une ligne qui se RÉORGANISE à la sortie d'un regroupement. Après
+      // un coup de pied rattrapé, la ligne de chasse arrive déjà lancée ; la
+      // rampe la faisait pourtant repartir de 35 % de sa vitesse pendant que le
+      // receveur courait à 100 %. Mesuré (P2-48) : 51 % des essais longs
+      // naissent d'une réception de coup de pied, et 44 % de tous les essais
+      // longs sont marqués SANS UN SEUL RUCK.
+      const fRampe = this._porteApresPied ? 1
+        : (rampeDef > 0 ? Math.min(1, 0.35 + this.timerPhase / rampeDef) : 1);
+      // LE DÉFENSEUR DE FACE MONTE AU CONTACT. Seul le défenseur le plus proche
+      // (`defenseurProche`) montait sur le porteur ; tous les autres tenaient
+      // leur ligne à 85 % de leur vitesse. Or, une fois le premier rideau
+      // battu, le plus proche est souvent un défenseur DÉPASSÉ, juste derrière
+      // le porteur, qui ne peut plus le rattraper — pendant que ceux de devant
+      // reculent dans leur couloir sans jamais attaquer. Mesuré sur les essais
+      // longs (P2-48/49) : les défenseurs placés devant le marqueur dans son
+      // couloir à la réception passaient 62 % de la course à « tenir leur
+      // ligne », 16 % seulement comme plaqueur désigné, et 90 % d'entre eux
+      // finissaient PLUS LOIN du porteur qu'au départ. En vrai, c'est le
+      // défenseur de face qui plaque.
+      // Le défenseur le plus proche DEVANT le porteur (couloir de 15 m), libre
+      // de jouer, monte donc lui aussi. Seul le plus proche en absolu peut
+      // plaquer : le monteur ne plaque qu'en le devenant.
+      // NE JAMAIS LIVRER L'UN SANS L'AUTRE (ni sans le jeu rapide raccourci) :
+      // chacun des deux, mesuré seul, ne changeait rien aux essais longs — le
+      // monteur restait bridé par la rampe, la défense lancée n'avait personne
+      // qui monte (P2-49).
+      // SEULEMENT EN JEU DÉCOUSU : le monteur n'entre en jeu que si le
+      // défenseur le plus proche est DÉJÀ DERRIÈRE le porteur (premier rideau
+      // battu). En jeu de phase ordinaire, le plus proche est devant et monte
+      // déjà : un second défenseur lancé à pleine vitesse écrasait les phases
+      // (séquence ballon en main 3,6 s au lieu de ~7 s, percées qui ne
+      // rapportaient plus que 11,7 m au lieu de 15-25 m — quatre invariants
+      // rouges dans la première version de ce correctif).
+      const premierRideauBattu = !defenseurProche
+        || (defenseurProche.x - porteur.x) * porteur.sensAttaque < -0.5;
+      let monteur = null;
+      if (premierRideauBattu) {
+        const devant = def.filter(d => d.auSol === 0 && d.sinBin <= 0 && !(d.horsJeuKick > 0)
+          && !((d.fixeCooldown || 0) > 0) && d.ruckRecovery <= 0
+          && (d.x - porteur.x) * porteur.sensAttaque > 0.5 && Math.abs(d.y - porteur.y) < 15);
+        if (devant.length) monteur = joueurLePlusProche(devant, porteur.x, porteur.y).joueur;
+      }
       for (const j of def) {
         // HORS-JEU sur coup de pied (loi 10) : il se retire vers la ligne du
         // coup de pied au lieu de defendre, jusqu'a etre remis en jeu.
@@ -2579,6 +2649,22 @@
         if (j.ruckRecovery > 0 && j !== defenseurProche) {
           const ligneHorsJeuRuck = this.ruckPoint ? this.ruckPoint.x : porteur.x;
           avancer(j, ligneHorsJeuRuck - j.x, 0, dt, vitesseMs(j) * VITESSE_REPLI_SORTIE_RUCK);
+          continue;
+        }
+        // Le MONTEUR (défenseur de face, cf. plus haut) vise le POINT DE
+        // RENCONTRE avec le porteur, pas un point collé à lui : décalé de
+        // quelques mètres dans son couloir, il passait derrière le porteur sans
+        // jamais entrer à portée (scénario construit : 3,5 m au plus près, sur
+        // un porteur qu'il voyait arriver de face). Un défenseur placé DEVANT
+        // voit son point de rencontre ENTRE lui et le porteur : c'est la montée
+        // de face, qui ne quitte pas le plaquage. (Appliqué au plaqueur désigné
+        // en général, ce même calcul le faisait courir vers l'en-but au lieu de
+        // monter au contact — essais 6,8 -> 10,7 ; P2-48. Il n'est donc
+        // réservé qu'au défenseur de face.)
+        if (j === monteur && j !== defenseurProche) {
+          const ligneX = porteur.sensAttaque > 0 ? LONGUEUR : 0;
+          const pi = pointInterception(j, porteur, vitesseMs(porteur), vitesseMs(j), ligneX);
+          avancer(j, pi.x - j.x, pi.y - j.y, dt, vitesseMs(j) * fRampe);
           continue;
         }
         if (j === defenseurProche) {
@@ -3072,7 +3158,7 @@
         const espaceSuivant = suivant
           ? joueurLePlusProche(this.defenseurs(), suivant.x, suivant.y).distance : 0;
         const suivantMieuxServi = espaceSuivant > distDef * 1.2;
-        if (suivant && suivantMieuxServi && distDef > 2.4 && this.rng() < tauxLigne * dt) {
+        if (suivant && suivantMieuxServi && distDef > 2.4 && this.rng() < tauxLigne * RYTHME_PASSES * dt) {
           this._passeCibleForcee = suivant; return 'PASS';
         }
       }
@@ -3087,7 +3173,7 @@
       if (porteur.numero <= 8) pPasse = 0.45;
       else if (porteur.vitesse > 80) pPasse = 0.45;
       else if (porteur.numero === 10 || porteur.numero === 12 || porteur.numero === 13) pPasse = 0.9;
-      if (distDef < 5.5 && soutienDisponible && this.rng() < pPasse * dt) {
+      if (distDef < 5.5 && soutienDisponible && this.rng() < pPasse * RYTHME_PASSES * dt) {
         return 'PASS';
       }
 
@@ -3116,7 +3202,7 @@
         // Taux abaissé (0,33 -> 0,15) : la passe LONGUE directe est RARE en vrai
         // (difficile, interceptable) — l'écart normal se fait par passes courtes
         // successives le long de la ligne (cf. 2c + diagonale d'attaque).
-        if (soutienLarge && this.rng() < 0.15 * dt) return 'JEU_LARGE';
+        if (soutienLarge && this.rng() < 0.15 * RYTHME_PASSES * dt) return 'JEU_LARGE';
       }
 
       // 4b. ANTI « DÉPART AU RAS » : un demi/back (9-13) pris tout près du
@@ -3680,6 +3766,7 @@
         this._traiterCoupFranc(joueur.team, { x: joueur.x, y: joueur.y });
         return;
       }
+      this._porteApresPied = true; // défense lancée, cf. rampe dans _tickPorte
       this.phase = 'PORTE';
       this.timerPhase = 0;
     }
@@ -6157,6 +6244,8 @@
         this.timerPhase = 0;
         return;
       }
+      // Une PORTE née d'un coup de pied cesse de l'être dès que le jeu s'arrête.
+      if (this.phase !== 'PORTE') this._porteApresPied = false;
       if (this.phase === 'MI_TEMPS') this._tickMiTemps(dt);
       else if (this.phase === 'PORTE') {
         // Mise en place d'un jeu rapide sur pénalité/coup franc (recul de 10 m

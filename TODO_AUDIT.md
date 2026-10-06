@@ -627,9 +627,10 @@ moyenne. C'est la piste suivante.
 commit séparé, avant toute modification du moteur, avec un seuil tiré du calcul réel et non de la
 valeur que donne la combinaison.
 
-### P2-52. Rééquilibrage coordonné : tous les volumes se rapprochent du réel, mais le jeu courant raccourcit — non livré
-- **Statut : NON LIVRÉ (régression mesurée sur un invariant de réalisme) ; cause en amont identifiée**
-- Fichiers concernés : aucun en production. Le paquet est décrit ici pour pouvoir être refait.
+### P2-52. Rééquilibrage coordonné : tous les volumes se rapprochent du réel — LIVRÉ après correction de la cible de P2-53
+- **Statut : LIVRÉ** (d'abord refusé, puis livré une fois la cible « ~7 s » reconnue fausse, cf. P2-53
+  et la mise à jour en fin d'entrée)
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js`, `server/test-invariants.js`.
 
 **Le paquet de P2-49, réessayé.** Il avait été retiré parce que les touches passaient sous leur
 plancher. Depuis P2-50, les touches ont de la marge. Réessayé seul : 11/14 sur les graines 1-20
@@ -692,6 +693,18 @@ raccourcit encore le jeu.
 **Prochaine étape :** décomposer ces 3,25 s (sortie du n°9, vol des passes, course du porteur,
 montée de la défense) et trouver lequel est trop rapide par rapport au réel, avant de retoucher le
 moindre taux.
+
+**MISE À JOUR : livré.** La décomposition a été faite (P2-53) : rien n'y était trop rapide. C'était la
+**cible** qui était fausse. Recalculée avec les chiffres réels du dépôt, une séquence de jeu courant
+réelle dure 2,8 à 3,7 s, pas ~7 s. La combinaison (3,10 s) est dans la fourchette, comme le moteur
+d'avant (3,49 s). L'invariant a été corrigé dans un commit séparé, AVANT le moteur, avec un seuil
+tiré du calcul réel et un mutant qui le fait rougir (sans inertie de course : 2,62 s).
+
+Portes, combinaison appliquée : invariants 60/60 (dont les trois nouveaux) ; 13 suites node OK ;
+calibration 12/14 (rucks 180,8 et temps de jeu effectif 30,0 hors fourchette) ; navigateur 474 tests,
+0 échec. Contrôle d'arbitrage : conforme (monteur exclu en carton, hors-jeu de coup de pied, recul de
+pénalité ; offload toujours sous le filtre de la loi 11). Il a relevé un défaut de la loi 20.14,
+antérieur au paquet mais rendu plus probable par le plancher de 8 s, corrigé à part (P2-54).
 
 ### P2-51. Le score annoncé en fin de match perdait la dernière transformation ou le dernier tir au but
 - **Statut : CORRIGÉ**

@@ -1272,6 +1272,117 @@ test('une penalite hors de portee se joue EN TOUCHE, le jeu rapide reste l excep
     `sur ${total} penalites : ${choix.rapide} jeux rapides (${(100 * partRapide).toFixed(0)} %), ${choix.touche} en touche (${(100 * partTouche).toFixed(0)} %), ${choix.but} au but — une penalite dans son camp se joue en touche, pas a la main`);
 });
 
+// --- REEQUILIBRAGE, ETAPES 1 ET 2 : LA DEFENSE MONTE, LE JEU RAPIDE EST RAPIDE --
+// Cf. TODO_AUDIT.md P2-48 et P2-49. Le moteur marquait surtout sur de longues
+// chevauchees : 57 % des essais au bout d'une course de 30 m ou plus, dont la
+// moitie nee d'un coup de pied rattrape et 44 % sans un seul ruck. Les
+// defenseurs places DEVANT le futur marqueur passaient 62 % de la course a
+// « tenir leur ligne » et 90 % finissaient plus loin de lui qu'au depart.
+//
+// Trois regles, a livrer ENSEMBLE (chacune seule, mesuree, ne changeait rien
+// aux essais longs ou faisait deborder le score) :
+//  1. le defenseur de face monte au contact, en visant le point de rencontre ;
+//  2. apres un coup de pied rattrape, la defense arrive lancee (pas de rampe) ;
+//  3. un jeu rapide sur penalite se joue en 8 s, pas en 26 s.
+//
+// Les trois tests ci-dessous ont ete verifies ROUGES sur le moteur d'avant et
+// VERTS apres. Les scenarios remettent a zero l'etat herite de l'echauffement :
+// un avantage en cours revenait a la penalite au premier tick et une cible de
+// passe memorisee faisait passer le porteur — deux scenarios sur six
+// mesuraient autre chose que ce qu'ils annonçaient avant cette remise a zero.
+// Scenario commun : porteur n°11 de A lance dans l'axe, a 45 m de l'en-but
+// adverse, phase de jeu deja installee (rampe terminee sauf si on la veut).
+function scenario(seed, { timerPhase = 10, apresPied = false } = {}) {
+  const m = new MatchEngine(seed, 600);
+  for (let t = 0; t < 30; t += 0.2) m.tick(0.2);
+  m.phase = 'PORTE'; m.timerPhase = timerPhase; m.possession = 'A';
+  m.passeVisuelle = null; m.combinaison = null; m.penaliteRecul = null; m.ruckPoint = null;
+  m._passeCibleForcee = null; m._neufLibre = false; m.avantage = null; // etat herite de l'echauffement : un avantage en cours revenait a la penalite au 1er tick
+  m._porteApresPied = apresPied;
+  const p = m.equipeA.find(j => j.numero === 11);
+  const sens = p.sensAttaque;
+  m.porteur = p; p.auSol = 0; p.vitesseCourante = 0;
+  p.x = sens > 0 ? LONGUEUR - 45 : 45; p.y = 35;
+  for (const j of m.equipeA) if (j !== p) { j.x = p.x - sens * 40; j.auSol = 0; } // soutiens hors de portee de passe : le porteur court
+  for (const j of m.equipeB) {
+    j.auSol = 0; j.horsJeuKick = 0; j.fixeCooldown = 0; j.ruckRecovery = 0; j.missCooldown = 0; j.sinBin = 0;
+    j.vitesseCourante = 0;
+    j.x = p.x - sens * 25; j.y = j.channelY; // toute la defense est battue, loin derriere
+  }
+  return { m, p, sens };
+}
+
+test('le defenseur DE FACE monte au contact, meme si un defenseur battu est plus proche', () => {
+  // Un defenseur BATTU juste derriere le porteur (3 m, hors de portee de
+  // plaquage) est « le plus proche » ; un defenseur DE FACE attend 9 m devant,
+  // decale de 6 m dans son couloir. Avant correctif, seul le plus proche
+  // montait : le defenseur de face tenait sa ligne, a distance constante.
+  const mins = [];
+  for (const seed of [21, 22, 23, 24, 25, 26]) {
+    const { m, p, sens } = scenario(seed);
+    const battu = m.equipeB.find(j => j.numero === 7);
+    battu.x = p.x - sens * 3; battu.y = p.y;
+    const face = m.equipeB.find(j => j.numero === 13);
+    face.x = p.x + sens * 9; face.y = p.y + 6; face.channelY = face.y;
+    let dmin = 99;
+    const plaq0 = m.stats.B.tacklesAttempted;
+    for (let t = 0; t < 4.0 && m.phase === 'PORTE' && m.porteur === p; t += 0.1) {
+      m.tick(0.1);
+      dmin = Math.min(dmin, Math.hypot(face.x - p.x, face.y - p.y));
+    }
+    // Un plaquage resolu dans le tick ou le defenseur entre a portee met fin
+    // a la phase avant qu'on ait pu mesurer la distance : on compte donc le
+    // plaquage lui-meme comme « monte au contact ».
+    mins.push(m.stats.B.tacklesAttempted > plaq0 ? 0 : dmin);
+  }
+  const atteints = mins.filter(v => v < 2.2).length;
+  assert.ok(atteints >= 5, `le defenseur de face n'atteint le porteur que dans ${atteints} scenario(s) sur 6 (plus courte distance : ${mins.map(v => v.toFixed(1)).join(' / ')} m) : il tient sa ligne au lieu de monter au plaquage`);
+});
+
+test('apres un coup de pied rattrape, la defense arrive LANCEE (pas de remontee depuis 35 %)', () => {
+  // Meme situation, debut de phase (timerPhase 0) : le defenseur de face doit
+  // refermer bien plus vite quand le jeu nait d'un coup de pied que lorsqu'il
+  // nait d'un regroupement, ou la ligne se reorganise legitimement.
+  const ferme = (apresPied) => {
+    let total = 0;
+    for (const seed of [21, 22, 23, 24, 25, 26]) {
+      const { m, p, sens } = scenario(seed, { timerPhase: 0, apresPied });
+      const face = m.equipeB.find(j => j.numero === 13);
+      face.x = p.x + sens * 14; face.y = p.y; face.channelY = face.y;
+      // La ligne de chasse ARRIVE en courant : sur un coup de pied, le
+      // defenseur n'est pas a l'arret. (Partir de l'arret masquait tout : son
+      // inertie le bride plus que la rampe pendant les 2,7 premieres secondes.)
+      face.vitesseCourante = 6;
+      // On mesure la distance que le defenseur COURT lui-meme : l'ecart avec
+      // le porteur melangerait sa course et celle du porteur.
+      let couru = 0, px = face.x, py = face.y;
+      for (let t = 0; t < 1.5 && m.phase === 'PORTE'; t += 0.1) {
+        m.tick(0.1); couru += Math.hypot(face.x - px, face.y - py); px = face.x; py = face.y;
+      }
+      total += couru;
+    }
+    return total / 6;
+  };
+  const apresPied = ferme(true), apresRuck = ferme(false);
+  assert.ok(apresPied - apresRuck > 2, `en 1,5 s, le defenseur de face court ${apresPied.toFixed(2)} m apres un coup de pied contre ${apresRuck.toFixed(2)} m apres un regroupement : il repart de 35 % de sa vitesse alors qu'il arrive lance`);
+});
+
+test('le ballon VIT dans le contact : des offloads a chaque match, pas une rarete', () => {
+  // Reel (docs/ANALYSE_MATCH_REEL.md, France-Irlande 2026) : 25 offloads. Le
+  // moteur en produisait 4,4 par match : un porteur plaque finissait au ruck
+  // presque a tous les coups, alors que CLAUDE.md demande des passes « avant ou
+  // pendant le contact ». Cf. TODO_AUDIT.md P2-52.
+  let offloads = 0;
+  const N = 4;
+  for (let seed = 1; seed <= N; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    for (let t = 0; t < 4800; t += 0.1) m.tick(0.1);
+    offloads += m.stats.A.offloads + m.stats.B.offloads;
+  }
+  const parMatch = offloads / N;
+  assert.ok(parMatch > 9, `${parMatch.toFixed(1)} offloads par match (reel : 25) : le porteur plaque ne libere presque jamais le ballon dans le contact`);
+});
+
 // --- UNE REMISE EN JEU DEPUIS LES 22 M N'EST PAS UN COUP D'ENVOI -----------
 // Apres une penalite au but ou un drop manques, le ballon repart de la ligne
 // des 22 m de l'equipe qui defendait — le moteur le faisait bien. Mais il
@@ -1666,6 +1777,7 @@ test("percuter une defense en place ne rapporte pas autant que trouver l espace"
     m.combinaison = null;
     m.penaliteRecul = null;
     m.ruckPoint = null;
+    m._porteApresPied = false; // etat herite de l'echauffement (P2-52)
     const porteur = m.equipeA.find((j) => j.numero === 8);
     m.porteur = porteur;
     porteur.auSol = 0;
