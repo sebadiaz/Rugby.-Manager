@@ -580,6 +580,36 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-62. « Page blanche » : un seul fichier perdu au chargement laissait un jeu muet, sans message
+- **Statut : CORRIGÉ (signalement au joueur)**
+- Fichiers concernés : `docs/index.html`, `server/test-parcours-navigateur.js`.
+
+**Le signalement.** Le joueur a écrit : « moi j'ai une page blanche ». Sans son erreur de console, la
+cause exacte n'a pas pu être établie.
+
+**Ce qui a été trouvé.** Le site en ligne (`main`), ouvert depuis l'environnement de test, a perdu
+plusieurs de ses fichiers au chargement (réponses 503, nouvelles tentatives épuisées) : feuille de
+style, `main.js`, modules du Mode Club ; la page a levé « Cannot convert undefined or null to object ».
+La page charge en effet ~56 fichiers séparés. Mesure en local, chaque fichier bloqué à tour de rôle :
+- un des 7 fichiers essentiels absent (moteur, constantes, aléatoire, état de match, rendu, interface,
+  `main.js`) : l'accueil s'affiche mais « Lancer un match rapide » ne fait rien, sans aucun message ;
+- `club.js` ou `club-sauvegarde.js` absent : erreur levée côté Mode Club ;
+- feuille de style absente : la page s'affiche **sur fond blanc**, contenu brut empilé — très
+  probablement la « page blanche » signalée ;
+- les autres modules : rien de visible à l'accueil ni au match rapide.
+
+**Correctif.** Un écouteur en tête de page note chaque script ou feuille de style qui échoue à se
+charger ; une vérification après le dernier script contrôle aussi la présence des 7 fichiers essentiels.
+En cas de problème, un bandeau (styles en ligne, sans dépendance, fonctionne même sans la feuille de
+style) explique que la connexion a sans doute été interrompue et propose « Recharger la page ».
+
+**Tests** (parcours navigateur) : aucune alerte quand tout est chargé ; alerte avec bouton de
+rechargement quand `js/ui.js` manque, quand le moteur manque, quand un module du Mode Club manque. Rouges
+avant (aucune alerte), verts après.
+
+**Non fait** : réduire le nombre de fichiers (regroupement) diminuerait le risque à la source ; c'est un
+changement de construction du site, plus risqué, à décider séparément.
+
 ### P2-61. Mètres ballon en main « ×3 » : l'écart vient surtout de ce qu'on additionne, pas du jeu
 - **Statut : ENQUÊTE — aucun correctif ; complète P2-46**
 - Fichiers concernés : aucun.

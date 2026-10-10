@@ -4,6 +4,20 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>Rugby Manager 2D — Démo de simulation</title>
+<script>
+  // CHARGEMENT INCOMPLET (TODO_AUDIT.md P2-62) : la page charge ~56 fichiers.
+  // Sur une connexion instable, un seul fichier perdu laissait un jeu muet
+  // (accueil affiché, boutons sans effet, aucun message). On note ici, avant
+  // tout le reste, chaque script ou feuille de style qui échoue à se charger ;
+  // la vérification en fin de page prévient le joueur.
+  window.__chargementsRates = [];
+  window.addEventListener('error', function (e) {
+    var t = e.target;
+    if (t && (t.tagName === 'SCRIPT' || t.tagName === 'LINK')) {
+      window.__chargementsRates.push(t.src || t.href || '?');
+    }
+  }, true);
+</script>
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -1000,6 +1014,41 @@
 <script src="js/club-sauvegarde.js"></script>
 <script src="js/world.js"></script>
 <script src="js/clubUI.js"></script>
+<script>
+  // Vérification de fin de chargement (cf. l'écouteur en tête de page). Aucune
+  // dépendance, styles en ligne : elle doit fonctionner même si la feuille de
+  // style ou n'importe quel autre fichier manque.
+  (function () {
+    var essentiels = ['RugbyEngine', 'RMConstants', 'RMRng', 'RMMatchState', 'RMRenderer', 'RMUI', 'RMMain'];
+    var manquants = essentiels.filter(function (n) { return !window[n]; });
+    var rates = window.__chargementsRates || [];
+    if (!manquants.length && !rates.length) return;
+    var div = document.createElement('div');
+    div.id = 'alerteChargement';
+    div.setAttribute('role', 'alert');
+    div.style.cssText = 'position:fixed;left:12px;right:12px;top:12px;z-index:99999;background:#3a1010;'
+      + 'color:#fff;border:2px solid #f9a825;border-radius:10px;padding:14px 16px;font:15px/1.4 sans-serif;'
+      + 'box-shadow:0 4px 16px rgba(0,0,0,.5)';
+    var titre = document.createElement('div');
+    titre.style.cssText = 'font-weight:bold;margin-bottom:6px';
+    titre.textContent = manquants.length
+      ? 'Le jeu n\'a pas pu se charger complètement.'
+      : 'Une partie du jeu n\'a pas pu se charger.';
+    var texte = document.createElement('div');
+    texte.textContent = (manquants.length
+      ? 'Les matchs ne peuvent pas démarrer'
+      : 'Certaines parties du jeu peuvent ne pas répondre ou mal s\'afficher')
+      + ' : la connexion a sans doute été interrompue pendant le chargement ('
+      + (rates.length || manquants.length) + ' fichier(s) manquant(s)). Recharge la page.';
+    var bouton = document.createElement('button');
+    bouton.textContent = 'Recharger la page';
+    bouton.style.cssText = 'margin-top:10px;padding:10px 16px;font:bold 15px sans-serif;border:0;'
+      + 'border-radius:8px;background:#f9a825;color:#000;cursor:pointer';
+    bouton.addEventListener('click', function () { window.location.reload(); });
+    div.appendChild(titre); div.appendChild(texte); div.appendChild(bouton);
+    document.body.appendChild(div);
+  })();
+</script>
 <!-- Identifiant de version (TODO_AUDIT.md P0-5) : version.json est généré
      UNIQUEMENT pendant le déploiement CI (jamais présent en local ni sur une
      branche non déployée) — absent volontairement en dehors d'un vrai

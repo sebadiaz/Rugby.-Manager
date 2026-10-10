@@ -4492,6 +4492,41 @@ function optionsLancement() {
     await ctxFil.close();
   }
 
+  // --- CHARGEMENT INCOMPLET : LE JOUEUR DOIT LE SAVOIR (P2-62) -------------
+  // La page charge ~56 fichiers separes. Mesure en bloquant chacun a tour de
+  // role : si un des 7 fichiers essentiels (moteur, constantes, aleatoire,
+  // etat de match, rendu, interface, main.js) manque, l'accueil s'affiche
+  // mais « Lancer un match rapide » ne fait RIEN, sans aucun message — un jeu
+  // qui a l'air la et ne repond pas. Sur une connexion mobile instable, un
+  // seul fichier perdu suffit (le site en ligne, ouvert depuis
+  // l'environnement de test, a perdu des fichiers de cette facon). Ce bloc
+  // n'ecoute PAS les erreurs de console : il les provoque volontairement.
+  {
+    const etatAlerte = async (bloque) => {
+      const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
+      const p = await ctx.newPage();
+      if (bloque) await p.route('**/' + bloque, (r) => r.abort());
+      await p.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+      const r = await p.evaluate(() => {
+        const el = document.getElementById('alerteChargement');
+        return { visible: !!(el && el.getBoundingClientRect().height > 0 && getComputedStyle(el).display !== 'none'), texte: el ? el.textContent : '',
+          bouton: !!(el && el.querySelector('button')) };
+      });
+      await ctx.close();
+      return r;
+    };
+    const normal = await etatAlerte(null);
+    verifier('chargement : aucune alerte quand tous les fichiers sont la', !normal.visible);
+    const sansUi = await etatAlerte('js/ui.js');
+    verifier('chargement : un fichier ESSENTIEL manquant affiche une alerte claire avec un bouton pour recharger',
+      sansUi.visible && sansUi.bouton && /recharg/i.test(sansUi.texte), JSON.stringify(sansUi));
+    const sansMoteur = await etatAlerte('rugby-engine.js');
+    verifier('chargement : moteur manquant -> alerte', sansMoteur.visible, JSON.stringify(sansMoteur));
+    const sansModuleClub = await etatAlerte('js/club-coupes.js');
+    verifier('chargement : un module du Mode Club manquant est signale aussi', sansModuleClub.visible,
+      JSON.stringify(sansModuleClub));
+  }
+
   verifier('aucune erreur console/page sur tout le parcours', erreursConsole.length === 0);
   if (erreursConsole.length) console.error(erreursConsole.join('\n'));
 
