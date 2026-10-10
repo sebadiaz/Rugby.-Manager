@@ -1442,6 +1442,35 @@ test('une CHANDELLE tient en l air et se dispute : les chasseurs arrivent dessou
   assert.ok(regagnees / n > 0.15, `l equipe qui tape ne regagne que ${(100 * regagnees / n).toFixed(0)} % de ses chandelles : elles ne sont jamais disputees`);
 });
 
+test('une chandelle DISPUTEE peut etre echappee : en-avant, melee adverse', () => {
+  // Sous une chandelle disputee, deux joueurs sautent pour le meme ballon : en
+  // vrai, une part notable finit en en-avant (ballon echappe vers l'avant sous
+  // la pression), donc en melee pour l'adversaire. C'est le risque qui fait de
+  // la chandelle un pari. Le moteur n'en produisait jamais. Cf. TODO_AUDIT.md
+  // P2-56.
+  let disputees = 0, enAvants = 0, melees = 0;
+  for (let seed = 1; seed <= 6; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    const orig = m.log.bind(m);
+    m.log = (type, eq, msg, extra) => {
+      if (type === 'RECEPTION_DISPUTEE') disputees++;
+      if (type === 'MELEE_ENAVANT' && /chandelle/.test(msg)) enAvants++;
+      return orig(type, eq, msg, extra);
+    };
+    let pp = m.phase;
+    for (let t = 0; t < 4800; t += 0.1) {
+      const enAvant0 = enAvants;
+      m.tick(0.1);
+      if (enAvants > enAvant0 && m.phase === 'MELEE') melees++;
+      pp = m.phase;
+    }
+  }
+  assert.ok(disputees > 30, `echantillon trop petit : ${disputees} receptions disputees`);
+  const part = enAvants / disputees;
+  assert.ok(part > 0.05 && part < 0.3, `${(100 * part).toFixed(0)} % des receptions disputees finissent en en-avant (${enAvants}/${disputees}) : attendu entre 5 et 30 %`);
+  assert.strictEqual(melees, enAvants, 'un en-avant a la reception doit donner une melee');
+});
+
 // --- UNE REMISE EN JEU DEPUIS LES 22 M N'EST PAS UN COUP D'ENVOI -----------
 // Apres une penalite au but ou un drop manques, le ballon repart de la ligne
 // des 22 m de l'equipe qui defendait — le moteur le faisait bien. Mais il

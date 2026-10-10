@@ -580,6 +580,30 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-56. Une chandelle disputée peut être échappée : en-avant, mêlée adverse
+- **Statut : CORRIGÉ**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_tickReceptionCoupDePied`),
+  `docs/js/constants.js` (icône et bannière), `server/test-invariants.js`.
+
+**Ce qui manquait.** Depuis P2-55, chasseur et receveur arrivent ensemble sous une chandelle. Mais le
+duel aérien se résolvait toujours par une prise propre : jamais d'en-avant. En vrai, c'est le risque
+qui fait de la chandelle un pari, des deux côtés.
+
+**Correctif.** Quand les deux camps sont à portée d'une chandelle ou d'un petit coup de pied à
+suivre, le moteur annonce la réception disputée (nouvel événement `RECEPTION_DISPUTEE`, avec bannière
+et icône). Le joueur qui capte échappe le ballon vers l'avant avec un risque de base de 15 %, modulé
+par sa sûreté de mains (attribut `passe`, comme l'offload). L'en-avant donne une mêlée à
+l'adversaire.
+
+**Mesure, 10 matchs :** 13,1 réceptions disputées par match, 1,6 en-avants sous la chandelle (12 %).
+En-avants totaux 10,9 -> 10,1 et mêlées 12,5 -> 12,5 : les autres fautes de main se redistribuent au
+fil des tirages, le total reste dans sa fourchette. Calibration 12/14 sur les graines 1-20 (mêlées
+13,6) et 21-40 (12,3).
+
+**Test** : « une chandelle DISPUTÉE peut être échappée » (graines 1-6) : entre 5 et 30 % des
+réceptions disputées finissent en en-avant, chacune donne une mêlée. Rouge avant (aucune réception
+disputée annoncée), vert après.
+
 ### P2-55. Une chandelle retombait en une seconde : elle tient maintenant ~4 s en l'air et se dispute
 - **Statut : CORRIGÉ**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`dureeVolCoupDePied`,

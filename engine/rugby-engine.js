@@ -3775,6 +3775,27 @@
         chasseurGagne = this.rng() < probaChasseurGagne;
       }
       const joueur = chasseurGagne ? chasseurProche : receveurProche;
+      // RÉCEPTION DISPUTÉE (chandelle ou petit coup de pied à suivre, les deux
+      // camps sous le ballon) : deux joueurs sautent pour le même ballon, et
+      // une part notable finit échappée vers l'avant — en-avant, mêlée pour
+      // l'adversaire (loi 11). C'est le risque qui fait de la chandelle un
+      // pari, des deux côtés. Risque de base 15 %, modulé par la sûreté de
+      // mains du joueur qui capte (attribut « passe », neutre 60), comme
+      // l'offload. Cf. TODO_AUDIT.md P2-56.
+      const disputee = chasseurOk && receveurOk && (type === 'CHANDELLE' || type === 'CHIP');
+      if (disputee) {
+        this.log('RECEPTION_DISPUTEE', joueur.team,
+          `Chandelle disputee : le n°${joueur.numero} de l'equipe ${joueur.team} s'eleve au milieu de la chasse`);
+        const mains = typeof joueur.passe === 'number'
+          ? Math.max(0.5, Math.min(1.6, 1 + (60 - joueur.passe) / 90)) : 1;
+        if (this.rng() < 0.15 * mains) {
+          this.stats[joueur.team].knockOns++;
+          this.log('MELEE_ENAVANT', joueur.team,
+            `En-avant sous la chandelle, equipe ${joueur.team} - melee adverse`);
+          this._accorderMelee(joueur.team, { x: joueur.x, y: joueur.y });
+          return;
+        }
+      }
       // Coup de pied REGAGNÉ : l'équipe qui a botté récupère son propre coup de
       // pied (motif discriminant de l'étude).
       if (chasseurGagne) this.stats[equipeKick].kicksRegagnes++;
