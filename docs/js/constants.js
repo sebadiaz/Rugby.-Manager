@@ -19,7 +19,7 @@
   const MARGE_TOUCHE = 4;
 
   const ICONES = {
-    COUP_ENVOI: '▶️', RENVOI_22: '↩️', CONTRE_COUP_ENVOI: '✋', ESSAI: '🏉', MELEE_AVANT: '🔄', MELEE_ENAVANT: '🔄', RECEPTION_DISPUTEE: '🙌',
+    COUP_ENVOI: '▶️', RENVOI_22: '↩️', CONTRE_COUP_ENVOI: '✋', ESSAI: '🏉', MELEE_AVANT: '🔄', MELEE_ENAVANT: '🔄', RECEPTION_DISPUTEE: '🙌', FRANCHISSEMENT: '⚡',
     PENALITE: '🟨', PENALITE_REUSSIE: '🥅', PENALITE_RATEE: '❌',
     TRANSFORMATION_REUSSIE: '🥅', TRANSFORMATION_RATEE: '❌',
     TOUCHE: '👉', TURNOVER: '🔁', MAUL: '🧱', MI_TEMPS: '⏸️', COUP_ENVOI_COURT: '📏',
@@ -80,6 +80,8 @@
     'CONTRE_COUP_ENVOI', 'MAUL', 'MI_TEMPS', 'COUP_ENVOI_COURT',
     // Chandelle disputee (P2-56) : un duel aerien, le temps fort d'un coup de pied.
     'RECEPTION_DISPUTEE',
+    // Franchissement de la ligne de defense (P2-60) : le moment ou le match s'ouvre.
+    'FRANCHISSEMENT',
     'DROP_GOAL_REUSSI', 'DROP_GOAL_RATE', 'ESSAI_PENALITE', 'COUP_FRANC',
     'MAUL_ARRET_UN', 'MAUL_ARRET_DEUX', 'MAUL_USE_IT', 'MAUL_INJOUABLE', 'MELEE_RUCK_INJOUABLE',
     'MAUL_PEN_ECROULEMENT', 'MAUL_PEN_HORSJEU', 'MAUL_PEN_ENTREE_COTE', 'MAUL_PEN_TECHNIQUE', 'CARTON_JAUNE',

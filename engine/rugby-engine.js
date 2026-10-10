@@ -1954,9 +1954,38 @@
       return 'OWN_22';
     }
 
+    // FRANCHISSEMENT (line break), définition courante : le porteur passe la
+    // PREMIÈRE LIGNE de défense — plus aucun défenseur debout devant lui dans
+    // son couloir (10 m de part et d'autre) — puis gagne encore 5 m. Le moteur
+    // ne comptait qu'après un plaquage manqué suivi d'espace : 4,7 par match
+    // (réel ~18), alors que 69 % des essais suivent une course où le porteur
+    // n'a plus personne devant lui. Pur comptage, aucun tirage aléatoire : le
+    // déroulé du match est inchangé. Un porteur ne compte qu'une fois.
+    // Cf. TODO_AUDIT.md P2-60.
+    _suivreFranchissement(porteur, def) {
+      if (!porteur) return;
+      if (porteur !== this._suiviPorteur) {
+        this._suiviPorteur = porteur; this._ligneX0 = null; this._franchiDeja = false;
+      }
+      if (this._franchiDeja) return;
+      if (this._ligneX0 == null) {
+        const devant = def.some((d) => d.auSol === 0
+          && (d.x - porteur.x) * porteur.sensAttaque > 0 && Math.abs(d.y - porteur.y) < 10);
+        if (!devant) this._ligneX0 = porteur.x;
+        return;
+      }
+      if ((porteur.x - this._ligneX0) * porteur.sensAttaque >= 5) {
+        this._franchiDeja = true;
+        this.stats[porteur.team].franchissements++;
+        this.log('FRANCHISSEMENT', porteur.team,
+          `Franchissement ! Le n°${porteur.numero} de l'equipe ${porteur.team} passe la ligne de defense`);
+      }
+    }
+
     _tickPorte(dt) {
       const porteur = this.porteur;
       const def = this.defenseurs();
+      this._suivreFranchissement(porteur, def);
       // Pour la détermination du plaqueur potentiel, on exclut les défenseurs en
       // récupération post-regroupement (cf. _imposerRecuperationRuck) : sinon le
       // contestant qui vient de sortir du ruck, resté au même endroit, redevient
@@ -2059,8 +2088,9 @@
           // 6 m ramène le compteur au cœur de cette fourchette sans rien changer
           // au jeu (score et essais strictement identiques : pur comptage).
           const autres = def.filter((d) => d !== defenseurProche && d.auSol === 0);
-          if (joueurLePlusProche(autres, porteur.x, porteur.y).distance > 6) {
+          if (joueurLePlusProche(autres, porteur.x, porteur.y).distance > 6 && !this._franchiDeja) {
             this.stats[this.possession].franchissements++;
+            this._franchiDeja = true; // un porteur ne compte qu'une fois (cf. _suivreFranchissement)
           }
           // PERCÉE EN COURS : pendant quelques secondes, le porteur qui vient de
           // battre son vis-à-vis joue en CONTINUITÉ — ses soutiens sprintent dans
@@ -2861,8 +2891,9 @@
           this.stats[sauveteur.team].missedTackles++;
           this.stats[this.possession].defenseursBattus++;
           // Battre le dernier défenseur (plaquage de sauvetage) EST un
-          // franchissement — le porteur file vers l'en-but.
-          this.stats[this.possession].franchissements++;
+          // franchissement — le porteur file vers l'en-but. Sauf s'il est déjà
+          // compté pour ce porteur (cf. _suivreFranchissement).
+          if (!this._franchiDeja) { this.stats[this.possession].franchissements++; this._franchiDeja = true; }
           this.log('PLAQUAGE_MANQUE', this.possession, `Plaquage de sauvetage manque, l'equipe ${this.possession} aplatit`);
         }
         porteur.x = porteur.sensAttaque > 0 ? LONGUEUR : 0;

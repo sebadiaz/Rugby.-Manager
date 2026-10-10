@@ -1532,6 +1532,27 @@ test('le ballon est EN JEU des l introduction en melee et des le lancer en touch
   assert.strictEqual(mortsCompte, 0, `formation de melee ou alignement de touche compte comme du jeu : ${mortsCompte} ticks`);
 });
 
+test('un porteur qui PASSE la ligne de defense est compte et annonce comme un franchissement', () => {
+  // Definition courante (Opta) : le porteur franchit la premiere ligne de
+  // defense, qu'il ait ou non battu un plaqueur. Le moteur ne comptait qu'apres
+  // un plaquage MANQUE suivi d'espace : 4,7 franchissements par match (reel :
+  // 18), alors que 69 % des essais suivent une course ou le porteur n'a plus
+  // personne devant lui. La feuille de match montrait « 2 - 3 franchissements »
+  // apres des essais de 50 m. Cf. TODO_AUDIT.md P2-60.
+  let franchissements = 0, annonces = 0;
+  const N = 4;
+  for (let seed = 1; seed <= N; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    const o = m.log.bind(m);
+    m.log = (type, eq, msg, extra) => { if (type === 'FRANCHISSEMENT') annonces++; return o(type, eq, msg, extra); };
+    for (let t = 0; t < 4800; t += 0.1) m.tick(0.1);
+    franchissements += m.stats.A.franchissements + m.stats.B.franchissements;
+  }
+  const parMatch = franchissements / N;
+  assert.ok(parMatch >= 8 && parMatch <= 30, `${parMatch.toFixed(1)} franchissements par match (reel ~18)`);
+  assert.ok(annonces > 0 && annonces <= franchissements, `${annonces} franchissements annonces pour ${franchissements} comptes`);
+});
+
 // --- UNE REMISE EN JEU DEPUIS LES 22 M N'EST PAS UN COUP D'ENVOI -----------
 // Apres une penalite au but ou un drop manques, le ballon repart de la ligne
 // des 22 m de l'equipe qui defendait — le moteur le faisait bien. Mais il
@@ -2051,9 +2072,16 @@ test('un franchissement PAIE : le porteur qui bat son vis-a-vis gagne du terrain
     let suivi = null;
     for (let t = 0; t < 4800; t += 0.2) {
       const avant = m.stats.A.franchissements + m.stats.B.franchissements;
+      const manquesAvant = m.stats.A.missedTackles + m.stats.B.missedTackles;
       m.tick(0.2);
       const apres = m.stats.A.franchissements + m.stats.B.franchissements;
-      if (apres > avant && m.porteur) {
+      // Le porteur qui BAT SON VIS-A-VIS : franchissement ne d'un plaquage
+      // manque dans ce pas. Depuis P2-60, le compteur compte aussi le porteur
+      // qui passe la ligne sans etre touche, et ce comptage tombe en fin de
+      // course (ligne passee + 5 m) : le suivre mesurait la fin de l'action,
+      // pas la percee.
+      const manque = m.stats.A.missedTackles + m.stats.B.missedTackles > manquesAvant;
+      if (apres > avant && manque && m.porteur) {
         suivi = { x0: m.porteur.x, sens: m.porteur.sensAttaque, t0: m.tempsMatch, eq: m.possession };
       } else if (suivi && (m.tempsMatch - suivi.t0 >= 6 || m.phase === 'ESSAI' || m.possession !== suivi.eq)) {
         gains.push(m.porteur ? (m.porteur.x - suivi.x0) * suivi.sens : 0);

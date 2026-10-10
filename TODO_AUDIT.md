@@ -580,6 +580,41 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-60. Les franchissements : 4,7 par match à la feuille de match, alors que la défense est percée bien plus souvent
+- **Statut : CORRIGÉ**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_suivreFranchissement`),
+  `docs/js/constants.js` (icône et bannière), `server/test-invariants.js`.
+
+**Ce que le joueur voyait.** La feuille de match affichait 2 ou 3 franchissements par équipe après des
+essais de 50 m. Le moteur ne comptait un franchissement qu'après un plaquage MANQUÉ suivi d'espace
+(4,7 par match ; réel ~18, `docs/ANALYSE_MATCH_REEL.md`). Un porteur qui file dans un trou sans être
+touché, ou qui relance après un coup de pied, n'en comptait aucun.
+
+**Mesure.** Définition courante (Opta) : le porteur passe la première ligne de défense. Instrument :
+plus aucun défenseur debout devant le porteur dans son couloir (10 m de part et d'autre), puis au moins
+X m de gain. Sur 10 matchs : +3 m 12,6 ; **+5 m 10,8** ; +10 m 8,4 par match, et 69 % des essais suivent
+une telle course dans la même possession.
+
+**Correctif.** `_suivreFranchissement` suit le porteur à chaque pas de jeu courant et compte un
+franchissement (une seule fois par porteur) quand il a passé la ligne et gagné 5 m de plus ; l'événement
+`FRANCHISSEMENT` est annoncé (« Franchissement ! Le n°X de l'équipe Y passe la ligne de défense »),
+avec icône et bannière. Les deux comptages existants (plaquage manqué suivi d'espace, plaquage de
+sauvetage manqué) sont conservés et ne comptent plus deux fois le même porteur.
+
+**Effet :** franchissements **4,7 -> 14,4 par match** (réel ~18). Pur comptage, sans tirage aléatoire :
+vérifié sur 10 matchs, score et toutes les autres statistiques strictement identiques au moteur d'avant.
+
+**Un instrument à réaligner.** « Un franchissement paie » mesurait le gain sur 6 s à partir de
+l'incrément du compteur de franchissements. Ce compteur incrémente désormais aussi en fin de course
+(ligne passée + 5 m) : le test mesurait la fin de l'action et tombait à 10,7 m. Il suit maintenant ce
+qu'il annonce, le porteur qui bat son vis-à-vis (franchissement né d'un plaquage manqué dans le même
+pas) : vert sur le moteur actuel et celui d'avant, rouge sur le mutant « défenseur éliminé qui repart
+à pleine vitesse » (8,5 m).
+
+**Test** : « un porteur qui passe la ligne de défense est compté et annoncé » (graines 1-4) : 8 à 30
+franchissements par match, au moins un annoncé, jamais plus d'annonces que de franchissements. Rouge
+avant (3,8), vert après.
+
 ### P2-59. Le temps de jeu effectif oubliait la mêlée et le lancer en touche
 - **Statut : CORRIGÉ**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (compteur du temps de jeu
