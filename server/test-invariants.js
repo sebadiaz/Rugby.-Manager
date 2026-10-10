@@ -1506,6 +1506,32 @@ test('le jeu au pied appartient aux demis et a l arriere, pas aux avants', () =>
   assert.ok(part(9) + part(10) + part(15) > 0.55, `n°9, 10 et 15 ne tapent que ${(100 * (part(9) + part(10) + part(15))).toFixed(0)} % des coups de pied`);
 });
 
+test('le ballon est EN JEU des l introduction en melee et des le lancer en touche', () => {
+  // Definition du temps de jeu effectif (World Rugby) : le chronometre du
+  // ballon en jeu tourne des que le ballon est introduit dans la melee, ou
+  // lance en touche. Le moteur annoncait n'exclure que la FORMATION (liaison
+  // des packs, alignement avant le lancer), mais excluait les phases MELEE et
+  // TOUCHE entieres : ~1,5 a 2 min de vrai jeu par match disparaissaient du
+  // temps de jeu effectif et de la possession. Cf. TODO_AUDIT.md P2-59.
+  let vivantsCompte = 0, vivants = 0, mortsCompte = 0, morts = 0;
+  const VIVANTS = ['MELEE_INTRODUCTION', 'MELEE_CONTESTATION', 'MELEE_SORTIE'];
+  for (const seed of [1, 2]) {
+    const m = new MatchEngine(seed, 4800);
+    for (let t = 0; t < 4800; t += 0.1) {
+      const phase = m.phase, etat = m.melee ? m.melee.etat : null, lancer = !!m.toucheLancer;
+      const avant = m.tempsJeuEffectif;
+      m.tick(0.1);
+      if (m.phase !== phase) continue; // tick de transition : on ne juge que les ticks stables
+      const compte = m.tempsJeuEffectif > avant;
+      if ((phase === 'MELEE' && VIVANTS.includes(etat)) || (phase === 'TOUCHE' && lancer)) { vivants++; if (compte) vivantsCompte++; }
+      if ((phase === 'MELEE' && etat === 'MELEE_FORMATION') || (phase === 'TOUCHE' && !lancer)) { morts++; if (compte) mortsCompte++; }
+    }
+  }
+  assert.ok(vivants > 200 && morts > 2000, `echantillon trop petit (${vivants} / ${morts})`);
+  assert.ok(vivantsCompte / vivants > 0.95, `ballon introduit ou lance mais pas compte en jeu : ${vivantsCompte}/${vivants} ticks`);
+  assert.strictEqual(mortsCompte, 0, `formation de melee ou alignement de touche compte comme du jeu : ${mortsCompte} ticks`);
+});
+
 // --- UNE REMISE EN JEU DEPUIS LES 22 M N'EST PAS UN COUP D'ENVOI -----------
 // Apres une penalite au but ou un drop manques, le ballon repart de la ligne
 // des 22 m de l'equipe qui defendait — le moteur le faisait bien. Mais il

@@ -6219,14 +6219,28 @@
       // cette exclusion explicite — sans elle, les ~30 s réglementaires
       // seraient comptées comme du ballon en jeu.
       const enMiseEnPlacePenalite = !!this.penaliteRecul;
+      // MÊLÉE ET TOUCHE : seule leur FORMATION est un arrêt. Le ballon est en
+      // jeu dès qu'il est introduit dans la mêlée (introduction, poussée,
+      // sortie) et dès qu'il est lancé en touche (définition World Rugby du
+      // temps de jeu effectif). Ces deux phases étaient exclues ENTIÈRES :
+      // ~1,5 à 2 min de vrai jeu par match manquaient au temps de jeu effectif
+      // et à la possession (cf. TODO_AUDIT.md P2-59).
+      const meleeVivante = this.phase === 'MELEE' && this.melee
+        && (this.melee.etat === ETATS_MELEE.INTRODUCTION || this.melee.etat === ETATS_MELEE.CONTESTATION
+          || this.melee.etat === ETATS_MELEE.SORTIE);
+      const toucheVivante = this.phase === 'TOUCHE' && !!this.toucheLancer;
       if (!enMiseEnPlacePenalite && (this.phase === 'PORTE' || this.phase === 'RUCK' || this.phase === 'MAUL'
-        || this.phase === 'COUP_ENVOI' || this.phase === 'COUP_DE_PIED_JEU')) {
+        || this.phase === 'COUP_ENVOI' || this.phase === 'COUP_DE_PIED_JEU' || meleeVivante || toucheVivante)) {
         this.tempsJeuEffectif += dt;
         this.tempsPossession[this.possession] += dt;
         // Occupation : où se joue le match (position réelle du ballon),
         // indépendamment de qui le porte — sensAttaque de A est toujours +1,
         // donc la moitié de terrain x > LONGUEUR/2 est sa moitié offensive.
-        const xBallon = (this.ballonEnVol || this._receptionEnAttente) ? this.ballonVolX : this.porteur.x;
+        // Mêlée ou lancer en touche (P2-59) : personne ne porte forcément le
+        // ballon, on prend alors le point de la mêlée ou de la marque.
+        const xBallon = (this.ballonEnVol || this._receptionEnAttente) ? this.ballonVolX
+          : this.porteur ? this.porteur.x
+            : (this.melee ? this.melee.x : (this.ruckPoint ? this.ruckPoint.x : LONGUEUR / 2));
         if (xBallon > LONGUEUR / 2) this.tempsOccupation.A += dt;
         else this.tempsOccupation.B += dt;
         // Entrée dans les 22 m adverses (une seule par possession continue) :

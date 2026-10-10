@@ -580,6 +580,36 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-59. Le temps de jeu effectif oubliait la mêlée et le lancer en touche
+- **Statut : CORRIGÉ**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (compteur du temps de jeu
+  effectif), `server/test-invariants.js`.
+
+**Le décompte.** Temps de jeu effectif par phase (moteur actuel, 10 matchs, instrument validé contre le
+compteur du moteur) face au réel estimé (~35 min, `docs/ANALYSE_MATCH_REEL.md`) : rucks 11,3 min (réel
+~10,8), coups de pied 3,5 (~4,5), mauls 2,1 (~1,5), coups d'envoi 2,2 (~1,9), jeu courant 11,5.
+
+**Le défaut.** Le commentaire du compteur annonçait n'exclure de la mêlée et de la touche que leur
+**formation** (liaison des packs, alignement avant le lancer). Le code excluait les phases MÊLÉE et
+TOUCHE **entières**. Or le ballon est en jeu dès qu'il est introduit dans la mêlée et dès qu'il est lancé
+en touche (définition World Rugby). Mesuré par état de mêlée : introduction 2,83 s, poussée 3,74 s,
+sortie 0,90 s par mêlée, soit ~7,5 s de vrai jeu ; plus 23 s par match de vol des lancers en touche.
+
+**Correctif.** Les états introduction / contestation / sortie de la mêlée et le vol du lancer en touche
+comptent dans le temps de jeu effectif (et donc dans la possession et l'occupation). La formation reste
+exclue. Repli ajouté pour l'occupation quand personne ne porte le ballon (point de mêlée ou marque).
+
+**Effet :** temps de jeu effectif **30,6 -> 32,6 min** par match. Le déroulé des matchs est strictement
+identique (le compteur ne tire aucun nombre aléatoire) : seules les statistiques de temps de jeu, de
+possession et d'occupation changent.
+
+**Test** : « le ballon est en jeu dès l'introduction en mêlée et dès le lancer en touche » (graines 1-2) :
+plus de 95 % des ticks de mêlée vivante ou de lancer comptés, aucun tick de formation compté. Rouge avant
+(0 sur 2376), vert après.
+
+**Reste** : le jeu courant (11,5 min) et le jeu au pied (3,5 min) restent sous le réel ; le temps de jeu
+effectif (32,6) est en bas de la fourchette 32-42.
+
 ### P2-58. Quels invariants ne tiennent que par leurs graines ? Deux sur soixante-quatre
 - **Statut : CORRIGÉ (tests)**
 - Fichiers concernés : `server/test-invariants.js`.
