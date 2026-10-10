@@ -2016,8 +2016,11 @@ test('un franchissement PAIE : le porteur qui bat son vis-a-vis gagne du terrain
   // 8 graines : un match ne produit qu'une dizaine de franchissements, 5 matchs
   // ne suffisaient pas a stabiliser la moyenne (ni meme a atteindre la taille
   // d'echantillon minimale).
+  // 16 graines (P2-58) : rejoue sur des graines decalees (+1000, +2000), le
+  // MEME moteur tombait a 26 franchissements (echantillon trop petit) ou a
+  // 11,9 m pour un seuil de 12. Sur 16 graines : ~14 m.
   const gains = [];
-  for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) {
+  for (let seed = 1; seed <= 16; seed++) {
     const m = new MatchEngine(seed, 4800);
     let suivi = null;
     for (let t = 0; t < 4800; t += 0.2) {
@@ -2092,7 +2095,10 @@ test('loi 14 : du plaquage au ballon sorti, un regroupement dure plus de 4,5 s',
 test('loi 10 : les joueurs devant le botteur sont hors-jeu et ne peuvent pas plaquer', () => {
   let coupsDePied = 0, marques = 0, plaquagesHorsJeu = 0;
   const masse = { libre: { n: 0, s: 0 }, disputee: { n: 0, s: 0 } };
-  for (const seed of [1, 2, 3, 4]) {
+  // 6 graines, pas 4 (P2-58) : rejoue sur des graines decalees, le meme
+  // moteur ne donnait que 56 a 60 receptions de coups de pied non disputes,
+  // sous la taille d'echantillon exigee plus bas.
+  for (const seed of [1, 2, 3, 4, 5, 6]) {
     const m = new MatchEngine(seed, 4800);
     let typeCoup = null;
     for (let t = 0; t < 4800; t += 0.2) {

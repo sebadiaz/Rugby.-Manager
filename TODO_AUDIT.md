@@ -580,6 +580,33 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-58. Quels invariants ne tiennent que par leurs graines ? Deux sur soixante-quatre
+- **Statut : CORRIGÉ (tests)**
+- Fichiers concernés : `server/test-invariants.js`.
+
+**Pourquoi.** Pendant P2-55 à P2-57, quatre invariants sont passés au rouge sans que la propriété
+qu'ils gardent ait changé : ils comptaient des événements rares sur 4 à 8 matchs, avec un seuil
+dans le bruit. Chaque patch du moteur déplace les tirages aléatoires, et ces tests basculaient au hasard.
+
+**Méthode.** Toute la suite d'invariants a été rejouée sur le moteur actuel, SANS le modifier, avec des
+graines décalées (+1000, +2000, +3000) : une copie du fichier de tests dans laquelle `MatchEngine` ajoute
+le décalage à la graine. Un test qui rougit dans ces conditions dépend de ses graines, pas du moteur.
+
+**Résultat : 62 tests tiennent sur les trois décalages. Deux rougissent :**
+- « Un franchissement paie » (8 matchs) : 26 franchissements seulement, sous la taille d'échantillon
+  exigée (+1000) ; 11,9 m pour un seuil de 12 (+2000). Passé à **16 matchs**.
+- « Loi 10 » : la taille d'échantillon que j'avais exigée en P2-57 (plus de 60 réceptions non
+  disputées) n'était atteinte que de justesse (56-60 ailleurs). Passé de 4 à **6 matchs**.
+
+Les seuils de jugement ne bougent pas. Après correction : les deux tests passent sur les graines
+d'origine et sur les trois décalages, et rougissent toujours sur leur mutant (défenseur éliminé qui
+repart à pleine vitesse : 7,0 m après une percée ; les quinze joueurs au ballon : 9,4 joueurs autour
+du receveur).
+
+**À refaire avant chaque modification sensible du moteur** : rejouer la suite d'invariants avec un
+décalage de graines. Un échec sur graines décalées, sans changement du moteur, désigne un test à
+fiabiliser, pas un défaut de jeu.
+
 ### P2-57. Les avants tapaient au pied plus que le demi de mêlée : le jeu au pied revient aux demis et à l'arrière
 - **Statut : CORRIGÉ**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`choisirActionPorteur`,
