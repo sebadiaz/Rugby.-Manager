@@ -2083,7 +2083,13 @@
         // declenchait JAMAIS, parce que le porteur pres d'une ligne de touche
         // crochete systematiquement vers l'interieur (cf. `evite`). Toutes les
         // touches du match venaient donc du jeu au pied.
-        if (this.porteur.y <= 1.5 || this.porteur.y >= LARGEUR - 1.5) {
+        // Rayon 1,5 -> 2,0 m (P2-57) : un porteur plaque a deux metres de la
+        // ligne y tombe (elan du plaquage, taille du corps). Mesure sur 24
+        // matchs : 0,33 -> 1,08 ballon porte en touche par match (reel 2 a 4),
+        // gain apres une percee inchange (14,1 -> 14,3 m). A 2,5 m on atteint
+        // 2,17 mais les percees le long de la touche finissent dehors : le gain
+        // apres percee tombe a 12,6 m (reel 15-25) — refuse.
+        if (this.porteur.y <= 2.0 || this.porteur.y >= LARGEUR - 2.0) {
           this.log('PLAQUE_EN_TOUCHE', defenseurProche.team, `Plaque en touche par l'equipe ${defenseurProche.team}`);
           this._accorderTouche(this.possession, this.porteur, 'PORTE');
           return;
@@ -2935,9 +2941,31 @@
       //   - AVANT LANCÉ : il sert un avant tout près (ballon porté / pick).
       // Sinon (cas courant) il tombe dans le jeu au pied calibré (touche/dégagement
       // dans ses 22, chandelle plus haut) puis le lancement vers l'ouvreur.
+      // Chandelle depuis la base DÉCIDÉE (cf. plus bas) : le 9 se place, lève
+      // la tête et tape — ~1 s en vrai, pas un réflexe en 0,15 s. S'il a perdu
+      // le ballon entre-temps, l'intention tombe.
+      if (this._chandelleBaseA != null) {
+        if (porteur.numero !== 9) this._chandelleBaseA = null;
+        else if (this.timerPhase < this._chandelleBaseA) return null;
+        else {
+          this._chandelleBaseA = null;
+          this._typeCoupDePiedForce = 'CHANDELLE';
+          return 'KICK';
+        }
+      }
       if (porteur.numero === 9 && this._neufLibre) {
         if (this.timerPhase < 0.15) return null; // le ballon finit d'arriver de la base (sortie éclair)
         this._neufLibre = false;
+        // CHANDELLE DEPUIS LA BASE (box kick, P2-57). Dans son propre camp, le
+        // demi de melee tape regulierement par-dessus le regroupement : c'est le
+        // coup de pied le plus frequent du rugby moderne, et il se dispute
+        // depuis P2-55/P2-56. Le moteur n'en produisait que 3 par match.
+        if (zone === 'OWN_22' || zone === 'OWN_HALF') {
+          if (this.rng() < (zone === 'OWN_22' ? 0.25 : 0.15)) {
+            this._chandelleBaseA = this.timerPhase + 1.0;
+            return null;
+          }
+        }
         const sens = porteur.sensAttaque;
         const r = this.rng();
         // PERCÉE du 9 : uniquement dans le camp adverse (là où un 9 stoppé laisse
@@ -3086,6 +3114,14 @@
         // au pas reel : ce facteur ne fait que rattraper un balayage fait au
         // mauvais pas, il n'a aucune justification de jeu.
         pParSeconde *= RECALAGE_PIED_PAS_REEL;
+        // QUI TAPE (P2-57). Le taux ci-dessus valait pour TOUS les porteurs :
+        // 29 % des coups de pied etaient tapes par des avants, 8 % par le n°9.
+        // En vrai, ce sont les demis et l'arriere qui tapent ; un avant ne tape
+        // presque jamais. Le n°9 tape surtout depuis la base (chandelle, cf.
+        // section 0), d'ou son facteur neutre ici. Dosage balaye sur quatre
+        // jeux de graines (TODO_AUDIT.md P2-57) : plus haut (10 x2,4), les
+        // sequences de jeu courant tombaient sous la fourchette reelle.
+        pParSeconde *= avant ? 0.05 : porteur.numero === 10 ? 2.0 : porteur.numero === 15 ? 1.6 : 1;
         if (this.rng() < pParSeconde * dt) return 'KICK';
       }
 
@@ -3567,7 +3603,11 @@
       const zone = this._zoneTerrain(porteur);
       let type;
       const r = this.rng();
-      if (zone === 'OWN_22') {
+      if (this._typeCoupDePiedForce) {
+        // Chandelle du n°9 depuis la base (cf. choisirActionPorteur, section 0).
+        type = this._typeCoupDePiedForce;
+        this._typeCoupDePiedForce = null;
+      } else if (zone === 'OWN_22') {
         // Dans SES 22, une equipe vise la TOUCHE avant tout : depuis ses 22 le
         // coup de pied direct en touche est autorise et rend le ballon a
         // l'adversaire LOIN de sa ligne — c'est le degagement de reference du
@@ -3779,7 +3819,7 @@
       // camps sous le ballon) : deux joueurs sautent pour le même ballon, et
       // une part notable finit échappée vers l'avant — en-avant, mêlée pour
       // l'adversaire (loi 11). C'est le risque qui fait de la chandelle un
-      // pari, des deux côtés. Risque de base 15 %, modulé par la sûreté de
+      // pari, des deux côtés. Risque de base 12 %, modulé par la sûreté de
       // mains du joueur qui capte (attribut « passe », neutre 60), comme
       // l'offload. Cf. TODO_AUDIT.md P2-56.
       const disputee = chasseurOk && receveurOk && (type === 'CHANDELLE' || type === 'CHIP');
@@ -3788,7 +3828,7 @@
           `Chandelle disputee : le n°${joueur.numero} de l'equipe ${joueur.team} s'eleve au milieu de la chasse`);
         const mains = typeof joueur.passe === 'number'
           ? Math.max(0.5, Math.min(1.6, 1 + (60 - joueur.passe) / 90)) : 1;
-        if (this.rng() < 0.15 * mains) {
+        if (this.rng() < 0.12 * mains) {
           this.stats[joueur.team].knockOns++;
           this.log('MELEE_ENAVANT', joueur.team,
             `En-avant sous la chandelle, equipe ${joueur.team} - melee adverse`);
@@ -6289,7 +6329,7 @@
         return;
       }
       // Une PORTE née d'un coup de pied cesse de l'être dès que le jeu s'arrête.
-      if (this.phase !== 'PORTE') this._porteApresPied = false;
+      if (this.phase !== 'PORTE') { this._porteApresPied = false; this._chandelleBaseA = null; }
       if (this.phase === 'MI_TEMPS') this._tickMiTemps(dt);
       else if (this.phase === 'PORTE') {
         // Mise en place d'un jeu rapide sur pénalité/coup franc (recul de 10 m

@@ -1061,7 +1061,13 @@ function ecartVitessePointe(config, graines) {
   return moy(rA) - moy(rB);
 }
 test('un joueur endurant garde sa vitesse de pointe en fin de match, un autre non', () => {
-  const graines = [1, 2, 3, 4, 5, 6, 7, 8];
+  // 16 graines, pas 8 (P2-57) : sur les graines 1-8, le moteur d'avant ne
+  // donnait que +0,022 pour un seuil de 0,02 ; une modification sans rapport
+  // avec la fatigue l'a fait passer a -0,010, alors que les graines 9-16
+  // donnaient +0,096 avant et +0,094 apres. L'estimateur (maximum de vitesse
+  // observe) est bruite : 8 graines ne suffisaient pas a separer l'effet du
+  // bruit. Mutant « l'endurance n'agit plus » : rouge (cf. TODO_AUDIT.md P2-57).
+  const graines = Array.from({ length: 16 }, (_, i) => i + 1);
   const cfg = { joueursA: {}, joueursB: {} };
   for (let n = 1; n <= 15; n++) { cfg.joueursA[n] = { endurance: 90 }; cfg.joueursB[n] = { endurance: 30 }; }
   const avec = ecartVitessePointe(cfg, graines);
@@ -1299,6 +1305,11 @@ function scenario(seed, { timerPhase = 10, apresPied = false } = {}) {
   m.passeVisuelle = null; m.combinaison = null; m.penaliteRecul = null; m.ruckPoint = null;
   m._passeCibleForcee = null; m._neufLibre = false; m.avantage = null; // etat herite de l'echauffement : un avantage en cours revenait a la penalite au 1er tick
   m._porteApresPied = apresPied;
+  // Le scenario teste la DEFENSE : le porteur ne doit ni passer (soutiens
+  // eloignes, plus bas) ni taper. Sans ce verrou, un ailier qui tape au pied
+  // terminait la phase avant tout plaquage, selon le tirage (P2-57). Note :
+  // `tauxJeuAuPied || 1` dans le moteur, d'ou une valeur infime plutot que 0.
+  m.cfgAttaque.A = Object.assign({}, m.cfgAttaque.A, { tauxJeuAuPied: 1e-9 });
   const p = m.equipeA.find(j => j.numero === 11);
   const sens = p.sensAttaque;
   m.porteur = p; p.auSol = 0; p.vitesseCourante = 0;
@@ -1469,6 +1480,30 @@ test('une chandelle DISPUTEE peut etre echappee : en-avant, melee adverse', () =
   const part = enAvants / disputees;
   assert.ok(part > 0.05 && part < 0.3, `${(100 * part).toFixed(0)} % des receptions disputees finissent en en-avant (${enAvants}/${disputees}) : attendu entre 5 et 30 %`);
   assert.strictEqual(melees, enAvants, 'un en-avant a la reception doit donner une melee');
+});
+
+test('le jeu au pied appartient aux demis et a l arriere, pas aux avants', () => {
+  // En rugby a XV, le demi de melee (chandelle depuis la base du ruck),
+  // l'ouvreur et l'arriere tapent l'essentiel des coups de pied ; un avant ne
+  // tape presque jamais. Le moteur laissait n'importe quel porteur decider de
+  // taper au meme taux : 29 % des coups de pied etaient tapes par des AVANTS,
+  // 8 % seulement par le n°9. Cf. TODO_AUDIT.md P2-57.
+  const par = {}; let tot = 0;
+  for (let seed = 1; seed <= 4; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    for (let t = 0; t < 4800; t += 0.1) {
+      const k0 = m.stats.A.kicks + m.stats.B.kicks; const p = m.porteur;
+      m.tick(0.1);
+      if (m.stats.A.kicks + m.stats.B.kicks > k0 && p) {
+        tot++; const g = p.numero <= 8 ? 'avants' : p.numero; par[g] = (par[g] || 0) + 1;
+      }
+    }
+  }
+  const part = (g) => (par[g] || 0) / tot;
+  assert.ok(tot > 120, `echantillon trop petit : ${tot} coups de pied`);
+  assert.ok(part('avants') < 0.08, `${(100 * part('avants')).toFixed(0)} % des coups de pied sont tapes par des avants`);
+  assert.ok(part(9) > 0.2, `le demi de melee ne tape que ${(100 * part(9)).toFixed(0)} % des coups de pied (chandelle depuis la base)`);
+  assert.ok(part(9) + part(10) + part(15) > 0.55, `n°9, 10 et 15 ne tapent que ${(100 * (part(9) + part(10) + part(15))).toFixed(0)} % des coups de pied`);
 });
 
 // --- UNE REMISE EN JEU DEPUIS LES 22 M N'EST PAS UN COUP D'ENVOI -----------
@@ -2055,9 +2090,11 @@ test('loi 14 : du plaquage au ballon sorti, un regroupement dure plus de 4,5 s',
 // point de chute. C'est un des hors-jeu que CLAUDE.md (role 5) demande
 // explicitement de faire exister.
 test('loi 10 : les joueurs devant le botteur sont hors-jeu et ne peuvent pas plaquer', () => {
-  let coupsDePied = 0, marques = 0, plaquagesHorsJeu = 0, convergents = 0, receptions = 0;
+  let coupsDePied = 0, marques = 0, plaquagesHorsJeu = 0;
+  const masse = { libre: { n: 0, s: 0 }, disputee: { n: 0, s: 0 } };
   for (const seed of [1, 2, 3, 4]) {
     const m = new MatchEngine(seed, 4800);
+    let typeCoup = null;
     for (let t = 0; t < 4800; t += 0.2) {
       const phaseAvant = m.phase;
       const positions = new Map();
@@ -2069,7 +2106,13 @@ test('loi 10 : les joueurs devant le botteur sont hors-jeu et ne peuvent pas pla
       // botteur, et on verifie que ceux-la sont bien marques hors-jeu.
       if (phaseAvant !== 'COUP_DE_PIED_JEU' && m.phase === 'COUP_DE_PIED_JEU' && botteur) {
         const equipe = botteur.team === 'A' ? m.equipeA : m.equipeB;
-        const devant = equipe.filter((j) => j !== botteur && (j.x - botteur.x) * botteur.sensAttaque > 1);
+        // Position AU MOMENT DE LA FRAPPE (loi 10), enregistree par le moteur :
+        // le botteur peut encore bouger de quelques centimetres dans le meme
+        // pas de temps. Mesure sur sa position apres le pas, un coequipier a
+        // 0,9 m devant le point de frappe (donc en jeu) etait compte « devant »
+        // (P2-57, graine 4 : chandelle du n°9 frappee a 9,8 m, botteur a 9,7 m).
+        const xFrappe = m.xCoupDePiedJeu;
+        const devant = equipe.filter((j) => j !== botteur && (j.x - xFrappe) * botteur.sensAttaque > 1);
         if (devant.length > 0) {
           coupsDePied++;
           if (devant.every((j) => j.horsJeuKick > 0)) marques++;
@@ -2089,12 +2132,14 @@ test('loi 10 : les joueurs devant le botteur sont hors-jeu et ne peuvent pas pla
       // reception : c'est la mesure qui compte pour le joueur, celle qui dit
       // si une relance est possible ou si le ballon tombe dans une melee
       // ouverte de vingt joueurs.
+      if (m.phase === 'COUP_DE_PIED_JEU') typeCoup = m.typeCoupDePiedJeu;
       if (phaseAvant === 'COUP_DE_PIED_JEU' && m.phase === 'PORTE' && m.porteur) {
         let n = 0;
         for (const j of [...m.equipeA, ...m.equipeB]) {
           if (Math.hypot(j.x - m.porteur.x, j.y - m.porteur.y) < 8) n++;
         }
-        convergents += n; receptions++;
+        const k = (typeCoup === 'CHANDELLE' || typeCoup === 'CHIP') ? masse.disputee : masse.libre;
+        k.s += n; k.n++;
       }
     }
   }
@@ -2106,17 +2151,23 @@ test('loi 10 : les joueurs devant le botteur sont hors-jeu et ne peuvent pas pla
   // Mesure : 8,6 joueurs masses a moins de 8 m du receveur avant le correctif
   // (mediane 6, jusqu'a 29), 4,9 apres (mediane 4). Un coup de pied n'est plus
   // une melee ouverte de vingt joueurs : le receveur peut relancer.
-  assert.ok(receptions > 100, `echantillon de receptions trop petit (${receptions})`);
-  const masse = convergents / receptions;
-  // Seuil 6 -> 7 (P2-55). Depuis qu'une chandelle tient ~4 s en l'air, la
-  // ligne de chasse et les soutiens du receveur ont le temps d'arriver : ils
-  // se placent a 8 m du point de chute, pile sur le rayon mesure ici, et deux
-  // ou trois joueurs disputent le ballon dessous. Mesure (graines 1-4) :
-  // 5,66 -> 6,46 en moyenne ; chandelles 6,5 -> 8,5 ; pire cas 16 -> 15.
-  // Le defaut que ce test garde (TOUT LE MONDE converge) reste rouge de tres
-  // loin : mutant ou les quinze joueurs courent au ballon, 15,6 (jusqu'a 30).
-  assert.ok(masse <= 7,
-    `trop de joueurs masses autour du receveur d'un coup de pied (${masse.toFixed(1)} a moins de 8 m)`);
+  //
+  // DEUX MESURES, PAS UNE (P2-57). Depuis qu'une chandelle tient ~4 s en l'air
+  // et se dispute (P2-55/P2-56), chasseurs et receveurs se retrouvent SOUS le
+  // ballon par construction : la moyenne melangeait ce duel voulu et le defaut
+  // que ce test garde. On separe donc :
+  //  - coups de pied NON disputes (occupation, degagement) : seuil d'origine,
+  //    6 (moteur : ~5,0) ;
+  //  - chandelles et coups de pied a suivre : un duel, pas une melee ouverte,
+  //    12 au plus (moteur : ~8,9).
+  // Mutant « les quinze au ballon » : ~8,5 et 23,6 — rouge sur les deux.
+  assert.ok(masse.libre.n > 60 && masse.disputee.n > 40,
+    `echantillon de receptions trop petit (${masse.libre.n} libres, ${masse.disputee.n} disputees)`);
+  const mLibre = masse.libre.s / masse.libre.n, mDisputee = masse.disputee.s / masse.disputee.n;
+  assert.ok(mLibre <= 6,
+    `trop de joueurs masses autour du receveur d'un coup de pied non dispute (${mLibre.toFixed(1)} a moins de 8 m)`);
+  assert.ok(mDisputee <= 12,
+    `une chandelle tourne a la melee ouverte (${mDisputee.toFixed(1)} joueurs a moins de 8 m du receveur)`);
 });
 
 // --- Loi 8 : PLAQUE SUR LA LIGNE, IL APLATIT -------------------------------

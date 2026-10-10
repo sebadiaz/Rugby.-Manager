@@ -580,6 +580,88 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-57. Les avants tapaient au pied plus que le demi de mêlée : le jeu au pied revient aux demis et à l'arrière
+- **Statut : CORRIGÉ**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`choisirActionPorteur`,
+  `_executerCoupDePiedJeu`, réception disputée), `server/test-invariants.js`.
+
+**Ce que le joueur voyait.** La décision de taper avait le même taux pour tous les porteurs. Mesuré
+sur 10 matchs (instrument validé : 483 coups de pied sur 483) : **29 % des coups de pied tapés par
+des avants**, 20 % par l'ouvreur, **8 % seulement par le demi de mêlée** (3 chandelles depuis la base
+par match). Le n°9 n'avait d'ailleurs pas le temps de taper : il passe en ~0,5 s, avant que la
+décision de taper (bloquée 0,4 s) ne lui soit proposée. C'est le cas « avants et trois-quarts jouent
+pareil » que CLAUDE.md refuse.
+
+**Correctif.**
+- Facteur de poste sur la décision de taper : avants ×0,05, ouvreur ×2,0, arrière ×1,6, autres ×1.
+- Chandelle du n°9 depuis la base, à sa sortie de regroupement, dans son propre camp : 25 % des
+  sorties dans ses 22, 15 % entre ses 22 et la ligne médiane. Le n°9 se place et tape **1 s** après
+  avoir ramassé le ballon (une première version tapait en 0,15 s, ce qui créait des séquences éclair).
+- Risque d'en-avant sous une chandelle disputée : 15 % -> **12 %** (P2-56), les chandelles étant
+  désormais trois fois plus nombreuses.
+
+**Balayage**, calibration au pas réel, quatre jeux de graines (1-20 / 21-40 / 41-60 / 61-80) :
+- 10 ×2,4, 15 ×1,8, autres ×1,2, base 25/20 % : 13/13/12/13, coups de pied 60-62, passes 338-345,
+  rucks 171-176 — **refusé** : la séquence de jeu courant tombe à 2,70-2,79 s, sous la fourchette
+  réelle (2,8-3,7 s, P2-53). Même avec 1,8 s de préparation, elle tangue autour du seuil.
+- 10 ×2,0, 15 ×1,6, base 25/15 %, préparation 1,5 s, en-avant 15 % : 11/11/13/12 — **refusé**
+  (mêlées 15,7 ; essais 8,3 sur les graines 21-40).
+- **Retenu** : 10 ×2,0, 15 ×1,6, base 25/15 %, préparation 1,0 s, en-avant 12 % : **12/12/12/12**,
+  essais 5,5-7,5, coups de pied 53-60, touches 21,6-24,2, mêlées 11,8-14,2. Séquence de jeu courant
+  2,93 / 2,92 s.
+
+**Qui tape, après** : ouvreur 31 %, demi de mêlée 26 % (11,7 chandelles depuis la base par match),
+centres 22 %, ailiers 11 %, arrière 9 %, avants 1 %.
+
+**Test** : « le jeu au pied appartient aux demis et à l'arrière » (graines 1-4) : moins de 8 % des coups
+de pied par des avants, plus de 20 % par le n°9, plus de 55 % par les n°9, 10 et 15. Rouge avant (29 %
+d'avants), vert après.
+
+**Trois instruments corrigés, chacun vérifié contre un mutant.**
+- « Le défenseur de face monte au contact » : dans deux scénarios sur six, l'ailier porteur tapait au
+  pied, ce qui finissait la phase avant tout plaquage (le moteur d'avant ne le faisait pas sur ces
+  graines, par tirage). Le scénario teste la défense : le jeu au pied de l'attaque y est désormais
+  neutralisé, comme les passes. Mutant sans monteur : 0 scénario sur 6, rouge.
+- « Loi 10, hors-jeu sur coup de pied » : le test jugeait « devant le botteur » par rapport à sa
+  position APRÈS le pas de temps. Graine 4 : chandelle frappée à 9,8 m, botteur reculé à 9,7 m, talonneur
+  à 10,7 m — 0,9 m devant le point de frappe, donc en jeu, mais compté devant. Le test utilise
+  maintenant le point de frappe enregistré par le moteur.
+- Même test, masse autour du receveur : la moyenne mélangeait le duel voulu sous les chandelles et le
+  défaut gardé (tout le monde converge). Deux mesures : coups de pied non disputés, seuil d'origine 6
+  (moteur ~5,0) ; chandelles et coups de pied à suivre, 12 au plus (moteur ~8,9). Le seuil unique porté
+  à 7 en P2-55 disparaît. Mutant « les quinze au ballon » : 8,6 sur les coups de pied non disputés,
+  rouge.
+
+**Quatrième instrument : l'endurance.** « Un joueur endurant garde sa vitesse de pointe » est tombé à
+-0,010 pour un seuil de +0,02, sur ses 8 graines. Le moteur d'avant n'y donnait déjà que +0,022 ; sur
+les graines 9-16, l'effet est le même avant et après (+0,096 / +0,094). L'estimateur (vitesse maximale
+observée) est trop bruité pour 8 matchs. Test passé à 16 graines : actuel +0,042, avant +0,059, mutant
+« l'endurance n'agit plus » exactement 0, rouge.
+
+**Un défaut plus ancien, rendu visible : la sortie en touche ballon en main (loi 19).** L'invariant
+« un porteur peut être plaqué en touche » est passé au rouge (0,17 par match pour un seuil de 0,5). Le
+test ne compte que 6 matchs : sur 24 graines, ce dosage donne 0,33 par match (0,17 à 0,67 selon les
+paquets de 6), contre 0,6-0,8 avant — et le réel est de 2 à 4. Le moteur en était loin depuis le
+début. Cause : un porteur n'est poussé dehors que s'il est plaqué à moins de **1,5 m** de la ligne.
+Distribution des 211 plaquages réussis par match : 0,70 à moins de 1,5 m, 2,35 à moins de 2,5 m.
+Balayage du rayon, 24 matchs :
+
+| rayon | ballon porté en touche | gain après une percée (réel 15-25 m) |
+|---|---|---|
+| 1,5 m | 0,33 / match | 14,1 m |
+| **2,0 m (retenu)** | **1,08 / match** | **14,3 m** |
+| 2,5 m | 2,17 / match | 12,6 m — les percées le long de la touche finissent dehors ; l'invariant « un franchissement paie » tombe à 11,6 m sur ses 8 graines |
+
+2,0 m rapproche la sortie en touche du réel sans rien coûter aux percées. Le seuil des tests n'est pas
+touché (loi 19 : 0,83 sur les graines du test).
+
+**Calibration finale** (rayon 2,0 m) : 12/12/12/13 sur les quatre jeux de graines ; touches
+22,3-24,6 ; essais 5,5-7,0 ; mêlées 13,0-13,8 ; coups de pied 52-59.
+
+**Reste à faire** : coups de pied encore sous le réel (52-59 contre 78) ; temps de jeu effectif
+toujours ~30 min (32-42) ; rucks souvent juste au-dessus de la fourchette interne (177-186, réel 181) ;
+ballon porté en touche encore sous le réel (1,1 contre 2-4).
+
 ### P2-56. Une chandelle disputée peut être échappée : en-avant, mêlée adverse
 - **Statut : CORRIGÉ**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_tickReceptionCoupDePied`),
