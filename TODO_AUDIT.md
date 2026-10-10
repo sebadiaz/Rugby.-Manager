@@ -580,6 +580,35 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-61. Mètres ballon en main « ×3 » : l'écart vient surtout de ce qu'on additionne, pas du jeu
+- **Statut : ENQUÊTE — aucun correctif ; complète P2-46**
+- Fichiers concernés : aucun.
+
+**Mesure** (moteur actuel, 10 matchs ; instrument validé : 2109 m contre 2111 au compteur du moteur).
+Chaque segment de jeu où un même joueur porte le ballon, classé par ce qui le termine :
+
+| fin du segment | par match | gain moyen | total par match |
+|---|---|---|---|
+| plaqué, ruck | 177 | 4,8 m (médiane 4,2) | 854 m |
+| passe | 360 | 2,2 m | 810 m |
+| coup de pied | 58 | 3,5 m | 203 m |
+| essai | 6 | 25,2 m | 151 m |
+| mêlée, maul, touche, autres | ~17 | — | ~90 m |
+
+Avants : 4,1 m par segment ; trois-quarts : 3,2 m.
+
+**Lecture.** Les courses qui vont au contact gagnent 4,8 m en moyenne : un peu au-dessus des 3 à 4 m
+par course courants dans le rugby international, mais du bon ordre. Le compteur `metresGagnes`
+additionne aussi le terrain couru par chaque joueur AVANT une passe (810 m) ou un coup de pied (203 m).
+Sans ces segments, le moteur donne ~1 090 m par match, proche des 976 m du match de référence.
+
+**Pourquoi je ne change rien.** Cela dépend de ce que mesure exactement le relevé réel : s'il ne compte
+que les courses (« carries »), le moteur est juste et seul le périmètre du compteur diffère ; s'il
+compte tout terrain gagné ballon en main, le moteur court trop avant de passer. Comme en P2-46, le dépôt
+n'a pas de source primaire qui tranche. Modifier le moteur, ou l'affichage, sur une hypothèse de
+définition reviendrait à fabriquer la statistique. **Ce qu'il faudrait** : la définition primaire du
+fournisseur de données du match de référence (ESPN / rugbypy).
+
 ### P2-60. Les franchissements : 4,7 par match à la feuille de match, alors que la défense est percée bien plus souvent
 - **Statut : CORRIGÉ**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_suivreFranchissement`),
