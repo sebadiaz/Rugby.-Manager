@@ -580,6 +580,50 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-55. Une chandelle retombait en une seconde : elle tient maintenant ~4 s en l'air et se dispute
+- **Statut : CORRIGÉ**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`dureeVolCoupDePied`,
+  `_tickCoupDePiedJeu`), `server/test-invariants.js`.
+
+**Ce que le joueur voyait.** Tous les coups de pied volaient à 16 m/s, plafonnés à 2,2 s. Une
+chandelle de 15 m (box kick du n°9, up-and-under) retombait en moins d'une seconde, la ligne de
+chasse encore à 10 m : le ballon tombait dans les bras du receveur, et l'équipe qui tapait n'en
+regagnait que 9 %. La chandelle n'existe que par son temps de suspension (~4 s en vrai), le temps que
+les chasseurs arrivent dessous.
+
+**Mesure par type, 10 matchs** (instrument validé : 520 coups de pied détectés sur 531) :
+
+| type | par match | vol avant | vol après | chasseur à l'atterrissage avant / après | regagné avant / après |
+|---|---|---|---|---|---|
+| chandelle | 12,8 -> 12,0 | 0,97 s | 3,96 s | 10,5 m / 0,4 m | 9 % / **37 %** |
+| petit coup de pied à suivre | 5,1 -> 4,8 | 0,78 s | 1,37 s | 7,6 m / 4,6 m | 25 % / 19 % |
+| occupation | 17,5 -> 15,0 | 1,70 s | 2,39 s | 18,1 m / 14,2 m | 5 % / 6 % |
+| dégagement | 1,9 -> 2,3 | 2,20 s | 3,37 s | 37,1 m / 29,8 m | 0 % / 0 % |
+
+Coups de pied regagnés : 3,3 -> 6,2 par match.
+
+**Correctif.** Temps de vol selon le type : chandelle 3,6 à 4,6 s, petit coup de pied à suivre 1,0 à
+1,6 s, occupation 1,8 à 3,0 s, dégagement et touche 1,8 à 3,8 s (selon la distance).
+
+**Calibration** : 12/14 sur les graines 1-20 et 21-40, mêmes catégories hors fourchette qu'avant
+(rucks, temps de jeu effectif). Le nombre de coups de pied dans le jeu ne bouge pas (49 à 51 ; réel
+78) : c'est un chantier séparé.
+
+**Test** : « une CHANDELLE tient en l'air et se dispute » (graines 1-4) : vol moyen ≥ 3,5 s et plus de
+15 % de chandelles regagnées. Rouge avant (0,95 s), vert après.
+
+**Un invariant ajusté, et pourquoi.** « Loi 10 : les joueurs devant le botteur sont hors-jeu » mesure
+aussi la masse de joueurs à moins de 8 m du receveur (seuil 6), pour empêcher que tout le monde
+converge sur le ballon (8,6 en moyenne avant son correctif, jusqu'à 29). Avec 4 s de vol, la ligne
+de chasse et les soutiens du receveur ont le temps d'arriver à leur poste, à 8 m du point de chute
+(pile sur le rayon mesuré), et la chandelle est disputée : 5,66 -> 6,46 en moyenne, chandelles
+6,5 -> 8,5, pire cas 16 -> 15. Aucun joueur hors-jeu n'est libéré trop tôt (plafond de 6 s, vol
+maximal 4,6 s). Seuil porté à 7 ; le mutant où les quinze joueurs courent au ballon donne 15,6
+(jusqu'à 30) et reste rouge.
+
+**Reste à faire :** une chandelle disputée ne produit jamais d'en-avant à la réception (ballon
+échappé sous la pression) ; et le nombre de coups de pied reste sous le réel.
+
 ### P2-54. Loi 20.14 : un fautif au sol dans les 10 m n'empêchait pas la reprise d'un jeu rapide
 - **Statut : CORRIGÉ**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_tickJeuRapidePenalite`,

@@ -26,6 +26,20 @@
   // Facteur unique : les réglages tactiques (jeuLargeTaux) gardent leur effet
   // relatif.
   const RYTHME_PASSES = 0.7;
+  // TEMPS DE VOL D'UN COUP DE PIED SELON SON TYPE. Tous les coups de pied
+  // volaient a 16 m/s, plafonnes a 2,2 s : une chandelle de 15 m retombait
+  // en 0,97 s, le chasseur le plus proche encore a 10,5 m — elle n'etait
+  // jamais disputee (9 % regagnees). Or la chandelle (box kick du n°9,
+  // up-and-under) se joue sur son TEMPS DE SUSPENSION, ~4 s, le temps que la
+  // ligne de chasse arrive sous le ballon. Un long degagement reste ~3-4 s en
+  // l'air, une touche directe ~2-3 s, un petit coup de pied a suivre ~1-1,5 s.
+  // Cf. TODO_AUDIT.md P2-55.
+  function dureeVolCoupDePied(type, dist) {
+    if (type === 'CHANDELLE') return Math.max(3.6, Math.min(4.6, 3.2 + dist / 20));
+    if (type === 'CHIP') return Math.max(1.0, Math.min(1.6, dist / 8));
+    if (type === 'OCCUPATION') return Math.max(1.8, Math.min(3.0, dist / 11));
+    return Math.max(1.8, Math.min(3.8, dist / 14)); // DEGAGEMENT, TOUCHE
+  }
   const RECALAGE_PIED_PAS_REEL = 1.15;
 
   const LARGEUR = 70;   // m, touche à touche
@@ -3657,8 +3671,7 @@
       const dxVol = this.cibleCoupDePiedX - this.xCoupDePiedJeu;
       const dyVol = this.cibleCoupDePiedY - this.yCoupDePiedJeu;
       const distVol = Math.hypot(dxVol, dyVol);
-      const VITESSE_BALLON = 16;
-      const duree = Math.max(0.7, Math.min(2.2, distVol / VITESSE_BALLON));
+      const duree = dureeVolCoupDePied(this.typeCoupDePiedJeu, distVol);
       const t = Math.min(1, this.timerPhase / duree);
       this.ballonVolX = this.xCoupDePiedJeu + dxVol * t;
       this.ballonVolY = this.yCoupDePiedJeu + dyVol * t;

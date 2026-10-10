@@ -1410,6 +1410,38 @@ test('loi 20.14 : un jeu rapide ne reprend pas tant qu un fautif AU SOL reste da
     `le jeu reprend apres ${t.toFixed(1)} s avec ${enDeca.map(j => 'n°' + j.numero + (j.auSol > 0 ? ' (au sol)' : '')).join(', ')} encore dans les 10 m (loi 20.14)`);
 });
 
+test('une CHANDELLE tient en l air et se dispute : les chasseurs arrivent dessous', () => {
+  // Une chandelle (box kick du n°9, up-and-under) n'a de sens que par son
+  // temps de vol : ~4 s en l'air, le temps que la ligne de chasse arrive sous
+  // le ballon et le dispute. Le moteur faisait voler TOUS les coups de pied a
+  // 16 m/s, plafonnes a 2,2 s : une chandelle de 15 m retombait en 0,97 s, le
+  // chasseur le plus proche encore a 10,5 m, et l'equipe qui tapait n'en
+  // regagnait que 9 %. Cf. TODO_AUDIT.md P2-55.
+  const vols = []; let n = 0, regagnees = 0;
+  for (let seed = 1; seed <= 4; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    let pp = m.phase, cur = null;
+    for (let t = 0; t < 4800; t += 0.1) {
+      const k0 = m.stats.A.kicks + m.stats.B.kicks;
+      m.tick(0.1);
+      if (m.stats.A.kicks + m.stats.B.kicks > k0 && m.phase === 'COUP_DE_PIED_JEU' && m.typeCoupDePiedJeu === 'CHANDELLE') {
+        cur = { eq: m.equipeCoupDePiedJeu, t0: m.tempsMatch, vol: null };
+      }
+      if (cur && cur.vol === null && m.phase === 'COUP_DE_PIED_JEU' && !m.ballonEnVol) cur.vol = m.tempsMatch - cur.t0;
+      if (cur && pp === 'COUP_DE_PIED_JEU' && m.phase !== 'COUP_DE_PIED_JEU') {
+        n++; if (cur.vol !== null) vols.push(cur.vol);
+        if (m.phase !== 'TOUCHE' && m.possession === cur.eq) regagnees++;
+        cur = null;
+      }
+      pp = m.phase;
+    }
+  }
+  assert.ok(n > 20, `echantillon trop petit : ${n} chandelles`);
+  const vol = vols.reduce((a, b) => a + b, 0) / vols.length;
+  assert.ok(vol >= 3.5, `une chandelle reste ${vol.toFixed(2)} s en l air (reel ~4 s) : elle retombe avant que la chasse arrive`);
+  assert.ok(regagnees / n > 0.15, `l equipe qui tape ne regagne que ${(100 * regagnees / n).toFixed(0)} % de ses chandelles : elles ne sont jamais disputees`);
+});
+
 // --- UNE REMISE EN JEU DEPUIS LES 22 M N'EST PAS UN COUP D'ENVOI -----------
 // Apres une penalite au but ou un drop manques, le ballon repart de la ligne
 // des 22 m de l'equipe qui defendait — le moteur le faisait bien. Mais il
@@ -2047,7 +2079,14 @@ test('loi 10 : les joueurs devant le botteur sont hors-jeu et ne peuvent pas pla
   // une melee ouverte de vingt joueurs : le receveur peut relancer.
   assert.ok(receptions > 100, `echantillon de receptions trop petit (${receptions})`);
   const masse = convergents / receptions;
-  assert.ok(masse <= 6,
+  // Seuil 6 -> 7 (P2-55). Depuis qu'une chandelle tient ~4 s en l'air, la
+  // ligne de chasse et les soutiens du receveur ont le temps d'arriver : ils
+  // se placent a 8 m du point de chute, pile sur le rayon mesure ici, et deux
+  // ou trois joueurs disputent le ballon dessous. Mesure (graines 1-4) :
+  // 5,66 -> 6,46 en moyenne ; chandelles 6,5 -> 8,5 ; pire cas 16 -> 15.
+  // Le defaut que ce test garde (TOUT LE MONDE converge) reste rouge de tres
+  // loin : mutant ou les quinze joueurs courent au ballon, 15,6 (jusqu'a 30).
+  assert.ok(masse <= 7,
     `trop de joueurs masses autour du receveur d'un coup de pied (${masse.toFixed(1)} a moins de 8 m)`);
 });
 
