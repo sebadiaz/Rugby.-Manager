@@ -580,6 +580,45 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-63. Le tableau de fin de match : transformations, pénalités au but, rucks conservés, mêlées et touches sur son ballon
+- **Statut : CORRIGÉ (statistiques et affichage) ; écarts au réel révélés, à traiter**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (compteurs), `docs/js/ui.js`
+  (tableau), `server/test-invariants.js`.
+
+**Ce qui manquait.** CLAUDE.md (rôle 6) exige transformations, pénalités réussies, rucks gagnés/perdus,
+mêlées et touches gagnées/perdues. Le tableau n'affichait ni les tirs au but, ni la conservation des
+rucks, et montrait les mêlées et touches gagnées sur le TOTAL des deux équipes, ce qui ne dit pas qui
+perd son ballon.
+
+**Correctif.** Nouveaux compteurs, incrémentés là où l'action a lieu : essais de pénalité,
+transformations, pénalités au but et drops (tentés / réussis), rucks conservés, mêlées gagnées sur sa
+propre introduction (y compris pénalité, coup franc ou essai de pénalité obtenus par l'équipe qui
+introduit, comme dans les relevés réels), touches gagnées sur son propre lancer. Le tableau les affiche
+en « réussis / tentés » ; un match archivé avant ce patch affiche « – ».
+
+**Le score se reconstruit exactement** à partir de ces statistiques (5 par essai, 7 par essai de
+pénalité, 2 par transformation, 3 par pénalité ou drop), sur les 12 équipes-matchs du test. Pur
+comptage : score et toutes les anciennes statistiques strictement identiques au moteur d'avant (10
+matchs).
+
+**Test** : « le tableau de marque se reconstruit à partir des statistiques » (graines 1-6) : score
+reconstruit exact, jamais plus de réussites que de tentatives, de transformations que d'essais. Mutant
+« une transformation réussie non comptée » : rouge (25 points reconstruits contre 27).
+
+**ÉCARTS AU RÉEL révélés par ces statistiques** (10 matchs) — chacun mérite un correctif mesuré à part :
+
+| statistique | moteur | réel (ordre de grandeur) |
+|---|---|---|
+| rucks conservés | 86 % (153 / 177) | 93-95 % |
+| mêlées gagnées sur introduction | 72 % (9,1 / 12,6) | ~90 % |
+| touches gagnées sur lancer | 88 % | 85-90 % (correct) |
+| transformations | 59 % (3,5 / 5,9) | ~70-75 % |
+| pénalités au but | 82 % | ~75-80 % (correct) |
+| drops | 14 % (0,2 / 1,4) | ~30-40 % |
+
+Une mêlée sur trois se termine sur un coup de sifflet (4,9 par match), ordre de grandeur actuel du rugby
+international.
+
 ### P2-62. « Page blanche » : un seul fichier perdu au chargement laissait un jeu muet, sans message
 - **Statut : CORRIGÉ (signalement au joueur)**
 - Fichiers concernés : `docs/index.html`, `server/test-parcours-navigateur.js`.

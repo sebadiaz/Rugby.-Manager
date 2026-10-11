@@ -1553,6 +1553,40 @@ test('un porteur qui PASSE la ligne de defense est compte et annonce comme un fr
   assert.ok(annonces > 0 && annonces <= franchissements, `${annonces} franchissements annonces pour ${franchissements} comptes`);
 });
 
+test('le tableau de marque se reconstruit a partir des statistiques, et les compteurs sont coherents', () => {
+  // Transformations, penalites au but, drops, rucks conserves, melees et
+  // touches gagnees sur SON ballon : CLAUDE.md (role 6) les exige, la feuille
+  // de match ne les montrait pas. Comptes la ou l'action a lieu — le score doit
+  // donc se reconstruire EXACTEMENT a partir d'eux. Cf. TODO_AUDIT.md P2-63.
+  let rucks = 0, conserves = 0, melees = 0, meleesIntro = 0, touches = 0, touchesLancer = 0, transfoT = 0, transfoR = 0;
+  for (let seed = 1; seed <= 6; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    for (let t = 0; t < 4800; t += 0.1) m.tick(0.1);
+    for (const e of ['A', 'B']) {
+      const s = m.stats[e];
+      const points = 5 * (s.essais - s.essaisPenalite) + 7 * s.essaisPenalite
+        + 2 * s.transformationsReussies + 3 * s.penalitesButReussies + 3 * s.dropsReussis;
+      assert.strictEqual(points, m.score[e], `graine ${seed}, equipe ${e} : les statistiques donnent ${points} points, le score ${m.score[e]}`);
+      assert.ok(s.transformationsReussies <= s.transformationsTentees && s.penalitesButReussies <= s.penalitesButTentees
+        && s.dropsReussis <= s.dropsTentes, `graine ${seed}, equipe ${e} : plus de tirs reussis que tentes`);
+      assert.ok(s.transformationsTentees <= s.essais - s.essaisPenalite, `graine ${seed} : plus de transformations que d'essais`);
+      rucks += s.rucks; conserves += s.rucksConserves; melees += s.scrums; meleesIntro += s.scrumsGagnesIntro;
+      touches += s.lineouts; touchesLancer += s.lineoutsGagnesLancer; transfoT += s.transformationsTentees; transfoR += s.transformationsReussies;
+    }
+  }
+  // Coherence, pas realisme : jamais plus de reussites que de tentatives,
+  // et des proportions qui ont un sens. Les ECARTS AU REEL (rucks conserves
+  // 86 % contre 93-95, melees sur introduction 72 % contre ~90,
+  // transformations 59 % contre ~70-75) sont consignes en TODO_AUDIT.md
+  // P2-63 : des seuils poses juste sous les valeurs du moteur basculeraient
+  // sur du bruit.
+  const pc = (a, b) => a / b;
+  for (const [nom, a, b] of [['rucks conserves', conserves, rucks], ['melees gagnees sur introduction', meleesIntro, melees],
+    ['touches gagnees sur lancer', touchesLancer, touches], ['transformations reussies', transfoR, transfoT]]) {
+    assert.ok(b > 0 && pc(a, b) > 0.3 && pc(a, b) <= 1, `${nom} : ${a}/${b}`);
+  }
+});
+
 // --- UNE REMISE EN JEU DEPUIS LES 22 M N'EST PAS UN COUP D'ENVOI -----------
 // Apres une penalite au but ou un drop manques, le ballon repart de la ligne
 // des 22 m de l'equipe qui defendait — le moteur le faisait bien. Mais il

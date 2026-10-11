@@ -193,6 +193,9 @@
   function ligneStat(label, a, b) {
     return `<div class="ligneStat"><span class="valA">${a}</span><span class="labelStat">${label}</span><span class="valB">${b}</span></div>`;
   }
+  // « réussis/tentés ». Un match enregistré avant que le moteur ne compte la
+  // donnée (P2-63) affiche « – » plutôt que « undefined ».
+  function ratio(r, t) { return (r == null || t == null) ? '–' : `${r}/${t}`; }
   function rafraichirPanneauStats(state) {
     const s = state.stats;
     if (!s) return;
@@ -205,6 +208,11 @@
       ligneStat('Possession', `${pct.A}%`, `${pct.B}%`) +
       ligneStat('Occupation', `${occ.A}%`, `${occ.B}%`) +
       ligneStat('Essais', s.A.essais, s.B.essais) +
+      ligneStat('Transformations', ratio(s.A.transformationsReussies, s.A.transformationsTentees),
+        ratio(s.B.transformationsReussies, s.B.transformationsTentees)) +
+      ligneStat('Pénalités au but', ratio(s.A.penalitesButReussies, s.A.penalitesButTentees),
+        ratio(s.B.penalitesButReussies, s.B.penalitesButTentees)) +
+      ligneStat('Drops', ratio(s.A.dropsReussis, s.A.dropsTentes), ratio(s.B.dropsReussis, s.B.dropsTentes)) +
       ligneStat('Entrées dans les 22 m', s.A.entrees22, s.B.entrees22) +
       // Statistiques alignées sur les définitions officielles World Rugby
       // (game analysis) — toutes issues d'actions réelles de la simulation.
@@ -220,10 +228,13 @@
       ligneStat('Plaquages réussis', `${s.A.tacklesMade}/${s.A.tacklesAttempted}`, `${s.B.tacklesMade}/${s.B.tacklesAttempted}`) +
       ligneStat('Plaquages manqués', s.A.missedTackles, s.B.missedTackles) +
       ligneStat('Phases jouées', s.A.phases, s.B.phases) +
-      ligneStat('Rucks', s.A.rucks, s.B.rucks) +
+      ligneStat('Rucks conservés', ratio(s.A.rucksConserves, s.A.rucks), ratio(s.B.rucksConserves, s.B.rucks)) +
       ligneStat('Mauls', s.A.mauls, s.B.mauls) +
-      ligneStat('Mêlées gagnées', `${s.A.scrumsGagnes}/${s.A.scrums + s.B.scrums}`, `${s.B.scrumsGagnes}/${s.A.scrums + s.B.scrums}`) +
-      ligneStat('Touches gagnées', `${s.A.lineoutsGagnes}/${s.A.lineouts + s.B.lineouts}`, `${s.B.lineoutsGagnes}/${s.A.lineouts + s.B.lineouts}`) +
+      // Sur SA propre introduction / SON propre lancer : c'est ce qui dit qui
+      // perd son ballon (« gagnées / perdues », CLAUDE.md rôle 6). Le total
+      // des deux équipes ne le disait pas.
+      ligneStat('Mêlées gagnées sur introduction', ratio(s.A.scrumsGagnesIntro, s.A.scrums), ratio(s.B.scrumsGagnesIntro, s.B.scrums)) +
+      ligneStat('Touches gagnées sur lancer', ratio(s.A.lineoutsGagnesLancer, s.A.lineouts), ratio(s.B.lineoutsGagnesLancer, s.B.lineouts)) +
       ligneStat('Turnovers gagnés', s.A.turnovers, s.B.turnovers) +
       ligneStat('Turnovers concédés', s.A.turnoversConcedes, s.B.turnoversConcedes) +
       ligneStat('En-avants', s.A.knockOns, s.B.knockOns) +

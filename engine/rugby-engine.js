@@ -1117,6 +1117,10 @@
         tacklesAttempted: 0, tacklesMade: 0, missedTackles: 0, defenseursBattus: 0,
         rucks: 0, lineouts: 0, lineoutsGagnes: 0, scrums: 0, scrumsGagnes: 0, mauls: 0, phases: 0,
         penalitesConcedees: 0, turnovers: 0, turnoversConcedes: 0, knockOns: 0, cartonsJaunes: 0, metresGagnes: 0,
+        // Tableau de marque et conservation (P2-63) : comptés là où l'action a lieu.
+        essaisPenalite: 0, transformationsTentees: 0, transformationsReussies: 0,
+        penalitesButTentees: 0, penalitesButReussies: 0, dropsTentes: 0, dropsReussis: 0,
+        rucksConserves: 0, scrumsGagnesIntro: 0, lineoutsGagnesLancer: 0,
         // Motifs de jeu discriminants (d'apres l'etude rorybunker/rugby-sequences,
         // qui identifie franchissements, touches gagnees, coups de pied regagnes,
         // jeu multi-phases et sorties de camp comme les motifs qui distinguent le
@@ -1684,6 +1688,7 @@
       if (distanceButs <= 5 && this.rng() < 0.25) {
         this.score[equipeBeneficiaire] += 7;
         this.stats[equipeBeneficiaire].essais++;
+        this.stats[equipeBeneficiaire].essaisPenalite++;
         this.log('ESSAI_PENALITE', equipeBeneficiaire, `Essai de penalite, equipe ${equipeBeneficiaire} +7`);
         const fautive = equipeBeneficiaire === 'A' ? 'B' : 'A';
         const eqFautive = fautive === 'A' ? this.equipeA : this.equipeB;
@@ -2925,7 +2930,9 @@
           const offsetLateralDrop = Math.abs(porteur.y - LARGEUR / 2);
           const equipe = this.possession;
           this.stats[equipe].kicks++;
+          this.stats[equipe].dropsTentes++;
           if (this.rng() < probaReussiteTir(distanceButsDrop, offsetLateralDrop, porteur.adresse) * 0.7) {
+            this.stats[equipe].dropsReussis++;
             this.score[equipe] += 3;
             this.log('DROP_GOAL_REUSSI', equipe, `Drop-goal reussi, equipe ${equipe} +3`);
             this._nouvelleManche(equipe);
@@ -4395,6 +4402,7 @@
           this._traiterPenalite(equipeOriginale === 'A' ? 'B' : 'A', pt);
           return;
         }
+        if (!turnover) this.stats[equipeOriginale].rucksConserves++;
         // Sortie de ruck : c'est le demi de mêlée (n°9) qui joue le ballon au
         // pied du regroupement, comme à la mêlée et à la sortie de maul — pas
         // simplement l'avant le plus proche du point de ruck. Il a couru vers
@@ -4810,6 +4818,7 @@
       if (empecheEssai) {
         this.score[benef] += 7;
         this.stats[benef].essais++;
+        this.stats[benef].essaisPenalite++;
         this.log('ESSAI_PENALITE', benef, `Essai de penalite : ${faute.message} sur maul lance, equipe ${benef} +7`);
         this._nouvelleManche(benef);
         return;
@@ -5457,6 +5466,12 @@
       const fautive = faute.equipeFautive;
       const benef = fautive === 'A' ? 'B' : 'A';
       const pos = { x: m.x, y: m.y };
+      // Statistique « mêlées gagnées sur introduction » (P2-63) : comme dans les
+      // relevés réels, une pénalité, un coup franc ou un essai de pénalité
+      // obtenu par l'équipe qui introduit est une mêlée gagnée. Une mêlée sur
+      // trois finit sur un coup de sifflet : sans cette règle, la statistique
+      // tombait à 59 % au lieu de ~90 %.
+      if (benef === m.equipeIntroduction) this.stats[benef].scrumsGagnesIntro++;
       this._meleePenalitesMatch[fautive] = (this._meleePenalitesMatch[fautive] || 0) + 1;
       const repetee = this._meleePenalitesMatch[fautive] >= 3;
       const sensBenef = benef === 'A' ? 1 : -1;
@@ -5475,6 +5490,7 @@
       if (empecheEssai) {
         this.score[benef] += 7;
         this.stats[benef].essais++;
+        this.stats[benef].essaisPenalite++;
         this.log('ESSAI_PENALITE', benef, `Essai de penalite : ${faute.message} en melee, equipe ${benef} +7`);
         this._nouvelleManche(benef);
         return;
@@ -5532,6 +5548,7 @@
         this.log('MELEE_PRESSION', intro, `Ballon gagne sous pression par l'equipe ${intro} en melee`);
       }
       this.stats[m.vainqueur].scrumsGagnes++;
+      if (m.vainqueur === intro) this.stats[intro].scrumsGagnesIntro++;
       const eqVainqueur = m.vainqueur === 'A' ? this.equipeA : this.equipeB;
       // Pendant l'état SORTIE le n°8 contrôle le ballon au pied de la mêlée :
       // il est déjà à l'arrière de son pack (donc sur la base), aucun snap —
@@ -5866,6 +5883,7 @@
       const vole = this.rng() < probaVolAdverse;
       const gagnant = vole ? adversaire : lanceur;
       this.stats[gagnant].lineoutsGagnes++;
+      if (!vole) this.stats[lanceur].lineoutsGagnesLancer++;
       if (vole) { this.stats[adversaire].turnovers++; this.stats[lanceur].turnoversConcedes++; }
       // Le sauteur n'est jamais "le plus proche d'un point" : en match réel le
       // lancer vise un appel tactique (plot avant/milieu/fond de ligne), donc
@@ -6068,7 +6086,9 @@
         this.ballonVolHauteur = 0;
         const equipe = this.essaiEquipe;
         const offsetLateral = Math.abs(this.essaiY - LARGEUR / 2);
+        this.stats[equipe].transformationsTentees++;
         if (this.rng() < probaReussiteTir(10, offsetLateral, this.porteur.adresse)) {
+          this.stats[equipe].transformationsReussies++;
           this.score[equipe] += 2;
           this.log('TRANSFORMATION_REUSSIE', equipe, `Transformation reussie, equipe ${equipe} +2`);
         } else {
@@ -6160,7 +6180,9 @@
         const { y, distanceButs } = this.positionTir;
         const offsetLateral = Math.abs(y - LARGEUR / 2);
         const sens = { A: 1, B: -1 };
+        this.stats[equipe].penalitesButTentees++;
         if (this.rng() < probaReussiteTir(distanceButs, offsetLateral, this.porteur.adresse)) {
+          this.stats[equipe].penalitesButReussies++;
           this.score[equipe] += 3;
           this.log('PENALITE_REUSSIE', equipe, `Coup de pied au but reussi, equipe ${equipe} +3`);
           // Comme après un essai : coup d'envoi à la mi-terrain, botté par

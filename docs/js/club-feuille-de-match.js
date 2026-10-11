@@ -38,14 +38,20 @@
   // (cf. state.stats) — aucune valeur dérivée ou estimée.
   const STATS_COMPAREES = [
     ['essais', 'Essais'],
+    // Tableau de marque et conservation (P2-63), comptés par le moteur.
+    ['transformationsReussies', 'Transformations réussies'],
+    ['penalitesButReussies', 'Pénalités au but réussies'],
     ['carries', 'Courses ballon en main'],
     ['metresGagnes', 'Mètres gagnés', (v) => Math.round(v)],
     ['passes', 'Passes réussies'],
     ['kicks', 'Coups de pied'],
     ['rucks', 'Rucks'],
+    ['rucksConserves', 'Rucks conservés'],
     ['mauls', 'Mauls'],
     ['scrums', 'Mêlées introduites'],
+    ['scrumsGagnesIntro', 'Mêlées gagnées sur introduction'],
     ['lineouts', 'Touches lancées'],
+    ['lineoutsGagnesLancer', 'Touches gagnées sur lancer'],
     ['tacklesMade', 'Plaquages réussis'],
     ['missedTackles', 'Plaquages manqués'],
     ['turnovers', 'Ballons récupérés'],
