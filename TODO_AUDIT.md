@@ -580,6 +580,99 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-64. La mêlée devient une séquence physique : introduction réelle par le 9, ballon au sol sous le pack, sortie par le 9 à la base
+- **Statut : CORRIGÉ** (demande du joueur)
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (machine à états de la mêlée),
+  `docs/js/renderer.js` (ballon de mêlée au sol), `docs/js/constants.js` (icône), `server/test-melee.js`
+  (M11-M19), `server/test-invariants.js` (état de balle `SCRUM`).
+
+**Avant.** Le ballon était dessiné FIXE au point de mêlée du début à la fin. « Introduction » n'était
+qu'une annonce suivie de 4 s d'attente ; l'issue était tirée au bout de 6 s de « contestation » sans que
+le ballon bouge ; le ballon « sortait sur le 8 », qui le passait au 9.
+
+**Maintenant**, durées paramétrables (`melee.durees` : introduction 0,8 s ; acheminement 2 à 4 s ;
+sortie 1 s) :
+1. **Avant l'introduction** : le ballon est dans les mains du 9 qui introduit, face à l'ouverture du
+   tunnel (sur sa ligne médiane), à l'extérieur de la mêlée (1 m au-delà des flankers), du côté choisi.
+   Il le garde pendant Flexion - Liez - Jeu.
+2. **Introduction** : le 9 lâche le ballon, qui traverse latéralement l'ouverture et touche le sol au
+   milieu du tunnel (léger vol affiché). La poussée commence au lâcher (différentiel établi à cet
+   instant) ; le talonnage attend le contact au sol. L'introduction non droite est jugée au lâcher,
+   avec la même probabilité par mêlée qu'avant (~18 %).
+3. **Talonnage et acheminement** : l'issue est décidée au contact du sol (ballon gardé, ou volé), puis
+   le ballon roule AU SOL sous le pack jusqu'aux pieds du 8 qui l'a gagné, en suivant la marque qui
+   se déplace avec la poussée : plus vite après une poussée dominante, plus lentement sous pression,
+   avec une légère déviation latérale. Le 9 du camp qui gagne longe l'extérieur de son pack, au niveau
+   du ballon ou derrière lui, et ne rentre vers la base qu'une fois derrière les flankers.
+4. **À la base** : le 8 contrôle le ballon à ses pieds ; la poussée continue, la mêlée n'est pas finie.
+   L'issue (dominée, gagnée, sous pression, volée) est annoncée et comptée à ce moment.
+5. **Sortie** : le 9, à l'extérieur près de la base, prend le ballon — la mêlée se termine quand il le
+   joue ; ou le 8 ramasse et part (le 9 en soutien). « Use it » si le 9 n'arrive pas.
+Le 9 du camp qui perd le ballon reste de son côté de la ligne médiane du tunnel. Une mêlée à refaire
+rend le ballon au 9 à vitesse de passe (jamais téléporté dans ses mains). Un écroulement (ou toute
+faute) interrompt la séquence au pas même.
+
+**Trace obligatoire.** `traceMelees()` garde les 5 dernières mêlées : à chaque pas, la position du
+ballon (et son état) et des deux 9 avec leur action (`TIENT_LE_BALLON`, `INTRODUIT`, `LONGE_LE_PACK`,
+`ATTEND_A_LA_BASE`, `TIENT_SA_LIGNE`) ; et chaque contact (`BALLON_AU_9`, `LACHER`, `SOL`, `TALONNAGE`,
+`CONTROLE_8`, `RAMASSAGE`, ou la faute). Le rendu reçoit un état de balle `SCRUM` : ballon dessiné au
+sol, aucun porteur en surbrillance.
+
+**Tests** (`server/test-melee.js`, M11-M19), observés UNIQUEMENT par ce que voit le rendu, sur de vraies
+mêlées de match : ballon dans les mains du 9 face au tunnel ; introduction de 0,5 à 1 s qui traverse
+le tunnel ; acheminement de 2 à 4 s au sol, pas de plus de 0,35 m par pas, jusqu'au 8 qui gagne ; le 9
+jamais devant le ballon ni à moins de 0,45 m d'un avant ; base tenue au moins 0,5 s puis ballon joué par
+le 9 (ou le 8) sans saut de plus de 1 m ; 9 du camp perdant derrière la ligne médiane ; aucun saut de
+ballon de plus de 1 m sur toute la mêlée ; trace et contacts dans l'ordre ; écroulement qui coupe la
+séquence ; durées paramétrables. 8 des 9 étaient rouges avant ; M16 passait déjà (l'ancien moteur
+respectait cette limite) et rougit sur le mutant « le 9 suit le ballon quel que soit le vainqueur ».
+Autres mutants vérifiés : 9 qui traverse le pack (M14 rouge), acheminement éclair (M13 et suivants
+rouges).
+
+**Deux invariants ajustés, chacun mesuré.**
+- « Une mêlée se termine toujours » (matchs de 300 s, temps morts comprimés à 15 %) : la séquence
+  physique n'est pas comprimée. Sur 2 x 40 graines : médiane 11,9 -> 14,2 s, maximum 15,0 -> 18,3 / 19,2 s,
+  aucune mêlée bloquée. Plafond 16 -> 24 s.
+- « Le jeu courant respire » : 2,79 à 2,83 s sur quatre jeux de graines (contre ~2,93), parce que le 9
+  ne reçoit plus la passe du 8 (~0,1 s de vol qui s'ajoutait à la séquence suivante). La borne basse
+  calculée en P2-53 était 2,77 s, arrondie à 2,8 : seuil 2,75. Le mutant sans inertie (2,26 s) reste
+  rouge.
+
+**Effet mesuré** : temps de jeu effectif 32,8 -> 31,8 min (la partie vivante d'une mêlée passe de
+~7,5 s à ~5 s, durées demandées) ; mêlées 13,2, pénalités 21,7 par match, dans leurs fourchettes ;
+calibration 12/14.
+
+**Retour du joueur sur les premières captures, deux défauts corrigés :**
+- « Le ballon n'est pas collé au neuf après l'introduction, il entre au milieu de la mêlée. » Le moteur
+  faisait bien rouler le ballon sous le pack, mais l'AFFICHAGE (`positionBallonLogique`, `docs/js/main.js`)
+  ne connaissait pas l'état `SCRUM` et dessinait le ballon sur le porteur logique, le 9 : 2,4 à 2,9 m
+  d'écart avec la vraie position. Mes tests lisaient la position du moteur, pas celle dessinée : ils ne
+  pouvaient pas le voir. Corrigé, avec un test navigateur qui passe par une couture
+  (`RMMain.positionBallonAffichee`) : le ballon dessiné coïncide avec le moteur (écart 0) et se trouve à
+  plus d'1 m du 9. Rouge avant (écarts 2,4-2,9 m, ballon exactement sur le 9).
+- « Le neuf adversaire n'est pas bien placé. » Il était de l'AUTRE côté de la mêlée. Loi 20 : il se tient
+  du même côté que le 9 qui introduit, au niveau du tunnel, de son côté de la ligne médiane. Corrigé
+  (1,1 m derrière la ligne médiane, à côté du 9 qui introduit), test M20 rouge avant.
+
+**Second retour du joueur, deux défauts corrigés :**
+- « Le ballon est en dessous des joueurs, pas au-dessus. » Le rendu dessinait toujours le ballon en
+  dernier, donc PAR-DESSUS les corps, même roulant au sol sous le pack. `RMRenderer.ordreCouches(state)`
+  fixe l'ordre : pendant une mêlée (état `SCRUM`) le ballon est dessiné avant les joueurs, qui le
+  recouvrent ; porté ou en vol, il reste au-dessus. Test navigateur sur l'ordre des couches, rouge avant
+  (fonction absente, ballon toujours en dernier).
+- « Le 8 peut partir avec la balle ou faire une passe, il n'y a pas que le 9. » Troisième sortie : le 8
+  ramasse à la base et passe (`melee.passeHuit`, 15 % après domination, 10 % sinon), au 10 s'il est à
+  hauteur ou derrière lui à moins de 20 m, sinon au 9 ; jamais en avant. Un seul tirage avec deux seuils :
+  la probabilité du pick-and-go ne change pas, la passe prend sur les sorties par le 9. Passe comptée
+  (passes tentées/réussies), log `MELEE_PASSE_HUIT`. Test M21 rouge avant (0 passe du 8) ; mutant « le 8
+  sert l'avant le plus proche » -> M21 rouge (passe de 1,03 m vers l'avant).
+  Mesuré sur 20 matchs : 181 sorties, 9 qui joue 92 (51 %), 8 qui part 61 (34 %), 8 qui passe 28 (15 %).
+  Barrières : invariants 67/67, 13 suites OK, navigateur 482/0, calibration 13/14 (temps de jeu 31,4 min hors fourchette).
+
+**Non fait / limites** : après une pénalité ou un coup franc de mêlée, le ballon passe au tireur comme
+avant (hors séquence sous le pack). Le côté d'introduction est le grand côté du terrain, pas un choix
+tactique réglable.
+
 ### P2-63. Le tableau de fin de match : transformations, pénalités au but, rucks conservés, mêlées et touches sur son ballon
 - **Statut : CORRIGÉ (statistiques et affichage) ; écarts au réel révélés, à traiter**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (compteurs), `docs/js/ui.js`

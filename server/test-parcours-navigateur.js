@@ -4527,6 +4527,52 @@ function optionsLancement() {
       JSON.stringify(sansModuleClub));
   }
 
+  // --- MÊLÉE : LE BALLON EST DESSINÉ OÙ IL EST (P2-64) ----------------------
+  // Signalé par le joueur sur des captures : après l'introduction, le ballon
+  // restait collé au 9 au lieu d'entrer au milieu de la mêlée. Le moteur le
+  // faisait bien rouler sous le pack, mais l'affichage le dessinait sur le
+  // porteur logique (le 9) faute de connaître l'état « ballon de mêlée ».
+  {
+    const ctxM = await browser.newContext({ viewport: { width: 1400, height: 1000 } });
+    const pM = await ctxM.newPage();
+    pM.on('pageerror', (e) => erreursConsole.push('PAGEERROR ' + e.message));
+    await pM.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+    const r = await pM.evaluate(() => {
+      const res = [];
+      for (let g = 1; g <= 6 && res.length < 3; g++) {
+        const m = new window.RugbyEngine.MatchEngine(g, 4800);
+        for (let t = 0; t < 4800 && res.length < 3; t += 0.1) {
+          m.tick(0.1);
+          if (m.melee && m.melee.etat === 'MELEE_CONTESTATION' && m.melee.ach && m.melee.ach.t > 0.3) {
+            const st = m.getState();
+            const aff = window.RMMain.positionBallonAffichee(st);
+            const eq = m.melee.vainqueur === 'A' ? st.equipeA : st.equipeB;
+            const neuf = eq.find((j) => j.numero === 9);
+            res.push({ ecartMoteur: Math.hypot(aff.x - st.ball.x, aff.y - st.ball.y),
+              distNeuf: Math.hypot(aff.x - neuf.x, aff.y - neuf.y) });
+            break;
+          }
+        }
+      }
+      return res;
+    });
+    verifier('mêlée : des ballons talonnés sous le pack sont observés', r.length >= 2, JSON.stringify(r));
+    // Signalé ensuite par le joueur : « le ballon est en dessous des joueurs,
+    // pas au-dessus ». Sous le pack, il est dessiné AVANT les joueurs (ils le
+    // recouvrent) ; ballon porté ou en vol : après eux, comme avant.
+    const couches = await pM.evaluate(() => ({
+      melee: window.RMRenderer.ordreCouches({ ball: { state: 'SCRUM' }, ballon: { enVol: false } }),
+      porte: window.RMRenderer.ordreCouches({ ball: { state: 'CARRIED' }, ballon: { enVol: false } }),
+    }));
+    verifier('mêlée : le ballon sous le pack est dessiné SOUS les joueurs',
+      couches.melee && couches.melee.indexOf('ballon') < couches.melee.indexOf('joueurs'), JSON.stringify(couches));
+    verifier('mêlée : un ballon porté reste dessiné par-dessus les joueurs',
+      couches.porte && couches.porte.indexOf('ballon') > couches.porte.indexOf('joueurs'), JSON.stringify(couches));
+    verifier('mêlée : le ballon talonné est DESSINÉ à sa position réelle sous le pack, pas collé au 9',
+      r.length >= 2 && r.every((x) => x.ecartMoteur < 0.05 && x.distNeuf > 1.0), JSON.stringify(r));
+    await ctxM.close();
+  }
+
   verifier('aucune erreur console/page sur tout le parcours', erreursConsole.length === 0);
   if (erreursConsole.length) console.error(erreursConsole.join('\n'));
 

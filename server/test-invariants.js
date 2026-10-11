@@ -38,7 +38,8 @@ test('un seul porteur de balle à la fois (ball.state cohérent avec porteur)', 
       j => j.team === s.porteur.team && j.numero === s.porteur.numero
     );
     assert.strictEqual(porteurs.length, 1, 'doit y avoir exactement un porteur identifiable');
-    assert.ok(['CARRIED', 'AIR', 'LOOSE', 'RUCK', 'MAUL', 'OUT'].includes(s.ball.state), `état de balle invalide : ${s.ball.state}`);
+    // SCRUM (P2-64) : ballon au sol sous le pack pendant la mêlée.
+    assert.ok(['CARRIED', 'AIR', 'LOOSE', 'RUCK', 'MAUL', 'OUT', 'SCRUM'].includes(s.ball.state), `état de balle invalide : ${s.ball.state}`);
   }
 });
 
@@ -144,7 +145,13 @@ test('une mêlée se termine toujours (jamais bloquée indéfiniment)', () => {
   // le régime utilisé par server/simulate-many.js pour le calibrage), la même
   // mêlée qui tourne prend mécaniquement plus de temps réel à se reformer ;
   // cf. le test suivant pour la garantie "jamais bloquée" à cette échelle.
-  assert.ok(globalMax < 16, `une mêlée est restée bloquée ${globalMax.toFixed(1)}s (devrait toujours se résoudre sous ~16s)`);
+  // P2-64 : la mêlée se termine désormais par une SÉQUENCE PHYSIQUE de vrai
+  // jeu (introduction 0,8 s, ballon roulé sous le pack 2 à 4 s, base ~1 s),
+  // qui n'est pas comprimée comme les temps morts sur ce format court.
+  // Mesuré sur 2 x 40 graines : médiane 11,9 -> 14,2 s, maximum 15,0 ->
+  // 18,3 / 19,2 s (une seule reformation). Plafond porté à 24 s : il garde
+  // ce qu'il protège, une mêlée qui ne finirait jamais.
+  assert.ok(globalMax < 24, `une mêlée est restée bloquée ${globalMax.toFixed(1)}s (devrait toujours se résoudre sous ~24s)`);
 });
 
 test('une mêlée se termine toujours, même à pleine échelle (_echelleArret=1)', () => {
@@ -525,7 +532,12 @@ test('le jeu courant RESPIRE : la sequence ballon vivant reste dans la fourchett
   // course (ACCELERATION x10), le contact tombe en 2,62 s et le test rougit.
   // Une defense sans rampe de montee donne 3,10 s : c'est encore du rugby
   // reel, ce n'est plus une regression.
-  assert.ok(moyenne > 2.8,
+  // Seuil 2,8 -> 2,75 (P2-64) : la borne basse CALCULEE ci-dessus est 2,77 s
+  // (ruck 4 s, coup de pied 4 s) ; 2,8 en etait l'arrondi. La passe du 8 au 9
+  // a la sortie de melee, que le 9 ne recoit plus (il ramasse a la base),
+  // ajoutait ~0,1 s a la sequence suivante : 2,79-2,83 s mesures sur quatre
+  // jeux de graines. Le mutant sans inertie reste rouge (2,62 s).
+  assert.ok(moyenne > 2.75,
     `une sequence de jeu courant dure en moyenne ${moyenne.toFixed(2)} s ballon vivant : le contact tombe trop vite apres la sortie du ballon (fourchette reelle 2,8 a 3,7 s)`);
   assert.ok(moyenne < 4.5,
     `une sequence de jeu courant dure en moyenne ${moyenne.toFixed(2)} s ballon vivant : les porteurs courent sans jamais etre plaques (fourchette reelle 2,8 a 3,7 s)`);

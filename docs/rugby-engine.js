@@ -174,9 +174,18 @@
     melee: {
       reculTroisQuarts: 7.5,
       pickAndGoHuit: { dominant: 0.35, normal: 0.12 },
+      // P2-64 : le 8 peut aussi ramasser à la base et PASSER (au 10 s'il est
+      // derrière lui, sinon au 9) — troisième sortie, en plus du 9 et du 8 qui part.
+      passeHuit: { dominant: 0.15, normal: 0.10 },
       // Consigne de poussée (P1-51), réglable par équipe via meleeA/meleeB :
       // 'dominer', 'equilibre' (défaut, comportement historique), 'sortirVite'.
       poussee: 'equilibre',
+      // Séquence physique du ballon (P2-64), en secondes de jeu : le ballon
+      // vole des mains du 9 au milieu du tunnel (introduction), roule sous le
+      // pack jusqu'aux pieds du 8 (talonnage + acheminement, tiré entre min et
+      // max selon la qualité du ballon), puis attend à la base que le 9 le
+      // joue (sortie).
+      durees: { introduction: 0.8, acheminementMin: 2.0, acheminementMax: 4.0, sortie: 1.0 },
     },
     // Organisation d'attaque : taux de jeu au large (écarter vers le centre en
     // espace) sous pression / au calme. Cadence ~1 passe/s max : un receveur
@@ -516,6 +525,10 @@
   // derriere la ligne du coup de pied ; ce plafond evite qu'un joueur reste
   // bloque hors-jeu si le jeu s'est deplace ailleurs entre-temps.
   const DUREE_HORS_JEU_KICK = 6;
+  // Profondeur de la base de la mêlée depuis le milieu du tunnel (P2-64) : les
+  // premières lignes à ~0,35 m de la marque, le n°8 à 2 m derrière (formation
+  // 3-4-1, cf. _meleePlacerPaquets), le ballon à ses pieds 0,3 m plus loin.
+  const PROF_BASE_MELEE = 2.65;
   // Part de l'angle d'interception ideal reellement prise par le dernier
   // defenseur (n°15) quand le porteur a franchi la ligne (cf. pointInterception).
   const COUVERTURE_ARRIERE = 0.35;
@@ -4938,6 +4951,12 @@
         conditions: (this.rng() - 0.5) * 0.1,
         rotation: 0, resets: 0,
         diff: 0, vainqueur: null, qualite: null, useItAnnonce: false,
+        // Côté d'introduction : vers le grand côté du terrain (cf. _meleeFeedPos).
+        cote: py < LARGEUR / 2 ? 1 : -1,
+        // Ballon de la mêlée (P2-64) : sa position est une trajectoire continue
+        // (mains du 9 -> milieu du tunnel -> sous le pack -> pieds du 8), jamais
+        // un point fixe. Trace pas à pas du ballon et des deux 9, et contacts.
+        balle: null, ach: null, trace: [], contacts: [],
       };
       this.possession = equipeIntroduction;
       const eq = equipeIntroduction === 'A' ? this.equipeA : this.equipeB;
@@ -4959,6 +4978,8 @@
       // reorganiser vers le point plutot que d'apparaitre deja en place. Le
       // delai "Crouch" s'adapte a la distance du plus excentre, plafonne pour
       // ne jamais bloquer le match (cf. _capFormationMelee).
+      this.melee.balle = { etat: 'MAINS_9', x: this.porteur.x, y: this.porteur.y, h: 0 };
+      this._meleeContact('BALLON_AU_9', this.porteur);
       this.melee.capFormation = this._capFormationMelee(px, py);
       this.ruckPoint = { x: px, y: py };
       this.contestants = [];
@@ -4996,13 +5017,47 @@
     // ne pas etre colle a la ligne de touche. Sert de cible de course (jamais
     // de teleportation) et de reference au palier "pret" de la formation.
     _meleeFeedPos(m) {
-      const sideSign = m.y < LARGEUR / 2 ? 1 : -1;
-      return { x: m.x - m.sens * 0.5, y: m.y + sideSign * 2.6 };
+      // Face à l'OUVERTURE du tunnel (sur sa ligne médiane, x = marque), à
+      // l'extérieur de la mêlée (1 m au-delà des flankers, liés à 1,6 m de l'axe).
+      const cote = m.cote != null ? m.cote : (m.y < LARGEUR / 2 ? 1 : -1);
+      return { x: m.x, y: m.y + cote * 2.6 };
     }
 
     _finMelee() {
+      const m = this.melee;
+      if (m && m.trace) {
+        this._tracesMelees = this._tracesMelees || [];
+        this._tracesMelees.push({ equipeIntroduction: m.equipeIntroduction, vainqueur: m.vainqueur,
+          qualite: m.qualite, pas: m.trace, contacts: m.contacts });
+        if (this._tracesMelees.length > 5) this._tracesMelees.shift();
+      }
       this.melee = null;
       this.contestants = [];
+    }
+
+    // Trace des dernières mêlées (P2-64) : à chaque pas, la position du ballon
+    // et des deux 9 avec leur action ; et chaque contact avec le ballon
+    // (lâcher, sol, talonnage, contrôle du 8, ramassage, faute).
+    traceMelees() {
+      return (this._tracesMelees || []).slice();
+    }
+
+    _meleeContact(type, joueur, extra) {
+      const m = this.melee;
+      if (!m) return;
+      const b = m.balle || {};
+      m.contacts.push(Object.assign({ t: +m.timerGlobal.toFixed(2), type,
+        equipe: joueur ? joueur.team : null, numero: joueur ? joueur.numero : null,
+        x: b.x, y: b.y }, extra || {}));
+    }
+
+    // Les deux n°9 de la mêlée : celui de l'équipe qui introduit, et l'autre.
+    _meleeNeufs() {
+      const m = this.melee;
+      const eqI = m.equipeIntroduction === 'A' ? this.equipeA : this.equipeB;
+      const eqD = m.equipeIntroduction === 'A' ? this.equipeB : this.equipeA;
+      return { intro: eqI.find(j => j.numero === 9 && j.sinBin <= 0) || null,
+        adverse: eqD.find(j => j.numero === 9 && j.sinBin <= 0) || null };
     }
 
     // Orchestrateur : exécute un pas de la machine à états de la mêlée.
@@ -5031,9 +5086,13 @@
       // Le plafond redevient ce qu'il doit être : un dernier recours, très
       // au-dessus d'une séquence normale. Il suit l'échelle des arrêts pour
       // rester valable sur les matchs de démonstration courts.
-      if (m.timerGlobal > 95 * this._echelleArret && m.etat !== ETATS_MELEE.SORTIE) {
-        m.diff = m.diff || this._meleeFacteurs();
-        return this._meleeResoudreContestation();
+      // Depuis P2-64, le garde-fou ne RÉSOUT plus la mêlée d'un coup (le
+      // ballon aurait été téléporté aux pieds du 8) : il force l'introduction,
+      // et la séquence physique (introduction, talonnage, base) suit son cours,
+      // elle-même bornée.
+      if (m.timerGlobal > 95 * this._echelleArret && (m.etat === ETATS_MELEE.FORMATION
+        || m.etat === ETATS_MELEE.CROUCH || m.etat === ETATS_MELEE.BIND || m.etat === ETATS_MELEE.SET)) {
+        if (this._meleeIntroduire()) return;
       }
 
       // 1) IA des joueurs : packs qui se rapprochent et se lient, lignes
@@ -5045,7 +5104,13 @@
       // pilier en travers, liaison incorrecte, introduction non droite,
       // ballon bloqué, hors-jeu des lignes arrières...).
       const faute = this._meleeDetecterFautes(dt);
-      if (faute) return this._meleeSanctionner(faute);
+      if (faute) {
+        // Une faute (écroulement, pilier en travers...) INTERROMPT la séquence
+        // à l'instant : le ballon ne bouge plus, le pas est tracé tel quel.
+        this._meleeTracer();
+        this._meleeContact(faute.type, null, { equipeFautive: faute.equipeFautive });
+        return this._meleeSanctionner(faute);
+      }
 
       const E = ETATS_MELEE;
       const dur = (s) => s * this._echelleArret;
@@ -5116,43 +5181,168 @@
         case E.SET:
           // La poussée ne commence qu'a partir d'ici (apres l'engagement),
           // jamais avant l'introduction.
-          if (m.timer >= dur(3.0)) {
-            m.etat = E.INTRODUCTION; m.timer = 0;
-            this.log('MELEE_INTRODUCTION', m.equipeIntroduction, `Le demi de melee introduit le ballon dans le tunnel pour l'equipe ${m.equipeIntroduction}`);
+          if (m.timer >= dur(3.0)) { if (this._meleeIntroduire()) return; }
+          break;
+        case E.INTRODUCTION: {
+          // Le ballon a quitté les mains du 9 : il traverse l'ouverture du
+          // tunnel, latéralement, et touche le sol entre les premières lignes.
+          // La poussée peut commencer dès le lâcher ; le talonnage attend le sol.
+          this._meleeAvancerPoussee(dt);
+          const b = m.balle;
+          const t = Math.min(1, m.timer / b.duree);
+          b.x = b.x0 + (m.x - b.x0) * t;
+          b.y = b.y0 + (m.y - b.y0) * t;
+          b.h = 0.15 * Math.sin(Math.PI * t);
+          if (t >= 1) {
+            b.etat = 'SOL'; b.h = 0;
+            this._meleeContact('SOL', null);
+            // Talonnage : l'issue (ballon gardé, volé...) se décide au contact.
+            this._meleeResoudreContestation();
           }
           break;
-        case E.INTRODUCTION:
-          // Le talonneur tente de talonner, le ballon progresse vers les
-          // pieds du numero 8 : les facteurs de contestation sont calculés
-          // une fois, au moment où la lutte pour le ballon démarre vraiment.
-          if (m.timer >= dur(4.0)) {
-            m.etat = E.CONTESTATION; m.timer = 0;
-            m.diff = this._meleeFacteurs();
-            this.log('MELEE_CONTESTATION', m.equipeIntroduction, 'Contestation en melee, les deux packs poussent pour le ballon');
-          }
-          break;
-        case E.CONTESTATION:
+        }
+        case E.CONTESTATION: {
+          // Talonnage et acheminement : le talonneur ramène le ballon du pied, qui
+          // roule AU SOL sous les avants (première ligne, deuxième ligne) jusqu'aux
+          // pieds du 8 — ralenti sous pression, dévié, ou gagné par l'adversaire.
           this._meleeAvancerPoussee(dt);
           if (Math.abs(m.rotation) > 90) {
             this.log('MELEE_TOURNEE', m.equipeIntroduction, 'La melee tourne de plus de 90 degres, l\'arbitre la fait reformer');
+            this._meleeContact('MELEE_TOURNEE', null);
             return this._meleeReset();
           }
-          if (m.timer >= dur(6.0)) this._meleeResoudreContestation();
+          const a = m.ach;
+          a.t = Math.min(1, a.t + dt / a.duree);
+          this._meleePlacerBalleAuSol();
+          if (a.t >= 1) this._meleeArriveeBase();
           break;
+        }
         case E.SORTIE: {
-          // Comme le "use it" du maul : le ballon doit ressortir sous peine
-          // d'être sifflé injouable ; probabilité de sortie croissante avec
-          // le temps plutôt qu'un instant fixe.
+          // Le ballon est à la base, CONTRÔLÉ aux pieds du 8 : la mêlée n'est pas
+          // finie pour autant (la poussée continue). Elle se termine quand le 9
+          // le joue — ou quand le 8 ramasse et part lui-même.
+          this._meleeAvancerPoussee(dt);
+          this._meleePlacerBalleAuSol();
           const seuilUseIt = dur(1.5);
           if (m.timerSortie <= seuilUseIt && !m.useItAnnonce) {
             m.useItAnnonce = true;
             this.log('MELEE_USE_IT', m.vainqueur, 'Arbitre : "Use it !" - le ballon doit sortir de la melee');
           }
           m.timerSortie -= dt;
-          if (this.rng() < 0.7 * dt || m.timerSortie <= 0) return this._meleeSortieBallon();
+          const eqV = m.vainqueur === 'A' ? this.equipeA : this.equipeB;
+          const neufV = eqV.find(j => j.numero === 9 && j.sinBin <= 0);
+          const huitV = eqV.find(j => j.numero === 8 && j.sinBin <= 0 && j.auSol === 0);
+          const dureeSortie = (this.cfg.melee.durees || {}).sortie || 1.0;
+          if (m.pickAndGo && huitV && m.timer >= dureeSortie * 0.6) return this._meleeSortieBallon(huitV);
+          if (m.passeHuit && huitV && m.timer >= dureeSortie * 0.6) return this._meleeSortieBallon(huitV, true);
+          const neufPret = neufV && Math.hypot(neufV.x - m.balle.x, neufV.y - m.balle.y) <= 1.0;
+          if (neufPret && m.timer >= dureeSortie) return this._meleeSortieBallon(neufV);
+          // « Use it » : si le 9 n'arrive pas, le 8 ramasse lui-même.
+          if (m.timerSortie <= 0) return this._meleeSortieBallon(neufPret ? neufV : (huitV || neufV));
           break;
         }
       }
+      this._meleeTracer();
+    }
+
+    // Lâcher du ballon par le 9 (introduction). Renvoie true si la séquence
+    // s'est arrêtée sur une faute au lâcher (introduction non droite).
+    _meleeIntroduire() {
+      const m = this.melee;
+      const { intro: neuf } = this._meleeNeufs();
+      const d = this.cfg.melee.durees || {};
+      m.etat = ETATS_MELEE.INTRODUCTION; m.timer = 0;
+      this.log('MELEE_INTRODUCTION', m.equipeIntroduction, `Le demi de melee introduit le ballon dans le tunnel pour l'equipe ${m.equipeIntroduction}`);
+      const b = m.balle;
+      if (b.etat !== 'MAINS_9' && neuf) { b.x = neuf.x; b.y = neuf.y; }
+      b.etat = 'INTRODUIT'; b.x0 = b.x; b.y0 = b.y; b.duree = Math.max(0.2, d.introduction || 0.8);
+      this._meleeContact('LACHER', neuf);
+      // La poussée peut commencer dès le lâcher : le différentiel de
+      // contestation est établi maintenant.
+      m.diff = this._meleeFacteurs();
+      // Introduction non droite (loi 19) : jugée AU LÂCHER, une fois par mêlée,
+      // avec la même probabilité qu'avant P2-64 (0,05/s pendant les 4 s de
+      // l'ancien palier « introduction », soit ~18 %).
+      if (this.rng() < 0.18) {
+        this._meleeTracer();
+        this._meleeContact('INTRODUCTION_NON_DROITE', neuf);
+        this._meleeSanctionner({ type: 'INTRODUCTION_NON_DROITE', equipeFautive: m.equipeIntroduction, gravite: 'COUP_FRANC', message: 'introduction non droite dans le tunnel', delibere: false });
+        return true;
+      }
+      return false;
+    }
+
+    // Position du ballon au sol sous le pack, PROPORTIONNELLE à la marque (qui
+    // se déplace avec la poussée) : il garde donc une trajectoire continue même
+    // quand la mêlée avance ou recule. prof : distance parcourue depuis le
+    // milieu du tunnel vers l'arrière du pack qui a gagné le ballon.
+    _meleePlacerBalleAuSol() {
+      const m = this.melee, a = m.ach, b = m.balle;
+      if (!a) return;
+      const lisse = a.t * a.t * (3 - 2 * a.t);
+      const prof = PROF_BASE_MELEE * lisse;
+      b.x = m.x - a.sens * prof;
+      b.y = m.y + a.deviation * Math.sin(Math.PI * Math.min(1, a.t));
+      b.h = 0;
+    }
+
+    // Le ballon arrive aux pieds du 8 qui l'a gagné : le 8 le contrôle.
+    _meleeArriveeBase() {
+      const m = this.melee;
+      const intro = m.equipeIntroduction, nonIntro = m.equipeNonIntroduction;
+      if (m.qualite === 'VOLE') {
+        this.stats[nonIntro].turnovers++;
+        this.stats[intro].turnoversConcedes++;
+        this.log('TURNOVER', nonIntro, `Ballon vole en melee contre l'introduction, l'equipe ${nonIntro} recupere`);
+      } else if (m.qualite === 'DOMINANT') {
+        this.log('MELEE_DOMINEE', intro, `Poussee dominante en melee, l'equipe ${intro} fait reculer le pack adverse`);
+      } else if (m.qualite === 'PROPRE') {
+        this.log('MELEE_GAGNEE', intro, `Ballon gagne proprement par l'equipe ${intro} en melee`);
+      } else {
+        this.log('MELEE_PRESSION', intro, `Ballon gagne sous pression par l'equipe ${intro} en melee`);
+      }
+      this.stats[m.vainqueur].scrumsGagnes++;
+      if (m.vainqueur === intro) this.stats[intro].scrumsGagnesIntro++;
+      const eqV = m.vainqueur === 'A' ? this.equipeA : this.equipeB;
+      const huit = eqV.find(j => j.numero === 8 && j.sinBin <= 0) || null;
+      m.balle.etat = 'BASE';
+      this._meleeContact('CONTROLE_8', huit);
+      this.log('MELEE_BASE', m.vainqueur, `Le ballon est a la base, aux pieds du n°8 de l'equipe ${m.vainqueur}`);
+      const pickAndGoHuit = this.cfgMelee[m.vainqueur].pickAndGoHuit;
+      // Un seul tirage, deux seuils : la probabilité du pick-and-go reste celle
+      // d'avant ; la passe du 8 prend une part des sorties par le 9.
+      const passeHuit = this.cfgMelee[m.vainqueur].passeHuit || { dominant: 0, normal: 0 };
+      const dom = m.qualite === 'DOMINANT';
+      const pPick = dom ? pickAndGoHuit.dominant : pickAndGoHuit.normal;
+      const pPasse = dom ? passeHuit.dominant : passeHuit.normal;
+      const r = this.rng();
+      const huitDispo = !!(huit && huit.auSol === 0);
+      m.pickAndGo = huitDispo && r < pPick;
+      m.passeHuit = huitDispo && !m.pickAndGo && r < pPick + pPasse;
+      m.etat = ETATS_MELEE.SORTIE;
+      m.timer = 0;
+      m.timerSortie = 4 * this._echelleArret + ((this.cfg.melee.durees || {}).sortie || 1.0);
+      m.useItAnnonce = false;
+    }
+
+    // Trace d'un pas de mêlée : ballon et deux 9, avec leur action.
+    _meleeTracer() {
+      const m = this.melee;
+      if (!m || !m.balle) return;
+      const { intro, adverse } = this._meleeNeufs();
+      const action = (n, estIntro) => {
+        if (!n) return null;
+        let a;
+        if (m.balle.etat === 'MAINS_9' && estIntro) a = 'TIENT_LE_BALLON';
+        else if (m.etat === ETATS_MELEE.INTRODUCTION && estIntro) a = 'INTRODUIT';
+        else if ((m.etat === ETATS_MELEE.CONTESTATION || m.etat === ETATS_MELEE.SORTIE) && n.team === m.vainqueur) {
+          a = m.etat === ETATS_MELEE.SORTIE ? 'ATTEND_A_LA_BASE' : 'LONGE_LE_PACK';
+        } else a = 'TIENT_SA_LIGNE';
+        return { equipe: n.team, x: +n.x.toFixed(3), y: +n.y.toFixed(3), action: a };
+      };
+      m.trace.push({ t: +m.timerGlobal.toFixed(2), etat: m.etat,
+        balle: { x: +m.balle.x.toFixed(3), y: +m.balle.y.toFixed(3), h: +m.balle.h.toFixed(3), etat: m.balle.etat },
+        neufIntro: action(intro, true), neufAdverse: action(adverse, false) });
     }
 
     // Placement progressif des deux packs (et repli des lignes arrières) :
@@ -5262,38 +5452,54 @@
     // entrée, sinon l'annonce "introduction" arrive après coup, sur un
     // ballon visuellement déjà en place.
     _meleePositionnerBallon(dt) {
+      // P2-64 — les deux 9 et le ballon tenu.
+      //  - Avant l'introduction, le 9 qui introduit tient le ballon face à
+      //    l'ouverture du tunnel, à l'extérieur de la mêlée (cf. _meleeFeedPos).
+      //  - Pendant le talonnage, le 9 du camp qui GAGNE le ballon longe
+      //    l'extérieur de son pack vers l'arrière, en gardant un pied au niveau
+      //    du ballon ou derrière lui ; il ne rentre vers la base qu'une fois
+      //    derrière les flankers (il ne traverse pas les joueurs).
+      //  - Le 9 de l'équipe qui n'introduit pas se tient du MÊME côté de la
+      //    mêlée que celui qui introduit (loi 20), au niveau du tunnel, de son
+      //    côté de la ligne médiane. Celui du camp qui perd le ballon reste à
+      //    cette ligne : il ne suit pas le ballon jusqu'au 8 adverse.
       const m = this.melee;
       const E = ETATS_MELEE;
-      const sideSign = m.y < LARGEUR / 2 ? 1 : -1;
-      const eqIntro = m.equipeIntroduction === 'A' ? this.equipeA : this.equipeB;
-      const eqDef = m.equipeIntroduction === 'A' ? this.equipeB : this.equipeA;
-      const neufIntro = eqIntro.find(j => j.numero === 9 && j.sinBin <= 0);
-      const neufDef = eqDef.find(j => j.numero === 9 && j.sinBin <= 0);
-      // Demi qui introduit : à la bouche du tunnel, sur le côté de son équipe.
-      // Il se penche vers le tunnel au moment de l'introduction pour y glisser
-      // le ballon (jamais au centre des avants). Tout en course (avancer),
-      // jamais snappé, et il suit la base si la mêlée avance en poussant.
-      if (neufIntro) {
-        // Le 9 SUIT LE BALLON : à l'entrée du tunnel jusqu'à l'introduction,
-        // puis il SE REPLACE DERRIÈRE LE N°8 (dernier élément de la mêlée,
-        // formation 3-4-1 : base à ~2,4 m de la marque) pendant que le ballon
-        // talonné remonte vers les pieds du 8 — prêt à le ramasser à la sortie
-        // et à le distribuer au 10, comme sur n'importe quelle phase. Avant, il
-        // restait planté à l'entrée du tunnel pendant toute la contestation.
-        const cible = (m.etat === E.CONTESTATION || m.etat === E.SORTIE)
-          ? { x: m.x - m.sens * 3.6, y: m.y + sideSign * 0.6 }
-          : m.etat === E.INTRODUCTION
-            ? { x: m.x - m.sens * 0.2, y: m.y + sideSign * 1.4 }
-            : this._meleeFeedPos(m);
-        avancer(neufIntro, cible.x - neufIntro.x, cible.y - neufIntro.y, dt, vitesseMs(neufIntro));
+      const cote = m.cote;
+      const { intro: neufI, adverse: neufD } = this._meleeNeufs();
+      const b = m.balle;
+      const issueConnue = m.vainqueur && (m.etat === E.CONTESTATION || m.etat === E.SORTIE);
+      const cibleNeuf = (neuf, estIntro) => {
+        const s9 = neuf.sensAttaque;
+        if (issueConnue && neuf.team === m.vainqueur) {
+          const profNeuf = (m.x - neuf.x) * s9; // profondeur derrière l'axe, de son côté
+          const versBase = m.etat === E.SORTIE || profNeuf >= 1.9;
+          if (versBase) {
+            // Près de la base, à l'extérieur, prêt à ramasser.
+            return { x: b.x - s9 * 0.35, y: b.y + cote * 0.85 };
+          }
+          // Le long du pack, à l'extérieur, au niveau du ballon ou derrière.
+          return { x: b.x - s9 * 0.3, y: m.y + cote * 2.6 };
+        }
+        if (estIntro && !issueConnue) return this._meleeFeedPos(m);
+        // Du même côté que le 9 qui introduit, au niveau du tunnel, de son côté
+        // de la ligne médiane (1,1 m derrière elle, à côté du 9 qui introduit :
+        // assez pour que les deux joueurs restent distincts à l'écran).
+        return { x: m.x - s9 * 1.1, y: m.y + cote * 2.6 };
+      };
+      for (const [neuf, estIntro] of [[neufI, true], [neufD, false]]) {
+        if (!neuf) continue;
+        const c = cibleNeuf(neuf, estIntro);
+        avancer(neuf, c.x - neuf.x, c.y - neuf.y, dt, vitesseMs(neuf));
       }
-      // Demi adverse : garde la base de la mêlée de l'autre côté du tunnel,
-      // prêt à défendre la sortie (et à jouer le ballon s'il est gagné contre
-      // l'introduction). Là aussi en course, donc aucune téléportation à la
-      // sortie quand c'est lui qui récupère un ballon volé.
-      if (neufDef) {
-        const cibleDef = { x: m.x + m.sens * 0.5, y: m.y - sideSign * 2.6 };
-        avancer(neufDef, cibleDef.x - neufDef.x, cibleDef.y - neufDef.y, dt, vitesseMs(neufDef) * 0.9);
+      // Ballon tenu par le 9 : il suit ses mains. Ballon rendu après une mêlée à
+      // refaire : il revient vers lui à vitesse de passe, puis dans ses mains.
+      if (b && b.etat === 'MAINS_9' && neufI) { b.x = neufI.x; b.y = neufI.y; b.h = 0; }
+      else if (b && b.etat === 'RETOUR' && neufI) {
+        const dx = neufI.x - b.x, dy = neufI.y - b.y, dd = Math.hypot(dx, dy), pas = 8 * dt;
+        if (dd <= pas) { b.x = neufI.x; b.y = neufI.y; b.etat = 'MAINS_9'; this._meleeContact('BALLON_AU_9', neufI); }
+        else { b.x += dx / dd * pas; b.y += dy / dd * pas; }
+        b.h = 0;
       }
     }
 
@@ -5365,13 +5571,8 @@
           return { type: 'LIAISON', equipeFautive: eqF, gravite: 'COUP_FRANC', message: 'liaison incorrecte en premiere ligne', delibere: false };
         }
       }
-      if (m.etat === E.INTRODUCTION) {
-        seuil += 0.05 * dt;
-        if (r < seuil) {
-          return { type: 'INTRODUCTION_NON_DROITE', equipeFautive: m.equipeIntroduction, gravite: 'COUP_FRANC', message: 'introduction non droite dans le tunnel', delibere: false };
-        }
-      }
-      if (m.etat === E.SET || m.etat === E.CONTESTATION) {
+      // (Introduction non droite : jugée une fois, au lâcher — cf. _meleeIntroduire.)
+      if (m.etat === E.SET || m.etat === E.CONTESTATION || m.etat === E.SORTIE) {
         const distLigneDef = m.sens > 0 ? (LONGUEUR - m.x) : m.x;
         // Le camp en difficulté (qui recule dans le duel de poussée) est le
         // plus exposé à l'écroulement volontaire et au pilier en travers.
@@ -5452,6 +5653,11 @@
       // raisonnable. Au 3e reset, engagement direct (« Set »), comme un arbitre
       // pressé d'en finir.
       m.etat = m.resets > 2 ? ETATS_MELEE.SET : ETATS_MELEE.CROUCH;
+      // Le ballon est rendu au 9 qui introduit (P2-64) : il lui revient en
+      // roulant/passant (cf. _meleePositionnerBallon, état RETOUR), jamais
+      // téléporté dans ses mains.
+      m.vainqueur = null; m.qualite = null; m.ach = null; m.pickAndGo = false; m.passeHuit = false;
+      if (m.balle && m.balle.etat !== 'MAINS_9') m.balle.etat = 'RETOUR';
     }
 
     // Décision d'arbitrage sur une faute de mêlée : reformation simple, coup
@@ -5534,72 +5740,86 @@
         0.05 - m.diff / 300 + volDef - volIntro));
       if (this.rng() < probaVol) {
         m.vainqueur = nonIntro; m.qualite = 'VOLE';
-        this.stats[nonIntro].turnovers++;
-        this.stats[intro].turnoversConcedes++;
-        this.log('TURNOVER', nonIntro, `Ballon vole en melee contre l'introduction, l'equipe ${nonIntro} recupere`);
       } else if (m.diff > 25) {
         m.vainqueur = intro; m.qualite = 'DOMINANT';
-        this.log('MELEE_DOMINEE', intro, `Poussee dominante en melee, l'equipe ${intro} fait reculer le pack adverse`);
       } else if (m.diff > 8) {
         m.vainqueur = intro; m.qualite = 'PROPRE';
-        this.log('MELEE_GAGNEE', intro, `Ballon gagne proprement par l'equipe ${intro} en melee`);
       } else {
         m.vainqueur = intro; m.qualite = 'PRESSION';
-        this.log('MELEE_PRESSION', intro, `Ballon gagne sous pression par l'equipe ${intro} en melee`);
       }
-      this.stats[m.vainqueur].scrumsGagnes++;
-      if (m.vainqueur === intro) this.stats[intro].scrumsGagnesIntro++;
-      const eqVainqueur = m.vainqueur === 'A' ? this.equipeA : this.equipeB;
-      // Pendant l'état SORTIE le n°8 contrôle le ballon au pied de la mêlée :
-      // il est déjà à l'arrière de son pack (donc sur la base), aucun snap —
-      // sinon il "sautait" sur la base depuis sa position de poussée.
-      this.porteur = eqVainqueur.find(j => j.numero === 8) || eqVainqueur[7];
-      m.etat = ETATS_MELEE.SORTIE;
+      // P2-64 : l'issue est DÉCIDÉE ici, au contact du ballon avec le sol, mais
+      // elle n'est annoncée (et comptée) que lorsque le ballon arrive
+      // réellement aux pieds du 8 (cf. _meleeArriveeBase). Entre les deux, le
+      // ballon roule sous le pack : plus vite après une poussée dominante, plus
+      // lentement sous pression, avec une légère déviation latérale.
+      const eqV = m.vainqueur === 'A' ? this.equipeA : this.equipeB;
+      const talonneur = (m.vainqueur === intro ? eqV : (intro === 'A' ? this.equipeA : this.equipeB)).find(j => j.numero === 2) || null;
+      const d = this.cfg.melee.durees || {};
+      const dMin = d.acheminementMin != null ? d.acheminementMin : 2.0;
+      const dMax = Math.max(dMin, d.acheminementMax != null ? d.acheminementMax : 4.0);
+      const plage = m.qualite === 'DOMINANT' ? [0, 0.35] : m.qualite === 'PROPRE' ? [0.25, 0.6]
+        : m.qualite === 'PRESSION' ? [0.6, 1] : [0.45, 1];
+      const f = plage[0] + (plage[1] - plage[0]) * this.rng();
+      m.ach = { t: 0, duree: Math.max(0.2, dMin + (dMax - dMin) * f),
+        sens: eqV[0].sensAttaque, deviation: (this.rng() - 0.5) * 0.6 };
+      if (m.balle) m.balle.etat = 'TALONNE';
+      this._meleeContact('TALONNAGE', talonneur, { vers: m.vainqueur });
+      m.etat = ETATS_MELEE.CONTESTATION;
       m.timer = 0;
-      m.timerSortie = 4 * this._echelleArret;
-      m.useItAnnonce = false;
+      this.log('MELEE_CONTESTATION', m.equipeIntroduction, 'Le talonneur ramene le ballon, les deux packs poussent');
     }
 
     // Sortie de balle : le demi de mêlée sort le ballon vers l'ouvreur dans la
     // grande majorité des cas (qui décide ensuite passe/jeu au large/coup de
     // pied via l'IA de jeu courant), ou le numéro 8 ramasse et part au près
     // (pick-and-go), plus probable après une poussée dominante.
-    _meleeSortieBallon() {
+    _meleeSortieBallon(joueur, passeDuHuit) {
       const m = this.melee;
       const poss = m.vainqueur;
       const eq = poss === 'A' ? this.equipeA : this.equipeB;
       const huit = eq.find(j => j.numero === 8);
+      const neuf = eq.find(j => j.numero === 9 && j.sinBin <= 0);
+      const porteur = joueur || neuf || huit || eq[7];
+      // Passe du 8 : vers le 10 s'il est à hauteur ou derrière lui (jamais en
+      // avant) et à portée, sinon vers le 9 ; faute de receveur, il part.
+      let cible = null;
+      if (passeDuHuit && porteur.numero === 8) {
+        const s = porteur.sensAttaque;
+        const ok = j => j && j.sinBin <= 0 && j.auSol === 0
+          && (j.x - porteur.x) * s <= 0 && Math.hypot(j.x - porteur.x, j.y - porteur.y) <= 20;
+        const dix = eq.find(j => j.numero === 10);
+        cible = ok(dix) ? dix : (ok(neuf) ? neuf : null);
+      }
+      const pickAndGo = porteur.numero === 8 && !cible;
       const pt = { x: m.x, y: m.y };
-      const pickAndGoHuit = this.cfgMelee[poss].pickAndGoHuit;
-      const pickAndGo = huit && huit.auSol === 0 && this.rng() < (m.qualite === 'DOMINANT' ? pickAndGoHuit.dominant : pickAndGoHuit.normal);
+      m.balle.etat = 'RAMASSE';
+      this._meleeContact('RAMASSAGE', porteur);
+      this._meleeTracer();
       this._finMelee();
       this.possession = poss;
+      this.porteur = porteur;
       if (pickAndGo) {
-        // Le n°8 ramasse au pied de la mêlée : déjà à l'arrière du pack (sur la
-        // base), aucun snap — il part au contact depuis là.
-        this.porteur = huit;
+        // Le n°8 ramasse au pied de la mêlée et part lui-même ; le 9, déjà près
+        // de la base, vient en soutien.
         this.log('MELEE_PICK_AND_GO', poss, `Le numero 8 ramasse au pied de la melee et part au contact pour l'equipe ${poss}`);
+      } else if (cible) {
+        // Le 8 ramasse et sert directement un trois-quarts (ou son 9).
+        this.stats[poss].passesTentees++;
+        this.stats[poss].passes++;
+        this._statJoueur(porteur).passes++;
+        this._lancerPasseVisuelle(porteur, cible);
+        this.porteur = cible;
+        this.log('MELEE_PASSE_HUIT', poss, `Le n°8 ramasse a la base et passe au n°${cible.numero} pour l'equipe ${poss}`);
       } else {
-        // Loi 19 : le ballon gagné sort par l'ARRIÈRE de la mêlée, aux pieds du
-        // n°8 (dernier joueur du pack, sur la base). C'est donc le 8 qui le
-        // RÉCUPÈRE — « la balle sort sur le 8 » — puis le DÉLIVRE au demi de mêlée
-        // (passe courte visible depuis la base). Le 9 ne cueille jamais le ballon
-        // DANS la mêlée : il le reçoit du 8. La passe vers l'ouvreur se fait
-        // ensuite naturellement en jeu courant (_tickPorte).
-        const neuf = eq.find(j => j.numero === 9 && j.sinBin <= 0);
-        this.porteur = huit || eq[7]; // le ballon sort SUR le n°8
-        this.log('MELEE_BALLON_SORTI', poss, `Le n°8 recupere le ballon a la base de la melee pour l'equipe ${poss}`);
-        if (neuf && neuf !== this.porteur) {
-          // Le 8 délivre le ballon au demi de mêlée (passe courte depuis la base).
-          this._lancerPasseVisuelle(this.porteur, neuf);
-          this.porteur = neuf;
-        }
+        // P2-64 : c'est le 9 qui PREND le ballon disponible aux pieds du 8 — il
+        // est à la base, à moins d'un mètre du ballon. Le 8 ne le lui passe pas.
+        this.log('MELEE_BALLON_SORTI', poss, `Le n°9 ramasse le ballon a la base de la melee pour l'equipe ${poss}`);
       }
       // Sortie propre par le 9 : on peut enchaîner une COMBINAISON scriptée
       // (playbook, cf. cfg.combinaisons.melee) — ex. 9->10->12 croisé. Sinon jeu
       // libre normal. (Pas de combinaison sur un pick-and-go du n°8 : il part au
       // contact.)
-      if (!pickAndGo) this._lancerCombinaison('melee');
+      if (!pickAndGo && !cible) this._lancerCombinaison('melee');
       // Sortie de mêlée par le 9 SANS combinaison scriptée : il est libre et
       // décide lui-même (cf. choisirActionPorteur, branche _neufLibre).
       if (!pickAndGo && !this.combinaison && this.porteur && this.porteur.numero === 9) this._neufLibre = true;
@@ -6518,6 +6738,9 @@
       if (this.ballonEnVol) return 'AIR';
       if (this._receptionEnAttente) return 'LOOSE';
       if (this.phase === 'RUCK') return 'RUCK';
+      // Mêlée (P2-64) : une fois lâché par le 9, le ballon est au sol sous le
+      // pack — personne ne le porte (le 9 reste porteur logique pour la suite).
+      if (this.phase === 'MELEE' && this.melee && this.melee.balle && this.melee.balle.etat !== 'MAINS_9') return 'SCRUM';
       if (this.phase === 'MAUL') return 'MAUL';
       if (this.phase === 'TOUCHE') return 'OUT';
       return 'CARRIED';
@@ -6613,7 +6836,10 @@
       let ballonPhaseX = null, ballonPhaseY = null;
       if (!enVol && !enPasse && !auSolLoose) {
         if (this.phase === 'MELEE' && this.melee) {
-          ballonPhaseX = this.melee.x; ballonPhaseY = this.melee.y;
+          // Le VRAI ballon de la mêlée (P2-64) : mains du 9, vol d'introduction,
+          // puis au sol sous le pack jusqu'aux pieds du 8.
+          const b = this.melee.balle;
+          ballonPhaseX = b ? b.x : this.melee.x; ballonPhaseY = b ? b.y : this.melee.y;
         } else if (this.phase === 'TOUCHE') {
           ballonPhaseX = this.toucheLanceurX != null ? this.toucheLanceurX : this.ruckPoint.x;
           ballonPhaseY = this.toucheLanceurY != null ? this.toucheLanceurY : this.ruckPoint.y;
@@ -6639,6 +6865,9 @@
         // porteur. Conservé pour compatibilité avec le rendu existant.
         ballon: enVol
           ? { x: this.ballonVolX, y: this.ballonVolY, enVol: true, hauteur: this.ballonVolHauteur }
+          : (this.phase === 'MELEE' && this.melee && this.melee.balle && this.melee.balle.h > 0)
+            // Introduction (P2-64) : le ballon vient de quitter les mains du 9.
+            ? { x: ballonX, y: ballonY, enVol: true, hauteur: this.melee.balle.h }
           : enPasse
             ? { x: passeX, y: passeY, enVol: true, hauteur: passeH }
             : { x: ballonX, y: ballonY, enVol: false, hauteur: 0 },
@@ -6662,7 +6891,8 @@
         // État détaillé du maul en cours (null hors maul), pour l'affichage.
         maul: this.maul ? { etat: this.maul.etat, x: this.maul.x, y: this.maul.y } : null,
         // État détaillé de la mêlée en cours (null hors mêlée), pour l'affichage.
-        melee: this.melee ? { etat: this.melee.etat, x: this.melee.x, y: this.melee.y } : null,
+        melee: this.melee ? { etat: this.melee.etat, x: this.melee.x, y: this.melee.y,
+          balle: this.melee.balle ? { etat: this.melee.balle.etat, x: this.melee.balle.x, y: this.melee.balle.y } : null } : null,
         // État du ruck en cours (null hors ruck), pour l'affichage/les tests.
         ruck: this.phase === 'RUCK' ? {
           x: this.ruckPoint.x, y: this.ruckPoint.y,

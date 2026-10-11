@@ -209,7 +209,9 @@
     // regroupement (le porteur affiché n'est que le dernier joueur plaqué,
     // couché dessus) — sinon le ballon semblait toujours "en mains" même
     // pendant la phase de jeu la plus fréquente du match.
-    if (state.ball && state.ball.state === 'RUCK') {
+    // Ballon de mêlée (P2-64) : lâché par le 9, il roule AU SOL sous le pack
+    // jusqu'aux pieds du 8 — dessiné au sol, à sa position réelle.
+    if (state.ball && (state.ball.state === 'RUCK' || state.ball.state === 'SCRUM')) {
       ctx.beginPath();
       ctx.ellipse(sol.px, sol.py + 5, 5.5, 3.4, Math.PI / 4, 0, Math.PI * 2);
       ctx.fillStyle = '#8d5524';
@@ -252,18 +254,32 @@
     ctx.fillText('arbitre', px, py + 14);
   }
 
+  // Ordre des couches : pendant une mêlée, le ballon est AU SOL SOUS les
+  // packs — on le dessine avant les joueurs, qui le recouvrent en partie.
+  // Sinon il est dans les mains (ou en l'air) et passe par-dessus.
+  function ordreCouches(state) {
+    return state && state.ball && state.ball.state === 'SCRUM'
+      ? ['terrain', 'ballon', 'joueurs', 'arbitre']
+      : ['terrain', 'joueurs', 'arbitre', 'ballon'];
+  }
+
   function dessiner(state) {
-    dessinerTerrain();
     // Pendant que le ballon est en vol ou au sol après un coup de pied
     // (personne ne l'a encore rejoint), on ne met aucun joueur en
     // surbrillance : le dernier porteur (le buteur) ne l'a plus en main.
-    const sansPorteur = (state.ballon && state.ballon.enVol) || (state.ball && state.ball.state === 'LOOSE');
+    const sansPorteur = (state.ballon && state.ballon.enVol) || (state.ball && (state.ball.state === 'LOOSE' || state.ball.state === 'SCRUM'));
     const estPorteur = j => !sansPorteur && j.team === state.porteur.team && j.numero === state.porteur.numero;
-    for (const j of state.teams.A) dessinerJoueur(j, estPorteur(j));
-    for (const j of state.teams.B) dessinerJoueur(j, estPorteur(j));
-    dessinerArbitre(state);
-    dessinerBallon(state);
+    const couches = {
+      terrain: dessinerTerrain,
+      ballon: () => dessinerBallon(state),
+      joueurs: () => {
+        for (const j of state.teams.A) dessinerJoueur(j, estPorteur(j));
+        for (const j of state.teams.B) dessinerJoueur(j, estPorteur(j));
+      },
+      arbitre: () => dessinerArbitre(state),
+    };
+    for (const c of ordreCouches(state)) couches[c]();
   }
 
-  global.RMRenderer = { init, redimensionner, versCanvas, dessiner };
+  global.RMRenderer = { init, redimensionner, versCanvas, dessiner, ordreCouches };
 })(window);

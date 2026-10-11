@@ -662,7 +662,9 @@
   let ballonRendu = null;
   function positionBallonLogique(st) {
     if (st.ballon && st.ballon.enVol) return { x: st.ballon.x, y: st.ballon.y, enVol: true };
-    if (st.ball && (st.ball.state === 'LOOSE' || st.ball.state === 'RUCK')) return { x: st.ball.x, y: st.ball.y };
+    // SCRUM (P2-64) : ballon introduit dans la mêlée, au sol sous le pack —
+    // dessiné à sa position réelle, jamais sur le 9 (porteur logique).
+    if (st.ball && (st.ball.state === 'LOOSE' || st.ball.state === 'RUCK' || st.ball.state === 'SCRUM')) return { x: st.ball.x, y: st.ball.y };
     if (st.porteur) return { x: st.porteur.x, y: st.porteur.y };
     return st.ballon ? { x: st.ballon.x, y: st.ballon.y } : null;
   }
@@ -1095,6 +1097,11 @@
     // celui-ci). La boucle de rendu appelle exactement cette fonction.
     multiplicateurAffichage(etatMoteur) {
       return multiplicateurMiseEnPlace(etatMoteur);
+    },
+    // Couture de test (P2-64) : la position où le ballon est DESSINÉ pour un
+    // état du moteur — c'est elle que voit le joueur, pas la position interne.
+    positionBallonAffichee(etatMoteur) {
+      return positionBallonLogique(normalizeMatchState(etatMoteur));
     },
   };
 

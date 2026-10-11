@@ -263,4 +263,252 @@ test('M10 — la mêlée produit de vraies fautes (pénalités et coups francs)'
     `plusieurs motifs de faute distincts doivent exister (mesuré ${motifs.size} : ${[...motifs].join(' / ')})`);
 });
 
+// ===========================================================================
+// M11-M19 — LA MÊLÉE EST UNE SÉQUENCE PHYSIQUE CONTINUE (cf. TODO_AUDIT.md P2-64)
+//
+// Demande : le ballon suit une trajectoire continue, le n°9 introduit
+// réellement puis rejoint la base. Avant ce correctif, le ballon était dessiné
+// FIXE au point de mêlée du début à la fin, l'« introduction » n'était qu'une
+// annonce suivie de 4 s d'attente, l'issue était tirée au bout de 6 s de
+// « contestation » sans que le ballon bouge, et le ballon « sortait sur le 8 »
+// qui le passait au 9.
+//
+// On observe de vraies mêlées de match, pas à pas, UNIQUEMENT à travers ce que
+// voit le rendu (getState : ballon, joueurs) — jamais en lisant l'état interne
+// de la nouvelle mécanique, pour que les tests jugent le résultat et non
+// l'implémentation.
+const E = { F: 'MELEE_FORMATION', C: 'MELEE_CROUCH', B: 'MELEE_BIND', S: 'MELEE_SET',
+  I: 'MELEE_INTRODUCTION', T: 'MELEE_CONTESTATION', X: 'MELEE_SORTIE' };
+const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+function suivreMelees(graines, cfg, maxMelees) {
+  const melees = [];
+  for (const graine of graines) {
+    const m = new RugbyEngine.MatchEngine(graine, 4800, cfg || null);
+    const evts = [];
+    const brut = m.log.bind(m);
+    m.log = (type, team, msg, extra) => { evts.push({ type, team, msg }); return brut(type, team, msg, extra); };
+    let cur = null, n = 0;
+    for (let t = 0; t < 4800 && n < (maxMelees || 2); t += 0.1) {
+      m.tick(0.1);
+      const st = m.getState();
+      if (st.phase === 'MELEE' && st.melee) {
+        if (!cur) {
+          cur = { graine, intro: m.melee.equipeIntroduction, sens: m.melee.sens, ticks: [], evts0: evts.length, m };
+        }
+        const eqI = cur.intro === 'A' ? st.equipeA : st.equipeB;
+        const eqD = cur.intro === 'A' ? st.equipeB : st.equipeA;
+        cur.ticks.push({
+          etat: st.melee.etat, mx: st.melee.x, my: st.melee.y,
+          ballon: { x: st.ballon.x, y: st.ballon.y, h: st.ballon.hauteur || 0 },
+          neufI: eqI.find((j) => j.numero === 9), neufD: eqD.find((j) => j.numero === 9),
+          huitI: eqI.find((j) => j.numero === 8), huitD: eqD.find((j) => j.numero === 8),
+          avants: eqI.concat(eqD).filter((j) => j.numero <= 8 && !(j.sinBin > 0)),
+        });
+      } else if (cur) {
+        cur.sortie = { phase: st.phase, porteur: st.porteur, ballon: { x: st.ballon.x, y: st.ballon.y } };
+        cur.evts = evts.slice(cur.evts0);
+        cur.trace = typeof m.traceMelees === 'function' ? m.traceMelees().slice(-1)[0] : null;
+        melees.push(cur); cur = null; n++;
+      }
+    }
+  }
+  return melees;
+}
+// Mêlées allées jusqu'au bout (ballon à la base puis joué), sans faute sifflée.
+const completes = (ms) => ms.filter((x) => x.ticks.some((k) => k.etat === E.X) && x.sortie && x.sortie.phase === 'PORTE'
+  && !x.evts.some((e) => /^MELEE_PEN|^COUP_FRANC|^PENALITE|^MELEE_RESET|^MELEE_TOURNEE/.test(e.type)));
+const MELEES = suivreMelees([1, 2, 3, 4, 5, 6, 7, 8], null, 2);
+const COMPLETES = completes(MELEES);
+const vainqueurDe = (x) => (x.evts.some((e) => e.type === 'TURNOVER') ? (x.intro === 'A' ? 'B' : 'A') : x.intro);
+
+test('M11 — avant l\'introduction, le ballon est dans les mains du 9, à l\'extérieur, face au tunnel', () => {
+  assert.ok(COMPLETES.length >= 5, `echantillon trop petit (${COMPLETES.length} mêlées complètes)`);
+  let n = 0;
+  for (const x of COMPLETES) for (const k of x.ticks) {
+    if (k.etat !== E.C && k.etat !== E.B && k.etat !== E.S) continue;
+    n++;
+    assert.ok(dist(k.ballon, k.neufI) < 0.3, `pendant ${k.etat}, le ballon est à ${dist(k.ballon, k.neufI).toFixed(2)} m du 9 qui introduit (il doit être dans ses mains)`);
+    assert.ok(Math.abs(k.neufI.y - k.my) >= 2.0, `le 9 n'est pas à l'extérieur de la mêlée (écart latéral ${Math.abs(k.neufI.y - k.my).toFixed(2)} m)`);
+    assert.ok(Math.abs(k.neufI.x - k.mx) <= 1.0, `le 9 n'est pas face au tunnel (écart ${Math.abs(k.neufI.x - k.mx).toFixed(2)} m dans l'axe)`);
+  }
+  assert.ok(n > 50, `trop peu de ticks Flexion/Liez/Jeu observés (${n})`);
+});
+
+test('M12 — l\'introduction dure 0,5 à 1 s : le ballon traverse latéralement le tunnel et touche le sol au milieu', () => {
+  for (const x of COMPLETES) {
+    const intro = x.ticks.filter((k) => k.etat === E.I);
+    const duree = intro.length * 0.1;
+    assert.ok(duree >= 0.45 && duree <= 1.05, `introduction de ${duree.toFixed(1)} s (graine ${x.graine})`);
+    const premier = x.ticks.findIndex((k) => k.etat === E.T);
+    const k0 = x.ticks[premier];
+    assert.ok(Math.hypot(k0.ballon.x - k0.mx, k0.ballon.y - k0.my) < 0.6,
+      `au début du talonnage, le ballon est à ${Math.hypot(k0.ballon.x - k0.mx, k0.ballon.y - k0.my).toFixed(2)} m du milieu du tunnel`);
+    for (const k of intro) {
+      for (const huit of [k.huitI, k.huitD]) {
+        assert.ok(!huit || dist(k.ballon, huit) > 1.0, 'pendant l\'introduction, le ballon apparaît sous le 8');
+      }
+    }
+    // Le ballon se rapproche latéralement du milieu du tunnel, sans revenir en arrière.
+    for (let i = 1; i < intro.length; i++) {
+      assert.ok(Math.abs(intro[i].ballon.y - intro[i].my) <= Math.abs(intro[i - 1].ballon.y - intro[i - 1].my) + 0.05,
+        'le ballon introduit ne traverse pas le tunnel vers le milieu');
+    }
+  }
+});
+
+test('M13 — talonnage : le ballon roule AU SOL sous le pack, 2 à 4 s, jusqu\'aux pieds du 8 qui gagne', () => {
+  for (const x of COMPLETES) {
+    const ach = x.ticks.filter((k) => k.etat === E.T);
+    const duree = ach.length * 0.1;
+    assert.ok(duree >= 1.85 && duree <= 4.15, `acheminement de ${duree.toFixed(1)} s (graine ${x.graine})`);
+    for (let i = 1; i < ach.length; i++) {
+      assert.ok(dist(ach[i].ballon, ach[i - 1].ballon) <= 0.35, `le ballon saute de ${dist(ach[i].ballon, ach[i - 1].ballon).toFixed(2)} m en un pas sous le pack`);
+      assert.ok(ach[i].ballon.h === 0, 'le ballon talonné doit rester au sol');
+    }
+    const base = x.ticks.find((k) => k.etat === E.X);
+    const v = vainqueurDe(x);
+    const huitV = v === x.intro ? base.huitI : base.huitD;
+    assert.ok(dist(base.ballon, huitV) < 0.8, `à la base, le ballon est à ${dist(base.ballon, huitV).toFixed(2)} m du 8 qui a gagné (graine ${x.graine})`);
+  }
+});
+
+test('M14 — pendant le talonnage, le 9 longe son pack sans passer devant le ballon ni traverser les joueurs', () => {
+  for (const x of COMPLETES) {
+    if (vainqueurDe(x) !== x.intro) continue;
+    for (const k of x.ticks.filter((t) => t.etat === E.T)) {
+      const devant = (k.neufI.x - k.ballon.x) * x.sens;
+      assert.ok(devant <= 0.2, `le 9 est ${devant.toFixed(2)} m DEVANT le ballon (graine ${x.graine})`);
+      const proche = Math.min(...k.avants.map((a) => dist(a, k.neufI)));
+      assert.ok(proche >= 0.45, `le 9 passe à ${proche.toFixed(2)} m d'un avant : il traverse le pack`);
+      assert.ok(dist(k.ballon, k.neufI) > 0.3 || devant > -0.1, 'le 9 ne doit pas porter le ballon pendant le talonnage');
+    }
+  }
+});
+
+test('M15 — à la base, le ballon reste aux pieds du 8 ; la mêlée finit quand le 9 le ramasse (ou le 8 part)', () => {
+  let parNeuf = 0;
+  for (const x of COMPLETES) {
+    const base = x.ticks.filter((k) => k.etat === E.X);
+    assert.ok(base.length * 0.1 >= 0.5, `le ballon n'est resté que ${(base.length * 0.1).toFixed(1)} s à la base`);
+    const fin = base[base.length - 1];
+    const v = vainqueurDe(x);
+    const pickAndGo = x.evts.some((e) => e.type === 'MELEE_PICK_AND_GO');
+    // Passe du 8 (M21) : le receveur est le 10 ou le 9, la passe est vérifiée là-bas.
+    const passeHuit = x.evts.some((e) => e.type === 'MELEE_PASSE_HUIT');
+    const attendu = pickAndGo ? 8 : 9;
+    if (!passeHuit) assert.strictEqual(x.sortie.porteur.numero, attendu, `la mêlée se termine sur le n°${x.sortie.porteur.numero}, attendu n°${attendu}`);
+    assert.strictEqual(x.sortie.porteur.team, v, 'le ballon est joué par l\'équipe qui l\'a gagné');
+    assert.ok(dist(x.sortie.ballon, fin.ballon) <= 1.0, `le ballon saute de ${dist(x.sortie.ballon, fin.ballon).toFixed(2)} m quand la mêlée se termine`);
+    if (!pickAndGo && !passeHuit) parNeuf++;
+  }
+  assert.ok(parNeuf > 0, 'aucune mêlée terminée par le 9');
+});
+
+test('M16 — le 9 du camp qui perd le ballon ne franchit pas la ligne médiane du tunnel', () => {
+  for (const x of MELEES) {
+    const v = vainqueurDe(x);
+    for (const k of x.ticks) {
+      if (k.etat === E.F) continue; // il court encore vers la mêlée
+      for (const [neuf, team] of [[k.neufI, x.intro], [k.neufD, x.intro === 'A' ? 'B' : 'A']]) {
+        if (!neuf || team === v && k.etat !== E.C && k.etat !== E.B && k.etat !== E.S && k.etat !== E.I) continue;
+        const s = team === 'A' ? 1 : -1;
+        assert.ok((neuf.x - k.mx) * s <= 0.3, `le 9 de l'équipe ${team} passe la ligne médiane du tunnel (${((neuf.x - k.mx) * s).toFixed(2)} m) en ${k.etat}`);
+      }
+    }
+  }
+});
+
+test('M17 — aucune téléportation du ballon, et la trace de chaque pas est enregistrée', () => {
+  for (const x of MELEES) {
+    for (let i = 1; i < x.ticks.length; i++) {
+      const saut = dist(x.ticks[i].ballon, x.ticks[i - 1].ballon);
+      assert.ok(saut <= 1.0, `le ballon saute de ${saut.toFixed(2)} m entre deux pas (${x.ticks[i - 1].etat} -> ${x.ticks[i].etat}, graine ${x.graine})`);
+    }
+  }
+  for (const x of COMPLETES) {
+    assert.ok(x.trace && Array.isArray(x.trace.pas) && Array.isArray(x.trace.contacts), 'traceMelees() doit exposer la trace de la dernière mêlée');
+    assert.ok(Math.abs(x.trace.pas.length - x.ticks.length) <= 1, `trace : ${x.trace.pas.length} pas pour ${x.ticks.length} pas observés`);
+    const p = x.trace.pas[Math.floor(x.trace.pas.length / 2)];
+    assert.ok(p && p.balle && p.neufIntro && p.neufAdverse && typeof p.balle.x === 'number' && p.neufIntro.action,
+      'chaque pas enregistre le ballon et les deux 9 avec leur action');
+    const types = x.trace.contacts.map((c) => c.type);
+    const ordre = ['LACHER', 'SOL', 'TALONNAGE', 'CONTROLE_8', 'RAMASSAGE'];
+    let i = -1;
+    for (const t of ordre) { const j = types.indexOf(t, i + 1); assert.ok(j > i, `contact ${t} absent ou hors d'ordre (${types.join(' > ')})`); i = j; }
+  }
+});
+
+test('M18 — un écroulement interrompt la séquence immédiatement', () => {
+  let verifie = false;
+  for (const graine of [1, 2, 3, 4, 5, 6]) {
+    const m = new RugbyEngine.MatchEngine(graine, 4800, null);
+    for (let t = 0; t < 4800 && !(m.melee && m.melee.etat === E.T); t += 0.1) m.tick(0.1);
+    if (!m.melee) continue;
+    m.tick(0.1); m.tick(0.1);
+    if (!m.melee || m.melee.etat !== E.T) continue;
+    const avant = m.getState().ballon;
+    m.rng = () => 0; // la première faute possible en contestation est l'écroulement
+    m.tick(0.1);
+    assert.notStrictEqual(m.phase, 'MELEE', 'la mêlée continue après l\'écroulement');
+    const tr = m.traceMelees().slice(-1)[0];
+    assert.strictEqual(tr.contacts[tr.contacts.length - 1].type, 'ECROULEMENT', 'l\'écroulement doit clore la trace');
+    assert.ok(tr.pas.length > 0 && dist(tr.pas[tr.pas.length - 1].balle, avant) < 0.05,
+      'le ballon ne doit plus avancer sous le pack une fois la mêlée écroulée');
+    verifie = true; break;
+  }
+  assert.ok(verifie, 'aucune mêlée en talonnage n\'a pu être observée');
+});
+
+test('M19 — les durées de l\'introduction, du talonnage et de la sortie sont paramétrables', () => {
+  const cfg = { melee: { durees: { introduction: 0.5, acheminementMin: 2.0, acheminementMax: 2.0, sortie: 0.6 } } };
+  const ms = completes(suivreMelees([1, 2, 3, 4, 5, 6], cfg, 2));
+  assert.ok(ms.length >= 3, `echantillon trop petit (${ms.length})`);
+  for (const x of ms) {
+    const intro = x.ticks.filter((k) => k.etat === E.I).length * 0.1;
+    const ach = x.ticks.filter((k) => k.etat === E.T).length * 0.1;
+    assert.ok(Math.abs(intro - 0.5) <= 0.15, `introduction ${intro.toFixed(1)} s pour 0,5 s demandée`);
+    assert.ok(Math.abs(ach - 2.0) <= 0.15, `talonnage ${ach.toFixed(1)} s pour 2,0 s demandées`);
+  }
+});
+
+test('M20 — le 9 adverse se place du MÊME côté que le 9 qui introduit, au niveau du tunnel, de son côté', () => {
+  // Loi 20 : le demi de mêlée de l'équipe qui n'introduit pas se tient du même
+  // côté de la mêlée que celui qui introduit, au niveau du tunnel, sans
+  // franchir la ligne médiane. Signalé par le joueur : il était placé de
+  // l'autre côté de la mêlée.
+  let n = 0;
+  for (const x of COMPLETES) for (const k of x.ticks) {
+    if (k.etat !== E.C && k.etat !== E.B && k.etat !== E.S && k.etat !== E.I) continue;
+    n++;
+    const coteI = Math.sign(k.neufI.y - k.my), coteD = Math.sign(k.neufD.y - k.my);
+    assert.strictEqual(coteD, coteI, `en ${k.etat}, le 9 adverse est de l'autre côté de la mêlée (graine ${x.graine})`);
+    assert.ok(Math.abs(k.neufD.x - k.mx) <= 1.2, `le 9 adverse est à ${Math.abs(k.neufD.x - k.mx).toFixed(2)} m du tunnel`);
+    const sD = x.intro === 'A' ? -1 : 1;
+    assert.ok((k.neufD.x - k.mx) * sD <= 0.05, 'le 9 adverse passe la ligne médiane du tunnel');
+  }
+  assert.ok(n > 50, `trop peu de ticks observés (${n})`);
+});
+
+test('M21 — à la base, le 8 peut aussi partir avec le ballon ou faire une passe (pas seulement le 9)', () => {
+  // Demande du joueur : « le 8 peut partir avec la balle ou faire une passe, il
+  // n'y a pas que le 9 ». Les trois sorties doivent exister ; la passe du 8
+  // part de ses mains et ne va jamais vers l'avant.
+  const ms = completes(suivreMelees([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16], null, 3));
+  let parNeuf = 0, huitPart = 0, huitPasse = 0;
+  for (const x of ms) {
+    if (x.evts.some((e) => e.type === 'MELEE_PICK_AND_GO')) huitPart++;
+    else if (x.evts.some((e) => e.type === 'MELEE_PASSE_HUIT')) {
+      huitPasse++;
+      const fin = x.ticks[x.ticks.length - 1];
+      const v = vainqueurDe(x);
+      const huit = v === x.intro ? fin.huitI : fin.huitD;
+      const s = v === 'A' ? 1 : -1;
+      assert.ok(x.sortie.porteur.numero !== 8, 'après sa passe, le 8 ne doit plus être porteur');
+      assert.ok((x.sortie.porteur.x - huit.x) * s <= 0.3, `passe du 8 vers l'AVANT (${((x.sortie.porteur.x - huit.x) * s).toFixed(2)} m)`);
+    } else parNeuf++;
+  }
+  assert.ok(parNeuf > 0 && huitPart > 0 && huitPasse > 0,
+    `sorties observées : 9 ${parNeuf}, 8 qui part ${huitPart}, 8 qui passe ${huitPasse}`);
+});
+
 console.log(`\n${nbTests} test(s) exécuté(s).`);
