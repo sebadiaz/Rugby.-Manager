@@ -232,6 +232,29 @@
     ctx.fill();
   }
 
+  // Repère du ballon sous le pack : le ballon lui-même est caché par les corps
+  // (dessiné dessous) ; un anneau pointillé clair, tracé par-dessus les
+  // joueurs, permet de suivre son trajet du tunnel jusqu'aux pieds du 8.
+  function dessinerRepereBallon(state) {
+    const ballon = state.ballon;
+    if (!ballon) return;
+    const pos = state.ballonRendu || ballon;
+    const { px, py } = versCanvas(pos.x, pos.y);
+    ctx.save();
+    // Liseré sombre puis pointillé clair : lisible sur les maillots des deux
+    // couleurs comme sur la pelouse.
+    ctx.beginPath();
+    ctx.ellipse(px, py + 5, 9, 6, 0, 0, Math.PI * 2);
+    ctx.lineWidth = 3.5;
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.55)';
+    ctx.stroke();
+    ctx.setLineDash([4, 3]);
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = '#ffe066';
+    ctx.stroke();
+    ctx.restore();
+  }
+
   // L'arbitre est toujours dessiné, près de l'action (ruck ou porteur) :
   // visible en permanence pour qu'on comprenne qui décide des
   // pénalités/mêlées et où il se trouve.
@@ -255,11 +278,12 @@
   }
 
   // Ordre des couches : pendant une mêlée, le ballon est AU SOL SOUS les
-  // packs — on le dessine avant les joueurs, qui le recouvrent en partie.
+  // packs — on le dessine avant les joueurs, qui le recouvrent en partie ;
+  // seul son repère (anneau au sol) passe au-dessus.
   // Sinon il est dans les mains (ou en l'air) et passe par-dessus.
   function ordreCouches(state) {
     return state && state.ball && state.ball.state === 'SCRUM'
-      ? ['terrain', 'ballon', 'joueurs', 'arbitre']
+      ? ['terrain', 'ballon', 'joueurs', 'repere', 'arbitre']
       : ['terrain', 'joueurs', 'arbitre', 'ballon'];
   }
 
@@ -276,6 +300,7 @@
         for (const j of state.teams.A) dessinerJoueur(j, estPorteur(j));
         for (const j of state.teams.B) dessinerJoueur(j, estPorteur(j));
       },
+      repere: () => dessinerRepereBallon(state),
       arbitre: () => dessinerArbitre(state),
     };
     for (const c of ordreCouches(state)) couches[c]();

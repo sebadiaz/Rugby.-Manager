@@ -580,6 +580,18 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-65. Repère du ballon sous le pack de mêlée
+- **Statut : CORRIGÉ (affichage)**
+- Fichiers concernés : `docs/js/renderer.js`, `server/test-parcours-navigateur.js`.
+
+**Problème.** Depuis P2-64, le ballon de mêlée est dessiné SOUS les joueurs (demande du joueur) : il
+est réaliste mais on ne le voit presque plus, donc on ne suit pas son trajet du tunnel au 8.
+
+**Correction.** Couche `repere` dans `RMRenderer.ordreCouches` pour l'état `SCRUM`, tracée après les
+joueurs : anneau pointillé jaune avec liseré sombre, à la position réelle du ballon. Le ballon reste
+dessous. Aucun repère quand le ballon est porté. Test navigateur rouge avant (couche absente), vert après ;
+navigateur 484/0. Captures 1400×1000 : l'anneau se déplace du milieu du tunnel jusqu'aux pieds du 8.
+
 ### P2-64. La mêlée devient une séquence physique : introduction réelle par le 9, ballon au sol sous le pack, sortie par le 9 à la base
 - **Statut : CORRIGÉ** (demande du joueur)
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (machine à états de la mêlée),

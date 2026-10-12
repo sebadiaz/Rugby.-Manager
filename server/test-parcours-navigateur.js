@@ -4568,6 +4568,13 @@ function optionsLancement() {
       couches.melee && couches.melee.indexOf('ballon') < couches.melee.indexOf('joueurs'), JSON.stringify(couches));
     verifier('mêlée : un ballon porté reste dessiné par-dessus les joueurs',
       couches.porte && couches.porte.indexOf('ballon') > couches.porte.indexOf('joueurs'), JSON.stringify(couches));
+    // Le ballon caché sous les corps se perdait de vue : un repère au sol (anneau
+    // discret) est tracé PAR-DESSUS les joueurs, le ballon lui-même restant dessous.
+    verifier('mêlée : un repère montre où roule le ballon caché sous le pack',
+      couches.melee && couches.melee.indexOf('repere') > couches.melee.indexOf('joueurs')
+        && couches.melee.indexOf('ballon') < couches.melee.indexOf('joueurs'), JSON.stringify(couches));
+    verifier('mêlée : pas de repère quand le ballon est porté',
+      couches.porte && couches.porte.indexOf('repere') < 0, JSON.stringify(couches));
     verifier('mêlée : le ballon talonné est DESSINÉ à sa position réelle sous le pack, pas collé au 9',
       r.length >= 2 && r.every((x) => x.ecartMoteur < 0.05 && x.distNeuf > 1.0), JSON.stringify(r));
     await ctxM.close();
