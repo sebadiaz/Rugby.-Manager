@@ -177,6 +177,15 @@
       // P2-64 : le 8 peut aussi ramasser à la base et PASSER (au 10 s'il est
       // derrière lui, sinon au 9) — troisième sortie, en plus du 9 et du 8 qui part.
       passeHuit: { dominant: 0.15, normal: 0.10 },
+      // Qualité du ballon gagné sur introduction, lue sur le différentiel de
+      // contestation. Les anciens seuils (25 / 8) étaient sous le 10e centile
+      // de ce différentiel, qui vaut ~33 en médiane à packs égaux (avantage
+      // d'introduction 18 + piliers + talonneur) : 92 % des mêlées étaient
+      // annoncées « dominées ». Mesuré (10 matchs, 88 mêlées) : p10 26, p25 29,
+      // p75 36, p90 42 -> ~10 % de dominées, ~10 % sous pression à packs égaux,
+      // la grande majorité gagnée proprement ; un pack nettement plus fort
+      // domine, lui, presque toujours.
+      seuilsQualite: { dominant: 39, pression: 27 },
       // Consigne de poussée (P1-51), réglable par équipe via meleeA/meleeB :
       // 'dominer', 'equilibre' (défaut, comportement historique), 'sortirVite'.
       poussee: 'equilibre',
@@ -5740,9 +5749,9 @@
         0.05 - m.diff / 300 + volDef - volIntro));
       if (this.rng() < probaVol) {
         m.vainqueur = nonIntro; m.qualite = 'VOLE';
-      } else if (m.diff > 25) {
+      } else if (m.diff > (this.cfg.melee.seuilsQualite || {}).dominant) {
         m.vainqueur = intro; m.qualite = 'DOMINANT';
-      } else if (m.diff > 8) {
+      } else if (m.diff > (this.cfg.melee.seuilsQualite || {}).pression) {
         m.vainqueur = intro; m.qualite = 'PROPRE';
       } else {
         m.vainqueur = intro; m.qualite = 'PRESSION';

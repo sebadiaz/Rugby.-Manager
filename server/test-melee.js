@@ -511,4 +511,45 @@ test('M21 — à la base, le 8 peut aussi partir avec le ballon ou faire une pas
     `sorties observées : 9 ${parNeuf}, 8 qui part ${huitPart}, 8 qui passe ${huitPasse}`);
 });
 
+test('M22 — « mêlée dominée » reste l\'exception à packs égaux, la règle face à un pack bien plus fort', () => {
+  // Constat : 7,4 mêlées « dominées » par match contre 0,3 « gagnées
+  // proprement » — le fil du match annonçait une domination à presque chaque
+  // mêlée, et le 8 partait seul trop souvent (pick-and-go plus probable après
+  // domination). La qualité doit refléter l'écart RÉEL entre les packs.
+  const issues = (graines, renforcerA) => {
+    const c = { DOMINEE: 0, GAGNEE: 0, PRESSION: 0 };
+    for (const g of graines) {
+      // Pack renforcé passé par la config (`joueursA`), comme le Mode Club : les
+      // joueurs sont recréés à chaque remise en place, une retouche directe ne
+      // tiendrait pas.
+      let cfg = null;
+      if (renforcerA) {
+        const joueursA = JSON.parse(JSON.stringify(new RugbyEngine.MatchEngine(1, 60, null).cfg.joueurs));
+        for (let n = 1; n <= 8; n++) joueursA[n].melee = Math.min(99, joueursA[n].melee + 30);
+        cfg = { joueursA };
+      }
+      const m = new RugbyEngine.MatchEngine(g, 4800, cfg);
+      const brut = m.log.bind(m);
+      m.log = (type, team, msg, extra) => {
+        const k = type === 'MELEE_DOMINEE' ? 'DOMINEE' : type === 'MELEE_GAGNEE' ? 'GAGNEE' : type === 'MELEE_PRESSION' ? 'PRESSION' : null;
+        if (k && (!renforcerA || team === 'A')) c[k]++;
+        return brut(type, team, msg, extra);
+      };
+      for (let i = 0; i < 400000 && m.phase !== 'TERMINE'; i++) m.tick(0.1);
+    }
+    const n = c.DOMINEE + c.GAGNEE + c.PRESSION;
+    return { ...c, n, partDom: n ? c.DOMINEE / n : 0 };
+  };
+  const egaux = issues([1, 2, 3, 4, 5, 6]);
+  assert.ok(egaux.n >= 30, `échantillon trop petit (${egaux.n})`);
+  assert.ok(egaux.partDom >= 0.08 && egaux.partDom <= 0.4,
+    `packs égaux : ${(egaux.partDom * 100).toFixed(0)} % de mêlées « dominées » (${JSON.stringify(egaux)})`);
+  assert.ok(egaux.GAGNEE > egaux.DOMINEE && egaux.GAGNEE > egaux.PRESSION,
+    `packs égaux : la mêlée gagnée proprement doit être l'issue la plus fréquente (${JSON.stringify(egaux)})`);
+  assert.ok(egaux.PRESSION > 0, `packs égaux : aucune mêlée gagnée sous pression (${JSON.stringify(egaux)})`);
+  const fort = issues([1, 2, 3, 4], true);
+  assert.ok(fort.partDom >= 0.6,
+    `pack A nettement plus fort : seulement ${(fort.partDom * 100).toFixed(0)} % de mêlées dominées (${JSON.stringify(fort)})`);
+});
+
 console.log(`\n${nbTests} test(s) exécuté(s).`);

@@ -580,6 +580,37 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-66. « Mêlée dominée » annoncée à presque chaque mêlée : seuils de qualité recalés sur le différentiel réel
+- **Statut : CORRIGÉ**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`melee.seuilsQualite`,
+  `_meleeResoudreContestation`), `server/test-melee.js` (M22).
+
+**Constat (mesuré, 10 matchs).** Issues des mêlées gagnées sur introduction : 7,4 « dominées », 0,3
+« gagnées proprement », 0,1 « sous pression » par match (même déséquilibre avant P2-64 : 6,2 / 0,9 / 0,3).
+Le fil du match annonçait une domination à presque chaque mêlée, et la domination gonflait les sorties
+du 8 seul (pick-and-go à 35 % après domination contre 12 % sinon) et raccourcissait le talonnage.
+
+**Cause.** Les seuils (dominant > 25, propre > 8) étaient sous le 10e centile du différentiel de
+contestation, qui vaut ~33 en médiane à packs égaux (avantage d'introduction 18 + piliers + talonneur).
+Distribution mesurée sur 88 mêlées : p10 26, p25 29, médiane 33, p75 36, p90 42.
+
+**Correction.** Seuils réglables `melee.seuilsQualite: { dominant: 39, pression: 27 }`. Le différentiel
+lui-même, la poussée, la rotation et le taux de ballons volés ne changent pas.
+
+**Effet mesuré (10 matchs, par match).** Sur introduction : 0,6 dominée, 5,8 propre, 1,1 sous pression.
+Sorties : 9 qui joue 5,8, 8 qui part 1,7, 8 qui passe 0,8 (avant : 3,8 / 2,8 / 1,3).
+
+**Tests.** M22, rouge avant (98 % de « dominées » à packs égaux) : à packs égaux, entre 8 et 40 %
+de dominées, la mêlée propre est l'issue la plus fréquente, et la pression existe ; un pack renforcé
+(+30 en mêlée sur les avants, via `joueursA`) domine au moins 60 % du temps. Mutant « jamais dominant »
+(seuil 999) -> M22 rouge.
+
+**Barrières.** Invariants 67/67, 13 suites OK, calibration 13/14 (20 matchs). Le temps de jeu effectif
+rentre dans sa fourchette (31,4 -> 32,3 min : moins de pick-and-go, talonnage un peu plus long), mais
+les rucks en sortent (178,0 -> 186,4, plafond 180) : plus de ballon vivant, plus de rucks. Les deux
+grandeurs sont liées. Le prochain réglage doit porter sur le NOMBRE de rucks par minute de jeu (trop de
+contacts consécutifs au près), pas sur le temps de jeu.
+
 ### P2-65. Repère du ballon sous le pack de mêlée
 - **Statut : CORRIGÉ (affichage)**
 - Fichiers concernés : `docs/js/renderer.js`, `server/test-parcours-navigateur.js`.
