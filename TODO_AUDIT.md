@@ -580,6 +580,37 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-67. Le 9 servait toujours le même pilier : le percuteur est l'avant le plus proche, celui qui court
+- **Statut : CORRIGÉ**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`choisirActionPorteur`,
+  `avantLance`), `server/test-ruck.js` (R9).
+
+**Constat (6 matchs).** Avant plaqué au ruck : n°1 118 fois, n°3 39, n°4 30, n°5 16, n°8 18. Le joueur
+voyait le même pilier percuter à chaque temps de jeu, et le n°8 presque jamais.
+
+**Cause.** Le 9 servait `att.find(...)`, le PREMIER avant éligible dans l'ordre des numéros de maillot,
+alors que l'animation lançait en course l'avant le PLUS PROCHE (`avantLanceRun`). L'avant qui courait
+n'était donc souvent pas celui qui recevait, et le n°1, toujours dans le pod côté ouvert, gagnait l'égalité.
+
+**Correction.** Le 9 sert l'avant éligible le plus proche, celui qui s'est lancé. Même ensemble de candidats,
+même taux de percussion : seule l'identité du receveur change.
+
+**Effet mesuré.** Percussions des avants réparties (4 matchs) au lieu de 31 % pour le n°1. Essais des
+avants 17 % -> 23 % (12 matchs ; repère réel ~33 %).
+
+**Tests.** R9, rouge avant (n°1 : 31 % des percussions des avants) : n°1 <= 22 %, pas plus du double du n°3,
+et au moins 6 % pour chacun des n°4 à 8. Mutant = moteur d'origine -> rouge.
+
+**Barrières.** Invariants 67/67, 13 suites OK, navigateur 484/0, calibration 13/14 (rucks 186,8 toujours
+au-dessus de 180, temps de jeu 32,5 min).
+
+**Leçon (mesure).** Une première version tirait aussi l'ordre des pods à chaque ruck : la calibration
+tombait à 11/14 (essais 8,3, points 65,6). Mais chaque variante change la séquence aléatoire, et la
+variante « plus proche seul », mesurée avec puis sans tirages supplémentaires, donne 172 puis 187 rucks
+et 7,2 puis 7,3 essais. Sur 20 matchs, le bruit de graine déplace les rucks de ±8 et les essais de ±1 :
+on ne compare pas deux variantes sur un seul jeu de 20 graines quand l'écart attendu est de cet ordre.
+Le tirage des pods a été retiré (inutile pour R9, et son effet sur le score n'était pas établi).
+
 ### P2-66. « Mêlée dominée » annoncée à presque chaque mêlée : seuils de qualité recalés sur le différentiel réel
 - **Statut : CORRIGÉ**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`melee.seuilsQualite`,

@@ -3053,9 +3053,13 @@
         // forcement dans les 8 m utiles ailleurs sur le terrain, et le n°9
         // retombait alors sur la sortie 9->10 faute de candidat.
         const rayonAvantLance = zone === 'CINQ_M' ? 13 : 8;
-        const avantLance = att.find(j => j.numero <= 8 && j.auSol === 0
+        // Le PLUS PROCHE des avants éligibles — celui-là même qui s'est lancé en
+        // course (cf. _tickPorte, avantLanceRun) — et non le premier par numéro
+        // de maillot, qui désignait presque toujours le n°1.
+        const avantLance = att.filter(j => j.numero <= 8 && j.auSol === 0
           && distance(j, porteur) < rayonAvantLance
-          && (j.x - porteur.x) * sens <= 0.3 && (j.x - porteur.x) * sens > -5);
+          && (j.x - porteur.x) * sens <= 0.3 && (j.x - porteur.x) * sens > -5)
+          .sort((a, b) => distance(a, porteur) - distance(b, porteur))[0];
         // PRES DE LA LIGNE, ON JOUE LE PACK. A 18 % partout, le n°9 servait
         // l'ouvreur quasi systematiquement (branche 2b ci-dessous) y compris a
         // 3 m de la ligne d'en-but. Mesure sur 20 matchs : dans les CINQ

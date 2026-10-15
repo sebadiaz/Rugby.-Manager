@@ -215,4 +215,31 @@ test('loi 15 : le regroupement est arbitre — il produit de vraies penalites', 
     `le regroupement doit produire plusieurs motifs de pénalité distincts (mesuré ${motifs.size} : ${[...motifs].join(' / ')})`);
 });
 
+test('R9 — les avants qui percutent au près ne sont pas toujours le même pilier', () => {
+  // Constat (6 matchs) : le n°1 était plaqué au ruck 118 fois, le n°3 39, le
+  // n°8 18 et le n°5 16. Le 9 servait le PREMIER avant éligible dans l'ordre
+  // des numéros (`find`), et le n°1 occupe toujours la place la plus proche du
+  // pod côté ouvert : le joueur voyait le même pilier percuter à chaque temps
+  // de jeu, alors qu'en vrai les 3es lignes et les 2es lignes portent autant.
+  const parNum = {};
+  for (const g of [7, 11, 23, 42]) {
+    const m = new RugbyEngine.MatchEngine(g, 4800, null);
+    let rPrev = 0;
+    for (let i = 0; i < 48000 && m.phase !== 'TERMINE'; i++) {
+      m.tick(0.1);
+      const r = m.stats.A.rucks + m.stats.B.rucks;
+      if (r > rPrev && m.porteur && m.porteur.numero <= 8) parNum[m.porteur.numero] = (parNum[m.porteur.numero] || 0) + 1;
+      rPrev = r;
+    }
+  }
+  const total = Object.values(parNum).reduce((s, x) => s + x, 0);
+  const partDe = (n) => (parNum[n] || 0) / total;
+  assert.ok(total >= 150, `échantillon trop petit (${total})`);
+  assert.ok(partDe(1) <= 0.22, `le n°1 porte ${(partDe(1) * 100).toFixed(0)} % des percussions des avants (${JSON.stringify(parNum)})`);
+  assert.ok(partDe(1) <= 2 * partDe(3), `déséquilibre entre les deux piliers (${JSON.stringify(parNum)})`);
+  for (const n of [4, 5, 6, 7, 8]) {
+    assert.ok(partDe(n) >= 0.06, `le n°${n} ne porte que ${(partDe(n) * 100).toFixed(0)} % des percussions des avants (${JSON.stringify(parNum)})`);
+  }
+});
+
 console.log(`\n${nbTests} test(s) exécuté(s).`);
