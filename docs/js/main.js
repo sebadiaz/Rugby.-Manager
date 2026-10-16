@@ -29,10 +29,11 @@
   function redimensionner() {
     const { hudH, seekH, ctrlH } = tailleZones();
     Renderer.redimensionner(hudH, seekH, ctrlH);
-    // La bannière d'arbitre est ancrée en haut à droite, sous le HUD (dont
-    // la hauteur varie avec le contenu du fil d'événements) plutôt qu'au
-    // centre de l'écran, pour ne pas masquer l'action sur le terrain.
-    document.getElementById('banner').style.top = (hudH + 8) + 'px';
+    // La bannière d'arbitre se pose sur le BAS du HUD, jamais sous lui : posée
+    // à hudH + 8 px, elle tombait sur la bordure du terrain et cachait un
+    // joueur près de la touche ou de l'en-but (P2-73). Même règle qu'à son
+    // affichage (cf. RMUI.placerBandeau), recalculée quand le HUD change.
+    if (window.RMUI && window.RMUI.placerBandeau) window.RMUI.placerBandeau(document.getElementById('banner'));
   }
   window.addEventListener('resize', redimensionner);
   // Le HUD grandit EN COURS DE MATCH : le fil d'evenements part vide et se

@@ -4580,6 +4580,51 @@ function optionsLancement() {
     await ctxM.close();
   }
 
+  // --- LE BANDEAU DE L'ARBITRE NE CACHE PAS LE TERRAIN (P2-73) --------------
+  // Vu en QA (P2-72) : le bandeau « ARBITRE — … », posé à 100 px du haut, à
+  // droite, descendait sur la bordure du terrain et pouvait masquer un joueur
+  // près de la touche ou de l'en-but. Il doit rester HORS de la surface de jeu
+  // dessinée (en-buts compris), même avec un message long sur deux lignes.
+  for (const vp of [{ width: 1400, height: 1000 }, { width: 390, height: 844 }]) {
+    const ctxB2 = await browser.newContext({ viewport: vp });
+    const pB = await ctxB2.newPage();
+    pB.on('pageerror', (e) => erreursConsole.push('PAGEERROR ' + e.message));
+    await pB.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+    await pB.click('#btnAccueilMatchRapide');
+    for (let i = 0; i < 60 && !(await pB.isVisible('#panneauResultat.visible')); i++) await pB.waitForTimeout(250);
+    await pB.click('#btnResultatVoir');
+    await pB.waitForTimeout(600);
+    // Chemin réel : le bandeau est posé à l'affichage (ui.js), PUIS la page se
+    // redimensionne (main.js, à chaque changement de hauteur du HUD en cours
+    // de match). Une première version de ce test n'exerçait que le premier
+    // temps et passait alors que main.js reposait le bandeau sous le HUD.
+    await pB.evaluate(() => {
+      const b = document.getElementById('banner');
+      b.textContent = '🟨 ARBITRE — Penalite, equipe B joue en touche et conserve le lancer apres une faute au sol';
+      b.classList.add('visible');
+      if (window.RMUI.placerBandeau) window.RMUI.placerBandeau(b);
+      window.dispatchEvent(new Event('resize'));
+    });
+    await pB.waitForTimeout(150);
+    const g = await pB.evaluate(() => {
+      const b = document.getElementById('banner');
+      const rb = b.getBoundingClientRect();
+      const cv = document.getElementById('pitch');
+      const rc = cv.getBoundingClientRect();
+      const k = rc.width / cv.width;
+      const coins = [[-10, 0], [110, 0], [-10, 70], [110, 70]].map(([x, y]) => window.RMRenderer.versCanvas(x, y))
+        .map((q) => ({ x: rc.left + q.px * k, y: rc.top + q.py * k }));
+      const t = { gauche: Math.min(...coins.map((c) => c.x)), droite: Math.max(...coins.map((c) => c.x)),
+        haut: Math.min(...coins.map((c) => c.y)), bas: Math.max(...coins.map((c) => c.y)) };
+      const recouvre = rb.left < t.droite && rb.right > t.gauche && rb.top < t.bas && rb.bottom > t.haut;
+      return { recouvre, bandeau: [rb.left, rb.top, rb.right, rb.bottom].map(Math.round),
+        terrain: [t.gauche, t.haut, t.droite, t.bas].map(Math.round), visible: rb.height > 0 && rb.width > 0 };
+    });
+    verifier(`arbitre : le bandeau ne recouvre pas le terrain (${vp.width}x${vp.height})`,
+      g.visible && !g.recouvre, JSON.stringify(g));
+    await ctxB2.close();
+  }
+
   verifier('aucune erreur console/page sur tout le parcours', erreursConsole.length === 0);
   if (erreursConsole.length) console.error(erreursConsole.join('\n'));
 

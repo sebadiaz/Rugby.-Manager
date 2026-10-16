@@ -580,6 +580,29 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-73. Le bandeau de l'arbitre ne recouvre plus le terrain
+- **Statut : CORRIGÉ (affichage)**
+- Fichiers concernés : `docs/css/style.css` (`#banner`), `docs/js/ui.js` (`placerBandeau`, exposée sur RMUI),
+  `docs/js/main.js` (`redimensionner`), `server/test-parcours-navigateur.js`.
+
+**Constat (QA P2-72).** Le bandeau « ARBITRE — … » était posé sous le HUD, à droite, avec jusqu'à 42 % de la
+largeur de l'écran. Il tombait sur la bordure du terrain (bureau) ou sur l'en-but (téléphone) et pouvait
+masquer un joueur près de la touche ou de l'en-but pendant 2,2 s.
+
+**Deux causes, la seconde découverte en regardant l'écran.** Le CSS le posait à `top: 100px`. Et `main.js`
+le repositionnait à `hudH + 8 px`, juste sous le HUD donc sur le terrain, à chaque changement de hauteur du
+HUD. Une première version du test appelait seulement le nouveau placement et passait, alors que la capture
+réelle montrait encore le bandeau sur la pelouse : `main.js` l'y remettait aussitôt.
+
+**Correction.** Le bandeau se pose sur le BAS du HUD, par-dessus les dernières lignes du fil d'événements
+(qui affichent déjà le même message), centré et de la largeur du HUD. Une seule règle
+(`RMUI.placerBandeau`), utilisée à l'affichage et à chaque redimensionnement.
+
+**Tests.** « arbitre : le bandeau ne recouvre pas le terrain » en 1400x1000 et 390x844 : bandeau visible, message
+long sur deux lignes, chemin réel (affichage puis `resize`), rectangle comparé à la surface dessinée en-buts
+compris. Rouge avant ; mutant « bandeau 20 px sous le HUD » -> rouge. Navigateur 486/0. Captures réelles en
+lecture aux deux formats : terrain entièrement dégagé.
+
 ### P2-72. Pendant les rucks, l'arrière défensif montait dans la ligne : plus aucun dernier rideau
 - **Statut : CORRIGÉ**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_tickRuck`, placement des défenseurs

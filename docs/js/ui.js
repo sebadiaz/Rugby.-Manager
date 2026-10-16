@@ -147,6 +147,7 @@
       const banner = document.getElementById('banner');
       banner.textContent = `🟨 ARBITRE — ${traduireEquipesDansMessage(aAfficher.message)}`;
       banner.classList.add('visible');
+      placerBandeau(banner);
       banniereJusqua = performance.now() + 2200;
     }
     const dernier = state.eventLog[state.eventLog.length - 1];
@@ -161,6 +162,17 @@
     // un bug plutôt qu'à une action qui n'a pas encore de sens. Il apparaît
     // exactement au moment où il devient pertinent.
     document.getElementById('btnSauver').style.display = state.phase === 'TERMINE' ? '' : 'none';
+  }
+
+  // --- Position du bandeau de l'arbitre ----------------------------------------
+  // Le bandeau se pose sur le BAS du HUD (au-dessus du fil d'événements, qui
+  // montre déjà le même message), jamais plus bas : le terrain commence juste
+  // sous le HUD (cf. RMRenderer.redimensionner, marginTop = hauteur du HUD).
+  function placerBandeau(banner) {
+    const hud = document.getElementById('hud');
+    if (!hud) return;
+    const basHud = hud.offsetTop + hud.offsetHeight;
+    banner.style.top = Math.max(4, basHud - banner.offsetHeight - 4) + 'px';
   }
 
   // --- Hauteur visible du fil d'événements ------------------------------------
@@ -354,6 +366,6 @@
     formaterTemps, majAffichage, reinitialiserSuivi, definirNomsEquipes,
     chargerHistorique, rafraichirPanneauHistorique, enregistrerResultat, nomsHistorique, VERSION_INSTANTANE_MATCH, identifiantMatch,
     rafraichirPanneauStats,
-    hauteurFilVisible,
+    hauteurFilVisible, placerBandeau,
   };
 })(window);
