@@ -4270,8 +4270,21 @@
         } else {
           // Défenseur déjà onside : il rejoint son CRÉNEAU équiréparti sur la
           // ligne de défense (cf. _slotDefense) — espacement régulier ~5 m,
-          // plus de trous de 15 m laissés par les couloirs nominaux. Le n°15
-          // défensif garde son couloir (couverture du fond, exclu des slots).
+          // plus de trous de 15 m laissés par les couloirs nominaux.
+          // L'ARRIÈRE (n°15), exclu des créneaux, COUVRE LE FOND : même
+          // profondeur qu'en jeu courant (cf. _tickPorte, profondeurArriereJeu),
+          // dans son couloir tiré vers le ballon. Avant, il visait la ligne de
+          // défense comme les autres : 97 % du temps de ruck dans le premier
+          // rideau, à 3 m du ruck (cf. test R11), et la défense n'avait aucun
+          // dernier rideau derrière elle.
+          if (j.numero === 15) {
+            const profondeur = this.cfgDefense[j.team].profondeurArriereJeu;
+            // Près de sa propre ligne, il ne recule pas au-delà de l'en-but.
+            const cibleXq = Math.max(0.5, Math.min(LONGUEUR - 0.5, pt.x + sensAttaque * profondeur));
+            const cibleYq = j.channelY * 0.7 + pt.y * 0.3;
+            avancer(j, cibleXq - j.x, cibleYq - j.y, dt, vitesseMs(j) * 0.8);
+            continue;
+          }
           const cibleX = sensAttaque > 0 ? pt.x + margeRecul : pt.x - margeRecul;
           const slotY = this._slotDefense.get(j) ?? j.channelY;
           avancer(j, cibleX - j.x, slotY - j.y, dt, vitesseMs(j) * 0.8);

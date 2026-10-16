@@ -580,6 +580,37 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-72. Pendant les rucks, l'arrière défensif montait dans la ligne : plus aucun dernier rideau
+- **Statut : CORRIGÉ**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_tickRuck`, placement des défenseurs
+  onside), `server/test-ruck.js` (R11).
+
+**Comment on l'a vu.** Passe de QA à l'écran : sur une capture de ruck, l'arrière défensif était collé au
+regroupement, dans le premier rideau. Mesure (6 matchs, 22 305 pas de ruck) : il est à moins de 6 m de la
+ligne du ruck **97 % du temps**, profondeur médiane 3,0 m (p90 3,2 m). Dans 6 % de ces cas seulement parce qu'il
+est plaqueur, contestant ou au sol.
+
+**Cause.** Pendant le ruck, tout défenseur onside visait la ligne de défense (`pt.x ± reculRuck`) ; pour le
+n°15, exclu des créneaux, seul le couloir latéral était gardé. Le commentaire annonçait « couverture du
+fond », le code ne gérait pas la profondeur. La couverture à 18 m n'existait qu'en jeu courant (`_tickPorte`),
+et un cycle ruck -> ballon de 3 à 4 s ne lui laissait jamais le temps de reculer.
+
+**Correction.** Pendant le ruck, le n°15 défensif se place à `defense.profondeurArriereJeu` (18 m) derrière
+la ligne du ruck, dans son couloir tiré vers le ballon (même règle qu'en jeu courant), sans dépasser son en-but.
+Après : profondeur médiane 18,0 m ; à moins de 6 m 16 % du temps, dont 54 % comme plaqueur/contestant/au sol
+ou acculé à sa ligne.
+
+**Effet mesuré (100 graines appariées contre P2-71).** Points **-4,95 ± 2,00** (62,0 -> 57,1), essais
+**-0,85 ± 0,34** (7,60 -> 6,75 ; match de référence : 7), rucks +3,2 ± 2,7 (non significatif). Blocs de 20 graines :
+56,5 / 58,4 / 56,2 / 59,3 / 55,1 points. Le moteur quitte le plafond de score par une correction de
+placement, pas par un réglage de taux : une défense sans arrière transformait trop de percées en essais.
+
+**Tests.** R11, rouge avant (médiane 3,0 m) : profondeur médiane de l'arrière défensif pendant le ruck >= 10 m
+(hors plaqueur, contestant, au sol). Aucun joueur hors du terrain avant comme après (6 matchs).
+
+**Vu en passant, non corrigé.** Le bandeau de l'arbitre (en haut à droite) recouvre une partie du terrain et
+peut masquer un joueur près de la touche haute ou de l'en-but droit.
+
 ### P2-71. L'avant qu'on voit arriver lancé est celui que le 9 sert
 - **Statut : CORRIGÉ**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_designerAvantLance`, utilisé par la

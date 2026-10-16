@@ -270,4 +270,27 @@ test('R10 — l\'avant que le 9 sert est celui qu\'on voit arriver lancé vers l
     `seulement ${coherents}/${servis} avants servis étaient ceux lancés en course vers le 9`);
 });
 
+test('R11 — pendant le ruck, l\'arrière défensif couvre le fond au lieu de monter dans la ligne', () => {
+  // Constat : pendant les rucks, l'arrière défensif était dans le premier
+  // rideau 97 % du temps, à 3,0 m de la ligne du ruck en médiane (p90 3,2 m)
+  // — il visait la ligne de défense comme tout le monde, seul son couloir
+  // latéral était conservé. Personne derrière la défense : le jeu au pied et
+  // la moindre percée ne trouvaient aucun dernier rideau.
+  const profs = [];
+  for (const g of [7, 11, 23]) {
+    const m = new RugbyEngine.MatchEngine(g, 4800, null);
+    for (let i = 0; i < 48000 && m.phase !== 'TERMINE'; i++) {
+      m.tick(0.1);
+      if (m.phase !== 'RUCK' || !m.ruckPoint || !m.porteur || m.timerPhase < 1.5) continue;
+      const q = (m.possession === 'A' ? m.equipeB : m.equipeA).find((j) => j.numero === 15);
+      if (!q || q.sinBin > 0 || q.auSol > 0 || m.contestants.includes(15)) continue;
+      profs.push((q.x - m.ruckPoint.x) * m.porteur.sensAttaque);
+    }
+  }
+  profs.sort((a, b) => a - b);
+  const med = profs[profs.length >> 1];
+  assert.ok(profs.length >= 500, `échantillon trop petit (${profs.length})`);
+  assert.ok(med >= 10, `arrière défensif à ${med.toFixed(1)} m de la ligne du ruck en médiane : il est dans le premier rideau, pas en couverture`);
+});
+
 console.log(`\n${nbTests} test(s) exécuté(s).`);
