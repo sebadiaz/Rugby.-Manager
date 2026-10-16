@@ -580,6 +580,25 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-71. L'avant qu'on voit arriver lancé est celui que le 9 sert
+- **Statut : CORRIGÉ**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_designerAvantLance`, utilisé par la
+  course dans `_tickPorte` et par la passe dans `choisirActionPorteur`), `server/test-ruck.js` (R10).
+
+**Constat.** Deux règles différentes : la course lançait l'avant le PLUS PROCHE du 9 (à moins de 9 m), la passe
+servait le premier avant éligible dans l'ordre de pod (P2-69). Mesuré : 68 avants servis sur 159 (43 %)
+étaient ceux qu'on voyait arriver lancés. Le joueur voyait un avant courir vers le 9, et un autre recevait.
+
+**Correction.** Une seule fonction désigne l'avant lancé, utilisée pour la course et pour la passe.
+
+**Effet mesuré (100 graines appariées contre P2-70).** Points +0,35 ± 2,06, essais +0,02 ± 0,33, rucks
++1,1 ± 2,8 : aucun effet sur le score. Blocs de 20 graines : 61,0 / 63,6 / 62,2 / 59,7 / 63,7 points.
+Donc la hausse de P2-67 venait du choix du PLUS PROCHE (souvent un avant qui sort du ruck, à hauteur de
+la ligne d'avantage), pas du fait de servir un avant lancé.
+
+**Tests.** R10, rouge avant (43 %) : au moins 90 % des avants servis par le 9 sont ceux lancés au pas
+précédent. R9 toujours vert.
+
 ### P2-70. Le drop-goal devient une décision de buteur en fin de match serré
 - **Statut : CORRIGÉ**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_facteurContexteDrop`, tentative de

@@ -242,4 +242,32 @@ test('R9 — les avants qui percutent au près ne sont pas toujours le même pil
   }
 });
 
+test('R10 — l\'avant que le 9 sert est celui qu\'on voit arriver lancé vers lui', () => {
+  // Constat (P2-69) : l'animation lançait en course l'avant le PLUS PROCHE du
+  // 9, mais le 9 servait le premier avant éligible dans l'ordre de pod. Le
+  // joueur voyait un avant arriver lancé, et c'était un autre qui recevait.
+  let servis = 0, coherents = 0;
+  for (const g of [7, 11, 23]) {
+    const m = new RugbyEngine.MatchEngine(g, 4800, null);
+    let coureurPrec = null;
+    const choisir = m.choisirActionPorteur.bind(m);
+    m.choisirActionPorteur = (porteur, ...a) => {
+      const action = choisir(porteur, ...a);
+      const cible = m._passeCibleForcee;
+      if (action === 'PASS' && porteur.numero === 9 && cible && cible.numero <= 8) {
+        servis++;
+        if (cible === coureurPrec) coherents++;
+      }
+      return action;
+    };
+    for (let i = 0; i < 48000 && m.phase !== 'TERMINE'; i++) {
+      m.tick(0.1);
+      coureurPrec = m._avantLanceRun || null;
+    }
+  }
+  assert.ok(servis >= 40, `échantillon trop petit (${servis} avants servis par le 9)`);
+  assert.ok(coherents / servis >= 0.9,
+    `seulement ${coherents}/${servis} avants servis étaient ceux lancés en course vers le 9`);
+});
+
 console.log(`\n${nbTests} test(s) exécuté(s).`);

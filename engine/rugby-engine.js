@@ -2519,17 +2519,12 @@
       // sert (cf. choisirActionPorteur, avantLance). C'est l'animation visible
       // du jeu d'avants : un gros qui se lance dans l'axe à chaque temps de jeu,
       // même quand le ballon part finalement au large.
-      let avantLanceRun = null;
-      if (porteur.numero === 9) {
-        let dminLance = 9;
-        for (const k of att) {
-          if (k !== porteur && k.numero <= 8 && k.auSol === 0
-            && (k.x - porteur.x) * porteur.sensAttaque <= 0.5) {
-            const dk = distance(k, porteur);
-            if (dk < dminLance) { dminLance = dk; avantLanceRun = k; }
-          }
-        }
-      }
+      // Le coureur est désigné par la MÊME règle que l'avant que le 9 servira
+      // (cf. _designerAvantLance) : avant, c'était le plus proche du 9, et le
+      // joueur voyait un avant arriver lancé pendant qu'un autre recevait
+      // (43 % de cohérence mesurée, cf. test R10).
+      const avantLanceRun = porteur.numero === 9 ? this._designerAvantLance(porteur, att) : null;
+      this._avantLanceRun = avantLanceRun;
       for (const j of att) {
         if (j === porteur) continue;
         if (j === avantLanceRun) {
@@ -3065,19 +3060,7 @@
         // l'en-but les avants sont masses autour du regroupement mais pas
         // forcement dans les 8 m utiles ailleurs sur le terrain, et le n°9
         // retombait alors sur la sortie 9->10 faute de candidat.
-        const rayonAvantLance = zone === 'CINQ_M' ? 13 : 8;
-        // Parmi les avants éligibles, le premier dans l'ORDRE DE POD tiré à
-        // chaque ruck (cf. _tickRuck, P2-69). Avant, `find` prenait le premier
-        // par numéro de maillot : le n°1 dès qu'il était à portée. NB : servir
-        // l'avant le PLUS PROCHE (P2-67) donnait la même variété mais servait
-        // l'avant déjà lancé à pleine vitesse : +4,1 ± 1,9 points et +0,64 ±
-        // 0,29 essai par match (100 graines appariées), la moyenne passant à
-        // 64,5 points pour un plafond de 65. Retiré.
-        const ordrePod = (j) => (this._ordrePod && this._ordrePod.has(j) ? this._ordrePod.get(j) : 0);
-        const avantLance = att.filter(j => j.numero <= 8 && j.auSol === 0
-          && distance(j, porteur) < rayonAvantLance
-          && (j.x - porteur.x) * sens <= 0.3 && (j.x - porteur.x) * sens > -5)
-          .sort((p, q) => ordrePod(q) - ordrePod(p) || p.numero - q.numero)[0];
+        const avantLance = this._designerAvantLance(porteur, att);
         // PRES DE LA LIGNE, ON JOUE LE PACK. A 18 % partout, le n°9 servait
         // l'ouvreur quasi systematiquement (branche 2b ci-dessous) y compris a
         // 3 m de la ligne d'en-but. Mesure sur 20 matchs : dans les CINQ
@@ -5821,6 +5804,25 @@
     // de 3 points ou moins, un drop suffit à égaliser ou à passer devant) dans
     // les 15 dernières minutes est LE moment du drop ; ailleurs, c'est un choix
     // rare (ballon qui ne progresse plus, tentative opportuniste).
+    // Avant « lancé » que le 9 peut servir à la sortie d'un regroupement : parmi
+    // les avants debout, à portée (8 m, 13 m dans les cinq derniers mètres où
+    // le pack est massé autour du regroupement) et pas devant le ballon, le
+    // premier dans l'ORDRE DE POD tiré à chaque ruck (cf. _tickRuck, P2-69).
+    // Avant P2-69, `find` prenait le premier par numéro de maillot : le n°1
+    // dès qu'il était à portée. NB : servir l'avant le PLUS PROCHE (P2-67)
+    // donnait la même variété mais +4,1 ± 1,9 points par match (100 graines
+    // appariées). Sert à la fois à la COURSE (cf. _tickPorte) et à la PASSE
+    // (cf. choisirActionPorteur) : l'avant qu'on voit arriver est celui servi.
+    _designerAvantLance(porteur, att) {
+      const sens = porteur.sensAttaque;
+      const rayon = this._zoneTerrain(porteur) === 'CINQ_M' ? 13 : 8;
+      const ordrePod = (j) => (this._ordrePod && this._ordrePod.has(j) ? this._ordrePod.get(j) : 0);
+      return att.filter(j => j !== porteur && j.numero <= 8 && j.auSol === 0
+        && distance(j, porteur) < rayon
+        && (j.x - porteur.x) * sens <= 0.3 && (j.x - porteur.x) * sens > -5)
+        .sort((p, q) => ordrePod(q) - ordrePod(p) || p.numero - q.numero)[0] || null;
+    }
+
     _facteurContexteDrop(equipe) {
       const adv = equipe === 'A' ? 'B' : 'A';
       const ecart = Math.abs(this.score[equipe] - this.score[adv]);
