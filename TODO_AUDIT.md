@@ -599,6 +599,9 @@ la ligne d'avantage), pas du fait de servir un avant lancé.
 **Tests.** R10, rouge avant (43 %) : au moins 90 % des avants servis par le 9 sont ceux lancés au pas
 précédent. R9 toujours vert.
 
+**Barrières.** Invariants 68/68, 13 suites OK, navigateur 484/0, calibration 13/14 : essais 7,4, points 60,8,
+rucks 178,8 ; seul le temps de jeu effectif (31,8 min) est hors fourchette.
+
 ### P2-70. Le drop-goal devient une décision de buteur en fin de match serré
 - **Statut : CORRIGÉ**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_facteurContexteDrop`, tentative de
