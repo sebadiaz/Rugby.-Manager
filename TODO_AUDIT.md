@@ -608,6 +608,9 @@ placement, pas par un réglage de taux : une défense sans arrière transformait
 **Tests.** R11, rouge avant (médiane 3,0 m) : profondeur médiane de l'arrière défensif pendant le ruck >= 10 m
 (hors plaqueur, contestant, au sol). Aucun joueur hors du terrain avant comme après (6 matchs).
 
+**Barrières.** Invariants 68/68, 13 suites OK, navigateur 484/0, calibration 13/14 : essais 7,0, points 56,2,
+temps de jeu effectif 32,4 min (revenu dans la fourchette) ; seuls les rucks (185,1) sont au-dessus de 180.
+
 **Vu en passant, non corrigé.** Le bandeau de l'arbitre (en haut à droite) recouvre une partie du terrain et
 peut masquer un joueur près de la touche haute ou de l'en-but droit.
 
