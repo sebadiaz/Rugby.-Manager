@@ -1079,7 +1079,11 @@ test('un joueur endurant garde sa vitesse de pointe en fin de match, un autre no
   // donnaient +0,096 avant et +0,094 apres. L'estimateur (maximum de vitesse
   // observe) est bruite : 8 graines ne suffisaient pas a separer l'effet du
   // bruit. Mutant « l'endurance n'agit plus » : rouge (cf. TODO_AUDIT.md P2-57).
-  const graines = Array.from({ length: 16 }, (_, i) => i + 1);
+  // 32 graines depuis P2-69 : le tirage des pods change qui sprinte, et
+  // l'ecart mesure est passe de ~0,09 a ~0,04 en moyenne (0,019 / 0,056 /
+  // 0,045 sur les graines 1-16 / 17-32 / 33-48). Le mutant donne exactement 0
+  // sur les trois lots : le mecanisme agit toujours, l'estimateur est bruite.
+  const graines = Array.from({ length: 32 }, (_, i) => i + 1);
   const cfg = { joueursA: {}, joueursB: {} };
   for (let n = 1; n <= 15; n++) { cfg.joueursA[n] = { endurance: 90 }; cfg.joueursB[n] = { endurance: 30 }; }
   const avec = ecartVitessePointe(cfg, graines);

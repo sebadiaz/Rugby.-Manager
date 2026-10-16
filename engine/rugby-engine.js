@@ -3059,13 +3059,18 @@
         // forcement dans les 8 m utiles ailleurs sur le terrain, et le n°9
         // retombait alors sur la sortie 9->10 faute de candidat.
         const rayonAvantLance = zone === 'CINQ_M' ? 13 : 8;
-        // Le PLUS PROCHE des avants éligibles — celui-là même qui s'est lancé en
-        // course (cf. _tickPorte, avantLanceRun) — et non le premier par numéro
-        // de maillot, qui désignait presque toujours le n°1.
+        // Parmi les avants éligibles, le premier dans l'ORDRE DE POD tiré à
+        // chaque ruck (cf. _tickRuck, P2-69). Avant, `find` prenait le premier
+        // par numéro de maillot : le n°1 dès qu'il était à portée. NB : servir
+        // l'avant le PLUS PROCHE (P2-67) donnait la même variété mais servait
+        // l'avant déjà lancé à pleine vitesse : +4,1 ± 1,9 points et +0,64 ±
+        // 0,29 essai par match (100 graines appariées), la moyenne passant à
+        // 64,5 points pour un plafond de 65. Retiré.
+        const ordrePod = (j) => (this._ordrePod && this._ordrePod.has(j) ? this._ordrePod.get(j) : 0);
         const avantLance = att.filter(j => j.numero <= 8 && j.auSol === 0
           && distance(j, porteur) < rayonAvantLance
           && (j.x - porteur.x) * sens <= 0.3 && (j.x - porteur.x) * sens > -5)
-          .sort((a, b) => distance(a, porteur) - distance(b, porteur))[0];
+          .sort((p, q) => ordrePod(q) - ordrePod(p) || p.numero - q.numero)[0];
         // PRES DE LA LIGNE, ON JOUE LE PACK. A 18 % partout, le n°9 servait
         // l'ouvreur quasi systematiquement (branche 2b ci-dessous) y compris a
         // 3 m de la ligne d'en-but. Mesure sur 20 matchs : dans les CINQ
@@ -4072,11 +4077,24 @@
           .slice(0, 3)
       );
       // Avants disponibles pour les PODS de relais (cf. placement plus bas) :
-      // ordre stable (numéro) pour que chacun garde son pod d'un tick à l'autre.
+      // ordre stable pendant tout le ruck pour que chacun garde son pod d'un
+      // tick à l'autre, mais RETIRÉ À CHAQUE RUCK (P2-69). Trié par numéro, le
+      // n°1 tenait toujours la place la plus proche côté ouvert et c'était lui
+      // que le 9 servait : 31 % des percussions des avants pour lui seul, 7 %
+      // pour le n°8 (cf. test R9). Tirage pondéré par la puissance (clé
+      // u^(1/w)) : les gros porteurs se placent un peu plus souvent en tête.
+      if (this._ordrePodRuck !== this.ruckPoint) {
+        this._ordrePodRuck = this.ruckPoint;
+        this._ordrePod = new Map();
+        for (const j of this.possession === 'A' ? this.equipeA : this.equipeB) {
+          if (j.numero <= 8) this._ordrePod.set(j, Math.pow(this.rng(), 1 / Math.max(1, j.puissance || 60)));
+        }
+      }
+      const clePod = (j) => (this._ordrePod && this._ordrePod.has(j) ? this._ordrePod.get(j) : 0);
       this._podAvants = [...this.equipeA, ...this.equipeB]
         .filter(j => j.team === this.possession && j !== this.porteur && j.auSol === 0
           && j.sinBin <= 0 && j.numero <= 8 && j.numero !== 9 && !soutiensRuck.has(j))
-        .sort((a, b) => a.numero - b.numero);
+        .sort((a, b) => clePod(b) - clePod(a) || a.numero - b.numero);
       // CRÉNEAUX DÉFENSIFS ÉQUIRÉPARTIS : les défenseurs de la ligne (ni
       // contestants, ni l'arrière n°15 qui couvre le fond) se répartissent
       // UNIFORMÉMENT sur la largeur, triés par position pour ne jamais se

@@ -580,6 +580,54 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-69. P2-67 avait fait monter le score de 4 points : le percuteur est tiré dans l'ordre de pod, plus « le plus proche »
+- **Statut : CORRIGÉ (régression de P2-67)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_tickRuck` : ordre des pods tiré
+  à chaque ruck ; `choisirActionPorteur` : `avantLance`).
+
+**Comment on l'a vu.** Après P2-68, la calibration est tombée à 12/14 avec les points hors fourchette
+(65,4 pour un plafond de 65), catégorie essentielle. Comparaison appariée sur 100 graines : P2-68 n'y est
+pour rien (-0,12 ± 1,22 point). Mesure des points à chaque commit du moteur depuis P2-50, graines 1-40 :
+54,2 (feuille de match), 57,0 (P2-64), 58,3 (P2-66), **64,1 (P2-67)**, 64,0 (P2-68). Confirmé sur
+100 graines : P2-67 = **+4,09 ± 1,85 points, +0,64 ± 0,29 essai** par match. La moyenne vraie passait à
+64,5 points : la calibration à 20 graines dépassait 65 une fois sur deux environ.
+
+**Ma faute.** En P2-67, j'avais comparé les variantes sur un seul jeu de 20 graines et mis l'écart sur le
+compte du bruit. C'est exactement l'erreur que l'avertissement de méthode (section gain par temps de jeu)
+demandait d'éviter : comparaison appariée sur au moins 100 graines.
+
+**Mécanisme.** Servir l'avant le plus proche du 9, c'est servir celui qui arrive déjà lancé (cf.
+avantLanceRun). Profondeur à la réception inchangée (médiane -3,2 m), mais gain des avants servis : médiane
+1,1 -> 1,5 m, p75 2,7 -> 4,0 m. Physiquement juste, mais assez pour ajouter des essais à un moteur déjà en
+haut de sa fourchette.
+
+**Correction.** Garder la variété demandée par R9 sans privilégier l'avant lancé : l'ordre des pods
+(`_podAvants`) est tiré à chaque ruck (pondéré par la puissance), et le 9 sert, parmi les avants éligibles,
+le premier dans cet ordre. Le tirage seul (avec `find` par numéro) ne suffisait pas : n°1 encore à 24 %.
+Mesuré, graines 1-70 : **60,4 points, 7,26 essais** (P2-66 : 61,4 / 7,11 ; P2-67 : 65,7 / 7,90) ; blocs de
+20 graines 63,0 / 61,5 / 57,5. R9 vert.
+
+**Pistes essayées sans effet sur le score (graines 1-40), non retenues :** défense resserrée à moins de 10 m
+de son en-but (créneaux 3,5 ou 4 m au lieu de 5 : 64,5 et 62,6 points, bruit) ; taux de tir au but 0,60 ou
+0,45 au lieu de 0,85 (62,7 et 61,1 points, mais essais 7,90 et 8,18 : la pénalité non tirée finit en essai).
+Dans les 22 adverses, le moteur est réaliste : 18,9 entrées par match, 33 % transformées en essai (réel 21
+et 33 %). Franchissements 18,4 (réel 18), courses 258 (réel 255).
+
+**Invariant d'endurance.** « Un joueur endurant garde sa vitesse de pointe » est tombé à 0,019 pour un seuil
+de 0,02 sur ses graines 1-16. Ce n'est pas que du bruit : sur trois lots de 16 graines, l'écart passe de
+0,101 / 0,067 / 0,102 (P2-68) à 0,019 / 0,056 / 0,045. Le tirage des pods change qui sprinte, et
+l'estimateur (vitesse maximale observée en début et en fin de match) le ressent. Le mécanisme, lui, agit
+toujours : le mutant « coût de fatigue constant » donne exactement 0 sur les trois lots. Seuil inchangé,
+échantillon porté à 32 graines (moyenne 0,038) : moteur vert, mutant rouge.
+
+**Barrières.** Invariants 67/67 (66 au run complet, plus celui-ci au run ciblé), 13 suites OK, navigateur
+484/0, calibration 13/14 : essais 7,5, points 62,5, rucks 175,6 (dans la fourchette), temps de jeu effectif
+31,5 min (hors fourchette).
+
+**Reste.** L'avant servi n'est pas toujours celui que l'animation lance en course (défaut antérieur à P2-67).
+Un drop-goal contextuel (buteurs seulement, fin de match serré) est prêt mais ajoute des essais (+0,5 sur
+40 graines : l'attaque qui droppait continue) ; à mesurer en apparié avant d'être livré.
+
 ### P2-68. Une mêlée sur six coupée au lâcher : l'introduction non droite redevient rare
 - **Statut : CORRIGÉ**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`melee.introductionNonDroite`,
