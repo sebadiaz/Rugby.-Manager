@@ -580,6 +580,30 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-70. Le drop-goal devient une décision de buteur en fin de match serré
+- **Statut : CORRIGÉ**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_facteurContexteDrop`, tentative de
+  drop dans `_tickPorte`), `server/test-invariants.js` (« drop-goal : une décision de buteur… »).
+
+**Constat (100 graines).** 1,48 drop tenté par match, à taux fixe (0,012/s) dès qu'un trois-quarts portait le
+ballon entre 8 et 38 m des poteaux : à n'importe quelle minute, par les ailiers comme par l'ouvreur, avec
+20 points d'avance comme à égalité. Le drop n'était pas une décision.
+
+**Correction.** Seuls les buteurs (jeu au pied >= 60 : ouvreur, arrière) droppent. Le taux est multiplié par 4
+dans les 15 dernières minutes quand l'écart est de 3 points ou moins, par 0,15 ailleurs. Une première version
+gardait 0,5 pour « écart <= 3 hors fin de match » : la plupart des drops partaient alors avant la 12e minute,
+à 0-0, car un début de match est toujours « serré ». Retiré.
+
+**Effet mesuré (100 graines appariées contre P2-69).** Drops tentés 1,48 -> 0,20 par match (-1,28 ± 0,13),
+réussis 0,59 -> 0,10. Sur 100 matchs : 20 drops, 16 par le 10 et 4 par le 15, dont 7 dans les 15 dernières
+minutes avec un écart de 3 points ou moins. Points +1,34 ± 2,16 et essais +0,40 ± 0,34 : non significatifs.
+Une attaque qui droppait continue maintenant son action. Blocs de 20 graines : 64,0 / 59,8 / 58,5 / 65,0 /
+61,2 points ; la marge sous le plafond de 65 reste faible sur deux blocs sur cinq.
+
+**Tests.** Rouge avant (fonction absente ; 1,5 drop par match) : facteur > 1 en fin de match à un point, < 0,5
+à la 10e minute avec 20 points d'avance ; au plus 0,7 drop tenté par match sur 16 matchs ; aucun drop tenté
+par un non-buteur. Mutant « filtre buteur retiré » -> rouge (6 drops par des non-buteurs).
+
 ### P2-69. P2-67 avait fait monter le score de 4 points : le percuteur est tiré dans l'ordre de pod, plus « le plus proche »
 - **Statut : CORRIGÉ (régression de P2-67)**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_tickRuck` : ordre des pods tiré

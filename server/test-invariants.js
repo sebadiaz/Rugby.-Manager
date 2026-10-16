@@ -2647,6 +2647,35 @@ test('loi 19 : un porteur peut etre plaque en touche (pas seulement le jeu au pi
     `le ballon n'est presque jamais porte en touche (${parMatch.toFixed(2)} par match)`);
 });
 
+test('drop-goal : une décision de buteur en fin de match serré, pas un tirage au hasard', () => {
+  // Constat (40 matchs) : 1,5 drop tenté par match, à n'importe quel moment et
+  // par n'importe quel trois-quarts (taux fixe 0,012/s dans les 8-38 m) — un
+  // ailier pouvait dropper à la 10e minute avec 20 points d'avance.
+  const m = new MatchEngine(5, 4800);
+  m.tempsMatch = 4800 * 0.95; m.score = { A: 20, B: 21 };
+  const serre = m._facteurContexteDrop('A');
+  m.tempsMatch = 600; m.score = { A: 20, B: 0 };
+  const tranquille = m._facteurContexteDrop('A');
+  assert.ok(serre > 1, `fin de match à un point : le drop doit devenir PLUS probable (facteur ${serre})`);
+  assert.ok(tranquille < 0.5, `10e minute, 20 points d'avance : le drop doit rester rare (facteur ${tranquille})`);
+  let tentes = 0, parNonButeur = 0;
+  const N = 16;
+  for (let g = 1; g <= N; g++) {
+    const e = new MatchEngine(g, 4800);
+    const brut = e.log.bind(e);
+    e.log = (type, team, msg, extra) => {
+      if (type === 'DROP_GOAL_REUSSI' || type === 'DROP_GOAL_RATE') {
+        tentes++;
+        if (!(e.porteur && e.porteur.jeuPied >= 60)) parNonButeur++;
+      }
+      return brut(type, team, msg, extra);
+    };
+    for (let i = 0; i < 400000 && e.getState().phase !== 'TERMINE'; i++) e.tick(0.1);
+  }
+  assert.ok(tentes / N <= 0.7, `${(tentes / N).toFixed(2)} drops tentés par match`);
+  assert.strictEqual(parNonButeur, 0, `${parNonButeur} drop(s) tenté(s) par un joueur qui n'est pas buteur`);
+});
+
 console.log(`\n${nbTests} test(s) exécuté(s).`);
 if (process.exitCode) {
   console.error('ECHEC : au moins un invariant violé.');

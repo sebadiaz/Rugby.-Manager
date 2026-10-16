@@ -2954,7 +2954,14 @@
         // Réservé aux joueurs qui tirent réellement au but en match (ouvreur,
         // centres, arrière) : sans ce filtre, un pilier porteur du ballon à
         // 30 m pouvait tenter un drop-goal, ce qu'on ne voit jamais en match.
-        if (porteur.tendance <= 55 && distanceButsDrop >= 8 && distanceButsDrop <= 38 && this.rng() < 0.012 * dt) {
+        // Seuls les vrais BUTEURS droppent (jeu au pied >= 60 : ouvreur, arrière),
+        // et la tentative dépend du MATCH : rare en temps normal, recherchée
+        // dans les dernières minutes d'un match serré (cf. _facteurContexteDrop).
+        // Avant, un taux fixe faisait tenter 1,5 drop par match à n'importe quel
+        // moment, y compris par les ailiers avec 20 points d'avance.
+        if (porteur.tendance <= 55 && (porteur.jeuPied || 0) >= 60
+          && distanceButsDrop >= 8 && distanceButsDrop <= 38
+          && this.rng() < 0.012 * this._facteurContexteDrop(this.possession) * dt) {
           const offsetLateralDrop = Math.abs(porteur.y - LARGEUR / 2);
           const equipe = this.possession;
           this.stats[equipe].kicks++;
@@ -5810,6 +5817,22 @@
     // grande majorité des cas (qui décide ensuite passe/jeu au large/coup de
     // pied via l'IA de jeu courant), ou le numéro 8 ramasse et part au près
     // (pick-and-go), plus probable après une poussée dominante.
+    // Contexte du drop-goal pour l'équipe en possession : un match serré (écart
+    // de 3 points ou moins, un drop suffit à égaliser ou à passer devant) dans
+    // les 15 dernières minutes est LE moment du drop ; ailleurs, c'est un choix
+    // rare (ballon qui ne progresse plus, tentative opportuniste).
+    _facteurContexteDrop(equipe) {
+      const adv = equipe === 'A' ? 'B' : 'A';
+      const ecart = Math.abs(this.score[equipe] - this.score[adv]);
+      const serre = ecart <= 3;
+      const fin = isFinite(this.dureeMatch) && this.dureeMatch > 0
+        && this.tempsMatch >= this.dureeMatch - 15 * 60 * (this.dureeMatch / 4800);
+      // Un écart de 3 points ou moins EN DÉBUT de match n'est pas un match
+      // serré, c'est un match qui commence (0-0) : mesuré avec un facteur
+      // intermédiaire 0,5, la majorité des drops partaient avant la 12e minute.
+      return serre && fin ? 4 : 0.15;
+    }
+
     _meleeSortieBallon(joueur, passeDuHuit) {
       const m = this.melee;
       const poss = m.vainqueur;
