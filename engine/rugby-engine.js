@@ -186,6 +186,12 @@
       // la grande majorité gagnée proprement ; un pack nettement plus fort
       // domine, lui, presque toujours.
       seuilsQualite: { dominant: 39, pression: 27 },
+      // Probabilité qu'un lâcher du 9 soit jugé non droit (loi 19, coup franc).
+      // Valait 0,18 en dur (repris de l'ancien taux par seconde) : ~1,7 coup
+      // franc par match, 40 % des arrêts de mêlée, et une mêlée sur six coupée
+      // au lâcher. Depuis les consignes d'arbitrage de 2018, l'introduction
+      // vers son propre côté est tolérée : la faute n'est presque plus sifflée.
+      introductionNonDroite: 0.04,
       // Consigne de poussée (P1-51), réglable par équipe via meleeA/meleeB :
       // 'dominer', 'equilibre' (défaut, comportement historique), 'sortirVite'.
       poussee: 'equilibre',
@@ -5273,10 +5279,10 @@
       // La poussée peut commencer dès le lâcher : le différentiel de
       // contestation est établi maintenant.
       m.diff = this._meleeFacteurs();
-      // Introduction non droite (loi 19) : jugée AU LÂCHER, une fois par mêlée,
-      // avec la même probabilité qu'avant P2-64 (0,05/s pendant les 4 s de
-      // l'ancien palier « introduction », soit ~18 %).
-      if (this.rng() < 0.18) {
+      // Introduction non droite (loi 19) : jugée AU LÂCHER, une fois par mêlée
+      // (cf. cfg.melee.introductionNonDroite).
+      const tauxNonDroite = this.cfg.melee.introductionNonDroite;
+      if (this.rng() < (typeof tauxNonDroite === 'number' ? tauxNonDroite : 0.04)) {
         this._meleeTracer();
         this._meleeContact('INTRODUCTION_NON_DROITE', neuf);
         this._meleeSanctionner({ type: 'INTRODUCTION_NON_DROITE', equipeFautive: m.equipeIntroduction, gravite: 'COUP_FRANC', message: 'introduction non droite dans le tunnel', delibere: false });

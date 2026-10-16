@@ -552,4 +552,33 @@ test('M22 — « mêlée dominée » reste l\'exception à packs égaux, la règ
     `pack A nettement plus fort : seulement ${(fort.partDom * 100).toFixed(0)} % de mêlées dominées (${JSON.stringify(fort)})`);
 });
 
+test('M23 — l\'introduction non droite existe mais reste rare, la plupart des mêlées vont jusqu\'au talonnage', () => {
+  // Constat : ~2 introductions non droites sifflées par match (18 % des
+  // lâchers), soit 40 % des coups d'arrêt de mêlée. Le joueur voyait une
+  // mêlée sur six s'arrêter au lâcher, sans talonnage ni sortie. Depuis les
+  // consignes d'arbitrage de 2018, cette faute est très rarement sifflée.
+  let nonDroites = 0, introductions = 0;
+  const N = 6;
+  for (let g = 1; g <= N; g++) {
+    const m = new RugbyEngine.MatchEngine(g, 4800, null);
+    const brut = m.log.bind(m);
+    m.log = (type, team, msg, extra) => {
+      if (type === 'MELEE_INTRODUCTION') introductions++;
+      return brut(type, team, msg, extra);
+    };
+    const contact = m._meleeContact.bind(m);
+    m._meleeContact = (type, ...a) => { if (type === 'INTRODUCTION_NON_DROITE') nonDroites++; return contact(type, ...a); };
+    for (let i = 0; i < 400000 && m.phase !== 'TERMINE'; i++) m.tick(0.1);
+  }
+  assert.ok(introductions >= 40, `échantillon trop petit (${introductions} introductions)`);
+  assert.ok(nonDroites / N <= 0.8, `${(nonDroites / N).toFixed(2)} introductions non droites sifflées par match (${nonDroites}/${introductions} lâchers)`);
+  // La règle existe toujours : un taux forcé la fait siffler.
+  const m = new RugbyEngine.MatchEngine(3, 4800, { melee: { introductionNonDroite: 1 } });
+  let siffle = false;
+  const brut = m.log.bind(m);
+  m.log = (type, team, msg, extra) => { if (/introduction non droite/.test(msg || '')) siffle = true; return brut(type, team, msg, extra); };
+  for (let i = 0; i < 400000 && m.phase !== 'TERMINE' && !siffle; i++) m.tick(0.1);
+  assert.ok(siffle, 'une introduction non droite doit pouvoir être sifflée (taux forcé à 1)');
+});
+
 console.log(`\n${nbTests} test(s) exécuté(s).`);

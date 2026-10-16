@@ -580,6 +580,27 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-68. Une mêlée sur six coupée au lâcher : l'introduction non droite redevient rare
+- **Statut : CORRIGÉ**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`melee.introductionNonDroite`,
+  `_meleeIntroduire`), `server/test-melee.js` (M23).
+
+**Constat (10 matchs).** Introduction non droite sifflée 2,0 fois par match (taux fixe de 0,18 par lâcher,
+repris tel quel de l'ancien taux par seconde en P2-64), soit 40 % des arrêts de mêlée. Le joueur voyait
+une mêlée sur six s'arrêter au lâcher du 9, sans talonnage ni sortie : la séquence de P2-64 était
+souvent coupée avant d'être visible.
+
+**Correction.** Taux réglable `melee.introductionNonDroite`, 0,04 par défaut. Depuis les consignes
+d'arbitrage de 2018, l'introduction vers son propre côté est tolérée et la faute n'est presque plus
+sifflée. Cette référence vient de la connaissance des lois et de l'arbitrage, pas d'une source chiffrée
+du dépôt (aucune n'existe pour cette faute) : à confronter à un relevé réel si on en ajoute un.
+
+**Effet mesuré (10 matchs, par match).** Introductions non droites 2,0 -> 0,1 ; coups francs 5,6 -> 3,5 ;
+mêlées allant jusqu'à la base 8,0 -> 9,3 sur ~12,2.
+
+**Tests.** M23, rouge avant (1,67 par match sur 6 matchs) : au plus 0,8 par match, et la faute est
+toujours sifflée quand le taux est forcé à 1. Mutant « jamais jugée » -> M23 rouge.
+
 ### P2-67. Le 9 servait toujours le même pilier : le percuteur est l'avant le plus proche, celui qui court
 - **Statut : CORRIGÉ**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`choisirActionPorteur`,
