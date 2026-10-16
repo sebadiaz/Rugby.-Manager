@@ -604,6 +604,11 @@ Une attaque qui droppait continue maintenant son action. Blocs de 20 graines : 6
 à la 10e minute avec 20 points d'avance ; au plus 0,7 drop tenté par match sur 16 matchs ; aucun drop tenté
 par un non-buteur. Mutant « filtre buteur retiré » -> rouge (6 drops par des non-buteurs).
 
+**Barrières.** Invariants 68/68, 13 suites OK, navigateur 484/0. Calibration **12/14, le minimum** : essais 8,0
+(borne haute exacte), points 63,5, rucks 184,3 et temps de jeu effectif 31,8 min hors fourchette. Le moteur
+est en haut de ses fourchettes de score. Toute nouvelle hausse d'essais fera échouer la calibration, quelle
+que soit sa qualité de jeu : le prochain chantier doit être le rendement offensif lui-même, mesuré en apparié.
+
 ### P2-69. P2-67 avait fait monter le score de 4 points : le percuteur est tiré dans l'ordre de pod, plus « le plus proche »
 - **Statut : CORRIGÉ (régression de P2-67)**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_tickRuck` : ordre des pods tiré
