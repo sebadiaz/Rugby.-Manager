@@ -580,6 +580,21 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-74. Sur téléphone, les joueurs se recouvraient : rayon à l'échelle du terrain
+- **Statut : CORRIGÉ (affichage)**
+- Fichiers concernés : `docs/js/renderer.js` (`rayonJoueur`, `dessinerJoueur`), `server/test-parcours-navigateur.js`.
+
+**Constat (QA téléphone 390x844).** Rayon fixe de 10 px alors qu'1 m n'y vaut que ~4,7 px : chaque joueur
+couvrait plus de 4 m de terrain. En touche (joueurs à ~1 m), en maul et en ruck, les disques se
+recouvraient presque entièrement et les numéros devenaient illisibles.
+
+**Correction.** Rayon = 1,4 m à l'échelle, borné entre 6,5 px (numéro lisible) et 10 px (grand écran
+inchangé). La taille du texte, l'ellipse du joueur au sol et le halo du porteur suivent ce rayon.
+
+**Tests.** « joueurs : rayon à l'échelle du terrain (<= 1,5 m) et lisible (>= 6,5 px) » en 1400x1000 (rayon 10,
+inchangé) et 390x844. Rouge avant (fonction absente) ; mutant « rayon fixe 10 px » -> rouge en 390x844. Navigateur
+488/0. Captures téléphone : numéros du ruck lisibles un par un, alignement de touche plus net.
+
 ### P2-73. Le bandeau de l'arbitre ne recouvre plus le terrain
 - **Statut : CORRIGÉ (affichage)**
 - Fichiers concernés : `docs/css/style.css` (`#banner`), `docs/js/ui.js` (`placerBandeau`, exposée sur RMUI),

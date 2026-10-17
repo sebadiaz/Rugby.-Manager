@@ -4580,6 +4580,32 @@ function optionsLancement() {
     await ctxM.close();
   }
 
+  // --- TAILLE DES JOUEURS À L'ÉCHELLE DU TERRAIN (P2-74) --------------------
+  // Vu en QA sur téléphone : rayon fixe de 10 px alors qu'1 m n'y vaut que
+  // ~4,7 px — un joueur couvrait plus de 4 m de terrain, et en touche, maul ou
+  // ruck les disques se recouvraient au point qu'on ne lisait plus les
+  // numéros. Le rayon doit suivre l'échelle (au plus ~1,5 m de terrain), sans
+  // descendre sous un seuil de lisibilité, et rester inchangé sur grand écran.
+  for (const vp of [{ width: 1400, height: 1000, attendu: 10 }, { width: 390, height: 844 }]) {
+    const ctxR = await browser.newContext({ viewport: { width: vp.width, height: vp.height } });
+    const pR = await ctxR.newPage();
+    await pR.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+    await pR.click('#btnAccueilMatchRapide');
+    for (let i = 0; i < 60 && !(await pR.isVisible('#panneauResultat.visible')); i++) await pR.waitForTimeout(250);
+    await pR.click('#btnResultatVoir');
+    await pR.waitForTimeout(500);
+    const t = await pR.evaluate(() => {
+      const R = window.RMRenderer;
+      if (typeof R.rayonJoueur !== 'function') return { absent: true };
+      const a = R.versCanvas(0, 35), b = R.versCanvas(10, 35);
+      const pxParMetre = Math.hypot(b.px - a.px, b.py - a.py) / 10;
+      return { rayon: R.rayonJoueur(), pxParMetre, metres: R.rayonJoueur() / pxParMetre };
+    });
+    verifier(`joueurs (${vp.width}x${vp.height}) : rayon à l'échelle du terrain (<= 1,5 m) et lisible (>= 6,5 px)`,
+      !t.absent && t.metres <= 1.5 && t.rayon >= 6.5 && (vp.attendu == null || t.rayon === vp.attendu), JSON.stringify(t));
+    await ctxR.close();
+  }
+
   // --- LE BANDEAU DE L'ARBITRE NE CACHE PAS LE TERRAIN (P2-73) --------------
   // Vu en QA (P2-72) : le bandeau « ARBITRE — … », posé à 100 px du haut, à
   // droite, descendait sur la bordure du terrain et pouvait masquer un joueur

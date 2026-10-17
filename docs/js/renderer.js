@@ -122,8 +122,18 @@
     dessinerPoteaux(LONGUEUR);
   }
 
+  // Rayon d'un joueur À L'ÉCHELLE DU TERRAIN : ~1,4 m, borné entre 6,5 px
+  // (numéro encore lisible) et 10 px (taille historique, inchangée sur grand
+  // écran). À rayon fixe de 10 px, sur téléphone (1 m ~ 4,7 px), un joueur
+  // couvrait plus de 4 m : en touche, maul ou ruck, les disques se
+  // recouvraient et les numéros devenaient illisibles (P2-74).
+  function rayonJoueur() {
+    return Math.max(6.5, Math.min(10, scale * 1.4));
+  }
+
   function dessinerJoueur(j, estPorteur) {
     const { px, py } = versCanvas(j.x, j.y);
+    const r = rayonJoueur();
     // Dessiné couché si réellement au sol (plaqué, figé) OU s'il vient de plaquer
     // (marqueur visuel pur solVisuel) : la définition officielle du plaquage veut
     // que le plaqueur aille aussi au sol.
@@ -134,9 +144,9 @@
       // Joueur AU SOL : dessiné couché (ellipse aplatie) et atténué, pour qu'on
       // voie d'un coup d'œil qu'il est à terre et ne participe pas (plaqué qui
       // ne s'est pas encore relevé).
-      ctx.ellipse(px, py, 12, 5, 0, 0, Math.PI * 2);
+      ctx.ellipse(px, py, r * 1.2, r * 0.5, 0, 0, Math.PI * 2);
     } else {
-      ctx.arc(px, py, 10, 0, Math.PI * 2);
+      ctx.arc(px, py, r, 0, Math.PI * 2);
     }
     ctx.fillStyle = j.team === 'A' ? '#1565c0' : '#c62828';
     if (auSol) ctx.globalAlpha = 0.5;
@@ -144,17 +154,17 @@
     ctx.globalAlpha = 1;
     if (estPorteur) {
       // Porteur du ballon nettement marqué : anneau jaune épais + halo.
-      ctx.lineWidth = 4;
+      ctx.lineWidth = Math.max(2.5, r * 0.4);
       ctx.strokeStyle = '#ffeb3b';
       ctx.stroke();
       ctx.beginPath();
-      ctx.arc(px, py, 14, 0, Math.PI * 2);
+      ctx.arc(px, py, r + 4, 0, Math.PI * 2);
       ctx.lineWidth = 1.5;
       ctx.strokeStyle = 'rgba(255,235,59,0.5)';
       ctx.stroke();
     }
     ctx.fillStyle = auSol ? 'rgba(255,255,255,0.65)' : '#fff';
-    ctx.font = (auSol ? '8px' : '10px') + ' sans-serif';
+    ctx.font = Math.round(auSol ? r * 0.8 : Math.max(7.5, r)) + 'px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(j.numero, px, py);
@@ -306,5 +316,5 @@
     for (const c of ordreCouches(state)) couches[c]();
   }
 
-  global.RMRenderer = { init, redimensionner, versCanvas, dessiner, ordreCouches };
+  global.RMRenderer = { init, redimensionner, versCanvas, dessiner, ordreCouches, rayonJoueur };
 })(window);
