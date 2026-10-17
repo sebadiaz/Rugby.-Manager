@@ -580,6 +580,33 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-84. Après des points, le ballon revient au centre à vue : fini le saut de 49 m
+- **Statut : CORRIGÉ (affichage)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_nouvelleManche`, `_tickCoupEnvoi`),
+  `server/test-invariants.js`.
+
+**Constat (relevé des sauts).** ~24 fois par match, au début de la mise en place d'un coup d'envoi (après une
+transformation, une pénalité ou un drop), le ballon sautait de ~49 m : des poteaux, où il venait de retomber, jusque
+dans les mains du botteur au centre.
+
+**Correction.** Au moment de la reprise, le moteur note où le ballon est affiché : après un coup de pied au but, c'est
+le point de chute, puisque le vol vient d'être déclaré terminé. Pendant la mise en place, le ballon revient jusqu'au
+botteur en vol bas, à ~15 m/s, et la frappe attend qu'il soit arrivé. Une première version lisait la position via
+`getState()` et laissait `_nouvelleManche` placer le ballon au centre dès la première image : 4/46 mises en place
+propres seulement.
+
+**Test existant reformulé.** « une remise en jeu depuis les 22 m est annoncée RENVOI AUX 22 M » lisait `ballonVolX` comme
+point de remise en jeu. Ce n'est plus vrai au moment de l'annonce, puisque le ballon est encore à son point de départ.
+Il lit maintenant `xCoupEnvoi`, le vrai point, et reste vert avec l'ancien moteur comme avec le nouveau.
+
+**Effet mesuré (100 graines appariées contre P2-81).** Matchs strictement identiques (écart 0,00). Sauts du ballon de
+plus de 3 m : 61 -> 34,5 par match, dont ~20,6 qui sont des vols normaux de ballon frappé (3,1 à 3,3 m par pas).
+Restent : ballon posé sur le tee à la transformation (~10 m, 5,5 par match) et à la pénalité au but (~11 m, ~4 par
+match).
+
+**Tests.** « coup d'envoi : après des points, le ballon revient au centre à vue » : rouge avant (3/46 mises en place sans
+saut, pire 54,4 m) ; au moins 95 % des mises en place sans saut de plus de 3 m, transition comprise.
+
 ### P2-83. Pourquoi le jeu courant est trop rapide : le porteur n'a que 1,5 s avant le contact
 - **Statut : ENQUÊTE — aucun changement du moteur**
 

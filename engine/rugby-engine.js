@@ -1207,6 +1207,17 @@
     // botte doit rester derrière le ballon, l'équipe receptrice à 10m minimum :
     // le ballon est donc réellement botté et contestable, pas remis en main.
     _nouvelleManche(equipeReceptrice, xCentre = LONGUEUR / 2) {
+      // Où le ballon est-il AFFICHÉ au moment de la reprise (P2-84) ? Il revient
+      // de là jusqu'au botteur, à vue, pendant la mise en place (cf.
+      // _tickCoupEnvoi) — avant, il sautait de ~49 m des poteaux à ses mains.
+      // Après un coup de pied au but (transformation, pénalité, drop), le vol
+      // vient d'être déclaré terminé : le ballon est à son point de chute
+      // (ballonVolX/Y), pas dans les mains du dernier porteur.
+      let depart = null;
+      const apresTir = this.phase === 'TRANSFORMATION' || this.phase === 'PENALITE_TIR' || this.phase === 'COUP_DE_PIED_JEU';
+      if ((this.ballonEnVol || apresTir) && this.ballonVolX != null) depart = { x: this.ballonVolX, y: this.ballonVolY };
+      else { try { const b = this.getState().ballon; depart = { x: b.x, y: b.y }; } catch (e) { depart = null; } }
+      this._retourEnvoi = depart;
       const sens = { A: 1, B: -1 };
       this.maul = null;
       this.melee = null;
@@ -1312,6 +1323,9 @@
       this.ballonVolX = xCentre;
       this.ballonVolY = LARGEUR / 2;
       this.ballonVolHauteur = 0;
+      // Dès la première image, le ballon est encore là où il était : il revient
+      // ensuite au botteur (cf. _tickCoupEnvoi, P2-84).
+      if (this._retourEnvoi) { this.ballonVolX = this._retourEnvoi.x; this.ballonVolY = this._retourEnvoi.y; }
       // RENVOI AUX 22 M, PAS COUP D'ENVOI. Cette fonction sert aussi a la remise
       // en jeu apres une penalite au but ou un drop manques : le ballon repart
       // alors de la ligne des 22 m de l'equipe qui defendait, comme le veut la
@@ -1349,14 +1363,25 @@
           avancer(j, j._cibleEnvoi.x - j.x, j._cibleEnvoi.y - j.y, dt, vitesseMs(j));
           pireEcart = Math.max(pireEcart, Math.hypot(j._cibleEnvoi.x - j.x, j._cibleEnvoi.y - j.y));
         }
-        this.ballonEnVol = false; // le ballon est tenu par le botteur, pas encore botté
+        // Le ballon REVIENT jusqu'au botteur (relancé vers le centre), à ~15 m/s,
+        // en vol bas ; il est ensuite tenu par le botteur jusqu'à la frappe.
+        const R = this._retourEnvoi, kb = this.porteur;
+        if (R && kb) {
+          const dxr = kb.x - R.x, dyr = kb.y - R.y, dr = Math.hypot(dxr, dyr), pasR = 15 * dt;
+          if (dr <= Math.max(pasR, 1)) { this._retourEnvoi = null; this.ballonEnVol = false; }
+          else {
+            R.x += dxr / dr * pasR; R.y += dyr / dr * pasR;
+            this.ballonEnVol = true; this.ballonVolX = R.x; this.ballonVolY = R.y; this.ballonVolHauteur = 0.25;
+          }
+        } else this.ballonEnVol = false; // le ballon est tenu par le botteur, pas encore botté
         // La frappe attend que le BOTTEUR soit réellement au centre (P2-80) : avec
         // un seul plafond de 8 s, il était encore à ~10 m du point de coup d'envoi
         // dans 84 % des cas (il revient de son en-but après un essai) et le ballon
         // sautait de ses mains au centre. Plafond de sécurité 25 s pour lui.
         const k = this.porteur;
         const botteurEnPlace = !k || Math.hypot(this.xCoupEnvoi - k.x, LARGEUR / 2 - k.y) < 1.5;
-        if ((botteurEnPlace && (pireEcart < 2 || this.timerPhase > 8)) || this.timerPhase > 25) {
+        if ((botteurEnPlace && !this._retourEnvoi && (pireEcart < 2 || this.timerPhase > 8)) || this.timerPhase > 25) {
+          this._retourEnvoi = null;
           this.envoiEnPlace = true;
           this.timerPhase = 0; // le vol du ballon repart de zéro une fois en place
           for (const j of [...this.equipeA, ...this.equipeB]) j._cibleEnvoi = null;

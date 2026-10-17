@@ -1624,7 +1624,10 @@ test("une remise en jeu depuis les 22 m est annoncee RENVOI AUX 22 M, pas coup d
     const orig = m.log.bind(m);
     m.log = (type, eq, txt) => {
       if (type === 'COUP_ENVOI' || type === 'RENVOI_22') {
-        const x = m.ballonVolX;
+        // Le point de remise en jeu est `xCoupEnvoi`. Depuis P2-84, au moment
+        // de l'annonce, le ballon est encore là où il était (il revient ensuite
+        // au botteur, à vue) : `ballonVolX` n'est plus ce point.
+        const x = m.xCoupEnvoi;
         const auMilieu = Math.abs(x - LONGUEUR / 2) < 0.5;
         if (type === 'COUP_ENVOI') envois++; else renvois++;
         if ((type === 'COUP_ENVOI') !== auMilieu) fautifs.push(`${type} depuis x=${x.toFixed(1)} : « ${txt} »`);
@@ -2779,6 +2782,33 @@ test('pénalité en touche : le buteur frappe depuis la marque et le ballon vole
   assert.strictEqual(departMarque, cas, `${departMarque}/${cas} pénalités en touche où le ballon part de la marque`);
   assert.strictEqual(sansSaut, cas, `${sansSaut}/${cas} pénalités en touche sans téléportation du ballon (> 3 m en 0,1 s)`);
   assert.strictEqual(enVol, cas, `${enVol}/${cas} pénalités en touche où le ballon vole réellement vers la touche`);
+});
+
+test('coup d\'envoi : après des points, le ballon revient au centre à vue, sans téléportation', () => {
+  // Relevé des sauts (P2-84) : ~24 fois par match, au début de la mise en
+  // place d'un coup d'envoi, le ballon sautait de ~49 m — des poteaux, où il
+  // venait de retomber, jusque dans les mains du botteur.
+  let mises = 0, propres = 0, pire = 0;
+  for (const seed of [1, 2, 3]) {
+    const m = new MatchEngine(seed, 4800);
+    let prev = null, suivi = null, prevPhase = null;
+    for (let i = 0; i < 400000 && m.getState().phase !== 'TERMINE'; i++) {
+      m.tick(0.1);
+      const b = m.getState().ballon;
+      const p = { x: b.x, y: b.y };
+      if (m.phase === 'COUP_ENVOI' && prevPhase !== 'COUP_ENVOI') suivi = { saut: prev ? Math.hypot(p.x - prev.x, p.y - prev.y) : 0 };
+      else if (suivi && m.phase === 'COUP_ENVOI' && !m.envoiEnPlace) suivi.saut = Math.max(suivi.saut, Math.hypot(p.x - prev.x, p.y - prev.y));
+      if (suivi && (m.phase !== 'COUP_ENVOI' || m.envoiEnPlace)) {
+        mises++;
+        if (suivi.saut < 3) propres++;
+        pire = Math.max(pire, suivi.saut);
+        suivi = null;
+      }
+      prev = p; prevPhase = m.phase;
+    }
+  }
+  assert.ok(mises >= 30, `échantillon trop petit (${mises} mises en place)`);
+  assert.ok(propres / mises >= 0.95, `${propres}/${mises} mises en place de coup d'envoi sans saut du ballon > 3 m (pire : ${pire.toFixed(1)} m)`);
 });
 
 test('coup d\'envoi : la mise en place n\'est pas du temps de jeu effectif', () => {
