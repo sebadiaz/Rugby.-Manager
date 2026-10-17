@@ -1648,7 +1648,9 @@
     // (la sanction est effacée). Si elle perd le ballon au profit de l'équipe
     // fautive sans contrepartie, l'arbitre revient à la marque et applique la
     // sanction en attente. Le jeu n'est PAS arrêté au moment de la faute. ---
-    _jouerAvantage(type, equipeFautive, equipeBeneficiaire, position) {
+    // `motif` (facultatif) : la faute en clair, avec son fautif — annoncée au
+    // signal et rappelée si l'arbitre revient à la sanction (cf. P2-76).
+    _jouerAvantage(type, equipeFautive, equipeBeneficiaire, position, motif) {
       // Un seul avantage à la fois : si un est déjà en cours, on n'en réarme pas.
       if (this.avantage) return;
       this.avantage = {
@@ -1658,8 +1660,11 @@
         timer: 0,
         // Repère de progression : abscisse du porteur au moment de la faute.
         xDepart: this.porteur ? this.porteur.x : position.x,
+        motif: motif || null,
       };
-      this.log('AVANTAGE', equipeBeneficiaire, `Avantage joue pour l'equipe ${equipeBeneficiaire} (faute de ${equipeFautive})`);
+      this.log('AVANTAGE', equipeBeneficiaire, motif
+        ? `${motif} : avantage pour l'equipe ${equipeBeneficiaire}`
+        : `Avantage joue pour l'equipe ${equipeBeneficiaire} (faute de ${equipeFautive})`);
     }
 
     // Suivi de l'avantage à chaque tick : décide s'il est joué (jeu continue) ou
@@ -1682,7 +1687,9 @@
       // le bénéficiaire en tire profit -> retour à la marque, sanction appliquée.
       if (this.possession === a.equipeFautive) {
         this.avantage = null;
-        this.log('AVANTAGE_REVIENT', a.equipeBeneficiaire, `Pas d'avantage : retour a la sanction pour l'equipe ${a.equipeBeneficiaire}`);
+        this.log('AVANTAGE_REVIENT', a.equipeBeneficiaire, a.motif
+          ? `Pas d'avantage : retour a la sanction (${a.motif.charAt(0).toLowerCase() + a.motif.slice(1)}) pour l'equipe ${a.equipeBeneficiaire}`
+          : `Pas d'avantage : retour a la sanction pour l'equipe ${a.equipeBeneficiaire}`);
         if (a.type === 'PENALITE') this._traiterPenalite(a.equipeBeneficiaire, a.position);
         else this._accorderMelee(a.equipeFautive, a.position);
         return;
@@ -4184,12 +4191,27 @@
           const cibleX = sensAttaque > 0 ? pt.x + margeRecul : pt.x - margeRecul;
           const slotY = this._slotDefense.get(j) ?? j.channelY;
           avancer(j, cibleX - j.x, slotY - j.y, dt, vitesseMs(j));
-          if (this.timerPhase > delaiGrace && Referee.horsJeuRuck(j, pt, sensAttaque)) {
+          // L'arbitre ne siffle que le hors-jeu qui PÈSE sur le jeu, et une
+          // seule fois par ruck : à la fin du délai de grâce, un défenseur
+          // DEBOUT encore devant la ligne dans la zone du ruck (10 m de part et
+          // d'autre) est jugé — sifflé selon sa DISCIPLINE (celui qui traîne ou
+          // part trop tôt), toléré sinon (il se replie, il ne gêne pas). Avant,
+          // le premier défenseur encore en repli suffisait — plaqueur au sol,
+          // ailier à 30 m — et l'avantage était annoncé ~52 fois par match,
+          // sans motif ni fautif (cf. test R12).
+          if (this.timerPhase > delaiGrace && this._horsJeuRuckJuge !== pt && j.auSol === 0
+            && Math.abs(j.y - pt.y) <= 10 && Referee.horsJeuRuck(j, pt, sensAttaque)) {
+            this._horsJeuRuckJuge = pt;
+            const discipline = typeof j.discipline === 'number' ? j.discipline : 55;
+            const pSiffle = Math.max(0.1, Math.min(0.6, 0.3 * (1 + (60 - discipline) / 40)));
+            if (this.rng() >= pSiffle) continue;
             // Hors-jeu défensif au ruck : avantage (loi 7). L'équipe en possession
             // joue ; la pénalité n'est sifflée que si elle n'en tire rien (cf.
             // _tickAvantage). On ne stoppe donc PAS le ruck — il se résout
             // normalement et l'avantage est suivi à partir de là.
-            this._jouerAvantage('PENALITE', this.possession === 'A' ? 'B' : 'A', this.possession, { x: this.porteur.x, y: this.porteur.y });
+            const fautive = this.possession === 'A' ? 'B' : 'A';
+            this._jouerAvantage('PENALITE', fautive, this.possession, { x: this.porteur.x, y: this.porteur.y },
+              `Hors-jeu au ruck du n°${j.numero} (equipe ${fautive})`);
           }
           continue;
         }

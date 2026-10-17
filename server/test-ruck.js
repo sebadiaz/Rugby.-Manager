@@ -293,4 +293,30 @@ test('R11 — pendant le ruck, l\'arrière défensif couvre le fond au lieu de m
   assert.ok(med >= 10, `arrière défensif à ${med.toFixed(1)} m de la ligne du ruck en médiane : il est dans le premier rideau, pas en couverture`);
 });
 
+test('R12 — le hors-jeu au ruck est annoncé avec son fautif, et seulement quand il gêne le jeu', () => {
+  // Constat : ~52 annonces « Avantage joué pour l'équipe A (faute de B) » par
+  // match, sans motif ni fautif — toutes pour hors-jeu au ruck, signalées dès
+  // la fin du délai de grâce dès qu'UN défenseur (au sol après son plaquage,
+  // ou ailier à 30 m du ruck) n'était pas encore revenu. Le fil en était
+  // saturé et le joueur ne savait pas quelle faute était sanctionnée.
+  let avantages = 0, sansMotif = 0, revient = 0;
+  const N = 4;
+  for (let g = 1; g <= N; g++) {
+    const m = new RugbyEngine.MatchEngine(g, 4800, null);
+    const brut = m.log.bind(m);
+    m.log = (type, team, msg, extra) => {
+      if (type === 'AVANTAGE') {
+        avantages++;
+        if (!/hors-jeu/i.test(msg || '') || !/n°\d+/.test(msg || '')) sansMotif++;
+      }
+      if (type === 'AVANTAGE_REVIENT') revient++;
+      return brut(type, team, msg, extra);
+    };
+    for (let i = 0; i < 400000 && m.phase !== 'TERMINE'; i++) m.tick(0.1);
+  }
+  assert.strictEqual(sansMotif, 0, `${sansMotif}/${avantages} avantages annoncés sans motif ni fautif`);
+  assert.ok(avantages / N <= 20, `${(avantages / N).toFixed(1)} avantages pour hors-jeu au ruck par match`);
+  assert.ok(revient > 0, 'le hors-jeu au ruck doit encore pouvoir être sanctionné (aucun retour à la pénalité)');
+});
+
 console.log(`\n${nbTests} test(s) exécuté(s).`);

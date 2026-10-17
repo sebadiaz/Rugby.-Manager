@@ -580,6 +580,35 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-76. Le hors-jeu au ruck : annoncé 52 fois par match sans motif, il devient une faute nommée, jugée sur la discipline
+- **Statut : CORRIGÉ**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_tickRuck` : jugement du hors-jeu ;
+  `_jouerAvantage` / `_tickAvantage` : motif), `server/test-ruck.js` (R12).
+
+**Constat (10 matchs).** « Avantage joué pour l'équipe A (faute de B) » apparaissait **51,9 fois par match**,
+sans motif ni fautif. Toutes ces annonces venaient du hors-jeu défensif au ruck, signalé à la fin exacte du délai de
+grâce (1,5 s) dès qu'un défenseur n'était pas encore revenu derrière la ligne. En moyenne, 3,7 défenseurs étaient
+alors en repli, à tous les postes. Issues : 37,4 avantages obtenus, 6 joués au pied ou en marquant, 5,5 annulés,
+2,9 retours à la pénalité. Le fil était saturé et le joueur ne savait jamais quelle faute était sanctionnée.
+CLAUDE.md (rôle 5) exige que les hors-jeu existent autour des rucks : ils existaient, mais restaient invisibles.
+
+**Cause.** Le moteur fait se replier tous les défenseurs hors-jeu. Aucun ne CHOISIT de rester devant la ligne,
+et un joueur qui se replie sans gêner le jeu n'est pas sanctionné. Le signal sanctionnait donc un artefact de
+déplacement, pas une faute.
+
+**Correction.** Une seule décision par ruck, à la fin du délai de grâce. Le défenseur DEBOUT, hors-jeu, dans la zone
+du ruck (10 m de part et d'autre) est sifflé selon sa discipline : probabilité 0,3 × (1 + (60 - discipline) / 40),
+bornée entre 0,1 et 0,6. Le plaqueur au sol qui se dégage et l'ailier lointain ne sont plus jugés. L'annonce nomme
+la faute et le fautif : « Hors-jeu au ruck du n°7 (équipe B) : avantage pour l'équipe A », rappelés au retour à la
+sanction. Une version intermédiaire, sans le jugement par la discipline, restait à 51 annonces par match (R12 rouge).
+
+**Effet mesuré.** 10 matchs : 17,5 annonces d'avantage par match, 1,0 retour à la pénalité (avant 2,9).
+100 graines appariées contre P2-75 : points +1,78 ± 1,95, essais +0,16 ± 0,33, pénalités -0,54 ± 0,60, rucks
++0,2 ± 2,9, touches -0,3 ± 0,5. Aucun écart significatif : le changement porte sur ce que voit le joueur.
+
+**Tests.** R12, rouge avant (227 avantages sur 227 sans motif) : toute annonce d'avantage nomme « hors-jeu » et un
+numéro ; au plus 20 par match ; au moins un retour à la sanction sur l'échantillon (la règle s'applique encore).
+
 ### P2-75. Sur téléphone, l'étiquette « arbitre » chevauchait les regroupements
 - **Statut : CORRIGÉ (affichage)**
 - Fichiers concernés : `docs/js/renderer.js` (`etiquetteArbitre`, `dessinerArbitre`), `server/test-parcours-navigateur.js`.
