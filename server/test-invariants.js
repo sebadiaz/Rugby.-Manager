@@ -2222,7 +2222,13 @@ test('loi 10 : les joueurs devant le botteur sont hors-jeu et ne peuvent pas pla
         // 0,9 m devant le point de frappe (donc en jeu) etait compte « devant »
         // (P2-57, graine 4 : chandelle du n°9 frappee a 9,8 m, botteur a 9,7 m).
         const xFrappe = m.xCoupDePiedJeu;
-        const devant = equipe.filter((j) => j !== botteur && (j.x - xFrappe) * botteur.sensAttaque > 1);
+        // Devant AVANT et APRÈS le pas : la frappe a lieu au milieu du pas, et
+        // seule cette double condition garantit « devant au moment de la
+        // frappe ». Mesuré après le pas seulement, un talonneur à 1,0 m — en
+        // jeu à la frappe, quelques centimètres plus loin à la fin du pas —
+        // était compté non marqué (P2-78, graine 4, 198/199).
+        const devant = equipe.filter((j) => j !== botteur && (j.x - xFrappe) * botteur.sensAttaque > 1
+          && (positions.get(j).x - xFrappe) * botteur.sensAttaque > 1);
         if (devant.length > 0) {
           coupsDePied++;
           if (devant.every((j) => j.horsJeuKick > 0)) marques++;

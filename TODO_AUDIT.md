@@ -604,6 +604,16 @@ concédées +1,37 ± 0,58 (19,4 -> 20,8) ; points +0,51 ± 1,66, essais -0,16 ±
 indiscipliné ; entre 0,2 et 2 par match sur 12 matchs ; chaque faute suivie d'une pénalité pour l'équipe qui lance ;
 chaque fautif visiblement sorti de sa ligne des 10 m au coup de sifflet.
 
+**Invariant loi 10 corrigé (artefact de mesure).** « les joueurs devant le botteur sont hors-jeu » a échoué à
+198/199 : un talonneur à 1,0 m du point de frappe. Le moteur marque le hors-jeu avec la position à la frappe ; le test
+mesurait APRÈS le pas complet, quand le joueur avait avancé de quelques centimètres. Le test exige maintenant
+« devant » avant ET après le pas. Mutant « personne n'est marqué » : 0/191, rouge.
+
+**Barrières.** Invariants 70/70 (après correction du test loi 10), 13 suites OK, navigateur 490/0. Calibration
+**12/14, le minimum** : essais 6,3, points 53,6, mêlées 14,8, pénalités 19,6 ; rucks 187,4 et temps de jeu effectif
+31,8 min hors fourchette. Les deux fautes de touche ajoutent des arrêts de jeu (+1,4 pénalité par match, environ une
+minute d'arrêt chacune) : le temps de jeu effectif repasse sous 32 min. C'est désormais la catégorie à surveiller.
+
 ### P2-77. La touche n'avait aucune faute : le lancer pas droit existe (loi 18)
 - **Statut : CORRIGÉ**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_probaLancerPasDroit`, décision au lancer
