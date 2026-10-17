@@ -604,6 +604,14 @@ points est mesurée, mais son mécanisme n'est pas établi.
 absente) ; probabilité plus haute pour un mauvais lanceur ; entre 0,2 et 2 par match sur 12 matchs ; chaque faute
 suivie d'une mêlée introduite par l'adversaire.
 
+**Effet de bord sur M23 (introduction non droite rare).** Avec plus de mêlées, M23 a basculé : 0,83 introduction non
+droite par match pour un seuil de 0,8, soit 5 sur 75 lâchers, dans le bruit d'un taux réglé à 4 %. Le seuil était exprimé
+par match : il est passé PAR LÂCHER (au plus 10 %), sur 8 matchs. Mutant « ancien taux 0,18 » : 21,2 % (21/99),
+toujours rouge.
+
+**Barrières.** Invariants 69/69, 13 suites OK (après correction de M23), navigateur 490/0, calibration 13/14 :
+essais 6,8, points 54,6, mêlées 13,3, pénalités 19,0, temps de jeu effectif 33,1 min ; rucks 191,5 au-dessus de 180.
+
 ### P2-76. Le hors-jeu au ruck : annoncé 52 fois par match sans motif, il devient une faute nommée, jugée sur la discipline
 - **Statut : CORRIGÉ**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_tickRuck` : jugement du hors-jeu ;

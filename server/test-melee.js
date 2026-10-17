@@ -558,7 +558,11 @@ test('M23 — l\'introduction non droite existe mais reste rare, la plupart des 
   // mêlée sur six s'arrêter au lâcher, sans talonnage ni sortie. Depuis les
   // consignes d'arbitrage de 2018, cette faute est très rarement sifflée.
   let nonDroites = 0, introductions = 0;
-  const N = 6;
+  // 8 matchs et un seuil PAR LÂCHER (P2-77) : sur 6 matchs avec un seuil par
+  // match (0,8), le test a basculé (0,83) quand le lancer pas droit a ajouté
+  // des mêlées — 5 fautes sur 75 lâchers, dans le bruit d'un taux de 4 %.
+  // Par lâcher, l'ancien taux (0,18) reste nettement rouge.
+  const N = 8;
   for (let g = 1; g <= N; g++) {
     const m = new RugbyEngine.MatchEngine(g, 4800, null);
     const brut = m.log.bind(m);
@@ -571,7 +575,7 @@ test('M23 — l\'introduction non droite existe mais reste rare, la plupart des 
     for (let i = 0; i < 400000 && m.phase !== 'TERMINE'; i++) m.tick(0.1);
   }
   assert.ok(introductions >= 40, `échantillon trop petit (${introductions} introductions)`);
-  assert.ok(nonDroites / N <= 0.8, `${(nonDroites / N).toFixed(2)} introductions non droites sifflées par match (${nonDroites}/${introductions} lâchers)`);
+  assert.ok(nonDroites / introductions <= 0.10, `${(100 * nonDroites / introductions).toFixed(1)} % des lâchers sifflés non droits (${nonDroites}/${introductions}, ${(nonDroites / N).toFixed(2)} par match)`);
   // La règle existe toujours : un taux forcé la fait siffler.
   const m = new RugbyEngine.MatchEngine(3, 4800, { melee: { introductionNonDroite: 1 } });
   let siffle = false;
