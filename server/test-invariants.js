@@ -2703,6 +2703,39 @@ test('touche : un lancer pas droit existe, rare, et donne une mêlée à l\'adve
   assert.strictEqual(suivisMelee, fautes, `${suivisMelee}/${fautes} lancers pas droits suivis d'une mêlée introduite par l'adversaire`);
 });
 
+test('touche : le hors-jeu existe — un trois-quarts qui part avant la fin de la touche est pénalisé (loi 18)', () => {
+  // CLAUDE.md (rôle 5) : les hors-jeu doivent exister autour des touches. Il
+  // n'y en avait aucun : les trois-quarts défensifs restaient toujours
+  // exactement sur leur ligne des 10 m.
+  const m0 = new MatchEngine(1, 4800);
+  assert.strictEqual(typeof m0._probaHorsJeuTouche, 'function', 'fonction de probabilité absente');
+  assert.ok(m0._probaHorsJeuTouche({ discipline: 30 }) > m0._probaHorsJeuTouche({ discipline: 90 }),
+    'un joueur indiscipliné doit partir plus souvent trop tôt');
+  let fautes = 0, sanctionnees = 0, sortisDeLigne = 0;
+  const N = 12;
+  for (let g = 1; g <= N; g++) {
+    const m = new MatchEngine(g, 4800);
+    let attendue = null;
+    const brut = m.log.bind(m);
+    m.log = (type, team, msg, extra) => {
+      if (type === 'TOUCHE_HORS_JEU') {
+        fautes++;
+        attendue = team;
+        const num = +((msg || '').match(/n°(\d+)/) || [])[1];
+        const eqF = team === 'A' ? m.equipeB : m.equipeA;
+        const j = eqF.find((x) => x.numero === num);
+        const sensF = team === 'A' ? -1 : 1; // l'équipe fautive défend vers son propre camp
+        if (j && m.ruckPoint && (j.x - m.ruckPoint.x) * sensF > -8) sortisDeLigne++;
+      } else if (type === 'PENALITE' && attendue) { if (team === attendue) sanctionnees++; attendue = null; }
+      return brut(type, team, msg, extra);
+    };
+    for (let i = 0; i < 400000 && m.getState().phase !== 'TERMINE'; i++) m.tick(0.1);
+  }
+  assert.ok(fautes / N >= 0.2 && fautes / N <= 2, `${(fautes / N).toFixed(2)} hors-jeu en touche par match`);
+  assert.strictEqual(sanctionnees, fautes, `${sanctionnees}/${fautes} hors-jeu en touche suivis d'une pénalité pour l'équipe qui lance`);
+  assert.strictEqual(sortisDeLigne, fautes, `${sortisDeLigne}/${fautes} fautifs visiblement sortis de leur ligne des 10 m au coup de sifflet`);
+});
+
 console.log(`\n${nbTests} test(s) exécuté(s).`);
 if (process.exitCode) {
   console.error('ECHEC : au moins un invariant violé.');

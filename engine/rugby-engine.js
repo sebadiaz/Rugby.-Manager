@@ -5866,6 +5866,13 @@
       return Math.max(0.01, Math.min(0.08, 0.035 * (1 + (55 - touche) / 50)));
     }
 
+    // Probabilité qu'un trois-quarts défensif parte trop tôt en touche, selon
+    // sa discipline : ~3 % pour un joueur moyen, de 1 à 8 %.
+    _probaHorsJeuTouche(joueur) {
+      const discipline = typeof joueur.discipline === 'number' ? joueur.discipline : 55;
+      return Math.max(0.01, Math.min(0.08, 0.03 * (1 + (60 - discipline) / 40)));
+    }
+
     _facteurContexteDrop(equipe) {
       const adv = equipe === 'A' ? 'B' : 'A';
       const ecart = Math.abs(this.score[equipe] - this.score[adv]);
@@ -6102,6 +6109,13 @@
         const xBacks = pt.x - sens * this.cfg.touche.offsideNonParticipants;
         backs.forEach((j, k) => {
           const cyB = yLigne5 + versCentre * (8 + k * 6);
+          // Le trois-quarts jugé hors-jeu (cf. _tickTouche) part TROP TÔT : il
+          // monte vers l'alignement pendant le vol du ballon, à pleine vitesse.
+          if (this.toucheLancer && this.toucheLancer.horsJeu === j) {
+            const xRush = pt.x - sens * 2;
+            avancer(j, xRush - j.x, cyB - j.y, dt, vitesseMs(j));
+            return;
+          }
           avancer(j, xBacks - j.x, cyB - j.y, dt, vitesseMs(j) * 0.85);
         });
       };
@@ -6210,6 +6224,23 @@
       // ballon (cf. _tickToucheLancer). Touche perdue sur son lancer, sans
       // turnover compté : c'est une mêlée, pas un ballon volé.
       const pasDroit = this.rng() < this._probaLancerPasDroit(this.porteur || {});
+      // Hors-jeu en touche (loi 18) : un trois-quarts défensif part avant la fin
+      // de la touche. Jugé une fois par lancer, selon sa discipline ; il SORT
+      // visiblement de sa ligne des 10 m pendant le vol (cf. _touchePlacerLignes)
+      // et l'arbitre siffle à la réception (cf. _tickToucheLancer).
+      let horsJeu = null;
+      if (!pasDroit && !vole) {
+        const backsDef = eqAdverse.filter(j => j.numero >= 10 && j.sinBin <= 0 && j.auSol === 0);
+        if (backsDef.length) {
+          const cand = backsDef[Math.floor(this.rng() * backsDef.length)];
+          if (this.rng() < this._probaHorsJeuTouche(cand)) {
+            horsJeu = cand;
+            // Déjà sur les appuis, il part AU LANCER : sans élan, il ne faisait
+            // qu'un mètre pendant les 0,8 s de vol et la faute ne se voyait pas.
+            horsJeu.vitesseCourante = vitesseMs(horsJeu);
+          }
+        }
+      }
       const gagnant = vole ? adversaire : lanceur;
       if (!pasDroit) {
         this.stats[gagnant].lineoutsGagnes++;
@@ -6242,7 +6273,7 @@
       // long de l'alignement au lieu d'arriver dans les mains du sauteur.
       const decal = pasDroit ? (this.rng() < 0.5 ? -1 : 1) * (1.5 + this.rng()) : 0;
       this.toucheLancer = { sauteur, gagnant, vole, lanceur, eqAdverse, fromX, fromY, timer: 0, duree: 0.8,
-        pasDroit, decal, lanceurNumero: this.porteur ? this.porteur.numero : null };
+        pasDroit, decal, horsJeu, lanceurNumero: this.porteur ? this.porteur.numero : null };
       this.ballonEnVol = true;
       this.ballonVolX = fromX;
       this.ballonVolY = fromY;
@@ -6286,6 +6317,15 @@
       this.toucheLancer = null;
       this.possession = L.gagnant;
       this.porteur = L.sauteur;
+      if (L.horsJeu) {
+        // Sifflé à la réception : pénalité pour l'équipe qui lançait, sur la
+        // ligne des 15 m à la marque de touche.
+        const fautive = L.lanceur === 'A' ? 'B' : 'A';
+        this.log('TOUCHE_HORS_JEU', L.lanceur, `Hors-jeu en touche du n°${L.horsJeu.numero} (equipe ${fautive}) : penalite pour l'equipe ${L.lanceur}`);
+        const yPen = L.fromY <= LARGEUR / 2 ? 15 : LARGEUR - 15;
+        this._traiterPenalite(L.lanceur, { x: this.toucheLanceurX != null ? this.toucheLanceurX : L.fromX, y: yPen });
+        return;
+      }
       if (L.vole) {
         this.log('TURNOVER', L.gagnant, `Touche volee, l'equipe ${L.gagnant} recupere le ballon`);
       } else {

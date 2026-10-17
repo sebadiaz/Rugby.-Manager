@@ -580,6 +580,30 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-78. Le hors-jeu en touche existe : un trois-quarts qui part au lancer est pénalisé
+- **Statut : CORRIGÉ**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_probaHorsJeuTouche`, décision au lancer,
+  course du fautif dans `_touchePlacerLignes`, sifflet dans `_tickToucheLancer`), `docs/js/constants.js`,
+  `server/test-invariants.js`.
+
+**Constat.** CLAUDE.md (rôle 5) exige des hors-jeu autour des touches. Il n'y en avait aucun : les trois-quarts
+défensifs restaient toujours exactement sur leur ligne des 10 m (cf. P2-77, qui n'avait traité que le lancer).
+
+**Correction.** Au lancer d'une touche ni volée ni pas droite, un trois-quarts défensif tiré au sort peut partir trop
+tôt, selon sa discipline : 0,03 × (1 + (60 - discipline) / 40), borné entre 1 % et 8 %. Il part AU LANCER,
+déjà lancé, et monte vers l'alignement pendant le vol du ballon. L'arbitre siffle à la réception : « Hors-jeu en
+touche du n°12 (équipe B) : pénalité pour l'équipe A », sur la ligne des 15 m à la marque. Une première version le
+faisait partir de l'arrêt : avec l'accélération progressive, il ne faisait qu'un mètre en 0,8 s et la faute ne se
+voyait pas (test rouge : 0 fautif sur 5 sorti de sa ligne). Il est maintenant à 4-5 m de la marque au coup de
+sifflet, au lieu de 10 m.
+
+**Effet mesuré (100 graines appariées contre P2-77).** 0,65 ± 0,08 hors-jeu en touche par match ; pénalités
+concédées +1,37 ± 0,58 (19,4 -> 20,8) ; points +0,51 ± 1,66, essais -0,16 ± 0,25, touches et rucks inchangés.
+
+**Tests.** « touche : le hors-jeu existe » : rouge avant (fonction absente) ; probabilité plus haute pour un joueur
+indiscipliné ; entre 0,2 et 2 par match sur 12 matchs ; chaque faute suivie d'une pénalité pour l'équipe qui lance ;
+chaque fautif visiblement sorti de sa ligne des 10 m au coup de sifflet.
+
 ### P2-77. La touche n'avait aucune faute : le lancer pas droit existe (loi 18)
 - **Statut : CORRIGÉ**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_probaLancerPasDroit`, décision au lancer
