@@ -580,6 +580,26 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-81. À chaque mêlée, le ballon sautait dans les mains du 9 : il le rejoint désormais à vue
+- **Statut : CORRIGÉ (affichage)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_formerMelee`), `server/test-melee.js` (M24).
+
+**Constat (relevé des sauts, P2-80).** À la formation de chaque mêlée (~8 par match), le ballon sautait de ~11 m (pire
+cas mesuré : 35,5 m) dans les mains du 9, encore loin de la marque. P2-64 créait le ballon directement « dans ses
+mains » (état MAINS_9).
+
+**Correction.** Le ballon part de là où il était affiché juste avant la mêlée. Après un vol (coup d'envoi trop court,
+lancer pas droit, en-avant sous une chandelle), c'est le point de chute, que le moteur venait de déclarer « fin de
+vol ». Il rejoint le 9 à vitesse de passe, grâce à l'état RETOUR qui existait déjà pour les mêlées à refaire. Une
+première version lisait la position via `getState()` dans tous les cas : 52 mêlées sur 60 propres seulement, car après
+un vol le ballon y était déjà « dans les mains » du dernier porteur.
+
+**Effet mesuré (100 graines appariées contre P2-80).** Matchs **strictement identiques** (écart 0,00 sur points,
+essais, rucks, temps de jeu, pénalités) : le changement ne touche que l'affichage du ballon.
+
+**Tests.** M24, rouge avant (13/60 mêlées sans saut, pire 35,5 m) : au moins 95 % des mêlées sans saut du ballon de plus
+de 3 m entre la formation et l'introduction. Vert : plus aucun saut relevé sur 4 matchs.
+
 ### P2-80. Le coup d'envoi se voit enfin, et sa mise en place n'est plus comptée comme du jeu
 - **Statut : CORRIGÉ** (le temps de jeu effectif devient exact, et sort de sa fourchette)
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_tickCoupEnvoi`, compteur de temps de jeu
@@ -620,6 +640,9 @@ mise en place n'est pas du temps de jeu effectif » : rouge avant (3 014 pas sur
 **Reste (vu par le même relevé).** Coup d'envoi trop court -> mêlée : le ballon saute dans les mains du 9, encore
 loin de la marque. Même défaut à chaque mêlée (~8 par match, ~11 m) : il vient de P2-64, et c'est le prochain
 correctif.
+
+**Barrières.** Invariants 73/73, 13 suites OK, navigateur 490/0, calibration 13/14 (temps de jeu effectif 29,5 min
+hors fourchette, rucks 173,8 dans la fourchette sur les graines de la CI).
 
 ### P2-79. La pénalité tapée en touche se voit : le buteur frappe, le ballon vole jusqu'à la touche
 - **Statut : CORRIGÉ**

@@ -585,4 +585,31 @@ test('M23 — l\'introduction non droite existe mais reste rare, la plupart des 
   assert.ok(siffle, 'une introduction non droite doit pouvoir être sifflée (taux forcé à 1)');
 });
 
+test('M24 — à la formation de la mêlée, le ballon rejoint le 9 à vue, sans téléportation', () => {
+  // Relevé des sauts du ballon (P2-80) : à chaque mêlée (~8 par match), le
+  // ballon sautait de ~11 m (jusqu'à 15 m) dans les mains du 9, encore loin de
+  // la marque — il était créé directement « dans ses mains » (P2-64).
+  let melees = 0, propres = 0, pire = 0;
+  for (let g = 1; g <= 4; g++) {
+    const m = new RugbyEngine.MatchEngine(g, 4800, null);
+    let prev = null, prevPhase = null, suivi = null;
+    for (let i = 0; i < 400000 && m.phase !== 'TERMINE'; i++) {
+      m.tick(0.1);
+      const st = m.getState();
+      const p = { x: st.ballon.x, y: st.ballon.y };
+      if (m.phase === 'MELEE' && prevPhase !== 'MELEE') suivi = { saut: 0 };
+      if (suivi && prev) suivi.saut = Math.max(suivi.saut, Math.hypot(p.x - prev.x, p.y - prev.y));
+      if (suivi && (m.phase !== 'MELEE' || (m.melee && m.melee.etat === 'MELEE_INTRODUCTION'))) {
+        melees++;
+        if (suivi.saut < 3) propres++;
+        pire = Math.max(pire, suivi.saut);
+        suivi = null;
+      }
+      prev = p; prevPhase = m.phase;
+    }
+  }
+  assert.ok(melees >= 20, `échantillon trop petit (${melees} mêlées)`);
+  assert.ok(propres / melees >= 0.95, `${propres}/${melees} mêlées sans saut du ballon > 3 m avant l'introduction (pire : ${pire.toFixed(1)} m)`);
+});
+
 console.log(`\n${nbTests} test(s) exécuté(s).`);

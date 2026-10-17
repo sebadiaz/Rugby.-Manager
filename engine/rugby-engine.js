@@ -5062,6 +5062,18 @@
     // -> "Bind" -> "Set" -> introduction -> contestation -> sortie de balle),
     // exactement comme _formerMaul/_tickMaul pour le maul.
     _formerMelee(equipeIntroduction, position) {
+      // Où le ballon est-il AFFICHÉ juste avant la mêlée (P2-81) ? C'est de là
+      // qu'il rejoint le 9, à vue (cf. état RETOUR plus bas).
+      // Après un VOL (coup d'envoi trop court, lancer pas droit, en-avant sous
+      // une chandelle), le vol vient d'être déclaré terminé : le ballon est au
+      // point de chute (ballonVolX/Y), pas dans les mains du dernier porteur.
+      let ballonAvant = null;
+      const apresVol = (this.phase === 'COUP_ENVOI' || this.phase === 'TOUCHE' || this.phase === 'COUP_DE_PIED_JEU')
+        && this.ballonVolX != null;
+      if (apresVol) ballonAvant = { x: this.ballonVolX, y: this.ballonVolY };
+      else {
+        try { const b = this.getState().ballon; ballonAvant = { x: b.x, y: b.y }; } catch (e) { ballonAvant = null; }
+      }
       this.stats[equipeIntroduction].scrums++;
       this.log('MELEE', equipeIntroduction, `Melee, introduction pour l'equipe ${equipeIntroduction}`);
       const px = Math.max(5, Math.min(LONGUEUR - 5, position.x));
@@ -5105,8 +5117,13 @@
       // reorganiser vers le point plutot que d'apparaitre deja en place. Le
       // delai "Crouch" s'adapte a la distance du plus excentre, plafonne pour
       // ne jamais bloquer le match (cf. _capFormationMelee).
-      this.melee.balle = { etat: 'MAINS_9', x: this.porteur.x, y: this.porteur.y, h: 0 };
-      this._meleeContact('BALLON_AU_9', this.porteur);
+      // Le ballon n'est pas créé « dans les mains » du 9, encore loin de la
+      // marque : il part de là où il était et le rejoint à vitesse de passe
+      // (état RETOUR, cf. _meleePositionnerBallon) — avant, il sautait de ~11 m
+      // (jusqu'à 35 m) à chaque mêlée (P2-81, test M24). Le contact
+      // BALLON_AU_9 est tracé quand il arrive réellement dans ses mains.
+      const depart = ballonAvant || { x: this.porteur.x, y: this.porteur.y };
+      this.melee.balle = { etat: 'RETOUR', x: depart.x, y: depart.y, h: 0 };
       this.melee.capFormation = this._capFormationMelee(px, py);
       this.ruckPoint = { x: px, y: py };
       this.contestants = [];
