@@ -580,6 +580,28 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-83. Pourquoi le jeu courant est trop rapide : le porteur n'a que 1,5 s avant le contact
+- **Statut : ENQUÊTE — aucun changement du moteur**
+
+**But.** Étape 1 du rééquilibrage de P2-82 : ramener le tempo du jeu courant (6,1 rucks par minute de jeu) vers le réel
+(5,2), avant de rendre aux touches leur vraie durée.
+
+**Essai 1, sans effet.** Défense alignée plus loin du ruck (`defense.reculRuck` 3 -> 5 -> 7 m), touche à 25 s, graines
+1-40 : rucks 6,10 / 6,16 / 6,10 par minute, durée ballon en main 2,96 s dans les trois cas. Ce réglage ne fixe pas le
+moment du contact.
+
+**Décomposition (5 matchs, 526 séquences ruck -> ruck).** Ballon en main 2,6 s en médiane (p25 1,9 ; p75 3,8). Sortie du
+ruck -> première passe du 9 : 0,3 s. Dernière réception -> contact : **1,5 s** (p25 0,9 ; p75 2,0). Une passe par séquence
+en médiane. Le cycle réel décrit dans `docs/ANALYSE_MATCH_REEL.md` est d'environ 11,5 s (ruck 3-4 s, circulation 3-4 s,
+course et contact 3-4 s). Le ruck du moteur est au bon rythme (3,8 s), mais circulation et course tiennent en 2,6 s au
+lieu de 6 à 8 s.
+
+**Pourquoi ce n'est pas un réglage.** La défense arrive trop vite, et la ralentir a déjà été essayé (balayage de
+`rampeMontee`) : les essais explosaient, parce qu'une défense lente laisse passer. Ce qu'il faudrait modéliser : une
+défense qui monte vite en LIGNE, donc sans trous, mais qui part de plus loin, et une attaque alignée plus en
+profondeur. La course reste alors longue sans ouvrir d'espaces. C'est un chantier de conception (placement défensif et
+profondeur d'attaque), à mener en plusieurs patchs mesurés en apparié.
+
 ### P2-82. Où se perdent les 5 minutes de jeu : la touche dure deux fois trop longtemps, et cachait un jeu trop rapide
 - **Statut : ENQUÊTE — aucun changement du moteur ; références ajoutées à `docs/ANALYSE_MATCH_REEL.md`**
 
