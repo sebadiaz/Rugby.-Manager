@@ -580,6 +580,29 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-79. La pénalité tapée en touche se voit : le buteur frappe, le ballon vole jusqu'à la touche
+- **Statut : CORRIGÉ**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_accorderPenaliteTouche`,
+  `_tickPenaliteTouche`, `_tickTouche`, `_touchePlacerLignes`), `docs/js/constants.js`, `server/test-invariants.js`.
+
+**Constat.** Environ 10 fois par match, « Pénalité, équipe A joue en touche » puis le ballon se retrouvait directement
+sur la marque de touche, 22 à 40 m plus loin : personne ne frappait, aucun ballon ne volait. Mesuré : 49 s du coup
+de sifflet au lancer, exactement comme une touche ordinaire, donc le coup de pied ne prenait aucun temps. (La
+recommandation précédente, « raccourcir la mise en place de la pénalité en touche », était fausse : la séquence
+n'est pas trop longue. Retirée.)
+
+**Correction.** Le buteur désigné court jusqu'à la marque de pénalité, où le ballon est posé. Il frappe (« Le n°10
+tape la pénalité en touche »), et le ballon décrit une cloche de 2,2 s jusqu'à la marque de touche. La touche se
+forme pendant ce temps ; le lancer reste soumis au même délai minimal, donc la durée totale ne change pas.
+
+**Effet mesuré (100 graines appariées contre P2-78).** Points +0,80 ± 0,59, essais +0,07 ± 0,10, pénalités, touches
+et rucks inchangés : le déroulement est le même, seul le spectacle change. Capture navigateur : ballon en l'air entre
+le n°10 et la touche, annonce de la frappe dans le fil.
+
+**Tests.** « pénalité en touche : le buteur frappe depuis la marque et le ballon vole jusqu'à la touche » : rouge avant
+(0/27 départs de la marque) ; pour chaque pénalité en touche, le ballon part de la marque, ne saute jamais de plus de
+3 m en 0,1 s, et vole réellement. Tous les invariants de touche existants restent verts.
+
 ### P2-78. Le hors-jeu en touche existe : un trois-quarts qui part au lancer est pénalisé
 - **Statut : CORRIGÉ**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_probaHorsJeuTouche`, décision au lancer,

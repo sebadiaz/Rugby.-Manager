@@ -2742,6 +2742,45 @@ test('touche : le hors-jeu existe — un trois-quarts qui part avant la fin de l
   assert.strictEqual(sortisDeLigne, fautes, `${sortisDeLigne}/${fautes} fautifs visiblement sortis de leur ligne des 10 m au coup de sifflet`);
 });
 
+test('pénalité en touche : le buteur frappe depuis la marque et le ballon vole jusqu\'à la touche', () => {
+  // Constat : ~10 fois par match, « Pénalité, équipe A joue en touche » puis le
+  // ballon apparaissait directement dans les mains du talonneur, 22 à 40 m
+  // plus loin. Personne ne frappait, aucun ballon ne volait vers la touche.
+  let cas = 0, departMarque = 0, sansSaut = 0, enVol = 0;
+  for (const seed of [1, 2, 3, 4]) {
+    const m = new MatchEngine(seed, 4800);
+    let suivi = null;
+    const orig = m._accorderPenaliteTouche.bind(m);
+    m._accorderPenaliteTouche = (eq, pos) => { suivi = { marque: { x: pos.x, y: pos.y }, pts: [], vol: false }; return orig(eq, pos); };
+    const brut = m.log.bind(m);
+    m.log = (type, team, msg, extra) => {
+      if (type === 'TOUCHE_LANCER' && suivi) {
+        cas++;
+        const p0 = suivi.pts[0];
+        if (p0 && Math.hypot(p0.x - suivi.marque.x, p0.y - suivi.marque.y) < 3) departMarque++;
+        let saut = 0;
+        for (let i = 1; i < suivi.pts.length; i++) saut = Math.max(saut, Math.hypot(suivi.pts[i].x - suivi.pts[i - 1].x, suivi.pts[i].y - suivi.pts[i - 1].y));
+        if (saut < 3) sansSaut++;
+        if (suivi.vol) enVol++;
+        suivi = null;
+      }
+      return brut(type, team, msg, extra);
+    };
+    for (let i = 0; i < 400000 && m.getState().phase !== 'TERMINE'; i++) {
+      m.tick(0.1);
+      if (suivi && m.phase === 'TOUCHE') {
+        const b = m.getState().ballon;
+        suivi.pts.push({ x: b.x, y: b.y });
+        if (b.enVol && (b.hauteur || 0) > 0.3) suivi.vol = true;
+      }
+    }
+  }
+  assert.ok(cas >= 15, `échantillon trop petit (${cas} pénalités en touche)`);
+  assert.strictEqual(departMarque, cas, `${departMarque}/${cas} pénalités en touche où le ballon part de la marque`);
+  assert.strictEqual(sansSaut, cas, `${sansSaut}/${cas} pénalités en touche sans téléportation du ballon (> 3 m en 0,1 s)`);
+  assert.strictEqual(enVol, cas, `${enVol}/${cas} pénalités en touche où le ballon vole réellement vers la touche`);
+});
+
 console.log(`\n${nbTests} test(s) exécuté(s).`);
 if (process.exitCode) {
   console.error('ECHEC : au moins un invariant violé.');

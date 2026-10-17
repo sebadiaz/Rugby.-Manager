@@ -1062,6 +1062,7 @@
       // décidée ; null hors lancer. Évite que le ballon "saute" instantanément
       // de la ligne de touche jusque dans l'alignement (cf. _tickToucheLancer).
       this.toucheLancer = null;
+      this.penTouche = null;
       // Vol visuel d'une passe en jeu courant : le ballon décrit un court arc
       // du passeur au receveur au lieu de "sauter" instantanément. Purement
       // visuel (la possession change tout de suite côté logique), null hors
@@ -1589,6 +1590,7 @@
       this.phase = 'TOUCHE';
       this.timerPhase = 0;
       this.toucheLancer = null;
+      this.penTouche = null;
       // Position des deux lignes de touche (loi 18) : avants au centre dans le
       // couloir, le reste écarté, comme préparation à un vrai contest (résolu
       // dans _tickTouche) plutôt qu'un simple timer sans enjeu.
@@ -1922,6 +1924,50 @@
       // gain de terrain du coup de pied est important.
       this.toucheLanceurX = xLanceur;
       this.toucheCapFormation = this._capFormationTouche(xLanceur);
+      // LE COUP DE PIED EN TOUCHE SE VOIT (P2-79). Avant, le ballon passait
+      // directement de la marque de pénalité à la marque de touche, 22 à 40 m
+      // plus loin, sans que personne ne frappe. Le buteur rejoint la marque en
+      // courant, frappe, et le ballon vole jusqu'à la touche (cf.
+      // _tickPenaliteTouche). Durée totale de la touche inchangée : le lancer
+      // reste soumis au même délai minimal (cf. _tickTouche).
+      const buteurFrappe = buteurTouche || eqLanceur.find(j => j.numero === 10 && j.sinBin <= 0) || null;
+      this.penTouche = buteurFrappe ? {
+        etape: 'APPROCHE', buteur: buteurFrappe, equipe, t: 0,
+        marque: { x: position.x, y: position.y }, cible: { x: xLanceur, y: yLanceur },
+      } : null;
+      if (this.penTouche) {
+        this.ballonEnVol = true;
+        this.ballonVolX = position.x; this.ballonVolY = position.y; this.ballonVolHauteur = 0;
+      }
+    }
+
+    // Pénalité tapée en touche, à vue : le buteur court jusqu'à la marque (le
+    // ballon y est posé), frappe, et le ballon décrit une cloche jusqu'à la
+    // marque de touche, où l'affichage le pose ensuite (cf. getState, TOUCHE).
+    _tickPenaliteTouche(dt) {
+      const P = this.penTouche;
+      P.t += dt;
+      if (P.etape === 'APPROCHE') {
+        const b = P.buteur;
+        avancer(b, P.marque.x - b.x, P.marque.y - b.y, dt, vitesseMs(b));
+        this.ballonVolX = P.marque.x; this.ballonVolY = P.marque.y; this.ballonVolHauteur = 0;
+        // Plafond : un buteur très éloigné ne bloque jamais la touche.
+        if (distance(b, P.marque) < 1.5 || P.t > 10) {
+          P.etape = 'VOL'; P.t = 0;
+          this.log('PENALITE_TOUCHE_FRAPPE', P.equipe, `Le n°${b.numero} tape la penalite en touche`);
+        }
+        return;
+      }
+      const duree = 2.2;
+      const k = Math.min(1, P.t / duree);
+      this.ballonVolX = P.marque.x + (P.cible.x - P.marque.x) * k;
+      this.ballonVolY = P.marque.y + (P.cible.y - P.marque.y) * k;
+      this.ballonVolHauteur = 1.2 * Math.sin(Math.PI * k);
+      if (k >= 1) {
+        this.ballonEnVol = false;
+        this.ballonVolHauteur = 0;
+        this.penTouche = null;
+      }
     }
 
     // À la sortie d'un regroupement (ruck/maul/mêlée/touche), les joueurs qui
@@ -6111,6 +6157,8 @@
           const cyB = yLigne5 + versCentre * (8 + k * 6);
           // Le trois-quarts jugé hors-jeu (cf. _tickTouche) part TROP TÔT : il
           // monte vers l'alignement pendant le vol du ballon, à pleine vitesse.
+          // Le buteur d'une pénalité en touche court d'abord à la marque.
+          if (this.penTouche && this.penTouche.etape === 'APPROCHE' && this.penTouche.buteur === j) return;
           if (this.toucheLancer && this.toucheLancer.horsJeu === j) {
             const xRush = pt.x - sens * 2;
             avancer(j, xRush - j.x, cyB - j.y, dt, vitesseMs(j));
@@ -6125,6 +6173,13 @@
 
     _tickTouche(dt) {
       this.timerPhase += dt;
+      // Pénalité tapée en touche : le coup de pied se joue d'abord, à vue, pendant
+      // que les joueurs se placent (cf. _tickPenaliteTouche).
+      if (this.penTouche) {
+        this._tickPenaliteTouche(dt);
+        this._touchePlacerLignes(dt);
+        return;
+      }
       // Si le ballon est en train de voler du lanceur vers le sauteur, on
       // anime ce vol jusqu'à la réception (cf. _tickToucheLancer) plutôt que
       // de résoudre la touche dans le même tick.
