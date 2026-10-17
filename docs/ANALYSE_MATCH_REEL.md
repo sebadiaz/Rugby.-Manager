@@ -31,6 +31,39 @@ stats d'équipe du match + agrégation des 46 feuilles de stats individuelles).
 | Rucks recyclés 3-6 s | 21-33 % | 9 % | 🔴 quasi absents |
 | Entrées dans les 22 m | 21 (33 % → essai) | *non suivi* | ⚪ à instrumenter |
 
+## Durées réelles des arrêts de jeu (références sourcées, ajout P2-82)
+
+| Référence | Valeur | Définition | Source |
+|---|---|---|---|
+| Mêlée, Coupe du monde 2019 | ~80 s en moyenne, 13,3 mêlées par match | du coup de sifflet à la sortie du ballon | World Rugby, rapporté par [The 42](https://www.the42.ie/scrums-time-taken-world-rugby-5049820-Mar2020/) |
+| Mêlée, Irlande-Géorgie 2020 | 67 s (toutes), un peu moins de 59 s sans mêlée à refaire | du premier coup de sifflet à l'introduction | [Irish Times](https://www.irishtimes.com/sport/rugby/rugby-stats-all-scrum-and-no-play-makes-rugby-a-very-unbalanced-affair-1.4425830) |
+| Touche, tests de juillet 2022 | ~25 s en moyenne, ~27 touches par match ; mêlée ~65 s, ~11 par match ; ballon en jeu ~34 min | de la sortie du ballon au lancer | The Roar et Stats Perform ; pages non lisibles directement (403), chiffres concordants dans deux résumés de recherche : à confirmer sur la source |
+| Loi 2025 | mise en place d'une touche limitée à 30 s, comme la mêlée | règle d'arbitrage | [World Rugby, mises à jour 2025](https://resources.worldrugby-rims.pulselive.com/worldrugby/document/2025/03/21/f1e9a2d3-0510-4b03-b6e2-9002e8642f99/11.-241209-TE-Conf-Law-Updates-inc-Global-Law-Trials-2025.pdf) |
+| Ballon en jeu, Coupe du monde 2023 | 34 min 18 s | | [Stats Perform](https://www.statsperform.com/insights/the-evolution-of-rugby-a-statistical-analysis/) |
+
+**Moteur (P2-81).** Mêlée ~58 s de la formation à l'introduction (plausible, en bas de la fourchette réelle). Touche :
+au moins **49 s** imposées (`_tickTouche`, `dureeMin`). C'est deux fois la référence ; le commentaire du code disait
+« 40 à 60 s », sans source.
+
+**Expérience (100 graines appariées, P2-82, non livrée).** Touche ramenée à 25 s :
+
+| | 49 s (actuel) | 25 s | Réel |
+|---|---|---|---|
+| Ballon en jeu (min) | 30,0 | **34,5** | ~34 |
+| Touches | 23,3 | **28,0** | ~27 |
+| Mêlées | 14,5 | 15,9 | 11 à 13,3 |
+| Rucks | 183 | 210 | 181 (France-Irlande) |
+| Rucks par minute de jeu | 6,1 | 6,1 | 5,2 |
+| Passes | 351 | 404 | 347 |
+| Essais | 6,8 | 7,6 | 7 |
+| Points | 56,7 | 63,0 | 50 |
+
+**Lecture.** Avec la vraie durée des touches, le temps de jeu et le nombre de touches deviennent justes. Mais le
+moteur produit alors **trop d'actions par minute de jeu** (rucks +17 %, passes +17 %, mêlées au-dessus du réel), et
+la calibration échoue. Les 49 s de touche masquaient ce tempo trop rapide. Ordre de travail : d'abord ramener le
+tempo du jeu courant (actions par minute) au réel, ensuite rendre aux touches leur vraie durée, et mesurer chaque
+étape en apparié sur au moins 100 graines.
+
 ## Diagnostic
 
 Les **taux unitaires sont désormais bien calibrés** (score, essais, coups de

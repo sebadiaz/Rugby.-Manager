@@ -580,6 +580,26 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-82. Où se perdent les 5 minutes de jeu : la touche dure deux fois trop longtemps, et cachait un jeu trop rapide
+- **Statut : ENQUÊTE — aucun changement du moteur ; références ajoutées à `docs/ANALYSE_MATCH_REEL.md`**
+
+**Sources.** Touche ~25 s de la sortie au lancer, ~27 par match (tests 2022, The Roar / Stats Perform, chiffres
+concordants mais pages non lisibles directement). Mise en place limitée à 30 s par la loi depuis 2025 (World Rugby).
+Mêlée 59 à 80 s (World Rugby, Coupe du monde 2019 ; Irish Times). Ballon en jeu 34 min 18 s (Coupe du monde 2023).
+Tableau et liens dans `docs/ANALYSE_MATCH_REEL.md`.
+
+**Moteur.** Touche : au moins 49 s (~10 min de temps mort en trop par match). Mêlée ~58 s : plausible.
+
+**Expérience (touche à 25 s, 100 graines appariées, non livrée).** Ballon en jeu 30,0 -> 34,5 min (réel ~34) et
+touches 23,3 -> 28,0 (réel ~27) deviennent justes. Mais rucks 183 -> 210 (+27,4 ± 2,8), passes 351 -> 404, mêlées
+14,5 -> 15,9, essais 6,8 -> 7,6 (blocs de 20 graines jusqu'à 8,3), points 56,7 -> 63,0 (jusqu'à 65,0). La
+calibration échouerait (mêlées, rucks ; essais et points à la borne).
+
+**Conclusion.** Les 49 s de touche compensaient un jeu courant trop rapide : 6,1 rucks par minute de jeu (réel 5,2),
+et des passes au-delà du réel par minute (déjà relevé en P2-42). Pour avoir des touches réalistes, il faut d'abord
+ralentir le tempo du jeu courant. Rééquilibrage en deux temps, chacun mesuré en apparié ; pas de retouche isolée de
+la touche.
+
 ### P2-81. À chaque mêlée, le ballon sautait dans les mains du 9 : il le rejoint désormais à vue
 - **Statut : CORRIGÉ (affichage)**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_formerMelee`), `server/test-melee.js` (M24).
