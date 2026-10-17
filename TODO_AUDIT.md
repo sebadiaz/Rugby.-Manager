@@ -600,6 +600,9 @@ essais, rucks, temps de jeu, pénalités) : le changement ne touche que l'affich
 **Tests.** M24, rouge avant (13/60 mêlées sans saut, pire 35,5 m) : au moins 95 % des mêlées sans saut du ballon de plus
 de 3 m entre la formation et l'introduction. Vert : plus aucun saut relevé sur 4 matchs.
 
+**Barrières.** Invariants 73/73, 13 suites OK, navigateur 490/0, calibration 13/14 (identique à P2-80 : seul le temps
+de jeu effectif, 29,5 min, est hors fourchette).
+
 ### P2-80. Le coup d'envoi se voit enfin, et sa mise en place n'est plus comptée comme du jeu
 - **Statut : CORRIGÉ** (le temps de jeu effectif devient exact, et sort de sa fourchette)
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_tickCoupEnvoi`, compteur de temps de jeu
