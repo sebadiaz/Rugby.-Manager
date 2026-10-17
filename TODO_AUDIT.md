@@ -580,6 +580,30 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-77. La touche n'avait aucune faute : le lancer pas droit existe (loi 18)
+- **Statut : CORRIGÉ**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_probaLancerPasDroit`, décision au lancer
+  dans `_tickTouche`, sifflet dans `_tickToucheLancer`), `docs/js/constants.js` (icône, bandeau),
+  `server/test-invariants.js`.
+
+**Constat.** Aucune faute n'était possible en touche : le lancer était toujours parfait, quelle que soit la qualité
+du lanceur. CLAUDE.md (rôle 5) demande aussi des hors-jeu autour des touches ; ce point reste à faire.
+
+**Correction.** Au lancer, probabilité de lancer pas droit selon la compétence en touche du lanceur :
+0,035 × (1 + (55 - touche) / 50), bornée entre 1 % et 8 % (~3,5 % pour un talonneur moyen). Le ballon part
+VISIBLEMENT de travers (1,5 à 2,5 m le long de l'alignement), puis l'arbitre siffle : « Lancer pas droit du n°2
+(équipe A) : mêlée pour l'équipe B », mêlée sur la ligne des 15 m à la marque. Touche comptée perdue sur son lancer,
+sans turnover. Le lanceur est le talonneur dans 237 lancers sur 238 (10 matchs).
+
+**Effet mesuré (200 graines appariées contre P2-76).** Lancers pas droits 0,90 ± 0,07 par match, mêlées
++0,72 ± 0,30, points -2,85 ± 1,31, essais -0,32 ± 0,22 (graines 1-100 : -4,35 ± 1,81 ; 101-200 : -1,35 ± 1,89).
+Une faute aussi rare ne retire directement que ~0,1 touche dans les 22 adverses par match. La baisse des
+points est mesurée, mais son mécanisme n'est pas établi.
+
+**Tests.** « touche : un lancer pas droit existe, rare, et donne une mêlée à l'adversaire » : rouge avant (fonction
+absente) ; probabilité plus haute pour un mauvais lanceur ; entre 0,2 et 2 par match sur 12 matchs ; chaque faute
+suivie d'une mêlée introduite par l'adversaire.
+
 ### P2-76. Le hors-jeu au ruck : annoncé 52 fois par match sans motif, il devient une faute nommée, jugée sur la discipline
 - **Statut : CORRIGÉ**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_tickRuck` : jugement du hors-jeu ;

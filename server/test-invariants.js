@@ -2676,6 +2676,33 @@ test('drop-goal : une décision de buteur en fin de match serré, pas un tirage 
   assert.strictEqual(parNonButeur, 0, `${parNonButeur} drop(s) tenté(s) par un joueur qui n'est pas buteur`);
 });
 
+test('touche : un lancer pas droit existe, rare, et donne une mêlée à l\'adversaire (loi 18)', () => {
+  // Constat : la touche n'avait AUCUNE faute — ni lancer pas droit, ni
+  // hors-jeu. Le lancer était toujours parfait, quelle que soit la qualité
+  // du lanceur, et la touche ne pouvait jamais se retourner sur une faute.
+  const m0 = new MatchEngine(1, 4800);
+  assert.strictEqual(typeof m0._probaLancerPasDroit, 'function', 'fonction de probabilité absente');
+  const pBon = m0._probaLancerPasDroit({ touche: 95 }), pMauvais = m0._probaLancerPasDroit({ touche: 20 });
+  assert.ok(pMauvais > pBon && pBon > 0, `un lanceur médiocre doit lancer plus souvent de travers (${pMauvais} contre ${pBon})`);
+  let fautes = 0, suivisMelee = 0, touches = 0;
+  const N = 12;
+  for (let g = 1; g <= N; g++) {
+    const m = new MatchEngine(g, 4800);
+    let attendue = null;
+    const brut = m.log.bind(m);
+    m.log = (type, team, msg, extra) => {
+      if (type === 'TOUCHE_LANCER') touches++;
+      if (type === 'TOUCHE_PAS_DROIT') { fautes++; attendue = team === 'A' ? 'B' : 'A'; }
+      else if (type === 'MELEE' && attendue) { if (team === attendue) suivisMelee++; attendue = null; }
+      return brut(type, team, msg, extra);
+    };
+    for (let i = 0; i < 400000 && m.getState().phase !== 'TERMINE'; i++) m.tick(0.1);
+  }
+  assert.ok(touches >= 150, `échantillon trop petit (${touches} lancers)`);
+  assert.ok(fautes / N >= 0.2 && fautes / N <= 2, `${(fautes / N).toFixed(2)} lancers pas droits par match`);
+  assert.strictEqual(suivisMelee, fautes, `${suivisMelee}/${fautes} lancers pas droits suivis d'une mêlée introduite par l'adversaire`);
+});
+
 console.log(`\n${nbTests} test(s) exécuté(s).`);
 if (process.exitCode) {
   console.error('ECHEC : au moins un invariant violé.');

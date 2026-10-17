@@ -5858,6 +5858,14 @@
         .sort((p, q) => ordrePod(q) - ordrePod(p) || p.numero - q.numero)[0] || null;
     }
 
+    // Probabilité qu'un lancer en touche soit jugé pas droit (loi 18), selon la
+    // compétence en touche du lanceur : ~3,5 % pour un talonneur moyen (touche
+    // 55), ~1 % pour un excellent lanceur, jusqu'à 8 % pour un mauvais.
+    _probaLancerPasDroit(lanceur) {
+      const touche = typeof lanceur.touche === 'number' ? lanceur.touche : 55;
+      return Math.max(0.01, Math.min(0.08, 0.035 * (1 + (55 - touche) / 50)));
+    }
+
     _facteurContexteDrop(equipe) {
       const adv = equipe === 'A' ? 'B' : 'A';
       const ecart = Math.abs(this.score[equipe] - this.score[adv]);
@@ -6198,10 +6206,16 @@
         taillePool: poolLanceurSauteurs.length,
       });
       const vole = this.rng() < probaVolAdverse;
+      // Lancer pas droit (loi 18) : décidé au lancer, sifflé à l'arrivée du
+      // ballon (cf. _tickToucheLancer). Touche perdue sur son lancer, sans
+      // turnover compté : c'est une mêlée, pas un ballon volé.
+      const pasDroit = this.rng() < this._probaLancerPasDroit(this.porteur || {});
       const gagnant = vole ? adversaire : lanceur;
-      this.stats[gagnant].lineoutsGagnes++;
-      if (!vole) this.stats[lanceur].lineoutsGagnesLancer++;
-      if (vole) { this.stats[adversaire].turnovers++; this.stats[lanceur].turnoversConcedes++; }
+      if (!pasDroit) {
+        this.stats[gagnant].lineoutsGagnes++;
+        if (!vole) this.stats[lanceur].lineoutsGagnesLancer++;
+        if (vole) { this.stats[adversaire].turnovers++; this.stats[lanceur].turnoversConcedes++; }
+      }
       // Le sauteur n'est jamais "le plus proche d'un point" : en match réel le
       // lancer vise un appel tactique (plot avant/milieu/fond de ligne), donc
       // un sauteur choisi au hasard parmi les vrais sauteurs (2e/3e ligne,
@@ -6224,7 +6238,11 @@
       // décidée ici mais ne s'applique qu'à la réception.
       const fromX = this.porteur ? this.porteur.x : xLanceur;
       const fromY = this.porteur ? this.porteur.y : yLanceur;
-      this.toucheLancer = { sauteur, gagnant, vole, lanceur, eqAdverse, fromX, fromY, timer: 0, duree: 0.8 };
+      // Un lancer pas droit part VISIBLEMENT de travers : il dévie de ~2 m le
+      // long de l'alignement au lieu d'arriver dans les mains du sauteur.
+      const decal = pasDroit ? (this.rng() < 0.5 ? -1 : 1) * (1.5 + this.rng()) : 0;
+      this.toucheLancer = { sauteur, gagnant, vole, lanceur, eqAdverse, fromX, fromY, timer: 0, duree: 0.8,
+        pasDroit, decal, lanceurNumero: this.porteur ? this.porteur.numero : null };
       this.ballonEnVol = true;
       this.ballonVolX = fromX;
       this.ballonVolY = fromY;
@@ -6244,10 +6262,24 @@
       // La cible suit le sauteur (toujours positionné par _touchePlacerLignes),
       // donc le ballon atterrit bien dans ses mains où qu'il se tienne.
       this.ballonEnVol = true;
-      this.ballonVolX = L.fromX + (L.sauteur.x - L.fromX) * t;
+      this.ballonVolX = L.fromX + (L.sauteur.x + (L.decal || 0) - L.fromX) * t;
       this.ballonVolY = L.fromY + (L.sauteur.y - L.fromY) * t;
       this.ballonVolHauteur = Math.sin(Math.PI * t);
       if (t < 1) return;
+      if (L.pasDroit) {
+        // Sifflé : mêlée pour l'adversaire sur la ligne des 15 m, à la marque
+        // de touche (loi 18 — l'adversaire peut aussi choisir de relancer ;
+        // le moteur prend la mêlée, l'option la plus jouée).
+        this.ballonEnVol = false;
+        this.ballonVolHauteur = 0;
+        this.toucheLancer = null;
+        const adv = L.lanceur === 'A' ? 'B' : 'A';
+        const qui = L.lanceurNumero ? `du n°${L.lanceurNumero} ` : '';
+        this.log('TOUCHE_PAS_DROIT', L.lanceur, `Lancer pas droit ${qui}(equipe ${L.lanceur}) : melee pour l'equipe ${adv}`);
+        const yMelee = L.fromY <= LARGEUR / 2 ? 15 : LARGEUR - 15;
+        this._accorderMelee(L.lanceur, { x: this.toucheLanceurX != null ? this.toucheLanceurX : L.fromX, y: yMelee });
+        return;
+      }
       // Réception : le sauteur capte le ballon en l'air, à sa position réelle.
       this.ballonEnVol = false;
       this.ballonVolHauteur = 0;
