@@ -599,6 +599,8 @@ interception (5,8 m), ballon ramassé après un coup de pied (7,6 m), jeu rapide
 **Tests.** « tir au but : le ballon rejoint le buteur à vue avant la frappe » : rouge avant (5/40 tirs sans saut, pire
 22,7 m) ; au moins 95 % des tirs sans saut de plus de 3 m entre la transition et la frappe.
 
+**Barrières.** Invariants 75/75, 13 suites OK, navigateur 490/0, calibration 13/14 (temps de jeu effectif 29,5 min).
+
 ### P2-84. Après des points, le ballon revient au centre à vue : fini le saut de 49 m
 - **Statut : CORRIGÉ (affichage)**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_nouvelleManche`, `_tickCoupEnvoi`),
