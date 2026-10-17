@@ -1350,7 +1350,13 @@
           pireEcart = Math.max(pireEcart, Math.hypot(j._cibleEnvoi.x - j.x, j._cibleEnvoi.y - j.y));
         }
         this.ballonEnVol = false; // le ballon est tenu par le botteur, pas encore botté
-        if (pireEcart < 2 || this.timerPhase > 8) {
+        // La frappe attend que le BOTTEUR soit réellement au centre (P2-80) : avec
+        // un seul plafond de 8 s, il était encore à ~10 m du point de coup d'envoi
+        // dans 84 % des cas (il revient de son en-but après un essai) et le ballon
+        // sautait de ses mains au centre. Plafond de sécurité 25 s pour lui.
+        const k = this.porteur;
+        const botteurEnPlace = !k || Math.hypot(this.xCoupEnvoi - k.x, LARGEUR / 2 - k.y) < 1.5;
+        if ((botteurEnPlace && (pireEcart < 2 || this.timerPhase > 8)) || this.timerPhase > 25) {
           this.envoiEnPlace = true;
           this.timerPhase = 0; // le vol du ballon repart de zéro une fois en place
           for (const j of [...this.equipeA, ...this.equipeB]) j._cibleEnvoi = null;
@@ -1369,6 +1375,11 @@
       const t = Math.min(1, this.timerPhase / duree);
       // Le ballon vole seul du point de coup d'envoi vers sa cible, en cloche :
       // hauteur en sinus (0 au départ, maximale à mi-parcours, 0 à la chute).
+      // Le ballon EST en l'air pendant ce vol (P2-80) : la phase de placement le
+      // déclarait « tenu par le botteur » et rien ne le remettait en vol — il
+      // restait affiché dans les mains du botteur puis apparaissait chez le
+      // receveur (6 % seulement des pas de vol affichés en l'air).
+      this.ballonEnVol = true;
       this.ballonVolX = this.xCoupEnvoi + dxVol * t;
       this.ballonVolY = LARGEUR / 2 + dyVol * t;
       this.ballonVolHauteur = Math.sin(Math.PI * t);
@@ -1408,7 +1419,15 @@
         // reste l'exception, pas une course à égalité de chances.
         const receveurs = this.equipeReceptriceAttendue === 'A' ? this.equipeA : this.equipeB;
         const chasseurs = this.equipeReceptriceAttendue === 'A' ? this.equipeB : this.equipeA;
-        const { joueur: receveurProche } = joueurLePlusProche(receveurs, this.ballonCibleX, this.ballonCibleY);
+        const { joueur: receveurProche, distance: distReceveur } = joueurLePlusProche(receveurs, this.ballonCibleX, this.ballonCibleY);
+        // Le ballon reste AU POINT DE CHUTE tant que le receveur ne l'a pas
+        // rejoint (1,5 s au plus) : sinon il sautait de 3 à 7 m jusque dans ses
+        // mains à la réception (P2-80).
+        if (distReceveur > 1.5 && this.timerPhase < duree + 1.5) {
+          this.ballonEnVol = true;
+          this.ballonVolX = this.ballonCibleX; this.ballonVolY = this.ballonCibleY; this.ballonVolHauteur = 0;
+          return;
+        }
         const { joueur: chasseurProche, distance: distChasseur } = joueurLePlusProche(chasseurs, this.ballonCibleX, this.ballonCibleY);
         const chasseurGagne = distChasseur < 3 && this.rng() < 0.15;
         const joueur = chasseurGagne ? chasseurProche : receveurProche;
@@ -6726,8 +6745,13 @@
         && (this.melee.etat === ETATS_MELEE.INTRODUCTION || this.melee.etat === ETATS_MELEE.CONTESTATION
           || this.melee.etat === ETATS_MELEE.SORTIE);
       const toucheVivante = this.phase === 'TOUCHE' && !!this.toucheLancer;
+      // COUP D'ENVOI : seul le VOL est du jeu. La mise en place (les joueurs
+      // regagnent leur moitié, le botteur rejoint le centre) n'en est pas — le
+      // ballon n'est pas en jeu avant la frappe. Elle était comptée : 1,87 min
+      // de « jeu effectif » par match qui n'en était pas (P2-80).
+      const envoiVivant = this.phase === 'COUP_ENVOI' && this.envoiEnPlace;
       if (!enMiseEnPlacePenalite && (this.phase === 'PORTE' || this.phase === 'RUCK' || this.phase === 'MAUL'
-        || this.phase === 'COUP_ENVOI' || this.phase === 'COUP_DE_PIED_JEU' || meleeVivante || toucheVivante)) {
+        || envoiVivant || this.phase === 'COUP_DE_PIED_JEU' || meleeVivante || toucheVivante)) {
         this.tempsJeuEffectif += dt;
         this.tempsPossession[this.possession] += dt;
         // Occupation : où se joue le match (position réelle du ballon),

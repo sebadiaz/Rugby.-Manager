@@ -580,6 +580,47 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-80. Le coup d'envoi se voit enfin, et sa mise en place n'est plus comptée comme du jeu
+- **Statut : CORRIGÉ** (le temps de jeu effectif devient exact, et sort de sa fourchette)
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_tickCoupEnvoi`, compteur de temps de jeu
+  effectif dans `tick`), `server/test-invariants.js` (deux tests).
+
+**Comment on l'a vu.** Relevé automatique des sauts du ballon de plus de 3 m en 0,1 s, sur 10 matchs : environ 90 par
+match. Les plus fréquents étaient au coup d'envoi.
+
+**Trois défauts.**
+1. **Le vol était invisible.** La mise en place déclarait le ballon « tenu par le botteur » (`ballonEnVol = false`) et
+   le vol ne le remettait jamais en l'air : 39 pas sur 600 seulement affichés en vol. Le ballon restait dans les mains
+   du botteur, puis apparaissait chez le receveur, ~14 fois par match.
+2. **Le botteur n'était pas au centre.** La mise en place était coupée à 8 s : dans 118 coups d'envoi sur 141, le
+   botteur, revenu de son en-but, était encore à ~10 m (médiane 10,4 m) du point de coup d'envoi. Le ballon partait
+   du centre sans lui.
+3. **La mise en place comptait comme du jeu effectif** : 1,87 min par match, alors que le ballon n'est pas en jeu
+   avant la frappe.
+
+**Correction.** Le ballon est en l'air pendant tout le vol. La frappe attend que le botteur soit au centre (moins de
+1,5 m ; plafond de sécurité 25 s). Il reste au point de chute jusqu'à ce que le receveur le rejoigne (au plus 1,5 s),
+au lieu de sauter de 3 à 7 m dans ses mains. Seul le vol compte comme du jeu effectif.
+
+**Effet mesuré (100 graines appariées contre P2-79).** Temps de jeu effectif **-2,02 ± 0,35 min** (32,1 -> 30,0) ;
+points +0,87 ± 1,76, essais +0,20 ± 0,27, rucks -2,0 ± 3,0, pénalités -0,97 ± 0,52. Botteur à 1,2 m du centre en
+médiane (max 1,5 m), au lieu de 10,4 m.
+
+**Conséquence assumée.** Le temps de jeu effectif sort de sa fourchette (calibration CI : 29,5 min pour [32, 42]).
+Les 32 min mesurées jusqu'ici contenaient ~2 min de mise en place qui n'étaient pas du jeu. Le chiffre était faux,
+et la calibration le montre maintenant. Le match réel de référence a ~35 min de ballon en jeu : le moteur a donc
+trop de temps mort, environ 5 min par match. À instruire avec une source chiffrée (durée réelle des touches, mêlées,
+transformations et pénalités au but), pas en recomptant.
+
+**Tests.** « coup d'envoi : le ballon vole, à vue, de la frappe à la réception » : rouge avant (39/600 pas affichés en
+vol) ; au moins 95 % des pas de vol affichés en l'air ; au moins 95 % des coups d'envoi sans saut de plus de 4 m
+(vitesse d'un ballon frappé ~25 m/s ; avant : 10 à 17 m à la frappe, 3 à 7 m à la réception). « coup d'envoi : la
+mise en place n'est pas du temps de jeu effectif » : rouge avant (3 014 pas sur 3 014 comptés).
+
+**Reste (vu par le même relevé).** Coup d'envoi trop court -> mêlée : le ballon saute dans les mains du 9, encore
+loin de la marque. Même défaut à chaque mêlée (~8 par match, ~11 m) : il vient de P2-64, et c'est le prochain
+correctif.
+
 ### P2-79. La pénalité tapée en touche se voit : le buteur frappe, le ballon vole jusqu'à la touche
 - **Statut : CORRIGÉ**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_accorderPenaliteTouche`,

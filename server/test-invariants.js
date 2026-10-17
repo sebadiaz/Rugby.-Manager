@@ -2781,6 +2781,69 @@ test('pénalité en touche : le buteur frappe depuis la marque et le ballon vole
   assert.strictEqual(enVol, cas, `${enVol}/${cas} pénalités en touche où le ballon vole réellement vers la touche`);
 });
 
+test('coup d\'envoi : la mise en place n\'est pas du temps de jeu effectif', () => {
+  // Le ballon n'est pas en jeu avant la frappe. La mise en place (les joueurs
+  // regagnent leur moitié, le botteur rejoint le centre) était pourtant
+  // comptée : 1,87 min de « jeu effectif » par match qui n'en était pas.
+  let pasMiseEnPlace = 0, comptes = 0;
+  for (const seed of [1, 2]) {
+    const m = new MatchEngine(seed, 4800);
+    for (let i = 0; i < 400000 && m.getState().phase !== 'TERMINE'; i++) {
+      const avant = m.tempsJeuEffectif, enPlace = m.envoiEnPlace, phase = m.phase;
+      m.tick(0.1);
+      if (phase === 'COUP_ENVOI' && !enPlace && m.phase === 'COUP_ENVOI' && !m.envoiEnPlace) {
+        pasMiseEnPlace++;
+        if (m.tempsJeuEffectif > avant) comptes++;
+      }
+    }
+  }
+  assert.ok(pasMiseEnPlace > 100, `échantillon trop petit (${pasMiseEnPlace})`);
+  assert.strictEqual(comptes, 0, `${comptes}/${pasMiseEnPlace} pas de mise en place du coup d'envoi comptés comme du jeu`);
+});
+
+test('coup d\'envoi : le ballon vole, à vue, de la frappe à la réception', () => {
+  // Constat : sur 647 pas de vol de coup d'envoi, le ballon n'était affiché en
+  // l'air que 39 fois — la phase de placement le déclarait « tenu par le
+  // botteur » et le vol ne le remettait jamais en l'air. Le joueur voyait le
+  // ballon rester dans les mains du botteur puis apparaître 20 à 50 m plus
+  // loin chez le receveur, ~17 fois par match.
+  let pasVol = 0, affiches = 0, envois = 0, sansSaut = 0;
+  for (const seed of [1, 2, 3]) {
+    const m = new MatchEngine(seed, 4800);
+    let suivi = null;
+    for (let i = 0; i < 400000 && m.getState().phase !== 'TERMINE'; i++) {
+      m.tick(0.1);
+      const s = m.getState();
+      const enVolEnvoi = m.phase === 'COUP_ENVOI' && m.envoiEnPlace && m.timerPhase > 0;
+      if (enVolEnvoi) {
+        pasVol++;
+        if (s.ballon.enVol) affiches++;
+        if (!suivi) suivi = { pts: [] };
+        suivi.pts.push({ x: s.ballon.x, y: s.ballon.y });
+      } else if (suivi) {
+        // Premier pas après la réception : le ballon ne doit pas sauter non plus.
+        // (Coup d'envoi trop court -> mêlée : le saut vers le 9 relève de la
+        // mêlée, traitée à part — cf. P2-81.)
+        if (m.phase !== 'MELEE') {
+          suivi.pts.push({ x: s.ballon.x, y: s.ballon.y });
+          envois++;
+          let saut = 0;
+          for (let k = 1; k < suivi.pts.length; k++) saut = Math.max(saut, Math.hypot(suivi.pts[k].x - suivi.pts[k - 1].x, suivi.pts[k].y - suivi.pts[k - 1].y));
+          // 4 m par pas de 0,1 s : un ballon frappé va jusqu'à ~25 m/s, plus
+          // l'écart (<= 1,5 m) entre le botteur et le centre au départ. Avant
+          // correctif, les sauts mesuraient 10 à 17 m (frappe) et 3 à 7 m
+          // (réception).
+          if (saut < 4) sansSaut++;
+        }
+        suivi = null;
+      }
+    }
+  }
+  assert.ok(envois >= 30, `échantillon trop petit (${envois} coups d'envoi)`);
+  assert.ok(affiches / pasVol >= 0.95, `ballon affiché en vol sur ${affiches}/${pasVol} pas de vol de coup d'envoi`);
+  assert.ok(sansSaut / envois >= 0.95, `${sansSaut}/${envois} coups d'envoi sans saut du ballon > 4 m (vol et réception)`);
+});
+
 console.log(`\n${nbTests} test(s) exécuté(s).`);
 if (process.exitCode) {
   console.error('ECHEC : au moins un invariant violé.');
