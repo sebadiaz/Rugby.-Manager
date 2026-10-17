@@ -4603,6 +4603,12 @@ function optionsLancement() {
     });
     verifier(`joueurs (${vp.width}x${vp.height}) : rayon à l'échelle du terrain (<= 1,5 m) et lisible (>= 6,5 px)`,
       !t.absent && t.metres <= 1.5 && t.rayon >= 6.5 && (vp.attendu == null || t.rayon === vp.attendu), JSON.stringify(t));
+    // L'étiquette texte « arbitre » (sous le disque « A ») chevauchait les
+    // regroupements sur téléphone : elle n'est écrite qu'à pleine échelle.
+    const etiquette = await pR.evaluate(() => (typeof window.RMRenderer.etiquetteArbitre === 'function'
+      ? window.RMRenderer.etiquetteArbitre() : 'absente'));
+    verifier(`arbitre (${vp.width}x${vp.height}) : étiquette « arbitre » ${vp.attendu ? 'affichée sur grand écran' : 'masquée sur téléphone'}`,
+      etiquette === !!vp.attendu, String(etiquette));
     await ctxR.close();
   }
 

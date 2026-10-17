@@ -580,6 +580,19 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-75. Sur téléphone, l'étiquette « arbitre » chevauchait les regroupements
+- **Statut : CORRIGÉ (affichage)**
+- Fichiers concernés : `docs/js/renderer.js` (`etiquetteArbitre`, `dessinerArbitre`), `server/test-parcours-navigateur.js`.
+
+**Constat (QA téléphone).** L'arbitre suit le ballon de près : son étiquette texte « arbitre », écrite
+14 px sous le disque, passait sur les joueurs du ruck ou du maul.
+
+**Correction.** L'étiquette n'est écrite qu'à pleine échelle (rayon des joueurs à 10 px, grand écran). Le
+disque « A » est toujours dessiné, à l'échelle des joueurs (au plus 7 px), avec une lettre à sa taille.
+
+**Tests.** Étiquette affichée en 1400x1000, masquée en 390x844 : rouge avant (fonction absente). Navigateur 490/0.
+Capture téléphone d'un ruck : disque « A » seul, regroupement dégagé.
+
 ### P2-74. Sur téléphone, les joueurs se recouvraient : rayon à l'échelle du terrain
 - **Statut : CORRIGÉ (affichage)**
 - Fichiers concernés : `docs/js/renderer.js` (`rayonJoueur`, `dessinerJoueur`), `server/test-parcours-navigateur.js`.

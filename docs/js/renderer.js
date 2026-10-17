@@ -268,20 +268,29 @@
   // L'arbitre est toujours dessiné, près de l'action (ruck ou porteur) :
   // visible en permanence pour qu'on comprenne qui décide des
   // pénalités/mêlées et où il se trouve.
+  // L'étiquette texte « arbitre » n'est écrite qu'à pleine échelle (grand
+  // écran) : sur téléphone, elle chevauchait les joueurs du regroupement que
+  // l'arbitre suit de près (P2-75). Le disque « A » reste toujours dessiné.
+  function etiquetteArbitre() {
+    return rayonJoueur() >= 10;
+  }
+
   function dessinerArbitre(state) {
     const { px, py } = versCanvas(state.arbitre.x, state.arbitre.y);
+    const ra = Math.min(7, rayonJoueur() * 0.7);
     ctx.beginPath();
-    ctx.arc(px, py, 7, 0, Math.PI * 2);
+    ctx.arc(px, py, ra, 0, Math.PI * 2);
     ctx.fillStyle = '#212121';
     ctx.fill();
     ctx.lineWidth = 2;
     ctx.strokeStyle = '#f9a825';
     ctx.stroke();
     ctx.fillStyle = '#f9a825';
-    ctx.font = 'bold 9px sans-serif';
+    ctx.font = 'bold ' + Math.round(ra * 1.3) + 'px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText('A', px, py);
+    if (!etiquetteArbitre()) return;
     ctx.font = '9px sans-serif';
     ctx.fillStyle = '#fff';
     ctx.fillText('arbitre', px, py + 14);
@@ -316,5 +325,5 @@
     for (const c of ordreCouches(state)) couches[c]();
   }
 
-  global.RMRenderer = { init, redimensionner, versCanvas, dessiner, ordreCouches, rayonJoueur };
+  global.RMRenderer = { init, redimensionner, versCanvas, dessiner, ordreCouches, rayonJoueur, etiquetteArbitre };
 })(window);
