@@ -609,6 +609,9 @@ sanction. Une version intermédiaire, sans le jugement par la discipline, restai
 **Tests.** R12, rouge avant (227 avantages sur 227 sans motif) : toute annonce d'avantage nomme « hors-jeu » et un
 numéro ; au plus 20 par match ; au moins un retour à la sanction sur l'échantillon (la règle s'applique encore).
 
+**Barrières.** Invariants 68/68, 13 suites OK, navigateur 490/0, calibration 13/14 : essais 6,6, points 55,0,
+pénalités 21,4 ; seuls les rucks (185,4) sont au-dessus de 180.
+
 ### P2-75. Sur téléphone, l'étiquette « arbitre » chevauchait les regroupements
 - **Statut : CORRIGÉ (affichage)**
 - Fichiers concernés : `docs/js/renderer.js` (`etiquetteArbitre`, `dessinerArbitre`), `server/test-parcours-navigateur.js`.
