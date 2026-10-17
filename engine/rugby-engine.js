@@ -1828,6 +1828,7 @@
         // place (cf. _penaliteTirPlacerJoueurs), il n'y est plus téléporté ; le
         // ballon est posé sur le tee (cf. getState, ballon sur la marque en
         // PENALITE_TIR).
+        this._debutRemiseBallon();
         this.porteur = eqTir.find(j => j.numero === this.buteurNumero[equipeBeneficiaire] && j.sinBin <= 0) || eqTir[9];
         this.phase = 'PENALITE_TIR';
         this.timerPhase = 0;
@@ -5980,6 +5981,17 @@
       return Math.max(0.01, Math.min(0.08, 0.03 * (1 + (60 - discipline) / 40)));
     }
 
+    // Tir au but (pénalité, transformation) : le ballon ne saute pas dans les
+    // mains du buteur. On note où il est AFFICHÉ juste avant que le buteur ne
+    // devienne porteur, et il le rejoint ensuite à vue (cf. tick, P2-85) —
+    // avant, il sautait de ~10 m (jusqu'à 22 m) du ruck ou du marqueur.
+    _debutRemiseBallon() {
+      let p = null;
+      if (this.ballonEnVol && this.ballonVolX != null) p = { x: this.ballonVolX, y: this.ballonVolY };
+      else { try { const b = this.getState().ballon; p = { x: b.x, y: b.y }; } catch (e) { p = null; } }
+      this._remiseBallon = p;
+    }
+
     _facteurContexteDrop(equipe) {
       const adv = equipe === 'A' ? 'B' : 'A';
       const ecart = Math.abs(this.score[equipe] - this.score[adv]);
@@ -6539,6 +6551,7 @@
         // (cf. _transformationPlacerJoueurs) : il y est déjà, on ne le téléporte
         // plus. Il devient simplement le porteur pour la frappe.
         const eq = this.essaiEquipe === 'A' ? this.equipeA : this.equipeB;
+        this._debutRemiseBallon();
         this.porteur = eq.find(j => j.numero === this.buteurNumero[this.essaiEquipe] && j.sinBin <= 0) || eq[9];
         this.phase = 'TRANSFORMATION';
         this.timerPhase = 0;
@@ -6923,6 +6936,16 @@
       else if (this.phase === 'ESSAI') this._tickEssai(dt);
       else if (this.phase === 'TRANSFORMATION') this._tickTransformation(dt);
       else if (this.phase === 'PENALITE_TIR') this._tickPenaliteTir(dt);
+      // Remise du ballon au buteur (P2-85) : il le rejoint à ~10 m/s.
+      if (this._remiseBallon) {
+        const R = this._remiseBallon, k = this.porteur;
+        if (!k || (this.phase !== 'PENALITE_TIR' && this.phase !== 'TRANSFORMATION') || this.ballonEnVol) this._remiseBallon = null;
+        else {
+          const dxr = k.x - R.x, dyr = k.y - R.y, dr = Math.hypot(dxr, dyr), pasR = 10 * dt;
+          if (dr <= pasR) this._remiseBallon = null;
+          else { R.x += dxr / dr * pasR; R.y += dyr / dr * pasR; }
+        }
+      }
       // Gel global des joueurs AU SOL : un joueur plaqué/à terre (auSol > 0) ne
       // se déplace JAMAIS tant qu'il n'est pas relevé. Sans ce verrou, l'IA de
       // placement (ligne défensive, soutiens, replacement) le faisait glisser —
@@ -7141,6 +7164,10 @@
           // s'il n'était pas fixé ici au point de ruck.
           ballonPhaseX = this.ruckPoint.x; ballonPhaseY = this.ruckPoint.y;
         }
+      }
+      if (!enVol && !enPasse && !auSolLoose && this._remiseBallon
+        && (this.phase === 'PENALITE_TIR' || this.phase === 'TRANSFORMATION')) {
+        ballonPhaseX = this._remiseBallon.x; ballonPhaseY = this._remiseBallon.y;
       }
       const enPhaseStatique = ballonPhaseX != null;
       const ballonX = enVol || auSolLoose ? this.ballonVolX : enPasse ? passeX : enPhaseStatique ? ballonPhaseX : this.porteur.x;

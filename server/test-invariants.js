@@ -2784,6 +2784,35 @@ test('pénalité en touche : le buteur frappe depuis la marque et le ballon vole
   assert.strictEqual(enVol, cas, `${enVol}/${cas} pénalités en touche où le ballon vole réellement vers la touche`);
 });
 
+test('tir au but : le ballon rejoint le buteur à vue avant la frappe (pénalité, transformation)', () => {
+  // Relevé des sauts (P2-85) : à chaque pénalité au but (~4 par match) et à
+  // chaque transformation (~5,5), le ballon sautait de ~10-11 m — du ruck ou
+  // du marqueur dans l'en-but jusque dans les mains du buteur.
+  let tirs = 0, propres = 0, pire = 0;
+  for (const seed of [1, 2, 3]) {
+    const m = new MatchEngine(seed, 4800);
+    let prev = null, suivi = null, prevPhase = null;
+    for (let i = 0; i < 400000 && m.getState().phase !== 'TERMINE'; i++) {
+      m.tick(0.1);
+      const b = m.getState().ballon;
+      const p = { x: b.x, y: b.y };
+      const tir = m.phase === 'PENALITE_TIR' || m.phase === 'TRANSFORMATION';
+      const vol = b.enVol && (b.hauteur || 0) > 0;
+      if (tir && prevPhase !== m.phase) suivi = { saut: prev ? Math.hypot(p.x - prev.x, p.y - prev.y) : 0 };
+      else if (suivi && tir && !vol) suivi.saut = Math.max(suivi.saut, Math.hypot(p.x - prev.x, p.y - prev.y));
+      if (suivi && (!tir || vol)) {
+        tirs++;
+        if (suivi.saut < 3) propres++;
+        pire = Math.max(pire, suivi.saut);
+        suivi = null;
+      }
+      prev = p; prevPhase = m.phase;
+    }
+  }
+  assert.ok(tirs >= 20, `échantillon trop petit (${tirs} tirs au but)`);
+  assert.ok(propres / tirs >= 0.95, `${propres}/${tirs} tirs au but sans saut du ballon > 3 m avant la frappe (pire : ${pire.toFixed(1)} m)`);
+});
+
 test('coup d\'envoi : après des points, le ballon revient au centre à vue, sans téléportation', () => {
   // Relevé des sauts (P2-84) : ~24 fois par match, au début de la mise en
   // place d'un coup d'envoi, le ballon sautait de ~49 m — des poteaux, où il

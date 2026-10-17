@@ -580,6 +580,25 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-85. Tir au but : le ballon rejoint le buteur à vue (pénalité, transformation)
+- **Statut : CORRIGÉ (affichage)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_debutRemiseBallon`, `tick`, `getState`),
+  `server/test-invariants.js`.
+
+**Constat (relevé des sauts).** À chaque pénalité au but (~4 par match) et à chaque transformation (~5,5), le ballon
+sautait de ~10-11 m (pire mesuré : 22,7 m), du ruck ou du marqueur dans l'en-but jusque dans les mains du buteur,
+au moment où celui-ci devenait porteur.
+
+**Correction.** Juste avant que le buteur ne devienne porteur, le moteur note où le ballon est affiché. Le ballon le
+rejoint ensuite à ~10 m/s (remise du ballon), puis le suit jusqu'au tee et à la frappe, comme avant.
+
+**Effet mesuré (100 graines appariées contre P2-84).** Matchs strictement identiques. Sauts du ballon de plus de 3 m :
+34,5 -> 24,8 par match, dont ~21,5 vols normaux de ballon frappé. Restent, chacun à moins d'un par match :
+interception (5,8 m), ballon ramassé après un coup de pied (7,6 m), jeu rapide après une pénalité au ruck (7,9 m).
+
+**Tests.** « tir au but : le ballon rejoint le buteur à vue avant la frappe » : rouge avant (5/40 tirs sans saut, pire
+22,7 m) ; au moins 95 % des tirs sans saut de plus de 3 m entre la transition et la frappe.
+
 ### P2-84. Après des points, le ballon revient au centre à vue : fini le saut de 49 m
 - **Statut : CORRIGÉ (affichage)**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_nouvelleManche`, `_tickCoupEnvoi`),
@@ -606,6 +625,8 @@ match).
 
 **Tests.** « coup d'envoi : après des points, le ballon revient au centre à vue » : rouge avant (3/46 mises en place sans
 saut, pire 54,4 m) ; au moins 95 % des mises en place sans saut de plus de 3 m, transition comprise.
+
+**Barrières.** Invariants 74/74, 13 suites OK, navigateur 490/0, calibration 13/14 (temps de jeu effectif 29,5 min).
 
 ### P2-83. Pourquoi le jeu courant est trop rapide : le porteur n'a que 1,5 s avant le contact
 - **Statut : ENQUÊTE — aucun changement du moteur**
