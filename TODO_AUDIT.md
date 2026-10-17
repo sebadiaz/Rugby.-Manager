@@ -603,6 +603,9 @@ le n°10 et la touche, annonce de la frappe dans le fil.
 (0/27 départs de la marque) ; pour chaque pénalité en touche, le ballon part de la marque, ne saute jamais de plus de
 3 m en 0,1 s, et vole réellement. Tous les invariants de touche existants restent verts.
 
+**Barrières.** Invariants 71/71, 13 suites OK, navigateur 490/0, calibration 13/14 : essais 6,1, points 54,0,
+pénalités 20,4, temps de jeu effectif 32,2 min (revenu dans la fourchette) ; seuls les rucks (188,6) dépassent 180.
+
 ### P2-78. Le hors-jeu en touche existe : un trois-quarts qui part au lancer est pénalisé
 - **Statut : CORRIGÉ**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_probaHorsJeuTouche`, décision au lancer,
