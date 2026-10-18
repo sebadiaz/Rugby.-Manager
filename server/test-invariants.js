@@ -2835,6 +2835,35 @@ test('ballon au sol après un coup de pied : il est ramassé par un joueur arriv
   assert.strictEqual(propres, cas, `${propres}/${cas} ballons ramassés au contact (pire : ${pire.toFixed(1)} m)`);
 });
 
+test('pénalité tapée en touche : le ballon rejoint la marque à vue avant la frappe', () => {
+  // Relevé des sauts (P2-91) : après un hors-jeu en touche (P2-78) ou une
+  // faute au ruck, le ballon passait d'un coup du vol du lancer (ou du ruck) à
+  // la marque de pénalité, 2,5 à 6,7 m plus loin.
+  let cas = 0, propres = 0, pire = 0;
+  for (let seed = 1; seed <= 12; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    let prev = null, suivi = null;
+    const brut = m.log.bind(m);
+    m.log = (type, team, msg, extra) => {
+      if (type === 'PENALITE' && /joue en touche/.test(msg)) suivi = { saut: 0 };
+      return brut(type, team, msg, extra);
+    };
+    for (let i = 0; i < 400000 && m.getState().phase !== 'TERMINE'; i++) {
+      m.tick(0.1);
+      const b = m.getState().ballon;
+      const p = { x: b.x, y: b.y };
+      if (suivi && prev) {
+        const P = m.penTouche;
+        if (!P || P.etape !== 'APPROCHE') { cas++; if (suivi.saut < 3) propres++; pire = Math.max(pire, suivi.saut); suivi = null; }
+        else suivi.saut = Math.max(suivi.saut, Math.hypot(p.x - prev.x, p.y - prev.y));
+      }
+      prev = p;
+    }
+  }
+  assert.ok(cas >= 50, `échantillon trop petit (${cas} pénalités en touche)`);
+  assert.strictEqual(propres, cas, `${propres}/${cas} pénalités en touche sans saut du ballon > 3 m avant la frappe (pire : ${pire.toFixed(1)} m)`);
+});
+
 test('jeu rapide (pénalité, coup franc) : le ballon est posé sur la marque, le tapeur le rejoint à vue', () => {
   // Relevé des sauts (P2-89) : sur une pénalité jouée vite après un ruck
   // (~0,6 par match), le n°9 du bénéficiaire devenait porteur là où il était

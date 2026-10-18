@@ -1982,13 +1982,16 @@
       // _tickPenaliteTouche). Durée totale de la touche inchangée : le lancer
       // reste soumis au même délai minimal (cf. _tickTouche).
       const buteurFrappe = buteurTouche || eqLanceur.find(j => j.numero === 10 && j.sinBin <= 0) || null;
+      // Le ballon part de là où on le voyait (vol du lancer en touche, ruck…)
+      // et rejoint la marque à vue, au lieu d'y apparaître (P2-91).
+      const depart = this._positionBallonAffichee() || { x: position.x, y: position.y };
       this.penTouche = buteurFrappe ? {
         etape: 'APPROCHE', buteur: buteurFrappe, equipe, t: 0,
         marque: { x: position.x, y: position.y }, cible: { x: xLanceur, y: yLanceur },
       } : null;
       if (this.penTouche) {
         this.ballonEnVol = true;
-        this.ballonVolX = position.x; this.ballonVolY = position.y; this.ballonVolHauteur = 0;
+        this.ballonVolX = depart.x; this.ballonVolY = depart.y; this.ballonVolHauteur = 0;
       }
     }
 
@@ -2001,18 +2004,24 @@
       if (P.etape === 'APPROCHE') {
         const b = P.buteur;
         avancer(b, P.marque.x - b.x, P.marque.y - b.y, dt, vitesseMs(b));
-        this.ballonVolX = P.marque.x; this.ballonVolY = P.marque.y; this.ballonVolHauteur = 0;
+        // Le ballon est ramené à la marque (~10 m/s) pendant que le buteur y court.
+        const dxm = P.marque.x - this.ballonVolX, dym = P.marque.y - this.ballonVolY, dm = Math.hypot(dxm, dym), pas = 10 * dt;
+        if (dm <= pas) { this.ballonVolX = P.marque.x; this.ballonVolY = P.marque.y; }
+        else { this.ballonVolX += dxm / dm * pas; this.ballonVolY += dym / dm * pas; }
+        this.ballonVolHauteur = 0;
         // Plafond : un buteur très éloigné ne bloque jamais la touche.
         if (distance(b, P.marque) < 1.5 || P.t > 10) {
-          P.etape = 'VOL'; P.t = 0;
+          // Le vol part de là où est le ballon (en principe déjà sur la marque).
+          P.etape = 'VOL'; P.t = 0; P.depart = { x: this.ballonVolX, y: this.ballonVolY };
           this.log('PENALITE_TOUCHE_FRAPPE', P.equipe, `Le n°${b.numero} tape la penalite en touche`);
         }
         return;
       }
       const duree = 2.2;
       const k = Math.min(1, P.t / duree);
-      this.ballonVolX = P.marque.x + (P.cible.x - P.marque.x) * k;
-      this.ballonVolY = P.marque.y + (P.cible.y - P.marque.y) * k;
+      const D = P.depart || P.marque;
+      this.ballonVolX = D.x + (P.cible.x - D.x) * k;
+      this.ballonVolY = D.y + (P.cible.y - D.y) * k;
       this.ballonVolHauteur = 1.2 * Math.sin(Math.PI * k);
       if (k >= 1) {
         this.ballonEnVol = false;
@@ -6004,6 +6013,10 @@
     // devienne porteur, et il le rejoint ensuite à vue (cf. tick, P2-85) —
     // avant, il sautait de ~10 m (jusqu'à 22 m) du ruck ou du marqueur.
     _debutRemiseBallon() {
+      this._remiseBallon = this._positionBallonAffichee();
+    }
+
+    _positionBallonAffichee() {
       let p = null;
       // Ce que le joueur voyait à l'image précédente : en pleine transition
       // (mêlée ou touche déjà soldée), recalculer l'affichage donnerait le
@@ -6012,7 +6025,7 @@
       if (vu && vu.n === (this._numTick || 0) - 1) p = { x: vu.x, y: vu.y };
       else if (this.ballonEnVol && this.ballonVolX != null) p = { x: this.ballonVolX, y: this.ballonVolY };
       else { try { const b = this.getState().ballon; p = { x: b.x, y: b.y }; } catch (e) { p = null; } }
-      this._remiseBallon = p;
+      return p;
     }
 
     _facteurContexteDrop(equipe) {
