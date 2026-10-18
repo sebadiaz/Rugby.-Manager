@@ -580,6 +580,31 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-89. Jeu rapide : le ballon est posé sur la marque, le tapeur le rejoint
+- **Statut : CORRIGÉ (affichage)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_traiterPenalite` jeu rapide,
+  `_traiterCoupFranc`, `_lancerJeuRapidePenalite`, `_debutRemiseBallon`, `tick`, `getState`), `server/test-invariants.js`.
+
+**Constat (relevé des sauts).** Sur pénalité jouée vite ou coup franc, le tapeur (souvent le n°9) devenait porteur là où il
+était, et le ballon sautait du ruck, de la mêlée ou de la touche jusque dans ses mains : 10 cas sur 92 en 12 matchs, ~8 m
+en moyenne, jusqu'à 14,3 m.
+
+**Correction.** Le ballon part de là où il était affiché, va sur la marque (loi 20.4) et y reste pendant la mise en place
+(recul des fautifs), puis rejoint le tapeur, avec le mécanisme de remise du ballon de P2-85. Piège rencontré : en pleine
+transition (mêlée ou touche déjà soldée), recalculer l'affichage donnait le porteur ou le lanceur, pas le ballon vu à
+l'écran. `getState` mémorise donc la dernière position affichée, que `_debutRemiseBallon` reprend si elle date de l'image
+précédente. Affichage seul : l'empreinte des scores et statistiques de 10 matchs est identique avant/après, avec ou sans
+appel à `getState`.
+
+**Effet.** Sauts du ballon de plus de 3 m : 22,9 -> 21,8 par match. Les familles RUCK>PORTE, MELEE>PENALITE_TIR et
+TOUCHE>PORTE disparaissent du relevé.
+
+**Tests.** « jeu rapide (pénalité, coup franc) : le ballon est posé sur la marque… » : rouge avant (82/92 sans saut, pire
+14,3 m). Mutant « ballon posé sur le tapeur au lieu de la marque » -> rouge (50/92 sur la marque). Navigateur : ballon
+immobile sur la marque pendant la mise en place, fautifs repliés sur leur ligne.
+
+**Barrières.** Invariants 77/77, 13 suites OK, calibration 13/14 (temps de jeu 29,4 min, cf. P2-82/83), navigateur 493/0.
+
 ### P2-88. À l'interception, le ballon vole jusqu'à l'intercepteur
 - **Statut : CORRIGÉ (affichage, avec un léger effet sur la simulation)**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (interception dans `_tenterPasse`),
