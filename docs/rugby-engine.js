@@ -3674,7 +3674,11 @@
             { de: porteur.numero, par: interception.numero });
           this.possession = equipeDef;
           this.porteur = interception;
+          // Le ballon vole du passeur jusqu'à l'intercepteur, à vue (P2-88) :
+          // effacer la passe visuelle le faisait apparaître d'un coup dans ses
+          // mains (~6 m, jusqu'à 10 m).
           this.passeVisuelle = null;
+          this._lancerPasseVisuelle(porteur, interception);
           // Tout le monde court dans l'autre sens : l'intercepteur part dans un
           // espace reel, comme apres un franchissement (cf. _percee).
           interception._percee = 2.5;

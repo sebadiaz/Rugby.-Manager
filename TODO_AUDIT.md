@@ -580,6 +580,26 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-88. À l'interception, le ballon vole jusqu'à l'intercepteur
+- **Statut : CORRIGÉ (affichage, avec un léger effet sur la simulation)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (interception dans `_tenterPasse`),
+  `server/test-invariants.js`.
+
+**Constat (relevé des sauts).** À l'interception (~0,9 par match), la passe visuelle était effacée et le ballon apparaissait
+d'un coup dans les mains de l'intercepteur (~6 m, jusqu'à 10 m).
+
+**Correction.** Une passe visuelle part du passeur vers l'intercepteur, avec le mécanisme commun à toutes les passes.
+
+**Effet mesuré.** Contrairement à P2-81/84/85, ce n'est pas que de l'affichage : pendant le vol d'une passe, le receveur
+court au lieu de décider, et environ un tiers des matchs divergent. Graines 1-100 : points -2,18 ± 0,77, essais
+-0,30 ± 0,13. Graines 101-200 : points +0,54 ± 0,63, essais +0,13 ± 0,11. Sur 200 graines : **points -0,82 ± 0,51,
+essais -0,09 ± 0,08, non significatif**. Le premier lot était un hasard de divergence ; le mécanisme supposé (l'intercepteur
+perd sa course libre pendant le vol) est écarté, car une interception ne finit directement en essai que 3 à 4 % du
+temps, avant comme après. Sauts du ballon de plus de 3 m : 24,8 -> 22,9 par match.
+
+**Tests.** « interception : le ballon vole jusqu'à l'intercepteur » : rouge avant (6/19 sans saut, pire 10,2 m) ; aucun saut
+de plus de 3 m dans la seconde qui suit une interception (12 matchs). L'invariant existant sur les interceptions reste vert.
+
 ### P2-87. Le bandeau de l'arbitre annonçait des faits déjà dépassés
 - **Statut : CORRIGÉ (affichage)**
 - Fichiers concernés : `docs/js/ui.js` (`choisirBanniere`, exposée sur RMUI), `server/test-parcours-navigateur.js`.

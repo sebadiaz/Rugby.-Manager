@@ -2784,6 +2784,31 @@ test('pénalité en touche : le buteur frappe depuis la marque et le ballon vole
   assert.strictEqual(enVol, cas, `${enVol}/${cas} pénalités en touche où le ballon vole réellement vers la touche`);
 });
 
+test('interception : le ballon vole jusqu\'à l\'intercepteur, à vue', () => {
+  // Relevé des sauts (P2-88) : à l'interception (~0,9 par match), la passe
+  // visuelle était effacée et le ballon apparaissait d'un coup dans les mains
+  // de l'intercepteur (~6 m).
+  let cas = 0, propres = 0, pire = 0;
+  for (let seed = 1; seed <= 12; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    let prev = null, suivi = null;
+    const brut = m.log.bind(m);
+    m.log = (type, team, msg, extra) => { if (type === 'INTERCEPTION') suivi = { saut: 0, n: 0 }; return brut(type, team, msg, extra); };
+    for (let i = 0; i < 400000 && m.getState().phase !== 'TERMINE'; i++) {
+      m.tick(0.1);
+      const b = m.getState().ballon;
+      const p = { x: b.x, y: b.y };
+      if (suivi && prev) {
+        suivi.saut = Math.max(suivi.saut, Math.hypot(p.x - prev.x, p.y - prev.y));
+        if (++suivi.n >= 10) { cas++; if (suivi.saut < 3) propres++; pire = Math.max(pire, suivi.saut); suivi = null; }
+      }
+      prev = p;
+    }
+  }
+  assert.ok(cas >= 5, `échantillon trop petit (${cas} interceptions)`);
+  assert.strictEqual(propres, cas, `${propres}/${cas} interceptions sans saut du ballon > 3 m (pire : ${pire.toFixed(1)} m)`);
+});
+
 test('tir au but : le ballon rejoint le buteur à vue avant la frappe (pénalité, transformation)', () => {
   // Relevé des sauts (P2-85) : à chaque pénalité au but (~4 par match) et à
   // chaque transformation (~5,5), le ballon sautait de ~10-11 m — du ruck ou
