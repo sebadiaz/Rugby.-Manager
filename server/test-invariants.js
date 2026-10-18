@@ -2816,6 +2816,42 @@ test('interception : le ballon vole jusqu\'à l\'intercepteur, à vue', () => {
   assert.strictEqual(propres, cas, `${propres}/${cas} interceptions sans saut du ballon > 3 m (pire : ${pire.toFixed(1)} m)`);
 });
 
+test('coup de pied tactique : le ballon qui tombe sans receveur ROULE, et peut finir en touche', () => {
+  // P2-92 : un dégagement qui tombait sans personne dessous restait collé au
+  // point de chute, immobile jusqu'à 4 s. En vrai, le ballon rebondit et
+  // roule : c'est ce qui fait gagner du terrain au dégagement et ce qui crée
+  // la course pour le récupérer. Le ballon qui roule hors du terrain donne une
+  // touche (loi 18) à l'adversaire, là où il est sorti.
+  let longs = 0, roules = 0, enTouche = 0, horsTerrainSansTouche = 0;
+  for (let seed = 1; seed <= 8; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    let chute = null;
+    for (let i = 0; i < 400000 && m.phase !== 'TERMINE'; i++) {
+      const attente = m._receptionEnAttente;
+      m.tick(0.1);
+      if (!attente && m._receptionEnAttente) {
+        const libre = ![...m.equipeA, ...m.equipeB].some(j => Math.hypot(j.x - m.ballonVolX, j.y - m.ballonVolY) <= 1.3);
+        chute = { x: m.ballonVolX, y: m.ballonVolY, long: libre && (m.typeCoupDePiedJeu === 'DEGAGEMENT' || m.typeCoupDePiedJeu === 'OCCUPATION') };
+      } else if (chute && m._receptionEnAttente) {
+        if (m.ballonVolY < 0 || m.ballonVolY > LARGEUR) horsTerrainSansTouche++;
+        chute.fin = { x: m.ballonVolX, y: m.ballonVolY };
+      } else if (chute && !m._receptionEnAttente) {
+        if (chute.long) {
+          longs++;
+          const f = chute.fin || chute;
+          if (Math.hypot(f.x - chute.x, f.y - chute.y) >= 2) roules++;
+          if (m.phase === 'TOUCHE') enTouche++;
+        }
+        chute = null;
+      }
+    }
+  }
+  assert.ok(longs >= 30, `échantillon trop petit (${longs} dégagements sans receveur)`);
+  assert.ok(roules >= 0.8 * longs, `seulement ${roules}/${longs} dégagements tombés sans receveur ont roulé d'au moins 2 m`);
+  assert.ok(enTouche >= 1, 'aucun ballon n est jamais sorti en touche en roulant');
+  assert.strictEqual(horsTerrainSansTouche, 0, 'le ballon a roulé hors du terrain sans que la touche soit sifflée');
+});
+
 test('ballon au sol après un coup de pied : il est ramassé par un joueur arrivé au contact, jamais à distance', () => {
   // Relevé des sauts (P2-90) : un dégagement profond tombe parfois à 25 m de
   // tout le monde. Le joueur le plus proche y court (~6 m/s), mais le délai
@@ -2827,8 +2863,9 @@ test('ballon au sol après un coup de pied : il est ramassé par un joueur arriv
       const attente = m._receptionEnAttente, bx = m.ballonVolX, by = m.ballonVolY;
       m.tick(0.1);
       // En-avant sous la chandelle -> mêlée : le porteur est le n°9 adverse,
-      // le ballon rejoint la mêlée à vue (cf. M24, P2-81).
-      if (attente && !m._receptionEnAttente && m.porteur && m.phase !== 'MELEE') {
+      // le ballon rejoint la mêlée à vue (cf. M24, P2-81). Ballon roulé en
+      // touche (P2-92) : le porteur est le talonneur qui va lancer.
+      if (attente && !m._receptionEnAttente && m.porteur && m.phase !== 'MELEE' && m.phase !== 'TOUCHE') {
         const d = Math.hypot(m.porteur.x - bx, m.porteur.y - by);
         cas++; if (d <= 1.6) propres++; pire = Math.max(pire, d);
       }

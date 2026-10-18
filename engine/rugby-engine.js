@@ -1056,6 +1056,7 @@
       // chute (cf. _tickReceptionCoupDePied) avant qu'un joueur ne soit
       // déclaré porteur, jamais une téléportation instantanée.
       this._receptionEnAttente = false;
+      this._rouleBallon = null;
       this.timerReceptionAuSol = 0;
       // Lancer de touche en cours (loi 18) : pendant que le ballon vole du
       // lanceur vers le sauteur, on stocke ici la cible et l'issue déjà
@@ -3945,6 +3946,41 @@
       this.ballonVolY = cibleY;
       this._receptionEnAttente = true;
       this.timerReceptionAuSol = 0;
+      // LE BALLON ROULE (P2-92). Sans personne dessous, il rebondit et file
+      // dans le sens du coup de pied : c'est ce qui fait gagner du terrain à un
+      // dégagement et ce qui crée la course pour le récupérer. Avant, il
+      // restait collé au point de chute. Un ballon reçu de volée (un joueur
+      // sous le ballon) ne roule pas.
+      const sousLeBallon = [...chasseurs, ...receveurs].some(j => Math.hypot(j.x - cibleX, j.y - cibleY) <= 1.3);
+      const elan = { DEGAGEMENT: 6, OCCUPATION: 5, CHIP: 3, CHANDELLE: 1.5 }[this.typeCoupDePiedJeu] || 3;
+      this._rouleBallon = !sousLeBallon && distVol > 0.1
+        ? { vx: dxVol / distVol * elan, vy: dyVol / distVol * elan }
+        : null;
+    }
+
+    // Ballon qui roule après la chute (P2-92) : il ralentit (~3 m/s²), s'arrête
+    // sur la ligne de but, et s'il franchit une ligne de touche, l'adversaire de
+    // l'équipe qui a botté obtient la touche là où il est sorti (loi 18).
+    // Renvoie true si le ballon est sorti en touche.
+    _tickRouleBallon(dt) {
+      const R = this._rouleBallon;
+      if (!R) return false;
+      const v = Math.hypot(R.vx, R.vy);
+      if (v < 0.2) { this._rouleBallon = null; return false; }
+      this.ballonVolX = Math.max(0, Math.min(LONGUEUR, this.ballonVolX + R.vx * dt));
+      this.ballonVolY += R.vy * dt;
+      const f = Math.max(0, v - 3 * dt) / v;
+      R.vx *= f; R.vy *= f;
+      if (this.ballonVolX <= 0 || this.ballonVolX >= LONGUEUR) R.vx = 0;
+      if (this.ballonVolY <= 0 || this.ballonVolY >= LARGEUR) {
+        const y = Math.max(0, Math.min(LARGEUR, this.ballonVolY));
+        this.ballonVolY = y;
+        this._rouleBallon = null;
+        this._receptionEnAttente = false;
+        this._accorderTouche(this.equipeCoupDePiedJeu, { x: this.ballonVolX, y }, 'COUP_DE_PIED');
+        return true;
+      }
+      return false;
     }
 
     // Ballon au sol après un coup de pied tactique, en attente de réception :
@@ -3989,9 +4025,10 @@
       // 20 m du ballon, ~2 fois par match après un dégagement profond) : saut
       // à l'écran (P2-90). Le plafond de 10 s ne sert que de garde-fou.
       const delaiEcoule = this.timerReceptionAuSol >= 10;
-      if (!chasseurOk && !receveurOk && !delaiEcoule) return;
+      if (!chasseurOk && !receveurOk && !delaiEcoule) { this._tickRouleBallon(dt); return; }
 
       this._receptionEnAttente = false;
+      this._rouleBallon = null;
       // Seul un camp réellement arrivé au contact peut capter le ballon : si
       // un seul camp est à portée, il récupère d'office (pas de tirage au
       // sort, pas de téléportation : le joueur est déjà là où il a couru).
