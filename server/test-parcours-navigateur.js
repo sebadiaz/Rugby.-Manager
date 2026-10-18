@@ -4580,6 +4580,24 @@ function optionsLancement() {
     await ctxM.close();
   }
 
+  // --- CHAQUE PHASE DU MOTEUR A UN LIBELLÉ À L'ÉCRAN (P2-86) -------------------
+  // Vu en QA : pendant un coup de pied, le badge de phase affichait le code
+  // brut « COUP_DE_PIED_JEU » — la seule phase absente de RMConstants.PHASES.
+  {
+    const srcMoteur = require('fs').readFileSync(require('path').join(__dirname, '..', 'docs', 'rugby-engine.js'), 'utf8');
+    const phasesMoteur = [...new Set([...srcMoteur.matchAll(/this\.phase = '([A-Z_]+)'/g)].map((x) => x[1]))];
+    const ctxPh = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+    const pPh = await ctxPh.newPage();
+    await pPh.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+    const sansLibelle = await pPh.evaluate((liste) => liste.filter((ph) => {
+      const e = window.RMConstants.PHASES[ph];
+      return !e || !e.label || /^[A-Z_]+$/.test(e.label);
+    }), phasesMoteur);
+    verifier(`phases : les ${phasesMoteur.length} phases du moteur ont un libellé lisible à l'écran`,
+      phasesMoteur.length >= 10 && sansLibelle.length === 0, `sans libellé : ${sansLibelle.join(', ')}`);
+    await ctxPh.close();
+  }
+
   // --- TAILLE DES JOUEURS À L'ÉCHELLE DU TERRAIN (P2-74) --------------------
   // Vu en QA sur téléphone : rayon fixe de 10 px alors qu'1 m n'y vaut que
   // ~4,7 px — un joueur couvrait plus de 4 m de terrain, et en touche, maul ou

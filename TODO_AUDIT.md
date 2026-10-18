@@ -580,6 +580,21 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-86. Le badge de phase affichait « COUP_DE_PIED_JEU » en clair
+- **Statut : CORRIGÉ (affichage)**
+- Fichiers concernés : `docs/js/constants.js` (`PHASES`), `server/test-parcours-navigateur.js`.
+
+**Constat (QA téléphone et bureau).** Pendant un coup de pied en jeu, le badge de phase du HUD affichait le code
+interne « COUP_DE_PIED_JEU » : c'était la seule phase du moteur absente de `RMConstants.PHASES`, et l'interface
+retombait alors sur le nom brut de la phase.
+
+**Correction.** Libellé « Coup de pied » (couleur dédiée).
+
+**Tests.** Test navigateur : le test relève dans le source du moteur toutes les phases qu'il peut prendre (12) et
+vérifie que chacune a un libellé lisible. Rouge avant (COUP_DE_PIED_JEU sans libellé), navigateur 491/0. Capture
+téléphone : badge « COUP DE PIED ». Le reste de la passe de QA (coup d'envoi en vol, formation de mêlée,
+transformation, aux deux formats) ne montre aucun autre défaut.
+
 ### P2-85. Tir au but : le ballon rejoint le buteur à vue (pénalité, transformation)
 - **Statut : CORRIGÉ (affichage)**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_debutRemiseBallon`, `tick`, `getState`),

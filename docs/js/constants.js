@@ -67,6 +67,9 @@
     MAUL: { label: 'Maul', couleur: '#bf360c' },
     MELEE: { label: 'Mêlée', couleur: '#1565c0' },
     TOUCHE: { label: 'Touche', couleur: '#6a1b9a' },
+    // Le ballon est en l'air après un coup de pied en jeu : sans cette entrée,
+    // le badge affichait le code brut « COUP_DE_PIED_JEU » (P2-86).
+    COUP_DE_PIED_JEU: { label: 'Coup de pied', couleur: '#5d4037' },
     ESSAI: { label: 'ESSAI !', couleur: '#f9a825' },
     TRANSFORMATION: { label: 'Transformation', couleur: '#00838f' },
     PENALITE_TIR: { label: 'Pénalité au but', couleur: '#ad1457' },
