@@ -580,6 +580,36 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-92. Le ballon qui tombe sans receveur roule, et peut trouver la touche
+- **Statut : CORRIGÉ (gameplay)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (chute dans `_tickCoupDePiedJeu`,
+  `_tickRouleBallon`, `_tickReceptionCoupDePied`), `server/test-invariants.js`.
+
+**Constat.** Un dégagement ou un coup de pied d'occupation qui tombait sans personne dessous restait collé au point de
+chute, immobile jusqu'à ce qu'un joueur arrive. En vrai, le ballon rebondit et roule : c'est ce qui fait gagner du terrain
+au dégagement, ce qui crée la course pour le récupérer, et ce qui fait trouver la touche en rebond.
+
+**Correction.** Sans joueur à moins de 1,3 m du point de chute, le ballon roule dans le sens du coup de pied. Élan selon le
+type : 6 m/s pour un dégagement, 5 pour une occupation, 3 pour un petit coup de pied, 1,5 pour une chandelle. Freinage
+~3 m/s². Il s'arrête sur la ligne de but (l'en-but n'est pas encore géré) ; s'il franchit une ligne de touche, l'adversaire
+de l'équipe qui a botté obtient la touche là où il est sorti (loi 18). Aucun tirage aléatoire ajouté.
+
+**Effet mesuré (200 graines appariées).** Touches +0,71 ± 0,39 ; points -1,94 ± 1,26 (55,6 -> 53,6, plus près du réel) ;
+essais -0,25 ± 0,20 ; rucks -4,1 ± 2,0 ; temps de jeu effectif -0,35 ± 0,23 min (déjà hors fourchette, cf. P2-82/83 : chaque
+touche ajoute du temps mort). Navigateur : le ballon au sol avance de ~4 m entre deux images, puis un receveur le ramasse.
+
+**Tests.** « coup de pied tactique : le ballon qui tombe sans receveur ROULE, et peut finir en touche » : rouge avant (0/139
+dégagements sans receveur ont roulé) ; vérifie aussi qu'un ballon sorti du terrain donne toujours la touche. Le test de
+P2-90 exclut désormais la touche en rebond (porteur = talonneur qui lance).
+
+**Test fragile corrigé.** « un joueur endurant garde sa vitesse de pointe » mesurait la vitesse de pointe par le MAXIMUM de
+la fenêtre, qui dépend d'un seul sprint. Sur trois lots de 32 graines, l'écart valait 0,007 / 0,060 / 0,106 (échec à 0,007,
+seuil 0,02). Avec la moyenne des 10 meilleures mesures : 0,076 / 0,086 / 0,100. Le test utilise cet estimateur, avec un
+seuil relevé à 0,04. Mutant « l'endurance n'agit plus » : exactement 0 -> rouge.
+
+**Barrières.** Invariants 80 (test d'endurance rejoué seul en vert après correction), 13 suites OK, calibration 13/14 (temps
+de jeu 29,0 min), navigateur 493/0.
+
 ### P2-91. Pénalité tapée en touche : le ballon rejoint la marque à vue, puis le buteur frappe
 - **Statut : CORRIGÉ (affichage, et pose du ballon de 0,8 s)**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_accorderPenaliteTouche`,

@@ -1057,16 +1057,24 @@ function ecartVitessePointe(config, graines) {
         if (p && (tot || tard)) {
           const d = Math.hypot(j.x - p.x, j.y - p.y) / DT;
           if (d < 12) { // on ignore les teleportations de remise en jeu
-            const cur = vmax.get(cle) || { tot: 0, tard: 0, eq: nomEq };
-            if (tot) cur.tot = Math.max(cur.tot, d); else cur.tard = Math.max(cur.tard, d);
+            const cur = vmax.get(cle) || { tot: [], tard: [], eq: nomEq };
+            (tot ? cur.tot : cur.tard).push(d);
             vmax.set(cle, cur);
           }
         }
         prec.set(cle, { x: j.x, y: j.y });
       }
     }
+    // Vitesse de pointe = moyenne des 10 meilleures mesures de la fenetre, pas
+    // le seul maximum (P2-92) : le maximum depend d'UN sprint, et donc du
+    // hasard de qui a couru apres quel ballon. Sur trois lots de 32 graines,
+    // l'ecart mesure au maximum valait 0,007 / 0,060 / 0,106 ; avec les 10
+    // meilleures mesures, 0,076 / 0,086 / 0,100. Mutant « l'endurance n'agit
+    // plus » : exactement 0 avec les deux estimateurs.
+    const pointe = (a) => { const s = [...a].sort((x, y) => y - x).slice(0, 10); return s.reduce((x, y) => x + y, 0) / s.length; };
     for (const v of vmax.values()) {
-      if (v.tot > 3 && v.tard > 3) (v.eq === 'A' ? rA : rB).push(v.tard / v.tot);
+      if (!v.tot.length || !v.tard.length) continue;
+      if (Math.max(...v.tot) > 3 && Math.max(...v.tard) > 3) (v.eq === 'A' ? rA : rB).push(pointe(v.tard) / pointe(v.tot));
     }
   }
   const moy = (a) => a.reduce((x, y) => x + y, 0) / a.length;
@@ -1088,7 +1096,7 @@ test('un joueur endurant garde sa vitesse de pointe en fin de match, un autre no
   for (let n = 1; n <= 15; n++) { cfg.joueursA[n] = { endurance: 90 }; cfg.joueursB[n] = { endurance: 30 }; }
   const avec = ecartVitessePointe(cfg, graines);
   const sans = ecartVitessePointe(undefined, graines);
-  assert.ok(avec - sans >= 0.02,
+  assert.ok(avec - sans >= 0.04,
     `l equipe endurante garde ${(avec - sans).toFixed(4)} de vitesse de pointe en plus que ne `
     + `l explique l asymetrie A/B (ecart avec config ${avec.toFixed(4)}, temoin ${sans.toFixed(4)}) : `
     + `l endurance ne change rien a la fin de match (avant correctif du moteur : exactement zero, `
