@@ -600,6 +600,14 @@ temps, avant comme après. Sauts du ballon de plus de 3 m : 24,8 -> 22,9 par mat
 **Tests.** « interception : le ballon vole jusqu'à l'intercepteur » : rouge avant (6/19 sans saut, pire 10,2 m) ; aucun saut
 de plus de 3 m dans la seconde qui suit une interception (12 matchs). L'invariant existant sur les interceptions reste vert.
 
+**Test fragile corrigé.** « le jeu au pied appartient aux demis… » exigeait que le n°9 tape plus de 20 % des coups de pied,
+mesuré sur 4 graines seulement. Avec la divergence des matchs, il tombait à 19 %. Mesure sur 24 graines : part du n°9
+23,1 % (24,4 % avant P2-88), avec de 19 à 27 % d'un bloc de 4 graines à l'autre. C'était donc du bruit, pas une régression.
+Le test passe à 16 graines et garde son seuil. Mutant « chandelle depuis la base 2,5 fois plus rare » -> rouge (16 %).
+
+**Barrières.** Invariants 76 (ce test rejoué seul en vert après élargissement), 13 suites OK, calibration 13/14 (temps
+de jeu 29,4 min, hors fourchette, cf. P2-82/83), navigateur 493/0.
+
 ### P2-87. Le bandeau de l'arbitre annonçait des faits déjà dépassés
 - **Statut : CORRIGÉ (affichage)**
 - Fichiers concernés : `docs/js/ui.js` (`choisirBanniere`, exposée sur RMUI), `server/test-parcours-navigateur.js`.

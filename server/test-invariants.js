@@ -1504,8 +1504,10 @@ test('le jeu au pied appartient aux demis et a l arriere, pas aux avants', () =>
   // tape presque jamais. Le moteur laissait n'importe quel porteur decider de
   // taper au meme taux : 29 % des coups de pied etaient tapes par des AVANTS,
   // 8 % seulement par le n°9. Cf. TODO_AUDIT.md P2-57.
+  // 16 graines : sur 4 graines, la part du n°9 varie de 19 a 27 % d'un bloc
+  // a l'autre (moyenne 23 % sur 24 graines) ; cf. TODO_AUDIT.md P2-88.
   const par = {}; let tot = 0;
-  for (let seed = 1; seed <= 4; seed++) {
+  for (let seed = 1; seed <= 16; seed++) {
     const m = new MatchEngine(seed, 4800);
     for (let t = 0; t < 4800; t += 0.1) {
       const k0 = m.stats.A.kicks + m.stats.B.kicks; const p = m.porteur;
