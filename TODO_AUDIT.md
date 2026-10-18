@@ -580,6 +580,33 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-93. Ballon dans l'en-but : la défense aplatit (renvoi aux 22 m) ou le chasseur marque
+- **Statut : CORRIGÉ (gameplay)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_entrerEnBut`, `_tickRouleBallon`,
+  `_tickReceptionCoupDePied`), `docs/js/constants.js` (icône et bandeau `EN_BUT_APLATI`), `server/test-invariants.js`.
+
+**Constat.** Depuis P2-92, un ballon qui roulait jusqu'à la ligne d'essai s'y arrêtait, et le receveur repartait de là en
+jeu courant. Un coup de pied qui retombait au-delà de la ligne était ramené sur la ligne, puis joué de même. Aucune des
+deux issues réelles n'existait : aplatissement défensif, suivi d'un renvoi aux 22 m (loi 12), ou essai du chasseur sur
+coup de pied à suivre (loi 8).
+
+**Correction.** Un coup de pied qui retombe au-delà de la ligne, ou un ballon qui la franchit en roulant, est dans
+l'en-but. Les joueurs ne franchissent pas la ligne dans ce moteur : le ballon est donc posé à 0,8 m derrière elle, à portée
+de bras, et le premier arrivé décide. Si c'est un défenseur, il aplatit, et la défense tape le renvoi aux 22 m (nouvel
+évènement `EN_BUT_APLATI`, avec icône et bandeau). Si c'est un chasseur en position régulière, il marque (essai, puis
+transformation). Une réception disputée peut encore finir en en-avant, donc en mêlée.
+
+**Effet mesuré.** ~0,3 cas par match, tous sur petit coup de pied à suivre (24 matchs : 4 renvois, 3 essais). 200 graines
+appariées : points -0,84 ± 0,58, essais -0,07 ± 0,09 : neutre.
+
+**Tests.** « coup de pied dans l en-but : le défenseur aplatit (renvoi aux 22 m) ou le chasseur marque » : rouge avant (0
+ballon dans l'en-but en 24 matchs) ; toute entrée dans l'en-but finit en renvoi, en essai ou en mêlée. Le test de P2-90
+exclut aussi le renvoi aux 22 m (porteur = botteur du renvoi).
+
+**Barrières.** Invariants 81/81, 13 suites OK, calibration 13/14 (temps de jeu 29,2 min), navigateur 493/0. Après un
+redémarrage du conteneur, la branche locale avait été recréée sur `main` : le premier passage des suites et du navigateur
+portait donc sur le mauvais code, et il a été refait sur 3724ffd.
+
 ### P2-92. Le ballon qui tombe sans receveur roule, et peut trouver la touche
 - **Statut : CORRIGÉ (gameplay)**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (chute dans `_tickCoupDePiedJeu`,
