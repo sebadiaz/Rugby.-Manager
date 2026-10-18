@@ -142,7 +142,7 @@
     // COUP_ENVOI (remise en jeu), qui sinon masquerait la bannière de
     // l'action marquante.
     const nouveaux = state.eventLog.filter(e => e.id > dernierIdEvenementAffiche);
-    const aAfficher = [...nouveaux].reverse().find(e => TYPES_BANNIERE.has(e.type));
+    const aAfficher = choisirBanniere(nouveaux, state);
     if (aAfficher) {
       const banner = document.getElementById('banner');
       banner.textContent = `🟨 ARBITRE — ${traduireEquipesDansMessage(aAfficher.message)}`;
@@ -162,6 +162,28 @@
     // un bug plutôt qu'à une action qui n'a pas encore de sens. Il apparaît
     // exactement au moment où il devient pertinent.
     document.getElementById('btnSauver').style.display = state.phase === 'TERMINE' ? '' : 'none';
+  }
+
+  // --- Choix du bandeau de l'arbitre --------------------------------------------
+  // Le plus récent des événements « à bandeau » parmi les nouveaux, À CONDITION
+  // qu'il date de 4 s de match au plus. Après un saut dans la barre de lecture
+  // (ou en vitesse x4), les nouveaux événements couvrent des dizaines de
+  // secondes : le bandeau annonçait alors un fait déjà dépassé (« Jeu au large
+  // ... équipe A » pendant que le fil montrait un coup de pied de l'équipe B,
+  // P2-87). Un événement sans instant (`t`) reste accepté. `state` est l'état
+  // NORMALISÉ (cf. matchState.js) : l'heure de match y est `clock.time` — il
+  // n'a pas de champ `tempsMatch`, et une première version qui le lisait ne
+  // filtrait rien dans le jeu tout en passant son test.
+  const FENETRE_BANNIERE_S = 4;
+  function choisirBanniere(nouveaux, state) {
+    const tempsMatch = state && state.clock ? state.clock.time : undefined;
+    for (let i = nouveaux.length - 1; i >= 0; i--) {
+      const e = nouveaux[i];
+      if (!TYPES_BANNIERE.has(e.type)) continue;
+      if (typeof e.t === 'number' && typeof tempsMatch === 'number' && tempsMatch - e.t > FENETRE_BANNIERE_S) return null;
+      return e;
+    }
+    return null;
   }
 
   // --- Position du bandeau de l'arbitre ----------------------------------------
@@ -366,6 +388,6 @@
     formaterTemps, majAffichage, reinitialiserSuivi, definirNomsEquipes,
     chargerHistorique, rafraichirPanneauHistorique, enregistrerResultat, nomsHistorique, VERSION_INSTANTANE_MATCH, identifiantMatch,
     rafraichirPanneauStats,
-    hauteurFilVisible, placerBandeau,
+    hauteurFilVisible, placerBandeau, choisirBanniere,
   };
 })(window);

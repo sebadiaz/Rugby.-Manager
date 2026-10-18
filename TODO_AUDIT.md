@@ -580,6 +580,23 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-87. Le bandeau de l'arbitre annonçait des faits déjà dépassés
+- **Statut : CORRIGÉ (affichage)**
+- Fichiers concernés : `docs/js/ui.js` (`choisirBanniere`, exposée sur RMUI), `server/test-parcours-navigateur.js`.
+
+**Constat (QA téléphone).** Le bandeau annonçait « Jeu au large du n°10 au n°11, équipe A » alors que le fil montrait déjà
+un coup de pied de l'équipe B. À chaque image, le bandeau prenait le plus récent événement « à bandeau » parmi TOUS les
+nouveaux événements. Après un saut dans la barre de lecture, ou en vitesse x4, ces événements couvrent des dizaines de
+secondes de match : le bandeau annonçait alors un fait dépassé.
+
+**Correction.** Un événement n'est annoncé que s'il date de 4 s de match au plus (`choisirBanniere`). Piège rencontré : la
+première version lisait `state.tempsMatch`. Or l'affichage reçoit l'état NORMALISÉ (`matchState.js`), où l'heure est
+`clock.time` : le filtre n'agissait jamais dans le jeu, et le test passait quand même avec un nombre fabriqué. La fonction
+prend désormais l'état normalisé, et le test le construit avec le vrai moteur et la vraie normalisation.
+
+**Tests.** Rouge avant (fonction absente) : un événement vieux de 10 s n'est pas annoncé ; un événement récent l'est, le plus
+récent d'abord. Mutant « lit state.tempsMatch » -> rouge. Navigateur 493/0.
+
 ### P2-86. Le badge de phase affichait « COUP_DE_PIED_JEU » en clair
 - **Statut : CORRIGÉ (affichage)**
 - Fichiers concernés : `docs/js/constants.js` (`PHASES`), `server/test-parcours-navigateur.js`.

@@ -4580,6 +4580,39 @@ function optionsLancement() {
     await ctxM.close();
   }
 
+  // --- LE BANDEAU DE L'ARBITRE N'ANNONCE QUE LE PRÉSENT (P2-87) ----------------
+  // Vu en QA : le bandeau annonçait « Jeu au large ... équipe A » alors que le
+  // fil montrait déjà un coup de pied de l'équipe B. Après un saut dans la
+  // barre de lecture (ou en vitesse x4), il choisissait le plus récent
+  // événement « à bandeau » parmi TOUS ceux sautés, même vieux de plusieurs
+  // secondes de match.
+  {
+    const ctxBa = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+    const pBa = await ctxBa.newPage();
+    await pBa.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+    const r = await pBa.evaluate(() => {
+      const f = window.RMUI.choisirBanniere;
+      if (typeof f !== 'function') return { absente: true };
+      const ev = (id, type, t) => ({ id, type, t, message: type });
+      // État de la forme NORMALISÉE, celle que reçoit réellement l'affichage :
+      // c'est le vrai moteur du match qui la produit.
+      const etat = (t) => {
+        const m = new window.RugbyEngine.MatchEngine(1, 4800);
+        m.tempsMatch = t;
+        return window.RMMatchState ? window.RMMatchState.normalizeMatchState(m.getState()) : { clock: { time: t } };
+      };
+      const vieux = f([ev(1, 'JEU_LARGE', 100), ev(2, 'COUP_DE_PIED', 108)], etat(110));
+      const recent = f([ev(3, 'PENALITE', 108.5), ev(4, 'COUP_DE_PIED', 109)], etat(110));
+      const plusRecent = f([ev(5, 'PENALITE', 107), ev(6, 'ESSAI', 109)], etat(110));
+      return { vieux: vieux && vieux.id, recent: recent && recent.id, plusRecent: plusRecent && plusRecent.id };
+    });
+    verifier('arbitre : le bandeau ignore un événement vieux de plusieurs secondes de match',
+      !r.absente && r.vieux == null, JSON.stringify(r));
+    verifier('arbitre : le bandeau annonce l\'événement récent, le plus récent d\'abord',
+      !r.absente && r.recent === 3 && r.plusRecent === 6, JSON.stringify(r));
+    await ctxBa.close();
+  }
+
   // --- CHAQUE PHASE DU MOTEUR A UN LIBELLÉ À L'ÉCRAN (P2-86) -------------------
   // Vu en QA : pendant un coup de pied, le badge de phase affichait le code
   // brut « COUP_DE_PIED_JEU » — la seule phase absente de RMConstants.PHASES.
