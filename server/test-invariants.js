@@ -2811,6 +2811,28 @@ test('interception : le ballon vole jusqu\'à l\'intercepteur, à vue', () => {
   assert.strictEqual(propres, cas, `${propres}/${cas} interceptions sans saut du ballon > 3 m (pire : ${pire.toFixed(1)} m)`);
 });
 
+test('ballon au sol après un coup de pied : il est ramassé par un joueur arrivé au contact, jamais à distance', () => {
+  // Relevé des sauts (P2-90) : un dégagement profond tombe parfois à 25 m de
+  // tout le monde. Le joueur le plus proche y court (~6 m/s), mais le délai
+  // de grâce de 4 s lui donnait le ballon à 2-17 m de lui : saut à l'écran.
+  let cas = 0, propres = 0, pire = 0;
+  for (let seed = 1; seed <= 12; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    for (let i = 0; i < 400000 && m.phase !== 'TERMINE'; i++) {
+      const attente = m._receptionEnAttente, bx = m.ballonVolX, by = m.ballonVolY;
+      m.tick(0.1);
+      // En-avant sous la chandelle -> mêlée : le porteur est le n°9 adverse,
+      // le ballon rejoint la mêlée à vue (cf. M24, P2-81).
+      if (attente && !m._receptionEnAttente && m.porteur && m.phase !== 'MELEE') {
+        const d = Math.hypot(m.porteur.x - bx, m.porteur.y - by);
+        cas++; if (d <= 1.6) propres++; pire = Math.max(pire, d);
+      }
+    }
+  }
+  assert.ok(cas >= 100, `échantillon trop petit (${cas} ballons au sol)`);
+  assert.strictEqual(propres, cas, `${propres}/${cas} ballons ramassés au contact (pire : ${pire.toFixed(1)} m)`);
+});
+
 test('jeu rapide (pénalité, coup franc) : le ballon est posé sur la marque, le tapeur le rejoint à vue', () => {
   // Relevé des sauts (P2-89) : sur une pénalité jouée vite après un ruck
   // (~0,6 par match), le n°9 du bénéficiaire devenait porteur là où il était

@@ -3954,7 +3954,10 @@
       for (const j of [...chasseurs, ...receveurs]) {
         if (j.horsJeuKick > 0) { this._replierHorsJeuKick(j, dt); continue; }
         if (!versBallon.has(j)) { this._tenirLigneCoupDePied(j, cibleX, dt); continue; }
-        avancer(j, cibleX - j.x, cibleY - j.y, dt, vitesseMs(j) * 0.85);
+        // Ballon au sol depuis 4 s (dégagement tombé loin de tout le monde) :
+        // ceux qui y vont passent à pleine vitesse.
+        const allure = this.timerReceptionAuSol >= 4 ? 1 : 0.85;
+        avancer(j, cibleX - j.x, cibleY - j.y, dt, vitesseMs(j) * allure);
       }
 
       const RAYON_RECEPTION = 1.3;
@@ -3965,7 +3968,12 @@
       const { joueur: receveurProche, distance: dReceveur } = joueurLePlusProche(receveurs, cibleX, cibleY);
       const chasseurOk = dChasseur <= RAYON_RECEPTION;
       const receveurOk = dReceveur <= RAYON_RECEPTION;
-      const delaiEcoule = this.timerReceptionAuSol >= 4;
+      // Délai de grâce : au-delà de 4 s, c'est le PREMIER ARRIVÉ au ballon qui
+      // le ramasse (les joueurs qui y vont accélèrent, cf. plus haut). Avant,
+      // le délai donnait le ballon au plus proche là où il se trouvait (2 à
+      // 20 m du ballon, ~2 fois par match après un dégagement profond) : saut
+      // à l'écran (P2-90). Le plafond de 10 s ne sert que de garde-fou.
+      const delaiEcoule = this.timerReceptionAuSol >= 10;
       if (!chasseurOk && !receveurOk && !delaiEcoule) return;
 
       this._receptionEnAttente = false;
