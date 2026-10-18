@@ -2761,9 +2761,12 @@ test('pénalité en touche : le buteur frappe depuis la marque et le ballon vole
     m._accorderPenaliteTouche = (eq, pos) => { suivi = { marque: { x: pos.x, y: pos.y }, pts: [], vol: false }; return orig(eq, pos); };
     const brut = m.log.bind(m);
     m.log = (type, team, msg, extra) => {
+      if (type === 'PENALITE_TOUCHE_FRAPPE' && suivi) suivi.frappe = suivi.pts[suivi.pts.length - 1];
       if (type === 'TOUCHE_LANCER' && suivi) {
         cas++;
-        const p0 = suivi.pts[0];
+        // Le ballon est SUR LA MARQUE au moment de la frappe (il peut y être
+        // ramené à vue depuis le ruck ou le lancer, cf. P2-91).
+        const p0 = suivi.frappe;
         if (p0 && Math.hypot(p0.x - suivi.marque.x, p0.y - suivi.marque.y) < 3) departMarque++;
         let saut = 0;
         for (let i = 1; i < suivi.pts.length; i++) saut = Math.max(saut, Math.hypot(suivi.pts[i].x - suivi.pts[i - 1].x, suivi.pts[i].y - suivi.pts[i - 1].y));

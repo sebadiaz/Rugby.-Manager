@@ -1992,6 +1992,9 @@
       if (this.penTouche) {
         this.ballonEnVol = true;
         this.ballonVolX = depart.x; this.ballonVolY = depart.y; this.ballonVolHauteur = 0;
+        // Assez vite pour être sur la marque avant la frappe (pose minimale de
+        // 0,8 s, cf. _tickPenaliteTouche) : n'agit que sur l'affichage.
+        this.penTouche.vitesseBallon = Math.max(10, Math.hypot(position.x - depart.x, position.y - depart.y) / 0.7);
       }
     }
 
@@ -2005,12 +2008,15 @@
         const b = P.buteur;
         avancer(b, P.marque.x - b.x, P.marque.y - b.y, dt, vitesseMs(b));
         // Le ballon est ramené à la marque (~10 m/s) pendant que le buteur y court.
-        const dxm = P.marque.x - this.ballonVolX, dym = P.marque.y - this.ballonVolY, dm = Math.hypot(dxm, dym), pas = 10 * dt;
+        const dxm = P.marque.x - this.ballonVolX, dym = P.marque.y - this.ballonVolY, dm = Math.hypot(dxm, dym), pas = (P.vitesseBallon || 10) * dt;
         if (dm <= pas) { this.ballonVolX = P.marque.x; this.ballonVolY = P.marque.y; }
         else { this.ballonVolX += dxm / dm * pas; this.ballonVolY += dym / dm * pas; }
         this.ballonVolHauteur = 0;
         // Plafond : un buteur très éloigné ne bloque jamais la touche.
-        if (distance(b, P.marque) < 1.5 || P.t > 10) {
+        // Pose du ballon : jamais de frappe avant 0,8 s, même si le buteur est
+        // déjà sur la marque (durée fixe : la simulation ne dépend pas de
+        // l'affichage).
+        if ((distance(b, P.marque) < 1.5 && P.t >= 0.8) || P.t > 10) {
           // Le vol part de là où est le ballon (en principe déjà sur la marque).
           P.etape = 'VOL'; P.t = 0; P.depart = { x: this.ballonVolX, y: this.ballonVolY };
           this.log('PENALITE_TOUCHE_FRAPPE', P.equipe, `Le n°${b.numero} tape la penalite en touche`);
