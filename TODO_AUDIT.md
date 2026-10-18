@@ -580,6 +580,55 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-91. Pénalité tapée en touche : le ballon rejoint la marque à vue, puis le buteur frappe
+- **Statut : CORRIGÉ (affichage, et pose du ballon de 0,8 s)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_accorderPenaliteTouche`,
+  `_tickPenaliteTouche`, `_positionBallonAffichee`), `server/test-invariants.js`.
+
+**Constat (relevé des sauts).** Après un hors-jeu en touche (P2-78) ou une faute au ruck jouée en touche, le ballon passait
+d'un coup du vol du lancer, ou du ruck, à la marque de pénalité, 2,5 à 6,7 m plus loin (4 cas sur 128 en 12 matchs).
+
+**Correction.** Le ballon part de la dernière position affichée (cf. P2-89) et rejoint la marque pendant que le buteur y
+court. Le buteur ne frappe pas avant 0,8 s de pose, et le ballon va assez vite pour être sur la marque avant la frappe.
+Piège rencontré : une première version faisait attendre la frappe jusqu'à l'arrivée du ballon. Or le point de départ du
+ballon vient de l'affichage : le déroulé du match aurait dépendu de l'appel à `getState`, alors que le replay doit
+retrouver le match calculé. La pose a donc une durée fixe ; l'empreinte de 10 matchs est identique avec ou sans
+`getState`.
+
+**Effet mesuré.** 200 graines appariées : 174 matchs identiques, points +0,12 ± 0,29, essais +0,01 ± 0,05. Sauts du ballon
+de plus de 3 m : 20,2 -> 19,9 par match ; les sauts restants sont des vols de coups de pied (~3,1-3,3 m par image).
+
+**Tests.** « pénalité tapée en touche : le ballon rejoint la marque à vue avant la frappe » : rouge avant (124/128, pire
+6,7 m). Le test de P2-79 vérifiait que la PREMIÈRE image après la faute montre le ballon sur la marque, c'est-à-dire
+exactement le saut ; il vérifie désormais la position du ballon AU MOMENT DE LA FRAPPE (37/37).
+
+**Barrières.** Invariants 79/79, 13 suites OK, calibration 13/14 (temps de jeu hors fourchette, cf. P2-82/83),
+navigateur 493/0.
+
+### P2-90. Ballon au sol après un coup de pied : ramassé par le premier arrivé, jamais à distance
+- **Statut : CORRIGÉ (léger effet sur la simulation, neutre)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_tickReceptionCoupDePied`),
+  `server/test-invariants.js`.
+
+**Constat (relevé des sauts).** Un dégagement profond tombe parfois à 25 m de tout le monde. Le joueur le plus proche y
+court (~6 m/s), mais le délai de grâce de 4 s lui donnait le ballon là où il se trouvait, à 2-20 m (26 cas sur 532 en 12
+matchs, ~2 par match).
+
+**Correction.** Après 4 s, ceux qui vont au ballon passent à pleine vitesse, et c'est le PREMIER ARRIVÉ au contact qui le
+ramasse. Le délai qui donne le ballon d'office passe à 10 s (garde-fou).
+
+**Effet mesuré.** 200 graines appariées : points -0,09 ± 0,73, essais -0,07 ± 0,12, temps de jeu +0,04 ± 0,13 min.
+Sauts > 3 m : 21,8 -> 20,2 par match.
+
+**Tests.** « ballon au sol après un coup de pied : il est ramassé par un joueur arrivé au contact » : rouge avant (494/502,
+pire 17,1 m). Les en-avants sous la chandelle (mêlée, n°9 adverse porteur) sont exclus : le ballon y rejoint la mêlée à
+vue (M24). **Test fragile corrigé** : « des offloads à chaque match » mesurait sur 4 graines ; d'un match à l'autre, il y a
+de 6 à 26 offloads (~15 en moyenne sur 24 graines), et une bifurcation suffisait à passer sous le seuil de 9 (8,0).
+Passé à 12 graines, même seuil ; mutant « offloads × 0,45 » -> rouge (8,0).
+
+**Barrières.** Invariants 78 (le test des offloads rejoué en vert après élargissement), 13 suites OK, calibration 13/14,
+navigateur 493/0.
+
 ### P2-89. Jeu rapide : le ballon est posé sur la marque, le tapeur le rejoint
 - **Statut : CORRIGÉ (affichage)**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_traiterPenalite` jeu rapide,
