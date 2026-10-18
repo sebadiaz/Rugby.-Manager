@@ -64,6 +64,31 @@ la calibration échoue. Les 49 s de touche masquaient ce tempo trop rapide. Ordr
 tempo du jeu courant (actions par minute) au réel, ensuite rendre aux touches leur vraie durée, et mesurer chaque
 étape en apparié sur au moins 100 graines.
 
+**Leviers de tempo essayés (P2-94, 40 graines chacun, non livrés).** Toutes les variantes ont des touches
+ramenées à 30 s (le maximum légal de mise en place), plus un levier de tempo.
+
+| Variante | Jeu (min) | Rucks | Mêlées | Essais | Catégories |
+|---|---|---|---|---|---|
+| Actuel (touche 49 s) | 29,4 | 176 | 14,6 | 6,1 | 13/14 |
+| Touche 30 s seule | 32,9 | 198 | 15,5 | 7,1 | 12/14 |
+| + défense plus lente à monter (rampe 9 s ou 12 s) | 31,3 | 181-183 | 14,3-15,1 | 8,9-10,1 | 9-10/14 |
+| + attaque 3 m plus profonde | 33,3 | 202 | 14,7 | 7,5 | 13/14 |
+| + rucks plus lents (part rapide 55 -> 45 %) | 35,1 | 201 | 15,3 | 6,5 | 12/14 |
+| + passes plus lentes (14 m/s) | 33,1 | 202 | 16,3 | 7,0 | 12/14 |
+| + offloads x1,5 ou x1,8 | 32,9 | 194-197 | 15,9-16,1 | 7,0 | 11/14 |
+
+**Structure d'une phase (6 matchs, moteur actuel).** Du ruck au ruck suivant : 3,4 s de jeu courant en moyenne
+(médiane 3,1 s), 1,8 passe (49 % des phases n'ont qu'une passe, celle du n°9 au porteur), 1,7 s de la dernière passe
+au contact. Ces valeurs sont proches d'un vrai jeu de pods.
+
+**Lecture.** Aucun levier simple ne baisse le nombre d'actions PAR MINUTE de jeu : dès que le temps de jeu atteint
+32 min, il y a ~200 rucks et ~15,5 mêlées. Une défense plus lente donne des essais ; une attaque plus profonde,
+des passes plus lentes ou plus d'offloads ajoutent des courses sans retirer de rucks. Le seul levier qui joue est la
+durée des rucks, et il ne gagne que ~5 %. Le match de référence compte lui-même 181 rucks pour ~35 min de jeu, soit
+au-dessus du plafond de 180 de la calibration. Ce n'est donc pas un réglage, c'est un choix : soit revoir les
+fourchettes de rucks et de mêlées avec plusieurs matchs réels, soit ralentir tout le jeu courant (vitesses de course),
+au risque de joueurs visiblement trop lents.
+
 ## Diagnostic
 
 Les **taux unitaires sont désormais bien calibrés** (score, essais, coups de
