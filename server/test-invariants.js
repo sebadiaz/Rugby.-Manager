@@ -1399,8 +1399,10 @@ test('le ballon VIT dans le contact : des offloads a chaque match, pas une raret
   // moteur en produisait 4,4 par match : un porteur plaque finissait au ruck
   // presque a tous les coups, alors que CLAUDE.md demande des passes « avant ou
   // pendant le contact ». Cf. TODO_AUDIT.md P2-52.
+  // 12 graines : d'un match a l'autre, de 6 a 26 offloads (moyenne ~15) ; sur
+  // 4 graines, une seule bifurcation suffisait a passer sous 9 (P2-90).
   let offloads = 0;
-  const N = 4;
+  const N = 12;
   for (let seed = 1; seed <= N; seed++) {
     const m = new MatchEngine(seed, 4800);
     for (let t = 0; t < 4800; t += 0.1) m.tick(0.1);
