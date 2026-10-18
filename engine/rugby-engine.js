@@ -1057,6 +1057,7 @@
       // déclaré porteur, jamais une téléportation instantanée.
       this._receptionEnAttente = false;
       this._rouleBallon = null;
+      this._ballonEnBut = null;
       this.timerReceptionAuSol = 0;
       // Lancer de touche en cours (loi 18) : pendant que le ballon vole du
       // lanceur vers le sauteur, on stocke ici la cible et l'issue déjà
@@ -3956,6 +3957,23 @@
       this._rouleBallon = !sousLeBallon && distVol > 0.1
         ? { vx: dxVol / distVol * elan, vy: dyVol / distVol * elan }
         : null;
+      this._ballonEnBut = null;
+      // Coup de pied qui retombe au-delà de la ligne d'essai adverse : le ballon
+      // est dans l'en-but (P2-93).
+      if (this.cibleCoupDePiedX <= 0 || this.cibleCoupDePiedX >= LONGUEUR) this._entrerEnBut();
+    }
+
+    // Ballon dans l'en-but de l'équipe qui reçoit le coup de pied (P2-93). Les
+    // joueurs ne franchissent pas la ligne dans ce moteur : le ballon est posé
+    // à 0,8 m derrière elle, à portée de bras, et le premier arrivé décide —
+    // le défenseur aplatit (renvoi aux 22 m, loi 12), le chasseur marque
+    // (essai sur coup de pied à suivre, loi 8).
+    _entrerEnBut() {
+      const ligne = this.ballonVolX < LONGUEUR / 2 ? 0 : LONGUEUR;
+      const defense = this.equipeCoupDePiedJeu === 'A' ? 'B' : 'A';
+      this.ballonVolX = ligne === 0 ? -0.8 : LONGUEUR + 0.8;
+      this._rouleBallon = null;
+      this._ballonEnBut = { ligne, defense };
     }
 
     // Ballon qui roule après la chute (P2-92) : il ralentit (~3 m/s²), s'arrête
@@ -3971,7 +3989,10 @@
       this.ballonVolY += R.vy * dt;
       const f = Math.max(0, v - 3 * dt) / v;
       R.vx *= f; R.vy *= f;
-      if (this.ballonVolX <= 0 || this.ballonVolX >= LONGUEUR) R.vx = 0;
+      // Le ballon franchit la ligne d'essai en roulant : il est dans l'en-but.
+      if ((this.ballonVolX <= 0 && R.vx < 0) || (this.ballonVolX >= LONGUEUR && R.vx > 0)) {
+        if (this.ballonVolY > 0 && this.ballonVolY < LARGEUR) { this._entrerEnBut(); return false; }
+      }
       if (this.ballonVolY <= 0 || this.ballonVolY >= LARGEUR) {
         const y = Math.max(0, Math.min(LARGEUR, this.ballonVolY));
         this.ballonVolY = y;
@@ -4029,6 +4050,8 @@
 
       this._receptionEnAttente = false;
       this._rouleBallon = null;
+      const enBut = this._ballonEnBut;
+      this._ballonEnBut = null;
       // Seul un camp réellement arrivé au contact peut capter le ballon : si
       // un seul camp est à portée, il récupère d'office (pas de tirage au
       // sort, pas de téléportation : le joueur est déjà là où il a couru).
@@ -4072,6 +4095,31 @@
       // Coup de pied REGAGNÉ : l'équipe qui a botté récupère son propre coup de
       // pied (motif discriminant de l'étude).
       if (chasseurGagne) this.stats[equipeKick].kicksRegagnes++;
+      // BALLON DANS L'EN-BUT (P2-93) : le premier arrivé l'aplatit.
+      if (enBut) {
+        if (joueur.team === enBut.defense) {
+          // Loi 12 : ballon botté par l'attaque et aplati par la défense dans
+          // son en-but -> renvoi aux 22 m par la défense.
+          this.log('EN_BUT_APLATI', joueur.team,
+            `Le n°${joueur.numero} de l'equipe ${joueur.team} aplatit dans son en-but : renvoi aux 22 m`);
+          this._nouvelleManche(equipeKick, enBut.ligne === 0 ? 22 : LONGUEUR - 22);
+          return;
+        }
+        // Loi 8 : un chasseur en position régulière aplatit le premier -> essai.
+        this.possession = equipeKick;
+        this.porteur = joueur;
+        joueur.x = enBut.ligne;
+        this.score[equipeKick] += 5;
+        this.stats[equipeKick].essais++;
+        this._statJoueur(joueur).essais++;
+        this.essaiX = enBut.ligne;
+        this.essaiY = joueur.y;
+        this.essaiEquipe = equipeKick;
+        this.log('ESSAI', equipeKick, `Essai equipe ${equipeKick} ! Le n°${joueur.numero} aplatit le coup de pied a suivre`);
+        this.phase = 'ESSAI';
+        this.timerPhase = 0;
+        return;
+      }
       this.porteur = joueur;
       this.possession = joueur.team;
       this.ruckPoint = { x: joueur.x, y: joueur.y };

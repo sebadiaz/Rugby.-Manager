@@ -2824,6 +2824,35 @@ test('interception : le ballon vole jusqu\'à l\'intercepteur, à vue', () => {
   assert.strictEqual(propres, cas, `${propres}/${cas} interceptions sans saut du ballon > 3 m (pire : ${pire.toFixed(1)} m)`);
 });
 
+test('coup de pied dans l en-but : le défenseur aplatit (renvoi aux 22 m) ou le chasseur marque', () => {
+  // P2-93 : un ballon qui roulait jusqu'à la ligne d'en-but s'y arrêtait, et
+  // le receveur repartait de là en jeu courant. En vrai, un ballon dans l'en-but
+  // est aplati par le défenseur (renvoi aux 22 m, loi 12) ou par un chasseur
+  // de l'équipe qui a botté (essai, loi 8).
+  let enBut = 0, renvois = 0, essais = 0, autres = 0;
+  for (let seed = 1; seed <= 24; seed++) {  // ~0,3 par match : petits coups de pied à suivre
+    const m = new MatchEngine(seed, 4800);
+    let suivi = null;
+    for (let i = 0; i < 400000 && m.phase !== 'TERMINE'; i++) {
+      const avant = m._ballonEnBut;
+      const kick = m.equipeCoupDePiedJeu;
+      const s0 = { A: m.score.A, B: m.score.B };
+      m.tick(0.1);
+      if (avant && !m._ballonEnBut) {
+        enBut++;
+        const defense = kick === 'A' ? 'B' : 'A';
+        if (m.phase === 'COUP_ENVOI' && m.renvoi22 && m.possession === defense) renvois++;
+        else if (m.phase === 'ESSAI' && m.score[kick] === s0[kick] + 5) essais++;
+        else if (m.phase === 'MELEE') { /* en-avant sur ballon disputé : mêlée */ }
+        else autres++;
+      }
+    }
+  }
+  assert.ok(enBut >= 5, `seulement ${enBut} ballons dans l'en-but en 24 matchs`);
+  assert.strictEqual(autres, 0, `${autres}/${enBut} ballons dans l'en-but sans aplatissement ni essai`);
+  assert.ok(renvois >= 1, 'aucun renvoi aux 22 m après un ballon aplati par la défense');
+});
+
 test('coup de pied tactique : le ballon qui tombe sans receveur ROULE, et peut finir en touche', () => {
   // P2-92 : un dégagement qui tombait sans personne dessous restait collé au
   // point de chute, immobile jusqu'à 4 s. En vrai, le ballon rebondit et
@@ -2872,8 +2901,9 @@ test('ballon au sol après un coup de pied : il est ramassé par un joueur arriv
       m.tick(0.1);
       // En-avant sous la chandelle -> mêlée : le porteur est le n°9 adverse,
       // le ballon rejoint la mêlée à vue (cf. M24, P2-81). Ballon roulé en
-      // touche (P2-92) : le porteur est le talonneur qui va lancer.
-      if (attente && !m._receptionEnAttente && m.porteur && m.phase !== 'MELEE' && m.phase !== 'TOUCHE') {
+      // touche (P2-92) : le porteur est le talonneur qui va lancer. Ballon
+      // aplati dans l'en-but (P2-93) : renvoi aux 22 m, le botteur du renvoi.
+      if (attente && !m._receptionEnAttente && m.porteur && !['MELEE', 'TOUCHE', 'COUP_ENVOI'].includes(m.phase)) {
         const d = Math.hypot(m.porteur.x - bx, m.porteur.y - by);
         cas++; if (d <= 1.6) propres++; pire = Math.max(pire, d);
       }
