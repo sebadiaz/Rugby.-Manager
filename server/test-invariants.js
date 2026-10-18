@@ -2811,6 +2811,43 @@ test('interception : le ballon vole jusqu\'à l\'intercepteur, à vue', () => {
   assert.strictEqual(propres, cas, `${propres}/${cas} interceptions sans saut du ballon > 3 m (pire : ${pire.toFixed(1)} m)`);
 });
 
+test('jeu rapide (pénalité, coup franc) : le ballon est posé sur la marque, le tapeur le rejoint à vue', () => {
+  // Relevé des sauts (P2-89) : sur une pénalité jouée vite après un ruck
+  // (~0,6 par match), le n°9 du bénéficiaire devenait porteur là où il était
+  // et le ballon sautait du ruck jusque dans ses mains (~8 m).
+  let cas = 0, propres = 0, pire = 0, surMarque = 0;
+  for (let seed = 1; seed <= 12; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    let prev = null, suivi = null;
+    const brut = m.log.bind(m);
+    m.log = (type, team, msg, extra) => {
+      if ((type === 'PENALITE' && /rapidement/.test(msg)) || type === 'COUP_FRANC') suivi = { saut: 0, vu: false };
+      return brut(type, team, msg, extra);
+    };
+    for (let i = 0; i < 400000 && m.getState().phase !== 'TERMINE'; i++) {
+      m.tick(0.1);
+      const b = m.getState().ballon;
+      const p = { x: b.x, y: b.y };
+      if (suivi && prev) {
+        suivi.saut = Math.max(suivi.saut, Math.hypot(p.x - prev.x, p.y - prev.y));
+        const R = m.penaliteRecul;
+        if (R) { suivi.vu = true; suivi.d = Math.hypot(p.x - R.markX, p.y - R.markY); }
+        if (!R || m.phase !== 'PORTE') {
+          if (suivi.vu) {
+            cas++; if (suivi.saut < 3) propres++; pire = Math.max(pire, suivi.saut);
+            if (suivi.d < 1.5) surMarque++;
+          }
+          suivi = null;
+        }
+      }
+      prev = p;
+    }
+  }
+  assert.ok(cas >= 10, `échantillon trop petit (${cas} jeux rapides)`);
+  assert.strictEqual(propres, cas, `${propres}/${cas} jeux rapides sans saut du ballon > 3 m (pire : ${pire.toFixed(1)} m)`);
+  assert.ok(surMarque >= 0.9 * cas, `le ballon n'est sur la marque à la frappe que ${surMarque}/${cas} fois`);
+});
+
 test('tir au but : le ballon rejoint le buteur à vue avant la frappe (pénalité, transformation)', () => {
   // Relevé des sauts (P2-85) : à chaque pénalité au but (~4 par match) et à
   // chaque transformation (~5,5), le ballon sautait de ~10-11 m — du ruck ou

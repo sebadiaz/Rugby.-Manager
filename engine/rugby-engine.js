@@ -1494,6 +1494,7 @@
     // possibilité de tir au but ni de touche directe avec gain de terrain par
     // le pied. L'équipe joue rapidement à la main et avance un peu.
     _traiterCoupFranc(equipe, position, porteurImpose = null) {
+      this._debutRemiseBallon();
       this.possession = equipe;
       const eq = equipe === 'A' ? this.equipeA : this.equipeB;
       if (porteurImpose) {
@@ -1841,6 +1842,7 @@
       // de l'équipe FAUTIVE (mesuré : bénéficiaire A → possession B), si bien que
       // la pénalité ne donnait même pas le ballon au bon camp. On donne donc le
       // ballon au bénéficiaire (son n°9 tape) et on arme la mise en place.
+      this._debutRemiseBallon();
       this.possession = equipeBeneficiaire;
       const eqBen = equipeBeneficiaire === 'A' ? this.equipeA : this.equipeB;
       const neuf = eqBen.find(j => j.numero === 9 && j.auSol === 0);
@@ -1886,6 +1888,10 @@
       // le plafond de 40 s aussi.
       this.penaliteRecul = { sens, eqDef, ligne, markX: position.x, markY: position.y,
         timer: 40 * this._echelleArret, attente: 8 * this._echelleArret };
+      // Le ballon est POSÉ sur la marque (loi 20.4) : il y va depuis là où il
+      // était affiché (ruck, mêlée, porteur fautif), puis le tapeur l'y
+      // rejoint. Avant, il sautait dans les mains du n°9 (~8 m, jusqu'à 14 m).
+      if (this._remiseBallon) this._remiseBallon.marque = { x: position.x, y: position.y };
       this.phase = 'PORTE';
       this.timerPhase = 0;
     }
@@ -5991,7 +5997,12 @@
     // avant, il sautait de ~10 m (jusqu'à 22 m) du ruck ou du marqueur.
     _debutRemiseBallon() {
       let p = null;
-      if (this.ballonEnVol && this.ballonVolX != null) p = { x: this.ballonVolX, y: this.ballonVolY };
+      // Ce que le joueur voyait à l'image précédente : en pleine transition
+      // (mêlée ou touche déjà soldée), recalculer l'affichage donnerait le
+      // porteur ou le lanceur, pas le ballon vu à l'écran (P2-89).
+      const vu = this._ballonAffiche;
+      if (vu && vu.n === (this._numTick || 0) - 1) p = { x: vu.x, y: vu.y };
+      else if (this.ballonEnVol && this.ballonVolX != null) p = { x: this.ballonVolX, y: this.ballonVolY };
       else { try { const b = this.getState().ballon; p = { x: b.x, y: b.y }; } catch (e) { p = null; } }
       this._remiseBallon = p;
     }
@@ -6724,6 +6735,7 @@
     }
 
     tick(dt) {
+      this._numTick = (this._numTick || 0) + 1;
       // Décélération des joueurs qu'aucune logique de phase n'a déplacés au
       // tick précédent (cf. avancer / ACCELERATION) : ils ralentissent au lieu
       // de conserver leur élan, et repartiront donc de leur vitesse réelle.
@@ -6943,10 +6955,14 @@
       // Remise du ballon au buteur (P2-85) : il le rejoint à ~10 m/s.
       if (this._remiseBallon) {
         const R = this._remiseBallon, k = this.porteur;
-        if (!k || (this.phase !== 'PENALITE_TIR' && this.phase !== 'TRANSFORMATION') || this.ballonEnVol) this._remiseBallon = null;
+        // Jeu rapide (P2-89) : le ballon va sur la marque et y reste tant que la
+        // mise en place dure, puis rejoint le tapeur.
+        const jeuRapide = R.marque && this.phase === 'PORTE' && !this.passeVisuelle;
+        if (!k || (this.phase !== 'PENALITE_TIR' && this.phase !== 'TRANSFORMATION' && !jeuRapide) || this.ballonEnVol) this._remiseBallon = null;
         else {
-          const dxr = k.x - R.x, dyr = k.y - R.y, dr = Math.hypot(dxr, dyr), pasR = 10 * dt;
-          if (dr <= pasR) this._remiseBallon = null;
+          const cible = jeuRapide && this.penaliteRecul ? R.marque : k;
+          const dxr = cible.x - R.x, dyr = cible.y - R.y, dr = Math.hypot(dxr, dyr), pasR = 10 * dt;
+          if (dr <= pasR) { R.x = cible.x; R.y = cible.y; if (cible === k) this._remiseBallon = null; }
           else { R.x += dxr / dr * pasR; R.y += dyr / dr * pasR; }
         }
       }
@@ -7170,12 +7186,15 @@
         }
       }
       if (!enVol && !enPasse && !auSolLoose && this._remiseBallon
-        && (this.phase === 'PENALITE_TIR' || this.phase === 'TRANSFORMATION')) {
+        && (this.phase === 'PENALITE_TIR' || this.phase === 'TRANSFORMATION' || (this.phase === 'PORTE' && this._remiseBallon.marque))) {
         ballonPhaseX = this._remiseBallon.x; ballonPhaseY = this._remiseBallon.y;
       }
       const enPhaseStatique = ballonPhaseX != null;
       const ballonX = enVol || auSolLoose ? this.ballonVolX : enPasse ? passeX : enPhaseStatique ? ballonPhaseX : this.porteur.x;
       const ballonY = enVol || auSolLoose ? this.ballonVolY : enPasse ? passeY : enPhaseStatique ? ballonPhaseY : this.porteur.y;
+      // Dernière position AFFICHÉE (cf. _debutRemiseBallon) : n'influence que
+      // l'affichage, la simulation reste identique avec ou sans getState.
+      this._ballonAffiche = { x: ballonX, y: ballonY, n: this._numTick || 0 };
       return {
         equipeA: this.equipeA.map(j => ({ ...j })),
         equipeB: this.equipeB.map(j => ({ ...j })),
