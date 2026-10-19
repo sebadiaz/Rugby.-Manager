@@ -3840,7 +3840,13 @@
 
       const cibleX = Math.max(0, Math.min(LONGUEUR, porteur.x + sens * portee));
       let cibleY;
-      if (type === 'TOUCHE') {
+      if (type === 'TOUCHE' && this._zoneTerrain(porteur) !== 'OWN_22') {
+        // Hors de ses 22 m, le direct en touche ne gagne aucun terrain (loi 18,
+        // P2-95) : on vise la touche EN REBOND, 2 à 4 m à l'intérieur du
+        // terrain, et le ballon roule dehors (cf. _tickRouleBallon).
+        const marge = 2 + this.rng() * 2;
+        cibleY = porteur.y <= LARGEUR / 2 ? marge : LARGEUR - marge;
+      } else if (type === 'TOUCHE') {
         cibleY = porteur.y <= LARGEUR / 2 ? -2 : LARGEUR + 2;
       } else if (etale) {
         cibleY = porteur.y <= LARGEUR / 2
@@ -3928,13 +3934,17 @@
       const horsTerrain = this.cibleCoupDePiedY <= 0.01 || this.cibleCoupDePiedY >= LARGEUR - 0.01;
 
       if (horsTerrain) {
-        // Touche : un coup de pied direct en touche depuis son propre 22
-        // conserve le lancer pour l'équipe qui a botté (loi 18.10) ; sinon la
-        // touche revient à l'équipe adverse, comme pour toute sortie en touche.
+        // LOI 18 — COUP DE PIED DIRECT EN TOUCHE (P2-95). En jeu courant, le
+        // lancer revient TOUJOURS à l'adversaire de l'équipe qui a botté (seule
+        // une pénalité tapée en touche garde le lancer). Depuis ses 22 m, la
+        // touche se joue là où le ballon est sorti ; de plus loin, elle se joue
+        // au niveau du point de frappe : le ballon direct en touche ne fait
+        // gagner aucun terrain. Avant, le moteur donnait le lancer au botteur
+        // depuis ses 22 m (un tiers des coups de pied directs en touche) et
+        // plaçait toujours la touche au point de sortie.
         const zoneKickeur = this._zoneTerrain({ x: this.xCoupDePiedJeu, sensAttaque: equipeKick === 'A' ? 1 : -1 });
-        const conserveTouche = zoneKickeur === 'OWN_22';
-        const equipeQuiSort = conserveTouche ? (equipeKick === 'A' ? 'B' : 'A') : equipeKick;
-        this._accorderTouche(equipeQuiSort, { x: cibleX, y: cibleY }, 'COUP_DE_PIED');
+        const xTouche = zoneKickeur === 'OWN_22' ? cibleX : Math.max(5, Math.min(LONGUEUR - 5, this.xCoupDePiedJeu));
+        this._accorderTouche(equipeKick, { x: xTouche, y: cibleY }, 'COUP_DE_PIED');
         return;
       }
 
@@ -3957,6 +3967,12 @@
       this._rouleBallon = !sousLeBallon && distVol > 0.1
         ? { vx: dxVol / distVol * elan, vy: dyVol / distVol * elan }
         : null;
+      // Touche visée EN REBOND (P2-95) : le ballon est frappé en biais vers la
+      // ligne et file vers elle après le rebond, au lieu de rouler dans l'axe.
+      if (this._rouleBallon && this.typeCoupDePiedJeu === 'TOUCHE') {
+        const versTouche = cibleY < LARGEUR / 2 ? -1 : 1;
+        this._rouleBallon = { vx: Math.sign(dxVol) * 3, vy: versTouche * 4 };
+      }
       this._ballonEnBut = null;
       // Coup de pied qui retombe au-delà de la ligne d'essai adverse : le ballon
       // est dans l'en-but (P2-93).

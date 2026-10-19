@@ -2842,6 +2842,43 @@ test('interception : le ballon vole jusqu\'à l\'intercepteur, à vue', () => {
   assert.strictEqual(propres, cas, `${propres}/${cas} interceptions sans saut du ballon > 3 m (pire : ${pire.toFixed(1)} m)`);
 });
 
+test('loi 18 : coup de pied direct en touche, lancer adverse, et pas de terrain gagné hors de ses 22 m', () => {
+  // P2-95. Le moteur donnait le lancer à l'équipe qui avait botté quand elle
+  // tapait directement en touche depuis ses 22 m (un tiers des cas), et
+  // plaçait la touche au point de sortie quand elle tapait de plus loin. Loi
+  // 18 : en jeu courant, le lancer revient TOUJOURS à l'adversaire (seule la
+  // pénalité garde le lancer) ; tapé directement en touche hors de ses 22 m,
+  // le ballon ne fait gagner aucun terrain : touche au niveau du point de frappe.
+  let directs = 0, lancerAdverse = 0;
+  for (let seed = 1; seed <= 12; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    for (let i = 0; i < 400000 && m.phase !== 'TERMINE'; i++) {
+      const enVol = m.phase === 'COUP_DE_PIED_JEU' && m.ballonEnVol;
+      const kick = m.equipeCoupDePiedJeu;
+      const direct = enVol && (m.cibleCoupDePiedY <= 0.01 || m.cibleCoupDePiedY >= LARGEUR - 0.01);
+      m.tick(0.1);
+      if (direct && m.phase === 'TOUCHE') { directs++; if (m.possession !== kick) lancerAdverse++; }
+    }
+  }
+  assert.ok(directs >= 30, `échantillon trop petit (${directs} coups de pied directs en touche)`);
+  assert.strictEqual(lancerAdverse, directs, `${lancerAdverse}/${directs} coups de pied directs en touche donnent le lancer à l'adversaire`);
+  // Hors de ses 22 m, les équipes visent désormais la touche en rebond : le
+  // direct en touche y est rare, on le construit. L'équipe A tape depuis 40 m
+  // de sa ligne, le ballon sort directement 25 m plus loin.
+  const m = new MatchEngine(3, 4800);
+  for (let t = 0; t < 60; t += 0.1) m.tick(0.1);
+  m.avantage = null; m.passeVisuelle = null; m.penaliteRecul = null; m.combinaison = null;
+  m.possession = 'A'; m.phase = 'PORTE';
+  const botteur = m.equipeA.find(j => j.numero === 10);
+  botteur.x = 40; botteur.y = 20; botteur.auSol = 0; m.porteur = botteur;
+  m._tenterCoupDePiedJeu(botteur, 'DEGAGEMENT');
+  m.cibleCoupDePiedX = 65; m.cibleCoupDePiedY = -2;
+  for (let t = 0; t < 10 && m.phase === 'COUP_DE_PIED_JEU'; t += 0.1) m.tick(0.1);
+  assert.strictEqual(m.phase, 'TOUCHE', `le ballon sorti directement doit donner une touche (phase ${m.phase})`);
+  assert.strictEqual(m.possession, 'B', 'lancer à l adversaire du botteur');
+  assert.ok(Math.abs(m.ruckPoint.x - 40) <= 1, `touche au niveau du point de frappe (40 m), pas du point de sortie (65 m) : ${m.ruckPoint.x.toFixed(1)} m`);
+});
+
 test('coup de pied dans l en-but : le défenseur aplatit (renvoi aux 22 m) ou le chasseur marque', () => {
   // P2-93 : un ballon qui roulait jusqu'à la ligne d'en-but s'y arrêtait, et
   // le receveur repartait de là en jeu courant. En vrai, un ballon dans l'en-but
@@ -2866,9 +2903,35 @@ test('coup de pied dans l en-but : le défenseur aplatit (renvoi aux 22 m) ou le
       }
     }
   }
-  assert.ok(enBut >= 5, `seulement ${enBut} ballons dans l'en-but en 24 matchs`);
+  assert.ok(enBut >= 2, `seulement ${enBut} ballons dans l'en-but en 24 matchs`);
   assert.strictEqual(autres, 0, `${autres}/${enBut} ballons dans l'en-but sans aplatissement ni essai`);
-  assert.ok(renvois >= 1, 'aucun renvoi aux 22 m après un ballon aplati par la défense');
+  // Les deux issues, construites (le ballon dans l'en-but est rare en match,
+  // ~0,2 à 0,3 fois : en compter un nombre fixe rendait le test fragile). Un
+  // petit coup de pied de l'équipe A roule dans l'en-but de B ; le premier
+  // arrivé est un défenseur, puis un chasseur.
+  for (const premier of ['defenseur', 'chasseur']) {
+    const m = new MatchEngine(5, 4800);
+    for (let t = 0; t < 60; t += 0.1) m.tick(0.1);
+    m.avantage = null; m.passeVisuelle = null; m.penaliteRecul = null; m.combinaison = null;
+    m.possession = 'A'; m.phase = 'PORTE';
+    const botteur = m.equipeA.find(j => j.numero === 10);
+    botteur.x = 85; botteur.y = 35; botteur.auSol = 0; m.porteur = botteur;
+    m._tenterCoupDePiedJeu(botteur, 'CHIP');
+    m.cibleCoupDePiedX = LONGUEUR + 2; m.cibleCoupDePiedY = 35;
+    // Tout le monde loin, sauf le joueur qui doit arriver le premier.
+    for (const j of [...m.equipeA, ...m.equipeB]) { j.x = 60; j.y = 10 + (j.numero % 15) * 3; j.horsJeuKick = 0; j.auSol = 0; }
+    const proche = premier === 'defenseur' ? m.equipeB.find(j => j.numero === 15) : m.equipeA.find(j => j.numero === 13);
+    proche.x = LONGUEUR - 3; proche.y = 35;
+    const s0 = m.score.A;
+    for (let t = 0; t < 20 && m.phase === 'COUP_DE_PIED_JEU'; t += 0.1) m.tick(0.1);
+    if (premier === 'defenseur') {
+      assert.ok(m.phase === 'COUP_ENVOI' && m.renvoi22 && m.possession === 'B',
+        `ballon aplati par la défense dans son en-but : renvoi aux 22 m attendu (phase ${m.phase}, possession ${m.possession})`);
+    } else {
+      assert.ok(m.phase === 'ESSAI' && m.score.A === s0 + 5,
+        `ballon aplati par un chasseur dans l'en-but : essai attendu (phase ${m.phase}, score ${s0} -> ${m.score.A})`);
+    }
+  }
 });
 
 test('coup de pied tactique : le ballon qui tombe sans receveur ROULE, et peut finir en touche', () => {
@@ -2888,7 +2951,7 @@ test('coup de pied tactique : le ballon qui tombe sans receveur ROULE, et peut f
       m.tick(0.1);
       if (!attente && m._receptionEnAttente) {
         const libre = ![...m.equipeA, ...m.equipeB].some(j => Math.hypot(j.x - m.ballonVolX, j.y - m.ballonVolY) <= 1.3);
-        chute = { x: m.ballonVolX, y: m.ballonVolY, long: libre && (m.typeCoupDePiedJeu === 'DEGAGEMENT' || m.typeCoupDePiedJeu === 'OCCUPATION') };
+        chute = { x: m.ballonVolX, y: m.ballonVolY, libre, long: libre && (m.typeCoupDePiedJeu === 'DEGAGEMENT' || m.typeCoupDePiedJeu === 'OCCUPATION') };
       } else if (chute && m._receptionEnAttente) {
         if (m.ballonVolY < 0 || m.ballonVolY > LARGEUR) horsTerrainSansTouche++;
         chute.fin = { x: m.ballonVolX, y: m.ballonVolY };
@@ -2897,8 +2960,10 @@ test('coup de pied tactique : le ballon qui tombe sans receveur ROULE, et peut f
           longs++;
           const f = chute.fin || chute;
           if (Math.hypot(f.x - chute.x, f.y - chute.y) >= 2) roules++;
-          if (m.phase === 'TOUCHE') enTouche++;
         }
+        // Touche en rebond, quel que soit le coup de pied (depuis P2-95, la
+        // touche visée hors de ses 22 m se cherche en rebond).
+        if (chute.libre && m.phase === 'TOUCHE') enTouche++;
         chute = null;
       }
     }
