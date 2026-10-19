@@ -2842,6 +2842,37 @@ test('interception : le ballon vole jusqu\'à l\'intercepteur, à vue', () => {
   assert.strictEqual(propres, cas, `${propres}/${cas} interceptions sans saut du ballon > 3 m (pire : ${pire.toFixed(1)} m)`);
 });
 
+test('transformation : sur un essai excentré, le buteur recule pour ouvrir l angle', () => {
+  // P2-97. La loi laisse le buteur poser son tee n'importe où sur l'axe de
+  // l'essai. Le moteur le posait toujours à 10 m : 56 % de réussite au total
+  // (49 % dès 10 m d'écart latéral) pour ~75 % en réel.
+  let excentres = 0, recules = 0, tentees = 0, reussies = 0;
+  for (let seed = 1; seed <= 12; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    const brut = m.log.bind(m);
+    m.log = (type, team, msg, extra) => {
+      if (type === 'TRANSFORMATION_REUSSIE' || type === 'TRANSFORMATION_RATEE') {
+        tentees++; if (type === 'TRANSFORMATION_REUSSIE') reussies++;
+      }
+      return brut(type, team, msg, extra);
+    };
+    let vu = false;
+    for (let i = 0; i < 400000 && m.phase !== 'TERMINE'; i++) {
+      m.tick(0.1);
+      if (m.phase !== 'TRANSFORMATION') { vu = false; continue; }
+      // Au moment de la frappe (ballon parti), distance du buteur à la ligne.
+      if (!vu && m.ballonEnVol && Math.abs(m.essaiY - LARGEUR / 2) >= 20) {
+        vu = true; excentres++;
+        if (Math.abs(m.porteur.x - m.essaiX) >= 18) recules++;
+      }
+    }
+  }
+  assert.ok(excentres >= 15, `échantillon trop petit (${excentres} transformations excentrées)`);
+  assert.strictEqual(recules, excentres, `${recules}/${excentres} buteurs reculent d'au moins 18 m sur un essai à 20 m ou plus des poteaux`);
+  // Avant : 56 % (30 graines). Avec le recul : 63 % (30 graines), 59 % (1-12).
+  assert.ok(reussies / tentees >= 0.55, `transformations réussies ${(100 * reussies / tentees).toFixed(0)} % (réel ~75 %)`);
+});
+
 test('50:22 : tapé de son camp, rebond dans le terrain, touche dans les 22 adverses -> lancer au botteur', () => {
   // P2-96, loi 18 (50:22). Un coup de pied tapé depuis son propre camp, qui
   // rebondit dans le terrain puis sort en touche dans les 22 m adverses, donne

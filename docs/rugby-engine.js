@@ -79,6 +79,21 @@
     return Math.max(0.12, Math.min(0.97, base + skill));
   }
 
+  // RECUL DU BUTEUR À LA TRANSFORMATION (P2-97). La loi laisse le buteur poser
+  // son tee n'importe où sur la ligne parallèle à la touche qui passe par le
+  // point de l'essai. Sur un essai excentré, reculer OUVRE l'angle : un vrai
+  // buteur recule de 20-30 m depuis le bord. Le moteur posait toujours le tee
+  // à 10 m : 49 % de réussite dès 10 m d'écart latéral, 56 % au total pour
+  // ~75 % en réel. On prend la distance (10 à 40 m) qui maximise la réussite.
+  function reculTransformation(offsetLateralM, adresse) {
+    let meilleur = 10, pMax = -1;
+    for (let d = 10; d <= 40; d++) {
+      const p = probaReussiteTir(d, offsetLateralM, adresse);
+      if (p > pMax + 1e-9) { pMax = p; meilleur = d; }
+    }
+    return meilleur;
+  }
+
   // --- Profils d'attributs par numéro de maillot (1-15) ---
   // tendance : tendance de proximité au ballon (suiveur de jeu vs tenant de station).
   // adresse : précision au pied sur coup de but (0-100), cf. probaReussiteTir —
@@ -6694,9 +6709,11 @@
       const equipeAttaque = this.essaiEquipe === 'A' ? this.equipeA : this.equipeB;
       const equipeDefense = this.essaiEquipe === 'A' ? this.equipeB : this.equipeA;
       const ligneDefense = sens > 0 ? LONGUEUR : 0;
-      const xAttaque = Math.max(0, Math.min(LONGUEUR, this.essaiX - sens * 15));
       const buteur = equipeAttaque.find(j => j.numero === this.buteurNumero[this.essaiEquipe] && j.sinBin <= 0) || equipeAttaque[9];
-      const teeX = Math.max(0, Math.min(LONGUEUR, this.essaiX - sens * 10));
+      const recul = reculTransformation(Math.abs(this.essaiY - LARGEUR / 2), buteur && buteur.adresse);
+      const teeX = Math.max(0, Math.min(LONGUEUR, this.essaiX - sens * recul));
+      // Les coéquipiers se placent derrière le ballon (5 m derrière le tee).
+      const xAttaque = Math.max(0, Math.min(LONGUEUR, this.essaiX - sens * (recul + 5)));
       const teeY = this.essaiY;
       let pireEcart = 0;
       for (const j of equipeDefense) {
@@ -6792,7 +6809,7 @@
         const equipe = this.essaiEquipe;
         const offsetLateral = Math.abs(this.essaiY - LARGEUR / 2);
         this.stats[equipe].transformationsTentees++;
-        if (this.rng() < probaReussiteTir(10, offsetLateral, this.porteur.adresse)) {
+        if (this.rng() < probaReussiteTir(reculTransformation(offsetLateral, this.porteur.adresse), offsetLateral, this.porteur.adresse)) {
           this.stats[equipe].transformationsReussies++;
           this.score[equipe] += 2;
           this.log('TRANSFORMATION_REUSSIE', equipe, `Transformation reussie, equipe ${equipe} +2`);
