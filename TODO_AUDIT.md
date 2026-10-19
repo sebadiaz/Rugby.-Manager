@@ -580,6 +580,45 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-98. La touche rapide
+- **Statut : AJOUTÉ (règle et tactique)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_preparerToucheRapide`, `_tickToucheRapide`,
+  `_accorderTouche`, `_tickTouche`, stat `touchesRapides`), `docs/js/constants.js` (icône et bandeau `TOUCHE_RAPIDE`),
+  `server/test-invariants.js`.
+
+**Constat.** Le moteur n'avait que la touche ordonnée. En vrai, après un coup de pied en touche, l'équipe qui a le
+lancer peut relancer tout de suite, avant que l'alignement se forme (loi 18). C'est l'arme de la relance après un
+dégagement.
+
+**Correction.** Sur une touche venue d'un coup de pied, le joueur le plus proche de l'équipe qui a le lancer, s'il est
+à 12 m au plus, court chercher le ballon (35 % des cas). Il relance vers un partenaire libre :
+- à 5 m ou plus de la ligne de touche ;
+- pas devant le point de sortie ;
+- à 20 m au plus ;
+- sans adversaire à moins de 5 m.
+
+Faute de partenaire, ou passé 4 s, la touche ordonnée reprend. Le ballon part des mains du lanceur, à vue. Pendant
+sa course, le lanceur n'est pas aussi replacé dans l'alignement (une seule course par tick).
+
+Une première version exigeait le lanceur à 6 m au plus, mais le plus proche est en général à 7-11 m : aucune touche
+rapide n'avait lieu. La version à 50 % en donnait 0,95 par match, pour +1,5 point.
+
+**Effet mesuré.** 0,75 touche rapide par match. 200 graines appariées : points +0,71 ± 1,27, touches -1,2 (les touches
+rapides ne sont pas des touches formées). Calibration CI 14/14.
+
+**Mesures sur le score (sans patch livré).**
+- Entrées dans les 22 m adverses : 10,9 par équipe et par match. C'est le niveau de l'Irlande 2023, meilleure du
+  Tournoi sur ce critère (10,6).
+- Points par entrée : 1,65, dans le bas du réel (1,8 à 3,0).
+
+L'excès de points vient donc du terrain gagné, pas de la finition. Les mètres gagnés du moteur (8,9 m par course)
+ne sont pas comparables tels quels au chiffre réel : leur définition diffère.
+
+**Tests.** « touche rapide : relancée par l équipe qui a le lancer… » : rouge avant (0 en 12 matchs). Le test vérifie la
+bonne équipe, le partenaire à 5 m ou plus de la touche et l'absence de saut du ballon.
+
+**Barrières.** Invariants 85/85, 13 suites OK, calibration 14/14, navigateur 493/0.
+
 ### P2-97. Transformation : le buteur recule pour ouvrir l'angle
 - **Statut : CORRIGÉ (gameplay et règle)**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`reculTransformation`,
