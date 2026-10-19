@@ -580,6 +580,35 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-94. Touche ramenée à 30 s ; fourchettes de rucks et de mêlées revues sur des matchs réels
+- **Statut : CORRIGÉ (calibration, décision de l'utilisateur : option 1)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_tickTouche`, `dureeMin`),
+  `server/test-calibration-moteur.js` et `server/simulate-batch.js` (fourchettes), `server/test-invariants.js`,
+  `docs/ANALYSE_MATCH_REEL.md`.
+
+**Constat.** Le temps de jeu effectif était le seul défaut de la calibration (29,4 min pour 32-42). La touche imposait
+49 s d'arrêt, sur la foi de « 40 à 60 s » sans source. Réel : ~25 s de la sortie au lancer, et la loi limite la mise en
+place à 30 s. Sept variantes de tempo ont été essayées (cf. ANALYSE_MATCH_REEL.md) : avec des touches réelles, aucune
+ne tenait les plafonds de 180 rucks et 15 mêlées.
+
+**Décision.** Les plafonds ont été revus sur des matchs réels, sources dans ANALYSE_MATCH_REEL.md : rucks 110-220 (Coupe
+du monde 2023 ~158 par match, Irlande 2018 137 par match à elle seule, France-Irlande 2026 181) ; mêlées 6-18 (~12 en
+moyenne, jusqu'à 19). La touche passe à 30 s. Les repères de CLAUDE.md, repris par `test-stats-matchs.js`, ne sont pas
+modifiés.
+
+**Effet mesuré (200 graines appariées).** Temps de jeu +3,00 ± 0,24 min (29,8 -> 32,9) ; touches +2,6 (27,1) ; rucks +17,5
+(197) ; mêlées +1,1 (15,5) ; essais +1,1 (7,4) ; points +8,9 (61,7). Calibration 14/14 (temps de jeu 32,3 sur les graines
+de la CI). **Ce qui reste faux** : ~6 rucks par minute de jeu pour ~4,6 en réel, et 61,7 points pour ~50.
+
+**Tests.** L'invariant des temps morts exigeait une touche d'au moins 35 s (« 40 à 60 s ») : il exige désormais 22 à 40 s
+(rouge avant : 50,5 s). « Le jeu courant RESPIRE » mesure maintenant les séquences nées d'un ruck. La moyenne de toutes
+les séquences dépend de la part de chandelles (le receveur y est plaqué en ~0,4 s, comme en vrai), et passait de 2,80-3,02
+à 2,73-2,89 s sans que le jeu après un ruck change (3,00 / 2,97 s). Mutant « sans inertie de course » : 2,44 s -> rouge.
+La touche en rebond (P2-92) est rare (~0,2-0,4 par match) : son test passe de 8 à 24 graines.
+
+**Barrières.** Calibration 14/14, 13 suites OK, navigateur 493/0 ; invariants : les deux tests réécrits rejoués en vert,
+série complète relancée.
+
 ### P2-93. Ballon dans l'en-but : la défense aplatit (renvoi aux 22 m) ou le chasseur marque
 - **Statut : CORRIGÉ (gameplay)**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_entrerEnBut`, `_tickRouleBallon`,

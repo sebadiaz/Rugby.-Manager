@@ -89,6 +89,23 @@ au-dessus du plafond de 180 de la calibration. Ce n'est donc pas un réglage, c'
 fourchettes de rucks et de mêlées avec plusieurs matchs réels, soit ralentir tout le jeu courant (vitesses de course),
 au risque de joueurs visiblement trop lents.
 
+**Décision (P2-94, livrée).** Les fourchettes de rucks et de mêlées ont été revues sur des matchs réels, puis la
+touche ramenée à 30 s :
+- rucks : Coupe du monde 2023, 79 par équipe, soit ~158 par match pour 34 min 18 s de ballon en jeu
+  ([Stats Perform](https://www.statsperform.com/insights/the-evolution-of-rugby-a-statistical-analysis/)) ; Irlande,
+  Tournoi 2018, 412 rucks en 3 matchs, soit 137 par match pour elle seule
+  ([Six Nations](https://sixnationsrugby.com/2018/03/02/natwest-6-nations-statistical-trends-through-the-first-three-rounds)) ;
+  France-Irlande 2026, 181. Fourchette 110-180 -> **110-220** ;
+- mêlées : ~12 par match en moyenne sur les deux derniers Tournois
+  ([RugbyPass](https://www.rugbypass.com/plus/haves-and-have-nots-six-nations-numbers-reveal-hidden-truths/)), 19 à
+  Galles-France 2010 ([rugby365](https://rugby365.com/laws-referees/news/some-six-nations-statistics-round-3-2/)).
+  Fourchette 6-15 -> **6-18**.
+
+Résultat sur 200 graines appariées : ballon en jeu 29,8 -> 32,9 min, touches 24,6 -> 27,1, rucks 180 -> 197, mêlées
+14,3 -> 15,5, essais 6,3 -> 7,4, points 52,8 -> 61,7. Calibration 14/14. **Ce qui reste faux** : le moteur produit
+~6 rucks par minute de jeu pour ~4,6 en Coupe du monde 2023, et 61,7 points pour ~50 en réel ; il est désormais dans
+les fourchettes, mais en haut.
+
 ## Diagnostic
 
 Les **taux unitaires sont désormais bien calibrés** (score, essais, coups de
