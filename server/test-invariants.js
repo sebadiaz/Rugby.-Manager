@@ -2842,6 +2842,42 @@ test('interception : le ballon vole jusqu\'à l\'intercepteur, à vue', () => {
   assert.strictEqual(propres, cas, `${propres}/${cas} interceptions sans saut du ballon > 3 m (pire : ${pire.toFixed(1)} m)`);
 });
 
+test('touche rapide : relancée par l équipe qui a le lancer, ballon vers un partenaire à 5 m ou plus, à vue', () => {
+  // P2-98, loi 18. Après un coup de pied en touche, un joueur de l'équipe qui a
+  // le lancer peut relancer tout de suite, avant que l'alignement ne se forme,
+  // vers un partenaire à au moins 5 m de la ligne de touche. Le moteur n'avait
+  // que la touche ordonnée.
+  let n = 0, bonneEquipe = 0, cinqMetres = 0, sansSaut = 0;
+  for (let seed = 1; seed <= 12; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    const brut = m.log.bind(m);
+    let suivi = null, prev = null;
+    m.log = (type, team, msg, extra) => {
+      if (type === 'TOUCHE_RAPIDE') suivi = { equipe: team, saut: 0, n: 0 };
+      return brut(type, team, msg, extra);
+    };
+    for (let i = 0; i < 400000 && m.getState().phase !== 'TERMINE'; i++) {
+      m.tick(0.1);
+      const b = m.getState().ballon, p = { x: b.x, y: b.y };
+      if (suivi && suivi.n === 0) {
+        n++;
+        if (m.possession === suivi.equipe && m.phase === 'PORTE') bonneEquipe++;
+        const cible = m.passeVisuelle && m.passeVisuelle.cible;
+        if (cible && cible.y >= 5 && cible.y <= LARGEUR - 5) cinqMetres++;
+      }
+      if (suivi && prev) {
+        suivi.saut = Math.max(suivi.saut, Math.hypot(p.x - prev.x, p.y - prev.y));
+        if (++suivi.n >= 15) { if (suivi.saut < 3.5) sansSaut++; suivi = null; }
+      }
+      prev = p;
+    }
+  }
+  assert.ok(n >= 3, `seulement ${n} touches rapides en 12 matchs`);
+  assert.strictEqual(bonneEquipe, n, `${bonneEquipe}/${n} touches rapides jouées par l'équipe qui a le lancer`);
+  assert.strictEqual(cinqMetres, n, `${cinqMetres}/${n} touches rapides lancées vers un partenaire à 5 m ou plus de la touche`);
+  assert.strictEqual(sansSaut, n, `${sansSaut}/${n} touches rapides sans saut du ballon`);
+});
+
 test('transformation : sur un essai excentré, le buteur recule pour ouvrir l angle', () => {
   // P2-97. La loi laisse le buteur poser son tee n'importe où sur l'axe de
   // l'essai. Le moteur le posait toujours à 10 m : 56 % de réussite au total

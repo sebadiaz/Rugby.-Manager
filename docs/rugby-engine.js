@@ -1080,6 +1080,7 @@
       // de la ligne de touche jusque dans l'alignement (cf. _tickToucheLancer).
       this.toucheLancer = null;
       this.penTouche = null;
+      this.toucheRapide = null;
       // Vol visuel d'une passe en jeu courant : le ballon décrit un court arc
       // du passeur au receveur au lieu de "sauter" instantanément. Purement
       // visuel (la possession change tout de suite côté logique), null hors
@@ -1168,6 +1169,7 @@
         penalitesButTentees: 0, penalitesButReussies: 0, dropsTentes: 0, dropsReussis: 0,
         rucksConserves: 0, scrumsGagnesIntro: 0, lineoutsGagnesLancer: 0,
         cinquanteVingtDeux: 0, // 50:22 réussis (P2-96)
+        touchesRapides: 0, // touches rapides jouées (P2-98)
         // Motifs de jeu discriminants (d'apres l'etude rorybunker/rugby-sequences,
         // qui identifie franchissements, touches gagnees, coups de pied regagnes,
         // jeu multi-phases et sorties de camp comme les motifs qui distinguent le
@@ -1673,6 +1675,60 @@
       // _tickTouche), avec un plafond pour ne jamais bloquer le match si un
       // joueur est très excentré.
       this.toucheCapFormation = this._capFormationTouche(this.toucheLanceurX);
+      this.toucheRapide = null;
+      if (cause === 'COUP_DE_PIED') this._preparerToucheRapide(position);
+    }
+
+    // TOUCHE RAPIDE (loi 18, P2-98). Après un coup de pied en touche, un joueur
+    // de l'équipe qui a le lancer, proche du point de sortie, court chercher le
+    // ballon et peut relancer aussitôt — avant que l'alignement ne se forme —
+    // vers un partenaire libre à au moins 5 m de la ligne de touche, pas devant
+    // le point de sortie. Un peu plus d'une fois sur trois quand l'occasion
+    // existe (~0,75 par match) : c'est l'arme de la relance après un
+    // dégagement. Sinon, touche ordonnée.
+    _preparerToucheRapide(position) {
+      const equipe = this.possession;
+      const libres = (equipe === 'A' ? this.equipeA : this.equipeB).filter(j => j.auSol === 0 && j.sinBin <= 0);
+      if (!libres.length) return;
+      const { joueur: lanceur, distance: d } = joueurLePlusProche(libres, position.x, position.y);
+      if (d > 12 || this.rng() >= 0.35) return;
+      this.toucheRapide = { equipe, lanceur, x: position.x, y: position.y <= LARGEUR / 2 ? 0 : LARGEUR, t: 0 };
+    }
+
+    // Course du lanceur jusqu'au ballon, puis relance si un partenaire est libre.
+    // Renvoie true si la touche rapide a été jouée (le jeu reprend en PORTE).
+    _tickToucheRapide(dt) {
+      const R = this.toucheRapide;
+      R.t += dt;
+      const L = R.lanceur;
+      if (L.auSol > 0 || R.t > 4) { this.toucheRapide = null; return false; }
+      avancer(L, R.x - L.x, R.y - L.y, dt, vitesseMs(L));
+      if (Math.hypot(L.x - R.x, L.y - R.y) > 1.5) return false;
+      const eq = R.equipe === 'A' ? this.equipeA : this.equipeB;
+      const adv = R.equipe === 'A' ? this.equipeB : this.equipeA;
+      const sens = R.equipe === 'A' ? 1 : -1;
+      const receveurs = eq.filter(j => j !== L && j.auSol === 0 && j.sinBin <= 0
+        && Math.abs(j.y - R.y) >= 5
+        && (j.x - R.x) * sens <= 2
+        && Math.hypot(j.x - R.x, j.y - R.y) <= 20
+        && !adv.some(d => d.auSol === 0 && d.sinBin <= 0 && distance(d, j) < 5));
+      this.toucheRapide = null;
+      if (!receveurs.length) return false;
+      const receveur = joueurLePlusProche(receveurs, R.x, R.y).joueur;
+      this.stats[R.equipe].touchesRapides++;
+      this.log('TOUCHE_RAPIDE', R.equipe, `Touche rapide ! Le n°${L.numero} de l'equipe ${R.equipe} relance aussitot vers le n°${receveur.numero}`);
+      this.possession = R.equipe;
+      this.porteur = receveur;
+      this.ruckPoint = { x: receveur.x, y: receveur.y };
+      this.phase = 'PORTE';
+      this.timerPhase = 0;
+      this.ballonEnVol = false;
+      this._porteApresPied = true;
+      this.toucheLancer = null;
+      // Le ballon part de la ligne, des mains du lanceur, jusqu'au receveur.
+      const d = Math.hypot(receveur.x - R.x, receveur.y - R.y);
+      this.passeVisuelle = { fromX: L.x, fromY: L.y, cible: receveur, timer: 0, duree: Math.max(0.12, Math.min(1.0, d / 20)) };
+      return true;
     }
 
     // Même logique que _capFormationMelee : temps réel nécessaire à l'avant le
@@ -6443,6 +6499,15 @@
 
     _tickTouche(dt) {
       this.timerPhase += dt;
+      if (this.toucheRapide) {
+        // Les autres se placent pour une touche ordonnée ; le lanceur, lui,
+        // court au ballon (une seule course par tick).
+        const L = this.toucheRapide.lanceur, sx = L.x, sy = L.y, sv = L.vitesseCourante;
+        this._touchePlacerLignes(dt);
+        L.x = sx; L.y = sy; L.vitesseCourante = sv;
+        if (this._tickToucheRapide(dt)) return;
+        if (this.toucheRapide) return;
+      }
       // Pénalité tapée en touche : le coup de pied se joue d'abord, à vue, pendant
       // que les joueurs se placent (cf. _tickPenaliteTouche).
       if (this.penTouche) {
