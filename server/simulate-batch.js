@@ -18,9 +18,14 @@ const FOURCHETTES = {
   passes: [250, 420],
   kicks: [35, 70],
   tacklesAttempted: [220, 360],
-  rucks: [110, 180],
+  // Rucks et mêlées revus en P2-94 sur des matchs réels : Coupe du monde 2023,
+  // 79 rucks par équipe (~158 par match, Stats Perform) ; Irlande 2018, 137 par
+  // match pour elle seule ; France-Irlande 2026, 181. Mêlées : ~12 par match
+  // dans les deux derniers Tournois (RugbyPass), jusqu'à 19 (Galles-France
+  // 2010). Les plafonds 180 et 15 excluaient des matchs réels à haut tempo.
+  rucks: [110, 220],
   lineouts: [20, 35],
-  scrums: [6, 15],
+  scrums: [6, 18],
   mauls: [3, 10],
   penalitesConcedees: [16, 28],
   turnovers: [8, 18],

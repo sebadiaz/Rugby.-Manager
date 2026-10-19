@@ -6399,7 +6399,12 @@
       // prend 40 a 60 s (les avants reviennent en marchant, l'alignement se
       // forme, le talonneur attend l'annonce). Portee a 49 s : la touche
       // complete dure alors ~47 s, au milieu de la fourchette reelle.
-      const dureeMin = 49 * this._echelleArret;
+      // 30 s depuis P2-94 : les « 40 a 60 s » n'avaient pas de source. Une
+      // touche réelle prend ~25 s de la sortie du ballon au lancer (tests de
+      // juillet 2022, ~27 touches par match), et la loi limite la mise en place
+      // à 30 s (cf. docs/ANALYSE_MATCH_REEL.md). Avec 49 s, le ballon en jeu
+      // plafonnait à ~29,5 min pour ~34 min en réel.
+      const dureeMin = 30 * this._echelleArret;
       if (this.timerPhase < dureeMin) return;
       // Comme à la mêlée (cf. _tickMelee, case FORMATION) : l'arbitre n'autorise
       // le lancer que lorsque les avants des deux équipes sont réellement

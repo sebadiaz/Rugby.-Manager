@@ -785,10 +785,13 @@ test('loi 15 : le hors-jeu au regroupement a une CONSEQUENCE en match', () => {
 // ce sont les arrets, et les deux plus gros postes sont la MELEE et la TOUCHE :
 // les paquets marchent jusqu'a la marque, s'alignent, se lient, l'arbitre
 // annonce. De l'octroi a la sortie du ballon, une melee prend 60 a 90 s et une
-// touche 40 a 60 s. Les expedier plus vite ne fait pas gagner du spectacle :
+// touche ~25 s (sources : docs/ANALYSE_MATCH_REEL.md ; les « 40 a 60 s » que
+// ce test exigeait n'avaient pas de source, cf. P2-94). Une touche ne doit pas
+// non plus trainer : la loi limite sa mise en place a 30 s.
+// Les expedier plus vite ne fait pas gagner du spectacle :
 // ca multiplie mecaniquement les possessions, donc les rucks, les passes et
 // les courses, tous mesures a 1,5-2 fois leur volume reel.
-test('les temps morts durent ce qu ils durent : melee >= 45 s, touche >= 35 s', () => {
+test('les temps morts durent ce qu ils durent : melee >= 45 s, touche entre 22 et 40 s', () => {
   // 6 graines et non 3 : le nombre de melees varie fortement d'un match a
   // l'autre (33 sur les graines 1-3 a un etat du moteur, 20 a un autre — pour
   // une moyenne inchangee de ~12 par match sur 20 graines). Le garde-fou
@@ -814,7 +817,7 @@ test('les temps morts durent ce qu ils durent : melee >= 45 s, touche >= 35 s', 
   const moy = (a) => a.reduce((x, y) => x + y, 0) / a.length;
   const mMelee = moy(melees), mTouche = moy(touches);
   assert.ok(mMelee >= 45, `une melee dure 60 a 90 s en vrai (mesuré ${mMelee.toFixed(1)} s)`);
-  assert.ok(mTouche >= 35, `une touche dure 40 a 60 s en vrai (mesuré ${mTouche.toFixed(1)} s)`);
+  assert.ok(mTouche >= 22 && mTouche <= 40, `une touche dure ~25 s en vrai, mise en place limitee a 30 s (mesuré ${mTouche.toFixed(1)} s)`);
 });
 
 // --- PRES DE LA LIGNE, LES AVANTS PORTENT LE BALLON ------------------------
