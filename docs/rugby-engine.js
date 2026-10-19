@@ -1862,6 +1862,11 @@
     // ce qui crée enfin l'espace réel de la pénalité (sans lui, le tapeur se
     // faisait plaquer aussitôt par un défenseur resté sur la marque).
     _lancerJeuRapidePenalite(equipeBeneficiaire, position) {
+      // Le coup de sifflet arrête le jeu : une passe encore en vol (par exemple
+      // interceptée juste avant que l'arbitre ne revienne à la pénalité) est
+      // annulée, sinon elle masquait le ballon posé sur la marque et le
+      // ballon sautait dans les mains du tapeur (9 m, P2-95).
+      this.passeVisuelle = null;
       // La faute arrete le jeu : une phase nee d'un coup de pied cesse de
       // l'etre, la defense repart avec sa rampe normale apres la reprise.
       this._porteApresPied = false;
@@ -4428,7 +4433,10 @@
             && Math.abs(j.y - pt.y) <= 10 && Referee.horsJeuRuck(j, pt, sensAttaque)) {
             this._horsJeuRuckJuge = pt;
             const discipline = typeof j.discipline === 'number' ? j.discipline : 55;
-            const pSiffle = Math.max(0.1, Math.min(0.6, 0.3 * (1 + (60 - discipline) / 40)));
+            // Base 0,24 (0,30 avant P2-95) : avec ~200 rucks par match depuis
+            // les touches à 30 s (P2-94), 0,30 donnait 22 avantages pour
+            // hors-jeu au ruck par match, et le fil en était de nouveau saturé.
+            const pSiffle = Math.max(0.1, Math.min(0.6, 0.24 * (1 + (60 - discipline) / 40)));
             if (this.rng() >= pSiffle) continue;
             // Hors-jeu défensif au ruck : avantage (loi 7). L'équipe en possession
             // joue ; la pénalité n'est sifflée que si elle n'en tire rien (cf.
