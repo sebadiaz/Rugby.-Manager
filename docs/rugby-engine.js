@@ -1152,6 +1152,7 @@
         essaisPenalite: 0, transformationsTentees: 0, transformationsReussies: 0,
         penalitesButTentees: 0, penalitesButReussies: 0, dropsTentes: 0, dropsReussis: 0,
         rucksConserves: 0, scrumsGagnesIntro: 0, lineoutsGagnesLancer: 0,
+        cinquanteVingtDeux: 0, // 50:22 réussis (P2-96)
         // Motifs de jeu discriminants (d'apres l'etude rorybunker/rugby-sequences,
         // qui identifie franchissements, touches gagnees, coups de pied regagnes,
         // jeu multi-phases et sorties de camp comme les motifs qui distinguent le
@@ -3842,6 +3843,23 @@
       else if (type === 'CHANDELLE') { portee = 10 + this.rng() * 10 + skillPied * 0.4; etale = false; }
       else { portee = 8 + this.rng() * 7 + skillPied * 0.3; etale = false; } // CHIP
       portee = Math.max(4, portee);
+      // TENTATIVE DE 50:22 (P2-96). Depuis son camp, hors de ses 22 m, une
+      // équipe qui cherche la touche vise les 22 m adverses quand elle les a à
+      // portée : le ballon tombe juste à l'intérieur, près de la ligne, et
+      // rebondit en touche (cf. _tickRouleBallon).
+      // C'est un pari RARE et RISQUÉ : un quart des coups de pied « touche »
+      // éligibles seulement, et une chute moins précise (1 à 11 m de la ligne)
+      // — souvent le ballon reste dans le terrain et l'adversaire le récupère
+      // dans ses 22. Toujours tenté, il donnait 3,5 50:22 par match (réel :
+      // rarement plus d'un) et +4,8 points.
+      let tente5022 = false;
+      if (type === 'TOUCHE' && this._zoneTerrain(porteur) === 'OWN_HALF') {
+        const jusqua22 = sens > 0 ? (LONGUEUR - 22) - porteur.x : porteur.x - 22;
+        if (jusqua22 > 0 && jusqua22 <= 40 + skillPied && this.rng() < 0.25) {
+          portee = jusqua22 + 2 + this.rng() * 6;
+          tente5022 = true;
+        }
+      }
 
       const cibleX = Math.max(0, Math.min(LONGUEUR, porteur.x + sens * portee));
       let cibleY;
@@ -3849,7 +3867,7 @@
         // Hors de ses 22 m, le direct en touche ne gagne aucun terrain (loi 18,
         // P2-95) : on vise la touche EN REBOND, 2 à 4 m à l'intérieur du
         // terrain, et le ballon roule dehors (cf. _tickRouleBallon).
-        const marge = 2 + this.rng() * 2;
+        const marge = tente5022 ? 1 + this.rng() * 10 : 2 + this.rng() * 2;
         cibleY = porteur.y <= LARGEUR / 2 ? marge : LARGEUR - marge;
       } else if (type === 'TOUCHE') {
         cibleY = porteur.y <= LARGEUR / 2 ? -2 : LARGEUR + 2;
@@ -4019,7 +4037,20 @@
         this.ballonVolY = y;
         this._rouleBallon = null;
         this._receptionEnAttente = false;
-        this._accorderTouche(this.equipeCoupDePiedJeu, { x: this.ballonVolX, y }, 'COUP_DE_PIED');
+        const kick = this.equipeCoupDePiedJeu, adv = kick === 'A' ? 'B' : 'A';
+        // 50:22 (loi 18, P2-96) : tapé depuis son propre camp, le ballon a
+        // rebondi dans le terrain et sort dans les 22 m adverses -> le lancer
+        // revient à l'équipe qui a botté.
+        const sens = kick === 'A' ? 1 : -1;
+        const depuisSonCamp = (this.xCoupDePiedJeu - LONGUEUR / 2) * sens < 0;
+        const dans22Adverses = sens > 0 ? this.ballonVolX >= LONGUEUR - 22 : this.ballonVolX <= 22;
+        if (depuisSonCamp && dans22Adverses) {
+          this.stats[kick].cinquanteVingtDeux++;
+          this.log('CINQUANTE_VINGT_DEUX', kick, `50:22 ! Le coup de pied de l'equipe ${kick} rebondit en touche dans les 22 adverses : lancer pour l'equipe ${kick}`);
+          this._accorderTouche(adv, { x: this.ballonVolX, y }, 'COUP_DE_PIED');
+          return true;
+        }
+        this._accorderTouche(kick, { x: this.ballonVolX, y }, 'COUP_DE_PIED');
         return true;
       }
       return false;

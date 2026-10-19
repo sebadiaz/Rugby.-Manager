@@ -19,7 +19,7 @@
   const MARGE_TOUCHE = 4;
 
   const ICONES = {
-    COUP_ENVOI: '▶️', RENVOI_22: '↩️', EN_BUT_APLATI: '🖐️', CONTRE_COUP_ENVOI: '✋', ESSAI: '🏉', MELEE_AVANT: '🔄', MELEE_ENAVANT: '🔄', TOUCHE_PAS_DROIT: '↗️', TOUCHE_HORS_JEU: '🚩', PENALITE_TOUCHE_FRAPPE: '👟', RECEPTION_DISPUTEE: '🙌', FRANCHISSEMENT: '⚡',
+    COUP_ENVOI: '▶️', RENVOI_22: '↩️', EN_BUT_APLATI: '🖐️', CINQUANTE_VINGT_DEUX: '🎯', CONTRE_COUP_ENVOI: '✋', ESSAI: '🏉', MELEE_AVANT: '🔄', MELEE_ENAVANT: '🔄', TOUCHE_PAS_DROIT: '↗️', TOUCHE_HORS_JEU: '🚩', PENALITE_TOUCHE_FRAPPE: '👟', RECEPTION_DISPUTEE: '🙌', FRANCHISSEMENT: '⚡',
     PENALITE: '🟨', PENALITE_REUSSIE: '🥅', PENALITE_RATEE: '❌',
     TRANSFORMATION_REUSSIE: '🥅', TRANSFORMATION_RATEE: '❌',
     TOUCHE: '👉', TURNOVER: '🔁', MAUL: '🧱', MI_TEMPS: '⏸️', COUP_ENVOI_COURT: '📏',
@@ -83,6 +83,8 @@
     'CONTRE_COUP_ENVOI', 'MAUL', 'MI_TEMPS', 'COUP_ENVOI_COURT',
     // Ballon aplati par la défense dans son en-but (P2-93) : renvoi aux 22 m.
     'EN_BUT_APLATI',
+    // 50:22 (P2-96) : un coup de pied de son camp qui trouve la touche dans les 22 adverses.
+    'CINQUANTE_VINGT_DEUX',
     // Chandelle disputee (P2-56) : un duel aerien, le temps fort d'un coup de pied.
     'RECEPTION_DISPUTEE',
     // Franchissement de la ligne de defense (P2-60) : le moment ou le match s'ouvre.

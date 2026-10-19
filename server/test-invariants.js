@@ -2842,6 +2842,43 @@ test('interception : le ballon vole jusqu\'à l\'intercepteur, à vue', () => {
   assert.strictEqual(propres, cas, `${propres}/${cas} interceptions sans saut du ballon > 3 m (pire : ${pire.toFixed(1)} m)`);
 });
 
+test('50:22 : tapé de son camp, rebond dans le terrain, touche dans les 22 adverses -> lancer au botteur', () => {
+  // P2-96, loi 18 (50:22). Un coup de pied tapé depuis son propre camp, qui
+  // rebondit dans le terrain puis sort en touche dans les 22 m adverses, donne
+  // le lancer à l'équipe qui a botté. Sinon, la touche en rebond revient à
+  // l'adversaire, comme toute touche en jeu courant.
+  let n5022 = 0, lancerBotteur = 0;
+  for (let seed = 1; seed <= 12; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    const brut = m.log.bind(m);
+    let attendu = null;
+    m.log = (type, team, msg, extra) => { if (type === 'CINQUANTE_VINGT_DEUX') attendu = team; return brut(type, team, msg, extra); };
+    for (let i = 0; i < 400000 && m.phase !== 'TERMINE'; i++) {
+      m.tick(0.1);
+      if (attendu) { n5022++; if (m.phase === 'TOUCHE' && m.possession === attendu) lancerBotteur++; attendu = null; }
+    }
+  }
+  assert.ok(n5022 >= 2, `seulement ${n5022} 50:22 en 12 matchs`);
+  assert.strictEqual(lancerBotteur, n5022, `${lancerBotteur}/${n5022} 50:22 donnent le lancer au botteur`);
+  // Cas construits : l'équipe A tape, le ballon rebondit dans le terrain et
+  // sort en touche à 85 m (dans les 22 de B). Depuis 45 m (son camp) : 50:22.
+  // Depuis 55 m (camp adverse) : touche en rebond ordinaire, lancer à B.
+  for (const [xFrappe, lancer] of [[45, 'A'], [55, 'B']]) {
+    const m = new MatchEngine(3, 4800);
+    for (let t = 0; t < 60; t += 0.1) m.tick(0.1);
+    m.avantage = null; m.passeVisuelle = null; m.penaliteRecul = null; m.combinaison = null;
+    m.possession = 'A'; m.phase = 'PORTE';
+    const botteur = m.equipeA.find(j => j.numero === 10);
+    botteur.x = xFrappe; botteur.y = 20; botteur.auSol = 0; m.porteur = botteur;
+    m._tenterCoupDePiedJeu(botteur, 'TOUCHE');
+    m.cibleCoupDePiedX = 84; m.cibleCoupDePiedY = 2;
+    for (const j of [...m.equipeA, ...m.equipeB]) { if (j !== botteur) { j.x = 50; j.y = 50; j.horsJeuKick = 0; } }
+    for (let t = 0; t < 15 && m.phase === 'COUP_DE_PIED_JEU'; t += 0.1) m.tick(0.1);
+    assert.strictEqual(m.phase, 'TOUCHE', `frappe à ${xFrappe} m : le ballon doit rouler en touche (phase ${m.phase})`);
+    assert.strictEqual(m.possession, lancer, `frappe à ${xFrappe} m, sortie dans les 22 adverses : lancer pour ${lancer}`);
+  }
+});
+
 test('loi 18 : coup de pied direct en touche, lancer adverse, et pas de terrain gagné hors de ses 22 m', () => {
   // P2-95. Le moteur donnait le lancer à l'équipe qui avait botté quand elle
   // tapait directement en touche depuis ses 22 m (un tiers des cas), et
