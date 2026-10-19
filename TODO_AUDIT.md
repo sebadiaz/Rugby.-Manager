@@ -606,8 +606,7 @@ les séquences dépend de la part de chandelles (le receveur y est plaqué en ~0
 à 2,73-2,89 s sans que le jeu après un ruck change (3,00 / 2,97 s). Mutant « sans inertie de course » : 2,44 s -> rouge.
 La touche en rebond (P2-92) est rare (~0,2-0,4 par match) : son test passe de 8 à 24 graines.
 
-**Barrières.** Calibration 14/14, 13 suites OK, navigateur 493/0 ; invariants : les deux tests réécrits rejoués en vert,
-série complète relancée.
+**Barrières.** Invariants 81/81, calibration 14/14, 13 suites OK, navigateur 493/0.
 
 ### P2-93. Ballon dans l'en-but : la défense aplatit (renvoi aux 22 m) ou le chasseur marque
 - **Statut : CORRIGÉ (gameplay)**
