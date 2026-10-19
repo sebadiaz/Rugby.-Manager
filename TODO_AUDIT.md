@@ -580,6 +580,29 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-96. La règle du 50:22, et sa tentative
+- **Statut : AJOUTÉ (règle et tactique)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_tickRouleBallon`, `_tenterCoupDePiedJeu`,
+  stat `cinquanteVingtDeux`), `docs/js/constants.js` (icône et bandeau `CINQUANTE_VINGT_DEUX`), `server/test-invariants.js`.
+
+**Règle (loi 18, 50:22).** Un coup de pied tapé depuis son propre camp, qui rebondit dans le terrain puis sort en touche
+dans les 22 m adverses, donne le lancer à l'équipe qui a botté. Toute autre touche en rebond revient à l'adversaire.
+La condition sur le ballon ramené dans son camp avant la frappe n'est pas modélisée.
+
+**Tentative.** Depuis son camp, hors de ses 22 m, une équipe qui cherche la touche vise une fois sur quatre les 22 m
+adverses, quand ils sont à sa portée (40 m, modulés par le jeu au pied). La chute est moins précise (1 à 11 m de la ligne) :
+souvent le ballon reste dans le terrain et l'adversaire le récupère dans ses 22. Une première version, toujours tentée et
+précise, donnait 3,5 50:22 par match et +4,8 points : rien de tel n'existe en vrai.
+
+**Effet mesuré.** 0,45 50:22 par match (20 matchs). 200 graines appariées : points +0,65 ± 1,28, essais +0,23 ± 0,20,
+coups de pied -2,2, touches -0,5 : neutre.
+
+**Tests.** « 50:22 : tapé de son camp, rebond dans le terrain, touche dans les 22 adverses -> lancer au botteur » : rouge
+avant (0 en 12 matchs). Deux cas construits : frappe à 45 m (son camp) -> lancer au botteur ; frappe à 55 m (camp
+adverse) -> touche en rebond ordinaire, lancer adverse.
+
+**Barrières.** Invariants 83/83, 13 suites OK, calibration 13/14 (courses 280,8 pour 280), navigateur 493/0.
+
 ### P2-95. Loi 18 : coup de pied direct en touche, lancer adverse et pas de terrain gagné hors des 22 m
 - **Statut : CORRIGÉ (règle)**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (chute dans `_tickCoupDePiedJeu`, cible des
