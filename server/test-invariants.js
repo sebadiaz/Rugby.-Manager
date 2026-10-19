@@ -511,22 +511,35 @@ test('le jeu courant RESPIRE : la sequence ballon vivant reste dans la fourchett
   // n'est PAS en jeu) se deroule DANS la phase PORTE. La sequence est comptee
   // a partir du moment ou le ballon est vivant (coup de pied tape, pas
   // sifflet).
-  const durees = [];
-  for (const seed of [1, 2, 3, 4, 5, 6]) {
+  //
+  // SEQUENCES NEES D'UN RUCK SEULEMENT (P2-94). La moyenne de TOUTES les
+  // sequences depend de la part de chandelles : sur un box kick dispute, le
+  // receveur est plaque en ~0,4 s (un chasseur a moins de 0,5 m dans 100 %
+  // des cas, comme en vrai), et ces sequences tirent la moyenne vers le bas
+  // des que le match a plus de jeu au pied. Avec les touches a 30 s, la
+  // moyenne generale passait de 2,80-3,02 s a 2,73-2,89 s sans que le jeu
+  // apres un ruck ait change (3,00 / 2,97 s). On mesure donc ce que le test
+  // veut garder : la respiration du jeu entre deux rucks. Graines 1-12.
+  const durees = [], apresRuck = [];
+  for (let seed = 1; seed <= 12; seed++) {
     const m = new MatchEngine(seed, 2400);
-    let phasePrecedente = null, debutVivant = null;
+    let phasePrecedente = null, debutVivant = null, origine = null;
     for (let t = 0; t < 2400; t += 0.2) {
       m.tick(0.2);
       if (m.phase === 'PORTE' && !m.penaliteRecul && debutVivant === null) debutVivant = m.tempsMatch;
       if (m.phase !== phasePrecedente) {
-        if (phasePrecedente === 'PORTE' && debutVivant !== null) durees.push(m.tempsMatch - debutVivant);
-        if (m.phase === 'PORTE') debutVivant = m.penaliteRecul ? null : m.tempsMatch;
+        if (phasePrecedente === 'PORTE' && debutVivant !== null) {
+          durees.push(m.tempsMatch - debutVivant);
+          if (origine === 'RUCK') apresRuck.push(m.tempsMatch - debutVivant);
+        }
+        if (m.phase === 'PORTE') { debutVivant = m.penaliteRecul ? null : m.tempsMatch; origine = phasePrecedente; }
         phasePrecedente = m.phase;
       }
     }
   }
-  assert.ok(durees.length > 100, 'echantillon de sequences trop petit');
-  const moyenne = durees.reduce((a, b) => a + b, 0) / durees.length;
+  assert.ok(apresRuck.length > 500, 'echantillon de sequences trop petit');
+  const moyenneGenerale = durees.reduce((a, b) => a + b, 0) / durees.length;
+  const moyenne = apresRuck.reduce((a, b) => a + b, 0) / apresRuck.length;
   // Seuil = borne basse de la fourchette reelle. Moteur au moment de l'ecrire :
   // 3,49 s (graines 1-6), 3,51 s (7-12). Mutant verifie : sans inertie de
   // course (ACCELERATION x10), le contact tombe en 2,62 s et le test rougit.
@@ -537,10 +550,12 @@ test('le jeu courant RESPIRE : la sequence ballon vivant reste dans la fourchett
   // a la sortie de melee, que le 9 ne recoit plus (il ramasse a la base),
   // ajoutait ~0,1 s a la sequence suivante : 2,79-2,83 s mesures sur quatre
   // jeux de graines. Le mutant sans inertie reste rouge (2,62 s).
-  assert.ok(moyenne > 2.75,
-    `une sequence de jeu courant dure en moyenne ${moyenne.toFixed(2)} s ballon vivant : le contact tombe trop vite apres la sortie du ballon (fourchette reelle 2,8 a 3,7 s)`);
-  assert.ok(moyenne < 4.5,
-    `une sequence de jeu courant dure en moyenne ${moyenne.toFixed(2)} s ballon vivant : les porteurs courent sans jamais etre plaques (fourchette reelle 2,8 a 3,7 s)`);
+  // Apres un ruck (P2-94) : moteur 3,00 / 2,97 s (graines 1-6 / 7-12), mutant
+  // sans inertie de course 2,57 / 2,34 s -> rouge.
+  assert.ok(moyenne > 2.8,
+    `apres un ruck, une sequence de jeu courant dure en moyenne ${moyenne.toFixed(2)} s ballon vivant : le contact tombe trop vite apres la sortie du ballon (fourchette reelle 2,8 a 3,7 s)`);
+  assert.ok(moyenneGenerale < 4.5,
+    `une sequence de jeu courant dure en moyenne ${moyenneGenerale.toFixed(2)} s ballon vivant : les porteurs courent sans jamais etre plaques (fourchette reelle 2,8 a 3,7 s)`);
 });
 
 
@@ -2863,7 +2878,9 @@ test('coup de pied tactique : le ballon qui tombe sans receveur ROULE, et peut f
   // la course pour le récupérer. Le ballon qui roule hors du terrain donne une
   // touche (loi 18) à l'adversaire, là où il est sorti.
   let longs = 0, roules = 0, enTouche = 0, horsTerrainSansTouche = 0;
-  for (let seed = 1; seed <= 8; seed++) {
+  // 24 graines : la touche en rebond est rare (~0,2 a 0,4 par match ; 1 seule
+  // sur les graines 1-8 a l'ecriture du test, 0 apres P2-94).
+  for (let seed = 1; seed <= 24; seed++) {
     const m = new MatchEngine(seed, 4800);
     let chute = null;
     for (let i = 0; i < 400000 && m.phase !== 'TERMINE'; i++) {
@@ -2886,9 +2903,9 @@ test('coup de pied tactique : le ballon qui tombe sans receveur ROULE, et peut f
       }
     }
   }
-  assert.ok(longs >= 30, `échantillon trop petit (${longs} dégagements sans receveur)`);
+  assert.ok(longs >= 90, `échantillon trop petit (${longs} dégagements sans receveur)`);
   assert.ok(roules >= 0.8 * longs, `seulement ${roules}/${longs} dégagements tombés sans receveur ont roulé d'au moins 2 m`);
-  assert.ok(enTouche >= 1, 'aucun ballon n est jamais sorti en touche en roulant');
+  assert.ok(enTouche >= 2, `${enTouche} ballon(s) seulement sorti(s) en touche en roulant en 24 matchs`);
   assert.strictEqual(horsTerrainSansTouche, 0, 'le ballon a roulé hors du terrain sans que la touche soit sifflée');
 });
 
