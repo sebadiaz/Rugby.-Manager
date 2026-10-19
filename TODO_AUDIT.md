@@ -580,6 +580,41 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-95. Loi 18 : coup de pied direct en touche, lancer adverse et pas de terrain gagné hors des 22 m
+- **Statut : CORRIGÉ (règle)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (chute dans `_tickCoupDePiedJeu`, cible des
+  coups de pied « touche » dans `_tenterCoupDePiedJeu`, `_lancerJeuRapidePenalite`, hors-jeu au ruck),
+  `server/test-invariants.js`.
+
+**Constat (en préparant le 50:22).** Deux erreurs de règle :
+- sur un coup de pied direct en touche depuis ses 22 m, le moteur donnait le lancer à l'équipe qui avait botté ;
+  commentaire « loi 18.10 » erroné, 53 cas sur 151 en 12 matchs ;
+- de plus loin, il plaçait la touche au point de sortie, donc avec du terrain gagné.
+
+Loi 18 : en jeu courant, le lancer revient toujours à l'adversaire (seule la pénalité tapée en touche garde le lancer).
+Hors de ses 22 m, le direct en touche se joue au niveau du point de frappe.
+
+**Correction.** Lancer adverse dans tous les cas. Hors des 22 m du botteur, touche au point de frappe (bornée à 5 m de
+la ligne de but). Comme le direct n'y gagne plus rien, le coup de pied « touche » tapé hors de ses 22 m vise la touche EN
+REBOND : le ballon tombe 2 à 4 m dans le terrain et file en biais vers la ligne (cf. P2-92). Une première version
+laissait le ballon rouler dans l'axe : il restait dans le terrain, l'adversaire contre-attaquait (touches -4,7, points
++4,6, essais 8,0, calibration 11/14).
+
+**Suites.** Deux défauts révélés par les barrières, corrigés dans le même lot :
+- une passe interceptée restée en vol au coup de sifflet d'un jeu rapide masquait le ballon posé sur la marque (saut de
+  9,1 m) : elle est annulée au sifflet ;
+- avec ~200 rucks par match (P2-94), le hors-jeu au ruck donnait 22 avantages par match (test R12, plafond 20) :
+  probabilité de base 0,30 -> 0,24.
+
+**Effet mesuré (200 graines appariées, contre P2-94).** Points +0,17, essais +0,02, touches -0,77 : neutre.
+
+**Tests.** « loi 18 : coup de pied direct en touche… » : rouge avant (98/151 lancers adverses), avec un cas construit
+(frappe à 40 m, sortie à 65 m -> touche à 40 m, lancer adverse). Test de l'en-but : les deux issues sont désormais
+construites (aplatissement défensif -> renvoi aux 22 m ; chasseur -> essai), mutant « pas d'en-but » rouge. Test du
+ballon qui roule : toute touche en rebond compte.
+
+**Barrières.** Invariants 82/82, 13 suites OK, calibration 13/14 (courses 284,9 pour 280), navigateur 493/0.
+
 ### P2-94. Touche ramenée à 30 s ; fourchettes de rucks et de mêlées revues sur des matchs réels
 - **Statut : CORRIGÉ (calibration, décision de l'utilisateur : option 1)**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_tickTouche`, `dureeMin`),
