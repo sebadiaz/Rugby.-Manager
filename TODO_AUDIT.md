@@ -580,6 +580,34 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-97. Transformation : le buteur recule pour ouvrir l'angle
+- **Statut : CORRIGÉ (gameplay et règle)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`reculTransformation`,
+  `_transformationPlacerJoueurs`, `_tickTransformation`), `server/test-invariants.js`.
+
+**Constat.** La loi laisse le buteur poser son tee n'importe où sur l'axe de l'essai. Le moteur le posait toujours à
+10 m de la ligne. Réussite par écart latéral de l'essai (30 matchs) : 84 % au centre, 49 % dès 10 m, 50 % à 20 m, 43 %
+au bord. Au total : 56 % pour ~75 % en réel.
+
+**Correction.** Le buteur choisit la distance (10 à 40 m) qui maximise sa réussite. Ses coéquipiers se placent 5 m
+derrière le tee. Résultat : 93 % au centre, 56 % / 58 % / 49 % plus au large, 63 % au total. Visible : sur un essai au
+bord, le buteur va poser son tee 30 m derrière la ligne.
+
+**Ce qui reste faux, et pourquoi on ne le corrige pas ici.** La formule de réussite (`probaReussiteTir`) pénalise trop
+l'angle. Avec un terme d'angle adouci (/200 au lieu de /160), on obtient des taux réalistes : transformations 71 %
+(90 / 73 / 65 / 60 % par écart latéral), pénalités 73 %. Mais les points montent à 65,5 (+2,9 ± 1,3), au-dessus du
+plafond de la calibration. La réussite au but ne pourra être réaliste qu'une fois réglé le vrai excès du moteur : trop
+d'essais (7,3 pour 5,3 au Tournoi 2024) et trop de pénalités tentées (7,7 pour ~4,5). Les réceptions de coup de pied
+n'en sont pas la cause : 2,6 % finissent en essai, un taux plausible.
+
+**Effet mesuré (200 graines appariées).** Points +0,34 ± 1,32, essais -0,28 ± 0,21 : neutre.
+
+**Tests.** « transformation : sur un essai excentré, le buteur recule pour ouvrir l angle » : rouge avant (0/45 buteurs
+reculent d'au moins 18 m sur un essai à 20 m ou plus des poteaux). Le test exige aussi une réussite d'au moins 55 %
+(59 % sur les graines 1-12).
+
+**Barrières.** Invariants 84/84, 13 suites OK, calibration 14/14, navigateur 493/0.
+
 ### P2-96. La règle du 50:22, et sa tentative
 - **Statut : AJOUTÉ (règle et tactique)**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_tickRouleBallon`, `_tenterCoupDePiedJeu`,
