@@ -2368,14 +2368,16 @@ test("loi 8 : un porteur plaque dont l'elan franchit la ligne aplatit (essai)", 
 
 // Le pendant de la regle : TENU DEBOUT. Le ballon n'est pas aplati, le jeu
 // continue — et surtout le regroupement ne se forme JAMAIS dans l'en-but.
-test("loi 8 : tenu debout sur la ligne, pas d'essai et aucun regroupement dans l'en-but", () => {
+test("loi 8 : tenu debout sur la ligne, pas d'essai, renvoi depuis l'en-but", () => {
   // 0,20 : plaquage reussi, pas d'en-avant, mais TENU DEBOUT (tirage < 0,35).
   const { m, sens, scoreAvant } = scenarioPlaqueSurLaLigne(11, 0.2);
   assert.notStrictEqual(m.phase, 'ESSAI', "tenu debout : pas d'essai");
   assert.strictEqual(m.score.A, scoreAvant, 'tenu debout : le score ne bouge pas');
-  assert.ok(m.ruckPoint, 'un regroupement doit bien se former');
-  const dansEnBut = sens > 0 ? m.ruckPoint.x >= LONGUEUR : m.ruckPoint.x <= 0;
-  assert.ok(!dansEnBut, `regroupement forme DANS l'en-but (x=${m.ruckPoint.x.toFixed(2)})`);
+  // Depuis P2-99 (loi en vigueur depuis 2022) : ballon tenu dans l'en-but ->
+  // renvoi depuis l'en-but par la défense, plus de ruck sur la ligne.
+  assert.notStrictEqual(m.phase, 'RUCK', 'tenu debout : aucun regroupement sur ou dans l en-but');
+  assert.ok(m.phase === 'COUP_ENVOI' && m.renvoiEnBut, `tenu debout : renvoi depuis l'en-but attendu (phase ${m.phase})`);
+  assert.strictEqual(m.possession, sens > 0 ? 'B' : 'A', 'le renvoi depuis l en-but est tapé par la défense');
 });
 
 // --- Le DERNIER DEFENSEUR couvre le coin ----------------------------------

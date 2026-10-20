@@ -580,6 +580,43 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-99. Ballon tenu dans l'en-but : renvoi depuis l'en-but ; le libellé du renvoi s'affiche enfin
+- **Statut : CORRIGÉ (règle et affichage)**
+- Fichiers concernés :
+  - `engine/rugby-engine.js` et `docs/rugby-engine.js` : plaquage sur la ligne, `_nouvelleManche` (`renvoiEnBut`),
+    `getState` ;
+  - `docs/js/matchState.js`, `docs/js/ui.js`, `docs/js/constants.js` ;
+  - `server/test-invariants.js`, `server/test-parcours-navigateur.js`.
+
+**Constat 1 (règle).** Un porteur qui franchissait la ligne mais était TENU DEBOUT (35 % des cas) ne marquait pas. Le
+moteur formait alors un ruck à 30 cm de la ligne, et l'attaque gardait le ballon pour l'essai suivant. Loi en vigueur
+depuis 2022 : ballon tenu dans l'en-but -> renvoi depuis la ligne d'en-but par l'équipe qui défendait.
+
+**Constat 2 (affichage).** L'état normalisé (`matchState.js`), que reçoit l'interface, ne transmettait pas `renvoi22`. Le
+badge de phase n'affichait donc jamais « Renvoi aux 22 m », alors que le code de `ui.js` le prévoyait.
+
+**Correction.**
+- Ballon tenu dans l'en-but : évènement `EN_BUT_TENU` (bandeau), puis renvoi depuis la ligne d'en-but par la défense
+  (évènement `RENVOI_EN_BUT`, badge « Renvoi depuis l'en-but »).
+- L'état normalisé transmet `renvoi22` et `renvoiEnBut`.
+
+**Effet mesuré.** ~0,17 ballon tenu dans l'en-but par match. 200 graines appariées : points -0,42 ± 0,47, essais
+-0,06 : neutre.
+
+**Tests.**
+- « ballon tenu dans l en-but : renvoi depuis l en-but par la défense », sur 24 graines : rouge avant (0 cas).
+- Le test « loi 8 : tenu debout sur la ligne » exigeait un regroupement devant la ligne (règle d'avant 2022). Il exige
+  désormais le renvoi depuis l'en-but par la défense, et aucun ruck.
+- Navigateur : coup d'envoi, renvoi aux 22 m et renvoi depuis l'en-but arrivent distincts jusqu'à l'affichage (496/0).
+
+**Mesures sur les mètres gagnés (sans patch).** Par portée de ballon (chaque porteur), le moteur donne 3,8 m en moyenne
+(médiane 2,3), ce qui est plausible. Les 8,9 m « par course » viennent du dénominateur : la stat `carries` ne compte que
+les portées au contact, alors que les mètres comptent toutes les courses ballon en main, y compris celles du n°9 et du
+n°10 avant leur passe. Aucune définition officielle trouvée pour trancher.
+
+**Barrières.** Invariants 86 (le test de la loi 8 rejoué en vert après mise à jour), 13 suites OK, calibration 14/14,
+navigateur 496/0.
+
 ### P2-98. La touche rapide
 - **Statut : AJOUTÉ (règle et tactique)**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_preparerToucheRapide`, `_tickToucheRapide`,
