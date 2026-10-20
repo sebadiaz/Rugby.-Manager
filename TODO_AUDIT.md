@@ -580,6 +580,32 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-100. Le ballon qui roule rebondit à l'écran
+- **Statut : CORRIGÉ (affichage)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_rebondBallon`, `_tickRouleBallon`,
+  `getState`), `docs/js/renderer.js`, `server/test-invariants.js`.
+
+**Constat.** Depuis P2-92, le ballon roule après la chute d'un coup de pied, mais il glissait à plat sur la pelouse.
+
+**Correction.** `getState` expose la hauteur de rebond (`ballon.rebond`) et la rotation du ballon qui roule : environ
+1,2 saut par seconde, amortis avec la vitesse, et rien une fois le ballon arrêté. Le rendu dessine l'ombre au sol, le
+saut et le ballon qui tourne. Affichage seul : l'empreinte de 10 matchs est identique avant/après, avec ou sans
+`getState`.
+
+**Tests.**
+- Invariant « le ballon qui roule REBONDIT à l écran… » : rouge avant (0 rebond sur 1405 images de ballon qui
+  roule). Il vérifie aussi qu'un ballon arrêté ne rebondit pas.
+- Navigateur (1400×1000) : ballon en l'air au-dessus de son ombre, incliné, devant le n°15 qui le poursuit ; console
+  sans erreur.
+
+**Mesures écartées (sans patch).** Compter toute portée de ballon comme une course, comme envisagé en P2-99, serait
+faux. La stat `carries` (~280 par match) correspond déjà aux ~228 courses réelles de la Coupe du monde 2023 ; toutes les
+portées en feraient plus de 600. L'excès de mètres gagnés (1231 m par équipe et par match) est donc réel, mais faute de
+définition officielle sourcée, il n'est pas corrigé.
+
+**Barrières.** Invariants 87/87, 13 suites OK, calibration 14/14. Navigateur : 496 tests avec 1 échec intermittent au
+premier passage, puis 0 échec sur les passages suivants (cf. ci-dessous).
+
 ### P2-99. Ballon tenu dans l'en-but : renvoi depuis l'en-but ; le libellé du renvoi s'affiche enfin
 - **Statut : CORRIGÉ (règle et affichage)**
 - Fichiers concernés :
