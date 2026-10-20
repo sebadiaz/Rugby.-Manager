@@ -1358,7 +1358,11 @@
       // coup de pied. `renvoi22` est expose par getState pour que l'interface
       // affiche aussi la bonne phase.
       this.renvoi22 = Math.abs(xCentre - LONGUEUR / 2) > 0.5;
-      if (this.renvoi22) {
+      // Renvoi depuis la ligne d'en-but (ballon tenu dans l'en-but, P2-99).
+      this.renvoiEnBut = xCentre <= 0.5 || xCentre >= LONGUEUR - 0.5;
+      if (this.renvoiEnBut) {
+        this.log('RENVOI_EN_BUT', equipeKick, `Renvoi depuis l'en-but botte par l'equipe ${equipeKick}`);
+      } else if (this.renvoi22) {
         this.log('RENVOI_22', equipeKick, `Renvoi aux 22 m botte par l'equipe ${equipeKick}, l'equipe ${equipeReceptrice} ne franchit pas la ligne des 22 m avant le coup de pied`);
       } else {
         this.log('COUP_ENVOI', equipeKick, `Coup d'envoi botte par l'equipe ${equipeKick}, l'equipe ${equipeReceptrice} doit rester a 10m`);
@@ -2539,8 +2543,16 @@
             this.timerPhase = 0;
             return;
           }
-          // Tenu debout sur la ligne : le regroupement se forme juste devant.
-          this.porteur.x = ligneEnBut - this.porteur.sensAttaque * 0.3;
+          // TENU DANS L'EN-BUT (P2-99). Loi en vigueur depuis 2022 : un ballon
+          // tenu dans l'en-but n'est plus une mêlée à 5 m ni un ruck sur la
+          // ligne, c'est un RENVOI DEPUIS L'EN-BUT par l'équipe qui défendait.
+          // Avant, le moteur formait un ruck à 30 cm de la ligne et l'attaque
+          // gardait le ballon pour l'essai suivant.
+          const defense = this.possession === 'A' ? 'B' : 'A';
+          this.log('EN_BUT_TENU', this.possession,
+            `Ballon tenu dans l'en-but ! Le n°${defenseurProche.numero} de l'equipe ${defense} empeche l'aplatissement : renvoi depuis l'en-but`);
+          this._nouvelleManche(this.possession, ligneEnBut);
+          return;
         }
         this.ruckPoint = { x: this.porteur.x, y: this.porteur.y };
         this.contestants = [defenseurProche.numero];
@@ -7482,6 +7494,7 @@
         phase: this.phase,
         // Remise en jeu en cours depuis la ligne des 22 m (cf. _nouvelleManche).
         renvoi22: this.phase === 'COUP_ENVOI' && !!this.renvoi22,
+        renvoiEnBut: this.phase === 'COUP_ENVOI' && !!this.renvoiEnBut,
         // État détaillé du maul en cours (null hors maul), pour l'affichage.
         maul: this.maul ? { etat: this.maul.etat, x: this.maul.x, y: this.maul.y } : null,
         // État détaillé de la mêlée en cours (null hors mêlée), pour l'affichage.

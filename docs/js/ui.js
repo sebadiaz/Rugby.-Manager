@@ -90,7 +90,9 @@
       ? ETATS_MAUL_LABEL[state.maul.etat]
       : (state.phase === 'MELEE' && state.melee && ETATS_MELEE_LABEL[state.melee.etat])
         ? ETATS_MELEE_LABEL[state.melee.etat]
-        : (state.phase === 'COUP_ENVOI' && state.renvoi22)
+        : (state.phase === 'COUP_ENVOI' && state.renvoiEnBut)
+          ? 'Renvoi depuis l’en-but'
+          : (state.phase === 'COUP_ENVOI' && state.renvoi22)
           ? 'Renvoi aux 22 m'
           : infosPhase.label;
     phaseEl.style.background = infosPhase.couleur;

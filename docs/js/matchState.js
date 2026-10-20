@@ -24,6 +24,11 @@
         period: rawState.periode,
       },
       phase: rawState.phase,
+      // Remise en jeu depuis les 22 m ou depuis l'en-but : même phase moteur
+      // (COUP_ENVOI), libellé différent (cf. ui.js). Ils n'étaient pas
+      // transmis : « Renvoi aux 22 m » ne s'affichait jamais (P2-99).
+      renvoi22: !!rawState.renvoi22,
+      renvoiEnBut: !!rawState.renvoiEnBut,
       possession: rawState.possession,
       // % de possession réel (temps de jeu effectif par équipe), pas une
       // valeur fixe : cf. MatchEngine.getState().

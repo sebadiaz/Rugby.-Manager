@@ -19,7 +19,7 @@
   const MARGE_TOUCHE = 4;
 
   const ICONES = {
-    COUP_ENVOI: '▶️', RENVOI_22: '↩️', EN_BUT_APLATI: '🖐️', CINQUANTE_VINGT_DEUX: '🎯', TOUCHE_RAPIDE: '⚡', CONTRE_COUP_ENVOI: '✋', ESSAI: '🏉', MELEE_AVANT: '🔄', MELEE_ENAVANT: '🔄', TOUCHE_PAS_DROIT: '↗️', TOUCHE_HORS_JEU: '🚩', PENALITE_TOUCHE_FRAPPE: '👟', RECEPTION_DISPUTEE: '🙌', FRANCHISSEMENT: '⚡',
+    COUP_ENVOI: '▶️', RENVOI_22: '↩️', EN_BUT_APLATI: '🖐️', CINQUANTE_VINGT_DEUX: '🎯', TOUCHE_RAPIDE: '⚡', EN_BUT_TENU: '🛡️', RENVOI_EN_BUT: '↩️', CONTRE_COUP_ENVOI: '✋', ESSAI: '🏉', MELEE_AVANT: '🔄', MELEE_ENAVANT: '🔄', TOUCHE_PAS_DROIT: '↗️', TOUCHE_HORS_JEU: '🚩', PENALITE_TOUCHE_FRAPPE: '👟', RECEPTION_DISPUTEE: '🙌', FRANCHISSEMENT: '⚡',
     PENALITE: '🟨', PENALITE_REUSSIE: '🥅', PENALITE_RATEE: '❌',
     TRANSFORMATION_REUSSIE: '🥅', TRANSFORMATION_RATEE: '❌',
     TOUCHE: '👉', TURNOVER: '🔁', MAUL: '🧱', MI_TEMPS: '⏸️', COUP_ENVOI_COURT: '📏',
@@ -87,6 +87,8 @@
     'CINQUANTE_VINGT_DEUX',
     // Touche rapide (P2-98) : relance immédiate après un coup de pied en touche.
     'TOUCHE_RAPIDE',
+    // Ballon tenu dans l'en-but (P2-99) : renvoi depuis l'en-but.
+    'EN_BUT_TENU',
     // Chandelle disputee (P2-56) : un duel aerien, le temps fort d'un coup de pied.
     'RECEPTION_DISPUTEE',
     // Franchissement de la ligne de defense (P2-60) : le moment ou le match s'ouvre.

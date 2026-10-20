@@ -2842,6 +2842,32 @@ test('interception : le ballon vole jusqu\'à l\'intercepteur, à vue', () => {
   assert.strictEqual(propres, cas, `${propres}/${cas} interceptions sans saut du ballon > 3 m (pire : ${pire.toFixed(1)} m)`);
 });
 
+test('ballon tenu dans l en-but : renvoi depuis l en-but par la défense', () => {
+  // P2-99. Un porteur qui franchit la ligne mais est TENU DEBOUT ne marque
+  // pas. Le moteur formait alors un ruck à 30 cm de la ligne, et l'attaque
+  // gardait le ballon. Loi (depuis 2022) : ballon tenu dans l'en-but -> renvoi
+  // depuis la ligne d'en-but par l'équipe qui défendait.
+  let tenus = 0, renvois = 0;
+  // 24 graines : ~0,17 ballon tenu dans l'en-but par match.
+  for (let seed = 1; seed <= 24; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    const brut = m.log.bind(m);
+    let attendu = null;
+    m.log = (type, team, msg, extra) => { if (type === 'EN_BUT_TENU') attendu = team === 'A' ? 'B' : 'A'; return brut(type, team, msg, extra); };
+    for (let i = 0; i < 400000 && m.phase !== 'TERMINE'; i++) {
+      m.tick(0.1);
+      if (attendu) {
+        tenus++;
+        const ligne = m.xCoupEnvoi <= 0.5 || m.xCoupEnvoi >= LONGUEUR - 0.5;
+        if (m.phase === 'COUP_ENVOI' && m.possession === attendu && ligne && m.renvoiEnBut) renvois++;
+        attendu = null;
+      }
+    }
+  }
+  assert.ok(tenus >= 3, `seulement ${tenus} ballons tenus dans l'en-but en 24 matchs`);
+  assert.strictEqual(renvois, tenus, `${renvois}/${tenus} ballons tenus dans l'en-but suivis d'un renvoi depuis l'en-but par la défense`);
+});
+
 test('touche rapide : relancée par l équipe qui a le lancer, ballon vers un partenaire à 5 m ou plus, à vue', () => {
   // P2-98, loi 18. Après un coup de pied en touche, un joueur de l'équipe qui a
   // le lancer peut relancer tout de suite, avant que l'alignement ne se forme,

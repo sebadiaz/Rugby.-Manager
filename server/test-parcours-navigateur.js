@@ -4613,6 +4613,33 @@ function optionsLancement() {
     await ctxBa.close();
   }
 
+  // --- LE RENVOI EST ANNONCÉ COMME UN RENVOI (P2-99) --------------------------
+  // L'état normalisé, que reçoit l'affichage, ne transmettait pas `renvoi22` :
+  // le badge de phase affichait toujours « Coup d'envoi », jamais « Renvoi aux
+  // 22 m ». P2-99 ajoute le renvoi depuis l'en-but (ballon tenu dans l'en-but).
+  {
+    const ctxRv = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+    const pRv = await ctxRv.newPage();
+    await pRv.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+    const r = await pRv.evaluate(() => {
+      const etat = (x) => {
+        const m = new window.RugbyEngine.MatchEngine(1, 4800);
+        for (let i = 0; i < 300; i++) m.tick(0.1);
+        m._nouvelleManche('A', x);
+        const s = window.RMMatchState.normalizeMatchState(m.getState());
+        return { phase: s.phase, renvoi22: s.renvoi22, renvoiEnBut: s.renvoiEnBut };
+      };
+      return { envoi: etat(50), r22: etat(22), enBut: etat(0) };
+    });
+    verifier('renvoi : un coup d envoi au centre n est pas annoncé comme un renvoi',
+      r.envoi.phase === 'COUP_ENVOI' && !r.envoi.renvoi22 && !r.envoi.renvoiEnBut, JSON.stringify(r.envoi));
+    verifier('renvoi : un renvoi aux 22 m arrive jusqu à l affichage',
+      r.r22.renvoi22 === true && !r.r22.renvoiEnBut, JSON.stringify(r.r22));
+    verifier('renvoi : un renvoi depuis l en-but arrive jusqu à l affichage',
+      r.enBut.renvoiEnBut === true, JSON.stringify(r.enBut));
+    await ctxRv.close();
+  }
+
   // --- CHAQUE PHASE DU MOTEUR A UN LIBELLÉ À L'ÉCRAN (P2-86) -------------------
   // Vu en QA : pendant un coup de pied, le badge de phase affichait le code
   // brut « COUP_DE_PIED_JEU » — la seule phase absente de RMConstants.PHASES.
