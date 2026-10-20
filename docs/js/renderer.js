@@ -206,8 +206,20 @@
     // posé au point de chute réel, jamais dans des mains (personne ne l'a
     // encore rejoint en courant) — cf. MatchEngine._tickReceptionCoupDePied.
     if (state.ball && state.ball.state === 'LOOSE') {
+      // Ballon qui roule (P2-100) : il rebondit et tourne sur lui-même, avec
+      // son ombre au sol ; posé à plat une fois arrêté.
+      const rebond = ballon.rebond || 0;
+      if (rebond > 0) {
+        ctx.save();
+        ctx.globalAlpha = 0.25;
+        ctx.beginPath();
+        ctx.ellipse(sol.px, sol.py, 5, 2.5, 0, 0, Math.PI * 2);
+        ctx.fillStyle = '#000';
+        ctx.fill();
+        ctx.restore();
+      }
       ctx.beginPath();
-      ctx.ellipse(sol.px, sol.py, 6, 3.8, Math.PI / 4, 0, Math.PI * 2);
+      ctx.ellipse(sol.px, sol.py - rebond * 40, 6, 3.8, Math.PI / 4 + (ballon.rotation || 0), 0, Math.PI * 2);
       ctx.fillStyle = '#8d5524';
       ctx.fill();
       ctx.lineWidth = 1;

@@ -3066,6 +3066,26 @@ test('coup de pied dans l en-but : le défenseur aplatit (renvoi aux 22 m) ou le
   }
 });
 
+test('le ballon qui roule REBONDIT à l écran, et se pose quand il s arrête', () => {
+  // P2-100. Depuis P2-92, le ballon roule après la chute, mais il glissait à
+  // plat. getState expose la hauteur de rebond (ballon.rebond) : des rebonds
+  // qui s'amortissent avec la vitesse, nuls une fois le ballon arrêté.
+  let roulants = 0, avecRebond = 0, arretesAPlat = 0, arretes = 0;
+  for (let seed = 1; seed <= 4; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    for (let i = 0; i < 400000 && m.phase !== 'TERMINE'; i++) {
+      m.tick(0.1);
+      if (!m._receptionEnAttente) continue;
+      const b = m.getState().ballon;
+      if (m._rouleBallon) { roulants++; if ((b.rebond || 0) > 0.02) avecRebond++; }
+      else { arretes++; if (!(b.rebond > 0)) arretesAPlat++; }
+    }
+  }
+  assert.ok(roulants >= 100, `échantillon trop petit (${roulants} images de ballon qui roule)`);
+  assert.ok(avecRebond >= 0.5 * roulants, `le ballon ne rebondit que sur ${avecRebond}/${roulants} images où il roule`);
+  assert.strictEqual(arretesAPlat, arretes, 'un ballon arrêté au sol ne rebondit pas');
+});
+
 test('coup de pied tactique : le ballon qui tombe sans receveur ROULE, et peut finir en touche', () => {
   // P2-92 : un dégagement qui tombait sans personne dessous restait collé au
   // point de chute, immobile jusqu'à 4 s. En vrai, le ballon rebondit et

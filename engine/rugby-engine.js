@@ -4098,6 +4098,16 @@
       this._ballonEnBut = { ligne, defense };
     }
 
+    // Rebond du ballon qui roule, pour l'affichage seulement (P2-100) : des
+    // sauts de ~1,2 par seconde qui s'amortissent avec la vitesse, et le ballon
+    // qui tourne sur lui-même. Rien quand il est arrêté ou tenu.
+    _rebondBallon() {
+      const R = this._rouleBallon;
+      if (!this._receptionEnAttente || !R || !R.v0) return {};
+      const v = Math.hypot(R.vx, R.vy), t = R.t || 0;
+      return { rebond: 0.35 * Math.abs(Math.sin(Math.PI * 1.2 * t)) * Math.min(1, v / R.v0), rotation: t * 7 };
+    }
+
     // Ballon qui roule après la chute (P2-92) : il ralentit (~3 m/s²), s'arrête
     // sur la ligne de but, et s'il franchit une ligne de touche, l'adversaire de
     // l'équipe qui a botté obtient la touche là où il est sorti (loi 18).
@@ -4106,6 +4116,9 @@
       const R = this._rouleBallon;
       if (!R) return false;
       const v = Math.hypot(R.vx, R.vy);
+      // Rebonds à l'écran (P2-100) : temps de roulement et élan initial.
+      R.t = (R.t || 0) + dt;
+      if (R.v0 == null) R.v0 = v;
       if (v < 0.2) { this._rouleBallon = null; return false; }
       this.ballonVolX = Math.max(0, Math.min(LONGUEUR, this.ballonVolX + R.vx * dt));
       this.ballonVolY += R.vy * dt;
@@ -7476,7 +7489,7 @@
             ? { x: ballonX, y: ballonY, enVol: true, hauteur: this.melee.balle.h }
           : enPasse
             ? { x: passeX, y: passeY, enVol: true, hauteur: passeH }
-            : { x: ballonX, y: ballonY, enVol: false, hauteur: 0 },
+            : { x: ballonX, y: ballonY, enVol: false, hauteur: 0, ...this._rebondBallon() },
         // Objet ballon normalisé : { x, y, vx, vy, state, carrierTeam, carrierNumber }.
         // À terme, c'est cette forme qui doit devenir la source de vérité côté
         // rendu (docs/js/renderer.js) ; `ballon`/`porteur` restent en place tant
