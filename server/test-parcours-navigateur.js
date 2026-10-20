@@ -4715,6 +4715,16 @@ function optionsLancement() {
       if (window.RMUI.placerBandeau) window.RMUI.placerBandeau(b);
       window.dispatchEvent(new Event('resize'));
     });
+    // Le terrain est recalé sous le HUD par un ResizeObserver, donc à l'image
+    // suivante : un délai fixe de 150 ms échouait ~1 fois sur 20 (P2-100),
+    // quand l'observateur était servi plus tard dans le navigateur sans
+    // affichage. On attend que le canvas soit sous le HUD (2 s au plus).
+    for (let i = 0; i < 20; i++) {
+      const pret = await pB.evaluate(() => document.getElementById('pitch').getBoundingClientRect().top
+        >= document.getElementById('hud').getBoundingClientRect().bottom - 0.5);
+      if (pret) break;
+      await pB.waitForTimeout(100);
+    }
     await pB.waitForTimeout(150);
     const g = await pB.evaluate(() => {
       const b = document.getElementById('banner');
