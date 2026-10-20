@@ -603,8 +603,16 @@ faux. La stat `carries` (~280 par match) correspond déjà aux ~228 courses rée
 portées en feraient plus de 600. L'excès de mètres gagnés (1231 m par équipe et par match) est donc réel, mais faute de
 définition officielle sourcée, il n'est pas corrigé.
 
-**Barrières.** Invariants 87/87, 13 suites OK, calibration 14/14. Navigateur : 496 tests avec 1 échec intermittent au
-premier passage, puis 0 échec sur les passages suivants (cf. ci-dessous).
+**Barrières.** Invariants 87/87, 13 suites OK, calibration 14/14, navigateur 496/0.
+
+**Test intermittent corrigé.** « arbitre : le bandeau ne recouvre pas le terrain (390x844) » (P2-73) échouait environ une
+fois sur vingt :
+- reproduit : bandeau en bas à 156 px, terrain encore à 155 px, HUD à 160 px ;
+- 500 ms plus tard, le terrain est bien recalé à 160 px.
+
+Le terrain est recalé sous le HUD par un `ResizeObserver`, donc à l'image suivante. Le délai fixe de 150 ms du test était
+parfois trop court dans le navigateur sans affichage. Le test attend désormais que le canvas soit sous le HUD (2 s au
+plus) avant de mesurer. Pour le joueur, c'est au pire une image décalée. Ensuite, deux passages à 496/0.
 
 ### P2-99. Ballon tenu dans l'en-but : renvoi depuis l'en-but ; le libellé du renvoi s'affiche enfin
 - **Statut : CORRIGÉ (règle et affichage)**
