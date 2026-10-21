@@ -2844,6 +2844,28 @@ test('interception : le ballon vole jusqu\'à l\'intercepteur, à vue', () => {
   assert.strictEqual(propres, cas, `${propres}/${cas} interceptions sans saut du ballon > 3 m (pire : ${pire.toFixed(1)} m)`);
 });
 
+test('choix du capitaine : menée en fin de match, elle joue la touche ; devant au score, elle prend les points', () => {
+  // P2-101. Le choix entre poteaux, touche et jeu rapide ne dépendait que de la
+  // distance : à 30 m des poteaux, une équipe menée de 10 points à 5 minutes
+  // de la fin tapait au but comme en début de match. On construit la même
+  // pénalité (A, 30 m des poteaux, dans l'axe) dans trois contextes.
+  function choix(scoreA, scoreB, tempsMatch) {
+    const r = { TIR: 0, TOUCHE: 0, AUTRE: 0 };
+    const m = new MatchEngine(9, 4800);
+    for (let i = 0; i < 300; i++) {
+      m.score.A = scoreA; m.score.B = scoreB; m.tempsMatch = tempsMatch;
+      m.phase = 'PORTE'; m.avantage = null; m.penaliteRecul = null; m.passeVisuelle = null; m.penTouche = null;
+      m._traiterPenalite('A', { x: LONGUEUR - 30, y: LARGEUR / 2 });
+      if (m.phase === 'PENALITE_TIR') r.TIR++; else if (m.phase === 'TOUCHE') r.TOUCHE++; else r.AUTRE++;
+    }
+    return r;
+  }
+  const debut = choix(0, 0, 600), menee = choix(3, 13, 4500), devant = choix(13, 10, 4500);
+  assert.ok(debut.TIR >= 0.75 * 300, `en début de match, à 30 m, on tape au but (${JSON.stringify(debut)})`);
+  assert.ok(menee.TOUCHE >= 0.65 * 300, `menée de 10 points à 5 minutes de la fin, on joue la touche (${JSON.stringify(menee)})`);
+  assert.ok(devant.TIR >= 0.95 * 300, `devant au score en fin de match, on prend les points (${JSON.stringify(devant)})`);
+});
+
 test('ballon tenu dans l en-but : renvoi depuis l en-but par la défense', () => {
   // P2-99. Un porteur qui franchit la ligne mais est TENU DEBOUT ne marque
   // pas. Le moteur formait alors un ruck à 30 cm de la ligne, et l'attaque

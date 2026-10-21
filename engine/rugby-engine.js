@@ -1867,6 +1867,21 @@
       // pas jusqu'ici.
       const tropLoinPourTir = distanceButs > 45;
       const procheLigneAdverse = distanceButs >= 5 && distanceButs <= 22;
+      // CHOIX DU CAPITAINE SELON LE SCORE (P2-101). Dans le dernier quart du
+      // match, une équipe menée de plus de 3 points n'a que faire de 3 points :
+      // elle joue la touche (au coin, pour un maul) ; une équipe qui mène, ou
+      // à égalité, prend les points dès qu'elle est à portée. Avant, le choix
+      // ne dépendait que de la distance, à la 75e minute comme à la 5e.
+      const adversaire = equipeBeneficiaire === 'A' ? 'B' : 'A';
+      const ecartScore = this.score[equipeBeneficiaire] - this.score[adversaire];
+      const finDeMatch = isFinite(this.dureeMatch) && this.dureeMatch > 0 && this.tempsMatch >= this.dureeMatch * 0.75;
+      if (finDeMatch && ecartScore < -3 && distanceButs >= 5 && distanceButs <= 45 && this.rng() < 0.8) {
+        this.log('CHOIX_CAPITAINE', equipeBeneficiaire,
+          `Menee de ${-ecartScore} points, l'equipe ${equipeBeneficiaire} renonce aux poteaux et joue la touche`);
+        this._accorderPenaliteTouche(equipeBeneficiaire, position);
+        return;
+      }
+      const prendLesPoints = finDeMatch && ecartScore >= 0 && distanceButs >= 5 && distanceButs <= 45;
       // Taux releve de 0,15 a 0,45 pres de la ligne : a 15 %, une penalite dans
       // les 22 adverses partait presque toujours au but (3 points) et le moteur
       // ne construisait quasiment jamais la sequence la plus banale du rugby
@@ -1887,7 +1902,7 @@
       // (touches 19,1, catégorie essentielle) et ne passait la CI que grâce
       // au jeu de graines qu'elle exécute. 65 % donnait 13/14 mais des essais
       // à 7,5-7,8, à 0,2 de la borne : trop peu de marge.
-      if ((tropLoinPourTir && this.rng() < 0.85) || (procheLigneAdverse && this.rng() < 0.45)) {
+      if (!prendLesPoints && ((tropLoinPourTir && this.rng() < 0.85) || (procheLigneAdverse && this.rng() < 0.45))) {
         this._accorderPenaliteTouche(equipeBeneficiaire, position);
         return;
       }
@@ -1896,7 +1911,7 @@
       // L'ancien taux 0.55 ne donnait que ~1,4 tir/match ; ~0.85 rapproche des
       // ~5 tentatives réelles.
       const enZoneDeTir = distanceButs >= 5 && distanceButs <= 45;
-      if (enZoneDeTir && this.rng() < 0.85) {
+      if (enZoneDeTir && (prendLesPoints || this.rng() < 0.85)) {
         this.equipeAuTir = equipeBeneficiaire;
         this.positionTir = { x: position.x, y: position.y, distanceButs };
         // Place le buteur (l'ouvreur) sur le point de pénalité : sans ça, le
