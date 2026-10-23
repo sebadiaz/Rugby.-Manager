@@ -580,6 +580,41 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-102. Mètres gagnés : comptés au-delà de la ligne d'avantage, et le profil du joueur s'y lit
+- **Statut : CORRIGÉ (statistique)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_compterMetresGagnes`, ligne d'avantage
+  dans `tick`, contact dans le plaquage), `server/test-invariants.js`.
+
+**Constat (remarques de l'utilisateur : la stat existe par joueur, et elle dépend du type de joueur).** Le moteur
+comptait tout le terrain couru vers l'avant depuis la réception. Le n°10, qui reçoit 10 m derrière le ruck et court avant
+de passer, « gagnait » ainsi 217 m par match, plus que les ailiers (124 à 151 m). Une équipe totalisait 1233 m par match.
+Repères réels : record du Tournoi 116 m par match (Kinghorn 2025, 580 m en 5 matchs) ; Irlande 2023, meilleure équipe,
+857 m par match pour 139 courses. Et le terrain pris DANS le plaquage, où compte la puissance, n'était pas compté : des
+avants à 95 de puissance ne gagnaient que 16 m, contre 14 à 40 de puissance.
+
+**Correction.** Seul compte le terrain pris au-delà du point le plus avancé de la phase. La phase part de la ligne
+d'avantage : le point de regroupement ou de réception, ou le point du nouveau porteur après un changement de possession.
+Le terrain pris dans le plaquage est compté aussi.
+
+| Mètres par match | Avant | Après | Repère réel |
+|---|---|---|---|
+| Équipe | 1233 | 501 | 857 pour la meilleure (Irlande 2023) |
+| Meilleur joueur | 224 en moyenne | 104 | 116, record du Tournoi |
+
+Par poste, après : ailiers 60-72 m, arrière 63, ouvreur 55, demi de mêlée 34, troisième ligne 23-28, piliers 14-16.
+Effet des attributs : ailiers à 95 de vitesse 66 m, contre 20 à 50 de vitesse ; avants à 95 de puissance 22 m, contre 16 à 40.
+
+C'est une statistique d'affichage seule : les scores et toutes les autres stats sont identiques (empreinte de 10 matchs).
+
+**Tests.** « mètres gagnés : comptés au-delà de la ligne d avantage… » vérifie :
+- rouge avant : l'ouvreur moins que les ailiers (217 m contre 143) ;
+- le demi de mêlée à moins de 40 m ;
+- une équipe entre 300 et 950 m ;
+- les effets : vitesse x1,8 ou plus, puissance x1,12 ou plus (mesurés x2,7 à x3,6 et x1,21 à x1,54 sur trois lots).
+
+**Barrières.** Invariants 89/89, 13 suites OK, calibration 14/14, navigateur 496/0. Une première série avait été lancée
+avant l'ajout du contact ; elle a été arrêtée et refaite sur la version finale.
+
 ### P2-101. Le capitaine choisit selon le score et le temps
 - **Statut : AJOUTÉ (tactique)**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_traiterPenalite`), `docs/js/constants.js`
