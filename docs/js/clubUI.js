@@ -2253,6 +2253,8 @@
       const promus = comp.promus || 0, relegues = comp.relegues || 0;
       zone.innerHTML =
         `${ligneInfo(`Format`, `${comp.estCoupe ? 'élimination directe' : 'championnat aller-retour'}`)}` +
+        // Règlement de départage annoncé AVANT les matchs (BUG-RM-001).
+        (comp.estCoupe ? `${ligneInfo(`En cas d'égalité`, 'prolongation de 20 min, puis nombre d\'essais, puis tirs au but')}` : '') +
         `${ligneInfo(`Clubs`, `${(comp.clubs || []).length}`)}` +
         `${ligneInfo(`Montées`, `${promus || 'aucune'}`)}` +
         `${ligneInfo(`Descentes`, `${relegues || 'aucune'}`)}` +

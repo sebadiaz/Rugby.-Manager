@@ -664,6 +664,7 @@ qualification « après prolongation » alors qu'aucune minute n'avait été jou
   niveau des clubs. Aucune prolongation n'est annoncée.
 - Le message dit comment le match a été gagné : « après prolongation, au nombre d'essais (3 à 2) », « aux tirs au but (4-3) ».
 - Écran de match : période « Prolongation », barre de lecture allongée, bandeaux PROLONGATION et DEPARTAGE.
+- Le règlement est annoncé avant les matchs : onglet « Règles » de chaque coupe, ligne « En cas d'égalité ».
 - Une égalité de coupe sans départage ni générateur lève une erreur au lieu de tirer un vainqueur en silence.
 
 **Mesures (30 matchs de 60 s, élimination directe).** 19 prolongations, 17 séances de tirs au but, 2 matchs gagnés

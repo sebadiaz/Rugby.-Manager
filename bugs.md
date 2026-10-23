@@ -117,7 +117,7 @@ Les sommes individuelles des passes, plaquages et mètres correspondent aux somm
 
 | Ticket | Priorité | Nature | Travail attendu |
 | --- | --- | --- | --- |
-| BUG-RM-001 | P1 | Confirmé | Remplacer le départage par identifiants annoncé comme une prolongation |
+| BUG-RM-001 | P1 | Corrigé (TODO_AUDIT P2-104) | Remplacer le départage par identifiants annoncé comme une prolongation |
 | BUG-RM-002 | P1 | Confirmé | Empêcher un onglet ancien d'écraser la progression d'un autre |
 | BUG-RM-003 | P1 | Confirmé | Conserver les secours lors d'incidents successifs |
 | BUG-RM-004 | P2 | Confirmé | Distinguer les clubs générés portant exactement le même nom |
@@ -148,7 +148,7 @@ Les sommes individuelles des passes, plaquages et mètres correspondent aux somm
 
 ## Bugs établis
 
-### [ ] BUG-RM-001 — Une égalité en coupe devient une « prolongation » sans jeu supplémentaire — P1
+### [x] BUG-RM-001 — Une égalité en coupe devient une « prolongation » sans jeu supplémentaire — P1
 
 **Statut : CONFIRMÉ par reproduction des fonctions du dépôt.**
 
