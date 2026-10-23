@@ -580,6 +580,37 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-105. Sauvegarde : deux onglets ne s'écrasent plus, chaque incident garde sa copie — bugs.md BUG-RM-002/003
+- **Statut : CORRIGÉ (mode Club)**
+- Fichiers concernés : `docs/js/club-sauvegarde.js`, `docs/js/clubUI.js`, `server/test-audit-p0-2.js`,
+  `server/test-parcours-navigateur.js`.
+
+**Constat.**
+- Deux onglets sur la même carrière : le dernier qui enregistrait remplaçait toute la progression de l'autre, sans rien dire.
+- Un second incident de chargement (version future, puis JSON tronqué) remplaçait la copie de secours du premier.
+
+**Correction (002).**
+- Une révision de la sauvegarde est stockée à part (`rugbyManager.club.revision.v1`) et incrémentée à chaque écriture.
+- Chaque saison de l'onglet retient la révision lue au chargement, hors de l'objet et du JSON.
+- Si la révision stockée a changé entre-temps, l'écriture est refusée (`raisonEchecSauvegarde() === 'conflit'`).
+- L'onglet périmé est prévenu dès l'écriture de l'autre (événement `storage`) ; fermer le message recharge la version
+  la plus récente.
+- Une nouvelle carrière s'écrit sans condition ; une sauvegarde d'avant la révision se charge normalement.
+- Stockage plein : échec distinct (`'stockage'`), révision inchangée.
+
+**Correction (003).**
+- Chaque incident a sa propre copie : la première reste sous `rugbyManager.club.secours.v1`, les suivantes sous des clés
+  numérotées.
+- Toutes les copies sont listées dans un index (raison, date, club, saison), lisibles par `listerSecours` et `lireSecours`.
+- Une copie identique n'est pas dupliquée. Au-delà de 5 copies, aucune n'est écrasée et l'échec est signalé.
+- Une copie n'est annoncée conservée qu'après relecture ; sinon le message le dit.
+
+**Tests.**
+- `test-audit-p0-2.js` : 4 nouveaux tests (deux onglets, sauvegarde ancienne / nouvelle carrière / stockage plein,
+  incidents successifs, copie non écrite ou maximum atteint). 3 mutants détectés.
+- Navigateur : deux vrais onglets du même contexte. L'onglet en retard est prévenu, son état périmé n'écrase rien, et
+  une fois rechargé il enregistre de nouveau. Le mutant sans contrôle est détecté.
+
 ### P2-104. Coupe : une égalité se joue (prolongation, essais, tirs au but) — bugs.md BUG-RM-001
 - **Statut : CORRIGÉ (moteur, mode Club, interface)**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (fin de match, `_departager`, `getState`),
