@@ -580,6 +580,40 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-106. Exporter, importer et récupérer sa carrière depuis l'accueil — bugs.md FUNC-RM-001
+- **Statut : AJOUTÉ (mode Club)**
+- Fichiers concernés : `docs/js/club-sauvegarde.js` (`sauvegardeBrute`, `nomFichierCarriere`, `analyserImport`,
+  `importerCarriere`, `supprimerSecours`, copie avant effacement), `docs/js/main.js` (carte Sauvegardes),
+  `docs/index.html`, `docs/css/style.css`, `docs/js/clubUI.js` (message de récupération), tests p0-2 et navigateur.
+
+**Constat.** La carrière ne vivait que dans le navigateur, sans moyen de l'emporter ni de la restaurer. Le message
+après un incident renvoyait « au support », alors que les données sont locales. « Repartir de zéro » effaçait sans
+copie.
+
+**Correction.**
+- Une carte « Sauvegardes » sur l'accueil, indépendante de l'état du club, donc utilisable même si la carrière ne s'ouvre plus.
+- Exporter : télécharge la sauvegarde telle qu'elle est stockée (versionnée par son champ `version`), nommée
+  `rugby-manager-<club>-saison<n>-<date>.json`.
+- Importer : le fichier est lu par `JSON.parse` uniquement, jamais exécuté. Il passe par les migrations et la
+  validation du chargement.
+- Avant d'importer, un aperçu (club, manager, saison, date, conversion d'ancien format) demande confirmation.
+- Refus expliqués, sans rien modifier : fichier vide, non-JSON, autre format, version future, carrière incomplète,
+  stockage plein.
+- La carrière remplacée est d'abord mise en copie de secours relue ; si la copie échoue, l'import est refusé.
+- Copies de secours listées (club, saison, raison, date), téléchargeables et supprimables à la demande.
+- « Repartir de zéro » garde une copie de secours.
+- Le message après incident dit où télécharger la copie.
+
+**Tests.**
+- `test-audit-p0-2.js` : aller-retour à l'identique sur un stockage vide ; refus sans écriture (vide, non-JSON,
+  tableau, autre objet, version future, schéma incomplet) ; ancienne version migrée ; copie avant import relue ;
+  import refusé sans place pour la copie ; copie avant effacement ; suppression limitée aux copies listées. 3 mutants
+  détectés.
+- Navigateur : export dans un navigateur, import dans un autre contexte (téléphone 390 px). Couvre le refus d'un
+  faux fichier, l'aperçu puis l'annulation, l'import accepté, la copie de la carrière remplacée téléchargée intacte,
+  la carte sans débordement, et une carrière importée jouable.
+- Captures 1400x1000 et 390x844 vérifiées.
+
 ### P2-105. Sauvegarde : deux onglets ne s'écrasent plus, chaque incident garde sa copie — bugs.md BUG-RM-002/003
 - **Statut : CORRIGÉ (mode Club)**
 - Fichiers concernés : `docs/js/club-sauvegarde.js`, `docs/js/clubUI.js`, `server/test-audit-p0-2.js`,
