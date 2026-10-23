@@ -2867,6 +2867,27 @@ test('mètres gagnés : comptés au-delà de la ligne d avantage, pas depuis la 
   assert.ok(pm(9) < 40, `le demi de mêlée gagne ${pm(9).toFixed(0)} m par match`);
   assert.ok(total / equipes <= 950, `une équipe gagne ${(total / equipes).toFixed(0)} m par match (Irlande 2023 : 857)`);
   assert.ok(total / equipes >= 300, `une équipe ne gagne que ${(total / equipes).toFixed(0)} m par match`);
+  // LE PROFIL DU JOUEUR COMPTE (remarque de l'utilisateur). Un ailier rapide
+  // gagne plus de terrain qu'un ailier lent ; un avant puissant plus qu'un
+  // avant léger, grâce au terrain pris DANS le plaquage, désormais compté.
+  // Sur trois lots de 6 graines : vitesse x2,7 à x3,6 ; puissance x1,21 à x1,54.
+  function metres(nums, attr, v) {
+    const cfg = { joueursA: {}, joueursB: {} };
+    for (const k of nums) cfg.joueursA[k] = { [attr]: v };
+    let t = 0;
+    for (let seed = 1; seed <= 6; seed++) {
+      const m = new MatchEngine(seed, 4800, cfg);
+      for (let i = 0; i < 400000 && m.phase !== 'TERMINE'; i++) m.tick(0.1);
+      const sj = m.getState().statsJoueurs.A;
+      for (const k of nums) t += (sj[k] && sj[k].metresGagnes) || 0;
+    }
+    return t;
+  }
+  const rapides = metres([11, 14], 'vitesse', 95), lents = metres([11, 14], 'vitesse', 50);
+  assert.ok(rapides >= 1.8 * lents, `ailiers rapides ${rapides.toFixed(0)} m contre lents ${lents.toFixed(0)} m`);
+  const avants = [1, 2, 3, 4, 5, 6, 7, 8];
+  const puissants = metres(avants, 'puissance', 95), legers = metres(avants, 'puissance', 40);
+  assert.ok(puissants >= 1.12 * legers, `avants puissants ${puissants.toFixed(0)} m contre légers ${legers.toFixed(0)} m`);
 });
 
 test('choix du capitaine : menée en fin de match, elle joue la touche ; devant au score, elle prend les points', () => {

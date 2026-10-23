@@ -2532,6 +2532,9 @@
           1 + (puissPorteur - PUISSANCE_CONTACT_REF) / 90));
         const avanceContact = (rideau >= 2 ? 0.55 : rideau === 1 ? 1.0 : 1.55) * facteurPuissance;
         if (!this.ruckDominant) this.porteur.x += this.porteur.sensAttaque * avanceContact;
+        // Le terrain pris DANS le plaquage compte aussi (P2-102) : c'est là
+        // que la puissance d'un avant fait la différence.
+        this._compterMetresGagnes(this.porteur);
         // LOI 8 — PLAQUE SUR LA LIGNE : un porteur plaque a moins d'un metre de
         // l'en-but, et dont l'elan l'emmene quand meme au-dela de la ligne,
         // TEND LE BRAS ET APLATIT : c'est un essai, pas un regroupement. Avant
@@ -2713,14 +2716,7 @@
       // « gagnait » 217 m par match, plus que les ailiers, et une équipe 1233 m
       // (record réel du Tournoi : 116 m par match pour un joueur).
       void xAvantCourse;
-      if (this._xGainPhase != null && this._possGainPhase === this.possession) {
-        const metresCourus = (porteur.x - this._xGainPhase) * porteur.sensAttaque;
-        if (metresCourus > 0) {
-          this.stats[this.possession].metresGagnes += metresCourus;
-          this._statJoueur(porteur).metresGagnes += metresCourus;
-          this._xGainPhase = porteur.x;
-        }
-      }
+      this._compterMetresGagnes(porteur);
 
       // Touche : le ballon porté au-delà de la ligne de touche est mort, jeu arrêté.
       // (Pas pendant qu'une passe vole : le receveur ne porte pas encore le ballon.)
@@ -4121,6 +4117,18 @@
       this.ballonVolX = ligne === 0 ? -0.8 : LONGUEUR + 0.8;
       this._rouleBallon = null;
       this._ballonEnBut = { ligne, defense };
+    }
+
+    // Mètres gagnés (P2-102) : le terrain pris par le porteur au-delà du point
+    // le plus avancé de la phase (cf. tick, ligne d'avantage). Statistique
+    // seule : aucune décision du moteur ne la lit.
+    _compterMetresGagnes(porteur) {
+      if (!porteur || this._xGainPhase == null || this._possGainPhase !== this.possession) return;
+      const gain = (porteur.x - this._xGainPhase) * porteur.sensAttaque;
+      if (gain <= 0) return;
+      this.stats[this.possession].metresGagnes += gain;
+      this._statJoueur(porteur).metresGagnes += gain;
+      this._xGainPhase = porteur.x;
     }
 
     // Rebond du ballon qui roule, pour l'affichage seulement (P2-100) : des
