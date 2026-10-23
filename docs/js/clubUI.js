@@ -255,8 +255,27 @@
   // prochaine visite (cf. RMClub.sauvegarderSaison, qui renvoie maintenant
   // un booléen plutôt que d'avaler l'erreur).
   let alerteSauvegardeAffichee = false;
+  // Conflit entre onglets (BUG-RM-002) : un autre onglet ou une autre fenêtre
+  // a enregistré cette carrière depuis son chargement ici. Cet onglet n'écrit
+  // plus rien (la sauvegarde refuse) et le joueur choisit : recharger la
+  // version la plus récente, ou rester pour consulter cet état périmé.
+  let alerteConflitAffichee = false;
+  function signalerConflitSauvegarde() {
+    if (alerteConflitAffichee) return;
+    alerteConflitAffichee = true;
+    afficherInfo(
+      '⚠️ Carrière modifiée dans un autre onglet',
+      'Cette carrière a été enregistrée depuis un autre onglet ou une autre fenêtre.\n\n' +
+      'Pour ne pas écraser cette progression plus récente, cet onglet n\'enregistre plus rien. ' +
+      'Fermer ce message recharge la page sur la version la plus récente.'
+    ).then(() => { try { window.location.reload(); } catch (e) { /* ignore */ } });
+  }
   function sauvegarder() {
     const ok = RMClub.sauvegarderSaison(saison);
+    if (!ok && RMClub.raisonEchecSauvegarde && RMClub.raisonEchecSauvegarde() === 'conflit') {
+      signalerConflitSauvegarde();
+      return;
+    }
     if (!ok && !alerteSauvegardeAffichee) {
       alerteSauvegardeAffichee = true;
       toast('⚠️ Sauvegarde impossible (stockage indisponible) — la progression restera en mémoire pour cette session.', 'erreur');
@@ -6406,11 +6425,27 @@
   if (avertissementChargement) {
     RMClub.effacerAvertissementChargement();
     const raison = RAISON_AVERTISSEMENT_LABEL[avertissementChargement.raison] || 'un problème est survenu';
+    // N'annonce une copie que si elle a réellement été écrite et relue
+    // (BUG-RM-003). Les anciens avertissements n'ont pas ce champ.
+    const conserve = avertissementChargement.secoursConserve !== false;
+    const nbCopies = RMClub.listerSecours ? RMClub.listerSecours().length : 0;
     afficherInfo(
       '⚠️ Ancienne carrière non rechargée',
       `Ton ancienne carrière n'a pas pu être rechargée automatiquement (${raison}).\n\n` +
-      'Rien n\'a été supprimé : une copie de secours de tes données a été conservée dans le stockage de ton navigateur. ' +
-      'Contacte le support avec le nom de ton club si tu veux la récupérer.'
+      (conserve
+        ? 'Rien n\'a été supprimé : une copie de secours de tes données a été conservée dans le stockage de ton navigateur' +
+          (nbCopies > 1 ? ` (${nbCopies} copies d'incidents différents sont gardées, aucune n'a été remplacée).` : '.') +
+          ' Contacte le support avec le nom de ton club si tu veux la récupérer.'
+        : 'Attention : aucune copie de secours n\'a pu être écrite (stockage du navigateur plein ou indisponible). ' +
+          'Les données d\'origine restent dans l\'emplacement de sauvegarde tant qu\'aucune nouvelle carrière n\'est enregistrée.')
     );
   }
+
+  // Un autre onglet vient d'enregistrer (BUG-RM-002) : on prévient tout de
+  // suite, avant que le joueur ne joue des journées qui ne pourraient plus
+  // être enregistrées.
+  window.addEventListener('storage', (e) => {
+    if (!RMClub.CLE_REVISION_SAUVEGARDE || e.key !== RMClub.CLE_REVISION_SAUVEGARDE) return;
+    if (saison && RMClub.sauvegardeModifieeAilleurs(saison)) signalerConflitSauvegarde();
+  });
 })();

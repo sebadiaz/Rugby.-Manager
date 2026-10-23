@@ -1002,6 +1002,57 @@ function optionsLancement() {
   verifier('sauvegarde corrompue : une nouvelle carrière se crée normalement après l\'avertissement', await pageCorrompue.isVisible('[data-volet="dashboard"]'));
   await contexteCorrompu.close();
 
+  // 9 bis) Deux onglets sur la même carrière (bugs.md BUG-RM-002) : un onglet
+  // resté ouvert sur un état ancien ne doit plus écraser la progression
+  // enregistrée par l'autre. Même contexte = même stockage, comme deux
+  // onglets d'un vrai navigateur.
+  const contexteOnglets = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const ongletA = await contexteOnglets.newPage();
+  const erreursOnglets = [];
+  ongletA.on('pageerror', (e) => erreursOnglets.push(`PAGEERROR: ${e.message}`));
+  await ongletA.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  await ongletA.evaluate((g) => window.RMRng.setSeed(g), GRAINE_TEST);
+  await ongletA.click('#btnAccueilModeClub');
+  await ongletA.fill('#inputNomClub', 'Club Deux Onglets');
+  await ongletA.click('#btnCreerClub');
+  await ongletA.waitForTimeout(400);
+  const ongletB = await contexteOnglets.newPage();
+  ongletB.on('pageerror', (e) => erreursOnglets.push(`PAGEERROR: ${e.message}`));
+  await ongletB.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  await ongletB.click('#btnContinuerClub');
+  await ongletB.waitForTimeout(300);
+  const dateStockee = () => ongletA.evaluate(() => JSON.parse(localStorage.getItem('rugbyManager.club.v1')).temps);
+  // A avance d'un jour et enregistre.
+  await ongletA.bringToFront();
+  await ongletA.click('#btnJourSuivant');
+  await ongletA.waitForTimeout(400);
+  const dateA = await dateStockee();
+  await ongletB.waitForTimeout(300);
+  const conflitAnnonce = await ongletB.isVisible('#modalInfo.visible')
+    ? await ongletB.textContent('#modalInfoTitre') : '';
+  verifier('deux onglets : l\'onglet resté en arrière est prévenu dès que l\'autre enregistre',
+    /autre onglet/.test(conflitAnnonce));
+  // Même s'il agit quand même (le message ignoré), il n'écrase rien.
+  await ongletB.evaluate(() => { const m = document.getElementById('modalInfo'); m.classList.remove('visible'); });
+  // Deux jours : son état diffère alors forcément de celui enregistré par A.
+  await ongletB.click('#btnJourSuivant');
+  await ongletB.waitForTimeout(400);
+  await ongletB.click('#btnJourSuivant');
+  await ongletB.waitForTimeout(400);
+  verifier('deux onglets : l\'état périmé de l\'autre onglet n\'écrase pas la progression enregistrée',
+    JSON.stringify(await dateStockee()) === JSON.stringify(dateA));
+  // Fermer le message recharge la version la plus récente, qui s'enregistre normalement.
+  await ongletB.evaluate(() => document.getElementById('modalInfo').classList.add('visible'));
+  await Promise.all([ongletB.waitForNavigation({ waitUntil: 'networkidle' }), ongletB.click('#modalInfoValider')]);
+  await ongletB.click('#btnContinuerClub');
+  await ongletB.waitForTimeout(300);
+  await ongletB.click('#btnJourSuivant');
+  await ongletB.waitForTimeout(400);
+  verifier('deux onglets : rechargé, l\'onglet reprend la carrière à jour et enregistre de nouveau',
+    JSON.stringify(await dateStockee()) !== JSON.stringify(dateA) && !(await ongletB.isVisible('#modalInfo.visible')));
+  verifier('deux onglets : aucune erreur de page', erreursOnglets.length === 0);
+  await contexteOnglets.close();
+
   // 10) Marché des transferts sur mobile étroit (audit trouvé en vérifiant le
   // correctif du double-clic ci-dessus) : la ligne d'un joueur (nom, prix,
   // Scouter, Signer) ne tient pas sur ~390px de large. Avant correctif,

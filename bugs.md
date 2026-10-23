@@ -118,8 +118,8 @@ Les sommes individuelles des passes, plaquages et mètres correspondent aux somm
 | Ticket | Priorité | Nature | Travail attendu |
 | --- | --- | --- | --- |
 | BUG-RM-001 | P1 | Corrigé (TODO_AUDIT P2-104) | Remplacer le départage par identifiants annoncé comme une prolongation |
-| BUG-RM-002 | P1 | Confirmé | Empêcher un onglet ancien d'écraser la progression d'un autre |
-| BUG-RM-003 | P1 | Confirmé | Conserver les secours lors d'incidents successifs |
+| BUG-RM-002 | P1 | Corrigé (TODO_AUDIT P2-105) | Empêcher un onglet ancien d'écraser la progression d'un autre |
+| BUG-RM-003 | P1 | Corrigé (TODO_AUDIT P2-105) | Conserver les secours lors d'incidents successifs |
 | BUG-RM-004 | P2 | Confirmé | Distinguer les clubs générés portant exactement le même nom |
 | BUG-RM-005 | P2 | Écart mesuré | Réduire les passes excédentaires sans casser l'attaque |
 | BUG-RM-006 | P1 | Confirmé | Compter les tentatives de passe avec les offloads |
@@ -162,7 +162,7 @@ Les sommes individuelles des passes, plaquages et mètres correspondent aux somm
 
 **Acceptation :** égalités en match joué et abstrait, éventuelle égalité persistante et résultat rechargé ; score, vainqueur, message, qualification, finances et archive concordent. Les identifiants seuls ne décident plus de la performance sportive. Aucun règlement de championnat n'est modifié par cette correction.
 
-### [ ] BUG-RM-002 — Deux onglets peuvent écraser leurs progressions respectives — P1
+### [x] BUG-RM-002 — Deux onglets peuvent écraser leurs progressions respectives — P1
 
 **Statut : CONFIRMÉ par reproduction de deux états chargés sur le même stockage.**
 
@@ -176,7 +176,7 @@ Les sommes individuelles des passes, plaquages et mètres correspondent aux somm
 
 **Acceptation :** deux onglets, actions simultanées, onglet repris après veille et échec de stockage ; aucune progression récente perdue silencieusement. Ajouter un scénario navigateur sur les fonctions de sauvegarde et les actions réelles du Club. Garder les carrières existantes chargeables.
 
-### [ ] BUG-RM-003 — Un second incident remplace le secours de la première carrière — P1
+### [x] BUG-RM-003 — Un second incident remplace le secours de la première carrière — P1
 
 **Statut : CONFIRMÉ par reproduction sur le stockage en mémoire.**
 

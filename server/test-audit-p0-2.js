@@ -157,6 +157,112 @@ test('P0-2f : saisonEstValide rejette une structure incohérente et accepte une 
   assert.strictEqual(RMClub.saisonEstValide({ clubJoueur: { effectif: [] }, adversaires: [], calendrier: [], classement: {} }), false, 'un effectif vide ne doit pas être considéré valide');
 });
 
+// --- BUG-RM-002 : deux onglets sur la même carrière -----------------------
+// Deux chargements de la même sauvegarde = deux onglets : chacun a son objet
+// saison et la révision lue avec lui.
+test('BUG-RM-002 : un onglet resté sur un état ancien n\'écrase plus la progression d\'un autre', () => {
+  store = {};
+  const depart = RMClub.nouvelleSaison(creerRng(21), 'Club Deux Onglets');
+  depart.clubJoueur.budget = 401000;
+  assert.ok(RMClub.sauvegarderSaison(depart));
+  const ongletA = RMClub.chargerSaison();
+  const ongletB = RMClub.chargerSaison();
+  ongletA.clubJoueur.budget = 501000;
+  assert.ok(RMClub.sauvegarderSaison(ongletA), 'le premier onglet enregistre normalement');
+  assert.ok(RMClub.sauvegardeModifieeAilleurs(ongletB), 'l\'onglet B doit savoir que la carrière a changé ailleurs');
+  assert.ok(!RMClub.sauvegardeModifieeAilleurs(ongletA));
+  ongletB.clubJoueur.budget = 391000;
+  assert.strictEqual(RMClub.sauvegarderSaison(ongletB), false, 'l\'état périmé de B doit être refusé');
+  assert.strictEqual(RMClub.raisonEchecSauvegarde(), 'conflit');
+  assert.strictEqual(JSON.parse(store['rugbyManager.club.v1']).clubJoueur.budget, 501000,
+    'la progression de A est intacte');
+  // A continue de jouer et d'enregistrer : aucune gêne pour l'onglet à jour.
+  ongletA.clubJoueur.budget = 520000;
+  assert.ok(RMClub.sauvegarderSaison(ongletA));
+  assert.strictEqual(RMClub.raisonEchecSauvegarde(), null);
+  // B rechargé (la page recharge sur la version récente) reprend la main.
+  const ongletB2 = RMClub.chargerSaison();
+  assert.strictEqual(ongletB2.clubJoueur.budget, 520000);
+  assert.ok(RMClub.sauvegarderSaison(ongletB2));
+  assert.strictEqual(RMClub.sauvegarderSaison(ongletA), false, 'A est à son tour périmé');
+});
+
+test('BUG-RM-002 : sauvegardes existantes, nouvelle carrière et stockage plein', () => {
+  // Sauvegarde d'avant la révision : elle se charge et s'enregistre.
+  store = {};
+  const ancienne = RMClub.nouvelleSaison(creerRng(22), 'Club Ancien');
+  store['rugbyManager.club.v1'] = JSON.stringify(ancienne);
+  const chargee = RMClub.chargerSaison();
+  assert.ok(chargee, 'une sauvegarde sans révision reste chargeable');
+  assert.ok(RMClub.sauvegarderSaison(chargee));
+  // Une nouvelle carrière créée volontairement s'enregistre sans condition.
+  const neuve = RMClub.nouvelleSaison(creerRng(23), 'Club Neuf');
+  assert.ok(RMClub.sauvegarderSaison(neuve));
+  assert.strictEqual(RMClub.sauvegarderSaison(chargee), false, 'l\'ancienne carrière ne remplace pas la nouvelle');
+  // Stockage plein : échec distinct d'un conflit, révision inchangée.
+  const setItem = global.localStorage.setItem;
+  global.localStorage.setItem = () => { throw new Error('QuotaExceededError'); };
+  try {
+    assert.strictEqual(RMClub.sauvegarderSaison(neuve), false);
+    assert.strictEqual(RMClub.raisonEchecSauvegarde(), 'stockage');
+  } finally { global.localStorage.setItem = setItem; }
+  assert.ok(RMClub.sauvegarderSaison(neuve), 'le stockage revenu, la même session enregistre de nouveau');
+});
+
+// --- BUG-RM-003 : incidents successifs ---------------------------------------
+test('BUG-RM-003 : un second incident ne remplace plus le secours du premier', () => {
+  store = {};
+  const premiere = RMClub.nouvelleSaison(creerRng(31), 'Premiere Carriere');
+  RMClub.sauvegarderSaison(premiere);
+  const brut1 = JSON.parse(store['rugbyManager.club.v1']);
+  brut1.version = 99; // format futur
+  store['rugbyManager.club.v1'] = JSON.stringify(brut1);
+  assert.strictEqual(RMClub.chargerSaison(), null);
+  assert.ok(RMClub.consulterAvertissementChargement().secoursConserve);
+  // Recharger la même sauvegarde illisible ne crée pas de doublon.
+  RMClub.chargerSaison();
+  assert.strictEqual(RMClub.listerSecours().length, 1);
+
+  const seconde = RMClub.nouvelleSaison(creerRng(32), 'Seconde Carriere');
+  RMClub.sauvegarderSaison(seconde);
+  store['rugbyManager.club.v1'] = store['rugbyManager.club.v1'].slice(0, 500); // JSON tronqué
+  assert.strictEqual(RMClub.chargerSaison(), null);
+
+  const copies = RMClub.listerSecours();
+  assert.strictEqual(copies.length, 2, 'deux incidents, deux copies');
+  assert.strictEqual(copies[0].club, 'Premiere Carriere');
+  assert.strictEqual(copies[0].raison, 'version_incoherente'); // format plus récent que le jeu
+  assert.strictEqual(copies[1].raison, 'json_invalide');
+  assert.strictEqual(JSON.parse(RMClub.lireSecours(copies[0].cle)).clubJoueur.nom, 'Premiere Carriere',
+    'la première copie reste lisible et intacte');
+  assert.ok(RMClub.lireSecours(copies[1].cle).includes('Seconde Carriere'));
+  assert.strictEqual(RMClub.lireSecours('rugbyManager.club.v1'), null, 'seules les copies listées se lisent');
+});
+
+test('BUG-RM-003 : une copie non écrite n\'est jamais annoncée comme conservée', () => {
+  store = {};
+  store['rugbyManager.club.v1'] = '{"version": 3, "clubJoueur": ';
+  const setItem = global.localStorage.setItem;
+  global.localStorage.setItem = (k, v) => {
+    if (k.indexOf('secours') !== -1) throw new Error('QuotaExceededError');
+    setItem(k, v);
+  };
+  try { assert.strictEqual(RMClub.chargerSaison(), null); } finally { global.localStorage.setItem = setItem; }
+  const avert = RMClub.consulterAvertissementChargement();
+  assert.strictEqual(avert.secoursConserve, false, 'stockage plein : la copie n\'existe pas, on ne le cache pas');
+  assert.strictEqual(RMClub.listerSecours().length, 0);
+  // Copies au maximum : aucune n'est écrasée, l'échec est dit.
+  store = {};
+  for (let i = 0; i < 6; i++) {
+    store['rugbyManager.club.v1'] = `{"incident": ${i}`;
+    RMClub.chargerSaison();
+  }
+  const copies = RMClub.listerSecours();
+  assert.strictEqual(copies.length, 5);
+  assert.strictEqual(RMClub.lireSecours(copies[0].cle), '{"incident": 0', 'la plus ancienne copie est intacte');
+  assert.strictEqual(RMClub.consulterAvertissementChargement().secoursConserve, false);
+});
+
 console.log(`\n${nbTests} test(s) exécuté(s).`);
 if (process.exitCode) {
   console.error('ECHEC : P0-2 confirmé — une sauvegarde peut être silencieusement perdue.');
