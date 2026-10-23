@@ -580,6 +580,49 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-103. Statistiques individuelles complètes
+- **Statut : AJOUTÉ (statistiques et mode Club)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_statJoueur`, `_passeDecisive`, sites de
+  comptage), `docs/js/club.js` (cumuls de saison et de carrière), `docs/js/clubUI.js` (fiche joueur, meilleurs de la
+  saison), `server/test-invariants.js`.
+
+**Constat (question de l'utilisateur : quelles statistiques individuelles manquent ?).** Le moteur ne suivait par
+joueur que les essais, passes, plaquages et mètres, alors qu'il comptait déjà pour l'équipe bien d'autres actions.
+
+**Correction.** Chaque action est attribuée au joueur qui la fait, au même endroit que le total de l'équipe :
+- courses ;
+- défenseurs battus et plaquages manqués (le défenseur) ;
+- franchissements, offloads ;
+- passes décisives : la dernière passe reçue par le marqueur dans la même séquence de jeu courant ;
+- ballons gagnés : le gratteur au ruck, l'intercepteur, le sauteur qui vole la touche ;
+- coups de pied ; points au pied (transformations, pénalités, drops) ;
+- touches gagnées (le sauteur) ;
+- en-avants : le porteur au contact, le receveur d'une passe ratée, le joueur sous la chandelle ;
+- cartons jaunes.
+
+Les fautes collectives (mêlée volée, pénalités sans auteur identifié) restent comptées à l'équipe seule : aucun fautif
+n'est inventé. Les pénalités concédées ne sont donc pas encore suivies par joueur.
+
+Mode Club :
+- cumuls de saison et de carrière (une ancienne sauvegarde repart de 0) ;
+- sur la fiche joueur, le détail de la saison par thème (attaque, défense, jeu au pied, conquête, discipline), lignes
+  nulles masquées ;
+- dans le bilan, les meilleurs de la saison pour les défenseurs battus, passes décisives, ballons gagnés et points au
+  pied.
+
+**Mesures (6 matchs, par match).** Courses 282, défenseurs battus 38, franchissements 15, offloads 20, en-avants 12,
+touches gagnées 24, coups de pied 60, points au pied 27, passes décisives 4,7 pour 6,7 essais. Statistiques seules : scores
+et stats d'équipe identiques (empreinte de 10 matchs).
+
+**Tests.**
+- « statistiques individuelles : … les joueurs font le total de l équipe » : sur 4 matchs, la somme des quinze joueurs
+  égale exactement le total de l'équipe, statistique par statistique.
+- Ballons gagnés : joueurs entre 80 et 100 % de l'équipe (mêlées volées collectives).
+- Passes décisives : entre 40 et 100 % des essais.
+- Navigateur : fiche joueur affichée et lisible sur grand écran et sur téléphone (390x844), sans erreur console.
+
+**Barrières.** Invariants 90/90, 13 suites OK, calibration 14/14, navigateur 496/0.
+
 ### P2-102. Mètres gagnés : comptés au-delà de la ligne d'avantage, et le profil du joueur s'y lit
 - **Statut : CORRIGÉ (statistique)**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_compterMetresGagnes`, ligne d'avantage
