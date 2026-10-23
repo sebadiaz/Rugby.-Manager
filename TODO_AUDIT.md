@@ -580,6 +580,28 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-101. Le capitaine choisit selon le score et le temps
+- **Statut : AJOUTÉ (tactique)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_traiterPenalite`), `docs/js/constants.js`
+  (icône et bandeau `CHOIX_CAPITAINE`), `server/test-invariants.js`.
+
+**Constat.** Le choix entre poteaux, touche et jeu rapide ne dépendait que de la distance. À 30 m des poteaux, une équipe
+menée de 10 points à 5 minutes de la fin tapait au but (84 %) comme en début de match, et ne jouait jamais la touche.
+
+**Correction.** Dans le dernier quart du match :
+- une équipe menée de plus de 3 points, à portée de but, renonce aux poteaux et joue la touche (80 %), avec l'annonce
+  « Menée de N points, l'équipe X renonce aux poteaux et joue la touche » ;
+- une équipe qui mène, ou à égalité, prend les points dès qu'elle est à portée (5 à 45 m).
+
+**Effet mesuré.** 200 graines appariées : points +0,04 ± 0,52, touches +0,33 ± 0,16 : neutre sur les volumes. Le
+changement porte sur les fins de match serrées ou déséquilibrées.
+
+**Tests.** « choix du capitaine : menée en fin de match, elle joue la touche ; devant au score, elle prend les points » :
+rouge avant (0 touche sur 300 pénalités construites, équipe menée de 10 points à la 75e minute). Le test vérifie aussi
+le début de match (au moins 75 % de tirs au but à 30 m) et l'équipe qui mène (au moins 95 %).
+
+**Barrières.** Invariants 88/88, 13 suites OK, calibration 14/14, navigateur 496/0.
+
 ### P2-100. Le ballon qui roule rebondit à l'écran
 - **Statut : CORRIGÉ (affichage)**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_rebondBallon`, `_tickRouleBallon`,
