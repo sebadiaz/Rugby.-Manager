@@ -2844,6 +2844,40 @@ test('interception : le ballon vole jusqu\'à l\'intercepteur, à vue', () => {
   assert.strictEqual(propres, cas, `${propres}/${cas} interceptions sans saut du ballon > 3 m (pire : ${pire.toFixed(1)} m)`);
 });
 
+test('statistiques individuelles : chaque action est attribuée à un joueur, et les joueurs font le total de l équipe', () => {
+  // P2-103. Le moteur ne suivait par joueur que les essais, passes, plaquages
+  // et mètres. Il attribue désormais chaque action à celui qui la fait :
+  // courses, défenseurs battus, franchissements, offloads, plaquages manqués,
+  // ballons gagnés (grattage, interception, touche volée), en-avants, cartons,
+  // coups de pied, points au pied, touches gagnées et passes décisives. Garde-fou
+  // contre une stat inventée ou oubliée : la somme des quinze joueurs doit
+  // donner EXACTEMENT le total de l'équipe.
+  const paires = [['courses', 'carries'], ['defenseursBattus', 'defenseursBattus'], ['franchissements', 'franchissements'],
+    ['offloads', 'offloads'], ['plaquagesManques', 'missedTackles'], ['enAvants', 'knockOns'], ['cartonsJaunes', 'cartonsJaunes'],
+    ['touchesGagnees', 'lineoutsGagnes'], ['coupsDePied', 'kicks']];
+  let decisives = 0, essais = 0, ballonsJoueurs = 0, ballonsEquipe = 0;
+  for (let seed = 1; seed <= 4; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    for (let i = 0; i < 400000 && m.phase !== 'TERMINE'; i++) m.tick(0.1);
+    const sj = m.getState().statsJoueurs;
+    for (const e of ['A', 'B']) {
+      const S = m.stats[e];
+      const somme = (k) => Object.values(sj[e] || {}).reduce((p, j) => p + (j[k] || 0), 0);
+      for (const [kj, ke] of paires) {
+        assert.strictEqual(somme(kj), S[ke], `graine ${seed}, équipe ${e} : ${kj} des joueurs ${somme(kj)} pour ${S[ke]} à l'équipe`);
+      }
+      const pointsPied = 2 * S.transformationsReussies + 3 * S.penalitesButReussies + 3 * S.dropsReussis;
+      assert.strictEqual(somme('pointsAuPied'), pointsPied, `graine ${seed}, équipe ${e} : points au pied des joueurs`);
+      decisives += somme('passesDecisives'); essais += S.essais;
+      ballonsJoueurs += somme('turnoversGagnes'); ballonsEquipe += S.turnovers;
+    }
+  }
+  // Une mêlée volée est un ballon gagné collectif : la somme des joueurs ne
+  // peut que rester en dessous du total de l'équipe.
+  assert.ok(ballonsJoueurs <= ballonsEquipe && ballonsJoueurs >= 0.8 * ballonsEquipe, `ballons gagnés : joueurs ${ballonsJoueurs}, équipe ${ballonsEquipe}`);
+  assert.ok(decisives > 0.4 * essais && decisives < essais, `${decisives} passes décisives pour ${essais} essais`);
+});
+
 test('mètres gagnés : comptés au-delà de la ligne d avantage, pas depuis la réception', () => {
   // P2-102 (remarque de l'utilisateur : la stat existe par joueur). Le moteur
   // comptait tout le terrain couru vers l'avant depuis la réception : le n°10,

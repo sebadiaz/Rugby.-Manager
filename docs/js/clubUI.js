@@ -1595,6 +1595,8 @@
       };
       zone.innerHTML =
         top('essais', 'Meilleur marqueur') + top('metresGagnes', 'Plus de mètres gagnés') +
+        top('defenseursBattus', 'Plus de défenseurs battus') + top('passesDecisives', 'Plus de passes décisives') +
+        top('turnoversGagnes', 'Plus de ballons gagnés') + top('pointsAuPied', 'Meilleur buteur (points au pied)') +
         top('tacklesMade', 'Plus de plaquages') + top('passes', 'Plus de passes') +
         top('matchsJoues', 'Plus de matchs joués') +
         `<h4 class="sousTitreMedical">Temps de jeu (${tous.length} joueurs utilisés)</h4>` +
@@ -3246,6 +3248,24 @@
     const ligneStatsSaison = s
       ? `${ligneInfo(`Cette saison`, `${s.essais} essai(s) · ${s.passes} passe(s) · ${s.tacklesMade}/${s.tacklesAttempted} plaquages`)}`
       : '';
+    // Détail de la saison (P2-103) : chaque statistique est comptée par le
+    // moteur là où l'action a lieu. On n'affiche que ce que le joueur a fait :
+    // pas de « 0 touche gagnée » pour un ailier.
+    const GROUPES_DETAIL = [
+      ['Attaque', [['courses', 'Courses'], ['metresGagnes', 'Mètres gagnés'], ['defenseursBattus', 'Défenseurs battus'],
+        ['franchissements', 'Franchissements'], ['offloads', 'Offloads'], ['passesDecisives', 'Passes décisives']]],
+      ['Défense', [['tacklesMade', 'Plaquages réussis'], ['plaquagesManques', 'Plaquages manqués'], ['turnoversGagnes', 'Ballons gagnés']]],
+      ['Jeu au pied', [['coupsDePied', 'Coups de pied'], ['pointsAuPied', 'Points au pied']]],
+      ['Conquête', [['touchesGagnees', 'Touches gagnées']]],
+      ['Discipline', [['enAvants', 'En-avants'], ['cartonsJaunes', 'Cartons jaunes']]],
+    ];
+    const blocDetailSaison = s && s.matchsJoues
+      ? GROUPES_DETAIL.map(([titre, champs]) => {
+        const lignes = champs.filter(([c]) => (s[c] || 0) > 0)
+          .map(([c, l]) => ligneInfo(l, `${Math.round(s[c])}`)).join('');
+        return lignes ? `<h4 class="titreBlocFiche">${titre}</h4>${lignes}` : '';
+      }).join('')
+      : '';
 
     // --- Statistiques PAR COMPÉTITION, historique et carrière (P1-30) ------
     // Trois blocs entièrement dérivés de données RÉELLES : une compétition
@@ -3395,7 +3415,7 @@
       `${ligneInfo(`Fatigue`, `<span class="barreFatigue${fatigue >= 65 ? ' haute' : ''}"><span style="width:${fatigue}%"></span></span> ${fatigue}%`)}` +
       ligneProgression +
       `${ligneInfo(`Matchs joués cette saison`, `${j.matchsJoues || 0}`)}` +
-      ligneStatsSaison +
+      ligneStatsSaison + blocDetailSaison +
       `${ligneInfo(`Sélection du jour`, `${statutCompo}`)}` +
       (j.veutPartir ? `${ligneInfo(`Statut`, `🚩 Souhaite être transféré (mécontent de son temps de jeu)`, { etat: `texteAlerteJoueur` })}` : '') +
       (j.contrat != null ? `${ligneInfo(`Contrat`, `${j.contrat} an(s) restant(s)`)}` : '') +

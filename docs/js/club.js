@@ -374,7 +374,10 @@
   // (cf. engine/rugby-engine.js _statJoueur) via la composition du jour
   // (numéro -> id), jamais déduit ou estimé après coup. Sert le classement
   // des marqueurs et la fiche joueur (cf. onglet Bilan).
-  const CHAMPS_STATS_JOUEUR = ['matchsJoues', 'essais', 'passes', 'tacklesMade', 'tacklesAttempted', 'metresGagnes'];
+  // P2-103 : toutes les actions que le moteur attribue à un joueur (cf.
+  // _statJoueur). Une ancienne sauvegarde, sans ces champs, repart de 0.
+  const CHAMPS_STATS_JOUEUR = ['matchsJoues', 'essais', 'passes', 'tacklesMade', 'tacklesAttempted', 'metresGagnes',
+    'courses', 'defenseursBattus', 'franchissements', 'offloads', 'passesDecisives', 'plaquagesManques', 'turnoversGagnes', 'coupsDePied', 'pointsAuPied', 'touchesGagnees', 'enAvants', 'cartonsJaunes'];
   const LIBELLE_COMPETITION = { pro: 'Championnat', b: 'Équipe B', jeunes: 'Espoirs' };
 
   function statsVides() {
@@ -402,17 +405,11 @@
       // pas de ligne « Équipe B — 0 match » fabriquée pour faire joli.
       if (!joueur.statsSaison.parCompetition[cle]) joueur.statsSaison.parCompetition[cle] = statsVides();
       const detail = joueur.statsSaison.parCompetition[cle];
-      const apports = {
-        matchsJoues: 1,
-        essais: s.essais || 0,
-        passes: s.passes || 0,
-        tacklesMade: s.tacklesMade || 0,
-        tacklesAttempted: s.tacklesAttempted || 0,
-        metresGagnes: s.metresGagnes || 0,
-      };
+      const apports = { matchsJoues: 1 };
+      for (const champ of CHAMPS_STATS_JOUEUR) if (champ !== 'matchsJoues') apports[champ] = s[champ] || 0;
       for (const champ of CHAMPS_STATS_JOUEUR) {
         joueur.statsSaison[champ] = (joueur.statsSaison[champ] || 0) + apports[champ];
-        detail[champ] += apports[champ];
+        detail[champ] = (detail[champ] || 0) + apports[champ];
       }
     }
   }

@@ -1190,7 +1190,12 @@
       if (!joueur) return null;
       const bucket = this.statsJoueurs[joueur.team];
       if (!bucket[joueur.numero]) {
-        bucket[joueur.numero] = { essais: 0, passes: 0, tacklesMade: 0, tacklesAttempted: 0, metresGagnes: 0 };
+        // Statistiques individuelles (P2-103) : chacune est comptée là où
+        // l'action a lieu, au même endroit que le total de l'équipe.
+        bucket[joueur.numero] = { essais: 0, passes: 0, tacklesMade: 0, tacklesAttempted: 0, metresGagnes: 0,
+          courses: 0, defenseursBattus: 0, franchissements: 0, offloads: 0, plaquagesManques: 0,
+          turnoversGagnes: 0, enAvants: 0, cartonsJaunes: 0, pointsAuPied: 0, touchesGagnees: 0,
+          coupsDePied: 0, passesDecisives: 0 };
       }
       return bucket[joueur.numero];
     }
@@ -1855,6 +1860,7 @@
         const { joueur: fautif } = joueurLePlusProche(eqFautive, position.x, position.y);
         fautif.sinBin = 600 * this._echelleArret;
         this.stats[fautive].cartonsJaunes++;
+        this._statJoueur(fautif).cartonsJaunes++;
         this.log('CARTON_JAUNE', fautive, `Carton jaune pour l'equipe ${fautive} (n°${fautif.numero}) : faute deliberee empechant un essai - a 14 pendant ${Math.round(fautif.sinBin)}s`);
         this._nouvelleManche(equipeBeneficiaire);
         return;
@@ -2227,6 +2233,7 @@
       if ((porteur.x - this._ligneX0) * porteur.sensAttaque >= 5) {
         this._franchiDeja = true;
         this.stats[porteur.team].franchissements++;
+        this._statJoueur(porteur).franchissements++;
         this.log('FRANCHISSEMENT', porteur.team,
           `Franchissement ! Le n°${porteur.numero} de l'equipe ${porteur.team} passe la ligne de defense`);
       }
@@ -2290,6 +2297,7 @@
       if (!ballonEnVolPasse && distDef < 2.2 && defenseurProche.missCooldown <= 0 && (defenseurProche.fixeCooldown || 0) <= 0) {
         const att0 = this.attaquants();
         this.stats[this.possession].carries++;
+        this._statJoueur(porteur).courses++;
         this.stats[defenseurProche.team].tacklesAttempted++;
         this._statJoueur(defenseurProche).tacklesAttempted++;
         // Réussite de plaquage ~86-88 % (réel ~85-88 %) : l'ancienne base 0.83
@@ -2329,6 +2337,8 @@
           defenseurProche.vitesseCourante = 0;
           this.stats[defenseurProche.team].missedTackles++;
           this.stats[this.possession].defenseursBattus++; // le porteur a battu un défenseur
+          this._statJoueur(defenseurProche).plaquagesManques++;
+          this._statJoueur(porteur).defenseursBattus++;
           // FRANCHISSEMENT (line break) : le porteur bat le plaqueur ET se
           // retrouve en ESPACE — le motif clé de l'étude. Seuil de 7 m vers le
           // prochain défenseur : c'est la distance au-delà de laquelle un
@@ -2340,6 +2350,7 @@
           const autres = def.filter((d) => d !== defenseurProche && d.auSol === 0);
           if (joueurLePlusProche(autres, porteur.x, porteur.y).distance > 6 && !this._franchiDeja) {
             this.stats[this.possession].franchissements++;
+            this._statJoueur(porteur).franchissements++;
             this._franchiDeja = true; // un porteur ne compte qu'une fois (cf. _suivreFranchissement)
           }
           // PERCÉE EN COURS : pendant quelques secondes, le porteur qui vient de
@@ -2402,6 +2413,7 @@
         // pour garder le total de fautes de main dans sa fourchette.
         if (this.rng() < 0.040 * facteurDecision) {
           this.stats[this.possession].knockOns++;
+          this._statJoueur(this.porteur).enAvants++;
           this.log('MELEE_ENAVANT', this.possession, `En-avant au contact, equipe ${this.possession} - melee adverse`);
           this._accorderMelee(this.possession, porteur);
           return;
@@ -2553,6 +2565,8 @@
             this.stats[this.possession].essais++;
             this.stats[this.possession].carries++;
             this._statJoueur(marqueur).essais++;
+            this._statJoueur(marqueur).courses++;
+            this._passeDecisive(marqueur);
             this.essaiX = marqueur.x;
             this.essaiY = marqueur.y;
             this.essaiEquipe = this.possession;
@@ -2638,6 +2652,7 @@
           this.stats[this.possession].passes++;
           this.stats[this.possession].offloads++;
           this._statJoueur(porteur).passes++;
+          this._statJoueur(porteur).offloads++;
           this.log('OFFLOAD', this.possession, `Offload de l'equipe ${this.possession} dans le plaquage`);
           this._lancerPasseVisuelle(porteur, receveurOffload);
           // NB : figer les défenseurs engagés sur le plaquage (fixeCooldown) a été
@@ -3123,6 +3138,7 @@
         const { joueur: sauveteur, distance: distSauvetage } = joueurLePlusProche(def, porteur.x, porteur.y);
         if (distSauvetage < 2.2 && sauveteur.missCooldown <= 0) {
           this.stats[this.possession].carries++;
+          this._statJoueur(porteur).courses++;
           this.stats[sauveteur.team].tacklesAttempted++;
           this._statJoueur(sauveteur).tacklesAttempted++;
           const probaSauvetage = Math.max(0.55, Math.min(0.85, 0.68 + (sauveteur.plaquage - porteur.vitesse) / 250));
@@ -3149,10 +3165,12 @@
           sauveteur.vitesseCourante = 0; // pris a contre-pied, il doit se retourner (cf. plaquage manque)
           this.stats[sauveteur.team].missedTackles++;
           this.stats[this.possession].defenseursBattus++;
+          this._statJoueur(sauveteur).plaquagesManques++;
+          this._statJoueur(porteur).defenseursBattus++;
           // Battre le dernier défenseur (plaquage de sauvetage) EST un
           // franchissement — le porteur file vers l'en-but. Sauf s'il est déjà
           // compté pour ce porteur (cf. _suivreFranchissement).
-          if (!this._franchiDeja) { this.stats[this.possession].franchissements++; this._franchiDeja = true; }
+          if (!this._franchiDeja) { this.stats[this.possession].franchissements++; this._statJoueur(porteur).franchissements++; this._franchiDeja = true; }
           this.log('PLAQUAGE_MANQUE', this.possession, `Plaquage de sauvetage manque, l'equipe ${this.possession} aplatit`);
         }
         porteur.x = porteur.sensAttaque > 0 ? LONGUEUR : 0;
@@ -3160,6 +3178,8 @@
         this.stats[this.possession].essais++;
         this.stats[this.possession].carries++;
         this._statJoueur(porteur).essais++;
+        this._statJoueur(porteur).courses++;
+        this._passeDecisive(porteur);
         this.essaiX = porteur.x;
         this.essaiY = porteur.y;
         this.essaiEquipe = this.possession;
@@ -3192,8 +3212,10 @@
           const equipe = this.possession;
           this.stats[equipe].kicks++;
           this.stats[equipe].dropsTentes++;
+          this._statJoueur(porteur).coupsDePied++;
           if (this.rng() < probaReussiteTir(distanceButsDrop, offsetLateralDrop, porteur.adresse) * 0.7) {
             this.stats[equipe].dropsReussis++;
+            this._statJoueur(porteur).pointsAuPied += 3;
             this.score[equipe] += 3;
             this.log('DROP_GOAL_REUSSI', equipe, `Drop-goal reussi, equipe ${equipe} +3`);
             this._nouvelleManche(equipe);
@@ -3802,6 +3824,7 @@
           const equipeDef = this.possession === 'A' ? 'B' : 'A';
           this.stats[this.possession].turnoversConcedes++;
           this.stats[equipeDef].turnovers++;
+          this._statJoueur(interception).turnoversGagnes++;
           this.log('INTERCEPTION', equipeDef,
             `Interception du n°${interception.numero} ! Le ballon change de camp, equipe ${equipeDef}`,
             { de: porteur.numero, par: interception.numero });
@@ -3886,11 +3909,13 @@
         // Fenêtre d'enchaînement : le receveur a ~0,9 s pendant lesquelles il
         // relâche volontiers le ballon au suivant (le mouvement continue).
         cible._enchaine = 1.8; // cf. INERTIE DE COURSE : le mouvement se poursuit sur la meme distance
+        this._dernierePasse = { passeur: porteur, receveur: cible };
         this.porteur = cible;
         this._receptionDirecte = false;
         this._neufLibre = false; // le ballon a quitté le 9 : la fenêtre de décision de sortie est close
       } else {
         this.stats[this.possession].knockOns++;
+        this._statJoueur(cible).enAvants++;
         this.log('PASSE_RATEE', this.possession, `Passe ratee, equipe ${this.possession} - melee adverse`);
         this._accorderMelee(this.possession, cible);
       }
@@ -3934,6 +3959,7 @@
     _tenterCoupDePiedJeu(porteur, type) {
       const equipe = this.possession;
       this.stats[equipe].kicks++;
+      this._statJoueur(porteur).coupsDePied++;
       const sens = porteur.sensAttaque;
       // Attribut "jeu au pied" (0-100, neutre 60) : distincte de l'adresse au
       // but, cette compétence module la PORTÉE réelle en jeu courant — un
@@ -4119,6 +4145,16 @@
       this._ballonEnBut = { ligne, defense };
     }
 
+    // Passe décisive (P2-103) : la dernière passe reçue par le marqueur, dans la
+    // même séquence de jeu courant (cf. tick, remise à zéro hors PORTE).
+    _passeDecisive(marqueur) {
+      const D = this._dernierePasse;
+      if (D && D.receveur === marqueur && D.passeur !== marqueur && D.passeur.team === marqueur.team) {
+        this._statJoueur(D.passeur).passesDecisives++;
+      }
+      this._dernierePasse = null;
+    }
+
     // Mètres gagnés (P2-102) : le terrain pris par le porteur au-delà du point
     // le plus avancé de la phase (cf. tick, ligne d'avantage). Statistique
     // seule : aucune décision du moteur ne la lit.
@@ -4267,6 +4303,7 @@
           ? Math.max(0.5, Math.min(1.6, 1 + (60 - joueur.passe) / 90)) : 1;
         if (this.rng() < 0.12 * mains) {
           this.stats[joueur.team].knockOns++;
+          this._statJoueur(joueur).enAvants++;
           this.log('MELEE_ENAVANT', joueur.team,
             `En-avant sous la chandelle, equipe ${joueur.team} - melee adverse`);
           this._accorderMelee(joueur.team, { x: joueur.x, y: joueur.y });
@@ -4864,6 +4901,12 @@
           this.stats[this.possession].turnoversConcedes++; // équipe qui PERD le ballon
           this.possession = this.possession === 'A' ? 'B' : 'A';
           this.stats[this.possession].turnovers++;           // équipe qui GAGNE le ballon
+          {
+            // Le grattage revient au défenseur qui contestait le ballon.
+            const eqG = this.possession === 'A' ? this.equipeA : this.equipeB;
+            const gratteur = eqG.find(j => this.contestants && j.numero === this.contestants[0]);
+            if (gratteur) this._statJoueur(gratteur).turnoversGagnes++;
+          }
           this.log('TURNOVER', this.possession, `Ballon gratte au ruck, equipe ${this.possession} recupere`);
         } else if ((this.ruckTempsSansSoutien || 0) > 1.5 * this._echelleArret && this.rng() < 0.5) {
           this.log('PENALITE_RUCK_ISOLE', equipeOriginale, `Porteur isole au ruck, ballon non rendu, penalite pour l'equipe adverse`);
@@ -5281,6 +5324,7 @@
         const { joueur: fautif } = joueurLePlusProche(eqFautive, pos.x, pos.y);
         fautif.sinBin = 600 * this._echelleArret;
         this.stats[fautive].cartonsJaunes++;
+        this._statJoueur(fautif).cartonsJaunes++;
         this.log('CARTON_JAUNE', fautive, `Carton jaune pour l'equipe ${fautive} (n°${fautif.numero}) : ${faute.message} - a 14 pendant ${Math.round(fautif.sinBin)}s`);
       }
       if (empecheEssai) {
@@ -6163,6 +6207,7 @@
         const { joueur: fautif } = joueurLePlusProche(eqFautive, pos.x, pos.y);
         fautif.sinBin = 600 * this._echelleArret;
         this.stats[fautive].cartonsJaunes++;
+        this._statJoueur(fautif).cartonsJaunes++;
         this.log('CARTON_JAUNE', fautive, `Carton jaune pour l'equipe ${fautive} (n°${fautif.numero}) : ${faute.message} - a 14 pendant ${Math.round(fautif.sinBin)}s`);
       }
       if (empecheEssai) {
@@ -6714,6 +6759,10 @@
         return tirerSauteurPondere(pool, this.rng);
       };
       const sauteur = vole ? tirerSauteur(eqGagnante, null) : sauteurVise;
+      if (!pasDroit && sauteur) {
+        this._statJoueur(sauteur).touchesGagnees++;
+        if (vole) this._statJoueur(sauteur).turnoversGagnes++;
+      }
       // On NE résout PAS la touche tout de suite : le ballon doit voler du
       // lanceur (sur la ligne de touche) jusqu'au sauteur, à vue, avant d'être
       // capté. Sans ça le ballon "sautait" instantanément de la touche jusque
@@ -6934,6 +6983,7 @@
         this.stats[equipe].transformationsTentees++;
         if (this.rng() < probaReussiteTir(reculTransformation(offsetLateral, this.porteur.adresse), offsetLateral, this.porteur.adresse)) {
           this.stats[equipe].transformationsReussies++;
+          this._statJoueur(this.porteur).pointsAuPied += 2;
           this.score[equipe] += 2;
           this.log('TRANSFORMATION_REUSSIE', equipe, `Transformation reussie, equipe ${equipe} +2`);
         } else {
@@ -7028,6 +7078,7 @@
         this.stats[equipe].penalitesButTentees++;
         if (this.rng() < probaReussiteTir(distanceButs, offsetLateral, this.porteur.adresse)) {
           this.stats[equipe].penalitesButReussies++;
+          this._statJoueur(this.porteur).pointsAuPied += 3;
           this.score[equipe] += 3;
           this.log('PENALITE_REUSSIE', equipe, `Coup de pied au but reussi, equipe ${equipe} +3`);
           // Comme après un essai : coup d'envoi à la mi-terrain, botté par
@@ -7057,6 +7108,7 @@
         this._possGainPhase = this.possession;
       }
       this._phaseGainPrec = this.phase;
+      if (this.phase !== 'PORTE') this._dernierePasse = null;
       // Décélération des joueurs qu'aucune logique de phase n'a déplacés au
       // tick précédent (cf. avancer / ACCELERATION) : ils ralentissent au lieu
       // de conserver leur élan, et repartiront donc de leur vitesse réelle.
