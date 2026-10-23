@@ -29,6 +29,10 @@
       // transmis : « Renvoi aux 22 m » ne s'affichait jamais (P2-99).
       renvoi22: !!rawState.renvoi22,
       renvoiEnBut: !!rawState.renvoiEnBut,
+      // Coupe à élimination directe (BUG-RM-001) : prolongation jouée et
+      // départage (essais, puis tirs au but) produits par le moteur.
+      prolongationJouee: !!rawState.prolongationJouee,
+      departage: rawState.departage || null,
       possession: rawState.possession,
       // % de possession réel (temps de jeu effectif par équipe), pas une
       // valeur fixe : cf. MatchEngine.getState().

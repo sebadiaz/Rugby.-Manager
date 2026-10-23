@@ -14,7 +14,8 @@
 // demandera pas une ligne de logique supplémentaire.
 //
 // Deux règles propres à l'élimination directe, absentes des championnats :
-//   - il n'y a JAMAIS de match nul : une prolongation départage ;
+//   - il n'y a JAMAIS de match nul : prolongation jouée, puis nombre d'essais,
+//     puis séance de tirs au but (cf. enregistrerResultatCoupe, BUG-RM-001) ;
 //   - un club éliminé ne rejoue plus, le tableau se resserre à chaque tour.
 //
 // Aucune dépendance au DOM, aucun Math.random.
@@ -89,6 +90,7 @@
           score: null,
           vainqueurId: null,
           apresProlongation: false,
+          departage: null,
         });
       }
       tours.push({
@@ -112,6 +114,23 @@
     };
   }
 
+  // Comment une rencontre a été gagnée, à lire après le score (BUG-RM-001) :
+  // « après prolongation », « au nombre d'essais (3 à 2) », « aux tirs au but
+  // (4-3) ». Vide pour une victoire dans le temps réglementaire.
+  function suffixeDepartage(r) {
+    const morceaux = [];
+    if (r.apresProlongation) morceaux.push('après prolongation');
+    const d = r.departage;
+    if (d && d.type === 'essais' && d.essais) {
+      morceaux.push(`au nombre d'essais (${Math.max(d.essais.A, d.essais.B)} à ${Math.min(d.essais.A, d.essais.B)})`);
+    } else if (d && d.type === 'tirs' && d.tirs) {
+      const t = d.tirs;
+      const a = t.domicile != null ? t.domicile : t.A, b = t.exterieur != null ? t.exterieur : t.B;
+      morceaux.push(`aux tirs au but (${Math.max(a, b)}-${Math.min(a, b)})`);
+    }
+    return morceaux.length ? ' ' + morceaux.join(', ') : '';
+  }
+
   function rencontreCoupe(coupe, id) {
     for (const t of coupe.tours) {
       const r = t.rencontres.find((x) => x.id === id);
@@ -120,26 +139,46 @@
     return null;
   }
 
+  // Séance de tirs au but d'une rencontre résolue sans être jouée : cinq tirs
+  // par équipe puis mort subite, la réussite dépendant du NIVEAU des clubs
+  // (~72 % pour un club moyen). Jamais des identifiants (BUG-RM-001).
+  function tirsAuButAbstraits(rng, niveauDomicile, niveauExterieur) {
+    const p = (n) => Math.max(0.5, Math.min(0.9, 0.72 + ((n == null ? 0.5 : n) - 0.5) * 0.3));
+    const pD = p(niveauDomicile), pE = p(niveauExterieur);
+    let d = 0, e = 0;
+    for (let i = 0; i < 5; i++) { if (rng() < pD) d++; if (rng() < pE) e++; }
+    for (let i = 0; d === e && i < 50; i++) { if (rng() < pD) d++; if (rng() < pE) e++; }
+    if (d === e) e++; // garde-fou, jamais atteint en pratique
+    return { domicile: d, exterieur: e };
+  }
+
   // Enregistre un résultat et fait AVANCER le vainqueur. Un nul est
-  // impossible en coupe : on départage (prolongation), et c'est annoncé.
-  // Le départage est DÉTERMINISTE, dérivé des identifiants — deux
-  // chargements de la même sauvegarde donnent le même vainqueur.
-  function enregistrerResultatCoupe(coupe, id, scoreDomicile, scoreExterieur) {
+  // impossible en coupe (BUG-RM-001) :
+  //   - match JOUÉ : le moteur a joué la prolongation et, si besoin, départagé
+  //     au nombre d'essais puis aux tirs au but — `opts.departage` le rapporte
+  //     ({ vainqueur: 'domicile'|'exterieur', type, essais?, tirs? }) ;
+  //   - match résolu sans être joué : séance de tirs au but abstraite, tirée
+  //     avec `opts.rng` selon le niveau des clubs (`opts.niveaux`).
+  // Avant, le vainqueur d'un nul sortait d'un hash des identifiants, annoncé
+  // « après prolongation » sans qu'aucune minute ne soit jouée.
+  function enregistrerResultatCoupe(coupe, id, scoreDomicile, scoreExterieur, opts) {
+    const o = opts || {};
     const r = rencontreCoupe(coupe, id);
     if (!r || r.joue) return null;
     r.joue = true;
     r.score = { domicile: scoreDomicile, exterieur: scoreExterieur };
+    r.apresProlongation = !!o.prolongation;
     if (scoreDomicile > scoreExterieur) r.vainqueurId = r.domicileId;
     else if (scoreExterieur > scoreDomicile) r.vainqueurId = r.exterieurId;
-    else {
-      r.apresProlongation = true;
-      // Départage stable : l'équipe qui reçoit a l'avantage du terrain, sauf
-      // si l'identifiant de l'adversaire est « supérieur » — une règle
-      // arbitraire mais REPRODUCTIBLE, jamais un tirage relancé à chaque
-      // affichage.
-      const somme = (String(r.domicileId) + String(r.exterieurId))
-        .split('').reduce((acc, ch) => (acc * 31 + ch.charCodeAt(0)) >>> 0, 7);
-      r.vainqueurId = (somme % 2 === 0) ? r.domicileId : r.exterieurId;
+    else if (o.departage && (o.departage.vainqueur === 'domicile' || o.departage.vainqueur === 'exterieur')) {
+      r.departage = o.departage;
+      r.vainqueurId = o.departage.vainqueur === 'domicile' ? r.domicileId : r.exterieurId;
+    } else {
+      if (typeof o.rng !== 'function') throw new Error('enregistrerResultatCoupe : égalité sans départage ni générateur');
+      const niv = o.niveaux || {};
+      const tirs = tirsAuButAbstraits(o.rng, niv.domicile, niv.exterieur);
+      r.departage = { type: 'tirs', vainqueur: tirs.domicile > tirs.exterieur ? 'domicile' : 'exterieur', tirs };
+      r.vainqueurId = r.departage.vainqueur === 'domicile' ? r.domicileId : r.exterieurId;
     }
     // Report au tour suivant : la i-ème rencontre du tour N alimente la
     // (i/2)-ème du tour N+1, à domicile si i est pair.
@@ -337,7 +376,9 @@
         const b = coupe.clubs.find((c) => c.id === r.exterieurId);
         const res = global.RMWorld.simulerResultatAbstrait(rng,
           (a && a.niveauClub) || 0.5, (b && b.niveauClub) || 0.5);
-        enregistrerResultatCoupe(coupe, r.id, res.scoreA, res.scoreB);
+        enregistrerResultatCoupe(coupe, r.id, res.scoreA, res.scoreB, {
+          rng, niveaux: { domicile: a && a.niveauClub, exterieur: b && b.niveauClub },
+        });
         resolues++;
       }
     }
@@ -387,7 +428,14 @@
     const equipe = p.equipe || 'pro';
     const effectif = RMClub.effectifPourEquipe(saison, equipe);
 
-    enregistrerResultatCoupe(p.coupe, rencontre.id, etat.score.A, etat.score.B);
+    // Le moteur a joué l'éventuelle prolongation et départagé (BUG-RM-001) :
+    // côté A = club qui reçoit (cf. clubUI, domicile en A).
+    const dep = etat.departage;
+    enregistrerResultatCoupe(p.coupe, rencontre.id, etat.score.A, etat.score.B, {
+      prolongation: !!etat.prolongationJouee,
+      departage: dep ? Object.assign({}, dep, { vainqueur: dep.vainqueur === 'A' ? 'domicile' : 'exterieur' }) : null,
+      rng: p.rngCoupes,
+    });
     // Les autres rencontres du même tour, en arrière-plan.
     resoudreCoupesAbstraites(saison, p.date, p.rngCoupes, rencontre.id);
 
@@ -401,7 +449,7 @@
       etat.statsJoueurs && etat.statsJoueurs[lettre], equipe);
 
     const tourNom = p.coupe.tours[rencontre.tour].nom;
-    const prolongation = rencontre.apresProlongation ? ' après prolongation' : '';
+    const prolongation = suffixeDepartage(rencontre);
     const adversaireNom = (p.adversaire && p.adversaire.nom) || 'son adversaire';
     // Qui a joué doit se lire dans le message : sans ça, le manager croyait que
     // son équipe première venait de disputer un match d'académie.
@@ -445,7 +493,9 @@
     const ext = parId[rencontre.exterieurId] || { niveauClub: 0.5 };
     const res = global.RMWorld.simulerResultatAbstrait(p.rng,
       dom.niveauClub || 0.5, ext.niveauClub || 0.5);
-    enregistrerResultatCoupe(p.coupe, rencontre.id, res.scoreA, res.scoreB);
+    enregistrerResultatCoupe(p.coupe, rencontre.id, res.scoreA, res.scoreB, {
+      rng: p.rng, niveaux: { domicile: dom.niveauClub, exterieur: ext.niveauClub },
+    });
     resoudreCoupesAbstraites(saison, p.date, p.rngCoupes, rencontre.id);
 
     const gagne = rencontre.vainqueurId === c.id;
@@ -497,7 +547,7 @@
   }
 
   global.RMClub = Object.assign(global.RMClub || {}, {
-    genererCoupe, enregistrerResultatCoupe, vainqueurCoupe, assurerCoupes,
+    genererCoupe, enregistrerResultatCoupe, vainqueurCoupe, assurerCoupes, suffixeDepartage,
     palmaresCoupesDeLaSaison,
     reinitialiserCoupes, rencontreCoupeDuJoueur, resoudreCoupesAbstraites,
     appliquerConsequencesMatchCoupe, equipePourCoupe, resoudreCoupeSansEquipe,

@@ -191,6 +191,19 @@ test('K6 — un message de coupe est publié au fil d\'actualité', () => {
     `le tour doit être nommé dans le message (${msg.corps})`);
 });
 
+test('K6b — un nul départagé par le moteur qualifie le bon club, et le message le dit (BUG-RM-001)', () => {
+  for (const gagnant of ['A', 'B']) {
+    const ctx = contexteCoupe(20, 20);
+    ctx.etat.prolongationJouee = true;
+    ctx.etat.departage = { type: 'tirs', vainqueur: gagnant, essais: { A: 2, B: 2 }, tirs: { A: gagnant === 'A' ? 4 : 3, B: gagnant === 'B' ? 4 : 3 } };
+    const r = appliquerCoupe(ctx);
+    const attendu = gagnant === 'A' ? ctx.rencontre.domicileId : ctx.rencontre.exterieurId;
+    assert.strictEqual(ctx.rencontre.vainqueurId, attendu, `côté ${gagnant} a gagné les tirs au but`);
+    assert.ok(ctx.rencontre.apresProlongation, 'la prolongation jouée est enregistrée');
+    assert.ok(/après prolongation, aux tirs au but \(4-3\)/.test(r.message), r.message);
+  }
+});
+
 // ------------------------------------------- COUPE DES ESPOIRS (N8) ------
 //
 // Mesuré avant correction, graine 4242 : le match de Coupe des Espoirs contre

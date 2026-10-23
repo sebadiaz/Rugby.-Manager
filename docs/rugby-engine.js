@@ -4357,6 +4357,38 @@
     // Pause de mi-temps (loi 12) : courte pause avant le coup d'envoi de la 2e
     // période, le temps que l'interface affiche l'événement MI_TEMPS avant
     // qu'il ne soit remplacé par le COUP_ENVOI suivant.
+    // Départage d'un match à élimination directe resté nul après la
+    // prolongation : d'abord le nombre d'essais, puis une séance de tirs au but
+    // — cinq tireurs par équipe (les meilleurs buteurs présents), face aux
+    // poteaux à 22 m, puis mort subite. Les tirs ne comptent pas au score du
+    // match, comme dans une vraie coupe.
+    _departager() {
+      const eA = this.stats.A.essais, eB = this.stats.B.essais;
+      if (eA !== eB) {
+        this.departage = { type: 'essais', vainqueur: eA > eB ? 'A' : 'B', essais: { A: eA, B: eB } };
+        this.log('DEPARTAGE', this.departage.vainqueur,
+          `Toujours a egalite : l'equipe ${this.departage.vainqueur} l'emporte au nombre d'essais (${Math.max(eA, eB)} a ${Math.min(eA, eB)})`);
+        return;
+      }
+      const tireurs = (eq) => eq.filter(j => j.sinBin <= 0)
+        .sort((a, b) => (b.adresse || 0) - (a.adresse || 0)).slice(0, 5);
+      const tA = tireurs(this.equipeA), tB = tireurs(this.equipeB);
+      const tir = (j) => this.rng() < probaReussiteTir(22, 0, j && j.adresse);
+      const tirs = { A: 0, B: 0 };
+      for (let i = 0; i < 5; i++) { if (tir(tA[i % tA.length])) tirs.A++; if (tir(tB[i % tB.length])) tirs.B++; }
+      for (let i = 5; tirs.A === tirs.B && i < 60; i++) {
+        if (tir(tA[i % tA.length])) tirs.A++;
+        if (tir(tB[i % tB.length])) tirs.B++;
+      }
+      // Garde-fou : après 55 tours de mort subite à égalité (jamais observé),
+      // l'équipe A tire en dernier et rate.
+      if (tirs.A === tirs.B) tirs.B++;
+      const vainqueur = tirs.A > tirs.B ? 'A' : 'B';
+      this.departage = { type: 'tirs', vainqueur, essais: { A: eA, B: eB }, tirs };
+      this.log('DEPARTAGE', vainqueur,
+        `Toujours a egalite, meme nombre d'essais : l'equipe ${vainqueur} gagne la seance de tirs au but (${tirs[vainqueur]} a ${tirs[vainqueur === 'A' ? 'B' : 'A']})`);
+    }
+
     _tickMiTemps(dt) {
       this.timerPhase += dt;
       if (this.timerPhase >= 1) {
@@ -7290,6 +7322,25 @@
       // puis la bascule de temps se déclenche au tick suivant.
       const sequenceMarque = this.phase === 'ESSAI' || this.phase === 'TRANSFORMATION' || this.phase === 'PENALITE_TIR';
       if (!sequenceMarque && this.tempsMatch >= this.dureeMatch) {
+        // ÉLIMINATION DIRECTE (BUG-RM-001) : à égalité au coup de sifflet, une
+        // PROLONGATION de 20 minutes se joue réellement (à l'échelle de la
+        // durée du match), après un coup d'envoi. Si l'égalité persiste à son
+        // terme : l'équipe qui a marqué le plus d'essais, puis une séance de
+        // tirs au but (cf. _departager). Avant, la coupe tranchait sur un hash
+        // des identifiants des clubs et annonçait une prolongation jamais jouée.
+        if (this.cfg.eliminationDirecte && this.score.A === this.score.B) {
+          if (!this.prolongationJouee) {
+            this.prolongationJouee = true;
+            this.dureeReglementaire = this.dureeMatch;
+            this.dureeMatch += this.dureeMatch * 0.25;
+            this.log('PROLONGATION', null,
+              `Egalite ${this.score.A} - ${this.score.B} : prolongation de 20 minutes`);
+            this.phase = 'MI_TEMPS';
+            this.timerPhase = 0;
+            return;
+          }
+          this._departager();
+        }
         this.phase = 'TERMINE';
         this.log('FIN_MATCH', null, `Fin du match : equipe A ${this.score.A} - ${this.score.B} equipe B`);
         return;
@@ -7622,7 +7673,9 @@
         score: { ...this.score },
         tempsMatch: this.tempsMatch,
         dureeMatch: this.dureeMatch,
-        periode: this.miTempsJouee ? 2 : 1,
+        periode: (this.prolongationJouee && this.tempsMatch >= this.dureeReglementaire) ? 3 : this.miTempsJouee ? 2 : 1,
+        prolongationJouee: !!this.prolongationJouee,
+        departage: this.departage || null,
         events: this.events.slice(),
         chronologie: this.chronologie.slice(),
         // Statistiques agrégées réelles (cf. constructeur) : pour outillage de

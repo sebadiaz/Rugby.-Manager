@@ -97,7 +97,7 @@
           : infosPhase.label;
     phaseEl.style.background = infosPhase.couleur;
     document.getElementById('horloge').textContent =
-      `${formaterTemps(state.clock.time)} / ${formaterTemps(state.clock.duration === Infinity ? dureeAffichee : state.clock.duration)} · ${state.clock.period === 2 ? '2e pér.' : '1ère pér.'}`;
+      `${formaterTemps(state.clock.time)} / ${formaterTemps(state.clock.duration === Infinity ? dureeAffichee : state.clock.duration)} · ${state.clock.period === 3 ? 'Prolongation' : state.clock.period === 2 ? '2e pér.' : '1ère pér.'}`;
 
     // Possession réelle (% du temps de jeu effectif par équipe, cf.
     // MatchEngine.getState().possessionPct), pas une valeur fixe.
@@ -106,6 +106,13 @@
       `<span>${pct.A}%</span><span class="barre"><span class="partA" style="width:${pct.A}%"></span><span class="partB" style="width:${pct.B}%"></span></span><span>${pct.B}%</span>`;
 
     const seekEl = document.getElementById('seek');
+    // Prolongation de coupe (BUG-RM-001) : le match dure plus longtemps que
+    // prévu au lancement, la barre de lecture s'allonge pour la couvrir.
+    const dureeReelle = state.clock.duration;
+    if (Number.isFinite(dureeReelle) && dureeReelle > Number(seekEl.max)) {
+      seekEl.max = dureeReelle;
+      document.getElementById('tempsLabelFin').textContent = formaterTemps(dureeReelle);
+    }
     if (document.activeElement !== seekEl) seekEl.value = Math.round(state.clock.time);
     document.getElementById('tempsLabel').textContent = formaterTemps(state.clock.time);
 

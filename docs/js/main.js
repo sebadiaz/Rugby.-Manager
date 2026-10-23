@@ -70,6 +70,8 @@
     'attaqueA', 'attaqueB', 'defenseA', 'defenseB', 'meleeA', 'meleeB',
     'toucheA', 'toucheB', 'ruckA', 'ruckB', 'buteurA', 'buteurB',
     'toucheLanceurA', 'toucheLanceurB', 'remplacements',
+    // Match de coupe (BUG-RM-001) : ne doit jamais survivre au match suivant.
+    'eliminationDirecte',
   ];
   // Durée du match choisie par le joueur (menu déroulant). Par défaut la démo
   // de 5 min ; un match complet (80 min) montre un score et des statistiques
@@ -121,8 +123,10 @@
   // La marge n'est qu'un garde-fou : mesuré, le sifflet vient au plus 11,5 s
   // de jeu après le temps écoulé.
   const MARGE_SIFFLET = 120;
+  // `moteur.dureeMatch` : une prolongation de coupe (BUG-RM-001) allonge le
+  // match au-delà de la durée demandée au lancement.
   function avantSifflet(moteur, duree) {
-    return moteur.phase !== 'TERMINE' && moteur.tempsMatch < duree + MARGE_SIFFLET;
+    return moteur.phase !== 'TERMINE' && moteur.tempsMatch < Math.max(duree, moteur.dureeMatch) + MARGE_SIFFLET;
   }
   function genererMatchEnArrierePlan(seed, duree, cfg, titre, onTermine) {
     // Referme le menu s'il était ouvert (ex. la durée vient d'être changée

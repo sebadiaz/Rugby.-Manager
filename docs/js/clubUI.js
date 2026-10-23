@@ -5568,7 +5568,9 @@
       graineAleatoire(), duree,
       domicileEstJoueur ? cfgJoueur : cfgAdverse,
       domicileEstJoueur ? cfgAdverse : cfgJoueur,
-      tactiqueCfg,
+      // Élimination directe (BUG-RM-001) : une égalité au coup de sifflet se
+      // joue en prolongation, puis au nombre d'essais, puis aux tirs au but.
+      Object.assign({}, tactiqueCfg, { eliminationDirecte: true }),
       {
         // Le nom affiché au tableau d'affichage doit dire QUI joue : sans ça,
         // une demi-finale d'espoirs s'annonçait sous le nom du club, comme un

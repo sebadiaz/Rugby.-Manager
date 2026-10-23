@@ -3882,15 +3882,46 @@ test('coupes : un résultat fait RÉELLEMENT avancer le vainqueur au tour suivan
     'le vainqueur doit réellement apparaître au tour suivant');
 });
 
-test('coupes : jamais de match nul — une prolongation départage', () => {
+test('coupes : jamais de match nul — prolongation, essais puis tirs au but (BUG-RM-001)', () => {
   const clubs = [];
   for (let i = 0; i < 2; i++) clubs.push({ id: 'c' + i, nom: 'Club ' + i, niveauClub: 0.5 });
-  const coupe = RMClub.genererCoupe({ cle: 't4', nom: 'T4', clubs, dates: ['2024-10-02'] });
-  const finale = coupe.tours[0].rencontres[0];
-  RMClub.enregistrerResultatCoupe(coupe, finale.id, 17, 17);
-  assert.ok(finale.vainqueurId, 'une coupe ne peut pas se terminer sur un nul : un vainqueur doit être désigné');
-  assert.ok(finale.apresProlongation, 'le départage doit être annoncé comme tel');
+  const nouvelle = (cle) => RMClub.genererCoupe({ cle, nom: cle, clubs, dates: ['2024-10-02'] });
+
+  // Match JOUÉ : le moteur a joué la prolongation et départagé aux essais.
+  let coupe = nouvelle('t4a');
+  let finale = coupe.tours[0].rencontres[0];
+  RMClub.enregistrerResultatCoupe(coupe, finale.id, 17, 17, {
+    prolongation: true, departage: { type: 'essais', vainqueur: 'exterieur', essais: { A: 1, B: 2 } },
+  });
+  assert.strictEqual(finale.vainqueurId, finale.exterieurId, 'le départage du moteur désigne le vainqueur');
+  assert.ok(finale.apresProlongation, 'la prolongation jouée doit être annoncée');
   assert.strictEqual(RMClub.vainqueurCoupe(coupe), finale.vainqueurId, 'le vainqueur de la finale gagne la coupe');
+  assert.match(RMClub.suffixeDepartage(finale), /après prolongation, au nombre d'essais \(2 à 1\)/);
+
+  // Résolu sans être joué : séance de tirs au but tirée, jamais les identifiants.
+  const vainqueurs = new Set();
+  for (let g = 1; g <= 20; g++) {
+    coupe = nouvelle('t4b');
+    finale = coupe.tours[0].rencontres[0];
+    RMClub.enregistrerResultatCoupe(coupe, finale.id, 17, 17, { rng: creerRng(g) });
+    assert.ok(finale.vainqueurId, 'une coupe ne peut pas se terminer sur un nul');
+    assert.strictEqual(finale.departage.type, 'tirs');
+    const t = finale.departage.tirs;
+    assert.notStrictEqual(t.domicile, t.exterieur, 'une séance de tirs au but a un vainqueur');
+    assert.strictEqual(finale.vainqueurId, t.domicile > t.exterieur ? finale.domicileId : finale.exterieurId);
+    assert.ok(!finale.apresProlongation, 'aucune prolongation annoncée sans minute jouée');
+    assert.match(RMClub.suffixeDepartage(finale), /aux tirs au but \(\d+-\d+\)/);
+    vainqueurs.add(finale.vainqueurId);
+  }
+  assert.strictEqual(vainqueurs.size, 2, 'mêmes clubs, mêmes identifiants : les deux doivent pouvoir gagner aux tirs au but');
+  // Même générateur, même résultat : une sauvegarde rechargée ne change rien.
+  const c1 = nouvelle('t4c'), c2 = nouvelle('t4c');
+  RMClub.enregistrerResultatCoupe(c1, c1.tours[0].rencontres[0].id, 9, 9, { rng: creerRng(7) });
+  RMClub.enregistrerResultatCoupe(c2, c2.tours[0].rencontres[0].id, 9, 9, { rng: creerRng(7) });
+  assert.deepStrictEqual(c1.tours[0].rencontres[0].departage, c2.tours[0].rencontres[0].departage);
+  // Une égalité sans départage ni générateur est une erreur, pas un tirage caché.
+  coupe = nouvelle('t4d');
+  assert.throws(() => RMClub.enregistrerResultatCoupe(coupe, coupe.tours[0].rencontres[0].id, 3, 3));
 });
 
 test('coupes : le vainqueur n\'existe qu\'une fois la finale jouée', () => {

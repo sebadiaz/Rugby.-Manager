@@ -580,6 +580,37 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-104. Coupe : une égalité se joue (prolongation, essais, tirs au but) — bugs.md BUG-RM-001
+- **Statut : CORRIGÉ (moteur, mode Club, interface)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (fin de match, `_departager`, `getState`),
+  `docs/js/club-coupes.js` (`enregistrerResultatCoupe`, `tirsAuButAbstraits`, `suffixeDepartage`), `docs/js/clubUI.js`
+  (match de coupe déclaré `eliminationDirecte`, règlement affiché), `docs/js/main.js` (fin de match et nettoyage de la clé),
+  `docs/js/matchState.js`, `docs/js/ui.js`, `docs/js/constants.js`, tests de coupe et invariants.
+
+**Constat.** Un nul en coupe désignait le vainqueur par un hash des identifiants des clubs, puis annonçait une
+qualification « après prolongation » alors qu'aucune minute n'avait été jouée.
+
+**Correction.**
+- Match joué : à égalité au coup de sifflet d'un match à élimination directe, le moteur joue une prolongation de 20 minutes
+  (25 % de la durée), avec la mi-temps, la fatigue, le banc et les cartons du match. Si l'égalité persiste, l'équipe qui a
+  marqué le plus d'essais passe ; sinon, séance de tirs au but à 22 m face aux poteaux, cinq tireurs par équipe choisis
+  par leur adresse, puis mort subite. Aucun point n'est ajouté au score.
+- Match résolu sans être joué : séance de tirs au but tirée avec le générateur de la journée, la réussite dépendant du
+  niveau des clubs. Aucune prolongation n'est annoncée.
+- Le message dit comment le match a été gagné : « après prolongation, au nombre d'essais (3 à 2) », « aux tirs au but (4-3) ».
+- Écran de match : période « Prolongation », barre de lecture allongée, bandeaux PROLONGATION et DEPARTAGE.
+- Une égalité de coupe sans départage ni générateur lève une erreur au lieu de tirer un vainqueur en silence.
+
+**Mesures (30 matchs de 60 s, élimination directe).** 19 prolongations, 17 séances de tirs au but, 2 matchs gagnés
+dans la prolongation, aucun nul restant. Les matchs de championnat restent des nuls possibles.
+
+**Tests.**
+- Invariants : égalité → prolongation, puis essais, puis tirs (score inchangé, jamais d'égalité aux tirs) ; un match de
+  championnat reste nul.
+- `test-parcours-club.js` : départage du moteur respecté ; tirs abstraits, les deux clubs peuvent gagner sur 20 graines,
+  même générateur → même résultat ; égalité sans départage refusée.
+- `test-consequences-coupe-amical.js` K6b : le départage côté A ou B qualifie le bon club et le message le dit.
+
 ### P2-103. Statistiques individuelles complètes
 - **Statut : AJOUTÉ (statistiques et mode Club)**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_statJoueur`, `_passeDecisive`, sites de

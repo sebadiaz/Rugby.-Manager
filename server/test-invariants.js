@@ -2844,6 +2844,52 @@ test('interception : le ballon vole jusqu\'à l\'intercepteur, à vue', () => {
   assert.strictEqual(propres, cas, `${propres}/${cas} interceptions sans saut du ballon > 3 m (pire : ${pire.toFixed(1)} m)`);
 });
 
+test('élimination directe : égalité -> prolongation, puis essais marqués, puis tirs au but (jamais les identifiants)', () => {
+  // BUG-RM-001. Une égalité en coupe était « départagée » par un hash des
+  // identifiants des clubs et annoncée « après prolongation » sans qu'aucune
+  // minute ne soit jouée. Règlement retenu (inspiré de la Champions Cup) :
+  // prolongation de 20 minutes ; si l'égalité persiste, l'équipe qui a marqué
+  // le plus d'essais ; sinon séance de tirs au but (5 chacun puis mort subite),
+  // qui ne change pas le score du match.
+  function jusquA(m, t) { for (let i = 0; i < 400000 && m.tempsMatch < t && m.phase !== 'TERMINE'; i++) m.tick(0.1); }
+  function finir(m) { for (let i = 0; i < 400000 && m.phase !== 'TERMINE'; i++) m.tick(0.1); }
+  // Juste avant le sifflet, hors séquence de marque (un essai ou un tir en
+  // cours ajouterait des points après qu'on a fixé l'égalité).
+  const MARQUE = ['ESSAI', 'TRANSFORMATION', 'PENALITE_TIR'];
+  function avantSifflet(m) {
+    for (let i = 0; i < 400000 && m.phase !== 'TERMINE'
+      && (m.tempsMatch < m.dureeMatch - 0.15 || MARQUE.includes(m.phase)); i++) m.tick(0.1);
+  }
+  // 1) Égalité au coup de sifflet : la prolongation se JOUE.
+  const m = new MatchEngine(4, 4800, { eliminationDirecte: true });
+  avantSifflet(m);
+  m.score.A = 20; m.score.B = 20;
+  jusquA(m, 4805);
+  assert.ok(m.prolongationJouee, 'à égalité au coup de sifflet, une prolongation doit commencer');
+  assert.ok(Math.abs(m.dureeMatch - 6000) < 1, `prolongation de 20 minutes : fin prévue à ${m.dureeMatch} s`);
+  // 2) Égalité persistante, essais différents : l'équipe qui en a marqué le plus.
+  avantSifflet(m);
+  m.score.A = 27; m.score.B = 27; m.stats.A.essais = 3; m.stats.B.essais = 2;
+  finir(m);
+  assert.strictEqual(m.phase, 'TERMINE');
+  assert.ok(m.departage && m.departage.type === 'essais' && m.departage.vainqueur === 'A',
+    `égalité persistante : l'équipe aux 3 essais l'emporte (${JSON.stringify(m.departage)})`);
+  // 3) Égalité de score ET d'essais : tirs au but, score du match inchangé.
+  const n = new MatchEngine(6, 4800, { eliminationDirecte: true });
+  avantSifflet(n); n.score.A = 15; n.score.B = 15;
+  jusquA(n, 4805);
+  avantSifflet(n); n.score.A = 15; n.score.B = 15; n.stats.A.essais = 1; n.stats.B.essais = 1;
+  finir(n);
+  assert.ok(n.departage && n.departage.type === 'tirs' && (n.departage.vainqueur === 'A' || n.departage.vainqueur === 'B'),
+    `égalité totale : séance de tirs au but (${JSON.stringify(n.departage)})`);
+  assert.notStrictEqual(n.departage.tirs.A, n.departage.tirs.B, 'la séance de tirs au but a un vainqueur');
+  assert.ok(n.score.A === 15 && n.score.B === 15, 'les tirs au but ne s ajoutent pas au score du match');
+  // 4) Hors élimination directe, un nul reste un nul.
+  const c = new MatchEngine(4, 4800);
+  avantSifflet(c); c.score.A = 20; c.score.B = 20; finir(c);
+  assert.ok(!c.prolongationJouee && !c.departage, 'un match de championnat nul reste nul');
+});
+
 test('statistiques individuelles : chaque action est attribuée à un joueur, et les joueurs font le total de l équipe', () => {
   // P2-103. Le moteur ne suivait par joueur que les essais, passes, plaquages
   // et mètres. Il attribue désormais chaque action à celui qui la fait :
