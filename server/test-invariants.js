@@ -2844,6 +2844,31 @@ test('interception : le ballon vole jusqu\'à l\'intercepteur, à vue', () => {
   assert.strictEqual(propres, cas, `${propres}/${cas} interceptions sans saut du ballon > 3 m (pire : ${pire.toFixed(1)} m)`);
 });
 
+test('mètres gagnés : comptés au-delà de la ligne d avantage, pas depuis la réception', () => {
+  // P2-102 (remarque de l'utilisateur : la stat existe par joueur). Le moteur
+  // comptait tout le terrain couru vers l'avant depuis la réception : le n°10,
+  // qui reçoit 10 m derrière le ruck et court avant de passer, « gagnait »
+  // 217 m par match, plus que les ailiers, et une équipe 1233 m. Repères réels :
+  // record du Tournoi 116 m par match (Kinghorn 2025, 580 m en 5 matchs) ;
+  // Irlande 2023, meilleure équipe, 857 m par match pour 139 courses.
+  const parNum = {}; let equipes = 0, total = 0;
+  for (let seed = 1; seed <= 6; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    for (let i = 0; i < 400000 && m.phase !== 'TERMINE'; i++) m.tick(0.1);
+    const sj = m.getState().statsJoueurs;
+    for (const e of ['A', 'B']) {
+      equipes++; total += m.stats[e].metresGagnes;
+      for (const [num, st] of Object.entries(sj[e] || {})) parNum[num] = (parNum[num] || 0) + (st.metresGagnes || 0);
+    }
+  }
+  const pm = (k) => (parNum[k] || 0) / equipes;
+  const ailiers = (pm(11) + pm(14)) / 2;
+  assert.ok(pm(10) < ailiers, `l'ouvreur gagne ${pm(10).toFixed(0)} m par match, les ailiers ${ailiers.toFixed(0)} : il passe plus qu'il ne perce`);
+  assert.ok(pm(9) < 40, `le demi de mêlée gagne ${pm(9).toFixed(0)} m par match`);
+  assert.ok(total / equipes <= 950, `une équipe gagne ${(total / equipes).toFixed(0)} m par match (Irlande 2023 : 857)`);
+  assert.ok(total / equipes >= 300, `une équipe ne gagne que ${(total / equipes).toFixed(0)} m par match`);
+});
+
 test('choix du capitaine : menée en fin de match, elle joue la touche ; devant au score, elle prend les points', () => {
   // P2-101. Le choix entre poteaux, touche et jeu rapide ne dépendait que de la
   // distance : à 30 m des poteaux, une équipe menée de 10 points à 5 minutes

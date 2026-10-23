@@ -2705,12 +2705,22 @@
       else if (porteur.y > LARGEUR - 1.5) evite = -Math.abs(evite);
       const xAvantCourse = porteur.x;
       avancer(porteur, dx, evite, dt, vitesseMs(porteur));
-      // Mètres gagnés : uniquement le terrain réellement parcouru ballon en
-      // main dans le sens d'attaque (pas les passes ni le jeu au pied), comme
-      // la statistique "metres gained" d'un relevé de match réel.
-      const metresCourus = (porteur.x - xAvantCourse) * porteur.sensAttaque;
-      this.stats[this.possession].metresGagnes += metresCourus;
-      this._statJoueur(porteur).metresGagnes += metresCourus;
+      // Mètres gagnés : le terrain pris AU-DELÀ du point le plus avancé de la
+      // phase, en partant de la ligne d'avantage (point de regroupement ou de
+      // réception), comme la statistique d'un relevé de match réel (P2-102).
+      // Avant, tout le terrain couru vers l'avant depuis la réception comptait :
+      // le n°10, qui reçoit 10 m derrière le ruck et court avant de passer,
+      // « gagnait » 217 m par match, plus que les ailiers, et une équipe 1233 m
+      // (record réel du Tournoi : 116 m par match pour un joueur).
+      void xAvantCourse;
+      if (this._xGainPhase != null && this._possGainPhase === this.possession) {
+        const metresCourus = (porteur.x - this._xGainPhase) * porteur.sensAttaque;
+        if (metresCourus > 0) {
+          this.stats[this.possession].metresGagnes += metresCourus;
+          this._statJoueur(porteur).metresGagnes += metresCourus;
+          this._xGainPhase = porteur.x;
+        }
+      }
 
       // Touche : le ballon porté au-delà de la ligne de touche est mort, jeu arrêté.
       // (Pas pendant qu'une passe vole : le receveur ne porte pas encore le ballon.)
@@ -7030,6 +7040,15 @@
 
     tick(dt) {
       this._numTick = (this._numTick || 0) + 1;
+      // Ligne d'avantage de la phase (stat des mètres gagnés, P2-102) : posée à
+      // chaque début de jeu courant au point de regroupement ou de réception,
+      // et à chaque changement de possession, au point du nouveau porteur.
+      if (this.phase === 'PORTE' && (this._phaseGainPrec !== 'PORTE' || this._possGainPhase !== this.possession)) {
+        const pt = this._phaseGainPrec !== 'PORTE' && this.ruckPoint ? this.ruckPoint : this.porteur;
+        this._xGainPhase = pt ? pt.x : null;
+        this._possGainPhase = this.possession;
+      }
+      this._phaseGainPrec = this.phase;
       // Décélération des joueurs qu'aucune logique de phase n'a déplacés au
       // tick précédent (cf. avancer / ACCELERATION) : ils ralentissent au lieu
       // de conserver leur élan, et repartiront donc de leur vitesse réelle.
