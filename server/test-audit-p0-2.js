@@ -263,6 +263,88 @@ test('BUG-RM-003 : une copie non écrite n\'est jamais annoncée comme conservé
   assert.strictEqual(RMClub.consulterAvertissementChargement().secoursConserve, false);
 });
 
+// --- FUNC-RM-001 : export / import de carrière --------------------------------
+test('FUNC-RM-001 : une carrière exportée se réimporte à l\'identique sur un autre navigateur', () => {
+  store = {};
+  const s = RMClub.nouvelleSaison(creerRng(41), 'Club Voyageur', 'Alex Martin');
+  RMClub.avancerSaison(creerRng(42), s);
+  s.clubJoueur.budget = 777;
+  RMClub.sauvegarderSaison(s);
+  const fichier = RMClub.sauvegardeBrute();
+  assert.ok(/^rugby-manager-club-voyageur-saison2-\d{8}\.json$/.test(RMClub.nomFichierCarriere(fichier)),
+    RMClub.nomFichierCarriere(fichier));
+  store = {}; // autre navigateur : stockage vide
+  const analyse = RMClub.analyserImport(fichier);
+  assert.ok(analyse.ok, JSON.stringify(analyse));
+  assert.strictEqual(analyse.apercu.club, 'Club Voyageur');
+  assert.strictEqual(analyse.apercu.saison, 2);
+  assert.ok(/^\d{4}-\d{2}-\d{2}$/.test(analyse.apercu.date), analyse.apercu.date);
+  assert.strictEqual(store['rugbyManager.club.v1'], undefined, 'analyser n\'écrit rien');
+  assert.ok(RMClub.importerCarriere(analyse.saison).ok);
+  const rechargee = RMClub.chargerSaison();
+  assert.strictEqual(rechargee.clubJoueur.budget, 777);
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(rechargee)), JSON.parse(fichier),
+    'résultats, identités, contrats et finances reviennent à l\'identique');
+  assert.strictEqual(RMClub.listerSecours().length, 0, 'rien à mettre de côté sur un navigateur vide');
+  assert.ok(RMClub.sauvegarderSaison(rechargee), 'la carrière importée s\'enregistre ensuite normalement');
+});
+
+test('FUNC-RM-001 : importer garde la carrière en cours, refuse les fichiers douteux sans rien toucher', () => {
+  store = {};
+  const courante = RMClub.nouvelleSaison(creerRng(43), 'Club En Cours');
+  RMClub.sauvegarderSaison(courante);
+  const avant = store['rugbyManager.club.v1'];
+  const refus = (texte) => {
+    const a = RMClub.analyserImport(texte);
+    assert.strictEqual(store['rugbyManager.club.v1'], avant);
+    return a.ok ? 'ok' : a.raison;
+  };
+  assert.strictEqual(refus(''), 'fichier_vide');
+  assert.strictEqual(refus('pas du json'), 'json_invalide');
+  assert.strictEqual(refus('[1,2]'), 'format_inconnu');
+  assert.strictEqual(refus('{"nom":"x"}'), 'format_inconnu');
+  const futur = JSON.parse(avant); futur.version = RMClub.VERSION_SAUVEGARDE + 1;
+  assert.strictEqual(refus(JSON.stringify(futur)), 'version_future');
+  const incomplet = JSON.parse(avant); delete incomplet.clubJoueur.effectif;
+  assert.strictEqual(refus(JSON.stringify(incomplet)), 'schema_invalide');
+  // Un fichier d'une version précédente est migré.
+  const ancien = JSON.parse(avant); ancien.version = 11; ancien.clubJoueur.nom = 'Club Ancien Format';
+  const a = RMClub.analyserImport(JSON.stringify(ancien));
+  assert.ok(a.ok && a.apercu.migree && a.saison.version === RMClub.VERSION_SAUVEGARDE, JSON.stringify(a.apercu || a));
+  // Import : la carrière en cours part en copie de secours relue.
+  const res = RMClub.importerCarriere(a.saison);
+  assert.ok(res.ok);
+  const copies = RMClub.listerSecours();
+  assert.strictEqual(copies.length, 1);
+  assert.strictEqual(copies[0].raison, 'avant_import');
+  assert.strictEqual(RMClub.lireSecours(copies[0].cle), avant, 'la carrière remplacée est récupérable telle quelle');
+  assert.strictEqual(RMClub.chargerSaison().clubJoueur.nom, 'Club Ancien Format');
+});
+
+test('FUNC-RM-001 : sans place pour la copie, l\'import est refusé ; « repartir de zéro » garde une copie', () => {
+  store = {};
+  const courante = RMClub.nouvelleSaison(creerRng(44), 'Club Plein');
+  RMClub.sauvegarderSaison(courante);
+  const avant = store['rugbyManager.club.v1'];
+  const autre = RMClub.analyserImport(JSON.stringify(Object.assign(JSON.parse(avant), { numero: 4 })));
+  const setItem = global.localStorage.setItem;
+  global.localStorage.setItem = (k, v) => { if (k.indexOf('secours') !== -1) throw new Error('QuotaExceededError'); setItem(k, v); };
+  let res;
+  try { res = RMClub.importerCarriere(autre.saison); } finally { global.localStorage.setItem = setItem; }
+  assert.strictEqual(res.ok, false, 'pas de copie possible : la carrière en cours n\'est pas remplacée');
+  assert.strictEqual(store['rugbyManager.club.v1'], avant);
+  // Une copie supprimée à la demande libère la place.
+  RMClub.effacerSaison();
+  assert.strictEqual(RMClub.sauvegardeBrute(), null);
+  const copies = RMClub.listerSecours();
+  assert.strictEqual(copies.length, 1);
+  assert.strictEqual(copies[0].raison, 'avant_effacement');
+  assert.strictEqual(RMClub.lireSecours(copies[0].cle), avant, 'repartir de zéro ne perd plus la carrière');
+  assert.ok(RMClub.supprimerSecours(copies[0].cle));
+  assert.strictEqual(RMClub.listerSecours().length, 0);
+  assert.strictEqual(RMClub.supprimerSecours('rugbyManager.club.v1'), false, 'seules les copies listées se suppriment');
+});
+
 console.log(`\n${nbTests} test(s) exécuté(s).`);
 if (process.exitCode) {
   console.error('ECHEC : P0-2 confirmé — une sauvegarde peut être silencieusement perdue.');

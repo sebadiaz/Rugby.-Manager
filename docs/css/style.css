@@ -716,6 +716,11 @@ select {
 .carteHero button { width: 100%; padding: 15px; font-size: 15px; }
 .carteSecondaire button { width: 100%; padding: 13px; font-size: 13.5px; }
 
+/* Sauvegardes (FUNC-RM-001) : deux actions côte à côte, puis la liste des copies. */
+.boutonsSauvegardes { display: flex; gap: 8px; }
+.boutonsSauvegardes button { flex: 1; min-width: 0; }
+.ligneSecours { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 12px; color: var(--text-dim); margin-top: 6px; }
+.ligneSecours button { width: auto; padding: 4px 0; font-size: 12px; flex: none; }
 .liensSecondaires { display: flex; justify-content: center; gap: 22px; margin-top: 4px; }
 .lienTexte {
   flex: 0 0 auto; width: auto; min-width: 0; background: none; border: none;

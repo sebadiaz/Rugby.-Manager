@@ -6435,7 +6435,7 @@
       (conserve
         ? 'Rien n\'a été supprimé : une copie de secours de tes données a été conservée dans le stockage de ton navigateur' +
           (nbCopies > 1 ? ` (${nbCopies} copies d'incidents différents sont gardées, aucune n'a été remplacée).` : '.') +
-          ' Contacte le support avec le nom de ton club si tu veux la récupérer.'
+          ' Tu peux la télécharger depuis l\'accueil, rubrique « Sauvegardes ».'
         : 'Attention : aucune copie de secours n\'a pu être écrite (stockage du navigateur plein ou indisponible). ' +
           'Les données d\'origine restent dans l\'emplacement de sauvegarde tant qu\'aucune nouvelle carrière n\'est enregistrée.')
     );

@@ -127,7 +127,7 @@ Les sommes individuelles des passes, plaquages et mètres correspondent aux somm
 | BUG-RM-008 | P2 | Confirmé | Conserver et afficher la possession chronométrée |
 | BUG-RM-009 | P2 | Confirmé | Séparer championnat, coupes et amicaux dans les statistiques |
 | BUG-RM-010 | P1 | Confirmé | Terminer les matchs des scripts de mesure avant de lire le résultat |
-| FUNC-RM-001 | P1 | À construire | Export, import et récupération de carrière accessibles |
+| FUNC-RM-001 | P1 | Livré (TODO_AUDIT P2-106) | Export, import et récupération de carrière accessibles |
 | FUNC-RM-002 | P1 | À construire | Reprendre un match joué après fermeture du navigateur |
 | FUNC-RM-003 | P2 | À compléter | Relecture fidèle des décisions du match interactif |
 | FUNC-RM-004 | P2 | À compléter | Instructions individuelles par poste |
@@ -274,7 +274,7 @@ Les sommes individuelles des passes, plaquages et mètres correspondent aux somm
 
 ## Fonctions à terminer ou approfondir
 
-### [ ] FUNC-RM-001 — Export, import et récupération de carrière dans l'interface — P1
+### [x] FUNC-RM-001 — Export, import et récupération de carrière dans l'interface — P1
 
 **État constaté :** carrière en localStorage avec migrations et secours bruts ; pas de parcours d'export/import de carrière trouvé dans les sources UI examinées. Le message de récupération renvoie au support avec le nom du club, alors que les données sont locales au navigateur.
 

@@ -1148,4 +1148,115 @@
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', auChargement);
     else auChargement();
   })();
+
+  // --- Sauvegardes : export, import, copies de secours (bugs.md FUNC-RM-001)
+  // Même principe que la sortie de secours ci-dessus : rien ici ne dépend de
+  // l'état du club ni de son interface. Le fichier importé n'est jamais
+  // exécuté — il est lu par JSON.parse, migré et validé comme un chargement
+  // (RMClub.analyserImport) avant toute écriture.
+  (function () {
+    const LIBELLES_RAISON = {
+      json_invalide: 'données corrompues', schema_invalide: 'données incomplètes',
+      version_sans_migration: 'format trop ancien', version_incoherente: 'format inconnu',
+      boucle_migration: 'mise à jour du format en échec', avant_import: 'avant un import',
+      avant_effacement: 'avant « repartir de zéro »', inconnue: 'incident',
+    };
+    const REFUS_IMPORT = {
+      fichier_vide: 'le fichier est vide',
+      json_invalide: 'ce n\'est pas un fichier de sauvegarde lisible',
+      format_inconnu: 'ce fichier n\'est pas une sauvegarde de Rugby Manager',
+      version_future: 'il vient d\'une version plus récente du jeu — mets le jeu à jour avant de l\'importer',
+      version_sans_migration: 'son format est trop ancien pour être converti',
+      schema_invalide: 'la carrière qu\'il contient est incomplète',
+      secours_plein: 'ta carrière actuelle ne peut pas être mise de côté (5 copies de secours déjà gardées)',
+      stockage: 'le stockage du navigateur est plein ou indisponible',
+    };
+    function telecharger(texte, nom) {
+      const blob = new Blob([texte], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = nom;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+    function dire(texte) {
+      const el = document.getElementById('etatSauvegardes');
+      if (el) el.textContent = texte;
+    }
+    function rafraichir() {
+      const R = window.RMClub;
+      if (!R || !R.sauvegardeBrute) return;
+      const btn = document.getElementById('btnExporterCarriere');
+      if (btn) btn.style.display = R.sauvegardeBrute() ? '' : 'none';
+      const zone = document.getElementById('listeSecours');
+      if (!zone) return;
+      zone.textContent = '';
+      for (const c of R.listerSecours()) {
+        const ligne = document.createElement('div');
+        ligne.className = 'ligneSecours';
+        const texte = document.createElement('span');
+        const quand = c.quand ? new Date(c.quand).toLocaleDateString('fr-FR') : '';
+        texte.textContent = `Copie de secours${c.club ? ' · ' + c.club : ''}${c.saison ? ' · saison ' + c.saison : ''}` +
+          ` · ${LIBELLES_RAISON[c.raison] || 'incident'}${quand ? ' · ' + quand : ''}`;
+        const b = document.createElement('button');
+        b.className = 'lienTexte'; b.textContent = 'Télécharger';
+        b.dataset.cle = c.cle;
+        b.addEventListener('click', () => {
+          const brut = R.lireSecours(c.cle);
+          if (brut != null) telecharger(brut, R.nomFichierCarriere(brut, 'rugby-manager-secours'));
+        });
+        const sup = document.createElement('button');
+        sup.className = 'lienTexte'; sup.textContent = 'Supprimer';
+        sup.addEventListener('click', () => {
+          let ok = false;
+          try { ok = window.confirm('Supprimer définitivement cette copie de secours ? Télécharge-la d\'abord si tu veux la garder.'); } catch (e) { ok = false; }
+          if (!ok) return;
+          dire(R.supprimerSecours(c.cle) ? 'Copie de secours supprimée.' : 'Suppression impossible.');
+          rafraichir();
+        });
+        ligne.appendChild(texte); ligne.appendChild(b); ligne.appendChild(sup);
+        zone.appendChild(ligne);
+      }
+    }
+    function auChargement() {
+      const R = window.RMClub;
+      const btnExp = document.getElementById('btnExporterCarriere');
+      const btnImp = document.getElementById('btnImporterCarriere');
+      const fichier = document.getElementById('fichierImportCarriere');
+      if (!R || !btnExp || !btnImp || !fichier) return;
+      btnExp.addEventListener('click', () => {
+        const brut = R.sauvegardeBrute();
+        if (!brut) { dire('Aucune carrière enregistrée sur cet appareil.'); return; }
+        telecharger(brut, R.nomFichierCarriere(brut));
+        dire('Carrière exportée : garde ce fichier, il se réimporte ici ou sur un autre navigateur.');
+      });
+      btnImp.addEventListener('click', () => { fichier.value = ''; fichier.click(); });
+      fichier.addEventListener('change', () => {
+        const f = fichier.files && fichier.files[0];
+        if (!f) return;
+        const lecteur = new FileReader();
+        lecteur.onerror = () => dire('Import impossible : le fichier n\'a pas pu être lu.');
+        lecteur.onload = () => {
+          const analyse = R.analyserImport(String(lecteur.result || ''));
+          if (!analyse.ok) { dire(`Import refusé : ${REFUS_IMPORT[analyse.raison] || 'fichier non reconnu'}. Rien n\'a été modifié.`); return; }
+          const a = analyse.apercu;
+          const actuelle = R.sauvegardeBrute();
+          const message = `Importer la carrière « ${a.club} »` + (a.manager ? ` (${a.manager})` : '') +
+            `, saison ${a.saison}` + (a.date ? `, au ${a.date}` : '') + ' ?' +
+            (a.migree ? '\n\nElle vient d\'une version précédente du jeu et sera mise à jour.' : '') +
+            (actuelle ? '\n\nTa carrière actuelle sera conservée en copie de secours, téléchargeable ici.' : '');
+          let ok = false;
+          try { ok = window.confirm(message); } catch (e) { ok = false; }
+          if (!ok) { dire('Import annulé. Rien n\'a été modifié.'); return; }
+          const res = R.importerCarriere(analyse.saison);
+          if (!res.ok) { dire(`Import refusé : ${REFUS_IMPORT[res.raison] || 'écriture impossible'}. Rien n\'a été modifié.`); return; }
+          try { window.location.reload(); } catch (e) { /* ignore */ }
+        };
+        lecteur.readAsText(f);
+      });
+      rafraichir();
+    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', auChargement);
+    else auChargement();
+  })();
 })();

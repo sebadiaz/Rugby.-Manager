@@ -72,6 +72,21 @@
       <button id="btnAccueilMatchRapide" class="alt">▶ Lancer un match rapide</button>
     </div>
 
+    <!-- Sauvegardes (bugs.md FUNC-RM-001) : la carrière vit dans ce
+         navigateur ; le joueur peut l'emporter, la restaurer, et télécharger
+         les copies de secours. Géré par docs/js/main.js sans dépendre de
+         l'état du club : disponible même si la carrière ne s'ouvre plus. -->
+    <div class="carteAction carteSecondaire" id="carteSauvegardes">
+      <p class="sr-label" style="margin:0 0 8px;">Sauvegardes (sur cet appareil)</p>
+      <div class="boutonsSauvegardes">
+        <button id="btnExporterCarriere" class="alt" style="display:none;">⬇️ Exporter ma carrière</button>
+        <button id="btnImporterCarriere" class="alt">⬆️ Importer une carrière</button>
+      </div>
+      <input type="file" id="fichierImportCarriere" accept=".json,application/json" style="display:none;">
+      <p id="etatSauvegardes" role="status" style="font-size:12px;color:var(--text-dim);margin:8px 0 0;"></p>
+      <div id="listeSecours"></div>
+    </div>
+
     <div class="liensSecondaires">
       <button id="btnAccueilHistorique" class="lienTexte">🕓 Historique</button>
       <button id="btnAccueilLegende" class="lienTexte">❓ Règles du jeu</button>

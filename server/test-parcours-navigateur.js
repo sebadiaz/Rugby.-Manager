@@ -1053,6 +1053,87 @@ function optionsLancement() {
   verifier('deux onglets : aucune erreur de page', erreursOnglets.length === 0);
   await contexteOnglets.close();
 
+  // 9 ter) Export / import de carrière (bugs.md FUNC-RM-001) : la carrière
+  // téléchargée depuis l'accueil se réimporte dans un AUTRE navigateur
+  // (contexte vierge), après un aperçu ; la carrière qu'elle remplace part
+  // en copie de secours téléchargeable.
+  const ctxExport = await browser.newContext({ viewport: { width: 1280, height: 900 }, acceptDownloads: true });
+  const pageExport = await ctxExport.newPage();
+  const erreursExport = [];
+  pageExport.on('pageerror', (e) => erreursExport.push(`PAGEERROR: ${e.message}`));
+  await pageExport.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  verifier('sauvegardes : sans carrière, pas de bouton d\'export (rien à exporter)',
+    !(await pageExport.isVisible('#btnExporterCarriere')) && (await pageExport.isVisible('#btnImporterCarriere')));
+  await pageExport.evaluate((g) => window.RMRng.setSeed(g), GRAINE_TEST);
+  await pageExport.click('#btnAccueilModeClub');
+  await pageExport.fill('#inputNomClub', 'Club Exporte');
+  await pageExport.click('#btnCreerClub');
+  await pageExport.waitForTimeout(400);
+  await pageExport.click('#btnJourSuivant');
+  await pageExport.waitForTimeout(400);
+  await pageExport.reload({ waitUntil: 'networkidle' });
+  const [telechargement] = await Promise.all([
+    pageExport.waitForEvent('download'), pageExport.click('#btnExporterCarriere'),
+  ]);
+  const cheminExport = await telechargement.path();
+  const contenuExport = require('fs').readFileSync(cheminExport, 'utf8');
+  verifier('sauvegardes : l\'export télécharge la carrière telle qu\'enregistrée, nommée d\'après le club',
+    contenuExport === await pageExport.evaluate(() => localStorage.getItem('rugbyManager.club.v1'))
+    && /^rugby-manager-club-exporte-saison1-\d{8}\.json$/.test(telechargement.suggestedFilename()));
+
+  const ctxImport = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, acceptDownloads: true });
+  const pageImport = await ctxImport.newPage();
+  pageImport.on('pageerror', (e) => erreursExport.push(`PAGEERROR: ${e.message}`));
+  await pageImport.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  await pageImport.evaluate((g) => window.RMRng.setSeed(g), GRAINE_TEST + 1);
+  await pageImport.click('#btnAccueilModeClub');
+  await pageImport.fill('#inputNomClub', 'Club Remplace');
+  await pageImport.click('#btnCreerClub');
+  await pageImport.waitForTimeout(400);
+  await pageImport.reload({ waitUntil: 'networkidle' });
+  const remplacee = await pageImport.evaluate(() => localStorage.getItem('rugbyManager.club.v1'));
+  // Fichier refusé : rien ne change, la raison est dite.
+  await pageImport.setInputFiles('#fichierImportCarriere', { name: 'faux.json', mimeType: 'application/json', buffer: Buffer.from('{"nom":"pas une carriere"}') });
+  await pageImport.waitForTimeout(300);
+  verifier('sauvegardes : un fichier qui n\'est pas une sauvegarde est refusé sans rien modifier',
+    /Import refusé/.test(await pageImport.textContent('#etatSauvegardes'))
+    && remplacee === await pageImport.evaluate(() => localStorage.getItem('rugbyManager.club.v1')));
+  // Annulation à l'aperçu : rien ne change.
+  let apercu = '';
+  pageImport.once('dialog', (d) => { apercu = d.message(); d.dismiss(); });
+  await pageImport.setInputFiles('#fichierImportCarriere', cheminExport);
+  await pageImport.waitForTimeout(300);
+  verifier('sauvegardes : l\'aperçu nomme le club et la saison avant tout import',
+    /Club Exporte/.test(apercu) && /saison 1/.test(apercu) && /copie de secours/.test(apercu));
+  verifier('sauvegardes : annuler l\'aperçu ne modifie rien',
+    remplacee === await pageImport.evaluate(() => localStorage.getItem('rugbyManager.club.v1')));
+  // Comme le bouton « Importer », qui vide le champ avant d'ouvrir le sélecteur.
+  await pageImport.evaluate(() => { document.getElementById('fichierImportCarriere').value = ''; });
+  pageImport.once('dialog', (d) => d.accept());
+  await Promise.all([pageImport.waitForNavigation({ waitUntil: 'networkidle' }),
+    pageImport.setInputFiles('#fichierImportCarriere', cheminExport)]);
+  verifier('sauvegardes : après import, l\'accueil propose de continuer la carrière importée',
+    /Club Exporte/.test(await pageImport.textContent('#continuerClubInfos')));
+  verifier('sauvegardes : la carrière remplacée est listée en copie de secours',
+    /Club Remplace/.test(await pageImport.textContent('#listeSecours')));
+  const [dlSecours] = await Promise.all([
+    pageImport.waitForEvent('download'), pageImport.click('#listeSecours button[data-cle]'),
+  ]);
+  verifier('sauvegardes : la copie de secours se télécharge intacte',
+    require('fs').readFileSync(await dlSecours.path(), 'utf8') === remplacee);
+  const debordeSauvegardes = await pageImport.evaluate(() => {
+    const c = document.getElementById('carteSauvegardes').getBoundingClientRect();
+    return c.right > window.innerWidth + 1 || document.documentElement.scrollWidth > window.innerWidth + 1;
+  });
+  verifier('sauvegardes : la carte tient sur un téléphone (390 px), sans défilement horizontal', !debordeSauvegardes);
+  await pageImport.click('#btnContinuerClub');
+  await pageImport.waitForTimeout(400);
+  verifier('sauvegardes : la carrière importée s\'ouvre et se joue',
+    await pageImport.isVisible('#btnJourSuivant'));
+  verifier('sauvegardes : aucune erreur de page', erreursExport.length === 0);
+  await ctxExport.close();
+  await ctxImport.close();
+
   // 10) Marché des transferts sur mobile étroit (audit trouvé en vérifiant le
   // correctif du double-clic ci-dessus) : la ligne d'un joueur (nom, prix,
   // Scouter, Signer) ne tient pas sur ~390px de large. Avant correctif,

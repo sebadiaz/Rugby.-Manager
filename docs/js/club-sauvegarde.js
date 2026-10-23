@@ -376,6 +376,18 @@
       try { return localStorage.getItem(e.cle) != null; } catch (x) { return false; }
     });
   }
+  // Supprimer une copie : seulement à la demande explicite du joueur (bouton
+  // de l'accueil), pour libérer une place quand les 5 sont prises.
+  function supprimerSecours(cle) {
+    const index = lireIndexSecours();
+    const reste = index.filter((e) => e.cle !== cle);
+    if (reste.length === index.length) return false;
+    try {
+      localStorage.setItem(CLE_INDEX_SECOURS, JSON.stringify(reste));
+      localStorage.removeItem(cle);
+      return true;
+    } catch (e) { return false; }
+  }
   function lireSecours(cle) {
     if (!lireIndexSecours().some((e) => e.cle === cle)) return null;
     try { return localStorage.getItem(cle); } catch (e) { return null; }
@@ -416,7 +428,83 @@
       return resultat.saison;
     } catch (e) { return null; }
   }
+  // --- Export / import de carrière (bugs.md FUNC-RM-001) -------------------
+  //
+  // Le fichier exporté est la sauvegarde elle-même, telle qu'elle est stockée :
+  // elle porte déjà son numéro de format (`version`) et passe par les mêmes
+  // migrations au retour. On l'exporte même illisible — c'est alors la seule
+  // copie que le joueur peut emporter.
+  function sauvegardeBrute() {
+    try { return localStorage.getItem(CLE_CLUB); } catch (e) { return null; }
+  }
+  function nomFichierCarriere(brut, prefixe) {
+    const r = resumeSecours(brut || '');
+    const club = String(r.club || 'carriere').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '').toLowerCase() || 'carriere';
+    const d = new Date();
+    const jour = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+    return `${prefixe || 'rugby-manager'}-${club}${r.saison ? '-saison' + r.saison : ''}-${jour}.json`;
+  }
+
+  // Lit un fichier importé SANS l'exécuter (JSON.parse uniquement) et le
+  // prépare comme un chargement : migrations, puis validation du schéma.
+  // { ok:true, saison, apercu:{ club, manager, saison, date, version } } ou
+  // { ok:false, raison } — rien n'est écrit ici.
+  function analyserImport(texte) {
+    if (typeof texte !== 'string' || !texte.trim()) return { ok: false, raison: 'fichier_vide' };
+    let brut;
+    try { brut = JSON.parse(texte); } catch (e) { return { ok: false, raison: 'json_invalide' }; }
+    if (!brut || typeof brut !== 'object' || Array.isArray(brut) || typeof brut.version !== 'number') {
+      return { ok: false, raison: 'format_inconnu' };
+    }
+    const versionOrigine = brut.version;
+    if (versionOrigine > global.RMClub.VERSION_SAUVEGARDE) return { ok: false, raison: 'version_future', version: versionOrigine };
+    const resultat = migrerSaison(brut);
+    if (!resultat.ok) return { ok: false, raison: resultat.raison, version: versionOrigine };
+    const saison = resultat.saison;
+    const date = global.RMClub.dateCourante && global.RMClub.dateISO
+      ? global.RMClub.dateISO(global.RMClub.dateCourante(saison)) : null;
+    return {
+      ok: true, saison,
+      apercu: {
+        club: saison.clubJoueur.nom,
+        manager: (saison.manager && saison.manager.nom) || null,
+        saison: saison.numero || 1,
+        date,
+        version: versionOrigine,
+        migree: versionOrigine !== saison.version,
+      },
+    };
+  }
+
+  // Remplace la carrière en cours par une carrière importée (analysée par
+  // analyserImport). La carrière en cours est d'abord conservée en copie de
+  // secours, relue : si la copie échoue, l'import est refusé — on ne remplace
+  // jamais une carrière sans en garder une trace.
+  function importerCarriere(saison) {
+    const actuelle = sauvegardeBrute();
+    let copie = null;
+    if (actuelle) {
+      copie = ecrireSecours(actuelle, 'avant_import');
+      if (!copie.conserve) return { ok: false, raison: copie.raison || 'secours_impossible' };
+    }
+    global.RMClub.resynchroniserCompteurs(saison);
+    const nouvelle = (lireRevision() || 0) + 1;
+    try {
+      localStorage.setItem(CLE_CLUB, JSON.stringify(saison));
+      localStorage.setItem(CLE_REVISION, String(nouvelle));
+    } catch (e) {
+      return { ok: false, raison: 'stockage' };
+    }
+    revisionsConnues.set(saison, nouvelle);
+    return { ok: true, copie: copie && copie.cle };
+  }
+
+  // Effacer garde d'abord une copie de secours (FUNC-RM-001) : « repartir de
+  // zéro » ne fait plus disparaître une carrière sans retour possible.
   function effacerSaison() {
+    const actuelle = sauvegardeBrute();
+    if (actuelle) ecrireSecours(actuelle, 'avant_effacement');
     try { localStorage.removeItem(CLE_CLUB); } catch (e) { /* ignore */ }
   }
 
@@ -425,6 +513,7 @@
     consulterAvertissementChargement, effacerAvertissementChargement,
     chargerSaison, effacerSaison,
     raisonEchecSauvegarde, sauvegardeModifieeAilleurs, listerSecours, lireSecours,
+    sauvegardeBrute, nomFichierCarriere, analyserImport, importerCarriere, supprimerSecours,
     CLE_REVISION_SAUVEGARDE: CLE_REVISION,
   });
 })(window);
