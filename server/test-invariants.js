@@ -3665,6 +3665,31 @@ test('cohérence : celui qui tient le ballon est de l équipe en possession, et 
   assert.ok(tirs > 0, 'échantillon sans pénalité au but');
 });
 
+// --- bugs.md QA-RM-003 / BUG-RM-005 : le pick-and-go à la sortie du ruck --
+// Le 9 jouait 91 % des sorties de ruck, même à cinq mètres de l'en-but. Près
+// de la ligne, un avant debout au pied du ruck ramasse et charge lui-même.
+test('ruck : près de la ligne adverse, un avant ramasse et charge (pick-and-go), jamais loin de la ligne (QA-RM-003)', () => {
+  let picks = 0, horsZone = 0, nonAvant = 0, sorties9 = 0;
+  for (let seed = 1; seed <= 6; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    const log = m.log.bind(m);
+    m.log = (t, team, msg, extra, ...r) => {
+      if (t === 'RUCK_SORTIE_9') sorties9++;
+      if (t === 'PICK_AND_GO') {
+        picks++;
+        if (!(extra && extra.distanceLigne <= 22)) horsZone++;
+        if (!(extra && extra.numero <= 8)) nonAvant++;
+      }
+      return log(t, team, msg, extra, ...r);
+    };
+    m.jouerJusquAuSifflet(0.2);
+  }
+  assert.ok(picks / 6 >= 3, `${(picks / 6).toFixed(1)} pick-and-go par match`);
+  assert.strictEqual(horsZone, 0, 'pick-and-go hors des 22 adverses');
+  assert.strictEqual(nonAvant, 0, 'pick-and-go par un trois-quarts');
+  assert.ok(sorties9 > 4 * picks, 'le 9 reste celui qui joue la grande majorité des sorties');
+});
+
 console.log(`\n${nbTests} test(s) exécuté(s).`);
 if (process.exitCode) {
   console.error('ECHEC : au moins un invariant violé.');

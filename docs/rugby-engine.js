@@ -5020,8 +5020,22 @@
           // Sortie propre : le demi de mêlée (n°9) joue le ballon au pied du
           // regroupement (il a couru vers le ruck pendant la phase, cf.
           // estDemiMelee) ; il décide ensuite normalement (passe/jeu au pied).
+          // PICK-AND-GO (QA-RM-003 / BUG-RM-005) : près de la ligne adverse, un
+          // avant DEBOUT au pied du ruck ramasse le ballon et charge lui-même,
+          // sans passe. Le 9 jouait 91 % des sorties, jusque dans les cinq
+          // mètres : beaucoup de passes de 9 sans gain, et presque aucun
+          // essai d'avant au ras. Loin de la ligne, le 9 joue toujours.
+          const sensAtt = this.possession === 'A' ? 1 : -1;
+          const distLigne = sensAtt > 0 ? LONGUEUR - pt.x : pt.x;
+          const pPick = distLigne <= 5 ? 0.45 : distLigne <= 22 ? 0.18 : 0;
+          const ramasseurs = pPick > 0 ? att.filter(j => j.numero <= 8 && j.auSol === 0 && j !== this.porteur
+            && distance(j, pt) < 3) : [];
           const neuf = att.find(j => j.numero === 9 && j.auSol === 0);
-          if (neuf) { relayeur = neuf; this._neufLibre = true; this.log('RUCK_SORTIE_9', this.possession, `Sortie de ruck par le 9`); }
+          if (ramasseurs.length && this.rng() < pPick) {
+            ({ joueur: relayeur } = joueurLePlusProche(ramasseurs, pt.x, pt.y));
+            this.log('PICK_AND_GO', this.possession, `Pick-and-go : le n°${relayeur.numero} ramasse au pied du ruck et charge`,
+              { numero: relayeur.numero, distanceLigne: Math.round(distLigne) });
+          } else if (neuf) { relayeur = neuf; this._neufLibre = true; this.log('RUCK_SORTIE_9', this.possession, `Sortie de ruck par le 9`); }
           // Le 9 au sol (c'est lui qui vient d'être plaqué) : l'avant DEBOUT le
           // plus proche relaie. Le filtre manquait : le plaqué lui-même, encore
           // à terre, recevait le ballon et repartait « en courant » allongé
