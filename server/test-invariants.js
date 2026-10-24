@@ -3567,6 +3567,42 @@ test('remplacement : les actions du sortant sont closes à sa sortie, l entrant 
   assert.deepStrictEqual(sans.remplacementsEffectues, []);
 });
 
+// --- Loi 11 : la passe trop plate sous pression est jugée en avant -----------
+// Le moteur ne sifflait une passe en avant que lorsque le porteur n'avait
+// AUCUNE option légale : 0,1 à 0,2 par match, contre 1 à 3 en vrai. En vrai,
+// elle naît surtout d'une passe PLATE lâchée sous pression, le receveur
+// lancé : on interroge la décision de l'arbitre, état figé.
+test('loi 11 : une passe plate sous pression est parfois jugée en avant, jamais une passe en retrait (P2-112)', () => {
+  const taux = (recul, distDef, passe) => {
+    const m = new MatchEngine(3, 4800);
+    m.possession = 'A';
+    const att = m.attaquants(), def = m.defenseurs();
+    const porteur = att[9], cible = att[11];
+    porteur.sensAttaque = 1; porteur.x = 50; porteur.y = 30; porteur.passe = passe;
+    cible.x = 50 - recul; cible.y = 36;
+    for (const d of def) { d.x = 90; d.y = 5; d.auSol = 0; }
+    def[0].x = 50 + distDef; def[0].y = 30;
+    let n = 0;
+    for (let i = 0; i < 2000; i++) if (m._passePlateJugeeEnAvant(porteur, cible)) n++;
+    return n / 2000;
+  };
+  const sousPression = taux(0.2, 1, 60);
+  assert.ok(sousPression > 0.05 && sousPression < 0.5, `passe plate sous pression : ${sousPression}`);
+  assert.strictEqual(taux(0.2, 8, 60), 0, 'sans pression, une passe plate passe');
+  assert.strictEqual(taux(2.5, 1, 60), 0, 'une passe nettement en retrait n est jamais en avant');
+  assert.ok(taux(0.2, 1, 90) < taux(0.2, 1, 30), 'un bon passeur la rate moins');
+  // En match : la loi devient visible, sans submerger le jeu de mêlées.
+  let avant = 0;
+  const N = 8;
+  for (let seed = 1; seed <= N; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    const log = m.log.bind(m);
+    m.log = (t, ...r) => { if (t === 'MELEE_AVANT') avant++; return log(t, ...r); };
+    m.jouerJusquAuSifflet(0.2);
+  }
+  assert.ok(avant / N >= 0.7 && avant / N <= 3, `${(avant / N).toFixed(2)} passe(s) en avant sifflée(s) par match (réel : 1 à 3)`);
+});
+
 console.log(`\n${nbTests} test(s) exécuté(s).`);
 if (process.exitCode) {
   console.error('ECHEC : au moins un invariant violé.');

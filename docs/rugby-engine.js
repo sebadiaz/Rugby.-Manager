@@ -3694,6 +3694,25 @@
       };
     }
 
+    // LOI 11 — LA PASSE TROP PLATE SOUS PRESSION (P2-112). Le moteur ne
+    // sifflait une passe en avant que lorsque le porteur n'avait aucune option
+    // légale : 0,1 à 0,2 par match, contre 1 à 3 en vrai. En vrai, elle naît
+    // surtout d'une passe lâchée PLATE (receveur à moins d'un mètre en retrait)
+    // par un porteur pressé par un défenseur, le receveur lancé : le ballon
+    // part vers l'avant et l'arbitre siffle. Le risque grandit avec la
+    // pression et la platitude, et baisse avec l'attribut « passe ». Une passe
+    // nettement en retrait, ou lâchée sans pression, n'est jamais jugée en avant.
+    _passePlateJugeeEnAvant(porteur, cible) {
+      const recul = (porteur.x - cible.x) * porteur.sensAttaque;
+      if (recul >= 1 || recul < -0.3) return false;
+      const pression = joueurLePlusProche(this.defenseurs().filter(d => d.auSol === 0), porteur.x, porteur.y).distance;
+      if (!(pression < 3)) return false;
+      const facteurPasse = typeof porteur.passe === 'number'
+        ? Math.max(0.4, Math.min(1.8, 1 + (60 - porteur.passe) / 60)) : 1;
+      const p = 0.32 * (1 - Math.max(0, recul)) * ((3 - pression) / 3) * facteurPasse;
+      return this.rng() < p;
+    }
+
     _tenterPasse(porteur, jeuLarge) {
       const att = this.attaquants();
       // Rayon de recherche du destinataire : un jeu au large vise précisément
@@ -3810,6 +3829,13 @@
       this.stats[this.possession].passesTentees++;
       if (Referee.passeEnAvant(porteur.sensAttaque, porteur, cible)) {
         this.log('MELEE_AVANT', this.possession, `Passe en avant, equipe ${this.possession} - melee adverse`);
+        this._accorderMelee(this.possession, porteur);
+        return true;
+      }
+      if (this._passePlateJugeeEnAvant(porteur, cible)) {
+        this.log('MELEE_AVANT', this.possession,
+          `Passe en avant du n°${porteur.numero} (passe trop plate sous pression), equipe ${this.possession} - melee adverse`,
+          { de: porteur.numero, vers: cible.numero });
         this._accorderMelee(this.possession, porteur);
         return true;
       }
