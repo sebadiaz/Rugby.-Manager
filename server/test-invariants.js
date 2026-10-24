@@ -2860,25 +2860,35 @@ test('élimination directe : égalité -> prolongation, puis essais marqués, pu
     for (let i = 0; i < 400000 && m.phase !== 'TERMINE'
       && (m.tempsMatch < m.dureeMatch - 0.15 || MARQUE.includes(m.phase)); i++) m.tick(0.1);
   }
+  // Tient l'égalité jusqu'à la vérification de fin elle-même : une action de
+  // marque lancée dans les dernières secondes ne doit pas défaire le scénario.
+  function egaliteAuSifflet(m, pts, essais) {
+    const fin = m.dureeMatch;
+    for (let i = 0; i < 400000 && m.phase !== 'TERMINE' && m.dureeMatch === fin; i++) {
+      m.score.A = pts; m.score.B = pts;
+      if (essais) { m.stats.A.essais = essais[0]; m.stats.B.essais = essais[1]; }
+      m.tick(0.1);
+    }
+  }
   // 1) Égalité au coup de sifflet : la prolongation se JOUE.
   const m = new MatchEngine(4, 4800, { eliminationDirecte: true });
   avantSifflet(m);
-  m.score.A = 20; m.score.B = 20;
+  egaliteAuSifflet(m, 20);
   jusquA(m, 4805);
   assert.ok(m.prolongationJouee, 'à égalité au coup de sifflet, une prolongation doit commencer');
   assert.ok(Math.abs(m.dureeMatch - 6000) < 1, `prolongation de 20 minutes : fin prévue à ${m.dureeMatch} s`);
   // 2) Égalité persistante, essais différents : l'équipe qui en a marqué le plus.
   avantSifflet(m);
-  m.score.A = 27; m.score.B = 27; m.stats.A.essais = 3; m.stats.B.essais = 2;
+  egaliteAuSifflet(m, 27, [3, 2]);
   finir(m);
   assert.strictEqual(m.phase, 'TERMINE');
   assert.ok(m.departage && m.departage.type === 'essais' && m.departage.vainqueur === 'A',
     `égalité persistante : l'équipe aux 3 essais l'emporte (${JSON.stringify(m.departage)})`);
   // 3) Égalité de score ET d'essais : tirs au but, score du match inchangé.
   const n = new MatchEngine(6, 4800, { eliminationDirecte: true });
-  avantSifflet(n); n.score.A = 15; n.score.B = 15;
+  avantSifflet(n); egaliteAuSifflet(n, 15);
   jusquA(n, 4805);
-  avantSifflet(n); n.score.A = 15; n.score.B = 15; n.stats.A.essais = 1; n.stats.B.essais = 1;
+  avantSifflet(n); egaliteAuSifflet(n, 15, [1, 1]);
   finir(n);
   assert.ok(n.departage && n.departage.type === 'tirs' && (n.departage.vainqueur === 'A' || n.departage.vainqueur === 'B'),
     `égalité totale : séance de tirs au but (${JSON.stringify(n.departage)})`);
@@ -2886,7 +2896,7 @@ test('élimination directe : égalité -> prolongation, puis essais marqués, pu
   assert.ok(n.score.A === 15 && n.score.B === 15, 'les tirs au but ne s ajoutent pas au score du match');
   // 4) Hors élimination directe, un nul reste un nul.
   const c = new MatchEngine(4, 4800);
-  avantSifflet(c); c.score.A = 20; c.score.B = 20; finir(c);
+  avantSifflet(c); egaliteAuSifflet(c, 20); finir(c);
   assert.ok(!c.prolongationJouee && !c.departage, 'un match de championnat nul reste nul');
 });
 
