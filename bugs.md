@@ -120,7 +120,7 @@ Les sommes individuelles des passes, plaquages et mètres correspondent aux somm
 | BUG-RM-001 | P1 | Corrigé (TODO_AUDIT P2-104) | Remplacer le départage par identifiants annoncé comme une prolongation |
 | BUG-RM-002 | P1 | Corrigé (TODO_AUDIT P2-105) | Empêcher un onglet ancien d'écraser la progression d'un autre |
 | BUG-RM-003 | P1 | Corrigé (TODO_AUDIT P2-105) | Conserver les secours lors d'incidents successifs |
-| BUG-RM-004 | P2 | Confirmé | Distinguer les clubs générés portant exactement le même nom |
+| BUG-RM-004 | P2 | Corrigé (TODO_AUDIT P2-111) | Distinguer les clubs générés portant exactement le même nom |
 | BUG-RM-005 | P2 | Écart mesuré | Réduire les passes excédentaires sans casser l'attaque |
 | BUG-RM-006 | P1 | Corrigé (TODO_AUDIT P2-107) | Compter les tentatives de passe avec les offloads |
 | BUG-RM-007 | P1 | Corrigé (TODO_AUDIT P2-108) | Attribuer les actions à la personne, y compris après remplacement |
@@ -194,7 +194,7 @@ Les sommes individuelles des passes, plaquages et mètres correspondent aux somm
 
 **Acceptation :** deux corruptions successives, version future puis corruption, quota empêchant le secours et récupération suivie d'une nouvelle sauvegarde. Les copies conservées restent identifiables et téléchargeables ; une donnée non écrite n'est jamais annoncée comme protégée.
 
-### [ ] BUG-RM-004 — Des clubs adverses distincts portent exactement le même nom — P2
+### [x] BUG-RM-004 — Des clubs adverses distincts portent exactement le même nom — P2
 
 **Statut : CONFIRMÉ dans la démo et par génération.**
 

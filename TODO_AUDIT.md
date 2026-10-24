@@ -580,6 +580,32 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-111. Deux clubs distincts ne portent plus le même nom — bugs.md BUG-RM-004
+- **Statut : CORRIGÉ (mode Club)**
+- Fichiers concernés : `docs/js/club.js` (`distinguerHomonymes`), `docs/js/world.js`, `docs/js/club-pyramide-france.js`,
+  `docs/js/club-sauvegarde.js`, `server/test-parcours-club.js`.
+
+**Constat.** Le générateur tire une ville et un surnom. En comptant les autres divisions françaises, chacune des 30
+créations mesurées contenait au moins deux clubs distincts au même nom (« Solerac Dragons » deux fois au classement).
+
+**Correction.**
+- Une passe sur tous les clubs de la sauvegarde : club du joueur, adversaires, autres divisions, monde, et copies dans
+  les coupes.
+- Le premier club rencontré garde son nom ; le club du joueur garde toujours le sien. Chaque homonyme suivant reçoit un
+  qualificatif (« Union Solerac Dragons », « Stade … »).
+- Les identifiants et l'historique ne changent pas ; aucun club n'est recréé. La passe est déterministe et ne tire aucun
+  aléa : le reste de la carrière est inchangé.
+- Elle s'applique à la création, à chaque nouvelle saison (montées, descentes), quand le monde ou les autres divisions
+  sont générés, et au chargement d'une ancienne carrière.
+- Les textes déjà écrits (messages, anciennes feuilles) gardent l'ancien nom.
+
+**Mesure.** Créations avec homonymes : 30/30 avant, 0/30 après.
+
+**Tests.** Douze créations avec monde et divisions, puis trois saisons de montées et descentes : aucun doublon. Une
+ancienne carrière avec deux homonymes et une coupe se recharge avec les mêmes identifiants : le premier garde son nom,
+le second se distingue et reste reconnaissable, et la coupe suit. Le club du joueur n'est jamais renommé, et une
+seconde passe ne renomme rien.
+
 ### P2-110. Championnat, chaque coupe et les amicaux ont leurs propres statistiques individuelles — bugs.md BUG-RM-009
 - **Statut : CORRIGÉ (mode Club)**
 - Fichiers concernés : `docs/js/club.js` (`LIBELLE_COMPETITION`, `libellePerimetreStats`, `accumulerStatsJoueurs`),

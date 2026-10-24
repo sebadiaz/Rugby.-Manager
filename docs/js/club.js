@@ -49,6 +49,53 @@
     return `${choisir(rng, VILLES)} ${choisir(rng, NOMS_CLUB)}`;
   }
 
+  // --- Homonymes (bugs.md BUG-RM-004) -------------------------------------
+  // Le générateur tire ville + surnom : sur une carrière, deux clubs
+  // distincts finissaient souvent par porter exactement le même nom (15
+  // créations sur 30). Ici, une passe sur TOUS les clubs de la sauvegarde :
+  // le premier rencontré garde son nom (le club du joueur toujours en
+  // premier), chaque homonyme suivant reçoit un qualificatif. Les
+  // identifiants ne changent jamais, ni l'historique ; seuls les textes déjà
+  // écrits (messages, anciennes feuilles) gardent l'ancien nom.
+  const QUALIFICATIFS_CLUB = ['Union', 'Stade', 'Racing', 'Olympique', 'Sporting', 'Athletic', 'Entente', 'Avenir'];
+  function tousLesClubsNommes(saison) {
+    const liste = [];
+    if (saison.clubJoueur) liste.push(saison.clubJoueur);
+    for (const a of saison.adversaires || []) liste.push(a);
+    const autres = saison.autresDivisionsFrance && saison.autresDivisionsFrance.divisions;
+    if (autres) for (const k of Object.keys(autres).sort()) for (const c of autres[k].clubs || []) liste.push(c);
+    const monde = saison.monde && saison.monde.divisions;
+    if (monde) for (const k of Object.keys(monde).sort()) for (const c of monde[k].clubs || []) liste.push(c);
+    return liste.filter((c) => c && typeof c.nom === 'string');
+  }
+  function distinguerHomonymes(saison) {
+    if (!saison) return 0;
+    const parId = {};
+    const pris = new Set();
+    let renommes = 0;
+    for (const c of tousLesClubsNommes(saison)) {
+      // Le même club peut être listé deux fois (copie dans une autre liste) :
+      // il garde alors le nom déjà décidé pour son identifiant.
+      if (parId[c.id] != null) { c.nom = parId[c.id]; continue; }
+      let nom = c.nom;
+      if (pris.has(nom)) {
+        const libre = QUALIFICATIFS_CLUB.map((q) => `${q} ${c.nom}`).find((n) => !pris.has(n));
+        let n = 2;
+        nom = libre || `${c.nom} ${n}`;
+        while (pris.has(nom)) nom = `${c.nom} ${++n}`;
+        c.nom = nom;
+        renommes++;
+      }
+      pris.add(nom);
+      parId[c.id] = nom;
+    }
+    // Les coupes gardent une copie {id, nom} de leurs clubs.
+    for (const coupe of Object.values(saison.coupes || {})) {
+      for (const c of (coupe && coupe.clubs) || []) if (c && parId[c.id] != null) c.nom = parId[c.id];
+    }
+    return renommes;
+  }
+
   // --- Postes : quel numéro de maillot exige quelle catégorie de poste ---
   // Libellé complet d'un poste — dans la couche DONNÉES et non dans l'UI :
   // les modules sans DOM en ont besoin aussi (cf. club-a-traiter.js). Une
@@ -1358,6 +1405,8 @@
     // Marché régénéré (ligne ci-dessus) : les anciens favoris n'y ont plus
     // cours, on repart d'une liste vierge pour la nouvelle saison.
     saison.favoris = [];
+    // Promotions, relégations et clubs régénérés : aucun homonyme (BUG-RM-004).
+    distinguerHomonymes(saison);
     return { partis, arrivees };
   }
 
@@ -1423,6 +1472,7 @@
     if (global.RMClub.assurerEntraineursRivaux) {
       global.RMClub.assurerEntraineursRivaux(rng, saison);
     }
+    distinguerHomonymes(saison);
     return saison;
   }
 
@@ -1475,6 +1525,7 @@
   // réaffectation, qui écraserait ses fonctions si son <script> était chargé
   // en premier (cf. TODO_AUDIT.md P2-10).
   global.RMClub = Object.assign(global.RMClub || {}, {
+    distinguerHomonymes,
     choisir, borneMoral, genererNomJoueur, calculerSalaire, genererNomClub,
     genererEffectif, COULEURS, genererProchainIdClub, POSTE_COMPLET, nouvelleSaison,
     resynchroniserCompteurs, VERSION_SAUVEGARDE, POSTE_REQUIS, TAILLE_EFFECTIF_CIBLE,

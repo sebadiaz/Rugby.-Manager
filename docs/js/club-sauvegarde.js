@@ -419,6 +419,9 @@
         return null;
       }
       global.RMClub.resynchroniserCompteurs(resultat.saison);
+      // Homonymes d'une carrière d'avant BUG-RM-004 : distingués à l'affichage
+      // par un qualificatif, sans recréer aucun club ni changer d'identifiant.
+      if (global.RMClub.distinguerHomonymes) global.RMClub.distinguerHomonymes(resultat.saison);
       // Révision lue AVEC la carrière : la base du contrôle de concurrence.
       const revision = lireRevision();
       revisionsConnues.set(resultat.saison, revision === null ? 0 : revision);

@@ -157,6 +157,7 @@
     const niveauActuel = (saison.clubJoueur.palierPyramide || { niveau: 3 }).niveau;
     if (!saison.autresDivisionsFrance || saison.autresDivisionsFrance.niveauExclu !== niveauActuel) {
       saison.autresDivisionsFrance = genererAutresDivisionsFrance(rng, niveauActuel);
+      if (global.RMClub.distinguerHomonymes) global.RMClub.distinguerHomonymes(saison); // BUG-RM-004
     }
     // Marché des entraîneurs (G24) : dès que ces divisions existent, leurs
     // bancs sont occupés. Ici plutôt que dans les trois écrans qui appellent

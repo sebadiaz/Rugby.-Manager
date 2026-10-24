@@ -251,7 +251,11 @@
   }
 
   function assurerMonde(rng, saison) {
-    if (!saison.monde) saison.monde = genererMonde(rng);
+    if (!saison.monde) {
+      saison.monde = genererMonde(rng);
+      // Aucun club du monde ne doit porter le nom d'un club français (BUG-RM-004).
+      if (global.RMClub && global.RMClub.distinguerHomonymes) global.RMClub.distinguerHomonymes(saison);
+    }
     return saison.monde;
   }
 

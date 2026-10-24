@@ -3571,6 +3571,58 @@ test('effectifs adverses : leur fatigue pèse RÉELLEMENT sur les stats envoyée
 
 const STATS_MATCH_FICTIVES = { 1: { essais: 1, passes: 4, tacklesMade: 8, tacklesAttempted: 10, metresGagnes: 30 } };
 
+// --- bugs.md BUG-RM-004 : deux clubs distincts, deux noms distincts ---------
+function nomsDesClubs(s) {
+  const vus = new Map();
+  const ajouter = (c) => { if (c && !vus.has(c.id)) vus.set(c.id, c.nom); };
+  ajouter(s.clubJoueur); (s.adversaires || []).forEach(ajouter);
+  const a = s.autresDivisionsFrance && s.autresDivisionsFrance.divisions;
+  if (a) Object.values(a).forEach((d) => (d.clubs || []).forEach(ajouter));
+  const m = s.monde && s.monde.divisions;
+  if (m) Object.values(m).forEach((d) => (d.clubs || []).forEach(ajouter));
+  return [...vus.values()];
+}
+test('homonymes : aucun nom de club en double, à la création comme après des saisons (BUG-RM-004)', () => {
+  for (let g = 1; g <= 12; g++) {
+    const s = saisonAvecMonde(4000 + g);
+    const noms = nomsDesClubs(s);
+    assert.strictEqual(new Set(noms).size, noms.length, `graine ${g} : ${noms.length - new Set(noms).size} nom(s) en double`);
+  }
+  // Montées, descentes et clubs régénérés.
+  const s = saisonAvecMonde(4100);
+  for (let i = 0; i < 3; i++) {
+    RMClub.avancerSaison(creerRng(4200 + i), s);
+    RMClub.assurerAutresDivisionsFrance(creerRng(4300 + i), s);
+    const noms = nomsDesClubs(s);
+    assert.strictEqual(new Set(noms).size, noms.length, `saison ${s.numero} : nom en double`);
+  }
+});
+
+test('homonymes : une ancienne carrière qui en a se distingue au chargement, sans changer un identifiant (BUG-RM-004)', () => {
+  const s = saisonAvecMonde(4400);
+  const [a, b] = s.adversaires;
+  b.nom = a.nom; // homonymes enregistrés avant le correctif
+  const idA = a.id, idB = b.id, nomOrigine = a.nom;
+  s.coupes = { test: { cle: 'test', nom: 'Coupe test', clubs: [{ id: idB, nom: nomOrigine }], tours: [] } };
+  global.localStorage.setItem('rugbyManager.club.v1', JSON.stringify(s));
+  global.localStorage.removeItem('rugbyManager.club.revision.v1');
+  const r = RMClub.chargerSaison();
+  const ra = r.adversaires.find((x) => x.id === idA), rb = r.adversaires.find((x) => x.id === idB);
+  assert.ok(ra && rb, 'aucun club recréé : mêmes identifiants');
+  assert.strictEqual(ra.nom, nomOrigine, 'le premier garde son nom');
+  assert.notStrictEqual(rb.nom, nomOrigine, 'le second se distingue');
+  assert.ok(rb.nom.indexOf(nomOrigine) !== -1, `on le reconnaît encore (${rb.nom})`);
+  assert.strictEqual(r.coupes.test.clubs[0].nom, rb.nom, 'la coupe affiche le même nom');
+  // Le club du joueur garde toujours le nom choisi par le manager.
+  const s2 = saisonPourAvance(4401);
+  s2.adversaires[0].nom = s2.clubJoueur.nom;
+  RMClub.distinguerHomonymes(s2);
+  assert.strictEqual(s2.clubJoueur.nom, 'Test Avance');
+  assert.notStrictEqual(s2.adversaires[0].nom, 'Test Avance');
+  // Stable : une deuxième passe ne renomme plus rien.
+  assert.strictEqual(RMClub.distinguerHomonymes(s2), 0);
+});
+
 test('page joueur : les statistiques sont ventilées PAR COMPÉTITION', () => {
   const s = saisonPourAvance(960);
   const j = s.clubJoueur.effectif[0];
