@@ -580,6 +580,50 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-118. Passes et attaque près de la ligne : mesures, et pick-and-go essayé puis retiré — bugs.md QA-RM-003 / BUG-RM-005
+- **Statut : MESURÉ — essai ÉCARTÉ, aucun changement de jeu conservé**
+- Fichiers concernés : aucun (le moteur est revenu à l'état de P2-117).
+
+**Mesures du moteur actuel (8 matchs).** Les chiffres de l'audit (504 passes) sont anciens ; on mesure aujourd'hui
+386 passes par match.
+
+| Passeur | Passes par match |
+|---|---|
+| n°9 | 178 |
+| n°10 | 62 |
+| centres | 38 |
+| autres | ≈ 50 |
+
+Le 9 joue environ 91 % des sorties de ruck (≈ 196 rucks par match), jusque dans les cinq mètres.
+
+| Phase de jeu courant suivie d'un ruck | Phases par match | Gain moyen |
+|---|---|---|
+| 0 passe | 55 | 4,5 m |
+| 1 passe | 75 | 2,5 m |
+| 2 passes | 43 | 2,9 m |
+| 3 passes et plus | 23 | 3,3 m |
+
+**Essai : pick-and-go à la sortie du ruck.** Dans les 22 adverses, un avant debout au pied du ruck ramasse et charge
+(45 % des sorties à 5 m, 18 % dans les 22). Trois versions ont été comparées sur 100 matchs appariés :
+
+| Version | Points | Essais d'avants | Passes |
+|---|---|---|---|
+| Pick-and-go seul | +6,2 ± 3,1 | +0,75 ± 0,41 | −6,9 ± 8,6 |
+| + gardes du ruck autorisés à plaquer le ramasseur | +5,3 ± 3,0 | +0,65 ± 0,40 | |
+| + plaquage plus sûr à moins de 10 m de son en-but | +5,8 ± 3,1 | | |
+| + tir au but choisi à 70 % au lieu de 85 % | +5,4 ± 3,4 | | |
+
+Pour la version avec défense sur sa ligne, les points se décomposent ainsi : essais +2,8, transformations +0,7,
+pénalités +2,1. La pression au ras crée aussi des pénalités de près.
+
+**Décision.** Retiré. Les essais d'avants augmentent, mais en s'ajoutant aux autres au lieu de les remplacer, sur un
+moteur dont les points sont déjà hauts (≈ 58-62). Les passes ne baissent pas de façon significative : BUG-RM-005 n'est
+pas résolu par ce levier.
+
+**Piste suivante.** Réduire l'efficacité des attaques de loin, qui marquent encore la majorité des essais (seuls 18 %
+des essais partent d'une séquence née dans les 22), avant d'ajouter des options près de la ligne. Les deux tickets
+restent ouverts.
+
 ### P2-117. Ballon, porteur et possession concordent à chaque instant — bugs.md QA-RM-002
 - **Statut : CORRIGÉ (moteur)**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (choix du tir au but dans `_traiterPenalite`,
