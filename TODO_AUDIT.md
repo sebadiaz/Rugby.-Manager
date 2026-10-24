@@ -580,6 +580,82 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-114. L'ouvreur distribue au lieu de porter dans la ligne
+- **Statut : CORRIGÉ (moteur)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`choisirActionPorteur`, passe avant contact).
+
+**Constat.** Après P2-112 et P2-113, le test des mètres gagnés échouait : l'ouvreur gagnait plus que les ailiers. Mesuré
+sur 40 graines, c'était déjà le cas avant ces correctifs (61 m contre 59). Les 6 graines du test ne passaient que par
+chance. Sur 62 m, 50 venaient de portages hors percée : le n°10 courait dans la ligne au lieu de servir. En vrai,
+un ouvreur gagne 20 à 40 m, les ailiers 50 à 70.
+
+**Correction.** Probabilité de passer avant le contact 0,9 → 1,5 pour le seul n°10 (centres inchangés).
+
+**Mesures (100 matchs appariés).**
+
+| Mesure | Avant | Après | Écart |
+|---|---|---|---|
+| Ouvreur (m/match) | 58 | 49 | −9,8 ± 4,7 |
+| Ailiers (m/match) | 56 | 59 | |
+| Passes | | 406 | +8,6 (plafond 420) |
+| Points | | | +1,9 ± 3,6 (non significatif) |
+
+### P2-113. L'arrière lit mieux la course d'un porteur qui a franchi
+- **Statut : CORRIGÉ (moteur)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`COUVERTURE_ARRIERE`).
+
+**Constat.** Sur 20 matchs, 59 % des essais suivaient de moins de 20 s un franchissement. Seules 11 séquences d'essai
+sur 145 partaient des 22 adverses : le moteur marquait surtout des essais de loin, et la moyenne de points (≈ 62) collait
+au plafond de la calibration (65).
+
+**Correction.** L'arrière prend la moitié de l'angle d'interception idéal (0,35 → 0,5) quand le porteur a franchi.
+
+**Mesures.**
+- Essais après franchissement : 46 %.
+- Séquences parties des 22 : 15 sur 134.
+- Points sur 100 matchs appariés : 61,9 → 59,6 (−2,3 ± 3,7), même sens à 0,65.
+- Effet secondaire : l'arrière couvre mieux, donc les ailiers gagnent environ 3 m de moins.
+
+**Leviers essayés et écartés (sans effet mesurable).** Fenêtre de percée 2,5 → 2,0 s : −1,3 ± 3,0. Offload en percée
+0,18 → 0,14 : +1,8 ± 2,4.
+
+### P2-112. Loi 11 : la passe trop plate sous pression est jugée en avant
+- **Statut : CORRIGÉ (moteur)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_passePlateJugeeEnAvant`, `_tenterPasse`),
+  `server/test-invariants.js`.
+
+**Constat.** Une passe en avant n'était sifflée que si le porteur n'avait aucune option légale : 0,14 par match sur 100
+matchs, contre 1 à 3 en vrai. `test-stats-matchs` (loi 11, plancher 0,2) échouait déjà avant les correctifs de cette
+série.
+
+**Correction.**
+- Une passe plate (receveur à moins d'un mètre en retrait), lâchée par un porteur pressé (défenseur à moins de 3 m),
+  peut être jugée en avant.
+- Le risque grandit avec la pression et la platitude, et baisse avec l'attribut « passe ».
+- Une passe nettement en retrait, ou sans pression, n'est jamais jugée en avant.
+- Mêlée adverse, avec le message « passe trop plate sous pression ».
+
+**Mesures (100 matchs appariés).**
+
+| Mesure | Avant | Après | Écart |
+|---|---|---|---|
+| Passes en avant sifflées | 0,14 | 1,26 | |
+| Points | | | −0,6 ± 3,9 |
+| Mêlées | | | +0,01 |
+| Touches | | | +0,35 |
+
+`test-stats-matchs` passe.
+
+**Tests.** Décision de l'arbitre interrogée état figé : passe plate sous pression jugée en avant entre 5 et 50 % des
+fois, jamais sans pression, jamais nettement en retrait ; un bon passeur la rate moins. Sur 8 matchs : entre 0,7 et 3
+par match.
+
+**Tests rendus robustes au passage.**
+- Élimination directe : l'égalité est tenue jusqu'à la vérification de fin.
+- Coup de sifflet : un match qui diffère est cherché sur 80 graines au plus.
+- Ces deux tests dépendaient d'une graine précise qui ne produisait plus la situation voulue une fois le tirage aléatoire
+  déplacé.
+
 ### P2-111. Deux clubs distincts ne portent plus le même nom — bugs.md BUG-RM-004
 - **Statut : CORRIGÉ (mode Club)**
 - Fichiers concernés : `docs/js/club.js` (`distinguerHomonymes`), `docs/js/world.js`, `docs/js/club-pyramide-france.js`,

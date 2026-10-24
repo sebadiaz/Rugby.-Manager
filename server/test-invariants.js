@@ -3517,8 +3517,10 @@ test('passes : chaque passe réussie, offload compris, est aussi une passe tent�
 // --- bugs.md BUG-RM-010 : un match se lit au coup de sifflet, pas à 80:00 ----
 // Graine 4 : 31-18 à 80:00 pendant une transformation, 33-18 au sifflet.
 test('jouerJusquAuSifflet : le match se lit au coup de sifflet, tir engagé compris (BUG-RM-010)', () => {
+  // Une transformation en cours au chrono n'arrive pas à chaque match : on
+  // cherche jusqu'à en trouver une, sur 80 graines au plus.
   let differents = 0;
-  for (let seed = 1; seed <= 20; seed++) {
+  for (let seed = 1; seed <= 80 && differents < 2; seed++) {
     const coupe = new MatchEngine(seed, 600);
     for (let t = 0; t < 600; t += 0.2) coupe.tick(0.2);
     const complet = new MatchEngine(seed, 600);
@@ -3530,7 +3532,7 @@ test('jouerJusquAuSifflet : le match se lit au coup de sifflet, tir engagé comp
       assert.notStrictEqual(coupe.phase, 'TERMINE', 'seul un match coupé avant le sifflet peut différer');
     }
   }
-  assert.ok(differents >= 1, 'la boucle à durée fixe doit manquer au moins un point sur 20 matchs (sinon le test ne prouve rien)');
+  assert.ok(differents >= 1, 'la boucle à durée fixe doit manquer au moins un point sur 80 matchs (sinon le test ne prouve rien)');
   // Garde bornée : un match qui ne finit pas est une erreur, jamais un résultat.
   const bloque = new MatchEngine(1, 600);
   bloque.tick = function () { this.tempsMatch += 0.2; };
