@@ -609,6 +609,9 @@ ne saute pas à l'écran. Deux défauts réels :
 courant, échantillon avec pénalités au but. Il échouait sur les deux défauts.
 
 **Barrières.** Invariants 97/97, 16 suites, calibration 13/14 (courses 286,8).
+Navigateur 511/0, après correction d'un test intermittent : le test du bandeau d'arbitre sur téléphone comparait le
+bandeau à l'étendue théorique du terrain. Quand la caméra suit le jeu, une extrémité du terrain sort pourtant du canvas.
+Il mesure désormais le terrain visible : 30 passages sur 30 sous charge, contre 27 sur 30 avant.
 
 ### P2-116. Définitions et rapprochement des statistiques — bugs.md QA-RM-007
 - **Statut : VALIDÉ (événements, invariant, mesure publiée)**
