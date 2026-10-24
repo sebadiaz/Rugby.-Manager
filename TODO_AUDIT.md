@@ -580,6 +580,50 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-119. Après un franchissement, les défenseurs dépassés poursuivent le perceur
+- **Statut : CORRIGÉ (moteur)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (déplacement défensif en jeu courant ;
+  pénalité tapée en touche), `server/test-invariants.js`.
+
+**Constat (10 matchs).**
+- 10,6 franchissements par match ; 32 % se terminent par un essai en moins de 20 s (les commentaires du moteur donnent
+  20 à 25 % en vrai) ; gain moyen 13,9 m.
+- Le défenseur qui arrête le plus souvent le perceur est l'arrière (24 arrêts sur une soixantaine).
+- Les défenseurs déjà dépassés continuaient de « tenir leur ligne » à 85 % de leur vitesse : il en restait 3,0 à moins
+  de 10 m du perceur dans la première seconde, 1,1 / 0,7 / 0,4 dans les secondes suivantes.
+
+**Correction.** Premier rideau battu, les défenseurs dépassés à moins de 25 m sprintent vers le porteur. L'arrière garde
+sa logique de dernier rideau.
+
+**Mesures.**
+- Sur 10 matchs : 9,2 franchissements, 26 % en essai, gain inchangé (14,0 m) ; défenseurs à moins de 10 m :
+  4,1 / 1,5 / 1,0 / 0,6.
+- Sur 100 matchs appariés :
+
+| Mesure | Avant | Après | Écart |
+|---|---|---|---|
+| Essais | 7,0 | 6,4 | −0,61 ± 0,51 (significatif) |
+| Points | | | −1,9 ± 3,3 (des pénalités en plus compensent) |
+| Passes | | 415 | +17 ± 10 |
+| Rucks | | | +8 ± 5 |
+
+- Calibration 13/14 : passes 407 sur les graines 1-20, points 61,5.
+
+Le surplus de passes et de rucks est la contrepartie attendue : une percée reprise devient un ruck et une phase de plus.
+Il alourdit BUG-RM-005 (trop de passes), qui reste ouvert.
+
+**Test.** Scénario figé : trois défenseurs dépassés de 3 m doivent finir à moins de 4,5 m du perceur en 2 s (5,9 m avec
+l'ancien moteur).
+
+**Bug révélé par le nouveau tirage et corrigé.** Un porteur est plaqué en touche, puis l'avantage revient à la sanction
+dans le même instant. La pénalité tapée en touche ramenait alors le ballon à une marque située jusqu'à 40 m, en 0,7 s,
+soit 57 m/s (1 cas sur 122). Corrections :
+- vitesse du ballon plafonnée à 25 m/s ;
+- frappe une fois le ballon posé sur la marque ;
+- la touche rapide préparée pour l'adversaire est annulée.
+
+**Barrières.** Invariants 98/98, 16 suites, calibration 13/14 (courses 285,8).
+
 ### P2-118. Passes et attaque près de la ligne : mesures, et pick-and-go essayé puis retiré — bugs.md QA-RM-003 / BUG-RM-005
 - **Statut : MESURÉ — essai ÉCARTÉ, aucun changement de jeu conservé**
 - Fichiers concernés : aucun (le moteur est revenu à l'état de P2-117).
