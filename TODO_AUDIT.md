@@ -580,6 +580,36 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-117. Ballon, porteur et possession concordent à chaque instant — bugs.md QA-RM-002
+- **Statut : CORRIGÉ (moteur)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (choix du tir au but dans `_traiterPenalite`,
+  sortie de ruck), `server/test-invariants.js`.
+
+**Mesure (4 matchs, chaque pas de 0,1 s).** On vérifie quatre choses à chaque instant : le joueur qui tient le ballon
+est de l'équipe en possession, le ballon affiché est dans ses mains, le porteur en jeu courant est debout, et le ballon
+ne saute pas à l'écran. Deux défauts réels :
+- **Pénalité au but : 3 457 instants.** La possession restait au camp fautif pendant tout le tir : le buteur tenait le
+  ballon d'une équipe « sans ballon ». Le jeu rapide, lui, rendait déjà le ballon au bénéficiaire.
+- **Porteur au sol : 106 instants.** Quand le n°9 était lui-même le joueur plaqué, la sortie de ruck cherchait un
+  relayeur sans exclure les joueurs à terre. Le plaqué, encore allongé, recevait le ballon et repartait.
+
+**Correction.**
+- La possession passe à l'équipe qui tire au but (loi 20).
+- À la sortie de ruck, le relayeur est un joueur debout.
+
+**Après correction.** 0 et 0 sur les mêmes 4 matchs. Il reste 4 sauts du ballon de plus de 3 m :
+- 3 viennent d'un plaquage en touche près de l'en-but : la marque de touche est ramenée à 5 m de la ligne (loi 18), et
+  le rendu fait glisser le ballon à 55 m/s, donc rien ne se téléporte à l'écran ;
+- 1 survient au coup de sifflet final.
+
+**Effet sur le jeu (100 matchs appariés).** Aucun écart significatif : points −3,0 ± 3,8, essais −0,2 ± 0,6, mêlées
++0,7 ± 0,9.
+
+**Test.** Invariant tick par tick sur 3 matchs : porteur toujours de l'équipe en possession, jamais au sol en jeu
+courant, échantillon avec pénalités au but. Il échouait sur les deux défauts.
+
+**Barrières.** Invariants 97/97, 16 suites, calibration 13/14 (courses 286,8).
+
 ### P2-116. Définitions et rapprochement des statistiques — bugs.md QA-RM-007
 - **Statut : VALIDÉ (événements, invariant, mesure publiée)**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (événements de but et d'essai, `_sequence`,

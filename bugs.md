@@ -139,7 +139,7 @@ Les sommes individuelles des passes, plaquages et mètres correspondent aux somm
 | FUNC-RM-010 | P2 | À compléter | Qualifications continentales fondées sur les résultats |
 | FUNC-RM-011 | P2 | À construire | Feuille individuelle et collective complète, minutes et filtres cohérents |
 | QA-RM-001 | P1 | Validé (TODO_AUDIT P2-115) | Mêlée : temps, positions, ballon et demi de mêlée |
-| QA-RM-002 | P1 | À valider | Transitions de possession et phases arrêtées visibles |
+| QA-RM-002 | P1 | Validé (TODO_AUDIT P2-117) | Transitions de possession et phases arrêtées visibles |
 | QA-RM-003 | P2 | À valider | Progression territoriale et essais construits |
 | QA-RM-004 | P1 | À valider | Parcours complet de compétition et règlement unique |
 | QA-RM-005 | P2 | À valider | Parcours mobile et lecture du match |
@@ -394,7 +394,7 @@ Les sommes individuelles des passes, plaquages et mètres correspondent aux somm
 
 **Acceptation :** trace déterministe, captures/vidéo à vitesse lisible et transitions cohérentes entre position logique et rendue. Aucun porteur fantôme ou téléportation trompeuse ; une faute/reset ne fait pas continuer l'ancienne séquence.
 
-### [ ] QA-RM-002 — Ballon, possession et reprises cohérents de bout en bout — P1
+### [x] QA-RM-002 — Ballon, possession et reprises cohérents de bout en bout — P1
 
 **État : À VALIDER.** Les phases existent ; ce ticket porte sur leur enchaînement et leur lecture, pas sur leur simple fréquence.
 
