@@ -3665,6 +3665,33 @@ test('cohérence : celui qui tient le ballon est de l équipe en possession, et 
   assert.ok(tirs > 0, 'échantillon sans pénalité au but');
 });
 
+// --- P2-119 : après un franchissement, les dépassés poursuivent ------------
+// Scénario figé : le centre A a passé la ligne, trois défenseurs B sont 3 m
+// derrière lui, l'arrière est loin. Ils tenaient « leur ligne » à 85 % de leur
+// vitesse et le perceur s'envolait ; ils doivent sprinter et le reprendre.
+test('franchissement : les défenseurs dépassés poursuivent le perceur à pleine vitesse (P2-119)', () => {
+  let ecartFinal = 0, n = 0;
+  for (let seed = 1; seed <= 10; seed++) {
+    const m = new MatchEngine(seed, 600);
+    for (let t = 0; t < 30; t += 0.2) m.tick(0.2);
+    m.phase = 'PORTE'; m.timerPhase = 6; m.possession = 'A';
+    m.passeVisuelle = null; m.combinaison = null; m.penaliteRecul = null;
+    m.ruckPoint = null; m._neufLibre = false; m.maul = null; m._porteApresPied = true;
+    const porteur = m.equipeA.find((j) => j.numero === 12);
+    m.porteur = porteur;
+    Object.assign(porteur, { auSol: 0, x: 40, y: 35, _enchaine: 0, _percee: 2.5, vitesseCourante: 6 });
+    for (const j of m.equipeA) if (j !== porteur) Object.assign(j, { auSol: 0, x: 30, y: 35 });
+    for (const j of m.equipeB) Object.assign(j, { auSol: 0, horsJeuKick: 0, fixeCooldown: 0, missCooldown: 1,
+      ruckRecovery: 0, sinBin: 0, x: 99, y: 5 });
+    const depasses = m.equipeB.filter((j) => [4, 7, 13].includes(j.numero));
+    depasses.forEach((j, i) => Object.assign(j, { x: 37, y: 30 + 5 * i, vitesseCourante: 6 }));
+    for (let k = 0; k < 10 && m.phase === 'PORTE' && m.porteur === porteur; k++) m.tick(0.2);
+    for (const d of depasses) { ecartFinal += Math.hypot(d.x - porteur.x, d.y - porteur.y); n++; }
+  }
+  const moyen = ecartFinal / n;
+  assert.ok(moyen < 4.5, `les dépassés finissent à ${moyen.toFixed(1)} m du perceur en 2 s (ils doivent revenir sur lui)`);
+});
+
 console.log(`\n${nbTests} test(s) exécuté(s).`);
 if (process.exitCode) {
   console.error('ECHEC : au moins un invariant violé.');
