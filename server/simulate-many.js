@@ -39,7 +39,7 @@ console.log(`--- Simulation de ${N_MATCHS} match(s) de 80 min (graines ${SEED_DE
 for (let i = 0; i < N_MATCHS; i++) {
   const seed = SEED_DEPART + i;
   const m = new MatchEngine(seed, DUREE_SECONDES);
-  for (let t = 0; t < DUREE_SECONDES; t += DT) m.tick(DT);
+  m.jouerJusquAuSifflet(DT); // au coup de sifflet, pas à 80:00 (BUG-RM-010)
 
   const s = m.getState();
   const sa = s.stats.A, sb = s.stats.B;

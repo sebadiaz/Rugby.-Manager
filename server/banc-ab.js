@@ -87,7 +87,9 @@ if (process.env.RM_BANC_ENFANT === '1') {
   function mesurer(Moteur, graine) {
     const m = new Moteur(graine, 4800);
     let phaseAvant = m.phase, xPrec = null, possPrec = null, gains = 0, nGains = 0, rucks = 0, r22 = 0;
-    for (let t = 0; t < 4800; t += 0.2) {
+    // Jusqu'au coup de sifflet, pas à 80:00 (BUG-RM-010).
+    for (let t = 0; m.phase !== 'TERMINE'; t += 0.2) {
+      if (t > 4800 + 600) throw new Error(`graine ${graine} : match non termine`);
       m.tick(0.2);
       const sens = m.possession === 'A' ? 1 : -1;
       const pt = m.ruckPoint || m.porteur;

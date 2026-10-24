@@ -60,7 +60,7 @@ function mesurer(n) {
   for (const k of Object.keys(FOURCHETTES)) totaux[k] = 0;
   for (let i = 0; i < n; i++) {
     const m = new MatchEngine(1 + i, DUREE);
-    for (let t = 0; t < DUREE; t += DT) m.tick(DT);
+    m.jouerJusquAuSifflet(DT); // au coup de sifflet, pas à 80:00 (BUG-RM-010)
     const s = m.getState(); const a = s.stats.A, b = s.stats.B;
     totaux.essais += a.essais + b.essais;
     totaux.points += s.score.A + s.score.B;

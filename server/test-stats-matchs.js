@@ -134,7 +134,9 @@ for (let i = 0; i < N_MATCHS; i++) {
   // ballon avance-t-elle ? (mesure derivee des evenements du moteur, pas d'un
   // compteur fabrique — cf. CLAUDE.md role 6)
   let phaseAvant = m.phase, xPrecedent = null, possPrecedente = null;
-  for (let t = 0; t < DUREE_SECONDES; t += DT) {
+  // Jusqu'au coup de sifflet, pas à 80:00 (BUG-RM-010).
+  for (let t = 0; m.phase !== 'TERMINE'; t += DT) {
+    if (t > DUREE_SECONDES + 600) throw new Error('match non termine');
     m.tick(DT);
     const sens = m.possession === 'A' ? 1 : -1;
     const pt = m.ruckPoint || m.porteur;

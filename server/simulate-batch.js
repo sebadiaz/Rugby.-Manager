@@ -41,7 +41,7 @@ let matchsOk = 0;
 for (let i = 0; i < n; i++) {
   const seed = seedDepart + i;
   const m = new MatchEngine(seed, dureeSecondes);
-  for (let t = 0; t < dureeSecondes; t += dt) m.tick(dt);
+  m.jouerJusquAuSifflet(dt); // au coup de sifflet, pas à 80:00 (BUG-RM-010)
 
   const s = m.getState();
   const sa = s.stats.A, sb = s.stats.B;

@@ -3483,6 +3483,50 @@ test('coup d\'envoi : le ballon vole, à vue, de la frappe à la réception', ()
   assert.ok(sansSaut / envois >= 0.95, `${sansSaut}/${envois} coups d'envoi sans saut du ballon > 4 m (vol et réception)`);
 });
 
+// --- bugs.md BUG-RM-006 : une passe réussie a d'abord été tentée -----------
+// Les offloads comptaient comme passes réussies sans être tentés : 266 succès
+// pour 263 tentatives sur une équipe, impossible.
+test('passes : chaque passe réussie, offload compris, est aussi une passe tentée (BUG-RM-006)', () => {
+  let offloads = 0;
+  for (let seed = 1; seed <= 6; seed++) {
+    const m = new MatchEngine(seed, 2400);
+    while (m.phase !== 'TERMINE') m.tick(0.2);
+    for (const e of ['A', 'B']) {
+      const s = m.stats[e];
+      offloads += s.offloads;
+      assert.ok(s.passes <= s.passesTentees,
+        `graine ${seed}, équipe ${e} : ${s.passes} passes réussies pour ${s.passesTentees} tentées`);
+      // Les tentatives manquées ont une cause : passe en avant, interception ou passe ratée.
+      assert.ok(s.passesTentees - s.passes <= s.knockOns + s.turnoversConcedes + 2,
+        `graine ${seed}, équipe ${e} : ${s.passesTentees - s.passes} tentatives sans issue connue`);
+    }
+  }
+  assert.ok(offloads >= 20, `échantillon sans offloads (${offloads})`);
+});
+
+// --- bugs.md BUG-RM-010 : un match se lit au coup de sifflet, pas à 80:00 ----
+// Graine 4 : 31-18 à 80:00 pendant une transformation, 33-18 au sifflet.
+test('jouerJusquAuSifflet : le match se lit au coup de sifflet, tir engagé compris (BUG-RM-010)', () => {
+  let differents = 0;
+  for (let seed = 1; seed <= 20; seed++) {
+    const coupe = new MatchEngine(seed, 600);
+    for (let t = 0; t < 600; t += 0.2) coupe.tick(0.2);
+    const complet = new MatchEngine(seed, 600);
+    assert.strictEqual(complet.jouerJusquAuSifflet(0.2), complet, 'renvoie le moteur');
+    assert.strictEqual(complet.phase, 'TERMINE', `graine ${seed} : match non terminé`);
+    assert.ok(complet.tempsMatch < 600 + 60, `graine ${seed} : sifflet à ${complet.tempsMatch.toFixed(1)} s`);
+    if (coupe.score.A !== complet.score.A || coupe.score.B !== complet.score.B) {
+      differents++;
+      assert.notStrictEqual(coupe.phase, 'TERMINE', 'seul un match coupé avant le sifflet peut différer');
+    }
+  }
+  assert.ok(differents >= 1, 'la boucle à durée fixe doit manquer au moins un point sur 20 matchs (sinon le test ne prouve rien)');
+  // Garde bornée : un match qui ne finit pas est une erreur, jamais un résultat.
+  const bloque = new MatchEngine(1, 600);
+  bloque.tick = function () { this.tempsMatch += 0.2; };
+  assert.throws(() => bloque.jouerJusquAuSifflet(0.2), /non termin/);
+});
+
 console.log(`\n${nbTests} test(s) exécuté(s).`);
 if (process.exitCode) {
   console.error('ECHEC : au moins un invariant violé.');

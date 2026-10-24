@@ -258,7 +258,7 @@ test('S12 — le MOTEUR et le BAREME abstrait produisent des matchs comparables'
   let pointsMoteur = 0, essaisMoteur = 0;
   for (let seed = 1; seed <= GRAINES; seed++) {
     const m = new MatchEngine(seed, DUREE);
-    for (let t = 0; t < DUREE; t += DT) m.tick(DT);
+    m.jouerJusquAuSifflet(DT); // au coup de sifflet, pas à 80:00 (BUG-RM-010)
     const e = m.getState();
     pointsMoteur += e.score.A + e.score.B;
     essaisMoteur += e.stats.A.essais + e.stats.B.essais;

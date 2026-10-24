@@ -2649,6 +2649,9 @@
           } else {
             ({ joueur: receveurOffload } = joueurLePlusProche(soutiens, porteur.x, porteur.y));
           }
+          // Un offload est une passe : tentée PUIS réussie, comme les autres
+          // (bugs.md BUG-RM-006 — il comptait des succès sans tentative).
+          this.stats[this.possession].passesTentees++;
           this.stats[this.possession].passes++;
           this.stats[this.possession].offloads++;
           this._statJoueur(porteur).passes++;
@@ -7553,6 +7556,21 @@
         instant: this.tempsMatch, applique: false,
       });
       return true;
+    }
+
+    // Joue le match jusqu'au COUP DE SIFFLET final (phase TERMINE), pas jusqu'au
+    // chrono : une transformation ou un tir engagé avant 80:00 se termine
+    // après (bugs.md BUG-RM-010). Les scripts de mesure qui lisaient le score à
+    // 80:00 perdaient ces points. Garde bornée : un match qui ne finit pas est
+    // une erreur, jamais un résultat.
+    jouerJusquAuSifflet(dt = 0.1, margeMax = 600) {
+      while (this.phase !== 'TERMINE') {
+        if (this.tempsMatch >= this.dureeMatch + margeMax) {
+          throw new Error(`match non termine : ${this.tempsMatch.toFixed(1)} s, phase ${this.phase}`);
+        }
+        this.tick(dt);
+      }
+      return this;
     }
 
     getState() {
