@@ -3564,7 +3564,12 @@
       let pPasse = 0.7;
       if (porteur.numero <= 8) pPasse = 0.45;
       else if (porteur.vitesse > 80) pPasse = 0.45;
-      else if (porteur.numero === 10 || porteur.numero === 12 || porteur.numero === 13) pPasse = 0.9;
+      // L'OUVREUR est d'abord un distributeur (P2-114) : il gagnait 58 m par
+      // match, plus que les ailiers (56), presque tout en portages hors percée
+      // (50 m sur 62) — il courait dans la ligne au lieu de servir. 0,9 -> 1,5 :
+      // 49 m pour l'ouvreur, 59 pour les ailiers (100 matchs appariés).
+      else if (porteur.numero === 10) pPasse = 1.5;
+      else if (porteur.numero === 12 || porteur.numero === 13) pPasse = 0.9;
       if (distDef < 5.5 && soutienDisponible && this.rng() < pPasse * RYTHME_PASSES * dt) {
         return 'PASS';
       }
