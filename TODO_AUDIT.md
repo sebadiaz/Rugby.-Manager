@@ -580,6 +580,30 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-116. Définitions et rapprochement des statistiques — bugs.md QA-RM-007
+- **Statut : VALIDÉ (événements, invariant, mesure publiée)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (événements de but et d'essai, `_sequence`,
+  `_infoEssai`), `server/simulate-batch.js`, `docs/js/club-feuille-de-match.js`, `docs/js/club-archives-matchs.js`,
+  `docs/ANALYSE_MATCH_REEL.md`, tests invariants et feuille de match.
+
+**Constat.** Les buts et les essais ne pouvaient pas être décomposés : leurs événements ne disaient ni la distance, ni le
+buteur, ni le marqueur, ni d'où venait l'action. Le point du ticket sur le chronométrage (mêlée et touche exclues en
+entier) était déjà corrigé par P2-59 : elles comptent depuis l'introduction et le lancer.
+
+**Correction.**
+- Chaque but porte son buteur, sa distance réelle aux poteaux et son décalage. Le fil le dit : « réussi à 38 m par le n°10 ».
+- Chaque essai porte son marqueur, l'origine de sa séquence (touche, mêlée, coup d'envoi, pénalité, jeu courant, coup
+  de pied à suivre, maul), la distance de départ et le nombre de rucks.
+- La feuille de match affiche le numéro du marqueur, et l'archive le garde.
+- `simulate-batch` publie les décompositions ; mesure sur 12 matchs dans `docs/ANALYSE_MATCH_REEL.md`.
+- Le déroulé des matchs est inchangé (empreinte identique sur 4 graines).
+
+**Tests.**
+- Invariant : réussis ≤ tentés pour passes, plaquages, transformations, pénalités et drops, par équipe et par joueur ;
+  chaque essai et chaque but compté a son événement, avec buteur, distance, marqueur et origine.
+- E12 : marqueur affiché sur la feuille et conservé par l'archive.
+- Barrières : invariants 96/96, 16 suites, calibration 13/14 (courses 283,6), navigateur 511/0.
+
 ### P2-115. Mêlée validée de bout en bout, dans les deux sens — bugs.md QA-RM-001
 - **Statut : VALIDÉ (test et captures)**
 - Fichiers concernés : `server/test-melee.js` (M25).

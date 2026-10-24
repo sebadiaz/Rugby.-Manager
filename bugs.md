@@ -144,7 +144,7 @@ Les sommes individuelles des passes, plaquages et mètres correspondent aux somm
 | QA-RM-004 | P1 | À valider | Parcours complet de compétition et règlement unique |
 | QA-RM-005 | P2 | À valider | Parcours mobile et lecture du match |
 | QA-RM-006 | P2 | À valider | Mettre les états documentaires en accord avec le code |
-| QA-RM-007 | P2 | À valider | Réconcilier définitions, événements, affichage et archives |
+| QA-RM-007 | P2 | Validé (TODO_AUDIT P2-116) | Réconcilier définitions, événements, affichage et archives |
 
 ## Bugs établis
 
@@ -438,7 +438,7 @@ Les sommes individuelles des passes, plaquages et mètres correspondent aux somm
 
 **Acceptation :** aucun prochain chantier justifié uniquement par une ligne obsolète ; chaque déclaration d'absence confrontée au code et au parcours. Un contrôle documentaire doit pouvoir signaler une contradiction réelle sans imposer qu'il reste nécessairement des fonctions absentes.
 
-### [ ] QA-RM-007 — Définitions et rapprochement des statistiques de bout en bout — P2
+### [x] QA-RM-007 — Définitions et rapprochement des statistiques de bout en bout — P2
 
 **État : À VALIDER.** Référence de vocabulaire : [définitions statistiques World Rugby](https://www.world.rugby/the-game/game-analysis/definitions), utilisée pour les métriques et non comme règlement actuel des remplacements. Choisir et documenter le périmètre de chaque compteur avant de fixer des objectifs de réalisme.
 
