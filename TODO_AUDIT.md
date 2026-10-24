@@ -580,6 +580,28 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-110. Championnat, chaque coupe et les amicaux ont leurs propres statistiques individuelles — bugs.md BUG-RM-009
+- **Statut : CORRIGÉ (mode Club)**
+- Fichiers concernés : `docs/js/club.js` (`LIBELLE_COMPETITION`, `libellePerimetreStats`, `accumulerStatsJoueurs`),
+  `docs/js/club-coupes.js`, `docs/js/club-amicaux.js`, `docs/js/club-competitions.js`, `docs/js/clubUI.js`,
+  `server/test-consequences-coupe-amical.js`.
+
+**Constat.** Les coupes et les amicaux du premier XV étaient cumulés sous la clé `pro`, affichée « Championnat ». Le
+cumul collectif, lui, ne comptait que le championnat : les deux classements ne parlaient pas du même périmètre.
+
+**Correction.**
+- Chaque coupe a sa clé (`coupe:<clé>`, affichée sous son vrai nom), les amicaux la leur (« Amicaux ») ; `pro` ne
+  compte plus que le championnat.
+- L'écran Statistiques d'une coupe classe les joueurs sur ses seuls matchs.
+- Les titres disent le périmètre : « Production du collectif (championnat) », « Meilleurs de la saison (toutes
+  compétitions) ».
+- Saison commencée avant la séparation : son ancien « pro » mêlé est renommé « Premier XV, toutes compétitions (avant
+  séparation) », jamais redistribué au hasard.
+
+**Tests.** K6c : séquence championnat → coupe → amical. Le championnat ne compte que lui, la coupe a sa ligne et son
+classement, l'amical ne crée pas de ligne championnat, et le total se réconcilie. K6d : ancienne fiche renommée,
+championnat reparti propre.
+
 ### P2-109. La feuille de match affiche la possession chronométrée et l'archive la garde — bugs.md BUG-RM-008
 - **Statut : CORRIGÉ (feuille de match et archives)**
 - Fichiers concernés : `docs/js/club-feuille-de-match.js`, `docs/js/club-archives-matchs.js` (`compacterEtatMatch`),

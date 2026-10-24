@@ -1597,14 +1597,14 @@
     const joues = st ? (st.matchsJoues || 0) : 0;
 
     if (sous === 'equipe') {
-      titre.textContent = '🏉 Production du collectif';
+      titre.textContent = '🏉 Production du collectif (championnat)';
       if (!joues) { zone.innerHTML = '<p style="color:var(--text-dim);">Aucun match joué : rien à mesurer pour l\'instant.</p>'; return; }
       zone.innerHTML = `${ligneInfo(`Matchs joués`, `${joues}`)}` +
         Object.keys(LIBELLE_STAT_CLUB).filter((k) => st[k] != null).map((k) =>
           `<div class="ligneInfo"><span>${LIBELLE_STAT_CLUB[k]}</span>` +
           `<b>${st[k]} <span style="color:var(--text-dim);font-weight:400;">${Math.round((st[k] / joues) * 10) / 10}/match</span></b></div>`).join('');
     } else if (sous === 'joueurs') {
-      titre.textContent = '⭐ Meilleurs de la saison';
+      titre.textContent = '⭐ Meilleurs de la saison (toutes compétitions)';
       const tous = (c.effectif || []).concat(c.jeunes || []).filter((j) => j.statsSaison && j.statsSaison.matchsJoues);
       if (!tous.length) { zone.innerHTML = '<p style="color:var(--text-dim);">Aucune statistique individuelle enregistrée.</p>'; return; }
       const top = (champ, libelle) => {
@@ -3302,7 +3302,7 @@
         `<table class="tableauClub tableauFiche"><thead><tr><th>Compétition</th><th>M</th><th>Essais</th><th>Passes</th><th>Plaq.</th><th>Mètres</th></tr></thead><tbody>` +
         clesCompetition.map((k) => {
           const d = parCompetition[k];
-          return `<tr><td>${echapperHTML(RMClub.LIBELLE_COMPETITION[k] || k)}</td><td>${d.matchsJoues}</td>` +
+          return `<tr><td>${echapperHTML(RMClub.libellePerimetreStats(saison, k))}</td><td>${d.matchsJoues}</td>` +
             `<td>${d.essais}</td><td>${d.passes}</td><td>${d.tacklesMade}/${d.tacklesAttempted}</td><td>${Math.round(d.metresGagnes)}</td></tr>`;
         }).join('') + `</tbody></table>`
       : '';

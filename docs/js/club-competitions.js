@@ -535,12 +535,17 @@
     } : null;
 
     // --- Joueurs : uniquement ceux dont les statistiques EXISTENT.
-    const cleStats = COMPETITION_STATS_JOUEUR[ref] || null;
+    // Une coupe a ses propres statistiques individuelles (BUG-RM-009).
+    const cleCoupe = comp.estCoupe && typeof ref === 'string' && ref.indexOf(PREFIXE_COUPE) === 0
+      ? ref.slice(PREFIXE_COUPE.length) : null;
+    const cleStats = COMPETITION_STATS_JOUEUR[ref]
+      || (cleCoupe ? global.RMClub.PREFIXE_STATS_COUPE + cleCoupe : null);
     let joueurs = null;
     const limites = [];
     if (cleStats) {
-      const effectif = global.RMClub.effectifPourEquipe(saison,
-        cleStats === 'b' ? 'b' : cleStats === 'jeunes' ? 'jeunes' : 'pro');
+      const equipe = cleCoupe && global.RMClub.equipePourCoupe ? global.RMClub.equipePourCoupe(cleCoupe)
+        : cleStats === 'b' ? 'b' : cleStats === 'jeunes' ? 'jeunes' : 'pro';
+      const effectif = global.RMClub.effectifPourEquipe(saison, equipe);
       const suivis = (effectif || [])
         .filter((j) => j.statsSaison && j.statsSaison.parCompetition && j.statsSaison.parCompetition[cleStats])
         .map((j) => Object.assign({ id: j.id, nom: j.nom, poste: j.poste },
@@ -556,10 +561,9 @@
       }
       limites.push('Seuls les joueurs de ton club sont suivis individuellement : '
         + 'les rencontres entre clubs adverses sont résolues sans simulation détaillée.');
-      limites.push('Les rencontres de coupe comptent dans le total de l\'équipe concernée.');
-    } else if (comp.estCoupe) {
-      limites.push('Les statistiques individuelles d\'une coupe sont comptées avec '
-        + 'celles du championnat de l\'équipe qui la dispute.');
+      limites.push(cleCoupe
+        ? 'Seuls les matchs de cette coupe comptent ici.'
+        : 'Seuls les matchs de ce championnat comptent ici : coupes et amicaux ont leurs propres statistiques.');
     }
 
     return { ref: comp.ref, nom: comp.nom, estCoupe: !!comp.estCoupe, equipes, joueurs, limites };

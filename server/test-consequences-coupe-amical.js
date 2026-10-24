@@ -204,6 +204,56 @@ test('K6b — un nul départagé par le moteur qualifie le bon club, et le messa
   }
 });
 
+// --- bugs.md BUG-RM-009 : chaque compétition a ses statistiques -------------
+function lignesDeMatch(passes) {
+  const l = {};
+  for (let n = 1; n <= 15; n++) l[n] = { passes, essais: n === 11 ? 1 : 0, tacklesMade: 2, tacklesAttempted: 3, metresGagnes: 5 };
+  return l;
+}
+test('K6c — championnat, coupe et amical ne se mélangent plus dans les statistiques individuelles (BUG-RM-009)', () => {
+  const ctx = contexteCoupe(30, 10);
+  ctx.etat.statsJoueurs = { A: lignesDeMatch(4), B: lignesDeMatch(4) };
+  // Un match de championnat : le chemin réel de cumul du premier XV.
+  const compo = ctx.compo;
+  RMClub.accumulerStatsJoueurs(ctx.c.effectif, compo, lignesDeMatch(1), 'pro');
+  appliquerCoupe(ctx);
+  const titulaire = ctx.c.effectif.find((j) => j.id === compo[10]);
+  const par = titulaire.statsSaison.parCompetition;
+  const cleCoupe = RMClub.PREFIXE_STATS_COUPE + ctx.coupe.cle;
+  assert.strictEqual(par.pro.passes, 1, 'le championnat ne compte que le championnat');
+  assert.strictEqual(par[cleCoupe].passes, 4, 'la coupe a sa propre ligne');
+  assert.strictEqual(titulaire.statsSaison.passes, 5, 'le total toutes compétitions se réconcilie');
+  assert.strictEqual(RMClub.libellePerimetreStats(ctx.s, cleCoupe), ctx.coupe.nom, 'la ligne porte le nom de la coupe');
+  // L'écran de la coupe montre ses statistiques, celui du championnat les siennes.
+  const statsCoupe = RMClub.statistiquesCompetition(ctx.s, 'coupe:' + ctx.coupe.cle);
+  assert.ok(statsCoupe && statsCoupe.joueurs, 'la coupe affiche ses joueurs');
+  {
+    const passeurs = statsCoupe.joueurs.passeurs;
+    assert.ok(passeurs.length && passeurs.every((x) => x.valeur === 4),
+      `le classement de la coupe ne compte que la coupe (${passeurs.map((x) => x.valeur)})`);
+  }
+  // Amical : sa propre ligne, jamais « Championnat ».
+  const am = contexteAmical(20, 20);
+  am.etat.statsJoueurs = { A: lignesDeMatch(7), B: lignesDeMatch(7) };
+  appliquerAmical(am);
+  const joueurAmical = am.c.effectif.find((j) => j.id === am.compo[10]);
+  assert.strictEqual(joueurAmical.statsSaison.parCompetition.amical.passes, 7);
+  assert.ok(!joueurAmical.statsSaison.parCompetition.pro, 'un amical ne crée pas de ligne championnat');
+});
+
+test('K6d — une saison commencée avant la séparation garde son mélange, libellé, sans le répartir (BUG-RM-009)', () => {
+  const ctx = contexteCoupe(30, 10);
+  const j = ctx.c.effectif.find((x) => x.id === ctx.compo[10]);
+  // Ancienne fiche : coupes et amicaux comptés sous « pro ».
+  j.statsSaison = { matchsJoues: 3, passes: 9, parCompetition: { pro: { matchsJoues: 3, passes: 9 } } };
+  RMClub.accumulerStatsJoueurs(ctx.c.effectif, ctx.compo, lignesDeMatch(2), 'pro');
+  const par = j.statsSaison.parCompetition;
+  assert.strictEqual(par.avantSeparation.passes, 9, 'l ancien mélange est gardé tel quel');
+  assert.strictEqual(par.pro.passes, 2, 'le championnat repart propre');
+  assert.strictEqual(j.statsSaison.passes, 11);
+  assert.ok(/avant séparation/.test(RMClub.libellePerimetreStats(ctx.s, 'avantSeparation')));
+});
+
 // ------------------------------------------- COUPE DES ESPOIRS (N8) ------
 //
 // Mesuré avant correction, graine 4242 : le match de Coupe des Espoirs contre

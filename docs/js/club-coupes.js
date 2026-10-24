@@ -446,7 +446,8 @@
     const gagne = rencontre.vainqueurId === c.id;
     RMClub.appliquerMoral(effectif, p.compositionUtilisee, gagne ? 'v' : 'd');
     RMClub.accumulerStatsJoueurs(effectif, p.compositionUtilisee,
-      etat.statsJoueurs && etat.statsJoueurs[lettre], equipe, RMClub.ventilationMatch(etat, lettre));
+      etat.statsJoueurs && etat.statsJoueurs[lettre], RMClub.PREFIXE_STATS_COUPE + p.coupe.cle,
+      RMClub.ventilationMatch(etat, lettre));
 
     const tourNom = p.coupe.tours[rencontre.tour].nom;
     const prolongation = suffixeDepartage(rencontre);

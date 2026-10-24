@@ -380,7 +380,29 @@
     'courses', 'defenseursBattus', 'franchissements', 'offloads', 'passesDecisives', 'plaquagesManques', 'turnoversGagnes', 'coupsDePied', 'pointsAuPied', 'touchesGagnees', 'enAvants', 'cartonsJaunes',
     // BUG-RM-007 : temps de jeu réel et entrées en cours de match.
     'minutes', 'entreesEnJeu'];
-  const LIBELLE_COMPETITION = { pro: 'Championnat', b: 'Équipe B', jeunes: 'Espoirs' };
+  // Périmètres des statistiques individuelles (bugs.md BUG-RM-009) : le
+  // championnat de chaque équipe, chaque coupe à part (« coupe:<clé> ») et les
+  // amicaux. Avant, coupes et amicaux du premier XV tombaient sous
+  // « Championnat ». Une saison commencée avant cette séparation garde ce
+  // mélange sous « avantSeparation », dit comme tel, jamais redistribué.
+  const LIBELLE_COMPETITION = {
+    pro: 'Championnat', b: 'Équipe B', jeunes: 'Espoirs', amical: 'Amicaux',
+    avantSeparation: 'Premier XV, toutes compétitions (avant séparation)',
+  };
+  const PREFIXE_STATS_COUPE = 'coupe:';
+  function perimetreStatsValide(cle) {
+    return !!LIBELLE_COMPETITION[cle] && cle !== 'avantSeparation'
+      || (typeof cle === 'string' && cle.indexOf(PREFIXE_STATS_COUPE) === 0 && cle.length > PREFIXE_STATS_COUPE.length);
+  }
+  // Libellé lisible d'un périmètre, nom réel de la coupe compris.
+  function libellePerimetreStats(saison, cle) {
+    if (LIBELLE_COMPETITION[cle]) return LIBELLE_COMPETITION[cle];
+    if (typeof cle === 'string' && cle.indexOf(PREFIXE_STATS_COUPE) === 0) {
+      const coupe = saison && saison.coupes && saison.coupes[cle.slice(PREFIXE_STATS_COUPE.length)];
+      return coupe && coupe.nom ? coupe.nom : 'Coupe';
+    }
+    return cle;
+  }
 
   function statsVides() {
     const s = {};
@@ -425,7 +447,7 @@
   // d'avant — tout le maillot au titulaire, sans temps de jeu.
   function accumulerStatsJoueurs(effectif, composition, statsJoueursMatch, competition, ventilation) {
     if (!statsJoueursMatch || !composition) return;
-    const cle = LIBELLE_COMPETITION[competition] ? competition : 'pro';
+    const cle = perimetreStatsValide(competition) ? competition : 'pro';
     const parId = {};
     for (const j of effectif) parId[j.id] = j;
     for (const numero of Object.keys(composition)) {
@@ -435,8 +457,15 @@
       // compte que s'il a une ligne, comme avant, ou un temps de jeu connu.
       const s = seg.stats || (ventilation ? {} : null);
       if (!joueur || !s) continue;
-      if (!joueur.statsSaison) joueur.statsSaison = statsVides();
+      if (!joueur.statsSaison) joueur.statsSaison = Object.assign(statsVides(), { perimetres: 2 });
       if (!joueur.statsSaison.parCompetition) joueur.statsSaison.parCompetition = {};
+      // Saison commencée avant la séparation des périmètres : son « pro »
+      // mêle championnat, coupes et amicaux. On le renomme, sans le répartir.
+      if (joueur.statsSaison.perimetres !== 2) {
+        const par = joueur.statsSaison.parCompetition;
+        if (par.pro) { par.avantSeparation = par.pro; delete par.pro; }
+        joueur.statsSaison.perimetres = 2;
+      }
       // Une compétition n'apparaît QUE si le joueur y a réellement joué :
       // pas de ligne « Équipe B — 0 match » fabriquée pour faire joli.
       if (!joueur.statsSaison.parCompetition[cle]) joueur.statsSaison.parCompetition[cle] = statsVides();
@@ -1452,7 +1481,7 @@
     masseSalariale, tresorerie, appliquerFinancesMatch, appliquerFinancesMatchEquipeB,
     avancerSaison, vieillirEffectif, PYRAMIDE_AGES, ageRecrueIntersaison,
     AXES_TACTIQUE, accumulerStats, enregistrerMouvementFinances, accumulerStatsJoueurs, ventilationMatch,
-    classementMarqueurs, carriereJoueur, LIBELLE_COMPETITION, ajouterMessage,
+    classementMarqueurs, carriereJoueur, LIBELLE_COMPETITION, libellePerimetreStats, PREFIXE_STATS_COUPE, ajouterMessage,
     calculerProgression, enregistrerResultatClubJoueur, marquerMessageLu,
     marquerTousMessagesLus, estimerValeurTransfert, GABARIT_EFFECTIF, ARCHETYPE_PAR_POSTE,
     borneStat, borneAdresse, genererAttributsProfondeur, genererPotentiel,

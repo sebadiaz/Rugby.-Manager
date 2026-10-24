@@ -125,7 +125,7 @@ Les sommes individuelles des passes, plaquages et mètres correspondent aux somm
 | BUG-RM-006 | P1 | Corrigé (TODO_AUDIT P2-107) | Compter les tentatives de passe avec les offloads |
 | BUG-RM-007 | P1 | Corrigé (TODO_AUDIT P2-108) | Attribuer les actions à la personne, y compris après remplacement |
 | BUG-RM-008 | P2 | Corrigé (TODO_AUDIT P2-109) | Conserver et afficher la possession chronométrée |
-| BUG-RM-009 | P2 | Confirmé | Séparer championnat, coupes et amicaux dans les statistiques |
+| BUG-RM-009 | P2 | Corrigé (TODO_AUDIT P2-110) | Séparer championnat, coupes et amicaux dans les statistiques |
 | BUG-RM-010 | P1 | Corrigé (TODO_AUDIT P2-107) | Terminer les matchs des scripts de mesure avant de lire le résultat |
 | FUNC-RM-001 | P1 | Livré (TODO_AUDIT P2-106) | Export, import et récupération de carrière accessibles |
 | FUNC-RM-002 | P1 | À construire | Reprendre un match joué après fermeture du navigateur |
@@ -254,7 +254,7 @@ Les sommes individuelles des passes, plaquages et mètres correspondent aux somm
 
 **Acceptation :** état direct → feuille → archive → rechargement : mêmes mesures et définition affichée. Cas sans ruck, possession déséquilibrée, ancien format et taux non calculable, sans valeur fictive.
 
-### [ ] BUG-RM-009 — Les statistiques individuelles et collectives n'ont pas le même périmètre — P2
+### [x] BUG-RM-009 — Les statistiques individuelles et collectives n'ont pas le même périmètre — P2
 
 **Statut : CONFIRMÉ dans les appels de cumul et leurs libellés.** `LIBELLE_COMPETITION.pro` vaut « Championnat » dans `club.js`. Les conséquences de coupe et d'amical dans `club-coupes.js` appellent aussi `accumulerStatsJoueurs` avec `pro` pour le premier XV. Ces performances se mélangent donc sous ce libellé. Le cumul collectif `accumulerStats`, lui, est appelé par le chemin championnat ; comparer les deux classements devient trompeur.
 
