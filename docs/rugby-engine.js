@@ -3050,6 +3050,20 @@
           avancer(j, cibleInterceptX - j.x, porteur.y - j.y, dt, vitesseMs(j) * fRampe);
           continue;
         }
+        // POURSUITE (scramble) : premier rideau battu, les défenseurs DÉJÀ
+        // DÉPASSÉS, à moins de 25 m, ne tiennent plus une ligne qui n'existe
+        // plus — ils sprintent vers le porteur pour le reprendre de dos ou de
+        // côté. Avant, ils montaient à 85 % de leur vitesse vers son point
+        // comme si la ligne tenait : 3 défenseurs à moins de 10 m du perceur
+        // dans la première seconde, 0,4 au bout de 3 à 4 s, et 32 % des
+        // franchissements finissaient à l'essai en moins de 20 s (P2-119).
+        // L'arrière garde sa propre logique de dernier rideau (ci-dessous).
+        if (premierRideauBattu && j.numero !== 15 && j.ruckRecovery <= 0
+          && (j.x - porteur.x) * porteur.sensAttaque < -0.5 && distance(j, porteur) < 25) {
+          const cibleX = porteur.x + porteur.sensAttaque * 2;
+          avancer(j, cibleX - j.x, porteur.y - j.y, dt, vitesseMs(j) * fRampe);
+          continue;
+        }
         // L'ARRIÈRE (n°15) ne monte PAS dans la ligne : il SWEEPE en couverture
         // ~18 m derrière, au centre, pour parer le jeu au pied et les
         // débordements (dernier rideau). Il ne court jamais vers le ballon.
