@@ -622,7 +622,7 @@ soit 57 m/s (1 cas sur 122). Corrections :
 - frappe une fois le ballon posé sur la marque ;
 - la touche rapide préparée pour l'adversaire est annulée.
 
-**Barrières.** Invariants 98/98, 16 suites, calibration 13/14 (courses 285,8).
+**Barrières.** Invariants 98/98, 16 suites, calibration 13/14 (courses 285,8), navigateur 511/0.
 
 ### P2-118. Passes et attaque près de la ligne : mesures, et pick-and-go essayé puis retiré — bugs.md QA-RM-003 / BUG-RM-005
 - **Statut : MESURÉ — essai ÉCARTÉ, aucun changement de jeu conservé**
