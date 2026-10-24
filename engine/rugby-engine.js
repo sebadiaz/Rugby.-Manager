@@ -561,7 +561,12 @@
   const PROF_BASE_MELEE = 2.65;
   // Part de l'angle d'interception ideal reellement prise par le dernier
   // defenseur (n°15) quand le porteur a franchi la ligne (cf. pointInterception).
-  const COUVERTURE_ARRIERE = 0.35;
+  // 0,35 -> 0,5 (P2-113) : 59 % des essais suivaient un franchissement de moins
+  // de 20 s et seules 11 séquences sur 145 partaient des 22 adverses — l'arrière
+  // ne lisait presque pas la course. À 0,5 : 46 % des essais après franchissement,
+  // 15 séquences parties des 22 (20 matchs). Points sur 100 matchs appariés :
+  // 61,9 -> 59,6 (-2,3 ± 3,7, même sens à 0,65). À 1,0 le contre disparaît.
+  const COUVERTURE_ARRIERE = 0.5;
   // Rayon de contact du plaquage (m) : distance a laquelle le contact se resout,
   // et donc aussi celle a laquelle un SECOND defenseur participe au plaquage.
   const RAYON_PLAQUAGE = 2.2;
