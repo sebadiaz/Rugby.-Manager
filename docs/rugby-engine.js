@@ -5035,6 +5035,14 @@
             ({ joueur: relayeur } = joueurLePlusProche(ramasseurs, pt.x, pt.y));
             this.log('PICK_AND_GO', this.possession, `Pick-and-go : le n°${relayeur.numero} ramasse au pied du ruck et charge`,
               { numero: relayeur.numero, distanceLigne: Math.round(distLigne) });
+            // Les GARDES (défenseurs debout tout contre le ruck) attendent
+            // justement ce départ au ras : ils plaquent tout de suite, au lieu
+            // d'être exclus du plaquage comme des joueurs qui se relèvent du
+            // regroupement. Sans eux, le ramasseur partait dans le vide
+            // (mesuré : +6 points par match).
+            for (const d of this.defenseurs()) {
+              if (d.auSol === 0 && distance(d, pt) < 4) d.ruckRecovery = 0;
+            }
           } else if (neuf) { relayeur = neuf; this._neufLibre = true; this.log('RUCK_SORTIE_9', this.possession, `Sortie de ruck par le 9`); }
           // Le 9 au sol (c'est lui qui vient d'être plaqué) : l'avant DEBOUT le
           // plus proche relaie. Le filtre manquait : le plaqué lui-même, encore
