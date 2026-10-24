@@ -3279,6 +3279,8 @@
       ['Jeu au pied', [['coupsDePied', 'Coups de pied'], ['pointsAuPied', 'Points au pied']]],
       ['Conquête', [['touchesGagnees', 'Touches gagnées']]],
       ['Discipline', [['enAvants', 'En-avants'], ['cartonsJaunes', 'Cartons jaunes']]],
+      // BUG-RM-007 : le temps réellement passé sur le terrain.
+      ['Temps de jeu', [['minutes', 'Minutes jouées'], ['entreesEnJeu', 'Entrées en jeu']]],
     ];
     const blocDetailSaison = s && s.matchsJoues
       ? GROUPES_DETAIL.map(([titre, champs]) => {
@@ -5965,8 +5967,9 @@
           // alimente les deux effectifs, chacun ne retenant que les siens.
           const lettreB = f.domicileId === saison.clubJoueur.id ? 'A' : 'B';
           const statsB = etat.statsJoueurs && etat.statsJoueurs[lettreB];
-          RMClub.accumulerStatsJoueurs(saison.clubJoueur.effectif, compositionJoueur, statsB, 'b');
-          RMClub.accumulerStatsJoueurs(saison.clubJoueur.jeunes || [], compositionJoueur, statsB, 'b');
+          const ventilationB = RMClub.ventilationMatch(etat, lettreB);
+          RMClub.accumulerStatsJoueurs(saison.clubJoueur.effectif, compositionJoueur, statsB, 'b', ventilationB);
+          RMClub.accumulerStatsJoueurs(saison.clubJoueur.jeunes || [], compositionJoueur, statsB, 'b', ventilationB);
           // Fatigue et blessures RÉELLES (TODO_AUDIT.md P1-40) : jusqu'ici un
           // match d'Équipe B n'en produisait AUCUNE, donc un joueur pouvait
           // enchaîner toute la saison avec la réserve sans jamais s'user ni
@@ -6059,7 +6062,7 @@
           // est toujours l'équipe A dans un match d'académie (cf. cfgJoueur
           // passé en premier).
           RMClub.accumulerStatsJoueurs(saison.clubJoueur.jeunes || [], compositionEspoirs,
-            etat.statsJoueurs && etat.statsJoueurs.A, 'jeunes');
+            etat.statsJoueurs && etat.statsJoueurs.A, 'jeunes', RMClub.ventilationMatch(etat, 'A'));
           // Résultat ARCHIVÉ (TODO_AUDIT.md P1-19) : jusqu'ici il ne vivait
           // que dans un message de la boîte de réception, donc l'écran
           // Calendrier & classement n'avait rien à montrer pour les espoirs.

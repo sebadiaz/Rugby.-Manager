@@ -168,7 +168,7 @@
     const forme = etat.score.A > etat.score.B ? 'v' : etat.score.A < etat.score.B ? 'd' : 'n';
     RMClub.appliquerMoral(c.effectif, p.compositionUtilisee, forme);
     RMClub.accumulerStatsJoueurs(c.effectif, p.compositionUtilisee,
-      etat.statsJoueurs && etat.statsJoueurs.A, 'pro');
+      etat.statsJoueurs && etat.statsJoueurs.A, 'pro', RMClub.ventilationMatch(etat, 'A'));
 
     // L'adversaire aussi encaisse sa rencontre (cf. P1-29).
     const slotAdv = RMClub.slotAdverse(adversaire, RMClub.effectifAdverseNormalise(adversaire));

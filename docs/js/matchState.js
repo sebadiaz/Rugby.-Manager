@@ -46,6 +46,11 @@
       // Même principe, ventilé PAR JOUEUR (numéro), cf. MatchEngine._statJoueur —
       // consommé par le Mode Club pour le classement des marqueurs/fiche joueur.
       statsJoueurs: rawState.statsJoueurs,
+      // Remplacements (BUG-RM-007) : lignes closes des sortants et entrées
+      // réellement effectuées, pour créditer chaque personne de SES actions.
+      statsJoueursSortis: rawState.statsJoueursSortis || null,
+      remplacementsEffectues: rawState.remplacementsEffectues || null,
+      tempsMatch: rawState.tempsMatch,
       // Objet ballon normalisé { x, y, vx, vy, state, carrierTeam, carrierNumber }
       // exposé directement par le moteur (cf. MatchEngine.getState()).
       ball: rawState.ball,

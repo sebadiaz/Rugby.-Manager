@@ -524,7 +524,7 @@
     const i = Number(b.dataset.index);
     const r = (matchLive.remplacants || [])[i];
     if (!r || matchLive.remplacementsFaits.indexOf(i) !== -1) return;
-    match.remplacerJoueurEnCours(matchLive.equipe, r.numeroSortant, r.joueur);
+    match.remplacerJoueurEnCours(matchLive.equipe, r.numeroSortant, r.joueur, r.joueurId);
     matchLive.remplacementsFaits.push(i);
     ouvrirMiTemps(matchLive.contexte);
   });

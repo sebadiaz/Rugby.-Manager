@@ -580,6 +580,65 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-108. Le remplaçant a ses propres statistiques et son temps de jeu — bugs.md BUG-RM-007
+- **Statut : CORRIGÉ (moteur et mode Club)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (remplacement, `remplacerJoueurEnCours`,
+  `getState`), `docs/js/club.js` (`segmentsMaillot`, `ventilationMatch`, `accumulerStatsJoueurs`), appelants
+  (`club-jour-match.js`, `club-coupes.js`, `club-amicaux.js`, `clubUI.js`), `docs/js/matchState.js`, `docs/js/main.js`,
+  tests invariants et parcours club.
+
+**Constat.** Le moteur indexait les actions par numéro de maillot. Au remplacement, l'entrant prenait le même numéro et
+le club créditait tout le match au titulaire : 12 passes avant, 1 après, 13 au titulaire, rien à l'entrant.
+
+**Correction.**
+- Au remplacement, le moteur clôt la ligne du sortant (`statsJoueursSortis`, avec l'instant de sortie) et l'entrant
+  repart d'une ligne vierge.
+- Chaque remplacement effectué est rendu avec l'identité de l'entrant (`remplacementsEffectues`, `joueurId`), qu'il
+  soit planifié ou décidé à la mi-temps.
+- Côté club, un maillot est découpé en personnes : le titulaire jusqu'à sa sortie, puis chaque entrant.
+- Chacun reçoit ses actions, ses minutes (`minutes`), son match joué, et pour l'entrant une entrée en jeu
+  (`entreesEnJeu`).
+- Fiche joueur : bloc « Temps de jeu » (minutes jouées, entrées en jeu).
+- Un entrant inconnu du club n'est crédité à personne, et surtout pas au titulaire.
+- Les anciennes statistiques (avant correctif) ne sont pas réparties après coup.
+
+**Tests.**
+- Invariants : trois remplacements, dont deux au même numéro. Sorties à l'instant prévu, identités rendues,
+  sortants plus présents égal équipe pour passes, plaquages, essais (hors essais de pénalité) et courses. Sans
+  remplacement, rien ne change.
+- Parcours club : titulaire 12 passes et 40 min, entrant 1 passe, 40 min et 1 entrée ; de bout en bout, un vrai match
+  avec deux remplacements fait le total de l'équipe et 15 x 80 minutes.
+- Navigateur 511/0 ; bloc « Temps de jeu » vérifié sur la fiche en 1400x1000 et 390x844.
+
+### P2-107. Offloads comptés comme passes tentées ; mesures lues au coup de sifflet — bugs.md BUG-RM-006/010
+- **Statut : CORRIGÉ (statistique et outils de mesure)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (offload, `jouerJusquAuSifflet`),
+  `server/test-calibration-moteur.js`, `server/simulate*.js`, `server/banc-ab.js`, `server/test-equilibre-matchs.js`,
+  `server/test-scores-abstraits.js`, `server/test-stats-matchs.js`, `server/test-invariants.js`.
+
+**Constat.**
+- Un offload comptait une passe réussie sans tentative : 266 succès pour 263 tentatives sur une équipe.
+- Les scripts s'arrêtaient à 80:00, parfois pendant une transformation (graine 4 : 31-18 lu, 33-18 au sifflet).
+
+**Correction.**
+- L'offload incrémente aussi `passesTentees`. Le jeu est inchangé : même score et mêmes actions, seule la statistique
+  change.
+- `MatchEngine.jouerJusquAuSifflet(dt)` joue jusqu'à la phase TERMINE. Si le match ne finit pas dans les 10 minutes
+  après le temps réglementaire, il lève une erreur.
+- Les scripts qui lisent le score ou les statistiques finales l'utilisent. Les boucles des invariants qui échantillonnent
+  en cours de match restent telles quelles.
+
+**Mesures.** La calibration recalculée au coup de sifflet reste à 14/14 (20 matchs) : 7,3 essais, 61,5 points,
+395 passes, 198 rucks, 16,2 mêlées, 25,2 touches. Les anciennes mesures (P2-94 et suivantes) restent valables pour leur
+date : l'écart porte sur au plus une transformation par match.
+
+**Tests.**
+- Invariants : passes réussies ≤ tentées pour chaque équipe sur 6 matchs ; les tentatives manquées ont une cause.
+- Coup de sifflet : sur 20 matchs, au moins un score lu à durée fixe diffère ; garde bornée vérifiée.
+
+**Constat annexe.** `test-scores-abstraits` S12 (moteur contre barème abstrait) échouait déjà avant ce correctif
+(7,2 essais contre 5,6-6,0) : c'est l'excès de points connu du moteur, pas une régression.
+
 ### P2-106. Exporter, importer et récupérer sa carrière depuis l'accueil — bugs.md FUNC-RM-001
 - **Statut : AJOUTÉ (mode Club)**
 - Fichiers concernés : `docs/js/club-sauvegarde.js` (`sauvegardeBrute`, `nomFichierCarriere`, `analyserImport`,

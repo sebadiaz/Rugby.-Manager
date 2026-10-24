@@ -3586,6 +3586,57 @@ test('page joueur : les statistiques sont ventilées PAR COMPÉTITION', () => {
   assert.strictEqual(j.statsSaison.matchsJoues, 3);
 });
 
+test('page joueur : le remplaçant reçoit SES actions et son temps de jeu, le titulaire les siennes (BUG-RM-007)', () => {
+  const s = saisonPourAvance(963);
+  const [titulaire, entrant] = s.clubJoueur.effectif;
+  const ventilation = {
+    sortis: [{ numero: 10, sortie: 2400, stats: { passes: 12, tacklesMade: 5 } }],
+    remplacements: [{ equipe: 'A', numero: 10, instant: 2400, joueurId: entrant.id }],
+    tempsFinal: 4810,
+  };
+  RMClub.accumulerStatsJoueurs(s.clubJoueur.effectif, { 10: titulaire.id }, { 10: { passes: 1, tacklesMade: 3 } }, 'pro', ventilation);
+  const t = titulaire.statsSaison, e = entrant.statsSaison;
+  assert.strictEqual(t.passes, 12, 'le titulaire garde ses 12 passes, pas 13');
+  assert.strictEqual(e.passes, 1, 'l\'entrant a sa passe');
+  assert.strictEqual(t.tacklesMade + e.tacklesMade, 8, 'rien de perdu, rien de doublé');
+  assert.strictEqual(t.minutes, 40);
+  assert.strictEqual(e.minutes, 40);
+  assert.strictEqual(t.entreesEnJeu, 0);
+  assert.strictEqual(e.entreesEnJeu, 1);
+  assert.strictEqual(e.matchsJoues, 1, 'une entrée en jeu est un match joué');
+  // Remplaçant inconnu du club (adversaire, ancien chemin) : rien n'est
+  // crédité à tort au titulaire.
+  const s2 = saisonPourAvance(964);
+  const t2 = s2.clubJoueur.effectif[0];
+  RMClub.accumulerStatsJoueurs(s2.clubJoueur.effectif, { 10: t2.id }, { 10: { passes: 1 } }, 'pro',
+    { sortis: [{ numero: 10, sortie: 2400, stats: { passes: 12 } }], remplacements: [{ equipe: 'A', numero: 10, instant: 2400, joueurId: null }], tempsFinal: 4800 });
+  assert.strictEqual(t2.statsSaison.passes, 12);
+});
+
+test('page joueur : de bout en bout, un vrai match avec remplacements crédite chaque personne (BUG-RM-007)', () => {
+  const s = saisonPourAvance(965);
+  const eff = s.clubJoueur.effectif;
+  const compo = {};
+  for (let n = 1; n <= 15; n++) compo[n] = eff[n - 1].id;
+  const entrants = { 9: eff[15], 2: eff[16] };
+  const remplacements = [
+    { equipe: 'A', numero: 9, minute: 45, joueurId: entrants[9].id, joueur: { poste: 'Demi de mêlée' } },
+    { equipe: 'A', numero: 2, minute: 55, joueurId: entrants[2].id, joueur: { poste: 'Talonneur' } },
+  ];
+  const m = new global.window.RugbyEngine.MatchEngine(31, 4800, { remplacements });
+  m.jouerJusquAuSifflet(0.2);
+  const etat = global.window.RMMatchState
+    ? global.window.RMMatchState.normalizeMatchState(m.getState()) : m.getState();
+  RMClub.accumulerStatsJoueurs(eff, compo, etat.statsJoueurs.A, 'pro', RMClub.ventilationMatch(etat, 'A'));
+  let passes = 0, minutes = 0;
+  for (const j of eff) if (j.statsSaison) { passes += j.statsSaison.passes; minutes += j.statsSaison.minutes; }
+  assert.strictEqual(passes, etat.stats.A.passes, 'les passes des personnes font celles de l\'équipe');
+  assert.ok(Math.abs(minutes - 15 * 80) <= 3, `15 maillots x 80 min = ${minutes} min`);
+  assert.ok(entrants[9].statsSaison && entrants[9].statsSaison.entreesEnJeu === 1, 'le 9 entrant a joué');
+  assert.ok(Math.abs(entrants[9].statsSaison.minutes - 35) <= 1, `${entrants[9].statsSaison.minutes} min pour le 9 entrant`);
+  assert.ok(Math.abs(eff[8].statsSaison.minutes - 45) <= 1, 'le 9 titulaire a joué 45 min');
+});
+
 test('page joueur : une compétition non jouée n\'apparaît pas (aucune ligne fabriquée)', () => {
   const s = saisonPourAvance(961);
   const j = s.clubJoueur.effectif[0];

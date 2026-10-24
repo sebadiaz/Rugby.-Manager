@@ -1040,7 +1040,13 @@
       // de jeu simulées, même unité que tempsMatch) et marque chaque entrée
       // "non appliquée" — cf. tick(), qui les applique une seule fois.
       this._remplacements = (config && Array.isArray(config.remplacements) ? config.remplacements : [])
-        .map((r) => ({ equipe: r.equipe, numero: r.numero, joueur: r.joueur, instant: r.minute * 60, applique: false }));
+        .map((r) => ({ equipe: r.equipe, numero: r.numero, joueur: r.joueur, instant: r.minute * 60, applique: false,
+          joueurId: r.joueurId != null ? r.joueurId : null }));
+      // Statistiques individuelles d'un joueur SORTI (bugs.md BUG-RM-007) : le
+      // maillot reste, la personne change. Ses actions sont closes au moment
+      // du remplacement et l'entrant repart d'une ligne vierge.
+      this.statsJoueursSortis = { A: [], B: [] };
+      this.remplacementsEffectues = [];
       this.score = { A: 0, B: 0 };
       this.events = [];
       this.chronologie = [];
@@ -7277,6 +7283,12 @@
           const equipe = r.equipe === 'A' ? this.equipeA : this.equipeB;
           const sortant = equipe && equipe[r.numero - 1];
           if (!sortant) continue;
+          // Les actions du sortant lui restent : sa ligne est close ici, et
+          // l'entrant commencera la sienne (cf. _statJoueur).
+          const lignes = this.statsJoueurs[r.equipe];
+          this.statsJoueursSortis[r.equipe].push({ numero: r.numero, sortie: this.tempsMatch, stats: lignes[r.numero] || null });
+          delete lignes[r.numero];
+          this.remplacementsEffectues.push({ equipe: r.equipe, numero: r.numero, instant: this.tempsMatch, joueurId: r.joueurId });
           const c = r.joueur || {};
           Object.assign(sortant, {
             label: c.poste || sortant.label,
@@ -7548,12 +7560,14 @@
     // temps courant, donc le prochain tick l'applique par le chemin déjà
     // éprouvé (mise à jour du joueur vivant ET de la config source, pour que
     // le remplaçant survive au prochain coup d'envoi).
-    remplacerJoueurEnCours(equipe, numero, joueur) {
+    // `joueurId` (optionnel) : l'identité de l'entrant côté club, rendue avec
+    // le remplacement effectué pour lui créditer SES actions (BUG-RM-007).
+    remplacerJoueurEnCours(equipe, numero, joueur, joueurId) {
       if (equipe !== 'A' && equipe !== 'B') return false;
       if (!(numero >= 1 && numero <= 15)) return false;
       this._remplacements.push({
         equipe, numero: Math.round(numero), joueur: joueur || {},
-        instant: this.tempsMatch, applique: false,
+        instant: this.tempsMatch, applique: false, joueurId: joueurId != null ? joueurId : null,
       });
       return true;
     }
@@ -7706,6 +7720,13 @@
           A: Object.fromEntries(Object.entries(this.statsJoueurs.A).map(([n, s]) => [n, { ...s }])),
           B: Object.fromEntries(Object.entries(this.statsJoueurs.B).map(([n, s]) => [n, { ...s }])),
         },
+        // Lignes closes des joueurs remplacés, dans l'ordre des sorties, et les
+        // remplacements réellement effectués (BUG-RM-007).
+        statsJoueursSortis: {
+          A: this.statsJoueursSortis.A.map((x) => ({ numero: x.numero, sortie: x.sortie, stats: x.stats ? { ...x.stats } : null })),
+          B: this.statsJoueursSortis.B.map((x) => ({ numero: x.numero, sortie: x.sortie, stats: x.stats ? { ...x.stats } : null })),
+        },
+        remplacementsEffectues: this.remplacementsEffectues.map((r) => ({ ...r })),
         tempsJeuEffectif: this.tempsJeuEffectif,
         // % de possession réel, calculé à partir du temps de jeu effectif
         // accumulé par équipe (this.tempsPossession), pas un chiffre fixé :

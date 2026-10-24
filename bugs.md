@@ -122,11 +122,11 @@ Les sommes individuelles des passes, plaquages et mètres correspondent aux somm
 | BUG-RM-003 | P1 | Corrigé (TODO_AUDIT P2-105) | Conserver les secours lors d'incidents successifs |
 | BUG-RM-004 | P2 | Confirmé | Distinguer les clubs générés portant exactement le même nom |
 | BUG-RM-005 | P2 | Écart mesuré | Réduire les passes excédentaires sans casser l'attaque |
-| BUG-RM-006 | P1 | Confirmé | Compter les tentatives de passe avec les offloads |
-| BUG-RM-007 | P1 | Confirmé | Attribuer les actions à la personne, y compris après remplacement |
+| BUG-RM-006 | P1 | Corrigé (TODO_AUDIT P2-107) | Compter les tentatives de passe avec les offloads |
+| BUG-RM-007 | P1 | Corrigé (TODO_AUDIT P2-108) | Attribuer les actions à la personne, y compris après remplacement |
 | BUG-RM-008 | P2 | Confirmé | Conserver et afficher la possession chronométrée |
 | BUG-RM-009 | P2 | Confirmé | Séparer championnat, coupes et amicaux dans les statistiques |
-| BUG-RM-010 | P1 | Confirmé | Terminer les matchs des scripts de mesure avant de lire le résultat |
+| BUG-RM-010 | P1 | Corrigé (TODO_AUDIT P2-107) | Terminer les matchs des scripts de mesure avant de lire le résultat |
 | FUNC-RM-001 | P1 | Livré (TODO_AUDIT P2-106) | Export, import et récupération de carrière accessibles |
 | FUNC-RM-002 | P1 | À construire | Reprendre un match joué après fermeture du navigateur |
 | FUNC-RM-003 | P2 | À compléter | Relecture fidèle des décisions du match interactif |
@@ -224,7 +224,7 @@ Les sommes individuelles des passes, plaquages et mètres correspondent aux somm
 
 **Acceptation :** comparaison appariée avant/après sur mêmes graines/configurations, distribution par match et contrôle visuel. Conserver essais, possession, rucks, jeu au pied, contestations et différences entre postes. Si la cible doit évoluer, la justifier avec des références de niveau/format adaptées, sans changer le seuil pour masquer l'écart.
 
-### [ ] BUG-RM-006 — Des passes réussies dépassent les passes tentées — P1
+### [x] BUG-RM-006 — Des passes réussies dépassent les passes tentées — P1
 
 **Statut : CONFIRMÉ par lecture et mesure.** Dans le Club équilibré : 475,80 succès contre 472,64 tentatives en moyenne ; 33/50 lignes d'équipe impossibles. Exemple graine 1, équipe B : 266 succès / 263 tentatives.
 
@@ -234,7 +234,7 @@ Les sommes individuelles des passes, plaquages et mètres correspondent aux somm
 
 **Acceptation :** scénarios de passe/offload réussi, raté et intercepté ; succès ≤ tentatives, individuellement et collectivement, accord avec les événements et conservation après archive. Vérifier le cas de la passe en cours à la fin du match.
 
-### [ ] BUG-RM-007 — Les actions d'un remplaçant enrichissent la fiche du titulaire — P1
+### [x] BUG-RM-007 — Les actions d'un remplaçant enrichissent la fiche du titulaire — P1
 
 **Statut : CONFIRMÉ par reproduction isolée et reconnu dans le commentaire du chemin de cumul.** `_statJoueur` indexe les cinq compteurs par équipe et numéro. Un remplacement conserve ce numéro ; `club-jour-match.js` utilise ensuite `compositionUtilisee` pour attribuer le total au titulaire d'origine. Dans une reproduction, 12 passes avant le changement puis une après donnent 13 au titulaire et aucune ligne au remplaçant.
 
@@ -262,7 +262,7 @@ Les sommes individuelles des passes, plaquages et mètres correspondent aux somm
 
 **Acceptation :** séquence championnat → coupe → amical : le filtre championnat exclut les deux autres, le total toutes compétitions se réconcilie avec les feuilles. Vérifier les trois équipes et les cumuls collectifs/individuels. Pour l'historique sans information suffisante, afficher un périmètre inconnu plutôt que recatégoriser au hasard.
 
-### [ ] BUG-RM-010 — La calibration peut lire un score avant la fin effective du match — P1
+### [x] BUG-RM-010 — La calibration peut lire un score avant la fin effective du match — P1
 
 **Statut : CONFIRMÉ avec la boucle exacte des scripts.** `for (let t = 0; t < 4800; t += 0.2) tick(0.2)` peut s'arrêter pendant une transformation. Configuration moteur par défaut : graine 4, 31–18 en `TRANSFORMATION` à l'arrêt, puis **33–18** à `TERMINE` ; graine 18, 9–48 puis **9–50**. Dans l'audit complémentaire, 13/120 instantanés à 80 minutes diffèrent du score final. Cela désigne l'achèvement d'un tir déjà engagé, pas une prolongation de coupe.
 

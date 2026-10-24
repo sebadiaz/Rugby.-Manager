@@ -377,7 +377,9 @@
   // P2-103 : toutes les actions que le moteur attribue à un joueur (cf.
   // _statJoueur). Une ancienne sauvegarde, sans ces champs, repart de 0.
   const CHAMPS_STATS_JOUEUR = ['matchsJoues', 'essais', 'passes', 'tacklesMade', 'tacklesAttempted', 'metresGagnes',
-    'courses', 'defenseursBattus', 'franchissements', 'offloads', 'passesDecisives', 'plaquagesManques', 'turnoversGagnes', 'coupsDePied', 'pointsAuPied', 'touchesGagnees', 'enAvants', 'cartonsJaunes'];
+    'courses', 'defenseursBattus', 'franchissements', 'offloads', 'passesDecisives', 'plaquagesManques', 'turnoversGagnes', 'coupsDePied', 'pointsAuPied', 'touchesGagnees', 'enAvants', 'cartonsJaunes',
+    // BUG-RM-007 : temps de jeu réel et entrées en cours de match.
+    'minutes', 'entreesEnJeu'];
   const LIBELLE_COMPETITION = { pro: 'Championnat', b: 'Équipe B', jeunes: 'Espoirs' };
 
   function statsVides() {
@@ -390,14 +392,48 @@
   // les appels existants) : les statistiques sont VENTILÉES par compétition
   // (TODO_AUDIT.md P1-30) en plus du total. Le total reste exactement la
   // somme des compétitions, jamais un chiffre calculé à part.
-  function accumulerStatsJoueurs(effectif, composition, statsJoueursMatch, competition) {
+  // Découpe un maillot en PERSONNES (bugs.md BUG-RM-007) : le titulaire
+  // jusqu'à sa sortie, puis chaque entrant jusqu'à la sienne ou au sifflet.
+  // `match` = { sortis, remplacements, tempsFinal } tirés de l'état du moteur
+  // (cf. ventilationMatch) ; absent, le maillot n'a qu'un seul occupant.
+  function segmentsMaillot(numero, titulaireId, statsFinales, match) {
+    const segments = [];
+    let courant = { joueurId: titulaireId, debut: 0, entre: false };
+    if (match) {
+      const sorties = (match.sortis || []).filter((x) => String(x.numero) === String(numero));
+      const entrees = (match.remplacements || []).filter((x) => String(x.numero) === String(numero));
+      for (let i = 0; i < sorties.length; i++) {
+        segments.push(Object.assign(courant, { stats: sorties[i].stats, fin: sorties[i].sortie }));
+        const entree = entrees[i] || {};
+        courant = { joueurId: entree.joueurId != null ? entree.joueurId : null, debut: sorties[i].sortie, entre: true };
+      }
+    }
+    segments.push(Object.assign(courant, { stats: statsFinales || null, fin: match ? match.tempsFinal : null }));
+    return segments;
+  }
+  // Ce qu'il faut de l'état final du moteur pour ventiler une équipe.
+  function ventilationMatch(etat, lettre) {
+    if (!etat || !etat.statsJoueursSortis) return null;
+    return {
+      sortis: etat.statsJoueursSortis[lettre] || [],
+      remplacements: (etat.remplacementsEffectues || []).filter((r) => r.equipe === lettre),
+      tempsFinal: Number.isFinite(etat.tempsMatch) ? etat.tempsMatch : (etat.clock && etat.clock.time),
+    };
+  }
+
+  // `ventilation` (optionnel, cf. ventilationMatch) : sans elle, comportement
+  // d'avant — tout le maillot au titulaire, sans temps de jeu.
+  function accumulerStatsJoueurs(effectif, composition, statsJoueursMatch, competition, ventilation) {
     if (!statsJoueursMatch || !composition) return;
     const cle = LIBELLE_COMPETITION[competition] ? competition : 'pro';
     const parId = {};
     for (const j of effectif) parId[j.id] = j;
     for (const numero of Object.keys(composition)) {
-      const joueur = parId[composition[numero]];
-      const s = statsJoueursMatch[numero];
+     for (const seg of segmentsMaillot(numero, composition[numero], statsJoueursMatch[numero], ventilation)) {
+      const joueur = parId[seg.joueurId];
+      // Un titulaire sans ligne (aucune action) a quand même joué : il ne
+      // compte que s'il a une ligne, comme avant, ou un temps de jeu connu.
+      const s = seg.stats || (ventilation ? {} : null);
       if (!joueur || !s) continue;
       if (!joueur.statsSaison) joueur.statsSaison = statsVides();
       if (!joueur.statsSaison.parCompetition) joueur.statsSaison.parCompetition = {};
@@ -407,10 +443,13 @@
       const detail = joueur.statsSaison.parCompetition[cle];
       const apports = { matchsJoues: 1 };
       for (const champ of CHAMPS_STATS_JOUEUR) if (champ !== 'matchsJoues') apports[champ] = s[champ] || 0;
+      apports.minutes = seg.fin != null ? Math.max(0, Math.round((seg.fin - seg.debut) / 60)) : 0;
+      apports.entreesEnJeu = seg.entre ? 1 : 0;
       for (const champ of CHAMPS_STATS_JOUEUR) {
         joueur.statsSaison[champ] = (joueur.statsSaison[champ] || 0) + apports[champ];
         detail[champ] = (detail[champ] || 0) + apports[champ];
       }
+     }
     }
   }
 
@@ -1412,7 +1451,7 @@
     resynchroniserCompteurs, VERSION_SAUVEGARDE, POSTE_REQUIS, TAILLE_EFFECTIF_CIBLE,
     masseSalariale, tresorerie, appliquerFinancesMatch, appliquerFinancesMatchEquipeB,
     avancerSaison, vieillirEffectif, PYRAMIDE_AGES, ageRecrueIntersaison,
-    AXES_TACTIQUE, accumulerStats, enregistrerMouvementFinances, accumulerStatsJoueurs,
+    AXES_TACTIQUE, accumulerStats, enregistrerMouvementFinances, accumulerStatsJoueurs, ventilationMatch,
     classementMarqueurs, carriereJoueur, LIBELLE_COMPETITION, ajouterMessage,
     calculerProgression, enregistrerResultatClubJoueur, marquerMessageLu,
     marquerTousMessagesLus, estimerValeurTransfert, GABARIT_EFFECTIF, ARCHETYPE_PAR_POSTE,

@@ -3527,6 +3527,46 @@ test('jouerJusquAuSifflet : le match se lit au coup de sifflet, tir engagé comp
   assert.throws(() => bloque.jouerJusquAuSifflet(0.2), /non termin/);
 });
 
+// --- bugs.md BUG-RM-007 : le remplaçant a SES statistiques -----------------
+// Le moteur indexait les actions par numéro de maillot : tout le match allait
+// au titulaire, l'entrant n'avait aucune ligne.
+test('remplacement : les actions du sortant sont closes à sa sortie, l entrant repart de zéro (BUG-RM-007)', () => {
+  let lignesEntrants = 0;
+  for (let seed = 1; seed <= 4; seed++) {
+    const remplacements = [
+      { equipe: 'A', numero: 10, minute: 40, joueurId: 'entrant-10', joueur: { poste: 'Demi d ouverture' } },
+      { equipe: 'B', numero: 3, minute: 50, joueurId: 'entrant-3', joueur: { poste: 'Pilier' } },
+      { equipe: 'B', numero: 3, minute: 70, joueurId: 'entrant-3bis', joueur: { poste: 'Pilier' } },
+    ];
+    const m = new MatchEngine(seed, 4800, { remplacements });
+    m.jouerJusquAuSifflet(0.2);
+    const st = m.getState();
+    assert.deepStrictEqual(st.remplacementsEffectues.map((r) => [r.equipe, r.numero, r.joueurId]),
+      [['A', 10, 'entrant-10'], ['B', 3, 'entrant-3'], ['B', 3, 'entrant-3bis']]);
+    assert.deepStrictEqual(st.statsJoueursSortis.B.map((x) => x.numero), [3, 3], 'deux sorties au n°3');
+    const sortie10 = st.statsJoueursSortis.A[0];
+    assert.ok(Math.abs(sortie10.sortie - 2400) < 1, `sortie du 10 à ${sortie10.sortie}`);
+    assert.ok(sortie10.stats && sortie10.stats.passes > 0, 'le 10 titulaire a joué 40 minutes : il a des passes');
+    if (st.statsJoueurs.A[10]) lignesEntrants++;
+    // Rien ne se perd ni ne se compte deux fois : sortants + présents = équipe.
+    for (const e of ['A', 'B']) {
+      for (const [kj, ke] of [['passes', 'passes'], ['tacklesMade', 'tacklesMade'], ['essais', 'essais'], ['courses', 'carries']]) {
+        let somme = 0;
+        for (const ligne of Object.values(st.statsJoueurs[e])) somme += ligne[kj] || 0;
+        for (const x of st.statsJoueursSortis[e]) somme += (x.stats && x.stats[kj]) || 0;
+        // Un essai de pénalité n'a pas de marqueur.
+        const attendu = st.stats[e][ke] - (kj === 'essais' ? (st.stats[e].essaisPenalite || 0) : 0);
+        assert.strictEqual(somme, attendu, `graine ${seed}, équipe ${e}, ${kj} : ${somme} pour ${attendu}`);
+      }
+    }
+  }
+  assert.ok(lignesEntrants >= 3, `l'entrant au n°10 doit avoir sa propre ligne (${lignesEntrants}/4)`);
+  // Sans remplacement : rien ne change.
+  const sans = new MatchEngine(1, 600).jouerJusquAuSifflet(0.2).getState();
+  assert.deepStrictEqual(sans.statsJoueursSortis, { A: [], B: [] });
+  assert.deepStrictEqual(sans.remplacementsEffectues, []);
+});
+
 console.log(`\n${nbTests} test(s) exécuté(s).`);
 if (process.exitCode) {
   console.error('ECHEC : au moins un invariant violé.');

@@ -390,14 +390,11 @@
     RMClub.enregistrerMouvementFinances(c, f.journee, mouvement);
     RMClub.accumulerStats(c, etat.stats[lettre]);
 
-    // Limitation connue : le moteur indexe ses statistiques par NUMÉRO de
-    // maillot, pas par identité (cf. engine/rugby-engine.js, _statJoueur) —
-    // tout le match reste attribué au titulaire d'origine. D'où
-    // `compositionUtilisee` ici, et non la composition avec remplaçants :
-    // ajouter les entrées de banc n'aurait aucun effet mais laisserait croire
-    // que les statistiques sont bien réparties.
+    // Le moteur clôt la ligne d'un joueur à sa sortie (BUG-RM-007) : partant
+    // de la composition de départ, chaque remplaçant reçoit SES actions et
+    // son temps de jeu, le titulaire les siennes.
     RMClub.accumulerStatsJoueurs(c.effectif, p.compositionUtilisee,
-      etat.statsJoueurs && etat.statsJoueurs[lettre], 'pro');
+      etat.statsJoueurs && etat.statsJoueurs[lettre], 'pro', RMClub.ventilationMatch(etat, lettre));
 
     // Effets réels du personnel : le médecin et l'entraîneur accélèrent, le
     // préparateur physique réduit la fatigue.
