@@ -124,7 +124,7 @@ Les sommes individuelles des passes, plaquages et mètres correspondent aux somm
 | BUG-RM-005 | P2 | Écart mesuré | Réduire les passes excédentaires sans casser l'attaque |
 | BUG-RM-006 | P1 | Corrigé (TODO_AUDIT P2-107) | Compter les tentatives de passe avec les offloads |
 | BUG-RM-007 | P1 | Corrigé (TODO_AUDIT P2-108) | Attribuer les actions à la personne, y compris après remplacement |
-| BUG-RM-008 | P2 | Confirmé | Conserver et afficher la possession chronométrée |
+| BUG-RM-008 | P2 | Corrigé (TODO_AUDIT P2-109) | Conserver et afficher la possession chronométrée |
 | BUG-RM-009 | P2 | Confirmé | Séparer championnat, coupes et amicaux dans les statistiques |
 | BUG-RM-010 | P1 | Corrigé (TODO_AUDIT P2-107) | Terminer les matchs des scripts de mesure avant de lire le résultat |
 | FUNC-RM-001 | P1 | Livré (TODO_AUDIT P2-106) | Export, import et récupération de carrière accessibles |
@@ -244,7 +244,7 @@ Les sommes individuelles des passes, plaquages et mètres correspondent aux somm
 
 **Acceptation :** changement manuel et programmé, blessure, carton, changement de poste et reprise de sauvegarde. Le remplaçant reçoit seulement ses actions et son temps ; la somme rejoint l'équipe hors exceptions documentées. Les anciennes statistiques impossibles à répartir restent marquées comme historiques non ventilées : aucune répartition rétroactive inventée.
 
-### [ ] BUG-RM-008 — Possession estimée et données perdues dans les archives — P2
+### [x] BUG-RM-008 — Possession estimée et données perdues dans les archives — P2
 
 **Statut : CONFIRMÉ par le code et une entrée contrôlée.** `club-feuille-de-match.js` affiche un ratio de rucks et affirme que le moteur ne chronomètre pas la possession ; il expose pourtant `tempsPossession`, `possessionPct` et `tempsJeuEffectif`. Une entrée contrôlée de 40/60 au chrono et 80/20 en rucks affiche 80/20. Dans l'échantillon équilibré réel, l'écart absolu moyen n'est que de 1,56 point, maximum 4 points : ne pas présenter le cas contrôlé comme un résultat fréquent.
 

@@ -116,15 +116,29 @@
         };
       });
 
-    // Possession : le moteur ne la compte pas comme une statistique, mais la
-    // part de rucks joués la représente honnêtement (chaque ruck est une
-    // phase de conservation). On le DIT plutôt que de laisser croire à une
-    // mesure de temps de possession réelle.
+    // Possession (bugs.md BUG-RM-008) : le moteur la CHRONOMÈTRE (part du
+    // temps de jeu effectif où chaque équipe a le ballon, `possessionPct`).
+    // C'est elle qu'on affiche. Seule une archive d'avant ce correctif, qui
+    // ne l'a pas gardée, retombe sur la part des rucks — libellée comme une
+    // estimation, jamais à la place d'une mesure connue.
+    const pct = etat && etat.possessionPct;
+    const jeuEffectif = etat && Number.isFinite(etat.tempsJeuEffectif) ? etat.tempsJeuEffectif : null;
     const rucksTotal = nombre(statsA.rucks) + nombre(statsB.rucks);
-    const possession = rucksTotal > 0
-      ? { a: Math.round((nombre(statsA.rucks) / rucksTotal) * 100),
-          b: Math.round((nombre(statsB.rucks) / rucksTotal) * 100),
-          source: 'part des rucks joués' }
+    let possession = null;
+    if (pct && Number.isFinite(pct.A) && Number.isFinite(pct.B)) {
+      possession = { a: pct.A, b: pct.B, mesuree: true, libelle: 'Possession',
+        aide: 'Part du temps de jeu effectif où chaque équipe avait le ballon' +
+          (jeuEffectif ? ` (${Math.round(jeuEffectif / 60)} min de jeu effectif)` : '') };
+    } else if (rucksTotal > 0) {
+      possession = { a: Math.round((nombre(statsA.rucks) / rucksTotal) * 100),
+        b: Math.round((nombre(statsB.rucks) / rucksTotal) * 100), mesuree: false,
+        libelle: 'Possession (est.)',
+        aide: 'Estimée par la part des rucks joués : cette ancienne feuille n\'a pas gardé la possession chronométrée' };
+    }
+    const occ = etat && etat.occupationPct;
+    const occupation = occ && Number.isFinite(occ.A) && Number.isFinite(occ.B)
+      ? { a: occ.A, b: occ.B, libelle: 'Occupation',
+          aide: 'Part du temps de jeu effectif passée dans le camp adverse' }
       : null;
 
     return {
@@ -134,6 +148,7 @@
       marqueurs,
       statistiques,
       possession,
+      occupation,
       // Les faits vraiment marquants, pour un résumé court.
       tempsForts: chronologie.filter((l) => l.points > 0 || l.type === 'CARTON_JAUNE'),
     };
@@ -179,11 +194,12 @@
       `<span class="libelleStat">${echapperTexte(s.libelle)}</span>` +
       `<span class="valB${s.avantage === 'B' ? ' fort' : ''}">${s.b}</span></div>`).join('');
 
-    const possession = f.possession
-      ? `<div class="ligneStatMatch"><span class="valA">${f.possession.a} %</span>` +
-        `<span class="libelleStat" title="Estimée par la ${echapperTexte(f.possession.source)} — le moteur ne chronomètre pas la possession">Possession (est.)</span>` +
-        `<span class="valB">${f.possession.b} %</span></div>`
+    const lignePct = (x) => x
+      ? `<div class="ligneStatMatch"><span class="valA">${x.a} %</span>` +
+        `<span class="libelleStat" title="${echapperTexte(x.aide)}">${echapperTexte(x.libelle)}</span>` +
+        `<span class="valB">${x.b} %</span></div>`
       : '';
+    const possession = lignePct(f.possession) + lignePct(f.occupation);
 
     return `<h3 class="titreFeuille">Feuille de match</h3>` +
       (marqueurs ? `<h4 class="sousTitreFeuille">Essais marqués (minutes)</h4>${marqueurs}` : '') +

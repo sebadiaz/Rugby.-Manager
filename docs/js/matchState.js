@@ -60,6 +60,8 @@
       // est une fenêtre glissante de 30 entrées, dimensionnée pour le fil
       // temps réel, et ne peut donc pas servir de compte rendu.
       chronologie: rawState.chronologie || [],
+      // Base de la possession chronométrée, affichée sur la feuille (BUG-RM-008).
+      tempsJeuEffectif: rawState.tempsJeuEffectif,
       ruck: rawState.ruck,
       maul: rawState.maul,
       melee: rawState.melee,

@@ -167,4 +167,46 @@ test('E9 — le fil live des 30 derniers événements continue de marcher', () =
     'sa forme ne doit pas changer (l\'affichage temps réel en dépend)');
 });
 
+// --- bugs.md BUG-RM-008 : la possession affichée est celle du chrono --------
+test('E10 — la feuille affiche la possession CHRONOMÉTRÉE, pas une estimation par les rucks (BUG-RM-008)', () => {
+  // Entrée contrôlée : 40/60 au chrono, 80/20 en rucks.
+  const etat = Object.assign({}, ETAT, {
+    possessionPct: { A: 40, B: 60 }, occupationPct: { A: 55, B: 45 }, tempsJeuEffectif: 2100,
+    stats: { A: Object.assign({}, ETAT.stats.A, { rucks: 80 }), B: Object.assign({}, ETAT.stats.B, { rucks: 20 }) },
+  });
+  const f = RMClub.feuilleDeMatch(etat, { nomA: 'A', nomB: 'B' });
+  assert.deepStrictEqual([f.possession.a, f.possession.b, f.possession.mesuree], [40, 60, true]);
+  assert.deepStrictEqual([f.occupation.a, f.occupation.b], [55, 45]);
+  const html = RMClub.htmlFeuilleDeMatch(f);
+  assert.ok(/>Possession</.test(html) && !/Possession \(est\.\)/.test(html), 'mesure : pas de mention « estimée »');
+  assert.ok(/35 min de jeu effectif/.test(html), 'la définition est affichée');
+  assert.ok(/>Occupation</.test(html));
+  // Le vrai match : la feuille reprend exactement la mesure du moteur.
+  const vrai = RMClub.feuilleDeMatch(ETAT, {});
+  assert.deepStrictEqual([vrai.possession.a, vrai.possession.b], [ETAT.possessionPct.A, ETAT.possessionPct.B]);
+});
+
+test('E11 — archive → rechargement : mêmes mesures ; une ancienne archive reste une estimation libellée (BUG-RM-008)', () => {
+  const s = { numero: 1 };
+  RMClub.archiverFeuilleDeMatch(s, { cle: 'm#1', etat: ETAT, nomA: 'A', nomB: 'B' });
+  const recharge = JSON.parse(JSON.stringify(RMClub.feuilleArchivee(s, 'm#1')));
+  assert.strictEqual(recharge.format, 2);
+  const direct = RMClub.feuilleDeMatch(ETAT, {}), archivee = RMClub.feuilleDeMatch(recharge, {});
+  assert.deepStrictEqual(archivee.possession, direct.possession, 'même possession avant et après archive');
+  assert.deepStrictEqual(archivee.occupation, direct.occupation);
+  // Lignes individuelles conservées, sans les zéros.
+  const n10 = recharge.statsJoueurs.A['10'];
+  assert.ok(n10 && n10.passes === ETAT.statsJoueurs.A['10'].passes, 'la ligne du n°10 survit à l archive');
+  assert.ok(Object.values(n10).every((v) => v !== 0), 'pas de compteurs vides');
+  // Ancienne archive (sans possession) : estimation par les rucks, dite comme telle.
+  const ancienne = { score: recharge.score, stats: recharge.stats, chronologie: recharge.chronologie };
+  const fa = RMClub.feuilleDeMatch(ancienne, {});
+  assert.strictEqual(fa.possession.mesuree, false);
+  assert.ok(/Possession \(est\.\)/.test(RMClub.htmlFeuilleDeMatch(fa)));
+  assert.strictEqual(fa.occupation, null, 'pas d occupation inventée');
+  // Ni possession ni ruck : aucune valeur fictive.
+  const vide = { score: { A: 0, B: 0 }, stats: { A: { rucks: 0 }, B: { rucks: 0 } }, chronologie: ancienne.chronologie };
+  assert.strictEqual(RMClub.feuilleDeMatch(vide, {}).possession, null);
+});
+
 console.log(`\n${nbTests} test(s) exécuté(s).`);

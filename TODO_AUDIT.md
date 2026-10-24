@@ -580,6 +580,27 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-109. La feuille de match affiche la possession chronométrée et l'archive la garde — bugs.md BUG-RM-008
+- **Statut : CORRIGÉ (feuille de match et archives)**
+- Fichiers concernés : `docs/js/club-feuille-de-match.js`, `docs/js/club-archives-matchs.js` (`compacterEtatMatch`),
+  `docs/js/matchState.js`, `server/test-feuille-de-match.js`.
+
+**Constat.** La feuille affichait une possession « estimée » par la part des rucks, avec la mention « le moteur ne
+chronomètre pas la possession ». C'était faux : le moteur la chronomètre (`possessionPct`). L'archive ne gardait ni
+possession, ni occupation, ni temps de jeu effectif, ni lignes individuelles. L'écart réel entre les deux mesures est
+petit (1,6 point en moyenne, 4 au plus) : c'est la justesse du libellé qui était en cause.
+
+**Correction.**
+- Feuille : la possession chronométrée est affichée, avec sa définition en infobulle (part du temps de jeu effectif
+  avec le ballon, minutes de jeu effectif). La ligne « Occupation » (temps passé dans le camp adverse) est ajoutée.
+- Archive au format 2 : possession, occupation, temps de jeu effectif et lignes individuelles (sans les zéros).
+- Une archive d'avant ce correctif retombe sur la part des rucks, libellée « Possession (est.) », jamais à la place d'une
+  mesure connue. Sans possession ni ruck, rien n'est affiché.
+
+**Tests.** E10 : avec 40/60 au chrono et 80/20 en rucks, la feuille montre 40/60 et sa définition. E11 : direct,
+archive, JSON et rechargement donnent les mêmes mesures ; ligne du n°10 conservée ; ancienne archive estimée et
+libellée ; aucune valeur fictive.
+
 ### P2-108. Le remplaçant a ses propres statistiques et son temps de jeu — bugs.md BUG-RM-007
 - **Statut : CORRIGÉ (moteur et mode Club)**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (remplacement, `remplacerJoueurEnCours`,
