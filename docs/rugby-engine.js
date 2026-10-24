@@ -1930,6 +1930,11 @@
       const enZoneDeTir = distanceButs >= 5 && distanceButs <= 45;
       if (enZoneDeTir && (prendLesPoints || this.rng() < 0.85)) {
         this.equipeAuTir = equipeBeneficiaire;
+        // Le ballon est à l'équipe qui tire (loi 20), comme pour le jeu rapide
+        // ci-dessous : la possession restait au camp fautif pendant tout le tir,
+        // si bien que le buteur tenait le ballon d'une équipe « sans ballon »
+        // (QA-RM-002 : 1,8 % des instants d'un match).
+        this.possession = equipeBeneficiaire;
         this.positionTir = { x: position.x, y: position.y, distanceButs };
         // Place le buteur (l'ouvreur) sur le point de pénalité : sans ça, le
         // porteur reste figé là où la faute a été commise et rien ne montre
@@ -5017,7 +5022,14 @@
           // estDemiMelee) ; il décide ensuite normalement (passe/jeu au pied).
           const neuf = att.find(j => j.numero === 9 && j.auSol === 0);
           if (neuf) { relayeur = neuf; this._neufLibre = true; this.log('RUCK_SORTIE_9', this.possession, `Sortie de ruck par le 9`); }
-          else ({ joueur: relayeur } = joueurLePlusProche(att.filter(j => j.tendance >= 50), pt.x, pt.y));
+          // Le 9 au sol (c'est lui qui vient d'être plaqué) : l'avant DEBOUT le
+          // plus proche relaie. Le filtre manquait : le plaqué lui-même, encore
+          // à terre, recevait le ballon et repartait « en courant » allongé
+          // (QA-RM-002, ~25 instants par match).
+          else {
+            const debout = att.filter(j => j.tendance >= 50 && j.auSol === 0);
+            ({ joueur: relayeur } = joueurLePlusProche(debout.length ? debout : att.filter(j => j.auSol === 0), pt.x, pt.y));
+          }
         }
         // Le joueur qui était plaqué (ancien porteur, au sol) se relève PROMPTEMENT
         // une fois le ballon sorti et le jeu reparti : sinon il restait ~2 s au sol

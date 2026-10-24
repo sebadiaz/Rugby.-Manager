@@ -3643,6 +3643,28 @@ test('rapprochement : réussis ≤ tentés partout, et chaque essai ou but du co
   }
 });
 
+// --- bugs.md QA-RM-002 : le ballon, son porteur et la possession concordent --
+test('cohérence : celui qui tient le ballon est de l équipe en possession, et ne tient pas le ballon au sol (QA-RM-002)', () => {
+  let tirs = 0, ticks = 0;
+  for (let seed = 1; seed <= 3; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    while (m.phase !== 'TERMINE') {
+      m.tick(0.2); ticks++;
+      const st = m.getState();
+      const b = st.ball;
+      if (st.phase === 'PENALITE_TIR') tirs++;
+      if (!b.carrierTeam) continue;
+      assert.strictEqual(b.carrierTeam, st.possession,
+        `graine ${seed}, ${st.tempsMatch.toFixed(1)} s, ${st.phase} : le ballon est tenu par ${b.carrierTeam}, possession ${st.possession}`);
+      if (st.phase === 'PORTE') {
+        const p = (b.carrierTeam === 'A' ? st.equipeA : st.equipeB).find((j) => j.numero === b.carrierNumber);
+        assert.ok(!(p.auSol > 0), `graine ${seed}, ${st.tempsMatch.toFixed(1)} s : le porteur court au sol (n°${p.numero})`);
+      }
+    }
+  }
+  assert.ok(tirs > 0, 'échantillon sans pénalité au but');
+});
+
 console.log(`\n${nbTests} test(s) exécuté(s).`);
 if (process.exitCode) {
   console.error('ECHEC : au moins un invariant violé.');
