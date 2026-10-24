@@ -37,6 +37,17 @@ const cles = Object.keys(FOURCHETTES);
 const totaux = {};
 for (const k of cles) totaux[k] = 0;
 
+// Décompositions (bugs.md QA-RM-007) : buts par type et distance, buteurs,
+// essais par poste, par origine de séquence et par distance de départ. Tout
+// vient des événements du match (chronologie), jamais d'une estimation.
+const buts = {};
+const buteurs = {};
+const essais = { poste: {}, origine: {}, depuis: {}, rucks: {} };
+const ajouter = (o, k) => { o[k] = (o[k] || 0) + 1; };
+const tranche = (d) => (d < 22 ? '<22 m' : d < 35 ? '22-35 m' : d < 45 ? '35-45 m' : '45 m+');
+const POSTE = (n) => (n <= 3 ? 'premiere ligne' : n <= 5 ? 'deuxieme ligne' : n <= 8 ? 'troisieme ligne'
+  : n === 9 ? 'demi de melee' : n === 10 ? 'ouvreur' : n === 11 || n === 14 ? 'ailiers' : n === 15 ? 'arriere' : 'centres');
+
 let matchsOk = 0;
 for (let i = 0; i < n; i++) {
   const seed = seedDepart + i;
@@ -59,6 +70,23 @@ for (let i = 0; i < n; i++) {
   totaux.turnovers += sa.turnovers + sb.turnovers;
   totaux.knockOns += sa.knockOns + sb.knockOns;
   totaux.tempsJeuEffectifMin += s.tempsJeuEffectif / 60;
+  for (const e of s.chronologie || []) {
+    const type = /^TRANSFORMATION/.test(e.type) ? 'transformation' : /^PENALITE_(REUSSIE|RATEE)$/.test(e.type) ? 'penalite'
+      : /^DROP_GOAL/.test(e.type) ? 'drop' : null;
+    if (type) {
+      const reussi = /REUSSI/.test(e.type);
+      const cle = `${type} ${e.distance != null ? tranche(e.distance) : '(distance inconnue)'}`;
+      buts[cle] = buts[cle] || { tentes: 0, reussis: 0 };
+      buts[cle].tentes++; if (reussi) buts[cle].reussis++;
+      if (e.buteur != null) ajouter(buteurs, 'n°' + e.buteur);
+    }
+    if (e.type === 'ESSAI') {
+      ajouter(essais.poste, e.maul ? 'maul' : e.marqueur != null ? POSTE(e.marqueur) : 'inconnu');
+      ajouter(essais.origine, e.origine || 'inconnue');
+      ajouter(essais.depuis, e.depuis == null ? 'inconnu' : e.depuis < 22 ? 'dans les 22' : e.depuis < 50 ? '22-50 m' : 'au-dela de 50 m');
+      ajouter(essais.rucks, e.rucks === 0 ? '0 ruck' : e.rucks <= 2 ? '1-2 rucks' : e.rucks <= 5 ? '3-5 rucks' : '6+ rucks');
+    }
+  }
   matchsOk++;
 }
 
@@ -95,4 +123,19 @@ for (const k of cles) {
 }
 
 console.log(`\n${cles.length - nbHorsFourchette}/${cles.length} catégories dans la fourchette attendue.`);
+
+// --- Décompositions (par match, cumul des deux équipes) -------------------
+const parMatch = (v) => (v / matchsOk).toFixed(2);
+const liste = (o) => Object.entries(o).sort((a, b) => b[1] - a[1])
+  .map(([k, v]) => `${k} ${parMatch(v)}`).join(' · ');
+console.log('\nButs (tentés / réussis par match, réussite) :');
+for (const k of Object.keys(buts).sort()) {
+  const b = buts[k];
+  console.log(`  ${k.padEnd(28)} ${parMatch(b.tentes)} / ${parMatch(b.reussis)}  (${Math.round(100 * b.reussis / b.tentes)} %)`);
+}
+console.log(`Buteurs : ${liste(buteurs)}`);
+console.log(`Essais par poste : ${liste(essais.poste)}`);
+console.log(`Essais par origine : ${liste(essais.origine)}`);
+console.log(`Essais par point de départ : ${liste(essais.depuis)}`);
+console.log(`Essais par nombre de rucks : ${liste(essais.rucks)}`);
 if (nbHorsFourchette > 0) process.exitCode = 1;

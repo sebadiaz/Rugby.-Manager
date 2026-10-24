@@ -3615,6 +3615,34 @@ test('loi 11 : une passe plate sous pression est parfois jugée en avant, jamais
   assert.ok(avant / N >= 0.7 && avant / N <= 3, `${(avant / N).toFixed(2)} passe(s) en avant sifflée(s) par match (réel : 1 à 3)`);
 });
 
+// --- bugs.md QA-RM-007 : événements, joueurs et équipe disent la même chose ---
+test('rapprochement : réussis ≤ tentés partout, et chaque essai ou but du compteur a son événement (QA-RM-007)', () => {
+  for (let seed = 1; seed <= 4; seed++) {
+    const m = new MatchEngine(seed, 4800).jouerJusquAuSifflet(0.2);
+    const st = m.getState();
+    for (const e of ['A', 'B']) {
+      const s = st.stats[e];
+      for (const [r, t] of [['passes', 'passesTentees'], ['tacklesMade', 'tacklesAttempted'],
+        ['transformationsReussies', 'transformationsTentees'], ['penalitesButReussies', 'penalitesButTentees'],
+        ['dropsReussis', 'dropsTentes']]) {
+        assert.ok(s[r] <= s[t], `graine ${seed}, équipe ${e} : ${r} ${s[r]} > ${t} ${s[t]}`);
+      }
+      for (const [num, l] of Object.entries(st.statsJoueurs[e])) {
+        assert.ok(l.tacklesMade <= l.tacklesAttempted, `graine ${seed}, ${e} n°${num} : ${l.tacklesMade} plaquages réussis pour ${l.tacklesAttempted}`);
+      }
+      const ev = (type) => st.chronologie.filter((x) => x.type === type && x.team === e);
+      assert.strictEqual(ev('ESSAI').length + ev('ESSAI_PENALITE').length, s.essais, `graine ${seed}, ${e} : essais`);
+      assert.strictEqual(ev('TRANSFORMATION_REUSSIE').length, s.transformationsReussies, `graine ${seed}, ${e} : transformations`);
+      assert.strictEqual(ev('PENALITE_REUSSIE').length, s.penalitesButReussies, `graine ${seed}, ${e} : pénalités`);
+      // Chaque but porte son buteur et sa distance, chaque essai son marqueur et son origine.
+      for (const x of ev('TRANSFORMATION_REUSSIE').concat(ev('PENALITE_REUSSIE'))) {
+        assert.ok(x.buteur >= 1 && x.distance >= 5 && x.distance <= 60, `but sans buteur ou distance : ${JSON.stringify(x)}`);
+      }
+      for (const x of ev('ESSAI')) assert.ok(x.marqueur >= 1 && x.origine, `essai sans marqueur ou origine : ${JSON.stringify(x)}`);
+    }
+  }
+});
+
 console.log(`\n${nbTests} test(s) exécuté(s).`);
 if (process.exitCode) {
   console.error('ECHEC : au moins un invariant violé.');

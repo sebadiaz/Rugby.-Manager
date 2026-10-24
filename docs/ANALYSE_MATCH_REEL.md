@@ -220,3 +220,43 @@ comme l'état courant. L'état courant après P1-53 est : rucks **595**, passes
   nombre de cycles qui est en trop ;
 - Géométrie des passes (à plat/en retrait), formation 3-4-1 des mêlées,
   répartition défensive en créneaux, 0 téléportation.
+
+## Décompositions des buts et des essais (QA-RM-007, 24 octobre 2026)
+
+Mesure : `node server/simulate-batch.js 12 1`, 12 matchs de 80 min, graines 1 à 12, pas de 0,2 s. Chaque match est
+joué jusqu'au coup de sifflet. Valeurs par match, deux équipes cumulées. Toutes viennent des événements du match :
+chaque but porte son buteur et sa distance réelle aux poteaux, chaque essai son marqueur, l'origine de sa séquence
+(touche, mêlée, coup d'envoi, pénalité jouée, ballon gagné dans le jeu), la distance de départ et le nombre de rucks.
+
+**Volumes de cet échantillon.** 6,6 essais, 55,0 points, 402 passes, 182 rucks, 26,2 touches, 18,8 mêlées (au-dessus
+de 18 sur ces 12 graines ; 15,7 sur les 20 de la calibration).
+
+**Buts.**
+
+| Type et distance | Tentés | Réussis | Réussite |
+|---|---|---|---|
+| Pénalité < 22 m | 1,00 | 0,92 | 92 % |
+| Pénalité 22-35 m | 2,00 | 1,33 | 67 % |
+| Pénalité 35-45 m | 2,50 | 1,33 | 53 % |
+| Pénalité 45 m et plus | 0,83 | 0,50 | 60 % |
+| Transformation < 22 m | 1,08 | 1,00 | 92 % |
+| Transformation 22-35 m | 1,75 | 1,25 | 71 % |
+| Transformation 35-45 m | 1,00 | 0,33 | 33 % |
+| Transformation 45 m et plus | 1,67 | 1,00 | 60 % |
+| Drop | 0,25 | 0,17 | 67 % |
+
+Le n°10 tente tous les tirs (11,8 par match). Points de vigilance : 6,3 pénalités tentées par match (environ 5 en vrai)
+et des réussites en partie non monotones avec la distance, sur un petit échantillon.
+
+**Essais.**
+
+| Découpage | Répartition (par match) |
+|---|---|
+| Poste du marqueur | ailiers 2,33 · troisième ligne 1,08 · ouvreur 0,67 · deuxième ligne 0,50 · centres 0,33 · maul 0,25 · première ligne 0,17 · demi de mêlée 0,17 |
+| Origine de la séquence | touche 2,25 · ballon gagné dans le jeu 1,92 · mêlée 0,83 · pénalité 0,50 |
+| Départ de la séquence | 22-50 m 2,67 · au-delà de 50 m 1,67 · dans les 22 adverses 1,17 |
+| Nombre de rucks | 1-2 : 2,17 · 0 : 1,42 · 3-5 : 1,25 · 6 et plus : 0,67 |
+
+Lecture : profil crédible (un tiers des essais aux ailiers, un tiers de séquences nées en touche, environ 22 % d'essais
+sans ruck). L'écart restant : seuls 18 % des essais partent d'une séquence née dans les 22 adverses. Le jeu
+marque encore beaucoup de loin, même après P2-113.

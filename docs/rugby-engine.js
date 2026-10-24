@@ -2581,7 +2581,7 @@
             this.essaiX = marqueur.x;
             this.essaiY = marqueur.y;
             this.essaiEquipe = this.possession;
-            this.log('ESSAI', this.possession, `Essai equipe ${this.possession} !`);
+            this.log('ESSAI', this.possession, `Essai equipe ${this.possession} !`, this._infoEssai(marqueur));
             this.phase = 'ESSAI';
             this.timerPhase = 0;
             return;
@@ -3197,7 +3197,7 @@
         this.essaiX = porteur.x;
         this.essaiY = porteur.y;
         this.essaiEquipe = this.possession;
-        this.log('ESSAI', this.possession, `Essai equipe ${this.possession} !`);
+        this.log('ESSAI', this.possession, `Essai equipe ${this.possession} !`, this._infoEssai(porteur));
         this.phase = 'ESSAI';
         this.timerPhase = 0;
         return;
@@ -4378,7 +4378,8 @@
         this.essaiX = enBut.ligne;
         this.essaiY = joueur.y;
         this.essaiEquipe = equipeKick;
-        this.log('ESSAI', equipeKick, `Essai equipe ${equipeKick} ! Le n°${joueur.numero} aplatit le coup de pied a suivre`);
+        this.log('ESSAI', equipeKick, `Essai equipe ${equipeKick} ! Le n°${joueur.numero} aplatit le coup de pied a suivre`,
+          Object.assign(this._infoEssai(joueur), { origine: 'COUP_DE_PIED_A_SUIVRE' }));
         this.phase = 'ESSAI';
         this.timerPhase = 0;
         return;
@@ -5456,6 +5457,13 @@
       this._accorderMeleeA(equipe, pos);
     }
 
+    // Qui a marqué et d'où venait l'action (QA-RM-007), cf. _sequence dans tick.
+    _infoEssai(marqueur) {
+      const q = this._sequence || {};
+      return { marqueur: marqueur ? marqueur.numero : null, origine: q.origine || null,
+        depuis: q.depuis != null ? q.depuis : null, rucks: q.rucks || 0 };
+    }
+
     // Essai inscrit par un maul pénétrant qui franchit la ligne adverse.
     _maulEssai() {
       const m = this.maul;
@@ -5467,7 +5475,7 @@
       this.essaiX = x;
       this.essaiY = m.y;
       this.essaiEquipe = poss;
-      this.log('ESSAI', poss, `Essai sur maul penetrant, equipe ${poss} !`);
+      this.log('ESSAI', poss, `Essai sur maul penetrant, equipe ${poss} !`, Object.assign(this._infoEssai(this.porteur), { maul: true }));
       // Le MARQUEUR est le porteur RÉEL du maul : pendant toute la poussée,
       // _tickMaul l'a maintenu collé à l'arrière du maul (this.porteur, cf.
       // lignes « this.porteur.x = m.x - m.sens*0.8 »), il est donc au CONTACT
@@ -7057,14 +7065,18 @@
         this.ballonVolHauteur = 0;
         const equipe = this.essaiEquipe;
         const offsetLateral = Math.abs(this.essaiY - LARGEUR / 2);
+        const recul = reculTransformation(offsetLateral, this.porteur.adresse);
         this.stats[equipe].transformationsTentees++;
-        if (this.rng() < probaReussiteTir(reculTransformation(offsetLateral, this.porteur.adresse), offsetLateral, this.porteur.adresse)) {
+        // Distance réelle du tir et buteur, portés par l'événement (QA-RM-007) :
+        // le fil le dit, et les mesures peuvent décomposer les buts.
+        const tirT = { buteur: this.porteur.numero, distance: Math.round(Math.hypot(recul, offsetLateral)), decalage: Math.round(offsetLateral) };
+        if (this.rng() < probaReussiteTir(recul, offsetLateral, this.porteur.adresse)) {
           this.stats[equipe].transformationsReussies++;
           this._statJoueur(this.porteur).pointsAuPied += 2;
           this.score[equipe] += 2;
-          this.log('TRANSFORMATION_REUSSIE', equipe, `Transformation reussie, equipe ${equipe} +2`);
+          this.log('TRANSFORMATION_REUSSIE', equipe, `Transformation reussie a ${tirT.distance} m par le n°${tirT.buteur}, equipe ${equipe} +2`, tirT);
         } else {
-          this.log('TRANSFORMATION_RATEE', equipe, `Transformation ratee, equipe ${equipe}`);
+          this.log('TRANSFORMATION_RATEE', equipe, `Transformation ratee a ${tirT.distance} m par le n°${tirT.buteur}, equipe ${equipe}`, tirT);
         }
         // Loi 12 : qu'elle soit réussie ou ratée, la transformation est suivie
         // d'un coup d'envoi à la mi-terrain, botté par l'équipe qui vient
@@ -7153,16 +7165,17 @@
         const offsetLateral = Math.abs(y - LARGEUR / 2);
         const sens = { A: 1, B: -1 };
         this.stats[equipe].penalitesButTentees++;
+        const tirP = { buteur: this.porteur.numero, distance: Math.round(Math.hypot(distanceButs, offsetLateral)), decalage: Math.round(offsetLateral) };
         if (this.rng() < probaReussiteTir(distanceButs, offsetLateral, this.porteur.adresse)) {
           this.stats[equipe].penalitesButReussies++;
           this._statJoueur(this.porteur).pointsAuPied += 3;
           this.score[equipe] += 3;
-          this.log('PENALITE_REUSSIE', equipe, `Coup de pied au but reussi, equipe ${equipe} +3`);
+          this.log('PENALITE_REUSSIE', equipe, `Coup de pied au but reussi a ${tirP.distance} m par le n°${tirP.buteur}, equipe ${equipe} +3`, tirP);
           // Comme après un essai : coup d'envoi à la mi-terrain, botté par
           // l'équipe qui vient d'encaisser la pénalité.
           this._nouvelleManche(equipe);
         } else {
-          this.log('PENALITE_RATEE', equipe, `Coup de pied au but rate, equipe ${equipe}`);
+          this.log('PENALITE_RATEE', equipe, `Coup de pied au but rate a ${tirP.distance} m par le n°${tirP.buteur}, equipe ${equipe}`, tirP);
           // Un tir manqué part en général au-delà de la ligne d'en-but adverse
           // et y meurt : remise en jeu en 22m (loi 12), botté par l'équipe
           // défenseure depuis SA ligne des 22m, pas un coup d'envoi à mi-terrain.
@@ -7186,6 +7199,25 @@
       }
       this._phaseGainPrec = this.phase;
       if (this.phase !== 'PORTE') this._dernierePasse = null;
+      // Origine de la séquence en cours (QA-RM-007) : touche, mêlée, coup
+      // d'envoi, pénalité jouée, ou ballon gagné dans le jeu ; distance de son
+      // point de départ à la ligne visée et nombre de rucks. Portée par
+      // l'événement ESSAI, elle dit d'où vient chaque essai.
+      const phasesArret = { TOUCHE: 'TOUCHE', MELEE: 'MELEE', COUP_ENVOI: 'COUP_ENVOI' };
+      const nouvelArret = phasesArret[this.phase] && this._phaseSeqPrec !== this.phase;
+      if (nouvelArret || this.possession !== this._seqPoss || (this.penaliteRecul && !this._seqPenalite)) {
+        const pt = this.porteur || this.ruckPoint;
+        const sensSeq = this.possession === 'A' ? 1 : -1;
+        this._sequence = {
+          origine: phasesArret[this.phase] || (this.penaliteRecul ? 'PENALITE' : 'JEU_COURANT'),
+          depuis: pt ? Math.round(sensSeq > 0 ? LONGUEUR - pt.x : pt.x) : null,
+          rucks: 0,
+        };
+        this._seqPoss = this.possession;
+      }
+      this._seqPenalite = !!this.penaliteRecul;
+      if (this.phase === 'RUCK' && this._phaseSeqPrec !== 'RUCK' && this._sequence) this._sequence.rucks++;
+      this._phaseSeqPrec = this.phase;
       // Décélération des joueurs qu'aucune logique de phase n'a déplacés au
       // tick précédent (cf. avancer / ACCELERATION) : ils ralentissent au lieu
       // de conserver leur élan, et repartiront donc de leur vitesse réelle.
