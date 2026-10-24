@@ -138,7 +138,7 @@ Les sommes individuelles des passes, plaquages et mètres correspondent aux somm
 | FUNC-RM-009 | P3 | À compléter | Continuité des effectifs hors de la division du joueur |
 | FUNC-RM-010 | P2 | À compléter | Qualifications continentales fondées sur les résultats |
 | FUNC-RM-011 | P2 | À construire | Feuille individuelle et collective complète, minutes et filtres cohérents |
-| QA-RM-001 | P1 | À valider | Mêlée : temps, positions, ballon et demi de mêlée |
+| QA-RM-001 | P1 | Validé (TODO_AUDIT P2-115) | Mêlée : temps, positions, ballon et demi de mêlée |
 | QA-RM-002 | P1 | À valider | Transitions de possession et phases arrêtées visibles |
 | QA-RM-003 | P2 | À valider | Progression territoriale et essais construits |
 | QA-RM-004 | P1 | À valider | Parcours complet de compétition et règlement unique |
@@ -382,7 +382,7 @@ Les sommes individuelles des passes, plaquages et mètres correspondent aux somm
 
 ## Réceptions gameplay et QA
 
-### [ ] QA-RM-001 — Mêlée : chronologie, ballon et numéro 9 — P1
+### [x] QA-RM-001 — Mêlée : chronologie, ballon et numéro 9 — P1
 
 **État : À VALIDER visuellement et par traces sur le code actuel.** Machine à états présente ; la suite complète `test-melee.js` n'a pas terminé dans la limite de 150 s de cette passe. Ce dépassement de temps local n'est pas une preuve de défaut de règle.
 

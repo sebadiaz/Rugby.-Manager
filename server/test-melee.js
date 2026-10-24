@@ -612,4 +612,33 @@ test('M24 — à la formation de la mêlée, le ballon rejoint le 9 à vue, sans
   assert.ok(propres / melees >= 0.95, `${propres}/${melees} mêlées sans saut du ballon > 3 m avant l'introduction (pire : ${pire.toFixed(1)} m)`);
 });
 
+// QA-RM-001 (bugs.md) : la chaîne complète, sur de vraies mêlées de match,
+// dans les DEUX sens d'attaque — ordre des états sans retour arrière (sauf
+// remise en place sifflée), et passage au jeu courant sans saut du ballon,
+// le ballon allant au camp qui a gagné la mêlée.
+test('M25 — chaîne complète dans les deux sens : états en ordre, sortie sans saut, ballon au gagnant (QA-RM-001)', () => {
+  const ORDRE = [E.F, E.C, E.B, E.S, E.I, E.T, E.X];
+  const sens = new Set();
+  for (const x of MELEES) {
+    const remise = x.evts && x.evts.some((e) => /MELEE_RESET|MELEE_TOURNEE/.test(e.type));
+    let rang = -1;
+    for (const k of x.ticks) {
+      const r = ORDRE.indexOf(k.etat);
+      assert.ok(r >= 0, `état inconnu ${k.etat}`);
+      if (r < rang) assert.ok(remise, `graine ${x.graine} : retour de ${ORDRE[rang]} à ${k.etat} sans remise en place sifflée`);
+      rang = r;
+    }
+  }
+  for (const x of COMPLETES) {
+    sens.add(x.sens);
+    const dernier = x.ticks[x.ticks.length - 1];
+    const saut = dist(dernier.ballon, x.sortie.ballon);
+    assert.ok(saut <= 1.5, `graine ${x.graine} : le ballon saute de ${saut.toFixed(2)} m au passage au jeu courant`);
+    const porteur = x.sortie.porteur;
+    assert.ok(porteur && porteur.team === vainqueurDe(x),
+      `graine ${x.graine} : le jeu reprend avec ${porteur && porteur.team}, la mêlée a été gagnée par ${vainqueurDe(x)}`);
+  }
+  assert.strictEqual(sens.size, 2, `les deux sens d'attaque doivent être observés (${[...sens].join(', ')})`);
+});
+
 console.log(`\n${nbTests} test(s) exécuté(s).`);

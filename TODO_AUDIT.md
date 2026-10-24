@@ -580,6 +580,29 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-115. Mêlée validée de bout en bout, dans les deux sens — bugs.md QA-RM-001
+- **Statut : VALIDÉ (test et captures)**
+- Fichiers concernés : `server/test-melee.js` (M25).
+
+**Constat.** Les étapes de la mêlée étaient couvertes une à une par M11 à M24 (P2-64) : ballon dans les mains du 9,
+introduction, talonnage au sol, position des 9, aucune téléportation dans la mêlée. Trois points de la réception
+manquaient : l'ordre de la chaîne complète sur de vraies mêlées de match, le passage au jeu courant, et les deux sens
+d'attaque.
+
+**Ajout.** M25, sur les mêlées de 8 matchs :
+- les états ne reviennent jamais en arrière, sauf remise en place sifflée ;
+- en sortie de mêlée, le ballon ne saute pas de plus de 1,5 m au passage au jeu courant ;
+- le jeu reprend avec le camp qui a gagné la mêlée ;
+- les deux sens d'attaque sont observés.
+
+Le test passe sans changer le moteur.
+
+**Captures.** Match rapide de 20 minutes, en 1400x1000 et 390x844 : formation, « Crouch », « Bind », « Set »,
+introduction, contestation. Aucune erreur console.
+
+**Reste.** Le paquet de seize avants est petit à l'échelle du terrain entier. Le bandeau d'arbitre recouvre en partie la
+4ᵉ ligne du fil d'événements : défaut d'affichage, sans effet sur le jeu.
+
 ### P2-114. L'ouvreur distribue au lieu de porter dans la ligne
 - **Statut : CORRIGÉ (moteur)**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`choisirActionPorteur`, passe avant contact).
