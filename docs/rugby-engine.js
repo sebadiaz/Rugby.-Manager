@@ -2055,6 +2055,11 @@
     _accorderPenaliteTouche(equipe, position) {
       this.log('PENALITE', equipe, `Penalite, equipe ${equipe} joue en touche et conserve le lancer`);
       this.possession = equipe;
+      // Une touche venait peut-être d'être accordée dans ce même instant (plaqué
+      // en touche, puis retour à la sanction de l'avantage) : sa touche RAPIDE
+      // préparée pour l'adversaire n'a plus lieu d'être. Restée armée, elle
+      // partait pendant l'élan du buteur et le ballon traversait le terrain.
+      this.toucheRapide = null;
       const sensAttaque = equipe === 'A' ? 1 : -1;
       // AU COIN. Une penalite tapee en touche ne gagne pas dix metres : elle
       // part au coin. Depuis 45 m, un buteur trouve la touche a 5-10 m de la
@@ -2114,7 +2119,11 @@
         this.ballonVolX = depart.x; this.ballonVolY = depart.y; this.ballonVolHauteur = 0;
         // Assez vite pour être sur la marque avant la frappe (pose minimale de
         // 0,8 s, cf. _tickPenaliteTouche) : n'agit que sur l'affichage.
-        this.penTouche.vitesseBallon = Math.max(10, Math.hypot(position.x - depart.x, position.y - depart.y) / 0.7);
+        // Plafonnée à 25 m/s : quand la marque est loin (retour à une sanction
+        // après un long avantage, jusqu'à 40 m), le ballon traversait le
+        // terrain à 57 m/s, un saut de 5,7 m par image. La frappe attend
+        // désormais qu'il soit posé (cf. _tickPenaliteTouche).
+        this.penTouche.vitesseBallon = Math.max(10, Math.min(25, Math.hypot(position.x - depart.x, position.y - depart.y) / 0.7));
       }
     }
 
@@ -2136,7 +2145,8 @@
         // Pose du ballon : jamais de frappe avant 0,8 s, même si le buteur est
         // déjà sur la marque (durée fixe : la simulation ne dépend pas de
         // l'affichage).
-        if ((distance(b, P.marque) < 1.5 && P.t >= 0.8) || P.t > 10) {
+        const ballonPose = this.ballonVolX === P.marque.x && this.ballonVolY === P.marque.y;
+        if ((distance(b, P.marque) < 1.5 && P.t >= 0.8 && ballonPose) || P.t > 10) {
           // Le vol part de là où est le ballon (en principe déjà sur la marque).
           P.etape = 'VOL'; P.t = 0; P.depart = { x: this.ballonVolX, y: this.ballonVolY };
           this.log('PENALITE_TOUCHE_FRAPPE', P.equipe, `Le n°${b.numero} tape la penalite en touche`);
