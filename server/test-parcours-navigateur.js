@@ -4851,9 +4851,15 @@ function optionsLancement() {
     // suivante : un délai fixe de 150 ms échouait ~1 fois sur 20 (P2-100),
     // quand l'observateur était servi plus tard dans le navigateur sans
     // affichage. On attend que le canvas soit sous le HUD (2 s au plus).
+    // Le bandeau est lui aussi reposé par cet observateur : sous charge, la
+    // mesure tombait parfois entre les deux (1 fois sur 20, 1 px de
+    // recouvrement transitoire). On attend donc aussi qu'il soit recalé.
     for (let i = 0; i < 20; i++) {
-      const pret = await pB.evaluate(() => document.getElementById('pitch').getBoundingClientRect().top
-        >= document.getElementById('hud').getBoundingClientRect().bottom - 0.5);
+      const pret = await pB.evaluate(() => {
+        const basHud = document.getElementById('hud').getBoundingClientRect().bottom;
+        return document.getElementById('pitch').getBoundingClientRect().top >= basHud - 0.5
+          && document.getElementById('banner').getBoundingClientRect().bottom <= basHud + 0.5;
+      });
       if (pret) break;
       await pB.waitForTimeout(100);
     }
@@ -4866,8 +4872,12 @@ function optionsLancement() {
       const k = rc.width / cv.width;
       const coins = [[-10, 0], [110, 0], [-10, 70], [110, 70]].map(([x, y]) => window.RMRenderer.versCanvas(x, y))
         .map((q) => ({ x: rc.left + q.px * k, y: rc.top + q.py * k }));
-      const t = { gauche: Math.min(...coins.map((c) => c.x)), droite: Math.max(...coins.map((c) => c.x)),
-        haut: Math.min(...coins.map((c) => c.y)), bas: Math.max(...coins.map((c) => c.y)) };
+      // Partie VISIBLE du terrain : sur téléphone la caméra suit le jeu, et une
+      // extrémité du terrain peut sortir du canvas (masquée par son bord). Le
+      // bandeau ne doit pas couvrir ce qu'on voit ; ce qui est hors du canvas
+      // n'est pas affiché (vu en QA-RM-002 : 1 px « recouvert » au-dessus du canvas).
+      const t = { gauche: Math.max(rc.left, Math.min(...coins.map((c) => c.x))), droite: Math.min(rc.right, Math.max(...coins.map((c) => c.x))),
+        haut: Math.max(rc.top, Math.min(...coins.map((c) => c.y))), bas: Math.min(rc.bottom, Math.max(...coins.map((c) => c.y))) };
       const recouvre = rb.left < t.droite && rb.right > t.gauche && rb.top < t.bas && rb.bottom > t.haut;
       return { recouvre, bandeau: [rb.left, rb.top, rb.right, rb.bottom].map(Math.round),
         terrain: [t.gauche, t.haut, t.droite, t.bas].map(Math.round), visible: rb.height > 0 && rb.width > 0 };
