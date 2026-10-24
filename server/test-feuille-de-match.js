@@ -209,4 +209,15 @@ test('E11 — archive → rechargement : mêmes mesures ; une ancienne archive r
   assert.strictEqual(RMClub.feuilleDeMatch(vide, {}).possession, null);
 });
 
+test('E12 — chaque essai de la feuille porte son marqueur, et l archive le garde (QA-RM-007)', () => {
+  const f = RMClub.feuilleDeMatch(ETAT, {});
+  const tous = f.marqueurs.A.concat(f.marqueurs.B).filter((m) => m.type === 'ESSAI');
+  assert.ok(tous.length > 0 && tous.every((m) => m.marqueur >= 1 && m.marqueur <= 15), 'marqueur de chaque essai');
+  assert.ok(/\(n°\d+\)/.test(RMClub.htmlFeuilleDeMatch(f)), 'la feuille affiche le numéro du marqueur');
+  const s = { numero: 1 };
+  RMClub.archiverFeuilleDeMatch(s, { cle: 'm#2', etat: ETAT });
+  const f2 = RMClub.feuilleDeMatch(JSON.parse(JSON.stringify(RMClub.feuilleArchivee(s, 'm#2'))), {});
+  assert.deepStrictEqual(f2.marqueurs, f.marqueurs, 'mêmes marqueurs après archive');
+});
+
 console.log(`\n${nbTests} test(s) exécuté(s).`);

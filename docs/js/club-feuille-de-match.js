@@ -99,7 +99,9 @@
       };
       chronologie.push(ligne);
       if (def.marqueur && (e.team === 'A' || e.team === 'B')) {
-        marqueurs[e.team].push({ minute: e.minute, type: e.type, message: e.message });
+        marqueurs[e.team].push({ minute: e.minute, type: e.type, message: e.message,
+          // Numéro du marqueur (QA-RM-007) ; absent d'une ancienne archive.
+          marqueur: e.marqueur != null ? e.marqueur : null });
       }
     }
 
@@ -185,7 +187,7 @@
       if (!liste.length) return '';
       const nom = camp === 'A' ? f.nomA : f.nomB;
       return `<div class="ligneStat"><span>${echapperTexte(nom)}</span>` +
-        `<b>${liste.map((m) => m.minute + "'").join(', ')}</b></div>`;
+        `<b>${liste.map((m) => m.minute + "'" + (m.marqueur != null ? ` (n°${m.marqueur})` : '')).join(', ')}</b></div>`;
     }).join('');
 
     const stats = f.statistiques.map((s) =>
@@ -202,7 +204,7 @@
     const possession = lignePct(f.possession) + lignePct(f.occupation);
 
     return `<h3 class="titreFeuille">Feuille de match</h3>` +
-      (marqueurs ? `<h4 class="sousTitreFeuille">Essais marqués (minutes)</h4>${marqueurs}` : '') +
+      (marqueurs ? `<h4 class="sousTitreFeuille">Essais marqués (minute, marqueur)</h4>${marqueurs}` : '') +
       `<h4 class="sousTitreFeuille">Le fil du match</h4><div class="chronoFeuille">${lignes}</div>` +
       `<h4 class="sousTitreFeuille">Statistiques</h4>${possession}${stats}`;
   }

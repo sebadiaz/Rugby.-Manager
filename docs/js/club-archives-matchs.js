@@ -75,9 +75,9 @@
       occupationPct: pct(e.occupationPct),
       tempsJeuEffectif: Number.isFinite(e.tempsJeuEffectif) ? Math.round(e.tempsJeuEffectif) : null,
       statsJoueurs: compacterLignes(e.statsJoueurs),
-      chronologie: (e.chronologie || []).map((x) => ({
+      chronologie: (e.chronologie || []).map((x) => Object.assign({
         minute: x.minute, type: x.type, team: x.team, message: x.message,
-      })),
+      }, x.marqueur != null ? { marqueur: x.marqueur } : null)),
     };
   }
 
