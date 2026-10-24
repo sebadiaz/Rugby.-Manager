@@ -2335,7 +2335,14 @@
         // manque est une tentative de plaquage EN PLUS et un porteur qui
         // continue : c'est ce qui remet le volume de plaquages du match dans sa
         // fourchette maintenant que le nombre de regroupements est realiste.
-        const probaPlaquage = Math.max(0.80, Math.min(0.95, 0.855 + bonusFraicheur + (defenseurProche.plaquage - this.porteur.vitesse) / 250));
+        // DÉFENSE SUR SA LIGNE (CLAUDE.md, rôle 4 ; QA-RM-003) : à moins de 10 m
+        // de son en-but, la défense est compressée, chaque défenseur n'a qu'un
+        // couloir étroit à tenir et le porteur n'a plus d'élan : le plaquage
+        // y est plus sûr. Sans cela, le pick-and-go au ras ajoutait des essais
+        // au lieu d'en déplacer (+5,3 points par match mesurés).
+        const distEnBut = this.porteur.sensAttaque > 0 ? LONGUEUR - this.porteur.x : this.porteur.x;
+        const bonusLigne = distEnBut < 10 ? 0.05 : 0;
+        const probaPlaquage = Math.max(0.80, Math.min(0.95, 0.855 + bonusFraicheur + bonusLigne + (defenseurProche.plaquage - this.porteur.vitesse) / 250));
         if (this.rng() >= probaPlaquage) {
           // Plaquage manqué : le défenseur reste hors-jeu de contact un court
           // instant, le porteur poursuit sa course sans être inquiété par lui.
