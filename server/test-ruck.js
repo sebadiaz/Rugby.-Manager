@@ -300,7 +300,9 @@ test('R12 — le hors-jeu au ruck est annoncé avec son fautif, et seulement qua
   // ou ailier à 30 m du ruck) n'était pas encore revenu. Le fil en était
   // saturé et le joueur ne savait pas quelle faute était sanctionnée.
   let avantages = 0, sansMotif = 0, revient = 0;
-  const N = 4;
+  // 12 matchs : sur 4, le moindre changement de tirage faisait passer la
+  // moyenne de 16 à 21 (vraie moyenne ~18-19 sur 12).
+  const N = 12;
   for (let g = 1; g <= N; g++) {
     const m = new RugbyEngine.MatchEngine(g, 4800, null);
     const brut = m.log.bind(m);

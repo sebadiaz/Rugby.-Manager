@@ -2958,10 +2958,13 @@ test('mètres gagnés : comptés au-delà de la ligne d avantage, pas depuis la 
   // 217 m par match, plus que les ailiers, et une équipe 1233 m. Repères réels :
   // record du Tournoi 116 m par match (Kinghorn 2025, 580 m en 5 matchs) ;
   // Irlande 2023, meilleure équipe, 857 m par match pour 139 courses.
+  // 40 matchs (pas de 0,2 s) : les mètres de l'ouvreur varient beaucoup d'un
+  // match à l'autre, et 6 graines faisaient basculer le test au moindre
+  // changement de tirage (63 m contre 52 sur 1-6, 54 contre 59 sur 1-40).
   const parNum = {}; let equipes = 0, total = 0;
-  for (let seed = 1; seed <= 6; seed++) {
+  for (let seed = 1; seed <= 40; seed++) {
     const m = new MatchEngine(seed, 4800);
-    for (let i = 0; i < 400000 && m.phase !== 'TERMINE'; i++) m.tick(0.1);
+    for (let i = 0; i < 400000 && m.phase !== 'TERMINE'; i++) m.tick(0.2);
     const sj = m.getState().statsJoueurs;
     for (const e of ['A', 'B']) {
       equipes++; total += m.stats[e].metresGagnes;

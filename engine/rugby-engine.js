@@ -4746,7 +4746,9 @@
           // le premier défenseur encore en repli suffisait — plaqueur au sol,
           // ailier à 30 m — et l'avantage était annoncé ~52 fois par match,
           // sans motif ni fautif (cf. test R12).
-          if (this.timerPhase > delaiGrace && this._horsJeuRuckJuge !== pt && j.auSol === 0
+          // Un fautif d'une pénalité jouée vite, déjà en train de se replier
+          // (hors-jeu des 10 m, P2-123), n'est pas jugé une seconde fois.
+          if (this.timerPhase > delaiGrace && this._horsJeuRuckJuge !== pt && j.auSol === 0 && !(j.horsJeuKick > 0)
             && Math.abs(j.y - pt.y) <= 10 && Referee.horsJeuRuck(j, pt, sensAttaque)) {
             this._horsJeuRuckJuge = pt;
             const discipline = typeof j.discipline === 'number' ? j.discipline : 55;
