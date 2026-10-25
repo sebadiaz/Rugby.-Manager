@@ -6977,10 +6977,16 @@
         this.log('TURNOVER', L.gagnant, `Touche volee, l'equipe ${L.gagnant} recupere le ballon`);
       } else {
         this.log('TOUCHE_BALLON_GAGNE', L.lanceur, `Touche gagnee, le n°${L.sauteur.numero} capte le ballon pour l'equipe ${L.lanceur}`);
-        // Maul (catch-and-drive) probable près de la ligne adverse.
+        // Maul (catch-and-drive) probable près de la ligne adverse, presque
+        // systématique à moins de 10 m : c'est l'arme n°1 des avants près de
+        // l'en-but. À 5 m il n'avait lieu que 43 % du temps, comme à 16 m, et
+        // ces touches ne donnaient un essai qu'une fois sur trois et demie. La
+        // consigne de touche garde son effet relatif (jeu au sol : 25 %).
         const zone = this._zoneTerrain(this.porteur);
         const tauxMaulCfg = this.cfgTouche[L.lanceur].tauxMaul;
-        const tauxMaulTouche = (zone === 'OPP_22' || zone === 'CINQ_M') ? tauxMaulCfg.proche : tauxMaulCfg.loin;
+        const distLigneTouche = this.porteur.sensAttaque > 0 ? LONGUEUR - this.porteur.x : this.porteur.x;
+        const tauxMaulTouche = distLigneTouche <= 10 ? Math.min(0.95, tauxMaulCfg.proche * 1.7)
+          : (zone === 'OPP_22' || zone === 'CINQ_M') ? tauxMaulCfg.proche : tauxMaulCfg.loin;
         if (this.rng() < tauxMaulTouche) {
           const { joueur: defenseurProche } = joueurLePlusProche(L.eqAdverse, this.porteur.x, this.porteur.y);
           this._formerMaul(this.porteur, defenseurProche);

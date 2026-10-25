@@ -3706,6 +3706,36 @@ test("essai : son point de départ est celui de la touche ou de la mêlée qui l
   assert.deepStrictEqual(ecarts, []);
 });
 
+// --- Touche à 5 m de la ligne : le pack monte le maul ------------------------
+// Une touche gagnée à 5 m ne donnait un maul qu'une fois sur 2,3 (43 %, comme à
+// 16 m) : l'arme n°1 des avants près de l'en-but restait rare. La consigne
+// « jeu au sol » garde son effet.
+test('touche gagnée à 5 m de la ligne adverse : maul le plus souvent, pas plus qu à 16 m ailleurs', () => {
+  function taux(x, config) {
+    let gagnees = 0, mauls = 0;
+    for (let seed = 1; seed <= 80; seed++) {
+      const m = new MatchEngine(seed, 4800, config);
+      for (let i = 0; i < 20; i++) m.tick(0.1);
+      let etat = null;
+      const log = m.log.bind(m);
+      m.log = (t, team, ...r) => {
+        if (t === 'TOUCHE_BALLON_GAGNE' && team === 'A') { gagnees++; etat = 'gagnee'; }
+        else if (etat === 'gagnee') { if (t === 'MAUL') mauls++; etat = 'fini'; }
+        return log(t, team, ...r);
+      };
+      m._accorderTouche('B', { x, y: 0 }, 'COUP_DE_PIED');
+      for (let i = 0; i < 600 && etat !== 'fini'; i++) m.tick(0.1);
+    }
+    assert.ok(gagnees >= 50, `échantillon trop petit (${gagnees} touches gagnées)`);
+    return mauls / gagnees;
+  }
+  const cinq = taux(95), seize = taux(84);
+  const sol = taux(95, { toucheA: { tauxMaul: { proche: 0.15, loin: 0.02 } } });
+  assert.ok(cinq >= 0.6, `maul sur ${(100 * cinq).toFixed(0)} % des touches gagnées à 5 m`);
+  assert.ok(seize >= 0.3 && seize <= 0.6, `maul sur ${(100 * seize).toFixed(0)} % à 16 m (réglage de base inchangé)`);
+  assert.ok(sol <= cinq - 0.25, `consigne jeu au sol : ${(100 * sol).toFixed(0)} % de mauls à 5 m contre ${(100 * cinq).toFixed(0)} %`);
+});
+
 // --- bugs.md QA-RM-007 : événements, joueurs et équipe disent la même chose ---
 test('rapprochement : réussis ≤ tentés partout, et chaque essai ou but du compteur a son événement (QA-RM-007)', () => {
   for (let seed = 1; seed <= 4; seed++) {
