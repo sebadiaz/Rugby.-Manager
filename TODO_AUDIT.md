@@ -580,6 +580,25 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-124. Courses : une par ballon porté, pas une par contact
+- **Statut : CORRIGÉ (statistiques)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_compterCourse`), `docs/REGLES_RUGBY.md`,
+  `server/test-invariants.js`.
+
+**Constat.** Calibration 13/14 : 296 courses au contact par match pour une fourchette de 170 à 280 (France-Irlande 2026 :
+255). Mesuré sur 10 matchs : 46 courses par match étaient comptées une deuxième fois au même porteur, qui avait cassé
+un plaquage puis s'était fait reprendre. En analyse de match, c'est une course et un défenseur battu.
+
+**Correction.** Une course par ballon reçu, remise à zéro dès que le ballon change de mains. Les défenseurs battus,
+les plaquages tentés et tout le déroulé du match sont inchangés (6 matchs identiques au pas près).
+
+**Mesure.** Courses 296 → 261 sur les graines 1-20 ; calibration 14/14.
+
+**Test.** Pas de deuxième course au même porteur sans qu'il ait lâché le ballon ; tout porteur plaqué qui fait un ruck
+a sa course ; courses individuelles = courses d'équipe. Échoue sur l'ancien moteur (81 doubles) et sur un mutant qui
+ne remet pas le compteur à zéro (10 porteurs plaqués sans course). Barrières : invariants 99/99, 16 suites,
+navigateur 511/0.
+
 ### P2-123. Une pénalité jouée vite se joue vraiment vite
 - **Statut : CORRIGÉ (moteur)**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_lancerJeuRapidePenalite`,
