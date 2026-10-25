@@ -552,7 +552,6 @@
     dernierEtatMelee = null;
     miniPauseJusqua = 0;
     etatPrecedent = null;
-    immobileDernierPas = false;
     etatCourant = null;
     ballonRendu = null; // nouveau match : le ballon se pose net, sans glisser depuis l'ancienne marque
     document.getElementById('seek').max = duree;
@@ -602,8 +601,6 @@
   // ballon glissent de façon continue. Purement visuel, le moteur est intact.
   let etatPrecedent = null;
   let etatCourant = null;
-  // Le dernier pas simulé n'a fait bouger personne (cf. ACCEL_IMMOBILE).
-  let immobileDernierPas = false;
 
   function lerp(a, b, f) { return a + (b - a) * f; }
   function interpolerJoueurs(ja, jb, f) {
@@ -696,39 +693,8 @@
   // le lancer en touche, le coup de pied au but — on revient a la vitesse
   // choisie par le joueur.
   const ACCEL_MISE_EN_PLACE = 5;
-  const ACCEL_ROUTINE_BUTEUR = 8;
-  // TEMPS MORT IMMOBILE (signalé : « après une faute, tout se fige, personne
-  // ne bouge pendant de longues secondes »). Pendant un arrêt de jeu, les
-  // joueurs sont souvent déjà en place et ATTENDENT : routine du buteur
-  // (jusqu'à 46 s sans un mouvement), touche après une pénalité en touche
-  // (17 à 21 s), plancher d'attente d'une pénalité jouée vite (3 à 6 s). Ces
-  // durées sont réglementaires et la simulation les garde — mais rien ne bouge
-  // à l'écran : on y passe en avance très rapide. Dès qu'un joueur bouge ou que
-  // le ballon vole, on revient à la vitesse normale de la mise en place.
-  const ACCEL_IMMOBILE = 20;
-  const SEUIL_IMMOBILE = 0.3; // m cumulés par les 30 joueurs sur un pas de 0,1 s
-  function arretDeJeu(m) {
-    if (m.ballonEnVol) return false;
-    switch (m.phase) {
-      case 'PENALITE_TIR': case 'TRANSFORMATION': case 'COUP_ENVOI': case 'ESSAI': case 'MI_TEMPS': return true;
-      case 'TOUCHE': return !m.toucheLancer;
-      case 'MELEE': return !!(m.melee && m.melee.etat === 'MELEE_FORMATION');
-      case 'PORTE': return !!m.penaliteRecul;
-      default: return false;
-    }
-  }
-  function deplacementJoueurs(a, b) {
-    if (!a || !b || !a.teams || !b.teams) return Infinity;
-    let total = 0;
-    for (const cote of ['A', 'B']) {
-      const ja = a.teams[cote] || [], jb = b.teams[cote] || [];
-      for (let i = 0; i < ja.length && i < jb.length; i++) total += Math.abs(ja[i].x - jb[i].x) + Math.abs(ja[i].y - jb[i].y);
-    }
-    return total;
-  }
-  function multiplicateurMiseEnPlace(m, immobile) {
+  function multiplicateurMiseEnPlace(m) {
     if (!m) return 1;
-    if (immobile && arretDeJeu(m)) return ACCEL_IMMOBILE;
     switch (m.phase) {
       // Touche : les deux alignements se forment et le lanceur rejoint sa
       // marque en courant. Des que le ballon est lance (toucheLancer), on
@@ -742,18 +708,8 @@
       case 'ESSAI': return ACCEL_MISE_EN_PLACE;
       // Tir au but : la routine du buteur est acceleree, le coup de pied
       // lui-meme (ballon en vol) est rendu a vitesse normale.
-      // Routine du buteur (recul, placement du ballon, élan), jusqu'à 50 s
-      // de jeu : x8 plutôt que x5 (signalé trop long, ~10 s à l'écran en x1).
-      // Le vol du ballon reste à vitesse normale.
       case 'TRANSFORMATION':
-      case 'PENALITE_TIR': return m.ballonEnVol ? 1 : ACCEL_ROUTINE_BUTEUR;
-      // Coup d'envoi et renvoi aux 22 : les joueurs regagnent leur moitié et le
-      // botteur rejoint le centre (8 à 10 s, ~13 fois par match). Jusqu'à la
-      // frappe, ce n'était pas accéléré du tout.
-      case 'COUP_ENVOI': return (m.envoiEnPlace || m.ballonEnVol) ? 1 : ACCEL_MISE_EN_PLACE;
-      // Pénalité jouée vite : le tapeur rejoint la marque, les fautifs
-      // reculent de 10 m (~8 s). Le jeu reprend à vitesse normale à la frappe.
-      case 'PORTE': return m.penaliteRecul ? ACCEL_MISE_EN_PLACE : 1;
+      case 'PENALITE_TIR': return m.ballonEnVol ? 1 : ACCEL_MISE_EN_PLACE;
       default: return 1;
     }
   }
@@ -769,8 +725,7 @@
     }
     const enMiniPause = ts < miniPauseJusqua;
     if (etatCourant === null) etatCourant = normalizeMatchState(match.getState());
-    let mult = multiplicateurMiseEnPlace(match, immobileDernierPas);
-    const vitesseAffichee = vitesseSim * mult;
+    const vitesseAffichee = vitesseSim * multiplicateurMiseEnPlace(match);
     if (enCours && !enMiniPause) {
       accumulateur += dtReel * vitesseAffichee;
       while (accumulateur >= PAS_FIXE) {
@@ -778,11 +733,6 @@
         match.tick(PAS_FIXE);
         etatCourant = normalizeMatchState(match.getState());
         accumulateur -= PAS_FIXE;
-        // Quelqu'un bouge de nouveau : on rend aussitôt le reste de l'avance
-        // rapide, pour ne pas sauter le début de l'action.
-        immobileDernierPas = deplacementJoueurs(etatPrecedent, etatCourant) < SEUIL_IMMOBILE;
-        const m2 = multiplicateurMiseEnPlace(match, immobileDernierPas);
-        if (m2 < mult) { accumulateur *= m2 / mult; mult = m2; }
       }
     }
     // Fraction de pas écoulée depuis le dernier tick : position interpolée.
@@ -912,7 +862,6 @@
     dernierEtatMelee = null;
     miniPauseJusqua = 0;
     etatPrecedent = null;
-    immobileDernierPas = false;
     etatCourant = null;
     ballonRendu = null; // saut dans le temps : le ballon se pose net à la nouvelle position
     document.getElementById('tempsLabel').textContent = UI.formaterTemps(cible);
@@ -1101,8 +1050,6 @@
     // `tactiqueCfg` ({attaqueA?/attaqueB?/defenseA?/defenseB?}) : réglages
     // tactiques PAR ÉQUIPE (Mode Club, cf. RMClub.tactiqueVersConfig) —
     // n'affecte que le club du joueur, jamais l'IA adverse.
-    // Accélération d'affichage des temps morts (exposée pour les tests).
-    multiplicateurMiseEnPlace,
     demarrerMatchClub(seed, duree, joueursA, joueursB, tactiqueCfg, callbacks) {
       // Repart d'une base sans tactique par équipe avant de réappliquer
       // celle de CE match : le club du joueur alterne domicile/extérieur
