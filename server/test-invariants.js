@@ -3677,6 +3677,35 @@ test('loi 11 : une passe plate sous pression est parfois jugée en avant, jamais
   assert.ok(avant / N >= 0.7 && avant / N <= 3, `${(avant / N).toFixed(2)} passe(s) en avant sifflée(s) par match (réel : 1 à 3)`);
 });
 
+// --- Point de départ d'un essai : la marque de la phase, pas la position d'avant
+// Une touche obtenue sur pénalité prenait la position du botteur : un essai de
+// touche à 40 m de la ligne était compté « au-delà de 50 m ».
+test("essai : son point de départ est celui de la touche ou de la mêlée qui l'a lancé", () => {
+  let verifies = 0;
+  const ecarts = [];
+  for (let seed = 1; seed <= 6; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    let derniere = null;
+    const log = m.log.bind(m);
+    m.log = (t, team, msg, extra, ...r) => {
+      const p = m.porteur;
+      if (t === 'TOUCHE_RAPIDE') derniere = null; // relancée hors de l'alignement : non vérifiée ici
+      if (p && (t === 'TOUCHE_BALLON_GAGNE' || t === 'MELEE_BALLON_SORTI' || (t === 'TURNOVER' && m.phase === 'TOUCHE'))) {
+        const sens = m.possession === 'A' ? 1 : -1;
+        derniere = { origine: t === 'MELEE_BALLON_SORTI' ? 'MELEE' : 'TOUCHE', team: m.possession, dist: sens > 0 ? LONGUEUR - p.x : p.x };
+      }
+      if (t === 'ESSAI' && extra && derniere && extra.origine === derniere.origine && team === derniere.team) {
+        verifies++;
+        if (Math.abs(extra.depuis - derniere.dist) > 3) ecarts.push(`graine ${seed} : ${extra.origine} à ${derniere.dist.toFixed(0)} m, essai « depuis ${extra.depuis} m »`);
+      }
+      return log(t, team, msg, extra, ...r);
+    };
+    m.jouerJusquAuSifflet(0.1);
+  }
+  assert.ok(verifies >= 12, `échantillon trop petit (${verifies} essais de touche ou de mêlée)`);
+  assert.deepStrictEqual(ecarts, []);
+});
+
 // --- bugs.md QA-RM-007 : événements, joueurs et équipe disent la même chose ---
 test('rapprochement : réussis ≤ tentés partout, et chaque essai ou but du compteur a son événement (QA-RM-007)', () => {
   for (let seed = 1; seed <= 4; seed++) {

@@ -1748,6 +1748,8 @@
       const receveur = joueurLePlusProche(receveurs, R.x, R.y).joueur;
       this.stats[R.equipe].touchesRapides++;
       this.log('TOUCHE_RAPIDE', R.equipe, `Touche rapide ! Le n°${L.numero} de l'equipe ${R.equipe} relance aussitot vers le n°${receveur.numero}`);
+      // La séquence part du point de relance, pas de la marque de touche.
+      if (this._sequence) this._sequence.depuis = Math.round(sens > 0 ? LONGUEUR - R.x : R.x);
       this.possession = R.equipe;
       this.porteur = receveur;
       this.ruckPoint = { x: receveur.x, y: receveur.y };
@@ -7265,14 +7267,22 @@
       const phasesArret = { TOUCHE: 'TOUCHE', MELEE: 'MELEE', COUP_ENVOI: 'COUP_ENVOI' };
       const nouvelArret = phasesArret[this.phase] && this._phaseSeqPrec !== this.phase;
       if (nouvelArret || this.possession !== this._seqPoss || (this.penaliteRecul && !this._seqPenalite)) {
-        const pt = this.porteur || this.ruckPoint;
         const sensSeq = this.possession === 'A' ? 1 : -1;
+        const xTouche = this.phase === 'TOUCHE' ? this.toucheLanceurX : null;
         this._sequence = {
           origine: phasesArret[this.phase] || (this.penaliteRecul ? 'PENALITE' : 'JEU_COURANT'),
-          depuis: pt ? Math.round(sensSeq > 0 ? LONGUEUR - pt.x : pt.x) : null,
+          depuis: xTouche != null ? Math.round(sensSeq > 0 ? LONGUEUR - xTouche : xTouche) : null,
           rucks: 0,
         };
         this._seqPoss = this.possession;
+      }
+      // Point de départ : la marque de touche, sinon là où l'équipe a le ballon
+      // en main pour la première fois (sortie de mêlée, pénalité jouée), pas la
+      // position d'avant l'arrêt — une touche sur pénalité prenait celle du botteur.
+      if (this._sequence && this._sequence.depuis === null && this.porteur
+          && (this.phase === 'PORTE' || this.phase === 'MAUL') && this.porteur.team === this.possession) {
+        const sensSeq = this.possession === 'A' ? 1 : -1;
+        this._sequence.depuis = Math.round(sensSeq > 0 ? LONGUEUR - this.porteur.x : this.porteur.x);
       }
       this._seqPenalite = !!this.penaliteRecul;
       if (this.phase === 'RUCK' && this._phaseSeqPrec !== 'RUCK' && this._sequence) this._sequence.rucks++;
