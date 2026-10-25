@@ -580,6 +580,74 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-126. Touche à moins de 10 m de l'en-but : le pack monte le maul — bugs.md QA-RM-003
+- **Statut : CORRIGÉ (moteur)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (réception de touche, `_tickTouche`),
+  `server/test-invariants.js`.
+
+**Constat (50 matchs).**
+- Touches gagnées dans les 22 m adverses : environ 3,9 par match.
+- À moins de 10 m de la ligne, le maul n'était monté que 43 % du temps, exactement comme à 16 m.
+- Ces touches ne donnaient un essai que 29 % du temps.
+
+En vrai, le maul porté depuis une touche à 5 m est l'arme principale des avants près de l'en-but.
+
+**Correction.** À moins de 10 m de la ligne adverse, le taux de maul de la consigne de touche est multiplié par 1,7
+(plafond 95 %) :
+- réglage de base : 45 % → 77 % ;
+- consigne « jeu au sol » : 15 % → 26 % ;
+- consigne « conquête » : 95 %.
+
+Entre 10 et 22 m, rien ne change.
+
+**Mesures.**
+- Sur 50 matchs : essais sur ces touches 0,52 → 0,90 par match (29 % → 49 %).
+- Sur 100 matchs appariés :
+
+| Mesure | Écart |
+|---|---|
+| Essais | −0,07 ± 0,31 |
+| Points | −1,2 ± 2,1 |
+| Rucks | −2 ± 2,5 |
+| Passes | −2,6 ± 4,6 |
+| Temps de jeu | inchangé |
+
+L'essai vient plus souvent du pack près de la ligne, sans gonfler le score.
+
+**Test.** Touche jouée à 5 m puis à 16 m, sur 80 graines : maul ≥ 60 % à 5 m, entre 30 et 60 % à 16 m, et la consigne « jeu
+au sol » en fait au moins 25 points de moins. L'ancien moteur échoue (43 % à 5 m).
+
+**Test bruité élargi.** Le gain après un franchissement passe de 16 à 48 graines, avec le même seuil de 12 m. Des lots de
+16 graines du même moteur donnaient de 12,0 à 15,1 m. Sur 96 matchs : 13,5 m avant, 13,3 m après.
+
+### P2-125. Point de départ d'un essai : la marque de touche ou de mêlée
+- **Statut : CORRIGÉ (mesure)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_sequence` dans `tick`, touche rapide),
+  `server/test-invariants.js`.
+
+**Constat.** Le point de départ des essais (QA-RM-007, `depuis`) prenait la position du porteur au moment où la phase
+arrêtée commençait. Pour une touche sur pénalité, c'était la position du botteur. Sur 6 matchs, 14 essais sur 14 issus
+d'une touche ou d'une mêlée avaient un mauvais point de départ, jusqu'à 39 m d'écart. La mesure annonçait 45 % d'essais
+partis de plus de 50 m.
+
+**Correction.**
+- Touche : la marque de touche.
+- Touche rapide : le point de relance.
+- Autres phases : la position du premier porteur de l'équipe.
+
+Le déroulé des matchs est identique.
+
+**Mesure corrigée (20 matchs).**
+
+| Point de départ | Essais par match |
+|---|---|
+| Dans les 22 | 1,9 |
+| 22-50 m | 2,9 |
+| Au-delà de 50 m | 1,8 |
+
+**Test.** Le point de départ de chaque essai de touche ou de mêlée est celui de la réception ou de la sortie de mêlée,
+à 3 m près. L'ancien moteur échoue.
+
 ### P2-124. Courses : une par ballon porté, pas une par contact
 - **Statut : CORRIGÉ (statistiques)**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_compterCourse`), `docs/REGLES_RUGBY.md`,
