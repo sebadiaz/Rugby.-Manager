@@ -486,7 +486,11 @@
     return {
       sortis: etat.statsJoueursSortis[lettre] || [],
       remplacements: (etat.remplacementsEffectues || []).filter((r) => r.equipe === lettre),
-      tempsFinal: Number.isFinite(etat.tempsMatch) ? etat.tempsMatch : (etat.clock && etat.clock.time),
+      // Temps de jeu au chronomètre officiel : la dernière action jouée après
+      // la sonnerie (loi 5.7) ne fait pas d'un match complet 81 minutes.
+      tempsFinal: Math.min(Number.isFinite(etat.tempsMatch) ? etat.tempsMatch : (etat.clock && etat.clock.time),
+        etat.clock && Number.isFinite(etat.clock.duration) ? etat.clock.duration
+          : Number.isFinite(etat.dureeMatch) ? etat.dureeMatch : Infinity),
     };
   }
 

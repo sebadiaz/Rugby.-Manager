@@ -2306,9 +2306,13 @@
       // sur la liste complète plutôt que de ne désigner aucun plaqueur.
       // Un defenseur HORS-JEU sur coup de pied (loi 10) ne peut pas plaquer : il
       // doit d'abord se remettre en jeu (cf. _replierHorsJeuKick).
+      // Sans défenseur disponible, on retombe d'abord sur ceux qui sont en jeu :
+      // à 2 m de l'en-but, une pénalité jouée vite met toute la défense
+      // hors-jeu, et la liste complète désignait un fautif comme plaqueur.
       const defDisponibles = def.filter(j => j.ruckRecovery <= 0 && !(j.horsJeuKick > 0));
+      const defEnJeu = def.filter(j => !(j.horsJeuKick > 0));
       const { joueur: defenseurProche, distance: distDef } = joueurLePlusProche(
-        defDisponibles.length > 0 ? defDisponibles : def, porteur.x, porteur.y
+        defDisponibles.length > 0 ? defDisponibles : defEnJeu.length > 0 ? defEnJeu : def, porteur.x, porteur.y
       );
       this.timerPhase += dt;
 
@@ -2336,7 +2340,14 @@
       // numéro du porteur et du score (cf. choisirActionPorteur). Le coup de
       // pied peut survenir même défenseur tout proche (dégagement sous
       // pression) ; la passe suppose de ne pas être déjà au contact.
-      const action = (this.combinaison || ballonEnVolPasse) ? 'RUN' : this.choisirActionPorteur(porteur, defenseurProche, distDef, dt);
+      let action = (this.combinaison || ballonEnVolPasse) ? 'RUN' : this.choisirActionPorteur(porteur, defenseurProche, distDef, dt);
+      // Sonnerie de fin de match : l'équipe menée ou à égalité ne rend pas le
+      // ballon au pied, elle garde la dernière action en main.
+      if (action === 'KICK' && this._sonnerie && this.miTempsJouee
+          && this.score[porteur.team] <= this.score[porteur.team === 'A' ? 'B' : 'A']) {
+        this._typeCoupDePiedForce = null;
+        action = 'RUN';
+      }
       if (action === 'KICK') { this._executerCoupDePiedJeu(porteur); return; }
       if (distDef >= 2.2 && (action === 'PASS' || action === 'JEU_LARGE') && this._tenterPasse(porteur, action === 'JEU_LARGE')) return;
 
@@ -2349,7 +2360,8 @@
       // suivant contre le même défenseur (sinon le raté n'aurait aucune
       // conséquence : il serait rejoué jusqu'à réussite quelques dixièmes de
       // seconde plus tard).
-      if (!ballonEnVolPasse && distDef < 2.2 && defenseurProche.missCooldown <= 0 && (defenseurProche.fixeCooldown || 0) <= 0) {
+      if (!ballonEnVolPasse && distDef < 2.2 && defenseurProche.missCooldown <= 0 && (defenseurProche.fixeCooldown || 0) <= 0
+          && !(defenseurProche.horsJeuKick > 0)) {
         const att0 = this.attaquants();
         this._compterCourse(porteur);
         this.stats[defenseurProche.team].tacklesAttempted++;
@@ -3205,7 +3217,9 @@
         // qui a comblé l'écart pendant ce même tick (donc invisible à ce
         // contrôle initial) doit quand même avoir sa chance d'arrêter l'essai
         // au ras de la ligne, comme un vrai plaquage de couverture désespéré.
-        const { joueur: sauveteur, distance: distSauvetage } = joueurLePlusProche(def, porteur.x, porteur.y);
+        // Un fautif encore hors-jeu (loi 10, loi 20.14) ne sauve pas l'essai.
+        const { joueur: sauveteur, distance: distSauvetage } = joueurLePlusProche(
+          def.filter(d => !(d.horsJeuKick > 0)), porteur.x, porteur.y);
         if (distSauvetage < 2.2 && sauveteur.missCooldown <= 0) {
           this._compterCourse(porteur);
           this.stats[sauveteur.team].tacklesAttempted++;
@@ -3319,6 +3333,16 @@
       const soutienDisponible = soutiens.length > 0;
       const avant = porteur.numero <= 8;
       const enMene = this.score[porteur.team] > this.score[porteur.team === 'A' ? 'B' : 'A'];
+
+      // SONNERIE (loi 5.7) : le ballon en main, l'équipe qui ne veut plus
+      // jouer le sort en touche pour faire siffler la fin — à la mi-temps
+      // depuis son camp, en fin de match quand elle mène. Les arrières le
+      // tapent tout de suite ; un avant joue jusqu'à la sortie suivante.
+      if (this._sonnerie && !this.penaliteRecul && porteur.numero >= 9) {
+        const distButAdv = porteur.sensAttaque > 0 ? LONGUEUR - porteur.x : porteur.x;
+        const veutFinir = this.miTempsJouee ? enMene : distButAdv > 50;
+        if (veutFinir) { this._typeCoupDePiedForce = 'TOUCHE'; return 'KICK'; }
+      }
 
       // 0. DEMI DE MÊLÉE LIBRE à la sortie (ruck/mêlée/touche où il n'était pas
       // au contact) : en plus du lancement classique 9→10 et du jeu au pied déjà

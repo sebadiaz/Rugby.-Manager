@@ -1551,8 +1551,9 @@ test('le jeu au pied appartient aux demis et a l arriere, pas aux avants', () =>
   // 8 % seulement par le n°9. Cf. TODO_AUDIT.md P2-57.
   // 16 graines : sur 4 graines, la part du n°9 varie de 19 a 27 % d'un bloc
   // a l'autre (moyenne 23 % sur 24 graines) ; cf. TODO_AUDIT.md P2-88.
+  // 32 graines : par blocs de 16, le meme moteur donnait 19,9 % puis 24,6 %.
   const par = {}; let tot = 0;
-  for (let seed = 1; seed <= 16; seed++) {
+  for (let seed = 1; seed <= 32; seed++) {
     const m = new MatchEngine(seed, 4800);
     for (let t = 0; t < 4800; t += 0.1) {
       const k0 = m.stats.A.kicks + m.stats.B.kicks; const p = m.porteur;
@@ -1916,7 +1917,9 @@ test('une interception, c est une passe LONGUE, pas un pop a deux metres', () =>
   // C'est l'assertion qui compte : elle ne lit pas une formule, elle mesure la
   // longueur des passes que le moteur intercepte reellement en 80 minutes.
   let sommeL = 0, prises = 0;
-  const GRAINES = 12, DUREE = 4800, DT = 0.2;
+  // 24 graines : par blocs de 16, le meme moteur donnait 0,7 a 1,2
+  // interception par match ; sur les 12 premieres graines, 0,33.
+  const GRAINES = 24, DUREE = 4800, DT = 0.2;
   for (let seed = 1; seed <= GRAINES; seed++) {
     const m = new MatchEngine(seed, DUREE);
     const orig = m._chercherInterception.bind(m);
@@ -2262,6 +2265,11 @@ test('loi 10 : les joueurs devant le botteur sont hors-jeu et ne peuvent pas pla
       const phaseAvant = m.phase;
       const positions = new Map();
       for (const j of [...m.equipeA, ...m.equipeB]) positions.set(j, { x: j.x, horsJeu: j.horsJeuKick > 0 });
+      const plaquagesAvant = new Map();
+      for (const j of [...m.equipeA, ...m.equipeB]) {
+        const l = m.statsJoueurs[j.team][j.numero];
+        plaquagesAvant.set(j, l ? l.tacklesAttempted : 0);
+      }
       const botteur = m.porteur;
       const avantTk = m.stats.A.tacklesAttempted + m.stats.B.tacklesAttempted;
       m.tick(0.2);
@@ -2287,14 +2295,15 @@ test('loi 10 : les joueurs devant le botteur sont hors-jeu et ne peuvent pas pla
           if (devant.every((j) => j.horsJeuKick > 0)) marques++;
         }
       }
-      // Aucun plaquage ne doit etre tente par un joueur hors-jeu.
+      // Aucun plaquage ne doit etre tente par un joueur hors-jeu. Le plaqueur
+      // est identifie par son compteur individuel : un hors-jeu simplement
+      // voisin du plaquage d'un coequipier en jeu (une penalite jouee vite a
+      // 2 m de l'en-but met toute la defense hors-jeu) n'est pas une faute.
       const apresTk = m.stats.A.tacklesAttempted + m.stats.B.tacklesAttempted;
       if (apresTk > avantTk) {
-        for (const [j, p] of positions) if (p.horsJeu && j.horsJeuKick > 0 && j.team !== m.possession) {
-          // le plaqueur potentiel est dans le camp qui defend ; on ne peut pas
-          // l'identifier exactement, on borne par le nombre de hors-jeu proches
-          // du porteur, qui doit rester nul.
-          if (m.porteur && Math.hypot(j.x - m.porteur.x, j.y - m.porteur.y) < 2.2) plaquagesHorsJeu++;
+        for (const [j, p] of positions) if (p.horsJeu && j.horsJeuKick > 0) {
+          const ligne = m.statsJoueurs[j.team][j.numero];
+          if (ligne && ligne.tacklesAttempted > (plaquagesAvant.get(j) || 0)) plaquagesHorsJeu++;
         }
       }
       // Combien de joueurs sont masses autour du ballon AU MOMENT de la
@@ -3799,6 +3808,67 @@ test('loi 5.7 : mi-temps et fin du match au premier ballon mort après la sonner
   }
   assert.deepStrictEqual(fautes, []);
   assert.ok(fins === 24 && sonneries >= 10 && prolongees >= 10, `${fins} fins, ${sonneries} sonneries, ${prolongees} périodes prolongées`);
+});
+
+// --- Sonnerie : l'équipe qui ne veut plus jouer tape en touche ------------------
+// En fin de match, celle qui mène sort le ballon pour faire siffler ; celle qui
+// est menée garde le ballon et attaque.
+test('sonnerie : en fin de match, l équipe qui mène tape en touche, celle qui est menée garde le ballon', () => {
+  function scenario(seed, scoreA, scoreB) {
+    const m = new MatchEngine(seed, 4800);
+    for (let t = 0; t < 30; t += 0.1) m.tick(0.1);
+    m.avantage = null; m._passeCibleForcee = null; m.passeVisuelle = null; m.combinaison = null;
+    m.penaliteRecul = null; m.maul = null; m.toucheLancer = null; m.toucheRapide = null;
+    m.miTempsJouee = true; m.tempsMatch = m.dureeMatch + 0.5;
+    m.score.A = scoreA; m.score.B = scoreB;
+    m.phase = 'PORTE'; m.possession = 'A';
+    const dix = m.equipeA.find(j => j.numero === 10);
+    m.porteur = dix; dix.auSol = 0; dix.x = 30; dix.y = 35;
+    for (const j of m.equipeB) { j.auSol = 0; j.x = 45; }
+    let tape = false;
+    const log = m.log.bind(m);
+    m.log = (t, team, ...r) => { if (t === 'COUP_DE_PIED' && team === 'A') tape = true; return log(t, team, ...r); };
+    for (let k = 0; k < 20 && !tape; k++) m.tick(0.1);
+    return tape;
+  }
+  let mene = 0, menee = 0;
+  for (let seed = 1; seed <= 20; seed++) { if (scenario(seed, 20, 10)) mene++; if (scenario(seed, 10, 20)) menee++; }
+  assert.ok(mene >= 18, `l équipe qui mène ne tape en touche que ${mene} fois sur 20`);
+  assert.ok(menee <= 4, `l équipe menée tape ${menee} fois sur 20 au lieu de jouer`);
+});
+
+// --- Pénalité jouée vite près de la ligne : les fautifs ne plaquent pas -------
+// À 2 m de l'en-but, tous les défenseurs doivent revenir derrière leur ligne :
+// sans défenseur en jeu, le moteur retombait sur la liste complète et un
+// fautif encore hors-jeu plaquait (3 cas sur 20 graines).
+test('loi 20.14 : pénalité jouée vite à 2 m de la ligne, aucun fautif hors-jeu ne plaque', () => {
+  let contacts = 0;
+  const fautes = [];
+  for (let seed = 1; seed <= 20; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    for (let t = 0; t < 30; t += 0.1) m.tick(0.1);
+    m.avantage = null; m._passeCibleForcee = null; m.passeVisuelle = null; m.combinaison = null; m.maul = null; m.toucheLancer = null;
+    m.phase = 'PORTE'; m.possession = 'A';
+    const tapeur = m.equipeA.find(j => j.numero === 9);
+    m.porteur = tapeur; tapeur.auSol = 0; tapeur.x = 98; tapeur.y = 30;
+    for (const j of m.equipeA) if (j !== tapeur) { j.auSol = 0; j.x = 90; }
+    for (const j of m.equipeB) { j.auSol = 0; j.sinBin = 0; j.ruckRecovery = 0; j.x = 99 + (j.numero % 3) * 0.3; j.y = 18 + j.numero * 2; }
+    // Les avants du ruck fautif sont encore au sol, juste devant la marque.
+    for (const j of m.equipeB.filter(x => x.numero <= 5)) { j.x = 98.6; j.y = 27 + j.numero; j.auSol = 6 + j.numero; j._solX = j.x; j._solY = j.y; }
+    m._lancerJeuRapidePenalite('A', { x: 98, y: 30 });
+    for (let k = 0; k < 60; k++) {
+      const horsJeu = new Set(m.equipeB.filter(j => j.horsJeuKick > 0).map(j => j.numero));
+      const avant = m.stats.B.tacklesAttempted;
+      m.tick(0.1);
+      if (m.stats.B.tacklesAttempted > avant) {
+        contacts++;
+        const n = m.contestants && m.contestants[0];
+        if (horsJeu.has(n)) fautes.push(`graine ${seed} : le n°${n}, hors-jeu, plaque`);
+      }
+    }
+  }
+  assert.ok(contacts >= 10, `échantillon trop petit (${contacts} contacts)`);
+  assert.deepStrictEqual(fautes, []);
 });
 
 // --- bugs.md QA-RM-007 : événements, joueurs et équipe disent la même chose ---
