@@ -580,6 +580,31 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-121. Temps morts accélérés à l'écran : coup d'envoi, pénalité jouée vite, routine du buteur
+- **Statut : CORRIGÉ (affichage)**
+- Fichiers concernés : `docs/js/main.js` (`multiplicateurMiseEnPlace`, exposée sur `RMMain`),
+  `server/test-parcours-navigateur.js`.
+
+**Constat (retour joueur : « certaines phases sont trop longues, comme les pénalités »).** Mesuré à l'écran en x1 sur
+6 matchs :
+
+| Temps mort | Fréquence | Durée à l'écran | Avance rapide |
+|---|---|---|---|
+| Mise en place du coup d'envoi et du renvoi aux 22 | ~13 par match | 8 à 10 s | aucune |
+| Recul des 10 m d'une pénalité jouée vite | 3,7 par match | 8 s | aucune |
+| Routine du buteur (50 s de jeu) | — | 10 s | x5 |
+
+Les durées de la simulation sont réglementaires (60 s pour un tir au but en vrai) et protégées par des tests de loi :
+on ne les raccourcit pas.
+
+**Correction.** Avance rapide de l'affichage jusqu'à la frappe : x5 pour le coup d'envoi et le renvoi, x5 pour le recul
+de la pénalité jouée vite, x8 au lieu de x5 pour la routine du buteur. Environ 2 s, 1,6 s et 6 s à l'écran en x1. La
+frappe, le vol du ballon et tout le jeu courant restent à la vitesse choisie. Chronomètre, temps de jeu effectif et
+statistiques sont inchangés.
+
+**Tests.** Navigateur : chaque temps mort est accéléré, jamais le jeu courant, un ruck ou le vol du ballon. Suite
+complète 514/0 ; `match-interactif` et `feuille-de-match` OK.
+
 ### P2-120. Pick-and-drive au milieu du terrain : essayé puis retiré — bugs.md BUG-RM-005
 - **Statut : ÉCARTÉ (moteur revenu à l'état de P2-119)**
 
