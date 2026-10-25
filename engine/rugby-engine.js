@@ -567,6 +567,9 @@
   // 15 séquences parties des 22 (20 matchs). Points sur 100 matchs appariés :
   // 61,9 -> 59,6 (-2,3 ± 3,7, même sens à 0,65). À 1,0 le contre disparaît.
   const COUVERTURE_ARRIERE = 0.5;
+  // Part des sorties de ruck jouées en pick-and-drive par un avant, entre les
+  // deux 22 (BUG-RM-005, P2-120).
+  const P_PICK_MILIEU = 0.2;
   // Rayon de contact du plaquage (m) : distance a laquelle le contact se resout,
   // et donc aussi celle a laquelle un SECOND defenseur participe au plaquage.
   const RAYON_PLAQUAGE = 2.2;
@@ -5044,8 +5047,26 @@
           // Sortie propre : le demi de mêlée (n°9) joue le ballon au pied du
           // regroupement (il a couru vers le ruck pendant la phase, cf.
           // estDemiMelee) ; il décide ensuite normalement (passe/jeu au pied).
+          // PICK-AND-DRIVE AU MILIEU DU TERRAIN (BUG-RM-005) : entre les deux
+          // 22, un avant debout au pied du ruck ramasse parfois et charge pour
+          // gagner un mètre, sans passe — le 9 jouait 91 % des sorties, d'où
+          // ~180 passes de 9 par match. Pas dans les 22 adverses : essayé là
+          // (P2-118), il ajoutait des essais et +5 points par match.
+          const sensAtt = this.possession === 'A' ? 1 : -1;
+          const distLigne = sensAtt > 0 ? LONGUEUR - pt.x : pt.x;
+          const pPick = distLigne > 22 && distLigne < 78 ? P_PICK_MILIEU : 0;
+          const ramasseurs = pPick > 0 ? att.filter(j => j.numero <= 8 && j.auSol === 0 && j !== this.porteur
+            && distance(j, pt) < 3) : [];
           const neuf = att.find(j => j.numero === 9 && j.auSol === 0);
-          if (neuf) { relayeur = neuf; this._neufLibre = true; this.log('RUCK_SORTIE_9', this.possession, `Sortie de ruck par le 9`); }
+          if (ramasseurs.length && this.rng() < pPick) {
+            ({ joueur: relayeur } = joueurLePlusProche(ramasseurs, pt.x, pt.y));
+            this.log('PICK_AND_GO', this.possession, `Pick-and-go : le n°${relayeur.numero} ramasse au pied du ruck et charge`,
+              { numero: relayeur.numero, distanceLigne: Math.round(distLigne) });
+            // Les gardes, debout contre le ruck, plaquent tout de suite (cf. P2-118).
+            for (const d of this.defenseurs()) {
+              if (d.auSol === 0 && distance(d, pt) < 4) d.ruckRecovery = 0;
+            }
+          } else if (neuf) { relayeur = neuf; this._neufLibre = true; this.log('RUCK_SORTIE_9', this.possession, `Sortie de ruck par le 9`); }
           // Le 9 au sol (c'est lui qui vient d'être plaqué) : l'avant DEBOUT le
           // plus proche relaie. Le filtre manquait : le plaqué lui-même, encore
           // à terre, recevait le ballon et repartait « en courant » allongé
