@@ -3534,6 +3534,48 @@ test('passes : chaque passe réussie, offload compris, est aussi une passe tent�
   assert.ok(offloads >= 20, `échantillon sans offloads (${offloads})`);
 });
 
+// --- Courses : une par ballon porté, pas une par contact --------------------
+// Un porteur qui casse un plaquage puis se fait reprendre faisait DEUX courses
+// (46 par match en trop : 307 au lieu de 261). Comme en analyse de match, il
+// fait une course et bat un défenseur.
+test('courses : un plaquage cassé puis un second contact reste une seule course du même porteur', () => {
+  let doubles = 0, battus = 0, courses = 0, rucks = 0, oublis = 0;
+  for (let seed = 1; seed <= 4; seed++) {
+    const m = new MatchEngine(seed, 2400);
+    // Par joueur : une course de plus alors qu'il a déjà fait la sienne sans
+    // avoir lâché le ballon (il est resté porteur d'un pas à l'autre).
+    const avant = {}, dejaCompte = {};
+    while (m.phase !== 'TERMINE') {
+      const p0 = m.phase === 'PORTE' && m.porteur ? m.porteur.team + m.porteur.numero : null;
+      m.tick(0.1);
+      // Et jamais une de moins : un porteur plaqué qui fait un ruck a couru.
+      if (p0 && m.phase === 'RUCK') {
+        rucks++;
+        const l = m.statsJoueurs[p0[0]][p0.slice(1)];
+        if (!dejaCompte[p0] && !(l && l.courses > (avant[p0] || 0))) oublis++;
+      }
+      for (const e of ['A', 'B']) {
+        for (const [num, l] of Object.entries(m.statsJoueurs[e])) {
+          const cle = e + num, c = l.courses;
+          if (c > (avant[cle] || 0)) { if (dejaCompte[cle]) doubles += c - avant[cle]; dejaCompte[cle] = true; }
+          avant[cle] = c;
+          if (!m.porteur || m.porteur.team + m.porteur.numero !== cle) dejaCompte[cle] = false;
+        }
+      }
+    }
+    for (const e of ['A', 'B']) {
+      battus += m.stats[e].defenseursBattus; courses += m.stats[e].carries;
+      const lignes = Object.values(m.statsJoueurs[e]).concat(m.statsJoueursSortis[e].map((r) => r.stats || {}));
+      const indiv = lignes.reduce((s, l) => s + (l.courses || 0), 0);
+      assert.strictEqual(indiv, m.stats[e].carries, `graine ${seed}, équipe ${e} : courses individuelles et d'équipe`);
+    }
+  }
+  assert.strictEqual(doubles, 0, `${doubles} courses comptées deux fois pour le même porteur`);
+  assert.ok(rucks >= 200 && oublis === 0, `${oublis} porteurs plaqués sans course sur ${rucks} rucks`);
+  assert.ok(battus >= 40, `les défenseurs battus restent comptés (${battus})`);
+  assert.ok(courses >= 300, `échantillon trop petit (${courses} courses)`);
+});
+
 // --- bugs.md BUG-RM-010 : un match se lit au coup de sifflet, pas à 80:00 ----
 // Graine 4 : 31-18 à 80:00 pendant une transformation, 33-18 au sifflet.
 test('jouerJusquAuSifflet : le match se lit au coup de sifflet, tir engagé compris (BUG-RM-010)', () => {

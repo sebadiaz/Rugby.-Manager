@@ -1162,7 +1162,8 @@
     // Statistiques de match, alignées sur les définitions officielles World Rugby
     // (game analysis). Toutes dérivées d'ACTIONS RÉELLES de la simulation, jamais
     // fabriquées. Correspondance documentée dans docs/REGLES_RUGBY.md.
-    //  - carries          : ballons portés AU CONTACT (le porteur engage le contact) ;
+    //  - carries          : ballons portés AU CONTACT (le porteur engage le contact),
+    //                       une course par ballon reçu : un plaquage cassé n'en fait pas une deuxième ;
     //  - passes / passesTentees / offloads : passes réussies / tentées / dans le plaquage ;
     //  - tacklesMade / missedTackles       : plaquages réussis / manqués (côté défense) ;
     //  - defenseursBattus : défenseurs BATTUS (côté attaque = plaquage manqué subi par la défense) ;
@@ -1192,6 +1193,16 @@
         // rouge (cf. docs/ANALYSE_MATCH_REEL.md).
         entrees22: 0,
       };
+    }
+
+    // Une course par ballon porté (analyse de match) : un porteur qui casse un
+    // plaquage puis se fait reprendre a fait UNE course et battu un défenseur,
+    // pas deux courses. Remis à zéro dès que le ballon change de mains (tick).
+    _compterCourse(porteur) {
+      if (!porteur || this._courseDe === porteur) return;
+      this._courseDe = porteur;
+      this.stats[this.possession].carries++;
+      this._statJoueur(porteur).courses++;
     }
 
     // Retourne (en la créant si besoin) le compteur individuel d'un joueur —
@@ -2335,8 +2346,7 @@
       // seconde plus tard).
       if (!ballonEnVolPasse && distDef < 2.2 && defenseurProche.missCooldown <= 0 && (defenseurProche.fixeCooldown || 0) <= 0) {
         const att0 = this.attaquants();
-        this.stats[this.possession].carries++;
-        this._statJoueur(porteur).courses++;
+        this._compterCourse(porteur);
         this.stats[defenseurProche.team].tacklesAttempted++;
         this._statJoueur(defenseurProche).tacklesAttempted++;
         // Réussite de plaquage ~86-88 % (réel ~85-88 %) : l'ancienne base 0.83
@@ -2602,9 +2612,8 @@
             marqueur.x = ligneEnBut;
             this.score[this.possession] += 5;
             this.stats[this.possession].essais++;
-            this.stats[this.possession].carries++;
+            this._compterCourse(marqueur);
             this._statJoueur(marqueur).essais++;
-            this._statJoueur(marqueur).courses++;
             this._passeDecisive(marqueur);
             this.essaiX = marqueur.x;
             this.essaiY = marqueur.y;
@@ -3193,8 +3202,7 @@
         // au ras de la ligne, comme un vrai plaquage de couverture désespéré.
         const { joueur: sauveteur, distance: distSauvetage } = joueurLePlusProche(def, porteur.x, porteur.y);
         if (distSauvetage < 2.2 && sauveteur.missCooldown <= 0) {
-          this.stats[this.possession].carries++;
-          this._statJoueur(porteur).courses++;
+          this._compterCourse(porteur);
           this.stats[sauveteur.team].tacklesAttempted++;
           this._statJoueur(sauveteur).tacklesAttempted++;
           const probaSauvetage = Math.max(0.55, Math.min(0.85, 0.68 + (sauveteur.plaquage - porteur.vitesse) / 250));
@@ -3232,9 +3240,8 @@
         porteur.x = porteur.sensAttaque > 0 ? LONGUEUR : 0;
         this.score[this.possession] += 5;
         this.stats[this.possession].essais++;
-        this.stats[this.possession].carries++;
+        this._compterCourse(porteur);
         this._statJoueur(porteur).essais++;
-        this._statJoueur(porteur).courses++;
         this._passeDecisive(porteur);
         this.essaiX = porteur.x;
         this.essaiY = porteur.y;
@@ -7240,6 +7247,7 @@
 
     tick(dt) {
       this._numTick = (this._numTick || 0) + 1;
+      if (this.porteur !== this._courseDe) this._courseDe = null;
       // Ligne d'avantage de la phase (stat des mètres gagnés, P2-102) : posée à
       // chaque début de jeu courant au point de regroupement ou de réception,
       // et à chaque changement de possession, au point du nouveau porteur.

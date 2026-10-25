@@ -312,7 +312,7 @@ jouées dans la simulation — aucune n'est fabriquée.**
 
 | Stat moteur | Définition World Rugby | Où c'est compté |
 |---|---|---|
-| `carries` (Courses au contact) | Un joueur qui, ballon en main, **engage le contact** avec l'adversaire | `_tickPorte`, à l'entrée du contact (distance défenseur < 2,2 m) |
+| `carries` (Courses au contact) | Un joueur qui, ballon en main, **engage le contact** avec l'adversaire. Une course par ballon reçu : s'il casse le plaquage et se fait reprendre, c'est toujours une course (et un défenseur battu) | `_compterCourse`, à l'entrée du contact (distance défenseur < 2,2 m) |
 | `passes` / `passesTentees` | Lancer du ballon (hors lancer de touche / introduction en mêlée) | passe réussie / tentée (`_tenterPasse`, combinaisons) |
 | `offloads` | Passe effectuée **pendant** le plaquage | `_tickPorte`, offload dans le contact |
 | `tacklesMade` / `missedTackles` | Plaquage réussi (le plaqueur amène le porteur au sol) / manqué | résolution du plaquage |
