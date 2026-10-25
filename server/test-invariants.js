@@ -3692,6 +3692,44 @@ test('franchissement : les défenseurs dépassés poursuivent le perceur à plei
   assert.ok(moyen < 4.5, `les dépassés finissent à ${moyen.toFixed(1)} m du perceur en 2 s (ils doivent revenir sur lui)`);
 });
 
+// --- P2-120 / BUG-RM-005 : pick-and-drive au milieu du terrain -------------
+// Le 9 jouait 91 % des sorties de ruck (~180 passes par match). Entre les deux
+// 22, un avant ramasse parfois et charge : contact immédiat, gain court, pas
+// une course libre (première version : contact à 2,8 s, 7,9 m, +7 points).
+test('ruck : pick-and-drive d un avant entre les 22, au contact tout de suite pour un gain court (P2-120)', () => {
+  const r = { picks: 0, horsZone: 0, nonAvant: 0, gains: [], delais: [], sorties9: 0 };
+  for (let seed = 1; seed <= 4; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    let suivi = null;
+    const log = m.log.bind(m);
+    m.log = (t, team, msg, extra, ...rest) => {
+      if (t === 'RUCK_SORTIE_9') r.sorties9++;
+      if (t === 'PICK_AND_GO') {
+        r.picks++;
+        if (!(extra.distanceLigne >= 22 && extra.distanceLigne <= 78)) r.horsZone++; // distance arrondie
+        if (!(extra.numero <= 8)) r.nonAvant++;
+        suivi = { team, x0: m.ruckPoint.x, sens: team === 'A' ? 1 : -1, t0: m.tempsMatch };
+      }
+      return log(t, team, msg, extra, ...rest);
+    };
+    let ph = m.phase;
+    while (m.phase !== 'TERMINE') {
+      m.tick(0.1);
+      if (suivi && m.phase === 'RUCK' && ph === 'PORTE') {
+        r.gains.push((m.ruckPoint.x - suivi.x0) * suivi.sens); r.delais.push(m.tempsMatch - suivi.t0); suivi = null;
+      } else if (suivi && (m.possession !== suivi.team || m.tempsMatch - suivi.t0 > 10)) suivi = null;
+      ph = m.phase;
+    }
+  }
+  const med = (a) => a.slice().sort((x, y) => x - y)[Math.floor(a.length / 2)];
+  assert.ok(r.picks / 4 >= 10, `${(r.picks / 4).toFixed(1)} pick-and-drive par match`);
+  assert.strictEqual(r.horsZone, 0, 'jamais dans les 22');
+  assert.strictEqual(r.nonAvant, 0, 'toujours un avant');
+  assert.ok(med(r.delais) <= 1.2, `contact en ${med(r.delais).toFixed(1)} s (médiane)`);
+  assert.ok(med(r.gains) <= 3, `gain médian ${med(r.gains).toFixed(1)} m`);
+  assert.ok(r.sorties9 > 3 * r.picks, 'le 9 joue toujours la grande majorité des sorties');
+});
+
 console.log(`\n${nbTests} test(s) exécuté(s).`);
 if (process.exitCode) {
   console.error('ECHEC : au moins un invariant violé.');
