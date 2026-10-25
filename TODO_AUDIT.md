@@ -580,6 +580,37 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-120. Pick-and-drive au milieu du terrain : essayé puis retiré — bugs.md BUG-RM-005
+- **Statut : ÉCARTÉ (moteur revenu à l'état de P2-119)**
+
+**Essai.** Entre les deux 22, 20 % des sorties de ruck étaient jouées par un avant qui ramasse et charge droit sur le
+défenseur le plus proche (sans passe ni coup de pied pendant 1,5 s), les gardes du ruck plaquant tout de suite.
+
+**Défaut trouvé au passage, et qui expliquait l'échec de P2-118.** La remise à zéro des gardes était annulée par la
+récupération de fin de ruck, appliquée après elle. Le ramasseur partait alors dans le vide : contact après 2,8 s,
+7,9 m de gain, 23 franchissements pour 176 ramassages. Une fois l'ordre corrigé : contact après 0,5 s, gain de 1,1 m,
+1 franchissement pour 253.
+
+**Comparaison sur 100 matchs appariés.**
+
+| Mesure | Écart |
+|---|---|
+| Passes | −31 ± 11 (384) |
+| Points | +0,6 ± 3,5 |
+| Essais | +0,2 ± 0,5 |
+| Essais d'avants | −0,46 ± 0,38 |
+
+**Pourquoi retiré.** Le changement déplace trop la structure du jeu : 6 invariants échouent.
+- Séquence de jeu courant 2,79 s, sous le plancher de 2,8 s.
+- Gain après une percée de 12 m en 6 s, sous les 15 m attendus.
+- Passes décisives 6 pour 20 essais.
+- Écart de mètres entre avants puissants et légers trop faible (1,10).
+- Touches rapides rares (2 en 12 matchs).
+- Une pénalité en touche frappée hors de la marque.
+
+**À retenir pour un prochain essai.** Appliquer la remise à zéro des gardes après `_imposerRecuperationRuck`, et
+réduire la part du pick-and-drive (5 à 10 %) pour limiter ses effets sur le reste du jeu.
+
 ### P2-119. Après un franchissement, les défenseurs dépassés poursuivent le perceur
 - **Statut : CORRIGÉ (moteur)**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (déplacement défensif en jeu courant ;
