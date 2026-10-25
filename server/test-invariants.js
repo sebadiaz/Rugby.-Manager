@@ -1438,7 +1438,7 @@ test('le ballon VIT dans le contact : des offloads a chaque match, pas une raret
   assert.ok(parMatch > 9, `${parMatch.toFixed(1)} offloads par match (reel : 25) : le porteur plaque ne libere presque jamais le ballon dans le contact`);
 });
 
-test('loi 20.14 : un jeu rapide ne reprend pas tant qu un fautif AU SOL reste dans les 10 m', () => {
+test('loi 20.14 : jeu rapide joué vite, le fautif encore dans les 10 m est hors-jeu et ne peut pas plaquer', () => {
   // Signale par le controle d'arbitrage du paquet P2-52 : la mise en place du
   // jeu rapide ignorait les fautifs au sol (`if (j.auSol > 0) continue`). Un
   // fautif encore a terre dans les 10 m ne bloquait pas la reprise ; il se
@@ -1460,9 +1460,26 @@ test('loi 20.14 : un jeu rapide ne reprend pas tant qu un fautif AU SOL reste da
   let t = 0;
   while (m.penaliteRecul && t < 60) { m.tick(0.1); t += 0.1; }
   assert.ok(!m.penaliteRecul, 'la mise en place du jeu rapide ne se termine jamais');
+  // Le jeu rapide se joue VITE (P2-123, retour joueur) : on n'attend plus que
+  // tous les fautifs aient reculé. Chaque fautif resté dans les 10 m est
+  // HORS-JEU au moment de la frappe : il ne peut pas plaquer avant de s'être
+  // replié — c'est ce que garantit la loi, pas un temps d'attente.
+  assert.ok(t <= 3, `le jeu rapide doit se jouer vite (repris après ${t.toFixed(1)} s)`);
   const enDeca = m.equipeB.filter(j => (j.x - ligne) * sens < -0.5);
-  assert.ok(enDeca.length === 0 || t >= 40,
-    `le jeu reprend apres ${t.toFixed(1)} s avec ${enDeca.map(j => 'n°' + j.numero + (j.auSol > 0 ? ' (au sol)' : '')).join(', ')} encore dans les 10 m (loi 20.14)`);
+  assert.ok(enDeca.includes(fautif), 'scénario : le fautif au sol est bien encore dans les 10 m à la frappe');
+  for (const j of enDeca) {
+    assert.ok(j.horsJeuKick > 0, `n°${j.numero} encore dans les 10 m à la frappe sans être hors-jeu (loi 20.14)`);
+  }
+  // Il ne plaque jamais tant qu'il n'est pas revenu derrière la ligne des 10 m.
+  for (let k = 0; k < 60; k++) {
+    const p = m.porteur, avant = m.stats.B.tacklesAttempted;
+    const dedans = (fautif.x - ligne) * sens < -0.5;
+    m.tick(0.1);
+    if (m.stats.B.tacklesAttempted > avant && dedans && p && m.ruckPoint) {
+      const plaqueur = m.equipeB.find(j => m.contestants && j.numero === m.contestants[0]);
+      assert.notStrictEqual(plaqueur, fautif, 'le fautif plaque depuis les 10 m alors qu il est hors-jeu');
+    }
+  }
 });
 
 test('une CHANDELLE tient en l air et se dispute : les chasseurs arrivent dessous', () => {

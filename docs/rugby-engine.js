@@ -2007,7 +2007,7 @@
       // cet excès. La condition « fautifs repliés à 10 m » reste en place, et
       // le plafond de 40 s aussi.
       this.penaliteRecul = { sens, eqDef, ligne, markX: position.x, markY: position.y,
-        timer: 40 * this._echelleArret, attente: 8 * this._echelleArret };
+        timer: 40 * this._echelleArret, attente: 1 * this._echelleArret };
       // Le ballon est POSÉ sur la marque (loi 20.4) : il y va depuis là où il
       // était affiché (ruck, mêlée, porteur fautif), puis le tapeur l'y
       // rejoint. Avant, il sautait dans les mains du n°9 (~8 m, jusqu'à 14 m).
@@ -2043,10 +2043,23 @@
           pret = false;
         }
       }
-      // Le plancher d'attente prime : tant qu'il court, le jeu ne reprend pas.
+      // JEU RAPIDE = RAPIDE (retour joueur, P2-123) : on peut jouer une
+      // pénalité vite comme prendre son temps. Ici l'équipe a choisi de la
+      // jouer vite : le tapeur frappe dès qu'il est sur la marque (une seconde
+      // pour poser le ballon), sans attendre que les fautifs aient reculé. Ceux
+      // qui sont encore dans les 10 m sont HORS-JEU (loi 20.14) : ils doivent
+      // se replier et ne peuvent pas plaquer avant d'y être (même mécanisme que
+      // le hors-jeu sur coup de pied). Avant, un plancher de 8 s et l'attente du
+      // repli complet laissaient tout le monde en place, immobile.
       R.attente -= dt;
       if (R.attente > 0) return;
-      if (R.timer <= 0 || pret) this.penaliteRecul = null;
+      const tapeurPret = !this.porteur || distance(this.porteur, { x: R.markX, y: R.markY }) <= 1;
+      if (tapeurPret || R.timer <= 0) {
+        for (const j of R.eqDef) {
+          if ((j.x - R.ligne) * R.sens < -0.5) { j.horsJeuKick = DUREE_HORS_JEU_KICK; j.horsJeuKickX = R.ligne; }
+        }
+        this.penaliteRecul = null;
+      }
     }
 
     // Pénalité jouée en touche : l'équipe qui a botté conserve le lancer
