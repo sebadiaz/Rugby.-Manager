@@ -2166,8 +2166,11 @@ test('un franchissement PAIE : le porteur qui bat son vis-a-vis gagne du terrain
   // 16 graines (P2-58) : rejoue sur des graines decalees (+1000, +2000), le
   // MEME moteur tombait a 26 franchissements (echantillon trop petit) ou a
   // 11,9 m pour un seuil de 12. Sur 16 graines : ~14 m.
+  // 48 graines : sur 96 matchs, des lots de 16 graines du MEME moteur donnaient
+  // de 12,0 a 15,1 m (moyenne 13,3 a 13,5) ; un changement sans rapport avec
+  // les franchissements faisait passer ce test sous le seuil.
   const gains = [];
-  for (let seed = 1; seed <= 16; seed++) {
+  for (let seed = 1; seed <= 48; seed++) {
     const m = new MatchEngine(seed, 4800);
     let suivi = null;
     for (let t = 0; t < 4800; t += 0.2) {
