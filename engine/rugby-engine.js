@@ -2310,7 +2310,10 @@
       // numéro du porteur et du score (cf. choisirActionPorteur). Le coup de
       // pied peut survenir même défenseur tout proche (dégagement sous
       // pression) ; la passe suppose de ne pas être déjà au contact.
-      const action = (this.combinaison || ballonEnVolPasse) ? 'RUN' : this.choisirActionPorteur(porteur, defenseurProche, distDef, dt);
+      // Pick-and-drive en cours (P2-120) : l'avant qui a ramassé au pied du
+      // ruck charge, il ne passe ni ne tape.
+      const enCharge = (porteur._pickGo || 0) > 0;
+      const action = (this.combinaison || ballonEnVolPasse || enCharge) ? 'RUN' : this.choisirActionPorteur(porteur, defenseurProche, distDef, dt);
       if (action === 'KICK') { this._executerCoupDePiedJeu(porteur); return; }
       if (distDef >= 2.2 && (action === 'PASS' || action === 'JEU_LARGE') && this._tenterPasse(porteur, action === 'JEU_LARGE')) return;
 
@@ -2753,6 +2756,10 @@
       // "gratuitement" faute de defense laterale credible ; ce n'est plus le cas.
       if (porteur.y < 1.5) evite = Math.abs(evite);
       else if (porteur.y > LARGEUR - 1.5) evite = -Math.abs(evite);
+      // Pick-and-drive : droit sur le défenseur le plus proche, sans crochet.
+      // Mesuré sans cela : contact après 2,8 s, 7,9 m de gain moyen, 23
+      // franchissements pour 176 ramassages — un pick devenait une course libre.
+      if (enCharge) evite = Math.max(-2, Math.min(2, defenseurProche.y - porteur.y));
       const xAvantCourse = porteur.x;
       avancer(porteur, dx, evite, dt, vitesseMs(porteur));
       // Mètres gagnés : le terrain pris AU-DELÀ du point le plus avancé de la
@@ -5062,10 +5069,7 @@
             ({ joueur: relayeur } = joueurLePlusProche(ramasseurs, pt.x, pt.y));
             this.log('PICK_AND_GO', this.possession, `Pick-and-go : le n°${relayeur.numero} ramasse au pied du ruck et charge`,
               { numero: relayeur.numero, distanceLigne: Math.round(distLigne) });
-            // Les gardes, debout contre le ruck, plaquent tout de suite (cf. P2-118).
-            for (const d of this.defenseurs()) {
-              if (d.auSol === 0 && distance(d, pt) < 4) d.ruckRecovery = 0;
-            }
+            relayeur._pickGo = 1.5;
           } else if (neuf) { relayeur = neuf; this._neufLibre = true; this.log('RUCK_SORTIE_9', this.possession, `Sortie de ruck par le 9`); }
           // Le 9 au sol (c'est lui qui vient d'être plaqué) : l'avant DEBOUT le
           // plus proche relaie. Le filtre manquait : le plaqué lui-même, encore
@@ -5107,6 +5111,15 @@
           this._lancerPasseVisuelle({ x: pt.x, y: pt.y }, this.porteur);
         }
         this._imposerRecuperationRuck(pt);
+        // Pick-and-drive : les GARDES (défenseurs debout tout contre le ruck)
+        // attendent justement ce départ au ras et plaquent tout de suite. À
+        // faire APRÈS la récupération ci-dessus, qui les en excluait — c'est ce
+        // qui rendait inopérant le même réglage en P2-118.
+        if (this.porteur && (this.porteur._pickGo || 0) > 0) {
+          for (const d of this.defenseurs()) {
+            if (d.auSol === 0 && distance(d, pt) < 4) d.ruckRecovery = 0;
+          }
+        }
       }
     }
 
@@ -7306,7 +7319,8 @@
           if (j.auSol === 0) j._solX = null;
         }
         if (j.missCooldown > 0) j.missCooldown = Math.max(0, j.missCooldown - dt);
-        if (j._percee > 0) j._percee = Math.max(0, j._percee - dt); // fenêtre de continuité après un défenseur battu
+        if (j._percee > 0) j._percee = Math.max(0, j._percee - dt);
+        if (j._pickGo > 0) j._pickGo = Math.max(0, j._pickGo - dt); // fenêtre de continuité après un défenseur battu
         if (j._enchaine > 0) j._enchaine = Math.max(0, j._enchaine - dt); // fenêtre d'enchaînement après réception (le ballon circule)
         if (j.fixeCooldown > 0) j.fixeCooldown = Math.max(0, j.fixeCooldown - dt); // défenseur fixé/battu par une passe
         if (j.ruckRecovery > 0) j.ruckRecovery = Math.max(0, j.ruckRecovery - dt);
