@@ -693,6 +693,7 @@
   // le lancer en touche, le coup de pied au but — on revient a la vitesse
   // choisie par le joueur.
   const ACCEL_MISE_EN_PLACE = 5;
+  const ACCEL_ROUTINE_BUTEUR = 8;
   function multiplicateurMiseEnPlace(m) {
     if (!m) return 1;
     switch (m.phase) {
@@ -708,8 +709,18 @@
       case 'ESSAI': return ACCEL_MISE_EN_PLACE;
       // Tir au but : la routine du buteur est acceleree, le coup de pied
       // lui-meme (ballon en vol) est rendu a vitesse normale.
+      // Routine du buteur (recul, placement du ballon, élan), jusqu'à 50 s
+      // de jeu : x8 plutôt que x5 (signalé trop long, ~10 s à l'écran en x1).
+      // Le vol du ballon reste à vitesse normale.
       case 'TRANSFORMATION':
-      case 'PENALITE_TIR': return m.ballonEnVol ? 1 : ACCEL_MISE_EN_PLACE;
+      case 'PENALITE_TIR': return m.ballonEnVol ? 1 : ACCEL_ROUTINE_BUTEUR;
+      // Coup d'envoi et renvoi aux 22 : les joueurs regagnent leur moitié et le
+      // botteur rejoint le centre (8 à 10 s, ~13 fois par match). Jusqu'à la
+      // frappe, ce n'était pas accéléré du tout.
+      case 'COUP_ENVOI': return (m.envoiEnPlace || m.ballonEnVol) ? 1 : ACCEL_MISE_EN_PLACE;
+      // Pénalité jouée vite : le tapeur rejoint la marque, les fautifs
+      // reculent de 10 m (~8 s). Le jeu reprend à vitesse normale à la frappe.
+      case 'PORTE': return m.penaliteRecul ? ACCEL_MISE_EN_PLACE : 1;
       default: return 1;
     }
   }
@@ -1050,6 +1061,8 @@
     // `tactiqueCfg` ({attaqueA?/attaqueB?/defenseA?/defenseB?}) : réglages
     // tactiques PAR ÉQUIPE (Mode Club, cf. RMClub.tactiqueVersConfig) —
     // n'affecte que le club du joueur, jamais l'IA adverse.
+    // Accélération d'affichage des temps morts (exposée pour les tests).
+    multiplicateurMiseEnPlace,
     demarrerMatchClub(seed, duree, joueursA, joueursB, tactiqueCfg, callbacks) {
       // Repart d'une base sans tactique par équipe avant de réappliquer
       // celle de CE match : le club du joueur alterne domicile/extérieur

@@ -1002,6 +1002,33 @@ function optionsLancement() {
   verifier('sauvegarde corrompue : une nouvelle carrière se crée normalement après l\'avertissement', await pageCorrompue.isVisible('[data-volet="dashboard"]'));
   await contexteCorrompu.close();
 
+  // 9 quater) Temps morts accélérés à l'écran (signalé : « certaines phases
+  // sont trop longues, comme les pénalités »). La simulation garde ses durées
+  // réglementaires ; seul l'affichage passe en avance rapide pendant la mise
+  // en place — jamais pendant le jeu ni pendant le vol du ballon.
+  const ctxTM = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const pageTM = await ctxTM.newPage();
+  await pageTM.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  const accel = await pageTM.evaluate(() => {
+    const f = window.RMMain.multiplicateurMiseEnPlace;
+    const m = new window.RugbyEngine.MatchEngine(1, 4800);
+    const essai = (o) => f(Object.assign(m, { penaliteRecul: null, envoiEnPlace: false, ballonEnVol: false, toucheLancer: null }, o));
+    return {
+      envoi: essai({ phase: 'COUP_ENVOI' }), envoiFrappe: essai({ phase: 'COUP_ENVOI', envoiEnPlace: true }),
+      envoiVol: essai({ phase: 'COUP_ENVOI', ballonEnVol: true }),
+      reculPenalite: essai({ phase: 'PORTE', penaliteRecul: { timer: 5 } }), jeu: essai({ phase: 'PORTE' }),
+      tir: essai({ phase: 'PENALITE_TIR' }), tirVol: essai({ phase: 'PENALITE_TIR', ballonEnVol: true }),
+      transfo: essai({ phase: 'TRANSFORMATION' }), ruck: essai({ phase: 'RUCK' }),
+    };
+  });
+  verifier('temps morts : mise en place du coup d\'envoi et du renvoi accélérée, frappe et vol à vitesse normale',
+    accel.envoi > 1 && accel.envoiFrappe === 1 && accel.envoiVol === 1);
+  verifier('temps morts : recul des 10 m d\'une pénalité jouée vite accéléré, jeu courant à vitesse normale',
+    accel.reculPenalite > 1 && accel.jeu === 1 && accel.ruck === 1);
+  verifier('temps morts : routine du buteur accélérée davantage (x8), vol du ballon à vitesse normale',
+    accel.tir >= 8 && accel.transfo >= 8 && accel.tirVol === 1);
+  await ctxTM.close();
+
   // 9 bis) Deux onglets sur la même carrière (bugs.md BUG-RM-002) : un onglet
   // resté ouvert sur un état ancien ne doit plus écraser la progression
   // enregistrée par l'autre. Même contexte = même stockage, comme deux
