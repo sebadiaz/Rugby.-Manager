@@ -580,8 +580,31 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-123. Une pénalité jouée vite se joue vraiment vite
+- **Statut : CORRIGÉ (moteur)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_lancerJeuRapidePenalite`,
+  `_tickJeuRapidePenalite`, jugement du hors-jeu au ruck), `server/test-invariants.js`, `server/test-ruck.js`.
+
+**Constat (retour joueur).** « Pas d'avance rapide, juste que le jeu soit joué plus rapidement. Là tous les joueurs sont
+en place et on attend. » Puis : « On peut jouer vite une pénalité comme prendre plus de temps. » Le tempo doit venir de la
+décision de l'équipe, pas d'une attente fixe. Mesuré : une pénalité jouée vite attendait ~14 s que tous les fautifs aient
+reculé de 10 m avant la remise en jeu.
+
+**Correction.** La pénalité jouée vite repart dès que le tapeur est sur la marque (environ 1 s, plafond 40 s). Les
+défenseurs encore dans les 10 m sont hors-jeu (loi 20.14) : ils ne peuvent pas plaquer tant qu'ils ne sont pas revenus,
+et ne sont pas rejugés une deuxième fois au ruck suivant. Les tirs au but et les pénalités en touche gardent leur temps :
+c'est le choix de prendre son temps. Les avances rapides P2-121 et P2-122 sont retirées.
+
+**Mesure (100 graines appariées).** Remise en jeu ≤ 3 s au lieu de ~14 s. Essais +0,56 ± 0,50, points +3,2 ± 3,0, temps de
+jeu effectif inchangé. Calibration : 13/14 (inchangée, porté légèrement au-dessus du plafond).
+
+**Tests.** Loi 20.14 réécrite : jeu rapide en ≤ 3 s, le fautif encore dans les 10 m est hors-jeu et ne plaque pas
+(échoue sur l'ancien moteur : 14,2 s). Échantillons élargis pour deux tests bruités (mètres gagnés : 40 graines ; R12 :
+12 matchs), seuils inchangés.
+
 ### P2-122. Après une faute, plus de longues secondes figées à l'écran
-- **Statut : CORRIGÉ (affichage)**
+- **Statut : ÉCARTÉ (retiré, remplacé par P2-123)** : le joueur ne veut pas d'avance rapide de l'affichage, mais un jeu
+  réellement joué plus vite.
 - Fichiers concernés : `docs/js/main.js` (`arretDeJeu`, `deplacementJoueurs`, `ACCEL_IMMOBILE`, boucle de rendu),
   `server/test-parcours-navigateur.js`.
 
@@ -614,7 +637,7 @@ Simulation, chronomètre et statistiques inchangés.
 ou un ballon en vol. Suite complète 516/0 ; `match-interactif` OK.
 
 ### P2-121. Temps morts accélérés à l'écran : coup d'envoi, pénalité jouée vite, routine du buteur
-- **Statut : CORRIGÉ (affichage)**
+- **Statut : ÉCARTÉ (retiré, remplacé par P2-123)** : même raison que P2-122.
 - Fichiers concernés : `docs/js/main.js` (`multiplicateurMiseEnPlace`, exposée sur `RMMain`),
   `server/test-parcours-navigateur.js`.
 
