@@ -1027,6 +1027,25 @@ function optionsLancement() {
     accel.reculPenalite > 1 && accel.jeu === 1 && accel.ruck === 1);
   verifier('temps morts : routine du buteur accélérée davantage (x8), vol du ballon à vitesse normale',
     accel.tir >= 8 && accel.transfo >= 8 && accel.tirVol === 1);
+  // Signalé ensuite : « après une faute, tout se fige, personne ne bouge
+  // pendant de longues secondes ». Quand personne ne bouge pendant un arrêt,
+  // avance très rapide ; jamais en jeu courant, ni pendant un vol de ballon.
+  const gel = await pageTM.evaluate(() => {
+    const f = window.RMMain.multiplicateurMiseEnPlace;
+    const m = new window.RugbyEngine.MatchEngine(1, 4800);
+    const essai = (o, immobile) => f(Object.assign(m, { penaliteRecul: null, envoiEnPlace: false, ballonEnVol: false, toucheLancer: null }, o), immobile);
+    return {
+      tir: essai({ phase: 'PENALITE_TIR' }, true), tirBouge: essai({ phase: 'PENALITE_TIR' }, false),
+      tirVol: essai({ phase: 'PENALITE_TIR', ballonEnVol: true }, true),
+      touche: essai({ phase: 'TOUCHE' }, true), toucheLancee: essai({ phase: 'TOUCHE', toucheLancer: { t: 0 } }, true),
+      recul: essai({ phase: 'PORTE', penaliteRecul: { timer: 3 } }, true), jeu: essai({ phase: 'PORTE' }, true),
+      ruck: essai({ phase: 'RUCK' }, true),
+    };
+  });
+  verifier('temps morts : joueurs immobiles pendant un arrêt (tir, touche, pénalité jouée vite) -> avance très rapide',
+    gel.tir >= 20 && gel.touche >= 20 && gel.recul >= 20 && gel.tirBouge < gel.tir, JSON.stringify(gel));
+  verifier('temps morts : jamais d\'avance très rapide en jeu, dans un ruck, sur une touche lancée ou un ballon en vol',
+    gel.jeu === 1 && gel.ruck === 1 && gel.toucheLancee === 1 && gel.tirVol === 1, JSON.stringify(gel));
   await ctxTM.close();
 
   // 9 bis) Deux onglets sur la même carrière (bugs.md BUG-RM-002) : un onglet
