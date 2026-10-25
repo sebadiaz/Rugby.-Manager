@@ -3739,6 +3739,31 @@ test('touche gagnée à 5 m de la ligne adverse : maul le plus souvent, pas plus
   assert.ok(sol <= cinq - 0.25, `consigne jeu au sol : ${(100 * sol).toFixed(0)} % de mauls à 5 m contre ${(100 * cinq).toFixed(0)} %`);
 });
 
+// --- Maul porté : le pack entier pousse, pas cinq avants --------------------
+// Seuls 5 avants par équipe se liaient, alignés sur 3 m de large : les autres
+// regardaient le maul depuis la touche.
+test('maul sur touche : au moins six avants de chaque équipe liés au maul, en bloc compact', () => {
+  const att = [], def = [];
+  for (let seed = 1; seed <= 40; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    for (let i = 0; i < 20; i++) m.tick(0.1);
+    m._accorderTouche('B', { x: 95, y: 0 }, 'COUP_DE_PIED');
+    let t = null;
+    for (let i = 0; i < 600; i++) {
+      m.tick(0.1);
+      if (m.phase === 'MAUL') { t = (t || 0) + 0.1; if (t >= 2) break; } else if (t !== null) break;
+    }
+    if (!(t >= 2) || m.phase !== 'MAUL') continue;
+    const lies = (eq) => eq.filter(j => j.numero <= 8 && j.auSol === 0 && j.sinBin <= 0
+      && Math.hypot(j.x - m.maul.x, j.y - m.maul.y) < 2.5).length;
+    att.push(lies(m.equipeA)); def.push(lies(m.equipeB));
+  }
+  const moy = (a) => a.reduce((s, v) => s + v, 0) / a.length;
+  assert.ok(att.length >= 12, `échantillon trop petit (${att.length} mauls)`);
+  assert.ok(moy(att) >= 6 && moy(def) >= 6,
+    `avants liés à 2,5 m du maul : attaque ${moy(att).toFixed(1)}, défense ${moy(def).toFixed(1)}`);
+});
+
 // --- bugs.md QA-RM-007 : événements, joueurs et équipe disent la même chose ---
 test('rapprochement : réussis ≤ tentés partout, et chaque essai ou but du compteur a son événement (QA-RM-007)', () => {
   for (let seed = 1; seed <= 4; seed++) {
