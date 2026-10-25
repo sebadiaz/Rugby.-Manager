@@ -749,7 +749,7 @@
     // Discipline
     'CARTON_JAUNE', 'PENALITE', 'PENALITE_RUCK_ISOLE', 'PENALITE_RUCK',
     // Repères de lecture et mouvements
-    'MI_TEMPS', 'FIN_MATCH', 'REMPLACEMENT',
+    'MI_TEMPS', 'FIN_MATCH', 'REMPLACEMENT', 'SONNERIE',
     // Fait de jeu spectaculaire : le ballon change de camp en pleine attaque.
     'INTERCEPTION',
   ]);
@@ -2086,6 +2086,9 @@
       // préparée pour l'adversaire n'a plus lieu d'être. Restée armée, elle
       // partait pendant l'élan du buteur et le ballon traversait le terrain.
       this.toucheRapide = null;
+      // Loi 5.7 : tapée en touche après la sonnerie, la pénalité donne une
+      // touche qui se joue (la « dernière touche » d'une mi-temps).
+      if (this._sonnerie) { this._sonnerie.aJouer = 'TOUCHE'; this._sonnerie.vu = false; }
       const sensAttaque = equipe === 'A' ? 1 : -1;
       // AU COIN. Une penalite tapee en touche ne gagne pas dix metres : elle
       // part au coin. Depuis 45 m, un buteur trouve la touche a 5-10 m de la
@@ -7485,7 +7488,26 @@
       // essai de fin de période. On laisse donc la phase de marque se résoudre,
       // puis la bascule de temps se déclenche au tick suivant.
       const sequenceMarque = this.phase === 'ESSAI' || this.phase === 'TRANSFORMATION' || this.phase === 'PENALITE_TIR';
-      if (!sequenceMarque && this.tempsMatch >= this.dureeMatch) {
+      // LOI 5.7 : LA SONNERIE NE SIFFLE PAS LA FIN, LE BALLON MORT SI. Une fois
+      // le temps écoulé, le jeu continue jusqu'au premier ballon mort, et une
+      // mêlée ou une touche déjà accordée se joue (comme la touche d'une
+      // pénalité tapée en touche après la sonnerie). Avant, la période
+      // s'arrêtait à 40:00 et 80:00 pile : 29 fins sur 60 coupaient une course,
+      // un ruck ou un maul, et 9 autres une touche ou une mêlée à jouer.
+      const limitePeriode = this.miTempsJouee ? this.dureeMatch : this.dureeMiTemps;
+      let finPeriode = false;
+      if (!sequenceMarque && this.tempsMatch >= limitePeriode) {
+        if (!this._sonnerie) {
+          const aJouer = this.phase === 'MELEE' || this.phase === 'TOUCHE' ? this.phase : null;
+          this._sonnerie = { aJouer, vu: !!aJouer };
+          this.log('SONNERIE', null, aJouer
+            ? `Temps ecoule : la ${aJouer === 'MELEE' ? 'melee' : 'touche'} se joue, jusqu'au prochain ballon mort`
+            : `Temps ecoule : derniere action, le jeu continue jusqu'au ballon mort`);
+        }
+        finPeriode = this._ballonMortApresSonnerie();
+        if (finPeriode) this._sonnerie = null;
+      }
+      if (finPeriode && this.miTempsJouee) {
         // ÉLIMINATION DIRECTE (BUG-RM-001) : à égalité au coup de sifflet, une
         // PROLONGATION de 20 minutes se joue réellement (à l'échelle de la
         // durée du match), après un coup d'envoi. Si l'égalité persiste à son
@@ -7515,7 +7537,7 @@
       // est différé d'une seconde de jeu (phase MI_TEMPS) plutôt que déclenché
       // dans le même tick que l'événement MI_TEMPS, sinon l'événement COUP_ENVOI
       // qui suit immédiatement masque la bannière de mi-temps dans l'interface.
-      if (!sequenceMarque && !this.miTempsJouee && this.tempsMatch >= this.dureeMiTemps) {
+      if (finPeriode && !this.miTempsJouee) {
         this.miTempsJouee = true;
         this.log('MI_TEMPS', null, `Mi-temps : equipe A ${this.score.A} - ${this.score.B} equipe B`);
         this.phase = 'MI_TEMPS';
@@ -7726,6 +7748,21 @@
     // après (bugs.md BUG-RM-010). Les scripts de mesure qui lisaient le score à
     // 80:00 perdaient ces points. Garde bornée : un match qui ne finit pas est
     // une erreur, jamais un résultat.
+    // Après la sonnerie : le ballon est-il mort ? Coup d'envoi (après un
+    // point marqué ou un renvoi), mêlée ou touche nouvellement accordées.
+    // La mêlée ou la touche déjà accordée à la sonnerie (ou celle d'une
+    // pénalité tapée en touche ensuite) se joue d'abord.
+    _ballonMortApresSonnerie() {
+      const S = this._sonnerie;
+      const ph = this.phase;
+      if (S.aJouer) {
+        if (ph === S.aJouer) { S.vu = true; return false; }
+        if (S.vu) S.aJouer = null;
+        else return false;
+      }
+      return ph === 'COUP_ENVOI' || ph === 'MELEE' || ph === 'TOUCHE';
+    }
+
     jouerJusquAuSifflet(dt = 0.1, margeMax = 600) {
       while (this.phase !== 'TERMINE') {
         if (this.tempsMatch >= this.dureeMatch + margeMax) {

@@ -3764,6 +3764,43 @@ test('maul sur touche : au moins six avants de chaque équipe liés au maul, en 
     `avants liés à 2,5 m du maul : attaque ${moy(att).toFixed(1)}, défense ${moy(def).toFixed(1)}`);
 });
 
+// --- Loi 5.7 : la période se termine au premier ballon mort après la sonnerie -
+// Mi-temps et fin du match tombaient à 40:00 et 80:00 pile, ballon vivant :
+// 29 fins de période sur 60 coupaient une course, un ruck ou un maul, et une
+// touche ou une mêlée accordée avant la sonnerie n'était pas jouée.
+test('loi 5.7 : mi-temps et fin du match au premier ballon mort après la sonnerie, jamais en plein jeu', () => {
+  const vivantes = new Set(['PORTE', 'RUCK', 'MAUL', 'COUP_DE_PIED_JEU']);
+  const fautes = [];
+  let fins = 0, sonneries = 0, prolongees = 0;
+  for (let seed = 1; seed <= 12; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    let debutPhase = 0, phasePrec = m.phase, sonnee = false, penaliteTouche = false;
+    const log = m.log.bind(m);
+    m.log = (t, ...r) => {
+      if (t === 'SONNERIE') { sonneries++; sonnee = true; }
+      if (t === 'PENALITE_TOUCHE_FRAPPE' && sonnee) penaliteTouche = true;
+      if (t === 'TOUCHE_LANCER') penaliteTouche = false;
+      return log(t, ...r);
+    };
+    while (m.phase !== 'TERMINE') {
+      const limite = m.miTempsJouee ? m.dureeMatch : m.dureeMiTemps;
+      const avant = m.phase;
+      m.tick(0.1);
+      if ((m.phase === 'MI_TEMPS' && avant !== 'MI_TEMPS') || m.phase === 'TERMINE') {
+        fins++;
+        if (m.tempsMatch > limite + 0.15) prolongees++;
+        if (vivantes.has(avant)) fautes.push(`graine ${seed} : fin de période en phase ${avant}`);
+        if ((avant === 'MELEE' || avant === 'TOUCHE') && debutPhase < limite) fautes.push(`graine ${seed} : ${avant} accordée avant la sonnerie et non jouée`);
+        if (penaliteTouche) fautes.push(`graine ${seed} : pénalité tapée en touche après la sonnerie, touche non jouée`);
+        sonnee = false; penaliteTouche = false;
+      }
+      if (m.phase !== phasePrec) { debutPhase = m.tempsMatch; phasePrec = m.phase; }
+    }
+  }
+  assert.deepStrictEqual(fautes, []);
+  assert.ok(fins === 24 && sonneries >= 10 && prolongees >= 10, `${fins} fins, ${sonneries} sonneries, ${prolongees} périodes prolongées`);
+});
+
 // --- bugs.md QA-RM-007 : événements, joueurs et équipe disent la même chose ---
 test('rapprochement : réussis ≤ tentés partout, et chaque essai ou but du compteur a son événement (QA-RM-007)', () => {
   for (let seed = 1; seed <= 4; seed++) {
