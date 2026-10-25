@@ -580,6 +580,39 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-122. Après une faute, plus de longues secondes figées à l'écran
+- **Statut : CORRIGÉ (affichage)**
+- Fichiers concernés : `docs/js/main.js` (`arretDeJeu`, `deplacementJoueurs`, `ACCEL_IMMOBILE`, boucle de rendu),
+  `server/test-parcours-navigateur.js`.
+
+**Constat (retour joueur, précisant P2-121).** « Quand un joueur fait une faute, il y a une pénalité et là tout se fige,
+personne ne bouge pendant de longues secondes. » Mesuré sur 6 matchs : après chaque pénalité, les 30 joueurs restent
+immobiles plusieurs secondes.
+- Routine du buteur : jusqu'à 46 s de jeu sans un mouvement.
+- Touche après une pénalité tapée en touche : 17 à 21 s.
+- Plancher d'attente d'une pénalité jouée vite : 3 à 6 s.
+
+Les durées sont réglementaires. Les raccourcir dans la simulation donnerait plus de jeu courant en 80 minutes, donc plus
+de points : on ne les touche pas.
+
+**Correction (affichage).** Pendant un arrêt de jeu (tir, transformation, coup d'envoi, essai, mi-temps, touche avant le
+lancer, formation de mêlée, recul de pénalité), si aucun joueur n'a bougé au dernier pas (moins de 0,3 m cumulés),
+l'affichage passe à x20. Dès qu'un joueur bouge ou que le ballon vole, on revient à la vitesse de mise en place : le reste
+de l'avance est rendu dans la même image, pour ne pas sauter le début de l'action.
+
+**Mesure (écran x1, 4 matchs).**
+
+| Par match | Avant | Après |
+|---|---|---|
+| Joueurs figés pendant un arrêt | 430 s | 99 s |
+| Plus long gel | 15,2 s | 3,8 s (1,0 s en x4) |
+| Durée totale à regarder | 48,5 min | 40,8 min |
+
+Simulation, chronomètre et statistiques inchangés.
+
+**Tests.** Navigateur : avance très rapide pendant un arrêt immobile ; jamais en jeu, dans un ruck, sur une touche lancée
+ou un ballon en vol. Suite complète 516/0 ; `match-interactif` OK.
+
 ### P2-121. Temps morts accélérés à l'écran : coup d'envoi, pénalité jouée vite, routine du buteur
 - **Statut : CORRIGÉ (affichage)**
 - Fichiers concernés : `docs/js/main.js` (`multiplicateurMiseEnPlace`, exposée sur `RMMain`),
