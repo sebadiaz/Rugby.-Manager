@@ -580,6 +580,67 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-130. Dégagement en touche à 35 m, receveur au point de sortie, touche rapide conservée
+- **Statut : CORRIGÉ (moteur)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_tenterCoupDePiedJeu`,
+  `_tickCoupDePiedJeu`, `_preparerToucheRapide`), `server/test-invariants.js`.
+
+**Constat.**
+- Un coup de pied en touche portait à 15-30 m. Depuis ses 22, il ne gagnait que 27 m et rendait la touche vers ses 40 m,
+  à deux pas des 22 adverses. En vrai, un ouvreur ou un arrière gagne 30 à 45 m.
+- Pendant le vol, les deux receveurs couraient derrière le ballon en l'air, pas vers son point de chute.
+
+**Correction.**
+- Portée du coup de pied en touche : 25 à 45 m.
+- Sur un coup de pied en touche, le premier receveur file au point de sortie. Le second se place à 10 m à l'intérieur,
+  pour recevoir la touche rapide.
+- Le ballon d'une touche rapide se récupère jusqu'à 18 m (même ballon, que personne d'autre n'a touché).
+
+Sans ces deux derniers points, les dégagements plus longs avaient fait disparaître la touche rapide : 0 en 12 matchs.
+
+**Mesures.**
+- Dégagement depuis ses 22 : 35 m gagnés (27 avant).
+- Sur 100 matchs appariés : points −2,8 ± 3,5, touches +2,1 (27,8).
+- Touches rapides : environ 0,7 par match, comme avant.
+- Calibration (graines 1 à 20) : 14/14, points 58,5, essais 6,7.
+
+**Tests.**
+- Dégagement en touche depuis ses 22 : gain moyen d'au moins 30 m. L'ancien moteur échoue (22,9 m).
+- Le test des touches rapides, déjà existant, détectait leur disparition.
+- Test BUG-RM-010 : marge du sifflet portée à 120 s, car depuis la loi 5.7 (P2-128) la dernière action se joue.
+
+**Barrières.** Invariants 107/107, 16 suites, calibration 14/14, navigateur 511/0.
+
+**Erreur de mesure notée.** L'événement `ENTREE_22` est aussi émis quand un coup de pied tombe dans les 22 : il ne compte
+pas les seules possessions entrées dans les 22. Ne pas l'utiliser comme tel.
+
+### P2-129. Essai de pénalité seulement quand un essai probable est empêché (loi 8.3)
+- **Statut : CORRIGÉ (moteur, règle)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_traiterPenalite`, `_maulDetecterFautes`),
+  `server/test-invariants.js`.
+
+**Constat (40 matchs).** 0,75 essai de pénalité par match, chacun avec un carton jaune, pour environ 0,1 à 0,15 en vrai.
+- 0,35 venait d'un tirage au hasard : une pénalité sur quatre à moins de 5 m, quelle que soit la faute.
+- 0,40 venait de mauls lancés écroulés dans les 5 m. Ces mauls y restaient environ 5 s en mouvement, avec 4 %
+  d'écroulement par seconde : 19 % d'entre eux finissaient en essai de pénalité.
+
+**Correction.**
+- La faute délibérée sur sa propre ligne vaut un carton jaune (loi 9.11), puis la pénalité se joue normalement.
+- L'essai de pénalité reste réservé au maul lancé écroulé, seul cas où le moteur établit qu'un essai probable a été
+  empêché.
+- L'écroulement d'un maul lancé dans les 5 m passe de 4 à 2 % par seconde.
+
+**Mesures.**
+- Essais de pénalité : 0,28 par match.
+- Sur 100 matchs appariés : points −0,1 ± 1,8, essais des avants +0,40 ± 0,22. Les essais de pénalité deviennent de vrais
+  essais de maul ou de pick-and-go.
+
+**Test.** Sur 16 matchs : aucun essai de pénalité hors maul écroulé, au plus 0,35 par match, et la faute délibérée sur sa
+ligne reste sanctionnée d'un carton. L'ancien moteur échoue.
+
+**Note.** La calibration (graines 1 à 20) passait à 66,2 points avec ce seul changement. P2-130, qui suit, la ramène à
+58,5.
+
 ### P2-128. Sonnerie (loi 5.7) : la dernière action se joue jusqu'au ballon mort
 - **Statut : CORRIGÉ (moteur, règle)**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`tick`, `_ballonMortApresSonnerie`,
