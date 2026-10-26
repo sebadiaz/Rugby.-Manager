@@ -5783,20 +5783,29 @@
       const clubDomicile = RMClub.club(saison, matchJoueur.domicileId);
       const clubExterieur = RMClub.club(saison, matchJoueur.exterieurId);
       assurerComposition();
-      const compositionUtilisee = saison.clubJoueur.compositionTitulaires;
+      let compositionUtilisee = saison.clubJoueur.compositionTitulaires;
       // La tactique choisie (cf. onglet Tactique) et l'encadrement (buteur,
       // lanceur en touche) ne s'appliquent QU'au club du joueur, jamais à
       // l'IA adverse — d'où le suffixe A/B dynamique selon le côté du joueur
       // pour ce match précis (domicile/extérieur alterne).
       const lettreJoueur = estClubJoueur(matchJoueur.domicileId) ? 'A' : 'B';
       const tactiqueCfg = construireTactiqueCfg(saison.clubJoueur.effectif, saison.clubJoueur, lettreJoueur);
-      const remplacements = tactiqueCfg.remplacements || [];
-      window.RMMain.demarrerMatchClub(
-        graineAleatoire(), duree,
-        cfgPour(clubDomicile),
-        cfgPour(clubExterieur),
-        tactiqueCfg,
-        {
+      let remplacements = tactiqueCfg.remplacements || [];
+      // Reprise d'un match joué interrompu (bugs.md FUNC-RM-002) : la clé
+      // désigne CETTE rencontre de CETTE carrière ; le journal garde aussi la
+      // composition et le banc réellement alignés, pour que les conséquences
+      // portent sur les joueurs qui ont joué, même si la composition a changé
+      // entre-temps.
+      const cleReprise = matchJoueEnDirect
+        ? ['club', saison.graine, RMClub.dateCourante(saison), matchJoueur.domicileId, matchJoueur.exterieurId].join('|')
+        : null;
+      const journal = cleReprise && window.RMMain.journalMatchJoue ? window.RMMain.journalMatchJoue(cleReprise) : null;
+      const callbacks = {
+          cleReprise,
+          contexteReprise: {
+            compositionUtilisee,
+            remplacements: remplacements.map((r) => ({ numeroBanc: r.numeroBanc, joueurId: r.joueurId, minute: r.minute })),
+          },
           noms: { A: clubDomicile.nom, B: clubExterieur.nom },
           equipeJoueur: estClubJoueur(matchJoueur.domicileId) ? 'A' : 'B',
           // Match JOUÉ (P0-match) : rien n'est calculé d'avance, onResultat
@@ -5870,7 +5879,25 @@
             revenirAuPanneauClub();
           },
           onFermer: revenirAuPanneauClub,
+        };
+      if (journal) {
+        const mm = Math.floor((journal.temps || 0) / 60), ss = String(Math.floor((journal.temps || 0) % 60)).padStart(2, '0');
+        const sc = journal.score || { A: 0, B: 0 };
+        if (window.confirm(`Un match joué a été interrompu (${mm}:${ss}, ${clubDomicile.nom} ${sc.A} - ${sc.B} ${clubExterieur.nom}). Le reprendre là où il s'était arrêté ?`)) {
+          const ctx = journal.contexte || {};
+          if (ctx.compositionUtilisee) compositionUtilisee = ctx.compositionUtilisee;
+          if (Array.isArray(ctx.remplacements)) remplacements = ctx.remplacements;
+          window.RMMain.reprendreMatchClub(journal, callbacks);
+          return;
         }
+        window.RMMain.oublierMatchJoue();
+      }
+      window.RMMain.demarrerMatchClub(
+        graineAleatoire(), duree,
+        cfgPour(clubDomicile),
+        cfgPour(clubExterieur),
+        tactiqueCfg,
+        callbacks
       );
     }
 

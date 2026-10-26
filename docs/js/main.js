@@ -323,6 +323,7 @@
         `<b>${r.nom} (${r.poste})</b><span>entre à la place du n°${r.numeroSortant}</span></button>`).join('')
       : '<p style="font-size:12px;color:var(--text-faint);margin:0;">Aucun remplaçant disponible.</p>';
     document.getElementById('panneauMiTemps').classList.add('visible');
+    ecrireJournalMatch();
   }
 
   function fermerMiTemps() {
@@ -338,6 +339,8 @@
     L.resultatEnvoye = true;
     const etatFinal = normalizeMatchState(match.getState());
     if (L.onResultat) L.onResultat(etatFinal);
+    // Résultat envoyé (et sauvegardé par l'appelant) : plus rien à reprendre.
+    effacerJournalMatch();
     const nomA = (L.noms && L.noms.A) || 'Equipe A';
     const nomB = (L.noms && L.noms.B) || 'Equipe B';
     document.getElementById('resultatScore').textContent =
@@ -377,6 +380,57 @@
     matchLive = null;
   }
 
+  // --- Reprise d'un match JOUÉ (bugs.md FUNC-RM-002) -----------------------
+  //
+  // Le match joué ne vivait qu'en mémoire : un F5 ou un onglet fermé le
+  // perdait, et la journée se rejouait avec une autre graine. Le moteur est
+  // déterministe : la graine, la configuration et les décisions du manager,
+  // datées au pas près, suffisent à retrouver EXACTEMENT le même match. On les
+  // garde dans un journal, réécrit à chaque décision, régulièrement pendant le
+  // jeu et quand la page se ferme. Il est effacé au coup de sifflet final
+  // (après l'envoi du résultat) ou à l'abandon.
+  const CLE_MATCH_JOUE = 'rugbyManager.matchJoue.v1';
+  let dernierJournalMs = 0;
+  function ecrireJournalMatch() {
+    if (!matchLive || !matchLive.journal || !match || matchLive.resultatEnvoye) return;
+    matchLive.journal.tick = match._numTick || 0;
+    matchLive.journal.temps = match.tempsMatch;
+    matchLive.journal.score = { A: match.score.A, B: match.score.B };
+    try { window.localStorage.setItem(CLE_MATCH_JOUE, JSON.stringify(matchLive.journal)); } catch (e) { /* stockage plein : pas de reprise possible */ }
+  }
+  function effacerJournalMatch() {
+    try { window.localStorage.removeItem(CLE_MATCH_JOUE); } catch (e) { /* ignore */ }
+  }
+  function lireJournalMatch() {
+    try {
+      const j = JSON.parse(window.localStorage.getItem(CLE_MATCH_JOUE));
+      return j && j.version === 1 && j.cle ? j : null;
+    } catch (e) { return null; }
+  }
+  window.addEventListener('pagehide', ecrireJournalMatch);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') ecrireJournalMatch(); });
+
+  // Rejoue une décision du journal sur le moteur, comme le panneau l'a fait.
+  function appliquerCommandeJournal(cmd) {
+    const L = matchLive;
+    if (cmd.type === 'consigne') {
+      const c = CONSIGNES_MI_TEMPS.find((x) => x.cle === cmd.cle);
+      if (!c) return;
+      match.appliquerTactiqueEnCours(L.equipe, c.consignes);
+      if (L.consignesPrises.indexOf(c.cle) === -1) L.consignesPrises.push(c.cle);
+    } else if (cmd.type === 'remplacement') {
+      const r = (L.remplacants || [])[cmd.index];
+      if (!r || L.remplacementsFaits.indexOf(cmd.index) !== -1) return;
+      match.remplacerJoueurEnCours(L.equipe, r.numeroSortant, r.joueur, r.joueurId);
+      L.remplacementsFaits.push(cmd.index);
+    }
+  }
+  function noterCommandeJournal(cmd) {
+    if (!matchLive || !matchLive.journal) return;
+    matchLive.journal.commandes.push(Object.assign({ tick: match._numTick || 0 }, cmd));
+    ecrireJournalMatch();
+  }
+
   function lancerMatchJoue(seed, duree, opts) {
     const o = opts || {};
     matchLive = {
@@ -385,6 +439,12 @@
       remplacants: o.remplacants || [],
       consignesPrises: [], remplacementsFaits: [],
       miTempsTraitee: false, resultatEnvoye: false,
+      journal: o.cleReprise ? {
+        version: 1, cle: o.cleReprise, seed, duree, config: JSON.parse(JSON.stringify(configMatch)),
+        noms: o.noms || null, equipeJoueur: o.equipeJoueur || null, remplacants: o.remplacants || [],
+        contexte: o.contexteReprise || null,
+        commandes: [], tick: 0, temps: 0, score: { A: 0, B: 0 },
+      } : null,
     };
     const btn = document.getElementById('btnConsigneMatch');
     if (btn) btn.style.display = '';
@@ -398,6 +458,9 @@
     if (btnT) btnT.style.display = '';
     definirBarreTempsVerrouillee(true);
     demarrerLectureReelle(seed, duree, o.noms);
+    // En reprise, le journal reste celui du match interrompu jusqu'au bout du
+    // rejeu (cf. reprendreMatchClub) : ne pas l'écraser par un match à 0:00.
+    if (!o.reprise) ecrireJournalMatch();
   }
 
   // « Terminer le match » : jouer la fin d'un coup, sans rien perdre.
@@ -496,6 +559,7 @@
     if (!matchLive || matchLive.resultatEnvoye) return false;
     const onAbandon = matchLive.onAbandon;
     matchLive = null;
+    effacerJournalMatch();
     const btn = document.getElementById('btnConsigneMatch');
     if (btn) btn.style.display = 'none';
     const btnQ = document.getElementById('btnQuitterMatch');
@@ -515,6 +579,7 @@
     if (!c) return;
     match.appliquerTactiqueEnCours(matchLive.equipe, c.consignes);
     if (matchLive.consignesPrises.indexOf(c.cle) === -1) matchLive.consignesPrises.push(c.cle);
+    noterCommandeJournal({ type: 'consigne', cle: c.cle });
     ouvrirMiTemps(matchLive.contexte);
   });
 
@@ -526,6 +591,7 @@
     if (!r || matchLive.remplacementsFaits.indexOf(i) !== -1) return;
     match.remplacerJoueurEnCours(matchLive.equipe, r.numeroSortant, r.joueur, r.joueurId);
     matchLive.remplacementsFaits.push(i);
+    noterCommandeJournal({ type: 'remplacement', index: i });
     ouvrirMiTemps(matchLive.contexte);
   });
 
@@ -759,6 +825,7 @@
     // manager décider, et le coup de sifflet final est le SEUL moment où le
     // résultat part vers la sauvegarde.
     if (matchLive) {
+      if (matchLive.journal && ts - dernierJournalMs > 1000) { dernierJournalMs = ts; ecrireJournalMatch(); }
       if (!matchLive.miTempsTraitee && match.miTempsJouee) {
         matchLive.miTempsTraitee = true;
         ouvrirMiTemps('miTemps');
@@ -1050,6 +1117,44 @@
     // `tactiqueCfg` ({attaqueA?/attaqueB?/defenseA?/defenseB?}) : réglages
     // tactiques PAR ÉQUIPE (Mode Club, cf. RMClub.tactiqueVersConfig) —
     // n'affecte que le club du joueur, jamais l'IA adverse.
+    // Reprise d'un match joué (bugs.md FUNC-RM-002). `journalMatchJoue(cle)`
+    // rend le journal du match interrompu s'il correspond à CETTE rencontre
+    // (sinon null : un journal d'une autre carrière ou d'une autre journée
+    // n'est jamais repris). `reprendreMatchClub` rejoue le même match jusqu'au
+    // pas atteint, décisions comprises, et le laisse en pause.
+    journalMatchJoue(cle) {
+      const j = lireJournalMatch();
+      return j && j.cle === cle ? j : null;
+    },
+    oublierMatchJoue() { effacerJournalMatch(); },
+    reprendreMatchClub(journal, callbacks) {
+      configMatch = JSON.parse(JSON.stringify(journal.config));
+      lancerMatchJoue(journal.seed, journal.duree, Object.assign({}, callbacks, {
+        noms: journal.noms, equipeJoueur: journal.equipeJoueur,
+        remplacants: journal.remplacants, cleReprise: journal.cle, reprise: true,
+        contexteReprise: journal.contexte || null,
+      }));
+      const L = matchLive;
+      L.journal.commandes = (journal.commandes || []).slice().sort((a, b) => a.tick - b.tick);
+      const cmds = L.journal.commandes;
+      let k = 0;
+      while ((match._numTick || 0) < journal.tick && match.phase !== 'TERMINE') {
+        while (k < cmds.length && cmds[k].tick <= (match._numTick || 0)) appliquerCommandeJournal(cmds[k++]);
+        match.tick(PAS_FIXE);
+      }
+      while (k < cmds.length && cmds[k].tick <= (match._numTick || 0)) appliquerCommandeJournal(cmds[k++]);
+      // La mi-temps déjà passée ne se rouvre pas ; le match repart EN PAUSE,
+      // le manager relance quand il est prêt.
+      L.miTempsTraitee = !!match.miTempsJouee;
+      etatPrecedent = null;
+      etatCourant = normalizeMatchState(match.getState());
+      ballonRendu = null;
+      enCours = false;
+      document.getElementById('btnPlay').textContent = 'Lecture';
+      UI.majAffichage(etatCourant, dureeMatchActuel);
+      ecrireJournalMatch();
+      return true;
+    },
     demarrerMatchClub(seed, duree, joueursA, joueursB, tactiqueCfg, callbacks) {
       // Repart d'une base sans tactique par équipe avant de réappliquer
       // celle de CE match : le club du joueur alterne domicile/extérieur

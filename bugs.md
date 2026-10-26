@@ -128,7 +128,7 @@ Les sommes individuelles des passes, plaquages et mètres correspondent aux somm
 | BUG-RM-009 | P2 | Corrigé (TODO_AUDIT P2-110) | Séparer championnat, coupes et amicaux dans les statistiques |
 | BUG-RM-010 | P1 | Corrigé (TODO_AUDIT P2-107) | Terminer les matchs des scripts de mesure avant de lire le résultat |
 | FUNC-RM-001 | P1 | Livré (TODO_AUDIT P2-106) | Export, import et récupération de carrière accessibles |
-| FUNC-RM-002 | P1 | À construire | Reprendre un match joué après fermeture du navigateur |
+| FUNC-RM-002 | P1 | Livré (TODO_AUDIT P2-135) | Reprendre un match joué après fermeture du navigateur |
 | FUNC-RM-003 | P2 | À compléter | Relecture fidèle des décisions du match interactif |
 | FUNC-RM-004 | P2 | À compléter | Instructions individuelles par poste |
 | FUNC-RM-005 | P2 | À compléter | Gestion complète du banc et des changements en direct |
@@ -284,7 +284,9 @@ Les sommes individuelles des passes, plaquages et mètres correspondent aux somm
 
 **Acceptation :** aller-retour sur un autre navigateur, ancienne version migrable, version future refusée sans perte, fichier invalide, quota et annulation. Préserver résultats, identités, contrats, décisions, finances et projets ; ne jamais exécuter du contenu importé comme du code. Dépend de BUG-RM-002/003.
 
-### [ ] FUNC-RM-002 — Reprise d'un match joué après fermeture ou rechargement — P1
+### [x] FUNC-RM-002 — Reprise d'un match joué après fermeture ou rechargement — P1
+
+**Livré (TODO_AUDIT P2-135) :** journal du match joué (graine, configuration, composition et banc alignés, décisions du manager datées au pas près, temps et score), écrit au coup d'envoi, à chaque décision, toutes les secondes et à la fermeture de la page. À la relance de la même rencontre, reprise proposée, rejeu exact jusqu'au pas atteint puis pause ; refus = nouveau match. Journal effacé au sifflet final après l'envoi du résultat, ou à l'abandon. Clé : carrière (graine), date et rencontre — un journal étranger n'est jamais repris.
 
 **État constaté :** `match` et `matchLive` de `main.js` vivent en mémoire ; la sauvegarde de carrière ne constitue pas un instantané du match interactif. La sortie explicite permet de l'annuler et de le relancer, ce qui n'est pas une reprise à la minute interrompue.
 

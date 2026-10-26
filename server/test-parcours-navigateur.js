@@ -4291,6 +4291,125 @@ function optionsLancement() {
     erreursSauv.length === 0);
   await ctxSauv.close();
 
+  // --- REPRISE D'UN MATCH JOUÉ APRÈS RECHARGEMENT (bugs.md FUNC-RM-002) -----
+  // Le match joué ne vivait qu'en mémoire : un F5 le perdait et la journée se
+  // rejouait avec une autre graine. Un journal (graine, configuration,
+  // décisions datées au pas près) permet de reprendre le MÊME match.
+  {
+    const ctxRep = await browser.newContext({ viewport: { width: 1400, height: 1000 } });
+    const pgRep = await ctxRep.newPage();
+    const erreursRep = [];
+    pgRep.on('pageerror', (e) => erreursRep.push(e.message));
+    const dialoguesRep = [];
+    let accepterReprise = true;
+    pgRep.on('dialog', async (d) => { dialoguesRep.push(d.message()); if (accepterReprise) await d.accept(); else await d.dismiss(); });
+    await pgRep.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+    await pgRep.click('#btnAccueilModeClub');
+    await pgRep.fill('#inputNomClub', 'AS Reprise');
+    await pgRep.click('#btnCreerClub');
+    await pgRep.waitForTimeout(700);
+    await pgRep.selectOption('#selDureeClub', '300');
+    verifier('reprise : on atteint l\'aperçu d\'avant-match', await continuerJusquAuMatch(pgRep));
+    await pgRep.click('#btnApercuJouerMatch');
+    await pgRep.waitForTimeout(1200);
+    for (let i = 0; i < 8; i++) {
+      if (/x16/.test(await pgRep.textContent('#btnSpeed'))) break;
+      await pgRep.click('#btnSpeed').catch(() => {});
+      await pgRep.waitForTimeout(100);
+    }
+    let miTempsRep = false;
+    for (let t = 0; t < 400; t++) {
+      if (await pgRep.isVisible('#btnMiTempsReprendre')) {
+        miTempsRep = true;
+        const c = await pgRep.$$('.btnConsigneMiTemps');
+        if (c.length) { await c[1].click(); await pgRep.waitForTimeout(200); }
+        const r = await pgRep.$$('.btnRemplacantMiTemps');
+        if (r.length) { await r[0].click(); await pgRep.waitForTimeout(200); }
+        await pgRep.click('#btnMiTempsReprendre');
+        break;
+      }
+      await pgRep.waitForTimeout(200);
+    }
+    verifier('reprise : prémisse — mi-temps atteinte, consigne et remplacement donnés', miTempsRep);
+    for (let t = 0; t < 100; t++) {
+      if (await pgRep.evaluate(() => window.RMMain.etatActuel().clock.time) > 210) break;
+      await pgRep.waitForTimeout(200);
+    }
+    await pgRep.click('#btnPlay');
+    await pgRep.waitForTimeout(400);
+    const avantF5 = await pgRep.evaluate(() => {
+      const e = window.RMMain.etatActuel();
+      return { t: e.clock.time, score: e.score, ballon: e.ballon, j: JSON.parse(localStorage.getItem('rugbyManager.matchJoue.v1')) };
+    });
+    verifier('reprise : le journal garde les décisions datées du manager',
+      !!(avantF5.j && avantF5.j.commandes.length >= 1));
+    await pgRep.reload({ waitUntil: 'networkidle' });
+    await pgRep.waitForTimeout(800);
+    await pgRep.click('#btnContinuerClub').catch(() => {});
+    await pgRep.waitForTimeout(1200);
+    verifier('reprise : après F5, on revient à l\'aperçu du même match', await continuerJusquAuMatch(pgRep));
+    await pgRep.click('#btnApercuJouerMatch');
+    await pgRep.waitForTimeout(2500);
+    verifier('reprise : le jeu propose de reprendre le match interrompu',
+      dialoguesRep.some((m) => /interrompu/.test(m)));
+    const apresF5 = await pgRep.evaluate(() => {
+      const e = window.RMMain.etatActuel();
+      return { t: e.clock.time, score: e.score, ballon: e.ballon, play: document.getElementById('btnPlay').textContent };
+    });
+    verifier('reprise : même instant, même score, ballon au même endroit (décisions rejouées)',
+      Math.abs(apresF5.t - avantF5.t) < 0.05 && JSON.stringify(apresF5.score) === JSON.stringify(avantF5.score)
+        && Math.abs(apresF5.ballon.x - avantF5.ballon.x) < 1e-6 && Math.abs(apresF5.ballon.y - avantF5.ballon.y) < 1e-6);
+    verifier('reprise : le match repart en pause', /Lecture/.test(apresF5.play));
+    await pgRep.click('#btnTerminerMatch');
+    let finRep = false;
+    for (let i = 0; i < 200; i++) {
+      if (await pgRep.isVisible('#panneauResultat.visible')) { finRep = true; break; }
+      await pgRep.waitForTimeout(300);
+    }
+    if (finRep) { await pgRep.click('#btnResultatFermer'); await pgRep.waitForTimeout(800); }
+    const resRep = await pgRep.evaluate(() => {
+      const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
+      const id = s.clubJoueur.id;
+      return {
+        joues: (s.calendrier || []).filter((f) => f.joue && (f.domicileId === id || f.exterieurId === id)).length,
+        journal: localStorage.getItem('rugbyManager.matchJoue.v1'),
+      };
+    });
+    verifier('reprise : le match repris va au sifflet et son résultat est enregistré UNE fois',
+      finRep && resRep.joues === 1);
+    verifier('reprise : le journal est effacé après le coup de sifflet final', resRep.journal === null);
+    // Refus : le joueur ne reprend pas, un NOUVEAU match commence à 0:00 et
+    // l'ancien journal est oublié.
+    verifier('reprise refusée : prémisse — aperçu du match suivant', await continuerJusquAuMatch(pgRep));
+    await pgRep.click('#btnApercuJouerMatch');
+    for (let t = 0; t < 150; t++) {
+      if (await pgRep.evaluate(() => (window.RMMain.etatActuel() || { clock: { time: 0 } }).clock.time) > 60) break;
+      await pgRep.waitForTimeout(200);
+    }
+    await pgRep.click('#btnPlay');
+    await pgRep.waitForTimeout(300);
+    const cleSuivant = await pgRep.evaluate(() => (JSON.parse(localStorage.getItem('rugbyManager.matchJoue.v1')) || {}).cle);
+    await pgRep.reload({ waitUntil: 'networkidle' });
+    await pgRep.waitForTimeout(800);
+    await pgRep.click('#btnContinuerClub').catch(() => {});
+    await pgRep.waitForTimeout(1200);
+    accepterReprise = false;
+    const nbDialogues = dialoguesRep.length;
+    await continuerJusquAuMatch(pgRep);
+    await pgRep.click('#btnApercuJouerMatch');
+    await pgRep.waitForTimeout(1500);
+    const refus = await pgRep.evaluate(() => ({
+      t: window.RMMain.etatActuel().clock.time,
+      j: JSON.parse(localStorage.getItem('rugbyManager.matchJoue.v1')),
+    }));
+    verifier('reprise refusée : un nouveau match commence au coup d\'envoi',
+      !!cleSuivant && dialoguesRep.length === nbDialogues + 1 && refus.t < 30);
+    verifier('reprise refusée : le journal décrit le nouveau match, sans les décisions de l\'ancien',
+      !!(refus.j && refus.j.cle === cleSuivant && refus.j.commandes.length === 0));
+    verifier('reprise : aucune erreur de page sur tout ce parcours', erreursRep.length === 0);
+    await ctxRep.close();
+  }
+
   // --- SORTIE DE SECOURS ----------------------------------------------------
   // Signale en jeu : « mon jeu est bloque, je ne peux ni rentrer dedans ni
   // supprimer pour continuer ». Le seul bouton de remise a zero vivait DANS le
