@@ -580,6 +580,36 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-133. Marque (loi 17) : environ une par match, et annoncée seulement quand elle a lieu
+- **Statut : CORRIGÉ (moteur)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`TAUX_MARQUE`, `TAUX_MARQUE_ENVOI`,
+  `_traiterCoupFranc`), `server/test-invariants.js`.
+
+**Constat (20 matchs).** Environ 5 marques par match :
+- 35 % des réceptions propres dans ses 22 donnaient une marque ;
+- 50 % sur coup d'envoi.
+
+En vrai, on en voit à peine une par match : le receveur joue ou dégage directement. De plus, le message « Marque, équipe X
+obtient un coup franc » s'affichait aussi sur chaque coup franc sifflé en mêlée.
+
+**Correction.**
+- Taux de marque : 12 % en jeu courant et 15 % sur coup d'envoi, soit 0,85 marque par match.
+- Le coup franc de mêlée a son propre message.
+
+**Mesures.** Sur 100 matchs appariés : points −0,5 ± 3,0, essais −0,23 ± 0,46. Calibration (graines 1 à 20) : 14/14,
+points 59,5, essais 6,5.
+
+**Tests.**
+- Entre 0,2 et 1,6 marque par match, et aucun coup franc de mêlée annoncé comme une marque. L'ancien moteur échoue (5,33).
+- Le test des essais de pénalité admet aussi la mêlée dominante écroulée sur la ligne (voie légitime, loi 8.3). Il avait
+  échoué sur un tel cas.
+
+**Barrières.** Invariants 109/109 (dont le test corrigé), 16 suites, calibration 14/14, navigateur 511/0.
+
+**Piste essayée, non conservée.** Pénalité à moins de 5 m : choix de la mêlée par le capitaine dans 45 % des cas, au lieu
+du jeu rapide systématique. Effet nul sur 100 matchs (points −0,1 ± 1,7) : la situation est trop rare (environ 1 par
+match).
+
 ### P2-132. Mêlée sans le n°9 exclu ; le joueur exclu quitte l'écran
 - **Statut : CORRIGÉ (moteur, affichage)**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_demiDeMeleeDisponible`, `_formerMelee`,
