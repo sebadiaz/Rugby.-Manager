@@ -3725,6 +3725,7 @@ test("essai : son point de départ est celui de la touche ou de la mêlée qui l
 // 16 m) : l'arme n°1 des avants près de l'en-but restait rare. La consigne
 // « jeu au sol » garde son effet.
 test('touche gagnée à 5 m de la ligne adverse : maul le plus souvent, pas plus qu à 16 m ailleurs', () => {
+  let saques = 0;
   function taux(x, config) {
     let gagnees = 0, mauls = 0;
     for (let seed = 1; seed <= 80; seed++) {
@@ -3732,9 +3733,11 @@ test('touche gagnée à 5 m de la ligne adverse : maul le plus souvent, pas plus
       for (let i = 0; i < 20; i++) m.tick(0.1);
       let etat = null;
       const log = m.log.bind(m);
+      // Maul tenté : formé, ou sauteur saqué par la défense avant qu'il se
+      // forme (P2-131) — c'est le choix du pack qui est mesuré ici.
       m.log = (t, team, ...r) => {
         if (t === 'TOUCHE_BALLON_GAGNE' && team === 'A') { gagnees++; etat = 'gagnee'; }
-        else if (etat === 'gagnee') { if (t === 'MAUL') mauls++; etat = 'fini'; }
+        else if (etat === 'gagnee') { if (t === 'MAUL' || t === 'TOUCHE_SAQUEE') mauls++; if (t === 'TOUCHE_SAQUEE') saques++; etat = 'fini'; }
         return log(t, team, ...r);
       };
       m._accorderTouche('B', { x, y: 0 }, 'COUP_DE_PIED');
@@ -3748,6 +3751,8 @@ test('touche gagnée à 5 m de la ligne adverse : maul le plus souvent, pas plus
   assert.ok(cinq >= 0.6, `maul sur ${(100 * cinq).toFixed(0)} % des touches gagnées à 5 m`);
   assert.ok(seize >= 0.3 && seize <= 0.6, `maul sur ${(100 * seize).toFixed(0)} % à 16 m (réglage de base inchangé)`);
   assert.ok(sol <= cinq - 0.25, `consigne jeu au sol : ${(100 * sol).toFixed(0)} % de mauls à 5 m contre ${(100 * cinq).toFixed(0)} %`);
+  // La défense saque le sauteur sur une partie des mauls tentés dans ses 22.
+  assert.ok(saques >= 15, `la défense ne saque presque jamais le sauteur (${saques} fois)`);
 });
 
 // --- Maul porté : le pack entier pousse, pas cinq avants --------------------

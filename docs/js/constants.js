@@ -29,6 +29,8 @@
     DROP_GOAL_REUSSI: '🎯', DROP_GOAL_RATE: '😬', ESSAI_PENALITE: '🏉', COUP_FRANC: '🙌', FIN_MATCH: '🏁',
     // Loi 5.7 : temps écoulé, le jeu continue jusqu'au ballon mort.
     SONNERIE: '🔔',
+    // Sauteur plaqué à la réception (P2-131) : la parade au maul porté.
+    TOUCHE_SAQUEE: '🛑',
     MAUL_ARRET_UN: '🅰️', MAUL_ARRET_DEUX: '✋', MAUL_USE_IT: '⏱️', MAUL_BALLON_SORTI: '➡️', MAUL_INJOUABLE: '🔒',
     MELEE_RUCK_INJOUABLE: '🔒',
     MAUL_PEN_ECROULEMENT: '🟨', MAUL_PEN_HORSJEU: '🟨', MAUL_PEN_ENTREE_COTE: '🟨', MAUL_PEN_TECHNIQUE: '🟨', CARTON_JAUNE: '🟡',
@@ -85,6 +87,7 @@
     'CONTRE_COUP_ENVOI', 'MAUL', 'MI_TEMPS', 'COUP_ENVOI_COURT',
     // Sonnerie (loi 5.7) : la dernière action se joue jusqu'au ballon mort.
     'SONNERIE',
+    'TOUCHE_SAQUEE',
     // Ballon aplati par la défense dans son en-but (P2-93) : renvoi aux 22 m.
     'EN_BUT_APLATI',
     // 50:22 (P2-96) : un coup de pied de son camp qui trouve la touche dans les 22 adverses.

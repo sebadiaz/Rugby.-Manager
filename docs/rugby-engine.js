@@ -5159,6 +5159,29 @@
     }
 
     // === Maul (loi 16) : machine à états complète ============================
+    // Plaquage immédiat du porteur là où il se trouve (sauteur saqué à la
+    // réception de touche) : regroupement au sol, comme un plaquage réussi.
+    _plaquerSurPlace(porteur, plaqueur) {
+      this._compterCourse(porteur);
+      this.stats[plaqueur.team].tacklesAttempted++;
+      this.stats[plaqueur.team].tacklesMade++;
+      this._statJoueur(plaqueur).tacklesAttempted++;
+      this._statJoueur(plaqueur).tacklesMade++;
+      this.porteur = porteur;
+      this.ruckPoint = { x: porteur.x, y: porteur.y };
+      this.contestants = [plaqueur.numero];
+      porteur.auSol = 2.0;
+      porteur._solX = porteur.x; porteur._solY = porteur.y;
+      this.stats[this.possession].rucks++; this.stats[this.possession].phases++;
+      this.ruckDureeCible = this._tirerDureeRuck(this.possession);
+      this.ruckTempsSansSoutien = 0;
+      this.ruckPlaquage = DUREE_PLAQUAGE * this._echelleArret;
+      this.ruckDominant = false;
+      this.phase = 'RUCK';
+      this._receptionDirecte = false;
+      this.timerPhase = 0;
+    }
+
     // Initialise l'objet maul et bascule la phase moteur sur 'MAUL'. À partir de
     // là, _tickMaul fait avancer la machine à états jusqu'à la sortie du ballon,
     // la mêlée (ballon injouable) ou une pénalité.
@@ -7043,6 +7066,19 @@
           : (zone === 'OPP_22' || zone === 'CINQ_M') ? tauxMaulCfg.proche : tauxMaulCfg.loin;
         if (this.rng() < tauxMaulTouche) {
           const { joueur: defenseurProche } = joueurLePlusProche(L.eqAdverse, this.porteur.x, this.porteur.y);
+          // LA DÉFENSE PEUT « SAQUER » LE SAUTEUR (P2-131) : plutôt que de
+          // s'engager dans le maul, elle le plaque à la réception, avant que
+          // ses avants ne se lient. Pas de maul : un regroupement au sol. C'est
+          // la parade classique au maul porté près de sa ligne ; sans elle,
+          // une touche gagnée à moins de 10 m finissait en essai 47 % du temps
+          // (repère réel ~35-40 %).
+          const distLigneDef = distLigneTouche;
+          if (defenseurProche && distLigneDef <= 22 && this.rng() < 0.25) {
+            this.log('TOUCHE_SAQUEE', L.gagnant === 'A' ? 'B' : 'A',
+              `Le n°${defenseurProche.numero} plaque le sauteur a la reception : pas de maul, ruck sur la touche`);
+            this._plaquerSurPlace(this.porteur, defenseurProche);
+            return;
+          }
           this._formerMaul(this.porteur, defenseurProche);
           return;
         }
