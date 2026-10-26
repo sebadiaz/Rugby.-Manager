@@ -1722,7 +1722,10 @@
       const libres = (equipe === 'A' ? this.equipeA : this.equipeB).filter(j => j.auSol === 0 && j.sinBin <= 0);
       if (!libres.length) return;
       const { joueur: lanceur, distance: d } = joueurLePlusProche(libres, position.x, position.y);
-      if (d > 12 || this.rng() >= 0.35) return;
+      // Jusqu'à 18 m : le joueur court chercher le ballon (même ballon, que
+      // personne d'autre n'a touché). À 12 m, les dégagements à 35 m de portée
+      // ne laissaient presque plus aucune touche rapide.
+      if (d > 18 || this.rng() >= 0.35) return;
       this.toucheRapide = { equipe, lanceur, x: position.x, y: position.y <= LARGEUR / 2 ? 0 : LARGEUR, t: 0 };
     }
 
@@ -4194,9 +4197,26 @@
         ...this._groupeVersBallon(chasseurs, this.cibleCoupDePiedX, this.cibleCoupDePiedY, 3),
         ...this._groupeVersBallon(receveurs, this.cibleCoupDePiedX, this.cibleCoupDePiedY, 2),
       ]);
+      const receveursTouche = receveurs.filter(j => versBallonVol.has(j))
+        .sort((a, b) => distance(a, { x: this.cibleCoupDePiedX, y: this.cibleCoupDePiedY })
+          - distance(b, { x: this.cibleCoupDePiedX, y: this.cibleCoupDePiedY }));
       for (const j of [...chasseurs, ...receveurs]) {
         if (j.horsJeuKick > 0) { this._replierHorsJeuKick(j, dt); continue; }
         if (!versBallonVol.has(j)) { this._tenirLigneCoupDePied(j, this.cibleCoupDePiedX, dt); continue; }
+        // Coup de pied en touche : le receveur court au POINT DE SORTIE pour
+        // récupérer le ballon (et relancer vite, cf. _preparerToucheRapide),
+        // pas derrière le ballon en l'air. À 35 m de portée, il finissait à
+        // 18 m du point de sortie et la touche rapide avait disparu.
+        // Le second se place à 10 m à l'intérieur du terrain, à hauteur : c'est
+        // lui qui recevra la touche rapide (loi 18 : à 5 m ou plus de la ligne).
+        if (this.typeCoupDePiedJeu === 'TOUCHE' && j.team !== equipeKick) {
+          const bas = this.cibleCoupDePiedY <= LARGEUR / 2;
+          const yS = Math.max(1, Math.min(LARGEUR - 1, this.cibleCoupDePiedY));
+          const premier = j === receveursTouche[0];
+          const cy = premier ? yS : (bas ? 10 : LARGEUR - 10);
+          avancer(j, this.cibleCoupDePiedX - j.x, cy - j.y, dt, vitesseMs(j) * 0.85);
+          continue;
+        }
         avancer(j, this.ballonVolX - j.x, this.ballonVolY - j.y, dt, vitesseMs(j) * 0.85);
       }
 

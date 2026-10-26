@@ -3600,7 +3600,9 @@ test('jouerJusquAuSifflet : le match se lit au coup de sifflet, tir engagé comp
     const complet = new MatchEngine(seed, 600);
     assert.strictEqual(complet.jouerJusquAuSifflet(0.2), complet, 'renvoie le moteur');
     assert.strictEqual(complet.phase, 'TERMINE', `graine ${seed} : match non terminé`);
-    assert.ok(complet.tempsMatch < 600 + 60, `graine ${seed} : sifflet à ${complet.tempsMatch.toFixed(1)} s`);
+    // 120 s : depuis la loi 5.7 (TODO_AUDIT P2-128), la dernière action se joue
+    // jusqu'au ballon mort après la sonnerie.
+    assert.ok(complet.tempsMatch < 600 + 120, `graine ${seed} : sifflet à ${complet.tempsMatch.toFixed(1)} s`);
     if (coupe.score.A !== complet.score.A || coupe.score.B !== complet.score.B) {
       differents++;
       assert.notStrictEqual(coupe.phase, 'TERMINE', 'seul un match coupé avant le sifflet peut différer');
