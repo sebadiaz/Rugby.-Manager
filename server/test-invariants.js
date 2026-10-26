@@ -3985,6 +3985,21 @@ test('marque : environ une par match, et un coup franc de mêlée n est pas anno
   assert.strictEqual(malAnnonces, 0, `${malAnnonces} coups francs de mêlée annoncés comme une marque`);
 });
 
+// --- 50:22 : un pari rare, pas la conséquence d'un dégagement ordinaire --------
+// Avec des dégagements en touche à 25-45 m (P2-130), une touche ordinaire tapée
+// du milieu de terrain tombait dans les 22 adverses : 2,4 50:22 par match, pour
+// ~0,3 à 0,5 en vrai.
+test('50:22 : rare (moins d un par match), mais il existe', () => {
+  let n = 0;
+  const N = 16;
+  for (let seed = 1; seed <= N; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    m.jouerJusquAuSifflet(0.1);
+    n += m.stats.A.cinquanteVingtDeux + m.stats.B.cinquanteVingtDeux;
+  }
+  assert.ok(n >= 1 && n / N <= 1.0, `${(n / N).toFixed(2)} 50:22 par match`);
+});
+
 // --- bugs.md QA-RM-007 : événements, joueurs et équipe disent la même chose ---
 test('rapprochement : réussis ≤ tentés partout, et chaque essai ou but du compteur a son événement (QA-RM-007)', () => {
   for (let seed = 1; seed <= 4; seed++) {

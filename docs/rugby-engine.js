@@ -4121,6 +4121,11 @@
           portee = jusqua22 + 2 + this.rng() * 6;
           tente5022 = true;
         }
+        // Touche ordinaire (pas un 50:22 tenté) : on vise la touche AVANT les 22
+        // adverses. Avec 25 à 45 m de portée (P2-130), un dégagement depuis le
+        // milieu tombait souvent dans les 22 et donnait un 50:22 involontaire —
+        // 2,4 par match, pour ~0,3 à 0,5 en vrai.
+        else if (jusqua22 > 0) portee = Math.min(portee, Math.max(5, jusqua22 - 4));
       }
 
       const cibleX = Math.max(0, Math.min(LONGUEUR, porteur.x + sens * portee));
