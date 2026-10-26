@@ -601,7 +601,16 @@ son camp s'arrête 4 m avant les 22 adverses.
 
 **Barrières.** Invariants 110/110, 16 suites, calibration 14/14, navigateur 511/0.
 
-**Piste essayée, non conservée.** Grattage au ruck moins fréquent (12,9 → 8,5 ballons grattés par match, repère réel
+**Pistes essayées, non conservées.**
+- Fautes au ruck sifflées un quart moins souvent (3,5 % / 1,8 % au lieu de 4,6 % / 2,4 % par ruck) : pénalités
+  23 → 19,4 (plus réaliste), mais temps de jeu +1,3 min, essais +0,82 ± 0,58, points +3,0 ± 3,6.
+- Près de la ligne, l'attaque n'est pas anormale : depuis un ruck à moins de 5 m, une phase donne un essai 20 % du temps
+  (72 % un nouveau ruck, 8 % une perte de balle). Entre 5 et 12 m : 9 %.
+- Les statistiques individuelles sont dans les repères réels : franchissements 16, plaquages manqués 38, défenseurs battus
+  38, environ 0,4 essai par franchissement, 3,7 m par course. Le surplus d'essais (≈ +10-15 %) est diffus. Tout ce qui
+  retire un arrêt ou une perte de balle le fait monter.
+
+**Autre piste essayée, non conservée.** Grattage au ruck moins fréquent (12,9 → 8,5 ballons grattés par match, repère réel
 ~4-6) : points +2,3 ± 2,8. L'attaque qui garde le ballon finit par marquer. Le grattage reste haut, mais il équilibre une
 attaque encore trop efficace.
 
