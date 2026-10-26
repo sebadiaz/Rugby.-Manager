@@ -580,6 +580,60 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-132. Mêlée sans le n°9 exclu ; le joueur exclu quitte l'écran
+- **Statut : CORRIGÉ (moteur, affichage)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_demiDeMeleeDisponible`, `_formerMelee`,
+  `_meleeNeufs`, `_meleePlacerPaquets`, sortie de mêlée), `docs/js/renderer.js`, `server/test-melee.js`,
+  `server/test-invariants.js`.
+
+**Constat (révélé par `test-melee` M11).** Le n°9 de l'équipe qui introduisait était en carton jaune. La mêlée le
+désignait quand même : il restait figé hors du jeu, et le ballon l'attendait, posé à 21 m du tunnel, pendant les 44 s de
+mise en place. Le défaut existait déjà ; il devient plus fréquent maintenant que la faute délibérée sur sa ligne donne un
+carton (P2-129), car celui-ci tombe souvent sur le 9, joueur le plus proche du ruck.
+
+Second défaut visible : le rendu dessinait le joueur exclu, planté immobile sur le terrain pendant ses dix minutes.
+
+**Correction.**
+- Si le 9 est exclu, un autre joueur (ailier, centre, flanker…) rejoint le tunnel et introduit. Il ne se place plus dans
+  la ligne des trois-quarts.
+- Le rendu ne dessine plus les joueurs exclus.
+
+**Tests.**
+- Mêlée avec le n°9 exclu : le ballon est confié à un remplaçant, au tunnel à « Crouch », et la mêlée est introduite.
+  L'ancien moteur échoue.
+- `test-melee` ne suit plus que les mêlées où le maillot n°9 introduit, puisque ses tests suivent ce maillot.
+- M22 élargi de 6 à 12 graines, seuils inchangés. La force des packs est tirée à chaque match : la part de mêlées
+  dominées varie de 0 à 44 % d'un match à l'autre. Sur 6 graines, le même moteur donnait 5 % sur un lot et 18 à 22 %
+  sur les suivants.
+
+### P2-131. Touche dans les 22 : la défense peut saquer le sauteur
+- **Statut : CORRIGÉ (moteur)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (réception de touche, `_plaquerSurPlace`),
+  `docs/js/constants.js`, `server/test-invariants.js`.
+
+**Constat (50 matchs).** Une touche gagnée à moins de 10 m de la ligne finissait en essai 47 % du temps (repère réel
+~35-40 %). La défense n'avait aucune parade au maul porté.
+
+**Correction.** Dans les 22, sur un maul tenté, la défense plaque une fois sur quatre le sauteur à la réception, avant que
+ses avants se lient (« sacking »). Il n'y a alors pas de maul, mais un regroupement au sol. Nouvel événement
+`TOUCHE_SAQUEE` (🛑).
+
+**Mesures.**
+- Conversion des touches gagnées à moins de 10 m : 34 % (47 % avant). Entre 10 et 22 m : 22 % (27 % avant).
+- Sur 100 matchs appariés, score inchangé : essais −0,04 ± 0,53, points +0,8 ± 3,4. L'attaque qui perd son maul garde le
+  ballon et marque plus tard. Ce n'est donc pas un levier de score, mais une parade défensive réaliste.
+
+**Tests.** Le test du maul à 5 m compte désormais le maul tenté (formé ou saqué). Le sauteur doit être saqué au moins
+15 fois sur les touches du scénario ; l'ancien moteur échoue (0).
+
+**Pistes écartées dans cette passe** (mesurées, non conservées) :
+- Ballon tenu dans l'en-but au milieu de deux défenseurs : effet négligeable, la situation est trop rare.
+- 30 % des pénalités entre 22 et 45 m jouées en touche plutôt qu'aux poteaux : essais +0,77, points +1,9. Le maul au coin
+  rapporte plus que les trois points.
+
+**Piste ouverte.** Environ 9,5 pénalités ou coups francs sont joués vite par match ; dans les 22, ils finissent en essai
+une fois sur deux. À analyser, choix et repères réels à l'appui.
+
 ### P2-130. Dégagement en touche à 35 m, receveur au point de sortie, touche rapide conservée
 - **Statut : CORRIGÉ (moteur)**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_tenterCoupDePiedJeu`,
