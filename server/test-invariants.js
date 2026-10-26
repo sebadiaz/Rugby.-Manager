@@ -3882,20 +3882,21 @@ test('loi 20.14 : pénalité jouée vite à 2 m de la ligne, aucun fautif hors-j
 // Le moteur en accordait un au hasard sur une pénalité sur quatre à moins de
 // 5 m : 0,75 essai de pénalité par match avec les mauls écroulés, pour ~0,1 à
 // 0,15 en vrai. Une faute délibérée sur sa ligne vaut un carton jaune.
-test('essai de pénalité : rare, et seulement sur un maul lancé écroulé près de la ligne', () => {
+test('essai de pénalité : rare, et seulement sur un maul ou une mêlée écroulés près de la ligne', () => {
   let essaisPenalite = 0, horsMaul = 0, jaunesLigne = 0;
   const N = 16;
   for (let seed = 1; seed <= N; seed++) {
     const m = new MatchEngine(seed, 4800);
     const log = m.log.bind(m);
     m.log = (t, team, msg, ...r) => {
-      if (t === 'ESSAI_PENALITE') { essaisPenalite++; if (!/maul/.test(msg)) horsMaul++; }
+      // Maul lancé ou mêlée dominante écroulés sur la ligne : les deux voies légitimes.
+      if (t === 'ESSAI_PENALITE') { essaisPenalite++; if (!/maul|melee/.test(msg)) horsMaul++; }
       if (t === 'CARTON_JAUNE' && /sur sa ligne/.test(msg)) jaunesLigne++;
       return log(t, team, msg, ...r);
     };
     m.jouerJusquAuSifflet(0.1);
   }
-  assert.strictEqual(horsMaul, 0, `${horsMaul} essais de pénalité sans maul écroulé`);
+  assert.strictEqual(horsMaul, 0, `${horsMaul} essais de pénalité sans maul ni mêlée écroulés`);
   assert.ok(essaisPenalite / N <= 0.35, `${(essaisPenalite / N).toFixed(2)} essai(s) de pénalité par match`);
   assert.ok(jaunesLigne >= 3, `la faute délibérée sur sa ligne n'est plus sanctionnée (${jaunesLigne} cartons)`);
 });
