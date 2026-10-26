@@ -627,6 +627,12 @@
   // Probabilite qu'un porteur plaque sur la ligne soit TENU DEBOUT (held up)
   // au lieu d'aplatir (loi 8).
   const PROBA_TENU_DEBOUT = 0.35;
+  // MARQUE (loi 17) : part des réceptions propres dans ses 22 où le receveur
+  // crie « marque ». À 35 % (50 % sur coup d'envoi), le moteur sifflait 5
+  // marques par match ; en vrai on en voit à peine une : le plus souvent, le
+  // receveur joue ou dégage directement.
+  const TAUX_MARQUE = 0.12;
+  const TAUX_MARQUE_ENVOI = 0.15;
 
   function avancer(j, dx, dy, dt, vmax) {
     const d = Math.hypot(dx, dy);
@@ -1527,8 +1533,8 @@
         // franc (pas de tir au but possible), pour dégager la pression.
         const sensReceveur = joueur.team === 'A' ? 1 : -1;
         const distPropreLigne = sensReceveur > 0 ? joueur.x : (LONGUEUR - joueur.x);
-        if (distPropreLigne <= 22 && this.rng() < 0.5) {
-          this._traiterCoupFranc(joueur.team, { x: joueur.x, y: joueur.y });
+        if (distPropreLigne <= 22 && this.rng() < TAUX_MARQUE_ENVOI) {
+          this._traiterCoupFranc(joueur.team, { x: joueur.x, y: joueur.y }, null, 'marque');
           return;
         }
         // Réception directe d'un coup de pied adverse : si un maul se forme dans
@@ -1544,7 +1550,7 @@
     // Coup franc (loi 20) : sanction plus légère qu'une pénalité, sans
     // possibilité de tir au but ni de touche directe avec gain de terrain par
     // le pied. L'équipe joue rapidement à la main et avance un peu.
-    _traiterCoupFranc(equipe, position, porteurImpose = null) {
+    _traiterCoupFranc(equipe, position, porteurImpose = null, motif = 'faute') {
       this._debutRemiseBallon();
       this.possession = equipe;
       const eq = equipe === 'A' ? this.equipeA : this.equipeB;
@@ -1560,7 +1566,9 @@
         const { joueur } = joueurLePlusProche(eq.filter(j => j.auSol === 0), position.x, position.y);
         this.porteur = joueur;
       }
-      this.log('COUP_FRANC', equipe, `Marque, equipe ${equipe} obtient un coup franc et joue rapidement`);
+      this.log('COUP_FRANC', equipe, motif === 'marque'
+        ? `Marque, equipe ${equipe} obtient un coup franc et joue rapidement`
+        : `Coup franc pour l'equipe ${equipe}, joue rapidement`);
       // Loi 20.12 : l'équipe non bénéficiaire recule de 10 m, comme sur pénalité.
       this._lancerJeuRapidePenalite(equipe, position);
     }
@@ -4487,8 +4495,8 @@
       // Marque (loi 17) : réception propre dans son propre en-deçà des 22 m.
       const sensReceveur = joueur.team === 'A' ? 1 : -1;
       const distPropreLigne = sensReceveur > 0 ? joueur.x : (LONGUEUR - joueur.x);
-      if (!chasseurGagne && distPropreLigne <= 22 && this.rng() < 0.35) {
-        this._traiterCoupFranc(joueur.team, { x: joueur.x, y: joueur.y });
+      if (!chasseurGagne && distPropreLigne <= 22 && this.rng() < TAUX_MARQUE) {
+        this._traiterCoupFranc(joueur.team, { x: joueur.x, y: joueur.y }, null, 'marque');
         return;
       }
       this._porteApresPied = true; // défense lancée, cf. rampe dans _tickPorte

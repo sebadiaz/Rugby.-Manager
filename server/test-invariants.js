@@ -3961,6 +3961,29 @@ test('mêlée : le n°9 exclu, un autre joueur rejoint le tunnel et introduit le
   assert.ok(introduites >= essais - 1, `${introduites}/${essais} mêlées introduites sans le n°9`);
 });
 
+// --- Marque (loi 17) : rare, et annoncée seulement quand elle a lieu -----------
+// Le moteur sifflait 5 marques par match (35 % des réceptions propres dans ses
+// 22, 50 % sur coup d'envoi), et annonçait « Marque » sur chaque coup franc de
+// mêlée.
+test('marque : environ une par match, et un coup franc de mêlée n est pas annoncé comme une marque', () => {
+  let marques = 0, coupsFrancsMelee = 0, malAnnonces = 0;
+  const N = 12;
+  for (let seed = 1; seed <= N; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    let melee = false;
+    const log = m.log.bind(m);
+    m.log = (t, team, msg, ...r) => {
+      if (/^MELEE_PEN/.test(t) && /Coup franc/.test(msg)) { melee = true; coupsFrancsMelee++; }
+      else if (t === 'COUP_FRANC') { if (/^Marque/.test(msg)) { marques++; if (melee) malAnnonces++; } melee = false; }
+      return log(t, team, msg, ...r);
+    };
+    m.jouerJusquAuSifflet(0.1);
+  }
+  assert.ok(marques / N >= 0.2 && marques / N <= 1.6, `${(marques / N).toFixed(2)} marque(s) par match`);
+  assert.ok(coupsFrancsMelee >= 5, `échantillon sans coup franc de mêlée (${coupsFrancsMelee})`);
+  assert.strictEqual(malAnnonces, 0, `${malAnnonces} coups francs de mêlée annoncés comme une marque`);
+});
+
 // --- bugs.md QA-RM-007 : événements, joueurs et équipe disent la même chose ---
 test('rapprochement : réussis ≤ tentés partout, et chaque essai ou but du compteur a son événement (QA-RM-007)', () => {
   for (let seed = 1; seed <= 4; seed++) {
