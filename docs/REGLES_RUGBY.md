@@ -76,6 +76,14 @@ Implémenté (`_nouvelleManche`, `_tickCoupEnvoi`, phase `COUP_ENVOI`) :
   d'un coup d'envoi central donné par l'équipe adverse de celle qui avait
   donné le coup d'envoi du match (`equipeKickPremiereMiTemps`, mémorisée à la
   construction du match).
+- ✅ Sonnerie (loi 5.7) : à `dureeMiTemps` et `dureeMatch`, un événement
+  `SONNERIE` annonce la dernière action. La période ne se termine qu'au premier
+  ballon mort : coup d'envoi après un point, mêlée ou touche nouvellement
+  accordée. Une mêlée ou une touche déjà accordée à la sonnerie se joue, comme
+  la touche d'une pénalité tapée en touche après la sonnerie
+  (`_ballonMortApresSonnerie`). L'équipe qui veut finir tape en touche : à la
+  mi-temps depuis son camp, en fin de match quand elle mène. L'équipe menée ou
+  à égalité garde le ballon en main.
 - ✅ Positionnement : équipe qui botte derrière le ballon, équipe receveuse
   au-delà de 10 m.
 - ✅ Le ballon est réellement **botté en cloche** : il vole seul depuis le point

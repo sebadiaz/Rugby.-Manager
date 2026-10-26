@@ -580,6 +580,86 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-128. Sonnerie (loi 5.7) : la dernière action se joue jusqu'au ballon mort
+- **Statut : CORRIGÉ (moteur, règle)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`tick`, `_ballonMortApresSonnerie`,
+  `_accorderPenaliteTouche`, `_tickPorte`, `choisirActionPorteur`), `docs/js/constants.js`, `docs/js/club.js`,
+  `docs/REGLES_RUGBY.md`, `server/test-invariants.js`.
+
+**Constat (30 matchs).** Mi-temps et fin du match tombaient à 40:00 et 80:00 pile, quel que soit le jeu.
+- 29 fins de période sur 60 coupaient le jeu en plein mouvement : une course, un ruck, un maul ou un coup de pied en
+  l'air.
+- 9 autres tombaient sur une mêlée ou une touche déjà accordée, jamais jouée.
+- La touche d'une pénalité tapée en touche à 40:00 n'était pas jouée non plus.
+
+Le défaut a été révélé par un test du ballon de pénalité en touche, dont le suivi enjambait la mi-temps.
+
+**Correction.**
+- Un événement `SONNERIE` (bannière 🔔) annonce la dernière action.
+- La période se termine au premier ballon mort : coup d'envoi après un point, mêlée ou touche nouvellement accordée.
+- Une mêlée ou une touche déjà accordée se joue, comme la touche d'une pénalité tapée en touche après la sonnerie.
+- L'équipe qui veut finir tape en touche : à la mi-temps depuis son camp, en fin de match quand elle mène. L'équipe
+  menée ou à égalité garde le ballon en main.
+- Les minutes jouées sont comptées au chronomètre officiel : un match complet reste 80 minutes.
+
+**Mesures (100 matchs appariés, par rapport à l'état d'avant).**
+
+| Mesure | Écart |
+|---|---|
+| Points | −0,9 ± 2,7 |
+| Essais | −0,07 ± 0,39 |
+| Fin du match | 80:40 en moyenne (+0,5 min) |
+
+Calibration (graines 1 à 20) : 14/14, points 64,8. Sans le dégagement de l'équipe qui veut finir, les points montaient
+à 66,5, au-dessus du plafond.
+
+**Défaut révélé au passage et corrigé.** Pénalité jouée vite à 2 m de l'en-but : toute la défense est hors-jeu (elle
+doit revenir derrière sa ligne). Deux voies laissaient pourtant un fautif plaquer :
+- faute de défenseur en jeu, le moteur retombait sur la liste complète ;
+- le plaquage de sauvetage sur la ligne ne filtrait pas les hors-jeu.
+
+Les deux sont corrigées.
+
+**Tests.**
+- Loi 5.7 sur 12 matchs : jamais de fin de période ballon vivant, ni de mêlée ou touche accordée et non jouée. L'ancien
+  moteur échoue sur 20 cas.
+- Sonnerie : l'équipe qui mène tape en touche au moins 18 fois sur 20, la menée au plus 4 fois.
+- Pénalité jouée vite à 2 m : aucun fautif ne plaque. L'ancien moteur échoue (3 cas).
+- Le test de la loi 10 identifie désormais le plaqueur par son compteur individuel. Avant, un hors-jeu simplement voisin
+  du plaquage d'un coéquipier en jeu était compté comme plaqueur.
+- Tests bruités élargis, seuils inchangés :
+  - part des coups de pied du 9 : 32 graines (lots de 16 : 19,9 % puis 24,6 % sur le même moteur) ;
+  - interceptions : 24 graines (0,33 par match sur les 12 premières, environ 1 sur 48).
+
+**Barrières.** Invariants 105/105, 16 suites, calibration 14/14, navigateur 511/0.
+
+**Limite.** La seconde période repart du chrono réel (40:40, par exemple) : elle est raccourcie d'autant.
+
+### P2-127. Maul : le pack pousse presque entier, en bloc compact
+- **Statut : CORRIGÉ (moteur)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_maulJoueursLies`, `_maulGererLiaisons`),
+  `server/test-invariants.js`.
+
+**Constat (vu à l'écran, 1400×1000 et 390×844).** Seuls 5 avants par équipe se liaient au maul, alignés sur une ligne
+de 3 m de large. Les piliers des deux équipes restaient à regarder depuis la touche.
+
+**Correction.**
+- 7 avants par équipe se lient.
+- Le maul forme un bloc en rangées de trois, l'une derrière l'autre.
+
+**Mesures.**
+
+| Mesure | Avant | Après |
+|---|---|---|
+| Avants à moins de 2,5 m du maul (après 2 s) | 5,0 | 6,4 (attaque), 6,6 (défense) |
+| Avancée du maul | 12,6 m | 13,0 m |
+| Durée du maul | 15 s | 16 s |
+
+Pénalités et mêlées sur maul inchangées. Sur 100 matchs appariés : essais +0,09 ± 0,56, points +3,4 ± 3,7, temps de jeu
+identique.
+
+**Test.** Maul sur touche à 5 m : au moins 6 avants de chaque équipe à moins de 2,5 m. L'ancien moteur échoue (5,0).
+
 ### P2-126. Touche à moins de 10 m de l'en-but : le pack monte le maul — bugs.md QA-RM-003
 - **Statut : CORRIGÉ (moteur)**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (réception de touche, `_tickTouche`),
