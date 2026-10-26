@@ -1867,27 +1867,22 @@
       this.stats[equipeBeneficiaire === 'A' ? 'B' : 'A'].penalitesConcedees++;
       const sensAttaque = equipeBeneficiaire === 'A' ? 1 : -1;
       const distanceButs = sensAttaque > 0 ? (LONGUEUR - position.x) : position.x;
-      // Essai de pénalité : quand la faute est commise tout près de la ligne
-      // d'en-but adverse, elle a empêché un essai quasi certain. L'équipe non
-      // fautive marque directement 7 points, sans tir ni jeu rapide. Loi 19 :
-      // une faute délibérée qui empêche un essai quasi certain est aussi
-      // sanctionnée d'un carton (jaune au minimum) pour l'auteur, pas
-      // seulement les 7 points — sinon l'essai de pénalité n'a aucun coût pour
-      // l'équipe fautive au-delà de la possession perdue.
+      // Faute délibérée sur sa propre ligne : carton jaune (loi 9.11), puis la
+      // pénalité se joue. Ce n'est PAS un essai de pénalité : celui-ci exige
+      // qu'un essai probable ait été empêché (loi 8.3), ce que le moteur sait
+      // établir sur un maul lancé écroulé (cf. _maulSanctionner). Accordé ici au
+      // hasard sur une pénalité sur quatre à moins de 5 m, il donnait 0,35 essai
+      // de pénalité par match de plus, pour ~0,1 à 0,15 au total en vrai.
       if (distanceButs <= 5 && this.rng() < 0.25) {
-        this.score[equipeBeneficiaire] += 7;
-        this.stats[equipeBeneficiaire].essais++;
-        this.stats[equipeBeneficiaire].essaisPenalite++;
-        this.log('ESSAI_PENALITE', equipeBeneficiaire, `Essai de penalite, equipe ${equipeBeneficiaire} +7`);
         const fautive = equipeBeneficiaire === 'A' ? 'B' : 'A';
         const eqFautive = fautive === 'A' ? this.equipeA : this.equipeB;
-        const { joueur: fautif } = joueurLePlusProche(eqFautive, position.x, position.y);
-        fautif.sinBin = 600 * this._echelleArret;
-        this.stats[fautive].cartonsJaunes++;
-        this._statJoueur(fautif).cartonsJaunes++;
-        this.log('CARTON_JAUNE', fautive, `Carton jaune pour l'equipe ${fautive} (n°${fautif.numero}) : faute deliberee empechant un essai - a 14 pendant ${Math.round(fautif.sinBin)}s`);
-        this._nouvelleManche(equipeBeneficiaire);
-        return;
+        const { joueur: fautif } = joueurLePlusProche(eqFautive.filter(j => j.sinBin <= 0), position.x, position.y);
+        if (fautif) {
+          fautif.sinBin = 600 * this._echelleArret;
+          this.stats[fautive].cartonsJaunes++;
+          this._statJoueur(fautif).cartonsJaunes++;
+          this.log('CARTON_JAUNE', fautive, `Carton jaune pour l'equipe ${fautive} (n°${fautif.numero}) : faute deliberee sur sa ligne - a 14 pendant ${Math.round(fautif.sinBin)}s`);
+        }
       }
       // Pénalité en touche : contrairement à une touche en jeu courant, c'est
       // ici l'équipe qui a botté qui conserve le lancer (loi 20). Utilisée pour
@@ -5437,7 +5432,10 @@
       // (la plupart des mauls ne sont pas sanctionnés), mais nettement plus élevés
       // tout près de la ligne d'en-but : c'est l'acte cynique typique pour
       // empêcher un essai sur maul lancé, qui vaut souvent carton/essai de pénalité.
-      const tauxEcroulement = avance && distLigneDef < 5 ? 0.04
+      // 0,04 -> 0,02 a moins de 5 m : un maul lance y restait ~5 s en mouvement
+      // et l'ecroulement y donnait 0,40 essai de penalite par match (19 % de ces
+      // mauls), pour ~0,1 a 0,15 essai de penalite au total en vrai.
+      const tauxEcroulement = avance && distLigneDef < 5 ? 0.02
         : avance && distLigneDef < 18 ? 0.010
           : 0.003;
       const eqDefMaul = m.equipeNonPossession === 'A' ? this.equipeA : this.equipeB;
