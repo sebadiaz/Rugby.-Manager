@@ -580,6 +580,42 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-135. Reprise d'un match joué après rechargement ou fermeture — bugs.md FUNC-RM-002
+- **Statut : LIVRÉ**
+- Fichiers concernés : `docs/js/main.js` (journal du match joué, `journalMatchJoue`, `reprendreMatchClub`,
+  `oublierMatchJoue`), `docs/js/clubUI.js` (`lancerMatchJoueur`), `server/test-parcours-navigateur.js`, `bugs.md`.
+
+**Constat.** Le match joué en direct ne vivait qu'en mémoire : un F5 ou un onglet fermé le perdait, et la journée se
+rejouait avec une autre graine, sans les décisions du manager.
+
+**Correction.** Le moteur est déterministe : graine, configuration et décisions datées au pas près suffisent à retrouver
+le même match.
+- **Contenu du journal** (`rugbyManager.matchJoue.v1`) : graine, durée, configuration, noms, banc, composition et
+  remplacements alignés, consignes et remplacements avec leur pas, puis pas, temps et score atteints.
+- **Écriture** : au coup d'envoi, à chaque décision, à la mi-temps, chaque seconde, et quand la page est masquée ou
+  fermée.
+- **Reprise** : à la relance de la même rencontre (clé carrière + date + rencontre), le jeu propose de reprendre. Le même
+  match est rejoué jusqu'au pas atteint, en réappliquant chaque décision à son pas, puis il est mis en pause.
+- **Conséquences** : elles portent sur la composition réellement alignée, enregistrée dans le journal, même si elle a
+  changé entre-temps.
+- **Refus** : un nouveau match commence et l'ancien journal est oublié.
+- **Effacement** : au coup de sifflet final, après l'envoi du résultat, ou à l'abandon. Un journal d'une autre carrière
+  ou d'une autre journée n'est jamais repris.
+
+**Tests (navigateur, 1400×1000 ; même scénario vérifié en 390×844).** Match joué, consigne et remplacement à la
+mi-temps, pause vers 3:30, puis F5. On vérifie que :
+- la reprise est proposée ;
+- le temps, le score et la position du ballon sont identiques à 10⁻⁶ près ;
+- le match repart en pause ;
+- au sifflet, le résultat est enregistré une seule fois et le journal est effacé ;
+- en cas de refus, un nouveau match part du coup d'envoi.
+
+Un mutant qui ne rejoue pas les décisions échoue sur la position du ballon. Suite navigateur 524/0 ; `parcours-club`,
+`match-interactif`, `feuille-de-match`, `archives-matchs` et les autres suites d'interface au vert. Moteur inchangé.
+
+**Limites.** La reprise se propose au moment de relancer la journée, pas dès l'ouverture du jeu. Elle ne couvre que les
+matchs du club en direct, pas le match rapide.
+
 ### P2-134. 50:22 : la touche ordinaire vise avant les 22 adverses
 - **Statut : CORRIGÉ (moteur)**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_tenterCoupDePiedJeu`),
