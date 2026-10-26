@@ -580,6 +580,31 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-134. 50:22 : la touche ordinaire vise avant les 22 adverses
+- **Statut : CORRIGÉ (moteur)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_tenterCoupDePiedJeu`),
+  `server/test-invariants.js`.
+
+**Constat (10 matchs).** 2,4 50:22 par match, pour environ 0,3 à 0,5 en vrai. C'était un effet de bord de P2-130 : avec des
+dégagements en touche à 25-45 m, une touche ordinaire tapée du milieu de terrain sortait dans les 22 adverses après
+rebond, et rendait le lancer à l'équipe qui avait tapé.
+
+**Correction.** Hors tentative délibérée de 50:22 (une sur quatre quand elle est possible), la portée d'une touche tapée de
+son camp s'arrête 4 m avant les 22 adverses.
+
+**Mesures.**
+- 50:22 : 0,3 par match.
+- Sur 100 matchs appariés : points −2,7 ± 3,2 (moyenne 56,7), pénalités au but −0,71 ± 0,45 (établi), touches +1,4.
+- Calibration (graines 1 à 20) : 14/14, points 55,6, essais 6,4.
+
+**Test.** Moins d'un 50:22 par match sur 16 matchs, et au moins un en tout. L'ancien moteur échoue (2,38).
+
+**Barrières.** Invariants 110/110, 16 suites, calibration 14/14, navigateur 511/0.
+
+**Piste essayée, non conservée.** Grattage au ruck moins fréquent (12,9 → 8,5 ballons grattés par match, repère réel
+~4-6) : points +2,3 ± 2,8. L'attaque qui garde le ballon finit par marquer. Le grattage reste haut, mais il équilibre une
+attaque encore trop efficace.
+
 ### P2-133. Marque (loi 17) : environ une par match, et annoncée seulement quand elle a lieu
 - **Statut : CORRIGÉ (moteur)**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`TAUX_MARQUE`, `TAUX_MARQUE_ENVOI`,
