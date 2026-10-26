@@ -4087,7 +4087,10 @@
       let portee, etale;
       if (type === 'DEGAGEMENT') { portee = 35 + this.rng() * 20 + skillPied; etale = true; }
       else if (type === 'OCCUPATION') { portee = 20 + this.rng() * 15 + skillPied * 0.7; etale = false; }
-      else if (type === 'TOUCHE') { portee = 15 + this.rng() * 15 + skillPied * 0.7; etale = true; }
+      // Touche : 25 à 45 m (moyenne 35). À 15-30 m, un dégagement depuis ses
+      // 22 ne gagnait que 27 m et rendait la touche vers ses 40 m, à deux pas
+      // des 22 adverses ; un ouvreur ou un arrière en gagne 30 à 45.
+      else if (type === 'TOUCHE') { portee = 25 + this.rng() * 20 + skillPied * 0.7; etale = true; }
       else if (type === 'CHANDELLE') { portee = 10 + this.rng() * 10 + skillPied * 0.4; etale = false; }
       else { portee = 8 + this.rng() * 7 + skillPied * 0.3; etale = false; } // CHIP
       portee = Math.max(4, portee);

@@ -3893,6 +3893,36 @@ test('essai de pénalité : rare, et seulement sur un maul lancé écroulé prè
   assert.ok(jaunesLigne >= 3, `la faute délibérée sur sa ligne n'est plus sanctionnée (${jaunesLigne} cartons)`);
 });
 
+// --- Dégagement en touche depuis ses 22 : 30 à 45 m gagnés ------------------
+// Il ne gagnait que 27 m (portée de 15 à 30 m) et rendait la touche vers ses
+// 40 m : l'adversaire repartait à deux pas des 22.
+test('dégagement en touche depuis ses 22 m : il gagne en moyenne plus de 30 m', () => {
+  const gains = [];
+  for (let seed = 1; seed <= 6; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    let pied = null;
+    const log = m.log.bind(m);
+    m.log = (t, team, msg, ...r) => {
+      if (t === 'COUP_DE_PIED' && m.porteur) {
+        const p = m.porteur;
+        pied = { x: p.x, sens: p.sensAttaque, dans22: (p.sensAttaque > 0 ? p.x : LONGUEUR - p.x) < 22, touche: /\(touche\)/.test(msg) };
+      } else if (t === 'TOUCHE' && pied && /trouve la touche/.test(msg)) pied.sortie = true;
+      else if (t !== 'TOUCHE') { if (pied && !pied.sortie && t !== 'ENTREE_22') pied = null; }
+      return log(t, team, msg, ...r);
+    };
+    while (m.phase !== 'TERMINE') {
+      m.tick(0.1);
+      if (pied && pied.sortie) {
+        if (pied.dans22 && pied.touche) gains.push((m.toucheLanceurX - pied.x) * pied.sens);
+        pied = null;
+      }
+    }
+  }
+  assert.ok(gains.length >= 20, `échantillon trop petit (${gains.length} dégagements en touche)`);
+  const moy = gains.reduce((a, b) => a + b, 0) / gains.length;
+  assert.ok(moy >= 30, `un dégagement en touche depuis ses 22 ne gagne que ${moy.toFixed(1)} m`);
+});
+
 // --- bugs.md QA-RM-007 : événements, joueurs et équipe disent la même chose ---
 test('rapprochement : réussis ≤ tentés partout, et chaque essai ou but du compteur a son événement (QA-RM-007)', () => {
   for (let seed = 1; seed <= 4; seed++) {
