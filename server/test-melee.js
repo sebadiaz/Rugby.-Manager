@@ -315,7 +315,11 @@ function suivreMelees(graines, cfg, maxMelees) {
   return melees;
 }
 // Mêlées allées jusqu'au bout (ballon à la base puis joué), sans faute sifflée.
-const completes = (ms) => ms.filter((x) => x.ticks.some((k) => k.etat === E.X) && x.sortie && x.sortie.phase === 'PORTE'
+// Le n°9 exclu (carton jaune) est remplacé au pied de la mêlée par un autre
+// joueur : ces mêlées-là ont leur propre test (server/test-invariants.js), car
+// les tests ci-dessous suivent le maillot n°9.
+const completes = (ms) => ms.filter((x) => x.ticks.every((k) => k.neufI && !(k.neufI.sinBin > 0))
+  && x.ticks.some((k) => k.etat === E.X) && x.sortie && x.sortie.phase === 'PORTE'
   && !x.evts.some((e) => /^MELEE_PEN|^COUP_FRANC|^PENALITE|^MELEE_RESET|^MELEE_TOURNEE/.test(e.type)));
 const MELEES = suivreMelees([1, 2, 3, 4, 5, 6, 7, 8], null, 2);
 const COMPLETES = completes(MELEES);
@@ -540,7 +544,10 @@ test('M22 — « mêlée dominée » reste l\'exception à packs égaux, la règ
     const n = c.DOMINEE + c.GAGNEE + c.PRESSION;
     return { ...c, n, partDom: n ? c.DOMINEE / n : 0 };
   };
-  const egaux = issues([1, 2, 3, 4, 5, 6]);
+  // 12 graines : la force des packs est tirée à chaque match, la part de
+  // mêlées dominées varie de 0 à 44 % d'un match à l'autre ; sur 6 graines,
+  // le même moteur donnait 5 % sur un lot et 18 à 22 % sur les suivants.
+  const egaux = issues([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
   assert.ok(egaux.n >= 30, `échantillon trop petit (${egaux.n})`);
   assert.ok(egaux.partDom >= 0.08 && egaux.partDom <= 0.4,
     `packs égaux : ${(egaux.partDom * 100).toFixed(0)} % de mêlées « dominées » (${JSON.stringify(egaux)})`);

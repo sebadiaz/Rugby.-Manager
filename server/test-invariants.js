@@ -3930,6 +3930,37 @@ test('dégagement en touche depuis ses 22 m : il gagne en moyenne plus de 30 m',
   assert.ok(moy >= 30, `un dégagement en touche depuis ses 22 ne gagne que ${moy.toFixed(1)} m`);
 });
 
+// --- Mêlée avec le n°9 exclu : un autre joueur introduit ---------------------
+// La mêlée désignait le 9 même en carton jaune : il restait figé hors du jeu et
+// le ballon l'attendait, posé à 21 m du tunnel, pendant toute la mise en place.
+test('mêlée : le n°9 exclu, un autre joueur rejoint le tunnel et introduit le ballon', () => {
+  let introduites = 0, essais = 0;
+  for (let seed = 1; seed <= 8; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    for (let t = 0; t < 30; t += 0.1) m.tick(0.1);
+    m.avantage = null; m.passeVisuelle = null; m.combinaison = null; m.maul = null; m.toucheLancer = null;
+    const neuf = m.equipeB.find(j => j.numero === 9);
+    neuf.sinBin = 600;
+    m._formerMelee('B', { x: 40, y: 30 });
+    essais++;
+    let intro = false, pret = null;
+    for (let k = 0; k < 900 && m.phase === 'MELEE' && !intro; k++) {
+      m.tick(0.1);
+      const st = m.getState();
+      if (st.melee && st.melee.etat === 'MELEE_CROUCH' && !pret) pret = { porteur: m.porteur, ballon: st.ballon };
+      if (st.melee && st.melee.etat === 'MELEE_INTRODUCTION') intro = true;
+    }
+    assert.ok(pret, `graine ${seed} : la mêlée n'arrive jamais à « Crouch »`);
+    assert.ok(pret.porteur && pret.porteur !== neuf && pret.porteur.team === 'B' && !(pret.porteur.sinBin > 0),
+      `graine ${seed} : le ballon est confié au n°9 exclu`);
+    assert.ok(Math.hypot(pret.ballon.x - pret.porteur.x, pret.ballon.y - pret.porteur.y) < 0.3
+      && Math.hypot(pret.porteur.x - 40, pret.porteur.y - 30) < 4,
+      `graine ${seed} : le remplaçant n'est pas au tunnel, ballon en main`);
+    if (intro) introduites++;
+  }
+  assert.ok(introduites >= essais - 1, `${introduites}/${essais} mêlées introduites sans le n°9`);
+});
+
 // --- bugs.md QA-RM-007 : événements, joueurs et équipe disent la même chose ---
 test('rapprochement : réussis ≤ tentés partout, et chaque essai ou but du compteur a son événement (QA-RM-007)', () => {
   for (let seed = 1; seed <= 4; seed++) {

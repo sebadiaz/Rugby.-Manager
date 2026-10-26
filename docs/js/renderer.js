@@ -328,8 +328,10 @@
       terrain: dessinerTerrain,
       ballon: () => dessinerBallon(state),
       joueurs: () => {
-        for (const j of state.teams.A) dessinerJoueur(j, estPorteur(j));
-        for (const j of state.teams.B) dessinerJoueur(j, estPorteur(j));
+        // Un joueur exclu (carton jaune) a quitté le terrain : il n'y reste pas
+        // planté, immobile, pendant ses dix minutes.
+        for (const j of state.teams.A) if (!(j.sinBin > 0)) dessinerJoueur(j, estPorteur(j));
+        for (const j of state.teams.B) if (!(j.sinBin > 0)) dessinerJoueur(j, estPorteur(j));
       },
       repere: () => dessinerRepereBallon(state),
       arbitre: () => dessinerArbitre(state),

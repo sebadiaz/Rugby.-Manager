@@ -5697,7 +5697,7 @@
       // le tunnel, jamais l'ouvreur. _neufVersDix (qui privilegie le n°10)
       // sert a la SORTIE de balle d'un regroupement, pas a l'introduction -
       // l'utiliser ici donnait le ballon au n°10 sur 100% des melees.
-      this.porteur = eq.find(j => j.numero === 9 && j.sinBin <= 0) || eq[8];
+      this.porteur = this._demiDeMeleeDisponible(eq);
       // Le demi de melee N'EST PLUS teleporte a l'entree du tunnel : il y court
       // depuis sa position courante (cf. _meleePositionnerBallon, via avancer()),
       // exactement comme les avants rejoignent le pack a la course. Avant ce
@@ -5789,13 +5789,27 @@
         x: b.x, y: b.y }, extra || {}));
     }
 
+    // Demi de mêlée disponible : le n°9, ou, s'il est exclu (carton jaune), un
+    // joueur qui le remplace au pied de la mêlée. Sans lui, la mêlée attendait
+    // un 9 sur le banc des exclus : ballon posé à 21 m de son introducteur
+    // pendant toute la mise en place.
+    _demiDeMeleeDisponible(eq) {
+      const libre = (j) => j && j.sinBin <= 0;
+      const neuf = eq.find(j => j.numero === 9);
+      if (libre(neuf)) return neuf;
+      for (const n of [14, 11, 12, 13, 7, 10, 15]) {
+        const j = eq.find(x => x.numero === n);
+        if (libre(j)) return j;
+      }
+      return eq.find(libre) || null;
+    }
+
     // Les deux n°9 de la mêlée : celui de l'équipe qui introduit, et l'autre.
     _meleeNeufs() {
       const m = this.melee;
       const eqI = m.equipeIntroduction === 'A' ? this.equipeA : this.equipeB;
       const eqD = m.equipeIntroduction === 'A' ? this.equipeB : this.equipeA;
-      return { intro: eqI.find(j => j.numero === 9 && j.sinBin <= 0) || null,
-        adverse: eqD.find(j => j.numero === 9 && j.sinBin <= 0) || null };
+      return { intro: this._demiDeMeleeDisponible(eqI), adverse: this._demiDeMeleeDisponible(eqD) };
     }
 
     // Orchestrateur : exécute un pas de la machine à états de la mêlée.
@@ -5968,7 +5982,7 @@
           }
           m.timerSortie -= dt;
           const eqV = m.vainqueur === 'A' ? this.equipeA : this.equipeB;
-          const neufV = eqV.find(j => j.numero === 9 && j.sinBin <= 0);
+          const neufV = this._demiDeMeleeDisponible(eqV);
           const huitV = eqV.find(j => j.numero === 8 && j.sinBin <= 0 && j.auSol === 0);
           const dureeSortie = (this.cfg.melee.durees || {}).sortie || 1.0;
           if (m.pickAndGo && huitV && m.timer >= dureeSortie * 0.6) return this._meleeSortieBallon(huitV);
@@ -6128,7 +6142,9 @@
         // _meleePositionnerBallon (sur le côté de la base), pas ramenés sur le
         // couloir des arrières : sinon le 9 serait tiré à 9 m en retrait puis
         // devrait être téléporté sur la base à la sortie du ballon.
-        const backs = equipe.filter(j => j.numero > 9 && j.sinBin <= 0);
+        // Le remplaçant du 9 exclu se place au pied de la mêlée, pas dans la ligne.
+        const demi = this._demiDeMeleeDisponible(equipe);
+        const backs = equipe.filter(j => j.numero > 9 && j.sinBin <= 0 && j !== demi);
         // Ligne de hors-jeu des trois-quarts (loi 19.31) : 5 m DERRIÈRE le pied
         // le plus reculé de la mêlée (~1,5 m), soit ~6,5 m de la marque ; on
         // place la ligne à 7,5 m (1 m de marge). Les 3/4 ne sont PLUS alignés en
@@ -6587,7 +6603,7 @@
       const poss = m.vainqueur;
       const eq = poss === 'A' ? this.equipeA : this.equipeB;
       const huit = eq.find(j => j.numero === 8);
-      const neuf = eq.find(j => j.numero === 9 && j.sinBin <= 0);
+      const neuf = this._demiDeMeleeDisponible(eq);
       const porteur = joueur || neuf || huit || eq[7];
       // Passe du 8 : vers le 10 s'il est à hauteur ou derrière lui (jamais en
       // avant) et à portée, sinon vers le 9 ; faute de receveur, il part.
