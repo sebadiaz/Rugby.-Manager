@@ -580,6 +580,43 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-136. Relecture fidèle d'un match vécu, décisions comprises — bugs.md FUNC-RM-003
+- **Statut : LIVRÉ**
+- Fichiers concernés : `docs/js/main.js` (`pasMoteur`, `appliquerDecision`, `empreinteMatch`, enregistrement et
+  relecture), `docs/js/ui.js` (`enregistrerResultat`), `engine/rugby-engine.js` et `docs/rugby-engine.js` (remplacement en
+  cours de match), `server/test-invariants.js`, `server/test-parcours-navigateur.js`, `bugs.md`.
+
+**Constat.** « Revoir » rejouait un match enregistré depuis sa seule graine. Pour un match vécu, les consignes et les
+remplacements du manager étaient perdus : la relecture montrait un autre match. Mesuré dans le navigateur : 12-3 vécu,
+7-3 rejoué.
+
+**Défaut du moteur trouvé en chemin.** `remplacerJoueurEnCours` écrivait le remplaçant dans `cfg.joueursA/B`, qui est
+l'objet même passé par l'appelant (`fusionnerConfig` ne copie pas les clés absentes de `DEFAULT_CONFIG`). La composition
+de la page changeait donc : « Enregistrer » gardait une feuille où le remplaçant était titulaire. Le moteur copie
+désormais avant d'écrire. Le déroulé des matchs est inchangé : 6 matchs identiques au pas près, calibration identique.
+
+**Correction.**
+- « Enregistrer » garde, avec la configuration d'avant-match :
+  - les décisions du manager (équipe, banc, consignes et remplacements datés au pas près) ;
+  - une empreinte du déroulé (sifflet, passes, rucks, plaquages).
+- Chaque moteur porte ses décisions, et tout pas de simulation passe par `pasMoteur`, qui les applique à leur pas :
+  génération, affichage, barre de temps, fin jouée d'un coup, contrôle de fidélité.
+- Le contrôle de fidélité compare le score ET l'empreinte : un score identique par hasard ne suffit plus.
+
+**Tests.**
+- Navigateur, 1400×1000 (même scénario vérifié en 390×844) : match vécu, consigne et remplacement à la mi-temps,
+  « Terminer », « Enregistrer ». On vérifie que :
+  - l'historique garde les décisions et l'empreinte ;
+  - la relecture est fidèle avec les décisions, et infidèle sans elles ;
+  - « Revoir » n'avertit plus d'un match différent ;
+  - au bout de la barre de temps, le score est celui du match vécu.
+- Invariant : un remplacement en cours de match laisse intacte la composition passée par l'appelant. L'ancien moteur
+  échoue.
+- Barrières : 16 suites, calibration 14/14 (identique), navigateur 532/0.
+
+**Limite.** Un match enregistré par une version antérieure du moteur reste impossible à reproduire. La relecture le
+signale.
+
 ### P2-135. Reprise d'un match joué après rechargement ou fermeture — bugs.md FUNC-RM-002
 - **Statut : LIVRÉ**
 - Fichiers concernés : `docs/js/main.js` (journal du match joué, `journalMatchJoue`, `reprendreMatchClub`,
