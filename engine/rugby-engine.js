@@ -7852,6 +7852,16 @@
     remplacerJoueurEnCours(equipe, numero, joueur, joueurId) {
       if (equipe !== 'A' && equipe !== 'B') return false;
       if (!(numero >= 1 && numero <= 15)) return false;
+      // Un même joueur n'entre qu'une fois (bugs.md FUNC-RM-005). Le manager
+      // qui fait entrer plus tôt un remplaçant prévu à la 50e annule cette
+      // entrée prévue : sinon, à la 50e, le remplaçant « se remplaçait » lui-
+      // même et ses statistiques étaient coupées en deux.
+      if (joueurId != null) {
+        if (this._remplacements.some((r) => r.applique && !r.annule && r.equipe === equipe && r.joueurId === joueurId)) return false;
+        for (const r of this._remplacements) {
+          if (!r.applique && r.equipe === equipe && r.joueurId === joueurId) { r.applique = true; r.annule = true; }
+        }
+      }
       this._remplacements.push({
         equipe, numero: Math.round(numero), joueur: joueur || {},
         instant: this.tempsMatch, applique: false, joueurId: joueurId != null ? joueurId : null,

@@ -4493,6 +4493,54 @@ function optionsLancement() {
     await ctxRel.close();
   }
 
+  // --- BANC EN COURS DE MATCH (bugs.md FUNC-RM-005) ------------------------
+  // Le manager choisit quel maillot son remplaçant relève, parmi les postes
+  // compatibles ; un remplaçant n'entre qu'une fois et il est crédité de son
+  // entrée en jeu.
+  {
+    const ctxBanc = await browser.newContext({ viewport: { width: 1400, height: 1000 } });
+    const pgBanc = await ctxBanc.newPage();
+    const erreursBanc = [];
+    pgBanc.on('pageerror', (e) => erreursBanc.push(e.message));
+    pgBanc.on('dialog', async (d) => { await d.accept(); });
+    await pgBanc.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+    await pgBanc.click('#btnAccueilModeClub');
+    await pgBanc.fill('#inputNomClub', 'AS Banc');
+    await pgBanc.click('#btnCreerClub');
+    await pgBanc.waitForTimeout(700);
+    await pgBanc.selectOption('#selDureeClub', '300');
+    verifier('banc : prémisse — aperçu', await continuerJusquAuMatch(pgBanc));
+    await pgBanc.click('#btnApercuJouerMatch');
+    await pgBanc.waitForTimeout(1200);
+    for (let i = 0; i < 8; i++) { if (/x16/.test(await pgBanc.textContent('#btnSpeed'))) break; await pgBanc.click('#btnSpeed'); await pgBanc.waitForTimeout(100); }
+    let mt = false;
+    for (let t = 0; t < 400; t++) { if (await pgBanc.isVisible('#btnMiTempsReprendre')) { mt = true; break; } await pgBanc.waitForTimeout(200); }
+    verifier('banc : prémisse — mi-temps', mt);
+    const options = await pgBanc.$$eval('.selCibleRemplacant[data-index="0"] option', (os) => os.map((o) => o.value));
+    verifier('banc : le pilier remplaçant ne peut relever qu une première ligne (n°1, 2, 3)', JSON.stringify(options) === '["1","2","3"]', JSON.stringify(options));
+    const optArriere = await pgBanc.$$eval('.selCibleRemplacant', (ss) => ss.map((s) => [...s.options].map((o) => Number(o.value))));
+    verifier('banc : un trois-quarts ne relève qu un trois-quarts', optArriere.some((l) => l.length && l.every((n) => n >= 9)) && optArriere.every((l) => l.every((n) => n <= 3) || l.every((n) => n >= 4 && n <= 8) || l.every((n) => n >= 9)), JSON.stringify(optArriere));
+    await pgBanc.selectOption('.selCibleRemplacant[data-index="0"]', '3');
+    await pgBanc.click('.btnRemplacantMiTemps[data-index="0"]');
+    await pgBanc.waitForTimeout(400);
+    const apres = await pgBanc.evaluate(() => ({ effectues: window.RMMain.etatActuel().remplacementsEffectues, detail: document.querySelector('.ligneRemplacant .detailRemplacant').textContent, dis: document.querySelector('.btnRemplacantMiTemps[data-index="0"]').disabled }));
+    await pgBanc.click('#btnMiTempsReprendre');
+    for (let t = 0; t < 30; t++) await pgBanc.waitForTimeout(100);
+    await pgBanc.click('#btnTerminerMatch');
+    let fin = false;
+    for (let i = 0; i < 200; i++) { if (await pgBanc.isVisible('#panneauResultat.visible')) { fin = true; break; } await pgBanc.waitForTimeout(300); }
+    const finale = await pgBanc.evaluate(() => window.RMMain.etatActuel().remplacementsEffectues);
+    const premier = finale && finale.find((r) => r.numero === 3);
+    verifier('banc : le remplaçant entre au maillot choisi par le manager (n°3)', !!premier, JSON.stringify(finale));
+    verifier('banc : il n entre qu une fois (le doublon à la minute prévue est couvert par test-invariants)', premier && finale.filter((r) => r.joueurId === premier.joueurId).length === 1, JSON.stringify(finale));
+    verifier('banc : le panneau le montre « entré » et ne le propose plus', apres.dis && /entré/.test(apres.detail), JSON.stringify(apres));
+    if (fin) { await pgBanc.click('#btnResultatFermer'); await pgBanc.waitForTimeout(800); }
+    const credit = await pgBanc.evaluate((id) => { const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1')); const j = s.clubJoueur.effectif.find((x) => x.id === id); return j && j.statsSaison; }, premier && premier.joueurId);
+    verifier('banc : le remplaçant est crédité d une entrée en jeu, une seule', credit && credit.entreesEnJeu === 1 && credit.matchsJoues === 1, JSON.stringify(credit));
+    verifier('banc : aucune erreur de page', erreursBanc.length === 0, '');
+    await ctxBanc.close();
+  }
+
   // --- SORTIE DE SECOURS ----------------------------------------------------
   // Signale en jeu : « mon jeu est bloque, je ne peux ni rentrer dedans ni
   // supprimer pour continuer ». Le seul bouton de remise a zero vivait DANS le

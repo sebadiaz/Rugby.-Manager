@@ -1175,6 +1175,12 @@ select {
 }
 .btnConsigneMiTemps.choisie b::after { content: ' ✓'; color: #6fd39b; }
 .btnRemplacantMiTemps.choisie b::after { content: ' ✓ entré'; color: #6fd39b; font-size: 11px; }
+/* Banc en cours de match (FUNC-RM-005) : le maillot relevé se choisit. */
+.ligneRemplacant { margin-bottom: 8px; }
+.ligneRemplacant .btnRemplacantMiTemps { margin-bottom: 3px; }
+.detailRemplacant { display: block; font-size: 11.5px; color: var(--text-dim); }
+.selCibleRemplacant { font-size: 12px; padding: 2px 4px; max-width: 100%; }
+.noteRefus { font-size: 12px; color: #f0a35e; margin: 4px 0 0; }
 
 /* Barre de sous-onglets (profondeur de navigation) : un seul composant,
    réutilisé par chaque menu qui en déclare. Défile horizontalement sur

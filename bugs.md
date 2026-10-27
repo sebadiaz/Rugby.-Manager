@@ -318,6 +318,8 @@ Les sommes individuelles des passes, plaquages et mètres correspondent aux somm
 
 ### [ ] FUNC-RM-005 — Compléter la gestion du banc pendant le match — P2
 
+**Avancement (TODO_AUDIT P2-137) :** à la mi-temps et en cours de jeu, le manager choisit le maillot relevé parmi les postes compatibles (première ligne par première ligne, loi 3 ; avant par avant ; trois-quarts par trois-quarts) ; refus expliqué ; un remplaçant n'entre qu'une fois (défaut corrigé : entré plus tôt que prévu, il entrait une seconde fois à sa minute prévue) ; joueur exclu signalé. Décisions rejouées à la reprise (FUNC-RM-002) et à la relecture (FUNC-RM-003). Reste : blessures en match, remplacement temporaire, effectif réduit.
+
 **État constaté :** changements planifiés et changements en cours de jeu existent déjà. Le panneau de changement proposé dans `main.js` est alimenté par la liste issue de la préparation ; ne pas reconstruire ce chemin en parallèle.
 
 **À livrer :** sélection explicite sortant/entrant depuis le banc disponible, poste couvert, fatigue et motif ; expliquer refus et risque de désorganisation. Raccorder blessures, exclusions, éventuel remplacement temporaire et contraintes de première ligne au règlement effectivement choisi. Définir ce qui est simulé avant d'ajouter un bouton.

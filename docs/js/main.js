@@ -137,13 +137,29 @@
   // génération, affichage, barre de temps, fin jouée d'un coup, vérification
   // de fidélité. Sans décisions (match neuf, match joué en direct où elles
   // sont prises à la main), c'est un simple `tick`.
+  // Groupes de postes pour le banc : première ligne (loi 3), autres avants,
+  // trois-quarts (demis compris).
+  function groupePoste(n) { return n <= 3 ? 'PL' : n <= 8 ? 'AV' : 'AR'; }
+  function maillotsCompatibles(numeroPrevu) {
+    const g = groupePoste(numeroPrevu);
+    const out = [];
+    for (let n = 1; n <= 15; n++) if (groupePoste(n) === g) out.push(n);
+    return out;
+  }
+  // Le remplaçant prend la PLACE du maillot qu'il relève (couloir, tendance),
+  // comme le fait déjà le banc prévu (cf. remplacementsVersConfig).
+  function joueurAuMaillot(r, numero) {
+    const maillot = window.RugbyEngine && window.RugbyEngine.DEFAULT_CONFIG.joueurs[numero];
+    return Object.assign({}, r.joueur, maillot ? { tendance: maillot.tendance, couloir: maillot.couloir } : {});
+  }
   function appliquerDecision(m, d, cmd) {
     if (cmd.type === 'consigne') {
       const c = CONSIGNES_MI_TEMPS.find((x) => x.cle === cmd.cle);
       if (c) m.appliquerTactiqueEnCours(d.equipe, c.consignes);
     } else if (cmd.type === 'remplacement') {
       const r = (d.remplacants || [])[cmd.index];
-      if (r) m.remplacerJoueurEnCours(d.equipe, r.numeroSortant, r.joueur, r.joueurId);
+      const numero = cmd.numero || (r && r.numeroSortant);
+      if (r) m.remplacerJoueurEnCours(d.equipe, numero, cmd.numero ? joueurAuMaillot(r, numero) : r.joueur, r.joueurId);
     }
   }
   function pasMoteur(m) {
@@ -350,12 +366,34 @@
     document.getElementById('miTempsConsignes').innerHTML = CONSIGNES_MI_TEMPS.map((c) =>
       `<button class="alt btnConsigneMiTemps${L.consignesPrises.indexOf(c.cle) !== -1 ? ' choisie' : ''}" data-cle="${c.cle}">` +
       `<b>${c.libelle}</b><span>${c.detail}</span></button>`).join('');
+    // BANC (bugs.md FUNC-RM-005) : le manager choisit QUI sort, parmi les
+    // maillots que le remplaçant peut tenir (loi 3 : une première ligne est
+    // relevée par une première ligne ; un avant par un avant, un trois-quarts
+    // par un trois-quarts). Un remplaçant déjà entré — à la main ou à sa
+    // minute prévue — ne peut plus entrer.
     const banc = L.remplacants || [];
+    const entres = new Map();
+    for (const re of (e.remplacementsEffectues || match.remplacementsEffectues || [])) {
+      if (re.equipe === L.equipe && re.joueurId != null) entres.set(re.joueurId, re);
+    }
+    const joueursEq = (L.equipe === 'A' ? e.teams.A : e.teams.B) || [];
     document.getElementById('miTempsRemplacants').innerHTML = banc.length
-      ? banc.map((r, i) =>
-        `<button class="alt btnRemplacantMiTemps${L.remplacementsFaits.indexOf(i) !== -1 ? ' choisie' : ''}" data-index="${i}"` +
-        `${L.remplacementsFaits.indexOf(i) !== -1 ? ' disabled' : ''}>` +
-        `<b>${r.nom} (${r.poste})</b><span>entre à la place du n°${r.numeroSortant}</span></button>`).join('')
+      ? banc.map((r, i) => {
+        const entre = entres.get(r.joueurId);
+        const fait = !!entre || L.remplacementsFaits.indexOf(i) !== -1;
+        const groupe = groupePoste(r.numeroSortant);
+        const options = maillotsCompatibles(r.numeroSortant).map((n) => {
+          const j = joueursEq.find((x) => x.numero === n);
+          const exclu = j && j.sinBin > 0;
+          return `<option value="${n}"${n === r.numeroSortant ? ' selected' : ''}${exclu ? ' disabled' : ''}>n°${n}${j && j.label ? ' — ' + j.label : ''}${exclu ? ' (exclu)' : ''}</option>`;
+        }).join('');
+        const detail = fait
+          ? `entré${entre ? ' à la ' + Math.max(1, Math.round(entre.instant / 60)) + 'e minute, au n°' + entre.numero : ''}`
+          : `remplace le <select class="selCibleRemplacant" data-index="${i}" aria-label="Maillot remplacé par ${r.nom}">${options}</select>`
+            + (groupe === 'PL' ? ' · première ligne : relève une première ligne (loi 3)' : '');
+        return `<div class="ligneRemplacant"><button class="alt btnRemplacantMiTemps${fait ? ' choisie' : ''}" data-index="${i}"${fait ? ' disabled' : ''}>`
+          + `<b>${fait ? '' : 'Faire entrer '}${r.nom} (${r.poste})</b></button><span class="detailRemplacant">${detail}</span></div>`;
+      }).join('') + '<p id="miTempsRemplacementRefus" class="noteRefus" style="display:none"></p>'
       : '<p style="font-size:12px;color:var(--text-faint);margin:0;">Aucun remplaçant disponible.</p>';
     document.getElementById('panneauMiTemps').classList.add('visible');
     ecrireJournalMatch();
@@ -460,7 +498,8 @@
     } else if (cmd.type === 'remplacement') {
       const r = (L.remplacants || [])[cmd.index];
       if (!r || L.remplacementsFaits.indexOf(cmd.index) !== -1) return;
-      match.remplacerJoueurEnCours(L.equipe, r.numeroSortant, r.joueur, r.joueurId);
+      const numero = cmd.numero || r.numeroSortant;
+      match.remplacerJoueurEnCours(L.equipe, numero, cmd.numero ? joueurAuMaillot(r, numero) : r.joueur, r.joueurId);
       L.remplacementsFaits.push(cmd.index);
     }
   }
@@ -632,9 +671,17 @@
     const i = Number(b.dataset.index);
     const r = (matchLive.remplacants || [])[i];
     if (!r || matchLive.remplacementsFaits.indexOf(i) !== -1) return;
-    match.remplacerJoueurEnCours(matchLive.equipe, r.numeroSortant, r.joueur, r.joueurId);
+    const sel = document.querySelector(`.selCibleRemplacant[data-index="${i}"]`);
+    const numero = sel ? Number(sel.value) : r.numeroSortant;
+    const refus = document.getElementById('miTempsRemplacementRefus');
+    if (maillotsCompatibles(r.numeroSortant).indexOf(numero) === -1
+        || !match.remplacerJoueurEnCours(matchLive.equipe, numero, joueurAuMaillot(r, numero), r.joueurId)) {
+      // Refus EXPLIQUÉ, jamais un bouton qui ne fait rien.
+      if (refus) { refus.textContent = `${r.nom} ne peut pas entrer au n°${numero} : il est déjà entré, ou ce maillot n'est pas de son poste.`; refus.style.display = ''; }
+      return;
+    }
     matchLive.remplacementsFaits.push(i);
-    noterCommandeJournal({ type: 'remplacement', index: i });
+    noterCommandeJournal({ type: 'remplacement', index: i, numero });
     ouvrirMiTemps(matchLive.contexte);
   });
 

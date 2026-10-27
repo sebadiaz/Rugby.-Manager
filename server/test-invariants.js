@@ -4018,6 +4018,24 @@ test('remplacement en cours de match : la composition passée par l appelant res
   assert.ok(m.remplacementsEffectues.some((r) => r.equipe === 'A' && r.numero === 9), 'le remplacement a bien eu lieu');
 });
 
+// --- Banc (bugs.md FUNC-RM-005) : un remplaçant n'entre qu'une fois ------------
+// Faire entrer à la mi-temps un remplaçant prévu à la 50e le faisait entrer
+// DEUX fois : à la 50e, il « se remplaçait » lui-même.
+test('banc : un remplaçant entré plus tôt que prévu n entre pas une seconde fois', () => {
+  const ref = new MatchEngine(1, 4800);
+  const j = Object.assign({}, ref.cfg.joueurs[1], { nom: 'Pilier remplaçant' });
+  const m = new MatchEngine(5, 4800, { remplacements: [{ equipe: 'A', numero: 1, minute: 50, joueur: j, joueurId: 'p16' }] });
+  while (m.tempsMatch < 2400) m.tick(0.1);
+  assert.strictEqual(m.remplacerJoueurEnCours('A', 3, j, 'p16'), true, 'entrée anticipée, à un autre poste de première ligne');
+  for (let i = 0; i < 5; i++) m.tick(0.1);
+  assert.strictEqual(m.remplacerJoueurEnCours('A', 1, j, 'p16'), false, 'un joueur déjà entré ne peut pas entrer à nouveau');
+  m.jouerJusquAuSifflet(0.1);
+  const entrees = m.remplacementsEffectues.filter((r) => r.equipe === 'A' && r.joueurId === 'p16');
+  assert.strictEqual(entrees.length, 1, `${entrees.length} entrées pour le même remplaçant`);
+  assert.strictEqual(entrees[0].numero, 3, 'il entre là où le manager l a placé');
+  assert.ok(entrees[0].instant < 2410, 'il entre quand le manager le décide, pas à la 50e');
+});
+
 // --- bugs.md QA-RM-007 : événements, joueurs et équipe disent la même chose ---
 test('rapprochement : réussis ≤ tentés partout, et chaque essai ou but du compteur a son événement (QA-RM-007)', () => {
   for (let seed = 1; seed <= 4; seed++) {
