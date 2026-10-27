@@ -129,7 +129,7 @@ Les sommes individuelles des passes, plaquages et mètres correspondent aux somm
 | BUG-RM-010 | P1 | Corrigé (TODO_AUDIT P2-107) | Terminer les matchs des scripts de mesure avant de lire le résultat |
 | FUNC-RM-001 | P1 | Livré (TODO_AUDIT P2-106) | Export, import et récupération de carrière accessibles |
 | FUNC-RM-002 | P1 | Livré (TODO_AUDIT P2-135) | Reprendre un match joué après fermeture du navigateur |
-| FUNC-RM-003 | P2 | À compléter | Relecture fidèle des décisions du match interactif |
+| FUNC-RM-003 | P2 | Livré (TODO_AUDIT P2-136) | Relecture fidèle des décisions du match interactif |
 | FUNC-RM-004 | P2 | À compléter | Instructions individuelles par poste |
 | FUNC-RM-005 | P2 | À compléter | Gestion complète du banc et des changements en direct |
 | FUNC-RM-006 | P2 | À compléter | Donner un rôle concret et explicable au capitaine |
@@ -296,7 +296,9 @@ Les sommes individuelles des passes, plaquages et mètres correspondent aux somm
 
 **Acceptation :** F5, fermeture d'onglet, arrêt du navigateur, mi-temps et fin de match ; même état à la reprise, aucune nouvelle inscription ni doublon de résultat, statistiques ou recettes. Aucun état ancien n'écrase une carrière plus récente.
 
-### [ ] FUNC-RM-003 — Relecture fidèle des décisions du match interactif — P2
+### [x] FUNC-RM-003 — Relecture fidèle des décisions du match interactif — P2
+
+**Livré (TODO_AUDIT P2-136) :** « Enregistrer » garde les décisions du manager (consignes, remplacements) datées au pas près et une empreinte du déroulé ; tout pas de simulation d'une relecture (génération, affichage, barre de temps, fin jouée d'un coup, contrôle de fidélité) rejoue ces décisions à leur pas. Le contrôle compare score ET empreinte. Défaut du moteur corrigé au passage : un remplacement en cours de match écrivait le remplaçant dans la composition de l'appelant. Reste : le changement de version du moteur rend toujours la relecture infidèle (elle le dit).
 
 **État constaté :** une décision en cours de match change réellement la suite (test réussi). La relecture par graine seule ne reconstitue pas ces commandes. `rejouerDepuisHistorique` reconnaît les entrées sans instantané exploitable ; ce diagnostic existant doit être conservé.
 

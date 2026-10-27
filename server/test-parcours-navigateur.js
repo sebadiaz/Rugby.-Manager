@@ -4410,6 +4410,89 @@ function optionsLancement() {
     await ctxRep.close();
   }
 
+  // --- RELECTURE FIDÈLE D'UN MATCH VÉCU (bugs.md FUNC-RM-003) --------------
+  // La relecture repartait de la seule graine : sans les consignes et les
+  // remplacements du manager, « Revoir » montrait un autre match.
+  {
+    const ctxRel = await browser.newContext({ viewport: { width: 1400, height: 1000 } });
+    const pgRel = await ctxRel.newPage();
+    const erreursRel = [];
+    pgRel.on('pageerror', (e) => erreursRel.push(e.message));
+    const dialoguesRel = [];
+    pgRel.on('dialog', async (d) => { dialoguesRel.push(d.message()); await d.accept(); });
+    await pgRel.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+    await pgRel.click('#btnAccueilModeClub');
+    await pgRel.fill('#inputNomClub', 'AS Relecture');
+    await pgRel.click('#btnCreerClub');
+    await pgRel.waitForTimeout(700);
+    await pgRel.selectOption('#selDureeClub', '300');
+    verifier('relecture : on atteint l\'aperçu d\'avant-match', await continuerJusquAuMatch(pgRel));
+    await pgRel.click('#btnApercuJouerMatch');
+    await pgRel.waitForTimeout(1200);
+    for (let i = 0; i < 8; i++) {
+      if (/x16/.test(await pgRel.textContent('#btnSpeed'))) break;
+      await pgRel.click('#btnSpeed').catch(() => {});
+      await pgRel.waitForTimeout(100);
+    }
+    let miTempsRel = false;
+    for (let t = 0; t < 400; t++) {
+      if (await pgRel.isVisible('#btnMiTempsReprendre')) {
+        miTempsRel = true;
+        const c = await pgRel.$$('.btnConsigneMiTemps');
+        if (c.length) { await c[1].click(); await pgRel.waitForTimeout(200); }
+        const r = await pgRel.$$('.btnRemplacantMiTemps');
+        if (r.length) { await r[0].click(); await pgRel.waitForTimeout(200); }
+        await pgRel.click('#btnMiTempsReprendre');
+        break;
+      }
+      await pgRel.waitForTimeout(200);
+    }
+    verifier('relecture : prémisse — consigne et remplacement donnés à la mi-temps', miTempsRel);
+    await pgRel.waitForTimeout(1500);
+    await pgRel.click('#btnTerminerMatch');
+    let finRel = false;
+    for (let i = 0; i < 200; i++) {
+      if (await pgRel.isVisible('#panneauResultat.visible')) { finRel = true; break; }
+      await pgRel.waitForTimeout(300);
+    }
+    const vecuRel = await pgRel.evaluate(() => window.RMMain.etatActuel().score);
+    if (finRel) { await pgRel.click('#btnResultatFermer'); await pgRel.waitForTimeout(800); }
+    const entreeRel = await pgRel.evaluate(() => {
+      localStorage.setItem('rugbyManager.historique', '[]');
+      document.getElementById('btnSauver').click();
+      return JSON.parse(localStorage.getItem('rugbyManager.historique'))[0];
+    });
+    verifier('relecture : « Enregistrer » garde les décisions datées du manager et une empreinte du match',
+      !!(entreeRel && entreeRel.decisions && entreeRel.decisions.commandes.length >= 1 && entreeRel.empreinte));
+    const verdictsRel = await pgRel.evaluate((e) => ({
+      avec: window.RMMain.rejouerDepuisHistorique(e),
+      sans: window.RMMain.rejouerDepuisHistorique(Object.assign({}, e, { decisions: null })),
+    }), entreeRel);
+    verifier('relecture : avec les décisions, le match rejoué est identique au match vécu', verdictsRel.avec.fidele);
+    verifier('relecture : sans les décisions, ce serait un autre match, et le contrôle le voit', !verdictsRel.sans.fidele);
+    const nRel = dialoguesRel.length;
+    await pgRel.evaluate(() => document.getElementById('btnHistorique').click());
+    await pgRel.waitForTimeout(500);
+    await pgRel.click('#listeHistorique .entreeHistorique button');
+    for (let i = 0; i < 100; i++) {
+      if (await pgRel.evaluate(() => !document.getElementById('panneauGeneration').classList.contains('visible'))) break;
+      await pgRel.waitForTimeout(300);
+    }
+    await pgRel.waitForTimeout(800);
+    verifier('relecture : « Revoir » n\'avertit plus que le match affiché n\'est pas celui enregistré',
+      !dialoguesRel.slice(nRel).some((m) => /ne sera donc pas/.test(m)));
+    await pgRel.evaluate(() => {
+      const sk = document.getElementById('seek');
+      sk.value = sk.max; sk.dispatchEvent(new Event('input')); sk.dispatchEvent(new Event('change'));
+    });
+    await pgRel.waitForTimeout(1500);
+    const revuRel = await pgRel.evaluate(() => window.RMMain.etatActuel().score);
+    verifier('relecture : au bout de la barre de temps, le score est celui du match vécu',
+      revuRel.A === vecuRel.A && revuRel.B === vecuRel.B);
+    verifier('relecture : aucune erreur de page', erreursRel.length === 0);
+    await ctxRel.close();
+  }
+
   // --- SORTIE DE SECOURS ----------------------------------------------------
   // Signale en jeu : « mon jeu est bloque, je ne peux ni rentrer dedans ni
   // supprimer pour continuer ». Le seul bouton de remise a zero vivait DANS le

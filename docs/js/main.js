@@ -128,7 +128,40 @@
   function avantSifflet(moteur, duree) {
     return moteur.phase !== 'TERMINE' && moteur.tempsMatch < Math.max(duree, moteur.dureeMatch) + MARGE_SIFFLET;
   }
-  function genererMatchEnArrierePlan(seed, duree, cfg, titre, onTermine) {
+  // --- Décisions du manager rejouées sur une relecture (bugs.md FUNC-RM-003)
+  //
+  // Un match vécu ne se résume pas à sa graine : les consignes et les
+  // remplacements du manager ont changé sa suite. Chaque moteur porte donc
+  // ses décisions (`_decisions` : { equipe, remplacants, commandes }, chaque
+  // commande datée au pas près), et TOUT pas de simulation passe par ici :
+  // génération, affichage, barre de temps, fin jouée d'un coup, vérification
+  // de fidélité. Sans décisions (match neuf, match joué en direct où elles
+  // sont prises à la main), c'est un simple `tick`.
+  function appliquerDecision(m, d, cmd) {
+    if (cmd.type === 'consigne') {
+      const c = CONSIGNES_MI_TEMPS.find((x) => x.cle === cmd.cle);
+      if (c) m.appliquerTactiqueEnCours(d.equipe, c.consignes);
+    } else if (cmd.type === 'remplacement') {
+      const r = (d.remplacants || [])[cmd.index];
+      if (r) m.remplacerJoueurEnCours(d.equipe, r.numeroSortant, r.joueur, r.joueurId);
+    }
+  }
+  function pasMoteur(m) {
+    const d = m._decisions;
+    if (d && d.commandes && d.commandes.length) {
+      const n = m._numTick || 0;
+      m._idxDecision = m._idxDecision || 0;
+      while (m._idxDecision < d.commandes.length && d.commandes[m._idxDecision].tick <= n) {
+        appliquerDecision(m, d, d.commandes[m._idxDecision++]);
+      }
+    }
+    m.tick(PAS_FIXE);
+  }
+  // Décisions à rejouer sur le prochain match visualisé (relecture d'un match
+  // vécu) ; null pour tout match neuf.
+  let decisionsRelecture = null;
+
+  function genererMatchEnArrierePlan(seed, duree, cfg, titre, onTermine, decisions) {
     // Referme le menu s'il était ouvert (ex. la durée vient d'être changée
     // depuis le menu) : sinon il resterait affiché AU-DESSUS de l'écran de
     // génération puis du résultat (tous deux ouverts bien avant que la vraie
@@ -141,10 +174,11 @@
     const label = document.getElementById('genProgressLabel');
     barre.style.width = '0%';
     const genEngine = new MatchEngine(seed, duree, cfg);
+    genEngine._decisions = decisions || null;
     function lot() {
       let i = 0;
       while (i < PAS_PAR_LOT && avantSifflet(genEngine, duree)) {
-        genEngine.tick(PAS_FIXE);
+        pasMoteur(genEngine);
         i++;
       }
       const frac = Math.max(0, Math.min(1, genEngine.tempsMatch / duree));
@@ -208,9 +242,10 @@
   // Défaite du point de vue de cette équipe (Mode Club uniquement — un Match
   // rapide n'a pas de "camp du joueur", donc pas de badge).
   function lancerNouveauMatchAvecGeneration(seed, duree, opts) {
-    const { onResultat, onFermer, direct, noms, equipeJoueur } = opts || {};
+    const { onResultat, onFermer, direct, noms, equipeJoueur, decisions } = opts || {};
     const nomA = (noms && noms.A) || 'Equipe A';
     const nomB = (noms && noms.B) || 'Equipe B';
+    decisionsRelecture = decisions || null;
     genererMatchEnArrierePlan(seed, duree, configMatch, null, (etatFinal) => {
       document.getElementById('panneauGeneration').classList.remove('visible');
       if (onResultat) onResultat(etatFinal);
@@ -242,7 +277,7 @@
         document.getElementById('panneauResultat').classList.remove('visible');
         if (onFermer) onFermer();
       };
-    });
+    }, decisions || null);
   }
 
   // --- Match JOUÉ (P0-match) ----------------------------------------------
@@ -337,6 +372,10 @@
   function terminerMatchLive() {
     const L = matchLive;
     L.resultatEnvoye = true;
+    // Le match vécu garde ses décisions : « Enregistrer » les met dans
+    // l'historique, et la barre de temps les rejoue (FUNC-RM-003).
+    match._decisions = { equipe: L.equipe, remplacants: L.remplacants || [], commandes: L.commandes.slice() };
+    match._idxDecision = L.commandes.length;
     const etatFinal = normalizeMatchState(match.getState());
     if (L.onResultat) L.onResultat(etatFinal);
     // Résultat envoyé (et sauvegardé par l'appelant) : plus rien à reprendre.
@@ -426,18 +465,22 @@
     }
   }
   function noterCommandeJournal(cmd) {
-    if (!matchLive || !matchLive.journal) return;
-    matchLive.journal.commandes.push(Object.assign({ tick: match._numTick || 0 }, cmd));
+    if (!matchLive) return;
+    const c = Object.assign({ tick: match._numTick || 0 }, cmd);
+    matchLive.commandes.push(c);
+    if (!matchLive.journal) return;
+    matchLive.journal.commandes = matchLive.commandes;
     ecrireJournalMatch();
   }
 
   function lancerMatchJoue(seed, duree, opts) {
     const o = opts || {};
+    decisionsRelecture = null;
     matchLive = {
       onResultat: o.onResultat, onFermer: o.onFermer, onAbandon: o.onAbandon, noms: o.noms,
       equipeJoueur: o.equipeJoueur, equipe: o.equipeJoueur || 'A',
       remplacants: o.remplacants || [],
-      consignesPrises: [], remplacementsFaits: [],
+      consignesPrises: [], remplacementsFaits: [], commandes: [],
       miTempsTraitee: false, resultatEnvoye: false,
       journal: o.cleReprise ? {
         version: 1, cle: o.cleReprise, seed, duree, config: JSON.parse(JSON.stringify(configMatch)),
@@ -530,7 +573,7 @@
       }
       let i = 0;
       while (i < PAS_PAR_LOT && avantSifflet(match, duree)) {
-        match.tick(PAS_FIXE);
+        pasMoteur(match);
         i++;
       }
       const frac = Math.max(0, Math.min(1, match.tempsMatch / duree));
@@ -613,6 +656,7 @@
     seedActuel = seed;
     dureeMatchActuel = duree;
     match = new MatchEngine(seed, duree, configMatch);
+    match._decisions = decisionsRelecture;
     UI.reinitialiserSuivi();
     accumulateur = 0;
     dernierEtatMelee = null;
@@ -636,8 +680,9 @@
   // == recalculer).
   function avancerJusqua(cible) {
     const m = new MatchEngine(seedActuel, dureeMatchActuel, configMatch);
+    m._decisions = match && match._decisions ? match._decisions : null;
     const nbPas = Math.round(cible / PAS_FIXE);
-    for (let i = 0; i < nbPas; i++) m.tick(PAS_FIXE);
+    for (let i = 0; i < nbPas; i++) pasMoteur(m);
     return m;
   }
 
@@ -796,7 +841,7 @@
       accumulateur += dtReel * vitesseAffichee;
       while (accumulateur >= PAS_FIXE) {
         etatPrecedent = etatCourant;
-        match.tick(PAS_FIXE);
+        pasMoteur(match);
         etatCourant = normalizeMatchState(match.getState());
         accumulateur -= PAS_FIXE;
       }
@@ -940,8 +985,12 @@
     // — un bouton actif alors que l'action est impossible.
     if (!match) return;
     const state = match.getState();
-    const bilan = UI.enregistrerResultat(seedActuel, dureeMatchActuel, state.score,
-      { config: instantaneConfigMatch() });
+    const d = match._decisions;
+    const bilan = UI.enregistrerResultat(seedActuel, dureeMatchActuel, state.score, {
+      config: instantaneConfigMatch(),
+      decisions: d && d.commandes && d.commandes.length ? JSON.parse(JSON.stringify(d)) : null,
+      empreinte: empreinteMatch(match),
+    });
     UI.rafraichirPanneauHistorique(onRevoirHistorique);
     // On ne dit « enregistré » que si ça l'a réellement été. En cas d'échec de
     // stockage, le joueur est prévenu et le bouton reste disponible pour
@@ -994,6 +1043,11 @@
   // efface) : le reste de la configuration est celle du moteur par défaut,
   // identique d'un lancement à l'autre. Un Match rapide n'en a aucune —
   // l'instantané est alors un objet vide, et le replay reste fidèle.
+  function empreinteMatch(m) {
+    const a = m.stats.A, b = m.stats.B;
+    return [m.tempsMatch.toFixed(1), a.passes + b.passes, a.rucks + b.rucks, a.tacklesAttempted + b.tacklesAttempted].join('|');
+  }
+
   function instantaneConfigMatch() {
     if (!configMatch) return {};
     const snap = {};
@@ -1028,9 +1082,13 @@
     delete cfg.joueursA; delete cfg.joueursB;
     Object.assign(cfg, entree.config);
     const moteur = new MatchEngine(entree.seed, entree.duree, cfg);
-    while (avantSifflet(moteur, entree.duree)) moteur.tick(PAS_FIXE);
+    moteur._decisions = entree.decisions || null;
+    while (avantSifflet(moteur, entree.duree)) pasMoteur(moteur);
     const score = moteur.getState().score;
-    const fidele = !!(entree.score && score.A === entree.score.A && score.B === entree.score.B);
+    // Le score seul peut coïncider par hasard : l'empreinte (sifflet, passes,
+    // rucks, plaquages) dit si c'est bien LE MÊME match, décisions comprises.
+    const fidele = !!(entree.score && score.A === entree.score.A && score.B === entree.score.B)
+      && (!entree.empreinte || entree.empreinte === empreinteMatch(moteur));
     return { fidele, score,
       motif: fidele ? null : 'Le déroulé enregistré n\'a pas pu être reproduit à l\'identique.' };
   }
@@ -1050,7 +1108,7 @@
     }
     // Un match déjà rejoué depuis l'historique va droit à la visualisation
     // (le joueur a déjà choisi « Revoir », pas besoin de reproposer le choix).
-    lancerNouveauMatchAvecGeneration(entree.seed, entree.duree, { direct: true });
+    lancerNouveauMatchAvecGeneration(entree.seed, entree.duree, { direct: true, decisions: entree.decisions || null });
   }
 
   // --- Page d'accueil : point d'entrée du jeu, affichée au chargement. Le
@@ -1135,8 +1193,9 @@
         contexteReprise: journal.contexte || null,
       }));
       const L = matchLive;
-      L.journal.commandes = (journal.commandes || []).slice().sort((a, b) => a.tick - b.tick);
-      const cmds = L.journal.commandes;
+      L.commandes = (journal.commandes || []).slice().sort((a, b) => a.tick - b.tick);
+      L.journal.commandes = L.commandes;
+      const cmds = L.commandes;
       let k = 0;
       while ((match._numTick || 0) < journal.tick && match.phase !== 'TERMINE') {
         while (k < cmds.length && cmds[k].tick <= (match._numTick || 0)) appliquerCommandeJournal(cmds[k++]);

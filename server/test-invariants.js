@@ -4000,6 +4000,24 @@ test('50:22 : rare (moins d un par match), mais il existe', () => {
   assert.ok(n >= 1 && n / N <= 1.0, `${(n / N).toFixed(2)} 50:22 par match`);
 });
 
+// --- Le moteur ne modifie jamais la configuration qu'on lui passe -------------
+// Un remplacement en cours de match écrivait le remplaçant dans l'objet
+// `joueursA` de l'appelant : la page croyait alors qu'il était titulaire, et la
+// relecture du match vécu divergeait (bugs.md FUNC-RM-003).
+test('remplacement en cours de match : la composition passée par l appelant reste intacte', () => {
+  const ref = new MatchEngine(1, 600);
+  const joueursA = JSON.parse(JSON.stringify(ref.cfg.joueurs));
+  const avant = JSON.stringify(joueursA);
+  const config = { joueursA };
+  const m = new MatchEngine(3, 600, config);
+  for (let i = 0; i < 50; i++) m.tick(0.1);
+  const entrant = Object.assign({}, joueursA[9], { vitesse: 99 });
+  m.remplacerJoueurEnCours('A', 9, entrant, 'id-entrant');
+  for (let i = 0; i < 3000 && m.phase !== 'TERMINE'; i++) m.tick(0.1);
+  assert.strictEqual(JSON.stringify(config.joueursA), avant, 'la composition de l appelant a été modifiée');
+  assert.ok(m.remplacementsEffectues.some((r) => r.equipe === 'A' && r.numero === 9), 'le remplacement a bien eu lieu');
+});
+
 // --- bugs.md QA-RM-007 : événements, joueurs et équipe disent la même chose ---
 test('rapprochement : réussis ≤ tentés partout, et chaque essai ou but du compteur a son événement (QA-RM-007)', () => {
   for (let seed = 1; seed <= 4; seed++) {

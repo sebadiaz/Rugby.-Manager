@@ -7577,7 +7577,13 @@
           // quel autre joueur à chaque reprise — cohérent, pas un cas
           // spécial).
           const cleCfg = r.equipe === 'A' ? 'joueursA' : 'joueursB';
-          if (!this.cfg[cleCfg]) this.cfg[cleCfg] = Object.assign({}, this.cfg.joueurs);
+          // Copie avant écriture : `cfg.joueursA/B` est l'objet même que
+          // l'appelant a passé (fusionnerConfig ne copie pas ce qui n'existe
+          // pas dans DEFAULT_CONFIG). L'écrire en place faisait entrer le
+          // remplaçant dans la composition de la PAGE : « Enregistrer » gardait
+          // alors une feuille de match où il était titulaire, et la relecture
+          // du match vécu divergeait (bugs.md FUNC-RM-003).
+          this.cfg[cleCfg] = Object.assign({}, this.cfg[cleCfg] || this.cfg.joueurs);
           this.cfg[cleCfg][r.numero] = c;
           // `c.nom` (optionnel, ignoré par Object.assign ci-dessus qui ne lit
           // que les attributs de performance) : purement pour un message

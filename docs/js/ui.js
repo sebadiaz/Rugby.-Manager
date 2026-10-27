@@ -379,6 +379,10 @@
       // et rien ne permettait de savoir qui avait joué.
       noms: { A: nomsEquipes.A, B: nomsEquipes.B },
       config: (options && options.config) || null,
+      // Match vécu (FUNC-RM-003) : décisions du manager datées au pas près, et
+      // empreinte du déroulé pour vérifier que la relecture est identique.
+      decisions: (options && options.decisions) || null,
+      empreinte: (options && options.empreinte) || null,
       configVersion: (options && options.config) ? VERSION_INSTANTANE_MATCH : null,
       date: new Date().toLocaleString('fr-FR'),
     });
