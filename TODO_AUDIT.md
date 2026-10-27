@@ -580,6 +580,39 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-137. Banc en cours de match : maillot relevé au choix, un remplaçant n'entre qu'une fois — bugs.md FUNC-RM-005
+- **Statut : PARTIELLEMENT LIVRÉ**
+- Fichiers concernés : `docs/js/main.js` (panneau de mi-temps et de consigne en cours de jeu, `maillotsCompatibles`,
+  `joueurAuMaillot`, journal et relecture), `docs/css/style.css`, `engine/rugby-engine.js` et `docs/rugby-engine.js`
+  (`remplacerJoueurEnCours`), `server/test-invariants.js`, `server/test-parcours-navigateur.js`, `bugs.md`.
+
+**Constat.**
+- Le manager ne pouvait faire entrer un remplaçant qu'au maillot prévu avant le match.
+- Défaut du moteur : un remplaçant entré plus tôt que prévu (à la mi-temps pour une entrée prévue à la 50e) entrait une
+  seconde fois à sa minute prévue. Il « se remplaçait » lui-même, et ses statistiques étaient coupées en deux.
+- Un remplaçant déjà entré à sa minute prévue restait proposé dans le panneau.
+
+**Correction.**
+- Chaque remplaçant propose les maillots qu'il peut tenir : première ligne par première ligne (loi 3), avant par
+  avant, trois-quarts par trois-quarts. Le joueur exclu est signalé.
+- Le remplaçant prend la place du maillot relevé (couloir, tendance), comme le banc prévu.
+- Un refus est expliqué à l'écran.
+- Un remplaçant entré, à la main ou à sa minute prévue, est affiché « entré à la Xe minute, au n°Y » et n'est plus
+  proposé.
+- Moteur : un joueur déjà entré ne peut plus entrer, et une entrée manuelle annule l'entrée prévue du même joueur.
+- Le maillot choisi est enregistré dans le journal (reprise, P2-135) et rejoué à la relecture (P2-136).
+
+**Tests.**
+- Invariant : entré à la mi-temps au n°3, le remplaçant prévu au n°1 à la 50e n'entre qu'une fois, au n°3, quand le
+  manager l'a décidé. Une seconde tentative est refusée. L'ancien moteur échoue.
+- Navigateur, 1400×1000 et 390×844 (captures vérifiées) :
+  - le pilier ne peut relever qu'une première ligne, et un trois-quarts qu'un trois-quarts ;
+  - le remplaçant entre au n°3 choisi, une seule fois, et le panneau le montre entré ;
+  - la carrière le crédite d'une entrée en jeu.
+- Barrières : 16 suites, calibration 14/14 (identique), navigateur 541/0.
+
+**Reste à faire.** Blessures en match, remplacement temporaire (saignement, protocole commotion) et effectif réduit.
+
 ### P2-136. Relecture fidèle d'un match vécu, décisions comprises — bugs.md FUNC-RM-003
 - **Statut : LIVRÉ**
 - Fichiers concernés : `docs/js/main.js` (`pasMoteur`, `appliquerDecision`, `empreinteMatch`, enregistrement et
