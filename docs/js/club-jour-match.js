@@ -399,7 +399,7 @@
     // Effets réels du personnel : le médecin et l'entraîneur accélèrent, le
     // préparateur physique réduit la fatigue.
     RMClub.appliquerEffetsMatch(saison, c.effectif, p.compositionAvecRemplacants,
-      p.rng, { equipe: 'pro' });
+      p.rng, { equipe: 'pro', blesses: RMClub.blessesDuMatch(etat, lettre, p.compositionUtilisee) });
     RMClub.appliquerMoral(c.effectif, p.compositionAvecRemplacants, p.forme);
     RMClub.appliquerFrustrationTempsDeJeu(saison, p.compositionUtilisee, c.compositionBanc);
 

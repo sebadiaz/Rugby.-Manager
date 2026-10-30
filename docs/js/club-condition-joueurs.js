@@ -119,15 +119,20 @@
   // `facteurMedecin` (>=1) raccourcit la convalescence et affine le
   // diagnostic. Un joueur en reprise peut RECHUTER, et d'autant plus que le
   // manager a précipité son retour.
-  function faireProgresserBlessures(rng, effectif, composition, facteurMedecin, saison, facteurPreparateur) {
+  // `blesses` (optionnel) : identifiants des joueurs sortis blessés PENDANT
+  // le match (FUNC-RM-005, cf. RMClub.blessesDuMatch). Leur blessure est
+  // certaine : elle s'est vue à l'écran, elle ne se tire pas une seconde fois.
+  function faireProgresserBlessures(rng, effectif, composition, facteurMedecin, saison, facteurPreparateur, blesses) {
     const RMClub = global.RMClub;
     const titulairesIds = new Set(Object.values(composition || {}));
+    const blessesMatch = new Set(blesses || []);
     const nouvelles = [];
     for (const j of effectif) {
-      if (!titulairesIds.has(j.id)) continue;
+      const sortiBlesse = blessesMatch.has(j.id) && !j.blessure;
+      if (!sortiBlesse && !titulairesIds.has(j.id)) continue;
       // `saison` transmise pour que le niveau du centre médical (P1-44)
       // s'applique RÉELLEMENT au tirage, pas seulement à l'affichage.
-      if (!RMClub.tirerBlessure(rng, j, { cause: 'match', facteurPreparateur, saison })) continue;
+      if (!sortiBlesse && !RMClub.tirerBlessure(rng, j, { cause: 'match', facteurPreparateur, saison })) continue;
       const rechute = !!j.reprise;
       const b = RMClub.infligerBlessure(saison, j, 'match', rng, { facteurMedecin, facteurPreparateur });
       nouvelles.push({ joueur: j, blessure: b, rechute });
@@ -136,7 +141,8 @@
         global.RMClub.ajouterMessage(saison, 'blessure', rechute ? 'Rechute' : 'Blessure',
           `${j.nom} — ${d.libelle} (${d.zone}), gravité ${d.graviteLibelle.toLowerCase()}. ` +
           `Indisponibilité estimée entre ${d.joursMin} et ${d.joursMax} jour(s).` +
-          (rechute ? ' Il était encore en phase de reprise.' : ''));
+          (rechute ? ' Il était encore en phase de reprise.' : '') +
+          (sortiBlesse ? ' Il a dû quitter le terrain en cours de match.' : ''));
       }
     }
     return nouvelles;
@@ -165,7 +171,7 @@
     appliquerFatigue(effectif, composition, facteurPreparateur);
     const blessures = faireProgresserBlessures(rng, effectif, composition,
       facteurMedecin, o.saisonPourMessages !== undefined ? o.saisonPourMessages : saison,
-      facteurPreparateur);
+      facteurPreparateur, o.blesses);
     // Un match compte comme un palier franchi pour qui est en reprise : c'est
     // le sens même du « temps de jeu limité » (cf. club-medical.js).
     const titulaires = new Set(Object.values(composition || {}));

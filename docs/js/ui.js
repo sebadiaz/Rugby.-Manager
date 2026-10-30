@@ -154,7 +154,9 @@
     const aAfficher = choisirBanniere(nouveaux, state);
     if (aAfficher) {
       const banner = document.getElementById('banner');
-      banner.textContent = `🟨 ARBITRE — ${traduireEquipesDansMessage(aAfficher.message)}`;
+      // Une blessure n'est pas une décision de l'arbitre (FUNC-RM-005).
+      const voix = aAfficher.type === 'BLESSURE' ? '🚑 SOIGNEUR' : '🟨 ARBITRE';
+      banner.textContent = `${voix} — ${traduireEquipesDansMessage(aAfficher.message)}`;
       banner.classList.add('visible');
       placerBandeau(banner);
       banniereJusqua = performance.now() + 2200;

@@ -633,6 +633,9 @@
   // receveur joue ou dégage directement.
   const TAUX_MARQUE = 0.12;
   const TAUX_MARQUE_ENVOI = 0.15;
+  // Blessure par joueur engagé dans un plaquage (porteur ou plaqueur) :
+  // ~200 plaquages par match donnent ~1,5 blessé par match (bugs.md FUNC-RM-005).
+  const PROBA_BLESSURE_CONTACT = 0.0028;
 
   function avancer(j, dx, dy, dt, vmax) {
     const d = Math.hypot(dx, dy);
@@ -675,9 +678,12 @@
     j.y = Math.max(0, Math.min(LARGEUR, j.y));
   }
 
+  // Un joueur hors du terrain (carton, blessé sans remplaçant : sinBin > 0)
+  // n'est jamais « le plus proche » — sauf s'il n'y a personne d'autre.
   function joueurLePlusProche(liste, x, y) {
     let meilleur = null, meilleureDist = Infinity;
-    for (const j of liste) {
+    const presents = liste.filter((j) => !(j.sinBin > 0));
+    for (const j of (presents.length ? presents : liste)) {
       const d = Math.hypot(j.x - x, j.y - y);
       if (d < meilleureDist) { meilleureDist = d; meilleur = j; }
     }
@@ -1043,6 +1049,14 @@
         B: fusionnerConfig(this.cfg.ruck, config && config.ruckB),
       };
       this.rng = creerRng(seed >>> 0 || 1);
+      // Blessures en match (bugs.md FUNC-RM-005) : flux aléatoire SÉPARÉ,
+      // pour que le tirage d'une blessure ne décale pas la suite de this.rng
+      // (un match sans blessé se joue exactement comme avant).
+      this.rngBlessures = creerRng(((seed >>> 0) ^ 0x9e3779b9) >>> 0 || 7);
+      this.blessuresMatch = [];
+      this._blessuresEnAttente = [];
+      // Qui porte chaque maillot (joueurId club) après un remplacement.
+      this._occupants = { A: {}, B: {} };
       // Remplacements planifiés (Mode Club, TODO_AUDIT.md P1-17) :
       // config.remplacements, optionnel — [{equipe:'A'|'B', numero, minute,
       // joueur:{...attributs}}]. Absent par défaut (tous les appels existants,
@@ -1337,7 +1351,7 @@
         j._cibleEnvoi = { x: cx, y: j.channelY };
         if (!avaitEquipes) { j.x = cx; j.y = j.channelY; } // 1er coup d'envoi du match : placement direct
       }
-      const kickeur = (equipeKick === 'A' ? this.equipeA : this.equipeB)[9]; // ouvreur, n.10
+      const kickeur = this._buteurDisponible(equipeKick === 'A' ? this.equipeA : this.equipeB); // ouvreur, n.10 (ou un présent)
       kickeur._cibleEnvoi = { x: xCentre, y: LARGEUR / 2 };
       if (!avaitEquipes) { kickeur.x = xCentre; kickeur.y = LARGEUR / 2; }
       // Mise en place : au coup d'envoi d'ouverture, les joueurs sont déjà placés ;
@@ -1639,7 +1653,7 @@
       // complète (15), parfois attaquants() déjà filtré du joueur au bin, où
       // l'index 9 ne correspond plus forcément au n°10.
       const dix = equipe.find(j => j.numero === 10);
-      return (dix && dix.auSol === 0) ? dix : neuf;
+      return (dix && dix.auSol === 0 && dix.sinBin <= 0) ? dix : neuf;
     }
 
     // --- Mêlée suite à infraction (passe en avant / en-avant) : avantage + relance
@@ -1690,7 +1704,7 @@
       // Loi 18 : c'est le talonneur (n°2) qui lance en touche en match reel,
       // jamais le demi de melee ni l'ouvreur - _neufVersDix (9->10) sert a la
       // sortie de balle d'un regroupement, pas au lancer de touche.
-      this.porteur = equipe.find(j => j.numero === this.toucheLanceurNumero[this.possession] && j.sinBin <= 0) || equipe[8];
+      this.porteur = equipe.find(j => j.numero === this.toucheLanceurNumero[this.possession] && j.sinBin <= 0) || this._demiDeMeleeDisponible(equipe);
       this.phase = 'TOUCHE';
       this.timerPhase = 0;
       this.toucheLancer = null;
@@ -1964,7 +1978,7 @@
         // ballon est posé sur le tee (cf. getState, ballon sur la marque en
         // PENALITE_TIR).
         this._debutRemiseBallon();
-        this.porteur = eqTir.find(j => j.numero === this.buteurNumero[equipeBeneficiaire] && j.sinBin <= 0) || eqTir[9];
+        this.porteur = eqTir.find(j => j.numero === this.buteurNumero[equipeBeneficiaire] && j.sinBin <= 0) || this._buteurDisponible(eqTir);
         this.phase = 'PENALITE_TIR';
         this.timerPhase = 0;
         this.tirEnPlace = false;
@@ -1979,8 +1993,8 @@
       this._debutRemiseBallon();
       this.possession = equipeBeneficiaire;
       const eqBen = equipeBeneficiaire === 'A' ? this.equipeA : this.equipeB;
-      const neuf = eqBen.find(j => j.numero === 9 && j.auSol === 0);
-      this.porteur = neuf || joueurLePlusProche(eqBen.filter(j => j.auSol === 0), position.x, position.y).joueur;
+      const neuf = eqBen.find(j => j.numero === 9 && j.auSol === 0 && j.sinBin <= 0);
+      this.porteur = neuf || joueurLePlusProche(eqBen.filter(j => j.auSol === 0 && j.sinBin <= 0), position.x, position.y).joueur;
       this.log('PENALITE', equipeBeneficiaire, `Penalite, equipe ${equipeBeneficiaire} joue rapidement et avance`);
       this._lancerJeuRapidePenalite(equipeBeneficiaire, position);
     }
@@ -2120,7 +2134,7 @@
       const eqLanceur = equipe === 'A' ? this.equipeA : this.equipeB;
       // Loi 18 : le talonneur (n°2) lance, comme a la touche en jeu courant
       // (cf. _accorderTouche).
-      this.porteur = eqLanceur.find(j => j.numero === this.toucheLanceurNumero[equipe] && j.sinBin <= 0) || eqLanceur[8];
+      this.porteur = eqLanceur.find(j => j.numero === this.toucheLanceurNumero[equipe] && j.sinBin <= 0) || this._demiDeMeleeDisponible(eqLanceur);
       const xLanceur = Math.max(5, Math.min(LONGUEUR - 5, xTouche));
       // Loi 18.22 : le lanceur sur la ligne de touche (cf. _accorderTouche),
       // pas à 5 m à l'intérieur.
@@ -2372,6 +2386,7 @@
         this._compterCourse(porteur);
         this.stats[defenseurProche.team].tacklesAttempted++;
         this._statJoueur(defenseurProche).tacklesAttempted++;
+        this._tirerBlessureContact(porteur, defenseurProche);
         // Réussite de plaquage ~86-88 % (réel ~85-88 %) : l'ancienne base 0.83
         // donnait ~80 % de réussite et ~128 plaquages manqués/match (réel ~15 %
         // d'échec), donc trop de défenseurs battus et de franchissements.
@@ -5589,8 +5604,8 @@
       this._finMaul();
       this.possession = poss;
       const eqMaul = poss === 'A' ? this.equipeA : this.equipeB;
-      const neuf = eqMaul.find(j => j.numero === 9 && j.auSol === 0);
-      this.porteur = neuf || joueurLePlusProche(eqMaul, m.x, m.y).joueur;
+      const neuf = eqMaul.find(j => j.numero === 9 && j.auSol === 0 && j.sinBin <= 0);
+      this.porteur = neuf || joueurLePlusProche(eqMaul.filter(j => j.sinBin <= 0), m.x, m.y).joueur;
       this._imposerRecuperationRuck({ x: m.x, y: m.y });
       this.phase = 'PORTE';
       this.timerPhase = 0;
@@ -5645,7 +5660,8 @@
         marqueur.x = x; marqueur.y = m.y;
         this.porteur = marqueur;
       } else {
-        this.porteur = (poss === 'A' ? this.equipeA : this.equipeB)[7];
+        const eqP = poss === 'A' ? this.equipeA : this.equipeB;
+        this.porteur = eqP[7].sinBin <= 0 ? eqP[7] : this._demiDeMeleeDisponible(eqP);
         this.porteur.x = x; this.porteur.y = m.y;
       }
       this.phase = 'ESSAI';
@@ -5806,6 +5822,17 @@
     // joueur qui le remplace au pied de la mêlée. Sans lui, la mêlée attendait
     // un 9 sur le banc des exclus : ballon posé à 21 m de son introducteur
     // pendant toute la mise en place.
+    // Buteur de repli quand le buteur désigné est hors du terrain (carton,
+    // blessé sans remplaçant) : l'ouvreur, puis l'arrière, puis un joueur
+    // présent. L'ancien repli `eq[9]` désignait le n°10 même s'il était sorti.
+    _buteurDisponible(eq) {
+      for (const n of [10, 15, 12, 9]) {
+        const j = eq.find(x => x.numero === n && x.sinBin <= 0);
+        if (j) return j;
+      }
+      return eq.find(x => x.sinBin <= 0) || eq[9];
+    }
+
     _demiDeMeleeDisponible(eq) {
       const libre = (j) => j && j.sinBin <= 0;
       const neuf = eq.find(j => j.numero === 9);
@@ -7151,7 +7178,7 @@
       const equipeAttaque = this.essaiEquipe === 'A' ? this.equipeA : this.equipeB;
       const equipeDefense = this.essaiEquipe === 'A' ? this.equipeB : this.equipeA;
       const ligneDefense = sens > 0 ? LONGUEUR : 0;
-      const buteur = equipeAttaque.find(j => j.numero === this.buteurNumero[this.essaiEquipe] && j.sinBin <= 0) || equipeAttaque[9];
+      const buteur = equipeAttaque.find(j => j.numero === this.buteurNumero[this.essaiEquipe] && j.sinBin <= 0) || this._buteurDisponible(equipeAttaque);
       const recul = reculTransformation(Math.abs(this.essaiY - LARGEUR / 2), buteur && buteur.adresse);
       const teeX = Math.max(0, Math.min(LONGUEUR, this.essaiX - sens * recul));
       // Les coéquipiers se placent derrière le ballon (5 m derrière le tee).
@@ -7198,7 +7225,7 @@
         // plus. Il devient simplement le porteur pour la frappe.
         const eq = this.essaiEquipe === 'A' ? this.equipeA : this.equipeB;
         this._debutRemiseBallon();
-        this.porteur = eq.find(j => j.numero === this.buteurNumero[this.essaiEquipe] && j.sinBin <= 0) || eq[9];
+        this.porteur = eq.find(j => j.numero === this.buteurNumero[this.essaiEquipe] && j.sinBin <= 0) || this._buteurDisponible(eq);
         this.phase = 'TRANSFORMATION';
         this.timerPhase = 0;
         this.transfoEnPlace = false;
@@ -7538,6 +7565,7 @@
       // directe vers cet objet) restent celles du joueur remplacé, exactement
       // comme un remplaçant qui entre à la place précise de celui qu'il
       // relève, même en pleine phase de jeu.
+      this._traiterBlessures();
       if (this._remplacements.length) {
         for (const r of this._remplacements) {
           if (r.applique || this.tempsMatch < r.instant) continue;
@@ -7551,6 +7579,7 @@
           this.statsJoueursSortis[r.equipe].push({ numero: r.numero, sortie: this.tempsMatch, stats: lignes[r.numero] || null });
           delete lignes[r.numero];
           this.remplacementsEffectues.push({ equipe: r.equipe, numero: r.numero, instant: this.tempsMatch, joueurId: r.joueurId });
+          this._occupants[r.equipe][r.numero] = r.joueurId;
           const c = r.joueur || {};
           Object.assign(sortant, {
             label: c.poste || sortant.label,
@@ -7847,6 +7876,59 @@
     // temps courant, donc le prochain tick l'applique par le chemin déjà
     // éprouvé (mise à jour du joueur vivant ET de la config source, pour que
     // le remplaçant survive au prochain coup d'envoi).
+    // Blessure au contact (bugs.md FUNC-RM-005) : rare (~1 à 2 par match),
+    // tirée pour le porteur plaqué et pour le plaqueur. Le blessé sort au
+    // tick suivant (cf. _traiterBlessures), jamais en tenant le ballon.
+    _tirerBlessureContact(...joueurs) {
+      for (const j of joueurs) {
+        if (!j || j.sinBin > 0) continue;
+        if (this._blessuresEnAttente.some((b) => b.equipe === j.team && b.numero === j.numero)) continue;
+        if (this.rngBlessures() < PROBA_BLESSURE_CONTACT) this._blessuresEnAttente.push({ equipe: j.team, numero: j.numero });
+      }
+    }
+
+    // Le blessé sort : le remplaçant prévu le plus tôt de son groupe (même
+    // maillot d'abord, puis première ligne / avants / arrières) entre tout
+    // de suite à sa place. Sans remplaçant disponible, l'équipe finit à 14
+    // (le joueur reste hors du terrain, comme une exclusion sans fin).
+    _traiterBlessures() {
+      if (!this._blessuresEnAttente.length) return;
+      const groupe = (n) => (n <= 3 ? 'PL' : n <= 8 ? 'AV' : 'AR');
+      const restantes = [];
+      for (const b of this._blessuresEnAttente) {
+        const j = (b.equipe === 'A' ? this.equipeA : this.equipeB).find((x) => x.numero === b.numero);
+        if (!j || j.sinBin > 0) continue;
+        if (j === this.porteur) { restantes.push(b); continue; }
+        this.blessuresMatch.push({ equipe: b.equipe, numero: b.numero, instant: this.tempsMatch,
+          joueurId: this._occupants[b.equipe][b.numero] != null ? this._occupants[b.equipe][b.numero] : null });
+        const prevus = this._remplacements.filter((r) => !r.applique && r.equipe === b.equipe)
+          .sort((r1, r2) => r1.instant - r2.instant);
+        const r = prevus.find((x) => x.numero === b.numero)
+          || prevus.find((x) => groupe(x.numero) === groupe(b.numero)) || prevus[0] || null;
+        if (r) {
+          if (r.numero !== b.numero) {
+            const modele = (this.cfg.joueurs && this.cfg.joueurs[b.numero]) || {};
+            r.joueur = Object.assign({}, r.joueur, { tendance: modele.tendance, couloir: modele.couloir });
+            r.numero = b.numero;
+          }
+          r.instant = this.tempsMatch;
+          this.log('BLESSURE', b.equipe, `Blessure : le n°${b.numero} de l'equipe ${b.equipe} doit sortir, un remplacant entre`);
+        } else if (!this._remplacements.some((x) => x.equipe === b.equipe && !x.blessure)) {
+          // Équipe sans banc déclaré (Match rapide, adversaire géré par
+          // l'ordinateur) : un remplaçant anonyme au profil du poste entre.
+          const cle = b.equipe === 'A' ? 'joueursA' : 'joueursB';
+          const modele = ((this.cfg[cle] || this.cfg.joueurs) || {})[b.numero] || {};
+          this._remplacements.push({ equipe: b.equipe, numero: b.numero, joueur: Object.assign({}, modele),
+            instant: this.tempsMatch, applique: false, joueurId: null, blessure: true });
+          this.log('BLESSURE', b.equipe, `Blessure : le n°${b.numero} de l'equipe ${b.equipe} doit sortir, un remplacant entre`);
+        } else {
+          j.sinBin = 1e9; // fini (JSON), jamais écoulé dans un match
+          this.log('BLESSURE', b.equipe, `Blessure : le n°${b.numero} de l'equipe ${b.equipe} sort, plus de remplacant - a 14`);
+        }
+      }
+      this._blessuresEnAttente = restantes;
+    }
+
     // `joueurId` (optionnel) : l'identité de l'entrant côté club, rendue avec
     // le remplacement effectué pour lui créditer SES actions (BUG-RM-007).
     remplacerJoueurEnCours(equipe, numero, joueur, joueurId) {
@@ -8039,6 +8121,7 @@
           B: this.statsJoueursSortis.B.map((x) => ({ numero: x.numero, sortie: x.sortie, stats: x.stats ? { ...x.stats } : null })),
         },
         remplacementsEffectues: this.remplacementsEffectues.map((r) => ({ ...r })),
+        blessuresMatch: this.blessuresMatch.map((b) => ({ ...b })),
         tempsJeuEffectif: this.tempsJeuEffectif,
         // % de possession réel, calculé à partir du temps de jeu effectif
         // accumulé par équipe (this.tempsPossession), pas un chiffre fixé :

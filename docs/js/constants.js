@@ -31,6 +31,8 @@
     SONNERIE: '🔔',
     // Sauteur plaqué à la réception (P2-131) : la parade au maul porté.
     TOUCHE_SAQUEE: '🛑',
+    // Blessure au contact (FUNC-RM-005) : le joueur sort, un remplaçant entre.
+    BLESSURE: '🚑',
     MAUL_ARRET_UN: '🅰️', MAUL_ARRET_DEUX: '✋', MAUL_USE_IT: '⏱️', MAUL_BALLON_SORTI: '➡️', MAUL_INJOUABLE: '🔒',
     MELEE_RUCK_INJOUABLE: '🔒',
     MAUL_PEN_ECROULEMENT: '🟨', MAUL_PEN_HORSJEU: '🟨', MAUL_PEN_ENTREE_COTE: '🟨', MAUL_PEN_TECHNIQUE: '🟨', CARTON_JAUNE: '🟡',
@@ -88,6 +90,7 @@
     // Sonnerie (loi 5.7) : la dernière action se joue jusqu'au ballon mort.
     'SONNERIE',
     'TOUCHE_SAQUEE',
+    'BLESSURE',
     // Ballon aplati par la défense dans son en-but (P2-93) : renvoi aux 22 m.
     'EN_BUT_APLATI',
     // 50:22 (P2-96) : un coup de pied de son camp qui trouve la touche dans les 22 adverses.

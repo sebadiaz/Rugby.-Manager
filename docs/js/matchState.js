@@ -50,6 +50,8 @@
       // réellement effectuées, pour créditer chaque personne de SES actions.
       statsJoueursSortis: rawState.statsJoueursSortis || null,
       remplacementsEffectues: rawState.remplacementsEffectues || null,
+      // Blessures au contact (FUNC-RM-005) : qui est sorti, à quel instant.
+      blessuresMatch: rawState.blessuresMatch || null,
       tempsMatch: rawState.tempsMatch,
       // Objet ballon normalisé { x, y, vx, vy, state, carrierTeam, carrierNumber }
       // exposé directement par le moteur (cf. MatchEngine.getState()).

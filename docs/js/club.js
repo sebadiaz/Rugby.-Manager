@@ -480,6 +480,18 @@
     segments.push(Object.assign(courant, { stats: statsFinales || null, fin: match ? match.tempsFinal : null }));
     return segments;
   }
+  // Joueurs du club sortis blessés pendant le match (FUNC-RM-005) : la
+  // personne qui portait le maillot à cet instant — l'entrant si le numéro
+  // avait déjà changé de main, le titulaire sinon.
+  function blessesDuMatch(etat, lettre, composition) {
+    const ids = [];
+    for (const b of (etat && etat.blessuresMatch) || []) {
+      if (b.equipe !== lettre) continue;
+      const id = b.joueurId != null ? b.joueurId : composition && composition[b.numero];
+      if (id != null && !ids.includes(id)) ids.push(id);
+    }
+    return ids;
+  }
   // Ce qu'il faut de l'état final du moteur pour ventiler une équipe.
   function ventilationMatch(etat, lettre) {
     if (!etat || !etat.statsJoueursSortis) return null;
@@ -1535,7 +1547,7 @@
     resynchroniserCompteurs, VERSION_SAUVEGARDE, POSTE_REQUIS, TAILLE_EFFECTIF_CIBLE,
     masseSalariale, tresorerie, appliquerFinancesMatch, appliquerFinancesMatchEquipeB,
     avancerSaison, vieillirEffectif, PYRAMIDE_AGES, ageRecrueIntersaison,
-    AXES_TACTIQUE, accumulerStats, enregistrerMouvementFinances, accumulerStatsJoueurs, ventilationMatch,
+    AXES_TACTIQUE, accumulerStats, enregistrerMouvementFinances, accumulerStatsJoueurs, ventilationMatch, blessesDuMatch,
     classementMarqueurs, carriereJoueur, LIBELLE_COMPETITION, libellePerimetreStats, PREFIXE_STATS_COUPE, ajouterMessage,
     calculerProgression, enregistrerResultatClubJoueur, marquerMessageLu,
     marquerTousMessagesLus, estimerValeurTransfert, GABARIT_EFFECTIF, ARCHETYPE_PAR_POSTE,

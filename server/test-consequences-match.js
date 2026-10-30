@@ -223,4 +223,48 @@ test('IDEM1 — appliquer deux fois les conséquences d\'un match ne double RIEN
   assert.strictEqual(apresDeux.j, apresUn.j, 'comme le nombre de matchs joués');
 });
 
+test('BLESS1 — un joueur sorti blessé du match est blessé en carrière, et lui seul de plus (FUNC-RM-005)', () => {
+  const ctx = contexteMatch();
+  // Le n°7 sort blessé ; le n°12 s'est blessé APRÈS avoir été remplacé par
+  // un entrant identifié : c'est l'entrant qui porte la blessure.
+  const entrant = ctx.c.effectif.find((j) => !Object.values(ctx.compo).includes(j.id) && !j.blessure);
+  ctx.etat.blessuresMatch = [
+    { equipe: ctx.lettre, numero: 7, instant: 1500, joueurId: null },
+    { equipe: ctx.lettre, numero: 12, instant: 3900, joueurId: entrant.id },
+    { equipe: ctx.lettre === 'A' ? 'B' : 'A', numero: 3, instant: 2000, joueurId: null },
+  ];
+  const sept = ctx.c.effectif.find((j) => j.id === ctx.compo[7]);
+  const douze = ctx.c.effectif.find((j) => j.id === ctx.compo[12]);
+  const trois = ctx.c.effectif.find((j) => j.id === ctx.compo[3]);
+  assert.ok(!sept.blessure && !entrant.blessure, 'prémisse : ni le n°7 ni l entrant ne sont déjà blessés');
+  const douzeAvant = !!douze.blessure, troisAvant = !!trois.blessure;
+  // Tirage aléatoire post-match neutralisé : seules les blessures vues comptent.
+  appliquer(ctx, { rng: () => 0.999 });
+  assert.ok(sept.blessure, 'le n°7 sorti blessé doit être indisponible');
+  assert.ok(entrant.blessure, 'l entrant blessé au n°12 aussi');
+  assert.strictEqual(!!douze.blessure, douzeAvant, 'le titulaire du n°12, sorti avant, n est pas blessé');
+  assert.strictEqual(!!trois.blessure, troisAvant, 'la blessure de l adversaire ne touche pas notre n°3');
+  const msg = (ctx.c.messages || []).filter((m) => /quitter le terrain/.test(m.corps));
+  assert.strictEqual(msg.length, 2, 'un message par blessé du match');
+});
+
+test('BLESS2 — un vrai match du moteur avec un blessé le propage en carrière', () => {
+  const { MatchEngine } = global.window.RugbyEngine;
+  let trouve = null;
+  for (let g = 1; g <= 40 && !trouve; g++) {
+    const m = new MatchEngine(g, 4800).jouerJusquAuSifflet(0.2);
+    const st = m.getState();
+    if ((st.blessuresMatch || []).some((b) => b.equipe === 'A')) trouve = st;
+  }
+  assert.ok(trouve, 'au moins un match sur 40 doit avoir un blessé côté A');
+  const ctx = contexteMatch();
+  ctx.lettre = 'A';
+  ctx.etat.blessuresMatch = trouve.blessuresMatch;
+  const ids = RMClub.blessesDuMatch(ctx.etat, 'A', ctx.compo);
+  assert.ok(ids.length >= 1, 'les blessés A sont identifiés');
+  const cibles = ids.map((id) => ctx.c.effectif.find((j) => j.id === id)).filter((j) => !j.blessure);
+  RMClub.appliquerEffetsMatch(ctx.s, ctx.c.effectif, ctx.compo, () => 0.999, { blesses: ids });
+  for (const j of cibles) assert.ok(j.blessure, `${j.nom} doit être blessé`);
+});
+
 console.log(`\n${nbTests} test(s) exécuté(s).`);

@@ -580,6 +580,50 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-138. Blessures en match : le blessé sort, un remplaçant de son poste entre — bugs.md FUNC-RM-005
+- **Statut : LIVRÉ** (reste de FUNC-RM-005 : remplacement temporaire, effectif réduit au coup d'envoi)
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_tirerBlessureContact`, `_traiterBlessures`,
+  `blessuresMatch`), `docs/js/matchState.js`, `docs/js/constants.js`, `docs/js/ui.js` (bandeau),
+  `docs/js/club.js` (`blessesDuMatch`), `docs/js/club-condition-joueurs.js`, `docs/js/club-jour-match.js`,
+  `docs/js/club-coupes.js`, `docs/js/club-amicaux.js`, `server/test-invariants.js`, `server/test-consequences-match.js`,
+  `server/test-parcours-navigateur.js`, `bugs.md`.
+
+**Constat.** Aucun joueur ne se blessait pendant un match. Les blessures du Mode Club étaient tirées après coup, sans
+lien avec ce que le joueur avait vu : un titulaire pouvait finir le match sans un contact et se retrouver indisponible.
+
+**Correction.**
+- À chaque plaquage, le porteur et le plaqueur peuvent se blesser (0,28 % chacun, flux aléatoire séparé : un match sans
+  blessé ne change pas). Mesuré sur 100 matchs : 1,58 blessé par match.
+- Le blessé sort au tick suivant, jamais en tenant le ballon. Le remplaçant prévu le plus tôt entre aussitôt : même
+  maillot d'abord, puis même groupe (première ligne, avants, arrières), avec le couloir et la tendance du poste.
+- Équipe sans banc déclaré (Match rapide, adversaire de l'ordinateur) : un remplaçant anonyme du profil du poste.
+  Banc épuisé : l'équipe finit à 14.
+- Événement `BLESSURE` (🚑) et bandeau « SOIGNEUR » ; `blessuresMatch` exporté dans l'état.
+- Défaut révélé par la revue des règles, et corrigé : un joueur hors du terrain (carton jaune, ou blessé sans
+  remplaçant) pouvait encore recevoir le ballon. Le buteur de repli était `eq[9]` (le n°10 même sorti), le lanceur de
+  repli `eq[8]`, et `joueurLePlusProche` ne filtrait pas les absents (réception de coup d'envoi, sortie de maul,
+  pénalité jouée vite). Mesuré à 14 (n°2, 9 et 10 sortis, 8 graines) : 78 224 instants avec un porteur absent, 0 après.
+  Nouveaux utilitaires `_buteurDisponible` ; `joueurLePlusProche` ignore un joueur absent tant qu'un présent existe.
+- Carrière : le joueur qui portait le maillot à cet instant (l'entrant si le numéro avait changé de main) est blessé à
+  coup sûr, avec un message « Il a dû quitter le terrain ». Championnat, coupe et amical. Le tirage d'après-match reste
+  inchangé pour les autres.
+
+**Comparaison appariée (graines 1-100, avant → après).** Points 56,7 → 58,4 (±2,5, non significatif) ; essais
+6,61 → 6,77 (±0,42) ; mêlées 17,2 → 17,1 ; touches 27,5 → 27,0 (±0,75) ; rucks 205 → 204 ; blessés 0 → 1,58.
+Calibration 14/14, 54,0 points.
+
+**Tests.**
+- Invariant (24 graines, banc de 8) : 0,5 à 3 blessés par match ; chaque blessé annoncé, et remplacé au même instant ou
+  équipe à 14 ; au moins un remplaçant du même groupe. L'ancien moteur échoue (0 blessé).
+- Conséquences : le n°7 sorti blessé est indisponible, l'entrant blessé au n°12 aussi, pas le titulaire sorti avant ni
+  notre n°3 (blessure adverse). Un vrai match du moteur se propage. Mutant (liste ignorée) : les deux tests échouent.
+- Navigateur, 1400×1000 et 390×844 (captures vérifiées), blessure mise en scène au premier contact : bandeau, entrant du
+  banc au n°7, blessé indisponible en carrière avec son message.
+- Invariant : à 14 après trois blessures (banc épuisé), le porteur n'est jamais un joueur absent. L'ancien moteur échoue.
+
+**Reste à faire.** Sans première ligne valide, la mêlée reste contestée au lieu d'être simulée (loi 3) ; remplaçant
+anonyme non plafonné à 8 ; libellé de poste d'un remplaçant réaffecté à un autre maillot.
+
 ### P2-137. Banc en cours de match : maillot relevé au choix, un remplaçant n'entre qu'une fois — bugs.md FUNC-RM-005
 - **Statut : PARTIELLEMENT LIVRÉ**
 - Fichiers concernés : `docs/js/main.js` (panneau de mi-temps et de consigne en cours de jeu, `maillotsCompatibles`,

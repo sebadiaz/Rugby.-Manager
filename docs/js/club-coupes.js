@@ -442,7 +442,7 @@
     // Point d'entrée UNIQUE (P1-40) : fatigue + blessures + reprise, avec
     // le facteur préparateur, que la coupe et l'amical oubliaient.
     RMClub.appliquerEffetsMatch(saison, effectif, p.compositionUtilisee,
-      p.rng, { equipe });
+      p.rng, { equipe, blesses: RMClub.blessesDuMatch(etat, lettre, p.compositionUtilisee) });
     const gagne = rencontre.vainqueurId === c.id;
     RMClub.appliquerMoral(effectif, p.compositionUtilisee, gagne ? 'v' : 'd');
     RMClub.accumulerStatsJoueurs(effectif, p.compositionUtilisee,

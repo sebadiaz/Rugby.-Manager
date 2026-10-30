@@ -4036,6 +4036,62 @@ test('banc : un remplaçant entré plus tôt que prévu n entre pas une seconde 
   assert.ok(entrees[0].instant < 2410, 'il entre quand le manager le décide, pas à la 50e');
 });
 
+// --- Blessures en cours de match (bugs.md FUNC-RM-005) ------------------------
+// Personne ne se blessait jamais PENDANT un match : la carrière tirait des
+// blessures au hasard, après coup. Un contact peut désormais blesser le porteur
+// ou le plaqueur : il sort, un remplaçant compatible entre, sinon son équipe
+// joue à 14.
+test('blessures en match : rares, nées d un contact, le blessé sort et un remplaçant de son poste entre', () => {
+  const ref = new MatchEngine(1, 4800);
+  const banc = [[1, 50], [2, 54], [4, 58], [6, 62], [9, 65], [10, 68], [12, 71], [15, 75]].map(([numero, minute], i) => ({
+    equipe: 'A', numero, minute, joueur: Object.assign({}, ref.cfg.joueurs[numero]), joueurId: 'banc' + i }));
+  let blessures = 0, remplacees = 0, aQuatorze = 0, groupesOk = 0;
+  const N = 24;
+  const groupe = (n) => (n <= 3 ? 'PL' : n <= 8 ? 'AV' : 'AR');
+  for (let seed = 1; seed <= N; seed++) {
+    const m = new MatchEngine(seed, 4800, { remplacements: banc });
+    let evts = 0;
+    const log = m.log.bind(m);
+    m.log = (t, ...r) => { if (t === 'BLESSURE') evts++; return log(t, ...r); };
+    m.jouerJusquAuSifflet(0.1);
+    const bl = m.blessuresMatch || [];
+    assert.strictEqual(evts, bl.length, 'chaque blessure est annoncée');
+    blessures += bl.length;
+    for (const b of bl) {
+      const r = m.remplacementsEffectues.find((x) => x.equipe === b.equipe && x.numero === b.numero && Math.abs(x.instant - b.instant) < 0.5);
+      if (r) {
+        remplacees++;
+        const prevu = banc.find((x) => x.joueurId === r.joueurId);
+        if (b.equipe === 'A' && prevu && groupe(prevu.numero) === groupe(b.numero)) groupesOk++;
+      } else {
+        const j = (b.equipe === 'A' ? m.equipeA : m.equipeB).find((x) => x.numero === b.numero);
+        if (j && j.sinBin > 0) aQuatorze++;
+      }
+    }
+  }
+  assert.ok(blessures / N >= 0.5 && blessures / N <= 3, `${(blessures / N).toFixed(2)} blessure(s) par match`);
+  assert.strictEqual(remplacees + aQuatorze, blessures, 'chaque blessé sort : remplacé, ou son équipe joue sans lui');
+  assert.ok(remplacees >= 5 && groupesOk >= 1, `${remplacees} blessés remplacés, ${groupesOk} par un remplaçant de leur poste`);
+});
+
+test('à 14 après blessures (banc épuisé), un joueur sorti ne touche plus le ballon : ni porteur, ni buteur, ni lanceur', () => {
+  let ticks = 0, horsJeu = 0, exemple = null;
+  for (let seed = 1; seed <= 8; seed++) {
+    // Un remplacement à la première seconde épuise le banc déclaré de A.
+    const m = new MatchEngine(seed, 4800, { remplacements: [{ equipe: 'A', numero: 4, minute: 0.01, joueur: {} }] });
+    let pose = false;
+    while (m.phase !== 'TERMINE') {
+      m.tick(0.1); ticks++;
+      if (!pose && m.tempsMatch > 60) { pose = true; for (const n of [2, 9, 10]) m._blessuresEnAttente.push({ equipe: 'A', numero: n }); }
+      const p = m.porteur;
+      if (p && p.sinBin > 0) { horsJeu++; if (!exemple) exemple = `graine ${seed}, ${m.phase}, n°${p.numero}${p.team}`; }
+    }
+    assert.ok(m.blessuresMatch.filter((b) => b.equipe === 'A').length >= 3, `graine ${seed} : trois blessés A`);
+  }
+  assert.ok(ticks > 1000);
+  assert.strictEqual(horsJeu, 0, `${horsJeu} instants où le porteur est un joueur sorti (${exemple})`);
+});
+
 // --- bugs.md QA-RM-007 : événements, joueurs et équipe disent la même chose ---
 test('rapprochement : réussis ≤ tentés partout, et chaque essai ou but du compteur a son événement (QA-RM-007)', () => {
   for (let seed = 1; seed <= 4; seed++) {

@@ -4541,6 +4541,59 @@ function optionsLancement() {
     await ctxBanc.close();
   }
 
+  // --- BLESSURE EN MATCH (bugs.md FUNC-RM-005) -----------------------------
+  // Mise en scène : la blessure est rare (~1,6 par match) ; le premier contact
+  // après 20 s blesse ici le n°7 du club. Tout le reste est le vrai chemin :
+  // bandeau, remplaçant du banc, blessure en carrière.
+  {
+    const ctxBl = await browser.newContext({ viewport: { width: 1400, height: 1000 } });
+    const pgBl = await ctxBl.newPage();
+    const erreursBl = [];
+    pgBl.on('pageerror', (e) => erreursBl.push(e.message));
+    pgBl.on('dialog', async (d) => { await d.accept(); });
+    await pgBl.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+    await pgBl.evaluate(() => {
+      window.RugbyEngine.MatchEngine.prototype._tirerBlessureContact = function () {
+        if (this._force || this.tempsMatch < 20) return;
+        this._force = true;
+        this._blessuresEnAttente.push({ equipe: 'A', numero: 7 });
+      };
+    });
+    await pgBl.click('#btnAccueilModeClub');
+    await pgBl.fill('#inputNomClub', 'AS Blessure');
+    await pgBl.click('#btnCreerClub');
+    await pgBl.waitForTimeout(700);
+    await pgBl.selectOption('#selDureeClub', '300');
+    verifier('blessure : prémisse — aperçu', await continuerJusquAuMatch(pgBl));
+    await pgBl.click('#btnApercuJouerMatch');
+    for (let t = 0; t < 1200; t++) {
+      const n = await pgBl.evaluate(() => { const e = window.RMMain.etatActuel(); return e && e.blessuresMatch ? e.blessuresMatch.length : 0; });
+      if (n) break;
+      await pgBl.waitForTimeout(50);
+    }
+    let banniere = null;
+    for (let t = 0; t < 40 && !banniere; t++) {
+      const txt = await pgBl.textContent('#banner').catch(() => '');
+      if (/Blessure/.test(txt || '') && await pgBl.isVisible('#banner.visible')) banniere = txt;
+      else await pgBl.waitForTimeout(50);
+    }
+    verifier('blessure : le bandeau du soigneur l annonce', !!banniere && /SOIGNEUR/.test(banniere), banniere);
+    const etat = await pgBl.evaluate(() => { const e = window.RMMain.etatActuel(); return { bl: e.blessuresMatch, re: e.remplacementsEffectues }; });
+    const entrant = etat.re.find((r) => r.numero === 7);
+    verifier('blessure : un remplaçant du banc entre au n°7 au même instant',
+      etat.bl.length === 1 && entrant && entrant.joueurId != null && Math.abs(entrant.instant - etat.bl[0].instant) < 0.5, JSON.stringify(etat));
+    await pgBl.click('#btnTerminerMatch');
+    let fin = false;
+    for (let i = 0; i < 200; i++) { if (await pgBl.isVisible('#panneauResultat.visible')) { fin = true; break; } await pgBl.waitForTimeout(300); }
+    if (fin) { await pgBl.click('#btnResultatFermer'); await pgBl.waitForTimeout(800); }
+    const car = await pgBl.evaluate((idEntrant) => { const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1')); const c = s.clubJoueur;
+      const entrant = c.effectif.find((j) => j.id === idEntrant);
+      return { msg: (c.messages || []).filter((m) => /quitter le terrain/.test(m.corps)).length, entrantBlesse: !!(entrant && entrant.blessure && /quitter/.test(JSON.stringify(c.messages.filter((m) => m.corps.includes(entrant.nom))))) }; }, entrant && entrant.joueurId);
+    verifier('blessure : en carrière, le blessé (pas l entrant) est indisponible, avec un message', car.msg === 1 && !car.entrantBlesse, JSON.stringify(car));
+    verifier('blessure : aucune erreur de page', erreursBl.length === 0, erreursBl.join(' | '));
+    await ctxBl.close();
+  }
+
   // --- SORTIE DE SECOURS ----------------------------------------------------
   // Signale en jeu : « mon jeu est bloque, je ne peux ni rentrer dedans ni
   // supprimer pour continuer ». Le seul bouton de remise a zero vivait DANS le
