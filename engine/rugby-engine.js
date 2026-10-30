@@ -7417,7 +7417,11 @@
       // point de départ à la ligne visée et nombre de rucks. Portée par
       // l'événement ESSAI, elle dit d'où vient chaque essai.
       const phasesArret = { TOUCHE: 'TOUCHE', MELEE: 'MELEE', COUP_ENVOI: 'COUP_ENVOI' };
-      const nouvelArret = phasesArret[this.phase] && this._phaseSeqPrec !== this.phase;
+      // Une pénalité sifflée pendant la touche et tapée en touche donne une
+      // NOUVELLE touche sans quitter la phase : sa marque change, la séquence
+      // repart de là (sinon l'essai gardait la marque de la première).
+      const nouvelleMarque = this.phase === 'TOUCHE' && this.toucheLanceurX !== this._seqToucheX;
+      const nouvelArret = phasesArret[this.phase] && (this._phaseSeqPrec !== this.phase || nouvelleMarque);
       if (nouvelArret || this.possession !== this._seqPoss || (this.penaliteRecul && !this._seqPenalite)) {
         const sensSeq = this.possession === 'A' ? 1 : -1;
         const xTouche = this.phase === 'TOUCHE' ? this.toucheLanceurX : null;
@@ -7428,6 +7432,7 @@
         };
         this._seqPoss = this.possession;
       }
+      this._seqToucheX = this.phase === 'TOUCHE' ? this.toucheLanceurX : null;
       // Point de départ : la marque de touche, sinon là où l'équipe a le ballon
       // en main pour la première fois (sortie de mêlée, pénalité jouée), pas la
       // position d'avant l'arrêt — une touche sur pénalité prenait celle du botteur.
@@ -7879,11 +7884,14 @@
     // Blessure au contact (bugs.md FUNC-RM-005) : rare (~1 à 2 par match),
     // tirée pour le porteur plaqué et pour le plaqueur. Le blessé sort au
     // tick suivant (cf. _traiterBlessures), jamais en tenant le ballon.
+    // `config.blessures === false` les coupe (tests qui vérifient une liste
+    // exacte de remplacements) ; le tirage a lieu quand même, pour que le
+    // reste du match soit identique.
     _tirerBlessureContact(...joueurs) {
       for (const j of joueurs) {
         if (!j || j.sinBin > 0) continue;
         if (this._blessuresEnAttente.some((b) => b.equipe === j.team && b.numero === j.numero)) continue;
-        if (this.rngBlessures() < PROBA_BLESSURE_CONTACT) this._blessuresEnAttente.push({ equipe: j.team, numero: j.numero });
+        if (this.rngBlessures() < PROBA_BLESSURE_CONTACT && this.cfg.blessures !== false) this._blessuresEnAttente.push({ equipe: j.team, numero: j.numero });
       }
     }
 

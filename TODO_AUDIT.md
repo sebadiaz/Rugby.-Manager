@@ -620,6 +620,12 @@ Calibration 14/14, 54,0 points.
 - Navigateur, 1400×1000 et 390×844 (captures vérifiées), blessure mise en scène au premier contact : bandeau, entrant du
   banc au n°7, blessé indisponible en carrière avec son message.
 - Invariant : à 14 après trois blessures (banc épuisé), le porteur n'est jamais un joueur absent. L'ancien moteur échoue.
+- Défaut existant révélé par les portes, et corrigé : une pénalité sifflée pendant une touche puis tapée en touche
+  redonne une touche sans quitter la phase ; l'essai qui suivait gardait la marque de la PREMIÈRE touche (« depuis
+  71 m » pour une touche à 46 m). La séquence repart désormais de la nouvelle marque.
+- `config.blessures === false` coupe les blessures (le tirage a lieu quand même : le reste du match est identique),
+  pour les deux tests qui vérifient une liste exacte de remplacements. Le test des totaux par joueur compte les lignes
+  des joueurs sortis. Le test du carton « sur sa ligne » passe de 16 à 64 graines (8 cartons sur 64 avant comme après).
 
 **Reste à faire.** Sans première ligne valide, la mêlée reste contestée au lieu d'être simulée (loi 3) ; remplaçant
 anonyme non plafonné à 8 ; libellé de poste d'un remplaçant réaffecté à un autre maillot.

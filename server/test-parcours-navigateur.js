@@ -4566,16 +4566,23 @@ function optionsLancement() {
     await pgBl.selectOption('#selDureeClub', '300');
     verifier('blessure : prémisse — aperçu', await continuerJusquAuMatch(pgBl));
     await pgBl.click('#btnApercuJouerMatch');
+    // Chaque bandeau affiché est noté au moment où il paraît : sous charge, un
+    // sondage toutes les 50 ms pouvait rater ses 2,2 s d'affichage.
+    await pgBl.evaluate(() => {
+      window.__bandeaux = [];
+      const b = document.getElementById('banner');
+      new MutationObserver(() => { if (b.classList.contains('visible')) window.__bandeaux.push(b.textContent); })
+        .observe(b, { attributes: true, childList: true, characterData: true, subtree: true });
+    });
     for (let t = 0; t < 1200; t++) {
       const n = await pgBl.evaluate(() => { const e = window.RMMain.etatActuel(); return e && e.blessuresMatch ? e.blessuresMatch.length : 0; });
       if (n) break;
       await pgBl.waitForTimeout(50);
     }
     let banniere = null;
-    for (let t = 0; t < 40 && !banniere; t++) {
-      const txt = await pgBl.textContent('#banner').catch(() => '');
-      if (/Blessure/.test(txt || '') && await pgBl.isVisible('#banner.visible')) banniere = txt;
-      else await pgBl.waitForTimeout(50);
+    for (let t = 0; t < 60 && !banniere; t++) {
+      banniere = await pgBl.evaluate(() => window.__bandeaux.find((x) => /Blessure/.test(x)) || null);
+      if (!banniere) await pgBl.waitForTimeout(50);
     }
     verifier('blessure : le bandeau du soigneur l annonce', !!banniere && /SOIGNEUR/.test(banniere), banniere);
     const etat = await pgBl.evaluate(() => { const e = window.RMMain.etatActuel(); return { bl: e.blessuresMatch, re: e.remplacementsEffectues }; });

@@ -2944,10 +2944,12 @@ test('statistiques individuelles : chaque action est attribuée à un joueur, et
   for (let seed = 1; seed <= 4; seed++) {
     const m = new MatchEngine(seed, 4800);
     for (let i = 0; i < 400000 && m.phase !== 'TERMINE'; i++) m.tick(0.1);
-    const sj = m.getState().statsJoueurs;
+    const st = m.getState(), sj = st.statsJoueurs;
     for (const e of ['A', 'B']) {
       const S = m.stats[e];
-      const somme = (k) => Object.values(sj[e] || {}).reduce((p, j) => p + (j[k] || 0), 0);
+      // Lignes des joueurs sortis (blessés remplacés) comprises : leurs actions restent les leurs.
+      const lignes = Object.values(sj[e] || {}).concat(((st.statsJoueursSortis || {})[e] || []).map((x) => x.stats || {}));
+      const somme = (k) => lignes.reduce((p, j) => p + (j[k] || 0), 0);
       for (const [kj, ke] of paires) {
         assert.strictEqual(somme(kj), S[ke], `graine ${seed}, équipe ${e} : ${kj} des joueurs ${somme(kj)} pour ${S[ke]} à l'équipe`);
       }
@@ -3626,7 +3628,7 @@ test('remplacement : les actions du sortant sont closes à sa sortie, l entrant 
       { equipe: 'B', numero: 3, minute: 50, joueurId: 'entrant-3', joueur: { poste: 'Pilier' } },
       { equipe: 'B', numero: 3, minute: 70, joueurId: 'entrant-3bis', joueur: { poste: 'Pilier' } },
     ];
-    const m = new MatchEngine(seed, 4800, { remplacements });
+    const m = new MatchEngine(seed, 4800, { remplacements, blessures: false }); // liste exacte : sans blessure
     m.jouerJusquAuSifflet(0.2);
     const st = m.getState();
     assert.deepStrictEqual(st.remplacementsEffectues.map((r) => [r.equipe, r.numero, r.joueurId]),
@@ -3884,7 +3886,10 @@ test('loi 20.14 : pénalité jouée vite à 2 m de la ligne, aucun fautif hors-j
 // 0,15 en vrai. Une faute délibérée sur sa ligne vaut un carton jaune.
 test('essai de pénalité : rare, et seulement sur un maul ou une mêlée écroulés près de la ligne', () => {
   let essaisPenalite = 0, horsMaul = 0, jaunesLigne = 0;
-  const N = 16;
+  // 64 graines : le carton sur sa ligne est rare (~0,12 par match) ; 16
+  // graines tombaient à 0 ou 3 selon le seul bruit (mesuré sur 64 : 8 avant
+  // les blessures en match, 8 après).
+  const N = 64;
   for (let seed = 1; seed <= N; seed++) {
     const m = new MatchEngine(seed, 4800);
     const log = m.log.bind(m);
@@ -3898,7 +3903,7 @@ test('essai de pénalité : rare, et seulement sur un maul ou une mêlée écrou
   }
   assert.strictEqual(horsMaul, 0, `${horsMaul} essais de pénalité sans maul ni mêlée écroulés`);
   assert.ok(essaisPenalite / N <= 0.35, `${(essaisPenalite / N).toFixed(2)} essai(s) de pénalité par match`);
-  assert.ok(jaunesLigne >= 3, `la faute délibérée sur sa ligne n'est plus sanctionnée (${jaunesLigne} cartons)`);
+  assert.ok(jaunesLigne >= 4, `la faute délibérée sur sa ligne n'est plus sanctionnée (${jaunesLigne} cartons)`);
 });
 
 // --- Dégagement en touche depuis ses 22 : 30 à 45 m gagnés ------------------
@@ -4024,7 +4029,7 @@ test('remplacement en cours de match : la composition passée par l appelant res
 test('banc : un remplaçant entré plus tôt que prévu n entre pas une seconde fois', () => {
   const ref = new MatchEngine(1, 4800);
   const j = Object.assign({}, ref.cfg.joueurs[1], { nom: 'Pilier remplaçant' });
-  const m = new MatchEngine(5, 4800, { remplacements: [{ equipe: 'A', numero: 1, minute: 50, joueur: j, joueurId: 'p16' }] });
+  const m = new MatchEngine(5, 4800, { blessures: false, remplacements: [{ equipe: 'A', numero: 1, minute: 50, joueur: j, joueurId: 'p16' }] });
   while (m.tempsMatch < 2400) m.tick(0.1);
   assert.strictEqual(m.remplacerJoueurEnCours('A', 3, j, 'p16'), true, 'entrée anticipée, à un autre poste de première ligne');
   for (let i = 0; i < 5; i++) m.tick(0.1);
