@@ -33,6 +33,8 @@
     TOUCHE_SAQUEE: '🛑',
     // Blessure au contact (FUNC-RM-005) : le joueur sort, un remplaçant entre.
     BLESSURE: '🚑',
+    // Mêlée simulée (loi 3) : plus de première ligne formée, pas de poussée.
+    MELEE_SIMULEE: '🤝',
     MAUL_ARRET_UN: '🅰️', MAUL_ARRET_DEUX: '✋', MAUL_USE_IT: '⏱️', MAUL_BALLON_SORTI: '➡️', MAUL_INJOUABLE: '🔒',
     MELEE_RUCK_INJOUABLE: '🔒',
     MAUL_PEN_ECROULEMENT: '🟨', MAUL_PEN_HORSJEU: '🟨', MAUL_PEN_ENTREE_COTE: '🟨', MAUL_PEN_TECHNIQUE: '🟨', CARTON_JAUNE: '🟡',
@@ -91,6 +93,7 @@
     'SONNERIE',
     'TOUCHE_SAQUEE',
     'BLESSURE',
+    'MELEE_SIMULEE',
     // Ballon aplati par la défense dans son en-but (P2-93) : renvoi aux 22 m.
     'EN_BUT_APLATI',
     // 50:22 (P2-96) : un coup de pied de son camp qui trouve la touche dans les 22 adverses.

@@ -580,6 +580,34 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-139. Mêlée simulée sans première ligne formée (loi 3) — bugs.md FUNC-RM-005
+- **Statut : LIVRÉ**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_premiereLigneFormee`, `_formerMelee`,
+  `_meleeAvancerPoussee`, `_meleeDetecterFautes`, `_meleeResoudreContestation`, `horsPoste`), `docs/js/constants.js`,
+  `server/test-invariants.js`, `TODO_AUDIT.md`, `bugs.md`.
+
+**Constat (revue des règles après P2-138).** Un talonneur blessé sans remplaçant laissait une mêlée DISPUTÉE à sept,
+sans talonneur, avec poussée, écroulements et ballons volés. La loi 3 impose une mêlée simulée : pas de poussée,
+l'équipe qui introduit gagne le ballon.
+
+**Correction.**
+- Première ligne formée : n°1, 2 et 3 présents et spécialistes. Elle ne l'est plus si un poste est vide (blessé non
+  remplacé) ou tenu par un remplaçant d'un autre groupe (`horsPoste`, posé à sa réaffectation). Un pilier au carton
+  jaune garde une mêlée disputée : dans un vrai match, un pilier du banc entre.
+- Mêlée simulée : annoncée (`MELEE_SIMULEE`, 🤝, bandeau), sans poussée ni rotation, sans faute de pack (écroulement,
+  travers, poussée avant, liaison, relevé, ballon bloqué). L'introduction et le hors-jeu des trois-quarts restent jugés.
+  L'équipe qui introduit gagne toujours.
+- Remplaçants anonymes plafonnés à 8 par équipe (loi 3).
+
+**Mesures.** 100 matchs rapides appariés : strictement identiques (le remplaçant anonyme est un spécialiste, aucune
+mêlée simulée). Avec un talonneur blessé et le banc épuisé (8 graines), toutes les mêlées suivantes sont simulées.
+
+**Tests.**
+- Invariant : talonneur de A blessé à la 1re minute, banc épuisé : au moins 40 mêlées simulées, 0 faute de pack, 0
+  ballon perdu à l'introduction, 0 mètre de poussée ; témoin sans blessure : 0 mêlée simulée. L'ancien moteur échoue
+  (0 mêlée simulée sur 141).
+- Navigateur, 1400×1000 et 390×844 (captures vérifiées), mise en scène : bandeau « Melee simulee » et fil d'événements.
+
 ### P2-138. Blessures en match : le blessé sort, un remplaçant de son poste entre — bugs.md FUNC-RM-005
 - **Statut : LIVRÉ** (reste de FUNC-RM-005 : remplacement temporaire, effectif réduit au coup d'envoi)
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_tirerBlessureContact`, `_traiterBlessures`,
@@ -627,8 +655,8 @@ Calibration 14/14, 54,0 points.
   pour les deux tests qui vérifient une liste exacte de remplacements. Le test des totaux par joueur compte les lignes
   des joueurs sortis. Le test du carton « sur sa ligne » passe de 16 à 64 graines (8 cartons sur 64 avant comme après).
 
-**Reste à faire.** Sans première ligne valide, la mêlée reste contestée au lieu d'être simulée (loi 3) ; remplaçant
-anonyme non plafonné à 8 ; libellé de poste d'un remplaçant réaffecté à un autre maillot.
+**Reste à faire.** Mêlée simulée et plafond de 8 remplaçants : livrés (P2-139). Le libellé de poste d'un remplaçant
+réaffecté reste le sien (un ailier entré au n°1 s'affiche ailier, ce qui est exact).
 
 ### P2-137. Banc en cours de match : maillot relevé au choix, un remplaçant n'entre qu'une fois — bugs.md FUNC-RM-005
 - **Statut : PARTIELLEMENT LIVRÉ**

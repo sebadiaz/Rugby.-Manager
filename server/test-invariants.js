@@ -4097,6 +4097,44 @@ test('à 14 après blessures (banc épuisé), un joueur sorti ne touche plus le 
   assert.strictEqual(horsJeu, 0, `${horsJeu} instants où le porteur est un joueur sorti (${exemple})`);
 });
 
+test('mêlée simulée (loi 3) : sans première ligne formée, pas de poussée, pas de faute de pack, l introduction gagne', () => {
+  let simulees = 0, contestees = 0, fautesPack = 0, perdues = 0, avancees = 0, temoins = 0;
+  for (let seed = 1; seed <= 8; seed++) {
+    // Banc de A épuisé dès la première seconde : le talonneur blessé n'est pas remplacé.
+    const m = new MatchEngine(seed, 4800, { blessures: false, remplacements: [{ equipe: 'A', numero: 4, minute: 0.01, joueur: {} }] });
+    let pose = false, simulee = false, x0 = null;
+    const log = m.log.bind(m);
+    m.log = (t, team, msg, ...r) => {
+      if (t === 'MELEE') { simulee = false; x0 = null; }
+      if (t === 'MELEE_SIMULEE') { simulee = true; simulees++; }
+      if (t === 'MELEE_INTRODUCTION' && m.melee) x0 = m.melee.x;
+      // Fautes de poussée (écroulement, travers, poussée avant, liaison, relevé,
+      // mêlée tournée, ballon bloqué) ; l'introduction et le hors-jeu des
+      // trois-quarts restent jugés.
+      if (simulee && (/^MELEE_(PEN_ECROULEMENT|PEN_TRAVERS|TOURNEE|RESET)$/.test(t)
+        || (t === 'MELEE_PEN_TECHNIQUE' && !/introduction/.test(msg)))) fautesPack++;
+      if (simulee && t === 'TURNOVER' && m.melee) perdues++;
+      if (simulee && t === 'MELEE_BASE' && m.melee && x0 != null && Math.abs(m.melee.x - x0) > 0.01) avancees++;
+      return log(t, team, msg, ...r);
+    };
+    while (m.phase !== 'TERMINE') {
+      m.tick(0.1);
+      if (!pose && m.tempsMatch > 60) { pose = true; m._blessuresEnAttente.push({ equipe: 'A', numero: 2 }); }
+    }
+    contestees += m.stats.A.scrums + m.stats.B.scrums;
+    // Témoin : sans blessure, aucune mêlée simulée.
+    const t = new MatchEngine(seed, 4800, { blessures: false });
+    const lt = t.log.bind(t);
+    t.log = (ty, ...r) => { if (ty === 'MELEE_SIMULEE') temoins++; return lt(ty, ...r); };
+    t.jouerJusquAuSifflet(0.1);
+  }
+  assert.ok(simulees >= 40 && simulees >= 0.8 * contestees - 16, `${simulees} mêlées simulées sur ${contestees}`);
+  assert.strictEqual(fautesPack, 0, 'aucune faute de poussée dans une mêlée simulée');
+  assert.strictEqual(perdues, 0, 'l équipe qui introduit gagne toujours une mêlée simulée');
+  assert.strictEqual(avancees, 0, 'une mêlée simulée n avance pas');
+  assert.strictEqual(temoins, 0, 'avec les deux premières lignes, la mêlée reste disputée');
+});
+
 // --- bugs.md QA-RM-007 : événements, joueurs et équipe disent la même chose ---
 test('rapprochement : réussis ≤ tentés partout, et chaque essai ou but du compteur a son événement (QA-RM-007)', () => {
   for (let seed = 1; seed <= 4; seed++) {

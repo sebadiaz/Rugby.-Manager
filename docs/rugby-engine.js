@@ -447,6 +447,9 @@
       jeuPied: c.jeuPied != null ? c.jeuPied : p.jeuPied,
       decision: c.decision != null ? c.decision : p.decision,
       discipline: c.discipline != null ? c.discipline : p.discipline,
+      // Joueur placé en première ligne sans en être un (loi 3) : remplaçant
+      // d'un autre groupe entré pour un pilier ou un talonneur blessé.
+      horsPoste: !!c.horsPoste,
       channelY,
       x: 0, y: channelY,
       auSol: 0,
@@ -5719,7 +5722,13 @@
         // (mains du 9 -> milieu du tunnel -> sous le pack -> pieds du 8), jamais
         // un point fixe. Trace pas à pas du ballon et des deux 9, et contacts.
         balle: null, ach: null, trace: [], contacts: [],
+        // Mêlée simulée (loi 3) : une équipe n'a plus de première ligne formée.
+        simulee: !this._premiereLigneFormee(this.equipeA) || !this._premiereLigneFormee(this.equipeB),
       };
+      if (this.melee.simulee) {
+        const sans = !this._premiereLigneFormee(this.equipeA) ? 'A' : 'B';
+        this.log('MELEE_SIMULEE', equipeIntroduction, `Melee simulee : l'equipe ${sans} n'a plus de premiere ligne formee, pas de poussee`);
+      }
       this.possession = equipeIntroduction;
       const eq = equipeIntroduction === 'A' ? this.equipeA : this.equipeB;
       // Loi 19.13-15 : seul le demi de melee (n°9) introduit le ballon dans
@@ -5752,6 +5761,17 @@
       this.contestants = [];
       this.phase = 'MELEE';
       this.timerPhase = 0;
+    }
+
+    // Première ligne formée (loi 3) : les n°1, 2 et 3 présents et spécialistes.
+    // Un pilier au carton jaune est relevé par un pilier du banc dans un vrai
+    // match : seul le poste laissé vide par un blessé non remplacé (exclusion
+    // jusqu'à la fin) ou tenu par un non-spécialiste rend la mêlée simulée.
+    _premiereLigneFormee(eq) {
+      return [1, 2, 3].every((n) => {
+        const j = eq.find((x) => x.numero === n);
+        return j && j.sinBin < 1e8 && !j.horsPoste;
+      });
     }
 
     // Estime le temps reel necessaire au pack le plus excentre pour rallier
@@ -6340,6 +6360,7 @@
     // probabilité, sans jamais la garantir.
     _meleeAvancerPoussee(dt) {
       const m = this.melee;
+      if (m.simulee) return; // pas de poussée dans une mêlée simulée
       const vitessePoussee = Math.max(-0.5, Math.min(0.7, m.diff / 80));
       m.x = Math.max(0, Math.min(LONGUEUR, m.x + vitessePoussee * m.sens * dt));
       m.rotation += (-m.diff / 20 + (this.rng() - 0.5) * 12) * dt;
@@ -6353,7 +6374,7 @@
       const E = ETATS_MELEE;
       const r = this.rng();
       let seuil = 0;
-      if (m.etat === E.CROUCH || m.etat === E.BIND || m.etat === E.SET) {
+      if (!m.simulee && (m.etat === E.CROUCH || m.etat === E.BIND || m.etat === E.SET)) {
         seuil += 0.006 * dt;
         if (r < seuil) {
           const eqF = this.rng() < 0.5 ? m.equipeIntroduction : m.equipeNonIntroduction;
@@ -6366,7 +6387,7 @@
         }
       }
       // (Introduction non droite : jugée une fois, au lâcher — cf. _meleeIntroduire.)
-      if (m.etat === E.SET || m.etat === E.CONTESTATION || m.etat === E.SORTIE) {
+      if (!m.simulee && (m.etat === E.SET || m.etat === E.CONTESTATION || m.etat === E.SORTIE)) {
         const distLigneDef = m.sens > 0 ? (LONGUEUR - m.x) : m.x;
         // Le camp en difficulté (qui recule dans le duel de poussée) est le
         // plus exposé à l'écroulement volontaire et au pilier en travers.
@@ -6533,7 +6554,10 @@
       const volIntro = effetPousseeMelee(this.cfgMelee[intro].poussee).bonusVol;
       const probaVol = Math.max(0.02, Math.min(0.35,
         0.05 - m.diff / 300 + volDef - volIntro));
-      if (this.rng() < probaVol) {
+      if (m.simulee) {
+        // Loi 3 : sans contestation, l'équipe qui introduit gagne le ballon.
+        m.vainqueur = intro; m.qualite = 'PROPRE';
+      } else if (this.rng() < probaVol) {
         m.vainqueur = nonIntro; m.qualite = 'VOLE';
       } else if (m.diff > (this.cfg.melee.seuilsQualite || {}).dominant) {
         m.vainqueur = intro; m.qualite = 'DOMINANT';
@@ -7600,6 +7624,7 @@
             jeuPied: c.jeuPied != null ? c.jeuPied : sortant.jeuPied,
             decision: c.decision != null ? c.decision : sortant.decision,
             discipline: c.discipline != null ? c.discipline : sortant.discipline,
+            horsPoste: !!c.horsPoste,
           });
           // _nouvelleManche (coup d'envoi après essai/pénalité/mi-temps, cf.
           // plus haut) RECRÉE entièrement equipeA/equipeB depuis this.cfg.
@@ -7916,12 +7941,15 @@
         if (r) {
           if (r.numero !== b.numero) {
             const modele = (this.cfg.joueurs && this.cfg.joueurs[b.numero]) || {};
-            r.joueur = Object.assign({}, r.joueur, { tendance: modele.tendance, couloir: modele.couloir });
+            r.joueur = Object.assign({}, r.joueur, { tendance: modele.tendance, couloir: modele.couloir,
+              horsPoste: b.numero <= 3 && groupe(r.numero) !== 'PL' });
             r.numero = b.numero;
           }
           r.instant = this.tempsMatch;
           this.log('BLESSURE', b.equipe, `Blessure : le n°${b.numero} de l'equipe ${b.equipe} doit sortir, un remplacant entre`);
-        } else if (!this._remplacements.some((x) => x.equipe === b.equipe && !x.blessure)) {
+        } else if (!this._remplacements.some((x) => x.equipe === b.equipe && !x.blessure)
+          // Loi 3 : huit remplaçants au plus sur la feuille.
+          && this._remplacements.filter((x) => x.equipe === b.equipe && x.blessure).length < 8) {
           // Équipe sans banc déclaré (Match rapide, adversaire géré par
           // l'ordinateur) : un remplaçant anonyme au profil du poste entre.
           const cle = b.equipe === 'A' ? 'joueursA' : 'joueursB';
