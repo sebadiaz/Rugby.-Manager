@@ -4581,7 +4581,7 @@ function optionsLancement() {
     }
     let banniere = null;
     for (let t = 0; t < 60 && !banniere; t++) {
-      banniere = await pgBl.evaluate(() => window.__bandeaux.find((x) => /Blessure/.test(x)) || null);
+      banniere = await pgBl.evaluate(() => window.__bandeaux.find((x) => /Blessure : /.test(x)) || null);
       if (!banniere) await pgBl.waitForTimeout(50);
     }
     verifier('blessure : le bandeau du soigneur l annonce', !!banniere && /SOIGNEUR/.test(banniere), banniere);
