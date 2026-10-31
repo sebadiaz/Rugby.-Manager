@@ -580,6 +580,20 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-144. Notifications du club : trois à l'écran au plus, sans doublon
+- **Statut : LIVRÉ**
+- Fichiers concernés : `docs/js/clubUI.js` (`toast`), `server/test-parcours-navigateur.js`.
+
+**Constat.** Chaque avance du calendrier peut émettre plusieurs notifications (retour de blessure, demande sans
+réponse, avance interrompue…). Quelques clics « Continuer » en empilaient jusqu'à sept, en double parfois, par-dessus
+l'aperçu du match (capture de P2-143 : la carte tactique masquée).
+
+**Correction.** Trois notifications au plus à l'écran : la plus ancienne laisse la place à la nouvelle. Un texte déjà
+affiché n'est pas répété. Le détail reste dans la messagerie du club.
+
+**Tests.** Navigateur : à l'arrivée sur l'aperçu, au plus 3 notifications et aucun doublon ; l'ancien code en laisse 4
+(deux « Avance interrompue »). Suites d'interface et parcours navigateur complets.
+
 ### P2-143. Feuille de match incomplète : banc sans blessé, effectif réduit assumé — bugs.md FUNC-RM-005
 - **Statut : LIVRÉ** (clôt FUNC-RM-005)
 - Fichiers concernés : `docs/js/club-composition.js` (`completerCompositionBanc`), `docs/js/clubUI.js` (config du

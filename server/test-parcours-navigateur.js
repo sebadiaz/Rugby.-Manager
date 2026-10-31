@@ -4696,6 +4696,9 @@ function optionsLancement() {
     await pgBc.click('#btnContinuerClub');
     await pgBc.waitForTimeout(800);
     verifier('banc incomplet : prémisse — aperçu', blessesBc.length >= 1 && await continuerJusquAuMatch(pgBc));
+    const toastsBc = await pgBc.$$eval('#toastContainer .toast', (t) => t.map((x) => x.textContent));
+    verifier('avance : au plus 3 notifications à l écran, sans doublon (l aperçu du match reste lisible)',
+      toastsBc.length <= 3 && new Set(toastsBc).size === toastsBc.length, JSON.stringify(toastsBc));
     const texteBc = await pgBc.textContent('#apercuMatchCorps');
     verifier('banc incomplet : l aperçu annonce 7/8 remplaçants, aucun pilier apte, et la conséquence',
       /Banc incomplet : 7\/8 remplaçants — aucun pilier apte/.test(texteBc) && /mêlées simulées/.test(texteBc), texteBc.slice(0, 300));

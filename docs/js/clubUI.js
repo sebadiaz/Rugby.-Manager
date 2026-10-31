@@ -113,9 +113,20 @@
   // visible en dehors du re-rendu de sa propre carte (facile à manquer si on
   // a déjà l'œil ailleurs). Se referme seule, n'importe combien peuvent
   // s'empiler. `type` : 'succes' (défaut) ou 'erreur'.
+  // Au plus TOAST_MAX à l'écran : une avance de plusieurs semaines en
+  // produisait sept d'un coup, empilées sur l'aperçu du match. Le détail
+  // reste dans la messagerie ; à l'écran, les plus récentes suffisent, et
+  // un texte déjà affiché n'est pas répété.
+  const TOAST_MAX = 3;
   function toast(message, type) {
     const conteneur = document.getElementById('toastContainer');
     if (!conteneur) return;
+    const visibles = Array.from(conteneur.children).filter((t) => !t.classList.contains('sortant'));
+    if (visibles.some((t) => t.textContent === message)) return;
+    for (const ancien of visibles.slice(0, Math.max(0, visibles.length - TOAST_MAX + 1))) {
+      ancien.classList.add('sortant');
+      ancien.remove();
+    }
     const el = document.createElement('div');
     el.className = `toast ${type || 'succes'}`;
     el.textContent = message;
