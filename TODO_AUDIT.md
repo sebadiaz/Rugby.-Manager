@@ -580,6 +580,30 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-146. Sortie de maul : les défenseurs se délient et plaquent le 9 — bugs.md QA-RM-003
+- **Statut : LIVRÉ**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_imposerRecuperationRuck`, sortie de
+  ballon du maul), `server/test-invariants.js`, `bugs.md`.
+
+**Constat (100 matchs).** Le demi de mêlée marquait 12,3 % des essais (0,85 par match ; repère réel 6-8 %), dont 24
+partis d'une touche à 22-50 m sans aucun ruck. Trace : maul sur touche, sortie du ballon par le 9, qui PERCE
+aussitôt et marque. Après une sortie de maul, le 9 perçait directement dans 17,6 % des cas (0,55 essai par match),
+contre 0,01 % après un ruck. Cause : la récupération de regroupement (4 s sans pouvoir plaquer, dans un rayon de
+6 m) figeait les 7-8 avants défenseurs du maul — tous dans le rayon — et le 9 les traversait (à 0,4 m d'eux).
+
+**Correction.** À la sortie d'un maul, les défenseurs ne récupèrent que 0,5 s (le temps de se délier) ; les
+attaquants gardent 4 s. Mesuré : 1 s laisse encore 14,8 % de percées (le 9 est déjà passé), 1,5 s 18,5 % ;
+0,5 s, 0,6 %.
+
+**Mesures (100 graines appariées, P2-142 → après).** Points 59,6 → 56,7 (±3,5) ; essais 7,07 → 6,59 (±0,57) ; rucks
+204 → 210 (±5) ; passes 406 → 415 (±10) ; mêlées, touches, pénalités stables. Essais du 9 : 12,3 % → 4,8 % ;
+ailiers 36 %, avants 39 %. Origine des essais : jeu courant 40 %, touche 27 %, mêlée 16 %, pénalité 15 %.
+Calibration (graines 1-20) : points 53,9, essais 6,5 ; **passes 427,4 hors fourchette [250-420]** (409 avant) —
+13/14 catégories, le 9 passe désormais au lieu de percer, et les phases sont plus nombreuses.
+
+**Tests.** Invariant (16 graines) : le 9 perce directement après au plus 8 % des sorties de maul. L'ancien moteur
+échoue (20 %).
+
 ### P2-145. Barre de temps : le bout est le coup de sifflet final, pas la sonnerie
 - **Statut : LIVRÉ**
 - Fichiers concernés : `docs/js/main.js` (`avancerJusqua`), `server/test-parcours-navigateur.js`.

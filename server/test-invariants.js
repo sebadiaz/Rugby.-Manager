@@ -4245,6 +4245,30 @@ test('feuille de match déclarée sans remplaçant (bancA) : un blessé laisse s
   assert.strictEqual(aQuatorze, blesses, 'chaque blessé A laisse son équipe à 14');
 });
 
+test('sortie de maul : la défense qui se délie plaque le 9 — pas de percée directe une fois sur six (QA-RM-003)', () => {
+  // Les 7-8 avants défenseurs liés au maul étaient TOUS figés 4 s à la sortie
+  // du ballon (récupération de regroupement) : le 9 perçait au coin dans 17,6 %
+  // des sorties de maul (0,55 essai par match), contre 0,01 % après un ruck.
+  let sorties = 0, percees = 0;
+  for (let seed = 1; seed <= 16; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    let suivi = false;
+    const log = m.log.bind(m);
+    m.log = (t, team, msg, ...r) => {
+      const p = m.porteur;
+      if (t === 'MAUL_BALLON_SORTI') { sorties++; suivi = true; }
+      else if (suivi) {
+        if (t === 'FRANCHISSEMENT' && p && p.numero === 9) { percees++; suivi = false; }
+        else if (/^(PASSE|JEU_LARGE|COMBINAISON|RUCK|RUCK_SORTIE_9|COUP_DE_PIED|ESSAI)$/.test(t)) suivi = false;
+      }
+      return log(t, team, msg, ...r);
+    };
+    m.jouerJusquAuSifflet(0.1);
+  }
+  assert.ok(sorties >= 40, `échantillon : ${sorties} sorties de maul`);
+  assert.ok(percees / sorties <= 0.08, `le 9 perce directement après ${percees} sorties de maul sur ${sorties} (${(100 * percees / sorties).toFixed(1)} %)`);
+});
+
 // --- bugs.md QA-RM-007 : événements, joueurs et équipe disent la même chose ---
 test('rapprochement : réussis ≤ tentés partout, et chaque essai ou but du compteur a son événement (QA-RM-007)', () => {
   for (let seed = 1; seed <= 4; seed++) {

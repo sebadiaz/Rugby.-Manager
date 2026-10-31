@@ -2238,7 +2238,9 @@
     // `duree` : cf. INERTIE DE COURSE (avancer) — se relever puis rejoindre
     // l'alignement couvre la meme distance qu'avant, mais prend desormais
     // environ deux fois plus de temps ; la fenetre est donc doublee (2 -> 4 s).
-    _imposerRecuperationRuck(pt, rayon = 6, duree = 4) {
+    // `dureeDefense` (optionnelle) : récupération propre aux défenseurs (cf.
+    // sortie de maul, où ils n'ont qu'à se délier).
+    _imposerRecuperationRuck(pt, rayon = 6, duree = 4, dureeDefense = duree) {
       // Tout près de sa propre ligne d'en-but, la défense est naturellement
       // massée sur un espace réduit (peu de place pour se replier) : un rayon
       // d'exclusion large y évacue mécaniquement TOUTE la couverture proche du
@@ -2249,7 +2251,7 @@
       const pres = pt.x <= 8 || pt.x >= LONGUEUR - 8;
       const rayonEffectif = pres ? Math.min(rayon, 3) : rayon;
       for (const j of [...this.equipeA, ...this.equipeB]) {
-        if (distance(j, pt) < rayonEffectif) j.ruckRecovery = duree;
+        if (distance(j, pt) < rayonEffectif) j.ruckRecovery = j.team === this.possession ? duree : dureeDefense;
       }
     }
 
@@ -5620,7 +5622,11 @@
       const eqMaul = poss === 'A' ? this.equipeA : this.equipeB;
       const neuf = eqMaul.find(j => j.numero === 9 && j.auSol === 0 && j.sinBin <= 0);
       this.porteur = neuf || joueurLePlusProche(eqMaul.filter(j => j.sinBin <= 0), m.x, m.y).joueur;
-      this._imposerRecuperationRuck({ x: m.x, y: m.y });
+      // Les 7-8 avants défenseurs du maul sont tous dans le rayon : figés 4 s
+      // comme après un ruck, le 9 les TRAVERSAIT (percée directe sur 17,6 %
+      // des sorties de maul, 0,55 essai par match ; 0,01 % après un ruck).
+      // Ils n'ont qu'à se délier : 0,5 s (à 1 s, le 9 est déjà passé).
+      this._imposerRecuperationRuck({ x: m.x, y: m.y }, 6, 4, 0.5);
       this.phase = 'PORTE';
       this.timerPhase = 0;
     }

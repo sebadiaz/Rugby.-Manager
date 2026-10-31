@@ -414,7 +414,7 @@ Les sommes individuelles des passes, plaquages et mètres correspondent aux somm
 
 **Complément actuel :** sur 25 matchs Club équilibrés, 28/161 essais d’avants (17,4 %), 97/161 pour les deux ailiers (60,2 %), 5,24 mauls et 2 884,57 mètres cumulés du moteur par match. Les variantes confirment une concentration sur les ailes ; analyser notamment les options d’avants et mauls près de la ligne, la qualité des réceptions et les boucles de recul/réavancée. Le repère international n’est pas un quota imposé aux postes.
 
-**Avancement (TODO_AUDIT P2-125, P2-126) :** point de départ des essais corrigé (essais partis de plus de 50 m : 1,8 par match et non 2,95). Touche gagnée à moins de 10 m : maul 43 % → 70 %, essais sur ces touches 0,52 → 0,90 par match, total des essais inchangé. Reste à traiter : la part des essais partis de loin (27 %).
+**Avancement (TODO_AUDIT P2-125, P2-126) :** point de départ des essais corrigé (essais partis de plus de 50 m : 1,8 par match et non 2,95). Touche gagnée à moins de 10 m : maul 43 % → 70 %, essais sur ces touches 0,52 → 0,90 par match, total des essais inchangé. Reste à traiter : la part des essais partis de loin (27 %). Mesure du 31/10 (100 matchs) : le 9 perçait à la sortie d'un maul (17,6 % des sorties, 12,3 % des essais) ; corrigé (TODO_AUDIT P2-146) : 4,8 % des essais au 9, essais partis de plus de 50 m 21 %.
 
 **Mesures :** entrées dans les 22 m, gain net par phase à possession conservée, profondeur de réception, durée des séquences, origine des essais et postes des marqueurs. Ne pas reprendre les anciennes valeurs de l'audit comme résultats du moteur courant.
 
