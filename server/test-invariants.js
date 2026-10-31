@@ -3699,13 +3699,17 @@ test('loi 11 : une passe plate sous pression est parfois jugée en avant, jamais
 test("essai : son point de départ est celui de la touche ou de la mêlée qui l'a lancé", () => {
   let verifies = 0;
   const ecarts = [];
-  for (let seed = 1; seed <= 6; seed++) {
+  // 10 graines : sur 6, l'échantillon tombait à 11 essais selon le seul bruit.
+  for (let seed = 1; seed <= 10; seed++) {
     const m = new MatchEngine(seed, 4800);
     let derniere = null;
     const log = m.log.bind(m);
     m.log = (t, team, msg, extra, ...r) => {
       const p = m.porteur;
       if (t === 'TOUCHE_RAPIDE') derniere = null; // relancée hors de l'alignement : non vérifiée ici
+      // Sortie par le 8 (passe à l'ouvreur, ou il part seul) : la séquence
+      // part du premier porteur en jeu courant, pas de la base — non vérifiée ici.
+      if (/^MELEE_(PASSE_HUIT|PICK_AND_GO)$/.test(t)) derniere = null;
       if (p && (t === 'TOUCHE_BALLON_GAGNE' || t === 'MELEE_BALLON_SORTI' || (t === 'TURNOVER' && m.phase === 'TOUCHE'))) {
         const sens = m.possession === 'A' ? 1 : -1;
         derniere = { origine: t === 'MELEE_BALLON_SORTI' ? 'MELEE' : 'TOUCHE', team: m.possession, dist: sens > 0 ? LONGUEUR - p.x : p.x };
