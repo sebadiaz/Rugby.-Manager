@@ -580,6 +580,33 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-147. Déterminisme : un match affiché et un match calculé sans affichage sont identiques
+- **Statut : LIVRÉ**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`tick` → `_tickInterne`,
+  `_positionBallonCalculee`, `getState`), `server/test-invariants.js`, `TODO_AUDIT.md`.
+
+**Constat (parcours navigateur, 1 relecture sur 4).** Un match vécu 7-10 se relisait 10-13 ; le contrôle de fidélité
+de « Revoir » échouait. Diagnostic par journal d'événements de chaque moteur : premier écart au pas 392, bien avant la
+moindre décision du manager (pas 1707) — « Le n°10 tape la pénalité en touche » au pas 408 dans le match vécu, 410
+dans la relecture. La remise du ballon au buteur (P2-85) part de la « dernière position affichée », que seul
+`getState` notait : le match vécu (affiché à chaque pas) et sa relecture (calculée sans affichage) partaient de deux
+points différents, la frappe tombait à un autre pas, et la suite divergeait. Le commentaire du code affirmait
+« n'influence que l'affichage » : c'était faux. Même défaut pour tout match généré en arrière-plan puis regardé.
+
+**Correction.** Le calcul de la position affichée du ballon devient une méthode sans effet de bord
+(`_positionBallonCalculee`), utilisée par `getState` ; chaque pas (`tick`) note lui-même cette position. Un match
+affiché garde exactement son déroulé ; un match calculé sans affichage le reproduit désormais.
+
+**Mesures (100 graines appariées).** Écarts dans le bruit : points +0,5 (±0,8), essais +0,03, passes +1,6 (±2,1),
+rucks +1,0 (±1,1). Calibration : points 55,3, essais 6,5, passes 426,1 (toujours hors [250-420], cf. P2-146).
+
+**Tests.** Invariant (4 graines) : journal d'événements identique au pas près, avec ou sans `getState` à chaque pas.
+L'ancien moteur échoue (« PENALITE_TOUCHE_FRAPPE » au pas 24413 affiché, 24425 calculé). Navigateur : 5 relectures,
+journaux du match vécu et de la relecture identiques de bout en bout.
+
+Test du saignement (P2-142) rendu exact : au lieu de 80 % de retours (bruit), tout saignement soigné avant le coup de
+sifflet final doit être revenu.
+
 ### P2-146. Sortie de maul : les défenseurs se délient et plaquent le 9 — bugs.md QA-RM-003
 - **Statut : LIVRÉ**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_imposerRecuperationRuck`, sortie de

@@ -7440,7 +7440,21 @@
       }
     }
 
+    // Chaque pas mémorise la position du ballon affichée (cf. _debutRemiseBallon).
+    // Elle n'était notée que lorsque l'écran appelait getState : le match vécu
+    // (affiché à chaque pas) et sa relecture (calculée sans affichage) faisaient
+    // partir la remise du ballon au buteur de deux points différents, la frappe
+    // tombait à un autre pas et le match divergeait (relu 10-13 pour 7-10 vécu).
     tick(dt) {
+      const r = this._tickInterne(dt);
+      try {
+        const b = this._positionBallonCalculee();
+        this._ballonAffiche = { x: b.ballonX, y: b.ballonY, n: this._numTick || 0 };
+      } catch (e) { /* porteur absent : on garde la dernière position */ }
+      return r;
+    }
+
+    _tickInterne(dt) {
       this._numTick = (this._numTick || 0) + 1;
       if (this.porteur !== this._courseDe) this._courseDe = null;
       // Ligne d'avantage de la phase (stat des mètres gagnés, P2-102) : posée à
@@ -8159,7 +8173,9 @@
       return this;
     }
 
-    getState() {
+    // Position du ballon telle qu'elle s'affiche (vol, passe, phase statique,
+    // remise au buteur, sinon le porteur) — sans effet de bord.
+    _positionBallonCalculee() {
       const enVol = this.ballonEnVol;
       // Ballon au sol après un coup de pied tactique, pas encore récupéré :
       // pas tenu par le porteur (qui est resté en arrière, ballon déjà loin) —
@@ -8220,9 +8236,12 @@
       const enPhaseStatique = ballonPhaseX != null;
       const ballonX = enVol || auSolLoose ? this.ballonVolX : enPasse ? passeX : enPhaseStatique ? ballonPhaseX : this.porteur.x;
       const ballonY = enVol || auSolLoose ? this.ballonVolY : enPasse ? passeY : enPhaseStatique ? ballonPhaseY : this.porteur.y;
-      // Dernière position AFFICHÉE (cf. _debutRemiseBallon) : n'influence que
-      // l'affichage, la simulation reste identique avec ou sans getState.
-      this._ballonAffiche = { x: ballonX, y: ballonY, n: this._numTick || 0 };
+      return { enVol, auSolLoose, bvx, bvy, passeX, passeY, passeH, enPasse, ballonPhaseX, ballonPhaseY, enPhaseStatique, ballonX, ballonY };
+    }
+
+    getState() {
+      const { enVol, auSolLoose, bvx, bvy, passeX, passeY, passeH, enPasse, ballonPhaseX, ballonPhaseY, enPhaseStatique, ballonX, ballonY }
+        = this._positionBallonCalculee();
       return {
         equipeA: this.equipeA.map(j => ({ ...j })),
         equipeB: this.equipeB.map(j => ({ ...j })),

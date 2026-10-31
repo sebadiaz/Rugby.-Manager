@@ -4211,12 +4211,14 @@ test('saignement : le joueur sort se faire soigner, un remplaçant temporaire en
         assert.ok(fin - p.debut <= 900 * m._echelleArret + 30, `${((fin - p.debut) / 60).toFixed(1)} min de soins`);
       } else {
         assert.ok(!p.issue, `un saignement ne finit jamais en blessure : ${JSON.stringify(p)}`);
+        // Pas encore revenu : seulement si ses soins débordent le coup de sifflet final.
+        assert.ok(p.fin > m.tempsMatch - 30, `saignement soigné avant la fin mais jamais revenu : ${JSON.stringify(p)}`);
       }
     }
   }
   assert.strictEqual(annonces, saignements, 'chaque saignement est annoncé');
   assert.ok(saignements / N >= 0.3 && saignements / N <= 1.5, `${(saignements / N).toFixed(2)} saignement(s) par match`);
-  assert.ok(retours >= 0.8 * saignements, `${retours} retours pour ${saignements} saignements`);
+  assert.ok(retours >= 1, `${retours} retours pour ${saignements} saignements`);
   const moy = durees.reduce((a, b) => a + b, 0) / durees.length;
   assert.ok(moy >= 6 && moy <= 14, `soins de ${moy.toFixed(1)} min en moyenne`);
 });
@@ -4267,6 +4269,29 @@ test('sortie de maul : la défense qui se délie plaque le 9 — pas de percée 
   }
   assert.ok(sorties >= 40, `échantillon : ${sorties} sorties de maul`);
   assert.ok(percees / sorties <= 0.08, `le 9 perce directement après ${percees} sorties de maul sur ${sorties} (${(100 * percees / sorties).toFixed(1)} %)`);
+});
+
+test('déterminisme : un match affiché (getState à chaque pas) et un match calculé sans affichage sont identiques', () => {
+  // La remise du ballon au buteur partait de la « dernière position affichée »,
+  // notée seulement quand l'écran appelait getState : la frappe tombait à un
+  // autre pas et la relecture d'un match vécu divergeait (relu 10-13, vécu 7-10).
+  for (let seed = 1; seed <= 4; seed++) {
+    const journal = (afficher) => {
+      const m = new MatchEngine(seed, 4800);
+      const j = [];
+      const log = m.log.bind(m);
+      m.log = (t, team, msg, ...r) => { j.push(`${m._numTick} ${t} ${team}`); return log(t, team, msg, ...r); };
+      while (m.phase !== 'TERMINE') { m.tick(0.1); if (afficher) m.getState(); }
+      return { j, score: `${m.score.A}-${m.score.B}`, t: m.tempsMatch.toFixed(1) };
+    };
+    const affiche = journal(true), calcule = journal(false);
+    let i = 0;
+    while (i < affiche.j.length && affiche.j[i] === calcule.j[i]) i++;
+    assert.strictEqual(i, Math.max(affiche.j.length, calcule.j.length),
+      `graine ${seed} : premier écart à l'événement ${i} — affiché « ${affiche.j[i]} », calculé « ${calcule.j[i]} »`);
+    assert.strictEqual(affiche.score, calcule.score);
+    assert.strictEqual(affiche.t, calcule.t);
+  }
 });
 
 // --- bugs.md QA-RM-007 : événements, joueurs et équipe disent la même chose ---
