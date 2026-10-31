@@ -131,7 +131,7 @@ Les sommes individuelles des passes, plaquages et mètres correspondent aux somm
 | FUNC-RM-002 | P1 | Livré (TODO_AUDIT P2-135) | Reprendre un match joué après fermeture du navigateur |
 | FUNC-RM-003 | P2 | Livré (TODO_AUDIT P2-136) | Relecture fidèle des décisions du match interactif |
 | FUNC-RM-004 | P2 | À compléter | Instructions individuelles par poste |
-| FUNC-RM-005 | P2 | À compléter | Gestion complète du banc et des changements en direct |
+| FUNC-RM-005 | P2 | Livré (TODO_AUDIT P2-137 à P2-143) | Gestion complète du banc et des changements en direct |
 | FUNC-RM-006 | P2 | À compléter | Donner un rôle concret et explicable au capitaine |
 | FUNC-RM-007 | P2 | À compléter | Rapports qualitatifs de recrutement liés aux données |
 | FUNC-RM-008 | P2 | À compléter | Prévisions financières sur plusieurs saisons |
@@ -316,9 +316,9 @@ Les sommes individuelles des passes, plaquages et mètres correspondent aux somm
 
 **Acceptation :** scénarios contrôlés et matchs appariés montrant un effet sur les choix observés, non sur une statistique ajoutée artificiellement. Instructions légales et incompatibilités expliquées ; réglages conservés après reprise/changement d'équipe.
 
-### [ ] FUNC-RM-005 — Compléter la gestion du banc pendant le match — P2
+### [x] FUNC-RM-005 — Compléter la gestion du banc pendant le match — P2
 
-**Avancement (TODO_AUDIT P2-137) :** à la mi-temps et en cours de jeu, le manager choisit le maillot relevé parmi les postes compatibles (première ligne par première ligne, loi 3 ; avant par avant ; trois-quarts par trois-quarts) ; refus expliqué ; un remplaçant n'entre qu'une fois (défaut corrigé : entré plus tôt que prévu, il entrait une seconde fois à sa minute prévue) ; joueur exclu signalé. Décisions rejouées à la reprise (FUNC-RM-002) et à la relecture (FUNC-RM-003). Blessures en match (TODO_AUDIT P2-138) : nées d'un plaquage, le blessé sort, le remplaçant prévu de son groupe entre aussitôt (à 14 si le banc est épuisé), et la blessure est reportée en carrière sur le joueur qui portait le maillot. Mêlée simulée sans première ligne formée (loi 3, TODO_AUDIT P2-139). Protocole commotion avec remplacement temporaire de 12 minutes (TODO_AUDIT P2-140), saignement (P2-142). Reste : effectif réduit au coup d'envoi (feuille de match incomplète).
+**Avancement (TODO_AUDIT P2-137) :** à la mi-temps et en cours de jeu, le manager choisit le maillot relevé parmi les postes compatibles (première ligne par première ligne, loi 3 ; avant par avant ; trois-quarts par trois-quarts) ; refus expliqué ; un remplaçant n'entre qu'une fois (défaut corrigé : entré plus tôt que prévu, il entrait une seconde fois à sa minute prévue) ; joueur exclu signalé. Décisions rejouées à la reprise (FUNC-RM-002) et à la relecture (FUNC-RM-003). Blessures en match (TODO_AUDIT P2-138) : nées d'un plaquage, le blessé sort, le remplaçant prévu de son groupe entre aussitôt (à 14 si le banc est épuisé), et la blessure est reportée en carrière sur le joueur qui portait le maillot. Mêlée simulée sans première ligne formée (loi 3, TODO_AUDIT P2-139). Protocole commotion avec remplacement temporaire de 12 minutes (TODO_AUDIT P2-140), saignement (P2-142). Feuille de match incomplète (P2-143) : banc sans blessé, première ligne jamais confiée à un autre poste, équipe à 14 sans remplaçant apte, alerte dans l'aperçu.
 
 **État constaté :** changements planifiés et changements en cours de jeu existent déjà. Le panneau de changement proposé dans `main.js` est alimenté par la liste issue de la préparation ; ne pas reconstruire ce chemin en parallèle.
 

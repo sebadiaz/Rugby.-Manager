@@ -4221,6 +4221,30 @@ test('saignement : le joueur sort se faire soigner, un remplaçant temporaire en
   assert.ok(moy >= 6 && moy <= 14, `soins de ${moy.toFixed(1)} min en moyenne`);
 });
 
+test('feuille de match déclarée sans remplaçant (bancA) : un blessé laisse son équipe à 14, personne n est inventé', () => {
+  let blesses = 0, inventes = 0, aQuatorze = 0;
+  for (let seed = 1; seed <= 12; seed++) {
+    const m = new MatchEngine(seed, 4800, { bancA: true });
+    let pose = false;
+    while (m.phase !== 'TERMINE') {
+      m.tick(0.1);
+      if (!pose && m.tempsMatch > 60) { pose = true; m._blessuresEnAttente.push({ equipe: 'A', numero: 12 }); }
+    }
+    for (const b of m.blessuresMatch.filter((x) => x.equipe === 'A' && !x.commotion)) {
+      blesses++;
+      if (m.remplacementsEffectues.some((r) => r.equipe === 'A' && r.numero === b.numero && !r.temporaire && !r.retour)) inventes++;
+      const j = m.equipeA.find((x) => x.numero === b.numero);
+      if (j.sinBin > 1e8) aQuatorze++;
+    }
+    // L'autre équipe, sans feuille déclarée, garde son remplaçant anonyme.
+    assert.ok(m.blessuresMatch.filter((x) => x.equipe === 'B' && !x.commotion)
+      .every((b) => m.remplacementsEffectues.some((r) => r.equipe === 'B' && r.numero === b.numero)), 'B remplace ses blessés');
+  }
+  assert.ok(blesses >= 12, `${blesses} blessés A`);
+  assert.strictEqual(inventes, 0, 'aucun remplaçant inventé pour une feuille déclarée');
+  assert.strictEqual(aQuatorze, blesses, 'chaque blessé A laisse son équipe à 14');
+});
+
 // --- bugs.md QA-RM-007 : événements, joueurs et équipe disent la même chose ---
 test('rapprochement : réussis ≤ tentés partout, et chaque essai ou but du compteur a son événement (QA-RM-007)', () => {
   for (let seed = 1; seed <= 4; seed++) {

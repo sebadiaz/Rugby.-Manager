@@ -939,6 +939,29 @@ test('remplacements : un banc incomplet ne planifie que les remplacements réell
   assert.ok(!remplacements.some((r) => r.numero === 1), 'le numéro couvert par le poste de banc manquant ne doit pas apparaître');
 });
 
+test('feuille de match : un blessé ne s assoit jamais sur le banc ; sans pilier apte, le poste 16 reste vide (FUNC-RM-005)', () => {
+  const s = RMClub.nouvelleSaison(creerRng(404), 'Test Banc Blesses');
+  const c = s.clubJoueur;
+  c.compositionTitulaires = RMClub.meilleureComposition(c.effectif);
+  const titulaires = new Set(Object.values(c.compositionTitulaires));
+  // Tous les piliers non titulaires sont blessés, ainsi qu'un centre.
+  const piliersBanc = c.effectif.filter((j) => j.poste === 'P' && !titulaires.has(j.id));
+  assert.ok(piliersBanc.length >= 1, 'prémisse : un pilier hors du XV');
+  for (const j of piliersBanc) j.blessureJournees = 12;
+  const bancAvant = RMClub.completerCompositionBanc(c.effectif, c.compositionTitulaires, {});
+  const banc = RMClub.completerCompositionBanc(c.effectif, c.compositionTitulaires, bancAvant);
+  for (const [n, id] of Object.entries(banc)) {
+    const j = c.effectif.find((x) => x.id === id);
+    assert.ok(!(j.blessureJournees > 0), `n°${n} : ${j.nom} est blessé et sur le banc`);
+  }
+  assert.ok(!banc['16'], `poste 16 confié à ${banc['16'] && c.effectif.find((x) => x.id === banc['16']).poste} faute de pilier apte`);
+  assert.ok(Object.keys(banc).length === 7, `${Object.keys(banc).length} remplaçants`);
+  // Un blessé choisi à la main est retiré au moment de compléter.
+  const blesse = piliersBanc[0];
+  const force = RMClub.completerCompositionBanc(c.effectif, c.compositionTitulaires, { 16: blesse.id });
+  assert.notStrictEqual(force['16'], blesse.id, 'le pilier blessé choisi à la main ne reste pas sur le banc');
+});
+
 test('remplacements : un banc entièrement vide ne planifie aucun remplacement (comportement historique inchangé)', () => {
   const s = RMClub.nouvelleSaison(creerRng(402), 'Test Remplacements Vide');
   assert.deepStrictEqual(RMClub.remplacementsVersConfig(s.clubJoueur.effectif, {}, 'A'), []);

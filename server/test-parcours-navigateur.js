@@ -4663,6 +4663,48 @@ function optionsLancement() {
     await ctxP.close();
   }
 
+  // --- BANC INCOMPLET (bugs.md FUNC-RM-005) --------------------------------
+  // Les piliers hors du XV sont blessés : aucun ne s'assoit sur le banc, et
+  // l'aperçu du match annonce le banc incomplet et sa conséquence.
+  {
+    const ctxBc = await browser.newContext({ viewport: { width: 1400, height: 1000 } });
+    const pgBc = await ctxBc.newPage();
+    const erreursBc = [];
+    pgBc.on('pageerror', (e) => erreursBc.push(e.message));
+    pgBc.on('dialog', async (d) => { await d.accept(); });
+    await pgBc.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+    await pgBc.click('#btnAccueilModeClub');
+    await pgBc.fill('#inputNomClub', 'AS Banc Court');
+    await pgBc.click('#btnCreerClub');
+    await pgBc.waitForTimeout(800);
+    const blessesBc = await pgBc.evaluate(() => {
+      const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
+      const c = s.clubJoueur;
+      const tit = new Set(Object.values(c.compositionTitulaires || {}));
+      const ids = [];
+      for (const j of c.effectif) {
+        if (j.poste !== 'P' || tit.has(j.id)) continue;
+        j.blessureJournees = 60;
+        j.blessure = { id: 'blb' + ids.length, type: 'entorse', libelle: 'Entorse', zone: 'cheville', gravite: 2, joursReels: 60,
+          joursEcoules: 0, joursMin: 55, joursMax: 65, cause: 'match', risqueRechute: 0.1, etape: 'soins' };
+        ids.push(j.id);
+      }
+      localStorage.setItem('rugbyManager.club.v1', JSON.stringify(s));
+      return ids;
+    });
+    await pgBc.reload({ waitUntil: 'networkidle' });
+    await pgBc.click('#btnContinuerClub');
+    await pgBc.waitForTimeout(800);
+    verifier('banc incomplet : prémisse — aperçu', blessesBc.length >= 1 && await continuerJusquAuMatch(pgBc));
+    const texteBc = await pgBc.textContent('#apercuMatchCorps');
+    verifier('banc incomplet : l aperçu annonce 7/8 remplaçants, aucun pilier apte, et la conséquence',
+      /Banc incomplet : 7\/8 remplaçants — aucun pilier apte/.test(texteBc) && /mêlées simulées/.test(texteBc), texteBc.slice(0, 300));
+    const bancBc = await pgBc.evaluate(() => JSON.parse(localStorage.getItem('rugbyManager.club.v1')).clubJoueur.compositionBanc || {});
+    verifier('banc incomplet : aucun pilier blessé sur la feuille', !Object.values(bancBc).some((id) => blessesBc.includes(id)), JSON.stringify(bancBc));
+    verifier('banc incomplet : aucune erreur de page', erreursBc.length === 0, erreursBc.join(' | '));
+    await ctxBc.close();
+  }
+
   // --- SORTIE DE SECOURS ----------------------------------------------------
   // Signale en jeu : « mon jeu est bloque, je ne peux ni rentrer dedans ni
   // supprimer pour continuer ». Le seul bouton de remise a zero vivait DANS le

@@ -371,6 +371,9 @@
     }
     const remplacements = RMClub.remplacementsVersConfig(effectif, slot.compositionBanc, lettreEquipe);
     if (remplacements.length) tactiqueCfg.remplacements = remplacements;
+    // Feuille de match réelle, même incomplète : un blessé sans remplaçant
+    // apte laisse son équipe à 14, le moteur n'invente personne (FUNC-RM-005).
+    tactiqueCfg['banc' + lettreEquipe] = true;
     return tactiqueCfg;
   }
 
@@ -6316,9 +6319,20 @@
     const blesses = joueursTitulaires.filter((j) => j.blessureJournees > 0);
     const fatigues = joueursTitulaires.filter((j) => !( j.blessureJournees > 0) && (j.fatigue || 0) >= 65);
     const capitaine = c.effectif.find((j) => j.id === c.capitaineId);
+    // Feuille de match (FUNC-RM-005) : un poste de banc sans remplaçant apte
+    // reste vide. Le manager le sait AVANT le coup d'envoi, avec la
+    // conséquence réelle en match.
+    const postesBanc = RMClub.POSTE_REQUIS_BANC || {};
+    const bancVides = Object.keys(postesBanc).filter((n) => !(c.compositionBanc || {})[n]);
+    const libellePoste = (p) => (RMClub.POSTE_COMPLET && RMClub.POSTE_COMPLET[p]) || p;
     const alertesCompo = [
       ...blesses.map((j) => `🤕 ${j.nom} joue diminué (blessé)`),
       ...fatigues.map((j) => `⚡ ${j.nom} est très fatigué`),
+      ...(bancVides.length ? [`🪑 Banc incomplet : ${8 - bancVides.length}/8 remplaçants — aucun ${bancVides.map((n) => libellePoste(postesBanc[n]).toLowerCase()).join(', ')} apte. `
+        + (bancVides.some((n) => n === '16' || n === '17')
+          ? 'Une blessure en première ligne sans relève donnera des mêlées simulées ; '
+          : '')
+        + 'un blessé sans remplaçant laissera l\'équipe à 14.'] : []),
     ];
 
     // Remplacements prévus (TODO_AUDIT.md P1-17) : le banc de 8 était

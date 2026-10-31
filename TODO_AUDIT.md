@@ -580,6 +580,38 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-143. Feuille de match incomplète : banc sans blessé, effectif réduit assumé — bugs.md FUNC-RM-005
+- **Statut : LIVRÉ** (clôt FUNC-RM-005)
+- Fichiers concernés : `docs/js/club-composition.js` (`completerCompositionBanc`), `docs/js/clubUI.js` (config du
+  match, aperçu), `docs/js/main.js` (`CLES_TACTIQUE_PAR_EQUIPE`), `engine/rugby-engine.js` et `docs/rugby-engine.js`
+  (`_aBancDeclare`), `server/test-parcours-club.js`, `server/test-invariants.js`, `server/test-parcours-navigateur.js`,
+  `bugs.md`.
+
+**Constat.**
+- Un blessé pouvait s'asseoir sur le banc : faute de pilier apte, le banc prenait un pilier blessé (mesuré : « n°16 :
+  Lucas Boyer est blessé et sur le banc »), qui entrait ensuite à la 50e.
+- Faute de pilier du tout, le repli « autre poste » mettait n'importe qui au poste 16, qui entrait au n°1.
+- Un club sans aucun remplaçant apte n'envoyait pas de banc au moteur : celui-ci inventait alors des remplaçants
+  anonymes pour ses blessés.
+- Rien ne prévenait le manager avant le coup d'envoi.
+
+**Correction.**
+- Le banc ne prend que des joueurs aptes ; un blessé choisi à la main est retiré. La première ligne (16, 17) n'est
+  jamais confiée à un autre poste : le poste reste vide.
+- Le club déclare toujours sa feuille (`bancA/bancB`) : un blessé sans remplaçant apte laisse l'équipe à 14, jamais
+  de joueur inventé. L'adversaire géré par l'ordinateur garde son remplaçant anonyme. La clé est effacée entre deux
+  matchs (le club change de côté).
+- Aperçu du match : « 🪑 Banc incomplet : 7/8 remplaçants — aucun pilier apte. Une blessure en première ligne sans
+  relève donnera des mêlées simulées ; un blessé sans remplaçant laissera l'équipe à 14. »
+
+**Tests.**
+- Club : piliers hors du XV blessés → aucun blessé sur le banc, poste 16 vide, 7 remplaçants ; un pilier blessé
+  choisi à la main est retiré. L'ancien code échoue (pilier blessé au n°16).
+- Invariant : `bancA` sans remplaçant, centre blessé (12 graines) → 0 remplaçant inventé, A à 14 ; B garde son
+  remplaçant anonyme. L'ancien moteur échoue.
+- Navigateur 1400×1000 et 390×844 (captures vérifiées) : alerte dans l'aperçu, aucun pilier blessé sur la feuille.
+- Match rapide strictement inchangé (la clé n'existe qu'en Mode Club).
+
 ### P2-142. Saignement : sortie pour soins avec remplacement temporaire — bugs.md FUNC-RM-005
 - **Statut : LIVRÉ**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_tirerBlessureContact`,

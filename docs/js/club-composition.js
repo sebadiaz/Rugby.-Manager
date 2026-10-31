@@ -315,16 +315,24 @@
   // écraser" que completerComposition.
   const POSTE_REQUIS_BANC = { 16: 'P', 17: 'T', 18: '2L', 19: '3L', 20: 'DM', 21: 'OV', 22: 'CE', 23: 'AR' };
 
+  // Feuille de match (bugs.md FUNC-RM-005) : un blessé ne s'assoit pas sur le
+  // banc, il n'en sortirait pas. Faute de remplaçant apte, le poste reste
+  // VIDE — le banc est alors incomplet, et l'aperçu du match le dit. La
+  // première ligne (16, 17) n'est jamais confiée à un autre poste (loi 3) :
+  // un ailier « pilier remplaçant » entrerait au n°1.
+  const POSTES_SPECIALISTES_BANC = { 16: true, 17: true };
   function completerCompositionBanc(effectif, compositionTitulaires, bancPartiel) {
     const parId = {};
     for (const j of effectif) parId[j.id] = j;
+    const apte = (j) => !(j.blessureJournees > 0);
+    const aptes = effectif.filter(apte);
     const utilisesTitulaires = new Set(Object.values(compositionTitulaires || {}));
     const banc = {};
     const utilisesBanc = new Set();
     for (const numero of Object.keys(POSTE_REQUIS_BANC)) {
       const id = bancPartiel && bancPartiel[numero];
       const j = id && parId[id];
-      if (j && !j.pret && !utilisesTitulaires.has(id) && !utilisesBanc.has(id)) {
+      if (j && !j.pret && apte(j) && !utilisesTitulaires.has(id) && !utilisesBanc.has(id)) {
         banc[numero] = id;
         utilisesBanc.add(id);
       }
@@ -332,7 +340,9 @@
     for (const numero of Object.keys(POSTE_REQUIS_BANC)) {
       if (banc[numero]) continue;
       const exclus = new Set([...utilisesTitulaires, ...utilisesBanc]);
-      const meilleur = meilleurCandidatPourNumero(effectif, POSTE_REQUIS_BANC[numero], exclus);
+      const poste = POSTE_REQUIS_BANC[numero];
+      const pool = POSTES_SPECIALISTES_BANC[numero] ? aptes.filter((j) => j.poste === poste) : aptes;
+      const meilleur = meilleurCandidatPourNumero(pool, poste, exclus);
       if (!meilleur) continue;
       banc[numero] = meilleur.id;
       utilisesBanc.add(meilleur.id);

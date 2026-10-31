@@ -7957,7 +7957,10 @@
 
     // Banc déclaré : des remplaçants nommés (Mode Club). Les entrées que le
     // moteur crée lui-même (anonymes, temporaires, retours) n'en sont pas.
+    // `config.bancA/bancB === true` : l'équipe a une vraie feuille de match,
+    // même sans aucun remplaçant apte (Mode Club) — jamais de remplaçant inventé.
     _aBancDeclare(equipe) {
+      if (this.cfg['banc' + equipe] === true) return true;
       return this._remplacements.some((x) => x.equipe === equipe && !x.blessure && !x.temporaire && !x.retour);
     }
 
