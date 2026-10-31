@@ -580,6 +580,20 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-141. Coup d'envoi lisible : les notifications du club ne couvrent plus les commandes du match
+- **Statut : LIVRÉ**
+- Fichiers concernés : `docs/js/main.js` (`lancerMatchJoue`), `server/test-parcours-navigateur.js`.
+
+**Constat.** Les confirmations de gestion émises en avançant jusqu'au match (« Avance interrompue », demandes sans
+réponse) restaient empilées au coup d'envoi, en bas de l'écran, sur les boutons Pause, Terminer et Menu (vu sur les
+captures de P2-139 : quatre bandeaux rouges sur les commandes).
+
+**Correction.** Au lancement d'un match joué, les notifications encore affichées sont retirées : elles concernent
+l'écran quitté.
+
+**Tests.** Navigateur : 4 notifications avant le coup d'envoi, 0 après ; l'ancien code en laisse 4. Captures
+1400×1000 et 390×844 vérifiées : commandes dégagées.
+
 ### P2-140. Protocole commotion : remplacement temporaire de 12 minutes — bugs.md FUNC-RM-005
 - **Statut : LIVRÉ**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_ouvrirProtocole`, `_resoudreProtocoles`,

@@ -539,6 +539,12 @@
     };
     const btn = document.getElementById('btnConsigneMatch');
     if (btn) btn.style.display = '';
+    // Les confirmations de gestion du club encore affichées (avance du
+    // calendrier, demandes en attente) se posaient sur les commandes du
+    // match au coup d'envoi : elles concernent l'écran qu'on vient de
+    // quitter, on les retire.
+    const toasts = document.getElementById('toastContainer');
+    if (toasts) toasts.replaceChildren();
     // Sortie EXPLICITE d'un match joué en direct : le manager doit pouvoir
     // quitter sans aller la chercher dans le menu (signalé en jeu : « je ne
     // peux plus sortir »). Le bouton n'existe que pendant un match joué —

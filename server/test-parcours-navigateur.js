@@ -4629,7 +4629,12 @@ function optionsLancement() {
     await pgP.waitForTimeout(700);
     await pgP.selectOption('#selDureeClub', '300');
     verifier('protocole : prémisse — aperçu', await continuerJusquAuMatch(pgP));
+    const toastsAvant = await pgP.$$eval('#toastContainer .toast', (t) => t.length);
     await pgP.click('#btnApercuJouerMatch');
+    await pgP.waitForTimeout(300);
+    const toastsApres = await pgP.$$eval('#toastContainer .toast', (t) => t.length);
+    verifier('coup d envoi : les notifications du club ne recouvrent plus les commandes du match',
+      toastsAvant >= 1 && toastsApres === 0, `${toastsAvant} avant, ${toastsApres} après`);
     let p = null;
     for (let t = 0; t < 1200 && !p; t++) {
       p = await pgP.evaluate(() => { const e = window.RMMain.etatActuel(); return e && e.protocoles && e.protocoles[0] || null; });
