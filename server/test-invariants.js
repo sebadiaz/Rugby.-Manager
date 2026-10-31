@@ -3103,7 +3103,9 @@ test('transformation : sur un essai excentré, le buteur recule pour ouvrir l an
   // l'essai. Le moteur le posait toujours à 10 m : 56 % de réussite au total
   // (49 % dès 10 m d'écart latéral) pour ~75 % en réel.
   let excentres = 0, recules = 0, tentees = 0, reussies = 0;
-  for (let seed = 1; seed <= 12; seed++) {
+  // 24 graines : sur 12 (~80 tirs) le taux tombait à 54 % selon le seul
+  // bruit, alors qu'il est de 67,5 % sur 100 graines (P2-147).
+  for (let seed = 1; seed <= 24; seed++) {
     const m = new MatchEngine(seed, 4800);
     const brut = m.log.bind(m);
     m.log = (type, team, msg, extra) => {
