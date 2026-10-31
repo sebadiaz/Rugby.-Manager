@@ -130,7 +130,9 @@
     if (pct && Number.isFinite(pct.A) && Number.isFinite(pct.B)) {
       possession = { a: pct.A, b: pct.B, mesuree: true, libelle: 'Possession',
         aide: 'Part du temps de jeu effectif où chaque équipe avait le ballon' +
-          (jeuEffectif ? ` (${Math.round(jeuEffectif / 60)} min de jeu effectif)` : '') };
+          // Arrondi à la seconde d'abord, comme l'archive (club-archives-matchs.js) :
+          // sinon 2 309,6 s donnait 38 min en direct et 39 une fois archivé.
+          (jeuEffectif ? ` (${Math.round(Math.round(jeuEffectif) / 60)} min de jeu effectif)` : '') };
     } else if (rucksTotal > 0) {
       possession = { a: Math.round((nombre(statsA.rucks) / rucksTotal) * 100),
         b: Math.round((nombre(statsB.rucks) / rucksTotal) * 100), mesuree: false,
