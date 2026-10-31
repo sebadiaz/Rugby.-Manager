@@ -3665,7 +3665,7 @@ function optionsLancement() {
       miTempsVue = true;
       const consignes = await pgLive.$$('.btnConsigneMiTemps');
       if (consignes.length) { await consignes[0].click().catch(() => {}); await pgLive.waitForTimeout(250); }
-      const remplacants = await pgLive.$$('.btnRemplacantMiTemps');
+      const remplacants = await pgLive.$$('.btnRemplacantMiTemps:not([disabled])');
       if (remplacants.length) { await remplacants[0].click().catch(() => {}); await pgLive.waitForTimeout(250); }
       if (await pgLive.isVisible('#btnMiTempsReprendre')) await pgLive.click('#btnMiTempsReprendre');
       await pgLive.waitForTimeout(250);
@@ -4323,7 +4323,9 @@ function optionsLancement() {
         miTempsRep = true;
         const c = await pgRep.$$('.btnConsigneMiTemps');
         if (c.length) { await c[1].click(); await pgRep.waitForTimeout(200); }
-        const r = await pgRep.$$('.btnRemplacantMiTemps');
+        // Premier remplaçant encore disponible : une blessure ou un protocole
+        // a pu faire entrer le premier avant la mi-temps (bouton désactivé).
+        const r = await pgRep.$$('.btnRemplacantMiTemps:not([disabled])');
         if (r.length) { await r[0].click(); await pgRep.waitForTimeout(200); }
         await pgRep.click('#btnMiTempsReprendre');
         break;
@@ -4440,7 +4442,9 @@ function optionsLancement() {
         miTempsRel = true;
         const c = await pgRel.$$('.btnConsigneMiTemps');
         if (c.length) { await c[1].click(); await pgRel.waitForTimeout(200); }
-        const r = await pgRel.$$('.btnRemplacantMiTemps');
+        // Premier remplaçant encore disponible : une blessure ou un protocole
+        // a pu faire entrer le premier avant la mi-temps (bouton désactivé).
+        const r = await pgRel.$$('.btnRemplacantMiTemps:not([disabled])');
         if (r.length) { await r[0].click(); await pgRel.waitForTimeout(200); }
         await pgRel.click('#btnMiTempsReprendre');
         break;
@@ -4509,6 +4513,10 @@ function optionsLancement() {
     pgBanc.on('pageerror', (e) => erreursBanc.push(e.message));
     pgBanc.on('dialog', async (d) => { await d.accept(); });
     await pgBanc.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+    // Ce bloc vérifie le panneau du pilier n°16 : sans incident de contact
+    // (blessure, commotion, saignement — couverts par leurs propres blocs),
+    // aucun ne peut le faire entrer avant la mi-temps.
+    await pgBanc.evaluate(() => { window.RugbyEngine.MatchEngine.prototype._tirerBlessureContact = () => {}; });
     await pgBanc.click('#btnAccueilModeClub');
     await pgBanc.fill('#inputNomClub', 'AS Banc');
     await pgBanc.click('#btnCreerClub');
