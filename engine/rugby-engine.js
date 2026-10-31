@@ -645,6 +645,9 @@
   const PROBA_PROTOCOLE_CONTACT = 0.0012;
   const DUREE_PROTOCOLE = 720;
   const PROBA_RETOUR_PROTOCOLE = 0.65;
+  // Saignement (loi 3, remplacement temporaire) : le joueur sort se faire
+  // soigner 6 à 15 minutes et revient ; ~0,6 par match.
+  const PROBA_SAIGNEMENT_CONTACT = 0.0010;
 
   function avancer(j, dx, dy, dt, vmax) {
     const d = Math.hypot(dx, dy);
@@ -7662,9 +7665,9 @@
           // lisible — le moteur n'a sinon aucune notion de nom de joueur.
           const qui = c.nom || 'nouveau joueur';
           this.log('REMPLACEMENT', r.equipe, r.retour
-            ? `Retour equipe ${r.equipe} : ${c.nom || 'le joueur'} reprend le n°${r.numero} apres le protocole commotion`
+            ? `Retour equipe ${r.equipe} : ${c.nom || 'le joueur'} reprend le n°${r.numero} apres ${r.nature === 'saignement' ? 'ses soins' : 'le protocole commotion'}`
             : r.temporaire
-              ? `Remplacement temporaire equipe ${r.equipe} : ${qui} tient le n°${r.numero} pendant le protocole commotion`
+              ? `Remplacement temporaire equipe ${r.equipe} : ${qui} tient le n°${r.numero} pendant ${r.nature === 'saignement' ? 'les soins (saignement)' : 'le protocole commotion'}`
               : c.nom
                 ? `Remplacement equipe ${r.equipe} : ${c.nom} entre en jeu au n°${r.numero}`
                 : `Remplacement equipe ${r.equipe} : nouveau joueur au n°${r.numero}`);
@@ -7941,7 +7944,10 @@
         // son maillot attend déjà une décision.
         if (this._protocoleEnCours(j.team, j.numero)) continue;
         if (r < PROBA_BLESSURE_CONTACT) this._blessuresEnAttente.push({ equipe: j.team, numero: j.numero });
-        else if (r < PROBA_BLESSURE_CONTACT + PROBA_PROTOCOLE_CONTACT) this._blessuresEnAttente.push({ equipe: j.team, numero: j.numero, protocole: true });
+        else if (r < PROBA_BLESSURE_CONTACT + PROBA_PROTOCOLE_CONTACT) this._blessuresEnAttente.push({ equipe: j.team, numero: j.numero, protocole: 'commotion' });
+        else if (r < PROBA_BLESSURE_CONTACT + PROBA_PROTOCOLE_CONTACT + PROBA_SAIGNEMENT_CONTACT) {
+          this._blessuresEnAttente.push({ equipe: j.team, numero: j.numero, protocole: 'saignement' });
+        }
       }
     }
 
@@ -7960,9 +7966,11 @@
     // son entrée prévue (un remplacement temporaire ne compte pas). Sans
     // remplaçant disponible, l'équipe joue à 14 le temps du protocole.
     _ouvrirProtocole(b, j, groupe) {
-      const duree = DUREE_PROTOCOLE * this._echelleArret;
+      const nature = b.protocole === 'saignement' ? 'saignement' : 'commotion';
+      // Un saignement se soigne en 6 à 15 minutes ; le protocole commotion dure 12 minutes.
+      const duree = (nature === 'saignement' ? (6 + this.rngBlessures() * 9) * 60 : DUREE_PROTOCOLE) * this._echelleArret;
       const cle = b.equipe === 'A' ? 'joueursA' : 'joueursB';
-      const p = { equipe: b.equipe, numero: b.numero, debut: this.tempsMatch, fin: this.tempsMatch + duree,
+      const p = { nature, equipe: b.equipe, numero: b.numero, debut: this.tempsMatch, fin: this.tempsMatch + duree, resolu: null,
         joueurId: this._occupants[b.equipe][b.numero] != null ? this._occupants[b.equipe][b.numero] : null,
         joueurIdTemp: null, aQuatorze: false, issue: null,
         // Profil du joueur qui sort, pour son éventuel retour.
@@ -7987,12 +7995,16 @@
       if (joueur) {
         p.joueurIdTemp = joueurId;
         this._remplacements.push({ equipe: b.equipe, numero: b.numero, joueur, instant: this.tempsMatch,
-          applique: false, joueurId, temporaire: true });
-        this.log('PROTOCOLE_COMMOTION', b.equipe, `Protocole commotion : le n°${b.numero} de l'equipe ${b.equipe} sort pour 12 minutes, remplacement temporaire`);
+          applique: false, joueurId, temporaire: true, nature });
       } else {
         p.aQuatorze = true;
         j.sinBin = duree;
-        this.log('PROTOCOLE_COMMOTION', b.equipe, `Protocole commotion : le n°${b.numero} de l'equipe ${b.equipe} sort pour 12 minutes, plus de remplacant - a 14`);
+      }
+      const suite = p.aQuatorze ? 'plus de remplacant - a 14' : 'remplacement temporaire';
+      if (nature === 'saignement') {
+        this.log('SAIGNEMENT', b.equipe, `Saignement : le n°${b.numero} de l'equipe ${b.equipe} sort se faire soigner, ${suite}`);
+      } else {
+        this.log('PROTOCOLE_COMMOTION', b.equipe, `Protocole commotion : le n°${b.numero} de l'equipe ${b.equipe} sort pour 12 minutes, ${suite}`);
       }
       this.protocoles.push(p);
     }
@@ -8006,14 +8018,18 @@
         const j = (p.equipe === 'A' ? this.equipeA : this.equipeB).find((x) => x.numero === p.numero);
         // Jamais au milieu d'une action avec le ballon, ni pendant un carton du maillot.
         if (!j || j === this.porteur || (!p.aQuatorze && j.sinBin > 0)) continue;
-        if (this.rngBlessures() < PROBA_RETOUR_PROTOCOLE) {
+        p.resolu = this.tempsMatch;
+        // Un saignement soigné revient toujours ; une commotion, deux fois sur trois.
+        if (p.nature === 'saignement' || this.rngBlessures() < PROBA_RETOUR_PROTOCOLE) {
           p.issue = 'retour';
           if (p.aQuatorze) j.sinBin = 0;
           else {
             this._remplacements.push({ equipe: p.equipe, numero: p.numero, joueur: Object.assign({}, p._profil),
-              instant: this.tempsMatch, applique: false, joueurId: p.joueurId, retour: true });
+              instant: this.tempsMatch, applique: false, joueurId: p.joueurId, retour: true, nature: p.nature });
           }
-          this.log('RETOUR_PROTOCOLE', p.equipe, `Protocole commotion : le n°${p.numero} de l'equipe ${p.equipe} est apte et revient en jeu`);
+          this.log('RETOUR_PROTOCOLE', p.equipe, p.nature === 'saignement'
+            ? `Saignement soigne : le n°${p.numero} de l'equipe ${p.equipe} revient en jeu`
+            : `Protocole commotion : le n°${p.numero} de l'equipe ${p.equipe} est apte et revient en jeu`);
         } else {
           p.issue = 'echec';
           this.blessuresMatch.push({ equipe: p.equipe, numero: p.numero, instant: this.tempsMatch, joueurId: p.joueurId, commotion: true });

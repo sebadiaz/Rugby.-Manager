@@ -580,6 +580,29 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-142. Saignement : sortie pour soins avec remplacement temporaire — bugs.md FUNC-RM-005
+- **Statut : LIVRÉ**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_tirerBlessureContact`,
+  `_ouvrirProtocole`, `_resoudreProtocoles`, messages de remplacement), `docs/js/constants.js`, `docs/js/ui.js`,
+  `docs/js/main.js`, `server/test-invariants.js`.
+
+**Constat.** Un joueur qui saigne sort se faire soigner (loi 3, remplacement temporaire) : ce fait de match courant
+n'existait pas.
+
+**Correction.** Le tirage du contact (même tirage que la blessure et la commotion, qui gardent exactement leurs
+issues) donne aussi un saignement (0,10 % par joueur engagé). Le joueur sort 6 à 15 minutes ; le remplaçant prévu de
+son groupe le relève sans consommer son entrée (même mécanisme que le protocole commotion, P2-140), puis le joueur
+revient toujours. Bandeau du soigneur 🩸, fil « tient le n°7 pendant les soins (saignement) » puis « reprend le n°7
+après ses soins », panneau du banc « saignement, jusqu'à la Xe minute au plus tard ».
+
+**Mesures (100 graines appariées, P2-140 → après).** Saignements 0 → 0,67 par match ; protocoles commotion 0,69
+(inchangé) ; blessés 1,73 (inchangé) ; points 58,1 → 59,6 (±1,7, non significatif) ; essais 6,83 → 7,07 (±0,29) ;
+mêlées, touches, rucks, passes stables. Calibration 14/14, 55,9 points.
+
+**Tests.** Invariant (24 graines) : chaque saignement annoncé, remplaçant temporaire au même instant, retour en 15
+minutes au plus, jamais de blessure, soins de 6 à 14 minutes en moyenne. L'ancien moteur échoue (0 saignement).
+Navigateur 1400×1000 et 390×844 (captures vérifiées), mise en scène : bandeaux, panneau, retour.
+
 ### P2-141. Coup d'envoi lisible : les notifications du club ne couvrent plus les commandes du match
 - **Statut : LIVRÉ**
 - Fichiers concernés : `docs/js/main.js` (`lancerMatchJoue`), `server/test-parcours-navigateur.js`.

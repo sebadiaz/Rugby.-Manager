@@ -4154,8 +4154,9 @@ test('protocole commotion : sortie 12 minutes, remplaçant temporaire, puis reto
       if (new Set(ids).size !== ids.length) doublons++;
     }
     const st = m.getState();
-    assert.strictEqual(ev, st.protocoles.length, 'chaque protocole est annoncé');
-    for (const p of st.protocoles) {
+    const commotions = st.protocoles.filter((p) => p.nature === 'commotion');
+    assert.strictEqual(ev, commotions.length, 'chaque protocole est annoncé');
+    for (const p of commotions) {
       protocoles++;
       const temp = st.remplacementsEffectues.find((r) => r.equipe === p.equipe && r.numero === p.numero && r.temporaire && Math.abs(r.instant - p.debut) < 0.5);
       if (!temp) {
@@ -4179,6 +4180,41 @@ test('protocole commotion : sortie 12 minutes, remplaçant temporaire, puis reto
   assert.ok(protocoles / N >= 0.3 && protocoles / N <= 1.5, `${(protocoles / N).toFixed(2)} protocole(s) par match`);
   assert.ok(retours >= 3 && echecs >= 2, `${retours} retours, ${echecs} échecs`);
   console.log(`     ${protocoles} protocoles, ${retours} retours, ${echecs} échecs, ${relances} remplaçants temporaires entrés ensuite pour de bon`);
+});
+
+test('saignement : le joueur sort se faire soigner, un remplaçant temporaire entre, il revient avant 15 minutes', () => {
+  const ref = new MatchEngine(1, 4800);
+  const banc = [[1, 50], [2, 54], [4, 58], [6, 62], [9, 65], [10, 68], [12, 71], [15, 75]].map(([numero, minute], i) => ({
+    equipe: 'A', numero, minute, joueur: Object.assign({}, ref.cfg.joueurs[numero]), joueurId: 'banc' + i }));
+  let saignements = 0, retours = 0, annonces = 0, durees = [];
+  const N = 24;
+  for (let seed = 1; seed <= N; seed++) {
+    const m = new MatchEngine(seed, 4800, { remplacements: banc });
+    const log = m.log.bind(m);
+    m.log = (t, ...r) => { if (t === 'SAIGNEMENT') annonces++; return log(t, ...r); };
+    m.jouerJusquAuSifflet(0.1);
+    const st = m.getState();
+    for (const p of st.protocoles.filter((x) => x.nature === 'saignement')) {
+      saignements++;
+      assert.ok(p.aQuatorze || st.remplacementsEffectues.some((r) => r.numero === p.numero && r.equipe === p.equipe && r.temporaire && Math.abs(r.instant - p.debut) < 0.5),
+        'un remplaçant temporaire entre au même instant');
+      if (p.issue === 'retour') {
+        retours++;
+        const retour = st.remplacementsEffectues.find((r) => r.numero === p.numero && r.equipe === p.equipe && r.retour && r.instant >= p.debut);
+        const fin = retour ? retour.instant : p.resolu;
+        durees.push((fin - p.debut) / 60);
+        // 15 minutes au plus (plus le ballon à rendre s'il porte au même moment).
+        assert.ok(fin - p.debut <= 900 * m._echelleArret + 30, `${((fin - p.debut) / 60).toFixed(1)} min de soins`);
+      } else {
+        assert.ok(!p.issue, `un saignement ne finit jamais en blessure : ${JSON.stringify(p)}`);
+      }
+    }
+  }
+  assert.strictEqual(annonces, saignements, 'chaque saignement est annoncé');
+  assert.ok(saignements / N >= 0.3 && saignements / N <= 1.5, `${(saignements / N).toFixed(2)} saignement(s) par match`);
+  assert.ok(retours >= 0.8 * saignements, `${retours} retours pour ${saignements} saignements`);
+  const moy = durees.reduce((a, b) => a + b, 0) / durees.length;
+  assert.ok(moy >= 6 && moy <= 14, `soins de ${moy.toFixed(1)} min en moyenne`);
 });
 
 // --- bugs.md QA-RM-007 : événements, joueurs et équipe disent la même chose ---
