@@ -3675,7 +3675,8 @@ test('page joueur : de bout en bout, un vrai match avec remplacements crédite c
     { equipe: 'A', numero: 9, minute: 45, joueurId: entrants[9].id, joueur: { poste: 'Demi de mêlée' } },
     { equipe: 'A', numero: 2, minute: 55, joueurId: entrants[2].id, joueur: { poste: 'Talonneur' } },
   ];
-  const m = new global.window.RugbyEngine.MatchEngine(31, 4800, { remplacements });
+  // Minutes exactes attendues : sans blessure, commotion ni saignement (couverts par test-invariants).
+  const m = new global.window.RugbyEngine.MatchEngine(31, 4800, { remplacements, blessures: false });
   m.jouerJusquAuSifflet(0.2);
   const etat = global.window.RMMatchState
     ? global.window.RMMatchState.normalizeMatchState(m.getState()) : m.getState();
