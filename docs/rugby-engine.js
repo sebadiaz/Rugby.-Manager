@@ -639,6 +639,12 @@
   // Blessure par joueur engagé dans un plaquage (porteur ou plaqueur) :
   // ~200 plaquages par match donnent ~1,5 blessé par match (bugs.md FUNC-RM-005).
   const PROBA_BLESSURE_CONTACT = 0.0028;
+  // Commotion présumée (protocole HIA) au contact : le joueur sort 12 minutes,
+  // un remplaçant temporaire tient son poste ; ~0,7 protocole par match, et
+  // un joueur sur trois environ ne revient pas.
+  const PROBA_PROTOCOLE_CONTACT = 0.0012;
+  const DUREE_PROTOCOLE = 720;
+  const PROBA_RETOUR_PROTOCOLE = 0.65;
 
   function avancer(j, dx, dy, dt, vmax) {
     const d = Math.hypot(dx, dy);
@@ -1060,6 +1066,8 @@
       this._blessuresEnAttente = [];
       // Qui porte chaque maillot (joueurId club) après un remplacement.
       this._occupants = { A: {}, B: {} };
+      // Protocoles commotion (FUNC-RM-005) : en cours puis résolus.
+      this.protocoles = [];
       // Remplacements planifiés (Mode Club, TODO_AUDIT.md P1-17) :
       // config.remplacements, optionnel — [{equipe:'A'|'B', numero, minute,
       // joueur:{...attributs}}]. Absent par défaut (tous les appels existants,
@@ -7598,6 +7606,10 @@
       if (this._remplacements.length) {
         for (const r of this._remplacements) {
           if (r.applique || this.tempsMatch < r.instant) continue;
+          // Remplaçant temporaire encore sur le terrain : son entrée prévue
+          // attend la fin du protocole (il ne peut pas tenir deux maillots).
+          if (!r.temporaire && !r.retour && r.joueurId != null
+            && this.protocoles.some((p) => !p.issue && p.equipe === r.equipe && p.joueurIdTemp === r.joueurId)) continue;
           r.applique = true;
           const equipe = r.equipe === 'A' ? this.equipeA : this.equipeB;
           const sortant = equipe && equipe[r.numero - 1];
@@ -7607,7 +7619,8 @@
           const lignes = this.statsJoueurs[r.equipe];
           this.statsJoueursSortis[r.equipe].push({ numero: r.numero, sortie: this.tempsMatch, stats: lignes[r.numero] || null });
           delete lignes[r.numero];
-          this.remplacementsEffectues.push({ equipe: r.equipe, numero: r.numero, instant: this.tempsMatch, joueurId: r.joueurId });
+          this.remplacementsEffectues.push(Object.assign({ equipe: r.equipe, numero: r.numero, instant: this.tempsMatch, joueurId: r.joueurId },
+            r.temporaire ? { temporaire: true } : null, r.retour ? { retour: true } : null));
           this._occupants[r.equipe][r.numero] = r.joueurId;
           const c = r.joueur || {};
           Object.assign(sortant, {
@@ -7647,9 +7660,14 @@
           // `c.nom` (optionnel, ignoré par Object.assign ci-dessus qui ne lit
           // que les attributs de performance) : purement pour un message
           // lisible — le moteur n'a sinon aucune notion de nom de joueur.
-          this.log('REMPLACEMENT', r.equipe, c.nom
-            ? `Remplacement equipe ${r.equipe} : ${c.nom} entre en jeu au n°${r.numero}`
-            : `Remplacement equipe ${r.equipe} : nouveau joueur au n°${r.numero}`);
+          const qui = c.nom || 'nouveau joueur';
+          this.log('REMPLACEMENT', r.equipe, r.retour
+            ? `Retour equipe ${r.equipe} : ${c.nom || 'le joueur'} reprend le n°${r.numero} apres le protocole commotion`
+            : r.temporaire
+              ? `Remplacement temporaire equipe ${r.equipe} : ${qui} tient le n°${r.numero} pendant le protocole commotion`
+              : c.nom
+                ? `Remplacement equipe ${r.equipe} : ${c.nom} entre en jeu au n°${r.numero}`
+                : `Remplacement equipe ${r.equipe} : nouveau joueur au n°${r.numero}`);
         }
       }
       // Une séquence de marque déjà engagée (essai en attente de transformation,
@@ -7916,7 +7934,99 @@
       for (const j of joueurs) {
         if (!j || j.sinBin > 0) continue;
         if (this._blessuresEnAttente.some((b) => b.equipe === j.team && b.numero === j.numero)) continue;
-        if (this.rngBlessures() < PROBA_BLESSURE_CONTACT && this.cfg.blessures !== false) this._blessuresEnAttente.push({ equipe: j.team, numero: j.numero });
+        // Un tirage, deux seuils : la blessure garde exactement ses tirages.
+        const r = this.rngBlessures();
+        if (this.cfg.blessures === false) continue;
+        // Le remplaçant temporaire d'un protocole en cours n'est pas tiré :
+        // son maillot attend déjà une décision.
+        if (this._protocoleEnCours(j.team, j.numero)) continue;
+        if (r < PROBA_BLESSURE_CONTACT) this._blessuresEnAttente.push({ equipe: j.team, numero: j.numero });
+        else if (r < PROBA_BLESSURE_CONTACT + PROBA_PROTOCOLE_CONTACT) this._blessuresEnAttente.push({ equipe: j.team, numero: j.numero, protocole: true });
+      }
+    }
+
+    _protocoleEnCours(equipe, numero) {
+      return this.protocoles.find((p) => !p.issue && p.equipe === equipe && p.numero === numero) || null;
+    }
+
+    // Banc déclaré : des remplaçants nommés (Mode Club). Les entrées que le
+    // moteur crée lui-même (anonymes, temporaires, retours) n'en sont pas.
+    _aBancDeclare(equipe) {
+      return this._remplacements.some((x) => x.equipe === equipe && !x.blessure && !x.temporaire && !x.retour);
+    }
+
+    // Protocole commotion (loi 3, remplacement temporaire). Le joueur sort ;
+    // le remplaçant prévu le plus tôt de son groupe le relève SANS consommer
+    // son entrée prévue (un remplacement temporaire ne compte pas). Sans
+    // remplaçant disponible, l'équipe joue à 14 le temps du protocole.
+    _ouvrirProtocole(b, j, groupe) {
+      const duree = DUREE_PROTOCOLE * this._echelleArret;
+      const cle = b.equipe === 'A' ? 'joueursA' : 'joueursB';
+      const p = { equipe: b.equipe, numero: b.numero, debut: this.tempsMatch, fin: this.tempsMatch + duree,
+        joueurId: this._occupants[b.equipe][b.numero] != null ? this._occupants[b.equipe][b.numero] : null,
+        joueurIdTemp: null, aQuatorze: false, issue: null,
+        // Profil du joueur qui sort, pour son éventuel retour.
+        _profil: Object.assign({}, ((this.cfg[cle] || this.cfg.joueurs) || {})[b.numero] || {}) };
+      const surLeTerrain = new Set(Object.values(this._occupants[b.equipe]).filter((x) => x != null));
+      const prevus = this._remplacements.filter((r) => !r.applique && r.equipe === b.equipe && !r.temporaire && !r.retour
+        && !(r.joueurId != null && surLeTerrain.has(r.joueurId))).sort((r1, r2) => r1.instant - r2.instant);
+      const r = prevus.find((x) => x.numero === b.numero)
+        || prevus.find((x) => groupe(x.numero) === groupe(b.numero)) || prevus[0] || null;
+      let joueur = null, joueurId = null;
+      if (r) {
+        joueur = Object.assign({}, r.joueur);
+        if (r.numero !== b.numero) {
+          const modele = (this.cfg.joueurs && this.cfg.joueurs[b.numero]) || {};
+          Object.assign(joueur, { tendance: modele.tendance, couloir: modele.couloir,
+            horsPoste: b.numero <= 3 && groupe(r.numero) !== 'PL' });
+        }
+        joueurId = r.joueurId;
+      } else if (!this._aBancDeclare(b.equipe)) {
+        joueur = Object.assign({}, p._profil);
+      }
+      if (joueur) {
+        p.joueurIdTemp = joueurId;
+        this._remplacements.push({ equipe: b.equipe, numero: b.numero, joueur, instant: this.tempsMatch,
+          applique: false, joueurId, temporaire: true });
+        this.log('PROTOCOLE_COMMOTION', b.equipe, `Protocole commotion : le n°${b.numero} de l'equipe ${b.equipe} sort pour 12 minutes, remplacement temporaire`);
+      } else {
+        p.aQuatorze = true;
+        j.sinBin = duree;
+        this.log('PROTOCOLE_COMMOTION', b.equipe, `Protocole commotion : le n°${b.numero} de l'equipe ${b.equipe} sort pour 12 minutes, plus de remplacant - a 14`);
+      }
+      this.protocoles.push(p);
+    }
+
+    // Fin du protocole : le joueur revient (son remplaçant temporaire retourne
+    // sur le banc et peut encore entrer), ou il ne revient pas (blessure ; le
+    // remplaçant temporaire reste, son entrée prévue est consommée).
+    _resoudreProtocoles() {
+      for (const p of this.protocoles) {
+        if (p.issue || this.tempsMatch < p.fin) continue;
+        const j = (p.equipe === 'A' ? this.equipeA : this.equipeB).find((x) => x.numero === p.numero);
+        // Jamais au milieu d'une action avec le ballon, ni pendant un carton du maillot.
+        if (!j || j === this.porteur || (!p.aQuatorze && j.sinBin > 0)) continue;
+        if (this.rngBlessures() < PROBA_RETOUR_PROTOCOLE) {
+          p.issue = 'retour';
+          if (p.aQuatorze) j.sinBin = 0;
+          else {
+            this._remplacements.push({ equipe: p.equipe, numero: p.numero, joueur: Object.assign({}, p._profil),
+              instant: this.tempsMatch, applique: false, joueurId: p.joueurId, retour: true });
+          }
+          this.log('RETOUR_PROTOCOLE', p.equipe, `Protocole commotion : le n°${p.numero} de l'equipe ${p.equipe} est apte et revient en jeu`);
+        } else {
+          p.issue = 'echec';
+          this.blessuresMatch.push({ equipe: p.equipe, numero: p.numero, instant: this.tempsMatch, joueurId: p.joueurId, commotion: true });
+          if (p.aQuatorze) {
+            // Personne n'était là pour le relever : l'équipe reste à 14.
+            j.sinBin = 1e9;
+          } else if (p.joueurIdTemp != null) {
+            for (const r of this._remplacements) {
+              if (!r.applique && !r.temporaire && r.equipe === p.equipe && r.joueurId === p.joueurIdTemp) { r.applique = true; r.annule = true; }
+            }
+          }
+          this.log('COMMOTION_CONFIRMEE', p.equipe, `Protocole commotion : le n°${p.numero} de l'equipe ${p.equipe} ne reviendra pas`);
+        }
       }
     }
 
@@ -7925,6 +8035,7 @@
     // de suite à sa place. Sans remplaçant disponible, l'équipe finit à 14
     // (le joueur reste hors du terrain, comme une exclusion sans fin).
     _traiterBlessures() {
+      if (this.protocoles.length) this._resoudreProtocoles();
       if (!this._blessuresEnAttente.length) return;
       const groupe = (n) => (n <= 3 ? 'PL' : n <= 8 ? 'AV' : 'AR');
       const restantes = [];
@@ -7932,9 +8043,13 @@
         const j = (b.equipe === 'A' ? this.equipeA : this.equipeB).find((x) => x.numero === b.numero);
         if (!j || j.sinBin > 0) continue;
         if (j === this.porteur) { restantes.push(b); continue; }
+        if (b.protocole) { this._ouvrirProtocole(b, j, groupe); continue; }
         this.blessuresMatch.push({ equipe: b.equipe, numero: b.numero, instant: this.tempsMatch,
           joueurId: this._occupants[b.equipe][b.numero] != null ? this._occupants[b.equipe][b.numero] : null });
-        const prevus = this._remplacements.filter((r) => !r.applique && r.equipe === b.equipe)
+        // Un remplaçant déjà sur le terrain (temporaire d'un protocole) n'est pas disponible.
+        const surLeTerrain = new Set(Object.values(this._occupants[b.equipe]).filter((x) => x != null));
+        const prevus = this._remplacements.filter((r) => !r.applique && r.equipe === b.equipe && !r.temporaire && !r.retour
+          && !(r.joueurId != null && surLeTerrain.has(r.joueurId)))
           .sort((r1, r2) => r1.instant - r2.instant);
         const r = prevus.find((x) => x.numero === b.numero)
           || prevus.find((x) => groupe(x.numero) === groupe(b.numero)) || prevus[0] || null;
@@ -7947,7 +8062,7 @@
           }
           r.instant = this.tempsMatch;
           this.log('BLESSURE', b.equipe, `Blessure : le n°${b.numero} de l'equipe ${b.equipe} doit sortir, un remplacant entre`);
-        } else if (!this._remplacements.some((x) => x.equipe === b.equipe && !x.blessure)
+        } else if (!this._aBancDeclare(b.equipe)
           // Loi 3 : huit remplaçants au plus sur la feuille.
           && this._remplacements.filter((x) => x.equipe === b.equipe && x.blessure).length < 8) {
           // Équipe sans banc déclaré (Match rapide, adversaire géré par
@@ -7975,7 +8090,9 @@
       // entrée prévue : sinon, à la 50e, le remplaçant « se remplaçait » lui-
       // même et ses statistiques étaient coupées en deux.
       if (joueurId != null) {
-        if (this._remplacements.some((r) => r.applique && !r.annule && r.equipe === equipe && r.joueurId === joueurId)) return false;
+        if (this._remplacements.some((r) => r.applique && !r.annule && !r.temporaire && r.equipe === equipe && r.joueurId === joueurId)) return false;
+        // Remplaçant temporaire encore sur le terrain (protocole commotion en cours).
+        if (this.protocoles.some((p) => !p.issue && p.equipe === equipe && p.joueurIdTemp === joueurId)) return false;
         for (const r of this._remplacements) {
           if (!r.applique && r.equipe === equipe && r.joueurId === joueurId) { r.applique = true; r.annule = true; }
         }
@@ -8158,6 +8275,7 @@
         },
         remplacementsEffectues: this.remplacementsEffectues.map((r) => ({ ...r })),
         blessuresMatch: this.blessuresMatch.map((b) => ({ ...b })),
+        protocoles: this.protocoles.map(({ _profil, ...p }) => ({ ...p })),
         tempsJeuEffectif: this.tempsJeuEffectif,
         // % de possession réel, calculé à partir du temps de jeu effectif
         // accumulé par équipe (this.tempsPossession), pas un chiffre fixé :

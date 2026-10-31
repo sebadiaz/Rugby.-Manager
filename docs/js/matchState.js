@@ -52,6 +52,7 @@
       remplacementsEffectues: rawState.remplacementsEffectues || null,
       // Blessures au contact (FUNC-RM-005) : qui est sorti, à quel instant.
       blessuresMatch: rawState.blessuresMatch || null,
+      protocoles: rawState.protocoles || null,
       tempsMatch: rawState.tempsMatch,
       // Objet ballon normalisé { x, y, vx, vy, state, carrierTeam, carrierNumber }
       // exposé directement par le moteur (cf. MatchEngine.getState()).

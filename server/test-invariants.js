@@ -4059,7 +4059,8 @@ test('blessures en match : rares, nées d un contact, le blessé sort et un remp
     const log = m.log.bind(m);
     m.log = (t, ...r) => { if (t === 'BLESSURE') evts++; return log(t, ...r); };
     m.jouerJusquAuSifflet(0.1);
-    const bl = m.blessuresMatch || [];
+    // Les commotions confirmées (protocole) ont leur propre test.
+    const bl = (m.blessuresMatch || []).filter((b) => !b.commotion);
     assert.strictEqual(evts, bl.length, 'chaque blessure est annoncée');
     blessures += bl.length;
     for (const b of bl) {
@@ -4133,6 +4134,51 @@ test('mêlée simulée (loi 3) : sans première ligne formée, pas de poussée, 
   assert.strictEqual(perdues, 0, 'l équipe qui introduit gagne toujours une mêlée simulée');
   assert.strictEqual(avancees, 0, 'une mêlée simulée n avance pas');
   assert.strictEqual(temoins, 0, 'avec les deux premières lignes, la mêlée reste disputée');
+});
+
+test('protocole commotion : sortie 12 minutes, remplaçant temporaire, puis retour ou sortie définitive', () => {
+  const ref = new MatchEngine(1, 4800);
+  const banc = [[1, 50], [2, 54], [4, 58], [6, 62], [9, 65], [10, 68], [12, 71], [15, 75]].map(([numero, minute], i) => ({
+    equipe: 'A', numero, minute, joueur: Object.assign({}, ref.cfg.joueurs[numero]), joueurId: 'banc' + i }));
+  let protocoles = 0, retours = 0, echecs = 0, doublons = 0, relances = 0;
+  const N = 24;
+  for (let seed = 1; seed <= N; seed++) {
+    const m = new MatchEngine(seed, 4800, { remplacements: banc });
+    const log = m.log.bind(m);
+    let ev = 0;
+    m.log = (t, ...r) => { if (t === 'PROTOCOLE_COMMOTION') ev++; return log(t, ...r); };
+    while (m.phase !== 'TERMINE') {
+      m.tick(0.1);
+      // Jamais la même personne à deux maillots à la fois.
+      const ids = Object.values(m._occupants.A).filter((x) => x != null);
+      if (new Set(ids).size !== ids.length) doublons++;
+    }
+    const st = m.getState();
+    assert.strictEqual(ev, st.protocoles.length, 'chaque protocole est annoncé');
+    for (const p of st.protocoles) {
+      protocoles++;
+      const temp = st.remplacementsEffectues.find((r) => r.equipe === p.equipe && r.numero === p.numero && r.temporaire && Math.abs(r.instant - p.debut) < 0.5);
+      if (!temp) {
+        // Pas de remplaçant disponible : son équipe joue à 14 le temps du protocole.
+        assert.ok(p.aQuatorze, `protocole sans remplaçant ni jeu à 14 : ${JSON.stringify(p)}`);
+      }
+      if (p.issue === 'retour') {
+        retours++;
+        if (temp) assert.ok(st.remplacementsEffectues.some((r) => r.equipe === p.equipe && r.numero === p.numero && r.retour && r.instant >= p.debut + 700 * m._echelleArret),
+          `retour du n°${p.numero} après au moins 12 minutes`);
+        if (temp && temp.joueurId != null && st.remplacementsEffectues.some((r) => r.joueurId === temp.joueurId && !r.temporaire && r.instant > p.fin)) relances++;
+      } else if (p.issue === 'echec') {
+        echecs++;
+        assert.ok(st.blessuresMatch.some((b) => b.equipe === p.equipe && b.numero === p.numero && b.commotion), 'l échec au protocole est une blessure');
+      } else {
+        assert.ok(p.debut + 720 * m._echelleArret > m.tempsMatch - 5, `protocole jamais résolu : ${JSON.stringify(p)}`);
+      }
+    }
+  }
+  assert.strictEqual(doublons, 0, `${doublons} instants où un joueur occupe deux maillots`);
+  assert.ok(protocoles / N >= 0.3 && protocoles / N <= 1.5, `${(protocoles / N).toFixed(2)} protocole(s) par match`);
+  assert.ok(retours >= 3 && echecs >= 2, `${retours} retours, ${echecs} échecs`);
+  console.log(`     ${protocoles} protocoles, ${retours} retours, ${echecs} échecs, ${relances} remplaçants temporaires entrés ensuite pour de bon`);
 });
 
 // --- bugs.md QA-RM-007 : événements, joueurs et équipe disent la même chose ---

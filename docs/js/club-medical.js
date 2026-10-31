@@ -175,7 +175,8 @@
       ? o.facteurMedecin
       : (saison && RMClub.effetPersonnel ? RMClub.effetPersonnel(saison, 'medecin') : 1);
 
-    const cleType = choisirType(rng, cause);
+    // `o.type` : nature déjà connue (commotion confirmée en match, FUNC-RM-005).
+    const cleType = o.type && TYPES_BLESSURE[o.type] ? o.type : choisirType(rng, cause);
     const def = TYPES_BLESSURE[cleType];
     const gravite = entierEntre(rng, def.graviteMin, def.graviteMax);
     const zone = def.zones[Math.floor(rng() * def.zones.length)];

@@ -374,20 +374,29 @@
     const banc = L.remplacants || [];
     const entres = new Map();
     for (const re of (e.remplacementsEffectues || match.remplacementsEffectues || [])) {
-      if (re.equipe === L.equipe && re.joueurId != null) entres.set(re.joueurId, re);
+      // Un remplacement temporaire (protocole commotion) ne compte pas : le
+      // remplaçant revient sur le banc et peut encore entrer.
+      if (re.equipe === L.equipe && re.joueurId != null && !re.temporaire && !re.retour) entres.set(re.joueurId, re);
+    }
+    const temporaires = new Map();
+    for (const p of (e.protocoles || [])) {
+      if (p.equipe === L.equipe && !p.issue && p.joueurIdTemp != null) temporaires.set(p.joueurIdTemp, p);
     }
     const joueursEq = (L.equipe === 'A' ? e.teams.A : e.teams.B) || [];
     document.getElementById('miTempsRemplacants').innerHTML = banc.length
       ? banc.map((r, i) => {
         const entre = entres.get(r.joueurId);
-        const fait = !!entre || L.remplacementsFaits.indexOf(i) !== -1;
+        const proto = temporaires.get(r.joueurId);
+        const fait = !!entre || !!proto || L.remplacementsFaits.indexOf(i) !== -1;
         const groupe = groupePoste(r.numeroSortant);
         const options = maillotsCompatibles(r.numeroSortant).map((n) => {
           const j = joueursEq.find((x) => x.numero === n);
           const exclu = j && j.sinBin > 0;
           return `<option value="${n}"${n === r.numeroSortant ? ' selected' : ''}${exclu ? ' disabled' : ''}>n°${n}${j && j.label ? ' — ' + j.label : ''}${exclu ? ' (exclu)' : ''}</option>`;
         }).join('');
-        const detail = fait
+        const detail = proto && !entre
+          ? `remplacement temporaire au n°${proto.numero} (protocole commotion, jusqu'à la ${Math.ceil(proto.fin / 60)}e minute)`
+          : fait
           ? `entré${entre ? ' à la ' + Math.max(1, Math.round(entre.instant / 60)) + 'e minute, au n°' + entre.numero : ''}`
           : `remplace le <select class="selCibleRemplacant" data-index="${i}" aria-label="Maillot remplacé par ${r.nom}">${options}</select>`
             + (groupe === 'PL' ? ' · première ligne : relève une première ligne (loi 3)' : '');
@@ -677,7 +686,7 @@
     if (maillotsCompatibles(r.numeroSortant).indexOf(numero) === -1
         || !match.remplacerJoueurEnCours(matchLive.equipe, numero, joueurAuMaillot(r, numero), r.joueurId)) {
       // Refus EXPLIQUÉ, jamais un bouton qui ne fait rien.
-      if (refus) { refus.textContent = `${r.nom} ne peut pas entrer au n°${numero} : il est déjà entré, ou ce maillot n'est pas de son poste.`; refus.style.display = ''; }
+      if (refus) { refus.textContent = `${r.nom} ne peut pas entrer au n°${numero} : il est déjà entré, il tient un remplacement temporaire (protocole commotion), ou ce maillot n'est pas de son poste.`; refus.style.display = ''; }
       return;
     }
     matchLive.remplacementsFaits.push(i);

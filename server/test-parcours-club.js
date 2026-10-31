@@ -3689,6 +3689,28 @@ test('page joueur : de bout en bout, un vrai match avec remplacements crédite c
   assert.ok(Math.abs(eff[8].statsSaison.minutes - 45) <= 1, 'le 9 titulaire a joué 45 min');
 });
 
+test('page joueur : protocole commotion — le titulaire revient, un match et ses minutes ; le temporaire, une entrée (FUNC-RM-005)', () => {
+  const s = saisonPourAvance(966);
+  const [titulaire, temporaire] = s.clubJoueur.effectif;
+  // Le n°7 sort à 25:00, son remplaçant temporaire tient 12 minutes, il revient à 37:00.
+  const ventilation = {
+    sortis: [{ numero: 7, sortie: 1500, stats: { tacklesMade: 6 } }, { numero: 7, sortie: 2220, stats: { tacklesMade: 2 } }],
+    remplacements: [{ equipe: 'A', numero: 7, instant: 1500, joueurId: temporaire.id, temporaire: true },
+      { equipe: 'A', numero: 7, instant: 2220, joueurId: null, retour: true }],
+    tempsFinal: 4800,
+  };
+  RMClub.accumulerStatsJoueurs(s.clubJoueur.effectif, { 7: titulaire.id }, { 7: { tacklesMade: 5 } }, 'pro', ventilation);
+  const t = titulaire.statsSaison, e = temporaire.statsSaison;
+  assert.strictEqual(t.matchsJoues, 1, 'sorti puis revenu : UN match');
+  assert.strictEqual(t.entreesEnJeu, 0, 'son retour n est pas une entrée en jeu');
+  assert.strictEqual(t.minutes, 25 + 43, `${t.minutes} min pour le titulaire`);
+  assert.strictEqual(t.tacklesMade, 11, 'ses plaquages avant et après le protocole');
+  assert.strictEqual(e.minutes, 12);
+  assert.strictEqual(e.tacklesMade, 2);
+  assert.strictEqual(e.entreesEnJeu, 1);
+  assert.strictEqual(e.matchsJoues, 1);
+});
+
 test('page joueur : une compétition non jouée n\'apparaît pas (aucune ligne fabriquée)', () => {
   const s = saisonPourAvance(961);
   const j = s.clubJoueur.effectif[0];

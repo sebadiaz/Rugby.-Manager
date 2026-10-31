@@ -155,7 +155,7 @@
     if (aAfficher) {
       const banner = document.getElementById('banner');
       // Une blessure n'est pas une décision de l'arbitre (FUNC-RM-005).
-      const voix = aAfficher.type === 'BLESSURE' ? '🚑 SOIGNEUR' : '🟨 ARBITRE';
+      const voix = /^(BLESSURE|PROTOCOLE_COMMOTION|RETOUR_PROTOCOLE|COMMOTION_CONFIRMEE)$/.test(aAfficher.type) ? '🚑 SOIGNEUR' : '🟨 ARBITRE';
       banner.textContent = `${voix} — ${traduireEquipesDansMessage(aAfficher.message)}`;
       banner.classList.add('visible');
       placerBandeau(banner);

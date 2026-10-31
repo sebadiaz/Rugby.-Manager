@@ -474,7 +474,10 @@
       for (let i = 0; i < sorties.length; i++) {
         segments.push(Object.assign(courant, { stats: sorties[i].stats, fin: sorties[i].sortie }));
         const entree = entrees[i] || {};
-        courant = { joueurId: entree.joueurId != null ? entree.joueurId : null, debut: sorties[i].sortie, entre: true };
+        // Retour après un protocole commotion : le joueur qui était sorti
+        // reprend son maillot (le titulaire, si le moteur ne le nomme pas).
+        const id = entree.joueurId != null ? entree.joueurId : entree.retour ? titulaireId : null;
+        courant = { joueurId: id, debut: sorties[i].sortie, entre: !entree.retour };
       }
     }
     segments.push(Object.assign(courant, { stats: statsFinales || null, fin: match ? match.tempsFinal : null }));
@@ -483,12 +486,15 @@
   // Joueurs du club sortis blessés pendant le match (FUNC-RM-005) : la
   // personne qui portait le maillot à cet instant — l'entrant si le numéro
   // avait déjà changé de main, le titulaire sinon.
+  // Une commotion confirmée (protocole) garde sa nature : `ids.commotions`.
   function blessesDuMatch(etat, lettre, composition) {
     const ids = [];
+    ids.commotions = [];
     for (const b of (etat && etat.blessuresMatch) || []) {
       if (b.equipe !== lettre) continue;
       const id = b.joueurId != null ? b.joueurId : composition && composition[b.numero];
       if (id != null && !ids.includes(id)) ids.push(id);
+      if (id != null && b.commotion) ids.commotions.push(id);
     }
     return ids;
   }
@@ -513,6 +519,10 @@
     const cle = perimetreStatsValide(competition) ? competition : 'pro';
     const parId = {};
     for (const j of effectif) parId[j.id] = j;
+    // Un même joueur peut tenir plusieurs segments (sorti pour un protocole
+    // commotion puis revenu, remplaçant temporaire entré ensuite pour de bon) :
+    // il ne compte qu'UN match et qu'UNE entrée en jeu.
+    const dejaCompte = new Set(), dejaEntre = new Set();
     for (const numero of Object.keys(composition)) {
      for (const seg of segmentsMaillot(numero, composition[numero], statsJoueursMatch[numero], ventilation)) {
       const joueur = parId[seg.joueurId];
@@ -533,10 +543,12 @@
       // pas de ligne « Équipe B — 0 match » fabriquée pour faire joli.
       if (!joueur.statsSaison.parCompetition[cle]) joueur.statsSaison.parCompetition[cle] = statsVides();
       const detail = joueur.statsSaison.parCompetition[cle];
-      const apports = { matchsJoues: 1 };
+      const apports = { matchsJoues: dejaCompte.has(seg.joueurId) ? 0 : 1 };
+      dejaCompte.add(seg.joueurId);
       for (const champ of CHAMPS_STATS_JOUEUR) if (champ !== 'matchsJoues') apports[champ] = s[champ] || 0;
       apports.minutes = seg.fin != null ? Math.max(0, Math.round((seg.fin - seg.debut) / 60)) : 0;
-      apports.entreesEnJeu = seg.entre ? 1 : 0;
+      apports.entreesEnJeu = seg.entre && !dejaEntre.has(seg.joueurId) ? 1 : 0;
+      if (seg.entre) dejaEntre.add(seg.joueurId);
       for (const champ of CHAMPS_STATS_JOUEUR) {
         joueur.statsSaison[champ] = (joueur.statsSaison[champ] || 0) + apports[champ];
         detail[champ] = (detail[champ] || 0) + apports[champ];

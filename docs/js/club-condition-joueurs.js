@@ -126,6 +126,7 @@
     const RMClub = global.RMClub;
     const titulairesIds = new Set(Object.values(composition || {}));
     const blessesMatch = new Set(blesses || []);
+    const commotions = new Set((blesses && blesses.commotions) || []);
     const nouvelles = [];
     for (const j of effectif) {
       const sortiBlesse = blessesMatch.has(j.id) && !j.blessure;
@@ -134,7 +135,8 @@
       // s'applique RÉELLEMENT au tirage, pas seulement à l'affichage.
       if (!sortiBlesse && !RMClub.tirerBlessure(rng, j, { cause: 'match', facteurPreparateur, saison })) continue;
       const rechute = !!j.reprise;
-      const b = RMClub.infligerBlessure(saison, j, 'match', rng, { facteurMedecin, facteurPreparateur });
+      const b = RMClub.infligerBlessure(saison, j, 'match', rng, { facteurMedecin, facteurPreparateur,
+        type: sortiBlesse && commotions.has(j.id) ? 'commotion' : undefined });
       nouvelles.push({ joueur: j, blessure: b, rechute });
       if (saison) {
         const d = RMClub.descriptionBlessure(j);

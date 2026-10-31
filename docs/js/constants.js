@@ -33,6 +33,8 @@
     TOUCHE_SAQUEE: '🛑',
     // Blessure au contact (FUNC-RM-005) : le joueur sort, un remplaçant entre.
     BLESSURE: '🚑',
+    // Protocole commotion (FUNC-RM-005) : sortie 12 minutes, puis retour ou non.
+    PROTOCOLE_COMMOTION: '🩺', RETOUR_PROTOCOLE: '↩️', COMMOTION_CONFIRMEE: '🚑',
     // Mêlée simulée (loi 3) : plus de première ligne formée, pas de poussée.
     MELEE_SIMULEE: '🤝',
     MAUL_ARRET_UN: '🅰️', MAUL_ARRET_DEUX: '✋', MAUL_USE_IT: '⏱️', MAUL_BALLON_SORTI: '➡️', MAUL_INJOUABLE: '🔒',
@@ -93,6 +95,7 @@
     'SONNERIE',
     'TOUCHE_SAQUEE',
     'BLESSURE',
+    'PROTOCOLE_COMMOTION', 'RETOUR_PROTOCOLE', 'COMMOTION_CONFIRMEE',
     'MELEE_SIMULEE',
     // Ballon aplati par la défense dans son en-but (P2-93) : renvoi aux 22 m.
     'EN_BUT_APLATI',

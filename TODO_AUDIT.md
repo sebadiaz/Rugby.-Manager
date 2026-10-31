@@ -580,6 +580,44 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-140. Protocole commotion : remplacement temporaire de 12 minutes — bugs.md FUNC-RM-005
+- **Statut : LIVRÉ**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_ouvrirProtocole`, `_resoudreProtocoles`,
+  `_aBancDeclare`, `protocoles`), `docs/js/matchState.js`, `docs/js/constants.js`, `docs/js/ui.js`, `docs/js/main.js`
+  (panneau du banc), `docs/js/club.js` (`segmentsMaillot`, `accumulerStatsJoueurs`, `blessesDuMatch`),
+  `docs/js/club-medical.js`, `docs/js/club-condition-joueurs.js`, `server/test-invariants.js`,
+  `server/test-parcours-club.js`, `server/test-consequences-match.js`, `server/test-parcours-navigateur.js`, `bugs.md`.
+
+**Constat.** Une commotion présumée n'existait pas : le seul cas était la blessure, avec une sortie définitive.
+
+**Correction.**
+- Au plaquage, un même tirage décide la blessure (inchangée) ou une commotion présumée (0,12 % par joueur engagé) :
+  0,67 protocole par match mesuré sur 24 graines.
+- Le joueur sort 12 minutes de jeu. Le remplaçant prévu le plus tôt de son groupe le relève SANS consommer son entrée
+  prévue (un remplacement temporaire ne compte pas, loi 3). Sans banc déclaré : un remplaçant anonyme. Banc épuisé :
+  l'équipe joue à 14 pendant le protocole.
+- À la fin (jamais avec le ballon en main) : retour dans 65 % des cas, le remplaçant temporaire retourne sur le banc
+  et peut encore entrer (3 cas sur 24 matchs) ; sinon commotion confirmée, blessure du match, le remplaçant reste et
+  son entrée prévue est consommée.
+- Un remplaçant temporaire sur le terrain ne peut ni entrer ailleurs ni être tiré pour une blessure : jamais une même
+  personne à deux maillots.
+- Affichage : bandeaux du soigneur (🩺 sortie, ↩️ retour, 🚑 commotion confirmée), fil « Remplacement temporaire »,
+  panneau du banc « remplacement temporaire au n°7 (protocole commotion, jusqu'à la Xe minute) », bouton bloqué.
+- Carrière : la commotion confirmée devient une blessure de type commotion. Le joueur revenu compte UN match, sans
+  entrée en jeu, avec ses minutes avant et après ; le temporaire compte une entrée et ses minutes.
+
+**Mesures (100 graines appariées, après P2-139 → après).** Points 58,4 → 58,1 (±2,0) ; essais 6,77 → 6,83 ;
+mêlées 17,1 → 17,1 ; touches 27,0 → 26,8 ; rucks 204 → 204 ; blessés 1,58 → 1,73 (commotions confirmées comprises).
+Calibration 14/14, 54,5 points.
+
+**Tests.**
+- Invariant (24 graines, banc de 8) : chaque protocole annoncé, remplaçant temporaire au même instant (ou jeu à 14),
+  retour après au moins 12 minutes ou blessure enregistrée, aucun joueur à deux maillots. L'ancien moteur échoue.
+- Carrière : ventilation d'un protocole (titulaire 68 min, un match, 0 entrée ; temporaire 12 min, une entrée) ;
+  commotion confirmée = blessure de type commotion.
+- Navigateur, 1400×1000 et 390×844 (captures vérifiées), mise en scène : panneau du banc, bandeaux, retour
+  (1400) et commotion confirmée (390).
+
 ### P2-139. Mêlée simulée sans première ligne formée (loi 3) — bugs.md FUNC-RM-005
 - **Statut : LIVRÉ**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_premiereLigneFormee`, `_formerMelee`,

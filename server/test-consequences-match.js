@@ -267,4 +267,13 @@ test('BLESS2 — un vrai match du moteur avec un blessé le propage en carrière
   for (const j of cibles) assert.ok(j.blessure, `${j.nom} doit être blessé`);
 });
 
+test('BLESS3 — une commotion confirmée au protocole est une commotion en carrière (FUNC-RM-005)', () => {
+  const ctx = contexteMatch();
+  ctx.etat.blessuresMatch = [{ equipe: ctx.lettre, numero: 10, instant: 3000, joueurId: null, commotion: true }];
+  const dix = ctx.c.effectif.find((j) => j.id === ctx.compo[10]);
+  assert.ok(!dix.blessure, 'prémisse : le n°10 n est pas déjà blessé');
+  appliquer(ctx, { rng: () => 0.999 });
+  assert.ok(dix.blessure && dix.blessure.type === 'commotion', `type ${dix.blessure && dix.blessure.type}`);
+});
+
 console.log(`\n${nbTests} test(s) exécuté(s).`);

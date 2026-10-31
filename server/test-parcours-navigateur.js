@@ -4601,6 +4601,63 @@ function optionsLancement() {
     await ctxBl.close();
   }
 
+  // --- PROTOCOLE COMMOTION (bugs.md FUNC-RM-005) ---------------------------
+  // Mise en scène : premier contact après 20 s, protocole pour le n°7 du club.
+  // Le panneau du banc montre le remplaçant temporaire, puis le protocole se
+  // résout (retour ou sortie définitive) avec son bandeau.
+  {
+    const ctxP = await browser.newContext({ viewport: { width: 1400, height: 1000 } });
+    const pgP = await ctxP.newPage();
+    const erreursP = [];
+    pgP.on('pageerror', (e) => erreursP.push(e.message));
+    pgP.on('dialog', async (d) => { await d.accept(); });
+    await pgP.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+    await pgP.evaluate(() => {
+      window.RugbyEngine.MatchEngine.prototype._tirerBlessureContact = function () {
+        if (this._force || this.tempsMatch < 20) return;
+        this._force = true;
+        this._blessuresEnAttente.push({ equipe: 'A', numero: 7, protocole: true });
+      };
+      window.__bandeaux = [];
+      const b = document.getElementById('banner');
+      new MutationObserver(() => { if (b.classList.contains('visible')) window.__bandeaux.push(b.textContent); })
+        .observe(b, { attributes: true, childList: true, characterData: true, subtree: true });
+    });
+    await pgP.click('#btnAccueilModeClub');
+    await pgP.fill('#inputNomClub', 'AS Protocole');
+    await pgP.click('#btnCreerClub');
+    await pgP.waitForTimeout(700);
+    await pgP.selectOption('#selDureeClub', '300');
+    verifier('protocole : prémisse — aperçu', await continuerJusquAuMatch(pgP));
+    await pgP.click('#btnApercuJouerMatch');
+    let p = null;
+    for (let t = 0; t < 1200 && !p; t++) {
+      p = await pgP.evaluate(() => { const e = window.RMMain.etatActuel(); return e && e.protocoles && e.protocoles[0] || null; });
+      if (!p) await pgP.waitForTimeout(50);
+    }
+    verifier('protocole : ouvert avec un remplaçant temporaire du banc', p && p.joueurIdTemp != null, JSON.stringify(p));
+    await pgP.click('#btnConsigneMatch');
+    await pgP.waitForTimeout(400);
+    const lignes = await pgP.$$eval('.ligneRemplacant', (ls) => ls.map((l) => ({ t: l.textContent, dis: l.querySelector('button').disabled })));
+    verifier('protocole : le panneau du banc montre le remplacement temporaire, bouton bloqué',
+      lignes.some((l) => /remplacement temporaire au n°7/.test(l.t) && l.dis), JSON.stringify(lignes));
+    await pgP.click('#btnMiTempsReprendre');
+    for (let i = 0; i < 8; i++) { if (/x4/.test(await pgP.textContent('#btnSpeed'))) break; await pgP.click('#btnSpeed'); await pgP.waitForTimeout(100); }
+    let issue = null;
+    for (let t = 0; t < 1500 && !issue; t++) {
+      if (await pgP.isVisible('#btnMiTempsReprendre')) await pgP.click('#btnMiTempsReprendre');
+      issue = await pgP.evaluate(() => window.RMMain.etatActuel().protocoles[0].issue);
+      if (!issue) await pgP.waitForTimeout(100);
+    }
+    await pgP.waitForTimeout(300);
+    const bandeaux = await pgP.evaluate(() => window.__bandeaux.filter((x) => /Protocole commotion/.test(x)));
+    verifier('protocole : annoncé par le soigneur, puis résolu (retour ou sortie définitive)',
+      bandeaux.some((x) => /SOIGNEUR.*sort pour 12 minutes/.test(x)) && (issue === 'retour' || issue === 'echec')
+        && bandeaux.some((x) => issue === 'retour' ? /revient en jeu/.test(x) : /ne reviendra pas/.test(x)), `${issue} ${JSON.stringify(bandeaux)}`);
+    verifier('protocole : aucune erreur de page', erreursP.length === 0, erreursP.join(' | '));
+    await ctxP.close();
+  }
+
   // --- SORTIE DE SECOURS ----------------------------------------------------
   // Signale en jeu : « mon jeu est bloque, je ne peux ni rentrer dedans ni
   // supprimer pour continuer ». Le seul bouton de remise a zero vivait DANS le
