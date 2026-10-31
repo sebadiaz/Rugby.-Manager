@@ -580,6 +580,21 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-145. Barre de temps : le bout est le coup de sifflet final, pas la sonnerie
+- **Statut : LIVRÉ**
+- Fichiers concernés : `docs/js/main.js` (`avancerJusqua`), `server/test-parcours-navigateur.js`.
+
+**Constat (parcours navigateur, 1 fois sur 3).** Relu au bout de la barre de temps, un match vécu 7-7 affichait 0-7.
+Le saut rejouait jusqu'à 5:00 pile ; depuis la loi 5.7 (P2-126) la dernière action se joue après la sonnerie, jusqu'au
+ballon mort — l'essai transformé marqué après la sonnerie manquait. Le moteur, lui, rejouait fidèlement (contrôle
+d'empreinte au vert).
+
+**Correction.** Un saut au bout de la barre rejoue jusqu'au coup de sifflet final (borné à 10 minutes après la
+sonnerie).
+
+**Tests.** Navigateur : juste après le saut, la phase est `TERMINE` (l'ancien code est en `COUP_ENVOI`, au milieu de
+la reprise), et le score est celui du match vécu (8 relectures).
+
 ### P2-144. Notifications du club : trois à l'écran au plus, sans doublon
 - **Statut : LIVRÉ**
 - Fichiers concernés : `docs/js/clubUI.js` (`toast`), `server/test-parcours-navigateur.js`.

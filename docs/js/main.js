@@ -747,6 +747,13 @@
     m._decisions = match && match._decisions ? match._decisions : null;
     const nbPas = Math.round(cible / PAS_FIXE);
     for (let i = 0; i < nbPas; i++) pasMoteur(m);
+    // Le bout de la barre est le COUP DE SIFFLET FINAL, pas la sonnerie : la
+    // dernière action se joue jusqu'au ballon mort (loi 5.7). S'arrêter au
+    // chrono perdait l'essai marqué après la sonnerie (relu 0-7, vécu 7-7).
+    // Borné : 10 minutes de jeu au plus après la sonnerie.
+    if (cible >= dureeMatchActuel) {
+      for (let i = 0; i < 6000 && m.phase !== 'TERMINE'; i++) pasMoteur(m);
+    }
     return m;
   }
 

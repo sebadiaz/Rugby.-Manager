@@ -4481,10 +4481,15 @@ function optionsLancement() {
     await pgRel.waitForTimeout(800);
     verifier('relecture : « Revoir » n\'avertit plus que le match affiché n\'est pas celui enregistré',
       !dialoguesRel.slice(nRel).some((m) => /ne sera donc pas/.test(m)));
-    await pgRel.evaluate(() => {
+    const phaseApresSaut = await pgRel.evaluate(() => {
       const sk = document.getElementById('seek');
       sk.value = sk.max; sk.dispatchEvent(new Event('input')); sk.dispatchEvent(new Event('change'));
+      return window.RMMain.etatActuel().phase;
     });
+    // Loi 5.7 : la dernière action se joue après la sonnerie. Le bout de la
+    // barre est le coup de sifflet final, pas 5:00 pile (un essai d'après la
+    // sonnerie manquait à la relecture : 0-7 relu pour 7-7 vécu).
+    verifier('relecture : le bout de la barre de temps est le coup de sifflet final', phaseApresSaut === 'TERMINE', phaseApresSaut);
     await pgRel.waitForTimeout(1500);
     const revuRel = await pgRel.evaluate(() => window.RMMain.etatActuel().score);
     verifier('relecture : au bout de la barre de temps, le score est celui du match vécu',
