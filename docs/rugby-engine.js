@@ -286,6 +286,10 @@
       // ajoutés à SA profondeur de couverture (jeu courant, ruck, mêlée), en
       // plus de la hauteur de ligne collective. 0 = comportement par défaut.
       decalageArriere: 0,
+      // L'arrière DANS la ligne (consigne « Monte vers la ligne ») : il prend un
+      // créneau de défenseur, et l'ailier du côté court recule couvrir le fond
+      // à sa place (cf. _couvreur). false = l'arrière est le dernier rideau.
+      arriereDansLigne: false,
       reculRuck: 3,
       // 6,5 s. Le réglage précédent (2,5 s) datait d'un moteur où les joueurs
       // atteignaient leur vitesse maximale instantanément : la ligne était déjà
@@ -3074,6 +3078,7 @@
           && (d.x - porteur.x) * porteur.sensAttaque > 0.5 && Math.abs(d.y - porteur.y) < 15);
         if (devant.length) monteur = joueurLePlusProche(devant, porteur.x, porteur.y).joueur;
       }
+      const couvreurDef = def.length ? this._couvreur(def[0].team, porteur.y) : null;
       for (const j of def) {
         // HORS-JEU sur coup de pied (loi 10) : il se retire vers la ligne du
         // coup de pied au lieu de defendre, jusqu'a etre remis en jeu.
@@ -3160,7 +3165,7 @@
         // dans la première seconde, 0,4 au bout de 3 à 4 s, et 32 % des
         // franchissements finissaient à l'essai en moins de 20 s (P2-119).
         // L'arrière garde sa propre logique de dernier rideau (ci-dessous).
-        if (premierRideauBattu && j.numero !== 15 && j.ruckRecovery <= 0
+        if (premierRideauBattu && j !== couvreurDef && j.ruckRecovery <= 0
           && (j.x - porteur.x) * porteur.sensAttaque < -0.5 && distance(j, porteur) < 25) {
           const cibleX = porteur.x + porteur.sensAttaque * 2;
           avancer(j, cibleX - j.x, porteur.y - j.y, dt, vitesseMs(j) * fRampe);
@@ -3169,9 +3174,10 @@
         // L'ARRIÈRE (n°15) ne monte PAS dans la ligne : il SWEEPE en couverture
         // ~18 m derrière, au centre, pour parer le jeu au pied et les
         // débordements (dernier rideau). Il ne court jamais vers le ballon.
-        if (j.numero === 15) {
+        if (j === couvreurDef) {
           const cibleX = porteur.x + porteur.sensAttaque * (cfgDef.profondeurArriereJeu + (cfgDef.decalageArriere || 0));
-          const cibleY = j.channelY * 0.7 + porteur.y * 0.3;
+          // Un ailier qui couvre à la place de l'arrière se place au centre, pas sur son aile.
+          const cibleY = (j.numero === 15 ? j.channelY : LARGEUR / 2) * 0.7 + porteur.y * 0.3;
           // DERNIER DEFENSEUR : des que le porteur a FRANCHI la ligne de
           // defense (plus aucun defenseur devant lui dans son couloir), le
           // balayage central n'a plus de sens — l'arriere est le seul homme
@@ -4763,7 +4769,7 @@
       // (~5 m), comme une vraie ligne qui se compte et comble les espaces.
       const defsLigne = [...this.equipeA, ...this.equipeB]
         .filter(j => j.team !== this.possession && j.auSol === 0 && j.sinBin <= 0
-          && j.numero !== 15 && j.numero !== 9 && !this.contestants.includes(j.numero))
+          && j !== this._couvreur(j.team, pt.y) && j.numero !== 9 && !this.contestants.includes(j.numero))
         .sort((a, b) => a.y - b.y);
       this._slotDefense = new Map();
       if (defsLigne.length > 0) {
@@ -4969,11 +4975,11 @@
           // défense comme les autres : 97 % du temps de ruck dans le premier
           // rideau, à 3 m du ruck (cf. test R11), et la défense n'avait aucun
           // dernier rideau derrière elle.
-          if (j.numero === 15) {
+          if (j === this._couvreur(j.team, pt.y)) {
             const profondeur = this.cfgDefense[j.team].profondeurArriereJeu + (this.cfgDefense[j.team].decalageArriere || 0);
             // Près de sa propre ligne, il ne recule pas au-delà de l'en-but.
             const cibleXq = Math.max(0.5, Math.min(LONGUEUR - 0.5, pt.x + sensAttaque * profondeur));
-            const cibleYq = j.channelY * 0.7 + pt.y * 0.3;
+            const cibleYq = (j.numero === 15 ? j.channelY : LARGEUR / 2) * 0.7 + pt.y * 0.3;
             avancer(j, cibleXq - j.x, cibleYq - j.y, dt, vitesseMs(j) * 0.8);
             continue;
           }
@@ -7967,6 +7973,19 @@
     // temps courant, donc le prochain tick l'applique par le chemin déjà
     // éprouvé (mise à jour du joueur vivant ET de la config source, pour que
     // le remplaçant survive au prochain coup d'envoi).
+    // Le dernier rideau d'une équipe qui défend : l'arrière, sauf quand il est
+    // monté dans la ligne (consigne d'équipe) — c'est alors l'ailier du côté
+    // court (entre le ballon et la touche la plus proche) qui couvre le fond.
+    _couvreur(equipe, refY) {
+      const eq = equipe === 'A' ? this.equipeA : this.equipeB;
+      const arriere = eq.find((j) => j.numero === 15);
+      if (!this.cfgDefense[equipe].arriereDansLigne) return arriere;
+      const basCote = refY < LARGEUR / 2;
+      const aile = eq.find((j) => (j.numero === 11 || j.numero === 14) && j.sinBin <= 0 && j.auSol === 0
+        && (j.channelY < LARGEUR / 2) === basCote);
+      return aile || arriere;
+    }
+
     // Blessure au contact (bugs.md FUNC-RM-005) : rare (~1 à 2 par match),
     // tirée pour le porteur plaqué et pour le plaqueur. Le blessé sort au
     // tick suivant (cf. _traiterBlessures), jamais en tenant le ballon.

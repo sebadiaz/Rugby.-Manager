@@ -4370,6 +4370,29 @@ test('consigne des ailiers (FUNC-RM-004) : « repique » leur donne plus de ball
   assert.ok(large <= 0.85 * neutre, `reste large : ${large} ballons reçus, pour ${neutre} sans consigne`);
 });
 
+test('arrière dans la ligne (FUNC-RM-004) : le 15 défend dans la ligne au ruck, l ailier du côté court couvre le fond', () => {
+  const mesurer = (cfg) => {
+    let q = 0, aile = 0, n = 0;
+    for (let seed = 1; seed <= 6; seed++) {
+      const m = new MatchEngine(seed, 4800, cfg);
+      while (m.phase !== 'TERMINE') {
+        m.tick(0.1);
+        if (m.phase !== 'RUCK' || !m.ruckPoint || m.possession !== 'B' || m.timerPhase < 1.5) continue;
+        const pt = m.ruckPoint;
+        const quinze = m.equipeA.find((j) => j.numero === 15);
+        const court = m.equipeA.find((j) => (j.numero === 11 || j.numero === 14) && (j.channelY < 35) === (pt.y < 35));
+        if (!quinze || !court || quinze.sinBin > 0 || court.sinBin > 0) continue;
+        q += (pt.x - quinze.x) * quinze.sensAttaque; aile += (pt.x - court.x) * court.sensAttaque; n++;
+      }
+    }
+    return { q: q / n, aile: aile / n };
+  };
+  const neutre = mesurer({}), ligne = mesurer({ defenseA: { arriereDansLigne: true } });
+  assert.ok(ligne.q <= 6, `arrière dans la ligne : ${ligne.q.toFixed(1)} m derrière le ruck (sans consigne ${neutre.q.toFixed(1)})`);
+  assert.ok(ligne.aile >= neutre.aile + 6 && ligne.aile >= 10,
+    `l ailier du côté court couvre le fond : ${ligne.aile.toFixed(1)} m derrière le ruck (sans consigne ${neutre.aile.toFixed(1)})`);
+});
+
 // --- bugs.md QA-RM-007 : événements, joueurs et équipe disent la même chose ---
 test('rapprochement : réussis ≤ tentés partout, et chaque essai ou but du compteur a son événement (QA-RM-007)', () => {
   for (let seed = 1; seed <= 4; seed++) {
