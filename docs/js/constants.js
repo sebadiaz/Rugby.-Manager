@@ -37,6 +37,8 @@
     PROTOCOLE_COMMOTION: '🩺', RETOUR_PROTOCOLE: '↩️', COMMOTION_CONFIRMEE: '🚑',
     // Saignement : sortie pour soins, remplacement temporaire, retour.
     SAIGNEMENT: '🩸',
+    // Lancement de jeu scripté sur mêlée, touche ou maul (playbook).
+    LANCEMENT: '📋',
     // Mêlée simulée (loi 3) : plus de première ligne formée, pas de poussée.
     MELEE_SIMULEE: '🤝',
     MAUL_ARRET_UN: '🅰️', MAUL_ARRET_DEUX: '✋', MAUL_USE_IT: '⏱️', MAUL_BALLON_SORTI: '➡️', MAUL_INJOUABLE: '🔒',
@@ -98,6 +100,7 @@
     'TOUCHE_SAQUEE',
     'BLESSURE',
     'PROTOCOLE_COMMOTION', 'RETOUR_PROTOCOLE', 'COMMOTION_CONFIRMEE', 'SAIGNEMENT',
+    'LANCEMENT',
     'MELEE_SIMULEE',
     // Ballon aplati par la défense dans son en-but (P2-93) : renvoi aux 22 m.
     'EN_BUT_APLATI',

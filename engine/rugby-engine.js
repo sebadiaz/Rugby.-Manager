@@ -324,73 +324,72 @@
     // libre) ; chaque combinaison a un `poids` pour le tirage pondéré.
     combinaisons: {
       proba: 0.5,
-      // Listes PARTAGÉES (défaut pour les deux équipes). On peut aussi définir
-      // un playbook propre à une équipe via une clé "A" / "B" (cf. exemple A
-      // ci-dessous) : { A: { melee: [...], touche: [...] } }.
+      // Listes PARTAGÉES par les deux équipes. Un playbook propre à une équipe
+      // peut être donné sous une clé "A" / "B" : { A: { melee: [...] } }
+      // remplace alors la liste partagée de ce type pour cette équipe.
+      //
+      // Receveurs DYNAMIQUES (en plus d'un numéro) :
+      //   - 'AILE_FERMEE' : l'ailier du côté court (entre le ballon et la touche
+      //     la plus proche), qu'il porte le 11 ou le 14 ;
+      //   - 'AVANT' : l'avant lancé que le 9 sert à la sortie (cf.
+      //     _designerAvantLance) — la combinaison tombe s'il n'y en a pas.
+      // Lignes de course du receveur : 'droit' (défaut), 'croise', 'boucle',
+      // 'saute', 'cote ferme' (passe vers l'aile fermée), et 'percussion' : il
+      // VA AU CONTACT sans repasser, pour fixer la défense et créer le ruck.
+      // `libelle` : annoncé dans le fil au lancement.
+      //
+      // Avant : 3 scénarios de mêlée (et UN SEUL pour l'équipe A, joué 50 fois
+      // sur 50), 2 de touche, aucun après un maul — tous des passes 9 -> 10 ->
+      // trois-quarts.
       melee: [
-        {
-          nom: '9-10-croise-12',
-          poids: 1,
-          etapes: [
-            { action: 'passe', de: 9, vers: 10 },
-            { action: 'passe', de: 10, vers: 12, ligne: 'croise' },
-          ],
-        },
-        {
-          nom: '9-10-large-13',
-          poids: 1,
-          etapes: [
-            { action: 'passe', de: 9, vers: 10 },
-            { action: 'passe', de: 10, vers: 12 },
-            { action: 'passe', de: 12, vers: 13 },
-          ],
-        },
-        {
-          // Combinaison de ZONE : seulement dans les 22 m adverses. Le 10 tape une
-          // chandelle par-dessus la défense (à récupérer par les chasseurs).
-          nom: '9-10-chandelle-22',
-          poids: 1,
-          zone: ['OPP_22', 'CINQ_M'],
-          etapes: [
-            { action: 'passe', de: 9, vers: 10 },
-            { action: 'pied', de: 10, type: 'CHANDELLE' },
-          ],
-        },
+        { nom: '9-10-croise-12', libelle: 'croisé du 12 dans le dos de l\'ouvreur', poids: 1,
+          etapes: [{ action: 'passe', de: 9, vers: 10 }, { action: 'passe', de: 10, vers: 12, ligne: 'croise' }] },
+        { nom: '9-10-large-13', libelle: 'ballon écarté jusqu\'au 13', poids: 1,
+          etapes: [{ action: 'passe', de: 9, vers: 10 }, { action: 'passe', de: 10, vers: 12 }, { action: 'passe', de: 12, vers: 13 }] },
+        { nom: '9-10-percussion-12', libelle: 'percussion du 12 au centre du terrain', poids: 1,
+          etapes: [{ action: 'passe', de: 9, vers: 10 }, { action: 'passe', de: 10, vers: 12, ligne: 'percussion' }] },
+        { nom: '9-10-intercale-15', libelle: 'arrière intercalé', poids: 1,
+          etapes: [{ action: 'passe', de: 9, vers: 10 }, { action: 'passe', de: 10, vers: 15, ligne: 'saute' }] },
+        { nom: '9-cote-ferme', libelle: 'côté fermé pour l\'ailier', poids: 1,
+          etapes: [{ action: 'passe', de: 9, vers: 'AILE_FERMEE', ligne: 'cote ferme' }] },
+        { nom: '9-10-saute-13', libelle: 'passe sautée au 13', poids: 1,
+          etapes: [{ action: 'passe', de: 9, vers: 10 }, { action: 'passe', de: 10, vers: 13, ligne: 'saute' }] },
+        // Chandelle du 9 depuis la base (box kick) : dans son camp.
+        { nom: '9-chandelle', libelle: 'chandelle du 9 par-dessus la mêlée', poids: 1, zone: ['OWN_22', 'OWN_HALF'],
+          etapes: [{ action: 'pied', de: 9, type: 'CHANDELLE' }] },
+        // Coup de pied par-dessus la défense : dans les 22 adverses.
+        { nom: '9-10-chandelle-22', libelle: 'coup de pied par-dessus dans les 22', poids: 1, zone: ['OPP_22', 'CINQ_M'],
+          etapes: [{ action: 'passe', de: 9, vers: 10 }, { action: 'pied', de: 10, type: 'CHANDELLE' }] },
       ],
       touche: [
-        {
-          nom: '9-10-saute-13',
-          poids: 1,
-          etapes: [
-            { action: 'passe', de: 9, vers: 10 },
-            { action: 'passe', de: 10, vers: 13, ligne: 'saute' },
-          ],
-        },
-        {
-          // Boucle : le 10 donne au 12 qui repart à l'extérieur (le 10 boucle).
-          nom: '9-10-boucle-12',
-          poids: 1,
-          etapes: [
-            { action: 'passe', de: 9, vers: 10 },
-            { action: 'passe', de: 10, vers: 12, ligne: 'boucle' },
-          ],
-        },
+        { nom: '9-10-saute-13', libelle: 'passe sautée au 13', poids: 1,
+          etapes: [{ action: 'passe', de: 9, vers: 10 }, { action: 'passe', de: 10, vers: 13, ligne: 'saute' }] },
+        { nom: '9-10-boucle-12', libelle: 'boucle de l\'ouvreur autour du 12', poids: 1,
+          etapes: [{ action: 'passe', de: 9, vers: 10 }, { action: 'passe', de: 10, vers: 12, ligne: 'boucle' }] },
+        { nom: '9-avant-percussion', libelle: 'avant lancé au près de l\'alignement', poids: 1,
+          etapes: [{ action: 'passe', de: 9, vers: 'AVANT', ligne: 'percussion' }] },
+        { nom: '9-10-percussion-12', libelle: 'percussion du 12 au centre du terrain', poids: 1,
+          etapes: [{ action: 'passe', de: 9, vers: 10 }, { action: 'passe', de: 10, vers: 12, ligne: 'percussion' }] },
+        { nom: '9-10-intercale-15', libelle: 'arrière intercalé', poids: 1,
+          etapes: [{ action: 'passe', de: 9, vers: 10 }, { action: 'passe', de: 10, vers: 15, ligne: 'saute' }] },
+        { nom: '9-10-croise-12', libelle: 'croisé du 12 dans le dos de l\'ouvreur', poids: 1,
+          etapes: [{ action: 'passe', de: 9, vers: 10 }, { action: 'passe', de: 10, vers: 12, ligne: 'croise' }] },
+        { nom: '9-chandelle', libelle: 'chandelle du 9 derrière l\'alignement', poids: 1, zone: ['OWN_22', 'OWN_HALF'],
+          etapes: [{ action: 'pied', de: 9, type: 'CHANDELLE' }] },
       ],
-      // Playbook SPÉCIFIQUE à l'équipe A (exemple) : à la mêlée, A privilégie une
-      // sortie 8->9->10->13 sautée. Si une clé d'équipe existe pour un type, elle
-      // REMPLACE la liste partagée pour cette équipe.
-      A: {
-        melee: [
-          {
-            nom: 'A-9-10-saute-13',
-            poids: 1,
-            etapes: [
-              { action: 'passe', de: 9, vers: 10 },
-              { action: 'passe', de: 10, vers: 13, ligne: 'saute' },
-            ],
-          },
-        ],
-      },
+      // Sortie de MAUL : le pack a fixé la défense au près.
+      maul: [
+        { nom: '9-avant-percussion', libelle: 'avant lancé au ras du maul', poids: 1,
+          etapes: [{ action: 'passe', de: 9, vers: 'AVANT', ligne: 'percussion' }] },
+        { nom: '9-cote-ferme', libelle: 'côté fermé pour l\'ailier', poids: 1,
+          etapes: [{ action: 'passe', de: 9, vers: 'AILE_FERMEE', ligne: 'cote ferme' }] },
+        { nom: '9-10-large-13', libelle: 'ballon écarté jusqu\'au 13', poids: 1,
+          etapes: [{ action: 'passe', de: 9, vers: 10 }, { action: 'passe', de: 10, vers: 12 }, { action: 'passe', de: 12, vers: 13 }] },
+        { nom: '9-10-percussion-12', libelle: 'percussion du 12', poids: 1,
+          etapes: [{ action: 'passe', de: 9, vers: 10 }, { action: 'passe', de: 10, vers: 12, ligne: 'percussion' }] },
+        { nom: '9-chandelle', libelle: 'chandelle du 9 depuis le maul', poids: 1, zone: ['OWN_22', 'OWN_HALF'],
+          etapes: [{ action: 'pied', de: 9, type: 'CHANDELLE' }] },
+      ],
     },
   };
 
@@ -3387,6 +3386,10 @@
       const avant = porteur.numero <= 8;
       const enMene = this.score[porteur.team] > this.score[porteur.team === 'A' ? 'B' : 'A'];
 
+      // PERCUSSION (lancement de jeu) : le receveur fixe la défense en allant
+      // au contact, il ne repasse pas — le ruck qui suit est le but du mouvement.
+      if (porteur._percussion > 0) return 'RUN';
+
       // SONNERIE (loi 5.7) : le ballon en main, l'équipe qui ne veut plus
       // jouer le sort en touche pour faire siffler la fin — à la mi-temps
       // depuis son camp, en fin de match quand elle mène. Les arrières le
@@ -5649,6 +5652,8 @@
       this._imposerRecuperationRuck({ x: m.x, y: m.y }, 6, 4, 0.5);
       this.phase = 'PORTE';
       this.timerPhase = 0;
+      // Lancement de jeu après le maul (cf. cfg.combinaisons.maul).
+      if (this.porteur && this.porteur.numero === 9) this._lancerCombinaison('maul');
     }
 
     // Ballon injouable : mêlée à l'équipe désignée par la loi 19 (défense, ou
@@ -6784,6 +6789,8 @@
       const combo = this._choisirCombinaison(type);
       if (!combo || !combo.etapes || !combo.etapes.length) return;
       this.combinaison = { etapes: combo.etapes, i: 0, timer: 0, delai: 0.55 };
+      const surQuoi = { melee: 'sur mêlée', touche: 'sur touche', maul: 'après le maul' }[type] || '';
+      this.log('LANCEMENT', this.possession, `Lancement ${surQuoi} : ${combo.libelle || combo.nom}`, { nom: combo.nom, sur: type });
     }
 
     // Déroule pas à pas la combinaison en cours (passes ciblées + lignes de
@@ -6815,7 +6822,17 @@
 
       // Action PASSE (défaut).
       const eq = this.possession === 'A' ? this.equipeA : this.equipeB;
-      const cible = eq.find(j => j.numero === etape.vers && j.sinBin <= 0 && j.auSol === 0);
+      let cible;
+      if (etape.vers === 'AILE_FERMEE') {
+        // Le côté court : entre le ballon et la touche la plus proche.
+        const basCote = this.porteur.y < LARGEUR / 2;
+        cible = eq.find(j => (j.numero === 11 || j.numero === 14) && (j.channelY < LARGEUR / 2) === basCote
+          && j.sinBin <= 0 && j.auSol === 0);
+      } else if (etape.vers === 'AVANT') {
+        cible = this._designerAvantLance(this.porteur, this.attaquants());
+      } else {
+        cible = eq.find(j => j.numero === etape.vers && j.sinBin <= 0 && j.auSol === 0);
+      }
       if (!cible || Referee.passeEnAvant(this.porteur.sensAttaque, this.porteur, cible)) {
         this.combinaison = null; return false; // option scriptée impossible -> jeu libre
       }
@@ -6826,7 +6843,9 @@
       this._lancerPasseVisuelle(passeur, cible);
       this.porteur = cible;
       this._receptionDirecte = false;
-      this.log('COMBINAISON', this.possession, `Combinaison : passe du n°${etape.de} au n°${etape.vers}${etape.ligne ? ' (' + etape.ligne + ')' : ''}`);
+      this.log('COMBINAISON', this.possession, `Combinaison : passe du n°${etape.de} au n°${cible.numero}${etape.ligne ? ' (' + etape.ligne + ')' : ''}`);
+      // PERCUSSION : le receveur va au contact sans repasser (cf. choisirActionPorteur).
+      if (etape.ligne === 'percussion') cible._percussion = 2.5;
       // Ligne de course du RECEVEUR (croisé ou boucle) : dans les deux cas il
       // CHANGE de direction un court instant.
       if (etape.ligne === 'croise' || etape.ligne === 'boucle') {
@@ -7555,6 +7574,7 @@
         if (j.fixeCooldown > 0) j.fixeCooldown = Math.max(0, j.fixeCooldown - dt); // défenseur fixé/battu par une passe
         if (j.ruckRecovery > 0) j.ruckRecovery = Math.max(0, j.ruckRecovery - dt);
         if (j._croiseTimer > 0) j._croiseTimer = Math.max(0, j._croiseTimer - dt);
+        if (j._percussion > 0) j._percussion = j === this.porteur ? Math.max(0, j._percussion - dt) : 0;
         // Plaqueur couché (visuel pur) : ne persiste qu'en JEU COURANT. Sur un
         // changement de phase (mêlée, touche, coup de pied...), on l'efface : sinon
         // un plaqueur restait dessiné au sol tout seul, loin de la nouvelle action

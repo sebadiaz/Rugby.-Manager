@@ -4370,6 +4370,84 @@ test('consigne des ailiers (FUNC-RM-004) : « repique » leur donne plus de ball
   assert.ok(large <= 0.85 * neutre, `reste large : ${large} ballons reçus, pour ${neutre} sans consigne`);
 });
 
+test('lancements de jeu : mêlée, touche et maul ont chacun plusieurs scénarios, aucun ne domine, et chaque équipe varie', () => {
+  // Avant : 3 scénarios de mêlée (et UN SEUL pour l'équipe A : 50 fois sur 50),
+  // 2 de touche, aucun après un maul — et tous des passes 9 -> 10 -> trois-quarts.
+  const joues = {};
+  for (let seed = 1; seed <= 16; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    const ch = m._choisirCombinaison.bind(m);
+    m._choisirCombinaison = (type) => {
+      const c = ch(type);
+      if (c) { const k = type + ':' + m.possession; (joues[k] = joues[k] || {})[c.nom] = (joues[k][c.nom] || 0) + 1; }
+      return c;
+    };
+    m.jouerJusquAuSifflet(0.1);
+  }
+  for (const type of ['melee', 'touche', 'maul']) {
+    for (const eq of ['A', 'B']) {
+      const c = joues[type + ':' + eq] || {};
+      const total = Object.values(c).reduce((x, y) => x + y, 0);
+      const noms = Object.keys(c);
+      assert.ok(noms.length >= (type === 'maul' ? 3 : 5), `${type} ${eq} : ${noms.length} scénarios joués (${JSON.stringify(c)})`);
+      assert.ok(Math.max(...Object.values(c)) <= 0.45 * total, `${type} ${eq} : un scénario domine (${JSON.stringify(c)})`);
+    }
+  }
+});
+
+test('lancements de jeu : la percussion va au contact sans repasser, le côté fermé sert l ailier du côté court', () => {
+  let percussions = 0, repasses = 0, rucks = 0, fermes = 0, fermesBons = 0;
+  for (let seed = 1; seed <= 16; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    let p = null;
+    const log = m.log.bind(m);
+    m.log = (t, team, msg, extra, ...r) => {
+      const mm = /Combinaison : passe du n°(\d+) au n°(\d+) \((percussion|cote ferme)\)/.exec(msg);
+      if (t === 'COMBINAISON' && mm && mm[3] === 'percussion') { percussions++; p = { n: +mm[2], team, t0: m.tempsMatch }; }
+      else if (p) {
+        // Pendant sa percussion, il ne repasse jamais (un offload au contact reste permis).
+        if ((t === 'PASSE' || t === 'JEU_LARGE') && m.porteur && m.porteur.team === p.team && m.porteur.numero === p.n
+          && m.porteur._percussion > 0) repasses++;
+      }
+      if (t === 'COMBINAISON' && mm && mm[3] === 'cote ferme') {
+        fermes++;
+        const eq = team === 'A' ? m.equipeA : m.equipeB;
+        const receveur = eq.find((j) => j.numero === +mm[2]), passeur = eq.find((j) => j.numero === +mm[1]);
+        if (receveur && (receveur.numero === 11 || receveur.numero === 14)
+          && (receveur.channelY < 35) === (passeur.y < 35)) fermesBons++;
+      }
+      return log(t, team, msg, extra, ...r);
+    };
+    while (m.phase !== 'TERMINE') {
+      m.tick(0.1);
+      // Le ruck qui suit la percussion : le moteur n'annonce que sa SORTIE.
+      if (p && m.phase === 'RUCK' && m.tempsMatch - p.t0 <= 4) { rucks++; p = null; }
+      else if (p && m.tempsMatch - p.t0 > 4) p = null;
+    }
+  }
+  assert.ok(percussions >= 10 && fermes >= 10, `${percussions} percussions, ${fermes} côtés fermés`);
+  assert.strictEqual(repasses, 0, `${repasses} passes du percuteur pendant sa percussion`);
+  assert.ok(rucks >= 0.6 * percussions, `${rucks} rucks dans les 4 s pour ${percussions} percussions`);
+  assert.strictEqual(fermesBons, fermes, 'le côté fermé sert toujours l ailier du côté court');
+});
+
+test('docs/rugby-config.json (chargé par le jeu) ne contredit pas le moteur mesuré par les tests', () => {
+  // Le navigateur charge ce fichier PAR-DESSUS les défauts du moteur. Il avait
+  // gardé l'ancien jeu au large (0,55 / 0,30 contre 0,70 / 0,55 recalibrés le
+  // 6 octobre) et l'ancien playbook (l'équipe A ne jouait qu'une combinaison
+  // de mêlée) : le match vu à l'écran n'était pas celui que les tests mesurent.
+  const fichier = JSON.parse(require('fs').readFileSync(require('path').join(__dirname, '../docs/rugby-config.json'), 'utf8'));
+  const D = require('../engine/rugby-engine.js').DEFAULT_CONFIG;
+  const ecarts = [];
+  const comparer = (a, b, chemin) => {
+    if (a && typeof a === 'object' && !Array.isArray(a)) {
+      for (const k of Object.keys(a)) if (k !== '_lisezMoi') comparer(a[k], b == null ? undefined : b[k], chemin + '.' + k);
+    } else if (JSON.stringify(a) !== JSON.stringify(b)) ecarts.push(chemin);
+  };
+  comparer(fichier, D, '');
+  assert.deepStrictEqual(ecarts, [], 'valeurs du fichier différentes du moteur');
+});
+
 // --- bugs.md QA-RM-007 : événements, joueurs et équipe disent la même chose ---
 test('rapprochement : réussis ≤ tentés partout, et chaque essai ou but du compteur a son événement (QA-RM-007)', () => {
   for (let seed = 1; seed <= 4; seed++) {

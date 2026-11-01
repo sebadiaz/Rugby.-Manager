@@ -155,7 +155,9 @@
     if (aAfficher) {
       const banner = document.getElementById('banner');
       // Une blessure n'est pas une décision de l'arbitre (FUNC-RM-005).
-      const voix = /^(BLESSURE|PROTOCOLE_COMMOTION|RETOUR_PROTOCOLE|COMMOTION_CONFIRMEE|SAIGNEMENT)$/.test(aAfficher.type) ? '🚑 SOIGNEUR' : '🟨 ARBITRE';
+      // Ni une blessure ni un lancement de jeu ne sont des décisions de l'arbitre.
+      const voix = /^(BLESSURE|PROTOCOLE_COMMOTION|RETOUR_PROTOCOLE|COMMOTION_CONFIRMEE|SAIGNEMENT)$/.test(aAfficher.type) ? '🚑 SOIGNEUR'
+        : aAfficher.type === 'LANCEMENT' ? '📋 LANCEMENT' : '🟨 ARBITRE';
       banner.textContent = `${voix} — ${traduireEquipesDansMessage(aAfficher.message)}`;
       banner.classList.add('visible');
       placerBandeau(banner);

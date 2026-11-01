@@ -1,5 +1,5 @@
 {
-  "_lisezMoi": "Configuration editable AVANT le match. joueurs: caracteristiques par numero (poste, vitesse/plaquage/tendance 0-100, couloir 0-70). touche/melee/attaque/defense: distances (m) et taux (0-1). combinaisons: PLAYBOOK - mouvements scriptes a la sortie de melee/touche. proba=chance de jouer une combinaison. Chaque combinaison: nom, poids (tirage), zone (optionnel, ex [OPP_22] = seulement dans les 22m adverses), et etapes. Etape action=passe {de, vers, ligne} ou action=pied {de, type}. ligne: droit | croise (le receveur change de direction et croise en sens inverse) | boucle (le receveur part a l exterieur) | saute (passe sautee). Playbook propre a une equipe: cle A ou B remplacant la liste partagee (ex A.melee).",
+  "_lisezMoi": "Configuration editable AVANT le match. joueurs: caracteristiques par numero (poste, vitesse/plaquage/tendance 0-100, couloir 0-70). touche/melee/attaque/defense: distances (m) et taux (0-1). combinaisons: PLAYBOOK - lancements de jeu scriptes a la sortie de melee, de touche et de maul (libelle annonce dans le fil). Receveur vers: numero, AILE_FERMEE (ailier du cote court) ou AVANT (avant lance) ; ligne percussion = le receveur va au contact sans repasser. proba=chance de jouer une combinaison. Chaque combinaison: nom, poids (tirage), zone (optionnel, ex [OPP_22] = seulement dans les 22m adverses), et etapes. Etape action=passe {de, vers, ligne} ou action=pied {de, type}. ligne: droit | croise (le receveur change de direction et croise en sens inverse) | boucle (le receveur part a l exterieur) | saute (passe sautee). Playbook propre a une equipe: cle A ou B remplacant la liste partagee (ex A.melee).",
   "joueurs": {
     "1": {
       "poste": "P",
@@ -133,8 +133,8 @@
   },
   "attaque": {
     "jeuLargeTaux": {
-      "pression": 0.55,
-      "calme": 0.3
+      "pression": 0.7,
+      "calme": 0.55
     }
   },
   "defense": {
@@ -147,6 +147,7 @@
     "melee": [
       {
         "nom": "9-10-croise-12",
+        "libelle": "croisé du 12 dans le dos de l'ouvreur",
         "poids": 1,
         "etapes": [
           {
@@ -164,6 +165,7 @@
       },
       {
         "nom": "9-10-large-13",
+        "libelle": "ballon écarté jusqu'au 13",
         "poids": 1,
         "etapes": [
           {
@@ -184,7 +186,91 @@
         ]
       },
       {
+        "nom": "9-10-percussion-12",
+        "libelle": "percussion du 12 au centre du terrain",
+        "poids": 1,
+        "etapes": [
+          {
+            "action": "passe",
+            "de": 9,
+            "vers": 10
+          },
+          {
+            "action": "passe",
+            "de": 10,
+            "vers": 12,
+            "ligne": "percussion"
+          }
+        ]
+      },
+      {
+        "nom": "9-10-intercale-15",
+        "libelle": "arrière intercalé",
+        "poids": 1,
+        "etapes": [
+          {
+            "action": "passe",
+            "de": 9,
+            "vers": 10
+          },
+          {
+            "action": "passe",
+            "de": 10,
+            "vers": 15,
+            "ligne": "saute"
+          }
+        ]
+      },
+      {
+        "nom": "9-cote-ferme",
+        "libelle": "côté fermé pour l'ailier",
+        "poids": 1,
+        "etapes": [
+          {
+            "action": "passe",
+            "de": 9,
+            "vers": "AILE_FERMEE",
+            "ligne": "cote ferme"
+          }
+        ]
+      },
+      {
+        "nom": "9-10-saute-13",
+        "libelle": "passe sautée au 13",
+        "poids": 1,
+        "etapes": [
+          {
+            "action": "passe",
+            "de": 9,
+            "vers": 10
+          },
+          {
+            "action": "passe",
+            "de": 10,
+            "vers": 13,
+            "ligne": "saute"
+          }
+        ]
+      },
+      {
+        "nom": "9-chandelle",
+        "libelle": "chandelle du 9 par-dessus la mêlée",
+        "poids": 1,
+        "zone": [
+          "OWN_22",
+          "OWN_HALF"
+        ],
+        "etapes": [
+          {
+            "action": "pied",
+            "de": 9,
+            "type": "CHANDELLE"
+          }
+        ]
+      },
+      {
         "nom": "9-10-chandelle-22",
+        "libelle": "coup de pied par-dessus dans les 22",
         "poids": 1,
         "zone": [
           "OPP_22",
@@ -207,6 +293,7 @@
     "touche": [
       {
         "nom": "9-10-saute-13",
+        "libelle": "passe sautée au 13",
         "poids": 1,
         "etapes": [
           {
@@ -224,6 +311,7 @@
       },
       {
         "nom": "9-10-boucle-12",
+        "libelle": "boucle de l'ouvreur autour du 12",
         "poids": 1,
         "etapes": [
           {
@@ -238,28 +326,174 @@
             "ligne": "boucle"
           }
         ]
+      },
+      {
+        "nom": "9-avant-percussion",
+        "libelle": "avant lancé au près de l'alignement",
+        "poids": 1,
+        "etapes": [
+          {
+            "action": "passe",
+            "de": 9,
+            "vers": "AVANT",
+            "ligne": "percussion"
+          }
+        ]
+      },
+      {
+        "nom": "9-10-percussion-12",
+        "libelle": "percussion du 12 au centre du terrain",
+        "poids": 1,
+        "etapes": [
+          {
+            "action": "passe",
+            "de": 9,
+            "vers": 10
+          },
+          {
+            "action": "passe",
+            "de": 10,
+            "vers": 12,
+            "ligne": "percussion"
+          }
+        ]
+      },
+      {
+        "nom": "9-10-intercale-15",
+        "libelle": "arrière intercalé",
+        "poids": 1,
+        "etapes": [
+          {
+            "action": "passe",
+            "de": 9,
+            "vers": 10
+          },
+          {
+            "action": "passe",
+            "de": 10,
+            "vers": 15,
+            "ligne": "saute"
+          }
+        ]
+      },
+      {
+        "nom": "9-10-croise-12",
+        "libelle": "croisé du 12 dans le dos de l'ouvreur",
+        "poids": 1,
+        "etapes": [
+          {
+            "action": "passe",
+            "de": 9,
+            "vers": 10
+          },
+          {
+            "action": "passe",
+            "de": 10,
+            "vers": 12,
+            "ligne": "croise"
+          }
+        ]
+      },
+      {
+        "nom": "9-chandelle",
+        "libelle": "chandelle du 9 derrière l'alignement",
+        "poids": 1,
+        "zone": [
+          "OWN_22",
+          "OWN_HALF"
+        ],
+        "etapes": [
+          {
+            "action": "pied",
+            "de": 9,
+            "type": "CHANDELLE"
+          }
+        ]
       }
     ],
-    "A": {
-      "melee": [
-        {
-          "nom": "A-9-10-saute-13",
-          "poids": 1,
-          "etapes": [
-            {
-              "action": "passe",
-              "de": 9,
-              "vers": 10
-            },
-            {
-              "action": "passe",
-              "de": 10,
-              "vers": 13,
-              "ligne": "saute"
-            }
-          ]
-        }
-      ]
-    }
+    "maul": [
+      {
+        "nom": "9-avant-percussion",
+        "libelle": "avant lancé au ras du maul",
+        "poids": 1,
+        "etapes": [
+          {
+            "action": "passe",
+            "de": 9,
+            "vers": "AVANT",
+            "ligne": "percussion"
+          }
+        ]
+      },
+      {
+        "nom": "9-cote-ferme",
+        "libelle": "côté fermé pour l'ailier",
+        "poids": 1,
+        "etapes": [
+          {
+            "action": "passe",
+            "de": 9,
+            "vers": "AILE_FERMEE",
+            "ligne": "cote ferme"
+          }
+        ]
+      },
+      {
+        "nom": "9-10-large-13",
+        "libelle": "ballon écarté jusqu'au 13",
+        "poids": 1,
+        "etapes": [
+          {
+            "action": "passe",
+            "de": 9,
+            "vers": 10
+          },
+          {
+            "action": "passe",
+            "de": 10,
+            "vers": 12
+          },
+          {
+            "action": "passe",
+            "de": 12,
+            "vers": 13
+          }
+        ]
+      },
+      {
+        "nom": "9-10-percussion-12",
+        "libelle": "percussion du 12",
+        "poids": 1,
+        "etapes": [
+          {
+            "action": "passe",
+            "de": 9,
+            "vers": 10
+          },
+          {
+            "action": "passe",
+            "de": 10,
+            "vers": 12,
+            "ligne": "percussion"
+          }
+        ]
+      },
+      {
+        "nom": "9-chandelle",
+        "libelle": "chandelle du 9 depuis le maul",
+        "poids": 1,
+        "zone": [
+          "OWN_22",
+          "OWN_HALF"
+        ],
+        "etapes": [
+          {
+            "action": "pied",
+            "de": 9,
+            "type": "CHANDELLE"
+          }
+        ]
+      }
+    ]
   }
 }

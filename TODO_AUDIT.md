@@ -580,6 +580,39 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-151. Lancements de jeu variés après une mêlée, une touche ou un maul (playbook)
+- **Statut : LIVRÉ**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`combinaisons`, `_tickCombinaison`,
+  `_lancerCombinaison`, percussion dans `choisirActionPorteur`, lancement à la sortie du maul), `docs/rugby-config.json`,
+  `docs/js/constants.js`, `docs/js/ui.js`, `server/test-invariants.js`.
+
+**Constat (20 matchs).** Mêlée : 3 scénarios, et UN SEUL pour l'équipe A (« A-9-10-saute-13 », 50 fois sur 50, un
+playbook d'exemple resté dans la configuration). Touche : 2 scénarios. Après un maul : aucun. Tous des passes 9 → 10 →
+trois-quarts. Et le jeu dans le navigateur charge `docs/rugby-config.json` par-dessus le moteur : ce fichier gardait
+l'ancien playbook ET l'ancien jeu au large (0,55 / 0,30 contre 0,70 / 0,55 recalibrés le 6 octobre) — le match vu à
+l'écran n'était pas celui que mesurent les tests et la calibration.
+
+**Correction.**
+- Playbook partagé : mêlée 8 scénarios, touche 7, maul 5 — croisé du 12, ballon écarté au 13, passe sautée, boucle de
+  l'ouvreur, **arrière intercalé**, **percussion du 12**, **côté fermé pour l'ailier**, **avant lancé au ras de
+  l'alignement / du maul**, **chandelle du 9** (dans son camp), coup de pied par-dessus (dans les 22 adverses). Le
+  playbook d'exemple propre à l'équipe A est retiré.
+- Receveurs dynamiques : `AILE_FERMEE` (l'ailier du côté court, 11 ou 14), `AVANT` (l'avant lancé désigné à la
+  sortie). Ligne `percussion` : le receveur va au contact sans repasser pendant 2,5 s.
+- Chaque lancement est annoncé dans le fil et en bandeau (« 📋 LANCEMENT — Lancement sur mêlée : côté fermé pour
+  l'ailier »).
+- `docs/rugby-config.json` régénéré depuis le moteur pour les sections divergentes ; un invariant interdit désormais
+  toute valeur différente du moteur.
+
+**Mesures.** Par équipe sur 20 matchs : 7 scénarios différents joués sur mêlée, 7 sur touche, 4 à 5 après un maul ;
+aucun ne dépasse 45 % des lancements. 100 graines appariées (moteur seul) : points 57,3 → 54,0 (±3,5), essais 6,62 →
+6,03 (±0,58), passes +1,5, rucks +2,7, mêlées et touches stables. Calibration 14/14 (passes revenues dans la fourchette).
+
+**Tests.** Invariants : variété par type et par équipe, aucun scénario dominant (l'ancien moteur échoue : « melee A :
+1 scénario ») ; percussion sans passe pendant 2,5 s et ruck dans les 4 s dans la majorité des cas, côté fermé toujours
+vers l'ailier du côté court ; `rugby-config.json` conforme au moteur (l'ancien fichier échoue sur 5 écarts). Navigateur
+1400×1000 et 390×844 (captures vérifiées) : bandeau « LANCEMENT » et passe à l'ailier du côté court.
+
 ### P2-150. Consigne des ailiers : repiquent, standard, restent larges — bugs.md FUNC-RM-004
 - **Statut : LIVRÉ** (troisième consigne ; clôt le premier lot de FUNC-RM-004)
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`attaque.ailiers`, placement au ruck et au
