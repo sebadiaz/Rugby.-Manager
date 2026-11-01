@@ -580,6 +580,28 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-148. Consigne individuelle de l'ouvreur : au pied, lecture du jeu, à la main — bugs.md FUNC-RM-004
+- **Statut : LIVRÉ** (premier lot de FUNC-RM-004)
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`attaque.piedOuvreur`), `docs/js/club.js`
+  (axe `ouvreur`), `docs/js/club-composition.js` (fusion des axes d'attaque), `docs/js/club-equipes.js` (déduction
+  pour un club consulté), `server/test-invariants.js`, `server/test-melee.js`, `server/test-parcours-navigateur.js`.
+
+**Constat.** Toutes les consignes étaient collectives : le manager ne pouvait pas dire à SON ouvreur de jouer au pied
+ou à la main sans changer l'occupation au pied de toute l'équipe (le 9 compris).
+
+**Correction.** Un axe « Consigne de l'ouvreur (n°10) » dans l'écran Tactique (mêmes boutons, description et
+compromis) : « Occupe au pied » (×2), « Lecture du jeu » (neutre), « Joue à la main » (×0,4). Le moteur ne multiplie
+que les coups de pied en jeu courant du n°10 ; le jeu au pied du 9 et des autres reste celui de l'équipe. Valeur
+neutre = comportement par défaut, au tirage près. Pour un club consulté, l'axe est déduit de son n°10 réel (jeu au
+pied contre passe, écart de 10 points).
+
+**Mesures (40 graines appariées, équipe A).** Coups de pied du 10 : 4,9 / 8,9 / 13,8 (main / neutre / pied) ;
+possession de A 51,5 / 49,3 / 47,1 % ; occupation 49,0 / 50,5 / 50,6 %. Les points varient dans le bruit.
+
+**Tests.** Invariant (12 graines) : au pied ≥ ×1,4 coups de pied du 10, à la main ≤ ×0,7, ceux des autres stables à
+±30 %, consigne 1 identique au défaut. L'ancien moteur échoue. M6c : la consigne fusionne avec les trois autres axes
+d'attaque. Navigateur 1400×1000 et 390×844 (captures vérifiées) : trois options, sauvegarde, compromis affiché.
+
 ### P2-147. Déterminisme : un match affiché et un match calculé sans affichage sont identiques
 - **Statut : LIVRÉ**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`tick` → `_tickInterne`,

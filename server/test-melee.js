@@ -172,6 +172,16 @@ test('M6b — « Jeu d\'avants » gouverne AUSSI la sortie de regroupement, sans
     'le neutre ne doit rien forcer au moteur');
 });
 
+test('M6c — la consigne de l ouvreur (FUNC-RM-004) fusionne avec les trois autres axes d attaque', () => {
+  const cfg = RMClub.tactiqueVersConfig({ avants: 'proche', pied: 'frequent', style: 'large', ouvreur: 'pied' });
+  assert.strictEqual(cfg.attaque.piedOuvreur, 2, 'la consigne de l ouvreur atteint le moteur');
+  assert.strictEqual(cfg.attaque.tauxJeuAuPied, 2.5, 'l axe « pied » survit');
+  assert.ok(typeof cfg.attaque.sortieAvant === 'number' && cfg.attaque.jeuLargeTaux, 'les axes « avants » et « style » survivent');
+  assert.strictEqual(RMClub.tactiqueVersConfig({ ouvreur: 'main' }).attaque.piedOuvreur, 0.4);
+  const neutre = RMClub.tactiqueVersConfig({ ouvreur: 'equilibre' });
+  assert.ok(!neutre.attaque || neutre.attaque.piedOuvreur === undefined, 'le neutre ne force rien');
+});
+
 test('M7 — en match, la consigne produit réellement un déroulé différent', () => {
   // Ce test vérifie le CÂBLAGE de bout en bout, pas l'ampleur de l'effet :
   // sur une dizaine de matchs, le nombre même de mêlées change (115 contre

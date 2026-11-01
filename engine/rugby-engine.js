@@ -263,6 +263,10 @@
       // RÉELLEMENT aligné (cf. profilJeuAuPres) : un pack puissant joue le
       // ballon porté, une ligne rapide écarte même à 3 m de la ligne.
       jeuAuPresLigne: 0.90,
+      // CONSIGNE INDIVIDUELLE DE L'OUVREUR (bugs.md FUNC-RM-004) : multiplie
+      // ses seuls coups de pied en jeu courant. 1 = comportement par défaut ;
+      // le jeu au pied du 9 et des autres reste celui de l'équipe.
+      piedOuvreur: 1,
     },
     // Organisation de défense : profondeur de couverture de l'arrière (n°15) en
     // jeu courant et à la mêlée, recul de la ligne au ruck. rampeMontee =
@@ -3520,6 +3524,7 @@
         // 2026) — c'est LE régulateur de la longueur des possessions. Calibré
         // par balayage (cf. docs/ANALYSE_MATCH_REEL.md).
         pParSeconde *= (this.cfgAttaque[porteur.team].tauxJeuAuPied || 1);
+        if (porteur.numero === 10) pParSeconde *= (this.cfgAttaque[porteur.team].piedOuvreur || 1);
         // RECALAGE AU PAS REEL DU JEU. Les taux ci-dessus ont ete balayes sur un
         // banc tournant a 0,2 s (server/test-calibration-moteur.js), alors que le
         // navigateur fait tourner le moteur a 0,1 s (docs/js/constants.js,

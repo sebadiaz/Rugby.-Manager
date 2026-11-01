@@ -184,7 +184,16 @@
       // Un pack qui pousse fort cherche le duel ; un pack faible sort vite
       // plutôt que de concéder des pénalités.
       poussee: melee >= 62 ? 'dominer' : melee <= 50 ? 'sortirVite' : 'equilibre',
+      // Consigne de l'ouvreur (FUNC-RM-004) : déduite de SON n°10 — un buteur
+      // qui tape bien mieux qu'il ne passe occupe au pied, et l'inverse.
+      ouvreur: ouvreurDeduit(effectif),
     };
+  }
+  function ouvreurDeduit(effectif) {
+    const dix = effectif.find((j) => j.numero === 10) || effectif.find((j) => j.poste === 'OV');
+    if (!dix) return 'equilibre';
+    const ecart = (dix.jeuPied || 0) - (dix.passe || 0);
+    return ecart >= 10 ? 'pied' : ecart <= -10 ? 'main' : 'equilibre';
   }
 
   // Effectif d'un club adverse ramené à la MÊME forme que celui du club du

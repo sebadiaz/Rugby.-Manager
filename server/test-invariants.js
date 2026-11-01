@@ -4296,6 +4296,33 @@ test('déterminisme : un match affiché (getState à chaque pas) et un match cal
   }
 });
 
+test('consigne individuelle de l ouvreur (FUNC-RM-004) : au pied, il tape plus ; à la main, moins ; les autres ne changent pas', () => {
+  const compter = (piedOuvreur) => {
+    let dix = 0, autres = 0, defaut = 0;
+    for (let seed = 1; seed <= 12; seed++) {
+      const m = new MatchEngine(seed, 4800, piedOuvreur == null ? {} : { attaqueA: { piedOuvreur } });
+      const log = m.log.bind(m);
+      m.log = (t, team, msg, ...r) => {
+        if (t === 'COUP_DE_PIED' && team === 'A' && m.porteur && m.porteur.team === 'A') {
+          if (m.porteur.numero === 10) dix++; else autres++;
+        }
+        return log(t, team, msg, ...r);
+      };
+      m.jouerJusquAuSifflet(0.1);
+    }
+    return { dix, autres };
+  };
+  const pied = compter(2), main = compter(0.4), neutre = compter(null), un = compter(1);
+  assert.deepStrictEqual(un, neutre, 'la consigne neutre (1) est le comportement par défaut');
+  assert.ok(pied.dix >= 1.4 * neutre.dix, `au pied : ${pied.dix} coups de pied du 10 pour ${neutre.dix} sans consigne`);
+  assert.ok(main.dix <= 0.7 * neutre.dix, `à la main : ${main.dix} coups de pied du 10 pour ${neutre.dix} sans consigne`);
+  // Les autres botteurs (le 9 surtout) gardent leur volume, à ±30 % près
+  // (le match diverge, mais leur taux n'est pas touché).
+  for (const [nom, c] of [['pied', pied], ['main', main]]) {
+    assert.ok(Math.abs(c.autres - neutre.autres) <= 0.3 * neutre.autres, `${nom} : ${c.autres} coups de pied des autres pour ${neutre.autres}`);
+  }
+});
+
 // --- bugs.md QA-RM-007 : événements, joueurs et équipe disent la même chose ---
 test('rapprochement : réussis ≤ tentés partout, et chaque essai ou but du compteur a son événement (QA-RM-007)', () => {
   for (let seed = 1; seed <= 4; seed++) {

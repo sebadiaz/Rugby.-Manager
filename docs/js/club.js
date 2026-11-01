@@ -673,6 +673,17 @@
         frequent: { nom: 'Fréquent', description: 'Beaucoup de coups de pied pour occuper le camp adverse.', compromis: 'Gagne du terrain et de l\'occupation, mais cède la possession à chaque coup de pied.', attaque: { tauxJeuAuPied: 2.5 } },
       },
     },
+    // Première consigne INDIVIDUELLE (bugs.md FUNC-RM-004) : elle ne règle que
+    // les choix du n°10 en jeu courant. L'occupation au pied de l'équipe (axe
+    // ci-dessus) reste celle du 9 et des autres botteurs.
+    ouvreur: {
+      label: 'Consigne de l\'ouvreur (n°10)', defaut: 'equilibre',
+      options: {
+        pied: { nom: 'Occupe au pied', description: 'L\'ouvreur cherche le coup de pied : dégagement, occupation, ballon par-dessus.', compromis: 'Fait reculer l\'adversaire et soulage la défense, mais rend souvent le ballon : moins de temps de jeu en main pour la ligne.', attaque: { piedOuvreur: 2 } },
+        equilibre: { nom: 'Lecture du jeu', description: 'L\'ouvreur choisit au cas par cas entre la passe, la course et le pied.', compromis: 'Réglage neutre du moteur — aucun compromis appliqué.', attaque: null },
+        main: { nom: 'Joue à la main', description: 'L\'ouvreur garde le ballon en main et anime la ligne, il ne tape qu\'en dernier recours.', compromis: 'Plus de temps de jeu et de ballons pour les trois-quarts, mais on occupe moins le camp adverse et on joue plus souvent dans son propre camp.', attaque: { piedOuvreur: 0.4 } },
+      },
+    },
     ligneDef: {
       label: 'Défense', defaut: 'normale',
       options: {

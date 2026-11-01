@@ -4721,6 +4721,32 @@ function optionsLancement() {
     await ctxBc.close();
   }
 
+  // --- CONSIGNE INDIVIDUELLE DE L'OUVREUR (bugs.md FUNC-RM-004) -----------
+  {
+    const ctxOv = await browser.newContext({ viewport: { width: 1400, height: 1000 } });
+    const pgOv = await ctxOv.newPage();
+    const erreursOv = [];
+    pgOv.on('pageerror', (e) => erreursOv.push(e.message));
+    pgOv.on('dialog', async (d) => { await d.accept(); });
+    await pgOv.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+    await pgOv.click('#btnAccueilModeClub');
+    await pgOv.fill('#inputNomClub', 'AS Ouvreur');
+    await pgOv.click('#btnCreerClub');
+    await pgOv.waitForTimeout(700);
+    await pgOv.evaluate(() => document.querySelector('.ongletBtn[data-onglet="tactique"]').click());
+    await pgOv.waitForTimeout(400);
+    const optionsOv = await pgOv.$$eval('[data-axe="ouvreur"]', (b) => b.map((x) => x.dataset.valeur));
+    verifier('consigne de l ouvreur : trois options dans l écran Tactique', JSON.stringify(optionsOv) === '["pied","equilibre","main"]', JSON.stringify(optionsOv));
+    await pgOv.click('[data-axe="ouvreur"][data-valeur="main"]');
+    await pgOv.waitForTimeout(400);
+    const tactiqueOv = await pgOv.evaluate(() => JSON.parse(localStorage.getItem('rugbyManager.club.v1')).clubJoueur.tactique);
+    const compromisOv = await pgOv.textContent('#clubTactique');
+    verifier('consigne de l ouvreur : « Joue à la main » est sauvegardée et son compromis affiché',
+      tactiqueOv.ouvreur === 'main' && /on occupe moins le camp adverse/.test(compromisOv), JSON.stringify(tactiqueOv));
+    verifier('consigne de l ouvreur : aucune erreur de page', erreursOv.length === 0, erreursOv.join(' | '));
+    await ctxOv.close();
+  }
+
   // --- SORTIE DE SECOURS ----------------------------------------------------
   // Signale en jeu : « mon jeu est bloque, je ne peux ni rentrer dedans ni
   // supprimer pour continuer ». Le seul bouton de remise a zero vivait DANS le

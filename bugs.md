@@ -314,6 +314,8 @@ Les sommes individuelles des passes, plaquages et mètres correspondent aux somm
 
 **État constaté :** axes tactiques collectifs branchés au moteur et rôles capitaine/buteur/lanceur ; ce socle fonctionne. La profondeur individuelle reste limitée dans la feuille de route.
 
+**Avancement (TODO_AUDIT P2-148) :** consigne de l'ouvreur (au pied / lecture du jeu / à la main) livrée : seuls les coups de pied du n°10 changent (4,9 / 8,9 / 13,8 par match), avec possession et occupation en conséquence. Le comportement du 9 en sortie existe déjà en collectif (« Jeu d'avants »). Reste : largeur/repiquage d'un ailier et couverture de l'arrière.
+
 **À livrer :** premier lot restreint : comportement du 9 en sortie, choix main/pied du 10, largeur/repiquage d'un ailier et couverture de l'arrière. Afficher effet attendu et compromis ; les décisions dépendent des qualités et de la situation, sans garantir le résultat. Réutiliser les mêmes écrans pour les équipes dirigées.
 
 **Acceptation :** scénarios contrôlés et matchs appariés montrant un effet sur les choix observés, non sur une statistique ajoutée artificiellement. Instructions légales et incompatibilités expliquées ; réglages conservés après reprise/changement d'équipe.
