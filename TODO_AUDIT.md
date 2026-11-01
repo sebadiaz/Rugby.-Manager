@@ -621,6 +621,14 @@ moteur fait), sans promettre un effet sur le score qu'il ne produit pas de faço
 ligne. Navigateur 1400×1000 et 390×844 (captures vérifiées) : trois options, sauvegarde, la consigne de l'ouvreur est
 conservée.
 
+**Essai non retenu (commit 184ef77, annulé).** « Monte vers la ligne » a été réécrit pour faire réellement DÉFENDRE
+l'arrière dans la ligne (créneau au ruck, défenseur de ligne en jeu courant). Deux variantes, 100 graines appariées
+contre le placement standard : (a) l'ailier du côté court recule couvrir le fond à sa place — franchissements
+encaissés +3,2 ± 1,0, écart de score −4,4 ± 4,3 (le nombre de défenseurs de ligne ne change pas, le fond est couvert
+par un ailier) ; (b) personne ne recule — essais encaissés +0,65 ± 0,44, franchissements +3,2 ± 0,9. Dans ce moteur,
+un défenseur de plus dans la ligne ne rapporte rien et le fond dégarni coûte cher : les deux versions faisaient de la
+consigne une option perdante. Retour au rapprochement de 8 m, sans effet significatif sur le score.
+
 ### P2-148. Consigne individuelle de l'ouvreur : au pied, lecture du jeu, à la main — bugs.md FUNC-RM-004
 - **Statut : LIVRÉ** (premier lot de FUNC-RM-004)
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`attaque.piedOuvreur`), `docs/js/club.js`
