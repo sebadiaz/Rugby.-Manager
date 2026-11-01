@@ -267,6 +267,11 @@
       // ses seuls coups de pied en jeu courant. 1 = comportement par défaut ;
       // le jeu au pied du 9 et des autres reste celui de l'équipe.
       piedOuvreur: 1,
+      // CONSIGNE DES AILIERS (bugs.md FUNC-RM-004) : null = placement par
+      // défaut ; 'repique' = l'ailier côté fermé quitte son aile pour rejoindre
+      // l'attaque ; 'large' = l'ailier côté ouvert reste collé à la touche au
+      // lieu de prendre son rang dans l'éventail.
+      ailiers: null,
     },
     // Organisation de défense : profondeur de couverture de l'arrière (n°15) en
     // jeu courant et à la mêlée, recul de la ligne au ruck. rampeMontee =
@@ -2954,12 +2959,15 @@
             // de traverser tout le terrain pour rejoindre l'éventail ouvert.
             const estAilier = j.numero === 11 || j.numero === 14;
             const sonCote = Math.sign(j.channelY - LARGEUR / 2) || 1;
-            if (estAilier && sonCote !== coteOuvert) {
+            const consigneAiliers = this.cfgAttaque[j.team].ailiers;
+            if (estAilier && sonCote !== coteOuvert && consigneAiliers !== 'repique') {
               const cibleXa = porteur.x - porteur.sensAttaque * 4;
               avancer(j, cibleXa - j.x, j.channelY - j.y, dt, vitesseMs(j) * 0.85);
               continue;
             }
-            const cibleY = Math.max(4, Math.min(LARGEUR - 4, porteur.y + coteOuvert * 7 * rang));
+            const cibleY = estAilier && sonCote === coteOuvert && consigneAiliers === 'large'
+              ? (coteOuvert > 0 ? LARGEUR - 4 : 4)
+              : Math.max(4, Math.min(LARGEUR - 4, porteur.y + coteOuvert * 7 * rang));
             // DIAGONALE en course aussi : le voisin immédiat vient quasi à plat
             // (rang 1 : ~2,2 m derrière le porteur, prêt à prendre la passe
             // courte lancé), mais chaque homme au-delà GARDE de la profondeur
@@ -4906,14 +4914,17 @@
             // d'occuper tout le terrain.
             const estAilier = j.numero === 11 || j.numero === 14;
             const sonCote = Math.sign(j.channelY - LARGEUR / 2) || 1;
-            if (estAilier && sonCote !== coteOuvert) {
+            const consigneAiliers = this.cfgAttaque[j.team].ailiers;
+            if (estAilier && sonCote !== coteOuvert && consigneAiliers !== 'repique') {
               const cibleXf = pt.x - sensAttaque * 8;
               avancer(j, cibleXf - j.x, j.channelY - j.y, dt, vitesseMs(j) * 0.85);
               continue;
             }
             const ordreBack = { 10: 1, 12: 2, 13: 3, 11: 4, 14: 4 };
             const rangB = ordreBack[j.numero] || 2;
-            const cibleY = Math.max(4, Math.min(LARGEUR - 4, pt.y + coteOuvert * (7 + (rangB - 1) * 8)));
+            const cibleY = estAilier && sonCote === coteOuvert && consigneAiliers === 'large'
+              ? (coteOuvert > 0 ? LARGEUR - 4 : 4)
+              : Math.max(4, Math.min(LARGEUR - 4, pt.y + coteOuvert * (7 + (rangB - 1) * 8)));
             // DIAGONALE D'ATTAQUE : chaque homme se place PLUS PROFOND que celui
             // à son intérieur (10 à ~5,7 m, 12 à ~7,4 m, 13 à ~9,1 m, aile à
             // ~10,8 m) — c'est la profondeur qui permet de CONSTRUIRE : chaque

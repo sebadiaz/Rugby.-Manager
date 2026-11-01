@@ -188,7 +188,16 @@
       // qui tape bien mieux qu'il ne passe occupe au pied, et l'inverse.
       ouvreur: ouvreurDeduit(effectif),
       arriere: arriereDeduit(effectif),
+      // Ailiers rapides : ils restent larges pour exploiter l'espace ; ailiers
+      // lents mais bons passeurs : ils repiquent chercher le ballon.
+      ailiers: ailiersDeduits(effectif),
     };
+  }
+  function ailiersDeduits(effectif) {
+    const ailes = effectif.filter((j) => j.numero === 11 || j.numero === 14);
+    if (!ailes.length) return 'equilibre';
+    const vitesse = ailes.reduce((s, j) => s + (j.vitesse || 0), 0) / ailes.length;
+    return vitesse >= 85 ? 'large' : vitesse <= 70 ? 'repique' : 'equilibre';
   }
   // Consigne de l'arrière (FUNC-RM-004) : déduite de SON n°15 — un arrière
   // très rapide monte soutenir la ligne, un bon botteur couvre le fond.

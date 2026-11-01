@@ -580,6 +580,26 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-150. Consigne des ailiers : repiquent, standard, restent larges — bugs.md FUNC-RM-004
+- **Statut : LIVRÉ** (troisième consigne ; clôt le premier lot de FUNC-RM-004)
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`attaque.ailiers`, placement au ruck et au
+  lancement), `docs/js/club.js` (axe `ailiers`), `docs/js/club-composition.js`, `docs/js/club-equipes.js`,
+  `server/test-invariants.js`, `server/test-melee.js`, `server/test-parcours-navigateur.js`.
+
+**Correction.** Axe « Consigne des ailiers (n°11, n°14) ». Par défaut, l'ailier du côté ouvert prend son rang dans la
+ligne et celui du côté fermé tient son aile. « Repiquent » : l'ailier du côté fermé quitte son aile pour rejoindre
+l'attaque (plus de ballons, plus d'option côté court). « Restent larges » : l'ailier du côté ouvert reste collé à la
+touche. Sans consigne, le match est identique au pas près (5 graines comparées). Club consulté : déduit de la vitesse
+moyenne de ses ailiers (≥ 85 → larges, ≤ 70 → repiquent).
+
+**Mesures.** 40 graines (équipe A) : ballons reçus par les ailiers 23,2 / 32,8 / 16,3 (standard / repiquent /
+larges), mètres 119 / 133 / 85. 100 graines appariées, écart de score : repiquent +2,4 ± 3,9, larges +0,8 ± 4,6 — aucune
+option ne domine ; « restent larges » réduit les essais des deux équipes (−0,5 chacune). Capture : à un ruck de A, les
+deux ailiers « repiquent » côté ouvert, plus aucun trois-quarts côté fermé.
+
+**Tests.** Invariant (12 graines) : repiquent ≥ ×1,2 ballons aux ailiers, larges ≤ ×0,85 ; l'ancien moteur échoue.
+M6e : fusion avec les autres axes d'attaque. Navigateur : sauvegarde, les deux autres consignes conservées.
+
 ### P2-149. Consigne individuelle de l'arrière : couvre le fond, standard, monte vers la ligne — bugs.md FUNC-RM-004
 - **Statut : LIVRÉ** (deuxième consigne de FUNC-RM-004)
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`defense.decalageArriere`), `docs/js/club.js`

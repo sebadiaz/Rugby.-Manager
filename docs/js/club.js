@@ -692,6 +692,16 @@
         haute: { nom: 'Haute', description: 'Presse haut et vite, y compris au ruck — plus risqué si elle est percée.', compromis: 'Étouffe l\'attaque adverse plus tôt, mais une brèche se transforme plus souvent en franchissement.', defense: { rampeMontee: 1.5, profondeurArriereJeu: 15, profondeurArriereMelee: 17, reculRuck: 2 } },
       },
     },
+    // Troisième consigne individuelle (FUNC-RM-004) : le placement des deux
+    // ailiers (11, 14) en attaque.
+    ailiers: {
+      label: 'Consigne des ailiers (n°11, n°14)', defaut: 'equilibre',
+      options: {
+        repique: { nom: 'Repiquent', description: 'L\'ailier du côté fermé quitte son aile pour venir chercher le ballon dans la ligne.', compromis: 'Les ailiers touchent nettement plus de ballons, mais le côté fermé n\'a plus personne pour une attaque côté court.', attaque: { ailiers: 'repique' } },
+        equilibre: { nom: 'Placement standard', description: 'L\'ailier du côté ouvert prend son rang dans la ligne, celui du côté fermé tient son aile.', compromis: 'Réglage neutre du moteur — aucun compromis appliqué.', attaque: null },
+        large: { nom: 'Restent larges', description: 'L\'ailier du côté ouvert reste collé à la touche au lieu de prendre son rang dans la ligne.', compromis: 'Garde une option tout au large, mais les ailiers touchent moins de ballons et le jeu se resserre : moins d\'essais, des deux côtés.', attaque: { ailiers: 'large' } },
+      },
+    },
     // Deuxième consigne individuelle (FUNC-RM-004) : la place du n°15 en
     // défense, en plus de la hauteur de ligne collective (axe ci-dessus).
     arriere: {

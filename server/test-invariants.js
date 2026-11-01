@@ -4351,6 +4351,25 @@ test('consigne individuelle de l arrière (FUNC-RM-004) : il couvre plus profond
   }
 });
 
+test('consigne des ailiers (FUNC-RM-004) : « repique » leur donne plus de ballons, « reste large » moins', () => {
+  const ballons = (ailiers) => {
+    let n = 0;
+    for (let seed = 1; seed <= 12; seed++) {
+      const m = new MatchEngine(seed, 4800, ailiers == null ? {} : { attaqueA: { ailiers } });
+      const log = m.log.bind(m);
+      m.log = (t, team, msg, extra, ...r) => {
+        if ((t === 'PASSE' || t === 'JEU_LARGE') && team === 'A' && extra && (extra.vers === 11 || extra.vers === 14)) n++;
+        return log(t, team, msg, extra, ...r);
+      };
+      m.jouerJusquAuSifflet(0.1);
+    }
+    return n;
+  };
+  const neutre = ballons(null), repique = ballons('repique'), large = ballons('large');
+  assert.ok(repique >= 1.2 * neutre, `repique : ${repique} ballons reçus par les ailiers de A, pour ${neutre} sans consigne`);
+  assert.ok(large <= 0.85 * neutre, `reste large : ${large} ballons reçus, pour ${neutre} sans consigne`);
+});
+
 // --- bugs.md QA-RM-007 : événements, joueurs et équipe disent la même chose ---
 test('rapprochement : réussis ≤ tentés partout, et chaque essai ou but du compteur a son événement (QA-RM-007)', () => {
   for (let seed = 1; seed <= 4; seed++) {

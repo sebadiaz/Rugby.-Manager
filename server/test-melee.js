@@ -191,6 +191,15 @@ test('M6d — la consigne de l arrière (FUNC-RM-004) fusionne avec la hauteur d
   assert.ok(!neutre.defense, 'le neutre ne force rien au moteur');
 });
 
+test('M6e — la consigne des ailiers (FUNC-RM-004) fusionne avec les autres axes d attaque', () => {
+  const cfg = RMClub.tactiqueVersConfig({ ailiers: 'repique', ouvreur: 'pied', pied: 'frequent' });
+  assert.strictEqual(cfg.attaque.ailiers, 'repique');
+  assert.strictEqual(cfg.attaque.piedOuvreur, 2);
+  assert.strictEqual(cfg.attaque.tauxJeuAuPied, 2.5);
+  const neutre = RMClub.tactiqueVersConfig({ ailiers: 'equilibre' });
+  assert.ok(!neutre.attaque || neutre.attaque.ailiers === undefined, 'le neutre ne force rien');
+});
+
 test('M7 — en match, la consigne produit réellement un déroulé différent', () => {
   // Ce test vérifie le CÂBLAGE de bout en bout, pas l'ampleur de l'effet :
   // sur une dizaine de matchs, le nombre même de mêlées change (115 contre
