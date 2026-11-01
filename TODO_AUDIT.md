@@ -608,6 +608,16 @@ l'écran n'était pas celui que mesurent les tests et la calibration.
 aucun ne dépasse 45 % des lancements. 100 graines appariées (moteur seul) : points 57,3 → 54,0 (±3,5), essais 6,62 →
 6,03 (±0,58), passes +1,5, rucks +2,7, mêlées et touches stables. Calibration 14/14 (passes revenues dans la fourchette).
 
+**Portes (corrections).**
+- Courses : une réception de chandelle disputée créditait la course du receveur à l'équipe qui avait TAPÉ (la
+  possession n'avait pas encore basculé) ; `_compterCourse` compte désormais pour l'équipe du porteur.
+- Une percussion qui casse son plaquage redevient un porteur normal (il joue la percée).
+- Tests au ras du bruit élargis, seuils inchangés : franchissement 48 → 96 graines (même moyenne avant/après, 13,0 et
+  12,8 m) ; variété des lancements 16 → 24 graines. Le test des courses joue sans incident de contact (un maillot
+  remplacé repart d'une ligne vierge, que son suivi par maillot prenait pour une course oubliée). Le seuil du
+  saignement passe de 0,3 à 0,2 par match : avec ce banc, 7 à 8 saignements sur 24 graines AVANT comme après — le
+  seuil posé sur une mesure en Match rapide était au ras du bruit.
+
 **Tests.** Invariants : variété par type et par équipe, aucun scénario dominant (l'ancien moteur échoue : « melee A :
 1 scénario ») ; percussion sans passe pendant 2,5 s et ruck dans les 4 s dans la majorité des cas, côté fermé toujours
 vers l'ailier du côté court ; `rugby-config.json` conforme au moteur (l'ancien fichier échoue sur 5 écarts). Navigateur

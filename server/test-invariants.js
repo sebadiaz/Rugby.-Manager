@@ -2172,8 +2172,11 @@ test('un franchissement PAIE : le porteur qui bat son vis-a-vis gagne du terrain
   // 48 graines : sur 96 matchs, des lots de 16 graines du MEME moteur donnaient
   // de 12,0 a 15,1 m (moyenne 13,3 a 13,5) ; un changement sans rapport avec
   // les franchissements faisait passer ce test sous le seuil.
+  // 96 graines (P2-151) : sur 48, le même lot donnait 11,9 m (graines 1-48) et
+  // 13,6 m (graines 49-96) ; l'ancien moteur 13,1 et 12,9 m — même moyenne,
+  // un seul lot de 48 ne suffit toujours pas.
   const gains = [];
-  for (let seed = 1; seed <= 48; seed++) {
+  for (let seed = 1; seed <= 96; seed++) {
     const m = new MatchEngine(seed, 4800);
     let suivi = null;
     for (let t = 0; t < 4800; t += 0.2) {
@@ -3557,7 +3560,10 @@ test('passes : chaque passe réussie, offload compris, est aussi une passe tent�
 test('courses : un plaquage cassé puis un second contact reste une seule course du même porteur', () => {
   let doubles = 0, battus = 0, courses = 0, rucks = 0, oublis = 0;
   for (let seed = 1; seed <= 4; seed++) {
-    const m = new MatchEngine(seed, 2400);
+    // Sans incident de contact : un maillot remplacé (blessure, saignement)
+    // repart d'une ligne vierge, que le suivi par maillot ci-dessous prendrait
+    // pour une course oubliée.
+    const m = new MatchEngine(seed, 2400, { blessures: false });
     // Par joueur : une course de plus alors qu'il a déjà fait la sienne sans
     // avoir lâché le ballon (il est resté porteur d'un pas à l'autre).
     const avant = {}, dejaCompte = {};
@@ -4219,7 +4225,10 @@ test('saignement : le joueur sort se faire soigner, un remplaçant temporaire en
     }
   }
   assert.strictEqual(annonces, saignements, 'chaque saignement est annoncé');
-  assert.ok(saignements / N >= 0.3 && saignements / N <= 1.5, `${(saignements / N).toFixed(2)} saignement(s) par match`);
+  // Avec ce banc de 8, ~0,3 saignement par match (7 à 8 sur 24 graines, avant
+  // comme après P2-151) : le seuil de 0,3 posé à partir d'une mesure en Match
+  // rapide était au ras du bruit.
+  assert.ok(saignements / N >= 0.2 && saignements / N <= 1.5, `${(saignements / N).toFixed(2)} saignement(s) par match`);
   assert.ok(retours >= 1, `${retours} retours pour ${saignements} saignements`);
   const moy = durees.reduce((a, b) => a + b, 0) / durees.length;
   assert.ok(moy >= 6 && moy <= 14, `soins de ${moy.toFixed(1)} min en moyenne`);
@@ -4374,7 +4383,9 @@ test('lancements de jeu : mêlée, touche et maul ont chacun plusieurs scénario
   // Avant : 3 scénarios de mêlée (et UN SEUL pour l'équipe A : 50 fois sur 50),
   // 2 de touche, aucun après un maul — et tous des passes 9 -> 10 -> trois-quarts.
   const joues = {};
-  for (let seed = 1; seed <= 16; seed++) {
+  // 24 graines : après un maul, une équipe ne lance que ~13 combinaisons sur
+  // 16 matchs, un scénario pouvait y dépasser 45 % par le seul hasard.
+  for (let seed = 1; seed <= 24; seed++) {
     const m = new MatchEngine(seed, 4800);
     const ch = m._choisirCombinaison.bind(m);
     m._choisirCombinaison = (type) => {

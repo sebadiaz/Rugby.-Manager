@@ -1247,7 +1247,10 @@
     _compterCourse(porteur) {
       if (!porteur || this._courseDe === porteur) return;
       this._courseDe = porteur;
-      this.stats[this.possession].carries++;
+      // L'équipe DU PORTEUR, pas l'équipe en possession : à une réception de
+      // chandelle disputée, le receveur peut être plaqué avant que la
+      // possession ne bascule, et sa course allait à l'équipe qui avait tapé.
+      this.stats[porteur.team].carries++;
       this._statJoueur(porteur).courses++;
     }
 
@@ -2454,6 +2457,9 @@
           this.stats[this.possession].defenseursBattus++; // le porteur a battu un défenseur
           this._statJoueur(defenseurProche).plaquagesManques++;
           this._statJoueur(porteur).defenseursBattus++;
+          // Une PERCUSSION (lancement de jeu) qui casse son plaquage n'a plus
+          // de raison d'aller au contact : le percuteur joue normalement.
+          porteur._percussion = 0;
           // FRANCHISSEMENT (line break) : le porteur bat le plaqueur ET se
           // retrouve en ESPACE — le motif clé de l'étude. Seuil de 7 m vers le
           // prochain défenseur : c'est la distance au-delà de laquelle un
