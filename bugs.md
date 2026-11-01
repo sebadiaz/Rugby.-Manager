@@ -218,6 +218,8 @@ Les sommes individuelles des passes, plaquages et mètres correspondent aux somm
 
 **Complément mesuré :** au pas de 0,1 s avec effectifs Club équilibrés, **475,80 passes** par match, contre **314** dans le repère international choisi (environ +52 %). Corriger d’abord BUG-RM-006 et valider les périmètres ; le comptage des offloads ne suffit pas à expliquer un tel volume. Le 13/14 de la première passe reste un résultat des seuils internes, pas une certification de réalisme.
 
+**Mesure du 01/11 (100 graines, pas 0,1 s, moteur après P2-147) :** 416,5 passes par match (426,1 sur les graines 1-20 de la calibration), 211 rucks, 264 courses. Passes par phase : 1 passe 53 %, 2 passes 25 %, 3 passes 13 %, 4+ 10 % ; ratio passes/ruck ~2,0, proche du réel (~1,9). Le n°9 fait 214 passes, l'ouvreur 92. Trois leviers essayés en apparié (100 graines), sans effet au-delà du bruit : `sortieAvant` 0,34 → 0,45 (−0,7 ± 11 passes, +4,5 rucks), → 0,55 (+4,3, +7 rucks), passe de l'ouvreur 1,5 → 1,2 (−4,0 ± 11). L'excès de passes suit celui des rucks (~6 par minute de jeu pour ~4,6 en réel), déjà étudié dans `docs/ANALYSE_MATCH_REEL.md` (P2-94) : aucun réglage simple ne réduit les actions par minute.
+
 **À analyser :** identifier passes nécessaires au soutien et passes sans progression ; comparer sortie de regroupement, course avant passe, pression et profondeur des receveurs. Les anciens problèmes territoriaux P2-15/P1-21 ont reçu des corrections : repartir des mesures actuelles, pas des anciennes valeurs.
 
 **Correction attendue :** une modification ciblée créant une décision et une action de rugby crédibles ; ne pas réduire simplement le compteur, supprimer des événements ou accélérer artificiellement les courses pour satisfaire une moyenne.
