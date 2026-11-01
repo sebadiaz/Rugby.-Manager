@@ -186,7 +186,7 @@ test('M6d — la consigne de l arrière (FUNC-RM-004) fusionne avec la hauteur d
   const cfg = RMClub.tactiqueVersConfig({ ligneDef: 'haute', arriere: 'fond' });
   assert.strictEqual(cfg.defense.decalageArriere, 7, 'la consigne de l arrière atteint le moteur');
   assert.strictEqual(cfg.defense.profondeurArriereJeu, 15, 'la hauteur de ligne survit à la fusion');
-  assert.strictEqual(RMClub.tactiqueVersConfig({ arriere: 'ligne' }).defense.arriereDansLigne, true);
+  assert.strictEqual(RMClub.tactiqueVersConfig({ arriere: 'ligne' }).defense.decalageArriere, -8);
   const neutre = RMClub.tactiqueVersConfig({ arriere: 'equilibre' });
   assert.ok(!neutre.defense, 'le neutre ne force rien au moteur');
 });

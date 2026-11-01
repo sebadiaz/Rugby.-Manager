@@ -709,7 +709,7 @@
       options: {
         fond: { nom: 'Couvre le fond', description: 'L\'arrière se tient plus loin derrière la ligne pour attraper les coups de pied et arrêter les échappées.', compromis: 'Il se place environ 7 m plus loin : mieux placé sous les coups de pied et face à une échappée, mais plus loin des plaqueurs pour les soutenir au près.', defense: { decalageArriere: 7 } },
         equilibre: { nom: 'Placement standard', description: 'L\'arrière couvre à la profondeur habituelle.', compromis: 'Réglage neutre du moteur — aucun compromis appliqué.', defense: null },
-        ligne: { nom: 'Monte dans la ligne', description: 'L\'arrière prend sa place dans la ligne de défense ; l\'ailier du côté court recule couvrir le fond à sa place.', compromis: 'Un défenseur de plus dans la ligne, mais le fond est couvert par un ailier, moins à l\'aise sous les coups de pied et seul face à une percée.', defense: { arriereDansLigne: true } },
+        ligne: { nom: 'Monte vers la ligne', description: 'L\'arrière se rapproche de la ligne de défense pour soutenir les plaqueurs.', compromis: 'Il se place environ 8 m plus près : en soutien juste derrière les plaqueurs, mais le fond du terrain est moins couvert face à un coup de pied par-dessus ou une percée.', defense: { decalageArriere: -8 } },
       },
     },
     toucheMaul: {
