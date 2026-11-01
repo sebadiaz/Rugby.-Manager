@@ -277,6 +277,10 @@
     defense: {
       profondeurArriereJeu: 18,
       profondeurArriereMelee: 20,
+      // CONSIGNE INDIVIDUELLE DE L'ARRIÈRE (bugs.md FUNC-RM-004) : mètres
+      // ajoutés à SA profondeur de couverture (jeu courant, ruck, mêlée), en
+      // plus de la hauteur de ligne collective. 0 = comportement par défaut.
+      decalageArriere: 0,
       reculRuck: 3,
       // 6,5 s. Le réglage précédent (2,5 s) datait d'un moteur où les joueurs
       // atteignaient leur vitesse maximale instantanément : la ligne était déjà
@@ -3158,7 +3162,7 @@
         // ~18 m derrière, au centre, pour parer le jeu au pied et les
         // débordements (dernier rideau). Il ne court jamais vers le ballon.
         if (j.numero === 15) {
-          const cibleX = porteur.x + porteur.sensAttaque * cfgDef.profondeurArriereJeu;
+          const cibleX = porteur.x + porteur.sensAttaque * (cfgDef.profondeurArriereJeu + (cfgDef.decalageArriere || 0));
           const cibleY = j.channelY * 0.7 + porteur.y * 0.3;
           // DERNIER DEFENSEUR : des que le porteur a FRANCHI la ligne de
           // defense (plus aucun defenseur devant lui dans son couloir), le
@@ -4955,7 +4959,7 @@
           // rideau, à 3 m du ruck (cf. test R11), et la défense n'avait aucun
           // dernier rideau derrière elle.
           if (j.numero === 15) {
-            const profondeur = this.cfgDefense[j.team].profondeurArriereJeu;
+            const profondeur = this.cfgDefense[j.team].profondeurArriereJeu + (this.cfgDefense[j.team].decalageArriere || 0);
             // Près de sa propre ligne, il ne recule pas au-delà de l'en-but.
             const cibleXq = Math.max(0.5, Math.min(LONGUEUR - 0.5, pt.x + sensAttaque * profondeur));
             const cibleYq = j.channelY * 0.7 + pt.y * 0.3;
@@ -6244,7 +6248,7 @@
           if (j.numero === 15) {
             // Arrière : couverture PROFONDE au centre (dernier rideau), pas dans
             // la ligne.
-            cx = m.x - sA * this.cfgDefense[equipe[0].team].profondeurArriereMelee; cy = LARGEUR / 2;
+            cx = m.x - sA * (this.cfgDefense[equipe[0].team].profondeurArriereMelee + (this.cfgDefense[equipe[0].team].decalageArriere || 0)); cy = LARGEUR / 2;
           } else if (j.numero === 11 || j.numero === 14) {
             // Ailiers : l'ailier du côté OUVERT s'écarte au large ; l'autre
             // couvre le petit côté (côté fermé). En ATTAQUE, l'ailier ouvert est

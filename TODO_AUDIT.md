@@ -580,6 +580,27 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-149. Consigne individuelle de l'arrière : couvre le fond, standard, monte vers la ligne — bugs.md FUNC-RM-004
+- **Statut : LIVRÉ** (deuxième consigne de FUNC-RM-004)
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`defense.decalageArriere`), `docs/js/club.js`
+  (axe `arriere`), `docs/js/club-composition.js` (fusion avec la hauteur de ligne), `docs/js/club-equipes.js`
+  (déduction pour un club consulté), `server/test-invariants.js`, `server/test-melee.js`,
+  `server/test-parcours-navigateur.js`.
+
+**Correction.** Axe « Consigne de l'arrière (n°15) » : « Couvre le fond » (+7 m), « Placement standard », « Monte
+vers la ligne » (−8 m). Le décalage s'ajoute à la profondeur de couverture du seul n°15 (jeu courant, ruck, mêlée), en
+plus de la hauteur de ligne collective ; les deux axes fusionnent. Club consulté : déduit de son n°15 (vitesse ≥ 80 →
+monte, jeu au pied ≥ 70 → fond).
+
+**Mesures.** Position (6 graines, rucks défendus par A) : le 15 se tient ≥ 4 m plus loin (fond) ou plus près (ligne)
+du ruck, celui de B ne bouge pas. Score (100 graines appariées) : aucun effet significatif — essais encaissés −0,32
+± 0,45 (fond), +0,13 ± 0,45 (ligne). Aucune option ne domine ; les compromis affichés décrivent la position (ce que le
+moteur fait), sans promettre un effet sur le score qu'il ne produit pas de façon mesurable.
+
+**Tests.** Invariant de position (consigne 0 = défaut ; l'ancien moteur échoue). M6d : fusion avec la hauteur de
+ligne. Navigateur 1400×1000 et 390×844 (captures vérifiées) : trois options, sauvegarde, la consigne de l'ouvreur est
+conservée.
+
 ### P2-148. Consigne individuelle de l'ouvreur : au pied, lecture du jeu, à la main — bugs.md FUNC-RM-004
 - **Statut : LIVRÉ** (premier lot de FUNC-RM-004)
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`attaque.piedOuvreur`), `docs/js/club.js`

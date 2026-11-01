@@ -4323,6 +4323,34 @@ test('consigne individuelle de l ouvreur (FUNC-RM-004) : au pied, il tape plus ;
   }
 });
 
+test('consigne individuelle de l arrière (FUNC-RM-004) : il couvre plus profond, ou monte vers la ligne ; l adversaire ne change pas', () => {
+  const profondeur = (decalageArriere) => {
+    let somme = 0, n = 0, sommeB = 0, nB = 0;
+    for (let seed = 1; seed <= 6; seed++) {
+      const m = new MatchEngine(seed, 4800, decalageArriere == null ? {} : { defenseA: { decalageArriere } });
+      while (m.phase !== 'TERMINE') {
+        m.tick(0.1);
+        // Au ruck, quand A défend : distance de son n°15 au point de ruck, vers son en-but.
+        if (m.phase === 'RUCK' && m.ruckPoint && m.timerPhase > 1.5) {
+          const def = m.possession === 'B' ? 'A' : 'B';
+          const q = (def === 'A' ? m.equipeA : m.equipeB).find((j) => j.numero === 15);
+          if (!q || q.sinBin > 0) continue;
+          const d = (m.ruckPoint.x - q.x) * q.sensAttaque;
+          if (def === 'A') { somme += d; n++; } else { sommeB += d; nB++; }
+        }
+      }
+    }
+    return { a: somme / n, b: sommeB / nB };
+  };
+  const fond = profondeur(7), neutre = profondeur(null), zero = profondeur(0), ligne = profondeur(-8);
+  assert.strictEqual(zero.a.toFixed(3), neutre.a.toFixed(3), 'la consigne neutre (0) est le comportement par défaut');
+  assert.ok(fond.a >= neutre.a + 4, `couvre le fond : ${fond.a.toFixed(1)} m derrière le ruck, pour ${neutre.a.toFixed(1)} sans consigne`);
+  assert.ok(ligne.a <= neutre.a - 4, `monte dans la ligne : ${ligne.a.toFixed(1)} m, pour ${neutre.a.toFixed(1)} sans consigne`);
+  for (const c of [fond, ligne]) {
+    assert.ok(Math.abs(c.b - neutre.b) <= 1.5, `l arrière de B ne doit pas bouger : ${c.b.toFixed(1)} m pour ${neutre.b.toFixed(1)}`);
+  }
+});
+
 // --- bugs.md QA-RM-007 : événements, joueurs et équipe disent la même chose ---
 test('rapprochement : réussis ≤ tentés partout, et chaque essai ou but du compteur a son événement (QA-RM-007)', () => {
   for (let seed = 1; seed <= 4; seed++) {

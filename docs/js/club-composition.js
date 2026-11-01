@@ -25,7 +25,7 @@
     }
     const optStyle = option('style'), optAvants = option('avants'), optRythme = option('rythme'),
       optPied = option('pied'), optLigne = option('ligneDef'), optToucheMaul = option('toucheMaul'),
-      optPoussee = option('poussee'), optOuvreur = option('ouvreur');
+      optPoussee = option('poussee'), optOuvreur = option('ouvreur'), optArriere = option('arriere');
     // TROIS axes ecrivent desormais dans `attaque` : « Largeur du jeu » pose
     // jeuLargeTaux, « Occupation au pied » tauxJeuAuPied, et « Jeu d'avants »
     // sortieAvant (la sortie de regroupement). Ils FUSIONNENT, comme `melee`
@@ -40,7 +40,10 @@
     const melee = Object.assign({}, optAvants.melee || null, optPoussee.melee || null);
     const cfg = {};
     if (Object.keys(attaque).length) cfg.attaque = attaque;
-    if (optLigne.defense) cfg.defense = optLigne.defense;
+    // Deux axes écrivent dans `defense` : la hauteur de ligne et la consigne de
+    // l'arrière (FUNC-RM-004). Ils FUSIONNENT.
+    const defense = Object.assign({}, optLigne.defense || null, optArriere.defense || null);
+    if (Object.keys(defense).length) cfg.defense = defense;
     if (Object.keys(melee).length) cfg.melee = melee;
     if (optRythme.ruck) cfg.ruck = optRythme.ruck;
     if (optToucheMaul.touche) cfg.touche = optToucheMaul.touche;

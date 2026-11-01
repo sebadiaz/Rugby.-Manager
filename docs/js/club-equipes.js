@@ -187,7 +187,17 @@
       // Consigne de l'ouvreur (FUNC-RM-004) : déduite de SON n°10 — un buteur
       // qui tape bien mieux qu'il ne passe occupe au pied, et l'inverse.
       ouvreur: ouvreurDeduit(effectif),
+      arriere: arriereDeduit(effectif),
     };
+  }
+  // Consigne de l'arrière (FUNC-RM-004) : déduite de SON n°15 — un arrière
+  // très rapide monte soutenir la ligne, un bon botteur couvre le fond.
+  function arriereDeduit(effectif) {
+    const q = effectif.find((j) => j.numero === 15) || effectif.find((j) => j.poste === 'AR');
+    if (!q) return 'equilibre';
+    if ((q.vitesse || 0) >= 80) return 'ligne';
+    if ((q.jeuPied || 0) >= 70) return 'fond';
+    return 'equilibre';
   }
   function ouvreurDeduit(effectif) {
     const dix = effectif.find((j) => j.numero === 10) || effectif.find((j) => j.poste === 'OV');

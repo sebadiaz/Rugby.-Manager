@@ -4743,6 +4743,13 @@ function optionsLancement() {
     const compromisOv = await pgOv.textContent('#clubTactique');
     verifier('consigne de l ouvreur : « Joue à la main » est sauvegardée et son compromis affiché',
       tactiqueOv.ouvreur === 'main' && /on occupe moins le camp adverse/.test(compromisOv), JSON.stringify(tactiqueOv));
+    const optionsAr = await pgOv.$$eval('[data-axe="arriere"]', (b) => b.map((x) => x.dataset.valeur));
+    verifier('consigne de l arrière : trois options dans l écran Tactique', JSON.stringify(optionsAr) === '["fond","equilibre","ligne"]', JSON.stringify(optionsAr));
+    await pgOv.click('[data-axe="arriere"][data-valeur="fond"]');
+    await pgOv.waitForTimeout(400);
+    const tactiqueAr = await pgOv.evaluate(() => JSON.parse(localStorage.getItem('rugbyManager.club.v1')).clubJoueur.tactique);
+    verifier('consigne de l arrière : « Couvre le fond » sauvegardée, la consigne de l ouvreur conservée',
+      tactiqueAr.arriere === 'fond' && tactiqueAr.ouvreur === 'main', JSON.stringify(tactiqueAr));
     verifier('consigne de l ouvreur : aucune erreur de page', erreursOv.length === 0, erreursOv.join(' | '));
     await ctxOv.close();
   }

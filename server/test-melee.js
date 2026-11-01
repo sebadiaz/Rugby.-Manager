@@ -182,6 +182,15 @@ test('M6c — la consigne de l ouvreur (FUNC-RM-004) fusionne avec les trois aut
   assert.ok(!neutre.attaque || neutre.attaque.piedOuvreur === undefined, 'le neutre ne force rien');
 });
 
+test('M6d — la consigne de l arrière (FUNC-RM-004) fusionne avec la hauteur de ligne', () => {
+  const cfg = RMClub.tactiqueVersConfig({ ligneDef: 'haute', arriere: 'fond' });
+  assert.strictEqual(cfg.defense.decalageArriere, 7, 'la consigne de l arrière atteint le moteur');
+  assert.strictEqual(cfg.defense.profondeurArriereJeu, 15, 'la hauteur de ligne survit à la fusion');
+  assert.strictEqual(RMClub.tactiqueVersConfig({ arriere: 'ligne' }).defense.decalageArriere, -8);
+  const neutre = RMClub.tactiqueVersConfig({ arriere: 'equilibre' });
+  assert.ok(!neutre.defense, 'le neutre ne force rien au moteur');
+});
+
 test('M7 — en match, la consigne produit réellement un déroulé différent', () => {
   // Ce test vérifie le CÂBLAGE de bout en bout, pas l'ampleur de l'effet :
   // sur une dizaine de matchs, le nombre même de mêlées change (115 contre

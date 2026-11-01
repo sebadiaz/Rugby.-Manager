@@ -692,6 +692,16 @@
         haute: { nom: 'Haute', description: 'Presse haut et vite, y compris au ruck — plus risqué si elle est percée.', compromis: 'Étouffe l\'attaque adverse plus tôt, mais une brèche se transforme plus souvent en franchissement.', defense: { rampeMontee: 1.5, profondeurArriereJeu: 15, profondeurArriereMelee: 17, reculRuck: 2 } },
       },
     },
+    // Deuxième consigne individuelle (FUNC-RM-004) : la place du n°15 en
+    // défense, en plus de la hauteur de ligne collective (axe ci-dessus).
+    arriere: {
+      label: 'Consigne de l\'arrière (n°15)', defaut: 'equilibre',
+      options: {
+        fond: { nom: 'Couvre le fond', description: 'L\'arrière se tient plus loin derrière la ligne pour attraper les coups de pied et arrêter les échappées.', compromis: 'Il se place environ 7 m plus loin : mieux placé sous les coups de pied et face à une échappée, mais plus loin des plaqueurs pour les soutenir au près.', defense: { decalageArriere: 7 } },
+        equilibre: { nom: 'Placement standard', description: 'L\'arrière couvre à la profondeur habituelle.', compromis: 'Réglage neutre du moteur — aucun compromis appliqué.', defense: null },
+        ligne: { nom: 'Monte vers la ligne', description: 'L\'arrière se rapproche de la ligne de défense pour soutenir les plaqueurs.', compromis: 'Il se place environ 8 m plus près : en soutien juste derrière les plaqueurs, mais le fond du terrain est moins couvert face à un coup de pied par-dessus ou une percée.', defense: { decalageArriere: -8 } },
+      },
+    },
     toucheMaul: {
       label: 'Touche & maul', defaut: 'equilibre',
       options: {
