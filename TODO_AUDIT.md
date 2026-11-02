@@ -580,6 +580,27 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-152. Style de lancement dans l'écran Tactique : au près, varié, au large, au pied
+- **Statut : LIVRÉ**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`style` des combinaisons,
+  `attaque.lancements`, `_choisirCombinaison`), `docs/rugby-config.json`, `docs/js/club.js` (axe `lancements`),
+  `docs/js/club-composition.js`, `docs/js/club-equipes.js`, `server/test-invariants.js`, `server/test-melee.js`,
+  `server/test-parcours-navigateur.js`.
+
+**Correction.** Chaque combinaison du playbook (P2-151) appartient à une famille : au près (percussion du 12, avant
+lancé, côté fermé), au large (croisé, sautée, boucle, arrière intercalé, ballon écarté), au pied (chandelles). L'axe
+« Lancements de jeu (mêlée, touche, maul) » multiplie par 3 le poids de la famille choisie au tirage. « Varié » =
+poids du playbook : tirage identique au pas près (4 graines comparées). Club consulté : déduit des moyennes
+(puissance ≥ 62 → près, jeu au pied ≥ 58 → pied, vitesse ≥ 62 → large).
+
+**Mesures.** Part des lancements de la famille choisie : +15 points au moins (invariant, 12 graines). 100 graines
+appariées (équipe A) contre « Varié », écart de score : au près +0,8 ± 3,7, au large +4,0 ± 4,1, au pied +2,3 ± 4,0 —
+aucun style significativement dominant (« au large » à surveiller) ; possession et coups de pied quasi inchangés : le
+style change surtout ce qu'on VOIT à la sortie des phases arrêtées.
+
+**Tests.** Invariant (poids 1 = défaut exact ; chaque style augmente sa famille ; l'ancien moteur échoue). M6f :
+fusion avec les autres axes d'attaque. Navigateur : sauvegarde avec les consignes individuelles.
+
 ### P2-151. Lancements de jeu variés après une mêlée, une touche ou un maul (playbook)
 - **Statut : LIVRÉ**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`combinaisons`, `_tickCombinaison`,
