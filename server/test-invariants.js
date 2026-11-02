@@ -4459,6 +4459,26 @@ test('docs/rugby-config.json (chargé par le jeu) ne contredit pas le moteur mes
   assert.deepStrictEqual(ecarts, [], 'valeurs du fichier différentes du moteur');
 });
 
+test('style de lancement (axe d équipe) : « au près », « au large », « au pied » pondèrent réellement les scénarios joués', () => {
+  const familles = (lancements) => {
+    const f = { pres: 0, large: 0, pied: 0 };
+    for (let seed = 1; seed <= 12; seed++) {
+      const m = new MatchEngine(seed, 4800, lancements ? { attaqueA: { lancements } } : {});
+      const ch = m._choisirCombinaison.bind(m);
+      m._choisirCombinaison = (type) => { const c = ch(type); if (c && m.possession === 'A') f[c.style]++; return c; };
+      m.jouerJusquAuSifflet(0.1);
+    }
+    const total = f.pres + f.large + f.pied;
+    return { pres: f.pres / total, large: f.large / total, pied: f.pied / total, total };
+  };
+  const neutre = familles(null), un = familles({ pres: 1, large: 1, pied: 1 });
+  assert.deepStrictEqual(un, neutre, 'des poids à 1 donnent exactement le tirage par défaut');
+  const pres = familles({ pres: 3 }), large = familles({ large: 3 }), pied = familles({ pied: 3 });
+  assert.ok(pres.pres >= neutre.pres + 0.15, `au près : ${(100 * pres.pres).toFixed(0)} % de lancements au près (neutre ${(100 * neutre.pres).toFixed(0)} %)`);
+  assert.ok(large.large >= neutre.large + 0.1, `au large : ${(100 * large.large).toFixed(0)} % (neutre ${(100 * neutre.large).toFixed(0)} %)`);
+  assert.ok(pied.pied >= neutre.pied + 0.1, `au pied : ${(100 * pied.pied).toFixed(0)} % (neutre ${(100 * neutre.pied).toFixed(0)} %)`);
+});
+
 // --- bugs.md QA-RM-007 : événements, joueurs et équipe disent la même chose ---
 test('rapprochement : réussis ≤ tentés partout, et chaque essai ou but du compteur a son événement (QA-RM-007)', () => {
   for (let seed = 1; seed <= 4; seed++) {

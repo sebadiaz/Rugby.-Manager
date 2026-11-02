@@ -191,6 +191,9 @@
       // Ailiers rapides : ils restent larges pour exploiter l'espace ; ailiers
       // lents mais bons passeurs : ils repiquent chercher le ballon.
       ailiers: ailiersDeduits(effectif),
+      // Lancements : un gros pack joue au près, un bon jeu au pied tape, une
+      // ligne rapide écarte — même lecture des moyennes que les autres axes.
+      lancements: puissance >= 62 ? 'pres' : jeuPied >= 58 ? 'pied' : vitesse >= 62 ? 'large' : 'equilibre',
     };
   }
   function ailiersDeduits(effectif) {

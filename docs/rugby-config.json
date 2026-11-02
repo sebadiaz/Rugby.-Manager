@@ -147,6 +147,7 @@
     "melee": [
       {
         "nom": "9-10-croise-12",
+        "style": "large",
         "libelle": "croisé du 12 dans le dos de l'ouvreur",
         "poids": 1,
         "etapes": [
@@ -165,6 +166,7 @@
       },
       {
         "nom": "9-10-large-13",
+        "style": "large",
         "libelle": "ballon écarté jusqu'au 13",
         "poids": 1,
         "etapes": [
@@ -187,6 +189,7 @@
       },
       {
         "nom": "9-10-percussion-12",
+        "style": "pres",
         "libelle": "percussion du 12 au centre du terrain",
         "poids": 1,
         "etapes": [
@@ -205,6 +208,7 @@
       },
       {
         "nom": "9-10-intercale-15",
+        "style": "large",
         "libelle": "arrière intercalé",
         "poids": 1,
         "etapes": [
@@ -223,6 +227,7 @@
       },
       {
         "nom": "9-cote-ferme",
+        "style": "pres",
         "libelle": "côté fermé pour l'ailier",
         "poids": 1,
         "etapes": [
@@ -236,6 +241,7 @@
       },
       {
         "nom": "9-10-saute-13",
+        "style": "large",
         "libelle": "passe sautée au 13",
         "poids": 1,
         "etapes": [
@@ -254,6 +260,7 @@
       },
       {
         "nom": "9-chandelle",
+        "style": "pied",
         "libelle": "chandelle du 9 par-dessus la mêlée",
         "poids": 1,
         "zone": [
@@ -270,6 +277,7 @@
       },
       {
         "nom": "9-10-chandelle-22",
+        "style": "pied",
         "libelle": "coup de pied par-dessus dans les 22",
         "poids": 1,
         "zone": [
@@ -293,6 +301,7 @@
     "touche": [
       {
         "nom": "9-10-saute-13",
+        "style": "large",
         "libelle": "passe sautée au 13",
         "poids": 1,
         "etapes": [
@@ -311,6 +320,7 @@
       },
       {
         "nom": "9-10-boucle-12",
+        "style": "large",
         "libelle": "boucle de l'ouvreur autour du 12",
         "poids": 1,
         "etapes": [
@@ -329,6 +339,7 @@
       },
       {
         "nom": "9-avant-percussion",
+        "style": "pres",
         "libelle": "avant lancé au près de l'alignement",
         "poids": 1,
         "etapes": [
@@ -342,6 +353,7 @@
       },
       {
         "nom": "9-10-percussion-12",
+        "style": "pres",
         "libelle": "percussion du 12 au centre du terrain",
         "poids": 1,
         "etapes": [
@@ -360,6 +372,7 @@
       },
       {
         "nom": "9-10-intercale-15",
+        "style": "large",
         "libelle": "arrière intercalé",
         "poids": 1,
         "etapes": [
@@ -378,6 +391,7 @@
       },
       {
         "nom": "9-10-croise-12",
+        "style": "large",
         "libelle": "croisé du 12 dans le dos de l'ouvreur",
         "poids": 1,
         "etapes": [
@@ -396,6 +410,7 @@
       },
       {
         "nom": "9-chandelle",
+        "style": "pied",
         "libelle": "chandelle du 9 derrière l'alignement",
         "poids": 1,
         "zone": [
@@ -414,6 +429,7 @@
     "maul": [
       {
         "nom": "9-avant-percussion",
+        "style": "pres",
         "libelle": "avant lancé au ras du maul",
         "poids": 1,
         "etapes": [
@@ -427,6 +443,7 @@
       },
       {
         "nom": "9-cote-ferme",
+        "style": "pres",
         "libelle": "côté fermé pour l'ailier",
         "poids": 1,
         "etapes": [
@@ -440,6 +457,7 @@
       },
       {
         "nom": "9-10-large-13",
+        "style": "large",
         "libelle": "ballon écarté jusqu'au 13",
         "poids": 1,
         "etapes": [
@@ -462,6 +480,7 @@
       },
       {
         "nom": "9-10-percussion-12",
+        "style": "pres",
         "libelle": "percussion du 12",
         "poids": 1,
         "etapes": [
@@ -480,6 +499,7 @@
       },
       {
         "nom": "9-chandelle",
+        "style": "pied",
         "libelle": "chandelle du 9 depuis le maul",
         "poids": 1,
         "zone": [

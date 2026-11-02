@@ -4755,6 +4755,11 @@ function optionsLancement() {
     const tactiqueAil = await pgOv.evaluate(() => JSON.parse(localStorage.getItem('rugbyManager.club.v1')).clubJoueur.tactique);
     verifier('consigne des ailiers : « Repiquent » sauvegardée, les deux autres consignes conservées',
       tactiqueAil.ailiers === 'repique' && tactiqueAil.arriere === 'fond' && tactiqueAil.ouvreur === 'main', JSON.stringify(tactiqueAil));
+    await pgOv.click('[data-axe="lancements"][data-valeur="pres"]');
+    await pgOv.waitForTimeout(400);
+    const tactiqueLan = await pgOv.evaluate(() => JSON.parse(localStorage.getItem('rugbyManager.club.v1')).clubJoueur.tactique);
+    verifier('style de lancement : « Au près » sauvegardé avec les consignes individuelles',
+      tactiqueLan.lancements === 'pres' && tactiqueLan.ailiers === 'repique' && tactiqueLan.ouvreur === 'main', JSON.stringify(tactiqueLan));
     verifier('consigne de l ouvreur : aucune erreur de page', erreursOv.length === 0, erreursOv.join(' | '));
     await ctxOv.close();
   }

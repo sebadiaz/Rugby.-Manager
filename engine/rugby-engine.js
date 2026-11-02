@@ -272,6 +272,9 @@
       // l'attaque ; 'large' = l'ailier côté ouvert reste collé à la touche au
       // lieu de prendre son rang dans l'éventail.
       ailiers: null,
+      // STYLE DE LANCEMENT (axe d'équipe) : multiplicateur du poids des
+      // combinaisons de chaque famille au tirage. null = poids du playbook.
+      lancements: null,
     },
     // Organisation de défense : profondeur de couverture de l'arrière (n°15) en
     // jeu courant et à la mêlée, recul de la ligne au ruck. rampeMontee =
@@ -336,58 +339,60 @@
       // Lignes de course du receveur : 'droit' (défaut), 'croise', 'boucle',
       // 'saute', 'cote ferme' (passe vers l'aile fermée), et 'percussion' : il
       // VA AU CONTACT sans repasser, pour fixer la défense et créer le ruck.
-      // `libelle` : annoncé dans le fil au lancement.
+      // `libelle` : annoncé dans le fil au lancement. `style` : sa famille
+      // ('pres', 'large', 'pied'), pondérée par le style de lancement de
+      // l'équipe (cfg.attaque.lancements).
       //
       // Avant : 3 scénarios de mêlée (et UN SEUL pour l'équipe A, joué 50 fois
       // sur 50), 2 de touche, aucun après un maul — tous des passes 9 -> 10 ->
       // trois-quarts.
       melee: [
-        { nom: '9-10-croise-12', libelle: 'croisé du 12 dans le dos de l\'ouvreur', poids: 1,
+        { nom: '9-10-croise-12', style: 'large', libelle: 'croisé du 12 dans le dos de l\'ouvreur', poids: 1,
           etapes: [{ action: 'passe', de: 9, vers: 10 }, { action: 'passe', de: 10, vers: 12, ligne: 'croise' }] },
-        { nom: '9-10-large-13', libelle: 'ballon écarté jusqu\'au 13', poids: 1,
+        { nom: '9-10-large-13', style: 'large', libelle: 'ballon écarté jusqu\'au 13', poids: 1,
           etapes: [{ action: 'passe', de: 9, vers: 10 }, { action: 'passe', de: 10, vers: 12 }, { action: 'passe', de: 12, vers: 13 }] },
-        { nom: '9-10-percussion-12', libelle: 'percussion du 12 au centre du terrain', poids: 1,
+        { nom: '9-10-percussion-12', style: 'pres', libelle: 'percussion du 12 au centre du terrain', poids: 1,
           etapes: [{ action: 'passe', de: 9, vers: 10 }, { action: 'passe', de: 10, vers: 12, ligne: 'percussion' }] },
-        { nom: '9-10-intercale-15', libelle: 'arrière intercalé', poids: 1,
+        { nom: '9-10-intercale-15', style: 'large', libelle: 'arrière intercalé', poids: 1,
           etapes: [{ action: 'passe', de: 9, vers: 10 }, { action: 'passe', de: 10, vers: 15, ligne: 'saute' }] },
-        { nom: '9-cote-ferme', libelle: 'côté fermé pour l\'ailier', poids: 1,
+        { nom: '9-cote-ferme', style: 'pres', libelle: 'côté fermé pour l\'ailier', poids: 1,
           etapes: [{ action: 'passe', de: 9, vers: 'AILE_FERMEE', ligne: 'cote ferme' }] },
-        { nom: '9-10-saute-13', libelle: 'passe sautée au 13', poids: 1,
+        { nom: '9-10-saute-13', style: 'large', libelle: 'passe sautée au 13', poids: 1,
           etapes: [{ action: 'passe', de: 9, vers: 10 }, { action: 'passe', de: 10, vers: 13, ligne: 'saute' }] },
         // Chandelle du 9 depuis la base (box kick) : dans son camp.
-        { nom: '9-chandelle', libelle: 'chandelle du 9 par-dessus la mêlée', poids: 1, zone: ['OWN_22', 'OWN_HALF'],
+        { nom: '9-chandelle', style: 'pied', libelle: 'chandelle du 9 par-dessus la mêlée', poids: 1, zone: ['OWN_22', 'OWN_HALF'],
           etapes: [{ action: 'pied', de: 9, type: 'CHANDELLE' }] },
         // Coup de pied par-dessus la défense : dans les 22 adverses.
-        { nom: '9-10-chandelle-22', libelle: 'coup de pied par-dessus dans les 22', poids: 1, zone: ['OPP_22', 'CINQ_M'],
+        { nom: '9-10-chandelle-22', style: 'pied', libelle: 'coup de pied par-dessus dans les 22', poids: 1, zone: ['OPP_22', 'CINQ_M'],
           etapes: [{ action: 'passe', de: 9, vers: 10 }, { action: 'pied', de: 10, type: 'CHANDELLE' }] },
       ],
       touche: [
-        { nom: '9-10-saute-13', libelle: 'passe sautée au 13', poids: 1,
+        { nom: '9-10-saute-13', style: 'large', libelle: 'passe sautée au 13', poids: 1,
           etapes: [{ action: 'passe', de: 9, vers: 10 }, { action: 'passe', de: 10, vers: 13, ligne: 'saute' }] },
-        { nom: '9-10-boucle-12', libelle: 'boucle de l\'ouvreur autour du 12', poids: 1,
+        { nom: '9-10-boucle-12', style: 'large', libelle: 'boucle de l\'ouvreur autour du 12', poids: 1,
           etapes: [{ action: 'passe', de: 9, vers: 10 }, { action: 'passe', de: 10, vers: 12, ligne: 'boucle' }] },
-        { nom: '9-avant-percussion', libelle: 'avant lancé au près de l\'alignement', poids: 1,
+        { nom: '9-avant-percussion', style: 'pres', libelle: 'avant lancé au près de l\'alignement', poids: 1,
           etapes: [{ action: 'passe', de: 9, vers: 'AVANT', ligne: 'percussion' }] },
-        { nom: '9-10-percussion-12', libelle: 'percussion du 12 au centre du terrain', poids: 1,
+        { nom: '9-10-percussion-12', style: 'pres', libelle: 'percussion du 12 au centre du terrain', poids: 1,
           etapes: [{ action: 'passe', de: 9, vers: 10 }, { action: 'passe', de: 10, vers: 12, ligne: 'percussion' }] },
-        { nom: '9-10-intercale-15', libelle: 'arrière intercalé', poids: 1,
+        { nom: '9-10-intercale-15', style: 'large', libelle: 'arrière intercalé', poids: 1,
           etapes: [{ action: 'passe', de: 9, vers: 10 }, { action: 'passe', de: 10, vers: 15, ligne: 'saute' }] },
-        { nom: '9-10-croise-12', libelle: 'croisé du 12 dans le dos de l\'ouvreur', poids: 1,
+        { nom: '9-10-croise-12', style: 'large', libelle: 'croisé du 12 dans le dos de l\'ouvreur', poids: 1,
           etapes: [{ action: 'passe', de: 9, vers: 10 }, { action: 'passe', de: 10, vers: 12, ligne: 'croise' }] },
-        { nom: '9-chandelle', libelle: 'chandelle du 9 derrière l\'alignement', poids: 1, zone: ['OWN_22', 'OWN_HALF'],
+        { nom: '9-chandelle', style: 'pied', libelle: 'chandelle du 9 derrière l\'alignement', poids: 1, zone: ['OWN_22', 'OWN_HALF'],
           etapes: [{ action: 'pied', de: 9, type: 'CHANDELLE' }] },
       ],
       // Sortie de MAUL : le pack a fixé la défense au près.
       maul: [
-        { nom: '9-avant-percussion', libelle: 'avant lancé au ras du maul', poids: 1,
+        { nom: '9-avant-percussion', style: 'pres', libelle: 'avant lancé au ras du maul', poids: 1,
           etapes: [{ action: 'passe', de: 9, vers: 'AVANT', ligne: 'percussion' }] },
-        { nom: '9-cote-ferme', libelle: 'côté fermé pour l\'ailier', poids: 1,
+        { nom: '9-cote-ferme', style: 'pres', libelle: 'côté fermé pour l\'ailier', poids: 1,
           etapes: [{ action: 'passe', de: 9, vers: 'AILE_FERMEE', ligne: 'cote ferme' }] },
-        { nom: '9-10-large-13', libelle: 'ballon écarté jusqu\'au 13', poids: 1,
+        { nom: '9-10-large-13', style: 'large', libelle: 'ballon écarté jusqu\'au 13', poids: 1,
           etapes: [{ action: 'passe', de: 9, vers: 10 }, { action: 'passe', de: 10, vers: 12 }, { action: 'passe', de: 12, vers: 13 }] },
-        { nom: '9-10-percussion-12', libelle: 'percussion du 12', poids: 1,
+        { nom: '9-10-percussion-12', style: 'pres', libelle: 'percussion du 12', poids: 1,
           etapes: [{ action: 'passe', de: 9, vers: 10 }, { action: 'passe', de: 10, vers: 12, ligne: 'percussion' }] },
-        { nom: '9-chandelle', libelle: 'chandelle du 9 depuis le maul', poids: 1, zone: ['OWN_22', 'OWN_HALF'],
+        { nom: '9-chandelle', style: 'pied', libelle: 'chandelle du 9 depuis le maul', poids: 1, zone: ['OWN_22', 'OWN_HALF'],
           etapes: [{ action: 'pied', de: 9, type: 'CHANDELLE' }] },
       ],
     },
@@ -6782,9 +6787,13 @@
       const zone = this.porteur ? this._zoneTerrain(this.porteur) : null;
       liste = liste.filter((c) => !c.zone || (zone && c.zone.indexOf(zone) >= 0));
       if (!liste.length) return null;
-      const total = liste.reduce((s, c) => s + (c.poids || 1), 0);
+      // Style de lancement de l'équipe : pondère chaque famille (au près, au
+      // large, au pied). Sans réglage, poids du playbook — tirage inchangé.
+      const pref = (this.cfgAttaque[this.possession] || {}).lancements || null;
+      const poids = (c) => (c.poids || 1) * (pref && c.style && pref[c.style] != null ? pref[c.style] : 1);
+      const total = liste.reduce((s, c) => s + poids(c), 0);
       let r = this.rng() * total;
-      for (const c of liste) { r -= (c.poids || 1); if (r <= 0) return c; }
+      for (const c of liste) { r -= poids(c); if (r <= 0) return c; }
       return liste[liste.length - 1];
     }
 

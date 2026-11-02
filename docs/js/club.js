@@ -665,6 +665,17 @@
         rapide: { nom: 'Rapide', description: 'Ballon recyclé au plus vite pour prendre la défense de vitesse.', compromis: 'Plus de phases de jeu et une défense prise de vitesse, mais plus de rucks = plus d\'occasions de faute.', ruck: { profil: [[0.55, 1.0, 1.0], [0.33, 2.0, 2.0], [0.12, 4.0, 1.4]] } },
       },
     },
+    // Style de LANCEMENT sur mêlée, touche et maul (playbook, P2-151) : quelle
+    // famille de combinaisons l'équipe privilégie à la sortie.
+    lancements: {
+      label: 'Lancements de jeu (mêlée, touche, maul)', defaut: 'equilibre',
+      options: {
+        pres: { nom: 'Au près', description: 'Percussions du 12, avants lancés au ras du regroupement, côté fermé pour l\'ailier.', compromis: 'Fixe la défense et garde le ballon près des avants, mais avance par petits gains et crée moins d\'espace au large.', attaque: { lancements: { pres: 3 } } },
+        equilibre: { nom: 'Varié', description: 'Toutes les combinaisons du playbook, au gré des situations.', compromis: 'Réglage neutre du moteur — aucun compromis appliqué.', attaque: null },
+        large: { nom: 'Au large', description: 'Croisés, passes sautées, boucles et arrière intercalé pour toucher les trois-quarts lancés.', compromis: 'Cherche l\'espace au large, mais plus de passes, donc plus de ballons à risque et une défense moins fixée.', attaque: { lancements: { large: 3 } } },
+        pied: { nom: 'Au pied', description: 'Chandelle du 9 dans son camp, coup de pied par-dessus dans les 22 adverses.', compromis: 'Gagne du terrain et met la pression sous les ballons hauts, mais rend souvent la possession.', attaque: { lancements: { pied: 3 } } },
+      },
+    },
     pied: {
       label: 'Occupation au pied', defaut: 'normal',
       options: {

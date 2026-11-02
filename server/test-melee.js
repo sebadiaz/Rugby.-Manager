@@ -200,6 +200,15 @@ test('M6e — la consigne des ailiers (FUNC-RM-004) fusionne avec les autres axe
   assert.ok(!neutre.attaque || neutre.attaque.ailiers === undefined, 'le neutre ne force rien');
 });
 
+test('M6f — le style de lancement fusionne avec les autres axes d attaque', () => {
+  const cfg = RMClub.tactiqueVersConfig({ lancements: 'pres', ailiers: 'large', pied: 'frequent' });
+  assert.deepStrictEqual(cfg.attaque.lancements, { pres: 3 });
+  assert.strictEqual(cfg.attaque.ailiers, 'large');
+  assert.strictEqual(cfg.attaque.tauxJeuAuPied, 2.5);
+  const neutre = RMClub.tactiqueVersConfig({ lancements: 'equilibre' });
+  assert.ok(!neutre.attaque || neutre.attaque.lancements === undefined, 'le neutre ne force rien');
+});
+
 test('M7 — en match, la consigne produit réellement un déroulé différent', () => {
   // Ce test vérifie le CÂBLAGE de bout en bout, pas l'ampleur de l'effet :
   // sur une dizaine de matchs, le nombre même de mêlées change (115 contre
