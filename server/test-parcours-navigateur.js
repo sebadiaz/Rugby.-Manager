@@ -66,10 +66,15 @@ function surveillerRessources(page, erreurs) {
   });
 }
 
-function verifier(nom, condition) {
+function verifier(nom, condition, detail) {
   nbTests++;
   if (condition) { console.log(`OK   ${nom}`); }
-  else { nbEchecs++; console.error(`FAIL ${nom}`); }
+  else {
+    nbEchecs++; console.error(`FAIL ${nom}`);
+    // Le détail passé par l'appelant (texte affiché, valeurs lues) : sans lui,
+    // un échec rare ne se diagnostique pas après coup.
+    if (detail !== undefined) console.error('     ' + String(typeof detail === 'string' ? detail : JSON.stringify(detail)).slice(0, 600));
+  }
 }
 
 function optionsLancement() {
