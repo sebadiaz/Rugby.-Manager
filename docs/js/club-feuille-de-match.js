@@ -60,6 +60,9 @@
     ['cartonsJaunes', 'Cartons jaunes'],
   ];
 
+  // Les trois familles de lancement (cf. axe « Style de lancement »).
+  const STYLES_LANCEMENT = [['Pres', 'Au près'], ['Large', 'Au large'], ['Pied', 'Au pied']];
+
   function nombre(v) { return typeof v === 'number' ? v : 0; }
 
   // Assemble le compte rendu d'un match terminé.
@@ -145,8 +148,24 @@
           aide: 'Part du temps de jeu effectif passée dans le camp adverse' }
       : null;
 
+    // Bilan des lancements scriptés par style (P2-153), compté par le moteur :
+    // nombre joués, terrain gagné jusqu'à la fin de la séquence, essais au
+    // bout. Absent d'une archive d'avant ce compteur.
+    const lancements = STYLES_LANCEMENT
+      .filter(([cle]) => statsA['lancements' + cle] !== undefined || statsB['lancements' + cle] !== undefined)
+      .map(([cle, libelle]) => {
+        const camp = (st) => {
+          const n = nombre(st['lancements' + cle]);
+          return { n, essais: nombre(st['essaisLancements' + cle]),
+            terrainMoyen: n ? Math.round(nombre(st['terrainLancements' + cle]) / n) : null };
+        };
+        return { cle, libelle, a: camp(statsA), b: camp(statsB) };
+      })
+      .filter((l) => l.a.n + l.b.n > 0);
+
     return {
       nomA, nomB,
+      lancements,
       score: { A: (etat && etat.score && etat.score.A) || 0, B: (etat && etat.score && etat.score.B) || 0 },
       chronologie,
       marqueurs,
@@ -205,10 +224,23 @@
       : '';
     const possession = lignePct(f.possession) + lignePct(f.occupation);
 
+    // « 5 · +21 m · 1 essai » : joués, terrain moyen gagné, essais au bout.
+    const resumeLancement = (c) => {
+      if (!c.n) return '–';
+      const t = c.terrainMoyen;
+      return `${c.n} · ${t > 0 ? '+' : ''}${t} m` + (c.essais ? ` · ${c.essais} essai${c.essais > 1 ? 's' : ''}` : '');
+    };
+    const lancements = (f.lancements || []).map((l) =>
+      `<div class="ligneStatMatch ligneLancement">` +
+      `<span class="valA">${resumeLancement(l.a)}</span>` +
+      `<span class="libelleStat">${echapperTexte(l.libelle)}</span>` +
+      `<span class="valB">${resumeLancement(l.b)}</span></div>`).join('');
+
     return `<h3 class="titreFeuille">Feuille de match</h3>` +
       (marqueurs ? `<h4 class="sousTitreFeuille">Essais marqués (minute, marqueur)</h4>${marqueurs}` : '') +
       `<h4 class="sousTitreFeuille">Le fil du match</h4><div class="chronoFeuille">${lignes}</div>` +
-      `<h4 class="sousTitreFeuille">Statistiques</h4>${possession}${stats}`;
+      `<h4 class="sousTitreFeuille">Statistiques</h4>${possession}${stats}` +
+      (lancements ? `<h4 class="sousTitreFeuille" title="Combinaisons jouées sur mêlée, touche ou maul : nombre, terrain moyen gagné jusqu'au prochain arrêt de jeu ou à la perte du ballon, essais au bout">Lancements de jeu</h4>${lancements}` : '');
   }
 
   global.RMClub = Object.assign(global.RMClub || {}, {

@@ -4479,6 +4479,55 @@ test('style de lancement (axe d équipe) : « au près », « au large », « au
   assert.ok(pied.pied >= neutre.pied + 0.1, `au pied : ${(100 * pied.pied).toFixed(0)} % (neutre ${(100 * neutre.pied).toFixed(0)} %)`);
 });
 
+test('bilan des lancements (P2-153) : chaque lancement annoncé compté une fois, essais et terrain recomptés indépendamment', () => {
+  const STYLES = ['Pres', 'Large', 'Pied'];
+  let lancements = 0, terrain = 0, essaisSurLancement = 0;
+  for (let seed = 1; seed <= 4; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    // Recompte indépendant à partir des annonces : un lancement vit jusqu'à
+    // la perte du ballon, un nouvel arrêt de jeu, une pénalité ou un essai.
+    const annonces = { A: { Pres: 0, Large: 0, Pied: 0 }, B: { Pres: 0, Large: 0, Pied: 0 } };
+    const essais = { A: 0, B: 0 }, terr = { A: 0, B: 0 };
+    let L = null;
+    const log0 = m.log.bind(m);
+    m.log = (type, team, msg, extra) => {
+      if (type === 'LANCEMENT' && extra && extra.style) {
+        const cle = { pres: 'Pres', large: 'Large', pied: 'Pied' }[extra.style];
+        annonces[team][cle]++;
+        L = { team, x0: m.porteur.x, poss: m.possession, dernier: m.porteur.x };
+      }
+      if (type === 'ESSAI' && L) { if (L.team === team) essais[team]++; terr[L.team] += (L.team === 'A' ? 1 : -1) * (L.dernier - L.x0); L = null; }
+      return log0(type, team, msg, extra);
+    };
+    let prec = m.phase;
+    while (m.phase !== 'TERMINE') {
+      m.tick(0.1);
+      if (L) {
+        const nouvelArret = ['TOUCHE', 'MELEE', 'COUP_ENVOI'].includes(m.phase) && m.phase !== prec;
+        if (m.possession !== L.poss || nouvelArret || m.penaliteRecul) {
+          terr[L.team] += (L.team === 'A' ? 1 : -1) * (L.dernier - L.x0); L = null;
+        } else L.dernier = m._ballonAffiche.x;
+      }
+      prec = m.phase;
+    }
+    if (L) terr[L.team] += (L.team === 'A' ? 1 : -1) * (L.dernier - L.x0);
+    const st = m.getState().stats;
+    for (const e of ['A', 'B']) {
+      for (const c of STYLES) assert.strictEqual(st[e]['lancements' + c], annonces[e][c], `graine ${seed}, ${e}, ${c} : un compteur par annonce`);
+      const somme = (p) => STYLES.reduce((t, c) => t + st[e][p + c], 0);
+      assert.strictEqual(somme('essaisLancements'), essais[e], `graine ${seed}, ${e} : essais au bout d'un lancement`);
+      assert.ok(somme('essaisLancements') <= st[e].essais, `graine ${seed}, ${e} : pas plus que les essais de l équipe`);
+      assert.ok(Math.abs(somme('terrainLancements') - terr[e]) <= 0.5,
+        `graine ${seed}, ${e} : terrain ${somme('terrainLancements').toFixed(1)} m (recompté ${terr[e].toFixed(1)} m)`);
+      lancements += somme('lancements'); terrain += somme('terrainLancements'); essaisSurLancement += essais[e];
+    }
+  }
+  assert.ok(lancements >= 40, `des lancements joués (${lancements} sur 4 matchs)`);
+  const moyen = terrain / lancements;
+  assert.ok(moyen > 5 && moyen < 50, `terrain moyen par lancement plausible : ${moyen.toFixed(1)} m`);
+  assert.ok(essaisSurLancement > 0, 'des essais naissent de lancements');
+});
+
 // --- bugs.md QA-RM-007 : événements, joueurs et équipe disent la même chose ---
 test('rapprochement : réussis ≤ tentés partout, et chaque essai ou but du compteur a son événement (QA-RM-007)', () => {
   for (let seed = 1; seed <= 4; seed++) {

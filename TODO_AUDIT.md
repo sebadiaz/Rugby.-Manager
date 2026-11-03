@@ -580,6 +580,35 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-153. Bilan des lancements sur la feuille de match : joués, terrain gagné, essais, par style
+- **Statut : LIVRÉ**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_statsVierges`, `_lancerCombinaison`,
+  `_infoEssai`, `tick`, ouverture de séquence), `docs/js/club-feuille-de-match.js`, `docs/js/ui.js`,
+  `docs/css/style.css`, `docs/REGLES_RUGBY.md`, `server/test-invariants.js`, `server/test-feuille-de-match.js`,
+  `server/test-parcours-navigateur.js`.
+
+**Constat.** P2-152 laisse choisir un style de lancement, mais rien ne disait au manager ce qu'il rapporte : les
+lancements n'apparaissaient que dans le bandeau en direct, aucun compteur n'existait.
+
+**Correction.** Neuf compteurs moteur par équipe (`lancements*`, `terrainLancements*`, `essaisLancements*` pour Pres /
+Large / Pied). Un lancement vit le temps de sa séquence : terrain = déplacement du ballon dans le sens d'attaque
+jusqu'au prochain arrêt de jeu, à la perte du ballon, à une pénalité ou à l'essai (négatif s'il recule) ; essai
+compté s'il conclut cette séquence. Feuille de match (fin de match et archive) : section « Lancements de jeu »,
+« joués · terrain moyen · essais » par style et par équipe ; panneau de statistiques en direct : joués (essais).
+Compteurs d'observation pure : aucun tirage, matchs identiques au pas près (4 graines).
+
+**Défaut trouvé en mesurant.** Mêlée gagnée par l'équipe qui n'introduisait pas : son lancement était posé sur la
+séquence de l'adversaire, remplacée au tick suivant — terrain et essai perdus (graine 4 : 15 m). Le lancement suit
+désormais l'équipe qui l'a joué. (L'origine « MELEE » d'un essai né d'une telle mêlée reste étiquetée « jeu
+courant » : constat pré-existant, non modifié ici.)
+
+**Mesures (20 matchs, sans réglage).** Au près 5,3 lancements/match, +19,9 m, 9,5 essais/100 ; au large 9,4, +22,7 m,
+7,4/100 ; au pied 0,9, +26,5 m, 0/100. 1,2 des 6,9 essais/match naissent d'un lancement.
+
+**Tests.** Invariant : recompte indépendant (annonces LANCEMENT, essais, terrain ±0,5 m, 4 graines) — échoue sur
+essai compté deux fois, terrain non figé à l'essai, et sans le report de séquence. Feuille E13 : chiffres = compteurs,
+archive identique, ancienne archive sans section. Navigateur : section affichée, sans débordement (1400 et 390 px).
+
 ### P2-152. Style de lancement dans l'écran Tactique : au près, varié, au large, au pied
 - **Statut : LIVRÉ**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`style` des combinaisons,

@@ -804,6 +804,19 @@ function optionsLancement() {
   await page.waitForSelector('#panneauResultat.visible', { timeout: 20000 });
   const scoreTxt = await page.textContent('#resultatScore');
   verifier('progression d\'une journée : un score réel est affiché', /\d+\s*[—-]\s*\d+/.test(scoreTxt));
+  // Bilan des lancements (P2-153) : la feuille de fin de match dit ce que
+  // chaque style de lancement a rapporté (nombre · terrain moyen · essais).
+  const bilanLancements = await page.evaluate(() => {
+    const z = document.getElementById('resultatFeuille');
+    const lignes = z ? [...z.querySelectorAll('.ligneLancement')] : [];
+    return { titre: !!z && /Lancements de jeu/.test(z.textContent), lignes: lignes.map((l) => l.textContent),
+      deborde: lignes.some((l) => l.scrollWidth > l.clientWidth + 1) };
+  });
+  verifier('feuille de match : bilan des lancements par style affiché (joués · terrain · essais)',
+    bilanLancements.titre && bilanLancements.lignes.length > 0
+      && bilanLancements.lignes.every((t) => /Au (près|large|pied)/.test(t) && /(\d+ · [+-]?\d+ m|–)/.test(t)),
+    JSON.stringify(bilanLancements));
+  verifier('feuille de match : les lignes du bilan des lancements ne débordent pas', !bilanLancements.deborde);
   const matchsJouesApresDoubleClicJournee = await page.evaluate(() =>
     JSON.parse(localStorage.getItem('rugbyManager.club.v1')).calendrier.filter((f) => f.joue).length);
   verifier('double clic sur "Lancer le match" : une seule journée est jouée, pas de blocage ni de double simulation',

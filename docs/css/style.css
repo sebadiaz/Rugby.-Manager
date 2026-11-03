@@ -1271,3 +1271,5 @@ select {
 .ligneCalendrier.ligneOuvrable { cursor: pointer; }
 .ligneCalendrier.ligneOuvrable:hover { background: rgba(255, 255, 255, 0.04); }
 .ligneCalendrier .chevronFeuille { color: var(--text-faint); font-weight: 700; }
+/* Bilan des lancements (P2-153) : « 5 · +21 m · 1 essai » demande plus large. */
+.ligneStatMatch.ligneLancement { grid-template-columns: minmax(0, 1fr) 4.5rem minmax(0, 1fr); font-size: 12px; }

@@ -330,6 +330,7 @@ jouées dans la simulation — aucune n'est fabriquée.**
 | `metresGagnes` | Mètres gagnés **ballon en main** dans le sens d'attaque | course du porteur (`_tickPorte`) |
 | `kicks` | Coup de pied en jeu (hors pénalités / coups francs) | `_tenterCoupDePiedJeu` |
 | `entrees22` (Entrées dans les 22 m adverses) | Une par **possession continue** qui atteint les 22 m adverses (pas re-comptée tant que la possession ne change pas) | `tick()`, ballon en jeu |
+| `lancements*` / `terrainLancements*` / `essaisLancements*` (Pres, Large, Pied) | Lancements scriptés joués par style ; terrain gagné par le ballon jusqu'à la fin de leur séquence (arrêt de jeu, perte, pénalité, essai) ; essais qui concluent cette séquence | `_lancerCombinaison`, `tick()`, `_infoEssai` |
 | possession % / occupation % | % de temps de contrôle du ballon / d'occupation territoriale | `tempsPossession` / `tempsOccupation` |
 
 ### Motifs de jeu discriminants (étude rorybunker/rugby-sequences)

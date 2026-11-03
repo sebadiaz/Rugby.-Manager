@@ -1243,6 +1243,13 @@
         // possession ne change pas), utile pour suivre la finition en zone
         // rouge (cf. docs/ANALYSE_MATCH_REEL.md).
         entrees22: 0,
+        // Bilan des lancements scriptés par style (P2-153) : nombre joués,
+        // terrain gagné par le ballon entre le lancement et la fin de la
+        // séquence (arrêt de jeu, perte du ballon ou essai ; négatif si le
+        // ballon a reculé) et essais marqués dans cette même séquence.
+        lancementsPres: 0, lancementsLarge: 0, lancementsPied: 0,
+        terrainLancementsPres: 0, terrainLancementsLarge: 0, terrainLancementsPied: 0,
+        essaisLancementsPres: 0, essaisLancementsLarge: 0, essaisLancementsPied: 0,
       };
     }
 
@@ -5681,6 +5688,14 @@
     // Qui a marqué et d'où venait l'action (QA-RM-007), cf. _sequence dans tick.
     _infoEssai(marqueur) {
       const q = this._sequence || {};
+      // Essai au bout d'un lancement de l'équipe qui marque (P2-153) : le
+      // terrain gagné s'arrête là (la transformation déplace le ballon).
+      const L = q.lancement;
+      const camp = marqueur ? marqueur.team : this.possession;
+      if (L && !L.fini) {
+        if (L.team === camp) this.stats[camp]['essaisLancements' + L.cle]++;
+        L.fini = true;
+      }
       return { marqueur: marqueur ? marqueur.numero : null, origine: q.origine || null,
         depuis: q.depuis != null ? q.depuis : null, rucks: q.rucks || 0 };
     }
@@ -6805,7 +6820,13 @@
       if (!combo || !combo.etapes || !combo.etapes.length) return;
       this.combinaison = { etapes: combo.etapes, i: 0, timer: 0, delai: 0.55 };
       const surQuoi = { melee: 'sur mêlée', touche: 'sur touche', maul: 'après le maul' }[type] || '';
-      this.log('LANCEMENT', this.possession, `Lancement ${surQuoi} : ${combo.libelle || combo.nom}`, { nom: combo.nom, sur: type });
+      this.log('LANCEMENT', this.possession, `Lancement ${surQuoi} : ${combo.libelle || combo.nom}`, { nom: combo.nom, sur: type, style: combo.style || null });
+      // Bilan du lancement (P2-153) : suivi jusqu'à la fin de la séquence.
+      const cle = { pres: 'Pres', large: 'Large', pied: 'Pied' }[combo.style];
+      if (cle && this._sequence && this.porteur) {
+        this.stats[this.possession]['lancements' + cle]++;
+        this._sequence.lancement = { cle, team: this.possession, x0: this.porteur.x, credite: 0, fini: false };
+      }
     }
 
     // Déroule pas à pas la combinaison en cours (passes ciblées + lignes de
@@ -7505,6 +7526,18 @@
         const b = this._positionBallonCalculee();
         this._ballonAffiche = { x: b.ballonX, y: b.ballonY, n: this._numTick || 0 };
       } catch (e) { /* porteur absent : on garde la dernière position */ }
+      // Terrain gagné depuis le lancement de la séquence en cours (P2-153) :
+      // crédité au fil du jeu, figé quand la séquence se termine (une
+      // nouvelle séquence n'a pas de lancement) ou à l'essai.
+      const L = this._sequence && this._sequence.lancement;
+      // Ballon perdu ou pénalité sifflée : la séquence du lancement s'arrête
+      // là, sans créditer le déplacement qui suit (relance adverse, recul).
+      if (L && !L.fini && (this.possession !== L.team || this.penaliteRecul)) L.fini = true;
+      if (L && !L.fini && this._ballonAffiche) {
+        const g = (L.team === 'A' ? 1 : -1) * (this._ballonAffiche.x - L.x0);
+        this.stats[L.team]['terrainLancements' + L.cle] += g - L.credite;
+        L.credite = g;
+      }
       return r;
     }
 
@@ -7534,11 +7567,17 @@
       if (nouvelArret || this.possession !== this._seqPoss || (this.penaliteRecul && !this._seqPenalite)) {
         const sensSeq = this.possession === 'A' ? 1 : -1;
         const xTouche = this.phase === 'TOUCHE' ? this.toucheLanceurX : null;
+        const seqPrecedente = this._sequence, seqPossPrec = this._seqPoss;
         this._sequence = {
           origine: phasesArret[this.phase] || (this.penaliteRecul ? 'PENALITE' : 'JEU_COURANT'),
           depuis: xTouche != null ? Math.round(sensSeq > 0 ? LONGUEUR - xTouche : xTouche) : null,
           rucks: 0,
         };
+        // Mêlée gagnée par l'équipe qui n'introduisait pas : son lancement a
+        // été posé sur la séquence de l'adversaire, la sienne ne s'ouvre
+        // qu'ici. Le lancement la suit (pas sur un nouvel arrêt de jeu).
+        const prec = seqPrecedente && seqPrecedente.lancement;
+        if (prec && !nouvelArret && prec.team === this.possession && seqPossPrec !== prec.team) this._sequence.lancement = prec;
         this._seqPoss = this.possession;
       }
       this._seqToucheX = this.phase === 'TOUCHE' ? this.toucheLanceurX : null;

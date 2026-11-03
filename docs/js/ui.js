@@ -277,6 +277,11 @@
       ligneStat('Phases jouées', s.A.phases, s.B.phases) +
       ligneStat('Rucks conservés', ratio(s.A.rucksConserves, s.A.rucks), ratio(s.B.rucksConserves, s.B.rucks)) +
       ligneStat('Mauls', s.A.mauls, s.B.mauls) +
+      // Bilan des lancements par style (P2-153) : joués (essais au bout).
+      ['Pres', 'Large', 'Pied'].map((c, i) => s.A['lancements' + c] == null ? '' :
+        ligneStat(['Lancements au près', 'Lancements au large', 'Lancements au pied'][i] + ' (essais)',
+          `${s.A['lancements' + c]} (${s.A['essaisLancements' + c]})`,
+          `${s.B['lancements' + c]} (${s.B['essaisLancements' + c]})`)).join('') +
       // Sur SA propre introduction / SON propre lancer : c'est ce qui dit qui
       // perd son ballon (« gagnées / perdues », CLAUDE.md rôle 6). Le total
       // des deux équipes ne le disait pas.

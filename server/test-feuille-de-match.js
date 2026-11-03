@@ -220,4 +220,30 @@ test('E12 — chaque essai de la feuille porte son marqueur, et l archive le gar
   assert.deepStrictEqual(f2.marqueurs, f.marqueurs, 'mêmes marqueurs après archive');
 });
 
+test('E13 — bilan des lancements par style : compté par le moteur, affiché, gardé par l archive (P2-153)', () => {
+  const f = RMClub.feuilleDeMatch(ETAT, { nomA: 'AS Test', nomB: 'RC Adverse' });
+  assert.ok(Array.isArray(f.lancements) && f.lancements.length > 0, 'un match complet joue des lancements');
+  for (const l of f.lancements) {
+    for (const [camp, c] of [['A', l.a], ['B', l.b]]) {
+      const st = ETAT.stats[camp];
+      assert.strictEqual(c.n, st['lancements' + l.cle], `${l.cle} ${camp} : nombre = compteur du moteur`);
+      assert.strictEqual(c.essais, st['essaisLancements' + l.cle], `${l.cle} ${camp} : essais = compteur`);
+      assert.ok(c.essais <= c.n, 'pas plus d essais que de lancements');
+      assert.strictEqual(c.terrainMoyen, c.n ? Math.round(st['terrainLancements' + l.cle] / c.n) : null);
+    }
+  }
+  const html = RMClub.htmlFeuilleDeMatch(f);
+  assert.ok(/Lancements de jeu/.test(html) && />Au (près|large|pied)</.test(html), 'section affichée');
+  // L'archive garde les compteurs : même bilan après rechargement.
+  const s = { numero: 1 };
+  RMClub.archiverFeuilleDeMatch(s, { cle: 'm#3', etat: ETAT });
+  const f2 = RMClub.feuilleDeMatch(JSON.parse(JSON.stringify(RMClub.feuilleArchivee(s, 'm#3'))), {});
+  assert.deepStrictEqual(f2.lancements, f.lancements, 'même bilan après archive');
+  // Ancienne archive sans ces compteurs : aucune section, rien d'inventé.
+  const ancienne = { score: { A: 0, B: 0 }, stats: { A: { essais: 0 }, B: { essais: 0 } }, chronologie: ETAT.chronologie };
+  const fa = RMClub.feuilleDeMatch(ancienne, {});
+  assert.deepStrictEqual(fa.lancements, []);
+  assert.ok(!/Lancements de jeu/.test(RMClub.htmlFeuilleDeMatch(fa)));
+});
+
 console.log(`\n${nbTests} test(s) exécuté(s).`);
