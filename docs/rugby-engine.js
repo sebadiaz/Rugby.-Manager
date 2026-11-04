@@ -1818,6 +1818,7 @@
       if (this._sequence) this._sequence.depuis = Math.round(sens > 0 ? LONGUEUR - R.x : R.x);
       this.possession = R.equipe;
       this.porteur = receveur;
+      this._dernierePasse = { passeur: L, receveur }; // passe décisive possible (P2-155)
       this.ruckPoint = { x: receveur.x, y: receveur.y };
       this.phase = 'PORTE';
       this.timerPhase = 0;
@@ -2795,6 +2796,7 @@
           // gelés, ils ne se replient plus et se retrouvent parfaitement placés au
           // point de chute suivant. L'espace vient du receveur décalé, pas du gel.
           this.porteur = receveurOffload;
+          this._dernierePasse = { passeur: porteur, receveur: receveurOffload }; // passe décisive possible (P2-155)
           this._receptionDirecte = false;
           return;
         }
@@ -4371,11 +4373,18 @@
     // Passe décisive (P2-103) : la dernière passe reçue par le marqueur, dans la
     // même séquence de jeu courant (cf. tick, remise à zéro hors PORTE).
     _passeDecisive(marqueur) {
-      const D = this._dernierePasse;
-      if (D && D.receveur === marqueur && D.passeur !== marqueur && D.passeur.team === marqueur.team) {
-        this._statJoueur(D.passeur).passesDecisives++;
-      }
+      const passeur = this._passeurDecisif(marqueur);
+      if (passeur) this._statJoueur(passeur).passesDecisives++;
+      this._passeurEssai = { marqueur, passeur }; // pour le récit, cf. _infoEssai
       this._dernierePasse = null;
+    }
+
+    // Auteur de la passe décisive vers ce marqueur, ou null. Toute remise main
+    // à main compte : passe, offload, combinaison, passe du 8, touche rapide.
+    _passeurDecisif(marqueur) {
+      const D = this._dernierePasse;
+      return D && marqueur && D.receveur === marqueur && D.passeur !== marqueur && D.passeur.team === marqueur.team
+        ? D.passeur : null;
     }
 
     // Mètres gagnés (P2-102) : le terrain pris par le porteur au-delà du point
@@ -5696,7 +5705,12 @@
         if (L.team === camp) this.stats[camp]['essaisLancements' + L.cle]++;
         L.fini = true;
       }
-      return { marqueur: marqueur ? marqueur.numero : null, origine: q.origine || null,
+      const pe = this._passeurEssai;
+      // Seulement l'essai qui a compté sa passe décisive (_passeDecisive) : un
+      // coup de pied à suivre ou un maul pénétrant n'en ont pas.
+      const passeur = pe && pe.marqueur === marqueur ? pe.passeur : null;
+      this._passeurEssai = null;
+      return { marqueur: marqueur ? marqueur.numero : null, passeur: passeur ? passeur.numero : null, origine: q.origine || null,
         depuis: q.depuis != null ? q.depuis : null, rucks: q.rucks || 0 };
     }
 
@@ -6766,6 +6780,7 @@
         this._statJoueur(porteur).passes++;
         this._lancerPasseVisuelle(porteur, cible);
         this.porteur = cible;
+        this._dernierePasse = { passeur: porteur, receveur: cible }; // passe décisive possible (P2-155)
         this.log('MELEE_PASSE_HUIT', poss, `Le n°8 ramasse a la base et passe au n°${cible.numero} pour l'equipe ${poss}`);
       } else {
         // P2-64 : c'est le 9 qui PREND le ballon disponible aux pieds du 8 — il
@@ -6878,6 +6893,7 @@
       this._statJoueur(passeur).passes++;
       this._lancerPasseVisuelle(passeur, cible);
       this.porteur = cible;
+      this._dernierePasse = { passeur, receveur: cible }; // passe décisive possible (P2-155)
       this._receptionDirecte = false;
       this.log('COMBINAISON', this.possession, `Combinaison : passe du n°${etape.de} au n°${cible.numero}${etape.ligne ? ' (' + etape.ligne + ')' : ''}`);
       // PERCUSSION : le receveur va au contact sans repasser (cf. choisirActionPorteur).

@@ -255,7 +255,10 @@ test('E14 — chaque essai raconte d où venait l action (phase, distance, rucks
     assert.ok(/^(maul pénétrant )?(sur touche|sur mêlée|sur pénalité jouée|sur coup d'envoi|en jeu courant|sur coup de pied à suivre)/.test(recit), `récit : « ${recit} » (${JSON.stringify(m)})`);
     if (m.depuis != null) assert.ok(recit.includes(`à ${m.depuis} m`), recit);
     if (m.rucks) assert.ok(recit.includes(`${m.rucks} ruck`), recit);
+    assert.strictEqual(recit.includes('servi par le n°'), m.passeur != null, recit);
+    if (m.passeur != null) assert.ok(recit.endsWith(`servi par le n°${m.passeur}`) && m.passeur !== m.marqueur, recit);
   }
+  assert.ok(essais.some((m) => m.passeur != null), 'des essais ont un passeur décisif');
   const html = RMClub.htmlFeuilleDeMatch(f);
   assert.ok(/class="actionEssai">— (maul pénétrant )?(sur|en) /.test(html), 'le récit est affiché');
   assert.strictEqual(RMClub.recitEssai({ type: 'ESSAI_PENALITE' }), 'essai de pénalité');

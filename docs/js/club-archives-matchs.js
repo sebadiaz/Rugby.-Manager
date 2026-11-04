@@ -80,7 +80,7 @@
       }, x.marqueur != null ? { marqueur: x.marqueur } : null,
       // Origine de l'essai (P2-154) : le récit de l'action survit à l'archive.
       x.type === 'ESSAI' && x.origine ? { origine: x.origine, depuis: x.depuis != null ? x.depuis : null,
-        rucks: x.rucks || 0, maul: !!x.maul } : null)),
+        rucks: x.rucks || 0, maul: !!x.maul, passeur: x.passeur != null ? x.passeur : null } : null)),
     };
   }
 

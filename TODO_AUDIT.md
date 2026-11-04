@@ -580,6 +580,26 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-155. Passe décisive : offloads, combinaisons, passe du 8 et touche rapide comptent ; le passeur dans le récit
+- **Statut : LIVRÉ**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_passeDecisive`, `_passeurDecisif`,
+  `_infoEssai`, offload, `_tickCombinaison`, sortie du 8, touche rapide), `docs/js/club-feuille-de-match.js`,
+  `docs/js/club-archives-matchs.js`, `server/test-invariants.js`, `server/test-feuille-de-match.js`.
+
+**Constat.** La passe décisive (P2-103) ne retenait que la passe ordinaire : un essai marqué au bout d'un offload, d'une
+passe de combinaison, d'une passe du n°8 ou d'une touche rapide n'en avait pas (30 matchs : 6 essais servis par un
+offload, 2 par une combinaison). Et le récit de l'essai (P2-154) ne nommait que le marqueur.
+
+**Correction.** Toute remise main à main arme la passe décisive. L'événement ESSAI porte le `passeur` — seulement
+quand la passe décisive est comptée (un coup de pied à suivre ou un maul pénétrant n'en ont pas). Feuille de match :
+« 14' n°14 — en jeu courant à 32 m, 2 rucks, servi par le n°15 », gardé par l'archive. Matchs identiques au pas près.
+
+**Mesure (10 matchs).** Passes décisives : 48 → 51 (hors joueurs remplacés), pour 73 essais.
+
+**Tests.** Invariant : recompte indépendant tick par tick des remises de balle (8 graines choisies pour contenir les
+cas rares) — zéro écart ; échoue sans l'offload (graine 9) ou sans la combinaison (graine 17) ; récits avec passeur =
+passes décisives au compteur, remplacés compris. Feuille E14 : « servi par » si et seulement si un passeur.
+
 ### P2-154. Chaque essai raconte son action sur la feuille de match ; mêlée volée = origine « mêlée »
 - **Statut : LIVRÉ**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (ouverture de séquence),

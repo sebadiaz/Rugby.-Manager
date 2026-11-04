@@ -4556,6 +4556,46 @@ test('origine d un essai : une mêlée gagnée sur introduction adverse lance un
   assert.deepStrictEqual(fautes, []);
 });
 
+test('passe décisive (P2-155) : la dernière remise main à main vers le marqueur — passe, offload ou combinaison — est créditée et racontée', () => {
+  let avecPasseur = 0, horsPasse = 0;
+  const ecarts = [];
+  // Graines choisies (mesure sur 30) : 9, 10 et 14 ont un essai servi par un
+  // offload, 17 et 21 par une passe de combinaison — les remises rares.
+  for (const seed of [1, 2, 9, 10, 14, 17, 21, 3]) {
+    const m = new MatchEngine(seed, 4800);
+    // Recompte indépendant : on suit le porteur tick par tick. Un changement
+    // de porteur dans la même équipe, en jeu courant, est une remise de balle.
+    let prec = null, remise = null;
+    const log0 = m.log.bind(m);
+    m.log = (t, team, msg, extra, ...r) => {
+      if (t === 'ESSAI' && extra && extra.marqueur != null && !extra.maul && extra.origine !== 'COUP_DE_PIED_A_SUIVRE') {
+        const attendu = remise && remise.vers === extra.marqueur && remise.team === team ? remise.de : null;
+        if (attendu !== extra.passeur) ecarts.push(`graine ${seed}, ${team} n°${extra.marqueur} : passeur ${extra.passeur}, attendu ${attendu}`);
+        if (attendu != null) avecPasseur++; else horsPasse++;
+      }
+      return log0(t, team, msg, extra, ...r);
+    };
+    while (m.phase !== 'TERMINE') {
+      m.tick(0.1);
+      const p = m.porteur;
+      if (m.phase === 'PORTE' && p && prec && p !== prec && p.team === prec.team) remise = { de: prec.numero, vers: p.numero, team: p.team };
+      else if (m.phase !== 'PORTE' && m.phase !== 'ESSAI') remise = null;
+      prec = m.phase === 'PORTE' ? p : null;
+    }
+    // Chaque essai raconté avec un passeur a sa passe décisive au compteur
+    // individuel (remplacés compris), et inversement.
+    const st = m.getState();
+    for (const e of ['A', 'B']) {
+      const pd = Object.values(st.statsJoueurs[e]).reduce((t, l) => t + l.passesDecisives, 0)
+        + st.statsJoueursSortis[e].reduce((t, r) => t + ((r.stats && r.stats.passesDecisives) || 0), 0);
+      const recits = st.chronologie.filter((x) => x.type === 'ESSAI' && x.team === e && x.passeur != null).length;
+      assert.strictEqual(recits, pd, `graine ${seed}, ${e} : ${recits} essais racontés avec passeur, ${pd} passes décisives`);
+    }
+  }
+  assert.ok(avecPasseur >= 20 && horsPasse >= 3, `échantillon : ${avecPasseur} essais servis, ${horsPasse} sans passe`);
+  assert.deepStrictEqual(ecarts, []);
+});
+
 // --- bugs.md QA-RM-007 : événements, joueurs et équipe disent la même chose ---
 test('rapprochement : réussis ≤ tentés partout, et chaque essai ou but du compteur a son événement (QA-RM-007)', () => {
   for (let seed = 1; seed <= 4; seed++) {

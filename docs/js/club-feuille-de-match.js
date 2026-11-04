@@ -108,7 +108,9 @@
           // D'où venait l'action (P2-154) : phase de départ, distance à la
           // ligne, rucks joués. Absents d'une ancienne archive : rien d'inventé.
           origine: e.origine || null, depuis: e.depuis != null ? e.depuis : null,
-          rucks: e.rucks != null ? e.rucks : null, maul: !!e.maul });
+          rucks: e.rucks != null ? e.rucks : null, maul: !!e.maul,
+          // Auteur de la passe décisive (P2-155), s'il y en a une.
+          passeur: e.passeur != null ? e.passeur : null });
       }
     }
 
@@ -195,6 +197,7 @@
     let r = (m.maul ? 'maul pénétrant ' : '') + (ORIGINES_ESSAI[m.origine] || '');
     if (m.depuis != null) r += ` à ${m.depuis} m`;
     if (m.rucks) r += `, ${m.rucks} ruck${m.rucks > 1 ? 's' : ''}`;
+    if (m.passeur != null) r += `, servi par le n°${m.passeur}`;
     return r.trim();
   }
 
