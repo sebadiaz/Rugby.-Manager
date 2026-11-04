@@ -822,6 +822,11 @@ function optionsLancement() {
       && bilanLancements.lignes.every((t) => /Au (près|large|pied)/.test(t) && /(\d+ · [+-]?\d+ m|–)/.test(t)),
     JSON.stringify(bilanLancements));
   verifier('feuille de match : les lignes du bilan des lancements ne débordent pas', !bilanLancements.deborde);
+  // Essais marqués (P2-154) : chaque essai dit d'où venait l'action.
+  const recitsEssais = await page.$$eval('#resultatFeuille .listeEssais li', (l) => l.map((x) => x.textContent));
+  verifier('feuille de match : chaque essai raconte son action (phase, distance, rucks)',
+    recitsEssais.length > 0 && recitsEssais.every((t) => /^\d+' (n°\d+ — (maul pénétrant )?(sur |en jeu courant)|— essai de pénalité)/.test(t)),
+    JSON.stringify(recitsEssais));
   const matchsJouesApresDoubleClicJournee = await page.evaluate(() =>
     JSON.parse(localStorage.getItem('rugbyManager.club.v1')).calendrier.filter((f) => f.joue).length);
   verifier('double clic sur "Lancer le match" : une seule journée est jouée, pas de blocage ni de double simulation',

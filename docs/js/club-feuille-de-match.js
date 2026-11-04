@@ -104,7 +104,11 @@
       if (def.marqueur && (e.team === 'A' || e.team === 'B')) {
         marqueurs[e.team].push({ minute: e.minute, type: e.type, message: e.message,
           // Numéro du marqueur (QA-RM-007) ; absent d'une ancienne archive.
-          marqueur: e.marqueur != null ? e.marqueur : null });
+          marqueur: e.marqueur != null ? e.marqueur : null,
+          // D'où venait l'action (P2-154) : phase de départ, distance à la
+          // ligne, rucks joués. Absents d'une ancienne archive : rien d'inventé.
+          origine: e.origine || null, depuis: e.depuis != null ? e.depuis : null,
+          rucks: e.rucks != null ? e.rucks : null, maul: !!e.maul });
       }
     }
 
@@ -178,6 +182,22 @@
   }
 
 
+  // Récit court de l'action d'un essai (P2-154), à partir de ce que le
+  // moteur a enregistré : « maul pénétrant sur touche, 3 rucks », « en jeu
+  // courant à 62 m »… Chaîne vide si l'archive ne l'a pas gardé.
+  const ORIGINES_ESSAI = {
+    TOUCHE: 'sur touche', MELEE: 'sur mêlée', PENALITE: 'sur pénalité jouée', COUP_ENVOI: 'sur coup d\'envoi',
+    JEU_COURANT: 'en jeu courant', COUP_DE_PIED_A_SUIVRE: 'sur coup de pied à suivre',
+  };
+  function recitEssai(m) {
+    if (m && m.type === 'ESSAI_PENALITE') return 'essai de pénalité';
+    if (!m || m.type !== 'ESSAI' || !m.origine) return '';
+    let r = (m.maul ? 'maul pénétrant ' : '') + (ORIGINES_ESSAI[m.origine] || '');
+    if (m.depuis != null) r += ` à ${m.depuis} m`;
+    if (m.rucks) r += `, ${m.rucks} ruck${m.rucks > 1 ? 's' : ''}`;
+    return r.trim();
+  }
+
   function echapperTexte(t) {
     return String(t == null ? '' : t)
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -203,12 +223,19 @@
         score + `</div>`;
     }).join('');
 
+    // Un essai par ligne : minute, marqueur, puis d'où venait l'action
+    // (« sur touche à 35 m, 4 rucks ») quand le moteur l'a enregistré.
     const marqueurs = ['A', 'B'].map((camp) => {
       const liste = f.marqueurs[camp];
       if (!liste.length) return '';
       const nom = camp === 'A' ? f.nomA : f.nomB;
-      return `<div class="ligneStat"><span>${echapperTexte(nom)}</span>` +
-        `<b>${liste.map((m) => m.minute + "'" + (m.marqueur != null ? ` (n°${m.marqueur})` : '')).join(', ')}</b></div>`;
+      const lignes = liste.map((m) => {
+        const action = recitEssai(m);
+        return `<li><b>${m.minute}'</b>` + (m.marqueur != null ? ` n°${m.marqueur}` : '') +
+          (action ? ` <span class="actionEssai">— ${echapperTexte(action)}</span>` : '') + '</li>';
+      }).join('');
+      return `<div class="essaisEquipe ${camp === 'A' ? 'campA' : 'campB'}"><div class="nomEssais">${echapperTexte(nom)}</div>` +
+        `<ul class="listeEssais">${lignes}</ul></div>`;
     }).join('');
 
     const stats = f.statistiques.map((s) =>
@@ -237,13 +264,13 @@
       `<span class="valB">${resumeLancement(l.b)}</span></div>`).join('');
 
     return `<h3 class="titreFeuille">Feuille de match</h3>` +
-      (marqueurs ? `<h4 class="sousTitreFeuille">Essais marqués (minute, marqueur)</h4>${marqueurs}` : '') +
+      (marqueurs ? `<h4 class="sousTitreFeuille">Essais marqués</h4>${marqueurs}` : '') +
       `<h4 class="sousTitreFeuille">Le fil du match</h4><div class="chronoFeuille">${lignes}</div>` +
       `<h4 class="sousTitreFeuille">Statistiques</h4>${possession}${stats}` +
       (lancements ? `<h4 class="sousTitreFeuille" title="Combinaisons jouées sur mêlée, touche ou maul : nombre, terrain moyen gagné jusqu'au prochain arrêt de jeu ou à la perte du ballon, essais au bout">Lancements de jeu</h4>${lancements}` : '');
   }
 
   global.RMClub = Object.assign(global.RMClub || {}, {
-    feuilleDeMatch, htmlFeuilleDeMatch,
+    feuilleDeMatch, htmlFeuilleDeMatch, recitEssai,
   });
 })(window);

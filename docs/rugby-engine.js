@@ -7568,8 +7568,13 @@
         const sensSeq = this.possession === 'A' ? 1 : -1;
         const xTouche = this.phase === 'TOUCHE' ? this.toucheLanceurX : null;
         const seqPrecedente = this._sequence, seqPossPrec = this._seqPoss;
+        // Mêlée gagnée sur l'introduction adverse : la possession bascule une
+        // fois la phase finie, mais le ballon vient bien de la mêlée (la
+        // séquence de l'équipe qui introduisait n'a jamais eu le ballon en main).
+        const meleeVolee = !phasesArret[this.phase] && seqPrecedente && seqPrecedente.origine === 'MELEE'
+          && seqPrecedente.depuis === null && seqPossPrec !== this.possession;
         this._sequence = {
-          origine: phasesArret[this.phase] || (this.penaliteRecul ? 'PENALITE' : 'JEU_COURANT'),
+          origine: phasesArret[this.phase] || (this.penaliteRecul ? 'PENALITE' : meleeVolee ? 'MELEE' : 'JEU_COURANT'),
           depuis: xTouche != null ? Math.round(sensSeq > 0 ? LONGUEUR - xTouche : xTouche) : null,
           rucks: 0,
         };

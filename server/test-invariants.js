@@ -4528,6 +4528,34 @@ test('bilan des lancements (P2-153) : chaque lancement annoncé compté une fois
   assert.ok(essaisSurLancement > 0, 'des essais naissent de lancements');
 });
 
+test('origine d un essai : une mêlée gagnée sur introduction adverse lance une séquence « mêlée », pas « jeu courant »', () => {
+  let volees = 0;
+  const fautes = [];
+  for (let seed = 1; seed <= 10; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    let intro = null, aVerifier = null;
+    const log0 = m.log.bind(m);
+    m.log = (t, team, msg, extra, ...r) => {
+      if (t === 'MELEE') intro = team;
+      if (/^MELEE_(BALLON_SORTI|PASSE_HUIT|PICK_AND_GO)$/.test(t) && intro && team !== intro) aVerifier = { team, ticks: 3 };
+      return log0(t, team, msg, extra, ...r);
+    };
+    while (m.phase !== 'TERMINE') {
+      m.tick(0.1);
+      if (aVerifier && --aVerifier.ticks === 0) {
+        // Une pénalité sifflée entre-temps fait légitimement une séquence « pénalité ».
+        if (m.possession === aVerifier.team && !m.penaliteRecul && m._sequence.origine !== 'PENALITE') {
+          volees++;
+          if (m._sequence.origine !== 'MELEE') fautes.push(`graine ${seed}, ${(m.tempsMatch / 60).toFixed(1)}' : ${m._sequence.origine}`);
+        }
+        aVerifier = null;
+      }
+    }
+  }
+  assert.ok(volees >= 2, `échantillon : ${volees} mêlée(s) gagnée(s) sur introduction adverse`);
+  assert.deepStrictEqual(fautes, []);
+});
+
 // --- bugs.md QA-RM-007 : événements, joueurs et équipe disent la même chose ---
 test('rapprochement : réussis ≤ tentés partout, et chaque essai ou but du compteur a son événement (QA-RM-007)', () => {
   for (let seed = 1; seed <= 4; seed++) {

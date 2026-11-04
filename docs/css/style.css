@@ -1273,3 +1273,11 @@ select {
 .ligneCalendrier .chevronFeuille { color: var(--text-faint); font-weight: 700; }
 /* Bilan des lancements (P2-153) : « 5 · +21 m · 1 essai » demande plus large. */
 .ligneStatMatch.ligneLancement { grid-template-columns: minmax(0, 1fr) 4.5rem minmax(0, 1fr); font-size: 12px; }
+/* Essais marqués (P2-154) : un essai par ligne, avec le récit de l'action. */
+.essaisEquipe { padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,.05); }
+.essaisEquipe .nomEssais { font-weight: 700; font-size: 13px; }
+.essaisEquipe.campA .nomEssais { color: var(--team-a); }
+.essaisEquipe.campB .nomEssais { color: var(--team-b); }
+.listeEssais { list-style: none; margin: 4px 0 0; padding: 0; font-size: 13px; }
+.listeEssais li { padding: 2px 0; }
+.listeEssais .actionEssai { color: var(--text-dim); font-size: 12px; }

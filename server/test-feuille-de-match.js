@@ -213,7 +213,7 @@ test('E12 — chaque essai de la feuille porte son marqueur, et l archive le gar
   const f = RMClub.feuilleDeMatch(ETAT, {});
   const tous = f.marqueurs.A.concat(f.marqueurs.B).filter((m) => m.type === 'ESSAI');
   assert.ok(tous.length > 0 && tous.every((m) => m.marqueur >= 1 && m.marqueur <= 15), 'marqueur de chaque essai');
-  assert.ok(/\(n°\d+\)/.test(RMClub.htmlFeuilleDeMatch(f)), 'la feuille affiche le numéro du marqueur');
+  assert.ok(/<b>\d+'<\/b> n°\d+/.test(RMClub.htmlFeuilleDeMatch(f)), 'la feuille affiche le numéro du marqueur');
   const s = { numero: 1 };
   RMClub.archiverFeuilleDeMatch(s, { cle: 'm#2', etat: ETAT });
   const f2 = RMClub.feuilleDeMatch(JSON.parse(JSON.stringify(RMClub.feuilleArchivee(s, 'm#2'))), {});
@@ -244,6 +244,33 @@ test('E13 — bilan des lancements par style : compté par le moteur, affiché, 
   const fa = RMClub.feuilleDeMatch(ancienne, {});
   assert.deepStrictEqual(fa.lancements, []);
   assert.ok(!/Lancements de jeu/.test(RMClub.htmlFeuilleDeMatch(fa)));
+});
+
+test('E14 — chaque essai raconte d où venait l action (phase, distance, rucks), aussi après archive (P2-154)', () => {
+  const f = RMClub.feuilleDeMatch(ETAT, {});
+  const essais = f.marqueurs.A.concat(f.marqueurs.B).filter((m) => m.type === 'ESSAI');
+  assert.ok(essais.length > 0);
+  for (const m of essais) {
+    const recit = RMClub.recitEssai(m);
+    assert.ok(/^(maul pénétrant )?(sur touche|sur mêlée|sur pénalité jouée|sur coup d'envoi|en jeu courant|sur coup de pied à suivre)/.test(recit), `récit : « ${recit} » (${JSON.stringify(m)})`);
+    if (m.depuis != null) assert.ok(recit.includes(`à ${m.depuis} m`), recit);
+    if (m.rucks) assert.ok(recit.includes(`${m.rucks} ruck`), recit);
+  }
+  const html = RMClub.htmlFeuilleDeMatch(f);
+  assert.ok(/class="actionEssai">— (maul pénétrant )?(sur|en) /.test(html), 'le récit est affiché');
+  assert.strictEqual(RMClub.recitEssai({ type: 'ESSAI_PENALITE' }), 'essai de pénalité');
+  // L'archive garde le récit…
+  const s = { numero: 1 };
+  RMClub.archiverFeuilleDeMatch(s, { cle: 'm#4', etat: ETAT });
+  const f2 = RMClub.feuilleDeMatch(JSON.parse(JSON.stringify(RMClub.feuilleArchivee(s, 'm#4'))), {});
+  assert.deepStrictEqual(f2.marqueurs.A.concat(f2.marqueurs.B).map(RMClub.recitEssai),
+    f.marqueurs.A.concat(f.marqueurs.B).map(RMClub.recitEssai), 'même récit après archive');
+  // …et une ancienne archive sans origine n'en invente pas.
+  const ancienne = { score: { A: 5, B: 0 }, stats: { A: {}, B: {} },
+    chronologie: [{ minute: 12, type: 'ESSAI', team: 'A', message: 'Essai', marqueur: 11 }] };
+  const fa = RMClub.feuilleDeMatch(ancienne, {});
+  assert.strictEqual(RMClub.recitEssai(fa.marqueurs.A[0]), '');
+  assert.ok(!/actionEssai/.test(RMClub.htmlFeuilleDeMatch(fa)) && /n°11/.test(RMClub.htmlFeuilleDeMatch(fa)));
 });
 
 console.log(`\n${nbTests} test(s) exécuté(s).`);

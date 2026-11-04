@@ -580,6 +580,28 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-154. Chaque essai raconte son action sur la feuille de match ; mêlée volée = origine « mêlée »
+- **Statut : LIVRÉ**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (ouverture de séquence),
+  `docs/js/club-feuille-de-match.js` (`recitEssai`), `docs/js/club-archives-matchs.js`, `docs/css/style.css`,
+  `server/test-invariants.js`, `server/test-feuille-de-match.js`, `server/test-parcours-navigateur.js`.
+
+**Constat.** Le moteur enregistre depuis QA-RM-007 d'où vient chaque essai (phase de départ, distance à la ligne,
+rucks), mais seuls les scripts de mesure le lisaient : la feuille affichait « 23' (n°11) ». Et une mêlée gagnée sur
+introduction adverse ouvrait une séquence « jeu courant » (0,5 par match ; 2 sur 10 graines vérifiées).
+
+**Correction.** Feuille de match : un essai par ligne, aux couleurs de l'équipe, avec son récit — « 78' n°14 — sur
+touche à 5 m, 4 rucks », « maul pénétrant sur pénalité jouée à 8 m », « essai de pénalité ». L'archive garde
+origine, distance, rucks et maul ; une ancienne archive n'affiche que minute et marqueur. Moteur : la séquence née
+d'une mêlée volée est d'origine « mêlée » (une pénalité sifflée reste « pénalité »). Matchs identiques au pas près.
+
+**Mesure (20 matchs).** Origine des 132 essais : jeu courant 53, touche 43, mêlée 21, pénalité jouée 14, coup de
+pied à suivre 1.
+
+**Tests.** Invariant : chaque mêlée gagnée sur introduction adverse (10 graines) ouvre une séquence « mêlée » —
+l'ancien moteur échoue. Feuille E14 : récit conforme aux champs, identique après archive, rien d'inventé sans eux.
+Navigateur : récit présent pour chaque essai (1400 et 390 px vérifiés en capture).
+
 ### P2-153. Bilan des lancements sur la feuille de match : joués, terrain gagné, essais, par style
 - **Statut : LIVRÉ**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_statsVierges`, `_lancerCombinaison`,
