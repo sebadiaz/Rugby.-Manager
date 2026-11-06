@@ -580,6 +580,24 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-157. Fixer-passer après une percée — MESURÉ, NON LIVRÉ
+- **Statut : ESSAI REFUSÉ (aucun effet mesurable)**
+
+**Hypothèse.** Le récit P2-156 montrait 41 essais sur 46 « après sa percée » : le perceur finirait seul au lieu de
+servir son soutien. **Mesure plus fine (20 matchs)** : 316 séquences avec franchissement, 76 finissent en essai sans
+ruck (65 par le perceur, 11 par un soutien), 183 sont plaquées, 54 perdues. Sur les 96 percées plaquées pendant la
+fenêtre de percée, 20 avaient un soutien libre à moins de 8 m — dont 4 seulement dans les 22 m adverses.
+
+**Essai.** Décision « fixer-passer » dans `choisirActionPorteur` : en percée, couverture à moins de 5 m, soutien à
+hauteur ou en retrait nettement plus libre → passe. Première version (couverture < 3,5 m) : 94 % des déclenchements à
+moins de 2,2 m, où le moteur n'autorise plus la passe (le porteur est plaqué). Version 2,2-5 m : 3,5 déclenchements
+par match. **100 graines appariées** : essais du soutien après percée 0,47 → 0,56 (± 0,18), essais 6,10 → 6,16
+(± 0,49), points +0,7 ± 3,2, en-avants 1,18 → 1,30 (± 0,28) — rien de significatif. Retiré : un changement que le
+joueur ne verrait pas.
+
+**À retenir.** Le soutien libre au moment du plaquage est rare dans ce moteur ; le levier, s'il existe, est le
+placement des soutiens pendant la percée (ils arrivent trop tard), pas la décision du perceur.
+
 ### P2-156. Le récit de l'essai nomme le franchissement qui l'a préparé
 - **Statut : LIVRÉ**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_compterFranchissement`, `_infoEssai`),
