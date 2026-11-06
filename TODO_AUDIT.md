@@ -580,6 +580,28 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-160. Consigne du demi de mêlée (n°9) : chandelle depuis la base, standard, sortie à la main
+- **Statut : LIVRÉ**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`attaque.chandelleNeuf`, chandelle depuis
+  la base dans `choisirActionPorteur`), `docs/rugby-config.json`, `docs/js/club.js` (axe `demiMelee`),
+  `docs/js/club-composition.js`, `docs/js/club-equipes.js` (`demiMeleeDeduit`), `server/test-invariants.js`,
+  `server/test-melee.js` (M6g), `server/test-parcours-navigateur.js`.
+
+**Constat.** Le premier lot de FUNC-RM-004 prévoyait le comportement du 9 en sortie ; ses chandelles depuis la base
+(25 % des sorties dans ses 22 m, 15 % dans son camp) étaient les mêmes pour tous les clubs.
+
+**Correction.** Consigne « Chandelle depuis la base » (×2), « Standard », « Sort à la main » (×0,3), qui ne touche
+que ces chandelles du n°9 dans son camp (plafond 85 %). Club consulté : déduite de son n°9, comparé à ses pairs (un
+n°9 passe toujours bien mieux qu'il ne tape : écart médian -32 sur 84 clubs générés) — 16 « pied », 50 « standard »,
+12 « main ». Valeur 1 : tirage identique au défaut.
+
+**Mesures.** 12 graines (équipe A) : chandelles du 9 par match 5,0 (standard) / 9,5 (pied) / 2,2 (main), celles de
+l'adversaire inchangées. 100 graines appariées : « pied » coups de pied +2,9 ± 1,3, écart de score +3,1 ± 4,1,
+possession −0,2 ± 1,6 ; « main » possession +1,3 ± 1,5, écart de score +0,7 ± 4,5 — aucune option dominante.
+
+**Tests.** Invariant (valeur 1 = défaut exact ; chaque option déplace les chandelles du 9 de l'équipe, pas celles de
+l'adversaire). M6g : fusion avec les autres axes d'attaque. Navigateur : trois options, sauvegarde, compromis affiché.
+
 ### P2-159. Le fil du match rédigé en français : accents, noms des clubs, élision
 - **Statut : LIVRÉ**
 - Fichiers concernés : `docs/js/ui.js` (`accentuer`, `traduireEquipesDansMessage`), `server/test-parcours-navigateur.js`.
