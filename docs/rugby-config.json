@@ -135,7 +135,8 @@
     "jeuLargeTaux": {
       "pression": 0.7,
       "calme": 0.55
-    }
+    },
+    "chandelleNeuf": 1
   },
   "defense": {
     "profondeurArriereJeu": 18,

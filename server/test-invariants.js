@@ -4459,6 +4459,28 @@ test('docs/rugby-config.json (chargé par le jeu) ne contredit pas le moteur mes
   assert.deepStrictEqual(ecarts, [], 'valeurs du fichier différentes du moteur');
 });
 
+test('consigne du demi de mêlée (FUNC-RM-004, P2-160) : ses chandelles depuis la base suivent la consigne, celles de l adversaire non', () => {
+  const compter = (chandelleNeuf) => {
+    const n = { A: 0, B: 0 };
+    for (let seed = 1; seed <= 8; seed++) {
+      const m = new MatchEngine(seed, 4800, chandelleNeuf == null ? {} : { attaqueA: { chandelleNeuf } });
+      while (m.phase !== 'TERMINE') {
+        const avant = m._chandelleBaseA;
+        m.tick(0.1);
+        if (avant == null && m._chandelleBaseA != null && m.porteur && m.porteur.numero === 9) n[m.porteur.team]++;
+      }
+    }
+    return n;
+  };
+  const defaut = compter(null), un = compter(1), pied = compter(2), main = compter(0.3);
+  assert.deepStrictEqual(un, defaut, 'la valeur 1 donne exactement le comportement par défaut');
+  assert.ok(pied.A >= defaut.A * 1.5, `au pied : ${pied.A} chandelles du 9 (défaut ${defaut.A})`);
+  assert.ok(main.A <= defaut.A * 0.6, `à la main : ${main.A} chandelles du 9 (défaut ${defaut.A})`);
+  // L'adversaire garde son comportement : au plus le bruit d'un déroulé différent.
+  assert.ok(Math.abs(pied.B - defaut.B) <= 0.35 * defaut.B && Math.abs(main.B - defaut.B) <= 0.35 * defaut.B,
+    `adversaire : ${defaut.B} / ${pied.B} / ${main.B}`);
+});
+
 test('style de lancement (axe d équipe) : « au près », « au large », « au pied » pondèrent réellement les scénarios joués', () => {
   const familles = (lancements) => {
     const f = { pres: 0, large: 0, pied: 0 };

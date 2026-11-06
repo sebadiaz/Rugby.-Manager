@@ -695,6 +695,16 @@
         main: { nom: 'Joue à la main', description: 'L\'ouvreur garde le ballon en main et anime la ligne, il ne tape qu\'en dernier recours.', compromis: 'Plus de temps de jeu et de ballons pour les trois-quarts, mais on occupe moins le camp adverse et on joue plus souvent dans son propre camp.', attaque: { piedOuvreur: 0.4 } },
       },
     },
+    // Consigne du demi de mêlée (FUNC-RM-004, P2-160) : seules ses chandelles
+    // depuis la base, dans son camp, changent.
+    demiMelee: {
+      label: 'Consigne du demi de mêlée (n°9)', defaut: 'equilibre',
+      options: {
+        pied: { nom: 'Chandelle depuis la base', description: 'Dans son camp, le n°9 tape souvent par-dessus le regroupement pour faire monter ses chasseurs.', compromis: 'Sort le jeu de sa moitié et met l\'adversaire sous une réception disputée, mais rend souvent le ballon.', attaque: { chandelleNeuf: 2 } },
+        equilibre: { nom: 'Standard', description: 'Le n°9 alterne la chandelle et la sortie à la main selon sa position.', compromis: 'Réglage neutre du moteur — aucun compromis appliqué.', attaque: null },
+        main: { nom: 'Sort à la main', description: 'Le n°9 donne presque toujours le ballon, même dans son camp.', compromis: 'Garde la possession et anime l\'attaque, mais on joue plus longtemps dans son propre camp.', attaque: { chandelleNeuf: 0.3 } },
+      },
+    },
     ligneDef: {
       label: 'Défense', defaut: 'normale',
       options: {

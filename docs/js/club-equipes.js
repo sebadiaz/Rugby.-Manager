@@ -187,6 +187,8 @@
       // Consigne de l'ouvreur (FUNC-RM-004) : déduite de SON n°10 — un buteur
       // qui tape bien mieux qu'il ne passe occupe au pied, et l'inverse.
       ouvreur: ouvreurDeduit(effectif),
+      // Demi de mêlée : un n°9 bon botteur tape, un n°9 passeur sort à la main.
+      demiMelee: demiMeleeDeduit(effectif),
       arriere: arriereDeduit(effectif),
       // Ailiers rapides : ils restent larges pour exploiter l'espace ; ailiers
       // lents mais bons passeurs : ils repiquent chercher le ballon.
@@ -210,6 +212,14 @@
     if ((q.vitesse || 0) >= 80) return 'ligne';
     if ((q.jeuPied || 0) >= 70) return 'fond';
     return 'equilibre';
+  }
+  function demiMeleeDeduit(effectif) {
+    const neuf = effectif.find((j) => j.numero === 9) || effectif.find((j) => j.poste === 'DM');
+    if (!neuf) return 'equilibre';
+    const ecart = (neuf.jeuPied || 0) - (neuf.passe || 0);
+    // Un n°9 passe toujours bien mieux qu'il ne tape (écart médian -32 sur 84
+    // clubs générés) : on compare donc à ses pairs, les 15 % extrêmes.
+    return ecart >= -26 ? 'pied' : ecart <= -36 ? 'main' : 'equilibre';
   }
   function ouvreurDeduit(effectif) {
     const dix = effectif.find((j) => j.numero === 10) || effectif.find((j) => j.poste === 'OV');

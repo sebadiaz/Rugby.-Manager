@@ -267,6 +267,9 @@
       // ses seuls coups de pied en jeu courant. 1 = comportement par défaut ;
       // le jeu au pied du 9 et des autres reste celui de l'équipe.
       piedOuvreur: 1,
+      // CONSIGNE DU DEMI DE MÊLÉE (bugs.md FUNC-RM-004, P2-160) : multiplie
+      // ses seules chandelles depuis la base, dans son camp. 1 = défaut.
+      chandelleNeuf: 1,
       // CONSIGNE DES AILIERS (bugs.md FUNC-RM-004) : null = placement par
       // défaut ; 'repique' = l'ailier côté fermé quitte son aile pour rejoindre
       // l'attaque ; 'large' = l'ailier côté ouvert reste collé à la touche au
@@ -3456,7 +3459,9 @@
         // coup de pied le plus frequent du rugby moderne, et il se dispute
         // depuis P2-55/P2-56. Le moteur n'en produisait que 3 par match.
         if (zone === 'OWN_22' || zone === 'OWN_HALF') {
-          if (this.rng() < (zone === 'OWN_22' ? 0.25 : 0.15)) {
+          const consigneNeuf = this.cfgAttaque[porteur.team].chandelleNeuf;
+          const facteurNeuf = typeof consigneNeuf === 'number' ? consigneNeuf : 1;
+          if (this.rng() < Math.min(0.85, (zone === 'OWN_22' ? 0.25 : 0.15) * facteurNeuf)) {
             this._chandelleBaseA = this.timerPhase + 1.0;
             return null;
           }

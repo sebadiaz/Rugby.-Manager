@@ -4783,6 +4783,15 @@ function optionsLancement() {
     const tactiqueLan = await pgOv.evaluate(() => JSON.parse(localStorage.getItem('rugbyManager.club.v1')).clubJoueur.tactique);
     verifier('style de lancement : « Au près » sauvegardé avec les consignes individuelles',
       tactiqueLan.lancements === 'pres' && tactiqueLan.ailiers === 'repique' && tactiqueLan.ouvreur === 'main', JSON.stringify(tactiqueLan));
+    const optionsDm = await pgOv.$$eval('[data-axe="demiMelee"]', (b) => b.map((x) => x.dataset.valeur));
+    verifier('consigne du demi de mêlée : trois options dans l écran Tactique', JSON.stringify(optionsDm) === '["pied","equilibre","main"]', JSON.stringify(optionsDm));
+    await pgOv.click('[data-axe="demiMelee"][data-valeur="pied"]');
+    await pgOv.waitForTimeout(400);
+    const tactiqueDm = await pgOv.evaluate(() => JSON.parse(localStorage.getItem('rugbyManager.club.v1')).clubJoueur.tactique);
+    const compromisDm = await pgOv.textContent('#clubTactique');
+    verifier('consigne du demi de mêlée : « Chandelle depuis la base » sauvegardée, compromis affiché, les autres consignes conservées',
+      tactiqueDm.demiMelee === 'pied' && tactiqueDm.ouvreur === 'main' && tactiqueDm.lancements === 'pres'
+        && /réception disputée/.test(compromisDm), JSON.stringify(tactiqueDm));
     verifier('consigne de l ouvreur : aucune erreur de page', erreursOv.length === 0, erreursOv.join(' | '));
     await ctxOv.close();
   }
