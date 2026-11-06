@@ -71,7 +71,18 @@
     if (ev.chaine && ev.chaine.length > 2) {
       return `Equipe ${ev.team} : ${ev.chaine.map((n) => 'n°' + n).join(' → ')}`;
     }
-    return ev.message;
+    return ev.message + recitEssaiEnDirect(ev);
+  }
+
+  // Récit d'un essai en direct (P2-158) : le même que sur la feuille de match
+  // (cf. RMClub.recitEssai), tiré des champs que le moteur pose sur
+  // l'événement ESSAI — marqueur, origine, distance, rucks, percée, passeur.
+  // Chaîne vide pour tout autre événement, ou si le récit est indisponible.
+  function recitEssaiEnDirect(ev) {
+    if (!ev || ev.type !== 'ESSAI' || ev.marqueur == null) return '';
+    const R = window.RMClub;
+    const recit = R && R.recitEssai ? R.recitEssai(ev) : '';
+    return ` N°${ev.marqueur}${recit ? ' : ' + recit : ''}.`;
   }
 
   // Affiche l'état courant dans le HUD. `dureeAffichee` est utilisé pour le
@@ -158,7 +169,7 @@
       // Ni une blessure ni un lancement de jeu ne sont des décisions de l'arbitre.
       const voix = /^(BLESSURE|PROTOCOLE_COMMOTION|RETOUR_PROTOCOLE|COMMOTION_CONFIRMEE|SAIGNEMENT)$/.test(aAfficher.type) ? '🚑 SOIGNEUR'
         : aAfficher.type === 'LANCEMENT' ? '📋 LANCEMENT' : '🟨 ARBITRE';
-      banner.textContent = `${voix} — ${traduireEquipesDansMessage(aAfficher.message)}`;
+      banner.textContent = `${voix} — ${traduireEquipesDansMessage(aAfficher.message)}${recitEssaiEnDirect(aAfficher)}`;
       banner.classList.add('visible');
       placerBandeau(banner);
       banniereJusqua = performance.now() + 2200;
@@ -410,6 +421,6 @@
     formaterTemps, majAffichage, reinitialiserSuivi, definirNomsEquipes,
     chargerHistorique, rafraichirPanneauHistorique, enregistrerResultat, nomsHistorique, VERSION_INSTANTANE_MATCH, identifiantMatch,
     rafraichirPanneauStats,
-    hauteurFilVisible, placerBandeau, choisirBanniere,
+    hauteurFilVisible, placerBandeau, choisirBanniere, recitEssaiEnDirect,
   };
 })(window);

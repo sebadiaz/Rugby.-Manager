@@ -580,6 +580,20 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-158. Le récit de l'essai en direct : bandeau et fil d'événements
+- **Statut : LIVRÉ**
+- Fichiers concernés : `docs/js/ui.js` (`recitEssaiEnDirect`, `texteEvenement`, bandeau),
+  `server/test-parcours-navigateur.js`.
+
+**Correction.** Pendant le match, le bandeau et le fil disaient « Essai equipe AS Bandeau ! », sans plus. Ils
+racontent désormais l'essai avec le même récit que la feuille de match (RMClub.recitEssai, tiré des champs de
+l'événement ESSAI) : « Essai equipe AS Bandeau ! N°6 : en jeu courant à 63 m, 3 rucks, après sa percée, servi par
+le n°9. » Aucun autre événement ne change. Moteur intact.
+
+**Tests.** Navigateur : sur un vrai match, le récit en direct = celui de la feuille, présent dans le fil, absent des
+autres événements. Captures en match réel à x16 (1400×1000 et 390×844) : bandeau sur 2 à 3 lignes, lisible, sans
+erreur de page.
+
 ### P2-157. Fixer-passer après une percée — MESURÉ, NON LIVRÉ
 - **Statut : ESSAI REFUSÉ (aucun effet mesurable)**
 

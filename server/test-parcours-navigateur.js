@@ -5238,6 +5238,21 @@ function optionsLancement() {
       !r.absente && r.vieux == null, JSON.stringify(r));
     verifier('arbitre : le bandeau annonce l\'événement récent, le plus récent d\'abord',
       !r.absente && r.recent === 3 && r.plusRecent === 6, JSON.stringify(r));
+    // Récit de l'essai en direct (P2-158) : le bandeau et le fil racontent
+    // l'essai d'un VRAI match (marqueur, origine, percée, passeur), comme la
+    // feuille de match ; rien d'ajouté aux autres événements.
+    const recit = await pBa.evaluate(() => {
+      const U = window.RMUI;
+      if (!U || !U.recitEssaiEnDirect) return null;
+      const m = new window.RugbyEngine.MatchEngine(3, 4800);
+      while (m.phase !== 'TERMINE' && !m.chronologie.some((e) => e.type === 'ESSAI')) m.tick(0.1);
+      const essai = m.chronologie.find((e) => e.type === 'ESSAI');
+      return { essai, direct: U.recitEssaiEnDirect(essai), feuille: window.RMClub.recitEssai(essai),
+        fil: U.texteEvenement(essai), autre: U.recitEssaiEnDirect({ type: 'PENALITE', marqueur: 4 }) };
+    });
+    verifier('bandeau d\'essai : le marqueur et le récit de l\'action, comme sur la feuille de match',
+      !!recit && !!recit.essai && recit.direct === ` N°${recit.essai.marqueur} : ${recit.feuille}.` && recit.feuille.length > 0
+        && recit.fil.endsWith(recit.direct) && recit.autre === '', JSON.stringify(recit));
     await ctxBa.close();
   }
 
