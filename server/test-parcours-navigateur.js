@@ -5253,6 +5253,47 @@ function optionsLancement() {
     verifier('bandeau d\'essai : le marqueur et le récit de l\'action, comme sur la feuille de match',
       !!recit && !!recit.essai && recit.direct === ` N°${recit.essai.marqueur} : ${recit.feuille}.` && recit.feuille.length > 0
         && recit.fil.endsWith(recit.direct) && recit.autre === '', JSON.stringify(recit));
+    // Rédaction des messages (P2-159) : accents rétablis, noms des clubs à la
+    // place des lettres, élision devant une voyelle ; sans noms de clubs, la
+    // lettre de l'équipe reste (Match rapide).
+    const redac = await pBa.evaluate(() => {
+      const U = window.RMUI;
+      if (!U || !U.traduireEquipesDansMessage) return null;
+      const t = (m) => U.traduireEquipesDansMessage(m);
+      const sansNoms = t("Melee, introduction pour l'equipe A");
+      U.definirNomsEquipes({ A: 'AS Bandeau', B: 'Castelnau Étoiles' });
+      const r = {
+        sansNoms,
+        melee: t("Melee, introduction pour l'equipe A"),
+        essai: t('Essai equipe A !'),
+        essaiB: t('Essai equipe B !'),
+        penalite: t('Ballon non libere par le joueur plaque (equipe B), penalite pour l\'equipe A'),
+        elision: t("Franchissement ! Le n°13 de l'equipe A passe la ligne de defense"),
+        but: t('Coup de pied au but reussi a 41 m par le n°10, equipe B +3'),
+        verbe: t('Le n°4 plaque le sauteur a la reception : pas de maul, ruck sur la touche'),
+        na: t("Melee simulee : l'equipe B n'a plus de premiere ligne formee, pas de poussee"),
+      };
+      // Un nom qui contient un « B » suivi d'une lettre accentuée (« Béliers »)
+      // n'est pas retraité : il donnait « Riverange Riverange Bélierséliers ».
+      U.definirNomsEquipes({ A: 'Riverange Béliers', B: 'Albi Bisons' });
+      r.beliers = t("Melee, introduction pour l'equipe A");
+      r.albi = t('Essai equipe B !');
+      r.chaine = U.traduireEquipesDansMessage(U.texteEvenement({ type: 'PASSE', team: 'A', chaine: [9, 10, 12], message: '' }));
+      U.definirNomsEquipes({ A: 'Equipe A', B: 'Equipe B' });
+      return r;
+    });
+    verifier('fil du match : messages rédigés en français (accents, noms des clubs, élision)',
+      !!redac && redac.sansNoms === "Mêlée, introduction pour l'équipe A"
+        && redac.melee === 'Mêlée, introduction pour AS Bandeau'
+        && redac.essai === "Essai d'AS Bandeau !" && redac.essaiB === 'Essai de Castelnau Étoiles !'
+        && redac.penalite === 'Ballon non libéré par le joueur plaqué (Castelnau Étoiles), pénalité pour AS Bandeau'
+        && redac.elision === "Franchissement ! Le n°13 d'AS Bandeau passe la ligne de défense"
+        && redac.but === 'Coup de pied au but réussi à 41 m par le n°10, Castelnau Étoiles +3'
+        && redac.verbe === 'Le n°4 plaque le sauteur à la réception : pas de maul, ruck sur la touche'
+        && redac.na === "Mêlée simulée : Castelnau Étoiles n'a plus de première ligne formée, pas de poussée"
+        && redac.beliers === 'Mêlée, introduction pour Riverange Béliers' && redac.albi === "Essai d'Albi Bisons !"
+        && redac.chaine === 'Riverange Béliers : n°9 → n°10 → n°12' && !/\u0001/.test(JSON.stringify(redac)),
+      JSON.stringify(redac));
     await ctxBa.close();
   }
 

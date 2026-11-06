@@ -580,6 +580,25 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-159. Le fil du match rédigé en français : accents, noms des clubs, élision
+- **Statut : LIVRÉ**
+- Fichiers concernés : `docs/js/ui.js` (`accentuer`, `traduireEquipesDansMessage`), `server/test-parcours-navigateur.js`.
+
+**Constat.** Les ~240 messages du moteur sont écrits sans accents (« Melee », « Penalite », « reussie ») et le nom du
+club était collé à la place de la lettre : « Essai equipe AS Bandeau ! », « pénalité pour l'equipe Castelnau ».
+Défaut trouvé en vérifiant : un club dont le nom contient un « B » suivi d'une lettre accentuée (« Riverange
+Béliers ») s'affichait « Riverange Riverange Bélierséliers » — `\b` ignore les lettres accentuées.
+
+**Correction.** Rédaction au moment de l'affichage (fil et bandeau), le moteur et ses messages-repères des tests
+restant intacts : accents rétablis par un dictionnaire limité aux mots relevés sur 10 matchs (formes ambiguës traitées
+en contexte : « gagne la séance » / « ballon gagné », « Plaqué en touche » / « le n°4 plaque le sauteur », « a » →
+« à » sauf « n'a ») ; « l'équipe A » → nom du club ; « de l'équipe A » → « d'AS Bandeau » / « de Castelnau » ;
+« Essai équipe A ! » → « Essai d'AS Bandeau ! ». Lettres remplacées par marqueurs puis noms posés en dernier.
+Sans noms de clubs (Match rapide), seules les lettres accentuées changent.
+
+**Tests.** Navigateur : neuf phrases types (dont « Riverange Béliers », la chaîne de passes, aucun marqueur
+résiduel). Relu sur les 239 messages uniques de 10 matchs. Captures en match réel (390×844).
+
 ### P2-158. Le récit de l'essai en direct : bandeau et fil d'événements
 - **Statut : LIVRÉ**
 - Fichiers concernés : `docs/js/ui.js` (`recitEssaiEnDirect`, `texteEvenement`, bandeau),

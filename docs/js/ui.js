@@ -37,9 +37,64 @@
   // remplacement par mot entier suffit à couvrir tous les messages sans
   // toucher au moteur. Ne rien faire en Match rapide (noms génériques) pour
   // ne pas produire "l'équipe Equipe A".
+  // RÉDACTION DES MESSAGES DU MATCH (P2-159). Le moteur écrit sans accents
+  // (« Melee, introduction pour l'equipe A ») et ses messages servent aussi de
+  // repères aux tests ; on les rédige donc ici, au moment de les montrer :
+  // accents rétablis, puis le nom des clubs à la place des lettres A/B, avec
+  // l'élision du français (« d'AS Bandeau », « de Castelnau »). Le dictionnaire
+  // ne contient que des mots relevés dans les messages réellement produits
+  // (10 matchs) et sans ambiguïté dans ce contexte.
+  const MOTS_ACCENTUES = {
+    melee: 'mêlée', melees: 'mêlées', penalite: 'pénalité', penalites: 'pénalités', equipe: 'équipe',
+    egalite: 'égalité', menee: 'menée', poussee: 'poussée', annule: 'annulé', arrete: 'arrêté',
+    aussitot: 'aussitôt', botte: 'botté', defense: 'défense', defenseur: 'défenseur', degres: 'degrés',
+    deliberee: 'délibérée', deuxieme: 'deuxième', derniere: 'dernière', disputee: 'disputée', eleve: 'élève',
+    empeche: 'empêche', forme: 'formé', formee: 'formée', gagnee: 'gagnée', gratte: 'gratté', isole: 'isolé',
+    manque: 'manqué', meme: 'même', numero: 'numéro', penetrant: 'pénétrant', premiere: 'première',
+    premieres: 'premières', ramene: 'ramène', rate: 'raté', ratee: 'ratée', recupere: 'récupère',
+    reception: 'réception', remplacant: 'remplaçant', reussi: 'réussi', reussie: 'réussie', seance: 'séance',
+    simulee: 'simulée', vole: 'volé', volee: 'volée', apres: 'après', arrieres: 'arrières', cote: 'côté',
+    ferme: 'fermé', croise: 'croisé', degagement: 'dégagement', detache: 'détache', ecoule: 'écoulé',
+    ecroulement: 'écroulement', entree: 'entrée', illegalement: 'illégalement', libere: 'libéré',
+    porte: 'porté', releve: 'relève', scelle: 'scellé', couche: 'couché', sifflee: 'sifflée', soigne: 'soigné',
+  };
+  function accentuer(msg) {
+    return String(msg)
+      // Formes qui dépendent du sens : « Ballon gagne proprement » (participe)
+      // mais « gagne la séance » (verbe) ; « Plaque en touche » mais « le n°4
+      // plaque le sauteur ».
+      .replace(/\bgagne (proprement|sous)\b/g, 'gagné $1')
+      .replace(/^Plaque en touche\b/, 'Plaqué en touche')
+      .replace(/\bjoueur plaque\b/g, 'joueur plaqué')
+      .replace(/^Avantage joue\b/, 'Avantage joué')
+      .replace(/, joue rapidement$/, ', joué rapidement')
+      .replace(/\bmaul lance\b/g, 'maul lancé')
+      .replace(/\(saute\)/g, '(sautée)')
+      .replace(/[A-Za-zÀ-ÿ]+/g, (mot, pos, tout) => {
+        // « a » isolé est toujours la préposition dans ces messages ; « n'a » reste.
+        if (mot === 'a') return /['’]$/.test(tout.slice(0, pos)) ? mot : 'à';
+        const remplacement = MOTS_ACCENTUES[mot.toLowerCase()];
+        if (!remplacement) return mot;
+        return mot[0] === mot[0].toUpperCase() ? remplacement[0].toUpperCase() + remplacement.slice(1) : remplacement;
+      });
+  }
+  // « de » devant un nom qui commence par une voyelle s'élide : d'AS Bandeau.
+  const deNom = (nom) => (/^[AEIOUYÀÂÉÈÊÎÔH]/i.test(nom) ? "d'" : 'de ') + nom;
   function traduireEquipesDansMessage(msg) {
-    if (nomsEquipes.A === 'Equipe A' && nomsEquipes.B === 'Equipe B') return msg;
-    return msg.replace(/\bA\b|\bB\b/g, (lettre) => (lettre === 'A' ? nomsEquipes.A : nomsEquipes.B));
+    const texte = accentuer(msg);
+    if (nomsEquipes.A === 'Equipe A' && nomsEquipes.B === 'Equipe B') return texte;
+    // Les lettres sont d'abord remplacées par des marqueurs, et les noms posés
+    // en dernier : un nom qui contient lui-même un « B » isolé pour une
+    // expression régulière (« Béliers » : \b ignore les lettres accentuées)
+    // n'est ainsi jamais retraité. Frontières qui connaissent les accents.
+    const L = '(?<![A-Za-zÀ-ÿ\u0001])([AB])(?![A-Za-zÀ-ÿ\u0001])';
+    const marque = (l, de) => `\u0001${de ? 'd' : ''}${l}\u0001`;
+    return texte
+      .replace(new RegExp('^Essai équipe ' + L), (_, l) => 'Essai ' + marque(l, true))
+      .replace(new RegExp("(?<![A-Za-zÀ-ÿ])de l'équipe " + L, 'g'), (_, l) => marque(l, true))
+      .replace(new RegExp("(?<![A-Za-zÀ-ÿ'])(?:[lL]')?[éÉ]quipe " + L, 'g'), (_, l) => marque(l))
+      .replace(new RegExp(L, 'g'), (_, l) => marque(l))
+      .replace(/\u0001(d?)([AB])\u0001/g, (_, de, l) => (de ? deNom(nomsEquipes[l]) : nomsEquipes[l]));
   }
 
   // Regroupe les passes CONSÉCUTIVES d'une même équipe en une seule entrée
@@ -421,6 +476,6 @@
     formaterTemps, majAffichage, reinitialiserSuivi, definirNomsEquipes,
     chargerHistorique, rafraichirPanneauHistorique, enregistrerResultat, nomsHistorique, VERSION_INSTANTANE_MATCH, identifiantMatch,
     rafraichirPanneauStats,
-    hauteurFilVisible, placerBandeau, choisirBanniere, recitEssaiEnDirect,
+    hauteurFilVisible, placerBandeau, choisirBanniere, recitEssaiEnDirect, traduireEquipesDansMessage,
   };
 })(window);
