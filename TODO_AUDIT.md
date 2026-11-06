@@ -580,6 +580,25 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-156. Le récit de l'essai nomme le franchissement qui l'a préparé
+- **Statut : LIVRÉ**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_compterFranchissement`, `_infoEssai`),
+  `docs/js/club-feuille-de-match.js`, `docs/js/club-archives-matchs.js`, `server/test-invariants.js`,
+  `server/test-feuille-de-match.js`.
+
+**Correction.** Les trois endroits qui comptent un franchissement (ligne passée de 5 m, plaqueur battu en espace,
+plaquage de sauvetage manqué) passent par `_compterFranchissement`, qui retient le dernier franchisseur de l'équipe
+dans la séquence en cours. L'événement ESSAI porte `franchisseur` ; la feuille l'écrit : « 19' n°4 — sur mêlée à
+56 m, 13 rucks, percée du n°11, servi par le n°9 », ou « après sa percée » si le marqueur a cassé la ligne lui-même.
+Gardé par l'archive. Compteurs inchangés, matchs identiques au pas près.
+
+**Mesure (10 matchs).** 46 essais sur 73 suivent un franchissement de l'équipe dans la séquence, dont 41 du marqueur
+lui-même ; 174 franchissements, tous rattachés à la bonne séquence.
+
+**Tests.** Invariant : recompte indépendant depuis les compteurs individuels, tick par tick (6 graines) — zéro écart ;
+échoue si le franchisseur n'est pas retenu, ou si c'est le premier et non le dernier. Feuille E14 : « percée » si et
+seulement si un franchisseur, formulation selon que c'est le marqueur.
+
 ### P2-155. Passe décisive : offloads, combinaisons, passe du 8 et touche rapide comptent ; le passeur dans le récit
 - **Statut : LIVRÉ**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_passeDecisive`, `_passeurDecisif`,

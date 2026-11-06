@@ -2337,6 +2337,14 @@
     // n'a plus personne devant lui. Pur comptage, aucun tirage aléatoire : le
     // déroulé du match est inchangé. Un porteur ne compte qu'une fois.
     // Cf. TODO_AUDIT.md P2-60.
+    // Un franchissement compté (équipe et joueur), et retenu par la séquence de
+    // jeu en cours (P2-156) : le récit de l'essai dira qui a cassé la ligne.
+    _compterFranchissement(porteur) {
+      this.stats[porteur.team].franchissements++;
+      this._statJoueur(porteur).franchissements++;
+      if (this._sequence && this._seqPoss === porteur.team) this._sequence.franchisseur = porteur.numero;
+    }
+
     _suivreFranchissement(porteur, def) {
       if (!porteur) return;
       if (porteur !== this._suiviPorteur) {
@@ -2351,8 +2359,7 @@
       }
       if ((porteur.x - this._ligneX0) * porteur.sensAttaque >= 5) {
         this._franchiDeja = true;
-        this.stats[porteur.team].franchissements++;
-        this._statJoueur(porteur).franchissements++;
+        this._compterFranchissement(porteur);
         this.log('FRANCHISSEMENT', porteur.team,
           `Franchissement ! Le n°${porteur.numero} de l'equipe ${porteur.team} passe la ligne de defense`);
       }
@@ -2483,8 +2490,7 @@
           // au jeu (score et essais strictement identiques : pur comptage).
           const autres = def.filter((d) => d !== defenseurProche && d.auSol === 0);
           if (joueurLePlusProche(autres, porteur.x, porteur.y).distance > 6 && !this._franchiDeja) {
-            this.stats[this.possession].franchissements++;
-            this._statJoueur(porteur).franchissements++;
+            this._compterFranchissement(porteur);
             this._franchiDeja = true; // un porteur ne compte qu'une fois (cf. _suivreFranchissement)
           }
           // PERCÉE EN COURS : pendant quelques secondes, le porteur qui vient de
@@ -3325,7 +3331,7 @@
           // Battre le dernier défenseur (plaquage de sauvetage) EST un
           // franchissement — le porteur file vers l'en-but. Sauf s'il est déjà
           // compté pour ce porteur (cf. _suivreFranchissement).
-          if (!this._franchiDeja) { this.stats[this.possession].franchissements++; this._statJoueur(porteur).franchissements++; this._franchiDeja = true; }
+          if (!this._franchiDeja) { this._compterFranchissement(porteur); this._franchiDeja = true; }
           this.log('PLAQUAGE_MANQUE', this.possession, `Plaquage de sauvetage manque, l'equipe ${this.possession} aplatit`);
         }
         porteur.x = porteur.sensAttaque > 0 ? LONGUEUR : 0;
@@ -5710,7 +5716,8 @@
       // coup de pied à suivre ou un maul pénétrant n'en ont pas.
       const passeur = pe && pe.marqueur === marqueur ? pe.passeur : null;
       this._passeurEssai = null;
-      return { marqueur: marqueur ? marqueur.numero : null, passeur: passeur ? passeur.numero : null, origine: q.origine || null,
+      return { marqueur: marqueur ? marqueur.numero : null, passeur: passeur ? passeur.numero : null,
+        franchisseur: q.franchisseur != null ? q.franchisseur : null, origine: q.origine || null,
         depuis: q.depuis != null ? q.depuis : null, rucks: q.rucks || 0 };
     }
 

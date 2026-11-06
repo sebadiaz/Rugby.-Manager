@@ -4596,6 +4596,45 @@ test('passe décisive (P2-155) : la dernière remise main à main vers le marque
   assert.deepStrictEqual(ecarts, []);
 });
 
+test('franchissement dans le récit de l essai (P2-156) : le dernier franchissement de l équipe dans la séquence, recompté depuis les compteurs individuels', () => {
+  let avec = 0, sans = 0;
+  const ecarts = [];
+  for (let seed = 1; seed <= 6; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    // Recompte indépendant : un compteur individuel de franchissements qui
+    // monte = un franchissement de ce joueur. Oublié à la fin de la séquence
+    // (perte du ballon, nouvel arrêt de jeu, pénalité).
+    const vu = { A: {}, B: {} };
+    let dernier = null, prec = m.phase, poss = m.possession;
+    const log0 = m.log.bind(m);
+    m.log = (t, team, msg, extra, ...r) => {
+      if (t === 'ESSAI' && extra) {
+        // Le franchissement du plaquage de sauvetage manqué est compté juste avant.
+        for (const e of ['A', 'B']) for (const [num, l] of Object.entries(m.statsJoueurs[e])) {
+          if ((l.franchissements || 0) > (vu[e][num] || 0)) { vu[e][num] = l.franchissements; if (e === team) dernier = { team: e, num: +num }; }
+        }
+        const attendu = dernier && dernier.team === team ? dernier.num : null;
+        if (attendu !== extra.franchisseur) ecarts.push(`graine ${seed}, ${team} : ${extra.franchisseur} au lieu de ${attendu}`);
+        if (attendu != null) avec++; else sans++;
+      }
+      return log0(t, team, msg, extra, ...r);
+    };
+    while (m.phase !== 'TERMINE') {
+      m.tick(0.1);
+      const finSeq = m.possession !== poss || m.penaliteRecul
+        || (['TOUCHE', 'MELEE', 'COUP_ENVOI'].includes(m.phase) && m.phase !== prec);
+      if (finSeq) dernier = null;
+      for (const e of ['A', 'B']) for (const [num, l] of Object.entries(m.statsJoueurs[e])) {
+        if ((l.franchissements || 0) > (vu[e][num] || 0)) { if (e === m.possession) dernier = { team: e, num: +num }; }
+        vu[e][num] = l.franchissements || 0;
+      }
+      prec = m.phase; poss = m.possession;
+    }
+  }
+  assert.ok(avec >= 15 && sans >= 5, `échantillon : ${avec} essais après franchissement, ${sans} sans`);
+  assert.deepStrictEqual(ecarts, []);
+});
+
 // --- bugs.md QA-RM-007 : événements, joueurs et équipe disent la même chose ---
 test('rapprochement : réussis ≤ tentés partout, et chaque essai ou but du compteur a son événement (QA-RM-007)', () => {
   for (let seed = 1; seed <= 4; seed++) {

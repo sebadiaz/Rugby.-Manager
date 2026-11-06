@@ -259,6 +259,17 @@ test('E14 — chaque essai raconte d où venait l action (phase, distance, rucks
     if (m.passeur != null) assert.ok(recit.endsWith(`servi par le n°${m.passeur}`) && m.passeur !== m.marqueur, recit);
   }
   assert.ok(essais.some((m) => m.passeur != null), 'des essais ont un passeur décisif');
+  // Franchissement (P2-156) : « après sa percée » si le marqueur a cassé la
+  // ligne lui-même, « percée du n°X » sinon ; rien sans franchissement.
+  for (const m of essais) {
+    const recit = RMClub.recitEssai(m);
+    if (m.franchisseur == null) assert.ok(!/percée/.test(recit), recit);
+    else if (m.franchisseur === m.marqueur) assert.ok(recit.includes('après sa percée'), recit);
+    else assert.ok(recit.includes(`percée du n°${m.franchisseur}`), recit);
+  }
+  assert.ok(essais.some((m) => m.franchisseur != null), 'des essais suivent un franchissement');
+  assert.strictEqual(RMClub.recitEssai({ type: 'ESSAI', origine: 'JEU_COURANT', depuis: 60, rucks: 2, marqueur: 14, franchisseur: 13, passeur: 13 }),
+    'en jeu courant à 60 m, 2 rucks, percée du n°13, servi par le n°13');
   const html = RMClub.htmlFeuilleDeMatch(f);
   assert.ok(/class="actionEssai">— (maul pénétrant )?(sur|en) /.test(html), 'le récit est affiché');
   assert.strictEqual(RMClub.recitEssai({ type: 'ESSAI_PENALITE' }), 'essai de pénalité');

@@ -110,7 +110,9 @@
           origine: e.origine || null, depuis: e.depuis != null ? e.depuis : null,
           rucks: e.rucks != null ? e.rucks : null, maul: !!e.maul,
           // Auteur de la passe décisive (P2-155), s'il y en a une.
-          passeur: e.passeur != null ? e.passeur : null });
+          passeur: e.passeur != null ? e.passeur : null,
+          // Dernier franchissement de la séquence (P2-156) : qui a cassé la ligne.
+          franchisseur: e.franchisseur != null ? e.franchisseur : null });
       }
     }
 
@@ -197,6 +199,7 @@
     let r = (m.maul ? 'maul pénétrant ' : '') + (ORIGINES_ESSAI[m.origine] || '');
     if (m.depuis != null) r += ` à ${m.depuis} m`;
     if (m.rucks) r += `, ${m.rucks} ruck${m.rucks > 1 ? 's' : ''}`;
+    if (m.franchisseur != null) r += m.franchisseur === m.marqueur ? ', après sa percée' : `, percée du n°${m.franchisseur}`;
     if (m.passeur != null) r += `, servi par le n°${m.passeur}`;
     return r.trim();
   }
