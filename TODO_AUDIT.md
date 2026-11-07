@@ -599,7 +599,17 @@ puis le fait servir. Dans son camp, il reste en couverture.
 franchissements inchangés.
 
 **Tests.** Invariant (12 graines) : dans la moitié adverse, dans la ligne 73 % du temps de ruck (39 % avant) ; dans
-son camp, hors de la ligne 62 % ; l'arrière marque 12 essais sur 93 (0 sur 78 avant).
+son camp, hors de la ligne 62 % ; l'arrière marque 12 essais sur 93 (0 sur 78 avant). Calibration 14/14 (passes
+401,1, essais 7,8, points 61,8 sur les graines 1-20).
+
+**Tests rendus robustes au nouveau déroulé (aucun seuil assoupli).** Quatre invariants tenaient sur un petit
+échantillon et ont basculé par le seul changement de déroulé ; élargis : mètres gagnés selon la puissance (6 → 18
+graines : ×1,09 sur 1-6, ×1,29 sur 18), maul sur touche (40 → 80 graines : 5,94 → 6,11 avants liés), percussion et
+côté fermé (16 → 32 graines : 9 côtés fermés sur 16), style « au près » (12 → 24 graines). Style « au pied » :
+famille rare, le +10 points ne tenait que sur les graines 1-12 (l'ancien moteur faisait +1,9 sur 13-24) ; le poids
+×3 double la part (×2,1 et ×1,96) : critère relatif ×1,6. Bilan des lancements (P2-153) : le recompte du test
+écrasait un premier lancement suivi d'un second dans la même séquence (touche puis sortie de maul) sans compter son
+terrain ; le moteur était juste, le test corrigé.
 
 ### P2-162. Capitaine : il arbitre les pénalités quand l'équipe le lui délègue, relais du brassard
 - **Statut : LIVRÉ**
