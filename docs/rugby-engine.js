@@ -270,6 +270,10 @@
       // CONSIGNE DU DEMI DE MÊLÉE (bugs.md FUNC-RM-004, P2-160) : multiplie
       // ses seules chandelles depuis la base, dans son camp. 1 = défaut.
       chandelleNeuf: 1,
+      // CONSIGNE DES CENTRES (bugs.md FUNC-RM-004, P2-161) : multiplie les
+      // passes des n°12 et 13 (dans la ligne et avant contact). < 1 : ils
+      // percutent pour fixer ; > 1 : ils distribuent vers les ailes. 1 = défaut.
+      passeCentres: 1,
       // CONSIGNE DES AILIERS (bugs.md FUNC-RM-004) : null = placement par
       // défaut ; 'repique' = l'ailier côté fermé quitte son aile pour rejoindre
       // l'attaque ; 'large' = l'ailier côté ouvert reste collé à la touche au
@@ -3405,6 +3409,12 @@
     // porteur (avants vs demi de mêlée/ouvreur vs trois-quarts/arrières),
     // soutien disponible et score au tableau. Ne fait que choisir l'intention
     // (aucun effet de bord) ; c'est _tickPorte qui exécute l'action retournée.
+    // Consigne des centres (P2-161) : facteur sur leurs passes, 1 par défaut.
+    _facteurCentres(equipe) {
+      const v = (this.cfgAttaque[equipe] || {}).passeCentres;
+      return typeof v === 'number' ? v : 1;
+    }
+
     choisirActionPorteur(porteur, defenseurProche, distDef, dt) {
       const zone = this._zoneTerrain(porteur);
       const pression = distDef < 5;
@@ -3700,7 +3710,8 @@
           // toujours le ballon plus volontiers (le mouvement continue), mais
           // plus deux fois plus vite qu'un porteur installe — c'etait la
           // deuxieme source du deluge de passes.
-          * ((porteur._enchaine || 0) > 0 ? 1.5 : 1);
+          * ((porteur._enchaine || 0) > 0 ? 1.5 : 1)
+          * (porteur.numero === 12 || porteur.numero === 13 ? this._facteurCentres(porteur.team) : 1);
         // ON NE PASSE QUE SI LE SUIVANT EST MIEUX SERVI QUE SOI. Jusqu'ici la
         // chaîne se déroulait jusqu'à l'aile à tous les coups : le porteur
         // cherchait un partenaire onside, à portée, avec un peu d'air, et lui
@@ -3736,6 +3747,8 @@
       // 49 m pour l'ouvreur, 59 pour les ailiers (100 matchs appariés).
       else if (porteur.numero === 10) pPasse = 1.5;
       else if (porteur.numero === 12 || porteur.numero === 13) pPasse = 0.9;
+      // Consigne des centres (P2-161), même pour un centre rapide (branche ci-dessus).
+      if (porteur.numero === 12 || porteur.numero === 13) pPasse *= this._facteurCentres(porteur.team);
       if (distDef < 5.5 && soutienDisponible && this.rng() < pPasse * RYTHME_PASSES * dt) {
         return 'PASS';
       }
