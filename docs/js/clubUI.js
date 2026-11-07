@@ -5807,7 +5807,7 @@
       // pour ce match précis (domicile/extérieur alterne).
       const lettreJoueur = estClubJoueur(matchJoueur.domicileId) ? 'A' : 'B';
       const tactiqueCfg = construireTactiqueCfg(saison.clubJoueur.effectif, saison.clubJoueur, lettreJoueur);
-      let remplacements = tactiqueCfg.remplacements || [];
+      const remplacements = tactiqueCfg.remplacements || [];
       // Reprise d'un match joué interrompu (bugs.md FUNC-RM-002) : la clé
       // désigne CETTE rencontre de CETTE carrière ; le journal garde aussi la
       // composition et le banc réellement alignés, pour que les conséquences
@@ -5819,10 +5819,7 @@
       const journal = cleReprise && window.RMMain.journalMatchJoue ? window.RMMain.journalMatchJoue(cleReprise) : null;
       const callbacks = {
           cleReprise,
-          contexteReprise: {
-            compositionUtilisee,
-            remplacements: remplacements.map((r) => ({ numeroBanc: r.numeroBanc, joueurId: r.joueurId, minute: r.minute })),
-          },
+          contexteReprise: { compositionUtilisee },
           noms: { A: clubDomicile.nom, B: clubExterieur.nom },
           equipeJoueur: estClubJoueur(matchJoueur.domicileId) ? 'A' : 'B',
           // Match JOUÉ (P0-match) : rien n'est calculé d'avance, onResultat
@@ -5846,14 +5843,10 @@
             // des opérations, finances, statistiques, fatigue, moral,
             // promesses de statut. L'interface ne garde que ce qui la
             // regarde — annoncer, relâcher le verrou, sauvegarder.
-            const compositionAvecRemplacants = Object.assign({}, compositionUtilisee);
-            for (const r of remplacements) {
-              if (r.minute * 60 <= duree) compositionAvecRemplacants[r.numeroBanc] = r.joueurId;
-            }
             const suite = RMClub.appliquerConsequencesMatchJoueur(saison, {
               fixture: matchJoueur, etat, lettreJoueur,
               forme: formeApres(matchJoueur, etat.score.A, etat.score.B),
-              compositionUtilisee, compositionAvecRemplacants,
+              compositionUtilisee,
               // Noms réels des deux camps : la feuille de match archivée doit
               // pouvoir se relire sans le contexte du jour du match.
               nomA: clubDomicile.nom, nomB: clubExterieur.nom,
@@ -5903,7 +5896,6 @@
         if (window.confirm(`Un match joué a été interrompu (${mm}:${ss}, ${clubDomicile.nom} ${sc.A} - ${sc.B} ${clubExterieur.nom}). Le reprendre là où il s'était arrêté ?`)) {
           const ctx = journal.contexte || {};
           if (ctx.compositionUtilisee) compositionUtilisee = ctx.compositionUtilisee;
-          if (Array.isArray(ctx.remplacements)) remplacements = ctx.remplacements;
           window.RMMain.reprendreMatchClub(journal, callbacks);
           return;
         }
