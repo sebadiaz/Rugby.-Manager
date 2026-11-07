@@ -4412,7 +4412,8 @@ test('lancements de jeu : mêlée, touche et maul ont chacun plusieurs scénario
 
 test('lancements de jeu : la percussion va au contact sans repasser, le côté fermé sert l ailier du côté court', () => {
   let percussions = 0, repasses = 0, rucks = 0, fermes = 0, fermesBons = 0;
-  for (let seed = 1; seed <= 16; seed++) {
+  // 32 graines (P2-163) : sur 16, le côté fermé, rare, tombait à 9 tirages.
+  for (let seed = 1; seed <= 32; seed++) {
     const m = new MatchEngine(seed, 4800);
     let p = null;
     const log = m.log.bind(m);
