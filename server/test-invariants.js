@@ -4507,6 +4507,25 @@ test('remplacement tactique ballon mort (loi 3.6, BUG-RM-012) : demandé en jeu,
   assert.strictEqual(vivants, 0, `${vivants} entrées tactiques ballon vivant`);
 });
 
+test('banc : un tir déjà botté garde son buteur, le sifflet final annule l entrée en attente', () => {
+  // Graine 28 : une pénalité est bottée après la sonnerie de fin de match.
+  const m = new MatchEngine(28, 300);
+  const estDernierTir = () => m.miTempsJouee && m.tempsMatch >= 400
+    && m.phase === 'PENALITE_TIR' && m.ballonEnVol;
+  while (m.phase !== 'TERMINE' && m.tempsMatch < 500 && !estDernierTir()) m.tick(0.1);
+  assert.ok(estDernierTir(), 'le ballon est en vol sur le dernier tir');
+  const buteur = m.porteur;
+  const adresse = buteur.adresse;
+  assert.ok(m.remplacerJoueurEnCours(buteur.team, buteur.numero, { adresse: 100 }, 'banc'));
+  m.tick(0.1);
+  assert.strictEqual(buteur.adresse, adresse, 'le joueur qui a frappé est encore le buteur');
+  assert.ok(!m.remplacementsEffectues.some((r) => r.joueurId === 'banc'));
+  m.jouerJusquAuSifflet();
+  assert.ok(!m.remplacementsEffectues.some((r) => r.joueurId === 'banc'), 'aucune entrée au sifflet final');
+  assert.ok(!m.remplacerJoueurEnCours(buteur.team, buteur.numero, {}, 'banc'), 'le banc est fermé après le match');
+  assert.ok(m.chronologie.slice(-2).some((e) => /^PENALITE_(REUSSIE|RATEE)$/.test(e.type)), 'le tir compte avant le sifflet');
+});
+
 test('intrusion de l arrière (P2-163) : dans la moitié adverse le n°15 s intercale dans la ligne et marque, dans son camp il couvre le fond', () => {
   let essais = 0, essaisArriere = 0, ruckAdv = 0, dansLigne = 0, ruckSien = 0, auFond = 0;
   for (let seed = 1; seed <= 12; seed++) {

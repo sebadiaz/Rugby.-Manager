@@ -22,6 +22,8 @@ Reproduit dans les deux moteurs. Avec la graine 24, attendre la phase `PORTE`, d
 
 **Avancement (TODO_AUDIT P2-166) :** moteur corrigé — demande tactique en attente jusqu’au ballon mort (coup d’envoi non frappé, mêlée avant introduction, touche avant lancer, essai, transformation, pénalité au but, mi-temps), attente annoncée dans le fil et « en attente » dans le panneau du banc ; entrées médicales immédiates ; seconde demande refusée. Reste la réception navigateur : demande en jeu, reprise du match après rechargement avec une demande en attente.
 
+**Dernier tir.** Sur un match court de graine 28, un changement demandé pendant le vol de la dernière pénalité remplaçait le buteur avant le calcul du tir. Le changement attend désormais que le ballon retombe. Si l’arbitre siffle la fin à cet arrêt, aucune entrée n’est comptabilisée. Le panneau du banc confirme aussi le numéro demandé, y compris après rechargement.
+
 **Acceptation.** Une demande tactique en jeu passe en attente et l’interface le signale. Le sortant garde son identité et ses actions jusqu’au prochain arrêt admissible. L’entrée s’exécute une seule fois et la demande survit à une reprise du match. Vérifier aussi les changements programmés qui arrivent pendant le jeu et les cas distincts de soins ou de protocole commotion.
 
 ### Comparaison sur 50 matchs complets
