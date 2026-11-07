@@ -4542,7 +4542,8 @@ function optionsLancement() {
     const pgBanc = await ctxBanc.newPage();
     const erreursBanc = [];
     pgBanc.on('pageerror', (e) => erreursBanc.push(e.message));
-    pgBanc.on('dialog', async (d) => { await d.accept(); });
+    let repriseBanc = false;
+    pgBanc.on('dialog', async (d) => { repriseBanc ||= /interrompu/.test(d.message()); await d.accept(); });
     await pgBanc.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
     // Ce bloc vérifie le panneau du pilier n°16 : sans incident de contact
     // (blessure, commotion, saignement — couverts par leurs propres blocs),
@@ -4568,19 +4569,42 @@ function optionsLancement() {
     await pgBanc.click('.btnRemplacantMiTemps[data-index="0"]');
     await pgBanc.waitForTimeout(400);
     const apres = await pgBanc.evaluate(() => ({ effectues: window.RMMain.etatActuel().remplacementsEffectues, detail: document.querySelector('.ligneRemplacant .detailRemplacant').textContent, dis: document.querySelector('.btnRemplacantMiTemps[data-index="0"]').disabled }));
+    verifier('banc : à la mi-temps le panneau confirme le n°3 en attente pour la reprise',
+      apres.dis && /en attente pour le n°3 : à la reprise/.test(apres.detail), JSON.stringify(apres));
+    const journalBanc = await pgBanc.evaluate(() => JSON.parse(localStorage.getItem('rugbyManager.matchJoue.v1')));
+    const entrantBanc = journalBanc.remplacants[0].joueurId;
+    verifier('banc : la demande est enregistrée, le joueur n’est pas encore entré',
+      journalBanc.commandes.some((c) => c.type === 'remplacement' && c.numero === 3)
+        && !apres.effectues.some((r) => r.joueurId === entrantBanc));
+    await pgBanc.reload({ waitUntil: 'networkidle' });
+    await pgBanc.evaluate(() => { window.RugbyEngine.MatchEngine.prototype._tirerBlessureContact = () => {}; });
+    await pgBanc.click('#btnContinuerClub');
+    verifier('banc : après rechargement, le même match reste accessible', await continuerJusquAuMatch(pgBanc));
+    await pgBanc.click('#btnApercuJouerMatch');
+    await pgBanc.click('#btnConsigneMatch');
+    const ligneReprise = pgBanc.locator('.ligneRemplacant').first();
+    const detailRepris = await ligneReprise.locator('.detailRemplacant').textContent();
+    verifier('banc : la demande au n°3 reste en attente après reprise', repriseBanc
+      && /en attente pour le n°3 : à la reprise/.test(detailRepris), detailRepris);
+    verifier('banc : le remplaçant en attente ne porte pas la coche « entré »',
+      await ligneReprise.locator('.btnRemplacantMiTemps.choisie').count() === 0);
     await pgBanc.click('#btnMiTempsReprendre');
-    for (let t = 0; t < 30; t++) await pgBanc.waitForTimeout(100);
     await pgBanc.click('#btnTerminerMatch');
     let fin = false;
     for (let i = 0; i < 200; i++) { if (await pgBanc.isVisible('#panneauResultat.visible')) { fin = true; break; } await pgBanc.waitForTimeout(300); }
     const finale = await pgBanc.evaluate(() => window.RMMain.etatActuel().remplacementsEffectues);
-    const premier = finale && finale.find((r) => r.numero === 3);
-    verifier('banc : le remplaçant entre au maillot choisi par le manager (n°3)', !!premier, JSON.stringify(finale));
+    const premier = finale && finale.find((r) => r.joueurId === entrantBanc);
+    verifier('banc : le remplaçant entre au maillot choisi par le manager (n°3)', premier?.numero === 3, JSON.stringify(finale));
     verifier('banc : il n entre qu une fois (le doublon à la minute prévue est couvert par test-invariants)', premier && finale.filter((r) => r.joueurId === premier.joueurId).length === 1, JSON.stringify(finale));
-    verifier('banc : le panneau le montre « entré » et ne le propose plus', apres.dis && /entré/.test(apres.detail), JSON.stringify(apres));
     if (fin) { await pgBanc.click('#btnResultatFermer'); await pgBanc.waitForTimeout(800); }
-    const credit = await pgBanc.evaluate((id) => { const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1')); const j = s.clubJoueur.effectif.find((x) => x.id === id); return j && j.statsSaison; }, premier && premier.joueurId);
-    verifier('banc : le remplaçant est crédité d une entrée en jeu, une seule', credit && credit.entreesEnJeu === 1 && credit.matchsJoues === 1, JSON.stringify(credit));
+    const bilanBanc = await pgBanc.evaluate((id) => {
+      const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
+      const joueur = s.clubJoueur.effectif.find((x) => x.id === id);
+      return { credit: joueur?.statsSaison, joues: s.classement[s.clubJoueur.id].j };
+    }, entrantBanc);
+    verifier('banc : le remplaçant est crédité d une entrée en jeu, une seule',
+      bilanBanc.credit?.entreesEnJeu === 1 && bilanBanc.credit.matchsJoues === 1, JSON.stringify(bilanBanc));
+    verifier('banc : le match repris ne compte qu’une fois au classement', fin && bilanBanc.joues === 1, JSON.stringify(bilanBanc));
     verifier('banc : aucune erreur de page', erreursBanc.length === 0, '');
     await ctxBanc.close();
   }

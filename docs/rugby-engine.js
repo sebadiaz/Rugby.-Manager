@@ -7814,13 +7814,79 @@
         }
       }
       this.tempsMatch += dt;
+      // Une séquence de marque déjà engagée (essai en attente de transformation,
+      // tir au but en cours) doit aller à son TERME même si le temps de la
+      // période ou du match expire pendant ce temps : en rugby, un essai marqué
+      // au temps écoulé se transforme, et un coup de pied accordé avant la fin se
+      // joue (le temps ne s'arrête que lorsque le ballon est mort). Sans ce
+      // report, la bascule en MI_TEMPS/TERMINE court-circuitait _tickEssai/
+      // _tickTransformation/_tickPenaliteTir (return immédiat) et effaçait des
+      // points légitimes — ~7,5 % des matchs perdaient la transformation d'un
+      // essai de fin de période. On laisse donc la phase de marque se résoudre,
+      // puis la bascule de temps se déclenche au tick suivant.
+      const sequenceMarque = this.phase === 'ESSAI' || this.phase === 'TRANSFORMATION' || this.phase === 'PENALITE_TIR';
+      // LOI 5.7 : LA SONNERIE NE SIFFLE PAS LA FIN, LE BALLON MORT SI. Une fois
+      // le temps écoulé, le jeu continue jusqu'au premier ballon mort, et une
+      // mêlée ou une touche déjà accordée se joue (comme la touche d'une
+      // pénalité tapée en touche après la sonnerie). Avant, la période
+      // s'arrêtait à 40:00 et 80:00 pile : 29 fins sur 60 coupaient une course,
+      // un ruck ou un maul, et 9 autres une touche ou une mêlée à jouer.
+      const limitePeriode = this.miTempsJouee ? this.dureeMatch : this.dureeMiTemps;
+      let finPeriode = false;
+      if (!sequenceMarque && this.tempsMatch >= limitePeriode) {
+        if (!this._sonnerie) {
+          const aJouer = this.phase === 'MELEE' || this.phase === 'TOUCHE' ? this.phase : null;
+          this._sonnerie = { aJouer, vu: !!aJouer };
+          this.log('SONNERIE', null, aJouer
+            ? `Temps ecoule : la ${aJouer === 'MELEE' ? 'melee' : 'touche'} se joue, jusqu'au prochain ballon mort`
+            : `Temps ecoule : derniere action, le jeu continue jusqu'au ballon mort`);
+        }
+        finPeriode = this._ballonMortApresSonnerie();
+        if (finPeriode) this._sonnerie = null;
+      }
+      if (finPeriode && this.miTempsJouee) {
+        // ÉLIMINATION DIRECTE (BUG-RM-001) : à égalité au coup de sifflet, une
+        // PROLONGATION de 20 minutes se joue réellement (à l'échelle de la
+        // durée du match), après un coup d'envoi. Si l'égalité persiste à son
+        // terme : l'équipe qui a marqué le plus d'essais, puis une séance de
+        // tirs au but (cf. _departager). Avant, la coupe tranchait sur un hash
+        // des identifiants des clubs et annonçait une prolongation jamais jouée.
+        if (this.cfg.eliminationDirecte && this.score.A === this.score.B) {
+          if (!this.prolongationJouee) {
+            this.prolongationJouee = true;
+            this.dureeReglementaire = this.dureeMatch;
+            this.dureeMatch += this.dureeMatch * 0.25;
+            this.log('PROLONGATION', null,
+              `Egalite ${this.score.A} - ${this.score.B} : prolongation de 20 minutes`);
+            this.phase = 'MI_TEMPS';
+            this.timerPhase = 0;
+            return;
+          }
+          this._departager();
+        }
+        this.phase = 'TERMINE';
+        this.log('FIN_MATCH', null, `Fin du match : equipe A ${this.score.A} - ${this.score.B} equipe B`);
+        return;
+      }
+      // Coup d'envoi de la 2e période (loi 12) : ce sont les adversaires de
+      // l'équipe qui a donné le coup d'envoi du match qui le donnent en 2e
+      // période, depuis le centre, comme en début de match. Le coup d'envoi
+      // est différé d'une seconde de jeu (phase MI_TEMPS) plutôt que déclenché
+      // dans le même tick que l'événement MI_TEMPS, sinon l'événement COUP_ENVOI
+      // qui suit immédiatement masque la bannière de mi-temps dans l'interface.
+      if (finPeriode && !this.miTempsJouee) {
+        this.miTempsJouee = true;
+        this.log('MI_TEMPS', null, `Mi-temps : equipe A ${this.score.A} - ${this.score.B} equipe B`);
+        this.phase = 'MI_TEMPS';
+        this.timerPhase = 0;
+        return;
+      }
       // Remplacements planifiés (cf. constructeur) : mutation EN PLACE des
       // attributs de performance du joueur déjà présent à ce numéro — jamais
       // un nouvel objet. Position (x/y), ballon porté, liaisons de
-      // regroupement en cours (mêlée/ruck/maul, qui gardent une référence
-      // directe vers cet objet) restent celles du joueur remplacé, exactement
-      // comme un remplaçant qui entre à la place précise de celui qu'il
-      // relève, même en pleine phase de jeu.
+      // regroupement restent valides. Ce traitement vient après le contrôle
+      // de fin de période : au sifflet final, un joueur encore en attente
+      // ne doit pas être crédité d'une entrée en jeu.
       this._traiterBlessures();
       if (this._remplacements.length) {
         for (const r of this._remplacements) {
@@ -7905,73 +7971,6 @@
                 ? `Remplacement equipe ${r.equipe} : ${c.nom} entre en jeu au n°${r.numero}`
                 : `Remplacement equipe ${r.equipe} : nouveau joueur au n°${r.numero}`);
         }
-      }
-      // Une séquence de marque déjà engagée (essai en attente de transformation,
-      // tir au but en cours) doit aller à son TERME même si le temps de la
-      // période ou du match expire pendant ce temps : en rugby, un essai marqué
-      // au temps écoulé se transforme, et un coup de pied accordé avant la fin se
-      // joue (le temps ne s'arrête que lorsque le ballon est mort). Sans ce
-      // report, la bascule en MI_TEMPS/TERMINE court-circuitait _tickEssai/
-      // _tickTransformation/_tickPenaliteTir (return immédiat) et effaçait des
-      // points légitimes — ~7,5 % des matchs perdaient la transformation d'un
-      // essai de fin de période. On laisse donc la phase de marque se résoudre,
-      // puis la bascule de temps se déclenche au tick suivant.
-      const sequenceMarque = this.phase === 'ESSAI' || this.phase === 'TRANSFORMATION' || this.phase === 'PENALITE_TIR';
-      // LOI 5.7 : LA SONNERIE NE SIFFLE PAS LA FIN, LE BALLON MORT SI. Une fois
-      // le temps écoulé, le jeu continue jusqu'au premier ballon mort, et une
-      // mêlée ou une touche déjà accordée se joue (comme la touche d'une
-      // pénalité tapée en touche après la sonnerie). Avant, la période
-      // s'arrêtait à 40:00 et 80:00 pile : 29 fins sur 60 coupaient une course,
-      // un ruck ou un maul, et 9 autres une touche ou une mêlée à jouer.
-      const limitePeriode = this.miTempsJouee ? this.dureeMatch : this.dureeMiTemps;
-      let finPeriode = false;
-      if (!sequenceMarque && this.tempsMatch >= limitePeriode) {
-        if (!this._sonnerie) {
-          const aJouer = this.phase === 'MELEE' || this.phase === 'TOUCHE' ? this.phase : null;
-          this._sonnerie = { aJouer, vu: !!aJouer };
-          this.log('SONNERIE', null, aJouer
-            ? `Temps ecoule : la ${aJouer === 'MELEE' ? 'melee' : 'touche'} se joue, jusqu'au prochain ballon mort`
-            : `Temps ecoule : derniere action, le jeu continue jusqu'au ballon mort`);
-        }
-        finPeriode = this._ballonMortApresSonnerie();
-        if (finPeriode) this._sonnerie = null;
-      }
-      if (finPeriode && this.miTempsJouee) {
-        // ÉLIMINATION DIRECTE (BUG-RM-001) : à égalité au coup de sifflet, une
-        // PROLONGATION de 20 minutes se joue réellement (à l'échelle de la
-        // durée du match), après un coup d'envoi. Si l'égalité persiste à son
-        // terme : l'équipe qui a marqué le plus d'essais, puis une séance de
-        // tirs au but (cf. _departager). Avant, la coupe tranchait sur un hash
-        // des identifiants des clubs et annonçait une prolongation jamais jouée.
-        if (this.cfg.eliminationDirecte && this.score.A === this.score.B) {
-          if (!this.prolongationJouee) {
-            this.prolongationJouee = true;
-            this.dureeReglementaire = this.dureeMatch;
-            this.dureeMatch += this.dureeMatch * 0.25;
-            this.log('PROLONGATION', null,
-              `Egalite ${this.score.A} - ${this.score.B} : prolongation de 20 minutes`);
-            this.phase = 'MI_TEMPS';
-            this.timerPhase = 0;
-            return;
-          }
-          this._departager();
-        }
-        this.phase = 'TERMINE';
-        this.log('FIN_MATCH', null, `Fin du match : equipe A ${this.score.A} - ${this.score.B} equipe B`);
-        return;
-      }
-      // Coup d'envoi de la 2e période (loi 12) : ce sont les adversaires de
-      // l'équipe qui a donné le coup d'envoi du match qui le donnent en 2e
-      // période, depuis le centre, comme en début de match. Le coup d'envoi
-      // est différé d'une seconde de jeu (phase MI_TEMPS) plutôt que déclenché
-      // dans le même tick que l'événement MI_TEMPS, sinon l'événement COUP_ENVOI
-      // qui suit immédiatement masque la bannière de mi-temps dans l'interface.
-      if (finPeriode && !this.miTempsJouee) {
-        this.miTempsJouee = true;
-        this.log('MI_TEMPS', null, `Mi-temps : equipe A ${this.score.A} - ${this.score.B} equipe B`);
-        this.phase = 'MI_TEMPS';
-        this.timerPhase = 0;
-        return;
       }
       // Une PORTE née d'un coup de pied cesse de l'être dès que le jeu s'arrête.
       if (this.phase !== 'PORTE') { this._porteApresPied = false; this._chandelleBaseA = null; }
@@ -8340,8 +8339,8 @@
     // un essai, une transformation, une pénalité au but ou la mi-temps.
     _ballonMortPourRemplacement() {
       const ph = this.phase;
-      if (ph === 'ESSAI' || ph === 'TRANSFORMATION' || ph === 'PENALITE_TIR' || ph === 'MI_TEMPS' || ph === 'TERMINE') return true;
-      if (ph === 'COUP_ENVOI') return !this.ballonEnVol;
+      if (ph === 'ESSAI' || ph === 'MI_TEMPS') return true;
+      if (ph === 'COUP_ENVOI' || ph === 'TRANSFORMATION' || ph === 'PENALITE_TIR') return !this.ballonEnVol;
       if (ph === 'TOUCHE') return !this.toucheLancer;
       if (ph === 'MELEE') {
         const e = this.melee && this.melee.etat;
@@ -8351,7 +8350,7 @@
     }
 
     remplacerJoueurEnCours(equipe, numero, joueur, joueurId) {
-      if (equipe !== 'A' && equipe !== 'B') return false;
+      if (this.phase === 'TERMINE' || (equipe !== 'A' && equipe !== 'B')) return false;
       if (!(numero >= 1 && numero <= 15)) return false;
       // Un même joueur n'entre qu'une fois (bugs.md FUNC-RM-005). Le manager
       // qui fait entrer plus tôt un remplaçant prévu à la 50e annule cette
