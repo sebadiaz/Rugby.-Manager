@@ -136,7 +136,8 @@
       "pression": 0.7,
       "calme": 0.55
     },
-    "chandelleNeuf": 1
+    "chandelleNeuf": 1,
+    "passeCentres": 1
   },
   "defense": {
     "profondeurArriereJeu": 18,

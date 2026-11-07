@@ -4792,6 +4792,15 @@ function optionsLancement() {
     verifier('consigne du demi de mêlée : « Chandelle depuis la base » sauvegardée, compromis affiché, les autres consignes conservées',
       tactiqueDm.demiMelee === 'pied' && tactiqueDm.ouvreur === 'main' && tactiqueDm.lancements === 'pres'
         && /réception disputée/.test(compromisDm), JSON.stringify(tactiqueDm));
+    const optionsCe = await pgOv.$$eval('[data-axe="centres"]', (b) => b.map((x) => x.dataset.valeur));
+    verifier('consigne des centres : trois options dans l écran Tactique', JSON.stringify(optionsCe) === '["percussion","equilibre","distribution"]', JSON.stringify(optionsCe));
+    await pgOv.click('[data-axe="centres"][data-valeur="percussion"]');
+    await pgOv.waitForTimeout(400);
+    const tactiqueCe = await pgOv.evaluate(() => JSON.parse(localStorage.getItem('rugbyManager.club.v1')).clubJoueur.tactique);
+    const compromisCe = await pgOv.textContent('#clubTactique');
+    verifier('consigne des centres : « Percussion » sauvegardée, compromis affiché, les autres consignes conservées',
+      tactiqueCe.centres === 'percussion' && tactiqueCe.demiMelee === 'pied' && tactiqueCe.ouvreur === 'main'
+        && /atteint moins souvent les ailes/.test(compromisCe), JSON.stringify(tactiqueCe));
     verifier('consigne de l ouvreur : aucune erreur de page', erreursOv.length === 0, erreursOv.join(' | '));
     await ctxOv.close();
   }

@@ -4459,6 +4459,33 @@ test('docs/rugby-config.json (chargé par le jeu) ne contredit pas le moteur mes
   assert.deepStrictEqual(ecarts, [], 'valeurs du fichier différentes du moteur');
 });
 
+test('consigne des centres (FUNC-RM-004, P2-161) : percussion = plus de courses et moins de passes des 12-13, distribution = l inverse', () => {
+  const mesurer = (passeCentres) => {
+    const r = { courses: 0, passes: 0, passesAdv: 0 };
+    // 16 graines : sur 8, les passes des centres ADVERSES variaient de 37 %
+    // par le seul déroulé (169 -> 231 sur les graines 1-8, 207 -> 203 sur 9-16).
+    for (let seed = 1; seed <= 16; seed++) {
+      const m = new MatchEngine(seed, 4800, passeCentres == null ? {} : { attaqueA: { passeCentres } });
+      m.jouerJusquAuSifflet(0.1);
+      const st = m.getState();
+      for (const n of [12, 13]) {
+        r.courses += (st.statsJoueurs.A[n] || {}).courses || 0;
+        r.passes += (st.statsJoueurs.A[n] || {}).passes || 0;
+        r.passesAdv += (st.statsJoueurs.B[n] || {}).passes || 0;
+      }
+    }
+    return r;
+  };
+  const defaut = mesurer(null), un = mesurer(1), perc = mesurer(0.5), dist = mesurer(1.8);
+  assert.deepStrictEqual(un, defaut, 'la valeur 1 donne exactement le comportement par défaut');
+  assert.ok(perc.passes <= defaut.passes * 0.8 && perc.courses >= defaut.courses * 1.1,
+    `percussion : ${perc.passes} passes / ${perc.courses} courses (défaut ${defaut.passes} / ${defaut.courses})`);
+  assert.ok(dist.passes >= defaut.passes * 1.2 && dist.courses <= defaut.courses * 0.9,
+    `distribution : ${dist.passes} passes / ${dist.courses} courses (défaut ${defaut.passes} / ${defaut.courses})`);
+  // Les centres adverses ne suivent pas la consigne : au plus le bruit d'un déroulé différent.
+  for (const r of [perc, dist]) assert.ok(Math.abs(r.passesAdv - defaut.passesAdv) <= 0.3 * defaut.passesAdv, `adversaire : ${defaut.passesAdv} / ${r.passesAdv}`);
+});
+
 test('consigne du demi de mêlée (FUNC-RM-004, P2-160) : ses chandelles depuis la base suivent la consigne, celles de l adversaire non', () => {
   const compter = (chandelleNeuf) => {
     const n = { A: 0, B: 0 };

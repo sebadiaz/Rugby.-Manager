@@ -695,6 +695,16 @@
         main: { nom: 'Joue à la main', description: 'L\'ouvreur garde le ballon en main et anime la ligne, il ne tape qu\'en dernier recours.', compromis: 'Plus de temps de jeu et de ballons pour les trois-quarts, mais on occupe moins le camp adverse et on joue plus souvent dans son propre camp.', attaque: { piedOuvreur: 0.4 } },
       },
     },
+    // Consigne des centres (FUNC-RM-004, P2-161) : leurs passes, dans la ligne
+    // et avant le contact.
+    centres: {
+      label: 'Consigne des centres (n°12 et 13)', defaut: 'equilibre',
+      options: {
+        percussion: { nom: 'Percussion', description: 'Les centres prennent le ballon et vont au contact pour fixer la défense au milieu du terrain.', compromis: 'Gagne des mètres et des rucks au centre, mais le ballon atteint moins souvent les ailes.', attaque: { passeCentres: 0.5 } },
+        equilibre: { nom: 'Standard', description: 'Les centres choisissent entre la passe et la course selon l\'espace.', compromis: 'Réglage neutre du moteur — aucun compromis appliqué.', attaque: null },
+        distribution: { nom: 'Distribution', description: 'Les centres écartent vite le ballon vers les ailiers et l\'arrière.', compromis: 'Fait vivre le ballon au large, mais les centres avancent moins et on fixe moins la défense.', attaque: { passeCentres: 1.8 } },
+      },
+    },
     // Consigne du demi de mêlée (FUNC-RM-004, P2-160) : seules ses chandelles
     // depuis la base, dans son camp, changent.
     demiMelee: {

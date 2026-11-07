@@ -219,6 +219,16 @@ test('M6g — la consigne du demi de mêlée (FUNC-RM-004, P2-160) fusionne avec
   assert.ok(!neutre.attaque || neutre.attaque.chandelleNeuf === undefined, 'le neutre ne force rien');
 });
 
+test('M6h — la consigne des centres (FUNC-RM-004, P2-161) fusionne avec les autres axes d attaque', () => {
+  const cfg = RMClub.tactiqueVersConfig({ centres: 'percussion', demiMelee: 'pied', style: 'large' });
+  assert.strictEqual(cfg.attaque.passeCentres, 0.5, 'la consigne des centres atteint le moteur');
+  assert.strictEqual(cfg.attaque.chandelleNeuf, 2, 'la consigne du 9 survit');
+  assert.ok(cfg.attaque.jeuLargeTaux, 'l axe « style » survit');
+  assert.strictEqual(RMClub.tactiqueVersConfig({ centres: 'distribution' }).attaque.passeCentres, 1.8);
+  const neutre = RMClub.tactiqueVersConfig({ centres: 'equilibre' });
+  assert.ok(!neutre.attaque || neutre.attaque.passeCentres === undefined, 'le neutre ne force rien');
+});
+
 test('M7 — en match, la consigne produit réellement un déroulé différent', () => {
   // Ce test vérifie le CÂBLAGE de bout en bout, pas l'ampleur de l'effet :
   // sur une dizaine de matchs, le nombre même de mêlées change (115 contre

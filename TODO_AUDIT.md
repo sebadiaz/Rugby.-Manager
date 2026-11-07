@@ -580,6 +580,28 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-161. Consigne des centres (n°12 et 13) : percussion, standard, distribution
+- **Statut : LIVRÉ**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`attaque.passeCentres`,
+  `_facteurCentres`, passe dans la ligne et avant contact), `docs/rugby-config.json`, `docs/js/club.js` (axe
+  `centres`), `docs/js/club-composition.js`, `docs/js/club-equipes.js` (`centresDeduits`),
+  `server/test-invariants.js`, `server/test-melee.js` (M6h), `server/test-parcours-navigateur.js`.
+
+**Correction.** Facteur sur les passes des n°12 et 13 (dans la ligne et avant contact, y compris pour un centre
+rapide qui suivait une autre branche) : « Percussion » ×0,5, « Distribution » ×1,8. Valeur 1 : matchs identiques au
+pas près. Club consulté : puissance moins passe de sa paire de centres (médiane -7 sur 78 clubs générés) — les ~15 %
+les plus puissants percutent, les plus passeurs distribuent.
+
+**Mesures.** 12 graines (équipe A) — courses / passes / mètres des 12-13 par match : percussion 26,4 / 14,5 / 92,
+standard 20,9 / 24,0 / 73, distribution 12,4 / 35,8 / 52. 100 graines appariées : écart de score percussion
++1,8 ± 4,5, distribution +0,8 ± 4,3 ; possession +1,1 ± 1,6 et +0,9 ± 1,5 — aucune option dominante (les 12 graines
+laissaient croire à un coût de 5 à 11 points : bruit). La percussion baisse le total de passes du match de 21 ± 10.
+
+**Tests.** Invariant (valeur 1 = défaut exact ; percussion et distribution déplacent courses et passes des centres
+de l'équipe, pas celles des centres adverses ; 16 graines, 8 laissaient varier l'adversaire de 37 % par le seul
+déroulé) — l'ancien moteur échoue. M6h : fusion avec les autres axes d'attaque. Navigateur : trois options,
+sauvegarde, compromis affiché.
+
 ### P2-160. Consigne du demi de mêlée (n°9) : chandelle depuis la base, standard, sortie à la main
 - **Statut : LIVRÉ**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`attaque.chandelleNeuf`, chandelle depuis

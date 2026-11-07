@@ -189,6 +189,8 @@
       ouvreur: ouvreurDeduit(effectif),
       // Demi de mêlée : un n°9 bon botteur tape, un n°9 passeur sort à la main.
       demiMelee: demiMeleeDeduit(effectif),
+      // Centres puissants : ils percutent ; centres passeurs : ils distribuent.
+      centres: centresDeduits(effectif),
       arriere: arriereDeduit(effectif),
       // Ailiers rapides : ils restent larges pour exploiter l'espace ; ailiers
       // lents mais bons passeurs : ils repiquent chercher le ballon.
@@ -212,6 +214,14 @@
     if ((q.vitesse || 0) >= 80) return 'ligne';
     if ((q.jeuPied || 0) >= 70) return 'fond';
     return 'equilibre';
+  }
+  function centresDeduits(effectif) {
+    const cs = effectif.filter((j) => j.numero === 12 || j.numero === 13);
+    if (!cs.length) return 'equilibre';
+    // Puissance moins passe, moyenne de la paire (médiane -7 sur 78 clubs
+    // générés) : les ~15 % les plus puissants percutent, les plus passeurs distribuent.
+    const ecart = cs.reduce((s, j) => s + (j.puissance || 0) - (j.passe || 0), 0) / cs.length;
+    return ecart >= -3 ? 'percussion' : ecart <= -11 ? 'distribution' : 'equilibre';
   }
   function demiMeleeDeduit(effectif) {
     const neuf = effectif.find((j) => j.numero === 9) || effectif.find((j) => j.poste === 'DM');
