@@ -1283,4 +1283,4 @@ select {
 .listeEssais .actionEssai { color: var(--text-dim); font-size: 12px; }
 /* Les joueurs du match (FUNC-RM-011) : libellés plus longs (« Franchissements »),
    valeurs courtes (« n°11 · 110 m ») — colonne centrale plus large. */
-.ligneStatMatch.ligneJoueurMatch { grid-template-columns: minmax(0, 1fr) 7.5rem minmax(0, 1fr); }
+.ligneStatMatch.ligneJoueurMatch { grid-template-columns: minmax(0, 1fr) 7.5rem minmax(0, 1fr); font-size: 12px; }

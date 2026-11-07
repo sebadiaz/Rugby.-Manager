@@ -300,7 +300,7 @@
     // Les joueurs du match : « n°7 · 14 » par catégorie, le poste en infobulle.
     const titreJ = (m) => (m ? `${POSTE_NUMERO[m.numero] || ''}${m.sortie != null ? ` — remplacé à la ${Math.max(1, Math.floor(m.sortie / 60))}e` : ''}` : '');
     const joueurs = (f.joueursDuMatch || []).map((l) =>
-      `<div class="ligneStatMatch ligneLancement ligneJoueurMatch">` +
+      `<div class="ligneStatMatch ligneJoueurMatch">` +
       `<span class="valA" title="${echapperTexte(titreJ(l.a))}">${echapperTexte(l.texteA)}</span>` +
       `<span class="libelleStat">${echapperTexte(l.libelle)}</span>` +
       `<span class="valB" title="${echapperTexte(titreJ(l.b))}">${echapperTexte(l.texteB)}</span></div>`).join('');
