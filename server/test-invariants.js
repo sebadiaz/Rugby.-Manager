@@ -4580,7 +4580,8 @@ test('consigne du demi de mêlée (FUNC-RM-004, P2-160) : ses chandelles depuis 
 test('style de lancement (axe d équipe) : « au près », « au large », « au pied » pondèrent réellement les scénarios joués', () => {
   const familles = (lancements) => {
     const f = { pres: 0, large: 0, pied: 0 };
-    for (let seed = 1; seed <= 12; seed++) {
+    // 24 graines (P2-163) : sur 12, « au près » tombait à +14,x points par le seul déroulé.
+    for (let seed = 1; seed <= 24; seed++) {
       const m = new MatchEngine(seed, 4800, lancements ? { attaqueA: { lancements } } : {});
       const ch = m._choisirCombinaison.bind(m);
       m._choisirCombinaison = (type) => { const c = ch(type); if (c && m.possession === 'A') f[c.style]++; return c; };
@@ -4594,7 +4595,11 @@ test('style de lancement (axe d équipe) : « au près », « au large », « au
   const pres = familles({ pres: 3 }), large = familles({ large: 3 }), pied = familles({ pied: 3 });
   assert.ok(pres.pres >= neutre.pres + 0.15, `au près : ${(100 * pres.pres).toFixed(0)} % de lancements au près (neutre ${(100 * neutre.pres).toFixed(0)} %)`);
   assert.ok(large.large >= neutre.large + 0.1, `au large : ${(100 * large.large).toFixed(0)} % (neutre ${(100 * neutre.large).toFixed(0)} %)`);
-  assert.ok(pied.pied >= neutre.pied + 0.1, `au pied : ${(100 * pied.pied).toFixed(0)} % (neutre ${(100 * neutre.pied).toFixed(0)} %)`);
+  // Famille RARE (5 à 17 combinaisons par lot de 12 matchs) : un seuil de +10
+  // points ne tenait que sur les graines 1-12 (l'ancien moteur faisait +1,9 sur
+  // 13-24 et +7,7 sur 1-36). Ce que fait réellement le poids ×3, c'est doubler
+  // la part (×2,1 et ×1,96 sur 24 graines, ancien et nouveau moteur) : on exige ×1,6.
+  assert.ok(pied.pied >= neutre.pied * 1.6, `au pied : ${(100 * pied.pied).toFixed(1)} % (neutre ${(100 * neutre.pied).toFixed(1)} %)`);
 });
 
 test('bilan des lancements (P2-153) : chaque lancement annoncé compté une fois, essais et terrain recomptés indépendamment', () => {
@@ -4612,6 +4617,9 @@ test('bilan des lancements (P2-153) : chaque lancement annoncé compté une fois
       if (type === 'LANCEMENT' && extra && extra.style) {
         const cle = { pres: 'Pres', large: 'Large', pied: 'Pied' }[extra.style];
         annonces[team][cle]++;
+        // Deuxième lancement dans la même séquence (touche puis sortie de maul) :
+        // le premier s'arrête là, avec le terrain déjà gagné.
+        if (L) terr[L.team] += (L.team === 'A' ? 1 : -1) * (L.dernier - L.x0);
         L = { team, x0: m.porteur.x, poss: m.possession, dernier: m.porteur.x };
       }
       if (type === 'ESSAI' && L) { if (L.team === team) essais[team]++; terr[L.team] += (L.team === 'A' ? 1 : -1) * (L.dernier - L.x0); L = null; }
