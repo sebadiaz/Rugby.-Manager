@@ -587,8 +587,8 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
   `docs/js/ui.js`, `server/test-invariants.js`.
 
 **Constat (audit du 7 novembre).** Un remplacement demandé en jeu s'appliquait au pas suivant, ballon vivant (graine
-24, phase PORTE). Mesuré aussi sur 10 matchs à 8 changements programmés : 31 entrées sur 78 en plein jeu (ruck, maul,
-jeu courant, coup de pied en l'air).
+24, phase PORTE). Mesuré aussi sur 10 matchs à 8 changements programmés : 85 entrées dont 13 médicales, et 31 des 72
+entrées tactiques en plein jeu (ruck, maul, jeu courant, coup de pied en l'air).
 
 **Correction.** Un changement TACTIQUE (programmé ou demandé par le manager) attend le ballon mort : avant le coup
 d'envoi frappé, avant l'introduction en mêlée ou le lancer en touche, pendant un essai, une transformation, une
@@ -597,8 +597,8 @@ prochain arrêt de jeu ») et le panneau du banc affiche « en attente » au lie
 (blessure, protocole commotion, saignement, retour) restent immédiates, y compris quand une entrée programmée est
 détournée pour une blessure. Une seconde demande pour un joueur déjà demandé est refusée (comme pour un joueur entré).
 
-**Mesures.** Scénario du ticket : rien au pas suivant ; entrée 18,2 s plus tard, à l'essai, une seule fois. 10 matchs
-à 8 changements programmés : 78 entrées, toutes ballon mort sauf 11, toutes médicales ; délai médian 0,1 s (le
+**Mesures.** Scénario du ticket : rien au pas suivant ; entrée 18,2 s plus tard, à l'essai, une seule fois. Mêmes 10
+matchs : 84 entrées dont 13 médicales, aucune entrée tactique ballon vivant (31 avant) ; délai médian 0,1 s (le
 changement tombe souvent déjà ballon mort), maximum 106 s.
 
 **Tests.** Invariant BUG-RM-012 (scénario du ticket, annonce unique, entrée unique ballon mort ; 6 matchs programmés :
