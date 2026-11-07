@@ -350,7 +350,8 @@
     // `contexte` : 'miTemps' (arrêt imposé) ou 'enCours' (le manager ouvre le
     // panneau de lui-même pendant le jeu). Même écran, mêmes conséquences —
     // une consigne prise à la 62e minute vaut celle prise à la mi-temps.
-    const ctx = contexte || 'miTemps';
+    const e = normalizeMatchState(match.getState());
+    const ctx = e.phase === 'MI_TEMPS' ? 'miTemps' : (contexte || 'miTemps');
     L.contexte = ctx;
     const titre = document.getElementById('miTempsTitre');
     if (titre) titre.textContent = ctx === 'enCours' ? 'Consigne en cours de jeu' : 'Mi-temps';
@@ -358,7 +359,6 @@
     if (btnReprendre) btnReprendre.textContent = ctx === 'enCours' ? 'Retour au match' : 'Reprendre le match';
     enCours = false;
     document.getElementById('btnPlay').textContent = 'Play';
-    const e = normalizeMatchState(match.getState());
     const nomA = (L.noms && L.noms.A) || 'Equipe A';
     const nomB = (L.noms && L.noms.B) || 'Equipe B';
     document.getElementById('miTempsScore').textContent =
@@ -409,7 +409,7 @@
           ? `entré${entre ? ' à la ' + Math.max(1, Math.round(entre.instant / 60)) + 'e minute, au n°' + entre.numero : ''}`
           : `remplace le <select class="selCibleRemplacant" data-index="${i}" aria-label="Maillot remplacé par ${r.nom}">${options}</select>`
             + (groupe === 'PL' ? ' · première ligne : relève une première ligne (loi 3)' : '');
-        return `<div class="ligneRemplacant"><button class="alt btnRemplacantMiTemps${fait ? ' choisie' : ''}" data-index="${i}"${fait ? ' disabled' : ''}>`
+        return `<div class="ligneRemplacant"><button class="alt btnRemplacantMiTemps${entre || proto ? ' choisie' : ''}" data-index="${i}"${fait ? ' disabled' : ''}>`
           + `<b>${fait ? '' : 'Faire entrer '}${r.nom} (${r.poste})</b></button><span class="detailRemplacant">${detail}</span></div>`;
       }).join('') + '<p id="miTempsRemplacementRefus" class="noteRefus" style="display:none"></p>'
       : '<p style="font-size:12px;color:var(--text-faint);margin:0;">Aucun remplaçant disponible.</p>';

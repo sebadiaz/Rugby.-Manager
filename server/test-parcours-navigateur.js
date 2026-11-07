@@ -4582,9 +4582,12 @@ function optionsLancement() {
     verifier('banc : après rechargement, le même match reste accessible', await continuerJusquAuMatch(pgBanc));
     await pgBanc.click('#btnApercuJouerMatch');
     await pgBanc.click('#btnConsigneMatch');
-    const detailRepris = await pgBanc.textContent('.ligneRemplacant .detailRemplacant');
+    const ligneReprise = pgBanc.locator('.ligneRemplacant').first();
+    const detailRepris = await ligneReprise.locator('.detailRemplacant').textContent();
     verifier('banc : la demande au n°3 reste en attente après reprise', repriseBanc
       && /en attente pour le n°3 : à la reprise/.test(detailRepris), detailRepris);
+    verifier('banc : le remplaçant en attente ne porte pas la coche « entré »',
+      await ligneReprise.locator('.btnRemplacantMiTemps.choisie').count() === 0);
     await pgBanc.click('#btnMiTempsReprendre');
     await pgBanc.click('#btnTerminerMatch');
     let fin = false;
