@@ -395,7 +395,7 @@ test('les joueurs restent dans les limites du terrain (avec marge en-but)', () =
 // --- Remplacements planifiés (TODO_AUDIT.md P1-17, config.remplacements) :
 // extension additive et strictement optionnelle du moteur — le banc de 8 du
 // Mode Club était jusqu'ici jamais transmis au moteur. ---
-test('remplacement planifié : s\'applique immédiatement à l\'instant prévu, ET persiste à travers les reprises de jeu suivantes', () => {
+test('remplacement planifié : s\'applique au premier ballon mort après l\'instant prévu (loi 3.6, BUG-RM-012), ET persiste à travers les reprises de jeu suivantes', () => {
   // Important : _nouvelleManche (coup d'envoi après essai/pénalité/mi-temps)
   // RECRÉE entièrement equipeA/equipeB depuis this.cfg.joueursA/joueursB à
   // chaque reprise — l'identité de l'objet joueur n'est donc PAS garantie
@@ -408,24 +408,27 @@ test('remplacement planifié : s\'applique immédiatement à l\'instant prévu, 
     remplacements: [
       { equipe: 'A', numero: 10, minute: 1, joueur: { poste: 'OV', vitesse: 95, plaquage: 40, adresse: 90, melee: 40, touche: 40, puissance: 40, endurance: 40, passe: 90, jeuPied: 90, decision: 90, discipline: 90 } },
     ],
+    // Sans blessure : la première entrée est bien ce changement programmé,
+    // pas un remplacement médical (immédiat, lui).
+    blessures: false,
   };
   const m = new MatchEngine(55, 300, config);
   let verifieImmediat = false;
   for (let t = 0; t < 300; t += 0.1) {
+    const mort = m._ballonMortPourRemplacement();
     m.tick(0.1);
-    // Vérifié DÈS que l'instant est franchi, pas seulement à la fin du match :
-    // this.events est plafonné à 30 entrées (cf. log()) et un match de 5 min
-    // en génère largement plus — l'événement REMPLACEMENT aurait le temps
-    // d'être poussé hors du journal avant la fin de la boucle.
-    if (!verifieImmediat && m.tempsMatch >= 60) {
+    // Vérifié AU TICK de l'entrée, pas seulement à la fin du match :
+    // this.events est plafonné à 30 entrées (cf. log()).
+    if (!verifieImmediat && m.remplacementsEffectues.length) {
       verifieImmediat = true;
-      assert.ok(m.equipeA[9].vitesse > 80, 'le joueur au n°10 doit changer dès l\'instant prévu, pas seulement à la prochaine reprise');
+      assert.ok(m.equipeA[9].vitesse > 80, 'le joueur au n°10 doit changer dès son entrée, pas seulement à la prochaine reprise');
       const evenement = m.events.find((e) => e.type === 'REMPLACEMENT');
       assert.ok(evenement, 'un événement REMPLACEMENT réel doit apparaître dans le journal du match');
-      assert.ok(Math.abs(evenement.t - 60) < 1, 'l\'événement doit survenir au bon instant (minute 1 = 60s de jeu simulé)');
+      assert.ok(evenement.t >= 60 - 0.01, `pas avant l'instant prévu (${evenement.t})`);
+      assert.ok(mort, 'au ballon mort (loi 3.6)');
     }
   }
-  assert.ok(verifieImmediat, 'le test doit avoir atteint la minute prévue');
+  assert.ok(verifieImmediat, 'le remplacement doit avoir eu lieu dans le match'); 
   assert.strictEqual(m.cfg.joueursA[10].vitesse, 95, 'la config source doit aussi être mise à jour, sinon une reprise ultérieure ferait revenir le titulaire d\'origine');
 });
 
@@ -3645,7 +3648,8 @@ test('remplacement : les actions du sortant sont closes à sa sortie, l entrant 
       [['A', 10, 'entrant-10'], ['B', 3, 'entrant-3'], ['B', 3, 'entrant-3bis']]);
     assert.deepStrictEqual(st.statsJoueursSortis.B.map((x) => x.numero), [3, 3], 'deux sorties au n°3');
     const sortie10 = st.statsJoueursSortis.A[0];
-    assert.ok(Math.abs(sortie10.sortie - 2400) < 1, `sortie du 10 à ${sortie10.sortie}`);
+    // Au premier ballon mort après la 40e (loi 3.6, BUG-RM-012).
+    assert.ok(sortie10.sortie >= 2399.9 && sortie10.sortie < 2400 + 240, `sortie du 10 à ${sortie10.sortie}`);
     assert.ok(sortie10.stats && sortie10.stats.passes > 0, 'le 10 titulaire a joué 40 minutes : il a des passes');
     if (st.statsJoueurs.A[10]) lignesEntrants++;
     // Rien ne se perd ni ne se compte deux fois : sortants + présents = équipe.
@@ -4049,12 +4053,13 @@ test('banc : un remplaçant entré plus tôt que prévu n entre pas une seconde 
   while (m.tempsMatch < 2400) m.tick(0.1);
   assert.strictEqual(m.remplacerJoueurEnCours('A', 3, j, 'p16'), true, 'entrée anticipée, à un autre poste de première ligne');
   for (let i = 0; i < 5; i++) m.tick(0.1);
-  assert.strictEqual(m.remplacerJoueurEnCours('A', 1, j, 'p16'), false, 'un joueur déjà entré ne peut pas entrer à nouveau');
+  assert.strictEqual(m.remplacerJoueurEnCours('A', 1, j, 'p16'), false, 'un joueur déjà entré, ou déjà demandé, ne peut pas entrer à nouveau');
   m.jouerJusquAuSifflet(0.1);
   const entrees = m.remplacementsEffectues.filter((r) => r.equipe === 'A' && r.joueurId === 'p16');
   assert.strictEqual(entrees.length, 1, `${entrees.length} entrées pour le même remplaçant`);
   assert.strictEqual(entrees[0].numero, 3, 'il entre là où le manager l a placé');
-  assert.ok(entrees[0].instant < 2410, 'il entre quand le manager le décide, pas à la 50e');
+  // Au premier ballon mort après la demande (loi 3.6, BUG-RM-012), bien avant la 50e.
+  assert.ok(entrees[0].instant < 3000, 'il entre quand le manager le décide, pas à la 50e');
 });
 
 // --- Blessures en cours de match (bugs.md FUNC-RM-005) ------------------------
@@ -4462,6 +4467,44 @@ test('docs/rugby-config.json (chargé par le jeu) ne contredit pas le moteur mes
   };
   comparer(fichier, D, '');
   assert.deepStrictEqual(ecarts, [], 'valeurs du fichier différentes du moteur');
+});
+
+test('remplacement tactique ballon mort (loi 3.6, BUG-RM-012) : demandé en jeu, il attend l arrêt et n entre qu une fois ; le médical reste immédiat', () => {
+  // Scénario du ticket : graine 24, phase PORTE, demande manuelle, un pas de 0,1 s.
+  const m = new MatchEngine(24, 4800);
+  while (!(m.phase === 'PORTE' && m.tempsMatch > 300)) m.tick(0.1);
+  const annonces = [];
+  const l0 = m.log.bind(m);
+  m.log = (t, team, msg, extra, ...r) => { if (t === 'REMPLACEMENT_EN_ATTENTE') annonces.push(msg); return l0(t, team, msg, extra, ...r); };
+  const n0 = m.remplacementsEffectues.length;
+  assert.ok(m.remplacerJoueurEnCours('A', 7, {}, 'r7'));
+  m.tick(0.1);
+  assert.strictEqual(m.remplacementsEffectues.length, n0, `entré en plein jeu (phase ${m.phase})`);
+  let mortALEntree = null;
+  for (let i = 0; i < 6000 && m.remplacementsEffectues.length === n0; i++) { const mort = m._ballonMortPourRemplacement(); m.tick(0.1); if (m.remplacementsEffectues.length > n0) mortALEntree = mort; }
+  assert.strictEqual(mortALEntree, true, 'il entre au ballon mort');
+  assert.strictEqual(annonces.length, 1, `attente annoncée une fois (${annonces.length})`);
+  m.jouerJusquAuSifflet(0.1);
+  assert.strictEqual(m.remplacementsEffectues.filter((r) => r.joueurId === 'r7').length, 1, 'une seule entrée');
+  // Changements programmés : toute entrée non médicale tombe ballon mort.
+  let tactiques = 0, vivants = 0;
+  for (let seed = 1; seed <= 6; seed++) {
+    const remplacements = [1, 2, 3, 4, 6, 9, 10, 12].map((num, i) => ({ equipe: 'A', numero: num, minute: 50 + i * 2, joueurId: 'b' + num, joueur: {} }));
+    const mm = new MatchEngine(seed, 4800, { remplacements, bancA: true });
+    let prec = 0;
+    while (mm.phase !== 'TERMINE') {
+      const mort = mm._ballonMortPourRemplacement(); mm.tick(0.1);
+      for (; prec < mm.remplacementsEffectues.length; prec++) {
+        const r = mm.remplacementsEffectues[prec];
+        if (r.temporaire || r.retour) continue;
+        const medical = mm.blessuresMatch.some((b) => b.equipe === r.equipe && Math.abs(b.instant - r.instant) < 0.15);
+        if (medical) continue;
+        tactiques++; if (!mort) vivants++;
+      }
+    }
+  }
+  assert.ok(tactiques >= 30, `échantillon : ${tactiques} entrées tactiques`);
+  assert.strictEqual(vivants, 0, `${vivants} entrées tactiques ballon vivant`);
 });
 
 test('intrusion de l arrière (P2-163) : dans la moitié adverse le n°15 s intercale dans la ligne et marque, dans son camp il couvre le fond', () => {

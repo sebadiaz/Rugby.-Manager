@@ -580,6 +580,31 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-166. Changement tactique au ballon mort (loi 3.6, bugs.md BUG-RM-012)
+- **Statut : LIVRÉ (moteur) — réception navigateur du parcours complet à faire**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_ballonMortPourRemplacement`, file des
+  remplacements, `remplacerJoueurEnCours`), `docs/js/main.js` (panneau du banc), `docs/js/constants.js`,
+  `docs/js/ui.js`, `server/test-invariants.js`.
+
+**Constat (audit du 7 novembre).** Un remplacement demandé en jeu s'appliquait au pas suivant, ballon vivant (graine
+24, phase PORTE). Mesuré aussi sur 10 matchs à 8 changements programmés : 31 entrées sur 78 en plein jeu (ruck, maul,
+jeu courant, coup de pied en l'air).
+
+**Correction.** Un changement TACTIQUE (programmé ou demandé par le manager) attend le ballon mort : avant le coup
+d'envoi frappé, avant l'introduction en mêlée ou le lancer en touche, pendant un essai, une transformation, une
+pénalité au but ou la mi-temps. L'attente est annoncée une fois (« ⏳ Changement demandé pour … : il entrera au
+prochain arrêt de jeu ») et le panneau du banc affiche « en attente » au lieu de « entré ». Les entrées médicales
+(blessure, protocole commotion, saignement, retour) restent immédiates, y compris quand une entrée programmée est
+détournée pour une blessure. Une seconde demande pour un joueur déjà demandé est refusée (comme pour un joueur entré).
+
+**Mesures.** Scénario du ticket : rien au pas suivant ; entrée 18,2 s plus tard, à l'essai, une seule fois. 10 matchs
+à 8 changements programmés : 78 entrées, toutes ballon mort sauf 11, toutes médicales ; délai médian 0,1 s (le
+changement tombe souvent déjà ballon mort), maximum 106 s.
+
+**Tests.** Invariant BUG-RM-012 (scénario du ticket, annonce unique, entrée unique ballon mort ; 6 matchs programmés :
+aucune entrée tactique ballon vivant) — l'ancien moteur échoue. Trois tests qui exigeaient l'entrée à l'instant pile
+réécrits sur la règle : au premier ballon mort après l'instant prévu.
+
 ### P2-165. Les joueurs du match sont nommés
 - **Statut : LIVRÉ**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`getState().nomsJoueurs`, nom du sortant

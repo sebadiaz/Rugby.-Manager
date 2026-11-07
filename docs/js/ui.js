@@ -56,7 +56,7 @@
     simulee: 'simulée', vole: 'volé', volee: 'volée', apres: 'après', arrieres: 'arrières', cote: 'côté',
     ferme: 'fermé', croise: 'croisé', degagement: 'dégagement', detache: 'détache', ecoule: 'écoulé',
     ecroulement: 'écroulement', entree: 'entrée', illegalement: 'illégalement', libere: 'libéré',
-    porte: 'porté', releve: 'relève', scelle: 'scellé', couche: 'couché', sifflee: 'sifflée', soigne: 'soigné',
+    porte: 'porté', releve: 'relève', arret: 'arrêt', scelle: 'scellé', couche: 'couché', sifflee: 'sifflée', soigne: 'soigné',
   };
   function accentuer(msg) {
     return String(msg)
@@ -70,6 +70,7 @@
       .replace(/, joue rapidement$/, ', joué rapidement')
       .replace(/\bmaul lance\b/g, 'maul lancé')
       .replace(/\(saute\)/g, '(sautée)')
+      .replace(/^Changement demande\b/, 'Changement demandé')
       .replace(/[A-Za-zÀ-ÿ]+/g, (mot, pos, tout) => {
         // « a » isolé est toujours la préposition dans ces messages ; « n'a » reste.
         if (mot === 'a') return /['’]$/.test(tout.slice(0, pos)) ? mot : 'à';

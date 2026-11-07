@@ -19,7 +19,7 @@
   const MARGE_TOUCHE = 4;
 
   const ICONES = {
-    COUP_ENVOI: '▶️', RENVOI_22: '↩️', EN_BUT_APLATI: '🖐️', CINQUANTE_VINGT_DEUX: '🎯', TOUCHE_RAPIDE: '⚡', EN_BUT_TENU: '🛡️', CHOIX_CAPITAINE: '🧭', CAPITAINE_RELAIS: '🧭', RENVOI_EN_BUT: '↩️', PROLONGATION: '⏱️', DEPARTAGE: '🏆', CONTRE_COUP_ENVOI: '✋', ESSAI: '🏉', MELEE_AVANT: '🔄', MELEE_ENAVANT: '🔄', TOUCHE_PAS_DROIT: '↗️', TOUCHE_HORS_JEU: '🚩', PENALITE_TOUCHE_FRAPPE: '👟', RECEPTION_DISPUTEE: '🙌', FRANCHISSEMENT: '⚡',
+    COUP_ENVOI: '▶️', RENVOI_22: '↩️', EN_BUT_APLATI: '🖐️', CINQUANTE_VINGT_DEUX: '🎯', TOUCHE_RAPIDE: '⚡', EN_BUT_TENU: '🛡️', CHOIX_CAPITAINE: '🧭', CAPITAINE_RELAIS: '🧭', REMPLACEMENT_EN_ATTENTE: '⏳', RENVOI_EN_BUT: '↩️', PROLONGATION: '⏱️', DEPARTAGE: '🏆', CONTRE_COUP_ENVOI: '✋', ESSAI: '🏉', MELEE_AVANT: '🔄', MELEE_ENAVANT: '🔄', TOUCHE_PAS_DROIT: '↗️', TOUCHE_HORS_JEU: '🚩', PENALITE_TOUCHE_FRAPPE: '👟', RECEPTION_DISPUTEE: '🙌', FRANCHISSEMENT: '⚡',
     PENALITE: '🟨', PENALITE_REUSSIE: '🥅', PENALITE_RATEE: '❌',
     TRANSFORMATION_REUSSIE: '🥅', TRANSFORMATION_RATEE: '❌',
     TOUCHE: '👉', TURNOVER: '🔁', MAUL: '🧱', MI_TEMPS: '⏸️', COUP_ENVOI_COURT: '📏',
@@ -114,6 +114,8 @@
     'CHOIX_CAPITAINE',
     // Le capitaine sort : le brassard change de bras (FUNC-RM-006).
     'CAPITAINE_RELAIS',
+    // Changement tactique en attente du ballon mort (loi 3.6, BUG-RM-012).
+    'REMPLACEMENT_EN_ATTENTE',
     // Coupe à élimination directe (BUG-RM-001) : prolongation puis départage.
     'PROLONGATION', 'DEPARTAGE',
     // Chandelle disputee (P2-56) : un duel aerien, le temps fort d'un coup de pied.

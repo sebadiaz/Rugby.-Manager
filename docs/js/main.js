@@ -400,6 +400,10 @@
         }).join('');
         const detail = proto && !entre
           ? `remplacement temporaire au n°${proto.numero} (${proto.nature === 'saignement' ? 'saignement' : 'protocole commotion'}, jusqu'à la ${Math.ceil(proto.fin / 60)}e minute au plus tard)`
+          : fait && !entre && L.remplacementsFaits.indexOf(i) !== -1
+          // Demandé, pas encore entré : un changement tactique attend le
+          // ballon mort (loi 3.6, bugs.md BUG-RM-012).
+          ? 'en attente : entrera au prochain arrêt de jeu (loi 3.6)'
           : fait
           ? `entré${entre ? ' à la ' + Math.max(1, Math.round(entre.instant / 60)) + 'e minute, au n°' + entre.numero : ''}`
           : `remplace le <select class="selCibleRemplacant" data-index="${i}" aria-label="Maillot remplacé par ${r.nom}">${options}</select>`

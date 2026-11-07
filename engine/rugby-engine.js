@@ -7829,6 +7829,17 @@
           // attend la fin du protocole (il ne peut pas tenir deux maillots).
           if (!r.temporaire && !r.retour && r.joueurId != null
             && this.protocoles.some((p) => !p.issue && p.equipe === r.equipe && p.joueurIdTemp === r.joueurId)) continue;
+          // LOI 3.6 (bugs.md BUG-RM-012) : un changement TACTIQUE — programmé
+          // ou demandé par le manager — attend le ballon mort. Les entrées
+          // médicales (blessure, protocole, saignement, retour) restent immédiates.
+          if (!r.temporaire && !r.retour && !r.blessure && !this._ballonMortPourRemplacement()) {
+            if (!r.annonce) {
+              r.annonce = true;
+              this.log('REMPLACEMENT_EN_ATTENTE', r.equipe,
+                `Changement demande pour l'equipe ${r.equipe} au n°${r.numero} : il entrera au prochain arret de jeu`, { numero: r.numero });
+            }
+            continue;
+          }
           r.applique = true;
           const equipe = r.equipe === 'A' ? this.equipeA : this.equipeB;
           const sortant = equipe && equipe[r.numero - 1];
@@ -8302,6 +8313,7 @@
             r.numero = b.numero;
           }
           r.instant = this.tempsMatch;
+          r.blessure = true; // entrée médicale : immédiate (cf. BUG-RM-012)
           this.log('BLESSURE', b.equipe, `Blessure : le n°${b.numero} de l'equipe ${b.equipe} doit sortir, un remplacant entre`);
         } else if (!this._aBancDeclare(b.equipe)
           // Loi 3 : huit remplaçants au plus sur la feuille.
@@ -8323,6 +8335,21 @@
 
     // `joueurId` (optionnel) : l'identité de l'entrant côté club, rendue avec
     // le remplacement effectué pour lui créditer SES actions (BUG-RM-007).
+    // Ballon mort pour un changement tactique (loi 3.6) : avant le coup
+    // d'envoi, avant l'introduction en mêlée ou le lancer en touche, pendant
+    // un essai, une transformation, une pénalité au but ou la mi-temps.
+    _ballonMortPourRemplacement() {
+      const ph = this.phase;
+      if (ph === 'ESSAI' || ph === 'TRANSFORMATION' || ph === 'PENALITE_TIR' || ph === 'MI_TEMPS' || ph === 'TERMINE') return true;
+      if (ph === 'COUP_ENVOI') return !this.ballonEnVol;
+      if (ph === 'TOUCHE') return !this.toucheLancer;
+      if (ph === 'MELEE') {
+        const e = this.melee && this.melee.etat;
+        return e === ETATS_MELEE.FORMATION || e === ETATS_MELEE.CROUCH || e === ETATS_MELEE.BIND || e === ETATS_MELEE.SET;
+      }
+      return false;
+    }
+
     remplacerJoueurEnCours(equipe, numero, joueur, joueurId) {
       if (equipe !== 'A' && equipe !== 'B') return false;
       if (!(numero >= 1 && numero <= 15)) return false;
@@ -8332,6 +8359,8 @@
       // même et ses statistiques étaient coupées en deux.
       if (joueurId != null) {
         if (this._remplacements.some((r) => r.applique && !r.annule && !r.temporaire && r.equipe === equipe && r.joueurId === joueurId)) return false;
+        // Déjà demandé, en attente du ballon mort (BUG-RM-012) : pas deux fois.
+        if (this._remplacements.some((r) => r.manuel && !r.applique && !r.annule && r.equipe === equipe && r.joueurId === joueurId)) return false;
         // Remplaçant temporaire encore sur le terrain (protocole commotion en cours).
         if (this.protocoles.some((p) => !p.issue && p.equipe === equipe && p.joueurIdTemp === joueurId)) return false;
         for (const r of this._remplacements) {
@@ -8340,7 +8369,7 @@
       }
       this._remplacements.push({
         equipe, numero: Math.round(numero), joueur: joueur || {},
-        instant: this.tempsMatch, applique: false, joueurId: joueurId != null ? joueurId : null,
+        instant: this.tempsMatch, applique: false, joueurId: joueurId != null ? joueurId : null, manuel: true,
       });
       return true;
     }
