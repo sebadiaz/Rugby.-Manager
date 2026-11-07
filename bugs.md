@@ -16,7 +16,7 @@ Le même scénario produit une seule entrée sur `cf01357`. La branche de travai
 
 **Acceptation.** Jouer un match Club et faire entrer un joueur avant sa minute prévue. Dépasser cette minute, recharger le match et le terminer. Vérifier une seule entrée dans la chronologie et dans l’archive, les statistiques attribuées au bon joueur et le résultat enregistré une seule fois au classement.
 
-### [ ] BUG-RM-012 — Un changement tactique du banc s’applique pendant le jeu — P2
+### [x] BUG-RM-012 — Un changement tactique du banc s’applique pendant le jeu — P2
 
 Reproduit dans les deux moteurs. Avec la graine 24, attendre la phase `PORTE`, demander un remplacement manuel et avancer d’un pas de 0,1 s. Le changement est journalisé au pas suivant alors que la phase reste `PORTE`. La [loi 3.6 de World Rugby](https://passport.world.rugby/fr/les-regles-du-jeu/regles-du-jeu-par-numero/3-l-equipe/) situe les remplacements ballon mort, avec l’autorisation de l’arbitre. [Traitement des remplacements sur la branche](https://github.com/sebadiaz/Rugby.-Manager/blob/cf01357673015b3108aa084512923cc42854b367/engine/rugby-engine.js#L7818-L7840)
 

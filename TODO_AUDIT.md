@@ -581,7 +581,7 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 ## P2 — Maintenabilité et simulation
 
 ### P2-166. Changement tactique au ballon mort (loi 3.6, bugs.md BUG-RM-012)
-- **Statut : LIVRÉ (moteur) — réception navigateur du parcours complet à faire**
+- **Statut : LIVRÉ et vérifié après fusion de la PR n°20 (invariants 137 OK, calibration 14/14, parcours navigateur 583 tests sans échec)**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_ballonMortPourRemplacement`, file des
   remplacements, `remplacerJoueurEnCours`), `docs/js/main.js` (panneau du banc), `docs/js/constants.js`,
   `docs/js/ui.js`, `server/test-invariants.js`.
