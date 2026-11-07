@@ -4577,7 +4577,10 @@ function optionsLancement() {
     const premier = finale && finale.find((r) => r.numero === 3);
     verifier('banc : le remplaçant entre au maillot choisi par le manager (n°3)', !!premier, JSON.stringify(finale));
     verifier('banc : il n entre qu une fois (le doublon à la minute prévue est couvert par test-invariants)', premier && finale.filter((r) => r.joueurId === premier.joueurId).length === 1, JSON.stringify(finale));
-    verifier('banc : le panneau le montre « entré » et ne le propose plus', apres.dis && /entré/.test(apres.detail), JSON.stringify(apres));
+    // Loi 3.6 (BUG-RM-012) : demandé, il est « en attente » jusqu'au jeu suivant
+    // (à la mi-temps, dès la reprise), puis entre une seule fois (vérifié ci-dessus).
+    verifier('banc : le panneau le montre « en attente » (ou « entré ») et ne le propose plus',
+      apres.dis && (/entré/.test(apres.detail) || /en attente : entrera dès la reprise du jeu/.test(apres.detail)), JSON.stringify(apres));
     if (fin) { await pgBanc.click('#btnResultatFermer'); await pgBanc.waitForTimeout(800); }
     const credit = await pgBanc.evaluate((id) => { const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1')); const j = s.clubJoueur.effectif.find((x) => x.id === id); return j && j.statsSaison; }, premier && premier.joueurId);
     verifier('banc : le remplaçant est crédité d une entrée en jeu, une seule', credit && credit.entreesEnJeu === 1 && credit.matchsJoues === 1, JSON.stringify(credit));
