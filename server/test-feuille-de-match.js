@@ -317,4 +317,30 @@ test('E15 — les joueurs du match : le meilleur de chaque équipe par action co
   assert.ok(!/Les joueurs du match/.test(RMClub.htmlFeuilleDeMatch(fa)));
 });
 
+test('E16 — les joueurs du match sont nommés (Mode Club), remplaçant compris, et l archive garde les noms (FUNC-RM-011)', () => {
+  const noms = {}; const joueursA = {};
+  for (let n = 1; n <= 15; n++) { noms[n] = `Prénom${n} Nom${n}`; joueursA[n] = { nom: noms[n] }; }
+  const m = new RugbyEngine.MatchEngine(5, 4800, { joueursA, remplacements: [
+    { equipe: 'A', numero: 7, minute: 30, joueurId: 'r7', joueur: { nom: 'Remplaçant Sept', poste: '3L' } }] });
+  m.jouerJusquAuSifflet(0.2);
+  const etat = m.getState();
+  assert.strictEqual(etat.nomsJoueurs.A[7], 'Remplaçant Sept', 'le maillot 7 est porté par le remplaçant au coup de sifflet');
+  assert.strictEqual(etat.nomsJoueurs.A[10], 'Prénom10 Nom10');
+  const sorti = etat.statsJoueursSortis.A.find((r) => r.numero === 7);
+  assert.ok(sorti && sorti.nom === 'Prénom7 Nom7', 'le titulaire sorti garde son nom');
+  const f = RMClub.feuilleDeMatch(etat, {});
+  for (const l of f.joueursDuMatch) {
+    if (!l.a) continue;
+    // Le nom désigne bien celui qui portait le maillot quand il a fait l'action.
+    const attendu = l.a.sortie != null ? noms[l.a.numero] : etat.nomsJoueurs.A[l.a.numero];
+    assert.strictEqual(l.a.nom, attendu, `${l.cle} : ${l.a.nom}`);
+    assert.ok(/^P\. Nom\d+ · |^R\. Sept · /.test(l.texteA), l.texteA);
+    assert.ok(!l.b || /^n°\d+ · /.test(l.texteB), 'l équipe sans noms garde le maillot : ' + l.texteB);
+  }
+  const s = { numero: 1 };
+  RMClub.archiverFeuilleDeMatch(s, { cle: 'm#6', etat });
+  const f2 = RMClub.feuilleDeMatch(JSON.parse(JSON.stringify(RMClub.feuilleArchivee(s, 'm#6'))), {});
+  assert.deepStrictEqual(f2.joueursDuMatch, f.joueursDuMatch, 'mêmes noms après archive');
+});
+
 console.log(`\n${nbTests} test(s) exécuté(s).`);

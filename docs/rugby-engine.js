@@ -7836,7 +7836,11 @@
           // Les actions du sortant lui restent : sa ligne est close ici, et
           // l'entrant commencera la sienne (cf. _statJoueur).
           const lignes = this.statsJoueurs[r.equipe];
-          this.statsJoueursSortis[r.equipe].push({ numero: r.numero, sortie: this.tempsMatch, stats: lignes[r.numero] || null });
+          // Nom du sortant (facultatif, cf. cfg.joueursA/B[n].nom) : purement
+          // informatif, pour la feuille de match (FUNC-RM-011).
+          const cfgSortant = (this.cfg[r.equipe === 'A' ? 'joueursA' : 'joueursB'] || {})[r.numero];
+          this.statsJoueursSortis[r.equipe].push({ numero: r.numero, sortie: this.tempsMatch, stats: lignes[r.numero] || null,
+            nom: (cfgSortant && cfgSortant.nom) || null });
           delete lignes[r.numero];
           // Le capitaine sort (ou revient d'un protocole) : le brassard suit (P2-162).
           if (r.numero === this.capitaineNumero[r.equipe]) this._capitaineSorti[r.equipe] = !r.retour;
@@ -8512,8 +8516,14 @@
         // Lignes closes des joueurs remplacés, dans l'ordre des sorties, et les
         // remplacements réellement effectués (BUG-RM-007).
         statsJoueursSortis: {
-          A: this.statsJoueursSortis.A.map((x) => ({ numero: x.numero, sortie: x.sortie, stats: x.stats ? { ...x.stats } : null })),
-          B: this.statsJoueursSortis.B.map((x) => ({ numero: x.numero, sortie: x.sortie, stats: x.stats ? { ...x.stats } : null })),
+          A: this.statsJoueursSortis.A.map((x) => ({ numero: x.numero, sortie: x.sortie, stats: x.stats ? { ...x.stats } : null, nom: x.nom || null })),
+          B: this.statsJoueursSortis.B.map((x) => ({ numero: x.numero, sortie: x.sortie, stats: x.stats ? { ...x.stats } : null, nom: x.nom || null })),
+        },
+        // Noms des joueurs en jeu, par maillot (facultatifs : Mode Club) — la
+        // feuille de match nomme qui a fait quoi (FUNC-RM-011). Aucun effet de jeu.
+        nomsJoueurs: {
+          A: Object.fromEntries(Object.entries(this.cfg.joueursA || {}).filter(([, j]) => j && j.nom).map(([n, j]) => [n, j.nom])),
+          B: Object.fromEntries(Object.entries(this.cfg.joueursB || {}).filter(([, j]) => j && j.nom).map(([n, j]) => [n, j.nom])),
         },
         remplacementsEffectues: this.remplacementsEffectues.map((r) => ({ ...r })),
         blessuresMatch: this.blessuresMatch.map((b) => ({ ...b })),

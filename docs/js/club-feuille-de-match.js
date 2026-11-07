@@ -80,9 +80,14 @@
   // joueurs remplacés (leurs actions leur restent, cf. statsJoueursSortis).
   function lignesEquipe(etat, camp) {
     const lignes = [];
-    for (const [n, st] of Object.entries((etat && etat.statsJoueurs && etat.statsJoueurs[camp]) || {})) lignes.push({ numero: +n, sortie: null, stats: st || {} });
-    for (const r of (etat && etat.statsJoueursSortis && etat.statsJoueursSortis[camp]) || []) lignes.push({ numero: r.numero, sortie: r.sortie != null ? Math.round(r.sortie) : null, stats: r.stats || {} });
+    const noms = (etat && etat.nomsJoueurs && etat.nomsJoueurs[camp]) || {};
+    for (const [n, st] of Object.entries((etat && etat.statsJoueurs && etat.statsJoueurs[camp]) || {})) lignes.push({ numero: +n, sortie: null, stats: st || {}, nom: noms[n] || null });
+    for (const r of (etat && etat.statsJoueursSortis && etat.statsJoueursSortis[camp]) || []) lignes.push({ numero: r.numero, sortie: r.sortie != null ? Math.round(r.sortie) : null, stats: r.stats || {}, nom: r.nom || null });
     return lignes;
+  }
+  function nomCourt(nom) {
+    const parties = String(nom).trim().split(/\s+/);
+    return parties.length > 1 ? `${parties[0][0]}. ${parties.slice(1).join(' ')}` : parties[0];
   }
   function joueursDuMatch(etat) {
     const lignes = { A: lignesEquipe(etat, 'A'), B: lignesEquipe(etat, 'B') };
@@ -91,13 +96,15 @@
       let m = null;
       for (const l of lignes[camp]) {
         const v = nombre(l.stats[cle]);
-        if (v > 0 && (!m || v > m.valeur || (v === m.valeur && l.numero < m.numero))) m = { numero: l.numero, sortie: l.sortie, valeur: v };
+        if (v > 0 && (!m || v > m.valeur || (v === m.valeur && l.numero < m.numero))) m = { numero: l.numero, sortie: l.sortie, valeur: v, nom: l.nom };
       }
       return m;
     };
     return CATEGORIES_JOUEURS.map(([cle, libelle, format]) => {
       const a = meilleur('A', cle), b = meilleur('B', cle);
-      const texte = (m) => (m ? `n°${m.numero} · ${format ? format(m.valeur) : m.valeur}` : '–');
+      // Nommé quand le match le sait (Mode Club), en forme courte pour tenir sur
+      // mobile (« J. Michel ») ; sinon le maillot.
+      const texte = (m) => (m ? `${m.nom ? nomCourt(m.nom) : 'n°' + m.numero} · ${format ? format(m.valeur) : m.valeur}` : '–');
       return { cle, libelle, a, b, texteA: texte(a), texteB: texte(b) };
     }).filter((l) => l.a || l.b);
   }
@@ -298,7 +305,7 @@
     const possession = lignePct(f.possession) + lignePct(f.occupation);
 
     // Les joueurs du match : « n°7 · 14 » par catégorie, le poste en infobulle.
-    const titreJ = (m) => (m ? `${POSTE_NUMERO[m.numero] || ''}${m.sortie != null ? ` — remplacé à la ${Math.max(1, Math.floor(m.sortie / 60))}e` : ''}` : '');
+    const titreJ = (m) => (m ? `${m.nom ? m.nom + ', ' : ''}n°${m.numero} (${POSTE_NUMERO[m.numero] || ''})${m.sortie != null ? ` — remplacé à la ${Math.max(1, Math.floor(m.sortie / 60))}e` : ''}` : '');
     const joueurs = (f.joueursDuMatch || []).map((l) =>
       `<div class="ligneStatMatch ligneJoueurMatch">` +
       `<span class="valA" title="${echapperTexte(titreJ(l.a))}">${echapperTexte(l.texteA)}</span>` +

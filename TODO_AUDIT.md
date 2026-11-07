@@ -580,6 +580,26 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-165. Les joueurs du match sont nommés
+- **Statut : LIVRÉ**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`getState().nomsJoueurs`, nom du sortant
+  dans `statsJoueursSortis`), `docs/js/club-composition.js` (nom transmis pour les titulaires),
+  `docs/js/matchState.js`, `docs/js/club-archives-matchs.js`, `docs/js/club-feuille-de-match.js`,
+  `server/test-feuille-de-match.js` (E16).
+
+**Correction.** « n°7 · 16 » devient « J. Michel · 16 » (nom complet, maillot et poste en infobulle). Les titulaires
+transmettent leur nom au moteur comme les remplaçants le faisaient déjà ; le moteur l'expose sans aucun effet de
+jeu (matchs identiques au pas près) : noms des maillots au coup de sifflet, et nom de chaque joueur sorti avec sa
+ligne. Un remplacé est donc nommé pour SES actions, l'entrant pour les siennes. L'archive garde les noms. Sans noms
+(Match rapide), le maillot reste affiché.
+
+**Défaut trouvé en vérifiant à l'écran.** Les noms des joueurs en jeu se perdaient dans `normalizeMatchState`
+(matchState.js), qui ne recopie que les champs connus : seuls les remplacés étaient nommés. Champ ajouté.
+
+**Tests.** E16 : match avec noms et un remplacement au n°7 — le maillot 7 est au remplaçant au coup de sifflet, le
+titulaire sorti garde son nom, chaque meilleur est nommé d'après qui portait le maillot, archive identique ; l'équipe
+sans noms garde « n°X ». Capture Mode Club 390 px.
+
 ### P2-164. Feuille de match : les joueurs du match, par action comptée
 - **Statut : LIVRÉ**
 - Fichiers concernés : `docs/js/club-feuille-de-match.js` (`joueursDuMatch`), `docs/js/club-archives-matchs.js`

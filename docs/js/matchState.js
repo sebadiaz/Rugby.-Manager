@@ -50,6 +50,9 @@
       // réellement effectuées, pour créditer chaque personne de SES actions.
       statsJoueursSortis: rawState.statsJoueursSortis || null,
       remplacementsEffectues: rawState.remplacementsEffectues || null,
+      // Noms des joueurs en jeu au coup de sifflet (Mode Club) : la feuille de
+      // match nomme les joueurs du match (FUNC-RM-011).
+      nomsJoueurs: rawState.nomsJoueurs || null,
       // Blessures au contact (FUNC-RM-005) : qui est sorti, à quel instant.
       blessuresMatch: rawState.blessuresMatch || null,
       protocoles: rawState.protocoles || null,

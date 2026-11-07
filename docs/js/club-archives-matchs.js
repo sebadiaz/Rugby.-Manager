@@ -67,7 +67,7 @@
       res[camp] = (sortis[camp] || []).map((r) => {
         const utile = {};
         for (const [k, v] of Object.entries((r && r.stats) || {})) if (v) utile[k] = v;
-        return { numero: r.numero, sortie: Math.round(r.sortie || 0), stats: utile };
+        return Object.assign({ numero: r.numero, sortie: Math.round(r.sortie || 0), stats: utile }, r.nom ? { nom: r.nom } : null);
       }).filter((r) => Object.keys(r.stats).length);
     }
     return res;
@@ -90,6 +90,8 @@
       // Joueurs sortis (remplacés) : leurs actions restent sur la feuille
       // (« Les joueurs du match », FUNC-RM-011), sans les zéros.
       statsJoueursSortis: compacterSortis(e.statsJoueursSortis),
+      // Noms des joueurs au coup de sifflet (Mode Club), pour nommer les joueurs du match.
+      nomsJoueurs: e.nomsJoueurs ? { A: Object.assign({}, e.nomsJoueurs.A), B: Object.assign({}, e.nomsJoueurs.B) } : null,
       chronologie: (e.chronologie || []).map((x) => Object.assign({
         minute: x.minute, type: x.type, team: x.team, message: x.message,
       }, x.marqueur != null ? { marqueur: x.marqueur } : null,

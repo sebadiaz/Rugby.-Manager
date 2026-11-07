@@ -74,6 +74,8 @@
         tendance: j.tendance, couloir: j.couloir,
         adresse: j.adresse, melee: j.melee, touche: j.touche, puissance: j.puissance,
         endurance: j.endurance, passe: j.passe, jeuPied: j.jeuPied, decision: j.decision, discipline: j.discipline,
+        // Nom : ignoré par le jeu, lu par la feuille de match (FUNC-RM-011).
+        nom: j.nom,
       };
     }
     return cfg;
@@ -135,6 +137,8 @@
         melee: j.melee, touche: j.touche, puissance: j.puissance,
         endurance: j.endurance, passe: j.passe, jeuPied: j.jeuPied,
         decision: j.decision, discipline: j.discipline,
+        // Nom : ignoré par le jeu, lu par la feuille de match (FUNC-RM-011).
+        nom: j.nom,
       };
     }
     return cfg;
