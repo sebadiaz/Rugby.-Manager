@@ -70,6 +70,8 @@
     'attaqueA', 'attaqueB', 'defenseA', 'defenseB', 'meleeA', 'meleeB',
     'toucheA', 'toucheB', 'ruckA', 'ruckB', 'buteurA', 'buteurB',
     'toucheLanceurA', 'toucheLanceurB', 'remplacements',
+    // Capitaine désigné (FUNC-RM-006) : propre au club de CE match.
+    'capitaineA', 'capitaineB',
     // Feuille de match déclarée (FUNC-RM-005) : propre au club de CE match.
     'bancA', 'bancB',
     // Match de coupe (BUG-RM-001) : ne doit jamais survivre au match suivant.

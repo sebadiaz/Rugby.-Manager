@@ -580,6 +580,34 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-162. Capitaine : il arbitre les pénalités quand l'équipe le lui délègue, relais du brassard
+- **Statut : LIVRÉ**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`capitaineNumero`, `_capitaine`,
+  `attaque.choixPenalites`, `_traiterPenalite`, sortie du capitaine au remplacement), `docs/rugby-config.json`,
+  `docs/js/club.js` (axe `penalites`), `docs/js/club-composition.js`, `docs/js/club-equipes.js`, `docs/js/clubUI.js`
+  (capitaine envoyé au moteur, sens du jeu dans l'aperçu), `docs/js/main.js`, `docs/js/constants.js`, `docs/js/ui.js`,
+  `server/test-invariants.js`, `server/test-melee.js` (M6i), `server/test-parcours-navigateur.js`.
+
+**Constat.** Le capitaine désigné dans la composition n'atteignait pas le moteur : rôle décoratif (FUNC-RM-006).
+
+**Correction.** Premier usage concret, une option tactique déléguée. Consigne « Pénalités à portée de but » :
+« Prendre les points » (toujours au but à 5-45 m), « Le capitaine décide » (défaut, logique existante : distance et
+score), « Viser la touche ». Quand il décide, la lecture de fin de match du capitaine (menés de plus de 3 points dans
+le dernier quart : renoncer aux poteaux pour la touche) se fait avec la probabilité de son sens du jeu (« decision »
+/100, bornée 0,3-0,95) au lieu d'un 0,8 fixe ; l'annonce le nomme. Capitaine exclu ou remplacé : le joueur présent au
+meilleur sens du jeu prend le brassard, annoncé (« 🧭 CAPITAINE »). Sans capitaine désigné (Match rapide), c'est le
+meilleur décideur, l'ouvreur (80) : matchs identiques au pas près. L'aperçu présente le capitaine avec son sens du jeu.
+Aucun bonus de score : seul un choix change de mains.
+
+**Mesures.** 12 graines (équipe A, par match) — tirs au but / pénalités en touche / mauls : capitaine 3,9 / 6,5 /
+4,2 ; points 4,9 / 4,8 / 3,9 ; touche 0 / 9,6 / 5,2. 100 graines appariées : écart de score « points » +3,5 ± 4,4,
+« touche » +3,8 ± 4,7 (non significatifs) ; « touche » : essais +1,6 ± 0,5, touches +3,8 ± 1,2.
+
+**Tests.** Invariant par scénario (65e minute, menés de 7, pénalité à 30 m, 120 tirages) : capitaine lucide (95)
+joue la touche ≥ 85 %, confus (30) ≤ 45 % — l'ancien moteur donne 82 % aux deux ; consignes imposées respectées ;
+relais annoncé quand le capitaine est exclu. M6i : fusion avec les autres axes. Navigateur : options, sauvegarde,
+sens du jeu du capitaine dans l'aperçu.
+
 ### P2-161. Consigne des centres (n°12 et 13) : percussion, standard, distribution
 - **Statut : LIVRÉ**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`attaque.passeCentres`,

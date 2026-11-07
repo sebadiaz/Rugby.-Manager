@@ -4459,6 +4459,44 @@ test('docs/rugby-config.json (chargé par le jeu) ne contredit pas le moteur mes
   assert.deepStrictEqual(ecarts, [], 'valeurs du fichier différentes du moteur');
 });
 
+test('capitaine (FUNC-RM-006, P2-162) : consigne aux pénalités imposée ou déléguée, lecture du capitaine, relais du brassard', () => {
+  // Scénario : 65e minute sur 80, l'équipe A menée de 7 points obtient une
+  // pénalité à 30 m des poteaux. Le capitaine qui lit le match joue la touche.
+  const situation = (cfg, preparer) => {
+    const m = new MatchEngine(1, 4800, cfg);
+    m.tempsMatch = 3900; m.score = { A: 10, B: 17 };
+    if (preparer) preparer(m);
+    const logs = []; const l0 = m.log.bind(m);
+    m.log = (t, team, msg, extra, ...r) => { logs.push({ t, team, msg, extra }); return l0(t, team, msg, extra, ...r); };
+    m._traiterPenalite('A', { x: 70, y: 35 });
+    return { touche: m.phase === 'TOUCHE' || logs.some((l) => /joue en touche/.test(l.msg)) || logs.some((l) => l.t === 'CHOIX_CAPITAINE'), tir: m.phase === 'PENALITE_TIR', logs };
+  };
+  const taux = (cfg, preparer) => {
+    let touche = 0;
+    for (let i = 0; i < 120; i++) {
+      const r = situation(Object.assign({}, cfg), (m) => { m.rng = (() => { let x = 1234 + i * 7919; return () => { x = (x * 16807) % 2147483647; return x / 2147483647; }; })(); if (preparer) preparer(m); });
+      if (r.touche) touche++;
+    }
+    return touche / 120;
+  };
+  const avecDecision = (d) => (m) => { const c = m.equipeA.find((j) => j.numero === 7); c.decision = d; };
+  const lucide = taux({ capitaineA: 7 }, avecDecision(95)), confus = taux({ capitaineA: 7 }, avecDecision(30));
+  assert.ok(lucide >= 0.85 && confus <= 0.45 && lucide - confus >= 0.4, `touche choisie : capitaine lucide ${lucide}, confus ${confus}`);
+  // Consignes imposées : le capitaine ne décide plus, même au bon moment.
+  assert.strictEqual(taux({ capitaineA: 7, attaqueA: { choixPenalites: 'points' } }, avecDecision(95)), 0, 'prendre les points : jamais la touche');
+  assert.strictEqual(taux({ capitaineA: 7, attaqueA: { choixPenalites: 'touche' } }, avecDecision(30)), 1, 'viser la touche : toujours');
+  // Le capitaine désigné est exclu : le joueur au meilleur sens du jeu prend le brassard, annoncé.
+  const relais = situation({ capitaineA: 7 }, (m) => { m.equipeA.find((j) => j.numero === 7).sinBin = 600; m.rng = () => 0.1; });
+  const annonce = relais.logs.find((l) => l.t === 'CAPITAINE_RELAIS');
+  const meilleur = relais.logs.find((l) => l.t === 'CHOIX_CAPITAINE');
+  assert.ok(annonce && /n°7/.test(annonce.msg) && meilleur && meilleur.extra.capitaine !== 7, JSON.stringify(relais.logs.map((l) => l.msg)));
+  // Hors de la fin de match, la consigne « points » fait taper au but à portée.
+  const m = new MatchEngine(2, 4800, { attaqueA: { choixPenalites: 'points' } });
+  m.tempsMatch = 600; m.rng = () => 0.99;
+  m._traiterPenalite('A', { x: 72, y: 35 });
+  assert.strictEqual(m.phase, 'PENALITE_TIR', 'prendre les points : tir au but à 28 m');
+});
+
 test('consigne des centres (FUNC-RM-004, P2-161) : percussion = plus de courses et moins de passes des 12-13, distribution = l inverse', () => {
   const mesurer = (passeCentres) => {
     const r = { courses: 0, passes: 0, passesAdv: 0 };

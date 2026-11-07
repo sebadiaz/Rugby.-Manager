@@ -137,7 +137,8 @@
       "calme": 0.55
     },
     "chandelleNeuf": 1,
-    "passeCentres": 1
+    "passeCentres": 1,
+    "choixPenalites": null
   },
   "defense": {
     "profondeurArriereJeu": 18,

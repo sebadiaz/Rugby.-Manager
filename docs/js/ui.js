@@ -223,7 +223,9 @@
       // Une blessure n'est pas une décision de l'arbitre (FUNC-RM-005).
       // Ni une blessure ni un lancement de jeu ne sont des décisions de l'arbitre.
       const voix = /^(BLESSURE|PROTOCOLE_COMMOTION|RETOUR_PROTOCOLE|COMMOTION_CONFIRMEE|SAIGNEMENT)$/.test(aAfficher.type) ? '🚑 SOIGNEUR'
-        : aAfficher.type === 'LANCEMENT' ? '📋 LANCEMENT' : '🟨 ARBITRE';
+        : aAfficher.type === 'LANCEMENT' ? '📋 LANCEMENT'
+          // Le capitaine n'est pas l'arbitre (FUNC-RM-006).
+          : /^(CHOIX_CAPITAINE|CAPITAINE_RELAIS)$/.test(aAfficher.type) ? '🧭 CAPITAINE' : '🟨 ARBITRE';
       banner.textContent = `${voix} — ${traduireEquipesDansMessage(aAfficher.message)}${recitEssaiEnDirect(aAfficher)}`;
       banner.classList.add('visible');
       placerBandeau(banner);

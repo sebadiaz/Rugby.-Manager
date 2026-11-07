@@ -178,6 +178,8 @@
       rythme: endurance >= 62 ? 'rapide' : endurance <= 50 ? 'lent' : 'normal',
       pied: jeuPied >= 58 ? 'frequent' : jeuPied <= 46 ? 'rare' : 'normal',
       ligneDef: plaquage >= 62 ? 'haute' : plaquage <= 50 ? 'basse' : 'normale',
+      // Pénalités (FUNC-RM-006) : un club IA délègue à son capitaine.
+      penalites: 'capitaine',
       toucheMaul: (melee + touche) / 2 >= 60 ? 'maul' : (melee + touche) / 2 <= 50 ? 'sol' : 'equilibre',
       // Poussée en mêlée (P1-51) : déduite de la mêlée MOYENNE du groupe, la
       // même donnée que celle sur laquelle le manager recrute ses piliers.

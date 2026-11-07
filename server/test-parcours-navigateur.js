@@ -4738,6 +4738,8 @@ function optionsLancement() {
     const texteBc = await pgBc.textContent('#apercuMatchCorps');
     verifier('banc incomplet : l aperçu annonce 7/8 remplaçants, aucun pilier apte, et la conséquence',
       /Banc incomplet : 7\/8 remplaçants — aucun pilier apte/.test(texteBc) && /mêlées simulées/.test(texteBc), texteBc.slice(0, 300));
+    verifier('aperçu : le capitaine est présenté avec son sens du jeu (il arbitre les pénalités, FUNC-RM-006)',
+      /Capitaine.+· sens du jeu \d+/.test(texteBc), texteBc.slice(0, 300));
     const bancBc = await pgBc.evaluate(() => JSON.parse(localStorage.getItem('rugbyManager.club.v1')).clubJoueur.compositionBanc || {});
     verifier('banc incomplet : aucun pilier blessé sur la feuille', !Object.values(bancBc).some((id) => blessesBc.includes(id)), JSON.stringify(bancBc));
     verifier('banc incomplet : aucune erreur de page', erreursBc.length === 0, erreursBc.join(' | '));
@@ -4801,6 +4803,13 @@ function optionsLancement() {
     verifier('consigne des centres : « Percussion » sauvegardée, compromis affiché, les autres consignes conservées',
       tactiqueCe.centres === 'percussion' && tactiqueCe.demiMelee === 'pied' && tactiqueCe.ouvreur === 'main'
         && /atteint moins souvent les ailes/.test(compromisCe), JSON.stringify(tactiqueCe));
+    const optionsPen = await pgOv.$$eval('[data-axe="penalites"]', (b) => b.map((x) => x.dataset.valeur));
+    verifier('pénalités : trois options dans l écran Tactique, dont « Le capitaine décide »', JSON.stringify(optionsPen) === '["points","capitaine","touche"]', JSON.stringify(optionsPen));
+    await pgOv.click('[data-axe="penalites"][data-valeur="touche"]');
+    await pgOv.waitForTimeout(400);
+    const tactiquePen = await pgOv.evaluate(() => JSON.parse(localStorage.getItem('rugbyManager.club.v1')).clubJoueur.tactique);
+    verifier('pénalités : « Viser la touche » sauvegardée, les consignes individuelles conservées',
+      tactiquePen.penalites === 'touche' && tactiquePen.centres === 'percussion' && tactiquePen.ouvreur === 'main', JSON.stringify(tactiquePen));
     verifier('consigne de l ouvreur : aucune erreur de page', erreursOv.length === 0, erreursOv.join(' | '));
     await ctxOv.close();
   }

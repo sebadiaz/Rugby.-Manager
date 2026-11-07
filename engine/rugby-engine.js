@@ -270,6 +270,10 @@
       // CONSIGNE DU DEMI DE MÊLÉE (bugs.md FUNC-RM-004, P2-160) : multiplie
       // ses seules chandelles depuis la base, dans son camp. 1 = défaut.
       chandelleNeuf: 1,
+      // CHOIX AUX PÉNALITÉS (FUNC-RM-006, P2-162) : null = le capitaine décide
+      // (distance, score, son sens du jeu) ; 'points' = au but dès qu'à portée ;
+      // 'touche' = la touche (et le maul) dès qu'à portée.
+      choixPenalites: null,
       // CONSIGNE DES CENTRES (bugs.md FUNC-RM-004, P2-161) : multiplie les
       // passes des n°12 et 13 (dans la ligne et avant contact). < 1 : ils
       // percutent pour fixer ; > 1 : ils distribuent vers les ailes. 1 = défaut.
@@ -1063,6 +1067,13 @@
         A: (config && config.buteurA) || 10,
         B: (config && config.buteurB) || 10,
       };
+      // CAPITAINE (bugs.md FUNC-RM-006, P2-162) : numéro de maillot désigné par
+      // le club (config.capitaineA/B). Sans désignation, le brassard revient au
+      // joueur présent au meilleur sens du jeu (« decision »). Il arbitre le
+      // choix aux pénalités quand l'équipe le lui délègue (cf. _traiterPenalite).
+      this.capitaineNumero = { A: (config && config.capitaineA) || null, B: (config && config.capitaineB) || null };
+      this._capitaineSorti = { A: false, B: false };
+      this._brassard = { A: null, B: null };
       this.toucheLanceurNumero = {
         A: (config && config.toucheLanceurA) || this.cfg.touche.lanceur,
         B: (config && config.toucheLanceurB) || this.cfg.touche.lanceur,
@@ -1936,6 +1947,21 @@
     // --- Pénalité : selon la distance aux poteaux, l'équipe non fautive tente un
     // coup de pied au but (3 points) ou joue rapidement et avance (touche de pénalité
     // simplifiée), conformément aux options réelles de la loi sur les pénalités. ---
+    // Le capitaine en jeu (P2-162) : le désigné s'il est sur le terrain (ni
+    // exclu, ni remplacé), sinon le joueur présent au meilleur sens du jeu, qui
+    // prend le brassard — annoncé une fois.
+    _capitaine(equipe) {
+      const presents = (equipe === 'A' ? this.equipeA : this.equipeB).filter((j) => !(j.sinBin > 0));
+      const n = this.capitaineNumero[equipe];
+      let cap = n && !this._capitaineSorti[equipe] ? presents.find((j) => j.numero === n) : null;
+      if (!cap) cap = presents.reduce((b, j) => (!b || (j.decision || 0) > (b.decision || 0) ? j : b), null);
+      if (cap && n && cap.numero !== n && this._brassard[equipe] !== cap.numero) {
+        this.log('CAPITAINE_RELAIS', equipe, `Le capitaine n°${n} n'est plus sur le terrain : le n°${cap.numero} de l'equipe ${equipe} prend le brassard`);
+      }
+      this._brassard[equipe] = cap ? cap.numero : null;
+      return cap;
+    }
+
     _traiterPenalite(equipeBeneficiaire, position) {
       this._annulerAvantagePourNouvelleReprise('penalite sifflee');
       this.stats[equipeBeneficiaire === 'A' ? 'B' : 'A'].penalitesConcedees++;
@@ -1964,6 +1990,15 @@
       // maul tout près de la ligne adverse plutôt que 3 points — deux tactiques
       // réelles très fréquentes que seul le jeu rapide à la main ne représentait
       // pas jusqu'ici.
+      // Consigne d'équipe aux pénalités (P2-162) : imposée, ou déléguée au
+      // capitaine (null). Hors de portée (au-delà de 45 m, ou à moins de 5 m),
+      // rien ne change.
+      const consignePen = (this.cfgAttaque[equipeBeneficiaire] || {}).choixPenalites || null;
+      const aPortee = distanceButs >= 5 && distanceButs <= 45;
+      if (consignePen === 'touche' && aPortee) {
+        this._accorderPenaliteTouche(equipeBeneficiaire, position);
+        return;
+      }
       const tropLoinPourTir = distanceButs > 45;
       const procheLigneAdverse = distanceButs >= 5 && distanceButs <= 22;
       // CHOIX DU CAPITAINE SELON LE SCORE (P2-101). Dans le dernier quart du
@@ -1974,13 +2009,19 @@
       const adversaire = equipeBeneficiaire === 'A' ? 'B' : 'A';
       const ecartScore = this.score[equipeBeneficiaire] - this.score[adversaire];
       const finDeMatch = isFinite(this.dureeMatch) && this.dureeMatch > 0 && this.tempsMatch >= this.dureeMatch * 0.75;
-      if (finDeMatch && ecartScore < -3 && distanceButs >= 5 && distanceButs <= 45 && this.rng() < 0.8) {
+      // La lecture du moment dépend du sens du jeu du capitaine présent : sa
+      // « decision » sur 100 est la chance qu'il fasse ce choix (0,8 pour le
+      // meilleur décideur par défaut, l'ouvreur — comportement historique).
+      const capitaine = consignePen === null && finDeMatch && ecartScore < -3 && aPortee ? this._capitaine(equipeBeneficiaire) : null;
+      const lecture = capitaine ? Math.max(0.3, Math.min(0.95, (capitaine.decision || 60) / 100)) : 0.8;
+      if (consignePen === null && finDeMatch && ecartScore < -3 && aPortee && this.rng() < lecture) {
         this.log('CHOIX_CAPITAINE', equipeBeneficiaire,
-          `Menee de ${-ecartScore} points, l'equipe ${equipeBeneficiaire} renonce aux poteaux et joue la touche`);
+          `Menee de ${-ecartScore} points, le capitaine (n°${capitaine ? capitaine.numero : '?'}) de l'equipe ${equipeBeneficiaire} renonce aux poteaux et joue la touche`,
+          { capitaine: capitaine ? capitaine.numero : null });
         this._accorderPenaliteTouche(equipeBeneficiaire, position);
         return;
       }
-      const prendLesPoints = finDeMatch && ecartScore >= 0 && distanceButs >= 5 && distanceButs <= 45;
+      const prendLesPoints = (consignePen === 'points' && aPortee) || (finDeMatch && ecartScore >= 0 && aPortee);
       // Taux releve de 0,15 a 0,45 pres de la ligne : a 15 %, une penalite dans
       // les 22 adverses partait presque toujours au but (3 points) et le moteur
       // ne construisait quasiment jamais la sequence la plus banale du rugby
@@ -7782,6 +7823,8 @@
           const lignes = this.statsJoueurs[r.equipe];
           this.statsJoueursSortis[r.equipe].push({ numero: r.numero, sortie: this.tempsMatch, stats: lignes[r.numero] || null });
           delete lignes[r.numero];
+          // Le capitaine sort (ou revient d'un protocole) : le brassard suit (P2-162).
+          if (r.numero === this.capitaineNumero[r.equipe]) this._capitaineSorti[r.equipe] = !r.retour;
           this.remplacementsEffectues.push(Object.assign({ equipe: r.equipe, numero: r.numero, instant: this.tempsMatch, joueurId: r.joueurId },
             r.temporaire ? { temporaire: true } : null, r.retour ? { retour: true } : null));
           this._occupants[r.equipe][r.numero] = r.joueurId;

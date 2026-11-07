@@ -367,6 +367,9 @@
     if (cfgTactique.touche) tactiqueCfg['touche' + lettreEquipe] = cfgTactique.touche;
     const numeroButeur = RMClub.numeroDuJoueurDansComposition(slot.compositionTitulaires, slot.buteurId);
     if (numeroButeur) tactiqueCfg['buteur' + lettreEquipe] = Number(numeroButeur);
+    // Capitaine (FUNC-RM-006) : il arbitre les pénalités si l'équipe le lui délègue.
+    const numeroCapitaine = RMClub.numeroDuJoueurDansComposition(slot.compositionTitulaires, slot.capitaineId);
+    if (numeroCapitaine) tactiqueCfg['capitaine' + lettreEquipe] = Number(numeroCapitaine);
     const numeroLanceur = RMClub.numeroDuJoueurDansComposition(slot.compositionTitulaires, slot.lanceurToucheId);
     if (numeroLanceur) tactiqueCfg['toucheLanceur' + lettreEquipe] = Number(numeroLanceur);
     // Sauteurs désignés (P1-50) : FUSIONNÉS dans la config de touche déjà
@@ -6389,7 +6392,9 @@
       `${ligneInfo(`Ma forme`, `${formeTxt(maForme)}`)}` +
       `${ligneInfo(`Leur forme`, `${formeTxt(analyse.forme)}`)}</div>` +
       `<div class="carteClub"><h3>📋 Ma composition</h3>` +
-      `${ligneInfo(`Capitaine`, `${capitaine ? capitaine.nom : '—'}`)}` +
+      // Sens du jeu affiché (FUNC-RM-006) : c'est lui qui pèse quand l'équipe
+      // délègue les pénalités au capitaine.
+      `${ligneInfo(`Capitaine`, `${capitaine ? `${echapperHTML(capitaine.nom)} · sens du jeu ${Math.round(capitaine.decision || 0)}` : '—'}`)}` +
       (alertesCompo.length
         ? alertesCompo.map((a) => `<p style="font-size:12px;color:var(--loss);margin:6px 0;">${a}</p>`).join('')
         : '<p style="font-size:12px;color:var(--text-dim);margin:6px 0;">Aucun problème d\'effectif détecté pour ce match.</p>') +

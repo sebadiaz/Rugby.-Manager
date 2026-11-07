@@ -334,6 +334,8 @@ Les sommes individuelles des passes, plaquages et mètres correspondent aux somm
 
 ### [ ] FUNC-RM-006 — Capitaine et leadership avec conséquences compréhensibles — P2
 
+**Avancement (TODO_AUDIT P2-162) :** premier usage livré — consigne « Pénalités à portée de but » déléguable au capitaine, dont le sens du jeu arbitre la lecture de fin de match ; relais du brassard annoncé s'il est exclu ou remplacé ; sens du jeu affiché dans l'aperçu.
+
 **État constaté :** capitaine désigné dans la composition ; la feuille de route le qualifie de décoratif. Ne pas confondre ce rôle avec le buteur ou le lanceur, déjà exploités.
 
 **À livrer :** définir un premier usage concret : arbitrage d'une option tactique déléguée, communication/discipline ou gestion d'un moment sous pression. Afficher pourquoi le profil convient et les limites de son influence. Éviter un bonus automatique de score ou de vitesse.

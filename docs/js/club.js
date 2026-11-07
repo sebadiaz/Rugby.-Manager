@@ -695,6 +695,16 @@
         main: { nom: 'Joue à la main', description: 'L\'ouvreur garde le ballon en main et anime la ligne, il ne tape qu\'en dernier recours.', compromis: 'Plus de temps de jeu et de ballons pour les trois-quarts, mais on occupe moins le camp adverse et on joue plus souvent dans son propre camp.', attaque: { piedOuvreur: 0.4 } },
       },
     },
+    // Choix aux pénalités (FUNC-RM-006, P2-162) : imposé par le manager, ou
+    // délégué au capitaine — premier rôle concret du brassard.
+    penalites: {
+      label: 'Pénalités à portée de but', defaut: 'capitaine',
+      options: {
+        points: { nom: 'Prendre les points', description: 'À portée, l\'équipe tape toujours au but.', compromis: 'Des points sûrs à chaque faute adverse, mais on renonce aux touches au coin et aux mauls qui font les essais.', attaque: { choixPenalites: 'points' } },
+        capitaine: { nom: 'Le capitaine décide', description: 'Le capitaine choisit selon la distance et le score ; en fin de match, sa lecture dépend de son sens du jeu (décision).', compromis: 'S\'adapte au moment, mais vaut ce que vaut votre capitaine : choisissez-le pour son sens du jeu. S\'il sort, le joueur au meilleur sens du jeu prend le brassard.', attaque: null },
+        touche: { nom: 'Viser la touche', description: 'À portée, l\'équipe joue la touche pour lancer un maul ou une attaque près de la ligne.', compromis: 'Cherche l\'essai à 5 ou 7 points, mais laisse 3 points presque sûrs à chaque fois.', attaque: { choixPenalites: 'touche' } },
+      },
+    },
     // Consigne des centres (FUNC-RM-004, P2-161) : leurs passes, dans la ligne
     // et avant le contact.
     centres: {
