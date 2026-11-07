@@ -580,6 +580,27 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-163. Intrusion de l'arrière : dans la moitié adverse, le n°15 s'intercale dans la ligne
+- **Statut : LIVRÉ**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_arriereIntercale`, placement au ruck,
+  ligne en jeu courant, passes dans la ligne), `server/test-invariants.js`.
+
+**Constat (30 matchs, QA-RM-003).** Marqueurs : avants 42 %, ailiers 35 %, demis 14 %, centres 7 %, **arrière 1 %**.
+L'arrière portait 11 ballons et 46 m par match, franchissait 0,54 fois, mais ne marquait jamais (0 essai en 24
+matchs d'équipe) : en attaque, la ligne de trois-quarts ne comptait que les n°10 à 14 — l'arrière restait à 6 m
+derrière le ruck dans son couloir, même à 10 m de l'en-but adverse, et la chaîne de passes l'ignorait.
+
+**Correction.** Dans la moitié adverse (ballon à 50 m ou moins de l'en-but), l'arrière de l'équipe qui attaque
+prend place dans l'éventail entre le 13 et l'ailier (au ruck comme en jeu courant), et la chaîne de passes le sert
+puis le fait servir. Dans son camp, il reste en couverture.
+
+**Mesures.** 30 matchs : arrière 9,8 % des essais (repère réel ~7-9 %), ailiers 35 → 28 %, centres 7 → 9 %.
+100 graines appariées : essais 6,10 → 6,65 (± 0,59), points +2,3 ± 3,7, passes, rucks, touches, mêlées et
+franchissements inchangés.
+
+**Tests.** Invariant (12 graines) : dans la moitié adverse, dans la ligne 73 % du temps de ruck (39 % avant) ; dans
+son camp, hors de la ligne 62 % ; l'arrière marque 12 essais sur 93 (0 sur 78 avant).
+
 ### P2-162. Capitaine : il arbitre les pénalités quand l'équipe le lui délègue, relais du brassard
 - **Statut : LIVRÉ**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`capitaineNumero`, `_capitaine`,

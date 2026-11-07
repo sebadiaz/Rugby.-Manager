@@ -2368,6 +2368,18 @@
     // FRANCHIR pour aplatir) : détermine le registre tactique réel (kick très
     // fréquent dans son 22, jeu au sol/maul tout près de la ligne adverse...)
     // plutôt qu'un comportement uniforme sur tout le terrain.
+    // INTRUSION DE L'ARRIÈRE (P2-163) : dans la moitié adverse, le n°15 de
+    // l'équipe qui attaque s'intercale dans la ligne entre le 13 et l'ailier.
+    // Dans son camp, il garde la couverture du fond. Mesure avant : l'arrière
+    // portait 11 ballons et 46 m par match mais ne marquait jamais (0 essai
+    // en 24 matchs d'équipe, 1 % des essais pour ~7-9 % en vrai) — il n'était
+    // jamais dans la ligne quand elle approchait de l'en-but.
+    _arriereIntercale(j, xBallon) {
+      if (!j || j.numero !== 15 || j.team !== this.possession || j.sinBin > 0) return false;
+      const dist = j.sensAttaque > 0 ? LONGUEUR - xBallon : xBallon;
+      return dist <= 50;
+    }
+
     _zoneTerrain(porteur) {
       const distButs = porteur.sensAttaque > 0 ? (LONGUEUR - porteur.x) : porteur.x;
       if (distButs <= 5) return 'CINQ_M';
@@ -3015,10 +3027,10 @@
         // (~3-6 m, jamais loin derrière — « pas de passe derrière soi »), pour
         // recevoir À PLAT et enchaîner 10→12→13→aile. C'est ce qui fait circuler
         // le ballon sur 2-3 passes avant le contact, au lieu de foncer au ras.
-        const ordreLigne = { 10: 0, 12: 1, 13: 2, 11: 3, 14: 3 };
+        const ordreLigne = { 10: 0, 12: 1, 13: 2, 11: 3, 14: 3, 15: 2.5 };
         if (this.phase === 'PORTE' && !soutienDirect.has(j)
-          && porteur.numero >= 9 && porteur.numero <= 13
-          && (j.numero >= 10 && j.numero <= 14)) {
+          && ((porteur.numero >= 9 && porteur.numero <= 13) || this._arriereIntercale(porteur, porteur.x))
+          && ((j.numero >= 10 && j.numero <= 14) || this._arriereIntercale(j, porteur.x))) {
           const rang = (ordreLigne[j.numero] ?? 3) - (ordreLigne[porteur.numero] ?? 0);
           if (rang > 0) {
             // LANCEMENT : partis EN PROFONDEUR (placés ~8-12 m derrière pendant
@@ -3719,12 +3731,14 @@
       // sur l'axe central 9-10. On vise le joueur SUIVANT de la ligne (passe
       // courte, <22 m), jamais un saut direct vers l'ailier collé à la touche
       // (marge de bord), et on évite de fixer un partenaire déjà sous pression.
-      if (porteur.numero >= 10 && porteur.numero <= 13 && zone !== 'CINQ_M') {
+      if (((porteur.numero >= 10 && porteur.numero <= 13) || this._arriereIntercale(porteur, porteur.x)) && zone !== 'CINQ_M') {
         // On vise le SUIVANT dans la ligne des trois-quarts (plus à l'extérieur :
         // 10→12→13→aile), onside et en espace, et on FORCE la passe sur lui — une
         // passe courte et latérale (jamais en arrière). C'est ce qui fait circuler
         // le ballon sur 2-3 passes avant le contact au lieu de foncer au ras.
+        // L'arrière intercalé (P2-163) se glisse entre le 13 et l'aile.
         const ordreL = { 10: 0, 12: 1, 13: 2, 11: 3, 14: 3 };
+        if (this._arriereIntercale(att.find((j) => j.numero === 15), porteur.x)) ordreL[15] = 2.5;
         const rangP = ordreL[porteur.numero] ?? 0;
         // On vise le VOISIN IMMÉDIAT dans la ligne (rang le plus proche au-dessus),
         // à courte distance (< 13 m) : passe courte et latérale au joueur d'à côté.
@@ -4991,7 +5005,8 @@
           // passer 7-11 m EN ARRIÈRE au 10 (mesuré), le ballon reculait à chaque
           // passe et l'attaque ne « lançait » jamais le jeu sur le côté. Les backs
           // se placent donc en éventail à droite/gauche du 9, pas dans son dos.
-          const estBack = j.numero >= 10 && j.numero <= 14;
+          const intercale = this._arriereIntercale(j, pt.x);
+          const estBack = (j.numero >= 10 && j.numero <= 14) || intercale;
           if (estBack) {
             // Placement EN PROFONDEUR pendant le ruck (~8-12 m derrière la base,
             // éventail LARGE de ~7 à ~31 m sur le côté ouvert) : la ligne n'est
@@ -5015,7 +5030,7 @@
               avancer(j, cibleXf - j.x, j.channelY - j.y, dt, vitesseMs(j) * 0.85);
               continue;
             }
-            const ordreBack = { 10: 1, 12: 2, 13: 3, 11: 4, 14: 4 };
+            const ordreBack = { 10: 1, 12: 2, 13: 3, 11: 4, 14: 4, 15: 3.5 };
             const rangB = ordreBack[j.numero] || 2;
             const cibleY = estAilier && sonCote === coteOuvert && consigneAiliers === 'large'
               ? (coteOuvert > 0 ? LARGEUR - 4 : 4)

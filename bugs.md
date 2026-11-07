@@ -422,6 +422,8 @@ Les sommes individuelles des passes, plaquages et mètres correspondent aux somm
 
 **Avancement (TODO_AUDIT P2-125, P2-126) :** point de départ des essais corrigé (essais partis de plus de 50 m : 1,8 par match et non 2,95). Touche gagnée à moins de 10 m : maul 43 % → 70 %, essais sur ces touches 0,52 → 0,90 par match, total des essais inchangé. Reste à traiter : la part des essais partis de loin (27 %). Mesure du 31/10 (100 matchs) : le 9 perçait à la sortie d'un maul (17,6 % des sorties, 12,3 % des essais) ; corrigé (TODO_AUDIT P2-146) : 4,8 % des essais au 9, essais partis de plus de 50 m 21 %.
 
+**Mesure du 08/11 (30 matchs) et TODO_AUDIT P2-163 :** marqueurs avants 42 %, ailiers 35 %, demis 14 %, centres 7 %, arrière 1 % ; l'arrière ne s'intercalait jamais dans la ligne. Après l'intrusion de l'arrière dans la moitié adverse : arrière 9,8 %, ailiers 28 %, centres 9 %.
+
 **Mesures :** entrées dans les 22 m, gain net par phase à possession conservée, profondeur de réception, durée des séquences, origine des essais et postes des marqueurs. Ne pas reprendre les anciennes valeurs de l'audit comme résultats du moteur courant.
 
 **Acceptation :** échantillon versionné et comparaison appariée avant/après ; avants et trois-quarts ont des usages distincts, les attaques construites peuvent progresser sans dépendre uniquement d'une échappée. Vérifier en images le soutien, la ligne défensive, le ballon porté, les touches/mêlées proches de la ligne. Pas de seuil arbitraire imposant qu'un poste marque un nombre fixe d'essais.

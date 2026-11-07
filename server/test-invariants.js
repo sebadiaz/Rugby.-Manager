@@ -4459,6 +4459,32 @@ test('docs/rugby-config.json (chargé par le jeu) ne contredit pas le moteur mes
   assert.deepStrictEqual(ecarts, [], 'valeurs du fichier différentes du moteur');
 });
 
+test('intrusion de l arrière (P2-163) : dans la moitié adverse le n°15 s intercale dans la ligne et marque, dans son camp il couvre le fond', () => {
+  let essais = 0, essaisArriere = 0, ruckAdv = 0, dansLigne = 0, ruckSien = 0, auFond = 0;
+  for (let seed = 1; seed <= 12; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    while (m.phase !== 'TERMINE') {
+      m.tick(0.1);
+      if (m.phase === 'RUCK' && m.ruckPoint && m.timerPhase > 1.5) {
+        const q = (m.possession === 'A' ? m.equipeA : m.equipeB).find((j) => j.numero === 15);
+        if (!q || q.sinBin > 0) continue;
+        const dist = q.sensAttaque > 0 ? 100 - m.ruckPoint.x : m.ruckPoint.x;
+        const derriere = (m.ruckPoint.x - q.x) * q.sensAttaque;
+        const lateral = Math.abs(q.y - m.ruckPoint.y);
+        // Dans la ligne : peu profond et écarté sur le côté, comme les trois-quarts.
+        if (dist <= 45) { ruckAdv++; if (derriere < 14 && lateral > 12) dansLigne++; }
+        else if (dist >= 60) { ruckSien++; if (!(derriere < 14 && lateral > 12)) auFond++; }
+      }
+    }
+    for (const e of m.getState().chronologie) if (e.type === 'ESSAI') { essais++; if (e.marqueur === 15) essaisArriere++; }
+  }
+  // Mesuré (12 graines) : dans la ligne 73 % (39 % avant l'intrusion), hors de
+  // la ligne dans son camp 62 % (67 % avant), essais de l'arrière 12/93 (0/78).
+  assert.ok(dansLigne / ruckAdv >= 0.6, `moitié adverse : dans la ligne ${(100 * dansLigne / ruckAdv).toFixed(0)} % du temps de ruck`);
+  assert.ok(auFond / ruckSien >= 0.5, `son camp : hors de la ligne ${(100 * auFond / ruckSien).toFixed(0)} % du temps de ruck`);
+  assert.ok(essaisArriere / essais >= 0.04, `l arrière marque ${essaisArriere} essais sur ${essais}`);
+});
+
 test('capitaine (FUNC-RM-006, P2-162) : consigne aux pénalités imposée ou déléguée, lecture du capitaine, relais du brassard', () => {
   // Scénario : 65e minute sur 80, l'équipe A menée de 7 points obtient une
   // pénalité à 30 m des poteaux. Le capitaine qui lit le match joue la touche.
