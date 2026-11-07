@@ -2998,11 +2998,13 @@ test('mètres gagnés : comptés au-delà de la ligne d avantage, pas depuis la 
   // gagne plus de terrain qu'un ailier lent ; un avant puissant plus qu'un
   // avant léger, grâce au terrain pris DANS le plaquage, désormais compté.
   // Sur trois lots de 6 graines : vitesse x2,7 à x3,6 ; puissance x1,21 à x1,54.
+  // 18 graines (P2-163) : sur les seules graines 1-6, la puissance tombait à
+  // x1,09 par le hasard du déroulé (x1,44 et x1,37 sur 7-12 et 13-18, x1,29 au total).
   function metres(nums, attr, v) {
     const cfg = { joueursA: {}, joueursB: {} };
     for (const k of nums) cfg.joueursA[k] = { [attr]: v };
     let t = 0;
-    for (let seed = 1; seed <= 6; seed++) {
+    for (let seed = 1; seed <= 18; seed++) {
       const m = new MatchEngine(seed, 4800, cfg);
       for (let i = 0; i < 400000 && m.phase !== 'TERMINE'; i++) m.tick(0.1);
       const sj = m.getState().statsJoueurs.A;
