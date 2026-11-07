@@ -4,6 +4,40 @@ Audit initial du **23 octobre 2026**. Sources examinées sur `main` au commit `4
 
 Ce fichier donne une liste opérationnelle à partir du code, de reproductions isolées, de simulations et d'un parcours de la démo. Il complète [TODO_AUDIT.md](TODO_AUDIT.md), qui conserve les preuves et l'historique détaillés, et [ROADMAP_FOOTBALL_MANAGER.md](ROADMAP_FOOTBALL_MANAGER.md), qui suit la profondeur de gestion. Ne pas supprimer leurs historiques, recréer une fonction déjà livrée ou interpréter une ancienne mesure comme l'état actuel.
 
+## Audit du 7 novembre 2026 — match joué, banc et réalisme
+
+La [démo publique](https://sebadiaz.github.io/Rugby.-Manager/) servait [`c9b85c3`](https://github.com/sebadiaz/Rugby.-Manager/commit/c9b85c3c6c1f73abea3d94d6e387c00dfd75528d) au moment de l’essai. La branche de travail mesurée était [`cf01357`](https://github.com/sebadiaz/Rugby.-Manager/commit/cf01357673015b3108aa084512923cc42854b367). Le parcours navigateur sur la démo a couvert la création d’un club, les écrans Compétitions et Préparer le match, un remplacement manuel, la feuille de match et le retour au tableau de bord avec la victoire **41–15** enregistrée. Les suites Node `test-feuille-de-match.js`, `test-match-interactif.js` et `test-parcours-club.js` ont passé sur les deux versions. Le parcours navigateur de la branche et la reprise d’un match après rechargement restent à valider.
+
+### [ ] BUG-RM-011 — Un remplaçant entré manuellement peut entrer une seconde fois à la minute prévue — P1
+
+Sur la démo, un pilier entré manuellement avant la 50e a aussi déclenché le changement programmé. La feuille de match a compté **neuf remplacements pour huit joueurs de banc**. Reproduction moteur avec la graine 24 et un seul changement programmé à la 50e : faire entrer ce joueur au début donne deux événements `REMPLACEMENT` pour lui, à 0′ puis à 50′. Le moteur public ajoute la demande manuelle à la file et conserve l’entrée automatique. [Moteur public](https://github.com/sebadiaz/Rugby.-Manager/blob/c9b85c3c6c1f73abea3d94d6e387c00dfd75528d/engine/rugby-engine.js#L5886-L5898)
+
+Le même scénario produit une seule entrée sur `cf01357`. La branche de travail identifie l’entrant par `joueurId` et annule son entrée programmée. Le ticket reste ouvert pour la réception navigateur et la mise en ligne. [Correctif sur la branche](https://github.com/sebadiaz/Rugby.-Manager/blob/cf01357673015b3108aa084512923cc42854b367/engine/rugby-engine.js#L8324-L8346) · FUNC-RM-005
+
+**Acceptation.** Jouer un match Club et faire entrer un joueur avant sa minute prévue. Dépasser cette minute, recharger le match et le terminer. Vérifier une seule entrée dans la chronologie et dans l’archive, les statistiques attribuées au bon joueur et le résultat enregistré une seule fois au classement.
+
+### [ ] BUG-RM-012 — Un changement tactique du banc s’applique pendant le jeu — P2
+
+Reproduit dans les deux moteurs. Avec la graine 24, attendre la phase `PORTE`, demander un remplacement manuel et avancer d’un pas de 0,1 s. Le changement est journalisé au pas suivant alors que la phase reste `PORTE`. La [loi 3.6 de World Rugby](https://passport.world.rugby/fr/les-regles-du-jeu/regles-du-jeu-par-numero/3-l-equipe/) situe les remplacements ballon mort, avec l’autorisation de l’arbitre. [Traitement des remplacements sur la branche](https://github.com/sebadiaz/Rugby.-Manager/blob/cf01357673015b3108aa084512923cc42854b367/engine/rugby-engine.js#L7818-L7840)
+
+**Acceptation.** Une demande tactique en jeu passe en attente et l’interface le signale. Le sortant garde son identité et ses actions jusqu’au prochain arrêt admissible. L’entrée s’exécute une seule fois et la demande survit à une reprise du match. Vérifier aussi les changements programmés qui arrivent pendant le jeu et les cas distincts de soins ou de protocole commotion.
+
+### Comparaison sur 50 matchs complets
+
+Deux séries de 25 matchs de 80 minutes, graines 1–25, deux effectifs Club générés au niveau 0,5 pour chaque affiche, tactiques par défaut et pas de 0,1 s. Les mesures sont relevées à l’état `TERMINE`. La part des essais des avants inclut les lignes des joueurs sortis lorsqu’elles sont disponibles et se rapporte au total d’essais. Les données du [Six Nations masculin 2023](https://www.world.rugby/the-game/game-analysis/reports/internationals-men#overall-summary) donnent un ordre de grandeur international. Les conventions de comptage peuvent différer.
+
+| Moyenne par match, deux équipes | Démo `c9b85c3` | Branche `cf01357` | Six Nations 2023 |
+| --- | ---: | ---: | ---: |
+| Essais | 6,44 | 7,08 | 6,1 |
+| Passes | 475,80 | 405,32 | 314 |
+| Rucks | 189,00 | 203,76 | 185 |
+| Touches | 18,52 | 26,68 | 26 |
+| Mauls | 5,24 | 7,44 | 11 |
+| Mêlées | 12,44 | 17,12 | 11 |
+| Part des essais marqués par les avants | 17,4 % (28/161) | 31,6 % (56/177) | 31 % |
+
+**Priorités de réception.** Valider la branche dans le navigateur, du banc jusqu’au classement après rechargement, puis contrôler le commit réellement déployé. Sur le moteur, mesurer les passes sans gain de terrain par séquence (BUG-RM-005, QA-RM-003) et ventiler les mêlées selon leur déclencheur, dont en-avant, passe en avant et ballon injouable. Refaire la comparaison à graines identiques et contrôler les séquences en jeu.
+
 ## Lecture et règles de clôture
 
 - **P0** : blocage général ou corruption systématique ; aucun P0 nouveau établi dans cette passe.
