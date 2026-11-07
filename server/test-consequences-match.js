@@ -122,6 +122,24 @@ test('C4 — fatigue, moral et temps de jeu appliqués aux TITULAIRES', () => {
   assert.strictEqual(hors.matchsJoues || 0, 0, 'un non-sélectionné ne joue pas');
 });
 
+test('C4 bis — le banc ne reçoit les effets du match que si le joueur est entré', () => {
+  const ctx = contexteMatch();
+  const titulaires = new Set(Object.values(ctx.compo));
+  const [entrant, resteAuBanc] = ctx.c.effectif.filter((j) => !titulaires.has(j.id));
+  const fatigueBanc = resteAuBanc.fatigue;
+  const fatigueEntrant = entrant.fatigue;
+  ctx.etat.remplacementsEffectues = [
+    { equipe: ctx.lettre, joueurId: entrant.id, numero: 10, instant: 299 },
+  ];
+  appliquer(ctx, {
+    compositionAvecRemplacants: { ...ctx.compo, 16: resteAuBanc.id },
+  });
+  assert.strictEqual(resteAuBanc.matchsJoues || 0, 0);
+  assert.strictEqual(resteAuBanc.fatigue, fatigueBanc);
+  assert.strictEqual(entrant.matchsJoues, 1);
+  assert.ok(entrant.fatigue > fatigueEntrant);
+});
+
 test('C5 — l\'ordre des opérations est respecté (promesses jugées APRÈS le match)', () => {
   // Le statut promis se juge sur `matchsJoues`, incrémenté par
   // appliquerEffetsMatch. Si l'évaluation passait avant, un cadre aligné
