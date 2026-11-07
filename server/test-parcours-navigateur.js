@@ -827,7 +827,9 @@ function optionsLancement() {
   const joueursMatch = await page.evaluate(() => [...document.querySelectorAll('#resultatFeuille .ligneJoueurMatch')].map((l) => ({
     t: l.textContent, deborde: [...l.children].some((c) => c.scrollWidth > c.clientWidth + 1) })));
   verifier('feuille de match : les joueurs du match, par action comptée, sans débordement',
-    joueursMatch.length >= 4 && joueursMatch.every((l) => /(n°\d+ · \d+( m)?|–)/.test(l.t) && !l.deborde), JSON.stringify(joueursMatch));
+    // Nommé en Mode Club (« J. Michel · 16 », P2-165), sinon le maillot.
+    joueursMatch.length >= 4 && joueursMatch.every((l) => /((n°\d+|[A-ZÀ-Ý]\. [^·]+) · \d+( m)?|–)/.test(l.t) && !l.deborde)
+      && joueursMatch.some((l) => /[A-ZÀ-Ý]\. [^·]+ · \d+/.test(l.t)), JSON.stringify(joueursMatch));
   // Essais marqués (P2-154) : chaque essai dit d'où venait l'action.
   const recitsEssais = await page.$$eval('#resultatFeuille .listeEssais li', (l) => l.map((x) => x.textContent));
   verifier('feuille de match : chaque essai raconte son action (phase, distance, rucks)',
