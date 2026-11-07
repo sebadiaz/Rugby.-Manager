@@ -287,4 +287,34 @@ test('E14 — chaque essai raconte d où venait l action (phase, distance, rucks
   assert.ok(!/actionEssai/.test(RMClub.htmlFeuilleDeMatch(fa)) && /n°11/.test(RMClub.htmlFeuilleDeMatch(fa)));
 });
 
+test('E15 — les joueurs du match : le meilleur de chaque équipe par action comptée, remplacés compris, gardé par l archive (FUNC-RM-011)', () => {
+  const f = RMClub.feuilleDeMatch(ETAT, {});
+  assert.ok(Array.isArray(f.joueursDuMatch) && f.joueursDuMatch.length >= 4, 'des catégories renseignées');
+  for (const l of f.joueursDuMatch) {
+    for (const camp of ['A', 'B']) {
+      // Recompte : toutes les lignes, maillots en jeu ET joueurs sortis.
+      const valeurs = Object.entries(ETAT.statsJoueurs[camp]).map(([n, st]) => ({ n: +n, v: st[l.cle] || 0 }))
+        .concat((ETAT.statsJoueursSortis[camp] || []).map((r) => ({ n: r.numero, v: (r.stats && r.stats[l.cle]) || 0 })));
+      const max = Math.max(0, ...valeurs.map((x) => x.v));
+      const m = camp === 'A' ? l.a : l.b;
+      if (max === 0) assert.strictEqual(m, null, `${l.cle} ${camp} : personne`);
+      else {
+        assert.ok(m && m.valeur === max, `${l.cle} ${camp} : ${m && m.valeur} au lieu de ${max}`);
+        assert.ok(valeurs.some((x) => x.n === m.numero && x.v === max), `${l.cle} ${camp} : le n°${m.numero} a bien cette valeur`);
+      }
+    }
+  }
+  const html = RMClub.htmlFeuilleDeMatch(f);
+  assert.ok(/Les joueurs du match/.test(html) && /Plaquages réussis/.test(html) && /n°\d+ · \d+/.test(html));
+  // L'archive garde les lignes, joueurs remplacés compris : même section.
+  const s = { numero: 1 };
+  RMClub.archiverFeuilleDeMatch(s, { cle: 'm#5', etat: ETAT });
+  const f2 = RMClub.feuilleDeMatch(JSON.parse(JSON.stringify(RMClub.feuilleArchivee(s, 'm#5'))), {});
+  assert.deepStrictEqual(f2.joueursDuMatch, f.joueursDuMatch, 'même section après archive');
+  // Ancienne archive sans lignes individuelles : aucune section, rien d'inventé.
+  const fa = RMClub.feuilleDeMatch({ score: { A: 0, B: 0 }, stats: { A: {}, B: {} }, chronologie: ETAT.chronologie }, {});
+  assert.deepStrictEqual(fa.joueursDuMatch, []);
+  assert.ok(!/Les joueurs du match/.test(RMClub.htmlFeuilleDeMatch(fa)));
+});
+
 console.log(`\n${nbTests} test(s) exécuté(s).`);

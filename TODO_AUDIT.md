@@ -580,6 +580,25 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-164. Feuille de match : les joueurs du match, par action comptée
+- **Statut : LIVRÉ**
+- Fichiers concernés : `docs/js/club-feuille-de-match.js` (`joueursDuMatch`), `docs/js/club-archives-matchs.js`
+  (`compacterSortis`), `docs/css/style.css`, `server/test-feuille-de-match.js` (E15),
+  `server/test-parcours-navigateur.js`.
+
+**Constat (FUNC-RM-011).** Le moteur compte une quinzaine d'actions par joueur (plaquages, mètres, franchissements,
+défenseurs battus, passes décisives, ballons récupérés…), mais la feuille de match ne montrait que des totaux
+d'équipe ; l'archive perdait les lignes des joueurs remplacés.
+
+**Correction.** Section « Les joueurs du match » : pour chaque équipe, le meilleur dans six actions comptées, avec la
+valeur (« n°11 · 110 m »), le poste et la minute de sortie en infobulle. Joueurs remplacés compris ; l'archive garde
+désormais leurs lignes (sans les zéros). Pas de note composite : chaque ligne se relie à un compteur. Ancienne archive
+sans lignes : pas de section. Libellés trop longs pour la colonne de 72 px (« Franchissements ») : colonne centrale
+élargie pour ces lignes.
+
+**Tests.** E15 : chaque meilleur = maximum recompté sur les maillots en jeu et les remplacés ; identique après
+archive ; rien sans lignes. Navigateur : section présente, aucun débordement à 390 px (capture).
+
 ### P2-163. Intrusion de l'arrière : dans la moitié adverse, le n°15 s'intercale dans la ligne
 - **Statut : LIVRÉ**
 - Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_arriereIntercale`, placement au ruck,

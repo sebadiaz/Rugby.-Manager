@@ -822,6 +822,12 @@ function optionsLancement() {
       && bilanLancements.lignes.every((t) => /Au (près|large|pied)/.test(t) && /(\d+ · [+-]?\d+ m|–)/.test(t)),
     JSON.stringify(bilanLancements));
   verifier('feuille de match : les lignes du bilan des lancements ne débordent pas', !bilanLancements.deborde);
+  // Les joueurs du match (FUNC-RM-011) : « n°7 · 14 » par catégorie, sans
+  // débordement des libellés (« Franchissements » chevauchait la valeur à 390 px).
+  const joueursMatch = await page.evaluate(() => [...document.querySelectorAll('#resultatFeuille .ligneJoueurMatch')].map((l) => ({
+    t: l.textContent, deborde: [...l.children].some((c) => c.scrollWidth > c.clientWidth + 1) })));
+  verifier('feuille de match : les joueurs du match, par action comptée, sans débordement',
+    joueursMatch.length >= 4 && joueursMatch.every((l) => /(n°\d+ · \d+( m)?|–)/.test(l.t) && !l.deborde), JSON.stringify(joueursMatch));
   // Essais marqués (P2-154) : chaque essai dit d'où venait l'action.
   const recitsEssais = await page.$$eval('#resultatFeuille .listeEssais li', (l) => l.map((x) => x.textContent));
   verifier('feuille de match : chaque essai raconte son action (phase, distance, rucks)',

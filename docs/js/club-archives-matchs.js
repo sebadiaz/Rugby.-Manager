@@ -60,6 +60,18 @@
     }
     return res;
   }
+  function compacterSortis(sortis) {
+    if (!sortis) return null;
+    const res = {};
+    for (const camp of ['A', 'B']) {
+      res[camp] = (sortis[camp] || []).map((r) => {
+        const utile = {};
+        for (const [k, v] of Object.entries((r && r.stats) || {})) if (v) utile[k] = v;
+        return { numero: r.numero, sortie: Math.round(r.sortie || 0), stats: utile };
+      }).filter((r) => Object.keys(r.stats).length);
+    }
+    return res;
+  }
   function compacterEtatMatch(etat) {
     const e = etat || {};
     const stats = e.stats || {};
@@ -75,6 +87,9 @@
       occupationPct: pct(e.occupationPct),
       tempsJeuEffectif: Number.isFinite(e.tempsJeuEffectif) ? Math.round(e.tempsJeuEffectif) : null,
       statsJoueurs: compacterLignes(e.statsJoueurs),
+      // Joueurs sortis (remplacés) : leurs actions restent sur la feuille
+      // (« Les joueurs du match », FUNC-RM-011), sans les zéros.
+      statsJoueursSortis: compacterSortis(e.statsJoueursSortis),
       chronologie: (e.chronologie || []).map((x) => Object.assign({
         minute: x.minute, type: x.type, team: x.team, message: x.message,
       }, x.marqueur != null ? { marqueur: x.marqueur } : null,

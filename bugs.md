@@ -384,6 +384,8 @@ Les sommes individuelles des passes, plaquages et mètres correspondent aux somm
 
 ### [ ] FUNC-RM-011 — Feuilles statistiques complètes et comparables par joueur — P2
 
+**Avancement (TODO_AUDIT P2-164) :** la feuille de match présente « Les joueurs du match » — le meilleur de chaque équipe dans six actions réellement comptées, joueurs remplacés compris, conservé par l'archive. Reste : noms des joueurs sur la feuille, minutes jouées, filtres et taux par 80 minutes.
+
 **État constaté :** cinq compteurs individuels seulement : essais, passes réussies, plaquages tentés/réussis et mètres. Le cumul collectif de carrière n'expose qu'une partie des mesures du moteur ; les archives perdent les lignes individuelles. La priorité est de fiabiliser BUG-RM-006 à 009.
 
 **À livrer par étapes :** identité, titulaire/entrant et minutes effectivement jouées ; tentatives et réussite de passe, courses, coups de pied, buteur, turnovers et participation aux regroupements lorsque ces actions sont réellement mesurées. Compléter la feuille collective par possession/occupation, rucks, mauls, conquête et sanctions. Chaque libellé a une définition et une unité ; aucune statistique déduite arbitrairement d'un attribut.

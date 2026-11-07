@@ -63,6 +63,45 @@
   // Les trois familles de lancement (cf. axe « Style de lancement »).
   const STYLES_LANCEMENT = [['Pres', 'Au près'], ['Large', 'Au large'], ['Pied', 'Au pied']];
 
+  // Les joueurs du match (FUNC-RM-011) : le meilleur de chaque équipe dans
+  // des actions réellement comptées par le moteur, avec la valeur. Pas de note
+  // composite : chaque ligne se relie à un compteur.
+  const CATEGORIES_JOUEURS = [
+    ['tacklesMade', 'Plaquages réussis'],
+    ['metresGagnes', 'Mètres gagnés', (v) => Math.round(v) + ' m'],
+    ['franchissements', 'Franchissements'],
+    ['defenseursBattus', 'Défenseurs battus'],
+    ['passesDecisives', 'Passes décisives'],
+    ['turnoversGagnes', 'Ballons récupérés'],
+  ];
+  const POSTE_NUMERO = { 1: 'pilier', 2: 'talonneur', 3: 'pilier', 4: '2e ligne', 5: '2e ligne', 6: '3e ligne', 7: '3e ligne',
+    8: 'n°8', 9: 'demi de mêlée', 10: 'ouvreur', 11: 'ailier', 12: 'centre', 13: 'centre', 14: 'ailier', 15: 'arrière' };
+  // Toutes les lignes d'une équipe : maillots en jeu au coup de sifflet et
+  // joueurs remplacés (leurs actions leur restent, cf. statsJoueursSortis).
+  function lignesEquipe(etat, camp) {
+    const lignes = [];
+    for (const [n, st] of Object.entries((etat && etat.statsJoueurs && etat.statsJoueurs[camp]) || {})) lignes.push({ numero: +n, sortie: null, stats: st || {} });
+    for (const r of (etat && etat.statsJoueursSortis && etat.statsJoueursSortis[camp]) || []) lignes.push({ numero: r.numero, sortie: r.sortie != null ? Math.round(r.sortie) : null, stats: r.stats || {} });
+    return lignes;
+  }
+  function joueursDuMatch(etat) {
+    const lignes = { A: lignesEquipe(etat, 'A'), B: lignesEquipe(etat, 'B') };
+    if (!lignes.A.length && !lignes.B.length) return [];
+    const meilleur = (camp, cle) => {
+      let m = null;
+      for (const l of lignes[camp]) {
+        const v = nombre(l.stats[cle]);
+        if (v > 0 && (!m || v > m.valeur || (v === m.valeur && l.numero < m.numero))) m = { numero: l.numero, sortie: l.sortie, valeur: v };
+      }
+      return m;
+    };
+    return CATEGORIES_JOUEURS.map(([cle, libelle, format]) => {
+      const a = meilleur('A', cle), b = meilleur('B', cle);
+      const texte = (m) => (m ? `n°${m.numero} · ${format ? format(m.valeur) : m.valeur}` : '–');
+      return { cle, libelle, a, b, texteA: texte(a), texteB: texte(b) };
+    }).filter((l) => l.a || l.b);
+  }
+
   function nombre(v) { return typeof v === 'number' ? v : 0; }
 
   // Assemble le compte rendu d'un match terminé.
@@ -174,6 +213,7 @@
     return {
       nomA, nomB,
       lancements,
+      joueursDuMatch: joueursDuMatch(etat),
       score: { A: (etat && etat.score && etat.score.A) || 0, B: (etat && etat.score && etat.score.B) || 0 },
       chronologie,
       marqueurs,
@@ -257,6 +297,14 @@
       : '';
     const possession = lignePct(f.possession) + lignePct(f.occupation);
 
+    // Les joueurs du match : « n°7 · 14 » par catégorie, le poste en infobulle.
+    const titreJ = (m) => (m ? `${POSTE_NUMERO[m.numero] || ''}${m.sortie != null ? ` — remplacé à la ${Math.max(1, Math.floor(m.sortie / 60))}e` : ''}` : '');
+    const joueurs = (f.joueursDuMatch || []).map((l) =>
+      `<div class="ligneStatMatch ligneLancement ligneJoueurMatch">` +
+      `<span class="valA" title="${echapperTexte(titreJ(l.a))}">${echapperTexte(l.texteA)}</span>` +
+      `<span class="libelleStat">${echapperTexte(l.libelle)}</span>` +
+      `<span class="valB" title="${echapperTexte(titreJ(l.b))}">${echapperTexte(l.texteB)}</span></div>`).join('');
+
     // « 5 · +21 m · 1 essai » : joués, terrain moyen gagné, essais au bout.
     const resumeLancement = (c) => {
       if (!c.n) return '–';
@@ -273,6 +321,7 @@
       (marqueurs ? `<h4 class="sousTitreFeuille">Essais marqués</h4>${marqueurs}` : '') +
       `<h4 class="sousTitreFeuille">Le fil du match</h4><div class="chronoFeuille">${lignes}</div>` +
       `<h4 class="sousTitreFeuille">Statistiques</h4>${possession}${stats}` +
+      (joueurs ? `<h4 class="sousTitreFeuille" title="Le meilleur de chaque équipe dans chaque action comptée par le moteur (joueurs remplacés compris)">Les joueurs du match</h4>${joueurs}` : '') +
       (lancements ? `<h4 class="sousTitreFeuille" title="Combinaisons jouées sur mêlée, touche ou maul : nombre, terrain moyen gagné jusqu'au prochain arrêt de jeu ou à la perte du ballon, essais au bout">Lancements de jeu</h4>${lancements}` : '');
   }
 
