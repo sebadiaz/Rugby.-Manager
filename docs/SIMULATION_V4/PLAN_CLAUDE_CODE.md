@@ -28,6 +28,7 @@
 | **M4 — Explicabilité et rendu** | G25–G27 | plans inspectables, animation originale 2D rétro | screenshots et navigateur |
 | **M5 — Robustesse** | G28–G30 | statistiques réalistes, CI, livraison | 100/500 matchs, aucun invariant cassé |
 | **M6 — Dialogues tactiques** | G31–G33 | 9↔10 en touche **et en mêlée**, 9↔8 sur départ du 8, décision par le 9, chandelle annoncée | DIA et STR-DIA, validation des lois |
+| **M7 — Recherche de matchs réels** | G34–G36 | observations sourcées, matchs de référence rejoués en branches, calibration des choix | REAL-01..16, comparaisons chiffrées et sources |
 
 Les tâches G00 et G01 sont **commencées comme références/documentation** ; leur complétion finale exige toujours les tests mentionnés. La branche de documentation ne remplace pas le développement M1–M5.
 
@@ -51,6 +52,7 @@ Les tâches G00 et G01 sont **commencées comme références/documentation** ; l
 - **Critères :** un but obtenu via plusieurs actions, choix différent si état change, coût minimal, déterminisme, no-op en but satisfait. **Aucune intégration physique revendiquée.**
 - **Tests :** `node server/test-v4-local-communication.js
 node server/test-v4-tactical-dialogue.js
+node server/test-v4-observations-matchs.js
 node server/test-v4-goap-planner.js` (G01–G14).
 - **Rejet si :** un script spécial `if(numero === 9)` est utilisé comme « planner ».
 
@@ -305,6 +307,39 @@ Ces trois tâches étendent l'architecture **individuelle** des tâches G04–G2
 - **Rejet si :** chaque troisième phase déclenche obligatoirement un pied, si l'annonce devient un ordre individuel forcé, ou si le 9 botte alors que le ballon est encore au ruck.
 
 **Statut :** les tests `server/test-v4-local-communication.js` (28 cas) et `server/test-v4-tactical-dialogue.js` (14 cas) valident uniquement le transport symbolique. Les scénarios STR-DIA exigent encore des tests de **moteur** réalisés par G31–G33.
+
+## M7 — Étudier de vrais matchs et tester les décisions alternatives
+
+**Documents prioritaires :** `11_MATCHS_REELS_ET_PRISES_DE_DECISION.md` et `fixtures/observations_matchs_reels.json` (16 séquences provenant de 4 matchs sourcés). Les paroles des joueurs et les 30 trajectoires exactes sont **inconnues** ; ne jamais les inventer en tant qu'« observations ».
+
+### RM4-G34 — Corpus réel, provenance et baseline mesurée
+
+- **Dépendances :** G00, G01 ; G02 seulement pour injecter des scénarios moteurs, pas pour valider des sources.
+- **Fichiers :** `docs/SIMULATION_V4/11_MATCHS_REELS_ET_PRISES_DE_DECISION.md`, `fixtures/observations_matchs_reels.json`, `server/test-v4-observations-matchs.js`, `server/v4/measure-baseline.js`, `docs/SIMULATION_V4/BASELINE.md`.
+- **Réalisation :** valider les 16 actions observées **une par une** depuis les comptes rendus (ENW01, IRF01–06, ENF01–04, FIF01–05). Pour chacune conserver `sourceUrl`, phase, acteurs connus, fenêtre temporelle **non chronométrée** et issue observée ; séparer scénarios contrefactuels **synthétiques**. Ajouter données supplémentaires uniquement si source authentique. Effectuer 100 graines sur la version courante `main` avec `aiMode:LEGACY`; mesurer points, essais, rucks, passes, mauls, coups de pied, touches, mêlées, turnovers, pénalités, temps de jeu effectif. Comparer World Rugby Six Nations 2023 en indiquant explicitement **année, compétition, définition des compteurs**.
+- **Critères :** chaque observation sourcée et non mélangée à une transcription fictive ; aucune fausse position `x/y`, pas de dates de secondes inventées ; `BASELINE.md` contient SHA, graines, méthodes, moyennes, médianes et dispersion.
+- **Tests :** `node server/test-v4-observations-matchs.js` (déjà fourni : validation structurelle), `test-invariants.js`, `test-calibration-moteur.js` ; code de mesure relançable.
+- **Rejet si :** les dialogues de Dupont/Fin Smith sont présentés comme des citations réelles sans enregistrement ; une observation devient une scène à 30 coordonnées « historiques » sans vidéo/annotation.
+
+### RM4-G35 — Reproduction **causale** de 16 séquences en scènes de moteur
+
+- **Dépendances :** G02–G11, puis G12–G20, G31–G33 selon les actions ; ne pas simuler une action de mêlée avant le socle d'injection/IA.
+- **Fichiers :** `server/v4/scenario-harness.js`, nouveau `server/test-v4-real-match-decisions.js`, `engine/ai/actions.js`, `engine/ai/roles/halfback.js`, `engine/ai/roles/back-row.js`, `engine/ai/roles/backs.js`, `engine/rugby-engine.js`.
+- **Réalisation :** convertir les **observations** en fixtures **hypothétiques** claires, sans prétendre connaître les positions réelles. Couvrir `REAL-01..16` du document 11, en deux variantes chacune : par exemple 8 libre/bloqué en mêlée, maul libérable/bloqué, aile libre/couverte, pied haut poursuivi/isolé, arbitre reconnaît ou non une infraction selon action physique. Vérifier actions et buts du nouveau catalogue G36–G43, A37–A50. Les décisions sont faites par chaque agent, **aucun** `TeamCoordinator`.
+- **Critères :** un même but peut donner deux plans selon observation ; chaque résultat dépend d'une prise de balle, course, collision ou faute réelle ; score jamais écrit par GOAP ; rapports détaillent graines/ticks/actions avant/après.
+- **Tests :** `test-v4-real-match-decisions.js`, `test-v4-goap-planner.js`, tests de mêlée/touche/ruck/maul/hors-jeu existants.
+- **Rejet si :** `plan = '8_PICK'` produit directement un essai à la minute connue ou si le 9 reçoit les positions et plans cachés des partenaires.
+
+### RM4-G36 — Calibration des **choix** et taux d'échec par agent, pas seulement des scores
+
+- **Dépendances :** G28/G29, G34/G35.
+- **Fichiers :** `server/v4/measure-strategies.js`, `docs/SIMULATION_V4/CALIBRATION_DECISIONS.md`, `server/test-v4-strategies-stats.js`, `.github/workflows/tests-longs.yml`.
+- **Réalisation :** comparer 100 puis 500 matchs identiques en deux modes `LEGACY` / `GOAP`. Pour chaque n°9/n°8/n°10/ailier/15 mesurer par possession et zone : choix 8 départ vs sortie 9, maul→9→large/près, fréquence des chandelles selon stagnation réelle, coups de pied hauts par poste, turnover→contre-attaque, 15 couvre vs monte, appels entendus/ignorés, indisponibilités, erreurs techniques, mauvaises décisions et réajustements. Inclure temps de calcul/nœuds GOAP et les métriques agrégées World Rugby 2023 comme **point de comparaison historique daté**, pas seuil universel de 2026.
+- **Critères :** les agents ne réussissent pas 100% des prises de balle/pieds/plaquages ; changement de plan démontré sous une variation de défense ; données de simulation à métadonnées (SHA, seed, durée, profil légal, tactique, mode IA) ; écarts de stats analysés et assumés.
+- **Tests :** 30 graines PR ciblée, 100 graines intégration, 500 en suite longue ; tableaux de dispersion, tests d'invariants, tests navigateur ; capture d'au moins 4 replays de décisions (ENW01/IRF01/ENF02/FIF05) rejoués à graines connues.
+- **Rejet si :** reproduire les 16 essais identiques avec des scripts par joueur, annoncer une vérité historique depuis une scène inventée ou faire baisser les tests de lois pour « retrouver » le score exact d'un match.
+
+**Le corpus de 16 événements n'est pas un dataset de suivi spatial** ; il permet d'écrire des tests sur des **possibilités de décisions**, pas de copier des trajectoires exactes.
 
 ## 2. Commandes générales de garde (sur chaque tranche pertinente)
 
