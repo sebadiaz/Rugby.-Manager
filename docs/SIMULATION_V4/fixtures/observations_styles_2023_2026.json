@@ -1,0 +1,209 @@
+{
+  "schemaVersion": "1.0.0",
+  "researchDate": "2026-11-08",
+  "type": "DOCUMENTARY_OBSERVATIONS_NO_TRACKING",
+  "warning": "The match reports do not disclose 8-to-9 spoken calls, individual GOAP objectives, exact player trajectories or any inferred playbook preset. These are game-design hypotheses.",
+  "matches": {
+    "ENG-RSA-2023": {
+      "date": "2023-10-21",
+      "name": "England 15–16 South Africa — RWC semi-final",
+      "sourceUrl": "https://www.world.rugby/news/884035/rugby-world-cup-2023-semi-final-review?lang=en"
+    },
+    "ENG-NZ-2025": {
+      "date": "2025-11-15",
+      "name": "England 33–19 New Zealand — Autumn Nations",
+      "sourceUrl": "https://www.sixnationsrugby.com/en/autumn-nations-series/fixtures/202500/england-v-new-zealand-15112025-1510/line-ups"
+    },
+    "RSA-NZ-2026-CPT": {
+      "date": "2026-08-29",
+      "name": "South Africa 33–26 New Zealand — Cape Town",
+      "sourceUrl": "https://www.allblacks.com/news/all-blacks/match-report-all-blacks-v-south-africa-second-test-rugby-s-greatest-rivalry"
+    },
+    "RSA-NZ-2026-JHB": {
+      "date": "2026-09-05",
+      "name": "South Africa 29–24 New Zealand — Johannesburg",
+      "sourceUrl": "https://springboks.rugby/news-features/articles/2026/9/5/boks-take-series-lead-in-greatest-test"
+    },
+    "RSA-NZ-2026-BAL": {
+      "date": "2026-09-12",
+      "name": "South Africa 43–28 New Zealand — Baltimore",
+      "sourceUrl": "https://springboks.rugby/news-features/articles/2026/9/12/brilliant-boks-seal-the-deal-in-baltimore"
+    }
+  },
+  "snapshot": {
+    "date": "2026-09-04",
+    "matchId": null,
+    "sourceUrl": "https://www.allblacks.com/news/all-blacks/by-the-numbers-all-blacks-eye-series-lead-in-johannesburg",
+    "unit": "per_team_per_test_as_of_2026_09_04_not_final_season",
+    "NewZealand": {
+      "carriesPerMatch": 154.6,
+      "passesPerMatch": 230,
+      "kicksFromHandPerMatch": 19.8,
+      "lineoutSuccessPct": 82.1
+    },
+    "SouthAfrica": {
+      "carriesPerMatch": 113.7,
+      "passesPerMatch": 112,
+      "kicksFromHandPerMatch": 29.7,
+      "lineoutSuccessPct": 93.9
+    }
+  },
+  "observations": [
+    {
+      "id": "ST-01",
+      "matchId": "ENG-RSA-2023",
+      "sourceUrl": "https://www.world.rugby/news/884035/rugby-world-cup-2023-semi-final-review?lang=en",
+      "evidenceType": "MATCH_REPORT_EVENT",
+      "observation": "England territorial pressure: four Farrell penalties and a drop goal",
+      "kind": "territorial_kicking",
+      "phase": "NONE",
+      "exactGameTimeSeconds": null,
+      "realSpokenCallsVerified": false,
+      "real30PlayerCoordinatesVerified": false,
+      "gameplayStatus": "SPEC_ONLY"
+    },
+    {
+      "id": "ST-02",
+      "matchId": "ENG-RSA-2023",
+      "sourceUrl": "https://www.world.rugby/news/884035/rugby-world-cup-2023-semi-final-review?lang=en",
+      "evidenceType": "MATCH_REPORT_EVENT",
+      "observation": "South African scrum penalties after replacement front row, deciding Pollard kick at minute 78",
+      "kind": "scrum_pressure",
+      "phase": "SCRUM",
+      "exactGameTimeSeconds": null,
+      "realSpokenCallsVerified": false,
+      "real30PlayerCoordinatesVerified": false,
+      "gameplayStatus": "SPEC_ONLY"
+    },
+    {
+      "id": "ST-03",
+      "matchId": "ENG-NZ-2025",
+      "sourceUrl": "https://www.sixnationsrugby.com/en/autumn-nations-series/fixtures/202500/england-v-new-zealand-15112025-1510/line-ups",
+      "evidenceType": "MATCH_REPORT_EVENT",
+      "observation": "England kicked 35 times versus All Blacks 29; two Ford drop goals",
+      "kind": "aerial_and_drop",
+      "phase": "NONE",
+      "exactGameTimeSeconds": null,
+      "realSpokenCallsVerified": false,
+      "real30PlayerCoordinatesVerified": false,
+      "gameplayStatus": "SPEC_ONLY"
+    },
+    {
+      "id": "ST-04",
+      "matchId": "ENG-NZ-2025",
+      "sourceUrl": "https://www.sixnationsrugby.com/en/autumn-nations-series/fixtures/202500/england-v-new-zealand-15112025-1510/line-ups",
+      "evidenceType": "MATCH_REPORT_EVENT",
+      "observation": "England first-phase lineout launch includes offload involving Roebuck, Earl and Dingwall try",
+      "kind": "lineout_multi_option",
+      "phase": "LINEOUT",
+      "exactGameTimeSeconds": null,
+      "realSpokenCallsVerified": false,
+      "real30PlayerCoordinatesVerified": false,
+      "gameplayStatus": "SPEC_ONLY"
+    },
+    {
+      "id": "ST-05",
+      "matchId": "ENG-NZ-2025",
+      "sourceUrl": "https://www.sixnationsrugby.com/en/autumn-nations-series/fixtures/202500/england-v-new-zealand-15112025-1510/line-ups",
+      "evidenceType": "MATCH_REPORT_EVENT",
+      "observation": "New Zealand wing Will Jordan try during second half",
+      "kind": "attack_under_pressure",
+      "phase": "NONE",
+      "exactGameTimeSeconds": null,
+      "realSpokenCallsVerified": false,
+      "real30PlayerCoordinatesVerified": false,
+      "gameplayStatus": "SPEC_ONLY"
+    },
+    {
+      "id": "ST-06",
+      "matchId": "RSA-NZ-2026-CPT",
+      "sourceUrl": "https://www.allblacks.com/news/all-blacks/match-report-all-blacks-v-south-africa-second-test-rugby-s-greatest-rivalry",
+      "evidenceType": "MATCH_REPORT_EVENT",
+      "observation": "New Zealand 246 passes and 154 carries versus South Africa 93 passes and 104 carries",
+      "kind": "pass_carry_contrast",
+      "phase": "NONE",
+      "exactGameTimeSeconds": null,
+      "realSpokenCallsVerified": false,
+      "real30PlayerCoordinatesVerified": false,
+      "gameplayStatus": "SPEC_ONLY"
+    },
+    {
+      "id": "ST-07",
+      "matchId": "RSA-NZ-2026-CPT",
+      "sourceUrl": "https://www.allblacks.com/news/all-blacks/match-report-all-blacks-v-south-africa-second-test-rugby-s-greatest-rivalry",
+      "evidenceType": "MATCH_REPORT_EVENT",
+      "observation": "South Africa Kolbe kicked four penalty goals and three conversions",
+      "kind": "territory_score",
+      "phase": "NONE",
+      "exactGameTimeSeconds": null,
+      "realSpokenCallsVerified": false,
+      "real30PlayerCoordinatesVerified": false,
+      "gameplayStatus": "SPEC_ONLY"
+    },
+    {
+      "id": "ST-08",
+      "matchId": "RSA-NZ-2026-JHB",
+      "sourceUrl": "https://springboks.rugby/news-features/articles/2026/9/5/boks-take-series-lead-in-greatest-test",
+      "evidenceType": "MATCH_REPORT_EVENT",
+      "observation": "South African five-metre scrum pressure contributed to a penalty try award",
+      "kind": "scrum_referee",
+      "phase": "SCRUM",
+      "exactGameTimeSeconds": null,
+      "realSpokenCallsVerified": false,
+      "real30PlayerCoordinatesVerified": false,
+      "gameplayStatus": "SPEC_ONLY"
+    },
+    {
+      "id": "ST-09",
+      "matchId": "RSA-NZ-2026-JHB",
+      "sourceUrl": "https://springboks.rugby/news-features/articles/2026/9/5/boks-take-series-lead-in-greatest-test",
+      "evidenceType": "MATCH_REPORT_EVENT",
+      "observation": "Springboks converted scrum penalty to attacking lineout drive and Malcolm Marx try",
+      "kind": "scrum_lineout_maul",
+      "phase": "LINEOUT",
+      "exactGameTimeSeconds": null,
+      "realSpokenCallsVerified": false,
+      "real30PlayerCoordinatesVerified": false,
+      "gameplayStatus": "SPEC_ONLY"
+    },
+    {
+      "id": "ST-10",
+      "matchId": "RSA-NZ-2026-JHB",
+      "sourceUrl": "https://springboks.rugby/news-features/articles/2026/9/5/boks-take-series-lead-in-greatest-test",
+      "evidenceType": "MATCH_REPORT_EVENT",
+      "observation": "Will Jordan kick in behind, Carter regather and support pass to Jordan for try",
+      "kind": "individual_kick_support",
+      "phase": "NONE",
+      "exactGameTimeSeconds": null,
+      "realSpokenCallsVerified": false,
+      "real30PlayerCoordinatesVerified": false,
+      "gameplayStatus": "SPEC_ONLY"
+    },
+    {
+      "id": "ST-11",
+      "matchId": "RSA-NZ-2026-BAL",
+      "sourceUrl": "https://springboks.rugby/news-features/articles/2026/9/12/brilliant-boks-seal-the-deal-in-baltimore",
+      "evidenceType": "MATCH_REPORT_EVENT",
+      "observation": "South Africa won final test 43-28 by six tries against New Zealand four",
+      "kind": "multi_style_offense",
+      "phase": "NONE",
+      "exactGameTimeSeconds": null,
+      "realSpokenCallsVerified": false,
+      "real30PlayerCoordinatesVerified": false,
+      "gameplayStatus": "SPEC_ONLY"
+    },
+    {
+      "id": "ST-12",
+      "matchId": "RSA-NZ-2026-BAL",
+      "sourceUrl": "https://springboks.rugby/news-features/articles/2026/9/12/brilliant-boks-seal-the-deal-in-baltimore",
+      "evidenceType": "MATCH_REPORT_EVENT",
+      "observation": "Cameron Hanekom try around minute 75 by picking from base of ruck, not scrum",
+      "kind": "ruck_pick",
+      "phase": "RUCK",
+      "exactGameTimeSeconds": null,
+      "realSpokenCallsVerified": false,
+      "real30PlayerCoordinatesVerified": false,
+      "gameplayStatus": "SPEC_ONLY"
+    }
+  ]
+}

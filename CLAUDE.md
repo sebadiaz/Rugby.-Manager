@@ -2,6 +2,73 @@ CLAUDE.md
 
 IMPORTANT — CHANTIER IA DES JOUEURS (V4, novembre 2026)
 
+**CORRECTION D'ARCHITECTURE : AUCUNE IA COLLECTIVE.** Chaque joueur
+connaît les consignes de jeu et sa référence de poste, mais choisit
+individuellement ses buts, son plan, ses cibles et ses déplacements selon
+la perception des circonstances. Défendre et ses buts associés sont
+prioritaires lors d'une perte de possession, sans ruée automatique sur
+le ballon. Interdiction d'ajouter un TeamCoordinator, TeamBlackboard,
+une allocation centralisée de rôles, ou des positions imposées.
+LIRE D'ABORD docs/SIMULATION_V4/07_AGENT_INDIVIDUEL_PLACEMENT.md.
+
+
+**MICRO-ACTIONS EN MATCHS REELS — EXIGENCE PRIORITAIRE :**
+Lire docs/SIMULATION_V4/14_ANALYSE_MICRO_ACTIONS_TOP14.md.
+47 micro-etapes issues de 7 etudes, 22 variantes, 12 tests moteur
+MIC-01..12 futurs. Exemple majeur : Toulouse-UBB finale 2025,
+Graou→Flament→Jelonch, leurres Cros/Willis, defenseurs Samu/Moefana
+et Gazzotti aux lectures individuelles. JAMAIS de leurre scripté
+qui ordonne à Moefana de suivre Willis, ni d'essai forcé !
+Les sources sont tres precises sur certains gestes mais pas sur la
+PENSÉE des joueurs ni leurs paroles ou trajectoires image par image.
+LIRE le corpus fixtures/micro_actions_top14.json : 47 etapes,
+chacune avec faits rapportes et hypotheses GOAP distinctes.
+Nouveau catalogue : 51 buts, 66 actions, taches RM4-G42-G44.
+Tests documentaires : node server/test-v4-top14-micro-actions.js et
+node server/test-v4-goals-actions-doc.js.
+
+
+**NOUVEAU : ETUDE DU TOP 14**
+LIRE docs/SIMULATION_V4/13_MATCHS_TOP14_DECISIONS.md et
+fixtures/observations_top14_2025_2026.json : 9 matchs, 19
+observations sourcées, six relevés statistiques LNR valides.
+Racing-Bayonne 2025 : 8 Nathan Hughes part derrière la mêlée,
+à coder avec annonce 8→9 avant prise et porteur unique.
+Toulouse-Montpellier finale 2026 : touche, un-deux 9/talonneur,
+coup franc rapide après mêlée, pied par-dessus du 10.
+Toulon-UBB : 212 contre 112 passes et 18 contre 37 coups de pied
+sur CE match, sans en déduire de style immuable pour le club.
+La page LNR statistiques de la finale 2026 contient des ZEROS
+manifestement non renseignés : ne pas les utiliser en calibration.
+G39-G41 = recherche/19 tests moteur/calibration futurs.
+Lancer node server/test-v4-top14-data.js (test de CORPUS uniquement).
+
+
+**AJOUT VALIDÉ — SORTIE DE MÊLÉE PAR 8 ET STYLES INTERNATIONAUX :**
+LIRE docs/SIMULATION_V4/12_STYLES_ANGLETERRE_AFRIQUE_DU_SUD_NOUVELLE_ZELANDE.md.
+Le 8 DOIT annoncer au 9 (SCRUM_8_GOING, phaseId de la mêlée)
+qu'il part récupérer le ballon AVANT le geste. SCRUM_8_READY ne signifie
+pas qu'il part. Le 9 qui entend replanifie SEUL vers soutien/couverture,
+plutôt que tenter la même prise ; résultat moteur et un seul porteur.
+Aucune IA collective. Les trois styles ENG/RSA/NZ proviennent de matchs
+sourcés, leurs plans de jeu doivent rester interchangeables entre clubs.
+Tests transport : test-v4-local-communication.js,
+test-v4-tactical-dialogue.js et test-v4-styles-match-data.js.
+G37/G38 sont DES TACHES A CODER, pas des fonctionnalités déjà intégrées.
+
+
+RECHERCHE DE MATCHS REELS (novembre 2026) :
+LIRE docs/SIMULATION_V4/11_MATCHS_REELS_ET_PRISES_DE_DECISION.md
+et fixtures/observations_matchs_reels.json (16 séquences, 4 matchs).
+Les dialogues entre 9/10/8 sont des choix du jeu, PAS des paroles
+prouvées des joueurs réels. Les phases sont sourcées, les coordonnées
+exactes inconnues ; ne pas inventer de tracking. Voir G34-G36 : vraie
+baseline, décisions alternatives, tests et calibration multi-graines.
+Tester node server/test-v4-observations-matchs.js et
+node server/test-v4-goals-actions-doc.js (43 buts / 50 actions).
+
+
+
 Le propriétaire du jeu demande explicitement **30 agents de rugby à base de buts**
 (Russell et Norvig), capables de planifier des séquences d'actions, de les
 exécuter physiquement et de replanifier. Des cibles de placement, comportements

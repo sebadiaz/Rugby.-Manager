@@ -1,0 +1,609 @@
+{
+  "schemaVersion": "1.0.0",
+  "researchDate": "2026-11-08",
+  "competition": "TOP_14",
+  "sourcePriority": "LNR_OFFICIAL_THEN_MATCH_REPORT",
+  "warning": "Not video-tracked: no direct 9-10, 8-9 audio; exact trajectories and internal intent unknown. Match stats describe completed game, not automatically the cause of tactical choice. Historical national-team fixtures are separate corpora.",
+  "excludedSource": {
+    "matchId": "TOU-MHR-2026",
+    "url": "https://top14.lnr.fr/feuille-de-match/2025-2026/finale/11800-toulouse-montpellier/statistiques-du-match",
+    "reason": "LNR stats page has zeros for scrums, lineouts, tackles, passes and kicks despite a played final. Exclude these zero placeholders from baselines; use official narrative for events/score."
+  },
+  "matches": {
+    "R92-BAY-2025": {
+      "date": "2025-11-22",
+      "match": "Racing 92 47-27 Bayonne",
+      "stage": "TOP14_2025_2026_J10",
+      "sourceUrl": "https://www.lequipe.fr/Rugby/match-direct/top-14/2025-2026/racing-92-bayonne-live/40474"
+    },
+    "TOU-BAY-2025": {
+      "date": "2025-06-20",
+      "match": "Toulouse 32-25 Bayonne",
+      "stage": "TOP14_2024_2025_SEMIFINAL",
+      "sourceUrl": "https://www.lequipe.fr/Rugby/Actualites/En-video-le-bel-essai-de-romain-ntamack-qui-a-lance-le-stade-toulousain-face-a-bayonne-en-demi-finales-de-top-14/1571774"
+    },
+    "TOU-UBB-2025": {
+      "date": "2025-06-28",
+      "match": "Toulouse 39-33 Bordeaux-Begles (after extra time)",
+      "stage": "TOP14_2024_2025_FINAL",
+      "sourceUrl": "https://top14.lnr.fr/feuille-de-match/2024-2025/finale/11056-toulouse-bordeaux-begles"
+    },
+    "TOU-MHR-2026": {
+      "date": "2026-06-27",
+      "match": "Toulouse 28-20 Montpellier",
+      "stage": "TOP14_2025_2026_FINAL",
+      "sourceUrl": "https://top14.lnr.fr/actualite/finale-top-14-le-stade-toulousain-est-champion-de-france-pour-la-quatrieme-fois-de-suite"
+    },
+    "TOU-RCT-2026": {
+      "date": "2026-05-09",
+      "match": "Toulon 27-51 Toulouse",
+      "stage": "TOP14_2025_2026_J23",
+      "sourceUrl": "https://top14.lnr.fr/feuille-de-match/2025-2026/j23/11465-toulon-toulouse/statistiques-du-match"
+    },
+    "RCT-UBB-2026": {
+      "date": "2026-05-31",
+      "match": "Toulon 27-22 Bordeaux-Begles",
+      "stage": "TOP14_2025_2026_J25",
+      "sourceUrl": "https://top14.lnr.fr/feuille-de-match/2025-2026/j25/11477-toulon-bordeaux-begles/statistiques-du-match"
+    },
+    "R92-SR-2026": {
+      "date": "2026-05-10",
+      "match": "Racing 92 24-26 La Rochelle",
+      "stage": "TOP14_2025_2026_J23",
+      "sourceUrl": "https://www.rugbyrama.fr/resultats/rugby/top-14/phase-reguliere/rencontre/55769/racing-92-la-rochelle/direct"
+    },
+    "RCT-SR-2026": {
+      "date": "2026-09-12",
+      "match": "Toulon 20-21 La Rochelle",
+      "stage": "TOP14_2026_2027_J2",
+      "sourceUrl": "https://top14.lnr.fr/feuille-de-match/2026-2027/j2/11831-toulon-la-rochelle/statistiques-du-match"
+    },
+    "PAU-TOU-2026": {
+      "date": "2026-11-01",
+      "match": "Pau 34-14 Toulouse",
+      "stage": "TOP14_2026_2027_J8",
+      "sourceUrl": "https://top14.lnr.fr/actualite/j8-de-top-14-la-section-paloise-surpasse-clairement-le-stade-toulousain-34-14"
+    }
+  },
+  "events": [
+    {
+      "id": "T14-01",
+      "matchId": "R92-BAY-2025",
+      "sourceUrl": "https://www.lequipe.fr/Rugby/match-direct/top-14/2025-2026/racing-92-bayonne-live/40474",
+      "clock": {
+        "label": "77e",
+        "exactSeconds": null
+      },
+      "evidenceType": "MATCH_TIMELINE",
+      "observation": "Le numero 8 Nathan Hughes part de la melee; l'action est terminee par l'essai de Jonny Hill pres des poteaux.",
+      "tags": [
+        "SCRUM_8_PICK",
+        "GAINLINE",
+        "NEXT_SUPPORT"
+      ],
+      "simulationHypothesis": "Tester le 8 qui annonce au 9 son depart avant la prise, puis la couverture du ballon par 9 et les soutiens.",
+      "dialogueVerified": false,
+      "playerTrajectoriesVerified": false,
+      "engineScenarioStatus": "SPECIFIED_NOT_IMPLEMENTED"
+    },
+    {
+      "id": "T14-02",
+      "matchId": "R92-BAY-2025",
+      "sourceUrl": "https://www.lequipe.fr/Rugby/match-direct/top-14/2025-2026/racing-92-bayonne-live/40474",
+      "clock": {
+        "label": "80+1e",
+        "exactSeconds": null
+      },
+      "evidenceType": "MATCH_TIMELINE",
+      "observation": "Racing beneficie d'une penalite de melee et choisit une nouvelle melee a cinq metres plutot que prendre les points.",
+      "tags": [
+        "SCRUM_CHOICE",
+        "PENALTY_RESTART",
+        "SCORE_CONTEXT"
+      ],
+      "simulationHypothesis": "Choix d'une melee apres penalite parmi options legales; les joueurs doivent ensuite jouer l'action reelle.",
+      "dialogueVerified": false,
+      "playerTrajectoriesVerified": false,
+      "engineScenarioStatus": "SPECIFIED_NOT_IMPLEMENTED"
+    },
+    {
+      "id": "T14-03",
+      "matchId": "TOU-BAY-2025",
+      "sourceUrl": "https://www.lequipe.fr/Rugby/Actualites/En-video-le-bel-essai-de-romain-ntamack-qui-a-lance-le-stade-toulousain-face-a-bayonne-en-demi-finales-de-top-14/1571774",
+      "clock": {
+        "label": "13e",
+        "exactSeconds": null
+      },
+      "evidenceType": "MATCH_TIMELINE",
+      "observation": "Sur une touche de Toulouse, Flament sert Brennan qui perce puis remet au-dessus de sa tete vers Ntamack pour l'essai.",
+      "tags": [
+        "LINEOUT_FIRST_PHASE",
+        "FORWARD_BREAK",
+        "OFFLOAD"
+      ],
+      "simulationHypothesis": "Conquete de touche puis attaque de premiere main; le talonneur, l'avant et le 10 utilisent leurs buts propres.",
+      "dialogueVerified": false,
+      "playerTrajectoriesVerified": false,
+      "engineScenarioStatus": "SPECIFIED_NOT_IMPLEMENTED"
+    },
+    {
+      "id": "T14-04",
+      "matchId": "TOU-BAY-2025",
+      "sourceUrl": "https://top14.lnr.fr/feuille-de-match/2024-2025/demi-finale/11054-toulouse-bayonne",
+      "clock": {
+        "label": "32e",
+        "exactSeconds": null
+      },
+      "evidenceType": "MATCH_SCORE_EVENT",
+      "observation": "Paul Graou, demi de melee toulousain, inscrit le deuxieme essai de son equipe; la source officielle marque la 32e.",
+      "tags": [
+        "SCRUM_HALF_TRY",
+        "RECEIVE_OR_CARRY",
+        "SCORER_POSITION"
+      ],
+      "simulationHypothesis": "Tester la capacite du 9 a conclure lui-meme sans forcer le mecanisme de construction non documente.",
+      "dialogueVerified": false,
+      "playerTrajectoriesVerified": false,
+      "engineScenarioStatus": "SPECIFIED_NOT_IMPLEMENTED"
+    },
+    {
+      "id": "T14-05",
+      "matchId": "TOU-UBB-2025",
+      "sourceUrl": "https://top14.lnr.fr/feuille-de-match/2024-2025/finale/11056-toulouse-bordeaux-begles",
+      "clock": {
+        "label": "80e",
+        "exactSeconds": null
+      },
+      "evidenceType": "MATCH_SCORE_EVENT",
+      "observation": "Maxime Lucu egalise 33-33 sur penalite a la fin du temps reglementaire; la finale se prolonge.",
+      "tags": [
+        "GOAL_KICK",
+        "TIE_AFTER_80",
+        "EXTRA_TIME"
+      ],
+      "simulationHypothesis": "Gestion du score, choix de penalite et fatigue; ne pas arreter le match lorsque une prolongation doit se jouer.",
+      "dialogueVerified": false,
+      "playerTrajectoriesVerified": false,
+      "engineScenarioStatus": "SPECIFIED_NOT_IMPLEMENTED"
+    },
+    {
+      "id": "T14-06",
+      "matchId": "TOU-UBB-2025",
+      "sourceUrl": "https://top14.lnr.fr/feuille-de-match/2024-2025/finale/11056-toulouse-bordeaux-begles",
+      "clock": {
+        "label": "96e et 100e",
+        "exactSeconds": null
+      },
+      "evidenceType": "MATCH_SCORE_EVENT",
+      "observation": "Thomas Ramos reussit deux penalites en prolongation et Toulouse gagne la finale 39-33.",
+      "tags": [
+        "EXTRA_TIME",
+        "GOAL_KICK",
+        "SCORE_MANAGEMENT"
+      ],
+      "simulationHypothesis": "Deux penalites reelles et pression individuelle du buteur; aucune penalite garantie par profil.",
+      "dialogueVerified": false,
+      "playerTrajectoriesVerified": false,
+      "engineScenarioStatus": "SPECIFIED_NOT_IMPLEMENTED"
+    },
+    {
+      "id": "T14-07",
+      "matchId": "TOU-MHR-2026",
+      "sourceUrl": "https://top14.lnr.fr/actualite/finale-top-14-le-stade-toulousain-est-champion-de-france-pour-la-quatrieme-fois-de-suite",
+      "clock": {
+        "label": "7e",
+        "exactSeconds": null
+      },
+      "evidenceType": "MATCH_TIMELINE",
+      "observation": "Apres une touche, Dupont et Mauvaka combinent par un une-deux et le talonneur Mauvaka marque.",
+      "tags": [
+        "LINEOUT",
+        "ONE_TWO",
+        "HOOKER_SUPPORT"
+      ],
+      "simulationHypothesis": "Le 9 peut relancer avec le talonneur: le porteur soutien se replace individuellement et recoit de nouveau.",
+      "dialogueVerified": false,
+      "playerTrajectoriesVerified": false,
+      "engineScenarioStatus": "SPECIFIED_NOT_IMPLEMENTED"
+    },
+    {
+      "id": "T14-08",
+      "matchId": "TOU-MHR-2026",
+      "sourceUrl": "https://top14.lnr.fr/actualite/finale-top-14-le-stade-toulousain-est-champion-de-france-pour-la-quatrieme-fois-de-suite",
+      "clock": {
+        "label": "34e",
+        "exactSeconds": null
+      },
+      "evidenceType": "MATCH_TIMELINE",
+      "observation": "Apres une melee a cinq metres, un coup franc est joue rapidement; quelques phases plus tard Mauvaka marque son deuxieme essai.",
+      "tags": [
+        "SCRUM_FREE_KICK",
+        "QUICK_RESTART",
+        "MULTIPHASE"
+      ],
+      "simulationHypothesis": "Distinguer le coup franc de melee, la remise rapide, les phases successives et le score final.",
+      "dialogueVerified": false,
+      "playerTrajectoriesVerified": false,
+      "engineScenarioStatus": "SPECIFIED_NOT_IMPLEMENTED"
+    },
+    {
+      "id": "T14-09",
+      "matchId": "TOU-MHR-2026",
+      "sourceUrl": "https://top14.lnr.fr/actualite/finale-top-14-le-stade-toulousain-est-champion-de-france-pour-la-quatrieme-fois-de-suite",
+      "clock": {
+        "label": "42e",
+        "exactSeconds": null
+      },
+      "evidenceType": "MATCH_TIMELINE",
+      "observation": "Domingo Miotti joue un coup de pied par-dessus, repris par Justo Piccardo pour l'essai montpellierain.",
+      "tags": [
+        "CHIP_KICK",
+        "CHASE",
+        "KICK_RECEPTION"
+      ],
+      "simulationHypothesis": "L'ouvreur peut choisir le petit pied dans l'espace; le chasseur calcule sa propre course et sa reception.",
+      "dialogueVerified": false,
+      "playerTrajectoriesVerified": false,
+      "engineScenarioStatus": "SPECIFIED_NOT_IMPLEMENTED"
+    },
+    {
+      "id": "T14-10",
+      "matchId": "TOU-MHR-2026",
+      "sourceUrl": "https://top14.lnr.fr/actualite/finale-top-14-le-stade-toulousain-est-champion-de-france-pour-la-quatrieme-fois-de-suite",
+      "clock": {
+        "label": "53e",
+        "exactSeconds": null
+      },
+      "evidenceType": "MATCH_TIMELINE",
+      "observation": "Toulouse obtient une penalite en melee; Ntamack ajoute trois points.",
+      "tags": [
+        "SCRUM_PENALTY",
+        "REFEREE",
+        "GOAL_KICK"
+      ],
+      "simulationHypothesis": "La penalite est une consequence des forces/fautes arbitrées, pas un bouton d'un 9.",
+      "dialogueVerified": false,
+      "playerTrajectoriesVerified": false,
+      "engineScenarioStatus": "SPECIFIED_NOT_IMPLEMENTED"
+    },
+    {
+      "id": "T14-11",
+      "matchId": "TOU-MHR-2026",
+      "sourceUrl": "https://top14.lnr.fr/actualite/finale-top-14-le-stade-toulousain-est-champion-de-france-pour-la-quatrieme-fois-de-suite",
+      "clock": {
+        "label": "60e",
+        "exactSeconds": null
+      },
+      "evidenceType": "MATCH_TIMELINE",
+      "observation": "Apres un orage et une interruption du match, la partie reprend par une melee a cinq metres avec introduction Dupont.",
+      "tags": [
+        "WEATHER_PAUSE",
+        "SCRUM_RESTART",
+        "CLOCK"
+      ],
+      "simulationHypothesis": "Une interruption suspend les decisions/deplacements et reprend sur remise en jeu autorisee; pas de saut de phase.",
+      "dialogueVerified": false,
+      "playerTrajectoriesVerified": false,
+      "engineScenarioStatus": "SPECIFIED_NOT_IMPLEMENTED"
+    },
+    {
+      "id": "T14-12",
+      "matchId": "RCT-UBB-2026",
+      "sourceUrl": "https://top14.lnr.fr/feuille-de-match/2025-2026/j25/11477-toulon-bordeaux-begles/statistiques-du-match",
+      "clock": {
+        "label": "match entier",
+        "exactSeconds": null
+      },
+      "evidenceType": "MATCH_STATISTICS",
+      "observation": "Toulon gagne 27-22; la LNR compte 212 passes contre 112 pour Bordeaux, mais seulement 18 coups de pied contre 37, et 21 touches obtenues contre 5.",
+      "tags": [
+        "PASS_VS_KICK",
+        "MATCH_STYLE",
+        "LINEOUT_COUNT"
+      ],
+      "simulationHypothesis": "Comparer les choix individuels passes/pieds, la variabilite d'un match et les opportunites de touche.",
+      "dialogueVerified": false,
+      "playerTrajectoriesVerified": false,
+      "engineScenarioStatus": "SPECIFIED_NOT_IMPLEMENTED"
+    },
+    {
+      "id": "T14-13",
+      "matchId": "TOU-RCT-2026",
+      "sourceUrl": "https://top14.lnr.fr/feuille-de-match/2025-2026/j23/11465-toulon-toulouse/statistiques-du-match",
+      "clock": {
+        "label": "match entier",
+        "exactSeconds": null
+      },
+      "evidenceType": "MATCH_STATISTICS",
+      "observation": "Toulouse gagne a Toulon 51-27; la LNR affiche 211 passes pour Toulouse contre 110 pour Toulon et six essais contre trois.",
+      "tags": [
+        "MULTIPASS",
+        "CARRY_SUPPORT",
+        "DEFENSIVE_GAPS"
+      ],
+      "simulationHypothesis": "Un style de possession peut etre appuye par un grand nombre de passes, mais jamais imposer une passe par joueur.",
+      "dialogueVerified": false,
+      "playerTrajectoriesVerified": false,
+      "engineScenarioStatus": "SPECIFIED_NOT_IMPLEMENTED"
+    },
+    {
+      "id": "T14-14",
+      "matchId": "R92-SR-2026",
+      "sourceUrl": "https://www.rugbyrama.fr/2026/05/10/top-14-les-notes-de-racing-92-la-rochelle-demba-bamba-consternant-oscar-jegou-determinant-13364958.php",
+      "clock": {
+        "label": "vers 16e",
+        "exactSeconds": null
+      },
+      "evidenceType": "MATCH_TIMELINE",
+      "observation": "Oscar Jegou intervient au debut de la sequence puis sert le demi de melee Nolann Le Garrec pour le premier essai rochelais.",
+      "tags": [
+        "FORWARD_LINK",
+        "SCRUM_HALF_SUPPORT",
+        "TRY"
+      ],
+      "simulationHypothesis": "Un troisieme ligne peut etre le passeur du 9; le 9 propose une vraie ligne de reception.",
+      "dialogueVerified": false,
+      "playerTrajectoriesVerified": false,
+      "engineScenarioStatus": "SPECIFIED_NOT_IMPLEMENTED"
+    },
+    {
+      "id": "T14-15",
+      "matchId": "R92-SR-2026",
+      "sourceUrl": "https://www.rugbyrama.fr/resultats/rugby/top-14/phase-reguliere/rencontre/55769/racing-92-la-rochelle/direct",
+      "clock": {
+        "label": "80+1e",
+        "exactSeconds": null
+      },
+      "evidenceType": "MATCH_TIMELINE",
+      "observation": "Le Racing manque un drop-goal potentiel de la victoire et perd finalement 24-26.",
+      "tags": [
+        "DROP_GOAL",
+        "CHANCE",
+        "ENDGAME"
+      ],
+      "simulationHypothesis": "Le choix et le geste du drop sont distincts de son issue physique; la victoire n'est pas assuree.",
+      "dialogueVerified": false,
+      "playerTrajectoriesVerified": false,
+      "engineScenarioStatus": "SPECIFIED_NOT_IMPLEMENTED"
+    },
+    {
+      "id": "T14-16",
+      "matchId": "RCT-SR-2026",
+      "sourceUrl": "https://top14.lnr.fr/feuille-de-match/2026-2027/j2/11831-toulon-la-rochelle/statistiques-du-match",
+      "clock": {
+        "label": "match entier",
+        "exactSeconds": null
+      },
+      "evidenceType": "MATCH_STATISTICS",
+      "observation": "La Rochelle gagne 21-20 avec seulement deux essais contre trois pour Toulon; La Rochelle a trois penalites reussies contre une, et 17 jeux au pied contre 11.",
+      "tags": [
+        "POINTS_VS_TRIES",
+        "GOAL_KICK",
+        "KICK_CONTEXT"
+      ],
+      "simulationHypothesis": "Le score final depend aussi des points au pied; le nombre d'essais seul ne suffit pas.",
+      "dialogueVerified": false,
+      "playerTrajectoriesVerified": false,
+      "engineScenarioStatus": "SPECIFIED_NOT_IMPLEMENTED"
+    },
+    {
+      "id": "T14-17",
+      "matchId": "PAU-TOU-2026",
+      "sourceUrl": "https://top14.lnr.fr/actualite/j8-de-top-14-la-section-paloise-surpasse-clairement-le-stade-toulousain-34-14",
+      "clock": {
+        "label": "7e et 58e",
+        "exactSeconds": null
+      },
+      "evidenceType": "MATCH_SCORE_EVENT",
+      "observation": "Le numero 8 palois Facundo Isa marque deux essais contre Toulouse, sans que la source decrive un depart de melee sur ces actions.",
+      "tags": [
+        "NUMBER_EIGHT_ATTACK",
+        "TRY",
+        "NON_SCRUM_UNCERTAIN"
+      ],
+      "simulationHypothesis": "Un 8 peut marquer sans que son poste prouve une sortie de melee; ne pas halluciner une phase de conquete.",
+      "dialogueVerified": false,
+      "playerTrajectoriesVerified": false,
+      "engineScenarioStatus": "SPECIFIED_NOT_IMPLEMENTED"
+    },
+    {
+      "id": "T14-18",
+      "matchId": "PAU-TOU-2026",
+      "sourceUrl": "https://top14.lnr.fr/feuille-de-match/2026-2027/j8/11874-pau-toulouse/statistiques-du-match",
+      "clock": {
+        "label": "match entier",
+        "exactSeconds": null
+      },
+      "evidenceType": "MATCH_STATISTICS",
+      "observation": "Pau bat Toulouse 34-14, quatre essais contre deux, malgre 46 pour cent de possession contre 54 pour Toulouse.",
+      "tags": [
+        "EFFICIENCY",
+        "DEFEND",
+        "TURNOVER_OPPORTUNITY"
+      ],
+      "simulationHypothesis": "La possession ne determine pas seule le resultat; mesurer l'efficacite d'attaque et la defense dans le contexte.",
+      "dialogueVerified": false,
+      "playerTrajectoriesVerified": false,
+      "engineScenarioStatus": "SPECIFIED_NOT_IMPLEMENTED"
+    },
+    {
+      "id": "T14-19",
+      "matchId": "TOU-UBB-2025",
+      "sourceUrl": "https://top14.lnr.fr/feuille-de-match/2024-2025/finale/11056-toulouse-bordeaux-begles/statistiques-du-match",
+      "clock": {
+        "label": "match entier",
+        "exactSeconds": null
+      },
+      "evidenceType": "MATCH_STATISTICS",
+      "observation": "La finale 2025 comporte trois essais par equipe, 139 passes Toulouse contre 152 UBB, 41 coups de pied Toulouse contre 38 UBB, et 8 penalites concedees Toulouse contre 17 UBB.",
+      "tags": [
+        "DISCIPLINE",
+        "GOAL_KICK",
+        "EVEN_TRIES"
+      ],
+      "simulationHypothesis": "Comparer score/discipline/pied et penalites sans attribuer artificiellement des essais par style.",
+      "dialogueVerified": false,
+      "playerTrajectoriesVerified": false,
+      "engineScenarioStatus": "SPECIFIED_NOT_IMPLEMENTED"
+    }
+  ],
+  "stats": [
+    {
+      "id": "STAT-01",
+      "matchId": "TOU-UBB-2025",
+      "sourceUrl": "https://top14.lnr.fr/feuille-de-match/2024-2025/finale/11056-toulouse-bordeaux-begles/statistiques-du-match",
+      "metrics": {
+        "passes": [
+          139,
+          152
+        ],
+        "kicksFromHand": [
+          41,
+          38
+        ],
+        "penaltiesConceded": [
+          8,
+          17
+        ],
+        "tries": [
+          3,
+          3
+        ]
+      },
+      "status": "LNR_RECORDED"
+    },
+    {
+      "id": "STAT-02",
+      "matchId": "RCT-UBB-2026",
+      "sourceUrl": "https://top14.lnr.fr/feuille-de-match/2025-2026/j25/11477-toulon-bordeaux-begles/statistiques-du-match",
+      "metrics": {
+        "passes": [
+          212,
+          112
+        ],
+        "kicksFromHand": [
+          18,
+          37
+        ],
+        "lineoutsObtained": [
+          21,
+          5
+        ]
+      },
+      "status": "LNR_RECORDED"
+    },
+    {
+      "id": "STAT-03",
+      "matchId": "TOU-RCT-2026",
+      "sourceUrl": "https://top14.lnr.fr/feuille-de-match/2025-2026/j23/11465-toulon-toulouse/statistiques-du-match",
+      "metrics": {
+        "passes": [
+          110,
+          211
+        ],
+        "kicksFromHand": [
+          21,
+          29
+        ],
+        "tries": [
+          3,
+          6
+        ]
+      },
+      "status": "LNR_RECORDED"
+    },
+    {
+      "id": "STAT-04",
+      "matchId": "R92-SR-2026",
+      "sourceUrl": "https://top14.lnr.fr/feuille-de-match/2025-2026/j23/11464-racing-92-la-rochelle/statistiques-du-match",
+      "metrics": {
+        "passes": [
+          107,
+          206
+        ],
+        "kicksFromHand": [
+          33,
+          32
+        ],
+        "lineoutsObtained": [
+          24,
+          14
+        ]
+      },
+      "status": "LNR_RECORDED"
+    },
+    {
+      "id": "STAT-05",
+      "matchId": "RCT-SR-2026",
+      "sourceUrl": "https://top14.lnr.fr/feuille-de-match/2026-2027/j2/11831-toulon-la-rochelle/statistiques-du-match",
+      "metrics": {
+        "passes": [
+          132,
+          112
+        ],
+        "kicksFromHand": [
+          11,
+          17
+        ],
+        "tries": [
+          3,
+          2
+        ],
+        "successfulPenalties": [
+          1,
+          3
+        ]
+      },
+      "status": "LNR_RECORDED"
+    },
+    {
+      "id": "STAT-06",
+      "matchId": "PAU-TOU-2026",
+      "sourceUrl": "https://top14.lnr.fr/feuille-de-match/2026-2027/j8/11874-pau-toulouse/statistiques-du-match",
+      "metrics": {
+        "passes": [
+          107,
+          126
+        ],
+        "kicksFromHand": [
+          27,
+          28
+        ],
+        "tries": [
+          4,
+          2
+        ],
+        "possessionPct": [
+          46,
+          54
+        ],
+        "lineoutsObtained": [
+          14,
+          20
+        ]
+      },
+      "status": "LNR_RECORDED"
+    }
+  ],
+  "futureTests": [
+    "TOP14-01",
+    "TOP14-02",
+    "TOP14-03",
+    "TOP14-04",
+    "TOP14-05",
+    "TOP14-06",
+    "TOP14-07",
+    "TOP14-08",
+    "TOP14-09",
+    "TOP14-10",
+    "TOP14-11",
+    "TOP14-12",
+    "TOP14-13",
+    "TOP14-14",
+    "TOP14-15",
+    "TOP14-16",
+    "TOP14-17",
+    "TOP14-18",
+    "TOP14-19"
+  ]
+}

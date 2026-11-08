@@ -77,6 +77,17 @@ jobs:
           # Sans cette ligne, une loi de la touche pouvait etre neutralisee sans
           # qu'aucun job de deploiement ne bronche — verifie par mutation.
           RM_TOUCHE_RAPIDE=1 node server/test-touche.js
+      - name: IA V4 — contrats de scénarios, corpus et communication (tests rapides)
+        run: |
+          node server/test-spec-simulation-v4.js
+          node server/test-v4-goap-planner.js
+          node server/test-v4-local-communication.js
+          node server/test-v4-tactical-dialogue.js
+          node server/test-v4-observations-matchs.js
+          node server/test-v4-styles-match-data.js
+          node server/test-v4-top14-data.js
+          node server/test-v4-top14-micro-actions.js
+          node server/test-v4-goals-actions-doc.js
       - name: Installer Playwright (Chromium)
         run: |
           npm install --no-save playwright
