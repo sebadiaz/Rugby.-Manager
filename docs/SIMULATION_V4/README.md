@@ -32,7 +32,7 @@ Chaque joueur connaît le plan de jeu et ses positions de référence mais, en f
 
 **Premier jalon de preuve** : A9, avec but `DISTRIBUTE_BALL`, planifie `MOVE_TO_RUCK → SECURE_BALL → PASS_TO_10`, puis change légalement vers `PASS_TO_POD` si le couloir du 10 se ferme. Aucun effet ne peut être simulé « par magie » dans le moteur.
 
-Lire `PLAN_CLAUDE_CODE.md` : 31 tâches **G00–G30**, et `PROMPT_CLAUDE_CODE.md` pour le démarrage de Claude Code.
+Lire `PLAN_CLAUDE_CODE.md` : 34 tâches **G00–G30**, et `PROMPT_CLAUDE_CODE.md` pour le démarrage de Claude Code.
 
 ## Objectif produit
 
