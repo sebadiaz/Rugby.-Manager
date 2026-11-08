@@ -837,6 +837,8 @@
         ? Object.assign({}, b.ballon, { x: lerp(a.ballon.x, b.ballon.x, f), y: lerp(a.ballon.y, b.ballon.y, f) })
         : b.ballon,
       arbitre: interpolerPoint(a.arbitre, b.arbitre, f),
+      assistants: (b.assistants || []).map((officiel, i) =>
+        interpolerPoint((a.assistants || [])[i], officiel, f)),
       porteur: sautTropGrand(a.porteur, b.porteur) ? b.porteur : interpolerPoint(a.porteur, b.porteur, f),
     });
   }

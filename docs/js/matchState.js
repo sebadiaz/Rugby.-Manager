@@ -82,6 +82,7 @@
       porteur: rawState.porteur,
       ballon: rawState.ballon,
       arbitre: rawState.arbitre,
+      assistants: rawState.assistants || [],
     };
   }
 

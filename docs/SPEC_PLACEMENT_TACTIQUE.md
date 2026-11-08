@@ -1,6 +1,6 @@
 # Spécification — Placement tactique réaliste des joueurs (v3)
 
-> **Statut : cible future, pas encore implémentée.** Le moteur actuel (`engine/rugby-engine.js`, en JavaScript) implémente une version simplifiée du modèle Suiveur/Tenant (section 2) mais pas encore les rideaux défensifs multiples ni la distinction poste naturel/postes maîtrisés décrits ici. Les références `Joueur::...`/`JoueurAgent::...` ci-dessous datent de la conception C++ abandonnée ; à lire comme `Joueur.../JoueurAgent...` (notation objet générique), peu importe le langage d'implémentation final.
+> **Statut : partiellement implémentée (8 novembre 2026).** Le moteur JavaScript place maintenant les avants disponibles vers des cibles 1-3-3-1 / 2-4-2 au ruck et expose ces structures dans le Mode Club. Les rideaux défensifs multiples, l'affectation multi-postes et l'IA complète des courses restent des cibles de conception. Les références C++ ci-dessous sont historiques.
 
 Révision de `docs/SPEC_PLACEMENT_TACTIQUE.md` (v2). La v2 corrigeait les distances et ajoutait la dimension temporelle, mais restait **stéréotypée** sur trois points :
 
@@ -206,3 +206,22 @@ ContextePlacement (étendu vs v2) :
 2. Calculer `tendanceProximite` comme une fonction pure (pas un champ stocké), appelée par `JoueurAgent::choisirAction`/`sePlacerOffensivement` pour sélectionner le mode Suiveur/Tenant (section 2).
 3. Remplacer le calcul direct `positionCible` de `seReplacerDefensivement` par les deux passes de la section 3 (détection de trou prioritaire, puis glissement séquencé) — nécessite que `JoueurAgent` connaisse les positions de ses voisins de ligne immédiats, pas seulement l'adversaire le plus proche comme actuellement dans `Perception`.
 4. Introduire `LigneDefensive` comme structure explicite dans `ContexteMatch`, et faire en sorte que `DoubleRideau` soit un état temporaire géré par le futur `MatchSimulator` (déclenché sur rupture de structure, résorbé après un délai ou un critère de continuité retrouvée), pas un choix tactique permanent au même niveau que `Drift`/`Rush`/`LignePlate`.
+
+
+## État d'intégration — 8 novembre 2026
+
+**Implémenté dans le moteur actif :**
+
+- `organiserAvantsRuck()` attribue huit créneaux théoriques (1-3-3-1 ou 2-4-2) **uniquement aux avants réellement disponibles**, hors joueurs plaqués au sol, exclus et engagés dans le regroupement. Les déplacements utilisent `avancer()` : aucune téléportation.
+- L'axe **Organisation des avants** du Mode Club propose 1-3-3-1 (défaut) et 2-4-2, convertis en `cfgAttaque.A/B.structureAvants`.
+- Les états de match exposent l'orientation des joueurs et leurs cibles/rôles provisoires au ruck.
+- Arbitre central mobile, deux assistants suivant les touches, fanions et indicateurs directionnels au rendu.
+- Vérification : `server/test-placement-arbitrage.js` et suites de non-régression habituelles.
+
+**Restant à implémenter / à calibrer :**
+
+- Les cibles 1-3-3-1 / 2-4-2 ne sont pas encore une machine tactique complète pour toutes les phases ; elles s'appliquent au ruck et durant une courte transition (au plus 5 s) en jeu courant, sans priver systématiquement le porteur de soutiens.
+- Attribution des rôles `fold` / `hold`, ligne défensive à trois rideaux et répartition dynamique de tous les joueurs à chaque changement de possession.
+- Vidéo/TMO/FPRO, communications arbitrales détaillées et sanctions disciplinaires dépendant d'un modèle de posture.
+- Sprites directionnels pixel-art complets, animations d'impact et catalogues de séquences calibrées. Le rendu est encore un Canvas à disques numérotés.
+- Mesures de validation statistique sur séries suffisantes de matchs avant de fixer des valeurs de tempo.

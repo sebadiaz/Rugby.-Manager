@@ -1,0 +1,395 @@
+{
+  "schemaVersion": "1.0.0",
+  "researchDate": "2026-11-08",
+  "subject": "Rugby Manager V4 agents individuels — observations de quatre matchs reels",
+  "scope": "Seules les actions explicitement rapportees sont classees OBSERVED_MATCH_REPORT. Aucun audio de terrain, trajectoire precise ni intention interne n'est atteste par ces sources.",
+  "notObserved": [
+    "appels entre 9 et 10",
+    "conversations entre 9 et 8",
+    "intention tactique interne",
+    "position de chacun des 30 joueurs a chaque tick",
+    "trajectory 3D precise du ballon"
+  ],
+  "sources": {
+    "IRF": {
+      "match": "Irlande - France",
+      "date": "2025-03-08",
+      "score": "27-42",
+      "sourceTitle": "Six Nations — Ireland v France official match report",
+      "sourceUrl": "https://www.sixnationsrugby.com/en/m6n/fixtures/202500/ireland-v-france-08032025-1415/report"
+    },
+    "ENF": {
+      "match": "Angleterre - France",
+      "date": "2025-02-08",
+      "score": "26-25",
+      "sourceTitle": "Six Nations — England v France official match report",
+      "sourceUrl": "https://www.sixnationsrugby.com/en/m6n/fixtures/202500/england-v-france-08022025-1645/report"
+    },
+    "ENW": {
+      "match": "Angleterre - Galles",
+      "date": "2024-02-10",
+      "score": "16-14",
+      "sourceTitle": "BBC Sport — England 16-14 Wales match report",
+      "sourceUrl": "https://www.bbc.co.uk/sport/rugby-union/68254950"
+    },
+    "FIF": {
+      "match": "France - Fidji",
+      "date": "2026-11-07",
+      "score": "54-17",
+      "sourceTitle": "Six Nations — France run riot against Fiji in Lyon",
+      "sourceUrl": "https://www.sixnationsrugby.com/en/m6n/news/france-run-riot-against-fiji"
+    }
+  },
+  "events": [
+    {
+      "id": "IRF01",
+      "sourceKey": "IRF",
+      "clock": {
+        "label": "~21e",
+        "seconds": null,
+        "exact": false
+      },
+      "kind": "LINEOUT_MAUL_RELEASE",
+      "evidenceType": "OBSERVED_MATCH_REPORT",
+      "observation": "France exploite une touche en zone offensive : ballon porté, puis passe du 9 Dupont vers l'ailier Bielle-Biarrey, qui marque.",
+      "tags": [
+        "lineout",
+        "maul",
+        "pass_wide",
+        "try"
+      ],
+      "gameMechanicHypothesis": "Après possession réelle, le 9 peut choisir de libérer au large ; une sortie n'est jamais garantie.",
+      "coachCallsObserved": false,
+      "exactPlayerCoordinatesObserved": false,
+      "testStatus": "SPECIFIED_NOT_IMPLEMENTED"
+    },
+    {
+      "id": "IRF02",
+      "sourceKey": "IRF",
+      "clock": {
+        "label": "~43e",
+        "seconds": null,
+        "exact": false
+      },
+      "kind": "MAUL_PEEL",
+      "evidenceType": "OBSERVED_MATCH_REPORT",
+      "observation": "Dan Sheehan se détache d'un maul offensif et marque pour l'Irlande.",
+      "tags": [
+        "maul",
+        "carrier_peel",
+        "try"
+      ],
+      "gameMechanicHypothesis": "Un participant au maul peut devenir porteur sortant lorsque les conditions légales sont réunies.",
+      "coachCallsObserved": false,
+      "exactPlayerCoordinatesObserved": false,
+      "testStatus": "SPECIFIED_NOT_IMPLEMENTED"
+    },
+    {
+      "id": "IRF03",
+      "sourceKey": "IRF",
+      "clock": {
+        "label": "~29e",
+        "seconds": null,
+        "exact": false
+      },
+      "kind": "SCRUM_HALF_REPLACEMENT",
+      "evidenceType": "OBSERVED_MATCH_REPORT",
+      "observation": "Dupont sort blessé ; Maxime Lucu entre au poste de demi de mêlée pour la France.",
+      "tags": [
+        "replacement",
+        "role",
+        "continuity"
+      ],
+      "gameMechanicHypothesis": "Le remplaçant reprend des responsabilités connues du plan de jeu, sans hériter magiquement des croyances de l'ancien joueur.",
+      "coachCallsObserved": false,
+      "exactPlayerCoordinatesObserved": false,
+      "testStatus": "SPECIFIED_NOT_IMPLEMENTED"
+    },
+    {
+      "id": "IRF04",
+      "sourceKey": "IRF",
+      "clock": {
+        "label": "~50e",
+        "seconds": null,
+        "exact": false
+      },
+      "kind": "COUNTER_RUCK_KICK_CHASE",
+      "evidenceType": "OBSERVED_MATCH_REPORT",
+      "observation": "Après récupération d'un ballon, Bielle-Biarrey joue un coup de pied vers l'intérieur et poursuit pour marquer.",
+      "tags": [
+        "turnover",
+        "kick",
+        "chase",
+        "grounding"
+      ],
+      "gameMechanicHypothesis": "Un agent autre que le 9 peut choisir une option de pied selon la circonstance ; chaque poursuivant suit un plan propre.",
+      "coachCallsObserved": false,
+      "exactPlayerCoordinatesObserved": false,
+      "testStatus": "SPECIFIED_NOT_IMPLEMENTED"
+    },
+    {
+      "id": "IRF05",
+      "sourceKey": "IRF",
+      "clock": {
+        "label": "~47e",
+        "seconds": null,
+        "exact": false
+      },
+      "kind": "MULTI_OFFLOAD",
+      "evidenceType": "OBSERVED_MATCH_REPORT",
+      "observation": "Une attaque française comprend des passes après contact de Jean-Baptiste Gros puis du demi Maxime Lucu et se termine par l'essai de Boudehent.",
+      "tags": [
+        "offload",
+        "support",
+        "try"
+      ],
+      "gameMechanicHypothesis": "Les soutiens sont disponibles réellement au bon moment ; les passes après contact n'assurent pas la conservation.",
+      "coachCallsObserved": false,
+      "exactPlayerCoordinatesObserved": false,
+      "testStatus": "SPECIFIED_NOT_IMPLEMENTED"
+    },
+    {
+      "id": "IRF06",
+      "sourceKey": "IRF",
+      "clock": {
+        "label": "~75e",
+        "seconds": null,
+        "exact": false
+      },
+      "kind": "INTERCEPTION_COUNTER",
+      "evidenceType": "OBSERVED_MATCH_REPORT",
+      "observation": "Ramos intercepte une passe irlandaise, et Penaud termine l'action par un essai français.",
+      "tags": [
+        "interception",
+        "transition",
+        "cover_defense"
+      ],
+      "gameMechanicHypothesis": "La lecture défensive peut primer sur la position nominale ; après interception les buts changent sans téléportation.",
+      "coachCallsObserved": false,
+      "exactPlayerCoordinatesObserved": false,
+      "testStatus": "SPECIFIED_NOT_IMPLEMENTED"
+    },
+    {
+      "id": "ENF01",
+      "sourceKey": "ENF",
+      "clock": {
+        "label": "première période",
+        "seconds": null,
+        "exact": false
+      },
+      "kind": "GRUBBER_COMBINATION",
+      "evidenceType": "OBSERVED_MATCH_REPORT",
+      "observation": "Après récupération, Dupont lance une course et sert Penaud, qui joue un petit coup de pied derrière la défense pour Bielle-Biarrey, marqueur.",
+      "tags": [
+        "run",
+        "pass",
+        "grubber",
+        "chase"
+      ],
+      "gameMechanicHypothesis": "L'appel d'un ailier et le coup de pied d'un porteur doivent émerger de l'espace et du temps réel.",
+      "coachCallsObserved": false,
+      "exactPlayerCoordinatesObserved": false,
+      "testStatus": "SPECIFIED_NOT_IMPLEMENTED"
+    },
+    {
+      "id": "ENF02",
+      "sourceKey": "ENF",
+      "clock": {
+        "label": "seconde période",
+        "seconds": null,
+        "exact": false
+      },
+      "kind": "HIGH_KICK_REGATHER",
+      "evidenceType": "OBSERVED_MATCH_REPORT",
+      "observation": "Fin Smith lève un ballon haut capté par Tommy Freeman ; la séquence de jeu se conclut par l'essai de Freeman.",
+      "tags": [
+        "high_kick",
+        "catch",
+        "phase",
+        "try"
+      ],
+      "gameMechanicHypothesis": "Le botteur peut être un 10 ; les chasseurs doivent courir et capter le ballon, aucun coup de pied ne garantit un essai.",
+      "coachCallsObserved": false,
+      "exactPlayerCoordinatesObserved": false,
+      "testStatus": "SPECIFIED_NOT_IMPLEMENTED"
+    },
+    {
+      "id": "ENF03",
+      "sourceKey": "ENF",
+      "clock": {
+        "label": "fin de match",
+        "seconds": null,
+        "exact": false
+      },
+      "kind": "PENALTY_CORNER_LINEOUT_CLOSE",
+      "evidenceType": "OBSERVED_MATCH_REPORT",
+      "observation": "L'Angleterre préfère la pénaltouche à une pénalité tentable ; après la touche, Fin Baxter marque sur une action de près.",
+      "tags": [
+        "penalty_choice",
+        "territory",
+        "lineout",
+        "pick_go",
+        "try"
+      ],
+      "gameMechanicHypothesis": "La préférence de marquer des points dépend du score, du temps et de la possibilité de conserver une touche offensive.",
+      "coachCallsObserved": false,
+      "exactPlayerCoordinatesObserved": false,
+      "testStatus": "SPECIFIED_NOT_IMPLEMENTED"
+    },
+    {
+      "id": "ENF04",
+      "sourceKey": "ENF",
+      "clock": {
+        "label": "fin de match",
+        "seconds": null,
+        "exact": false
+      },
+      "kind": "BLIND_SIDE_INSERTION",
+      "evidenceType": "OBSERVED_MATCH_REPORT",
+      "observation": "Elliot Daly arrive de l'aile fermée sur une passe de Fin Smith et marque l'essai final anglais.",
+      "tags": [
+        "blindside",
+        "support",
+        "pass",
+        "try"
+      ],
+      "gameMechanicHypothesis": "Un ailier peut quitter sa largeur nominale si son propre but et la situation rendent l'insertion utile.",
+      "coachCallsObserved": false,
+      "exactPlayerCoordinatesObserved": false,
+      "testStatus": "SPECIFIED_NOT_IMPLEMENTED"
+    },
+    {
+      "id": "ENW01",
+      "sourceKey": "ENW",
+      "clock": {
+        "label": "~19e",
+        "seconds": null,
+        "exact": false
+      },
+      "kind": "NUMBER_EIGHT_PICK",
+      "evidenceType": "OBSERVED_MATCH_REPORT",
+      "observation": "Ben Earl prend le ballon derrière la mêlée anglaise et marque après une course puissante.",
+      "tags": [
+        "scrum",
+        "eight_pick",
+        "carry",
+        "try"
+      ],
+      "gameMechanicHypothesis": "Une sortie par le 8 existe dans un vrai match : le 8 contrôle et porte le ballon ; le 9 ne fait pas deux prises simultanées.",
+      "coachCallsObserved": false,
+      "exactPlayerCoordinatesObserved": false,
+      "testStatus": "SPECIFIED_NOT_IMPLEMENTED"
+    },
+    {
+      "id": "FIF01",
+      "sourceKey": "FIF",
+      "clock": {
+        "label": "~15e",
+        "seconds": null,
+        "exact": false
+      },
+      "kind": "SCRUM_HALF_KICK_IN_BEHIND",
+      "evidenceType": "OBSERVED_MATCH_REPORT",
+      "observation": "Après des phases offensives, Dupont joue un coup de pied derrière, Attissogbe intervient près de la ligne et Gros finit l'action.",
+      "tags": [
+        "phase",
+        "kick",
+        "regather",
+        "support",
+        "try"
+      ],
+      "gameMechanicHypothesis": "Le 9 peut changer d'option en présence d'une défense compacte, sans jouer au pied automatiquement après N phases.",
+      "coachCallsObserved": false,
+      "exactPlayerCoordinatesObserved": false,
+      "testStatus": "SPECIFIED_NOT_IMPLEMENTED"
+    },
+    {
+      "id": "FIF02",
+      "sourceKey": "FIF",
+      "clock": {
+        "label": "~22e",
+        "seconds": null,
+        "exact": false
+      },
+      "kind": "MAUL_COLLAPSE_PENALTY_TRY",
+      "evidenceType": "OBSERVED_MATCH_REPORT",
+      "observation": "Un maul français proche de l'en-but est illicitement stoppé ; l'arbitre accorde un essai de pénalité.",
+      "tags": [
+        "lineout",
+        "maul",
+        "referee",
+        "penalty_try"
+      ],
+      "gameMechanicHypothesis": "Un regroupement dominant peut provoquer une infraction défensive ; seul l'arbitre attribue l'essai de pénalité.",
+      "coachCallsObserved": false,
+      "exactPlayerCoordinatesObserved": false,
+      "testStatus": "SPECIFIED_NOT_IMPLEMENTED"
+    },
+    {
+      "id": "FIF03",
+      "sourceKey": "FIF",
+      "clock": {
+        "label": "~60e",
+        "seconds": null,
+        "exact": false
+      },
+      "kind": "TURNOVER_TO_BACKS",
+      "evidenceType": "OBSERVED_MATCH_REPORT",
+      "observation": "Après une récupération française, Gourgues termine une attaque de plusieurs passes par un essai.",
+      "tags": [
+        "turnover",
+        "multi_pass",
+        "try"
+      ],
+      "gameMechanicHypothesis": "Après turnover, les buts et angles de course sont réévalués individuellement ; l'équipe ne se téléporte pas.",
+      "coachCallsObserved": false,
+      "exactPlayerCoordinatesObserved": false,
+      "testStatus": "SPECIFIED_NOT_IMPLEMENTED"
+    },
+    {
+      "id": "FIF04",
+      "sourceKey": "FIF",
+      "clock": {
+        "label": "~63e",
+        "seconds": null,
+        "exact": false
+      },
+      "kind": "COUNTER_ATTACK_FIX_PASS",
+      "evidenceType": "OBSERVED_MATCH_REPORT",
+      "observation": "Dupont récupère un ballon profond, progresse, transmet à Bielle-Biarrey, qui fixe puis sert Attissogbe pour l'essai.",
+      "tags": [
+        "counterattack",
+        "fix",
+        "pass",
+        "support",
+        "try"
+      ],
+      "gameMechanicHypothesis": "Le porteur peut fixer avant de transmettre ; un soutien doit avoir réellement rejoint le bon couloir.",
+      "coachCallsObserved": false,
+      "exactPlayerCoordinatesObserved": false,
+      "testStatus": "SPECIFIED_NOT_IMPLEMENTED"
+    },
+    {
+      "id": "FIF05",
+      "sourceKey": "FIF",
+      "clock": {
+        "label": "~79e",
+        "seconds": null,
+        "exact": false
+      },
+      "kind": "MAUL_TO_NINE_PEEP",
+      "evidenceType": "OBSERVED_MATCH_REPORT",
+      "observation": "Après une touche, un maul français avance ; Mauvaka sert Dupont, qui sort près du regroupement et marque.",
+      "tags": [
+        "lineout",
+        "maul",
+        "short_exit",
+        "try"
+      ],
+      "gameMechanicHypothesis": "Une mêlée ou un maul ne débouchent pas toujours au large ; le 9 peut attaquer lui-même au près si l'espace existe.",
+      "coachCallsObserved": false,
+      "exactPlayerCoordinatesObserved": false,
+      "testStatus": "SPECIFIED_NOT_IMPLEMENTED"
+    }
+  ]
+}

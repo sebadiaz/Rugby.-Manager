@@ -175,6 +175,9 @@
     return {
       style: (passe + vitesse) / 2 >= 60 ? 'large' : (passe + vitesse) / 2 <= 50 ? 'sol' : 'equilibre',
       avants: puissance >= 62 ? 'proche' : vitesse >= 62 ? 'large' : 'equilibre',
+      // Déduction prudente à partir du profil du pack : ne prétend pas
+      // connaître les consignes secrètes de l'adversaire.
+      structure: puissance >= 63 && vitesse >= 59 ? '242' : '1331',
       rythme: endurance >= 62 ? 'rapide' : endurance <= 50 ? 'lent' : 'normal',
       pied: jeuPied >= 58 ? 'frequent' : jeuPied <= 46 ? 'rare' : 'normal',
       ligneDef: plaquage >= 62 ? 'haute' : plaquage <= 50 ? 'basse' : 'normale',

@@ -1,5 +1,66 @@
 AGENTS.md
 
+RÈGLE D'ARCHITECTURE V4 — IMPORTANTE
+
+Le jeu doit simuler 30 agents INDIVIDUELS autonomes à base de buts (GOAP).
+
+PRIORITE AUX MICRO-ACTIONS : nouveau dossier
+SIMULATION_V4/14_ANALYSE_MICRO_ACTIONS_TOP14.md et fixture
+SIMULATION_V4/fixtures/micro_actions_top14.json. 7 etudes,
+47 choix unitaires de joueurs, 22 contre-factuels, 12 tests MIC
+à programmer (G42-G44). Pendant Toulouse-UBB 2025 : Graou choisit
+le bloc et passe à Flament, Willis et Cros peuvent jouer de vrais
+leurres, Jelonch choisit un intervalle, Moefana/Samu/Gazzotti choisissent
+leur propre défense. AUCUN module ne force Moefana à suivre un leurre
+et aucun appel ne modifie directement le GOAP d'un autre agent.
+Distinguer faits de presse et hypotheses sur les buts, perceptions,
+choix et vitesses ; aucune vraie conversation non verifiee inventee.
+Catalogue: 51 buts et 66 actions candidates. Tests structurels :
+server/test-v4-top14-micro-actions.js et test-v4-goals-actions-doc.js.
+
+Le Top 14 fait désormais partie des matchs de référence obligatoires :
+docs/SIMULATION_V4/13_MATCHS_TOP14_DECISIONS.md,
+fixtures/observations_top14_2025_2026.json et test-v4-top14-data.js.
+Neuf rencontres, 19 observations sourcées et 6 profils LNR.
+Les tests moteur TOP14-01..19 restent à réaliser (G39-G41).
+Un n°8 qui part en mêlée prévient son 9, le 9 peut replanifier
+soutien plutôt que prise ; une touche peut mener à une combinaison
+9-talonneur ou à une passe d'avant vers 10, pas systématiquement un maul.
+Ni nom de club ni nationalité ne créent une IA collective ou script.
+Important : statistiques LNR finale Toulouse-Montpellier 2026
+zéro mêlée/touche/passe = DONNEES MANQUANTES, pas valeurs réelles.
+
+Le 8 qui part d'une mêlée doit prévenir le 9 **juste avant** la prise :
+SCRUM_8_GOING != SCRUM_8_READY. Si le 9 entend l'appel, il replanifie
+individuellement (soutien, ligne de passe, couverture), pas d'attribution
+centrale du ballon. Le moteur garantit un seul porteur réel ; appel perdu
+ou annulé, vieille mêlée, cooldown sont des cas à tester. Voir doc
+SIMULATION_V4/12_STYLES_ANGLETERRE_AFRIQUE_DU_SUD_NOUVELLE_ZELANDE.md
+et G37-G38 du PLAN_CLAUDE_CODE.md : cinq autres matchs sourcés ENG/RSA/NZ,
+styles sous forme de playbooks **interchangeables** sans IA nationale.
+
+Chaque joueur connaît le plan de jeu commun et ses positions de référence,
+mais choisit lui-même ses buts, son plan et chaque déplacement selon les
+circonstances. Défendre et ses sous-buts sont prioritaires lorsque
+l'adversaire a la balle, avec une décision adaptée au rôle et au danger.
+Aucune IA d'équipe, aucun TeamCoordinator/TeamBlackboard décisionnel,
+aucune réservation/enchère de rôles ni attribution globale de positions.
+Les comportements de groupe doivent émerger des décisions individuelles
+et de la perception de l'état réel des joueurs.
+Étudier aussi docs/SIMULATION_V4/11_MATCHS_REELS_ET_PRISES_DE_DECISION.md
+(16 événements sourcés de 4 matchs, et 16 tests futurs REAL-01..16).
+Ne pas traiter les appels 9-10-8 ou les trajectoires supposées comme des
+observations historiques : ce sont des hypothèses de simulation.
+43 buts et 50 actions à spécifier/implémenter progressivement ; tâches
+RM4-G34 à G36 pour baseline, replay causal et calibration. Tester
+server/test-v4-observations-matchs.js et test-v4-goals-actions-doc.js.
+
+Lire docs/SIMULATION_V4/07_AGENT_INDIVIDUEL_PLACEMENT.md,
+puis 04_IA_AGENTS_BUTS.md, 05_CATALOGUE_GOALS_ACTIONS.md,
+06_TESTS_AGENTS.md et PLAN_CLAUDE_CODE.md dans le même dossier.
+
+---
+
 Objectif du projet
 
 Ce projet est un jeu vidéo de rugby jouable dans le navigateur.

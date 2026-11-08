@@ -152,6 +152,15 @@
     if (auSol) ctx.globalAlpha = 0.5;
     ctx.fill();
     ctx.globalAlpha = 1;
+    // Marqueur directionnel discret : les joueurs tournent avec leur course.
+    // Le numéro de maillot reste lisible même lorsque la caméra est éloignée.
+    if (!auSol && Number.isFinite(j.orientation)) {
+      const fx = Math.cos(j.orientation), fy = Math.sin(j.orientation);
+      ctx.beginPath();
+      ctx.arc(px + fx * 7.2, py + fy * 7.2, 2.5, 0, Math.PI * 2);
+      ctx.fillStyle = '#f4f2d7';
+      ctx.fill();
+    }
     if (estPorteur) {
       // Porteur du ballon nettement marqué : anneau jaune épais + halo.
       ctx.lineWidth = Math.max(2.5, r * 0.4);
@@ -306,6 +315,48 @@
     ctx.font = '9px sans-serif';
     ctx.fillStyle = '#fff';
     ctx.fillText('arbitre', px, py + 14);
+    // Geste lisible sans remplacer la logique d'avantage du moteur.
+    if (state.arbitre.signal === 'AVANTAGE' || state.arbitre.signal === 'ESSAI') {
+      ctx.strokeStyle = '#ffe16c';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(px + 5, py - 3);
+      ctx.lineTo(px + 17, py - 15);
+      if (state.arbitre.signal === 'ESSAI') {
+        ctx.moveTo(px - 5, py - 3);
+        ctx.lineTo(px - 17, py - 15);
+      }
+      ctx.stroke();
+    }
+  }
+
+  // Officiels de touche : fanions animés le long de la ligne latérale.
+  // Positions fournies par le moteur et interpolées par main.js.
+  function dessinerAssistants(state) {
+    for (const assistant of (state.assistants || [])) {
+      const { px, py } = versCanvas(assistant.x, assistant.y);
+      const versInterieur = assistant.y <= LARGEUR / 2 ? 1 : -1;
+      ctx.save();
+      ctx.strokeStyle = '#171717';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      const drapeauHaut = assistant.signal === 'TOUCHE';
+      const base = drapeauHaut ? 12 : 2;
+      ctx.moveTo(px, py);
+      ctx.lineTo(px, py + versInterieur * (drapeauHaut ? 25 : 14));
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(px, py + versInterieur * base);
+      ctx.lineTo(px + 11, py + versInterieur * (base + 3));
+      ctx.lineTo(px, py + versInterieur * (base + 7));
+      ctx.closePath();
+      ctx.fillStyle = '#ffdf50';
+      ctx.fill();
+      ctx.strokeStyle = '#5c4600';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.restore();
+    }
   }
 
   // Ordre des couches : pendant une mêlée, le ballon est AU SOL SOUS les
@@ -314,8 +365,8 @@
   // Sinon il est dans les mains (ou en l'air) et passe par-dessus.
   function ordreCouches(state) {
     return state && state.ball && state.ball.state === 'SCRUM'
-      ? ['terrain', 'ballon', 'joueurs', 'repere', 'arbitre']
-      : ['terrain', 'joueurs', 'arbitre', 'ballon'];
+      ? ['terrain', 'ballon', 'joueurs', 'repere', 'assistants', 'arbitre']
+      : ['terrain', 'joueurs', 'assistants', 'arbitre', 'ballon'];
   }
 
   function dessiner(state) {
@@ -334,6 +385,7 @@
         for (const j of state.teams.B) if (!(j.sinBin > 0)) dessinerJoueur(j, estPorteur(j));
       },
       repere: () => dessinerRepereBallon(state),
+      assistants: () => dessinerAssistants(state),
       arbitre: () => dessinerArbitre(state),
     };
     for (const c of ordreCouches(state)) couches[c]();
