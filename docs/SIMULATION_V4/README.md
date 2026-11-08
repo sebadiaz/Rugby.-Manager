@@ -5,7 +5,7 @@
 ## Comment utiliser ce dossier
 
 1. Lire `CLAUDE.md`, `AGENTS.md`, `docs/REGLES_RUGBY.md` et `docs/SPEC_PLACEMENT_TACTIQUE.md`.
-2. Commencer par **`04_IA_AGENTS_BUTS.md`** (architecture Russell–Norvig/GOAP), **`05_CATALOGUE_GOALS_ACTIONS.md`** (28 buts et 36 actions) puis **`06_TESTS_AGENTS.md`** (tests falsifiables). Les `01_...`–`03_...` complètent ensuite les contrats, lois et le rendu.
+2. Commencer par **`07_AGENT_INDIVIDUEL_PLACEMENT.md`** puis **`04_IA_AGENTS_BUTS.md`** (architecture Russell–Norvig/GOAP), **`05_CATALOGUE_GOALS_ACTIONS.md`** (35 buts et 36 actions) puis **`06_TESTS_AGENTS.md`** (tests falsifiables). Les `01_...`–`03_...` complètent ensuite les contrats, lois et le rendu.
 3. Exécuter `node server/test-v4-goap-planner.js` (preuve d'une **recherche de plan symbolique seulement**) et `node server/test-spec-simulation-v4.js` (cohérence des fixtures). **Aucun de ces deux tests n'implique que les 30 joueurs du match exécutent déjà des plans.**
 4. Choisir **une seule** tâche `RM4-Gxx` de `PLAN_CLAUDE_CODE.md`, vérifier ses prérequis, ouvrir une branche dédiée.
 5. Appliquer le prompt de `PROMPT_CLAUDE_CODE.md`. Ne pas déclarer une tâche terminée sans un scénario injecté et ses assertions automatiques.
@@ -18,6 +18,11 @@
 - Mode Club : `docs/js/club.js`, `docs/js/club-composition.js`, `docs/js/clubUI.js`.
 - Acquis : mêlée à états, touche, maul, ruck, avantage, inertie de déplacement, interceptions, pénalités, statistiques, joueurs exclus, composition de match, 1-3-3-1 et 2-4-2 **partiels**, arbitre central et deux assistants visuels.
 - **À ne pas réécrire en C++** pour ce chantier. Les documents `docs/SPEC_MOTEUR_MATCH.md` / `docs/SPEC_JOUEUR.md` contiennent des références C++ historiques.
+
+## Décision d'architecture : **30 agents individuels, pas d'IA collective**
+
+**Fait autorité :** [`07_AGENT_INDIVIDUEL_PLACEMENT.md`](07_AGENT_INDIVIDUEL_PLACEMENT.md).
+Chaque joueur connaît le plan de jeu et ses positions de référence mais, en fonction des circonstances, choisit **ses propres buts** (défendre, tenir ligne, fermer intervalle, marquer, plaquer, couvrir, soutenir, être disponible, etc.) et calcule **individuellement** chaque déplacement. La priorité de défendre ne signifie pas que tous vont vers le porteur. Aucune affectation centrale, aucun TeamCoordinator, TeamBlackboard ou enchère de rôles. Le moteur reste autorité des règles et de la physique, pas des buts ou trajectoires.
 
 ## Exigence centrale : agents à base de buts
 
@@ -56,6 +61,7 @@ Un **test de fixture** valide uniquement la forme des données. Un **test moteur
 ## Structure des livrables
 
 - `PLAN_CLAUDE_CODE.md` : liste ordonnée, dépendances et DoD tâche par tâche.
+- `07_AGENT_INDIVIDUEL_PLACEMENT.md` : architecture prioritaire sans IA collective, buts de placement et mouvement individuel.
 - `04_IA_AGENTS_BUTS.md` : boucle perception → objectifs → planification → exécution → replanification, coordinations des 30 joueurs.
 - `05_CATALOGUE_GOALS_ACTIONS.md` : buts, actions, préconditions, coûts, effets et gardes réglementaires.
 - `06_TESTS_AGENTS.md` : preuve d'une IA réelle et tests différentiels, pas uniquement des snapshots.
