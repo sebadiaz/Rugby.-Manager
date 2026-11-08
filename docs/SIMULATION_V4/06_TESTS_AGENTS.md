@@ -1,6 +1,6 @@
 # V4 — Cahier de tests falsifiables des agents à buts
 
-Ce document définit **comment prouver que le moteur comporte une IA de planification** et non une chorégraphie de déplacements. Les fixtures initiales sont synthétiques ; aucun taux chiffré ci-dessous n'est présenté comme une mesure réelle.
+Ce document définit **comment prouver que le moteur comporte une IA de planification INDIVIDUELLE** et non une chorégraphie de déplacements ou une IA collective. **Référence obligatoire :** `07_AGENT_INDIVIDUEL_PLACEMENT.md`. Les fixtures initiales sont synthétiques ; aucun taux chiffré ci-dessous n'est présenté comme une mesure réelle.
 
 ## 1. Quatre couches distinctes
 
@@ -54,7 +54,7 @@ Ce document définit **comment prouver que le moteur comporte une IA de planific
 | I16 | S10 | A14 aplati ou plaqué | le moteur reste seul à attribuer l'essai |
 | I17 | défense | A13 fixe B13 | défense adapte plan en fonction du nouvel intervalle |
 | I18 | ballon en arrière de la ligne | A15 seul en couverture | choix `PREVENT_TRY` prioritaire à `COVER_BACKFIELD` |
-| I19 | fatigue variable | un soutien s'épuise | autre joueur peut remporter la réservation de soutien |
+| I19 | fatigue variable | un soutien s'épuise | chaque coéquipier proche décide seul s'il peut prendre le soutien légalement, à partir de ses observations |
 | I20 | replanification impossible | planner renvoie `NO_PLAN` | comportement de secours **légal**, log explicite |
 
 Les I01–I20 sont des exigences futures : **aucune promesse qu'ils passent déjà**. Chaque PR doit implémenter les tests relatifs aux tâches modifiées.
@@ -73,9 +73,9 @@ Le 9 commence `MOVE_TO_RUCK` ; un défenseur coupe le couloir du 10 **pendant le
 
 Définir une action `TACKLE_CARRIER` dont l'effet symbolique est `CARRIER_TACKLED=true`. Forcer un plaquage manqué par le moteur physique. Attendu : `CARRIER_TACKLED=false` dans le monde réel ; l'agent observe l'échec et replanifie. Échoue si l'IA écrit l'effet symbolique dans le snapshot.
 
-### D04 — 30 agents, un ballon
+### D04 — 30 agents autonomes, un ballon
 
-Instancier 30 `AgentController` et deux `TeamBlackboard`; créer un ruck contesté. Attendu : un nombre borné de participants désignés ; tous les autres ont un objectif distinct, et aucun joueur engagé ne reçoit `HOLD_WIDTH` réalisable immédiatement.
+Instancier **30 `AgentController` individuels et aucun `TeamBlackboard`** ; créer un ruck contesté. Attendu : les joueurs déterminent localement s'ils peuvent/veulent intervenir selon légalité, proximité, partenaires observés et objectifs de leur poste. Le nombre de participants demeure physiquement crédible, sans limite imposée par un coordinateur. Aucun joueur engagé ne peut exécuter `HOLD_WIDTH` pendant sa liaison. Aucun module ne choisit globalement les 30 buts ni les 30 cibles.
 
 ### D05 — priorité vitale
 
@@ -83,7 +83,7 @@ A15 a le but `COVER_BACKFIELD`, mais un B14 s'enfuit vers l'essai. Attendu : `PR
 
 ### D06 — changement de tactique manager
 
-Conditions et graine identiques ; changer seulement la consigne 1-3-3-1 → 2-4-2. Attendu : modification des réservations, des objectifs et des courses de certains avants, mais mêmes lois d'arbitrage.
+Conditions et graine identiques ; changer seulement la consigne 1-3-3-1 → 2-4-2. Attendu : chaque joueur lit la tactique commune et peut changer individuellement ses buts et courses de référence, sans assignation centrale ; mêmes lois d'arbitrage.
 
 ### D07 — intelligence sans omniscience
 
@@ -92,6 +92,10 @@ Un joueur cache temporairement le ballon derrière un paquet. Attendu : un agent
 ### D08 — stratégie de secours
 
 Planificateur dépassant `maxExpandedNodes` ou aucun but réalisable. Attendu : `BUDGET_EXCEEDED` ou `NO_PLAN`, `HOLD_SAFE_POSITION`/repli légal, jamais exception bloquant le tick.
+
+## 4 bis. Autonomie et placement émergent — tests IND-01 à IND-12
+
+En plus des tests D et I, les douze cas détaillés dans [`07_AGENT_INDIVIDUEL_PLACEMENT.md`](07_AGENT_INDIVIDUEL_PLACEMENT.md) sont **obligatoires**. Ils vérifient notamment que le joueur connaît son emplacement nominal sans recevoir une consigne de mouvement, que **défendre** fait partie des buts prioritaires lorsque la possession change, que plusieurs buts expliquent la formation réelle, et qu'une modification des croyances d'A6 **ne modifie pas directement** les plans d'A7 ou A8. L'existence d'une IA d'équipe, d'un blackboard d'affectation ou d'une recherche globale des positions doit faire **échouer** la validation architecturale.
 
 ## 5. Instrumentation attendue pour chaque test
 
@@ -119,7 +123,7 @@ Ajouter les métriques agrégées suivantes :
 - changements de but par minute et oscillations ;
 - durées réelles / prévues des actions ;
 - violations de garde légale bloquées ;
-- engagements d'équipe en conflit ;
+- objectifs individuels concurrents, collisions et éventuels conflits de couverture ;
 - tours de moteur/s et fps par appareil ;
 - métriques rugby existantes (passes, rucks, mêlées, touches, essais, possession, pénalités, coups de pied).
 
@@ -153,4 +157,4 @@ node server/test-parcours-club.js
 
 Les tests lourds sont coûteux ; lancer `node server/test-stats-matchs.js` dans la campagne de validation longue. Les tests de navigateur nécessitent de servir `docs/` et Playwright, cf. `.github/workflows/deploy-pages.yml`.
 
-**Definition of Done V4** : les plans sont utilisés par les agents vivants, les tests D01–D08 et I01–I20 passent, les critères de sécurité et de stats passent, et un navigateur permet d'observer les décisions. Le passage des tests GOAP symboliques seuls **ne suffit jamais**.
+**Definition of Done V4** : les plans sont utilisés par les agents vivants, les tests D01–D08, I01–I20 et **IND-01–IND-12** passent, aucun coordinateur d'équipe ne choisit les buts ou déplacements, les critères de sécurité et de stats passent, et un navigateur permet d'observer les décisions. Le passage des tests GOAP symboliques seuls **ne suffit jamais**.
