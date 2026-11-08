@@ -30,6 +30,7 @@ Ce document définit **comment prouver que le moteur comporte une IA de planific
 | G11 | état initial satisfait déjà le but | plan vide + statut distinct |
 | G12 | but prioritaire irréalisable | but faisable suivant sélectionné |
 | G13 | coût négatif, ID doublé, budget invalide | erreur explicite |
+| G14 | but prioritaire déjà satisfait | sélectionner un autre objectif encore actif ; sinon `ALL_GOALS_SATISFIED` |
 
 ## 3. Scénarios moteur obligatoires (à programmer après l'injecteur)
 
