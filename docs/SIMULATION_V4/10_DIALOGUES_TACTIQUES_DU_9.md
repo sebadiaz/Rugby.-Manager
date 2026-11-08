@@ -130,6 +130,16 @@ La question au 8 est **une discussion entre le 8 et le 9**, pas un « ordre » i
 
 **Source réglementaire faisant autorité :** https://passport.world.rugby/laws-of-the-game/laws-by-number/19-scrum/ . Vérifier la version de loi et le règlement de la compétition ; ce document ne confère pas de légalité à une action simplement parce que le 9 la demande.
 
+## 4 bis. Correction impérative : **le 8 prévient le 9 au moment où il part**
+
+Le dialogue préliminaire `SCRUM_8_ASK` → `SCRUM_8_READY` → `SCRUM_8_BREAK` concerne **la stratégie**. Il ne suffit pas à empêcher le 9 d'aller aussi ramasser la balle. Dès qu'il décide **réellement** de se détacher et ramasser le ballon, **le 8 doit dire au 9 `SCRUM_8_GOING` (« Neuf, j'y vais ! »), AVANT de le saisir**. Cette action vocale est individuelle : ce n'est ni une réservation centrale ni une prise de balle.
+
+Le 9 qui entend ce signal concernant la **mêlée en cours** (`phaseId`) doit réévaluer immédiatement sa propre intention de récupération : abandonner `SECURE_BALL` si encore annulable, puis privilégier `SUPPORT_8`, `BE_PASS_OPTION` ou `PROTECT_BLIND_SIDE` selon les circonstances. Un accusé facultatif `SCRUM_9_ACK` confirme au 8 « reçu ». Si le 8 se ravise, il appelle `SCRUM_8_ABORT`, et le 9 recommence **son** raisonnement.
+
+Cas difficiles : message manquant ou trop tardif, 9 déjà engagé, ballon perdu, 8 contraint d'abandonner, mêlée suivante, cooldown vocal. Le moteur doit garantir **au plus un porteur** et une prise physiquement légale (loi 19.36), même lorsque deux joueurs font l'erreur de converger. Le message de départ est **prioritaire** sur le simple `READY` et ne peut être supprimé par l'anti-spam ; il expire vite et n'est délivré qu'à la bonne phase.
+
+Cette règle est demandée par le propriétaire et appuyée par les exercices de coordination 8–9 ([Rugby Coach Weekly](https://www.rugbycoachweekly.net/rugby-drills-and-skills/scrums-lineouts/ball-delivery-number-8), [Rugby Toolbox NZ](https://www.rugbytoolbox.co.nz/resources-education/learn-more/articles/snook-on-coaching/no-8-plays-at-the-scrum-2)). **Ce ne sont pas des paroles attestées d'un match particulier.** Contrats et tests de moteur à réaliser : `12_STYLES_ANGLETERRE_AFRIQUE_DU_SUD_NOUVELLE_ZELANDE.md`, `S8-01`–`S8-09`, tâche `RM4-G37`.
+
 ## 5. Plein jeu : quand l'attaque stagne, le 9 annonce la **chandelle / up-and-under**
 
 Le ballon ne progresse pas à travers plusieurs phases, la défense tient sa ligne et le 9 perçoit une opportunité de contest aérien. Il peut privilégier une **chandelle** (coup de pied haut et relativement court) au lieu d'une passe supplémentaire ou d'un portage sans gain.
@@ -184,13 +194,13 @@ A9 observe : progression faible sur plusieurs phases
 
 ## 6. Catalogue des messages déjà disponibles
 
-Le transport V4 (`engine/ai/local-communication.js`) connaît désormais **32 codes** : 11 appels simples et 21 messages de dialogue tactique.
+Le transport V4 (`engine/ai/local-communication.js`) connaît désormais **35 codes** : 11 appels simples et 24 messages de dialogue tactique.
 
 ```text
 MINE, BALL, INSIDE, OUTSIDE, SUPPORT, HOLD, UP, SLIDE, COVER, KICK, LEAVE
 LINEOUT_ASK, LINEOUT_FRONT, LINEOUT_MIDDLE, LINEOUT_BACK, LINEOUT_MAUL, LINEOUT_WIDE
 SCRUM_OPTIONS_ASK, SCRUM_NEAR, SCRUM_WIDE, SCRUM_ADVANCE
-SCRUM_8_ASK, SCRUM_8_READY, SCRUM_8_BLOCKED, SCRUM_8_BREAK
+SCRUM_8_ASK, SCRUM_8_READY, SCRUM_8_BLOCKED, SCRUM_8_BREAK, SCRUM_8_GOING, SCRUM_8_ABORT, SCRUM_9_ACK
 SCRUM_ASK, SCRUM_STEADY, SCRUM_DRIVE, SCRUM_PRESSURE, SCRUM_UNSTABLE
 KICK_HIGH, KICK_CHASE
 ```
