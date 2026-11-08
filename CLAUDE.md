@@ -11,6 +11,17 @@ le ballon. Interdiction d'ajouter un TeamCoordinator, TeamBlackboard,
 une allocation centralisée de rôles, ou des positions imposées.
 LIRE D'ABORD docs/SIMULATION_V4/07_AGENT_INDIVIDUEL_PLACEMENT.md.
 
+RECHERCHE DE MATCHS REELS (novembre 2026) :
+LIRE docs/SIMULATION_V4/11_MATCHS_REELS_ET_PRISES_DE_DECISION.md
+et fixtures/observations_matchs_reels.json (16 séquences, 4 matchs).
+Les dialogues entre 9/10/8 sont des choix du jeu, PAS des paroles
+prouvées des joueurs réels. Les phases sont sourcées, les coordonnées
+exactes inconnues ; ne pas inventer de tracking. Voir G34-G36 : vraie
+baseline, décisions alternatives, tests et calibration multi-graines.
+Tester node server/test-v4-observations-matchs.js et
+node server/test-v4-goals-actions-doc.js (43 buts / 50 actions).
+
+
 
 Le propriétaire du jeu demande explicitement **30 agents de rugby à base de buts**
 (Russell et Norvig), capables de planifier des séquences d'actions, de les
