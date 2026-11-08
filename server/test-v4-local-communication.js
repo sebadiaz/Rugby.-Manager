@@ -341,4 +341,24 @@ test('le signal de départ du 8 exige une phase actuelle',()=>{
   assert.throws(()=>com.emit(speaker('A8','SCRUM_8_GOING',50,35,0,
     {toId:'A9'})),/phaseId obligatoire/);
 });
+
+test('8 doit prevenir le 9 explicitement, pas crier pour tout le monde',()=>{
+  const com=new LocalCommunication({cooldownSeconds:0});
+  assert.throws(()=>com.emit(speaker('A8','SCRUM_8_GOING',50,35,0,
+    {phaseId:'S-18'})),/prévenir directement le 9/);
+  assert.throws(()=>com.emit(speaker('A8','SCRUM_8_ABORT',50,35,0,
+    {toId:'A10',phaseId:'S-18'})),/prévenir directement le 9/);
+  assert.throws(()=>com.emit(speaker('A9','SCRUM_9_ACK',50,35,0,
+    {toId:'A10',phaseId:'S-18'})),/répondre directement au 8/);
+});
+test('un accusé de la mêlée précédente ne vaut pas pour la nouvelle',()=>{
+  const com=new LocalCommunication({cooldownSeconds:0});
+  const q=com.emit(speaker('A8','SCRUM_8_GOING',50,35,0,
+    {toId:'A9',phaseId:'S-18'}));
+  com.hear(actor('A9',51,35,.2,{phaseId:'S-18'}));
+  assert.throws(()=>com.emit(speaker('A9','SCRUM_9_ACK',51,35,.3,
+    {toId:'A8',replyTo:q.id,phaseId:'S-19'})),/réponse sans demande réellement entendue/);
+  assert.strictEqual(com.emit(speaker('A9','SCRUM_9_ACK',51,35,.3,
+    {toId:'A8',replyTo:q.id,phaseId:'S-18'})).accepted,true);
+});
 console.log(tests+' tests de communication locale réussis (transport seul)');
