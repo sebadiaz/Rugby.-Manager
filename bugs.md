@@ -248,9 +248,9 @@ Les sommes individuelles des passes, plaquages et mètres correspondent aux somm
 
 **Acceptation :** lot de créations, changement de saison, promotion/relégation, monde et reprise d'une ancienne carrière avec homonymes. Tout lien et message permet de distinguer les deux entités.
 
-### [ ] BUG-RM-005 — Le nombre de passes dépasse encore la calibration du dépôt — P2
+### [x] BUG-RM-005 — Le nombre de passes dépasse encore la calibration du dépôt — P2
 
-**Statut : ÉCART MESURÉ, relié au chantier existant P2-13 de `TODO_AUDIT.md`.**
+**Statut : RÉSOLU (8 nov.) — calibration du moteur fusionné : Passes 401,1 pour une fourchette attendue de 250–420, 14/14 catégories dans la fourchette (après P2-163, arrière intercalé). Ancien constat conservé ci-dessous.**
 
 **Fichiers :** `engine/rugby-engine.js`, copie publiée `docs/rugby-engine.js`, `server/test-calibration-moteur.js`, `server/simulate-batch.js`, mesures territoriales.
 
