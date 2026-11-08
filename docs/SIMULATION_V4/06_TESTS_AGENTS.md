@@ -101,7 +101,8 @@ En plus des tests D et I, les douze cas détaillés dans [`07_AGENT_INDIVIDUEL_P
 
 **Voir `11_MATCHS_REELS_ET_PRISES_DE_DECISION.md`** : 16 séquences de quatre matchs (Angleterre–Galles 2024, Angleterre–France 2025, Irlande–France 2025, France–Fidji 2026) et `fixtures/observations_matchs_reels.json`.
 
-**Étape documentaire immédiatement testable** : `node server/test-v4-observations-matchs.js` vérifie provenance des événements, dates, source, caractère approximatif du temps, et interdit d'annoter une conversation de 9/10/8 ou une trajectoire à 30 joueurs non mesurée comme une observation factuelle.
+**Étape documentaire immédiatement testable** : `node server/test-v4-top14-data.js
+node server/test-v4-observations-matchs.js` vérifie provenance des événements, dates, source, caractère approximatif du temps, et interdit d'annoter une conversation de 9/10/8 ou une trajectoire à 30 joueurs non mesurée comme une observation factuelle.
 
 **Étape moteur à créer** : pour chacun des 16 cas REAL, deux scénarios à **condition initiale changée**, même graine et même gestion des règles : ballon disponible/bloqué, défense près/large, receveur à portée/hors jeu, pied haut avec/sans chasse légale, maul avec/sans faute. Un essai historique **n'est pas un résultat forcé** ; l'IA doit seulement rendre la séquence possible si ses préconditions s'y prêtent.
 
@@ -116,6 +117,25 @@ Consulter `12_STYLES_ANGLETERRE_AFRIQUE_DU_SUD_NOUVELLE_ZELANDE.md` et la liste 
 Le 8 peut discuter avant la mêlée et être disponible, mais son **signal de départ effectif (`SCRUM_8_GOING`) doit être émis avant la tentative de prise**. Le 9 qui l'entend doit abandonner son plan de prise (si annulable), décider d'un autre but et **calculer son déplacement individuellement**. Si le message arrive trop tard ou manque, les deux joueurs peuvent mal se coordonner ; jamais deux porteurs, jamais un déplacement imposé depuis un coordinateur.
 
 Le corpus de **12 observations dans cinq matchs ENG/RSA/NZ** est vérifié par `node server/test-v4-styles-match-data.js`. Un snapshot daté du 4 septembre 2026 permet de comparer certaines métriques des Springboks et des All Blacks ; les choix individuels seront testés avec les mêmes graines en changeant **uniquement** le plan de jeu interchangeable, le profil du 9 ou un placement défensif. Ne pas coder de comportements selon la nationalité.
+
+## 4 quinquies. Top 14, véritables actions observées et calibration fiable
+
+**Source prioritaire :** `13_MATCHS_TOP14_DECISIONS.md`, corpus JSON `fixtures/observations_top14_2025_2026.json`.
+
+**Déjà testable :** `node server/test-v4-top14-data.js` valide neuf matchs sourcés, 19 observations distinctes, six relevés chiffrés de la LNR, et **rejette comme données manquantes** les zéros incohérents de la page statistique de la finale 2026 Toulouse–Montpellier. Cela **ne signifie PAS** que le moteur de match reproduit ces actions.
+
+**Tests à créer : `TOP14-01..19` (G40)**, avec deux alternatives à graine et joueurs identiques :
+- Racing–Bayonne, départ du 8 Nathan Hughes : 8 annonce `SCRUM_8_GOING`, 9 l'entend et replanifie ; si message perdu, course concurrente mais **un seul porteur**.
+- Toulouse–Bayonne, touche suivie d'une percée de Brennan et passe vers Ntamack ; le joueur peut choisir une touche **sans maul** et le support doit être effectivement présent.
+- Toulouse–Montpellier, **une-deux du 9 et du talonneur** depuis une touche ; mêlée à cinq mètres puis **coup franc rapide**, pied par-dessus du 10 ; arbitrage et pause orage.
+- Finale Toulouse–UBB : **33-33 à 80 min**, prolongation, tirs réussis ou manqués ; les pénalités proviennent du match physique et de la décision arbitrale.
+- Racing–La Rochelle, **troisième ligne Jegou passeur vers le 9 Le Garrec**, et drop Racing de fin de rencontre **manqué**.
+- Toulon–La Rochelle, plus d'essais mais défaite : points au pied réellement comptés ; Pau–Toulouse, davantage d'essais malgré moins de possession.
+- Les statistiques finales 2026 présentées comme « zéro passe, zéro touche, zéro mêlée » sont invalides : `null` dans les comparaisons et aucune métrique de réussite artificielle.
+
+**Calibrer (G41)** : 30, 100 puis 500 matchs par variantes avec mêmes graines LEGACY/GOAP, moyennes + quantiles + dispersion, données LNR explicitement sourcées, aucune stratégie figée par nom de club. Mesurer le résultat de chaque but et ses échecs réels, pas seulement l'issue du match.
+
+**Interdiction architecturale maintenue** : le 9 consulte mais ne pilote aucun mouvement des 29 autres ; les trajectoires et buts sont sélectionnés individuellement, et une parole reçue n'est qu'une information.
 
 ## 5. Instrumentation attendue pour chaque test
 
