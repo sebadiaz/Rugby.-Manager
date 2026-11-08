@@ -78,8 +78,8 @@ Une alerte de partenaire n'est pas un ordre : elle peut provoquer une nouvelle �
 - État : mêlée gagnée par A, ballon contrôlé à l'arrière ; A8 peut physiquement prendre le ballon ; petit côté défendu par un seul joueur ; A9 prépare l'option au 10.
 - **A9 demande à A8** avec `SCRUM_8_ASK` s'il peut partir ; A8 répond `SCRUM_8_READY` s'il estime avoir le ballon accessible et un départ plausible.
 - **A9 décide** entre la sortie par le 8, le jeu au près, le jeu au large ou une mêlée qui continue d'avancer. S'il choisit le départ, il annonce `SCRUM_8_BREAK`.
-- **A8 ne fait réellement `PICK_AND_GO_8` que lorsque l'action est physiquement et légalement disponible**, selon son observation : pas de balle créée par la parole et pas de déplacement imposé par A9.
-- Assertion : `carrierId` reste unique, aucune sortie tant que le ballon n'est pas légalement jouable, déplacement réel de A8, A9 ne peut passer un ballon qu'il n'a pas.
+- **A8 annonce `SCRUM_8_GOING` au 9 juste avant de prendre le ballon.** Le 9 qui entend abandonne son plan de récupération s'il est encore annulable et devient soutien/receveur selon sa propre perception. **A8 ne fait réellement `PICK_AND_GO_8` que lorsque l'action est physiquement et légalement disponible** : pas de balle créée par la parole, pas de déplacement imposé par A9. Voir `12_STYLES_ANGLETERRE_AFRIQUE_DU_SUD_NOUVELLE_ZELANDE.md`.
+- Assertion : `SCRUM_8_GOING` précède le geste, A9 qui entend replanifie, `carrierId` reste unique ; aucune sortie tant que le ballon n'est pas légalement jouable, déplacement réel de A8, A9 ne peut passer un ballon qu'il n'a pas.
 
 ### Scène SCR-STR-02 — Sortie par le neuf
 
