@@ -148,4 +148,43 @@ test('mêlée : le 9 consulte 10 et 8 séparément avant de choisir',()=>{
   c.emit(say('A9','SCRUM_8_BREAK',60.6));
   assert.strictEqual(c.hear(hear('A8',60.85))[0].kind,'SCRUM_8_BREAK');
 });
+
+test('8 annonce vraiment sa prise au 9, pas seulement la disponibilité',()=>{
+  const c=new LocalCommunication({cooldownSeconds:0});
+  c.emit({...say('A8','SCRUM_8_READY',10,'A9'),phaseId:'SCRUM-8'});
+  const msg=c.hear({...hear('A9',10.2),phaseId:'SCRUM-8'})[0];
+  assert.strictEqual(msg.kind,'SCRUM_8_READY');
+  assert.strictEqual(msg.kind==='SCRUM_8_GOING',false);
+  c.emit({...say('A8','SCRUM_8_GOING',10.3,'A9'),phaseId:'SCRUM-8'});
+  const going=c.hear({...hear('A9',10.5),phaseId:'SCRUM-8'})[0];
+  assert.strictEqual(going.kind,'SCRUM_8_GOING');
+  assert.strictEqual(going.toId,'A9');
+  assert.strictEqual(going.phaseId,'SCRUM-8');
+  assert.strictEqual('carrierId' in going,false);
+});
+test('9 peut accuser reception du départ du 8; aucun joueur ne reçoit une cible',()=>{
+  const c=new LocalCommunication({cooldownSeconds:0});
+  const q=c.emit({...say('A8','SCRUM_8_GOING',20,'A9'),phaseId:'SCRUM-20'});
+  c.hear({...hear('A9',20.2),phaseId:'SCRUM-20'});
+  c.emit({...say('A9','SCRUM_9_ACK',20.3,'A8',q.id),phaseId:'SCRUM-20'});
+  const a=c.hear({...hear('A8',20.5),phaseId:'SCRUM-20'})[0];
+  assert.strictEqual(a.kind,'SCRUM_9_ACK');
+  assert.strictEqual(a.replyTo,q.id);
+  for(const key of ['target','goal','plan','carrierId','scrumWinner']){
+    assert.strictEqual(key in a,false);
+  }
+});
+test('si le 9 n entend pas, son absence de message n est pas un acquiescement',()=>{
+  const c=new LocalCommunication({cooldownSeconds:0});
+  c.emit({...say('A8','SCRUM_8_GOING',10,'A9'),phaseId:'SCRUM-LOST'});
+  assert.deepStrictEqual(c.hear({...hear('A9',10.25,70,35),phaseId:'SCRUM-LOST'}),[]);
+});
+test('abandon d un départ du 8 ne donne pas instantanément le ballon au 9',()=>{
+  const c=new LocalCommunication({cooldownSeconds:0});
+  c.emit({...say('A8','SCRUM_8_GOING',30,'A9'),phaseId:'S-30'});
+  c.emit({...say('A8','SCRUM_8_ABORT',30.25,'A9'),phaseId:'S-30'});
+  const seen=c.hear({...hear('A9',30.5),phaseId:'S-30'});
+  assert.deepStrictEqual(seen.map(x=>x.kind),['SCRUM_8_GOING','SCRUM_8_ABORT']);
+  assert.ok(seen.every(x=>!('ball' in x || 'carrierId' in x)));
+});
 console.log(n+' scénarios de dialogues tactiques symboliques réussis ; intégration GOAP à réaliser');
