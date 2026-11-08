@@ -517,6 +517,21 @@
         large: { nom: 'Ouvert aux 3/4', description: 'Sort vite le ballon aux trois-quarts, peu de pick-and-go.', compromis: 'Exploite mieux la vitesse des trois-quarts, mais moins de temps de jeu conservé par les avants.', melee: { pickAndGoHuit: { dominant: 0.15, normal: 0.05 } } },
       },
     },
+    structure: {
+      label: 'Organisation des avants', defaut: '1331',
+      options: {
+        '1331': {
+          nom: '1-3-3-1', description: 'Un avant sur chaque aile, deux groupes de trois au centre.',
+          compromis: 'Garde des relais de largeur ; les joueurs engagés dans un ruck restent indisponibles et les pods se réorganisent progressivement.',
+          attaque: { structureAvants: '1331' },
+        },
+        '242': {
+          nom: '2-4-2', description: 'Deux avants de chaque côté, quatre dans le groupe central.',
+          compromis: 'Plus de présence près des couloirs extérieurs ; les avants doivent réellement se déplacer avant de pouvoir participer.',
+          attaque: { structureAvants: '242' },
+        },
+      },
+    },
     rythme: {
       label: 'Rythme du jeu', defaut: 'normal',
       options: {
