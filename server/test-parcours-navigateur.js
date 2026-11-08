@@ -4582,6 +4582,12 @@ function optionsLancement() {
     verifier('banc : après rechargement, le même match reste accessible', await continuerJusquAuMatch(pgBanc));
     await pgBanc.click('#btnApercuJouerMatch');
     await pgBanc.click('#btnConsigneMatch');
+    const textesConsigne = await pgBanc.evaluate(() => ({
+      note: document.getElementById('miTempsNote').textContent,
+      sousTitre: document.getElementById('miTempsSousTitre').textContent,
+    }));
+    verifier('consigne en cours de jeu : le panneau ne parle ni de « seconde période » ni d\'un match « pas joué » (QA-RM-005)',
+      !/seconde p|Rien n.est jou/.test(textesConsigne.note + ' ' + textesConsigne.sousTitre), textesConsigne);
     const ligneReprise = pgBanc.locator('.ligneRemplacant').first();
     const detailRepris = await ligneReprise.locator('.detailRemplacant').textContent();
     verifier('banc : la demande au n°3 reste en attente après reprise', repriseBanc

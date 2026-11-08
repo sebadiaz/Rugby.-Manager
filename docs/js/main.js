@@ -355,6 +355,14 @@
     L.contexte = ctx;
     const titre = document.getElementById('miTempsTitre');
     if (titre) titre.textContent = ctx === 'enCours' ? 'Consigne en cours de jeu' : 'Mi-temps';
+    // Textes selon le contexte : en cours de jeu, ni « seconde période » ni
+    // « rien n'est joué » (le match est en cours, le changement attend le ballon mort).
+    const noteCtx = document.getElementById('miTempsNote');
+    if (noteCtx) noteCtx.textContent = ctx === 'enCours'
+      ? 'Match en cours : la consigne s\'applique tout de suite, un remplacement entre au prochain arrêt de jeu.'
+      : 'Rien n\'est joué : tes consignes s\'appliquent dès le coup d\'envoi.';
+    const ssTitreCtx = document.getElementById('miTempsSousTitre');
+    if (ssTitreCtx) ssTitreCtx.textContent = ctx === 'enCours' ? 'Consigne' : 'Consigne pour la seconde période';
     const btnReprendre = document.getElementById('btnMiTempsReprendre');
     if (btnReprendre) btnReprendre.textContent = ctx === 'enCours' ? 'Retour au match' : 'Reprendre le match';
     enCours = false;

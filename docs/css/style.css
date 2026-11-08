@@ -1284,3 +1284,7 @@ select {
 /* Les joueurs du match (FUNC-RM-011) : libellés plus longs (« Franchissements »),
    valeurs courtes (« n°11 · 110 m ») — colonne centrale plus large. */
 .ligneStatMatch.ligneJoueurMatch { grid-template-columns: minmax(0, 1fr) 7.5rem minmax(0, 1fr); font-size: 12px; }
+
+/* Mobile (QA-RM-005) : les listes « remplace le … » du panneau de consigne
+   mesuraient 23 px de haut — trop petit pour un pouce. */
+#panneauMiTemps select { min-height: 40px; font-size: 14px; }
