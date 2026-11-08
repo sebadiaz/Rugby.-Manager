@@ -3,6 +3,21 @@ AGENTS.md
 RÈGLE D'ARCHITECTURE V4 — IMPORTANTE
 
 Le jeu doit simuler 30 agents INDIVIDUELS autonomes à base de buts (GOAP).
+
+PRIORITE AUX MICRO-ACTIONS : nouveau dossier
+SIMULATION_V4/14_ANALYSE_MICRO_ACTIONS_TOP14.md et fixture
+SIMULATION_V4/fixtures/micro_actions_top14.json. 7 etudes,
+47 choix unitaires de joueurs, 22 contre-factuels, 12 tests MIC
+à programmer (G42-G44). Pendant Toulouse-UBB 2025 : Graou choisit
+le bloc et passe à Flament, Willis et Cros peuvent jouer de vrais
+leurres, Jelonch choisit un intervalle, Moefana/Samu/Gazzotti choisissent
+leur propre défense. AUCUN module ne force Moefana à suivre un leurre
+et aucun appel ne modifie directement le GOAP d'un autre agent.
+Distinguer faits de presse et hypotheses sur les buts, perceptions,
+choix et vitesses ; aucune vraie conversation non verifiee inventee.
+Catalogue: 51 buts et 66 actions candidates. Tests structurels :
+server/test-v4-top14-micro-actions.js et test-v4-goals-actions-doc.js.
+
 Le Top 14 fait désormais partie des matchs de référence obligatoires :
 docs/SIMULATION_V4/13_MATCHS_TOP14_DECISIONS.md,
 fixtures/observations_top14_2025_2026.json et test-v4-top14-data.js.
