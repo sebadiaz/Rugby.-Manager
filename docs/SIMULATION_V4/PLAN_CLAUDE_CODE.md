@@ -112,7 +112,7 @@ Les tâches G00 et G01 sont **commencées comme références/documentation** ; l
 - **Critères :** 30 agents en mémoire, aucun tick bloqué indéfiniment par recherche, mêmes événements sous même graine.
 - **Tests :** D08, G09/G10 ; comparaison 10 matchs à dt constant.
 
-## M2 — Intelligence collective et autonomies rugby
+## M2 — Intelligence individuelle de 30 joueurs et placements émergents
 
 ### RM4-G10 — Buts de placement et décision **individuelle** sans coordinateur
 
@@ -125,7 +125,7 @@ Les tâches G00 et G01 sont **commencées comme références/documentation** ; l
 
 - **Fichiers :** `engine/rugby-engine.js`, `engine/ai/agent-controller.js`, `server/test-v4-thirty-agents.js`.
 - **Réalisation :** créer AgentContext pour A1–A15/B1–B15, croyances/buts/plans/trajets propres à chacun ; tous lisent le plan de jeu sans pouvoir écrire sur les intentions d'un partenaire ; **feature flag** `aiMode:'GOAP'|'LEGACY'`, LEGACY par défaut tant que validations non passées.
-- **Critères :** 30 contextes distincts ; aucun joueur sans contrôleur ; aucun coordinateur décisionnel central ; même simulation LEGACY produit exactement les anciennes stats et comportements.
+- **Critères :** 30 contextes distincts ; chaque agent décide seul de ses buts et mouvements ; aucun joueur sans contrôleur ; aucun coordinateur décisionnel central ; même simulation LEGACY produit exactement les anciennes stats et comportements.
 - **Tests :** D04, déterminisme sur 10 seeds, invariants et tests de sauvegarde.
 
 ### RM4-G12 — Agent 9 : distribution véritablement planifiée
@@ -251,7 +251,7 @@ Les tâches G00 et G01 sont **commencées comme références/documentation** ; l
 - **Fichiers :** `server/v4/measure-before-after.js`, `docs/SIMULATION_V4/RESULTATS.md`, `server/test-v4-integration.js`.
 - **Réalisation :** enregistrer taux `NO_PLAN`, replan, durée et réussite par but/action, coût IA par tick, 30 matchs appariés, 10 fixtures scénarios + 8 preuves différenciantes.
 - **Critères :** aucun objectif important sans couverture de test ; mode GOAP vs LEGACY comparés à règles identiques.
-- **Tests :** I01–I20, D01–D08 ; `test-invariants.js`.
+- **Tests :** I01–I20, D01–D08, **IND-01–IND-12** ; `test-invariants.js`.
 
 ### RM4-G29 — Tests massif et navigateur
 
