@@ -31,7 +31,7 @@ Le n°9 **initie les demandes**, sans IA collective :
 - **Mêlée** : le 9 consulte **le 10** sur le jeu au près, au large ou l'avancée ; il discute **avec le 8** du départ depuis l'arrière de mêlée, puis **décide lui-même** de l'option et la demande. Il peut aussi consulter les avants pour connaître la stabilité et demander une poussée forte. La rotation résulte des forces ; pousser délibérément de travers et écrouler volontairement sont des infractions, pas des stratégies légales.
 - **Plein jeu** : si l'attaque stagne, le 9 peut envisager un **up-and-under / chandelle**, mais prévient les trois-quarts **avant** de botter. Chacun réévalue individuellement chasse, couverture, soutien ou maintien de la ligne.
 
-Dossier détaillé : `10_DIALOGUES_TACTIQUES_DU_9.md`. Transport de **32 messages** `engine/ai/local-communication.js`, **28 tests unitaires et 14 scénarios** de dialogue symbolique ; la véritable intégration au match est à coder dans G31–G33, en s'appuyant sur G04–G20.
+Dossier détaillé : `10_DIALOGUES_TACTIQUES_DU_9.md`. Transport de **35 messages** `engine/ai/local-communication.js`, **37 tests unitaires et 18 scénarios** de dialogue symbolique ; la véritable intégration au match est à coder dans G31–G33, en s'appuyant sur G04–G20.
 
 ## Références à des matchs réellement joués
 
@@ -41,6 +41,12 @@ La spécification est désormais confrontée à **16 actions documentées** dans
 
 World Rugby a mesuré dans le Six Nations **2023** environ 314 passes, 185 rucks, 55 coups de pied, 26 touches et 11 mêlées **par match**. Ce sont des repères historiques explicitement datés, **pas des seuils obligatoires pour une rencontre en 2026**. La tâche `G36` imposera une baseline récente du jeu et les écarts de distribution, pas seulement le score final.
 
+## Sortie de mêlée : le 8 annonce sa prise au 9
+
+**Nouvelle règle prioritaire** : le 9 peut choisir tactiquement le départ du 8 après consultation du 10 et du 8, mais **le 8 doit prévenir personnellement le 9 juste AVANT de prendre le ballon**, par `SCRUM_8_GOING` (« Neuf, j'y vais ! »). L'information `SCRUM_8_READY` (« Je peux partir ») ne suffit pas. Le 9 qui entend ce signal abandonne son intention de ramasser le même ballon s'il peut encore le faire, puis choisit seul soutien, réception ou couverture ; aucune prise de balle créée par un message. En cas d'appel perdu, le moteur conserve un **porteur unique**.
+
+Les différences de style anglais, sud-africain et néo-zélandais sont étudiées sur **cinq matchs supplémentaires** (2023–2026), dont le duel RSA–NZ du 29/08/2026 et les deux rencontres de septembre 2026. Les préférences appartiennent à un `playbook` interchangeable, **pas à une IA par nationalité**. Sources, chiffres datés et cas testables dans `12_STYLES_ANGLETERRE_AFRIQUE_DU_SUD_NOUVELLE_ZELANDE.md` ; tâches G37/G38 (non intégrées au moteur).
+
 ## Exigence centrale : agents à base de buts
 
 **Chaque joueur doit avoir une vraie IA délibérative** : observer l'état local du match, sélectionner un but, construire un plan composé d'actions légales avec préconditions/effets/coûts, exécuter ces actions avec le moteur physique, en constater les résultats et **replanifier** si le monde change.
@@ -49,7 +55,7 @@ World Rugby a mesuré dans le Six Nations **2023** environ 314 passes, 185 rucks
 
 **Premier jalon de preuve** : A9, avec but `DISTRIBUTE_BALL`, planifie `MOVE_TO_RUCK → SECURE_BALL → PASS_TO_10`, puis change légalement vers `PASS_TO_POD` si le couloir du 10 se ferme. Aucun effet ne peut être simulé « par magie » dans le moteur.
 
-Lire `PLAN_CLAUDE_CODE.md` : 37 tâches **G00–G36**, et `PROMPT_CLAUDE_CODE.md` pour le démarrage de Claude Code.
+Lire `PLAN_CLAUDE_CODE.md` : 39 tâches **G00–G38**, et `PROMPT_CLAUDE_CODE.md` pour le démarrage de Claude Code.
 
 ## Objectif produit
 
@@ -83,6 +89,7 @@ Un **test de fixture** valide uniquement la forme des données. Un **test moteur
 - `09_CHOIX_STRATEGIQUES_INDIVIDUELS.md` : choix en mêlée, touche et plein jeu par les joueurs.
 - `10_DIALOGUES_TACTIQUES_DU_9.md` : le 9 demande l'avis du 10 en touche et mêlée, discute **du départ du 8 avec le 8** puis choisit, et annonce sa chandelle.
 - `11_MATCHS_REELS_ET_PRISES_DE_DECISION.md` : analyse de **quatre matchs réels**, 16 actions sourcées, lois, adaptations et 16 scénarios moteurs à créer.
+- `12_STYLES_ANGLETERRE_AFRIQUE_DU_SUD_NOUVELLE_ZELANDE.md` : 5 autres matchs détaillés ENG/RSA/NZ, signal du 8 au 9, 3 presets interchangeables et 16 tests à intégrer.
 - `04_IA_AGENTS_BUTS.md` : boucle perception → objectifs → planification → exécution → replanification, entièrement individuelle.
 - `05_CATALOGUE_GOALS_ACTIONS.md` : buts, actions, préconditions, coûts, effets et gardes réglementaires.
 - `06_TESTS_AGENTS.md` : preuve d'une IA réelle et tests différentiels, pas uniquement des snapshots.
@@ -91,11 +98,12 @@ Un **test de fixture** valide uniquement la forme des données. Un **test moteur
 - `03_RENDU_RETRO.md` : pipeline Canvas, animations et tests visuels.
 - `fixtures/scenarios.json` : jeux de données déterministes et attentes déclaratives (le futur injecteur doit les exploiter).
 - `PROMPT_CLAUDE_CODE.md` : consigne à copier à Claude Code.
-- `engine/ai/local-communication.js` : transport de 32 codes vocaux (prototype non connecté au match).
-- `server/test-v4-local-communication.js` et `server/test-v4-tactical-dialogue.js` : 28 tests + 14 scènes de dialogue symbolique.
+- `engine/ai/local-communication.js` : transport de 35 codes vocaux (prototype non connecté au match).
+- `server/test-v4-local-communication.js` et `server/test-v4-tactical-dialogue.js` : 37 tests + 18 scènes de dialogue symbolique.
 - `fixtures/observations_matchs_reels.json` : corpus de 16 actions documentées (2024, 2025, 2026) ; **aucun tracking ni paroles réelles inventés**.
 - `server/test-v4-observations-matchs.js` : validation de 16 événements et de leur provenance (pas preuve que le moteur reproduit les actions).
 - `server/test-v4-goals-actions-doc.js` : validation des 43 buts et 50 actions GOAP décrits sans doublon.
+- `fixtures/observations_styles_2023_2026.json` et `server/test-v4-styles-match-data.js` : **12 observations sourcées de cinq autres matchs** et comparaison d'équipes datée du 04/09/2026.
 - `server/test-spec-simulation-v4.js` : validations structurelles déjà exécutables sur le dépôt.
 
 ## Références officielles, versionnées
