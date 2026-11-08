@@ -30,6 +30,10 @@ type AgentMatch = {
 
 **Compatibilité** : champs supplémentaires optionnels dans `getState()`. Ne pas modifier le format des statistiques ni casser `normalizeMatchState()`.
 
+## Architecture **sans** agent collectif (décision du propriétaire)
+
+La notion de plan tactique utilisée ci-dessous est une **référence de jeu commune**, pas un `TeamCoordinator` ni une allocation globale de positions. `computeTacticalPlan(snapshot, teamId)` représente une ancienne interface conceptuelle : **ne pas l'implémenter comme décideur d'équipe**. La remplacer par `computeMyPlan(agentBeliefs, readonlyPlaybook)`, appelé séparément pour chacun des 30 agents, et `applyMyMovementIntent(agentId, intent, dt)` via la physique. Voir `07_AGENT_INDIVIDUEL_PLACEMENT.md`. Les exemples géométriques sont des scènes initiales et non des commandes de placement.
+
 ## 3. Contrat de décision
 
 Une mise à jour tactique est recalculée lorsque **l'état du jeu change**, pas à chaque dessin du navigateur. Les déclencheurs sont `PHASE_CHANGE`, `BALL_RELEASE`, `POSSESSION_CHANGE`, `TACKLE`, `RUCK_WON`, `KICK`, `LINE_BREAK`, `SUBSTITUTION`.
