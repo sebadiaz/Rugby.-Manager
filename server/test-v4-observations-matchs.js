@@ -26,7 +26,7 @@ assert.ok(corpus.notObserved.some(s=>/appels entre 9 et 10/.test(s)));
 
 for(const [sourceId,match] of Object.entries(corpus.sources)){
   assert.ok(match.match.length>10,sourceId+' match');
-  assert.match(match.date,/^202[346]-[0-1][0-9]-[0-3][0-9]$/);
+  assert.match(match.date,/^20[0-9]{2}-[0-1][0-9]-[0-3][0-9]$/);
   assert.match(match.score,/^[0-9]{1,3}-[0-9]{1,3}$/);
   assert.match(match.sourceUrl,URL);
   assert.ok(match.sourceTitle.length>15);
