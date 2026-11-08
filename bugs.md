@@ -474,6 +474,8 @@ Les sommes individuelles des passes, plaquages et mètres correspondent aux somm
 
 **État : À VALIDER au-delà des tests ciblés verts.**
 
+**Relevé du 8 nov. (arbre fusionné, tout vert) :** couverts par `server/test-parcours-club.js` (286 tests) — carrière de 12 saisons avec rechargements réguliers (aucun id dupliqué, NaN ni composition impossible), fin de saison et archive, quatre coupes jouées jusqu'au vainqueur sans nul, homonymes, économie de saison ; par `server/test-consequences-match.js` (IDEM1) — appliquer deux fois un résultat ne double rien ; par le parcours navigateur (583 tests) — Équipe B, Espoirs, calendrier daté. **Reste à valider à la main :** un unique parcours navigateur continu (journée partiellement résolue, rechargement, promotion/relégation affichées).
+
 **Parcours :** création → équipe dirigée → composition → préparation → match joué/instantané → résultat → archive → calendrier/classement → fin de saison → promotion/relégation. Inclure championnat, coupe, amical, Équipe B, Espoirs, consultation d'un adversaire et retour au club.
 
 **Acceptation :** la compétition affichée correspond à la rencontre jouée ; points/bonus et départages suivent son règlement. Un résultat n'accorde qu'une fois statistiques, argent, fatigue, blessures et effets de direction. Tester retour/rechargement et journée partiellement résolue. Après BUG-RM-001, archive et tableau de coupe montrent le même résultat sportif.
