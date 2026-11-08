@@ -183,6 +183,24 @@ World Rugby, **Tournoi des Six Nations masculin 2023**, moyenne par match des 15
 
 Source : [World Rugby — Game Analysis Men's Six Nations 2023, Overall Summary](https://www.world.rugby/the-game/game-analysis/reports/internationals-men).
 
+### Les équipes réelles ont des styles opposés : ne pas moyenner tous les comportements
+
+Le **même rapport World Rugby 2023** indique des tendances très distinctes :
+
+- **Irlande 2023** : rucks particulièrement rapides, meilleure conservation au ruck, jeu plus riche en passes ; **la moitié des essais** irlandais résultait d'actions comportant **au moins sept passes**.
+- **France 2023** : préférence pour l'occupation territoriale au détriment de la possession ; forte utilisation du jeu au pied, et **le demi de mêlée français bottait plus que les autres n°9 du tournoi** ; taux de passes et activité de ruck plus faibles ; turnovers exploités pour marquer.
+- Sur le tournoi **2023**, **44 % des essais** provenaient d'une possession commencée sur une touche, contre **15 %** sur mêlée. Ce ne sont ni des probabilités légales de marquer, ni une cible obligatoire pour le jeu.
+
+**Conséquence architecture** : des joueurs individuels d'équipes utilisant un plan de jeu différent doivent prendre des décisions différentes **dans une même situation**. Ne pas simuler une « moyenne nationale » et surtout ne pas créer une IA d'équipe ; les consignes du manager sont des poids/préférences en **lecture seule** que chaque agent incorpore dans sa propre recherche.
+
+**Test différentiel `STYLE-01`** : même état, mêmes joueurs, graine et fatigue, modifier seulement `playbook` d'une équipe : `FAST_RUCK_MULTIPASS` versus `TERRITORY_KICK_PRESSURE`. Vérifier une différence statistique de distribution `RUN_PASS`/`KICK`/`SUPPORT`, **sans forcer** tous les n°9 à botter ni garantir qu'aucun ailier ne bottera.
+
+**Test `STYLE-02`** : deux numéros 9 avec compétences et lecture du jeu différentes, **même playbook** : comparer perception, choix de sortie et temps d'exécution. La variation individuelle doit persister après application d'un plan de jeu commun.
+
+**Test `STYLE-03`** : une équipe doit pouvoir privilégier `PENALTY_TO_CORNER` selon score et position, mais le lancer/maul/essai restent trois épreuves indépendantes ; ne pas convertir le 44 % historique en « 44 % d'essais sur touche » dans le RNG.
+
+**Source précise** : https://www.world.rugby/the-game/game-analysis/reports/internationals-men (sections `Ireland & France`, `Try Scoring`, `Scrums`, `Overall Summary` pour 2023).
+
 **À faire** : produire une baseline actuelle GOAP désactivé avec 100 graines appariées ; rejouer exactement les mêmes graines avec GOAP activé ; comparer médiane, p10/p90 et moyennes, **avec les mêmes définitions de compteurs**. Une moyenne de passes éloignée de 314 **n'est pas seule un bug** : le match a évolué et le modèle de championnat diffère. Rechercher davantage de saisons/compétitions, utiliser le rapport 2023 comme repère explicite daté, et mettre en évidence les différences plutôt que de modifier des paramètres pour imiter un seul tournoi.
 
 Comparer aussi des **conditionnelles**, plus révélatrices que le total :
