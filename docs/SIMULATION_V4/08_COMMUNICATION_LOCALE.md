@@ -50,7 +50,7 @@ La parole est une intention **limitée**, pas un message structuré contenant le
 | `KICK` | « Pied ! » | botteur prêt, ballon aérien | un arrière peut réévaluer `COVER_BACKFIELD` |
 | `LEAVE` | « Laisse ! » | réception à deux ou ballon dangereux | un voisin peut abandonner sa prise de balle |
 
-**IMPORTANT** : treize nouveaux messages sont disponibles : `LINEOUT_ASK/FRONT/MIDDLE/BACK/MAUL/WIDE`, `SCRUM_ASK/STEADY/DRIVE/PRESSURE/UNSTABLE`, `KICK_HIGH` et `KICK_CHASE`. `toId` permet une question ciblée et `replyTo` une réponse ; voir `10_DIALOGUES_TACTIQUES_DU_9.md`. Ces effets sont **des réactions candidates**, pas des affectations. L'auditeur recoupe toujours le signal avec ses autres perceptions. Un appel `UP` n'autorise pas à franchir une ligne de hors-jeu. Un appel `BALL` n'oblige pas le porteur à passer.
+**IMPORTANT** : vingt-et-un messages tactiques sont disponibles : `LINEOUT_ASK/FRONT/MIDDLE/BACK/MAUL/WIDE`, `SCRUM_OPTIONS_ASK/NEAR/WIDE/ADVANCE`, `SCRUM_8_ASK/READY/BLOCKED/BREAK`, `SCRUM_ASK/STEADY/DRIVE/PRESSURE/UNSTABLE`, `KICK_HIGH` et `KICK_CHASE`. `toId` permet une question ciblée et `replyTo` une réponse ; voir `10_DIALOGUES_TACTIQUES_DU_9.md`. Ces effets sont **des réactions candidates**, pas des affectations. L'auditeur recoupe toujours le signal avec ses autres perceptions. Un appel `UP` n'autorise pas à franchir une ligne de hors-jeu. Un appel `BALL` n'oblige pas le porteur à passer.
 
 ### Portées et durées par appel (hypothèses gameplay V1)
 
@@ -162,13 +162,13 @@ A11 et A15 convergent vers une réception, A15 crie `MINE`.
 
 ### Tests déjà exécutables
 
-`node server/test-v4-local-communication.js` : **24 tests** `COM-01` à `COM-16` du transport :
+`node server/test-v4-local-communication.js` : **28 tests** `COM-01` à `COM-16` du transport :
 1. catalogue fermé ; 2. latence ; 3. livraison unique ; 4. isolement des équipes ;
 5. portée ; 6. rapprochement avant expiration ; 7. expiration ; 8. pas d'écho au locuteur ;
 9. indisponibilité ; 10. anti-spam ; 11. ordre déterministe ; 12. replay identique ;
 13. mémoire bornée ; 14. entrées invalides ; 15. désactivation ; 16. absence de mutation de l'agent.
 
-Huit cas supplémentaires `COM-17`–`COM-24` testent les messages adressés, questions/réponses, la demande de mêlée et l'annonce de chandelle. En outre, `node server/test-v4-tactical-dialogue.js` exécute **10 scénarios de dialogue symbolique**.
+Douze cas supplémentaires `COM-17`–`COM-28` testent les messages adressés, questions/réponses, la demande de mêlée et l'annonce de chandelle. En outre, `node server/test-v4-tactical-dialogue.js` exécute **14 scénarios de dialogue symbolique**.
 
 Ces tests **ne prouvent pas** que les joueurs du match parlent déjà ni qu'ils sont réellement autonomes.
 
