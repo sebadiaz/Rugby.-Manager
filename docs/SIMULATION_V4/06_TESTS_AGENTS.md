@@ -109,6 +109,14 @@ En plus des tests D et I, les douze cas détaillés dans [`07_AGENT_INDIVIDUEL_P
 
 **Priorités :** G34 sources/baseline → G35 implémentation causale → G36 calibration de choix ; dépendances GOAP G02–G11 et des phases concernées G18–G20/G31–G33 obligatoires.
 
+## 4 quater. Sortie du 8 après annonce et styles internationaux — tests S8/STYLE
+
+Consulter `12_STYLES_ANGLETERRE_AFRIQUE_DU_SUD_NOUVELLE_ZELANDE.md` et la liste `S8-01..S8-09`, `STYLE-04..STYLE-10` ; **16 nouveaux tests d'intégration à développer**, qui ne doivent pas être présentés comme réussis après de simples tests du transport.
+
+Le 8 peut discuter avant la mêlée et être disponible, mais son **signal de départ effectif (`SCRUM_8_GOING`) doit être émis avant la tentative de prise**. Le 9 qui l'entend doit abandonner son plan de prise (si annulable), décider d'un autre but et **calculer son déplacement individuellement**. Si le message arrive trop tard ou manque, les deux joueurs peuvent mal se coordonner ; jamais deux porteurs, jamais un déplacement imposé depuis un coordinateur.
+
+Le corpus de **12 observations dans cinq matchs ENG/RSA/NZ** est vérifié par `node server/test-v4-styles-match-data.js`. Un snapshot daté du 4 septembre 2026 permet de comparer certaines métriques des Springboks et des All Blacks ; les choix individuels seront testés avec les mêmes graines en changeant **uniquement** le plan de jeu interchangeable, le profil du 9 ou un placement défensif. Ne pas coder de comportements selon la nationalité.
+
 ## 5. Instrumentation attendue pour chaque test
 
 Un test qui échoue doit fournir au minimum :
