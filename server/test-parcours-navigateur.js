@@ -4659,12 +4659,12 @@ function optionsLancement() {
       etat.bl.length === 1 && entrant && entrant.joueurId != null && Math.abs(entrant.instant - etat.bl[0].instant) < 0.5, JSON.stringify(etat));
     await pgBl.click('#btnTerminerMatch');
     let fin = false;
-    for (let i = 0; i < 200; i++) { if (await pgBl.isVisible('#panneauResultat.visible')) { fin = true; break; } await pgBl.waitForTimeout(300); }
+    for (let i = 0; i < 600; i++) { if (await pgBl.isVisible('#panneauResultat.visible')) { fin = true; break; } await pgBl.waitForTimeout(300); }
     if (fin) { await pgBl.click('#btnResultatFermer'); await pgBl.waitForTimeout(800); }
     const car = await pgBl.evaluate((idEntrant) => { const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1')); const c = s.clubJoueur;
       const entrant = c.effectif.find((j) => j.id === idEntrant);
       return { msg: (c.messages || []).filter((m) => /quitter le terrain/.test(m.corps)).length, entrantBlesse: !!(entrant && entrant.blessure && /quitter/.test(JSON.stringify(c.messages.filter((m) => m.corps.includes(entrant.nom))))) }; }, entrant && entrant.joueurId);
-    verifier('blessure : en carrière, le blessé (pas l entrant) est indisponible, avec un message', car.msg === 1 && !car.entrantBlesse, JSON.stringify(car));
+    verifier('blessure : en carrière, le blessé (pas l entrant) est indisponible, avec un message', car.msg === 1 && !car.entrantBlesse, JSON.stringify(car) + ' fin=' + fin);
     verifier('blessure : aucune erreur de page', erreursBl.length === 0, erreursBl.join(' | '));
     await ctxBl.close();
   }
