@@ -1,5 +1,7 @@
 # Rugby Manager V4 — neuf matchs de **Top 14** pour spécifier les 30 agents
 
+**Étude de niveau supérieur — micro-actions :** `14_ANALYSE_MICRO_ACTIONS_TOP14.md` décompose désormais **7 séquences du Top 14 en 47 micro-décisions par joueur et 22 contre-factuels**, notamment les courses de leurre de Willis/Cros, la montée Samu/Moefana/Gazzotti et le choix Flament→Jelonch en finale 2025. Corpus structuré `fixtures/micro_actions_top14.json`, vérifié par `node server/test-v4-top14-micro-actions.js`. Les 51 buts et 66 actions candidats se trouvent dans `05_CATALOGUE_GOALS_ACTIONS.md`. **Les séquences du moteur restent à coder.**
+
 **Date : 8 novembre 2026.** Complément aux études internationales `11_MATCHS_REELS_ET_PRISES_DE_DECISION.md` et `12_STYLES_ANGLETERRE_AFRIQUE_DU_SUD_NOUVELLE_ZELANDE.md`.
 
 > Le Top 14 ne doit PAS être modélisé comme « rugby français = jeu au large ». Il comporte des packs qui dominent, des choix au pied, des lancements depuis touche, des mêlées rejouées, des changements de stratégie à dix mètres de l'en-but, une gestion du score, de la fatigue et de l'arbitrage, et des comportements radicalement différents d'une rencontre à l'autre.
