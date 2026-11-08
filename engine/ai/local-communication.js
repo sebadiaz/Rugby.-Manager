@@ -100,6 +100,18 @@ class LocalCommunication {
       throw new TypeError('réponse à un appel invalide');
     }
     if (!this.enabled || !available) return { accepted: false, reason: 'UNAVAILABLE' };
+    // Une réponse n'est possible que si le joueur a EFFECTIVEMENT entendu
+    // la question et peut encore en discuter ; pas de télépathie.
+    if (replyTo !== null) {
+      const original = this.messages.find(msg => msg.id === replyTo);
+      if (!original || original.team !== team ||
+          original.speakerId !== toId ||
+          (original.toId !== null && original.toId !== speakerId) ||
+          !original.receivedBy.has(speakerId) ||
+          time < original.emittedAt || time > original.expiresAt) {
+        throw new TypeError('réponse sans demande réellement entendue');
+      }
+    }
     const previous = this.lastBySpeaker.get(speakerId);
     if (previous != null && time < previous) throw new RangeError('temps non monotone pour ' + speakerId);
     if (previous != null && time - previous < this.cooldownSeconds) {
