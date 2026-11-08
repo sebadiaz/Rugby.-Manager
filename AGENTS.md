@@ -3,6 +3,15 @@ AGENTS.md
 RÈGLE D'ARCHITECTURE V4 — IMPORTANTE
 
 Le jeu doit simuler 30 agents INDIVIDUELS autonomes à base de buts (GOAP).
+Le 8 qui part d'une mêlée doit prévenir le 9 **juste avant** la prise :
+SCRUM_8_GOING != SCRUM_8_READY. Si le 9 entend l'appel, il replanifie
+individuellement (soutien, ligne de passe, couverture), pas d'attribution
+centrale du ballon. Le moteur garantit un seul porteur réel ; appel perdu
+ou annulé, vieille mêlée, cooldown sont des cas à tester. Voir doc
+SIMULATION_V4/12_STYLES_ANGLETERRE_AFRIQUE_DU_SUD_NOUVELLE_ZELANDE.md
+et G37-G38 du PLAN_CLAUDE_CODE.md : cinq autres matchs sourcés ENG/RSA/NZ,
+styles sous forme de playbooks **interchangeables** sans IA nationale.
+
 Chaque joueur connaît le plan de jeu commun et ses positions de référence,
 mais choisit lui-même ses buts, son plan et chaque déplacement selon les
 circonstances. Défendre et ses sous-buts sont prioritaires lorsque
