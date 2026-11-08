@@ -5,8 +5,8 @@
 ## Comment utiliser ce dossier
 
 1. Lire `CLAUDE.md`, `AGENTS.md`, `docs/REGLES_RUGBY.md` et `docs/SPEC_PLACEMENT_TACTIQUE.md`.
-2. Commencer par **`07_AGENT_INDIVIDUEL_PLACEMENT.md`**, **`08_COMMUNICATION_LOCALE.md`**, **`09_CHOIX_STRATEGIQUES_INDIVIDUELS.md`**, **`10_DIALOGUES_TACTIQUES_DU_9.md`** et **`11_MATCHS_REELS_ET_PRISES_DE_DECISION.md`**, puis **`04_IA_AGENTS_BUTS.md`** (architecture Russell–Norvig/GOAP), **`05_CATALOGUE_GOALS_ACTIONS.md`** (43 buts et 50 actions candidates, non toutes implémentées) puis **`06_TESTS_AGENTS.md`** (tests falsifiables). Les `01_...`–`03_...` complètent ensuite les contrats, lois et le rendu.
-3. Exécuter `node server/test-v4-observations-matchs.js` (**seulement la validité du corpus documentaire**) et `node server/test-v4-goals-actions-doc.js` (**43 buts et 50 actions spécifiés, non intégrés**), puis `node server/test-v4-local-communication.js` et `node server/test-v4-tactical-dialogue.js` (transport de messages symboliques, **pas encore utilisés dans un vrai match**), puis `node server/test-v4-goap-planner.js` (preuve d'une **recherche de plan symbolique seulement**) et `node server/test-spec-simulation-v4.js` (cohérence des fixtures). **Ces tests documentaires et symboliques ne démontrent pas que les 30 joueurs exécutent déjà leurs plans en match.**
+2. Commencer par **`07_AGENT_INDIVIDUEL_PLACEMENT.md`**, **`08_COMMUNICATION_LOCALE.md`**, **`09_CHOIX_STRATEGIQUES_INDIVIDUELS.md`**, **`10_DIALOGUES_TACTIQUES_DU_9.md`**, **`11_MATCHS_REELS_ET_PRISES_DE_DECISION.md`**, **`12_STYLES_ANGLETERRE_AFRIQUE_DU_SUD_NOUVELLE_ZELANDE.md`** et **`13_MATCHS_TOP14_DECISIONS.md`**, puis **`04_IA_AGENTS_BUTS.md`** (architecture Russell–Norvig/GOAP), **`05_CATALOGUE_GOALS_ACTIONS.md`** (43 buts et 50 actions candidates, non toutes implémentées) puis **`06_TESTS_AGENTS.md`** (tests falsifiables). Les `01_...`–`03_...` complètent ensuite les contrats, lois et le rendu.
+3. Exécuter `node server/test-v4-top14-data.js` (corpus Top 14 uniquement), `node server/test-v4-styles-match-data.js` (corpus internationaux uniquement) et `node server/test-v4-observations-matchs.js` (**seulement la validité du corpus documentaire**) et `node server/test-v4-goals-actions-doc.js` (**43 buts et 50 actions spécifiés, non intégrés**), puis `node server/test-v4-local-communication.js` et `node server/test-v4-tactical-dialogue.js` (transport de messages symboliques, **pas encore utilisés dans un vrai match**), puis `node server/test-v4-goap-planner.js` (preuve d'une **recherche de plan symbolique seulement**) et `node server/test-spec-simulation-v4.js` (cohérence des fixtures). **Ces tests documentaires et symboliques ne démontrent pas que les 30 joueurs exécutent déjà leurs plans en match.**
 4. Choisir **une seule** tâche `RM4-Gxx` de `PLAN_CLAUDE_CODE.md`, vérifier ses prérequis, ouvrir une branche dédiée.
 5. Appliquer le prompt de `PROMPT_CLAUDE_CODE.md`. Ne pas déclarer une tâche terminée sans un scénario injecté et ses assertions automatiques.
 6. Joindre à chaque PR le résultat des tests, un comparatif des matchs par graines identiques, et une capture/vidéo quand le visuel change.
@@ -47,6 +47,14 @@ World Rugby a mesuré dans le Six Nations **2023** environ 314 passes, 185 rucks
 
 Les différences de style anglais, sud-africain et néo-zélandais sont étudiées sur **cinq matchs supplémentaires** (2023–2026), dont le duel RSA–NZ du 29/08/2026 et les deux rencontres de septembre 2026. Les préférences appartiennent à un `playbook` interchangeable, **pas à une IA par nationalité**. Sources, chiffres datés et cas testables dans `12_STYLES_ANGLETERRE_AFRIQUE_DU_SUD_NOUVELLE_ZELANDE.md` ; tâches G37/G38 (non intégrées au moteur).
 
+## Benchmark prioritaire : matchs de Top 14
+
+**Neuf rencontres supplémentaires** et **19 observations sourcées** sont désormais étudiées : Racing–Bayonne (départ de mêlée du 8 Nathan Hughes), Toulouse–Bayonne (touche→Brennan→Ntamack), finales Toulouse–UBB 2025 et Toulouse–Montpellier 2026 (Dupont–Mauvaka), Toulon–Bordeaux, Toulon–Toulouse, Racing–La Rochelle (Jegou→Le Garrec et drop manqué), Toulon–La Rochelle et Pau–Toulouse 2026. Corpus, descriptions, URLs, chiffres LNR et cas conditionnels dans `13_MATCHS_TOP14_DECISIONS.md`.
+
+La LNR montre, par exemple, dans **un match spécifique** Toulon–UBB du 31 mai 2026 **212 passes contre 112 et 18 coups de pied contre 37**. Cela ne signifie pas que l'UBB doit toujours botter : les agents réagissent aux défenses, au terrain, au score et aux partenaires réellement disponibles.
+
+**Attention** : la page statistique de la **finale 2026** Toulouse–Montpellier affiche des **zéros manifestement manquants** pour passes, touches et mêlées. Le benchmark les rejette explicitement ; le compte rendu officiel du match reste fiable pour les événements. Les tâches **G39–G41** prescrivent validation, 19 tests moteur et calibration Top 14 (non exécutés à ce stade).
+
 ## Exigence centrale : agents à base de buts
 
 **Chaque joueur doit avoir une vraie IA délibérative** : observer l'état local du match, sélectionner un but, construire un plan composé d'actions légales avec préconditions/effets/coûts, exécuter ces actions avec le moteur physique, en constater les résultats et **replanifier** si le monde change.
@@ -55,7 +63,7 @@ Les différences de style anglais, sud-africain et néo-zélandais sont étudié
 
 **Premier jalon de preuve** : A9, avec but `DISTRIBUTE_BALL`, planifie `MOVE_TO_RUCK → SECURE_BALL → PASS_TO_10`, puis change légalement vers `PASS_TO_POD` si le couloir du 10 se ferme. Aucun effet ne peut être simulé « par magie » dans le moteur.
 
-Lire `PLAN_CLAUDE_CODE.md` : 39 tâches **G00–G38**, et `PROMPT_CLAUDE_CODE.md` pour le démarrage de Claude Code.
+Lire `PLAN_CLAUDE_CODE.md` : 42 tâches **G00–G41**, et `PROMPT_CLAUDE_CODE.md` pour le démarrage de Claude Code.
 
 ## Objectif produit
 
@@ -90,6 +98,7 @@ Un **test de fixture** valide uniquement la forme des données. Un **test moteur
 - `10_DIALOGUES_TACTIQUES_DU_9.md` : le 9 demande l'avis du 10 en touche et mêlée, discute **du départ du 8 avec le 8** puis choisit, et annonce sa chandelle.
 - `11_MATCHS_REELS_ET_PRISES_DE_DECISION.md` : analyse de **quatre matchs réels**, 16 actions sourcées, lois, adaptations et 16 scénarios moteurs à créer.
 - `12_STYLES_ANGLETERRE_AFRIQUE_DU_SUD_NOUVELLE_ZELANDE.md` : 5 autres matchs détaillés ENG/RSA/NZ, signal du 8 au 9, 3 presets interchangeables et 16 tests à intégrer.
+- `13_MATCHS_TOP14_DECISIONS.md` : **9 matchs de Top 14**, 19 situations avec variantes et statistiques LNR vérifiées, gestion de données manquantes.
 - `04_IA_AGENTS_BUTS.md` : boucle perception → objectifs → planification → exécution → replanification, entièrement individuelle.
 - `05_CATALOGUE_GOALS_ACTIONS.md` : buts, actions, préconditions, coûts, effets et gardes réglementaires.
 - `06_TESTS_AGENTS.md` : preuve d'une IA réelle et tests différentiels, pas uniquement des snapshots.
@@ -104,6 +113,7 @@ Un **test de fixture** valide uniquement la forme des données. Un **test moteur
 - `server/test-v4-observations-matchs.js` : validation de 16 événements et de leur provenance (pas preuve que le moteur reproduit les actions).
 - `server/test-v4-goals-actions-doc.js` : validation des 43 buts et 50 actions GOAP décrits sans doublon.
 - `fixtures/observations_styles_2023_2026.json` et `server/test-v4-styles-match-data.js` : **12 observations sourcées de cinq autres matchs** et comparaison d'équipes datée du 04/09/2026.
+- `fixtures/observations_top14_2025_2026.json` et `server/test-v4-top14-data.js` : **19 événements documentés dans neuf rencontres de Top 14**, six profils chiffrés de la LNR ; faux zéros de la finale 2026 exclus.
 - `server/test-spec-simulation-v4.js` : validations structurelles déjà exécutables sur le dépôt.
 
 ## Références officielles, versionnées
