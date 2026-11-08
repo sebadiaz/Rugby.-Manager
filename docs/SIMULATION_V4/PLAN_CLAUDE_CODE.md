@@ -53,6 +53,7 @@ Les tâches G00 et G01 sont **commencées comme références/documentation** ; l
 - **Tests :** `node server/test-v4-local-communication.js
 node server/test-v4-tactical-dialogue.js
 node server/test-v4-observations-matchs.js
+node server/test-v4-goals-actions-doc.js
 node server/test-v4-goap-planner.js` (G01–G14).
 - **Rejet si :** un script spécial `if(numero === 9)` est utilisé comme « planner ».
 
@@ -336,7 +337,7 @@ Ces trois tâches étendent l'architecture **individuelle** des tâches G04–G2
 - **Fichiers :** `server/v4/measure-strategies.js`, `docs/SIMULATION_V4/CALIBRATION_DECISIONS.md`, `server/test-v4-strategies-stats.js`, `.github/workflows/tests-longs.yml`.
 - **Réalisation :** comparer 100 puis 500 matchs identiques en deux modes `LEGACY` / `GOAP`. Pour chaque n°9/n°8/n°10/ailier/15 mesurer par possession et zone : choix 8 départ vs sortie 9, maul→9→large/près, fréquence des chandelles selon stagnation réelle, coups de pied hauts par poste, turnover→contre-attaque, 15 couvre vs monte, appels entendus/ignorés, indisponibilités, erreurs techniques, mauvaises décisions et réajustements. Inclure temps de calcul/nœuds GOAP et les métriques agrégées World Rugby 2023 comme **point de comparaison historique daté**, pas seuil universel de 2026.
 - **Critères :** les agents ne réussissent pas 100% des prises de balle/pieds/plaquages ; changement de plan démontré sous une variation de défense ; données de simulation à métadonnées (SHA, seed, durée, profil légal, tactique, mode IA) ; écarts de stats analysés et assumés.
-- **Tests :** 30 graines PR ciblée, 100 graines intégration, 500 en suite longue ; tableaux de dispersion, tests d'invariants, tests navigateur ; capture d'au moins 4 replays de décisions (ENW01/IRF01/ENF02/FIF05) rejoués à graines connues.
+- **Tests :** `REAL-01..16`, `STYLE-01..03`, 30 graines PR ciblée, 100 graines intégration, 500 en suite longue ; tableaux de dispersion, tests d'invariants, tests navigateur ; capture d'au moins 4 replays de décisions (ENW01/IRF01/ENF02/FIF05) rejoués à graines connues.
 - **Rejet si :** reproduire les 16 essais identiques avec des scripts par joueur, annoncer une vérité historique depuis une scène inventée ou faire baisser les tests de lois pour « retrouver » le score exact d'un match.
 
 **Le corpus de 16 événements n'est pas un dataset de suivi spatial** ; il permet d'écrire des tests sur des **possibilités de décisions**, pas de copier des trajectoires exactes.
