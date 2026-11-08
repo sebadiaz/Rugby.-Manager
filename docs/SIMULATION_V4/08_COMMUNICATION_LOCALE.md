@@ -30,6 +30,8 @@ Le joueur possède déjà un `AgentContext` : monde perçu, mémoire, but, plan,
                                      et de se déplacer
 ```
 
+Le 8 qui décide de prendre le ballon peut émettre le message urgent `SCRUM_8_GOING` à son 9, avec un `phaseId` spécifique à cette mêlée, **avant** la prise. `SCRUM_8_READY` exprime seulement sa disponibilité, et `SCRUM_8_ABORT` son abandon. Le 9 qui entend doit **replanifier dans son propre AgentController** pour ne pas tenter de prendre la balle au même instant ; **le transport ne modifie aucun plan**. Une alerte urgente ne peut pas être bloquée par le cooldown après « prêt » : une alerte de chaque sorte par mêlée est permise. Voir `12_STYLES_ANGLETERRE_AFRIQUE_DU_SUD_NOUVELLE_ZELANDE.md`.
+
 Un appel ne peut pas modifier directement `player.x`, `player.y`, `goalId`, `plan`, `ball.carrier`, `possession` ou l'arbitrage. Il n'existe pas de `TeamCommunicationBrain`, `TeamCoordinator`, tableau noir décisionnel ni allocation de rôle.
 
 ## 2. Le vocabulaire V1 : onze appels courts + treize messages tactiques du 9
@@ -50,7 +52,7 @@ La parole est une intention **limitée**, pas un message structuré contenant le
 | `KICK` | « Pied ! » | botteur prêt, ballon aérien | un arrière peut réévaluer `COVER_BACKFIELD` |
 | `LEAVE` | « Laisse ! » | réception à deux ou ballon dangereux | un voisin peut abandonner sa prise de balle |
 
-**IMPORTANT** : vingt-et-un messages tactiques sont disponibles : `LINEOUT_ASK/FRONT/MIDDLE/BACK/MAUL/WIDE`, `SCRUM_OPTIONS_ASK/NEAR/WIDE/ADVANCE`, `SCRUM_8_ASK/READY/BLOCKED/BREAK`, `SCRUM_ASK/STEADY/DRIVE/PRESSURE/UNSTABLE`, `KICK_HIGH` et `KICK_CHASE`. `toId` permet une question ciblée et `replyTo` une réponse ; voir `10_DIALOGUES_TACTIQUES_DU_9.md`. Ces effets sont **des réactions candidates**, pas des affectations. L'auditeur recoupe toujours le signal avec ses autres perceptions. Un appel `UP` n'autorise pas à franchir une ligne de hors-jeu. Un appel `BALL` n'oblige pas le porteur à passer.
+**IMPORTANT** : vingt-quatre messages tactiques sont disponibles : `LINEOUT_ASK/FRONT/MIDDLE/BACK/MAUL/WIDE`, `SCRUM_OPTIONS_ASK/NEAR/WIDE/ADVANCE`, `SCRUM_8_ASK/READY/BLOCKED/BREAK/GOING/ABORT` et `SCRUM_9_ACK`, `SCRUM_ASK/STEADY/DRIVE/PRESSURE/UNSTABLE`, `KICK_HIGH` et `KICK_CHASE`. `toId` permet une question ciblée et `replyTo` une réponse ; voir `10_DIALOGUES_TACTIQUES_DU_9.md`. Ces effets sont **des réactions candidates**, pas des affectations. L'auditeur recoupe toujours le signal avec ses autres perceptions. Un appel `UP` n'autorise pas à franchir une ligne de hors-jeu. Un appel `BALL` n'oblige pas le porteur à passer.
 
 ### Portées et durées par appel (hypothèses gameplay V1)
 
@@ -162,13 +164,13 @@ A11 et A15 convergent vers une réception, A15 crie `MINE`.
 
 ### Tests déjà exécutables
 
-`node server/test-v4-local-communication.js` : **28 tests** `COM-01` à `COM-16` du transport :
+`node server/test-v4-local-communication.js` : **37 tests** `COM-01` à `COM-16` du transport :
 1. catalogue fermé ; 2. latence ; 3. livraison unique ; 4. isolement des équipes ;
 5. portée ; 6. rapprochement avant expiration ; 7. expiration ; 8. pas d'écho au locuteur ;
 9. indisponibilité ; 10. anti-spam ; 11. ordre déterministe ; 12. replay identique ;
 13. mémoire bornée ; 14. entrées invalides ; 15. désactivation ; 16. absence de mutation de l'agent.
 
-Douze cas supplémentaires `COM-17`–`COM-28` testent les messages adressés, questions/réponses, la demande de mêlée et l'annonce de chandelle. En outre, `node server/test-v4-tactical-dialogue.js` exécute **14 scénarios de dialogue symbolique**.
+Vingt-et-un cas supplémentaires `COM-17`–`COM-37` testent les messages adressés, questions/réponses, la demande de mêlée et l'annonce de chandelle. En outre, `node server/test-v4-tactical-dialogue.js` exécute **18 scénarios de dialogue symbolique**.
 
 Ces tests **ne prouvent pas** que les joueurs du match parlent déjà ni qu'ils sont réellement autonomes.
 
