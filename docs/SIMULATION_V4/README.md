@@ -31,7 +31,7 @@ Le n°9 **initie les demandes**, sans IA collective :
 - **Mêlée** : le 9 consulte **le 10** sur le jeu au près, au large ou l'avancée ; il discute **avec le 8** du départ depuis l'arrière de mêlée, puis **décide lui-même** de l'option et la demande. Il peut aussi consulter les avants pour connaître la stabilité et demander une poussée forte. La rotation résulte des forces ; pousser délibérément de travers et écrouler volontairement sont des infractions, pas des stratégies légales.
 - **Plein jeu** : si l'attaque stagne, le 9 peut envisager un **up-and-under / chandelle**, mais prévient les trois-quarts **avant** de botter. Chacun réévalue individuellement chasse, couverture, soutien ou maintien de la ligne.
 
-Dossier détaillé : `10_DIALOGUES_TACTIQUES_DU_9.md`. Transport de **35 messages** `engine/ai/local-communication.js`, **37 tests unitaires et 18 scénarios** de dialogue symbolique ; la véritable intégration au match est à coder dans G31–G33, en s'appuyant sur G04–G20.
+Dossier détaillé : `10_DIALOGUES_TACTIQUES_DU_9.md`. Transport de **35 messages** `engine/ai/local-communication.js`, **39 tests unitaires et 18 scénarios** de dialogue symbolique ; la véritable intégration au match est à coder dans G31–G33, en s'appuyant sur G04–G20.
 
 ## Références à des matchs réellement joués
 
@@ -99,7 +99,7 @@ Un **test de fixture** valide uniquement la forme des données. Un **test moteur
 - `fixtures/scenarios.json` : jeux de données déterministes et attentes déclaratives (le futur injecteur doit les exploiter).
 - `PROMPT_CLAUDE_CODE.md` : consigne à copier à Claude Code.
 - `engine/ai/local-communication.js` : transport de 35 codes vocaux (prototype non connecté au match).
-- `server/test-v4-local-communication.js` et `server/test-v4-tactical-dialogue.js` : 37 tests + 18 scènes de dialogue symbolique.
+- `server/test-v4-local-communication.js` et `server/test-v4-tactical-dialogue.js` : 39 tests + 18 scènes de dialogue symbolique.
 - `fixtures/observations_matchs_reels.json` : corpus de 16 actions documentées (2024, 2025, 2026) ; **aucun tracking ni paroles réelles inventés**.
 - `server/test-v4-observations-matchs.js` : validation de 16 événements et de leur provenance (pas preuve que le moteur reproduit les actions).
 - `server/test-v4-goals-actions-doc.js` : validation des 43 buts et 50 actions GOAP décrits sans doublon.
