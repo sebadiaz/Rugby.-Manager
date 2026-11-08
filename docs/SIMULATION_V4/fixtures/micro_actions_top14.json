@@ -1,0 +1,1170 @@
+{
+  "schemaVersion": "1.0.0",
+  "researchDate": "2026-11-08",
+  "competition": "TOP14",
+  "scope": "7 études tactiques détaillées, dont 6 séquences documentées et 1 scénario agrégé, avec modèle d'intention strictement inféré",
+  "realSpokenCallsAvailable": false,
+  "videoTrackingFrameByFrameVerified": false,
+  "notes": [
+    "Un micro-pas décrit par la presse n'est pas une trajectoire physique mesurée.",
+    "Le coach prépare des lancements connus mais les buts et mouvements sont choisis par chaque AgentController.",
+    "Les contre-factuels sont des tests inventés qui ne représentent pas la réalité du match."
+  ],
+  "sources": {
+    "EUROSPORT_JELONCH": "https://www.eurosport.fr/rugby/top-14/2024-2025/une-combinaison-ciselee-lessai-danthony-jelonch-toulouse-en-finale-du-top-14-face-a-lubb-decrypte_sto23196768/story.shtml",
+    "MIDOL_JELONCH": "https://www.rugbyrama.fr/2025/06/29/finale-top-14-technique-comment-anthony-jelonch-a-pu-tromper-la-defense-de-lubb-sur-son-essai-12794092.php",
+    "RUGBYRAMA_JELONCH_VIDEO": "https://www.rugbyrama.fr/2025/06/28/video-finale-top-14-toulouse-bordeaux-begles-revivez-le-premier-essai-de-la-partie-inscrit-par-anthony-jelonch-12792712.php",
+    "LEMONDE_FINALE": "https://www.lemonde.fr/sport/article/2025/06/29/toulouse-bordeaux-begles-le-stade-toulousain-conserve-son-titre-de-champion-de-france-de-rugby-au-terme-d-une-folle-finale_6616317_3242.html",
+    "LEQUIPE_PENAUD": "https://www.lequipe.fr/Rugby/Actualites/L-essai-leche-de-damian-penaud-pour-bordeaux-begles-en-finale-du-top-14-face-au-stade-toulousain-en-video/1573894",
+    "RACING_BAYONNE": "https://www.lequipe.fr/Rugby/match-direct/top-14/2025-2026/racing-92-bayonne-live/40474",
+    "LEQUIPE_TOUTE_23": "https://www.lequipe.fr/Rugby/Actualites/L-equipe-type-de-la-23e-journee-du-top-14-le-duo-dupont-ntamack-assure/1674903",
+    "RCT_TOU_2026": "https://rctoulon.com/toulon-toulouse-le-rct-sincline-face-au-stade-toulousain-au-velodrome/",
+    "LNR_FINALE_2026": "https://top14.lnr.fr/actualite/finale-top-14-le-stade-toulousain-est-champion-de-france-pour-la-quatrieme-fois-de-suite",
+    "DUPONT_KICK_2021": "https://www.lerugbynistere.fr/news/antoine-dupont-aussi-bon-au-pied-qua-la-main-analyse-de-son-jeu-au-pied-1409211654.php",
+    "LNR_ROCHELAIS_BAYONNE": "https://top14.lnr.fr/actualite/analyse-davant-match-stade-rochelais-aviron-bayonnais-les-statistiques-a-connaitre",
+    "LNR_PAU_TOULOUSE": "https://top14.lnr.fr/actualite/analyse-davant-match-section-paloise-stade-toulousain-les-statistiques-a-connaitre",
+    "WR_SCRUM": "https://passport.world.rugby/laws-of-the-game/laws-by-number/19-scrum/",
+    "WR_LINEOUT": "https://passport.world.rugby/laws-of-the-game/laws-by-number/18-touch-quick-throw-and-lineout/",
+    "WR_RUCK": "https://passport.world.rugby/laws-of-the-game/laws-by-number/15-ruck/"
+  },
+  "cases": [
+    {
+      "id": "MICRO-01",
+      "title": "Pénalité courte, leurres et passe Flament→Jelonch",
+      "match": "Toulouse 39-33 Bordeaux-Bègles",
+      "date": "2025-06-28",
+      "reportedMinute": "~31e",
+      "sourceIds": [
+        "EUROSPORT_JELONCH",
+        "MIDOL_JELONCH",
+        "RUGBYRAMA_JELONCH_VIDEO",
+        "LEMONDE_FINALE"
+      ],
+      "officialPhase": "PENALTY_OR_FREE_KICK_RESTART_DISPUTED",
+      "steps": [
+        {
+          "order": 1,
+          "actor": "REFEREE",
+          "reported": "Essai de Marchand refusé après contrôle; reprise à cinq mètres, UBB à quatorze après jaune de Petti",
+          "modeled": {
+            "limitedPerception": "reprise accordée; état score et surnombre local",
+            "goal": "CHOOSE_LEGAL_RESTART",
+            "options": [
+              "TAKE_POINTS",
+              "QUICK_TAP",
+              "KICK_TO_CORNER",
+              "SCRUM_OPTION_IF_PERMITTED"
+            ],
+            "legalGuard": "restart_authorised",
+            "individualMovement": "arbitre fixe la marque; joueurs attendent reprise",
+            "possibleConsequence": "jeu à la main possible; ne jamais écrire un essai"
+          },
+          "evidence": "REPORT_SUPPORTED"
+        },
+        {
+          "order": 2,
+          "actor": "A9 Paul Graou",
+          "reported": "La remise en jeu courte est conduite par Graou",
+          "modeled": {
+            "limitedPerception": "premier bloc d'avants présent, défense proche, option de passe",
+            "goal": "EXPOSE_DEFENSIVE_DECISION",
+            "options": [
+              "PASS_FIRST_POD",
+              "PASS_SECOND_POD",
+              "PASS_BACKS",
+              "CARRY"
+            ],
+            "legalGuard": "ball_playable && restart_valid",
+            "individualMovement": "approche individuellement du point de relance",
+            "possibleConsequence": "choix de trajectoire vers cible réelle"
+          },
+          "evidence": "REPORT_SUPPORTED"
+        },
+        {
+          "order": 3,
+          "actor": "A4/A6/A7 bloc près de Flament",
+          "reported": "Cros et Willis sont présentés aux côtés de Flament dans le dispositif; autres avants effectuent des courses distinctes",
+          "modeled": {
+            "limitedPerception": "espace initial près de la marque, partenaire porteur observé",
+            "goal": "ATTRACT_MARKER_WITH_DECOY",
+            "options": [
+              "DECOY_RUN",
+              "BE_SHORT_RECEIVER",
+              "COVER_RECYCLE"
+            ],
+            "legalGuard": "onside && not_bound",
+            "individualMovement": "chaque avant accélère selon sa propre cible de course",
+            "possibleConsequence": "fixation possible de défenseurs, pas garantie"
+          },
+          "evidence": "REPORT_SUPPORTED"
+        },
+        {
+          "order": 4,
+          "actor": "B6/B12 Samu et Moefana",
+          "reported": "Samu et Moefana montent approximativement trois mètres tandis que Gazzotti reste près de sa ligne",
+          "modeled": {
+            "limitedPerception": "premier pod en mouvement, porteur non encore passé",
+            "goal": "PRESS_RECEIVER_OR_HOLD",
+            "options": [
+              "RUSH_UP",
+              "HOLD_LINE",
+              "MARK_OUTSIDE",
+              "PROTECT_INSIDE"
+            ],
+            "legalGuard": "onside && target_not_yet_carrier",
+            "individualMovement": "montée individuelle et angle de fermeture",
+            "possibleConsequence": "rideau potentiellement désynchronisé"
+          },
+          "evidence": "REPORT_SUPPORTED"
+        },
+        {
+          "order": 5,
+          "actor": "B8 Marko Gazzotti",
+          "reported": "Gazzotti reste à proximité de la ligne d'en-but pendant la montée de Samu et Moefana",
+          "modeled": {
+            "limitedPerception": "distance à ligne de marque faible, soutien défense disponible mais décalé",
+            "goal": "PROTECT_TRYLINE",
+            "options": [
+              "HOLD_GOALLINE",
+              "PRESS_LINE",
+              "TRACK_SUPPORT"
+            ],
+            "legalGuard": "onside",
+            "individualMovement": "avance ou patiente selon estimation individuelle",
+            "possibleConsequence": "risque d'intervenir trop tard"
+          },
+          "evidence": "REPORT_SUPPORTED"
+        },
+        {
+          "order": 6,
+          "actor": "A9 Paul Graou",
+          "reported": "Graou passe vers Flament au-delà du premier groupe d'avants",
+          "modeled": {
+            "limitedPerception": "second pod accessible; partenaire Flament récepteur",
+            "goal": "DELIVER_TO_FORWARDS",
+            "options": [
+              "PASS_TO_FLAMENT",
+              "KEEP_SHORT",
+              "PASS_OUTSIDE"
+            ],
+            "legalGuard": "pass_not_forward && receiver_in_range",
+            "individualMovement": "ajuste ses appuis et l'angle de passe",
+            "possibleConsequence": "ballon réellement en vol vers Flament"
+          },
+          "evidence": "REPORT_SUPPORTED"
+        },
+        {
+          "order": 7,
+          "actor": "A4 Thibaud Flament",
+          "reported": "Flament reçoit le ballon et rencontre une montée Samu-Moefana",
+          "modeled": {
+            "limitedPerception": "défense qui monte, deux options de porteurs à proximité",
+            "goal": "FIX_THEN_DISTRIBUTE",
+            "options": [
+              "CARRY",
+              "PASS_JELONCH",
+              "PASS_WILLIS",
+              "PASS_BACKS"
+            ],
+            "legalGuard": "ball_controlled && legal_pass_direction",
+            "individualMovement": "orientation du buste, fixation de défense, relâchement de passe",
+            "possibleConsequence": "le défenseur doit choisir qui couvrir"
+          },
+          "evidence": "REPORT_SUPPORTED"
+        },
+        {
+          "order": 8,
+          "actor": "A7 Jack Willis",
+          "reported": "Willis réalise une course dans le dos de Jelonch, option sur laquelle se concentre Moefana",
+          "modeled": {
+            "limitedPerception": "Flament porteur, défenseur au contact visuel, course arrière possible",
+            "goal": "CREATE_OPTION_DECOY",
+            "options": [
+              "RUN_SUPPORT_BEHIND",
+              "TAKE_PASS",
+              "SECURE_AFTER_CONTACT"
+            ],
+            "legalGuard": "onside && unbound",
+            "individualMovement": "ligne de course autonome en soutien intérieur ou extérieur",
+            "possibleConsequence": "un défenseur peut se focaliser sur lui"
+          },
+          "evidence": "REPORT_SUPPORTED"
+        },
+        {
+          "order": 9,
+          "actor": "B12 Yoram Moefana",
+          "reported": "Moefana se concentre sur Willis, hésite quand Flament passe et évite un plaquage sans ballon",
+          "modeled": {
+            "limitedPerception": "deux cibles crédibles, ballon tenu puis libéré",
+            "goal": "MARK_AND_TACKLE_LEGALLY",
+            "options": [
+              "MARK_WILLIS",
+              "SHIFT_TO_JELONCH",
+              "HOLD_LINE"
+            ],
+            "legalGuard": "carrier_confirmed_before_tackle",
+            "individualMovement": "freinage ou redirection; temps de réaction et inertie",
+            "possibleConsequence": "intervalle ouvert si le choix est mauvais"
+          },
+          "evidence": "REPORT_SUPPORTED"
+        },
+        {
+          "order": 10,
+          "actor": "A8 Anthony Jelonch",
+          "reported": "Jelonch arrive lancé dans un intervalle, masqué initialement derrière Chocobares",
+          "modeled": {
+            "limitedPerception": "ligne de passe et trou naissant entre défenseurs",
+            "goal": "BREAK_GAINLINE",
+            "options": [
+              "CUT_INSIDE",
+              "BE_PASS_OPTION",
+              "RESET_SUPPORT"
+            ],
+            "legalGuard": "onside && ball_received_before_carry",
+            "individualMovement": "course rentrante propre avec accélération",
+            "possibleConsequence": "réception possible sous pression"
+          },
+          "evidence": "REPORT_SUPPORTED"
+        },
+        {
+          "order": 11,
+          "actor": "A4 Thibaud Flament",
+          "reported": "Flament choisit de passer à hauteur à Jelonch plutôt qu'à Willis",
+          "modeled": {
+            "limitedPerception": "Jelonch plus disponible que Willis; adversaires montant",
+            "goal": "PASS_THROUGH_GAP",
+            "options": [
+              "SHORT_PASS_JELONCH",
+              "KEEP_BALL",
+              "PASS_WILLIS"
+            ],
+            "legalGuard": "ball_carried && pass_backward_or_flat_legal",
+            "individualMovement": "pivot, gestuelle de bras, contrôle du ballon",
+            "possibleConsequence": "Jelonch peut recevoir ou échouer"
+          },
+          "evidence": "REPORT_SUPPORTED"
+        },
+        {
+          "order": 12,
+          "actor": "B8 Marko Gazzotti",
+          "reported": "Gazzotti revient et ralentit Jelonch sans l'empêcher de marquer",
+          "modeled": {
+            "limitedPerception": "porteur déjà lancé à très faible distance du but",
+            "goal": "EMERGENCY_TACKLE",
+            "options": [
+              "TACKLE_LEGALLY",
+              "BLOCK_INSIDE_LANE",
+              "GUARD_TRYLINE"
+            ],
+            "legalGuard": "onside && legal_contact",
+            "individualMovement": "interception par une course d'urgence",
+            "possibleConsequence": "contact réel, pas défense instantanée"
+          },
+          "evidence": "REPORT_SUPPORTED"
+        },
+        {
+          "order": 13,
+          "actor": "A8 Anthony Jelonch",
+          "reported": "Jelonch franchit la ligne et marque à la 31e environ",
+          "modeled": {
+            "limitedPerception": "porteur avec espace immédiat, défense tardive",
+            "goal": "GROUND_BALL_IN_GOAL",
+            "options": [
+              "CARRY_TO_LINE",
+              "AVOID_TACKLER",
+              "GROUND_BALL"
+            ],
+            "legalGuard": "ball_controlled && in_goal",
+            "individualMovement": "finit sa course sous collision probable",
+            "possibleConsequence": "essai uniquement après contrôle effectif"
+          },
+          "evidence": "REPORT_SUPPORTED"
+        }
+      ],
+      "counterfactuals": [
+        {
+          "id": "MICRO-01-ALT1",
+          "variable": "B12 Moefana garde Jelonch plutôt que Willis",
+          "difference": "la défense anticipe la bonne course rentrante",
+          "expectedBehavior": "Flament doit conserver ou trouver Willis / jouer autrement; essai non garanti"
+        },
+        {
+          "id": "MICRO-01-ALT2",
+          "variable": "Samu et Moefana restent connectés",
+          "difference": "rideau défensif monte d'un même pas",
+          "expectedBehavior": "Jelonch peut rester couvert, autres options de Graou/Flament mises en concurrence"
+        },
+        {
+          "id": "MICRO-01-ALT3",
+          "variable": "Premier pod reçoit la passe",
+          "difference": "Graou choisit les avants proches",
+          "expectedBehavior": "la séquence change et une seconde phase peut se former"
+        },
+        {
+          "id": "MICRO-01-ALT4",
+          "variable": "Flament est plaqué avant de libérer",
+          "difference": "temps de passe trop long",
+          "expectedBehavior": "ruck ou perte possible; pas de passe après immobilisation"
+        }
+      ],
+      "notes": [
+        "Les comptes rendus divergent sur le statut précis du coup de pied de reprise: pénalité courte versus coup franc. Profiler restartType et vérifier le replay avant de déclarer l'un des deux historique.",
+        "Le numéro 8 Jelonch marque en jeu courant sur une pénalité jouée, PAS en prenant une balle derrière une mêlée."
+      ],
+      "videoTrackingVerified": false,
+      "verbatimPlayerCallVerified": false
+    },
+    {
+      "id": "MICRO-02",
+      "title": "Lucu joue au pied rasant vers Penaud au fermé",
+      "match": "Toulouse 39-33 Bordeaux-Bègles",
+      "date": "2025-06-28",
+      "reportedMinute": "~35e",
+      "sourceIds": [
+        "LEQUIPE_PENAUD",
+        "LEMONDE_FINALE"
+      ],
+      "officialPhase": "OPEN_PLAY_KICK",
+      "steps": [
+        {
+          "order": 1,
+          "actor": "B9 Maxime Lucu",
+          "reported": "Lucu joue un coup de pied rasant vers le côté fermé",
+          "modeled": {
+            "limitedPerception": "porte le ballon, perçoit un intervalle derrière le dernier défenseur",
+            "goal": "EXPLOIT_SPACE_WITH_GRUBBER",
+            "options": [
+              "PASS",
+              "CARRY",
+              "GRUBBER_TO_BLINDSIDE",
+              "KEEP_POSSESSION"
+            ],
+            "legalGuard": "ball_playable && kick_legal",
+            "individualMovement": "prépare son coup de pied, appui et direction",
+            "possibleConsequence": "ballon rasant avec vitesse et rebonds"
+          },
+          "evidence": "REPORT_SUPPORTED"
+        },
+        {
+          "order": 2,
+          "actor": "B14 Damian Penaud",
+          "reported": "Penaud poursuit le ballon joué vers l'aile fermée",
+          "modeled": {
+            "limitedPerception": "ballon botté, course de récupération à entreprendre",
+            "goal": "CHASE_OWN_TEAM_KICK",
+            "options": [
+              "CHASE_ONSIDE",
+              "COVER",
+              "ABANDON_IF_TOO_FAR"
+            ],
+            "legalGuard": "onside && kick_taken",
+            "individualMovement": "course d'accélération vers lieu de retombée estimé",
+            "possibleConsequence": "peut gagner la course ou non"
+          },
+          "evidence": "REPORT_SUPPORTED"
+        },
+        {
+          "order": 3,
+          "actor": "A11 Matthis Lebel",
+          "reported": "Lebel est défenseur restant à éliminer",
+          "modeled": {
+            "limitedPerception": "adversaire Penaud approche, ballon se déplace près de sa zone",
+            "goal": "DEFEND_KICK",
+            "options": [
+              "INTERCEPT_BALL",
+              "MARK_PENAUD",
+              "SHADOW_CARRIER"
+            ],
+            "legalGuard": "onside && contact_legal",
+            "individualMovement": "s'angle en recul puis vers Penaud",
+            "possibleConsequence": "duel défensif physique"
+          },
+          "evidence": "REPORT_SUPPORTED"
+        },
+        {
+          "order": 4,
+          "actor": "B14 Damian Penaud",
+          "reported": "Penaud récupère le ballon, crochète Lebel et marque",
+          "modeled": {
+            "limitedPerception": "défenseur engagé, ligne d'essai accessible",
+            "goal": "EVADE_LAST_DEFENDER",
+            "options": [
+              "SIDESTEP",
+              "CARRY_STRAIGHT",
+              "PASS_SUPPORT"
+            ],
+            "legalGuard": "ball_collected && legal_grounding",
+            "individualMovement": "course individuelle avec changement de direction",
+            "possibleConsequence": "essai possible après récupération et aplatissement"
+          },
+          "evidence": "REPORT_SUPPORTED"
+        },
+        {
+          "order": 5,
+          "actor": "B9 Maxime Lucu",
+          "reported": "Le coup de pied de Lucu précède bien l'essai de Penaud",
+          "modeled": {
+            "limitedPerception": "ballon déjà parti, progression coéquipier observée",
+            "goal": "SUPPORT_AFTER_KICK",
+            "options": [
+              "CHASE_ONSIDE",
+              "COVER_TURNOVER",
+              "RESET_POSITION"
+            ],
+            "legalGuard": "onside",
+            "individualMovement": "sa propre course dépend de récupération réelle",
+            "possibleConsequence": "pas d'assistance magique au marqueur"
+          },
+          "evidence": "REPORT_SUPPORTED"
+        }
+      ],
+      "counterfactuals": [
+        {
+          "id": "MICRO-02-ALT1",
+          "variable": "Lebel récupère avant Penaud",
+          "difference": "défenseur lit la trajectoire plus tôt",
+          "expectedBehavior": "Penaud passe de CHASE à DEFEND_AFTER_TURNOVER"
+        },
+        {
+          "id": "MICRO-02-ALT2",
+          "variable": "Le 9 botte trop long",
+          "difference": "puissance de frappe augmentée",
+          "expectedBehavior": "ballon peut sortir / franchir en-but selon lois, perte de gain"
+        },
+        {
+          "id": "MICRO-02-ALT3",
+          "variable": "Penaud est hors-jeu au départ",
+          "difference": "position initiale déplacée",
+          "expectedBehavior": "chasse refusée ou retardée jusqu'à remise en jeu"
+        }
+      ],
+      "notes": [
+        "Ne pas transformer le ras-de-terre en chandelle annoncée : type de kick distinct."
+      ],
+      "videoTrackingVerified": false,
+      "verbatimPlayerCallVerified": false
+    },
+    {
+      "id": "MICRO-03",
+      "title": "Hughes sort de mêlée puis Jonny Hill conclut",
+      "match": "Racing 92 47-27 Bayonne",
+      "date": "2025-11-22",
+      "reportedMinute": "~77e",
+      "sourceIds": [
+        "RACING_BAYONNE",
+        "WR_SCRUM"
+      ],
+      "officialPhase": "SCRUM_EXIT",
+      "steps": [
+        {
+          "order": 1,
+          "actor": "R92 9",
+          "reported": "La séquence est une sortie de mêlée dont Hughes assure le départ",
+          "modeled": {
+            "limitedPerception": "connaît sa stratégie de sortie, ballon encore en mêlée",
+            "goal": "DECIDE_SCRUM_EXIT",
+            "options": [
+              "PASS_WIDE",
+              "GO_NEAR",
+              "ENABLE_EIGHT_PICK",
+              "KEEP_PUSHING"
+            ],
+            "legalGuard": "scrum_lawful && ball_in_scrum",
+            "individualMovement": "reste proche de la base et surveille le ballon",
+            "possibleConsequence": "décision n'attribue pas la balle"
+          },
+          "evidence": "REPORT_SUPPORTED"
+        },
+        {
+          "order": 2,
+          "actor": "R92 8 Nathan Hughes",
+          "reported": "Hughes part de l'arrière de la mêlée",
+          "modeled": {
+            "limitedPerception": "ballon en fond de mêlée, pression autour du tunnel",
+            "goal": "PICK_AND_BREAK",
+            "options": [
+              "PICK_EIGHT",
+              "KEEP_BALL_FOR_NINE",
+              "HOLD_SCRUM"
+            ],
+            "legalGuard": "ball_at_back && legal_eight_pick",
+            "individualMovement": "se prépare à détacher et à saisir",
+            "possibleConsequence": "saisie seulement si réellement jouable"
+          },
+          "evidence": "REPORT_SUPPORTED"
+        },
+        {
+          "order": 3,
+          "actor": "R92 8 Nathan Hughes",
+          "reported": "Le départ de mêlée de Hughes est confirmé par le commentaire live",
+          "modeled": {
+            "limitedPerception": "9 proche susceptible de ramasser le même ballon",
+            "goal": "INFORM_NINE_BEFORE_PICK",
+            "options": [
+              "EMIT_SCRUM_8_GOING",
+              "REPLAN_IF_BLOCKED"
+            ],
+            "legalGuard": "own_phase_id && speech_available",
+            "individualMovement": "l'action vocale ne déplace aucun joueur",
+            "possibleConsequence": "appel synthétique requis par notre jeu, pas attesté en match"
+          },
+          "evidence": "SIMULATION_ONLY"
+        },
+        {
+          "order": 4,
+          "actor": "R92 9",
+          "reported": "Le commentaire ne relate pas les paroles du 9",
+          "modeled": {
+            "limitedPerception": "si 8 annonce, réception possible à distance courte",
+            "goal": "AVOID_DOUBLE_CHASE",
+            "options": [
+              "SUPPORT_EIGHT",
+              "HOLD_INSIDE",
+              "COVER_BREAKDOWN",
+              "COMPETE_FOR_BALL_IF_NO_CALL"
+            ],
+            "legalGuard": "heard_call_must_match_phase",
+            "individualMovement": "9 interrompt sa course individuelle si encore annulable",
+            "possibleConsequence": "un seul porteur garanti par moteur"
+          },
+          "evidence": "SIMULATION_ONLY"
+        },
+        {
+          "order": 5,
+          "actor": "B10 Gareth Anscombe",
+          "reported": "Hughes provoque le déséquilibre du défenseur Anscombe sur son départ puissant",
+          "modeled": {
+            "limitedPerception": "8 porteur avance, angle de contact court",
+            "goal": "STOP_CARRIER",
+            "options": [
+              "TACKLE_LEGALLY",
+              "SLOW_CARRIER",
+              "CLOSE_GAP"
+            ],
+            "legalGuard": "onside && carrier_real",
+            "individualMovement": "angle de plaquage et effet d'impulsion",
+            "possibleConsequence": "contact réussi ou franchissement"
+          },
+          "evidence": "REPORT_SUPPORTED"
+        },
+        {
+          "order": 6,
+          "actor": "R92 5 Jonny Hill",
+          "reported": "Jonny Hill termine en force près des poteaux",
+          "modeled": {
+            "limitedPerception": "Hughes progresse vers en-but, espace de soutien à proximité",
+            "goal": "SUPPORT_PICK_AND_GO",
+            "options": [
+              "SUPPORT_INSIDE",
+              "RECEIVE_OFFLOAD",
+              "PICK_NEXT_PHASE"
+            ],
+            "legalGuard": "ball_available && onside",
+            "individualMovement": "trajet de soutien différent de la course du 8",
+            "possibleConsequence": "un autre avant peut finir après continuation réelle"
+          },
+          "evidence": "REPORT_SUPPORTED"
+        },
+        {
+          "order": 7,
+          "actor": "REFEREE",
+          "reported": "L'essai de Jonny Hill est accordé",
+          "modeled": {
+            "limitedPerception": "ballon effectivement contrôlé derrière ligne",
+            "goal": "VALIDATE_TRY",
+            "options": [
+              "CHECK_GROUNDING",
+              "AWARD_TRY",
+              "STOP_FOR_PENALTY"
+            ],
+            "legalGuard": "physical_grounding",
+            "individualMovement": "arbitre observant la fin de séquence",
+            "possibleConsequence": "score écrit seulement par le moteur"
+          },
+          "evidence": "REPORT_SUPPORTED"
+        }
+      ],
+      "counterfactuals": [
+        {
+          "id": "MICRO-03-ALT1",
+          "variable": "Le 8 n'a pas le ballon au fond",
+          "difference": "ballAtBack=false",
+          "expectedBehavior": "aucun pick; attente ou sortie par le 9"
+        },
+        {
+          "id": "MICRO-03-ALT2",
+          "variable": "Le 9 n'entend pas l'appel",
+          "difference": "hearing=0",
+          "expectedBehavior": "les deux peuvent se rapprocher, collisions arbitrées; un seul porteur"
+        },
+        {
+          "id": "MICRO-03-ALT3",
+          "variable": "Anscombe plaque Hughes dès la sortie",
+          "difference": "tackle_success=true",
+          "expectedBehavior": "Hughes au sol, soutien Hill et ruck légal, aucun franchissement garanti"
+        }
+      ],
+      "notes": [
+        "Le 8 se dégage légalement de la mêlée avant sa course. Le message 8→9 est ajouté par le design, pas prouvé historiquement.",
+        "La conclusion du soutien n'implique pas que Hughes lui ait donné directement une passe : le compte rendu établit l'enchaînement, pas les gestes intermédiaires exacts."
+      ],
+      "videoTrackingVerified": false,
+      "verbatimPlayerCallVerified": false
+    },
+    {
+      "id": "MICRO-04",
+      "title": "Toulon–Toulouse : Ntamack attire puis joue pied court en soutien",
+      "match": "Toulon 27-51 Toulouse",
+      "date": "2026-05-09",
+      "reportedMinute": "~5e puis ~46e (deux actions séparées)",
+      "sourceIds": [
+        "LEQUIPE_TOUTE_23",
+        "RCT_TOU_2026"
+      ],
+      "officialPhase": "OPEN_PLAY_TWO_SEPARATE_ACTIONS",
+      "steps": [
+        {
+          "order": 1,
+          "actor": "TOU 9 Antoine Dupont",
+          "reported": "Vers la 5e, Dupont décale Ntamack après une touche",
+          "modeled": {
+            "limitedPerception": "10 disponible après remise en jeu",
+            "goal": "RELEASE_FROM_LINEOUT",
+            "options": [
+              "PASS_TO_TEN",
+              "KEEP_SHORT",
+              "PICK_BLIND"
+            ],
+            "legalGuard": "ball_released_from_lineout && pass_legal",
+            "individualMovement": "fait son propre pas vers sortie",
+            "possibleConsequence": "passe physique vers 10"
+          },
+          "evidence": "REPORT_SUPPORTED"
+        },
+        {
+          "order": 2,
+          "actor": "TOU 10 Romain Ntamack",
+          "reported": "Vers la 5e, Ntamack effectue une feinte de passe et marque",
+          "modeled": {
+            "limitedPerception": "défenseur attiré, espace porteur",
+            "goal": "DECEIVE_AND_CARRY",
+            "options": [
+              "DUMMY_PASS",
+              "PASS",
+              "CARRY"
+            ],
+            "legalGuard": "carrier_has_ball",
+            "individualMovement": "course et changements d'appui",
+            "possibleConsequence": "franchissement possible"
+          },
+          "evidence": "REPORT_SUPPORTED"
+        },
+        {
+          "order": 3,
+          "actor": "RCT défense",
+          "reported": "Ntamack conclut le premier essai",
+          "modeled": {
+            "limitedPerception": "10 qui simule une passe puis conserve",
+            "goal": "DEFEND_CARRIER",
+            "options": [
+              "MARK_RECEIVER",
+              "TACKLE_REAL_CARRIER",
+              "STAY_ON_LINE"
+            ],
+            "legalGuard": "cannot_tackle_without_ball",
+            "individualMovement": "réaction visuelle retardée",
+            "possibleConsequence": "ouverture si le défenseur choisit le mauvais joueur"
+          },
+          "evidence": "REPORT_SUPPORTED"
+        },
+        {
+          "order": 4,
+          "actor": "TOU 10 Romain Ntamack",
+          "reported": "Vers la 46e, Ntamack place un coup de pied rasant astucieux vers Dupont",
+          "modeled": {
+            "limitedPerception": "rideau adverse et espace derrière",
+            "goal": "KICK_IN_BEHIND",
+            "options": [
+              "GRUBBER",
+              "PASS",
+              "CARRY"
+            ],
+            "legalGuard": "ball_playable",
+            "individualMovement": "pied bas puis tentative de suivi",
+            "possibleConsequence": "le ballon peut être rattrapé ou non"
+          },
+          "evidence": "REPORT_SUPPORTED"
+        },
+        {
+          "order": 5,
+          "actor": "TOU 9 Antoine Dupont",
+          "reported": "Vers la 46e, Dupont récupère ou lit le pied de Ntamack et sert Chocobares",
+          "modeled": {
+            "limitedPerception": "trajectoire du ballon, 13 disponible après récupération",
+            "goal": "CHASE_AND_DISTRIBUTE",
+            "options": [
+              "RECEIVE_KICK",
+              "PASS_TO_CENTER",
+              "CARRY"
+            ],
+            "legalGuard": "ball_recovered && pass_legal",
+            "individualMovement": "course vers trajectoire réelle puis passe",
+            "possibleConsequence": "Chocobares peut recevoir"
+          },
+          "evidence": "REPORT_SUPPORTED"
+        },
+        {
+          "order": 6,
+          "actor": "TOU 13 Santiago Chocobares",
+          "reported": "Chocobares finit l'action de rupture en deuxième période",
+          "modeled": {
+            "limitedPerception": "9 porteur le sert, défense décrochée",
+            "goal": "FINISH_ON_SUPPORT",
+            "options": [
+              "HOLD_DEPTH",
+              "CUT_LINE",
+              "RECEIVE_PASS"
+            ],
+            "legalGuard": "onside && receiver_reachable",
+            "individualMovement": "course de soutien propre, point de réception recalculé",
+            "possibleConsequence": "essai seulement si contrôlé"
+          },
+          "evidence": "REPORT_SUPPORTED"
+        }
+      ],
+      "counterfactuals": [
+        {
+          "id": "MICRO-04-ALT1",
+          "variable": "Toulon couvre le pied de Ntamack",
+          "difference": "deep_defender_present=true",
+          "expectedBehavior": "Ntamack peut renoncer au pied; Dupont ne récupère pas automatiquement"
+        },
+        {
+          "id": "MICRO-04-ALT2",
+          "variable": "Le 9 ne rattrape pas le ballon",
+          "difference": "catch_success=false",
+          "expectedBehavior": "Chocobares n'est pas servi; transition défensive"
+        },
+        {
+          "id": "MICRO-04-ALT3",
+          "variable": "Défenseur ignore la feinte au début",
+          "difference": "defender_stays_on_carrier=true",
+          "expectedBehavior": "le 10 peut être plaqué, sans essai garanti"
+        }
+      ],
+      "notes": [
+        "Attention : deux essais séparés de ~40 minutes ; aucune continuité artificielle entre les scènes."
+      ],
+      "videoTrackingVerified": false,
+      "verbatimPlayerCallVerified": false
+    },
+    {
+      "id": "MICRO-05",
+      "title": "Dupont–Mauvaka : une-deux depuis la touche",
+      "match": "Toulouse 28-20 Montpellier",
+      "date": "2026-06-27",
+      "reportedMinute": "~7e",
+      "sourceIds": [
+        "LNR_FINALE_2026",
+        "WR_LINEOUT"
+      ],
+      "officialPhase": "LINEOUT_TO_FIRST_PHASE",
+      "steps": [
+        {
+          "order": 1,
+          "actor": "TOU 2 Peato Mauvaka",
+          "reported": "La LNR rapporte une touche d'où démarre un une-deux entre Dupont et Mauvaka",
+          "modeled": {
+            "limitedPerception": "réussite du lancer et disponibilité de receveurs à déterminer physiquement",
+            "goal": "EXIT_LINEOUT_SUPPORT",
+            "options": [
+              "THROW_TO_JUMPER",
+              "FOLLOW_TO_CHANNEL",
+              "HOLD_IN_LINE"
+            ],
+            "legalGuard": "lineout_legally_formed && throw_valid",
+            "individualMovement": "se replace selon son propre itinéraire de talonneur",
+            "possibleConsequence": "disponibilité possible pour revenir recevoir"
+          },
+          "evidence": "REPORT_SUPPORTED"
+        },
+        {
+          "order": 2,
+          "actor": "TOU sauteur de touche",
+          "reported": "La source confirme un lancement après une touche, pas quel sauteur gagne l'air",
+          "modeled": {
+            "limitedPerception": "point de lancer connu depuis plan de jeu, adverse sauteur proche",
+            "goal": "WIN_LINEOUT_BALL",
+            "options": [
+              "JUMP_FRONT",
+              "JUMP_MIDDLE",
+              "JUMP_BACK",
+              "LIFT_TEAMMATE_IF_ROLE"
+            ],
+            "legalGuard": "jump_safe && spacing_legal",
+            "individualMovement": "course et saut individuels",
+            "possibleConsequence": "réception/lancer, jamais victoire imposée"
+          },
+          "evidence": "SIMULATION_ONLY"
+        },
+        {
+          "order": 3,
+          "actor": "TOU 9 Antoine Dupont",
+          "reported": "Le compte rendu décrit un une-deux Dupont–Mauvaka",
+          "modeled": {
+            "limitedPerception": "ballon utilisable après touche, talonneur de nouveau disponible",
+            "goal": "COMBINE_WITH_HOOKER",
+            "options": [
+              "GIVE_TO_HOOKER",
+              "RUN_SUPPORT",
+              "KEEP_BALL"
+            ],
+            "legalGuard": "ball_really_available",
+            "individualMovement": "course du 9 sur un angle différent de celle du talonneur",
+            "possibleConsequence": "passe puis disponibilité pour retour"
+          },
+          "evidence": "REPORT_SUPPORTED"
+        },
+        {
+          "order": 4,
+          "actor": "TOU 2 Peato Mauvaka",
+          "reported": "Mauvaka marque l'essai d'ouverture à partir de ce mouvement",
+          "modeled": {
+            "limitedPerception": "9 est en soutien, défense pas nécessairement fixée",
+            "goal": "CARRY_OR_RETURN_PASS",
+            "options": [
+              "PASS_BACK_TO_NINE",
+              "CARRY",
+              "FIX_AND_PASS"
+            ],
+            "legalGuard": "ball_received && not_tackled",
+            "individualMovement": "appel de soutien puis course propre",
+            "possibleConsequence": "seul un joueur réellement porteur marque"
+          },
+          "evidence": "REPORT_SUPPORTED"
+        },
+        {
+          "order": 5,
+          "actor": "MHR défenseurs",
+          "reported": "La source ne décrit pas leurs mouvements individuellement",
+          "modeled": {
+            "limitedPerception": "les défenseurs peuvent percevoir Mauvaka et Dupont",
+            "goal": "HOLD_OR_MARK",
+            "options": [
+              "MARK_HOOKER",
+              "MARK_NINE",
+              "CLOSE_GAP"
+            ],
+            "legalGuard": "onside && tackle_legal",
+            "individualMovement": "courses défensives autonomes",
+            "possibleConsequence": "l'un peut se tromper et ouvrir une faille"
+          },
+          "evidence": "SIMULATION_ONLY"
+        }
+      ],
+      "counterfactuals": [
+        {
+          "id": "MICRO-05-ALT1",
+          "variable": "Le ballon de touche est contesté et perdu",
+          "difference": "lineout_won=false",
+          "expectedBehavior": "le 9 bascule en défense, pas de une-deux automatique"
+        },
+        {
+          "id": "MICRO-05-ALT2",
+          "variable": "Mauvaka est retenu par un plaqueur",
+          "difference": "hooker_tackled=true",
+          "expectedBehavior": "9 peut recycler sans essai garanti"
+        },
+        {
+          "id": "MICRO-05-ALT3",
+          "variable": "Le 9 est loin de la sortie",
+          "difference": "nine_distance_to_release=far",
+          "expectedBehavior": "la passe attend une disponibilité réelle ou autre porteur"
+        }
+      ],
+      "notes": [
+        "Les détails exacts de passe aller/retour et du défenseur battu ne sont pas documentés par la synthèse LNR; ce sont des transitions à valider vidéo."
+      ],
+      "videoTrackingVerified": false,
+      "verbatimPlayerCallVerified": false
+    },
+    {
+      "id": "MICRO-06",
+      "title": "Sortie des 22 sous pression : long pied du 9",
+      "match": "Toulouse contre La Rochelle",
+      "date": "2021-09 (premières rencontres saison)",
+      "reportedMinute": "minute inconnue",
+      "sourceIds": [
+        "DUPONT_KICK_2021"
+      ],
+      "officialPhase": "KICK_EXIT_22",
+      "steps": [
+        {
+          "order": 1,
+          "actor": "TOU 9 Antoine Dupont",
+          "reported": "L'analyse cite Dupont recevant après une touche dans ses propres 22 mètres",
+          "modeled": {
+            "limitedPerception": "pression rochelaise, propre zone de danger",
+            "goal": "EXIT_DEFENSIVE_22",
+            "options": [
+              "PASS_TO_TEN",
+              "LONG_KICK",
+              "BOX_KICK",
+              "RUN_IF_SPACE"
+            ],
+            "legalGuard": "ball_in_possession && kick_legal",
+            "individualMovement": "prépare son pied sous la pression",
+            "possibleConsequence": "coup de pied de dégagement plausible"
+          },
+          "evidence": "REPORT_SUPPORTED"
+        },
+        {
+          "order": 2,
+          "actor": "La Rochelle défenseur proche",
+          "reported": "Le compte rendu indique une pression rochelaise",
+          "modeled": {
+            "limitedPerception": "porteur près de sa ligne, possible kick",
+            "goal": "PRESS_KICKER_LEGALLY",
+            "options": [
+              "PRESS_ONSIDE",
+              "BLOCK_PASS_LANE",
+              "HOLD_LINE"
+            ],
+            "legalGuard": "onside && tackle_or_charge_legal",
+            "individualMovement": "accélère de façon autonome vers angle du botteur",
+            "possibleConsequence": "peut gêner le geste sans succès garanti"
+          },
+          "evidence": "REPORT_SUPPORTED"
+        },
+        {
+          "order": 3,
+          "actor": "TOU 9 Antoine Dupont",
+          "reported": "Un long coup de pied d'occupation gagne près de 60 mètres et retombe près des 22 adverses",
+          "modeled": {
+            "limitedPerception": "espace profond plus favorable que passe courte",
+            "goal": "KICK_FOR_TERRITORY",
+            "options": [
+              "LONG_CLEARANCE",
+              "KICK_TO_TOUCH",
+              "PASS_SAFE"
+            ],
+            "legalGuard": "ball_kick_real && in_play",
+            "individualMovement": "pied et trajectoire physique",
+            "possibleConsequence": "gain de terrain résultant, jamais valeur fixée à 60m"
+          },
+          "evidence": "REPORT_SUPPORTED"
+        },
+        {
+          "order": 4,
+          "actor": "TOU soutien hors ballon",
+          "reported": "Les choix individuels des soutiens ne sont pas décrits",
+          "modeled": {
+            "limitedPerception": "ballon botté, adversaires en attente",
+            "goal": "FOLLOW_KICK_OR_HOLD_COVER",
+            "options": [
+              "CHASE_ONSIDE",
+              "HOLD_BACKFIELD",
+              "COVER_RETURN"
+            ],
+            "legalGuard": "onside",
+            "individualMovement": "sprint si opportun ou retour couvert",
+            "possibleConsequence": "poursuite possible sans télépathie"
+          },
+          "evidence": "SIMULATION_ONLY"
+        },
+        {
+          "order": 5,
+          "actor": "La Rochelle arrière",
+          "reported": "La réception adverse n'est pas détaillée dans l'analyse",
+          "modeled": {
+            "limitedPerception": "ballon en l'air à profondeur variable",
+            "goal": "POSITION_FOR_KICK_RECEIPT",
+            "options": [
+              "BACKPEDAL",
+              "CATCH",
+              "LET_BOUNCE",
+              "COUNTERKICK"
+            ],
+            "legalGuard": "catch_available && onside",
+            "individualMovement": "point de réception choisi selon sa lecture",
+            "possibleConsequence": "prise, retour ou erreur possibles"
+          },
+          "evidence": "SIMULATION_ONLY"
+        }
+      ],
+      "counterfactuals": [
+        {
+          "id": "MICRO-06-ALT1",
+          "variable": "Le rideau arrière est plus profond",
+          "difference": "receiver_depth=deep",
+          "expectedBehavior": "pied long peut être moins rentable"
+        },
+        {
+          "id": "MICRO-06-ALT2",
+          "variable": "Le 9 perd l'accès au ballon",
+          "difference": "ball_available=false",
+          "expectedBehavior": "aucun kick même si le plan le demande"
+        },
+        {
+          "id": "MICRO-06-ALT3",
+          "variable": "Chasseurs proches et onside",
+          "difference": "support_arrival=early",
+          "expectedBehavior": "pied contestable devient possible, mais pas récupération garantie"
+        }
+      ],
+      "notes": [
+        "Pied de dégagement territorial distinct du up-and-under/chandelle; ne pas confondre les appels et trajectoires."
+      ],
+      "videoTrackingVerified": false,
+      "verbatimPlayerCallVerified": false
+    },
+    {
+      "id": "MICRO-07",
+      "title": "La Rochelle–Bayonne : décisions conditionnelles à partir des tendances LNR",
+      "match": "Données avant La Rochelle–Bayonne J9 2026/27",
+      "date": "2026-11-??",
+      "reportedMinute": "SANS_ACTION_HORODATEE",
+      "sourceIds": [
+        "LNR_ROCHELAIS_BAYONNE",
+        "LNR_PAU_TOULOUSE"
+      ],
+      "officialPhase": "STATISTICS_DERIVED_SYNTHETIC",
+      "steps": [
+        {
+          "order": 1,
+          "actor": "La Rochelle 9",
+          "reported": "La Rochelle a attaqué le côté ouvert dans 89,9% de ses phases cette saison au moment de l'analyse",
+          "modeled": {
+            "limitedPerception": "couloir large et alignement défensif à percevoir",
+            "goal": "SELECT_OPEN_SIDE_IF_USABLE",
+            "options": [
+              "PLAY_OPEN",
+              "PLAY_BLIND",
+              "KEEP_CLOSE"
+            ],
+            "legalGuard": "ball_available && open_side_onside",
+            "individualMovement": "repositionne son corps avant la passe",
+            "possibleConsequence": "plan large peut être refusé par défense"
+          },
+          "evidence": "STATS_DERIVED_SCENARIO"
+        },
+        {
+          "order": 2,
+          "actor": "La Rochelle centre",
+          "reported": "La Rochelle affiche en moyenne 3,18 s de ruck offensif sur la période",
+          "modeled": {
+            "limitedPerception": "un ruck isolé n'a pas obligatoirement cette durée",
+            "goal": "ARRIVE_ON_TIME",
+            "options": [
+              "RUN_SUPPORT",
+              "HOLD_WIDTH",
+              "CLEAN_RUCK_IF_LEGAL"
+            ],
+            "legalGuard": "onside && ball_or_ruck_real",
+            "individualMovement": "trajectoire et vitesse choisies individuellement",
+            "possibleConsequence": "ruck peut être plus lent ou plus rapide"
+          },
+          "evidence": "STATS_DERIVED_SCENARIO"
+        },
+        {
+          "order": 3,
+          "actor": "La Rochelle défenseur",
+          "reported": "La Rochelle ralentit les rucks adverses à 3,86 s de moyenne et récupère 5,0% des rucks adverses",
+          "modeled": {
+            "limitedPerception": "porteur au sol, possibilité d'entrée légale",
+            "goal": "CONTEST_RUCK_IF_LEGAL",
+            "options": [
+              "ENTER_RUCK",
+              "GUARD_NEXT_PHASE",
+              "COVER_INSIDE"
+            ],
+            "legalGuard": "rugby_law_15 && onside",
+            "individualMovement": "attaque du ballon depuis axe légal",
+            "possibleConsequence": "ruck adverse parfois ralenti, pas gain garanti"
+          },
+          "evidence": "STATS_DERIVED_SCENARIO"
+        },
+        {
+          "order": 4,
+          "actor": "La Rochelle ailier",
+          "reported": "Sept coups de pied transversaux de La Rochelle en octobre, quatre retenus, un débouche directement sur essai",
+          "modeled": {
+            "limitedPerception": "largeur du terrain, dernier rideau adversaire",
+            "goal": "BE_AERIAL_KICK_OPTION",
+            "options": [
+              "CHASE_CROSSFIELD",
+              "HOLD_TOUCHLINE",
+              "COVER_TURNOVER"
+            ],
+            "legalGuard": "onside && ball_kicked",
+            "individualMovement": "lit chute probable, course autonome",
+            "possibleConsequence": "retour du ballon non garanti"
+          },
+          "evidence": "STATS_DERIVED_SCENARIO"
+        },
+        {
+          "order": 5,
+          "actor": "Bayonne arrière",
+          "reported": "Bayonne ne conserve que 9,1% de ses coups de pied dans le jeu à ce stade de saison",
+          "modeled": {
+            "limitedPerception": "ballon perdu au pied, partenaires en chasse",
+            "goal": "COVER_AND_DEFEND_KICK",
+            "options": [
+              "CATCH",
+              "PRESS",
+              "RETREAT"
+            ],
+            "legalGuard": "onside",
+            "individualMovement": "course autonome de couverture",
+            "possibleConsequence": "pas de résultat prédéterminé par 9,1%"
+          },
+          "evidence": "STATS_DERIVED_SCENARIO"
+        },
+        {
+          "order": 6,
+          "actor": "La Rochelle 8",
+          "reported": "Taux de conquête en mêlée rochelais de 75,8% à cette date",
+          "modeled": {
+            "limitedPerception": "mêlée physiquement disputée et ballon à contrôler",
+            "goal": "SECURE_SCRUM_BASE",
+            "options": [
+              "PRESS_STEADY",
+              "PICK_IF_AVAILABLE",
+              "RELEASE_TO_NINE"
+            ],
+            "legalGuard": "law19 && ball_at_back",
+            "individualMovement": "contrôle individuel du pied, sortie 8 selon observation",
+            "possibleConsequence": "aucune mêlée ne gagne automatiquement à 75,8%"
+          },
+          "evidence": "STATS_DERIVED_SCENARIO"
+        }
+      ],
+      "counterfactuals": [
+        {
+          "id": "MICRO-07-ALT1",
+          "variable": "Le petit côté est abandonné par adversaire",
+          "difference": "blindside_gap=true",
+          "expectedBehavior": "le 9 peut choisir petit côté même sous playbook large"
+        },
+        {
+          "id": "MICRO-07-ALT2",
+          "variable": "La défense monte vite",
+          "difference": "defense_line_speed=high",
+          "expectedBehavior": "9/10 peuvent choisir un pied dans l'espace ou conserver court"
+        },
+        {
+          "id": "MICRO-07-ALT3",
+          "variable": "Ailier reçoit un pied transversal mais tombe",
+          "difference": "catch_success=false",
+          "expectedBehavior": "ballon perdu malgré tendance historique"
+        }
+      ],
+      "notes": [
+        "Toutes les étapes de MICRO-07 sont des scènes SYNTHÉTIQUES inspirées de statistiques de saison, PAS une action réelle observée dans la rencontre.",
+        "Chiffres datés J9 2026/27 et dépendants de la définition Opta/LNR; ne pas les utiliser comme probabilités fixes."
+      ],
+      "videoTrackingVerified": false,
+      "verbatimPlayerCallVerified": false
+    }
+  ]
+}
