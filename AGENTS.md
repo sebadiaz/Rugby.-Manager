@@ -1,5 +1,22 @@
 AGENTS.md
 
+RÈGLE D'ARCHITECTURE V4 — IMPORTANTE
+
+Le jeu doit simuler 30 agents INDIVIDUELS autonomes à base de buts (GOAP).
+Chaque joueur connaît le plan de jeu commun et ses positions de référence,
+mais choisit lui-même ses buts, son plan et chaque déplacement selon les
+circonstances. Défendre et ses sous-buts sont prioritaires lorsque
+l'adversaire a la balle, avec une décision adaptée au rôle et au danger.
+Aucune IA d'équipe, aucun TeamCoordinator/TeamBlackboard décisionnel,
+aucune réservation/enchère de rôles ni attribution globale de positions.
+Les comportements de groupe doivent émerger des décisions individuelles
+et de la perception de l'état réel des joueurs.
+Lire docs/SIMULATION_V4/07_AGENT_INDIVIDUEL_PLACEMENT.md,
+puis 04_IA_AGENTS_BUTS.md, 05_CATALOGUE_GOALS_ACTIONS.md,
+06_TESTS_AGENTS.md et PLAN_CLAUDE_CODE.md dans le même dossier.
+
+---
+
 Objectif du projet
 
 Ce projet est un jeu vidéo de rugby jouable dans le navigateur.
