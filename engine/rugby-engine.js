@@ -87,6 +87,46 @@
     9: 35, 10: 31, 11: 7, 12: 26, 13: 44, 14: 63, 15: 35,
   };
 
+  // Plan collectif d'avants : 1-3-3-1 ou 2-4-2. Les huit créneaux
+  // existent comme OBJECTIFS, mais seuls les avants disponibles sont affectés.
+  // Un joueur engagé au contact ou exclu n'est jamais inventé dans un pod.
+  // Choix déterministe par proximité (sans RNG, sans téléportation).
+  function organiserAvantsRuck(avants, point, sensAttaque, structure = '1331') {
+    const c1331 = [
+      [7, 'LARGE_G'], [20, 'POD_G'], [23, 'POD_G'], [26, 'POD_G'],
+      [44, 'POD_D'], [47, 'POD_D'], [50, 'POD_D'], [63, 'LARGE_D'],
+    ];
+    const c242 = [
+      [8, 'LARGE_G'], [13, 'LARGE_G'], [25, 'POD_C'], [30, 'POD_C'],
+      [40, 'POD_C'], [45, 'POD_C'], [57, 'LARGE_D'], [62, 'LARGE_D'],
+    ];
+    const disponibles = (structure === '242' ? c242 : c1331)
+      .map(([y, role], i) => ({ y, role, i }));
+    const resultat = new Map();
+    const candidats = (avants || [])
+      .filter(j => j && j.numero <= 8 && j.auSol <= 0 && j.sinBin <= 0)
+      .slice().sort((a, b) => a.y - b.y || a.numero - b.numero);
+    for (const j of candidats) {
+      if (!disponibles.length) break;
+      let meilleur = 0, coutMin = Infinity;
+      for (let k = 0; k < disponibles.length; k++) {
+        const slot = disponibles[k];
+        const cout = Math.abs(j.y - slot.y)
+          + 0.15 * Math.abs((j.channelY == null ? j.y : j.channelY) - slot.y);
+        if (cout < coutMin - 1e-8 || (Math.abs(cout - coutMin) < 1e-8 && slot.i < disponibles[meilleur].i)) {
+          coutMin = cout; meilleur = k;
+        }
+      }
+      const slot = disponibles.splice(meilleur, 1)[0];
+      const profondeur = 3.2 + Math.min(2, Math.abs(slot.y - point.y) / 22);
+      resultat.set(j, {
+        x: Math.max(1, Math.min(LONGUEUR - 1, point.x - sensAttaque * profondeur)),
+        y: slot.y, role: slot.role,
+      });
+    }
+    return resultat;
+  }
+
   // === Configuration paramétrable avant le match ============================
   // Toutes les valeurs réglables (caractéristiques des joueurs, combinaisons de
   // touche, sorties de mêlée, organisation attaque/défense) sont regroupées ici
@@ -153,6 +193,9 @@
     // main (~1 s, 5-6 m) avant de servir le suivant — à 2,5/s il lâchait le
     // ballon en ~0,4 s sans jamais manger sa piste d'élan, et la ligne reculait.
     attaque: {
+      // Structure offensive préférée des huit avants ; les engagés au ruck
+      // ne sont jamais replacés artificiellement pour remplir un pod.
+      structureAvants: '1331', // alternative : '242'
       // Cadence relevée (1,4/1,0 -> 1,7/1,3) pour SOUTENIR LA CHAÎNE de passes
       // courtes le long de la ligne : mesuré, seulement 29 % des séquences
       // atteignaient 3 passes (le ballon n'était « jamais écarté ») — la
@@ -384,6 +427,11 @@
       // conformément à la sanction réelle plutôt qu'un carton purement
       // cosmétique sans effet sur le jeu.
       sinBin: 0,
+      // Orientation utilisée uniquement par le rendu (un joueur se tourne dans
+      // la direction de sa course, plutôt qu'être un disque sans direction).
+      orientation: sensAttaque > 0 ? 0 : Math.PI,
+      roleTactique: null,
+      cibleTactique: null,
       sensAttaque,
     };
   }
@@ -508,6 +556,7 @@
         }
       }
     }
+    j.orientation = Math.atan2(uy, ux);
     j.x += ux * pas;
     j.y += uy * pas;
     j.x = Math.max(0, Math.min(LONGUEUR, j.x));
@@ -930,6 +979,12 @@
       // Position courante de l'arbitre (entité qui se déplace, jamais
       // téléportée) : il court vers sa cible chaque tick (cf. _majArbitre).
       this.arbitrePos = { x: LONGUEUR / 2, y: LARGEUR / 2 };
+      // Deux arbitres assistants mobiles : ils suivent la ligne du ballon le
+      // long de leur propre touche, sans pénétrer dans l'aire de jeu.
+      this.arbitresAssistants = [
+        { x: LONGUEUR / 2, y: 0, cote: 'gauche' },
+        { x: LONGUEUR / 2, y: LARGEUR, cote: 'droite' },
+      ];
       // Compteur d'infractions de maul par équipe sur l'ensemble du match
       // (persiste d'un maul à l'autre) : sert à siffler un carton jaune pour
       // fautes répétées, comme l'arbitrage réel.
@@ -1297,17 +1352,34 @@
       const dx = cible.x - this.arbitrePos.x;
       const dy = cible.y - this.arbitrePos.y;
       const d = Math.hypot(dx, dy);
-      if (d < 0.01) return;
-      const pas = Math.min(d, 9 * dt); // ~9 m/s
-      this.arbitrePos.x += (dx / d) * pas;
-      this.arbitrePos.y += (dy / d) * pas;
+      if (d >= 0.01) {
+        const pas = Math.min(d, 8 * dt);
+        this.arbitrePos.x += (dx / d) * pas;
+        this.arbitrePos.y += (dy / d) * pas;
+      }
+      // Les assistants suivent le front de jeu, pas le 9 qui peut être loin
+      // du ballon pendant un coup de pied ou une phase statique.
+      const xBallon = (this.ballonEnVol || this._receptionEnAttente)
+        ? this.ballonVolX
+        : (this.phase === 'MELEE' || this.phase === 'RUCK' || this.phase === 'MAUL' || this.phase === 'TOUCHE')
+          ? this.ruckPoint.x : this.porteur.x;
+      for (const assistant of this.arbitresAssistants) {
+        const delta = Math.max(0, Math.min(LONGUEUR, xBallon)) - assistant.x;
+        assistant.x += Math.sign(delta) * Math.min(Math.abs(delta), 7 * dt);
+      }
     }
 
     // Cible de placement de l'arbitre : suit le point de ruck/mêlée pendant les
     // phases statiques, sinon reste juste derrière le porteur du ballon.
     _positionArbitre() {
       if (this.phase === 'RUCK' || this.phase === 'MAUL' || this.phase === 'MELEE') {
-        return { x: this.ruckPoint.x, y: Math.max(0, Math.min(LARGEUR, this.ruckPoint.y - 5)) };
+        // Toujours du côté dégagé pour voir la sortie du ballon ; près d'une
+        // touche, l'arbitre entre dans le terrain au lieu d'en sortir.
+        const pt = this.ruckPoint;
+        const flanc = pt.y < 14 ? 1 : pt.y > LARGEUR - 14 ? -1
+          : (this.arbitrePos.y <= pt.y ? -1 : 1);
+        return { x: Math.max(1.5, Math.min(LONGUEUR - 1.5, pt.x - this.porteur.sensAttaque * 2)),
+          y: Math.max(2, Math.min(LARGEUR - 2, pt.y + flanc * 5)) };
       }
       // Touche : l'arbitre ne se tient PAS sur la ligne de touche (place du juge
       // de touche) mais EN RETRAIT dans le terrain, derrière l'alignement et un
@@ -1328,7 +1400,10 @@
         return { x: this.essaiX, y: Math.max(0, Math.min(LARGEUR, this.essaiY)) };
       }
       const p = this.porteur;
-      return { x: p.x, y: Math.max(0, Math.min(LARGEUR, p.y - 6)) };
+      const flanc = p.y < 14 ? 1 : p.y > LARGEUR - 14 ? -1
+        : (this.arbitrePos.y <= p.y ? -1 : 1);
+      return { x: Math.max(2, Math.min(LONGUEUR - 2, p.x - p.sensAttaque * 2.5)),
+        y: Math.max(2, Math.min(LARGEUR - 2, p.y + flanc * 6)) };
     }
 
     // Un joueur au bin (carton jaune) est retiré de la feuille de match active :
@@ -3474,8 +3549,10 @@
       // ordre stable (numéro) pour que chacun garde son pod d'un tick à l'autre.
       this._podAvants = [...this.equipeA, ...this.equipeB]
         .filter(j => j.team === this.possession && j !== this.porteur && j.auSol === 0
-          && j.sinBin <= 0 && j.numero <= 8 && j.numero !== 9 && !soutiensRuck.has(j))
+          && j.sinBin <= 0 && j.numero <= 8 && !soutiensRuck.has(j))
         .sort((a, b) => a.numero - b.numero);
+      this._ciblesPodsRuck = organiserAvantsRuck(this._podAvants, pt, sensAttaque,
+        this.cfgAttaque[this.possession].structureAvants);
       // CRÉNEAUX DÉFENSIFS ÉQUIRÉPARTIS : les défenseurs de la ligne (ni
       // contestants, ni l'arrière n°15 qui couvre le fond) se répartissent
       // UNIFORMÉMENT sur la largeur, triés par position pour ne jamais se
@@ -3646,13 +3723,17 @@
             // percussion du 9 (avant lancé dans l'axe) et le premier rideau de
             // conservation du temps suivant. Visuellement : deux blocs compacts
             // qui encadrent chaque ruck au lieu d'une masse diffuse.
-            const coteOuvert = pt.y <= LARGEUR / 2 ? 1 : -1;
-            const iPod = this._podAvants ? this._podAvants.indexOf(j) : -1;
-            const cote = (iPod % 2 === 0) ? coteOuvert : -coteOuvert;
-            const rangPod = Math.max(0, Math.floor(iPod / 2));
-            const cibleY = Math.max(3, Math.min(LARGEUR - 3, pt.y + cote * (4.5 + rangPod * 1.8)));
-            const cibleX = pt.x - sensAttaque * 3.2;
-            avancer(j, cibleX - j.x, cibleY - j.y, dt, vitesseMs(j) * 0.85);
+            const plan = this._ciblesPodsRuck && this._ciblesPodsRuck.get(j);
+            if (plan) {
+              j.roleTactique = plan.role;
+              j.cibleTactique = { x: plan.x, y: plan.y };
+              avancer(j, plan.x - j.x, plan.y - j.y, dt, vitesseMs(j) * 0.85);
+            } else {
+              // Joueur encore indisponible : conserver sa station plutôt que
+              // lui inventer un rôle dans un pod de huit joueurs.
+              const cx = pt.x - sensAttaque * 4;
+              avancer(j, cx - j.x, j.channelY - j.y, dt, vitesseMs(j) * 0.6);
+            }
           } else {
             // Arrière (15) : en couverture profonde dans son couloir.
             const cibleX = pt.x - sensAttaque * (6 + Math.abs(j.channelY - pt.y) * 0.12);
@@ -5546,6 +5627,8 @@
       for (const j of [...this.equipeA, ...this.equipeB]) {
         if (!j._aBouge) j.vitesseCourante = Math.max(0, (j.vitesseCourante || 0) - DECELERATION * dt);
         j._aBouge = false;
+        j.roleTactique = null;
+        j.cibleTactique = null;
         // Hors-jeu de coup de pied (loi 10) : plafond de securite, cf.
         // DUREE_HORS_JEU_KICK. Le joueur est normalement remis en jeu bien
         // avant, des qu'il repasse derriere la ligne du coup de pied.
@@ -5977,6 +6060,7 @@
           carrierNumber: enVol || auSolLoose || enPasse || enPhaseStatique ? null : this.porteur.numero,
         },
         arbitre: { x: this.arbitrePos.x, y: this.arbitrePos.y },
+        assistants: this.arbitresAssistants.map(a => ({ ...a })),
         possession: this.possession,
         phase: this.phase,
         // État détaillé du maul en cours (null hors maul), pour l'affichage.
@@ -6038,5 +6122,5 @@
   return { MatchEngine, Referee, LONGUEUR, LARGEUR, creerRng, distance, DEFAULT_CONFIG, fusionnerConfig,
     tirerSauteurPondere, forceTouche, probaVolTouche, COEF_LISIBILITE_TOUCHE,
     effetPousseeMelee, dureeSortieRuck, GAIN_SERVICE_RAPIDE_RUCK,
-    CHRONOLOGIE_MAX, TYPES_CHRONOLOGIE };
+    CHRONOLOGIE_MAX, TYPES_CHRONOLOGIE, organiserAvantsRuck };
 });
