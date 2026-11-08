@@ -97,6 +97,18 @@ Planificateur dépassant `maxExpandedNodes` ou aucun but réalisable. Attendu : 
 
 En plus des tests D et I, les douze cas détaillés dans [`07_AGENT_INDIVIDUEL_PLACEMENT.md`](07_AGENT_INDIVIDUEL_PLACEMENT.md) sont **obligatoires**. Ils vérifient notamment que le joueur connaît son emplacement nominal sans recevoir une consigne de mouvement, que **défendre** fait partie des buts prioritaires lorsque la possession change, que plusieurs buts expliquent la formation réelle, et qu'une modification des croyances d'A6 **ne modifie pas directement** les plans d'A7 ou A8. L'existence d'une IA d'équipe, d'un blackboard d'affectation ou d'une recherche globale des positions doit faire **échouer** la validation architecturale.
 
+## 4 ter. Événements de matchs sourcés et alternatives (REAL-01 à REAL-16)
+
+**Voir `11_MATCHS_REELS_ET_PRISES_DE_DECISION.md`** : 16 séquences de quatre matchs (Angleterre–Galles 2024, Angleterre–France 2025, Irlande–France 2025, France–Fidji 2026) et `fixtures/observations_matchs_reels.json`.
+
+**Étape documentaire immédiatement testable** : `node server/test-v4-observations-matchs.js` vérifie provenance des événements, dates, source, caractère approximatif du temps, et interdit d'annoter une conversation de 9/10/8 ou une trajectoire à 30 joueurs non mesurée comme une observation factuelle.
+
+**Étape moteur à créer** : pour chacun des 16 cas REAL, deux scénarios à **condition initiale changée**, même graine et même gestion des règles : ballon disponible/bloqué, défense près/large, receveur à portée/hors jeu, pied haut avec/sans chasse légale, maul avec/sans faute. Un essai historique **n'est pas un résultat forcé** ; l'IA doit seulement rendre la séquence possible si ses préconditions s'y prêtent.
+
+**Étape style de jeu** : `STYLE-01` deux plans de jeu connus par agents (jeu rapide avec passes vs occupation au pied) ; `STYLE-02` deux 9 différents sous même plan ; `STYLE-03` décision tir au but/pénaltouche sans essai automatique. Ces tests sont proposés depuis les contrastes World Rugby Six Nations 2023, **pas encore exécutables**.
+
+**Priorités :** G34 sources/baseline → G35 implémentation causale → G36 calibration de choix ; dépendances GOAP G02–G11 et des phases concernées G18–G20/G31–G33 obligatoires.
+
 ## 5. Instrumentation attendue pour chaque test
 
 Un test qui échoue doit fournir au minimum :
@@ -143,6 +155,7 @@ Un gain de réalisme de placement qui effondre les essais n'est **pas** une réu
 ## 7. Commandes concrètes
 
 ```bash
+node server/test-v4-observations-matchs.js
 node server/test-v4-goap-planner.js
 node server/test-spec-simulation-v4.js
 node server/test-placement-arbitrage.js
