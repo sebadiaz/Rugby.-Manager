@@ -630,7 +630,7 @@
         "ball": {
           "x": 44,
           "y": 35,
-          "state": "DEAD",
+          "state": "OUT",
           "carrier": null
         },
         "possession": "A",
@@ -933,7 +933,7 @@
         "ball": {
           "x": 60,
           "y": 0,
-          "state": "DEAD",
+          "state": "OUT",
           "carrier": null
         },
         "possession": "B",
