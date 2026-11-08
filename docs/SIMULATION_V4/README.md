@@ -28,10 +28,10 @@ Chaque joueur connaît le plan de jeu et ses positions de référence mais, en f
 
 Le n°9 **initie les demandes**, sans IA collective :
 - **Touche** : demande l'avis du 10, qui répond selon sa perception ; le 9 demande ensuite une option (devant/milieu/fond/maul/large) et le lanceur/les sauteurs décident comment la réaliser.
-- **Mêlée** : le 9 prend des informations auprès du 8/des avants, peut demander stabilité ou poussée forte. La rotation résulte des forces ; pousser délibérément de travers et écrouler volontairement sont des infractions, pas des stratégies légales.
+- **Mêlée** : le 9 consulte **le 10** sur le jeu au près, au large ou l'avancée ; il discute **avec le 8** du départ depuis l'arrière de mêlée, puis **décide lui-même** de l'option et la demande. Il peut aussi consulter les avants pour connaître la stabilité et demander une poussée forte. La rotation résulte des forces ; pousser délibérément de travers et écrouler volontairement sont des infractions, pas des stratégies légales.
 - **Plein jeu** : si l'attaque stagne, le 9 peut envisager un **up-and-under / chandelle**, mais prévient les trois-quarts **avant** de botter. Chacun réévalue individuellement chasse, couverture, soutien ou maintien de la ligne.
 
-Dossier détaillé : `10_DIALOGUES_TACTIQUES_DU_9.md`. Transport de 24 messages `engine/ai/local-communication.js`, 24 tests unitaires et 10 scénarios de dialogue symbolique ; la véritable intégration au match est à coder dans G31–G33, en s'appuyant sur G04–G20.
+Dossier détaillé : `10_DIALOGUES_TACTIQUES_DU_9.md`. Transport de **32 messages** `engine/ai/local-communication.js`, **28 tests unitaires et 14 scénarios** de dialogue symbolique ; la véritable intégration au match est à coder dans G31–G33, en s'appuyant sur G04–G20.
 
 ## Exigence centrale : agents à base de buts
 
@@ -73,7 +73,7 @@ Un **test de fixture** valide uniquement la forme des données. Un **test moteur
 - `07_AGENT_INDIVIDUEL_PLACEMENT.md` : architecture prioritaire sans IA collective, buts de placement et mouvement individuel.
 - `08_COMMUNICATION_LOCALE.md` : communication simple et locale, portée, délais, questions adressées et réponses.
 - `09_CHOIX_STRATEGIQUES_INDIVIDUELS.md` : choix en mêlée, touche et plein jeu par les joueurs.
-- `10_DIALOGUES_TACTIQUES_DU_9.md` : demande du 9 au 10, consultation des avants et chandelle annoncée.
+- `10_DIALOGUES_TACTIQUES_DU_9.md` : le 9 demande l'avis du 10 en touche et mêlée, discute **du départ du 8 avec le 8** puis choisit, et annonce sa chandelle.
 - `04_IA_AGENTS_BUTS.md` : boucle perception → objectifs → planification → exécution → replanification, entièrement individuelle.
 - `05_CATALOGUE_GOALS_ACTIONS.md` : buts, actions, préconditions, coûts, effets et gardes réglementaires.
 - `06_TESTS_AGENTS.md` : preuve d'une IA réelle et tests différentiels, pas uniquement des snapshots.
@@ -82,8 +82,8 @@ Un **test de fixture** valide uniquement la forme des données. Un **test moteur
 - `03_RENDU_RETRO.md` : pipeline Canvas, animations et tests visuels.
 - `fixtures/scenarios.json` : jeux de données déterministes et attentes déclaratives (le futur injecteur doit les exploiter).
 - `PROMPT_CLAUDE_CODE.md` : consigne à copier à Claude Code.
-- `engine/ai/local-communication.js` : transport de 24 codes vocaux (prototype non connecté au match).
-- `server/test-v4-local-communication.js` et `server/test-v4-tactical-dialogue.js` : 24 tests + 10 scènes de dialogue symbolique.
+- `engine/ai/local-communication.js` : transport de 32 codes vocaux (prototype non connecté au match).
+- `server/test-v4-local-communication.js` et `server/test-v4-tactical-dialogue.js` : 28 tests + 14 scènes de dialogue symbolique.
 - `server/test-spec-simulation-v4.js` : validations structurelles déjà exécutables sur le dépôt.
 
 ## Références officielles, versionnées
