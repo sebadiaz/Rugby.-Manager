@@ -91,8 +91,18 @@ Un but est une condition du monde. Les poids ci-dessous sont **des exemples de p
 | G41 | `CHOOSE_PENALTY_RESTART` | option de pénalité choisie selon score/temps/terrain et exécutée légalement | joueur désigné par plan de jeu, décision in situ |
 | G42 | `KEEP_BALL_WITH_OFFLOAD` | ballon légalement transmis pendant/après contact avant plaquage complet | porteur et soutien disponible |
 | G43 | `INSERT_FROM_BLINDSIDE` | course intérieure crée une option de réception utile sans conflit de hors-jeu | ailier ou arrière volontaire |
+| G44 | `CREATE_CREDIBLE_DECOY` | joueur attire une option de marquage par une course crédible sans recevoir obligatoirement | avant ou trois-quarts disponible |
+| G45 | `READ_DEFENDER_COMMITMENT` | porteur adapte sa passe ou son portage après observation d'une montée réelle | porteur ou soutien proche |
+| G46 | `OPEN_SHORT_PASS_LANE` | receveur se place dans un intervalle court et légalement accessible | avant lancé, centre, 9/10 |
+| G47 | `DEFEND_MULTIPLE_RECEIVER_OPTIONS` | défenseur protège une menace prioritaire sans plaquer sans ballon | défenseur face à deux soutiens/leurres |
+| G48 | `SUPPORT_AFTER_SHORT_KICK` | joueur récupère ou poursuit un pied rasant de son partenaire, en jeu | 9, 10, ailier, arrière disponibles |
+| G49 | `ABORT_CONFLICTING_SCRUM_PICK` | 9 évite de ramasser après avoir entendu le départ réel du 8, puis choisit un autre but | 9 proche de la mêlée |
+| G50 | `RETURN_HOOKER_AS_RECEIVER` | talonneur après sa touche redevient receveur ou soutien dans la phase suivante | 2, 9 ou partenaires |
+| G51 | `EXPLOIT_BLIND_SIDE_IF_AVAILABLE` | joueur trouve et exploite le petit côté sans obligation liée à la largeur nominale | 9/10/8/ailier selon phase |
 
-**Ajout issu des matchs étudiés le 8/11/2026 :** G36–G43 et A37–A50 proviennent des situations observées dans `11_MATCHS_REELS_ET_PRISES_DE_DECISION.md`. Ils sont **spécifiés, non implémentés** ; chaque agent calcule lui-même ses intentions. Le catalogue possède désormais **43 buts distincts et 50 actions candidates**. Les observations ne révèlent pas les conversations réelles des joueurs.
+**Ajout issu des matchs étudiés le 8/11/2026 :** G36–G43 et A37–A50 proviennent des situations observées dans `11_MATCHS_REELS_ET_PRISES_DE_DECISION.md`. Ils sont **spécifiés, non implémentés** ; chaque agent calcule lui-même ses intentions. Le catalogue possède désormais **51 buts distincts et 66 actions candidates**. Les observations ne révèlent pas les conversations réelles des joueurs.
+
+**Complément d'analyse micro-tactique (Top 14, 2025–2026) :** G44–G51 et A51–A66 modélisent enfin les courses de leurre, la lecture des appuis défensifs, les passes après fixation, la défense avec plusieurs receveurs, la course du 9 après un pied du 10, le signal 8→9 et le retour du talonneur après touche. Référence : `14_ANALYSE_MICRO_ACTIONS_TOP14.md` et `fixtures/micro_actions_top14.json` (47 étapes, 22 alternatives). **Ce sont des contrats à implémenter, pas des capacités moteur déjà présentes.**
 
 **Éligibilité ≠ script de poste** : un centre peut effectuer une touche rapide s'il a légalement le ballon ; un pilier peut recevoir une passe ; un 8 peut temporairement distribuer au ruck si le 9 est absent et qu'il est en position légale.
 
@@ -152,6 +162,22 @@ La colonne "effet prédit" n'est jamais une autorisation d'écrire directement l
 | A48 | `ADOPT_ROLE_AFTER_REPLACEMENT` | entrée légale sur arrêt, effectif admissible | nouveau rôle et consignes connus | agent différent, contextes non copiés |
 | A49 | `CUT_INSIDE_FROM_BLINDSIDE` | course intérieure plausible, joueur disponible | ligne de réception ouverte possible | accélération, collisions et timing |
 | A50 | `CATCH_CONTESTED_HIGH_BALL` | ballon en vol, joueur en position et légal | contrôle espéré | duel aérien, réception/manqué décidé par moteur |
+| A51 | `RUN_CREDIBLE_DECOY` | joueur disponible, plan connu, porteur visible, course en jeu | menace de réception vraisemblable | aucun marqueur forcé à suivre le leurre |
+| A52 | `DUMMY_PASS_AND_CARRY` | porteur peut porter et lever le ballon sans le lâcher | défenseur peut réagir au geste | vitesse d'appuis et temps de geste, aucune passe créée |
+| A53 | `TRACK_DEFENDER_COMMITMENT` | montée/angle du défenseur observables localement | croyance sur sa cible mise à jour | pas d'accès omniscient aux intentions |
+| A54 | `FIX_THEN_DELAY_RELEASE` | porteur contrôle ballon, défenseur approche, receveur à portée | possibilité de passe plus tardive | risque de plaquage avant la passe |
+| A55 | `SHORT_FLAT_PASS_TO_GAP` | ballon contrôlé, receveur en retrait ou à hauteur légal, couloir ouvert | ballon libéré vers soutien | trajectoire légale et réception non garanties |
+| A56 | `CUT_INSIDE_BEHIND_SUPPORT` | course intérieure onside, partenaire visible, couloir possible | joueur devient option courte | collision et latence d'arrivée réelles |
+| A57 | `SWITCH_MARKING_TARGET` | défenseur a vu une menace différente, déplacement possible | nouvel angle défensif choisi seul | fatigue, inertie et risque de trou |
+| A58 | `HOLD_TRYLINE_DEPTH` | menace proche en-but, arrière défenseur disponible | profondeur conservée | pas de saut instantané sur le porteur |
+| A59 | `SIDESTEP_LAST_DEFENDER` | ballon tenu, défenseur engagé, espace latéral réel | tentative d'évitement | collision, échec et perte possibles |
+| A60 | `GRUBBER_TO_BLIND_SIDE` | pied légal, petit côté découvert, chasseur possible | ballon rasant libéré | rebonds et duel, pas de récupération offerte |
+| A61 | `REJOIN_ATTACK_AFTER_LINEOUT_THROW` | talonneur a effectué son lancer, remise en jeu légale | course de soutien du 2 possible | il ne se téléporte pas à la réception |
+| A62 | `GIVE_AND_GO_WITH_HOOKER` | 9 et 2 onside et à distance de passe, ballon libéré | deux séquences de passes possibles | chaque geste physique possède son porteur |
+| A63 | `ABORT_SCRUM_BASE_PICK_ON_HEARD_CALL` | 9 entend SCRUM_8_GOING de la mêlée active, prise encore annulable | plan 9 invalidé localement | pas de transfert de ballon ni de mouvement direct |
+| A64 | `CHASE_TEAMMATE_GROUND_KICK` | pied rasant réellement frappé, joueur onside, trajet accessible | poursuite du rebond choisie | course individuelle et adversaires contestent |
+| A65 | `REPLAN_AFTER_FAILED_DECOY` | défenseur n'a pas suivi le leurre, porteur encore apte | autre course/passe ou conservation envisagée | pas de combinaison imposée jusqu'à l'essai |
+| A66 | `TRANSITION_TO_DEFENSE_ON_LOST_KICK` | pied perdu ou récupéré par adversaire | priorité défensive mise à jour | repli individuel sans téléportation |
 
 **Coût d'une action** (positif) = temps prédit + fatigue + risque de perte + risque de faute + pénalité d'abandon d'un engagement. Les unités et coefficients doivent être documentés et ajustés par scénarios. Une action « illégale mais rentable » n'a pas un coût élevé : elle est **interdite par les préconditions / l'exécuteur**. **Le déplacement, le choix d'un point d'interception, d'un couloir et de sa vitesse sont calculés par le joueur lui-même**, d'après son but actif, les circonstances et le plan de jeu qu'il connaît.
 
