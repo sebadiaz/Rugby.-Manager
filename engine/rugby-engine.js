@@ -913,6 +913,9 @@
         B: fusionnerConfig(this.cfg.ruck, config && config.ruckB),
       };
       this.rng = creerRng(seed >>> 0 || 1);
+      // Flux indépendant : les micro-erreurs de passe ne perturbent pas la
+      // séquence aléatoire des plaquages, mêlées et touches lors d'un calibrage.
+      this.rngPasseEnAvant = creerRng(((seed >>> 0) ^ 0x7F4A7C15) >>> 0);
       // Remplacements planifiés (Mode Club, TODO_AUDIT.md P1-17) :
       // config.remplacements, optionnel — [{equipe:'A'|'B', numero, minute,
       // joueur:{...attributs}}]. Absent par défaut (tous les appels existants,
@@ -3075,6 +3078,20 @@
       }
 
       this.stats[this.possession].passesTentees++;
+      // Même si le receveur était légalement à hauteur ou en retrait lors
+      // du choix, le passeur peut accidentellement lâcher le ballon vers
+      // l'avant sous la vitesse du jeu. Rare (≈0,1 % des passes), mais la
+      // sanction ne doit jamais disparaître quand le placement devient bon.
+      // Le risque baisse chez les joueurs plus lucides, indépendamment du
+      // RNG principal (évite de déplacer le hasard des autres séquences).
+      const risqueLiberation = 0.0014 * Math.max(0.5, Math.min(1.6,
+        1 + (60 - (porteur.decision ?? 60)) / 100));
+      if (this.rngPasseEnAvant() < risqueLiberation) {
+        this.log('MELEE_AVANT', this.possession,
+          `Passe lachee en avant, equipe ${this.possession} - melee adverse`);
+        this._accorderMelee(this.possession, porteur);
+        return true;
+      }
       if (Referee.passeEnAvant(porteur.sensAttaque, porteur, cible)) {
         this.log('MELEE_AVANT', this.possession, `Passe en avant, equipe ${this.possession} - melee adverse`);
         this._accorderMelee(this.possession, porteur);
