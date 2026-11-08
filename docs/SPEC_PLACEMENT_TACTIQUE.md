@@ -212,16 +212,16 @@ ContextePlacement (étendu vs v2) :
 
 **Implémenté dans le moteur actif :**
 
-- \`organiserAvantsRuck()\` attribue huit créneaux théoriques (1-3-3-1 ou 2-4-2) **uniquement aux avants réellement disponibles**, hors joueurs plaqués au sol, exclus et engagés dans le regroupement. Les déplacements utilisent \`avancer()\` : aucune téléportation.
-- L'axe **Organisation des avants** du Mode Club propose 1-3-3-1 (défaut) et 2-4-2, convertis en \`cfgAttaque.A/B.structureAvants\`.
+- `organiserAvantsRuck()` attribue huit créneaux théoriques (1-3-3-1 ou 2-4-2) **uniquement aux avants réellement disponibles**, hors joueurs plaqués au sol, exclus et engagés dans le regroupement. Les déplacements utilisent `avancer()` : aucune téléportation.
+- L'axe **Organisation des avants** du Mode Club propose 1-3-3-1 (défaut) et 2-4-2, convertis en `cfgAttaque.A/B.structureAvants`.
 - Les états de match exposent l'orientation des joueurs et leurs cibles/rôles provisoires au ruck.
 - Arbitre central mobile, deux assistants suivant les touches, fanions et indicateurs directionnels au rendu.
-- Vérification : \`server/test-placement-arbitrage.js\` et suites de non-régression habituelles.
+- Vérification : `server/test-placement-arbitrage.js` et suites de non-régression habituelles.
 
 **Restant à implémenter / à calibrer :**
 
 - Les cibles 1-3-3-1 / 2-4-2 ne sont pas encore une machine tactique complète pour toutes les phases ; elles s'appliquent surtout au placement des avants pendant le ruck.
-- Attribution des rôles \`fold\` / \`hold\`, ligne défensive à trois rideaux et répartition dynamique de tous les joueurs à chaque changement de possession.
+- Attribution des rôles `fold` / `hold`, ligne défensive à trois rideaux et répartition dynamique de tous les joueurs à chaque changement de possession.
 - Vidéo/TMO/FPRO, communications arbitrales détaillées et sanctions disciplinaires dépendant d'un modèle de posture.
 - Sprites directionnels pixel-art complets, animations d'impact et catalogues de séquences calibrées. Le rendu est encore un Canvas à disques numérotés.
 - Mesures de validation statistique sur séries suffisantes de matchs avant de fixer des valeurs de tempo.
