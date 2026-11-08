@@ -1,5 +1,34 @@
 CLAUDE.md
 
+IMPORTANT — CHANTIER IA DES JOUEURS (V4, novembre 2026)
+
+Le propriétaire du jeu demande explicitement **30 agents de rugby à base de buts**
+(Russell et Norvig), capables de planifier des séquences d'actions, de les
+exécuter physiquement et de replanifier. Des cibles de placement, comportements
+par poste ou arbres if/else ne satisfont PAS cette exigence.
+
+AVANT tout développement sur la simulation ou l'intelligence des joueurs :
+- lire docs/SIMULATION_V4/README.md ;
+- lire EN PREMIER docs/SIMULATION_V4/04_IA_AGENTS_BUTS.md,
+  05_CATALOGUE_GOALS_ACTIONS.md et 06_TESTS_AGENTS.md ;
+- prendre une seule tâche RM4-Gxx de docs/SIMULATION_V4/PLAN_CLAUDE_CODE.md ;
+- utiliser docs/SIMULATION_V4/PROMPT_CLAUDE_CODE.md ;
+- produire la preuve sur un scénario avant de changer le moteur complet.
+
+Un planificateur de faits symboliques existe dans engine/ai/goal-planner.js
+et dispose de tests, MAIS IL N'EST PAS ENCORE CONNECTÉ aux 30 joueurs.
+Ne jamais déclarer cette fonction terminée sans AgentController, actions
+physiques, perception et replanification en vrai match. Le travail du socle
+symbolique est exceptionnellement acceptable même s'il ne change pas encore
+les pixels : sa valeur doit être démontrée par des tests GOAP. Le résultat
+complet devra se voir et se mesurer dans le match.
+
+La source de simulation reste engine/rugby-engine.js en JavaScript ; pas de
+réécriture en C++, pas de LLM par joueur. Ne pas casser les règles, les
+statistiques, les tests ni les sauvegardes.
+
+---
+
 Mission
 
 Tu travailles sur un jeu vidéo de rugby jouable dans le navigateur.
