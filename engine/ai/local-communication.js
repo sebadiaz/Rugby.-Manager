@@ -89,7 +89,16 @@ class LocalCommunication {
       throw new TypeError('appel inconnu : ' + kind);
     }
     if (toId !== null) {
-      if (typeof toId !== 'string' || !new RegExp('^' + team + '(?:[1-9]|1[0-5])
+      if (typeof toId !== 'string' ||
+          !new RegExp('^' + team + '(?:[1-9]|1[0-5])' + '$').test(toId) ||
+          toId === speakerId) {
+        throw new TypeError('destinataire invalide');
+      }
+    }
+    if (replyTo !== null &&
+        (typeof replyTo !== 'string' || !/^CALL-[1-9][0-9]*$/.test(replyTo))) {
+      throw new TypeError('réponse à un appel invalide');
+    }
     if (!this.enabled || !available) return { accepted: false, reason: 'UNAVAILABLE' };
     const previous = this.lastBySpeaker.get(speakerId);
     if (previous != null && time < previous) throw new RangeError('temps non monotone pour ' + speakerId);
@@ -130,70 +139,6 @@ class LocalCommunication {
       result.push(Object.freeze({
         id: msg.id, from: msg.speakerId, kind: msg.kind, label: spec.label,
         toId: msg.toId, replyTo: msg.replyTo,
-        spokenAt: msg.emittedAt, heardAt: time,
-        // Confiance de compréhension uniquement, ni ordre ni fait certain.
-        confidence: Math.max(0.1, Math.min(1, hearing * (1 - 0.55 * meters / spec.radiusM))),
-      }));
-    }
-    return result;
-  }
-
-  prune(time) {
-    validNumber(time, 'time');
-    const before = this.messages.length;
-    this.messages = this.messages.filter(m => m.expiresAt + 1e-9 >= time);
-    return before - this.messages.length;
-  }
-
-  pendingCount() {
-    return this.messages.length;
-  }
-}
-module.exports = { CALLS, LocalCommunication };
-).test(toId)
-          || toId === speakerId) throw new TypeError('destinataire invalide');
-    }
-    if (replyTo !== null && (typeof replyTo !== 'string' || !/^CALL-[1-9]\d*$/.test(replyTo))) {
-      throw new TypeError('réponse à un appel invalide');
-    }
-    if (!this.enabled || !available) return { accepted: false, reason: 'UNAVAILABLE' };
-    const previous = this.lastBySpeaker.get(speakerId);
-    if (previous != null && time < previous) throw new RangeError('temps non monotone pour ' + speakerId);
-    if (previous != null && time - previous < this.cooldownSeconds) {
-      return { accepted: false, reason: 'COOLDOWN' };
-    }
-    this.prune(time);
-    if (this.messages.length >= this.maxPending) {
-      return { accepted: false, reason: 'QUEUE_FULL' };
-    }
-    const id = 'CALL-' + (++this.sequence);
-    const spec = CALLS[kind];
-    this.messages.push({
-      id, speakerId, team, kind, x, y, emittedAt: time,
-      expiresAt: time + spec.ttlSeconds, receivedBy: new Set(),
-    });
-    this.lastBySpeaker.set(speakerId, time);
-    return { accepted: true, id };
-  }
-
-  hear({ listenerId, team, x, y, time, available = true, hearing = 1 }) {
-    checkActor(listenerId, team, x, y, time);
-    validNumber(hearing, 'hearing');
-    if (hearing < 0 || hearing > 1) throw new RangeError('hearing hors [0,1]');
-    if (!this.enabled || !available || hearing === 0) return [];
-    const result = [];
-    for (const msg of this.messages) {
-      if (msg.team !== team || msg.speakerId === listenerId ||
-          msg.receivedBy.has(listenerId)) continue;
-      const spec = CALLS[msg.kind];
-      const meters = distance(x, y, msg.x, msg.y);
-      if (meters > spec.radiusM * hearing) continue;
-      const arrival = msg.emittedAt + this.baseLatencySeconds +
-        meters / this.soundSpeedMps;
-      if (time + 1e-9 < arrival || time > msg.expiresAt + 1e-9) continue;
-      msg.receivedBy.add(listenerId);
-      result.push(Object.freeze({
-        id: msg.id, from: msg.speakerId, kind: msg.kind, label: spec.label,
         spokenAt: msg.emittedAt, heardAt: time,
         // Confiance de compréhension uniquement, ni ordre ni fait certain.
         confidence: Math.max(0.1, Math.min(1, hearing * (1 - 0.55 * meters / spec.radiusM))),
