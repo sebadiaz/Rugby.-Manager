@@ -122,6 +122,13 @@ class LocalCommunication {
     if (kind === 'SCRUM_9_ACK' && speakerId !== team + '9') {
       throw new TypeError('seul le numéro 9 peut accuser réception');
     }
+    if ((kind === 'SCRUM_8_GOING' || kind === 'SCRUM_8_ABORT') &&
+        toId !== team + '9') {
+      throw new TypeError('le 8 doit prévenir directement le 9');
+    }
+    if (kind === 'SCRUM_9_ACK' && toId !== team + '8') {
+      throw new TypeError('le 9 doit répondre directement au 8');
+    }
     if (!this.enabled || !available) return { accepted: false, reason: 'UNAVAILABLE' };
     // Une réponse n'est possible que si le joueur a EFFECTIVEMENT entendu
     // la question et peut encore en discuter ; pas de télépathie.
@@ -130,6 +137,7 @@ class LocalCommunication {
       if (!original || original.team !== team ||
           original.speakerId !== toId ||
           (original.toId !== null && original.toId !== speakerId) ||
+          (phaseId !== null && original.phaseId !== phaseId) ||
           !original.receivedBy.has(speakerId) ||
           time < original.emittedAt || time > original.expiresAt) {
         throw new TypeError('réponse sans demande réellement entendue');
