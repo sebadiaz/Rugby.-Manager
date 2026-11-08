@@ -6,7 +6,7 @@
 
 1. Lire `CLAUDE.md`, `AGENTS.md`, `docs/REGLES_RUGBY.md` et `docs/SPEC_PLACEMENT_TACTIQUE.md`.
 2. Commencer par **`07_AGENT_INDIVIDUEL_PLACEMENT.md`**, **`08_COMMUNICATION_LOCALE.md`**, **`09_CHOIX_STRATEGIQUES_INDIVIDUELS.md`**, **`10_DIALOGUES_TACTIQUES_DU_9.md`** et **`11_MATCHS_REELS_ET_PRISES_DE_DECISION.md`**, puis **`04_IA_AGENTS_BUTS.md`** (architecture Russell–Norvig/GOAP), **`05_CATALOGUE_GOALS_ACTIONS.md`** (43 buts et 50 actions candidates, non toutes implémentées) puis **`06_TESTS_AGENTS.md`** (tests falsifiables). Les `01_...`–`03_...` complètent ensuite les contrats, lois et le rendu.
-3. Exécuter `node server/test-v4-observations-matchs.js` (**seulement la validité du corpus documentaire**), puis `node server/test-v4-local-communication.js` et `node server/test-v4-tactical-dialogue.js` (transport de messages symboliques, **pas encore utilisés dans un vrai match**), puis `node server/test-v4-goap-planner.js` (preuve d'une **recherche de plan symbolique seulement**) et `node server/test-spec-simulation-v4.js` (cohérence des fixtures). **Aucun de ces deux tests n'implique que les 30 joueurs du match exécutent déjà des plans.**
+3. Exécuter `node server/test-v4-observations-matchs.js` (**seulement la validité du corpus documentaire**) et `node server/test-v4-goals-actions-doc.js` (**43 buts et 50 actions spécifiés, non intégrés**), puis `node server/test-v4-local-communication.js` et `node server/test-v4-tactical-dialogue.js` (transport de messages symboliques, **pas encore utilisés dans un vrai match**), puis `node server/test-v4-goap-planner.js` (preuve d'une **recherche de plan symbolique seulement**) et `node server/test-spec-simulation-v4.js` (cohérence des fixtures). **Ces tests documentaires et symboliques ne démontrent pas que les 30 joueurs exécutent déjà leurs plans en match.**
 4. Choisir **une seule** tâche `RM4-Gxx` de `PLAN_CLAUDE_CODE.md`, vérifier ses prérequis, ouvrir une branche dédiée.
 5. Appliquer le prompt de `PROMPT_CLAUDE_CODE.md`. Ne pas déclarer une tâche terminée sans un scénario injecté et ses assertions automatiques.
 6. Joindre à chaque PR le résultat des tests, un comparatif des matchs par graines identiques, et une capture/vidéo quand le visuel change.
@@ -95,6 +95,7 @@ Un **test de fixture** valide uniquement la forme des données. Un **test moteur
 - `server/test-v4-local-communication.js` et `server/test-v4-tactical-dialogue.js` : 28 tests + 14 scènes de dialogue symbolique.
 - `fixtures/observations_matchs_reels.json` : corpus de 16 actions documentées (2024, 2025, 2026) ; **aucun tracking ni paroles réelles inventés**.
 - `server/test-v4-observations-matchs.js` : validation de 16 événements et de leur provenance (pas preuve que le moteur reproduit les actions).
+- `server/test-v4-goals-actions-doc.js` : validation des 43 buts et 50 actions GOAP décrits sans doublon.
 - `server/test-spec-simulation-v4.js` : validations structurelles déjà exécutables sur le dépôt.
 
 ## Références officielles, versionnées
