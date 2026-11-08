@@ -1,8 +1,10 @@
 # Plan de développement — Rugby Manager V4, IA délibérative à 30 agents
 
-**Objectif prioritaire demandé par le product owner :** de vrais **agents à base de buts** tels que décrits par Russell & Norvig, réalisant de la **planification d'actions**, puis de la replanification. Ce plan **ne** doit **pas** être interprété comme « dessiner de meilleures positions ».
+**Objectif prioritaire demandé par le product owner :** de vrais **agents à base de buts individuels** tels que décrits par Russell & Norvig, réalisant de la **planification d'actions**, puis de la replanification. **Aucune IA collective :** chaque joueur connaît le plan de jeu et son placement nominal, mais les circonstances sélectionnent ses buts et le joueur décide lui-même chacun de ses déplacements. Lire `07_AGENT_INDIVIDUEL_PLACEMENT.md` avant tout code.
 
-**Ordre impératif : moteur/IA → comportement collectif → phases et arbitrage → visualisation → calibration.**
+**Ordre impératif : moteur/IA individuelle → buts et placement émergents → phases et arbitrage → visualisation → calibration.**
+
+**Architecture faisant autorité :** `07_AGENT_INDIVIDUEL_PLACEMENT.md`. Les agents connaissent la tactique mais aucune IA collective ne choisit leurs buts/positions/trajets. Les tâches précédemment consacrées à TeamBlackboard/TeamCoordinator sont remplacées par `RM4-G10` individuel et les tests `IND-01..12`.
 
 ## 0. Règles d'exécution par Claude Code
 
@@ -12,7 +14,7 @@
 4. **NE PAS** abaisser les tests historiques pour les faire passer ni réécrire les lois via une fonction de probabilité décorative.
 5. `server/test-spec-simulation-v4.js` vérifie seulement les fixtures. `server/test-v4-goap-planner.js` vérifie seulement le planificateur symbolique. **Ces tests ne prouvent pas le branchement des agents au match.**
 6. Les coordonnées/timings des scénarios sont des **fixtures synthétiques**. Aucun « vrai tracking de match » n'est disponible dans le dépôt.
-7. Tant que les simulations de masse ou tests navigateurs sont rouges, aucune fusion du moteur sur `main`. Le coordinateur GOAP doit préserver le déterminisme.
+7. Tant que les simulations de masse ou tests navigateurs sont rouges, aucune fusion du moteur sur `main`. Les 30 agents individuels doivent préserver le déterminisme.
 8. Le TMO, les lois et les sanctions restent dans un système de décision arbitral distinct ; un joueur n'écrit pas son résultat.
 
 ## 1. Vue des jalons
@@ -21,7 +23,7 @@
 |---|---|---|---|
 | **M0 — Socle** | G00–G03 | états injectables, catalogue de faits, planner de référence | mêmes graines, snapshots immuables |
 | **M1 — Premier joueur autonome** | G04–G09 | n°9 perçoit, choisit but, planifie, exécute et replannifie | tests D01/D02/D03 + I01/I03 |
-| **M2 — Trente agents coordonnés** | G10–G17 | chacun possède son plan, allocation de rôles, attaque/défense | tests D04/D05/D06/D07 |
+| **M2 — Trente agents autonomes** | G10–G17 | chacun choisit ses propres buts, trajets et cibles depuis un plan de jeu connu de tous, sans allocation centrale | IND-01..12, D04/D05/D06/D07 |
 | **M3 — Phases du rugby** | G18–G24 | planification des mêlées, touches, mauls et officiels | tests S03–S10, lois |
 | **M4 — Explicabilité et rendu** | G25–G27 | plans inspectables, animation originale 2D rétro | screenshots et navigateur |
 | **M5 — Robustesse** | G28–G30 | statistiques réalistes, CI, livraison | 100/500 matchs, aucun invariant cassé |
@@ -112,18 +114,18 @@ Les tâches G00 et G01 sont **commencées comme références/documentation** ; l
 
 ## M2 — Intelligence collective et autonomies rugby
 
-### RM4-G10 — Coordinateur d'équipe et réservations
+### RM4-G10 — Buts de placement et décision **individuelle** sans coordinateur
 
-- **Fichiers :** `engine/ai/team-blackboard.js`, `engine/ai/team-coordinator.js`, `server/test-v4-coordination.js`.
-- **Réalisation :** contrats exclusifs ou à capacité bornée (`FIRST_CLEANER`, `DISTRIBUTOR`, `SWEEPER`, `POD_G`, `POD_D`), enchères déterministes sur distance, fatigue, compétence, coût de déplacement ; libération sur changement de phase.
-- **Critères :** pas de 30 joueurs sur le ballon, un seul responsable d'une prise de balle, réserve libérée si agent indisponible.
-- **Tests :** D04, I04/I19, S01 et S06.
+- **Fichiers :** `engine/ai/individual-placement.js`, `engine/ai/position-goals.js`, `server/test-v4-individual-placement.js`.
+- **Réalisation :** chaque joueur calcule ses références de placement depuis un plan de jeu en lecture seule et ses perceptions ; il évalue `DEFEND`, `CLOSE_GAP`, `HOLD_LINE`, `MARK_OPPONENT`, `COVER_BACKFIELD`, `SUPPORT_CARRIER`, `BE_PASS_OPTION`, `PRESERVE_WIDTH`, `RETURN_TO_PLAYBOOK`. Il compare la présence **observée** des coéquipiers et les risques de laisser un espace ; chaque trajectoire est choisie localement, sans `TeamCoordinator`, blackboard, réservation ni enchère.
+- **Critères :** deux joueurs dans des situations différentes ne suivent pas un placement collectif imposé ; défense prioritaire lorsque l'adversaire a la balle, mais aucune ruée systématique sur le porteur ; aucun déplacement choisi par un autre agent.
+- **Tests :** IND-01..06, IND-08..12, D04, S01/S06/S07.
 
 ### RM4-G11 — Première instanciation des **30 agents**
 
 - **Fichiers :** `engine/rugby-engine.js`, `engine/ai/agent-controller.js`, `server/test-v4-thirty-agents.js`.
-- **Réalisation :** créer AgentContext pour A1–A15/B1–B15, snapshots individuels et boucle événementielle ; **feature flag** `aiMode:'GOAP'|'LEGACY'`, LEGACY par défaut tant que validations non passées.
-- **Critères :** 30 contextes distincts ; aucun joueur sans contrôleur ; même simulation LEGACY produit exactement les anciennes stats et comportements.
+- **Réalisation :** créer AgentContext pour A1–A15/B1–B15, croyances/buts/plans/trajets propres à chacun ; tous lisent le plan de jeu sans pouvoir écrire sur les intentions d'un partenaire ; **feature flag** `aiMode:'GOAP'|'LEGACY'`, LEGACY par défaut tant que validations non passées.
+- **Critères :** 30 contextes distincts ; aucun joueur sans contrôleur ; aucun coordinateur décisionnel central ; même simulation LEGACY produit exactement les anciennes stats et comportements.
 - **Tests :** D04, déterminisme sur 10 seeds, invariants et tests de sauvegarde.
 
 ### RM4-G12 — Agent 9 : distribution véritablement planifiée
@@ -143,14 +145,14 @@ Les tâches G00 et G01 sont **commencées comme références/documentation** ; l
 ### RM4-G14 — Agent 15 et ailiers en couverture
 
 - **Fichiers :** `engine/ai/roles/back-three.js`, `server/test-v4-back-three.js`.
-- **Réalisation :** `COVER_BACKFIELD`, `SECURE_KICK_RECEIPT`, `PREVENT_TRY`, courses d'interception, coordination du triangle arrière, gestion de l'aile fermée.
+- **Réalisation :** `COVER_BACKFIELD`, `SECURE_KICK_RECEIPT`, `PREVENT_TRY`, courses d'interception, couverture du triangle arrière issue des perceptions de chacun, gestion individuelle de l'aile fermée.
 - **Critères :** A15 ne monte pas automatiquement ; intercepte si dernier défenseur ; les ailes ne quittent pas simultanément leur couloir.
 - **Tests :** D05, I12/I18, S07/S10.
 
 ### RM4-G15 — Agents 1–5 : soutien, pods et collisions
 
-- **Fichiers :** `engine/ai/roles/forwards.js`, `team-coordinator.js`, `server/test-v4-forwards.js`.
-- **Réalisation :** une même logique de buts pour piliers, talonneur et deuxième ligne ; compétition pour `FIRST_CLEANER`, création de pods suivant disponibilité, récupération et fatigue.
+- **Fichiers :** `engine/ai/roles/forwards.js`, `engine/ai/individual-placement.js`, `server/test-v4-forwards.js`.
+- **Réalisation :** une même logique de buts pour piliers, talonneur et deuxième ligne ; chacun estime par observation s'il est le mieux placé pour protéger le ruck ou plutôt couvrir la prochaine phase. Les pods émergent de la connaissance du plan de jeu, de la disponibilité et du déplacement individuel, sans assignation.
 - **Critères :** joueurs engagés au sol/maul ne reçoivent pas de rôle irréalisable ; rôle peut migrer sans téléportation ; aucun soutien ne traverse le ruck.
 - **Tests :** S01/S05, I02/I19 ; stats comparées sur 30 matchs.
 
@@ -161,12 +163,12 @@ Les tâches G00 et G01 sont **commencées comme références/documentation** ; l
 - **Critères :** si B13 mord sur A12, A13/A14 changent le plan ; si l'espace se referme, une solution intérieure ou le portage peut remplacer une passe.
 - **Tests :** S01, D06, I17 ; aucune passe en avant générée par cible physique illégale.
 
-### RM4-G17 — Défense collective en deux temps, trois rideaux
+### RM4-G17 — Défense émergente depuis les buts de chaque joueur
 
-- **Fichiers :** `engine/ai/team-defense.js`, `team-coordinator.js`, `server/test-v4-defensive-shape.js`.
-- **Réalisation :** premier but `CLOSE_NEAREST_GAP`, ensuite `SLIDE_TO_ROLE`, couverture arrière selon menace ; transition après turnover et sortie de ruck.
-- **Critères :** un pilier peut boucher l'espace provisoire du centre sans traverser un équipier ; quand danger passé, retour progressif ; pas de ligne en mur parfaitement uniforme.
-- **Tests :** S06, D04/D05, I10/I17.
+- **Fichiers :** `engine/ai/individual-defense.js`, `engine/ai/individual-placement.js`, `server/test-v4-defensive-shape.js`.
+- **Réalisation :** chaque défenseur déduit de son plan connu et de ses perceptions s'il doit `BECOME_ONSIDE`, `DEFEND`, `HOLD_LINE`, `CLOSE_NEAREST_GAP`, `MARK_OPPONENT`, `TACKLE` ou `COVER_BACKFIELD`. Il peut boucher un trou puis revenir à son rôle de référence ; vitesse, angle et itinéraire sont décidés localement.
+- **Critères :** la défense apparaît organisée sans ordres ni placements centraux ; un pilier peut boucher l'espace provisoire du centre sans traverser un équipier ; les arrières couvrent sans tous monter ; erreurs réalistes de lecture possibles.
+- **Tests :** S06/S07, D04/D05, I10/I17, IND-03/04/05/08.
 
 ## M3 — Planification des phases, règles et officiels
 
@@ -177,7 +179,7 @@ Les tâches G00 et G01 sont **commencées comme références/documentation** ; l
 - **Critères :** aucun joueur devant botteur ne peut agir hors-jeu, même si plan `TACKLE` coûte moins cher ; réception non instantanée.
 - **Tests :** S07, I11/I12 + test hors-jeu existant.
 
-### RM4-G19 — Mêlée : HTN collective et GOAP de sortie
+### RM4-G19 — Mêlée : protocole partagé, plans individuels de formation et de sortie
 
 - **Fichiers :** `engine/ai/plans/scrum.js`, adaptateur `ETATS_MELEE`, `server/test-v4-scrum-ai.js`.
 - **Réalisation :** tâches `ASSEMBLE→BIND→SET→INTRODUCE→HOOK→CONTEST→RELEASE`, sélection de sortie n°8/n°9, arbitrage des positions, ressource `SCRUM_BALL_IN`.
@@ -187,7 +189,7 @@ Les tâches G00 et G01 sont **commencées comme références/documentation** ; l
 ### RM4-G20 — Touche : sauteurs, lanceur et plan alternatif
 
 - **Fichiers :** `engine/ai/plans/lineout.js`, `server/test-v4-lineout-ai.js`.
-- **Réalisation :** attribution `THROWER`, `JUMPER`, `LIFTER`, couverture de zone, choix court/long selon contest, après touche maul ou passe. Départs de course régis par observations.
+- **Réalisation :** chaque joueur connaît son rôle (`THROWER`, `JUMPER`, `LIFTER`) depuis le plan de jeu et l'effectif ; il choisit son déplacement, son timing et son action selon perception. Choix court/long du lanceur selon contest, après touche maul ou passe. Aucun coordinateur n'attribue les positions en direct.
 - **Critères :** 5–15 m et effectifs légaux ; ballon a une trajectoire visible ; lancer contestable ; si sauteur indisponible, autre plan.
 - **Tests :** S04, LINE-01..05, `RM_TOUCHE_RAPIDE=1 node server/test-touche.js`.
 
@@ -238,7 +240,7 @@ Les tâches G00 et G01 sont **commencées comme références/documentation** ; l
 ### RM4-G27 — Tactique manager et personnalités d'agents
 
 - **Fichiers :** `docs/js/club.js`, `docs/js/club-composition.js`, `docs/js/clubUI.js`, `engine/ai/goals.js`, `server/test-v4-tactics-ui.js`.
-- **Réalisation :** traduire 1-3-3-1/2-4-2, largeur, rythme, défense et jeu au pied en **poids de buts, budgets de risque et engagements collectifs**. Introduire attributs décision, lecture, discipline et cohésion sans casser les anciennes sauvegardes.
+- **Réalisation :** traduire 1-3-3-1/2-4-2, largeur, rythme, défense et jeu au pied en **priorités individuelles de buts, budgets de risque et références de placement connues par chaque joueur**. Introduire attributs décision, lecture, discipline et cohésion sans casser les anciennes sauvegardes.
 - **Critères :** deux tactiques produisent des **plans** statistiquement distincts, pas seulement des dessins de pods, et anciennes sauvegardes migrent.
 - **Tests :** D06, S01/S06, `server/test-parcours-club.js`.
 
@@ -264,7 +266,7 @@ Les tâches G00 et G01 sont **commencées comme références/documentation** ; l
 - **Réalisation :** activer le mode GOAP en test puis optionnel dans Mode Club, conserver LEGACY comme comparaison et rollback ; valider export de match, replay, sauvegardes, suivi version sur GitHub Pages.
 - **Critères :** page déployée du **SHA effectivement fusionné**, `version.json` cohérent, CI intégralement verte ; ouvrir un ticket séparé pour ce qui n'est pas implémenté.
 - **Tests :** `.github/workflows/deploy-pages.yml` tests+verify, tests longs selon budget.
-- **Rejet si :** fusion de la documentation présentée comme **livraison de 30 agents GOAP vivants**.
+- **Rejet si :** fusion de la documentation présentée comme **livraison de 30 agents GOAP vivants**, ou ajout d'une IA collective contre l'architecture spécifiée.
 
 ---
 
