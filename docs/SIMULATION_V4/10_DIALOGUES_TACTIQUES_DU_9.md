@@ -1,6 +1,6 @@
 # V4 — Dialogues tactiques à l'initiative du n°9, et choix en mêlée, touche et jeu courant
 
-**Décision produit du 8 novembre 2026.** Dans les situations tactiques considérées ici, le **demi de mêlée (n°9) prend l'initiative de la demande** : il échange avec l'ouvreur (n°10) sur la touche ; il recueille des informations auprès des avants sur la mêlée, puis exprime sa demande ; en plein jeu, il prévient les trois-quarts avant de tenter une chandelle (*up-and-under*). Ce sont **des discussions entre agents autonomes**, jamais des commandes émanant d'une IA d'équipe.
+**Décision produit du 8 novembre 2026.** Dans les situations tactiques considérées ici, le **demi de mêlée (n°9) prend l'initiative de la demande** : il échange avec l'ouvreur (n°10) **pour la touche et pour la mêlée**, et discute **expressément avec le n°8 d'un éventuel départ du 8 sur mêlée** ; le 9 choisit finalement l'option tactique et l'annonce ; en plein jeu, il prévient les trois-quarts avant de tenter une chandelle (*up-and-under*). Ce sont **des discussions entre agents autonomes**, jamais des commandes émanant d'une IA d'équipe.
 
 **Statut :** scénario de conception, protocole d'appels étendu et tests de transport. L'IA de match ne dialogue **pas encore réellement**. Le transport connaît les appels et sait gérer un `toId` et un `replyTo` ; l'IA GOAP de chaque participant doit encore être raccordée.
 
@@ -72,37 +72,63 @@ Scène : touche A près de la médiane, A en possession du lancer, défense B re
 - L04 un joueur trop loin n'entend pas, donc ne reçoit pas de changement instantané de plan ;
 - L05 les événements `BALL_RELEASE`, `LINEOUT_THROW` et `CATCH` restent déclenchés par les participants/moteur, et non par le message.
 
-## 4. Mêlée : le 9 recueille des informations puis **demande** une approche
+## 4. Mêlée : le 9 consulte le 10 **et le 8**, puis choisit
 
-Le 9 peut observer la défense et écouter les avants, spécialement son 8 et les joueurs de première ligne. Il pose par exemple `SCRUM_ASK` (« Mêlée, comment ça tient ? »), puis reçoit des informations (stabilité, poussée adverse, rotation ou risque de déséquilibre).
+La stratégie de mêlée appartient au **n°9**. Ce dernier collecte des informations pour décider **au près, au large, faire avancer la mêlée ou demander un départ du 8**. Le 10 participe à la lecture de la défense ; le 8 participe au choix de départ depuis l'arrière de la mêlée et à l'évaluation de la pression adverse. Les avants renseignent sur stabilité et poussée.
 
-| Option envisagée | Nature | Conditions / conséquences attendues |
+### Discussion complète
+
+| Étape | Émetteur → destinataire | Appel | Décision ou observation |
+|---|---|---|---|
+| 1 | **A9 → A10** | `SCRUM_OPTIONS_ASK` : « Au près, au large ou on avance ? » | le 9 sollicite une lecture du déploiement adverse |
+| 2 | A10 → A9 | `SCRUM_NEAR`, `SCRUM_WIDE` ou `SCRUM_ADVANCE` | **avis** du 10, dépendant des espaces observés |
+| 3 | **A9 → A8** | `SCRUM_8_ASK` : « Huit, tu peux partir ? » | le 9 demande explicitement si un départ par le 8 est faisable |
+| 4 | **A8 → A9** | `SCRUM_8_READY` ou `SCRUM_8_BLOCKED` | réponse fondée sur le ballon, la stabilité et la menace perçue ; pas de promesse de réussite |
+| 5 | A9 → A8/avants si utile | `SCRUM_ASK` ; réponses `SCRUM_STEADY`, `SCRUM_PRESSURE`, `SCRUM_UNSTABLE` | renseignements supplémentaires sur la tenue du paquet |
+| 6 | **A9 → partenaires à portée** | `SCRUM_NEAR`, `SCRUM_WIDE`, `SCRUM_ADVANCE` ou `SCRUM_8_BREAK` | **décision finale du 9**, potentiellement différente de la proposition du 10 |
+| 7 | A8, A10, piliers et autres agents | chacun observe et décide de son propre geste et déplacement | le 8 ne part que s'il peut prendre réellement le ballon ; les autres agissent selon règles et perceptions |
+| 8 | moteur + arbitre | ballon sorti / joué, poussée, faute éventuelle | issue physique et réglementaire, jamais attribuée par le message |
+
+La question au 8 est **une discussion entre le 8 et le 9**, pas un « ordre » imposant au 8 d'abandonner le ballon. Si le 8 répond qu'il ne peut pas partir, le 9 peut décider de servir le 10 ou de faire avancer la mêlée, à condition que la situation le permette. Si le 8 se dit prêt mais que le ballon devient inaccessible, le plan s'annule ou change. Dans le modèle cible, le 9 coordonne **la décision tactique en parlant**, mais **aucune IA collective ne décide à sa place et il ne déplace pas physiquement les autres**.
+
+### Options à évaluer
+
+| Option | Nature | Conditions et conséquences |
 |---|---|---|
-| **Mêlée normale/stable** | légale | maintenir les liaisons, talonner, conserver et sortir ballon |
-| **Poussée forte, gagner du terrain** | légale SI rectiligne, parallèle au sol et après introduction | gain physique possible, fatigue plus forte, risque d'instabilité |
-| **Mêlée qui tourne** | événement physique possible, pas un résultat commandé | poussées déséquilibrées et frottements ; si rotation au-delà de 90°, arrêt/remise en place selon loi ; pousser volontairement de travers expose à une pénalité |
-| **Mêlée qui tombe** | événement dangereux, parfois accident ou faute | sifflet immédiat ; si l'effondrement est volontaire, infraction sanctionnée ; **jamais une stratégie légale à réussir** |
-| **Sortie par 8 / 9** | légale lorsque ballon disponible dans les conditions de la loi | 8 peut partir avec ballon, 9 peut distribuer, selon qui peut réellement jouer le ballon |
-| **Attaque petit côté / large** | dépend de la sortie réelle | après sortie, 9 évalue défense, 10 et soutien disponibles |
+| **Jouer au près** | légale | sortie courte, jeu avec le 8/9 ou avants, en fonction du ballon et de la couverture défensive |
+| **Jouer au large** | légale | 9 peut servir le 10, puis les trois-quarts doivent être réellement disponibles |
+| **Avancer / pousser fort** | légale si droite, parallèle au sol, après introduction | demande du 9 ; chaque avant choisit individuellement son effort ; le pack peut reculer l'adversaire ou échouer |
+| **Départ du 8** | légale si sortie permise et ballon au fond | **négocié entre 9 et 8** ; le 8 contrôle le ballon, se détache et porte uniquement lorsqu'il le peut physiquement et légalement |
+| **Mêlée stable** | légale | conserver la conquête, préparer une sortie contrôlée |
+| **Mêlée qui tourne** | conséquence possible, mais pas victoire automatique | poussée déviée peut entraîner faute ; au-delà des critères réglementaires, arrêt/réinitialisation selon loi |
+| **Mêlée écroulée** | incident dangereux / faute possible | arrêt immédiat ; effondrement volontaire interdit et sanctionnable, **pas une tactique légale** |
 
-**À coder sans trucage :**
-- n°9 peut demander `SCRUM_STEADY` ou `SCRUM_DRIVE`, mais ses paroles n'ajoutent pas directement une force au paquet : les avants **décident individuellement** de leur effort, de leurs appuis et de la stabilité.
-- n°9 écoute `SCRUM_PRESSURE` (« Ça tourne ! ») et `SCRUM_UNSTABLE` (« Ça lâche ! »). Ce sont **des observations/alertes**, pas des ordres de faire tourner ou tomber la mêlée.
-- la poussée ne démarre qu'**après l'introduction**. L'effort doit être orienté droit et parallèlement au sol ; la loi 19.19 prévoit une pénalité dans les cas contraires.
-- la rotation excessive (au-delà de 90°) entraîne une remise en place si aucune faute n'est relevée (loi 19.34.c). Les infractions d'angle/collapsing volontaire peuvent entraîner des pénalités.
-- tout effondrement interrompt **immédiatement** la mêlée (19.25). L'effondrement volontaire est une faute dangereuse (19.37.d).
-- le n°9 n'a pas la capacité d'imposer à un pilier la position, l'appui et le déplacement de son corps.
+### Événements, limites et replanification
 
-**Tests STR-DIA-S01 à S07** :
-- S01 A9 consulte A8, A8 répond stabilité/pression, A9 choisit sa demande ;
-- S02 à effort identique, changer uniquement la stabilité et la fatigue d'un pilier peut changer sa réponse et son effort ;
-- S03 demander poussée forte **avant** l'introduction n'autorise aucune poussée ;
-- S04 demande de poussée après introduction, effort légal : résultat de poussée déterminé par moteur, pas une victoire garantie ;
-- S05 rotation au-delà de 90° : remise en place si absence de faute, pas « gain de mêlée » automatique ;
-- S06 poussé intentionnellement hors de l'axe : contrôle arbitral et sanction si infraction ;
-- S07 effondrement, volontaire ou non : arrêt immédiat, qualification et pénalité si faute.
+- A9 peut poser deux questions séparées et conserver les deux réponses : une du **10** sur la défense, une du **8** sur la faisabilité d'un départ. Chaque réponse peut manquer ou arriver trop tard.
+- La réponse du 10 ne « vote » pas la tactique ; **le 9 tranche** et peut choisir une option différente.
+- Le 8 n'est pas télécommandé : il choisit son départ et son trajet dans le cadre de la tactique demandée ; s'il n'a plus accès au ballon ou est toujours lié, il ne peut pas partir.
+- Une annonce `SCRUM_8_BREAK` ne transfère pas le ballon. Seule l'action physique peut produire `SCRUM_EXIT_8` puis `CARRIED`.
+- Le 9 ne peut pas passer tant que le ballon n'est pas réellement accessible à la base.
+- Si la possession change, les agents réévaluent individuellement leurs buts de défense et les messages du plan précédent deviennent obsolètes.
+- Les avants ne poussent qu'à l'instant légal ; pousser de travers et écrouler volontairement sont des infractions, pas des boutons de stratégie.
 
-**Source réglementaire faisant autorité :** <https://passport.world.rugby/laws-of-the-game/laws-by-number/19-scrum/> (19.17, 19.19, 19.25, 19.34, 19.37).
+**Tests STR-DIA-S01 à S12 :**
+
+- S01 le 9 **initie** la question tactique au 10 ; 10 répond près/large/avance.
+- S02 le 9 **initie** la discussion de départ du 8 ; 8 répond disponible ou bloqué.
+- S03 le 9 annonce sa décision en tenant compte des informations du 10 et du 8, **sans être obligé de suivre leurs conseils**.
+- S04 le 8 accepte le départ mais ballon encore dans le tunnel ou inaccessible : aucune prise ni sortie magique.
+- S05 le 8 n'est pas disponible : le 9 choisit une autre option sans blocage de l'IA.
+- S06 changement de pression perçue : la réponse du 8 peut changer alors que le plan de jeu reste identique.
+- S07 poussée forte **avant** l'introduction : aucune poussée légale engagée.
+- S08 poussée forte **après** introduction : effort physique réel, résultat non garanti.
+- S09 mêlée qui tourne au-delà de la tolérance légale : décision arbitrale correcte, pas une victoire donnée à l'avance.
+- S10 poussée volontaire hors de l'axe : sanction si infraction.
+- S11 effondrement volontaire ou non : arrêt immédiat, qualification et sanction si faute.
+- S12 même graine, mêmes perceptions/réponses : mêmes demandes et décisions ; avis du 10 ou du 8 modifié → choix du 9 peut changer.
+
+**Source réglementaire faisant autorité :** https://passport.world.rugby/laws-of-the-game/laws-by-number/19-scrum/ . Vérifier la version de loi et le règlement de la compétition ; ce document ne confère pas de légalité à une action simplement parce que le 9 la demande.
 
 ## 5. Plein jeu : quand l'attaque stagne, le 9 annonce la **chandelle / up-and-under**
 
@@ -158,11 +184,13 @@ A9 observe : progression faible sur plusieurs phases
 
 ## 6. Catalogue des messages déjà disponibles
 
-Le transport V4 (`engine/ai/local-communication.js`) connaît désormais **24 codes** : 11 appels simples et 13 messages de dialogue tactique.
+Le transport V4 (`engine/ai/local-communication.js`) connaît désormais **32 codes** : 11 appels simples et 21 messages de dialogue tactique.
 
 ```text
 MINE, BALL, INSIDE, OUTSIDE, SUPPORT, HOLD, UP, SLIDE, COVER, KICK, LEAVE
 LINEOUT_ASK, LINEOUT_FRONT, LINEOUT_MIDDLE, LINEOUT_BACK, LINEOUT_MAUL, LINEOUT_WIDE
+SCRUM_OPTIONS_ASK, SCRUM_NEAR, SCRUM_WIDE, SCRUM_ADVANCE
+SCRUM_8_ASK, SCRUM_8_READY, SCRUM_8_BLOCKED, SCRUM_8_BREAK
 SCRUM_ASK, SCRUM_STEADY, SCRUM_DRIVE, SCRUM_PRESSURE, SCRUM_UNSTABLE
 KICK_HIGH, KICK_CHASE
 ```
@@ -174,7 +202,7 @@ Une demande du n°9 au n°10 peut utiliser `toId:'A10'`. La réponse du 10 conti
 ## 7. Tests et étapes Claude Code
 
 Tests déjà exécutables :
-- `node server/test-v4-local-communication.js` — 24 tests de transport, dont huit nouveaux scénarios de messages adressés et réponse.
+- `node server/test-v4-local-communication.js` — tests de transport, dont huit nouveaux scénarios de messages adressés et réponse.
 - `node server/test-v4-tactical-dialogue.js` — scénarios de conversations **symboliques** entre 9, 10 et avants, et annonces de pied ; il ne valide pas encore une stratégie sur 80 minutes.
 
 Travail encore à réaliser :
