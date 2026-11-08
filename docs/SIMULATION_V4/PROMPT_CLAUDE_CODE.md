@@ -28,6 +28,7 @@ PROCÉDURE OBLIGATOIRE
    10_DIALOGUES_TACTIQUES_DU_9.md (9 initie la demande, 10 conseille)
    12_STYLES_ANGLETERRE_AFRIQUE_DU_SUD_NOUVELLE_ZELANDE.md (le 8 prévient le 9, 5 matchs ENG/RSA/NZ)
    13_MATCHS_TOP14_DECISIONS.md (NEUF matchs de clubs, 19 cas, LNR)
+   14_ANALYSE_MICRO_ACTIONS_TOP14.md (7 cas, 47 micro-étapes, 22 alternatives)
    11_MATCHS_REELS_ET_PRISES_DE_DECISION.md (16 actions, 4 matchs, sources vérifiables)
    04_IA_AGENTS_BUTS.md (PRIORITAIRE)
    05_CATALOGUE_GOALS_ACTIONS.md (PRIORITAIRE)
