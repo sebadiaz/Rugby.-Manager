@@ -16,7 +16,11 @@ const speaker = (id, kind, x, y, time, extra={}) => ({
 test('catalogue court fermé, descriptions intelligibles', () => {
   assert.deepStrictEqual(Object.keys(CALLS), [
     'MINE', 'BALL', 'INSIDE', 'OUTSIDE', 'SUPPORT', 'HOLD', 'UP',
-    'SLIDE', 'COVER', 'KICK', 'LEAVE'
+    'SLIDE', 'COVER', 'KICK', 'LEAVE',
+    'LINEOUT_ASK', 'LINEOUT_FRONT', 'LINEOUT_MIDDLE', 'LINEOUT_BACK',
+    'LINEOUT_MAUL', 'LINEOUT_WIDE', 'SCRUM_ASK', 'SCRUM_STEADY',
+    'SCRUM_DRIVE', 'SCRUM_PRESSURE', 'SCRUM_UNSTABLE',
+    'KICK_HIGH', 'KICK_CHASE'
   ]);
   for (const spec of Object.values(CALLS)) {
     assert.ok(typeof spec.label === 'string' && spec.label.includes('!'));
@@ -142,5 +146,75 @@ test('aucune donnée des agents ni état de match modifiés', () => {
   com.emit(p);com.hear(q);
   assert.strictEqual(JSON.stringify(p),oldP);
   assert.strictEqual(JSON.stringify(q),oldQ);
+});
+test('9 demande au 10, seul le 10 reçoit la question adressée', () => {
+  const com = new LocalCommunication();
+  assert.deepStrictEqual(com.emit(speaker('A9','LINEOUT_ASK',50,20,5,
+    {toId:'A10'})), {accepted:true,id:'CALL-1'});
+  assert.deepStrictEqual(com.hear(actor('A12',51,20,5.5)),[]);
+  const heard = com.hear(actor('A10',52,20,5.5));
+  assert.strictEqual(heard.length,1);
+  assert.strictEqual(heard[0].kind,'LINEOUT_ASK');
+  assert.strictEqual(heard[0].toId,'A10');
+});
+test('10 répond au 9 : le lien réponse existe, sans commande forcée', () => {
+  const com = new LocalCommunication({cooldownSeconds:0});
+  const q=com.emit(speaker('A9','LINEOUT_ASK',51,20,1,{toId:'A10'}));
+  assert.strictEqual(q.accepted,true);
+  assert.strictEqual(com.hear(actor('A10',51,21,1.3)).length,1);
+  const ans=com.emit(speaker('A10','LINEOUT_BACK',51,21,1.31,{
+    toId:'A9',replyTo:q.id
+  }));
+  assert.strictEqual(ans.accepted,true);
+  const msg=com.hear(actor('A9',51,20,1.5))[0];
+  assert.strictEqual(msg.replyTo,q.id);
+  assert.strictEqual(msg.kind,'LINEOUT_BACK');
+  assert.strictEqual(msg.toId,'A9');
+  assert.strictEqual('goal' in msg,false);
+  assert.strictEqual('target' in msg,false);
+});
+test('la demande du 9 aux avants est un appel visible, pas un ordre moteur', () => {
+  const com=new LocalCommunication();
+  com.emit(speaker('A9','SCRUM_DRIVE',45,35,0));
+  assert.strictEqual(com.hear(actor('A3',46,35,.4))[0].kind,'SCRUM_DRIVE');
+  assert.strictEqual(com.hear(actor('A10',46,35,.4))[0].kind,'SCRUM_DRIVE');
+  assert.strictEqual(com.hear(actor('B1',46,35,.4)).length,0);
+});
+test('chandelle annoncée : les trois-quarts présents entendent avant le pied', () => {
+  const com=new LocalCommunication();
+  com.emit(speaker('A9','KICK_HIGH',50,35,20));
+  assert.deepStrictEqual(com.hear(actor('A14',55,35,20)),[]);
+  assert.strictEqual(com.hear(actor('A14',55,35,20.2))[0].kind,'KICK_HIGH');
+  assert.strictEqual(com.hear(actor('A11',60,35,20.25))[0].kind,'KICK_HIGH');
+});
+test('les messages non adressés ne circulent pas vers des tiers non ciblés', () => {
+  const com=new LocalCommunication();
+  com.emit(speaker('A9','SCRUM_ASK',40,35,0,{toId:'A8'}));
+  assert.deepStrictEqual(com.hear(actor('A7',41,35,.4)),[]);
+  assert.strictEqual(com.hear(actor('A8',42,35,.4)).length,1);
+});
+test('une demande ne peut pas cibler un adversaire ou soi-même', () => {
+  const com=new LocalCommunication();
+  assert.throws(()=>com.emit(speaker('A9','LINEOUT_ASK',50,35,0,{toId:'B10'})),/destinataire/);
+  assert.throws(()=>com.emit(speaker('A9','LINEOUT_ASK',50,35,0,{toId:'A9'})),/destinataire/);
+  assert.throws(()=>com.emit(speaker('A9','LINEOUT_ASK',50,35,0,{replyTo:'INVALID'})),/réponse/);
+});
+test('le dialogue seul ne modifie pas les buts et les positions', () => {
+  const com=new LocalCommunication({cooldownSeconds:0});
+  const player={id:'A9',x:50,y:35,goal:'DISTRIBUTE',target:{x:45,y:30}};
+  const state=JSON.stringify(player);
+  const q=com.emit(speaker('A9','LINEOUT_ASK',50,35,0,{toId:'A10'}));
+  com.emit(speaker('A10','LINEOUT_MAUL',51,35,.2,{toId:'A9',replyTo:q.id}));
+  com.hear(actor('A9',50,35,.5));
+  assert.strictEqual(JSON.stringify(player),state);
+});
+test('mêmes questions et réponses : séquence reproductible', () => {
+  const simulate=()=>{
+    const com=new LocalCommunication({cooldownSeconds:0});
+    const q=com.emit(speaker('A9','LINEOUT_ASK',40,20,0,{toId:'A10'}));
+    const ans=com.emit(speaker('A10','LINEOUT_MIDDLE',41,20,.2,{toId:'A9',replyTo:q.id}));
+    return JSON.stringify([q,ans,com.hear(actor('A9',40,20,.4))]);
+  };
+  assert.strictEqual(simulate(),simulate());
 });
 console.log(tests+' tests de communication locale réussis (transport seul)');
