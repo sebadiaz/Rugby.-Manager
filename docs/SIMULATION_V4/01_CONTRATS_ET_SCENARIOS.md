@@ -3,7 +3,7 @@
 ## 1. Statut, vocabulaire et géométrie
 
 - **Existant** : `MatchEngine.tick(dt)`, `getState()`, `avancer()` avec accélération, `Referee`, `organiserAvantsRuck()`, animations Canvas, statistiques par équipe.
-- **Cible V4** : un plan tactique explicable par joueur, une machine de décision collective et une API d'injection de scénarios pour tester les mêmes situations.
+- **Cible V4** : une décision autonome et explicable par joueur, une référence commune de plan de jeu **sans IA collective**, et une API d'injection de scénarios pour tester les mêmes situations.
 - **Référence spatiale** : `x = 0..100` m, `y = 0..70` m, A attaque vers x positif, B vers x négatif. Les profondeurs d'en-but sont gérées séparément par le rendu.
 - **Temps** : les durées de parcours et d'animation ci-dessous sont des **hypothèses d'ingénierie**. Seules les limites explicites du document sur les lois sont réglementaires.
 - **Fixtures** : `fixtures/scenarios.json`, dix cas S01 à S10, exactement 30 joueurs numérotés de A1 à A15 et B1 à B15.
@@ -32,7 +32,7 @@ type AgentMatch = {
 
 ## Architecture **sans** agent collectif (décision du propriétaire)
 
-La notion de plan tactique utilisée ci-dessous est une **référence de jeu commune**, pas un `TeamCoordinator` ni une allocation globale de positions. `computeTacticalPlan(snapshot, teamId)` représente une ancienne interface conceptuelle : **ne pas l'implémenter comme décideur d'équipe**. La remplacer par `computeMyPlan(agentBeliefs, readonlyPlaybook)`, appelé séparément pour chacun des 30 agents, et `applyMyMovementIntent(agentId, intent, dt)` via la physique. Voir `07_AGENT_INDIVIDUEL_PLACEMENT.md`. Les exemples géométriques sont des scènes initiales et non des commandes de placement.
+La notion de plan tactique utilisée ci-dessous est une **référence de jeu commune**, pas un `TeamCoordinator` ni une allocation globale de positions. Chaque joueur calcule `computeMyPlan(agentBeliefs, readonlyPlaybook)` séparément, puis émet `applyMyMovementIntent(agentId, intent, dt)` via la physique. Voir `07_AGENT_INDIVIDUEL_PLACEMENT.md`. Les exemples géométriques sont des scènes initiales et non des commandes de placement.
 
 ## 3. Contrat de décision
 
@@ -43,18 +43,18 @@ Ordre de priorité, sans exception tacite :
 1. Validité réglementaire (hors-jeu, au sol, carton, liaison), interdictions de mouvement.
 2. Survie de l'action : protéger le ballon/plaquer un porteur légalement accessible.
 3. Continuité de la ligne défensive la plus proche ; combler le plus grand trou menaçant.
-4. Tâche tactique collective `1-3-3-1`, `2-4-2`, défense rush/drift.
+4. But de placement déduit individuellement du plan commun `1-3-3-1`, `2-4-2`, défense rush/drift et des circonstances.
 5. Couloir nominal et identité du poste.
 6. Préférence individuelle `tendance`, vitesse, endurance et décision.
 
 Modèle d'API à tester (ne pas exposer par défaut à l'UI) :
 
 ```ts
-computeTacticalPlan(snapshot, teamId, context, options): TacticalPlan
-// fonction PURE, aucun RNG implicite, aucun déplacement
-// plan = [{playerId, role, target:{x,y}, reason, priority, timestamp}]
-applyTacticalPlan(engine, plan, dt): void
-// utilise exclusivement avancer(), bornes légales et inertie
+computeMyPlan(myBeliefs, readonlyPlaybook, myProfile): IndividualPlan
+// fonction PURE, un agent, ses buts et étapes, aucune action sur d'autres agents
+// plan = {goal, steps, ownTarget:{x,y}, reason, priority, timestamp}
+applyMyMovementIntent(engine, myAgentId, myIntent, dt): void
+// mouvement de CE joueur uniquement, via avancer(), bornes légales et inertie
 createScenarioEngine(fixture): MatchEngine
 // injecteur réservé aux tests, sans téléportation en cours de match
 ```
@@ -118,11 +118,11 @@ L'état d'entrée **n'implique pas** que ces 30 joueurs soient déjà placés l�
 | t≈3,5 | sortie du 9 | si "use it" a été appelé, vérifier la borne légale de 5 s |
 | t=3,5–4,7 | passe 9 → 10 | ballon possède une trajectoire et une durée, 10 non plaquable avant réception |
 | t=4,7–6,5 | 10 fixe, 12/13 accélèrent | aucune passe en avant ; les défenseurs réagissent à la fixation |
-| t=6,5–10,0 | contact ou passe large / nouveau ruck | événement enregistré, nouveau plan collectif, pas de saut de joueurs |
+| t=6,5–10,0 | contact ou passe large / nouveau ruck | événement enregistré, chaque joueur révise son plan individuel, pas de saut de joueurs |
 
 Ces durées **ne sont ni obligatoires ni réglementaires** ; le moteur doit choisir parmi des distributions contrôlées, pas rejouer une chorégraphie imposée.
 
-## 6. Couverture collective
+## 6. Couverture défensive résultant des décisions individuelles
 
 ### Défense après rupture de structure
 
