@@ -58,14 +58,17 @@ PROCÉDURE OBLIGATOIRE
    tactiques, sans avoir le pouvoir de commander les autres cerveaux.
    - TOUCHE : le 9 interroge le 10, reçoit son avis, puis demande
      au lanceur et aux joueurs proches une option de lancement.
-   - MÊLÉE : le 9 interroge le 8 et les avants puis peut demander
-     stabilité ou poussée forte. Les avants choisissent individuellement
+   - MÊLÉE : le 9 **interroge le 10** pour connaître ses options
+     au près, au large ou en avançant ; il **discute avec le 8**
+     d'un départ par le 8. Le 9 prend **lui-même** la décision
+     tactique et la demande. Il peut aussi consulter les avants sur
+     stabilité et poussée, puis demander une poussée normale ou forte. Les avants choisissent individuellement
      effort et appuis. Rotation = conséquence physique. Une poussée de
      travers/effondrement volontaire = faute, jamais une stratégie légale.
    - JEU COURANT : si l'attaque ne progresse pas, le 9 peut choisir une
      chandelle (up-and-under) et PRÉVENIR les trois-quarts avant de botter.
      Il n'y a ni kick automatique ni chasse hors-jeu.
-   Utiliser LocalCommunication (24 codes, toId, replyTo) : appel reçu
+   Utiliser LocalCommunication (32 codes, toId, replyTo) : appel reçu
    dans les croyances seulement, aucune mutation directe d'un partenaire.
    Tester : node server/test-v4-local-communication.js
             node server/test-v4-tactical-dialogue.js
