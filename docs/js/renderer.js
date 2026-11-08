@@ -117,6 +117,15 @@
     if (auSol) ctx.globalAlpha = 0.5;
     ctx.fill();
     ctx.globalAlpha = 1;
+    // Marqueur directionnel discret : les joueurs tournent avec leur course.
+    // Le numéro de maillot reste lisible même lorsque la caméra est éloignée.
+    if (!auSol && Number.isFinite(j.orientation)) {
+      const fx = Math.cos(j.orientation), fy = Math.sin(j.orientation);
+      ctx.beginPath();
+      ctx.arc(px + fx * 7.2, py + fy * 7.2, 2.5, 0, Math.PI * 2);
+      ctx.fillStyle = '#f4f2d7';
+      ctx.fill();
+    }
     if (estPorteur) {
       // Porteur du ballon nettement marqué : anneau jaune épais + halo.
       ctx.lineWidth = 4;
@@ -227,6 +236,33 @@
     ctx.fillText('arbitre', px, py + 14);
   }
 
+  // Officiels de touche : fanions animés le long de la ligne latérale.
+  // Positions fournies par le moteur et interpolées par main.js.
+  function dessinerAssistants(state) {
+    for (const assistant of (state.assistants || [])) {
+      const { px, py } = versCanvas(assistant.x, assistant.y);
+      const versInterieur = assistant.y <= LARGEUR / 2 ? 1 : -1;
+      ctx.save();
+      ctx.strokeStyle = '#171717';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(px, py);
+      ctx.lineTo(px, py + versInterieur * 14);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(px, py + versInterieur * 2);
+      ctx.lineTo(px + 11, py + versInterieur * 5);
+      ctx.lineTo(px, py + versInterieur * 9);
+      ctx.closePath();
+      ctx.fillStyle = '#ffdf50';
+      ctx.fill();
+      ctx.strokeStyle = '#5c4600';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
   function dessiner(state) {
     dessinerTerrain();
     // Pendant que le ballon est en vol ou au sol après un coup de pied
@@ -236,6 +272,7 @@
     const estPorteur = j => !sansPorteur && j.team === state.porteur.team && j.numero === state.porteur.numero;
     for (const j of state.teams.A) dessinerJoueur(j, estPorteur(j));
     for (const j of state.teams.B) dessinerJoueur(j, estPorteur(j));
+    dessinerAssistants(state);
     dessinerArbitre(state);
     dessinerBallon(state);
   }
