@@ -5,8 +5,8 @@
 ## Comment utiliser ce dossier
 
 1. Lire `CLAUDE.md`, `AGENTS.md`, `docs/REGLES_RUGBY.md` et `docs/SPEC_PLACEMENT_TACTIQUE.md`.
-2. Commencer par **`07_AGENT_INDIVIDUEL_PLACEMENT.md`** puis **`04_IA_AGENTS_BUTS.md`** (architecture Russell–Norvig/GOAP), **`05_CATALOGUE_GOALS_ACTIONS.md`** (35 buts et 36 actions) puis **`06_TESTS_AGENTS.md`** (tests falsifiables). Les `01_...`–`03_...` complètent ensuite les contrats, lois et le rendu.
-3. Exécuter `node server/test-v4-goap-planner.js` (preuve d'une **recherche de plan symbolique seulement**) et `node server/test-spec-simulation-v4.js` (cohérence des fixtures). **Aucun de ces deux tests n'implique que les 30 joueurs du match exécutent déjà des plans.**
+2. Commencer par **`07_AGENT_INDIVIDUEL_PLACEMENT.md`**, **`08_COMMUNICATION_LOCALE.md`**, **`09_CHOIX_STRATEGIQUES_INDIVIDUELS.md`** et **`10_DIALOGUES_TACTIQUES_DU_9.md`**, puis **`04_IA_AGENTS_BUTS.md`** (architecture Russell–Norvig/GOAP), **`05_CATALOGUE_GOALS_ACTIONS.md`** (35 buts et 36 actions) puis **`06_TESTS_AGENTS.md`** (tests falsifiables). Les `01_...`–`03_...` complètent ensuite les contrats, lois et le rendu.
+3. Exécuter `node server/test-v4-local-communication.js` et `node server/test-v4-tactical-dialogue.js` (transport de messages symboliques, **pas encore utilisés dans un vrai match**), puis `node server/test-v4-goap-planner.js` (preuve d'une **recherche de plan symbolique seulement**) et `node server/test-spec-simulation-v4.js` (cohérence des fixtures). **Aucun de ces deux tests n'implique que les 30 joueurs du match exécutent déjà des plans.**
 4. Choisir **une seule** tâche `RM4-Gxx` de `PLAN_CLAUDE_CODE.md`, vérifier ses prérequis, ouvrir une branche dédiée.
 5. Appliquer le prompt de `PROMPT_CLAUDE_CODE.md`. Ne pas déclarer une tâche terminée sans un scénario injecté et ses assertions automatiques.
 6. Joindre à chaque PR le résultat des tests, un comparatif des matchs par graines identiques, et une capture/vidéo quand le visuel change.
@@ -24,6 +24,15 @@
 **Fait autorité :** [`07_AGENT_INDIVIDUEL_PLACEMENT.md`](07_AGENT_INDIVIDUEL_PLACEMENT.md).
 Chaque joueur connaît le plan de jeu et ses positions de référence mais, en fonction des circonstances, choisit **ses propres buts** (défendre, tenir ligne, fermer intervalle, marquer, plaquer, couvrir, soutenir, être disponible, etc.) et calcule **individuellement** chaque déplacement. La priorité de défendre ne signifie pas que tous vont vers le porteur. Aucune affectation centrale, aucun TeamCoordinator, TeamBlackboard ou enchère de rôles. Le moteur reste autorité des règles et de la physique, pas des buts ou trajectoires.
 
+## Dialogues tactiques à l'initiative du 9
+
+Le n°9 **initie les demandes**, sans IA collective :
+- **Touche** : demande l'avis du 10, qui répond selon sa perception ; le 9 demande ensuite une option (devant/milieu/fond/maul/large) et le lanceur/les sauteurs décident comment la réaliser.
+- **Mêlée** : le 9 prend des informations auprès du 8/des avants, peut demander stabilité ou poussée forte. La rotation résulte des forces ; pousser délibérément de travers et écrouler volontairement sont des infractions, pas des stratégies légales.
+- **Plein jeu** : si l'attaque stagne, le 9 peut envisager un **up-and-under / chandelle**, mais prévient les trois-quarts **avant** de botter. Chacun réévalue individuellement chasse, couverture, soutien ou maintien de la ligne.
+
+Dossier détaillé : `10_DIALOGUES_TACTIQUES_DU_9.md`. Transport de 24 messages `engine/ai/local-communication.js`, 24 tests unitaires et 10 scénarios de dialogue symbolique ; la véritable intégration au match est à coder dans G31–G33, en s'appuyant sur G04–G20.
+
 ## Exigence centrale : agents à base de buts
 
 **Chaque joueur doit avoir une vraie IA délibérative** : observer l'état local du match, sélectionner un but, construire un plan composé d'actions légales avec préconditions/effets/coûts, exécuter ces actions avec le moteur physique, en constater les résultats et **replanifier** si le monde change.
@@ -32,7 +41,7 @@ Chaque joueur connaît le plan de jeu et ses positions de référence mais, en f
 
 **Premier jalon de preuve** : A9, avec but `DISTRIBUTE_BALL`, planifie `MOVE_TO_RUCK → SECURE_BALL → PASS_TO_10`, puis change légalement vers `PASS_TO_POD` si le couloir du 10 se ferme. Aucun effet ne peut être simulé « par magie » dans le moteur.
 
-Lire `PLAN_CLAUDE_CODE.md` : 34 tâches **G00–G30**, et `PROMPT_CLAUDE_CODE.md` pour le démarrage de Claude Code.
+Lire `PLAN_CLAUDE_CODE.md` : 34 tâches **G00–G33**, et `PROMPT_CLAUDE_CODE.md` pour le démarrage de Claude Code.
 
 ## Objectif produit
 
@@ -62,6 +71,9 @@ Un **test de fixture** valide uniquement la forme des données. Un **test moteur
 
 - `PLAN_CLAUDE_CODE.md` : liste ordonnée, dépendances et DoD tâche par tâche.
 - `07_AGENT_INDIVIDUEL_PLACEMENT.md` : architecture prioritaire sans IA collective, buts de placement et mouvement individuel.
+- `08_COMMUNICATION_LOCALE.md` : communication simple et locale, portée, délais, questions adressées et réponses.
+- `09_CHOIX_STRATEGIQUES_INDIVIDUELS.md` : choix en mêlée, touche et plein jeu par les joueurs.
+- `10_DIALOGUES_TACTIQUES_DU_9.md` : demande du 9 au 10, consultation des avants et chandelle annoncée.
 - `04_IA_AGENTS_BUTS.md` : boucle perception → objectifs → planification → exécution → replanification, entièrement individuelle.
 - `05_CATALOGUE_GOALS_ACTIONS.md` : buts, actions, préconditions, coûts, effets et gardes réglementaires.
 - `06_TESTS_AGENTS.md` : preuve d'une IA réelle et tests différentiels, pas uniquement des snapshots.
@@ -70,6 +82,8 @@ Un **test de fixture** valide uniquement la forme des données. Un **test moteur
 - `03_RENDU_RETRO.md` : pipeline Canvas, animations et tests visuels.
 - `fixtures/scenarios.json` : jeux de données déterministes et attentes déclaratives (le futur injecteur doit les exploiter).
 - `PROMPT_CLAUDE_CODE.md` : consigne à copier à Claude Code.
+- `engine/ai/local-communication.js` : transport de 24 codes vocaux (prototype non connecté au match).
+- `server/test-v4-local-communication.js` et `server/test-v4-tactical-dialogue.js` : 24 tests + 10 scènes de dialogue symbolique.
 - `server/test-spec-simulation-v4.js` : validations structurelles déjà exécutables sur le dépôt.
 
 ## Références officielles, versionnées
