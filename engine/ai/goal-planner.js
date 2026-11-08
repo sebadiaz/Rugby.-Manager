@@ -116,13 +116,22 @@ function selectFeasibleGoal(initialFacts, goals, actions, options = {}) {
     validateFacts(g.desiredFacts, g.id + '.desiredFacts');
     return g;
   }).sort((a, b) => b.priority - a.priority || a.id.localeCompare(b.id, 'en'));
+  let satisfied = 0;
   for (const goal of sorted) {
+    // Un but déjà atteint ne doit pas monopoliser l'agent et bloquer
+    // les autres objectifs encore actifs sous prétexte de priorité.
+    if (satisfies(initialFacts, goal.desiredFacts)) {
+      satisfied++;
+      continue;
+    }
     const result = planGoal(initialFacts, goal.desiredFacts, actions, options);
-    if (result.status === 'OK' || result.status === 'ALREADY_SATISFIED') {
+    if (result.status === 'OK') {
       return { goalId: goal.id, ...result };
     }
   }
-  return { goalId: null, status: 'NO_FEASIBLE_GOAL', steps: [], cost: null };
+  return { goalId: null,
+    status: satisfied === sorted.length ? 'ALL_GOALS_SATISFIED' : 'NO_FEASIBLE_GOAL',
+    steps: [], cost: null };
 }
 
 module.exports = { stableKey, satisfies, planGoal, selectFeasibleGoal };
