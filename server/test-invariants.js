@@ -4511,11 +4511,19 @@ test('remplacement tactique ballon mort (loi 3.6, BUG-RM-012) : demandé en jeu,
 });
 
 test('banc : un tir déjà botté garde son buteur, le sifflet final annule l entrée en attente', () => {
-  // Graine 28 : une pénalité est bottée après la sonnerie de fin de match.
-  const m = new MatchEngine(28, 300);
+  // On cherche une graine où une pénalité est bottée après la sonnerie de fin
+  // de match (la 28 avant la fusion de la PR n°21, dont le tirage a changé).
+  let m = null;
   const estDernierTir = () => m.miTempsJouee && m.tempsMatch >= 400
     && m.phase === 'PENALITE_TIR' && m.ballonEnVol;
-  while (m.phase !== 'TERMINE' && m.tempsMatch < 500 && !estDernierTir()) m.tick(0.1);
+  // Graine 381 depuis la fusion (une sur ~600) ; la recherche ne sert que si
+  // le tirage du moteur change encore.
+  const graines = [381].concat(Array.from({ length: 700 }, (_, i) => i + 1));
+  for (const graine of graines) {
+    if (m && estDernierTir()) break;
+    m = new MatchEngine(graine, 300);
+    while (m.phase !== 'TERMINE' && m.tempsMatch < 500 && !estDernierTir()) m.tick(0.1);
+  }
   assert.ok(estDernierTir(), 'le ballon est en vol sur le dernier tir');
   const buteur = m.porteur;
   const adresse = buteur.adresse;
@@ -4531,7 +4539,7 @@ test('banc : un tir déjà botté garde son buteur, le sifflet final annule l en
 
 test('intrusion de l arrière (P2-163) : dans la moitié adverse le n°15 s intercale dans la ligne et marque, dans son camp il couvre le fond', () => {
   let essais = 0, essaisArriere = 0, ruckAdv = 0, dansLigne = 0, ruckSien = 0, auFond = 0;
-  for (let seed = 1; seed <= 12; seed++) {
+  for (let seed = 1; seed <= 48; seed++) {
     const m = new MatchEngine(seed, 4800);
     while (m.phase !== 'TERMINE') {
       m.tick(0.1);
@@ -4548,6 +4556,10 @@ test('intrusion de l arrière (P2-163) : dans la moitié adverse le n°15 s inte
     }
     for (const e of m.getState().chronologie) if (e.type === 'ESSAI') { essais++; if (e.marqueur === 15) essaisArriere++; }
   }
+  // 48 graines depuis la fusion de la PR n°21 (12 graines : 1 essai de l'arrière
+  // sur 75, bruit pur). Mesuré sur 48 : 14 essais sur 318 (4,4 %) ; avant la
+  // fusion 32 sur 336 (9,5 %) — la nouvelle organisation des pods d'avants
+  // réduit la part de l'arrière, à reprendre (bugs.md).
   // Mesuré (12 graines) : dans la ligne 73 % (39 % avant l'intrusion), hors de
   // la ligne dans son camp 62 % (67 % avant), essais de l'arrière 12/93 (0/78).
   assert.ok(dansLigne / ruckAdv >= 0.6, `moitié adverse : dans la ligne ${(100 * dansLigne / ruckAdv).toFixed(0)} % du temps de ruck`);
