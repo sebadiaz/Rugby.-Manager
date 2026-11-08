@@ -2,7 +2,7 @@
 
 **Décision produit :** chaque joueur connaît le plan de jeu (intentions, principes, combinaisons et zones de référence). Il **choisit individuellement** l'action, le moment de départ et le déplacement selon son observation, son but prioritaire, les règles et l'évolution de la situation. **Aucune IA collective** ne décide la stratégie à sa place.
 
-**Statut** : cahier de spécification et d'acceptation, **pas une fonctionnalité déjà livrée**. **Précision propriétaire : le 9 initie la demande de touche en discutant avec le 10, prend les informations des avants avant une mêlée et prévient les trois-quarts avant un up-and-under.** Ces dialogues sont détaillés et prioritaires dans `10_DIALOGUES_TACTIQUES_DU_9.md`. Le transport des appels courts existe dans `engine/ai/local-communication.js`, mais n'est pas encore relié aux agents de match. Les scénarios de ce fichier deviendront des tests après intégration GOAP. Lire `07_AGENT_INDIVIDUEL_PLACEMENT.md` et `08_COMMUNICATION_LOCALE.md`.
+**Statut** : cahier de spécification et d'acceptation, **pas une fonctionnalité déjà livrée**. **Précision propriétaire : le 9 initie la demande de touche et de mêlée en discutant avec le 10, puis **discute le départ du 8 directement avec le 8** avant de prendre sa décision ; en plein jeu, il prévient les trois-quarts avant un up-and-under.** Ces dialogues sont détaillés et prioritaires dans `10_DIALOGUES_TACTIQUES_DU_9.md`. Le transport des appels courts existe dans `engine/ai/local-communication.js`, mais n'est pas encore relié aux agents de match. Les scénarios de ce fichier deviendront des tests après intégration GOAP. Lire `07_AGENT_INDIVIDUEL_PLACEMENT.md` et `08_COMMUNICATION_LOCALE.md`.
 
 ## 1. Ce qui est « stratégie » et ce qui ne l'est pas
 
@@ -67,8 +67,8 @@ Une alerte de partenaire n'est pas un ordre : elle peut provoquer une nouvelle �
 | 2 talonneur | gagner le ballon et stabiliser le pack | positionner pied de frein / talonner à l'instant légal / conserver appuis | commande de l'arbitre, ballon au tunnel, équilibre |
 | 4/5 | transmettre la poussée, rester liés | maintenir liaison / ajuster appuis / engager force progressivement | mouvement des piliers, poussée, fatigue |
 | 6/7 | soutenir et préparer défense/sortie | pousser / suivre le ballon / se préparer à défendre après sortie | ballon réel et état des liaisons |
-| **8** | sécuriser la sortie ou attaquer | contrôler au pied / sortie courte ballon en main / laisser sortir au 9 si meilleure option | ballon aux pieds, pression B6/B7/B9, espace près de la base, urgence |
-| **9 introducteur** | gagner et exploiter la possession | introduction légale / récupérer à la base / passer 10 ou 12 / départ court si légal | ballon disponible, disponibilité du 8, réception 10/12, hors-jeu du rival |
+| **8** | sécuriser la sortie ou attaquer | **discuter avec le 9** du départ du 8, confirmer/infirmer sa disponibilité, contrôler au pied, sortir ballon en main **seulement si décidé et possible** | ballon aux pieds, pression B6/B7/B9, espace près de la base, urgence, question du 9 |
+| **9 introducteur** | gagner et exploiter la possession | **consulter 10** pour près/large/avance, **consulter 8** pour son départ, **trancher lui-même** puis annoncer l'option, récupérer et distribuer si ballon accessible | ballon disponible, réponse du 8, avis du 10, défense, hors-jeu du rival |
 | **9 adverse** | défendre sans faute | rester onside suivant option permise / presser le receveur après fin de mêlée / protéger petit côté | règle de placement, sortie effective, vitesse du 9 adverse |
 | **10** | être une solution et fixer défense | s'offrir en profondeur / préparer passe ou pied / conserver recul | position du ballon, pression de ligne, couverture arrière |
 | **11–15** | ouvrir espace ou défendre | suivre la stratégie connue de sortie / modifier leurs courses après signal réel de sortie | défense observée, ballon disponible, réception possible |
@@ -76,14 +76,15 @@ Une alerte de partenaire n'est pas un ordre : elle peut provoquer une nouvelle �
 ### Scène SCR-STR-01 — Le huit peut partir
 
 - État : mêlée gagnée par A, ballon contrôlé à l'arrière ; A8 peut physiquement prendre le ballon ; petit côté défendu par un seul joueur ; A9 prépare l'option au 10.
-- A8 perçoit l'espace et peut choisir `PICK_AND_GO_8` si cela vaut mieux que `HOLD_BALL_FOR_9`.
-- A9 n'est **pas informé par télépathie** du plan d'A8 : il peut entendre `MINE` ou observer la prise de balle, puis **replanifier**.
+- **A9 demande à A8** avec `SCRUM_8_ASK` s'il peut partir ; A8 répond `SCRUM_8_READY` s'il estime avoir le ballon accessible et un départ plausible.
+- **A9 décide** entre la sortie par le 8, le jeu au près, le jeu au large ou une mêlée qui continue d'avancer. S'il choisit le départ, il annonce `SCRUM_8_BREAK`.
+- **A8 ne fait réellement `PICK_AND_GO_8` que lorsque l'action est physiquement et légalement disponible**, selon son observation : pas de balle créée par la parole et pas de déplacement imposé par A9.
 - Assertion : `carrierId` reste unique, aucune sortie tant que le ballon n'est pas légalement jouable, déplacement réel de A8, A9 ne peut passer un ballon qu'il n'a pas.
 
 ### Scène SCR-STR-02 — Sortie par le neuf
 
 - Même mêlée, mais défense solide autour du 8, 10 libre et couloir de passe sûr.
-- A8 peut conserver le contrôle sans partir ; A9 choisit `COLLECT→PASS_TO_10` selon ce qu'il voit.
+- A9 consulte A10 pour les options près/large/avance et demande à A8 si le départ est possible. A8 peut répondre `SCRUM_8_BLOCKED` ; A9 choisit alors `COLLECT→PASS_TO_10` s'il observe un 10 réellement disponible.
 - Assertion : à conditions légalement identiques, les options **peuvent différer** quand seul le danger perçu change ; 8 et 9 n'acquièrent pas simultanément le ballon.
 
 ### Scène SCR-STR-03 — Mêlée subie, défense prioritaire
