@@ -87,4 +87,4 @@ for (const f of corpus.scenarios) {
   }
   console.log('OK ' + f.id + ' (' + f.phase + ') : 30 joueurs, arbitres, contrat');
 }
-console.log('OK 10 fixtures V4 testables structurellement — comportements à implémenter par RM4-002 et suivants');
+console.log('OK 10 fixtures V4 testables structurellement — comportements à implémenter par RM4-G02 et suivantes');
