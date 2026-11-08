@@ -2368,6 +2368,22 @@
           // (tendance ~15) tient son large. Idem pour la profondeur : les suiveurs
           // se placent plus à plat (soutien proche), les arrières plus en
           // profondeur (lecture et espace). Le placement émerge ainsi des profils.
+          // Continuité : les avants libres conservent brièvement le rôle
+          // du ruck précédent pendant le jeu courant. Sans cela, ils
+          // abandonnent instantanément les pods au moment de la sortie du 9.
+          // Après 15 s ou changement de possession, retour au comportement
+          // autonome par profil ; soutien direct et repli hors-jeu priment.
+          const plan = j.numero <= 8 && this._podPlanPossession === this.possession
+            && (this.tempsMatch - this._podPlanTemps) < 15
+            && this._ciblesPodsRuck ? this._ciblesPodsRuck.get(j) : null;
+          if (plan && j.auSol === 0) {
+            const cibleX = porteur.x - porteur.sensAttaque
+              * Math.min(8, 4 + Math.abs(plan.y - porteur.y) * 0.08);
+            j.roleTactique = plan.role;
+            j.cibleTactique = { x: cibleX, y: plan.y };
+            avancer(j, cibleX - j.x, plan.y - j.y, dt, vitesseMs(j) * 0.72);
+            continue;
+          }
           const t = j.tendance / 100; // 0.15 (ailier) .. 0.90 (9/pilier)
           const driftBallon = 0.04 + t * 0.20;
           const cibleY = j.channelY * (1 - driftBallon) + porteur.y * driftBallon;
@@ -3553,6 +3569,8 @@
         .sort((a, b) => a.numero - b.numero);
       this._ciblesPodsRuck = organiserAvantsRuck(this._podAvants, pt, sensAttaque,
         this.cfgAttaque[this.possession].structureAvants);
+      this._podPlanTemps = this.tempsMatch;
+      this._podPlanPossession = this.possession;
       // CRÉNEAUX DÉFENSIFS ÉQUIRÉPARTIS : les défenseurs de la ligne (ni
       // contestants, ni l'arrière n°15 qui couvre le fond) se répartissent
       // UNIFORMÉMENT sur la largeur, triés par position pour ne jamais se
