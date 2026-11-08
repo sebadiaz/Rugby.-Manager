@@ -212,12 +212,14 @@ Une demande du n°9 au n°10 peut utiliser `toId:'A10'`. La réponse du 10 conti
 ## 7. Tests et étapes Claude Code
 
 Tests déjà exécutables :
-- `node server/test-v4-local-communication.js` — tests de transport, dont huit nouveaux scénarios de messages adressés et réponse.
-- `node server/test-v4-tactical-dialogue.js` — scénarios de conversations **symboliques** entre 9, 10 et avants, et annonces de pied ; il ne valide pas encore une stratégie sur 80 minutes.
+- `node server/test-v4-local-communication.js` — **39 tests de transport** dont vérification de la notification urgente **8→9**, de sa portée, de son `phaseId` et de sa priorité sur l'anti-spam.
+- `node server/test-v4-tactical-dialogue.js` — **18 scénarios de conversations symboliques** entre 9, 10 et avants, et annonces de pied ; il ne valide pas encore une stratégie sur 80 minutes.
 
 Travail encore à réaliser :
 - **G31** : la décision `ASK/REPLY/ANNOUNCE` par le 9, avis du 10 et des avants, réceptions individuelles, replanification, dialogues de touche/mêlée.
 - **G32** : efforts de mêlée normaux/forts, rotation physique, risques de déséquilibre et fautes, règles appliquées par l'arbitre, aucune réussite automatique sur appel.
+- **G37** : raccorder le signal individuel `SCRUM_8_GOING` du 8 au moteur et à la réévaluation du plan du 9 ; signal perdu et ballon unique à tester.
+- **G38** : profils ENG/RSA/NZ à partir de cinq vrais matchs et des données datées 2026, voir document 12.
 - **G33** : identification d'un jeu stagnant, préférence éventuelle `UP_AND_UNDER`, annonce préalable, attente de réception par partenaires proches, chasseurs onside, résultat physique.
 - **G04/G08/G09** : intégrer la communication individuelle et l'horloge déterministe au moteur, sinon les conversations restent un outil sans gameplay.
 - **G19/G20** : conserver les phases réglementaires existantes et y raccorder les nouveaux choix ; tout changement doit passer `test-melee.js`, `test-touche.js`, `test-invariants.js` et comparaison multi-graines.
