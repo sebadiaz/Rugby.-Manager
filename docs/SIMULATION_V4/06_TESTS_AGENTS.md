@@ -138,6 +138,15 @@ Le corpus de **12 observations dans cinq matchs ENG/RSA/NZ** est vérifié par `
 **Interdiction architecturale maintenue** : le 9 consulte mais ne pilote aucun mouvement des 29 autres ; les trajectoires et buts sont sélectionnés individuellement, et une parole reçue n'est qu'une information.
 
 ## 5. Instrumentation attendue pour chaque test
+## 4 sexies. MICRO-01..07 et MIC-01..12 : **prouver une vraie décision dans chaque instant**
+
+`14_ANALYSE_MICRO_ACTIONS_TOP14.md` et `fixtures/micro_actions_top14.json` apportent **47 micro-étapes** à travers **7 études**, dont **22 contre-factuels**. `node server/test-v4-top14-micro-actions.js` confirme la cohérence documentaire : sources, acteurs, perceptions **hypothétiques**, buts, 2+ options, garde-fous et mouvements individuels. Cela **ne constitue pas** un résultat moteur.
+
+Les douze tests d'acceptation `MIC-01..MIC-12` décrits dans le document 14 restent à écrire : défenseur qui suit ou non Willis ; vraie lecture de la défense par Flament ; 9 qui annule une prise quand 8 annonce départ ; ailier qui court après ras-de-terre ; talonneur qui redevient receveur après touche ; défenseur pouvant changer de cible avec inertie et erreurs ; bascule au petit côté malgré plan de jeu large ; transitions de possession après pied perdu.
+
+Les 22 variantes doivent changer **une seule** observation pertinente, avec graine fixe, puis tracer les buts et actions de **chaque agent concerné**. Rejeter toute implémentation où le leurre ordonne au défenseur de le suivre ou où le coach écrit le destin des 30 joueurs.
+
+
 
 Un test qui échoue doit fournir au minimum :
 
