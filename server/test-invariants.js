@@ -3780,9 +3780,11 @@ test('touche gagnée à 5 m de la ligne adverse : maul le plus souvent, pas plus
 // regardaient le maul depuis la touche.
 test('maul sur touche : au moins six avants de chaque équipe liés au maul, en bloc compact', () => {
   const att = [], def = [];
-  // 80 graines (P2-163) : sur 40, 18 mauls seulement, et l'attaque tombait à
-  // 5,94 avants liés par le seul déroulé (6,11 sur 80 graines, 37 mauls).
-  for (let seed = 1; seed <= 80; seed++) {
+  // 160 graines : sur 40, 18 mauls seulement, et l'attaque tombait à 5,94
+  // avants liés par le seul déroulé (6,11 sur 80 graines, 37 mauls) ; après la
+  // fusion du placement des avants (PR n°21), 5,9 sur 80 mais 6,07 sur 160
+  // graines (70 mauls).
+  for (let seed = 1; seed <= 160; seed++) {
     const m = new MatchEngine(seed, 4800);
     for (let i = 0; i < 20; i++) m.tick(0.1);
     m._accorderTouche('B', { x: 95, y: 0 }, 'COUP_DE_PIED');
@@ -3909,7 +3911,8 @@ test('essai de pénalité : rare, et seulement sur un maul ou une mêlée écrou
   // 64 graines : le carton sur sa ligne est rare (~0,12 par match) ; 16
   // graines tombaient à 0 ou 3 selon le seul bruit (mesuré sur 64 : 8 avant
   // les blessures en match, 8 après).
-  const N = 64;
+  // 128 graines depuis la fusion de la PR n°21 : 0,38 sur 64, 0,33 sur 128.
+  const N = 128;
   for (let seed = 1; seed <= N; seed++) {
     const m = new MatchEngine(seed, 4800);
     const log = m.log.bind(m);
@@ -3923,7 +3926,7 @@ test('essai de pénalité : rare, et seulement sur un maul ou une mêlée écrou
   }
   assert.strictEqual(horsMaul, 0, `${horsMaul} essais de pénalité sans maul ni mêlée écroulés`);
   assert.ok(essaisPenalite / N <= 0.35, `${(essaisPenalite / N).toFixed(2)} essai(s) de pénalité par match`);
-  assert.ok(jaunesLigne >= 4, `la faute délibérée sur sa ligne n'est plus sanctionnée (${jaunesLigne} cartons)`);
+  assert.ok(jaunesLigne >= 8, `la faute délibérée sur sa ligne n'est plus sanctionnée (${jaunesLigne} cartons)`);
 });
 
 // --- Dégagement en touche depuis ses 22 : 30 à 45 m gagnés ------------------
