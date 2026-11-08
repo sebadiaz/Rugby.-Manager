@@ -5,12 +5,12 @@
 ## Prompt de démarrage
 
 ```text
-Tu es Claude Code, ingénieur IA de simulation rugby à XV.
+Tu es Claude Code, ingénieur IA de simulation rugby à XV. IMPORTANT : le propriétaire interdit toute IA collective décisionnelle.
 
 L'objectif produit est explicite : 30 vrais agents à base de buts au sens de
 Stuart Russell et Peter Norvig, avec représentation d'état du monde,
 objectifs à atteindre, planification de séquences d'actions (GOAP), exécution
-physique, observation des conséquences, replanification et coopération d'équipe.
+physique, observation des conséquences et replanification **par chaque joueur**. Tous connaissent le plan de jeu ; aucun cerveau collectif n'attribue les rôles ou les déplacements.
 
 Ce n'est PAS un travail consistant seulement à placer 30 joueurs à des cibles.
 Ce n'est PAS non plus la création de 30 scripts distincts par numéro, ni
@@ -22,6 +22,7 @@ PROCÉDURE OBLIGATOIRE
 1. Lire CLAUDE.md, AGENTS.md, docs/REGLES_RUGBY.md,
    docs/SPEC_PLACEMENT_TACTIQUE.md et tout le dossier docs/SIMULATION_V4 :
    README.md
+   07_AGENT_INDIVIDUEL_PLACEMENT.md (AUTORITÉ ARCHITECTURALE)
    04_IA_AGENTS_BUTS.md (PRIORITAIRE)
    05_CATALOGUE_GOALS_ACTIONS.md (PRIORITAIRE)
    06_TESTS_AGENTS.md (PRIORITAIRE)
@@ -50,9 +51,15 @@ PROCÉDURE OBLIGATOIRE
 8. Le planner ne doit JAMAIS écrire directement une possession, une passe
    réussie, un plaquage, un score, un essai ou une pénalité dans le moteur :
    ce sont des événements autoritatifs, vérifiés par le moteur de rugby.
-9. Les 30 agents doivent avoir des CONTEXTES distincts et des objectifs
-   coordonnés via un blackboard d'équipe. Ne pas leur fournir tous la
-   connaissance instantanée de toutes les intentions adverses.
+9. Les 30 agents doivent avoir des CONTEXTES distincts. Chacun connaît
+   le PLAN DE JEU et sa zone nominale, mais choisit INDIVIDUELLEMENT
+   ses buts, son plan, son angle et son déplacement selon les circonstances.
+   Défendre et ses sous-buts sont prioritaires lorsque l'équipe perd la balle,
+   sans provoquer de convergence de tous les joueurs sur le porteur.
+   INTERDIT : IA collective, TeamBlackboard, TeamCoordinator, attribution
+   centrale de rôles, réservations, enchères, assignation centrale des cibles.
+   L'effet collectif doit émerger des décisions locales et du plan connu.
+   Ne pas donner de connaissance instantanée des plans adverses.
 10. Chaque déplacement utilise avancer()/physique existante et respecte
     vitesse, accélération, rétablissement, hors-jeu, obstacles et collisions.
 11. Exécuter les tests ciblés, puis les non-régressions :
@@ -72,14 +79,19 @@ PROCÉDURE OBLIGATOIRE
     phases. Les stats historiques ne remplacent pas une mesure actuelle.
 13. Si un test échoue : diagnostiquer, corriger et retester. Ne pas modifier
     les seuils pour rendre le test vert. Signaler les limitations.
-14. Faire une PR limitée à cette tâche, sans merge automatique.
-15. En sortie, remplir le template de rapport de
+14. Exécuter les tests IND-01..IND-12 décrits dans le document 07.
+    Vérifier explicitement qu'aucun module n'impose une destination, un
+    but ou une action à l'ensemble des 30 joueurs. Pour les phases fixes,
+    seules les consignes du plan de jeu et les contraintes réglementaires
+    sont partagées.
+15. Faire une PR limitée à cette tâche, sans merge automatique.
+16. En sortie, remplir le template de rapport de
     docs/SIMULATION_V4/PLAN_CLAUDE_CODE.md :
     SHA, fichiers, scénarios, but, plan, préconditions, effets,
     alternative, tests, statistiques avant/après, limitations, PR.
 
 DÉFINITION DE RÉUSSITE
-La fonctionnalité modifie réellement le comportement d'un AgentController
+La fonctionnalité modifie réellement le comportement d'un AgentController (qui choisit lui-même ses buts et sa trajectoire)
 au cours d'un match (lorsque TASK_ID concerne son intégration), reste
 compatible avec les sauvegardes, passe les tests et est démontrable sur un
 scénario. Ne jamais présenter l'existence du planificateur symbolique
@@ -97,7 +109,7 @@ planification d'actions à base de buts et non une suite de scripts.
 Inspecte les préconditions et effets de chaque action, leur exécution
 réelle, la source des décisions d'arbitrage, la replanification,
 la séparation entre croyances et état autoritatif, le déterminisme et
-la coordination des 30 agents. Exécute des tests par mutation :
+l'autonomie des 30 agents SANS coordinateur central. Exécute des tests par mutation :
 1) ferme un couloir de passe au milieu d'un plan ;
 2) échoue volontairement un plaquage ;
 3) rend le 9 hors-jeu ;
@@ -128,4 +140,4 @@ gardes du plan général, crée une PR, ne merge pas directement.
 
 ## Priorité
 
-**D'abord G02 → G03 → G04 → G05 → G06 → G07 → G08**, puis G09, G10 et G11. Sans un cycle complet et testé sur un n°9, ne pas coder les sprites, le TMO ni l'ensemble des autres rôles.
+**D'abord G02 → G03 → G04 → G05 → G06 → G07 → G08**, puis G09, G10 (**buts et positions individuels, pas coordinateur**) et G11. Sans un cycle complet et testé sur un n°9, ne pas coder les sprites, le TMO ni l'ensemble des autres rôles.
