@@ -26,6 +26,7 @@ PROCÉDURE OBLIGATOIRE
    08_COMMUNICATION_LOCALE.md (messages locaux, pas de chef collectif)
    09_CHOIX_STRATEGIQUES_INDIVIDUELS.md (mêlée, touche, jeu)
    10_DIALOGUES_TACTIQUES_DU_9.md (9 initie la demande, 10 conseille)
+   11_MATCHS_REELS_ET_PRISES_DE_DECISION.md (16 actions, 4 matchs, sources vérifiables)
    04_IA_AGENTS_BUTS.md (PRIORITAIRE)
    05_CATALOGUE_GOALS_ACTIONS.md (PRIORITAIRE)
    06_TESTS_AGENTS.md (PRIORITAIRE)
@@ -73,6 +74,15 @@ PROCÉDURE OBLIGATOIRE
    Tester : node server/test-v4-local-communication.js
             node server/test-v4-tactical-dialogue.js
    Se référer aux tâches RM4-G31, G32 et G33 du plan.
+   DONNÉES DE MATCHS : valider le corpus via
+   node server/test-v4-observations-matchs.js
+   Ne jamais inventer de discussions réellement tenues par Dupont/son 10
+   ou Ben Earl/son 9 ni de coordonnées officielles des 30 joueurs.
+   Les 16 actions historiques sont des REFERENCES OBSERVÉES, les fixtures
+   concrètes des HYPOTHÈSES. Pour reproduire les alternatives, utiliser
+   RM4-G34 (sources/baseline), G35 (16 paires de scènes) et G36
+   (calibration des choix avec 100/500 matchs). Le même joueur doit
+   savoir abandonner une stratégie devenue impossible.
 10. Les 30 agents doivent avoir des CONTEXTES distincts. Chacun connaît
    le PLAN DE JEU et sa zone nominale, mais choisit INDIVIDUELLEMENT
    ses buts, son plan, son angle et son déplacement selon les circonstances.
@@ -85,6 +95,7 @@ PROCÉDURE OBLIGATOIRE
 10. Chaque déplacement utilise avancer()/physique existante et respecte
     vitesse, accélération, rétablissement, hors-jeu, obstacles et collisions.
 11. Exécuter les tests ciblés, puis les non-régressions :
+    node server/test-v4-observations-matchs.js
     node server/test-v4-local-communication.js
     node server/test-v4-tactical-dialogue.js
     node server/test-v4-goap-planner.js
@@ -164,4 +175,4 @@ gardes du plan général, crée une PR, ne merge pas directement.
 
 ## Priorité
 
-**D'abord G02 → G03 → G04 → G05 → G06 → G07 → G08**, puis G09–G11. Intégrer ensuite les dialogues du 9 (G31), les options de mêlée et leur arbitrage (G32) et la chandelle annoncée (G33), en lien avec G18–G20. **Le 9 demande ; chacun décide de ses actions.** Sans un cycle complet et testé sur un n°9, ne pas coder les sprites, le TMO ni l'ensemble des autres rôles.
+**D'abord G02 → G03 → G04 → G05 → G06 → G07 → G08**, puis G09–G11. La recherche de matchs est conservée dans G34–G36 : elle oriente les capacités et les tests, mais **ne justifie pas** de sauter les dépendances GOAP/physique. Intégrer ensuite les dialogues du 9 (G31), les options de mêlée et leur arbitrage (G32) et la chandelle annoncée (G33), en lien avec G18–G20. **Le 9 demande ; chacun décide de ses actions.** Sans un cycle complet et testé sur un n°9, ne pas coder les sprites, le TMO ni l'ensemble des autres rôles.
