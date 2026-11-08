@@ -11,6 +11,23 @@ le ballon. Interdiction d'ajouter un TeamCoordinator, TeamBlackboard,
 une allocation centralisée de rôles, ou des positions imposées.
 LIRE D'ABORD docs/SIMULATION_V4/07_AGENT_INDIVIDUEL_PLACEMENT.md.
 
+
+**MICRO-ACTIONS EN MATCHS REELS — EXIGENCE PRIORITAIRE :**
+Lire docs/SIMULATION_V4/14_ANALYSE_MICRO_ACTIONS_TOP14.md.
+47 micro-etapes issues de 7 etudes, 22 variantes, 12 tests moteur
+MIC-01..12 futurs. Exemple majeur : Toulouse-UBB finale 2025,
+Graou→Flament→Jelonch, leurres Cros/Willis, defenseurs Samu/Moefana
+et Gazzotti aux lectures individuelles. JAMAIS de leurre scripté
+qui ordonne à Moefana de suivre Willis, ni d'essai forcé !
+Les sources sont tres precises sur certains gestes mais pas sur la
+PENSÉE des joueurs ni leurs paroles ou trajectoires image par image.
+LIRE le corpus fixtures/micro_actions_top14.json : 47 etapes,
+chacune avec faits rapportes et hypotheses GOAP distinctes.
+Nouveau catalogue : 51 buts, 66 actions, taches RM4-G42-G44.
+Tests documentaires : node server/test-v4-top14-micro-actions.js et
+node server/test-v4-goals-actions-doc.js.
+
+
 **NOUVEAU : ETUDE DU TOP 14**
 LIRE docs/SIMULATION_V4/13_MATCHS_TOP14_DECISIONS.md et
 fixtures/observations_top14_2025_2026.json : 9 matchs, 19
