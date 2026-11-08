@@ -6059,8 +6059,15 @@
           carrierTeam: enVol || auSolLoose || enPasse || enPhaseStatique ? null : this.porteur.team,
           carrierNumber: enVol || auSolLoose || enPasse || enPhaseStatique ? null : this.porteur.numero,
         },
-        arbitre: { x: this.arbitrePos.x, y: this.arbitrePos.y },
-        assistants: this.arbitresAssistants.map(a => ({ ...a })),
+        arbitre: {
+          x: this.arbitrePos.x, y: this.arbitrePos.y,
+          signal: this.avantage ? 'AVANTAGE' : this.phase === 'ESSAI' ? 'ESSAI' : null,
+        },
+        assistants: this.arbitresAssistants.map(a => ({
+          ...a,
+          signal: this.phase === 'TOUCHE' && Math.abs(a.y - this.ruckPoint.y) < 2
+            ? 'TOUCHE' : null,
+        })),
         possession: this.possession,
         phase: this.phase,
         // État détaillé du maul en cours (null hors maul), pour l'affichage.
