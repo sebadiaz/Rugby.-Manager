@@ -324,4 +324,21 @@ test('phaseId est un identifiant opaque validé, pas une position ou ordre',()=>
     {phaseId:'<script>'})),/phaseId/);
   assert.throws(()=>com.hear(actor('A9',50,35,1,{phaseId:'!'})),/phaseId/);
 });
+
+test('"prêt" suivi immédiatement de "j y vais" n est pas bloqué par anti-spam',()=>{
+  const com=new LocalCommunication(); // cooldown standard = 0.7 s
+  assert.strictEqual(com.emit(speaker('A8','SCRUM_8_READY',50,35,0,
+    {toId:'A9',phaseId:'S24'})).accepted,true);
+  const urgent=com.emit(speaker('A8','SCRUM_8_GOING',50,35,.15,
+    {toId:'A9',phaseId:'S24'}));
+  assert.strictEqual(urgent.accepted,true);
+  assert.strictEqual(com.hear(actor('A9',51,35,.32,{phaseId:'S24'})).length,2);
+  assert.deepStrictEqual(com.emit(speaker('A8','SCRUM_8_GOING',50,35,.34,
+    {toId:'A9',phaseId:'S24'})),{accepted:false,reason:'DUPLICATE_PHASE_CALL'});
+});
+test('le signal de départ du 8 exige une phase actuelle',()=>{
+  const com=new LocalCommunication();
+  assert.throws(()=>com.emit(speaker('A8','SCRUM_8_GOING',50,35,0,
+    {toId:'A9'})),/phaseId obligatoire/);
+});
 console.log(tests+' tests de communication locale réussis (transport seul)');
