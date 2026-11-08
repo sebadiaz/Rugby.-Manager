@@ -100,6 +100,23 @@ PROCÉDURE OBLIGATOIRE
    2026 contient de faux zéros pour mêlées, touches, passes, coups de pied ;
    exclure ces valeurs de la calibration en les marquant MISSING/null.
    Nouvelles tâches RM4-G39, G40, G41 du PLAN_CLAUDE_CODE.md.
+
+   C'EST ENCORE TROP LÉGER de compter seulement les matchs et les essais.
+   Le nouveau document 14 décompose 7 séquences en 47 MICRO-DÉCISIONS :
+   pour CHAQUE joueur, perception partielle, but propre, 2+ actions,
+   déplacement choisi seul, geste physique, réaction des défenseurs et
+   erreurs possibles. Traiter les 22 branches de contre-factuels comme
+   tests à coder, pas comme résultats assurés. Priorité : finale 2025,
+   Graou→Flament→Jelonch, courses-leurres Cros/Willis, Moefana/Samu qui
+   montent tandis que Gazzotti reste, et lecture individuelle de Flament.
+   Il faut prouver que, si Moefana change seul son marquage, le plan de
+   Flament/Jelonch peut échouer sans que 29 joueurs soient téléportés.
+   Attention sources divergentes : pénalité versus coup franc sur la
+   reprise du premier essai ; ne pas inventer de chronométrage vidéo.
+   Nouveau catalogue : 51 buts et 66 actions candidates, à valider via
+   node server/test-v4-goals-actions-doc.js.
+   Voir RM4-G42, G43, G44 du plan. Le moteur GOAP doit rester l'objectif.
+
    Tester : node server/test-v4-top14-data.js
    Ne jamais inventer de discussions réellement tenues par Dupont/son 10
    ou Ben Earl/son 9 ni de coordonnées officielles des 30 joueurs.
@@ -123,6 +140,7 @@ PROCÉDURE OBLIGATOIRE
     node server/test-v4-observations-matchs.js
     node server/test-v4-styles-match-data.js
     node server/test-v4-top14-data.js
+    node server/test-v4-top14-micro-actions.js
     node server/test-v4-local-communication.js
     node server/test-v4-tactical-dialogue.js
     node server/test-v4-goap-planner.js
@@ -202,4 +220,4 @@ gardes du plan général, crée une PR, ne merge pas directement.
 
 ## Priorité
 
-**D'abord G02 → G03 → G04 → G05 → G06 → G07 → G08**, puis G09–G11. La recherche de matchs et Top 14 est conservée dans G34–G41 : elle oriente les capacités et les tests, mais **ne justifie pas** de sauter les dépendances GOAP/physique. Intégrer ensuite les dialogues du 9 (G31), les options de mêlée et leur arbitrage (G32) et la chandelle annoncée (G33), en lien avec G18–G20. **Le 9 demande ; chacun décide de ses actions.** Sans un cycle complet et testé sur un n°9, ne pas coder les sprites, le TMO ni l'ensemble des autres rôles.
+**D'abord G02 → G03 → G04 → G05 → G06 → G07 → G08**, puis G09–G11. La recherche de matchs et Top 14 est conservée dans G34–G44 : elle oriente les capacités et les tests, mais **ne justifie pas** de sauter les dépendances GOAP/physique. Intégrer ensuite les dialogues du 9 (G31), les options de mêlée et leur arbitrage (G32) et la chandelle annoncée (G33), en lien avec G18–G20. **Le 9 demande ; chacun décide de ses actions.** Sans un cycle complet et testé sur un n°9, ne pas coder les sprites, le TMO ni l'ensemble des autres rôles.
