@@ -31,6 +31,7 @@
 | **M7 — Recherche de matchs réels** | G34–G36 | observations sourcées, matchs de référence rejoués en branches, calibration des choix | REAL-01..16, comparaisons chiffrées et sources |
 | **M8 — Sortie 8→9 et styles internationaux** | G37–G38 | le 8 prévient le 9 avant son départ réel ; styles ENG/RSA/NZ documentés et interchangeables | S8-01..09 et STYLE-04..10 |
 | **M9 — Benchmark Top 14** | G39–G41 | neuf matchs documentés, 19 scènes, six feuilles statistiques LNR valides et données manquantes exclues | TOP14-01..19, 30/100/500 graines, aucun script de club |
+| **M10 — Micro-actions en match** | G42–G44 | 7 décompositions, 47 micro-choix par joueur, 22 branches de décision, 51 buts et 66 actions | MIC-01..12, 22 contre-tests, positionnement individuel |
 
 Les tâches G00 et G01 sont **commencées comme références/documentation** ; leur complétion finale exige toujours les tests mentionnés. La branche de documentation ne remplace pas le développement M1–M5.
 
@@ -58,6 +59,7 @@ node server/test-v4-observations-matchs.js
 node server/test-v4-styles-match-data.js
 node server/test-v4-goals-actions-doc.js
 node server/test-v4-top14-data.js
+node server/test-v4-top14-micro-actions.js
 node server/test-v4-goap-planner.js` (G01–G14).
 - **Rejet si :** un script spécial `if(numero === 9)` est utilisé comme « planner ».
 
@@ -404,6 +406,39 @@ Ces trois tâches étendent l'architecture **individuelle** des tâches G04–G2
 - **Tests :** `TOP14-12..19`, tests de stats, scénario de données manquantes, simulation 30/100/500 graines. Ne pas déclarer « calibré » avant vrai moteur.
 
 **Statut :** le nouveau test `server/test-v4-top14-data.js` valide **le corpus** (9 matchs, 19 observations, 6 feuilles fiables) et son garde-fou contre les faux zéros. Les tests `TOP14-01..19` et la calibration GOAP Top 14 sont **à développer**, pas réalisés.
+
+## M10 — Ne plus coder les matchs comme des résumés : micro-décisions des 30 agents
+
+**Référence prioritaire :** `14_ANALYSE_MICRO_ACTIONS_TOP14.md`, corpus détaillé `fixtures/micro_actions_top14.json` : **sept études, 47 micro-étapes, 22 variantes contrefactuelles**. Les buts et mouvements proposés sont explicitement **des inférences**, même quand les actions de match sont vérifiées par Eurosport/Rugbyrama/LNR. Un scénario (La Rochelle–Bayonne J9 2026/27) est exclusivement **synthétique fondé sur des statistiques**. **51 buts GOAP et 66 actions candidates** sont définis dans `05_CATALOGUE_GOALS_ACTIONS.md`.
+
+### RM4-G42 — Analyse tactique détaillée et trace individuelle action par action
+
+- **Dépendances :** G34/G39 pour les corpus ; G04/G05/G08 pour le raccordement à la perception et au contrôleur individuel.
+- **Fichiers :** `docs/SIMULATION_V4/14_ANALYSE_MICRO_ACTIONS_TOP14.md`, `fixtures/micro_actions_top14.json`, `server/test-v4-top14-micro-actions.js`, `engine/ai/agent-controller.js`, `engine/ai/telemetry.js`, `server/v4/decision-trace.js`.
+- **Réalisation :** chaque étape décrit ACTEUR, fait sourcé, observation **partielle**, but, 2+ options, gardes, déplacement individuel et conséquence physique éventuelle. Traces de match `{tick,agentId,beliefs,goalBefore,goalAfter,optionsRejected,chosenAction,individualMovement,guards,outcome}`, avec cause du choix et âge des croyances. Le 9, le 8, le 10, le talonneur, les avants, les leurres et les défenseurs doivent tous produire **leurs propres décisions**. Ne jamais prêter les intentions réelles d'un joueur à la source, ni déduire une trajectoire exacte des statistiques.
+- **Particularité :** dans Toulouse–UBB 2025, Rugbyrama/Eurosport décrivent un bloc près de Flament, la montée Samu/Moefana désynchronisée de Gazzotti, le leurre Willis, la course Jelonch et la passe de Flament. **Le point de reprise est décrit comme pénalité/coup franc selon la source : afficher la divergence, ne pas inventer un type de restart historique.** Prendre une configuration réglementaire explicite pour le test moteur.
+- **Tests :** `node server/test-v4-top14-micro-actions.js` (déjà livré, 47/22 vérifiés **documentairement**), `node server/test-v4-goals-actions-doc.js` (51 buts / 66 actions), plus tests de traçage réel à créer.
+- **Rejet si :** un événement historique devient un résultat forcé, une trace utilise l'état omniscient de l'adversaire comme perception du joueur ou la vidéo non visionnée reçoit un faux horodatage.
+
+### RM4-G43 — Intégrer 22 branches de micro-actions dans le vrai moteur, avec adversaires qui choisissent
+
+- **Dépendances :** G02–G11, G15–G20, G31–G33, G37, G40.
+- **Fichiers :** `server/v4/scenario-harness.js`, `server/test-v4-micro-actions-engine.js`, `engine/ai/roles/backs.js`, `engine/ai/roles/back-row.js`, `engine/ai/roles/halfback.js`, `engine/ai/actions.js`, `engine/rugby-engine.js`.
+- **Réalisation :** sept cas, 47 décisions nominatives et 22 contre-factuels. D'abord Jelonch en finale 2025 (13 étapes, **4 variantes**). Faire en sorte que Willis court pour devenir une **option/leurre crédible**, sans garantir que Moefana le suive ; Flament voit l'espace changer et choisit entre `CARRY`, `PASS_WILLIS`, `PASS_JELONCH`. Moefana/Samu/Gazzotti ne reçoivent aucune affectation centrale : chacun marque la menace qu'il **perçoit**, avec délai de réaction, inertie et possibilité d'erreur. Puis Lucu→Penaud rasant, Hughes départ du 8 et notification au 9, Dupont→Ntamack feinte puis pied rasant vers Dupont→Chocobares, Dupont–Mauvaka touche et une-deux, sortie des 22 de Dupont et six variantes statistiques rochelaises.
+- **Contraintes :** les appels 8→9 restent locaux et distincts de la possession ; le 9 ne se déplace jamais directement à cause du bus vocal ; un seul porteur ; pas de plaquage avant possession ; ballon en l'air / au sol / au pied réellement simulé ; défense replanifiée localement ; aucun résultat d'essai issu directement de GOAP.
+- **Tests :** `MIC-01..MIC-12` (nouveaux) + les 22 branches du JSON ; vérifier pour chaque variante le **changement d'option ou de faisabilité**, pas un résultat identique forcé ; test d'invariants de mêlée, touche, ruck, passe avant, hors-jeu et du porteur unique.
+- **Rejet si :** un joueur leurre « force » le cerveau d'un défenseur, si un 10 feinte une passe réellement libérée, si le 9 reçoit son ballon par télépathie, ou si le même schéma produit toujours un essai.
+
+### RM4-G44 — Calibrer les transitions causales et les erreurs, pas seulement la possession ou les points
+
+- **Dépendances :** G28/G29/G36/G41 puis G42/G43.
+- **Fichiers :** `server/v4/compare-micro-traces.js`, `server/test-v4-micro-decisions-stats.js`, `docs/SIMULATION_V4/CALIBRATION_MICRO_ACTIONS.md`.
+- **Réalisation :** 30 graines pour PR, 100 pour intégration, 500 pour campagnes longues, avec les mêmes 30 joueurs/seed et un seul changement : défenseur suit/ignore le leurre, 9 entend/n'entend pas 8, soutiens onside/hors-jeu, 10 botte/court, maul bloque/passe possible, petit côté libre/couvert. Mesurer `P(goalChange|observationChanged)`, succès/échec de chaque passe, erreur de marquage, temps d'arrivée soutien, nombre de courses avortées, réceptions contestées, nombre de violations de lois, distribution des buts. Calibrer en utilisant les données LNR **datées** ; un taux moyen de 3,18 s de ruck n'est pas le chronomètre de tous les rucks.
+- **Critères :** au moins deux plans/trajectoires pour une même scène selon circonstances ; variations de décisions par joueur et non par script de club ; temps simulé indépendant FPS ; aucun échec impossible à déclencher ; aucune position / audio réel inventé.
+- **Tests :** `MIC-01..12`, `STYLE-01..10`, `TOP14-01..19`, invariants, décisions multi-graines ; signaux 8/9 avec perte/expiration/annulation.
+- **Rejet si :** l'agent dispose de coordonnées/historiques cachés, si une passe est encore jouée après que le porteur a perdu le ballon, ou si la distribution correspond à une ligne de score déterministe.
+
+**Ordre de réalisation recommandé** : une **seule séquence complète** du début à la fin (Jelonch) avec les défenseurs autonomes et preuve par contre-factuel, puis départ Hughes (8↔9), puis pied Lucu→Penaud et touche Dupont–Mauvaka. Ne pas multiplier les catalogues de scénarios moteur sans avoir un agent réellement branché à `MatchEngine`.
 
 ## 2. Commandes générales de garde (sur chaque tranche pertinente)
 
