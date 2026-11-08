@@ -11,6 +11,19 @@ le ballon. Interdiction d'ajouter un TeamCoordinator, TeamBlackboard,
 une allocation centralisée de rôles, ou des positions imposées.
 LIRE D'ABORD docs/SIMULATION_V4/07_AGENT_INDIVIDUEL_PLACEMENT.md.
 
+**AJOUT VALIDÉ — SORTIE DE MÊLÉE PAR 8 ET STYLES INTERNATIONAUX :**
+LIRE docs/SIMULATION_V4/12_STYLES_ANGLETERRE_AFRIQUE_DU_SUD_NOUVELLE_ZELANDE.md.
+Le 8 DOIT annoncer au 9 (SCRUM_8_GOING, phaseId de la mêlée)
+qu'il part récupérer le ballon AVANT le geste. SCRUM_8_READY ne signifie
+pas qu'il part. Le 9 qui entend replanifie SEUL vers soutien/couverture,
+plutôt que tenter la même prise ; résultat moteur et un seul porteur.
+Aucune IA collective. Les trois styles ENG/RSA/NZ proviennent de matchs
+sourcés, leurs plans de jeu doivent rester interchangeables entre clubs.
+Tests transport : test-v4-local-communication.js,
+test-v4-tactical-dialogue.js et test-v4-styles-match-data.js.
+G37/G38 sont DES TACHES A CODER, pas des fonctionnalités déjà intégrées.
+
+
 RECHERCHE DE MATCHS REELS (novembre 2026) :
 LIRE docs/SIMULATION_V4/11_MATCHS_REELS_ET_PRISES_DE_DECISION.md
 et fixtures/observations_matchs_reels.json (16 séquences, 4 matchs).
