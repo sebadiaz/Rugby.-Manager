@@ -4582,12 +4582,6 @@ function optionsLancement() {
     verifier('banc : après rechargement, le même match reste accessible', await continuerJusquAuMatch(pgBanc));
     await pgBanc.click('#btnApercuJouerMatch');
     await pgBanc.click('#btnConsigneMatch');
-    const textesConsigne = await pgBanc.evaluate(() => ({
-      note: document.getElementById('miTempsNote').textContent,
-      sousTitre: document.getElementById('miTempsSousTitre').textContent,
-    }));
-    verifier('consigne en cours de jeu : le panneau ne parle ni de « seconde période » ni d\'un match « pas joué » (QA-RM-005)',
-      !/seconde p|Rien n.est jou/.test(textesConsigne.note + ' ' + textesConsigne.sousTitre), textesConsigne);
     const ligneReprise = pgBanc.locator('.ligneRemplacant').first();
     const detailRepris = await ligneReprise.locator('.detailRemplacant').textContent();
     verifier('banc : la demande au n°3 reste en attente après reprise', repriseBanc
@@ -4717,6 +4711,12 @@ function optionsLancement() {
     verifier('protocole : ouvert avec un remplaçant temporaire du banc', p && p.joueurIdTemp != null, JSON.stringify(p));
     await pgP.click('#btnConsigneMatch');
     await pgP.waitForTimeout(400);
+    const textesConsigne = await pgP.evaluate(() => ({
+      titre: document.getElementById('miTempsTitre').textContent, note: document.getElementById('miTempsNote').textContent,
+      sousTitre: document.getElementById('miTempsSousTitre').textContent,
+    }));
+    verifier('consigne en cours de jeu : le panneau ne parle ni de « seconde période » ni d\'un match « pas joué » (QA-RM-005)',
+      !/seconde p|Rien n.est jou/.test(textesConsigne.note + ' ' + textesConsigne.sousTitre), textesConsigne);
     const lignes = await pgP.$$eval('.ligneRemplacant', (ls) => ls.map((l) => ({ t: l.textContent, dis: l.querySelector('button').disabled })));
     verifier('protocole : le panneau du banc montre le remplacement temporaire, bouton bloqué',
       lignes.some((l) => /remplacement temporaire au n°7/.test(l.t) && l.dis), JSON.stringify(lignes));
