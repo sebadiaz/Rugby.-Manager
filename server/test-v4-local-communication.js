@@ -20,6 +20,7 @@ test('catalogue court fermé, descriptions intelligibles', () => {
     'LINEOUT_ASK', 'LINEOUT_FRONT', 'LINEOUT_MIDDLE', 'LINEOUT_BACK',
     'LINEOUT_MAUL', 'LINEOUT_WIDE',
     'SCRUM_8_ASK', 'SCRUM_8_READY', 'SCRUM_8_BLOCKED', 'SCRUM_8_BREAK',
+    'SCRUM_8_GOING', 'SCRUM_8_ABORT', 'SCRUM_9_ACK',
     'SCRUM_OPTIONS_ASK', 'SCRUM_NEAR', 'SCRUM_WIDE', 'SCRUM_ADVANCE',
     'SCRUM_ASK', 'SCRUM_STEADY',
     'SCRUM_DRIVE', 'SCRUM_PRESSURE', 'SCRUM_UNSTABLE',
@@ -263,5 +264,64 @@ test('une réponse sans question réellement entendue est interdite', () => {
   assert.strictEqual(com.hear(actor('A8',51,35,1.3)).length,1);
   assert.throws(()=>com.emit(speaker('A10','SCRUM_WIDE',51,35,1.4,{toId:'A9',replyTo:q.id})),/réponse sans demande/);
   assert.strictEqual(com.emit(speaker('A8','SCRUM_8_READY',51,35,1.5,{toId:'A9',replyTo:q.id})).accepted,true);
+});
+
+test('le 8 annonce au 9 son départ imminent, distinct de sa disponibilité',()=>{
+  const com=new LocalCommunication({cooldownSeconds:0});
+  com.emit(speaker('A8','SCRUM_8_READY',50,35,0,{toId:'A9',phaseId:'S17'}));
+  const ready=com.hear(actor('A9',51,35,.25,{phaseId:'S17'}));
+  assert.strictEqual(ready[0].kind,'SCRUM_8_READY');
+  com.emit(speaker('A8','SCRUM_8_GOING',50,35,.3,{toId:'A9',phaseId:'S17'}));
+  const going=com.hear(actor('A9',51,35,.45,{phaseId:'S17'}));
+  assert.deepStrictEqual(going.map(x=>x.kind),['SCRUM_8_GOING']);
+  assert.strictEqual(going[0].from,'A8');
+  assert.strictEqual(going[0].phaseId,'S17');
+  assert.strictEqual('carrierId' in going[0],false);
+});
+test('le 9 ne peut entendre le signal du 8 avant la latence',()=>{
+  const com=new LocalCommunication({cooldownSeconds:0});
+  com.emit(speaker('A8','SCRUM_8_GOING',50,35,0,{toId:'A9',phaseId:'S17'}));
+  assert.deepStrictEqual(com.hear(actor('A9',51,35,.04,{phaseId:'S17'})),[]);
+  assert.strictEqual(com.hear(actor('A9',51,35,.2,{phaseId:'S17'}))[0].kind,'SCRUM_8_GOING');
+  assert.deepStrictEqual(com.hear(actor('A9',51,35,.3,{phaseId:'S17'})),[]);
+});
+test('les appels de la mêlée précédente ne commandent pas une nouvelle sortie',()=>{
+  const com=new LocalCommunication({cooldownSeconds:0});
+  com.emit(speaker('A8','SCRUM_8_GOING',50,35,1,{toId:'A9',phaseId:'S17'}));
+  assert.deepStrictEqual(com.hear(actor('A9',50,35,1.25,{phaseId:'S18'})),[]);
+  assert.strictEqual(com.hear(actor('A9',50,35,1.25,{phaseId:'S17'})).length,1);
+});
+test('un autre joueur ne peut se faire passer pour le 8 ou le 9',()=>{
+  const com=new LocalCommunication({cooldownSeconds:0});
+  assert.throws(()=>com.emit(speaker('A7','SCRUM_8_GOING',50,35,0,
+    {toId:'A9',phaseId:'S17'})),/numéro 8/);
+  assert.throws(()=>com.emit(speaker('A10','SCRUM_9_ACK',50,35,0,
+    {toId:'A8',phaseId:'S17'})),/numéro 9/);
+});
+test('le 8 annule, le 9 reçoit la nouvelle information sans boule magique',()=>{
+  const com=new LocalCommunication({cooldownSeconds:0});
+  com.emit(speaker('A8','SCRUM_8_GOING',50,35,1,{toId:'A9',phaseId:'S3'}));
+  com.emit(speaker('A8','SCRUM_8_ABORT',50,35,1.2,{toId:'A9',phaseId:'S3'}));
+  const heard=com.hear(actor('A9',51,35,1.5,{phaseId:'S3'}));
+  assert.deepStrictEqual(heard.map(x=>x.kind),['SCRUM_8_GOING','SCRUM_8_ABORT']);
+  assert.ok(heard.every(x=>!('ball' in x || 'target' in x)));
+});
+test('le 9 répond au 8, la communication reste non décisionnelle',()=>{
+  const com=new LocalCommunication({cooldownSeconds:0});
+  const sent=com.emit(speaker('A8','SCRUM_8_GOING',50,35,1,
+    {toId:'A9',phaseId:'S12'}));
+  com.hear(actor('A9',51,35,1.2,{phaseId:'S12'}));
+  const ack=com.emit(speaker('A9','SCRUM_9_ACK',51,35,1.3,
+    {toId:'A8',replyTo:sent.id,phaseId:'S12'}));
+  assert.strictEqual(ack.accepted,true);
+  const received=com.hear(actor('A8',50,35,1.5,{phaseId:'S12'}));
+  assert.strictEqual(received[0].kind,'SCRUM_9_ACK');
+  assert.strictEqual(received[0].replyTo,sent.id);
+});
+test('phaseId est un identifiant opaque validé, pas une position ou ordre',()=>{
+  const com=new LocalCommunication({cooldownSeconds:0});
+  assert.throws(()=>com.emit(speaker('A8','SCRUM_8_GOING',50,35,0,
+    {phaseId:'<script>'})),/phaseId/);
+  assert.throws(()=>com.hear(actor('A9',50,35,1,{phaseId:'!'})),/phaseId/);
 });
 console.log(tests+' tests de communication locale réussis (transport seul)');
