@@ -82,6 +82,8 @@ test('annonce de chandelle annulable : message ne produit aucun coup de pied',()
 test('9 peut recevoir plusieurs réponses sans intelligence collective',()=>{
   const c=new LocalCommunication({cooldownSeconds:0});
   const q=c.emit(say('A9','SCRUM_ASK',10));
+  c.hear(hear('A8',10.15));
+  c.hear(hear('A3',10.16));
   c.emit(say('A8','SCRUM_STEADY',10.2,'A9',q.id));
   c.emit(say('A3','SCRUM_PRESSURE',10.3,'A9',q.id));
   const received=c.hear(hear('A9',10.6));
@@ -97,5 +99,53 @@ test('mêmes entrées : même conversation et ordre indépendants des FPS',()=>{
     return JSON.stringify(c.hear(hear('A9',1.7)));
   }
   assert.strictEqual(sim(),sim());
+});
+
+test('mêlée : le 9 consulte le 10 pour jouer au large, au près ou avancer',()=>{
+  const c=new LocalCommunication({cooldownSeconds:0});
+  const ask=c.emit(say('A9','SCRUM_OPTIONS_ASK',30,'A10'));
+  assert.strictEqual(c.hear(hear('A10',30.2))[0].kind,'SCRUM_OPTIONS_ASK');
+  c.emit(say('A10','SCRUM_WIDE',30.3,'A9',ask.id));
+  const opinion=c.hear(hear('A9',30.5))[0];
+  assert.strictEqual(opinion.kind,'SCRUM_WIDE');
+  assert.strictEqual(opinion.replyTo,ask.id);
+  // Le 9 tranche indépendamment et peut demander près plutôt que large.
+  c.emit(say('A9','SCRUM_NEAR',30.6));
+  assert.strictEqual(c.hear(hear('A12',30.9))[0].kind,'SCRUM_NEAR');
+});
+test('mêlée : départ du huit discuté explicitement entre 9 et 8',()=>{
+  const c=new LocalCommunication({cooldownSeconds:0});
+  const ask=c.emit(say('A9','SCRUM_8_ASK',40,'A8'));
+  assert.strictEqual(c.hear(hear('A8',40.2))[0].kind,'SCRUM_8_ASK');
+  c.emit(say('A8','SCRUM_8_READY',40.3,'A9',ask.id));
+  assert.strictEqual(c.hear(hear('A9',40.5))[0].kind,'SCRUM_8_READY');
+  c.emit(say('A9','SCRUM_8_BREAK',40.6));
+  const heard=c.hear(hear('A8',40.8))[0];
+  assert.strictEqual(heard.kind,'SCRUM_8_BREAK');
+  assert.strictEqual(Object.hasOwn(heard,'ball'),false);
+  assert.strictEqual(Object.hasOwn(heard,'goal'),false);
+});
+test('mêlée : 8 bloqué, le 9 peut décider de jouer au large',()=>{
+  const c=new LocalCommunication({cooldownSeconds:0});
+  const ask=c.emit(say('A9','SCRUM_8_ASK',50,'A8'));
+  c.hear(hear('A8',50.2));
+  c.emit(say('A8','SCRUM_8_BLOCKED',50.3,'A9',ask.id));
+  assert.strictEqual(c.hear(hear('A9',50.5))[0].kind,'SCRUM_8_BLOCKED');
+  c.emit(say('A9','SCRUM_WIDE',50.7));
+  assert.strictEqual(c.hear(hear('A10',50.9))[0].kind,'SCRUM_WIDE');
+});
+test('mêlée : le 9 consulte 10 et 8 séparément avant de choisir',()=>{
+  const c=new LocalCommunication({cooldownSeconds:0});
+  const q10=c.emit(say('A9','SCRUM_OPTIONS_ASK',60,'A10'));
+  const q8=c.emit(say('A9','SCRUM_8_ASK',60.01,'A8'));
+  c.hear(hear('A10',60.2));
+  c.hear(hear('A8',60.2));
+  c.emit(say('A10','SCRUM_NEAR',60.3,'A9',q10.id));
+  c.emit(say('A8','SCRUM_8_READY',60.31,'A9',q8.id));
+  const heard=c.hear(hear('A9',60.55));
+  assert.deepStrictEqual(heard.map(x=>x.kind),['SCRUM_NEAR','SCRUM_8_READY']);
+  // Décision finale testée au niveau messages ; intégration GOAP à développer.
+  c.emit(say('A9','SCRUM_8_BREAK',60.6));
+  assert.strictEqual(c.hear(hear('A8',60.85))[0].kind,'SCRUM_8_BREAK');
 });
 console.log(n+' scénarios de dialogues tactiques symboliques réussis ; intégration GOAP à réaliser');
