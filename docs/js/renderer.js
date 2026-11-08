@@ -234,6 +234,19 @@
     ctx.font = '9px sans-serif';
     ctx.fillStyle = '#fff';
     ctx.fillText('arbitre', px, py + 14);
+    // Geste lisible sans remplacer la logique d'avantage du moteur.
+    if (state.arbitre.signal === 'AVANTAGE' || state.arbitre.signal === 'ESSAI') {
+      ctx.strokeStyle = '#ffe16c';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(px + 5, py - 3);
+      ctx.lineTo(px + 17, py - 15);
+      if (state.arbitre.signal === 'ESSAI') {
+        ctx.moveTo(px - 5, py - 3);
+        ctx.lineTo(px - 17, py - 15);
+      }
+      ctx.stroke();
+    }
   }
 
   // Officiels de touche : fanions animés le long de la ligne latérale.
@@ -246,13 +259,15 @@
       ctx.strokeStyle = '#171717';
       ctx.lineWidth = 2;
       ctx.beginPath();
+      const drapeauHaut = assistant.signal === 'TOUCHE';
+      const base = drapeauHaut ? 12 : 2;
       ctx.moveTo(px, py);
-      ctx.lineTo(px, py + versInterieur * 14);
+      ctx.lineTo(px, py + versInterieur * (drapeauHaut ? 25 : 14));
       ctx.stroke();
       ctx.beginPath();
-      ctx.moveTo(px, py + versInterieur * 2);
-      ctx.lineTo(px + 11, py + versInterieur * 5);
-      ctx.lineTo(px, py + versInterieur * 9);
+      ctx.moveTo(px, py + versInterieur * base);
+      ctx.lineTo(px + 11, py + versInterieur * (base + 3));
+      ctx.lineTo(px, py + versInterieur * (base + 7));
       ctx.closePath();
       ctx.fillStyle = '#ffdf50';
       ctx.fill();
