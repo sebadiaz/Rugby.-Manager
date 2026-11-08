@@ -164,13 +164,13 @@ A11 et A15 convergent vers une réception, A15 crie `MINE`.
 
 ### Tests déjà exécutables
 
-`node server/test-v4-local-communication.js` : **37 tests** `COM-01` à `COM-16` du transport :
+`node server/test-v4-local-communication.js` : **39 tests** `COM-01` à `COM-39` du transport :
 1. catalogue fermé ; 2. latence ; 3. livraison unique ; 4. isolement des équipes ;
 5. portée ; 6. rapprochement avant expiration ; 7. expiration ; 8. pas d'écho au locuteur ;
 9. indisponibilité ; 10. anti-spam ; 11. ordre déterministe ; 12. replay identique ;
 13. mémoire bornée ; 14. entrées invalides ; 15. désactivation ; 16. absence de mutation de l'agent.
 
-Vingt-et-un cas supplémentaires `COM-17`–`COM-37` testent les messages adressés, questions/réponses, la demande de mêlée et l'annonce de chandelle. En outre, `node server/test-v4-tactical-dialogue.js` exécute **18 scénarios de dialogue symbolique**.
+Vingt-trois cas supplémentaires `COM-17`–`COM-39` testent les messages adressés, questions/réponses, la demande de mêlée et l'annonce de chandelle. En outre, `node server/test-v4-tactical-dialogue.js` exécute **18 scénarios de dialogue symbolique**.
 
 Ces tests **ne prouvent pas** que les joueurs du match parlent déjà ni qu'ils sont réellement autonomes.
 
