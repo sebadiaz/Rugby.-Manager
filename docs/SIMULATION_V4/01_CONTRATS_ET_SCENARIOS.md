@@ -183,7 +183,7 @@ Invariants sur tout tick :
 | S09 | remplacement A5 en jeu | arrêt de jeu admissible | aucun 16e joueur, arrêt requis, sauvegarde |
 | S10 | A14 proche de ligne | plaquage vs essai | aplatissement, signal et TMO si autorisé |
 
-**Tâches liées** : RM4-001 (geler l'API) → RM4-002 (injecteur) → RM4-003 (assertions invariantes) → RM4-004…RM4-029 (comportements).
+**Tâches liées** : RM4-G01 (geler l'API) → RM4-G02 (injecteur) → RM4-G03 (assertions invariantes) → RM4-G04…RM4-G30 (comportements).
 
 ## 9. Stratégie de tests
 
