@@ -30,6 +30,7 @@
 | **M6 — Dialogues tactiques** | G31–G33 | 9↔10 en touche **et en mêlée**, 9↔8 sur départ du 8, décision par le 9, chandelle annoncée | DIA et STR-DIA, validation des lois |
 | **M7 — Recherche de matchs réels** | G34–G36 | observations sourcées, matchs de référence rejoués en branches, calibration des choix | REAL-01..16, comparaisons chiffrées et sources |
 | **M8 — Sortie 8→9 et styles internationaux** | G37–G38 | le 8 prévient le 9 avant son départ réel ; styles ENG/RSA/NZ documentés et interchangeables | S8-01..09 et STYLE-04..10 |
+| **M9 — Benchmark Top 14** | G39–G41 | neuf matchs documentés, 19 scènes, six feuilles statistiques LNR valides et données manquantes exclues | TOP14-01..19, 30/100/500 graines, aucun script de club |
 
 Les tâches G00 et G01 sont **commencées comme références/documentation** ; leur complétion finale exige toujours les tests mentionnés. La branche de documentation ne remplace pas le développement M1–M5.
 
@@ -56,6 +57,7 @@ node server/test-v4-tactical-dialogue.js
 node server/test-v4-observations-matchs.js
 node server/test-v4-styles-match-data.js
 node server/test-v4-goals-actions-doc.js
+node server/test-v4-top14-data.js
 node server/test-v4-goap-planner.js` (G01–G14).
 - **Rejet si :** un script spécial `if(numero === 9)` est utilisé comme « planner ».
 
@@ -369,6 +371,39 @@ Ces trois tâches étendent l'architecture **individuelle** des tâches G04–G2
 - **Rejet si :** prise au ruck confondue avec prise au fond de mêlée ; propriété « Afrique du Sud » choisit la cible d'un autre joueur ; des statistiques de 2026 sont interprétées comme un état exact de tous les matchs.
 
 **Statut actuel :** le prototype de transport vocal et les corpus de matchs passent leurs **tests unitaires/documentaires**. Les tests `S8` et `STYLE` décrits ci-dessus restent **des scénarios d'intégration à développer**. Les deux premières priorités d'implémentation moteur sont l'injecteur G02 et la boucle GOAP G03–G08.
+
+## M9 — Matchs de Top 14 et choix tactiques en rugby de club
+
+**Référence :** `13_MATCHS_TOP14_DECISIONS.md`. Ne pas confondre observation du rapport, statistique agrégée et décision intérieure des joueurs.
+
+### RM4-G39 — Corpus Top 14 sourcé et données de statistiques propres
+
+- **Dépendances :** G00 et G34, sans avoir besoin d'un AgentController déjà en match pour la validation documentaire.
+- **Fichiers :** `docs/SIMULATION_V4/13_MATCHS_TOP14_DECISIONS.md`, `docs/SIMULATION_V4/fixtures/observations_top14_2025_2026.json`, `server/test-v4-top14-data.js`, `server/v4/top14-benchmark.js`.
+- **Réalisation :** consolider **9 rencontres Top 14 2025–2026/2026–2027**, **19 observations sourcées** et **6 jeux de statistiques LNR**. Couvrir Racing–Bayonne (Hughes 8 pick et choix pénalité→mêlée), Toulouse–Bayonne (touche→Brennan→Ntamack), finales Toulouse–UBB 2025 et Toulouse–Montpellier 2026 (une-deux 9/talonneur et coup franc rapide), Toulon–UBB/Toulouse, Racing–La Rochelle (Jegou→Le Garrec et drop manqué), Toulon–La Rochelle, Pau–Toulouse (n°8 Isa marque sans sortie de mêlée démontrée). Distinguer les événements et les chiffres de match dans le schéma.
+- **Qualité de données critique :** la page statistique LNR de la finale 2026 Toulouse–Montpellier affiche **zéro** pour mêlées, touches, plaquages, passes et pieds : **données manifestement manquantes**, `null` / `MISSING_OR_INCONSISTENT`, pas des vrais zéros ; **ne pas les intégrer au benchmark**. Compte rendu officiel utilisable pour score, chronologie, événements.
+- **Critères :** URLs de provenance par observation, minutes approximatives, aucune parole 8/9 ou trajectoire « réelle » inventée, aucune inférence automatique « n°8 marque = sortie de mêlée ». Stats avec saison, date, compétition, match, équipe, méthode de calcul et statut.
+- **Tests :** `node server/test-v4-top14-data.js` (**déjà présent**, corpus/documentaire), plus validation externe et comparaison à la source pour chaque chiffre.
+
+### RM4-G40 — 19 scènes Top 14 à exécuter réellement par GOAP + physique
+
+- **Dépendances :** G02–G11, G12–G20, G31–G33, G37. Commencer par séquences contenant déjà un 9/8/10 et la touche.
+- **Fichiers :** `server/test-v4-top14-scenarios.js`, `server/v4/scenario-harness.js`, `engine/ai/agent-controller.js`, `engine/ai/roles/halfback.js`, `engine/ai/roles/back-row.js`, `engine/ai/roles/backs.js`, `engine/rugby-engine.js`.
+- **Réalisation :** coder `TOP14-01..19` en deux variantes contrefactuelles chacune : le 8 avertit le 9/9 n'entend pas, petit côté ouvert/fermé, pénalité→mêlée ou tir, touche gagnée→maul ou Brennan, 9↔talonneur une-deux possible/impossible, joueur reçoit / ballon indisponible, petit pied derrière ou défenseur en couverture, mêlée→coup franc rapide, point après 80e avec/sans prolongation, 9 receveur d'un troisième ligne, drop tenté et manqué, interruption météo avec état sauvegardé, même nombre d'essais mais score différent.
+- **Critères :** chaque joueur évalue ses propres buts et déplacement, appels seulement perçus, un seul possesseur, aucun changement de phase sans loi arbitre, aucune action GOAP marquant directement un essai, replays reproductibles. La tactique du 9 influe sur les propositions mais ne sélectionne pas les trajectoires des partenaires.
+- **Tests :** `TOP14-01..19`, `IND-01..12`, `S8-01..09`, `test-melee.js`, `test-touche.js`, `test-ruck.js`, `test-invariants.js`, 30 graines appariées.
+- **Rejet si :** les 19 séquences sont des scripts de résultats, si le 9 obtient deux fois la balle lors du départ du 8 ou si un essai « historique » est forcé au score du match.
+
+### RM4-G41 — Calibrer des matchs **de clubs** selon contexte, pas un archétype de nationale
+
+- **Dépendances :** G28/G29, G34–G36, G39/G40.
+- **Fichiers :** `server/v4/top14-calibration.js`, `docs/SIMULATION_V4/CALIBRATION_TOP14.md`, `server/test-v4-top14-calibration.js`, CI longue.
+- **Réalisation :** même seed et joueurs, `aiMode=LEGACY` versus `GOAP` ; variétés tactiques **interchangeables**. Comparer distribution de passes, coups de pied, touches, mêlées, pénalités, essais, nombre de points au pied ; **conditionner** les choix à score/terrain/opposition et disponibilité des 8/9/10. Mesurer les prises du 8 et les réponses 9 après `SCRUM_8_GOING`, le talonneur qui reçoit du 9 après touche, le 9 recevant d'un troisième ligne, les drops manqués en fin de match.
+- **Repères réels :** Toulon–UBB 31/05/2026 **212 vs 112 passes et 18 vs 37 coups de pied** ; Toulon–Toulouse 09/05/2026 **110 vs 211 passes** ; Pau–Toulouse 01/11/2026 **46% vs 54% possession mais 4 vs 2 essais** ; Toulon–La Rochelle 12/09/2026 **3 vs 2 essais mais 20–21 au score**. Ces observations ne décrivent **pas** un style figé pour chaque club.
+- **Critères :** 30 graines PR, 100 intégration, 500 en CI longue ; variance statistique, sorties de phases légales, fatigue et erreurs réalistes ; courbes + écarts LNR datés ; aucun ajout des faux zéros 2026.
+- **Tests :** `TOP14-12..19`, tests de stats, scénario de données manquantes, simulation 30/100/500 graines. Ne pas déclarer « calibré » avant vrai moteur.
+
+**Statut :** le nouveau test `server/test-v4-top14-data.js` valide **le corpus** (9 matchs, 19 observations, 6 feuilles fiables) et son garde-fou contre les faux zéros. Les tests `TOP14-01..19` et la calibration GOAP Top 14 sont **à développer**, pas réalisés.
 
 ## 2. Commandes générales de garde (sur chaque tranche pertinente)
 
