@@ -40,7 +40,7 @@ Références :
                                   ▼
                       ┌───────────────────────┐
      consigne manager →│ GOAL SELECTION        │
-     plan du collectif │ buts atteignables et  │
+        plan connu     │ buts atteignables et  │
                       │ priorités contextuelles│
                       └───────────┬───────────┘
                                   ▼
