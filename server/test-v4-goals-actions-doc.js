@@ -1,4 +1,4 @@
-// Contrat documentaire GOAP : catalogue des 43 buts et 50 actions.
+// Contrat documentaire GOAP : catalogue des 51 buts et 66 actions.
 // Le passage ne prouve PAS leur intégration au moteur de rugby.
 'use strict';
 const assert=require('assert');
@@ -24,8 +24,8 @@ function rows(prefix) {
   return items;
 }
 const goals=rows('G'),actions=rows('A');
-assert.strictEqual(goals.length,43,'43 buts documentés attendus');
-assert.strictEqual(actions.length,50,'50 actions documentées attendues');
+assert.strictEqual(goals.length,51,'51 buts documentés attendus');
+assert.strictEqual(actions.length,66,'66 actions documentées attendues');
 for(const [arr,prefix] of [[goals,'G'],[actions,'A']]){
   const ids=new Set(), names=new Set();
   for(let i=0;i<arr.length;i++){
@@ -40,13 +40,24 @@ for(const name of ['DEFEND','COVER_BACKFIELD','CLOSE_NEAREST_GAP',
   'EXPLOIT_SCRUM_EXIT','RELEASE_MAUL_WHEN_USEFUL',
   'CONTEST_AERIAL_BALL','TRANSITION_AFTER_TURNOVER',
   'READ_AND_INTERCEPT','CHOOSE_PENALTY_RESTART',
-  'KEEP_BALL_WITH_OFFLOAD','INSERT_FROM_BLINDSIDE']){
+  'KEEP_BALL_WITH_OFFLOAD','INSERT_FROM_BLINDSIDE',
+  'CREATE_CREDIBLE_DECOY','READ_DEFENDER_COMMITMENT','OPEN_SHORT_PASS_LANE',
+  'DEFEND_MULTIPLE_RECEIVER_OPTIONS','SUPPORT_AFTER_SHORT_KICK',
+  'ABORT_CONFLICTING_SCRUM_PICK','RETURN_HOOKER_AS_RECEIVER',
+  'EXPLOIT_BLIND_SIDE_IF_AVAILABLE']){
   assert.ok(goals.some(g=>g.name===name),'but absent : '+name);
 }
 for(const name of ['SCRUM_8_PICK_FROM_BACK','MAUL_RELEASE_TO_9',
   'MAUL_PEEL_AND_CARRY','KICK_GRUBBER_BEHIND',
   'KICK_HIGH_CONTEST','OFFLOAD_AFTER_CONTACT',
-  'READ_PASS_AND_INTERCEPT','CUT_INSIDE_FROM_BLINDSIDE']){
+  'READ_PASS_AND_INTERCEPT','CUT_INSIDE_FROM_BLINDSIDE',
+  'RUN_CREDIBLE_DECOY','DUMMY_PASS_AND_CARRY','TRACK_DEFENDER_COMMITMENT',
+  'FIX_THEN_DELAY_RELEASE','SHORT_FLAT_PASS_TO_GAP','CUT_INSIDE_BEHIND_SUPPORT',
+  'SWITCH_MARKING_TARGET','HOLD_TRYLINE_DEPTH','SIDESTEP_LAST_DEFENDER',
+  'GRUBBER_TO_BLIND_SIDE','REJOIN_ATTACK_AFTER_LINEOUT_THROW',
+  'GIVE_AND_GO_WITH_HOOKER','ABORT_SCRUM_BASE_PICK_ON_HEARD_CALL',
+  'CHASE_TEAMMATE_GROUND_KICK','REPLAN_AFTER_FAILED_DECOY',
+  'TRANSITION_TO_DEFENSE_ON_LOST_KICK']){
   assert.ok(actions.some(a=>a.name===name),'action absente : '+name);
 }
-console.log('Catalogue GOAP valide : 43 buts uniques et 50 actions uniques ; moteur non raccordé.');
+console.log('Catalogue GOAP valide : 51 buts uniques et 66 actions uniques ; moteur non raccordé.');
