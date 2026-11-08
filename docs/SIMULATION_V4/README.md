@@ -62,7 +62,7 @@ Un **test de fixture** valide uniquement la forme des données. Un **test moteur
 
 - `PLAN_CLAUDE_CODE.md` : liste ordonnée, dépendances et DoD tâche par tâche.
 - `07_AGENT_INDIVIDUEL_PLACEMENT.md` : architecture prioritaire sans IA collective, buts de placement et mouvement individuel.
-- `04_IA_AGENTS_BUTS.md` : boucle perception → objectifs → planification → exécution → replanification, coordinations des 30 joueurs.
+- `04_IA_AGENTS_BUTS.md` : boucle perception → objectifs → planification → exécution → replanification, entièrement individuelle.
 - `05_CATALOGUE_GOALS_ACTIONS.md` : buts, actions, préconditions, coûts, effets et gardes réglementaires.
 - `06_TESTS_AGENTS.md` : preuve d'une IA réelle et tests différentiels, pas uniquement des snapshots.
 - `01_CONTRATS_ET_SCENARIOS.md` : coordonnées, état, événements, 30 postes, scénarios et assertions à implémenter.
