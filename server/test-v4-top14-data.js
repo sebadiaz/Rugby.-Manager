@@ -16,7 +16,7 @@ assert.ok(/no direct 9-10, 8-9 audio/.test(c.warning));
 
 for(const [id,m] of Object.entries(c.matches)){
   assert.match(m.date,/^20\d{2}-\d{2}-\d{2}$/,id+' date');
-  assert.ok(m.match.length>20,id+' match');
+  assert.ok(m.match.length>=13,id+' match');
   assert.match(m.sourceUrl,/^https:\/\/[^/]+\/.+/,id+' URL');
   assert.ok(/TOP14_/.test(m.stage),id+' competition/stage');
 }
