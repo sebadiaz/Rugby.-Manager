@@ -106,4 +106,20 @@ run('G13 : les actions non valides ne sont pas acceptées', () => {
   assert.throws(()=>planGoal(initial,{distributed:true},[actions[0],actions[0]]),/dupliqué/);
   assert.throws(()=>planGoal(initial,{distributed:true},actions,{maxExpanded:0}),/budget/);
 });
-console.log('13 tests GOAP symboliques OK ; contrôle des effets physiques à construire (RM4-G07)');
+run('G14 : but déjà atteint ne bloque pas un autre but actif', () => {
+  const goals=[
+    {id:'ALREADY_DONE',priority:100,desiredFacts:{distributed:true}},
+    {id:'NEXT_PROGRESS',priority:20,desiredFacts:{followedUp:true}},
+  ];
+  const facts={...initial,distributed:true,followedUp:false};
+  const newAction={id:'FOLLOW_UP',preconditions:{followedUp:false},
+    effects:{followedUp:true},cost:1};
+  const p=selectFeasibleGoal(facts,goals,[...actions,newAction]);
+  assert.strictEqual(p.goalId,'NEXT_PROGRESS');
+  assert.deepStrictEqual(p.steps,['FOLLOW_UP']);
+  const done=selectFeasibleGoal({distributed:true},[
+    {id:'ALREADY_DONE',priority:1,desiredFacts:{distributed:true}}
+  ],[]);
+  assert.strictEqual(done.status,'ALL_GOALS_SATISFIED');
+});
+console.log('14 tests GOAP symboliques OK ; contrôle des effets physiques à construire (RM4-G07)');
