@@ -2371,12 +2371,15 @@
           // Continuité : les avants libres conservent brièvement le rôle
           // du ruck précédent pendant le jeu courant. Sans cela, ils
           // abandonnent instantanément les pods au moment de la sortie du 9.
-          // Après 15 s ou changement de possession, retour au comportement
-          // autonome par profil ; soutien direct et repli hors-jeu priment.
+          // Après 5 s ou changement de possession, retour au comportement
+          // autonome par profil. Les joueurs proches du point d'impact
+          // priorisent la continuité au lieu de s'écarter sur 30 m.
+          // Le soutien direct et le repli hors-jeu conservent leur priorité.
           const plan = j.numero <= 8 && this._podPlanPossession === this.possession
-            && (this.tempsMatch - this._podPlanTemps) < 15
+            && (this.tempsMatch - this._podPlanTemps) < 5
             && this._ciblesPodsRuck ? this._ciblesPodsRuck.get(j) : null;
-          if (plan && j.auSol === 0) {
+          if (plan && j.auSol === 0
+            && (plan.role.startsWith('LARGE') || Math.abs(plan.y - porteur.y) <= 16)) {
             const cibleX = porteur.x - porteur.sensAttaque
               * Math.min(8, 4 + Math.abs(plan.y - porteur.y) * 0.08);
             j.roleTactique = plan.role;
