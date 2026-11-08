@@ -5,8 +5,8 @@
 ## Comment utiliser ce dossier
 
 1. Lire `CLAUDE.md`, `AGENTS.md`, `docs/REGLES_RUGBY.md` et `docs/SPEC_PLACEMENT_TACTIQUE.md`.
-2. Commencer par **`07_AGENT_INDIVIDUEL_PLACEMENT.md`**, **`08_COMMUNICATION_LOCALE.md`**, **`09_CHOIX_STRATEGIQUES_INDIVIDUELS.md`** et **`10_DIALOGUES_TACTIQUES_DU_9.md`**, puis **`04_IA_AGENTS_BUTS.md`** (architecture Russell–Norvig/GOAP), **`05_CATALOGUE_GOALS_ACTIONS.md`** (35 buts et 36 actions) puis **`06_TESTS_AGENTS.md`** (tests falsifiables). Les `01_...`–`03_...` complètent ensuite les contrats, lois et le rendu.
-3. Exécuter `node server/test-v4-local-communication.js` et `node server/test-v4-tactical-dialogue.js` (transport de messages symboliques, **pas encore utilisés dans un vrai match**), puis `node server/test-v4-goap-planner.js` (preuve d'une **recherche de plan symbolique seulement**) et `node server/test-spec-simulation-v4.js` (cohérence des fixtures). **Aucun de ces deux tests n'implique que les 30 joueurs du match exécutent déjà des plans.**
+2. Commencer par **`07_AGENT_INDIVIDUEL_PLACEMENT.md`**, **`08_COMMUNICATION_LOCALE.md`**, **`09_CHOIX_STRATEGIQUES_INDIVIDUELS.md`**, **`10_DIALOGUES_TACTIQUES_DU_9.md`** et **`11_MATCHS_REELS_ET_PRISES_DE_DECISION.md`**, puis **`04_IA_AGENTS_BUTS.md`** (architecture Russell–Norvig/GOAP), **`05_CATALOGUE_GOALS_ACTIONS.md`** (43 buts et 50 actions candidates, non toutes implémentées) puis **`06_TESTS_AGENTS.md`** (tests falsifiables). Les `01_...`–`03_...` complètent ensuite les contrats, lois et le rendu.
+3. Exécuter `node server/test-v4-observations-matchs.js` (**seulement la validité du corpus documentaire**), puis `node server/test-v4-local-communication.js` et `node server/test-v4-tactical-dialogue.js` (transport de messages symboliques, **pas encore utilisés dans un vrai match**), puis `node server/test-v4-goap-planner.js` (preuve d'une **recherche de plan symbolique seulement**) et `node server/test-spec-simulation-v4.js` (cohérence des fixtures). **Aucun de ces deux tests n'implique que les 30 joueurs du match exécutent déjà des plans.**
 4. Choisir **une seule** tâche `RM4-Gxx` de `PLAN_CLAUDE_CODE.md`, vérifier ses prérequis, ouvrir une branche dédiée.
 5. Appliquer le prompt de `PROMPT_CLAUDE_CODE.md`. Ne pas déclarer une tâche terminée sans un scénario injecté et ses assertions automatiques.
 6. Joindre à chaque PR le résultat des tests, un comparatif des matchs par graines identiques, et une capture/vidéo quand le visuel change.
@@ -33,6 +33,14 @@ Le n°9 **initie les demandes**, sans IA collective :
 
 Dossier détaillé : `10_DIALOGUES_TACTIQUES_DU_9.md`. Transport de **32 messages** `engine/ai/local-communication.js`, **28 tests unitaires et 14 scénarios** de dialogue symbolique ; la véritable intégration au match est à coder dans G31–G33, en s'appuyant sur G04–G20.
 
+## Références à des matchs réellement joués
+
+La spécification est désormais confrontée à **16 actions documentées** dans quatre matchs : Angleterre–Galles (10 février 2024, départ du 8 Ben Earl), Angleterre–France (8 février 2025, pied haut/pénaltouche/petit côté), Irlande–France (8 mars 2025, touche→maul→9→aile, turnover, interception), France–Fidji (7 novembre 2026, maul→sortie du 9, contres et soutien). Chaque action possède un lien source dans `11_MATCHS_REELS_ET_PRISES_DE_DECISION.md`.
+
+**Ne pas confondre** : les comptes rendus donnent des événements et issues observables, **pas les dialogues 9/10/8 ni les coordonnées des 30 joueurs**. Les fixtures reconstruites et appels vocaux sont des **hypothèses de jeu** à tester. Le corpus JSON + `node server/test-v4-observations-matchs.js` vérifient cette séparation ; la reproduction physique par GOAP reste le chantier `G35`.
+
+World Rugby a mesuré dans le Six Nations **2023** environ 314 passes, 185 rucks, 55 coups de pied, 26 touches et 11 mêlées **par match**. Ce sont des repères historiques explicitement datés, **pas des seuils obligatoires pour une rencontre en 2026**. La tâche `G36` imposera une baseline récente du jeu et les écarts de distribution, pas seulement le score final.
+
 ## Exigence centrale : agents à base de buts
 
 **Chaque joueur doit avoir une vraie IA délibérative** : observer l'état local du match, sélectionner un but, construire un plan composé d'actions légales avec préconditions/effets/coûts, exécuter ces actions avec le moteur physique, en constater les résultats et **replanifier** si le monde change.
@@ -41,7 +49,7 @@ Dossier détaillé : `10_DIALOGUES_TACTIQUES_DU_9.md`. Transport de **32 message
 
 **Premier jalon de preuve** : A9, avec but `DISTRIBUTE_BALL`, planifie `MOVE_TO_RUCK → SECURE_BALL → PASS_TO_10`, puis change légalement vers `PASS_TO_POD` si le couloir du 10 se ferme. Aucun effet ne peut être simulé « par magie » dans le moteur.
 
-Lire `PLAN_CLAUDE_CODE.md` : 34 tâches **G00–G33**, et `PROMPT_CLAUDE_CODE.md` pour le démarrage de Claude Code.
+Lire `PLAN_CLAUDE_CODE.md` : 37 tâches **G00–G36**, et `PROMPT_CLAUDE_CODE.md` pour le démarrage de Claude Code.
 
 ## Objectif produit
 
@@ -74,6 +82,7 @@ Un **test de fixture** valide uniquement la forme des données. Un **test moteur
 - `08_COMMUNICATION_LOCALE.md` : communication simple et locale, portée, délais, questions adressées et réponses.
 - `09_CHOIX_STRATEGIQUES_INDIVIDUELS.md` : choix en mêlée, touche et plein jeu par les joueurs.
 - `10_DIALOGUES_TACTIQUES_DU_9.md` : le 9 demande l'avis du 10 en touche et mêlée, discute **du départ du 8 avec le 8** puis choisit, et annonce sa chandelle.
+- `11_MATCHS_REELS_ET_PRISES_DE_DECISION.md` : analyse de **quatre matchs réels**, 16 actions sourcées, lois, adaptations et 16 scénarios moteurs à créer.
 - `04_IA_AGENTS_BUTS.md` : boucle perception → objectifs → planification → exécution → replanification, entièrement individuelle.
 - `05_CATALOGUE_GOALS_ACTIONS.md` : buts, actions, préconditions, coûts, effets et gardes réglementaires.
 - `06_TESTS_AGENTS.md` : preuve d'une IA réelle et tests différentiels, pas uniquement des snapshots.
@@ -84,6 +93,8 @@ Un **test de fixture** valide uniquement la forme des données. Un **test moteur
 - `PROMPT_CLAUDE_CODE.md` : consigne à copier à Claude Code.
 - `engine/ai/local-communication.js` : transport de 32 codes vocaux (prototype non connecté au match).
 - `server/test-v4-local-communication.js` et `server/test-v4-tactical-dialogue.js` : 28 tests + 14 scènes de dialogue symbolique.
+- `fixtures/observations_matchs_reels.json` : corpus de 16 actions documentées (2024, 2025, 2026) ; **aucun tracking ni paroles réelles inventés**.
+- `server/test-v4-observations-matchs.js` : validation de 16 événements et de leur provenance (pas preuve que le moteur reproduit les actions).
 - `server/test-spec-simulation-v4.js` : validations structurelles déjà exécutables sur le dépôt.
 
 ## Références officielles, versionnées
