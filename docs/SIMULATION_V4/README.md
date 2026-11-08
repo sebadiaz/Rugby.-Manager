@@ -5,9 +5,9 @@
 ## Comment utiliser ce dossier
 
 1. Lire `CLAUDE.md`, `AGENTS.md`, `docs/REGLES_RUGBY.md` et `docs/SPEC_PLACEMENT_TACTIQUE.md`.
-2. Lire `01_CONTRATS_ET_SCENARIOS.md`, `02_ARBITRAGE_ET_TEMPOS.md`, `03_RENDU_RETRO.md`.
-3. Exécuter `node server/test-spec-simulation-v4.js` (contrôle de cohérence des fixtures, **pas** preuve que les fonctionnalités V4 existent).
-4. Choisir **une seule** tâche `RM4-XXX` de `PLAN_CLAUDE_CODE.md`, vérifier ses prérequis, ouvrir une branche dédiée.
+2. Commencer par **`04_IA_AGENTS_BUTS.md`** (architecture Russell–Norvig/GOAP), **`05_CATALOGUE_GOALS_ACTIONS.md`** (28 buts et 36 actions) puis **`06_TESTS_AGENTS.md`** (tests falsifiables). Les `01_...`–`03_...` complètent ensuite les contrats, lois et le rendu.
+3. Exécuter `node server/test-v4-goap-planner.js` (preuve d'une **recherche de plan symbolique seulement**) et `node server/test-spec-simulation-v4.js` (cohérence des fixtures). **Aucun de ces deux tests n'implique que les 30 joueurs du match exécutent déjà des plans.**
+4. Choisir **une seule** tâche `RM4-Gxx` de `PLAN_CLAUDE_CODE.md`, vérifier ses prérequis, ouvrir une branche dédiée.
 5. Appliquer le prompt de `PROMPT_CLAUDE_CODE.md`. Ne pas déclarer une tâche terminée sans un scénario injecté et ses assertions automatiques.
 6. Joindre à chaque PR le résultat des tests, un comparatif des matchs par graines identiques, et une capture/vidéo quand le visuel change.
 
@@ -18,6 +18,16 @@
 - Mode Club : `docs/js/club.js`, `docs/js/club-composition.js`, `docs/js/clubUI.js`.
 - Acquis : mêlée à états, touche, maul, ruck, avantage, inertie de déplacement, interceptions, pénalités, statistiques, joueurs exclus, composition de match, 1-3-3-1 et 2-4-2 **partiels**, arbitre central et deux assistants visuels.
 - **À ne pas réécrire en C++** pour ce chantier. Les documents `docs/SPEC_MOTEUR_MATCH.md` / `docs/SPEC_JOUEUR.md` contiennent des références C++ historiques.
+
+## Exigence centrale : agents à base de buts
+
+**Chaque joueur doit avoir une vraie IA délibérative** : observer l'état local du match, sélectionner un but, construire un plan composé d'actions légales avec préconditions/effets/coûts, exécuter ces actions avec le moteur physique, en constater les résultats et **replanifier** si le monde change.
+
+**Ne pas confondre** : les rôles 1-3-3-1 / 2-4-2 déjà livrés sont des objectifs de placement **partiels**, pas un système GOAP. `engine/ai/goal-planner.js` est un **prototype de planificateur symbolique testable**, sans AgentController relié au match.
+
+**Premier jalon de preuve** : A9, avec but `DISTRIBUTE_BALL`, planifie `MOVE_TO_RUCK → SECURE_BALL → PASS_TO_10`, puis change légalement vers `PASS_TO_POD` si le couloir du 10 se ferme. Aucun effet ne peut être simulé « par magie » dans le moteur.
+
+Lire `PLAN_CLAUDE_CODE.md` : 31 tâches **G00–G30**, et `PROMPT_CLAUDE_CODE.md` pour le démarrage de Claude Code.
 
 ## Objectif produit
 
@@ -46,6 +56,9 @@ Un **test de fixture** valide uniquement la forme des données. Un **test moteur
 ## Structure des livrables
 
 - `PLAN_CLAUDE_CODE.md` : liste ordonnée, dépendances et DoD tâche par tâche.
+- `04_IA_AGENTS_BUTS.md` : boucle perception → objectifs → planification → exécution → replanification, coordinations des 30 joueurs.
+- `05_CATALOGUE_GOALS_ACTIONS.md` : buts, actions, préconditions, coûts, effets et gardes réglementaires.
+- `06_TESTS_AGENTS.md` : preuve d'une IA réelle et tests différentiels, pas uniquement des snapshots.
 - `01_CONTRATS_ET_SCENARIOS.md` : coordonnées, état, événements, 30 postes, scénarios et assertions à implémenter.
 - `02_ARBITRAGE_ET_TEMPOS.md` : machines à états, règles applicables, chronologies et erreurs à sanctionner.
 - `03_RENDU_RETRO.md` : pipeline Canvas, animations et tests visuels.
