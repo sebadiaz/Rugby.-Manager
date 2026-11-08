@@ -11,6 +11,22 @@ le ballon. Interdiction d'ajouter un TeamCoordinator, TeamBlackboard,
 une allocation centralisée de rôles, ou des positions imposées.
 LIRE D'ABORD docs/SIMULATION_V4/07_AGENT_INDIVIDUEL_PLACEMENT.md.
 
+**NOUVEAU : ETUDE DU TOP 14**
+LIRE docs/SIMULATION_V4/13_MATCHS_TOP14_DECISIONS.md et
+fixtures/observations_top14_2025_2026.json : 9 matchs, 19
+observations sourcées, six relevés statistiques LNR valides.
+Racing-Bayonne 2025 : 8 Nathan Hughes part derrière la mêlée,
+à coder avec annonce 8→9 avant prise et porteur unique.
+Toulouse-Montpellier finale 2026 : touche, un-deux 9/talonneur,
+coup franc rapide après mêlée, pied par-dessus du 10.
+Toulon-UBB : 212 contre 112 passes et 18 contre 37 coups de pied
+sur CE match, sans en déduire de style immuable pour le club.
+La page LNR statistiques de la finale 2026 contient des ZEROS
+manifestement non renseignés : ne pas les utiliser en calibration.
+G39-G41 = recherche/19 tests moteur/calibration futurs.
+Lancer node server/test-v4-top14-data.js (test de CORPUS uniquement).
+
+
 **AJOUT VALIDÉ — SORTIE DE MÊLÉE PAR 8 ET STYLES INTERNATIONAUX :**
 LIRE docs/SIMULATION_V4/12_STYLES_ANGLETERRE_AFRIQUE_DU_SUD_NOUVELLE_ZELANDE.md.
 Le 8 DOIT annoncer au 9 (SCRUM_8_GOING, phaseId de la mêlée)
