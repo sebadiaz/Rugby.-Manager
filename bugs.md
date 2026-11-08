@@ -484,6 +484,8 @@ Les sommes individuelles des passes, plaquages et mètres correspondent aux somm
 
 **État : À VALIDER sur petit écran.** La visite de cette passe couvre l'accueil, la création de club et Compétitions sur le navigateur distant ; aucun parcours mobile complet ni mesure de fluidité n'a été effectué.
 
+**Relevé du 8 nov. (390×844, Playwright) :** 18 écrans de gestion, fiche joueur, marché, médical, composition, tactique, personnel, aperçu du match, direct et panneau de consigne — largeur de page = 390 px partout, aucun élément qui déborde, aucune erreur de page. Corrigés : panneau de consigne en jeu (texte « seconde période »/« rien n'est joué » faux en cours de match, listes à 23 px) et listes de composition (26 → 30 px). Restent : boutons de l'aperçu (40 px) et onglets internes (31 px) sous 44 px, négociation, clavier/focus des modales, mesure de fluidité et essai sur appareil réel.
+
 **À tester :** tiroir de navigation, tableau d'effectif et classement, changement d'équipe, sélection d'un joueur, négociation, médical, préparation, consigne en match, pause et résultat. Vérifier zoom de texte, clavier, focus des modales et libellés longs.
 
 **Acceptation :** action principale repérable, fermeture/retour toujours possible, pas d'information décisive cachée hors écran sans indice de défilement. Score, chrono, ballon, porteur et phase lisibles sans masquer l'action. Mesurer chargement et fluidité ; ne pas confondre suite headless et confort tactile.
