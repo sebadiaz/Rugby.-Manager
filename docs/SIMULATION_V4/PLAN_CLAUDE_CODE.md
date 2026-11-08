@@ -46,7 +46,7 @@ Les tâches G00 et G01 sont **commencées comme références/documentation** ; l
 - **Fichiers :** `engine/ai/goal-planner.js`, `server/test-v4-goap-planner.js`.
 - **Réalisation :** Dijkstra sur faits symboliques, coûts positifs, préconditions/effets, états canonisés, limites `maxExpanded/maxDepth`, `NO_PLAN` explicite, sélection parmi buts réalisables.
 - **Critères :** un but obtenu via plusieurs actions, choix différent si état change, coût minimal, déterminisme, no-op en but satisfait. **Aucune intégration physique revendiquée.**
-- **Tests :** `node server/test-v4-goap-planner.js` (G01–G13).
+- **Tests :** `node server/test-v4-goap-planner.js` (G01–G14).
 - **Rejet si :** un script spécial `if(numero === 9)` est utilisé comme « planner ».
 
 ### RM4-G02 — Injecteur de scénarios déterministes
