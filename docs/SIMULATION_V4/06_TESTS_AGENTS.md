@@ -6,14 +6,14 @@ Ce document définit **comment prouver que le moteur comporte une IA de planific
 
 | Couche | Outil | Ce qui est prouvé | Ce qui n'est PAS prouvé |
 |---|---|---|---|
-| Facturation de fixture | `server/test-spec-simulation-v4.js` | dix scènes bien formées, 30 postes | moteur intelligent |
+| Validation des fixtures | `server/test-spec-simulation-v4.js` | dix scènes bien formées, 30 postes | moteur intelligent |
 | GOAP symbolique | `server/test-v4-goap-planner.js` | recherche d'une séquence, alternatif, coûts, déterminisme | mouvement/règles |
 | Intégration moteur | `server/test-v4-agents-integration.js` (à créer) | action réelle, état physique cohérent, replan | lisibilité écran |
 | Visuel et population | Playwright + batch de graines | animation / statistiques / vitesse | légalité sans assertions ciblées |
 
 **Interdiction** : marquer "IA opérationnelle" si seuls les tests des deux premières couches passent.
 
-## 2. Plan de tests GOAP symboliques (déjà codé)
+## 2. Plan de tests GOAP symboliques (socle déjà codé)
 
 | ID | Setup | Assert |
 |---|---|---|
