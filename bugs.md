@@ -8,9 +8,11 @@ Ce fichier donne une liste opérationnelle à partir du code, de reproductions i
 
 La [démo publique](https://sebadiaz.github.io/Rugby.-Manager/) servait [`c9b85c3`](https://github.com/sebadiaz/Rugby.-Manager/commit/c9b85c3c6c1f73abea3d94d6e387c00dfd75528d) au moment de l’essai. La branche de travail mesurée était [`cf01357`](https://github.com/sebadiaz/Rugby.-Manager/commit/cf01357673015b3108aa084512923cc42854b367). Le parcours navigateur sur la démo a couvert la création d’un club, les écrans Compétitions et Préparer le match, un remplacement manuel, la feuille de match et le retour au tableau de bord avec la victoire **41–15** enregistrée. Les suites Node `test-feuille-de-match.js`, `test-match-interactif.js` et `test-parcours-club.js` ont passé sur les deux versions. Le parcours navigateur de la branche et la reprise d’un match après rechargement restent à valider.
 
-### [ ] BUG-RM-011 — Un remplaçant entré manuellement peut entrer une seconde fois à la minute prévue — P1
+### [x] BUG-RM-011 — Un remplaçant entré manuellement peut entrer une seconde fois à la minute prévue — P1
 
 Sur la démo, un pilier entré manuellement avant la 50e a aussi déclenché le changement programmé. La feuille de match a compté **neuf remplacements pour huit joueurs de banc**. Reproduction moteur avec la graine 24 et un seul changement programmé à la 50e : faire entrer ce joueur au début donne deux événements `REMPLACEMENT` pour lui, à 0′ puis à 50′. Le moteur public ajoute la demande manuelle à la file et conserve l’entrée automatique. [Moteur public](https://github.com/sebadiaz/Rugby.-Manager/blob/c9b85c3c6c1f73abea3d94d6e387c00dfd75528d/engine/rugby-engine.js#L5886-L5898)
+
+**Vérifié sur la branche fusionnée (8 nov.) :** graine 24, un changement programmé à la 50e et le même joueur entré au début — une seule entrée dans `remplacementsEffectues` ; invariants « banc » (FUNC-RM-005) OK, parcours navigateur 583 tests OK.
 
 Le même scénario produit une seule entrée sur `cf01357`. La branche de travail identifie l’entrant par `joueurId` et annule son entrée programmée. Le ticket reste ouvert pour la réception navigateur et la mise en ligne. [Correctif sur la branche](https://github.com/sebadiaz/Rugby.-Manager/blob/cf01357673015b3108aa084512923cc42854b367/engine/rugby-engine.js#L8324-L8346) · FUNC-RM-005
 
