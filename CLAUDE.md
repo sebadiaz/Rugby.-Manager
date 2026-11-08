@@ -2,6 +2,16 @@ CLAUDE.md
 
 IMPORTANT — CHANTIER IA DES JOUEURS (V4, novembre 2026)
 
+**CORRECTION D'ARCHITECTURE : AUCUNE IA COLLECTIVE.** Chaque joueur
+connaît les consignes de jeu et sa référence de poste, mais choisit
+individuellement ses buts, son plan, ses cibles et ses déplacements selon
+la perception des circonstances. Défendre et ses buts associés sont
+prioritaires lors d'une perte de possession, sans ruée automatique sur
+le ballon. Interdiction d'ajouter un TeamCoordinator, TeamBlackboard,
+une allocation centralisée de rôles, ou des positions imposées.
+LIRE D'ABORD docs/SIMULATION_V4/07_AGENT_INDIVIDUEL_PLACEMENT.md.
+
+
 Le propriétaire du jeu demande explicitement **30 agents de rugby à base de buts**
 (Russell et Norvig), capables de planifier des séquences d'actions, de les
 exécuter physiquement et de replanifier. Des cibles de placement, comportements
