@@ -1,6 +1,6 @@
-# V4 — Bibliothèque des buts et actions GOAP des 30 joueurs
+# V4 — Bibliothèque des buts et actions GOAP **individuels** des 30 joueurs
 
-**Source logique :** `04_IA_AGENTS_BUTS.md`. Ce catalogue donne le vocabulaire à coder. Il **n'affirme pas** que ces actions sont déjà connectées à `MatchEngine`.
+**Source logique :** `04_IA_AGENTS_BUTS.md` et **`07_AGENT_INDIVIDUEL_PLACEMENT.md` (fait autorité)**. Chaque joueur lit le plan de jeu partagé mais décide seul de ses buts et déplacements. **Aucune IA collective ni attribution centrale.** Ce catalogue n'affirme pas que ces actions sont déjà connectées à `MatchEngine`.
 
 ## 1. Ontologie canonique des faits
 
@@ -42,7 +42,7 @@ Créer un linter de noms de faits (`test-v4-facts.js`) pour refuser les chaînes
 
 Les faits dérivés de prévision (`RECEIVER_OPEN`, `GAP_NEARBY`) sont **croyances** ; ils peuvent se révéler faux. Les faits autoritatifs (`HAS_BALL`, `TRY_SCORED`) ne doivent être mis à vrai que par le moteur, jamais par un effet GOAP non vérifié.
 
-## 2. Catalogue des buts individuels et collectifs
+## 2. Catalogue des buts **individuels** (même quand ils contribuent au collectif)
 
 Un but est une condition du monde. Les poids ci-dessous sont **des exemples de priorités**, à définir et mesurer par Claude Code, non des probabilités ni un ordre obligatoire.
 
@@ -75,7 +75,14 @@ Un but est une condition du monde. Les poids ci-dessous sont **des exemples de p
 | G25 | `SCORE_TRY` | `TRY_SCORED` accordé (ne jamais attribuer localement) | porteur |
 | G26 | `PREVENT_TRY` | danger d'essai traité légalement | couverture |
 | G27 | `EXECUTE_TEAM_COMBINATION` | séquence collective effectivement réalisée | groupes désignés |
-| G28 | `RESTORE_DEFENSIVE_SHAPE` | trou le plus proche fermé puis rôle nominal retrouvé | défenseurs libres |
+| G28 | `RESTORE_DEFENSIVE_SHAPE` | joueur observe les voisins, ferme un intervalle puis retrouve sa référence de placement | défenseurs libres |
+| G29 | `DEFEND` | menace adverse localement contenue, priorité défensive cohérente avec poste et situation | tout joueur disponible |
+| G30 | `MARK_OPPONENT` | adversaire pertinent couvert légalement, ligne de passe et angle maîtrisés | défenseurs disponibles |
+| G31 | `HOLD_LINE` | défenseur reste connecté à ses voisins observés et ne crée pas de trou en montant | défenseurs disponibles |
+| G32 | `BECOME_ONSIDE` | joueur de nouveau légalement en jeu avant d'intervenir | joueur hors-jeu |
+| G33 | `BE_PASS_OPTION` | couloir de réception légal ouvert à l'instant utile | attaquants disponibles |
+| G34 | `RETURN_TO_PLAYBOOK` | joueur retrouve progressivement sa zone nominale, sans quitter une menace urgente | joueurs libres |
+| G35 | `PROTECT_INSIDE` | canal intérieur défensif localement protégé | gardes, avants, trois-quarts selon contexte |
 
 **Éligibilité ≠ script de poste** : un centre peut effectuer une touche rapide s'il a légalement le ballon ; un pilier peut recevoir une passe ; un 8 peut temporairement distribuer au ruck si le 9 est absent et qu'il est en position légale.
 
@@ -122,7 +129,7 @@ La colonne "effet prédit" n'est jamais une autorisation d'écrire directement l
 | A35 | `REORGANIZE_POD` | avants disponibles, plan équipe | cellule prête | chaque membre arrivé physiquement |
 | A36 | `WAIT_FOR_BALL` | légal, pas de meilleure option | position maintenue | état inchangé, pas de ballon magique |
 
-**Coût d'une action** (positif) = temps prédit + fatigue + risque de perte + risque de faute + pénalité d'abandon d'un engagement. Les unités et coefficients doivent être documentés et ajustés par scénarios. Une action « illégale mais rentable » n'a pas un coût élevé : elle est **interdite par les préconditions / l'exécuteur**.
+**Coût d'une action** (positif) = temps prédit + fatigue + risque de perte + risque de faute + pénalité d'abandon d'un engagement. Les unités et coefficients doivent être documentés et ajustés par scénarios. Une action « illégale mais rentable » n'a pas un coût élevé : elle est **interdite par les préconditions / l'exécuteur**. **Le déplacement, le choix d'un point d'interception, d'un couloir et de sa vitesse sont calculés par le joueur lui-même**, d'après son but actif, les circonstances et le plan de jeu qu'il connaît.
 
 ## 4. Exemple formel A9 — but distribuer
 
@@ -168,9 +175,9 @@ Si une ligne est intacte, `COVER_BACKFIELD` prime. Si B13 franchit et aucune aut
 
 Les événements `DEFENDER_FIXED`, `PASS_LANE_OPEN`, `OUTSIDE_OVERLAP` peuvent augmenter `CREATE_OUTSIDE_OVERLAP`. Il part en course quand le planner estime l'appel rentable, **pas automatiquement à t=7 s**.
 
-### A3 contre A4 — un seul dernier soutien
+### A3 contre A4 — deux décisions autonomes
 
-Le coordinateur réserve `FIRST_CLEANER` à celui dont le coût d'arrivée est le plus faible, l'autre vise `COVER_NEXT_PHASE`. Si le premier tombe, un nouvel appel d'offres déterministe réattribue le rôle.
+A3 et A4 connaissent tous deux le plan de jeu et leur responsabilité potentielle de soutien. Chacun évalue **localement** son temps d'arrivée, le chemin légal vers le ruck et la position observée de l'autre. Si A3 voit A4 mieux placé, il peut décider de préparer la phase suivante ; A4 peut entrer dans le ruck s'il est légalement en mesure de le faire. Si leur perception est imparfaite, les deux peuvent choisir le ruck : le moteur résout alors les engagements physiques, **sans attribuer de rôle ni départager par un coordinateur**.
 
 ## 6. Catalogues de plans composés : HTN comme support, pas script figé
 
@@ -192,7 +199,7 @@ Les tests de chaque action doivent vérifier :
 - précondition fausse → action impossible à lancer ;
 - action physiquement impossible → pas d'effet appliqué au moteur ;
 - action échouée → replanification et alternative si elle existe ;
-- action concurrente réservée à un autre joueur → conflit résolu ;
+- plusieurs agents visant une zone similaire → chacun tient compte des partenaires visibles ; éventuel conflit physique résolu par le moteur, **sans réservation ni arbitrage d'IA collective** ;
 - coût non positif, fait inconnu ou résultat incohérent → rejet ;
 - plan de trois étapes réellement différent sous deux observations opposées ;
 - mêmes inputs → mêmes actions, mêmes événements, aucune dépendance à l'horloge système.
