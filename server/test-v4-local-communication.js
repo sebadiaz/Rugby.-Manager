@@ -18,7 +18,10 @@ test('catalogue court fermé, descriptions intelligibles', () => {
     'MINE', 'BALL', 'INSIDE', 'OUTSIDE', 'SUPPORT', 'HOLD', 'UP',
     'SLIDE', 'COVER', 'KICK', 'LEAVE',
     'LINEOUT_ASK', 'LINEOUT_FRONT', 'LINEOUT_MIDDLE', 'LINEOUT_BACK',
-    'LINEOUT_MAUL', 'LINEOUT_WIDE', 'SCRUM_ASK', 'SCRUM_STEADY',
+    'LINEOUT_MAUL', 'LINEOUT_WIDE',
+    'SCRUM_8_ASK', 'SCRUM_8_READY', 'SCRUM_8_BLOCKED', 'SCRUM_8_BREAK',
+    'SCRUM_OPTIONS_ASK', 'SCRUM_NEAR', 'SCRUM_WIDE', 'SCRUM_ADVANCE',
+    'SCRUM_ASK', 'SCRUM_STEADY',
     'SCRUM_DRIVE', 'SCRUM_PRESSURE', 'SCRUM_UNSTABLE',
     'KICK_HIGH', 'KICK_CHASE'
   ]);
@@ -204,6 +207,7 @@ test('le dialogue seul ne modifie pas les buts et les positions', () => {
   const player={id:'A9',x:50,y:35,goal:'DISTRIBUTE',target:{x:45,y:30}};
   const state=JSON.stringify(player);
   const q=com.emit(speaker('A9','LINEOUT_ASK',50,35,0,{toId:'A10'}));
+  assert.strictEqual(com.hear(actor('A10',51,35,.15)).length,1);
   com.emit(speaker('A10','LINEOUT_MAUL',51,35,.2,{toId:'A9',replyTo:q.id}));
   com.hear(actor('A9',50,35,.5));
   assert.strictEqual(JSON.stringify(player),state);
@@ -212,9 +216,52 @@ test('mêmes questions et réponses : séquence reproductible', () => {
   const simulate=()=>{
     const com=new LocalCommunication({cooldownSeconds:0});
     const q=com.emit(speaker('A9','LINEOUT_ASK',40,20,0,{toId:'A10'}));
+    com.hear(actor('A10',41,20,.15));
     const ans=com.emit(speaker('A10','LINEOUT_MIDDLE',41,20,.2,{toId:'A9',replyTo:q.id}));
     return JSON.stringify([q,ans,com.hear(actor('A9',40,20,.4))]);
   };
   assert.strictEqual(simulate(),simulate());
+});
+test('9 échange avec 10 sur le près/large/avance de mêlée', () => {
+  const com=new LocalCommunication({cooldownSeconds:0});
+  const q=com.emit(speaker('A9','SCRUM_OPTIONS_ASK',50,35,10,{toId:'A10'}));
+  assert.strictEqual(com.hear(actor('A10',52,35,10.3))[0].kind,'SCRUM_OPTIONS_ASK');
+  const reply=com.emit(speaker('A10','SCRUM_WIDE',52,35,10.4,{toId:'A9',replyTo:q.id}));
+  assert.strictEqual(reply.accepted,true);
+  assert.strictEqual(com.hear(actor('A9',50,35,10.6))[0].kind,'SCRUM_WIDE');
+  assert.deepStrictEqual(com.hear(actor('A8',50,35,10.6)),[]);
+});
+test('9 et 8 discutent départ du 8 sans création de porteur', () => {
+  const com=new LocalCommunication({cooldownSeconds:0});
+  const q=com.emit(speaker('A9','SCRUM_8_ASK',50,35,20,{toId:'A8'}));
+  assert.strictEqual(com.hear(actor('A8',51,35,20.3))[0].kind,'SCRUM_8_ASK');
+  com.emit(speaker('A8','SCRUM_8_READY',51,35,20.4,{toId:'A9',replyTo:q.id}));
+  const ready=com.hear(actor('A9',50,35,20.6))[0];
+  assert.strictEqual(ready.kind,'SCRUM_8_READY');
+  assert.strictEqual(ready.replyTo,q.id);
+  com.emit(speaker('A9','SCRUM_8_BREAK',50,35,20.8));
+  const call=com.hear(actor('A8',51,35,21))[0];
+  assert.strictEqual(call.kind,'SCRUM_8_BREAK');
+  for(const prop of ['carrierId','ball','goal','target','plan']){
+    assert.strictEqual(Object.hasOwn(call,prop),false);
+  }
+});
+test('le 8 peut déclarer le départ bloqué sans forcer le plan du 9', () => {
+  const com=new LocalCommunication({cooldownSeconds:0});
+  const q=com.emit(speaker('A9','SCRUM_8_ASK',50,35,12,{toId:'A8'}));
+  com.hear(actor('A8',51,35,12.2));
+  com.emit(speaker('A8','SCRUM_8_BLOCKED',51,35,12.3,{toId:'A9',replyTo:q.id}));
+  const no=com.hear(actor('A9',50,35,12.5))[0];
+  assert.strictEqual(no.kind,'SCRUM_8_BLOCKED');
+  // C'est une information, aucune option n'est imposée au 9.
+  assert.strictEqual(Object.hasOwn(no,'selectedStrategy'),false);
+});
+test('une réponse sans question réellement entendue est interdite', () => {
+  const com=new LocalCommunication({cooldownSeconds:0});
+  const q=com.emit(speaker('A9','SCRUM_8_ASK',50,35,1,{toId:'A8'}));
+  assert.throws(()=>com.emit(speaker('A8','SCRUM_8_READY',51,35,1.2,{toId:'A9',replyTo:q.id})),/réponse sans demande/);
+  assert.strictEqual(com.hear(actor('A8',51,35,1.3)).length,1);
+  assert.throws(()=>com.emit(speaker('A10','SCRUM_WIDE',51,35,1.4,{toId:'A9',replyTo:q.id})),/réponse sans demande/);
+  assert.strictEqual(com.emit(speaker('A8','SCRUM_8_READY',51,35,1.5,{toId:'A9',replyTo:q.id})).accepted,true);
 });
 console.log(tests+' tests de communication locale réussis (transport seul)');
