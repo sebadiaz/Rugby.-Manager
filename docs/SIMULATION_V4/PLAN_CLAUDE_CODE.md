@@ -91,7 +91,7 @@ Les tâches G00 et G01 sont **commencées comme références/documentation** ; l
 ### RM4-G07 — Exécuteur physique, gardes d'action, succès/échec
 
 - **Fichiers :** `engine/ai/action-executor.js`, adaptateurs dans `engine/rugby-engine.js`, `server/test-v4-executor.js`.
-- **Réalisation :** convertir une action choisie en intention physique bornée (courir, passer, plaquer). `startGuard`, `successGuard`, `abortGuard` interrogent le **monde réel**. Un effet GOAP n'est appliqué au plan suivant que s'il a effectivement eu lieu, sinon événement `ACTION_FAILED`.
+- **Réalisation :** convertir une action choisie en intention physique bornée (courir, passer, plaquer). `startGuard`, `successGuard`, `abortGuard` interrogent le **monde réel**. Un effet GOAP n'est appliqué au plan suivant que s'il a effectivement eu lieu, sinon événement `ACTION_FAILED`. **Prévoir explicitement le chargement navigateur** : le prototype `engine/ai/goal-planner.js` expose aujourd'hui `module.exports` pour Node ; fournir un module UMD/ESM compatible avec les scripts de `docs/index.html` ou un bundle contrôlé, sans dupliquer deux implémentations divergentes. Ajouter un test de chargement navigateur.
 - **Critères :** A9 met un temps physique >0 pour parcourir 6 m, une passe ratée ne donne pas un ballon reçu, plaquage manqué ne donne pas `CARRIER_TACKLED`.
 - **Tests :** I01, D03, aucun saut, G01/G02 branchés au moteur.
 - **Rejet si :** le planner écrit directement `porteur`, `ruckPoint`, score ou `possession`.
