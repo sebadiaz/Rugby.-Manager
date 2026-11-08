@@ -27,7 +27,7 @@
 | **M3 — Phases du rugby** | G18–G24 | planification des mêlées, touches, mauls et officiels | tests S03–S10, lois |
 | **M4 — Explicabilité et rendu** | G25–G27 | plans inspectables, animation originale 2D rétro | screenshots et navigateur |
 | **M5 — Robustesse** | G28–G30 | statistiques réalistes, CI, livraison | 100/500 matchs, aucun invariant cassé |
-| **M6 — Dialogues tactiques** | G31–G33 | 9↔10 en touche, 9↔avants en mêlée, annonce de chandelle avant pied | DIA et STR-DIA, validation des lois |
+| **M6 — Dialogues tactiques** | G31–G33 | 9↔10 en touche **et en mêlée**, 9↔8 sur départ du 8, décision par le 9, chandelle annoncée | DIA et STR-DIA, validation des lois |
 
 Les tâches G00 et G01 sont **commencées comme références/documentation** ; leur complétion finale exige toujours les tests mentionnés. La branche de documentation ne remplace pas le développement M1–M5.
 
@@ -185,7 +185,7 @@ node server/test-v4-goap-planner.js` (G01–G14).
 ### RM4-G19 — Mêlée : protocole partagé, plans individuels de formation et de sortie
 
 - **Fichiers :** `engine/ai/plans/scrum.js`, adaptateur `ETATS_MELEE`, `server/test-v4-scrum-ai.js`.
-- **Réalisation :** tâches `ASSEMBLE→BIND→SET→INTRODUCE→HOOK→CONTEST→RELEASE`, sélection de sortie n°8/n°9, arbitrage des positions, ressource `SCRUM_BALL_IN`. **Le 9 consulte les avants puis peut demander stabilité ou forte poussée**, sans commander leurs mouvements. Tourner et tomber sont des événements physiques ; poussée de travers/écroulement intentionnel sont des fautes possibles, pas des stratégies légales.
+- **Réalisation :** tâches `ASSEMBLE→BIND→SET→INTRODUCE→HOOK→CONTEST→RELEASE`, sélection de sortie n°8/n°9, arbitrage des positions, ressource `SCRUM_BALL_IN`. **Le 9 consulte le 10 pour près/large/avance, puis le 8 pour un départ éventuel, et prend la décision tactique**. Il peut aussi demander aux avants stabilité ou forte poussée, sans commander leurs mouvements. Tourner et tomber sont des événements physiques ; poussée de travers/écroulement intentionnel sont des fautes possibles, pas des stratégies légales.
 - **Critères :** commande de mêlée et ses conditions restent dans le moteur ; A8/A9 choisissent sorties alternatives selon opportunité ; aucune poussée pré-introduction.
 - **Tests :** S03, SCR-01..05, `server/test-melee.js`.
 
@@ -286,13 +286,13 @@ Ces trois tâches étendent l'architecture **individuelle** des tâches G04–G2
 - **Tests :** STR-DIA-L01–L05, COM-I01..I10, `node server/test-v4-tactical-dialogue.js` (transport seul), `test-touche.js`.
 - **Rejet si :** 10 ou 9 écrit directement dans le plan du talonneur/sauteur, ou le 9 annonce un résultat avant que le ballon sorte des mains.
 
-### RM4-G32 — Demande de poussée en mêlée, stabilité, rotation, effondrement et arbitre
+### RM4-G32 — Stratégie de mêlée décidée par le 9 avec avis du 10 et départ discuté avec le 8
 
 - **Dépendances :** G02–G11, G19, G22/G23.
 - **Fichiers :** `engine/ai/roles/halfback.js`, `engine/ai/plans/scrum.js`, `engine/rugby-engine.js`, `server/test-v4-scrum-dialogue.js`.
-- **Réalisation :** le 9 consulte le 8/première ligne par `SCRUM_ASK`, reçoit `SCRUM_STEADY/PRESSURE/UNSTABLE`, choisit éventuellement `SCRUM_DRIVE` ou `SCRUM_STEADY`. **Chaque avant** choisit son propre niveau d'effort et ses appuis, soumis au contact et à l'arbitrage ; pas de « +10 force pour tout le pack » déclenché magiquement par l'appel. Faire tourner la mêlée est une **résultante physique** ; si elle tourne de >90° sans infraction, remise en place ; poussée volontaire de travers sanctionnable. Effondrement provoque sifflet immédiat ; volontaire = faute dangereuse avec pénalité, jamais un moyen légal de gagner.
-- **Critères :** demande forte après introduction peut produire un recul adverse sans le garantir ; des piliers fatigués peuvent perdre la stabilité ; durée/efforts/déplacements physiques et liaisons observables ; aucun effet avant introduction.
-- **Tests :** STR-DIA-S01–S07, SCR-01..05, loi 19.17/19/25/34/37, `server/test-melee.js` et invariants.
+- **Réalisation :** **le 9 demande d'abord au 10** par `SCRUM_OPTIONS_ASK` de conseiller jeu au près, au large ou avancer (`SCRUM_NEAR/WIDE/ADVANCE`). **Il interroge ensuite le 8** par `SCRUM_8_ASK` sur un départ possible (`SCRUM_8_READY/BLOCKED`). Il peut également obtenir des renseignements techniques des avants par `SCRUM_ASK` et `SCRUM_STEADY/PRESSURE/UNSTABLE`. **C'est le 9 qui choisit finalement** jeu au près, au large, avancée ou départ du 8 (`SCRUM_8_BREAK`). Le 8 ne part qu'à la sortie légale du ballon, via le moteur physique. Chaque avant choisit son niveau d'effort et ses appuis, sous contrôle de l'arbitre ; pas de « +10 force » magique déclenché par une parole. Faire tourner la mêlée est une **résultante physique** ; si elle tourne de >90° sans infraction, remise en place ; poussée volontaire de travers sanctionnable. Effondrement provoque sifflet immédiat ; volontaire = faute dangereuse avec pénalité, jamais un moyen légal de gagner.
+- **Critères :** 9 obtient une réponse du 10 et du 8, peut choisir différemment de leurs conseils, départ du 8 discuté et conditionné au contrôle réel du ballon ; 8 et 9 ne possèdent jamais simultanément le ballon ; demande forte après introduction peut reculer l'adversaire sans garantie ; aucun effet avant introduction.
+- **Tests :** STR-DIA-S01–S12, SCR-01..05, `server/test-v4-tactical-dialogue.js`, loi 19.17/19/25/34/37, `server/test-melee.js` et invariants.
 - **Rejet si :** la demande du 9 déclenche directement un recul/rotation/effondrement sans simulation physique ou si l'écroulement volontaire est valorisé comme règle du rugby.
 
 ### RM4-G33 — Chandelle (*up-and-under*) annoncée à l'avance aux trois-quarts
@@ -304,7 +304,7 @@ Ces trois tâches étendent l'architecture **individuelle** des tâches G04–G2
 - **Tests :** STR-DIA-K01–K08, COM-I01..I10, `test-v4-tactical-dialogue.js` (transport), `test-invariants.js`, `test-calibration-moteur.js`.
 - **Rejet si :** chaque troisième phase déclenche obligatoirement un pied, si l'annonce devient un ordre individuel forcé, ou si le 9 botte alors que le ballon est encore au ruck.
 
-**Statut :** les tests `server/test-v4-local-communication.js` (24 cas) et `server/test-v4-tactical-dialogue.js` (10 cas) valident uniquement le transport symbolique. Les scénarios STR-DIA exigent encore des tests de **moteur** réalisés par G31–G33.
+**Statut :** les tests `server/test-v4-local-communication.js` (28 cas) et `server/test-v4-tactical-dialogue.js` (14 cas) valident uniquement le transport symbolique. Les scénarios STR-DIA exigent encore des tests de **moteur** réalisés par G31–G33.
 
 ## 2. Commandes générales de garde (sur chaque tranche pertinente)
 
