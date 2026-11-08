@@ -3,6 +3,18 @@ AGENTS.md
 RÈGLE D'ARCHITECTURE V4 — IMPORTANTE
 
 Le jeu doit simuler 30 agents INDIVIDUELS autonomes à base de buts (GOAP).
+Le Top 14 fait désormais partie des matchs de référence obligatoires :
+docs/SIMULATION_V4/13_MATCHS_TOP14_DECISIONS.md,
+fixtures/observations_top14_2025_2026.json et test-v4-top14-data.js.
+Neuf rencontres, 19 observations sourcées et 6 profils LNR.
+Les tests moteur TOP14-01..19 restent à réaliser (G39-G41).
+Un n°8 qui part en mêlée prévient son 9, le 9 peut replanifier
+soutien plutôt que prise ; une touche peut mener à une combinaison
+9-talonneur ou à une passe d'avant vers 10, pas systématiquement un maul.
+Ni nom de club ni nationalité ne créent une IA collective ou script.
+Important : statistiques LNR finale Toulouse-Montpellier 2026
+zéro mêlée/touche/passe = DONNEES MANQUANTES, pas valeurs réelles.
+
 Le 8 qui part d'une mêlée doit prévenir le 9 **juste avant** la prise :
 SCRUM_8_GOING != SCRUM_8_READY. Si le 9 entend l'appel, il replanifie
 individuellement (soutien, ligne de passe, couverture), pas d'attribution
