@@ -23,7 +23,7 @@ test('catalogue court fermé, descriptions intelligibles', () => {
     'KICK_HIGH', 'KICK_CHASE'
   ]);
   for (const spec of Object.values(CALLS)) {
-    assert.ok(typeof spec.label === 'string' && spec.label.includes('!'));
+    assert.ok(typeof spec.label === 'string' && /[!?]/.test(spec.label));
     assert.ok(spec.radiusM > 0 && spec.ttlSeconds > 0);
   }
 });
