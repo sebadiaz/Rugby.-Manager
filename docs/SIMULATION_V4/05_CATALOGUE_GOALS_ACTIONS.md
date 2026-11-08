@@ -64,10 +64,10 @@ Un but est une condition du monde. Les poids ci-dessous sont **des exemples de p
 | G14 | `CONTEST_BREAKDOWN` | ballon contesté légalement ou adverse ralenti | 6,7,8 selon contexte |
 | G15 | `TACKLE_LEGAL_CARRIER` | plaquage légal réalisé | défenseur disponible |
 | G16 | `SECURE_KICK_RECEIPT` | réception contrôlée ou touche défensive utile | 15,11,14 |
-| G17 | `CHASE_KICK_ONSIDE` | pression légale sur réception | chasseurs désignés |
+| G17 | `CHASE_KICK_ONSIDE` | pression légale sur réception | joueurs pouvant décider localement de chasser |
 | G18 | `FORM_SCRUM_LEGALLY` | pack placé, lié, stable | 1–8 |
 | G19 | `WIN_SCRUM_BALL` | sortie ballon contrôlé | 1–9 |
-| G20 | `FORM_LINEOUT_LEGALLY` | lanceur et alignement aux positions légales | sélectionné équipe |
+| G20 | `FORM_LINEOUT_LEGALLY` | lanceur et alignement aux positions légales | participants connaissant leurs rôles du plan de jeu |
 | G21 | `WIN_LINEOUT_BALL` | réception/vol légal | lanceur, sauteurs, soutiens |
 | G22 | `FORM_MAUL_LEGALLY` | trois participants ou plus dans les conditions légales | porteur + avants |
 | G23 | `DRIVE_MAUL` | gain réel avec ballon jouable | participants liés |
@@ -79,10 +79,20 @@ Un but est une condition du monde. Les poids ci-dessous sont **des exemples de p
 | G29 | `DEFEND` | menace adverse localement contenue, priorité défensive cohérente avec poste et situation | tout joueur disponible |
 | G30 | `MARK_OPPONENT` | adversaire pertinent couvert légalement, ligne de passe et angle maîtrisés | défenseurs disponibles |
 | G31 | `HOLD_LINE` | défenseur reste connecté à ses voisins observés et ne crée pas de trou en montant | défenseurs disponibles |
-| G32 | `BECOME_ONSIDE` | joueur de nouveau légalement en jeu avant d'intervenir | joueur hors-jeu |
+| G32 | `KEEP_SAFE_SPACING` | espacement et profondeur cohérents avec partenaires réellement observés, sans assignation centrale | joueurs disponibles |
 | G33 | `BE_PASS_OPTION` | couloir de réception légal ouvert à l'instant utile | attaquants disponibles |
 | G34 | `RETURN_TO_PLAYBOOK` | joueur retrouve progressivement sa zone nominale, sans quitter une menace urgente | joueurs libres |
 | G35 | `PROTECT_INSIDE` | canal intérieur défensif localement protégé | gardes, avants, trois-quarts selon contexte |
+| G36 | `EXPLOIT_SCRUM_EXIT` | balle réellement sortie par 8 ou 9 vers un espace disponible | 8, 9, receveurs présents |
+| G37 | `RELEASE_MAUL_WHEN_USEFUL` | maul terminé légalement et ballon joué par agent réellement disponible | participant porteur, 9, soutien légal |
+| G38 | `CONTEST_AERIAL_BALL` | réception ou pression aérienne légalement disputée, ballon récupéré ou adverse pressé | 9/10 botteur, 11/14/15 chasseurs potentiels |
+| G39 | `TRANSITION_AFTER_TURNOVER` | agent s'est rendu utile à la nouvelle possession sans téléportation | tous les joueurs |
+| G40 | `READ_AND_INTERCEPT` | trajectoire défendue et éventuellement interceptée légalement | défenseur observant la passe |
+| G41 | `CHOOSE_PENALTY_RESTART` | option de pénalité choisie selon score/temps/terrain et exécutée légalement | joueur désigné par plan de jeu, décision in situ |
+| G42 | `KEEP_BALL_WITH_OFFLOAD` | ballon légalement transmis pendant/après contact avant plaquage complet | porteur et soutien disponible |
+| G43 | `INSERT_FROM_BLINDSIDE` | course intérieure crée une option de réception utile sans conflit de hors-jeu | ailier ou arrière volontaire |
+
+**Ajout issu des matchs étudiés le 8/11/2026 :** G36–G43 et A37–A50 proviennent des situations observées dans `11_MATCHS_REELS_ET_PRISES_DE_DECISION.md`. Ils sont **spécifiés, non implémentés** ; chaque agent calcule lui-même ses intentions. Le catalogue possède désormais **43 buts distincts et 50 actions candidates**. Les observations ne révèlent pas les conversations réelles des joueurs.
 
 **Éligibilité ≠ script de poste** : un centre peut effectuer une touche rapide s'il a légalement le ballon ; un pilier peut recevoir une passe ; un 8 peut temporairement distribuer au ruck si le 9 est absent et qu'il est en position légale.
 
@@ -121,13 +131,27 @@ La colonne "effet prédit" n'est jamais une autorisation d'écrire directement l
 | A27 | `SCRUM_PASS_9` | ballon disponible, 9 légal | ballon distribué | 9 réellement à la base |
 | A28 | `LINEOUT_GET_IN_POSITION` | alignement attribué | en place | 5–15 m, espacement légal |
 | A29 | `LINEOUT_THROW` | lanceur, alignement prêt | ballon en vol | lancer marqué, trajectoire |
-| A30 | `LINEOUT_JUMP` | sauteur assigné, position légale | tentative réception | issue de duel réel |
+| A30 | `LINEOUT_JUMP` | sauteur selon plan connu, position légale | tentative réception | issue de duel réel |
 | A31 | `LINEOUT_LIFT` | soutien assigné, position légale | sauteur aidé | liaison/tempo de saut |
 | A32 | `MAUL_BIND` | porteur debout, côtés et liens légaux | lié | graphe de liaison mis à jour |
 | A33 | `MAUL_DRIVE` | encore lié, groupe stable | gain possible | déplacement collectif réel |
 | A34 | `PRESENT_BALL` | porteur plaqué, libération légale | ballon présenté | phase et ballon corrects |
-| A35 | `REORGANIZE_POD` | avants disponibles, plan équipe | cellule prête | chaque membre arrivé physiquement |
+| A35 | `REORGANIZE_POD` | avants disponibles, plan commun lu individuellement | cellule prête | chaque membre arrivé physiquement |
 | A36 | `WAIT_FOR_BALL` | légal, pas de meilleure option | position maintenue | état inchangé, pas de ballon magique |
+| A37 | `SCRUM_8_PICK_FROM_BACK` | n°8 réellement à la base, ballon accessible, sortie légale | ballon porté par 8 possible | vérifier loi 19.36 et porteur unique, pas appel magique du 9 |
+| A38 | `MAUL_RELEASE_TO_9` | maul légal, ballon disponible et 9 à portée | sortie vers 9 possible | réception réelle et fin de participation |
+| A39 | `MAUL_PEEL_AND_CARRY` | joueur porteur en maul légal, possibilité de sortie réelle | portage commencé | liaisons, fin maul, position ballon |
+| A40 | `KICK_GRUBBER_BEHIND` | porteur apte, espace au sol derrière défense et geste légal | ballon roule derrière ligne | coup de pied et rebond moteur, pas réception garantie |
+| A41 | `KICK_HIGH_CONTEST` | porteur apte, ballon légalement jouable, option aérienne plausible | ballon en vol | kick physique, trajectoire, hors-jeu des poursuivants |
+| A42 | `KICK_INFIELD_CHASE` | porteur apte et espace intérieur percevable | ballon botté et poursuite possible | coup de pied, vitesse du joueur et opposition |
+| A43 | `OFFLOAD_AFTER_CONTACT` | porteur non immobilisé, bras libres, receveur légal | passe libérée possible | ballon en l'air, réception réelle, faute possible |
+| A44 | `READ_PASS_AND_INTERCEPT` | défenseur onside et passe réellement lisible | interception envisageable | collision balle-joueur moteur, échec possible |
+| A45 | `REPOSITION_FOR_NEXT_PHASE` | joueur libre et phase probable | couloir de soutien préparé | déplacement propre sans ordre collectif |
+| A46 | `CHOOSE_PENALTY_OPTION` | pénalité accordée et jeu à reprendre | essai tir/touche/mêlée/préparation | décision permise et coup de pied réel, score non écrit |
+| A47 | `FOLLOW_AERIAL_KICK_ONSIDE` | ballon frappé, course autorisée par hors-jeu | pression/réception espérée | trajet physique, duel en l'air |
+| A48 | `ADOPT_ROLE_AFTER_REPLACEMENT` | entrée légale sur arrêt, effectif admissible | nouveau rôle et consignes connus | agent différent, contextes non copiés |
+| A49 | `CUT_INSIDE_FROM_BLINDSIDE` | course intérieure plausible, joueur disponible | ligne de réception ouverte possible | accélération, collisions et timing |
+| A50 | `CATCH_CONTESTED_HIGH_BALL` | ballon en vol, joueur en position et légal | contrôle espéré | duel aérien, réception/manqué décidé par moteur |
 
 **Coût d'une action** (positif) = temps prédit + fatigue + risque de perte + risque de faute + pénalité d'abandon d'un engagement. Les unités et coefficients doivent être documentés et ajustés par scénarios. Une action « illégale mais rentable » n'a pas un coût élevé : elle est **interdite par les préconditions / l'exécuteur**. **Le déplacement, le choix d'un point d'interception, d'un couloir et de sa vitesse sont calculés par le joueur lui-même**, d'après son but actif, les circonstances et le plan de jeu qu'il connaît.
 
