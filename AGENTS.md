@@ -11,6 +11,14 @@ Aucune IA d'équipe, aucun TeamCoordinator/TeamBlackboard décisionnel,
 aucune réservation/enchère de rôles ni attribution globale de positions.
 Les comportements de groupe doivent émerger des décisions individuelles
 et de la perception de l'état réel des joueurs.
+Étudier aussi docs/SIMULATION_V4/11_MATCHS_REELS_ET_PRISES_DE_DECISION.md
+(16 événements sourcés de 4 matchs, et 16 tests futurs REAL-01..16).
+Ne pas traiter les appels 9-10-8 ou les trajectoires supposées comme des
+observations historiques : ce sont des hypothèses de simulation.
+43 buts et 50 actions à spécifier/implémenter progressivement ; tâches
+RM4-G34 à G36 pour baseline, replay causal et calibration. Tester
+server/test-v4-observations-matchs.js et test-v4-goals-actions-doc.js.
+
 Lire docs/SIMULATION_V4/07_AGENT_INDIVIDUEL_PLACEMENT.md,
 puis 04_IA_AGENTS_BUTS.md, 05_CATALOGUE_GOALS_ACTIONS.md,
 06_TESTS_AGENTS.md et PLAN_CLAUDE_CODE.md dans le même dossier.
