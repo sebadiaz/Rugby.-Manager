@@ -29,6 +29,7 @@
 | **M5 — Robustesse** | G28–G30 | statistiques réalistes, CI, livraison | 100/500 matchs, aucun invariant cassé |
 | **M6 — Dialogues tactiques** | G31–G33 | 9↔10 en touche **et en mêlée**, 9↔8 sur départ du 8, décision par le 9, chandelle annoncée | DIA et STR-DIA, validation des lois |
 | **M7 — Recherche de matchs réels** | G34–G36 | observations sourcées, matchs de référence rejoués en branches, calibration des choix | REAL-01..16, comparaisons chiffrées et sources |
+| **M8 — Sortie 8→9 et styles internationaux** | G37–G38 | le 8 prévient le 9 avant son départ réel ; styles ENG/RSA/NZ documentés et interchangeables | S8-01..09 et STYLE-04..10 |
 
 Les tâches G00 et G01 sont **commencées comme références/documentation** ; leur complétion finale exige toujours les tests mentionnés. La branche de documentation ne remplace pas le développement M1–M5.
 
@@ -53,6 +54,7 @@ Les tâches G00 et G01 sont **commencées comme références/documentation** ; l
 - **Tests :** `node server/test-v4-local-communication.js
 node server/test-v4-tactical-dialogue.js
 node server/test-v4-observations-matchs.js
+node server/test-v4-styles-match-data.js
 node server/test-v4-goals-actions-doc.js
 node server/test-v4-goap-planner.js` (G01–G14).
 - **Rejet si :** un script spécial `if(numero === 9)` est utilisé comme « planner ».
@@ -341,6 +343,32 @@ Ces trois tâches étendent l'architecture **individuelle** des tâches G04–G2
 - **Rejet si :** reproduire les 16 essais identiques avec des scripts par joueur, annoncer une vérité historique depuis une scène inventée ou faire baisser les tests de lois pour « retrouver » le score exact d'un match.
 
 **Le corpus de 16 événements n'est pas un dataset de suivi spatial** ; il permet d'écrire des tests sur des **possibilités de décisions**, pas de copier des trajectoires exactes.
+
+## M8 — Le 8 annonce sa prise et trois styles de jeu fondés sur des matchs
+
+**Document prioritaire :** `12_STYLES_ANGLETERRE_AFRIQUE_DU_SUD_NOUVELLE_ZELANDE.md`.
+
+### RM4-G37 — Signal 8→9 **AVANT** le départ, prévention des doubles prises
+
+- **Dépendances :** G04–G11, G19, G32. Ne pas annoncer une fonctionnalité moteur sans le vrai contrôleur GOAP.
+- **Fichiers :** `engine/ai/local-communication.js`, `engine/ai/roles/back-row.js`, `engine/ai/roles/halfback.js`, `engine/ai/agent-controller.js`, `engine/rugby-engine.js`, nouveau `server/test-v4-scrum8-going.js`.
+- **Réalisation :** distinguer `SCRUM_8_READY` (capacité), `SCRUM_8_BREAK` (choix du 9) de **`SCRUM_8_GOING` (le 8 prévient le 9 juste avant de réellement prendre le ballon)** ; `SCRUM_8_ABORT` (8 se ravise) ; `SCRUM_9_ACK` (réception facultative). Les appels ont un identifiant `phaseId` par mêlée, une portée courte et une durée limitée ; les alertes urgentes contournent le cooldown **sans permettre de spam**. Le 9 **qui entend le bon appel** invalide son plan `SECURE_BALL` si annulable, replanifie vers `SUPPORT_8`, `BE_PASS_OPTION`, `PROTECT_BLIND_SIDE` ou autre but contextuel. Le 8 n'accède à `SCRUM_8_PICK_FROM_BACK` qu'après avoir émis sa tentative d'alerte. Si le 9 n'entend pas et court aussi, la physique/arbitrage établit un porteur unique, jamais un « joueur propriétaire » décidé par une IA collective.
+- **Cas limites :** le 8 a crié prêt puis part en moins de 0,7 s ; alerte tardive, perdue, annulée ; 9 déjà en action ; mêlée 2 reçoit un message de mêlée 1 ; balle encore liée/inaccessible ; 8 donne ensuite la balle au 9.
+- **Critères :** après appel entendu, le 9 ne continue pas à courir reprendre le même ballon par un ordre statique ; aucune attribution du ballon par le bus ; pas de téléportation ni de double porteur ; la prise du 8 se produit dans les conditions de la loi 19.36 et le mouvement est individuel.
+- **Tests :** `S8-01..S8-09`, `node server/test-v4-local-communication.js` (37 tests symboliques), `node server/test-v4-tactical-dialogue.js` (18 tests symboliques), `test-melee.js`, `test-invariants.js`.
+- **Rejet si :** le signal du 8 déplace directement le 9, si un gestionnaire central réserve la balle, si un message « je suis prêt » est interprété comme « je l'ai » ou si le 9 reprend un ballon déjà porté par le 8.
+
+### RM4-G38 — Styles Angleterre/Springboks/All Blacks à partir de **cinq matchs**
+
+- **Dépendances :** G34–G36, G37, G16–G20 ; pour les profils complets, G11 doit déjà instancier 30 agents.
+- **Fichiers :** `docs/SIMULATION_V4/12_STYLES_ANGLETERRE_AFRIQUE_DU_SUD_NOUVELLE_ZELANDE.md`, `docs/SIMULATION_V4/fixtures/observations_styles_2023_2026.json`, `server/test-v4-styles-match-data.js`, `engine/ai/individual-playbook.js`, `server/test-v4-styles-integration.js`.
+- **Réalisation :** intégrer 5 matchs sourcés : Angleterre–Afrique du Sud (2023, pression de mêlée, pénalité finale), Angleterre–Nouvelle-Zélande (2025, 35 coups de pied mais aussi combinaison de touche), SA–NZ (Le Cap 29/08/2026, 246 vs 93 passes), Johannesburg (05/09/2026, maul et contre-attaque au pied), Baltimore (12/09/2026, 6–4 essais, départ de **ruck** du 8 et non de mêlée). Enrichir le corpus JSON de **12 observations**, clairement documentaires sans vidéo-tracking. Utiliser le comparatif All Blacks du **04/09/2026** (passes 230/NZ vs 112/SA par match, pied 19,8 vs 29,7) comme *instantané daté*, pas statistique saison définitive.
+- **Presets interchangeables :** `ENG_TERRITORY_AND_AERIAL`, `RSA_SET_PIECE_AND_PRESSURE`, `NZ_MULTIPHASE_AND_COUNTER` ; chaque agent applique son propre `playbook` lu, **aucun code spécial sur la nationalité**, aucune IA collective. Tester un club anglais fictif jouant le plan néo-zélandais, des 9 individuels et des défenses différentes.
+- **Critères :** mêmes joueurs/graines, plan différent => distributions de choix différentes ; même plan, menace différente => plan individuel révisable ; pas de jeu au pied systématique pour un Anglais ni de passe obligatoire pour un Néo-Zélandais ; les avants sud-africains n'obtiennent aucune pénalité par « bonus ».
+- **Tests :** `STYLE-04..STYLE-10`, `node server/test-v4-styles-match-data.js` (**données seulement**), `REAL-01..16`, `test-v4-goals-actions-doc.js`, séries appariées 30/100/500 matchs.
+- **Rejet si :** prise au ruck confondue avec prise au fond de mêlée ; propriété « Afrique du Sud » choisit la cible d'un autre joueur ; des statistiques de 2026 sont interprétées comme un état exact de tous les matchs.
+
+**Statut actuel :** le prototype de transport vocal et les corpus de matchs passent leurs **tests unitaires/documentaires**. Les tests `S8` et `STYLE` décrits ci-dessus restent **des scénarios d'intégration à développer**. Les deux premières priorités d'implémentation moteur sont l'injecteur G02 et la boucle GOAP G03–G08.
 
 ## 2. Commandes générales de garde (sur chaque tranche pertinente)
 
