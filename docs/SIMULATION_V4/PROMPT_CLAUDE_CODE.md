@@ -23,6 +23,9 @@ PROCÉDURE OBLIGATOIRE
    docs/SPEC_PLACEMENT_TACTIQUE.md et tout le dossier docs/SIMULATION_V4 :
    README.md
    07_AGENT_INDIVIDUEL_PLACEMENT.md (AUTORITÉ ARCHITECTURALE)
+   08_COMMUNICATION_LOCALE.md (messages locaux, pas de chef collectif)
+   09_CHOIX_STRATEGIQUES_INDIVIDUELS.md (mêlée, touche, jeu)
+   10_DIALOGUES_TACTIQUES_DU_9.md (9 initie la demande, 10 conseille)
    04_IA_AGENTS_BUTS.md (PRIORITAIRE)
    05_CATALOGUE_GOALS_ACTIONS.md (PRIORITAIRE)
    06_TESTS_AGENTS.md (PRIORITAIRE)
@@ -51,7 +54,23 @@ PROCÉDURE OBLIGATOIRE
 8. Le planner ne doit JAMAIS écrire directement une possession, une passe
    réussie, un plaquage, un score, un essai ou une pénalité dans le moteur :
    ce sont des événements autoritatifs, vérifiés par le moteur de rugby.
-9. Les 30 agents doivent avoir des CONTEXTES distincts. Chacun connaît
+9. NOUVELLE EXIGENCE DU PRODUCT OWNER : le n°9 initie les demandes
+   tactiques, sans avoir le pouvoir de commander les autres cerveaux.
+   - TOUCHE : le 9 interroge le 10, reçoit son avis, puis demande
+     au lanceur et aux joueurs proches une option de lancement.
+   - MÊLÉE : le 9 interroge le 8 et les avants puis peut demander
+     stabilité ou poussée forte. Les avants choisissent individuellement
+     effort et appuis. Rotation = conséquence physique. Une poussée de
+     travers/effondrement volontaire = faute, jamais une stratégie légale.
+   - JEU COURANT : si l'attaque ne progresse pas, le 9 peut choisir une
+     chandelle (up-and-under) et PRÉVENIR les trois-quarts avant de botter.
+     Il n'y a ni kick automatique ni chasse hors-jeu.
+   Utiliser LocalCommunication (24 codes, toId, replyTo) : appel reçu
+   dans les croyances seulement, aucune mutation directe d'un partenaire.
+   Tester : node server/test-v4-local-communication.js
+            node server/test-v4-tactical-dialogue.js
+   Se référer aux tâches RM4-G31, G32 et G33 du plan.
+10. Les 30 agents doivent avoir des CONTEXTES distincts. Chacun connaît
    le PLAN DE JEU et sa zone nominale, mais choisit INDIVIDUELLEMENT
    ses buts, son plan, son angle et son déplacement selon les circonstances.
    Défendre et ses sous-buts sont prioritaires lorsque l'équipe perd la balle,
@@ -63,6 +82,8 @@ PROCÉDURE OBLIGATOIRE
 10. Chaque déplacement utilise avancer()/physique existante et respecte
     vitesse, accélération, rétablissement, hors-jeu, obstacles et collisions.
 11. Exécuter les tests ciblés, puis les non-régressions :
+    node server/test-v4-local-communication.js
+    node server/test-v4-tactical-dialogue.js
     node server/test-v4-goap-planner.js
     node server/test-spec-simulation-v4.js
     node server/test-placement-arbitrage.js
@@ -140,4 +161,4 @@ gardes du plan général, crée une PR, ne merge pas directement.
 
 ## Priorité
 
-**D'abord G02 → G03 → G04 → G05 → G06 → G07 → G08**, puis G09, G10 (**buts et positions individuels, pas coordinateur**) et G11. Sans un cycle complet et testé sur un n°9, ne pas coder les sprites, le TMO ni l'ensemble des autres rôles.
+**D'abord G02 → G03 → G04 → G05 → G06 → G07 → G08**, puis G09–G11. Intégrer ensuite les dialogues du 9 (G31), les options de mêlée et leur arbitrage (G32) et la chandelle annoncée (G33), en lien avec G18–G20. **Le 9 demande ; chacun décide de ses actions.** Sans un cycle complet et testé sur un n°9, ne pas coder les sprites, le TMO ni l'ensemble des autres rôles.
