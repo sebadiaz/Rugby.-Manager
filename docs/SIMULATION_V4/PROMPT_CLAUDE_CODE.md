@@ -27,6 +27,7 @@ PROCÉDURE OBLIGATOIRE
    09_CHOIX_STRATEGIQUES_INDIVIDUELS.md (mêlée, touche, jeu)
    10_DIALOGUES_TACTIQUES_DU_9.md (9 initie la demande, 10 conseille)
    12_STYLES_ANGLETERRE_AFRIQUE_DU_SUD_NOUVELLE_ZELANDE.md (le 8 prévient le 9, 5 matchs ENG/RSA/NZ)
+   13_MATCHS_TOP14_DECISIONS.md (NEUF matchs de clubs, 19 cas, LNR)
    11_MATCHS_REELS_ET_PRISES_DE_DECISION.md (16 actions, 4 matchs, sources vérifiables)
    04_IA_AGENTS_BUTS.md (PRIORITAIRE)
    05_CATALOGUE_GOALS_ACTIONS.md (PRIORITAIRE)
@@ -87,6 +88,19 @@ PROCÉDURE OBLIGATOIRE
    Se référer aux tâches RM4-G31, G32 et G33 du plan.
    DONNÉES DE MATCHS : valider le corpus via
    node server/test-v4-observations-matchs.js
+   TOP 14 OBLIGATOIRE : étudier l'existant 13_MATCHS_TOP14_DECISIONS.md
+   et fixtures/observations_top14_2025_2026.json, 9 rencontres / 19
+   observations / 6 relevés statistiques LNR. Répliquer un même scénario
+   avec deux contextes : départ du 8 annoncé/non entendu au 9, touche
+   vers un avant/maul, passes/pieds variables, 9 receveur d'un avant,
+   coup franc rapide, drop tenté et manqué, décision en prolongation,
+   arrêt et reprise météo. Le programme NE doit PAS reproduire un score
+   historique par script ni créer un module d'IA collective.
+   DATA QUALITY : la page statistiques de la finale Toulouse-Montpellier
+   2026 contient de faux zéros pour mêlées, touches, passes, coups de pied ;
+   exclure ces valeurs de la calibration en les marquant MISSING/null.
+   Nouvelles tâches RM4-G39, G40, G41 du PLAN_CLAUDE_CODE.md.
+   Tester : node server/test-v4-top14-data.js
    Ne jamais inventer de discussions réellement tenues par Dupont/son 10
    ou Ben Earl/son 9 ni de coordonnées officielles des 30 joueurs.
    Les 16 actions historiques sont des REFERENCES OBSERVÉES, les fixtures
@@ -108,6 +122,7 @@ PROCÉDURE OBLIGATOIRE
 11. Exécuter les tests ciblés, puis les non-régressions :
     node server/test-v4-observations-matchs.js
     node server/test-v4-styles-match-data.js
+    node server/test-v4-top14-data.js
     node server/test-v4-local-communication.js
     node server/test-v4-tactical-dialogue.js
     node server/test-v4-goap-planner.js
@@ -187,4 +202,4 @@ gardes du plan général, crée une PR, ne merge pas directement.
 
 ## Priorité
 
-**D'abord G02 → G03 → G04 → G05 → G06 → G07 → G08**, puis G09–G11. La recherche de matchs est conservée dans G34–G38 : elle oriente les capacités et les tests, mais **ne justifie pas** de sauter les dépendances GOAP/physique. Intégrer ensuite les dialogues du 9 (G31), les options de mêlée et leur arbitrage (G32) et la chandelle annoncée (G33), en lien avec G18–G20. **Le 9 demande ; chacun décide de ses actions.** Sans un cycle complet et testé sur un n°9, ne pas coder les sprites, le TMO ni l'ensemble des autres rôles.
+**D'abord G02 → G03 → G04 → G05 → G06 → G07 → G08**, puis G09–G11. La recherche de matchs et Top 14 est conservée dans G34–G41 : elle oriente les capacités et les tests, mais **ne justifie pas** de sauter les dépendances GOAP/physique. Intégrer ensuite les dialogues du 9 (G31), les options de mêlée et leur arbitrage (G32) et la chandelle annoncée (G33), en lien avec G18–G20. **Le 9 demande ; chacun décide de ses actions.** Sans un cycle complet et testé sur un n°9, ne pas coder les sprites, le TMO ni l'ensemble des autres rôles.
