@@ -1,6 +1,8 @@
 # V4 — Architecture d'IA fondée sur les buts et la planification (Russell–Norvig / GOAP)
 
 **Statut : spécification de référence pour Claude Code — non implémentée dans le moteur actuel.**
+
+**Décision de conception prioritaire : il n'existe PAS d'IA collective.** Les 30 agents sont autonomes ; chaque joueur connaît le même plan de jeu, dérive ses propres buts selon les circonstances, planifie et effectue lui-même chacun de ses déplacements. Lire impérativement `07_AGENT_INDIVIDUEL_PLACEMENT.md` ; il prévaut sur les anciennes hypothèses de coordination centrale.
 **Lire avant** le plan de tâches : ce fichier remplace la vision simplifiée « un rôle = une cible » par une IA délibérative autonome.
 
 ## 0. Exigence non négociable
@@ -62,7 +64,7 @@ Références :
                       └───────────────────────┘
 ```
 
-Chaque agent possède un `AgentContext` propre : **but actif, plan, index d'étape, état d'exécution, croyances, mémoire de l'adversaire, réservations coopératives, fatigue**.
+Chaque agent possède un `AgentContext` propre : **but actif, plan, index d'étape, état d'exécution, croyances, mémoire de l'adversaire, références du plan de jeu, fatigue**.
 
 Le **moteur** demeure la seule source de vérité pour les positions, contacts, ballon, lois, score et chronomètre. L'agent n'a pas le droit de s'attribuer un ballon ou un plaquage simplement parce que l'action symbolique du plan le prédit.
 
@@ -93,7 +95,7 @@ interface AgentBeliefs {
   opponents: Record<string, {lastSeen:Vec2;ageMs:number;threat:number}>;
   opportunities: {openSide:'LEFT'|'RIGHT'|null;overlap:boolean;gapIds:string[];
                   ruckWon:boolean;receiverOpen:boolean;podAvailable:boolean};
-  roleAssignments: RoleReservation[];
+  playbookReference: {nominalRole:string; nominalZone:string}; // consignes lues, pas rôle attribué par IA d'équipe
   phase:string; lawProfile:string; perceivedEvents:string[];
 }
 ```
@@ -122,9 +124,9 @@ Un but comporte `isSatisfied(world)`, `isApplicable(world)`, `priority(context)`
 
 ```ts
 type Goal = {
-  id:string; scope:'PLAYER'|'TEAM'; desiredFacts:FactConditions;
+  id:string; scope:'PLAYER'; desiredFacts:FactConditions;
   isApplicable:(beliefs:AgentBeliefs)=>boolean;
-  priority:(beliefs:AgentBeliefs,orders:TeamOrders)=>number;
+  priority:(beliefs:AgentBeliefs,playbook:Readonly<TeamPlaybook>)=>number;
   interruptPolicy:'SAFETY'|'OPPORTUNITY'|'COMMIT';
 };
 ```
@@ -175,34 +177,34 @@ La recherche sur l'état abstrait (et non les positions exactes des 30 agents) t
 | Replanification lourde | à la demande, étalée entre agents |
 | Plan maximum | 6 à 10 actions symboliques |
 | Expansion de recherche | 128 nœuds par tentative, puis secours |
-| Plans collectifs | 1 à 2 Hz / équipe hors événements majeurs |
+| Réévaluation de placement | décision individuelle pilotée par contexte, sans IA centrale |
 | Objectif performances | sans régression significative sur 30 matchs en CI et navigateur mobile |
 
 **Ce sont des budgets d'ingénierie, pas des seuils World Rugby ni des mesures déjà atteintes.** Le moteur a besoin d'un système de priorités et de secours lorsque le planner dépasse son budget.
 
-## 6. Coordination multiagent et absence d'omniscience
+## 6. Plan de jeu connu de tous, **décisions strictement individuelles**
 
-30 planificateurs qui poursuivent `GET_BALL` produisent 30 joueurs sur le ballon. Il faut un modèle à **deux niveaux** :
+Un joueur **connaît déjà son poste, son emplacement de référence et le plan de jeu** : 1-3-3-1 ou 2-4-2, ligne défensive, largeur, couverture et schémas de phases. Cette connaissance est une donnée en lecture seule, pas une IA collective.
 
-**A. Coordinateur d'équipe (TeamBlackboard)** : lit la tactique du manager et alloue des **engagements** (9 DISTRIBUTE, 2 PROTECT_RUCK, 3 CONTEST, 2 HOLD_WIDTH, 1 SWEEPER, etc.) selon les joueurs **réellement disponibles**. Ce n'est pas un script du match mais une allocation de responsabilités. Il peut être piloté par des enchères déterministes (capacité, proximité, fatigue, coût d'abandon), avec règles d'exclusion mutuelle.
-
-**B. Agent joueur** : poursuit son but en construisant lui-même un plan ; il peut signaler `UNREACHABLE`, demander réallocation, choisir une opportunité locale plus urgente ou prendre temporairement un rôle non nominal. Un n°8 peut remplacer un n°9 indisponible pour distribuer, s'il est légalement capable de le faire.
+Il n'existe **pas** de `TeamBlackboard`, de `TeamCoordinator`, d'enchères, de réservation ni d'assignation dynamique des rôles par une autorité. **Chaque AgentController sélectionne ses propres buts et calcule son propre déplacement.** Le moteur autoritatif n'intervient que pour les règles/contacts/ballon et le traitement physique des intentions.
 
 ```ts
-type TeamBlackboard = {
-  objectives:TeamGoal[];
-  reservations:{roleId:string;playerId:string;expiresAt:number;phaseId:string}[];
-  assignments:Record<string,{goalId:string;priority:number;reason:string}>;
-  sharedThreats:Threat[];
-};
+function decideMyNextAction(
+  me: RugbyAgent,               // mémoire, croyances et plan uniques
+  myObservedWorld: Observation,  // perceptions locales, adversaires et partenaires visibles
+  myPlaybook: Readonly<TeamPlaybook> // connu de tous, mais passif
+): IndividualMovementIntent;
 ```
 
-Contraintes :
-1. un rôle **exclusif** (par ex. porteur unique, premier receveur sur une combinaison) ne peut être attribué à deux joueurs ;
-2. les soutiens, gardes et lineout peuvent être attribués en nombre borné ;
-3. pas de participation simultanée à un maul et à un pod ;
-4. les objectifs d'équipe changent à la perte de possession, les agents réévaluent sans téléportation ;
-5. la communication entre joueurs a une latence simulable ; en V1, conserver une latence déterministe faible et instrumentée.
+Les buts de placement naissent des circonstances : `BECOME_ONSIDE`, `DEFEND`, `CLOSE_GAP`, `MARK_OPPONENT`, `TACKLE`, `HOLD_LINE`, `PROTECT_INSIDE`, `COVER_BACKFIELD`, `SUPPORT_CARRIER`, `BE_PASS_OPTION`, `PRESERVE_WIDTH`, `RETURN_TO_PLAYBOOK`. Ils ne sont pas tous actifs ni prioritaires en même temps.
+
+**Défendre est une priorité lorsque l'adversaire possède le ballon**, mais cela ne signifie pas que les quinze joueurs courent sur le porteur : l'arrière peut couvrir, un ailier tenir la largeur, un troisième ligne fermer un espace, un joueur hors-jeu reculer d'abord. Le joueur déduit l'objectif utile depuis ses perceptions et ses contraintes réglementaires.
+
+Pour éviter la convergence artificielle vers le ballon, chacun **observe** les partenaires déjà proches, compare temps d'arrivée, risques de trou défensif, fatigue, disponibilité et placement nominal. Il peut choisir une solution différente de celle d'un autre joueur. Les erreurs de coordination restent possibles et crédibles ; elles ne sont pas corrigées artificiellement par un chef d'orchestre.
+
+La remise en jeu (mêlée/touche) utilise un **protocole de formation connu** et le rôle de poste, pas des instructions de déplacement transmises par une IA centrale. Les décisions des joueurs sont individuelles, les états réglementaires sont arbitrés par le moteur.
+
+**Spécification complète et tests IND-01 à IND-12 :** `07_AGENT_INDIVIDUEL_PLACEMENT.md`.
 
 ## 7. Exemple complet n°9 : planification réelle
 
@@ -249,7 +251,7 @@ Chaque changement de but et plan doit pouvoir être affiché dans l'outil de dé
   "time": 1631.4,
   "playerId": "A9",
   "perceivedFacts": ["RUCK_WON", "BALL_AVAILABLE", "SELF_ONSIDE"],
-  "teamAssignment": "DISTRIBUTE_BALL",
+  "gamePlanReference": "9 DISTRIBUTE quand ballon disponible",
   "selectedGoal": "DISTRIBUTE_BALL",
   "candidatePlans": [
     {"actions":["MOVE_TO_RUCK","SECURE_BALL","PASS_TO_10"],"cost":3.2},
@@ -270,10 +272,10 @@ Une IA n'est pas validée parce que les joueurs courent intelligemment. Elle est
 - un plan à **au moins 3 actions** peut être produit avec dépendances logiques (pas enchaînement codé en dur) ;
 - l'action invalide est exclue par les préconditions légales ;
 - une action échouée entraîne un plan de remplacement sans modifier l'état physique frauduleusement ;
-- un agent affecté à `CLOSE_DEFENSIVE_GAP` sait replier puis revenir à son rôle nominal ;
-- les agents coordonnent des réservations sans envoyer les 30 joueurs au ballon ;
+- un agent choisissant `CLOSE_DEFENSIVE_GAP` sait replier puis revenir à son rôle nominal ;
+- chaque joueur choisit son but sans coordinateur : aucun regroupement artificiel des 30 joueurs sur le ballon ;
 - la même graine produit les mêmes choix **et** les mêmes trajectoires ;
 - l'absence de plan est visible et aboutit à un comportement de secours légal ;
-- l'IA est contrôlée par la tactique du manager, sans être une chorégraphie fixe.
+- chaque joueur connaît la tactique commune mais décide **seul** de sa position et de son mouvement selon la situation, sans chorégraphie fixe.
 
 **Les travaux sont ordonnés dans `PLAN_CLAUDE_CODE.md`.** Le module `engine/ai/goal-planner.js` constitue un **socle pédagogique de planification symbolique** : ne pas annoncer de simulation multiagent livrée avant son intégration au moteur.
