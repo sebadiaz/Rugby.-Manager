@@ -220,7 +220,7 @@ ContextePlacement (étendu vs v2) :
 
 **Restant à implémenter / à calibrer :**
 
-- Les cibles 1-3-3-1 / 2-4-2 ne sont pas encore une machine tactique complète pour toutes les phases ; elles s'appliquent surtout au placement des avants pendant le ruck.
+- Les cibles 1-3-3-1 / 2-4-2 ne sont pas encore une machine tactique complète pour toutes les phases ; elles s'appliquent au ruck et durant une courte transition (au plus 5 s) en jeu courant, sans priver systématiquement le porteur de soutiens.
 - Attribution des rôles `fold` / `hold`, ligne défensive à trois rideaux et répartition dynamique de tous les joueurs à chaque changement de possession.
 - Vidéo/TMO/FPRO, communications arbitrales détaillées et sanctions disciplinaires dépendant d'un modèle de posture.
 - Sprites directionnels pixel-art complets, animations d'impact et catalogues de séquences calibrées. Le rendu est encore un Canvas à disques numérotés.
