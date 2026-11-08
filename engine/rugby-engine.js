@@ -92,13 +92,19 @@
   // Un joueur engagé au contact ou exclu n'est jamais inventé dans un pod.
   // Choix déterministe par proximité (sans RNG, sans téléportation).
   function organiserAvantsRuck(avants, point, sensAttaque, structure = '1331') {
+    // Les joueurs exterieurs tiennent les ailes ; les pods CENTRAUX se
+    // forment autour du lieu du ruck et non a un Y absolu. Une repartition
+    // rigide aux 20/50 m eloignait les soutiens de 20-30 m et faisait
+    // chuter les essais. Plafond a 18-52 m pour garder les huit slots
+    // distincts meme sur un ruck tres proche de la touche.
+    const centre = Math.max(18, Math.min(52, point.y));
     const c1331 = [
-      [7, 'LARGE_G'], [20, 'POD_G'], [23, 'POD_G'], [26, 'POD_G'],
-      [44, 'POD_D'], [47, 'POD_D'], [50, 'POD_D'], [63, 'LARGE_D'],
+      [7, 'LARGE_G'], [centre - 9, 'POD_G'], [centre - 7, 'POD_G'], [centre - 5, 'POD_G'],
+      [centre + 5, 'POD_D'], [centre + 7, 'POD_D'], [centre + 9, 'POD_D'], [63, 'LARGE_D'],
     ];
     const c242 = [
-      [8, 'LARGE_G'], [13, 'LARGE_G'], [25, 'POD_C'], [30, 'POD_C'],
-      [40, 'POD_C'], [45, 'POD_C'], [57, 'LARGE_D'], [62, 'LARGE_D'],
+      [7, 'LARGE_G'], [11, 'LARGE_G'], [centre - 6, 'POD_C'], [centre - 2, 'POD_C'],
+      [centre + 2, 'POD_C'], [centre + 6, 'POD_C'], [59, 'LARGE_D'], [63, 'LARGE_D'],
     ];
     const disponibles = (structure === '242' ? c242 : c1331)
       .map(([y, role], i) => ({ y, role, i }));
