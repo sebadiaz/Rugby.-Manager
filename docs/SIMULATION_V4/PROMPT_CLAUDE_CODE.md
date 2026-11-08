@@ -26,6 +26,7 @@ PROCÉDURE OBLIGATOIRE
    08_COMMUNICATION_LOCALE.md (messages locaux, pas de chef collectif)
    09_CHOIX_STRATEGIQUES_INDIVIDUELS.md (mêlée, touche, jeu)
    10_DIALOGUES_TACTIQUES_DU_9.md (9 initie la demande, 10 conseille)
+   12_STYLES_ANGLETERRE_AFRIQUE_DU_SUD_NOUVELLE_ZELANDE.md (le 8 prévient le 9, 5 matchs ENG/RSA/NZ)
    11_MATCHS_REELS_ET_PRISES_DE_DECISION.md (16 actions, 4 matchs, sources vérifiables)
    04_IA_AGENTS_BUTS.md (PRIORITAIRE)
    05_CATALOGUE_GOALS_ACTIONS.md (PRIORITAIRE)
@@ -69,10 +70,20 @@ PROCÉDURE OBLIGATOIRE
    - JEU COURANT : si l'attaque ne progresse pas, le 9 peut choisir une
      chandelle (up-and-under) et PRÉVENIR les trois-quarts avant de botter.
      Il n'y a ni kick automatique ni chasse hors-jeu.
-   Utiliser LocalCommunication (32 codes, toId, replyTo) : appel reçu
+   Utiliser LocalCommunication (35 codes, toId, replyTo, phaseId) : appel reçu
    dans les croyances seulement, aucune mutation directe d'un partenaire.
    Tester : node server/test-v4-local-communication.js
             node server/test-v4-tactical-dialogue.js
+   ATTENTION SORTIE MÊLÉE : `SCRUM_8_READY` ne signifie pas que le 8
+   prend la balle. Lorsqu'il choisit réellement de partir, le 8 doit
+   prévenir le 9 via `SCRUM_8_GOING` AVANT sa prise. Le 9 qui entend
+   doit replanifier seul et cesser de courir vers le même ballon.
+   `SCRUM_8_ABORT` peut annuler et `phaseId` empêche une fausse alerte
+   provenant de la mêlée précédente. Le moteur garantit un seul porteur.
+   Ne jamais brancher ce message directement sur `carrierId` ou `target`.
+   Styles : ENG_TERRITORY_AND_AERIAL, RSA_SET_PIECE_AND_PRESSURE,
+   NZ_MULTIPHASE_AND_COUNTER sont des presets échangeables entre clubs,
+   pas trois IA nationales. Lire le document 12 et réaliser G37/G38.
    Se référer aux tâches RM4-G31, G32 et G33 du plan.
    DONNÉES DE MATCHS : valider le corpus via
    node server/test-v4-observations-matchs.js
@@ -96,6 +107,7 @@ PROCÉDURE OBLIGATOIRE
     vitesse, accélération, rétablissement, hors-jeu, obstacles et collisions.
 11. Exécuter les tests ciblés, puis les non-régressions :
     node server/test-v4-observations-matchs.js
+    node server/test-v4-styles-match-data.js
     node server/test-v4-local-communication.js
     node server/test-v4-tactical-dialogue.js
     node server/test-v4-goap-planner.js
@@ -175,4 +187,4 @@ gardes du plan général, crée une PR, ne merge pas directement.
 
 ## Priorité
 
-**D'abord G02 → G03 → G04 → G05 → G06 → G07 → G08**, puis G09–G11. La recherche de matchs est conservée dans G34–G36 : elle oriente les capacités et les tests, mais **ne justifie pas** de sauter les dépendances GOAP/physique. Intégrer ensuite les dialogues du 9 (G31), les options de mêlée et leur arbitrage (G32) et la chandelle annoncée (G33), en lien avec G18–G20. **Le 9 demande ; chacun décide de ses actions.** Sans un cycle complet et testé sur un n°9, ne pas coder les sprites, le TMO ni l'ensemble des autres rôles.
+**D'abord G02 → G03 → G04 → G05 → G06 → G07 → G08**, puis G09–G11. La recherche de matchs est conservée dans G34–G38 : elle oriente les capacités et les tests, mais **ne justifie pas** de sauter les dépendances GOAP/physique. Intégrer ensuite les dialogues du 9 (G31), les options de mêlée et leur arbitrage (G32) et la chandelle annoncée (G33), en lien avec G18–G20. **Le 9 demande ; chacun décide de ses actions.** Sans un cycle complet et testé sur un n°9, ne pas coder les sprites, le TMO ni l'ensemble des autres rôles.
