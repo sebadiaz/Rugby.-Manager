@@ -4,7 +4,7 @@
 
 **Ordre impératif : moteur/IA individuelle → buts et placement émergents → phases et arbitrage → visualisation → calibration.**
 
-**Architecture faisant autorité :** `07_AGENT_INDIVIDUEL_PLACEMENT.md`. Les agents connaissent la tactique mais aucune IA collective ne choisit leurs buts/positions/trajets. Les tâches précédemment consacrées à TeamBlackboard/TeamCoordinator sont remplacées par `RM4-G10` individuel et les tests `IND-01..12`.
+**Architecture faisant autorité :** `07_AGENT_INDIVIDUEL_PLACEMENT.md`, complétée par `08_COMMUNICATION_LOCALE.md`, `09_CHOIX_STRATEGIQUES_INDIVIDUELS.md` et **`10_DIALOGUES_TACTIQUES_DU_9.md` (dernier arbitrage du propriétaire : le 9 initie questions et demandes).** Les agents connaissent la tactique mais aucune IA collective ne choisit leurs buts/positions/trajets. Les tâches précédemment consacrées à TeamBlackboard/TeamCoordinator sont remplacées par `RM4-G10` individuel et les tests `IND-01..12`.
 
 ## 0. Règles d'exécution par Claude Code
 
@@ -27,6 +27,7 @@
 | **M3 — Phases du rugby** | G18–G24 | planification des mêlées, touches, mauls et officiels | tests S03–S10, lois |
 | **M4 — Explicabilité et rendu** | G25–G27 | plans inspectables, animation originale 2D rétro | screenshots et navigateur |
 | **M5 — Robustesse** | G28–G30 | statistiques réalistes, CI, livraison | 100/500 matchs, aucun invariant cassé |
+| **M6 — Dialogues tactiques** | G31–G33 | 9↔10 en touche, 9↔avants en mêlée, annonce de chandelle avant pied | DIA et STR-DIA, validation des lois |
 
 Les tâches G00 et G01 sont **commencées comme références/documentation** ; leur complétion finale exige toujours les tests mentionnés. La branche de documentation ne remplace pas le développement M1–M5.
 
@@ -48,7 +49,9 @@ Les tâches G00 et G01 sont **commencées comme références/documentation** ; l
 - **Fichiers :** `engine/ai/goal-planner.js`, `server/test-v4-goap-planner.js`.
 - **Réalisation :** Dijkstra sur faits symboliques, coûts positifs, préconditions/effets, états canonisés, limites `maxExpanded/maxDepth`, `NO_PLAN` explicite, sélection parmi buts réalisables.
 - **Critères :** un but obtenu via plusieurs actions, choix différent si état change, coût minimal, déterminisme, no-op en but satisfait. **Aucune intégration physique revendiquée.**
-- **Tests :** `node server/test-v4-goap-planner.js` (G01–G14).
+- **Tests :** `node server/test-v4-local-communication.js
+node server/test-v4-tactical-dialogue.js
+node server/test-v4-goap-planner.js` (G01–G14).
 - **Rejet si :** un script spécial `if(numero === 9)` est utilisé comme « planner ».
 
 ### RM4-G02 — Injecteur de scénarios déterministes
@@ -72,14 +75,14 @@ Les tâches G00 et G01 sont **commencées comme références/documentation** ; l
 ### RM4-G04 — Perception d'agent et mémoire locale
 
 - **Fichiers :** `engine/ai/perception.js`, `engine/ai/agent-context.js`, `server/test-v4-perception.js`.
-- **Réalisation :** capteurs (porteur, ballon, coéquipiers, adversaires, distance, hors-jeu, phase) ; information partielle, délai éventuel paramétré, observation précédente avec âge/confiance ; mode debug omniscient **désactivé par défaut** quand le test D07 mesure une visibilité limitée.
+- **Réalisation :** capteurs (porteur, ballon, coéquipiers, adversaires, distance, hors-jeu, phase), **appels adressés reçus** via `LocalCommunication.hear()` avec auteur/âge/confiance ; information partielle, délai paramétré, observation précédente avec âge/confiance ; mode debug omniscient **désactivé par défaut** quand le test D07 mesure une visibilité limitée.
 - **Critères :** un joueur privé d'information ne connaît pas instantanément une nouvelle position adversaire ; deux agents à positions distinctes peuvent avoir croyances distinctes.
 - **Tests :** D07, S06/S07 ; vérifier que l'état physique source n'est pas muté.
 
 ### RM4-G05 — Sélecteur de buts contextualisé
 
 - **Fichiers :** `engine/ai/goals.js`, `engine/ai/goal-selector.js`, `server/test-v4-goals.js`.
-- **Réalisation :** conditions de satisfaction, éligibilité, priorité tactique/danger/compétence/fatigue/score, préemption de sécurité, engagement anti-oscillation. Les numéros de poste sont **profils**, pas scripts exclusifs.
+- **Réalisation :** conditions de satisfaction, éligibilité, priorité tactique/danger/compétence/fatigue/score, préemption de sécurité, engagement anti-oscillation. Inclure `DEFEND`, `RETAIN_POSSESSION`, `GAIN_TERRITORY`, `CONTEST_AERIAL_BALL` et les choix individuels de stratégie mêlée/touche/plein jeu. Les numéros de poste sont **profils**, pas scripts exclusifs.
 - **Critères :** A15 préfère couverture puis sauvetage d'essai lorsque le risque change ; A7 choisit repli si hors-jeu ; le même agent peut changer de but au cours du match.
 - **Tests :** D05 ; comparer 2 états opposés de S06.
 
@@ -101,14 +104,14 @@ Les tâches G00 et G01 sont **commencées comme références/documentation** ; l
 ### RM4-G08 — Contrôleur `GoalBasedRugbyAgent`
 
 - **Fichiers :** `engine/ai/agent-controller.js`, `server/test-v4-agent-controller.js`.
-- **Réalisation :** boucle `PERCEIVE→UPDATE→SELECT_GOAL→PLAN→ACT→MONITOR` ; mémorise but/plan/index, événements de démarrage/fin/échec ; replan si précondition invalidée, goal dépassé, ordre urgent.
+- **Réalisation :** boucle `PERCEIVE→UPDATE→SELECT_GOAL→PLAN→ACT→MONITOR` ; mémorise but/plan/index, événements de démarrage/fin/échec ; replan si précondition invalidée, danger urgent ou appel pertinent. `maybeSpeak()` décide localement de poser une question, répondre ou prévenir ; `hear()` informe la perception sans imposer de plan.
 - **Critères :** quand le 10 est couvert à la troisième étape, A9 remplace `PASS_TO_10` par `PASS_TO_POD` sans recommencer depuis la remise en jeu si déjà au ruck.
 - **Tests :** D01/D02, I03 ; deux trajectoires différentes, même but.
 
 ### RM4-G09 — Scheduler déterministe et enveloppe CPU
 
 - **Fichiers :** `engine/ai/agent-scheduler.js`, `server/test-v4-budget.js`.
-- **Réalisation :** décisions à intervalle logique, événements urgents sans attendre, maximum expansions/tick et report des plans non urgents ; ordre stable des agents ; aucun `Date.now()` pour décider d'un but ; statistiques coût CPU hors simulation seulement.
+- **Réalisation :** décisions à intervalle logique, événements urgents sans attendre, maximum expansions/tick et report des plans non urgents ; ordre stable des agents et des **appels** ; aucun `Date.now()` pour décider d'un but ou recevoir un appel ; statistiques coût CPU hors simulation seulement.
 - **Critères :** 30 agents en mémoire, aucun tick bloqué indéfiniment par recherche, mêmes événements sous même graine.
 - **Tests :** D08, G09/G10 ; comparaison 10 matchs à dt constant.
 
@@ -175,21 +178,21 @@ Les tâches G00 et G01 sont **commencées comme références/documentation** ; l
 ### RM4-G18 — Coups de pied, hors-jeu et couverture
 
 - **Fichiers :** `engine/ai/roles/kick.js`, `engine/rugby-engine.js`, `server/test-v4-kick-ai.js`.
-- **Réalisation :** but `EXIT_22`, `CHASE_KICK_ONSIDE`, `SECURE_KICK_RECEIPT`; latence de perception, chasseurs désignés, loi 10 contraint actions.
+- **Réalisation :** buts `EXIT_22`, `CHASE_KICK_ONSIDE`, `SECURE_KICK_RECEIPT` et `CONTEST_AERIAL_BALL` ; latence de perception, chasseurs qui se portent candidats **individuellement**, loi 10 contraint actions ; **le 9 peut annoncer `KICK_HIGH` avant son up-and-under**, sans garantir les réactions.
 - **Critères :** aucun joueur devant botteur ne peut agir hors-jeu, même si plan `TACKLE` coûte moins cher ; réception non instantanée.
 - **Tests :** S07, I11/I12 + test hors-jeu existant.
 
 ### RM4-G19 — Mêlée : protocole partagé, plans individuels de formation et de sortie
 
 - **Fichiers :** `engine/ai/plans/scrum.js`, adaptateur `ETATS_MELEE`, `server/test-v4-scrum-ai.js`.
-- **Réalisation :** tâches `ASSEMBLE→BIND→SET→INTRODUCE→HOOK→CONTEST→RELEASE`, sélection de sortie n°8/n°9, arbitrage des positions, ressource `SCRUM_BALL_IN`.
+- **Réalisation :** tâches `ASSEMBLE→BIND→SET→INTRODUCE→HOOK→CONTEST→RELEASE`, sélection de sortie n°8/n°9, arbitrage des positions, ressource `SCRUM_BALL_IN`. **Le 9 consulte les avants puis peut demander stabilité ou forte poussée**, sans commander leurs mouvements. Tourner et tomber sont des événements physiques ; poussée de travers/écroulement intentionnel sont des fautes possibles, pas des stratégies légales.
 - **Critères :** commande de mêlée et ses conditions restent dans le moteur ; A8/A9 choisissent sorties alternatives selon opportunité ; aucune poussée pré-introduction.
 - **Tests :** S03, SCR-01..05, `server/test-melee.js`.
 
 ### RM4-G20 — Touche : sauteurs, lanceur et plan alternatif
 
 - **Fichiers :** `engine/ai/plans/lineout.js`, `server/test-v4-lineout-ai.js`.
-- **Réalisation :** chaque joueur connaît son rôle (`THROWER`, `JUMPER`, `LIFTER`) depuis le plan de jeu et l'effectif ; il choisit son déplacement, son timing et son action selon perception. Choix court/long du lanceur selon contest, après touche maul ou passe. Aucun coordinateur n'attribue les positions en direct.
+- **Réalisation :** **le 9 pose la question au 10, reçoit son avis puis demande une option de touche** (devant/milieu/fond/maul/large). Chaque joueur connaît son rôle (`THROWER`, `JUMPER`, `LIFTER`) depuis le plan de jeu et l'effectif ; il choisit son déplacement, timing et action selon perception ; le lanceur exécute réellement et légalement son lancer. Aucun coordinateur n'attribue les positions en direct.
 - **Critères :** 5–15 m et effectifs légaux ; ballon a une trajectoire visible ; lancer contestable ; si sauteur indisponible, autre plan.
 - **Tests :** S04, LINE-01..05, `RM_TOUCHE_RAPIDE=1 node server/test-touche.js`.
 
@@ -269,6 +272,39 @@ Les tâches G00 et G01 sont **commencées comme références/documentation** ; l
 - **Rejet si :** fusion de la documentation présentée comme **livraison de 30 agents GOAP vivants**, ou ajout d'une IA collective contre l'architecture spécifiée.
 
 ---
+
+## M6 — Dialogues tactiques et décisions des joueurs (lots complémentaires)
+
+Ces trois tâches étendent l'architecture **individuelle** des tâches G04–G20, mais ne doivent pas devenir une nouvelle IA centrale. Le document de référence est `10_DIALOGUES_TACTIQUES_DU_9.md`.
+
+### RM4-G31 — Dialogue touche entre 9 et 10 puis demande du 9
+
+- **Dépendances :** G02–G09, G10, G11, G20.
+- **Fichiers :** `engine/ai/local-communication.js`, `engine/ai/agent-controller.js`, `engine/ai/roles/halfback.js`, `engine/ai/roles/backs.js`, `engine/ai/plans/lineout.js`, nouveau `server/test-v4-lineout-dialogue.js`.
+- **Réalisation :** le 9 voit une touche, questionne `A10` par `LINEOUT_ASK`, le 10 répond par `LINEOUT_FRONT/MIDDLE/BACK/WIDE/MAUL` en faisant référence à la question. Le 9 fait sa **propre** demande aux joueurs proches, peut choisir autre chose que le 10. Le lanceur et les sauteurs interprètent eux-mêmes cette demande ; les distances, la latence, le temps réglementaire et les changements de situation comptent.
+- **Critères :** deux réponses du 10 sur deux configurations identiques sauf défense ; deux demandes possibles du 9 ; aucune « réception de touche » autorisée par message ; pas d'attente infinie si 10 absent.
+- **Tests :** STR-DIA-L01–L05, COM-I01..I10, `node server/test-v4-tactical-dialogue.js` (transport seul), `test-touche.js`.
+- **Rejet si :** 10 ou 9 écrit directement dans le plan du talonneur/sauteur, ou le 9 annonce un résultat avant que le ballon sorte des mains.
+
+### RM4-G32 — Demande de poussée en mêlée, stabilité, rotation, effondrement et arbitre
+
+- **Dépendances :** G02–G11, G19, G22/G23.
+- **Fichiers :** `engine/ai/roles/halfback.js`, `engine/ai/plans/scrum.js`, `engine/rugby-engine.js`, `server/test-v4-scrum-dialogue.js`.
+- **Réalisation :** le 9 consulte le 8/première ligne par `SCRUM_ASK`, reçoit `SCRUM_STEADY/PRESSURE/UNSTABLE`, choisit éventuellement `SCRUM_DRIVE` ou `SCRUM_STEADY`. **Chaque avant** choisit son propre niveau d'effort et ses appuis, soumis au contact et à l'arbitrage ; pas de « +10 force pour tout le pack » déclenché magiquement par l'appel. Faire tourner la mêlée est une **résultante physique** ; si elle tourne de >90° sans infraction, remise en place ; poussée volontaire de travers sanctionnable. Effondrement provoque sifflet immédiat ; volontaire = faute dangereuse avec pénalité, jamais un moyen légal de gagner.
+- **Critères :** demande forte après introduction peut produire un recul adverse sans le garantir ; des piliers fatigués peuvent perdre la stabilité ; durée/efforts/déplacements physiques et liaisons observables ; aucun effet avant introduction.
+- **Tests :** STR-DIA-S01–S07, SCR-01..05, loi 19.17/19/25/34/37, `server/test-melee.js` et invariants.
+- **Rejet si :** la demande du 9 déclenche directement un recul/rotation/effondrement sans simulation physique ou si l'écroulement volontaire est valorisé comme règle du rugby.
+
+### RM4-G33 — Chandelle (*up-and-under*) annoncée à l'avance aux trois-quarts
+
+- **Dépendances :** G02–G11, G12, G16, G18.
+- **Fichiers :** `engine/ai/roles/halfback.js`, `engine/ai/roles/kick.js`, `engine/ai/local-communication.js`, `engine/rugby-engine.js`, `server/test-v4-up-and-under.js`.
+- **Réalisation :** détecter **plusieurs phases sans progression mesurable**, comparer `CONTEST_AERIAL_BALL` aux alternatives porte/passe/pied d'occupation. Si le 9 choisit le coup de pied et **possède** le ballon, il annonce `KICK_HIGH` (« Chandelle ! ») **avant** de botter. Les trois-quarts qui entendent peuvent choisir individuellement `CHASE_KICK_ONSIDE`, `HOLD_WIDTH` ou `COVER_BACKFIELD` ; les joueurs hors-jeu ne chassent pas. Le ballon doit être botté par le moteur, et le 9 peut annuler après l'annonce.
+- **Critères :** 9 peut annoncer sans ensuite botter si pression nouvelle ; un arrière lointain n'a pas de réception magique de l'appel ; chasseurs pas toujours les mêmes ; pas de ballon en vol avant la frappe ; statistiques coups de pied et turnovers réévaluées sur 30/100 graines.
+- **Tests :** STR-DIA-K01–K08, COM-I01..I10, `test-v4-tactical-dialogue.js` (transport), `test-invariants.js`, `test-calibration-moteur.js`.
+- **Rejet si :** chaque troisième phase déclenche obligatoirement un pied, si l'annonce devient un ordre individuel forcé, ou si le 9 botte alors que le ballon est encore au ruck.
+
+**Statut :** les tests `server/test-v4-local-communication.js` (24 cas) et `server/test-v4-tactical-dialogue.js` (10 cas) valident uniquement le transport symbolique. Les scénarios STR-DIA exigent encore des tests de **moteur** réalisés par G31–G33.
 
 ## 2. Commandes générales de garde (sur chaque tranche pertinente)
 
