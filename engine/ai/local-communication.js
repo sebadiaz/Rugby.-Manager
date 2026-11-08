@@ -1,0 +1,133 @@
+/*
+ * Rugby Manager V4 — communication vocale locale (prototype autonome).
+ *
+ * TRANSPORT DE SIGNAUX SEULEMENT : aucune selection de but, aucun ordre de
+ * placement, aucune connaissance globale ni mutation du moteur physique.
+ * Chaque joueur decide lui-meme s'il parle puis interprete ce qu'il entend.
+ * Le moteur pourra raccorder ce transport lors de RM4-G04/G08.
+ *
+ * Toutes les durees sont exprimees en secondes de TEMPS SIMULE.
+ * Determinisme strict : pas de Math.random(), de timer ni de Date.now().
+ */
+'use strict';
+
+const CALLS = Object.freeze({
+  MINE: Object.freeze({ label: "J'ai !", radiusM: 14, ttlSeconds: 1.2 }),
+  BALL: Object.freeze({ label: 'Ballon !', radiusM: 17, ttlSeconds: 1.4 }),
+  INSIDE: Object.freeze({ label: 'Intérieur !', radiusM: 18, ttlSeconds: 1.5 }),
+  OUTSIDE: Object.freeze({ label: 'Extérieur !', radiusM: 18, ttlSeconds: 1.5 }),
+  SUPPORT: Object.freeze({ label: 'Soutien !', radiusM: 16, ttlSeconds: 1.4 }),
+  HOLD: Object.freeze({ label: 'Tiens !', radiusM: 16, ttlSeconds: 1.2 }),
+  UP: Object.freeze({ label: 'Monte !', radiusM: 19, ttlSeconds: 1.3 }),
+  SLIDE: Object.freeze({ label: 'Glisse !', radiusM: 19, ttlSeconds: 1.3 }),
+  COVER: Object.freeze({ label: 'Je couvre !', radiusM: 18, ttlSeconds: 1.5 }),
+  KICK: Object.freeze({ label: 'Pied !', radiusM: 22, ttlSeconds: 1.5 }),
+  LEAVE: Object.freeze({ label: 'Laisse !', radiusM: 15, ttlSeconds: 1.0 }),
+});
+
+function validNumber(x, name) {
+  if (typeof x !== 'number' || !Number.isFinite(x)) {
+    throw new TypeError(name + ' doit être fini');
+  }
+}
+function checkActor(id, team, x, y, time) {
+  if (team !== 'A' && team !== 'B') throw new TypeError('équipe invalide');
+  if (typeof id !== 'string' || !new RegExp('^' + team + '(?:[1-9]|1[0-5])$').test(id)) {
+    throw new TypeError('identifiant joueur invalide');
+  }
+  validNumber(x, 'x');
+  validNumber(y, 'y');
+  validNumber(time, 'time');
+  if (time < 0) throw new RangeError('temps négatif');
+}
+function distance(x1, y1, x2, y2) {
+  return Math.hypot(x2 - x1, y2 - y1);
+}
+
+/*
+ * Une petite file d'événements acoustiques est nécessaire pour simuler le
+ * délai et la portée. Ce n'est PAS une IA d'équipe : elle ne contient aucune
+ * attribution, position-cible, goal, plan, ordre de mouvement ou décision.
+ */
+class LocalCommunication {
+  constructor(options = {}) {
+    this.baseLatencySeconds = options.baseLatencySeconds ?? 0.12;
+    this.soundSpeedMps = options.soundSpeedMps ?? 343;
+    this.cooldownSeconds = options.cooldownSeconds ?? 0.7;
+    this.maxPending = options.maxPending ?? 256;
+    this.enabled = options.enabled !== false;
+    for (const k of ['baseLatencySeconds', 'soundSpeedMps', 'cooldownSeconds', 'maxPending']) {
+      validNumber(this[k], k);
+    }
+    if (this.baseLatencySeconds < 0 || this.soundSpeedMps <= 0 ||
+        this.cooldownSeconds < 0 || !Number.isInteger(this.maxPending) || this.maxPending < 1) {
+      throw new RangeError('paramètres de communication invalides');
+    }
+    this.messages = [];
+    this.lastBySpeaker = new Map();
+    this.sequence = 0;
+  }
+
+  emit({ speakerId, team, kind, x, y, time, available = true }) {
+    checkActor(speakerId, team, x, y, time);
+    if (!Object.prototype.hasOwnProperty.call(CALLS, kind)) {
+      throw new TypeError('appel inconnu : ' + kind);
+    }
+    if (!this.enabled || !available) return { accepted: false, reason: 'UNAVAILABLE' };
+    const previous = this.lastBySpeaker.get(speakerId);
+    if (previous != null && time < previous) throw new RangeError('temps non monotone pour ' + speakerId);
+    if (previous != null && time - previous < this.cooldownSeconds) {
+      return { accepted: false, reason: 'COOLDOWN' };
+    }
+    this.prune(time);
+    if (this.messages.length >= this.maxPending) {
+      return { accepted: false, reason: 'QUEUE_FULL' };
+    }
+    const id = 'CALL-' + (++this.sequence);
+    const spec = CALLS[kind];
+    this.messages.push({
+      id, speakerId, team, kind, x, y, emittedAt: time,
+      expiresAt: time + spec.ttlSeconds, receivedBy: new Set(),
+    });
+    this.lastBySpeaker.set(speakerId, time);
+    return { accepted: true, id };
+  }
+
+  hear({ listenerId, team, x, y, time, available = true, hearing = 1 }) {
+    checkActor(listenerId, team, x, y, time);
+    validNumber(hearing, 'hearing');
+    if (hearing < 0 || hearing > 1) throw new RangeError('hearing hors [0,1]');
+    if (!this.enabled || !available || hearing === 0) return [];
+    const result = [];
+    for (const msg of this.messages) {
+      if (msg.team !== team || msg.speakerId === listenerId ||
+          msg.receivedBy.has(listenerId)) continue;
+      const spec = CALLS[msg.kind];
+      const meters = distance(x, y, msg.x, msg.y);
+      if (meters > spec.radiusM * hearing) continue;
+      const arrival = msg.emittedAt + this.baseLatencySeconds +
+        meters / this.soundSpeedMps;
+      if (time + 1e-9 < arrival || time > msg.expiresAt + 1e-9) continue;
+      msg.receivedBy.add(listenerId);
+      result.push(Object.freeze({
+        id: msg.id, from: msg.speakerId, kind: msg.kind, label: spec.label,
+        spokenAt: msg.emittedAt, heardAt: time,
+        // Confiance de compréhension uniquement, ni ordre ni fait certain.
+        confidence: Math.max(0.1, Math.min(1, hearing * (1 - 0.55 * meters / spec.radiusM))),
+      }));
+    }
+    return result;
+  }
+
+  prune(time) {
+    validNumber(time, 'time');
+    const before = this.messages.length;
+    this.messages = this.messages.filter(m => m.expiresAt + 1e-9 >= time);
+    return before - this.messages.length;
+  }
+
+  pendingCount() {
+    return this.messages.length;
+  }
+}
+module.exports = { CALLS, LocalCommunication };
