@@ -29,7 +29,7 @@ Les libellés suivants doivent être centralisés dans `engine/ai/facts.js` ; **
 | `BREAKDOWN_CONTEST_ACTIVE` | bool | phase | concurrents liés et situation réelle |
 | `LINEOUT_READY` | bool | phase | positions légales atteintes |
 | `SCRUM_SET` | bool | phase | état mêlée |
-| `SCUM_BALL_IN` | bool | phase | capteur ballon mêlée |
+| `SCRUM_BALL_IN` | bool | phase | capteur ballon mêlée |
 | `MAUL_BIND_LEGAL` | bool | phase | graphe de liaisons |
 | `KICK_CHASE_ONSIDE` | bool | individuel | loi 10 et remise en jeu |
 | `RECEIVER_OPEN` | bool | individuel | menace et couloir passe |
@@ -38,7 +38,7 @@ Les libellés suivants doivent être centralisés dans `engine/ai/facts.js` ; **
 | `TRY_PREVENTED` | bool | résultat | action observée, pas une intention |
 | `TRY_SCORED` | bool | résultat | marque accordée par arbitre |
 
-**Correction de typage à appliquer** : nom canonique `SCRUM_BALL_IN`, pas `SCUM_BALL_IN` dans l'implémentation. Ajouter un linter de noms de faits (`test-v4-facts.js`) pour refuser les chaînes inconnues.
+Créer un linter de noms de faits (`test-v4-facts.js`) pour refuser les chaînes inconnues et vérifier le type des valeurs.
 
 Les faits dérivés de prévision (`RECEIVER_OPEN`, `GAP_NEARBY`) sont **croyances** ; ils peuvent se révéler faux. Les faits autoritatifs (`HAS_BALL`, `TRY_SCORED`) ne doivent être mis à vrai que par le moteur, jamais par un effet GOAP non vérifié.
 
