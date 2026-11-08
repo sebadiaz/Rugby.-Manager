@@ -137,10 +137,22 @@ class LocalCommunication {
     }
     const previous = this.lastBySpeaker.get(speakerId);
     if (previous != null && time < previous) throw new RangeError('temps non monotone pour ' + speakerId);
-    if (previous != null && time - previous < this.cooldownSeconds) {
+    // Un "je pars" ne doit pas être bloqué par le "je suis prêt" dit
+    // quelques instants avant : c'est le message le plus important pour le 9.
+    // On conserve toutefois une émission maximum de chaque alerte par phase.
+    const critical = kind === 'SCRUM_8_GOING' || kind === 'SCRUM_8_ABORT' ||
+      kind === 'SCRUM_9_ACK';
+    if (critical && phaseId === null) {
+      throw new TypeError('phaseId obligatoire pour une alerte de mêlée');
+    }
+    if (previous != null && time - previous < this.cooldownSeconds && !critical) {
       return { accepted: false, reason: 'COOLDOWN' };
     }
     this.prune(time);
+    if (critical && this.messages.some(m => m.speakerId === speakerId &&
+        m.kind === kind && m.phaseId === phaseId)) {
+      return { accepted: false, reason: 'DUPLICATE_PHASE_CALL' };
+    }
     if (this.messages.length >= this.maxPending) {
       return { accepted: false, reason: 'QUEUE_FULL' };
     }
