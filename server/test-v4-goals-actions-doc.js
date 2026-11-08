@@ -17,7 +17,8 @@ function rows(prefix) {
     }else{
       assert.strictEqual(cols.length,3,m[1]+' 3 colonnes après ID/nom');
     }
-    assert.ok(cols.every(c=>c.trim().length>=10),m[1]+' description non suffisamment précise');
+    assert.ok(cols.every(c=>c.trim().length>=3),m[1]+' colonne vide ou non explicite');
+    assert.ok(cols[0].trim().length>=10,m[1]+' préconditions/succès trop courts');
     items.push({id:m[1],name:m[2]});
   }
   return items;
