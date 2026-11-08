@@ -34,6 +34,10 @@ const CALLS = Object.freeze({
   SCRUM_8_READY: Object.freeze({ label: 'Je peux partir !', radiusM: 18, ttlSeconds: 2.1 }),
   SCRUM_8_BLOCKED: Object.freeze({ label: 'Non, je garde !', radiusM: 18, ttlSeconds: 2.1 }),
   SCRUM_8_BREAK: Object.freeze({ label: 'Départ du huit !', radiusM: 19, ttlSeconds: 2.2 }),
+  // "Prêt" = possibilité. "J'y vais" = prise imminente : le 9 peut réagir.
+  SCRUM_8_GOING: Object.freeze({ label: "Neuf, j'y vais !", radiusM: 12, ttlSeconds: 0.9 }),
+  SCRUM_8_ABORT: Object.freeze({ label: 'Neuf, je laisse !', radiusM: 12, ttlSeconds: 0.9 }),
+  SCRUM_9_ACK: Object.freeze({ label: "Reçu, j'te suis !", radiusM: 12, ttlSeconds: 0.9 }),
   SCRUM_OPTIONS_ASK: Object.freeze({ label: 'On joue au près, au large ou on avance ?', radiusM: 25, ttlSeconds: 2.5 }),
   SCRUM_NEAR: Object.freeze({ label: 'Au près !', radiusM: 24, ttlSeconds: 2.2 }),
   SCRUM_WIDE: Object.freeze({ label: 'Au large !', radiusM: 25, ttlSeconds: 2.2 }),
@@ -91,7 +95,7 @@ class LocalCommunication {
   }
 
   emit({ speakerId, team, kind, x, y, time, available = true,
-         toId = null, replyTo = null }) {
+         toId = null, replyTo = null, phaseId = null }) {
     checkActor(speakerId, team, x, y, time);
     if (!Object.prototype.hasOwnProperty.call(CALLS, kind)) {
       throw new TypeError('appel inconnu : ' + kind);
@@ -106,6 +110,17 @@ class LocalCommunication {
     if (replyTo !== null &&
         (typeof replyTo !== 'string' || !/^CALL-[1-9][0-9]*$/.test(replyTo))) {
       throw new TypeError('réponse à un appel invalide');
+    }
+    if (phaseId !== null && (typeof phaseId !== 'string' ||
+        !/^[A-Za-z0-9][A-Za-z0-9:_-]{0,63}$/.test(phaseId))) {
+      throw new TypeError('phaseId invalide');
+    }
+    if ((kind === 'SCRUM_8_GOING' || kind === 'SCRUM_8_ABORT') &&
+        speakerId !== team + '8') {
+      throw new TypeError('seul le numéro 8 peut annoncer son départ/abandon');
+    }
+    if (kind === 'SCRUM_9_ACK' && speakerId !== team + '9') {
+      throw new TypeError('seul le numéro 9 peut accuser réception');
     }
     if (!this.enabled || !available) return { accepted: false, reason: 'UNAVAILABLE' };
     // Une réponse n'est possible que si le joueur a EFFECTIVEMENT entendu
@@ -132,22 +147,28 @@ class LocalCommunication {
     const id = 'CALL-' + (++this.sequence);
     const spec = CALLS[kind];
     this.messages.push({
-      id, speakerId, team, kind, x, y, toId, replyTo, emittedAt: time,
+      id, speakerId, team, kind, x, y, toId, replyTo, phaseId, emittedAt: time,
       expiresAt: time + spec.ttlSeconds, receivedBy: new Set(),
     });
     this.lastBySpeaker.set(speakerId, time);
     return { accepted: true, id };
   }
 
-  hear({ listenerId, team, x, y, time, available = true, hearing = 1 }) {
+  hear({ listenerId, team, x, y, time, available = true, hearing = 1,
+         phaseId = null }) {
     checkActor(listenerId, team, x, y, time);
     validNumber(hearing, 'hearing');
     if (hearing < 0 || hearing > 1) throw new RangeError('hearing hors [0,1]');
+    if (phaseId !== null && (typeof phaseId !== 'string' ||
+        !/^[A-Za-z0-9][A-Za-z0-9:_-]{0,63}$/.test(phaseId))) {
+      throw new TypeError('phaseId invalide');
+    }
     if (!this.enabled || !available || hearing === 0) return [];
     const result = [];
     for (const msg of this.messages) {
       if (msg.team !== team || msg.speakerId === listenerId ||
           (msg.toId !== null && msg.toId !== listenerId) ||
+          (phaseId !== null && phaseId !== msg.phaseId) ||
           msg.receivedBy.has(listenerId)) continue;
       const spec = CALLS[msg.kind];
       const meters = distance(x, y, msg.x, msg.y);
@@ -158,7 +179,7 @@ class LocalCommunication {
       msg.receivedBy.add(listenerId);
       result.push(Object.freeze({
         id: msg.id, from: msg.speakerId, kind: msg.kind, label: spec.label,
-        toId: msg.toId, replyTo: msg.replyTo,
+        toId: msg.toId, replyTo: msg.replyTo, phaseId: msg.phaseId,
         spokenAt: msg.emittedAt, heardAt: time,
         // Confiance de compréhension uniquement, ni ordre ni fait certain.
         confidence: Math.max(0.1, Math.min(1, hearing * (1 - 0.55 * meters / spec.radiusM))),
