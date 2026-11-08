@@ -2,7 +2,7 @@
 
 **Décision produit :** chaque joueur connaît le plan de jeu (intentions, principes, combinaisons et zones de référence). Il **choisit individuellement** l'action, le moment de départ et le déplacement selon son observation, son but prioritaire, les règles et l'évolution de la situation. **Aucune IA collective** ne décide la stratégie à sa place.
 
-**Statut** : cahier de spécification et d'acceptation, **pas une fonctionnalité déjà livrée**. Le transport des appels courts existe dans `engine/ai/local-communication.js`, mais n'est pas encore relié aux agents de match. Les scénarios de ce fichier deviendront des tests après intégration GOAP. Lire `07_AGENT_INDIVIDUEL_PLACEMENT.md` et `08_COMMUNICATION_LOCALE.md`.
+**Statut** : cahier de spécification et d'acceptation, **pas une fonctionnalité déjà livrée**. **Précision propriétaire : le 9 initie la demande de touche en discutant avec le 10, prend les informations des avants avant une mêlée et prévient les trois-quarts avant un up-and-under.** Ces dialogues sont détaillés et prioritaires dans `10_DIALOGUES_TACTIQUES_DU_9.md`. Le transport des appels courts existe dans `engine/ai/local-communication.js`, mais n'est pas encore relié aux agents de match. Les scénarios de ce fichier deviendront des tests après intégration GOAP. Lire `07_AGENT_INDIVIDUEL_PLACEMENT.md` et `08_COMMUNICATION_LOCALE.md`.
 
 ## 1. Ce qui est « stratégie » et ce qui ne l'est pas
 
@@ -105,7 +105,7 @@ Une alerte de partenaire n'est pas un ordre : elle peut provoquer une nouvelle �
 
 | Agent | But possible | Choix stratégique local | Observations nécessaires |
 |---|---|---|---|
-| **2 lanceur** | gagner la touche | lancer court / médian / fond / selon signal de partenaire | disposition défensive visible, timing sauteurs, pression |
+| **2 lanceur** | gagner la touche | exécuter légalement le lancer demandé par le **9 après dialogue avec le 10**, l'adapter si impossible | disposition défensive visible, timing sauteurs, pression, appel du 9 |
 | **4/5 sauteurs** | recevoir ou contester | appel au premier/second plan / saut légal / leurre / soutien si non sauteur | trajectoire du ballon, marque, porteurs, adversaires |
 | **1/3/6/7 soutiens** | aider la réception légale | se placer en soutien / lever et ramener en sécurité / préparer liaison | timing et position du sauteur, légalité du geste |
 | **8 receveur/porteur** | conserver et progresser | maul légal / libération rapide vers 9 / percussion si ballon reçu | contest, espace, entrée des adversaires |
@@ -116,8 +116,8 @@ Une alerte de partenaire n'est pas un ordre : elle peut provoquer une nouvelle �
 ### Scène LINE-STR-01 — Le lanceur change d'option
 
 - Plan de jeu connu : toucher le sauteur du fond pour lancement rapide.
-- Le talonneur voit que le fond est marqué et qu'un sauteur proche est libre.
-- Il **choisit localement** de lancer court, éventuellement après un appel `BALL` / `INSIDE` ; il n'est pas obligé de conserver le lancement prévu.
+- Le **9 interroge d'abord le 10** (`LINEOUT_ASK`), qui peut lui signaler que le fond est marqué et le premier sauteur libre.
+- Le **9 demande** un lancer court (`LINEOUT_FRONT`) ; le talonneur n'est pas télécommandé et doit toujours exécuter son lancer légalement selon la réception de cet appel et la disponibilité réelle des sauteurs.
 - Les sauteurs et soutiens voient le geste/la trajectoire et réagissent avec délai : aucune connaissance immédiate du nouveau choix de lancer.
 
 ### Scène LINE-STR-02 — Maul ou jeu au large
@@ -148,7 +148,7 @@ Une alerte de partenaire n'est pas un ordre : elle peut provoquer une nouvelle �
 | `WIDE_PASS` | exploiter surnombre | ligne de passe ouverte, largeur préservée | pas de passe en avant |
 | `OFFLOAD` | conserver malgré contact | bras libres et destinataire légal | contact et probabilité conditionnelle |
 | `GRUBBER` | menacer derrière rideau | espace libre derrière ligne, talent de pied | ballon au sol et course légale |
-| `HIGH_KICK` | disputer la réception | réception contestable, chasseurs onside | trajectoire, ballon en vol, hors-jeu |
+| `HIGH_KICK` | disputer la réception par **chandelle / up-and-under**, après annonce du 9 aux trois-quarts s'il botte | réception contestable, chasseurs onside, appel entendu | trajectoire, ballon en vol, hors-jeu |
 | `TOUCH_KICK` | gagner territoire | zone de terrain et gain autorisé | limites 22/50:22, bénéficiaire du lancer |
 | `PROTECT_BALL` | éviter turnover | aucune sortie sûre, contact proche | présentation/ruck légal |
 | `DROP_GOAL` | marquer | position et contexte favorables | loi 8, tir réel, probabilité issue du joueur |
@@ -243,7 +243,7 @@ Le choix peut déclencher une séquence GOAP de plusieurs actions : `REGAIN_ONSI
 | STR-02 | même mêlée, petit côté fermé, 10 libre | A8 retient ballon, A9 peut servir 10 ; deux plans individuels |
 | STR-03 | A perd mêlée, 6 encore lié | A6 ne se téléporte pas ; prépare `DEFEND` après libération |
 | STR-04 | B9 veut presser avant sortie légale | son plan est bloqué par ligne hors-jeu |
-| STR-05 | fond touche marqué, proche libre | talonneur peut choisir lancer proche plutôt que fond |
+| STR-05 | fond de touche marqué, proche libre | 9 demande l'avis du 10 puis peut annoncer une touche devant ; lanceur applique légalement selon son observation |
 | STR-06 | réception touche, possibilité maul ou passe | porteur compare options et attend contact/ballon réels |
 | STR-07 | B gagne touche, soutiens A indisponibles | A replanifie individuellement vers défense après actions légales |
 | STR-08 | cri de sauteur non entendu | aucune télépathie ni changement automatique de lancer |
