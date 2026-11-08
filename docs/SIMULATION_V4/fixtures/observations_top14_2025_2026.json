@@ -138,7 +138,8 @@
       "observation": "Paul Graou, demi de melee toulousain, inscrit le deuxieme essai de son equipe; la source officielle marque la 32e.",
       "tags": [
         "SCRUM_HALF_TRY",
-        "RECEIVE_OR_CARRY"
+        "RECEIVE_OR_CARRY",
+        "SCORER_POSITION"
       ],
       "simulationHypothesis": "Tester la capacite du 9 a conclure lui-meme sans forcer le mecanisme de construction non documente.",
       "dialogueVerified": false,
@@ -157,7 +158,8 @@
       "observation": "Maxime Lucu egalise 33-33 sur penalite a la fin du temps reglementaire; la finale se prolonge.",
       "tags": [
         "GOAL_KICK",
-        "TIE_AFTER_80"
+        "TIE_AFTER_80",
+        "EXTRA_TIME"
       ],
       "simulationHypothesis": "Gestion du score, choix de penalite et fatigue; ne pas arreter le match lorsque une prolongation doit se jouer.",
       "dialogueVerified": false,
