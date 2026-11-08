@@ -2,7 +2,7 @@
 
 **Décision produit :** les joueurs communiquent **entre eux**, sans créer d'IA collective. Chaque joueur garde son propre cerveau GOAP (perception → buts → plan → locomotion). Un appel est une **observation nouvelle**, non une consigne obligatoire. L'appelant décide individuellement de parler ; l'auditeur décide individuellement d'y réagir ou non.
 
-**Statut au 8 novembre 2026** : le **transport de messages** est codé et testé dans `engine/ai/local-communication.js`. **Les agents de match n'émettent ni ne consomment encore ces appels** ; l'intégration aux vrais 30 agents est prévue dans les tâches RM4-G04, G08, G10 et G11. Aucune voix ni aucun son n'est encore joué.
+**Statut au 8 novembre 2026** : le **transport de messages** est codé et testé dans `engine/ai/local-communication.js`, y compris les **questions du 9 adressées au 10/8 et leurs réponses**. Voir `10_DIALOGUES_TACTIQUES_DU_9.md` pour le protocole mêlée/touche/chandelle. **Les agents de match n'émettent ni ne consomment encore ces appels** ; l'intégration aux vrais 30 agents est prévue dans les tâches RM4-G04, G08, G10 et G11. Aucune voix ni aucun son n'est encore joué.
 
 ## 1. Parler est une action individuelle, entendre est une perception
 
@@ -32,7 +32,7 @@ Le joueur possède déjà un `AgentContext` : monde perçu, mémoire, but, plan,
 
 Un appel ne peut pas modifier directement `player.x`, `player.y`, `goalId`, `plan`, `ball.carrier`, `possession` ou l'arbitrage. Il n'existe pas de `TeamCommunicationBrain`, `TeamCoordinator`, tableau noir décisionnel ni allocation de rôle.
 
-## 2. Le vocabulaire V1 : onze appels courts
+## 2. Le vocabulaire V1 : onze appels courts + treize messages tactiques du 9
 
 La parole est une intention **limitée**, pas un message structuré contenant les positions ou les plans cachés des autres.
 
@@ -50,7 +50,7 @@ La parole est une intention **limitée**, pas un message structuré contenant le
 | `KICK` | « Pied ! » | botteur prêt, ballon aérien | un arrière peut réévaluer `COVER_BACKFIELD` |
 | `LEAVE` | « Laisse ! » | réception à deux ou ballon dangereux | un voisin peut abandonner sa prise de balle |
 
-**IMPORTANT** : ces effets sont **des réactions candidates**, pas des affectations. L'auditeur recoupe toujours le signal avec ses autres perceptions. Un appel `UP` n'autorise pas à franchir une ligne de hors-jeu. Un appel `BALL` n'oblige pas le porteur à passer.
+**IMPORTANT** : treize nouveaux messages sont disponibles : `LINEOUT_ASK/FRONT/MIDDLE/BACK/MAUL/WIDE`, `SCRUM_ASK/STEADY/DRIVE/PRESSURE/UNSTABLE`, `KICK_HIGH` et `KICK_CHASE`. `toId` permet une question ciblée et `replyTo` une réponse ; voir `10_DIALOGUES_TACTIQUES_DU_9.md`. Ces effets sont **des réactions candidates**, pas des affectations. L'auditeur recoupe toujours le signal avec ses autres perceptions. Un appel `UP` n'autorise pas à franchir une ligne de hors-jeu. Un appel `BALL` n'oblige pas le porteur à passer.
 
 ### Portées et durées par appel (hypothèses gameplay V1)
 
@@ -84,6 +84,8 @@ const calls = comm.hear({ listenerId:'A10', team:'A',
 // calls[0] = {id, from:'A9', kind:'BALL', label:'Ballon !',
 //             spokenAt:10, heardAt:10.2, confidence:...}
 ```
+
+`LocalCommunication` accepte aussi `toId` (coéquipier destinataire) et `replyTo` (identifiant d'appel). Une question adressée n'est pas automatiquement audible par les autres coéquipiers ; une réponse ne leur donne pas de but ni de position. Le n°9 peut consulter le 10 sur la touche, son 8 sur la mêlée et prévenir les trois-quarts avant une chandelle.
 
 `LocalCommunication` fournit :
 - `emit(speaker)` : crée un événement temporaire **uniquement** si l'appel est autorisé et hors cooldown ;
@@ -160,11 +162,13 @@ A11 et A15 convergent vers une réception, A15 crie `MINE`.
 
 ### Tests déjà exécutables
 
-`node server/test-v4-local-communication.js` : **16 tests** `COM-01` à `COM-16` du transport :
+`node server/test-v4-local-communication.js` : **24 tests** `COM-01` à `COM-16` du transport :
 1. catalogue fermé ; 2. latence ; 3. livraison unique ; 4. isolement des équipes ;
 5. portée ; 6. rapprochement avant expiration ; 7. expiration ; 8. pas d'écho au locuteur ;
 9. indisponibilité ; 10. anti-spam ; 11. ordre déterministe ; 12. replay identique ;
 13. mémoire bornée ; 14. entrées invalides ; 15. désactivation ; 16. absence de mutation de l'agent.
+
+Huit cas supplémentaires `COM-17`–`COM-24` testent les messages adressés, questions/réponses, la demande de mêlée et l'annonce de chandelle. En outre, `node server/test-v4-tactical-dialogue.js` exécute **10 scénarios de dialogue symbolique**.
 
 Ces tests **ne prouvent pas** que les joueurs du match parlent déjà ni qu'ils sont réellement autonomes.
 
