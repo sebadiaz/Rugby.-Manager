@@ -47,6 +47,7 @@ Les tâches G00 et G01 sont **commencées comme références/documentation** ; l
 - **Critères :** `BASELINE.md` contient SHA, paramètres, moyennes, dispersion, données brutes par graine ; le script est relançable et ne modifie pas le moteur.
 - **Tests :** `node server/test-invariants.js`, `node server/test-scores-abstraits.js`, `node server/test-calibration-moteur.js`.
 - **Rejet si :** statistiques copiées d'un vieux audit sans nouvelle mesure.
+- **Statut (9 nov. 2026) : LIVRÉ** — `server/v4/measure-baseline.js` (lecture seule, déterministe), `BASELINE.md`, `fixtures/baseline_30_graines.json` (30 graines, 8 captures de positions). Mesure sur la branche de travail fusionnée avec `main` 8024bcc : 6,5 essais, 412 passes, 210 rucks, 17,8 mêlées, 25,6 touches, 59,5 coups de pied par match ; essais du n°15 : 0,23 par match.
 
 ### RM4-G01 — Planificateur symbolique GOAP minimal **(socle fourni)**
 
