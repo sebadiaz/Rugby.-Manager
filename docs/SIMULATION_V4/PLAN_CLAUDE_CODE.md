@@ -71,6 +71,7 @@ node server/test-v4-goap-planner.js` (G01–G14).
 - **Critères :** chaque S01–S10 injectable ; après un tick, coordonnées finies, 30 joueurs, phase cohérente ; même fixture+graine => mêmes positions et événements.
 - **Tests :** `node server/test-spec-simulation-v4.js`, nouveau `test-v4-scenario-harness.js`.
 - **Rejet si :** l'injecteur corrige des états impossibles en silence ; documenter ses préconditions.
+- **Statut (9 nov. 2026) : LIVRÉ** — `server/v4/scenario-harness.js` (`createScenarioEngine(fixture, {strict})`, préconditions en tête de fichier) et `server/test-v4-scenario-harness.js` (8 tests). S01–S10 injectables par les portes légales du moteur (`_plaquerSurPlace`, `_formerMelee`, `_accorderTouche`, `_formerMaul`, `_tenterCoupDePiedJeu`). **Constat : les fixtures sont incohérentes** (ballon à 12–50 m de son porteur en S06–S10 ; aucun joueur à moins de 11 m du ballon en S02/S05) ; le harnais les rend légales par UN écart déclaré dans `moteur.scenarioEcarts` (jamais silencieux, refusé en mode `strict`), figé par test. **Constat moteur :** à la transition PORTE→RUCK un joueur saute de 1,2 à 1,9 m en un tick (S01, S07, S08, S09) — à traiter par G07/G10.
 
 ### RM4-G03 — Ontologie, modèles et horloge de décision
 
