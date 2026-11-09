@@ -39,7 +39,7 @@ class AgentContext {
       this.params[k] = v;
     }
     this.lastObsT = null;
-    this.mem = { ball: null, teammates: {}, opponents: {}, phase: null, possession: null, score: null };
+    this.mem = { ball: null, teammates: {}, opponents: {}, phase: null, possession: null, score: null, ruck: null };
     this.heard = [];
   }
 
@@ -57,6 +57,7 @@ class AgentContext {
       // Une entité vue est rafraîchie ; une entité non vue garde sa dernière trace.
       for (const [id, e] of Object.entries(obs.vus.teammates)) m.teammates[id] = Object.assign({}, e, { seenAt: t });
       for (const [id, e] of Object.entries(obs.vus.opponents)) m.opponents[id] = Object.assign({}, e, { seenAt: t });
+      if (obs.vus.ruck) m.ruck = Object.assign({}, obs.vus.ruck, { seenAt: t }); else if (obs.phase !== 'RUCK') m.ruck = null;
       m.phase = obs.phase; m.possession = obs.possession; m.score = obs.score ? { A: obs.score.A, B: obs.score.B } : null;
     }
     // Proprioception : on connaît toujours sa propre position exacte.
@@ -71,6 +72,7 @@ class AgentContext {
     const vieux = (seenAt) => t - seenAt > mem + 1e-9;
     for (const k of ['teammates', 'opponents']) for (const id of Object.keys(this.mem[k])) if (vieux(this.mem[k][id].seenAt)) delete this.mem[k][id];
     if (this.mem.ball && vieux(this.mem.ball.seenAt)) this.mem.ball = null;
+    if (this.mem.ruck && vieux(this.mem.ruck.seenAt)) this.mem.ruck = null;
     this.heard = this.heard.filter((h) => t - h.heardAt <= mem);
 
     const fiche = (e) => ({ lastSeen: { x: e.x, y: e.y }, age: +(t - e.seenAt).toFixed(3), confidence: +clamp01(1 - (t - e.seenAt) / mem).toFixed(3) });
@@ -89,6 +91,8 @@ class AgentContext {
       self: { x: moi.x, y: moi.y, orientation: moi.orientation || 0, grounded: moi.auSol > 0, available: !(moi.auSol > 0) && !(moi.sinBin > 0),
         sensAttaque: moi.sensAttaque, kickOffside: moi.horsJeuKick > 0 },
       ball: ballon, teammates: mates, opponents: adv,
+      ruck: this.mem.ruck ? { ballAvailable: this.mem.ruck.ballAvailable, defendersCommitted: this.mem.ruck.defendersCommitted,
+        age: +(t - this.mem.ruck.seenAt).toFixed(3), confidence: +clamp01(1 - (t - this.mem.ruck.seenAt) / mem).toFixed(3) } : null,
       phase: this.mem.phase, possession: this.mem.possession, score: this.mem.score,
       heard: this.heard.map((h) => ({ from: h.from, kind: h.kind, age: +(t - h.heardAt).toFixed(3), confidence: h.confidence, replyTo: h.replyTo })),
       omniscient: !!this.params.omniscient,

@@ -87,6 +87,12 @@ function observe(state, agent, params) {
       };
     }
   }
+  // Le statut du ruck (ballon jouable ? défenseurs engagés ?) ne se lit que si l'on voit le ballon.
+  vus.ruck = null;
+  if (vus.ball && state.phase === 'RUCK' && state.ruck) {
+    vus.ruck = { ballAvailable: !!state.ruck.ballAvailable, defendersCommitted: state.ruck.defendersCommitted || 0,
+      attackersCommitted: state.ruck.attackersCommitted || 0 };
+  }
   return {
     t, agent: { team: moi.team, numero: moi.numero },
     self: { x: moi.x, y: moi.y, orientation: moi.orientation || 0, vitesse: moi.vitesseCourante || 0,
