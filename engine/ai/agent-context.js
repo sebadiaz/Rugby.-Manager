@@ -39,7 +39,7 @@ class AgentContext {
       this.params[k] = v;
     }
     this.lastObsT = null;
-    this.mem = { ball: null, teammates: {}, opponents: {}, phase: null, possession: null };
+    this.mem = { ball: null, teammates: {}, opponents: {}, phase: null, possession: null, score: null };
     this.heard = [];
   }
 
@@ -57,7 +57,7 @@ class AgentContext {
       // Une entité vue est rafraîchie ; une entité non vue garde sa dernière trace.
       for (const [id, e] of Object.entries(obs.vus.teammates)) m.teammates[id] = Object.assign({}, e, { seenAt: t });
       for (const [id, e] of Object.entries(obs.vus.opponents)) m.opponents[id] = Object.assign({}, e, { seenAt: t });
-      m.phase = obs.phase; m.possession = obs.possession;
+      m.phase = obs.phase; m.possession = obs.possession; m.score = obs.score ? { A: obs.score.A, B: obs.score.B } : null;
     }
     // Proprioception : on connaît toujours sa propre position exacte.
     const moi = [...state.equipeA, ...state.equipeB].find((j) => j.team === this.agent.team && j.numero === this.agent.numero);
@@ -86,9 +86,10 @@ class AgentContext {
     }
     return deepFreeze({
       t, agent: this.agent, observedAt: this.lastObsT, refreshed: doitObserver,
-      self: { x: moi.x, y: moi.y, orientation: moi.orientation || 0, grounded: moi.auSol > 0, available: !(moi.auSol > 0) && !(moi.sinBin > 0) },
+      self: { x: moi.x, y: moi.y, orientation: moi.orientation || 0, grounded: moi.auSol > 0, available: !(moi.auSol > 0) && !(moi.sinBin > 0),
+        sensAttaque: moi.sensAttaque, kickOffside: moi.horsJeuKick > 0 },
       ball: ballon, teammates: mates, opponents: adv,
-      phase: this.mem.phase, possession: this.mem.possession,
+      phase: this.mem.phase, possession: this.mem.possession, score: this.mem.score,
       heard: this.heard.map((h) => ({ from: h.from, kind: h.kind, age: +(t - h.heardAt).toFixed(3), confidence: h.confidence, replyTo: h.replyTo })),
       omniscient: !!this.params.omniscient,
     });
