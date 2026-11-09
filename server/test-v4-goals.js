@@ -197,6 +197,15 @@ test('options et profils invalides refusés ; numéro hors 1..15 refusé', () =>
   assert.throws(() => profilePour(16), /invalide/);
 });
 
+test('jamais « aucun but applicable » : joueur en récupération, exclu ou indisponible, le sélecteur ne lève pas d\'exception', () => {
+  const e = etat('S01');
+  for (const [champ, val] of [['ruckRecovery', 2], ['sinBin', 120]]) {
+    const x = copie(e); const j = joueur(x, 'A', 8); j[champ] = val; j.auSol = 0;
+    const r = decider(agent('A', 8), x);
+    assert.ok(GOAL_IDS.includes(r.goal), champ);
+  }
+});
+
 test('architecture : aucun TeamCoordinator / TeamBlackboard / assignRoles / reserveRole, ni aléa, dans engine/ai', () => {
   for (const f of fs.readdirSync(path.join(__dirname, '../engine/ai')).filter((x) => x.endsWith('.js'))) {
     const src = fs.readFileSync(path.join(__dirname, '../engine/ai', f), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');

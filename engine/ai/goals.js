@@ -106,7 +106,8 @@ const GOALS = Object.freeze([
   G('BE_PASS_OPTION', 'COMMIT', (s) => s.maPoss && s.available && s.onside && (s.phase === 'PORTE' || s.phase === 'RUCK') && !s.aLeBallon, (s, p) => 46 * p.option),
   G('FORM_SCRUM_LEGALLY', 'COMMIT', (s) => s.phase === 'MELEE' && s.available, (s, p) => 80 * p.scrum),
   G('FORM_LINEOUT_LEGALLY', 'COMMIT', (s) => s.phase === 'TOUCHE' && s.available, (s, p) => 78 * p.lineout),
-  G('RETURN_TO_PLAYBOOK', 'COMMIT', (s) => s.available, () => 5),
+  // Toujours applicable : filet de sécurité (joueur en récupération, exclu temporaire...) — jamais « aucun but ».
+  G('RETURN_TO_PLAYBOOK', 'COMMIT', () => true, () => 5),
 ]);
 const GOAL_IDS = Object.freeze(GOALS.map((g) => g.id));
 

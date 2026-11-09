@@ -126,7 +126,7 @@ test('déterminisme : même graine -> mêmes événements pour les 30 agents (av
 });
 
 test('10 matchs à pas constant : le moteur reste sain avec 30 agents (positions finies, 30 joueurs, possession valide), coûts CPU mesurés hors décision', () => {
-  let totalMs = 0, totalTicks = 0, maxTickMs = 0, plans = 0, pasTotal = 0;
+  let totalMs = 0, totalTicks = 0, maxTickMs = 0, plans = 0, pasTotal = 0, erreurs = 0;
   for (let seed = 1; seed <= 10; seed++) {
     const m = new MatchEngine(seed, 4800);
     for (let i = 0; i < 100; i++) m.tick(0.1);
@@ -145,11 +145,13 @@ test('10 matchs à pas constant : le moteur reste sain avec 30 agents (positions
       for (const j of [...s.equipeA, ...s.equipeB]) assert.ok(Number.isFinite(j.x) && Number.isFinite(j.y), `seed ${seed} : position non finie`);
       assert.ok(s.score.A >= 0 && s.score.B >= 0);
     }
+    erreurs += sched.agents.reduce((n, a) => n + (a.errors || 0), 0);
     plans += sched.agents.reduce((n, a) => n + a.events.filter((e) => e.type === 'PLAN_CREATED' || e.type === 'PLAN_REPLANNED').length, 0);
     pasTotal += sched.stats.decisions;
   }
   console.log(`     CPU : ${(totalMs / totalTicks).toFixed(2)} ms/tick en moyenne, ${maxTickMs.toFixed(1)} ms au pire (30 agents), ${plans} plans, ${pasTotal} décisions sur 10 matchs de 120 s`);
   assert.ok(plans > 0, 'aucun plan créé : les agents ne font rien');
+  assert.strictEqual(erreurs, 0, erreurs + ' DECISION_ERROR');
   assert.ok(totalMs / totalTicks < 25, `trop lent : ${(totalMs / totalTicks).toFixed(1)} ms/tick (budget 25 ms à 20 Hz)`);
 });
 

@@ -27,6 +27,7 @@ const { planGoal, satisfies } = require('./goal-planner.js');
 const { factsFromBeliefs, buildPlannerActions, feasibleActions } = require('./action-cost.js');
 const { deriveSituation, profilePour } = require('./goals.js');
 const { PAR_NOM } = require('./actions.js');
+const { individualPlacement } = require('./individual-placement.js');
 
 // Condition de succès (faits désirés) de chaque but planifiable. Les autres
 // buts (DEFEND, COVER_BACKFIELD...) n'ont pas encore d'actions A16+ : le but est
@@ -72,6 +73,8 @@ class GoalBasedRugbyAgent {
     this.pending = null;          // décision due non encore jouée : { since, urgent }
     this._forceDecision = false;
     this._intent = null; this._beliefs = null; this._sit = null;
+    this.usePlacement = options.placement === true; // opt-in : le placement individuel conduit le joueur hors plan
+    this.placement = null;
     this.maxExpanded = options.maxExpanded ?? 128;
     this.lastExpansions = 0;
   }
@@ -180,6 +183,15 @@ class GoalBasedRugbyAgent {
 
   // SELECT_GOAL + PLAN (coûteux : accordé par le scheduler ou par tick()).
   decide(state) {
+    // D08 : une erreur de décision ne bloque jamais le tick, mais elle est JOURNALISÉE (DECISION_ERROR)
+    // et comptée : les tests de match exigent zéro DECISION_ERROR.
+    try { this._decide(state); } catch (err) {
+      this.pending = null; this._forceDecision = false; this.plan = null; this.lastDecisionT = state.tempsMatch;
+      this._push('DECISION_ERROR', state.tempsMatch, { message: String(err && err.message) });
+      this.errors = (this.errors || 0) + 1;
+    }
+  }
+  _decide(state) {
     const t = state.tempsMatch, beliefs = this._beliefs, sit = this._sit;
     this.decisions++;
     this.lastDecisionT = t;
@@ -194,6 +206,10 @@ class GoalBasedRugbyAgent {
     if (butChange) {
       if (this.executor.busy) { for (const e of this.executor.cancel(state, 'GOAL_CHANGED').events) this.events.push(e); this._intent = null; }
       this.plan = null;
+    }
+    if (this.usePlacement) {
+      this.placement = individualPlacement(beliefs, this.goal, this.playbook, this.profile);
+      if (this.placement) this._push('PLACEMENT_CHOSEN', t, { goal: this.goal, placement: this.placement.placementGoal, target: this.placement.target });
     }
     const faits = this._faits(beliefs, sit);
     if (!this.plan) { const r = this.replanRaison || 'NEW'; this.replanRaison = null; this._planifier(beliefs, sit, r); }
@@ -212,6 +228,13 @@ class GoalBasedRugbyAgent {
       for (const e of r.events) this.events.push(e);
       if (r.started) this._intent = r.intent;
       else { this.bans.set(nom, t + this.banDuration); this.plan = null; this._forceDecision = true; }
+    }
+    // Sans action en cours, c'est SON placement individuel qui le conduit (jamais celui d'un autre).
+    // Le moteur garde la main sur le porteur (aucun acteur de ballon) et sur les phases arrêtées
+    // (mêlée, touche, maul, ruck, coups de pied) : le placement individuel ne conduit qu'en jeu courant.
+    const porteur = state.ball && state.ball.carrierTeam === this.agent.team && state.ball.carrierNumber === this.agent.numero;
+    if (this.usePlacement && !this._intent && !this.executor.busy && !this.plan && this.placement && state.phase === 'PORTE' && !porteur) {
+      this._intent = { tx: this.placement.target.x, ty: this.placement.target.y, vmaxFactor: this.placement.vmaxFactor };
     }
     return this._intent;
   }
