@@ -102,6 +102,7 @@ class ActionExecutor {
     this.agent = { team: agent.team, numero: agent.numero };
     this.id = agent.team + agent.numero;
     this.deadlineFactor = options.deadlineFactor ?? 1;
+    this.acteurs = ACTEURS; // remplaçable par des doublures de test pour les actions de ballon
     this.current = null;
   }
   get busy() { return !!this.current; }
@@ -115,7 +116,7 @@ class ActionExecutor {
     const t = state.tempsMatch;
     if (this.current) return { started: false, events: [Object.freeze({ type: 'ACTION_FAILED', agent: this.id, action: actionName, reason: 'BUSY', t })], intent: null };
     if (!PAR_NOM[actionName]) throw new RangeError('action inconnue : ' + actionName);
-    const acteur = ACTEURS[actionName];
+    const acteur = this.acteurs[actionName];
     if (!acteur) return { started: false, events: [Object.freeze({ type: 'ACTION_FAILED', agent: this.id, action: actionName, reason: 'NO_ACTUATOR', t })], intent: null };
     const c = contexte(state, this.agent, params);
     const refus = acteur.startGuard(c);

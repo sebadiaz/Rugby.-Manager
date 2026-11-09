@@ -1,0 +1,202 @@
+/*
+ * Rugby Manager — V4, contrôleur d'UN joueur : GoalBasedRugbyAgent (RM4-G08).
+ *
+ * Boucle PERCEIVE → UPDATE → SELECT_GOAL → PLAN → ACT → MONITOR, à l'échelle
+ * d'un SEUL joueur. Aucun accès aux autres agents, aucun état partagé, aucun
+ * coordinateur : le contrôleur ne connaît que ses croyances (AgentContext), son
+ * profil et le plan de jeu en lecture seule.
+ *
+ *  - la décision (but + plan) est évaluée toutes les `decisionPeriod` secondes
+ *    et sur événement urgent (changement de phase ou de possession, action
+ *    terminée, appel entendu, précondition invalidée) ; l'exécution est suivie
+ *    à chaque tick ;
+ *  - replanification depuis les faits ACTUELS : un agent déjà au ruck ne
+ *    recommence pas par MOVE_TO_RUCK ;
+ *  - une action sans acteur ou échouée est écartée un moment (`banDuration`)
+ *    pour ne pas boucler ; le but est alors tenu sans plan (HOLD) ;
+ *  - tick() renvoie une INTENTION de mouvement ; c'est l'appelant qui la
+ *    transmet au moteur (MatchEngine.setAgentIntent).
+ * Zéro Date.now() / Math.random().
+ */
+'use strict';
+
+const { AgentContext } = require('./agent-context.js');
+const { GoalSelector } = require('./goal-selector.js');
+const { ActionExecutor } = require('./action-executor.js');
+const { planGoal, satisfies } = require('./goal-planner.js');
+const { factsFromBeliefs, buildPlannerActions, feasibleActions } = require('./action-cost.js');
+const { deriveSituation, profilePour } = require('./goals.js');
+const { PAR_NOM } = require('./actions.js');
+
+// Condition de succès (faits désirés) de chaque but planifiable. Les autres
+// buts (DEFEND, COVER_BACKFIELD...) n'ont pas encore d'actions A16+ : le but est
+// tenu sans plan (HOLD).
+const BUTS_PLANIFIABLES = Object.freeze({
+  RECOVER_AND_REJOIN: { SELF_GROUNDED: false, SELF_AVAILABLE: true },
+  BECOME_ONSIDE: { SELF_ONSIDE: true },
+  CONTEST_BREAKDOWN: { SELF_AT_RUCK: true },
+  SECURE_RUCK: { HAS_BALL: true },
+  DISTRIBUTE_BALL: { DISTRIBUTED: true },
+  SUPPORT_CARRIER: { SAFE_SUPPORT_LANE: true },
+  BE_PASS_OPTION: { RECEIVER_OPEN: true },
+});
+
+// Appels que le joueur lance de lui-même selon son but (jamais un ordre).
+const PAROLES_PAR_BUT = Object.freeze({ SUPPORT_CARRIER: 'SUPPORT', CONTEST_AERIAL_BALL: 'MINE', PREVENT_TRY: 'COVER' });
+
+class GoalBasedRugbyAgent {
+  constructor(agent, options = {}) {
+    if (!agent || (agent.team !== 'A' && agent.team !== 'B') || !Number.isInteger(agent.numero)) throw new TypeError('agent invalide');
+    this.agent = { team: agent.team, numero: agent.numero };
+    this.id = agent.team + agent.numero;
+    this.profile = profilePour(agent.numero, options.profile);
+    this.context = new AgentContext(agent, Object.assign({ reactionDelay: 0.2 }, options.perception));
+    this.selector = new GoalSelector(agent, Object.assign({ profile: options.profile }, options.selector));
+    this.executor = new ActionExecutor(agent, options.executor);
+    if (options.acteurs) this.executor.acteurs = options.acteurs; // doublures de test (acteurs de ballon)
+    this.playbook = Object.freeze(Object.assign({}, options.playbook));
+    this.decisionPeriod = options.decisionPeriod ?? 0.4;
+    this.banDuration = options.banDuration ?? 3;
+    this.extraFacts = options.extraFacts || null; // (beliefs, facts) => faits perçus en plus (ex. couloir du pod)
+    if (!(this.decisionPeriod > 0) || !(this.banDuration >= 0)) throw new RangeError('options invalides');
+    this.goal = null;
+    this.plan = null;            // { steps, index, cost, goal }
+    this.lastDecisionT = null;
+    this.lastKey = null;
+    this.bans = new Map();       // nom d'action -> t de fin
+    this.heardSeen = new Set();
+    this.events = [];
+    this.decisions = 0;
+    this.spoke = new Set();
+    this.replanRaison = null;
+  }
+
+  _push(type, t, extra) { const e = Object.freeze(Object.assign({ type, agent: this.id, t }, extra || {})); this.events.push(e); return e; }
+
+  hear() { return this.context.heard; } // ce qui a été entendu ; informe la perception, n'impose aucun plan
+
+  _faits(beliefs, sit) {
+    const f = factsFromBeliefs(beliefs, sit);
+    return this.extraFacts ? Object.assign({}, f, this.extraFacts(beliefs, f)) : f;
+  }
+
+  _planifier(beliefs, sit, raison) {
+    const t = beliefs.t;
+    const cible = BUTS_PLANIFIABLES[this.goal];
+    if (!cible) { this.plan = null; return false; }
+    const faits = this._faits(beliefs, sit);
+    const base = Object.assign({}, faits);
+    for (const k of Object.keys(cible)) if (!(k in base)) base[k] = false;
+    if (satisfies(base, cible)) { this.plan = null; return false; }
+    const actions = feasibleActions(base, buildPlannerActions(beliefs, this.profile, { situation: sit }))
+      .filter((a) => !(this.bans.get(a.id) > t));
+    const r = planGoal(base, cible, actions);
+    if (r.status !== 'OK') { this.plan = null; this._push('NO_PLAN', t, { goal: this.goal, status: r.status }); return false; }
+    this.plan = { steps: r.steps, index: 0, cost: r.cost, goal: this.goal };
+    this._push(raison === 'NEW' ? 'PLAN_CREATED' : 'PLAN_REPLANNED', t, { goal: this.goal, steps: r.steps.slice(), cost: +r.cost.toFixed(3), reason: raison });
+    return true;
+  }
+
+  // Une étape est-elle encore possible dans les faits actuels ? (un fait connu et contredit l'invalide)
+  // `enCours` : pour une action DÉJÀ démarrée, les faits qu'elle a pour effet de changer
+  // (ex. SELF_AT_RUCK=faux avant MOVE_TO_RUCK) ne comptent plus : les atteindre, c'est réussir.
+  _etapeValide(nom, faits, enCours) {
+    const act = PAR_NOM[nom];
+    return Object.entries(act.preconditions).every(([k, v]) => (enCours && k in act.effects) || !(k in faits) || faits[k] === v);
+  }
+
+  // Un pas de la boucle. `state` = getState() ; `comm` = LocalCommunication (facultatif).
+  tick(state, comm) {
+    const t = state.tempsMatch;
+    const out = [];
+    const mark = this.events.length;
+    // PERCEIVE + UPDATE
+    const beliefs = this.context.update(state, comm);
+    const sit = deriveSituation(beliefs);
+    // Appels reçus nouveaux : événement « urgent » pour réévaluer (sans imposer de plan).
+    let appelNouveau = false;
+    for (const h of beliefs.heard) {
+      const cle = h.from + ':' + h.kind + ':' + (t - h.age).toFixed(2);
+      if (!this.heardSeen.has(cle)) { this.heardSeen.add(cle); appelNouveau = true; }
+    }
+    const cle = beliefs.phase + '|' + beliefs.possession;
+    const urgent = this.lastKey !== null && cle !== this.lastKey || appelNouveau || (this.lastDecisionT === null);
+    this.lastKey = cle;
+    const dueDecision = urgent || t - this.lastDecisionT >= this.decisionPeriod - 1e-9;
+
+    // MONITOR de l'action en cours (chaque tick, sur le monde réel)
+    let intent = null;
+    // Précondition invalidée PENDANT l'action (ex. le 10 est désormais couvert) : on l'abandonne et on replanifie.
+    if (this.executor.busy && this.plan && this.executor.current && this.executor.current.name === this.plan.steps[this.plan.index]
+      && !this._etapeValide(this.executor.current.name, this._faits(beliefs, sit), true)) {
+      for (const e of this.executor.cancel(state, 'PRECONDITION_INVALID').events) this.events.push(e);
+      this.plan = null; this.lastDecisionT = null;
+      this.replanRaison = 'PRECONDITION_INVALID';
+    }
+    if (this.executor.busy) {
+      const s = this.executor.step(state);
+      for (const e of s.events) this.events.push(e);
+      intent = s.intent;
+      if (s.status === 'SUCCEEDED' && this.plan) {
+        this.plan.index++;
+        if (this.plan.index >= this.plan.steps.length) { this._push('PLAN_COMPLETED', t, { goal: this.goal }); this.plan = null; }
+        this.lastDecisionT = null; // décision fraîche après une action terminée
+      } else if (s.status === 'FAILED' || s.status === 'ABORTED') {
+        const nom = s.events[0].action;
+        this.bans.set(nom, t + this.banDuration);
+        this.plan = null;
+        this.lastDecisionT = null;
+      }
+    }
+
+    // SELECT_GOAL + PLAN (périodique ou urgent)
+    if (this.lastDecisionT === null || dueDecision) {
+      this.decisions++;
+      this.lastDecisionT = t;
+      const choix = this.selector.select(beliefs, this.playbook);
+      for (const e of choix.events) this.events.push(e);
+      const but = choix.goal;
+      const butChange = but !== this.goal;
+      this.goal = but;
+      if (butChange) {
+        if (this.executor.busy) { for (const e of this.executor.cancel(state, 'GOAL_CHANGED').events) this.events.push(e); intent = null; }
+        this.plan = null;
+      }
+      const faits = this._faits(beliefs, sit);
+      if (!this.plan) { const r = this.replanRaison || 'NEW'; this.replanRaison = null; this._planifier(beliefs, sit, r); }
+      else if (!this.executor.busy && !this._etapeValide(this.plan.steps[this.plan.index], faits)) {
+        // Précondition invalidée AVANT de démarrer l'étape : replanification depuis les faits actuels.
+        this._planifier(beliefs, sit, 'PRECONDITION_INVALID');
+      }
+    }
+
+    // ACT : démarrer l'étape courante si rien n'est en cours
+    if (!this.executor.busy && this.plan) {
+      const nom = this.plan.steps[this.plan.index];
+      const r = this.executor.start(nom, state);
+      for (const e of r.events) this.events.push(e);
+      if (r.started) intent = r.intent;
+      else { this.bans.set(nom, t + this.banDuration); this.plan = null; this.lastDecisionT = null; }
+    }
+
+    // Parole : un appel posé par le joueur lui-même, jamais un ordre
+    if (comm) this.maybeSpeak(comm, state, beliefs);
+    return { intent, goal: this.goal, plan: this.plan ? { steps: this.plan.steps.slice(), index: this.plan.index } : null,
+      events: this.events.slice(mark), beliefs };
+  }
+
+  // Décide LOCALEMENT de parler selon son but ; renvoie le type d'appel émis ou null.
+  maybeSpeak(comm, state, beliefs) {
+    const kind = PAROLES_PAR_BUT[this.goal];
+    if (!kind) return null;
+    const cle = this.goal + ':' + Math.floor(state.tempsMatch / 3);
+    if (this.spoke.has(cle)) return null;
+    const me = (this.agent.team === 'A' ? state.equipeA : state.equipeB).find((j) => j.numero === this.agent.numero);
+    if (!me || me.auSol > 0) return null;
+    const r = comm.emit({ speakerId: this.id, team: this.agent.team, kind, x: me.x, y: me.y, time: state.tempsMatch });
+    if (r.accepted) { this.spoke.add(cle); this._push('SPOKE', state.tempsMatch, { kind }); return kind; }
+    return null;
+  }
+}
+
+module.exports = { GoalBasedRugbyAgent, BUTS_PLANIFIABLES, PAROLES_PAR_BUT };
