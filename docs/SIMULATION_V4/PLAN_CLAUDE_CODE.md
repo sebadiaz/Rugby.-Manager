@@ -80,6 +80,7 @@ node server/test-v4-goap-planner.js` (G01–G14).
 - **Critères :** 0 conflit de faits (ballon en vol + porté, au sol + lié), tous types validés ; `SCRUM_BALL_IN` (orthographe canonique).
 - **Tests :** nouveaux tests de faits + snapshots S01/S03/S07.
 - **Rejet si :** duplication de la possession dans un second moteur.
+- **Statut (9 nov. 2026) : LIVRÉ** — `engine/ai/facts.js` (29 faits canoniques identiques au catalogue 05, schéma 1.0.0, détection de conflits), `engine/ai/world-model.js` (`extractFacts(state, {team, numero}, {target})`, pure, résultat gelé, faits perçus horodatés, faits non calculables **absents** et listés), `server/test-v4-facts.js` (16 tests : snapshots S01/S03/S07, 30 joueurs × 300 états d'un vrai match sans conflit, compatibilité avec `planGoal`). 18 faits calculés, 11 absents (RUCK_WON, GAP_NEARBY, DEFENSIVE_GAP_CLOSED, LINEOUT_READY, MAUL_BIND_LEGAL, DISTRIBUTED, TRY_PREVENTED, POSSESSION_SECURED, SAFE_SUPPORT_LANE, PASS_LANE_POD_OPEN, SELF_AT_TARGET sans cible). **Constat moteur :** `getState().ballon.enVol` reste vrai pendant l'introduction en mêlée (ballon à 3 cm dans le tunnel) alors que `ball.state` vaut SCRUM ; `BALL_IN_FLIGHT` lit donc `ball.state === 'AIR'` (une première version lisant `enVol` produisait « ballon en vol ET dans la mêlée » : test rouge).
 
 ## M1 — Premier vrai agent autonome et exécuteur
 
