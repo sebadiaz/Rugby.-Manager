@@ -69,6 +69,11 @@ class GoalBasedRugbyAgent {
     this.decisions = 0;
     this.spoke = new Set();
     this.replanRaison = null;
+    this.pending = null;          // décision due non encore jouée : { since, urgent }
+    this._forceDecision = false;
+    this._intent = null; this._beliefs = null; this._sit = null;
+    this.maxExpanded = options.maxExpanded ?? 128;
+    this.lastExpansions = 0;
   }
 
   _push(type, t, extra) { const e = Object.freeze(Object.assign({ type, agent: this.id, t }, extra || {})); this.events.push(e); return e; }
@@ -90,8 +95,15 @@ class GoalBasedRugbyAgent {
     if (satisfies(base, cible)) { this.plan = null; return false; }
     const actions = feasibleActions(base, buildPlannerActions(beliefs, this.profile, { situation: sit }))
       .filter((a) => !(this.bans.get(a.id) > t));
-    const r = planGoal(base, cible, actions);
-    if (r.status !== 'OK') { this.plan = null; this._push('NO_PLAN', t, { goal: this.goal, status: r.status }); return false; }
+    const r = planGoal(base, cible, actions, { maxExpanded: this.maxExpanded });
+    this.lastExpansions += r.expanded || 0;
+    if (r.status !== 'OK') {
+      this.plan = null;
+      this._push('NO_PLAN', t, { goal: this.goal, status: r.status });
+      // D08 : budget dépassé ou aucun plan -> position sûre (le moteur garde la conduite du joueur), jamais d'exception.
+      if (r.status === 'BUDGET_EXCEEDED' || r.status === 'DEPTH_LIMIT') this._push('HOLD_SAFE_POSITION', t, { goal: this.goal, status: r.status });
+      return false;
+    }
     this.plan = { steps: r.steps, index: 0, cost: r.cost, goal: this.goal };
     this._push(raison === 'NEW' ? 'PLAN_CREATED' : 'PLAN_REPLANNED', t, { goal: this.goal, steps: r.steps.slice(), cost: +r.cost.toFixed(3), reason: raison });
     return true;
@@ -105,14 +117,26 @@ class GoalBasedRugbyAgent {
     return Object.entries(act.preconditions).every(([k, v]) => (enCours && k in act.effects) || !(k in faits) || faits[k] === v);
   }
 
-  // Un pas de la boucle. `state` = getState() ; `comm` = LocalCommunication (facultatif).
-  tick(state, comm) {
-    const t = state.tempsMatch;
-    const out = [];
+  // Un pas complet de la boucle (usage d'un agent seul) ; un scheduler utilise plutôt
+  // observe() puis, s'il accorde la décision, decide() puis act() (voir agent-scheduler.js).
+  // opts.decide === false : la décision due est reportée (pending) au lieu d'être jouée.
+  tick(state, comm, opts = {}) {
     const mark = this.events.length;
-    // PERCEIVE + UPDATE
+    this.observe(state, comm);
+    if (this.pending && opts.decide !== false) this.decide(state);
+    this.act(state);
+    if (comm) this.maybeSpeak(comm, state, this._beliefs);
+    return { intent: this._intent, goal: this.goal, plan: this.plan ? { steps: this.plan.steps.slice(), index: this.plan.index } : null,
+      events: this.events.slice(mark), beliefs: this._beliefs, pending: this.pending };
+  }
+
+  // PERCEIVE + UPDATE + MONITOR (peu coûteux, à chaque tick). Marque une décision due (`pending`).
+  observe(state, comm) {
+    const t = state.tempsMatch;
+    this._intent = null;
     const beliefs = this.context.update(state, comm);
     const sit = deriveSituation(beliefs);
+    this._beliefs = beliefs; this._sit = sit;
     // Appels reçus nouveaux : événement « urgent » pour réévaluer (sans imposer de plan).
     let appelNouveau = false;
     for (const h of beliefs.heard) {
@@ -120,69 +144,76 @@ class GoalBasedRugbyAgent {
       if (!this.heardSeen.has(cle)) { this.heardSeen.add(cle); appelNouveau = true; }
     }
     const cle = beliefs.phase + '|' + beliefs.possession;
-    const urgent = this.lastKey !== null && cle !== this.lastKey || appelNouveau || (this.lastDecisionT === null);
+    const urgent = (this.lastKey !== null && cle !== this.lastKey) || appelNouveau || this._forceDecision;
     this.lastKey = cle;
-    const dueDecision = urgent || t - this.lastDecisionT >= this.decisionPeriod - 1e-9;
 
     // MONITOR de l'action en cours (chaque tick, sur le monde réel)
-    let intent = null;
     // Précondition invalidée PENDANT l'action (ex. le 10 est désormais couvert) : on l'abandonne et on replanifie.
     if (this.executor.busy && this.plan && this.executor.current && this.executor.current.name === this.plan.steps[this.plan.index]
       && !this._etapeValide(this.executor.current.name, this._faits(beliefs, sit), true)) {
       for (const e of this.executor.cancel(state, 'PRECONDITION_INVALID').events) this.events.push(e);
-      this.plan = null; this.lastDecisionT = null;
+      this.plan = null;
       this.replanRaison = 'PRECONDITION_INVALID';
+      this._forceDecision = true;
     }
     if (this.executor.busy) {
       const s = this.executor.step(state);
       for (const e of s.events) this.events.push(e);
-      intent = s.intent;
+      this._intent = s.intent;
       if (s.status === 'SUCCEEDED' && this.plan) {
         this.plan.index++;
         if (this.plan.index >= this.plan.steps.length) { this._push('PLAN_COMPLETED', t, { goal: this.goal }); this.plan = null; }
-        this.lastDecisionT = null; // décision fraîche après une action terminée
+        this._forceDecision = true; // décision fraîche après une action terminée
       } else if (s.status === 'FAILED' || s.status === 'ABORTED') {
-        const nom = s.events[0].action;
-        this.bans.set(nom, t + this.banDuration);
+        this.bans.set(s.events[0].action, t + this.banDuration);
         this.plan = null;
-        this.lastDecisionT = null;
+        this._forceDecision = true;
       }
     }
-
-    // SELECT_GOAL + PLAN (périodique ou urgent)
-    if (this.lastDecisionT === null || dueDecision) {
-      this.decisions++;
-      this.lastDecisionT = t;
-      const choix = this.selector.select(beliefs, this.playbook);
-      for (const e of choix.events) this.events.push(e);
-      const but = choix.goal;
-      const butChange = but !== this.goal;
-      this.goal = but;
-      if (butChange) {
-        if (this.executor.busy) { for (const e of this.executor.cancel(state, 'GOAL_CHANGED').events) this.events.push(e); intent = null; }
-        this.plan = null;
-      }
-      const faits = this._faits(beliefs, sit);
-      if (!this.plan) { const r = this.replanRaison || 'NEW'; this.replanRaison = null; this._planifier(beliefs, sit, r); }
-      else if (!this.executor.busy && !this._etapeValide(this.plan.steps[this.plan.index], faits)) {
-        // Précondition invalidée AVANT de démarrer l'étape : replanification depuis les faits actuels.
-        this._planifier(beliefs, sit, 'PRECONDITION_INVALID');
-      }
+    const due = this.lastDecisionT === null || this._forceDecision || urgent || t - this.lastDecisionT >= this.decisionPeriod - 1e-9;
+    if (due) {
+      const dejaUrgent = this.pending ? this.pending.urgent : false;
+      this.pending = { since: this.pending ? this.pending.since : t, urgent: dejaUrgent || urgent || this._forceDecision || this.lastDecisionT === null };
     }
+    return this.pending;
+  }
 
-    // ACT : démarrer l'étape courante si rien n'est en cours
+  // SELECT_GOAL + PLAN (coûteux : accordé par le scheduler ou par tick()).
+  decide(state) {
+    const t = state.tempsMatch, beliefs = this._beliefs, sit = this._sit;
+    this.decisions++;
+    this.lastDecisionT = t;
+    this.pending = null;
+    this._forceDecision = false;
+    this.lastExpansions = 0;
+    const choix = this.selector.select(beliefs, this.playbook);
+    for (const e of choix.events) this.events.push(e);
+    const but = choix.goal;
+    const butChange = but !== this.goal;
+    this.goal = but;
+    if (butChange) {
+      if (this.executor.busy) { for (const e of this.executor.cancel(state, 'GOAL_CHANGED').events) this.events.push(e); this._intent = null; }
+      this.plan = null;
+    }
+    const faits = this._faits(beliefs, sit);
+    if (!this.plan) { const r = this.replanRaison || 'NEW'; this.replanRaison = null; this._planifier(beliefs, sit, r); }
+    else if (!this.executor.busy && !this._etapeValide(this.plan.steps[this.plan.index], faits)) {
+      // Précondition invalidée AVANT de démarrer l'étape : replanification depuis les faits actuels.
+      this._planifier(beliefs, sit, 'PRECONDITION_INVALID');
+    }
+  }
+
+  // ACT : démarrer l'étape courante si rien n'est en cours ; renvoie l'intention courante.
+  act(state) {
+    const t = state.tempsMatch;
     if (!this.executor.busy && this.plan) {
       const nom = this.plan.steps[this.plan.index];
       const r = this.executor.start(nom, state);
       for (const e of r.events) this.events.push(e);
-      if (r.started) intent = r.intent;
-      else { this.bans.set(nom, t + this.banDuration); this.plan = null; this.lastDecisionT = null; }
+      if (r.started) this._intent = r.intent;
+      else { this.bans.set(nom, t + this.banDuration); this.plan = null; this._forceDecision = true; }
     }
-
-    // Parole : un appel posé par le joueur lui-même, jamais un ordre
-    if (comm) this.maybeSpeak(comm, state, beliefs);
-    return { intent, goal: this.goal, plan: this.plan ? { steps: this.plan.steps.slice(), index: this.plan.index } : null,
-      events: this.events.slice(mark), beliefs };
+    return this._intent;
   }
 
   // Décide LOCALEMENT de parler selon son but ; renvoie le type d'appel émis ou null.
