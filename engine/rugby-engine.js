@@ -8101,6 +8101,9 @@
       }
       // Une PORTE née d'un coup de pied cesse de l'être dès que le jeu s'arrête.
       if (this.phase !== 'PORTE') { this._porteApresPied = false; this._chandelleBaseA = null; }
+      // === AGENT_INTENTS_BEGIN (RM4-G07) — état des joueurs pilotés AVANT le tick de phase.
+      const _pilotes = this._intentionsAgents && this._intentionsAgents.size ? this._avantIntentionsAgents() : null;
+      // === AGENT_INTENTS_END
       if (this.phase === 'MI_TEMPS') this._tickMiTemps(dt);
       else if (this.phase === 'PORTE') {
         // Mise en place d'un jeu rapide sur pénalité/coup franc (recul de 10 m
@@ -8117,6 +8120,9 @@
       else if (this.phase === 'ESSAI') this._tickEssai(dt);
       else if (this.phase === 'TRANSFORMATION') this._tickTransformation(dt);
       else if (this.phase === 'PENALITE_TIR') this._tickPenaliteTir(dt);
+      // === AGENT_INTENTS_BEGIN
+      if (_pilotes) this._appliquerIntentionsAgents(_pilotes, dt);
+      // === AGENT_INTENTS_END
       // Remise du ballon au buteur (P2-85) : il le rejoint à ~10 m/s.
       if (this._remiseBallon) {
         const R = this._remiseBallon, k = this.porteur;
@@ -8464,6 +8470,47 @@
     // Ballon mort pour un changement tactique (loi 3.6) : avant le coup
     // d'envoi, avant l'introduction en mêlée ou le lancer en touche, pendant
     // un essai, une transformation, une pénalité au but ou la mi-temps.
+    // === AGENT_INTENTS_BEGIN — Intentions de mouvement d'AGENTS individuels (RM4-G07).
+    // API OPT-IN pour la couche IA : sans appel à setAgentIntent, le moteur se joue
+    // exactement comme avant. Une intention ne porte QUE sur le déplacement d'UN
+    // joueur (cible x,y, fraction de sa vitesse maximale) ; elle passe par avancer()
+    // (accélération, vitesse maximale, contournement des regroupements). Elle ne
+    // peut écrire ni le porteur, ni le point de ruck, ni la possession, ni le score,
+    // ni une position hors de ces bornes : le moteur reste seul juge des lois.
+    setAgentIntent(equipe, numero, intention) {
+      if ((equipe !== 'A' && equipe !== 'B') || !(numero >= 1 && numero <= 15)) return false;
+      if (!intention || !Number.isFinite(intention.tx) || !Number.isFinite(intention.ty)) return false;
+      const f = intention.vmaxFactor == null ? 1 : intention.vmaxFactor;
+      if (!(f > 0 && f <= 1)) return false;
+      if (!this._intentionsAgents) this._intentionsAgents = new Map();
+      this._intentionsAgents.set(equipe + numero, { equipe, numero, tx: intention.tx, ty: intention.ty, vmaxFactor: f });
+      return true;
+    }
+    clearAgentIntent(equipe, numero) {
+      if (this._intentionsAgents) this._intentionsAgents.delete(equipe + numero);
+    }
+    _avantIntentionsAgents() {
+      const out = [];
+      for (const cle of [...this._intentionsAgents.keys()].sort()) {
+        const it = this._intentionsAgents.get(cle);
+        const j = (it.equipe === 'A' ? this.equipeA : this.equipeB).find((x) => x.numero === it.numero);
+        if (!j || j.auSol > 0 || j.sinBin > 0) continue; // un joueur au sol ou exclu ne se déplace pas
+        out.push({ it, j, x: j.x, y: j.y, v: j.vitesseCourante, o: j.orientation, ab: j._aBouge });
+      }
+      return out;
+    }
+    _appliquerIntentionsAgents(pilotes, dt) {
+      for (const p of pilotes) {
+        const j = p.j;
+        if (j.auSol > 0 || j.sinBin > 0) continue; // devenu inactif pendant le tick
+        // Le joueur piloté n'obéit plus à la logique de phase pour son déplacement :
+        // on rétablit son état d'avant le tick, puis il avance de SON intention.
+        j.x = p.x; j.y = p.y; j.vitesseCourante = p.v; j.orientation = p.o; j._aBouge = p.ab;
+        avancer(j, p.it.tx - j.x, p.it.ty - j.y, dt, vitesseMs(j) * p.it.vmaxFactor);
+      }
+    }
+    // === AGENT_INTENTS_END
+
     _ballonMortPourRemplacement() {
       const ph = this.phase;
       if (ph === 'ESSAI' || ph === 'MI_TEMPS') return true;
