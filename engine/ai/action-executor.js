@@ -77,6 +77,20 @@ const ACTEURS = {
     abortGuard: () => null,
   },
 };
+// Plaquage (A20) : le joueur va AU porteur ; c'est le moteur qui résout le contact (réussi ou manqué).
+// Réussite = un plaquage réussi de plus à SON compteur ; un plaquage manqué de plus = ACTION_FAILED
+// (TACKLE_MISSED) : l'intention n'est jamais prise pour le résultat (D03).
+const mesStats = (c) => (c.state.statsJoueurs && c.state.statsJoueurs[c.me.team] && c.state.statsJoueurs[c.me.team][c.me.numero]) || { tacklesMade: 0, plaquagesManques: 0 };
+const porteurAdverse = (c) => (c.state.ball && c.state.ball.carrierTeam && c.state.ball.carrierTeam !== c.me.team ? joueur(c.state, c.state.ball.carrierTeam, c.state.ball.carrierNumber) : null);
+ACTEURS.TACKLE_CARRIER = {
+  maxSeconds: 6,
+  init: (c) => ({ faits: mesStats(c).tacklesMade || 0, manques: mesStats(c).plaquagesManques || 0 }),
+  startGuard: (c) => (!c.facts.SELF_AVAILABLE ? 'NOT_AVAILABLE' : !c.facts.SELF_ONSIDE ? 'OFFSIDE' : !porteurAdverse(c) ? 'NO_CARRIER' : null),
+  intent: (c) => { const p = porteurAdverse(c); return p ? { tx: p.x, ty: p.y, vmaxFactor: 1 } : null; },
+  successGuard: (c) => (mesStats(c).tacklesMade || 0) > c.memo.faits,
+  failGuard: (c) => ((mesStats(c).plaquagesManques || 0) > c.memo.manques ? 'TACKLE_MISSED' : null),
+  abortGuard: (c) => (!porteurAdverse(c) ? 'NO_CARRIER' : !c.facts.SELF_ONSIDE ? 'OFFSIDE' : null),
+};
 for (const [nom, dy] of [['RUN_SUPPORT_INSIDE', -1], ['RUN_SUPPORT_OUTSIDE', 1]]) {
   ACTEURS[nom] = {
     maxSeconds: 10,
@@ -121,7 +135,7 @@ class ActionExecutor {
     const c = contexte(state, this.agent, params);
     const refus = acteur.startGuard(c);
     if (refus) return { started: false, events: [Object.freeze({ type: 'ACTION_FAILED', agent: this.id, action: actionName, reason: 'START_GUARD:' + refus, t })], intent: null };
-    this.current = { name: actionName, acteur, params: params || {}, t0: t, deadline: t + acteur.maxSeconds * this.deadlineFactor };
+    this.current = { name: actionName, acteur, params: params || {}, t0: t, deadline: t + acteur.maxSeconds * this.deadlineFactor, memo: acteur.init ? acteur.init(c) : null };
     const ev = this._event('ACTION_STARTED', null, t);
     return { started: true, events: [ev], intent: acteur.intent(c) };
   }
@@ -132,8 +146,11 @@ class ActionExecutor {
     if (!this.current) return { status: 'IDLE', events: [], intent: null };
     const cur = this.current;
     const c = contexte(state, this.agent, cur.params);
+    c.memo = cur.memo;
     const fin = (status, type, reason) => { const ev = this._event(type, reason, t); this.current = null; return { status, events: [ev], intent: null }; };
     if (cur.acteur.successGuard(c)) return fin('SUCCEEDED', 'ACTION_SUCCEEDED', null);
+    const echec = cur.acteur.failGuard ? cur.acteur.failGuard(c) : null;
+    if (echec) return fin('FAILED', 'ACTION_FAILED', echec);
     const abandon = cur.acteur.abortGuard(c);
     if (abandon) return fin('ABORTED', 'ACTION_ABORTED', abandon);
     if (t > cur.deadline + 1e-9) return fin('FAILED', 'ACTION_FAILED', 'TIMEOUT');

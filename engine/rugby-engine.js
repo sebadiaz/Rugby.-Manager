@@ -1098,6 +1098,16 @@
       // mêlée, attaque, défense) fusionnée par-dessus les défauts : cf.
       // DEFAULT_CONFIG. `null` => comportement historique exact.
       this.cfg = fusionnerConfig(DEFAULT_CONFIG, config);
+      // === AGENT_INTENTS_BEGIN (RM4-G11) — mode d'IA : 'LEGACY' (défaut, comportement historique exact)
+      // ou 'GOAP' (30 agents individuels). Le moteur ne contient PAS l'IA : en mode GOAP l'appelant
+      // fournit `config.agentDriver` (fabrique d'un pilote, cf. engine/ai/goap-mode.js). Pas de repli
+      // silencieux : demander GOAP sans pilote est une erreur.
+      this.aiMode = (config && config.aiMode) || 'LEGACY';
+      if (this.aiMode !== 'LEGACY' && this.aiMode !== 'GOAP') throw new RangeError('aiMode inconnu : ' + this.aiMode);
+      if (this.aiMode === 'GOAP' && typeof (config && config.agentDriver) !== 'function') throw new TypeError('aiMode GOAP : config.agentDriver (fabrique de pilote) requis');
+      this._fabriquePilote = this.aiMode === 'GOAP' ? config.agentDriver : null;
+      this._pilote = null;
+      // === AGENT_INTENTS_END
       // Tactique PAR ÉQUIPE (Mode Club) : `config.attaqueA/attaqueB` et
       // `config.defenseA/defenseB`, fusionnés par-dessus this.cfg.attaque/
       // defense (déjà résolu ci-dessus, donc un réglage partagé via
@@ -7743,6 +7753,12 @@
     // partir la remise du ballon au buteur de deux points différents, la frappe
     // tombait à un autre pas et le match divergeait (relu 10-13 pour 7-10 vécu).
     tick(dt) {
+      // === AGENT_INTENTS_BEGIN — mode GOAP : les agents décident AVANT le tick physique.
+      if (this._fabriquePilote) {
+        if (!this._pilote) this._pilote = this._fabriquePilote(this);
+        this._pilote.avantTick(this, dt);
+      }
+      // === AGENT_INTENTS_END
       const r = this._tickInterne(dt);
       try {
         const b = this._positionBallonCalculee();

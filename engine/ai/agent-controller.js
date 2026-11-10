@@ -40,6 +40,7 @@ const BUTS_PLANIFIABLES = Object.freeze({
   DISTRIBUTE_BALL: { DISTRIBUTED: true },
   SUPPORT_CARRIER: { SAFE_SUPPORT_LANE: true },
   BE_PASS_OPTION: { RECEIVER_OPEN: true },
+  PREVENT_TRY: { TRY_PREVENTED: true },
 });
 
 // Appels que le joueur lance de lui-même selon son but (jamais un ordre).
@@ -230,6 +231,13 @@ class GoalBasedRugbyAgent {
       else { this.bans.set(nom, t + this.banDuration); this.plan = null; this._forceDecision = true; }
     }
     // Sans action en cours, c'est SON placement individuel qui le conduit (jamais celui d'un autre).
+    // Presser le porteur = l'action TACKLE_CARRIER (acteur réel, événements réussi/manqué), pas une simple course.
+    if (this.usePlacement && !this.executor.busy && !this.plan && this.placement && this.placement.placementGoal === 'PRESS_CARRIER'
+      && state.phase === 'PORTE' && !(this.bans.get('TACKLE_CARRIER') > t)) {
+      const r = this.executor.start('TACKLE_CARRIER', state);
+      for (const e of r.events) this.events.push(e);
+      if (r.started) this._intent = r.intent; else this.bans.set('TACKLE_CARRIER', t + 1);
+    }
     // Le moteur garde la main sur le porteur (aucun acteur de ballon) et sur les phases arrêtées
     // (mêlée, touche, maul, ruck, coups de pied) : le placement individuel ne conduit qu'en jeu courant.
     const porteur = state.ball && state.ball.carrierTeam === this.agent.team && state.ball.carrierNumber === this.agent.numero;

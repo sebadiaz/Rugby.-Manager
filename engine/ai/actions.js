@@ -53,6 +53,9 @@ const ACTIONS = Object.freeze([
     { meters: 'ballon', fatigue: 0.3, loss: 0, fault: 0.02, extra: 0.4 }, 'loi 10 : rester en jeu derrière le porteur', 'position au temps de la passe'),
   A('A15', 'HOLD_WIDTH', { SELF_AVAILABLE: true, SELF_ONSIDE: true }, { RECEIVER_OPEN: true },
     { fixed: 0.6, fatigue: 0.05, loss: 0, fault: 0.0 }, null, 'bande latérale tenue'),
+  // A16–A19 ne sont pas encore codées ; A20 est ajoutée avec son acteur physique (RM4-G11).
+  A('A20', 'TACKLE_CARRIER', { SELF_AVAILABLE: true, SELF_ONSIDE: true, OPPONENT_POSSESSION: true }, { TRY_PREVENTED: true, BREAKDOWN_CONTEST_ACTIVE: true },
+    { meters: 'ballon', fatigue: 0.35, loss: 0, fault: 0.08 }, 'loi 9/14 : plaquage légal, jamais hors-jeu', 'plaquage RÉUSSI compté par le moteur pour ce joueur'),
 ]);
 
 const PAR_NOM = Object.freeze(Object.fromEntries(ACTIONS.map((a) => [a.name, a])));
