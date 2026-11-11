@@ -46,8 +46,8 @@ function candidatsDefense(b, s, pb, profile) {
   // courant, une ligne en retard retenait tout le monde et le porteur gagnait 20 m sans opposition.
   const avance = arretee ? 1 : 3;
   const xTenu = sens > 0 ? Math.min(ligneX, xVoisins + avance) : Math.max(ligneX, xVoisins - avance);
-  // Glissement : en jeu courant la ligne se resserre vers le ballon (35 % de l'écart latéral).
-  const yTenu = arretee ? ref.y : ref.y + (bal.y - ref.y) * 0.35;
+  // Glissement : en jeu courant la ligne se resserre vers le ballon (60 % de l'écart latéral ; à 35 % il restait 5,7 défenseurs devant le porteur contre 7,8 en LEGACY).
+  const yTenu = arretee ? ref.y : ref.y + (bal.y - ref.y) * 0.6;
   out.push({ id: 'HOLD_LINE', priority: 60, target: { x: xTenu, y: yTenu }, vmax: Math.abs(bal.y - ref.y) <= 15 ? 1 : 0.85, reason: 'ligne alignée sur ' + voisins.length + ' voisin(s) observé(s)' });
   // CLOSE_GAP : plus grand intervalle observé près de moi, si je suis le mieux placé parmi ceux que je vois.
   const ligne = voisins.concat([{ id: 'moi', x: me.x, y: me.y, numero: num }]).sort((a, c) => a.y - c.y);

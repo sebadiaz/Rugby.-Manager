@@ -91,7 +91,9 @@ function faitsPersonnels(state, agent, options) {
     || (state.phase === 'MELEE' && j.numero <= 8 && proche <= 12));
   f.SELF_AT_RUCK = !f.SELF_GROUNDED && !!pt && (state.phase === 'RUCK' || state.phase === 'MAUL')
     && proche <= RAYON_RUCK && enJeu(state, j, pt);
-  f.HAS_BALL = !!state.ball && state.ball.carrierTeam === j.team && state.ball.carrierNumber === j.numero;
+  // Un joueur au sol n'a plus le ballon EN JEU, même si le moteur le désigne encore porteur le temps du plaquage
+  // (constat RM4-G17 : sinon « au sol et porteur », exception en plein tick GOAP).
+  f.HAS_BALL = !f.SELF_GROUNDED && !!state.ball && state.ball.carrierTeam === j.team && state.ball.carrierNumber === j.numero;
   f.KICK_CHASE_ONSIDE = state.phase === 'COUP_DE_PIED_JEU' && !(j.horsJeuKick > 0) && state.possession === j.team;
   if (options && options.target) f.SELF_AT_TARGET = dist(j, options.target) <= TOLERANCE_CIBLE;
   return f;
