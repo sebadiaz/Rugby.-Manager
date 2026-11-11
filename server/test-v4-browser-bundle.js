@@ -40,4 +40,8 @@ test('index.html charge le bundle ; main.js : LEGACY par défaut, GOAP seulement
   const m = lire('docs/js/main.js');
   assert.ok(m.includes("get('ai')") && m.includes('cfgAvecIA(configMatch)') && m.includes("'rugbyManager.aiMode'"));
 });
+test('accueil : case « Joueurs IA individuels » présente et branchée', () => {
+  assert.ok(lire('docs/index.html').includes('id="chkIAAgents"'));
+  assert.ok(lire('docs/js/main.js').includes("getElementById('chkIAAgents')"));
+});
 console.log(`\n${ok} test(s) OK`);

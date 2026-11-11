@@ -498,3 +498,5 @@ node server/test-parcours-club.js
 
 ## Chargement navigateur (11 nov. 2026) — LIVRÉ
 `server/build-ai-bundle.js` fabrique `docs/rugby-ai.js` (modules `engine/ai/*.js` regroupés, `window.RugbyAI.configGOAP`) ; `docs/index.html` le charge ; `docs/js/main.js` : **LEGACY par défaut**, GOAP seulement avec `?ai=goap` dans l'adresse ou `localStorage['rugbyManager.aiMode']='GOAP'` (matchs rapides et matchs joués). `server/test-v4-browser-bundle.js` : bundle à jour, chargé dans un `vm` sans `require`, match GOAP identique à Node, branchement de `main.js`. Contrôlé dans Chromium : `?ai=goap` → GOAP, sans paramètre → LEGACY, aucune erreur console ; parcours navigateur 584/584. Après toute modif de `engine/ai/`, relancer `node server/build-ai-bundle.js`.
+
+**Bouton (11 nov.)** : case « 🧠 Joueurs IA individuels (expérimental) » sur l'accueil (`#chkIAAgents`), choix mémorisé dans `localStorage`, `?ai=goap` reste prioritaire. Contrôlé dans Chromium : décochée par défaut (LEGACY), cochée → match en GOAP, case conservée après rechargement, aucune erreur console.

@@ -70,6 +70,14 @@
       return localStorage.getItem('rugbyManager.aiMode') === 'GOAP';
     } catch (e) { return false; }
   }
+  // Case à cocher de l'accueil : mémorise le choix (localStorage) ; « ?ai=goap » reste prioritaire.
+  (function brancherCaseIA() {
+    const c = document.getElementById('chkIAAgents');
+    if (!c) return;
+    c.checked = modeIAgoap();
+    c.disabled = !window.RugbyAI;
+    c.addEventListener('change', () => { try { localStorage.setItem('rugbyManager.aiMode', c.checked ? 'GOAP' : 'LEGACY'); } catch (e) { /* stockage indisponible */ } });
+  })();
   function cfgAvecIA(cfg) { return modeIAgoap() && window.RugbyAI ? window.RugbyAI.configGOAP(cfg) : cfg; }
 
   // Réglages tactiques PAR ÉQUIPE (Mode Club) que configMatch peut accumuler
