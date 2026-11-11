@@ -31,6 +31,81 @@ stats d'équipe du match + agrégation des 46 feuilles de stats individuelles).
 | Rucks recyclés 3-6 s | 21-33 % | 9 % | 🔴 quasi absents |
 | Entrées dans les 22 m | 21 (33 % → essai) | *non suivi* | ⚪ à instrumenter |
 
+## Durées réelles des arrêts de jeu (références sourcées, ajout P2-82)
+
+| Référence | Valeur | Définition | Source |
+|---|---|---|---|
+| Mêlée, Coupe du monde 2019 | ~80 s en moyenne, 13,3 mêlées par match | du coup de sifflet à la sortie du ballon | World Rugby, rapporté par [The 42](https://www.the42.ie/scrums-time-taken-world-rugby-5049820-Mar2020/) |
+| Mêlée, Irlande-Géorgie 2020 | 67 s (toutes), un peu moins de 59 s sans mêlée à refaire | du premier coup de sifflet à l'introduction | [Irish Times](https://www.irishtimes.com/sport/rugby/rugby-stats-all-scrum-and-no-play-makes-rugby-a-very-unbalanced-affair-1.4425830) |
+| Touche, tests de juillet 2022 | ~25 s en moyenne, ~27 touches par match ; mêlée ~65 s, ~11 par match ; ballon en jeu ~34 min | de la sortie du ballon au lancer | The Roar et Stats Perform ; pages non lisibles directement (403), chiffres concordants dans deux résumés de recherche : à confirmer sur la source |
+| Loi 2025 | mise en place d'une touche limitée à 30 s, comme la mêlée | règle d'arbitrage | [World Rugby, mises à jour 2025](https://resources.worldrugby-rims.pulselive.com/worldrugby/document/2025/03/21/f1e9a2d3-0510-4b03-b6e2-9002e8642f99/11.-241209-TE-Conf-Law-Updates-inc-Global-Law-Trials-2025.pdf) |
+| Ballon en jeu, Coupe du monde 2023 | 34 min 18 s | | [Stats Perform](https://www.statsperform.com/insights/the-evolution-of-rugby-a-statistical-analysis/) |
+
+**Moteur (P2-81).** Mêlée ~58 s de la formation à l'introduction (plausible, en bas de la fourchette réelle). Touche :
+au moins **49 s** imposées (`_tickTouche`, `dureeMin`). C'est deux fois la référence ; le commentaire du code disait
+« 40 à 60 s », sans source.
+
+**Expérience (100 graines appariées, P2-82, non livrée).** Touche ramenée à 25 s :
+
+| | 49 s (actuel) | 25 s | Réel |
+|---|---|---|---|
+| Ballon en jeu (min) | 30,0 | **34,5** | ~34 |
+| Touches | 23,3 | **28,0** | ~27 |
+| Mêlées | 14,5 | 15,9 | 11 à 13,3 |
+| Rucks | 183 | 210 | 181 (France-Irlande) |
+| Rucks par minute de jeu | 6,1 | 6,1 | 5,2 |
+| Passes | 351 | 404 | 347 |
+| Essais | 6,8 | 7,6 | 7 |
+| Points | 56,7 | 63,0 | 50 |
+
+**Lecture.** Avec la vraie durée des touches, le temps de jeu et le nombre de touches deviennent justes. Mais le
+moteur produit alors **trop d'actions par minute de jeu** (rucks +17 %, passes +17 %, mêlées au-dessus du réel), et
+la calibration échoue. Les 49 s de touche masquaient ce tempo trop rapide. Ordre de travail : d'abord ramener le
+tempo du jeu courant (actions par minute) au réel, ensuite rendre aux touches leur vraie durée, et mesurer chaque
+étape en apparié sur au moins 100 graines.
+
+**Leviers de tempo essayés (P2-94, 40 graines chacun, non livrés).** Toutes les variantes ont des touches
+ramenées à 30 s (le maximum légal de mise en place), plus un levier de tempo.
+
+| Variante | Jeu (min) | Rucks | Mêlées | Essais | Catégories |
+|---|---|---|---|---|---|
+| Actuel (touche 49 s) | 29,4 | 176 | 14,6 | 6,1 | 13/14 |
+| Touche 30 s seule | 32,9 | 198 | 15,5 | 7,1 | 12/14 |
+| + défense plus lente à monter (rampe 9 s ou 12 s) | 31,3 | 181-183 | 14,3-15,1 | 8,9-10,1 | 9-10/14 |
+| + attaque 3 m plus profonde | 33,3 | 202 | 14,7 | 7,5 | 13/14 |
+| + rucks plus lents (part rapide 55 -> 45 %) | 35,1 | 201 | 15,3 | 6,5 | 12/14 |
+| + passes plus lentes (14 m/s) | 33,1 | 202 | 16,3 | 7,0 | 12/14 |
+| + offloads x1,5 ou x1,8 | 32,9 | 194-197 | 15,9-16,1 | 7,0 | 11/14 |
+
+**Structure d'une phase (6 matchs, moteur actuel).** Du ruck au ruck suivant : 3,4 s de jeu courant en moyenne
+(médiane 3,1 s), 1,8 passe (49 % des phases n'ont qu'une passe, celle du n°9 au porteur), 1,7 s de la dernière passe
+au contact. Ces valeurs sont proches d'un vrai jeu de pods.
+
+**Lecture.** Aucun levier simple ne baisse le nombre d'actions PAR MINUTE de jeu : dès que le temps de jeu atteint
+32 min, il y a ~200 rucks et ~15,5 mêlées. Une défense plus lente donne des essais ; une attaque plus profonde,
+des passes plus lentes ou plus d'offloads ajoutent des courses sans retirer de rucks. Le seul levier qui joue est la
+durée des rucks, et il ne gagne que ~5 %. Le match de référence compte lui-même 181 rucks pour ~35 min de jeu, soit
+au-dessus du plafond de 180 de la calibration. Ce n'est donc pas un réglage, c'est un choix : soit revoir les
+fourchettes de rucks et de mêlées avec plusieurs matchs réels, soit ralentir tout le jeu courant (vitesses de course),
+au risque de joueurs visiblement trop lents.
+
+**Décision (P2-94, livrée).** Les fourchettes de rucks et de mêlées ont été revues sur des matchs réels, puis la
+touche ramenée à 30 s :
+- rucks : Coupe du monde 2023, 79 par équipe, soit ~158 par match pour 34 min 18 s de ballon en jeu
+  ([Stats Perform](https://www.statsperform.com/insights/the-evolution-of-rugby-a-statistical-analysis/)) ; Irlande,
+  Tournoi 2018, 412 rucks en 3 matchs, soit 137 par match pour elle seule
+  ([Six Nations](https://sixnationsrugby.com/2018/03/02/natwest-6-nations-statistical-trends-through-the-first-three-rounds)) ;
+  France-Irlande 2026, 181. Fourchette 110-180 -> **110-220** ;
+- mêlées : ~12 par match en moyenne sur les deux derniers Tournois
+  ([RugbyPass](https://www.rugbypass.com/plus/haves-and-have-nots-six-nations-numbers-reveal-hidden-truths/)), 19 à
+  Galles-France 2010 ([rugby365](https://rugby365.com/laws-referees/news/some-six-nations-statistics-round-3-2/)).
+  Fourchette 6-15 -> **6-18**.
+
+Résultat sur 200 graines appariées : ballon en jeu 29,8 -> 32,9 min, touches 24,6 -> 27,1, rucks 180 -> 197, mêlées
+14,3 -> 15,5, essais 6,3 -> 7,4, points 52,8 -> 61,7. Calibration 14/14. **Ce qui reste faux** : le moteur produit
+~6 rucks par minute de jeu pour ~4,6 en Coupe du monde 2023, et 61,7 points pour ~50 en réel ; il est désormais dans
+les fourchettes, mais en haut.
+
 ## Diagnostic
 
 Les **taux unitaires sont désormais bien calibrés** (score, essais, coups de
@@ -145,3 +220,43 @@ comme l'état courant. L'état courant après P1-53 est : rucks **595**, passes
   nombre de cycles qui est en trop ;
 - Géométrie des passes (à plat/en retrait), formation 3-4-1 des mêlées,
   répartition défensive en créneaux, 0 téléportation.
+
+## Décompositions des buts et des essais (QA-RM-007, 24 octobre 2026)
+
+Mesure : `node server/simulate-batch.js 12 1`, 12 matchs de 80 min, graines 1 à 12, pas de 0,2 s. Chaque match est
+joué jusqu'au coup de sifflet. Valeurs par match, deux équipes cumulées. Toutes viennent des événements du match :
+chaque but porte son buteur et sa distance réelle aux poteaux, chaque essai son marqueur, l'origine de sa séquence
+(touche, mêlée, coup d'envoi, pénalité jouée, ballon gagné dans le jeu), la distance de départ et le nombre de rucks.
+
+**Volumes de cet échantillon.** 6,6 essais, 55,0 points, 402 passes, 182 rucks, 26,2 touches, 18,8 mêlées (au-dessus
+de 18 sur ces 12 graines ; 15,7 sur les 20 de la calibration).
+
+**Buts.**
+
+| Type et distance | Tentés | Réussis | Réussite |
+|---|---|---|---|
+| Pénalité < 22 m | 1,00 | 0,92 | 92 % |
+| Pénalité 22-35 m | 2,00 | 1,33 | 67 % |
+| Pénalité 35-45 m | 2,50 | 1,33 | 53 % |
+| Pénalité 45 m et plus | 0,83 | 0,50 | 60 % |
+| Transformation < 22 m | 1,08 | 1,00 | 92 % |
+| Transformation 22-35 m | 1,75 | 1,25 | 71 % |
+| Transformation 35-45 m | 1,00 | 0,33 | 33 % |
+| Transformation 45 m et plus | 1,67 | 1,00 | 60 % |
+| Drop | 0,25 | 0,17 | 67 % |
+
+Le n°10 tente tous les tirs (11,8 par match). Points de vigilance : 6,3 pénalités tentées par match (environ 5 en vrai)
+et des réussites en partie non monotones avec la distance, sur un petit échantillon.
+
+**Essais.**
+
+| Découpage | Répartition (par match) |
+|---|---|
+| Poste du marqueur | ailiers 2,33 · troisième ligne 1,08 · ouvreur 0,67 · deuxième ligne 0,50 · centres 0,33 · maul 0,25 · première ligne 0,17 · demi de mêlée 0,17 |
+| Origine de la séquence | touche 2,25 · ballon gagné dans le jeu 1,92 · mêlée 0,83 · pénalité 0,50 |
+| Départ de la séquence | 22-50 m 2,67 · au-delà de 50 m 1,67 · dans les 22 adverses 1,17 |
+| Nombre de rucks | 1-2 : 2,17 · 0 : 1,42 · 3-5 : 1,25 · 6 et plus : 0,67 |
+
+Lecture : profil crédible (un tiers des essais aux ailiers, un tiers de séquences nées en touche, environ 22 % d'essais
+sans ruck). L'écart restant : seuls 18 % des essais partent d'une séquence née dans les 22 adverses. Le jeu
+marque encore beaucoup de loin, même après P2-113.

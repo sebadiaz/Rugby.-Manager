@@ -4,6 +4,20 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>Rugby Manager 2D — Démo de simulation</title>
+<script>
+  // CHARGEMENT INCOMPLET (TODO_AUDIT.md P2-62) : la page charge ~56 fichiers.
+  // Sur une connexion instable, un seul fichier perdu laissait un jeu muet
+  // (accueil affiché, boutons sans effet, aucun message). On note ici, avant
+  // tout le reste, chaque script ou feuille de style qui échoue à se charger ;
+  // la vérification en fin de page prévient le joueur.
+  window.__chargementsRates = [];
+  window.addEventListener('error', function (e) {
+    var t = e.target;
+    if (t && (t.tagName === 'SCRIPT' || t.tagName === 'LINK')) {
+      window.__chargementsRates.push(t.src || t.href || '?');
+    }
+  }, true);
+</script>
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -55,7 +69,23 @@
         <option value="2400">40 min (mi-temps)</option>
         <option value="4800" selected>80 min (match complet)</option>
       </select>
+      <label class="noteFacultatif" style="display:flex;gap:8px;align-items:center;margin:8px 0;"><input type="checkbox" id="chkIAAgents"> 🧠 Joueurs IA individuels (expérimental)</label>
       <button id="btnAccueilMatchRapide" class="alt">▶ Lancer un match rapide</button>
+    </div>
+
+    <!-- Sauvegardes (bugs.md FUNC-RM-001) : la carrière vit dans ce
+         navigateur ; le joueur peut l'emporter, la restaurer, et télécharger
+         les copies de secours. Géré par docs/js/main.js sans dépendre de
+         l'état du club : disponible même si la carrière ne s'ouvre plus. -->
+    <div class="carteAction carteSecondaire" id="carteSauvegardes">
+      <p class="sr-label" style="margin:0 0 8px;">Sauvegardes (sur cet appareil)</p>
+      <div class="boutonsSauvegardes">
+        <button id="btnExporterCarriere" class="alt" style="display:none;">⬇️ Exporter ma carrière</button>
+        <button id="btnImporterCarriere" class="alt">⬆️ Importer une carrière</button>
+      </div>
+      <input type="file" id="fichierImportCarriere" accept=".json,application/json" style="display:none;">
+      <p id="etatSauvegardes" role="status" style="font-size:12px;color:var(--text-dim);margin:8px 0 0;"></p>
+      <div id="listeSecours"></div>
     </div>
 
     <div class="liensSecondaires">
@@ -85,8 +115,8 @@
       <h2 id="miTempsTitre">Mi-temps</h2>
       <div id="miTempsScore" class="grosScore"></div>
       <p id="miTempsDetail" class="detailResultat"></p>
-      <p class="noteFacultatif">Rien n'est joué : tes consignes s'appliquent dès le coup d'envoi.</p>
-      <h3 style="margin:14px 0 6px;font-size:13px;">Consigne pour la seconde période</h3>
+      <p class="noteFacultatif" id="miTempsNote">Rien n'est joué : tes consignes s'appliquent dès le coup d'envoi.</p>
+      <h3 id="miTempsSousTitre" style="margin:14px 0 6px;font-size:13px;">Consigne pour la seconde période</h3>
       <div id="miTempsConsignes"></div>
       <h3 style="margin:14px 0 6px;font-size:13px;">Remplacements</h3>
       <div id="miTempsRemplacants"></div>
@@ -945,6 +975,7 @@
 </div>
 
 <script src="rugby-engine.js"></script>
+<script src="rugby-ai.js"></script>
 <script src="js/constants.js"></script>
 <script src="js/rng.js"></script>
 <script src="js/matchState.js"></script>
@@ -1000,6 +1031,41 @@
 <script src="js/club-sauvegarde.js"></script>
 <script src="js/world.js"></script>
 <script src="js/clubUI.js"></script>
+<script>
+  // Vérification de fin de chargement (cf. l'écouteur en tête de page). Aucune
+  // dépendance, styles en ligne : elle doit fonctionner même si la feuille de
+  // style ou n'importe quel autre fichier manque.
+  (function () {
+    var essentiels = ['RugbyEngine', 'RMConstants', 'RMRng', 'RMMatchState', 'RMRenderer', 'RMUI', 'RMMain'];
+    var manquants = essentiels.filter(function (n) { return !window[n]; });
+    var rates = window.__chargementsRates || [];
+    if (!manquants.length && !rates.length) return;
+    var div = document.createElement('div');
+    div.id = 'alerteChargement';
+    div.setAttribute('role', 'alert');
+    div.style.cssText = 'position:fixed;left:12px;right:12px;top:12px;z-index:99999;background:#3a1010;'
+      + 'color:#fff;border:2px solid #f9a825;border-radius:10px;padding:14px 16px;font:15px/1.4 sans-serif;'
+      + 'box-shadow:0 4px 16px rgba(0,0,0,.5)';
+    var titre = document.createElement('div');
+    titre.style.cssText = 'font-weight:bold;margin-bottom:6px';
+    titre.textContent = manquants.length
+      ? 'Le jeu n\'a pas pu se charger complètement.'
+      : 'Une partie du jeu n\'a pas pu se charger.';
+    var texte = document.createElement('div');
+    texte.textContent = (manquants.length
+      ? 'Les matchs ne peuvent pas démarrer'
+      : 'Certaines parties du jeu peuvent ne pas répondre ou mal s\'afficher')
+      + ' : la connexion a sans doute été interrompue pendant le chargement ('
+      + (rates.length || manquants.length) + ' fichier(s) manquant(s)). Recharge la page.';
+    var bouton = document.createElement('button');
+    bouton.textContent = 'Recharger la page';
+    bouton.style.cssText = 'margin-top:10px;padding:10px 16px;font:bold 15px sans-serif;border:0;'
+      + 'border-radius:8px;background:#f9a825;color:#000;cursor:pointer';
+    bouton.addEventListener('click', function () { window.location.reload(); });
+    div.appendChild(titre); div.appendChild(texte); div.appendChild(bouton);
+    document.body.appendChild(div);
+  })();
+</script>
 <!-- Identifiant de version (TODO_AUDIT.md P0-5) : version.json est généré
      UNIQUEMENT pendant le déploiement CI (jamais présent en local ni sur une
      branche non déployée) — absent volontairement en dehors d'un vrai

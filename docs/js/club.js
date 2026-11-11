@@ -49,6 +49,53 @@
     return `${choisir(rng, VILLES)} ${choisir(rng, NOMS_CLUB)}`;
   }
 
+  // --- Homonymes (bugs.md BUG-RM-004) -------------------------------------
+  // Le générateur tire ville + surnom : sur une carrière, deux clubs
+  // distincts finissaient souvent par porter exactement le même nom (15
+  // créations sur 30). Ici, une passe sur TOUS les clubs de la sauvegarde :
+  // le premier rencontré garde son nom (le club du joueur toujours en
+  // premier), chaque homonyme suivant reçoit un qualificatif. Les
+  // identifiants ne changent jamais, ni l'historique ; seuls les textes déjà
+  // écrits (messages, anciennes feuilles) gardent l'ancien nom.
+  const QUALIFICATIFS_CLUB = ['Union', 'Stade', 'Racing', 'Olympique', 'Sporting', 'Athletic', 'Entente', 'Avenir'];
+  function tousLesClubsNommes(saison) {
+    const liste = [];
+    if (saison.clubJoueur) liste.push(saison.clubJoueur);
+    for (const a of saison.adversaires || []) liste.push(a);
+    const autres = saison.autresDivisionsFrance && saison.autresDivisionsFrance.divisions;
+    if (autres) for (const k of Object.keys(autres).sort()) for (const c of autres[k].clubs || []) liste.push(c);
+    const monde = saison.monde && saison.monde.divisions;
+    if (monde) for (const k of Object.keys(monde).sort()) for (const c of monde[k].clubs || []) liste.push(c);
+    return liste.filter((c) => c && typeof c.nom === 'string');
+  }
+  function distinguerHomonymes(saison) {
+    if (!saison) return 0;
+    const parId = {};
+    const pris = new Set();
+    let renommes = 0;
+    for (const c of tousLesClubsNommes(saison)) {
+      // Le même club peut être listé deux fois (copie dans une autre liste) :
+      // il garde alors le nom déjà décidé pour son identifiant.
+      if (parId[c.id] != null) { c.nom = parId[c.id]; continue; }
+      let nom = c.nom;
+      if (pris.has(nom)) {
+        const libre = QUALIFICATIFS_CLUB.map((q) => `${q} ${c.nom}`).find((n) => !pris.has(n));
+        let n = 2;
+        nom = libre || `${c.nom} ${n}`;
+        while (pris.has(nom)) nom = `${c.nom} ${++n}`;
+        c.nom = nom;
+        renommes++;
+      }
+      pris.add(nom);
+      parId[c.id] = nom;
+    }
+    // Les coupes gardent une copie {id, nom} de leurs clubs.
+    for (const coupe of Object.values(saison.coupes || {})) {
+      for (const c of (coupe && coupe.clubs) || []) if (c && parId[c.id] != null) c.nom = parId[c.id];
+    }
+    return renommes;
+  }
+
   // --- Postes : quel numéro de maillot exige quelle catégorie de poste ---
   // Libellé complet d'un poste — dans la couche DONNÉES et non dans l'UI :
   // les modules sans DOM en ont besoin aussi (cf. club-a-traiter.js). Une
@@ -374,8 +421,35 @@
   // (cf. engine/rugby-engine.js _statJoueur) via la composition du jour
   // (numéro -> id), jamais déduit ou estimé après coup. Sert le classement
   // des marqueurs et la fiche joueur (cf. onglet Bilan).
-  const CHAMPS_STATS_JOUEUR = ['matchsJoues', 'essais', 'passes', 'tacklesMade', 'tacklesAttempted', 'metresGagnes'];
-  const LIBELLE_COMPETITION = { pro: 'Championnat', b: 'Équipe B', jeunes: 'Espoirs' };
+  // P2-103 : toutes les actions que le moteur attribue à un joueur (cf.
+  // _statJoueur). Une ancienne sauvegarde, sans ces champs, repart de 0.
+  const CHAMPS_STATS_JOUEUR = ['matchsJoues', 'essais', 'passes', 'tacklesMade', 'tacklesAttempted', 'metresGagnes',
+    'courses', 'defenseursBattus', 'franchissements', 'offloads', 'passesDecisives', 'plaquagesManques', 'turnoversGagnes', 'coupsDePied', 'pointsAuPied', 'touchesGagnees', 'enAvants', 'cartonsJaunes',
+    // BUG-RM-007 : temps de jeu réel et entrées en cours de match.
+    'minutes', 'entreesEnJeu'];
+  // Périmètres des statistiques individuelles (bugs.md BUG-RM-009) : le
+  // championnat de chaque équipe, chaque coupe à part (« coupe:<clé> ») et les
+  // amicaux. Avant, coupes et amicaux du premier XV tombaient sous
+  // « Championnat ». Une saison commencée avant cette séparation garde ce
+  // mélange sous « avantSeparation », dit comme tel, jamais redistribué.
+  const LIBELLE_COMPETITION = {
+    pro: 'Championnat', b: 'Équipe B', jeunes: 'Espoirs', amical: 'Amicaux',
+    avantSeparation: 'Premier XV, toutes compétitions (avant séparation)',
+  };
+  const PREFIXE_STATS_COUPE = 'coupe:';
+  function perimetreStatsValide(cle) {
+    return !!LIBELLE_COMPETITION[cle] && cle !== 'avantSeparation'
+      || (typeof cle === 'string' && cle.indexOf(PREFIXE_STATS_COUPE) === 0 && cle.length > PREFIXE_STATS_COUPE.length);
+  }
+  // Libellé lisible d'un périmètre, nom réel de la coupe compris.
+  function libellePerimetreStats(saison, cle) {
+    if (LIBELLE_COMPETITION[cle]) return LIBELLE_COMPETITION[cle];
+    if (typeof cle === 'string' && cle.indexOf(PREFIXE_STATS_COUPE) === 0) {
+      const coupe = saison && saison.coupes && saison.coupes[cle.slice(PREFIXE_STATS_COUPE.length)];
+      return coupe && coupe.nom ? coupe.nom : 'Coupe';
+    }
+    return cle;
+  }
 
   function statsVides() {
     const s = {};
@@ -387,33 +461,99 @@
   // les appels existants) : les statistiques sont VENTILÉES par compétition
   // (TODO_AUDIT.md P1-30) en plus du total. Le total reste exactement la
   // somme des compétitions, jamais un chiffre calculé à part.
-  function accumulerStatsJoueurs(effectif, composition, statsJoueursMatch, competition) {
+  // Découpe un maillot en PERSONNES (bugs.md BUG-RM-007) : le titulaire
+  // jusqu'à sa sortie, puis chaque entrant jusqu'à la sienne ou au sifflet.
+  // `match` = { sortis, remplacements, tempsFinal } tirés de l'état du moteur
+  // (cf. ventilationMatch) ; absent, le maillot n'a qu'un seul occupant.
+  function segmentsMaillot(numero, titulaireId, statsFinales, match) {
+    const segments = [];
+    let courant = { joueurId: titulaireId, debut: 0, entre: false };
+    if (match) {
+      const sorties = (match.sortis || []).filter((x) => String(x.numero) === String(numero));
+      const entrees = (match.remplacements || []).filter((x) => String(x.numero) === String(numero));
+      for (let i = 0; i < sorties.length; i++) {
+        segments.push(Object.assign(courant, { stats: sorties[i].stats, fin: sorties[i].sortie }));
+        const entree = entrees[i] || {};
+        // Retour après un protocole commotion : le joueur qui était sorti
+        // reprend son maillot (le titulaire, si le moteur ne le nomme pas).
+        const id = entree.joueurId != null ? entree.joueurId : entree.retour ? titulaireId : null;
+        courant = { joueurId: id, debut: sorties[i].sortie, entre: !entree.retour };
+      }
+    }
+    segments.push(Object.assign(courant, { stats: statsFinales || null, fin: match ? match.tempsFinal : null }));
+    return segments;
+  }
+  // Joueurs du club sortis blessés pendant le match (FUNC-RM-005) : la
+  // personne qui portait le maillot à cet instant — l'entrant si le numéro
+  // avait déjà changé de main, le titulaire sinon.
+  // Une commotion confirmée (protocole) garde sa nature : `ids.commotions`.
+  function blessesDuMatch(etat, lettre, composition) {
+    const ids = [];
+    ids.commotions = [];
+    for (const b of (etat && etat.blessuresMatch) || []) {
+      if (b.equipe !== lettre) continue;
+      const id = b.joueurId != null ? b.joueurId : composition && composition[b.numero];
+      if (id != null && !ids.includes(id)) ids.push(id);
+      if (id != null && b.commotion) ids.commotions.push(id);
+    }
+    return ids;
+  }
+  // Ce qu'il faut de l'état final du moteur pour ventiler une équipe.
+  function ventilationMatch(etat, lettre) {
+    if (!etat || !etat.statsJoueursSortis) return null;
+    return {
+      sortis: etat.statsJoueursSortis[lettre] || [],
+      remplacements: (etat.remplacementsEffectues || []).filter((r) => r.equipe === lettre),
+      // Temps de jeu au chronomètre officiel : la dernière action jouée après
+      // la sonnerie (loi 5.7) ne fait pas d'un match complet 81 minutes.
+      tempsFinal: Math.min(Number.isFinite(etat.tempsMatch) ? etat.tempsMatch : (etat.clock && etat.clock.time),
+        etat.clock && Number.isFinite(etat.clock.duration) ? etat.clock.duration
+          : Number.isFinite(etat.dureeMatch) ? etat.dureeMatch : Infinity),
+    };
+  }
+
+  // `ventilation` (optionnel, cf. ventilationMatch) : sans elle, comportement
+  // d'avant — tout le maillot au titulaire, sans temps de jeu.
+  function accumulerStatsJoueurs(effectif, composition, statsJoueursMatch, competition, ventilation) {
     if (!statsJoueursMatch || !composition) return;
-    const cle = LIBELLE_COMPETITION[competition] ? competition : 'pro';
+    const cle = perimetreStatsValide(competition) ? competition : 'pro';
     const parId = {};
     for (const j of effectif) parId[j.id] = j;
+    // Un même joueur peut tenir plusieurs segments (sorti pour un protocole
+    // commotion puis revenu, remplaçant temporaire entré ensuite pour de bon) :
+    // il ne compte qu'UN match et qu'UNE entrée en jeu.
+    const dejaCompte = new Set(), dejaEntre = new Set();
     for (const numero of Object.keys(composition)) {
-      const joueur = parId[composition[numero]];
-      const s = statsJoueursMatch[numero];
+     for (const seg of segmentsMaillot(numero, composition[numero], statsJoueursMatch[numero], ventilation)) {
+      const joueur = parId[seg.joueurId];
+      // Un titulaire sans ligne (aucune action) a quand même joué : il ne
+      // compte que s'il a une ligne, comme avant, ou un temps de jeu connu.
+      const s = seg.stats || (ventilation ? {} : null);
       if (!joueur || !s) continue;
-      if (!joueur.statsSaison) joueur.statsSaison = statsVides();
+      if (!joueur.statsSaison) joueur.statsSaison = Object.assign(statsVides(), { perimetres: 2 });
       if (!joueur.statsSaison.parCompetition) joueur.statsSaison.parCompetition = {};
+      // Saison commencée avant la séparation des périmètres : son « pro »
+      // mêle championnat, coupes et amicaux. On le renomme, sans le répartir.
+      if (joueur.statsSaison.perimetres !== 2) {
+        const par = joueur.statsSaison.parCompetition;
+        if (par.pro) { par.avantSeparation = par.pro; delete par.pro; }
+        joueur.statsSaison.perimetres = 2;
+      }
       // Une compétition n'apparaît QUE si le joueur y a réellement joué :
       // pas de ligne « Équipe B — 0 match » fabriquée pour faire joli.
       if (!joueur.statsSaison.parCompetition[cle]) joueur.statsSaison.parCompetition[cle] = statsVides();
       const detail = joueur.statsSaison.parCompetition[cle];
-      const apports = {
-        matchsJoues: 1,
-        essais: s.essais || 0,
-        passes: s.passes || 0,
-        tacklesMade: s.tacklesMade || 0,
-        tacklesAttempted: s.tacklesAttempted || 0,
-        metresGagnes: s.metresGagnes || 0,
-      };
+      const apports = { matchsJoues: dejaCompte.has(seg.joueurId) ? 0 : 1 };
+      dejaCompte.add(seg.joueurId);
+      for (const champ of CHAMPS_STATS_JOUEUR) if (champ !== 'matchsJoues') apports[champ] = s[champ] || 0;
+      apports.minutes = seg.fin != null ? Math.max(0, Math.round((seg.fin - seg.debut) / 60)) : 0;
+      apports.entreesEnJeu = seg.entre && !dejaEntre.has(seg.joueurId) ? 1 : 0;
+      if (seg.entre) dejaEntre.add(seg.joueurId);
       for (const champ of CHAMPS_STATS_JOUEUR) {
         joueur.statsSaison[champ] = (joueur.statsSaison[champ] || 0) + apports[champ];
-        detail[champ] += apports[champ];
+        detail[champ] = (detail[champ] || 0) + apports[champ];
       }
+     }
     }
   }
 
@@ -512,9 +652,9 @@
     avants: {
       label: 'Jeu d\'avants', defaut: 'equilibre',
       options: {
-        proche: { nom: 'Près du ruck', description: 'Le n°8 privilégie le pick-and-go au près plutôt qu\'une sortie rapide aux trois-quarts.', compromis: 'Conserve mieux le ballon près du regroupement, mais le jeu avance plus lentement (moins de rythme).', melee: { pickAndGoHuit: { dominant: 0.6, normal: 0.22 } } },
-        equilibre: { nom: 'Équilibré', description: 'Sortie de mêlée standard, décision au cas par cas.', compromis: 'Réglage neutre du moteur — aucun compromis appliqué.', melee: null },
-        large: { nom: 'Ouvert aux 3/4', description: 'Sort vite le ballon aux trois-quarts, peu de pick-and-go.', compromis: 'Exploite mieux la vitesse des trois-quarts, mais moins de temps de jeu conservé par les avants.', melee: { pickAndGoHuit: { dominant: 0.15, normal: 0.05 } } },
+        proche: { nom: 'Près du ruck', description: 'Le n°8 privilégie le pick-and-go au près, et le n°9 sert un avant lancé plutôt que l\'ouvreur à la sortie des regroupements.', compromis: 'Conserve mieux le ballon près du regroupement, mais le jeu avance plus lentement (moins de rythme) — un avant porte moins loin qu\'un trois-quarts.', melee: { pickAndGoHuit: { dominant: 0.6, normal: 0.22 } }, attaque: { sortieAvant: 0.60 } },
+        equilibre: { nom: 'Équilibré', description: 'Sortie de mêlée et de regroupement standard, décision au cas par cas.', compromis: 'Réglage neutre du moteur — aucun compromis appliqué.', melee: null, attaque: null },
+        large: { nom: 'Ouvert aux 3/4', description: 'Sort vite le ballon aux trois-quarts, peu de pick-and-go et peu de ballons donnés aux avants au ruck.', compromis: 'Exploite mieux la vitesse des trois-quarts, mais moins de temps de jeu conservé par les avants et des sorties de regroupement plus coûteuses en terrain.', melee: { pickAndGoHuit: { dominant: 0.15, normal: 0.05 } }, attaque: { sortieAvant: 0.12 } },
       },
     },
     structure: {
@@ -540,6 +680,17 @@
         rapide: { nom: 'Rapide', description: 'Ballon recyclé au plus vite pour prendre la défense de vitesse.', compromis: 'Plus de phases de jeu et une défense prise de vitesse, mais plus de rucks = plus d\'occasions de faute.', ruck: { profil: [[0.55, 1.0, 1.0], [0.33, 2.0, 2.0], [0.12, 4.0, 1.4]] } },
       },
     },
+    // Style de LANCEMENT sur mêlée, touche et maul (playbook, P2-151) : quelle
+    // famille de combinaisons l'équipe privilégie à la sortie.
+    lancements: {
+      label: 'Lancements de jeu (mêlée, touche, maul)', defaut: 'equilibre',
+      options: {
+        pres: { nom: 'Au près', description: 'Percussions du 12, avants lancés au ras du regroupement, côté fermé pour l\'ailier.', compromis: 'Fixe la défense et garde le ballon près des avants, mais avance par petits gains et crée moins d\'espace au large.', attaque: { lancements: { pres: 3 } } },
+        equilibre: { nom: 'Varié', description: 'Toutes les combinaisons du playbook, au gré des situations.', compromis: 'Réglage neutre du moteur — aucun compromis appliqué.', attaque: null },
+        large: { nom: 'Au large', description: 'Croisés, passes sautées, boucles et arrière intercalé pour toucher les trois-quarts lancés.', compromis: 'Cherche l\'espace au large, mais plus de passes, donc plus de ballons à risque et une défense moins fixée.', attaque: { lancements: { large: 3 } } },
+        pied: { nom: 'Au pied', description: 'Chandelle du 9 dans son camp, coup de pied par-dessus dans les 22 adverses.', compromis: 'Gagne du terrain et met la pression sous les ballons hauts, mais rend souvent la possession.', attaque: { lancements: { pied: 3 } } },
+      },
+    },
     pied: {
       label: 'Occupation au pied', defaut: 'normal',
       options: {
@@ -548,12 +699,73 @@
         frequent: { nom: 'Fréquent', description: 'Beaucoup de coups de pied pour occuper le camp adverse.', compromis: 'Gagne du terrain et de l\'occupation, mais cède la possession à chaque coup de pied.', attaque: { tauxJeuAuPied: 2.5 } },
       },
     },
+    // Première consigne INDIVIDUELLE (bugs.md FUNC-RM-004) : elle ne règle que
+    // les choix du n°10 en jeu courant. L'occupation au pied de l'équipe (axe
+    // ci-dessus) reste celle du 9 et des autres botteurs.
+    ouvreur: {
+      label: 'Consigne de l\'ouvreur (n°10)', defaut: 'equilibre',
+      options: {
+        pied: { nom: 'Occupe au pied', description: 'L\'ouvreur cherche le coup de pied : dégagement, occupation, ballon par-dessus.', compromis: 'Fait reculer l\'adversaire et soulage la défense, mais rend souvent le ballon : moins de temps de jeu en main pour la ligne.', attaque: { piedOuvreur: 2 } },
+        equilibre: { nom: 'Lecture du jeu', description: 'L\'ouvreur choisit au cas par cas entre la passe, la course et le pied.', compromis: 'Réglage neutre du moteur — aucun compromis appliqué.', attaque: null },
+        main: { nom: 'Joue à la main', description: 'L\'ouvreur garde le ballon en main et anime la ligne, il ne tape qu\'en dernier recours.', compromis: 'Plus de temps de jeu et de ballons pour les trois-quarts, mais on occupe moins le camp adverse et on joue plus souvent dans son propre camp.', attaque: { piedOuvreur: 0.4 } },
+      },
+    },
+    // Choix aux pénalités (FUNC-RM-006, P2-162) : imposé par le manager, ou
+    // délégué au capitaine — premier rôle concret du brassard.
+    penalites: {
+      label: 'Pénalités à portée de but', defaut: 'capitaine',
+      options: {
+        points: { nom: 'Prendre les points', description: 'À portée, l\'équipe tape toujours au but.', compromis: 'Des points sûrs à chaque faute adverse, mais on renonce aux touches au coin et aux mauls qui font les essais.', attaque: { choixPenalites: 'points' } },
+        capitaine: { nom: 'Le capitaine décide', description: 'Le capitaine choisit selon la distance et le score ; en fin de match, sa lecture dépend de son sens du jeu (décision).', compromis: 'S\'adapte au moment, mais vaut ce que vaut votre capitaine : choisissez-le pour son sens du jeu. S\'il sort, le joueur au meilleur sens du jeu prend le brassard.', attaque: null },
+        touche: { nom: 'Viser la touche', description: 'À portée, l\'équipe joue la touche pour lancer un maul ou une attaque près de la ligne.', compromis: 'Cherche l\'essai à 5 ou 7 points, mais laisse 3 points presque sûrs à chaque fois.', attaque: { choixPenalites: 'touche' } },
+      },
+    },
+    // Consigne des centres (FUNC-RM-004, P2-161) : leurs passes, dans la ligne
+    // et avant le contact.
+    centres: {
+      label: 'Consigne des centres (n°12 et 13)', defaut: 'equilibre',
+      options: {
+        percussion: { nom: 'Percussion', description: 'Les centres prennent le ballon et vont au contact pour fixer la défense au milieu du terrain.', compromis: 'Gagne des mètres et des rucks au centre, mais le ballon atteint moins souvent les ailes.', attaque: { passeCentres: 0.5 } },
+        equilibre: { nom: 'Standard', description: 'Les centres choisissent entre la passe et la course selon l\'espace.', compromis: 'Réglage neutre du moteur — aucun compromis appliqué.', attaque: null },
+        distribution: { nom: 'Distribution', description: 'Les centres écartent vite le ballon vers les ailiers et l\'arrière.', compromis: 'Fait vivre le ballon au large, mais les centres avancent moins et on fixe moins la défense.', attaque: { passeCentres: 1.8 } },
+      },
+    },
+    // Consigne du demi de mêlée (FUNC-RM-004, P2-160) : seules ses chandelles
+    // depuis la base, dans son camp, changent.
+    demiMelee: {
+      label: 'Consigne du demi de mêlée (n°9)', defaut: 'equilibre',
+      options: {
+        pied: { nom: 'Chandelle depuis la base', description: 'Dans son camp, le n°9 tape souvent par-dessus le regroupement pour faire monter ses chasseurs.', compromis: 'Sort le jeu de sa moitié et met l\'adversaire sous une réception disputée, mais rend souvent le ballon.', attaque: { chandelleNeuf: 2 } },
+        equilibre: { nom: 'Standard', description: 'Le n°9 alterne la chandelle et la sortie à la main selon sa position.', compromis: 'Réglage neutre du moteur — aucun compromis appliqué.', attaque: null },
+        main: { nom: 'Sort à la main', description: 'Le n°9 donne presque toujours le ballon, même dans son camp.', compromis: 'Garde la possession et anime l\'attaque, mais on joue plus longtemps dans son propre camp.', attaque: { chandelleNeuf: 0.3 } },
+      },
+    },
     ligneDef: {
       label: 'Défense', defaut: 'normale',
       options: {
         basse: { nom: 'Basse', description: 'Défense prudente et repliée, moins de risques à la montée, reste groupée au ruck.', compromis: 'Réduit le risque d\'être percée dans le dos, mais laisse plus d\'espace/de temps à l\'attaque adverse.', defense: { rampeMontee: 3.5, profondeurArriereJeu: 22, profondeurArriereMelee: 24, reculRuck: 4.5 } },
         normale: { nom: 'Normale', description: 'Hauteur de ligne standard.', compromis: 'Réglage neutre du moteur — aucun compromis appliqué.', defense: null },
         haute: { nom: 'Haute', description: 'Presse haut et vite, y compris au ruck — plus risqué si elle est percée.', compromis: 'Étouffe l\'attaque adverse plus tôt, mais une brèche se transforme plus souvent en franchissement.', defense: { rampeMontee: 1.5, profondeurArriereJeu: 15, profondeurArriereMelee: 17, reculRuck: 2 } },
+      },
+    },
+    // Troisième consigne individuelle (FUNC-RM-004) : le placement des deux
+    // ailiers (11, 14) en attaque.
+    ailiers: {
+      label: 'Consigne des ailiers (n°11, n°14)', defaut: 'equilibre',
+      options: {
+        repique: { nom: 'Repiquent', description: 'L\'ailier du côté fermé quitte son aile pour venir chercher le ballon dans la ligne.', compromis: 'Les ailiers touchent nettement plus de ballons, mais le côté fermé n\'a plus personne pour une attaque côté court.', attaque: { ailiers: 'repique' } },
+        equilibre: { nom: 'Placement standard', description: 'L\'ailier du côté ouvert prend son rang dans la ligne, celui du côté fermé tient son aile.', compromis: 'Réglage neutre du moteur — aucun compromis appliqué.', attaque: null },
+        large: { nom: 'Restent larges', description: 'L\'ailier du côté ouvert reste collé à la touche au lieu de prendre son rang dans la ligne.', compromis: 'Garde une option tout au large, mais les ailiers touchent moins de ballons et le jeu se resserre : moins d\'essais, des deux côtés.', attaque: { ailiers: 'large' } },
+      },
+    },
+    // Deuxième consigne individuelle (FUNC-RM-004) : la place du n°15 en
+    // défense, en plus de la hauteur de ligne collective (axe ci-dessus).
+    arriere: {
+      label: 'Consigne de l\'arrière (n°15)', defaut: 'equilibre',
+      options: {
+        fond: { nom: 'Couvre le fond', description: 'L\'arrière se tient plus loin derrière la ligne pour attraper les coups de pied et arrêter les échappées.', compromis: 'Il se place environ 7 m plus loin : mieux placé sous les coups de pied et face à une échappée, mais plus loin des plaqueurs pour les soutenir au près.', defense: { decalageArriere: 7 } },
+        equilibre: { nom: 'Placement standard', description: 'L\'arrière couvre à la profondeur habituelle.', compromis: 'Réglage neutre du moteur — aucun compromis appliqué.', defense: null },
+        ligne: { nom: 'Monte vers la ligne', description: 'L\'arrière se rapproche de la ligne de défense pour soutenir les plaqueurs.', compromis: 'Il se place environ 8 m plus près : en soutien juste derrière les plaqueurs, mais le fond du terrain est moins couvert face à un coup de pied par-dessus ou une percée.', defense: { decalageArriere: -8 } },
       },
     },
     toucheMaul: {
@@ -1308,6 +1520,8 @@
     // Marché régénéré (ligne ci-dessus) : les anciens favoris n'y ont plus
     // cours, on repart d'une liste vierge pour la nouvelle saison.
     saison.favoris = [];
+    // Promotions, relégations et clubs régénérés : aucun homonyme (BUG-RM-004).
+    distinguerHomonymes(saison);
     return { partis, arrivees };
   }
 
@@ -1373,6 +1587,7 @@
     if (global.RMClub.assurerEntraineursRivaux) {
       global.RMClub.assurerEntraineursRivaux(rng, saison);
     }
+    distinguerHomonymes(saison);
     return saison;
   }
 
@@ -1425,13 +1640,14 @@
   // réaffectation, qui écraserait ses fonctions si son <script> était chargé
   // en premier (cf. TODO_AUDIT.md P2-10).
   global.RMClub = Object.assign(global.RMClub || {}, {
+    distinguerHomonymes,
     choisir, borneMoral, genererNomJoueur, calculerSalaire, genererNomClub,
     genererEffectif, COULEURS, genererProchainIdClub, POSTE_COMPLET, nouvelleSaison,
     resynchroniserCompteurs, VERSION_SAUVEGARDE, POSTE_REQUIS, TAILLE_EFFECTIF_CIBLE,
     masseSalariale, tresorerie, appliquerFinancesMatch, appliquerFinancesMatchEquipeB,
     avancerSaison, vieillirEffectif, PYRAMIDE_AGES, ageRecrueIntersaison,
-    AXES_TACTIQUE, accumulerStats, enregistrerMouvementFinances, accumulerStatsJoueurs,
-    classementMarqueurs, carriereJoueur, LIBELLE_COMPETITION, ajouterMessage,
+    AXES_TACTIQUE, accumulerStats, enregistrerMouvementFinances, accumulerStatsJoueurs, ventilationMatch, blessesDuMatch,
+    classementMarqueurs, carriereJoueur, LIBELLE_COMPETITION, libellePerimetreStats, PREFIXE_STATS_COUPE, ajouterMessage,
     calculerProgression, enregistrerResultatClubJoueur, marquerMessageLu,
     marquerTousMessagesLus, estimerValeurTransfert, GABARIT_EFFECTIF, ARCHETYPE_PAR_POSTE,
     borneStat, borneAdresse, genererAttributsProfondeur, genererPotentiel,

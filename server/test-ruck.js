@@ -215,4 +215,110 @@ test('loi 15 : le regroupement est arbitre — il produit de vraies penalites', 
     `le regroupement doit produire plusieurs motifs de pénalité distincts (mesuré ${motifs.size} : ${[...motifs].join(' / ')})`);
 });
 
+test('R9 — les avants qui percutent au près ne sont pas toujours le même pilier', () => {
+  // Constat (6 matchs) : le n°1 était plaqué au ruck 118 fois, le n°3 39, le
+  // n°8 18 et le n°5 16. Le 9 servait le PREMIER avant éligible dans l'ordre
+  // des numéros (`find`), et le n°1 occupe toujours la place la plus proche du
+  // pod côté ouvert : le joueur voyait le même pilier percuter à chaque temps
+  // de jeu, alors qu'en vrai les 3es lignes et les 2es lignes portent autant.
+  const parNum = {};
+  for (const g of [7, 11, 23, 42]) {
+    const m = new RugbyEngine.MatchEngine(g, 4800, null);
+    let rPrev = 0;
+    for (let i = 0; i < 48000 && m.phase !== 'TERMINE'; i++) {
+      m.tick(0.1);
+      const r = m.stats.A.rucks + m.stats.B.rucks;
+      if (r > rPrev && m.porteur && m.porteur.numero <= 8) parNum[m.porteur.numero] = (parNum[m.porteur.numero] || 0) + 1;
+      rPrev = r;
+    }
+  }
+  const total = Object.values(parNum).reduce((s, x) => s + x, 0);
+  const partDe = (n) => (parNum[n] || 0) / total;
+  assert.ok(total >= 150, `échantillon trop petit (${total})`);
+  assert.ok(partDe(1) <= 0.22, `le n°1 porte ${(partDe(1) * 100).toFixed(0)} % des percussions des avants (${JSON.stringify(parNum)})`);
+  assert.ok(partDe(1) <= 2 * partDe(3), `déséquilibre entre les deux piliers (${JSON.stringify(parNum)})`);
+  for (const n of [4, 5, 6, 7, 8]) {
+    assert.ok(partDe(n) >= 0.06, `le n°${n} ne porte que ${(partDe(n) * 100).toFixed(0)} % des percussions des avants (${JSON.stringify(parNum)})`);
+  }
+});
+
+test('R10 — l\'avant que le 9 sert est celui qu\'on voit arriver lancé vers lui', () => {
+  // Constat (P2-69) : l'animation lançait en course l'avant le PLUS PROCHE du
+  // 9, mais le 9 servait le premier avant éligible dans l'ordre de pod. Le
+  // joueur voyait un avant arriver lancé, et c'était un autre qui recevait.
+  let servis = 0, coherents = 0;
+  for (const g of [7, 11, 23]) {
+    const m = new RugbyEngine.MatchEngine(g, 4800, null);
+    let coureurPrec = null;
+    const choisir = m.choisirActionPorteur.bind(m);
+    m.choisirActionPorteur = (porteur, ...a) => {
+      const action = choisir(porteur, ...a);
+      const cible = m._passeCibleForcee;
+      if (action === 'PASS' && porteur.numero === 9 && cible && cible.numero <= 8) {
+        servis++;
+        if (cible === coureurPrec) coherents++;
+      }
+      return action;
+    };
+    for (let i = 0; i < 48000 && m.phase !== 'TERMINE'; i++) {
+      m.tick(0.1);
+      coureurPrec = m._avantLanceRun || null;
+    }
+  }
+  assert.ok(servis >= 40, `échantillon trop petit (${servis} avants servis par le 9)`);
+  assert.ok(coherents / servis >= 0.9,
+    `seulement ${coherents}/${servis} avants servis étaient ceux lancés en course vers le 9`);
+});
+
+test('R11 — pendant le ruck, l\'arrière défensif couvre le fond au lieu de monter dans la ligne', () => {
+  // Constat : pendant les rucks, l'arrière défensif était dans le premier
+  // rideau 97 % du temps, à 3,0 m de la ligne du ruck en médiane (p90 3,2 m)
+  // — il visait la ligne de défense comme tout le monde, seul son couloir
+  // latéral était conservé. Personne derrière la défense : le jeu au pied et
+  // la moindre percée ne trouvaient aucun dernier rideau.
+  const profs = [];
+  for (const g of [7, 11, 23]) {
+    const m = new RugbyEngine.MatchEngine(g, 4800, null);
+    for (let i = 0; i < 48000 && m.phase !== 'TERMINE'; i++) {
+      m.tick(0.1);
+      if (m.phase !== 'RUCK' || !m.ruckPoint || !m.porteur || m.timerPhase < 1.5) continue;
+      const q = (m.possession === 'A' ? m.equipeB : m.equipeA).find((j) => j.numero === 15);
+      if (!q || q.sinBin > 0 || q.auSol > 0 || m.contestants.includes(15)) continue;
+      profs.push((q.x - m.ruckPoint.x) * m.porteur.sensAttaque);
+    }
+  }
+  profs.sort((a, b) => a - b);
+  const med = profs[profs.length >> 1];
+  assert.ok(profs.length >= 500, `échantillon trop petit (${profs.length})`);
+  assert.ok(med >= 10, `arrière défensif à ${med.toFixed(1)} m de la ligne du ruck en médiane : il est dans le premier rideau, pas en couverture`);
+});
+
+test('R12 — le hors-jeu au ruck est annoncé avec son fautif, et seulement quand il gêne le jeu', () => {
+  // Constat : ~52 annonces « Avantage joué pour l'équipe A (faute de B) » par
+  // match, sans motif ni fautif — toutes pour hors-jeu au ruck, signalées dès
+  // la fin du délai de grâce dès qu'UN défenseur (au sol après son plaquage,
+  // ou ailier à 30 m du ruck) n'était pas encore revenu. Le fil en était
+  // saturé et le joueur ne savait pas quelle faute était sanctionnée.
+  let avantages = 0, sansMotif = 0, revient = 0;
+  // 12 matchs : sur 4, le moindre changement de tirage faisait passer la
+  // moyenne de 16 à 21 (vraie moyenne ~18-19 sur 12).
+  const N = 12;
+  for (let g = 1; g <= N; g++) {
+    const m = new RugbyEngine.MatchEngine(g, 4800, null);
+    const brut = m.log.bind(m);
+    m.log = (type, team, msg, extra) => {
+      if (type === 'AVANTAGE') {
+        avantages++;
+        if (!/hors-jeu/i.test(msg || '') || !/n°\d+/.test(msg || '')) sansMotif++;
+      }
+      if (type === 'AVANTAGE_REVIENT') revient++;
+      return brut(type, team, msg, extra);
+    };
+    for (let i = 0; i < 400000 && m.phase !== 'TERMINE'; i++) m.tick(0.1);
+  }
+  assert.strictEqual(sansMotif, 0, `${sansMotif}/${avantages} avantages annoncés sans motif ni fautif`);
+  assert.ok(avantages / N <= 20, `${(avantages / N).toFixed(1)} avantages pour hors-jeu au ruck par match`);
+  assert.ok(revient > 0, 'le hors-jeu au ruck doit encore pouvoir être sanctionné (aucun retour à la pénalité)');
+});
+
 console.log(`\n${nbTests} test(s) exécuté(s).`);

@@ -8,6 +8,10 @@
 
   let canvas, ctx;
   let scale = 1, offsetX = 0, offsetY = 0;
+  // Sens de dessin du terrain. `false` = portrait (la longueur du terrain suit
+  // la hauteur de l'ecran), `true` = paysage (elle suit la largeur). Choisi a
+  // chaque redimensionnement par redimensionner(), jamais fige.
+  let paysage = false;
 
   function init(canvasEl) {
     canvas = canvasEl;
@@ -23,15 +27,36 @@
     canvas.style.marginTop = hudH + 'px';
     const longueurTotale = LONGUEUR + 2 * PROF_EN_BUT;
     const largeurTotale = LARGEUR + 2 * MARGE_TOUCHE;
-    scale = Math.min(w / largeurTotale, h / longueurTotale);
-    offsetX = w / 2;
-    offsetY = (h - longueurTotale * scale) / 2 + PROF_EN_BUT * scale;
+    // ORIENTATION : le terrain est dessiné dans le sens qui le rend LE PLUS
+    // GRAND à l'écran, au lieu d'être toujours en portrait. Mesuré sur le jeu
+    // réel avant ce choix : dans une fenêtre 1400x1000, le terrain n'occupait
+    // que 482 px de large sur 1400 (30 % de la surface, 1 m = 6,9 px) et les
+    // deux tiers de l'écran étaient du vert vide ; dans une fenêtre 900x600,
+    // 1 m ne valait plus que 3,4 px, si bien qu'un joueur (rayon fixe de 10 px)
+    // couvrait 6 m de terrain et que la ligne de trois-quarts n'était plus
+    // qu'un amas. Un téléphone en portrait reste en portrait : c'est ce sens
+    // qui y donne la plus grande échelle, la règle le choisit toute seule.
+    const echellePortrait = Math.min(w / largeurTotale, h / longueurTotale);
+    const echellePaysage = Math.min(w / longueurTotale, h / largeurTotale);
+    paysage = echellePaysage > echellePortrait;
+    scale = paysage ? echellePaysage : echellePortrait;
+    if (paysage) {
+      offsetX = (w - longueurTotale * scale) / 2 + PROF_EN_BUT * scale;
+      offsetY = h / 2;
+    } else {
+      offsetX = w / 2;
+      offsetY = (h - longueurTotale * scale) / 2 + PROF_EN_BUT * scale;
+    }
   }
 
   // Convertit des coordonnées terrain (mètres, x = longueur en-but à en-but,
-  // y = largeur touche à touche) en coordonnées canvas (pixels).
+  // y = largeur touche à touche) en coordonnées canvas (pixels). Seule cette
+  // fonction connaît l'orientation : tout le reste du rendu (lignes, zones,
+  // joueurs, ballon, arbitre) passe par elle et n'a pas eu à changer.
   function versCanvas(x, y) {
-    return { px: offsetX + (y - LARGEUR / 2) * scale, py: offsetY + x * scale };
+    return paysage
+      ? { px: offsetX + x * scale, py: offsetY + (y - LARGEUR / 2) * scale }
+      : { px: offsetX + (y - LARGEUR / 2) * scale, py: offsetY + x * scale };
   }
 
   function ligneTerrain(x1, y1, x2, y2, { couleur = '#ffffff', largeur = 2, alpha = 1, dash = null } = {}) {
@@ -97,8 +122,18 @@
     dessinerPoteaux(LONGUEUR);
   }
 
+  // Rayon d'un joueur À L'ÉCHELLE DU TERRAIN : ~1,4 m, borné entre 6,5 px
+  // (numéro encore lisible) et 10 px (taille historique, inchangée sur grand
+  // écran). À rayon fixe de 10 px, sur téléphone (1 m ~ 4,7 px), un joueur
+  // couvrait plus de 4 m : en touche, maul ou ruck, les disques se
+  // recouvraient et les numéros devenaient illisibles (P2-74).
+  function rayonJoueur() {
+    return Math.max(6.5, Math.min(10, scale * 1.4));
+  }
+
   function dessinerJoueur(j, estPorteur) {
     const { px, py } = versCanvas(j.x, j.y);
+    const r = rayonJoueur();
     // Dessiné couché si réellement au sol (plaqué, figé) OU s'il vient de plaquer
     // (marqueur visuel pur solVisuel) : la définition officielle du plaquage veut
     // que le plaqueur aille aussi au sol.
@@ -109,9 +144,9 @@
       // Joueur AU SOL : dessiné couché (ellipse aplatie) et atténué, pour qu'on
       // voie d'un coup d'œil qu'il est à terre et ne participe pas (plaqué qui
       // ne s'est pas encore relevé).
-      ctx.ellipse(px, py, 12, 5, 0, 0, Math.PI * 2);
+      ctx.ellipse(px, py, r * 1.2, r * 0.5, 0, 0, Math.PI * 2);
     } else {
-      ctx.arc(px, py, 10, 0, Math.PI * 2);
+      ctx.arc(px, py, r, 0, Math.PI * 2);
     }
     ctx.fillStyle = j.team === 'A' ? '#1565c0' : '#c62828';
     if (auSol) ctx.globalAlpha = 0.5;
@@ -128,17 +163,17 @@
     }
     if (estPorteur) {
       // Porteur du ballon nettement marqué : anneau jaune épais + halo.
-      ctx.lineWidth = 4;
+      ctx.lineWidth = Math.max(2.5, r * 0.4);
       ctx.strokeStyle = '#ffeb3b';
       ctx.stroke();
       ctx.beginPath();
-      ctx.arc(px, py, 14, 0, Math.PI * 2);
+      ctx.arc(px, py, r + 4, 0, Math.PI * 2);
       ctx.lineWidth = 1.5;
       ctx.strokeStyle = 'rgba(255,235,59,0.5)';
       ctx.stroke();
     }
     ctx.fillStyle = auSol ? 'rgba(255,255,255,0.65)' : '#fff';
-    ctx.font = (auSol ? '8px' : '10px') + ' sans-serif';
+    ctx.font = Math.round(auSol ? r * 0.8 : Math.max(7.5, r)) + 'px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(j.numero, px, py);
@@ -180,8 +215,20 @@
     // posé au point de chute réel, jamais dans des mains (personne ne l'a
     // encore rejoint en courant) — cf. MatchEngine._tickReceptionCoupDePied.
     if (state.ball && state.ball.state === 'LOOSE') {
+      // Ballon qui roule (P2-100) : il rebondit et tourne sur lui-même, avec
+      // son ombre au sol ; posé à plat une fois arrêté.
+      const rebond = ballon.rebond || 0;
+      if (rebond > 0) {
+        ctx.save();
+        ctx.globalAlpha = 0.25;
+        ctx.beginPath();
+        ctx.ellipse(sol.px, sol.py, 5, 2.5, 0, 0, Math.PI * 2);
+        ctx.fillStyle = '#000';
+        ctx.fill();
+        ctx.restore();
+      }
       ctx.beginPath();
-      ctx.ellipse(sol.px, sol.py, 6, 3.8, Math.PI / 4, 0, Math.PI * 2);
+      ctx.ellipse(sol.px, sol.py - rebond * 40, 6, 3.8, Math.PI / 4 + (ballon.rotation || 0), 0, Math.PI * 2);
       ctx.fillStyle = '#8d5524';
       ctx.fill();
       ctx.lineWidth = 1;
@@ -193,7 +240,9 @@
     // regroupement (le porteur affiché n'est que le dernier joueur plaqué,
     // couché dessus) — sinon le ballon semblait toujours "en mains" même
     // pendant la phase de jeu la plus fréquente du match.
-    if (state.ball && state.ball.state === 'RUCK') {
+    // Ballon de mêlée (P2-64) : lâché par le 9, il roule AU SOL sous le pack
+    // jusqu'aux pieds du 8 — dessiné au sol, à sa position réelle.
+    if (state.ball && (state.ball.state === 'RUCK' || state.ball.state === 'SCRUM')) {
       ctx.beginPath();
       ctx.ellipse(sol.px, sol.py + 5, 5.5, 3.4, Math.PI / 4, 0, Math.PI * 2);
       ctx.fillStyle = '#8d5524';
@@ -214,23 +263,55 @@
     ctx.fill();
   }
 
+  // Repère du ballon sous le pack : le ballon lui-même est caché par les corps
+  // (dessiné dessous) ; un anneau pointillé clair, tracé par-dessus les
+  // joueurs, permet de suivre son trajet du tunnel jusqu'aux pieds du 8.
+  function dessinerRepereBallon(state) {
+    const ballon = state.ballon;
+    if (!ballon) return;
+    const pos = state.ballonRendu || ballon;
+    const { px, py } = versCanvas(pos.x, pos.y);
+    ctx.save();
+    // Liseré sombre puis pointillé clair : lisible sur les maillots des deux
+    // couleurs comme sur la pelouse.
+    ctx.beginPath();
+    ctx.ellipse(px, py + 5, 9, 6, 0, 0, Math.PI * 2);
+    ctx.lineWidth = 3.5;
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.55)';
+    ctx.stroke();
+    ctx.setLineDash([4, 3]);
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = '#ffe066';
+    ctx.stroke();
+    ctx.restore();
+  }
+
   // L'arbitre est toujours dessiné, près de l'action (ruck ou porteur) :
   // visible en permanence pour qu'on comprenne qui décide des
   // pénalités/mêlées et où il se trouve.
+  // L'étiquette texte « arbitre » n'est écrite qu'à pleine échelle (grand
+  // écran) : sur téléphone, elle chevauchait les joueurs du regroupement que
+  // l'arbitre suit de près (P2-75). Le disque « A » reste toujours dessiné.
+  function etiquetteArbitre() {
+    return rayonJoueur() >= 10;
+  }
+
   function dessinerArbitre(state) {
     const { px, py } = versCanvas(state.arbitre.x, state.arbitre.y);
+    const ra = Math.min(7, rayonJoueur() * 0.7);
     ctx.beginPath();
-    ctx.arc(px, py, 7, 0, Math.PI * 2);
+    ctx.arc(px, py, ra, 0, Math.PI * 2);
     ctx.fillStyle = '#212121';
     ctx.fill();
     ctx.lineWidth = 2;
     ctx.strokeStyle = '#f9a825';
     ctx.stroke();
     ctx.fillStyle = '#f9a825';
-    ctx.font = 'bold 9px sans-serif';
+    ctx.font = 'bold ' + Math.round(ra * 1.3) + 'px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText('A', px, py);
+    if (!etiquetteArbitre()) return;
     ctx.font = '9px sans-serif';
     ctx.fillStyle = '#fff';
     ctx.fillText('arbitre', px, py + 14);
@@ -278,19 +359,37 @@
     }
   }
 
+  // Ordre des couches : pendant une mêlée, le ballon est AU SOL SOUS les
+  // packs — on le dessine avant les joueurs, qui le recouvrent en partie ;
+  // seul son repère (anneau au sol) passe au-dessus.
+  // Sinon il est dans les mains (ou en l'air) et passe par-dessus.
+  function ordreCouches(state) {
+    return state && state.ball && state.ball.state === 'SCRUM'
+      ? ['terrain', 'ballon', 'joueurs', 'repere', 'assistants', 'arbitre']
+      : ['terrain', 'joueurs', 'assistants', 'arbitre', 'ballon'];
+  }
+
   function dessiner(state) {
-    dessinerTerrain();
     // Pendant que le ballon est en vol ou au sol après un coup de pied
     // (personne ne l'a encore rejoint), on ne met aucun joueur en
     // surbrillance : le dernier porteur (le buteur) ne l'a plus en main.
-    const sansPorteur = (state.ballon && state.ballon.enVol) || (state.ball && state.ball.state === 'LOOSE');
+    const sansPorteur = (state.ballon && state.ballon.enVol) || (state.ball && (state.ball.state === 'LOOSE' || state.ball.state === 'SCRUM'));
     const estPorteur = j => !sansPorteur && j.team === state.porteur.team && j.numero === state.porteur.numero;
-    for (const j of state.teams.A) dessinerJoueur(j, estPorteur(j));
-    for (const j of state.teams.B) dessinerJoueur(j, estPorteur(j));
-    dessinerAssistants(state);
-    dessinerArbitre(state);
-    dessinerBallon(state);
+    const couches = {
+      terrain: dessinerTerrain,
+      ballon: () => dessinerBallon(state),
+      joueurs: () => {
+        // Un joueur exclu (carton jaune) a quitté le terrain : il n'y reste pas
+        // planté, immobile, pendant ses dix minutes.
+        for (const j of state.teams.A) if (!(j.sinBin > 0)) dessinerJoueur(j, estPorteur(j));
+        for (const j of state.teams.B) if (!(j.sinBin > 0)) dessinerJoueur(j, estPorteur(j));
+      },
+      repere: () => dessinerRepereBallon(state),
+      assistants: () => dessinerAssistants(state),
+      arbitre: () => dessinerArbitre(state),
+    };
+    for (const c of ordreCouches(state)) couches[c]();
   }
 
-  global.RMRenderer = { init, redimensionner, versCanvas, dessiner };
+  global.RMRenderer = { init, redimensionner, versCanvas, dessiner, ordreCouches, rayonJoueur, etiquetteArbitre };
 })(window);

@@ -939,6 +939,29 @@ test('remplacements : un banc incomplet ne planifie que les remplacements réell
   assert.ok(!remplacements.some((r) => r.numero === 1), 'le numéro couvert par le poste de banc manquant ne doit pas apparaître');
 });
 
+test('feuille de match : un blessé ne s assoit jamais sur le banc ; sans pilier apte, le poste 16 reste vide (FUNC-RM-005)', () => {
+  const s = RMClub.nouvelleSaison(creerRng(404), 'Test Banc Blesses');
+  const c = s.clubJoueur;
+  c.compositionTitulaires = RMClub.meilleureComposition(c.effectif);
+  const titulaires = new Set(Object.values(c.compositionTitulaires));
+  // Tous les piliers non titulaires sont blessés, ainsi qu'un centre.
+  const piliersBanc = c.effectif.filter((j) => j.poste === 'P' && !titulaires.has(j.id));
+  assert.ok(piliersBanc.length >= 1, 'prémisse : un pilier hors du XV');
+  for (const j of piliersBanc) j.blessureJournees = 12;
+  const bancAvant = RMClub.completerCompositionBanc(c.effectif, c.compositionTitulaires, {});
+  const banc = RMClub.completerCompositionBanc(c.effectif, c.compositionTitulaires, bancAvant);
+  for (const [n, id] of Object.entries(banc)) {
+    const j = c.effectif.find((x) => x.id === id);
+    assert.ok(!(j.blessureJournees > 0), `n°${n} : ${j.nom} est blessé et sur le banc`);
+  }
+  assert.ok(!banc['16'], `poste 16 confié à ${banc['16'] && c.effectif.find((x) => x.id === banc['16']).poste} faute de pilier apte`);
+  assert.ok(Object.keys(banc).length === 7, `${Object.keys(banc).length} remplaçants`);
+  // Un blessé choisi à la main est retiré au moment de compléter.
+  const blesse = piliersBanc[0];
+  const force = RMClub.completerCompositionBanc(c.effectif, c.compositionTitulaires, { 16: blesse.id });
+  assert.notStrictEqual(force['16'], blesse.id, 'le pilier blessé choisi à la main ne reste pas sur le banc');
+});
+
 test('remplacements : un banc entièrement vide ne planifie aucun remplacement (comportement historique inchangé)', () => {
   const s = RMClub.nouvelleSaison(creerRng(402), 'Test Remplacements Vide');
   assert.deepStrictEqual(RMClub.remplacementsVersConfig(s.clubJoueur.effectif, {}, 'A'), []);
@@ -3571,6 +3594,58 @@ test('effectifs adverses : leur fatigue pèse RÉELLEMENT sur les stats envoyée
 
 const STATS_MATCH_FICTIVES = { 1: { essais: 1, passes: 4, tacklesMade: 8, tacklesAttempted: 10, metresGagnes: 30 } };
 
+// --- bugs.md BUG-RM-004 : deux clubs distincts, deux noms distincts ---------
+function nomsDesClubs(s) {
+  const vus = new Map();
+  const ajouter = (c) => { if (c && !vus.has(c.id)) vus.set(c.id, c.nom); };
+  ajouter(s.clubJoueur); (s.adversaires || []).forEach(ajouter);
+  const a = s.autresDivisionsFrance && s.autresDivisionsFrance.divisions;
+  if (a) Object.values(a).forEach((d) => (d.clubs || []).forEach(ajouter));
+  const m = s.monde && s.monde.divisions;
+  if (m) Object.values(m).forEach((d) => (d.clubs || []).forEach(ajouter));
+  return [...vus.values()];
+}
+test('homonymes : aucun nom de club en double, à la création comme après des saisons (BUG-RM-004)', () => {
+  for (let g = 1; g <= 12; g++) {
+    const s = saisonAvecMonde(4000 + g);
+    const noms = nomsDesClubs(s);
+    assert.strictEqual(new Set(noms).size, noms.length, `graine ${g} : ${noms.length - new Set(noms).size} nom(s) en double`);
+  }
+  // Montées, descentes et clubs régénérés.
+  const s = saisonAvecMonde(4100);
+  for (let i = 0; i < 3; i++) {
+    RMClub.avancerSaison(creerRng(4200 + i), s);
+    RMClub.assurerAutresDivisionsFrance(creerRng(4300 + i), s);
+    const noms = nomsDesClubs(s);
+    assert.strictEqual(new Set(noms).size, noms.length, `saison ${s.numero} : nom en double`);
+  }
+});
+
+test('homonymes : une ancienne carrière qui en a se distingue au chargement, sans changer un identifiant (BUG-RM-004)', () => {
+  const s = saisonAvecMonde(4400);
+  const [a, b] = s.adversaires;
+  b.nom = a.nom; // homonymes enregistrés avant le correctif
+  const idA = a.id, idB = b.id, nomOrigine = a.nom;
+  s.coupes = { test: { cle: 'test', nom: 'Coupe test', clubs: [{ id: idB, nom: nomOrigine }], tours: [] } };
+  global.localStorage.setItem('rugbyManager.club.v1', JSON.stringify(s));
+  global.localStorage.removeItem('rugbyManager.club.revision.v1');
+  const r = RMClub.chargerSaison();
+  const ra = r.adversaires.find((x) => x.id === idA), rb = r.adversaires.find((x) => x.id === idB);
+  assert.ok(ra && rb, 'aucun club recréé : mêmes identifiants');
+  assert.strictEqual(ra.nom, nomOrigine, 'le premier garde son nom');
+  assert.notStrictEqual(rb.nom, nomOrigine, 'le second se distingue');
+  assert.ok(rb.nom.indexOf(nomOrigine) !== -1, `on le reconnaît encore (${rb.nom})`);
+  assert.strictEqual(r.coupes.test.clubs[0].nom, rb.nom, 'la coupe affiche le même nom');
+  // Le club du joueur garde toujours le nom choisi par le manager.
+  const s2 = saisonPourAvance(4401);
+  s2.adversaires[0].nom = s2.clubJoueur.nom;
+  RMClub.distinguerHomonymes(s2);
+  assert.strictEqual(s2.clubJoueur.nom, 'Test Avance');
+  assert.notStrictEqual(s2.adversaires[0].nom, 'Test Avance');
+  // Stable : une deuxième passe ne renomme plus rien.
+  assert.strictEqual(RMClub.distinguerHomonymes(s2), 0);
+});
+
 test('page joueur : les statistiques sont ventilées PAR COMPÉTITION', () => {
   const s = saisonPourAvance(960);
   const j = s.clubJoueur.effectif[0];
@@ -3584,6 +3659,80 @@ test('page joueur : les statistiques sont ventilées PAR COMPÉTITION', () => {
   assert.strictEqual(par.pro.essais + par.b.essais, j.statsSaison.essais,
     'le total doit être exactement la somme des compétitions — jamais un chiffre à part');
   assert.strictEqual(j.statsSaison.matchsJoues, 3);
+});
+
+test('page joueur : le remplaçant reçoit SES actions et son temps de jeu, le titulaire les siennes (BUG-RM-007)', () => {
+  const s = saisonPourAvance(963);
+  const [titulaire, entrant] = s.clubJoueur.effectif;
+  const ventilation = {
+    sortis: [{ numero: 10, sortie: 2400, stats: { passes: 12, tacklesMade: 5 } }],
+    remplacements: [{ equipe: 'A', numero: 10, instant: 2400, joueurId: entrant.id }],
+    tempsFinal: 4810,
+  };
+  RMClub.accumulerStatsJoueurs(s.clubJoueur.effectif, { 10: titulaire.id }, { 10: { passes: 1, tacklesMade: 3 } }, 'pro', ventilation);
+  const t = titulaire.statsSaison, e = entrant.statsSaison;
+  assert.strictEqual(t.passes, 12, 'le titulaire garde ses 12 passes, pas 13');
+  assert.strictEqual(e.passes, 1, 'l\'entrant a sa passe');
+  assert.strictEqual(t.tacklesMade + e.tacklesMade, 8, 'rien de perdu, rien de doublé');
+  assert.strictEqual(t.minutes, 40);
+  assert.strictEqual(e.minutes, 40);
+  assert.strictEqual(t.entreesEnJeu, 0);
+  assert.strictEqual(e.entreesEnJeu, 1);
+  assert.strictEqual(e.matchsJoues, 1, 'une entrée en jeu est un match joué');
+  // Remplaçant inconnu du club (adversaire, ancien chemin) : rien n'est
+  // crédité à tort au titulaire.
+  const s2 = saisonPourAvance(964);
+  const t2 = s2.clubJoueur.effectif[0];
+  RMClub.accumulerStatsJoueurs(s2.clubJoueur.effectif, { 10: t2.id }, { 10: { passes: 1 } }, 'pro',
+    { sortis: [{ numero: 10, sortie: 2400, stats: { passes: 12 } }], remplacements: [{ equipe: 'A', numero: 10, instant: 2400, joueurId: null }], tempsFinal: 4800 });
+  assert.strictEqual(t2.statsSaison.passes, 12);
+});
+
+test('page joueur : de bout en bout, un vrai match avec remplacements crédite chaque personne (BUG-RM-007)', () => {
+  const s = saisonPourAvance(965);
+  const eff = s.clubJoueur.effectif;
+  const compo = {};
+  for (let n = 1; n <= 15; n++) compo[n] = eff[n - 1].id;
+  const entrants = { 9: eff[15], 2: eff[16] };
+  const remplacements = [
+    { equipe: 'A', numero: 9, minute: 45, joueurId: entrants[9].id, joueur: { poste: 'Demi de mêlée' } },
+    { equipe: 'A', numero: 2, minute: 55, joueurId: entrants[2].id, joueur: { poste: 'Talonneur' } },
+  ];
+  // Minutes exactes attendues : sans blessure, commotion ni saignement (couverts par test-invariants).
+  const m = new global.window.RugbyEngine.MatchEngine(31, 4800, { remplacements, blessures: false });
+  m.jouerJusquAuSifflet(0.2);
+  const etat = global.window.RMMatchState
+    ? global.window.RMMatchState.normalizeMatchState(m.getState()) : m.getState();
+  RMClub.accumulerStatsJoueurs(eff, compo, etat.statsJoueurs.A, 'pro', RMClub.ventilationMatch(etat, 'A'));
+  let passes = 0, minutes = 0;
+  for (const j of eff) if (j.statsSaison) { passes += j.statsSaison.passes; minutes += j.statsSaison.minutes; }
+  assert.strictEqual(passes, etat.stats.A.passes, 'les passes des personnes font celles de l\'équipe');
+  assert.ok(Math.abs(minutes - 15 * 80) <= 3, `15 maillots x 80 min = ${minutes} min`);
+  assert.ok(entrants[9].statsSaison && entrants[9].statsSaison.entreesEnJeu === 1, 'le 9 entrant a joué');
+  assert.ok(Math.abs(entrants[9].statsSaison.minutes - 35) <= 1, `${entrants[9].statsSaison.minutes} min pour le 9 entrant`);
+  assert.ok(Math.abs(eff[8].statsSaison.minutes - 45) <= 1, 'le 9 titulaire a joué 45 min');
+});
+
+test('page joueur : protocole commotion — le titulaire revient, un match et ses minutes ; le temporaire, une entrée (FUNC-RM-005)', () => {
+  const s = saisonPourAvance(966);
+  const [titulaire, temporaire] = s.clubJoueur.effectif;
+  // Le n°7 sort à 25:00, son remplaçant temporaire tient 12 minutes, il revient à 37:00.
+  const ventilation = {
+    sortis: [{ numero: 7, sortie: 1500, stats: { tacklesMade: 6 } }, { numero: 7, sortie: 2220, stats: { tacklesMade: 2 } }],
+    remplacements: [{ equipe: 'A', numero: 7, instant: 1500, joueurId: temporaire.id, temporaire: true },
+      { equipe: 'A', numero: 7, instant: 2220, joueurId: null, retour: true }],
+    tempsFinal: 4800,
+  };
+  RMClub.accumulerStatsJoueurs(s.clubJoueur.effectif, { 7: titulaire.id }, { 7: { tacklesMade: 5 } }, 'pro', ventilation);
+  const t = titulaire.statsSaison, e = temporaire.statsSaison;
+  assert.strictEqual(t.matchsJoues, 1, 'sorti puis revenu : UN match');
+  assert.strictEqual(t.entreesEnJeu, 0, 'son retour n est pas une entrée en jeu');
+  assert.strictEqual(t.minutes, 25 + 43, `${t.minutes} min pour le titulaire`);
+  assert.strictEqual(t.tacklesMade, 11, 'ses plaquages avant et après le protocole');
+  assert.strictEqual(e.minutes, 12);
+  assert.strictEqual(e.tacklesMade, 2);
+  assert.strictEqual(e.entreesEnJeu, 1);
+  assert.strictEqual(e.matchsJoues, 1);
 });
 
 test('page joueur : une compétition non jouée n\'apparaît pas (aucune ligne fabriquée)', () => {
@@ -3882,15 +4031,46 @@ test('coupes : un résultat fait RÉELLEMENT avancer le vainqueur au tour suivan
     'le vainqueur doit réellement apparaître au tour suivant');
 });
 
-test('coupes : jamais de match nul — une prolongation départage', () => {
+test('coupes : jamais de match nul — prolongation, essais puis tirs au but (BUG-RM-001)', () => {
   const clubs = [];
   for (let i = 0; i < 2; i++) clubs.push({ id: 'c' + i, nom: 'Club ' + i, niveauClub: 0.5 });
-  const coupe = RMClub.genererCoupe({ cle: 't4', nom: 'T4', clubs, dates: ['2024-10-02'] });
-  const finale = coupe.tours[0].rencontres[0];
-  RMClub.enregistrerResultatCoupe(coupe, finale.id, 17, 17);
-  assert.ok(finale.vainqueurId, 'une coupe ne peut pas se terminer sur un nul : un vainqueur doit être désigné');
-  assert.ok(finale.apresProlongation, 'le départage doit être annoncé comme tel');
+  const nouvelle = (cle) => RMClub.genererCoupe({ cle, nom: cle, clubs, dates: ['2024-10-02'] });
+
+  // Match JOUÉ : le moteur a joué la prolongation et départagé aux essais.
+  let coupe = nouvelle('t4a');
+  let finale = coupe.tours[0].rencontres[0];
+  RMClub.enregistrerResultatCoupe(coupe, finale.id, 17, 17, {
+    prolongation: true, departage: { type: 'essais', vainqueur: 'exterieur', essais: { A: 1, B: 2 } },
+  });
+  assert.strictEqual(finale.vainqueurId, finale.exterieurId, 'le départage du moteur désigne le vainqueur');
+  assert.ok(finale.apresProlongation, 'la prolongation jouée doit être annoncée');
   assert.strictEqual(RMClub.vainqueurCoupe(coupe), finale.vainqueurId, 'le vainqueur de la finale gagne la coupe');
+  assert.match(RMClub.suffixeDepartage(finale), /après prolongation, au nombre d'essais \(2 à 1\)/);
+
+  // Résolu sans être joué : séance de tirs au but tirée, jamais les identifiants.
+  const vainqueurs = new Set();
+  for (let g = 1; g <= 20; g++) {
+    coupe = nouvelle('t4b');
+    finale = coupe.tours[0].rencontres[0];
+    RMClub.enregistrerResultatCoupe(coupe, finale.id, 17, 17, { rng: creerRng(g) });
+    assert.ok(finale.vainqueurId, 'une coupe ne peut pas se terminer sur un nul');
+    assert.strictEqual(finale.departage.type, 'tirs');
+    const t = finale.departage.tirs;
+    assert.notStrictEqual(t.domicile, t.exterieur, 'une séance de tirs au but a un vainqueur');
+    assert.strictEqual(finale.vainqueurId, t.domicile > t.exterieur ? finale.domicileId : finale.exterieurId);
+    assert.ok(!finale.apresProlongation, 'aucune prolongation annoncée sans minute jouée');
+    assert.match(RMClub.suffixeDepartage(finale), /aux tirs au but \(\d+-\d+\)/);
+    vainqueurs.add(finale.vainqueurId);
+  }
+  assert.strictEqual(vainqueurs.size, 2, 'mêmes clubs, mêmes identifiants : les deux doivent pouvoir gagner aux tirs au but');
+  // Même générateur, même résultat : une sauvegarde rechargée ne change rien.
+  const c1 = nouvelle('t4c'), c2 = nouvelle('t4c');
+  RMClub.enregistrerResultatCoupe(c1, c1.tours[0].rencontres[0].id, 9, 9, { rng: creerRng(7) });
+  RMClub.enregistrerResultatCoupe(c2, c2.tours[0].rencontres[0].id, 9, 9, { rng: creerRng(7) });
+  assert.deepStrictEqual(c1.tours[0].rencontres[0].departage, c2.tours[0].rencontres[0].departage);
+  // Une égalité sans départage ni générateur est une erreur, pas un tirage caché.
+  coupe = nouvelle('t4d');
+  assert.throws(() => RMClub.enregistrerResultatCoupe(coupe, coupe.tours[0].rencontres[0].id, 3, 3));
 });
 
 test('coupes : le vainqueur n\'existe qu\'une fois la finale jouée', () => {

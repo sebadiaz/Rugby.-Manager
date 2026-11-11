@@ -19,7 +19,7 @@
   const MARGE_TOUCHE = 4;
 
   const ICONES = {
-    COUP_ENVOI: '▶️', CONTRE_COUP_ENVOI: '✋', ESSAI: '🏉', MELEE_AVANT: '🔄', MELEE_ENAVANT: '🔄',
+    COUP_ENVOI: '▶️', RENVOI_22: '↩️', EN_BUT_APLATI: '🖐️', CINQUANTE_VINGT_DEUX: '🎯', TOUCHE_RAPIDE: '⚡', EN_BUT_TENU: '🛡️', CHOIX_CAPITAINE: '🧭', CAPITAINE_RELAIS: '🧭', REMPLACEMENT_EN_ATTENTE: '⏳', RENVOI_EN_BUT: '↩️', PROLONGATION: '⏱️', DEPARTAGE: '🏆', CONTRE_COUP_ENVOI: '✋', ESSAI: '🏉', MELEE_AVANT: '🔄', MELEE_ENAVANT: '🔄', TOUCHE_PAS_DROIT: '↗️', TOUCHE_HORS_JEU: '🚩', PENALITE_TOUCHE_FRAPPE: '👟', RECEPTION_DISPUTEE: '🙌', FRANCHISSEMENT: '⚡',
     PENALITE: '🟨', PENALITE_REUSSIE: '🥅', PENALITE_RATEE: '❌',
     TRANSFORMATION_REUSSIE: '🥅', TRANSFORMATION_RATEE: '❌',
     TOUCHE: '👉', TURNOVER: '🔁', MAUL: '🧱', MI_TEMPS: '⏸️', COUP_ENVOI_COURT: '📏',
@@ -27,6 +27,20 @@
     // de jeu le plus spectaculaire du rugby — il merite sa propre icone.
     INTERCEPTION: '🎣',
     DROP_GOAL_REUSSI: '🎯', DROP_GOAL_RATE: '😬', ESSAI_PENALITE: '🏉', COUP_FRANC: '🙌', FIN_MATCH: '🏁',
+    // Loi 5.7 : temps écoulé, le jeu continue jusqu'au ballon mort.
+    SONNERIE: '🔔',
+    // Sauteur plaqué à la réception (P2-131) : la parade au maul porté.
+    TOUCHE_SAQUEE: '🛑',
+    // Blessure au contact (FUNC-RM-005) : le joueur sort, un remplaçant entre.
+    BLESSURE: '🚑',
+    // Protocole commotion (FUNC-RM-005) : sortie 12 minutes, puis retour ou non.
+    PROTOCOLE_COMMOTION: '🩺', RETOUR_PROTOCOLE: '↩️', COMMOTION_CONFIRMEE: '🚑',
+    // Saignement : sortie pour soins, remplacement temporaire, retour.
+    SAIGNEMENT: '🩸',
+    // Lancement de jeu scripté sur mêlée, touche ou maul (playbook).
+    LANCEMENT: '📋',
+    // Mêlée simulée (loi 3) : plus de première ligne formée, pas de poussée.
+    MELEE_SIMULEE: '🤝',
     MAUL_ARRET_UN: '🅰️', MAUL_ARRET_DEUX: '✋', MAUL_USE_IT: '⏱️', MAUL_BALLON_SORTI: '➡️', MAUL_INJOUABLE: '🔒',
     MELEE_RUCK_INJOUABLE: '🔒',
     MAUL_PEN_ECROULEMENT: '🟨', MAUL_PEN_HORSJEU: '🟨', MAUL_PEN_ENTREE_COTE: '🟨', MAUL_PEN_TECHNIQUE: '🟨', CARTON_JAUNE: '🟡',
@@ -41,7 +55,7 @@
     // Machine à états de la mêlée (loi 19/20, cf. ETATS_MELEE dans le moteur).
     MELEE: '⚪', MELEE_CROUCH: '⬇️', MELEE_BIND: '🤝', MELEE_SET: '💥', MELEE_INTRODUCTION: '↘️',
     MELEE_CONTESTATION: '💪', MELEE_DOMINEE: '🚀', MELEE_GAGNEE: '✅', MELEE_PRESSION: '⚠️',
-    MELEE_BALLON_SORTI: '➡️', MELEE_PICK_AND_GO: '🏃', MELEE_USE_IT: '⏱️', MELEE_TOURNEE: '🔄', MELEE_RESET: '↩️',
+    MELEE_BASE: '🦶', MELEE_BALLON_SORTI: '➡️', MELEE_PICK_AND_GO: '🏃', MELEE_PASSE_HUIT: '👐', MELEE_USE_IT: '⏱️', MELEE_TOURNEE: '🔄', MELEE_RESET: '↩️',
     MELEE_PEN_ECROULEMENT: '🟨', MELEE_PEN_TRAVERS: '🟨', MELEE_PEN_HORSJEU: '🟨', MELEE_PEN_TECHNIQUE: '🙌',
   };
 
@@ -67,6 +81,9 @@
     MAUL: { label: 'Maul', couleur: '#bf360c' },
     MELEE: { label: 'Mêlée', couleur: '#1565c0' },
     TOUCHE: { label: 'Touche', couleur: '#6a1b9a' },
+    // Le ballon est en l'air après un coup de pied en jeu : sans cette entrée,
+    // le badge affichait le code brut « COUP_DE_PIED_JEU » (P2-86).
+    COUP_DE_PIED_JEU: { label: 'Coup de pied', couleur: '#5d4037' },
     ESSAI: { label: 'ESSAI !', couleur: '#f9a825' },
     TRANSFORMATION: { label: 'Transformation', couleur: '#00838f' },
     PENALITE_TIR: { label: 'Pénalité au but', couleur: '#ad1457' },
@@ -75,9 +92,36 @@
   };
 
   const TYPES_BANNIERE = new Set([
-    'PENALITE', 'MELEE_AVANT', 'MELEE_ENAVANT', 'TOUCHE', 'ESSAI', 'FIN_MATCH',
+    'PENALITE', 'MELEE_AVANT', 'MELEE_ENAVANT', 'TOUCHE_PAS_DROIT', 'TOUCHE_HORS_JEU', 'TOUCHE', 'ESSAI', 'FIN_MATCH',
     'TRANSFORMATION_REUSSIE', 'TRANSFORMATION_RATEE', 'PENALITE_REUSSIE', 'PENALITE_RATEE',
     'CONTRE_COUP_ENVOI', 'MAUL', 'MI_TEMPS', 'COUP_ENVOI_COURT',
+    // Sonnerie (loi 5.7) : la dernière action se joue jusqu'au ballon mort.
+    'SONNERIE',
+    'TOUCHE_SAQUEE',
+    'BLESSURE',
+    'PROTOCOLE_COMMOTION', 'RETOUR_PROTOCOLE', 'COMMOTION_CONFIRMEE', 'SAIGNEMENT',
+    'LANCEMENT',
+    'MELEE_SIMULEE',
+    // Ballon aplati par la défense dans son en-but (P2-93) : renvoi aux 22 m.
+    'EN_BUT_APLATI',
+    // 50:22 (P2-96) : un coup de pied de son camp qui trouve la touche dans les 22 adverses.
+    'CINQUANTE_VINGT_DEUX',
+    // Touche rapide (P2-98) : relance immédiate après un coup de pied en touche.
+    'TOUCHE_RAPIDE',
+    // Ballon tenu dans l'en-but (P2-99) : renvoi depuis l'en-but.
+    'EN_BUT_TENU',
+    // Choix du capitaine selon le score (P2-101).
+    'CHOIX_CAPITAINE',
+    // Le capitaine sort : le brassard change de bras (FUNC-RM-006).
+    'CAPITAINE_RELAIS',
+    // Changement tactique en attente du ballon mort (loi 3.6, BUG-RM-012).
+    'REMPLACEMENT_EN_ATTENTE',
+    // Coupe à élimination directe (BUG-RM-001) : prolongation puis départage.
+    'PROLONGATION', 'DEPARTAGE',
+    // Chandelle disputee (P2-56) : un duel aerien, le temps fort d'un coup de pied.
+    'RECEPTION_DISPUTEE',
+    // Franchissement de la ligne de defense (P2-60) : le moment ou le match s'ouvre.
+    'FRANCHISSEMENT',
     'DROP_GOAL_REUSSI', 'DROP_GOAL_RATE', 'ESSAI_PENALITE', 'COUP_FRANC',
     'MAUL_ARRET_UN', 'MAUL_ARRET_DEUX', 'MAUL_USE_IT', 'MAUL_INJOUABLE', 'MELEE_RUCK_INJOUABLE',
     'MAUL_PEN_ECROULEMENT', 'MAUL_PEN_HORSJEU', 'MAUL_PEN_ENTREE_COTE', 'MAUL_PEN_TECHNIQUE', 'CARTON_JAUNE',

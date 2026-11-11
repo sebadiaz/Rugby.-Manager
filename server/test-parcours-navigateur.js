@@ -66,10 +66,15 @@ function surveillerRessources(page, erreurs) {
   });
 }
 
-function verifier(nom, condition) {
+function verifier(nom, condition, detail) {
   nbTests++;
   if (condition) { console.log(`OK   ${nom}`); }
-  else { nbEchecs++; console.error(`FAIL ${nom}`); }
+  else {
+    nbEchecs++; console.error(`FAIL ${nom}`);
+    // Le détail passé par l'appelant (texte affiché, valeurs lues) : sans lui,
+    // un échec rare ne se diagnostique pas après coup.
+    if (detail !== undefined) console.error('     ' + String(typeof detail === 'string' ? detail : JSON.stringify(detail)).slice(0, 600));
+  }
 }
 
 function optionsLancement() {
@@ -804,6 +809,32 @@ function optionsLancement() {
   await page.waitForSelector('#panneauResultat.visible', { timeout: 20000 });
   const scoreTxt = await page.textContent('#resultatScore');
   verifier('progression d\'une journée : un score réel est affiché', /\d+\s*[—-]\s*\d+/.test(scoreTxt));
+  // Bilan des lancements (P2-153) : la feuille de fin de match dit ce que
+  // chaque style de lancement a rapporté (nombre · terrain moyen · essais).
+  const bilanLancements = await page.evaluate(() => {
+    const z = document.getElementById('resultatFeuille');
+    const lignes = z ? [...z.querySelectorAll('.ligneLancement')] : [];
+    return { titre: !!z && /Lancements de jeu/.test(z.textContent), lignes: lignes.map((l) => l.textContent),
+      deborde: lignes.some((l) => l.scrollWidth > l.clientWidth + 1) };
+  });
+  verifier('feuille de match : bilan des lancements par style affiché (joués · terrain · essais)',
+    bilanLancements.titre && bilanLancements.lignes.length > 0
+      && bilanLancements.lignes.every((t) => /Au (près|large|pied)/.test(t) && /(\d+ · [+-]?\d+ m|–)/.test(t)),
+    JSON.stringify(bilanLancements));
+  verifier('feuille de match : les lignes du bilan des lancements ne débordent pas', !bilanLancements.deborde);
+  // Les joueurs du match (FUNC-RM-011) : « n°7 · 14 » par catégorie, sans
+  // débordement des libellés (« Franchissements » chevauchait la valeur à 390 px).
+  const joueursMatch = await page.evaluate(() => [...document.querySelectorAll('#resultatFeuille .ligneJoueurMatch')].map((l) => ({
+    t: l.textContent, deborde: [...l.children].some((c) => c.scrollWidth > c.clientWidth + 1) })));
+  verifier('feuille de match : les joueurs du match, par action comptée, sans débordement',
+    // Nommé en Mode Club (« J. Michel · 16 », P2-165), sinon le maillot.
+    joueursMatch.length >= 4 && joueursMatch.every((l) => /((n°\d+|[A-ZÀ-Ý]\. [^·]+) · \d+( m)?|–)/.test(l.t) && !l.deborde)
+      && joueursMatch.some((l) => /[A-ZÀ-Ý]\. [^·]+ · \d+/.test(l.t)), JSON.stringify(joueursMatch));
+  // Essais marqués (P2-154) : chaque essai dit d'où venait l'action.
+  const recitsEssais = await page.$$eval('#resultatFeuille .listeEssais li', (l) => l.map((x) => x.textContent));
+  verifier('feuille de match : chaque essai raconte son action (phase, distance, rucks)',
+    recitsEssais.length > 0 && recitsEssais.every((t) => /^\d+' (n°\d+ — (maul pénétrant )?(sur |en jeu courant)|— essai de pénalité)/.test(t)),
+    JSON.stringify(recitsEssais));
   const matchsJouesApresDoubleClicJournee = await page.evaluate(() =>
     JSON.parse(localStorage.getItem('rugbyManager.club.v1')).calendrier.filter((f) => f.joue).length);
   verifier('double clic sur "Lancer le match" : une seule journée est jouée, pas de blocage ni de double simulation',
@@ -1001,6 +1032,138 @@ function optionsLancement() {
   await pageCorrompue.waitForTimeout(300);
   verifier('sauvegarde corrompue : une nouvelle carrière se crée normalement après l\'avertissement', await pageCorrompue.isVisible('[data-volet="dashboard"]'));
   await contexteCorrompu.close();
+
+  // 9 bis) Deux onglets sur la même carrière (bugs.md BUG-RM-002) : un onglet
+  // resté ouvert sur un état ancien ne doit plus écraser la progression
+  // enregistrée par l'autre. Même contexte = même stockage, comme deux
+  // onglets d'un vrai navigateur.
+  const contexteOnglets = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const ongletA = await contexteOnglets.newPage();
+  const erreursOnglets = [];
+  ongletA.on('pageerror', (e) => erreursOnglets.push(`PAGEERROR: ${e.message}`));
+  await ongletA.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  await ongletA.evaluate((g) => window.RMRng.setSeed(g), GRAINE_TEST);
+  await ongletA.click('#btnAccueilModeClub');
+  await ongletA.fill('#inputNomClub', 'Club Deux Onglets');
+  await ongletA.click('#btnCreerClub');
+  await ongletA.waitForTimeout(400);
+  const ongletB = await contexteOnglets.newPage();
+  ongletB.on('pageerror', (e) => erreursOnglets.push(`PAGEERROR: ${e.message}`));
+  await ongletB.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  await ongletB.click('#btnContinuerClub');
+  await ongletB.waitForTimeout(300);
+  const dateStockee = () => ongletA.evaluate(() => JSON.parse(localStorage.getItem('rugbyManager.club.v1')).temps);
+  // A avance d'un jour et enregistre.
+  await ongletA.bringToFront();
+  await ongletA.click('#btnJourSuivant');
+  await ongletA.waitForTimeout(400);
+  const dateA = await dateStockee();
+  await ongletB.waitForTimeout(300);
+  const conflitAnnonce = await ongletB.isVisible('#modalInfo.visible')
+    ? await ongletB.textContent('#modalInfoTitre') : '';
+  verifier('deux onglets : l\'onglet resté en arrière est prévenu dès que l\'autre enregistre',
+    /autre onglet/.test(conflitAnnonce));
+  // Même s'il agit quand même (le message ignoré), il n'écrase rien.
+  await ongletB.evaluate(() => { const m = document.getElementById('modalInfo'); m.classList.remove('visible'); });
+  // Deux jours : son état diffère alors forcément de celui enregistré par A.
+  await ongletB.click('#btnJourSuivant');
+  await ongletB.waitForTimeout(400);
+  await ongletB.click('#btnJourSuivant');
+  await ongletB.waitForTimeout(400);
+  verifier('deux onglets : l\'état périmé de l\'autre onglet n\'écrase pas la progression enregistrée',
+    JSON.stringify(await dateStockee()) === JSON.stringify(dateA));
+  // Fermer le message recharge la version la plus récente, qui s'enregistre normalement.
+  await ongletB.evaluate(() => document.getElementById('modalInfo').classList.add('visible'));
+  await Promise.all([ongletB.waitForNavigation({ waitUntil: 'networkidle' }), ongletB.click('#modalInfoValider')]);
+  await ongletB.click('#btnContinuerClub');
+  await ongletB.waitForTimeout(300);
+  await ongletB.click('#btnJourSuivant');
+  await ongletB.waitForTimeout(400);
+  verifier('deux onglets : rechargé, l\'onglet reprend la carrière à jour et enregistre de nouveau',
+    JSON.stringify(await dateStockee()) !== JSON.stringify(dateA) && !(await ongletB.isVisible('#modalInfo.visible')));
+  verifier('deux onglets : aucune erreur de page', erreursOnglets.length === 0);
+  await contexteOnglets.close();
+
+  // 9 ter) Export / import de carrière (bugs.md FUNC-RM-001) : la carrière
+  // téléchargée depuis l'accueil se réimporte dans un AUTRE navigateur
+  // (contexte vierge), après un aperçu ; la carrière qu'elle remplace part
+  // en copie de secours téléchargeable.
+  const ctxExport = await browser.newContext({ viewport: { width: 1280, height: 900 }, acceptDownloads: true });
+  const pageExport = await ctxExport.newPage();
+  const erreursExport = [];
+  pageExport.on('pageerror', (e) => erreursExport.push(`PAGEERROR: ${e.message}`));
+  await pageExport.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  verifier('sauvegardes : sans carrière, pas de bouton d\'export (rien à exporter)',
+    !(await pageExport.isVisible('#btnExporterCarriere')) && (await pageExport.isVisible('#btnImporterCarriere')));
+  await pageExport.evaluate((g) => window.RMRng.setSeed(g), GRAINE_TEST);
+  await pageExport.click('#btnAccueilModeClub');
+  await pageExport.fill('#inputNomClub', 'Club Exporte');
+  await pageExport.click('#btnCreerClub');
+  await pageExport.waitForTimeout(400);
+  await pageExport.click('#btnJourSuivant');
+  await pageExport.waitForTimeout(400);
+  await pageExport.reload({ waitUntil: 'networkidle' });
+  const [telechargement] = await Promise.all([
+    pageExport.waitForEvent('download'), pageExport.click('#btnExporterCarriere'),
+  ]);
+  const cheminExport = await telechargement.path();
+  const contenuExport = require('fs').readFileSync(cheminExport, 'utf8');
+  verifier('sauvegardes : l\'export télécharge la carrière telle qu\'enregistrée, nommée d\'après le club',
+    contenuExport === await pageExport.evaluate(() => localStorage.getItem('rugbyManager.club.v1'))
+    && /^rugby-manager-club-exporte-saison1-\d{8}\.json$/.test(telechargement.suggestedFilename()));
+
+  const ctxImport = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, acceptDownloads: true });
+  const pageImport = await ctxImport.newPage();
+  pageImport.on('pageerror', (e) => erreursExport.push(`PAGEERROR: ${e.message}`));
+  await pageImport.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+  await pageImport.evaluate((g) => window.RMRng.setSeed(g), GRAINE_TEST + 1);
+  await pageImport.click('#btnAccueilModeClub');
+  await pageImport.fill('#inputNomClub', 'Club Remplace');
+  await pageImport.click('#btnCreerClub');
+  await pageImport.waitForTimeout(400);
+  await pageImport.reload({ waitUntil: 'networkidle' });
+  const remplacee = await pageImport.evaluate(() => localStorage.getItem('rugbyManager.club.v1'));
+  // Fichier refusé : rien ne change, la raison est dite.
+  await pageImport.setInputFiles('#fichierImportCarriere', { name: 'faux.json', mimeType: 'application/json', buffer: Buffer.from('{"nom":"pas une carriere"}') });
+  await pageImport.waitForTimeout(300);
+  verifier('sauvegardes : un fichier qui n\'est pas une sauvegarde est refusé sans rien modifier',
+    /Import refusé/.test(await pageImport.textContent('#etatSauvegardes'))
+    && remplacee === await pageImport.evaluate(() => localStorage.getItem('rugbyManager.club.v1')));
+  // Annulation à l'aperçu : rien ne change.
+  let apercu = '';
+  pageImport.once('dialog', (d) => { apercu = d.message(); d.dismiss(); });
+  await pageImport.setInputFiles('#fichierImportCarriere', cheminExport);
+  await pageImport.waitForTimeout(300);
+  verifier('sauvegardes : l\'aperçu nomme le club et la saison avant tout import',
+    /Club Exporte/.test(apercu) && /saison 1/.test(apercu) && /copie de secours/.test(apercu));
+  verifier('sauvegardes : annuler l\'aperçu ne modifie rien',
+    remplacee === await pageImport.evaluate(() => localStorage.getItem('rugbyManager.club.v1')));
+  // Comme le bouton « Importer », qui vide le champ avant d'ouvrir le sélecteur.
+  await pageImport.evaluate(() => { document.getElementById('fichierImportCarriere').value = ''; });
+  pageImport.once('dialog', (d) => d.accept());
+  await Promise.all([pageImport.waitForNavigation({ waitUntil: 'networkidle' }),
+    pageImport.setInputFiles('#fichierImportCarriere', cheminExport)]);
+  verifier('sauvegardes : après import, l\'accueil propose de continuer la carrière importée',
+    /Club Exporte/.test(await pageImport.textContent('#continuerClubInfos')));
+  verifier('sauvegardes : la carrière remplacée est listée en copie de secours',
+    /Club Remplace/.test(await pageImport.textContent('#listeSecours')));
+  const [dlSecours] = await Promise.all([
+    pageImport.waitForEvent('download'), pageImport.click('#listeSecours button[data-cle]'),
+  ]);
+  verifier('sauvegardes : la copie de secours se télécharge intacte',
+    require('fs').readFileSync(await dlSecours.path(), 'utf8') === remplacee);
+  const debordeSauvegardes = await pageImport.evaluate(() => {
+    const c = document.getElementById('carteSauvegardes').getBoundingClientRect();
+    return c.right > window.innerWidth + 1 || document.documentElement.scrollWidth > window.innerWidth + 1;
+  });
+  verifier('sauvegardes : la carte tient sur un téléphone (390 px), sans défilement horizontal', !debordeSauvegardes);
+  await pageImport.click('#btnContinuerClub');
+  await pageImport.waitForTimeout(400);
+  verifier('sauvegardes : la carrière importée s\'ouvre et se joue',
+    await pageImport.isVisible('#btnJourSuivant'));
+  verifier('sauvegardes : aucune erreur de page', erreursExport.length === 0);
+  await ctxExport.close();
+  await ctxImport.close();
 
   // 10) Marché des transferts sur mobile étroit (audit trouvé en vérifiant le
   // correctif du double-clic ci-dessus) : la ligne d'un joueur (nom, prix,
@@ -3533,7 +3696,7 @@ function optionsLancement() {
       miTempsVue = true;
       const consignes = await pgLive.$$('.btnConsigneMiTemps');
       if (consignes.length) { await consignes[0].click().catch(() => {}); await pgLive.waitForTimeout(250); }
-      const remplacants = await pgLive.$$('.btnRemplacantMiTemps');
+      const remplacants = await pgLive.$$('.btnRemplacantMiTemps:not([disabled])');
       if (remplacants.length) { await remplacants[0].click().catch(() => {}); await pgLive.waitForTimeout(250); }
       if (await pgLive.isVisible('#btnMiTempsReprendre')) await pgLive.click('#btnMiTempsReprendre');
       await pgLive.waitForTimeout(250);
@@ -4026,6 +4189,50 @@ function optionsLancement() {
     !!(rejoue && rejoue.fidele === true
        && rejoue.score && scoreEnregistre
        && rejoue.score.A === scoreEnregistre.A && rejoue.score.B === scoreEnregistre.B));
+  if (!(rejoue && rejoue.fidele === true)) {
+    // Échec déjà vu une fois en suite complète, jamais en isolé : sans ce
+    // détail, l'échec reste muet et impossible à reproduire.
+    console.error('     detail replay : enregistre=' + JSON.stringify(scoreEnregistre)
+      + ' rejoue=' + JSON.stringify(rejoue)
+      + ' seed=' + (entreeRej && entreeRej.seed) + ' duree=' + (entreeRej && entreeRej.duree)
+      + ' cles=' + (entreeRej && entreeRej.config ? Object.keys(entreeRej.config).join(',') : '-'));
+  }
+  // Le replay doit aller jusqu'au COUP DE SIFFLET, pas au chronomètre. Le
+  // moteur laisse une séquence de marque engagée (transformation d'un essai de
+  // la dernière seconde, tir au but accordé avant la fin) se jouer après le
+  // temps écoulé ; une boucle qui coupe à `duree` perd ces points. Mesuré :
+  // 18 matchs de 5 min sur 300 (6 %). On cherche une graine où c'est le cas,
+  // avec la configuration réellement chargée par la page, puis on vérifie que
+  // le replay retrouve le score du coup de sifflet.
+  const sifflet = await pgRej.evaluate(async () => {
+    const cfg = await fetch('rugby-config.json').then((r) => r.json()).catch(() => ({}));
+    delete cfg._lisezMoi;
+    const { MatchEngine } = window.RugbyEngine;
+    const PAS = window.RMConstants.PAS_FIXE;
+    for (let seed = 1; seed <= 120; seed++) {
+      const m = new MatchEngine(seed, 300, cfg);
+      while (m.tempsMatch < 300 && m.phase !== 'TERMINE') m.tick(PAS);
+      const coupe = Object.assign({}, m.getState().score);
+      let garde = 0;
+      while (m.phase !== 'TERMINE' && garde++ < 2000) m.tick(PAS);
+      const fin = m.getState().score;
+      if (m.phase === 'TERMINE' && (fin.A !== coupe.A || fin.B !== coupe.B)) {
+        window.RMMain.reinitialiserConfigClub();
+        const r = window.RMMain.rejouerDepuisHistorique({ id: 1, seed, duree: 300,
+          score: { A: fin.A, B: fin.B }, config: {}, configVersion: window.RMUI.VERSION_INSTANTANE_MATCH });
+        return { seed, coupe, fin, rejoue: r };
+      }
+    }
+    return null;
+  });
+  verifier('replay : prémisse — une graine dont la dernière séquence de marque se joue après le temps écoulé existe',
+    !!sifflet);
+  verifier('replay : rejouer va jusqu\'au COUP DE SIFFLET (transformation / tir au but de fin de match comptés)',
+    !!(sifflet && sifflet.rejoue && sifflet.rejoue.fidele === true
+       && sifflet.rejoue.score.A === sifflet.fin.A && sifflet.rejoue.score.B === sifflet.fin.B));
+  if (sifflet && !(sifflet.rejoue && sifflet.rejoue.fidele)) {
+    console.error('     detail sifflet : ' + JSON.stringify(sifflet));
+  }
   // Une entrée ancienne, sans instantané, ne doit pas produire un FAUX replay.
   const ancienne = await pgRej.evaluate(() => {
     if (!window.RMMain || !window.RMMain.rejouerDepuisHistorique) return null;
@@ -4115,6 +4322,536 @@ function optionsLancement() {
     erreursSauv.length === 0);
   await ctxSauv.close();
 
+  // --- REPRISE D'UN MATCH JOUÉ APRÈS RECHARGEMENT (bugs.md FUNC-RM-002) -----
+  // Le match joué ne vivait qu'en mémoire : un F5 le perdait et la journée se
+  // rejouait avec une autre graine. Un journal (graine, configuration,
+  // décisions datées au pas près) permet de reprendre le MÊME match.
+  {
+    const ctxRep = await browser.newContext({ viewport: { width: 1400, height: 1000 } });
+    const pgRep = await ctxRep.newPage();
+    const erreursRep = [];
+    pgRep.on('pageerror', (e) => erreursRep.push(e.message));
+    const dialoguesRep = [];
+    let accepterReprise = true;
+    pgRep.on('dialog', async (d) => { dialoguesRep.push(d.message()); if (accepterReprise) await d.accept(); else await d.dismiss(); });
+    await pgRep.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+    await pgRep.click('#btnAccueilModeClub');
+    await pgRep.fill('#inputNomClub', 'AS Reprise');
+    await pgRep.click('#btnCreerClub');
+    await pgRep.waitForTimeout(700);
+    await pgRep.selectOption('#selDureeClub', '300');
+    verifier('reprise : on atteint l\'aperçu d\'avant-match', await continuerJusquAuMatch(pgRep));
+    await pgRep.click('#btnApercuJouerMatch');
+    await pgRep.waitForTimeout(1200);
+    for (let i = 0; i < 8; i++) {
+      if (/x16/.test(await pgRep.textContent('#btnSpeed'))) break;
+      await pgRep.click('#btnSpeed').catch(() => {});
+      await pgRep.waitForTimeout(100);
+    }
+    let miTempsRep = false;
+    for (let t = 0; t < 400; t++) {
+      if (await pgRep.isVisible('#btnMiTempsReprendre')) {
+        miTempsRep = true;
+        const c = await pgRep.$$('.btnConsigneMiTemps');
+        if (c.length) { await c[1].click(); await pgRep.waitForTimeout(200); }
+        // Premier remplaçant encore disponible : une blessure ou un protocole
+        // a pu faire entrer le premier avant la mi-temps (bouton désactivé).
+        const r = await pgRep.$$('.btnRemplacantMiTemps:not([disabled])');
+        if (r.length) { await r[0].click(); await pgRep.waitForTimeout(200); }
+        await pgRep.click('#btnMiTempsReprendre');
+        break;
+      }
+      await pgRep.waitForTimeout(200);
+    }
+    verifier('reprise : prémisse — mi-temps atteinte, consigne et remplacement donnés', miTempsRep);
+    for (let t = 0; t < 100; t++) {
+      if (await pgRep.evaluate(() => window.RMMain.etatActuel().clock.time) > 210) break;
+      await pgRep.waitForTimeout(200);
+    }
+    await pgRep.click('#btnPlay');
+    await pgRep.waitForTimeout(400);
+    const avantF5 = await pgRep.evaluate(() => {
+      const e = window.RMMain.etatActuel();
+      return { t: e.clock.time, score: e.score, ballon: e.ballon, j: JSON.parse(localStorage.getItem('rugbyManager.matchJoue.v1')) };
+    });
+    verifier('reprise : le journal garde les décisions datées du manager',
+      !!(avantF5.j && avantF5.j.commandes.length >= 1));
+    await pgRep.reload({ waitUntil: 'networkidle' });
+    await pgRep.waitForTimeout(800);
+    await pgRep.click('#btnContinuerClub').catch(() => {});
+    await pgRep.waitForTimeout(1200);
+    verifier('reprise : après F5, on revient à l\'aperçu du même match', await continuerJusquAuMatch(pgRep));
+    await pgRep.click('#btnApercuJouerMatch');
+    await pgRep.waitForTimeout(2500);
+    verifier('reprise : le jeu propose de reprendre le match interrompu',
+      dialoguesRep.some((m) => /interrompu/.test(m)));
+    const apresF5 = await pgRep.evaluate(() => {
+      const e = window.RMMain.etatActuel();
+      return { t: e.clock.time, score: e.score, ballon: e.ballon, play: document.getElementById('btnPlay').textContent };
+    });
+    verifier('reprise : même instant, même score, ballon au même endroit (décisions rejouées)',
+      Math.abs(apresF5.t - avantF5.t) < 0.05 && JSON.stringify(apresF5.score) === JSON.stringify(avantF5.score)
+        && Math.abs(apresF5.ballon.x - avantF5.ballon.x) < 1e-6 && Math.abs(apresF5.ballon.y - avantF5.ballon.y) < 1e-6);
+    verifier('reprise : le match repart en pause', /Lecture/.test(apresF5.play));
+    await pgRep.click('#btnTerminerMatch');
+    let finRep = false;
+    for (let i = 0; i < 200; i++) {
+      if (await pgRep.isVisible('#panneauResultat.visible')) { finRep = true; break; }
+      await pgRep.waitForTimeout(300);
+    }
+    if (finRep) { await pgRep.click('#btnResultatFermer'); await pgRep.waitForTimeout(800); }
+    const resRep = await pgRep.evaluate(() => {
+      const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
+      const id = s.clubJoueur.id;
+      return {
+        joues: (s.calendrier || []).filter((f) => f.joue && (f.domicileId === id || f.exterieurId === id)).length,
+        journal: localStorage.getItem('rugbyManager.matchJoue.v1'),
+      };
+    });
+    verifier('reprise : le match repris va au sifflet et son résultat est enregistré UNE fois',
+      finRep && resRep.joues === 1);
+    verifier('reprise : le journal est effacé après le coup de sifflet final', resRep.journal === null);
+    // Refus : le joueur ne reprend pas, un NOUVEAU match commence à 0:00 et
+    // l'ancien journal est oublié.
+    verifier('reprise refusée : prémisse — aperçu du match suivant', await continuerJusquAuMatch(pgRep));
+    await pgRep.click('#btnApercuJouerMatch');
+    for (let t = 0; t < 150; t++) {
+      if (await pgRep.evaluate(() => (window.RMMain.etatActuel() || { clock: { time: 0 } }).clock.time) > 60) break;
+      await pgRep.waitForTimeout(200);
+    }
+    await pgRep.click('#btnPlay');
+    await pgRep.waitForTimeout(300);
+    const cleSuivant = await pgRep.evaluate(() => (JSON.parse(localStorage.getItem('rugbyManager.matchJoue.v1')) || {}).cle);
+    await pgRep.reload({ waitUntil: 'networkidle' });
+    await pgRep.waitForTimeout(800);
+    await pgRep.click('#btnContinuerClub').catch(() => {});
+    await pgRep.waitForTimeout(1200);
+    accepterReprise = false;
+    const nbDialogues = dialoguesRep.length;
+    await continuerJusquAuMatch(pgRep);
+    await pgRep.click('#btnApercuJouerMatch');
+    await pgRep.waitForTimeout(1500);
+    const refus = await pgRep.evaluate(() => ({
+      t: window.RMMain.etatActuel().clock.time,
+      j: JSON.parse(localStorage.getItem('rugbyManager.matchJoue.v1')),
+    }));
+    verifier('reprise refusée : un nouveau match commence au coup d\'envoi',
+      !!cleSuivant && dialoguesRep.length === nbDialogues + 1 && refus.t < 30);
+    verifier('reprise refusée : le journal décrit le nouveau match, sans les décisions de l\'ancien',
+      !!(refus.j && refus.j.cle === cleSuivant && refus.j.commandes.length === 0));
+    verifier('reprise : aucune erreur de page sur tout ce parcours', erreursRep.length === 0);
+    await ctxRep.close();
+  }
+
+  // --- RELECTURE FIDÈLE D'UN MATCH VÉCU (bugs.md FUNC-RM-003) --------------
+  // La relecture repartait de la seule graine : sans les consignes et les
+  // remplacements du manager, « Revoir » montrait un autre match.
+  {
+    const ctxRel = await browser.newContext({ viewport: { width: 1400, height: 1000 } });
+    const pgRel = await ctxRel.newPage();
+    const erreursRel = [];
+    pgRel.on('pageerror', (e) => erreursRel.push(e.message));
+    const dialoguesRel = [];
+    pgRel.on('dialog', async (d) => { dialoguesRel.push(d.message()); await d.accept(); });
+    await pgRel.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+    await pgRel.click('#btnAccueilModeClub');
+    await pgRel.fill('#inputNomClub', 'AS Relecture');
+    await pgRel.click('#btnCreerClub');
+    await pgRel.waitForTimeout(700);
+    await pgRel.selectOption('#selDureeClub', '300');
+    verifier('relecture : on atteint l\'aperçu d\'avant-match', await continuerJusquAuMatch(pgRel));
+    await pgRel.click('#btnApercuJouerMatch');
+    await pgRel.waitForTimeout(1200);
+    for (let i = 0; i < 8; i++) {
+      if (/x16/.test(await pgRel.textContent('#btnSpeed'))) break;
+      await pgRel.click('#btnSpeed').catch(() => {});
+      await pgRel.waitForTimeout(100);
+    }
+    let miTempsRel = false;
+    for (let t = 0; t < 400; t++) {
+      if (await pgRel.isVisible('#btnMiTempsReprendre')) {
+        miTempsRel = true;
+        const c = await pgRel.$$('.btnConsigneMiTemps');
+        if (c.length) { await c[1].click(); await pgRel.waitForTimeout(200); }
+        // Premier remplaçant encore disponible : une blessure ou un protocole
+        // a pu faire entrer le premier avant la mi-temps (bouton désactivé).
+        const r = await pgRel.$$('.btnRemplacantMiTemps:not([disabled])');
+        if (r.length) { await r[0].click(); await pgRel.waitForTimeout(200); }
+        await pgRel.click('#btnMiTempsReprendre');
+        break;
+      }
+      await pgRel.waitForTimeout(200);
+    }
+    verifier('relecture : prémisse — consigne et remplacement donnés à la mi-temps', miTempsRel);
+    await pgRel.waitForTimeout(1500);
+    await pgRel.click('#btnTerminerMatch');
+    let finRel = false;
+    for (let i = 0; i < 200; i++) {
+      if (await pgRel.isVisible('#panneauResultat.visible')) { finRel = true; break; }
+      await pgRel.waitForTimeout(300);
+    }
+    const vecuRel = await pgRel.evaluate(() => window.RMMain.etatActuel().score);
+    if (finRel) { await pgRel.click('#btnResultatFermer'); await pgRel.waitForTimeout(800); }
+    const entreeRel = await pgRel.evaluate(() => {
+      localStorage.setItem('rugbyManager.historique', '[]');
+      document.getElementById('btnSauver').click();
+      return JSON.parse(localStorage.getItem('rugbyManager.historique'))[0];
+    });
+    verifier('relecture : « Enregistrer » garde les décisions datées du manager et une empreinte du match',
+      !!(entreeRel && entreeRel.decisions && entreeRel.decisions.commandes.length >= 1 && entreeRel.empreinte));
+    const verdictsRel = await pgRel.evaluate((e) => ({
+      avec: window.RMMain.rejouerDepuisHistorique(e),
+      sans: window.RMMain.rejouerDepuisHistorique(Object.assign({}, e, { decisions: null })),
+    }), entreeRel);
+    verifier('relecture : avec les décisions, le match rejoué est identique au match vécu', verdictsRel.avec.fidele);
+    verifier('relecture : sans les décisions, ce serait un autre match, et le contrôle le voit', !verdictsRel.sans.fidele);
+    const nRel = dialoguesRel.length;
+    await pgRel.evaluate(() => document.getElementById('btnHistorique').click());
+    await pgRel.waitForTimeout(500);
+    await pgRel.click('#listeHistorique .entreeHistorique button');
+    for (let i = 0; i < 100; i++) {
+      if (await pgRel.evaluate(() => !document.getElementById('panneauGeneration').classList.contains('visible'))) break;
+      await pgRel.waitForTimeout(300);
+    }
+    await pgRel.waitForTimeout(800);
+    verifier('relecture : « Revoir » n\'avertit plus que le match affiché n\'est pas celui enregistré',
+      !dialoguesRel.slice(nRel).some((m) => /ne sera donc pas/.test(m)));
+    const phaseApresSaut = await pgRel.evaluate(() => {
+      const sk = document.getElementById('seek');
+      sk.value = sk.max; sk.dispatchEvent(new Event('input')); sk.dispatchEvent(new Event('change'));
+      return window.RMMain.etatActuel().phase;
+    });
+    // Loi 5.7 : la dernière action se joue après la sonnerie. Le bout de la
+    // barre est le coup de sifflet final, pas 5:00 pile (un essai d'après la
+    // sonnerie manquait à la relecture : 0-7 relu pour 7-7 vécu).
+    verifier('relecture : le bout de la barre de temps est le coup de sifflet final', phaseApresSaut === 'TERMINE', phaseApresSaut);
+    await pgRel.waitForTimeout(1500);
+    const revuRel = await pgRel.evaluate(() => window.RMMain.etatActuel().score);
+    verifier('relecture : au bout de la barre de temps, le score est celui du match vécu',
+      revuRel.A === vecuRel.A && revuRel.B === vecuRel.B);
+    verifier('relecture : aucune erreur de page', erreursRel.length === 0);
+    await ctxRel.close();
+  }
+
+  // --- BANC EN COURS DE MATCH (bugs.md FUNC-RM-005) ------------------------
+  // Le manager choisit quel maillot son remplaçant relève, parmi les postes
+  // compatibles ; un remplaçant n'entre qu'une fois et il est crédité de son
+  // entrée en jeu.
+  {
+    const ctxBanc = await browser.newContext({ viewport: { width: 1400, height: 1000 } });
+    const pgBanc = await ctxBanc.newPage();
+    const erreursBanc = [];
+    pgBanc.on('pageerror', (e) => erreursBanc.push(e.message));
+    let repriseBanc = false;
+    pgBanc.on('dialog', async (d) => { repriseBanc ||= /interrompu/.test(d.message()); await d.accept(); });
+    await pgBanc.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+    // Ce bloc vérifie le panneau du pilier n°16 : sans incident de contact
+    // (blessure, commotion, saignement — couverts par leurs propres blocs),
+    // aucun ne peut le faire entrer avant la mi-temps.
+    await pgBanc.evaluate(() => { window.RugbyEngine.MatchEngine.prototype._tirerBlessureContact = () => {}; });
+    await pgBanc.click('#btnAccueilModeClub');
+    await pgBanc.fill('#inputNomClub', 'AS Banc');
+    await pgBanc.click('#btnCreerClub');
+    await pgBanc.waitForTimeout(700);
+    await pgBanc.selectOption('#selDureeClub', '300');
+    verifier('banc : prémisse — aperçu', await continuerJusquAuMatch(pgBanc));
+    await pgBanc.click('#btnApercuJouerMatch');
+    await pgBanc.waitForTimeout(1200);
+    for (let i = 0; i < 8; i++) { if (/x16/.test(await pgBanc.textContent('#btnSpeed'))) break; await pgBanc.click('#btnSpeed'); await pgBanc.waitForTimeout(100); }
+    let mt = false;
+    for (let t = 0; t < 400; t++) { if (await pgBanc.isVisible('#btnMiTempsReprendre')) { mt = true; break; } await pgBanc.waitForTimeout(200); }
+    verifier('banc : prémisse — mi-temps', mt);
+    const options = await pgBanc.$$eval('.selCibleRemplacant[data-index="0"] option', (os) => os.map((o) => o.value));
+    verifier('banc : le pilier remplaçant ne peut relever qu une première ligne (n°1, 2, 3)', JSON.stringify(options) === '["1","2","3"]', JSON.stringify(options));
+    const optArriere = await pgBanc.$$eval('.selCibleRemplacant', (ss) => ss.map((s) => [...s.options].map((o) => Number(o.value))));
+    verifier('banc : un trois-quarts ne relève qu un trois-quarts', optArriere.some((l) => l.length && l.every((n) => n >= 9)) && optArriere.every((l) => l.every((n) => n <= 3) || l.every((n) => n >= 4 && n <= 8) || l.every((n) => n >= 9)), JSON.stringify(optArriere));
+    await pgBanc.selectOption('.selCibleRemplacant[data-index="0"]', '3');
+    await pgBanc.click('.btnRemplacantMiTemps[data-index="0"]');
+    await pgBanc.waitForTimeout(400);
+    const apres = await pgBanc.evaluate(() => ({ effectues: window.RMMain.etatActuel().remplacementsEffectues, detail: document.querySelector('.ligneRemplacant .detailRemplacant').textContent, dis: document.querySelector('.btnRemplacantMiTemps[data-index="0"]').disabled }));
+    verifier('banc : à la mi-temps le panneau confirme le n°3 en attente pour la reprise',
+      apres.dis && /en attente pour le n°3 : à la reprise/.test(apres.detail), JSON.stringify(apres));
+    const journalBanc = await pgBanc.evaluate(() => JSON.parse(localStorage.getItem('rugbyManager.matchJoue.v1')));
+    const entrantBanc = journalBanc.remplacants[0].joueurId;
+    verifier('banc : la demande est enregistrée, le joueur n’est pas encore entré',
+      journalBanc.commandes.some((c) => c.type === 'remplacement' && c.numero === 3)
+        && !apres.effectues.some((r) => r.joueurId === entrantBanc));
+    await pgBanc.reload({ waitUntil: 'networkidle' });
+    await pgBanc.evaluate(() => { window.RugbyEngine.MatchEngine.prototype._tirerBlessureContact = () => {}; });
+    await pgBanc.click('#btnContinuerClub');
+    verifier('banc : après rechargement, le même match reste accessible', await continuerJusquAuMatch(pgBanc));
+    await pgBanc.click('#btnApercuJouerMatch');
+    await pgBanc.click('#btnConsigneMatch');
+    const ligneReprise = pgBanc.locator('.ligneRemplacant').first();
+    const detailRepris = await ligneReprise.locator('.detailRemplacant').textContent();
+    verifier('banc : la demande au n°3 reste en attente après reprise', repriseBanc
+      && /en attente pour le n°3 : à la reprise/.test(detailRepris), detailRepris);
+    verifier('banc : le remplaçant en attente ne porte pas la coche « entré »',
+      await ligneReprise.locator('.btnRemplacantMiTemps.choisie').count() === 0);
+    await pgBanc.click('#btnMiTempsReprendre');
+    await pgBanc.click('#btnTerminerMatch');
+    let fin = false;
+    for (let i = 0; i < 200; i++) { if (await pgBanc.isVisible('#panneauResultat.visible')) { fin = true; break; } await pgBanc.waitForTimeout(300); }
+    const finale = await pgBanc.evaluate(() => window.RMMain.etatActuel().remplacementsEffectues);
+    const premier = finale && finale.find((r) => r.joueurId === entrantBanc);
+    verifier('banc : le remplaçant entre au maillot choisi par le manager (n°3)', premier?.numero === 3, JSON.stringify(finale));
+    verifier('banc : il n entre qu une fois (le doublon à la minute prévue est couvert par test-invariants)', premier && finale.filter((r) => r.joueurId === premier.joueurId).length === 1, JSON.stringify(finale));
+    if (fin) { await pgBanc.click('#btnResultatFermer'); await pgBanc.waitForTimeout(800); }
+    const bilanBanc = await pgBanc.evaluate((id) => {
+      const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
+      const joueur = s.clubJoueur.effectif.find((x) => x.id === id);
+      return { credit: joueur?.statsSaison, joues: s.classement[s.clubJoueur.id].j };
+    }, entrantBanc);
+    verifier('banc : le remplaçant est crédité d une entrée en jeu, une seule',
+      bilanBanc.credit?.entreesEnJeu === 1 && bilanBanc.credit.matchsJoues === 1, JSON.stringify(bilanBanc));
+    verifier('banc : le match repris ne compte qu’une fois au classement', fin && bilanBanc.joues === 1, JSON.stringify(bilanBanc));
+    verifier('banc : aucune erreur de page', erreursBanc.length === 0, '');
+    await ctxBanc.close();
+  }
+
+  // --- BLESSURE EN MATCH (bugs.md FUNC-RM-005) -----------------------------
+  // Mise en scène : la blessure est rare (~1,6 par match) ; le premier contact
+  // après 20 s blesse ici le n°7 du club. Tout le reste est le vrai chemin :
+  // bandeau, remplaçant du banc, blessure en carrière.
+  {
+    const ctxBl = await browser.newContext({ viewport: { width: 1400, height: 1000 } });
+    const pgBl = await ctxBl.newPage();
+    const erreursBl = [];
+    pgBl.on('pageerror', (e) => erreursBl.push(e.message));
+    pgBl.on('dialog', async (d) => { await d.accept(); });
+    await pgBl.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+    await pgBl.evaluate(() => {
+      window.RugbyEngine.MatchEngine.prototype._tirerBlessureContact = function () {
+        if (this._force || this.tempsMatch < 20) return;
+        this._force = true;
+        this._blessuresEnAttente.push({ equipe: 'A', numero: 7 });
+      };
+    });
+    await pgBl.click('#btnAccueilModeClub');
+    await pgBl.fill('#inputNomClub', 'AS Blessure');
+    await pgBl.click('#btnCreerClub');
+    await pgBl.waitForTimeout(700);
+    await pgBl.selectOption('#selDureeClub', '300');
+    verifier('blessure : prémisse — aperçu', await continuerJusquAuMatch(pgBl));
+    await pgBl.click('#btnApercuJouerMatch');
+    // Chaque bandeau affiché est noté au moment où il paraît : sous charge, un
+    // sondage toutes les 50 ms pouvait rater ses 2,2 s d'affichage.
+    await pgBl.evaluate(() => {
+      window.__bandeaux = [];
+      const b = document.getElementById('banner');
+      new MutationObserver(() => { if (b.classList.contains('visible')) window.__bandeaux.push(b.textContent); })
+        .observe(b, { attributes: true, childList: true, characterData: true, subtree: true });
+    });
+    for (let t = 0; t < 1200; t++) {
+      const n = await pgBl.evaluate(() => { const e = window.RMMain.etatActuel(); return e && e.blessuresMatch ? e.blessuresMatch.length : 0; });
+      if (n) break;
+      await pgBl.waitForTimeout(50);
+    }
+    let banniere = null;
+    for (let t = 0; t < 60 && !banniere; t++) {
+      banniere = await pgBl.evaluate(() => window.__bandeaux.find((x) => /Blessure : /.test(x)) || null);
+      if (!banniere) await pgBl.waitForTimeout(50);
+    }
+    verifier('blessure : le bandeau du soigneur l annonce', !!banniere && /SOIGNEUR/.test(banniere), banniere);
+    const etat = await pgBl.evaluate(() => { const e = window.RMMain.etatActuel(); return { bl: e.blessuresMatch, re: e.remplacementsEffectues }; });
+    const entrant = etat.re.find((r) => r.numero === 7);
+    verifier('blessure : un remplaçant du banc entre au n°7 au même instant',
+      etat.bl.length === 1 && entrant && entrant.joueurId != null && Math.abs(entrant.instant - etat.bl[0].instant) < 0.5, JSON.stringify(etat));
+    await pgBl.click('#btnTerminerMatch');
+    let fin = false;
+    for (let i = 0; i < 600; i++) { if (await pgBl.isVisible('#panneauResultat.visible')) { fin = true; break; } await pgBl.waitForTimeout(300); }
+    if (fin) { await pgBl.click('#btnResultatFermer'); await pgBl.waitForTimeout(800); }
+    const car = await pgBl.evaluate((idEntrant) => { const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1')); const c = s.clubJoueur;
+      const entrant = c.effectif.find((j) => j.id === idEntrant);
+      return { msg: (c.messages || []).filter((m) => /quitter le terrain/.test(m.corps)).length, entrantBlesse: !!(entrant && entrant.blessure && /quitter/.test(JSON.stringify(c.messages.filter((m) => m.corps.includes(entrant.nom))))) }; }, entrant && entrant.joueurId);
+    verifier('blessure : en carrière, le blessé (pas l entrant) est indisponible, avec un message', car.msg === 1 && !car.entrantBlesse, JSON.stringify(car) + ' fin=' + fin);
+    verifier('blessure : aucune erreur de page', erreursBl.length === 0, erreursBl.join(' | '));
+    await ctxBl.close();
+  }
+
+  // --- PROTOCOLE COMMOTION (bugs.md FUNC-RM-005) ---------------------------
+  // Mise en scène : premier contact après 20 s, protocole pour le n°7 du club.
+  // Le panneau du banc montre le remplaçant temporaire, puis le protocole se
+  // résout (retour ou sortie définitive) avec son bandeau.
+  {
+    const ctxP = await browser.newContext({ viewport: { width: 1400, height: 1000 } });
+    const pgP = await ctxP.newPage();
+    const erreursP = [];
+    pgP.on('pageerror', (e) => erreursP.push(e.message));
+    pgP.on('dialog', async (d) => { await d.accept(); });
+    await pgP.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+    await pgP.evaluate(() => {
+      window.RugbyEngine.MatchEngine.prototype._tirerBlessureContact = function () {
+        if (this._force || this.tempsMatch < 20) return;
+        this._force = true;
+        this._blessuresEnAttente.push({ equipe: 'A', numero: 7, protocole: true });
+      };
+      window.__bandeaux = [];
+      const b = document.getElementById('banner');
+      new MutationObserver(() => { if (b.classList.contains('visible')) window.__bandeaux.push(b.textContent); })
+        .observe(b, { attributes: true, childList: true, characterData: true, subtree: true });
+    });
+    await pgP.click('#btnAccueilModeClub');
+    await pgP.fill('#inputNomClub', 'AS Protocole');
+    await pgP.click('#btnCreerClub');
+    await pgP.waitForTimeout(700);
+    await pgP.selectOption('#selDureeClub', '300');
+    verifier('protocole : prémisse — aperçu', await continuerJusquAuMatch(pgP));
+    const toastsAvant = await pgP.$$eval('#toastContainer .toast', (t) => t.length);
+    await pgP.click('#btnApercuJouerMatch');
+    await pgP.waitForTimeout(300);
+    const toastsApres = await pgP.$$eval('#toastContainer .toast', (t) => t.length);
+    verifier('coup d envoi : les notifications du club ne recouvrent plus les commandes du match',
+      toastsAvant >= 1 && toastsApres === 0, `${toastsAvant} avant, ${toastsApres} après`);
+    let p = null;
+    for (let t = 0; t < 1200 && !p; t++) {
+      p = await pgP.evaluate(() => { const e = window.RMMain.etatActuel(); return e && e.protocoles && e.protocoles[0] || null; });
+      if (!p) await pgP.waitForTimeout(50);
+    }
+    verifier('protocole : ouvert avec un remplaçant temporaire du banc', p && p.joueurIdTemp != null, JSON.stringify(p));
+    await pgP.click('#btnConsigneMatch');
+    await pgP.waitForTimeout(400);
+    const textesConsigne = await pgP.evaluate(() => ({
+      titre: document.getElementById('miTempsTitre').textContent, note: document.getElementById('miTempsNote').textContent,
+      sousTitre: document.getElementById('miTempsSousTitre').textContent,
+    }));
+    verifier('consigne en cours de jeu : le panneau ne parle ni de « seconde période » ni d\'un match « pas joué » (QA-RM-005)',
+      !/seconde p|Rien n.est jou/.test(textesConsigne.note + ' ' + textesConsigne.sousTitre), textesConsigne);
+    const lignes = await pgP.$$eval('.ligneRemplacant', (ls) => ls.map((l) => ({ t: l.textContent, dis: l.querySelector('button').disabled })));
+    verifier('protocole : le panneau du banc montre le remplacement temporaire, bouton bloqué',
+      lignes.some((l) => /remplacement temporaire au n°7/.test(l.t) && l.dis), JSON.stringify(lignes));
+    await pgP.click('#btnMiTempsReprendre');
+    for (let i = 0; i < 8; i++) { if (/x4/.test(await pgP.textContent('#btnSpeed'))) break; await pgP.click('#btnSpeed'); await pgP.waitForTimeout(100); }
+    let issue = null;
+    for (let t = 0; t < 1500 && !issue; t++) {
+      if (await pgP.isVisible('#btnMiTempsReprendre')) await pgP.click('#btnMiTempsReprendre');
+      issue = await pgP.evaluate(() => window.RMMain.etatActuel().protocoles[0].issue);
+      if (!issue) await pgP.waitForTimeout(100);
+    }
+    await pgP.waitForTimeout(300);
+    const bandeaux = await pgP.evaluate(() => window.__bandeaux.filter((x) => /Protocole commotion/.test(x)));
+    verifier('protocole : annoncé par le soigneur, puis résolu (retour ou sortie définitive)',
+      bandeaux.some((x) => /SOIGNEUR.*sort pour 12 minutes/.test(x)) && (issue === 'retour' || issue === 'echec')
+        && bandeaux.some((x) => issue === 'retour' ? /revient en jeu/.test(x) : /ne reviendra pas/.test(x)), `${issue} ${JSON.stringify(bandeaux)}`);
+    verifier('protocole : aucune erreur de page', erreursP.length === 0, erreursP.join(' | '));
+    await ctxP.close();
+  }
+
+  // --- BANC INCOMPLET (bugs.md FUNC-RM-005) --------------------------------
+  // Les piliers hors du XV sont blessés : aucun ne s'assoit sur le banc, et
+  // l'aperçu du match annonce le banc incomplet et sa conséquence.
+  {
+    const ctxBc = await browser.newContext({ viewport: { width: 1400, height: 1000 } });
+    const pgBc = await ctxBc.newPage();
+    const erreursBc = [];
+    pgBc.on('pageerror', (e) => erreursBc.push(e.message));
+    pgBc.on('dialog', async (d) => { await d.accept(); });
+    await pgBc.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+    await pgBc.click('#btnAccueilModeClub');
+    await pgBc.fill('#inputNomClub', 'AS Banc Court');
+    await pgBc.click('#btnCreerClub');
+    await pgBc.waitForTimeout(800);
+    const blessesBc = await pgBc.evaluate(() => {
+      const s = JSON.parse(localStorage.getItem('rugbyManager.club.v1'));
+      const c = s.clubJoueur;
+      const tit = new Set(Object.values(c.compositionTitulaires || {}));
+      const ids = [];
+      for (const j of c.effectif) {
+        if (j.poste !== 'P' || tit.has(j.id)) continue;
+        j.blessureJournees = 60;
+        j.blessure = { id: 'blb' + ids.length, type: 'entorse', libelle: 'Entorse', zone: 'cheville', gravite: 2, joursReels: 60,
+          joursEcoules: 0, joursMin: 55, joursMax: 65, cause: 'match', risqueRechute: 0.1, etape: 'soins' };
+        ids.push(j.id);
+      }
+      localStorage.setItem('rugbyManager.club.v1', JSON.stringify(s));
+      return ids;
+    });
+    await pgBc.reload({ waitUntil: 'networkidle' });
+    await pgBc.click('#btnContinuerClub');
+    await pgBc.waitForTimeout(800);
+    verifier('banc incomplet : prémisse — aperçu', blessesBc.length >= 1 && await continuerJusquAuMatch(pgBc));
+    const toastsBc = await pgBc.$$eval('#toastContainer .toast', (t) => t.map((x) => x.textContent));
+    verifier('avance : au plus 3 notifications à l écran, sans doublon (l aperçu du match reste lisible)',
+      toastsBc.length <= 3 && new Set(toastsBc).size === toastsBc.length, JSON.stringify(toastsBc));
+    const texteBc = await pgBc.textContent('#apercuMatchCorps');
+    verifier('banc incomplet : l aperçu annonce 7/8 remplaçants, aucun pilier apte, et la conséquence',
+      /Banc incomplet : 7\/8 remplaçants — aucun pilier apte/.test(texteBc) && /mêlées simulées/.test(texteBc), texteBc.slice(0, 300));
+    verifier('aperçu : le capitaine est présenté avec son sens du jeu (il arbitre les pénalités, FUNC-RM-006)',
+      /Capitaine.+· sens du jeu \d+/.test(texteBc), texteBc.slice(0, 300));
+    const bancBc = await pgBc.evaluate(() => JSON.parse(localStorage.getItem('rugbyManager.club.v1')).clubJoueur.compositionBanc || {});
+    verifier('banc incomplet : aucun pilier blessé sur la feuille', !Object.values(bancBc).some((id) => blessesBc.includes(id)), JSON.stringify(bancBc));
+    verifier('banc incomplet : aucune erreur de page', erreursBc.length === 0, erreursBc.join(' | '));
+    await ctxBc.close();
+  }
+
+  // --- CONSIGNE INDIVIDUELLE DE L'OUVREUR (bugs.md FUNC-RM-004) -----------
+  {
+    const ctxOv = await browser.newContext({ viewport: { width: 1400, height: 1000 } });
+    const pgOv = await ctxOv.newPage();
+    const erreursOv = [];
+    pgOv.on('pageerror', (e) => erreursOv.push(e.message));
+    pgOv.on('dialog', async (d) => { await d.accept(); });
+    await pgOv.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+    await pgOv.click('#btnAccueilModeClub');
+    await pgOv.fill('#inputNomClub', 'AS Ouvreur');
+    await pgOv.click('#btnCreerClub');
+    await pgOv.waitForTimeout(700);
+    await pgOv.evaluate(() => document.querySelector('.ongletBtn[data-onglet="tactique"]').click());
+    await pgOv.waitForTimeout(400);
+    const optionsOv = await pgOv.$$eval('[data-axe="ouvreur"]', (b) => b.map((x) => x.dataset.valeur));
+    verifier('consigne de l ouvreur : trois options dans l écran Tactique', JSON.stringify(optionsOv) === '["pied","equilibre","main"]', JSON.stringify(optionsOv));
+    await pgOv.click('[data-axe="ouvreur"][data-valeur="main"]');
+    await pgOv.waitForTimeout(400);
+    const tactiqueOv = await pgOv.evaluate(() => JSON.parse(localStorage.getItem('rugbyManager.club.v1')).clubJoueur.tactique);
+    const compromisOv = await pgOv.textContent('#clubTactique');
+    verifier('consigne de l ouvreur : « Joue à la main » est sauvegardée et son compromis affiché',
+      tactiqueOv.ouvreur === 'main' && /on occupe moins le camp adverse/.test(compromisOv), JSON.stringify(tactiqueOv));
+    const optionsAr = await pgOv.$$eval('[data-axe="arriere"]', (b) => b.map((x) => x.dataset.valeur));
+    verifier('consigne de l arrière : trois options dans l écran Tactique', JSON.stringify(optionsAr) === '["fond","equilibre","ligne"]', JSON.stringify(optionsAr));
+    await pgOv.click('[data-axe="arriere"][data-valeur="fond"]');
+    await pgOv.waitForTimeout(400);
+    const tactiqueAr = await pgOv.evaluate(() => JSON.parse(localStorage.getItem('rugbyManager.club.v1')).clubJoueur.tactique);
+    verifier('consigne de l arrière : « Couvre le fond » sauvegardée, la consigne de l ouvreur conservée',
+      tactiqueAr.arriere === 'fond' && tactiqueAr.ouvreur === 'main', JSON.stringify(tactiqueAr));
+    await pgOv.click('[data-axe="ailiers"][data-valeur="repique"]');
+    await pgOv.waitForTimeout(400);
+    const tactiqueAil = await pgOv.evaluate(() => JSON.parse(localStorage.getItem('rugbyManager.club.v1')).clubJoueur.tactique);
+    verifier('consigne des ailiers : « Repiquent » sauvegardée, les deux autres consignes conservées',
+      tactiqueAil.ailiers === 'repique' && tactiqueAil.arriere === 'fond' && tactiqueAil.ouvreur === 'main', JSON.stringify(tactiqueAil));
+    await pgOv.click('[data-axe="lancements"][data-valeur="pres"]');
+    await pgOv.waitForTimeout(400);
+    const tactiqueLan = await pgOv.evaluate(() => JSON.parse(localStorage.getItem('rugbyManager.club.v1')).clubJoueur.tactique);
+    verifier('style de lancement : « Au près » sauvegardé avec les consignes individuelles',
+      tactiqueLan.lancements === 'pres' && tactiqueLan.ailiers === 'repique' && tactiqueLan.ouvreur === 'main', JSON.stringify(tactiqueLan));
+    const optionsDm = await pgOv.$$eval('[data-axe="demiMelee"]', (b) => b.map((x) => x.dataset.valeur));
+    verifier('consigne du demi de mêlée : trois options dans l écran Tactique', JSON.stringify(optionsDm) === '["pied","equilibre","main"]', JSON.stringify(optionsDm));
+    await pgOv.click('[data-axe="demiMelee"][data-valeur="pied"]');
+    await pgOv.waitForTimeout(400);
+    const tactiqueDm = await pgOv.evaluate(() => JSON.parse(localStorage.getItem('rugbyManager.club.v1')).clubJoueur.tactique);
+    const compromisDm = await pgOv.textContent('#clubTactique');
+    verifier('consigne du demi de mêlée : « Chandelle depuis la base » sauvegardée, compromis affiché, les autres consignes conservées',
+      tactiqueDm.demiMelee === 'pied' && tactiqueDm.ouvreur === 'main' && tactiqueDm.lancements === 'pres'
+        && /réception disputée/.test(compromisDm), JSON.stringify(tactiqueDm));
+    const optionsCe = await pgOv.$$eval('[data-axe="centres"]', (b) => b.map((x) => x.dataset.valeur));
+    verifier('consigne des centres : trois options dans l écran Tactique', JSON.stringify(optionsCe) === '["percussion","equilibre","distribution"]', JSON.stringify(optionsCe));
+    await pgOv.click('[data-axe="centres"][data-valeur="percussion"]');
+    await pgOv.waitForTimeout(400);
+    const tactiqueCe = await pgOv.evaluate(() => JSON.parse(localStorage.getItem('rugbyManager.club.v1')).clubJoueur.tactique);
+    const compromisCe = await pgOv.textContent('#clubTactique');
+    verifier('consigne des centres : « Percussion » sauvegardée, compromis affiché, les autres consignes conservées',
+      tactiqueCe.centres === 'percussion' && tactiqueCe.demiMelee === 'pied' && tactiqueCe.ouvreur === 'main'
+        && /atteint moins souvent les ailes/.test(compromisCe), JSON.stringify(tactiqueCe));
+    const optionsPen = await pgOv.$$eval('[data-axe="penalites"]', (b) => b.map((x) => x.dataset.valeur));
+    verifier('pénalités : trois options dans l écran Tactique, dont « Le capitaine décide »', JSON.stringify(optionsPen) === '["points","capitaine","touche"]', JSON.stringify(optionsPen));
+    await pgOv.click('[data-axe="penalites"][data-valeur="touche"]');
+    await pgOv.waitForTimeout(400);
+    const tactiquePen = await pgOv.evaluate(() => JSON.parse(localStorage.getItem('rugbyManager.club.v1')).clubJoueur.tactique);
+    verifier('pénalités : « Viser la touche » sauvegardée, les consignes individuelles conservées',
+      tactiquePen.penalites === 'touche' && tactiquePen.centres === 'percussion' && tactiquePen.ouvreur === 'main', JSON.stringify(tactiquePen));
+    verifier('consigne de l ouvreur : aucune erreur de page', erreursOv.length === 0, erreursOv.join(' | '));
+    await ctxOv.close();
+  }
+
   // --- SORTIE DE SECOURS ----------------------------------------------------
   // Signale en jeu : « mon jeu est bloque, je ne peux ni rentrer dedans ni
   // supprimer pour continuer ». Le seul bouton de remise a zero vivait DANS le
@@ -4203,6 +4940,200 @@ function optionsLancement() {
     await ctxAcc.close();
   }
 
+  // --- TAILLE DU TERRAIN A L'ECRAN -------------------------------------------
+  // Le terrain etait TOUJOURS dessine en portrait (la longueur du terrain sur
+  // la hauteur de l'ecran), quelle que soit la forme de la fenetre. Mesure sur
+  // le jeu reel, en regardant un match :
+  //
+  //   fenetre 1400x1000 -> canvas 1400x799, terrain 482x689 px = 30 % de la
+  //                        surface, 1 metre = 6,9 px
+  //   fenetre  900x600  -> canvas  900x399, terrain 241x344 px = 23 % de la
+  //                        surface, 1 metre = 3,4 px (un joueur, dessine sur
+  //                        un rayon fixe de 10 px, couvre alors 6 m de terrain)
+  //
+  // Sur un ecran large, les deux tiers de la fenetre sont donc du vert vide a
+  // gauche et a droite pendant que l'action se joue dans une bande etroite.
+  //
+  // La regle testee ici n'impose PAS une orientation : elle impose que le
+  // terrain soit dessine dans le sens qui le rend LE PLUS GRAND. Un telephone
+  // en portrait doit donc rester en portrait (c'est ce sens qui y gagne), et
+  // c'est exactement ce que verifie le troisieme gabarit.
+  for (const gabarit of [
+    { nom: 'bureau 1400x1000', width: 1400, height: 1000 },
+    { nom: 'portable 900x600', width: 900, height: 600 },
+    { nom: 'telephone 390x844', width: 390, height: 844 },
+  ]) {
+    const ctxTer = await browser.newContext({ viewport: { width: gabarit.width, height: gabarit.height } });
+    const pgTer = await ctxTer.newPage();
+    await pgTer.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+    const t = await pgTer.evaluate(() => {
+      const R = window.RMRenderer;
+      if (!R || !R.versCanvas || !window.RugbyEngine || !window.RMConstants) return null;
+      R.redimensionner(0, 0, 0); // canvas = toute la fenetre, mesure reproductible
+      const c = document.getElementById('pitch');
+      const a = R.versCanvas(0, 0), b = R.versCanvas(1, 0);
+      const echelle = Math.hypot(b.px - a.px, b.py - a.py); // pixels par metre
+      const lg = window.RugbyEngine.LONGUEUR + 2 * window.RMConstants.PROF_EN_BUT;
+      const la = window.RugbyEngine.LARGEUR + 2 * window.RMConstants.MARGE_TOUCHE;
+      const portrait = Math.min(c.width / la, c.height / lg);
+      const paysage = Math.min(c.width / lg, c.height / la);
+      // Surface occupee par le terrain, pour le message d'echec.
+      const coins = [R.versCanvas(0, 0), R.versCanvas(lg, 0), R.versCanvas(0, la), R.versCanvas(lg, la)];
+      const xs = coins.map(p => p.px), ys = coins.map(p => p.py);
+      const surface = (Math.max(...xs) - Math.min(...xs)) * (Math.max(...ys) - Math.min(...ys));
+      return {
+        echelle, meilleure: Math.max(portrait, paysage),
+        occupation: surface / (c.width * c.height),
+      };
+    });
+    verifier(`terrain (${gabarit.nom}) : le rendu est mesurable`, !!t);
+    if (t) {
+      verifier(`terrain (${gabarit.nom}) : dessine dans le sens qui le rend le plus grand`,
+        t.echelle >= t.meilleure - 0.01,
+        `${t.echelle.toFixed(2)} px/m alors que ${t.meilleure.toFixed(2)} px/m est possible `
+        + `(${Math.round(100 * t.occupation)} % de la fenetre occupee)`);
+    }
+    await ctxTer.close();
+  }
+
+  // --- LE HUD NE DOIT PAS MORDRE SUR LE TERRAIN ------------------------------
+  // Le bandeau de match (#hud) est en position absolue au-dessus du canvas ; la
+  // place qu'on lui reserve est la marge haute du canvas, calculee par
+  // redimensionner(). Or cette fonction n'est appelee QU'au redimensionnement de
+  // la fenetre et a l'ouverture de la vue match -- jamais quand le HUD GRANDIT,
+  // ce qu'il fait des que le fil d'evenements se remplit.
+  //
+  // Mesure dans le vrai parcours (match rapide, puis « Voir le match ») :
+  //
+  //   1400x1000 : a l'ouverture hud=126 px et marge=108 px ; 15 s plus tard le
+  //               fil est plein, hud=156 px et la marge vaut TOUJOURS 108 px
+  //   390x844   : idem, hud=156 px pour une marge de 122 px
+  //
+  // Soit 34 a 48 px de bandeau ecrits par-dessus la pelouse : la derniere ligne
+  // du fil -- souvent la penalite ou l'essai -- est coupee en deux par le bord
+  // superieur du terrain.
+  for (const gabarit of [
+    { nom: 'bureau 1400x1000', width: 1400, height: 1000 },
+    { nom: 'telephone 390x844', width: 390, height: 844 },
+  ]) {
+    const ctxHud = await browser.newContext({ viewport: { width: gabarit.width, height: gabarit.height } });
+    const pgHud = await ctxHud.newPage();
+    await pgHud.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+    await pgHud.click('#btnAccueilMatchRapide');
+    await pgHud.waitForSelector('#btnResultatVoir', { timeout: 60000 });
+    await pgHud.waitForTimeout(300);
+    await pgHud.click('#btnResultatVoir');
+    await pgHud.waitForSelector('#vueMatch', { state: 'visible', timeout: 20000 });
+    // On attend que le fil soit REELLEMENT rempli : c'est le remplissage qui
+    // fait grandir le HUD, donc le seul moment ou le defaut existe.
+    await pgHud.waitForFunction(() => document.querySelectorAll('#feed li').length >= 4,
+      null, { timeout: 30000 }).catch(() => {});
+    const g = await pgHud.evaluate(() => {
+      const hud = document.getElementById('hud');
+      const c = document.getElementById('pitch');
+      return {
+        hudH: hud.offsetHeight,
+        marge: parseFloat(c.style.marginTop) || 0,
+        lignes: document.querySelectorAll('#feed li').length,
+      };
+    });
+    verifier(`hud (${gabarit.nom}) : le fil s'est bien rempli avant la mesure`, g.lignes >= 4,
+      `${g.lignes} ligne(s)`);
+    verifier(`hud (${gabarit.nom}) : la place reservee au bandeau suit sa hauteur reelle`,
+      Math.abs(g.hudH - g.marge) <= 1,
+      `bandeau ${g.hudH} px, place reservee ${g.marge} px -> ${g.hudH - g.marge} px ecrits sur le terrain`);
+    await ctxHud.close();
+  }
+
+  // --- LE FIL NE DOIT JAMAIS COUPER UNE LIGNE EN DEUX ------------------------
+  // docs/js/ui.js insere les 5 derniers evenements dans #feed, mais le CSS le
+  // bornait a `max-height: 66px` en dur. Mesure dans le vrai parcours, fil plein :
+  //
+  //   1400x1000 : lignes de 18 px -> 5 inserees, 90 px de contenu,  3 entieres
+  //    390x844  : lignes de 32 px (le texte passe sur deux lignes)
+  //               -> 5 inserees, 146 px de contenu, 2 entieres
+  //
+  // Dans les deux cas une ligne est coupee EN SON MILIEU, et sur telephone plus
+  // de la moitie du fil est hors de vue. C'est exactement ce que le regroupement
+  // des passes voulait eviter -- l'essai ou la penalite chasses de la fenetre --
+  // sauf qu'ici ils sont bien dans le DOM et c'est le CSS qui les coupe.
+  //
+  // La regle testee : aucune ligne partiellement visible, et au moins 3 lignes
+  // entieres quand 5 sont inserees.
+  for (const gabarit of [
+    { nom: 'bureau 1400x1000', width: 1400, height: 1000 },
+    { nom: 'telephone 390x844', width: 390, height: 844 },
+  ]) {
+    const ctxFeed = await browser.newContext({ viewport: { width: gabarit.width, height: gabarit.height } });
+    const pgFeed = await ctxFeed.newPage();
+    await pgFeed.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+    await pgFeed.click('#btnAccueilMatchRapide');
+    await pgFeed.waitForSelector('#btnResultatVoir', { timeout: 60000 });
+    await pgFeed.waitForTimeout(300);
+    await pgFeed.click('#btnResultatVoir');
+    await pgFeed.waitForSelector('#vueMatch', { state: 'visible', timeout: 20000 });
+    await pgFeed.waitForFunction(() => document.querySelectorAll('#feed li').length >= 5,
+      null, { timeout: 30000 }).catch(() => {});
+    const f = await pgFeed.evaluate(() => {
+      const feed = document.getElementById('feed');
+      const boite = feed.getBoundingClientRect();
+      const lis = [...feed.querySelectorAll('li')];
+      let entieres = 0, coupees = 0;
+      for (const li of lis) {
+        const b = li.getBoundingClientRect();
+        const dedans = b.top >= boite.top - 0.5 && b.bottom <= boite.bottom + 0.5;
+        const dehors = b.top >= boite.bottom - 0.5 || b.bottom <= boite.top + 0.5;
+        if (dedans) entieres++;
+        else if (!dehors) coupees++;
+      }
+      return { inserees: lis.length, entieres, coupees, hauteurFil: Math.round(boite.height) };
+    });
+    verifier(`fil (${gabarit.nom}) : les 5 evenements sont bien inseres`, f.inserees === 5,
+      `${f.inserees} ligne(s)`);
+    verifier(`fil (${gabarit.nom}) : aucune ligne n'est coupee en son milieu`, f.coupees === 0,
+      `${f.coupees} ligne(s) coupee(s) (fil haut de ${f.hauteurFil} px)`);
+    verifier(`fil (${gabarit.nom}) : au moins 3 lignes entieres sur les 5 inserees`, f.entieres >= 3,
+      `${f.entieres} ligne(s) entiere(s) sur ${f.inserees}`);
+    await ctxFeed.close();
+  }
+
+  // La REGLE elle-meme, testee seule (deterministe, sans chronometre) : autant
+  // de lignes entieres qu'il en tient dans 15 % de la hauteur de la fenetre, au
+  // plus les 5 inserees, au moins 2, et jamais un total qui coupe une ligne.
+  {
+    const ctxReg = await browser.newContext({ viewport: { width: 1400, height: 1000 } });
+    const pgReg = await ctxReg.newPage();
+    await pgReg.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+    const r = await pgReg.evaluate(() => {
+      const f = window.RMUI && window.RMUI.hauteurFilVisible;
+      if (!f) return null;
+      return {
+        vide: f(1000, []),
+        uneSeule: f(1000, [18]),
+        cinqCourtes: f(1000, [18, 18, 18, 18, 18]),       // 90 <= 150 : les 5
+        cinqLongues: f(844, [32, 32, 32, 32, 32]),        // budget 126 : 3
+        jamaisPlusDeCinq: f(4000, [18, 18, 18, 18, 18, 18, 18]),
+        fenetreMinuscule: f(200, [32, 32, 32, 32, 32]),   // plancher de 2 lignes
+        hauteursMelangees: f(844, [32, 18, 32, 18, 32]),  // 32+18+32 = 82, +18 = 100 <= 126
+      };
+    });
+    verifier('fil : la regle de hauteur est exposee et appelable', !!r);
+    if (r) {
+      verifier('fil : un fil vide ne reserve aucune hauteur', r.vide === 0, `${r.vide}`);
+      verifier('fil : une seule ligne ne reserve que sa hauteur', r.uneSeule === 18, `${r.uneSeule}`);
+      verifier('fil : cinq lignes courtes tiennent entierement', r.cinqCourtes === 90, `${r.cinqCourtes}`);
+      verifier('fil : cinq lignes hautes sont ramenees a un nombre entier de lignes',
+        r.cinqLongues === 96, `${r.cinqLongues} (attendu 96 = 3 lignes de 32)`);
+      verifier('fil : jamais plus de cinq lignes, meme sur un tres grand ecran',
+        r.jamaisPlusDeCinq === 90, `${r.jamaisPlusDeCinq}`);
+      verifier('fil : deux lignes entieres au minimum sur une fenetre minuscule',
+        r.fenetreMinuscule === 64, `${r.fenetreMinuscule}`);
+      verifier('fil : des hauteurs de lignes melangees restent un total exact de lignes',
+        r.hauteursMelangees === 100, `${r.hauteursMelangees}`);
+    }
+    await ctxReg.close();
+  }
+
   // --- FIL DU MATCH : les passes ne doivent plus noyer le reste ---------------
   // Mesure : sur les 30 evenements que le moteur conserve, 14,3 sont des passes
   // et 29 % d'entre eux repetaient MOT POUR MOT la ligne precedente (jusqu'a
@@ -4252,6 +5183,325 @@ function optionsLancement() {
         `type=${r.typeConserve} id=${r.idConserve}`);
     }
     await ctxFil.close();
+  }
+
+  // --- CHARGEMENT INCOMPLET : LE JOUEUR DOIT LE SAVOIR (P2-62) -------------
+  // La page charge ~56 fichiers separes. Mesure en bloquant chacun a tour de
+  // role : si un des 7 fichiers essentiels (moteur, constantes, aleatoire,
+  // etat de match, rendu, interface, main.js) manque, l'accueil s'affiche
+  // mais « Lancer un match rapide » ne fait RIEN, sans aucun message — un jeu
+  // qui a l'air la et ne repond pas. Sur une connexion mobile instable, un
+  // seul fichier perdu suffit (le site en ligne, ouvert depuis
+  // l'environnement de test, a perdu des fichiers de cette facon). Ce bloc
+  // n'ecoute PAS les erreurs de console : il les provoque volontairement.
+  {
+    const etatAlerte = async (bloque) => {
+      const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
+      const p = await ctx.newPage();
+      if (bloque) await p.route('**/' + bloque, (r) => r.abort());
+      await p.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+      const r = await p.evaluate(() => {
+        const el = document.getElementById('alerteChargement');
+        return { visible: !!(el && el.getBoundingClientRect().height > 0 && getComputedStyle(el).display !== 'none'), texte: el ? el.textContent : '',
+          bouton: !!(el && el.querySelector('button')) };
+      });
+      await ctx.close();
+      return r;
+    };
+    const normal = await etatAlerte(null);
+    verifier('chargement : aucune alerte quand tous les fichiers sont la', !normal.visible);
+    const sansUi = await etatAlerte('js/ui.js');
+    verifier('chargement : un fichier ESSENTIEL manquant affiche une alerte claire avec un bouton pour recharger',
+      sansUi.visible && sansUi.bouton && /recharg/i.test(sansUi.texte), JSON.stringify(sansUi));
+    const sansMoteur = await etatAlerte('rugby-engine.js');
+    verifier('chargement : moteur manquant -> alerte', sansMoteur.visible, JSON.stringify(sansMoteur));
+    const sansModuleClub = await etatAlerte('js/club-coupes.js');
+    verifier('chargement : un module du Mode Club manquant est signale aussi', sansModuleClub.visible,
+      JSON.stringify(sansModuleClub));
+  }
+
+  // --- MÊLÉE : LE BALLON EST DESSINÉ OÙ IL EST (P2-64) ----------------------
+  // Signalé par le joueur sur des captures : après l'introduction, le ballon
+  // restait collé au 9 au lieu d'entrer au milieu de la mêlée. Le moteur le
+  // faisait bien rouler sous le pack, mais l'affichage le dessinait sur le
+  // porteur logique (le 9) faute de connaître l'état « ballon de mêlée ».
+  {
+    const ctxM = await browser.newContext({ viewport: { width: 1400, height: 1000 } });
+    const pM = await ctxM.newPage();
+    pM.on('pageerror', (e) => erreursConsole.push('PAGEERROR ' + e.message));
+    await pM.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+    const r = await pM.evaluate(() => {
+      const res = [];
+      for (let g = 1; g <= 6 && res.length < 3; g++) {
+        const m = new window.RugbyEngine.MatchEngine(g, 4800);
+        for (let t = 0; t < 4800 && res.length < 3; t += 0.1) {
+          m.tick(0.1);
+          if (m.melee && m.melee.etat === 'MELEE_CONTESTATION' && m.melee.ach && m.melee.ach.t > 0.3) {
+            const st = m.getState();
+            const aff = window.RMMain.positionBallonAffichee(st);
+            const eq = m.melee.vainqueur === 'A' ? st.equipeA : st.equipeB;
+            const neuf = eq.find((j) => j.numero === 9);
+            res.push({ ecartMoteur: Math.hypot(aff.x - st.ball.x, aff.y - st.ball.y),
+              distNeuf: Math.hypot(aff.x - neuf.x, aff.y - neuf.y) });
+            break;
+          }
+        }
+      }
+      return res;
+    });
+    verifier('mêlée : des ballons talonnés sous le pack sont observés', r.length >= 2, JSON.stringify(r));
+    // Signalé ensuite par le joueur : « le ballon est en dessous des joueurs,
+    // pas au-dessus ». Sous le pack, il est dessiné AVANT les joueurs (ils le
+    // recouvrent) ; ballon porté ou en vol : après eux, comme avant.
+    const couches = await pM.evaluate(() => ({
+      melee: window.RMRenderer.ordreCouches({ ball: { state: 'SCRUM' }, ballon: { enVol: false } }),
+      porte: window.RMRenderer.ordreCouches({ ball: { state: 'CARRIED' }, ballon: { enVol: false } }),
+    }));
+    verifier('mêlée : le ballon sous le pack est dessiné SOUS les joueurs',
+      couches.melee && couches.melee.indexOf('ballon') < couches.melee.indexOf('joueurs'), JSON.stringify(couches));
+    verifier('mêlée : un ballon porté reste dessiné par-dessus les joueurs',
+      couches.porte && couches.porte.indexOf('ballon') > couches.porte.indexOf('joueurs'), JSON.stringify(couches));
+    // Le ballon caché sous les corps se perdait de vue : un repère au sol (anneau
+    // discret) est tracé PAR-DESSUS les joueurs, le ballon lui-même restant dessous.
+    verifier('mêlée : un repère montre où roule le ballon caché sous le pack',
+      couches.melee && couches.melee.indexOf('repere') > couches.melee.indexOf('joueurs')
+        && couches.melee.indexOf('ballon') < couches.melee.indexOf('joueurs'), JSON.stringify(couches));
+    verifier('mêlée : pas de repère quand le ballon est porté',
+      couches.porte && couches.porte.indexOf('repere') < 0, JSON.stringify(couches));
+    verifier('mêlée : le ballon talonné est DESSINÉ à sa position réelle sous le pack, pas collé au 9',
+      r.length >= 2 && r.every((x) => x.ecartMoteur < 0.05 && x.distNeuf > 1.0), JSON.stringify(r));
+    await ctxM.close();
+  }
+
+  // --- LE BANDEAU DE L'ARBITRE N'ANNONCE QUE LE PRÉSENT (P2-87) ----------------
+  // Vu en QA : le bandeau annonçait « Jeu au large ... équipe A » alors que le
+  // fil montrait déjà un coup de pied de l'équipe B. Après un saut dans la
+  // barre de lecture (ou en vitesse x4), il choisissait le plus récent
+  // événement « à bandeau » parmi TOUS ceux sautés, même vieux de plusieurs
+  // secondes de match.
+  {
+    const ctxBa = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+    const pBa = await ctxBa.newPage();
+    await pBa.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+    const r = await pBa.evaluate(() => {
+      const f = window.RMUI.choisirBanniere;
+      if (typeof f !== 'function') return { absente: true };
+      const ev = (id, type, t) => ({ id, type, t, message: type });
+      // État de la forme NORMALISÉE, celle que reçoit réellement l'affichage :
+      // c'est le vrai moteur du match qui la produit.
+      const etat = (t) => {
+        const m = new window.RugbyEngine.MatchEngine(1, 4800);
+        m.tempsMatch = t;
+        return window.RMMatchState ? window.RMMatchState.normalizeMatchState(m.getState()) : { clock: { time: t } };
+      };
+      const vieux = f([ev(1, 'JEU_LARGE', 100), ev(2, 'COUP_DE_PIED', 108)], etat(110));
+      const recent = f([ev(3, 'PENALITE', 108.5), ev(4, 'COUP_DE_PIED', 109)], etat(110));
+      const plusRecent = f([ev(5, 'PENALITE', 107), ev(6, 'ESSAI', 109)], etat(110));
+      return { vieux: vieux && vieux.id, recent: recent && recent.id, plusRecent: plusRecent && plusRecent.id };
+    });
+    verifier('arbitre : le bandeau ignore un événement vieux de plusieurs secondes de match',
+      !r.absente && r.vieux == null, JSON.stringify(r));
+    verifier('arbitre : le bandeau annonce l\'événement récent, le plus récent d\'abord',
+      !r.absente && r.recent === 3 && r.plusRecent === 6, JSON.stringify(r));
+    // Récit de l'essai en direct (P2-158) : le bandeau et le fil racontent
+    // l'essai d'un VRAI match (marqueur, origine, percée, passeur), comme la
+    // feuille de match ; rien d'ajouté aux autres événements.
+    const recit = await pBa.evaluate(() => {
+      const U = window.RMUI;
+      if (!U || !U.recitEssaiEnDirect) return null;
+      const m = new window.RugbyEngine.MatchEngine(3, 4800);
+      while (m.phase !== 'TERMINE' && !m.chronologie.some((e) => e.type === 'ESSAI')) m.tick(0.1);
+      const essai = m.chronologie.find((e) => e.type === 'ESSAI');
+      return { essai, direct: U.recitEssaiEnDirect(essai), feuille: window.RMClub.recitEssai(essai),
+        fil: U.texteEvenement(essai), autre: U.recitEssaiEnDirect({ type: 'PENALITE', marqueur: 4 }) };
+    });
+    verifier('bandeau d\'essai : le marqueur et le récit de l\'action, comme sur la feuille de match',
+      !!recit && !!recit.essai && recit.direct === ` N°${recit.essai.marqueur} : ${recit.feuille}.` && recit.feuille.length > 0
+        && recit.fil.endsWith(recit.direct) && recit.autre === '', JSON.stringify(recit));
+    // Rédaction des messages (P2-159) : accents rétablis, noms des clubs à la
+    // place des lettres, élision devant une voyelle ; sans noms de clubs, la
+    // lettre de l'équipe reste (Match rapide).
+    const redac = await pBa.evaluate(() => {
+      const U = window.RMUI;
+      if (!U || !U.traduireEquipesDansMessage) return null;
+      const t = (m) => U.traduireEquipesDansMessage(m);
+      const sansNoms = t("Melee, introduction pour l'equipe A");
+      U.definirNomsEquipes({ A: 'AS Bandeau', B: 'Castelnau Étoiles' });
+      const r = {
+        sansNoms,
+        melee: t("Melee, introduction pour l'equipe A"),
+        essai: t('Essai equipe A !'),
+        essaiB: t('Essai equipe B !'),
+        penalite: t('Ballon non libere par le joueur plaque (equipe B), penalite pour l\'equipe A'),
+        elision: t("Franchissement ! Le n°13 de l'equipe A passe la ligne de defense"),
+        but: t('Coup de pied au but reussi a 41 m par le n°10, equipe B +3'),
+        verbe: t('Le n°4 plaque le sauteur a la reception : pas de maul, ruck sur la touche'),
+        na: t("Melee simulee : l'equipe B n'a plus de premiere ligne formee, pas de poussee"),
+      };
+      // Un nom qui contient un « B » suivi d'une lettre accentuée (« Béliers »)
+      // n'est pas retraité : il donnait « Riverange Riverange Bélierséliers ».
+      U.definirNomsEquipes({ A: 'Riverange Béliers', B: 'Albi Bisons' });
+      r.beliers = t("Melee, introduction pour l'equipe A");
+      r.albi = t('Essai equipe B !');
+      r.chaine = U.traduireEquipesDansMessage(U.texteEvenement({ type: 'PASSE', team: 'A', chaine: [9, 10, 12], message: '' }));
+      U.definirNomsEquipes({ A: 'Equipe A', B: 'Equipe B' });
+      return r;
+    });
+    verifier('fil du match : messages rédigés en français (accents, noms des clubs, élision)',
+      !!redac && redac.sansNoms === "Mêlée, introduction pour l'équipe A"
+        && redac.melee === 'Mêlée, introduction pour AS Bandeau'
+        && redac.essai === "Essai d'AS Bandeau !" && redac.essaiB === 'Essai de Castelnau Étoiles !'
+        && redac.penalite === 'Ballon non libéré par le joueur plaqué (Castelnau Étoiles), pénalité pour AS Bandeau'
+        && redac.elision === "Franchissement ! Le n°13 d'AS Bandeau passe la ligne de défense"
+        && redac.but === 'Coup de pied au but réussi à 41 m par le n°10, Castelnau Étoiles +3'
+        && redac.verbe === 'Le n°4 plaque le sauteur à la réception : pas de maul, ruck sur la touche'
+        && redac.na === "Mêlée simulée : Castelnau Étoiles n'a plus de première ligne formée, pas de poussée"
+        && redac.beliers === 'Mêlée, introduction pour Riverange Béliers' && redac.albi === "Essai d'Albi Bisons !"
+        && redac.chaine === 'Riverange Béliers : n°9 → n°10 → n°12' && !/\u0001/.test(JSON.stringify(redac)),
+      JSON.stringify(redac));
+    await ctxBa.close();
+  }
+
+  // --- LE RENVOI EST ANNONCÉ COMME UN RENVOI (P2-99) --------------------------
+  // L'état normalisé, que reçoit l'affichage, ne transmettait pas `renvoi22` :
+  // le badge de phase affichait toujours « Coup d'envoi », jamais « Renvoi aux
+  // 22 m ». P2-99 ajoute le renvoi depuis l'en-but (ballon tenu dans l'en-but).
+  {
+    const ctxRv = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+    const pRv = await ctxRv.newPage();
+    await pRv.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+    const r = await pRv.evaluate(() => {
+      const etat = (x) => {
+        const m = new window.RugbyEngine.MatchEngine(1, 4800);
+        for (let i = 0; i < 300; i++) m.tick(0.1);
+        m._nouvelleManche('A', x);
+        const s = window.RMMatchState.normalizeMatchState(m.getState());
+        return { phase: s.phase, renvoi22: s.renvoi22, renvoiEnBut: s.renvoiEnBut };
+      };
+      return { envoi: etat(50), r22: etat(22), enBut: etat(0) };
+    });
+    verifier('renvoi : un coup d envoi au centre n est pas annoncé comme un renvoi',
+      r.envoi.phase === 'COUP_ENVOI' && !r.envoi.renvoi22 && !r.envoi.renvoiEnBut, JSON.stringify(r.envoi));
+    verifier('renvoi : un renvoi aux 22 m arrive jusqu à l affichage',
+      r.r22.renvoi22 === true && !r.r22.renvoiEnBut, JSON.stringify(r.r22));
+    verifier('renvoi : un renvoi depuis l en-but arrive jusqu à l affichage',
+      r.enBut.renvoiEnBut === true, JSON.stringify(r.enBut));
+    await ctxRv.close();
+  }
+
+  // --- CHAQUE PHASE DU MOTEUR A UN LIBELLÉ À L'ÉCRAN (P2-86) -------------------
+  // Vu en QA : pendant un coup de pied, le badge de phase affichait le code
+  // brut « COUP_DE_PIED_JEU » — la seule phase absente de RMConstants.PHASES.
+  {
+    const srcMoteur = require('fs').readFileSync(require('path').join(__dirname, '..', 'docs', 'rugby-engine.js'), 'utf8');
+    const phasesMoteur = [...new Set([...srcMoteur.matchAll(/this\.phase = '([A-Z_]+)'/g)].map((x) => x[1]))];
+    const ctxPh = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+    const pPh = await ctxPh.newPage();
+    await pPh.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+    const sansLibelle = await pPh.evaluate((liste) => liste.filter((ph) => {
+      const e = window.RMConstants.PHASES[ph];
+      return !e || !e.label || /^[A-Z_]+$/.test(e.label);
+    }), phasesMoteur);
+    verifier(`phases : les ${phasesMoteur.length} phases du moteur ont un libellé lisible à l'écran`,
+      phasesMoteur.length >= 10 && sansLibelle.length === 0, `sans libellé : ${sansLibelle.join(', ')}`);
+    await ctxPh.close();
+  }
+
+  // --- TAILLE DES JOUEURS À L'ÉCHELLE DU TERRAIN (P2-74) --------------------
+  // Vu en QA sur téléphone : rayon fixe de 10 px alors qu'1 m n'y vaut que
+  // ~4,7 px — un joueur couvrait plus de 4 m de terrain, et en touche, maul ou
+  // ruck les disques se recouvraient au point qu'on ne lisait plus les
+  // numéros. Le rayon doit suivre l'échelle (au plus ~1,5 m de terrain), sans
+  // descendre sous un seuil de lisibilité, et rester inchangé sur grand écran.
+  for (const vp of [{ width: 1400, height: 1000, attendu: 10 }, { width: 390, height: 844 }]) {
+    const ctxR = await browser.newContext({ viewport: { width: vp.width, height: vp.height } });
+    const pR = await ctxR.newPage();
+    await pR.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+    await pR.click('#btnAccueilMatchRapide');
+    for (let i = 0; i < 60 && !(await pR.isVisible('#panneauResultat.visible')); i++) await pR.waitForTimeout(250);
+    await pR.click('#btnResultatVoir');
+    await pR.waitForTimeout(500);
+    const t = await pR.evaluate(() => {
+      const R = window.RMRenderer;
+      if (typeof R.rayonJoueur !== 'function') return { absent: true };
+      const a = R.versCanvas(0, 35), b = R.versCanvas(10, 35);
+      const pxParMetre = Math.hypot(b.px - a.px, b.py - a.py) / 10;
+      return { rayon: R.rayonJoueur(), pxParMetre, metres: R.rayonJoueur() / pxParMetre };
+    });
+    verifier(`joueurs (${vp.width}x${vp.height}) : rayon à l'échelle du terrain (<= 1,5 m) et lisible (>= 6,5 px)`,
+      !t.absent && t.metres <= 1.5 && t.rayon >= 6.5 && (vp.attendu == null || t.rayon === vp.attendu), JSON.stringify(t));
+    // L'étiquette texte « arbitre » (sous le disque « A ») chevauchait les
+    // regroupements sur téléphone : elle n'est écrite qu'à pleine échelle.
+    const etiquette = await pR.evaluate(() => (typeof window.RMRenderer.etiquetteArbitre === 'function'
+      ? window.RMRenderer.etiquetteArbitre() : 'absente'));
+    verifier(`arbitre (${vp.width}x${vp.height}) : étiquette « arbitre » ${vp.attendu ? 'affichée sur grand écran' : 'masquée sur téléphone'}`,
+      etiquette === !!vp.attendu, String(etiquette));
+    await ctxR.close();
+  }
+
+  // --- LE BANDEAU DE L'ARBITRE NE CACHE PAS LE TERRAIN (P2-73) --------------
+  // Vu en QA (P2-72) : le bandeau « ARBITRE — … », posé à 100 px du haut, à
+  // droite, descendait sur la bordure du terrain et pouvait masquer un joueur
+  // près de la touche ou de l'en-but. Il doit rester HORS de la surface de jeu
+  // dessinée (en-buts compris), même avec un message long sur deux lignes.
+  for (const vp of [{ width: 1400, height: 1000 }, { width: 390, height: 844 }]) {
+    const ctxB2 = await browser.newContext({ viewport: vp });
+    const pB = await ctxB2.newPage();
+    pB.on('pageerror', (e) => erreursConsole.push('PAGEERROR ' + e.message));
+    await pB.goto(`${URL_BASE}/index.html`, { waitUntil: 'networkidle' });
+    await pB.click('#btnAccueilMatchRapide');
+    for (let i = 0; i < 60 && !(await pB.isVisible('#panneauResultat.visible')); i++) await pB.waitForTimeout(250);
+    await pB.click('#btnResultatVoir');
+    await pB.waitForTimeout(600);
+    // Chemin réel : le bandeau est posé à l'affichage (ui.js), PUIS la page se
+    // redimensionne (main.js, à chaque changement de hauteur du HUD en cours
+    // de match). Une première version de ce test n'exerçait que le premier
+    // temps et passait alors que main.js reposait le bandeau sous le HUD.
+    await pB.evaluate(() => {
+      const b = document.getElementById('banner');
+      b.textContent = '🟨 ARBITRE — Penalite, equipe B joue en touche et conserve le lancer apres une faute au sol';
+      b.classList.add('visible');
+      if (window.RMUI.placerBandeau) window.RMUI.placerBandeau(b);
+      window.dispatchEvent(new Event('resize'));
+    });
+    // Le terrain est recalé sous le HUD par un ResizeObserver, donc à l'image
+    // suivante : un délai fixe de 150 ms échouait ~1 fois sur 20 (P2-100),
+    // quand l'observateur était servi plus tard dans le navigateur sans
+    // affichage. On attend que le canvas soit sous le HUD (2 s au plus).
+    // Le bandeau est lui aussi reposé par cet observateur : sous charge, la
+    // mesure tombait parfois entre les deux (1 fois sur 20, 1 px de
+    // recouvrement transitoire). On attend donc aussi qu'il soit recalé.
+    for (let i = 0; i < 20; i++) {
+      const pret = await pB.evaluate(() => {
+        const basHud = document.getElementById('hud').getBoundingClientRect().bottom;
+        return document.getElementById('pitch').getBoundingClientRect().top >= basHud - 0.5
+          && document.getElementById('banner').getBoundingClientRect().bottom <= basHud + 0.5;
+      });
+      if (pret) break;
+      await pB.waitForTimeout(100);
+    }
+    await pB.waitForTimeout(150);
+    const g = await pB.evaluate(() => {
+      const b = document.getElementById('banner');
+      const rb = b.getBoundingClientRect();
+      const cv = document.getElementById('pitch');
+      const rc = cv.getBoundingClientRect();
+      const k = rc.width / cv.width;
+      const coins = [[-10, 0], [110, 0], [-10, 70], [110, 70]].map(([x, y]) => window.RMRenderer.versCanvas(x, y))
+        .map((q) => ({ x: rc.left + q.px * k, y: rc.top + q.py * k }));
+      // Partie VISIBLE du terrain : sur téléphone la caméra suit le jeu, et une
+      // extrémité du terrain peut sortir du canvas (masquée par son bord). Le
+      // bandeau ne doit pas couvrir ce qu'on voit ; ce qui est hors du canvas
+      // n'est pas affiché (vu en QA-RM-002 : 1 px « recouvert » au-dessus du canvas).
+      const t = { gauche: Math.max(rc.left, Math.min(...coins.map((c) => c.x))), droite: Math.min(rc.right, Math.max(...coins.map((c) => c.x))),
+        haut: Math.max(rc.top, Math.min(...coins.map((c) => c.y))), bas: Math.min(rc.bottom, Math.max(...coins.map((c) => c.y))) };
+      const recouvre = rb.left < t.droite && rb.right > t.gauche && rb.top < t.bas && rb.bottom > t.haut;
+      return { recouvre, bandeau: [rb.left, rb.top, rb.right, rb.bottom].map(Math.round),
+        terrain: [t.gauche, t.haut, t.droite, t.bas].map(Math.round), visible: rb.height > 0 && rb.width > 0 };
+    });
+    verifier(`arbitre : le bandeau ne recouvre pas le terrain (${vp.width}x${vp.height})`,
+      g.visible && !g.recouvre, JSON.stringify(g));
+    await ctxB2.close();
   }
 
   verifier('aucune erreur console/page sur tout le parcours', erreursConsole.length === 0);

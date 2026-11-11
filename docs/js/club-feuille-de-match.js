@@ -38,14 +38,20 @@
   // (cf. state.stats) — aucune valeur dérivée ou estimée.
   const STATS_COMPAREES = [
     ['essais', 'Essais'],
+    // Tableau de marque et conservation (P2-63), comptés par le moteur.
+    ['transformationsReussies', 'Transformations réussies'],
+    ['penalitesButReussies', 'Pénalités au but réussies'],
     ['carries', 'Courses ballon en main'],
     ['metresGagnes', 'Mètres gagnés', (v) => Math.round(v)],
     ['passes', 'Passes réussies'],
     ['kicks', 'Coups de pied'],
     ['rucks', 'Rucks'],
+    ['rucksConserves', 'Rucks conservés'],
     ['mauls', 'Mauls'],
     ['scrums', 'Mêlées introduites'],
+    ['scrumsGagnesIntro', 'Mêlées gagnées sur introduction'],
     ['lineouts', 'Touches lancées'],
+    ['lineoutsGagnesLancer', 'Touches gagnées sur lancer'],
     ['tacklesMade', 'Plaquages réussis'],
     ['missedTackles', 'Plaquages manqués'],
     ['turnovers', 'Ballons récupérés'],
@@ -53,6 +59,55 @@
     ['penalitesConcedees', 'Pénalités concédées'],
     ['cartonsJaunes', 'Cartons jaunes'],
   ];
+
+  // Les trois familles de lancement (cf. axe « Style de lancement »).
+  const STYLES_LANCEMENT = [['Pres', 'Au près'], ['Large', 'Au large'], ['Pied', 'Au pied']];
+
+  // Les joueurs du match (FUNC-RM-011) : le meilleur de chaque équipe dans
+  // des actions réellement comptées par le moteur, avec la valeur. Pas de note
+  // composite : chaque ligne se relie à un compteur.
+  const CATEGORIES_JOUEURS = [
+    ['tacklesMade', 'Plaquages réussis'],
+    ['metresGagnes', 'Mètres gagnés', (v) => Math.round(v) + ' m'],
+    ['franchissements', 'Franchissements'],
+    ['defenseursBattus', 'Défenseurs battus'],
+    ['passesDecisives', 'Passes décisives'],
+    ['turnoversGagnes', 'Ballons récupérés'],
+  ];
+  const POSTE_NUMERO = { 1: 'pilier', 2: 'talonneur', 3: 'pilier', 4: '2e ligne', 5: '2e ligne', 6: '3e ligne', 7: '3e ligne',
+    8: 'n°8', 9: 'demi de mêlée', 10: 'ouvreur', 11: 'ailier', 12: 'centre', 13: 'centre', 14: 'ailier', 15: 'arrière' };
+  // Toutes les lignes d'une équipe : maillots en jeu au coup de sifflet et
+  // joueurs remplacés (leurs actions leur restent, cf. statsJoueursSortis).
+  function lignesEquipe(etat, camp) {
+    const lignes = [];
+    const noms = (etat && etat.nomsJoueurs && etat.nomsJoueurs[camp]) || {};
+    for (const [n, st] of Object.entries((etat && etat.statsJoueurs && etat.statsJoueurs[camp]) || {})) lignes.push({ numero: +n, sortie: null, stats: st || {}, nom: noms[n] || null });
+    for (const r of (etat && etat.statsJoueursSortis && etat.statsJoueursSortis[camp]) || []) lignes.push({ numero: r.numero, sortie: r.sortie != null ? Math.round(r.sortie) : null, stats: r.stats || {}, nom: r.nom || null });
+    return lignes;
+  }
+  function nomCourt(nom) {
+    const parties = String(nom).trim().split(/\s+/);
+    return parties.length > 1 ? `${parties[0][0]}. ${parties.slice(1).join(' ')}` : parties[0];
+  }
+  function joueursDuMatch(etat) {
+    const lignes = { A: lignesEquipe(etat, 'A'), B: lignesEquipe(etat, 'B') };
+    if (!lignes.A.length && !lignes.B.length) return [];
+    const meilleur = (camp, cle) => {
+      let m = null;
+      for (const l of lignes[camp]) {
+        const v = nombre(l.stats[cle]);
+        if (v > 0 && (!m || v > m.valeur || (v === m.valeur && l.numero < m.numero))) m = { numero: l.numero, sortie: l.sortie, valeur: v, nom: l.nom };
+      }
+      return m;
+    };
+    return CATEGORIES_JOUEURS.map(([cle, libelle, format]) => {
+      const a = meilleur('A', cle), b = meilleur('B', cle);
+      // Nommé quand le match le sait (Mode Club), en forme courte pour tenir sur
+      // mobile (« J. Michel ») ; sinon le maillot.
+      const texte = (m) => (m ? `${m.nom ? nomCourt(m.nom) : 'n°' + m.numero} · ${format ? format(m.valeur) : m.valeur}` : '–');
+      return { cle, libelle, a, b, texteA: texte(a), texteB: texte(b) };
+    }).filter((l) => l.a || l.b);
+  }
 
   function nombre(v) { return typeof v === 'number' ? v : 0; }
 
@@ -93,7 +148,17 @@
       };
       chronologie.push(ligne);
       if (def.marqueur && (e.team === 'A' || e.team === 'B')) {
-        marqueurs[e.team].push({ minute: e.minute, type: e.type, message: e.message });
+        marqueurs[e.team].push({ minute: e.minute, type: e.type, message: e.message,
+          // Numéro du marqueur (QA-RM-007) ; absent d'une ancienne archive.
+          marqueur: e.marqueur != null ? e.marqueur : null,
+          // D'où venait l'action (P2-154) : phase de départ, distance à la
+          // ligne, rucks joués. Absents d'une ancienne archive : rien d'inventé.
+          origine: e.origine || null, depuis: e.depuis != null ? e.depuis : null,
+          rucks: e.rucks != null ? e.rucks : null, maul: !!e.maul,
+          // Auteur de la passe décisive (P2-155), s'il y en a une.
+          passeur: e.passeur != null ? e.passeur : null,
+          // Dernier franchissement de la séquence (P2-156) : qui a cassé la ligne.
+          franchisseur: e.franchisseur != null ? e.franchisseur : null });
       }
     }
 
@@ -110,29 +175,81 @@
         };
       });
 
-    // Possession : le moteur ne la compte pas comme une statistique, mais la
-    // part de rucks joués la représente honnêtement (chaque ruck est une
-    // phase de conservation). On le DIT plutôt que de laisser croire à une
-    // mesure de temps de possession réelle.
+    // Possession (bugs.md BUG-RM-008) : le moteur la CHRONOMÈTRE (part du
+    // temps de jeu effectif où chaque équipe a le ballon, `possessionPct`).
+    // C'est elle qu'on affiche. Seule une archive d'avant ce correctif, qui
+    // ne l'a pas gardée, retombe sur la part des rucks — libellée comme une
+    // estimation, jamais à la place d'une mesure connue.
+    const pct = etat && etat.possessionPct;
+    const jeuEffectif = etat && Number.isFinite(etat.tempsJeuEffectif) ? etat.tempsJeuEffectif : null;
     const rucksTotal = nombre(statsA.rucks) + nombre(statsB.rucks);
-    const possession = rucksTotal > 0
-      ? { a: Math.round((nombre(statsA.rucks) / rucksTotal) * 100),
-          b: Math.round((nombre(statsB.rucks) / rucksTotal) * 100),
-          source: 'part des rucks joués' }
+    let possession = null;
+    if (pct && Number.isFinite(pct.A) && Number.isFinite(pct.B)) {
+      possession = { a: pct.A, b: pct.B, mesuree: true, libelle: 'Possession',
+        aide: 'Part du temps de jeu effectif où chaque équipe avait le ballon' +
+          // Arrondi à la seconde d'abord, comme l'archive (club-archives-matchs.js) :
+          // sinon 2 309,6 s donnait 38 min en direct et 39 une fois archivé.
+          (jeuEffectif ? ` (${Math.round(Math.round(jeuEffectif) / 60)} min de jeu effectif)` : '') };
+    } else if (rucksTotal > 0) {
+      possession = { a: Math.round((nombre(statsA.rucks) / rucksTotal) * 100),
+        b: Math.round((nombre(statsB.rucks) / rucksTotal) * 100), mesuree: false,
+        libelle: 'Possession (est.)',
+        aide: 'Estimée par la part des rucks joués : cette ancienne feuille n\'a pas gardé la possession chronométrée' };
+    }
+    const occ = etat && etat.occupationPct;
+    const occupation = occ && Number.isFinite(occ.A) && Number.isFinite(occ.B)
+      ? { a: occ.A, b: occ.B, libelle: 'Occupation',
+          aide: 'Part du temps de jeu effectif passée dans le camp adverse' }
       : null;
+
+    // Bilan des lancements scriptés par style (P2-153), compté par le moteur :
+    // nombre joués, terrain gagné jusqu'à la fin de la séquence, essais au
+    // bout. Absent d'une archive d'avant ce compteur.
+    const lancements = STYLES_LANCEMENT
+      .filter(([cle]) => statsA['lancements' + cle] !== undefined || statsB['lancements' + cle] !== undefined)
+      .map(([cle, libelle]) => {
+        const camp = (st) => {
+          const n = nombre(st['lancements' + cle]);
+          return { n, essais: nombre(st['essaisLancements' + cle]),
+            terrainMoyen: n ? Math.round(nombre(st['terrainLancements' + cle]) / n) : null };
+        };
+        return { cle, libelle, a: camp(statsA), b: camp(statsB) };
+      })
+      .filter((l) => l.a.n + l.b.n > 0);
 
     return {
       nomA, nomB,
+      lancements,
+      joueursDuMatch: joueursDuMatch(etat),
       score: { A: (etat && etat.score && etat.score.A) || 0, B: (etat && etat.score && etat.score.B) || 0 },
       chronologie,
       marqueurs,
       statistiques,
       possession,
+      occupation,
       // Les faits vraiment marquants, pour un résumé court.
       tempsForts: chronologie.filter((l) => l.points > 0 || l.type === 'CARTON_JAUNE'),
     };
   }
 
+
+  // Récit court de l'action d'un essai (P2-154), à partir de ce que le
+  // moteur a enregistré : « maul pénétrant sur touche, 3 rucks », « en jeu
+  // courant à 62 m »… Chaîne vide si l'archive ne l'a pas gardé.
+  const ORIGINES_ESSAI = {
+    TOUCHE: 'sur touche', MELEE: 'sur mêlée', PENALITE: 'sur pénalité jouée', COUP_ENVOI: 'sur coup d\'envoi',
+    JEU_COURANT: 'en jeu courant', COUP_DE_PIED_A_SUIVRE: 'sur coup de pied à suivre',
+  };
+  function recitEssai(m) {
+    if (m && m.type === 'ESSAI_PENALITE') return 'essai de pénalité';
+    if (!m || m.type !== 'ESSAI' || !m.origine) return '';
+    let r = (m.maul ? 'maul pénétrant ' : '') + (ORIGINES_ESSAI[m.origine] || '');
+    if (m.depuis != null) r += ` à ${m.depuis} m`;
+    if (m.rucks) r += `, ${m.rucks} ruck${m.rucks > 1 ? 's' : ''}`;
+    if (m.franchisseur != null) r += m.franchisseur === m.marqueur ? ', après sa percée' : `, percée du n°${m.franchisseur}`;
+    if (m.passeur != null) r += `, servi par le n°${m.passeur}`;
+    return r.trim();
+  }
 
   function echapperTexte(t) {
     return String(t == null ? '' : t)
@@ -159,12 +276,19 @@
         score + `</div>`;
     }).join('');
 
+    // Un essai par ligne : minute, marqueur, puis d'où venait l'action
+    // (« sur touche à 35 m, 4 rucks ») quand le moteur l'a enregistré.
     const marqueurs = ['A', 'B'].map((camp) => {
       const liste = f.marqueurs[camp];
       if (!liste.length) return '';
       const nom = camp === 'A' ? f.nomA : f.nomB;
-      return `<div class="ligneStat"><span>${echapperTexte(nom)}</span>` +
-        `<b>${liste.map((m) => m.minute + "'").join(', ')}</b></div>`;
+      const lignes = liste.map((m) => {
+        const action = recitEssai(m);
+        return `<li><b>${m.minute}'</b>` + (m.marqueur != null ? ` n°${m.marqueur}` : '') +
+          (action ? ` <span class="actionEssai">— ${echapperTexte(action)}</span>` : '') + '</li>';
+      }).join('');
+      return `<div class="essaisEquipe ${camp === 'A' ? 'campA' : 'campB'}"><div class="nomEssais">${echapperTexte(nom)}</div>` +
+        `<ul class="listeEssais">${lignes}</ul></div>`;
     }).join('');
 
     const stats = f.statistiques.map((s) =>
@@ -173,19 +297,42 @@
       `<span class="libelleStat">${echapperTexte(s.libelle)}</span>` +
       `<span class="valB${s.avantage === 'B' ? ' fort' : ''}">${s.b}</span></div>`).join('');
 
-    const possession = f.possession
-      ? `<div class="ligneStatMatch"><span class="valA">${f.possession.a} %</span>` +
-        `<span class="libelleStat" title="Estimée par la ${echapperTexte(f.possession.source)} — le moteur ne chronomètre pas la possession">Possession (est.)</span>` +
-        `<span class="valB">${f.possession.b} %</span></div>`
+    const lignePct = (x) => x
+      ? `<div class="ligneStatMatch"><span class="valA">${x.a} %</span>` +
+        `<span class="libelleStat" title="${echapperTexte(x.aide)}">${echapperTexte(x.libelle)}</span>` +
+        `<span class="valB">${x.b} %</span></div>`
       : '';
+    const possession = lignePct(f.possession) + lignePct(f.occupation);
+
+    // Les joueurs du match : « n°7 · 14 » par catégorie, le poste en infobulle.
+    const titreJ = (m) => (m ? `${m.nom ? m.nom + ', ' : ''}n°${m.numero} (${POSTE_NUMERO[m.numero] || ''})${m.sortie != null ? ` — remplacé à la ${Math.max(1, Math.floor(m.sortie / 60))}e` : ''}` : '');
+    const joueurs = (f.joueursDuMatch || []).map((l) =>
+      `<div class="ligneStatMatch ligneJoueurMatch">` +
+      `<span class="valA" title="${echapperTexte(titreJ(l.a))}">${echapperTexte(l.texteA)}</span>` +
+      `<span class="libelleStat">${echapperTexte(l.libelle)}</span>` +
+      `<span class="valB" title="${echapperTexte(titreJ(l.b))}">${echapperTexte(l.texteB)}</span></div>`).join('');
+
+    // « 5 · +21 m · 1 essai » : joués, terrain moyen gagné, essais au bout.
+    const resumeLancement = (c) => {
+      if (!c.n) return '–';
+      const t = c.terrainMoyen;
+      return `${c.n} · ${t > 0 ? '+' : ''}${t} m` + (c.essais ? ` · ${c.essais} essai${c.essais > 1 ? 's' : ''}` : '');
+    };
+    const lancements = (f.lancements || []).map((l) =>
+      `<div class="ligneStatMatch ligneLancement">` +
+      `<span class="valA">${resumeLancement(l.a)}</span>` +
+      `<span class="libelleStat">${echapperTexte(l.libelle)}</span>` +
+      `<span class="valB">${resumeLancement(l.b)}</span></div>`).join('');
 
     return `<h3 class="titreFeuille">Feuille de match</h3>` +
-      (marqueurs ? `<h4 class="sousTitreFeuille">Essais marqués (minutes)</h4>${marqueurs}` : '') +
+      (marqueurs ? `<h4 class="sousTitreFeuille">Essais marqués</h4>${marqueurs}` : '') +
       `<h4 class="sousTitreFeuille">Le fil du match</h4><div class="chronoFeuille">${lignes}</div>` +
-      `<h4 class="sousTitreFeuille">Statistiques</h4>${possession}${stats}`;
+      `<h4 class="sousTitreFeuille">Statistiques</h4>${possession}${stats}` +
+      (joueurs ? `<h4 class="sousTitreFeuille" title="Le meilleur de chaque équipe dans chaque action comptée par le moteur (joueurs remplacés compris)">Les joueurs du match</h4>${joueurs}` : '') +
+      (lancements ? `<h4 class="sousTitreFeuille" title="Combinaisons jouées sur mêlée, touche ou maul : nombre, terrain moyen gagné jusqu'au prochain arrêt de jeu ou à la perte du ballon, essais au bout">Lancements de jeu</h4>${lancements}` : '');
   }
 
   global.RMClub = Object.assign(global.RMClub || {}, {
-    feuilleDeMatch, htmlFeuilleDeMatch,
+    feuilleDeMatch, htmlFeuilleDeMatch, recitEssai,
   });
 })(window);

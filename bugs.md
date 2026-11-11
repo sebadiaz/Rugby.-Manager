@@ -8,17 +8,23 @@ Ce fichier donne une liste opérationnelle à partir du code, de reproductions i
 
 La [démo publique](https://sebadiaz.github.io/Rugby.-Manager/) servait [`c9b85c3`](https://github.com/sebadiaz/Rugby.-Manager/commit/c9b85c3c6c1f73abea3d94d6e387c00dfd75528d) au moment de l’essai. La branche de travail mesurée était [`cf01357`](https://github.com/sebadiaz/Rugby.-Manager/commit/cf01357673015b3108aa084512923cc42854b367). Le parcours navigateur sur la démo a couvert la création d’un club, les écrans Compétitions et Préparer le match, un remplacement manuel, la feuille de match et le retour au tableau de bord avec la victoire **41–15** enregistrée. Les suites Node `test-feuille-de-match.js`, `test-match-interactif.js` et `test-parcours-club.js` ont passé sur les deux versions. Le parcours navigateur de la branche et la reprise d’un match après rechargement restent à valider.
 
-### [ ] BUG-RM-011 — Un remplaçant entré manuellement peut entrer une seconde fois à la minute prévue — P1
+### [x] BUG-RM-011 — Un remplaçant entré manuellement peut entrer une seconde fois à la minute prévue — P1
 
 Sur la démo, un pilier entré manuellement avant la 50e a aussi déclenché le changement programmé. La feuille de match a compté **neuf remplacements pour huit joueurs de banc**. Reproduction moteur avec la graine 24 et un seul changement programmé à la 50e : faire entrer ce joueur au début donne deux événements `REMPLACEMENT` pour lui, à 0′ puis à 50′. Le moteur public ajoute la demande manuelle à la file et conserve l’entrée automatique. [Moteur public](https://github.com/sebadiaz/Rugby.-Manager/blob/c9b85c3c6c1f73abea3d94d6e387c00dfd75528d/engine/rugby-engine.js#L5886-L5898)
+
+**Vérifié sur la branche fusionnée (8 nov.) :** graine 24, un changement programmé à la 50e et le même joueur entré au début — une seule entrée dans `remplacementsEffectues` ; invariants « banc » (FUNC-RM-005) OK, parcours navigateur 583 tests OK.
 
 Le même scénario produit une seule entrée sur `cf01357`. La branche de travail identifie l’entrant par `joueurId` et annule son entrée programmée. Le ticket reste ouvert pour la réception navigateur et la mise en ligne. [Correctif sur la branche](https://github.com/sebadiaz/Rugby.-Manager/blob/cf01357673015b3108aa084512923cc42854b367/engine/rugby-engine.js#L8324-L8346) · FUNC-RM-005
 
 **Acceptation.** Jouer un match Club et faire entrer un joueur avant sa minute prévue. Dépasser cette minute, recharger le match et le terminer. Vérifier une seule entrée dans la chronologie et dans l’archive, les statistiques attribuées au bon joueur et le résultat enregistré une seule fois au classement.
 
-### [ ] BUG-RM-012 — Un changement tactique du banc s’applique pendant le jeu — P2
+### [x] BUG-RM-012 — Un changement tactique du banc s’applique pendant le jeu — P2
 
 Reproduit dans les deux moteurs. Avec la graine 24, attendre la phase `PORTE`, demander un remplacement manuel et avancer d’un pas de 0,1 s. Le changement est journalisé au pas suivant alors que la phase reste `PORTE`. La [loi 3.6 de World Rugby](https://passport.world.rugby/fr/les-regles-du-jeu/regles-du-jeu-par-numero/3-l-equipe/) situe les remplacements ballon mort, avec l’autorisation de l’arbitre. [Traitement des remplacements sur la branche](https://github.com/sebadiaz/Rugby.-Manager/blob/cf01357673015b3108aa084512923cc42854b367/engine/rugby-engine.js#L7818-L7840)
+
+**Avancement (TODO_AUDIT P2-166) :** moteur corrigé — demande tactique en attente jusqu’au ballon mort (coup d’envoi non frappé, mêlée avant introduction, touche avant lancer, essai, transformation, pénalité au but, mi-temps), attente annoncée dans le fil et « en attente » dans le panneau du banc ; entrées médicales immédiates ; seconde demande refusée. Reste la réception navigateur : demande en jeu, reprise du match après rechargement avec une demande en attente.
+
+**Dernier tir.** Sur un match court de graine 28, un changement demandé pendant le vol de la dernière pénalité remplaçait le buteur avant le calcul du tir. Le changement attend désormais la fin du tir. Si l’arbitre siffle la fin à cet arrêt, aucune entrée n’est comptabilisée. Le panneau du banc confirme aussi le numéro demandé, y compris après rechargement. En championnat, la fatigue, le moral et le compteur de matchs joués s’appuient sur les entrées réellement effectuées.
 
 **Acceptation.** Une demande tactique en jeu passe en attente et l’interface le signale. Le sortant garde son identité et ses actions jusqu’au prochain arrêt admissible. L’entrée s’exécute une seule fois et la demande survit à une reprise du match. Vérifier aussi les changements programmés qui arrivent pendant le jeu et les cas distincts de soins ou de protocole commotion.
 
@@ -151,38 +157,38 @@ Les sommes individuelles des passes, plaquages et mètres correspondent aux somm
 
 | Ticket | Priorité | Nature | Travail attendu |
 | --- | --- | --- | --- |
-| BUG-RM-001 | P1 | Confirmé | Remplacer le départage par identifiants annoncé comme une prolongation |
-| BUG-RM-002 | P1 | Confirmé | Empêcher un onglet ancien d'écraser la progression d'un autre |
-| BUG-RM-003 | P1 | Confirmé | Conserver les secours lors d'incidents successifs |
-| BUG-RM-004 | P2 | Confirmé | Distinguer les clubs générés portant exactement le même nom |
+| BUG-RM-001 | P1 | Corrigé (TODO_AUDIT P2-104) | Remplacer le départage par identifiants annoncé comme une prolongation |
+| BUG-RM-002 | P1 | Corrigé (TODO_AUDIT P2-105) | Empêcher un onglet ancien d'écraser la progression d'un autre |
+| BUG-RM-003 | P1 | Corrigé (TODO_AUDIT P2-105) | Conserver les secours lors d'incidents successifs |
+| BUG-RM-004 | P2 | Corrigé (TODO_AUDIT P2-111) | Distinguer les clubs générés portant exactement le même nom |
 | BUG-RM-005 | P2 | Écart mesuré | Réduire les passes excédentaires sans casser l'attaque |
-| BUG-RM-006 | P1 | Confirmé | Compter les tentatives de passe avec les offloads |
-| BUG-RM-007 | P1 | Confirmé | Attribuer les actions à la personne, y compris après remplacement |
-| BUG-RM-008 | P2 | Confirmé | Conserver et afficher la possession chronométrée |
-| BUG-RM-009 | P2 | Confirmé | Séparer championnat, coupes et amicaux dans les statistiques |
-| BUG-RM-010 | P1 | Confirmé | Terminer les matchs des scripts de mesure avant de lire le résultat |
-| FUNC-RM-001 | P1 | À construire | Export, import et récupération de carrière accessibles |
-| FUNC-RM-002 | P1 | À construire | Reprendre un match joué après fermeture du navigateur |
-| FUNC-RM-003 | P2 | À compléter | Relecture fidèle des décisions du match interactif |
+| BUG-RM-006 | P1 | Corrigé (TODO_AUDIT P2-107) | Compter les tentatives de passe avec les offloads |
+| BUG-RM-007 | P1 | Corrigé (TODO_AUDIT P2-108) | Attribuer les actions à la personne, y compris après remplacement |
+| BUG-RM-008 | P2 | Corrigé (TODO_AUDIT P2-109) | Conserver et afficher la possession chronométrée |
+| BUG-RM-009 | P2 | Corrigé (TODO_AUDIT P2-110) | Séparer championnat, coupes et amicaux dans les statistiques |
+| BUG-RM-010 | P1 | Corrigé (TODO_AUDIT P2-107) | Terminer les matchs des scripts de mesure avant de lire le résultat |
+| FUNC-RM-001 | P1 | Livré (TODO_AUDIT P2-106) | Export, import et récupération de carrière accessibles |
+| FUNC-RM-002 | P1 | Livré (TODO_AUDIT P2-135) | Reprendre un match joué après fermeture du navigateur |
+| FUNC-RM-003 | P2 | Livré (TODO_AUDIT P2-136) | Relecture fidèle des décisions du match interactif |
 | FUNC-RM-004 | P2 | À compléter | Instructions individuelles par poste |
-| FUNC-RM-005 | P2 | À compléter | Gestion complète du banc et des changements en direct |
+| FUNC-RM-005 | P2 | Livré (TODO_AUDIT P2-137 à P2-143) | Gestion complète du banc et des changements en direct |
 | FUNC-RM-006 | P2 | À compléter | Donner un rôle concret et explicable au capitaine |
 | FUNC-RM-007 | P2 | À compléter | Rapports qualitatifs de recrutement liés aux données |
 | FUNC-RM-008 | P2 | À compléter | Prévisions financières sur plusieurs saisons |
 | FUNC-RM-009 | P3 | À compléter | Continuité des effectifs hors de la division du joueur |
 | FUNC-RM-010 | P2 | À compléter | Qualifications continentales fondées sur les résultats |
 | FUNC-RM-011 | P2 | À construire | Feuille individuelle et collective complète, minutes et filtres cohérents |
-| QA-RM-001 | P1 | À valider | Mêlée : temps, positions, ballon et demi de mêlée |
-| QA-RM-002 | P1 | À valider | Transitions de possession et phases arrêtées visibles |
+| QA-RM-001 | P1 | Validé (TODO_AUDIT P2-115) | Mêlée : temps, positions, ballon et demi de mêlée |
+| QA-RM-002 | P1 | Validé (TODO_AUDIT P2-117) | Transitions de possession et phases arrêtées visibles |
 | QA-RM-003 | P2 | À valider | Progression territoriale et essais construits |
 | QA-RM-004 | P1 | À valider | Parcours complet de compétition et règlement unique |
 | QA-RM-005 | P2 | À valider | Parcours mobile et lecture du match |
 | QA-RM-006 | P2 | À valider | Mettre les états documentaires en accord avec le code |
-| QA-RM-007 | P2 | À valider | Réconcilier définitions, événements, affichage et archives |
+| QA-RM-007 | P2 | Validé (TODO_AUDIT P2-116) | Réconcilier définitions, événements, affichage et archives |
 
 ## Bugs établis
 
-### [ ] BUG-RM-001 — Une égalité en coupe devient une « prolongation » sans jeu supplémentaire — P1
+### [x] BUG-RM-001 — Une égalité en coupe devient une « prolongation » sans jeu supplémentaire — P1
 
 **Statut : CONFIRMÉ par reproduction des fonctions du dépôt.**
 
@@ -196,7 +202,7 @@ Les sommes individuelles des passes, plaquages et mètres correspondent aux somm
 
 **Acceptation :** égalités en match joué et abstrait, éventuelle égalité persistante et résultat rechargé ; score, vainqueur, message, qualification, finances et archive concordent. Les identifiants seuls ne décident plus de la performance sportive. Aucun règlement de championnat n'est modifié par cette correction.
 
-### [ ] BUG-RM-002 — Deux onglets peuvent écraser leurs progressions respectives — P1
+### [x] BUG-RM-002 — Deux onglets peuvent écraser leurs progressions respectives — P1
 
 **Statut : CONFIRMÉ par reproduction de deux états chargés sur le même stockage.**
 
@@ -210,7 +216,7 @@ Les sommes individuelles des passes, plaquages et mètres correspondent aux somm
 
 **Acceptation :** deux onglets, actions simultanées, onglet repris après veille et échec de stockage ; aucune progression récente perdue silencieusement. Ajouter un scénario navigateur sur les fonctions de sauvegarde et les actions réelles du Club. Garder les carrières existantes chargeables.
 
-### [ ] BUG-RM-003 — Un second incident remplace le secours de la première carrière — P1
+### [x] BUG-RM-003 — Un second incident remplace le secours de la première carrière — P1
 
 **Statut : CONFIRMÉ par reproduction sur le stockage en mémoire.**
 
@@ -228,7 +234,7 @@ Les sommes individuelles des passes, plaquages et mètres correspondent aux somm
 
 **Acceptation :** deux corruptions successives, version future puis corruption, quota empêchant le secours et récupération suivie d'une nouvelle sauvegarde. Les copies conservées restent identifiables et téléchargeables ; une donnée non écrite n'est jamais annoncée comme protégée.
 
-### [ ] BUG-RM-004 — Des clubs adverses distincts portent exactement le même nom — P2
+### [x] BUG-RM-004 — Des clubs adverses distincts portent exactement le même nom — P2
 
 **Statut : CONFIRMÉ dans la démo et par génération.**
 
@@ -242,9 +248,9 @@ Les sommes individuelles des passes, plaquages et mètres correspondent aux somm
 
 **Acceptation :** lot de créations, changement de saison, promotion/relégation, monde et reprise d'une ancienne carrière avec homonymes. Tout lien et message permet de distinguer les deux entités.
 
-### [ ] BUG-RM-005 — Le nombre de passes dépasse encore la calibration du dépôt — P2
+### [x] BUG-RM-005 — Le nombre de passes dépasse encore la calibration du dépôt — P2
 
-**Statut : ÉCART MESURÉ, relié au chantier existant P2-13 de `TODO_AUDIT.md`.**
+**Statut : RÉSOLU (8 nov.) — calibration du moteur fusionné : Passes 401,1 pour une fourchette attendue de 250–420, 14/14 catégories dans la fourchette (après P2-163, arrière intercalé). Ancien constat conservé ci-dessous.**
 
 **Fichiers :** `engine/rugby-engine.js`, copie publiée `docs/rugby-engine.js`, `server/test-calibration-moteur.js`, `server/simulate-batch.js`, mesures territoriales.
 
@@ -252,13 +258,15 @@ Les sommes individuelles des passes, plaquages et mètres correspondent aux somm
 
 **Complément mesuré :** au pas de 0,1 s avec effectifs Club équilibrés, **475,80 passes** par match, contre **314** dans le repère international choisi (environ +52 %). Corriger d’abord BUG-RM-006 et valider les périmètres ; le comptage des offloads ne suffit pas à expliquer un tel volume. Le 13/14 de la première passe reste un résultat des seuils internes, pas une certification de réalisme.
 
+**Mesure du 01/11 (100 graines, pas 0,1 s, moteur après P2-147) :** 416,5 passes par match (426,1 sur les graines 1-20 de la calibration), 211 rucks, 264 courses. Passes par phase : 1 passe 53 %, 2 passes 25 %, 3 passes 13 %, 4+ 10 % ; ratio passes/ruck ~2,0, proche du réel (~1,9). Le n°9 fait 214 passes, l'ouvreur 92. Trois leviers essayés en apparié (100 graines), sans effet au-delà du bruit : `sortieAvant` 0,34 → 0,45 (−0,7 ± 11 passes, +4,5 rucks), → 0,55 (+4,3, +7 rucks), passe de l'ouvreur 1,5 → 1,2 (−4,0 ± 11). L'excès de passes suit celui des rucks (~6 par minute de jeu pour ~4,6 en réel), déjà étudié dans `docs/ANALYSE_MATCH_REEL.md` (P2-94) : aucun réglage simple ne réduit les actions par minute.
+
 **À analyser :** identifier passes nécessaires au soutien et passes sans progression ; comparer sortie de regroupement, course avant passe, pression et profondeur des receveurs. Les anciens problèmes territoriaux P2-15/P1-21 ont reçu des corrections : repartir des mesures actuelles, pas des anciennes valeurs.
 
 **Correction attendue :** une modification ciblée créant une décision et une action de rugby crédibles ; ne pas réduire simplement le compteur, supprimer des événements ou accélérer artificiellement les courses pour satisfaire une moyenne.
 
 **Acceptation :** comparaison appariée avant/après sur mêmes graines/configurations, distribution par match et contrôle visuel. Conserver essais, possession, rucks, jeu au pied, contestations et différences entre postes. Si la cible doit évoluer, la justifier avec des références de niveau/format adaptées, sans changer le seuil pour masquer l'écart.
 
-### [ ] BUG-RM-006 — Des passes réussies dépassent les passes tentées — P1
+### [x] BUG-RM-006 — Des passes réussies dépassent les passes tentées — P1
 
 **Statut : CONFIRMÉ par lecture et mesure.** Dans le Club équilibré : 475,80 succès contre 472,64 tentatives en moyenne ; 33/50 lignes d'équipe impossibles. Exemple graine 1, équipe B : 266 succès / 263 tentatives.
 
@@ -268,7 +276,7 @@ Les sommes individuelles des passes, plaquages et mètres correspondent aux somm
 
 **Acceptation :** scénarios de passe/offload réussi, raté et intercepté ; succès ≤ tentatives, individuellement et collectivement, accord avec les événements et conservation après archive. Vérifier le cas de la passe en cours à la fin du match.
 
-### [ ] BUG-RM-007 — Les actions d'un remplaçant enrichissent la fiche du titulaire — P1
+### [x] BUG-RM-007 — Les actions d'un remplaçant enrichissent la fiche du titulaire — P1
 
 **Statut : CONFIRMÉ par reproduction isolée et reconnu dans le commentaire du chemin de cumul.** `_statJoueur` indexe les cinq compteurs par équipe et numéro. Un remplacement conserve ce numéro ; `club-jour-match.js` utilise ensuite `compositionUtilisee` pour attribuer le total au titulaire d'origine. Dans une reproduction, 12 passes avant le changement puis une après donnent 13 au titulaire et aucune ligne au remplaçant.
 
@@ -278,7 +286,7 @@ Les sommes individuelles des passes, plaquages et mètres correspondent aux somm
 
 **Acceptation :** changement manuel et programmé, blessure, carton, changement de poste et reprise de sauvegarde. Le remplaçant reçoit seulement ses actions et son temps ; la somme rejoint l'équipe hors exceptions documentées. Les anciennes statistiques impossibles à répartir restent marquées comme historiques non ventilées : aucune répartition rétroactive inventée.
 
-### [ ] BUG-RM-008 — Possession estimée et données perdues dans les archives — P2
+### [x] BUG-RM-008 — Possession estimée et données perdues dans les archives — P2
 
 **Statut : CONFIRMÉ par le code et une entrée contrôlée.** `club-feuille-de-match.js` affiche un ratio de rucks et affirme que le moteur ne chronomètre pas la possession ; il expose pourtant `tempsPossession`, `possessionPct` et `tempsJeuEffectif`. Une entrée contrôlée de 40/60 au chrono et 80/20 en rucks affiche 80/20. Dans l'échantillon équilibré réel, l'écart absolu moyen n'est que de 1,56 point, maximum 4 points : ne pas présenter le cas contrôlé comme un résultat fréquent.
 
@@ -288,7 +296,7 @@ Les sommes individuelles des passes, plaquages et mètres correspondent aux somm
 
 **Acceptation :** état direct → feuille → archive → rechargement : mêmes mesures et définition affichée. Cas sans ruck, possession déséquilibrée, ancien format et taux non calculable, sans valeur fictive.
 
-### [ ] BUG-RM-009 — Les statistiques individuelles et collectives n'ont pas le même périmètre — P2
+### [x] BUG-RM-009 — Les statistiques individuelles et collectives n'ont pas le même périmètre — P2
 
 **Statut : CONFIRMÉ dans les appels de cumul et leurs libellés.** `LIBELLE_COMPETITION.pro` vaut « Championnat » dans `club.js`. Les conséquences de coupe et d'amical dans `club-coupes.js` appellent aussi `accumulerStatsJoueurs` avec `pro` pour le premier XV. Ces performances se mélangent donc sous ce libellé. Le cumul collectif `accumulerStats`, lui, est appelé par le chemin championnat ; comparer les deux classements devient trompeur.
 
@@ -296,7 +304,7 @@ Les sommes individuelles des passes, plaquages et mètres correspondent aux somm
 
 **Acceptation :** séquence championnat → coupe → amical : le filtre championnat exclut les deux autres, le total toutes compétitions se réconcilie avec les feuilles. Vérifier les trois équipes et les cumuls collectifs/individuels. Pour l'historique sans information suffisante, afficher un périmètre inconnu plutôt que recatégoriser au hasard.
 
-### [ ] BUG-RM-010 — La calibration peut lire un score avant la fin effective du match — P1
+### [x] BUG-RM-010 — La calibration peut lire un score avant la fin effective du match — P1
 
 **Statut : CONFIRMÉ avec la boucle exacte des scripts.** `for (let t = 0; t < 4800; t += 0.2) tick(0.2)` peut s'arrêter pendant une transformation. Configuration moteur par défaut : graine 4, 31–18 en `TRANSFORMATION` à l'arrêt, puis **33–18** à `TERMINE` ; graine 18, 9–48 puis **9–50**. Dans l'audit complémentaire, 13/120 instantanés à 80 minutes diffèrent du score final. Cela désigne l'achèvement d'un tir déjà engagé, pas une prolongation de coupe.
 
@@ -308,7 +316,7 @@ Les sommes individuelles des passes, plaquages et mètres correspondent aux somm
 
 ## Fonctions à terminer ou approfondir
 
-### [ ] FUNC-RM-001 — Export, import et récupération de carrière dans l'interface — P1
+### [x] FUNC-RM-001 — Export, import et récupération de carrière dans l'interface — P1
 
 **État constaté :** carrière en localStorage avec migrations et secours bruts ; pas de parcours d'export/import de carrière trouvé dans les sources UI examinées. Le message de récupération renvoie au support avec le nom du club, alors que les données sont locales au navigateur.
 
@@ -318,7 +326,9 @@ Les sommes individuelles des passes, plaquages et mètres correspondent aux somm
 
 **Acceptation :** aller-retour sur un autre navigateur, ancienne version migrable, version future refusée sans perte, fichier invalide, quota et annulation. Préserver résultats, identités, contrats, décisions, finances et projets ; ne jamais exécuter du contenu importé comme du code. Dépend de BUG-RM-002/003.
 
-### [ ] FUNC-RM-002 — Reprise d'un match joué après fermeture ou rechargement — P1
+### [x] FUNC-RM-002 — Reprise d'un match joué après fermeture ou rechargement — P1
+
+**Livré (TODO_AUDIT P2-135) :** journal du match joué (graine, configuration, composition et banc alignés, décisions du manager datées au pas près, temps et score), écrit au coup d'envoi, à chaque décision, toutes les secondes et à la fermeture de la page. À la relance de la même rencontre, reprise proposée, rejeu exact jusqu'au pas atteint puis pause ; refus = nouveau match. Journal effacé au sifflet final après l'envoi du résultat, ou à l'abandon. Clé : carrière (graine), date et rencontre — un journal étranger n'est jamais repris.
 
 **État constaté :** `match` et `matchLive` de `main.js` vivent en mémoire ; la sauvegarde de carrière ne constitue pas un instantané du match interactif. La sortie explicite permet de l'annuler et de le relancer, ce qui n'est pas une reprise à la minute interrompue.
 
@@ -328,7 +338,9 @@ Les sommes individuelles des passes, plaquages et mètres correspondent aux somm
 
 **Acceptation :** F5, fermeture d'onglet, arrêt du navigateur, mi-temps et fin de match ; même état à la reprise, aucune nouvelle inscription ni doublon de résultat, statistiques ou recettes. Aucun état ancien n'écrase une carrière plus récente.
 
-### [ ] FUNC-RM-003 — Relecture fidèle des décisions du match interactif — P2
+### [x] FUNC-RM-003 — Relecture fidèle des décisions du match interactif — P2
+
+**Livré (TODO_AUDIT P2-136) :** « Enregistrer » garde les décisions du manager (consignes, remplacements) datées au pas près et une empreinte du déroulé ; tout pas de simulation d'une relecture (génération, affichage, barre de temps, fin jouée d'un coup, contrôle de fidélité) rejoue ces décisions à leur pas. Le contrôle compare score ET empreinte. Défaut du moteur corrigé au passage : un remplacement en cours de match écrivait le remplaçant dans la composition de l'appelant. Reste : le changement de version du moteur rend toujours la relecture infidèle (elle le dit).
 
 **État constaté :** une décision en cours de match change réellement la suite (test réussi). La relecture par graine seule ne reconstitue pas ces commandes. `rejouerDepuisHistorique` reconnaît les entrées sans instantané exploitable ; ce diagnostic existant doit être conservé.
 
@@ -342,11 +354,15 @@ Les sommes individuelles des passes, plaquages et mètres correspondent aux somm
 
 **État constaté :** axes tactiques collectifs branchés au moteur et rôles capitaine/buteur/lanceur ; ce socle fonctionne. La profondeur individuelle reste limitée dans la feuille de route.
 
+**Avancement (TODO_AUDIT P2-148) :** consigne de l'ouvreur (au pied / lecture du jeu / à la main) livrée : seuls les coups de pied du n°10 changent (4,9 / 8,9 / 13,8 par match), avec possession et occupation en conséquence. Le comportement du 9 en sortie existe déjà en collectif (« Jeu d'avants »). Consigne de l'arrière (couvre le fond / standard / monte vers la ligne, P2-149) livrée : effet de position mesuré, sans effet significatif sur le score. Consigne des ailiers (repiquent / standard / restent larges, P2-150) livrée. Consigne du demi de mêlée (chandelle depuis la base / standard / sortie à la main, P2-160) livrée : le premier lot prévu (9, 10, ailiers, arrière) est complet. Consigne des centres (percussion / standard / distribution, P2-161) livrée. La suite (avants : 8, troisième ligne) reste à définir.
+
 **À livrer :** premier lot restreint : comportement du 9 en sortie, choix main/pied du 10, largeur/repiquage d'un ailier et couverture de l'arrière. Afficher effet attendu et compromis ; les décisions dépendent des qualités et de la situation, sans garantir le résultat. Réutiliser les mêmes écrans pour les équipes dirigées.
 
 **Acceptation :** scénarios contrôlés et matchs appariés montrant un effet sur les choix observés, non sur une statistique ajoutée artificiellement. Instructions légales et incompatibilités expliquées ; réglages conservés après reprise/changement d'équipe.
 
-### [ ] FUNC-RM-005 — Compléter la gestion du banc pendant le match — P2
+### [x] FUNC-RM-005 — Compléter la gestion du banc pendant le match — P2
+
+**Avancement (TODO_AUDIT P2-137) :** à la mi-temps et en cours de jeu, le manager choisit le maillot relevé parmi les postes compatibles (première ligne par première ligne, loi 3 ; avant par avant ; trois-quarts par trois-quarts) ; refus expliqué ; un remplaçant n'entre qu'une fois (défaut corrigé : entré plus tôt que prévu, il entrait une seconde fois à sa minute prévue) ; joueur exclu signalé. Décisions rejouées à la reprise (FUNC-RM-002) et à la relecture (FUNC-RM-003). Blessures en match (TODO_AUDIT P2-138) : nées d'un plaquage, le blessé sort, le remplaçant prévu de son groupe entre aussitôt (à 14 si le banc est épuisé), et la blessure est reportée en carrière sur le joueur qui portait le maillot. Mêlée simulée sans première ligne formée (loi 3, TODO_AUDIT P2-139). Protocole commotion avec remplacement temporaire de 12 minutes (TODO_AUDIT P2-140), saignement (P2-142). Feuille de match incomplète (P2-143) : banc sans blessé, première ligne jamais confiée à un autre poste, équipe à 14 sans remplaçant apte, alerte dans l'aperçu.
 
 **État constaté :** changements planifiés et changements en cours de jeu existent déjà. Le panneau de changement proposé dans `main.js` est alimenté par la liste issue de la préparation ; ne pas reconstruire ce chemin en parallèle.
 
@@ -357,6 +373,8 @@ Les sommes individuelles des passes, plaquages et mètres correspondent aux somm
 **Acceptation :** changement manuel avant un changement planifié du même poste, joueur déjà entré/sorti, effectif réduit, première ligne et reprise. Les minutes et conséquences concernent les joueurs réellement entrés, une seule fois.
 
 ### [ ] FUNC-RM-006 — Capitaine et leadership avec conséquences compréhensibles — P2
+
+**Avancement (TODO_AUDIT P2-162) :** premier usage livré — consigne « Pénalités à portée de but » déléguable au capitaine, dont le sens du jeu arbitre la lecture de fin de match ; relais du brassard annoncé s'il est exclu ou remplacé ; sens du jeu affiché dans l'aperçu.
 
 **État constaté :** capitaine désigné dans la composition ; la feuille de route le qualifie de décoratif. Ne pas confondre ce rôle avec le buteur ou le lanceur, déjà exploités.
 
@@ -406,6 +424,8 @@ Les sommes individuelles des passes, plaquages et mètres correspondent aux somm
 
 ### [ ] FUNC-RM-011 — Feuilles statistiques complètes et comparables par joueur — P2
 
+**Avancement (TODO_AUDIT P2-164) :** la feuille de match présente « Les joueurs du match » — le meilleur de chaque équipe dans six actions réellement comptées, joueurs remplacés compris, conservé par l'archive. Joueurs nommés (P2-165). Reste : minutes jouées, filtres et taux par 80 minutes.
+
 **État constaté :** cinq compteurs individuels seulement : essais, passes réussies, plaquages tentés/réussis et mètres. Le cumul collectif de carrière n'expose qu'une partie des mesures du moteur ; les archives perdent les lignes individuelles. La priorité est de fiabiliser BUG-RM-006 à 009.
 
 **À livrer par étapes :** identité, titulaire/entrant et minutes effectivement jouées ; tentatives et réussite de passe, courses, coups de pied, buteur, turnovers et participation aux regroupements lorsque ces actions sont réellement mesurées. Compléter la feuille collective par possession/occupation, rucks, mauls, conquête et sanctions. Chaque libellé a une définition et une unité ; aucune statistique déduite arbitrairement d'un attribut.
@@ -416,7 +436,7 @@ Les sommes individuelles des passes, plaquages et mètres correspondent aux somm
 
 ## Réceptions gameplay et QA
 
-### [ ] QA-RM-001 — Mêlée : chronologie, ballon et numéro 9 — P1
+### [x] QA-RM-001 — Mêlée : chronologie, ballon et numéro 9 — P1
 
 **État : À VALIDER visuellement et par traces sur le code actuel.** Machine à états présente ; la suite complète `test-melee.js` n'a pas terminé dans la limite de 150 s de cette passe. Ce dépassement de temps local n'est pas une preuve de défaut de règle.
 
@@ -428,7 +448,7 @@ Les sommes individuelles des passes, plaquages et mètres correspondent aux somm
 
 **Acceptation :** trace déterministe, captures/vidéo à vitesse lisible et transitions cohérentes entre position logique et rendue. Aucun porteur fantôme ou téléportation trompeuse ; une faute/reset ne fait pas continuer l'ancienne séquence.
 
-### [ ] QA-RM-002 — Ballon, possession et reprises cohérents de bout en bout — P1
+### [x] QA-RM-002 — Ballon, possession et reprises cohérents de bout en bout — P1
 
 **État : À VALIDER.** Les phases existent ; ce ticket porte sur leur enchaînement et leur lecture, pas sur leur simple fréquence.
 
@@ -442,6 +462,10 @@ Les sommes individuelles des passes, plaquages et mètres correspondent aux somm
 
 **Complément actuel :** sur 25 matchs Club équilibrés, 28/161 essais d’avants (17,4 %), 97/161 pour les deux ailiers (60,2 %), 5,24 mauls et 2 884,57 mètres cumulés du moteur par match. Les variantes confirment une concentration sur les ailes ; analyser notamment les options d’avants et mauls près de la ligne, la qualité des réceptions et les boucles de recul/réavancée. Le repère international n’est pas un quota imposé aux postes.
 
+**Avancement (TODO_AUDIT P2-125, P2-126) :** point de départ des essais corrigé (essais partis de plus de 50 m : 1,8 par match et non 2,95). Touche gagnée à moins de 10 m : maul 43 % → 70 %, essais sur ces touches 0,52 → 0,90 par match, total des essais inchangé. Reste à traiter : la part des essais partis de loin (27 %). Mesure du 31/10 (100 matchs) : le 9 perçait à la sortie d'un maul (17,6 % des sorties, 12,3 % des essais) ; corrigé (TODO_AUDIT P2-146) : 4,8 % des essais au 9, essais partis de plus de 50 m 21 %.
+
+**Mesure du 08/11 (30 matchs) et TODO_AUDIT P2-163 :** marqueurs avants 42 %, ailiers 35 %, demis 14 %, centres 7 %, arrière 1 % ; l'arrière ne s'intercalait jamais dans la ligne. Après l'intrusion de l'arrière dans la moitié adverse : arrière 9,8 %, ailiers 28 %, centres 9 %.
+
 **Mesures :** entrées dans les 22 m, gain net par phase à possession conservée, profondeur de réception, durée des séquences, origine des essais et postes des marqueurs. Ne pas reprendre les anciennes valeurs de l'audit comme résultats du moteur courant.
 
 **Acceptation :** échantillon versionné et comparaison appariée avant/après ; avants et trois-quarts ont des usages distincts, les attaques construites peuvent progresser sans dépendre uniquement d'une échappée. Vérifier en images le soutien, la ligne défensive, le ballon porté, les touches/mêlées proches de la ligne. Pas de seuil arbitraire imposant qu'un poste marque un nombre fixe d'essais.
@@ -450,6 +474,8 @@ Les sommes individuelles des passes, plaquages et mètres correspondent aux somm
 
 **État : À VALIDER au-delà des tests ciblés verts.**
 
+**Relevé du 8 nov. (arbre fusionné, tout vert) :** couverts par `server/test-parcours-club.js` (286 tests) — carrière de 12 saisons avec rechargements réguliers (aucun id dupliqué, NaN ni composition impossible), fin de saison et archive, quatre coupes jouées jusqu'au vainqueur sans nul, homonymes, économie de saison ; par `server/test-consequences-match.js` (IDEM1) — appliquer deux fois un résultat ne double rien ; par le parcours navigateur (583 tests) — Équipe B, Espoirs, calendrier daté. **Reste à valider à la main :** un unique parcours navigateur continu (journée partiellement résolue, rechargement, promotion/relégation affichées).
+
 **Parcours :** création → équipe dirigée → composition → préparation → match joué/instantané → résultat → archive → calendrier/classement → fin de saison → promotion/relégation. Inclure championnat, coupe, amical, Équipe B, Espoirs, consultation d'un adversaire et retour au club.
 
 **Acceptation :** la compétition affichée correspond à la rencontre jouée ; points/bonus et départages suivent son règlement. Un résultat n'accorde qu'une fois statistiques, argent, fatigue, blessures et effets de direction. Tester retour/rechargement et journée partiellement résolue. Après BUG-RM-001, archive et tableau de coupe montrent le même résultat sportif.
@@ -457,6 +483,8 @@ Les sommes individuelles des passes, plaquages et mètres correspondent aux somm
 ### [ ] QA-RM-005 — Mobile : gérer une semaine puis suivre un match — P2
 
 **État : À VALIDER sur petit écran.** La visite de cette passe couvre l'accueil, la création de club et Compétitions sur le navigateur distant ; aucun parcours mobile complet ni mesure de fluidité n'a été effectué.
+
+**Relevé du 8 nov. (390×844, Playwright) :** 18 écrans de gestion, fiche joueur, marché, médical, composition, tactique, personnel, aperçu du match, direct et panneau de consigne — largeur de page = 390 px partout, aucun élément qui déborde, aucune erreur de page. Corrigés : panneau de consigne en jeu (texte « seconde période »/« rien n'est joué » faux en cours de match, listes à 23 px) et listes de composition (26 → 30 px). Restent : boutons de l'aperçu (40 px) et onglets internes (31 px) sous 44 px, négociation, clavier/focus des modales, mesure de fluidité et essai sur appareil réel.
 
 **À tester :** tiroir de navigation, tableau d'effectif et classement, changement d'équipe, sélection d'un joueur, négociation, médical, préparation, consigne en match, pause et résultat. Vérifier zoom de texte, clavier, focus des modales et libellés longs.
 
@@ -472,7 +500,7 @@ Les sommes individuelles des passes, plaquages et mètres correspondent aux somm
 
 **Acceptation :** aucun prochain chantier justifié uniquement par une ligne obsolète ; chaque déclaration d'absence confrontée au code et au parcours. Un contrôle documentaire doit pouvoir signaler une contradiction réelle sans imposer qu'il reste nécessairement des fonctions absentes.
 
-### [ ] QA-RM-007 — Définitions et rapprochement des statistiques de bout en bout — P2
+### [x] QA-RM-007 — Définitions et rapprochement des statistiques de bout en bout — P2
 
 **État : À VALIDER.** Référence de vocabulaire : [définitions statistiques World Rugby](https://www.world.rugby/the-game/game-analysis/definitions), utilisée pour les métriques et non comme règlement actuel des remplacements. Choisir et documenter le périmètre de chaque compteur avant de fixer des objectifs de réalisme.
 

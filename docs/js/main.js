@@ -29,12 +29,29 @@
   function redimensionner() {
     const { hudH, seekH, ctrlH } = tailleZones();
     Renderer.redimensionner(hudH, seekH, ctrlH);
-    // La bannière d'arbitre est ancrée en haut à droite, sous le HUD (dont
-    // la hauteur varie avec le contenu du fil d'événements) plutôt qu'au
-    // centre de l'écran, pour ne pas masquer l'action sur le terrain.
-    document.getElementById('banner').style.top = (hudH + 8) + 'px';
+    // La bannière d'arbitre se pose sur le BAS du HUD, jamais sous lui : posée
+    // à hudH + 8 px, elle tombait sur la bordure du terrain et cachait un
+    // joueur près de la touche ou de l'en-but (P2-73). Même règle qu'à son
+    // affichage (cf. RMUI.placerBandeau), recalculée quand le HUD change.
+    if (window.RMUI && window.RMUI.placerBandeau) window.RMUI.placerBandeau(document.getElementById('banner'));
   }
   window.addEventListener('resize', redimensionner);
+  // Le HUD grandit EN COURS DE MATCH : le fil d'evenements part vide et se
+  // remplit, et le bandeau passe (mesure) de 126 a 156 px. La place qu'on lui
+  // reserve sur le terrain, elle, n'etait recalculee qu'au redimensionnement de
+  // la fenetre et a l'ouverture de la vue match -- jamais a ce moment-la. Le
+  // bandeau ecrivait donc 34 a 48 px par-dessus la pelouse, et sa derniere ligne
+  // (souvent la penalite ou l'essai) etait coupee en deux par le bord superieur
+  // du terrain. `#hud` est en position absolue, hors du flux : deplacer le
+  // canvas ne change pas sa hauteur, il n'y a donc pas de boucle de rebond.
+  if (typeof ResizeObserver === 'function') {
+    const hud = document.getElementById('hud');
+    let hauteurHudConnue = -1;
+    new ResizeObserver(() => {
+      const h = hud.offsetHeight;
+      if (h !== hauteurHudConnue) { hauteurHudConnue = h; redimensionner(); }
+    }).observe(hud);
+  }
 
   let match = null;
   let seedActuel = graineAleatoire();
@@ -44,6 +61,25 @@
   // Chargée de façon asynchrone au démarrage ; si le chargement échoue (ex.
   // ouverture en file://), on garde le comportement par défaut.
   let configMatch = null;
+  // Mode d'IA (RM4-G11) : LEGACY par défaut. « ?ai=goap » dans l'adresse (ou localStorage
+  // 'rugbyManager.aiMode' = 'GOAP') fait jouer les 30 agents individuels (expérimental).
+  function modeIAgoap() {
+    try {
+      const q = new URLSearchParams(location.search).get('ai');
+      if (q) return q.toLowerCase() === 'goap';
+      return localStorage.getItem('rugbyManager.aiMode') === 'GOAP';
+    } catch (e) { return false; }
+  }
+  // Case à cocher de l'accueil : mémorise le choix (localStorage) ; « ?ai=goap » reste prioritaire.
+  (function brancherCaseIA() {
+    const c = document.getElementById('chkIAAgents');
+    if (!c) return;
+    c.checked = modeIAgoap();
+    c.disabled = !window.RugbyAI;
+    c.addEventListener('change', () => { try { localStorage.setItem('rugbyManager.aiMode', c.checked ? 'GOAP' : 'LEGACY'); } catch (e) { /* stockage indisponible */ } });
+  })();
+  function cfgAvecIA(cfg) { return modeIAgoap() && window.RugbyAI ? window.RugbyAI.configGOAP(cfg) : cfg; }
+
   // Réglages tactiques PAR ÉQUIPE (Mode Club) que configMatch peut accumuler
   // au fil des matchs successifs — cf. simulerMatchEnArrierePlan, qui les
   // efface avant chaque simulation en arrière-plan pour ne jamais laisser un
@@ -53,6 +89,12 @@
     'attaqueA', 'attaqueB', 'defenseA', 'defenseB', 'meleeA', 'meleeB',
     'toucheA', 'toucheB', 'ruckA', 'ruckB', 'buteurA', 'buteurB',
     'toucheLanceurA', 'toucheLanceurB', 'remplacements',
+    // Capitaine désigné (FUNC-RM-006) : propre au club de CE match.
+    'capitaineA', 'capitaineB',
+    // Feuille de match déclarée (FUNC-RM-005) : propre au club de CE match.
+    'bancA', 'bancB',
+    // Match de coupe (BUG-RM-001) : ne doit jamais survivre au match suivant.
+    'eliminationDirecte',
   ];
   // Durée du match choisie par le joueur (menu déroulant). Par défaut la démo
   // de 5 min ; un match complet (80 min) montre un score et des statistiques
@@ -94,7 +136,71 @@
   // Ne masque PAS le panneau à la fin : laissé aux appelants, pour pouvoir
   // enchaîner plusieurs simulations (une journée entière) sans clignoter.
   const PAS_PAR_LOT = 400; // ~40 s de jeu par lot : fluide (plusieurs lots/s), UI jamais bloquée longtemps
-  function genererMatchEnArrierePlan(seed, duree, cfg, titre, onTermine) {
+  // Un match joué d'un coup s'arrête au COUP DE SIFFLET (phase TERMINE), pas
+  // au chronomètre. Le moteur laisse une séquence de marque engagée — la
+  // transformation d'un essai de la dernière seconde, un tir au but accordé
+  // avant la fin — se jouer après le temps écoulé (loi du jeu : le temps ne
+  // s'arrête qu'au ballon mort). Couper à `duree` perdait ces points dans le
+  // score annoncé (6 % des matchs de 5 min), alors que la lecture du même match
+  // les montrait : le résultat enregistré n'était pas celui qu'on voyait jouer.
+  // La marge n'est qu'un garde-fou : mesuré, le sifflet vient au plus 11,5 s
+  // de jeu après le temps écoulé.
+  const MARGE_SIFFLET = 120;
+  // `moteur.dureeMatch` : une prolongation de coupe (BUG-RM-001) allonge le
+  // match au-delà de la durée demandée au lancement.
+  function avantSifflet(moteur, duree) {
+    return moteur.phase !== 'TERMINE' && moteur.tempsMatch < Math.max(duree, moteur.dureeMatch) + MARGE_SIFFLET;
+  }
+  // --- Décisions du manager rejouées sur une relecture (bugs.md FUNC-RM-003)
+  //
+  // Un match vécu ne se résume pas à sa graine : les consignes et les
+  // remplacements du manager ont changé sa suite. Chaque moteur porte donc
+  // ses décisions (`_decisions` : { equipe, remplacants, commandes }, chaque
+  // commande datée au pas près), et TOUT pas de simulation passe par ici :
+  // génération, affichage, barre de temps, fin jouée d'un coup, vérification
+  // de fidélité. Sans décisions (match neuf, match joué en direct où elles
+  // sont prises à la main), c'est un simple `tick`.
+  // Groupes de postes pour le banc : première ligne (loi 3), autres avants,
+  // trois-quarts (demis compris).
+  function groupePoste(n) { return n <= 3 ? 'PL' : n <= 8 ? 'AV' : 'AR'; }
+  function maillotsCompatibles(numeroPrevu) {
+    const g = groupePoste(numeroPrevu);
+    const out = [];
+    for (let n = 1; n <= 15; n++) if (groupePoste(n) === g) out.push(n);
+    return out;
+  }
+  // Le remplaçant prend la PLACE du maillot qu'il relève (couloir, tendance),
+  // comme le fait déjà le banc prévu (cf. remplacementsVersConfig).
+  function joueurAuMaillot(r, numero) {
+    const maillot = window.RugbyEngine && window.RugbyEngine.DEFAULT_CONFIG.joueurs[numero];
+    return Object.assign({}, r.joueur, maillot ? { tendance: maillot.tendance, couloir: maillot.couloir } : {});
+  }
+  function appliquerDecision(m, d, cmd) {
+    if (cmd.type === 'consigne') {
+      const c = CONSIGNES_MI_TEMPS.find((x) => x.cle === cmd.cle);
+      if (c) m.appliquerTactiqueEnCours(d.equipe, c.consignes);
+    } else if (cmd.type === 'remplacement') {
+      const r = (d.remplacants || [])[cmd.index];
+      const numero = cmd.numero || (r && r.numeroSortant);
+      if (r) m.remplacerJoueurEnCours(d.equipe, numero, cmd.numero ? joueurAuMaillot(r, numero) : r.joueur, r.joueurId);
+    }
+  }
+  function pasMoteur(m) {
+    const d = m._decisions;
+    if (d && d.commandes && d.commandes.length) {
+      const n = m._numTick || 0;
+      m._idxDecision = m._idxDecision || 0;
+      while (m._idxDecision < d.commandes.length && d.commandes[m._idxDecision].tick <= n) {
+        appliquerDecision(m, d, d.commandes[m._idxDecision++]);
+      }
+    }
+    m.tick(PAS_FIXE);
+  }
+  // Décisions à rejouer sur le prochain match visualisé (relecture d'un match
+  // vécu) ; null pour tout match neuf.
+  let decisionsRelecture = null;
+
+  function genererMatchEnArrierePlan(seed, duree, cfg, titre, onTermine, decisions) {
     // Referme le menu s'il était ouvert (ex. la durée vient d'être changée
     // depuis le menu) : sinon il resterait affiché AU-DESSUS de l'écran de
     // génération puis du résultat (tous deux ouverts bien avant que la vraie
@@ -106,17 +212,19 @@
     const barre = document.getElementById('genProgressBar');
     const label = document.getElementById('genProgressLabel');
     barre.style.width = '0%';
-    const genEngine = new MatchEngine(seed, duree, cfg);
+    const genEngine = new MatchEngine(seed, duree, cfgAvecIA(cfg));
+    document.documentElement.dataset.aiMode = genEngine.aiMode; // observable (tests, débogage)
+    genEngine._decisions = decisions || null;
     function lot() {
       let i = 0;
-      while (i < PAS_PAR_LOT && genEngine.tempsMatch < duree && genEngine.phase !== 'TERMINE') {
-        genEngine.tick(PAS_FIXE);
+      while (i < PAS_PAR_LOT && avantSifflet(genEngine, duree)) {
+        pasMoteur(genEngine);
         i++;
       }
       const frac = Math.max(0, Math.min(1, genEngine.tempsMatch / duree));
       barre.style.width = (frac * 100) + '%';
       label.textContent = `${UI.formaterTemps(genEngine.tempsMatch)} / ${UI.formaterTemps(duree)}`;
-      if (genEngine.tempsMatch < duree && genEngine.phase !== 'TERMINE') {
+      if (avantSifflet(genEngine, duree)) {
         setTimeout(lot, 0);
       } else {
         onTermine(normalizeMatchState(genEngine.getState()));
@@ -174,9 +282,10 @@
   // Défaite du point de vue de cette équipe (Mode Club uniquement — un Match
   // rapide n'a pas de "camp du joueur", donc pas de badge).
   function lancerNouveauMatchAvecGeneration(seed, duree, opts) {
-    const { onResultat, onFermer, direct, noms, equipeJoueur } = opts || {};
+    const { onResultat, onFermer, direct, noms, equipeJoueur, decisions } = opts || {};
     const nomA = (noms && noms.A) || 'Equipe A';
     const nomB = (noms && noms.B) || 'Equipe B';
+    decisionsRelecture = decisions || null;
     genererMatchEnArrierePlan(seed, duree, configMatch, null, (etatFinal) => {
       document.getElementById('panneauGeneration').classList.remove('visible');
       if (onResultat) onResultat(etatFinal);
@@ -208,7 +317,7 @@
         document.getElementById('panneauResultat').classList.remove('visible');
         if (onFermer) onFermer();
       };
-    });
+    }, decisions || null);
   }
 
   // --- Match JOUÉ (P0-match) ----------------------------------------------
@@ -261,15 +370,23 @@
     // `contexte` : 'miTemps' (arrêt imposé) ou 'enCours' (le manager ouvre le
     // panneau de lui-même pendant le jeu). Même écran, mêmes conséquences —
     // une consigne prise à la 62e minute vaut celle prise à la mi-temps.
-    const ctx = contexte || 'miTemps';
+    const e = normalizeMatchState(match.getState());
+    const ctx = e.phase === 'MI_TEMPS' ? 'miTemps' : (contexte || 'miTemps');
     L.contexte = ctx;
     const titre = document.getElementById('miTempsTitre');
     if (titre) titre.textContent = ctx === 'enCours' ? 'Consigne en cours de jeu' : 'Mi-temps';
+    // Textes selon le contexte : en cours de jeu, ni « seconde période » ni
+    // « rien n'est joué » (le match est en cours, le changement attend le ballon mort).
+    const noteCtx = document.getElementById('miTempsNote');
+    if (noteCtx) noteCtx.textContent = ctx === 'enCours'
+      ? 'Match en cours : la consigne s\'applique tout de suite, un remplacement entre au prochain arrêt de jeu.'
+      : 'Rien n\'est joué : tes consignes s\'appliquent dès le coup d\'envoi.';
+    const ssTitreCtx = document.getElementById('miTempsSousTitre');
+    if (ssTitreCtx) ssTitreCtx.textContent = ctx === 'enCours' ? 'Consigne' : 'Consigne pour la seconde période';
     const btnReprendre = document.getElementById('btnMiTempsReprendre');
     if (btnReprendre) btnReprendre.textContent = ctx === 'enCours' ? 'Retour au match' : 'Reprendre le match';
     enCours = false;
     document.getElementById('btnPlay').textContent = 'Play';
-    const e = normalizeMatchState(match.getState());
     const nomA = (L.noms && L.noms.A) || 'Equipe A';
     const nomB = (L.noms && L.noms.B) || 'Equipe B';
     document.getElementById('miTempsScore').textContent =
@@ -281,14 +398,51 @@
     document.getElementById('miTempsConsignes').innerHTML = CONSIGNES_MI_TEMPS.map((c) =>
       `<button class="alt btnConsigneMiTemps${L.consignesPrises.indexOf(c.cle) !== -1 ? ' choisie' : ''}" data-cle="${c.cle}">` +
       `<b>${c.libelle}</b><span>${c.detail}</span></button>`).join('');
+    // BANC (bugs.md FUNC-RM-005) : le manager choisit QUI sort, parmi les
+    // maillots que le remplaçant peut tenir (loi 3 : une première ligne est
+    // relevée par une première ligne ; un avant par un avant, un trois-quarts
+    // par un trois-quarts). Un remplaçant déjà entré — à la main ou à sa
+    // minute prévue — ne peut plus entrer.
     const banc = L.remplacants || [];
+    const entres = new Map();
+    for (const re of (e.remplacementsEffectues || match.remplacementsEffectues || [])) {
+      // Un remplacement temporaire (protocole commotion) ne compte pas : le
+      // remplaçant revient sur le banc et peut encore entrer.
+      if (re.equipe === L.equipe && re.joueurId != null && !re.temporaire && !re.retour) entres.set(re.joueurId, re);
+    }
+    const temporaires = new Map();
+    for (const p of (e.protocoles || [])) {
+      if (p.equipe === L.equipe && !p.issue && p.joueurIdTemp != null) temporaires.set(p.joueurIdTemp, p);
+    }
+    const joueursEq = (L.equipe === 'A' ? e.teams.A : e.teams.B) || [];
     document.getElementById('miTempsRemplacants').innerHTML = banc.length
-      ? banc.map((r, i) =>
-        `<button class="alt btnRemplacantMiTemps${L.remplacementsFaits.indexOf(i) !== -1 ? ' choisie' : ''}" data-index="${i}"` +
-        `${L.remplacementsFaits.indexOf(i) !== -1 ? ' disabled' : ''}>` +
-        `<b>${r.nom} (${r.poste})</b><span>entre à la place du n°${r.numeroSortant}</span></button>`).join('')
+      ? banc.map((r, i) => {
+        const entre = entres.get(r.joueurId);
+        const proto = temporaires.get(r.joueurId);
+        const demande = L.remplacementsFaits.includes(i)
+          ? L.commandes.find((c) => c.type === 'remplacement' && c.index === i)
+          : null;
+        const fait = !!entre || !!proto || !!demande;
+        const groupe = groupePoste(r.numeroSortant);
+        const options = maillotsCompatibles(r.numeroSortant).map((n) => {
+          const j = joueursEq.find((x) => x.numero === n);
+          const exclu = j && j.sinBin > 0;
+          return `<option value="${n}"${n === r.numeroSortant ? ' selected' : ''}${exclu ? ' disabled' : ''}>n°${n}${j && j.label ? ' — ' + j.label : ''}${exclu ? ' (exclu)' : ''}</option>`;
+        }).join('');
+        const detail = proto && !entre
+          ? `remplacement temporaire au n°${proto.numero} (${proto.nature === 'saignement' ? 'saignement' : 'protocole commotion'}, jusqu'à la ${Math.ceil(proto.fin / 60)}e minute au plus tard)`
+          : demande && !entre
+          ? `en attente pour le n°${demande.numero || r.numeroSortant} : ${e.phase === 'MI_TEMPS' ? 'à la reprise' : 'au prochain arrêt de jeu'}`
+          : fait
+          ? `entré${entre ? ' à la ' + Math.max(1, Math.round(entre.instant / 60)) + 'e minute, au n°' + entre.numero : ''}`
+          : `remplace le <select class="selCibleRemplacant" data-index="${i}" aria-label="Maillot remplacé par ${r.nom}">${options}</select>`
+            + (groupe === 'PL' ? ' · première ligne : relève une première ligne (loi 3)' : '');
+        return `<div class="ligneRemplacant"><button class="alt btnRemplacantMiTemps${entre || proto ? ' choisie' : ''}" data-index="${i}"${fait ? ' disabled' : ''}>`
+          + `<b>${fait ? '' : 'Faire entrer '}${r.nom} (${r.poste})</b></button><span class="detailRemplacant">${detail}</span></div>`;
+      }).join('') + '<p id="miTempsRemplacementRefus" class="noteRefus" style="display:none"></p>'
       : '<p style="font-size:12px;color:var(--text-faint);margin:0;">Aucun remplaçant disponible.</p>';
     document.getElementById('panneauMiTemps').classList.add('visible');
+    ecrireJournalMatch();
   }
 
   function fermerMiTemps() {
@@ -302,8 +456,14 @@
   function terminerMatchLive() {
     const L = matchLive;
     L.resultatEnvoye = true;
+    // Le match vécu garde ses décisions : « Enregistrer » les met dans
+    // l'historique, et la barre de temps les rejoue (FUNC-RM-003).
+    match._decisions = { equipe: L.equipe, remplacants: L.remplacants || [], commandes: L.commandes.slice() };
+    match._idxDecision = L.commandes.length;
     const etatFinal = normalizeMatchState(match.getState());
     if (L.onResultat) L.onResultat(etatFinal);
+    // Résultat envoyé (et sauvegardé par l'appelant) : plus rien à reprendre.
+    effacerJournalMatch();
     const nomA = (L.noms && L.noms.A) || 'Equipe A';
     const nomB = (L.noms && L.noms.B) || 'Equipe B';
     document.getElementById('resultatScore').textContent =
@@ -343,17 +503,85 @@
     matchLive = null;
   }
 
+  // --- Reprise d'un match JOUÉ (bugs.md FUNC-RM-002) -----------------------
+  //
+  // Le match joué ne vivait qu'en mémoire : un F5 ou un onglet fermé le
+  // perdait, et la journée se rejouait avec une autre graine. Le moteur est
+  // déterministe : la graine, la configuration et les décisions du manager,
+  // datées au pas près, suffisent à retrouver EXACTEMENT le même match. On les
+  // garde dans un journal, réécrit à chaque décision, régulièrement pendant le
+  // jeu et quand la page se ferme. Il est effacé au coup de sifflet final
+  // (après l'envoi du résultat) ou à l'abandon.
+  const CLE_MATCH_JOUE = 'rugbyManager.matchJoue.v1';
+  let dernierJournalMs = 0;
+  function ecrireJournalMatch() {
+    if (!matchLive || !matchLive.journal || !match || matchLive.resultatEnvoye) return;
+    matchLive.journal.tick = match._numTick || 0;
+    matchLive.journal.temps = match.tempsMatch;
+    matchLive.journal.score = { A: match.score.A, B: match.score.B };
+    try { window.localStorage.setItem(CLE_MATCH_JOUE, JSON.stringify(matchLive.journal)); } catch (e) { /* stockage plein : pas de reprise possible */ }
+  }
+  function effacerJournalMatch() {
+    try { window.localStorage.removeItem(CLE_MATCH_JOUE); } catch (e) { /* ignore */ }
+  }
+  function lireJournalMatch() {
+    try {
+      const j = JSON.parse(window.localStorage.getItem(CLE_MATCH_JOUE));
+      return j && j.version === 1 && j.cle ? j : null;
+    } catch (e) { return null; }
+  }
+  window.addEventListener('pagehide', ecrireJournalMatch);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') ecrireJournalMatch(); });
+
+  // Rejoue une décision du journal sur le moteur, comme le panneau l'a fait.
+  function appliquerCommandeJournal(cmd) {
+    const L = matchLive;
+    if (cmd.type === 'consigne') {
+      const c = CONSIGNES_MI_TEMPS.find((x) => x.cle === cmd.cle);
+      if (!c) return;
+      match.appliquerTactiqueEnCours(L.equipe, c.consignes);
+      if (L.consignesPrises.indexOf(c.cle) === -1) L.consignesPrises.push(c.cle);
+    } else if (cmd.type === 'remplacement') {
+      const r = (L.remplacants || [])[cmd.index];
+      if (!r || L.remplacementsFaits.indexOf(cmd.index) !== -1) return;
+      const numero = cmd.numero || r.numeroSortant;
+      match.remplacerJoueurEnCours(L.equipe, numero, cmd.numero ? joueurAuMaillot(r, numero) : r.joueur, r.joueurId);
+      L.remplacementsFaits.push(cmd.index);
+    }
+  }
+  function noterCommandeJournal(cmd) {
+    if (!matchLive) return;
+    const c = Object.assign({ tick: match._numTick || 0 }, cmd);
+    matchLive.commandes.push(c);
+    if (!matchLive.journal) return;
+    matchLive.journal.commandes = matchLive.commandes;
+    ecrireJournalMatch();
+  }
+
   function lancerMatchJoue(seed, duree, opts) {
     const o = opts || {};
+    decisionsRelecture = null;
     matchLive = {
       onResultat: o.onResultat, onFermer: o.onFermer, onAbandon: o.onAbandon, noms: o.noms,
       equipeJoueur: o.equipeJoueur, equipe: o.equipeJoueur || 'A',
       remplacants: o.remplacants || [],
-      consignesPrises: [], remplacementsFaits: [],
+      consignesPrises: [], remplacementsFaits: [], commandes: [],
       miTempsTraitee: false, resultatEnvoye: false,
+      journal: o.cleReprise ? {
+        version: 1, cle: o.cleReprise, seed, duree, config: JSON.parse(JSON.stringify(configMatch)),
+        noms: o.noms || null, equipeJoueur: o.equipeJoueur || null, remplacants: o.remplacants || [],
+        contexte: o.contexteReprise || null,
+        commandes: [], tick: 0, temps: 0, score: { A: 0, B: 0 },
+      } : null,
     };
     const btn = document.getElementById('btnConsigneMatch');
     if (btn) btn.style.display = '';
+    // Les confirmations de gestion du club encore affichées (avance du
+    // calendrier, demandes en attente) se posaient sur les commandes du
+    // match au coup d'envoi : elles concernent l'écran qu'on vient de
+    // quitter, on les retire.
+    const toasts = document.getElementById('toastContainer');
+    if (toasts) toasts.replaceChildren();
     // Sortie EXPLICITE d'un match joué en direct : le manager doit pouvoir
     // quitter sans aller la chercher dans le menu (signalé en jeu : « je ne
     // peux plus sortir »). Le bouton n'existe que pendant un match joué —
@@ -364,6 +592,9 @@
     if (btnT) btnT.style.display = '';
     definirBarreTempsVerrouillee(true);
     demarrerLectureReelle(seed, duree, o.noms);
+    // En reprise, le journal reste celui du match interrompu jusqu'au bout du
+    // rejeu (cf. reprendreMatchClub) : ne pas l'écraser par un match à 0:00.
+    if (!o.reprise) ecrireJournalMatch();
   }
 
   // « Terminer le match » : jouer la fin d'un coup, sans rien perdre.
@@ -401,8 +632,14 @@
 
   function terminerMatchMaintenant() {
     if (!matchLive || matchLive.resultatEnvoye || !match) return false;
-    enCours = false; // plus rien a animer : on saute a la fin
     fermerMiTemps();
+    // APRES fermerMiTemps, qui relance la lecture (enCours = true) : dans
+    // l'autre ordre, la boucle d'affichage continuait de faire avancer le
+    // moteur pendant et apres l'envoi du resultat — un tir au but de fin de
+    // match pouvait alors s'ajouter au score APRES que le club eut enregistre
+    // le resultat, et « Enregistrer » sauvait un autre score que celui annonce.
+    enCours = false; // plus rien a animer : on saute a la fin
+    document.getElementById('btnPlay').textContent = 'Lecture';
     // Le manager a choisi de ne plus intervenir : la mi-temps ne doit pas
     // rouvrir au milieu de l'acceleration.
     matchLive.miTempsTraitee = true;
@@ -426,14 +663,14 @@
         return;
       }
       let i = 0;
-      while (i < PAS_PAR_LOT && match.tempsMatch < duree && match.phase !== 'TERMINE') {
-        match.tick(PAS_FIXE);
+      while (i < PAS_PAR_LOT && avantSifflet(match, duree)) {
+        pasMoteur(match);
         i++;
       }
       const frac = Math.max(0, Math.min(1, match.tempsMatch / duree));
       barre.style.width = (frac * 100) + '%';
       label.textContent = `${UI.formaterTemps(match.tempsMatch)} / ${UI.formaterTemps(duree)}`;
-      if (match.tempsMatch < duree && match.phase !== 'TERMINE') { setTimeout(lot, 0); return; }
+      if (avantSifflet(match, duree)) { setTimeout(lot, 0); return; }
       document.getElementById('panneauGeneration').classList.remove('visible');
       etatPrecedent = null;
       etatCourant = normalizeMatchState(match.getState());
@@ -456,6 +693,7 @@
     if (!matchLive || matchLive.resultatEnvoye) return false;
     const onAbandon = matchLive.onAbandon;
     matchLive = null;
+    effacerJournalMatch();
     const btn = document.getElementById('btnConsigneMatch');
     if (btn) btn.style.display = 'none';
     const btnQ = document.getElementById('btnQuitterMatch');
@@ -475,6 +713,7 @@
     if (!c) return;
     match.appliquerTactiqueEnCours(matchLive.equipe, c.consignes);
     if (matchLive.consignesPrises.indexOf(c.cle) === -1) matchLive.consignesPrises.push(c.cle);
+    noterCommandeJournal({ type: 'consigne', cle: c.cle });
     ouvrirMiTemps(matchLive.contexte);
   });
 
@@ -484,8 +723,17 @@
     const i = Number(b.dataset.index);
     const r = (matchLive.remplacants || [])[i];
     if (!r || matchLive.remplacementsFaits.indexOf(i) !== -1) return;
-    match.remplacerJoueurEnCours(matchLive.equipe, r.numeroSortant, r.joueur);
+    const sel = document.querySelector(`.selCibleRemplacant[data-index="${i}"]`);
+    const numero = sel ? Number(sel.value) : r.numeroSortant;
+    const refus = document.getElementById('miTempsRemplacementRefus');
+    if (maillotsCompatibles(r.numeroSortant).indexOf(numero) === -1
+        || !match.remplacerJoueurEnCours(matchLive.equipe, numero, joueurAuMaillot(r, numero), r.joueurId)) {
+      // Refus EXPLIQUÉ, jamais un bouton qui ne fait rien.
+      if (refus) { refus.textContent = `${r.nom} ne peut pas entrer au n°${numero} : il est déjà entré, il tient un remplacement temporaire (protocole commotion), ou ce maillot n'est pas de son poste.`; refus.style.display = ''; }
+      return;
+    }
     matchLive.remplacementsFaits.push(i);
+    noterCommandeJournal({ type: 'remplacement', index: i, numero });
     ouvrirMiTemps(matchLive.contexte);
   });
 
@@ -506,7 +754,8 @@
     if (btnS) { btnS.disabled = false; btnS.title = ''; }
     seedActuel = seed;
     dureeMatchActuel = duree;
-    match = new MatchEngine(seed, duree, configMatch);
+    match = new MatchEngine(seed, duree, cfgAvecIA(configMatch));
+    match._decisions = decisionsRelecture;
     UI.reinitialiserSuivi();
     accumulateur = 0;
     dernierEtatMelee = null;
@@ -529,9 +778,17 @@
   // "rejouable à tout moment" (la simulation est déterministe, donc rejouer
   // == recalculer).
   function avancerJusqua(cible) {
-    const m = new MatchEngine(seedActuel, dureeMatchActuel, configMatch);
+    const m = new MatchEngine(seedActuel, dureeMatchActuel, cfgAvecIA(configMatch));
+    m._decisions = match && match._decisions ? match._decisions : null;
     const nbPas = Math.round(cible / PAS_FIXE);
-    for (let i = 0; i < nbPas; i++) m.tick(PAS_FIXE);
+    for (let i = 0; i < nbPas; i++) pasMoteur(m);
+    // Le bout de la barre est le COUP DE SIFFLET FINAL, pas la sonnerie : la
+    // dernière action se joue jusqu'au ballon mort (loi 5.7). S'arrêter au
+    // chrono perdait l'essai marqué après la sonnerie (relu 0-7, vécu 7-7).
+    // Borné : 10 minutes de jeu au plus après la sonnerie.
+    if (cible >= dureeMatchActuel) {
+      for (let i = 0; i < 6000 && m.phase !== 'TERMINE'; i++) pasMoteur(m);
+    }
     return m;
   }
 
@@ -629,7 +886,9 @@
   let ballonRendu = null;
   function positionBallonLogique(st) {
     if (st.ballon && st.ballon.enVol) return { x: st.ballon.x, y: st.ballon.y, enVol: true };
-    if (st.ball && (st.ball.state === 'LOOSE' || st.ball.state === 'RUCK')) return { x: st.ball.x, y: st.ball.y };
+    // SCRUM (P2-64) : ballon introduit dans la mêlée, au sol sous le pack —
+    // dessiné à sa position réelle, jamais sur le 9 (porteur logique).
+    if (st.ball && (st.ball.state === 'LOOSE' || st.ball.state === 'RUCK' || st.ball.state === 'SCRUM')) return { x: st.ball.x, y: st.ball.y };
     if (st.porteur) return { x: st.porteur.x, y: st.porteur.y };
     return st.ballon ? { x: st.ballon.x, y: st.ballon.y } : null;
   }
@@ -690,7 +949,7 @@
       accumulateur += dtReel * vitesseAffichee;
       while (accumulateur >= PAS_FIXE) {
         etatPrecedent = etatCourant;
-        match.tick(PAS_FIXE);
+        pasMoteur(match);
         etatCourant = normalizeMatchState(match.getState());
         accumulateur -= PAS_FIXE;
       }
@@ -719,6 +978,7 @@
     // manager décider, et le coup de sifflet final est le SEUL moment où le
     // résultat part vers la sauvegarde.
     if (matchLive) {
+      if (matchLive.journal && ts - dernierJournalMs > 1000) { dernierJournalMs = ts; ecrireJournalMatch(); }
       if (!matchLive.miTempsTraitee && match.miTempsJouee) {
         matchLive.miTempsTraitee = true;
         ouvrirMiTemps('miTemps');
@@ -833,8 +1093,12 @@
     // — un bouton actif alors que l'action est impossible.
     if (!match) return;
     const state = match.getState();
-    const bilan = UI.enregistrerResultat(seedActuel, dureeMatchActuel, state.score,
-      { config: instantaneConfigMatch() });
+    const d = match._decisions;
+    const bilan = UI.enregistrerResultat(seedActuel, dureeMatchActuel, state.score, {
+      config: instantaneConfigMatch(),
+      decisions: d && d.commandes && d.commandes.length ? JSON.parse(JSON.stringify(d)) : null,
+      empreinte: empreinteMatch(match),
+    });
     UI.rafraichirPanneauHistorique(onRevoirHistorique);
     // On ne dit « enregistré » que si ça l'a réellement été. En cas d'échec de
     // stockage, le joueur est prévenu et le bouton reste disponible pour
@@ -887,6 +1151,11 @@
   // efface) : le reste de la configuration est celle du moteur par défaut,
   // identique d'un lancement à l'autre. Un Match rapide n'en a aucune —
   // l'instantané est alors un objet vide, et le replay reste fidèle.
+  function empreinteMatch(m) {
+    const a = m.stats.A, b = m.stats.B;
+    return [m.tempsMatch.toFixed(1), a.passes + b.passes, a.rucks + b.rucks, a.tacklesAttempted + b.tacklesAttempted].join('|');
+  }
+
   function instantaneConfigMatch() {
     if (!configMatch) return {};
     const snap = {};
@@ -921,9 +1190,13 @@
     delete cfg.joueursA; delete cfg.joueursB;
     Object.assign(cfg, entree.config);
     const moteur = new MatchEngine(entree.seed, entree.duree, cfg);
-    for (let t = 0; t < entree.duree; t += PAS_FIXE) moteur.tick(PAS_FIXE);
+    moteur._decisions = entree.decisions || null;
+    while (avantSifflet(moteur, entree.duree)) pasMoteur(moteur);
     const score = moteur.getState().score;
-    const fidele = !!(entree.score && score.A === entree.score.A && score.B === entree.score.B);
+    // Le score seul peut coïncider par hasard : l'empreinte (sifflet, passes,
+    // rucks, plaquages) dit si c'est bien LE MÊME match, décisions comprises.
+    const fidele = !!(entree.score && score.A === entree.score.A && score.B === entree.score.B)
+      && (!entree.empreinte || entree.empreinte === empreinteMatch(moteur));
     return { fidele, score,
       motif: fidele ? null : 'Le déroulé enregistré n\'a pas pu être reproduit à l\'identique.' };
   }
@@ -943,7 +1216,7 @@
     }
     // Un match déjà rejoué depuis l'historique va droit à la visualisation
     // (le joueur a déjà choisi « Revoir », pas besoin de reproposer le choix).
-    lancerNouveauMatchAvecGeneration(entree.seed, entree.duree, { direct: true });
+    lancerNouveauMatchAvecGeneration(entree.seed, entree.duree, { direct: true, decisions: entree.decisions || null });
   }
 
   // --- Page d'accueil : point d'entrée du jeu, affichée au chargement. Le
@@ -1010,6 +1283,45 @@
     // `tactiqueCfg` ({attaqueA?/attaqueB?/defenseA?/defenseB?}) : réglages
     // tactiques PAR ÉQUIPE (Mode Club, cf. RMClub.tactiqueVersConfig) —
     // n'affecte que le club du joueur, jamais l'IA adverse.
+    // Reprise d'un match joué (bugs.md FUNC-RM-002). `journalMatchJoue(cle)`
+    // rend le journal du match interrompu s'il correspond à CETTE rencontre
+    // (sinon null : un journal d'une autre carrière ou d'une autre journée
+    // n'est jamais repris). `reprendreMatchClub` rejoue le même match jusqu'au
+    // pas atteint, décisions comprises, et le laisse en pause.
+    journalMatchJoue(cle) {
+      const j = lireJournalMatch();
+      return j && j.cle === cle ? j : null;
+    },
+    oublierMatchJoue() { effacerJournalMatch(); },
+    reprendreMatchClub(journal, callbacks) {
+      configMatch = JSON.parse(JSON.stringify(journal.config));
+      lancerMatchJoue(journal.seed, journal.duree, Object.assign({}, callbacks, {
+        noms: journal.noms, equipeJoueur: journal.equipeJoueur,
+        remplacants: journal.remplacants, cleReprise: journal.cle, reprise: true,
+        contexteReprise: journal.contexte || null,
+      }));
+      const L = matchLive;
+      L.commandes = (journal.commandes || []).slice().sort((a, b) => a.tick - b.tick);
+      L.journal.commandes = L.commandes;
+      const cmds = L.commandes;
+      let k = 0;
+      while ((match._numTick || 0) < journal.tick && match.phase !== 'TERMINE') {
+        while (k < cmds.length && cmds[k].tick <= (match._numTick || 0)) appliquerCommandeJournal(cmds[k++]);
+        match.tick(PAS_FIXE);
+      }
+      while (k < cmds.length && cmds[k].tick <= (match._numTick || 0)) appliquerCommandeJournal(cmds[k++]);
+      // La mi-temps déjà passée ne se rouvre pas ; le match repart EN PAUSE,
+      // le manager relance quand il est prêt.
+      L.miTempsTraitee = !!match.miTempsJouee;
+      etatPrecedent = null;
+      etatCourant = normalizeMatchState(match.getState());
+      ballonRendu = null;
+      enCours = false;
+      document.getElementById('btnPlay').textContent = 'Lecture';
+      UI.majAffichage(etatCourant, dureeMatchActuel);
+      ecrireJournalMatch();
+      return true;
+    },
     demarrerMatchClub(seed, duree, joueursA, joueursB, tactiqueCfg, callbacks) {
       // Repart d'une base sans tactique par équipe avant de réappliquer
       // celle de CE match : le club du joueur alterne domicile/extérieur
@@ -1063,6 +1375,11 @@
     multiplicateurAffichage(etatMoteur) {
       return multiplicateurMiseEnPlace(etatMoteur);
     },
+    // Couture de test (P2-64) : la position où le ballon est DESSINÉ pour un
+    // état du moteur — c'est elle que voit le joueur, pas la position interne.
+    positionBallonAffichee(etatMoteur) {
+      return positionBallonLogique(normalizeMatchState(etatMoteur));
+    },
   };
 
   // --- SORTIE DE SECOURS ----------------------------------------------------
@@ -1099,6 +1416,117 @@
         } catch (e) { /* rien d'autre a tenter : on recharge quand meme */ }
         try { window.location.reload(); } catch (e) { /* ignore */ }
       });
+    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', auChargement);
+    else auChargement();
+  })();
+
+  // --- Sauvegardes : export, import, copies de secours (bugs.md FUNC-RM-001)
+  // Même principe que la sortie de secours ci-dessus : rien ici ne dépend de
+  // l'état du club ni de son interface. Le fichier importé n'est jamais
+  // exécuté — il est lu par JSON.parse, migré et validé comme un chargement
+  // (RMClub.analyserImport) avant toute écriture.
+  (function () {
+    const LIBELLES_RAISON = {
+      json_invalide: 'données corrompues', schema_invalide: 'données incomplètes',
+      version_sans_migration: 'format trop ancien', version_incoherente: 'format inconnu',
+      boucle_migration: 'mise à jour du format en échec', avant_import: 'avant un import',
+      avant_effacement: 'avant « repartir de zéro »', inconnue: 'incident',
+    };
+    const REFUS_IMPORT = {
+      fichier_vide: 'le fichier est vide',
+      json_invalide: 'ce n\'est pas un fichier de sauvegarde lisible',
+      format_inconnu: 'ce fichier n\'est pas une sauvegarde de Rugby Manager',
+      version_future: 'il vient d\'une version plus récente du jeu — mets le jeu à jour avant de l\'importer',
+      version_sans_migration: 'son format est trop ancien pour être converti',
+      schema_invalide: 'la carrière qu\'il contient est incomplète',
+      secours_plein: 'ta carrière actuelle ne peut pas être mise de côté (5 copies de secours déjà gardées)',
+      stockage: 'le stockage du navigateur est plein ou indisponible',
+    };
+    function telecharger(texte, nom) {
+      const blob = new Blob([texte], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = nom;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+    function dire(texte) {
+      const el = document.getElementById('etatSauvegardes');
+      if (el) el.textContent = texte;
+    }
+    function rafraichir() {
+      const R = window.RMClub;
+      if (!R || !R.sauvegardeBrute) return;
+      const btn = document.getElementById('btnExporterCarriere');
+      if (btn) btn.style.display = R.sauvegardeBrute() ? '' : 'none';
+      const zone = document.getElementById('listeSecours');
+      if (!zone) return;
+      zone.textContent = '';
+      for (const c of R.listerSecours()) {
+        const ligne = document.createElement('div');
+        ligne.className = 'ligneSecours';
+        const texte = document.createElement('span');
+        const quand = c.quand ? new Date(c.quand).toLocaleDateString('fr-FR') : '';
+        texte.textContent = `Copie de secours${c.club ? ' · ' + c.club : ''}${c.saison ? ' · saison ' + c.saison : ''}` +
+          ` · ${LIBELLES_RAISON[c.raison] || 'incident'}${quand ? ' · ' + quand : ''}`;
+        const b = document.createElement('button');
+        b.className = 'lienTexte'; b.textContent = 'Télécharger';
+        b.dataset.cle = c.cle;
+        b.addEventListener('click', () => {
+          const brut = R.lireSecours(c.cle);
+          if (brut != null) telecharger(brut, R.nomFichierCarriere(brut, 'rugby-manager-secours'));
+        });
+        const sup = document.createElement('button');
+        sup.className = 'lienTexte'; sup.textContent = 'Supprimer';
+        sup.addEventListener('click', () => {
+          let ok = false;
+          try { ok = window.confirm('Supprimer définitivement cette copie de secours ? Télécharge-la d\'abord si tu veux la garder.'); } catch (e) { ok = false; }
+          if (!ok) return;
+          dire(R.supprimerSecours(c.cle) ? 'Copie de secours supprimée.' : 'Suppression impossible.');
+          rafraichir();
+        });
+        ligne.appendChild(texte); ligne.appendChild(b); ligne.appendChild(sup);
+        zone.appendChild(ligne);
+      }
+    }
+    function auChargement() {
+      const R = window.RMClub;
+      const btnExp = document.getElementById('btnExporterCarriere');
+      const btnImp = document.getElementById('btnImporterCarriere');
+      const fichier = document.getElementById('fichierImportCarriere');
+      if (!R || !btnExp || !btnImp || !fichier) return;
+      btnExp.addEventListener('click', () => {
+        const brut = R.sauvegardeBrute();
+        if (!brut) { dire('Aucune carrière enregistrée sur cet appareil.'); return; }
+        telecharger(brut, R.nomFichierCarriere(brut));
+        dire('Carrière exportée : garde ce fichier, il se réimporte ici ou sur un autre navigateur.');
+      });
+      btnImp.addEventListener('click', () => { fichier.value = ''; fichier.click(); });
+      fichier.addEventListener('change', () => {
+        const f = fichier.files && fichier.files[0];
+        if (!f) return;
+        const lecteur = new FileReader();
+        lecteur.onerror = () => dire('Import impossible : le fichier n\'a pas pu être lu.');
+        lecteur.onload = () => {
+          const analyse = R.analyserImport(String(lecteur.result || ''));
+          if (!analyse.ok) { dire(`Import refusé : ${REFUS_IMPORT[analyse.raison] || 'fichier non reconnu'}. Rien n\'a été modifié.`); return; }
+          const a = analyse.apercu;
+          const actuelle = R.sauvegardeBrute();
+          const message = `Importer la carrière « ${a.club} »` + (a.manager ? ` (${a.manager})` : '') +
+            `, saison ${a.saison}` + (a.date ? `, au ${a.date}` : '') + ' ?' +
+            (a.migree ? '\n\nElle vient d\'une version précédente du jeu et sera mise à jour.' : '') +
+            (actuelle ? '\n\nTa carrière actuelle sera conservée en copie de secours, téléchargeable ici.' : '');
+          let ok = false;
+          try { ok = window.confirm(message); } catch (e) { ok = false; }
+          if (!ok) { dire('Import annulé. Rien n\'a été modifié.'); return; }
+          const res = R.importerCarriere(analyse.saison);
+          if (!res.ok) { dire(`Import refusé : ${REFUS_IMPORT[res.raison] || 'écriture impossible'}. Rien n\'a été modifié.`); return; }
+          try { window.location.reload(); } catch (e) { /* ignore */ }
+        };
+        lecteur.readAsText(f);
+      });
+      rafraichir();
     }
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', auChargement);
     else auChargement();

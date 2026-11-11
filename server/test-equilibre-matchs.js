@@ -118,7 +118,7 @@ function jouerSerie(n, graineDepart, niveauJoueur, niveauIA) {
     const a = cfgClubJoueur(creerRng(graine * 7919 + 13), niveauJoueur);
     const b = cfgClubIA(creerRng(graine * 6271 + 29), niveauIA);
     const m = new MatchEngine(graine, DUREE, { joueursA: a, joueursB: b });
-    for (let t = 0; t < DUREE; t += DT) m.tick(DT);
+    m.jouerJusquAuSifflet(DT); // au coup de sifflet, pas à 80:00 (BUG-RM-010)
     const s = m.getState();
     ecarts.push(s.score.A - s.score.B);
   }

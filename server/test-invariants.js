@@ -38,7 +38,8 @@ test('un seul porteur de balle à la fois (ball.state cohérent avec porteur)', 
       j => j.team === s.porteur.team && j.numero === s.porteur.numero
     );
     assert.strictEqual(porteurs.length, 1, 'doit y avoir exactement un porteur identifiable');
-    assert.ok(['CARRIED', 'AIR', 'LOOSE', 'RUCK', 'MAUL', 'OUT'].includes(s.ball.state), `état de balle invalide : ${s.ball.state}`);
+    // SCRUM (P2-64) : ballon au sol sous le pack pendant la mêlée.
+    assert.ok(['CARRIED', 'AIR', 'LOOSE', 'RUCK', 'MAUL', 'OUT', 'SCRUM'].includes(s.ball.state), `état de balle invalide : ${s.ball.state}`);
   }
 });
 
@@ -144,7 +145,13 @@ test('une mêlée se termine toujours (jamais bloquée indéfiniment)', () => {
   // le régime utilisé par server/simulate-many.js pour le calibrage), la même
   // mêlée qui tourne prend mécaniquement plus de temps réel à se reformer ;
   // cf. le test suivant pour la garantie "jamais bloquée" à cette échelle.
-  assert.ok(globalMax < 16, `une mêlée est restée bloquée ${globalMax.toFixed(1)}s (devrait toujours se résoudre sous ~16s)`);
+  // P2-64 : la mêlée se termine désormais par une SÉQUENCE PHYSIQUE de vrai
+  // jeu (introduction 0,8 s, ballon roulé sous le pack 2 à 4 s, base ~1 s),
+  // qui n'est pas comprimée comme les temps morts sur ce format court.
+  // Mesuré sur 2 x 40 graines : médiane 11,9 -> 14,2 s, maximum 15,0 ->
+  // 18,3 / 19,2 s (une seule reformation). Plafond porté à 24 s : il garde
+  // ce qu'il protège, une mêlée qui ne finirait jamais.
+  assert.ok(globalMax < 24, `une mêlée est restée bloquée ${globalMax.toFixed(1)}s (devrait toujours se résoudre sous ~24s)`);
 });
 
 test('une mêlée se termine toujours, même à pleine échelle (_echelleArret=1)', () => {
@@ -388,7 +395,7 @@ test('les joueurs restent dans les limites du terrain (avec marge en-but)', () =
 // --- Remplacements planifiés (TODO_AUDIT.md P1-17, config.remplacements) :
 // extension additive et strictement optionnelle du moteur — le banc de 8 du
 // Mode Club était jusqu'ici jamais transmis au moteur. ---
-test('remplacement planifié : s\'applique immédiatement à l\'instant prévu, ET persiste à travers les reprises de jeu suivantes', () => {
+test('remplacement planifié : s\'applique au premier ballon mort après l\'instant prévu (loi 3.6, BUG-RM-012), ET persiste à travers les reprises de jeu suivantes', () => {
   // Important : _nouvelleManche (coup d'envoi après essai/pénalité/mi-temps)
   // RECRÉE entièrement equipeA/equipeB depuis this.cfg.joueursA/joueursB à
   // chaque reprise — l'identité de l'objet joueur n'est donc PAS garantie
@@ -401,24 +408,27 @@ test('remplacement planifié : s\'applique immédiatement à l\'instant prévu, 
     remplacements: [
       { equipe: 'A', numero: 10, minute: 1, joueur: { poste: 'OV', vitesse: 95, plaquage: 40, adresse: 90, melee: 40, touche: 40, puissance: 40, endurance: 40, passe: 90, jeuPied: 90, decision: 90, discipline: 90 } },
     ],
+    // Sans blessure : la première entrée est bien ce changement programmé,
+    // pas un remplacement médical (immédiat, lui).
+    blessures: false,
   };
   const m = new MatchEngine(55, 300, config);
   let verifieImmediat = false;
   for (let t = 0; t < 300; t += 0.1) {
+    const mort = m._ballonMortPourRemplacement();
     m.tick(0.1);
-    // Vérifié DÈS que l'instant est franchi, pas seulement à la fin du match :
-    // this.events est plafonné à 30 entrées (cf. log()) et un match de 5 min
-    // en génère largement plus — l'événement REMPLACEMENT aurait le temps
-    // d'être poussé hors du journal avant la fin de la boucle.
-    if (!verifieImmediat && m.tempsMatch >= 60) {
+    // Vérifié AU TICK de l'entrée, pas seulement à la fin du match :
+    // this.events est plafonné à 30 entrées (cf. log()).
+    if (!verifieImmediat && m.remplacementsEffectues.length) {
       verifieImmediat = true;
-      assert.ok(m.equipeA[9].vitesse > 80, 'le joueur au n°10 doit changer dès l\'instant prévu, pas seulement à la prochaine reprise');
+      assert.ok(m.equipeA[9].vitesse > 80, 'le joueur au n°10 doit changer dès son entrée, pas seulement à la prochaine reprise');
       const evenement = m.events.find((e) => e.type === 'REMPLACEMENT');
       assert.ok(evenement, 'un événement REMPLACEMENT réel doit apparaître dans le journal du match');
-      assert.ok(Math.abs(evenement.t - 60) < 1, 'l\'événement doit survenir au bon instant (minute 1 = 60s de jeu simulé)');
+      assert.ok(evenement.t >= 60 - 0.01, `pas avant l'instant prévu (${evenement.t})`);
+      assert.ok(mort, 'au ballon mort (loi 3.6)');
     }
   }
-  assert.ok(verifieImmediat, 'le test doit avoir atteint la minute prévue');
+  assert.ok(verifieImmediat, 'le remplacement doit avoir eu lieu dans le match'); 
   assert.strictEqual(m.cfg.joueursA[10].vitesse, 95, 'la config source doit aussi être mise à jour, sinon une reprise ultérieure ferait revenir le titulaire d\'origine');
 });
 
@@ -482,38 +492,73 @@ test('un joueur ACCELERE : il ne part pas a pleine vitesse des le premier dixiem
     `un joueur qui demarre de l'arret ne doit pas couvrir ${mesure.pas.toFixed(3)} m en 0,1 s (ce serait ${(mesure.pas * 10).toFixed(1)} m/s instantanes)`);
 });
 
-test('le jeu courant RESPIRE : une sequence ballon en main dure en moyenne plus de 5,5 s', () => {
-  // Reference reelle, calculee : un match international compte ~35 min de
-  // ballon en jeu (2100 s) pour ~150 regroupements. Le regroupement lui-meme
-  // consomme ~3,5 s (ballon au sol -> ballon sorti), les coups de pied, mauls
-  // et coups d'envoi ~7 min. Il reste donc ~7 s par sequence de jeu courant :
-  // course du 9, lancement de la ligne, deux ou trois passes, PLAQUAGE (le
-  // porteur est tenu, porte, mis au sol, il presente le ballon), puis
-  // regroupement. Une moyenne sous 5,5 s signifie que le contact tombe trop
-  // vite : c'est ce qui gonfle mecaniquement rucks, passes, courses et
-  // plaquages, tous mesures a 2 ou 3 fois leur volume reel.
-  const durees = [];
-  for (const seed of [1, 2, 3, 4, 5, 6]) {
+test('le jeu courant RESPIRE : la sequence ballon vivant reste dans la fourchette reelle (2,8 a 3,7 s)', () => {
+  // CIBLE REELLE, RECALCULEE (P2-53). La premiere version visait ~7 s : elle
+  // divisait le temps de jeu par ~150 regroupements seulement. Or une
+  // sequence de jeu courant commence a CHAQUE remise en mouvement du ballon :
+  // sortie de ruck, reception de coup de pied, touche ou melee gagnee, coup
+  // d'envoi. Avec les chiffres reels du depot (docs/ANALYSE_MATCH_REEL.md,
+  // France-Irlande 2026) :
+  //   ballon en jeu ~35 min = 2100 s ;
+  //   181 rucks x 3 a 4 s (profil reel 55/33/12 % -> 3,57 s en moyenne) ;
+  //   78 coups de pied x 2,5 a 4 s (frappe -> reception) ;
+  //   mauls ~90 s, coups d'envoi ~14 x 8 s ;
+  //   sequences : 181 + 78 + ~38 phases statiques + ~14 coups d'envoi = ~311.
+  // Reste 860 a 1160 s de jeu courant, soit 2,8 a 3,7 s par sequence (~3,3 s
+  // au milieu). Le meme calcul sur le moteur donne un cycle ruck-a-ruck de
+  // 10,5 s contre 11,6 s en reel : la duree des sequences n'est PAS le
+  // defaut qu'on croyait.
+  //
+  // CE TEST MESURAIT AUSSI DU TEMPS MORT (P2-49). La mise en place d'un jeu
+  // rapide sur penalite (l'arbitre siffle, les fautifs reculent, le ballon
+  // n'est PAS en jeu) se deroule DANS la phase PORTE. La sequence est comptee
+  // a partir du moment ou le ballon est vivant (coup de pied tape, pas
+  // sifflet).
+  //
+  // SEQUENCES NEES D'UN RUCK SEULEMENT (P2-94). La moyenne de TOUTES les
+  // sequences depend de la part de chandelles : sur un box kick dispute, le
+  // receveur est plaque en ~0,4 s (un chasseur a moins de 0,5 m dans 100 %
+  // des cas, comme en vrai), et ces sequences tirent la moyenne vers le bas
+  // des que le match a plus de jeu au pied. Avec les touches a 30 s, la
+  // moyenne generale passait de 2,80-3,02 s a 2,73-2,89 s sans que le jeu
+  // apres un ruck ait change (3,00 / 2,97 s). On mesure donc ce que le test
+  // veut garder : la respiration du jeu entre deux rucks. Graines 1-12.
+  const durees = [], apresRuck = [];
+  for (let seed = 1; seed <= 12; seed++) {
     const m = new MatchEngine(seed, 2400);
-    let phasePrecedente = null, debut = 0;
+    let phasePrecedente = null, debutVivant = null, origine = null;
     for (let t = 0; t < 2400; t += 0.2) {
       m.tick(0.2);
+      if (m.phase === 'PORTE' && !m.penaliteRecul && debutVivant === null) debutVivant = m.tempsMatch;
       if (m.phase !== phasePrecedente) {
-        if (phasePrecedente === 'PORTE') durees.push(m.tempsMatch - debut);
-        if (m.phase === 'PORTE') debut = m.tempsMatch;
+        if (phasePrecedente === 'PORTE' && debutVivant !== null) {
+          durees.push(m.tempsMatch - debutVivant);
+          if (origine === 'RUCK') apresRuck.push(m.tempsMatch - debutVivant);
+        }
+        if (m.phase === 'PORTE') { debutVivant = m.penaliteRecul ? null : m.tempsMatch; origine = phasePrecedente; }
         phasePrecedente = m.phase;
       }
     }
   }
-  assert.ok(durees.length > 100, 'echantillon de sequences trop petit');
-  const moyenne = durees.reduce((a, b) => a + b, 0) / durees.length;
-  // SEUIL DE NON-REGRESSION, pas la cible. Mesure au fil du travail : 2,20 s
-  // au depart, 4,10 s aujourd'hui (inertie de course, vol du ballon, ligne
-  // d'avantage). La cible reelle calculee ci-dessus reste ~7 s : le moteur
-  // n'y est PAS. Ce seuil garde l'acquis (aucune modification ne doit
-  // reraccourcir la sequence) sans faire croire que la cible est atteinte.
-  assert.ok(moyenne > 3.8,
-    `une sequence de jeu courant dure en moyenne ${moyenne.toFixed(2)} s : le contact tombe trop vite apres la sortie du ballon (cible reelle ~7 s)`);
+  assert.ok(apresRuck.length > 500, 'echantillon de sequences trop petit');
+  const moyenneGenerale = durees.reduce((a, b) => a + b, 0) / durees.length;
+  const moyenne = apresRuck.reduce((a, b) => a + b, 0) / apresRuck.length;
+  // Seuil = borne basse de la fourchette reelle. Moteur au moment de l'ecrire :
+  // 3,49 s (graines 1-6), 3,51 s (7-12). Mutant verifie : sans inertie de
+  // course (ACCELERATION x10), le contact tombe en 2,62 s et le test rougit.
+  // Une defense sans rampe de montee donne 3,10 s : c'est encore du rugby
+  // reel, ce n'est plus une regression.
+  // Seuil 2,8 -> 2,75 (P2-64) : la borne basse CALCULEE ci-dessus est 2,77 s
+  // (ruck 4 s, coup de pied 4 s) ; 2,8 en etait l'arrondi. La passe du 8 au 9
+  // a la sortie de melee, que le 9 ne recoit plus (il ramasse a la base),
+  // ajoutait ~0,1 s a la sequence suivante : 2,79-2,83 s mesures sur quatre
+  // jeux de graines. Le mutant sans inertie reste rouge (2,62 s).
+  // Apres un ruck (P2-94) : moteur 3,00 / 2,97 s (graines 1-6 / 7-12), mutant
+  // sans inertie de course 2,57 / 2,34 s -> rouge.
+  assert.ok(moyenne > 2.8,
+    `apres un ruck, une sequence de jeu courant dure en moyenne ${moyenne.toFixed(2)} s ballon vivant : le contact tombe trop vite apres la sortie du ballon (fourchette reelle 2,8 a 3,7 s)`);
+  assert.ok(moyenneGenerale < 4.5,
+    `une sequence de jeu courant dure en moyenne ${moyenneGenerale.toFixed(2)} s ballon vivant : les porteurs courent sans jamais etre plaques (fourchette reelle 2,8 a 3,7 s)`);
 });
 
 
@@ -551,21 +596,26 @@ test('loi 11 : l arbitre reconnait une passe en avant, dans les deux sens de jeu
 // moteur passait quand meme au premier partenaire venu, forcement en avant.
 // Un joueur ne fait pas ca : il garde le ballon et va au contact.
 test('loi 11 : un joueur sans solution legale GARDE le ballon (pas 11 passes en avant par match)', () => {
-  // 8 graines : sur 5 matchs, le nombre de fautes de main varie de +/- 2 d'un
-  // echantillon a l'autre et le test devenait instable (la mesure de reference
-  // reste server/simulate-batch.js sur 50 matchs).
-  const GRAINES = [1, 2, 3, 4, 5, 6, 7, 8];
-  let passesAvant = 0, fautesDeMain = 0;
+  // 60 graines, et non 8. Le nombre de fautes de main a un ecart-type de 2,90
+  // PAR MATCH (mesure sur 60 matchs, moyenne 8,87) : 8 matchs ne le situent
+  // donc qu'a +/-2,01 pres, pour un plancher a 8, c'est-a-dire une marge de
+  // 0,87. Le test etait un tirage a pile ou face, et il est effectivement
+  // tombe au rouge a 7,63 sur un changement de moteur qui ne touchait pas les
+  // fautes de main (le grattage au ruck : passes -5,7 +/- 9,1 sur 300 matchs
+  // apparies, non etabli). Son predecesseur etait passe de 5 a 8 graines pour
+  // la meme raison — c'etait la bonne intuition, pas la bonne taille.
+  //    8 graines -> +/-2,01      40 graines -> +/-0,90
+  //   20 graines -> +/-1,27      60 graines -> +/-0,73  (retenu)
+  // AUCUN SEUIL n'a ete touche : seule la taille de l'echantillon change.
+  const GRAINES = Array.from({ length: 60 }, (_, i) => i + 1);
+  let passesAvant = 0;
   for (const seed of GRAINES) {
     const m = new MatchEngine(seed, 4800);
     const brut = m.log.bind(m);
     m.log = (type, team, msg) => { if (type === 'MELEE_AVANT') passesAvant++; brut(type, team, msg); };
     for (let t = 0; t < 4800; t += 0.2) m.tick(0.2);
-    const s = m.getState();
-    fautesDeMain += s.stats.A.knockOns + s.stats.B.knockOns;
   }
   const avantParMatch = passesAvant / GRAINES.length;
-  const mainParMatch = fautesDeMain / GRAINES.length;
   // BORNE HAUTE **ET** BASSE. La borne haute seule etait satisfaite a zero :
   // supprimer la sanction rendait ce test plus vert que jamais.
   // La borne basse est fixee a ce que le moteur produit REELLEMENT (0,4 par
@@ -574,12 +624,23 @@ test('loi 11 : un joueur sans solution legale GARDE le ballon (pas 11 passes en 
   // le moteur de 13/14 a 11/14 categories realistes (mesure). L'ecart est
   // assume et documente dans le moteur ; ce que ce test garde, c'est que la
   // sanction ne DISPARAISSE pas.
-  assert.ok(avantParMatch >= 0.2,
-    `une passe en avant doit encore etre SANCTIONNEE (mesuré ${avantParMatch.toFixed(1)} par match)`);
+  // SEUL LE PLAFOND RESTE ICI. Les deux PLANCHERS (la sanction existe encore ;
+  // un match produit 10 a 15 fautes de main) ont ete deplaces dans
+  // server/test-stats-matchs.js, qui tourne sur 500 matchs chaque nuit. Mesure
+  // de leur puissance a 60 matchs, la taille disponible ici :
+  //   passe en avant : ~0,33 par match, soit ~20 evenements, donc +/-0,15 a
+  //     95 % — le plancher de 0,2 n'etait qu'a 0,9 ecart-type, et il est
+  //     effectivement passe au rouge sur des correctifs etrangers a la loi.
+  //   fautes de main : 8,87 par match, ecart-type 2,90, donc +/-0,73 — le
+  //     plancher de 8 n'etait qu'a 1,2 ecart-type.
+  // A 500 matchs les MEMES seuils valent ~5 et ~3,5 ecarts-types. Aucun seuil
+  // n'a ete baisse : un garde-fou qui bascule sur du bruit ne protege rien, et
+  // il a suffi de lui donner l'echantillon que sa question exige.
+  //
+  // Le PLAFOND, lui, est large (0,33 mesure contre 4 autorise) : il reste ici,
+  // ou il ne coute rien et attrape tout de suite une regression grossiere.
   assert.ok(avantParMatch <= 4,
     `une passe en avant reste une FAUTE RARE (mesuré ${avantParMatch.toFixed(1)} par match)`);
-  assert.ok(mainParMatch >= 8,
-    `un match produit 10 à 15 fautes de main (en-avant au contact, passe lâchée) : mesuré ${mainParMatch.toFixed(1)}`);
 });
 
 
@@ -618,10 +679,19 @@ test('loi 16 : un maul se termine toujours, meme si le hasard ne le denoue jamai
     if (m.phase !== 'MAUL') duree = m.tempsMatch - depart;
     assert.ok(duree !== null,
       `un maul doit finir par etre siffle : toujours en cours apres ${(m.tempsMatch - depart).toFixed(0)} s de jeu`);
-    // Le garde-fou du moteur siffle a 45 s ; on borne juste au-dessus. Mesure
-    // sur 50 mauls de match reel : moyenne 14,8 s, maximum 45,0 s (contre
-    // 64,8 s avant le garde-fou), et il ne se declenche que 2 fois sur 50 —
-    // il borne le cas pathologique sans changer le jeu ordinaire.
+    // Le garde-fou du moteur force la sequence legale a 35 s, qui ajoute au
+    // plus 5 s de « use it » : on borne a 50 s, au-dessus des 40,0 s mesurees
+    // comme maximum reel.
+    //
+    // CE COMMENTAIRE A MENTI PENDANT UN TEMPS, et il faut savoir pourquoi.
+    // Il annoncait « il ne se declenche que 2 fois sur 50 — il borne le cas
+    // pathologique sans changer le jeu ordinaire ». C'etait vrai quand un maul
+    // durait 8,4 s. Apres le correctif de poussee, le garde-fou est passe a
+    // 26 % des mauls au pas reel du jeu : il etait devenu le jeu ordinaire, et
+    // il sifflait une melee sur des mauls qui avancaient encore (illegal, cf.
+    // le test « loi 16 : un maul qui AVANCE... » plus bas). Un chiffre ecrit
+    // dans un commentaire vaut pour l'etat du moteur au jour ou il a ete
+    // mesure, pas pour toujours.
     assert.ok(duree <= 50,
       `un maul ne dure pas ${duree.toFixed(0)} s : l'arbitre le siffle bien avant`);
     verifie = true;
@@ -733,10 +803,13 @@ test('loi 15 : le hors-jeu au regroupement a une CONSEQUENCE en match', () => {
 // ce sont les arrets, et les deux plus gros postes sont la MELEE et la TOUCHE :
 // les paquets marchent jusqu'a la marque, s'alignent, se lient, l'arbitre
 // annonce. De l'octroi a la sortie du ballon, une melee prend 60 a 90 s et une
-// touche 40 a 60 s. Les expedier plus vite ne fait pas gagner du spectacle :
+// touche ~25 s (sources : docs/ANALYSE_MATCH_REEL.md ; les « 40 a 60 s » que
+// ce test exigeait n'avaient pas de source, cf. P2-94). Une touche ne doit pas
+// non plus trainer : la loi limite sa mise en place a 30 s.
+// Les expedier plus vite ne fait pas gagner du spectacle :
 // ca multiplie mecaniquement les possessions, donc les rucks, les passes et
 // les courses, tous mesures a 1,5-2 fois leur volume reel.
-test('les temps morts durent ce qu ils durent : melee >= 45 s, touche >= 35 s', () => {
+test('les temps morts durent ce qu ils durent : melee >= 45 s, touche entre 22 et 40 s', () => {
   // 6 graines et non 3 : le nombre de melees varie fortement d'un match a
   // l'autre (33 sur les graines 1-3 a un etat du moteur, 20 a un autre — pour
   // une moyenne inchangee de ~12 par match sur 20 graines). Le garde-fou
@@ -762,7 +835,1286 @@ test('les temps morts durent ce qu ils durent : melee >= 45 s, touche >= 35 s', 
   const moy = (a) => a.reduce((x, y) => x + y, 0) / a.length;
   const mMelee = moy(melees), mTouche = moy(touches);
   assert.ok(mMelee >= 45, `une melee dure 60 a 90 s en vrai (mesuré ${mMelee.toFixed(1)} s)`);
-  assert.ok(mTouche >= 35, `une touche dure 40 a 60 s en vrai (mesuré ${mTouche.toFixed(1)} s)`);
+  assert.ok(mTouche >= 22 && mTouche <= 40, `une touche dure ~25 s en vrai, mise en place limitee a 30 s (mesuré ${mTouche.toFixed(1)} s)`);
+});
+
+// --- PRES DE LA LIGNE, LES AVANTS PORTENT LE BALLON ------------------------
+// Un PORTAGE se compte comme le moteur le compte lui-meme (stats.carries) :
+// un porteur AMENE AU CONTACT. Un n°9 qui ramasse au pied du regroupement et
+// relaie aussitot n'est pas un porteur — c'est ce que comptait une premiere
+// version de ce test, et elle surevaluait mecaniquement la part des
+// trois-quarts d'un facteur deux.
+//
+// Mesure sur 40 matchs complets, avant correction : dans les cinq derniers
+// metres, les avants ne signaient que 22,9 % des portages, alors qu'un vrai
+// match y joue le pack (60 a 70 %) — il n'y a plus d'espace au large et la
+// defense est massee. Consequence mesuree : les avants ne marquaient que 13,8 %
+// des essais (repere reel ~33 %) pendant que les deux ailiers en marquaient
+// 69,8 %, si bien que le joueur voyait toujours les deux memes maillots aplatir.
+//
+// Cause : a la sortie d'un regroupement, le n°9 donnait au n°10 quasi
+// systematiquement, y compris a 3 m de la ligne d'en-but, l'option « avant
+// lance » n'etant tiree qu'a 18 % partout sur le terrain.
+//
+// Seuil a 29 % : l'echantillon (40 matchs, ~400 portages dans la zone) situe la
+// proportion a +/-4,5 points pres, donc 22,9 % est nettement en dessous et
+// 34,6 % nettement au-dessus. Ce n'est PAS le repere reel (60-70 %) : c'est le
+// garde-fou qui empeche de revenir a une attaque qui ignore ses avants.
+test('pres de la ligne adverse, les AVANTS portent le ballon au contact', () => {
+  let dans5 = 0, dans5Avants = 0;
+  for (let seed = 1; seed <= 40; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    for (let t = 0; t < 4800; t += 0.2) {
+      const cA = m.stats.A.carries, cB = m.stats.B.carries;
+      const porteur = m.porteur, phase = m.phase;
+      m.tick(0.2);
+      if ((m.stats.A.carries > cA || m.stats.B.carries > cB) && porteur && phase === 'PORTE') {
+        const dist = porteur.sensAttaque > 0 ? (100 - porteur.x) : porteur.x;
+        if (dist > 5) continue;
+        dans5++;
+        if (porteur.numero <= 8) dans5Avants++;
+      }
+    }
+  }
+  assert.ok(dans5 >= 200, `echantillon trop petit (${dans5} portages a moins de 5 m)`);
+  const part = dans5Avants / dans5;
+  assert.ok(part >= 0.29,
+    `dans les cinq derniers metres, les avants ne signent que ${(100 * part).toFixed(1)} % des portages `
+    + `(${dans5Avants}/${dans5}) ; a 5 m de la ligne un vrai match joue le pack (60 a 70 %). `
+    + `Mesure avant correction : 22,9 %.`);
+});
+
+// --- ON PASSE AU SUIVANT S'IL EST MIEUX SERVI QUE SOI ----------------------
+// La chaine des trois-quarts (10->12->13->aile) se deroulait jusqu'au bout a
+// TOUS LES COUPS : le porteur cherchait un partenaire onside, a portee, avec un
+// peu d'air, et lui donnait — sans jamais comparer cet air au SIEN. Un centre
+// avec neuf metres devant lui redonnait donc au large exactement comme un centre
+// pris au collet. C'est ce qui fait marquer 71,2 % des essais aux deux ailiers
+// (mesure sur 40 matchs ; repere reel : environ 28 %).
+//
+// COMMENT CE TEST MESURE. Pas en simulant des matchs (l'ecart serait noye), ni
+// en laissant tourner le scenario quelques secondes : essaye, le defenseur
+// COURT vers le porteur, si bien qu'au bout d'une seconde ce n'est plus la
+// chaine qui decide mais la passe avant contact — le scenario mesurait alors
+// une tout autre branche et donnait 40 % contre 55 %, dans le mauvais sens. On
+// interroge donc la DECISION elle-meme, etat fige, sans laisser personne
+// bouger : 400 tirages par graine, 5 graines, soit 2000 decisions par cas
+// (precision ~0,8 point).
+test('un trois-quarts ne passe que si le suivant est MIEUX SERVI que lui', () => {
+  function tauxDecision(espacePorteur, espaceSuivant) {
+    let passes = 0, n = 0;
+    for (const seed of [11, 12, 13, 14, 15]) {
+      const m = new MatchEngine(seed, 600);
+      for (let t = 0; t < 30; t += 0.2) m.tick(0.2);
+      m.phase = 'PORTE'; m.timerPhase = 2; m.possession = 'A';
+      m.passeVisuelle = null; m.combinaison = null; m.penaliteRecul = null;
+      m.ruckPoint = null; m._neufLibre = false;
+      const porteur = m.equipeA.find((j) => j.numero === 12);
+      const suivant = m.equipeA.find((j) => j.numero === 13);
+      m.porteur = porteur;
+      porteur.auSol = 0; porteur.x = 50; porteur.y = 30; porteur._enchaine = 0;
+      suivant.auSol = 0; suivant.x = 49.5; suivant.y = 42;
+      for (const j of m.equipeA) if (j !== porteur && j !== suivant) { j.auSol = 0; j.x = 25; j.y = 5; }
+      for (const j of m.equipeB) {
+        j.auSol = 0; j.horsJeuKick = 0; j.fixeCooldown = 0; j.missCooldown = 0;
+        j.ruckRecovery = 0; j.x = 95; j.y = 68;
+      }
+      const dPorteur = m.equipeB.find((j) => j.numero === 6);
+      const dSuivant = m.equipeB.find((j) => j.numero === 7);
+      dPorteur.x = porteur.x + espacePorteur; dPorteur.y = porteur.y;
+      dSuivant.x = suivant.x + espaceSuivant; dSuivant.y = suivant.y;
+      for (let k = 0; k < 400; k++) {
+        const a = m.choisirActionPorteur(porteur, dPorteur, espacePorteur, 0.2);
+        n++;
+        if (a === 'PASS' || a === 'JEU_LARGE') passes++;
+      }
+    }
+    return 100 * passes / n;
+  }
+  // Le 13 est au large, le 12 est pris : la ligne doit vivre.
+  const suivantMieuxServi = tauxDecision(3.0, 9.0);
+  // C'est le 12 qui a l'espace, le 13 est marque a 3 m : il y va.
+  const porteurMieuxServi = tauxDecision(9.0, 3.0);
+  assert.ok(suivantMieuxServi >= 20,
+    `quand le suivant est nettement mieux servi, le porteur ne lui donne que dans `
+    + `${suivantMieuxServi.toFixed(1)} % des decisions : la ligne ne vit plus`);
+  assert.ok(porteurMieuxServi <= 8,
+    `le porteur, avec neuf metres devant lui, redonne quand meme dans `
+    + `${porteurMieuxServi.toFixed(1)} % des decisions alors que le suivant est pris a 3 m `
+    + `(mesure avant correction : 15,1 % ; apres : 3,0 %). Un trois-quarts qui a l espace y `
+    + `va — sinon la chaine finit toujours sur l aile.`);
+});
+
+
+// --- AU CONTACT, LA PUISSANCE DU PORTEUR NE COMPTAIT PAS -------------------
+// `avanceContact` ne dependait que du RIDEAU defensif (0,55 / 1,00 / 1,55 m
+// selon le nombre de defenseurs devant). Ni la puissance du porteur, ni son
+// elan n'entraient dans le calcul : un pilier de 90 de puissance et un ailier
+// de 35 percutant le MEME rideau gagnaient exactement le meme terrain.
+//
+// Mesure en contact construit (meme geometrie, meme plaqueur, 40 graines) :
+//   rideau de 0 : puissance 90 -> 1,50 m   puissance 35 -> 1,50 m
+//   rideau de 2 : puissance 90 -> 0,53 m   puissance 35 -> 0,53 m
+// Identique au centieme.
+//
+// Sur des matchs complets l'effet est meme INVERSE : les porteurs les plus
+// puissants gagnent MOINS de terrain au contact que les plus legers (0,50 m
+// contre 1,07 m, terciles de puissance sur 1 998 contacts). La raison est
+// mecanique : les avants percutent pres du regroupement, donc face a un rideau
+// fourni, et les trois-quarts dans l'espace. Le moteur creditait DONC OU l'on
+// percute, jamais QUI percute — l'exact contraire du rugby, ou l'on donne le
+// ballon au plus lourd precisement pour avancer dans le trafic
+// (cf. CLAUDE.md role 4 : « les avants doivent etre meilleurs pour les
+// contacts »).
+//
+// ON REPARTIT, ON NE GONFLE PAS : le facteur est centre sur la puissance
+// MESUREE au contact (moyenne 57), de sorte qu'un porteur moyen gagne
+// exactement ce qu'il gagnait avant.
+//
+// SEULE LA PUISSANCE EST AJOUTEE, PAS L'ELAN. J'avais ecrit un second test
+// (« un porteur lance avance plus qu'un porteur a l'arret ») : il etait VERT
+// sur le moteur NON corrige. L'elan agit deja, non par une regle de contact
+// mais par la distance que le porteur parcourt avant que le contact ne se
+// resolve (rideau de 2 : 1,17 m lance contre 0,53 m a l'arret). Il n'y a donc
+// pas de defaut de ce cote, et un test qui passe sans correctif ne protege
+// rien : il a ete retire plutot que livre.
+function gainContactConstruit(puissance, vitesse, nbRideau) {
+  let total = 0, n = 0;
+  for (let seed = 1; seed <= 40; seed++) {
+    const m = new MatchEngine(seed, 600);
+    for (let t = 0; t < 30; t += 0.2) m.tick(0.2);
+    m.phase = 'PORTE'; m.timerPhase = 3; m.possession = 'A';
+    m.passeVisuelle = null; m.combinaison = null; m.penaliteRecul = null;
+    m.ruckPoint = null; m._neufLibre = false; m.maul = null;
+    const porteur = m.equipeA.find((j) => j.numero === 12);
+    m.porteur = porteur;
+    porteur.auSol = 0; porteur.x = 50; porteur.y = 35; porteur._enchaine = 0;
+    porteur._percee = 0; porteur.puissance = puissance; porteur.vitesseCourante = vitesse;
+    for (const j of m.equipeA) if (j !== porteur) { j.auSol = 0; j.x = 40; j.y = 35; }
+    for (const j of m.equipeB) {
+      j.auSol = 0; j.horsJeuKick = 0; j.fixeCooldown = 0; j.missCooldown = 0;
+      j.ruckRecovery = 0; j.sinBin = 0; j.x = 95; j.y = 68;
+    }
+    const pl = m.equipeB.find((j) => j.numero === 6);
+    pl.x = 52.0; pl.y = 35; pl.plaquage = 70;
+    m.equipeB.filter((j) => j.numero <= 5).slice(0, nbRideau)
+      .forEach((j, i) => { j.x = 53 + i; j.y = 34 + i; });
+    const x0 = porteur.x;
+    for (let k = 0; k < 6 && !m.ruckPoint; k++) m.tick(0.2);
+    if (m.ruckPoint) { total += (m.ruckPoint.x - x0) * porteur.sensAttaque; n++; }
+  }
+  return n ? total / n : NaN;
+}
+test('au contact, un porteur PUISSANT avance plus qu un porteur leger', () => {
+  for (const rideau of [0, 2]) {
+    const lourd = gainContactConstruit(90, 5.3, rideau);
+    const leger = gainContactConstruit(35, 5.3, rideau);
+    assert.ok(lourd - leger >= 0.30,
+      `rideau de ${rideau} : puissance 90 gagne ${lourd.toFixed(2)} m contre ${leger.toFixed(2)} m `
+      + `pour puissance 35 — la puissance du porteur ne compte pas au contact `
+      + `(mesure avant correctif : identique au centieme)`);
+  }
+});
+
+// --- L'ENDURANCE NE JOUAIT PAS ---------------------------------------------
+// La fatigue de fin de match etait GLOBALE : un seul multiplicateur de vitesse,
+// le meme chiffre pour les trente joueurs (1 au coup d'envoi, 0,90 a la 80e).
+// L'attribut `endurance` n'etait donc JAMAIS lu par le moteur — verifie par
+// balayage (+20 a une equipe, -20 a l'autre, 24 graines appariees) : l'ecart de
+// score reproduisait le temoin AU CHIFFRE PRES (-3,0 points, -0,29 essai, 38 %
+// de victoires dans les deux cas).
+//
+// Or l'ecran de composition PONDERE l'endurance — 10 % de la note d'un pilier,
+// 12 % d'une deuxieme ligne, 18 % d'une troisieme ligne (POIDS_PAR_POSTE dans
+// docs/js/club-composition.js). Le manager recrutait sur un attribut mort.
+//
+// CE TEST A ETE REECRIT — ET C'EST LA GRANDEUR QUI A CHANGE, PAS LE SEUIL.
+// La premiere version mesurait la DISTANCE TOTALE parcourue en fin de match
+// rapportee au debut. Elle etait fragile : son temoin (deux equipes
+// rigoureusement identiques) valait -0,0244 a sa creation, puis +0,0590 apres
+// un correctif SANS RAPPORT avec la fatigue, et l'effet mesure passait de
+// +0,035 a -0,0475 — un changement de SIGNE. Un invariant doit survivre aux
+// correctifs des autres ; celui-la transformait chaque patch en faux echec.
+//
+// Mon erreur d'origine : mon etude de resolution ne faisait varier que le
+// NOMBRE DE GRAINES sur UN SEUL moteur. Cela mesure le bruit d'echantillonnage,
+// pas la robustesse au changement de moteur — qui est precisement ce qu'un
+// invariant encaisse.
+//
+// La grandeur retenue est la VITESSE DE POINTE. `vitesseMs` PLAFONNE le
+// deplacement par tick : un joueur atteint ce plafond des qu'il court
+// librement, donc son maximum observe mesure la regle presque directement,
+// alors que la distance totale depend de tout le deroule du match.
+// Validee sur DEUX lots de graines disjoints ET sur DEUX versions du moteur,
+// dont celle qui avait fait basculer l'ancienne :
+//   moteur courant : +0,0768 et +0,0530
+//   moteur modifie : +0,0378 et +0,0515
+// Quatre valeurs positives, aucun changement de signe. Seuil a 0,02, sous la
+// plus petite (0,0378) avec de la marge. Valeur theorique attendue a la 80e :
+// 0,11 (facteur de fatigue 0,944 contre 0,834) ; la mesure en recupere environ
+// la moitie, un joueur n'atteignant pas son plafond a chaque instant.
+//
+// PIEGE D'INSTRUMENT, rencontre en ecrivant ce test : le moteur RECREE les
+// objets joueurs (remplacements, reprises) — 300 objets distincts pour un match
+// a 30 joueurs. Suivre un joueur par l'identite de son objet le perd a la
+// premiere recreation. On cle donc par EQUIPE + NUMERO.
+//
+// Le test compare DEUX DIFFERENCES : les equipes A et B ne sont pas symetriques
+// dans le moteur (sens de jeu, coup d'envoi), et cet ecart vaut a lui seul
+// -0,036 a +0,075 selon les cas. Comparer A et B directement ferait passer une
+// asymetrie pour un effet de l'endurance.
+function ecartVitessePointe(config, graines) {
+  const DUREE = 4800, DT = 0.2;
+  const rA = [], rB = [];
+  for (const seed of graines) {
+    const m = new MatchEngine(seed, DUREE, config);
+    const prec = new Map(), vmax = new Map();
+    for (let t = 0; t < DUREE; t += DT) {
+      m.tick(DT);
+      const tot = t < 600, tard = t > DUREE - 600;
+      for (const [nomEq, eq] of [['A', m.equipeA], ['B', m.equipeB]]) for (const j of eq) {
+        const cle = nomEq + j.numero;
+        const p = prec.get(cle);
+        if (p && (tot || tard)) {
+          const d = Math.hypot(j.x - p.x, j.y - p.y) / DT;
+          if (d < 12) { // on ignore les teleportations de remise en jeu
+            const cur = vmax.get(cle) || { tot: [], tard: [], eq: nomEq };
+            (tot ? cur.tot : cur.tard).push(d);
+            vmax.set(cle, cur);
+          }
+        }
+        prec.set(cle, { x: j.x, y: j.y });
+      }
+    }
+    // Vitesse de pointe = moyenne des 10 meilleures mesures de la fenetre, pas
+    // le seul maximum (P2-92) : le maximum depend d'UN sprint, et donc du
+    // hasard de qui a couru apres quel ballon. Sur trois lots de 32 graines,
+    // l'ecart mesure au maximum valait 0,007 / 0,060 / 0,106 ; avec les 10
+    // meilleures mesures, 0,076 / 0,086 / 0,100. Mutant « l'endurance n'agit
+    // plus » : exactement 0 avec les deux estimateurs.
+    const pointe = (a) => { const s = [...a].sort((x, y) => y - x).slice(0, 10); return s.reduce((x, y) => x + y, 0) / s.length; };
+    for (const v of vmax.values()) {
+      if (!v.tot.length || !v.tard.length) continue;
+      if (Math.max(...v.tot) > 3 && Math.max(...v.tard) > 3) (v.eq === 'A' ? rA : rB).push(pointe(v.tard) / pointe(v.tot));
+    }
+  }
+  const moy = (a) => a.reduce((x, y) => x + y, 0) / a.length;
+  return moy(rA) - moy(rB);
+}
+test('un joueur endurant garde sa vitesse de pointe en fin de match, un autre non', () => {
+  // 16 graines, pas 8 (P2-57) : sur les graines 1-8, le moteur d'avant ne
+  // donnait que +0,022 pour un seuil de 0,02 ; une modification sans rapport
+  // avec la fatigue l'a fait passer a -0,010, alors que les graines 9-16
+  // donnaient +0,096 avant et +0,094 apres. L'estimateur (maximum de vitesse
+  // observe) est bruite : 8 graines ne suffisaient pas a separer l'effet du
+  // bruit. Mutant « l'endurance n'agit plus » : rouge (cf. TODO_AUDIT.md P2-57).
+  // 32 graines depuis P2-69 : le tirage des pods change qui sprinte, et
+  // l'ecart mesure est passe de ~0,09 a ~0,04 en moyenne (0,019 / 0,056 /
+  // 0,045 sur les graines 1-16 / 17-32 / 33-48). Le mutant donne exactement 0
+  // sur les trois lots : le mecanisme agit toujours, l'estimateur est bruite.
+  const graines = Array.from({ length: 32 }, (_, i) => i + 1);
+  const cfg = { joueursA: {}, joueursB: {} };
+  for (let n = 1; n <= 15; n++) { cfg.joueursA[n] = { endurance: 90 }; cfg.joueursB[n] = { endurance: 30 }; }
+  const avec = ecartVitessePointe(cfg, graines);
+  const sans = ecartVitessePointe(undefined, graines);
+  assert.ok(avec - sans >= 0.04,
+    `l equipe endurante garde ${(avec - sans).toFixed(4)} de vitesse de pointe en plus que ne `
+    + `l explique l asymetrie A/B (ecart avec config ${avec.toFixed(4)}, temoin ${sans.toFixed(4)}) : `
+    + `l endurance ne change rien a la fin de match (avant correctif du moteur : exactement zero, `
+    + `les deux configurations produisaient des matchs identiques)`);
+});
+
+// --- LA PENALITE TAPEE EN TOUCHE PART AU COIN ------------------------------
+// `_accorderPenaliteTouche` gagnait `10 + rng() * 10` metres, soit 15 m en
+// moyenne. Une vraie penalite tapee en touche part AU COIN : depuis 45 m, un
+// buteur trouve la touche a 5-10 m de la ligne, soit 35-40 m gagnes.
+//
+// Consequence mesuree sur 20 matchs : 3,95 penalites tapees en touche par
+// match, mais seulement 0,40 touche dans les 22 adverses — et comme 64 % des
+// penalites sont sifflees au-dela de 45 m des buts, avec 15 m de gain elles
+// atterrissaient loin de la ligne. La sequence la plus banale du rugby moderne
+// — penalite au coin, touche a 5 m, maul — ne se construisait pas.
+// Avec la portee reelle : 1,40 touche dans les 22 adverses, soit trois fois
+// plus, sans envolee du score (essais 5,95 -> 6,20, points 51,9 -> 53,0).
+//
+// PAS DE DEFAUT DE CE COTE-LA : zero touche a moins de 5 m avant comme apres.
+// C'est la LOI 18 — une ligne de touche ne peut pas etre formee a moins de 5 m
+// de la ligne de but. Le moteur l'appliquait deja ; c'est mon decoupage de
+// mesure qui l'avait pris pour une anomalie.
+//
+// CE QUE CE TEST MESURE, ET POURQUOI. Il porte sur le GAIN, pas sur le nombre
+// de touches dans les 22. Resolution etudiee avant de choisir, sur deux lots de
+// graines disjoints :
+//   gain moyen      reference 13,8 a 15,2 m    correctif 27,7 a 29,4 m
+//   touches dans 22 reference 0,20 a 0,67      correctif 0,90 a 1,47
+// La seconde grandeur se CHEVAUCHE a 10 graines (1,00 contre 0,90) : un
+// garde-fou fonde dessus basculerait sur du bruit. La premiere est nette.
+test('une penalite tapee en touche part au coin, pas a dix metres', () => {
+  const gains = [];
+  for (let seed = 1; seed <= 10; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    const orig = m._accorderPenaliteTouche.bind(m);
+    m._accorderPenaliteTouche = (eq, pos) => {
+      const r = orig(eq, pos);
+      gains.push((m.ruckPoint.x - pos.x) * (eq === 'A' ? 1 : -1));
+      return r;
+    };
+    for (let t = 0; t < 4800; t += 0.2) m.tick(0.2);
+  }
+  const moy = gains.reduce((a, b) => a + b, 0) / gains.length;
+  assert.ok(gains.length > 25, `echantillon trop petit (${gains.length} penalites en touche)`);
+  assert.ok(moy >= 22,
+    `une penalite tapee en touche ne gagne que ${moy.toFixed(1)} m : elle ne part pas au coin `
+    + `(mesure avant correctif : 14 m)`);
+});
+test('la portee de la penalite en touche depend du BUTEUR, pas du hasard seul', () => {
+  function gainMoyen(jeuPied) {
+    const cfg = { joueursA: {}, joueursB: {} };
+    for (let n = 1; n <= 15; n++) { cfg.joueursA[n] = { jeuPied }; cfg.joueursB[n] = { jeuPied }; }
+    const gains = [];
+    for (let seed = 1; seed <= 6; seed++) {
+      const m = new MatchEngine(seed, 4800, cfg);
+      const orig = m._accorderPenaliteTouche.bind(m);
+      m._accorderPenaliteTouche = (eq, pos) => {
+        const r = orig(eq, pos);
+        gains.push((m.ruckPoint.x - pos.x) * (eq === 'A' ? 1 : -1));
+        return r;
+      };
+      for (let t = 0; t < 4800; t += 0.2) m.tick(0.2);
+    }
+    return gains.reduce((a, b) => a + b, 0) / gains.length;
+  }
+  const bon = gainMoyen(95), mauvais = gainMoyen(25);
+  assert.ok(bon - mauvais >= 10,
+    `buteur a 95 de jeu au pied : ${bon.toFixed(1)} m, buteur a 25 : ${mauvais.toFixed(1)} m — `
+    + `le choix du buteur ne change pas la portee (avant correctif : identique, le gain etait un `
+    + `tirage sans attribut)`);
+});
+
+// --- LE MAUL PENETRANT : LE DE POUSSAIT PLUS FORT QUE LES DEUX PACKS -------
+// La poussee valait `(fAtt - fDef) / 200 + (alea - 0,5) * 0,5`. L'ecart de
+// force entre les deux packs vaut 27 points en moyenne, soit 0,135 m/s, quand
+// le terme de hasard vaut +/-0,25 m/s : LE DE PESAIT DEUX FOIS LES TRENTE
+// AVANTS. Et comme « use it » se declenche apres 1 s sous 0,2 m/s, le maul
+// mourait des que le tirage tombait mal.
+//
+// Mesure sur 20 matchs : le maul avancait de 2,38 m (repere reel 5 a 15 m),
+// 0,79 m seulement a moins de 10 m de la ligne, et produisait ZERO essai par
+// match — une des deux machines a essais des avants n'existait pas.
+//
+// CE QUE J'AI CRU, ET QUE LA MESURE A DEMENTI. J'ai d'abord craint qu'inverser
+// le rapport (packs 5x le de) rende l'issue deterministe. C'est le contraire :
+// plus il y a de hasard, plus le maul OSCILLE autour du seuil d'arret, ni
+// n'avance franchement ni ne s'arrete proprement. Dosages intermediaires
+// mesures (rapport packs/de) :
+//   0,54x (avant)  avancee 2,38 m  duree 14,3 s  essais 0,00  melee  9 %
+//   1,7x           avancee 4,73 m  duree 20,9 s  essais 0,05  melee 24 %
+//   2,2x           avancee 6,84 m  duree 23,6 s  essais 0,20  melee 24 %
+//   3,0x           avancee 6,52 m  duree 20,8 s  essais 0,25  melee 21 %
+//   5,0x (retenu)  avancee 7,61 m  duree 18,9 s  essais 0,20  melee 13 %
+// ATTENTION A LA DERNIERE COLONNE : en choisissant ce dosage j'ai ecrit qu'il
+// etait « le seul a ne pas faire finir un maul sur quatre en melee ». Le
+// controle d'arbitrage a montre que ces melees n'etaient pas des melees de loi
+// 16.17 mais les coups de sifflet du garde-fou anti-blocage, sur des mauls qui
+// avancaient encore. Le classement tient, l'argument etait mal nomme ; le
+// garde-fou est corrige et garde par le test de loi 16 plus haut.
+// Le dosage retenu est le seul qui donne une avancee reelle SANS faire finir un
+// maul sur quatre en melee. Et ce n'est pas un rail : deux packs equivalents
+// donnent un ecart nul, donc un maul qui ne bouge pas — c'est du rugby.
+//
+// LE BLOCAGE DE P2-25 EST LEVE, ET DANS L'AUTRE SENS. Cette entree avait refuse
+// trois calibrations parce qu'elles coutaient 15 a 20 % des portages dans les
+// cinq metres, le maul monopolisant la possession pres de la ligne. Mesure ici :
+//   portages a moins de 5 m  8,55 -> 10,10 par match (+18 %)
+//   part des avants          28,7 % -> 32,7 %
+// En avancant reellement, le maul AMENE le ballon dans les cinq metres au lieu
+// d'y mourir quinze metres plus loin : il en cree au lieu d'en consommer.
+test('un maul penetrant avance vraiment, et un pack dominant le pousse plus loin', () => {
+  // L'INSTRUMENT MESURE L'AVANCEE DE L'EQUIPE QU'ON FAIT VARIER. Premiere
+  // version : je moyennais TOUS les mauls du match. Quand on donne le pack
+  // lourd a A, les mauls de B (pack leger) entraient dans la meme moyenne, et
+  // l'ecart mesure sortait a l'envers (8,69 m contre 10,68 m). On filtre donc
+  // sur maul.equipePossession, et on prend le sens du maul lui-meme.
+  function avanceeMaul(config, graines, equipe) {
+    let total = 0, n = 0;
+    for (const seed of graines) {
+      const m = new MatchEngine(seed, 4800, config);
+      let cur = null, phaseAvant = m.phase;
+      for (let t = 0; t < 4800; t += 0.2) {
+        m.tick(0.2);
+        if (m.phase === 'MAUL' && phaseAvant !== 'MAUL' && m.maul) {
+          cur = (!equipe || m.maul.equipePossession === equipe)
+            ? { x0: m.maul.x, sens: m.maul.sens, xFin: m.maul.x } : null;
+        } else if (m.phase !== 'MAUL' && phaseAvant === 'MAUL' && cur) {
+          total += (cur.xFin - cur.x0) * cur.sens; n++; cur = null;
+        }
+        if (m.phase === 'MAUL' && m.maul && cur) cur.xFin = m.maul.x;
+        phaseAvant = m.phase;
+      }
+    }
+    return n ? total / n : NaN;
+  }
+  const graines = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+  // 1. Le maul doit AVANCER. Repere reel : 5 a 15 m pour un maul lance.
+  //    Seuil a 4 m, sous la valeur mesuree sur le moteur livre (7,44 m sur 59
+  //    mauls) avec de la marge, et tres au-dessus de l'ancienne (2,88 m sur ces
+  //    memes graines, 2,38 m sur 20 matchs).
+  const avance = avanceeMaul(undefined, graines);
+  assert.ok(avance >= 4,
+    `un maul n avance que de ${avance.toFixed(2)} m (mesure avant correctif : 2,38 m ; `
+    + `repere reel 5 a 15 m) : le maul penetrant n existe pas`);
+  // 2. CE SONT LES PACKS QUI DECIDENT, PAS LE DE. Deux packs opposes en
+  //    puissance doivent produire des mauls tres differents. Avant le
+  //    correctif, le terme de hasard ecrasait cet ecart.
+  //
+  //    LE SEUIL VIENT D'UN AUDIT DE CREUSAGE, PAS D'UNE INTUITION. J'ai
+  //    fabrique deux moteurs AVEUGLES AUX PACKS (poussee constante 0,35 puis
+  //    0,45 au lieu de (fAtt - fDef)/70), qui passent l'assertion 1 — le maul
+  //    avance bien — mais ou la force des packs ne joue plus aucun role. Ecart
+  //    residuel mesure : +1,00 m et -1,34 m. Ce residu n'est pas nul parce
+  //    qu'un pack lourd change quand meme OU et COMBIEN DE TEMPS le maul vit.
+  //    Le moteur livre donne +23,07 m (pack lourd 21,45 m contre pack leger
+  //    -1,62 m : le pack leger RECULE). Le seuil de 2 m est donc au-dessus du
+  //    residu aveugle et dix fois sous la valeur reelle.
+  //
+  //    P2-25 avait retire une version de ce garde-fou parce que son ecart
+  //    mesure (1,86 m) portait une incertitude de +/-2,0 m : il basculait au
+  //    tirage. Ici l'ecart est douze fois plus grand que cette incertitude.
+  //
+  //    VERIFIE HORS DE SES PROPRES GRAINES (lecon des garde-fous fragiles
+  //    precedents : un seuil cale sur un seul jeu de graines bascule ailleurs).
+  //    Sur les graines 11-20, disjointes de celles du test : avancee 7,83 m
+  //    (seuil 4) et ecart 18,04 m (seuil 2). Les deux assertions tiennent
+  //    largement des deux cotes.
+  const lourd = {}, leger = {};
+  for (let n = 1; n <= 8; n++) { lourd[n] = { puissance: 95 }; leger[n] = { puissance: 25 }; }
+  const packFort = avanceeMaul({ joueursA: lourd, joueursB: leger }, graines, 'A');
+  const packFaible = avanceeMaul({ joueursA: leger, joueursB: lourd }, graines, 'A');
+  assert.ok(packFort - packFaible >= 2,
+    `pack lourd ${packFort.toFixed(2)} m contre pack leger ${packFaible.toFixed(2)} m : `
+    + `l ecart de ${(packFort - packFaible).toFixed(2)} m ne se voit pas — au maul, ce sont les `
+    + `deux packs qui doivent decider, pas le tirage`);
+});
+
+// --- UNE PENALITE HORS DE PORTEE SE JOUE EN TOUCHE --------------------------
+// Hors de portee de tir, le moteur ne tapait en touche que 35 % du temps : le
+// reste partait en jeu rapide a la main. Mesure au pas reel : 8,6 jeux rapides
+// par match pour 4,3 coups de pied en touche. Le joueur voyait une equipe
+// jouer a la main une penalite sifflee dans son propre camp, presque a chaque
+// fois. Verifie ROUGE avant correctif (49 % de jeux rapides, 21 % en touche
+// sur 81 penalites), VERT apres. Cf. TODO_AUDIT.md P2-50.
+test('une penalite hors de portee se joue EN TOUCHE, le jeu rapide reste l exception', () => {
+  const choix = { touche: 0, but: 0, rapide: 0 };
+  for (const seed of [1, 2, 3, 4]) {
+    const m = new MatchEngine(seed, 4800);
+    const orig = m.log.bind(m);
+    m.log = (t, e, x) => {
+      if (t === 'PENALITE') {
+        if (/touche/.test(x)) choix.touche++; else if (/coup de pied au but/.test(x)) choix.but++; else if (/rapidement/.test(x)) choix.rapide++;
+      }
+      return orig(t, e, x);
+    };
+    for (let t = 0; t < 4800; t += 0.1) m.tick(0.1);
+  }
+  const total = choix.touche + choix.but + choix.rapide;
+  assert.ok(total > 40, `trop peu de penalites observees (${total})`);
+  const partRapide = choix.rapide / total, partTouche = choix.touche / total;
+  assert.ok(partRapide < 0.25 && partTouche > 0.35,
+    `sur ${total} penalites : ${choix.rapide} jeux rapides (${(100 * partRapide).toFixed(0)} %), ${choix.touche} en touche (${(100 * partTouche).toFixed(0)} %), ${choix.but} au but — une penalite dans son camp se joue en touche, pas a la main`);
+});
+
+// --- REEQUILIBRAGE, ETAPES 1 ET 2 : LA DEFENSE MONTE, LE JEU RAPIDE EST RAPIDE --
+// Cf. TODO_AUDIT.md P2-48 et P2-49. Le moteur marquait surtout sur de longues
+// chevauchees : 57 % des essais au bout d'une course de 30 m ou plus, dont la
+// moitie nee d'un coup de pied rattrape et 44 % sans un seul ruck. Les
+// defenseurs places DEVANT le futur marqueur passaient 62 % de la course a
+// « tenir leur ligne » et 90 % finissaient plus loin de lui qu'au depart.
+//
+// Trois regles, a livrer ENSEMBLE (chacune seule, mesuree, ne changeait rien
+// aux essais longs ou faisait deborder le score) :
+//  1. le defenseur de face monte au contact, en visant le point de rencontre ;
+//  2. apres un coup de pied rattrape, la defense arrive lancee (pas de rampe) ;
+//  3. un jeu rapide sur penalite se joue en 8 s, pas en 26 s.
+//
+// Les trois tests ci-dessous ont ete verifies ROUGES sur le moteur d'avant et
+// VERTS apres. Les scenarios remettent a zero l'etat herite de l'echauffement :
+// un avantage en cours revenait a la penalite au premier tick et une cible de
+// passe memorisee faisait passer le porteur — deux scenarios sur six
+// mesuraient autre chose que ce qu'ils annonçaient avant cette remise a zero.
+// Scenario commun : porteur n°11 de A lance dans l'axe, a 45 m de l'en-but
+// adverse, phase de jeu deja installee (rampe terminee sauf si on la veut).
+function scenario(seed, { timerPhase = 10, apresPied = false } = {}) {
+  const m = new MatchEngine(seed, 600);
+  for (let t = 0; t < 30; t += 0.2) m.tick(0.2);
+  m.phase = 'PORTE'; m.timerPhase = timerPhase; m.possession = 'A';
+  m.passeVisuelle = null; m.combinaison = null; m.penaliteRecul = null; m.ruckPoint = null;
+  m._passeCibleForcee = null; m._neufLibre = false; m.avantage = null; // etat herite de l'echauffement : un avantage en cours revenait a la penalite au 1er tick
+  m._porteApresPied = apresPied;
+  // Le scenario teste la DEFENSE : le porteur ne doit ni passer (soutiens
+  // eloignes, plus bas) ni taper. Sans ce verrou, un ailier qui tape au pied
+  // terminait la phase avant tout plaquage, selon le tirage (P2-57). Note :
+  // `tauxJeuAuPied || 1` dans le moteur, d'ou une valeur infime plutot que 0.
+  m.cfgAttaque.A = Object.assign({}, m.cfgAttaque.A, { tauxJeuAuPied: 1e-9 });
+  const p = m.equipeA.find(j => j.numero === 11);
+  const sens = p.sensAttaque;
+  m.porteur = p; p.auSol = 0; p.vitesseCourante = 0;
+  p.x = sens > 0 ? LONGUEUR - 45 : 45; p.y = 35;
+  for (const j of m.equipeA) if (j !== p) { j.x = p.x - sens * 40; j.auSol = 0; } // soutiens hors de portee de passe : le porteur court
+  for (const j of m.equipeB) {
+    j.auSol = 0; j.horsJeuKick = 0; j.fixeCooldown = 0; j.ruckRecovery = 0; j.missCooldown = 0; j.sinBin = 0;
+    j.vitesseCourante = 0;
+    j.x = p.x - sens * 25; j.y = j.channelY; // toute la defense est battue, loin derriere
+  }
+  return { m, p, sens };
+}
+
+test('le defenseur DE FACE monte au contact, meme si un defenseur battu est plus proche', () => {
+  // Un defenseur BATTU juste derriere le porteur (3 m, hors de portee de
+  // plaquage) est « le plus proche » ; un defenseur DE FACE attend 9 m devant,
+  // decale de 6 m dans son couloir. Avant correctif, seul le plus proche
+  // montait : le defenseur de face tenait sa ligne, a distance constante.
+  const mins = [];
+  for (const seed of [21, 22, 23, 24, 25, 26]) {
+    const { m, p, sens } = scenario(seed);
+    const battu = m.equipeB.find(j => j.numero === 7);
+    battu.x = p.x - sens * 3; battu.y = p.y;
+    const face = m.equipeB.find(j => j.numero === 13);
+    face.x = p.x + sens * 9; face.y = p.y + 6; face.channelY = face.y;
+    let dmin = 99;
+    const plaq0 = m.stats.B.tacklesAttempted;
+    for (let t = 0; t < 4.0 && m.phase === 'PORTE' && m.porteur === p; t += 0.1) {
+      m.tick(0.1);
+      dmin = Math.min(dmin, Math.hypot(face.x - p.x, face.y - p.y));
+    }
+    // Un plaquage resolu dans le tick ou le defenseur entre a portee met fin
+    // a la phase avant qu'on ait pu mesurer la distance : on compte donc le
+    // plaquage lui-meme comme « monte au contact ».
+    mins.push(m.stats.B.tacklesAttempted > plaq0 ? 0 : dmin);
+  }
+  const atteints = mins.filter(v => v < 2.2).length;
+  assert.ok(atteints >= 5, `le defenseur de face n'atteint le porteur que dans ${atteints} scenario(s) sur 6 (plus courte distance : ${mins.map(v => v.toFixed(1)).join(' / ')} m) : il tient sa ligne au lieu de monter au plaquage`);
+});
+
+test('apres un coup de pied rattrape, la defense arrive LANCEE (pas de remontee depuis 35 %)', () => {
+  // Meme situation, debut de phase (timerPhase 0) : le defenseur de face doit
+  // refermer bien plus vite quand le jeu nait d'un coup de pied que lorsqu'il
+  // nait d'un regroupement, ou la ligne se reorganise legitimement.
+  const ferme = (apresPied) => {
+    let total = 0;
+    for (const seed of [21, 22, 23, 24, 25, 26]) {
+      const { m, p, sens } = scenario(seed, { timerPhase: 0, apresPied });
+      const face = m.equipeB.find(j => j.numero === 13);
+      face.x = p.x + sens * 14; face.y = p.y; face.channelY = face.y;
+      // La ligne de chasse ARRIVE en courant : sur un coup de pied, le
+      // defenseur n'est pas a l'arret. (Partir de l'arret masquait tout : son
+      // inertie le bride plus que la rampe pendant les 2,7 premieres secondes.)
+      face.vitesseCourante = 6;
+      // On mesure la distance que le defenseur COURT lui-meme : l'ecart avec
+      // le porteur melangerait sa course et celle du porteur.
+      let couru = 0, px = face.x, py = face.y;
+      for (let t = 0; t < 1.5 && m.phase === 'PORTE'; t += 0.1) {
+        m.tick(0.1); couru += Math.hypot(face.x - px, face.y - py); px = face.x; py = face.y;
+      }
+      total += couru;
+    }
+    return total / 6;
+  };
+  const apresPied = ferme(true), apresRuck = ferme(false);
+  assert.ok(apresPied - apresRuck > 2, `en 1,5 s, le defenseur de face court ${apresPied.toFixed(2)} m apres un coup de pied contre ${apresRuck.toFixed(2)} m apres un regroupement : il repart de 35 % de sa vitesse alors qu'il arrive lance`);
+});
+
+test('le ballon VIT dans le contact : des offloads a chaque match, pas une rarete', () => {
+  // Reel (docs/ANALYSE_MATCH_REEL.md, France-Irlande 2026) : 25 offloads. Le
+  // moteur en produisait 4,4 par match : un porteur plaque finissait au ruck
+  // presque a tous les coups, alors que CLAUDE.md demande des passes « avant ou
+  // pendant le contact ». Cf. TODO_AUDIT.md P2-52.
+  // 12 graines : d'un match a l'autre, de 6 a 26 offloads (moyenne ~15) ; sur
+  // 4 graines, une seule bifurcation suffisait a passer sous 9 (P2-90).
+  let offloads = 0;
+  const N = 12;
+  for (let seed = 1; seed <= N; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    for (let t = 0; t < 4800; t += 0.1) m.tick(0.1);
+    offloads += m.stats.A.offloads + m.stats.B.offloads;
+  }
+  const parMatch = offloads / N;
+  assert.ok(parMatch > 9, `${parMatch.toFixed(1)} offloads par match (reel : 25) : le porteur plaque ne libere presque jamais le ballon dans le contact`);
+});
+
+test('loi 20.14 : jeu rapide joué vite, le fautif encore dans les 10 m est hors-jeu et ne peut pas plaquer', () => {
+  // Signale par le controle d'arbitrage du paquet P2-52 : la mise en place du
+  // jeu rapide ignorait les fautifs au sol (`if (j.auSol > 0) continue`). Un
+  // fautif encore a terre dans les 10 m ne bloquait pas la reprise ; il se
+  // relevait ensuite DANS les 10 m, libre de plaquer. Avec un plancher de
+  // 26 s il etait presque toujours releve et replie avant ; a 8 s, non.
+  const m = new MatchEngine(7, 4800) // match complet : les temps morts sont a l'echelle de la duree;
+  for (let t = 0; t < 30; t += 0.1) m.tick(0.1);
+  m.avantage = null; m._passeCibleForcee = null; m.passeVisuelle = null; m.combinaison = null;
+  m.possession = 'A';
+  const tapeur = m.equipeA.find(j => j.numero === 9);
+  m.porteur = tapeur; tapeur.auSol = 0; tapeur.x = 50; tapeur.y = 35;
+  for (const j of m.equipeB) { j.auSol = 0; j.sinBin = 0; j.x = 75; j.y = j.channelY; }
+  const fautif = m.equipeB.find(j => j.numero === 6);
+  fautif.x = 55; fautif.y = 36; fautif.auSol = 12; fautif._solX = 55; fautif._solY = 36;
+  m._porteApresPied = true; // phase nee d'un coup de pied juste avant la faute
+  m._lancerJeuRapidePenalite('A', { x: 50, y: 35 });
+  assert.ok(!m._porteApresPied, 'apres une penalite, la defense ne doit plus etre consideree « lancee » apres un coup de pied');
+  const ligne = m.penaliteRecul.ligne, sens = m.penaliteRecul.sens;
+  let t = 0;
+  while (m.penaliteRecul && t < 60) { m.tick(0.1); t += 0.1; }
+  assert.ok(!m.penaliteRecul, 'la mise en place du jeu rapide ne se termine jamais');
+  // Le jeu rapide se joue VITE (P2-123, retour joueur) : on n'attend plus que
+  // tous les fautifs aient reculé. Chaque fautif resté dans les 10 m est
+  // HORS-JEU au moment de la frappe : il ne peut pas plaquer avant de s'être
+  // replié — c'est ce que garantit la loi, pas un temps d'attente.
+  assert.ok(t <= 3, `le jeu rapide doit se jouer vite (repris après ${t.toFixed(1)} s)`);
+  const enDeca = m.equipeB.filter(j => (j.x - ligne) * sens < -0.5);
+  assert.ok(enDeca.includes(fautif), 'scénario : le fautif au sol est bien encore dans les 10 m à la frappe');
+  for (const j of enDeca) {
+    assert.ok(j.horsJeuKick > 0, `n°${j.numero} encore dans les 10 m à la frappe sans être hors-jeu (loi 20.14)`);
+  }
+  // Il ne plaque jamais tant qu'il n'est pas revenu derrière la ligne des 10 m.
+  for (let k = 0; k < 60; k++) {
+    const p = m.porteur, avant = m.stats.B.tacklesAttempted;
+    const dedans = (fautif.x - ligne) * sens < -0.5;
+    m.tick(0.1);
+    if (m.stats.B.tacklesAttempted > avant && dedans && p && m.ruckPoint) {
+      const plaqueur = m.equipeB.find(j => m.contestants && j.numero === m.contestants[0]);
+      assert.notStrictEqual(plaqueur, fautif, 'le fautif plaque depuis les 10 m alors qu il est hors-jeu');
+    }
+  }
+});
+
+test('une CHANDELLE tient en l air et se dispute : les chasseurs arrivent dessous', () => {
+  // Une chandelle (box kick du n°9, up-and-under) n'a de sens que par son
+  // temps de vol : ~4 s en l'air, le temps que la ligne de chasse arrive sous
+  // le ballon et le dispute. Le moteur faisait voler TOUS les coups de pied a
+  // 16 m/s, plafonnes a 2,2 s : une chandelle de 15 m retombait en 0,97 s, le
+  // chasseur le plus proche encore a 10,5 m, et l'equipe qui tapait n'en
+  // regagnait que 9 %. Cf. TODO_AUDIT.md P2-55.
+  const vols = []; let n = 0, regagnees = 0;
+  for (let seed = 1; seed <= 4; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    let pp = m.phase, cur = null;
+    for (let t = 0; t < 4800; t += 0.1) {
+      const k0 = m.stats.A.kicks + m.stats.B.kicks;
+      m.tick(0.1);
+      if (m.stats.A.kicks + m.stats.B.kicks > k0 && m.phase === 'COUP_DE_PIED_JEU' && m.typeCoupDePiedJeu === 'CHANDELLE') {
+        cur = { eq: m.equipeCoupDePiedJeu, t0: m.tempsMatch, vol: null };
+      }
+      if (cur && cur.vol === null && m.phase === 'COUP_DE_PIED_JEU' && !m.ballonEnVol) cur.vol = m.tempsMatch - cur.t0;
+      if (cur && pp === 'COUP_DE_PIED_JEU' && m.phase !== 'COUP_DE_PIED_JEU') {
+        n++; if (cur.vol !== null) vols.push(cur.vol);
+        if (m.phase !== 'TOUCHE' && m.possession === cur.eq) regagnees++;
+        cur = null;
+      }
+      pp = m.phase;
+    }
+  }
+  assert.ok(n > 20, `echantillon trop petit : ${n} chandelles`);
+  const vol = vols.reduce((a, b) => a + b, 0) / vols.length;
+  assert.ok(vol >= 3.5, `une chandelle reste ${vol.toFixed(2)} s en l air (reel ~4 s) : elle retombe avant que la chasse arrive`);
+  assert.ok(regagnees / n > 0.15, `l equipe qui tape ne regagne que ${(100 * regagnees / n).toFixed(0)} % de ses chandelles : elles ne sont jamais disputees`);
+});
+
+test('une chandelle DISPUTEE peut etre echappee : en-avant, melee adverse', () => {
+  // Sous une chandelle disputee, deux joueurs sautent pour le meme ballon : en
+  // vrai, une part notable finit en en-avant (ballon echappe vers l'avant sous
+  // la pression), donc en melee pour l'adversaire. C'est le risque qui fait de
+  // la chandelle un pari. Le moteur n'en produisait jamais. Cf. TODO_AUDIT.md
+  // P2-56.
+  let disputees = 0, enAvants = 0, melees = 0;
+  for (let seed = 1; seed <= 6; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    const orig = m.log.bind(m);
+    m.log = (type, eq, msg, extra) => {
+      if (type === 'RECEPTION_DISPUTEE') disputees++;
+      if (type === 'MELEE_ENAVANT' && /chandelle/.test(msg)) enAvants++;
+      return orig(type, eq, msg, extra);
+    };
+    let pp = m.phase;
+    for (let t = 0; t < 4800; t += 0.1) {
+      const enAvant0 = enAvants;
+      m.tick(0.1);
+      if (enAvants > enAvant0 && m.phase === 'MELEE') melees++;
+      pp = m.phase;
+    }
+  }
+  assert.ok(disputees > 30, `echantillon trop petit : ${disputees} receptions disputees`);
+  const part = enAvants / disputees;
+  assert.ok(part > 0.05 && part < 0.3, `${(100 * part).toFixed(0)} % des receptions disputees finissent en en-avant (${enAvants}/${disputees}) : attendu entre 5 et 30 %`);
+  assert.strictEqual(melees, enAvants, 'un en-avant a la reception doit donner une melee');
+});
+
+test('le jeu au pied appartient aux demis et a l arriere, pas aux avants', () => {
+  // En rugby a XV, le demi de melee (chandelle depuis la base du ruck),
+  // l'ouvreur et l'arriere tapent l'essentiel des coups de pied ; un avant ne
+  // tape presque jamais. Le moteur laissait n'importe quel porteur decider de
+  // taper au meme taux : 29 % des coups de pied etaient tapes par des AVANTS,
+  // 8 % seulement par le n°9. Cf. TODO_AUDIT.md P2-57.
+  // 16 graines : sur 4 graines, la part du n°9 varie de 19 a 27 % d'un bloc
+  // a l'autre (moyenne 23 % sur 24 graines) ; cf. TODO_AUDIT.md P2-88.
+  // 32 graines : par blocs de 16, le meme moteur donnait 19,9 % puis 24,6 %.
+  const par = {}; let tot = 0;
+  for (let seed = 1; seed <= 32; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    for (let t = 0; t < 4800; t += 0.1) {
+      const k0 = m.stats.A.kicks + m.stats.B.kicks; const p = m.porteur;
+      m.tick(0.1);
+      if (m.stats.A.kicks + m.stats.B.kicks > k0 && p) {
+        tot++; const g = p.numero <= 8 ? 'avants' : p.numero; par[g] = (par[g] || 0) + 1;
+      }
+    }
+  }
+  const part = (g) => (par[g] || 0) / tot;
+  assert.ok(tot > 120, `echantillon trop petit : ${tot} coups de pied`);
+  assert.ok(part('avants') < 0.08, `${(100 * part('avants')).toFixed(0)} % des coups de pied sont tapes par des avants`);
+  assert.ok(part(9) > 0.2, `le demi de melee ne tape que ${(100 * part(9)).toFixed(0)} % des coups de pied (chandelle depuis la base)`);
+  assert.ok(part(9) + part(10) + part(15) > 0.55, `n°9, 10 et 15 ne tapent que ${(100 * (part(9) + part(10) + part(15))).toFixed(0)} % des coups de pied`);
+});
+
+test('le ballon est EN JEU des l introduction en melee et des le lancer en touche', () => {
+  // Definition du temps de jeu effectif (World Rugby) : le chronometre du
+  // ballon en jeu tourne des que le ballon est introduit dans la melee, ou
+  // lance en touche. Le moteur annoncait n'exclure que la FORMATION (liaison
+  // des packs, alignement avant le lancer), mais excluait les phases MELEE et
+  // TOUCHE entieres : ~1,5 a 2 min de vrai jeu par match disparaissaient du
+  // temps de jeu effectif et de la possession. Cf. TODO_AUDIT.md P2-59.
+  let vivantsCompte = 0, vivants = 0, mortsCompte = 0, morts = 0;
+  const VIVANTS = ['MELEE_INTRODUCTION', 'MELEE_CONTESTATION', 'MELEE_SORTIE'];
+  for (const seed of [1, 2]) {
+    const m = new MatchEngine(seed, 4800);
+    for (let t = 0; t < 4800; t += 0.1) {
+      const phase = m.phase, etat = m.melee ? m.melee.etat : null, lancer = !!m.toucheLancer;
+      const avant = m.tempsJeuEffectif;
+      m.tick(0.1);
+      if (m.phase !== phase) continue; // tick de transition : on ne juge que les ticks stables
+      const compte = m.tempsJeuEffectif > avant;
+      if ((phase === 'MELEE' && VIVANTS.includes(etat)) || (phase === 'TOUCHE' && lancer)) { vivants++; if (compte) vivantsCompte++; }
+      if ((phase === 'MELEE' && etat === 'MELEE_FORMATION') || (phase === 'TOUCHE' && !lancer)) { morts++; if (compte) mortsCompte++; }
+    }
+  }
+  assert.ok(vivants > 200 && morts > 2000, `echantillon trop petit (${vivants} / ${morts})`);
+  assert.ok(vivantsCompte / vivants > 0.95, `ballon introduit ou lance mais pas compte en jeu : ${vivantsCompte}/${vivants} ticks`);
+  assert.strictEqual(mortsCompte, 0, `formation de melee ou alignement de touche compte comme du jeu : ${mortsCompte} ticks`);
+});
+
+test('un porteur qui PASSE la ligne de defense est compte et annonce comme un franchissement', () => {
+  // Definition courante (Opta) : le porteur franchit la premiere ligne de
+  // defense, qu'il ait ou non battu un plaqueur. Le moteur ne comptait qu'apres
+  // un plaquage MANQUE suivi d'espace : 4,7 franchissements par match (reel :
+  // 18), alors que 69 % des essais suivent une course ou le porteur n'a plus
+  // personne devant lui. La feuille de match montrait « 2 - 3 franchissements »
+  // apres des essais de 50 m. Cf. TODO_AUDIT.md P2-60.
+  let franchissements = 0, annonces = 0;
+  const N = 4;
+  for (let seed = 1; seed <= N; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    const o = m.log.bind(m);
+    m.log = (type, eq, msg, extra) => { if (type === 'FRANCHISSEMENT') annonces++; return o(type, eq, msg, extra); };
+    for (let t = 0; t < 4800; t += 0.1) m.tick(0.1);
+    franchissements += m.stats.A.franchissements + m.stats.B.franchissements;
+  }
+  const parMatch = franchissements / N;
+  assert.ok(parMatch >= 8 && parMatch <= 30, `${parMatch.toFixed(1)} franchissements par match (reel ~18)`);
+  assert.ok(annonces > 0 && annonces <= franchissements, `${annonces} franchissements annonces pour ${franchissements} comptes`);
+});
+
+test('le tableau de marque se reconstruit a partir des statistiques, et les compteurs sont coherents', () => {
+  // Transformations, penalites au but, drops, rucks conserves, melees et
+  // touches gagnees sur SON ballon : CLAUDE.md (role 6) les exige, la feuille
+  // de match ne les montrait pas. Comptes la ou l'action a lieu — le score doit
+  // donc se reconstruire EXACTEMENT a partir d'eux. Cf. TODO_AUDIT.md P2-63.
+  let rucks = 0, conserves = 0, melees = 0, meleesIntro = 0, touches = 0, touchesLancer = 0, transfoT = 0, transfoR = 0;
+  for (let seed = 1; seed <= 6; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    for (let t = 0; t < 4800; t += 0.1) m.tick(0.1);
+    for (const e of ['A', 'B']) {
+      const s = m.stats[e];
+      const points = 5 * (s.essais - s.essaisPenalite) + 7 * s.essaisPenalite
+        + 2 * s.transformationsReussies + 3 * s.penalitesButReussies + 3 * s.dropsReussis;
+      assert.strictEqual(points, m.score[e], `graine ${seed}, equipe ${e} : les statistiques donnent ${points} points, le score ${m.score[e]}`);
+      assert.ok(s.transformationsReussies <= s.transformationsTentees && s.penalitesButReussies <= s.penalitesButTentees
+        && s.dropsReussis <= s.dropsTentes, `graine ${seed}, equipe ${e} : plus de tirs reussis que tentes`);
+      assert.ok(s.transformationsTentees <= s.essais - s.essaisPenalite, `graine ${seed} : plus de transformations que d'essais`);
+      rucks += s.rucks; conserves += s.rucksConserves; melees += s.scrums; meleesIntro += s.scrumsGagnesIntro;
+      touches += s.lineouts; touchesLancer += s.lineoutsGagnesLancer; transfoT += s.transformationsTentees; transfoR += s.transformationsReussies;
+    }
+  }
+  // Coherence, pas realisme : jamais plus de reussites que de tentatives,
+  // et des proportions qui ont un sens. Les ECARTS AU REEL (rucks conserves
+  // 86 % contre 93-95, melees sur introduction 72 % contre ~90,
+  // transformations 59 % contre ~70-75) sont consignes en TODO_AUDIT.md
+  // P2-63 : des seuils poses juste sous les valeurs du moteur basculeraient
+  // sur du bruit.
+  const pc = (a, b) => a / b;
+  for (const [nom, a, b] of [['rucks conserves', conserves, rucks], ['melees gagnees sur introduction', meleesIntro, melees],
+    ['touches gagnees sur lancer', touchesLancer, touches], ['transformations reussies', transfoR, transfoT]]) {
+    assert.ok(b > 0 && pc(a, b) > 0.3 && pc(a, b) <= 1, `${nom} : ${a}/${b}`);
+  }
+});
+
+// --- UNE REMISE EN JEU DEPUIS LES 22 M N'EST PAS UN COUP D'ENVOI -----------
+// Apres une penalite au but ou un drop manques, le ballon repart de la ligne
+// des 22 m de l'equipe qui defendait — le moteur le faisait bien. Mais il
+// l'annonçait « Coup d'envoi botte par l'equipe B, l'equipe A doit rester a
+// 10 m » : 2,75 remises en jeu par match sur 20 matchs (1,95 apres une penalite
+// manquee, 0,80 apres un drop manque). Le joueur lisait « coup d'envoi » en
+// voyant le ballon partir des 22 m, avec la consigne des 10 m qui n'est pas
+// celle du renvoi.
+//
+// L'assertion est SYMETRIQUE et c'est verifie dans les deux sens : rouge sur le
+// moteur d'avant (aucun renvoi annonce, un « coup d'envoi » botte depuis
+// x = 78), rouge aussi sur un mutant qui annonce TOUT en renvoi (aucun coup
+// d'envoi observe). Le libelle doit suivre le point de depart, dans les deux sens.
+test("une remise en jeu depuis les 22 m est annoncee RENVOI AUX 22 M, pas coup d'envoi", () => {
+  let envois = 0, renvois = 0;
+  const fautifs = [];
+  for (let seed = 1; seed <= 4; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    const orig = m.log.bind(m);
+    m.log = (type, eq, txt) => {
+      if (type === 'COUP_ENVOI' || type === 'RENVOI_22') {
+        // Le point de remise en jeu est `xCoupEnvoi`. Depuis P2-84, au moment
+        // de l'annonce, le ballon est encore là où il était (il revient ensuite
+        // au botteur, à vue) : `ballonVolX` n'est plus ce point.
+        const x = m.xCoupEnvoi;
+        const auMilieu = Math.abs(x - LONGUEUR / 2) < 0.5;
+        if (type === 'COUP_ENVOI') envois++; else renvois++;
+        if ((type === 'COUP_ENVOI') !== auMilieu) fautifs.push(`${type} depuis x=${x.toFixed(1)} : « ${txt} »`);
+      }
+      return orig(type, eq, txt);
+    };
+    for (let t = 0; t < 4800; t += 0.1) m.tick(0.1);
+  }
+  assert.ok(envois > 0, 'aucun coup d envoi observe : le test ne mesure rien');
+  assert.ok(renvois > 0, `aucun renvoi aux 22 m annonce sur 4 matchs alors que le moteur en joue ~2,75 par `
+    + `match : ils sont annonces « Coup d'envoi ». Exemple : ${fautifs[0] || '-'}`);
+  assert.strictEqual(fautifs.length, 0, `${fautifs.length} remise(s) en jeu mal annoncee(s), ex. ${fautifs[0]}`);
+});
+
+// --- LE BANC DE MESURE DOIT TOURNER AU PAS DU JEU --------------------------
+// Defaut trouve en faisant tourner la calibration au pas REEL du navigateur :
+// elle tournait a 0,2 s, le jeu tourne a 0,1 s (docs/js/constants.js PAS_FIXE),
+// et au pas reel le moteur ECHOUAIT sa propre calibration — 11/14, categorie
+// essentielle « lineouts » a 18,1 pour une fourchette [20-35] — pendant que le
+// banc annoncait 12/14. Le match affiche a l'ecran n'avait jamais ete calibre.
+//
+// Le pas change VRAIMENT le jeu : meme moteur, memes graines, 47,6 coups de
+// pied a 0,1 s contre 59,0 a 0,2 s, 18,1 touches contre 21,3. Ce n'est donc pas
+// un detail d'outil. Ce test empeche les deux pas de diverger a nouveau en
+// silence : c'est la seule chose qui garantit que ce qu'on mesure est ce qu'on
+// joue. Cf. TODO_AUDIT.md P2-41.
+test('le banc de calibration tourne au PAS DE SIMULATION DU JEU', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const racine = path.join(__dirname, '..');
+  const lire = (fichier, motif, quoi) => {
+    const texte = fs.readFileSync(path.join(racine, fichier), 'utf8');
+    const m = texte.match(motif);
+    assert.ok(m, `impossible de lire ${quoi} dans ${fichier} — le motif a change, ce test ne protege plus rien`);
+    return parseFloat(m[1]);
+  };
+  const pasDuJeu = lire('docs/js/constants.js', /const PAS_FIXE\s*=\s*([0-9.]+)/, 'PAS_FIXE');
+  const pasDuBanc = lire('server/test-calibration-moteur.js', /^const DT = ([0-9.]+);/m, 'DT');
+  assert.strictEqual(pasDuBanc, pasDuJeu,
+    `le banc de calibration mesure a ${pasDuBanc} s alors que le jeu tourne a ${pasDuJeu} s. `
+    + `Mesure : le meme moteur produit 47,6 coups de pied et 18,1 touches a 0,1 s, contre 59,0 `
+    + `et 21,3 a 0,2 s. Calibrer a un pas qu'on ne joue pas, c'est regler une partie qui n'existe pas.`);
+});
+
+// --- LOI 16 : UNE MELEE NE SE SIFFLE PAS SUR UN MAUL QUI AVANCE ------------
+// Trouve par un CONTROLE D'ARBITRAGE apres le correctif de poussee du maul,
+// pas par la suite de tests : aucun test ne regardait la CAUSE de la fin d'un
+// maul. Le garde-fou anti-blocage appelait `_maulMeleeInjouable()` des 45 s.
+// La loi 16.16/16.17 ne permet la melee que sur ballon injouable, ecroulement
+// ou « use it » non execute — jamais parce que le maul dure.
+//
+// CE QUE MON PROPRE CORRECTIF AVAIT FAIT. Tant que les mauls mouraient a 8,4 s
+// le garde-fou ne servait presque jamais (2 % des mauls). En les allongeant a
+// 23 s, il est devenu la sortie PRINCIPALE : 27 mauls sur 104 (26 %) au pas
+// reel du jeu, dont 24 EN MOUVEMENT. La possession changeait sans declencheur
+// legal, et systematiquement au detriment du pack dominant.
+//
+// LE TEST INTERROGE LES DEUX PAS DE SIMULATION, ET C'EST VOULU. Le moteur
+// tourne a 0,1 s dans le navigateur (docs/js/constants.js PAS_FIXE) mais a
+// 0,2 s sur les bancs de mesure (server/test-calibration-moteur.js). Le defaut
+// etait DEUX FOIS PLUS FREQUENT au pas reel qu'au pas du banc (26 % contre
+// 13 %) : un test qui n'aurait regarde que 0,2 s aurait sous-estime de moitie
+// ce que le joueur subit.
+//
+// ROUGE PUIS VERT, verifie : 11 mauls illegaux sur 50 avant correctif, 0 apres.
+test('loi 16 : un maul qui AVANCE ne peut pas etre termine par une melee', () => {
+  function meleesSurMaulEnMouvement(pas, graines) {
+    let mauls = 0, illegales = 0;
+    for (const seed of graines) {
+      const m = new MatchEngine(seed, 4800);
+      let avant = m.phase;
+      for (let t = 0; t < 4800; t += pas) {
+        // L'etat est lu AVANT le tick : _maulMeleeInjouable() detruit l'objet
+        // maul pendant le tick. Premiere version de cet instrument : je lisais
+        // maul.timerGlobal apres coup et je comparais a 45 — le tick exact du
+        // coup de sifflet etait rate, et l'instrument annoncait 0 %.
+        const etatAvant = m.maul ? m.maul.etat : null;
+        m.tick(pas);
+        if (avant === 'MAUL' && m.phase !== 'MAUL') {
+          mauls++;
+          if (m.phase === 'MELEE' && etatAvant === 'MAUL_MOVING') illegales++;
+        }
+        avant = m.phase;
+      }
+    }
+    return { mauls, illegales };
+  }
+  const graines = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+  for (const pas of [0.1, 0.2]) {
+    const r = meleesSurMaulEnMouvement(pas, graines);
+    assert.strictEqual(r.illegales, 0,
+      `pas de simulation ${pas} : ${r.illegales} maul(s) sur ${r.mauls} se terminent par une `
+      + `melee alors qu'ils AVANCENT encore. La loi 16 ne permet la melee que sur ballon `
+      + `injouable, ecroulement, ou "use it" non execute — jamais parce que le maul dure.`);
+  }
+});
+
+// --- LE DEMI DE MELEE DOIT SE SERVIR DE SES AVANTS -------------------------
+// P1-xx a rendu le jeu au pres PILOTABLE dans les cinq derniers metres
+// (cfgAttaque.jeuAuPresLigne, module par profilJeuAuPres). Partout AILLEURS le
+// taux est reste la constante historique 0,18 — `tauxAvantLance` vaut
+// litteralement `zone === 'CINQ_M' ? tauxPres : zone === 'OPP_22' ?
+// tauxPres * 0.35 : 0.18`. Sur les trois quarts du terrain, donc, le n°9 de
+// TOUS les clubs sort le ballon exactement de la meme facon.
+//
+// Mesure sur 10 matchs, cible REELLE de chaque passe du n°9 (1 825 passes) :
+//   vers le n°10      63,5 %   recul -4,51 m
+//   vers un AVANT     16,9 %   recul -2,45 m
+//   vers le n°15      10,2 %   recul -7,12 m
+// Un vrai demi de melee alterne : environ un tiers des sorties de regroupement
+// partent au pres (pick-and-go, passe a plat a un avant lance).
+//
+// CE QUE CE CORRECTIF N'APPORTE PAS, ET IL FAUT LE DIRE : du terrain.
+// Comparaison APPARIEE sur 300 graines (Bonferroni) : gain/temps de jeu
+// -0,062 +/- 0,162, NON ETABLI, comme les dix autres metriques du banc. Le jeu
+// confine au milieu du terrain (P2-15) reste entier.
+//
+// NB : ce commentaire a porte une decomposition de ce gain (course contre
+// recul des passes). Elle etait FAUSSE et a ete retiree — cf. TODO_AUDIT.md
+// P2-33 pour le detail de l'erreur d'instrument et de ce qui reste etabli.
+//
+// Ce que le correctif apporte est ailleurs, et c'est un critere de refus
+// EXPLICITE de CLAUDE.md : « les avants et les trois-quarts jouent exactement
+// pareil », « les memes actions se repetent tout le temps ». Sur les trois
+// quarts du terrain, le n°9 de tous les clubs sortait le ballon a l'identique.
+//
+// CE N'EST PAS UN RAIL. Comme le jeu au pres pres de la ligne, le taux devient
+// une CONSIGNE D'EQUIPE (`cfgAttaque.sortieAvant`, pilotable par le Mode Club
+// via attaqueA / attaqueB) modulee par l'EFFECTIF REELLEMENT ALIGNE (meme
+// `profilJeuAuPres` : puissance du pack contre vitesse de la ligne). Deux
+// equipes ne sortent donc pas le ballon de la meme facon, et le joueur decide.
+function partAvantsSortieNeuf(config, graines) {
+  let avants = 0, total = 0;
+  for (const seed of graines) {
+    const m = new MatchEngine(seed, 4800, config);
+    let attente = null;
+    const brut = m.log.bind(m);
+    m.log = (type, team, msg, extra) => {
+      if ((type === 'PASSE' || type === 'JEU_LARGE') && extra && extra.de === 9 && m.porteur) {
+        attente = { vers: extra.vers };
+      }
+      return brut(type, team, msg, extra);
+    };
+    for (let t = 0; t < 4800; t += 0.2) {
+      m.tick(0.2);
+      if (attente) { total++; if (attente.vers <= 8) avants++; attente = null; }
+    }
+  }
+  return { part: 100 * avants / total, total };
+}
+test('le demi de melee se sert de ses avants a la sortie du regroupement', () => {
+  const r = partAvantsSortieNeuf(undefined, [1, 2, 3, 4, 5, 6, 7, 8]);
+  assert.ok(r.total > 800, `echantillon trop petit (${r.total} passes du n°9)`);
+  // Seuil a 22 % : la revendication defendable est « un quart a un tiers des
+  // passes du 9 », pas un chiffre au point pres. Il reste mordant — l'ancien
+  // comportement (16,9 %) le fait rougir avec de la marge.
+  assert.ok(r.part >= 22,
+    `le n°9 ne sert un avant que dans ${r.part.toFixed(1)} % de ses passes : il sort `
+    + `mecaniquement vers l ouvreur (mesure avant correctif : 16,9 %)`);
+});
+test('la sortie de regroupement est une CONSIGNE d equipe, pas un rail', () => {
+  const graines = [1, 2, 3, 4, 5, 6];
+  const auPres = partAvantsSortieNeuf({ attaqueA: { sortieAvant: 0.75 }, attaqueB: { sortieAvant: 0.75 } }, graines);
+  const auLarge = partAvantsSortieNeuf({ attaqueA: { sortieAvant: 0.05 }, attaqueB: { sortieAvant: 0.05 } }, graines);
+  assert.ok(auPres.part - auLarge.part >= 15,
+    `consigne « au pres » ${auPres.part.toFixed(1)} % contre « au large » ${auLarge.part.toFixed(1)} % : `
+    + `la consigne d equipe ne change pas assez le jeu pour que le joueur la voie`);
+});
+test('la sortie de regroupement depend de l EFFECTIF aligne, pas seulement de la consigne', () => {
+  // Meme consigne, deux effectifs opposes : un pack lourd devant une ligne
+  // lente doit jouer plus au pres qu'un pack leger devant une ligne rapide.
+  // C'est la garantie que les joueurs du club comptent vraiment.
+  const lourd = {}, leger = {};
+  for (let n = 1; n <= 8; n++) { lourd[n] = { puissance: 95 }; leger[n] = { puissance: 35 }; }
+  for (let n = 9; n <= 15; n++) { lourd[n] = { vitesse: 45 }; leger[n] = { vitesse: 95 }; }
+  const graines = [1, 2, 3, 4, 5, 6];
+  const a = partAvantsSortieNeuf({ joueursA: lourd, joueursB: lourd }, graines);
+  const b = partAvantsSortieNeuf({ joueursA: leger, joueursB: leger }, graines);
+  assert.ok(a.part - b.part >= 5,
+    `pack lourd/ligne lente ${a.part.toFixed(1)} % contre pack leger/ligne rapide ${b.part.toFixed(1)} % : `
+    + `l effectif reellement aligne ne change pas la sortie de regroupement`);
+});
+
+// --- UNE INTERCEPTION, C'EST UNE PASSE LONGUE ------------------------------
+// L'interception etait tiree a TAUX PLAT (PROBA_INTERCEPTION, module par la
+// seule adresse du defenseur) des qu'un defenseur se trouvait a moins de 1,2 m
+// du couloir de passe. La LONGUEUR de la passe n'entrait nulle part.
+//
+// Consequence mesuree sur 30 matchs, en instrumentant la fonction elle-meme :
+// la passe interceptee moyenne faisait 4,3 m, la mediane 2,7 m. Le moteur
+// n'interceptait donc pas des passes : il ramassait des POPS a deux metres,
+// c'est-a-dire des ballons que le receveur a deja dans les mains. Les trois
+// quarts des prises (0,39 sur 0,52 par match) etaient sur des passes de moins
+// de six metres.
+//
+// En rugby, l'interception est l'evenement de la passe LONGUE : la sautee, la
+// croisee, le renversement. Elle existe parce que le ballon reste EN L'AIR
+// assez longtemps pour qu'un defenseur la lise et parte dessus — un pop a deux
+// metres ne dure pas assez pour cela, et personne n'intercepte une passe de
+// fixation. Deux choses doivent donc dependre de la longueur : le temps de
+// lecture (probabilite de prise) et la distance que le defenseur peut couvrir
+// pendant le vol (largeur du couloir).
+test('une interception, c est une passe LONGUE, pas un pop a deux metres', () => {
+  // 1. A GEOMETRIE EGALE, la passe longue doit etre plus interceptable.
+  // Etat fige : meme defenseur, meme adresse, meme ecart perpendiculaire au
+  // couloir, meme position relative (mi-chemin) — seule la longueur change.
+  function tauxPrise(longueurPasse, ecartCouloir) {
+    let pris = 0, n = 0;
+    for (const seed of [11, 12, 13, 14, 15]) {
+      const m = new MatchEngine(seed, 600);
+      for (let t = 0; t < 30; t += 0.2) m.tick(0.2);
+      m.possession = 'A';
+      const passeur = m.equipeA.find((j) => j.numero === 10);
+      const cible = m.equipeA.find((j) => j.numero === 14);
+      passeur.x = 50; passeur.y = 30; passeur.auSol = 0;
+      cible.x = 49; cible.y = 30 + longueurPasse; cible.auSol = 0;
+      for (const j of m.equipeB) {
+        j.auSol = 0; j.horsJeuKick = 0; j.sinBin = 0; j.x = 95; j.y = 68;
+        j.adresse = 60;
+      }
+      const d = m.equipeB.find((j) => j.numero === 13);
+      d.x = (passeur.x + cible.x) / 2 + ecartCouloir;
+      d.y = (passeur.y + cible.y) / 2;
+      for (let k = 0; k < 400; k++) { n++; if (m._chercherInterception(passeur, cible)) pris++; }
+    }
+    return 100 * pris / n;
+  }
+  const courte = tauxPrise(3, 0.6);   // un pop de fixation
+  const longue = tauxPrise(16, 0.6);  // une sautee
+  assert.ok(longue > courte * 3,
+    `a geometrie identique, la sautee de 16 m est prise dans ${longue.toFixed(1)} % des cas `
+    + `et le pop de 3 m dans ${courte.toFixed(1)} % : la longueur de la passe ne change rien `
+    + `(mesure avant correction : 6,9 % contre 6,9 %)`);
+  assert.ok(courte < 1.5,
+    `un pop de 3 m est intercepte dans ${courte.toFixed(1)} % des cas : le receveur a deja `
+    + `le ballon dans les mains (mesure avant correction : 6,9 %)`);
+
+  // 2. SUR DE VRAIS MATCHS, la passe interceptee doit RESSEMBLER a une sautee.
+  // C'est l'assertion qui compte : elle ne lit pas une formule, elle mesure la
+  // longueur des passes que le moteur intercepte reellement en 80 minutes.
+  let sommeL = 0, prises = 0;
+  // 24 graines : par blocs de 16, le meme moteur donnait 0,7 a 1,2
+  // interception par match ; sur les 12 premieres graines, 0,33.
+  const GRAINES = 24, DUREE = 4800, DT = 0.2;
+  for (let seed = 1; seed <= GRAINES; seed++) {
+    const m = new MatchEngine(seed, DUREE);
+    const orig = m._chercherInterception.bind(m);
+    m._chercherInterception = function (passeur, cible) {
+      const r = orig(passeur, cible);
+      if (r) { prises++; sommeL += Math.hypot(cible.x - passeur.x, cible.y - passeur.y); }
+      return r;
+    };
+    for (let t = 0; t < DUREE; t += DT) m.tick(DT);
+  }
+  const longueurMoyenne = sommeL / prises;
+  const parMatch = prises / GRAINES;
+  assert.ok(longueurMoyenne >= 9,
+    `la passe interceptee moyenne fait ${longueurMoyenne.toFixed(1)} m : le moteur ramasse des `
+    + `pops, pas des sautees (mesure avant correction : 4,3 m, mediane 2,7 m)`);
+  // Garde-fou de frequence : l'interception est RARE (~1 par match en vrai).
+  // Une pluie d'interceptions se verrait a l'ecran autant qu'une absence.
+  assert.ok(parMatch >= 0.4 && parMatch <= 2.2,
+    `${parMatch.toFixed(2)} interception(s) par match : hors de la fourchette reelle (0,4 a 2,2)`);
+});
+
+// --- DEUX EQUIPES NE JOUENT PAS PAREIL AU MEME ENDROIT ---------------------
+// Un joueur decide de jouer comme il le souhaite : ce n'est pas un jeu de
+// voiture sur rail ou tout le monde suit la meme trajectoire. Le jeu au pres
+// dans les cinq derniers metres est donc un REGLAGE D'EQUIPE
+// (`cfgAttaque.jeuAuPresLigne`, pilotable par le Mode Club via attaqueA /
+// attaqueB), module par l'effectif REELLEMENT aligne (cf. profilJeuAuPres :
+// pack puissant contre ligne rapide).
+//
+// Ce test verifie que la consigne change VRAIMENT le jeu : la meme graine, le
+// meme terrain, la meme situation — mais deux intentions opposees doivent
+// produire deux matchs qui ne se jouent pas de la meme facon pres de la ligne.
+test('la consigne de l equipe change le jeu : deux intentions opposees ne se jouent pas pareil', () => {
+  // CE TEST A ETE REECRIT : LA GRANDEUR A CHANGE, ET LE SEUIL EST DEVENU PLUS
+  // EXIGEANT, PAS MOINS.
+  //
+  // Il mesurait la PART DES AVANTS dans les portages des cinq derniers metres —
+  // une trace agregee du comportement, sur ~230 portages par branche. Cette
+  // grandeur est trop bruitee pour porter un garde-fou :
+  //   seuil 15 -> tombe a 12,6 puis 13,8 sur des correctifs sans rapport
+  //   seuil  8 -> tombe a  7,9 sur un correctif de penalite en touche
+  // Mesure sur trois lots de graines disjoints, 48 graines chacun : l'ecart va
+  // de 7,7 a 15,1 SUR LE MEME MOTEUR. Doubler l'echantillon n'y suffit pas (la
+  // dispersion ne decroit pas comme sqrt(n) : les graines sont correlees), et
+  // elargir la zone aux 22 m degrade le rapport signal/bruit (effet 3,1 points
+  // pour +/-3,7, la consigne n'y agissant qu'a 0,35x).
+  //
+  // On interroge donc LA DECISION ELLE-MEME, en etat fige : le n°9 tient le
+  // ballon a 3 m de la ligne adverse, un avant lance a plat a cote de lui,
+  // l'ouvreur en retrait — exactement la situation que `jeuAuPresLigne` pilote.
+  // 400 interrogations par graine, sans laisser personne bouger.
+  //
+  // Le gain est de deux ordres de grandeur :
+  //                        effet mesure    dispersion entre lots
+  //   part des portages     7,7 a 15,1        7,4 points
+  //   decision en etat fige  83,9 a 84,5      0,6 point
+  // Et la mesure est IDENTIQUE A LA DECIMALE sur deux versions du moteur, dont
+  // celle qui avait fait echouer l'ancienne version de ce test.
+  function tauxAvantServi(consigne) {
+    let avant = 0, n = 0;
+    for (const seed of [1, 2, 3, 4, 5, 6]) {
+      const m = new MatchEngine(seed, 600, {
+        attaqueA: { jeuAuPresLigne: consigne }, attaqueB: { jeuAuPresLigne: consigne },
+      });
+      for (let t = 0; t < 30; t += 0.2) m.tick(0.2);
+      m.phase = 'PORTE'; m.timerPhase = 3; m.possession = 'A';
+      m.passeVisuelle = null; m.combinaison = null; m.penaliteRecul = null;
+      m.ruckPoint = { x: 97, y: 30 }; m.maul = null;
+      const neuf = m.equipeA.find((j) => j.numero === 9);
+      const huit = m.equipeA.find((j) => j.numero === 8);
+      const dix = m.equipeA.find((j) => j.numero === 10);
+      m.porteur = neuf;
+      neuf.auSol = 0; neuf.x = 97; neuf.y = 30; neuf._enchaine = 0;
+      huit.auSol = 0; huit.x = 97; huit.y = 33;   // avant lance, a plat
+      dix.auSol = 0; dix.x = 92; dix.y = 26;      // ouvreur en retrait
+      for (const j of m.equipeA) if (j !== neuf && j !== huit && j !== dix) { j.auSol = 0; j.x = 60; j.y = 5; }
+      for (const j of m.equipeB) {
+        j.auSol = 0; j.horsJeuKick = 0; j.fixeCooldown = 0; j.missCooldown = 0;
+        j.ruckRecovery = 0; j.sinBin = 0; j.x = 99; j.y = 68;
+      }
+      const def = m.equipeB.find((j) => j.numero === 6);
+      def.x = 99; def.y = 30;
+      for (let k = 0; k < 400; k++) {
+        m._neufLibre = true; m._passeCibleForcee = null;
+        if (m.choisirActionPorteur(neuf, def, 2.0, 0.2) === 'PASS') {
+          n++;
+          if (m._passeCibleForcee && m._passeCibleForcee.numero <= 8) avant++;
+        }
+      }
+    }
+    return n ? 100 * avant / n : NaN;
+  }
+  const auPres = tauxAvantServi(0.95);   // « on joue le pack »
+  const auLarge = tauxAvantServi(0.10);  // « on ecarte, meme a 3 m »
+  // Seuil a 60 : la plus petite valeur mesuree vaut 83,9, et neutraliser la
+  // consigne donne ~0. Ce garde-fou est donc NETTEMENT plus exigeant que la
+  // version precedente (8 points), tout en etant beaucoup plus stable.
+  assert.ok(auPres - auLarge >= 60,
+    `consigne "au pres" ${auPres.toFixed(1)} % d avants servis contre "au large" `
+    + `${auLarge.toFixed(1)} % : l ecart de ${(auPres - auLarge).toFixed(1)} points ne se voit pas. `
+    + `La consigne de l equipe ne doit pas etre decorative.`);
+});
+
+// --- PERCUTER N'EST PAS LA MEME CHOSE QUE TROUVER L'ESPACE -----------------
+// Mesure au banc A/B sur 300 matchs apparies, cinq variantes du passage au
+// contact (cf. TODO_AUDIT.md P2-22) : `gain par temps de jeu` vaut 1,46 m pour
+// le moteur et 1,45 a 1,51 m pour TOUTES les variantes. Autrement dit, le
+// moteur rendait exactement autant de terrain quand le porteur percutait au ras
+// d'une defense en place que quand il attaquait un espace. Aller au contact
+// etait une option GRATUITE, et la decision du porteur — la premiere que
+// CLAUDE.md (role 4) exige de lui — n'avait aucune consequence visible.
+//
+// Au rugby, une percussion d'un homme dans une defense en place gagne 0 a 1 m ;
+// c'est le ballon qui circule et cree le surnombre qui gagne du terrain.
+//
+// Le scenario ci-dessous isole exactement cette difference : meme porteur, meme
+// plaqueur, meme position — seul change ce qu'il y a DEVANT lui.
+test("percuter une defense en place ne rapporte pas autant que trouver l espace", () => {
+  // Gain de terrain au contact selon le nombre de defenseurs (en plus du
+  // plaqueur) postes dans le couloir devant le porteur.
+  function gainAuContact(nbDevant, seed) {
+    const m = new MatchEngine(seed, 600);
+    for (let t = 0; t < 30; t += 0.2) m.tick(0.2);
+    m.phase = 'PORTE';
+    m.timerPhase = 2;
+    m.possession = 'A';
+    m.passeVisuelle = null;
+    m.combinaison = null;
+    m.penaliteRecul = null;
+    m.ruckPoint = null;
+    m._porteApresPied = false; // etat herite de l'echauffement (P2-52)
+    const porteur = m.equipeA.find((j) => j.numero === 8);
+    m.porteur = porteur;
+    porteur.auSol = 0;
+    porteur.x = 50;
+    porteur.y = 35;
+    // Les coequipiers sont loin : aucune passe possible, le porteur va au contact.
+    for (const j of m.equipeA) {
+      if (j === porteur) continue;
+      j.auSol = 0; j.x = 20; j.y = 5;
+    }
+    // Toute la defense est renvoyee au loin, sauf ceux qu'on place exprès.
+    for (const j of m.equipeB) {
+      j.auSol = 0; j.horsJeuKick = 0; j.fixeCooldown = 0; j.missCooldown = 0;
+      j.ruckRecovery = 0; j.x = 95; j.y = 65;
+    }
+    const defenseurs = m.equipeB.filter((j) => j.numero <= 8);
+    // Le plaqueur, juste dans le rayon de contact.
+    defenseurs[0].x = 52.0;
+    defenseurs[0].y = 35;
+    // Le rideau devant lui (defense en place) ou rien du tout (espace).
+    for (let i = 0; i < nbDevant; i++) {
+      defenseurs[i + 1].x = 53.5 + i * 0.8;
+      defenseurs[i + 1].y = 33 + i * 2;
+    }
+    const xDepart = porteur.x;
+    for (let t = 0; t < 6; t += 0.2) {
+      m.tick(0.2);
+      if (m.phase === 'RUCK' && m.ruckPoint) return m.ruckPoint.x - xDepart;
+      if (m.phase !== 'PORTE') return null; // essai, touche, penalite : hors sujet
+    }
+    return null;
+  }
+  // Plusieurs graines : le plaquage dominant est tire au sort (30 % quand le
+  // plaqueur domine nettement), donc un seul contact ne dit rien.
+  const enPlace = [], espace = [];
+  // 36 graines, pas 12 : le scenario herite de 30 s d'echauffement, donc toute
+  // modification du moteur change l'etat de depart. Sur 12 graines, l'ecart
+  // variait de 0,72 a 1,23 m d'un jeu de graines a l'autre pour le MEME
+  // moteur, et une modification sans rapport le faisait passer sous le seuil
+  // (P2-52). Sur 36 graines : 0,99 m.
+  for (let seed = 31; seed <= 66; seed++) {
+    const a = gainAuContact(3, seed);
+    const b = gainAuContact(0, seed);
+    if (a !== null) enPlace.push(a);
+    if (b !== null) espace.push(b);
+  }
+  assert.ok(enPlace.length >= 8 && espace.length >= 8,
+    `echantillon trop petit (${enPlace.length} contacts en place, ${espace.length} en espace)`);
+  const moy = (t) => t.reduce((x, y) => x + y, 0) / t.length;
+  const gEnPlace = moy(enPlace), gEspace = moy(espace);
+  // Une seule assertion, et c'est la bonne : l'ECART entre les deux situations.
+  // J'avais d'abord ajoute un plancher absolu (« percuter doit rapporter moins
+  // de 0,6 m »), mais il confondait deux choses : la chute en avant au contact,
+  // qui est le parametre reglé dans le moteur, et le gain NET du scenario, qui
+  // comprend aussi la course du porteur et les ~15 % de plaquages manques. Un
+  // seuil absolu sur la seconde ne dit rien de la premiere. L'ecart, lui, annule
+  // ces termes communs : c'est exactement la propriete mesuree nulle au banc.
+  assert.ok(gEspace - gEnPlace >= 0.6,
+    `percuter une defense en place rapporte ${gEnPlace.toFixed(2)} m et attaquer l espace `
+    + `${gEspace.toFixed(2)} m : l ecart de ${(gEspace - gEnPlace).toFixed(2)} m ne se voit pas. `
+    + `Tant qu il est nul, le choix du porteur entre passer et percuter n a aucune consequence.`);
 });
 
 // --- LA LIGNE D'AVANTAGE ---------------------------------------------------
@@ -817,15 +2169,31 @@ test('un franchissement PAIE : le porteur qui bat son vis-a-vis gagne du terrain
   // 8 graines : un match ne produit qu'une dizaine de franchissements, 5 matchs
   // ne suffisaient pas a stabiliser la moyenne (ni meme a atteindre la taille
   // d'echantillon minimale).
+  // 16 graines (P2-58) : rejoue sur des graines decalees (+1000, +2000), le
+  // MEME moteur tombait a 26 franchissements (echantillon trop petit) ou a
+  // 11,9 m pour un seuil de 12. Sur 16 graines : ~14 m.
+  // 48 graines : sur 96 matchs, des lots de 16 graines du MEME moteur donnaient
+  // de 12,0 a 15,1 m (moyenne 13,3 a 13,5) ; un changement sans rapport avec
+  // les franchissements faisait passer ce test sous le seuil.
+  // 96 graines (P2-151) : sur 48, le même lot donnait 11,9 m (graines 1-48) et
+  // 13,6 m (graines 49-96) ; l'ancien moteur 13,1 et 12,9 m — même moyenne,
+  // un seul lot de 48 ne suffit toujours pas.
   const gains = [];
-  for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) {
+  for (let seed = 1; seed <= 96; seed++) {
     const m = new MatchEngine(seed, 4800);
     let suivi = null;
     for (let t = 0; t < 4800; t += 0.2) {
       const avant = m.stats.A.franchissements + m.stats.B.franchissements;
+      const manquesAvant = m.stats.A.missedTackles + m.stats.B.missedTackles;
       m.tick(0.2);
       const apres = m.stats.A.franchissements + m.stats.B.franchissements;
-      if (apres > avant && m.porteur) {
+      // Le porteur qui BAT SON VIS-A-VIS : franchissement ne d'un plaquage
+      // manque dans ce pas. Depuis P2-60, le compteur compte aussi le porteur
+      // qui passe la ligne sans etre touche, et ce comptage tombe en fin de
+      // course (ligne passee + 5 m) : le suivre mesurait la fin de l'action,
+      // pas la percee.
+      const manque = m.stats.A.missedTackles + m.stats.B.missedTackles > manquesAvant;
+      if (apres > avant && manque && m.porteur) {
         suivi = { x0: m.porteur.x, sens: m.porteur.sensAttaque, t0: m.tempsMatch, eq: m.possession };
       } else if (suivi && (m.tempsMatch - suivi.t0 >= 6 || m.phase === 'ESSAI' || m.possession !== suivi.eq)) {
         gains.push(m.porteur ? (m.porteur.x - suivi.x0) * suivi.sens : 0);
@@ -891,13 +2259,23 @@ test('loi 14 : du plaquage au ballon sorti, un regroupement dure plus de 4,5 s',
 // point de chute. C'est un des hors-jeu que CLAUDE.md (role 5) demande
 // explicitement de faire exister.
 test('loi 10 : les joueurs devant le botteur sont hors-jeu et ne peuvent pas plaquer', () => {
-  let coupsDePied = 0, marques = 0, plaquagesHorsJeu = 0, convergents = 0, receptions = 0;
-  for (const seed of [1, 2, 3, 4]) {
+  let coupsDePied = 0, marques = 0, plaquagesHorsJeu = 0;
+  const masse = { libre: { n: 0, s: 0 }, disputee: { n: 0, s: 0 } };
+  // 6 graines, pas 4 (P2-58) : rejoue sur des graines decalees, le meme
+  // moteur ne donnait que 56 a 60 receptions de coups de pied non disputes,
+  // sous la taille d'echantillon exigee plus bas.
+  for (const seed of [1, 2, 3, 4, 5, 6]) {
     const m = new MatchEngine(seed, 4800);
+    let typeCoup = null;
     for (let t = 0; t < 4800; t += 0.2) {
       const phaseAvant = m.phase;
       const positions = new Map();
       for (const j of [...m.equipeA, ...m.equipeB]) positions.set(j, { x: j.x, horsJeu: j.horsJeuKick > 0 });
+      const plaquagesAvant = new Map();
+      for (const j of [...m.equipeA, ...m.equipeB]) {
+        const l = m.statsJoueurs[j.team][j.numero];
+        plaquagesAvant.set(j, l ? l.tacklesAttempted : 0);
+      }
       const botteur = m.porteur;
       const avantTk = m.stats.A.tacklesAttempted + m.stats.B.tacklesAttempted;
       m.tick(0.2);
@@ -905,32 +2283,47 @@ test('loi 10 : les joueurs devant le botteur sont hors-jeu et ne peuvent pas pla
       // botteur, et on verifie que ceux-la sont bien marques hors-jeu.
       if (phaseAvant !== 'COUP_DE_PIED_JEU' && m.phase === 'COUP_DE_PIED_JEU' && botteur) {
         const equipe = botteur.team === 'A' ? m.equipeA : m.equipeB;
-        const devant = equipe.filter((j) => j !== botteur && (j.x - botteur.x) * botteur.sensAttaque > 1);
+        // Position AU MOMENT DE LA FRAPPE (loi 10), enregistree par le moteur :
+        // le botteur peut encore bouger de quelques centimetres dans le meme
+        // pas de temps. Mesure sur sa position apres le pas, un coequipier a
+        // 0,9 m devant le point de frappe (donc en jeu) etait compte « devant »
+        // (P2-57, graine 4 : chandelle du n°9 frappee a 9,8 m, botteur a 9,7 m).
+        const xFrappe = m.xCoupDePiedJeu;
+        // Devant AVANT et APRÈS le pas : la frappe a lieu au milieu du pas, et
+        // seule cette double condition garantit « devant au moment de la
+        // frappe ». Mesuré après le pas seulement, un talonneur à 1,0 m — en
+        // jeu à la frappe, quelques centimètres plus loin à la fin du pas —
+        // était compté non marqué (P2-78, graine 4, 198/199).
+        const devant = equipe.filter((j) => j !== botteur && (j.x - xFrappe) * botteur.sensAttaque > 1
+          && (positions.get(j).x - xFrappe) * botteur.sensAttaque > 1);
         if (devant.length > 0) {
           coupsDePied++;
           if (devant.every((j) => j.horsJeuKick > 0)) marques++;
         }
       }
-      // Aucun plaquage ne doit etre tente par un joueur hors-jeu.
+      // Aucun plaquage ne doit etre tente par un joueur hors-jeu. Le plaqueur
+      // est identifie par son compteur individuel : un hors-jeu simplement
+      // voisin du plaquage d'un coequipier en jeu (une penalite jouee vite a
+      // 2 m de l'en-but met toute la defense hors-jeu) n'est pas une faute.
       const apresTk = m.stats.A.tacklesAttempted + m.stats.B.tacklesAttempted;
       if (apresTk > avantTk) {
-        for (const [j, p] of positions) if (p.horsJeu && j.horsJeuKick > 0 && j.team !== m.possession) {
-          // le plaqueur potentiel est dans le camp qui defend ; on ne peut pas
-          // l'identifier exactement, on borne par le nombre de hors-jeu proches
-          // du porteur, qui doit rester nul.
-          if (m.porteur && Math.hypot(j.x - m.porteur.x, j.y - m.porteur.y) < 2.2) plaquagesHorsJeu++;
+        for (const [j, p] of positions) if (p.horsJeu && j.horsJeuKick > 0) {
+          const ligne = m.statsJoueurs[j.team][j.numero];
+          if (ligne && ligne.tacklesAttempted > (plaquagesAvant.get(j) || 0)) plaquagesHorsJeu++;
         }
       }
       // Combien de joueurs sont masses autour du ballon AU MOMENT de la
       // reception : c'est la mesure qui compte pour le joueur, celle qui dit
       // si une relance est possible ou si le ballon tombe dans une melee
       // ouverte de vingt joueurs.
+      if (m.phase === 'COUP_DE_PIED_JEU') typeCoup = m.typeCoupDePiedJeu;
       if (phaseAvant === 'COUP_DE_PIED_JEU' && m.phase === 'PORTE' && m.porteur) {
         let n = 0;
         for (const j of [...m.equipeA, ...m.equipeB]) {
           if (Math.hypot(j.x - m.porteur.x, j.y - m.porteur.y) < 8) n++;
         }
-        convergents += n; receptions++;
+        const k = (typeCoup === 'CHANDELLE' || typeCoup === 'CHIP') ? masse.disputee : masse.libre;
+        k.s += n; k.n++;
       }
     }
   }
@@ -942,10 +2335,23 @@ test('loi 10 : les joueurs devant le botteur sont hors-jeu et ne peuvent pas pla
   // Mesure : 8,6 joueurs masses a moins de 8 m du receveur avant le correctif
   // (mediane 6, jusqu'a 29), 4,9 apres (mediane 4). Un coup de pied n'est plus
   // une melee ouverte de vingt joueurs : le receveur peut relancer.
-  assert.ok(receptions > 100, `echantillon de receptions trop petit (${receptions})`);
-  const masse = convergents / receptions;
-  assert.ok(masse <= 6,
-    `trop de joueurs masses autour du receveur d'un coup de pied (${masse.toFixed(1)} a moins de 8 m)`);
+  //
+  // DEUX MESURES, PAS UNE (P2-57). Depuis qu'une chandelle tient ~4 s en l'air
+  // et se dispute (P2-55/P2-56), chasseurs et receveurs se retrouvent SOUS le
+  // ballon par construction : la moyenne melangeait ce duel voulu et le defaut
+  // que ce test garde. On separe donc :
+  //  - coups de pied NON disputes (occupation, degagement) : seuil d'origine,
+  //    6 (moteur : ~5,0) ;
+  //  - chandelles et coups de pied a suivre : un duel, pas une melee ouverte,
+  //    12 au plus (moteur : ~8,9).
+  // Mutant « les quinze au ballon » : ~8,5 et 23,6 — rouge sur les deux.
+  assert.ok(masse.libre.n > 60 && masse.disputee.n > 40,
+    `echantillon de receptions trop petit (${masse.libre.n} libres, ${masse.disputee.n} disputees)`);
+  const mLibre = masse.libre.s / masse.libre.n, mDisputee = masse.disputee.s / masse.disputee.n;
+  assert.ok(mLibre <= 6,
+    `trop de joueurs masses autour du receveur d'un coup de pied non dispute (${mLibre.toFixed(1)} a moins de 8 m)`);
+  assert.ok(mDisputee <= 12,
+    `une chandelle tourne a la melee ouverte (${mDisputee.toFixed(1)} joueurs a moins de 8 m du receveur)`);
 });
 
 // --- Loi 8 : PLAQUE SUR LA LIGNE, IL APLATIT -------------------------------
@@ -997,14 +2403,16 @@ test("loi 8 : un porteur plaque dont l'elan franchit la ligne aplatit (essai)", 
 
 // Le pendant de la regle : TENU DEBOUT. Le ballon n'est pas aplati, le jeu
 // continue — et surtout le regroupement ne se forme JAMAIS dans l'en-but.
-test("loi 8 : tenu debout sur la ligne, pas d'essai et aucun regroupement dans l'en-but", () => {
+test("loi 8 : tenu debout sur la ligne, pas d'essai, renvoi depuis l'en-but", () => {
   // 0,20 : plaquage reussi, pas d'en-avant, mais TENU DEBOUT (tirage < 0,35).
   const { m, sens, scoreAvant } = scenarioPlaqueSurLaLigne(11, 0.2);
   assert.notStrictEqual(m.phase, 'ESSAI', "tenu debout : pas d'essai");
   assert.strictEqual(m.score.A, scoreAvant, 'tenu debout : le score ne bouge pas');
-  assert.ok(m.ruckPoint, 'un regroupement doit bien se former');
-  const dansEnBut = sens > 0 ? m.ruckPoint.x >= LONGUEUR : m.ruckPoint.x <= 0;
-  assert.ok(!dansEnBut, `regroupement forme DANS l'en-but (x=${m.ruckPoint.x.toFixed(2)})`);
+  // Depuis P2-99 (loi en vigueur depuis 2022) : ballon tenu dans l'en-but ->
+  // renvoi depuis l'en-but par la défense, plus de ruck sur la ligne.
+  assert.notStrictEqual(m.phase, 'RUCK', 'tenu debout : aucun regroupement sur ou dans l en-but');
+  assert.ok(m.phase === 'COUP_ENVOI' && m.renvoiEnBut, `tenu debout : renvoi depuis l'en-but attendu (phase ${m.phase})`);
+  assert.strictEqual(m.possession, sens > 0 ? 'B' : 'A', 'le renvoi depuis l en-but est tapé par la défense');
 });
 
 // --- Le DERNIER DEFENSEUR couvre le coin ----------------------------------
@@ -1016,34 +2424,72 @@ test("loi 8 : tenu debout sur la ligne, pas d'essai et aucun regroupement dans l
 // marquaient 85 % des essais du match — le moteur ne produisait que des essais
 // « en contre ».
 test('le dernier defenseur (n°15) traverse pour couvrir un porteur qui a franchi', () => {
-  const m = new MatchEngine(21, 600);
-  for (let t = 0; t < 30; t += 0.2) m.tick(0.2);
-  m.phase = 'PORTE';
-  m.timerPhase = 3;
-  m.possession = 'A';
-  m.passeVisuelle = null;
-  m.combinaison = null;
-  m.penaliteRecul = null;
-  const porteur = m.equipeA.find((j) => j.numero === 11);
-  const sens = porteur.sensAttaque;
-  m.porteur = porteur;
-  porteur.auSol = 0;
-  porteur.x = sens > 0 ? LONGUEUR - 45 : 45;
-  porteur.y = 8; // lance le long de la touche
-  // Toute la defense est BATTUE : plus personne devant le porteur, sauf l'arriere.
-  for (const j of m.equipeB) {
-    j.auSol = 0; j.horsJeuKick = 0; j.fixeCooldown = 0; j.ruckRecovery = 0;
-    if (j.numero !== 15) { j.x = porteur.x - sens * 12; j.y = 35; }
+  // TROIS VERSIONS DE CE TEST, ET C'EST LA BONNE. Les deux precedentes ne
+  // mesuraient pas ce qu'elles annoncaient :
+  //
+  // 1. UNE SEULE graine, 2 s de jeu, aucun etat remis a zero. Mesure sur 12
+  //    graines du moteur INCHANGE : 12,7 / 12,8 / 9,8 / 10,7 / 4,1 / 11,8 /
+  //    12,8 / 12,2 / 13,1 / 4,2 / 9,2 / 7,6 — moyenne 10,1 pour un seuil a 10.
+  //    Il tenait a une graine heureuse et basculait au moindre changement du
+  //    moteur, qu'il touche ou non a la couverture. Pire : une fois la vitesse
+  //    courante remise a zero, la traversee tombe a 4,9 m en 2 s — les
+  //    « 12,6 m » sur lesquels le seuil avait ete bati venaient surtout de
+  //    l'ELAN RESIDUEL de l'arriere.
+  // 2. Contraste entre un porteur le long de la touche et un porteur dans
+  //    l'axe. Deterministe, mais HOLLOW : en neutralisant la branche de
+  //    couverture (`if (franchi)`), le test restait VERT. Quand la branche ne
+  //    s'applique pas, l'arriere suit quand meme le ballon par la voie normale,
+  //    et c'est ce suivi-la que le contraste mesurait.
+  //
+  // Ce que la branche apporte VRAIMENT, mesure en neutralisant celle-ci (8
+  // graines, etat remis a zero, porteur le long de la touche) :
+  //     fenetre 4 s : 12,63 m avec la branche contre 9,15 m sans
+  //     fenetre 6 s : 22,97 m (ecart-type 6,37) contre 9,83 m (ecart-type 0,40)
+  // Sans elle, l'arriere PLAFONNE a ~9,8 m : il suit le ballon mais ne va
+  // jamais au point de rencontre. Le seuil est place a 13 m — trois
+  // ecarts-types sous la valeur du moteur correct, et tres au-dessus des 9,8 m
+  // quasi deterministes du moteur ampute.
+  function traverseeArriere() {
+    const valeurs = [];
+    for (const seed of [21, 22, 23, 24, 25, 26, 27, 28]) {
+      const m = new MatchEngine(seed, 600);
+      for (let t = 0; t < 30; t += 0.2) m.tick(0.2);
+      m.phase = 'PORTE';
+      m.timerPhase = 3;
+      m.possession = 'A';
+      m.passeVisuelle = null;
+      m.combinaison = null;
+      m.penaliteRecul = null;
+      const porteur = m.equipeA.find((j) => j.numero === 11);
+      const sens = porteur.sensAttaque;
+      m.porteur = porteur;
+      porteur.auSol = 0;
+      porteur.x = sens > 0 ? LONGUEUR - 45 : 45;
+      porteur.y = 8; // lance le long de la touche
+      // Toute la defense est BATTUE : plus personne devant le porteur, sauf l'arriere.
+      for (const j of m.equipeB) {
+        j.auSol = 0; j.horsJeuKick = 0; j.fixeCooldown = 0; j.ruckRecovery = 0;
+        if (j.numero !== 15) { j.x = porteur.x - sens * 12; j.y = 35; }
+      }
+      const arriere = m.equipeB.find((j) => j.numero === 15);
+      arriere.x = porteur.x + sens * 20;
+      arriere.y = 35;
+      // L'ETAT RESIDUEL EST REMIS A ZERO : sans cela ce sont les elans herites
+      // de la mise en route qui dominent la mesure (cf. en-tete).
+      for (const j of [...m.equipeA, ...m.equipeB]) {
+        j.vitesseCourante = 0; j._percee = 0; j.missCooldown = 0;
+      }
+      const yAvant = arriere.y;
+      for (let t = 0; t < 6 && m.phase === 'PORTE'; t += 0.2) m.tick(0.2);
+      valeurs.push(Math.abs(yAvant - arriere.y));
+    }
+    return valeurs.reduce((a, b) => a + b, 0) / valeurs.length;
   }
-  const arriere = m.equipeB.find((j) => j.numero === 15);
-  arriere.x = porteur.x + sens * 20;
-  arriere.y = 35;
-  for (let t = 0; t < 2 && m.phase === 'PORTE'; t += 0.2) m.tick(0.2);
-  const ecartLateral = Math.abs(arriere.y - porteur.y);
-  // Mesure sur ce scenario : 20,3 m avant correctif (il tient son couloir),
-  // 15,7 m apres (il traverse). Le seuil refuse l'arriere qui ne traverse pas.
-  assert.ok(ecartLateral < 18,
-    `l'arriere ne traverse pas pour couvrir (ecart lateral ${ecartLateral.toFixed(1)} m)`);
+  const traverse = traverseeArriere();
+  assert.ok(traverse >= 13,
+    `l'arriere ne traverse que ${traverse.toFixed(1)} m pour couvrir un porteur lance le long `
+    + `de la touche. Sans la lecture du point de rencontre il plafonne a 9,8 m : il suit le `
+    + `ballon au lieu d'aller le couper.`);
 });
 
 // --- Loi 15 : LE PLAQUEUR AUSSI EST HORS-JEU ------------------------------
@@ -1123,7 +2569,16 @@ test("un defenseur qui sort du regroupement ne glisse pas vers le ballon", () =>
     j.y = 55; // tres loin du porteur (y = 20)
   }
   const yAvant = sortants.map((j) => j.y);
-  for (let t = 0; t < 1; t += 0.2) m.tick(0.2);
+  // On ne mesure QUE tant que le jeu reste en jeu courant. Si le porteur tape au
+  // pied ou se fait plaquer pendant la seconde mesuree, ce sont les
+  // replacements de la NOUVELLE phase (couverture du coup de pied, formation du
+  // ruck) qui deplacent les joueurs, pas le glissement defensif teste ici.
+  // Confondant reel : le passage du porteur au contact a change sa decision sur
+  // ce scenario (il botte desormais au 3e tick), et le test est passe au rouge a
+  // 0,95 m alors que la mecanique verifiee n'avait pas bouge d'une ligne — en
+  // s'arretant au changement de phase, le glissement mesure vaut 0,00 m.
+  // Le SEUIL n'a pas ete touche : seul le confondant a ete retire.
+  for (let t = 0; t < 1; t += 0.2) { m.tick(0.2); if (m.phase !== 'PORTE') break; }
   // Glissement MOYEN SIGNE vers le ballon (le porteur est a y = 20, eux a
   // y = 55) : c'est le glissement defensif, pas le bruit de replacement.
   const glissement = sortants.reduce((a, j, i) => a + (yAvant[i] - j.y), 0) / sortants.length;
@@ -1212,8 +2667,19 @@ function scenarioInterception(yDefenseur) {
   intercepteur.x = 49.8;
   intercepteur.y = yDefenseur;
   m.rng = () => 0.01; // lecture parfaite : si la position le permet, il la prend
+  // DELTA, jamais le total : les 30 s de mise en route ci-dessus sont un vrai
+  // match, et elles peuvent tres bien y produire un turnover. Compter en absolu
+  // rendait ce test dependant de tout changement AILLEURS dans le moteur — il
+  // est effectivement passe au rouge sur un correctif de la chaine de passes
+  // qu'il n'a aucune raison de voir (le scenario appelle _tenterPasse
+  // directement, sans passer par la decision du porteur).
+  const turnoversAvant = m.stats.B.turnovers;
   m._tenterPasse(porteur, false);
-  return { possession: m.possession, porteur: m.porteur && m.porteur.numero, turnovers: m.stats.B.turnovers };
+  return {
+    possession: m.possession,
+    porteur: m.porteur && m.porteur.numero,
+    turnovers: m.stats.B.turnovers - turnoversAvant,
+  };
 }
 test("un defenseur dans le couloir de passe INTERCEPTE et le ballon change de camp", () => {
   const r = scenarioInterception(35); // pile entre le passeur (y=30) et la cible (y=40)
@@ -1227,6 +2693,2226 @@ test("un defenseur HORS du couloir de passe n'intercepte pas", () => {
   const r = scenarioInterception(55); // 15 m a cote de la ligne de passe
   assert.strictEqual(r.possession, 'A', 'la possession ne doit PAS changer');
   assert.strictEqual(r.porteur, 12, 'la passe arrive normalement a son destinataire');
+});
+
+// --- Loi 19 : ON PEUT ETRE PLAQUE EN TOUCHE --------------------------------
+// Sortie de rugby parfaitement banale — le porteur longe la ligne, la defense
+// le pousse dehors — et elle n'existait pas : 0,05 par match mesure, contre 2 a
+// 4 en vrai. Cause : le porteur crocheta vers l'interieur des qu'il passait
+// sous 8 m de la touche, c'est-a-dire tout le couloir. Il s'ecartait donc de la
+// ligne bien avant de l'approcher, et TOUTES les touches du match venaient du
+// jeu au pied ou d'une penalite jouee au coin.
+test('loi 19 : un porteur peut etre plaque en touche (pas seulement le jeu au pied)', () => {
+  let plaquesEnTouche = 0, touches = 0;
+  const GRAINES = [1, 2, 3, 4, 5, 6];
+  for (const seed of GRAINES) {
+    const m = new MatchEngine(seed, 4800);
+    const brut = m.log.bind(m);
+    m.log = (type, team, msg, extra) => {
+      if (type === 'PLAQUE_EN_TOUCHE') plaquesEnTouche++;
+      if (type === 'TOUCHE') touches++;
+      return brut(type, team, msg, extra);
+    };
+    for (let t = 0; t < 4800; t += 0.2) m.tick(0.2);
+  }
+  const parMatch = plaquesEnTouche / GRAINES.length;
+  assert.ok(touches / GRAINES.length > 10, `echantillon de touches trop petit (${touches})`);
+  // Mesure : 0,05 par match avant le correctif, ~1,5 apres. Le repere reel est
+  // de 2 a 4 : le seuil garde l'EXISTENCE de la sortie, pas sa frequence exacte.
+  assert.ok(parMatch >= 0.5,
+    `le ballon n'est presque jamais porte en touche (${parMatch.toFixed(2)} par match)`);
+});
+
+test('drop-goal : une décision de buteur en fin de match serré, pas un tirage au hasard', () => {
+  // Constat (40 matchs) : 1,5 drop tenté par match, à n'importe quel moment et
+  // par n'importe quel trois-quarts (taux fixe 0,012/s dans les 8-38 m) — un
+  // ailier pouvait dropper à la 10e minute avec 20 points d'avance.
+  const m = new MatchEngine(5, 4800);
+  m.tempsMatch = 4800 * 0.95; m.score = { A: 20, B: 21 };
+  const serre = m._facteurContexteDrop('A');
+  m.tempsMatch = 600; m.score = { A: 20, B: 0 };
+  const tranquille = m._facteurContexteDrop('A');
+  assert.ok(serre > 1, `fin de match à un point : le drop doit devenir PLUS probable (facteur ${serre})`);
+  assert.ok(tranquille < 0.5, `10e minute, 20 points d'avance : le drop doit rester rare (facteur ${tranquille})`);
+  let tentes = 0, parNonButeur = 0;
+  const N = 16;
+  for (let g = 1; g <= N; g++) {
+    const e = new MatchEngine(g, 4800);
+    const brut = e.log.bind(e);
+    e.log = (type, team, msg, extra) => {
+      if (type === 'DROP_GOAL_REUSSI' || type === 'DROP_GOAL_RATE') {
+        tentes++;
+        if (!(e.porteur && e.porteur.jeuPied >= 60)) parNonButeur++;
+      }
+      return brut(type, team, msg, extra);
+    };
+    for (let i = 0; i < 400000 && e.getState().phase !== 'TERMINE'; i++) e.tick(0.1);
+  }
+  assert.ok(tentes / N <= 0.7, `${(tentes / N).toFixed(2)} drops tentés par match`);
+  assert.strictEqual(parNonButeur, 0, `${parNonButeur} drop(s) tenté(s) par un joueur qui n'est pas buteur`);
+});
+
+test('touche : un lancer pas droit existe, rare, et donne une mêlée à l\'adversaire (loi 18)', () => {
+  // Constat : la touche n'avait AUCUNE faute — ni lancer pas droit, ni
+  // hors-jeu. Le lancer était toujours parfait, quelle que soit la qualité
+  // du lanceur, et la touche ne pouvait jamais se retourner sur une faute.
+  const m0 = new MatchEngine(1, 4800);
+  assert.strictEqual(typeof m0._probaLancerPasDroit, 'function', 'fonction de probabilité absente');
+  const pBon = m0._probaLancerPasDroit({ touche: 95 }), pMauvais = m0._probaLancerPasDroit({ touche: 20 });
+  assert.ok(pMauvais > pBon && pBon > 0, `un lanceur médiocre doit lancer plus souvent de travers (${pMauvais} contre ${pBon})`);
+  let fautes = 0, suivisMelee = 0, touches = 0;
+  const N = 12;
+  for (let g = 1; g <= N; g++) {
+    const m = new MatchEngine(g, 4800);
+    let attendue = null;
+    const brut = m.log.bind(m);
+    m.log = (type, team, msg, extra) => {
+      if (type === 'TOUCHE_LANCER') touches++;
+      if (type === 'TOUCHE_PAS_DROIT') { fautes++; attendue = team === 'A' ? 'B' : 'A'; }
+      else if (type === 'MELEE' && attendue) { if (team === attendue) suivisMelee++; attendue = null; }
+      return brut(type, team, msg, extra);
+    };
+    for (let i = 0; i < 400000 && m.getState().phase !== 'TERMINE'; i++) m.tick(0.1);
+  }
+  assert.ok(touches >= 150, `échantillon trop petit (${touches} lancers)`);
+  assert.ok(fautes / N >= 0.2 && fautes / N <= 2, `${(fautes / N).toFixed(2)} lancers pas droits par match`);
+  assert.strictEqual(suivisMelee, fautes, `${suivisMelee}/${fautes} lancers pas droits suivis d'une mêlée introduite par l'adversaire`);
+});
+
+test('touche : le hors-jeu existe — un trois-quarts qui part avant la fin de la touche est pénalisé (loi 18)', () => {
+  // CLAUDE.md (rôle 5) : les hors-jeu doivent exister autour des touches. Il
+  // n'y en avait aucun : les trois-quarts défensifs restaient toujours
+  // exactement sur leur ligne des 10 m.
+  const m0 = new MatchEngine(1, 4800);
+  assert.strictEqual(typeof m0._probaHorsJeuTouche, 'function', 'fonction de probabilité absente');
+  assert.ok(m0._probaHorsJeuTouche({ discipline: 30 }) > m0._probaHorsJeuTouche({ discipline: 90 }),
+    'un joueur indiscipliné doit partir plus souvent trop tôt');
+  let fautes = 0, sanctionnees = 0, sortisDeLigne = 0;
+  const N = 12;
+  for (let g = 1; g <= N; g++) {
+    const m = new MatchEngine(g, 4800);
+    let attendue = null;
+    const brut = m.log.bind(m);
+    m.log = (type, team, msg, extra) => {
+      if (type === 'TOUCHE_HORS_JEU') {
+        fautes++;
+        attendue = team;
+        const num = +((msg || '').match(/n°(\d+)/) || [])[1];
+        const eqF = team === 'A' ? m.equipeB : m.equipeA;
+        const j = eqF.find((x) => x.numero === num);
+        const sensF = team === 'A' ? -1 : 1; // l'équipe fautive défend vers son propre camp
+        if (j && m.ruckPoint && (j.x - m.ruckPoint.x) * sensF > -8) sortisDeLigne++;
+      } else if (type === 'PENALITE' && attendue) { if (team === attendue) sanctionnees++; attendue = null; }
+      return brut(type, team, msg, extra);
+    };
+    for (let i = 0; i < 400000 && m.getState().phase !== 'TERMINE'; i++) m.tick(0.1);
+  }
+  assert.ok(fautes / N >= 0.2 && fautes / N <= 2, `${(fautes / N).toFixed(2)} hors-jeu en touche par match`);
+  assert.strictEqual(sanctionnees, fautes, `${sanctionnees}/${fautes} hors-jeu en touche suivis d'une pénalité pour l'équipe qui lance`);
+  assert.strictEqual(sortisDeLigne, fautes, `${sortisDeLigne}/${fautes} fautifs visiblement sortis de leur ligne des 10 m au coup de sifflet`);
+});
+
+test('pénalité en touche : le buteur frappe depuis la marque et le ballon vole jusqu\'à la touche', () => {
+  // Constat : ~10 fois par match, « Pénalité, équipe A joue en touche » puis le
+  // ballon apparaissait directement dans les mains du talonneur, 22 à 40 m
+  // plus loin. Personne ne frappait, aucun ballon ne volait vers la touche.
+  let cas = 0, departMarque = 0, sansSaut = 0, enVol = 0;
+  for (const seed of [1, 2, 3, 4]) {
+    const m = new MatchEngine(seed, 4800);
+    let suivi = null;
+    const orig = m._accorderPenaliteTouche.bind(m);
+    m._accorderPenaliteTouche = (eq, pos) => { suivi = { marque: { x: pos.x, y: pos.y }, pts: [], vol: false }; return orig(eq, pos); };
+    const brut = m.log.bind(m);
+    m.log = (type, team, msg, extra) => {
+      if (type === 'PENALITE_TOUCHE_FRAPPE' && suivi) suivi.frappe = suivi.pts[suivi.pts.length - 1];
+      if (type === 'TOUCHE_LANCER' && suivi) {
+        cas++;
+        // Le ballon est SUR LA MARQUE au moment de la frappe (il peut y être
+        // ramené à vue depuis le ruck ou le lancer, cf. P2-91).
+        const p0 = suivi.frappe;
+        if (p0 && Math.hypot(p0.x - suivi.marque.x, p0.y - suivi.marque.y) < 3) departMarque++;
+        let saut = 0;
+        for (let i = 1; i < suivi.pts.length; i++) saut = Math.max(saut, Math.hypot(suivi.pts[i].x - suivi.pts[i - 1].x, suivi.pts[i].y - suivi.pts[i - 1].y));
+        if (saut < 3) sansSaut++;
+        if (suivi.vol) enVol++;
+        suivi = null;
+      }
+      return brut(type, team, msg, extra);
+    };
+    for (let i = 0; i < 400000 && m.getState().phase !== 'TERMINE'; i++) {
+      m.tick(0.1);
+      if (suivi && m.phase === 'TOUCHE') {
+        const b = m.getState().ballon;
+        suivi.pts.push({ x: b.x, y: b.y });
+        if (b.enVol && (b.hauteur || 0) > 0.3) suivi.vol = true;
+      }
+    }
+  }
+  assert.ok(cas >= 15, `échantillon trop petit (${cas} pénalités en touche)`);
+  assert.strictEqual(departMarque, cas, `${departMarque}/${cas} pénalités en touche où le ballon part de la marque`);
+  assert.strictEqual(sansSaut, cas, `${sansSaut}/${cas} pénalités en touche sans téléportation du ballon (> 3 m en 0,1 s)`);
+  assert.strictEqual(enVol, cas, `${enVol}/${cas} pénalités en touche où le ballon vole réellement vers la touche`);
+});
+
+test('interception : le ballon vole jusqu\'à l\'intercepteur, à vue', () => {
+  // Relevé des sauts (P2-88) : à l'interception (~0,9 par match), la passe
+  // visuelle était effacée et le ballon apparaissait d'un coup dans les mains
+  // de l'intercepteur (~6 m).
+  let cas = 0, propres = 0, pire = 0;
+  for (let seed = 1; seed <= 12; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    let prev = null, suivi = null;
+    const brut = m.log.bind(m);
+    m.log = (type, team, msg, extra) => { if (type === 'INTERCEPTION') suivi = { saut: 0, n: 0 }; return brut(type, team, msg, extra); };
+    for (let i = 0; i < 400000 && m.getState().phase !== 'TERMINE'; i++) {
+      m.tick(0.1);
+      const b = m.getState().ballon;
+      const p = { x: b.x, y: b.y };
+      if (suivi && prev) {
+        suivi.saut = Math.max(suivi.saut, Math.hypot(p.x - prev.x, p.y - prev.y));
+        if (++suivi.n >= 10) { cas++; if (suivi.saut < 3) propres++; pire = Math.max(pire, suivi.saut); suivi = null; }
+      }
+      prev = p;
+    }
+  }
+  assert.ok(cas >= 5, `échantillon trop petit (${cas} interceptions)`);
+  assert.strictEqual(propres, cas, `${propres}/${cas} interceptions sans saut du ballon > 3 m (pire : ${pire.toFixed(1)} m)`);
+});
+
+test('élimination directe : égalité -> prolongation, puis essais marqués, puis tirs au but (jamais les identifiants)', () => {
+  // BUG-RM-001. Une égalité en coupe était « départagée » par un hash des
+  // identifiants des clubs et annoncée « après prolongation » sans qu'aucune
+  // minute ne soit jouée. Règlement retenu (inspiré de la Champions Cup) :
+  // prolongation de 20 minutes ; si l'égalité persiste, l'équipe qui a marqué
+  // le plus d'essais ; sinon séance de tirs au but (5 chacun puis mort subite),
+  // qui ne change pas le score du match.
+  function jusquA(m, t) { for (let i = 0; i < 400000 && m.tempsMatch < t && m.phase !== 'TERMINE'; i++) m.tick(0.1); }
+  function finir(m) { for (let i = 0; i < 400000 && m.phase !== 'TERMINE'; i++) m.tick(0.1); }
+  // Juste avant le sifflet, hors séquence de marque (un essai ou un tir en
+  // cours ajouterait des points après qu'on a fixé l'égalité).
+  const MARQUE = ['ESSAI', 'TRANSFORMATION', 'PENALITE_TIR'];
+  function avantSifflet(m) {
+    for (let i = 0; i < 400000 && m.phase !== 'TERMINE'
+      && (m.tempsMatch < m.dureeMatch - 0.15 || MARQUE.includes(m.phase)); i++) m.tick(0.1);
+  }
+  // Tient l'égalité jusqu'à la vérification de fin elle-même : une action de
+  // marque lancée dans les dernières secondes ne doit pas défaire le scénario.
+  function egaliteAuSifflet(m, pts, essais) {
+    const fin = m.dureeMatch;
+    for (let i = 0; i < 400000 && m.phase !== 'TERMINE' && m.dureeMatch === fin; i++) {
+      m.score.A = pts; m.score.B = pts;
+      if (essais) { m.stats.A.essais = essais[0]; m.stats.B.essais = essais[1]; }
+      m.tick(0.1);
+    }
+  }
+  // 1) Égalité au coup de sifflet : la prolongation se JOUE.
+  const m = new MatchEngine(4, 4800, { eliminationDirecte: true });
+  avantSifflet(m);
+  egaliteAuSifflet(m, 20);
+  jusquA(m, 4805);
+  assert.ok(m.prolongationJouee, 'à égalité au coup de sifflet, une prolongation doit commencer');
+  assert.ok(Math.abs(m.dureeMatch - 6000) < 1, `prolongation de 20 minutes : fin prévue à ${m.dureeMatch} s`);
+  // 2) Égalité persistante, essais différents : l'équipe qui en a marqué le plus.
+  avantSifflet(m);
+  egaliteAuSifflet(m, 27, [3, 2]);
+  finir(m);
+  assert.strictEqual(m.phase, 'TERMINE');
+  assert.ok(m.departage && m.departage.type === 'essais' && m.departage.vainqueur === 'A',
+    `égalité persistante : l'équipe aux 3 essais l'emporte (${JSON.stringify(m.departage)})`);
+  // 3) Égalité de score ET d'essais : tirs au but, score du match inchangé.
+  const n = new MatchEngine(6, 4800, { eliminationDirecte: true });
+  avantSifflet(n); egaliteAuSifflet(n, 15);
+  jusquA(n, 4805);
+  avantSifflet(n); egaliteAuSifflet(n, 15, [1, 1]);
+  finir(n);
+  assert.ok(n.departage && n.departage.type === 'tirs' && (n.departage.vainqueur === 'A' || n.departage.vainqueur === 'B'),
+    `égalité totale : séance de tirs au but (${JSON.stringify(n.departage)})`);
+  assert.notStrictEqual(n.departage.tirs.A, n.departage.tirs.B, 'la séance de tirs au but a un vainqueur');
+  assert.ok(n.score.A === 15 && n.score.B === 15, 'les tirs au but ne s ajoutent pas au score du match');
+  // 4) Hors élimination directe, un nul reste un nul.
+  const c = new MatchEngine(4, 4800);
+  avantSifflet(c); egaliteAuSifflet(c, 20); finir(c);
+  assert.ok(!c.prolongationJouee && !c.departage, 'un match de championnat nul reste nul');
+});
+
+test('statistiques individuelles : chaque action est attribuée à un joueur, et les joueurs font le total de l équipe', () => {
+  // P2-103. Le moteur ne suivait par joueur que les essais, passes, plaquages
+  // et mètres. Il attribue désormais chaque action à celui qui la fait :
+  // courses, défenseurs battus, franchissements, offloads, plaquages manqués,
+  // ballons gagnés (grattage, interception, touche volée), en-avants, cartons,
+  // coups de pied, points au pied, touches gagnées et passes décisives. Garde-fou
+  // contre une stat inventée ou oubliée : la somme des quinze joueurs doit
+  // donner EXACTEMENT le total de l'équipe.
+  const paires = [['courses', 'carries'], ['defenseursBattus', 'defenseursBattus'], ['franchissements', 'franchissements'],
+    ['offloads', 'offloads'], ['plaquagesManques', 'missedTackles'], ['enAvants', 'knockOns'], ['cartonsJaunes', 'cartonsJaunes'],
+    ['touchesGagnees', 'lineoutsGagnes'], ['coupsDePied', 'kicks']];
+  let decisives = 0, essais = 0, ballonsJoueurs = 0, ballonsEquipe = 0;
+  for (let seed = 1; seed <= 4; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    for (let i = 0; i < 400000 && m.phase !== 'TERMINE'; i++) m.tick(0.1);
+    const st = m.getState(), sj = st.statsJoueurs;
+    for (const e of ['A', 'B']) {
+      const S = m.stats[e];
+      // Lignes des joueurs sortis (blessés remplacés) comprises : leurs actions restent les leurs.
+      const lignes = Object.values(sj[e] || {}).concat(((st.statsJoueursSortis || {})[e] || []).map((x) => x.stats || {}));
+      const somme = (k) => lignes.reduce((p, j) => p + (j[k] || 0), 0);
+      for (const [kj, ke] of paires) {
+        assert.strictEqual(somme(kj), S[ke], `graine ${seed}, équipe ${e} : ${kj} des joueurs ${somme(kj)} pour ${S[ke]} à l'équipe`);
+      }
+      const pointsPied = 2 * S.transformationsReussies + 3 * S.penalitesButReussies + 3 * S.dropsReussis;
+      assert.strictEqual(somme('pointsAuPied'), pointsPied, `graine ${seed}, équipe ${e} : points au pied des joueurs`);
+      decisives += somme('passesDecisives'); essais += S.essais;
+      ballonsJoueurs += somme('turnoversGagnes'); ballonsEquipe += S.turnovers;
+    }
+  }
+  // Une mêlée volée est un ballon gagné collectif : la somme des joueurs ne
+  // peut que rester en dessous du total de l'équipe.
+  assert.ok(ballonsJoueurs <= ballonsEquipe && ballonsJoueurs >= 0.8 * ballonsEquipe, `ballons gagnés : joueurs ${ballonsJoueurs}, équipe ${ballonsEquipe}`);
+  assert.ok(decisives > 0.4 * essais && decisives < essais, `${decisives} passes décisives pour ${essais} essais`);
+});
+
+test('mètres gagnés : comptés au-delà de la ligne d avantage, pas depuis la réception', () => {
+  // P2-102 (remarque de l'utilisateur : la stat existe par joueur). Le moteur
+  // comptait tout le terrain couru vers l'avant depuis la réception : le n°10,
+  // qui reçoit 10 m derrière le ruck et court avant de passer, « gagnait »
+  // 217 m par match, plus que les ailiers, et une équipe 1233 m. Repères réels :
+  // record du Tournoi 116 m par match (Kinghorn 2025, 580 m en 5 matchs) ;
+  // Irlande 2023, meilleure équipe, 857 m par match pour 139 courses.
+  // 40 matchs (pas de 0,2 s) : les mètres de l'ouvreur varient beaucoup d'un
+  // match à l'autre, et 6 graines faisaient basculer le test au moindre
+  // changement de tirage (63 m contre 52 sur 1-6, 54 contre 59 sur 1-40).
+  const parNum = {}; let equipes = 0, total = 0;
+  for (let seed = 1; seed <= 40; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    for (let i = 0; i < 400000 && m.phase !== 'TERMINE'; i++) m.tick(0.2);
+    const sj = m.getState().statsJoueurs;
+    for (const e of ['A', 'B']) {
+      equipes++; total += m.stats[e].metresGagnes;
+      for (const [num, st] of Object.entries(sj[e] || {})) parNum[num] = (parNum[num] || 0) + (st.metresGagnes || 0);
+    }
+  }
+  const pm = (k) => (parNum[k] || 0) / equipes;
+  const ailiers = (pm(11) + pm(14)) / 2;
+  assert.ok(pm(10) < ailiers, `l'ouvreur gagne ${pm(10).toFixed(0)} m par match, les ailiers ${ailiers.toFixed(0)} : il passe plus qu'il ne perce`);
+  assert.ok(pm(9) < 40, `le demi de mêlée gagne ${pm(9).toFixed(0)} m par match`);
+  assert.ok(total / equipes <= 950, `une équipe gagne ${(total / equipes).toFixed(0)} m par match (Irlande 2023 : 857)`);
+  assert.ok(total / equipes >= 300, `une équipe ne gagne que ${(total / equipes).toFixed(0)} m par match`);
+  // LE PROFIL DU JOUEUR COMPTE (remarque de l'utilisateur). Un ailier rapide
+  // gagne plus de terrain qu'un ailier lent ; un avant puissant plus qu'un
+  // avant léger, grâce au terrain pris DANS le plaquage, désormais compté.
+  // Sur trois lots de 6 graines : vitesse x2,7 à x3,6 ; puissance x1,21 à x1,54.
+  // 18 graines (P2-163) : sur les seules graines 1-6, la puissance tombait à
+  // x1,09 par le hasard du déroulé (x1,44 et x1,37 sur 7-12 et 13-18, x1,29 au total).
+  function metres(nums, attr, v) {
+    const cfg = { joueursA: {}, joueursB: {} };
+    for (const k of nums) cfg.joueursA[k] = { [attr]: v };
+    let t = 0;
+    for (let seed = 1; seed <= 18; seed++) {
+      const m = new MatchEngine(seed, 4800, cfg);
+      for (let i = 0; i < 400000 && m.phase !== 'TERMINE'; i++) m.tick(0.1);
+      const sj = m.getState().statsJoueurs.A;
+      for (const k of nums) t += (sj[k] && sj[k].metresGagnes) || 0;
+    }
+    return t;
+  }
+  const rapides = metres([11, 14], 'vitesse', 95), lents = metres([11, 14], 'vitesse', 50);
+  assert.ok(rapides >= 1.8 * lents, `ailiers rapides ${rapides.toFixed(0)} m contre lents ${lents.toFixed(0)} m`);
+  const avants = [1, 2, 3, 4, 5, 6, 7, 8];
+  const puissants = metres(avants, 'puissance', 95), legers = metres(avants, 'puissance', 40);
+  assert.ok(puissants >= 1.12 * legers, `avants puissants ${puissants.toFixed(0)} m contre légers ${legers.toFixed(0)} m`);
+});
+
+test('choix du capitaine : menée en fin de match, elle joue la touche ; devant au score, elle prend les points', () => {
+  // P2-101. Le choix entre poteaux, touche et jeu rapide ne dépendait que de la
+  // distance : à 30 m des poteaux, une équipe menée de 10 points à 5 minutes
+  // de la fin tapait au but comme en début de match. On construit la même
+  // pénalité (A, 30 m des poteaux, dans l'axe) dans trois contextes.
+  function choix(scoreA, scoreB, tempsMatch) {
+    const r = { TIR: 0, TOUCHE: 0, AUTRE: 0 };
+    const m = new MatchEngine(9, 4800);
+    for (let i = 0; i < 300; i++) {
+      m.score.A = scoreA; m.score.B = scoreB; m.tempsMatch = tempsMatch;
+      m.phase = 'PORTE'; m.avantage = null; m.penaliteRecul = null; m.passeVisuelle = null; m.penTouche = null;
+      m._traiterPenalite('A', { x: LONGUEUR - 30, y: LARGEUR / 2 });
+      if (m.phase === 'PENALITE_TIR') r.TIR++; else if (m.phase === 'TOUCHE') r.TOUCHE++; else r.AUTRE++;
+    }
+    return r;
+  }
+  const debut = choix(0, 0, 600), menee = choix(3, 13, 4500), devant = choix(13, 10, 4500);
+  assert.ok(debut.TIR >= 0.75 * 300, `en début de match, à 30 m, on tape au but (${JSON.stringify(debut)})`);
+  assert.ok(menee.TOUCHE >= 0.65 * 300, `menée de 10 points à 5 minutes de la fin, on joue la touche (${JSON.stringify(menee)})`);
+  assert.ok(devant.TIR >= 0.95 * 300, `devant au score en fin de match, on prend les points (${JSON.stringify(devant)})`);
+});
+
+test('ballon tenu dans l en-but : renvoi depuis l en-but par la défense', () => {
+  // P2-99. Un porteur qui franchit la ligne mais est TENU DEBOUT ne marque
+  // pas. Le moteur formait alors un ruck à 30 cm de la ligne, et l'attaque
+  // gardait le ballon. Loi (depuis 2022) : ballon tenu dans l'en-but -> renvoi
+  // depuis la ligne d'en-but par l'équipe qui défendait.
+  let tenus = 0, renvois = 0;
+  // 24 graines : ~0,17 ballon tenu dans l'en-but par match.
+  for (let seed = 1; seed <= 24; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    const brut = m.log.bind(m);
+    let attendu = null;
+    m.log = (type, team, msg, extra) => { if (type === 'EN_BUT_TENU') attendu = team === 'A' ? 'B' : 'A'; return brut(type, team, msg, extra); };
+    for (let i = 0; i < 400000 && m.phase !== 'TERMINE'; i++) {
+      m.tick(0.1);
+      if (attendu) {
+        tenus++;
+        const ligne = m.xCoupEnvoi <= 0.5 || m.xCoupEnvoi >= LONGUEUR - 0.5;
+        if (m.phase === 'COUP_ENVOI' && m.possession === attendu && ligne && m.renvoiEnBut) renvois++;
+        attendu = null;
+      }
+    }
+  }
+  assert.ok(tenus >= 3, `seulement ${tenus} ballons tenus dans l'en-but en 24 matchs`);
+  assert.strictEqual(renvois, tenus, `${renvois}/${tenus} ballons tenus dans l'en-but suivis d'un renvoi depuis l'en-but par la défense`);
+});
+
+test('touche rapide : relancée par l équipe qui a le lancer, ballon vers un partenaire à 5 m ou plus, à vue', () => {
+  // P2-98, loi 18. Après un coup de pied en touche, un joueur de l'équipe qui a
+  // le lancer peut relancer tout de suite, avant que l'alignement ne se forme,
+  // vers un partenaire à au moins 5 m de la ligne de touche. Le moteur n'avait
+  // que la touche ordonnée.
+  let n = 0, bonneEquipe = 0, cinqMetres = 0, sansSaut = 0;
+  for (let seed = 1; seed <= 12; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    const brut = m.log.bind(m);
+    let suivi = null, prev = null;
+    m.log = (type, team, msg, extra) => {
+      if (type === 'TOUCHE_RAPIDE') suivi = { equipe: team, saut: 0, n: 0 };
+      return brut(type, team, msg, extra);
+    };
+    for (let i = 0; i < 400000 && m.getState().phase !== 'TERMINE'; i++) {
+      m.tick(0.1);
+      const b = m.getState().ballon, p = { x: b.x, y: b.y };
+      if (suivi && suivi.n === 0) {
+        n++;
+        if (m.possession === suivi.equipe && m.phase === 'PORTE') bonneEquipe++;
+        const cible = m.passeVisuelle && m.passeVisuelle.cible;
+        if (cible && cible.y >= 5 && cible.y <= LARGEUR - 5) cinqMetres++;
+      }
+      if (suivi && prev) {
+        suivi.saut = Math.max(suivi.saut, Math.hypot(p.x - prev.x, p.y - prev.y));
+        if (++suivi.n >= 15) { if (suivi.saut < 3.5) sansSaut++; suivi = null; }
+      }
+      prev = p;
+    }
+  }
+  assert.ok(n >= 3, `seulement ${n} touches rapides en 12 matchs`);
+  assert.strictEqual(bonneEquipe, n, `${bonneEquipe}/${n} touches rapides jouées par l'équipe qui a le lancer`);
+  assert.strictEqual(cinqMetres, n, `${cinqMetres}/${n} touches rapides lancées vers un partenaire à 5 m ou plus de la touche`);
+  assert.strictEqual(sansSaut, n, `${sansSaut}/${n} touches rapides sans saut du ballon`);
+});
+
+test('transformation : sur un essai excentré, le buteur recule pour ouvrir l angle', () => {
+  // P2-97. La loi laisse le buteur poser son tee n'importe où sur l'axe de
+  // l'essai. Le moteur le posait toujours à 10 m : 56 % de réussite au total
+  // (49 % dès 10 m d'écart latéral) pour ~75 % en réel.
+  let excentres = 0, recules = 0, tentees = 0, reussies = 0;
+  // 24 graines : sur 12 (~80 tirs) le taux tombait à 54 % selon le seul
+  // bruit, alors qu'il est de 67,5 % sur 100 graines (P2-147).
+  for (let seed = 1; seed <= 24; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    const brut = m.log.bind(m);
+    m.log = (type, team, msg, extra) => {
+      if (type === 'TRANSFORMATION_REUSSIE' || type === 'TRANSFORMATION_RATEE') {
+        tentees++; if (type === 'TRANSFORMATION_REUSSIE') reussies++;
+      }
+      return brut(type, team, msg, extra);
+    };
+    let vu = false;
+    for (let i = 0; i < 400000 && m.phase !== 'TERMINE'; i++) {
+      m.tick(0.1);
+      if (m.phase !== 'TRANSFORMATION') { vu = false; continue; }
+      // Au moment de la frappe (ballon parti), distance du buteur à la ligne.
+      if (!vu && m.ballonEnVol && Math.abs(m.essaiY - LARGEUR / 2) >= 20) {
+        vu = true; excentres++;
+        if (Math.abs(m.porteur.x - m.essaiX) >= 18) recules++;
+      }
+    }
+  }
+  assert.ok(excentres >= 15, `échantillon trop petit (${excentres} transformations excentrées)`);
+  assert.strictEqual(recules, excentres, `${recules}/${excentres} buteurs reculent d'au moins 18 m sur un essai à 20 m ou plus des poteaux`);
+  // Avant : 56 % (30 graines). Avec le recul : 63 % (30 graines), 59 % (1-12).
+  assert.ok(reussies / tentees >= 0.55, `transformations réussies ${(100 * reussies / tentees).toFixed(0)} % (réel ~75 %)`);
+});
+
+test('50:22 : tapé de son camp, rebond dans le terrain, touche dans les 22 adverses -> lancer au botteur', () => {
+  // P2-96, loi 18 (50:22). Un coup de pied tapé depuis son propre camp, qui
+  // rebondit dans le terrain puis sort en touche dans les 22 m adverses, donne
+  // le lancer à l'équipe qui a botté. Sinon, la touche en rebond revient à
+  // l'adversaire, comme toute touche en jeu courant.
+  let n5022 = 0, lancerBotteur = 0;
+  for (let seed = 1; seed <= 12; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    const brut = m.log.bind(m);
+    let attendu = null;
+    m.log = (type, team, msg, extra) => { if (type === 'CINQUANTE_VINGT_DEUX') attendu = team; return brut(type, team, msg, extra); };
+    for (let i = 0; i < 400000 && m.phase !== 'TERMINE'; i++) {
+      m.tick(0.1);
+      if (attendu) { n5022++; if (m.phase === 'TOUCHE' && m.possession === attendu) lancerBotteur++; attendu = null; }
+    }
+  }
+  assert.ok(n5022 >= 2, `seulement ${n5022} 50:22 en 12 matchs`);
+  assert.strictEqual(lancerBotteur, n5022, `${lancerBotteur}/${n5022} 50:22 donnent le lancer au botteur`);
+  // Cas construits : l'équipe A tape, le ballon rebondit dans le terrain et
+  // sort en touche à 85 m (dans les 22 de B). Depuis 45 m (son camp) : 50:22.
+  // Depuis 55 m (camp adverse) : touche en rebond ordinaire, lancer à B.
+  for (const [xFrappe, lancer] of [[45, 'A'], [55, 'B']]) {
+    const m = new MatchEngine(3, 4800);
+    for (let t = 0; t < 60; t += 0.1) m.tick(0.1);
+    m.avantage = null; m.passeVisuelle = null; m.penaliteRecul = null; m.combinaison = null;
+    m.possession = 'A'; m.phase = 'PORTE';
+    const botteur = m.equipeA.find(j => j.numero === 10);
+    botteur.x = xFrappe; botteur.y = 20; botteur.auSol = 0; m.porteur = botteur;
+    m._tenterCoupDePiedJeu(botteur, 'TOUCHE');
+    m.cibleCoupDePiedX = 84; m.cibleCoupDePiedY = 2;
+    for (const j of [...m.equipeA, ...m.equipeB]) { if (j !== botteur) { j.x = 50; j.y = 50; j.horsJeuKick = 0; } }
+    for (let t = 0; t < 15 && m.phase === 'COUP_DE_PIED_JEU'; t += 0.1) m.tick(0.1);
+    assert.strictEqual(m.phase, 'TOUCHE', `frappe à ${xFrappe} m : le ballon doit rouler en touche (phase ${m.phase})`);
+    assert.strictEqual(m.possession, lancer, `frappe à ${xFrappe} m, sortie dans les 22 adverses : lancer pour ${lancer}`);
+  }
+});
+
+test('loi 18 : coup de pied direct en touche, lancer adverse, et pas de terrain gagné hors de ses 22 m', () => {
+  // P2-95. Le moteur donnait le lancer à l'équipe qui avait botté quand elle
+  // tapait directement en touche depuis ses 22 m (un tiers des cas), et
+  // plaçait la touche au point de sortie quand elle tapait de plus loin. Loi
+  // 18 : en jeu courant, le lancer revient TOUJOURS à l'adversaire (seule la
+  // pénalité garde le lancer) ; tapé directement en touche hors de ses 22 m,
+  // le ballon ne fait gagner aucun terrain : touche au niveau du point de frappe.
+  let directs = 0, lancerAdverse = 0;
+  for (let seed = 1; seed <= 12; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    for (let i = 0; i < 400000 && m.phase !== 'TERMINE'; i++) {
+      const enVol = m.phase === 'COUP_DE_PIED_JEU' && m.ballonEnVol;
+      const kick = m.equipeCoupDePiedJeu;
+      const direct = enVol && (m.cibleCoupDePiedY <= 0.01 || m.cibleCoupDePiedY >= LARGEUR - 0.01);
+      m.tick(0.1);
+      if (direct && m.phase === 'TOUCHE') { directs++; if (m.possession !== kick) lancerAdverse++; }
+    }
+  }
+  assert.ok(directs >= 30, `échantillon trop petit (${directs} coups de pied directs en touche)`);
+  assert.strictEqual(lancerAdverse, directs, `${lancerAdverse}/${directs} coups de pied directs en touche donnent le lancer à l'adversaire`);
+  // Hors de ses 22 m, les équipes visent désormais la touche en rebond : le
+  // direct en touche y est rare, on le construit. L'équipe A tape depuis 40 m
+  // de sa ligne, le ballon sort directement 25 m plus loin.
+  const m = new MatchEngine(3, 4800);
+  for (let t = 0; t < 60; t += 0.1) m.tick(0.1);
+  m.avantage = null; m.passeVisuelle = null; m.penaliteRecul = null; m.combinaison = null;
+  m.possession = 'A'; m.phase = 'PORTE';
+  const botteur = m.equipeA.find(j => j.numero === 10);
+  botteur.x = 40; botteur.y = 20; botteur.auSol = 0; m.porteur = botteur;
+  m._tenterCoupDePiedJeu(botteur, 'DEGAGEMENT');
+  m.cibleCoupDePiedX = 65; m.cibleCoupDePiedY = -2;
+  for (let t = 0; t < 10 && m.phase === 'COUP_DE_PIED_JEU'; t += 0.1) m.tick(0.1);
+  assert.strictEqual(m.phase, 'TOUCHE', `le ballon sorti directement doit donner une touche (phase ${m.phase})`);
+  assert.strictEqual(m.possession, 'B', 'lancer à l adversaire du botteur');
+  assert.ok(Math.abs(m.ruckPoint.x - 40) <= 1, `touche au niveau du point de frappe (40 m), pas du point de sortie (65 m) : ${m.ruckPoint.x.toFixed(1)} m`);
+});
+
+test('coup de pied dans l en-but : le défenseur aplatit (renvoi aux 22 m) ou le chasseur marque', () => {
+  // P2-93 : un ballon qui roulait jusqu'à la ligne d'en-but s'y arrêtait, et
+  // le receveur repartait de là en jeu courant. En vrai, un ballon dans l'en-but
+  // est aplati par le défenseur (renvoi aux 22 m, loi 12) ou par un chasseur
+  // de l'équipe qui a botté (essai, loi 8).
+  let enBut = 0, renvois = 0, essais = 0, autres = 0;
+  for (let seed = 1; seed <= 24; seed++) {  // ~0,3 par match : petits coups de pied à suivre
+    const m = new MatchEngine(seed, 4800);
+    let suivi = null;
+    for (let i = 0; i < 400000 && m.phase !== 'TERMINE'; i++) {
+      const avant = m._ballonEnBut;
+      const kick = m.equipeCoupDePiedJeu;
+      const s0 = { A: m.score.A, B: m.score.B };
+      m.tick(0.1);
+      if (avant && !m._ballonEnBut) {
+        enBut++;
+        const defense = kick === 'A' ? 'B' : 'A';
+        if (m.phase === 'COUP_ENVOI' && m.renvoi22 && m.possession === defense) renvois++;
+        else if (m.phase === 'ESSAI' && m.score[kick] === s0[kick] + 5) essais++;
+        else if (m.phase === 'MELEE') { /* en-avant sur ballon disputé : mêlée */ }
+        else autres++;
+      }
+    }
+  }
+  assert.ok(enBut >= 2, `seulement ${enBut} ballons dans l'en-but en 24 matchs`);
+  assert.strictEqual(autres, 0, `${autres}/${enBut} ballons dans l'en-but sans aplatissement ni essai`);
+  // Les deux issues, construites (le ballon dans l'en-but est rare en match,
+  // ~0,2 à 0,3 fois : en compter un nombre fixe rendait le test fragile). Un
+  // petit coup de pied de l'équipe A roule dans l'en-but de B ; le premier
+  // arrivé est un défenseur, puis un chasseur.
+  for (const premier of ['defenseur', 'chasseur']) {
+    const m = new MatchEngine(5, 4800);
+    for (let t = 0; t < 60; t += 0.1) m.tick(0.1);
+    m.avantage = null; m.passeVisuelle = null; m.penaliteRecul = null; m.combinaison = null;
+    m.possession = 'A'; m.phase = 'PORTE';
+    const botteur = m.equipeA.find(j => j.numero === 10);
+    botteur.x = 85; botteur.y = 35; botteur.auSol = 0; m.porteur = botteur;
+    m._tenterCoupDePiedJeu(botteur, 'CHIP');
+    m.cibleCoupDePiedX = LONGUEUR + 2; m.cibleCoupDePiedY = 35;
+    // Tout le monde loin, sauf le joueur qui doit arriver le premier.
+    for (const j of [...m.equipeA, ...m.equipeB]) { j.x = 60; j.y = 10 + (j.numero % 15) * 3; j.horsJeuKick = 0; j.auSol = 0; }
+    const proche = premier === 'defenseur' ? m.equipeB.find(j => j.numero === 15) : m.equipeA.find(j => j.numero === 13);
+    proche.x = LONGUEUR - 3; proche.y = 35;
+    const s0 = m.score.A;
+    for (let t = 0; t < 20 && m.phase === 'COUP_DE_PIED_JEU'; t += 0.1) m.tick(0.1);
+    if (premier === 'defenseur') {
+      assert.ok(m.phase === 'COUP_ENVOI' && m.renvoi22 && m.possession === 'B',
+        `ballon aplati par la défense dans son en-but : renvoi aux 22 m attendu (phase ${m.phase}, possession ${m.possession})`);
+    } else {
+      assert.ok(m.phase === 'ESSAI' && m.score.A === s0 + 5,
+        `ballon aplati par un chasseur dans l'en-but : essai attendu (phase ${m.phase}, score ${s0} -> ${m.score.A})`);
+    }
+  }
+});
+
+test('le ballon qui roule REBONDIT à l écran, et se pose quand il s arrête', () => {
+  // P2-100. Depuis P2-92, le ballon roule après la chute, mais il glissait à
+  // plat. getState expose la hauteur de rebond (ballon.rebond) : des rebonds
+  // qui s'amortissent avec la vitesse, nuls une fois le ballon arrêté.
+  let roulants = 0, avecRebond = 0, arretesAPlat = 0, arretes = 0;
+  for (let seed = 1; seed <= 4; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    for (let i = 0; i < 400000 && m.phase !== 'TERMINE'; i++) {
+      m.tick(0.1);
+      if (!m._receptionEnAttente) continue;
+      const b = m.getState().ballon;
+      if (m._rouleBallon) { roulants++; if ((b.rebond || 0) > 0.02) avecRebond++; }
+      else { arretes++; if (!(b.rebond > 0)) arretesAPlat++; }
+    }
+  }
+  assert.ok(roulants >= 100, `échantillon trop petit (${roulants} images de ballon qui roule)`);
+  assert.ok(avecRebond >= 0.5 * roulants, `le ballon ne rebondit que sur ${avecRebond}/${roulants} images où il roule`);
+  assert.strictEqual(arretesAPlat, arretes, 'un ballon arrêté au sol ne rebondit pas');
+});
+
+test('coup de pied tactique : le ballon qui tombe sans receveur ROULE, et peut finir en touche', () => {
+  // P2-92 : un dégagement qui tombait sans personne dessous restait collé au
+  // point de chute, immobile jusqu'à 4 s. En vrai, le ballon rebondit et
+  // roule : c'est ce qui fait gagner du terrain au dégagement et ce qui crée
+  // la course pour le récupérer. Le ballon qui roule hors du terrain donne une
+  // touche (loi 18) à l'adversaire, là où il est sorti.
+  let longs = 0, roules = 0, enTouche = 0, horsTerrainSansTouche = 0;
+  // 24 graines : la touche en rebond est rare (~0,2 a 0,4 par match ; 1 seule
+  // sur les graines 1-8 a l'ecriture du test, 0 apres P2-94).
+  for (let seed = 1; seed <= 24; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    let chute = null;
+    for (let i = 0; i < 400000 && m.phase !== 'TERMINE'; i++) {
+      const attente = m._receptionEnAttente;
+      m.tick(0.1);
+      if (!attente && m._receptionEnAttente) {
+        const libre = ![...m.equipeA, ...m.equipeB].some(j => Math.hypot(j.x - m.ballonVolX, j.y - m.ballonVolY) <= 1.3);
+        chute = { x: m.ballonVolX, y: m.ballonVolY, libre, long: libre && (m.typeCoupDePiedJeu === 'DEGAGEMENT' || m.typeCoupDePiedJeu === 'OCCUPATION') };
+      } else if (chute && m._receptionEnAttente) {
+        if (m.ballonVolY < 0 || m.ballonVolY > LARGEUR) horsTerrainSansTouche++;
+        chute.fin = { x: m.ballonVolX, y: m.ballonVolY };
+      } else if (chute && !m._receptionEnAttente) {
+        if (chute.long) {
+          longs++;
+          const f = chute.fin || chute;
+          if (Math.hypot(f.x - chute.x, f.y - chute.y) >= 2) roules++;
+        }
+        // Touche en rebond, quel que soit le coup de pied (depuis P2-95, la
+        // touche visée hors de ses 22 m se cherche en rebond).
+        if (chute.libre && m.phase === 'TOUCHE') enTouche++;
+        chute = null;
+      }
+    }
+  }
+  assert.ok(longs >= 90, `échantillon trop petit (${longs} dégagements sans receveur)`);
+  assert.ok(roules >= 0.8 * longs, `seulement ${roules}/${longs} dégagements tombés sans receveur ont roulé d'au moins 2 m`);
+  assert.ok(enTouche >= 2, `${enTouche} ballon(s) seulement sorti(s) en touche en roulant en 24 matchs`);
+  assert.strictEqual(horsTerrainSansTouche, 0, 'le ballon a roulé hors du terrain sans que la touche soit sifflée');
+});
+
+test('ballon au sol après un coup de pied : il est ramassé par un joueur arrivé au contact, jamais à distance', () => {
+  // Relevé des sauts (P2-90) : un dégagement profond tombe parfois à 25 m de
+  // tout le monde. Le joueur le plus proche y court (~6 m/s), mais le délai
+  // de grâce de 4 s lui donnait le ballon à 2-17 m de lui : saut à l'écran.
+  let cas = 0, propres = 0, pire = 0;
+  for (let seed = 1; seed <= 12; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    for (let i = 0; i < 400000 && m.phase !== 'TERMINE'; i++) {
+      const attente = m._receptionEnAttente, bx = m.ballonVolX, by = m.ballonVolY;
+      m.tick(0.1);
+      // En-avant sous la chandelle -> mêlée : le porteur est le n°9 adverse,
+      // le ballon rejoint la mêlée à vue (cf. M24, P2-81). Ballon roulé en
+      // touche (P2-92) : le porteur est le talonneur qui va lancer. Ballon
+      // aplati dans l'en-but (P2-93) : renvoi aux 22 m, le botteur du renvoi.
+      if (attente && !m._receptionEnAttente && m.porteur && !['MELEE', 'TOUCHE', 'COUP_ENVOI'].includes(m.phase)) {
+        const d = Math.hypot(m.porteur.x - bx, m.porteur.y - by);
+        cas++; if (d <= 1.6) propres++; pire = Math.max(pire, d);
+      }
+    }
+  }
+  assert.ok(cas >= 100, `échantillon trop petit (${cas} ballons au sol)`);
+  assert.strictEqual(propres, cas, `${propres}/${cas} ballons ramassés au contact (pire : ${pire.toFixed(1)} m)`);
+});
+
+test('pénalité tapée en touche : le ballon rejoint la marque à vue avant la frappe', () => {
+  // Relevé des sauts (P2-91) : après un hors-jeu en touche (P2-78) ou une
+  // faute au ruck, le ballon passait d'un coup du vol du lancer (ou du ruck) à
+  // la marque de pénalité, 2,5 à 6,7 m plus loin.
+  let cas = 0, propres = 0, pire = 0;
+  for (let seed = 1; seed <= 12; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    let prev = null, suivi = null;
+    const brut = m.log.bind(m);
+    m.log = (type, team, msg, extra) => {
+      if (type === 'PENALITE' && /joue en touche/.test(msg)) suivi = { saut: 0 };
+      return brut(type, team, msg, extra);
+    };
+    for (let i = 0; i < 400000 && m.getState().phase !== 'TERMINE'; i++) {
+      m.tick(0.1);
+      const b = m.getState().ballon;
+      const p = { x: b.x, y: b.y };
+      if (suivi && prev) {
+        const P = m.penTouche;
+        if (!P || P.etape !== 'APPROCHE') { cas++; if (suivi.saut < 3) propres++; pire = Math.max(pire, suivi.saut); suivi = null; }
+        else suivi.saut = Math.max(suivi.saut, Math.hypot(p.x - prev.x, p.y - prev.y));
+      }
+      prev = p;
+    }
+  }
+  assert.ok(cas >= 50, `échantillon trop petit (${cas} pénalités en touche)`);
+  assert.strictEqual(propres, cas, `${propres}/${cas} pénalités en touche sans saut du ballon > 3 m avant la frappe (pire : ${pire.toFixed(1)} m)`);
+});
+
+test('jeu rapide (pénalité, coup franc) : le ballon est posé sur la marque, le tapeur le rejoint à vue', () => {
+  // Relevé des sauts (P2-89) : sur une pénalité jouée vite après un ruck
+  // (~0,6 par match), le n°9 du bénéficiaire devenait porteur là où il était
+  // et le ballon sautait du ruck jusque dans ses mains (~8 m).
+  let cas = 0, propres = 0, pire = 0, surMarque = 0;
+  for (let seed = 1; seed <= 12; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    let prev = null, suivi = null;
+    const brut = m.log.bind(m);
+    m.log = (type, team, msg, extra) => {
+      if ((type === 'PENALITE' && /rapidement/.test(msg)) || type === 'COUP_FRANC') suivi = { saut: 0, vu: false };
+      return brut(type, team, msg, extra);
+    };
+    for (let i = 0; i < 400000 && m.getState().phase !== 'TERMINE'; i++) {
+      m.tick(0.1);
+      const b = m.getState().ballon;
+      const p = { x: b.x, y: b.y };
+      if (suivi && prev) {
+        suivi.saut = Math.max(suivi.saut, Math.hypot(p.x - prev.x, p.y - prev.y));
+        const R = m.penaliteRecul;
+        if (R) { suivi.vu = true; suivi.d = Math.hypot(p.x - R.markX, p.y - R.markY); }
+        if (!R || m.phase !== 'PORTE') {
+          if (suivi.vu) {
+            cas++; if (suivi.saut < 3) propres++; pire = Math.max(pire, suivi.saut);
+            if (suivi.d < 1.5) surMarque++;
+          }
+          suivi = null;
+        }
+      }
+      prev = p;
+    }
+  }
+  assert.ok(cas >= 10, `échantillon trop petit (${cas} jeux rapides)`);
+  assert.strictEqual(propres, cas, `${propres}/${cas} jeux rapides sans saut du ballon > 3 m (pire : ${pire.toFixed(1)} m)`);
+  assert.ok(surMarque >= 0.9 * cas, `le ballon n'est sur la marque à la frappe que ${surMarque}/${cas} fois`);
+});
+
+test('tir au but : le ballon rejoint le buteur à vue avant la frappe (pénalité, transformation)', () => {
+  // Relevé des sauts (P2-85) : à chaque pénalité au but (~4 par match) et à
+  // chaque transformation (~5,5), le ballon sautait de ~10-11 m — du ruck ou
+  // du marqueur dans l'en-but jusque dans les mains du buteur.
+  let tirs = 0, propres = 0, pire = 0;
+  for (const seed of [1, 2, 3]) {
+    const m = new MatchEngine(seed, 4800);
+    let prev = null, suivi = null, prevPhase = null;
+    for (let i = 0; i < 400000 && m.getState().phase !== 'TERMINE'; i++) {
+      m.tick(0.1);
+      const b = m.getState().ballon;
+      const p = { x: b.x, y: b.y };
+      const tir = m.phase === 'PENALITE_TIR' || m.phase === 'TRANSFORMATION';
+      const vol = b.enVol && (b.hauteur || 0) > 0;
+      if (tir && prevPhase !== m.phase) suivi = { saut: prev ? Math.hypot(p.x - prev.x, p.y - prev.y) : 0 };
+      else if (suivi && tir && !vol) suivi.saut = Math.max(suivi.saut, Math.hypot(p.x - prev.x, p.y - prev.y));
+      if (suivi && (!tir || vol)) {
+        tirs++;
+        if (suivi.saut < 3) propres++;
+        pire = Math.max(pire, suivi.saut);
+        suivi = null;
+      }
+      prev = p; prevPhase = m.phase;
+    }
+  }
+  assert.ok(tirs >= 20, `échantillon trop petit (${tirs} tirs au but)`);
+  assert.ok(propres / tirs >= 0.95, `${propres}/${tirs} tirs au but sans saut du ballon > 3 m avant la frappe (pire : ${pire.toFixed(1)} m)`);
+});
+
+test('coup d\'envoi : après des points, le ballon revient au centre à vue, sans téléportation', () => {
+  // Relevé des sauts (P2-84) : ~24 fois par match, au début de la mise en
+  // place d'un coup d'envoi, le ballon sautait de ~49 m — des poteaux, où il
+  // venait de retomber, jusque dans les mains du botteur.
+  let mises = 0, propres = 0, pire = 0;
+  for (const seed of [1, 2, 3]) {
+    const m = new MatchEngine(seed, 4800);
+    let prev = null, suivi = null, prevPhase = null;
+    for (let i = 0; i < 400000 && m.getState().phase !== 'TERMINE'; i++) {
+      m.tick(0.1);
+      const b = m.getState().ballon;
+      const p = { x: b.x, y: b.y };
+      if (m.phase === 'COUP_ENVOI' && prevPhase !== 'COUP_ENVOI') suivi = { saut: prev ? Math.hypot(p.x - prev.x, p.y - prev.y) : 0 };
+      else if (suivi && m.phase === 'COUP_ENVOI' && !m.envoiEnPlace) suivi.saut = Math.max(suivi.saut, Math.hypot(p.x - prev.x, p.y - prev.y));
+      if (suivi && (m.phase !== 'COUP_ENVOI' || m.envoiEnPlace)) {
+        mises++;
+        if (suivi.saut < 3) propres++;
+        pire = Math.max(pire, suivi.saut);
+        suivi = null;
+      }
+      prev = p; prevPhase = m.phase;
+    }
+  }
+  assert.ok(mises >= 30, `échantillon trop petit (${mises} mises en place)`);
+  assert.ok(propres / mises >= 0.95, `${propres}/${mises} mises en place de coup d'envoi sans saut du ballon > 3 m (pire : ${pire.toFixed(1)} m)`);
+});
+
+test('coup d\'envoi : la mise en place n\'est pas du temps de jeu effectif', () => {
+  // Le ballon n'est pas en jeu avant la frappe. La mise en place (les joueurs
+  // regagnent leur moitié, le botteur rejoint le centre) était pourtant
+  // comptée : 1,87 min de « jeu effectif » par match qui n'en était pas.
+  let pasMiseEnPlace = 0, comptes = 0;
+  for (const seed of [1, 2]) {
+    const m = new MatchEngine(seed, 4800);
+    for (let i = 0; i < 400000 && m.getState().phase !== 'TERMINE'; i++) {
+      const avant = m.tempsJeuEffectif, enPlace = m.envoiEnPlace, phase = m.phase;
+      m.tick(0.1);
+      if (phase === 'COUP_ENVOI' && !enPlace && m.phase === 'COUP_ENVOI' && !m.envoiEnPlace) {
+        pasMiseEnPlace++;
+        if (m.tempsJeuEffectif > avant) comptes++;
+      }
+    }
+  }
+  assert.ok(pasMiseEnPlace > 100, `échantillon trop petit (${pasMiseEnPlace})`);
+  assert.strictEqual(comptes, 0, `${comptes}/${pasMiseEnPlace} pas de mise en place du coup d'envoi comptés comme du jeu`);
+});
+
+test('coup d\'envoi : le ballon vole, à vue, de la frappe à la réception', () => {
+  // Constat : sur 647 pas de vol de coup d'envoi, le ballon n'était affiché en
+  // l'air que 39 fois — la phase de placement le déclarait « tenu par le
+  // botteur » et le vol ne le remettait jamais en l'air. Le joueur voyait le
+  // ballon rester dans les mains du botteur puis apparaître 20 à 50 m plus
+  // loin chez le receveur, ~17 fois par match.
+  let pasVol = 0, affiches = 0, envois = 0, sansSaut = 0;
+  for (const seed of [1, 2, 3]) {
+    const m = new MatchEngine(seed, 4800);
+    let suivi = null;
+    for (let i = 0; i < 400000 && m.getState().phase !== 'TERMINE'; i++) {
+      m.tick(0.1);
+      const s = m.getState();
+      const enVolEnvoi = m.phase === 'COUP_ENVOI' && m.envoiEnPlace && m.timerPhase > 0;
+      if (enVolEnvoi) {
+        pasVol++;
+        if (s.ballon.enVol) affiches++;
+        if (!suivi) suivi = { pts: [] };
+        suivi.pts.push({ x: s.ballon.x, y: s.ballon.y });
+      } else if (suivi) {
+        // Premier pas après la réception : le ballon ne doit pas sauter non plus.
+        // (Coup d'envoi trop court -> mêlée : le saut vers le 9 relève de la
+        // mêlée, traitée à part — cf. P2-81.)
+        if (m.phase !== 'MELEE') {
+          suivi.pts.push({ x: s.ballon.x, y: s.ballon.y });
+          envois++;
+          let saut = 0;
+          for (let k = 1; k < suivi.pts.length; k++) saut = Math.max(saut, Math.hypot(suivi.pts[k].x - suivi.pts[k - 1].x, suivi.pts[k].y - suivi.pts[k - 1].y));
+          // 4 m par pas de 0,1 s : un ballon frappé va jusqu'à ~25 m/s, plus
+          // l'écart (<= 1,5 m) entre le botteur et le centre au départ. Avant
+          // correctif, les sauts mesuraient 10 à 17 m (frappe) et 3 à 7 m
+          // (réception).
+          if (saut < 4) sansSaut++;
+        }
+        suivi = null;
+      }
+    }
+  }
+  assert.ok(envois >= 30, `échantillon trop petit (${envois} coups d'envoi)`);
+  assert.ok(affiches / pasVol >= 0.95, `ballon affiché en vol sur ${affiches}/${pasVol} pas de vol de coup d'envoi`);
+  assert.ok(sansSaut / envois >= 0.95, `${sansSaut}/${envois} coups d'envoi sans saut du ballon > 4 m (vol et réception)`);
+});
+
+// --- bugs.md BUG-RM-006 : une passe réussie a d'abord été tentée -----------
+// Les offloads comptaient comme passes réussies sans être tentés : 266 succès
+// pour 263 tentatives sur une équipe, impossible.
+test('passes : chaque passe réussie, offload compris, est aussi une passe tentée (BUG-RM-006)', () => {
+  let offloads = 0;
+  for (let seed = 1; seed <= 6; seed++) {
+    const m = new MatchEngine(seed, 2400);
+    while (m.phase !== 'TERMINE') m.tick(0.2);
+    for (const e of ['A', 'B']) {
+      const s = m.stats[e];
+      offloads += s.offloads;
+      assert.ok(s.passes <= s.passesTentees,
+        `graine ${seed}, équipe ${e} : ${s.passes} passes réussies pour ${s.passesTentees} tentées`);
+      // Les tentatives manquées ont une cause : passe en avant, interception ou passe ratée.
+      assert.ok(s.passesTentees - s.passes <= s.knockOns + s.turnoversConcedes + 2,
+        `graine ${seed}, équipe ${e} : ${s.passesTentees - s.passes} tentatives sans issue connue`);
+    }
+  }
+  assert.ok(offloads >= 20, `échantillon sans offloads (${offloads})`);
+});
+
+// --- Courses : une par ballon porté, pas une par contact --------------------
+// Un porteur qui casse un plaquage puis se fait reprendre faisait DEUX courses
+// (46 par match en trop : 307 au lieu de 261). Comme en analyse de match, il
+// fait une course et bat un défenseur.
+test('courses : un plaquage cassé puis un second contact reste une seule course du même porteur', () => {
+  let doubles = 0, battus = 0, courses = 0, rucks = 0, oublis = 0;
+  for (let seed = 1; seed <= 4; seed++) {
+    // Sans incident de contact : un maillot remplacé (blessure, saignement)
+    // repart d'une ligne vierge, que le suivi par maillot ci-dessous prendrait
+    // pour une course oubliée.
+    const m = new MatchEngine(seed, 2400, { blessures: false });
+    // Par joueur : une course de plus alors qu'il a déjà fait la sienne sans
+    // avoir lâché le ballon (il est resté porteur d'un pas à l'autre).
+    const avant = {}, dejaCompte = {};
+    while (m.phase !== 'TERMINE') {
+      const p0 = m.phase === 'PORTE' && m.porteur ? m.porteur.team + m.porteur.numero : null;
+      m.tick(0.1);
+      // Et jamais une de moins : un porteur plaqué qui fait un ruck a couru.
+      if (p0 && m.phase === 'RUCK') {
+        rucks++;
+        const l = m.statsJoueurs[p0[0]][p0.slice(1)];
+        if (!dejaCompte[p0] && !(l && l.courses > (avant[p0] || 0))) oublis++;
+      }
+      for (const e of ['A', 'B']) {
+        for (const [num, l] of Object.entries(m.statsJoueurs[e])) {
+          const cle = e + num, c = l.courses;
+          if (c > (avant[cle] || 0)) { if (dejaCompte[cle]) doubles += c - avant[cle]; dejaCompte[cle] = true; }
+          avant[cle] = c;
+          if (!m.porteur || m.porteur.team + m.porteur.numero !== cle) dejaCompte[cle] = false;
+        }
+      }
+    }
+    for (const e of ['A', 'B']) {
+      battus += m.stats[e].defenseursBattus; courses += m.stats[e].carries;
+      const lignes = Object.values(m.statsJoueurs[e]).concat(m.statsJoueursSortis[e].map((r) => r.stats || {}));
+      const indiv = lignes.reduce((s, l) => s + (l.courses || 0), 0);
+      assert.strictEqual(indiv, m.stats[e].carries, `graine ${seed}, équipe ${e} : courses individuelles et d'équipe`);
+    }
+  }
+  assert.strictEqual(doubles, 0, `${doubles} courses comptées deux fois pour le même porteur`);
+  assert.ok(rucks >= 200 && oublis === 0, `${oublis} porteurs plaqués sans course sur ${rucks} rucks`);
+  assert.ok(battus >= 40, `les défenseurs battus restent comptés (${battus})`);
+  assert.ok(courses >= 300, `échantillon trop petit (${courses} courses)`);
+});
+
+// --- bugs.md BUG-RM-010 : un match se lit au coup de sifflet, pas à 80:00 ----
+// Graine 4 : 31-18 à 80:00 pendant une transformation, 33-18 au sifflet.
+test('jouerJusquAuSifflet : le match se lit au coup de sifflet, tir engagé compris (BUG-RM-010)', () => {
+  // Une transformation en cours au chrono n'arrive pas à chaque match : on
+  // cherche jusqu'à en trouver une, sur 80 graines au plus.
+  let differents = 0;
+  for (let seed = 1; seed <= 80 && differents < 2; seed++) {
+    const coupe = new MatchEngine(seed, 600);
+    for (let t = 0; t < 600; t += 0.2) coupe.tick(0.2);
+    const complet = new MatchEngine(seed, 600);
+    assert.strictEqual(complet.jouerJusquAuSifflet(0.2), complet, 'renvoie le moteur');
+    assert.strictEqual(complet.phase, 'TERMINE', `graine ${seed} : match non terminé`);
+    // 120 s : depuis la loi 5.7 (TODO_AUDIT P2-128), la dernière action se joue
+    // jusqu'au ballon mort après la sonnerie.
+    assert.ok(complet.tempsMatch < 600 + 120, `graine ${seed} : sifflet à ${complet.tempsMatch.toFixed(1)} s`);
+    if (coupe.score.A !== complet.score.A || coupe.score.B !== complet.score.B) {
+      differents++;
+      assert.notStrictEqual(coupe.phase, 'TERMINE', 'seul un match coupé avant le sifflet peut différer');
+    }
+  }
+  assert.ok(differents >= 1, 'la boucle à durée fixe doit manquer au moins un point sur 80 matchs (sinon le test ne prouve rien)');
+  // Garde bornée : un match qui ne finit pas est une erreur, jamais un résultat.
+  const bloque = new MatchEngine(1, 600);
+  bloque.tick = function () { this.tempsMatch += 0.2; };
+  assert.throws(() => bloque.jouerJusquAuSifflet(0.2), /non termin/);
+});
+
+// --- bugs.md BUG-RM-007 : le remplaçant a SES statistiques -----------------
+// Le moteur indexait les actions par numéro de maillot : tout le match allait
+// au titulaire, l'entrant n'avait aucune ligne.
+test('remplacement : les actions du sortant sont closes à sa sortie, l entrant repart de zéro (BUG-RM-007)', () => {
+  let lignesEntrants = 0;
+  for (let seed = 1; seed <= 4; seed++) {
+    const remplacements = [
+      { equipe: 'A', numero: 10, minute: 40, joueurId: 'entrant-10', joueur: { poste: 'Demi d ouverture' } },
+      { equipe: 'B', numero: 3, minute: 50, joueurId: 'entrant-3', joueur: { poste: 'Pilier' } },
+      { equipe: 'B', numero: 3, minute: 70, joueurId: 'entrant-3bis', joueur: { poste: 'Pilier' } },
+    ];
+    const m = new MatchEngine(seed, 4800, { remplacements, blessures: false }); // liste exacte : sans blessure
+    m.jouerJusquAuSifflet(0.2);
+    const st = m.getState();
+    assert.deepStrictEqual(st.remplacementsEffectues.map((r) => [r.equipe, r.numero, r.joueurId]),
+      [['A', 10, 'entrant-10'], ['B', 3, 'entrant-3'], ['B', 3, 'entrant-3bis']]);
+    assert.deepStrictEqual(st.statsJoueursSortis.B.map((x) => x.numero), [3, 3], 'deux sorties au n°3');
+    const sortie10 = st.statsJoueursSortis.A[0];
+    // Au premier ballon mort après la 40e (loi 3.6, BUG-RM-012).
+    assert.ok(sortie10.sortie >= 2399.9 && sortie10.sortie < 2400 + 240, `sortie du 10 à ${sortie10.sortie}`);
+    assert.ok(sortie10.stats && sortie10.stats.passes > 0, 'le 10 titulaire a joué 40 minutes : il a des passes');
+    if (st.statsJoueurs.A[10]) lignesEntrants++;
+    // Rien ne se perd ni ne se compte deux fois : sortants + présents = équipe.
+    for (const e of ['A', 'B']) {
+      for (const [kj, ke] of [['passes', 'passes'], ['tacklesMade', 'tacklesMade'], ['essais', 'essais'], ['courses', 'carries']]) {
+        let somme = 0;
+        for (const ligne of Object.values(st.statsJoueurs[e])) somme += ligne[kj] || 0;
+        for (const x of st.statsJoueursSortis[e]) somme += (x.stats && x.stats[kj]) || 0;
+        // Un essai de pénalité n'a pas de marqueur.
+        const attendu = st.stats[e][ke] - (kj === 'essais' ? (st.stats[e].essaisPenalite || 0) : 0);
+        assert.strictEqual(somme, attendu, `graine ${seed}, équipe ${e}, ${kj} : ${somme} pour ${attendu}`);
+      }
+    }
+  }
+  assert.ok(lignesEntrants >= 3, `l'entrant au n°10 doit avoir sa propre ligne (${lignesEntrants}/4)`);
+  // Sans remplacement : rien ne change.
+  const sans = new MatchEngine(1, 600).jouerJusquAuSifflet(0.2).getState();
+  assert.deepStrictEqual(sans.statsJoueursSortis, { A: [], B: [] });
+  assert.deepStrictEqual(sans.remplacementsEffectues, []);
+});
+
+// --- Loi 11 : la passe trop plate sous pression est jugée en avant -----------
+// Le moteur ne sifflait une passe en avant que lorsque le porteur n'avait
+// AUCUNE option légale : 0,1 à 0,2 par match, contre 1 à 3 en vrai. En vrai,
+// elle naît surtout d'une passe PLATE lâchée sous pression, le receveur
+// lancé : on interroge la décision de l'arbitre, état figé.
+test('loi 11 : une passe plate sous pression est parfois jugée en avant, jamais une passe en retrait (P2-112)', () => {
+  const taux = (recul, distDef, passe) => {
+    const m = new MatchEngine(3, 4800);
+    m.possession = 'A';
+    const att = m.attaquants(), def = m.defenseurs();
+    const porteur = att[9], cible = att[11];
+    porteur.sensAttaque = 1; porteur.x = 50; porteur.y = 30; porteur.passe = passe;
+    cible.x = 50 - recul; cible.y = 36;
+    for (const d of def) { d.x = 90; d.y = 5; d.auSol = 0; }
+    def[0].x = 50 + distDef; def[0].y = 30;
+    let n = 0;
+    for (let i = 0; i < 2000; i++) if (m._passePlateJugeeEnAvant(porteur, cible)) n++;
+    return n / 2000;
+  };
+  const sousPression = taux(0.2, 1, 60);
+  assert.ok(sousPression > 0.05 && sousPression < 0.5, `passe plate sous pression : ${sousPression}`);
+  assert.strictEqual(taux(0.2, 8, 60), 0, 'sans pression, une passe plate passe');
+  assert.strictEqual(taux(2.5, 1, 60), 0, 'une passe nettement en retrait n est jamais en avant');
+  assert.ok(taux(0.2, 1, 90) < taux(0.2, 1, 30), 'un bon passeur la rate moins');
+  // En match : la loi devient visible, sans submerger le jeu de mêlées.
+  let avant = 0;
+  const N = 8;
+  for (let seed = 1; seed <= N; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    const log = m.log.bind(m);
+    m.log = (t, ...r) => { if (t === 'MELEE_AVANT') avant++; return log(t, ...r); };
+    m.jouerJusquAuSifflet(0.2);
+  }
+  assert.ok(avant / N >= 0.7 && avant / N <= 3, `${(avant / N).toFixed(2)} passe(s) en avant sifflée(s) par match (réel : 1 à 3)`);
+});
+
+// --- Point de départ d'un essai : la marque de la phase, pas la position d'avant
+// Une touche obtenue sur pénalité prenait la position du botteur : un essai de
+// touche à 40 m de la ligne était compté « au-delà de 50 m ».
+test("essai : son point de départ est celui de la touche ou de la mêlée qui l'a lancé", () => {
+  let verifies = 0;
+  const ecarts = [];
+  // 10 graines : sur 6, l'échantillon tombait à 11 essais selon le seul bruit.
+  for (let seed = 1; seed <= 10; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    let derniere = null;
+    const log = m.log.bind(m);
+    m.log = (t, team, msg, extra, ...r) => {
+      const p = m.porteur;
+      if (t === 'TOUCHE_RAPIDE') derniere = null; // relancée hors de l'alignement : non vérifiée ici
+      // Sortie par le 8 (passe à l'ouvreur, ou il part seul) : la séquence
+      // part du premier porteur en jeu courant, pas de la base — non vérifiée ici.
+      if (/^MELEE_(PASSE_HUIT|PICK_AND_GO)$/.test(t)) derniere = null;
+      if (p && (t === 'TOUCHE_BALLON_GAGNE' || t === 'MELEE_BALLON_SORTI' || (t === 'TURNOVER' && m.phase === 'TOUCHE'))) {
+        const sens = m.possession === 'A' ? 1 : -1;
+        derniere = { origine: t === 'MELEE_BALLON_SORTI' ? 'MELEE' : 'TOUCHE', team: m.possession, dist: sens > 0 ? LONGUEUR - p.x : p.x };
+      }
+      if (t === 'ESSAI' && extra && derniere && extra.origine === derniere.origine && team === derniere.team) {
+        verifies++;
+        if (Math.abs(extra.depuis - derniere.dist) > 3) ecarts.push(`graine ${seed} : ${extra.origine} à ${derniere.dist.toFixed(0)} m, essai « depuis ${extra.depuis} m »`);
+      }
+      return log(t, team, msg, extra, ...r);
+    };
+    m.jouerJusquAuSifflet(0.1);
+  }
+  assert.ok(verifies >= 12, `échantillon trop petit (${verifies} essais de touche ou de mêlée)`);
+  assert.deepStrictEqual(ecarts, []);
+});
+
+// --- Touche à 5 m de la ligne : le pack monte le maul ------------------------
+// Une touche gagnée à 5 m ne donnait un maul qu'une fois sur 2,3 (43 %, comme à
+// 16 m) : l'arme n°1 des avants près de l'en-but restait rare. La consigne
+// « jeu au sol » garde son effet.
+test('touche gagnée à 5 m de la ligne adverse : maul le plus souvent, pas plus qu à 16 m ailleurs', () => {
+  let saques = 0;
+  function taux(x, config) {
+    let gagnees = 0, mauls = 0;
+    for (let seed = 1; seed <= 80; seed++) {
+      const m = new MatchEngine(seed, 4800, config);
+      for (let i = 0; i < 20; i++) m.tick(0.1);
+      let etat = null;
+      const log = m.log.bind(m);
+      // Maul tenté : formé, ou sauteur saqué par la défense avant qu'il se
+      // forme (P2-131) — c'est le choix du pack qui est mesuré ici.
+      m.log = (t, team, ...r) => {
+        if (t === 'TOUCHE_BALLON_GAGNE' && team === 'A') { gagnees++; etat = 'gagnee'; }
+        else if (etat === 'gagnee') { if (t === 'MAUL' || t === 'TOUCHE_SAQUEE') mauls++; if (t === 'TOUCHE_SAQUEE') saques++; etat = 'fini'; }
+        return log(t, team, ...r);
+      };
+      m._accorderTouche('B', { x, y: 0 }, 'COUP_DE_PIED');
+      for (let i = 0; i < 600 && etat !== 'fini'; i++) m.tick(0.1);
+    }
+    assert.ok(gagnees >= 50, `échantillon trop petit (${gagnees} touches gagnées)`);
+    return mauls / gagnees;
+  }
+  const cinq = taux(95), seize = taux(84);
+  const sol = taux(95, { toucheA: { tauxMaul: { proche: 0.15, loin: 0.02 } } });
+  assert.ok(cinq >= 0.6, `maul sur ${(100 * cinq).toFixed(0)} % des touches gagnées à 5 m`);
+  assert.ok(seize >= 0.3 && seize <= 0.6, `maul sur ${(100 * seize).toFixed(0)} % à 16 m (réglage de base inchangé)`);
+  assert.ok(sol <= cinq - 0.25, `consigne jeu au sol : ${(100 * sol).toFixed(0)} % de mauls à 5 m contre ${(100 * cinq).toFixed(0)} %`);
+  // La défense saque le sauteur sur une partie des mauls tentés dans ses 22.
+  assert.ok(saques >= 15, `la défense ne saque presque jamais le sauteur (${saques} fois)`);
+});
+
+// --- Maul porté : le pack entier pousse, pas cinq avants --------------------
+// Seuls 5 avants par équipe se liaient, alignés sur 3 m de large : les autres
+// regardaient le maul depuis la touche.
+test('maul sur touche : au moins six avants de chaque équipe liés au maul, en bloc compact', () => {
+  const att = [], def = [];
+  // 160 graines : sur 40, 18 mauls seulement, et l'attaque tombait à 5,94
+  // avants liés par le seul déroulé (6,11 sur 80 graines, 37 mauls) ; après la
+  // fusion du placement des avants (PR n°21), 5,9 sur 80 mais 6,07 sur 160
+  // graines (70 mauls).
+  for (let seed = 1; seed <= 160; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    for (let i = 0; i < 20; i++) m.tick(0.1);
+    m._accorderTouche('B', { x: 95, y: 0 }, 'COUP_DE_PIED');
+    let t = null;
+    for (let i = 0; i < 600; i++) {
+      m.tick(0.1);
+      if (m.phase === 'MAUL') { t = (t || 0) + 0.1; if (t >= 2) break; } else if (t !== null) break;
+    }
+    if (!(t >= 2) || m.phase !== 'MAUL') continue;
+    const lies = (eq) => eq.filter(j => j.numero <= 8 && j.auSol === 0 && j.sinBin <= 0
+      && Math.hypot(j.x - m.maul.x, j.y - m.maul.y) < 2.5).length;
+    att.push(lies(m.equipeA)); def.push(lies(m.equipeB));
+  }
+  const moy = (a) => a.reduce((s, v) => s + v, 0) / a.length;
+  assert.ok(att.length >= 24, `échantillon trop petit (${att.length} mauls)`);
+  assert.ok(moy(att) >= 6 && moy(def) >= 6,
+    `avants liés à 2,5 m du maul : attaque ${moy(att).toFixed(1)}, défense ${moy(def).toFixed(1)}`);
+});
+
+// --- Loi 5.7 : la période se termine au premier ballon mort après la sonnerie -
+// Mi-temps et fin du match tombaient à 40:00 et 80:00 pile, ballon vivant :
+// 29 fins de période sur 60 coupaient une course, un ruck ou un maul, et une
+// touche ou une mêlée accordée avant la sonnerie n'était pas jouée.
+test('loi 5.7 : mi-temps et fin du match au premier ballon mort après la sonnerie, jamais en plein jeu', () => {
+  const vivantes = new Set(['PORTE', 'RUCK', 'MAUL', 'COUP_DE_PIED_JEU']);
+  const fautes = [];
+  let fins = 0, sonneries = 0, prolongees = 0;
+  for (let seed = 1; seed <= 12; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    let debutPhase = 0, phasePrec = m.phase, sonnee = false, penaliteTouche = false;
+    const log = m.log.bind(m);
+    m.log = (t, ...r) => {
+      if (t === 'SONNERIE') { sonneries++; sonnee = true; }
+      if (t === 'PENALITE_TOUCHE_FRAPPE' && sonnee) penaliteTouche = true;
+      if (t === 'TOUCHE_LANCER') penaliteTouche = false;
+      return log(t, ...r);
+    };
+    while (m.phase !== 'TERMINE') {
+      const limite = m.miTempsJouee ? m.dureeMatch : m.dureeMiTemps;
+      const avant = m.phase;
+      m.tick(0.1);
+      if ((m.phase === 'MI_TEMPS' && avant !== 'MI_TEMPS') || m.phase === 'TERMINE') {
+        fins++;
+        if (m.tempsMatch > limite + 0.15) prolongees++;
+        if (vivantes.has(avant)) fautes.push(`graine ${seed} : fin de période en phase ${avant}`);
+        if ((avant === 'MELEE' || avant === 'TOUCHE') && debutPhase < limite) fautes.push(`graine ${seed} : ${avant} accordée avant la sonnerie et non jouée`);
+        if (penaliteTouche) fautes.push(`graine ${seed} : pénalité tapée en touche après la sonnerie, touche non jouée`);
+        sonnee = false; penaliteTouche = false;
+      }
+      if (m.phase !== phasePrec) { debutPhase = m.tempsMatch; phasePrec = m.phase; }
+    }
+  }
+  assert.deepStrictEqual(fautes, []);
+  assert.ok(fins === 24 && sonneries >= 10 && prolongees >= 10, `${fins} fins, ${sonneries} sonneries, ${prolongees} périodes prolongées`);
+});
+
+// --- Sonnerie : l'équipe qui ne veut plus jouer tape en touche ------------------
+// En fin de match, celle qui mène sort le ballon pour faire siffler ; celle qui
+// est menée garde le ballon et attaque.
+test('sonnerie : en fin de match, l équipe qui mène tape en touche, celle qui est menée garde le ballon', () => {
+  function scenario(seed, scoreA, scoreB) {
+    const m = new MatchEngine(seed, 4800);
+    for (let t = 0; t < 30; t += 0.1) m.tick(0.1);
+    m.avantage = null; m._passeCibleForcee = null; m.passeVisuelle = null; m.combinaison = null;
+    m.penaliteRecul = null; m.maul = null; m.toucheLancer = null; m.toucheRapide = null;
+    m.miTempsJouee = true; m.tempsMatch = m.dureeMatch + 0.5;
+    m.score.A = scoreA; m.score.B = scoreB;
+    m.phase = 'PORTE'; m.possession = 'A';
+    const dix = m.equipeA.find(j => j.numero === 10);
+    m.porteur = dix; dix.auSol = 0; dix.x = 30; dix.y = 35;
+    for (const j of m.equipeB) { j.auSol = 0; j.x = 45; }
+    let tape = false;
+    const log = m.log.bind(m);
+    m.log = (t, team, ...r) => { if (t === 'COUP_DE_PIED' && team === 'A') tape = true; return log(t, team, ...r); };
+    for (let k = 0; k < 20 && !tape; k++) m.tick(0.1);
+    return tape;
+  }
+  let mene = 0, menee = 0;
+  for (let seed = 1; seed <= 20; seed++) { if (scenario(seed, 20, 10)) mene++; if (scenario(seed, 10, 20)) menee++; }
+  assert.ok(mene >= 18, `l équipe qui mène ne tape en touche que ${mene} fois sur 20`);
+  assert.ok(menee <= 4, `l équipe menée tape ${menee} fois sur 20 au lieu de jouer`);
+});
+
+// --- Pénalité jouée vite près de la ligne : les fautifs ne plaquent pas -------
+// À 2 m de l'en-but, tous les défenseurs doivent revenir derrière leur ligne :
+// sans défenseur en jeu, le moteur retombait sur la liste complète et un
+// fautif encore hors-jeu plaquait (3 cas sur 20 graines).
+test('loi 20.14 : pénalité jouée vite à 2 m de la ligne, aucun fautif hors-jeu ne plaque', () => {
+  let contacts = 0;
+  const fautes = [];
+  for (let seed = 1; seed <= 20; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    for (let t = 0; t < 30; t += 0.1) m.tick(0.1);
+    m.avantage = null; m._passeCibleForcee = null; m.passeVisuelle = null; m.combinaison = null; m.maul = null; m.toucheLancer = null;
+    m.phase = 'PORTE'; m.possession = 'A';
+    const tapeur = m.equipeA.find(j => j.numero === 9);
+    m.porteur = tapeur; tapeur.auSol = 0; tapeur.x = 98; tapeur.y = 30;
+    for (const j of m.equipeA) if (j !== tapeur) { j.auSol = 0; j.x = 90; }
+    for (const j of m.equipeB) { j.auSol = 0; j.sinBin = 0; j.ruckRecovery = 0; j.x = 99 + (j.numero % 3) * 0.3; j.y = 18 + j.numero * 2; }
+    // Les avants du ruck fautif sont encore au sol, juste devant la marque.
+    for (const j of m.equipeB.filter(x => x.numero <= 5)) { j.x = 98.6; j.y = 27 + j.numero; j.auSol = 6 + j.numero; j._solX = j.x; j._solY = j.y; }
+    m._lancerJeuRapidePenalite('A', { x: 98, y: 30 });
+    for (let k = 0; k < 60; k++) {
+      const horsJeu = new Set(m.equipeB.filter(j => j.horsJeuKick > 0).map(j => j.numero));
+      const avant = m.stats.B.tacklesAttempted;
+      m.tick(0.1);
+      if (m.stats.B.tacklesAttempted > avant) {
+        contacts++;
+        const n = m.contestants && m.contestants[0];
+        if (horsJeu.has(n)) fautes.push(`graine ${seed} : le n°${n}, hors-jeu, plaque`);
+      }
+    }
+  }
+  assert.ok(contacts >= 10, `échantillon trop petit (${contacts} contacts)`);
+  assert.deepStrictEqual(fautes, []);
+});
+
+// --- Essai de pénalité (loi 8.3) : seulement quand un essai probable est empêché
+// Le moteur en accordait un au hasard sur une pénalité sur quatre à moins de
+// 5 m : 0,75 essai de pénalité par match avec les mauls écroulés, pour ~0,1 à
+// 0,15 en vrai. Une faute délibérée sur sa ligne vaut un carton jaune.
+test('essai de pénalité : rare, et seulement sur un maul ou une mêlée écroulés près de la ligne', () => {
+  let essaisPenalite = 0, horsMaul = 0, jaunesLigne = 0;
+  // 64 graines : le carton sur sa ligne est rare (~0,12 par match) ; 16
+  // graines tombaient à 0 ou 3 selon le seul bruit (mesuré sur 64 : 8 avant
+  // les blessures en match, 8 après).
+  // 128 graines depuis la fusion de la PR n°21 : 0,38 sur 64, 0,33 sur 128.
+  const N = 128;
+  for (let seed = 1; seed <= N; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    const log = m.log.bind(m);
+    m.log = (t, team, msg, ...r) => {
+      // Maul lancé ou mêlée dominante écroulés sur la ligne : les deux voies légitimes.
+      if (t === 'ESSAI_PENALITE') { essaisPenalite++; if (!/maul|melee/.test(msg)) horsMaul++; }
+      if (t === 'CARTON_JAUNE' && /sur sa ligne/.test(msg)) jaunesLigne++;
+      return log(t, team, msg, ...r);
+    };
+    m.jouerJusquAuSifflet(0.1);
+  }
+  assert.strictEqual(horsMaul, 0, `${horsMaul} essais de pénalité sans maul ni mêlée écroulés`);
+  assert.ok(essaisPenalite / N <= 0.35, `${(essaisPenalite / N).toFixed(2)} essai(s) de pénalité par match`);
+  assert.ok(jaunesLigne >= 8, `la faute délibérée sur sa ligne n'est plus sanctionnée (${jaunesLigne} cartons)`);
+});
+
+// --- Dégagement en touche depuis ses 22 : 30 à 45 m gagnés ------------------
+// Il ne gagnait que 27 m (portée de 15 à 30 m) et rendait la touche vers ses
+// 40 m : l'adversaire repartait à deux pas des 22.
+test('dégagement en touche depuis ses 22 m : il gagne en moyenne plus de 30 m', () => {
+  const gains = [];
+  for (let seed = 1; seed <= 6; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    let pied = null;
+    const log = m.log.bind(m);
+    m.log = (t, team, msg, ...r) => {
+      if (t === 'COUP_DE_PIED' && m.porteur) {
+        const p = m.porteur;
+        pied = { x: p.x, sens: p.sensAttaque, dans22: (p.sensAttaque > 0 ? p.x : LONGUEUR - p.x) < 22, touche: /\(touche\)/.test(msg) };
+      } else if (t === 'TOUCHE' && pied && /trouve la touche/.test(msg)) pied.sortie = true;
+      else if (t !== 'TOUCHE') { if (pied && !pied.sortie && t !== 'ENTREE_22') pied = null; }
+      return log(t, team, msg, ...r);
+    };
+    while (m.phase !== 'TERMINE') {
+      m.tick(0.1);
+      if (pied && pied.sortie) {
+        if (pied.dans22 && pied.touche) gains.push((m.toucheLanceurX - pied.x) * pied.sens);
+        pied = null;
+      }
+    }
+  }
+  assert.ok(gains.length >= 20, `échantillon trop petit (${gains.length} dégagements en touche)`);
+  const moy = gains.reduce((a, b) => a + b, 0) / gains.length;
+  assert.ok(moy >= 30, `un dégagement en touche depuis ses 22 ne gagne que ${moy.toFixed(1)} m`);
+});
+
+// --- Mêlée avec le n°9 exclu : un autre joueur introduit ---------------------
+// La mêlée désignait le 9 même en carton jaune : il restait figé hors du jeu et
+// le ballon l'attendait, posé à 21 m du tunnel, pendant toute la mise en place.
+test('mêlée : le n°9 exclu, un autre joueur rejoint le tunnel et introduit le ballon', () => {
+  let introduites = 0, essais = 0;
+  for (let seed = 1; seed <= 8; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    for (let t = 0; t < 30; t += 0.1) m.tick(0.1);
+    m.avantage = null; m.passeVisuelle = null; m.combinaison = null; m.maul = null; m.toucheLancer = null;
+    const neuf = m.equipeB.find(j => j.numero === 9);
+    neuf.sinBin = 600;
+    m._formerMelee('B', { x: 40, y: 30 });
+    essais++;
+    let intro = false, pret = null;
+    for (let k = 0; k < 900 && m.phase === 'MELEE' && !intro; k++) {
+      m.tick(0.1);
+      const st = m.getState();
+      if (st.melee && st.melee.etat === 'MELEE_CROUCH' && !pret) pret = { porteur: m.porteur, ballon: st.ballon };
+      if (st.melee && st.melee.etat === 'MELEE_INTRODUCTION') intro = true;
+    }
+    assert.ok(pret, `graine ${seed} : la mêlée n'arrive jamais à « Crouch »`);
+    assert.ok(pret.porteur && pret.porteur !== neuf && pret.porteur.team === 'B' && !(pret.porteur.sinBin > 0),
+      `graine ${seed} : le ballon est confié au n°9 exclu`);
+    assert.ok(Math.hypot(pret.ballon.x - pret.porteur.x, pret.ballon.y - pret.porteur.y) < 0.3
+      && Math.hypot(pret.porteur.x - 40, pret.porteur.y - 30) < 4,
+      `graine ${seed} : le remplaçant n'est pas au tunnel, ballon en main`);
+    if (intro) introduites++;
+  }
+  assert.ok(introduites >= essais - 1, `${introduites}/${essais} mêlées introduites sans le n°9`);
+});
+
+// --- Marque (loi 17) : rare, et annoncée seulement quand elle a lieu -----------
+// Le moteur sifflait 5 marques par match (35 % des réceptions propres dans ses
+// 22, 50 % sur coup d'envoi), et annonçait « Marque » sur chaque coup franc de
+// mêlée.
+test('marque : environ une par match, et un coup franc de mêlée n est pas annoncé comme une marque', () => {
+  let marques = 0, coupsFrancsMelee = 0, malAnnonces = 0;
+  const N = 12;
+  for (let seed = 1; seed <= N; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    let melee = false;
+    const log = m.log.bind(m);
+    m.log = (t, team, msg, ...r) => {
+      if (/^MELEE_PEN/.test(t) && /Coup franc/.test(msg)) { melee = true; coupsFrancsMelee++; }
+      else if (t === 'COUP_FRANC') { if (/^Marque/.test(msg)) { marques++; if (melee) malAnnonces++; } melee = false; }
+      return log(t, team, msg, ...r);
+    };
+    m.jouerJusquAuSifflet(0.1);
+  }
+  assert.ok(marques / N >= 0.2 && marques / N <= 1.6, `${(marques / N).toFixed(2)} marque(s) par match`);
+  assert.ok(coupsFrancsMelee >= 5, `échantillon sans coup franc de mêlée (${coupsFrancsMelee})`);
+  assert.strictEqual(malAnnonces, 0, `${malAnnonces} coups francs de mêlée annoncés comme une marque`);
+});
+
+// --- 50:22 : un pari rare, pas la conséquence d'un dégagement ordinaire --------
+// Avec des dégagements en touche à 25-45 m (P2-130), une touche ordinaire tapée
+// du milieu de terrain tombait dans les 22 adverses : 2,4 50:22 par match, pour
+// ~0,3 à 0,5 en vrai.
+test('50:22 : rare (moins d un par match), mais il existe', () => {
+  let n = 0;
+  const N = 16;
+  for (let seed = 1; seed <= N; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    m.jouerJusquAuSifflet(0.1);
+    n += m.stats.A.cinquanteVingtDeux + m.stats.B.cinquanteVingtDeux;
+  }
+  assert.ok(n >= 1 && n / N <= 1.0, `${(n / N).toFixed(2)} 50:22 par match`);
+});
+
+// --- Le moteur ne modifie jamais la configuration qu'on lui passe -------------
+// Un remplacement en cours de match écrivait le remplaçant dans l'objet
+// `joueursA` de l'appelant : la page croyait alors qu'il était titulaire, et la
+// relecture du match vécu divergeait (bugs.md FUNC-RM-003).
+test('remplacement en cours de match : la composition passée par l appelant reste intacte', () => {
+  const ref = new MatchEngine(1, 600);
+  const joueursA = JSON.parse(JSON.stringify(ref.cfg.joueurs));
+  const avant = JSON.stringify(joueursA);
+  const config = { joueursA };
+  const m = new MatchEngine(3, 600, config);
+  for (let i = 0; i < 50; i++) m.tick(0.1);
+  const entrant = Object.assign({}, joueursA[9], { vitesse: 99 });
+  m.remplacerJoueurEnCours('A', 9, entrant, 'id-entrant');
+  for (let i = 0; i < 3000 && m.phase !== 'TERMINE'; i++) m.tick(0.1);
+  assert.strictEqual(JSON.stringify(config.joueursA), avant, 'la composition de l appelant a été modifiée');
+  assert.ok(m.remplacementsEffectues.some((r) => r.equipe === 'A' && r.numero === 9), 'le remplacement a bien eu lieu');
+});
+
+// --- Banc (bugs.md FUNC-RM-005) : un remplaçant n'entre qu'une fois ------------
+// Faire entrer à la mi-temps un remplaçant prévu à la 50e le faisait entrer
+// DEUX fois : à la 50e, il « se remplaçait » lui-même.
+test('banc : un remplaçant entré plus tôt que prévu n entre pas une seconde fois', () => {
+  const ref = new MatchEngine(1, 4800);
+  const j = Object.assign({}, ref.cfg.joueurs[1], { nom: 'Pilier remplaçant' });
+  const m = new MatchEngine(5, 4800, { blessures: false, remplacements: [{ equipe: 'A', numero: 1, minute: 50, joueur: j, joueurId: 'p16' }] });
+  while (m.tempsMatch < 2400) m.tick(0.1);
+  assert.strictEqual(m.remplacerJoueurEnCours('A', 3, j, 'p16'), true, 'entrée anticipée, à un autre poste de première ligne');
+  for (let i = 0; i < 5; i++) m.tick(0.1);
+  assert.strictEqual(m.remplacerJoueurEnCours('A', 1, j, 'p16'), false, 'un joueur déjà entré, ou déjà demandé, ne peut pas entrer à nouveau');
+  m.jouerJusquAuSifflet(0.1);
+  const entrees = m.remplacementsEffectues.filter((r) => r.equipe === 'A' && r.joueurId === 'p16');
+  assert.strictEqual(entrees.length, 1, `${entrees.length} entrées pour le même remplaçant`);
+  assert.strictEqual(entrees[0].numero, 3, 'il entre là où le manager l a placé');
+  // Au premier ballon mort après la demande (loi 3.6, BUG-RM-012), bien avant la 50e.
+  assert.ok(entrees[0].instant < 3000, 'il entre quand le manager le décide, pas à la 50e');
+});
+
+// --- Blessures en cours de match (bugs.md FUNC-RM-005) ------------------------
+// Personne ne se blessait jamais PENDANT un match : la carrière tirait des
+// blessures au hasard, après coup. Un contact peut désormais blesser le porteur
+// ou le plaqueur : il sort, un remplaçant compatible entre, sinon son équipe
+// joue à 14.
+test('blessures en match : rares, nées d un contact, le blessé sort et un remplaçant de son poste entre', () => {
+  const ref = new MatchEngine(1, 4800);
+  const banc = [[1, 50], [2, 54], [4, 58], [6, 62], [9, 65], [10, 68], [12, 71], [15, 75]].map(([numero, minute], i) => ({
+    equipe: 'A', numero, minute, joueur: Object.assign({}, ref.cfg.joueurs[numero]), joueurId: 'banc' + i }));
+  let blessures = 0, remplacees = 0, aQuatorze = 0, groupesOk = 0;
+  const N = 24;
+  const groupe = (n) => (n <= 3 ? 'PL' : n <= 8 ? 'AV' : 'AR');
+  for (let seed = 1; seed <= N; seed++) {
+    const m = new MatchEngine(seed, 4800, { remplacements: banc });
+    let evts = 0;
+    const log = m.log.bind(m);
+    m.log = (t, ...r) => { if (t === 'BLESSURE') evts++; return log(t, ...r); };
+    m.jouerJusquAuSifflet(0.1);
+    // Les commotions confirmées (protocole) ont leur propre test.
+    const bl = (m.blessuresMatch || []).filter((b) => !b.commotion);
+    assert.strictEqual(evts, bl.length, 'chaque blessure est annoncée');
+    blessures += bl.length;
+    for (const b of bl) {
+      const r = m.remplacementsEffectues.find((x) => x.equipe === b.equipe && x.numero === b.numero && Math.abs(x.instant - b.instant) < 0.5);
+      if (r) {
+        remplacees++;
+        const prevu = banc.find((x) => x.joueurId === r.joueurId);
+        if (b.equipe === 'A' && prevu && groupe(prevu.numero) === groupe(b.numero)) groupesOk++;
+      } else {
+        const j = (b.equipe === 'A' ? m.equipeA : m.equipeB).find((x) => x.numero === b.numero);
+        if (j && j.sinBin > 0) aQuatorze++;
+      }
+    }
+  }
+  assert.ok(blessures / N >= 0.5 && blessures / N <= 3, `${(blessures / N).toFixed(2)} blessure(s) par match`);
+  assert.strictEqual(remplacees + aQuatorze, blessures, 'chaque blessé sort : remplacé, ou son équipe joue sans lui');
+  assert.ok(remplacees >= 5 && groupesOk >= 1, `${remplacees} blessés remplacés, ${groupesOk} par un remplaçant de leur poste`);
+});
+
+test('à 14 après blessures (banc épuisé), un joueur sorti ne touche plus le ballon : ni porteur, ni buteur, ni lanceur', () => {
+  let ticks = 0, horsJeu = 0, exemple = null;
+  for (let seed = 1; seed <= 8; seed++) {
+    // Un remplacement à la première seconde épuise le banc déclaré de A.
+    const m = new MatchEngine(seed, 4800, { remplacements: [{ equipe: 'A', numero: 4, minute: 0.01, joueur: {} }] });
+    let pose = false;
+    while (m.phase !== 'TERMINE') {
+      m.tick(0.1); ticks++;
+      if (!pose && m.tempsMatch > 60) { pose = true; for (const n of [2, 9, 10]) m._blessuresEnAttente.push({ equipe: 'A', numero: n }); }
+      const p = m.porteur;
+      if (p && p.sinBin > 0) { horsJeu++; if (!exemple) exemple = `graine ${seed}, ${m.phase}, n°${p.numero}${p.team}`; }
+    }
+    assert.ok(m.blessuresMatch.filter((b) => b.equipe === 'A').length >= 3, `graine ${seed} : trois blessés A`);
+  }
+  assert.ok(ticks > 1000);
+  assert.strictEqual(horsJeu, 0, `${horsJeu} instants où le porteur est un joueur sorti (${exemple})`);
+});
+
+test('mêlée simulée (loi 3) : sans première ligne formée, pas de poussée, pas de faute de pack, l introduction gagne', () => {
+  let simulees = 0, contestees = 0, fautesPack = 0, perdues = 0, avancees = 0, temoins = 0;
+  for (let seed = 1; seed <= 8; seed++) {
+    // Banc de A épuisé dès la première seconde : le talonneur blessé n'est pas remplacé.
+    const m = new MatchEngine(seed, 4800, { blessures: false, remplacements: [{ equipe: 'A', numero: 4, minute: 0.01, joueur: {} }] });
+    let pose = false, simulee = false, x0 = null;
+    const log = m.log.bind(m);
+    m.log = (t, team, msg, ...r) => {
+      if (t === 'MELEE') { simulee = false; x0 = null; }
+      if (t === 'MELEE_SIMULEE') { simulee = true; simulees++; }
+      if (t === 'MELEE_INTRODUCTION' && m.melee) x0 = m.melee.x;
+      // Fautes de poussée (écroulement, travers, poussée avant, liaison, relevé,
+      // mêlée tournée, ballon bloqué) ; l'introduction et le hors-jeu des
+      // trois-quarts restent jugés.
+      if (simulee && (/^MELEE_(PEN_ECROULEMENT|PEN_TRAVERS|TOURNEE|RESET)$/.test(t)
+        || (t === 'MELEE_PEN_TECHNIQUE' && !/introduction/.test(msg)))) fautesPack++;
+      if (simulee && t === 'TURNOVER' && m.melee) perdues++;
+      if (simulee && t === 'MELEE_BASE' && m.melee && x0 != null && Math.abs(m.melee.x - x0) > 0.01) avancees++;
+      return log(t, team, msg, ...r);
+    };
+    while (m.phase !== 'TERMINE') {
+      m.tick(0.1);
+      if (!pose && m.tempsMatch > 60) { pose = true; m._blessuresEnAttente.push({ equipe: 'A', numero: 2 }); }
+    }
+    contestees += m.stats.A.scrums + m.stats.B.scrums;
+    // Témoin : sans blessure, aucune mêlée simulée.
+    const t = new MatchEngine(seed, 4800, { blessures: false });
+    const lt = t.log.bind(t);
+    t.log = (ty, ...r) => { if (ty === 'MELEE_SIMULEE') temoins++; return lt(ty, ...r); };
+    t.jouerJusquAuSifflet(0.1);
+  }
+  assert.ok(simulees >= 40 && simulees >= 0.8 * contestees - 16, `${simulees} mêlées simulées sur ${contestees}`);
+  assert.strictEqual(fautesPack, 0, 'aucune faute de poussée dans une mêlée simulée');
+  assert.strictEqual(perdues, 0, 'l équipe qui introduit gagne toujours une mêlée simulée');
+  assert.strictEqual(avancees, 0, 'une mêlée simulée n avance pas');
+  assert.strictEqual(temoins, 0, 'avec les deux premières lignes, la mêlée reste disputée');
+});
+
+test('protocole commotion : sortie 12 minutes, remplaçant temporaire, puis retour ou sortie définitive', () => {
+  const ref = new MatchEngine(1, 4800);
+  const banc = [[1, 50], [2, 54], [4, 58], [6, 62], [9, 65], [10, 68], [12, 71], [15, 75]].map(([numero, minute], i) => ({
+    equipe: 'A', numero, minute, joueur: Object.assign({}, ref.cfg.joueurs[numero]), joueurId: 'banc' + i }));
+  let protocoles = 0, retours = 0, echecs = 0, doublons = 0, relances = 0;
+  const N = 24;
+  for (let seed = 1; seed <= N; seed++) {
+    const m = new MatchEngine(seed, 4800, { remplacements: banc });
+    const log = m.log.bind(m);
+    let ev = 0;
+    m.log = (t, ...r) => { if (t === 'PROTOCOLE_COMMOTION') ev++; return log(t, ...r); };
+    while (m.phase !== 'TERMINE') {
+      m.tick(0.1);
+      // Jamais la même personne à deux maillots à la fois.
+      const ids = Object.values(m._occupants.A).filter((x) => x != null);
+      if (new Set(ids).size !== ids.length) doublons++;
+    }
+    const st = m.getState();
+    const commotions = st.protocoles.filter((p) => p.nature === 'commotion');
+    assert.strictEqual(ev, commotions.length, 'chaque protocole est annoncé');
+    for (const p of commotions) {
+      protocoles++;
+      const temp = st.remplacementsEffectues.find((r) => r.equipe === p.equipe && r.numero === p.numero && r.temporaire && Math.abs(r.instant - p.debut) < 0.5);
+      if (!temp) {
+        // Pas de remplaçant disponible : son équipe joue à 14 le temps du protocole.
+        assert.ok(p.aQuatorze, `protocole sans remplaçant ni jeu à 14 : ${JSON.stringify(p)}`);
+      }
+      if (p.issue === 'retour') {
+        retours++;
+        if (temp) assert.ok(st.remplacementsEffectues.some((r) => r.equipe === p.equipe && r.numero === p.numero && r.retour && r.instant >= p.debut + 700 * m._echelleArret),
+          `retour du n°${p.numero} après au moins 12 minutes`);
+        if (temp && temp.joueurId != null && st.remplacementsEffectues.some((r) => r.joueurId === temp.joueurId && !r.temporaire && r.instant > p.fin)) relances++;
+      } else if (p.issue === 'echec') {
+        echecs++;
+        assert.ok(st.blessuresMatch.some((b) => b.equipe === p.equipe && b.numero === p.numero && b.commotion), 'l échec au protocole est une blessure');
+      } else {
+        assert.ok(p.debut + 720 * m._echelleArret > m.tempsMatch - 5, `protocole jamais résolu : ${JSON.stringify(p)}`);
+      }
+    }
+  }
+  assert.strictEqual(doublons, 0, `${doublons} instants où un joueur occupe deux maillots`);
+  assert.ok(protocoles / N >= 0.3 && protocoles / N <= 1.5, `${(protocoles / N).toFixed(2)} protocole(s) par match`);
+  assert.ok(retours >= 3 && echecs >= 2, `${retours} retours, ${echecs} échecs`);
+  console.log(`     ${protocoles} protocoles, ${retours} retours, ${echecs} échecs, ${relances} remplaçants temporaires entrés ensuite pour de bon`);
+});
+
+test('saignement : le joueur sort se faire soigner, un remplaçant temporaire entre, il revient avant 15 minutes', () => {
+  const ref = new MatchEngine(1, 4800);
+  const banc = [[1, 50], [2, 54], [4, 58], [6, 62], [9, 65], [10, 68], [12, 71], [15, 75]].map(([numero, minute], i) => ({
+    equipe: 'A', numero, minute, joueur: Object.assign({}, ref.cfg.joueurs[numero]), joueurId: 'banc' + i }));
+  let saignements = 0, retours = 0, annonces = 0, durees = [];
+  const N = 24;
+  for (let seed = 1; seed <= N; seed++) {
+    const m = new MatchEngine(seed, 4800, { remplacements: banc });
+    const log = m.log.bind(m);
+    m.log = (t, ...r) => { if (t === 'SAIGNEMENT') annonces++; return log(t, ...r); };
+    m.jouerJusquAuSifflet(0.1);
+    const st = m.getState();
+    for (const p of st.protocoles.filter((x) => x.nature === 'saignement')) {
+      saignements++;
+      assert.ok(p.aQuatorze || st.remplacementsEffectues.some((r) => r.numero === p.numero && r.equipe === p.equipe && r.temporaire && Math.abs(r.instant - p.debut) < 0.5),
+        'un remplaçant temporaire entre au même instant');
+      if (p.issue === 'retour') {
+        retours++;
+        const retour = st.remplacementsEffectues.find((r) => r.numero === p.numero && r.equipe === p.equipe && r.retour && r.instant >= p.debut);
+        const fin = retour ? retour.instant : p.resolu;
+        durees.push((fin - p.debut) / 60);
+        // 15 minutes au plus (plus le ballon à rendre s'il porte au même moment).
+        assert.ok(fin - p.debut <= 900 * m._echelleArret + 30, `${((fin - p.debut) / 60).toFixed(1)} min de soins`);
+      } else {
+        assert.ok(!p.issue, `un saignement ne finit jamais en blessure : ${JSON.stringify(p)}`);
+        // Pas encore revenu : seulement si ses soins débordent le coup de sifflet final.
+        assert.ok(p.fin > m.tempsMatch - 30, `saignement soigné avant la fin mais jamais revenu : ${JSON.stringify(p)}`);
+      }
+    }
+  }
+  assert.strictEqual(annonces, saignements, 'chaque saignement est annoncé');
+  // Avec ce banc de 8, ~0,3 saignement par match (7 à 8 sur 24 graines, avant
+  // comme après P2-151) : le seuil de 0,3 posé à partir d'une mesure en Match
+  // rapide était au ras du bruit.
+  assert.ok(saignements / N >= 0.2 && saignements / N <= 1.5, `${(saignements / N).toFixed(2)} saignement(s) par match`);
+  assert.ok(retours >= 1, `${retours} retours pour ${saignements} saignements`);
+  const moy = durees.reduce((a, b) => a + b, 0) / durees.length;
+  assert.ok(moy >= 6 && moy <= 14, `soins de ${moy.toFixed(1)} min en moyenne`);
+});
+
+test('feuille de match déclarée sans remplaçant (bancA) : un blessé laisse son équipe à 14, personne n est inventé', () => {
+  let blesses = 0, inventes = 0, aQuatorze = 0;
+  for (let seed = 1; seed <= 12; seed++) {
+    const m = new MatchEngine(seed, 4800, { bancA: true });
+    let pose = false;
+    while (m.phase !== 'TERMINE') {
+      m.tick(0.1);
+      if (!pose && m.tempsMatch > 60) { pose = true; m._blessuresEnAttente.push({ equipe: 'A', numero: 12 }); }
+    }
+    for (const b of m.blessuresMatch.filter((x) => x.equipe === 'A' && !x.commotion)) {
+      blesses++;
+      if (m.remplacementsEffectues.some((r) => r.equipe === 'A' && r.numero === b.numero && !r.temporaire && !r.retour)) inventes++;
+      const j = m.equipeA.find((x) => x.numero === b.numero);
+      if (j.sinBin > 1e8) aQuatorze++;
+    }
+    // L'autre équipe, sans feuille déclarée, garde son remplaçant anonyme.
+    assert.ok(m.blessuresMatch.filter((x) => x.equipe === 'B' && !x.commotion)
+      .every((b) => m.remplacementsEffectues.some((r) => r.equipe === 'B' && r.numero === b.numero)), 'B remplace ses blessés');
+  }
+  assert.ok(blesses >= 12, `${blesses} blessés A`);
+  assert.strictEqual(inventes, 0, 'aucun remplaçant inventé pour une feuille déclarée');
+  assert.strictEqual(aQuatorze, blesses, 'chaque blessé A laisse son équipe à 14');
+});
+
+test('sortie de maul : la défense qui se délie plaque le 9 — pas de percée directe une fois sur six (QA-RM-003)', () => {
+  // Les 7-8 avants défenseurs liés au maul étaient TOUS figés 4 s à la sortie
+  // du ballon (récupération de regroupement) : le 9 perçait au coin dans 17,6 %
+  // des sorties de maul (0,55 essai par match), contre 0,01 % après un ruck.
+  let sorties = 0, percees = 0;
+  for (let seed = 1; seed <= 16; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    let suivi = false;
+    const log = m.log.bind(m);
+    m.log = (t, team, msg, ...r) => {
+      const p = m.porteur;
+      if (t === 'MAUL_BALLON_SORTI') { sorties++; suivi = true; }
+      else if (suivi) {
+        if (t === 'FRANCHISSEMENT' && p && p.numero === 9) { percees++; suivi = false; }
+        else if (/^(PASSE|JEU_LARGE|COMBINAISON|RUCK|RUCK_SORTIE_9|COUP_DE_PIED|ESSAI)$/.test(t)) suivi = false;
+      }
+      return log(t, team, msg, ...r);
+    };
+    m.jouerJusquAuSifflet(0.1);
+  }
+  assert.ok(sorties >= 40, `échantillon : ${sorties} sorties de maul`);
+  assert.ok(percees / sorties <= 0.08, `le 9 perce directement après ${percees} sorties de maul sur ${sorties} (${(100 * percees / sorties).toFixed(1)} %)`);
+});
+
+test('déterminisme : un match affiché (getState à chaque pas) et un match calculé sans affichage sont identiques', () => {
+  // La remise du ballon au buteur partait de la « dernière position affichée »,
+  // notée seulement quand l'écran appelait getState : la frappe tombait à un
+  // autre pas et la relecture d'un match vécu divergeait (relu 10-13, vécu 7-10).
+  for (let seed = 1; seed <= 4; seed++) {
+    const journal = (afficher) => {
+      const m = new MatchEngine(seed, 4800);
+      const j = [];
+      const log = m.log.bind(m);
+      m.log = (t, team, msg, ...r) => { j.push(`${m._numTick} ${t} ${team}`); return log(t, team, msg, ...r); };
+      while (m.phase !== 'TERMINE') { m.tick(0.1); if (afficher) m.getState(); }
+      return { j, score: `${m.score.A}-${m.score.B}`, t: m.tempsMatch.toFixed(1) };
+    };
+    const affiche = journal(true), calcule = journal(false);
+    let i = 0;
+    while (i < affiche.j.length && affiche.j[i] === calcule.j[i]) i++;
+    assert.strictEqual(i, Math.max(affiche.j.length, calcule.j.length),
+      `graine ${seed} : premier écart à l'événement ${i} — affiché « ${affiche.j[i]} », calculé « ${calcule.j[i]} »`);
+    assert.strictEqual(affiche.score, calcule.score);
+    assert.strictEqual(affiche.t, calcule.t);
+  }
+});
+
+test('consigne individuelle de l ouvreur (FUNC-RM-004) : au pied, il tape plus ; à la main, moins ; les autres ne changent pas', () => {
+  const compter = (piedOuvreur) => {
+    let dix = 0, autres = 0, defaut = 0;
+    for (let seed = 1; seed <= 12; seed++) {
+      const m = new MatchEngine(seed, 4800, piedOuvreur == null ? {} : { attaqueA: { piedOuvreur } });
+      const log = m.log.bind(m);
+      m.log = (t, team, msg, ...r) => {
+        if (t === 'COUP_DE_PIED' && team === 'A' && m.porteur && m.porteur.team === 'A') {
+          if (m.porteur.numero === 10) dix++; else autres++;
+        }
+        return log(t, team, msg, ...r);
+      };
+      m.jouerJusquAuSifflet(0.1);
+    }
+    return { dix, autres };
+  };
+  const pied = compter(2), main = compter(0.4), neutre = compter(null), un = compter(1);
+  assert.deepStrictEqual(un, neutre, 'la consigne neutre (1) est le comportement par défaut');
+  assert.ok(pied.dix >= 1.4 * neutre.dix, `au pied : ${pied.dix} coups de pied du 10 pour ${neutre.dix} sans consigne`);
+  assert.ok(main.dix <= 0.7 * neutre.dix, `à la main : ${main.dix} coups de pied du 10 pour ${neutre.dix} sans consigne`);
+  // Les autres botteurs (le 9 surtout) gardent leur volume, à ±30 % près
+  // (le match diverge, mais leur taux n'est pas touché).
+  for (const [nom, c] of [['pied', pied], ['main', main]]) {
+    assert.ok(Math.abs(c.autres - neutre.autres) <= 0.3 * neutre.autres, `${nom} : ${c.autres} coups de pied des autres pour ${neutre.autres}`);
+  }
+});
+
+test('consigne individuelle de l arrière (FUNC-RM-004) : il couvre plus profond, ou monte vers la ligne ; l adversaire ne change pas', () => {
+  const profondeur = (decalageArriere) => {
+    let somme = 0, n = 0, sommeB = 0, nB = 0;
+    for (let seed = 1; seed <= 6; seed++) {
+      const m = new MatchEngine(seed, 4800, decalageArriere == null ? {} : { defenseA: { decalageArriere } });
+      while (m.phase !== 'TERMINE') {
+        m.tick(0.1);
+        // Au ruck, quand A défend : distance de son n°15 au point de ruck, vers son en-but.
+        if (m.phase === 'RUCK' && m.ruckPoint && m.timerPhase > 1.5) {
+          const def = m.possession === 'B' ? 'A' : 'B';
+          const q = (def === 'A' ? m.equipeA : m.equipeB).find((j) => j.numero === 15);
+          if (!q || q.sinBin > 0) continue;
+          const d = (m.ruckPoint.x - q.x) * q.sensAttaque;
+          if (def === 'A') { somme += d; n++; } else { sommeB += d; nB++; }
+        }
+      }
+    }
+    return { a: somme / n, b: sommeB / nB };
+  };
+  const fond = profondeur(7), neutre = profondeur(null), zero = profondeur(0), ligne = profondeur(-8);
+  assert.strictEqual(zero.a.toFixed(3), neutre.a.toFixed(3), 'la consigne neutre (0) est le comportement par défaut');
+  assert.ok(fond.a >= neutre.a + 4, `couvre le fond : ${fond.a.toFixed(1)} m derrière le ruck, pour ${neutre.a.toFixed(1)} sans consigne`);
+  assert.ok(ligne.a <= neutre.a - 4, `monte dans la ligne : ${ligne.a.toFixed(1)} m, pour ${neutre.a.toFixed(1)} sans consigne`);
+  for (const c of [fond, ligne]) {
+    assert.ok(Math.abs(c.b - neutre.b) <= 1.5, `l arrière de B ne doit pas bouger : ${c.b.toFixed(1)} m pour ${neutre.b.toFixed(1)}`);
+  }
+});
+
+test('consigne des ailiers (FUNC-RM-004) : « repique » leur donne plus de ballons, « reste large » moins', () => {
+  const ballons = (ailiers) => {
+    let n = 0;
+    for (let seed = 1; seed <= 12; seed++) {
+      const m = new MatchEngine(seed, 4800, ailiers == null ? {} : { attaqueA: { ailiers } });
+      const log = m.log.bind(m);
+      m.log = (t, team, msg, extra, ...r) => {
+        if ((t === 'PASSE' || t === 'JEU_LARGE') && team === 'A' && extra && (extra.vers === 11 || extra.vers === 14)) n++;
+        return log(t, team, msg, extra, ...r);
+      };
+      m.jouerJusquAuSifflet(0.1);
+    }
+    return n;
+  };
+  const neutre = ballons(null), repique = ballons('repique'), large = ballons('large');
+  assert.ok(repique >= 1.2 * neutre, `repique : ${repique} ballons reçus par les ailiers de A, pour ${neutre} sans consigne`);
+  assert.ok(large <= 0.85 * neutre, `reste large : ${large} ballons reçus, pour ${neutre} sans consigne`);
+});
+
+test('lancements de jeu : mêlée, touche et maul ont chacun plusieurs scénarios, aucun ne domine, et chaque équipe varie', () => {
+  // Avant : 3 scénarios de mêlée (et UN SEUL pour l'équipe A : 50 fois sur 50),
+  // 2 de touche, aucun après un maul — et tous des passes 9 -> 10 -> trois-quarts.
+  const joues = {};
+  // 24 graines : après un maul, une équipe ne lance que ~13 combinaisons sur
+  // 16 matchs, un scénario pouvait y dépasser 45 % par le seul hasard.
+  for (let seed = 1; seed <= 24; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    const ch = m._choisirCombinaison.bind(m);
+    m._choisirCombinaison = (type) => {
+      const c = ch(type);
+      if (c) { const k = type + ':' + m.possession; (joues[k] = joues[k] || {})[c.nom] = (joues[k][c.nom] || 0) + 1; }
+      return c;
+    };
+    m.jouerJusquAuSifflet(0.1);
+  }
+  for (const type of ['melee', 'touche', 'maul']) {
+    for (const eq of ['A', 'B']) {
+      const c = joues[type + ':' + eq] || {};
+      const total = Object.values(c).reduce((x, y) => x + y, 0);
+      const noms = Object.keys(c);
+      assert.ok(noms.length >= (type === 'maul' ? 3 : 5), `${type} ${eq} : ${noms.length} scénarios joués (${JSON.stringify(c)})`);
+      assert.ok(Math.max(...Object.values(c)) <= 0.45 * total, `${type} ${eq} : un scénario domine (${JSON.stringify(c)})`);
+    }
+  }
+});
+
+test('lancements de jeu : la percussion va au contact sans repasser, le côté fermé sert l ailier du côté court', () => {
+  let percussions = 0, repasses = 0, rucks = 0, fermes = 0, fermesBons = 0;
+  // 32 graines (P2-163) : sur 16, le côté fermé, rare, tombait à 9 tirages.
+  for (let seed = 1; seed <= 32; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    let p = null;
+    const log = m.log.bind(m);
+    m.log = (t, team, msg, extra, ...r) => {
+      const mm = /Combinaison : passe du n°(\d+) au n°(\d+) \((percussion|cote ferme)\)/.exec(msg);
+      if (t === 'COMBINAISON' && mm && mm[3] === 'percussion') { percussions++; p = { n: +mm[2], team, t0: m.tempsMatch }; }
+      else if (p) {
+        // Pendant sa percussion, il ne repasse jamais (un offload au contact reste permis).
+        if ((t === 'PASSE' || t === 'JEU_LARGE') && m.porteur && m.porteur.team === p.team && m.porteur.numero === p.n
+          && m.porteur._percussion > 0) repasses++;
+      }
+      if (t === 'COMBINAISON' && mm && mm[3] === 'cote ferme') {
+        fermes++;
+        const eq = team === 'A' ? m.equipeA : m.equipeB;
+        const receveur = eq.find((j) => j.numero === +mm[2]), passeur = eq.find((j) => j.numero === +mm[1]);
+        if (receveur && (receveur.numero === 11 || receveur.numero === 14)
+          && (receveur.channelY < 35) === (passeur.y < 35)) fermesBons++;
+      }
+      return log(t, team, msg, extra, ...r);
+    };
+    while (m.phase !== 'TERMINE') {
+      m.tick(0.1);
+      // Le ruck qui suit la percussion : le moteur n'annonce que sa SORTIE.
+      if (p && m.phase === 'RUCK' && m.tempsMatch - p.t0 <= 4) { rucks++; p = null; }
+      else if (p && m.tempsMatch - p.t0 > 4) p = null;
+    }
+  }
+  assert.ok(percussions >= 10 && fermes >= 10, `${percussions} percussions, ${fermes} côtés fermés`);
+  assert.strictEqual(repasses, 0, `${repasses} passes du percuteur pendant sa percussion`);
+  assert.ok(rucks >= 0.6 * percussions, `${rucks} rucks dans les 4 s pour ${percussions} percussions`);
+  assert.strictEqual(fermesBons, fermes, 'le côté fermé sert toujours l ailier du côté court');
+});
+
+test('docs/rugby-config.json (chargé par le jeu) ne contredit pas le moteur mesuré par les tests', () => {
+  // Le navigateur charge ce fichier PAR-DESSUS les défauts du moteur. Il avait
+  // gardé l'ancien jeu au large (0,55 / 0,30 contre 0,70 / 0,55 recalibrés le
+  // 6 octobre) et l'ancien playbook (l'équipe A ne jouait qu'une combinaison
+  // de mêlée) : le match vu à l'écran n'était pas celui que les tests mesurent.
+  const fichier = JSON.parse(require('fs').readFileSync(require('path').join(__dirname, '../docs/rugby-config.json'), 'utf8'));
+  const D = require('../engine/rugby-engine.js').DEFAULT_CONFIG;
+  const ecarts = [];
+  const comparer = (a, b, chemin) => {
+    if (a && typeof a === 'object' && !Array.isArray(a)) {
+      for (const k of Object.keys(a)) if (k !== '_lisezMoi') comparer(a[k], b == null ? undefined : b[k], chemin + '.' + k);
+    } else if (JSON.stringify(a) !== JSON.stringify(b)) ecarts.push(chemin);
+  };
+  comparer(fichier, D, '');
+  assert.deepStrictEqual(ecarts, [], 'valeurs du fichier différentes du moteur');
+});
+
+test('remplacement tactique ballon mort (loi 3.6, BUG-RM-012) : demandé en jeu, il attend l arrêt et n entre qu une fois ; le médical reste immédiat', () => {
+  // Scénario du ticket : graine 24, phase PORTE, demande manuelle, un pas de 0,1 s.
+  const m = new MatchEngine(24, 4800);
+  while (!(m.phase === 'PORTE' && m.tempsMatch > 300)) m.tick(0.1);
+  const annonces = [];
+  const l0 = m.log.bind(m);
+  m.log = (t, team, msg, extra, ...r) => { if (t === 'REMPLACEMENT_EN_ATTENTE') annonces.push(msg); return l0(t, team, msg, extra, ...r); };
+  const n0 = m.remplacementsEffectues.length;
+  assert.ok(m.remplacerJoueurEnCours('A', 7, {}, 'r7'));
+  m.tick(0.1);
+  assert.strictEqual(m.remplacementsEffectues.length, n0, `entré en plein jeu (phase ${m.phase})`);
+  let mortALEntree = null;
+  for (let i = 0; i < 6000 && m.remplacementsEffectues.length === n0; i++) { const mort = m._ballonMortPourRemplacement(); m.tick(0.1); if (m.remplacementsEffectues.length > n0) mortALEntree = mort; }
+  assert.strictEqual(mortALEntree, true, 'il entre au ballon mort');
+  assert.strictEqual(annonces.length, 1, `attente annoncée une fois (${annonces.length})`);
+  m.jouerJusquAuSifflet(0.1);
+  assert.strictEqual(m.remplacementsEffectues.filter((r) => r.joueurId === 'r7').length, 1, 'une seule entrée');
+  // Changements programmés : toute entrée non médicale tombe ballon mort.
+  let tactiques = 0, vivants = 0;
+  for (let seed = 1; seed <= 6; seed++) {
+    const remplacements = [1, 2, 3, 4, 6, 9, 10, 12].map((num, i) => ({ equipe: 'A', numero: num, minute: 50 + i * 2, joueurId: 'b' + num, joueur: {} }));
+    const mm = new MatchEngine(seed, 4800, { remplacements, bancA: true });
+    let prec = 0;
+    while (mm.phase !== 'TERMINE') {
+      const mort = mm._ballonMortPourRemplacement(); mm.tick(0.1);
+      for (; prec < mm.remplacementsEffectues.length; prec++) {
+        const r = mm.remplacementsEffectues[prec];
+        if (r.temporaire || r.retour) continue;
+        const medical = mm.blessuresMatch.some((b) => b.equipe === r.equipe && Math.abs(b.instant - r.instant) < 0.15);
+        if (medical) continue;
+        tactiques++; if (!mort) vivants++;
+      }
+    }
+  }
+  assert.ok(tactiques >= 30, `échantillon : ${tactiques} entrées tactiques`);
+  assert.strictEqual(vivants, 0, `${vivants} entrées tactiques ballon vivant`);
+});
+
+test('banc : un tir déjà botté garde son buteur, le sifflet final annule l entrée en attente', () => {
+  // On cherche une graine où une pénalité est bottée après la sonnerie de fin
+  // de match (la 28 avant la fusion de la PR n°21, dont le tirage a changé).
+  let m = null;
+  const estDernierTir = () => m.miTempsJouee && m.tempsMatch >= 400
+    && m.phase === 'PENALITE_TIR' && m.ballonEnVol;
+  // Graine 381 depuis la fusion (une sur ~600) ; la recherche ne sert que si
+  // le tirage du moteur change encore.
+  const graines = [381].concat(Array.from({ length: 700 }, (_, i) => i + 1));
+  for (const graine of graines) {
+    if (m && estDernierTir()) break;
+    m = new MatchEngine(graine, 300);
+    while (m.phase !== 'TERMINE' && m.tempsMatch < 500 && !estDernierTir()) m.tick(0.1);
+  }
+  assert.ok(estDernierTir(), 'le ballon est en vol sur le dernier tir');
+  const buteur = m.porteur;
+  const adresse = buteur.adresse;
+  assert.ok(m.remplacerJoueurEnCours(buteur.team, buteur.numero, { adresse: 100 }, 'banc'));
+  m.tick(0.1);
+  assert.strictEqual(buteur.adresse, adresse, 'le joueur qui a frappé est encore le buteur');
+  assert.ok(!m.remplacementsEffectues.some((r) => r.joueurId === 'banc'));
+  m.jouerJusquAuSifflet();
+  assert.ok(!m.remplacementsEffectues.some((r) => r.joueurId === 'banc'), 'aucune entrée au sifflet final');
+  assert.ok(!m.remplacerJoueurEnCours(buteur.team, buteur.numero, {}, 'banc'), 'le banc est fermé après le match');
+  assert.ok(m.chronologie.slice(-2).some((e) => /^PENALITE_(REUSSIE|RATEE)$/.test(e.type)), 'le tir compte avant le sifflet');
+});
+
+test('intrusion de l arrière (P2-163) : dans la moitié adverse le n°15 s intercale dans la ligne et marque, dans son camp il couvre le fond', () => {
+  let essais = 0, essaisArriere = 0, ruckAdv = 0, dansLigne = 0, ruckSien = 0, auFond = 0;
+  for (let seed = 1; seed <= 48; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    while (m.phase !== 'TERMINE') {
+      m.tick(0.1);
+      if (m.phase === 'RUCK' && m.ruckPoint && m.timerPhase > 1.5) {
+        const q = (m.possession === 'A' ? m.equipeA : m.equipeB).find((j) => j.numero === 15);
+        if (!q || q.sinBin > 0) continue;
+        const dist = q.sensAttaque > 0 ? 100 - m.ruckPoint.x : m.ruckPoint.x;
+        const derriere = (m.ruckPoint.x - q.x) * q.sensAttaque;
+        const lateral = Math.abs(q.y - m.ruckPoint.y);
+        // Dans la ligne : peu profond et écarté sur le côté, comme les trois-quarts.
+        if (dist <= 45) { ruckAdv++; if (derriere < 14 && lateral > 12) dansLigne++; }
+        else if (dist >= 60) { ruckSien++; if (!(derriere < 14 && lateral > 12)) auFond++; }
+      }
+    }
+    for (const e of m.getState().chronologie) if (e.type === 'ESSAI') { essais++; if (e.marqueur === 15) essaisArriere++; }
+  }
+  // 48 graines depuis la fusion de la PR n°21 (12 graines : 1 essai de l'arrière
+  // sur 75, bruit pur). Mesuré sur 48 : 14 essais sur 318 (4,4 %) ; avant la
+  // fusion 32 sur 336 (9,5 %) — la nouvelle organisation des pods d'avants
+  // réduit la part de l'arrière, à reprendre (bugs.md).
+  // Mesuré (12 graines) : dans la ligne 73 % (39 % avant l'intrusion), hors de
+  // la ligne dans son camp 62 % (67 % avant), essais de l'arrière 12/93 (0/78).
+  assert.ok(dansLigne / ruckAdv >= 0.6, `moitié adverse : dans la ligne ${(100 * dansLigne / ruckAdv).toFixed(0)} % du temps de ruck`);
+  assert.ok(auFond / ruckSien >= 0.5, `son camp : hors de la ligne ${(100 * auFond / ruckSien).toFixed(0)} % du temps de ruck`);
+  assert.ok(essaisArriere / essais >= 0.04, `l arrière marque ${essaisArriere} essais sur ${essais}`);
+});
+
+test('capitaine (FUNC-RM-006, P2-162) : consigne aux pénalités imposée ou déléguée, lecture du capitaine, relais du brassard', () => {
+  // Scénario : 65e minute sur 80, l'équipe A menée de 7 points obtient une
+  // pénalité à 30 m des poteaux. Le capitaine qui lit le match joue la touche.
+  const situation = (cfg, preparer) => {
+    const m = new MatchEngine(1, 4800, cfg);
+    m.tempsMatch = 3900; m.score = { A: 10, B: 17 };
+    if (preparer) preparer(m);
+    const logs = []; const l0 = m.log.bind(m);
+    m.log = (t, team, msg, extra, ...r) => { logs.push({ t, team, msg, extra }); return l0(t, team, msg, extra, ...r); };
+    m._traiterPenalite('A', { x: 70, y: 35 });
+    return { touche: m.phase === 'TOUCHE' || logs.some((l) => /joue en touche/.test(l.msg)) || logs.some((l) => l.t === 'CHOIX_CAPITAINE'), tir: m.phase === 'PENALITE_TIR', logs };
+  };
+  const taux = (cfg, preparer) => {
+    let touche = 0;
+    for (let i = 0; i < 120; i++) {
+      const r = situation(Object.assign({}, cfg), (m) => { m.rng = (() => { let x = 1234 + i * 7919; return () => { x = (x * 16807) % 2147483647; return x / 2147483647; }; })(); if (preparer) preparer(m); });
+      if (r.touche) touche++;
+    }
+    return touche / 120;
+  };
+  const avecDecision = (d) => (m) => { const c = m.equipeA.find((j) => j.numero === 7); c.decision = d; };
+  const lucide = taux({ capitaineA: 7 }, avecDecision(95)), confus = taux({ capitaineA: 7 }, avecDecision(30));
+  assert.ok(lucide >= 0.85 && confus <= 0.45 && lucide - confus >= 0.4, `touche choisie : capitaine lucide ${lucide}, confus ${confus}`);
+  // Consignes imposées : le capitaine ne décide plus, même au bon moment.
+  assert.strictEqual(taux({ capitaineA: 7, attaqueA: { choixPenalites: 'points' } }, avecDecision(95)), 0, 'prendre les points : jamais la touche');
+  assert.strictEqual(taux({ capitaineA: 7, attaqueA: { choixPenalites: 'touche' } }, avecDecision(30)), 1, 'viser la touche : toujours');
+  // Le capitaine désigné est exclu : le joueur au meilleur sens du jeu prend le brassard, annoncé.
+  const relais = situation({ capitaineA: 7 }, (m) => { m.equipeA.find((j) => j.numero === 7).sinBin = 600; m.rng = () => 0.1; });
+  const annonce = relais.logs.find((l) => l.t === 'CAPITAINE_RELAIS');
+  const meilleur = relais.logs.find((l) => l.t === 'CHOIX_CAPITAINE');
+  assert.ok(annonce && /n°7/.test(annonce.msg) && meilleur && meilleur.extra.capitaine !== 7, JSON.stringify(relais.logs.map((l) => l.msg)));
+  // Hors de la fin de match, la consigne « points » fait taper au but à portée.
+  const m = new MatchEngine(2, 4800, { attaqueA: { choixPenalites: 'points' } });
+  m.tempsMatch = 600; m.rng = () => 0.99;
+  m._traiterPenalite('A', { x: 72, y: 35 });
+  assert.strictEqual(m.phase, 'PENALITE_TIR', 'prendre les points : tir au but à 28 m');
+});
+
+test('consigne des centres (FUNC-RM-004, P2-161) : percussion = plus de courses et moins de passes des 12-13, distribution = l inverse', () => {
+  const mesurer = (passeCentres) => {
+    const r = { courses: 0, passes: 0, passesAdv: 0 };
+    // 16 graines : sur 8, les passes des centres ADVERSES variaient de 37 %
+    // par le seul déroulé (169 -> 231 sur les graines 1-8, 207 -> 203 sur 9-16).
+    for (let seed = 1; seed <= 16; seed++) {
+      const m = new MatchEngine(seed, 4800, passeCentres == null ? {} : { attaqueA: { passeCentres } });
+      m.jouerJusquAuSifflet(0.1);
+      const st = m.getState();
+      for (const n of [12, 13]) {
+        r.courses += (st.statsJoueurs.A[n] || {}).courses || 0;
+        r.passes += (st.statsJoueurs.A[n] || {}).passes || 0;
+        r.passesAdv += (st.statsJoueurs.B[n] || {}).passes || 0;
+      }
+    }
+    return r;
+  };
+  const defaut = mesurer(null), un = mesurer(1), perc = mesurer(0.5), dist = mesurer(1.8);
+  assert.deepStrictEqual(un, defaut, 'la valeur 1 donne exactement le comportement par défaut');
+  assert.ok(perc.passes <= defaut.passes * 0.8 && perc.courses >= defaut.courses * 1.1,
+    `percussion : ${perc.passes} passes / ${perc.courses} courses (défaut ${defaut.passes} / ${defaut.courses})`);
+  assert.ok(dist.passes >= defaut.passes * 1.2 && dist.courses <= defaut.courses * 0.9,
+    `distribution : ${dist.passes} passes / ${dist.courses} courses (défaut ${defaut.passes} / ${defaut.courses})`);
+  // Les centres adverses ne suivent pas la consigne : au plus le bruit d'un déroulé différent.
+  for (const r of [perc, dist]) assert.ok(Math.abs(r.passesAdv - defaut.passesAdv) <= 0.3 * defaut.passesAdv, `adversaire : ${defaut.passesAdv} / ${r.passesAdv}`);
+});
+
+test('consigne du demi de mêlée (FUNC-RM-004, P2-160) : ses chandelles depuis la base suivent la consigne, celles de l adversaire non', () => {
+  const compter = (chandelleNeuf) => {
+    const n = { A: 0, B: 0 };
+    for (let seed = 1; seed <= 8; seed++) {
+      const m = new MatchEngine(seed, 4800, chandelleNeuf == null ? {} : { attaqueA: { chandelleNeuf } });
+      while (m.phase !== 'TERMINE') {
+        const avant = m._chandelleBaseA;
+        m.tick(0.1);
+        if (avant == null && m._chandelleBaseA != null && m.porteur && m.porteur.numero === 9) n[m.porteur.team]++;
+      }
+    }
+    return n;
+  };
+  const defaut = compter(null), un = compter(1), pied = compter(2), main = compter(0.3);
+  assert.deepStrictEqual(un, defaut, 'la valeur 1 donne exactement le comportement par défaut');
+  assert.ok(pied.A >= defaut.A * 1.5, `au pied : ${pied.A} chandelles du 9 (défaut ${defaut.A})`);
+  assert.ok(main.A <= defaut.A * 0.6, `à la main : ${main.A} chandelles du 9 (défaut ${defaut.A})`);
+  // L'adversaire garde son comportement : au plus le bruit d'un déroulé différent.
+  assert.ok(Math.abs(pied.B - defaut.B) <= 0.35 * defaut.B && Math.abs(main.B - defaut.B) <= 0.35 * defaut.B,
+    `adversaire : ${defaut.B} / ${pied.B} / ${main.B}`);
+});
+
+test('style de lancement (axe d équipe) : « au près », « au large », « au pied » pondèrent réellement les scénarios joués', () => {
+  const familles = (lancements) => {
+    const f = { pres: 0, large: 0, pied: 0 };
+    // 24 graines (P2-163) : sur 12, « au près » tombait à +14,x points par le seul déroulé.
+    for (let seed = 1; seed <= 24; seed++) {
+      const m = new MatchEngine(seed, 4800, lancements ? { attaqueA: { lancements } } : {});
+      const ch = m._choisirCombinaison.bind(m);
+      m._choisirCombinaison = (type) => { const c = ch(type); if (c && m.possession === 'A') f[c.style]++; return c; };
+      m.jouerJusquAuSifflet(0.1);
+    }
+    const total = f.pres + f.large + f.pied;
+    return { pres: f.pres / total, large: f.large / total, pied: f.pied / total, total };
+  };
+  const neutre = familles(null), un = familles({ pres: 1, large: 1, pied: 1 });
+  assert.deepStrictEqual(un, neutre, 'des poids à 1 donnent exactement le tirage par défaut');
+  const pres = familles({ pres: 3 }), large = familles({ large: 3 }), pied = familles({ pied: 3 });
+  assert.ok(pres.pres >= neutre.pres + 0.15, `au près : ${(100 * pres.pres).toFixed(0)} % de lancements au près (neutre ${(100 * neutre.pres).toFixed(0)} %)`);
+  assert.ok(large.large >= neutre.large + 0.1, `au large : ${(100 * large.large).toFixed(0)} % (neutre ${(100 * neutre.large).toFixed(0)} %)`);
+  // Famille RARE (5 à 17 combinaisons par lot de 12 matchs) : un seuil de +10
+  // points ne tenait que sur les graines 1-12 (l'ancien moteur faisait +1,9 sur
+  // 13-24 et +7,7 sur 1-36). Ce que fait réellement le poids ×3, c'est doubler
+  // la part (×2,1 et ×1,96 sur 24 graines, ancien et nouveau moteur) : on exige ×1,6.
+  assert.ok(pied.pied >= neutre.pied * 1.6, `au pied : ${(100 * pied.pied).toFixed(1)} % (neutre ${(100 * neutre.pied).toFixed(1)} %)`);
+});
+
+test('bilan des lancements (P2-153) : chaque lancement annoncé compté une fois, essais et terrain recomptés indépendamment', () => {
+  const STYLES = ['Pres', 'Large', 'Pied'];
+  let lancements = 0, terrain = 0, essaisSurLancement = 0;
+  for (let seed = 1; seed <= 4; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    // Recompte indépendant à partir des annonces : un lancement vit jusqu'à
+    // la perte du ballon, un nouvel arrêt de jeu, une pénalité ou un essai.
+    const annonces = { A: { Pres: 0, Large: 0, Pied: 0 }, B: { Pres: 0, Large: 0, Pied: 0 } };
+    const essais = { A: 0, B: 0 }, terr = { A: 0, B: 0 };
+    let L = null;
+    const log0 = m.log.bind(m);
+    m.log = (type, team, msg, extra) => {
+      if (type === 'LANCEMENT' && extra && extra.style) {
+        const cle = { pres: 'Pres', large: 'Large', pied: 'Pied' }[extra.style];
+        annonces[team][cle]++;
+        // Deuxième lancement dans la même séquence (touche puis sortie de maul) :
+        // le premier s'arrête là, avec le terrain déjà gagné.
+        if (L) terr[L.team] += (L.team === 'A' ? 1 : -1) * (L.dernier - L.x0);
+        L = { team, x0: m.porteur.x, poss: m.possession, dernier: m.porteur.x };
+      }
+      if (type === 'ESSAI' && L) { if (L.team === team) essais[team]++; terr[L.team] += (L.team === 'A' ? 1 : -1) * (L.dernier - L.x0); L = null; }
+      return log0(type, team, msg, extra);
+    };
+    let prec = m.phase;
+    while (m.phase !== 'TERMINE') {
+      m.tick(0.1);
+      if (L) {
+        const nouvelArret = ['TOUCHE', 'MELEE', 'COUP_ENVOI'].includes(m.phase) && m.phase !== prec;
+        if (m.possession !== L.poss || nouvelArret || m.penaliteRecul) {
+          terr[L.team] += (L.team === 'A' ? 1 : -1) * (L.dernier - L.x0); L = null;
+        } else L.dernier = m._ballonAffiche.x;
+      }
+      prec = m.phase;
+    }
+    if (L) terr[L.team] += (L.team === 'A' ? 1 : -1) * (L.dernier - L.x0);
+    const st = m.getState().stats;
+    for (const e of ['A', 'B']) {
+      for (const c of STYLES) assert.strictEqual(st[e]['lancements' + c], annonces[e][c], `graine ${seed}, ${e}, ${c} : un compteur par annonce`);
+      const somme = (p) => STYLES.reduce((t, c) => t + st[e][p + c], 0);
+      assert.strictEqual(somme('essaisLancements'), essais[e], `graine ${seed}, ${e} : essais au bout d'un lancement`);
+      assert.ok(somme('essaisLancements') <= st[e].essais, `graine ${seed}, ${e} : pas plus que les essais de l équipe`);
+      assert.ok(Math.abs(somme('terrainLancements') - terr[e]) <= 0.5,
+        `graine ${seed}, ${e} : terrain ${somme('terrainLancements').toFixed(1)} m (recompté ${terr[e].toFixed(1)} m)`);
+      lancements += somme('lancements'); terrain += somme('terrainLancements'); essaisSurLancement += essais[e];
+    }
+  }
+  assert.ok(lancements >= 40, `des lancements joués (${lancements} sur 4 matchs)`);
+  const moyen = terrain / lancements;
+  assert.ok(moyen > 5 && moyen < 50, `terrain moyen par lancement plausible : ${moyen.toFixed(1)} m`);
+  assert.ok(essaisSurLancement > 0, 'des essais naissent de lancements');
+});
+
+test('origine d un essai : une mêlée gagnée sur introduction adverse lance une séquence « mêlée », pas « jeu courant »', () => {
+  let volees = 0;
+  const fautes = [];
+  for (let seed = 1; seed <= 10; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    let intro = null, aVerifier = null;
+    const log0 = m.log.bind(m);
+    m.log = (t, team, msg, extra, ...r) => {
+      if (t === 'MELEE') intro = team;
+      if (/^MELEE_(BALLON_SORTI|PASSE_HUIT|PICK_AND_GO)$/.test(t) && intro && team !== intro) aVerifier = { team, ticks: 3 };
+      return log0(t, team, msg, extra, ...r);
+    };
+    while (m.phase !== 'TERMINE') {
+      m.tick(0.1);
+      if (aVerifier && --aVerifier.ticks === 0) {
+        // Une pénalité sifflée entre-temps fait légitimement une séquence « pénalité ».
+        if (m.possession === aVerifier.team && !m.penaliteRecul && m._sequence.origine !== 'PENALITE') {
+          volees++;
+          if (m._sequence.origine !== 'MELEE') fautes.push(`graine ${seed}, ${(m.tempsMatch / 60).toFixed(1)}' : ${m._sequence.origine}`);
+        }
+        aVerifier = null;
+      }
+    }
+  }
+  assert.ok(volees >= 2, `échantillon : ${volees} mêlée(s) gagnée(s) sur introduction adverse`);
+  assert.deepStrictEqual(fautes, []);
+});
+
+test('passe décisive (P2-155) : la dernière remise main à main vers le marqueur — passe, offload ou combinaison — est créditée et racontée', () => {
+  let avecPasseur = 0, horsPasse = 0;
+  const ecarts = [];
+  // Graines choisies (mesure sur 30) : 9, 10 et 14 ont un essai servi par un
+  // offload, 17 et 21 par une passe de combinaison — les remises rares.
+  for (const seed of [1, 2, 9, 10, 14, 17, 21, 3]) {
+    const m = new MatchEngine(seed, 4800);
+    // Recompte indépendant : on suit le porteur tick par tick. Un changement
+    // de porteur dans la même équipe, en jeu courant, est une remise de balle.
+    let prec = null, remise = null;
+    const log0 = m.log.bind(m);
+    m.log = (t, team, msg, extra, ...r) => {
+      if (t === 'ESSAI' && extra && extra.marqueur != null && !extra.maul && extra.origine !== 'COUP_DE_PIED_A_SUIVRE') {
+        const attendu = remise && remise.vers === extra.marqueur && remise.team === team ? remise.de : null;
+        if (attendu !== extra.passeur) ecarts.push(`graine ${seed}, ${team} n°${extra.marqueur} : passeur ${extra.passeur}, attendu ${attendu}`);
+        if (attendu != null) avecPasseur++; else horsPasse++;
+      }
+      return log0(t, team, msg, extra, ...r);
+    };
+    while (m.phase !== 'TERMINE') {
+      m.tick(0.1);
+      const p = m.porteur;
+      if (m.phase === 'PORTE' && p && prec && p !== prec && p.team === prec.team) remise = { de: prec.numero, vers: p.numero, team: p.team };
+      else if (m.phase !== 'PORTE' && m.phase !== 'ESSAI') remise = null;
+      prec = m.phase === 'PORTE' ? p : null;
+    }
+    // Chaque essai raconté avec un passeur a sa passe décisive au compteur
+    // individuel (remplacés compris), et inversement.
+    const st = m.getState();
+    for (const e of ['A', 'B']) {
+      const pd = Object.values(st.statsJoueurs[e]).reduce((t, l) => t + l.passesDecisives, 0)
+        + st.statsJoueursSortis[e].reduce((t, r) => t + ((r.stats && r.stats.passesDecisives) || 0), 0);
+      const recits = st.chronologie.filter((x) => x.type === 'ESSAI' && x.team === e && x.passeur != null).length;
+      assert.strictEqual(recits, pd, `graine ${seed}, ${e} : ${recits} essais racontés avec passeur, ${pd} passes décisives`);
+    }
+  }
+  assert.ok(avecPasseur >= 20 && horsPasse >= 3, `échantillon : ${avecPasseur} essais servis, ${horsPasse} sans passe`);
+  assert.deepStrictEqual(ecarts, []);
+});
+
+test('franchissement dans le récit de l essai (P2-156) : le dernier franchissement de l équipe dans la séquence, recompté depuis les compteurs individuels', () => {
+  let avec = 0, sans = 0;
+  const ecarts = [];
+  for (let seed = 1; seed <= 6; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    // Recompte indépendant : un compteur individuel de franchissements qui
+    // monte = un franchissement de ce joueur. Oublié à la fin de la séquence
+    // (perte du ballon, nouvel arrêt de jeu, pénalité).
+    const vu = { A: {}, B: {} };
+    let dernier = null, prec = m.phase, poss = m.possession;
+    const log0 = m.log.bind(m);
+    m.log = (t, team, msg, extra, ...r) => {
+      if (t === 'ESSAI' && extra) {
+        // Le franchissement du plaquage de sauvetage manqué est compté juste avant.
+        for (const e of ['A', 'B']) for (const [num, l] of Object.entries(m.statsJoueurs[e])) {
+          if ((l.franchissements || 0) > (vu[e][num] || 0)) { vu[e][num] = l.franchissements; if (e === team) dernier = { team: e, num: +num }; }
+        }
+        const attendu = dernier && dernier.team === team ? dernier.num : null;
+        if (attendu !== extra.franchisseur) ecarts.push(`graine ${seed}, ${team} : ${extra.franchisseur} au lieu de ${attendu}`);
+        if (attendu != null) avec++; else sans++;
+      }
+      return log0(t, team, msg, extra, ...r);
+    };
+    while (m.phase !== 'TERMINE') {
+      m.tick(0.1);
+      const finSeq = m.possession !== poss || m.penaliteRecul
+        || (['TOUCHE', 'MELEE', 'COUP_ENVOI'].includes(m.phase) && m.phase !== prec);
+      if (finSeq) dernier = null;
+      for (const e of ['A', 'B']) for (const [num, l] of Object.entries(m.statsJoueurs[e])) {
+        if ((l.franchissements || 0) > (vu[e][num] || 0)) { if (e === m.possession) dernier = { team: e, num: +num }; }
+        vu[e][num] = l.franchissements || 0;
+      }
+      prec = m.phase; poss = m.possession;
+    }
+  }
+  assert.ok(avec >= 15 && sans >= 5, `échantillon : ${avec} essais après franchissement, ${sans} sans`);
+  assert.deepStrictEqual(ecarts, []);
+});
+
+// --- bugs.md QA-RM-007 : événements, joueurs et équipe disent la même chose ---
+test('rapprochement : réussis ≤ tentés partout, et chaque essai ou but du compteur a son événement (QA-RM-007)', () => {
+  for (let seed = 1; seed <= 4; seed++) {
+    const m = new MatchEngine(seed, 4800).jouerJusquAuSifflet(0.2);
+    const st = m.getState();
+    for (const e of ['A', 'B']) {
+      const s = st.stats[e];
+      for (const [r, t] of [['passes', 'passesTentees'], ['tacklesMade', 'tacklesAttempted'],
+        ['transformationsReussies', 'transformationsTentees'], ['penalitesButReussies', 'penalitesButTentees'],
+        ['dropsReussis', 'dropsTentes']]) {
+        assert.ok(s[r] <= s[t], `graine ${seed}, équipe ${e} : ${r} ${s[r]} > ${t} ${s[t]}`);
+      }
+      for (const [num, l] of Object.entries(st.statsJoueurs[e])) {
+        assert.ok(l.tacklesMade <= l.tacklesAttempted, `graine ${seed}, ${e} n°${num} : ${l.tacklesMade} plaquages réussis pour ${l.tacklesAttempted}`);
+      }
+      const ev = (type) => st.chronologie.filter((x) => x.type === type && x.team === e);
+      assert.strictEqual(ev('ESSAI').length + ev('ESSAI_PENALITE').length, s.essais, `graine ${seed}, ${e} : essais`);
+      assert.strictEqual(ev('TRANSFORMATION_REUSSIE').length, s.transformationsReussies, `graine ${seed}, ${e} : transformations`);
+      assert.strictEqual(ev('PENALITE_REUSSIE').length, s.penalitesButReussies, `graine ${seed}, ${e} : pénalités`);
+      // Chaque but porte son buteur et sa distance, chaque essai son marqueur et son origine.
+      for (const x of ev('TRANSFORMATION_REUSSIE').concat(ev('PENALITE_REUSSIE'))) {
+        assert.ok(x.buteur >= 1 && x.distance >= 5 && x.distance <= 60, `but sans buteur ou distance : ${JSON.stringify(x)}`);
+      }
+      for (const x of ev('ESSAI')) assert.ok(x.marqueur >= 1 && x.origine, `essai sans marqueur ou origine : ${JSON.stringify(x)}`);
+    }
+  }
+});
+
+// --- bugs.md QA-RM-002 : le ballon, son porteur et la possession concordent --
+test('cohérence : celui qui tient le ballon est de l équipe en possession, et ne tient pas le ballon au sol (QA-RM-002)', () => {
+  let tirs = 0, ticks = 0;
+  for (let seed = 1; seed <= 3; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    while (m.phase !== 'TERMINE') {
+      m.tick(0.2); ticks++;
+      const st = m.getState();
+      const b = st.ball;
+      if (st.phase === 'PENALITE_TIR') tirs++;
+      if (!b.carrierTeam) continue;
+      assert.strictEqual(b.carrierTeam, st.possession,
+        `graine ${seed}, ${st.tempsMatch.toFixed(1)} s, ${st.phase} : le ballon est tenu par ${b.carrierTeam}, possession ${st.possession}`);
+      if (st.phase === 'PORTE') {
+        const p = (b.carrierTeam === 'A' ? st.equipeA : st.equipeB).find((j) => j.numero === b.carrierNumber);
+        assert.ok(!(p.auSol > 0), `graine ${seed}, ${st.tempsMatch.toFixed(1)} s : le porteur court au sol (n°${p.numero})`);
+      }
+    }
+  }
+  assert.ok(tirs > 0, 'échantillon sans pénalité au but');
+});
+
+// --- P2-119 : après un franchissement, les dépassés poursuivent ------------
+// Scénario figé : le centre A a passé la ligne, trois défenseurs B sont 3 m
+// derrière lui, l'arrière est loin. Ils tenaient « leur ligne » à 85 % de leur
+// vitesse et le perceur s'envolait ; ils doivent sprinter et le reprendre.
+test('franchissement : les défenseurs dépassés poursuivent le perceur à pleine vitesse (P2-119)', () => {
+  let ecartFinal = 0, n = 0;
+  for (let seed = 1; seed <= 10; seed++) {
+    const m = new MatchEngine(seed, 600);
+    for (let t = 0; t < 30; t += 0.2) m.tick(0.2);
+    m.phase = 'PORTE'; m.timerPhase = 6; m.possession = 'A';
+    m.passeVisuelle = null; m.combinaison = null; m.penaliteRecul = null;
+    m.ruckPoint = null; m._neufLibre = false; m.maul = null; m._porteApresPied = true;
+    const porteur = m.equipeA.find((j) => j.numero === 12);
+    m.porteur = porteur;
+    Object.assign(porteur, { auSol: 0, x: 40, y: 35, _enchaine: 0, _percee: 2.5, vitesseCourante: 6 });
+    for (const j of m.equipeA) if (j !== porteur) Object.assign(j, { auSol: 0, x: 30, y: 35 });
+    for (const j of m.equipeB) Object.assign(j, { auSol: 0, horsJeuKick: 0, fixeCooldown: 0, missCooldown: 1,
+      ruckRecovery: 0, sinBin: 0, x: 99, y: 5 });
+    const depasses = m.equipeB.filter((j) => [4, 7, 13].includes(j.numero));
+    depasses.forEach((j, i) => Object.assign(j, { x: 37, y: 30 + 5 * i, vitesseCourante: 6 }));
+    for (let k = 0; k < 10 && m.phase === 'PORTE' && m.porteur === porteur; k++) m.tick(0.2);
+    for (const d of depasses) { ecartFinal += Math.hypot(d.x - porteur.x, d.y - porteur.y); n++; }
+  }
+  const moyen = ecartFinal / n;
+  assert.ok(moyen < 4.5, `les dépassés finissent à ${moyen.toFixed(1)} m du perceur en 2 s (ils doivent revenir sur lui)`);
 });
 
 console.log(`\n${nbTests} test(s) exécuté(s).`);

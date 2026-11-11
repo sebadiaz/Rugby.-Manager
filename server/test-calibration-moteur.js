@@ -19,9 +19,14 @@ const FOURCHETTES = {
   passes: [250, 420],
   kicks: [35, 70],
   tacklesAttempted: [220, 360],
-  rucks: [110, 180],
+  // Rucks et mêlées revus en P2-94 sur des matchs réels : Coupe du monde 2023,
+  // 79 rucks par équipe (~158 par match, Stats Perform) ; Irlande 2018, 137 par
+  // match pour elle seule ; France-Irlande 2026, 181. Mêlées : ~12 par match
+  // dans les deux derniers Tournois (RugbyPass), jusqu'à 19 (Galles-France
+  // 2010). Les plafonds 180 et 15 excluaient des matchs réels à haut tempo.
+  rucks: [110, 220],
   lineouts: [20, 35],
-  scrums: [6, 15],
+  scrums: [6, 18],
   mauls: [3, 10],
   penalitesConcedees: [16, 28],
   turnovers: [8, 18],
@@ -39,14 +44,23 @@ const LABELS = {
 const CATEGORIES_MINIMUM = 12;
 const N = Number(process.env.RM_CALIBRATION_N) || 20;
 const DUREE = 4800;
-const DT = 0.2;
+// LE PAS DE SIMULATION DU BANC DOIT ETRE CELUI DU JEU. Il valait 0,2 s alors
+// que le navigateur fait tourner le moteur a 0,1 s (docs/js/constants.js,
+// PAS_FIXE) : ce banc n'a donc jamais mesure la partie que le joueur joue.
+// L'ecart n'est pas theorique — mesure sur 20 matchs, le meme moteur donne
+// 47,6 coups de pied a 0,1 s contre 59,0 a 0,2 s, et 18,1 touches contre 21,3.
+// Au pas reel, le moteur ECHOUAIT cette calibration (11/14, categorie
+// essentielle « lineouts » hors fourchette) pendant que le banc annoncait
+// 12/14. Cf. TODO_AUDIT.md P2-41. Un invariant verifie desormais que ces deux
+// pas restent egaux.
+const DT = 0.1;
 
 function mesurer(n) {
   const totaux = {};
   for (const k of Object.keys(FOURCHETTES)) totaux[k] = 0;
   for (let i = 0; i < n; i++) {
     const m = new MatchEngine(1 + i, DUREE);
-    for (let t = 0; t < DUREE; t += DT) m.tick(DT);
+    m.jouerJusquAuSifflet(DT); // au coup de sifflet, pas à 80:00 (BUG-RM-010)
     const s = m.getState(); const a = s.stats.A, b = s.stats.B;
     totaux.essais += a.essais + b.essais;
     totaux.points += s.score.A + s.score.B;

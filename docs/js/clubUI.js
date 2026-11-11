@@ -113,9 +113,20 @@
   // visible en dehors du re-rendu de sa propre carte (facile à manquer si on
   // a déjà l'œil ailleurs). Se referme seule, n'importe combien peuvent
   // s'empiler. `type` : 'succes' (défaut) ou 'erreur'.
+  // Au plus TOAST_MAX à l'écran : une avance de plusieurs semaines en
+  // produisait sept d'un coup, empilées sur l'aperçu du match. Le détail
+  // reste dans la messagerie ; à l'écran, les plus récentes suffisent, et
+  // un texte déjà affiché n'est pas répété.
+  const TOAST_MAX = 3;
   function toast(message, type) {
     const conteneur = document.getElementById('toastContainer');
     if (!conteneur) return;
+    const visibles = Array.from(conteneur.children).filter((t) => !t.classList.contains('sortant'));
+    if (visibles.some((t) => t.textContent === message)) return;
+    for (const ancien of visibles.slice(0, Math.max(0, visibles.length - TOAST_MAX + 1))) {
+      ancien.classList.add('sortant');
+      ancien.remove();
+    }
     const el = document.createElement('div');
     el.className = `toast ${type || 'succes'}`;
     el.textContent = message;
@@ -255,8 +266,27 @@
   // prochaine visite (cf. RMClub.sauvegarderSaison, qui renvoie maintenant
   // un booléen plutôt que d'avaler l'erreur).
   let alerteSauvegardeAffichee = false;
+  // Conflit entre onglets (BUG-RM-002) : un autre onglet ou une autre fenêtre
+  // a enregistré cette carrière depuis son chargement ici. Cet onglet n'écrit
+  // plus rien (la sauvegarde refuse) et le joueur choisit : recharger la
+  // version la plus récente, ou rester pour consulter cet état périmé.
+  let alerteConflitAffichee = false;
+  function signalerConflitSauvegarde() {
+    if (alerteConflitAffichee) return;
+    alerteConflitAffichee = true;
+    afficherInfo(
+      '⚠️ Carrière modifiée dans un autre onglet',
+      'Cette carrière a été enregistrée depuis un autre onglet ou une autre fenêtre.\n\n' +
+      'Pour ne pas écraser cette progression plus récente, cet onglet n\'enregistre plus rien. ' +
+      'Fermer ce message recharge la page sur la version la plus récente.'
+    ).then(() => { try { window.location.reload(); } catch (e) { /* ignore */ } });
+  }
   function sauvegarder() {
     const ok = RMClub.sauvegarderSaison(saison);
+    if (!ok && RMClub.raisonEchecSauvegarde && RMClub.raisonEchecSauvegarde() === 'conflit') {
+      signalerConflitSauvegarde();
+      return;
+    }
     if (!ok && !alerteSauvegardeAffichee) {
       alerteSauvegardeAffichee = true;
       toast('⚠️ Sauvegarde impossible (stockage indisponible) — la progression restera en mémoire pour cette session.', 'erreur');
@@ -337,6 +367,9 @@
     if (cfgTactique.touche) tactiqueCfg['touche' + lettreEquipe] = cfgTactique.touche;
     const numeroButeur = RMClub.numeroDuJoueurDansComposition(slot.compositionTitulaires, slot.buteurId);
     if (numeroButeur) tactiqueCfg['buteur' + lettreEquipe] = Number(numeroButeur);
+    // Capitaine (FUNC-RM-006) : il arbitre les pénalités si l'équipe le lui délègue.
+    const numeroCapitaine = RMClub.numeroDuJoueurDansComposition(slot.compositionTitulaires, slot.capitaineId);
+    if (numeroCapitaine) tactiqueCfg['capitaine' + lettreEquipe] = Number(numeroCapitaine);
     const numeroLanceur = RMClub.numeroDuJoueurDansComposition(slot.compositionTitulaires, slot.lanceurToucheId);
     if (numeroLanceur) tactiqueCfg['toucheLanceur' + lettreEquipe] = Number(numeroLanceur);
     // Sauteurs désignés (P1-50) : FUSIONNÉS dans la config de touche déjà
@@ -352,6 +385,9 @@
     }
     const remplacements = RMClub.remplacementsVersConfig(effectif, slot.compositionBanc, lettreEquipe);
     if (remplacements.length) tactiqueCfg.remplacements = remplacements;
+    // Feuille de match réelle, même incomplète : un blessé sans remplaçant
+    // apte laisse son équipe à 14, le moteur n'invente personne (FUNC-RM-005).
+    tactiqueCfg['banc' + lettreEquipe] = true;
     return tactiqueCfg;
   }
 
@@ -1578,14 +1614,14 @@
     const joues = st ? (st.matchsJoues || 0) : 0;
 
     if (sous === 'equipe') {
-      titre.textContent = '🏉 Production du collectif';
+      titre.textContent = '🏉 Production du collectif (championnat)';
       if (!joues) { zone.innerHTML = '<p style="color:var(--text-dim);">Aucun match joué : rien à mesurer pour l\'instant.</p>'; return; }
       zone.innerHTML = `${ligneInfo(`Matchs joués`, `${joues}`)}` +
         Object.keys(LIBELLE_STAT_CLUB).filter((k) => st[k] != null).map((k) =>
           `<div class="ligneInfo"><span>${LIBELLE_STAT_CLUB[k]}</span>` +
           `<b>${st[k]} <span style="color:var(--text-dim);font-weight:400;">${Math.round((st[k] / joues) * 10) / 10}/match</span></b></div>`).join('');
     } else if (sous === 'joueurs') {
-      titre.textContent = '⭐ Meilleurs de la saison';
+      titre.textContent = '⭐ Meilleurs de la saison (toutes compétitions)';
       const tous = (c.effectif || []).concat(c.jeunes || []).filter((j) => j.statsSaison && j.statsSaison.matchsJoues);
       if (!tous.length) { zone.innerHTML = '<p style="color:var(--text-dim);">Aucune statistique individuelle enregistrée.</p>'; return; }
       const top = (champ, libelle) => {
@@ -1595,6 +1631,8 @@
       };
       zone.innerHTML =
         top('essais', 'Meilleur marqueur') + top('metresGagnes', 'Plus de mètres gagnés') +
+        top('defenseursBattus', 'Plus de défenseurs battus') + top('passesDecisives', 'Plus de passes décisives') +
+        top('turnoversGagnes', 'Plus de ballons gagnés') + top('pointsAuPied', 'Meilleur buteur (points au pied)') +
         top('tacklesMade', 'Plus de plaquages') + top('passes', 'Plus de passes') +
         top('matchsJoues', 'Plus de matchs joués') +
         `<h4 class="sousTitreMedical">Temps de jeu (${tous.length} joueurs utilisés)</h4>` +
@@ -2251,6 +2289,8 @@
       const promus = comp.promus || 0, relegues = comp.relegues || 0;
       zone.innerHTML =
         `${ligneInfo(`Format`, `${comp.estCoupe ? 'élimination directe' : 'championnat aller-retour'}`)}` +
+        // Règlement de départage annoncé AVANT les matchs (BUG-RM-001).
+        (comp.estCoupe ? `${ligneInfo(`En cas d'égalité`, 'prolongation de 20 min, puis nombre d\'essais, puis tirs au but')}` : '') +
         `${ligneInfo(`Clubs`, `${(comp.clubs || []).length}`)}` +
         `${ligneInfo(`Montées`, `${promus || 'aucune'}`)}` +
         `${ligneInfo(`Descentes`, `${relegues || 'aucune'}`)}` +
@@ -3246,6 +3286,26 @@
     const ligneStatsSaison = s
       ? `${ligneInfo(`Cette saison`, `${s.essais} essai(s) · ${s.passes} passe(s) · ${s.tacklesMade}/${s.tacklesAttempted} plaquages`)}`
       : '';
+    // Détail de la saison (P2-103) : chaque statistique est comptée par le
+    // moteur là où l'action a lieu. On n'affiche que ce que le joueur a fait :
+    // pas de « 0 touche gagnée » pour un ailier.
+    const GROUPES_DETAIL = [
+      ['Attaque', [['courses', 'Courses'], ['metresGagnes', 'Mètres gagnés'], ['defenseursBattus', 'Défenseurs battus'],
+        ['franchissements', 'Franchissements'], ['offloads', 'Offloads'], ['passesDecisives', 'Passes décisives']]],
+      ['Défense', [['tacklesMade', 'Plaquages réussis'], ['plaquagesManques', 'Plaquages manqués'], ['turnoversGagnes', 'Ballons gagnés']]],
+      ['Jeu au pied', [['coupsDePied', 'Coups de pied'], ['pointsAuPied', 'Points au pied']]],
+      ['Conquête', [['touchesGagnees', 'Touches gagnées']]],
+      ['Discipline', [['enAvants', 'En-avants'], ['cartonsJaunes', 'Cartons jaunes']]],
+      // BUG-RM-007 : le temps réellement passé sur le terrain.
+      ['Temps de jeu', [['minutes', 'Minutes jouées'], ['entreesEnJeu', 'Entrées en jeu']]],
+    ];
+    const blocDetailSaison = s && s.matchsJoues
+      ? GROUPES_DETAIL.map(([titre, champs]) => {
+        const lignes = champs.filter(([c]) => (s[c] || 0) > 0)
+          .map(([c, l]) => ligneInfo(l, `${Math.round(s[c])}`)).join('');
+        return lignes ? `<h4 class="titreBlocFiche">${titre}</h4>${lignes}` : '';
+      }).join('')
+      : '';
 
     // --- Statistiques PAR COMPÉTITION, historique et carrière (P1-30) ------
     // Trois blocs entièrement dérivés de données RÉELLES : une compétition
@@ -3259,7 +3319,7 @@
         `<table class="tableauClub tableauFiche"><thead><tr><th>Compétition</th><th>M</th><th>Essais</th><th>Passes</th><th>Plaq.</th><th>Mètres</th></tr></thead><tbody>` +
         clesCompetition.map((k) => {
           const d = parCompetition[k];
-          return `<tr><td>${echapperHTML(RMClub.LIBELLE_COMPETITION[k] || k)}</td><td>${d.matchsJoues}</td>` +
+          return `<tr><td>${echapperHTML(RMClub.libellePerimetreStats(saison, k))}</td><td>${d.matchsJoues}</td>` +
             `<td>${d.essais}</td><td>${d.passes}</td><td>${d.tacklesMade}/${d.tacklesAttempted}</td><td>${Math.round(d.metresGagnes)}</td></tr>`;
         }).join('') + `</tbody></table>`
       : '';
@@ -3395,7 +3455,7 @@
       `${ligneInfo(`Fatigue`, `<span class="barreFatigue${fatigue >= 65 ? ' haute' : ''}"><span style="width:${fatigue}%"></span></span> ${fatigue}%`)}` +
       ligneProgression +
       `${ligneInfo(`Matchs joués cette saison`, `${j.matchsJoues || 0}`)}` +
-      ligneStatsSaison +
+      ligneStatsSaison + blocDetailSaison +
       `${ligneInfo(`Sélection du jour`, `${statutCompo}`)}` +
       (j.veutPartir ? `${ligneInfo(`Statut`, `🚩 Souhaite être transféré (mécontent de son temps de jeu)`, { etat: `texteAlerteJoueur` })}` : '') +
       (j.contrat != null ? `${ligneInfo(`Contrat`, `${j.contrat} an(s) restant(s)`)}` : '') +
@@ -5548,7 +5608,9 @@
       graineAleatoire(), duree,
       domicileEstJoueur ? cfgJoueur : cfgAdverse,
       domicileEstJoueur ? cfgAdverse : cfgJoueur,
-      tactiqueCfg,
+      // Élimination directe (BUG-RM-001) : une égalité au coup de sifflet se
+      // joue en prolongation, puis au nombre d'essais, puis aux tirs au but.
+      Object.assign({}, tactiqueCfg, { eliminationDirecte: true }),
       {
         // Le nom affiché au tableau d'affichage doit dire QUI joue : sans ça,
         // une demi-finale d'espoirs s'annonçait sous le nom du club, comme un
@@ -5738,7 +5800,7 @@
       const clubDomicile = RMClub.club(saison, matchJoueur.domicileId);
       const clubExterieur = RMClub.club(saison, matchJoueur.exterieurId);
       assurerComposition();
-      const compositionUtilisee = saison.clubJoueur.compositionTitulaires;
+      let compositionUtilisee = saison.clubJoueur.compositionTitulaires;
       // La tactique choisie (cf. onglet Tactique) et l'encadrement (buteur,
       // lanceur en touche) ne s'appliquent QU'au club du joueur, jamais à
       // l'IA adverse — d'où le suffixe A/B dynamique selon le côté du joueur
@@ -5746,12 +5808,18 @@
       const lettreJoueur = estClubJoueur(matchJoueur.domicileId) ? 'A' : 'B';
       const tactiqueCfg = construireTactiqueCfg(saison.clubJoueur.effectif, saison.clubJoueur, lettreJoueur);
       const remplacements = tactiqueCfg.remplacements || [];
-      window.RMMain.demarrerMatchClub(
-        graineAleatoire(), duree,
-        cfgPour(clubDomicile),
-        cfgPour(clubExterieur),
-        tactiqueCfg,
-        {
+      // Reprise d'un match joué interrompu (bugs.md FUNC-RM-002) : la clé
+      // désigne CETTE rencontre de CETTE carrière ; le journal garde aussi la
+      // composition et le banc réellement alignés, pour que les conséquences
+      // portent sur les joueurs qui ont joué, même si la composition a changé
+      // entre-temps.
+      const cleReprise = matchJoueEnDirect
+        ? ['club', saison.graine, RMClub.dateCourante(saison), matchJoueur.domicileId, matchJoueur.exterieurId].join('|')
+        : null;
+      const journal = cleReprise && window.RMMain.journalMatchJoue ? window.RMMain.journalMatchJoue(cleReprise) : null;
+      const callbacks = {
+          cleReprise,
+          contexteReprise: { compositionUtilisee },
           noms: { A: clubDomicile.nom, B: clubExterieur.nom },
           equipeJoueur: estClubJoueur(matchJoueur.domicileId) ? 'A' : 'B',
           // Match JOUÉ (P0-match) : rien n'est calculé d'avance, onResultat
@@ -5775,14 +5843,10 @@
             // des opérations, finances, statistiques, fatigue, moral,
             // promesses de statut. L'interface ne garde que ce qui la
             // regarde — annoncer, relâcher le verrou, sauvegarder.
-            const compositionAvecRemplacants = Object.assign({}, compositionUtilisee);
-            for (const r of remplacements) {
-              if (r.minute * 60 <= duree) compositionAvecRemplacants[r.numeroBanc] = r.joueurId;
-            }
             const suite = RMClub.appliquerConsequencesMatchJoueur(saison, {
               fixture: matchJoueur, etat, lettreJoueur,
               forme: formeApres(matchJoueur, etat.score.A, etat.score.B),
-              compositionUtilisee, compositionAvecRemplacants,
+              compositionUtilisee,
               // Noms réels des deux camps : la feuille de match archivée doit
               // pouvoir se relire sans le contexte du jour du match.
               nomA: clubDomicile.nom, nomB: clubExterieur.nom,
@@ -5825,7 +5889,24 @@
             revenirAuPanneauClub();
           },
           onFermer: revenirAuPanneauClub,
+        };
+      if (journal) {
+        const mm = Math.floor((journal.temps || 0) / 60), ss = String(Math.floor((journal.temps || 0) % 60)).padStart(2, '0');
+        const sc = journal.score || { A: 0, B: 0 };
+        if (window.confirm(`Un match joué a été interrompu (${mm}:${ss}, ${clubDomicile.nom} ${sc.A} - ${sc.B} ${clubExterieur.nom}). Le reprendre là où il s'était arrêté ?`)) {
+          const ctx = journal.contexte || {};
+          if (ctx.compositionUtilisee) compositionUtilisee = ctx.compositionUtilisee;
+          window.RMMain.reprendreMatchClub(journal, callbacks);
+          return;
         }
+        window.RMMain.oublierMatchJoue();
+      }
+      window.RMMain.demarrerMatchClub(
+        graineAleatoire(), duree,
+        cfgPour(clubDomicile),
+        cfgPour(clubExterieur),
+        tactiqueCfg,
+        callbacks
       );
     }
 
@@ -5922,8 +6003,9 @@
           // alimente les deux effectifs, chacun ne retenant que les siens.
           const lettreB = f.domicileId === saison.clubJoueur.id ? 'A' : 'B';
           const statsB = etat.statsJoueurs && etat.statsJoueurs[lettreB];
-          RMClub.accumulerStatsJoueurs(saison.clubJoueur.effectif, compositionJoueur, statsB, 'b');
-          RMClub.accumulerStatsJoueurs(saison.clubJoueur.jeunes || [], compositionJoueur, statsB, 'b');
+          const ventilationB = RMClub.ventilationMatch(etat, lettreB);
+          RMClub.accumulerStatsJoueurs(saison.clubJoueur.effectif, compositionJoueur, statsB, 'b', ventilationB);
+          RMClub.accumulerStatsJoueurs(saison.clubJoueur.jeunes || [], compositionJoueur, statsB, 'b', ventilationB);
           // Fatigue et blessures RÉELLES (TODO_AUDIT.md P1-40) : jusqu'ici un
           // match d'Équipe B n'en produisait AUCUNE, donc un joueur pouvait
           // enchaîner toute la saison avec la réserve sans jamais s'user ni
@@ -6016,7 +6098,7 @@
           // est toujours l'équipe A dans un match d'académie (cf. cfgJoueur
           // passé en premier).
           RMClub.accumulerStatsJoueurs(saison.clubJoueur.jeunes || [], compositionEspoirs,
-            etat.statsJoueurs && etat.statsJoueurs.A, 'jeunes');
+            etat.statsJoueurs && etat.statsJoueurs.A, 'jeunes', RMClub.ventilationMatch(etat, 'A'));
           // Résultat ARCHIVÉ (TODO_AUDIT.md P1-19) : jusqu'ici il ne vivait
           // que dans un message de la boîte de réception, donc l'écran
           // Calendrier & classement n'avait rien à montrer pour les espoirs.
@@ -6243,9 +6325,20 @@
     const blesses = joueursTitulaires.filter((j) => j.blessureJournees > 0);
     const fatigues = joueursTitulaires.filter((j) => !( j.blessureJournees > 0) && (j.fatigue || 0) >= 65);
     const capitaine = c.effectif.find((j) => j.id === c.capitaineId);
+    // Feuille de match (FUNC-RM-005) : un poste de banc sans remplaçant apte
+    // reste vide. Le manager le sait AVANT le coup d'envoi, avec la
+    // conséquence réelle en match.
+    const postesBanc = RMClub.POSTE_REQUIS_BANC || {};
+    const bancVides = Object.keys(postesBanc).filter((n) => !(c.compositionBanc || {})[n]);
+    const libellePoste = (p) => (RMClub.POSTE_COMPLET && RMClub.POSTE_COMPLET[p]) || p;
     const alertesCompo = [
       ...blesses.map((j) => `🤕 ${j.nom} joue diminué (blessé)`),
       ...fatigues.map((j) => `⚡ ${j.nom} est très fatigué`),
+      ...(bancVides.length ? [`🪑 Banc incomplet : ${8 - bancVides.length}/8 remplaçants — aucun ${bancVides.map((n) => libellePoste(postesBanc[n]).toLowerCase()).join(', ')} apte. `
+        + (bancVides.some((n) => n === '16' || n === '17')
+          ? 'Une blessure en première ligne sans relève donnera des mêlées simulées ; '
+          : '')
+        + 'un blessé sans remplaçant laissera l\'équipe à 14.'] : []),
     ];
 
     // Remplacements prévus (TODO_AUDIT.md P1-17) : le banc de 8 était
@@ -6291,7 +6384,9 @@
       `${ligneInfo(`Ma forme`, `${formeTxt(maForme)}`)}` +
       `${ligneInfo(`Leur forme`, `${formeTxt(analyse.forme)}`)}</div>` +
       `<div class="carteClub"><h3>📋 Ma composition</h3>` +
-      `${ligneInfo(`Capitaine`, `${capitaine ? capitaine.nom : '—'}`)}` +
+      // Sens du jeu affiché (FUNC-RM-006) : c'est lui qui pèse quand l'équipe
+      // délègue les pénalités au capitaine.
+      `${ligneInfo(`Capitaine`, `${capitaine ? `${echapperHTML(capitaine.nom)} · sens du jeu ${Math.round(capitaine.decision || 0)}` : '—'}`)}` +
       (alertesCompo.length
         ? alertesCompo.map((a) => `<p style="font-size:12px;color:var(--loss);margin:6px 0;">${a}</p>`).join('')
         : '<p style="font-size:12px;color:var(--text-dim);margin:6px 0;">Aucun problème d\'effectif détecté pour ce match.</p>') +
@@ -6382,11 +6477,27 @@
   if (avertissementChargement) {
     RMClub.effacerAvertissementChargement();
     const raison = RAISON_AVERTISSEMENT_LABEL[avertissementChargement.raison] || 'un problème est survenu';
+    // N'annonce une copie que si elle a réellement été écrite et relue
+    // (BUG-RM-003). Les anciens avertissements n'ont pas ce champ.
+    const conserve = avertissementChargement.secoursConserve !== false;
+    const nbCopies = RMClub.listerSecours ? RMClub.listerSecours().length : 0;
     afficherInfo(
       '⚠️ Ancienne carrière non rechargée',
       `Ton ancienne carrière n'a pas pu être rechargée automatiquement (${raison}).\n\n` +
-      'Rien n\'a été supprimé : une copie de secours de tes données a été conservée dans le stockage de ton navigateur. ' +
-      'Contacte le support avec le nom de ton club si tu veux la récupérer.'
+      (conserve
+        ? 'Rien n\'a été supprimé : une copie de secours de tes données a été conservée dans le stockage de ton navigateur' +
+          (nbCopies > 1 ? ` (${nbCopies} copies d'incidents différents sont gardées, aucune n'a été remplacée).` : '.') +
+          ' Tu peux la télécharger depuis l\'accueil, rubrique « Sauvegardes ».'
+        : 'Attention : aucune copie de secours n\'a pu être écrite (stockage du navigateur plein ou indisponible). ' +
+          'Les données d\'origine restent dans l\'emplacement de sauvegarde tant qu\'aucune nouvelle carrière n\'est enregistrée.')
     );
   }
+
+  // Un autre onglet vient d'enregistrer (BUG-RM-002) : on prévient tout de
+  // suite, avant que le joueur ne joue des journées qui ne pourraient plus
+  // être enregistrées.
+  window.addEventListener('storage', (e) => {
+    if (!RMClub.CLE_REVISION_SAUVEGARDE || e.key !== RMClub.CLE_REVISION_SAUVEGARDE) return;
+    if (saison && RMClub.sauvegardeModifieeAilleurs(saison)) signalerConflitSauvegarde();
+  });
 })();

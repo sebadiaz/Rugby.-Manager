@@ -53,7 +53,7 @@ function cfgClubIA(rng, niveauClub) {
 
 function jouer(graine, joueursA, joueursB) {
   const m = new MatchEngine(graine, DUREE, { joueursA, joueursB });
-  for (let t = 0; t < DUREE; t += DT) m.tick(DT);
+  m.jouerJusquAuSifflet(DT); // au coup de sifflet, pas à 80:00 (BUG-RM-010)
   const s = m.getState();
   return { pourA: s.score.A, pourB: s.score.B, ecart: s.score.A - s.score.B };
 }

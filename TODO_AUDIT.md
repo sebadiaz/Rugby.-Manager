@@ -580,6 +580,5575 @@ Une nouvelle carte « 💡 Recommandation tactique » apparaît dans l'aperçu d
 
 ## P2 — Maintenabilité et simulation
 
+### P2-166. Changement tactique au ballon mort (loi 3.6, bugs.md BUG-RM-012)
+- **Statut : LIVRÉ et vérifié après fusion de la PR n°20 (invariants 137 OK, calibration 14/14, parcours navigateur 583 tests sans échec)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_ballonMortPourRemplacement`, file des
+  remplacements, `remplacerJoueurEnCours`), `docs/js/main.js` (panneau du banc), `docs/js/constants.js`,
+  `docs/js/ui.js`, `server/test-invariants.js`.
+
+**Constat (audit du 7 novembre).** Un remplacement demandé en jeu s'appliquait au pas suivant, ballon vivant (graine
+24, phase PORTE). Mesuré aussi sur 10 matchs à 8 changements programmés : 85 entrées dont 13 médicales, et 31 des 72
+entrées tactiques en plein jeu (ruck, maul, jeu courant, coup de pied en l'air).
+
+**Correction.** Un changement TACTIQUE (programmé ou demandé par le manager) attend le ballon mort : avant le coup
+d'envoi frappé, avant l'introduction en mêlée ou le lancer en touche, pendant un essai, une transformation, une
+pénalité au but ou la mi-temps. L'attente est annoncée une fois (« ⏳ Changement demandé pour … : il entrera au
+prochain arrêt de jeu ») et le panneau du banc affiche « en attente » au lieu de « entré ». Les entrées médicales
+(blessure, protocole commotion, saignement, retour) restent immédiates, y compris quand une entrée programmée est
+détournée pour une blessure. Une seconde demande pour un joueur déjà demandé est refusée (comme pour un joueur entré).
+
+**Mesures.** Scénario du ticket : rien au pas suivant ; entrée 18,2 s plus tard, à l'essai, une seule fois. Mêmes 10
+matchs : 84 entrées dont 13 médicales, aucune entrée tactique ballon vivant (31 avant) ; délai médian 0,1 s (le
+changement tombe souvent déjà ballon mort), maximum 106 s.
+
+**Tests.** Invariant BUG-RM-012 (scénario du ticket, annonce unique, entrée unique ballon mort ; 6 matchs programmés :
+aucune entrée tactique ballon vivant) — l'ancien moteur échoue. Trois tests qui exigeaient l'entrée à l'instant pile
+réécrits sur la règle : au premier ballon mort après l'instant prévu.
+
+### P2-165. Les joueurs du match sont nommés
+- **Statut : LIVRÉ**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`getState().nomsJoueurs`, nom du sortant
+  dans `statsJoueursSortis`), `docs/js/club-composition.js` (nom transmis pour les titulaires),
+  `docs/js/matchState.js`, `docs/js/club-archives-matchs.js`, `docs/js/club-feuille-de-match.js`,
+  `server/test-feuille-de-match.js` (E16).
+
+**Correction.** « n°7 · 16 » devient « J. Michel · 16 » (nom complet, maillot et poste en infobulle). Les titulaires
+transmettent leur nom au moteur comme les remplaçants le faisaient déjà ; le moteur l'expose sans aucun effet de
+jeu (matchs identiques au pas près) : noms des maillots au coup de sifflet, et nom de chaque joueur sorti avec sa
+ligne. Un remplacé est donc nommé pour SES actions, l'entrant pour les siennes. L'archive garde les noms. Sans noms
+(Match rapide), le maillot reste affiché.
+
+**Défaut trouvé en vérifiant à l'écran.** Les noms des joueurs en jeu se perdaient dans `normalizeMatchState`
+(matchState.js), qui ne recopie que les champs connus : seuls les remplacés étaient nommés. Champ ajouté.
+
+**Tests.** E16 : match avec noms et un remplacement au n°7 — le maillot 7 est au remplaçant au coup de sifflet, le
+titulaire sorti garde son nom, chaque meilleur est nommé d'après qui portait le maillot, archive identique ; l'équipe
+sans noms garde « n°X ». Capture Mode Club 390 px.
+
+### P2-164. Feuille de match : les joueurs du match, par action comptée
+- **Statut : LIVRÉ**
+- Fichiers concernés : `docs/js/club-feuille-de-match.js` (`joueursDuMatch`), `docs/js/club-archives-matchs.js`
+  (`compacterSortis`), `docs/css/style.css`, `server/test-feuille-de-match.js` (E15),
+  `server/test-parcours-navigateur.js`.
+
+**Constat (FUNC-RM-011).** Le moteur compte une quinzaine d'actions par joueur (plaquages, mètres, franchissements,
+défenseurs battus, passes décisives, ballons récupérés…), mais la feuille de match ne montrait que des totaux
+d'équipe ; l'archive perdait les lignes des joueurs remplacés.
+
+**Correction.** Section « Les joueurs du match » : pour chaque équipe, le meilleur dans six actions comptées, avec la
+valeur (« n°11 · 110 m »), le poste et la minute de sortie en infobulle. Joueurs remplacés compris ; l'archive garde
+désormais leurs lignes (sans les zéros). Pas de note composite : chaque ligne se relie à un compteur. Ancienne archive
+sans lignes : pas de section. Libellés trop longs pour la colonne de 72 px (« Franchissements ») : colonne centrale
+élargie pour ces lignes.
+
+**Tests.** E15 : chaque meilleur = maximum recompté sur les maillots en jeu et les remplacés ; identique après
+archive ; rien sans lignes. Navigateur : section présente, aucun débordement à 390 px (capture).
+
+### P2-163. Intrusion de l'arrière : dans la moitié adverse, le n°15 s'intercale dans la ligne
+- **Statut : LIVRÉ**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_arriereIntercale`, placement au ruck,
+  ligne en jeu courant, passes dans la ligne), `server/test-invariants.js`.
+
+**Constat (30 matchs, QA-RM-003).** Marqueurs : avants 42 %, ailiers 35 %, demis 14 %, centres 7 %, **arrière 1 %**.
+L'arrière portait 11 ballons et 46 m par match, franchissait 0,54 fois, mais ne marquait jamais (0 essai en 24
+matchs d'équipe) : en attaque, la ligne de trois-quarts ne comptait que les n°10 à 14 — l'arrière restait à 6 m
+derrière le ruck dans son couloir, même à 10 m de l'en-but adverse, et la chaîne de passes l'ignorait.
+
+**Correction.** Dans la moitié adverse (ballon à 50 m ou moins de l'en-but), l'arrière de l'équipe qui attaque
+prend place dans l'éventail entre le 13 et l'ailier (au ruck comme en jeu courant), et la chaîne de passes le sert
+puis le fait servir. Dans son camp, il reste en couverture.
+
+**Mesures.** 30 matchs : arrière 9,8 % des essais (repère réel ~7-9 %), ailiers 35 → 28 %, centres 7 → 9 %.
+100 graines appariées : essais 6,10 → 6,65 (± 0,59), points +2,3 ± 3,7, passes, rucks, touches, mêlées et
+franchissements inchangés.
+
+**Tests.** Invariant (12 graines) : dans la moitié adverse, dans la ligne 73 % du temps de ruck (39 % avant) ; dans
+son camp, hors de la ligne 62 % ; l'arrière marque 12 essais sur 93 (0 sur 78 avant). Calibration 14/14 (passes
+401,1, essais 7,8, points 61,8 sur les graines 1-20).
+
+**Tests rendus robustes au nouveau déroulé (aucun seuil assoupli).** Quatre invariants tenaient sur un petit
+échantillon et ont basculé par le seul changement de déroulé ; élargis : mètres gagnés selon la puissance (6 → 18
+graines : ×1,09 sur 1-6, ×1,29 sur 18), maul sur touche (40 → 80 graines : 5,94 → 6,11 avants liés), percussion et
+côté fermé (16 → 32 graines : 9 côtés fermés sur 16), style « au près » (12 → 24 graines). Style « au pied » :
+famille rare, le +10 points ne tenait que sur les graines 1-12 (l'ancien moteur faisait +1,9 sur 13-24) ; le poids
+×3 double la part (×2,1 et ×1,96) : critère relatif ×1,6. Bilan des lancements (P2-153) : le recompte du test
+écrasait un premier lancement suivi d'un second dans la même séquence (touche puis sortie de maul) sans compter son
+terrain ; le moteur était juste, le test corrigé.
+
+### P2-162. Capitaine : il arbitre les pénalités quand l'équipe le lui délègue, relais du brassard
+- **Statut : LIVRÉ**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`capitaineNumero`, `_capitaine`,
+  `attaque.choixPenalites`, `_traiterPenalite`, sortie du capitaine au remplacement), `docs/rugby-config.json`,
+  `docs/js/club.js` (axe `penalites`), `docs/js/club-composition.js`, `docs/js/club-equipes.js`, `docs/js/clubUI.js`
+  (capitaine envoyé au moteur, sens du jeu dans l'aperçu), `docs/js/main.js`, `docs/js/constants.js`, `docs/js/ui.js`,
+  `server/test-invariants.js`, `server/test-melee.js` (M6i), `server/test-parcours-navigateur.js`.
+
+**Constat.** Le capitaine désigné dans la composition n'atteignait pas le moteur : rôle décoratif (FUNC-RM-006).
+
+**Correction.** Premier usage concret, une option tactique déléguée. Consigne « Pénalités à portée de but » :
+« Prendre les points » (toujours au but à 5-45 m), « Le capitaine décide » (défaut, logique existante : distance et
+score), « Viser la touche ». Quand il décide, la lecture de fin de match du capitaine (menés de plus de 3 points dans
+le dernier quart : renoncer aux poteaux pour la touche) se fait avec la probabilité de son sens du jeu (« decision »
+/100, bornée 0,3-0,95) au lieu d'un 0,8 fixe ; l'annonce le nomme. Capitaine exclu ou remplacé : le joueur présent au
+meilleur sens du jeu prend le brassard, annoncé (« 🧭 CAPITAINE »). Sans capitaine désigné (Match rapide), c'est le
+meilleur décideur, l'ouvreur (80) : matchs identiques au pas près. L'aperçu présente le capitaine avec son sens du jeu.
+Aucun bonus de score : seul un choix change de mains.
+
+**Mesures.** 12 graines (équipe A, par match) — tirs au but / pénalités en touche / mauls : capitaine 3,9 / 6,5 /
+4,2 ; points 4,9 / 4,8 / 3,9 ; touche 0 / 9,6 / 5,2. 100 graines appariées : écart de score « points » +3,5 ± 4,4,
+« touche » +3,8 ± 4,7 (non significatifs) ; « touche » : essais +1,6 ± 0,5, touches +3,8 ± 1,2.
+
+**Tests.** Invariant par scénario (65e minute, menés de 7, pénalité à 30 m, 120 tirages) : capitaine lucide (95)
+joue la touche ≥ 85 %, confus (30) ≤ 45 % — l'ancien moteur donne 82 % aux deux ; consignes imposées respectées ;
+relais annoncé quand le capitaine est exclu. M6i : fusion avec les autres axes. Navigateur : options, sauvegarde,
+sens du jeu du capitaine dans l'aperçu.
+
+### P2-161. Consigne des centres (n°12 et 13) : percussion, standard, distribution
+- **Statut : LIVRÉ**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`attaque.passeCentres`,
+  `_facteurCentres`, passe dans la ligne et avant contact), `docs/rugby-config.json`, `docs/js/club.js` (axe
+  `centres`), `docs/js/club-composition.js`, `docs/js/club-equipes.js` (`centresDeduits`),
+  `server/test-invariants.js`, `server/test-melee.js` (M6h), `server/test-parcours-navigateur.js`.
+
+**Correction.** Facteur sur les passes des n°12 et 13 (dans la ligne et avant contact, y compris pour un centre
+rapide qui suivait une autre branche) : « Percussion » ×0,5, « Distribution » ×1,8. Valeur 1 : matchs identiques au
+pas près. Club consulté : puissance moins passe de sa paire de centres (médiane -7 sur 78 clubs générés) — les ~15 %
+les plus puissants percutent, les plus passeurs distribuent.
+
+**Mesures.** 12 graines (équipe A) — courses / passes / mètres des 12-13 par match : percussion 26,4 / 14,5 / 92,
+standard 20,9 / 24,0 / 73, distribution 12,4 / 35,8 / 52. 100 graines appariées : écart de score percussion
++1,8 ± 4,5, distribution +0,8 ± 4,3 ; possession +1,1 ± 1,6 et +0,9 ± 1,5 — aucune option dominante (les 12 graines
+laissaient croire à un coût de 5 à 11 points : bruit). La percussion baisse le total de passes du match de 21 ± 10.
+
+**Tests.** Invariant (valeur 1 = défaut exact ; percussion et distribution déplacent courses et passes des centres
+de l'équipe, pas celles des centres adverses ; 16 graines, 8 laissaient varier l'adversaire de 37 % par le seul
+déroulé) — l'ancien moteur échoue. M6h : fusion avec les autres axes d'attaque. Navigateur : trois options,
+sauvegarde, compromis affiché.
+
+### P2-160. Consigne du demi de mêlée (n°9) : chandelle depuis la base, standard, sortie à la main
+- **Statut : LIVRÉ**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`attaque.chandelleNeuf`, chandelle depuis
+  la base dans `choisirActionPorteur`), `docs/rugby-config.json`, `docs/js/club.js` (axe `demiMelee`),
+  `docs/js/club-composition.js`, `docs/js/club-equipes.js` (`demiMeleeDeduit`), `server/test-invariants.js`,
+  `server/test-melee.js` (M6g), `server/test-parcours-navigateur.js`.
+
+**Constat.** Le premier lot de FUNC-RM-004 prévoyait le comportement du 9 en sortie ; ses chandelles depuis la base
+(25 % des sorties dans ses 22 m, 15 % dans son camp) étaient les mêmes pour tous les clubs.
+
+**Correction.** Consigne « Chandelle depuis la base » (×2), « Standard », « Sort à la main » (×0,3), qui ne touche
+que ces chandelles du n°9 dans son camp (plafond 85 %). Club consulté : déduite de son n°9, comparé à ses pairs (un
+n°9 passe toujours bien mieux qu'il ne tape : écart médian -32 sur 84 clubs générés) — 16 « pied », 50 « standard »,
+12 « main ». Valeur 1 : tirage identique au défaut.
+
+**Mesures.** 12 graines (équipe A) : chandelles du 9 par match 5,0 (standard) / 9,5 (pied) / 2,2 (main), celles de
+l'adversaire inchangées. 100 graines appariées : « pied » coups de pied +2,9 ± 1,3, écart de score +3,1 ± 4,1,
+possession −0,2 ± 1,6 ; « main » possession +1,3 ± 1,5, écart de score +0,7 ± 4,5 — aucune option dominante.
+
+**Tests.** Invariant (valeur 1 = défaut exact ; chaque option déplace les chandelles du 9 de l'équipe, pas celles de
+l'adversaire). M6g : fusion avec les autres axes d'attaque. Navigateur : trois options, sauvegarde, compromis affiché.
+
+### P2-159. Le fil du match rédigé en français : accents, noms des clubs, élision
+- **Statut : LIVRÉ**
+- Fichiers concernés : `docs/js/ui.js` (`accentuer`, `traduireEquipesDansMessage`), `server/test-parcours-navigateur.js`.
+
+**Constat.** Les ~240 messages du moteur sont écrits sans accents (« Melee », « Penalite », « reussie ») et le nom du
+club était collé à la place de la lettre : « Essai equipe AS Bandeau ! », « pénalité pour l'equipe Castelnau ».
+Défaut trouvé en vérifiant : un club dont le nom contient un « B » suivi d'une lettre accentuée (« Riverange
+Béliers ») s'affichait « Riverange Riverange Bélierséliers » — `\b` ignore les lettres accentuées.
+
+**Correction.** Rédaction au moment de l'affichage (fil et bandeau), le moteur et ses messages-repères des tests
+restant intacts : accents rétablis par un dictionnaire limité aux mots relevés sur 10 matchs (formes ambiguës traitées
+en contexte : « gagne la séance » / « ballon gagné », « Plaqué en touche » / « le n°4 plaque le sauteur », « a » →
+« à » sauf « n'a ») ; « l'équipe A » → nom du club ; « de l'équipe A » → « d'AS Bandeau » / « de Castelnau » ;
+« Essai équipe A ! » → « Essai d'AS Bandeau ! ». Lettres remplacées par marqueurs puis noms posés en dernier.
+Sans noms de clubs (Match rapide), seules les lettres accentuées changent.
+
+**Tests.** Navigateur : neuf phrases types (dont « Riverange Béliers », la chaîne de passes, aucun marqueur
+résiduel). Relu sur les 239 messages uniques de 10 matchs. Captures en match réel (390×844).
+
+### P2-158. Le récit de l'essai en direct : bandeau et fil d'événements
+- **Statut : LIVRÉ**
+- Fichiers concernés : `docs/js/ui.js` (`recitEssaiEnDirect`, `texteEvenement`, bandeau),
+  `server/test-parcours-navigateur.js`.
+
+**Correction.** Pendant le match, le bandeau et le fil disaient « Essai equipe AS Bandeau ! », sans plus. Ils
+racontent désormais l'essai avec le même récit que la feuille de match (RMClub.recitEssai, tiré des champs de
+l'événement ESSAI) : « Essai equipe AS Bandeau ! N°6 : en jeu courant à 63 m, 3 rucks, après sa percée, servi par
+le n°9. » Aucun autre événement ne change. Moteur intact.
+
+**Tests.** Navigateur : sur un vrai match, le récit en direct = celui de la feuille, présent dans le fil, absent des
+autres événements. Captures en match réel à x16 (1400×1000 et 390×844) : bandeau sur 2 à 3 lignes, lisible, sans
+erreur de page.
+
+### P2-157. Fixer-passer après une percée — MESURÉ, NON LIVRÉ
+- **Statut : ESSAI REFUSÉ (aucun effet mesurable)**
+
+**Hypothèse.** Le récit P2-156 montrait 41 essais sur 46 « après sa percée » : le perceur finirait seul au lieu de
+servir son soutien. **Mesure plus fine (20 matchs)** : 316 séquences avec franchissement, 76 finissent en essai sans
+ruck (65 par le perceur, 11 par un soutien), 183 sont plaquées, 54 perdues. Sur les 96 percées plaquées pendant la
+fenêtre de percée, 20 avaient un soutien libre à moins de 8 m — dont 4 seulement dans les 22 m adverses.
+
+**Essai.** Décision « fixer-passer » dans `choisirActionPorteur` : en percée, couverture à moins de 5 m, soutien à
+hauteur ou en retrait nettement plus libre → passe. Première version (couverture < 3,5 m) : 94 % des déclenchements à
+moins de 2,2 m, où le moteur n'autorise plus la passe (le porteur est plaqué). Version 2,2-5 m : 3,5 déclenchements
+par match. **100 graines appariées** : essais du soutien après percée 0,47 → 0,56 (± 0,18), essais 6,10 → 6,16
+(± 0,49), points +0,7 ± 3,2, en-avants 1,18 → 1,30 (± 0,28) — rien de significatif. Retiré : un changement que le
+joueur ne verrait pas.
+
+**À retenir.** Le soutien libre au moment du plaquage est rare dans ce moteur ; le levier, s'il existe, est le
+placement des soutiens pendant la percée (ils arrivent trop tard), pas la décision du perceur.
+
+### P2-156. Le récit de l'essai nomme le franchissement qui l'a préparé
+- **Statut : LIVRÉ**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_compterFranchissement`, `_infoEssai`),
+  `docs/js/club-feuille-de-match.js`, `docs/js/club-archives-matchs.js`, `server/test-invariants.js`,
+  `server/test-feuille-de-match.js`.
+
+**Correction.** Les trois endroits qui comptent un franchissement (ligne passée de 5 m, plaqueur battu en espace,
+plaquage de sauvetage manqué) passent par `_compterFranchissement`, qui retient le dernier franchisseur de l'équipe
+dans la séquence en cours. L'événement ESSAI porte `franchisseur` ; la feuille l'écrit : « 19' n°4 — sur mêlée à
+56 m, 13 rucks, percée du n°11, servi par le n°9 », ou « après sa percée » si le marqueur a cassé la ligne lui-même.
+Gardé par l'archive. Compteurs inchangés, matchs identiques au pas près.
+
+**Mesure (10 matchs).** 46 essais sur 73 suivent un franchissement de l'équipe dans la séquence, dont 41 du marqueur
+lui-même ; 174 franchissements, tous rattachés à la bonne séquence.
+
+**Tests.** Invariant : recompte indépendant depuis les compteurs individuels, tick par tick (6 graines) — zéro écart ;
+échoue si le franchisseur n'est pas retenu, ou si c'est le premier et non le dernier. Feuille E14 : « percée » si et
+seulement si un franchisseur, formulation selon que c'est le marqueur.
+
+### P2-155. Passe décisive : offloads, combinaisons, passe du 8 et touche rapide comptent ; le passeur dans le récit
+- **Statut : LIVRÉ**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_passeDecisive`, `_passeurDecisif`,
+  `_infoEssai`, offload, `_tickCombinaison`, sortie du 8, touche rapide), `docs/js/club-feuille-de-match.js`,
+  `docs/js/club-archives-matchs.js`, `server/test-invariants.js`, `server/test-feuille-de-match.js`.
+
+**Constat.** La passe décisive (P2-103) ne retenait que la passe ordinaire : un essai marqué au bout d'un offload, d'une
+passe de combinaison, d'une passe du n°8 ou d'une touche rapide n'en avait pas (30 matchs : 6 essais servis par un
+offload, 2 par une combinaison). Et le récit de l'essai (P2-154) ne nommait que le marqueur.
+
+**Correction.** Toute remise main à main arme la passe décisive. L'événement ESSAI porte le `passeur` — seulement
+quand la passe décisive est comptée (un coup de pied à suivre ou un maul pénétrant n'en ont pas). Feuille de match :
+« 14' n°14 — en jeu courant à 32 m, 2 rucks, servi par le n°15 », gardé par l'archive. Matchs identiques au pas près.
+
+**Mesure (10 matchs).** Passes décisives : 48 → 51 (hors joueurs remplacés), pour 73 essais.
+
+**Tests.** Invariant : recompte indépendant tick par tick des remises de balle (8 graines choisies pour contenir les
+cas rares) — zéro écart ; échoue sans l'offload (graine 9) ou sans la combinaison (graine 17) ; récits avec passeur =
+passes décisives au compteur, remplacés compris. Feuille E14 : « servi par » si et seulement si un passeur.
+
+### P2-154. Chaque essai raconte son action sur la feuille de match ; mêlée volée = origine « mêlée »
+- **Statut : LIVRÉ**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (ouverture de séquence),
+  `docs/js/club-feuille-de-match.js` (`recitEssai`), `docs/js/club-archives-matchs.js`, `docs/css/style.css`,
+  `server/test-invariants.js`, `server/test-feuille-de-match.js`, `server/test-parcours-navigateur.js`.
+
+**Constat.** Le moteur enregistre depuis QA-RM-007 d'où vient chaque essai (phase de départ, distance à la ligne,
+rucks), mais seuls les scripts de mesure le lisaient : la feuille affichait « 23' (n°11) ». Et une mêlée gagnée sur
+introduction adverse ouvrait une séquence « jeu courant » (0,5 par match ; 2 sur 10 graines vérifiées).
+
+**Correction.** Feuille de match : un essai par ligne, aux couleurs de l'équipe, avec son récit — « 78' n°14 — sur
+touche à 5 m, 4 rucks », « maul pénétrant sur pénalité jouée à 8 m », « essai de pénalité ». L'archive garde
+origine, distance, rucks et maul ; une ancienne archive n'affiche que minute et marqueur. Moteur : la séquence née
+d'une mêlée volée est d'origine « mêlée » (une pénalité sifflée reste « pénalité »). Matchs identiques au pas près.
+
+**Mesure (20 matchs).** Origine des 132 essais : jeu courant 53, touche 43, mêlée 21, pénalité jouée 14, coup de
+pied à suivre 1.
+
+**Tests.** Invariant : chaque mêlée gagnée sur introduction adverse (10 graines) ouvre une séquence « mêlée » —
+l'ancien moteur échoue. Feuille E14 : récit conforme aux champs, identique après archive, rien d'inventé sans eux.
+Navigateur : récit présent pour chaque essai (1400 et 390 px vérifiés en capture).
+
+### P2-153. Bilan des lancements sur la feuille de match : joués, terrain gagné, essais, par style
+- **Statut : LIVRÉ**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_statsVierges`, `_lancerCombinaison`,
+  `_infoEssai`, `tick`, ouverture de séquence), `docs/js/club-feuille-de-match.js`, `docs/js/ui.js`,
+  `docs/css/style.css`, `docs/REGLES_RUGBY.md`, `server/test-invariants.js`, `server/test-feuille-de-match.js`,
+  `server/test-parcours-navigateur.js`.
+
+**Constat.** P2-152 laisse choisir un style de lancement, mais rien ne disait au manager ce qu'il rapporte : les
+lancements n'apparaissaient que dans le bandeau en direct, aucun compteur n'existait.
+
+**Correction.** Neuf compteurs moteur par équipe (`lancements*`, `terrainLancements*`, `essaisLancements*` pour Pres /
+Large / Pied). Un lancement vit le temps de sa séquence : terrain = déplacement du ballon dans le sens d'attaque
+jusqu'au prochain arrêt de jeu, à la perte du ballon, à une pénalité ou à l'essai (négatif s'il recule) ; essai
+compté s'il conclut cette séquence. Feuille de match (fin de match et archive) : section « Lancements de jeu »,
+« joués · terrain moyen · essais » par style et par équipe ; panneau de statistiques en direct : joués (essais).
+Compteurs d'observation pure : aucun tirage, matchs identiques au pas près (4 graines).
+
+**Défaut trouvé en mesurant.** Mêlée gagnée par l'équipe qui n'introduisait pas : son lancement était posé sur la
+séquence de l'adversaire, remplacée au tick suivant — terrain et essai perdus (graine 4 : 15 m). Le lancement suit
+désormais l'équipe qui l'a joué. (L'origine « MELEE » d'un essai né d'une telle mêlée reste étiquetée « jeu
+courant » : constat pré-existant, non modifié ici.)
+
+**Mesures (20 matchs, sans réglage).** Au près 5,3 lancements/match, +19,9 m, 9,5 essais/100 ; au large 9,4, +22,7 m,
+7,4/100 ; au pied 0,9, +26,5 m, 0/100. 1,2 des 6,9 essais/match naissent d'un lancement.
+
+**Tests.** Invariant : recompte indépendant (annonces LANCEMENT, essais, terrain ±0,5 m, 4 graines) — échoue sur
+essai compté deux fois, terrain non figé à l'essai, et sans le report de séquence. Feuille E13 : chiffres = compteurs,
+archive identique, ancienne archive sans section. Navigateur : section affichée, sans débordement (1400 et 390 px).
+
+### P2-152. Style de lancement dans l'écran Tactique : au près, varié, au large, au pied
+- **Statut : LIVRÉ**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`style` des combinaisons,
+  `attaque.lancements`, `_choisirCombinaison`), `docs/rugby-config.json`, `docs/js/club.js` (axe `lancements`),
+  `docs/js/club-composition.js`, `docs/js/club-equipes.js`, `server/test-invariants.js`, `server/test-melee.js`,
+  `server/test-parcours-navigateur.js`.
+
+**Correction.** Chaque combinaison du playbook (P2-151) appartient à une famille : au près (percussion du 12, avant
+lancé, côté fermé), au large (croisé, sautée, boucle, arrière intercalé, ballon écarté), au pied (chandelles). L'axe
+« Lancements de jeu (mêlée, touche, maul) » multiplie par 3 le poids de la famille choisie au tirage. « Varié » =
+poids du playbook : tirage identique au pas près (4 graines comparées). Club consulté : déduit des moyennes
+(puissance ≥ 62 → près, jeu au pied ≥ 58 → pied, vitesse ≥ 62 → large).
+
+**Mesures.** Part des lancements de la famille choisie : +15 points au moins (invariant, 12 graines). 100 graines
+appariées (équipe A) contre « Varié », écart de score : au près +0,8 ± 3,7, au large +4,0 ± 4,1, au pied +2,3 ± 4,0 —
+aucun style significativement dominant (« au large » à surveiller) ; possession et coups de pied quasi inchangés : le
+style change surtout ce qu'on VOIT à la sortie des phases arrêtées.
+
+**Tests.** Invariant (poids 1 = défaut exact ; chaque style augmente sa famille ; l'ancien moteur échoue). M6f :
+fusion avec les autres axes d'attaque. Navigateur : sauvegarde avec les consignes individuelles.
+
+### P2-151. Lancements de jeu variés après une mêlée, une touche ou un maul (playbook)
+- **Statut : LIVRÉ**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`combinaisons`, `_tickCombinaison`,
+  `_lancerCombinaison`, percussion dans `choisirActionPorteur`, lancement à la sortie du maul), `docs/rugby-config.json`,
+  `docs/js/constants.js`, `docs/js/ui.js`, `server/test-invariants.js`.
+
+**Constat (20 matchs).** Mêlée : 3 scénarios, et UN SEUL pour l'équipe A (« A-9-10-saute-13 », 50 fois sur 50, un
+playbook d'exemple resté dans la configuration). Touche : 2 scénarios. Après un maul : aucun. Tous des passes 9 → 10 →
+trois-quarts. Et le jeu dans le navigateur charge `docs/rugby-config.json` par-dessus le moteur : ce fichier gardait
+l'ancien playbook ET l'ancien jeu au large (0,55 / 0,30 contre 0,70 / 0,55 recalibrés le 6 octobre) — le match vu à
+l'écran n'était pas celui que mesurent les tests et la calibration.
+
+**Correction.**
+- Playbook partagé : mêlée 8 scénarios, touche 7, maul 5 — croisé du 12, ballon écarté au 13, passe sautée, boucle de
+  l'ouvreur, **arrière intercalé**, **percussion du 12**, **côté fermé pour l'ailier**, **avant lancé au ras de
+  l'alignement / du maul**, **chandelle du 9** (dans son camp), coup de pied par-dessus (dans les 22 adverses). Le
+  playbook d'exemple propre à l'équipe A est retiré.
+- Receveurs dynamiques : `AILE_FERMEE` (l'ailier du côté court, 11 ou 14), `AVANT` (l'avant lancé désigné à la
+  sortie). Ligne `percussion` : le receveur va au contact sans repasser pendant 2,5 s.
+- Chaque lancement est annoncé dans le fil et en bandeau (« 📋 LANCEMENT — Lancement sur mêlée : côté fermé pour
+  l'ailier »).
+- `docs/rugby-config.json` régénéré depuis le moteur pour les sections divergentes ; un invariant interdit désormais
+  toute valeur différente du moteur.
+
+**Mesures.** Par équipe sur 20 matchs : 7 scénarios différents joués sur mêlée, 7 sur touche, 4 à 5 après un maul ;
+aucun ne dépasse 45 % des lancements. 100 graines appariées (moteur seul) : points 57,3 → 54,0 (±3,5), essais 6,62 →
+6,03 (±0,58), passes +1,5, rucks +2,7, mêlées et touches stables. Calibration 14/14 (passes revenues dans la fourchette).
+
+**Portes (corrections).**
+- Courses : une réception de chandelle disputée créditait la course du receveur à l'équipe qui avait TAPÉ (la
+  possession n'avait pas encore basculé) ; `_compterCourse` compte désormais pour l'équipe du porteur.
+- Une percussion qui casse son plaquage redevient un porteur normal (il joue la percée).
+- Tests au ras du bruit élargis, seuils inchangés : franchissement 48 → 96 graines (même moyenne avant/après, 13,0 et
+  12,8 m) ; variété des lancements 16 → 24 graines. Le test des courses joue sans incident de contact (un maillot
+  remplacé repart d'une ligne vierge, que son suivi par maillot prenait pour une course oubliée). Le seuil du
+  saignement passe de 0,3 à 0,2 par match : avec ce banc, 7 à 8 saignements sur 24 graines AVANT comme après — le
+  seuil posé sur une mesure en Match rapide était au ras du bruit.
+
+**Tests.** Invariants : variété par type et par équipe, aucun scénario dominant (l'ancien moteur échoue : « melee A :
+1 scénario ») ; percussion sans passe pendant 2,5 s et ruck dans les 4 s dans la majorité des cas, côté fermé toujours
+vers l'ailier du côté court ; `rugby-config.json` conforme au moteur (l'ancien fichier échoue sur 5 écarts). Navigateur
+1400×1000 et 390×844 (captures vérifiées) : bandeau « LANCEMENT » et passe à l'ailier du côté court.
+
+### P2-150. Consigne des ailiers : repiquent, standard, restent larges — bugs.md FUNC-RM-004
+- **Statut : LIVRÉ** (troisième consigne ; clôt le premier lot de FUNC-RM-004)
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`attaque.ailiers`, placement au ruck et au
+  lancement), `docs/js/club.js` (axe `ailiers`), `docs/js/club-composition.js`, `docs/js/club-equipes.js`,
+  `server/test-invariants.js`, `server/test-melee.js`, `server/test-parcours-navigateur.js`.
+
+**Correction.** Axe « Consigne des ailiers (n°11, n°14) ». Par défaut, l'ailier du côté ouvert prend son rang dans la
+ligne et celui du côté fermé tient son aile. « Repiquent » : l'ailier du côté fermé quitte son aile pour rejoindre
+l'attaque (plus de ballons, plus d'option côté court). « Restent larges » : l'ailier du côté ouvert reste collé à la
+touche. Sans consigne, le match est identique au pas près (5 graines comparées). Club consulté : déduit de la vitesse
+moyenne de ses ailiers (≥ 85 → larges, ≤ 70 → repiquent).
+
+**Mesures.** 40 graines (équipe A) : ballons reçus par les ailiers 23,2 / 32,8 / 16,3 (standard / repiquent /
+larges), mètres 119 / 133 / 85. 100 graines appariées, écart de score : repiquent +2,4 ± 3,9, larges +0,8 ± 4,6 — aucune
+option ne domine ; « restent larges » réduit les essais des deux équipes (−0,5 chacune). Capture : à un ruck de A, les
+deux ailiers « repiquent » côté ouvert, plus aucun trois-quarts côté fermé.
+
+**Tests.** Invariant (12 graines) : repiquent ≥ ×1,2 ballons aux ailiers, larges ≤ ×0,85 ; l'ancien moteur échoue.
+M6e : fusion avec les autres axes d'attaque. Navigateur : sauvegarde, les deux autres consignes conservées.
+
+### P2-149. Consigne individuelle de l'arrière : couvre le fond, standard, monte vers la ligne — bugs.md FUNC-RM-004
+- **Statut : LIVRÉ** (deuxième consigne de FUNC-RM-004)
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`defense.decalageArriere`), `docs/js/club.js`
+  (axe `arriere`), `docs/js/club-composition.js` (fusion avec la hauteur de ligne), `docs/js/club-equipes.js`
+  (déduction pour un club consulté), `server/test-invariants.js`, `server/test-melee.js`,
+  `server/test-parcours-navigateur.js`.
+
+**Correction.** Axe « Consigne de l'arrière (n°15) » : « Couvre le fond » (+7 m), « Placement standard », « Monte
+vers la ligne » (−8 m). Le décalage s'ajoute à la profondeur de couverture du seul n°15 (jeu courant, ruck, mêlée), en
+plus de la hauteur de ligne collective ; les deux axes fusionnent. Club consulté : déduit de son n°15 (vitesse ≥ 80 →
+monte, jeu au pied ≥ 70 → fond).
+
+**Mesures.** Position (6 graines, rucks défendus par A) : le 15 se tient ≥ 4 m plus loin (fond) ou plus près (ligne)
+du ruck, celui de B ne bouge pas. Score (100 graines appariées) : aucun effet significatif — essais encaissés −0,32
+± 0,45 (fond), +0,13 ± 0,45 (ligne). Aucune option ne domine ; les compromis affichés décrivent la position (ce que le
+moteur fait), sans promettre un effet sur le score qu'il ne produit pas de façon mesurable.
+
+**Tests.** Invariant de position (consigne 0 = défaut ; l'ancien moteur échoue). M6d : fusion avec la hauteur de
+ligne. Navigateur 1400×1000 et 390×844 (captures vérifiées) : trois options, sauvegarde, la consigne de l'ouvreur est
+conservée.
+
+**Essai non retenu (commit 184ef77, annulé).** « Monte vers la ligne » a été réécrit pour faire réellement DÉFENDRE
+l'arrière dans la ligne (créneau au ruck, défenseur de ligne en jeu courant). Deux variantes, 100 graines appariées
+contre le placement standard : (a) l'ailier du côté court recule couvrir le fond à sa place — franchissements
+encaissés +3,2 ± 1,0, écart de score −4,4 ± 4,3 (le nombre de défenseurs de ligne ne change pas, le fond est couvert
+par un ailier) ; (b) personne ne recule — essais encaissés +0,65 ± 0,44, franchissements +3,2 ± 0,9. Dans ce moteur,
+un défenseur de plus dans la ligne ne rapporte rien et le fond dégarni coûte cher : les deux versions faisaient de la
+consigne une option perdante. Retour au rapprochement de 8 m, sans effet significatif sur le score.
+
+### P2-148. Consigne individuelle de l'ouvreur : au pied, lecture du jeu, à la main — bugs.md FUNC-RM-004
+- **Statut : LIVRÉ** (premier lot de FUNC-RM-004)
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`attaque.piedOuvreur`), `docs/js/club.js`
+  (axe `ouvreur`), `docs/js/club-composition.js` (fusion des axes d'attaque), `docs/js/club-equipes.js` (déduction
+  pour un club consulté), `server/test-invariants.js`, `server/test-melee.js`, `server/test-parcours-navigateur.js`.
+
+**Constat.** Toutes les consignes étaient collectives : le manager ne pouvait pas dire à SON ouvreur de jouer au pied
+ou à la main sans changer l'occupation au pied de toute l'équipe (le 9 compris).
+
+**Correction.** Un axe « Consigne de l'ouvreur (n°10) » dans l'écran Tactique (mêmes boutons, description et
+compromis) : « Occupe au pied » (×2), « Lecture du jeu » (neutre), « Joue à la main » (×0,4). Le moteur ne multiplie
+que les coups de pied en jeu courant du n°10 ; le jeu au pied du 9 et des autres reste celui de l'équipe. Valeur
+neutre = comportement par défaut, au tirage près. Pour un club consulté, l'axe est déduit de son n°10 réel (jeu au
+pied contre passe, écart de 10 points).
+
+**Mesures (40 graines appariées, équipe A).** Coups de pied du 10 : 4,9 / 8,9 / 13,8 (main / neutre / pied) ;
+possession de A 51,5 / 49,3 / 47,1 % ; occupation 49,0 / 50,5 / 50,6 %. Les points varient dans le bruit.
+
+**Tests.** Invariant (12 graines) : au pied ≥ ×1,4 coups de pied du 10, à la main ≤ ×0,7, ceux des autres stables à
+±30 %, consigne 1 identique au défaut. L'ancien moteur échoue. M6c : la consigne fusionne avec les trois autres axes
+d'attaque. Navigateur 1400×1000 et 390×844 (captures vérifiées) : trois options, sauvegarde, compromis affiché.
+
+### P2-147. Déterminisme : un match affiché et un match calculé sans affichage sont identiques
+- **Statut : LIVRÉ**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`tick` → `_tickInterne`,
+  `_positionBallonCalculee`, `getState`), `server/test-invariants.js`, `TODO_AUDIT.md`.
+
+**Constat (parcours navigateur, 1 relecture sur 4).** Un match vécu 7-10 se relisait 10-13 ; le contrôle de fidélité
+de « Revoir » échouait. Diagnostic par journal d'événements de chaque moteur : premier écart au pas 392, bien avant la
+moindre décision du manager (pas 1707) — « Le n°10 tape la pénalité en touche » au pas 408 dans le match vécu, 410
+dans la relecture. La remise du ballon au buteur (P2-85) part de la « dernière position affichée », que seul
+`getState` notait : le match vécu (affiché à chaque pas) et sa relecture (calculée sans affichage) partaient de deux
+points différents, la frappe tombait à un autre pas, et la suite divergeait. Le commentaire du code affirmait
+« n'influence que l'affichage » : c'était faux. Même défaut pour tout match généré en arrière-plan puis regardé.
+
+**Correction.** Le calcul de la position affichée du ballon devient une méthode sans effet de bord
+(`_positionBallonCalculee`), utilisée par `getState` ; chaque pas (`tick`) note lui-même cette position. Un match
+affiché garde exactement son déroulé ; un match calculé sans affichage le reproduit désormais.
+
+**Mesures (100 graines appariées).** Écarts dans le bruit : points +0,5 (±0,8), essais +0,03, passes +1,6 (±2,1),
+rucks +1,0 (±1,1). Calibration : points 55,3, essais 6,5, passes 426,1 (toujours hors [250-420], cf. P2-146).
+
+**Tests.** Invariant (4 graines) : journal d'événements identique au pas près, avec ou sans `getState` à chaque pas.
+L'ancien moteur échoue (« PENALITE_TOUCHE_FRAPPE » au pas 24413 affiché, 24425 calculé). Navigateur : 5 relectures,
+journaux du match vécu et de la relecture identiques de bout en bout.
+
+Test du saignement (P2-142) rendu exact : au lieu de 80 % de retours (bruit), tout saignement soigné avant le coup de
+sifflet final doit être revenu.
+
+### P2-146. Sortie de maul : les défenseurs se délient et plaquent le 9 — bugs.md QA-RM-003
+- **Statut : LIVRÉ**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_imposerRecuperationRuck`, sortie de
+  ballon du maul), `server/test-invariants.js`, `bugs.md`.
+
+**Constat (100 matchs).** Le demi de mêlée marquait 12,3 % des essais (0,85 par match ; repère réel 6-8 %), dont 24
+partis d'une touche à 22-50 m sans aucun ruck. Trace : maul sur touche, sortie du ballon par le 9, qui PERCE
+aussitôt et marque. Après une sortie de maul, le 9 perçait directement dans 17,6 % des cas (0,55 essai par match),
+contre 0,01 % après un ruck. Cause : la récupération de regroupement (4 s sans pouvoir plaquer, dans un rayon de
+6 m) figeait les 7-8 avants défenseurs du maul — tous dans le rayon — et le 9 les traversait (à 0,4 m d'eux).
+
+**Correction.** À la sortie d'un maul, les défenseurs ne récupèrent que 0,5 s (le temps de se délier) ; les
+attaquants gardent 4 s. Mesuré : 1 s laisse encore 14,8 % de percées (le 9 est déjà passé), 1,5 s 18,5 % ;
+0,5 s, 0,6 %.
+
+**Mesures (100 graines appariées, P2-142 → après).** Points 59,6 → 56,7 (±3,5) ; essais 7,07 → 6,59 (±0,57) ; rucks
+204 → 210 (±5) ; passes 406 → 415 (±10) ; mêlées, touches, pénalités stables. Essais du 9 : 12,3 % → 4,8 % ;
+ailiers 36 %, avants 39 %. Origine des essais : jeu courant 40 %, touche 27 %, mêlée 16 %, pénalité 15 %.
+Calibration (graines 1-20) : points 53,9, essais 6,5 ; **passes 427,4 hors fourchette [250-420]** (409 avant) —
+13/14 catégories, le 9 passe désormais au lieu de percer, et les phases sont plus nombreuses.
+
+**Tests.** Invariant (16 graines) : le 9 perce directement après au plus 8 % des sorties de maul. L'ancien moteur
+échoue (20 %).
+
+### P2-145. Barre de temps : le bout est le coup de sifflet final, pas la sonnerie
+- **Statut : LIVRÉ**
+- Fichiers concernés : `docs/js/main.js` (`avancerJusqua`), `server/test-parcours-navigateur.js`.
+
+**Constat (parcours navigateur, 1 fois sur 3).** Relu au bout de la barre de temps, un match vécu 7-7 affichait 0-7.
+Le saut rejouait jusqu'à 5:00 pile ; depuis la loi 5.7 (P2-126) la dernière action se joue après la sonnerie, jusqu'au
+ballon mort — l'essai transformé marqué après la sonnerie manquait. Le moteur, lui, rejouait fidèlement (contrôle
+d'empreinte au vert).
+
+**Correction.** Un saut au bout de la barre rejoue jusqu'au coup de sifflet final (borné à 10 minutes après la
+sonnerie).
+
+**Tests.** Navigateur : juste après le saut, la phase est `TERMINE` (l'ancien code est en `COUP_ENVOI`, au milieu de
+la reprise), et le score est celui du match vécu (8 relectures).
+
+### P2-144. Notifications du club : trois à l'écran au plus, sans doublon
+- **Statut : LIVRÉ**
+- Fichiers concernés : `docs/js/clubUI.js` (`toast`), `server/test-parcours-navigateur.js`.
+
+**Constat.** Chaque avance du calendrier peut émettre plusieurs notifications (retour de blessure, demande sans
+réponse, avance interrompue…). Quelques clics « Continuer » en empilaient jusqu'à sept, en double parfois, par-dessus
+l'aperçu du match (capture de P2-143 : la carte tactique masquée).
+
+**Correction.** Trois notifications au plus à l'écran : la plus ancienne laisse la place à la nouvelle. Un texte déjà
+affiché n'est pas répété. Le détail reste dans la messagerie du club.
+
+**Tests.** Navigateur : à l'arrivée sur l'aperçu, au plus 3 notifications et aucun doublon ; l'ancien code en laisse 4
+(deux « Avance interrompue »). Suites d'interface et parcours navigateur complets.
+
+### P2-143. Feuille de match incomplète : banc sans blessé, effectif réduit assumé — bugs.md FUNC-RM-005
+- **Statut : LIVRÉ** (clôt FUNC-RM-005)
+- Fichiers concernés : `docs/js/club-composition.js` (`completerCompositionBanc`), `docs/js/clubUI.js` (config du
+  match, aperçu), `docs/js/main.js` (`CLES_TACTIQUE_PAR_EQUIPE`), `engine/rugby-engine.js` et `docs/rugby-engine.js`
+  (`_aBancDeclare`), `server/test-parcours-club.js`, `server/test-invariants.js`, `server/test-parcours-navigateur.js`,
+  `bugs.md`.
+
+**Constat.**
+- Un blessé pouvait s'asseoir sur le banc : faute de pilier apte, le banc prenait un pilier blessé (mesuré : « n°16 :
+  Lucas Boyer est blessé et sur le banc »), qui entrait ensuite à la 50e.
+- Faute de pilier du tout, le repli « autre poste » mettait n'importe qui au poste 16, qui entrait au n°1.
+- Un club sans aucun remplaçant apte n'envoyait pas de banc au moteur : celui-ci inventait alors des remplaçants
+  anonymes pour ses blessés.
+- Rien ne prévenait le manager avant le coup d'envoi.
+
+**Correction.**
+- Le banc ne prend que des joueurs aptes ; un blessé choisi à la main est retiré. La première ligne (16, 17) n'est
+  jamais confiée à un autre poste : le poste reste vide.
+- Le club déclare toujours sa feuille (`bancA/bancB`) : un blessé sans remplaçant apte laisse l'équipe à 14, jamais
+  de joueur inventé. L'adversaire géré par l'ordinateur garde son remplaçant anonyme. La clé est effacée entre deux
+  matchs (le club change de côté).
+- Aperçu du match : « 🪑 Banc incomplet : 7/8 remplaçants — aucun pilier apte. Une blessure en première ligne sans
+  relève donnera des mêlées simulées ; un blessé sans remplaçant laissera l'équipe à 14. »
+
+**Tests.**
+- Club : piliers hors du XV blessés → aucun blessé sur le banc, poste 16 vide, 7 remplaçants ; un pilier blessé
+  choisi à la main est retiré. L'ancien code échoue (pilier blessé au n°16).
+- Invariant : `bancA` sans remplaçant, centre blessé (12 graines) → 0 remplaçant inventé, A à 14 ; B garde son
+  remplaçant anonyme. L'ancien moteur échoue.
+- Navigateur 1400×1000 et 390×844 (captures vérifiées) : alerte dans l'aperçu, aucun pilier blessé sur la feuille.
+- Match rapide strictement inchangé (la clé n'existe qu'en Mode Club).
+
+### P2-142. Saignement : sortie pour soins avec remplacement temporaire — bugs.md FUNC-RM-005
+- **Statut : LIVRÉ**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_tirerBlessureContact`,
+  `_ouvrirProtocole`, `_resoudreProtocoles`, messages de remplacement), `docs/js/constants.js`, `docs/js/ui.js`,
+  `docs/js/main.js`, `server/test-invariants.js`.
+
+**Constat.** Un joueur qui saigne sort se faire soigner (loi 3, remplacement temporaire) : ce fait de match courant
+n'existait pas.
+
+**Correction.** Le tirage du contact (même tirage que la blessure et la commotion, qui gardent exactement leurs
+issues) donne aussi un saignement (0,10 % par joueur engagé). Le joueur sort 6 à 15 minutes ; le remplaçant prévu de
+son groupe le relève sans consommer son entrée (même mécanisme que le protocole commotion, P2-140), puis le joueur
+revient toujours. Bandeau du soigneur 🩸, fil « tient le n°7 pendant les soins (saignement) » puis « reprend le n°7
+après ses soins », panneau du banc « saignement, jusqu'à la Xe minute au plus tard ».
+
+**Mesures (100 graines appariées, P2-140 → après).** Saignements 0 → 0,67 par match ; protocoles commotion 0,69
+(inchangé) ; blessés 1,73 (inchangé) ; points 58,1 → 59,6 (±1,7, non significatif) ; essais 6,83 → 7,07 (±0,29) ;
+mêlées, touches, rucks, passes stables. Calibration 14/14, 55,9 points.
+
+**Tests.** Invariant (24 graines) : chaque saignement annoncé, remplaçant temporaire au même instant, retour en 15
+minutes au plus, jamais de blessure, soins de 6 à 14 minutes en moyenne. L'ancien moteur échoue (0 saignement).
+Navigateur 1400×1000 et 390×844 (captures vérifiées), mise en scène : bandeaux, panneau, retour.
+
+### P2-141. Coup d'envoi lisible : les notifications du club ne couvrent plus les commandes du match
+- **Statut : LIVRÉ**
+- Fichiers concernés : `docs/js/main.js` (`lancerMatchJoue`), `server/test-parcours-navigateur.js`.
+
+**Constat.** Les confirmations de gestion émises en avançant jusqu'au match (« Avance interrompue », demandes sans
+réponse) restaient empilées au coup d'envoi, en bas de l'écran, sur les boutons Pause, Terminer et Menu (vu sur les
+captures de P2-139 : quatre bandeaux rouges sur les commandes).
+
+**Correction.** Au lancement d'un match joué, les notifications encore affichées sont retirées : elles concernent
+l'écran quitté.
+
+**Tests.** Navigateur : 4 notifications avant le coup d'envoi, 0 après ; l'ancien code en laisse 4. Captures
+1400×1000 et 390×844 vérifiées : commandes dégagées.
+
+### P2-140. Protocole commotion : remplacement temporaire de 12 minutes — bugs.md FUNC-RM-005
+- **Statut : LIVRÉ**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_ouvrirProtocole`, `_resoudreProtocoles`,
+  `_aBancDeclare`, `protocoles`), `docs/js/matchState.js`, `docs/js/constants.js`, `docs/js/ui.js`, `docs/js/main.js`
+  (panneau du banc), `docs/js/club.js` (`segmentsMaillot`, `accumulerStatsJoueurs`, `blessesDuMatch`),
+  `docs/js/club-medical.js`, `docs/js/club-condition-joueurs.js`, `server/test-invariants.js`,
+  `server/test-parcours-club.js`, `server/test-consequences-match.js`, `server/test-parcours-navigateur.js`, `bugs.md`.
+
+**Constat.** Une commotion présumée n'existait pas : le seul cas était la blessure, avec une sortie définitive.
+
+**Correction.**
+- Au plaquage, un même tirage décide la blessure (inchangée) ou une commotion présumée (0,12 % par joueur engagé) :
+  0,67 protocole par match mesuré sur 24 graines.
+- Le joueur sort 12 minutes de jeu. Le remplaçant prévu le plus tôt de son groupe le relève SANS consommer son entrée
+  prévue (un remplacement temporaire ne compte pas, loi 3). Sans banc déclaré : un remplaçant anonyme. Banc épuisé :
+  l'équipe joue à 14 pendant le protocole.
+- À la fin (jamais avec le ballon en main) : retour dans 65 % des cas, le remplaçant temporaire retourne sur le banc
+  et peut encore entrer (3 cas sur 24 matchs) ; sinon commotion confirmée, blessure du match, le remplaçant reste et
+  son entrée prévue est consommée.
+- Un remplaçant temporaire sur le terrain ne peut ni entrer ailleurs ni être tiré pour une blessure : jamais une même
+  personne à deux maillots.
+- Affichage : bandeaux du soigneur (🩺 sortie, ↩️ retour, 🚑 commotion confirmée), fil « Remplacement temporaire »,
+  panneau du banc « remplacement temporaire au n°7 (protocole commotion, jusqu'à la Xe minute) », bouton bloqué.
+- Carrière : la commotion confirmée devient une blessure de type commotion. Le joueur revenu compte UN match, sans
+  entrée en jeu, avec ses minutes avant et après ; le temporaire compte une entrée et ses minutes.
+
+**Mesures (100 graines appariées, après P2-139 → après).** Points 58,4 → 58,1 (±2,0) ; essais 6,77 → 6,83 ;
+mêlées 17,1 → 17,1 ; touches 27,0 → 26,8 ; rucks 204 → 204 ; blessés 1,58 → 1,73 (commotions confirmées comprises).
+Calibration 14/14, 54,5 points.
+
+**Tests.**
+- Invariant (24 graines, banc de 8) : chaque protocole annoncé, remplaçant temporaire au même instant (ou jeu à 14),
+  retour après au moins 12 minutes ou blessure enregistrée, aucun joueur à deux maillots. L'ancien moteur échoue.
+- Carrière : ventilation d'un protocole (titulaire 68 min, un match, 0 entrée ; temporaire 12 min, une entrée) ;
+  commotion confirmée = blessure de type commotion.
+- Navigateur, 1400×1000 et 390×844 (captures vérifiées), mise en scène : panneau du banc, bandeaux, retour
+  (1400) et commotion confirmée (390).
+
+### P2-139. Mêlée simulée sans première ligne formée (loi 3) — bugs.md FUNC-RM-005
+- **Statut : LIVRÉ**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_premiereLigneFormee`, `_formerMelee`,
+  `_meleeAvancerPoussee`, `_meleeDetecterFautes`, `_meleeResoudreContestation`, `horsPoste`), `docs/js/constants.js`,
+  `server/test-invariants.js`, `TODO_AUDIT.md`, `bugs.md`.
+
+**Constat (revue des règles après P2-138).** Un talonneur blessé sans remplaçant laissait une mêlée DISPUTÉE à sept,
+sans talonneur, avec poussée, écroulements et ballons volés. La loi 3 impose une mêlée simulée : pas de poussée,
+l'équipe qui introduit gagne le ballon.
+
+**Correction.**
+- Première ligne formée : n°1, 2 et 3 présents et spécialistes. Elle ne l'est plus si un poste est vide (blessé non
+  remplacé) ou tenu par un remplaçant d'un autre groupe (`horsPoste`, posé à sa réaffectation). Un pilier au carton
+  jaune garde une mêlée disputée : dans un vrai match, un pilier du banc entre.
+- Mêlée simulée : annoncée (`MELEE_SIMULEE`, 🤝, bandeau), sans poussée ni rotation, sans faute de pack (écroulement,
+  travers, poussée avant, liaison, relevé, ballon bloqué). L'introduction et le hors-jeu des trois-quarts restent jugés.
+  L'équipe qui introduit gagne toujours.
+- Remplaçants anonymes plafonnés à 8 par équipe (loi 3).
+
+**Mesures.** 100 matchs rapides appariés : strictement identiques (le remplaçant anonyme est un spécialiste, aucune
+mêlée simulée). Avec un talonneur blessé et le banc épuisé (8 graines), toutes les mêlées suivantes sont simulées.
+
+**Tests.**
+- Invariant : talonneur de A blessé à la 1re minute, banc épuisé : au moins 40 mêlées simulées, 0 faute de pack, 0
+  ballon perdu à l'introduction, 0 mètre de poussée ; témoin sans blessure : 0 mêlée simulée. L'ancien moteur échoue
+  (0 mêlée simulée sur 141).
+- Navigateur, 1400×1000 et 390×844 (captures vérifiées), mise en scène : bandeau « Melee simulee » et fil d'événements.
+
+### P2-138. Blessures en match : le blessé sort, un remplaçant de son poste entre — bugs.md FUNC-RM-005
+- **Statut : LIVRÉ** (reste de FUNC-RM-005 : remplacement temporaire, effectif réduit au coup d'envoi)
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_tirerBlessureContact`, `_traiterBlessures`,
+  `blessuresMatch`), `docs/js/matchState.js`, `docs/js/constants.js`, `docs/js/ui.js` (bandeau),
+  `docs/js/club.js` (`blessesDuMatch`), `docs/js/club-condition-joueurs.js`, `docs/js/club-jour-match.js`,
+  `docs/js/club-coupes.js`, `docs/js/club-amicaux.js`, `server/test-invariants.js`, `server/test-consequences-match.js`,
+  `server/test-parcours-navigateur.js`, `bugs.md`.
+
+**Constat.** Aucun joueur ne se blessait pendant un match. Les blessures du Mode Club étaient tirées après coup, sans
+lien avec ce que le joueur avait vu : un titulaire pouvait finir le match sans un contact et se retrouver indisponible.
+
+**Correction.**
+- À chaque plaquage, le porteur et le plaqueur peuvent se blesser (0,28 % chacun, flux aléatoire séparé : un match sans
+  blessé ne change pas). Mesuré sur 100 matchs : 1,58 blessé par match.
+- Le blessé sort au tick suivant, jamais en tenant le ballon. Le remplaçant prévu le plus tôt entre aussitôt : même
+  maillot d'abord, puis même groupe (première ligne, avants, arrières), avec le couloir et la tendance du poste.
+- Équipe sans banc déclaré (Match rapide, adversaire de l'ordinateur) : un remplaçant anonyme du profil du poste.
+  Banc épuisé : l'équipe finit à 14.
+- Événement `BLESSURE` (🚑) et bandeau « SOIGNEUR » ; `blessuresMatch` exporté dans l'état.
+- Défaut révélé par la revue des règles, et corrigé : un joueur hors du terrain (carton jaune, ou blessé sans
+  remplaçant) pouvait encore recevoir le ballon. Le buteur de repli était `eq[9]` (le n°10 même sorti), le lanceur de
+  repli `eq[8]`, et `joueurLePlusProche` ne filtrait pas les absents (réception de coup d'envoi, sortie de maul,
+  pénalité jouée vite). Mesuré à 14 (n°2, 9 et 10 sortis, 8 graines) : 78 224 instants avec un porteur absent, 0 après.
+  Nouveaux utilitaires `_buteurDisponible` ; `joueurLePlusProche` ignore un joueur absent tant qu'un présent existe.
+- Carrière : le joueur qui portait le maillot à cet instant (l'entrant si le numéro avait changé de main) est blessé à
+  coup sûr, avec un message « Il a dû quitter le terrain ». Championnat, coupe et amical. Le tirage d'après-match reste
+  inchangé pour les autres.
+
+**Comparaison appariée (graines 1-100, avant → après).** Points 56,7 → 58,4 (±2,5, non significatif) ; essais
+6,61 → 6,77 (±0,42) ; mêlées 17,2 → 17,1 ; touches 27,5 → 27,0 (±0,75) ; rucks 205 → 204 ; blessés 0 → 1,58.
+Calibration 14/14, 54,0 points.
+
+**Tests.**
+- Invariant (24 graines, banc de 8) : 0,5 à 3 blessés par match ; chaque blessé annoncé, et remplacé au même instant ou
+  équipe à 14 ; au moins un remplaçant du même groupe. L'ancien moteur échoue (0 blessé).
+- Conséquences : le n°7 sorti blessé est indisponible, l'entrant blessé au n°12 aussi, pas le titulaire sorti avant ni
+  notre n°3 (blessure adverse). Un vrai match du moteur se propage. Mutant (liste ignorée) : les deux tests échouent.
+- Navigateur, 1400×1000 et 390×844 (captures vérifiées), blessure mise en scène au premier contact : bandeau, entrant du
+  banc au n°7, blessé indisponible en carrière avec son message.
+- Invariant : à 14 après trois blessures (banc épuisé), le porteur n'est jamais un joueur absent. L'ancien moteur échoue.
+- Défaut existant révélé par les portes, et corrigé : une pénalité sifflée pendant une touche puis tapée en touche
+  redonne une touche sans quitter la phase ; l'essai qui suivait gardait la marque de la PREMIÈRE touche (« depuis
+  71 m » pour une touche à 46 m). La séquence repart désormais de la nouvelle marque.
+- `config.blessures === false` coupe les blessures (le tirage a lieu quand même : le reste du match est identique),
+  pour les deux tests qui vérifient une liste exacte de remplacements. Le test des totaux par joueur compte les lignes
+  des joueurs sortis. Le test du carton « sur sa ligne » passe de 16 à 64 graines (8 cartons sur 64 avant comme après).
+
+**Reste à faire.** Mêlée simulée et plafond de 8 remplaçants : livrés (P2-139). Le libellé de poste d'un remplaçant
+réaffecté reste le sien (un ailier entré au n°1 s'affiche ailier, ce qui est exact).
+
+### P2-137. Banc en cours de match : maillot relevé au choix, un remplaçant n'entre qu'une fois — bugs.md FUNC-RM-005
+- **Statut : PARTIELLEMENT LIVRÉ**
+- Fichiers concernés : `docs/js/main.js` (panneau de mi-temps et de consigne en cours de jeu, `maillotsCompatibles`,
+  `joueurAuMaillot`, journal et relecture), `docs/css/style.css`, `engine/rugby-engine.js` et `docs/rugby-engine.js`
+  (`remplacerJoueurEnCours`), `server/test-invariants.js`, `server/test-parcours-navigateur.js`, `bugs.md`.
+
+**Constat.**
+- Le manager ne pouvait faire entrer un remplaçant qu'au maillot prévu avant le match.
+- Défaut du moteur : un remplaçant entré plus tôt que prévu (à la mi-temps pour une entrée prévue à la 50e) entrait une
+  seconde fois à sa minute prévue. Il « se remplaçait » lui-même, et ses statistiques étaient coupées en deux.
+- Un remplaçant déjà entré à sa minute prévue restait proposé dans le panneau.
+
+**Correction.**
+- Chaque remplaçant propose les maillots qu'il peut tenir : première ligne par première ligne (loi 3), avant par
+  avant, trois-quarts par trois-quarts. Le joueur exclu est signalé.
+- Le remplaçant prend la place du maillot relevé (couloir, tendance), comme le banc prévu.
+- Un refus est expliqué à l'écran.
+- Un remplaçant entré, à la main ou à sa minute prévue, est affiché « entré à la Xe minute, au n°Y » et n'est plus
+  proposé.
+- Moteur : un joueur déjà entré ne peut plus entrer, et une entrée manuelle annule l'entrée prévue du même joueur.
+- Le maillot choisi est enregistré dans le journal (reprise, P2-135) et rejoué à la relecture (P2-136).
+
+**Tests.**
+- Invariant : entré à la mi-temps au n°3, le remplaçant prévu au n°1 à la 50e n'entre qu'une fois, au n°3, quand le
+  manager l'a décidé. Une seconde tentative est refusée. L'ancien moteur échoue.
+- Navigateur, 1400×1000 et 390×844 (captures vérifiées) :
+  - le pilier ne peut relever qu'une première ligne, et un trois-quarts qu'un trois-quarts ;
+  - le remplaçant entre au n°3 choisi, une seule fois, et le panneau le montre entré ;
+  - la carrière le crédite d'une entrée en jeu.
+- Barrières : 16 suites, calibration 14/14 (identique), navigateur 541/0.
+
+**Reste à faire.** Blessures en match, remplacement temporaire (saignement, protocole commotion) et effectif réduit.
+
+### P2-136. Relecture fidèle d'un match vécu, décisions comprises — bugs.md FUNC-RM-003
+- **Statut : LIVRÉ**
+- Fichiers concernés : `docs/js/main.js` (`pasMoteur`, `appliquerDecision`, `empreinteMatch`, enregistrement et
+  relecture), `docs/js/ui.js` (`enregistrerResultat`), `engine/rugby-engine.js` et `docs/rugby-engine.js` (remplacement en
+  cours de match), `server/test-invariants.js`, `server/test-parcours-navigateur.js`, `bugs.md`.
+
+**Constat.** « Revoir » rejouait un match enregistré depuis sa seule graine. Pour un match vécu, les consignes et les
+remplacements du manager étaient perdus : la relecture montrait un autre match. Mesuré dans le navigateur : 12-3 vécu,
+7-3 rejoué.
+
+**Défaut du moteur trouvé en chemin.** `remplacerJoueurEnCours` écrivait le remplaçant dans `cfg.joueursA/B`, qui est
+l'objet même passé par l'appelant (`fusionnerConfig` ne copie pas les clés absentes de `DEFAULT_CONFIG`). La composition
+de la page changeait donc : « Enregistrer » gardait une feuille où le remplaçant était titulaire. Le moteur copie
+désormais avant d'écrire. Le déroulé des matchs est inchangé : 6 matchs identiques au pas près, calibration identique.
+
+**Correction.**
+- « Enregistrer » garde, avec la configuration d'avant-match :
+  - les décisions du manager (équipe, banc, consignes et remplacements datés au pas près) ;
+  - une empreinte du déroulé (sifflet, passes, rucks, plaquages).
+- Chaque moteur porte ses décisions, et tout pas de simulation passe par `pasMoteur`, qui les applique à leur pas :
+  génération, affichage, barre de temps, fin jouée d'un coup, contrôle de fidélité.
+- Le contrôle de fidélité compare le score ET l'empreinte : un score identique par hasard ne suffit plus.
+
+**Tests.**
+- Navigateur, 1400×1000 (même scénario vérifié en 390×844) : match vécu, consigne et remplacement à la mi-temps,
+  « Terminer », « Enregistrer ». On vérifie que :
+  - l'historique garde les décisions et l'empreinte ;
+  - la relecture est fidèle avec les décisions, et infidèle sans elles ;
+  - « Revoir » n'avertit plus d'un match différent ;
+  - au bout de la barre de temps, le score est celui du match vécu.
+- Invariant : un remplacement en cours de match laisse intacte la composition passée par l'appelant. L'ancien moteur
+  échoue.
+- Barrières : 16 suites, calibration 14/14 (identique), navigateur 532/0.
+
+**Limite.** Un match enregistré par une version antérieure du moteur reste impossible à reproduire. La relecture le
+signale.
+
+### P2-135. Reprise d'un match joué après rechargement ou fermeture — bugs.md FUNC-RM-002
+- **Statut : LIVRÉ**
+- Fichiers concernés : `docs/js/main.js` (journal du match joué, `journalMatchJoue`, `reprendreMatchClub`,
+  `oublierMatchJoue`), `docs/js/clubUI.js` (`lancerMatchJoueur`), `server/test-parcours-navigateur.js`, `bugs.md`.
+
+**Constat.** Le match joué en direct ne vivait qu'en mémoire : un F5 ou un onglet fermé le perdait, et la journée se
+rejouait avec une autre graine, sans les décisions du manager.
+
+**Correction.** Le moteur est déterministe : graine, configuration et décisions datées au pas près suffisent à retrouver
+le même match.
+- **Contenu du journal** (`rugbyManager.matchJoue.v1`) : graine, durée, configuration, noms, banc, composition et
+  remplacements alignés, consignes et remplacements avec leur pas, puis pas, temps et score atteints.
+- **Écriture** : au coup d'envoi, à chaque décision, à la mi-temps, chaque seconde, et quand la page est masquée ou
+  fermée.
+- **Reprise** : à la relance de la même rencontre (clé carrière + date + rencontre), le jeu propose de reprendre. Le même
+  match est rejoué jusqu'au pas atteint, en réappliquant chaque décision à son pas, puis il est mis en pause.
+- **Conséquences** : elles portent sur la composition réellement alignée, enregistrée dans le journal, même si elle a
+  changé entre-temps.
+- **Refus** : un nouveau match commence et l'ancien journal est oublié.
+- **Effacement** : au coup de sifflet final, après l'envoi du résultat, ou à l'abandon. Un journal d'une autre carrière
+  ou d'une autre journée n'est jamais repris.
+
+**Tests (navigateur, 1400×1000 ; même scénario vérifié en 390×844).** Match joué, consigne et remplacement à la
+mi-temps, pause vers 3:30, puis F5. On vérifie que :
+- la reprise est proposée ;
+- le temps, le score et la position du ballon sont identiques à 10⁻⁶ près ;
+- le match repart en pause ;
+- au sifflet, le résultat est enregistré une seule fois et le journal est effacé ;
+- en cas de refus, un nouveau match part du coup d'envoi.
+
+Un mutant qui ne rejoue pas les décisions échoue sur la position du ballon. Suite navigateur 524/0 ; `parcours-club`,
+`match-interactif`, `feuille-de-match`, `archives-matchs` et les autres suites d'interface au vert. Moteur inchangé.
+
+**Limites.** La reprise se propose au moment de relancer la journée, pas dès l'ouverture du jeu. Elle ne couvre que les
+matchs du club en direct, pas le match rapide.
+
+### P2-134. 50:22 : la touche ordinaire vise avant les 22 adverses
+- **Statut : CORRIGÉ (moteur)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_tenterCoupDePiedJeu`),
+  `server/test-invariants.js`.
+
+**Constat (10 matchs).** 2,4 50:22 par match, pour environ 0,3 à 0,5 en vrai. C'était un effet de bord de P2-130 : avec des
+dégagements en touche à 25-45 m, une touche ordinaire tapée du milieu de terrain sortait dans les 22 adverses après
+rebond, et rendait le lancer à l'équipe qui avait tapé.
+
+**Correction.** Hors tentative délibérée de 50:22 (une sur quatre quand elle est possible), la portée d'une touche tapée de
+son camp s'arrête 4 m avant les 22 adverses.
+
+**Mesures.**
+- 50:22 : 0,3 par match.
+- Sur 100 matchs appariés : points −2,7 ± 3,2 (moyenne 56,7), pénalités au but −0,71 ± 0,45 (établi), touches +1,4.
+- Calibration (graines 1 à 20) : 14/14, points 55,6, essais 6,4.
+
+**Test.** Moins d'un 50:22 par match sur 16 matchs, et au moins un en tout. L'ancien moteur échoue (2,38).
+
+**Barrières.** Invariants 110/110, 16 suites, calibration 14/14, navigateur 511/0.
+
+**Pistes essayées, non conservées.**
+- Fautes au ruck sifflées un quart moins souvent (3,5 % / 1,8 % au lieu de 4,6 % / 2,4 % par ruck) : pénalités
+  23 → 19,4 (plus réaliste), mais temps de jeu +1,3 min, essais +0,82 ± 0,58, points +3,0 ± 3,6.
+- Près de la ligne, l'attaque n'est pas anormale : depuis un ruck à moins de 5 m, une phase donne un essai 20 % du temps
+  (72 % un nouveau ruck, 8 % une perte de balle). Entre 5 et 12 m : 9 %.
+- Les statistiques individuelles sont dans les repères réels : franchissements 16, plaquages manqués 38, défenseurs battus
+  38, environ 0,4 essai par franchissement, 3,7 m par course. Le surplus d'essais (≈ +10-15 %) est diffus. Tout ce qui
+  retire un arrêt ou une perte de balle le fait monter.
+
+**Autre piste essayée, non conservée.** Grattage au ruck moins fréquent (12,9 → 8,5 ballons grattés par match, repère réel
+~4-6) : points +2,3 ± 2,8. L'attaque qui garde le ballon finit par marquer. Le grattage reste haut, mais il équilibre une
+attaque encore trop efficace.
+
+### P2-133. Marque (loi 17) : environ une par match, et annoncée seulement quand elle a lieu
+- **Statut : CORRIGÉ (moteur)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`TAUX_MARQUE`, `TAUX_MARQUE_ENVOI`,
+  `_traiterCoupFranc`), `server/test-invariants.js`.
+
+**Constat (20 matchs).** Environ 5 marques par match :
+- 35 % des réceptions propres dans ses 22 donnaient une marque ;
+- 50 % sur coup d'envoi.
+
+En vrai, on en voit à peine une par match : le receveur joue ou dégage directement. De plus, le message « Marque, équipe X
+obtient un coup franc » s'affichait aussi sur chaque coup franc sifflé en mêlée.
+
+**Correction.**
+- Taux de marque : 12 % en jeu courant et 15 % sur coup d'envoi, soit 0,85 marque par match.
+- Le coup franc de mêlée a son propre message.
+
+**Mesures.** Sur 100 matchs appariés : points −0,5 ± 3,0, essais −0,23 ± 0,46. Calibration (graines 1 à 20) : 14/14,
+points 59,5, essais 6,5.
+
+**Tests.**
+- Entre 0,2 et 1,6 marque par match, et aucun coup franc de mêlée annoncé comme une marque. L'ancien moteur échoue (5,33).
+- Le test des essais de pénalité admet aussi la mêlée dominante écroulée sur la ligne (voie légitime, loi 8.3). Il avait
+  échoué sur un tel cas.
+
+**Barrières.** Invariants 109/109 (dont le test corrigé), 16 suites, calibration 14/14, navigateur 511/0.
+
+**Piste essayée, non conservée.** Pénalité à moins de 5 m : choix de la mêlée par le capitaine dans 45 % des cas, au lieu
+du jeu rapide systématique. Effet nul sur 100 matchs (points −0,1 ± 1,7) : la situation est trop rare (environ 1 par
+match).
+
+### P2-132. Mêlée sans le n°9 exclu ; le joueur exclu quitte l'écran
+- **Statut : CORRIGÉ (moteur, affichage)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_demiDeMeleeDisponible`, `_formerMelee`,
+  `_meleeNeufs`, `_meleePlacerPaquets`, sortie de mêlée), `docs/js/renderer.js`, `server/test-melee.js`,
+  `server/test-invariants.js`.
+
+**Constat (révélé par `test-melee` M11).** Le n°9 de l'équipe qui introduisait était en carton jaune. La mêlée le
+désignait quand même : il restait figé hors du jeu, et le ballon l'attendait, posé à 21 m du tunnel, pendant les 44 s de
+mise en place. Le défaut existait déjà ; il devient plus fréquent maintenant que la faute délibérée sur sa ligne donne un
+carton (P2-129), car celui-ci tombe souvent sur le 9, joueur le plus proche du ruck.
+
+Second défaut visible : le rendu dessinait le joueur exclu, planté immobile sur le terrain pendant ses dix minutes.
+
+**Correction.**
+- Si le 9 est exclu, un autre joueur (ailier, centre, flanker…) rejoint le tunnel et introduit. Il ne se place plus dans
+  la ligne des trois-quarts.
+- Le rendu ne dessine plus les joueurs exclus.
+
+**Tests.**
+- Mêlée avec le n°9 exclu : le ballon est confié à un remplaçant, au tunnel à « Crouch », et la mêlée est introduite.
+  L'ancien moteur échoue.
+- `test-melee` ne suit plus que les mêlées où le maillot n°9 introduit, puisque ses tests suivent ce maillot.
+- M22 élargi de 6 à 12 graines, seuils inchangés. La force des packs est tirée à chaque match : la part de mêlées
+  dominées varie de 0 à 44 % d'un match à l'autre. Sur 6 graines, le même moteur donnait 5 % sur un lot et 18 à 22 %
+  sur les suivants.
+
+### P2-131. Touche dans les 22 : la défense peut saquer le sauteur
+- **Statut : CORRIGÉ (moteur)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (réception de touche, `_plaquerSurPlace`),
+  `docs/js/constants.js`, `server/test-invariants.js`.
+
+**Constat (50 matchs).** Une touche gagnée à moins de 10 m de la ligne finissait en essai 47 % du temps (repère réel
+~35-40 %). La défense n'avait aucune parade au maul porté.
+
+**Correction.** Dans les 22, sur un maul tenté, la défense plaque une fois sur quatre le sauteur à la réception, avant que
+ses avants se lient (« sacking »). Il n'y a alors pas de maul, mais un regroupement au sol. Nouvel événement
+`TOUCHE_SAQUEE` (🛑).
+
+**Mesures.**
+- Conversion des touches gagnées à moins de 10 m : 34 % (47 % avant). Entre 10 et 22 m : 22 % (27 % avant).
+- Sur 100 matchs appariés, score inchangé : essais −0,04 ± 0,53, points +0,8 ± 3,4. L'attaque qui perd son maul garde le
+  ballon et marque plus tard. Ce n'est donc pas un levier de score, mais une parade défensive réaliste.
+
+**Tests.** Le test du maul à 5 m compte désormais le maul tenté (formé ou saqué). Le sauteur doit être saqué au moins
+15 fois sur les touches du scénario ; l'ancien moteur échoue (0).
+
+**Pistes écartées dans cette passe** (mesurées, non conservées) :
+- Ballon tenu dans l'en-but au milieu de deux défenseurs : effet négligeable, la situation est trop rare.
+- 30 % des pénalités entre 22 et 45 m jouées en touche plutôt qu'aux poteaux : essais +0,77, points +1,9. Le maul au coin
+  rapporte plus que les trois points.
+
+**Piste ouverte.** Environ 9,5 pénalités ou coups francs sont joués vite par match ; dans les 22, ils finissent en essai
+une fois sur deux. À analyser, choix et repères réels à l'appui.
+
+### P2-130. Dégagement en touche à 35 m, receveur au point de sortie, touche rapide conservée
+- **Statut : CORRIGÉ (moteur)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_tenterCoupDePiedJeu`,
+  `_tickCoupDePiedJeu`, `_preparerToucheRapide`), `server/test-invariants.js`.
+
+**Constat.**
+- Un coup de pied en touche portait à 15-30 m. Depuis ses 22, il ne gagnait que 27 m et rendait la touche vers ses 40 m,
+  à deux pas des 22 adverses. En vrai, un ouvreur ou un arrière gagne 30 à 45 m.
+- Pendant le vol, les deux receveurs couraient derrière le ballon en l'air, pas vers son point de chute.
+
+**Correction.**
+- Portée du coup de pied en touche : 25 à 45 m.
+- Sur un coup de pied en touche, le premier receveur file au point de sortie. Le second se place à 10 m à l'intérieur,
+  pour recevoir la touche rapide.
+- Le ballon d'une touche rapide se récupère jusqu'à 18 m (même ballon, que personne d'autre n'a touché).
+
+Sans ces deux derniers points, les dégagements plus longs avaient fait disparaître la touche rapide : 0 en 12 matchs.
+
+**Mesures.**
+- Dégagement depuis ses 22 : 35 m gagnés (27 avant).
+- Sur 100 matchs appariés : points −2,8 ± 3,5, touches +2,1 (27,8).
+- Touches rapides : environ 0,7 par match, comme avant.
+- Calibration (graines 1 à 20) : 14/14, points 58,5, essais 6,7.
+
+**Tests.**
+- Dégagement en touche depuis ses 22 : gain moyen d'au moins 30 m. L'ancien moteur échoue (22,9 m).
+- Le test des touches rapides, déjà existant, détectait leur disparition.
+- Test BUG-RM-010 : marge du sifflet portée à 120 s, car depuis la loi 5.7 (P2-128) la dernière action se joue.
+
+**Barrières.** Invariants 107/107, 16 suites, calibration 14/14, navigateur 511/0.
+
+**Erreur de mesure notée.** L'événement `ENTREE_22` est aussi émis quand un coup de pied tombe dans les 22 : il ne compte
+pas les seules possessions entrées dans les 22. Ne pas l'utiliser comme tel.
+
+### P2-129. Essai de pénalité seulement quand un essai probable est empêché (loi 8.3)
+- **Statut : CORRIGÉ (moteur, règle)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_traiterPenalite`, `_maulDetecterFautes`),
+  `server/test-invariants.js`.
+
+**Constat (40 matchs).** 0,75 essai de pénalité par match, chacun avec un carton jaune, pour environ 0,1 à 0,15 en vrai.
+- 0,35 venait d'un tirage au hasard : une pénalité sur quatre à moins de 5 m, quelle que soit la faute.
+- 0,40 venait de mauls lancés écroulés dans les 5 m. Ces mauls y restaient environ 5 s en mouvement, avec 4 %
+  d'écroulement par seconde : 19 % d'entre eux finissaient en essai de pénalité.
+
+**Correction.**
+- La faute délibérée sur sa propre ligne vaut un carton jaune (loi 9.11), puis la pénalité se joue normalement.
+- L'essai de pénalité reste réservé au maul lancé écroulé, seul cas où le moteur établit qu'un essai probable a été
+  empêché.
+- L'écroulement d'un maul lancé dans les 5 m passe de 4 à 2 % par seconde.
+
+**Mesures.**
+- Essais de pénalité : 0,28 par match.
+- Sur 100 matchs appariés : points −0,1 ± 1,8, essais des avants +0,40 ± 0,22. Les essais de pénalité deviennent de vrais
+  essais de maul ou de pick-and-go.
+
+**Test.** Sur 16 matchs : aucun essai de pénalité hors maul écroulé, au plus 0,35 par match, et la faute délibérée sur sa
+ligne reste sanctionnée d'un carton. L'ancien moteur échoue.
+
+**Note.** La calibration (graines 1 à 20) passait à 66,2 points avec ce seul changement. P2-130, qui suit, la ramène à
+58,5.
+
+### P2-128. Sonnerie (loi 5.7) : la dernière action se joue jusqu'au ballon mort
+- **Statut : CORRIGÉ (moteur, règle)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`tick`, `_ballonMortApresSonnerie`,
+  `_accorderPenaliteTouche`, `_tickPorte`, `choisirActionPorteur`), `docs/js/constants.js`, `docs/js/club.js`,
+  `docs/REGLES_RUGBY.md`, `server/test-invariants.js`.
+
+**Constat (30 matchs).** Mi-temps et fin du match tombaient à 40:00 et 80:00 pile, quel que soit le jeu.
+- 29 fins de période sur 60 coupaient le jeu en plein mouvement : une course, un ruck, un maul ou un coup de pied en
+  l'air.
+- 9 autres tombaient sur une mêlée ou une touche déjà accordée, jamais jouée.
+- La touche d'une pénalité tapée en touche à 40:00 n'était pas jouée non plus.
+
+Le défaut a été révélé par un test du ballon de pénalité en touche, dont le suivi enjambait la mi-temps.
+
+**Correction.**
+- Un événement `SONNERIE` (bannière 🔔) annonce la dernière action.
+- La période se termine au premier ballon mort : coup d'envoi après un point, mêlée ou touche nouvellement accordée.
+- Une mêlée ou une touche déjà accordée se joue, comme la touche d'une pénalité tapée en touche après la sonnerie.
+- L'équipe qui veut finir tape en touche : à la mi-temps depuis son camp, en fin de match quand elle mène. L'équipe
+  menée ou à égalité garde le ballon en main.
+- Les minutes jouées sont comptées au chronomètre officiel : un match complet reste 80 minutes.
+
+**Mesures (100 matchs appariés, par rapport à l'état d'avant).**
+
+| Mesure | Écart |
+|---|---|
+| Points | −0,9 ± 2,7 |
+| Essais | −0,07 ± 0,39 |
+| Fin du match | 80:40 en moyenne (+0,5 min) |
+
+Calibration (graines 1 à 20) : 14/14, points 64,8. Sans le dégagement de l'équipe qui veut finir, les points montaient
+à 66,5, au-dessus du plafond.
+
+**Défaut révélé au passage et corrigé.** Pénalité jouée vite à 2 m de l'en-but : toute la défense est hors-jeu (elle
+doit revenir derrière sa ligne). Deux voies laissaient pourtant un fautif plaquer :
+- faute de défenseur en jeu, le moteur retombait sur la liste complète ;
+- le plaquage de sauvetage sur la ligne ne filtrait pas les hors-jeu.
+
+Les deux sont corrigées.
+
+**Tests.**
+- Loi 5.7 sur 12 matchs : jamais de fin de période ballon vivant, ni de mêlée ou touche accordée et non jouée. L'ancien
+  moteur échoue sur 20 cas.
+- Sonnerie : l'équipe qui mène tape en touche au moins 18 fois sur 20, la menée au plus 4 fois.
+- Pénalité jouée vite à 2 m : aucun fautif ne plaque. L'ancien moteur échoue (3 cas).
+- Le test de la loi 10 identifie désormais le plaqueur par son compteur individuel. Avant, un hors-jeu simplement voisin
+  du plaquage d'un coéquipier en jeu était compté comme plaqueur.
+- Tests bruités élargis, seuils inchangés :
+  - part des coups de pied du 9 : 32 graines (lots de 16 : 19,9 % puis 24,6 % sur le même moteur) ;
+  - interceptions : 24 graines (0,33 par match sur les 12 premières, environ 1 sur 48).
+
+**Barrières.** Invariants 105/105, 16 suites, calibration 14/14, navigateur 511/0.
+
+**Limite.** La seconde période repart du chrono réel (40:40, par exemple) : elle est raccourcie d'autant.
+
+### P2-127. Maul : le pack pousse presque entier, en bloc compact
+- **Statut : CORRIGÉ (moteur)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_maulJoueursLies`, `_maulGererLiaisons`),
+  `server/test-invariants.js`.
+
+**Constat (vu à l'écran, 1400×1000 et 390×844).** Seuls 5 avants par équipe se liaient au maul, alignés sur une ligne
+de 3 m de large. Les piliers des deux équipes restaient à regarder depuis la touche.
+
+**Correction.**
+- 7 avants par équipe se lient.
+- Le maul forme un bloc en rangées de trois, l'une derrière l'autre.
+
+**Mesures.**
+
+| Mesure | Avant | Après |
+|---|---|---|
+| Avants à moins de 2,5 m du maul (après 2 s) | 5,0 | 6,4 (attaque), 6,6 (défense) |
+| Avancée du maul | 12,6 m | 13,0 m |
+| Durée du maul | 15 s | 16 s |
+
+Pénalités et mêlées sur maul inchangées. Sur 100 matchs appariés : essais +0,09 ± 0,56, points +3,4 ± 3,7, temps de jeu
+identique.
+
+**Test.** Maul sur touche à 5 m : au moins 6 avants de chaque équipe à moins de 2,5 m. L'ancien moteur échoue (5,0).
+
+### P2-126. Touche à moins de 10 m de l'en-but : le pack monte le maul — bugs.md QA-RM-003
+- **Statut : CORRIGÉ (moteur)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (réception de touche, `_tickTouche`),
+  `server/test-invariants.js`.
+
+**Constat (50 matchs).**
+- Touches gagnées dans les 22 m adverses : environ 3,9 par match.
+- À moins de 10 m de la ligne, le maul n'était monté que 43 % du temps, exactement comme à 16 m.
+- Ces touches ne donnaient un essai que 29 % du temps.
+
+En vrai, le maul porté depuis une touche à 5 m est l'arme principale des avants près de l'en-but.
+
+**Correction.** À moins de 10 m de la ligne adverse, le taux de maul de la consigne de touche est multiplié par 1,7
+(plafond 95 %) :
+- réglage de base : 45 % → 77 % ;
+- consigne « jeu au sol » : 15 % → 26 % ;
+- consigne « conquête » : 95 %.
+
+Entre 10 et 22 m, rien ne change.
+
+**Mesures.**
+- Sur 50 matchs : essais sur ces touches 0,52 → 0,90 par match (29 % → 49 %).
+- Sur 100 matchs appariés :
+
+| Mesure | Écart |
+|---|---|
+| Essais | −0,07 ± 0,31 |
+| Points | −1,2 ± 2,1 |
+| Rucks | −2 ± 2,5 |
+| Passes | −2,6 ± 4,6 |
+| Temps de jeu | inchangé |
+
+L'essai vient plus souvent du pack près de la ligne, sans gonfler le score.
+
+**Test.** Touche jouée à 5 m puis à 16 m, sur 80 graines : maul ≥ 60 % à 5 m, entre 30 et 60 % à 16 m, et la consigne « jeu
+au sol » en fait au moins 25 points de moins. L'ancien moteur échoue (43 % à 5 m).
+
+**Test bruité élargi.** Le gain après un franchissement passe de 16 à 48 graines, avec le même seuil de 12 m. Des lots de
+16 graines du même moteur donnaient de 12,0 à 15,1 m. Sur 96 matchs : 13,5 m avant, 13,3 m après.
+
+### P2-125. Point de départ d'un essai : la marque de touche ou de mêlée
+- **Statut : CORRIGÉ (mesure)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_sequence` dans `tick`, touche rapide),
+  `server/test-invariants.js`.
+
+**Constat.** Le point de départ des essais (QA-RM-007, `depuis`) prenait la position du porteur au moment où la phase
+arrêtée commençait. Pour une touche sur pénalité, c'était la position du botteur. Sur 6 matchs, 14 essais sur 14 issus
+d'une touche ou d'une mêlée avaient un mauvais point de départ, jusqu'à 39 m d'écart. La mesure annonçait 45 % d'essais
+partis de plus de 50 m.
+
+**Correction.**
+- Touche : la marque de touche.
+- Touche rapide : le point de relance.
+- Autres phases : la position du premier porteur de l'équipe.
+
+Le déroulé des matchs est identique.
+
+**Mesure corrigée (20 matchs).**
+
+| Point de départ | Essais par match |
+|---|---|
+| Dans les 22 | 1,9 |
+| 22-50 m | 2,9 |
+| Au-delà de 50 m | 1,8 |
+
+**Test.** Le point de départ de chaque essai de touche ou de mêlée est celui de la réception ou de la sortie de mêlée,
+à 3 m près. L'ancien moteur échoue.
+
+### P2-124. Courses : une par ballon porté, pas une par contact
+- **Statut : CORRIGÉ (statistiques)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_compterCourse`), `docs/REGLES_RUGBY.md`,
+  `server/test-invariants.js`.
+
+**Constat.** Calibration 13/14 : 296 courses au contact par match pour une fourchette de 170 à 280 (France-Irlande 2026 :
+255). Mesuré sur 10 matchs : 46 courses par match étaient comptées une deuxième fois au même porteur, qui avait cassé
+un plaquage puis s'était fait reprendre. En analyse de match, c'est une course et un défenseur battu.
+
+**Correction.** Une course par ballon reçu, remise à zéro dès que le ballon change de mains. Les défenseurs battus,
+les plaquages tentés et tout le déroulé du match sont inchangés (6 matchs identiques au pas près).
+
+**Mesure.** Courses 296 → 261 sur les graines 1-20 ; calibration 14/14.
+
+**Test.** Pas de deuxième course au même porteur sans qu'il ait lâché le ballon ; tout porteur plaqué qui fait un ruck
+a sa course ; courses individuelles = courses d'équipe. Échoue sur l'ancien moteur (81 doubles) et sur un mutant qui
+ne remet pas le compteur à zéro (10 porteurs plaqués sans course). Barrières : invariants 99/99, 16 suites,
+navigateur 511/0.
+
+### P2-123. Une pénalité jouée vite se joue vraiment vite
+- **Statut : CORRIGÉ (moteur)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_lancerJeuRapidePenalite`,
+  `_tickJeuRapidePenalite`, jugement du hors-jeu au ruck), `server/test-invariants.js`, `server/test-ruck.js`.
+
+**Constat (retour joueur).** « Pas d'avance rapide, juste que le jeu soit joué plus rapidement. Là tous les joueurs sont
+en place et on attend. » Puis : « On peut jouer vite une pénalité comme prendre plus de temps. » Le tempo doit venir de la
+décision de l'équipe, pas d'une attente fixe. Mesuré : une pénalité jouée vite attendait ~14 s que tous les fautifs aient
+reculé de 10 m avant la remise en jeu.
+
+**Correction.** La pénalité jouée vite repart dès que le tapeur est sur la marque (environ 1 s, plafond 40 s). Les
+défenseurs encore dans les 10 m sont hors-jeu (loi 20.14) : ils ne peuvent pas plaquer tant qu'ils ne sont pas revenus,
+et ne sont pas rejugés une deuxième fois au ruck suivant. Les tirs au but et les pénalités en touche gardent leur temps :
+c'est le choix de prendre son temps. Les avances rapides P2-121 et P2-122 sont retirées.
+
+**Mesure (100 graines appariées).** Remise en jeu ≤ 3 s au lieu de ~14 s. Essais +0,56 ± 0,50, points +3,2 ± 3,0, temps de
+jeu effectif inchangé. Calibration : 13/14 (inchangée, porté légèrement au-dessus du plafond).
+
+**Tests.** Loi 20.14 réécrite : jeu rapide en ≤ 3 s, le fautif encore dans les 10 m est hors-jeu et ne plaque pas
+(échoue sur l'ancien moteur : 14,2 s). Échantillons élargis pour deux tests bruités (mètres gagnés : 40 graines ; R12 :
+12 matchs), seuils inchangés.
+
+### P2-122. Après une faute, plus de longues secondes figées à l'écran
+- **Statut : ÉCARTÉ (retiré, remplacé par P2-123)** : le joueur ne veut pas d'avance rapide de l'affichage, mais un jeu
+  réellement joué plus vite.
+- Fichiers concernés : `docs/js/main.js` (`arretDeJeu`, `deplacementJoueurs`, `ACCEL_IMMOBILE`, boucle de rendu),
+  `server/test-parcours-navigateur.js`.
+
+**Constat (retour joueur, précisant P2-121).** « Quand un joueur fait une faute, il y a une pénalité et là tout se fige,
+personne ne bouge pendant de longues secondes. » Mesuré sur 6 matchs : après chaque pénalité, les 30 joueurs restent
+immobiles plusieurs secondes.
+- Routine du buteur : jusqu'à 46 s de jeu sans un mouvement.
+- Touche après une pénalité tapée en touche : 17 à 21 s.
+- Plancher d'attente d'une pénalité jouée vite : 3 à 6 s.
+
+Les durées sont réglementaires. Les raccourcir dans la simulation donnerait plus de jeu courant en 80 minutes, donc plus
+de points : on ne les touche pas.
+
+**Correction (affichage).** Pendant un arrêt de jeu (tir, transformation, coup d'envoi, essai, mi-temps, touche avant le
+lancer, formation de mêlée, recul de pénalité), si aucun joueur n'a bougé au dernier pas (moins de 0,3 m cumulés),
+l'affichage passe à x20. Dès qu'un joueur bouge ou que le ballon vole, on revient à la vitesse de mise en place : le reste
+de l'avance est rendu dans la même image, pour ne pas sauter le début de l'action.
+
+**Mesure (écran x1, 4 matchs).**
+
+| Par match | Avant | Après |
+|---|---|---|
+| Joueurs figés pendant un arrêt | 430 s | 99 s |
+| Plus long gel | 15,2 s | 3,8 s (1,0 s en x4) |
+| Durée totale à regarder | 48,5 min | 40,8 min |
+
+Simulation, chronomètre et statistiques inchangés.
+
+**Tests.** Navigateur : avance très rapide pendant un arrêt immobile ; jamais en jeu, dans un ruck, sur une touche lancée
+ou un ballon en vol. Suite complète 516/0 ; `match-interactif` OK.
+
+### P2-121. Temps morts accélérés à l'écran : coup d'envoi, pénalité jouée vite, routine du buteur
+- **Statut : ÉCARTÉ (retiré, remplacé par P2-123)** : même raison que P2-122.
+- Fichiers concernés : `docs/js/main.js` (`multiplicateurMiseEnPlace`, exposée sur `RMMain`),
+  `server/test-parcours-navigateur.js`.
+
+**Constat (retour joueur : « certaines phases sont trop longues, comme les pénalités »).** Mesuré à l'écran en x1 sur
+6 matchs :
+
+| Temps mort | Fréquence | Durée à l'écran | Avance rapide |
+|---|---|---|---|
+| Mise en place du coup d'envoi et du renvoi aux 22 | ~13 par match | 8 à 10 s | aucune |
+| Recul des 10 m d'une pénalité jouée vite | 3,7 par match | 8 s | aucune |
+| Routine du buteur (50 s de jeu) | — | 10 s | x5 |
+
+Les durées de la simulation sont réglementaires (60 s pour un tir au but en vrai) et protégées par des tests de loi :
+on ne les raccourcit pas.
+
+**Correction.** Avance rapide de l'affichage jusqu'à la frappe : x5 pour le coup d'envoi et le renvoi, x5 pour le recul
+de la pénalité jouée vite, x8 au lieu de x5 pour la routine du buteur. Environ 2 s, 1,6 s et 6 s à l'écran en x1. La
+frappe, le vol du ballon et tout le jeu courant restent à la vitesse choisie. Chronomètre, temps de jeu effectif et
+statistiques sont inchangés.
+
+**Tests.** Navigateur : chaque temps mort est accéléré, jamais le jeu courant, un ruck ou le vol du ballon. Suite
+complète 514/0 ; `match-interactif` et `feuille-de-match` OK.
+
+### P2-120. Pick-and-drive au milieu du terrain : essayé puis retiré — bugs.md BUG-RM-005
+- **Statut : ÉCARTÉ (moteur revenu à l'état de P2-119)**
+
+**Essai.** Entre les deux 22, 20 % des sorties de ruck étaient jouées par un avant qui ramasse et charge droit sur le
+défenseur le plus proche (sans passe ni coup de pied pendant 1,5 s), les gardes du ruck plaquant tout de suite.
+
+**Défaut trouvé au passage, et qui expliquait l'échec de P2-118.** La remise à zéro des gardes était annulée par la
+récupération de fin de ruck, appliquée après elle. Le ramasseur partait alors dans le vide : contact après 2,8 s,
+7,9 m de gain, 23 franchissements pour 176 ramassages. Une fois l'ordre corrigé : contact après 0,5 s, gain de 1,1 m,
+1 franchissement pour 253.
+
+**Comparaison sur 100 matchs appariés.**
+
+| Mesure | Écart |
+|---|---|
+| Passes | −31 ± 11 (384) |
+| Points | +0,6 ± 3,5 |
+| Essais | +0,2 ± 0,5 |
+| Essais d'avants | −0,46 ± 0,38 |
+
+**Pourquoi retiré.** Le changement déplace trop la structure du jeu : 6 invariants échouent.
+- Séquence de jeu courant 2,79 s, sous le plancher de 2,8 s.
+- Gain après une percée de 12 m en 6 s, sous les 15 m attendus.
+- Passes décisives 6 pour 20 essais.
+- Écart de mètres entre avants puissants et légers trop faible (1,10).
+- Touches rapides rares (2 en 12 matchs).
+- Une pénalité en touche frappée hors de la marque.
+
+**À retenir pour un prochain essai.** Appliquer la remise à zéro des gardes après `_imposerRecuperationRuck`, et
+réduire la part du pick-and-drive (5 à 10 %) pour limiter ses effets sur le reste du jeu.
+
+### P2-119. Après un franchissement, les défenseurs dépassés poursuivent le perceur
+- **Statut : CORRIGÉ (moteur)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (déplacement défensif en jeu courant ;
+  pénalité tapée en touche), `server/test-invariants.js`.
+
+**Constat (10 matchs).**
+- 10,6 franchissements par match ; 32 % se terminent par un essai en moins de 20 s (les commentaires du moteur donnent
+  20 à 25 % en vrai) ; gain moyen 13,9 m.
+- Le défenseur qui arrête le plus souvent le perceur est l'arrière (24 arrêts sur une soixantaine).
+- Les défenseurs déjà dépassés continuaient de « tenir leur ligne » à 85 % de leur vitesse : il en restait 3,0 à moins
+  de 10 m du perceur dans la première seconde, 1,1 / 0,7 / 0,4 dans les secondes suivantes.
+
+**Correction.** Premier rideau battu, les défenseurs dépassés à moins de 25 m sprintent vers le porteur. L'arrière garde
+sa logique de dernier rideau.
+
+**Mesures.**
+- Sur 10 matchs : 9,2 franchissements, 26 % en essai, gain inchangé (14,0 m) ; défenseurs à moins de 10 m :
+  4,1 / 1,5 / 1,0 / 0,6.
+- Sur 100 matchs appariés :
+
+| Mesure | Avant | Après | Écart |
+|---|---|---|---|
+| Essais | 7,0 | 6,4 | −0,61 ± 0,51 (significatif) |
+| Points | | | −1,9 ± 3,3 (des pénalités en plus compensent) |
+| Passes | | 415 | +17 ± 10 |
+| Rucks | | | +8 ± 5 |
+
+- Calibration 13/14 : passes 407 sur les graines 1-20, points 61,5.
+
+Le surplus de passes et de rucks est la contrepartie attendue : une percée reprise devient un ruck et une phase de plus.
+Il alourdit BUG-RM-005 (trop de passes), qui reste ouvert.
+
+**Test.** Scénario figé : trois défenseurs dépassés de 3 m doivent finir à moins de 4,5 m du perceur en 2 s (5,9 m avec
+l'ancien moteur).
+
+**Bug révélé par le nouveau tirage et corrigé.** Un porteur est plaqué en touche, puis l'avantage revient à la sanction
+dans le même instant. La pénalité tapée en touche ramenait alors le ballon à une marque située jusqu'à 40 m, en 0,7 s,
+soit 57 m/s (1 cas sur 122). Corrections :
+- vitesse du ballon plafonnée à 25 m/s ;
+- frappe une fois le ballon posé sur la marque ;
+- la touche rapide préparée pour l'adversaire est annulée.
+
+**Barrières.** Invariants 98/98, 16 suites, calibration 13/14 (courses 285,8), navigateur 511/0.
+
+### P2-118. Passes et attaque près de la ligne : mesures, et pick-and-go essayé puis retiré — bugs.md QA-RM-003 / BUG-RM-005
+- **Statut : MESURÉ — essai ÉCARTÉ, aucun changement de jeu conservé**
+- Fichiers concernés : aucun (le moteur est revenu à l'état de P2-117).
+
+**Mesures du moteur actuel (8 matchs).** Les chiffres de l'audit (504 passes) sont anciens ; on mesure aujourd'hui
+386 passes par match.
+
+| Passeur | Passes par match |
+|---|---|
+| n°9 | 178 |
+| n°10 | 62 |
+| centres | 38 |
+| autres | ≈ 50 |
+
+Le 9 joue environ 91 % des sorties de ruck (≈ 196 rucks par match), jusque dans les cinq mètres.
+
+| Phase de jeu courant suivie d'un ruck | Phases par match | Gain moyen |
+|---|---|---|
+| 0 passe | 55 | 4,5 m |
+| 1 passe | 75 | 2,5 m |
+| 2 passes | 43 | 2,9 m |
+| 3 passes et plus | 23 | 3,3 m |
+
+**Essai : pick-and-go à la sortie du ruck.** Dans les 22 adverses, un avant debout au pied du ruck ramasse et charge
+(45 % des sorties à 5 m, 18 % dans les 22). Trois versions ont été comparées sur 100 matchs appariés :
+
+| Version | Points | Essais d'avants | Passes |
+|---|---|---|---|
+| Pick-and-go seul | +6,2 ± 3,1 | +0,75 ± 0,41 | −6,9 ± 8,6 |
+| + gardes du ruck autorisés à plaquer le ramasseur | +5,3 ± 3,0 | +0,65 ± 0,40 | |
+| + plaquage plus sûr à moins de 10 m de son en-but | +5,8 ± 3,1 | | |
+| + tir au but choisi à 70 % au lieu de 85 % | +5,4 ± 3,4 | | |
+
+Pour la version avec défense sur sa ligne, les points se décomposent ainsi : essais +2,8, transformations +0,7,
+pénalités +2,1. La pression au ras crée aussi des pénalités de près.
+
+**Décision.** Retiré. Les essais d'avants augmentent, mais en s'ajoutant aux autres au lieu de les remplacer, sur un
+moteur dont les points sont déjà hauts (≈ 58-62). Les passes ne baissent pas de façon significative : BUG-RM-005 n'est
+pas résolu par ce levier.
+
+**Piste suivante.** Réduire l'efficacité des attaques de loin, qui marquent encore la majorité des essais (seuls 18 %
+des essais partent d'une séquence née dans les 22), avant d'ajouter des options près de la ligne. Les deux tickets
+restent ouverts.
+
+### P2-117. Ballon, porteur et possession concordent à chaque instant — bugs.md QA-RM-002
+- **Statut : CORRIGÉ (moteur)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (choix du tir au but dans `_traiterPenalite`,
+  sortie de ruck), `server/test-invariants.js`.
+
+**Mesure (4 matchs, chaque pas de 0,1 s).** On vérifie quatre choses à chaque instant : le joueur qui tient le ballon
+est de l'équipe en possession, le ballon affiché est dans ses mains, le porteur en jeu courant est debout, et le ballon
+ne saute pas à l'écran. Deux défauts réels :
+- **Pénalité au but : 3 457 instants.** La possession restait au camp fautif pendant tout le tir : le buteur tenait le
+  ballon d'une équipe « sans ballon ». Le jeu rapide, lui, rendait déjà le ballon au bénéficiaire.
+- **Porteur au sol : 106 instants.** Quand le n°9 était lui-même le joueur plaqué, la sortie de ruck cherchait un
+  relayeur sans exclure les joueurs à terre. Le plaqué, encore allongé, recevait le ballon et repartait.
+
+**Correction.**
+- La possession passe à l'équipe qui tire au but (loi 20).
+- À la sortie de ruck, le relayeur est un joueur debout.
+
+**Après correction.** 0 et 0 sur les mêmes 4 matchs. Il reste 4 sauts du ballon de plus de 3 m :
+- 3 viennent d'un plaquage en touche près de l'en-but : la marque de touche est ramenée à 5 m de la ligne (loi 18), et
+  le rendu fait glisser le ballon à 55 m/s, donc rien ne se téléporte à l'écran ;
+- 1 survient au coup de sifflet final.
+
+**Effet sur le jeu (100 matchs appariés).** Aucun écart significatif : points −3,0 ± 3,8, essais −0,2 ± 0,6, mêlées
++0,7 ± 0,9.
+
+**Test.** Invariant tick par tick sur 3 matchs : porteur toujours de l'équipe en possession, jamais au sol en jeu
+courant, échantillon avec pénalités au but. Il échouait sur les deux défauts.
+
+**Barrières.** Invariants 97/97, 16 suites, calibration 13/14 (courses 286,8).
+Navigateur 511/0, après correction d'un test intermittent : le test du bandeau d'arbitre sur téléphone comparait le
+bandeau à l'étendue théorique du terrain. Quand la caméra suit le jeu, une extrémité du terrain sort pourtant du canvas.
+Il mesure désormais le terrain visible : 30 passages sur 30 sous charge, contre 27 sur 30 avant.
+
+### P2-116. Définitions et rapprochement des statistiques — bugs.md QA-RM-007
+- **Statut : VALIDÉ (événements, invariant, mesure publiée)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (événements de but et d'essai, `_sequence`,
+  `_infoEssai`), `server/simulate-batch.js`, `docs/js/club-feuille-de-match.js`, `docs/js/club-archives-matchs.js`,
+  `docs/ANALYSE_MATCH_REEL.md`, tests invariants et feuille de match.
+
+**Constat.** Les buts et les essais ne pouvaient pas être décomposés : leurs événements ne disaient ni la distance, ni le
+buteur, ni le marqueur, ni d'où venait l'action. Le point du ticket sur le chronométrage (mêlée et touche exclues en
+entier) était déjà corrigé par P2-59 : elles comptent depuis l'introduction et le lancer.
+
+**Correction.**
+- Chaque but porte son buteur, sa distance réelle aux poteaux et son décalage. Le fil le dit : « réussi à 38 m par le n°10 ».
+- Chaque essai porte son marqueur, l'origine de sa séquence (touche, mêlée, coup d'envoi, pénalité, jeu courant, coup
+  de pied à suivre, maul), la distance de départ et le nombre de rucks.
+- La feuille de match affiche le numéro du marqueur, et l'archive le garde.
+- `simulate-batch` publie les décompositions ; mesure sur 12 matchs dans `docs/ANALYSE_MATCH_REEL.md`.
+- Le déroulé des matchs est inchangé (empreinte identique sur 4 graines).
+
+**Tests.**
+- Invariant : réussis ≤ tentés pour passes, plaquages, transformations, pénalités et drops, par équipe et par joueur ;
+  chaque essai et chaque but compté a son événement, avec buteur, distance, marqueur et origine.
+- E12 : marqueur affiché sur la feuille et conservé par l'archive.
+- Barrières : invariants 96/96, 16 suites, calibration 13/14 (courses 283,6), navigateur 511/0.
+
+### P2-115. Mêlée validée de bout en bout, dans les deux sens — bugs.md QA-RM-001
+- **Statut : VALIDÉ (test et captures)**
+- Fichiers concernés : `server/test-melee.js` (M25).
+
+**Constat.** Les étapes de la mêlée étaient couvertes une à une par M11 à M24 (P2-64) : ballon dans les mains du 9,
+introduction, talonnage au sol, position des 9, aucune téléportation dans la mêlée. Trois points de la réception
+manquaient : l'ordre de la chaîne complète sur de vraies mêlées de match, le passage au jeu courant, et les deux sens
+d'attaque.
+
+**Ajout.** M25, sur les mêlées de 8 matchs :
+- les états ne reviennent jamais en arrière, sauf remise en place sifflée ;
+- en sortie de mêlée, le ballon ne saute pas de plus de 1,5 m au passage au jeu courant ;
+- le jeu reprend avec le camp qui a gagné la mêlée ;
+- les deux sens d'attaque sont observés.
+
+Le test passe sans changer le moteur.
+
+**Captures.** Match rapide de 20 minutes, en 1400x1000 et 390x844 : formation, « Crouch », « Bind », « Set »,
+introduction, contestation. Aucune erreur console.
+
+**Reste.** Le paquet de seize avants est petit à l'échelle du terrain entier. Le bandeau d'arbitre recouvre en partie la
+4ᵉ ligne du fil d'événements : défaut d'affichage, sans effet sur le jeu.
+
+### P2-114. L'ouvreur distribue au lieu de porter dans la ligne
+- **Statut : CORRIGÉ (moteur)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`choisirActionPorteur`, passe avant contact).
+
+**Constat.** Après P2-112 et P2-113, le test des mètres gagnés échouait : l'ouvreur gagnait plus que les ailiers. Mesuré
+sur 40 graines, c'était déjà le cas avant ces correctifs (61 m contre 59). Les 6 graines du test ne passaient que par
+chance. Sur 62 m, 50 venaient de portages hors percée : le n°10 courait dans la ligne au lieu de servir. En vrai,
+un ouvreur gagne 20 à 40 m, les ailiers 50 à 70.
+
+**Correction.** Probabilité de passer avant le contact 0,9 → 1,5 pour le seul n°10 (centres inchangés).
+
+**Mesures (100 matchs appariés).**
+
+| Mesure | Avant | Après | Écart |
+|---|---|---|---|
+| Ouvreur (m/match) | 58 | 49 | −9,8 ± 4,7 |
+| Ailiers (m/match) | 56 | 59 | |
+| Passes | | 406 | +8,6 (plafond 420) |
+| Points | | | +1,9 ± 3,6 (non significatif) |
+
+### P2-113. L'arrière lit mieux la course d'un porteur qui a franchi
+- **Statut : CORRIGÉ (moteur)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`COUVERTURE_ARRIERE`).
+
+**Constat.** Sur 20 matchs, 59 % des essais suivaient de moins de 20 s un franchissement. Seules 11 séquences d'essai
+sur 145 partaient des 22 adverses : le moteur marquait surtout des essais de loin, et la moyenne de points (≈ 62) collait
+au plafond de la calibration (65).
+
+**Correction.** L'arrière prend la moitié de l'angle d'interception idéal (0,35 → 0,5) quand le porteur a franchi.
+
+**Mesures.**
+- Essais après franchissement : 46 %.
+- Séquences parties des 22 : 15 sur 134.
+- Points sur 100 matchs appariés : 61,9 → 59,6 (−2,3 ± 3,7), même sens à 0,65.
+- Effet secondaire : l'arrière couvre mieux, donc les ailiers gagnent environ 3 m de moins.
+
+**Leviers essayés et écartés (sans effet mesurable).** Fenêtre de percée 2,5 → 2,0 s : −1,3 ± 3,0. Offload en percée
+0,18 → 0,14 : +1,8 ± 2,4.
+
+### P2-112. Loi 11 : la passe trop plate sous pression est jugée en avant
+- **Statut : CORRIGÉ (moteur)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_passePlateJugeeEnAvant`, `_tenterPasse`),
+  `server/test-invariants.js`.
+
+**Constat.** Une passe en avant n'était sifflée que si le porteur n'avait aucune option légale : 0,14 par match sur 100
+matchs, contre 1 à 3 en vrai. `test-stats-matchs` (loi 11, plancher 0,2) échouait déjà avant les correctifs de cette
+série.
+
+**Correction.**
+- Une passe plate (receveur à moins d'un mètre en retrait), lâchée par un porteur pressé (défenseur à moins de 3 m),
+  peut être jugée en avant.
+- Le risque grandit avec la pression et la platitude, et baisse avec l'attribut « passe ».
+- Une passe nettement en retrait, ou sans pression, n'est jamais jugée en avant.
+- Mêlée adverse, avec le message « passe trop plate sous pression ».
+
+**Mesures (100 matchs appariés).**
+
+| Mesure | Avant | Après | Écart |
+|---|---|---|---|
+| Passes en avant sifflées | 0,14 | 1,26 | |
+| Points | | | −0,6 ± 3,9 |
+| Mêlées | | | +0,01 |
+| Touches | | | +0,35 |
+
+`test-stats-matchs` passe.
+
+**Tests.** Décision de l'arbitre interrogée état figé : passe plate sous pression jugée en avant entre 5 et 50 % des
+fois, jamais sans pression, jamais nettement en retrait ; un bon passeur la rate moins. Sur 8 matchs : entre 0,7 et 3
+par match.
+
+**Tests rendus robustes au passage.**
+- Élimination directe : l'égalité est tenue jusqu'à la vérification de fin.
+- Coup de sifflet : un match qui diffère est cherché sur 80 graines au plus.
+- Ces deux tests dépendaient d'une graine précise qui ne produisait plus la situation voulue une fois le tirage aléatoire
+  déplacé.
+
+### P2-111. Deux clubs distincts ne portent plus le même nom — bugs.md BUG-RM-004
+- **Statut : CORRIGÉ (mode Club)**
+- Fichiers concernés : `docs/js/club.js` (`distinguerHomonymes`), `docs/js/world.js`, `docs/js/club-pyramide-france.js`,
+  `docs/js/club-sauvegarde.js`, `server/test-parcours-club.js`.
+
+**Constat.** Le générateur tire une ville et un surnom. En comptant les autres divisions françaises, chacune des 30
+créations mesurées contenait au moins deux clubs distincts au même nom (« Solerac Dragons » deux fois au classement).
+
+**Correction.**
+- Une passe sur tous les clubs de la sauvegarde : club du joueur, adversaires, autres divisions, monde, et copies dans
+  les coupes.
+- Le premier club rencontré garde son nom ; le club du joueur garde toujours le sien. Chaque homonyme suivant reçoit un
+  qualificatif (« Union Solerac Dragons », « Stade … »).
+- Les identifiants et l'historique ne changent pas ; aucun club n'est recréé. La passe est déterministe et ne tire aucun
+  aléa : le reste de la carrière est inchangé.
+- Elle s'applique à la création, à chaque nouvelle saison (montées, descentes), quand le monde ou les autres divisions
+  sont générés, et au chargement d'une ancienne carrière.
+- Les textes déjà écrits (messages, anciennes feuilles) gardent l'ancien nom.
+
+**Mesure.** Créations avec homonymes : 30/30 avant, 0/30 après.
+
+**Tests.** Douze créations avec monde et divisions, puis trois saisons de montées et descentes : aucun doublon. Une
+ancienne carrière avec deux homonymes et une coupe se recharge avec les mêmes identifiants : le premier garde son nom,
+le second se distingue et reste reconnaissable, et la coupe suit. Le club du joueur n'est jamais renommé, et une
+seconde passe ne renomme rien.
+
+### P2-110. Championnat, chaque coupe et les amicaux ont leurs propres statistiques individuelles — bugs.md BUG-RM-009
+- **Statut : CORRIGÉ (mode Club)**
+- Fichiers concernés : `docs/js/club.js` (`LIBELLE_COMPETITION`, `libellePerimetreStats`, `accumulerStatsJoueurs`),
+  `docs/js/club-coupes.js`, `docs/js/club-amicaux.js`, `docs/js/club-competitions.js`, `docs/js/clubUI.js`,
+  `server/test-consequences-coupe-amical.js`.
+
+**Constat.** Les coupes et les amicaux du premier XV étaient cumulés sous la clé `pro`, affichée « Championnat ». Le
+cumul collectif, lui, ne comptait que le championnat : les deux classements ne parlaient pas du même périmètre.
+
+**Correction.**
+- Chaque coupe a sa clé (`coupe:<clé>`, affichée sous son vrai nom), les amicaux la leur (« Amicaux ») ; `pro` ne
+  compte plus que le championnat.
+- L'écran Statistiques d'une coupe classe les joueurs sur ses seuls matchs.
+- Les titres disent le périmètre : « Production du collectif (championnat) », « Meilleurs de la saison (toutes
+  compétitions) ».
+- Saison commencée avant la séparation : son ancien « pro » mêlé est renommé « Premier XV, toutes compétitions (avant
+  séparation) », jamais redistribué au hasard.
+
+**Tests.** K6c : séquence championnat → coupe → amical. Le championnat ne compte que lui, la coupe a sa ligne et son
+classement, l'amical ne crée pas de ligne championnat, et le total se réconcilie. K6d : ancienne fiche renommée,
+championnat reparti propre.
+
+### P2-109. La feuille de match affiche la possession chronométrée et l'archive la garde — bugs.md BUG-RM-008
+- **Statut : CORRIGÉ (feuille de match et archives)**
+- Fichiers concernés : `docs/js/club-feuille-de-match.js`, `docs/js/club-archives-matchs.js` (`compacterEtatMatch`),
+  `docs/js/matchState.js`, `server/test-feuille-de-match.js`.
+
+**Constat.** La feuille affichait une possession « estimée » par la part des rucks, avec la mention « le moteur ne
+chronomètre pas la possession ». C'était faux : le moteur la chronomètre (`possessionPct`). L'archive ne gardait ni
+possession, ni occupation, ni temps de jeu effectif, ni lignes individuelles. L'écart réel entre les deux mesures est
+petit (1,6 point en moyenne, 4 au plus) : c'est la justesse du libellé qui était en cause.
+
+**Correction.**
+- Feuille : la possession chronométrée est affichée, avec sa définition en infobulle (part du temps de jeu effectif
+  avec le ballon, minutes de jeu effectif). La ligne « Occupation » (temps passé dans le camp adverse) est ajoutée.
+- Archive au format 2 : possession, occupation, temps de jeu effectif et lignes individuelles (sans les zéros).
+- Une archive d'avant ce correctif retombe sur la part des rucks, libellée « Possession (est.) », jamais à la place d'une
+  mesure connue. Sans possession ni ruck, rien n'est affiché.
+
+**Tests.** E10 : avec 40/60 au chrono et 80/20 en rucks, la feuille montre 40/60 et sa définition. E11 : direct,
+archive, JSON et rechargement donnent les mêmes mesures ; ligne du n°10 conservée ; ancienne archive estimée et
+libellée ; aucune valeur fictive.
+
+### P2-108. Le remplaçant a ses propres statistiques et son temps de jeu — bugs.md BUG-RM-007
+- **Statut : CORRIGÉ (moteur et mode Club)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (remplacement, `remplacerJoueurEnCours`,
+  `getState`), `docs/js/club.js` (`segmentsMaillot`, `ventilationMatch`, `accumulerStatsJoueurs`), appelants
+  (`club-jour-match.js`, `club-coupes.js`, `club-amicaux.js`, `clubUI.js`), `docs/js/matchState.js`, `docs/js/main.js`,
+  tests invariants et parcours club.
+
+**Constat.** Le moteur indexait les actions par numéro de maillot. Au remplacement, l'entrant prenait le même numéro et
+le club créditait tout le match au titulaire : 12 passes avant, 1 après, 13 au titulaire, rien à l'entrant.
+
+**Correction.**
+- Au remplacement, le moteur clôt la ligne du sortant (`statsJoueursSortis`, avec l'instant de sortie) et l'entrant
+  repart d'une ligne vierge.
+- Chaque remplacement effectué est rendu avec l'identité de l'entrant (`remplacementsEffectues`, `joueurId`), qu'il
+  soit planifié ou décidé à la mi-temps.
+- Côté club, un maillot est découpé en personnes : le titulaire jusqu'à sa sortie, puis chaque entrant.
+- Chacun reçoit ses actions, ses minutes (`minutes`), son match joué, et pour l'entrant une entrée en jeu
+  (`entreesEnJeu`).
+- Fiche joueur : bloc « Temps de jeu » (minutes jouées, entrées en jeu).
+- Un entrant inconnu du club n'est crédité à personne, et surtout pas au titulaire.
+- Les anciennes statistiques (avant correctif) ne sont pas réparties après coup.
+
+**Tests.**
+- Invariants : trois remplacements, dont deux au même numéro. Sorties à l'instant prévu, identités rendues,
+  sortants plus présents égal équipe pour passes, plaquages, essais (hors essais de pénalité) et courses. Sans
+  remplacement, rien ne change.
+- Parcours club : titulaire 12 passes et 40 min, entrant 1 passe, 40 min et 1 entrée ; de bout en bout, un vrai match
+  avec deux remplacements fait le total de l'équipe et 15 x 80 minutes.
+- Navigateur 511/0 ; bloc « Temps de jeu » vérifié sur la fiche en 1400x1000 et 390x844.
+
+### P2-107. Offloads comptés comme passes tentées ; mesures lues au coup de sifflet — bugs.md BUG-RM-006/010
+- **Statut : CORRIGÉ (statistique et outils de mesure)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (offload, `jouerJusquAuSifflet`),
+  `server/test-calibration-moteur.js`, `server/simulate*.js`, `server/banc-ab.js`, `server/test-equilibre-matchs.js`,
+  `server/test-scores-abstraits.js`, `server/test-stats-matchs.js`, `server/test-invariants.js`.
+
+**Constat.**
+- Un offload comptait une passe réussie sans tentative : 266 succès pour 263 tentatives sur une équipe.
+- Les scripts s'arrêtaient à 80:00, parfois pendant une transformation (graine 4 : 31-18 lu, 33-18 au sifflet).
+
+**Correction.**
+- L'offload incrémente aussi `passesTentees`. Le jeu est inchangé : même score et mêmes actions, seule la statistique
+  change.
+- `MatchEngine.jouerJusquAuSifflet(dt)` joue jusqu'à la phase TERMINE. Si le match ne finit pas dans les 10 minutes
+  après le temps réglementaire, il lève une erreur.
+- Les scripts qui lisent le score ou les statistiques finales l'utilisent. Les boucles des invariants qui échantillonnent
+  en cours de match restent telles quelles.
+
+**Mesures.** La calibration recalculée au coup de sifflet reste à 14/14 (20 matchs) : 7,3 essais, 61,5 points,
+395 passes, 198 rucks, 16,2 mêlées, 25,2 touches. Les anciennes mesures (P2-94 et suivantes) restent valables pour leur
+date : l'écart porte sur au plus une transformation par match.
+
+**Tests.**
+- Invariants : passes réussies ≤ tentées pour chaque équipe sur 6 matchs ; les tentatives manquées ont une cause.
+- Coup de sifflet : sur 20 matchs, au moins un score lu à durée fixe diffère ; garde bornée vérifiée.
+
+**Constat annexe.** `test-scores-abstraits` S12 (moteur contre barème abstrait) échouait déjà avant ce correctif
+(7,2 essais contre 5,6-6,0) : c'est l'excès de points connu du moteur, pas une régression.
+
+### P2-106. Exporter, importer et récupérer sa carrière depuis l'accueil — bugs.md FUNC-RM-001
+- **Statut : AJOUTÉ (mode Club)**
+- Fichiers concernés : `docs/js/club-sauvegarde.js` (`sauvegardeBrute`, `nomFichierCarriere`, `analyserImport`,
+  `importerCarriere`, `supprimerSecours`, copie avant effacement), `docs/js/main.js` (carte Sauvegardes),
+  `docs/index.html`, `docs/css/style.css`, `docs/js/clubUI.js` (message de récupération), tests p0-2 et navigateur.
+
+**Constat.** La carrière ne vivait que dans le navigateur, sans moyen de l'emporter ni de la restaurer. Le message
+après un incident renvoyait « au support », alors que les données sont locales. « Repartir de zéro » effaçait sans
+copie.
+
+**Correction.**
+- Une carte « Sauvegardes » sur l'accueil, indépendante de l'état du club, donc utilisable même si la carrière ne s'ouvre plus.
+- Exporter : télécharge la sauvegarde telle qu'elle est stockée (versionnée par son champ `version`), nommée
+  `rugby-manager-<club>-saison<n>-<date>.json`.
+- Importer : le fichier est lu par `JSON.parse` uniquement, jamais exécuté. Il passe par les migrations et la
+  validation du chargement.
+- Avant d'importer, un aperçu (club, manager, saison, date, conversion d'ancien format) demande confirmation.
+- Refus expliqués, sans rien modifier : fichier vide, non-JSON, autre format, version future, carrière incomplète,
+  stockage plein.
+- La carrière remplacée est d'abord mise en copie de secours relue ; si la copie échoue, l'import est refusé.
+- Copies de secours listées (club, saison, raison, date), téléchargeables et supprimables à la demande.
+- « Repartir de zéro » garde une copie de secours.
+- Le message après incident dit où télécharger la copie.
+
+**Tests.**
+- `test-audit-p0-2.js` : aller-retour à l'identique sur un stockage vide ; refus sans écriture (vide, non-JSON,
+  tableau, autre objet, version future, schéma incomplet) ; ancienne version migrée ; copie avant import relue ;
+  import refusé sans place pour la copie ; copie avant effacement ; suppression limitée aux copies listées. 3 mutants
+  détectés.
+- Navigateur : export dans un navigateur, import dans un autre contexte (téléphone 390 px). Couvre le refus d'un
+  faux fichier, l'aperçu puis l'annulation, l'import accepté, la copie de la carrière remplacée téléchargée intacte,
+  la carte sans débordement, et une carrière importée jouable.
+- Captures 1400x1000 et 390x844 vérifiées.
+
+### P2-105. Sauvegarde : deux onglets ne s'écrasent plus, chaque incident garde sa copie — bugs.md BUG-RM-002/003
+- **Statut : CORRIGÉ (mode Club)**
+- Fichiers concernés : `docs/js/club-sauvegarde.js`, `docs/js/clubUI.js`, `server/test-audit-p0-2.js`,
+  `server/test-parcours-navigateur.js`.
+
+**Constat.**
+- Deux onglets sur la même carrière : le dernier qui enregistrait remplaçait toute la progression de l'autre, sans rien dire.
+- Un second incident de chargement (version future, puis JSON tronqué) remplaçait la copie de secours du premier.
+
+**Correction (002).**
+- Une révision de la sauvegarde est stockée à part (`rugbyManager.club.revision.v1`) et incrémentée à chaque écriture.
+- Chaque saison de l'onglet retient la révision lue au chargement, hors de l'objet et du JSON.
+- Si la révision stockée a changé entre-temps, l'écriture est refusée (`raisonEchecSauvegarde() === 'conflit'`).
+- L'onglet périmé est prévenu dès l'écriture de l'autre (événement `storage`) ; fermer le message recharge la version
+  la plus récente.
+- Une nouvelle carrière s'écrit sans condition ; une sauvegarde d'avant la révision se charge normalement.
+- Stockage plein : échec distinct (`'stockage'`), révision inchangée.
+
+**Correction (003).**
+- Chaque incident a sa propre copie : la première reste sous `rugbyManager.club.secours.v1`, les suivantes sous des clés
+  numérotées.
+- Toutes les copies sont listées dans un index (raison, date, club, saison), lisibles par `listerSecours` et `lireSecours`.
+- Une copie identique n'est pas dupliquée. Au-delà de 5 copies, aucune n'est écrasée et l'échec est signalé.
+- Une copie n'est annoncée conservée qu'après relecture ; sinon le message le dit.
+
+**Tests.**
+- `test-audit-p0-2.js` : 4 nouveaux tests (deux onglets, sauvegarde ancienne / nouvelle carrière / stockage plein,
+  incidents successifs, copie non écrite ou maximum atteint). 3 mutants détectés.
+- Navigateur : deux vrais onglets du même contexte. L'onglet en retard est prévenu, son état périmé n'écrase rien, et
+  une fois rechargé il enregistre de nouveau. Le mutant sans contrôle est détecté.
+
+### P2-104. Coupe : une égalité se joue (prolongation, essais, tirs au but) — bugs.md BUG-RM-001
+- **Statut : CORRIGÉ (moteur, mode Club, interface)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (fin de match, `_departager`, `getState`),
+  `docs/js/club-coupes.js` (`enregistrerResultatCoupe`, `tirsAuButAbstraits`, `suffixeDepartage`), `docs/js/clubUI.js`
+  (match de coupe déclaré `eliminationDirecte`, règlement affiché), `docs/js/main.js` (fin de match et nettoyage de la clé),
+  `docs/js/matchState.js`, `docs/js/ui.js`, `docs/js/constants.js`, tests de coupe et invariants.
+
+**Constat.** Un nul en coupe désignait le vainqueur par un hash des identifiants des clubs, puis annonçait une
+qualification « après prolongation » alors qu'aucune minute n'avait été jouée.
+
+**Correction.**
+- Match joué : à égalité au coup de sifflet d'un match à élimination directe, le moteur joue une prolongation de 20 minutes
+  (25 % de la durée), avec la mi-temps, la fatigue, le banc et les cartons du match. Si l'égalité persiste, l'équipe qui a
+  marqué le plus d'essais passe ; sinon, séance de tirs au but à 22 m face aux poteaux, cinq tireurs par équipe choisis
+  par leur adresse, puis mort subite. Aucun point n'est ajouté au score.
+- Match résolu sans être joué : séance de tirs au but tirée avec le générateur de la journée, la réussite dépendant du
+  niveau des clubs. Aucune prolongation n'est annoncée.
+- Le message dit comment le match a été gagné : « après prolongation, au nombre d'essais (3 à 2) », « aux tirs au but (4-3) ».
+- Écran de match : période « Prolongation », barre de lecture allongée, bandeaux PROLONGATION et DEPARTAGE.
+- Le règlement est annoncé avant les matchs : onglet « Règles » de chaque coupe, ligne « En cas d'égalité ».
+- Une égalité de coupe sans départage ni générateur lève une erreur au lieu de tirer un vainqueur en silence.
+
+**Mesures (30 matchs de 60 s, élimination directe).** 19 prolongations, 17 séances de tirs au but, 2 matchs gagnés
+dans la prolongation, aucun nul restant. Les matchs de championnat restent des nuls possibles.
+
+**Tests.**
+- Invariants : égalité → prolongation, puis essais, puis tirs (score inchangé, jamais d'égalité aux tirs) ; un match de
+  championnat reste nul.
+- `test-parcours-club.js` : départage du moteur respecté ; tirs abstraits, les deux clubs peuvent gagner sur 20 graines,
+  même générateur → même résultat ; égalité sans départage refusée.
+- `test-consequences-coupe-amical.js` K6b : le départage côté A ou B qualifie le bon club et le message le dit.
+
+### P2-103. Statistiques individuelles complètes
+- **Statut : AJOUTÉ (statistiques et mode Club)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_statJoueur`, `_passeDecisive`, sites de
+  comptage), `docs/js/club.js` (cumuls de saison et de carrière), `docs/js/clubUI.js` (fiche joueur, meilleurs de la
+  saison), `server/test-invariants.js`.
+
+**Constat (question de l'utilisateur : quelles statistiques individuelles manquent ?).** Le moteur ne suivait par
+joueur que les essais, passes, plaquages et mètres, alors qu'il comptait déjà pour l'équipe bien d'autres actions.
+
+**Correction.** Chaque action est attribuée au joueur qui la fait, au même endroit que le total de l'équipe :
+- courses ;
+- défenseurs battus et plaquages manqués (le défenseur) ;
+- franchissements, offloads ;
+- passes décisives : la dernière passe reçue par le marqueur dans la même séquence de jeu courant ;
+- ballons gagnés : le gratteur au ruck, l'intercepteur, le sauteur qui vole la touche ;
+- coups de pied ; points au pied (transformations, pénalités, drops) ;
+- touches gagnées (le sauteur) ;
+- en-avants : le porteur au contact, le receveur d'une passe ratée, le joueur sous la chandelle ;
+- cartons jaunes.
+
+Les fautes collectives (mêlée volée, pénalités sans auteur identifié) restent comptées à l'équipe seule : aucun fautif
+n'est inventé. Les pénalités concédées ne sont donc pas encore suivies par joueur.
+
+Mode Club :
+- cumuls de saison et de carrière (une ancienne sauvegarde repart de 0) ;
+- sur la fiche joueur, le détail de la saison par thème (attaque, défense, jeu au pied, conquête, discipline), lignes
+  nulles masquées ;
+- dans le bilan, les meilleurs de la saison pour les défenseurs battus, passes décisives, ballons gagnés et points au
+  pied.
+
+**Mesures (6 matchs, par match).** Courses 282, défenseurs battus 38, franchissements 15, offloads 20, en-avants 12,
+touches gagnées 24, coups de pied 60, points au pied 27, passes décisives 4,7 pour 6,7 essais. Statistiques seules : scores
+et stats d'équipe identiques (empreinte de 10 matchs).
+
+**Tests.**
+- « statistiques individuelles : … les joueurs font le total de l équipe » : sur 4 matchs, la somme des quinze joueurs
+  égale exactement le total de l'équipe, statistique par statistique.
+- Ballons gagnés : joueurs entre 80 et 100 % de l'équipe (mêlées volées collectives).
+- Passes décisives : entre 40 et 100 % des essais.
+- Navigateur : fiche joueur affichée et lisible sur grand écran et sur téléphone (390x844), sans erreur console.
+
+**Barrières.** Invariants 90/90, 13 suites OK, calibration 14/14, navigateur 496/0.
+
+### P2-102. Mètres gagnés : comptés au-delà de la ligne d'avantage, et le profil du joueur s'y lit
+- **Statut : CORRIGÉ (statistique)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_compterMetresGagnes`, ligne d'avantage
+  dans `tick`, contact dans le plaquage), `server/test-invariants.js`.
+
+**Constat (remarques de l'utilisateur : la stat existe par joueur, et elle dépend du type de joueur).** Le moteur
+comptait tout le terrain couru vers l'avant depuis la réception. Le n°10, qui reçoit 10 m derrière le ruck et court avant
+de passer, « gagnait » ainsi 217 m par match, plus que les ailiers (124 à 151 m). Une équipe totalisait 1233 m par match.
+Repères réels : record du Tournoi 116 m par match (Kinghorn 2025, 580 m en 5 matchs) ; Irlande 2023, meilleure équipe,
+857 m par match pour 139 courses. Et le terrain pris DANS le plaquage, où compte la puissance, n'était pas compté : des
+avants à 95 de puissance ne gagnaient que 16 m, contre 14 à 40 de puissance.
+
+**Correction.** Seul compte le terrain pris au-delà du point le plus avancé de la phase. La phase part de la ligne
+d'avantage : le point de regroupement ou de réception, ou le point du nouveau porteur après un changement de possession.
+Le terrain pris dans le plaquage est compté aussi.
+
+| Mètres par match | Avant | Après | Repère réel |
+|---|---|---|---|
+| Équipe | 1233 | 501 | 857 pour la meilleure (Irlande 2023) |
+| Meilleur joueur | 224 en moyenne | 104 | 116, record du Tournoi |
+
+Par poste, après : ailiers 60-72 m, arrière 63, ouvreur 55, demi de mêlée 34, troisième ligne 23-28, piliers 14-16.
+Effet des attributs : ailiers à 95 de vitesse 66 m, contre 20 à 50 de vitesse ; avants à 95 de puissance 22 m, contre 16 à 40.
+
+C'est une statistique d'affichage seule : les scores et toutes les autres stats sont identiques (empreinte de 10 matchs).
+
+**Tests.** « mètres gagnés : comptés au-delà de la ligne d avantage… » vérifie :
+- rouge avant : l'ouvreur moins que les ailiers (217 m contre 143) ;
+- le demi de mêlée à moins de 40 m ;
+- une équipe entre 300 et 950 m ;
+- les effets : vitesse x1,8 ou plus, puissance x1,12 ou plus (mesurés x2,7 à x3,6 et x1,21 à x1,54 sur trois lots).
+
+**Barrières.** Invariants 89/89, 13 suites OK, calibration 14/14, navigateur 496/0. Une première série avait été lancée
+avant l'ajout du contact ; elle a été arrêtée et refaite sur la version finale.
+
+### P2-101. Le capitaine choisit selon le score et le temps
+- **Statut : AJOUTÉ (tactique)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_traiterPenalite`), `docs/js/constants.js`
+  (icône et bandeau `CHOIX_CAPITAINE`), `server/test-invariants.js`.
+
+**Constat.** Le choix entre poteaux, touche et jeu rapide ne dépendait que de la distance. À 30 m des poteaux, une équipe
+menée de 10 points à 5 minutes de la fin tapait au but (84 %) comme en début de match, et ne jouait jamais la touche.
+
+**Correction.** Dans le dernier quart du match :
+- une équipe menée de plus de 3 points, à portée de but, renonce aux poteaux et joue la touche (80 %), avec l'annonce
+  « Menée de N points, l'équipe X renonce aux poteaux et joue la touche » ;
+- une équipe qui mène, ou à égalité, prend les points dès qu'elle est à portée (5 à 45 m).
+
+**Effet mesuré.** 200 graines appariées : points +0,04 ± 0,52, touches +0,33 ± 0,16 : neutre sur les volumes. Le
+changement porte sur les fins de match serrées ou déséquilibrées.
+
+**Tests.** « choix du capitaine : menée en fin de match, elle joue la touche ; devant au score, elle prend les points » :
+rouge avant (0 touche sur 300 pénalités construites, équipe menée de 10 points à la 75e minute). Le test vérifie aussi
+le début de match (au moins 75 % de tirs au but à 30 m) et l'équipe qui mène (au moins 95 %).
+
+**Barrières.** Invariants 88/88, 13 suites OK, calibration 14/14, navigateur 496/0.
+
+### P2-100. Le ballon qui roule rebondit à l'écran
+- **Statut : CORRIGÉ (affichage)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_rebondBallon`, `_tickRouleBallon`,
+  `getState`), `docs/js/renderer.js`, `server/test-invariants.js`.
+
+**Constat.** Depuis P2-92, le ballon roule après la chute d'un coup de pied, mais il glissait à plat sur la pelouse.
+
+**Correction.** `getState` expose la hauteur de rebond (`ballon.rebond`) et la rotation du ballon qui roule : environ
+1,2 saut par seconde, amortis avec la vitesse, et rien une fois le ballon arrêté. Le rendu dessine l'ombre au sol, le
+saut et le ballon qui tourne. Affichage seul : l'empreinte de 10 matchs est identique avant/après, avec ou sans
+`getState`.
+
+**Tests.**
+- Invariant « le ballon qui roule REBONDIT à l écran… » : rouge avant (0 rebond sur 1405 images de ballon qui
+  roule). Il vérifie aussi qu'un ballon arrêté ne rebondit pas.
+- Navigateur (1400×1000) : ballon en l'air au-dessus de son ombre, incliné, devant le n°15 qui le poursuit ; console
+  sans erreur.
+
+**Mesures écartées (sans patch).** Compter toute portée de ballon comme une course, comme envisagé en P2-99, serait
+faux. La stat `carries` (~280 par match) correspond déjà aux ~228 courses réelles de la Coupe du monde 2023 ; toutes les
+portées en feraient plus de 600. L'excès de mètres gagnés (1231 m par équipe et par match) est donc réel, mais faute de
+définition officielle sourcée, il n'est pas corrigé.
+
+**Barrières.** Invariants 87/87, 13 suites OK, calibration 14/14, navigateur 496/0.
+
+**Test intermittent corrigé.** « arbitre : le bandeau ne recouvre pas le terrain (390x844) » (P2-73) échouait environ une
+fois sur vingt :
+- reproduit : bandeau en bas à 156 px, terrain encore à 155 px, HUD à 160 px ;
+- 500 ms plus tard, le terrain est bien recalé à 160 px.
+
+Le terrain est recalé sous le HUD par un `ResizeObserver`, donc à l'image suivante. Le délai fixe de 150 ms du test était
+parfois trop court dans le navigateur sans affichage. Le test attend désormais que le canvas soit sous le HUD (2 s au
+plus) avant de mesurer. Pour le joueur, c'est au pire une image décalée. Ensuite, deux passages à 496/0.
+
+### P2-99. Ballon tenu dans l'en-but : renvoi depuis l'en-but ; le libellé du renvoi s'affiche enfin
+- **Statut : CORRIGÉ (règle et affichage)**
+- Fichiers concernés :
+  - `engine/rugby-engine.js` et `docs/rugby-engine.js` : plaquage sur la ligne, `_nouvelleManche` (`renvoiEnBut`),
+    `getState` ;
+  - `docs/js/matchState.js`, `docs/js/ui.js`, `docs/js/constants.js` ;
+  - `server/test-invariants.js`, `server/test-parcours-navigateur.js`.
+
+**Constat 1 (règle).** Un porteur qui franchissait la ligne mais était TENU DEBOUT (35 % des cas) ne marquait pas. Le
+moteur formait alors un ruck à 30 cm de la ligne, et l'attaque gardait le ballon pour l'essai suivant. Loi en vigueur
+depuis 2022 : ballon tenu dans l'en-but -> renvoi depuis la ligne d'en-but par l'équipe qui défendait.
+
+**Constat 2 (affichage).** L'état normalisé (`matchState.js`), que reçoit l'interface, ne transmettait pas `renvoi22`. Le
+badge de phase n'affichait donc jamais « Renvoi aux 22 m », alors que le code de `ui.js` le prévoyait.
+
+**Correction.**
+- Ballon tenu dans l'en-but : évènement `EN_BUT_TENU` (bandeau), puis renvoi depuis la ligne d'en-but par la défense
+  (évènement `RENVOI_EN_BUT`, badge « Renvoi depuis l'en-but »).
+- L'état normalisé transmet `renvoi22` et `renvoiEnBut`.
+
+**Effet mesuré.** ~0,17 ballon tenu dans l'en-but par match. 200 graines appariées : points -0,42 ± 0,47, essais
+-0,06 : neutre.
+
+**Tests.**
+- « ballon tenu dans l en-but : renvoi depuis l en-but par la défense », sur 24 graines : rouge avant (0 cas).
+- Le test « loi 8 : tenu debout sur la ligne » exigeait un regroupement devant la ligne (règle d'avant 2022). Il exige
+  désormais le renvoi depuis l'en-but par la défense, et aucun ruck.
+- Navigateur : coup d'envoi, renvoi aux 22 m et renvoi depuis l'en-but arrivent distincts jusqu'à l'affichage (496/0).
+
+**Mesures sur les mètres gagnés (sans patch).** Par portée de ballon (chaque porteur), le moteur donne 3,8 m en moyenne
+(médiane 2,3), ce qui est plausible. Les 8,9 m « par course » viennent du dénominateur : la stat `carries` ne compte que
+les portées au contact, alors que les mètres comptent toutes les courses ballon en main, y compris celles du n°9 et du
+n°10 avant leur passe. Aucune définition officielle trouvée pour trancher.
+
+**Barrières.** Invariants 86 (le test de la loi 8 rejoué en vert après mise à jour), 13 suites OK, calibration 14/14,
+navigateur 496/0.
+
+### P2-98. La touche rapide
+- **Statut : AJOUTÉ (règle et tactique)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_preparerToucheRapide`, `_tickToucheRapide`,
+  `_accorderTouche`, `_tickTouche`, stat `touchesRapides`), `docs/js/constants.js` (icône et bandeau `TOUCHE_RAPIDE`),
+  `server/test-invariants.js`.
+
+**Constat.** Le moteur n'avait que la touche ordonnée. En vrai, après un coup de pied en touche, l'équipe qui a le
+lancer peut relancer tout de suite, avant que l'alignement se forme (loi 18). C'est l'arme de la relance après un
+dégagement.
+
+**Correction.** Sur une touche venue d'un coup de pied, le joueur le plus proche de l'équipe qui a le lancer, s'il est
+à 12 m au plus, court chercher le ballon (35 % des cas). Il relance vers un partenaire libre :
+- à 5 m ou plus de la ligne de touche ;
+- pas devant le point de sortie ;
+- à 20 m au plus ;
+- sans adversaire à moins de 5 m.
+
+Faute de partenaire, ou passé 4 s, la touche ordonnée reprend. Le ballon part des mains du lanceur, à vue. Pendant
+sa course, le lanceur n'est pas aussi replacé dans l'alignement (une seule course par tick).
+
+Une première version exigeait le lanceur à 6 m au plus, mais le plus proche est en général à 7-11 m : aucune touche
+rapide n'avait lieu. La version à 50 % en donnait 0,95 par match, pour +1,5 point.
+
+**Effet mesuré.** 0,75 touche rapide par match. 200 graines appariées : points +0,71 ± 1,27, touches -1,2 (les touches
+rapides ne sont pas des touches formées). Calibration CI 14/14.
+
+**Mesures sur le score (sans patch livré).**
+- Entrées dans les 22 m adverses : 10,9 par équipe et par match. C'est le niveau de l'Irlande 2023, meilleure du
+  Tournoi sur ce critère (10,6).
+- Points par entrée : 1,65, dans le bas du réel (1,8 à 3,0).
+
+L'excès de points vient donc du terrain gagné, pas de la finition. Les mètres gagnés du moteur (8,9 m par course)
+ne sont pas comparables tels quels au chiffre réel : leur définition diffère.
+
+**Tests.** « touche rapide : relancée par l équipe qui a le lancer… » : rouge avant (0 en 12 matchs). Le test vérifie la
+bonne équipe, le partenaire à 5 m ou plus de la touche et l'absence de saut du ballon.
+
+**Barrières.** Invariants 85/85, 13 suites OK, calibration 14/14, navigateur 493/0.
+
+### P2-97. Transformation : le buteur recule pour ouvrir l'angle
+- **Statut : CORRIGÉ (gameplay et règle)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`reculTransformation`,
+  `_transformationPlacerJoueurs`, `_tickTransformation`), `server/test-invariants.js`.
+
+**Constat.** La loi laisse le buteur poser son tee n'importe où sur l'axe de l'essai. Le moteur le posait toujours à
+10 m de la ligne. Réussite par écart latéral de l'essai (30 matchs) : 84 % au centre, 49 % dès 10 m, 50 % à 20 m, 43 %
+au bord. Au total : 56 % pour ~75 % en réel.
+
+**Correction.** Le buteur choisit la distance (10 à 40 m) qui maximise sa réussite. Ses coéquipiers se placent 5 m
+derrière le tee. Résultat : 93 % au centre, 56 % / 58 % / 49 % plus au large, 63 % au total. Visible : sur un essai au
+bord, le buteur va poser son tee 30 m derrière la ligne.
+
+**Ce qui reste faux, et pourquoi on ne le corrige pas ici.** La formule de réussite (`probaReussiteTir`) pénalise trop
+l'angle. Avec un terme d'angle adouci (/200 au lieu de /160), on obtient des taux réalistes : transformations 71 %
+(90 / 73 / 65 / 60 % par écart latéral), pénalités 73 %. Mais les points montent à 65,5 (+2,9 ± 1,3), au-dessus du
+plafond de la calibration. La réussite au but ne pourra être réaliste qu'une fois réglé le vrai excès du moteur : trop
+d'essais (7,3 pour 5,3 au Tournoi 2024) et trop de pénalités tentées (7,7 pour ~4,5). Les réceptions de coup de pied
+n'en sont pas la cause : 2,6 % finissent en essai, un taux plausible.
+
+**Effet mesuré (200 graines appariées).** Points +0,34 ± 1,32, essais -0,28 ± 0,21 : neutre.
+
+**Tests.** « transformation : sur un essai excentré, le buteur recule pour ouvrir l angle » : rouge avant (0/45 buteurs
+reculent d'au moins 18 m sur un essai à 20 m ou plus des poteaux). Le test exige aussi une réussite d'au moins 55 %
+(59 % sur les graines 1-12).
+
+**Barrières.** Invariants 84/84, 13 suites OK, calibration 14/14, navigateur 493/0.
+
+### P2-96. La règle du 50:22, et sa tentative
+- **Statut : AJOUTÉ (règle et tactique)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_tickRouleBallon`, `_tenterCoupDePiedJeu`,
+  stat `cinquanteVingtDeux`), `docs/js/constants.js` (icône et bandeau `CINQUANTE_VINGT_DEUX`), `server/test-invariants.js`.
+
+**Règle (loi 18, 50:22).** Un coup de pied tapé depuis son propre camp, qui rebondit dans le terrain puis sort en touche
+dans les 22 m adverses, donne le lancer à l'équipe qui a botté. Toute autre touche en rebond revient à l'adversaire.
+La condition sur le ballon ramené dans son camp avant la frappe n'est pas modélisée.
+
+**Tentative.** Depuis son camp, hors de ses 22 m, une équipe qui cherche la touche vise une fois sur quatre les 22 m
+adverses, quand ils sont à sa portée (40 m, modulés par le jeu au pied). La chute est moins précise (1 à 11 m de la ligne) :
+souvent le ballon reste dans le terrain et l'adversaire le récupère dans ses 22. Une première version, toujours tentée et
+précise, donnait 3,5 50:22 par match et +4,8 points : rien de tel n'existe en vrai.
+
+**Effet mesuré.** 0,45 50:22 par match (20 matchs). 200 graines appariées : points +0,65 ± 1,28, essais +0,23 ± 0,20,
+coups de pied -2,2, touches -0,5 : neutre.
+
+**Tests.** « 50:22 : tapé de son camp, rebond dans le terrain, touche dans les 22 adverses -> lancer au botteur » : rouge
+avant (0 en 12 matchs). Deux cas construits : frappe à 45 m (son camp) -> lancer au botteur ; frappe à 55 m (camp
+adverse) -> touche en rebond ordinaire, lancer adverse.
+
+**Barrières.** Invariants 83/83, 13 suites OK, calibration 13/14 (courses 280,8 pour 280), navigateur 493/0.
+
+### P2-95. Loi 18 : coup de pied direct en touche, lancer adverse et pas de terrain gagné hors des 22 m
+- **Statut : CORRIGÉ (règle)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (chute dans `_tickCoupDePiedJeu`, cible des
+  coups de pied « touche » dans `_tenterCoupDePiedJeu`, `_lancerJeuRapidePenalite`, hors-jeu au ruck),
+  `server/test-invariants.js`.
+
+**Constat (en préparant le 50:22).** Deux erreurs de règle :
+- sur un coup de pied direct en touche depuis ses 22 m, le moteur donnait le lancer à l'équipe qui avait botté ;
+  commentaire « loi 18.10 » erroné, 53 cas sur 151 en 12 matchs ;
+- de plus loin, il plaçait la touche au point de sortie, donc avec du terrain gagné.
+
+Loi 18 : en jeu courant, le lancer revient toujours à l'adversaire (seule la pénalité tapée en touche garde le lancer).
+Hors de ses 22 m, le direct en touche se joue au niveau du point de frappe.
+
+**Correction.** Lancer adverse dans tous les cas. Hors des 22 m du botteur, touche au point de frappe (bornée à 5 m de
+la ligne de but). Comme le direct n'y gagne plus rien, le coup de pied « touche » tapé hors de ses 22 m vise la touche EN
+REBOND : le ballon tombe 2 à 4 m dans le terrain et file en biais vers la ligne (cf. P2-92). Une première version
+laissait le ballon rouler dans l'axe : il restait dans le terrain, l'adversaire contre-attaquait (touches -4,7, points
++4,6, essais 8,0, calibration 11/14).
+
+**Suites.** Deux défauts révélés par les barrières, corrigés dans le même lot :
+- une passe interceptée restée en vol au coup de sifflet d'un jeu rapide masquait le ballon posé sur la marque (saut de
+  9,1 m) : elle est annulée au sifflet ;
+- avec ~200 rucks par match (P2-94), le hors-jeu au ruck donnait 22 avantages par match (test R12, plafond 20) :
+  probabilité de base 0,30 -> 0,24.
+
+**Effet mesuré (200 graines appariées, contre P2-94).** Points +0,17, essais +0,02, touches -0,77 : neutre.
+
+**Tests.** « loi 18 : coup de pied direct en touche… » : rouge avant (98/151 lancers adverses), avec un cas construit
+(frappe à 40 m, sortie à 65 m -> touche à 40 m, lancer adverse). Test de l'en-but : les deux issues sont désormais
+construites (aplatissement défensif -> renvoi aux 22 m ; chasseur -> essai), mutant « pas d'en-but » rouge. Test du
+ballon qui roule : toute touche en rebond compte.
+
+**Barrières.** Invariants 82/82, 13 suites OK, calibration 13/14 (courses 284,9 pour 280), navigateur 493/0.
+
+### P2-94. Touche ramenée à 30 s ; fourchettes de rucks et de mêlées revues sur des matchs réels
+- **Statut : CORRIGÉ (calibration, décision de l'utilisateur : option 1)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_tickTouche`, `dureeMin`),
+  `server/test-calibration-moteur.js` et `server/simulate-batch.js` (fourchettes), `server/test-invariants.js`,
+  `docs/ANALYSE_MATCH_REEL.md`.
+
+**Constat.** Le temps de jeu effectif était le seul défaut de la calibration (29,4 min pour 32-42). La touche imposait
+49 s d'arrêt, sur la foi de « 40 à 60 s » sans source. Réel : ~25 s de la sortie au lancer, et la loi limite la mise en
+place à 30 s. Sept variantes de tempo ont été essayées (cf. ANALYSE_MATCH_REEL.md) : avec des touches réelles, aucune
+ne tenait les plafonds de 180 rucks et 15 mêlées.
+
+**Décision.** Les plafonds ont été revus sur des matchs réels, sources dans ANALYSE_MATCH_REEL.md : rucks 110-220 (Coupe
+du monde 2023 ~158 par match, Irlande 2018 137 par match à elle seule, France-Irlande 2026 181) ; mêlées 6-18 (~12 en
+moyenne, jusqu'à 19). La touche passe à 30 s. Les repères de CLAUDE.md, repris par `test-stats-matchs.js`, ne sont pas
+modifiés.
+
+**Effet mesuré (200 graines appariées).** Temps de jeu +3,00 ± 0,24 min (29,8 -> 32,9) ; touches +2,6 (27,1) ; rucks +17,5
+(197) ; mêlées +1,1 (15,5) ; essais +1,1 (7,4) ; points +8,9 (61,7). Calibration 14/14 (temps de jeu 32,3 sur les graines
+de la CI). **Ce qui reste faux** : ~6 rucks par minute de jeu pour ~4,6 en réel, et 61,7 points pour ~50.
+
+**Tests.** L'invariant des temps morts exigeait une touche d'au moins 35 s (« 40 à 60 s ») : il exige désormais 22 à 40 s
+(rouge avant : 50,5 s). « Le jeu courant RESPIRE » mesure maintenant les séquences nées d'un ruck. La moyenne de toutes
+les séquences dépend de la part de chandelles (le receveur y est plaqué en ~0,4 s, comme en vrai), et passait de 2,80-3,02
+à 2,73-2,89 s sans que le jeu après un ruck change (3,00 / 2,97 s). Mutant « sans inertie de course » : 2,44 s -> rouge.
+La touche en rebond (P2-92) est rare (~0,2-0,4 par match) : son test passe de 8 à 24 graines.
+
+**Barrières.** Invariants 81/81, calibration 14/14, 13 suites OK, navigateur 493/0.
+
+### P2-93. Ballon dans l'en-but : la défense aplatit (renvoi aux 22 m) ou le chasseur marque
+- **Statut : CORRIGÉ (gameplay)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_entrerEnBut`, `_tickRouleBallon`,
+  `_tickReceptionCoupDePied`), `docs/js/constants.js` (icône et bandeau `EN_BUT_APLATI`), `server/test-invariants.js`.
+
+**Constat.** Depuis P2-92, un ballon qui roulait jusqu'à la ligne d'essai s'y arrêtait, et le receveur repartait de là en
+jeu courant. Un coup de pied qui retombait au-delà de la ligne était ramené sur la ligne, puis joué de même. Aucune des
+deux issues réelles n'existait : aplatissement défensif, suivi d'un renvoi aux 22 m (loi 12), ou essai du chasseur sur
+coup de pied à suivre (loi 8).
+
+**Correction.** Un coup de pied qui retombe au-delà de la ligne, ou un ballon qui la franchit en roulant, est dans
+l'en-but. Les joueurs ne franchissent pas la ligne dans ce moteur : le ballon est donc posé à 0,8 m derrière elle, à portée
+de bras, et le premier arrivé décide. Si c'est un défenseur, il aplatit, et la défense tape le renvoi aux 22 m (nouvel
+évènement `EN_BUT_APLATI`, avec icône et bandeau). Si c'est un chasseur en position régulière, il marque (essai, puis
+transformation). Une réception disputée peut encore finir en en-avant, donc en mêlée.
+
+**Effet mesuré.** ~0,3 cas par match, tous sur petit coup de pied à suivre (24 matchs : 4 renvois, 3 essais). 200 graines
+appariées : points -0,84 ± 0,58, essais -0,07 ± 0,09 : neutre.
+
+**Tests.** « coup de pied dans l en-but : le défenseur aplatit (renvoi aux 22 m) ou le chasseur marque » : rouge avant (0
+ballon dans l'en-but en 24 matchs) ; toute entrée dans l'en-but finit en renvoi, en essai ou en mêlée. Le test de P2-90
+exclut aussi le renvoi aux 22 m (porteur = botteur du renvoi).
+
+**Barrières.** Invariants 81/81, 13 suites OK, calibration 13/14 (temps de jeu 29,2 min), navigateur 493/0. Après un
+redémarrage du conteneur, la branche locale avait été recréée sur `main` : le premier passage des suites et du navigateur
+portait donc sur le mauvais code, et il a été refait sur 3724ffd.
+
+### P2-92. Le ballon qui tombe sans receveur roule, et peut trouver la touche
+- **Statut : CORRIGÉ (gameplay)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (chute dans `_tickCoupDePiedJeu`,
+  `_tickRouleBallon`, `_tickReceptionCoupDePied`), `server/test-invariants.js`.
+
+**Constat.** Un dégagement ou un coup de pied d'occupation qui tombait sans personne dessous restait collé au point de
+chute, immobile jusqu'à ce qu'un joueur arrive. En vrai, le ballon rebondit et roule : c'est ce qui fait gagner du terrain
+au dégagement, ce qui crée la course pour le récupérer, et ce qui fait trouver la touche en rebond.
+
+**Correction.** Sans joueur à moins de 1,3 m du point de chute, le ballon roule dans le sens du coup de pied. Élan selon le
+type : 6 m/s pour un dégagement, 5 pour une occupation, 3 pour un petit coup de pied, 1,5 pour une chandelle. Freinage
+~3 m/s². Il s'arrête sur la ligne de but (l'en-but n'est pas encore géré) ; s'il franchit une ligne de touche, l'adversaire
+de l'équipe qui a botté obtient la touche là où il est sorti (loi 18). Aucun tirage aléatoire ajouté.
+
+**Effet mesuré (200 graines appariées).** Touches +0,71 ± 0,39 ; points -1,94 ± 1,26 (55,6 -> 53,6, plus près du réel) ;
+essais -0,25 ± 0,20 ; rucks -4,1 ± 2,0 ; temps de jeu effectif -0,35 ± 0,23 min (déjà hors fourchette, cf. P2-82/83 : chaque
+touche ajoute du temps mort). Navigateur : le ballon au sol avance de ~4 m entre deux images, puis un receveur le ramasse.
+
+**Tests.** « coup de pied tactique : le ballon qui tombe sans receveur ROULE, et peut finir en touche » : rouge avant (0/139
+dégagements sans receveur ont roulé) ; vérifie aussi qu'un ballon sorti du terrain donne toujours la touche. Le test de
+P2-90 exclut désormais la touche en rebond (porteur = talonneur qui lance).
+
+**Test fragile corrigé.** « un joueur endurant garde sa vitesse de pointe » mesurait la vitesse de pointe par le MAXIMUM de
+la fenêtre, qui dépend d'un seul sprint. Sur trois lots de 32 graines, l'écart valait 0,007 / 0,060 / 0,106 (échec à 0,007,
+seuil 0,02). Avec la moyenne des 10 meilleures mesures : 0,076 / 0,086 / 0,100. Le test utilise cet estimateur, avec un
+seuil relevé à 0,04. Mutant « l'endurance n'agit plus » : exactement 0 -> rouge.
+
+**Barrières.** Invariants 80 (test d'endurance rejoué seul en vert après correction), 13 suites OK, calibration 13/14 (temps
+de jeu 29,0 min), navigateur 493/0.
+
+### P2-91. Pénalité tapée en touche : le ballon rejoint la marque à vue, puis le buteur frappe
+- **Statut : CORRIGÉ (affichage, et pose du ballon de 0,8 s)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_accorderPenaliteTouche`,
+  `_tickPenaliteTouche`, `_positionBallonAffichee`), `server/test-invariants.js`.
+
+**Constat (relevé des sauts).** Après un hors-jeu en touche (P2-78) ou une faute au ruck jouée en touche, le ballon passait
+d'un coup du vol du lancer, ou du ruck, à la marque de pénalité, 2,5 à 6,7 m plus loin (4 cas sur 128 en 12 matchs).
+
+**Correction.** Le ballon part de la dernière position affichée (cf. P2-89) et rejoint la marque pendant que le buteur y
+court. Le buteur ne frappe pas avant 0,8 s de pose, et le ballon va assez vite pour être sur la marque avant la frappe.
+Piège rencontré : une première version faisait attendre la frappe jusqu'à l'arrivée du ballon. Or le point de départ du
+ballon vient de l'affichage : le déroulé du match aurait dépendu de l'appel à `getState`, alors que le replay doit
+retrouver le match calculé. La pose a donc une durée fixe ; l'empreinte de 10 matchs est identique avec ou sans
+`getState`.
+
+**Effet mesuré.** 200 graines appariées : 174 matchs identiques, points +0,12 ± 0,29, essais +0,01 ± 0,05. Sauts du ballon
+de plus de 3 m : 20,2 -> 19,9 par match ; les sauts restants sont des vols de coups de pied (~3,1-3,3 m par image).
+
+**Tests.** « pénalité tapée en touche : le ballon rejoint la marque à vue avant la frappe » : rouge avant (124/128, pire
+6,7 m). Le test de P2-79 vérifiait que la PREMIÈRE image après la faute montre le ballon sur la marque, c'est-à-dire
+exactement le saut ; il vérifie désormais la position du ballon AU MOMENT DE LA FRAPPE (37/37).
+
+**Barrières.** Invariants 79/79, 13 suites OK, calibration 13/14 (temps de jeu hors fourchette, cf. P2-82/83),
+navigateur 493/0.
+
+### P2-90. Ballon au sol après un coup de pied : ramassé par le premier arrivé, jamais à distance
+- **Statut : CORRIGÉ (léger effet sur la simulation, neutre)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_tickReceptionCoupDePied`),
+  `server/test-invariants.js`.
+
+**Constat (relevé des sauts).** Un dégagement profond tombe parfois à 25 m de tout le monde. Le joueur le plus proche y
+court (~6 m/s), mais le délai de grâce de 4 s lui donnait le ballon là où il se trouvait, à 2-20 m (26 cas sur 532 en 12
+matchs, ~2 par match).
+
+**Correction.** Après 4 s, ceux qui vont au ballon passent à pleine vitesse, et c'est le PREMIER ARRIVÉ au contact qui le
+ramasse. Le délai qui donne le ballon d'office passe à 10 s (garde-fou).
+
+**Effet mesuré.** 200 graines appariées : points -0,09 ± 0,73, essais -0,07 ± 0,12, temps de jeu +0,04 ± 0,13 min.
+Sauts > 3 m : 21,8 -> 20,2 par match.
+
+**Tests.** « ballon au sol après un coup de pied : il est ramassé par un joueur arrivé au contact » : rouge avant (494/502,
+pire 17,1 m). Les en-avants sous la chandelle (mêlée, n°9 adverse porteur) sont exclus : le ballon y rejoint la mêlée à
+vue (M24). **Test fragile corrigé** : « des offloads à chaque match » mesurait sur 4 graines ; d'un match à l'autre, il y a
+de 6 à 26 offloads (~15 en moyenne sur 24 graines), et une bifurcation suffisait à passer sous le seuil de 9 (8,0).
+Passé à 12 graines, même seuil ; mutant « offloads × 0,45 » -> rouge (8,0).
+
+**Barrières.** Invariants 78 (le test des offloads rejoué en vert après élargissement), 13 suites OK, calibration 13/14,
+navigateur 493/0.
+
+### P2-89. Jeu rapide : le ballon est posé sur la marque, le tapeur le rejoint
+- **Statut : CORRIGÉ (affichage)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_traiterPenalite` jeu rapide,
+  `_traiterCoupFranc`, `_lancerJeuRapidePenalite`, `_debutRemiseBallon`, `tick`, `getState`), `server/test-invariants.js`.
+
+**Constat (relevé des sauts).** Sur pénalité jouée vite ou coup franc, le tapeur (souvent le n°9) devenait porteur là où il
+était, et le ballon sautait du ruck, de la mêlée ou de la touche jusque dans ses mains : 10 cas sur 92 en 12 matchs, ~8 m
+en moyenne, jusqu'à 14,3 m.
+
+**Correction.** Le ballon part de là où il était affiché, va sur la marque (loi 20.4) et y reste pendant la mise en place
+(recul des fautifs), puis rejoint le tapeur, avec le mécanisme de remise du ballon de P2-85. Piège rencontré : en pleine
+transition (mêlée ou touche déjà soldée), recalculer l'affichage donnait le porteur ou le lanceur, pas le ballon vu à
+l'écran. `getState` mémorise donc la dernière position affichée, que `_debutRemiseBallon` reprend si elle date de l'image
+précédente. Affichage seul : l'empreinte des scores et statistiques de 10 matchs est identique avant/après, avec ou sans
+appel à `getState`.
+
+**Effet.** Sauts du ballon de plus de 3 m : 22,9 -> 21,8 par match. Les familles RUCK>PORTE, MELEE>PENALITE_TIR et
+TOUCHE>PORTE disparaissent du relevé.
+
+**Tests.** « jeu rapide (pénalité, coup franc) : le ballon est posé sur la marque… » : rouge avant (82/92 sans saut, pire
+14,3 m). Mutant « ballon posé sur le tapeur au lieu de la marque » -> rouge (50/92 sur la marque). Navigateur : ballon
+immobile sur la marque pendant la mise en place, fautifs repliés sur leur ligne.
+
+**Barrières.** Invariants 77/77, 13 suites OK, calibration 13/14 (temps de jeu 29,4 min, cf. P2-82/83), navigateur 493/0.
+
+### P2-88. À l'interception, le ballon vole jusqu'à l'intercepteur
+- **Statut : CORRIGÉ (affichage, avec un léger effet sur la simulation)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (interception dans `_tenterPasse`),
+  `server/test-invariants.js`.
+
+**Constat (relevé des sauts).** À l'interception (~0,9 par match), la passe visuelle était effacée et le ballon apparaissait
+d'un coup dans les mains de l'intercepteur (~6 m, jusqu'à 10 m).
+
+**Correction.** Une passe visuelle part du passeur vers l'intercepteur, avec le mécanisme commun à toutes les passes.
+
+**Effet mesuré.** Contrairement à P2-81/84/85, ce n'est pas que de l'affichage : pendant le vol d'une passe, le receveur
+court au lieu de décider, et environ un tiers des matchs divergent. Graines 1-100 : points -2,18 ± 0,77, essais
+-0,30 ± 0,13. Graines 101-200 : points +0,54 ± 0,63, essais +0,13 ± 0,11. Sur 200 graines : **points -0,82 ± 0,51,
+essais -0,09 ± 0,08, non significatif**. Le premier lot était un hasard de divergence ; le mécanisme supposé (l'intercepteur
+perd sa course libre pendant le vol) est écarté, car une interception ne finit directement en essai que 3 à 4 % du
+temps, avant comme après. Sauts du ballon de plus de 3 m : 24,8 -> 22,9 par match.
+
+**Tests.** « interception : le ballon vole jusqu'à l'intercepteur » : rouge avant (6/19 sans saut, pire 10,2 m) ; aucun saut
+de plus de 3 m dans la seconde qui suit une interception (12 matchs). L'invariant existant sur les interceptions reste vert.
+
+**Test fragile corrigé.** « le jeu au pied appartient aux demis… » exigeait que le n°9 tape plus de 20 % des coups de pied,
+mesuré sur 4 graines seulement. Avec la divergence des matchs, il tombait à 19 %. Mesure sur 24 graines : part du n°9
+23,1 % (24,4 % avant P2-88), avec de 19 à 27 % d'un bloc de 4 graines à l'autre. C'était donc du bruit, pas une régression.
+Le test passe à 16 graines et garde son seuil. Mutant « chandelle depuis la base 2,5 fois plus rare » -> rouge (16 %).
+
+**Barrières.** Invariants 76 (ce test rejoué seul en vert après élargissement), 13 suites OK, calibration 13/14 (temps
+de jeu 29,4 min, hors fourchette, cf. P2-82/83), navigateur 493/0.
+
+### P2-87. Le bandeau de l'arbitre annonçait des faits déjà dépassés
+- **Statut : CORRIGÉ (affichage)**
+- Fichiers concernés : `docs/js/ui.js` (`choisirBanniere`, exposée sur RMUI), `server/test-parcours-navigateur.js`.
+
+**Constat (QA téléphone).** Le bandeau annonçait « Jeu au large du n°10 au n°11, équipe A » alors que le fil montrait déjà
+un coup de pied de l'équipe B. À chaque image, le bandeau prenait le plus récent événement « à bandeau » parmi TOUS les
+nouveaux événements. Après un saut dans la barre de lecture, ou en vitesse x4, ces événements couvrent des dizaines de
+secondes de match : le bandeau annonçait alors un fait dépassé.
+
+**Correction.** Un événement n'est annoncé que s'il date de 4 s de match au plus (`choisirBanniere`). Piège rencontré : la
+première version lisait `state.tempsMatch`. Or l'affichage reçoit l'état NORMALISÉ (`matchState.js`), où l'heure est
+`clock.time` : le filtre n'agissait jamais dans le jeu, et le test passait quand même avec un nombre fabriqué. La fonction
+prend désormais l'état normalisé, et le test le construit avec le vrai moteur et la vraie normalisation.
+
+**Tests.** Rouge avant (fonction absente) : un événement vieux de 10 s n'est pas annoncé ; un événement récent l'est, le plus
+récent d'abord. Mutant « lit state.tempsMatch » -> rouge. Navigateur 493/0.
+
+### P2-86. Le badge de phase affichait « COUP_DE_PIED_JEU » en clair
+- **Statut : CORRIGÉ (affichage)**
+- Fichiers concernés : `docs/js/constants.js` (`PHASES`), `server/test-parcours-navigateur.js`.
+
+**Constat (QA téléphone et bureau).** Pendant un coup de pied en jeu, le badge de phase du HUD affichait le code
+interne « COUP_DE_PIED_JEU » : c'était la seule phase du moteur absente de `RMConstants.PHASES`, et l'interface
+retombait alors sur le nom brut de la phase.
+
+**Correction.** Libellé « Coup de pied » (couleur dédiée).
+
+**Tests.** Test navigateur : le test relève dans le source du moteur toutes les phases qu'il peut prendre (12) et
+vérifie que chacune a un libellé lisible. Rouge avant (COUP_DE_PIED_JEU sans libellé), navigateur 491/0. Capture
+téléphone : badge « COUP DE PIED ». Le reste de la passe de QA (coup d'envoi en vol, formation de mêlée,
+transformation, aux deux formats) ne montre aucun autre défaut.
+
+### P2-85. Tir au but : le ballon rejoint le buteur à vue (pénalité, transformation)
+- **Statut : CORRIGÉ (affichage)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_debutRemiseBallon`, `tick`, `getState`),
+  `server/test-invariants.js`.
+
+**Constat (relevé des sauts).** À chaque pénalité au but (~4 par match) et à chaque transformation (~5,5), le ballon
+sautait de ~10-11 m (pire mesuré : 22,7 m), du ruck ou du marqueur dans l'en-but jusque dans les mains du buteur,
+au moment où celui-ci devenait porteur.
+
+**Correction.** Juste avant que le buteur ne devienne porteur, le moteur note où le ballon est affiché. Le ballon le
+rejoint ensuite à ~10 m/s (remise du ballon), puis le suit jusqu'au tee et à la frappe, comme avant.
+
+**Effet mesuré (100 graines appariées contre P2-84).** Matchs strictement identiques. Sauts du ballon de plus de 3 m :
+34,5 -> 24,8 par match, dont ~21,5 vols normaux de ballon frappé. Restent, chacun à moins d'un par match :
+interception (5,8 m), ballon ramassé après un coup de pied (7,6 m), jeu rapide après une pénalité au ruck (7,9 m).
+
+**Tests.** « tir au but : le ballon rejoint le buteur à vue avant la frappe » : rouge avant (5/40 tirs sans saut, pire
+22,7 m) ; au moins 95 % des tirs sans saut de plus de 3 m entre la transition et la frappe.
+
+**Barrières.** Invariants 75/75, 13 suites OK, navigateur 490/0, calibration 13/14 (temps de jeu effectif 29,5 min).
+
+### P2-84. Après des points, le ballon revient au centre à vue : fini le saut de 49 m
+- **Statut : CORRIGÉ (affichage)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_nouvelleManche`, `_tickCoupEnvoi`),
+  `server/test-invariants.js`.
+
+**Constat (relevé des sauts).** ~24 fois par match, au début de la mise en place d'un coup d'envoi (après une
+transformation, une pénalité ou un drop), le ballon sautait de ~49 m : des poteaux, où il venait de retomber, jusque
+dans les mains du botteur au centre.
+
+**Correction.** Au moment de la reprise, le moteur note où le ballon est affiché : après un coup de pied au but, c'est
+le point de chute, puisque le vol vient d'être déclaré terminé. Pendant la mise en place, le ballon revient jusqu'au
+botteur en vol bas, à ~15 m/s, et la frappe attend qu'il soit arrivé. Une première version lisait la position via
+`getState()` et laissait `_nouvelleManche` placer le ballon au centre dès la première image : 4/46 mises en place
+propres seulement.
+
+**Test existant reformulé.** « une remise en jeu depuis les 22 m est annoncée RENVOI AUX 22 M » lisait `ballonVolX` comme
+point de remise en jeu. Ce n'est plus vrai au moment de l'annonce, puisque le ballon est encore à son point de départ.
+Il lit maintenant `xCoupEnvoi`, le vrai point, et reste vert avec l'ancien moteur comme avec le nouveau.
+
+**Effet mesuré (100 graines appariées contre P2-81).** Matchs strictement identiques (écart 0,00). Sauts du ballon de
+plus de 3 m : 61 -> 34,5 par match, dont ~20,6 qui sont des vols normaux de ballon frappé (3,1 à 3,3 m par pas).
+Restent : ballon posé sur le tee à la transformation (~10 m, 5,5 par match) et à la pénalité au but (~11 m, ~4 par
+match).
+
+**Tests.** « coup d'envoi : après des points, le ballon revient au centre à vue » : rouge avant (3/46 mises en place sans
+saut, pire 54,4 m) ; au moins 95 % des mises en place sans saut de plus de 3 m, transition comprise.
+
+**Barrières.** Invariants 74/74, 13 suites OK, navigateur 490/0, calibration 13/14 (temps de jeu effectif 29,5 min).
+
+### P2-83. Pourquoi le jeu courant est trop rapide : le porteur n'a que 1,5 s avant le contact
+- **Statut : ENQUÊTE — aucun changement du moteur**
+
+**But.** Étape 1 du rééquilibrage de P2-82 : ramener le tempo du jeu courant (6,1 rucks par minute de jeu) vers le réel
+(5,2), avant de rendre aux touches leur vraie durée.
+
+**Essai 1, sans effet.** Défense alignée plus loin du ruck (`defense.reculRuck` 3 -> 5 -> 7 m), touche à 25 s, graines
+1-40 : rucks 6,10 / 6,16 / 6,10 par minute, durée ballon en main 2,96 s dans les trois cas. Ce réglage ne fixe pas le
+moment du contact.
+
+**Décomposition (5 matchs, 526 séquences ruck -> ruck).** Ballon en main 2,6 s en médiane (p25 1,9 ; p75 3,8). Sortie du
+ruck -> première passe du 9 : 0,3 s. Dernière réception -> contact : **1,5 s** (p25 0,9 ; p75 2,0). Une passe par séquence
+en médiane. Le cycle réel décrit dans `docs/ANALYSE_MATCH_REEL.md` est d'environ 11,5 s (ruck 3-4 s, circulation 3-4 s,
+course et contact 3-4 s). Le ruck du moteur est au bon rythme (3,8 s), mais circulation et course tiennent en 2,6 s au
+lieu de 6 à 8 s.
+
+**Pourquoi ce n'est pas un réglage.** La défense arrive trop vite, et la ralentir a déjà été essayé (balayage de
+`rampeMontee`) : les essais explosaient, parce qu'une défense lente laisse passer. Ce qu'il faudrait modéliser : une
+défense qui monte vite en LIGNE, donc sans trous, mais qui part de plus loin, et une attaque alignée plus en
+profondeur. La course reste alors longue sans ouvrir d'espaces. C'est un chantier de conception (placement défensif et
+profondeur d'attaque), à mener en plusieurs patchs mesurés en apparié.
+
+### P2-82. Où se perdent les 5 minutes de jeu : la touche dure deux fois trop longtemps, et cachait un jeu trop rapide
+- **Statut : ENQUÊTE — aucun changement du moteur ; références ajoutées à `docs/ANALYSE_MATCH_REEL.md`**
+
+**Sources.** Touche ~25 s de la sortie au lancer, ~27 par match (tests 2022, The Roar / Stats Perform, chiffres
+concordants mais pages non lisibles directement). Mise en place limitée à 30 s par la loi depuis 2025 (World Rugby).
+Mêlée 59 à 80 s (World Rugby, Coupe du monde 2019 ; Irish Times). Ballon en jeu 34 min 18 s (Coupe du monde 2023).
+Tableau et liens dans `docs/ANALYSE_MATCH_REEL.md`.
+
+**Moteur.** Touche : au moins 49 s (~10 min de temps mort en trop par match). Mêlée ~58 s : plausible.
+
+**Expérience (touche à 25 s, 100 graines appariées, non livrée).** Ballon en jeu 30,0 -> 34,5 min (réel ~34) et
+touches 23,3 -> 28,0 (réel ~27) deviennent justes. Mais rucks 183 -> 210 (+27,4 ± 2,8), passes 351 -> 404, mêlées
+14,5 -> 15,9, essais 6,8 -> 7,6 (blocs de 20 graines jusqu'à 8,3), points 56,7 -> 63,0 (jusqu'à 65,0). La
+calibration échouerait (mêlées, rucks ; essais et points à la borne).
+
+**Conclusion.** Les 49 s de touche compensaient un jeu courant trop rapide : 6,1 rucks par minute de jeu (réel 5,2),
+et des passes au-delà du réel par minute (déjà relevé en P2-42). Pour avoir des touches réalistes, il faut d'abord
+ralentir le tempo du jeu courant. Rééquilibrage en deux temps, chacun mesuré en apparié ; pas de retouche isolée de
+la touche.
+
+### P2-81. À chaque mêlée, le ballon sautait dans les mains du 9 : il le rejoint désormais à vue
+- **Statut : CORRIGÉ (affichage)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_formerMelee`), `server/test-melee.js` (M24).
+
+**Constat (relevé des sauts, P2-80).** À la formation de chaque mêlée (~8 par match), le ballon sautait de ~11 m (pire
+cas mesuré : 35,5 m) dans les mains du 9, encore loin de la marque. P2-64 créait le ballon directement « dans ses
+mains » (état MAINS_9).
+
+**Correction.** Le ballon part de là où il était affiché juste avant la mêlée. Après un vol (coup d'envoi trop court,
+lancer pas droit, en-avant sous une chandelle), c'est le point de chute, que le moteur venait de déclarer « fin de
+vol ». Il rejoint le 9 à vitesse de passe, grâce à l'état RETOUR qui existait déjà pour les mêlées à refaire. Une
+première version lisait la position via `getState()` dans tous les cas : 52 mêlées sur 60 propres seulement, car après
+un vol le ballon y était déjà « dans les mains » du dernier porteur.
+
+**Effet mesuré (100 graines appariées contre P2-80).** Matchs **strictement identiques** (écart 0,00 sur points,
+essais, rucks, temps de jeu, pénalités) : le changement ne touche que l'affichage du ballon.
+
+**Tests.** M24, rouge avant (13/60 mêlées sans saut, pire 35,5 m) : au moins 95 % des mêlées sans saut du ballon de plus
+de 3 m entre la formation et l'introduction. Vert : plus aucun saut relevé sur 4 matchs.
+
+**Barrières.** Invariants 73/73, 13 suites OK, navigateur 490/0, calibration 13/14 (identique à P2-80 : seul le temps
+de jeu effectif, 29,5 min, est hors fourchette).
+
+### P2-80. Le coup d'envoi se voit enfin, et sa mise en place n'est plus comptée comme du jeu
+- **Statut : CORRIGÉ** (le temps de jeu effectif devient exact, et sort de sa fourchette)
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_tickCoupEnvoi`, compteur de temps de jeu
+  effectif dans `tick`), `server/test-invariants.js` (deux tests).
+
+**Comment on l'a vu.** Relevé automatique des sauts du ballon de plus de 3 m en 0,1 s, sur 10 matchs : environ 90 par
+match. Les plus fréquents étaient au coup d'envoi.
+
+**Trois défauts.**
+1. **Le vol était invisible.** La mise en place déclarait le ballon « tenu par le botteur » (`ballonEnVol = false`) et
+   le vol ne le remettait jamais en l'air : 39 pas sur 600 seulement affichés en vol. Le ballon restait dans les mains
+   du botteur, puis apparaissait chez le receveur, ~14 fois par match.
+2. **Le botteur n'était pas au centre.** La mise en place était coupée à 8 s : dans 118 coups d'envoi sur 141, le
+   botteur, revenu de son en-but, était encore à ~10 m (médiane 10,4 m) du point de coup d'envoi. Le ballon partait
+   du centre sans lui.
+3. **La mise en place comptait comme du jeu effectif** : 1,87 min par match, alors que le ballon n'est pas en jeu
+   avant la frappe.
+
+**Correction.** Le ballon est en l'air pendant tout le vol. La frappe attend que le botteur soit au centre (moins de
+1,5 m ; plafond de sécurité 25 s). Il reste au point de chute jusqu'à ce que le receveur le rejoigne (au plus 1,5 s),
+au lieu de sauter de 3 à 7 m dans ses mains. Seul le vol compte comme du jeu effectif.
+
+**Effet mesuré (100 graines appariées contre P2-79).** Temps de jeu effectif **-2,02 ± 0,35 min** (32,1 -> 30,0) ;
+points +0,87 ± 1,76, essais +0,20 ± 0,27, rucks -2,0 ± 3,0, pénalités -0,97 ± 0,52. Botteur à 1,2 m du centre en
+médiane (max 1,5 m), au lieu de 10,4 m.
+
+**Conséquence assumée.** Le temps de jeu effectif sort de sa fourchette (calibration CI : 29,5 min pour [32, 42]).
+Les 32 min mesurées jusqu'ici contenaient ~2 min de mise en place qui n'étaient pas du jeu. Le chiffre était faux,
+et la calibration le montre maintenant. Le match réel de référence a ~35 min de ballon en jeu : le moteur a donc
+trop de temps mort, environ 5 min par match. À instruire avec une source chiffrée (durée réelle des touches, mêlées,
+transformations et pénalités au but), pas en recomptant.
+
+**Tests.** « coup d'envoi : le ballon vole, à vue, de la frappe à la réception » : rouge avant (39/600 pas affichés en
+vol) ; au moins 95 % des pas de vol affichés en l'air ; au moins 95 % des coups d'envoi sans saut de plus de 4 m
+(vitesse d'un ballon frappé ~25 m/s ; avant : 10 à 17 m à la frappe, 3 à 7 m à la réception). « coup d'envoi : la
+mise en place n'est pas du temps de jeu effectif » : rouge avant (3 014 pas sur 3 014 comptés).
+
+**Reste (vu par le même relevé).** Coup d'envoi trop court -> mêlée : le ballon saute dans les mains du 9, encore
+loin de la marque. Même défaut à chaque mêlée (~8 par match, ~11 m) : il vient de P2-64, et c'est le prochain
+correctif.
+
+**Barrières.** Invariants 73/73, 13 suites OK, navigateur 490/0, calibration 13/14 (temps de jeu effectif 29,5 min
+hors fourchette, rucks 173,8 dans la fourchette sur les graines de la CI).
+
+### P2-79. La pénalité tapée en touche se voit : le buteur frappe, le ballon vole jusqu'à la touche
+- **Statut : CORRIGÉ**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_accorderPenaliteTouche`,
+  `_tickPenaliteTouche`, `_tickTouche`, `_touchePlacerLignes`), `docs/js/constants.js`, `server/test-invariants.js`.
+
+**Constat.** Environ 10 fois par match, « Pénalité, équipe A joue en touche » puis le ballon se retrouvait directement
+sur la marque de touche, 22 à 40 m plus loin : personne ne frappait, aucun ballon ne volait. Mesuré : 49 s du coup
+de sifflet au lancer, exactement comme une touche ordinaire, donc le coup de pied ne prenait aucun temps. (La
+recommandation précédente, « raccourcir la mise en place de la pénalité en touche », était fausse : la séquence
+n'est pas trop longue. Retirée.)
+
+**Correction.** Le buteur désigné court jusqu'à la marque de pénalité, où le ballon est posé. Il frappe (« Le n°10
+tape la pénalité en touche »), et le ballon décrit une cloche de 2,2 s jusqu'à la marque de touche. La touche se
+forme pendant ce temps ; le lancer reste soumis au même délai minimal, donc la durée totale ne change pas.
+
+**Effet mesuré (100 graines appariées contre P2-78).** Points +0,80 ± 0,59, essais +0,07 ± 0,10, pénalités, touches
+et rucks inchangés : le déroulement est le même, seul le spectacle change. Capture navigateur : ballon en l'air entre
+le n°10 et la touche, annonce de la frappe dans le fil.
+
+**Tests.** « pénalité en touche : le buteur frappe depuis la marque et le ballon vole jusqu'à la touche » : rouge avant
+(0/27 départs de la marque) ; pour chaque pénalité en touche, le ballon part de la marque, ne saute jamais de plus de
+3 m en 0,1 s, et vole réellement. Tous les invariants de touche existants restent verts.
+
+**Barrières.** Invariants 71/71, 13 suites OK, navigateur 490/0, calibration 13/14 : essais 6,1, points 54,0,
+pénalités 20,4, temps de jeu effectif 32,2 min (revenu dans la fourchette) ; seuls les rucks (188,6) dépassent 180.
+
+### P2-78. Le hors-jeu en touche existe : un trois-quarts qui part au lancer est pénalisé
+- **Statut : CORRIGÉ**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_probaHorsJeuTouche`, décision au lancer,
+  course du fautif dans `_touchePlacerLignes`, sifflet dans `_tickToucheLancer`), `docs/js/constants.js`,
+  `server/test-invariants.js`.
+
+**Constat.** CLAUDE.md (rôle 5) exige des hors-jeu autour des touches. Il n'y en avait aucun : les trois-quarts
+défensifs restaient toujours exactement sur leur ligne des 10 m (cf. P2-77, qui n'avait traité que le lancer).
+
+**Correction.** Au lancer d'une touche ni volée ni pas droite, un trois-quarts défensif tiré au sort peut partir trop
+tôt, selon sa discipline : 0,03 × (1 + (60 - discipline) / 40), borné entre 1 % et 8 %. Il part AU LANCER,
+déjà lancé, et monte vers l'alignement pendant le vol du ballon. L'arbitre siffle à la réception : « Hors-jeu en
+touche du n°12 (équipe B) : pénalité pour l'équipe A », sur la ligne des 15 m à la marque. Une première version le
+faisait partir de l'arrêt : avec l'accélération progressive, il ne faisait qu'un mètre en 0,8 s et la faute ne se
+voyait pas (test rouge : 0 fautif sur 5 sorti de sa ligne). Il est maintenant à 4-5 m de la marque au coup de
+sifflet, au lieu de 10 m.
+
+**Effet mesuré (100 graines appariées contre P2-77).** 0,65 ± 0,08 hors-jeu en touche par match ; pénalités
+concédées +1,37 ± 0,58 (19,4 -> 20,8) ; points +0,51 ± 1,66, essais -0,16 ± 0,25, touches et rucks inchangés.
+
+**Tests.** « touche : le hors-jeu existe » : rouge avant (fonction absente) ; probabilité plus haute pour un joueur
+indiscipliné ; entre 0,2 et 2 par match sur 12 matchs ; chaque faute suivie d'une pénalité pour l'équipe qui lance ;
+chaque fautif visiblement sorti de sa ligne des 10 m au coup de sifflet.
+
+**Invariant loi 10 corrigé (artefact de mesure).** « les joueurs devant le botteur sont hors-jeu » a échoué à
+198/199 : un talonneur à 1,0 m du point de frappe. Le moteur marque le hors-jeu avec la position à la frappe ; le test
+mesurait APRÈS le pas complet, quand le joueur avait avancé de quelques centimètres. Le test exige maintenant
+« devant » avant ET après le pas. Mutant « personne n'est marqué » : 0/191, rouge.
+
+**Barrières.** Invariants 70/70 (après correction du test loi 10), 13 suites OK, navigateur 490/0. Calibration
+**12/14, le minimum** : essais 6,3, points 53,6, mêlées 14,8, pénalités 19,6 ; rucks 187,4 et temps de jeu effectif
+31,8 min hors fourchette. Les deux fautes de touche ajoutent des arrêts de jeu (+1,4 pénalité par match, environ une
+minute d'arrêt chacune) : le temps de jeu effectif repasse sous 32 min. C'est désormais la catégorie à surveiller.
+
+### P2-77. La touche n'avait aucune faute : le lancer pas droit existe (loi 18)
+- **Statut : CORRIGÉ**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_probaLancerPasDroit`, décision au lancer
+  dans `_tickTouche`, sifflet dans `_tickToucheLancer`), `docs/js/constants.js` (icône, bandeau),
+  `server/test-invariants.js`.
+
+**Constat.** Aucune faute n'était possible en touche : le lancer était toujours parfait, quelle que soit la qualité
+du lanceur. CLAUDE.md (rôle 5) demande aussi des hors-jeu autour des touches ; ce point reste à faire.
+
+**Correction.** Au lancer, probabilité de lancer pas droit selon la compétence en touche du lanceur :
+0,035 × (1 + (55 - touche) / 50), bornée entre 1 % et 8 % (~3,5 % pour un talonneur moyen). Le ballon part
+VISIBLEMENT de travers (1,5 à 2,5 m le long de l'alignement), puis l'arbitre siffle : « Lancer pas droit du n°2
+(équipe A) : mêlée pour l'équipe B », mêlée sur la ligne des 15 m à la marque. Touche comptée perdue sur son lancer,
+sans turnover. Le lanceur est le talonneur dans 237 lancers sur 238 (10 matchs).
+
+**Effet mesuré (200 graines appariées contre P2-76).** Lancers pas droits 0,90 ± 0,07 par match, mêlées
++0,72 ± 0,30, points -2,85 ± 1,31, essais -0,32 ± 0,22 (graines 1-100 : -4,35 ± 1,81 ; 101-200 : -1,35 ± 1,89).
+Une faute aussi rare ne retire directement que ~0,1 touche dans les 22 adverses par match. La baisse des
+points est mesurée, mais son mécanisme n'est pas établi.
+
+**Tests.** « touche : un lancer pas droit existe, rare, et donne une mêlée à l'adversaire » : rouge avant (fonction
+absente) ; probabilité plus haute pour un mauvais lanceur ; entre 0,2 et 2 par match sur 12 matchs ; chaque faute
+suivie d'une mêlée introduite par l'adversaire.
+
+**Effet de bord sur M23 (introduction non droite rare).** Avec plus de mêlées, M23 a basculé : 0,83 introduction non
+droite par match pour un seuil de 0,8, soit 5 sur 75 lâchers, dans le bruit d'un taux réglé à 4 %. Le seuil était exprimé
+par match : il est passé PAR LÂCHER (au plus 10 %), sur 8 matchs. Mutant « ancien taux 0,18 » : 21,2 % (21/99),
+toujours rouge.
+
+**Barrières.** Invariants 69/69, 13 suites OK (après correction de M23), navigateur 490/0, calibration 13/14 :
+essais 6,8, points 54,6, mêlées 13,3, pénalités 19,0, temps de jeu effectif 33,1 min ; rucks 191,5 au-dessus de 180.
+
+### P2-76. Le hors-jeu au ruck : annoncé 52 fois par match sans motif, il devient une faute nommée, jugée sur la discipline
+- **Statut : CORRIGÉ**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_tickRuck` : jugement du hors-jeu ;
+  `_jouerAvantage` / `_tickAvantage` : motif), `server/test-ruck.js` (R12).
+
+**Constat (10 matchs).** « Avantage joué pour l'équipe A (faute de B) » apparaissait **51,9 fois par match**,
+sans motif ni fautif. Toutes ces annonces venaient du hors-jeu défensif au ruck, signalé à la fin exacte du délai de
+grâce (1,5 s) dès qu'un défenseur n'était pas encore revenu derrière la ligne. En moyenne, 3,7 défenseurs étaient
+alors en repli, à tous les postes. Issues : 37,4 avantages obtenus, 6 joués au pied ou en marquant, 5,5 annulés,
+2,9 retours à la pénalité. Le fil était saturé et le joueur ne savait jamais quelle faute était sanctionnée.
+CLAUDE.md (rôle 5) exige que les hors-jeu existent autour des rucks : ils existaient, mais restaient invisibles.
+
+**Cause.** Le moteur fait se replier tous les défenseurs hors-jeu. Aucun ne CHOISIT de rester devant la ligne,
+et un joueur qui se replie sans gêner le jeu n'est pas sanctionné. Le signal sanctionnait donc un artefact de
+déplacement, pas une faute.
+
+**Correction.** Une seule décision par ruck, à la fin du délai de grâce. Le défenseur DEBOUT, hors-jeu, dans la zone
+du ruck (10 m de part et d'autre) est sifflé selon sa discipline : probabilité 0,3 × (1 + (60 - discipline) / 40),
+bornée entre 0,1 et 0,6. Le plaqueur au sol qui se dégage et l'ailier lointain ne sont plus jugés. L'annonce nomme
+la faute et le fautif : « Hors-jeu au ruck du n°7 (équipe B) : avantage pour l'équipe A », rappelés au retour à la
+sanction. Une version intermédiaire, sans le jugement par la discipline, restait à 51 annonces par match (R12 rouge).
+
+**Effet mesuré.** 10 matchs : 17,5 annonces d'avantage par match, 1,0 retour à la pénalité (avant 2,9).
+100 graines appariées contre P2-75 : points +1,78 ± 1,95, essais +0,16 ± 0,33, pénalités -0,54 ± 0,60, rucks
++0,2 ± 2,9, touches -0,3 ± 0,5. Aucun écart significatif : le changement porte sur ce que voit le joueur.
+
+**Tests.** R12, rouge avant (227 avantages sur 227 sans motif) : toute annonce d'avantage nomme « hors-jeu » et un
+numéro ; au plus 20 par match ; au moins un retour à la sanction sur l'échantillon (la règle s'applique encore).
+
+**Barrières.** Invariants 68/68, 13 suites OK, navigateur 490/0, calibration 13/14 : essais 6,6, points 55,0,
+pénalités 21,4 ; seuls les rucks (185,4) sont au-dessus de 180.
+
+### P2-75. Sur téléphone, l'étiquette « arbitre » chevauchait les regroupements
+- **Statut : CORRIGÉ (affichage)**
+- Fichiers concernés : `docs/js/renderer.js` (`etiquetteArbitre`, `dessinerArbitre`), `server/test-parcours-navigateur.js`.
+
+**Constat (QA téléphone).** L'arbitre suit le ballon de près : son étiquette texte « arbitre », écrite
+14 px sous le disque, passait sur les joueurs du ruck ou du maul.
+
+**Correction.** L'étiquette n'est écrite qu'à pleine échelle (rayon des joueurs à 10 px, grand écran). Le
+disque « A » est toujours dessiné, à l'échelle des joueurs (au plus 7 px), avec une lettre à sa taille.
+
+**Tests.** Étiquette affichée en 1400x1000, masquée en 390x844 : rouge avant (fonction absente). Navigateur 490/0.
+Capture téléphone d'un ruck : disque « A » seul, regroupement dégagé.
+
+### P2-74. Sur téléphone, les joueurs se recouvraient : rayon à l'échelle du terrain
+- **Statut : CORRIGÉ (affichage)**
+- Fichiers concernés : `docs/js/renderer.js` (`rayonJoueur`, `dessinerJoueur`), `server/test-parcours-navigateur.js`.
+
+**Constat (QA téléphone 390x844).** Rayon fixe de 10 px alors qu'1 m n'y vaut que ~4,7 px : chaque joueur
+couvrait plus de 4 m de terrain. En touche (joueurs à ~1 m), en maul et en ruck, les disques se
+recouvraient presque entièrement et les numéros devenaient illisibles.
+
+**Correction.** Rayon = 1,4 m à l'échelle, borné entre 6,5 px (numéro lisible) et 10 px (grand écran
+inchangé). La taille du texte, l'ellipse du joueur au sol et le halo du porteur suivent ce rayon.
+
+**Tests.** « joueurs : rayon à l'échelle du terrain (<= 1,5 m) et lisible (>= 6,5 px) » en 1400x1000 (rayon 10,
+inchangé) et 390x844. Rouge avant (fonction absente) ; mutant « rayon fixe 10 px » -> rouge en 390x844. Navigateur
+488/0. Captures téléphone : numéros du ruck lisibles un par un, alignement de touche plus net.
+
+### P2-73. Le bandeau de l'arbitre ne recouvre plus le terrain
+- **Statut : CORRIGÉ (affichage)**
+- Fichiers concernés : `docs/css/style.css` (`#banner`), `docs/js/ui.js` (`placerBandeau`, exposée sur RMUI),
+  `docs/js/main.js` (`redimensionner`), `server/test-parcours-navigateur.js`.
+
+**Constat (QA P2-72).** Le bandeau « ARBITRE — … » était posé sous le HUD, à droite, avec jusqu'à 42 % de la
+largeur de l'écran. Il tombait sur la bordure du terrain (bureau) ou sur l'en-but (téléphone) et pouvait
+masquer un joueur près de la touche ou de l'en-but pendant 2,2 s.
+
+**Deux causes, la seconde découverte en regardant l'écran.** Le CSS le posait à `top: 100px`. Et `main.js`
+le repositionnait à `hudH + 8 px`, juste sous le HUD donc sur le terrain, à chaque changement de hauteur du
+HUD. Une première version du test appelait seulement le nouveau placement et passait, alors que la capture
+réelle montrait encore le bandeau sur la pelouse : `main.js` l'y remettait aussitôt.
+
+**Correction.** Le bandeau se pose sur le BAS du HUD, par-dessus les dernières lignes du fil d'événements
+(qui affichent déjà le même message), centré et de la largeur du HUD. Une seule règle
+(`RMUI.placerBandeau`), utilisée à l'affichage et à chaque redimensionnement.
+
+**Tests.** « arbitre : le bandeau ne recouvre pas le terrain » en 1400x1000 et 390x844 : bandeau visible, message
+long sur deux lignes, chemin réel (affichage puis `resize`), rectangle comparé à la surface dessinée en-buts
+compris. Rouge avant ; mutant « bandeau 20 px sous le HUD » -> rouge. Navigateur 486/0. Captures réelles en
+lecture aux deux formats : terrain entièrement dégagé.
+
+### P2-72. Pendant les rucks, l'arrière défensif montait dans la ligne : plus aucun dernier rideau
+- **Statut : CORRIGÉ**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_tickRuck`, placement des défenseurs
+  onside), `server/test-ruck.js` (R11).
+
+**Comment on l'a vu.** Passe de QA à l'écran : sur une capture de ruck, l'arrière défensif était collé au
+regroupement, dans le premier rideau. Mesure (6 matchs, 22 305 pas de ruck) : il est à moins de 6 m de la
+ligne du ruck **97 % du temps**, profondeur médiane 3,0 m (p90 3,2 m). Dans 6 % de ces cas seulement parce qu'il
+est plaqueur, contestant ou au sol.
+
+**Cause.** Pendant le ruck, tout défenseur onside visait la ligne de défense (`pt.x ± reculRuck`) ; pour le
+n°15, exclu des créneaux, seul le couloir latéral était gardé. Le commentaire annonçait « couverture du
+fond », le code ne gérait pas la profondeur. La couverture à 18 m n'existait qu'en jeu courant (`_tickPorte`),
+et un cycle ruck -> ballon de 3 à 4 s ne lui laissait jamais le temps de reculer.
+
+**Correction.** Pendant le ruck, le n°15 défensif se place à `defense.profondeurArriereJeu` (18 m) derrière
+la ligne du ruck, dans son couloir tiré vers le ballon (même règle qu'en jeu courant), sans dépasser son en-but.
+Après : profondeur médiane 18,0 m ; à moins de 6 m 16 % du temps, dont 54 % comme plaqueur/contestant/au sol
+ou acculé à sa ligne.
+
+**Effet mesuré (100 graines appariées contre P2-71).** Points **-4,95 ± 2,00** (62,0 -> 57,1), essais
+**-0,85 ± 0,34** (7,60 -> 6,75 ; match de référence : 7), rucks +3,2 ± 2,7 (non significatif). Blocs de 20 graines :
+56,5 / 58,4 / 56,2 / 59,3 / 55,1 points. Le moteur quitte le plafond de score par une correction de
+placement, pas par un réglage de taux : une défense sans arrière transformait trop de percées en essais.
+
+**Tests.** R11, rouge avant (médiane 3,0 m) : profondeur médiane de l'arrière défensif pendant le ruck >= 10 m
+(hors plaqueur, contestant, au sol). Aucun joueur hors du terrain avant comme après (6 matchs).
+
+**Barrières.** Invariants 68/68, 13 suites OK, navigateur 484/0, calibration 13/14 : essais 7,0, points 56,2,
+temps de jeu effectif 32,4 min (revenu dans la fourchette) ; seuls les rucks (185,1) sont au-dessus de 180.
+
+**Vu en passant, non corrigé.** Le bandeau de l'arbitre (en haut à droite) recouvre une partie du terrain et
+peut masquer un joueur près de la touche haute ou de l'en-but droit.
+
+### P2-71. L'avant qu'on voit arriver lancé est celui que le 9 sert
+- **Statut : CORRIGÉ**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_designerAvantLance`, utilisé par la
+  course dans `_tickPorte` et par la passe dans `choisirActionPorteur`), `server/test-ruck.js` (R10).
+
+**Constat.** Deux règles différentes : la course lançait l'avant le PLUS PROCHE du 9 (à moins de 9 m), la passe
+servait le premier avant éligible dans l'ordre de pod (P2-69). Mesuré : 68 avants servis sur 159 (43 %)
+étaient ceux qu'on voyait arriver lancés. Le joueur voyait un avant courir vers le 9, et un autre recevait.
+
+**Correction.** Une seule fonction désigne l'avant lancé, utilisée pour la course et pour la passe.
+
+**Effet mesuré (100 graines appariées contre P2-70).** Points +0,35 ± 2,06, essais +0,02 ± 0,33, rucks
++1,1 ± 2,8 : aucun effet sur le score. Blocs de 20 graines : 61,0 / 63,6 / 62,2 / 59,7 / 63,7 points.
+Donc la hausse de P2-67 venait du choix du PLUS PROCHE (souvent un avant qui sort du ruck, à hauteur de
+la ligne d'avantage), pas du fait de servir un avant lancé.
+
+**Tests.** R10, rouge avant (43 %) : au moins 90 % des avants servis par le 9 sont ceux lancés au pas
+précédent. R9 toujours vert.
+
+**Barrières.** Invariants 68/68, 13 suites OK, navigateur 484/0, calibration 13/14 : essais 7,4, points 60,8,
+rucks 178,8 ; seul le temps de jeu effectif (31,8 min) est hors fourchette.
+
+### P2-70. Le drop-goal devient une décision de buteur en fin de match serré
+- **Statut : CORRIGÉ**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_facteurContexteDrop`, tentative de
+  drop dans `_tickPorte`), `server/test-invariants.js` (« drop-goal : une décision de buteur… »).
+
+**Constat (100 graines).** 1,48 drop tenté par match, à taux fixe (0,012/s) dès qu'un trois-quarts portait le
+ballon entre 8 et 38 m des poteaux : à n'importe quelle minute, par les ailiers comme par l'ouvreur, avec
+20 points d'avance comme à égalité. Le drop n'était pas une décision.
+
+**Correction.** Seuls les buteurs (jeu au pied >= 60 : ouvreur, arrière) droppent. Le taux est multiplié par 4
+dans les 15 dernières minutes quand l'écart est de 3 points ou moins, par 0,15 ailleurs. Une première version
+gardait 0,5 pour « écart <= 3 hors fin de match » : la plupart des drops partaient alors avant la 12e minute,
+à 0-0, car un début de match est toujours « serré ». Retiré.
+
+**Effet mesuré (100 graines appariées contre P2-69).** Drops tentés 1,48 -> 0,20 par match (-1,28 ± 0,13),
+réussis 0,59 -> 0,10. Sur 100 matchs : 20 drops, 16 par le 10 et 4 par le 15, dont 7 dans les 15 dernières
+minutes avec un écart de 3 points ou moins. Points +1,34 ± 2,16 et essais +0,40 ± 0,34 : non significatifs.
+Une attaque qui droppait continue maintenant son action. Blocs de 20 graines : 64,0 / 59,8 / 58,5 / 65,0 /
+61,2 points ; la marge sous le plafond de 65 reste faible sur deux blocs sur cinq.
+
+**Tests.** Rouge avant (fonction absente ; 1,5 drop par match) : facteur > 1 en fin de match à un point, < 0,5
+à la 10e minute avec 20 points d'avance ; au plus 0,7 drop tenté par match sur 16 matchs ; aucun drop tenté
+par un non-buteur. Mutant « filtre buteur retiré » -> rouge (6 drops par des non-buteurs).
+
+**Barrières.** Invariants 68/68, 13 suites OK, navigateur 484/0. Calibration **12/14, le minimum** : essais 8,0
+(borne haute exacte), points 63,5, rucks 184,3 et temps de jeu effectif 31,8 min hors fourchette. Le moteur
+est en haut de ses fourchettes de score. Toute nouvelle hausse d'essais fera échouer la calibration, quelle
+que soit sa qualité de jeu : le prochain chantier doit être le rendement offensif lui-même, mesuré en apparié.
+
+### P2-69. P2-67 avait fait monter le score de 4 points : le percuteur est tiré dans l'ordre de pod, plus « le plus proche »
+- **Statut : CORRIGÉ (régression de P2-67)**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_tickRuck` : ordre des pods tiré
+  à chaque ruck ; `choisirActionPorteur` : `avantLance`).
+
+**Comment on l'a vu.** Après P2-68, la calibration est tombée à 12/14 avec les points hors fourchette
+(65,4 pour un plafond de 65), catégorie essentielle. Comparaison appariée sur 100 graines : P2-68 n'y est
+pour rien (-0,12 ± 1,22 point). Mesure des points à chaque commit du moteur depuis P2-50, graines 1-40 :
+54,2 (feuille de match), 57,0 (P2-64), 58,3 (P2-66), **64,1 (P2-67)**, 64,0 (P2-68). Confirmé sur
+100 graines : P2-67 = **+4,09 ± 1,85 points, +0,64 ± 0,29 essai** par match. La moyenne vraie passait à
+64,5 points : la calibration à 20 graines dépassait 65 une fois sur deux environ.
+
+**Ma faute.** En P2-67, j'avais comparé les variantes sur un seul jeu de 20 graines et mis l'écart sur le
+compte du bruit. C'est exactement l'erreur que l'avertissement de méthode (section gain par temps de jeu)
+demandait d'éviter : comparaison appariée sur au moins 100 graines.
+
+**Mécanisme.** Servir l'avant le plus proche du 9, c'est servir celui qui arrive déjà lancé (cf.
+avantLanceRun). Profondeur à la réception inchangée (médiane -3,2 m), mais gain des avants servis : médiane
+1,1 -> 1,5 m, p75 2,7 -> 4,0 m. Physiquement juste, mais assez pour ajouter des essais à un moteur déjà en
+haut de sa fourchette.
+
+**Correction.** Garder la variété demandée par R9 sans privilégier l'avant lancé : l'ordre des pods
+(`_podAvants`) est tiré à chaque ruck (pondéré par la puissance), et le 9 sert, parmi les avants éligibles,
+le premier dans cet ordre. Le tirage seul (avec `find` par numéro) ne suffisait pas : n°1 encore à 24 %.
+Mesuré, graines 1-70 : **60,4 points, 7,26 essais** (P2-66 : 61,4 / 7,11 ; P2-67 : 65,7 / 7,90) ; blocs de
+20 graines 63,0 / 61,5 / 57,5. R9 vert.
+
+**Pistes essayées sans effet sur le score (graines 1-40), non retenues :** défense resserrée à moins de 10 m
+de son en-but (créneaux 3,5 ou 4 m au lieu de 5 : 64,5 et 62,6 points, bruit) ; taux de tir au but 0,60 ou
+0,45 au lieu de 0,85 (62,7 et 61,1 points, mais essais 7,90 et 8,18 : la pénalité non tirée finit en essai).
+Dans les 22 adverses, le moteur est réaliste : 18,9 entrées par match, 33 % transformées en essai (réel 21
+et 33 %). Franchissements 18,4 (réel 18), courses 258 (réel 255).
+
+**Invariant d'endurance.** « Un joueur endurant garde sa vitesse de pointe » est tombé à 0,019 pour un seuil
+de 0,02 sur ses graines 1-16. Ce n'est pas que du bruit : sur trois lots de 16 graines, l'écart passe de
+0,101 / 0,067 / 0,102 (P2-68) à 0,019 / 0,056 / 0,045. Le tirage des pods change qui sprinte, et
+l'estimateur (vitesse maximale observée en début et en fin de match) le ressent. Le mécanisme, lui, agit
+toujours : le mutant « coût de fatigue constant » donne exactement 0 sur les trois lots. Seuil inchangé,
+échantillon porté à 32 graines (moyenne 0,038) : moteur vert, mutant rouge.
+
+**Barrières.** Invariants 67/67 (66 au run complet, plus celui-ci au run ciblé), 13 suites OK, navigateur
+484/0, calibration 13/14 : essais 7,5, points 62,5, rucks 175,6 (dans la fourchette), temps de jeu effectif
+31,5 min (hors fourchette).
+
+**Reste.** L'avant servi n'est pas toujours celui que l'animation lance en course (défaut antérieur à P2-67).
+Un drop-goal contextuel (buteurs seulement, fin de match serré) est prêt mais ajoute des essais (+0,5 sur
+40 graines : l'attaque qui droppait continue) ; à mesurer en apparié avant d'être livré.
+
+### P2-68. Une mêlée sur six coupée au lâcher : l'introduction non droite redevient rare
+- **Statut : CORRIGÉ**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`melee.introductionNonDroite`,
+  `_meleeIntroduire`), `server/test-melee.js` (M23).
+
+**Constat (10 matchs).** Introduction non droite sifflée 2,0 fois par match (taux fixe de 0,18 par lâcher,
+repris tel quel de l'ancien taux par seconde en P2-64), soit 40 % des arrêts de mêlée. Le joueur voyait
+une mêlée sur six s'arrêter au lâcher du 9, sans talonnage ni sortie : la séquence de P2-64 était
+souvent coupée avant d'être visible.
+
+**Correction.** Taux réglable `melee.introductionNonDroite`, 0,04 par défaut. Depuis les consignes
+d'arbitrage de 2018, l'introduction vers son propre côté est tolérée et la faute n'est presque plus
+sifflée. Cette référence vient de la connaissance des lois et de l'arbitrage, pas d'une source chiffrée
+du dépôt (aucune n'existe pour cette faute) : à confronter à un relevé réel si on en ajoute un.
+
+**Effet mesuré (10 matchs, par match).** Introductions non droites 2,0 -> 0,1 ; coups francs 5,6 -> 3,5 ;
+mêlées allant jusqu'à la base 8,0 -> 9,3 sur ~12,2.
+
+**Tests.** M23, rouge avant (1,67 par match sur 6 matchs) : au plus 0,8 par match, et la faute est
+toujours sifflée quand le taux est forcé à 1. Mutant « jamais jugée » -> M23 rouge.
+
+### P2-67. Le 9 servait toujours le même pilier : le percuteur est l'avant le plus proche, celui qui court
+- **Statut : CORRIGÉ**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`choisirActionPorteur`,
+  `avantLance`), `server/test-ruck.js` (R9).
+
+**Constat (6 matchs).** Avant plaqué au ruck : n°1 118 fois, n°3 39, n°4 30, n°5 16, n°8 18. Le joueur
+voyait le même pilier percuter à chaque temps de jeu, et le n°8 presque jamais.
+
+**Cause.** Le 9 servait `att.find(...)`, le PREMIER avant éligible dans l'ordre des numéros de maillot,
+alors que l'animation lançait en course l'avant le PLUS PROCHE (`avantLanceRun`). L'avant qui courait
+n'était donc souvent pas celui qui recevait, et le n°1, toujours dans le pod côté ouvert, gagnait l'égalité.
+
+**Correction.** Le 9 sert l'avant éligible le plus proche, celui qui s'est lancé. Même ensemble de candidats,
+même taux de percussion : seule l'identité du receveur change.
+
+**Effet mesuré.** Percussions des avants réparties (4 matchs) au lieu de 31 % pour le n°1. Essais des
+avants 17 % -> 23 % (12 matchs ; repère réel ~33 %).
+
+**Tests.** R9, rouge avant (n°1 : 31 % des percussions des avants) : n°1 <= 22 %, pas plus du double du n°3,
+et au moins 6 % pour chacun des n°4 à 8. Mutant = moteur d'origine -> rouge.
+
+**Barrières.** Invariants 67/67, 13 suites OK, navigateur 484/0, calibration 13/14 (rucks 186,8 toujours
+au-dessus de 180, temps de jeu 32,5 min).
+
+**Leçon (mesure).** Une première version tirait aussi l'ordre des pods à chaque ruck : la calibration
+tombait à 11/14 (essais 8,3, points 65,6). Mais chaque variante change la séquence aléatoire, et la
+variante « plus proche seul », mesurée avec puis sans tirages supplémentaires, donne 172 puis 187 rucks
+et 7,2 puis 7,3 essais. Sur 20 matchs, le bruit de graine déplace les rucks de ±8 et les essais de ±1 :
+on ne compare pas deux variantes sur un seul jeu de 20 graines quand l'écart attendu est de cet ordre.
+Le tirage des pods a été retiré (inutile pour R9, et son effet sur le score n'était pas établi).
+
+### P2-66. « Mêlée dominée » annoncée à presque chaque mêlée : seuils de qualité recalés sur le différentiel réel
+- **Statut : CORRIGÉ**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`melee.seuilsQualite`,
+  `_meleeResoudreContestation`), `server/test-melee.js` (M22).
+
+**Constat (mesuré, 10 matchs).** Issues des mêlées gagnées sur introduction : 7,4 « dominées », 0,3
+« gagnées proprement », 0,1 « sous pression » par match (même déséquilibre avant P2-64 : 6,2 / 0,9 / 0,3).
+Le fil du match annonçait une domination à presque chaque mêlée, et la domination gonflait les sorties
+du 8 seul (pick-and-go à 35 % après domination contre 12 % sinon) et raccourcissait le talonnage.
+
+**Cause.** Les seuils (dominant > 25, propre > 8) étaient sous le 10e centile du différentiel de
+contestation, qui vaut ~33 en médiane à packs égaux (avantage d'introduction 18 + piliers + talonneur).
+Distribution mesurée sur 88 mêlées : p10 26, p25 29, médiane 33, p75 36, p90 42.
+
+**Correction.** Seuils réglables `melee.seuilsQualite: { dominant: 39, pression: 27 }`. Le différentiel
+lui-même, la poussée, la rotation et le taux de ballons volés ne changent pas.
+
+**Effet mesuré (10 matchs, par match).** Sur introduction : 0,6 dominée, 5,8 propre, 1,1 sous pression.
+Sorties : 9 qui joue 5,8, 8 qui part 1,7, 8 qui passe 0,8 (avant : 3,8 / 2,8 / 1,3).
+
+**Tests.** M22, rouge avant (98 % de « dominées » à packs égaux) : à packs égaux, entre 8 et 40 %
+de dominées, la mêlée propre est l'issue la plus fréquente, et la pression existe ; un pack renforcé
+(+30 en mêlée sur les avants, via `joueursA`) domine au moins 60 % du temps. Mutant « jamais dominant »
+(seuil 999) -> M22 rouge.
+
+**Barrières.** Invariants 67/67, 13 suites OK, calibration 13/14 (20 matchs). Le temps de jeu effectif
+rentre dans sa fourchette (31,4 -> 32,3 min : moins de pick-and-go, talonnage un peu plus long), mais
+les rucks en sortent (178,0 -> 186,4, plafond 180) : plus de ballon vivant, plus de rucks. Les deux
+grandeurs sont liées. Le prochain réglage doit porter sur le NOMBRE de rucks par minute de jeu (trop de
+contacts consécutifs au près), pas sur le temps de jeu.
+
+### P2-65. Repère du ballon sous le pack de mêlée
+- **Statut : CORRIGÉ (affichage)**
+- Fichiers concernés : `docs/js/renderer.js`, `server/test-parcours-navigateur.js`.
+
+**Problème.** Depuis P2-64, le ballon de mêlée est dessiné SOUS les joueurs (demande du joueur) : il
+est réaliste mais on ne le voit presque plus, donc on ne suit pas son trajet du tunnel au 8.
+
+**Correction.** Couche `repere` dans `RMRenderer.ordreCouches` pour l'état `SCRUM`, tracée après les
+joueurs : anneau pointillé jaune avec liseré sombre, à la position réelle du ballon. Le ballon reste
+dessous. Aucun repère quand le ballon est porté. Test navigateur rouge avant (couche absente), vert après ;
+navigateur 484/0. Captures 1400×1000 : l'anneau se déplace du milieu du tunnel jusqu'aux pieds du 8.
+
+### P2-64. La mêlée devient une séquence physique : introduction réelle par le 9, ballon au sol sous le pack, sortie par le 9 à la base
+- **Statut : CORRIGÉ** (demande du joueur)
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (machine à états de la mêlée),
+  `docs/js/renderer.js` (ballon de mêlée au sol), `docs/js/constants.js` (icône), `server/test-melee.js`
+  (M11-M19), `server/test-invariants.js` (état de balle `SCRUM`).
+
+**Avant.** Le ballon était dessiné FIXE au point de mêlée du début à la fin. « Introduction » n'était
+qu'une annonce suivie de 4 s d'attente ; l'issue était tirée au bout de 6 s de « contestation » sans que
+le ballon bouge ; le ballon « sortait sur le 8 », qui le passait au 9.
+
+**Maintenant**, durées paramétrables (`melee.durees` : introduction 0,8 s ; acheminement 2 à 4 s ;
+sortie 1 s) :
+1. **Avant l'introduction** : le ballon est dans les mains du 9 qui introduit, face à l'ouverture du
+   tunnel (sur sa ligne médiane), à l'extérieur de la mêlée (1 m au-delà des flankers), du côté choisi.
+   Il le garde pendant Flexion - Liez - Jeu.
+2. **Introduction** : le 9 lâche le ballon, qui traverse latéralement l'ouverture et touche le sol au
+   milieu du tunnel (léger vol affiché). La poussée commence au lâcher (différentiel établi à cet
+   instant) ; le talonnage attend le contact au sol. L'introduction non droite est jugée au lâcher,
+   avec la même probabilité par mêlée qu'avant (~18 %).
+3. **Talonnage et acheminement** : l'issue est décidée au contact du sol (ballon gardé, ou volé), puis
+   le ballon roule AU SOL sous le pack jusqu'aux pieds du 8 qui l'a gagné, en suivant la marque qui
+   se déplace avec la poussée : plus vite après une poussée dominante, plus lentement sous pression,
+   avec une légère déviation latérale. Le 9 du camp qui gagne longe l'extérieur de son pack, au niveau
+   du ballon ou derrière lui, et ne rentre vers la base qu'une fois derrière les flankers.
+4. **À la base** : le 8 contrôle le ballon à ses pieds ; la poussée continue, la mêlée n'est pas finie.
+   L'issue (dominée, gagnée, sous pression, volée) est annoncée et comptée à ce moment.
+5. **Sortie** : le 9, à l'extérieur près de la base, prend le ballon — la mêlée se termine quand il le
+   joue ; ou le 8 ramasse et part (le 9 en soutien). « Use it » si le 9 n'arrive pas.
+Le 9 du camp qui perd le ballon reste de son côté de la ligne médiane du tunnel. Une mêlée à refaire
+rend le ballon au 9 à vitesse de passe (jamais téléporté dans ses mains). Un écroulement (ou toute
+faute) interrompt la séquence au pas même.
+
+**Trace obligatoire.** `traceMelees()` garde les 5 dernières mêlées : à chaque pas, la position du
+ballon (et son état) et des deux 9 avec leur action (`TIENT_LE_BALLON`, `INTRODUIT`, `LONGE_LE_PACK`,
+`ATTEND_A_LA_BASE`, `TIENT_SA_LIGNE`) ; et chaque contact (`BALLON_AU_9`, `LACHER`, `SOL`, `TALONNAGE`,
+`CONTROLE_8`, `RAMASSAGE`, ou la faute). Le rendu reçoit un état de balle `SCRUM` : ballon dessiné au
+sol, aucun porteur en surbrillance.
+
+**Tests** (`server/test-melee.js`, M11-M19), observés UNIQUEMENT par ce que voit le rendu, sur de vraies
+mêlées de match : ballon dans les mains du 9 face au tunnel ; introduction de 0,5 à 1 s qui traverse
+le tunnel ; acheminement de 2 à 4 s au sol, pas de plus de 0,35 m par pas, jusqu'au 8 qui gagne ; le 9
+jamais devant le ballon ni à moins de 0,45 m d'un avant ; base tenue au moins 0,5 s puis ballon joué par
+le 9 (ou le 8) sans saut de plus de 1 m ; 9 du camp perdant derrière la ligne médiane ; aucun saut de
+ballon de plus de 1 m sur toute la mêlée ; trace et contacts dans l'ordre ; écroulement qui coupe la
+séquence ; durées paramétrables. 8 des 9 étaient rouges avant ; M16 passait déjà (l'ancien moteur
+respectait cette limite) et rougit sur le mutant « le 9 suit le ballon quel que soit le vainqueur ».
+Autres mutants vérifiés : 9 qui traverse le pack (M14 rouge), acheminement éclair (M13 et suivants
+rouges).
+
+**Deux invariants ajustés, chacun mesuré.**
+- « Une mêlée se termine toujours » (matchs de 300 s, temps morts comprimés à 15 %) : la séquence
+  physique n'est pas comprimée. Sur 2 x 40 graines : médiane 11,9 -> 14,2 s, maximum 15,0 -> 18,3 / 19,2 s,
+  aucune mêlée bloquée. Plafond 16 -> 24 s.
+- « Le jeu courant respire » : 2,79 à 2,83 s sur quatre jeux de graines (contre ~2,93), parce que le 9
+  ne reçoit plus la passe du 8 (~0,1 s de vol qui s'ajoutait à la séquence suivante). La borne basse
+  calculée en P2-53 était 2,77 s, arrondie à 2,8 : seuil 2,75. Le mutant sans inertie (2,26 s) reste
+  rouge.
+
+**Effet mesuré** : temps de jeu effectif 32,8 -> 31,8 min (la partie vivante d'une mêlée passe de
+~7,5 s à ~5 s, durées demandées) ; mêlées 13,2, pénalités 21,7 par match, dans leurs fourchettes ;
+calibration 12/14.
+
+**Retour du joueur sur les premières captures, deux défauts corrigés :**
+- « Le ballon n'est pas collé au neuf après l'introduction, il entre au milieu de la mêlée. » Le moteur
+  faisait bien rouler le ballon sous le pack, mais l'AFFICHAGE (`positionBallonLogique`, `docs/js/main.js`)
+  ne connaissait pas l'état `SCRUM` et dessinait le ballon sur le porteur logique, le 9 : 2,4 à 2,9 m
+  d'écart avec la vraie position. Mes tests lisaient la position du moteur, pas celle dessinée : ils ne
+  pouvaient pas le voir. Corrigé, avec un test navigateur qui passe par une couture
+  (`RMMain.positionBallonAffichee`) : le ballon dessiné coïncide avec le moteur (écart 0) et se trouve à
+  plus d'1 m du 9. Rouge avant (écarts 2,4-2,9 m, ballon exactement sur le 9).
+- « Le neuf adversaire n'est pas bien placé. » Il était de l'AUTRE côté de la mêlée. Loi 20 : il se tient
+  du même côté que le 9 qui introduit, au niveau du tunnel, de son côté de la ligne médiane. Corrigé
+  (1,1 m derrière la ligne médiane, à côté du 9 qui introduit), test M20 rouge avant.
+
+**Second retour du joueur, deux défauts corrigés :**
+- « Le ballon est en dessous des joueurs, pas au-dessus. » Le rendu dessinait toujours le ballon en
+  dernier, donc PAR-DESSUS les corps, même roulant au sol sous le pack. `RMRenderer.ordreCouches(state)`
+  fixe l'ordre : pendant une mêlée (état `SCRUM`) le ballon est dessiné avant les joueurs, qui le
+  recouvrent ; porté ou en vol, il reste au-dessus. Test navigateur sur l'ordre des couches, rouge avant
+  (fonction absente, ballon toujours en dernier).
+- « Le 8 peut partir avec la balle ou faire une passe, il n'y a pas que le 9. » Troisième sortie : le 8
+  ramasse à la base et passe (`melee.passeHuit`, 15 % après domination, 10 % sinon), au 10 s'il est à
+  hauteur ou derrière lui à moins de 20 m, sinon au 9 ; jamais en avant. Un seul tirage avec deux seuils :
+  la probabilité du pick-and-go ne change pas, la passe prend sur les sorties par le 9. Passe comptée
+  (passes tentées/réussies), log `MELEE_PASSE_HUIT`. Test M21 rouge avant (0 passe du 8) ; mutant « le 8
+  sert l'avant le plus proche » -> M21 rouge (passe de 1,03 m vers l'avant).
+  Mesuré sur 20 matchs : 181 sorties, 9 qui joue 92 (51 %), 8 qui part 61 (34 %), 8 qui passe 28 (15 %).
+  Barrières : invariants 67/67, 13 suites OK, navigateur 482/0, calibration 13/14 (temps de jeu 31,4 min hors fourchette).
+
+**Non fait / limites** : après une pénalité ou un coup franc de mêlée, le ballon passe au tireur comme
+avant (hors séquence sous le pack). Le côté d'introduction est le grand côté du terrain, pas un choix
+tactique réglable.
+
+### P2-63. Le tableau de fin de match : transformations, pénalités au but, rucks conservés, mêlées et touches sur son ballon
+- **Statut : CORRIGÉ (statistiques et affichage) ; écarts au réel révélés, à traiter**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (compteurs), `docs/js/ui.js`
+  (tableau), `server/test-invariants.js`.
+
+**Ce qui manquait.** CLAUDE.md (rôle 6) exige transformations, pénalités réussies, rucks gagnés/perdus,
+mêlées et touches gagnées/perdues. Le tableau n'affichait ni les tirs au but, ni la conservation des
+rucks, et montrait les mêlées et touches gagnées sur le TOTAL des deux équipes, ce qui ne dit pas qui
+perd son ballon.
+
+**Correctif.** Nouveaux compteurs, incrémentés là où l'action a lieu : essais de pénalité,
+transformations, pénalités au but et drops (tentés / réussis), rucks conservés, mêlées gagnées sur sa
+propre introduction (y compris pénalité, coup franc ou essai de pénalité obtenus par l'équipe qui
+introduit, comme dans les relevés réels), touches gagnées sur son propre lancer. Le tableau les affiche
+en « réussis / tentés » ; un match archivé avant ce patch affiche « – ».
+
+**Le score se reconstruit exactement** à partir de ces statistiques (5 par essai, 7 par essai de
+pénalité, 2 par transformation, 3 par pénalité ou drop), sur les 12 équipes-matchs du test. Pur
+comptage : score et toutes les anciennes statistiques strictement identiques au moteur d'avant (10
+matchs).
+
+**Test** : « le tableau de marque se reconstruit à partir des statistiques » (graines 1-6) : score
+reconstruit exact, jamais plus de réussites que de tentatives, de transformations que d'essais. Mutant
+« une transformation réussie non comptée » : rouge (25 points reconstruits contre 27).
+
+**ÉCARTS AU RÉEL révélés par ces statistiques** (10 matchs) — chacun mérite un correctif mesuré à part :
+
+| statistique | moteur | réel (ordre de grandeur) |
+|---|---|---|
+| rucks conservés | 86 % (153 / 177) | 93-95 % |
+| mêlées gagnées sur introduction | 72 % (9,1 / 12,6) | ~90 % |
+| touches gagnées sur lancer | 88 % | 85-90 % (correct) |
+| transformations | 59 % (3,5 / 5,9) | ~70-75 % |
+| pénalités au but | 82 % | ~75-80 % (correct) |
+| drops | 14 % (0,2 / 1,4) | ~30-40 % |
+
+Une mêlée sur trois se termine sur un coup de sifflet (4,9 par match), ordre de grandeur actuel du rugby
+international.
+
+### P2-62. « Page blanche » : un seul fichier perdu au chargement laissait un jeu muet, sans message
+- **Statut : CORRIGÉ (signalement au joueur)**
+- Fichiers concernés : `docs/index.html`, `server/test-parcours-navigateur.js`.
+
+**Le signalement.** Le joueur a écrit : « moi j'ai une page blanche ». Sans son erreur de console, la
+cause exacte n'a pas pu être établie.
+
+**Ce qui a été trouvé.** Le site en ligne (`main`), ouvert depuis l'environnement de test, a perdu
+plusieurs de ses fichiers au chargement (réponses 503, nouvelles tentatives épuisées) : feuille de
+style, `main.js`, modules du Mode Club ; la page a levé « Cannot convert undefined or null to object ».
+La page charge en effet ~56 fichiers séparés. Mesure en local, chaque fichier bloqué à tour de rôle :
+- un des 7 fichiers essentiels absent (moteur, constantes, aléatoire, état de match, rendu, interface,
+  `main.js`) : l'accueil s'affiche mais « Lancer un match rapide » ne fait rien, sans aucun message ;
+- `club.js` ou `club-sauvegarde.js` absent : erreur levée côté Mode Club ;
+- feuille de style absente : la page s'affiche **sur fond blanc**, contenu brut empilé — très
+  probablement la « page blanche » signalée ;
+- les autres modules : rien de visible à l'accueil ni au match rapide.
+
+**Correctif.** Un écouteur en tête de page note chaque script ou feuille de style qui échoue à se
+charger ; une vérification après le dernier script contrôle aussi la présence des 7 fichiers essentiels.
+En cas de problème, un bandeau (styles en ligne, sans dépendance, fonctionne même sans la feuille de
+style) explique que la connexion a sans doute été interrompue et propose « Recharger la page ».
+
+**Tests** (parcours navigateur) : aucune alerte quand tout est chargé ; alerte avec bouton de
+rechargement quand `js/ui.js` manque, quand le moteur manque, quand un module du Mode Club manque. Rouges
+avant (aucune alerte), verts après.
+
+**Non fait** : réduire le nombre de fichiers (regroupement) diminuerait le risque à la source ; c'est un
+changement de construction du site, plus risqué, à décider séparément.
+
+### P2-61. Mètres ballon en main « ×3 » : l'écart vient surtout de ce qu'on additionne, pas du jeu
+- **Statut : ENQUÊTE — aucun correctif ; complète P2-46**
+- Fichiers concernés : aucun.
+
+**Mesure** (moteur actuel, 10 matchs ; instrument validé : 2109 m contre 2111 au compteur du moteur).
+Chaque segment de jeu où un même joueur porte le ballon, classé par ce qui le termine :
+
+| fin du segment | par match | gain moyen | total par match |
+|---|---|---|---|
+| plaqué, ruck | 177 | 4,8 m (médiane 4,2) | 854 m |
+| passe | 360 | 2,2 m | 810 m |
+| coup de pied | 58 | 3,5 m | 203 m |
+| essai | 6 | 25,2 m | 151 m |
+| mêlée, maul, touche, autres | ~17 | — | ~90 m |
+
+Avants : 4,1 m par segment ; trois-quarts : 3,2 m.
+
+**Lecture.** Les courses qui vont au contact gagnent 4,8 m en moyenne : un peu au-dessus des 3 à 4 m
+par course courants dans le rugby international, mais du bon ordre. Le compteur `metresGagnes`
+additionne aussi le terrain couru par chaque joueur AVANT une passe (810 m) ou un coup de pied (203 m).
+Sans ces segments, le moteur donne ~1 090 m par match, proche des 976 m du match de référence.
+
+**Pourquoi je ne change rien.** Cela dépend de ce que mesure exactement le relevé réel : s'il ne compte
+que les courses (« carries »), le moteur est juste et seul le périmètre du compteur diffère ; s'il
+compte tout terrain gagné ballon en main, le moteur court trop avant de passer. Comme en P2-46, le dépôt
+n'a pas de source primaire qui tranche. Modifier le moteur, ou l'affichage, sur une hypothèse de
+définition reviendrait à fabriquer la statistique. **Ce qu'il faudrait** : la définition primaire du
+fournisseur de données du match de référence (ESPN / rugbypy).
+
+### P2-60. Les franchissements : 4,7 par match à la feuille de match, alors que la défense est percée bien plus souvent
+- **Statut : CORRIGÉ**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_suivreFranchissement`),
+  `docs/js/constants.js` (icône et bannière), `server/test-invariants.js`.
+
+**Ce que le joueur voyait.** La feuille de match affichait 2 ou 3 franchissements par équipe après des
+essais de 50 m. Le moteur ne comptait un franchissement qu'après un plaquage MANQUÉ suivi d'espace
+(4,7 par match ; réel ~18, `docs/ANALYSE_MATCH_REEL.md`). Un porteur qui file dans un trou sans être
+touché, ou qui relance après un coup de pied, n'en comptait aucun.
+
+**Mesure.** Définition courante (Opta) : le porteur passe la première ligne de défense. Instrument :
+plus aucun défenseur debout devant le porteur dans son couloir (10 m de part et d'autre), puis au moins
+X m de gain. Sur 10 matchs : +3 m 12,6 ; **+5 m 10,8** ; +10 m 8,4 par match, et 69 % des essais suivent
+une telle course dans la même possession.
+
+**Correctif.** `_suivreFranchissement` suit le porteur à chaque pas de jeu courant et compte un
+franchissement (une seule fois par porteur) quand il a passé la ligne et gagné 5 m de plus ; l'événement
+`FRANCHISSEMENT` est annoncé (« Franchissement ! Le n°X de l'équipe Y passe la ligne de défense »),
+avec icône et bannière. Les deux comptages existants (plaquage manqué suivi d'espace, plaquage de
+sauvetage manqué) sont conservés et ne comptent plus deux fois le même porteur.
+
+**Effet :** franchissements **4,7 -> 14,4 par match** (réel ~18). Pur comptage, sans tirage aléatoire :
+vérifié sur 10 matchs, score et toutes les autres statistiques strictement identiques au moteur d'avant.
+
+**Un instrument à réaligner.** « Un franchissement paie » mesurait le gain sur 6 s à partir de
+l'incrément du compteur de franchissements. Ce compteur incrémente désormais aussi en fin de course
+(ligne passée + 5 m) : le test mesurait la fin de l'action et tombait à 10,7 m. Il suit maintenant ce
+qu'il annonce, le porteur qui bat son vis-à-vis (franchissement né d'un plaquage manqué dans le même
+pas) : vert sur le moteur actuel et celui d'avant, rouge sur le mutant « défenseur éliminé qui repart
+à pleine vitesse » (8,5 m).
+
+**Test** : « un porteur qui passe la ligne de défense est compté et annoncé » (graines 1-4) : 8 à 30
+franchissements par match, au moins un annoncé, jamais plus d'annonces que de franchissements. Rouge
+avant (3,8), vert après.
+
+### P2-59. Le temps de jeu effectif oubliait la mêlée et le lancer en touche
+- **Statut : CORRIGÉ**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (compteur du temps de jeu
+  effectif), `server/test-invariants.js`.
+
+**Le décompte.** Temps de jeu effectif par phase (moteur actuel, 10 matchs, instrument validé contre le
+compteur du moteur) face au réel estimé (~35 min, `docs/ANALYSE_MATCH_REEL.md`) : rucks 11,3 min (réel
+~10,8), coups de pied 3,5 (~4,5), mauls 2,1 (~1,5), coups d'envoi 2,2 (~1,9), jeu courant 11,5.
+
+**Le défaut.** Le commentaire du compteur annonçait n'exclure de la mêlée et de la touche que leur
+**formation** (liaison des packs, alignement avant le lancer). Le code excluait les phases MÊLÉE et
+TOUCHE **entières**. Or le ballon est en jeu dès qu'il est introduit dans la mêlée et dès qu'il est lancé
+en touche (définition World Rugby). Mesuré par état de mêlée : introduction 2,83 s, poussée 3,74 s,
+sortie 0,90 s par mêlée, soit ~7,5 s de vrai jeu ; plus 23 s par match de vol des lancers en touche.
+
+**Correctif.** Les états introduction / contestation / sortie de la mêlée et le vol du lancer en touche
+comptent dans le temps de jeu effectif (et donc dans la possession et l'occupation). La formation reste
+exclue. Repli ajouté pour l'occupation quand personne ne porte le ballon (point de mêlée ou marque).
+
+**Effet :** temps de jeu effectif **30,6 -> 32,6 min** par match. Le déroulé des matchs est strictement
+identique (le compteur ne tire aucun nombre aléatoire) : seules les statistiques de temps de jeu, de
+possession et d'occupation changent.
+
+**Test** : « le ballon est en jeu dès l'introduction en mêlée et dès le lancer en touche » (graines 1-2) :
+plus de 95 % des ticks de mêlée vivante ou de lancer comptés, aucun tick de formation compté. Rouge avant
+(0 sur 2376), vert après.
+
+**Reste** : le jeu courant (11,5 min) et le jeu au pied (3,5 min) restent sous le réel ; le temps de jeu
+effectif (32,6) est en bas de la fourchette 32-42.
+
+### P2-58. Quels invariants ne tiennent que par leurs graines ? Deux sur soixante-quatre
+- **Statut : CORRIGÉ (tests)**
+- Fichiers concernés : `server/test-invariants.js`.
+
+**Pourquoi.** Pendant P2-55 à P2-57, quatre invariants sont passés au rouge sans que la propriété
+qu'ils gardent ait changé : ils comptaient des événements rares sur 4 à 8 matchs, avec un seuil
+dans le bruit. Chaque patch du moteur déplace les tirages aléatoires, et ces tests basculaient au hasard.
+
+**Méthode.** Toute la suite d'invariants a été rejouée sur le moteur actuel, SANS le modifier, avec des
+graines décalées (+1000, +2000, +3000) : une copie du fichier de tests dans laquelle `MatchEngine` ajoute
+le décalage à la graine. Un test qui rougit dans ces conditions dépend de ses graines, pas du moteur.
+
+**Résultat : 62 tests tiennent sur les trois décalages. Deux rougissent :**
+- « Un franchissement paie » (8 matchs) : 26 franchissements seulement, sous la taille d'échantillon
+  exigée (+1000) ; 11,9 m pour un seuil de 12 (+2000). Passé à **16 matchs**.
+- « Loi 10 » : la taille d'échantillon que j'avais exigée en P2-57 (plus de 60 réceptions non
+  disputées) n'était atteinte que de justesse (56-60 ailleurs). Passé de 4 à **6 matchs**.
+
+Les seuils de jugement ne bougent pas. Après correction : les deux tests passent sur les graines
+d'origine et sur les trois décalages, et rougissent toujours sur leur mutant (défenseur éliminé qui
+repart à pleine vitesse : 7,0 m après une percée ; les quinze joueurs au ballon : 9,4 joueurs autour
+du receveur).
+
+**À refaire avant chaque modification sensible du moteur** : rejouer la suite d'invariants avec un
+décalage de graines. Un échec sur graines décalées, sans changement du moteur, désigne un test à
+fiabiliser, pas un défaut de jeu.
+
+### P2-57. Les avants tapaient au pied plus que le demi de mêlée : le jeu au pied revient aux demis et à l'arrière
+- **Statut : CORRIGÉ**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`choisirActionPorteur`,
+  `_executerCoupDePiedJeu`, réception disputée), `server/test-invariants.js`.
+
+**Ce que le joueur voyait.** La décision de taper avait le même taux pour tous les porteurs. Mesuré
+sur 10 matchs (instrument validé : 483 coups de pied sur 483) : **29 % des coups de pied tapés par
+des avants**, 20 % par l'ouvreur, **8 % seulement par le demi de mêlée** (3 chandelles depuis la base
+par match). Le n°9 n'avait d'ailleurs pas le temps de taper : il passe en ~0,5 s, avant que la
+décision de taper (bloquée 0,4 s) ne lui soit proposée. C'est le cas « avants et trois-quarts jouent
+pareil » que CLAUDE.md refuse.
+
+**Correctif.**
+- Facteur de poste sur la décision de taper : avants ×0,05, ouvreur ×2,0, arrière ×1,6, autres ×1.
+- Chandelle du n°9 depuis la base, à sa sortie de regroupement, dans son propre camp : 25 % des
+  sorties dans ses 22, 15 % entre ses 22 et la ligne médiane. Le n°9 se place et tape **1 s** après
+  avoir ramassé le ballon (une première version tapait en 0,15 s, ce qui créait des séquences éclair).
+- Risque d'en-avant sous une chandelle disputée : 15 % -> **12 %** (P2-56), les chandelles étant
+  désormais trois fois plus nombreuses.
+
+**Balayage**, calibration au pas réel, quatre jeux de graines (1-20 / 21-40 / 41-60 / 61-80) :
+- 10 ×2,4, 15 ×1,8, autres ×1,2, base 25/20 % : 13/13/12/13, coups de pied 60-62, passes 338-345,
+  rucks 171-176 — **refusé** : la séquence de jeu courant tombe à 2,70-2,79 s, sous la fourchette
+  réelle (2,8-3,7 s, P2-53). Même avec 1,8 s de préparation, elle tangue autour du seuil.
+- 10 ×2,0, 15 ×1,6, base 25/15 %, préparation 1,5 s, en-avant 15 % : 11/11/13/12 — **refusé**
+  (mêlées 15,7 ; essais 8,3 sur les graines 21-40).
+- **Retenu** : 10 ×2,0, 15 ×1,6, base 25/15 %, préparation 1,0 s, en-avant 12 % : **12/12/12/12**,
+  essais 5,5-7,5, coups de pied 53-60, touches 21,6-24,2, mêlées 11,8-14,2. Séquence de jeu courant
+  2,93 / 2,92 s.
+
+**Qui tape, après** : ouvreur 31 %, demi de mêlée 26 % (11,7 chandelles depuis la base par match),
+centres 22 %, ailiers 11 %, arrière 9 %, avants 1 %.
+
+**Test** : « le jeu au pied appartient aux demis et à l'arrière » (graines 1-4) : moins de 8 % des coups
+de pied par des avants, plus de 20 % par le n°9, plus de 55 % par les n°9, 10 et 15. Rouge avant (29 %
+d'avants), vert après.
+
+**Trois instruments corrigés, chacun vérifié contre un mutant.**
+- « Le défenseur de face monte au contact » : dans deux scénarios sur six, l'ailier porteur tapait au
+  pied, ce qui finissait la phase avant tout plaquage (le moteur d'avant ne le faisait pas sur ces
+  graines, par tirage). Le scénario teste la défense : le jeu au pied de l'attaque y est désormais
+  neutralisé, comme les passes. Mutant sans monteur : 0 scénario sur 6, rouge.
+- « Loi 10, hors-jeu sur coup de pied » : le test jugeait « devant le botteur » par rapport à sa
+  position APRÈS le pas de temps. Graine 4 : chandelle frappée à 9,8 m, botteur reculé à 9,7 m, talonneur
+  à 10,7 m — 0,9 m devant le point de frappe, donc en jeu, mais compté devant. Le test utilise
+  maintenant le point de frappe enregistré par le moteur.
+- Même test, masse autour du receveur : la moyenne mélangeait le duel voulu sous les chandelles et le
+  défaut gardé (tout le monde converge). Deux mesures : coups de pied non disputés, seuil d'origine 6
+  (moteur ~5,0) ; chandelles et coups de pied à suivre, 12 au plus (moteur ~8,9). Le seuil unique porté
+  à 7 en P2-55 disparaît. Mutant « les quinze au ballon » : 8,6 sur les coups de pied non disputés,
+  rouge.
+
+**Quatrième instrument : l'endurance.** « Un joueur endurant garde sa vitesse de pointe » est tombé à
+-0,010 pour un seuil de +0,02, sur ses 8 graines. Le moteur d'avant n'y donnait déjà que +0,022 ; sur
+les graines 9-16, l'effet est le même avant et après (+0,096 / +0,094). L'estimateur (vitesse maximale
+observée) est trop bruité pour 8 matchs. Test passé à 16 graines : actuel +0,042, avant +0,059, mutant
+« l'endurance n'agit plus » exactement 0, rouge.
+
+**Un défaut plus ancien, rendu visible : la sortie en touche ballon en main (loi 19).** L'invariant
+« un porteur peut être plaqué en touche » est passé au rouge (0,17 par match pour un seuil de 0,5). Le
+test ne compte que 6 matchs : sur 24 graines, ce dosage donne 0,33 par match (0,17 à 0,67 selon les
+paquets de 6), contre 0,6-0,8 avant — et le réel est de 2 à 4. Le moteur en était loin depuis le
+début. Cause : un porteur n'est poussé dehors que s'il est plaqué à moins de **1,5 m** de la ligne.
+Distribution des 211 plaquages réussis par match : 0,70 à moins de 1,5 m, 2,35 à moins de 2,5 m.
+Balayage du rayon, 24 matchs :
+
+| rayon | ballon porté en touche | gain après une percée (réel 15-25 m) |
+|---|---|---|
+| 1,5 m | 0,33 / match | 14,1 m |
+| **2,0 m (retenu)** | **1,08 / match** | **14,3 m** |
+| 2,5 m | 2,17 / match | 12,6 m — les percées le long de la touche finissent dehors ; l'invariant « un franchissement paie » tombe à 11,6 m sur ses 8 graines |
+
+2,0 m rapproche la sortie en touche du réel sans rien coûter aux percées. Le seuil des tests n'est pas
+touché (loi 19 : 0,83 sur les graines du test).
+
+**Calibration finale** (rayon 2,0 m) : 12/12/12/13 sur les quatre jeux de graines ; touches
+22,3-24,6 ; essais 5,5-7,0 ; mêlées 13,0-13,8 ; coups de pied 52-59.
+
+**Reste à faire** : coups de pied encore sous le réel (52-59 contre 78) ; temps de jeu effectif
+toujours ~30 min (32-42) ; rucks souvent juste au-dessus de la fourchette interne (177-186, réel 181) ;
+ballon porté en touche encore sous le réel (1,1 contre 2-4).
+
+### P2-56. Une chandelle disputée peut être échappée : en-avant, mêlée adverse
+- **Statut : CORRIGÉ**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_tickReceptionCoupDePied`),
+  `docs/js/constants.js` (icône et bannière), `server/test-invariants.js`.
+
+**Ce qui manquait.** Depuis P2-55, chasseur et receveur arrivent ensemble sous une chandelle. Mais le
+duel aérien se résolvait toujours par une prise propre : jamais d'en-avant. En vrai, c'est le risque
+qui fait de la chandelle un pari, des deux côtés.
+
+**Correctif.** Quand les deux camps sont à portée d'une chandelle ou d'un petit coup de pied à
+suivre, le moteur annonce la réception disputée (nouvel événement `RECEPTION_DISPUTEE`, avec bannière
+et icône). Le joueur qui capte échappe le ballon vers l'avant avec un risque de base de 15 %, modulé
+par sa sûreté de mains (attribut `passe`, comme l'offload). L'en-avant donne une mêlée à
+l'adversaire.
+
+**Mesure, 10 matchs :** 13,1 réceptions disputées par match, 1,6 en-avants sous la chandelle (12 %).
+En-avants totaux 10,9 -> 10,1 et mêlées 12,5 -> 12,5 : les autres fautes de main se redistribuent au
+fil des tirages, le total reste dans sa fourchette. Calibration 12/14 sur les graines 1-20 (mêlées
+13,6) et 21-40 (12,3).
+
+**Test** : « une chandelle DISPUTÉE peut être échappée » (graines 1-6) : entre 5 et 30 % des
+réceptions disputées finissent en en-avant, chacune donne une mêlée. Rouge avant (aucune réception
+disputée annoncée), vert après.
+
+### P2-55. Une chandelle retombait en une seconde : elle tient maintenant ~4 s en l'air et se dispute
+- **Statut : CORRIGÉ**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`dureeVolCoupDePied`,
+  `_tickCoupDePiedJeu`), `server/test-invariants.js`.
+
+**Ce que le joueur voyait.** Tous les coups de pied volaient à 16 m/s, plafonnés à 2,2 s. Une
+chandelle de 15 m (box kick du n°9, up-and-under) retombait en moins d'une seconde, la ligne de
+chasse encore à 10 m : le ballon tombait dans les bras du receveur, et l'équipe qui tapait n'en
+regagnait que 9 %. La chandelle n'existe que par son temps de suspension (~4 s en vrai), le temps que
+les chasseurs arrivent dessous.
+
+**Mesure par type, 10 matchs** (instrument validé : 520 coups de pied détectés sur 531) :
+
+| type | par match | vol avant | vol après | chasseur à l'atterrissage avant / après | regagné avant / après |
+|---|---|---|---|---|---|
+| chandelle | 12,8 -> 12,0 | 0,97 s | 3,96 s | 10,5 m / 0,4 m | 9 % / **37 %** |
+| petit coup de pied à suivre | 5,1 -> 4,8 | 0,78 s | 1,37 s | 7,6 m / 4,6 m | 25 % / 19 % |
+| occupation | 17,5 -> 15,0 | 1,70 s | 2,39 s | 18,1 m / 14,2 m | 5 % / 6 % |
+| dégagement | 1,9 -> 2,3 | 2,20 s | 3,37 s | 37,1 m / 29,8 m | 0 % / 0 % |
+
+Coups de pied regagnés : 3,3 -> 6,2 par match.
+
+**Correctif.** Temps de vol selon le type : chandelle 3,6 à 4,6 s, petit coup de pied à suivre 1,0 à
+1,6 s, occupation 1,8 à 3,0 s, dégagement et touche 1,8 à 3,8 s (selon la distance).
+
+**Calibration** : 12/14 sur les graines 1-20 et 21-40, mêmes catégories hors fourchette qu'avant
+(rucks, temps de jeu effectif). Le nombre de coups de pied dans le jeu ne bouge pas (49 à 51 ; réel
+78) : c'est un chantier séparé.
+
+**Test** : « une CHANDELLE tient en l'air et se dispute » (graines 1-4) : vol moyen ≥ 3,5 s et plus de
+15 % de chandelles regagnées. Rouge avant (0,95 s), vert après.
+
+**Un invariant ajusté, et pourquoi.** « Loi 10 : les joueurs devant le botteur sont hors-jeu » mesure
+aussi la masse de joueurs à moins de 8 m du receveur (seuil 6), pour empêcher que tout le monde
+converge sur le ballon (8,6 en moyenne avant son correctif, jusqu'à 29). Avec 4 s de vol, la ligne
+de chasse et les soutiens du receveur ont le temps d'arriver à leur poste, à 8 m du point de chute
+(pile sur le rayon mesuré), et la chandelle est disputée : 5,66 -> 6,46 en moyenne, chandelles
+6,5 -> 8,5, pire cas 16 -> 15. Aucun joueur hors-jeu n'est libéré trop tôt (plafond de 6 s, vol
+maximal 4,6 s). Seuil porté à 7 ; le mutant où les quinze joueurs courent au ballon donne 15,6
+(jusqu'à 30) et reste rouge.
+
+**Reste à faire :** une chandelle disputée ne produit jamais d'en-avant à la réception (ballon
+échappé sous la pression) ; et le nombre de coups de pied reste sous le réel.
+
+### P2-54. Loi 20.14 : un fautif au sol dans les 10 m n'empêchait pas la reprise d'un jeu rapide
+- **Statut : CORRIGÉ**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_tickJeuRapidePenalite`,
+  `_lancerJeuRapidePenalite`), `server/test-invariants.js`.
+
+**Trouvé par le contrôle d'arbitrage du paquet P2-52.** La mise en place d'un jeu rapide attend que
+les fautifs soient repliés à 10 m, mais sautait les joueurs au sol (`if (j.auSol > 0) continue`). Un
+fautif encore à terre dans les 10 m ne retenait donc pas la reprise : il se relevait ensuite DANS
+les 10 m, libre de plaquer — ce que la loi 20.14 interdit. Avec un plancher de 26 s, il était presque
+toujours relevé et replié avant la reprise ; avec 8 s (P2-52), plus forcément.
+
+**Second écart, mineur.** Le drapeau « phase née d'un coup de pied » (pas de rampe défensive) survivait
+à une pénalité jouée vite, car la phase reste PORTE pendant la mise en place. Il est remis à zéro au
+lancement du jeu rapide, comme le disait le commentaire.
+
+**Correctif.** Un fautif au sol en deçà de la ligne des 10 m bloque la reprise jusqu'à ce qu'il se
+relève et recule (plafond de 40 s inchangé). Drapeau remis à zéro dans `_lancerJeuRapidePenalite`.
+
+**Test.** Scénario sur un match complet (les temps morts sont à l'échelle de la durée) : jeu rapide
+avec un fautif au sol pour 12 s à 5 m de la marque. Rouge avant (« le jeu reprend après 8,1 s avec
+n°6 (au sol) encore dans les 10 m »), vert après. Le drapeau est vérifié dans le même test (rouge
+avant).
+
+**Non corrigé (relevé, mineur) :** la tolérance de 0,3 m vers l'avant du filtre d'offload (loi 11)
+n'est pas sifflée ; quatre fois plus d'offloads la rendent quatre fois plus fréquente, pour moins de
+0,3 m. À passer à 0 si un test le justifie.
+
+### P2-53. La cible « séquence de jeu courant ~7 s » était fausse : le réel est 2,8 à 3,7 s
+- **Statut : CORRIGÉ (test et documentation)**
+- Fichiers concernés : `server/test-invariants.js` (invariants « le jeu courant RESPIRE » et
+  « percuter une défense en place »).
+
+**Pourquoi j'ai rouvert la question.** P2-52 a été refusé sur la seule foi de cet invariant. Avant
+de chercher « pourquoi le contact arrive trop vite », j'ai décomposé la séquence (moteur actuel,
+1502 sorties de ruck, instrument validé : même total de 3,25 s) : 0,49 s avant la première passe du
+n°9, 0,91 s de ballon en vol, 2,25 s de ballon tenu ; le dernier porteur est plaqué 1,54 s après
+réception, après 5,9 m à 3,8 m/s. Rien d'aberrant. Puis le budget du temps de jeu effectif par
+phase (validé contre `tempsJeuEffectif` : 29,3 min) :
+
+| phase | min/match | entrées/match | s par entrée |
+|---|---|---|---|
+| jeu courant (PORTE) | 12,6 | 240 | 3,15 |
+| ruck | 10,8 | 167 | 3,89 |
+| coup d'envoi | 2,1 | 15 | 8,5 |
+| coup de pied dans le jeu | 2,1 | 51 | 2,43 |
+| maul | 1,7 | 6 | 16,4 |
+
+**L'erreur de la cible.** Elle divisait le temps de jeu par ~150 regroupements. Or une séquence de
+jeu courant commence à chaque remise en mouvement : sortie de ruck, réception de coup de pied,
+touche ou mêlée, coup d'envoi. Avec les chiffres réels du dépôt (`docs/ANALYSE_MATCH_REEL.md`) :
+2100 s de ballon en jeu, moins 181 rucks × 3 à 4 s (profil réel 55/33/12 % : 3,57 s en moyenne),
+moins 78 coups de pied × 2,5 à 4 s, moins mauls (~90 s) et coups d'envoi (~14 × 8 s), le tout réparti
+sur ~311 séquences : **2,8 à 3,7 s, ~3,3 s au milieu**. Même vérification sur le cycle complet :
+moteur 10,5 s de ruck à ruck, réel 11,6 s. **La durée des séquences n'est pas un défaut** ; le
+moteur (3,49 s) est dans la fourchette.
+
+**Ce que le budget montre vraiment.** Le temps de jeu manquant (29,3 min pour ~35) se trouve d'abord
+dans le **jeu au pied** : 51 coups de pied dans le jeu par match contre 78 en réel, de 2,43 s en
+moyenne. C'est la piste suivante.
+
+**Correctifs de test.**
+- « Le jeu courant RESPIRE » : fourchette réelle, seuil bas 2,8 s et seuil haut 4,5 s. Contrôle de
+  non-vacuité : sans inertie de course (`ACCELERATION` ×10), le contact tombe en 2,62 s et le test
+  rougit. Une défense sans rampe de montée donne 3,10 s : c'était la « régression » de l'ancien
+  seuil, c'est en fait du rugby réel.
+- « Percuter une défense en place » : 36 graines au lieu de 12. Sur 12 graines, l'écart variait de
+  0,72 à 1,23 m pour le même moteur (le scénario hérite de 30 s d'échauffement). Contrôle de
+  non-vacuité : si le gain au contact ne dépend plus du rideau défensif, l'écart tombe à 0,00 m et le
+  test rougit.
+
+**Conflit d'intérêt, dit.** Ce garde-fou bloquait mon propre patch (P2-52). Il est corrigé dans un
+commit séparé, avant toute modification du moteur, avec un seuil tiré du calcul réel et non de la
+valeur que donne la combinaison.
+
+### P2-52. Rééquilibrage coordonné : tous les volumes se rapprochent du réel — LIVRÉ après correction de la cible de P2-53
+- **Statut : LIVRÉ** (d'abord refusé, puis livré une fois la cible « ~7 s » reconnue fausse, cf. P2-53
+  et la mise à jour en fin d'entrée)
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js`, `server/test-invariants.js`.
+
+**Le paquet de P2-49, réessayé.** Il avait été retiré parce que les touches passaient sous leur
+plancher. Depuis P2-50, les touches ont de la marge. Réessayé seul : 11/14 sur les graines 1-20
+(passes 439, rucks 180,6), car il ajoute des phases, donc des passes. Il fallait retirer en même
+temps les compensations décrites en P2-45 et P2-47, comme le demandait la décision
+« rééquilibrage coordonné ».
+
+**La combinaison essayée :**
+1. le défenseur de face monte au contact en jeu décousu (P2-49) ;
+2. la défense arrive lancée après un coup de pied rattrapé (P2-49) ;
+3. un jeu rapide sur pénalité se joue en 8 s, pas en 26 s (P2-49) ;
+4. offloads au plaquage banal 0,03 -> 0,12 (refusé seul en P2-47) ;
+5. un facteur 0,7 sur les trois taux de passe « par seconde » (refusé seul en P2-45).
+
+**Contre le match réel de référence** (`docs/ANALYSE_MATCH_REEL.md`), 40 matchs au pas réel :
+
+| | réel | actuel | combinaison |
+|---|---|---|---|
+| passes | 347 | 422 | 386 |
+| courses ballon en main | 255 | 219 | 255 |
+| rucks | 181 | 167 | 185 |
+| plaquages réussis | 294 | 208 | 242 |
+| offloads | 25 | 4,4 | 14,9 |
+| essais | 7 | 7,2 | 6,7 |
+| franchissements | 18 | 5,3 | 6,0 |
+| mètres ballon en main | 976 | 2573 | 2361 |
+
+Forme des essais (20 matchs, instrument validé : 136 essais détectés sur 139) : courses de 30 m ou
+plus 57 % -> 51 %, essais sans aucun ruck 36 % -> 30 %, essais marqués par un avant 14 % -> 23 %.
+
+Calibration 12/14 sur quatre jeux de graines disjoints (1-20, 21-40, 41-60, 61-80), avec les rucks
+hors de la fourchette interne partout (181 à 191 ; le réel en compte 181). Passes ×0,8 au lieu de
+×0,7 : 12-13/14, mais les passes n'avaient que 7 à 20 de marge pour un bruit de ±15 entre jeux de
+graines.
+
+**Pourquoi ce n'est pas livré.** L'invariant « le jeu courant RESPIRE » passe au rouge : la séquence
+ballon vivant tombe de 3,49 s à 3,10 s (graines 1-6 ; 3,51 -> 3,03 sur 7-12), alors que la cible
+réelle est ~6-7 s. Les deux moitiés y contribuent pour environ 0,2 s chacune (sans le facteur de
+passes : 3,24 / 3,28 ; sans le monteur : 3,24 / 3,04). Aucun dosage n'y échappe : réduire seulement
+les passes le long de la ligne et au large, en gardant la passe avant contact, donne 3,04 à 3,14 s.
+Dans ce moteur, retirer des passes raccourcit forcément la séquence, parce que ce sont les passes
+qui remplissent le temps entre deux contacts. Je ne baisse pas ce seuil : je l'ai posé pour
+protéger un vrai écart au réel, et la combinaison l'aggrave.
+
+**Un second rouge, qui était du bruit.** « Percuter une défense en place ne rapporte pas autant que
+trouver l'espace » est tombé à 0,52 m d'écart (seuil 0,6). Sur 36 graines neuves, l'écart vaut
+0,91 m sur le moteur actuel et 0,99 m avec la combinaison : la propriété tient. Le test n'utilise
+que 12 graines, et son scénario hérite de 30 s d'échauffement, si bien que toute modification du
+moteur change l'état de départ. Le moteur actuel lui-même tombe à 0,72 m sur un autre jeu de
+12 graines. **À fiabiliser** (plus de graines) avant la prochaine modification qui le touchera.
+
+**La cause en amont, mesurée.** À la sortie de ruck (moteur actuel, 1502 sorties sur 10 matchs) :
+ligne de défense à 3,0 m devant le point de ruck (médiane), trois-quarts n°10-13 à 8,0 m derrière,
+puis 3,25 s et 2,0 passes jusqu'à l'événement suivant. La géométrie est plausible et le nombre de
+passes par séquence est proche du réel (347 passes pour ~150 séquences, soit ~2,3). C'est le **temps
+par action** qui est deux fois trop court : ~1,6 s entre deux événements, contre ~3 s en réel. Tant
+que cela n'est pas corrigé, chaque correctif qui retire une passe ou fait monter la défense
+raccourcit encore le jeu.
+
+**Prochaine étape :** décomposer ces 3,25 s (sortie du n°9, vol des passes, course du porteur,
+montée de la défense) et trouver lequel est trop rapide par rapport au réel, avant de retoucher le
+moindre taux.
+
+**MISE À JOUR : livré.** La décomposition a été faite (P2-53) : rien n'y était trop rapide. C'était la
+**cible** qui était fausse. Recalculée avec les chiffres réels du dépôt, une séquence de jeu courant
+réelle dure 2,8 à 3,7 s, pas ~7 s. La combinaison (3,10 s) est dans la fourchette, comme le moteur
+d'avant (3,49 s). L'invariant a été corrigé dans un commit séparé, AVANT le moteur, avec un seuil
+tiré du calcul réel et un mutant qui le fait rougir (sans inertie de course : 2,62 s).
+
+Portes, combinaison appliquée : invariants 60/60 (dont les trois nouveaux) ; 13 suites node OK ;
+calibration 12/14 (rucks 180,8 et temps de jeu effectif 30,0 hors fourchette) ; navigateur 474 tests,
+0 échec. Contrôle d'arbitrage : conforme (monteur exclu en carton, hors-jeu de coup de pied, recul de
+pénalité ; offload toujours sous le filtre de la loi 11). Il a relevé un défaut de la loi 20.14,
+antérieur au paquet mais rendu plus probable par le plancher de 8 s, corrigé à part (P2-54).
+
+### P2-51. Le score annoncé en fin de match perdait la dernière transformation ou le dernier tir au but
+- **Statut : CORRIGÉ**
+- Fichiers concernés : `docs/js/main.js` (génération, « Terminer le match », replay),
+  `server/test-parcours-navigateur.js`.
+
+**Ce que le joueur voyait.** Un essai marqué à la dernière seconde, ou une pénalité accordée juste
+avant la fin : le moteur laisse la transformation ou le tir se jouer après le temps écoulé (le temps
+ne s'arrête qu'au ballon mort). Mais les boucles qui jouent un match d'un coup s'arrêtaient au
+**chronomètre**, pas au **coup de sifflet**. Résultat : le score annoncé (et enregistré dans la
+saison du club) ignorait ces points, alors que la lecture du même match les montrait. Mesuré sur 300
+matchs de 5 min : 25 scores faux sur le moteur d'avant P2-50, 18 après (6 %).
+
+**Second défaut, trouvé en reproduisant l'échec.** `terminerMatchMaintenant` mettait `enCours = false`
+puis appelait `fermerMiTemps()`, qui remet `enCours = true` : la boucle d'affichage continuait de
+faire avancer le moteur pendant et après l'envoi du résultat. Le tir au but s'ajoutait donc APRÈS que
+le club eut enregistré le résultat — reproduit dans le navigateur : écran de résultat 7-6, score
+enregistré dans l'historique 7-9, replay 7-6 (1 parcours sur 10).
+
+**Correctif.** Une seule règle, `avantSifflet(moteur, duree)`, pour les trois boucles : on joue
+jusqu'à la phase `TERMINE` (garde-fou : 120 s de jeu après le temps écoulé ; mesuré, le sifflet vient
+au plus 11,5 s après). Et `enCours = false` est posé APRÈS `fermerMiTemps()`.
+
+**Tests.** Nouveau contrôle navigateur déterministe : il cherche, avec la configuration réellement
+chargée par la page, une graine dont la dernière séquence de marque se joue après le temps écoulé
+(graine 5 : 3-6 au chronomètre, 6-6 au sifflet), puis exige que le replay retrouve le score du
+sifflet. Rouge avant (replay 3-6), vert après. Le contrôle « replay fidèle » du parcours club affiche
+désormais le détail en cas d'échec ; c'est très probablement le test instable « sans nom » signalé
+plus bas dans ce fichier.
+
+**Conséquence assumée.** Une entrée d'historique enregistrée avant ce correctif, dont le score avait
+été coupé au chronomètre, est désormais signalée « non reproductible à l'identique » au lieu d'être
+rejouée en silence avec un autre score.
+
+### P2-50. Une pénalité hors de portée se jouait à la main une fois sur deux : elle va maintenant en touche
+- **Statut : CORRIGÉ**
+- Fichiers concernés : `engine/rugby-engine.js` et `docs/rugby-engine.js` (`_traiterPenalite`),
+  `server/test-invariants.js` (nouvel invariant).
+
+**Ce que le joueur voyait.** Une pénalité obtenue au milieu du terrain, trop loin pour tenter les
+perches, se jouait le plus souvent « à la main » : le capitaine tapait vite et repartait au contact.
+Mesuré sur les graines 1 à 4 (80 min, pas réel 0,1 s) : 81 pénalités, dont **40 jeux rapides (49 %)**,
+17 en touche (21 %), 24 au but. En rugby à XV moderne, la pénalité hors de portée part très
+majoritairement en touche : on gagne 30 à 40 m et on récupère le lancer. Le jeu rapide existe, mais
+il reste l'exception.
+
+**Cause.** La règle de choix ne mettait le ballon en touche que dans **35 %** des cas hors de portée ;
+le reste tombait sur le jeu rapide. Ce n'est pas une décision issue des attributs, c'est un seuil
+fixe — et il produisait 8,6 jeux rapides par match.
+
+**Correctif.** 85 % en touche quand le tir est hors de portée (la branche « près de la ligne
+adverse » est inchangée). Effets mesurés, calibration au pas réel, 20 matchs :
+
+| grandeur | avant | après |
+|---|---|---|
+| pénalités au but / en touche / jeu rapide (par match) | — / — / 8,6 | 5,8 / 9,9 / 2,8 |
+| touches | 21,1 | 26,3 |
+| touches dans les 22 adverses | 1,75 | 3,40 |
+| essais | 6,8 | 7,0 |
+| points | 55,8 | 55,3 |
+
+**Robustesse.** Le moteur d'avant tombait sous le plancher des touches sur les graines 21-40
+(19,1). Avec 85 % : 12/14 sur les graines 1-20 (touches 26,3) **et** 12/14 sur les graines 21-40
+(touches 23,9, essais 7,3). Les deux catégories hors fourchette sont les mêmes qu'avant (passes
+422 pour 420, temps de jeu effectif ~30 min) — elles ne viennent pas de ce correctif.
+
+**Refusé : 65 %.** Donne 13/14, mais les essais montent à 7,5-7,8 (borne haute 8) : trop près du
+plafond pour être sûr.
+
+**Invariant ajouté** : « une pénalité hors de portée se joue EN TOUCHE, le jeu rapide reste
+l'exception » (graines 1-4 : moins de 25 % de jeux rapides, plus de 35 % en touche). Rouge sur le
+moteur d'avant (49 % / 21 %), vert après.
+
+**Ce que ça ne change pas.** La forme des essais (courses longues après réception de coup de pied,
+cf. P2-48/P2-49) est intacte : ce correctif rend de la marge aux touches, il ne règle pas le
+« jeu de poursuite ». Il rend en revanche le paquet défensif de P2-49 à nouveau envisageable.
+
+**Test navigateur « replay fidèle ».** Un échec isolé de « rejouer l'entrée redonne EXACTEMENT le
+score enregistré » est apparu sur une exécution complète de la suite navigateur avec ce correctif.
+Ce n'était pas ce correctif, ni un test instable : c'est un défaut ancien de l'interface, présent
+sur le moteur d'avant (cf. P2-51).
+
+### P2-49. Rééquilibrage, étapes 1 et 2 : un paquet qui casse enfin le « jeu de poursuite » — non livré, et un invariant qui mesurait du temps mort
+- **Statut : PAQUET NON LIVRÉ (calibration à la limite) ; invariant « le jeu courant RESPIRE » CORRIGÉ**
+- Fichiers concernés : `server/test-invariants.js` (instrument corrigé). Le paquet moteur a été
+  retiré de l'arbre ; il est décrit ici pour pouvoir être refait.
+
+**Le mécanisme trouvé, par scénario et non par moyenne.** Pour chaque essai long (≥ 30 m), les
+défenseurs placés DEVANT le futur marqueur dans son couloir à la réception (3,8 en moyenne) ont été
+suivis branche par branche dans le code de placement. Ils passent **62 % de la course à « tenir leur
+ligne »**, 16 % seulement comme plaqueur désigné, 16 % en récupération — et **90 % finissent plus
+loin du porteur qu'au départ**. Cause : seul le défenseur le plus proche monte ; une fois le premier
+rideau battu, le plus proche est un défenseur DÉPASSÉ, juste derrière le porteur, et ceux de devant
+reculent dans leur couloir sans jamais attaquer.
+
+**Le paquet (trois règles, à livrer ensemble) :**
+1. *Monteur* — en jeu décousu seulement (le défenseur le plus proche est déjà derrière le porteur),
+   le défenseur le plus proche DEVANT lui (couloir de 15 m, libre de jouer) monte aussi, en visant
+   le POINT DE RENCONTRE (`pointInterception`, déjà utilisé par l'arrière). Viser un point collé au
+   porteur ne suffisait pas : décalé de 6 m, il passait derrière lui (3,5 m au plus près, scénario).
+2. *Défense lancée après un coup de pied* — pas de rampe défensive (`rampeMontee`) sur une phase
+   PORTE née d'une réception de coup de pied ou de coup d'envoi (drapeau posé aux trois transitions
+   réception → PORTE, éteint dès que la phase change).
+3. *Jeu rapide rapide* — plancher d'attente du jeu rapide sur pénalité 26 s → 8 s.
+
+Chacune seule ne changeait rien aux essais longs ou faisait déborder le score (P2-44, P2-48) :
+deux verrous pesaient sur le même défenseur.
+
+**Ce que le paquet produit** (au pas réel, 20 matchs) :
+
+| | moteur actuel | paquet | réel |
+|---|---|---|---|
+| essais longs | 3,65/match | **2,50 (−32 %)** | — |
+| part des essais longs | 60 % | 48 % | — |
+| essais des avants | 16 % | **22 %** | ~33 % |
+| essais des ailiers | 50 % | **43 %** | ~28 % |
+| plaquages tentés | 240 | 274 | 294 réussis |
+| temps de jeu effectif | 30,0 | 32,8 | ~35 |
+| essais / points | 6,8 / 55,8 | 6,0 / 55,7 | 7 / 50 |
+
+Trois tests de comportement l'accompagnaient, tous vérifiés ROUGES sur le moteur actuel et VERTS
+avec le paquet (défenseur de face qui atteint le porteur dans 6 scénarios sur 6 ; défenseur lancé
+qui court plus vite après un coup de pied qu'après un regroupement ; jeu rapide < 15 s, contre 26 s).
+
+**Pourquoi il n'est pas livré.** Calibration : 12/14 sur les graines 21-40, mais **11/14 sur les
+graines 1-20 — touches 19,9 pour une borne de 20**, catégorie essentielle, et c'est ce jeu de graines
+que la CI exécute. Rucks (191) et passes (453) restent hors fourchette. Et la séquence de jeu de phase
+(après un ruck) raccourcit de 5 % (3,64 → 3,47 s ballon vivant), dans le mauvais sens.
+
+**Deux versions intermédiaires, refusées en route.** Le monteur actif PARTOUT (pas seulement en jeu
+décousu) divisait les essais longs par deux mais écrasait les phases : quatre invariants rouges
+(séquence 3,56 s, percée qui ne rapporte plus que 11,7 m, interceptions 0,33/match, garde-fou de
+l'endurance), essais 4,5. Restreint au jeu décousu, il n'en reste qu'un — et celui-là était faux.
+
+**L'INVARIANT « LE JEU COURANT RESPIRE » MESURAIT DU TEMPS MORT — CORRIGÉ.** Il faisait la moyenne
+des phases PORTE. Or la mise en place d'un jeu rapide (l'arbitre siffle, les fautifs reculent, le
+ballon n'est PAS en jeu) se déroule DANS la phase PORTE :
+
+| | brute (ancien test) | ballon vivant |
+|---|---|---|
+| moteur actuel, graines 1-6 | 4,38 s | **3,48 s** |
+| moteur actuel, graines 7-12 | 4,21 s | 3,33 s |
+| mutant sans rampe défensive | 3,72 s | 3,09 s |
+
+**Le seuil de 3,8 s n'était atteint que grâce au temps mort** : sur la grandeur qu'il annonçait, le
+moteur était déjà en dessous. Et il bloquait tout raccourcissement du jeu rapide — un temps mort —
+sans que la séquence réelle change. La séquence est désormais comptée à partir du ballon vivant, le
+seuil posé à 3,2 s (acquis 3,48 / 3,33 s ; mutant sans rampe 3,09 s, rouge — vérifié), et le titre
+du test ne prétend plus « plus de 5,5 s ». L'écart entre l'acquis et la régression est mince (~0,3 s)
+et c'est écrit dans le test.
+
+**Reprise.** Le paquet est le bon chemin pour la forme des essais. Il bute sur les touches (19,9 sur
+les graines de la CI) : un ballon gardé vivant, c'est moins de coups de pied en touche. L'étape
+suivante est de trouver ce que le paquet retire aux touches — la décomposition des touches par
+origine (P2-42) est l'instrument tout prêt.
+
+### P2-48. Rééquilibrage, étape 1 : d'où viennent les essais — et quinze règles qui n'en sont PAS la source
+- **Statut : DIAGNOSTIC — aucun correctif ; la source de l'excès offensif n'est pas encore trouvée**
+- Fichiers concernés : aucun (enquête sur copies du moteur)
+
+Première étape du rééquilibrage coordonné décidé avec le joueur (cf. P2-47) : trouver la source de
+l'attaque trop productive avant de retirer les compensations. Toutes les mesures au pas réel, sur 20
+matchs, avec des instruments qui retrouvent exactement les totaux du moteur non instrumenté.
+
+**Ce qui est ÉTABLI sur la forme des essais.**
+
+| voie de l'essai | essais/match |
+|---|---|
+| porteur qui franchit la ligne sans être plaqué | **6,10 (90 %)** |
+| élan du porteur plaqué | 0,30 |
+| maul pénétrant | 0,15 |
+| essais de pénalité | 0,25 |
+
+| longueur de la course finale | part |
+|---|---|
+| < 5 m | 2 % |
+| 5-15 m | 17 % |
+| 15-30 m | 23 % |
+| **≥ 30 m** | **57 %** |
+
+Marqueurs : ailiers 54 % (repère du dépôt ~28 %), avants 16 % (~33 %). **Le moteur marque surtout
+sur de longues chevauchées d'ailiers**, pas sur des essais construits près de la ligne — la
+définition même du « jeu de poursuite » que `CLAUDE.md` refuse.
+
+| origine de la possession | essais longs | essais courts |
+|---|---|---|
+| **réception de coup de pied** | **51 %** | **41 %** |
+| ballon gratté / ruck perdu | 21 % | 27 % |
+| coup d'envoi / renvoi | 12 % | 5 % |
+| mêlée | 11 % | 14 % |
+| **touche** | **1 %** | **5 %** |
+
+**44 % des essais longs sont marqués sans un seul ruck** dans la possession. Et **la touche, première
+plateforme de marque du rugby moderne, ne produit presque aucun essai.**
+
+À la réception, le futur marqueur d'un essai long a en moyenne **3,8 défenseurs devant lui dans son
+couloir**, à ~7 m, aussi rapides que lui (couloir vide dans 8 % des cas seulement). Pendant la
+course, il subit **0,40 tentative de plaquage**, et la distance des trois défenseurs les plus proches
+**grandit** (5,4 → 9,6 m pour le premier) : c'est une poursuite perdue, pas une défense absente.
+
+**Le compteur de franchissements ne voit pas ces percées.** Il ne s'incrémente que sur un plaquage
+MANQUÉ ; un ailier qui file sans que personne ne tente de le plaquer n'est jamais compté. D'où
+6,5 franchissements contre 18 en réel malgré l'excès de terrain gagné.
+
+**QUINZE VARIANTES, AUCUNE N'EST LA SOURCE** (essais longs par match ; actuel 3,65) :
+
+| règle modifiée | essais | essais longs | effet |
+|---|---|---|---|
+| récupération après regroupement 6 m → 3 m | 5,45 | ~3,7 | tue les essais COURTS (avants 7 %) |
+| récupération 4 s → 2 s | 6,30 | ~3,7 | idem, plus faible |
+| récupération 3 m / 2 s | 4,40 | ~2,8 | idem |
+| couverture des défenseurs dépassés (10/20/35 m) | 6,0-7,1 | ~3,4-3,6 | quasi nul |
+| poursuite au point de rencontre (plaqueur désigné) | **10,70** | — | désastre : il quitte le plaquage de face |
+| même chose, défenseurs dépassés seulement | 9,15 | — | idem, moindre |
+| « monteur » (le défenseur de face monte au contact) | 6,20 | ~3,7 | nul sur la forme |
+| monteur + couverture | 4,45 | ~2,8 | tue les essais courts |
+| ligne de chasse sur coup de pied, 3 ou 5 chasseurs | 6,65-7,30 | 3,6-3,9 | nul |
+| pas de rampe défensive après réception de coup de pied | 6,90 | 3,75 | nul |
+| rampe défensive 6,5 → 3,5 s | 7,05 | 3,20 | partiel |
+| défenseur fixé exclu de la désignation du plaqueur | **7,75** | 3,80 | inverse |
+| idem + fixation 2,6 → 1 s | 6,90 | 3,35 | faible |
+| évitement du porteur ×0,5 | **8,20** | 4,15 | inverse |
+| évitement du porteur ×0 | 7,50 | 4,30 | inverse |
+
+Deux familles d'effets, toujours les mêmes : **renforcer la défense près du regroupement supprime
+les essais courts** (ceux qu'on veut garder) ; **tout ce qui rend la course plus droite ou plus libre
+ajoute des essais longs**. Le mécanisme des longues chevauchées résiste à chaque règle défensive
+prise isolément.
+
+**Une observation qui ne mène nulle part encore.** Pendant les courses longues, la plus courte
+distance moyenne d'un défenseur vaut 2,2 m, exactement le rayon de plaquage. J'y ai vu l'effet de
+l'évitement du porteur ; la mesure l'a démenti (moins d'évitement, PLUS d'essais longs : l'évitement
+est un frein, il fait courir en biais).
+
+**Défaut de logique relevé, non corrigé** (le corriger seul fait monter les essais, cf. tableau) : un
+défenseur « fixé » par une passe ne bouge plus et n'a pas le droit de plaquer pendant 2,6 s, mais il
+reste éligible comme plaqueur désigné — il peut donc occuper le rôle de plaqueur sans pouvoir ni
+bouger ni plaquer. La récupération après regroupement, elle, exclut ses joueurs de la désignation.
+
+**Reprise recommandée.** Les ablations règle par règle ont atteint leur limite. Construire un
+SCÉNARIO reproductible — un receveur attrape un coup de pied face à une ligne de chasse à distance
+connue — et observer image par image ce que fait chaque défenseur de devant, au lieu d'agréger. Les
+quatre essais filmés pour cette entrée l'ont montré : c'est le seul instrument qui ait fait voir un
+mécanisme (le défenseur fixé) que les moyennes masquaient.
+
+### P2-47. Offloads 5 par match contre 25 : tout relèvement casse les touches — le banc est tenu par des compensations
+- **Statut : AUCUN CORRECTIF — trois dosages, aucun ne passe la calibration**
+- Fichiers concernés : `engine/rugby-engine.js` (`tauxOffload`, résolution du plaquage) — non modifié
+
+**Le défaut.** Au pas réel, **5,0 offloads par match** contre **25** dans le match réel de référence
+(`docs/ANALYSE_MATCH_REEL.md`). `CLAUDE.md` le demande explicitement (« les passes doivent arriver
+avant ou pendant le contact »). Le taux au plaquage banal est de **3 %** — et son commentaire annonce
+0,04 : code et commentaire divergent.
+
+**Balayage, 20 matchs au pas réel, puis calibration complète et graines disjointes (21-40) :**
+
+| taux | offloads | essais 1-20 | essais 21-40 | touches | calibration |
+|---|---|---|---|---|---|
+| 3 % (actuel) | 5,0 | 6,8 | 6,8 | 21,1 | 12/14 |
+| 8 % | 9,8 | 6,9 | 7,0 | **19,9 HORS** | **ÉCHEC 11/14** |
+| 14 % | 15,3 | 7,2 | **8,0** | **19,6 HORS** | **ÉCHEC 11/14** |
+| 20 % | 20,6 | **8,1 HORS** | — | — | — |
+
+Le score supporte un doublement des offloads (8 %) ; ce sont **les touches** qui cèdent, catégorie
+déclarée essentielle. La chaîne est cohérente : un ballon gardé vivant par l'offload, c'est moins de
+coups de pied (59,3 → 54,6 → 55,5), donc moins de touches. Et le réglage à 14 %, qui semblait tenir
+sur les graines 1-20, fait monter les essais de +1,2 sur les graines 21-40 : il ne tenait que sur les
+graines qui l'avaient choisi.
+
+**Je n'abaisse pas la borne des touches pour faire passer le correctif** : 20 reste en dessous des
+~25 touches typiques du Tournoi cités par le dépôt.
+
+**LE CONSTAT D'ENSEMBLE, après P2-44, P2-45 et ici.** Trois améliorations de réalisme mesurées, trois
+refus pour la même raison : rendre au match du temps de jeu (P2-44), retirer les passes en trop
+(P2-45) ou rendre les offloads (ici) fait chaque fois basculer une autre catégorie. **La calibration
+actuelle tient par des compensations** — un temps mort irréaliste, des passes en excès, des offloads
+trop rares — qui équilibrent une attaque trop productive (87 m ballon en main par minute contre 28).
+Les petits correctifs isolés ne peuvent plus faire avancer le réalisme : chacun retire une
+compensation et révèle le défaut qu'elle cachait. La suite demande un **rééquilibrage coordonné**,
+validé comme un tout sur la calibration au pas réel : réduire d'abord la productivité de l'attaque à
+sa source, puis retirer les compensations une à une.
+
+**Instrument : un faux positif de plus.** Un balayage interrompu par un redémarrage de
+l'environnement a été annoncé « en cours » : `pgrep -f` trouvait son propre shell, dont la ligne de
+commande contenait le motif. Vérifier avec `ps` sur les processus `node`, ou attendre la
+notification de fin, jamais `pgrep -f` avec un motif présent dans la commande qui l'appelle.
+
+### P2-46. Profondeur d'alignement : mesurée et cohérente, mais la comparaison au réel bute sur une définition
+- **Statut : AUCUN CORRECTIF — hypothèse de P2-45 vérifiée en interne, non validable contre la référence**
+- Fichiers concernés : aucun (enquête)
+
+**Mesure, validée** (l'instrument retrouve exactement les 431,9 passes du moteur), 20 matchs au pas
+réel, bilan par match dans le sens d'attaque :
+
+| poste du bilan | par match |
+|---|---|
+| mètres gagnés en courant (`metresGagnes`) | +2617 m |
+| terrain rendu par les passes | **−1698 m** (−3,93 m par passe) |
+| solde | +919 m |
+
+Profondeur de réception derrière la ligne d'avantage (dernier point de regroupement) : moyenne 5,9 m,
+médiane 5,4 m, et elle **se creuse à chaque passe** — 4,9 m à la 1re passe depuis le regroupement,
+5,9 m à la 2e, 6,4 m à la 3e, 7,3 m au-delà. L'hypothèse de P2-45 se vérifie donc en interne : le
+ballon recule par les passes et le porteur regagne en courant le terrain perdu.
+
+**Pourquoi je ne corrige pas.** La comparaison au réel dépend de ce que compte exactement la
+statistique « mètres ballon en main » du match de référence (976 m). Si elle mesure la progression
+brute depuis le point de réception — la lecture courante —, le moteur court 2,7 fois trop et
+l'alignement est trop profond. Si elle est nette des passes, le solde du moteur (919 m) est juste.
+Je n'ai pas trouvé de définition primaire qui tranche (recherche faite, résultat non concluant), et
+**le dépôt n'a aucune donnée réelle de profondeur d'alignement**. Aplatir l'attaque sur cette base,
+ce serait régler le moteur sur une hypothèse, exactement ce que le rôle « statistiques » interdit.
+
+**Ce qu'il faudrait pour reprendre :** une source primaire de la définition des mètres portés, ou
+des données de profondeur de réception réelles.
+
+### P2-45. Les passes en trop sont un FREIN : les retirer fait exploser les essais — le vrai défaut est l'attaque trop productive
+- **Statut : AUCUN CORRECTIF — défaut réel, mais on ne peut pas le corriger seul ; cause racine identifiée**
+- Fichiers concernés : `engine/rugby-engine.js` (`choisirActionPorteur`) — non modifié
+
+**Point de départ (P2-44).** Par minute de ballon en jeu, contre la référence réelle du dépôt
+(`docs/ANALYSE_MATCH_REEL.md`, France-Irlande 2026) : courses 7,4 contre 7,3 et rucks 5,5 contre
+5,2 — justes ; **passes 14,4 contre 9,9, soit +45 %**. Les passes ne remplacent rien, elles
+s'ajoutent entre deux contacts.
+
+**Où elles partent.** Compteur posé sur chaque branche de décision du porteur, dans une copie du
+moteur, validé en retrouvant exactement les 431,9 passes et 221,7 courses de la calibration :
+
+| branche | décisions/match |
+|---|---|
+| passe avant contact (taux par seconde) | 144,6 |
+| n°9 → ouvreur (sortie de ruck, structurelle) | 129,3 |
+| relais | 80,5 — **aucune ne devient une passe**, cf. plus bas |
+| circulation le long des trois-quarts (taux par seconde) | 79,5 |
+| n°9 → avant lancé (structurelle) | 48,1 |
+| jeu au large (taux par seconde) | 32,3 |
+| offloads | 5,0 (réel 25 : désormais trop BAS, l'ancienne analyse est périmée) |
+
+**Balayage d'un facteur unique sur les trois taux par seconde, au pas réel, 20 matchs :**
+
+| facteur | passes/min | courses/min | rucks/min | essais/min | essais | points |
+|---|---|---|---|---|---|---|
+| 1,0 (actuel) | 14,4 | 7,4 | 5,5 | 0,23 | 6,8 | 55,8 |
+| 0,6 | 11,7 | 7,9 | 6,0 | 0,29 | 8,7 | 66,8 |
+| 0,45 | **10,2 ≈ réel** | 8,0 | 5,9 | **0,31** | **9,4** | **74,7** |
+| 0,3 | 8,9 | 7,9 | 5,8 | 0,36 | 10,7 | 81,4 |
+| *réel* | *9,9* | *7,3* | *5,2* | *0,20* | *7* | *50* |
+
+**Moins de passes, plus d'essais.** Au nombre de passes réel, le moteur marque 56 % d'essais de
+trop par minute. La circulation latérale sert de FREIN : un porteur qui garde le ballon avance et
+marque. L'excès de passes ne crée pas le défaut, **il le cache**. Refusé.
+
+**La cause racine, mesurée.** Productivité de l'attaque contre la même référence (976 m ballon en
+main, 18 franchissements, 7 essais, ~35 min de ballon en jeu) :
+
+| | réel | moteur |
+|---|---|---|
+| mètres ballon en main par minute de jeu | 28 | **87 (×3,1)** |
+| franchissements | 18 | **6,5** (trop bas) |
+| essais | 7 | 6,8 |
+
+`metresGagnes` compte bien la progression dans le sens d'attaque, ballon en main, comme le relevé
+réel. L'attaque gagne donc trois fois trop de terrain en courant, **sans pour autant franchir** —
+cohérent avec P2-15/P2-33 (le gain de ruck à ruck est faible) : le ballon part vers l'arrière par
+les passes et le porteur regagne en courant le terrain perdu. Hypothèse à vérifier ensuite, et
+la seule qui explique les trois chiffres à la fois : **un alignement offensif trop profond**.
+
+**Trois masques, un seul défaut.** Le temps mort de 26 s des jeux rapides (P2-44), l'excès de
+passes (ici) et, sans doute, la profondeur d'alignement compensent tous une attaque trop
+productive. Aucun ne peut être retiré seul sans faire déborder les scores. L'ordre de reprise :
+d'abord mesurer la profondeur de réception par rapport à la ligne d'avantage, puis aplatir, puis
+seulement retirer les masques.
+
+**Deux défauts de code relevés au passage, non corrigés (effet faible, et les corriger ne se
+verrait pas à l'écran) :**
+- La branche « relais » (demi ou trois-quarts à moins de 2,2 m d'un défenseur) décide une passe,
+  mais l'exécution exige un défenseur à 2,2 m ou plus : **80,5 décisions par match, zéro passe**.
+  Le commentaire promet de « garder le ballon vivant » ; en réalité le porteur va au contact.
+- Cette décision morte laisse `_passeCibleForcee` armée. Elle n'est remise à zéro que par le
+  prochain appel à `_tenterPasse`, et peut donc détourner la passe d'un AUTRE porteur, plusieurs
+  phases plus tard, si le joueur visé fait partie de ses options légales.
+
+**Une erreur d'instrument, à nouveau.** Ma première pose de compteurs avait supprimé un `return`
+dans la branche du jeu au large : la décision était comptée, puis le porteur continuait vers les
+branches suivantes. Symptôme : 438,4 passes et 236,9 courses au lieu de 431,9 et 221,7 sur les
+mêmes graines. **Règle ajoutée : un instrument doit reproduire exactement les chiffres du moteur
+non instrumenté avant qu'on lise ce qu'il répartit**, et la copie doit être vérifiée identique au
+moteur par `diff`, compteurs mis à part.
+
+### P2-44. Le jeu rapide attend 26 s — et le raccourcir révèle un jeu trop dense par minute
+- **Statut : AUCUN CORRECTIF — défaut réel, mais le corriger seul dégrade la calibration**
+- Fichiers concernés : `engine/rugby-engine.js` (`_lancerJeuRapidePenalite`) — non modifié
+
+**Le défaut.** Une pénalité ou un coup franc « joué rapidement » est annoncé ainsi (« l'équipe joue
+rapidement et avance »), puis le moteur impose un plancher de **26 s** avant que le ballon soit tapé.
+Le commentaire du code le justifie par le temps mort réel d'une pénalité (l'arbitre explique, les
+fautifs reculent : 25-40 s). C'est vrai d'une pénalité tirée au but ou en touche ; **un jeu rapide
+se définit précisément par le fait qu'on n'attend pas.** Mesuré au pas réel, 20 matchs : 13,0 jeux
+rapides par match, 25,8 s d'attente chacun — 359 s de temps mort, qui font l'essentiel de l'écart du
+temps de jeu effectif (30,0 min pour une fourchette 32-42).
+
+**Les variantes, calibration complète au pas réel (la condition « fautifs repliés à 10 m » gardée) :**
+
+| plancher | attente réelle | temps effectif | rucks | essais | points | verdict |
+|---|---|---|---|---|---|---|
+| 26 s (actuel) | 25,8 s | **30,0 HORS** | 165,4 | 6,8 | 55,8 | 12/14 |
+| 12 s | 12,1 s | 31,6 | — | 8,3 | 65,5 | (mesure partielle) |
+| 8 s | 8,1 s | 33,1 OK | **186,6 HORS** | 7,9 | 63,4 | 12/14 |
+| 4 s | — | 32,1 OK | 178,2 | **8,3 HORS** | **67,5 HORS** | **ÉCHEC 11/14** |
+
+À 8 s on échange une catégorie hors fourchette contre une autre et on pousse essais et points contre
+leurs bornes — avec ±0,6 essai de bruit sur vingt matchs, un autre jeu de graines peut échouer. À 4 s
+le banc échoue. **Refusé.** Ce ne sont pas les jeux rapides eux-mêmes qui marquent : la part suivie
+d'un essai dans la minute reste à 4-5 % dans toutes les variantes. C'est le surplus de jeu en
+mouvement qui produit davantage de tout.
+
+**Ce que ça révèle : le temps mort MASQUE un jeu trop dense par minute.** Rapporté à la minute de
+ballon en jeu, contre la référence réelle du dépôt (`docs/ANALYSE_MATCH_REEL.md`, France-Irlande
+2026, ~35 min de ballon en jeu) :
+
+| par minute de ballon en jeu | réel | moteur (26 s) | moteur (8 s) |
+|---|---|---|---|
+| rucks | 5,2 | 5,5 | 5,6 |
+| essais | 0,20 | 0,23 | 0,24 |
+| **passes** | **9,9** | **14,4** | **14,0** |
+
+Les rucks sont justes par minute — **la borne à 180 du banc rejetterait d'ailleurs le match réel
+lui-même** (181 rucks) dès que le temps de jeu devient réaliste. Les essais sont un peu hauts
+(+13 %). **Les passes sont 40 % trop nombreuses par minute** : c'est le défaut qui empêche de rendre
+du temps de jeu au match sans que tout déborde, et la cible suivante.
+
+**Une erreur à ne pas reproduire.** J'avais d'abord annoncé une attaque « 1,7 fois trop efficace
+par minute », en comparant à « 4-5 essais par match réel » tiré de ma mémoire. La référence du dépôt
+en compte 7 : l'écart réel n'est que de 13 %. Toujours prendre la référence écrite, jamais un
+souvenir.
+
+### P2-43. Le renvoi aux 22 m était annoncé « coup d'envoi » — et deux mesures de P2-41/P2-42 à rectifier
+- **Statut : CORRIGÉ (affichage des règles) + rectifications**
+- Fichiers concernés : `engine/rugby-engine.js` + `docs/rugby-engine.js` (`_nouvelleManche`,
+  `getState`), `docs/js/constants.js`, `docs/js/ui.js`, `server/test-invariants.js`
+
+**Le défaut.** Après une pénalité au but ou un drop manqués, le ballon repart de la ligne des 22 m
+de l'équipe qui défendait — le moteur le faisait bien. Mais il l'annonçait « Coup d'envoi botté par
+l'équipe B, l'équipe A doit rester à 10 m ». Mesuré sur 20 matchs : **2,75 remises en jeu par match
+partaient des 22 m** (1,95 après une pénalité manquée, 0,80 après un drop manqué), toutes annoncées
+comme un coup d'envoi, avec la consigne des 10 m qui n'est pas celle du renvoi (au renvoi aux 22 m,
+les adversaires ne franchissent pas la ligne des 22 m avant le coup de pied). Et la phase affichée
+à l'écran disait elle aussi « Coup d'envoi ».
+
+**Le correctif.** Un évènement distinct `RENVOI_22` avec le bon texte et sa propre icône, et la
+phase affichée « Renvoi aux 22 m » pendant cette remise en jeu (`renvoi22` exposé par `getState`).
+La mécanique de jeu n'est pas touchée.
+
+**Le garde-fou, vérifié dans les deux sens.** Le libellé doit suivre le point de départ : rouge sur
+le moteur d'avant (aucun renvoi annoncé, un « coup d'envoi » botté depuis x = 78), rouge aussi sur
+un mutant qui annonce TOUT en renvoi.
+
+**Trouvé comment.** En décomposant les pertes de balle en zone rouge (suite de P2-42) : 0,20 des
+« turnovers » par match étaient des drops manqués suivis d'un « COUP_ENVOI ». La même décomposition
+a montré que 0,20 autres étaient des **essais de pénalité** (un score, pas une perte) : une fois ces
+deux lignes retirées, 42 % des séjours en zone rouge finissent sur une vraie perte, causée par des
+mécanismes génériques (en-avant au contact 1,00/match, ballon gratté 1,20/match, pénalités contre
+l'attaque au ruck ~0,65/match) qui s'appliquent au même taux partout. Je n'ai pas de référence
+réelle MESURÉE pour ce taux ; je n'en fais donc pas un défaut.
+
+**Rectification de P2-41 : « le porteur passe 47 % de son temps de ballon sans rien décider ».**
+Trompeur. Sur 1135 s de phase PORTE par match, **359 s sont le temps mort d'une pénalité jouée
+rapidement** (l'arbitre siffle, les fautifs reculent de 10 m), que le moteur modélise délibérément
+à 25-40 s tout en laissant la phase à PORTE ; `_tickPorte` n'y est même pas appelé. Rapporté au jeu
+réellement en mouvement (776 s), le porteur décide **78 %** du temps (605 s) ; la passe en vol et
+les combinaisons font le reste. **Les combinaisons scriptées ne pèsent que 13 s par match (1 %)** :
+ce ne sont pas elles, les « rails ». Le cœur de P2-41 tient — il comptait directement les décisions,
+et le temps mort de pénalité est exclu aux deux pas.
+
+### P2-42. « Amener le jeu dans les 22 adverses » : trois hypothèses de défaut, trois réfutations par la mesure
+- **Statut : AUCUN CORRECTIF — l'étape que j'avais moi-même recommandée ne tient pas à l'examen**
+- Fichiers concernés : aucun (enquête)
+
+P2-25 puis P2-41 désignaient le même goulot comme prochaine étape : trop peu de jeu dans les 22 m
+adverses, d'où trop peu de touches offensives, de mauls pénétrants et d'essais d'avants. Mesuré au
+pas réel du jeu (0,1 s), 20 matchs : **le goulot n'existe pas sous la forme annoncée.**
+
+**Ce qui est établi.**
+
+| mesure | moteur | repère réel |
+|---|---|---|
+| entrées dans les 22 adverses (2 équipes) | 16,5/match | ~20-24 |
+| part des entrées finissant en essai | **41 %** | 35-50 % |
+| séjours dans la zone rouge | 8,3/match, **47,3 s** de moyenne | siège multi-temps |
+| dont plus de 30 s | **66 %** | — |
+| fin du séjour | turnover 47 %, essai 30 %, pied 13 %, tir 9 % | — |
+| touches jouées dans les 22 adverses | 2,10/match | 4-6 |
+
+Les entrées sont **modestement** basses ; tout le reste est sain. La finition est réaliste, et les
+possessions près de la ligne sont de vrais sièges, pas des passages.
+
+**Hypothèse 1, réfutée — la défense ne craquerait pas près de sa ligne.** Premier relevé : taux de
+pénalité plat sur tout le camp adverse (1,24 / 1,36 / 1,35 par minute). **Faux, et l'erreur était
+dans ma mesure** : la zone de la pénalité était calculée du point de vue du BÉNÉFICIAIRE, l'exposition
+du point de vue du PORTEUR — deux repères en sens opposés quand c'est l'attaque qui est pénalisée.
+En séparant les pénalités contre la défense de celles contre l'attaque, le gradient apparaît et il
+va dans le bon sens :
+
+| zone de l'attaque | pénalités défensives / min |
+|---|---|
+| propres 22 | 0,20 |
+| propre moitié | 0,48 |
+| moitié adverse | 0,77 |
+| **22 m adverses** | **1,04** |
+| cinq derniers mètres | 0,71 |
+
+Reste le creux des cinq mètres (1,04 → 1,04 puis 0,71) là où le vrai rugby culmine — mais il repose
+sur **0,20 pénalité par match, soit quatre évènements sur vingt matchs**. Trop peu pour affirmer
+quoi que ce soit, et je ne construis pas un correctif dessus.
+
+**Hypothèse 2, réfutée — l'attaque « rebondirait » hors de la zone en cinq secondes.** Premier
+relevé : 25,8 séjours par match, 11,2 s de moyenne, **66 % sous 5 s**, et 49 % finissant en phase
+PORTE (ni mêlée, ni touche, ni turnover, ni essai). **Artefact d'instrument** : dans les 22 m la
+ligne d'attaque est étagée en profondeur, et mon compteur prenait une simple passe à un joueur placé
+à 23 m pour une sortie de zone. Avec une hystérésis (entrée à 22 m, sortie au-delà de 27 m) et le
+suivi du point de jeu plutôt que du seul porteur : **8,3 séjours, 47,3 s de moyenne, 10 % sous 5 s,
+66 % au-delà de 30 s, 0 % finissant en PORTE.**
+
+**Hypothèse 3, réfutée plus tôt (P2-41) — le goulot serait « 0,85 touche à moins de 5 m ».** La loi
+18 interdit une touche à moins de 5 m de la ligne de but et le moteur l'applique : j'en mesure 0,00,
+ce qui est correct.
+
+**Ce qui reste vrai, et ce qu'il faudrait mesurer ensuite.** Deux chiffres seulement restent sous
+leur repère : **16,5 entrées dans les 22 contre ~20-24**, et **2,10 touches offensives dans les 22
+contre 4-6**. Le second ne découle pas du premier : avec 8,3 sièges de 47 s par match, l'occasion
+existe ; ce qui manque, c'est la sortie en touche DEPUIS la zone rouge. Et **47 % des séjours
+finissent en turnover** — c'est le chiffre le plus suspect du lot, celui par lequel reprendre, en
+décomposant d'abord ce que ce « turnover » recouvre réellement (en-avant, grattage, pénalité contre
+l'attaque, mêlée perdue) avant de toucher quoi que ce soit.
+
+**La leçon de méthode, qui est la partie réutilisable.** Deux instruments sur trois étaient faux
+dans cette enquête, et les deux fois ils faisaient apparaître un défaut spectaculaire qui n'existait
+pas. Le signe commun : **un chiffre qui contredit une autre mesure déjà validée** (34,8 pénalités
+contre les 19,6 de la calibration ; 0,7 temps de jeu pour 11 s de possession). Avant de croire un
+relevé qui annonce un gros défaut, le confronter à une grandeur que le moteur compte lui-même.
+
+### P2-41. Le banc de calibration mesurait une partie que personne ne joue — et à ce pas, le moteur échouait sa propre calibration
+- **Statut : CORRIGÉ (banc au pas du jeu, jeu au pied rebalayé, invariant qui empêche la divergence)**
+- Fichiers concernés : `server/test-calibration-moteur.js`, `engine/rugby-engine.js` +
+  `docs/rugby-engine.js` (`choisirActionPorteur`), `server/test-invariants.js`
+
+**Le défaut.** `server/test-calibration-moteur.js` faisait tourner le moteur à **0,2 s** par pas.
+Le navigateur, lui, le fait tourner à **0,1 s** (`docs/js/constants.js`, `PAS_FIXE`). Toutes les
+calibrations du dépôt — et tous les balayages qui en découlent — décrivaient donc une partie que
+personne ne joue. Ce n'est pas un détail d'outil : au pas réel, **le moteur ÉCHOUAIT sa propre
+calibration**.
+
+| | banc (0,2 s) | **jeu réel (0,1 s)** | fourchette |
+|---|---|---|---|
+| Coups de pied | 59,0 | **47,6** | 35-70 |
+| **Touches** | 21,3 | **18,1** | **20-35** |
+| Mêlées | 11,0 | 13,4 | 6-15 |
+| Temps de jeu effectif | 31,1 | 29,2 | 32-42 |
+| **verdict** | 12/14 OK | **11/14, ÉCHEC sur `lineouts`** | |
+
+**La cause, établie et non devinée.** Trois mesures successives, chacune réfutant la précédente.
+
+1. *Écarté — un taux non normalisé.* J'avais d'abord annoncé « 30 tirages non mis à l'échelle du
+   pas ». En les ouvrant un par un, la plupart sont des tirages d'ÉVÉNEMENT (un par plaquage, un
+   par ruck), légitimement indépendants du pas ; et la décision de taper au pied est correctement
+   normalisée (`rng() < pParSeconde * dt`).
+2. *Écarté — la sortie en touche.* Elle est décidée au moment où le botteur VISE
+   (`cibleCoupDePiedY` hors des lignes), pas pendant le vol : aucun tirage par tick ne donne plus
+   d'occasions de rattraper le ballon au pas fin. Et la part des coups de pied qui trouvent la
+   touche est stable (0,380 à 0,1 s contre 0,361 à 0,2 s) : **toute la chute des touches vient de
+   la chute des coups de pied**, un seul défaut et non deux.
+3. *Écarté — la répartition du terrain.* Le taux varie d'un facteur 26 entre ses 22 (0,26/s) et
+   les 22 adverses (0,01/s), donc un déplacement du jeu suffirait. Mesuré : le mélange de zones
+   ne prédit que **−5 %** (76,3 contre 80,3 attendus), là où les coups de pied chutent de −19 %.
+
+*La cause réelle,* trouvée en posant trois compteurs dans une copie du moteur :
+
+| | 0,1 s (le jeu) | 0,2 s (le banc) |
+|---|---|---|
+| temps de jeu porté | 1135 s | 1221 s |
+| **temps où le porteur DÉCIDE** | **605 s (53 %)** | **724 s (59 %)** |
+| espérance cumulée de coups de pied | 49,3 | 59,4 |
+| coups de pied observés | 47,6 | 59,0 |
+
+L'espérance colle à l'observé à 3 % près **des deux côtés** : la branche fait exactement ce que sa
+formule dit. Ce qui manque au pas fin, c'est le **temps de décision**. Pendant qu'une passe vole ou
+qu'une combinaison se déroule, le porteur ne décide pas, et le nombre de ticks bloqués vaut
+`ceil(durée / pas) − 1` : une passe de 0,12 s bloque **un tick à 0,1 s et zéro à 0,2 s**. Le pas
+grossier arrondit le blocage vers le bas et rend au porteur du temps de décision qu'il n'a pas.
+
+**Ce que je ne sais pas.** Cette quantification chiffre environ **30 s des 119 s** d'écart de temps
+de décision. Les 90 s restantes ne sont pas élucidées. Je le note plutôt que de présenter une
+explication partielle comme complète.
+
+**Le correctif.** (1) Le banc passe à 0,1 s. (2) Les taux de jeu au pied reçoivent un facteur de
+rattrapage `RECALAGE_PIED_PAS_REEL`, rebalayé AU PAS RÉEL sur 20 matchs par dosage :
+
+| facteur | coups de pied | touches | mêlées | essais | verdict |
+|---|---|---|---|---|---|
+| 1,00 (avant) | 47,6 | **18,1** | 13,4 | 7,2 | **ÉCHEC 11/14** |
+| **1,15 (retenu)** | **59,3** | **21,1** | 11,0 | 6,8 | **OK 12/14** |
+| 1,25 | 63,3 | 21,3 | 10,0 | 6,9 | OK 12/14 |
+| 1,35 | 64,0 | 22,9 | 8,8 | 8,0 | **ÉCHEC 11/14** |
+
+1,15 est le plus petit dosage qui restitue le volume visé par le balayage d'origine (~59). Au-delà,
+**les touches plafonnent** (21,1 puis 21,3) : les coups de pied supplémentaires restent en jeu au
+lieu de trouver la touche, et on ne paie que le ballon en main.
+
+(3) Un invariant compare le pas du banc à `PAS_FIXE` et rougit s'ils divergent — vérifié rouge en
+remettant le banc à 0,2 s, vert à 0,1 s.
+
+**Ce facteur est une dette, pas un réglage de jeu.** Il ne fait que rattraper un balayage fait au
+mauvais pas. Le jour où les taux de base seront rebalayés directement au pas réel, il doit
+disparaître ; c'est écrit à son point d'usage.
+
+**Ce qui reste hors fourchette au pas réel :** passes 431,9 (contre ≤ 420) et temps de jeu effectif
+30,0 min (contre ≥ 32). Les deux l'étaient déjà avant ce travail.
+
+**Une correction de cadrage, au passage.** J'ai répété que le goulot était « 0,85 touche par match à
+moins de 5 m de la ligne ». C'est faux : la loi 18 interdit une touche à moins de 5 m de la ligne de
+but, et le moteur l'applique — j'en mesure **0,00**, ce qui est correct. La vraie mesure du goulot
+est **2,10 touches par match dans les 22 m adverses**, contre 4 à 6 en vrai.
+
+### P2-40. Mon correctif du maul a rendu ILLÉGALE la principale sortie de maul — trouvé par un contrôle d'arbitrage, pas par les tests
+- **Statut : CORRIGÉ (loi 16) — une sensibilité au pas de simulation reste ouverte**
+- Fichiers concernés : `engine/rugby-engine.js` + `docs/rugby-engine.js` (`_tickMaul`),
+  `server/test-invariants.js`
+
+**Comment le défaut a été trouvé, et pourquoi ça compte.** P2-25 (poussée du maul) est passé au
+vert sur 53 invariants, la calibration, l'équilibre des matchs et la QA navigateur. Le défaut
+ci-dessous est ressorti d'un **contrôle d'arbitrage** lancé après coup, qui lit les lois et le
+code plutôt que d'exécuter la suite. **Aucun test ne regardait la CAUSE de la fin d'un maul** —
+seulement qu'il finissait.
+
+**Le défaut.** Le garde-fou anti-blocage appelait directement `_maulMeleeInjouable()` dès 45 s.
+La loi 16.16/16.17 ne permet de terminer un maul par une mêlée que sur ballon injouable,
+écroulement, ou « use it » non exécuté — **jamais parce que le maul dure**. Tant que les mauls
+mouraient à 8,4 s, le cas était marginal (2 % des mauls). **En les allongeant à 23 s, P2-25 en a
+fait la sortie principale.**
+
+| pas de simulation | mauls | terminés par le garde-fou | dont EN MOUVEMENT |
+|---|---|---|---|
+| 0,2 s (les bancs) | 103 | 13 (13 %) | **13 / 13** |
+| **0,1 s (le jeu réel)** | 104 | **27 (26 %)** | **24 / 27** |
+
+La possession changeait donc sans déclencheur légal, et systématiquement au détriment du pack
+qui domine — c'est justement parce qu'il pousse que le maul dure. C'est le critère de refus
+« la possession change sans raison ».
+
+**Le correctif.** Le maul trop long passe par la séquence légale : second arrêt → « use it »
+(5 s) → et mêlée **seulement** si le ballon ne sort pas. Seuil ramené à 35 s pour que les 5 s du
+« use it » tiennent sous la borne de 50 s déjà assertée. Mesuré : **0 mêlée sur maul en
+mouvement aux deux pas**, durée maximale 40,0 s au lieu de 44,9 s, avancée 8,51 m à 0,1 s.
+Garde-fou livré : `loi 16 : un maul qui AVANCE ne peut pas être terminé par une mêlée`, rouge à
+11 mauls illégaux sur 50 avant, vert après, **interrogé aux deux pas de simulation**.
+
+**CE QUE MA COLONNE « % MÊLÉE » MESURAIT VRAIMENT.** En choisissant le dosage de P2-25 j'ai
+écrit qu'il était « le seul à ne pas faire finir un maul sur quatre en mêlée ». Ces 13 %, comme
+les 21-24 % des autres dosages, **n'étaient pas des mêlées de loi 16.17** : c'étaient ces coups
+de sifflet illégaux. Le classement des dosages tient (un maul qui dure moins se fait moins
+siffler), l'argument était mal nommé. Rectifié dans les trois endroits qui le citaient.
+
+**DÉFAUT OUVERT : le moteur ne se joue pas pareil selon le pas de simulation.** Le navigateur
+tourne à 0,1 s (`docs/js/constants.js` `PAS_FIXE`), les bancs à 0,2 s
+(`server/test-calibration-moteur.js`). Sur le maul, l'écart est massif : avancée 10,16 m contre
+7,61 m, durée 23,0 s contre 18,7 s, défaut ci-dessus deux fois plus fréquent.
+
+*Deux causes examinées, une seule confirmée.* J'ai d'abord accusé `const enMouvement = avance >=
+0.04`, qui compare une distance **par tick** à une constante (seuil effectif 0,20 m/s à 0,2 s
+mais 0,40 m/s à 0,1 s). C'est un vrai défaut, corrigé ici en `m.vitesse >= 0.2` — **mais il
+n'expliquait presque rien** : 9,94 m au lieu de 10,16 m. La vraie cause est que
+`m.tempsImmobile >= 1.0` est un **détecteur de séquence** : 5 ticks immobiles consécutifs à
+0,2 s, mais **10** à 0,1 s. Avec un tirage indépendant par tick, dix échecs d'affilée sont bien
+plus rares que cinq — plus le pas est fin, plus le maul survit.
+
+*Une variante testée et REFUSÉE.* Juger l'arrêt sur l'élan lissé sur 1 s plutôt que sur le
+tirage du tick : avancée 8,27 / 7,20 m aux deux pas, soit 15 % d'écart contre 16 % sans elle.
+Elle ne corrige bien que le *nombre* de mauls (103 / 100 contre 84 / 102) et demande un état
+supplémentaire dans l'objet maul. Pas quatre lignes de machinerie pour un point de pourcentage
+sur la mauvaise grandeur.
+
+*Conséquence pratique à retenir :* les chiffres de `test-calibration-moteur.js` décrivent le
+banc, pas la partie jouée. Pour toute grandeur sensible à la durée des phases, mesurer à 0,1 s.
+
+### P2-39. Variabilité dans les duels : trois variantes testées, aucune ne marche — et ma propre alarme était mal cadrée
+- **Statut : AUCUN CORRECTIF — et correction du cadrage de P2-37**
+- Fichiers concernés : aucun (arbre de travail intact pendant tout l'essai)
+
+Suite à la décision de donner de la variabilité aux duels plutôt que de toucher aux attributs.
+
+**Trois variantes essayées, toutes sur des COPIES du moteur** (jamais l'arbre de travail — cf.
+l'incident de P2-36), toutes tirées du **RNG semé**, donc « même graine = même match » préservé et
+vérifié à chaque essai :
+
+| variante | ±3 | ±10 |
+|---|---|---|
+| référence | 75 % de victoires A | **100 %** |
+| A — forme redessinée chaque seconde (±6 %) | 75 % | **100 %** |
+| B — forme par joueur, tirée une fois par match | 83 % | **100 %** |
+| C — forme d'ÉQUIPE, tirée une fois par match | 63 % | **100 %** |
+
+**Aucune ne rétablit la moindre surprise à ±10.** La variante A échoue pour la raison annoncée
+avant la mesure : un bruit indépendant se moyenne sur les milliers de courses d'un match. La
+variante B échoue parce que quinze tirages indépendants se moyennent au niveau de l'équipe. Et la
+variante C — un dé d'équipe, que j'avais annoncé refuser par principe parce qu'il décide avant le
+coup d'envoi sans qu'aucune action ne l'explique — **ne marche pas davantage** : un avantage de
+8 % de vitesse appliqué des milliers de fois ne se renverse pas avec ±6 %.
+
+**MA PROPRE ALARME ÉTAIT MAL CADRÉE, et c'est le résultat le plus utile de cette entrée.** P2-37
+titrait « `vitesse` décide les matchs » sur la base des cas ±10 et ±20. Or dans
+`club-pyramide-france.js`, les bandes de niveau par division sont :
+
+| palier | bande `niveauClub` | écart de vitesse interne |
+|---|---|---|
+| 1 | 0,55 – 0,85 | ~6 points, soit **±3** |
+| 2 | 0,35 – 0,60 | ~5 points |
+| 3 | 0,15 – 0,45 | ~6 points |
+
+**L'écart entre le premier et le dernier d'une même division vaut ±3**, pas ±10. Et à ±3 le moteur
+donne **75 % de victoires** pour le meilleur — ce qui est réaliste pour un premier contre un
+dernier, et descend vers 55-60 % entre clubs de milieu de tableau. Les cas à ±10 et ±20 sont des
+écarts **inter-divisions** (premier du palier 1 contre dernier du palier 3), où une démonstration
+est le résultat normal.
+
+**Conclusion.** Le rapport de domination entre `vitesse` et les autres attributs (4,4 contre 1)
+reste exact et documenté. Mais la conséquence que j'en tirais — « le match est joué d'avance » —
+**n'existe pas à l'échelle que le joueur rencontre**. Il n'y a donc pas de correctif honnête à
+livrer sur ce levier, et le rééquilibrage que j'allais entreprendre aurait été fondé sur un cas
+extrême qui ne se produit pas en jeu.
+
+**Leçon de méthode.** Un balayage d'attributs mesure une *sensibilité*, pas une *situation de
+jeu*. Avant d'en tirer un défaut, il faut vérifier **quelle plage de valeurs le jeu produit
+réellement** — ici, la réponse tenait dans une fonction de douze lignes.
+
+---
+
+### P2-38. Renforcer les autres attributs : la mesure dit qu'ils ne sont pas sous-câblés
+- **Statut : MESURE — aucun correctif, la direction demande un arbitrage**
+- Fichiers concernés : aucun
+
+Suite à la décision de renforcer les autres attributs plutôt que de toucher à `vitesse`. Premier
+travail : refaire le balayage **à la résolution nécessaire**, celui de P2-36 ayant ±7 points
+d'intervalle, ce qui ne permettait pas de classer les attributs faibles.
+
+**Balayage à 60 graines** (±20, Bonferroni sur 13, quatre lots en parallèle) :
+
+| attribut | écart de score | IC 95 % |
+|---|---|---|
+| **vitesse** | **+75,5** | ±5,8 |
+| plaquage | +14,1 | ±7,0 |
+| **endurance** | **+8,2** | ±5,5 |
+| tendance | +7,0 | ±5,8 |
+| mêlée | +6,0 | ±6,6 |
+| jeuPied | +5,8 | ±5,7 |
+| passe | +4,6 | ±5,9 |
+| discipline | +3,4 | ±5,6 |
+| puissance | +2,8 | ±6,6 |
+| touche | +2,3 | ±6,1 |
+| décision | +1,9 | ±6,4 |
+| adresse | +0,3 | ±6,2 |
+| *(témoin)* | *−3,7* | *±6,0* |
+
+`endurance` remonte en troisième position : le correctif de P2-36 se voit ici, alors que
+l'attribut était collé au témoin avant.
+
+**Puis vérification, attribut par attribut, de l'hypothèse « ils sont sous-câblés ». Elle ne tient
+pas.**
+
+- **`touche`** agit fortement là où il doit agir : conservation sur lancer propre **94,1 % contre
+  71,6 %** entre une équipe à 90 et une à 30 (témoin : 86,7 / 95,0). La fourchette réelle est
+  ~92 % à ~80 % : le moteur couvre donc déjà plus large que le rugby. Son faible poids au SCORE est
+  arithmétique — 22 points de conservation sur ~10 lancers font ~2 ballons perdus de plus par
+  match. Une saturation existe (95/5 donne exactement 90/30, les bornes [0,06 ; 0,30] de
+  `probaVolTouche` mordent déjà), mais elle borne l'attribut là où le rugby le borne aussi.
+- **`adresse`** pilote les tirs au but, `skill = (adresse − 70) × 0,004` borné [−0,22 ; +0,10],
+  soit ~0,16 d'écart de réussite sur ±20. Sur ~6 tirs par match, cela fait ~4 points — exactement
+  ce que le balayage mesure.
+- **`passe`** est lu à deux endroits (réussite de passe, probabilité de passe en avant).
+- Seul **`endurance`** était réellement mort, et c'est corrigé (P2-36).
+
+**Ce que cela implique pour la direction choisie.** Les autres attributs ne sont pas sous-câblés :
+leur effet est **proportionné à la fréquence de ce qu'ils décident** — ~20 touches, ~10 mêlées,
+~6 tirs au but par match. `vitesse` domine parce qu'elle s'applique à **chaque déplacement de
+chaque joueur à chaque tick**, des milliers de fois par match. Ce n'est pas un défaut de câblage,
+c'est un rapport de fréquence.
+
+Renforcer les autres attributs reviendrait donc à **augmenter le poids des touches, mêlées et tirs
+au but au-delà de ce qu'ils pèsent en rugby réel** — un choix de jeu assumable, mais qui éloigne
+la simulation du rugby au lieu de l'en rapprocher. Ce n'est pas une décision que je prends seul.
+
+---
+
+### P2-37. `vitesse` domine les autres attributs : dose-effet, ablation, et pourquoi je ne livre pas de correctif
+
+> **Cadrage corrigé (cf. P2-39)** : le titre disait d'abord « décide les matchs ». Les cas ±10 et
+> ±20 utilisés ici sont des écarts INTER-DIVISIONS ; entre deux clubs d'une même division l'écart
+> vaut ±3, où le meilleur gagne 75 % du temps — un résultat réaliste. La domination sur les autres
+> attributs est réelle ; la conclusion « le match est joué d'avance » ne l'était pas.
+- **Statut : DIAGNOSTIC ÉTABLI — aucun correctif, la suite est une décision de conception**
+- Fichiers concernés : aucun (moteur inchangé)
+
+P2-36 avait mesuré que `vitesse` pèse +73,4 points pour ±20, six fois le deuxième attribut. Cette
+entrée instruit le *pourquoi*.
+
+**1. Courbe dose-effet** (20 graines appariées, A reçoit +δ, B reçoit −δ) :
+
+| écart | qui | écart de score | victoires A |
+|---|---|---|---|
+| *(témoin)* | — | *−2,9* | *40 %* |
+| ±3 | tous | **+15,4** | 80 % |
+| ±6 | tous | +25,3 | 85 % |
+| ±10 | tous | +41,5 | **100 %** |
+| ±20 | tous | +71,8 | 100 % |
+| ±20 | avants seuls | +30,1 | 100 % |
+| ±20 | trois-quarts seuls | +48,0 | 100 % |
+
+**±3 points d'attribut — soit 0,15 m/s, 2,4 % — donnent déjà +15,4 points et 80 % de victoires.**
+À ±10, plus aucune surprise en 20 matchs. La direction avants/trois-quarts est juste (48,0 contre
+30,1 : la vitesse des lignes arrière pèse davantage), mais l'ampleur ne l'est pas.
+
+**2. Ce n'est pas théorique : c'est l'écart que le jeu produit lui-même.** Dans
+`club-generation-joueurs.js`, `ecartNiveau = (niveauClub − 0,5) * 20` : le meilleur club de la
+pyramide a **+10 de vitesse** sur le plus faible — exactement le cas mesuré à +41,9 points et
+100 % de victoires.
+
+**3. Ablation des cinq canaux** (duel ±10, 16 graines, un canal figé à 65 à la fois) :
+
+| canal neutralisé | écart restant |
+|---|---|
+| aucun (référence) | +41,9 |
+| **a) déplacement (`vitesseMs`)** | **+6,8** |
+| b) réussite du plaquage | +35,9 |
+| c) plaquage dominant | +37,3 |
+| d) amplitude du crochet | +36,4 |
+| e) plaquage de sauvetage | +41,9 |
+| f) le rapide garde le ballon | +33,8 |
+
+**84 % de l'effet vient du seul déplacement.** J'avais soupçonné le canal (d) — `amplEvite` va de
+1,0 à 3,5 selon la vitesse, ce qui ressemblait au même attribut payé deux fois : il ne pèse que
+~5 points sur 42. **Troisième fois cette semaine qu'une lecture de code désigne le mauvais endroit
+et que la mesure corrige.**
+
+**4. Pourquoi aucun correctif n'est livré.** Le mapping actuel est
+`3,0 + (vitesse/100) × 5,0`, soit 5,25 m/s pour un pilier (45) et 7,5 m/s pour un ailier (90).
+Le *rapport* (1,43) est proche du réel (~9,5 / 7 = 1,36) : **la plage n'est pas aberrante**, et la
+comprimer rendrait le moteur moins réaliste, pas plus. L'hypertrophie vient de la structure — dans
+une simulation où tout se décide par les positions, un avantage de vitesse systématique gagne
+chaque course, chaque soutien, chaque couverture, des centaines de fois par match.
+
+Les deux issues possibles sont l'une et l'autre **des décisions de conception, pas des
+correctifs** :
+- donner de la variabilité aux duels, pour qu'un avantage marginal gagne *souvent* et non
+  *toujours* — mais cela touche au déterminisme par graine, garanti par un invariant ;
+- renforcer les canaux des autres attributs, pour que recruter un bon talonneur, un bon passeur ou
+  un bon buteur pèse autant que recruter un rapide — c'est un rééquilibrage large de la
+  progression du Mode Club.
+
+**Ce qui est en jeu pour le joueur** : tant que la vitesse domine 6 contre 1, la profondeur de
+recrutement du Mode Club est largement décorative — améliorer son effectif revient à acheter de la
+vitesse.
+
+**Contrôle fait en passant** : `adresse` et `passe` ne sont PAS morts (contrairement à
+`endurance`, cf. P2-36). `adresse` pilote la réussite des tirs au but,
+`skill = (adresse − 70) × 0,004` borné [−0,22 ; +0,10], soit ~4 points par match sur ±20 — réel,
+mais sous la résolution du balayage (±7 points avec Bonferroni à 24 graines). La prudence de P2-36
+(« la question reste ouverte ») était justifiée.
+
+---
+
+### P2-36. Balayage des attributs : `endurance` ne jouait pas, `vitesse` écrase tout
+- **Statut : CORRIGÉ pour `endurance` — `vitesse` mesuré et documenté, non traité**
+- Fichiers concernés : `engine/rugby-engine.js`, `docs/rugby-engine.js`, `server/test-invariants.js`
+
+P2-35 s'était terminé sur un constat de méthode : deux étapes recommandées d'affilée, fondées sur
+une lecture de code, s'étaient révélées sans objet à la mesure. D'où ce balayage, qui mesure
+l'**effet total** de chaque attribut sur la sortie du match au lieu d'inspecter l'endroit où on
+s'attend à le trouver.
+
+**Protocole.** Chaque attribut est donné à **+20 à l'équipe A et −20 à l'équipe B**, à partir de sa
+valeur de profil (un pilier reste donc lent, un ailier rapide), même graine des deux côtés,
+24 graines appariées. Un **témoin sans aucune modification** donne le bruit : sans lui, n'importe
+quel écart ressemblerait à un effet.
+
+| attribut | écart de score | essais | victoires A |
+|---|---|---|---|
+| **vitesse** | **+73,4** | +11,21 | **100 %** |
+| plaquage | +11,3 | +1,50 | 88 % |
+| mêlée | +7,0 | +1,04 | 63 % |
+| tendance | +5,7 | +0,67 | 75 % |
+| jeuPied | +5,1 | +0,63 | 63 % |
+| décision | +3,5 | +0,42 | 58 % |
+| touche | +3,4 | +0,33 | 58 % |
+| discipline | +3,1 | +0,21 | 58 % |
+| *(témoin)* | *−3,0* | *−0,29* | *38 %* |
+| **endurance** | **−3,0** | **−0,29** | **38 %** |
+| puissance | +2,7 | +0,50 | 58 % |
+| adresse | −1,0 | −0,50 | 42 % |
+| passe | −0,8 | −0,33 | 46 % |
+
+**1. `endurance` reproduisait le témoin AU CHIFFRE PRÈS** — les matchs étaient identiques. Cause :
+la fatigue de fin de match était un multiplicateur **global**, le même pour les trente joueurs.
+L'attribut n'était jamais lu par le moteur. Confirmé par un contrôle à deux équipes identiques
+sauf l'endurance (90 contre 30) : résultat rigoureusement identique à celui sans configuration.
+
+Ce n'est pas anodin. L'écran de composition **pondère** l'endurance — 10 % de la note d'un pilier,
+12 % d'une deuxième ligne, 18 % d'une troisième ligne (`POIDS_PAR_POSTE`). Le manager recrutait et
+alignait sur un attribut qui ne jouait jamais. Le commentaire de `club-composition.js` affirmait
+même que ces attributs existent « alors que le moteur, lui, les utilise » : c'était faux pour
+celui-ci.
+
+**Correctif** : la fatigue devient individuelle, `coutFatigue = 1 + (66 − endurance) / 55`, borné
+à [0,4 ; 1,8]. Centré sur l'endurance **moyenne des quinze profils** (66), donc un XV standard
+fatigue exactement comme avant — on répartit, on ne change pas le rythme moyen.
+
+**2. `vitesse` écrase tout le reste** : +73,4 points et 100 % de victoires pour ±20, soit six fois
+l'effet du deuxième attribut. Aucun attribut ne devrait décider un match à ce point, et cela
+contredit l'idée que les avants et les trois-quarts apportent des choses différentes. **Non traité
+ici** : le corriger touche au cœur du déplacement et demande son propre patch mesuré. C'est
+signalé, pas résolu.
+
+**Portes** : invariants **50/50**, calibration 500 matchs **21/21, 0 échec** (tous les repères
+CLAUDE.md dans leur fourchette), S12 **12/12**. Navigateur 1400×1000 et 390×844 : zéro erreur de
+page, seul le 404 `version.json` (artefact de déploiement absent en local), et l'effet est
+**visible** — deux équipes identiques sauf l'endurance (90 contre 30) donnent 26,5 points contre
+20,3 sur 4 matchs.
+
+**Banc A/B, 300 graines appariées, Bonferroni — aucune métrique établie** : essais +0,200 ±0,479,
+points +1,253 ±3,049, rucks −0,073 ±4,335, gain/temps de jeu +0,017 ±0,146. Le correctif change
+**qui tient la fin de match**, pas la forme statistique du match — le résultat recherché.
+
+**Audit de creusage** : neutraliser `coutFatigue` donne **exactement 0,0000** d'effet (écart avec
+configuration 0,0233, témoin 0,0233 — le même chiffre), ce qui montre que le test protège
+précisément cette règle et rien d'autre.
+
+**INCIDENT, et sa leçon.** Le premier commit de ce correctif a poussé `engine/rugby-engine.js`
+**avec la mutation de l'audit encore en place** (`coutFatigue = 1`), pendant que
+`docs/rugby-engine.js` gardait la bonne version : les deux moteurs avaient divergé. Cause : j'ai
+commité pendant que l'audit de creusage — destructeur par construction — tournait sur l'arbre de
+travail. Réparé au commit suivant. **Règle à retenir : un audit de creusage doit travailler sur
+une copie**, comme les bancs A/B le font déjà via le scratchpad ; à défaut, aucune écriture git ne
+doit avoir lieu tant qu'il tourne.
+
+**3. `adresse`, `passe` et `puissance` sont au niveau du bruit.** Pour `puissance`, c'est cohérent
+avec P2-34 : le facteur de contact venait d'être ajouté et son banc n'avait établi aucune
+métrique. Pour `adresse` et `passe`, la question reste ouverte — à instruire par la même méthode
+avant toute conclusion.
+
+---
+
+### P2-35. Le plaqueur compte déjà : une étape recommandée, mesurée, et abandonnée
+- **Statut : PAS DE DÉFAUT — aucun correctif, et une recommandation de ma part corrigée**
+- Fichiers concernés : aucun
+
+À la fin de P2-34 j'avais recommandé comme étape suivante de « faire compter le plaqueur autant
+que le porteur », en écrivant qu'« un plaqueur d'élite et un plaqueur médiocre cèdent la même
+distance ». **C'était faux, et la mesure le dit.**
+
+**Ce que j'avais lu.** Le plaquage du défenseur n'apparaît dans la résolution du contact que via
+un seuil binaire : `ruckDominant = (defenseurProche.plaquage - porteur.vitesse) > 12 && rng() < 0.3`.
+Mesure sur 10 matchs (1 765 contacts) : la marge va de −38 (p10) à +24 (p90), médiane −1, et
+seuls **28 %** des contacts dépassent le seuil. J'en avais conclu que dans 72 % des cas le
+plaqueur ne changeait rien.
+
+**Ce que la mesure dit.** Ce 28 % concerne le seul `ruckDominant`, pas l'influence totale du
+plaqueur. En contact construit (même géométrie, même porteur, même rideau, 40 graines), en ne
+faisant varier que le plaquage du défenseur :
+
+| plaquage | terrain concédé |
+|---|---|
+| 20 | 1,482 m |
+| 40 | 1,482 m |
+| 55 | 1,482 m |
+| 68 | 1,223 m |
+| 80 | 0,855 m |
+| 95 | **0,361 m** |
+
+Le terrain concédé varie d'un **facteur quatre**. L'influence est forte et graduée — elle passe
+notamment par le taux de plaquages manqués, pas seulement par `ruckDominant`, ce que ma lecture
+du seul site de décision ne montrait pas.
+
+**Le palier bas n'est pas un oubli, c'est une saturation.** En dessous de ~55, le plaqueur ne
+freine plus du tout le porteur : il n'y a plus rien à concéder au-delà de l'avancée complète
+permise par le rideau. C'est physiquement sensé, et ce n'est pas un défaut à corriger.
+
+**Le test correspondant a été écrit, puis retiré.** Comparant un plaqueur à 68 et un à 40, il
+était **VERT sur le moteur non corrigé** — comme le test sur l'élan retiré en P2-34. Deux fois de
+suite, une étape recommandée sur la base d'une lecture de code s'est révélée sans objet à la
+mesure.
+
+**Leçon de méthode, la même que P2-33 sous une autre forme :** lire le site de décision d'un
+attribut ne suffit pas à conclure qu'il est ignoré — il peut agir par d'autres canaux (ici, les
+plaquages manqués). Avant de recommander une étape, il faut **mesurer l'effet total de l'attribut
+sur la sortie**, pas inspecter l'endroit où on s'attend à le trouver.
+
+---
+
+### P2-34. Au contact, le moteur créditait OÙ l'on percute, jamais QUI percute
+- **Statut : CORRIGÉ**
+- Fichiers concernés : `engine/rugby-engine.js`, `docs/rugby-engine.js`, `server/test-invariants.js`
+
+`avanceContact` ne dépendait que du **rideau défensif** (0,55 / 1,00 / 1,55 m selon le nombre de
+défenseurs devant le porteur). La puissance du porteur n'entrait nulle part.
+
+**Mesure en contact construit** (même géométrie, même plaqueur, 40 graines) :
+
+| | puissance 90 | puissance 35 |
+|---|---|---|
+| rideau de 0 | 1,50 m | 1,50 m |
+| rideau de 2 | 0,53 m | 0,53 m |
+
+Identique au centième. Un pilier et un ailier percutant le même rideau gagnaient exactement le
+même terrain, alors que CLAUDE.md (rôle 4) demande explicitement que « les avants soient meilleurs
+pour les contacts ».
+
+**J'avais mal cadré le défaut au départ, et il faut le dire.** J'avais présenté comme anomalie le
+fait que les porteurs puissants gagnent **moins** de terrain en agrégé (0,50 m contre 1,07 m,
+terciles de puissance sur 1 998 contacts). C'est en réalité normal : les avants percutent près du
+regroupement, donc face à un rideau fourni, les trois-quarts dans l'espace — et en vrai rugby
+aussi les trois-quarts font plus de mètres par portage. Le vrai défaut était l'effet **nul à
+situation égale**. L'écart agrégé reste négatif après correctif (−0,18 m), et c'est attendu.
+
+**Correctif.** Facteur de puissance centré sur la puissance **mesurée** au contact
+(`PUISSANCE_CONTACT_REF = 57`, moyenne pondérée de 1 666 contacts : 75 côté avants, 44 côté
+trois-quarts), borné à ±70 %. Un porteur moyen gagne donc exactement ce qu'il gagnait avant : on
+répartit, on ne gonfle pas — même principe que le rideau lui-même.
+
+**Un test creux retiré plutôt que livré.** J'avais aussi écrit « un porteur lancé avance plus
+qu'un porteur à l'arrêt ». Il était **vert sur le moteur non corrigé** : l'élan agit déjà, non par
+une règle de contact mais par la distance que le porteur parcourt avant que le contact ne se
+résolve (rideau de 2 : 1,17 m lancé contre 0,53 m à l'arrêt). Il n'y a donc pas de défaut de ce
+côté, et un test qui passe sans correctif ne protège rien. La raison est consignée dans le fichier
+de test, pour qu'on ne le réécrive pas.
+
+**Audit de creusage** : neutraliser le facteur (coefficient à zéro) **ou** écraser ses bornes à
+`[1, 1]` fait rougir le test ; le moteur restauré repasse au vert.
+
+**Portes** : invariants **49/49**, calibration 500 matchs **21/21, 0 échec** (tous les repères
+CLAUDE.md dans leur fourchette — rucks 164,7 et plaquages 240,6 montent mais restent dedans),
+S12 **12/12**. Navigateur 1400×1000 et 390×844 : le match se joue, la feuille de match affiche des
+statistiques réelles, un seul 404 (`version.json`, artefact de déploiement absent en local).
+
+Le risque annoncé — l'avancée moyenne au contact passe de 0,80 à 0,75 m, et un commentaire du
+moteur avertissait qu'une telle baisse avait déjà fait sortir le temps de jeu effectif de sa
+fourchette — **ne s'est pas matérialisé**.
+
+**Banc A/B, 300 graines appariées, Bonferroni — aucune métrique établie :** essais
+−0,383 ±0,488, points −1,837 ±2,898, rucks +3,58 ±4,12, plaquages +4,09 ±5,93, gain/temps de jeu
+−0,019 ±0,163. **Réserve honnête** : l'écart sur les essais vaut 78 % de l'intervalle. Il n'est pas
+établi, mais une légère baisse des essais ne peut pas être exclue — le banc dit lui-même qu'un
+effet plus petit que sa résolution est *invisible, pas nul*. À re-mesurer si un correctif ultérieur
+va dans le même sens.
+
+---
+
+### P2-33. P2-15 élucidé : le gain par temps de jeu est épinglé par la ligne de hors-jeu
+- **Statut : DIAGNOSTIC ÉTABLI — aucun correctif livré, et une erreur d'instrument corrigée**
+- Fichiers concernés : `engine/rugby-engine.js`, `docs/rugby-engine.js`, `server/test-invariants.js`
+  (commentaires seulement — moteur inchangé)
+
+**1. D'abord, une erreur de ma part déjà publiée.** P2-32 et les commentaires du moteur portaient
+une décomposition du gain par temps de jeu : « gain net +1,46 m = course +3,73 m MOINS recul des
+passes −2,43 m, sur 0,78 passe par phase ». Elle est **fausse**. Je découpais les phases sur tout
+changement de `ruckPoint.x`, qui bouge aussi **en cours** de phase (maul qui avance, plaquage de
+sauvetage) : des phases fantômes à gain nul venaient diluer la mesure. Le bon découpage est celui
+du dépôt — entrée en phase `RUCK`, cf. `server/test-stats-matchs.js`.
+
+| | mon découpage (faux) | découpage du dépôt |
+|---|---|---|
+| passes par phase | 0,78 | **2,60** |
+| médiane du gain | 0,08 m | **1,09 m** |
+
+La moyenne tombait juste par hasard (1,29 contre 1,35), les phases fantômes diluant les deux
+côtés. La décomposition a été **retirée, pas corrigée** : même bien découpée, la somme des
+composantes ne se réconcilie pas avec le gain (5,71 m contre 1,46 m), parce qu'entre deux rucks
+il peut y avoir un coup de pied, une touche ou un turnover. L'intervalle ruck→ruck n'est pas une
+séquence d'attaque continue, et aucune somme additive ne s'y ramène.
+
+**2. Quatre leviers testés, aucun ne marche** (14 graines, découpage du dépôt) :
+
+| variante | gain | médiane |
+|---|---|---|
+| référence | 1,47 m | 1,10 |
+| vitesse de montée défensive −30 % | **1,19 m** | 1,06 |
+| défenseurs visant moins loin (2,5 → 1,2 m) | 1,50 m | 1,08 |
+| rampe défensive plus lente au départ | 1,66 m | 1,11 |
+| cadence de passes −30 % | 1,35 m | 1,07 |
+
+La médiane ne bouge pas — 1,06 à 1,11 dans tous les cas. Ralentir la défense **aggrave** même le
+gain. Aucun paramètre athlétique ou décisionnel n'a prise sur cette grandeur.
+
+**3. La cause, elle, est géométrique.** La ligne défensive ne recule jamais derrière
+`ligneGain = ruckPoint.x + sens * RECUL_PIED_RECULE` (loi 15, pied le plus reculé). Le plaquage
+tombe donc **sur cette ligne**, à chaque phase. En faisant varier cette seule constante :
+
+| `RECUL_PIED_RECULE` | médiane du gain |
+|---|---|
+| 0,5 | **0,46 m** |
+| 1,5 (valeur actuelle) | **1,10 m** |
+| 3,0 | **2,23 m** |
+| 5,0 | **4,04 m** |
+
+Le gain suit la constante presque au mètre près. **Le gain par temps de jeu du moteur EST sa
+distance de hors-jeu** — c'est pourquoi P2-15 résiste depuis si longtemps, et pourquoi tout
+réglage de vitesse, de décision ou de cadence est sans effet.
+
+**4. CE QU'IL NE FAUT PAS FAIRE.** Monter `RECUL_PIED_RECULE` à 5 ferait entrer le gain dans sa
+fourchette réelle (+3 à +5 m) en une ligne. Ce serait **fausser la loi 15 pour atteindre une
+statistique** — exactement ce que CLAUDE.md interdit (« ne pas inventer des statistiques non
+reliées au match »). La distance de hors-jeu est une règle du rugby, pas un bouton de calibrage.
+
+**5. Ce qu'il faudrait à la place.** En vrai, une attaque FRANCHIT la ligne d'avantage : le porteur
+attaque la ligne lancé et la collision se produit au-delà du point où le défenseur l'attendait.
+Le moteur modélise déjà une partie de cela (avance au contact 0,55/1,00/1,55 m selon le rideau,
+point de plaquage ramené à mi-chemin), mais le résultat net reste collé à la ligne de hors-jeu.
+La piste à instruire est la **profondeur de réception** : chaque phase commence par un recul du
+ballon vers un ouvreur placé loin derrière, qu'il faut regagner avant de gagner quoi que ce soit.
+Cette piste n'est PAS mesurée ici — c'est une hypothèse, et elle est signalée comme telle.
+
+---
+
+### P2-32. La sortie de regroupement était un rail : le même n°9 pour tous les clubs
+- **Statut : CORRIGÉ**
+- Fichiers concernés : `engine/rugby-engine.js`, `docs/rugby-engine.js`, `docs/js/club.js`,
+  `docs/js/club-composition.js`, `server/test-invariants.js`, `server/test-melee.js`
+
+P1 avait rendu le jeu au près pilotable **dans les cinq derniers mètres**
+(`cfgAttaque.jeuAuPresLigne`, modulé par `profilJeuAuPres`). Partout ailleurs — les trois quarts
+du terrain — le taux était resté la constante historique, littéralement :
+
+```js
+const tauxAvantLance = zone === 'CINQ_M' ? tauxPres
+  : zone === 'OPP_22' ? tauxPres * 0.35 : 0.18;
+```
+
+**Mesure** (10 matchs, cible réelle de chaque passe du n°9, 1 825 passes) :
+
+| destinataire | part | recul du ballon |
+|---|---|---|
+| n°10 | **63,5 %** | −4,51 m |
+| un AVANT (1-8) | **16,9 %** | −2,45 m |
+| n°15 | 10,2 % | −7,12 m |
+
+Un vrai demi de mêlée alterne ; le moteur sortait mécaniquement vers l'ouvreur, à l'identique
+pour tous les clubs.
+
+**La justification par laquelle j'étais arrivé là était FAUSSE, et il faut le dire.** (Et la
+décomposition citée ci-dessous s'est elle-même révélée fausse par la suite : découpage des phases
+erroné, cf. **P2-33**. Elle est conservée ici telle qu'elle a été publiée, avec ce renvoi.) J'étais
+parti de la décomposition du gain par temps de jeu (6 945 phases conservées) :
+
+```
+gain net par phase   +1,46 m   (médiane +0,08 ; repère réel +3 à +5)
++ course du porteur  +3,73 m
+- recul des passes   −2,43 m   sur 0,78 passe par phase
+```
+
+et j'en avais conclu qu'une sortie au près, moins chère de deux mètres, ferait avancer le ballon.
+C'est faux : le recul des passes baisse bien (−2,43 → −2,15 m) mais la course baisse **davantage**
+(+3,73 → +3,31 m), parce qu'un avant porte moins loin qu'un trois-quarts.
+
+**Et j'ai sur-lu la suite, ce qu'il faut corriger aussi.** J'en avais déduit « gain net 1,46 →
+1,29 m, légèrement moins bon » — à partir d'exécutions NON appariées. La comparaison appariée
+sur 300 graines dit : **−0,062 ± 0,162, non établi**. Les deux effets se compensent. Le patch ne
+coûte pas de terrain ; il n'en rapporte pas non plus. Le jeu confiné au milieu (P2-15) reste
+entier.
+
+**Banc A/B, 300 graines appariées, Bonferroni (z = 2,84) — AUCUNE métrique établie :**
+
+| métrique | avant | après | écart |
+|---|---|---|---|
+| Essais | 6,48 | 6,46 | −0,017 ±0,477 |
+| Points | 52,77 | 52,64 | −0,133 ±2,884 |
+| Passes | 454,8 | 452,7 | −2,16 ±9,62 |
+| Courses | 213,2 | 214,4 | +1,19 ±4,39 |
+| Rucks | 160,8 | 162,3 | +1,51 ±3,84 |
+| Plaquages | 238,1 | 237,7 | −0,40 ±5,37 |
+| Gain/temps de jeu | 1,43 | 1,37 | −0,062 ±0,162 |
+
+C'est le résultat recherché : le correctif change **qui joue**, pas la forme statistique du
+match. La variété des décisions augmente à réalisme constant — ce que le banc, qui n'agrège que
+des volumes, ne peut pas voir, et que les tests de consigne et d'effectif mesurent directement.
+
+**Ce que le correctif apporte réellement** est un critère de refus *explicite* de CLAUDE.md —
+« les mêmes actions se répètent tout le temps », « les avants et les trois-quarts jouent
+exactement pareil ». Le taux devient `cfgAttaque.sortieAvant` (défaut 0,34), modulé par
+`profilJeuAuPres` comme le jeu au près près de la ligne. Part des avants **16,9 % → 23,5 %**.
+
+**Et il devient une décision VISIBLE du joueur.** L'axe « Jeu d'avants » du Mode Club existait
+déjà et promettait « le pick-and-go au près plutôt qu'une sortie rapide aux trois-quarts » — mais
+ne pilotait que la **mêlée**. Il gouverne désormais aussi la sortie de regroupement
+(`proche` 0,60 / `équilibré` défaut / `Ouvert aux 3/4` 0,12).
+
+**Piège de câblage, réel et protégé.** `tactiqueVersConfig` ne fusionnait dans `attaque` que les
+axes « Largeur du jeu » et « Occupation au pied ». Un réglage d'attaque posé sur « Jeu d'avants »
+aurait été **perdu en silence** — exactement ce que le test M6 protège déjà du côté `melee`.
+Nouveau test M6b, vérifié rouge avant câblage.
+
+**Tests** (tous vérifiés rouges d'abord) :
+1. le n°9 sert un avant dans ≥ 22 % de ses passes (avant : 16,9 %) ;
+2. la consigne d'équipe change le jeu (avant : 17,1 % contre 17,1 % — sans aucun effet) ;
+3. l'effectif aligné change le jeu (avant : 15,6 % contre 16,0 %) ;
+4. M6b — le réglage traverse `tactiqueVersConfig` sans écraser l'axe « pied ».
+
+**Audit de creusage** : `baseSortie * profilJeuAuPres(att)` → `* 1` ne fait rougir que le test 3 ;
+supprimer la lecture de la consigne ne fait rougir que le test 2. Chaque levier est protégé par
+exactement le test qui le revendique.
+
+**Portes** : invariants 48/48, calibration 500 matchs 21/21 (0 échec, tous les repères CLAUDE.md
+dans leur fourchette — rucks 161,3 pour [70-180], le risque redouté ne s'est pas matérialisé),
+S12 12/12, test-melee 12/12. Navigateur 1400×1000 et 390×844 : `sortieAvant` arrive au moteur
+(0,60 / défaut / 0,12) et le réglage « Occupation au pied » survit à la fusion.
+
+---
+
+### P2-31. Le moteur n'interceptait pas des passes : il ramassait des pops à deux mètres
+- **Statut : CORRIGÉ**
+- Fichiers concernés : `engine/rugby-engine.js`, `docs/rugby-engine.js`, `server/test-invariants.js`
+
+`_chercherInterception` tirait à **taux plat** (`PROBA_INTERCEPTION = 0.065`, modulé par la seule
+adresse du défenseur) dès qu'un défenseur se trouvait à moins de **1,2 m** du couloir de passe.
+La **longueur de la passe n'entrait nulle part** : une sautée de 16 m et un pop de 2 m avaient
+exactement le même risque.
+
+**Mesure (30 matchs, en instrumentant la fonction elle-même).**
+
+| | avant | après |
+|---|---|---|
+| longueur moyenne de la passe interceptée | **4,34 m** | **14,8 m** |
+| médiane | **2,70 m** | — |
+| prises sur passes < 6 m | **0,39 / match** (sur 0,52) | **0,03 / match** |
+| interceptions par match | 0,52 | **0,97 à 1,17** (40 / 30 graines) |
+
+Une passe de 2,70 m de médiane n'est pas une interception : c'est un ballon que le receveur a
+déjà dans les mains. Le fait de jeu le plus spectaculaire du rugby — la sautée lue et prise — ne
+se produisait donc jamais, alors que le compteur, lui, affichait bien des interceptions.
+
+**Cause.** Le modèle ignorait le **temps de vol**, qui est pourtant la raison physique pour
+laquelle une interception existe. Une passe parcourt ~12 m/s : une sautée de 15 m reste en l'air
+~1,25 s, un pop de 2 m ~0,17 s. Ce temps donne au défenseur (a) de quoi **lire** la trajectoire,
+(b) de quoi **couvrir du terrain** latéralement avant l'arrivée du ballon. Deux termes, pas un.
+
+**Correctif.** Les deux constantes plates deviennent fonction de la longueur `L` :
+- couloir = `1.2 + 0.12 * L` (à 15 m : 3,0 m, soit 2,4 m/s de déplacement latéral pendant le vol
+  — conservateur pour un joueur debout et lancé) ;
+- probabilité = `PROBA_INTERCEPTION * (L - 3) / 6`, plafonnée à 2,2, nulle sous 3 m.
+
+Les paramètres n'ont pas été choisis sur le moteur en marche : les géométries de **8 577 passes**
+(30 matchs) ont été relevées une fois, puis seize règles candidates évaluées hors ligne sur ce
+relevé. Le couple retenu est celui qui place la fréquence sur son repère réel (~1 / match) avec
+une passe interceptée moyenne de ~15 m, c'est-à-dire une vraie sautée.
+
+**Test.** `une interception, c est une passe LONGUE, pas un pop a deux metres` — deux volets :
+(1) à géométrie identique (même défenseur, même adresse, même écart au couloir, même position
+relative), la sautée de 16 m contre le pop de 3 m, 2 000 décisions par cas en état figé ;
+(2) sur 12 matchs complets, la longueur moyenne des passes **réellement** interceptées, plus un
+garde-fou de fréquence (0,4 à 2,2 / match). Vérifié rouge avant correctif (6,9 % contre 6,9 % ;
+4,3 m).
+
+**Audit de creusage** (« si je casse la règle, le test devient-il rouge ? ») : `GAIN_COULOIR_PAR_METRE = 0`
+→ rouge (0,08 interception / match) ; `LONGUEUR_ININTERCEPTABLE = 0` → rouge (pop pris à 3,6 %) ;
+`FACTEUR_LONGUEUR_MAX = 99` → **reste vert**. Ce plafond n'est donc pas couvert : au-delà de 16 m
+les passes sont trop rares pour déplacer la moyenne. C'est un garde-corps, pas un comportement
+mesuré — noté comme tel dans le code.
+
+**Ce que ce correctif ne règle PAS (mesuré, hors périmètre).** Les avants font **59 %** des
+interceptions — un deuxième ligne qui lit une sautée n'est pas la scène habituelle du rugby, où
+la prise est le fait des centres et des ailiers. Ce biais est **antérieur** au correctif (57 %
+avant, 59 % après, 40 graines) : il ne vient pas d'ici et n'est pas traité ici.
+
+**Effet sur le reste (banc A/B, 300 graines appariées, Bonferroni).** Aucun : turnovers +0,23
+(±0,76, non établi), essais et points inchangés. Ce correctif change **la nature** des
+interceptions, pas leur poids sur le résultat — c'est ce qu'on lui demande.
+
+---
+
+### P2-30. Le jeu au large : le correctif est bon, sa contrepartie défensive n'existe pas (3ᵉ refus)
+- **Statut : NON LIVRÉ — mesuré, documenté, moteur laissé intact**
+- Fichiers concernés : aucun (le correctif a été écrit, mesuré, puis retiré de l'arbre)
+
+**1. La contre-mesure qui avait bloqué le correctif en P2-28 était fausse.** P2-28 refusait le
+correctif sur deux contreparties : l'effondrement de la couverture du n°15 (8,4 m) et la chute de
+la sanction de la passe en avant. La première était un **artefact d'instrument** — c'est
+précisément le test réparé en P2-29. Refaite avec l'instrument réparé (8 graines, état remis à
+zéro, fenêtre de 6 s) : référence **22,97 m**, correctif **24,30 m**. La couverture est
+**meilleure** avec le correctif, pas pire. Cette correction-là est acquise.
+
+**2. La seconde contrepartie est réelle, et se compense.** Sanction de la passe en avant sur
+200 matchs : référence 0,425 ±0,090, correctif 0,215 ±0,064. Le correctif supprime précisément
+les passes longues, donc les plus souvent en avant. Le résidu relevé de 0,20 à 0,40 la ramène à
+0,450 ±0,093, mêlées 10,5 inchangées.
+
+**3. Ce qui bloque réellement : +1,2 essai par match, et rien pour l'absorber.** Trois variantes
+benchées contre HEAD (300 graines appariées, Bonferroni z = 2,84) :
+
+| variante | essais | points | passes |
+|---|---|---|---|
+| HEAD | 6,33 | 52,50 | 457,6 |
+| V2 — correctif seul | — | 58,37 (**+5,88** ÉTABLI) | 428,9 (−28,7 ÉTABLI) |
+| V3 — + compensation du résidu | 7,54 (**+1,20** ÉTABLI) | 58,97 (**+6,47** ÉTABLI) | 426,7 (−31,0 ÉTABLI) |
+| V4 — + interception par longueur (P2-31) | 7,58 (**+1,25** ÉTABLI) | 59,08 (**+6,58** ÉTABLI) | 430,0 (−27,7 ÉTABLI) |
+
+La compensation du résidu n'y est pour rien (V2 seul inflate déjà de +5,88). L'interception par
+longueur, essayée comme contrepoids, est **neutre sur le score** (turnovers +0,23, non établi) :
+elle change la nature des prises, pas leur nombre utile.
+
+**Diagnostic — CORRIGÉ le lendemain, il était faux.** J'avais écrit ici que le moteur « ne
+modélise ni la défense glissante ni la couverture sur la passe au large : quand le ballon part
+vers un homme libre, il le reste », et j'en avais fait le préalable à toute reprise. **C'était une
+hypothèse, pas une mesure, et elle est démentie.**
+
+L'instrument qui semblait la confirmer était faux : au moment où le moteur émet l'événement
+`PASSE` / `JEU_LARGE`, `this.porteur` est **encore le passeur** — la bascule `this.porteur = cible`
+vient deux lignes plus bas. Vérifié directement : sur 137 passes, `m.porteur` est le passeur dans
+**100 %** des cas. Je suivais donc le joueur qui venait de se débarrasser du ballon, et c'est son
+repli en soutien que je lisais comme « l'espace qui s'ouvre » (8,26 m → 8,84 m).
+
+Mesure refaite sur le **vrai receveur** (12 matchs, receveur identifié par `extra.vers`) :
+
+| après… | mètres gagnés vers l'en-but en 1,2 s | espace du receveur |
+|---|---|---|
+| une passe normale (n = 4 747) | **+2,68 m** | 7,90 m → **5,23 m** |
+| une passe au large (n = 554) | **+4,28 m** | 12,25 m → **7,47 m** |
+
+La défense **se referme** sur le receveur, et nettement : −4,8 m d'espace en 1,2 s sur une passe au
+large. Le contrôle latéral séparé le confirme (écart latéral 2,74 m → 2,60 m). **Il n'y a pas de
+défaut de défense glissante.** La pièce que je disais manquante existe et fonctionne.
+
+**Ce qui reste vrai, et ce qui redevient inexpliqué.** Les trois bancs (V2, V3, V4) tiennent : le
+correctif vaut bien +1,2 essai et +6 points. Ce qui tombe, c'est mon explication. L'hypothèse
+restante est celle déjà établie ailleurs dans cet audit : le moteur n'atteint son volume réaliste
+de fautes de main qu'en produisant **1,8 fois trop de passes**, et le correctif fait passer les
+passes au large de 43,9 à 16,3 par match. Il retire donc des passes ratées qui servaient de
+régulateur au score. Ce n'est pas démontré non plus — c'est une piste, et elle est signalée comme
+telle.
+
+**Ce que le correctif contenait** (pour le reprendre tel quel) : dans `choisirActionPorteur`,
+comparer l'espace du soutien large à celui du porteur avant d'écarter —
+`espaceLarge > distDef * 1.2` — exactement la comparaison déjà en place sur la chaîne des
+trois-quarts (P2-27). Mesure en état figé, 2 000 décisions : avec neuf mètres devant lui et
+l'ailier marqué à 2,5 m, le porteur écartait quand même dans **3,0 %** des décisions.
+
+**Défaut jumeau, toujours ouvert.** La branche reste conditionnée à `!pression` : le moteur
+n'écarte **jamais** pour échapper à la pression (0,0 % quand le porteur est pris à 3 m et l'ailier
+libre à 12 m), alors que c'est la raison première de faire circuler un ballon. Lever cette
+condition coûte la part des avants près de la ligne (31,3 % → 17,1 %).
+
+**4ᵉ passage, avec les portes du dépôt : trois refus MESURÉS, dont deux substantiels.** Le faux
+diagnostic écarté, j'ai simplement appliqué V3 sur le moteur courant (correctif d'interception
+inclus) et lancé les trois suites. Résultat :
+
+| porte | V3 | verdict |
+|---|---|---|
+| loi 19 — plaqué en touche | **0,33 / match** (plancher 0,5 ; réel 2 à 4) | **ÉCHEC** |
+| essais (repère CLAUDE.md [2-8]) | **8,0 / match** | **HORS REPÈRE** |
+| S12 — moteur contre barème | 61,1 pts contre 46,1-50,0 | **ÉCHEC** |
+| points (repère [25-70]) | 61,9 | OK |
+| mêlées, touches, rucks, plaquages, coups de pied, pénalités, turnovers | — | OK |
+
+Le premier motif est le plus instructif, et il est **du rugby, pas de la comptabilité** : être
+plaqué en touche arrive précisément à l'ailier marqué le long de la ligne de touche. En cessant de
+lui donner le ballon, le correctif **supprime un fait de jeu réel** — l'événement passe de ~1,5 à
+0,33 par match. Le second est un **critère de refus explicite de CLAUDE.md**, pas un arbitrage de
+ma part.
+
+Le correctif reste donc refusé, mais pour des raisons désormais mesurées, et non plus pour le
+diagnostic erroné ci-dessus. Il ne s'agit plus de « doser » : tel qu'il est écrit, il fait
+disparaître une action de rugby.
+
+**Préalable avant toute nouvelle tentative : savoir POURQUOI le score monte.** Le préalable que
+j'avais inscrit ici (« implémenter la défense glissante ») était la conséquence d'un diagnostic
+faux et n'a plus lieu d'être. Trois refus restent trois refus, mais la cause est à chercher du
+côté du rôle régulateur des passes ratées, pas d'une pièce défensive manquante — et il faut la
+**mesurer** avant de coder quoi que ce soit.
+
+**Leçon de méthode.** Deux instruments successifs (`apres-large`, `diag-large`) partageaient le
+même défaut et se confirmaient l'un l'autre. Une mesure qui vient étayer l'hypothèse qu'on avait
+déjà en tête mérite une vérification indépendante AVANT d'être publiée — ici, une ligne suffisait :
+« au moment du log, qui tient le ballon ? ».
+
+---
+
+### P2-29. Trois garde-fous qui basculaient sur du bruit — réparés, seuils intacts
+- **Statut : CORRIGÉ (moteur inchangé : seuls les tests changent)**
+- Fichiers concernés : `server/test-invariants.js`, `server/test-stats-matchs.js`
+
+P2-28 a montré qu'aucun correctif du moteur ne peut plus être jugé sur ses mérites tant que ces
+garde-fous tombent au hasard. C'est le préalable, traité ici.
+
+**1. « Le n°15 traverse pour couvrir » — trois versions, et la première ne mesurait pas ce
+qu'elle annonçait.**
+- *Version d'origine* : UNE seule graine, 2 s de jeu, aucun état remis à zéro. Mesure sur
+  12 graines du moteur **inchangé** : 12,7 / 12,8 / 9,8 / 10,7 / **4,1** / 11,8 / 12,8 / 12,2 /
+  13,1 / **4,2** / 9,2 / 7,6 — moyenne **10,1** pour un seuil placé à **10**. Il tenait à une
+  graine heureuse. Pire : une fois la vitesse courante remise à zéro, la traversée tombe à
+  **4,9 m** en 2 s — les « 12,6 m » sur lesquels le seuil avait été bâti venaient surtout de
+  l'**élan résiduel** laissé par les 30 s de mise en route, pas de la couverture.
+- *Deuxième version* : contraste entre un porteur le long de la touche et un porteur dans l'axe.
+  Déterministe (écart-type 3,24 → 1,40) mais **creuse** : en neutralisant la branche de
+  couverture (`if (franchi)`), le test restait **VERT**. Quand la branche ne s'applique pas,
+  l'arrière suit quand même le ballon par la voie normale — et c'est ce suivi-là que le
+  contraste mesurait.
+- *Version retenue* : ce que la branche apporte vraiment, mesuré en la neutralisant (8 graines,
+  état remis à zéro, porteur le long de la touche) :
+
+| fenêtre | avec la branche | sans |
+|---|---|---|
+| 4 s | 12,63 m (σ 1,70) | 9,15 m (σ 1,01) |
+| **6 s** | **22,97 m (σ 6,37)** | **9,83 m (σ 0,40)** |
+
+  Sans elle, l'arrière **plafonne à ~9,8 m** : il suit le ballon mais ne va jamais au point de
+  rencontre. Seuil placé à **13 m** — trois écarts-types sous la valeur du moteur correct, très
+  au-dessus des 9,8 m quasi déterministes du moteur amputé. **Mutation vérifiée : rouge à
+  9,8 m.**
+
+**2 et 3. Deux planchers statistiques déplacés là où ils ont de la puissance.** La sanction de
+la passe en avant (≥ 0,2 par match) et les fautes de main (≥ 8) vivaient dans la suite rapide,
+sur 60 matchs. Puissance réelle à cette taille :
+
+| garde-fou | valeur mesurée | résolution à 60 matchs | marge |
+|---|---|---|---|
+| passe en avant sanctionnée | ~0,33/match | ±0,15 | **0,9 σ** |
+| fautes de main | 8,87/match (σ 2,90) | ±0,73 | **1,2 σ** |
+
+Les deux sont effectivement tombés au rouge cette session sur des correctifs qui ne les
+concernaient pas. Ils sont déplacés dans `server/test-stats-matchs.js`, qui tourne sur
+**500 matchs** chaque nuit : les **mêmes seuils** y valent ~5 σ et ~3,5 σ. **Aucun seuil n'a été
+baissé** — il a suffi de donner à chaque question l'échantillon qu'elle exige. Le *plafond* de
+la passe en avant (rare : ≤ 4) reste dans la suite rapide, où il est large et bon marché.
+**Mutation vérifiée** (`Referee.passeEnAvant` neutralisé) : rouge.
+
+**Piège rencontré deux fois de suite, à retenir.** Les suites ne chargent pas toutes la même
+copie du moteur : `test-invariants.js` lit `engine/rugby-engine.js`, `test-stats-matchs.js` et
+`test-scores-abstraits.js` lisent `docs/rugby-engine.js`. Muter la mauvaise copie donne un test
+qui reste **vert** et laisse croire qu'il est creux. Toujours vérifier le `require` de la suite
+avant de conclure qu'une mutation ne mord pas.
+
+### P2-28. Le jeu au large est à l'envers — et deux garde-fous fragiles empêchent de le corriger
+- **Statut : DIAGNOSTIQUÉ, NON LIVRÉ (deux versions mesurées, toutes deux payées trop cher)**
+- Fichiers concernés : `engine/rugby-engine.js` (branche « jeu au large » de `choisirActionPorteur`)
+
+**Le défaut, mesuré en état figé** (`choisirActionPorteur` interrogée 400 fois par graine sur
+5 graines, sans laisser personne bouger — 2000 décisions par cas, précision ~0,8 point) :
+
+| situation | le ballon est-il écarté ? |
+|---|---|
+| le porteur est **pris** à 3 m, l'ailier est **libre** à 12 m | **0,0 %** |
+| le porteur a **9 m** devant lui, l'ailier est **marqué** à 2,5 m | **3,0 %** |
+
+La règle est **inversée**. La branche exige `!pression`, c'est-à-dire au moins 5 m devant le
+porteur : on écarte donc le ballon quand on a l'espace, et on le garde quand on est pris. Au
+rugby c'est l'inverse — on fait circuler POUR échapper à la pression et servir l'homme libre.
+Et quand elle se déclenche, elle ne regarde jamais si le destinataire est libre : elle prend
+n'importe quel trois-quarts « à moins de 18 m ».
+
+**Version 1 — lever `!pression` et comparer les espaces.** Les deux taux s'inversent
+proprement (0,0 % → 3,3 % et 3,0 % → 0,0 %), mais trois contreparties mesurées :
+- part des avants dans les portages des cinq derniers mètres : **31,3 % → 17,1 %** (le ballon
+  part à l'homme libre jusque dans les 22, et le pack disparaît de nouveau) ;
+- sanction de la passe en avant : **0,33 → 0,10 par match** (le porteur garde le ballon, donc
+  les passes désespérées disparaissent, et la loi devient invisible) ;
+- couverture de l'arrière (n°15) : **10,9 → 8,4 m** sur 8 graines.
+
+Restreindre la règle au plein champ (hors des 22) rend la part des avants, mais laisse les deux
+autres contreparties.
+
+**Version 2 — ne rien ajouter, seulement retirer le tir erroné.** On garde `!pression` et on
+ajoute uniquement la comparaison d'espace : 3,0 % → 0,0 %, et le comportement manquant reste
+manquant. Même ainsi, **la sanction de la passe en avant tombe au plancher (0,2) et la
+couverture de l'arrière reste à 8,4 m**. Pour un gain réel faible — environ 3 % d'une branche
+qui produit 47 passes par match — deux garde-fous passent au rouge. Non livré.
+
+**Le vrai obstacle est la qualité de deux garde-fous, et il faut le dire.** Le test « le n°15
+traverse pour couvrir » est un scénario à **une seule graine** dont la mise en route de 30 s
+laisse aux joueurs une vitesse courante non réinitialisée. Mesuré sur 8 graines, sur le moteur
+**inchangé**, il donne : 12,7 / 12,8 / 9,8 / 10,7 / **4,1** / 11,8 / 12,8 / 12,2 — moyenne
+10,9 pour un seuil à 10. Autrement dit il tient à une graine heureuse, et **n'importe quel
+changement du moteur le fait basculer**, qu'il touche ou non à la couverture. Le test de la
+loi 11 est dans le même état : 0,2 mesuré pour un plancher à 0,2.
+
+**Reprise recommandée, dans cet ordre :** (1) rendre ces deux garde-fous robustes — moyenne sur
+plusieurs graines et remise à zéro de l'état résiduel du scénario, exactement ce qui a été fait
+pour S12, la loi 11 et l'interception ; (2) seulement ensuite corriger le jeu au large, qui est
+un vrai défaut de règle et non un réglage.
+
+### P2-27. La chaîne des trois-quarts ne comparait jamais l'espace : elle finissait toujours sur l'aile
+- **Statut : CORRIGÉ**
+- Fichiers concernés : `engine/rugby-engine.js` + `docs/rugby-engine.js`, `server/test-invariants.js`
+
+**Le défaut.** La chaîne `10→12→13→aile` se déroulait jusqu'au bout à tous les coups : le
+porteur cherchait un partenaire onside, à portée et avec un peu d'air, puis lui donnait — **sans
+jamais comparer cet air au sien**. Un centre avec neuf mètres devant lui redonnait au large
+exactement comme un centre pris au collet. Résultat mesuré sur 40 matchs : **les deux ailiers
+marquent 71,2 % des essais** (repère réel ~28 %) et le poste le plus prolifique en signe 36,1 %.
+
+**Le correctif.** On ne passe que si le suivant est **mieux servi que soi** :
+`espaceSuivant > distDef × 1,2`. La marge de 20 % évite la bascule — à espace comparable, la
+chaîne vit comme avant.
+
+**Effet mesuré, 40 matchs appariés :**
+
+| | avant | après |
+|---|---|---|
+| part des deux AILIERS | **71,2 %** | **63,7 %** |
+| poste le plus prolifique | 36,1 % | 33,1 % |
+| numéros marqueurs | 14 | 15 |
+| passes/match | 482,4 | 462,2 |
+
+**Banc A/B, 300 matchs appariés, Bonferroni sur 11 métriques :** passes **485,6 → 457,6
+(−28,0 ± 9,9, ÉTABLI)**, et rien d'autre d'établi — essais +0,41 ± 0,50, points +2,85 ± 3,14,
+courses, rucks, plaquages, touches, mêlées, turnovers et gain tous dans le bruit. C'est la
+première baisse ÉTABLIE des passes de la session qui ne coûte rien ailleurs. Calibration
+**13/14** (seules les passes restent hautes, 474 contre ≤ 420).
+
+**L'instrument a dû être inventé pour ce test, et c'est le point méthodologique.** Trois façons
+de mesurer ont été essayées :
+1. **Proportion sur des centaines de matchs** — l'écart (7,5 points sur les ailiers) est trop
+   petit devant la résolution (±6 points à 40 matchs). Inutilisable comme garde-fou.
+2. **Scénario joué pendant quelques secondes** — le défenseur COURT vers le porteur : au bout
+   d'une seconde ce n'est plus la chaîne qui décide mais la passe avant contact. Le scénario
+   mesurait une tout autre branche et donnait 40 % contre 55 %, **dans le mauvais sens**.
+3. **La décision interrogée en ÉTAT FIGÉ** — `choisirActionPorteur` appelée 400 fois par graine
+   sur 5 graines, sans laisser personne bouger : 2000 décisions par cas, précision ~0,8 point.
+   C'est celle-ci qui isole la règle.
+
+| décision mesurée en état figé | avant | après |
+|---|---|---|
+| le suivant est mieux servi (3 m contre 9 m) → on passe | 30,1 % | 30,5 % |
+| le porteur est mieux servi (9 m contre 3 m) → on passe quand même | **15,1 %** | **3,0 %** |
+
+Mutation vérifiée (`suivantMieuxServi = true`) : rouge à 15,1 %.
+
+**Deux garde-fous voisins réparés au passage, tous deux victimes de leur instrument :**
+- **Interception** : le scénario comparait `stats.B.turnovers` en **valeur absolue**, alors que
+  les 30 s de mise en route qui le précèdent sont un vrai match et peuvent y produire un
+  turnover. Il est passé au rouge sur un correctif qu'il n'a aucune raison de voir (il appelle
+  `_tenterPasse` directement). Il compare désormais un **delta**.
+- **Consigne d'équipe** : son écart se mesure sur une centaine de portages par branche, soit
+  ±6 points de résolution, pour un seuil placé à 15 alors que la valeur mesurée vaut 13 à 14.
+  Il est tombé à 12,6 puis 13,8 sur des correctifs étrangers à la consigne. Échantillon porté
+  de 12 à 24 graines et seuil ramené à 8 points : ce qu'il protège, c'est que la consigne
+  CHANGE le jeu, pas l'amplitude exacte du changement.
+
+**Ce que ça ne corrige pas.** La part des AVANTS dans les essais ne bouge pas (14,6 % → 14,3 %) :
+le ballon repris par les centres profite aux centres et à l'arrière, pas au pack. Et 63,7 %
+d'essais pour deux ailiers reste très au-dessus du réel.
+
+### P2-26. CORRECTION DE DIAGNOSTIC : ce n'est plus l'occasion qui manque, c'est le marqueur
+- **Statut : DIAGNOSTIC CORRIGÉ — invalide une prémisse de P2-15 et ma propre recommandation de l'étape précédente**
+- Fichiers concernés : aucun (mesure)
+
+**Ce que l'audit affirmait (P2-15, et je l'ai répété hier encore).** « Seulement 0,6 séquence par
+match atteint un regroupement à moins de 5 m de la ligne adverse — mais 33 % de celles-là
+finissent en essai. **Ce n'est donc pas la finition qui manque, c'est l'occasion.** » J'avais
+conclu l'étape précédente en recommandant exactement cela : faire venir le jeu près de la ligne.
+
+**Ce que mesure le moteur d'aujourd'hui**, compteur `entrees22` (une entrée par possession, pas
+par tick — vérifié dans le code avant de conclure) :
+
+| | moteur | repère réel |
+|---|---|---|
+| entrées dans les 22 adverses (2 équipes) | **14,5/match** | 16 à 24 |
+| entrées converties en essai | **41,7 %** | 30 à 40 % |
+| points par entrée | **3,49** | 2,5 à 3,5 |
+
+Le travail de cette session (loi 15, sortants de ruck hors de la ligne, loi 19, gain au contact
+conditionnel, jeu des avants près de la ligne) a **triplé** les entrées par rapport aux 4,3 de
+l'audit d'origine. Le moteur arrive donc désormais presque aussi souvent dans les 22 qu'un vrai
+match — et il les convertit **un peu mieux** que la réalité.
+
+**Conséquence directe, et c'est ce qui change la suite :** tout correctif qui ajoute des
+occasions près de la ligne (plus de touches à 5 m, plus de pénalités concédées dans son propre
+22, plus de mauls) pousserait le score **au-dessus** du réalisme, pas vers lui. Ma
+recommandation de l'étape précédente était fausse et ne doit pas être suivie.
+
+**Le défaut restant est DISTRIBUTIONNEL.** Sur 30 matchs : les deux ailiers marquent **69,5 %**
+des essais, les avants **18,3 %** (réel ~33 %), le n°12 **0,6 %**. Le problème n'est pas
+d'arriver dans les 22, c'est que le ballon y finit toujours dans les mêmes mains.
+
+**Mesures complémentaires prises à cette occasion** (instrument branché à l'entrée de
+`_traiterPenalite`, pas sur la position du porteur au moment du log — trois de mes instruments
+se sont révélés faux dans cette session, celui-ci a été vérifié) : les pénalités se répartissent
+à 2,0 % à moins de 5 m, **10,1 % dans son propre 22** (repère réel 20-25 %), 43 % entre 22 et
+50 m, 47 % au-delà de 50 m.
+
+**Piste essayée et mesurée, non livrée : la passe intérieure près de la ligne.** À 3 m de
+l'en-but, un trois-quarts pris par la couverture donne à l'intérieur au soutien qui arrive
+(souvent un avant) plutôt que de mourir sur la ligne de touche. Implémentée et mesurée sur
+40 matchs : part des avants dans les essais **18,3 % → 18,9 %**, c'est-à-dire rien (résolution
+±4 points sur cet échantillon). L'ailier qui reçoit dans les cinq mètres a le plus souvent déjà
+battu la couverture : il n'a personne à fixer, donc rien à redonner.
+
+**Reprise recommandée.** Chercher du côté de ce qui amène le ballon à l'aile plutôt que de ce
+qui se passe une fois qu'il y est : la chaîne `10→12→13→aile` se termine toujours au même
+endroit (`ordreL`), et c'est elle qui fabrique les 69,5 %. Toute tentative devra être neutre en
+nombre d'essais — le moteur en produit déjà assez.
+
+### P2-25. Le maul pénétrant n'existe pas : le dé pousse deux fois plus que les deux packs
+- **Statut : CORRIGÉ — le blocage identifié ici était réel, mais son coût annoncé s'est révélé être un gain**
+- Fichiers concernés : `engine/rugby-engine.js` + `docs/rugby-engine.js` (`_maulCalculerPoussee`),
+  `server/test-invariants.js`
+
+**Le défaut, mesuré sur 20 matchs.** Un maul durait 14,3 s pour avancer **2,38 m**, et
+**0,79 m seulement à moins de 10 m de la ligne**. Un maul lancé réel gagne 5 à 15 m. Résultat :
+**zéro essai sur maul par match** — une des deux machines à essais des avants n'existait pas.
+
+**La cause, mesurée en instrumentant 3402 ticks de poussée.** La vitesse valait
+`(fAtt - fDef) / 200 + (aléa - 0,5) × 0,5`. Or l'écart de force entre les deux packs vaut
+**27 points en moyenne**, soit **0,135 m/s**, quand le terme de hasard vaut **±0,25 m/s**.
+Le dé pesait donc **deux fois plus que les deux paquets d'avants réunis**. Et comme un maul
+sous 0,2 m/s pendant une seconde déclenche le « use it », le maul mourait dès que le tirage
+tombait mal. L'attaque était en supériorité sur 91,8 % des ticks, pour une marge qui ne
+produisait rien.
+
+**Le correctif : `(fAtt - fDef) / 70 + (aléa - 0,5) × 0,15`.** Les packs pèsent désormais cinq
+fois le dé, au lieu de la moitié.
+
+**CE QUE J'AI CRU, ET QUE LA MESURE A DÉMENTI.** Je craignais qu'en donnant le poids aux packs
+l'issue devienne un rail — le reproche exact que le joueur m'a fait sur les décisions. C'est
+l'inverse : **plus il y a de hasard, plus le maul est mauvais**, parce qu'il oscille autour du
+seuil d'arrêt sans jamais ni avancer franchement ni s'arrêter proprement, et finit en mêlée.
+Cinq dosages mesurés (20 matchs chacun) :
+
+| rapport packs/dé | avancée | durée | essais sur maul | fin en mêlée |
+|---|---|---|---|---|
+| 0,54x (moteur d'avant) | 2,38 m | 14,3 s | 0,00 | 9 % |
+| 1,7x | 4,73 m | 20,9 s | 0,05 | **24 %** |
+| 2,2x | 6,84 m | 23,6 s | 0,20 | **24 %** |
+| 3,0x | 6,52 m | 20,8 s | 0,25 | 21 % |
+| **5,0x (retenu)** | **7,61 m** | 18,9 s | 0,20 | 13 % |
+
+Le dosage retenu est le seul qui donne une avancée réaliste SANS faire finir un maul sur quatre
+en mêlée. Et ce n'est pas un rail : deux packs équivalents donnent un écart nul, donc un maul
+qui piétine — ce qui est exactement ce que fait un maul entre deux packs équivalents.
+
+**LE BLOCAGE DE CETTE ENTRÉE EST LEVÉ, ET DANS LE SENS INVERSE DE CE QU'ELLE CRAIGNAIT.** La
+version précédente refusait ses trois calibrations parce qu'elles **coûtaient 15 à 20 % des
+portages dans les cinq mètres**, le maul monopolisant la possession près de la ligne. Mesuré
+sur le correctif retenu (20 matchs) :
+
+| | avant | après |
+|---|---|---|
+| portages à moins de 5 m | 8,55/match | **10,10/match (+18 %)** |
+| part des avants dans ces portages | 28,7 % | **32,7 %** |
+| essais | 6,20 | 6,90 |
+| points | 53,0 | 56,6 |
+
+En avançant réellement, le maul **AMÈNE** le ballon dans les cinq mètres au lieu d'y mourir
+quinze mètres plus loin : il en crée au lieu d'en consommer. Le point à surveiller est la
+hausse du score (53,0 → 56,6), qui reste dans le repère 25-70 mais s'en rapproche par le haut.
+
+**Le garde-fou livré, et son audit de creusage.** `server/test-invariants.js` :
+« un maul pénétrant avance vraiment, et un pack dominant le pousse plus loin ».
+
+1. *Une erreur d'instrument d'abord.* Ma première version moyennait TOUS les mauls du match.
+   En donnant le pack lourd à A, les mauls de B (pack léger) entraient dans la même moyenne :
+   l'écart sortait **à l'envers** (8,69 m contre 10,68 m) et le test échouait sur le moteur
+   corrigé. L'instrument filtre maintenant sur `maul.equipePossession`.
+2. *Le seuil vient d'une mesure, pas d'une intuition.* J'ai fabriqué deux moteurs **aveugles aux
+   packs** (poussée constante 0,35 puis 0,45), qui passent l'assertion « le maul avance » mais où
+   la force des packs ne joue plus : écart résiduel **+1,00 m** et **−1,34 m**. Le moteur livré
+   donne **+23,07 m** (pack lourd 21,45 m, pack léger **−1,62 m** : il recule). Le seuil de 2 m
+   est donc au-dessus du résidu aveugle et dix fois sous la valeur réelle.
+3. *Pourquoi ce garde-fou tient là où le précédent avait été retiré.* La version retirée mesurait
+   un écart de 1,86 m avec une incertitude de ±2,0 m : elle basculait au tirage. Ici l'écart est
+   douze fois plus grand que cette incertitude.
+
+**Ce qui reste vrai de l'ancien diagnostic.** Relever le taux de maul sur touche (0,45 → 0,80)
+ne sert toujours à rien : le goulot n'est pas le taux mais le NOMBRE de touches près de la ligne
+— **0,85 par match**, contre 2 à 4 en vrai. C'est la suite à traiter.
+
+### P2-24. Près de la ligne, le moteur ne jouait pas ses avants — et la consigne d'équipe n'existait pas
+- **Statut : CORRIGÉ (partiellement : la part des avants dans les essais reste à 16,4 % contre ~33 % réels)**
+- Fichiers concernés : `engine/rugby-engine.js` + `docs/rugby-engine.js`, `server/test-invariants.js`
+
+**Le défaut.** À la sortie d'un regroupement, le n°9 donnait le ballon à l'ouvreur quasi
+systématiquement — **y compris à 3 m de la ligne d'en-but**. L'option « avant lancé » n'était
+tirée qu'à 18 %, partout sur le terrain. Mesure sur 20 matchs, en comptant un portage comme
+le moteur le compte lui-même (un porteur AMENÉ AU CONTACT, cf. `stats.carries`) :
+
+| zone | portages/match | part des avants |
+|---|---|---|
+| cinq derniers mètres | 8,95 | **22,9 %** |
+| tout le terrain | 208,9 | 34,9 % |
+
+Les avants portaient donc MOINS près de la ligne que partout ailleurs — l'inverse exact d'un
+vrai match, où l'absence d'espace au large et une défense massée font jouer le pack.
+Conséquence mesurée : les avants ne marquaient que **13,8 %** des essais (repère réel ~33 %)
+pendant que les deux ailiers en marquaient **69,8 %** : le joueur voyait toujours les deux
+mêmes maillots aplatir.
+
+**Le correctif, et pourquoi ce n'est PAS une constante.** Première version écrite : un taux
+fixe (0,90 dans les cinq mètres, 0,30 dans les 22). Remarque du joueur, et elle est juste :
+*« un joueur peut décider de jouer comme il le souhaite, ce n'est pas de l'IA de jeu de
+voiture où tout le monde est sur un rail »*. Un taux fixe remplace un rail par un autre — les
+trente joueurs de tous les clubs joueraient la même chose au même endroit.
+
+Le jeu au près est donc devenu un **réglage d'équipe** (`cfgAttaque.jeuAuPresLigne`, défaut
+0,90), pilotable par le Mode Club comme le sont déjà le jeu au large et le jeu au pied via
+`attaqueA` / `attaqueB`, **et modulé par l'effectif réellement aligné** (`profilJeuAuPres`) :
+puissance moyenne du pack contre vitesse moyenne de la ligne, centrées sur le XV de référence
+(les moyennes des `PROFILS` par défaut, si bien qu'un XV standard joue exactement la consigne)
+et bornées à ±35 %. Un club au gros pack joue le ballon porté là où un club à ailiers rapides
+tente encore d'écarter.
+
+**Résultat mesuré.**
+
+| | avant | après |
+|---|---|---|
+| portages à moins de 5 m | 8,95/match | **10,55/match** |
+| dont avants | 22,9 % | **34,6 %** |
+| part des avants dans les essais | 13,8 % | 16,4 % |
+
+**Effet d'ensemble : nul.** Banc A/B, 300 matchs appariés, Bonferroni sur 11 métriques —
+**aucune métrique établie** (essais 5,92 → 5,92, points 49,83 → 49,64, passes, rucks,
+plaquages, touches, mêlées, turnovers, gain : tous dans le bruit). Le patch change QUI joue
+près de la ligne sans déranger aucun volume.
+
+**Ce qui reste.** La part des avants dans les essais ne monte que de 13,8 % à 16,4 % : les
+avants portent bien plus le ballon dans la zone, mais le convertissent peu. Les deux ailiers
+marquent encore 69,5 %. La suite est du côté de la FINITION du pack (maul pénétrant depuis la
+touche à 5 m, séquences de ballon porté qui franchissent réellement), pas de l'occasion.
+
+**Deux tests, et une erreur d'instrument corrigée en route.** Une première version du test
+comptait comme « portage » tout nouveau porteur en jeu courant — donc le n°9 à chaque fois
+qu'il ramasse au pied du regroupement et relaie aussitôt, ce qui surévaluait mécaniquement la
+part des trois-quarts d'un facteur deux. Le test compte désormais comme le moteur : un porteur
+amené au contact. Seuil à 29 % sur 40 matchs (~430 portages dans la zone, soit ±4,5 points) :
+22,9 % est nettement dessous, 34,6 % nettement dessus. Mutation vérifiée (retour au taux de
+18 % partout) : rouge à 19,8 %.
+
+Le second test vérifie que **la consigne n'est pas décorative** : à graine et terrain
+identiques, une équipe à qui l'on demande d'écarter (`jeuAuPresLigne: 0,10`) et une équipe à
+qui l'on demande de jouer le pack (0,95) doivent produire deux matchs qui ne se jouent pas de
+la même façon près de la ligne — au moins 15 points d'écart sur la part des avants.
+
+### P2-23. Percuter rapportait exactement autant que trouver l'espace
+- **Statut : CORRIGÉ**
+- Fichiers concernés : `engine/rugby-engine.js` + `docs/rugby-engine.js`, `server/test-invariants.js`
+
+**Le défaut.** Le gain de terrain au contact ne dépendait QUE du duel (plaquage du défenseur
+contre vitesse du porteur) : le porteur tombait en avant de **0,9 m, toujours**. Percuter au
+ras d'un rideau de quatre défenseurs rapportait exactement autant qu'attaquer un espace vide.
+C'est ce que P2-22 avait établi au banc (`gain par temps de jeu` : 1,46 m pour le moteur et
+1,45 à 1,51 m pour cinq variantes du passage au contact), et le scénario construit le montre
+à l'unité près : **1,11 m dans les deux situations, écart 0,00 m**. La première décision que
+CLAUDE.md (rôle 4) exige du porteur — courir, passer, aller au contact — n'avait donc aucune
+conséquence, ni pour l'IA ni pour le joueur qui regarde.
+
+**Le correctif.** On compte le « rideau » : les défenseurs debout, en jeu, postés dans le
+couloir droit devant le porteur (≤ 7 m devant, ±5 m de large), en plus du plaqueur. L'avancée
+au contact en dépend : **0,55 m contre deux défenseurs ou plus, 1,00 m contre un seul,
+1,55 m dans l'espace.**
+
+**On répartit, on ne baisse pas.** Distribution mesurée du rideau sur 10 matchs complets :
+25,1 % des contacts sans personne devant, 25,3 % contre un défenseur, 49,6 % contre deux ou
+plus. Les trois valeurs sont choisies pour que la moyenne pondérée retombe sur les 0,90 m
+d'avant (0,915 m).
+
+**Deux corrections en cours de route, toutes deux trouvées par les tests, pas par relecture :**
+
+1. **Premier jeu de valeurs trop dur (0,15 / 0,75 / 1,6).** Moyenne pondérée 0,665 m au lieu
+   de 0,900 : il créait bien l'écart mais en RABAISSANT le gain du match (1,46 → 1,22 m,
+   ÉTABLI au banc). Avec des valeurs encore plus marquées, la calibration tombait à **11/14
+   avec les touches à 19,6**, catégorie essentielle — échec franc.
+2. **La couverture qui court en arrière était comptée comme une défense en place.** Le gain
+   après un franchissement tombait de **16,6 m à 10,5 m** sur les mêmes 8 graines : le fait de
+   jeu le plus précieux du rugby, dévalué par un compteur. `_percee` (posé quand le porteur
+   bat son vis-à-vis) marque le jeu déployé ; on ne lui oppose plus aucun rideau, et un
+   défenseur qui vient d'être battu (`missCooldown`) est exclu pour la même raison.
+
+**Résultat.** Un franchissement rapporte désormais **21,1 m** contre 16,6 m avant le patch :
+attaquer l'espace paie enfin davantage que rentrer dedans.
+
+**Effet d'ensemble : rien d'autre ne bouge.** Banc A/B, 300 matchs appariés, Bonferroni sur
+11 métriques — **aucune métrique établie** : essais 5,69 → 5,92, points 48,20 → 49,83, passes
+485,9 → 483,2, rucks, plaquages, touches, mêlées, turnovers et gain par temps de jeu tous dans
+le bruit. La règle redistribue le terrain selon la situation sans déplacer les volumes.
+
+**Le test mord** : le scénario construit oppose deux situations identiques (même porteur, même
+plaqueur, même position) ne différant que par ce qu'il y a devant. Rouge avant le correctif à
+**0,00 m d'écart**, et rouge à nouveau si l'on remet la valeur unique de 0,9 m (mutation
+vérifiée). Une seule assertion, sur l'ÉCART : un plancher absolu avait d'abord été ajouté puis
+retiré, car il confondait la chute en avant au contact (le paramètre réglé) avec le gain net du
+scénario (qui comprend la course et les ~15 % de plaquages manqués).
+
+**Correction d'une affirmation du commit précédent.** J'avais annoncé que le grattage au ruck
+faisait passer la calibration à 13/14, temps de jeu effectif inclus (32,4 min). Mesure sur
+**60 graines** : le temps de jeu effectif vaut **31,34 min avant ce patch et 31,48 min après** —
+il était déjà sous le plancher de 32, et le 32,4 lu alors était un tirage favorable sur
+20 graines (demi-intervalle ±0,98). Le grattage a bien corrigé les turnovers et les en-avants ;
+il n'a pas corrigé le temps de jeu effectif.
+
+### P2-22. Le passage au contact : cinq mesures, et la vraie cause trouvée (aller au contact rapporte autant que jouer)
+- **Statut : DIAGNOSTIQUÉ, NON LIVRÉ — la cause profonde est identifiée et n'est pas un réglage**
+- Fichiers concernés : `engine/rugby-engine.js` (cause)
+
+Après le recalage du barème (P2-21), la borne haute de S12 est passée de 50,6 à **57,5 points** :
+le passage au contact, jusque-là bloqué par le classement, redevenait jouable. Cinq variantes
+mesurées au banc A/B, 300 matchs appariés chacune, Bonferroni sur 11 métriques :
+
+| variante | passes | points | essais | touches | mêlées |
+|---|---|---|---|---|---|
+| A — moteur actuel | 485,9 | 48,20 | 5,69 | 22,06 | 10,91 |
+| contact seul | 413,0 | 54,21 | 6,60 | 21,43 | 10,17 |
+| contact + en-avant au contact 0,058 | 397,9 | 52,82 | 6,31 | **20,24** | 13,03 |
+| contact + pénalité d'attaque au sol 0,042 | 404,5 | 53,90 | 6,33 | 21,65 | 10,17 |
+| contact + les deux (en-avant 0,048) | **394,2** | 53,30 | 6,25 | 21,20 | 11,49 |
+
+Le correctif **marche** sur son objectif : −72 à −92 passes, tous ÉTABLIS, et les regroupements
+dans les 22 adverses montent de 8,6 % à ~9,9 %. Mais **toutes** les variantes ajoutent
+0,56 à 0,91 essai et 4,6 à 6,0 points, ÉTABLIS.
+
+**D'où viennent ces essais — mesuré, pas supposé.** Décompte des fins de possession, 16 matchs
+par variante :
+
+| fin de possession | A | contact |
+|---|---|---|
+| passe lâchée | 2,2 | **1,3** |
+| porteur isolé | 2,0 | **1,2** |
+| interception | 0,5 | **0,3** |
+| **essai** | **5,7** | **6,9** |
+
+Les +1,2 essais sont exactement les −1,9 ballons perdus. Autrement dit : **le moteur
+n'atteignait un nombre réaliste de fautes de main que parce qu'il faisait 1,8 fois trop de
+passes.** Ramener les passes au réel fait mécaniquement disparaître les fautes de main, donc
+allonge les possessions, donc marque.
+
+**Pourquoi aucun contrepoids ne suffit.** Les deux leviers disponibles (en-avant au contact,
+pénalité d'attaque au sol) enlèvent des possessions — mais ils en enlèvent *proportionnellement
+aux essais*, si bien que le rapport ne bouge pas. L'en-avant fabrique en plus des mêlées à la
+place des touches : à 0,058 les touches tombent à 20,24 pour un plancher de 20.
+
+**LA VRAIE CAUSE, visible dans une seule ligne du tableau : `gain/temps de jeu` vaut 1,46 m
+pour A et 1,45 à 1,51 m pour TOUTES les variantes.** Le moteur rapporte exactement autant de
+terrain quand le porteur percute que quand il fait circuler le ballon. Aller au contact est
+donc une option *gratuite* : elle ne coûte ni terrain, ni rythme, ni ballon. Cutter les passes
+ne fait alors que convertir des possessions sûres en davantage de temps de jeu, donc de
+territoire, donc d'essais.
+
+Au rugby, c'est l'inverse : une percussion d'un homme dans une défense en place gagne 0 à 1 m
+et rend un ballon lent, tandis qu'un ballon qui circule crée le surnombre et les mètres. Tant
+que le moteur ne fait pas cette différence, la décision « passer ou percuter » n'a aucune
+conséquence — ni pour l'IA, ni pour le joueur qui la regarde.
+
+**Ce qui ne marche pas non plus, et pourquoi (à ne pas refaire) :**
+- **Re-caler le barème une seconde fois** sur 53,3 points. Le barème doit suivre le moteur,
+  mais seulement quand le moteur va vers le rugby réel : un vrai match fait 45 à 50 points,
+  donc 48,2 est PLUS juste que 53,3. Ce serait déplacer la cible pour valider le patch.
+- **Livrer la meilleure variante quand même.** Sur les essais, S12 admet jusqu'à 6,84 et la
+  variante en rend 6,25 : une marge de 0,59 pour une résolution de ±0,66 à 40 graines. Elle ne
+  passerait que par tirage — exactement le reproche fait à la version « douce » de P2-19.
+
+**Prochaine étape, précise :** faire dépendre le gain de terrain de la DÉCISION du porteur —
+percussion au ras dans une défense en place : gain proche de zéro et ballon lent ; ballon qui
+circule : gain réel. C'est le préalable au passage au contact, et c'est aussi ce qui donnera
+enfin un sens visible au choix du porteur.
+
+### P2-21. Le barème des matchs IA était resté calé sur un moteur d'il y a plusieurs correctifs
+- **Statut : CORRIGÉ**
+- Fichiers concernés : `docs/js/club-pyramide-france.js`, `server/test-scores-abstraits.js`
+
+Les matchs du club du joueur sont joués par le MOTEUR ; les 156 rencontres IA de son
+championnat, les deux autres divisions, les coupes et les 12 pays sont écrits par un
+BARÈME abstrait. Ce barème était calé sur une mesure du moteur à **43,3 points**, faite
+avant la loi 15 sur le plaqueur, avant le retrait des sortants de ruck de la ligne, avant
+la loi 19 et avant l'interception. Le moteur vaut aujourd'hui **47,9 points et 5,7 essais**
+(300 matchs appariés au banc A/B ; écart-type 12,0 points par match sur 60 matchs).
+
+Le joueur marquait donc 5 à 8 points de plus que tous les autres clubs de son propre
+classement — exactement l'incohérence que ce fichier existe pour éviter.
+
+| paliers du milieu de pyramide | avant (base 35) | après (base 41) |
+|---|---|---|
+| Régionale (haut) | 40,1 pts | 46,1 pts |
+| Nationale | 41,0 pts | 47,0 pts |
+| Excellence | 44,0 pts | 50,0 pts |
+| moteur mesuré (300 matchs) | 47,9 pts | 47,9 pts |
+
+Seule la BASE bouge (35 → 41) et les points par essai suivent la mesure (8,0 → 8,4).
+La pente, l'écart de niveau et l'amplitude du bruit sont inchangés : ils règlent qui
+gagne et le suspense, pas le nombre de points.
+
+**S12 avait une précision qu'il ne pouvait pas tenir.** Il comparait une quantité
+d'écart-type 12,0 points par match sur **8 matchs**, soit une résolution de **±8,3 points**,
+pour trancher une bande de ±15 % alors que la marge réelle entre le moteur et la borne
+haute valait 2,6 points. Constaté en direct : une variante du moteur SANS effet sur le
+score (+0,23 ± 2,39 sur 300 matchs appariés) déplaçait ces 8 graines de 48,1 à 53,3 et
+faisait passer le test au rouge.
+
+| graines | résolution à 95 % |
+|---|---|
+| 8 | ±8,3 points |
+| 20 | ±5,3 points |
+| **40 (retenu)** | **±3,7 points** |
+| 60 | ±3,0 points |
+
+40 graines : la résolution (±3,7) est nettement plus fine que la marge après recalage
+(~8,8 points de chaque côté). **Le test garde ses dents** — vérifié par mutation (essai
+ramené de 5 à 2 points) : le moteur tombe à 31,7 points, c'est-à-dire exactement la
+dérive historique qui a motivé l'écriture de S12, et le test passe au rouge.
+
+Vérifié : les 12 cas de `test-scores-abstraits.js` au vert, et les 43 autres suites de
+`server/` (harnais complet + job rapide) sans un seul échec.
+
+### P2-19. Pourquoi le moteur fait 492 passes par match — enquête, mesures, et pourquoi rien n'est livré
+- **SUITE (2e campagne, après le recalage du barème) : voir P2-22 ci-dessous. Le blocage n'est PAS un réglage.**
+- **Statut : DIAGNOSTIQUÉ, NON LIVRÉ (le correctif est mesuré et fonctionne, mais il casse la cohérence du classement — voir « Pourquoi rien n'est livré »)**
+- Priorité : P2 (dernière catégorie de calibration franchement hors fourchette)
+- Fichiers concernés : `engine/rugby-engine.js` (cause), `server/test-scores-abstraits.js` (le garde-fou qui bloque)
+
+**D'abord, une mesure fausse de ma part, corrigée.** J'avais annoncé « un temps de jeu
+dure 22,8 s au lieu de 10-13 s ». C'était faux : la mesure comptait les ARRÊTS DE JEU
+entre deux regroupements. Sur des phases strictement enchaînées (aucun arrêt entre les
+deux rucks), le cycle vaut **8,87 s — dont 3,69 s de ruck et 5,19 s de jeu ouvert**,
+c'est-à-dire une durée réaliste. Le rythme n'est pas le problème ; le nombre de passes l'est.
+
+**D'où viennent les passes.** Moteur instrumenté, 6 matchs complets, une marque sur
+chaque branche de décision qui renvoie `PASS` :
+
+| branche | passes/match | part |
+|---|---|---|
+| **3 — passe avant contact** | **157,5** | 28,3 % |
+| 2b — 9→10 (sortie de regroupement) | 149,0 | 26,7 % |
+| 2c — chaîne de ligne (10→12→13→aile) | 124,5 | 22,3 % |
+| **4b — relais anti-ras** | **57,2** | 10,3 % |
+| 4 — jeu au large | 47,0 | 8,4 % |
+| 9→avant lancé | 22,0 | 3,9 % |
+
+Par numéro, le n°9 passe **175 fois par match** (un vrai demi de mêlée : 70 à 90) et les
+trois-quarts 426,6 fois contre 32,6 aux avants.
+
+**La cause.** Les branches 3 et 4b encodent la même chose : *le porteur ne va jamais au
+contact*. À moins de 2,2 m d'un défenseur, un 9-13 relayait **systématiquement** (aucun
+tirage du tout) ; à moins de 5,5 m il lâchait le ballon à 0,9 par seconde. CLAUDE.md
+(rôle 4) exige pourtant que « aller au contact » fasse partie des décisions du porteur.
+
+**Ce qui a été mesuré (banc A/B, 300 matchs appariés par variante, Bonferroni sur 11 métriques).**
+
+| variante | essais | points | passes | courses | rucks | plaquages | touches |
+|---|---|---|---|---|---|---|---|
+| A — moteur actuel | 5,77 | 47,97 | 491,6 | 212,8 | 161,1 | 239,3 | 22,46 |
+| portage minimum avant la passe de ligne (0,5 s) | 5,57 | 47,35 | 488,2 | — | — | — | — |
+| contact (pPasse −30 %, relais 1 fois sur 2) | 6,75 | 55,31 | **438,3** | 217,3 | 162,7 | 242,9 | 21,68 |
+| contact + chaîne raccourcie (jeuLarge 0,5/0,40) | 6,53 | 53,69 | **419,9** | 224,8 | 168,7 | 251,3 | 21,59 |
+| contact fort + chaîne raccourcie | 7,31 | 58,46 | **416,8** | 220,5 | 164,2 | 245,5 | 21,22 |
+
+Le **portage minimum ne fait rien** (−3,4 ± 10,6 passes) : quand la branche 2c est bloquée,
+la branche 3 passe à sa place. À ne pas refaire.
+
+Le passage au contact, lui, marche : −53 à −75 passes, plus de courses, plus de rucks,
+plus de plaquages, et les regroupements dans les 22 adverses montent de 8,9 % à 10,3 %
+(ÉTABLI). Sur les 20 graines de la calibration, la variante « contact + chaîne » rend
+**passes 416,9 — dans la fourchette pour la première fois**.
+
+**Pourquoi rien n'est livré.** Toutes les variantes qui font baisser les passes font
+MONTER le score (+5,7 à +10,5 points, ÉTABLI). La raison est structurelle : dans ce
+moteur **une passe est un risque** (interception, en-avant, passe en avant) alors que
+**le contact ne coûte rien** — le plaquage ne produit presque jamais de turnover. Moins
+de passes = moins de ballons perdus = plus d'essais.
+
+Et le moteur à 53,7 points par match casse `S12` de `server/test-scores-abstraits.js` :
+les matchs du club du joueur sont joués par le MOTEUR, les 156 rencontres IA de son
+championnat par un BARÈME abstrait calé à 40-44 points. Au-delà de 15 % d'écart, le
+joueur lit un classement où il marque systématiquement plus que tout le monde. Le
+correctif est donc juste au rugby et faux pour le jeu tant que le barème n'a pas suivi.
+
+**Deux contrepoids essayés, tous deux insuffisants :**
+- en-avant au contact 0,040 → 0,046 : rend les fautes de main (7,9 → 9,4) mais fait
+  passer les touches sous leur plancher (19,9 pour un minimum de 20). Échange nul.
+- grattage au ruck 0,030 → 0,042 / 0,050 : ne fait pas redescendre le score.
+
+**Une version « douce » passe S12 — par chance, et elle n'est donc pas livrable non plus.**
+Mesurée à 47,0 points sur les 8 graines de S12 mais à **52,9 points sur 20 graines** :
+elle ne passe le test que par tirage. Livrer ça reviendrait à optimiser le test, pas le jeu.
+
+**Défaut de méthode trouvé au passage : S12 n'a pas la précision qu'il prétend avoir.**
+Il compare une quantité dont l'écart-type vaut ~17 points par match, sur **8 matchs** :
+sa résolution réelle est de l'ordre de **±12 points**, alors qu'il tranche une bande de
+±15 % (≈ ±6,5 points). Mesuré sur le moteur strictement inchangé : 8 graines donnent
+48,1 points, 300 graines appariées 47,97 — mais une simple variante à effet nul sur le
+score (grattage au ruck, cf. P2-20) déplace les 8 graines à 53,3 alors que sa vraie
+moyenne est 48,2. **S12 est aujourd'hui un tirage à pile ou face.** Le corriger (assez
+de graines pour sa bande, ou une bande élargie à sa résolution réelle) est le préalable
+à toute reprise de ce chantier.
+
+**Reprise recommandée, dans cet ordre :** (1) donner à S12 la puissance statistique qu'il
+revendique ; (2) livrer le passage au contact ; (3) faire suivre le barème abstrait sur
+une mesure du moteur à 300+ matchs, en mettant à jour les constantes ancrées de S11.
+
+### P2-20. Le grattage au ruck n'existait quasiment pas (3 % au lieu de 5-7 %)
+- **Statut : CORRIGÉ (débloqué par P2-21)**
+- Fichiers concernés : `engine/rugby-engine.js` (`probaTurnover` dans `_tickRuck`)
+
+En match réel, l'équipe qui attaque conserve 93 à 95 % de ses rucks. Le moteur en
+conservait **97 %** (base de grattage 0,030) et ne produisait que 9,5 turnovers par match
+là où CLAUDE.md (rôle 6) en attend 12 à 18. Le grattage — un des faits de jeu les plus
+fréquents du rugby moderne — était donc quasi absent.
+
+Base portée à 0,048. Banc A/B, 300 matchs appariés, Bonferroni sur 11 métriques :
+
+| métrique | A | B | écart | verdict |
+|---|---|---|---|---|
+| turnovers | 9,47 | **11,86** | +2,39 ± 0,63 | **ÉTABLI** |
+| essais | 5,77 | 5,69 | −0,08 ± 0,37 | non établi |
+| points | 47,97 | 48,20 | +0,23 ± 2,39 | non établi |
+| passes | 491,6 | 485,9 | −5,7 ± 9,1 | non établi |
+| rucks, plaquages, courses, touches, mêlées, gain de terrain | — | — | — | tous non établis |
+
+C'est le levier rare qui **ajoute un fait de jeu sans rien déséquilibrer**, et il fait
+passer la calibration de 12/14 à **13/14** (turnovers 11,8, en-avants 8,1 et temps de jeu
+effectif 32,4 rentrent tous dans leur fourchette ; seules les passes restent hautes).
+
+**Livré une fois S12 réparé (cf. P2-21).** Le blocage n'était pas le correctif mais la
+mesure : sur ses 8 graines, S12 lisait 53,3 points là où la vraie moyenne, sur 300 graines
+appariées, valait 48,20 — inchangée.
+
+**Un second test d'échantillon est tombé au passage, et a été corrigé de la même façon.**
+L'invariant « loi 11 : un joueur sans solution légale GARDE le ballon » exige un plancher
+de 8 fautes de main par match. Les fautes de main ont un écart-type de **2,90 par match**
+(moyenne réelle **8,87**, mesure sur 60 matchs) : ses **8 graines** ne situaient donc la
+moyenne qu'à **±2,01** près, pour une marge de 0,87 au-dessus du plancher. Il est
+effectivement passé au rouge à 7,63 sur ce correctif, qui ne touche pas les fautes de
+main. Échantillon porté à **60 graines** (±0,73), **seuil inchangé**. Vérifié par mutation
+(en-avant au contact 0,040 → 0,010) : le test retombe au rouge à 3,7.
+
+Son prédécesseur était déjà passé de 5 à 8 graines pour cette raison : la bonne intuition,
+pas la bonne taille. **Leçon d'ordre** : avant de fixer un plancher sur une statistique de
+match, mesurer son écart-type par match et en déduire le nombre de graines — sinon le
+garde-fou est un tirage.
+
+### P2-18. Le fil d'événements coupait une ligne en son milieu et en cachait deux sur cinq
+- **Statut : CORRIGÉ**
+- Priorité : P2 (lisibilité du match — CLAUDE.md priorité n°10)
+- Fichiers concernés :
+  - `docs/js/ui.js` (règle `hauteurFilVisible`, exposée sur `RMUI`)
+  - `docs/css/style.css` (le `max-height` en dur devient un simple repli)
+  - `server/test-parcours-navigateur.js` (2 gabarits + 7 cas de règle)
+
+**Reproduction (match rapide, puis « Voir le match », fil plein).**
+`docs/js/ui.js` insère les **5** derniers événements dans `#feed`, mais le CSS
+bornait le fil à `max-height: 66px` en dur :
+
+| gabarit | hauteur de ligne | contenu inséré | visible | lignes entières |
+|---|---|---|---|---|
+| 1400×1000 | 18 px | 90 px | 66 px | **3 sur 5** |
+| 390×844 | 32 px (le texte passe sur deux lignes) | 146 px | 66 px | **2 sur 5** |
+
+Dans les deux cas une ligne était coupée **en son milieu**. C'est exactement ce
+que le regroupement des passes voulait éviter — l'essai ou la pénalité chassés de
+la fenêtre — sauf qu'ici ils étaient bien dans le DOM et c'est le CSS qui les
+coupait.
+
+**Correctif.** `hauteurFilVisible(hauteurFenetre, hauteursLignes)` : autant de
+lignes **entières** qu'il en tient dans 15 % de la hauteur de la fenêtre, au plus
+les 5 insérées, au moins 2, calculé sur les hauteurs **réellement rendues** (une
+entrée longue vaut deux lignes de texte) et non sur une hauteur supposée. Le
+`max-height` du CSS ne sert plus que de repli avant le premier rafraîchissement.
+
+| gabarit | lignes entières avant → après | échelle du terrain |
+|---|---|---|
+| 1400×1000 | 3 → **5** | 9,63 → 9,32 px/m (−3 %) |
+| 390×844 | 2 → **5** | 5,00 → 4,72 px/m (−5,6 %) |
+
+**Ce que ça coûte, honnêtement** : le bandeau prend la place qu'il lui faut, donc
+le terrain perd 3 % (bureau) à 5,6 % (téléphone) d'échelle. En échange, les cinq
+événements sont lisibles en entier au lieu de deux ou trois — et plus rien n'est
+tronqué.
+
+**Le test mord** : 2 rouges avant (une ligne coupée sur chaque gabarit), 472/472
+après. La règle est aussi testée seule sur 7 cas déterministes (fil vide, une
+ligne, cinq courtes, cinq hautes, très grand écran, fenêtre minuscule, hauteurs
+mélangées).
+
+### P2-17. Le bandeau de match écrivait par-dessus la pelouse dès que le fil se remplissait
+- **Statut : CORRIGÉ**
+- Priorité : P2 (lisibilité du match — CLAUDE.md priorité n°10)
+- Fichiers concernés :
+  - `docs/js/main.js` (cause et correctif)
+  - `server/test-parcours-navigateur.js` (2 gabarits mesurés)
+
+**Reproduction (match rapide, puis « Voir le match »).** `#hud` est en position
+absolue au-dessus du canvas ; la place qu'on lui réserve est la marge haute du
+canvas, calculée par `redimensionner()`. Or cette fonction n'était appelée qu'au
+redimensionnement de la fenêtre et à l'ouverture de la vue match — **jamais quand
+le HUD grandit**, ce qu'il fait dès que le fil d'événements se remplit.
+
+| gabarit | à l'ouverture | 15 s plus tard, fil plein |
+|---|---|---|
+| 1400×1000 | bandeau 126 px, place réservée 126 px | bandeau **156 px**, place réservée **108 px** |
+| 390×844 | bandeau 122 px, place réservée 122 px | bandeau **156 px**, place réservée **122 px** |
+
+Soit **34 à 48 px de bandeau écrits par-dessus la pelouse**, et la dernière ligne
+du fil — souvent la pénalité ou l'essai — coupée en deux par le bord supérieur du
+terrain.
+
+**Correctif.** Un `ResizeObserver` sur `#hud` rappelle `redimensionner()` quand sa
+hauteur change. Pas de boucle de rebond possible : `#hud` est hors du flux, donc
+déplacer le canvas ne change pas sa hauteur.
+
+**Ce que ça coûte, honnêtement.** Les 48 px rendus au bandeau étaient du terrain
+*dessiné mais masqué*. En 1400×1000 l'échelle passe donc de 10,24 à **9,63 px/m**
+(−6 %) — mais plus rien n'est caché, alors qu'avant le haut du terrain
+disparaissait sous le dégradé. En 390×844 l'échelle est bornée par la largeur et
+reste à 5,00 px/m : aucun coût.
+
+**Le test mord** : 2 rouges avant (les deux gabarits), 458/458 après.
+
+**Reste ouvert — c'est un défaut DISTINCT, traité à part (P2-18).** Le fil est
+clippé par son propre `max-height: 66px` : `docs/js/ui.js` y insère 5 événements,
+dont **3 seulement** tiennent entièrement (2 sur téléphone, où les lignes passent
+sur deux lignes de texte et montent à 32 px). C'est ce clipping-là qui produit la
+demi-ligne encore visible sur la capture, pas le débordement du bandeau.
+
+### P2-16. Le terrain n'occupait qu'un tiers de l'écran : tout le match se jouait dans une bande étroite
+- **Statut : CORRIGÉ**
+- Priorité : P2 (lisibilité du match — CLAUDE.md priorité n°10 « affichage clair des événements » et « le joueur comprend mieux ce qui se passe »)
+- Fichiers concernés :
+  - `docs/js/renderer.js` (cause et correctif)
+  - `server/test-parcours-navigateur.js` (3 gabarits mesurés)
+
+**Reproduction — en regardant un vrai match dans le navigateur, pas en lisant le code.**
+Le terrain était dessiné **toujours en portrait** : la longueur du terrain (100 m
+plus les en-buts) suivait la HAUTEUR de la fenêtre, sa largeur (70 m) suivait la
+LARGEUR. Sur un écran large, l'échelle est donc imposée par la hauteur, et les
+deux tiers de la fenêtre restent du vert vide à gauche et à droite.
+
+| fenêtre | canvas | terrain dessiné | surface occupée | 1 m à l'écran |
+|---|---|---|---|---|
+| 1400×1000 (bureau) | 1400×799 | 482×689 px | **30 %** | 6,89 px |
+| 900×600 (portable) | 900×399 | 241×344 px | **23 %** | **3,44 px** |
+| 390×844 (téléphone) | 390×629 | 350×500 px | 71 % | 5,00 px |
+
+À 3,44 px par mètre, un joueur — dessiné sur un rayon FIXE de 10 px — couvre
+**6 mètres de terrain** : la ligne de trois-quarts n'est plus qu'un amas de
+pastilles superposées, et on ne voit ni l'espace au large, ni le trou dans le
+rideau défensif, c'est-à-dire précisément ce que les correctifs de la ligne
+d'avantage et des sortants de ruck ont passé la session à créer.
+
+**Cause.** `versCanvas` mappait en dur `x` (longueur) sur l'axe vertical du
+canvas et `y` (largeur) sur l'axe horizontal. Aucune orientation n'était
+choisie : le portrait était câblé.
+
+**Correctif.** `redimensionner()` calcule les DEUX échelles possibles et retient
+la plus grande ; `versCanvas` est la seule fonction qui connaît l'orientation,
+si bien que tout le reste du rendu (lignes, zones, poteaux, joueurs, ballon,
+arbitre) n'a pas eu à changer. La règle n'impose pas le paysage : elle impose la
+plus grande échelle, et un téléphone en portrait reste donc en portrait de
+lui-même.
+
+| fenêtre | 1 m avant | 1 m après | surface avant → après |
+|---|---|---|---|
+| 1400×1000 | 6,89 px | **10,24 px** (+49 %) | 30 % → **66 %** |
+| 900×600 | 3,44 px | **5,12 px** (+49 %) | 23 % → **51 %** |
+| 390×844 | 5,00 px | 5,00 px (inchangé) | 71 % → 71 % |
+
+**Le test mord.** `server/test-parcours-navigateur.js` mesure l'échelle réellement
+obtenue via `RMRenderer.versCanvas` et la compare au maximum atteignable, sur
+trois gabarits. Avant le correctif : **2 échecs** (bureau et portable), le
+téléphone au vert — ce qui prouve que le test n'exige pas « du paysage » mais
+bien « la plus grande taille possible ». Après : 454/454.
+
+**Reste ouvert (constaté sur la capture, pas corrigé ici).** Le fil d'événements
+du HUD est tronqué en bas : sa dernière ligne est coupée en deux par le bord
+supérieur du terrain. Antérieur à ce correctif, indépendant de l'orientation.
+
+
 ### P2-15. Le match se joue entièrement au milieu du terrain : une équipe qui conserve le ballon n'avance pas
 - **Statut : CONFIRMÉ (deux correctifs livrés le 11/09 — voir « Le correctif livré » et « Le second correctif »)**
 - Priorité : P2 (crédibilité de la simulation — CLAUDE.md rôle 6 « les mêmes actions ne doivent pas se répéter tout le temps » et priorité n°8 « essais construits »)
@@ -752,6 +6321,27 @@ Remesure des deux décisions de la veille, 400 matchs par variante, témoin au m
 **Décision, et pourquoi elle n'est pas celle qu'on croit.** Ce patch a été annulé... puis **restauré**, parce que l'annulation fait tomber les **touches à 19,6**, sous le plancher de 20 d'une catégorie **essentielle** du test de calibration (et fait décrocher le barème abstrait, points à 55,1). Les trois patchs de la veille interagissent : la baisse des passes compense la perte de touches induite par la loi 15. L'état livré (13/14, tout vert) est donc le seul qui satisfasse les critères d'acceptation du projet — mais **il se paie 0,88 essai**, et c'est écrit ici noir sur blanc plutôt que passé sous silence.
 
 À reprendre : trouver ce qui rend les touches si sensibles, pour pouvoir rendre ces 0,88 essai sans casser une catégorie essentielle.
+
+**LOI 19 — ON PEUT ENFIN ÊTRE PLAQUÉ EN TOUCHE, et c'est ce qui rend les 0,88 essai.** Le porteur crochetait vers l'intérieur dès qu'il passait sous **8 m** de la ligne de touche, c'est-à-dire dans tout le couloir : il s'écartait de la ligne bien avant de l'approcher. Conséquence mesurée, une sortie de rugby parfaitement banale n'existait pas — **0,05 ballon porté en touche par match**, contre 2 à 4 en vrai — et *toutes* les touches du match venaient du jeu au pied ou d'une pénalité jouée au coin.
+
+Seuil ramené à **1,5 m** : le porteur longe réellement la ligne et n'y rentre qu'au dernier moment, donc la défense peut l'y pousser. Banc A/B, 400 matchs par variante, correction de multiplicité :
+
+| | A | B | B−A | verdict |
+|---|---|---|---|---|
+| **essais** | 5,16 | **5,78** | **+0,62 ± 0,41** | **ÉTABLI** |
+| touches | 21,38 | 22,33 | **+0,95 ± 0,76** | **ÉTABLI** |
+| passes | 516,3 | 492,6 | **−23,8 ± 9,4** | **ÉTABLI** |
+| rucks | 171,1 | 161,2 | −9,9 ± 3,6 | ÉTABLI |
+| plaquages | 254,1 | 239,9 | −14,2 ± 5,2 | ÉTABLI |
+| regroupements dans les 22 | 10,00 % | 9,01 % | −0,98 ± 0,94 | ÉTABLI |
+
+**Les 0,88 essai perdus par le patch des passes sont rendus pour l'essentiel** (+0,62), la catégorie « touches » retrouve de la marge au-dessus de son plancher, et les passes se rapprochent encore de la cible. Le seuil de 8 m avait été posé à une époque où le porteur sortait « gratuitement » faute de défense latérale crédible ; ce n'est plus le cas.
+
+**Coût assumé** : la calibration passe de 13/14 à **12/14** — le temps de jeu effectif tombe à 31,4 min (plancher interne 32 ; le réel est 31 à 38, et `CLAUDE.md` ne fixe pas de borne sur cette grandeur). Plus de ballons en touche, donc plus d'arrêts : c'est mécanique et c'est du rugby. L'accélération de l'affichage des temps morts (×5) fait que le joueur ne perd, lui, qu'une dizaine de secondes réelles par match.
+
+**Un test dont la MESURE était faussée, et non la propriété.** L'invariant « le dernier défenseur traverse pour couvrir » est passé au rouge : il mesurait l'**écart final** entre l'arrière et le porteur, qui a grandi de 15,1 à 21,0 m… alors que l'arrière traversait **exactement pareil** (12,6 m dans les deux cas). C'est le *porteur* qui allait désormais jusqu'à la ligne. Le test mesure maintenant le **déplacement latéral de l'arrière** — ce qu'il prétendait vérifier — avec un seuil (> 10 m) qui reste rouge sur le moteur d'avant le correctif de couverture (7,4 m).
+
+**Point ouvert : un test navigateur INSTABLE.** Un échec isolé est apparu une fois sur quatre exécutions consécutives de `server/test-parcours-navigateur.js` (448 tests), les trois autres étant vertes, et le nom du test fautif n'a pas été capturé. À identifier : un test qui tremble finit par masquer une vraie régression.
 
 **Avertissement de méthode (coûteux, à retenir).** Le gain de terrain par temps de jeu a un écart-type d'environ 8 m. Une moyenne sur 10, 20 ou même 40 matchs ne distingue pas +0,3 m de 0. Toute tentative future sur ce défaut doit se mesurer par **comparaison appariée par graine sur au moins 100 matchs** (même graine, moteur avant / moteur après, différence des moyennes par graine), sans quoi on croit livrer une amélioration qui n'existe pas — c'est arrivé ici.
 

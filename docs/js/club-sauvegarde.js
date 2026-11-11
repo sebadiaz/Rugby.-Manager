@@ -18,13 +18,64 @@
   const CLE_CLUB = 'rugbyManager.club.v1';
   const CLE_SECOURS = 'rugbyManager.club.secours.v1';
   const CLE_AVERTISSEMENT = 'rugbyManager.club.avertissement.v1';
+  // Révision de la sauvegarde principale (BUG-RM-002) : un petit compteur à
+  // part, relu avant chaque écriture sans reparser toute la carrière.
+  const CLE_REVISION = 'rugbyManager.club.revision.v1';
+  // Index des copies de secours (BUG-RM-003) : une entrée par incident.
+  const CLE_INDEX_SECOURS = 'rugbyManager.club.secours.index.v1';
+  const MAX_SECOURS = 5;
+
+  // Révision connue de CHAQUE objet saison de cet onglet : celle lue au
+  // chargement, puis celle de sa dernière écriture. Gardée hors de l'objet
+  // pour ne jamais voyager dans le JSON ni dans une copie de la saison.
+  const revisionsConnues = new WeakMap();
+  let raisonDernierEchec = null;
+
+  function lireRevision() {
+    try {
+      const brut = localStorage.getItem(CLE_REVISION);
+      const n = brut == null ? NaN : Number(brut);
+      return Number.isFinite(n) ? n : null;
+    } catch (e) { return null; }
+  }
 
   // Retourne true/false (au lieu d'avaler silencieusement l'erreur) : permet
   // à l'UI de prévenir le joueur UNE FOIS si le stockage est indisponible
   // (navigation privée, quota dépassé) au lieu de perdre sa progression sans
   // aucun signal — cf. clubUI.js.
+  //
+  // Contrôle de concurrence (BUG-RM-002) : une saison chargée ou déjà écrite
+  // par cet onglet n'est réécrite que si la révision stockée est toujours
+  // celle qu'il connaît. Si un autre onglet a écrit entre-temps, l'écriture
+  // est REFUSÉE (`raisonEchecSauvegarde()` vaut 'conflit') : la progression
+  // la plus récente n'est jamais écrasée par un état périmé. Une saison
+  // jamais écrite (nouvelle carrière) s'écrit sans condition.
   function sauvegarderSaison(saison) {
-    try { localStorage.setItem(CLE_CLUB, JSON.stringify(saison)); return true; } catch (e) { return false; }
+    raisonDernierEchec = null;
+    const stockee = lireRevision();
+    const connue = revisionsConnues.get(saison);
+    if (connue !== undefined && stockee !== null && stockee !== connue) {
+      raisonDernierEchec = 'conflit';
+      return false;
+    }
+    const nouvelle = (stockee || 0) + 1;
+    try {
+      localStorage.setItem(CLE_CLUB, JSON.stringify(saison));
+      localStorage.setItem(CLE_REVISION, String(nouvelle));
+    } catch (e) {
+      raisonDernierEchec = 'stockage';
+      return false;
+    }
+    revisionsConnues.set(saison, nouvelle);
+    return true;
+  }
+  function raisonEchecSauvegarde() { return raisonDernierEchec; }
+  // Une autre session a-t-elle écrit depuis que cette saison a été chargée ou
+  // écrite ici ? Sert à prévenir le joueur avant même sa prochaine action.
+  function sauvegardeModifieeAilleurs(saison) {
+    const connue = revisionsConnues.get(saison);
+    const stockee = lireRevision();
+    return connue !== undefined && stockee !== null && stockee !== connue;
   }
 
   // Extrait le suffixe numérique d'un id préfixé ("j42" -> 42) — 0 si l'id
@@ -260,11 +311,86 @@
   // donc jamais ce secours. + un avertissement qu'affiche l'UI une seule
   // fois (cf. clubUI.js) plutôt que de laisser le joueur croire qu'il n'a
   // simplement jamais eu de carrière.
-  function conserverSecours(brut, raison) {
+  //
+  // BUG-RM-003 : chaque incident a SA copie. Le premier reste sous
+  // CLE_SECOURS (compatibilité), les suivants sous des clés numérotées,
+  // toutes listées dans CLE_INDEX_SECOURS. Une copie identique n'est pas
+  // dupliquée ; au-delà de MAX_SECOURS, aucune copie existante n'est
+  // écrasée. Une copie n'est annoncée conservée qu'après relecture.
+  function lireIndexSecours() {
     try {
-      localStorage.setItem(CLE_SECOURS, brut);
-      localStorage.setItem(CLE_AVERTISSEMENT, JSON.stringify({ raison, quand: Date.now() }));
+      const brut = localStorage.getItem(CLE_INDEX_SECOURS);
+      if (brut) {
+        const index = JSON.parse(brut);
+        if (Array.isArray(index)) return index;
+      }
+      // Secours antérieur à l'index : il reste listé.
+      if (localStorage.getItem(CLE_SECOURS) != null) {
+        return [{ cle: CLE_SECOURS, raison: 'inconnue', quand: null }];
+      }
+    } catch (e) { /* index illisible : on repart d'une liste vide */ }
+    return [];
+  }
+  function resumeSecours(brut) {
+    try {
+      const d = JSON.parse(brut);
+      return {
+        club: (d && d.clubJoueur && typeof d.clubJoueur.nom === 'string') ? d.clubJoueur.nom : null,
+        saison: (d && Number.isFinite(d.numero)) ? d.numero : null,
+      };
+    } catch (e) { return { club: null, saison: null }; }
+  }
+  function ecrireSecours(brut, raison) {
+    const index = lireIndexSecours();
+    for (const e of index) {
+      try { if (localStorage.getItem(e.cle) === brut) return { conserve: true, cle: e.cle, deja: true }; } catch (x) { /* ignore */ }
+    }
+    if (index.length >= MAX_SECOURS) return { conserve: false, raison: 'secours_plein' };
+    const prises = new Set(index.map((e) => e.cle));
+    let cle = CLE_SECOURS;
+    for (let n = 2; prises.has(cle); n++) cle = `${CLE_SECOURS}.${n}`;
+    try {
+      localStorage.setItem(cle, brut);
+      if (localStorage.getItem(cle) !== brut) return { conserve: false, raison: 'ecriture_non_verifiee' };
+      const r = resumeSecours(brut);
+      index.push({ cle, raison, quand: Date.now(), taille: brut.length, club: r.club, saison: r.saison });
+      localStorage.setItem(CLE_INDEX_SECOURS, JSON.stringify(index));
+      return { conserve: true, cle };
+    } catch (e) {
+      return { conserve: false, raison: 'stockage' };
+    }
+  }
+  function conserverSecours(brut, raison) {
+    const res = ecrireSecours(brut, raison);
+    try {
+      localStorage.setItem(CLE_AVERTISSEMENT, JSON.stringify({
+        raison, quand: Date.now(), secoursConserve: res.conserve, cleSecours: res.cle || null,
+        echecSecours: res.conserve ? null : res.raison,
+      }));
     } catch (e) { /* stockage indisponible : rien de plus à faire */ }
+    return res;
+  }
+  // Copies de secours conservées, pour les afficher et les télécharger.
+  function listerSecours() {
+    return lireIndexSecours().filter((e) => {
+      try { return localStorage.getItem(e.cle) != null; } catch (x) { return false; }
+    });
+  }
+  // Supprimer une copie : seulement à la demande explicite du joueur (bouton
+  // de l'accueil), pour libérer une place quand les 5 sont prises.
+  function supprimerSecours(cle) {
+    const index = lireIndexSecours();
+    const reste = index.filter((e) => e.cle !== cle);
+    if (reste.length === index.length) return false;
+    try {
+      localStorage.setItem(CLE_INDEX_SECOURS, JSON.stringify(reste));
+      localStorage.removeItem(cle);
+      return true;
+    } catch (e) { return false; }
+  }
+  function lireSecours(cle) {
+    if (!lireIndexSecours().some((e) => e.cle === cle)) return null;
+    try { return localStorage.getItem(cle); } catch (e) { return null; }
   }
   function consulterAvertissementChargement() {
     try {
@@ -293,10 +419,95 @@
         return null;
       }
       global.RMClub.resynchroniserCompteurs(resultat.saison);
+      // Homonymes d'une carrière d'avant BUG-RM-004 : distingués à l'affichage
+      // par un qualificatif, sans recréer aucun club ni changer d'identifiant.
+      if (global.RMClub.distinguerHomonymes) global.RMClub.distinguerHomonymes(resultat.saison);
+      // Révision lue AVEC la carrière : la base du contrôle de concurrence.
+      const revision = lireRevision();
+      revisionsConnues.set(resultat.saison, revision === null ? 0 : revision);
+      if (revision === null) {
+        try { localStorage.setItem(CLE_REVISION, '0'); } catch (e) { /* ignore */ }
+      }
       return resultat.saison;
     } catch (e) { return null; }
   }
+  // --- Export / import de carrière (bugs.md FUNC-RM-001) -------------------
+  //
+  // Le fichier exporté est la sauvegarde elle-même, telle qu'elle est stockée :
+  // elle porte déjà son numéro de format (`version`) et passe par les mêmes
+  // migrations au retour. On l'exporte même illisible — c'est alors la seule
+  // copie que le joueur peut emporter.
+  function sauvegardeBrute() {
+    try { return localStorage.getItem(CLE_CLUB); } catch (e) { return null; }
+  }
+  function nomFichierCarriere(brut, prefixe) {
+    const r = resumeSecours(brut || '');
+    const club = String(r.club || 'carriere').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '').toLowerCase() || 'carriere';
+    const d = new Date();
+    const jour = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+    return `${prefixe || 'rugby-manager'}-${club}${r.saison ? '-saison' + r.saison : ''}-${jour}.json`;
+  }
+
+  // Lit un fichier importé SANS l'exécuter (JSON.parse uniquement) et le
+  // prépare comme un chargement : migrations, puis validation du schéma.
+  // { ok:true, saison, apercu:{ club, manager, saison, date, version } } ou
+  // { ok:false, raison } — rien n'est écrit ici.
+  function analyserImport(texte) {
+    if (typeof texte !== 'string' || !texte.trim()) return { ok: false, raison: 'fichier_vide' };
+    let brut;
+    try { brut = JSON.parse(texte); } catch (e) { return { ok: false, raison: 'json_invalide' }; }
+    if (!brut || typeof brut !== 'object' || Array.isArray(brut) || typeof brut.version !== 'number') {
+      return { ok: false, raison: 'format_inconnu' };
+    }
+    const versionOrigine = brut.version;
+    if (versionOrigine > global.RMClub.VERSION_SAUVEGARDE) return { ok: false, raison: 'version_future', version: versionOrigine };
+    const resultat = migrerSaison(brut);
+    if (!resultat.ok) return { ok: false, raison: resultat.raison, version: versionOrigine };
+    const saison = resultat.saison;
+    const date = global.RMClub.dateCourante && global.RMClub.dateISO
+      ? global.RMClub.dateISO(global.RMClub.dateCourante(saison)) : null;
+    return {
+      ok: true, saison,
+      apercu: {
+        club: saison.clubJoueur.nom,
+        manager: (saison.manager && saison.manager.nom) || null,
+        saison: saison.numero || 1,
+        date,
+        version: versionOrigine,
+        migree: versionOrigine !== saison.version,
+      },
+    };
+  }
+
+  // Remplace la carrière en cours par une carrière importée (analysée par
+  // analyserImport). La carrière en cours est d'abord conservée en copie de
+  // secours, relue : si la copie échoue, l'import est refusé — on ne remplace
+  // jamais une carrière sans en garder une trace.
+  function importerCarriere(saison) {
+    const actuelle = sauvegardeBrute();
+    let copie = null;
+    if (actuelle) {
+      copie = ecrireSecours(actuelle, 'avant_import');
+      if (!copie.conserve) return { ok: false, raison: copie.raison || 'secours_impossible' };
+    }
+    global.RMClub.resynchroniserCompteurs(saison);
+    const nouvelle = (lireRevision() || 0) + 1;
+    try {
+      localStorage.setItem(CLE_CLUB, JSON.stringify(saison));
+      localStorage.setItem(CLE_REVISION, String(nouvelle));
+    } catch (e) {
+      return { ok: false, raison: 'stockage' };
+    }
+    revisionsConnues.set(saison, nouvelle);
+    return { ok: true, copie: copie && copie.cle };
+  }
+
+  // Effacer garde d'abord une copie de secours (FUNC-RM-001) : « repartir de
+  // zéro » ne fait plus disparaître une carrière sans retour possible.
   function effacerSaison() {
+    const actuelle = sauvegardeBrute();
+    if (actuelle) ecrireSecours(actuelle, 'avant_effacement');
     try { localStorage.removeItem(CLE_CLUB); } catch (e) { /* ignore */ }
   }
 
@@ -304,5 +515,8 @@
     sauvegarderSaison, idNumerique, saisonEstValide, migrerSaison,
     consulterAvertissementChargement, effacerAvertissementChargement,
     chargerSaison, effacerSaison,
+    raisonEchecSauvegarde, sauvegardeModifieeAilleurs, listerSecours, lireSecours,
+    sauvegardeBrute, nomFichierCarriere, analyserImport, importerCarriere, supprimerSecours,
+    CLE_REVISION_SAUVEGARDE: CLE_REVISION,
   });
 })(window);

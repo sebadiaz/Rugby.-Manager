@@ -181,13 +181,66 @@
       rythme: endurance >= 62 ? 'rapide' : endurance <= 50 ? 'lent' : 'normal',
       pied: jeuPied >= 58 ? 'frequent' : jeuPied <= 46 ? 'rare' : 'normal',
       ligneDef: plaquage >= 62 ? 'haute' : plaquage <= 50 ? 'basse' : 'normale',
+      // Pénalités (FUNC-RM-006) : un club IA délègue à son capitaine.
+      penalites: 'capitaine',
       toucheMaul: (melee + touche) / 2 >= 60 ? 'maul' : (melee + touche) / 2 <= 50 ? 'sol' : 'equilibre',
       // Poussée en mêlée (P1-51) : déduite de la mêlée MOYENNE du groupe, la
       // même donnée que celle sur laquelle le manager recrute ses piliers.
       // Un pack qui pousse fort cherche le duel ; un pack faible sort vite
       // plutôt que de concéder des pénalités.
       poussee: melee >= 62 ? 'dominer' : melee <= 50 ? 'sortirVite' : 'equilibre',
+      // Consigne de l'ouvreur (FUNC-RM-004) : déduite de SON n°10 — un buteur
+      // qui tape bien mieux qu'il ne passe occupe au pied, et l'inverse.
+      ouvreur: ouvreurDeduit(effectif),
+      // Demi de mêlée : un n°9 bon botteur tape, un n°9 passeur sort à la main.
+      demiMelee: demiMeleeDeduit(effectif),
+      // Centres puissants : ils percutent ; centres passeurs : ils distribuent.
+      centres: centresDeduits(effectif),
+      arriere: arriereDeduit(effectif),
+      // Ailiers rapides : ils restent larges pour exploiter l'espace ; ailiers
+      // lents mais bons passeurs : ils repiquent chercher le ballon.
+      ailiers: ailiersDeduits(effectif),
+      // Lancements : un gros pack joue au près, un bon jeu au pied tape, une
+      // ligne rapide écarte — même lecture des moyennes que les autres axes.
+      lancements: puissance >= 62 ? 'pres' : jeuPied >= 58 ? 'pied' : vitesse >= 62 ? 'large' : 'equilibre',
     };
+  }
+  function ailiersDeduits(effectif) {
+    const ailes = effectif.filter((j) => j.numero === 11 || j.numero === 14);
+    if (!ailes.length) return 'equilibre';
+    const vitesse = ailes.reduce((s, j) => s + (j.vitesse || 0), 0) / ailes.length;
+    return vitesse >= 85 ? 'large' : vitesse <= 70 ? 'repique' : 'equilibre';
+  }
+  // Consigne de l'arrière (FUNC-RM-004) : déduite de SON n°15 — un arrière
+  // très rapide monte soutenir la ligne, un bon botteur couvre le fond.
+  function arriereDeduit(effectif) {
+    const q = effectif.find((j) => j.numero === 15) || effectif.find((j) => j.poste === 'AR');
+    if (!q) return 'equilibre';
+    if ((q.vitesse || 0) >= 80) return 'ligne';
+    if ((q.jeuPied || 0) >= 70) return 'fond';
+    return 'equilibre';
+  }
+  function centresDeduits(effectif) {
+    const cs = effectif.filter((j) => j.numero === 12 || j.numero === 13);
+    if (!cs.length) return 'equilibre';
+    // Puissance moins passe, moyenne de la paire (médiane -7 sur 78 clubs
+    // générés) : les ~15 % les plus puissants percutent, les plus passeurs distribuent.
+    const ecart = cs.reduce((s, j) => s + (j.puissance || 0) - (j.passe || 0), 0) / cs.length;
+    return ecart >= -3 ? 'percussion' : ecart <= -11 ? 'distribution' : 'equilibre';
+  }
+  function demiMeleeDeduit(effectif) {
+    const neuf = effectif.find((j) => j.numero === 9) || effectif.find((j) => j.poste === 'DM');
+    if (!neuf) return 'equilibre';
+    const ecart = (neuf.jeuPied || 0) - (neuf.passe || 0);
+    // Un n°9 passe toujours bien mieux qu'il ne tape (écart médian -32 sur 84
+    // clubs générés) : on compare donc à ses pairs, les 15 % extrêmes.
+    return ecart >= -26 ? 'pied' : ecart <= -36 ? 'main' : 'equilibre';
+  }
+  function ouvreurDeduit(effectif) {
+    const dix = effectif.find((j) => j.numero === 10) || effectif.find((j) => j.poste === 'OV');
+    if (!dix) return 'equilibre';
+    const ecart = (dix.jeuPied || 0) - (dix.passe || 0);
+    return ecart >= 10 ? 'pied' : ecart <= -10 ? 'main' : 'equilibre';
   }
 
   // Effectif d'un club adverse ramené à la MÊME forme que celui du club du

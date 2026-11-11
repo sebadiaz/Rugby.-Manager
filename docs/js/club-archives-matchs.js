@@ -45,15 +45,60 @@
   }
 
   // Réduit l'état du moteur à ce que la feuille de match lit vraiment.
+  // Lignes individuelles sans les zéros : une feuille garde ce que chaque
+  // maillot a fait, sans gonfler la sauvegarde de compteurs vides.
+  function compacterLignes(statsJoueurs) {
+    if (!statsJoueurs) return null;
+    const res = {};
+    for (const camp of ['A', 'B']) {
+      res[camp] = {};
+      for (const [numero, ligne] of Object.entries(statsJoueurs[camp] || {})) {
+        const utile = {};
+        for (const [k, v] of Object.entries(ligne || {})) if (v) utile[k] = v;
+        if (Object.keys(utile).length) res[camp][numero] = utile;
+      }
+    }
+    return res;
+  }
+  function compacterSortis(sortis) {
+    if (!sortis) return null;
+    const res = {};
+    for (const camp of ['A', 'B']) {
+      res[camp] = (sortis[camp] || []).map((r) => {
+        const utile = {};
+        for (const [k, v] of Object.entries((r && r.stats) || {})) if (v) utile[k] = v;
+        return Object.assign({ numero: r.numero, sortie: Math.round(r.sortie || 0), stats: utile }, r.nom ? { nom: r.nom } : null);
+      }).filter((r) => Object.keys(r.stats).length);
+    }
+    return res;
+  }
   function compacterEtatMatch(etat) {
     const e = etat || {};
     const stats = e.stats || {};
+    const pct = (x) => (x && Number.isFinite(x.A) && Number.isFinite(x.B) ? { A: x.A, B: x.B } : null);
     return {
+      // Format 2 (bugs.md BUG-RM-008) : possession et occupation chronométrées,
+      // temps de jeu effectif et lignes individuelles. Une archive sans ce
+      // numéro est d'avant : la feuille le dit au lieu d'inventer.
+      format: 2,
       score: { A: (e.score && e.score.A) || 0, B: (e.score && e.score.B) || 0 },
       stats: { A: stats.A || {}, B: stats.B || {} },
-      chronologie: (e.chronologie || []).map((x) => ({
+      possessionPct: pct(e.possessionPct),
+      occupationPct: pct(e.occupationPct),
+      tempsJeuEffectif: Number.isFinite(e.tempsJeuEffectif) ? Math.round(e.tempsJeuEffectif) : null,
+      statsJoueurs: compacterLignes(e.statsJoueurs),
+      // Joueurs sortis (remplacés) : leurs actions restent sur la feuille
+      // (« Les joueurs du match », FUNC-RM-011), sans les zéros.
+      statsJoueursSortis: compacterSortis(e.statsJoueursSortis),
+      // Noms des joueurs au coup de sifflet (Mode Club), pour nommer les joueurs du match.
+      nomsJoueurs: e.nomsJoueurs ? { A: Object.assign({}, e.nomsJoueurs.A), B: Object.assign({}, e.nomsJoueurs.B) } : null,
+      chronologie: (e.chronologie || []).map((x) => Object.assign({
         minute: x.minute, type: x.type, team: x.team, message: x.message,
-      })),
+      }, x.marqueur != null ? { marqueur: x.marqueur } : null,
+      // Origine de l'essai (P2-154) : le récit de l'action survit à l'archive.
+      x.type === 'ESSAI' && x.origine ? { origine: x.origine, depuis: x.depuis != null ? x.depuis : null,
+        rucks: x.rucks || 0, maul: !!x.maul, passeur: x.passeur != null ? x.passeur : null,
+        franchisseur: x.franchisseur != null ? x.franchisseur : null } : null)),
     };
   }
 

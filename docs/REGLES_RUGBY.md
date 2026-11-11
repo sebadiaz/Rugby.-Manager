@@ -76,6 +76,14 @@ Implémenté (`_nouvelleManche`, `_tickCoupEnvoi`, phase `COUP_ENVOI`) :
   d'un coup d'envoi central donné par l'équipe adverse de celle qui avait
   donné le coup d'envoi du match (`equipeKickPremiereMiTemps`, mémorisée à la
   construction du match).
+- ✅ Sonnerie (loi 5.7) : à `dureeMiTemps` et `dureeMatch`, un événement
+  `SONNERIE` annonce la dernière action. La période ne se termine qu'au premier
+  ballon mort : coup d'envoi après un point, mêlée ou touche nouvellement
+  accordée. Une mêlée ou une touche déjà accordée à la sonnerie se joue, comme
+  la touche d'une pénalité tapée en touche après la sonnerie
+  (`_ballonMortApresSonnerie`). L'équipe qui veut finir tape en touche : à la
+  mi-temps depuis son camp, en fin de match quand elle mène. L'équipe menée ou
+  à égalité garde le ballon en main.
 - ✅ Positionnement : équipe qui botte derrière le ballon, équipe receveuse
   au-delà de 10 m.
 - ✅ Le ballon est réellement **botté en cloche** : il vole seul depuis le point
@@ -312,7 +320,7 @@ jouées dans la simulation — aucune n'est fabriquée.**
 
 | Stat moteur | Définition World Rugby | Où c'est compté |
 |---|---|---|
-| `carries` (Courses au contact) | Un joueur qui, ballon en main, **engage le contact** avec l'adversaire | `_tickPorte`, à l'entrée du contact (distance défenseur < 2,2 m) |
+| `carries` (Courses au contact) | Un joueur qui, ballon en main, **engage le contact** avec l'adversaire. Une course par ballon reçu : s'il casse le plaquage et se fait reprendre, c'est toujours une course (et un défenseur battu) | `_compterCourse`, à l'entrée du contact (distance défenseur < 2,2 m) |
 | `passes` / `passesTentees` | Lancer du ballon (hors lancer de touche / introduction en mêlée) | passe réussie / tentée (`_tenterPasse`, combinaisons) |
 | `offloads` | Passe effectuée **pendant** le plaquage | `_tickPorte`, offload dans le contact |
 | `tacklesMade` / `missedTackles` | Plaquage réussi (le plaqueur amène le porteur au sol) / manqué | résolution du plaquage |
@@ -322,6 +330,7 @@ jouées dans la simulation — aucune n'est fabriquée.**
 | `metresGagnes` | Mètres gagnés **ballon en main** dans le sens d'attaque | course du porteur (`_tickPorte`) |
 | `kicks` | Coup de pied en jeu (hors pénalités / coups francs) | `_tenterCoupDePiedJeu` |
 | `entrees22` (Entrées dans les 22 m adverses) | Une par **possession continue** qui atteint les 22 m adverses (pas re-comptée tant que la possession ne change pas) | `tick()`, ballon en jeu |
+| `lancements*` / `terrainLancements*` / `essaisLancements*` (Pres, Large, Pied) | Lancements scriptés joués par style ; terrain gagné par le ballon jusqu'à la fin de leur séquence (arrêt de jeu, perte, pénalité, essai) ; essais qui concluent cette séquence | `_lancerCombinaison`, `tick()`, `_infoEssai` |
 | possession % / occupation % | % de temps de contrôle du ballon / d'occupation territoriale | `tempsPossession` / `tempsOccupation` |
 
 ### Motifs de jeu discriminants (étude rorybunker/rugby-sequences)

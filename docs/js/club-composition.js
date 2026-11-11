@@ -25,8 +25,18 @@
     }
     const optStyle = option('style'), optAvants = option('avants'), optRythme = option('rythme'),
       optPied = option('pied'), optLigne = option('ligneDef'), optToucheMaul = option('toucheMaul'),
-      optPoussee = option('poussee'), optStructure = option('structure');
+      optPoussee = option('poussee'), optOuvreur = option('ouvreur'), optArriere = option('arriere'),
+      optAiliers = option('ailiers'), optLancements = option('lancements'), optDemiMelee = option('demiMelee'), optCentres = option('centres'), optPenalites = option('penalites'),
+      optStructure = option('structure');
+    // TROIS axes ecrivent desormais dans `attaque` : « Largeur du jeu » pose
+    // jeuLargeTaux, « Occupation au pied » tauxJeuAuPied, et « Jeu d'avants »
+    // sortieAvant (la sortie de regroupement). Ils FUSIONNENT, comme `melee`
+    // ci-dessous : omettre optAvants ferait perdre EN SILENCE le reglage que le
+    // manager vient de choisir. Protege par M6b dans server/test-melee.js.
+    // Quatrième : la consigne de l'ouvreur (piedOuvreur, FUNC-RM-004).
     const attaque = Object.assign({}, optStyle.attaque || null, optPied.attaque || null,
+      optAvants.attaque || null, optOuvreur.attaque || null, optAiliers.attaque || null,
+      optLancements.attaque || null, optDemiMelee.attaque || null, optCentres.attaque || null, optPenalites.attaque || null,
       optStructure.attaque || null);
     // Deux axes écrivent dans `melee` (« Jeu d'avants » pose le pick-and-go,
     // « Poussée en mêlée » la consigne de poussée) : ils FUSIONNENT. Les
@@ -34,7 +44,10 @@
     const melee = Object.assign({}, optAvants.melee || null, optPoussee.melee || null);
     const cfg = {};
     if (Object.keys(attaque).length) cfg.attaque = attaque;
-    if (optLigne.defense) cfg.defense = optLigne.defense;
+    // Deux axes écrivent dans `defense` : la hauteur de ligne et la consigne de
+    // l'arrière (FUNC-RM-004). Ils FUSIONNENT.
+    const defense = Object.assign({}, optLigne.defense || null, optArriere.defense || null);
+    if (Object.keys(defense).length) cfg.defense = defense;
     if (Object.keys(melee).length) cfg.melee = melee;
     if (optRythme.ruck) cfg.ruck = optRythme.ruck;
     if (optToucheMaul.touche) cfg.touche = optToucheMaul.touche;
@@ -63,6 +76,8 @@
         tendance: j.tendance, couloir: j.couloir,
         adresse: j.adresse, melee: j.melee, touche: j.touche, puissance: j.puissance,
         endurance: j.endurance, passe: j.passe, jeuPied: j.jeuPied, decision: j.decision, discipline: j.discipline,
+        // Nom : ignoré par le jeu, lu par la feuille de match (FUNC-RM-011).
+        nom: j.nom,
       };
     }
     return cfg;
@@ -124,6 +139,8 @@
         melee: j.melee, touche: j.touche, puissance: j.puissance,
         endurance: j.endurance, passe: j.passe, jeuPied: j.jeuPied,
         decision: j.decision, discipline: j.discipline,
+        // Nom : ignoré par le jeu, lu par la feuille de match (FUNC-RM-011).
+        nom: j.nom,
       };
     }
     return cfg;
@@ -310,16 +327,24 @@
   // écraser" que completerComposition.
   const POSTE_REQUIS_BANC = { 16: 'P', 17: 'T', 18: '2L', 19: '3L', 20: 'DM', 21: 'OV', 22: 'CE', 23: 'AR' };
 
+  // Feuille de match (bugs.md FUNC-RM-005) : un blessé ne s'assoit pas sur le
+  // banc, il n'en sortirait pas. Faute de remplaçant apte, le poste reste
+  // VIDE — le banc est alors incomplet, et l'aperçu du match le dit. La
+  // première ligne (16, 17) n'est jamais confiée à un autre poste (loi 3) :
+  // un ailier « pilier remplaçant » entrerait au n°1.
+  const POSTES_SPECIALISTES_BANC = { 16: true, 17: true };
   function completerCompositionBanc(effectif, compositionTitulaires, bancPartiel) {
     const parId = {};
     for (const j of effectif) parId[j.id] = j;
+    const apte = (j) => !(j.blessureJournees > 0);
+    const aptes = effectif.filter(apte);
     const utilisesTitulaires = new Set(Object.values(compositionTitulaires || {}));
     const banc = {};
     const utilisesBanc = new Set();
     for (const numero of Object.keys(POSTE_REQUIS_BANC)) {
       const id = bancPartiel && bancPartiel[numero];
       const j = id && parId[id];
-      if (j && !j.pret && !utilisesTitulaires.has(id) && !utilisesBanc.has(id)) {
+      if (j && !j.pret && apte(j) && !utilisesTitulaires.has(id) && !utilisesBanc.has(id)) {
         banc[numero] = id;
         utilisesBanc.add(id);
       }
@@ -327,7 +352,9 @@
     for (const numero of Object.keys(POSTE_REQUIS_BANC)) {
       if (banc[numero]) continue;
       const exclus = new Set([...utilisesTitulaires, ...utilisesBanc]);
-      const meilleur = meilleurCandidatPourNumero(effectif, POSTE_REQUIS_BANC[numero], exclus);
+      const poste = POSTE_REQUIS_BANC[numero];
+      const pool = POSTES_SPECIALISTES_BANC[numero] ? aptes.filter((j) => j.poste === poste) : aptes;
+      const meilleur = meilleurCandidatPourNumero(pool, poste, exclus);
       if (!meilleur) continue;
       banc[numero] = meilleur.id;
       utilisesBanc.add(meilleur.id);

@@ -390,20 +390,27 @@
     RMClub.enregistrerMouvementFinances(c, f.journee, mouvement);
     RMClub.accumulerStats(c, etat.stats[lettre]);
 
-    // Limitation connue : le moteur indexe ses statistiques par NUMÉRO de
-    // maillot, pas par identité (cf. engine/rugby-engine.js, _statJoueur) —
-    // tout le match reste attribué au titulaire d'origine. D'où
-    // `compositionUtilisee` ici, et non la composition avec remplaçants :
-    // ajouter les entrées de banc n'aurait aucun effet mais laisserait croire
-    // que les statistiques sont bien réparties.
+    // Le moteur clôt la ligne d'un joueur à sa sortie (BUG-RM-007) : partant
+    // de la composition de départ, chaque remplaçant reçoit SES actions et
+    // son temps de jeu, le titulaire les siennes.
     RMClub.accumulerStatsJoueurs(c.effectif, p.compositionUtilisee,
-      etat.statsJoueurs && etat.statsJoueurs[lettre], 'pro');
+      etat.statsJoueurs && etat.statsJoueurs[lettre], 'pro', RMClub.ventilationMatch(etat, lettre));
 
+    // Le plan du banc reste un secours pour les anciens états sans suivi
+    // des entrées. En match joué, seules les entrées du moteur comptent.
+    let participants = p.compositionAvecRemplacants || p.compositionUtilisee;
+    if (Array.isArray(etat.remplacementsEffectues)) {
+      participants = { ...p.compositionUtilisee };
+      let indice = 16;
+      for (const r of etat.remplacementsEffectues) {
+        if (r.equipe === lettre && r.joueurId != null && !r.retour) participants[indice++] = r.joueurId;
+      }
+    }
     // Effets réels du personnel : le médecin et l'entraîneur accélèrent, le
     // préparateur physique réduit la fatigue.
-    RMClub.appliquerEffetsMatch(saison, c.effectif, p.compositionAvecRemplacants,
-      p.rng, { equipe: 'pro' });
-    RMClub.appliquerMoral(c.effectif, p.compositionAvecRemplacants, p.forme);
+    RMClub.appliquerEffetsMatch(saison, c.effectif, participants,
+      p.rng, { equipe: 'pro', blesses: RMClub.blessesDuMatch(etat, lettre, p.compositionUtilisee) });
+    RMClub.appliquerMoral(c.effectif, participants, p.forme);
     RMClub.appliquerFrustrationTempsDeJeu(saison, p.compositionUtilisee, c.compositionBanc);
 
     // Statut promis : la feuille de match de l'équipe première est la SEULE
@@ -411,7 +418,7 @@
     // que vient de recevoir appliquerEffetsMatch — avec le seul XV de départ,
     // un remplaçant entré en jeu était compté deux fois (mesuré : titu 1 /
     // banc 1 après un unique match).
-    RMClub.evaluerPromessesStatut(saison, p.compositionAvecRemplacants, c.compositionBanc);
+    RMClub.evaluerPromessesStatut(saison, participants, c.compositionBanc);
 
     // Compte rendu archivé (C4) : sans ça, la feuille de match n'existait
     // qu'une fois, sur l'écran de fin de match, et disparaissait à sa

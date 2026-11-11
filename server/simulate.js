@@ -37,7 +37,9 @@ function verifierInvariants(t) {
   }
 }
 
-for (let t = 0; t < dureeSecondes; t += dt) {
+// Jusqu'au coup de sifflet, pas au chrono (BUG-RM-010).
+for (let t = 0; match.phase !== 'TERMINE'; t += dt) {
+  if (t > dureeSecondes + 600) throw new Error('match non termine');
   match.tick(dt);
   verifierInvariants(t);
 

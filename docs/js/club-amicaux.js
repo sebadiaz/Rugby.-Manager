@@ -164,11 +164,11 @@
     // Point d'entrée UNIQUE (P1-40) : fatigue + blessures + reprise, avec
     // le facteur préparateur, que la coupe et l'amical oubliaient.
     RMClub.appliquerEffetsMatch(saison, c.effectif, p.compositionUtilisee,
-      p.rng, { equipe: 'pro' });
+      p.rng, { equipe: 'pro', blesses: RMClub.blessesDuMatch(etat, 'A', p.compositionUtilisee) });
     const forme = etat.score.A > etat.score.B ? 'v' : etat.score.A < etat.score.B ? 'd' : 'n';
     RMClub.appliquerMoral(c.effectif, p.compositionUtilisee, forme);
     RMClub.accumulerStatsJoueurs(c.effectif, p.compositionUtilisee,
-      etat.statsJoueurs && etat.statsJoueurs.A, 'pro');
+      etat.statsJoueurs && etat.statsJoueurs.A, 'amical', RMClub.ventilationMatch(etat, 'A'));
 
     // L'adversaire aussi encaisse sa rencontre (cf. P1-29).
     const slotAdv = RMClub.slotAdverse(adversaire, RMClub.effectifAdverseNormalise(adversaire));

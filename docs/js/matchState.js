@@ -24,6 +24,15 @@
         period: rawState.periode,
       },
       phase: rawState.phase,
+      // Remise en jeu depuis les 22 m ou depuis l'en-but : même phase moteur
+      // (COUP_ENVOI), libellé différent (cf. ui.js). Ils n'étaient pas
+      // transmis : « Renvoi aux 22 m » ne s'affichait jamais (P2-99).
+      renvoi22: !!rawState.renvoi22,
+      renvoiEnBut: !!rawState.renvoiEnBut,
+      // Coupe à élimination directe (BUG-RM-001) : prolongation jouée et
+      // départage (essais, puis tirs au but) produits par le moteur.
+      prolongationJouee: !!rawState.prolongationJouee,
+      departage: rawState.departage || null,
       possession: rawState.possession,
       // % de possession réel (temps de jeu effectif par équipe), pas une
       // valeur fixe : cf. MatchEngine.getState().
@@ -37,6 +46,17 @@
       // Même principe, ventilé PAR JOUEUR (numéro), cf. MatchEngine._statJoueur —
       // consommé par le Mode Club pour le classement des marqueurs/fiche joueur.
       statsJoueurs: rawState.statsJoueurs,
+      // Remplacements (BUG-RM-007) : lignes closes des sortants et entrées
+      // réellement effectuées, pour créditer chaque personne de SES actions.
+      statsJoueursSortis: rawState.statsJoueursSortis || null,
+      remplacementsEffectues: rawState.remplacementsEffectues || null,
+      // Noms des joueurs en jeu au coup de sifflet (Mode Club) : la feuille de
+      // match nomme les joueurs du match (FUNC-RM-011).
+      nomsJoueurs: rawState.nomsJoueurs || null,
+      // Blessures au contact (FUNC-RM-005) : qui est sorti, à quel instant.
+      blessuresMatch: rawState.blessuresMatch || null,
+      protocoles: rawState.protocoles || null,
+      tempsMatch: rawState.tempsMatch,
       // Objet ballon normalisé { x, y, vx, vy, state, carrierTeam, carrierNumber }
       // exposé directement par le moteur (cf. MatchEngine.getState()).
       ball: rawState.ball,
@@ -46,6 +66,8 @@
       // est une fenêtre glissante de 30 entrées, dimensionnée pour le fil
       // temps réel, et ne peut donc pas servir de compte rendu.
       chronologie: rawState.chronologie || [],
+      // Base de la possession chronométrée, affichée sur la feuille (BUG-RM-008).
+      tempsJeuEffectif: rawState.tempsJeuEffectif,
       ruck: rawState.ruck,
       maul: rawState.maul,
       melee: rawState.melee,

@@ -37,9 +37,65 @@
   // remplacement par mot entier suffit à couvrir tous les messages sans
   // toucher au moteur. Ne rien faire en Match rapide (noms génériques) pour
   // ne pas produire "l'équipe Equipe A".
+  // RÉDACTION DES MESSAGES DU MATCH (P2-159). Le moteur écrit sans accents
+  // (« Melee, introduction pour l'equipe A ») et ses messages servent aussi de
+  // repères aux tests ; on les rédige donc ici, au moment de les montrer :
+  // accents rétablis, puis le nom des clubs à la place des lettres A/B, avec
+  // l'élision du français (« d'AS Bandeau », « de Castelnau »). Le dictionnaire
+  // ne contient que des mots relevés dans les messages réellement produits
+  // (10 matchs) et sans ambiguïté dans ce contexte.
+  const MOTS_ACCENTUES = {
+    melee: 'mêlée', melees: 'mêlées', penalite: 'pénalité', penalites: 'pénalités', equipe: 'équipe',
+    egalite: 'égalité', menee: 'menée', poussee: 'poussée', annule: 'annulé', arrete: 'arrêté',
+    aussitot: 'aussitôt', botte: 'botté', defense: 'défense', defenseur: 'défenseur', degres: 'degrés',
+    deliberee: 'délibérée', deuxieme: 'deuxième', derniere: 'dernière', disputee: 'disputée', eleve: 'élève',
+    empeche: 'empêche', forme: 'formé', formee: 'formée', gagnee: 'gagnée', gratte: 'gratté', isole: 'isolé',
+    manque: 'manqué', meme: 'même', numero: 'numéro', penetrant: 'pénétrant', premiere: 'première',
+    premieres: 'premières', ramene: 'ramène', rate: 'raté', ratee: 'ratée', recupere: 'récupère',
+    reception: 'réception', remplacant: 'remplaçant', reussi: 'réussi', reussie: 'réussie', seance: 'séance',
+    simulee: 'simulée', vole: 'volé', volee: 'volée', apres: 'après', arrieres: 'arrières', cote: 'côté',
+    ferme: 'fermé', croise: 'croisé', degagement: 'dégagement', detache: 'détache', ecoule: 'écoulé',
+    ecroulement: 'écroulement', entree: 'entrée', illegalement: 'illégalement', libere: 'libéré',
+    porte: 'porté', releve: 'relève', arret: 'arrêt', scelle: 'scellé', couche: 'couché', sifflee: 'sifflée', soigne: 'soigné',
+  };
+  function accentuer(msg) {
+    return String(msg)
+      // Formes qui dépendent du sens : « Ballon gagne proprement » (participe)
+      // mais « gagne la séance » (verbe) ; « Plaque en touche » mais « le n°4
+      // plaque le sauteur ».
+      .replace(/\bgagne (proprement|sous)\b/g, 'gagné $1')
+      .replace(/^Plaque en touche\b/, 'Plaqué en touche')
+      .replace(/\bjoueur plaque\b/g, 'joueur plaqué')
+      .replace(/^Avantage joue\b/, 'Avantage joué')
+      .replace(/, joue rapidement$/, ', joué rapidement')
+      .replace(/\bmaul lance\b/g, 'maul lancé')
+      .replace(/\(saute\)/g, '(sautée)')
+      .replace(/^Changement demande\b/, 'Changement demandé')
+      .replace(/[A-Za-zÀ-ÿ]+/g, (mot, pos, tout) => {
+        // « a » isolé est toujours la préposition dans ces messages ; « n'a » reste.
+        if (mot === 'a') return /['’]$/.test(tout.slice(0, pos)) ? mot : 'à';
+        const remplacement = MOTS_ACCENTUES[mot.toLowerCase()];
+        if (!remplacement) return mot;
+        return mot[0] === mot[0].toUpperCase() ? remplacement[0].toUpperCase() + remplacement.slice(1) : remplacement;
+      });
+  }
+  // « de » devant un nom qui commence par une voyelle s'élide : d'AS Bandeau.
+  const deNom = (nom) => (/^[AEIOUYÀÂÉÈÊÎÔH]/i.test(nom) ? "d'" : 'de ') + nom;
   function traduireEquipesDansMessage(msg) {
-    if (nomsEquipes.A === 'Equipe A' && nomsEquipes.B === 'Equipe B') return msg;
-    return msg.replace(/\bA\b|\bB\b/g, (lettre) => (lettre === 'A' ? nomsEquipes.A : nomsEquipes.B));
+    const texte = accentuer(msg);
+    if (nomsEquipes.A === 'Equipe A' && nomsEquipes.B === 'Equipe B') return texte;
+    // Les lettres sont d'abord remplacées par des marqueurs, et les noms posés
+    // en dernier : un nom qui contient lui-même un « B » isolé pour une
+    // expression régulière (« Béliers » : \b ignore les lettres accentuées)
+    // n'est ainsi jamais retraité. Frontières qui connaissent les accents.
+    const L = '(?<![A-Za-zÀ-ÿ\u0001])([AB])(?![A-Za-zÀ-ÿ\u0001])';
+    const marque = (l, de) => `\u0001${de ? 'd' : ''}${l}\u0001`;
+    return texte
+      .replace(new RegExp('^Essai équipe ' + L), (_, l) => 'Essai ' + marque(l, true))
+      .replace(new RegExp("(?<![A-Za-zÀ-ÿ])de l'équipe " + L, 'g'), (_, l) => marque(l, true))
+      .replace(new RegExp("(?<![A-Za-zÀ-ÿ'])(?:[lL]')?[éÉ]quipe " + L, 'g'), (_, l) => marque(l))
+      .replace(new RegExp(L, 'g'), (_, l) => marque(l))
+      .replace(/\u0001(d?)([AB])\u0001/g, (_, de, l) => (de ? deNom(nomsEquipes[l]) : nomsEquipes[l]));
   }
 
   // Regroupe les passes CONSÉCUTIVES d'une même équipe en une seule entrée
@@ -71,7 +127,18 @@
     if (ev.chaine && ev.chaine.length > 2) {
       return `Equipe ${ev.team} : ${ev.chaine.map((n) => 'n°' + n).join(' → ')}`;
     }
-    return ev.message;
+    return ev.message + recitEssaiEnDirect(ev);
+  }
+
+  // Récit d'un essai en direct (P2-158) : le même que sur la feuille de match
+  // (cf. RMClub.recitEssai), tiré des champs que le moteur pose sur
+  // l'événement ESSAI — marqueur, origine, distance, rucks, percée, passeur.
+  // Chaîne vide pour tout autre événement, ou si le récit est indisponible.
+  function recitEssaiEnDirect(ev) {
+    if (!ev || ev.type !== 'ESSAI' || ev.marqueur == null) return '';
+    const R = window.RMClub;
+    const recit = R && R.recitEssai ? R.recitEssai(ev) : '';
+    return ` N°${ev.marqueur}${recit ? ' : ' + recit : ''}.`;
   }
 
   // Affiche l'état courant dans le HUD. `dureeAffichee` est utilisé pour le
@@ -83,14 +150,21 @@
     const phaseEl = document.getElementById('phase');
     // Pendant un maul ou une mêlée, afficher l'état détaillé de la machine à
     // états (loi 17 pour le maul, loi 19/20 pour la mêlée).
+    // Une remise en jeu depuis la ligne des 22 m (apres une penalite ou un
+    // drop manques) n'est pas un coup d'envoi : la phase moteur est la meme,
+    // le libelle ne doit pas l'etre (cf. _nouvelleManche, renvoi22).
     phaseEl.textContent = (state.phase === 'MAUL' && state.maul && ETATS_MAUL_LABEL[state.maul.etat])
       ? ETATS_MAUL_LABEL[state.maul.etat]
       : (state.phase === 'MELEE' && state.melee && ETATS_MELEE_LABEL[state.melee.etat])
         ? ETATS_MELEE_LABEL[state.melee.etat]
-        : infosPhase.label;
+        : (state.phase === 'COUP_ENVOI' && state.renvoiEnBut)
+          ? 'Renvoi depuis l’en-but'
+          : (state.phase === 'COUP_ENVOI' && state.renvoi22)
+          ? 'Renvoi aux 22 m'
+          : infosPhase.label;
     phaseEl.style.background = infosPhase.couleur;
     document.getElementById('horloge').textContent =
-      `${formaterTemps(state.clock.time)} / ${formaterTemps(state.clock.duration === Infinity ? dureeAffichee : state.clock.duration)} · ${state.clock.period === 2 ? '2e pér.' : '1ère pér.'}`;
+      `${formaterTemps(state.clock.time)} / ${formaterTemps(state.clock.duration === Infinity ? dureeAffichee : state.clock.duration)} · ${state.clock.period === 3 ? 'Prolongation' : state.clock.period === 2 ? '2e pér.' : '1ère pér.'}`;
 
     // Possession réelle (% du temps de jeu effectif par équipe, cf.
     // MatchEngine.getState().possessionPct), pas une valeur fixe.
@@ -99,6 +173,13 @@
       `<span>${pct.A}%</span><span class="barre"><span class="partA" style="width:${pct.A}%"></span><span class="partB" style="width:${pct.B}%"></span></span><span>${pct.B}%</span>`;
 
     const seekEl = document.getElementById('seek');
+    // Prolongation de coupe (BUG-RM-001) : le match dure plus longtemps que
+    // prévu au lancement, la barre de lecture s'allonge pour la couvrir.
+    const dureeReelle = state.clock.duration;
+    if (Number.isFinite(dureeReelle) && dureeReelle > Number(seekEl.max)) {
+      seekEl.max = dureeReelle;
+      document.getElementById('tempsLabelFin').textContent = formaterTemps(dureeReelle);
+    }
     if (document.activeElement !== seekEl) seekEl.value = Math.round(state.clock.time);
     document.getElementById('tempsLabel').textContent = formaterTemps(state.clock.time);
 
@@ -119,6 +200,16 @@
       if (ev.id > dernierIdEvenementAffiche - 1) li.className = 'recent';
       feed.appendChild(li);
     }
+    // Hauteur du fil : un NOMBRE ENTIER de lignes, jamais une moitié. Le CSS le
+    // bornait à 66 px en dur alors qu'on y insère 5 événements — mesuré fil
+    // plein : 3 lignes entières sur 5 en 1400x1000, et 2 seulement en 390x844
+    // (le texte y passe sur deux lignes, une entrée monte à 32 px), avec dans
+    // les deux cas une ligne coupée en son milieu. On mesure donc les lignes
+    // réellement rendues et on cale la hauteur sur celles qui tiennent.
+    feed.style.maxHeight = hauteurFilVisible(
+      window.innerHeight,
+      [...feed.querySelectorAll('li')].map(li => li.getBoundingClientRect().height),
+    ) + 'px';
 
     // Bannière de décision arbitrale : se déclenche une seule fois par
     // événement neuf. On retient le dernier événement NEUF qui mérite une
@@ -127,11 +218,18 @@
     // COUP_ENVOI (remise en jeu), qui sinon masquerait la bannière de
     // l'action marquante.
     const nouveaux = state.eventLog.filter(e => e.id > dernierIdEvenementAffiche);
-    const aAfficher = [...nouveaux].reverse().find(e => TYPES_BANNIERE.has(e.type));
+    const aAfficher = choisirBanniere(nouveaux, state);
     if (aAfficher) {
       const banner = document.getElementById('banner');
-      banner.textContent = `🟨 ARBITRE — ${traduireEquipesDansMessage(aAfficher.message)}`;
+      // Une blessure n'est pas une décision de l'arbitre (FUNC-RM-005).
+      // Ni une blessure ni un lancement de jeu ne sont des décisions de l'arbitre.
+      const voix = /^(BLESSURE|PROTOCOLE_COMMOTION|RETOUR_PROTOCOLE|COMMOTION_CONFIRMEE|SAIGNEMENT)$/.test(aAfficher.type) ? '🚑 SOIGNEUR'
+        : aAfficher.type === 'LANCEMENT' ? '📋 LANCEMENT'
+          // Le capitaine n'est pas l'arbitre (FUNC-RM-006).
+          : /^(CHOIX_CAPITAINE|CAPITAINE_RELAIS)$/.test(aAfficher.type) ? '🧭 CAPITAINE' : '🟨 ARBITRE';
+      banner.textContent = `${voix} — ${traduireEquipesDansMessage(aAfficher.message)}${recitEssaiEnDirect(aAfficher)}`;
       banner.classList.add('visible');
+      placerBandeau(banner);
       banniereJusqua = performance.now() + 2200;
     }
     const dernier = state.eventLog[state.eventLog.length - 1];
@@ -148,11 +246,72 @@
     document.getElementById('btnSauver').style.display = state.phase === 'TERMINE' ? '' : 'none';
   }
 
+  // --- Choix du bandeau de l'arbitre --------------------------------------------
+  // Le plus récent des événements « à bandeau » parmi les nouveaux, À CONDITION
+  // qu'il date de 4 s de match au plus. Après un saut dans la barre de lecture
+  // (ou en vitesse x4), les nouveaux événements couvrent des dizaines de
+  // secondes : le bandeau annonçait alors un fait déjà dépassé (« Jeu au large
+  // ... équipe A » pendant que le fil montrait un coup de pied de l'équipe B,
+  // P2-87). Un événement sans instant (`t`) reste accepté. `state` est l'état
+  // NORMALISÉ (cf. matchState.js) : l'heure de match y est `clock.time` — il
+  // n'a pas de champ `tempsMatch`, et une première version qui le lisait ne
+  // filtrait rien dans le jeu tout en passant son test.
+  const FENETRE_BANNIERE_S = 4;
+  function choisirBanniere(nouveaux, state) {
+    const tempsMatch = state && state.clock ? state.clock.time : undefined;
+    for (let i = nouveaux.length - 1; i >= 0; i--) {
+      const e = nouveaux[i];
+      if (!TYPES_BANNIERE.has(e.type)) continue;
+      if (typeof e.t === 'number' && typeof tempsMatch === 'number' && tempsMatch - e.t > FENETRE_BANNIERE_S) return null;
+      return e;
+    }
+    return null;
+  }
+
+  // --- Position du bandeau de l'arbitre ----------------------------------------
+  // Le bandeau se pose sur le BAS du HUD (au-dessus du fil d'événements, qui
+  // montre déjà le même message), jamais plus bas : le terrain commence juste
+  // sous le HUD (cf. RMRenderer.redimensionner, marginTop = hauteur du HUD).
+  function placerBandeau(banner) {
+    const hud = document.getElementById('hud');
+    if (!hud) return;
+    const basHud = hud.offsetTop + hud.offsetHeight;
+    banner.style.top = Math.max(4, basHud - banner.offsetHeight - 4) + 'px';
+  }
+
+  // --- Hauteur visible du fil d'événements ------------------------------------
+  // RÈGLE (exposée sur RMUI pour être testable seule) : le fil montre autant de
+  // lignes ENTIÈRES qu'il en tient dans une part de la hauteur de la fenêtre,
+  // jamais plus que les 5 événements insérés, jamais moins de 2 — et jamais une
+  // demi-ligne. On raisonne sur les hauteurs RÉELLEMENT rendues (une entrée
+  // longue passe sur deux lignes de texte et vaut donc deux fois plus) plutôt
+  // que sur une hauteur de ligne supposée.
+  const PART_FENETRE_FIL = 0.15;
+  const LIGNES_FIL_MIN = 2;
+  const LIGNES_FIL_MAX = 5;
+  function hauteurFilVisible(hauteurFenetre, hauteursLignes) {
+    if (!hauteursLignes || !hauteursLignes.length) return 0;
+    const budget = hauteurFenetre * PART_FENETRE_FIL;
+    let total = 0, n = 0;
+    for (const h of hauteursLignes.slice(0, LIGNES_FIL_MAX)) {
+      // Les LIGNES_FIL_MIN premières passent même si le budget est déjà dépassé
+      // (petite fenêtre) : mieux vaut un bandeau un peu plus haut que deux
+      // lignes illisibles.
+      if (n >= LIGNES_FIL_MIN && total + h > budget) break;
+      total += h;
+      n++;
+    }
+    return total;
+  }
+
   // --- Panneau de statistiques de match (toutes issues de state.stats, donc
   // des actions réellement produites par la simulation, jamais inventées) ---
   function ligneStat(label, a, b) {
     return `<div class="ligneStat"><span class="valA">${a}</span><span class="labelStat">${label}</span><span class="valB">${b}</span></div>`;
   }
+  // « réussis/tentés ». Un match enregistré avant que le moteur ne compte la
+  // donnée (P2-63) affiche « – » plutôt que « undefined ».
+  function ratio(r, t) { return (r == null || t == null) ? '–' : `${r}/${t}`; }
   function rafraichirPanneauStats(state) {
     const s = state.stats;
     if (!s) return;
@@ -165,6 +324,11 @@
       ligneStat('Possession', `${pct.A}%`, `${pct.B}%`) +
       ligneStat('Occupation', `${occ.A}%`, `${occ.B}%`) +
       ligneStat('Essais', s.A.essais, s.B.essais) +
+      ligneStat('Transformations', ratio(s.A.transformationsReussies, s.A.transformationsTentees),
+        ratio(s.B.transformationsReussies, s.B.transformationsTentees)) +
+      ligneStat('Pénalités au but', ratio(s.A.penalitesButReussies, s.A.penalitesButTentees),
+        ratio(s.B.penalitesButReussies, s.B.penalitesButTentees)) +
+      ligneStat('Drops', ratio(s.A.dropsReussis, s.A.dropsTentes), ratio(s.B.dropsReussis, s.B.dropsTentes)) +
       ligneStat('Entrées dans les 22 m', s.A.entrees22, s.B.entrees22) +
       // Statistiques alignées sur les définitions officielles World Rugby
       // (game analysis) — toutes issues d'actions réelles de la simulation.
@@ -180,10 +344,18 @@
       ligneStat('Plaquages réussis', `${s.A.tacklesMade}/${s.A.tacklesAttempted}`, `${s.B.tacklesMade}/${s.B.tacklesAttempted}`) +
       ligneStat('Plaquages manqués', s.A.missedTackles, s.B.missedTackles) +
       ligneStat('Phases jouées', s.A.phases, s.B.phases) +
-      ligneStat('Rucks', s.A.rucks, s.B.rucks) +
+      ligneStat('Rucks conservés', ratio(s.A.rucksConserves, s.A.rucks), ratio(s.B.rucksConserves, s.B.rucks)) +
       ligneStat('Mauls', s.A.mauls, s.B.mauls) +
-      ligneStat('Mêlées gagnées', `${s.A.scrumsGagnes}/${s.A.scrums + s.B.scrums}`, `${s.B.scrumsGagnes}/${s.A.scrums + s.B.scrums}`) +
-      ligneStat('Touches gagnées', `${s.A.lineoutsGagnes}/${s.A.lineouts + s.B.lineouts}`, `${s.B.lineoutsGagnes}/${s.A.lineouts + s.B.lineouts}`) +
+      // Bilan des lancements par style (P2-153) : joués (essais au bout).
+      ['Pres', 'Large', 'Pied'].map((c, i) => s.A['lancements' + c] == null ? '' :
+        ligneStat(['Lancements au près', 'Lancements au large', 'Lancements au pied'][i] + ' (essais)',
+          `${s.A['lancements' + c]} (${s.A['essaisLancements' + c]})`,
+          `${s.B['lancements' + c]} (${s.B['essaisLancements' + c]})`)).join('') +
+      // Sur SA propre introduction / SON propre lancer : c'est ce qui dit qui
+      // perd son ballon (« gagnées / perdues », CLAUDE.md rôle 6). Le total
+      // des deux équipes ne le disait pas.
+      ligneStat('Mêlées gagnées sur introduction', ratio(s.A.scrumsGagnesIntro, s.A.scrums), ratio(s.B.scrumsGagnesIntro, s.B.scrums)) +
+      ligneStat('Touches gagnées sur lancer', ratio(s.A.lineoutsGagnesLancer, s.A.lineouts), ratio(s.B.lineoutsGagnesLancer, s.B.lineouts)) +
       ligneStat('Turnovers gagnés', s.A.turnovers, s.B.turnovers) +
       ligneStat('Turnovers concédés', s.A.turnoversConcedes, s.B.turnoversConcedes) +
       ligneStat('En-avants', s.A.knockOns, s.B.knockOns) +
@@ -285,6 +457,10 @@
       // et rien ne permettait de savoir qui avait joué.
       noms: { A: nomsEquipes.A, B: nomsEquipes.B },
       config: (options && options.config) || null,
+      // Match vécu (FUNC-RM-003) : décisions du manager datées au pas près, et
+      // empreinte du déroulé pour vérifier que la relecture est identique.
+      decisions: (options && options.decisions) || null,
+      empreinte: (options && options.empreinte) || null,
       configVersion: (options && options.config) ? VERSION_INSTANTANE_MATCH : null,
       date: new Date().toLocaleString('fr-FR'),
     });
@@ -303,5 +479,6 @@
     formaterTemps, majAffichage, reinitialiserSuivi, definirNomsEquipes,
     chargerHistorique, rafraichirPanneauHistorique, enregistrerResultat, nomsHistorique, VERSION_INSTANTANE_MATCH, identifiantMatch,
     rafraichirPanneauStats,
+    hauteurFilVisible, placerBandeau, choisirBanniere, recitEssaiEnDirect, traduireEquipesDansMessage,
   };
 })(window);
