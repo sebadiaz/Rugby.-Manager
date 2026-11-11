@@ -63,7 +63,7 @@ test('défense prioritaire quand l\'adversaire a la balle, SANS ruée : au plus 
   assert.ok(pressent.length <= 2, `${pressent.length} joueurs pressent : ${pressent}`);
 });
 
-test('sans ruée : six défenseurs autour du porteur, seul le plus proche observé presse', () => {
+test('sans ruée : six défenseurs autour du porteur, seuls le plaqueur et son assistant pressent (2 au plus)', () => {
   const e = etat('S06');
   const c = joueur(e, 'B', 12); const cx = c.x, cy = c.y;
   e.possession = 'B'; e.phase = 'PORTE';
@@ -71,7 +71,8 @@ test('sans ruée : six défenseurs autour du porteur, seul le plus proche observ
   const eq = [1, 2, 3, 4, 5, 6];
   eq.forEach((n, i) => { const j = joueur(e, 'A', n); j.x = cx - 2 - i * 0.8; j.y = cy + (i - 2.5) * 0.9; j.orientation = 0; j.auSol = 0; });
   const presse = eq.filter((n) => decision(e, 'A', n).placement.placementGoal === 'PRESS_CARRIER');
-  assert.strictEqual(presse.length, 1, `pressent : ${presse}`);
+  assert.ok(presse.length >= 1 && presse.length <= 2, `pressent : ${presse}`);
+  assert.ok(presse.includes(1), 'le plus proche (A1) presse : ' + presse);
 });
 
 test('hors-jeu : un candidat de placement qui projette le joueur devant la ligne du ruck est invalide et jamais choisi', () => {

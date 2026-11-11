@@ -76,6 +76,7 @@ class GoalBasedRugbyAgent {
     this._intent = null; this._beliefs = null; this._sit = null;
     this.usePlacement = options.placement === true; // opt-in : le placement individuel conduit le joueur hors plan
     this.placement = null;
+    this.placementScope = options.placementScope || 'all'; // 'all' | 'defense' | 'attack' : quelles situations le placement conduit
     this.maxExpanded = options.maxExpanded ?? 128;
     this.lastExpansions = 0;
   }
@@ -205,7 +206,11 @@ class GoalBasedRugbyAgent {
     const butChange = but !== this.goal;
     this.goal = but;
     if (butChange) {
-      if (this.executor.busy) { for (const e of this.executor.cancel(state, 'GOAL_CHANGED').events) this.events.push(e); this._intent = null; }
+      // Un plaquage engagé n'est pas lâché parce que le but défensif change de nom (DEFEND <-> PREVENT_TRY...) :
+      // seuls un but de sécurité personnelle ou la fin de la possession adverse l'interrompent.
+      const plaquageEnCours = this.executor.busy && this.executor.current.name === 'TACKLE_CARRIER'
+        && but !== 'BECOME_ONSIDE' && but !== 'RECOVER_AND_REJOIN' && this._sit.advPoss;
+      if (this.executor.busy && !plaquageEnCours) { for (const e of this.executor.cancel(state, 'GOAL_CHANGED').events) this.events.push(e); this._intent = null; }
       this.plan = null;
     }
     if (this.usePlacement) {
@@ -241,7 +246,9 @@ class GoalBasedRugbyAgent {
     // Le moteur garde la main sur le porteur (aucun acteur de ballon) et sur les phases arrêtées
     // (mêlée, touche, maul, ruck, coups de pied) : le placement individuel ne conduit qu'en jeu courant.
     const porteur = state.ball && state.ball.carrierTeam === this.agent.team && state.ball.carrierNumber === this.agent.numero;
-    if (this.usePlacement && !this._intent && !this.executor.busy && !this.plan && this.placement && state.phase === 'PORTE' && !porteur) {
+    const enDefense = state.possession !== this.agent.team;
+    const dansPortee = this.placementScope === 'all' || (this.placementScope === 'defense') === enDefense;
+    if (this.usePlacement && !this._intent && !this.executor.busy && !this.plan && this.placement && state.phase === 'PORTE' && !porteur && dansPortee) {
       this._intent = { tx: this.placement.target.x, ty: this.placement.target.y, vmaxFactor: this.placement.vmaxFactor };
     }
     return this._intent;

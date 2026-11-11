@@ -50,7 +50,13 @@ class AgentContext {
     const doitObserver = this.lastObsT === null || t - this.lastObsT >= this.params.reactionDelay - 1e-9;
     let obs = null;
     if (doitObserver) {
-      obs = observe(state, this.agent, this.params);
+      // Regard : vers le dernier ballon connu (trace récente), sinon dans l'axe du corps.
+      let gaze;
+      if (this.mem.ball && t - this.mem.ball.seenAt <= 2) {
+        const moiG = [...state.equipeA, ...state.equipeB].find((j) => j.team === this.agent.team && j.numero === this.agent.numero);
+        if (moiG) gaze = Math.atan2(this.mem.ball.y - moiG.y, this.mem.ball.x - moiG.x);
+      }
+      obs = observe(state, this.agent, gaze === undefined ? this.params : Object.assign({}, this.params, { gaze }));
       this.lastObsT = t;
       const m = this.mem;
       if (obs.vus.ball) m.ball = Object.assign({}, obs.vus.ball, { seenAt: t });

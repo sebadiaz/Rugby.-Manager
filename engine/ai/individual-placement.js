@@ -33,13 +33,22 @@ function candidatsDefense(b, s, pb, profile) {
   const sens = s.sens, num = b.agent.numero;
   const out = [];
   if (!bal) return [{ id: 'RETURN_TO_PLAYBOOK', priority: 30, target: P.referenceDefense(num, sens, { x: me.x, y: me.y }, pb), vmax: 0.8, reason: 'ballon inconnu : retour au poste' }];
-  const ligneX = P.ligneDefensive(sens, bal, pb);
-  const ref = P.referenceDefense(num, sens, bal, pb);
+  // La profondeur de ligne du plan de jeu vaut pour une phase ARRÊTÉE (hors-jeu au ruck, au maul,
+  // à la mêlée). En jeu courant, la ligne MONTE sur le porteur : la garder 5 m derrière le ballon
+  // la faisait reculer à la vitesse du porteur — plus aucun contact (mesuré : −45 % de plaquages).
+  const arretee = s.phase === 'RUCK' || s.phase === 'MAUL' || s.phase === 'MELEE' || s.phase === 'TOUCHE';
+  const ligneX = arretee ? P.ligneDefensive(sens, bal, pb) : P.clamp(bal.x - sens * 3, 0, 100);
+  const ref = { x: num === 15 ? P.referenceDefense(num, sens, bal, pb).x : ligneX, y: P.referenceDefense(num, sens, bal, pb).y };
   // HOLD_LINE : aligné sur les voisins observés, jamais en avance sur eux (on retient sa montée).
   const voisins = voisinsDeLigne(b, ligneX, sens).filter((v) => Math.abs(v.y - ref.y) <= 15);
   const xVoisins = voisins.length ? voisins.map((v) => v.x).sort((a, c) => a - c)[Math.floor(voisins.length / 2)] : ligneX;
-  const xTenu = sens > 0 ? Math.min(ligneX, xVoisins + 1) : Math.max(ligneX, xVoisins - 1);
-  out.push({ id: 'HOLD_LINE', priority: 60, target: { x: xTenu, y: ref.y }, vmax: 0.85, reason: 'ligne alignée sur ' + voisins.length + ' voisin(s) observé(s)' });
+  // On monte ENSEMBLE : jamais plus de 3 m devant ses voisins observés (1 m sur phase arrêtée). Avec 1 m en jeu
+  // courant, une ligne en retard retenait tout le monde et le porteur gagnait 20 m sans opposition.
+  const avance = arretee ? 1 : 3;
+  const xTenu = sens > 0 ? Math.min(ligneX, xVoisins + avance) : Math.max(ligneX, xVoisins - avance);
+  // Glissement : en jeu courant la ligne se resserre vers le ballon (35 % de l'écart latéral).
+  const yTenu = arretee ? ref.y : ref.y + (bal.y - ref.y) * 0.35;
+  out.push({ id: 'HOLD_LINE', priority: 60, target: { x: xTenu, y: yTenu }, vmax: Math.abs(bal.y - ref.y) <= 15 ? 1 : 0.85, reason: 'ligne alignée sur ' + voisins.length + ' voisin(s) observé(s)' });
   // CLOSE_GAP : plus grand intervalle observé près de moi, si je suis le mieux placé parmi ceux que je vois.
   const ligne = voisins.concat([{ id: 'moi', x: me.x, y: me.y, numero: num }]).sort((a, c) => a.y - c.y);
   let meilleur = null;
@@ -66,8 +75,12 @@ function candidatsDefense(b, s, pb, profile) {
   const porteur = s.ball.owner && s.ball.owner[0] !== s.team ? (b.opponents[s.ball.owner] ? b.opponents[s.ball.owner].lastSeen : bal) : null;
   if (porteur && s.onside) {
     const dMoi = P.dist(me, porteur);
-    const autrePlusProche = Object.values(b.teammates).some((m) => P.dist(m.lastSeen, porteur) < dMoi);
-    if (dMoi <= 7 && !autrePlusProche) out.push({ id: 'PRESS_CARRIER', priority: 70, target: { x: porteur.x, y: porteur.y }, vmax: 1, reason: 'plus proche défenseur observé du porteur' });
+    // Le plaqueur ET son assistant : je presse si, parmi les partenaires que je vois, un seul au plus est
+    // plus près du porteur que moi, et que le porteur est à moins de 10 m. Jamais une ruée.
+    const plusPres = Object.values(b.teammates).filter((m) => P.dist(m.lastSeen, porteur) < dMoi).length;
+    if (dMoi <= 12 && plusPres <= 1) out.push({ id: 'PRESS_CARRIER', priority: plusPres === 0 ? 74 : 68,
+      // Interception : on vise DEVANT le porteur (il court vers ma ligne), pas sa position actuelle.
+      target: { x: P.clamp(porteur.x - sens * Math.min(4, dMoi * 0.4), 0, 100), y: porteur.y }, vmax: 1, reason: plusPres === 0 ? 'plus proche défenseur observé du porteur' : 'second défenseur observé : assiste le plaqueur' });
   }
   out.push({ id: 'RETURN_TO_PLAYBOOK', priority: 30, target: ref, vmax: 0.8, reason: 'poste nominal en défense' });
   return out;

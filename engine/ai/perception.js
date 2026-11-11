@@ -46,7 +46,9 @@ function dansLeChamp(moi, cible, p) {
   if (d <= p.peripheralRadius) return true;
   if (p.fovDeg >= 360) return true;
   const cap = Math.atan2(cible.y - moi.y, cible.x - moi.x);
-  let ecart = Math.abs(cap - (moi.orientation || 0));
+  // Le REGARD (p.gaze, direction en radians) prime sur l'orientation du corps : un joueur tourne la tête
+  // vers le ballon qu'il suit, même s'il court dans une autre direction.
+  let ecart = Math.abs(cap - (Number.isFinite(p.gaze) ? p.gaze : (moi.orientation || 0)));
   ecart = Math.min(ecart, 2 * Math.PI - ecart);
   return ecart <= (p.fovDeg * Math.PI / 360);
 }
