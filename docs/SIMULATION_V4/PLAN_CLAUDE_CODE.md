@@ -492,3 +492,6 @@ node server/test-parcours-club.js
 ```
 
 **Premier développement recommandé après ce dossier : RM4-G02 puis G03–G08.** N'attaquer ni le TMO ni les sprites tant qu'un n°9 ne sait pas réellement construire, exécuter et réviser son plan.
+
+## Validation GOAP contre des repères RÉELS (11 nov. 2026, décision « LEGACY est faux »)
+`server/v4/validate-reel.js` — 2 matchs complets en `aiMode: 'GOAP'` (graines 1-2), moyenne : passes 264 (réel ~314), rucks 139 (~185), coups de pied 67 (~55), touches 25 (~26), mêlées 18,5 (~11, trop haut), plaquages réussis 208 / tentés 234 (fourchette 120-250), essais 7,5 (2-8), pénalités 16,5 (12-30), points 57 (25-70). Contre les repères réels, GOAP est crédible ; le « −45 % » face à LEGACY n'était pas un défaut. Échantillon de 2 matchs : indicatif. À améliorer : mêlées trop nombreuses, passes/rucks un peu bas.
