@@ -495,3 +495,6 @@ node server/test-parcours-club.js
 
 ## Validation GOAP contre des repères RÉELS (11 nov. 2026, décision « LEGACY est faux »)
 `server/v4/validate-reel.js` — 2 matchs complets en `aiMode: 'GOAP'` (graines 1-2), moyenne : passes 264 (réel ~314), rucks 139 (~185), coups de pied 67 (~55), touches 25 (~26), mêlées 18,5 (~11, trop haut), plaquages réussis 208 / tentés 234 (fourchette 120-250), essais 7,5 (2-8), pénalités 16,5 (12-30), points 57 (25-70). Contre les repères réels, GOAP est crédible ; le « −45 % » face à LEGACY n'était pas un défaut. Échantillon de 2 matchs : indicatif. À améliorer : mêlées trop nombreuses, passes/rucks un peu bas.
+
+## Chargement navigateur (11 nov. 2026) — LIVRÉ
+`server/build-ai-bundle.js` fabrique `docs/rugby-ai.js` (modules `engine/ai/*.js` regroupés, `window.RugbyAI.configGOAP`) ; `docs/index.html` le charge ; `docs/js/main.js` : **LEGACY par défaut**, GOAP seulement avec `?ai=goap` dans l'adresse ou `localStorage['rugbyManager.aiMode']='GOAP'` (matchs rapides et matchs joués). `server/test-v4-browser-bundle.js` : bundle à jour, chargé dans un `vm` sans `require`, match GOAP identique à Node, branchement de `main.js`. Contrôlé dans Chromium : `?ai=goap` → GOAP, sans paramètre → LEGACY, aucune erreur console ; parcours navigateur 584/584. Après toute modif de `engine/ai/`, relancer `node server/build-ai-bundle.js`.

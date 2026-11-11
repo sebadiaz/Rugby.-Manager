@@ -61,6 +61,17 @@
   // Chargée de façon asynchrone au démarrage ; si le chargement échoue (ex.
   // ouverture en file://), on garde le comportement par défaut.
   let configMatch = null;
+  // Mode d'IA (RM4-G11) : LEGACY par défaut. « ?ai=goap » dans l'adresse (ou localStorage
+  // 'rugbyManager.aiMode' = 'GOAP') fait jouer les 30 agents individuels (expérimental).
+  function modeIAgoap() {
+    try {
+      const q = new URLSearchParams(location.search).get('ai');
+      if (q) return q.toLowerCase() === 'goap';
+      return localStorage.getItem('rugbyManager.aiMode') === 'GOAP';
+    } catch (e) { return false; }
+  }
+  function cfgAvecIA(cfg) { return modeIAgoap() && window.RugbyAI ? window.RugbyAI.configGOAP(cfg) : cfg; }
+
   // Réglages tactiques PAR ÉQUIPE (Mode Club) que configMatch peut accumuler
   // au fil des matchs successifs — cf. simulerMatchEnArrierePlan, qui les
   // efface avant chaque simulation en arrière-plan pour ne jamais laisser un
@@ -193,7 +204,8 @@
     const barre = document.getElementById('genProgressBar');
     const label = document.getElementById('genProgressLabel');
     barre.style.width = '0%';
-    const genEngine = new MatchEngine(seed, duree, cfg);
+    const genEngine = new MatchEngine(seed, duree, cfgAvecIA(cfg));
+    document.documentElement.dataset.aiMode = genEngine.aiMode; // observable (tests, débogage)
     genEngine._decisions = decisions || null;
     function lot() {
       let i = 0;
@@ -734,7 +746,7 @@
     if (btnS) { btnS.disabled = false; btnS.title = ''; }
     seedActuel = seed;
     dureeMatchActuel = duree;
-    match = new MatchEngine(seed, duree, configMatch);
+    match = new MatchEngine(seed, duree, cfgAvecIA(configMatch));
     match._decisions = decisionsRelecture;
     UI.reinitialiserSuivi();
     accumulateur = 0;
@@ -758,7 +770,7 @@
   // "rejouable à tout moment" (la simulation est déterministe, donc rejouer
   // == recalculer).
   function avancerJusqua(cible) {
-    const m = new MatchEngine(seedActuel, dureeMatchActuel, configMatch);
+    const m = new MatchEngine(seedActuel, dureeMatchActuel, cfgAvecIA(configMatch));
     m._decisions = match && match._decisions ? match._decisions : null;
     const nbPas = Math.round(cible / PAS_FIXE);
     for (let i = 0; i < nbPas; i++) pasMoteur(m);
