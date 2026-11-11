@@ -1,5 +1,13 @@
 CLAUDE.md
 
+IMPORTANT — DÉCISION DU PROPRIÉTAIRE (11 novembre 2026) : **L'ANCIEN MODÈLE (LEGACY) EST FAUX.**
+Le nouveau modèle d'agents (GOAP) ne doit PAS être calibré pour ressembler au moteur LEGACY, et
+l'écart avec LEGACY n'est PAS un critère de rejet. Ne pas multiplier les restrictions pour
+« coller » à l'ancien comportement. Les références de validation du nouveau modèle sont les
+**règles du rugby, les matchs réels sourcés (docs/SIMULATION_V4/11 à 14) et les statistiques
+réelles**, jamais les chiffres du moteur LEGACY. LEGACY reste le mode par défaut du jeu
+uniquement tant que GOAP n'est pas prêt à jouer, pas parce qu'il serait la vérité.
+
 IMPORTANT — CHANTIER IA DES JOUEURS (V4, novembre 2026)
 
 **CORRECTION D'ARCHITECTURE : AUCUNE IA COLLECTIVE.** Chaque joueur

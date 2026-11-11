@@ -8,6 +8,8 @@
 
 ## 0. Règles d'exécution par Claude Code
 
+0. **Décision du propriétaire (11 nov. 2026) : l'ancien modèle LEGACY est faux.** Ne pas calibrer GOAP sur lui ; l'écart GOAP/LEGACY n'est pas un critère de rejet. Valider sur les lois, les matchs réels sourcés et les statistiques réelles. (Les tableaux « GOAP vs LEGACY » de ce plan sont des relevés de différence, pas des objectifs.)
+
 1. Une branche **par tâche ou petite tranche cohérente** `feature/rm4-Gxx-...`. Aucun développement massif non testé.
 2. Les fichiers du moteur sont `engine/rugby-engine.js` (autorité), pas `docs/rugby-engine.js` (copie synchronisée en CI). Ne pas altérer la copie sans traçabilité.
 3. Chaque PR fournit : scénario injecté, test automatique **qui échouait avant le patch**, détail du plan d'un agent avant/après, variation statistique sur graines appariées, liste des règles touchées, captures si visuel.
