@@ -1106,6 +1106,9 @@
       if (this.aiMode !== 'LEGACY' && this.aiMode !== 'GOAP') throw new RangeError('aiMode inconnu : ' + this.aiMode);
       if (this.aiMode === 'GOAP' && typeof (config && config.agentDriver) !== 'function') throw new TypeError('aiMode GOAP : config.agentDriver (fabrique de pilote) requis');
       this._fabriquePilote = this.aiMode === 'GOAP' ? config.agentDriver : null;
+      // Rayon de contact du plaquage : 2,2 m (historique). En mode GOAP, `config.rayonPlaquage` (m) l'élargit : une ligne
+      // espacée de 4 m laisse sinon passer le porteur entre deux défenseurs sans contact.
+      this._rayonPlaquage = (this.aiMode === 'GOAP' && config.rayonPlaquage > 0) ? config.rayonPlaquage : null;
       this._pilote = null;
       // === AGENT_INTENTS_END
       // Tactique PAR ÉQUIPE (Mode Club) : `config.attaqueA/attaqueB` et
@@ -2585,7 +2588,7 @@
       // suivant contre le même défenseur (sinon le raté n'aurait aucune
       // conséquence : il serait rejoué jusqu'à réussite quelques dixièmes de
       // seconde plus tard).
-      if (!ballonEnVolPasse && distDef < 2.2 && defenseurProche.missCooldown <= 0 && (defenseurProche.fixeCooldown || 0) <= 0
+      if (!ballonEnVolPasse && distDef < (this._rayonPlaquage || 2.2) && defenseurProche.missCooldown <= 0 && (defenseurProche.fixeCooldown || 0) <= 0
           && !(defenseurProche.horsJeuKick > 0)) {
         const att0 = this.attaquants();
         this._compterCourse(porteur);
