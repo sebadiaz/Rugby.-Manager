@@ -143,7 +143,8 @@ test('cadence : la décision n\'est pas rejouée à chaque tick (période 0,4 s)
 
 test('action sans acteur : ACTION_FAILED NO_ACTUATOR, action écartée un moment, pas de boucle infinie', () => {
   const m = ruck();
-  const a = new GoalBasedRugbyAgent({ team: 'A', numero: 9 }); // sans doublures : SECURE_BALL n'a pas d'acteur
+  const sansActeur = Object.assign({}, ACTEURS, { SECURE_BALL: undefined }); // SECURE_BALL a un acteur réel : on le retire pour tester NO_ACTUATOR
+  const a = new GoalBasedRugbyAgent({ team: 'A', numero: 9 }, { acteurs: sansActeur });
   boucle(m, [a], 6);
   const echecs = a.events.filter((e) => e.type === 'ACTION_FAILED' && e.reason === 'NO_ACTUATOR');
   assert.ok(echecs.length >= 1 && echecs.length <= 3, `${echecs.length} échecs en 6 s`);

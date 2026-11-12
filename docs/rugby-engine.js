@@ -3594,6 +3594,17 @@
       // PERCUSSION (lancement de jeu) : le receveur fixe la défense en allant
       // au contact, il ne repasse pas — le ruck qui suit est le but du mouvement.
       if (porteur._percussion > 0) return 'RUN';
+      // Demande de passe d'un AGENT (RM4-G12) : le moteur tente la passe vers le receveur désigné
+      // (légalité, couloir et interception résolus comme pour toute passe). Expire après 1,5 s.
+      const dem = this._passeDemandee;
+      if (dem) {
+        if (this.tempsMatch - dem.t > 1.5 || dem.equipe !== porteur.team || dem.de !== porteur.numero) this._passeDemandee = null;
+        else {
+          const rec = (porteur.team === 'A' ? this.equipeA : this.equipeB).find((q) => q.numero === dem.vers);
+          if (rec && rec.auSol === 0 && rec !== porteur) { this._passeCibleForcee = rec; this._passeDemandee = null; return 'PASS'; }
+          this._passeDemandee = null;
+        }
+      }
 
       // SONNERIE (loi 5.7) : le ballon en main, l'équipe qui ne veut plus
       // jouer le sort en touche pour faire siffler la fin — à la mi-temps
@@ -8499,7 +8510,8 @@
       const f = intention.vmaxFactor == null ? 1 : intention.vmaxFactor;
       if (!(f > 0 && f <= 1)) return false;
       if (!this._intentionsAgents) this._intentionsAgents = new Map();
-      this._intentionsAgents.set(equipe + numero, { equipe, numero, tx: intention.tx, ty: intention.ty, vmaxFactor: f });
+      const passe = Number.isInteger(intention.passe) && intention.passe >= 1 && intention.passe <= 15 ? intention.passe : null;
+      this._intentionsAgents.set(equipe + numero, { equipe, numero, tx: intention.tx, ty: intention.ty, vmaxFactor: f, passe });
       return true;
     }
     clearAgentIntent(equipe, numero) {
@@ -8523,6 +8535,11 @@
         // on rétablit son état d'avant le tick, puis il avance de SON intention.
         j.x = p.x; j.y = p.y; j.vitesseCourante = p.v; j.orientation = p.o; j._aBouge = p.ab;
         avancer(j, p.it.tx - j.x, p.it.ty - j.y, dt, vitesseMs(j) * p.it.vmaxFactor);
+        // Demande de passe d'un agent : valable seulement pour le PORTEUR ; le moteur décide seul si la passe
+        // est possible, légale, interceptée ou réussie (aucun résultat n'est écrit par l'agent).
+        if (p.it.passe && this.porteur === j && !this._passeDemandee) {
+          this._passeDemandee = { equipe: j.team, de: j.numero, vers: p.it.passe, t: this.tempsMatch };
+        }
       }
     }
     // === AGENT_INTENTS_END

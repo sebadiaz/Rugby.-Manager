@@ -136,13 +136,13 @@ test('échec : délai dépassé -> ACTION_FAILED (TIMEOUT), aucun effet confirm�
 
 test('intention ≠ résultat : actions de ballon sans acteur -> ACTION_FAILED NO_ACTUATOR, jamais un succès simulé', () => {
   const m = ruck();
-  for (const nom of ['PASS_TO_10', 'SECURE_BALL', 'CLEAR_OUT_LEGALLY', 'RUN_INTO_GAP', 'FIX_DEFENDER', 'PASS_TO_POD', 'PASS_TO_OUTSIDE']) {
+  for (const nom of ['CLEAR_OUT_LEGALLY', 'RUN_INTO_GAP', 'FIX_DEFENDER', 'PASS_TO_POD', 'PASS_TO_OUTSIDE']) {
     const r = new ActionExecutor({ team: 'A', numero: 9 }).start(nom, m.getState());
     assert.strictEqual(r.started, false, nom);
     assert.strictEqual(r.events[0].reason, 'NO_ACTUATOR', nom);
   }
   const porteur0 = m.porteur, poss0 = m.possession;
-  const runner = new PlanRunner({ team: 'A', numero: 9 }, ['SECURE_BALL', 'PASS_TO_10']);
+  const runner = new PlanRunner({ team: 'A', numero: 9 }, ['CLEAR_OUT_LEGALLY', 'PASS_TO_POD']);
   piloter(m, runner, 2);
   assert.strictEqual(runner.status, 'FAILED');
   assert.strictEqual(m.porteur, porteur0); assert.strictEqual(m.possession, poss0);

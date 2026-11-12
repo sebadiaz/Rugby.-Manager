@@ -56,7 +56,10 @@ class AgentContext {
         const moiG = [...state.equipeA, ...state.equipeB].find((j) => j.team === this.agent.team && j.numero === this.agent.numero);
         if (moiG) gaze = Math.atan2(this.mem.ball.y - moiG.y, this.mem.ball.x - moiG.x);
       }
-      obs = observe(state, this.agent, gaze === undefined ? this.params : Object.assign({}, this.params, { gaze }));
+      // Un PORTEUR balaie le terrain avant de jouer (têtes levées) : champ de vision complet.
+      const porteur = this.mem.ball && this.mem.ball.owner === this.id && t - this.mem.ball.seenAt <= 1;
+      const pv = Object.assign({}, this.params, gaze === undefined ? {} : { gaze }, porteur ? { fovDeg: 360 } : {});
+      obs = observe(state, this.agent, pv);
       this.lastObsT = t;
       const m = this.mem;
       if (obs.vus.ball) m.ball = Object.assign({}, obs.vus.ball, { seenAt: t });
