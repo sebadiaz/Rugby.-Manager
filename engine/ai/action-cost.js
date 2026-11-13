@@ -67,6 +67,19 @@ function factsFromBeliefs(b, sit) {
     f.PASS_LANE_10_OPEN = enArriere && libre;
     f.RECEIVER_OPEN = enArriere && libre && !marque;
   }
+  // Autres options de passe (carrière du porteur) : un avant (pod) ou un trois-quarts « à l'extérieur », en retrait
+  // ou à hauteur, couloir libre et receveur non marqué. Faits ABSENTS si je ne porte pas ou ne vois personne.
+  if (s.aLeBallon) {
+    const sens = s.sens;
+    const adv2 = Object.values(b.opponents).filter((o) => o.confidence >= CONFIANCE_MIN);
+    const ouvert = (m, dMax, ecartMin) => m.confidence >= CONFIANCE_MIN && (m.lastSeen.x - b.self.x) * sens <= 0.3
+      && dist(m.lastSeen, b.self) <= dMax && Math.abs(m.lastSeen.y - b.self.y) >= ecartMin
+      && !adv2.some((o) => dist(o.lastSeen, b.self) > 2.5 && distSegment(o.lastSeen, b.self, m.lastSeen) < 1.2)
+      && !adv2.some((o) => dist(o.lastSeen, m.lastSeen) < 3);
+    const mates = Object.values(b.teammates);
+    f.PASS_LANE_POD_OPEN = mates.some((m) => m.numero <= 8 && ouvert(m, 12, 1.2));
+    f.SAFE_SUPPORT_LANE = mates.some((m) => m.numero >= 11 && ouvert(m, 28, 6));
+  }
   return f;
 }
 

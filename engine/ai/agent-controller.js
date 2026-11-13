@@ -212,7 +212,7 @@ class GoalBasedRugbyAgent {
         && but !== 'BECOME_ONSIDE' && but !== 'RECOVER_AND_REJOIN' && this._sit.advPoss;
       // Une passe demandée au moteur n'est pas retirée parce que le but passe de DISTRIBUTE à RETAIN : tant que
       // je porte encore le ballon, la demande va à son terme (réussie, interceptée ou en-avant : le moteur tranche).
-      const passeEnCours = this.executor.busy && /^PASS_TO/.test(this.executor.current.name) && this._sit.aLeBallon
+      const passeEnCours = this.executor.busy && /^PASS_TO/.test(this.executor.current.name) // le ballon est en l'air pendant la passe : plus « porteur », la demande va à son terme
         && but !== 'RECOVER_AND_REJOIN' && but !== 'BECOME_ONSIDE';
       if (this.executor.busy && !plaquageEnCours && !passeEnCours) { for (const e of this.executor.cancel(state, 'GOAL_CHANGED').events) this.events.push(e); this._intent = null; }
       this.plan = null;

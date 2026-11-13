@@ -80,6 +80,19 @@ function factsFromBeliefs(b, sit) {
     f.PASS_LANE_10_OPEN = enArriere && libre;
     f.RECEIVER_OPEN = enArriere && libre && !marque;
   }
+  // Autres options de passe (carrière du porteur) : un avant (pod) ou un trois-quarts « à l'extérieur », en retrait
+  // ou à hauteur, couloir libre et receveur non marqué. Faits ABSENTS si je ne porte pas ou ne vois personne.
+  if (s.aLeBallon) {
+    const sens = s.sens;
+    const adv2 = Object.values(b.opponents).filter((o) => o.confidence >= CONFIANCE_MIN);
+    const ouvert = (m, dMax, ecartMin) => m.confidence >= CONFIANCE_MIN && (m.lastSeen.x - b.self.x) * sens <= 0.3
+      && dist(m.lastSeen, b.self) <= dMax && Math.abs(m.lastSeen.y - b.self.y) >= ecartMin
+      && !adv2.some((o) => dist(o.lastSeen, b.self) > 2.5 && distSegment(o.lastSeen, b.self, m.lastSeen) < 1.2)
+      && !adv2.some((o) => dist(o.lastSeen, m.lastSeen) < 3);
+    const mates = Object.values(b.teammates);
+    f.PASS_LANE_POD_OPEN = mates.some((m) => m.numero <= 8 && ouvert(m, 12, 1.2));
+    f.SAFE_SUPPORT_LANE = mates.some((m) => m.numero >= 11 && ouvert(m, 28, 6));
+  }
   return f;
 }
 
@@ -243,6 +256,37 @@ function actPasse(vers) {
   };
 }
 ACTEURS.PASS_TO_10 = actPasse(10);
+// PASS_TO_POD / PASS_TO_OUTSIDE : le receveur est choisi dans le MONDE RÉEL au départ (le meilleur candidat
+// en retrait ou à hauteur, couloir libre, éloigné des adversaires) ; la suite est identique à PASS_TO_10.
+function actPasseChoisie(familles, dMax, ecartMin) {
+  const choisir = (c) => {
+    const adv = (c.me.team === 'A' ? c.state.equipeB : c.state.equipeA).filter((j) => !(j.sinBin > 0));
+    let meilleur = null, score = -Infinity;
+    for (const r of (c.me.team === 'A' ? c.state.equipeA : c.state.equipeB)) {
+      if (r.numero === c.me.numero || !familles(r.numero) || r.auSol > 0 || r.sinBin > 0) continue;
+      const d = Math.hypot(r.x - c.me.x, r.y - c.me.y);
+      if ((r.x - c.me.x) * c.sens > 0.3 || d > dMax || Math.abs(r.y - c.me.y) < ecartMin) continue;
+      const proche = Math.min(...adv.map((o) => Math.hypot(o.x - r.x, o.y - r.y)));
+      if (proche < 3) continue;
+      const sc = proche - 0.3 * d;
+      if (sc > score) { score = sc; meilleur = r.numero; }
+    }
+    return meilleur;
+  };
+  return {
+    maxSeconds: 2.5,
+    init: (c) => ({ vers: choisir(c) }),
+    startGuard: (c) => (!c.facts.HAS_BALL ? 'NOT_CARRIER' : choisir(c) == null ? 'NO_RECEIVER' : null),
+    intent: (c) => ({ tx: c.me.x, ty: c.me.y, vmaxFactor: 0.5, passe: c.memo ? c.memo.vers : choisir(c) }),
+    successGuard: (c) => c.memo && c.memo.vers != null && carrierIs(c, c.me.team, c.memo.vers),
+    failGuard: (c) => (c.state.phase === 'MELEE' ? 'FORWARD_PASS_OR_KNOCK_ON'
+      : c.state.ball && c.state.ball.carrierTeam && c.state.ball.carrierTeam !== c.me.team ? 'INTERCEPTED'
+        : c.state.ball && c.state.ball.carrierTeam === c.me.team && c.state.ball.carrierNumber !== c.me.numero && c.state.ball.carrierNumber !== (c.memo && c.memo.vers) ? 'WRONG_RECEIVER' : null),
+    abortGuard: () => null,
+  };
+}
+ACTEURS.PASS_TO_POD = actPasseChoisie((n) => n <= 8, 12, 1.2);
+ACTEURS.PASS_TO_OUTSIDE = actPasseChoisie((n) => n >= 11, 28, 6);
 for (const [nom, dy] of [['RUN_SUPPORT_INSIDE', -1], ['RUN_SUPPORT_OUTSIDE', 1]]) {
   ACTEURS[nom] = {
     maxSeconds: 10,
@@ -756,7 +800,7 @@ class GoalBasedRugbyAgent {
         && but !== 'BECOME_ONSIDE' && but !== 'RECOVER_AND_REJOIN' && this._sit.advPoss;
       // Une passe demandée au moteur n'est pas retirée parce que le but passe de DISTRIBUTE à RETAIN : tant que
       // je porte encore le ballon, la demande va à son terme (réussie, interceptée ou en-avant : le moteur tranche).
-      const passeEnCours = this.executor.busy && /^PASS_TO/.test(this.executor.current.name) && this._sit.aLeBallon
+      const passeEnCours = this.executor.busy && /^PASS_TO/.test(this.executor.current.name) // le ballon est en l'air pendant la passe : plus « porteur », la demande va à son terme
         && but !== 'RECOVER_AND_REJOIN' && but !== 'BECOME_ONSIDE';
       if (this.executor.busy && !plaquageEnCours && !passeEnCours) { for (const e of this.executor.cancel(state, 'GOAL_CHANGED').events) this.events.push(e); this._intent = null; }
       this.plan = null;

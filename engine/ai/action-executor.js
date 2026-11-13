@@ -121,6 +121,37 @@ function actPasse(vers) {
   };
 }
 ACTEURS.PASS_TO_10 = actPasse(10);
+// PASS_TO_POD / PASS_TO_OUTSIDE : le receveur est choisi dans le MONDE RÉEL au départ (le meilleur candidat
+// en retrait ou à hauteur, couloir libre, éloigné des adversaires) ; la suite est identique à PASS_TO_10.
+function actPasseChoisie(familles, dMax, ecartMin) {
+  const choisir = (c) => {
+    const adv = (c.me.team === 'A' ? c.state.equipeB : c.state.equipeA).filter((j) => !(j.sinBin > 0));
+    let meilleur = null, score = -Infinity;
+    for (const r of (c.me.team === 'A' ? c.state.equipeA : c.state.equipeB)) {
+      if (r.numero === c.me.numero || !familles(r.numero) || r.auSol > 0 || r.sinBin > 0) continue;
+      const d = Math.hypot(r.x - c.me.x, r.y - c.me.y);
+      if ((r.x - c.me.x) * c.sens > 0.3 || d > dMax || Math.abs(r.y - c.me.y) < ecartMin) continue;
+      const proche = Math.min(...adv.map((o) => Math.hypot(o.x - r.x, o.y - r.y)));
+      if (proche < 3) continue;
+      const sc = proche - 0.3 * d;
+      if (sc > score) { score = sc; meilleur = r.numero; }
+    }
+    return meilleur;
+  };
+  return {
+    maxSeconds: 2.5,
+    init: (c) => ({ vers: choisir(c) }),
+    startGuard: (c) => (!c.facts.HAS_BALL ? 'NOT_CARRIER' : choisir(c) == null ? 'NO_RECEIVER' : null),
+    intent: (c) => ({ tx: c.me.x, ty: c.me.y, vmaxFactor: 0.5, passe: c.memo ? c.memo.vers : choisir(c) }),
+    successGuard: (c) => c.memo && c.memo.vers != null && carrierIs(c, c.me.team, c.memo.vers),
+    failGuard: (c) => (c.state.phase === 'MELEE' ? 'FORWARD_PASS_OR_KNOCK_ON'
+      : c.state.ball && c.state.ball.carrierTeam && c.state.ball.carrierTeam !== c.me.team ? 'INTERCEPTED'
+        : c.state.ball && c.state.ball.carrierTeam === c.me.team && c.state.ball.carrierNumber !== c.me.numero && c.state.ball.carrierNumber !== (c.memo && c.memo.vers) ? 'WRONG_RECEIVER' : null),
+    abortGuard: () => null,
+  };
+}
+ACTEURS.PASS_TO_POD = actPasseChoisie((n) => n <= 8, 12, 1.2);
+ACTEURS.PASS_TO_OUTSIDE = actPasseChoisie((n) => n >= 11, 28, 6);
 for (const [nom, dy] of [['RUN_SUPPORT_INSIDE', -1], ['RUN_SUPPORT_OUTSIDE', 1]]) {
   ACTEURS[nom] = {
     maxSeconds: 10,
