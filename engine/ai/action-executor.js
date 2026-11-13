@@ -91,6 +91,36 @@ ACTEURS.TACKLE_CARRIER = {
   failGuard: (c) => ((mesStats(c).plaquagesManques || 0) > c.memo.manques ? 'TACKLE_MISSED' : null),
   abortGuard: (c) => (!porteurAdverse(c) ? 'NO_CARRIER' : !c.facts.SELF_ONSIDE ? 'OFFSIDE' : null),
 };
+// SECURE_BALL (A07) : le 9 est au ruck, le ballon est jouable ; le MOTEUR le lui remet (sortie de ruck).
+// Réussite = il est réellement porteur ; la fin du ruck sans lui = abandon.
+ACTEURS.SECURE_BALL = {
+  maxSeconds: 4,
+  startGuard: (c) => (!c.facts.SELF_AT_RUCK ? 'NOT_AT_RUCK' : !c.facts.BALL_AVAILABLE ? 'BALL_NOT_AVAILABLE' : c.facts.HAS_BALL ? 'ALREADY_CARRIER' : null),
+  intent: (c) => (c.pt ? { tx: c.pt.x - c.sens * 0.8, ty: c.pt.y, vmaxFactor: 0.5 } : null),
+  successGuard: (c) => c.facts.HAS_BALL,
+  abortGuard: (c) => (c.state.phase !== 'RUCK' && !c.facts.HAS_BALL ? 'PHASE_CHANGED' : null),
+};
+// PASS_TO_10 (A08) : le porteur DEMANDE la passe (intention `passe`) ; le moteur résout légalité,
+// couloir, interception. Réussite = le 10 est RÉELLEMENT porteur ; mêlée (en-avant), interception ou
+// autre receveur = ACTION_FAILED avec la raison. Une passe ratée ne donne jamais un ballon reçu.
+const receveurDe = (c, n) => joueur(c.state, c.me.team, n);
+const carrierIs = (c, team, n) => c.state.ball && c.state.ball.carrierTeam === team && c.state.ball.carrierNumber === n;
+function actPasse(vers) {
+  return {
+    maxSeconds: 2.5,
+    startGuard: (c) => {
+      const r = receveurDe(c, vers);
+      return !c.facts.HAS_BALL ? 'NOT_CARRIER' : !r || r.auSol > 0 ? 'NO_RECEIVER' : (r.x - c.me.x) * c.sens > 0.3 ? 'RECEIVER_AHEAD' : null;
+    },
+    intent: (c) => ({ tx: c.me.x, ty: c.me.y, vmaxFactor: 0.5, passe: vers }),
+    successGuard: (c) => carrierIs(c, c.me.team, vers),
+    failGuard: (c) => (c.state.phase === 'MELEE' ? 'FORWARD_PASS_OR_KNOCK_ON'
+      : c.state.ball && c.state.ball.carrierTeam && c.state.ball.carrierTeam !== c.me.team ? 'INTERCEPTED'
+        : c.state.ball && c.state.ball.carrierTeam === c.me.team && c.state.ball.carrierNumber !== c.me.numero ? 'WRONG_RECEIVER' : null),
+    abortGuard: () => null,
+  };
+}
+ACTEURS.PASS_TO_10 = actPasse(10);
 for (const [nom, dy] of [['RUN_SUPPORT_INSIDE', -1], ['RUN_SUPPORT_OUTSIDE', 1]]) {
   ACTEURS[nom] = {
     maxSeconds: 10,

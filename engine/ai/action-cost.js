@@ -61,7 +61,8 @@ function factsFromBeliefs(b, sit) {
     const sens = s.sens;
     const enArriere = (dix.lastSeen.x - b.self.x) * sens <= 0.5;
     const adv = Object.values(b.opponents).filter((o) => o.confidence >= CONFIANCE_MIN);
-    const libre = !adv.some((o) => distSegment(o.lastSeen, b.self, dix.lastSeen) < 1.5);
+    // Un adversaire collé au passeur (au contact) ne ferme pas le couloir : la balle part de l'autre côté.
+    const libre = !adv.some((o) => dist(o.lastSeen, b.self) > 2.5 && distSegment(o.lastSeen, b.self, dix.lastSeen) < 1.2);
     const marque = adv.some((o) => dist(o.lastSeen, dix.lastSeen) < 3);
     f.PASS_LANE_10_OPEN = enArriere && libre;
     f.RECEIVER_OPEN = enArriere && libre && !marque;

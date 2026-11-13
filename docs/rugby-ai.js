@@ -74,7 +74,8 @@ function factsFromBeliefs(b, sit) {
     const sens = s.sens;
     const enArriere = (dix.lastSeen.x - b.self.x) * sens <= 0.5;
     const adv = Object.values(b.opponents).filter((o) => o.confidence >= CONFIANCE_MIN);
-    const libre = !adv.some((o) => distSegment(o.lastSeen, b.self, dix.lastSeen) < 1.5);
+    // Un adversaire collé au passeur (au contact) ne ferme pas le couloir : la balle part de l'autre côté.
+    const libre = !adv.some((o) => dist(o.lastSeen, b.self) > 2.5 && distSegment(o.lastSeen, b.self, dix.lastSeen) < 1.2);
     const marque = adv.some((o) => dist(o.lastSeen, dix.lastSeen) < 3);
     f.PASS_LANE_10_OPEN = enArriere && libre;
     f.RECEIVER_OPEN = enArriere && libre && !marque;
@@ -212,6 +213,36 @@ ACTEURS.TACKLE_CARRIER = {
   failGuard: (c) => ((mesStats(c).plaquagesManques || 0) > c.memo.manques ? 'TACKLE_MISSED' : null),
   abortGuard: (c) => (!porteurAdverse(c) ? 'NO_CARRIER' : !c.facts.SELF_ONSIDE ? 'OFFSIDE' : null),
 };
+// SECURE_BALL (A07) : le 9 est au ruck, le ballon est jouable ; le MOTEUR le lui remet (sortie de ruck).
+// Réussite = il est réellement porteur ; la fin du ruck sans lui = abandon.
+ACTEURS.SECURE_BALL = {
+  maxSeconds: 4,
+  startGuard: (c) => (!c.facts.SELF_AT_RUCK ? 'NOT_AT_RUCK' : !c.facts.BALL_AVAILABLE ? 'BALL_NOT_AVAILABLE' : c.facts.HAS_BALL ? 'ALREADY_CARRIER' : null),
+  intent: (c) => (c.pt ? { tx: c.pt.x - c.sens * 0.8, ty: c.pt.y, vmaxFactor: 0.5 } : null),
+  successGuard: (c) => c.facts.HAS_BALL,
+  abortGuard: (c) => (c.state.phase !== 'RUCK' && !c.facts.HAS_BALL ? 'PHASE_CHANGED' : null),
+};
+// PASS_TO_10 (A08) : le porteur DEMANDE la passe (intention `passe`) ; le moteur résout légalité,
+// couloir, interception. Réussite = le 10 est RÉELLEMENT porteur ; mêlée (en-avant), interception ou
+// autre receveur = ACTION_FAILED avec la raison. Une passe ratée ne donne jamais un ballon reçu.
+const receveurDe = (c, n) => joueur(c.state, c.me.team, n);
+const carrierIs = (c, team, n) => c.state.ball && c.state.ball.carrierTeam === team && c.state.ball.carrierNumber === n;
+function actPasse(vers) {
+  return {
+    maxSeconds: 2.5,
+    startGuard: (c) => {
+      const r = receveurDe(c, vers);
+      return !c.facts.HAS_BALL ? 'NOT_CARRIER' : !r || r.auSol > 0 ? 'NO_RECEIVER' : (r.x - c.me.x) * c.sens > 0.3 ? 'RECEIVER_AHEAD' : null;
+    },
+    intent: (c) => ({ tx: c.me.x, ty: c.me.y, vmaxFactor: 0.5, passe: vers }),
+    successGuard: (c) => carrierIs(c, c.me.team, vers),
+    failGuard: (c) => (c.state.phase === 'MELEE' ? 'FORWARD_PASS_OR_KNOCK_ON'
+      : c.state.ball && c.state.ball.carrierTeam && c.state.ball.carrierTeam !== c.me.team ? 'INTERCEPTED'
+        : c.state.ball && c.state.ball.carrierTeam === c.me.team && c.state.ball.carrierNumber !== c.me.numero ? 'WRONG_RECEIVER' : null),
+    abortGuard: () => null,
+  };
+}
+ACTEURS.PASS_TO_10 = actPasse(10);
 for (const [nom, dy] of [['RUN_SUPPORT_INSIDE', -1], ['RUN_SUPPORT_OUTSIDE', 1]]) {
   ACTEURS[nom] = {
     maxSeconds: 10,
@@ -454,7 +485,10 @@ class AgentContext {
         const moiG = [...state.equipeA, ...state.equipeB].find((j) => j.team === this.agent.team && j.numero === this.agent.numero);
         if (moiG) gaze = Math.atan2(this.mem.ball.y - moiG.y, this.mem.ball.x - moiG.x);
       }
-      obs = observe(state, this.agent, gaze === undefined ? this.params : Object.assign({}, this.params, { gaze }));
+      // Un PORTEUR balaie le terrain avant de jouer (têtes levées) : champ de vision complet.
+      const porteur = this.mem.ball && this.mem.ball.owner === this.id && t - this.mem.ball.seenAt <= 1;
+      const pv = Object.assign({}, this.params, gaze === undefined ? {} : { gaze }, porteur ? { fovDeg: 360 } : {});
+      obs = observe(state, this.agent, pv);
       this.lastObsT = t;
       const m = this.mem;
       if (obs.vus.ball) m.ball = Object.assign({}, obs.vus.ball, { seenAt: t });
@@ -720,7 +754,11 @@ class GoalBasedRugbyAgent {
       // seuls un but de sécurité personnelle ou la fin de la possession adverse l'interrompent.
       const plaquageEnCours = this.executor.busy && this.executor.current.name === 'TACKLE_CARRIER'
         && but !== 'BECOME_ONSIDE' && but !== 'RECOVER_AND_REJOIN' && this._sit.advPoss;
-      if (this.executor.busy && !plaquageEnCours) { for (const e of this.executor.cancel(state, 'GOAL_CHANGED').events) this.events.push(e); this._intent = null; }
+      // Une passe demandée au moteur n'est pas retirée parce que le but passe de DISTRIBUTE à RETAIN : tant que
+      // je porte encore le ballon, la demande va à son terme (réussie, interceptée ou en-avant : le moteur tranche).
+      const passeEnCours = this.executor.busy && /^PASS_TO/.test(this.executor.current.name) && this._sit.aLeBallon
+        && but !== 'RECOVER_AND_REJOIN' && but !== 'BECOME_ONSIDE';
+      if (this.executor.busy && !plaquageEnCours && !passeEnCours) { for (const e of this.executor.cancel(state, 'GOAL_CHANGED').events) this.events.push(e); this._intent = null; }
       this.plan = null;
     }
     if (this.usePlacement) {
@@ -1295,7 +1333,7 @@ const GOALS = Object.freeze([
   G('DEFEND', 'COMMIT', (s) => s.available && s.onside && s.advPoss && !REGROUPEMENTS.has(s.phase), (s, p) => 50 + 10 * clamp01(1 - s.distBalle / 40) - 25 * p.fatigue),
   G('CONTEST_BREAKDOWN', 'OPPORTUNITY', (s) => s.phase === 'RUCK' && s.advPoss && s.available && s.onside, (s, p) => 62 * p.contest - 18 * Math.min(2, s.partenairesPlusPres) - 20 * p.fatigue),
   G('SECURE_RUCK', 'COMMIT', (s) => s.phase === 'RUCK' && s.maPoss && s.available && s.onside, (s, p) => 66 * p.ruck - 18 * Math.min(2, s.partenairesPlusPres) - 20 * p.fatigue),
-  G('DISTRIBUTE_BALL', 'COMMIT', (s) => (s.phase === 'RUCK' && s.maPoss && s.available && s.onside && s.distBalle <= 6 && !s.neufAuBallon) || (s.aLeBallon && s.phase === 'PORTE' && s.pression > 0),
+  G('DISTRIBUTE_BALL', 'COMMIT', (s, profile) => (s.phase === 'RUCK' && s.maPoss && s.available && s.onside && s.distBalle <= 6 && !s.neufAuBallon) || (s.aLeBallon && s.phase === 'PORTE' && (s.pression > 0 || (profile.distribute ?? 0) >= 0.3)),
     // Personne n'est à la base du ruck : le plus proche prend la distribution (même un 10 ou un 8).
     (s, p) => 78 * p.distribute + (s.distBalle <= 3 && !s.neufAuBallon ? (p.distribute >= 0.3 ? 20 : 10) : 0)),
   G('RETAIN_POSSESSION', 'COMMIT', (s) => s.aLeBallon && s.phase === 'PORTE', (s) => 62 + 8 * Math.min(3, s.pression) + (s.finDeMatch && s.score > 0 ? 12 : 0)),
@@ -1347,7 +1385,9 @@ function creerPiloteGOAP(options = {}) {
 
 // Configuration de match en mode GOAP (ne modifie pas `config`).
 function configGOAP(config, options) {
-  return Object.assign({}, config || {}, { aiMode: 'GOAP', agentDriver: creerPiloteGOAP(options) });
+  // Rayon de contact du plaquage en mode GOAP : 3,5 m (mesuré : 2,2 m laissait passer le porteur entre deux défenseurs
+  // espacés de 4 m ; 4 m supprimait presque tous les essais).
+  return Object.assign({ rayonPlaquage: 3.5 }, config || {}, { aiMode: 'GOAP', agentDriver: creerPiloteGOAP(options) });
 }
 
 module.exports = { creerPiloteGOAP, configGOAP };

@@ -10,7 +10,7 @@ const CLES = ['essais', 'passes', 'carries', 'tacklesAttempted', 'tacklesMade', 
 const somme = (s, k) => s.stats.A[k] + s.stats.B[k];
 
 function jouer(seed, avecAgents) {
-  const m = new MatchEngine(seed, 4800);
+  const m = new MatchEngine(seed, 4800, avecAgents && process.env.RAYON ? { rayonPlaquage: +process.env.RAYON } : null);
   const sched = avecAgents ? new AgentScheduler(creerAgents({ placement: true, placementScope: process.env.SCOPE || 'all' })) : null;
   let ms = 0;
   for (let t = 0; t < DUREE; t += DT) {
