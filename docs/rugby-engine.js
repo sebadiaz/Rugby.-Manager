@@ -2522,6 +2522,18 @@
       }
     }
 
+    _plaquageEmporteEnTouche(porteur, plaqueur, distanceContact) {
+      const bordBas = porteur.y <= LARGEUR / 2;
+      const marge = bordBas ? porteur.y : LARGEUR - porteur.y;
+      if (marge > 2) return false;
+      if (this.aiMode !== 'GOAP') return true;
+
+      const versBord = bordBas ? -1 : 1;
+      const anglePoussee = Math.max(0, (porteur.y - plaqueur.y) * versBord / Math.max(0.3, distanceContact));
+      const elanLateral = (porteur.vitesseCourante || 0) * Math.sin(porteur.orientation || 0) * versBord;
+      return 0.3 + 1.7 * anglePoussee + 0.2 * elanLateral >= marge;
+    }
+
     _tickPorte(dt) {
       const porteur = this.porteur;
       const def = this.defenseurs();
@@ -2669,24 +2681,15 @@
         }
         this.stats[defenseurProche.team].tacklesMade++;
         this._statJoueur(defenseurProche).tacklesMade++;
-        // LOI 19 — PLAQUE EN TOUCHE. Tout pres de la ligne de touche, le
-        // plaqueur pousse le porteur DEHORS : le ballon est mort, touche pour
-        // l'adversaire. C'est comme cela qu'un ailier sort en touche dans un
-        // vrai match — ce n'est pas lui qui choisit de sortir.
-        // Mesure avant : le moteur produisait 0,0 ballon porte en touche par
-        // match. Le controle de sortie du porteur existait bien mais ne se
-        // declenchait JAMAIS, parce que le porteur pres d'une ligne de touche
-        // crochete systematiquement vers l'interieur (cf. `evite`). Toutes les
-        // touches du match venaient donc du jeu au pied.
-        // Rayon 1,5 -> 2,0 m (P2-57) : un porteur plaque a deux metres de la
-        // ligne y tombe (elan du plaquage, taille du corps). Mesure sur 24
-        // matchs : 0,33 -> 1,08 ballon porte en touche par match (reel 2 a 4),
-        // gain apres une percee inchange (14,1 -> 14,3 m). A 2,5 m on atteint
-        // 2,17 mais les percees le long de la touche finissent dehors : le gain
-        // apres percee tombe a 12,6 m (reel 15-25) — refuse.
-        if (this.porteur.y <= 2.0 || this.porteur.y >= LARGEUR - 2.0) {
+        // Au ras du bord, le contact peut emporter le porteur en touche.
+        // En GOAP, la poussée doit avoir un angle vers la ligne, l'élan du
+        // porteur détermine le reste. Un plaquage depuis le bord peut ainsi
+        // finir en ruck sur le terrain.
+        if (this._plaquageEmporteEnTouche(porteur, defenseurProche, distDef)) {
           this.log('PLAQUE_EN_TOUCHE', defenseurProche.team, `Plaque en touche par l'equipe ${defenseurProche.team}`);
-          this._accorderTouche(this.possession, this.porteur, 'PORTE');
+          const marque = this.aiMode === 'GOAP'
+            ? { x: porteur.x, y: porteur.y <= LARGEUR / 2 ? 0 : LARGEUR } : porteur;
+          this._accorderTouche(this.possession, marque, 'PORTE');
           return;
         }
         // Définition officielle du plaquage (World Rugby) : le plaqueur amène le

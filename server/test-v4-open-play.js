@@ -168,3 +168,22 @@ console.log('OK : dégagement orienté selon la couverture, ballon relançable e
   assert.equal(m.choisirActionPorteur(m.porteur, plaqueur, 8, 0.1), 'KICK', 'la possibilité revient après le départ de la relance');
 }
 console.log('OK : fenêtre pour relancer après réception et dégagement encore possible sous pression');
+
+for (const y of [1.1, 68.9]) {
+  const versBord = y < 35 ? -1 : 1;
+  for (const pousseeVersBord of [true, false]) {
+    const m = scene({ zone: 48, numero: 4 });
+    m.porteur.y = y;
+    m.porteur.vitesseCourante = 0;
+    const plaqueur = m.equipeB.find(j => j.numero === 1);
+    plaqueur.x = m.porteur.x + 0.5;
+    plaqueur.y = y - versBord * (pousseeVersBord ? 1.5 : -1);
+    m.tick(0.1);
+    assert.equal(m.stats.B.tacklesMade, 1);
+    assert.equal(m.phase, pousseeVersBord ? 'TOUCHE' : 'RUCK',
+      'le même porteur peut finir en touche ou au sol dans le terrain selon l’angle du plaqueur');
+    assert.equal(m.possession, pousseeVersBord ? 'B' : 'A');
+    if (pousseeVersBord) assert.equal(m.ruckPoint.y, versBord < 0 ? 0 : 70, 'la marque est sur la ligne');
+  }
+}
+console.log('OK : un plaquage vers le bord sort le ballon, un plaquage vers le terrain crée un ruck');
