@@ -118,3 +118,40 @@ console.log('OK : devant un espace libre, le porteur avance balle en main');
   assert.ok(droite.x < cote.lastSeen.x);
 }
 console.log('OK : le soutien change de course et le défenseur anticipe le changement de direction');
+
+for (const team of ['A', 'B']) {
+  const couvert = (y) => {
+    const m = scene({ team, zone: 17, numero: 10 });
+    const partenaires = team === 'A' ? m.equipeA : m.equipeB;
+    const adversaires = team === 'A' ? m.equipeB : m.equipeA;
+    for (const j of partenaires.filter(j => j.numero === 8 || j.numero === 12)) j.x = team === 'A' ? 3 : 97;
+    const arriere = adversaires.find(j => j.numero === 15);
+    arriere.x = team === 'A' ? 57 : 43;
+    arriere.y = y;
+    return m;
+  };
+  for (const y of [19, 51]) {
+    const m = couvert(y);
+    const choix = lecture(m, team, 10);
+    assert.equal(choix.kick, 'DEGAGEMENT');
+    assert.ok((choix.cibleY - 35) * (y - 35) < 0, 'l’ouvreur vise à l’opposé de la couverture');
+    for (let i = 0; i < 9 && m.phase === 'PORTE'; i++) m.tick(0.05);
+    assert.equal(m.phase, 'COUP_DE_PIED_JEU');
+    assert.equal(m.cibleCoupDePiedY, choix.cibleY, 'le couloir choisi devient la vraie cible du vol');
+  }
+
+  const m = couvert(19);
+  m.porteur.y = 3;
+  m._tenterCoupDePiedJeu(m.porteur, 'DEGAGEMENT');
+  assert.ok(m.cibleCoupDePiedY >= 9 && m.cibleCoupDePiedY <= 61);
+  for (let i = 0; i < 60 && m.phase === 'COUP_DE_PIED_JEU'; i++) m.tick(0.1);
+  assert.notEqual(m.phase, 'TOUCHE', 'un dégagement du bord peut être relancé');
+
+  const touche = couvert(19);
+  touche.porteur.y = 3;
+  touche._tenterCoupDePiedJeu(touche.porteur, 'TOUCHE');
+  for (let i = 0; i < 60 && touche.phase === 'COUP_DE_PIED_JEU'; i++) touche.tick(0.1);
+  assert.equal(touche.phase, 'TOUCHE');
+  assert.notEqual(touche.possession, team, 'une touche volontaire depuis les 22 rend le lancer');
+}
+console.log('OK : dégagement orienté selon la couverture, ballon relançable et touche volontaire dans les deux sens');

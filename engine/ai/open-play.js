@@ -4,6 +4,19 @@
 
 const { clamp, dist, LARGEUR } = require('./position-goals.js');
 
+function espaceDegagement(me, sens, adversaires) {
+  // Le botteur observe la couverture dans la zone où son dégagement peut
+  // tomber. Les deux cibles restent à portée latérale depuis son poste.
+  const profondeur = clamp(me.x + sens * 41, 0, 100);
+  const couloirs = [-18, 18].map(decalage => {
+    const y = clamp(me.y + decalage, 9, LARGEUR - 9);
+    const cible = { x: profondeur, y };
+    const distance = adversaires.reduce((proche, d) => Math.min(proche, dist(cible, projeter(d, d.age + 0.5))), Infinity);
+    return { y, distance };
+  });
+  return couloirs.sort((a, b) => b.distance - a.distance || Math.abs(a.y - me.y) - Math.abs(b.y - me.y))[0];
+}
+
 function visibleJouable(fiche) {
   return fiche.age <= 0.55 && fiche.available !== false && !fiche.kickOffside;
 }
@@ -89,9 +102,13 @@ function lirePorteur(b, s, profile, playbook) {
   const consignePied = (playbook.tauxJeuAuPied ?? 1.5) * (b.agent.numero === 10 ? (playbook.piedOuvreur ?? 1) : 1);
   if (consignePied > 0 && territoire < 30 && pression >= 3.2 && pression <= 10 && (me.jeuPied ?? 0) >= 55 && distanceBut > 68) {
     const fond = adv.filter(d => (d.lastSeen.x - me.x) * sens >= 15);
-    const couvre = fond.some(d => Math.abs(d.lastSeen.y - me.y) <= 13);
-    const type = territoire <= 22 && couvre ? 'TOUCHE' : 'DEGAGEMENT';
-    options.push({ action: 'KICK', kick: type, score: (territoire <= 22 ? 9.5 : 6) + (couvre ? 0 : 2) + (me.jeuPied - 55) * 0.09 + clamp(consignePied - 1.5, -1.5, 1.5) * 2 });
+    const couloir = espaceDegagement(me, sens, fond);
+    // Les deux sorties ont un coût : trouver la touche rend le lancer et
+    // botter dans un fond couvert expose à une relance immédiate.
+    const touche = territoire <= 22 && couloir.distance < 12 && pression <= 6;
+    const score = (territoire <= 22 ? 9.5 : 6) + (couloir.distance >= 12 ? 2 : 0)
+      + (me.jeuPied - 55) * 0.09 + clamp(consignePied - 1.5, -1.5, 1.5) * 2;
+    options.push({ action: 'KICK', kick: touche ? 'TOUCHE' : 'DEGAGEMENT', cibleY: touche ? null : couloir.y, score });
   }
   options.sort((a, c) => c.score - a.score || (a.vers || 0) - (c.vers || 0));
   const choix = options[0];

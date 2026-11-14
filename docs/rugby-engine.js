@@ -2572,10 +2572,15 @@
       let action = (this.combinaison || ballonEnVolPasse) ? 'RUN' : this.choisirActionPorteur(porteur, defenseurProche, distDef, dt);
       // Sonnerie de fin de match : l'équipe menée ou à égalité ne rend pas le
       // ballon au pied, elle garde la dernière action en main.
-      if (action === 'KICK' && this._sonnerie && this.miTempsJouee
+      if ((action === 'KICK' || action === 'KICK_AGENT') && this._sonnerie && this.miTempsJouee
           && this.score[porteur.team] <= this.score[porteur.team === 'A' ? 'B' : 'A']) {
         this._typeCoupDePiedForce = null;
         action = 'RUN';
+      }
+      if (action === 'KICK_AGENT') {
+        const jeu = this._intentionsAgents.get(porteur.team + porteur.numero).jeu;
+        this._tenterCoupDePiedJeu(porteur, jeu.type, jeu.cibleY);
+        return;
       }
       if (action === 'KICK') { this._executerCoupDePiedJeu(porteur); return; }
       if (distDef >= 2.2 && (action === 'PASS' || action === 'JEU_LARGE' || action === 'PASS_AGENT')
@@ -3629,7 +3634,7 @@
       const jeu = this._intentionsAgents?.get(porteur.team + porteur.numero)?.jeu;
       if (jeu && porteur.auSol <= 0 && !(porteur.horsJeuKick > 0) && !this._sonnerie && this._chandelleBaseA == null && (!this._neufLibre || this.timerPhase >= 0.15)) {
         if (jeu.action === 'RUN') return 'RUN_AGENT';
-        if (jeu.action === 'KICK' && distDef >= 2.2) { this._typeCoupDePiedForce = jeu.type; return 'KICK'; }
+        if (jeu.action === 'KICK' && distDef >= 2.2) return 'KICK_AGENT';
         if (jeu.action === 'PASS' && !(porteur._enchaine > 0) && distDef >= (this._rayonPlaquage || 2.2) && att.some(j => this._receveurAgentValide(porteur, j, jeu.vers))) return 'PASS_AGENT';
       }
 
@@ -3824,6 +3829,13 @@
         // jeux de graines (TODO_AUDIT.md P2-57) : plus haut (10 x2,4), les
         // sequences de jeu courant tombaient sous la fourchette reelle.
         pParSeconde *= avant ? 0.05 : porteur.numero === 10 ? 2.0 : porteur.numero === 15 ? 1.6 : 1;
+        // À la réception d'un jeu au pied, laisser au porteur le temps de
+        // lancer une relance. Un dégagement lu par l'agent garde la priorité
+        // si la pression impose de rendre le ballon immédiatement.
+        if (this.aiMode === 'GOAP') {
+          pParSeconde *= 0.78;
+          if (this._porteApresPied && this.timerPhase < 2.5 && !pression) pParSeconde = 0;
+        }
         if (this.rng() < pParSeconde * dt) return 'KICK';
       }
 
@@ -4397,7 +4409,7 @@
     // Lance le ballon en vol pour un coup de pied tactique en jeu courant
     // (dégagement, occupation, chandelle contestable, touche directe ou chip) :
     // même mécanique de vol que le coup d'envoi, résolue dans _tickCoupDePiedJeu.
-    _tenterCoupDePiedJeu(porteur, type) {
+    _tenterCoupDePiedJeu(porteur, type, cibleYAgent = null) {
       const equipe = this.possession;
       this.stats[equipe].kicks++;
       this._statJoueur(porteur).coupsDePied++;
@@ -4454,6 +4466,12 @@
         cibleY = porteur.y <= LARGEUR / 2
           ? Math.max(-2, porteur.y - 10 - this.rng() * 15)
           : Math.min(LARGEUR + 2, porteur.y + 10 + this.rng() * 15);
+        if (this.aiMode === 'GOAP' && type === 'DEGAGEMENT') {
+          // Un dégagement vise un couloir DANS le terrain. Ne pas le convertir
+          // automatiquement en touche quand le botteur est lui-même excentré :
+          // il faut de la place pour le rebond et la relance.
+          cibleY = Math.max(9, Math.min(LARGEUR - 9, cibleYAgent ?? cibleY));
+        }
       } else {
         cibleY = Math.max(3, Math.min(LARGEUR - 3, porteur.y + (this.rng() * 8 - 4)));
       }
@@ -8537,6 +8555,7 @@
         || (demande.action === 'KICK' && ['TOUCHE', 'DEGAGEMENT'].includes(demande.type))
       ) ? { action: demande.action, vers: demande.vers, type: demande.type,
         decalage: Number.isFinite(demande.decalage) ? Math.max(-3, Math.min(3, demande.decalage)) : null,
+        cibleY: Number.isFinite(demande.cibleY) ? demande.cibleY : null,
       } : null;
       if (!mouvement && !jeu) return false;
       const f = intention.vmaxFactor == null ? 1 : intention.vmaxFactor;
