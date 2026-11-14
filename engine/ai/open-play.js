@@ -36,6 +36,39 @@ function intercepter(me, porteur, vitesse) {
   return projeter(porteur, delai * 0.65 + porteur.age);
 }
 
+// Dernier rideau : l'arrière cherche un rendez-vous atteignable sur la
+// course observée et coupe l'angle avant la ligne. Les estimations restent
+// bornées : il réajuste sa course à la prochaine observation.
+function lireCouverture(b, s) {
+  if (b.agent.numero !== 15 || s.phase !== 'PORTE' || !s.advPoss || !s.available || !s.onside) return null;
+  const porteur = b.opponents[s.ball?.owner];
+  if (!porteur || !visibleJouable(porteur)) return null;
+  const balle = porteur.lastSeen, me = b.self, sens = s.sens;
+  const profondeur = (balle.x - me.x) * sens;
+  if (profondeur < 1 || profondeur > 30 || dist(me, balle) > 35) return null;
+
+  const vx = porteur.vx || 0, vy = porteur.vy || 0;
+  if (-vx * sens < 1.25) return null;
+  const enCours = projeter(porteur, porteur.age + 0.65);
+  const rideau = Object.values(b.teammates).some(j => {
+    if (!visibleJouable(j) || j.recovery) return false;
+    const jx = j.lastSeen.x;
+    return (balle.x - jx) * sens > 0.5 && (jx - me.x) * sens > 2
+      && Math.abs(j.lastSeen.y - enCours.y) <= 6;
+  });
+  if (rideau) return null;
+
+  const ligne = sens > 0 ? 0 : 100;
+  const avantLigne = Math.max(0, (balle.x - ligne) / -vx - porteur.age);
+  const horizon = Math.min(3.2, avantLigne);
+  const vitesse = 3 + clamp(me.vitesse ?? 65, 0, 100) * 0.05;
+  for (let t = 0.25; t < horizon; t += 0.25) {
+    const cible = projeter(porteur, porteur.age + t);
+    if (dist(me, cible) <= 1 + vitesse * t) return cible;
+  }
+  return projeter(porteur, porteur.age + horizon);
+}
+
 function espaceDevant(point, sens, adv, profondeur, horizon) {
   let libre = profondeur;
   for (const d of adv) {
@@ -119,4 +152,4 @@ function lirePorteur(b, s, profile, playbook) {
   return { ...choix, options, pression, course, age: s.ball.age };
 }
 
-module.exports = { lirePorteur, intercepter, visibleJouable, espaceDevant };
+module.exports = { lirePorteur, intercepter, visibleJouable, espaceDevant, lireCouverture };

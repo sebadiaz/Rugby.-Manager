@@ -18,10 +18,11 @@ const compteurs = [
 const total = {};
 for (let graine = premiere; graine < premiere + nombre; graine++) {
   const m = new MatchEngine(graine, 4800, configGOAP());
-  let passesIA = 0, degagementsEnTouche = 0, touchesVolontaires = 0;
+  let passesIA = 0, degagementsEnTouche = 0, touchesVolontaires = 0, essaisLongsSansRuck = 0;
   const log = m.log.bind(m);
   m.log = (type, equipe, message, data) => {
     if (type === 'PASSE' && data?.ia) passesIA++;
+    if (type === 'ESSAI' && data?.depuis >= 40 && !data?.rucks) essaisLongsSansRuck++;
     if (type === 'TOUCHE' && m.phase === 'COUP_DE_PIED_JEU') {
       if (m.typeCoupDePiedJeu === 'DEGAGEMENT') degagementsEnTouche++;
       if (m.typeCoupDePiedJeu === 'TOUCHE') touchesVolontaires++;
@@ -37,6 +38,7 @@ for (let graine = premiere; graine < premiere + nombre; graine++) {
   match.passesIA = passesIA;
   match.degagementsEnTouche = degagementsEnTouche;
   match.touchesVolontaires = touchesVolontaires;
+  match.essaisLongsSansRuck = essaisLongsSansRuck;
   match.possessionA = s.possessionPct.A;
   match.occupationA = s.occupationPct.A;
   console.log(JSON.stringify({ graine, score: s.score, essaisParEquipe: { A: s.stats.A.essais, B: s.stats.B.essais }, ...match }));

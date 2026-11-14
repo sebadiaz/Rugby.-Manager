@@ -187,3 +187,47 @@ for (const y of [1.1, 68.9]) {
   }
 }
 console.log('OK : un plaquage vers le bord sort le ballon, un plaquage vers le terrain crée un ruck');
+
+function perceeSurAile(team) {
+  const m = scene({ team, zone: 72, numero: 14 });
+  const x = distance => team === 'A' ? distance : 100 - distance;
+  const def = team === 'A' ? m.equipeB : m.equipeA;
+  const att = team === 'A' ? m.equipeA : m.equipeB;
+  for (const j of [...att, ...def]) Object.assign(j, { x: x(53), y: 57, vitesseCourante: 0 });
+  Object.assign(m.porteur, { x: x(72), y: 11, vitesseCourante: 7.4, vitesse: 85, orientation: team === 'A' ? 0 : Math.PI });
+  const arriere = def.find(j => j.numero === 15);
+  Object.assign(arriere, { x: x(89), y: 19, orientation: team === 'A' ? Math.PI : 0, vitesse: 83 });
+  return { m, arriere, def, x };
+}
+
+for (const team of ['A', 'B']) {
+  const { m, arriere, def, x } = perceeSurAile(team);
+  const placement = () => {
+    const b = new AgentContext({ team: arriere.team, numero: 15 }, { fovDeg: 360 }).update(m.getState());
+    return individualPlacement(b, 'COVER_BACKFIELD', {}, profilePour(15), true);
+  };
+  const libre = placement();
+  assert.equal(libre.placementGoal, 'COVER_BREAK');
+  assert.ok((libre.target.x - m.porteur.x) * m.porteur.sensAttaque > 4);
+  assert.ok(Math.abs(libre.target.y - m.porteur.y) <= 1);
+  const ailier = def.find(j => j.numero === 11);
+  Object.assign(ailier, { x: x(80), y: 12 });
+  assert.equal(placement().placementGoal, 'COVER_BACKFIELD');
+  ailier.missCooldown = 1;
+  assert.equal(placement().placementGoal, 'COVER_BREAK', 'un défenseur battu ne compte plus comme couverture');
+  Object.assign(ailier, { x: x(53), y: 57, missCooldown: 0 });
+  arriere.horsJeuKick = 2;
+  assert.equal(placement().placementGoal, 'COVER_BACKFIELD');
+  arriere.horsJeuKick = 0;
+
+  for (let i = 0; i < 60 && m.phase === 'PORTE'; i++) m.tick(0.1);
+  assert.ok(m.phase === 'RUCK' || m.phase === 'TOUCHE', 'le plaquage de couverture arrête la course');
+  assert.ok(m.getState().statsJoueurs[arriere.team][15].tacklesMade > 0, 'le moteur crédite le plaquage du n°15');
+  assert.equal(m.score[team], 0);
+
+  const absent = perceeSurAile(team);
+  absent.arriere.sinBin = 120;
+  for (let i = 0; i < 60 && absent.m.phase === 'PORTE'; i++) absent.m.tick(0.1);
+  assert.equal(absent.m.score[team], 5, 'sans arrière disponible la percée peut aller à l’essai');
+}
+console.log('OK : le n°15 coupe une percée avec un vrai plaquage, garde le fond si l’aile est couverte ou s’il est hors-jeu');

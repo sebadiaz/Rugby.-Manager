@@ -89,7 +89,7 @@ class AgentContext {
       ? Object.assign(fiche(this.mem.ball), { state: this.mem.ball.state, owner: this.mem.ball.owner })
       : { lastSeen: null, age: null, confidence: 0, state: null, owner: null };
     const ficheJoueur = (e) => Object.assign(fiche(e), {
-      numero: e.numero, vx: e.vx, vy: e.vy, available: e.available, kickOffside: e.kickOffside,
+      numero: e.numero, vx: e.vx, vy: e.vy, available: e.available, kickOffside: e.kickOffside, recovery: e.recovery,
     });
     const mates = {}, adv = {};
     for (const [id, e] of Object.entries(this.mem.teammates)) mates[id] = ficheJoueur(e);

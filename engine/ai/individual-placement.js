@@ -17,7 +17,7 @@
 
 const P = require('./position-goals.js');
 const { deriveSituation } = require('./goals.js');
-const { intercepter, visibleJouable, espaceDevant } = require('./open-play.js');
+const { intercepter, visibleJouable, espaceDevant, lireCouverture } = require('./open-play.js');
 
 const GAP_MIN = 11; // m : un intervalle observé plus large est « dangereux »
 
@@ -130,8 +130,11 @@ function candidatsAttaque(b, s, pb, profile, jeuCourant) {
 function individualPlacement(beliefs, goalId, playbook, profile = {}, jeuCourant = false) {
   const pb = P.lirePlaybook(playbook);
   const s = deriveSituation(beliefs);
+  const couverture = jeuCourant && lireCouverture(beliefs, s);
   let cands;
-  if (goalId === 'COVER_BACKFIELD' || goalId === 'PREVENT_TRY') {
+  if (couverture) {
+    cands = [{ id: 'COVER_BREAK', priority: 85, target: couverture, vmax: 1, reason: 'dernier rideau : coupe la course vers l’en-but' }];
+  } else if (goalId === 'COVER_BACKFIELD' || goalId === 'PREVENT_TRY') {
     const bal = s.ball && s.ball.lastSeen;
     cands = [{ id: goalId === 'PREVENT_TRY' ? 'PREVENT_TRY' : 'COVER_BACKFIELD', priority: 60,
       target: bal ? (goalId === 'PREVENT_TRY' ? { x: P.clamp(bal.x - s.sens * 6, 0, 100), y: bal.y } : P.referenceFond(s.sens, bal, pb)) : { x: beliefs.self.x, y: beliefs.self.y },

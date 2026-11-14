@@ -234,7 +234,7 @@ class GoalBasedRugbyAgent {
       this.placement = individualPlacement(beliefs, this.goal, this.playbook, this.profile, this.openPlay);
       if (this.placement && !sit.aLeBallon) this._push('PLACEMENT_CHOSEN', t, { goal: this.goal, placement: this.placement.placementGoal, target: this.placement.target });
     }
-    if (this.carrierDecision && !this.executor.busy) this.plan = null;
+    if ((this.carrierDecision || this.placement?.placementGoal === 'COVER_BREAK') && !this.executor.busy) this.plan = null;
     else if (!this.plan) { const r = this.replanRaison || 'NEW'; this.replanRaison = null; this._planifier(beliefs, sit, r); }
     else if (!this.executor.busy && !this._etapeValide(this.plan.steps[this.plan.index], this._faits(beliefs, sit))) {
       // Précondition invalidée AVANT de démarrer l'étape : replanification depuis les faits actuels.
@@ -252,9 +252,10 @@ class GoalBasedRugbyAgent {
       if (r.started) this._intent = r.intent;
       else { this.bans.set(nom, t + this.banDuration); this.plan = null; this._forceDecision = true; }
     }
-    // Sans action en cours, c'est SON placement individuel qui le conduit (jamais celui d'un autre).
-    // Presser le porteur = l'action TACKLE_CARRIER (acteur réel, événements réussi/manqué), pas une simple course.
-    if (this.usePlacement && !this.executor.busy && !this.plan && this.placement && this.placement.placementGoal === 'PRESS_CARRIER'
+    // Le moteur valide le plaquage après la course de montée ou de couverture.
+    const placement = this.placement?.placementGoal;
+    const vaPlaquer = placement === 'PRESS_CARRIER' || placement === 'COVER_BREAK';
+    if (this.usePlacement && !this.executor.busy && !this.plan && vaPlaquer
       && state.phase === 'PORTE' && !(this.bans.get('TACKLE_CARRIER') > t)) {
       const r = this.executor.start('TACKLE_CARRIER', state, this.openPlay ? { cible: this.placement.target } : undefined);
       for (const e of r.events) this.events.push(e);
@@ -267,8 +268,7 @@ class GoalBasedRugbyAgent {
       this._intent = { jeu: { action, vers, type: kick, decalage, cibleY } };
       return this._intent;
     }
-    if (this.openPlay && this.executor.current?.name === 'TACKLE_CARRIER' && this.placement?.placementGoal === 'PRESS_CARRIER'
-      && this._intent) {
+    if (this.openPlay && this.executor.current?.name === 'TACKLE_CARRIER' && vaPlaquer && this._intent) {
       this.executor.current.params.cible = this.placement.target;
     }
     const enDefense = state.possession !== this.agent.team;

@@ -81,6 +81,7 @@ function observe(state, agent, params) {
       x: j.x, y: j.y, numero: j.numero,
       vx: vitesse * Math.cos(j.orientation || 0), vy: vitesse * Math.sin(j.orientation || 0),
       available: !(j.auSol > 0) && !(j.sinBin > 0), kickOffside: j.horsJeuKick > 0,
+      recovery: j.ruckRecovery > 0 || j.missCooldown > 0 || j.fixeCooldown > 0,
     };
     (j.team === moi.team ? vus.teammates : vus.opponents)[id(j)] = entree;
   }
