@@ -121,6 +121,18 @@ function actPasse(vers) {
   };
 }
 ACTEURS.PASS_TO_10 = actPasse(10);
+// KICK_FOR_TERRITORY (A23) : le porteur DEMANDE le pied (intention `botte`), le moteur le frappe (portée, hors-jeu des
+// chasseurs, touche, réception). Type choisi selon SA zone : touche depuis ses 22, occupation dans son camp,
+// chandelle dans le camp adverse. Succès = coup de pied réellement parti (phase COUP_DE_PIED_JEU, ballon en l'air).
+const typePied = (c) => { const d = c.sens > 0 ? c.me.x : 100 - c.me.x; return d < 22 ? 'TOUCHE' : d < 50 ? 'OCCUPATION' : 'CHANDELLE'; };
+ACTEURS.KICK_FOR_TERRITORY = {
+  maxSeconds: 2,
+  startGuard: (c) => (!c.facts.HAS_BALL ? 'NOT_CARRIER' : !c.facts.SELF_ONSIDE ? 'OFFSIDE' : c.state.phase !== 'PORTE' ? 'NOT_OPEN_PLAY' : null),
+  intent: (c) => ({ tx: c.me.x, ty: c.me.y, vmaxFactor: 0.4, botte: typePied(c) }),
+  successGuard: (c) => c.state.phase === 'COUP_DE_PIED_JEU' && !!(c.state.ball && c.state.ball.state === 'AIR'),
+  failGuard: (c) => (c.state.phase === 'RUCK' || c.state.phase === 'MELEE' ? 'CARRIER_LOST_BALL' : null),
+  abortGuard: () => null,
+};
 // PASS_TO_POD / PASS_TO_OUTSIDE : le receveur est choisi dans le MONDE RÉEL au départ (le meilleur candidat
 // en retrait ou à hauteur, couloir libre, éloigné des adversaires) ; la suite est identique à PASS_TO_10.
 function actPasseChoisie(familles, dMax, ecartMin) {

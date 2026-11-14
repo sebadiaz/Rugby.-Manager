@@ -34,7 +34,7 @@ function creerPiloteGOAP(options = {}) {
 function configGOAP(config, options) {
   // Rayon de contact du plaquage en mode GOAP : 3,5 m (mesuré : 2,2 m laissait passer le porteur entre deux défenseurs
   // espacés de 4 m ; 4 m supprimait presque tous les essais).
-  return Object.assign({ rayonPlaquage: 3.5 }, config || {}, { aiMode: 'GOAP', agentDriver: creerPiloteGOAP(options) });
+  return Object.assign({ rayonPlaquage: 3.5, pieds: 'AGENTS' }, config || {}, { aiMode: 'GOAP', agentDriver: creerPiloteGOAP(options) });
 }
 
 module.exports = { creerPiloteGOAP, configGOAP };

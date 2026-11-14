@@ -101,7 +101,13 @@ const GOALS = Object.freeze([
     // Personne n'est à la base du ruck : le plus proche prend la distribution (même un 10 ou un 8).
     (s, p) => 78 * p.distribute + (s.distBalle <= 3 && !s.neufAuBallon ? (p.distribute >= 0.3 ? 20 : 10) : 0)),
   G('RETAIN_POSSESSION', 'COMMIT', (s) => s.aLeBallon && s.phase === 'PORTE', (s) => 62 + 8 * Math.min(3, s.pression) + (s.finDeMatch && s.score > 0 ? 12 : 0)),
-  G('GAIN_TERRITORY', 'OPPORTUNITY', (s) => s.aLeBallon && s.phase === 'PORTE', (s, p) => 50 + 25 * p.kick + (s.finDeMatch && s.score < 0 ? 12 : 0) - 8 * Math.min(3, s.pression)),
+  // Le pied est une décision de CONTEXTE : zone dangereuse (dégager), pression sans option de passe, fin de match.
+  // Zone = distance à MA ligne de but ; hypothèses d'ingénierie à calibrer.
+  G('GAIN_TERRITORY', 'OPPORTUNITY', (s) => s.aLeBallon && s.phase === 'PORTE', (s, p) => {
+    const dMaLigne = s.ball ? Math.abs(s.ball.lastSeen.x - (s.team === 'A' ? 0 : 100)) : 50;
+    const zone = dMaLigne < 22 ? 25 : dMaLigne < 50 ? 14 : dMaLigne > 78 ? -35 : -4;
+    return 31 + 22 * p.kick + zone + 9 * Math.min(3, s.pression) + (s.finDeMatch && s.score < 0 ? 10 : 0) - (s.finDeMatch && s.score > 0 ? 0 : 0);
+  }),
   G('SUPPORT_CARRIER', 'COMMIT', (s) => s.maPoss && s.phase === 'PORTE' && !s.aLeBallon && s.available && s.distBalle <= 30, (s, p) => 44 * (0.4 + 0.6 * p.ruck) * clamp01(1.1 - s.distBalle / 30)),
   G('BE_PASS_OPTION', 'COMMIT', (s) => s.maPoss && s.available && s.onside && (s.phase === 'PORTE' || s.phase === 'RUCK') && !s.aLeBallon, (s, p) => 46 * p.option),
   G('FORM_SCRUM_LEGALLY', 'COMMIT', (s) => s.phase === 'MELEE' && s.available, (s, p) => 80 * p.scrum),

@@ -256,6 +256,18 @@ function actPasse(vers) {
   };
 }
 ACTEURS.PASS_TO_10 = actPasse(10);
+// KICK_FOR_TERRITORY (A23) : le porteur DEMANDE le pied (intention `botte`), le moteur le frappe (portée, hors-jeu des
+// chasseurs, touche, réception). Type choisi selon SA zone : touche depuis ses 22, occupation dans son camp,
+// chandelle dans le camp adverse. Succès = coup de pied réellement parti (phase COUP_DE_PIED_JEU, ballon en l'air).
+const typePied = (c) => { const d = c.sens > 0 ? c.me.x : 100 - c.me.x; return d < 22 ? 'TOUCHE' : d < 50 ? 'OCCUPATION' : 'CHANDELLE'; };
+ACTEURS.KICK_FOR_TERRITORY = {
+  maxSeconds: 2,
+  startGuard: (c) => (!c.facts.HAS_BALL ? 'NOT_CARRIER' : !c.facts.SELF_ONSIDE ? 'OFFSIDE' : c.state.phase !== 'PORTE' ? 'NOT_OPEN_PLAY' : null),
+  intent: (c) => ({ tx: c.me.x, ty: c.me.y, vmaxFactor: 0.4, botte: typePied(c) }),
+  successGuard: (c) => c.state.phase === 'COUP_DE_PIED_JEU' && !!(c.state.ball && c.state.ball.state === 'AIR'),
+  failGuard: (c) => (c.state.phase === 'RUCK' || c.state.phase === 'MELEE' ? 'CARRIER_LOST_BALL' : null),
+  abortGuard: () => null,
+};
 // PASS_TO_POD / PASS_TO_OUTSIDE : le receveur est choisi dans le MONDE RÉEL au départ (le meilleur candidat
 // en retrait ou à hauteur, couloir libre, éloigné des adversaires) ; la suite est identique à PASS_TO_10.
 function actPasseChoisie(familles, dMax, ecartMin) {
@@ -459,6 +471,8 @@ const ACTIONS = Object.freeze([
     { meters: 'ballon', fatigue: 0.3, loss: 0, fault: 0.02, extra: 0.4 }, 'loi 10 : rester en jeu derrière le porteur', 'position au temps de la passe'),
   A('A15', 'HOLD_WIDTH', { SELF_AVAILABLE: true, SELF_ONSIDE: true }, { RECEIVER_OPEN: true },
     { fixed: 0.6, fatigue: 0.05, loss: 0, fault: 0.0 }, null, 'bande latérale tenue'),
+  A('A23', 'KICK_FOR_TERRITORY', { HAS_BALL: true, SELF_ONSIDE: true, SELF_GROUNDED: false }, { BALL_IN_FLIGHT: true, HAS_BALL: false },
+    { fixed: 0.9, fatigue: 0.1, loss: 0.35, fault: 0.02 }, 'loi 10/18 : pied légal, touche directe seulement des 22 m', 'coup de pied réel du moteur, ballon en vol'),
   // A16–A19 ne sont pas encore codées ; A20 est ajoutée avec son acteur physique (RM4-G11).
   A('A20', 'TACKLE_CARRIER', { SELF_AVAILABLE: true, SELF_ONSIDE: true, OPPONENT_POSSESSION: true }, { TRY_PREVENTED: true, BREAKDOWN_CONTEST_ACTIVE: true },
     { meters: 'ballon', fatigue: 0.35, loss: 0, fault: 0.08 }, 'loi 9/14 : plaquage légal, jamais hors-jeu', 'plaquage RÉUSSI compté par le moteur pour ce joueur'),
@@ -629,6 +643,7 @@ const BUTS_PLANIFIABLES = Object.freeze({
   SUPPORT_CARRIER: { SAFE_SUPPORT_LANE: true },
   BE_PASS_OPTION: { RECEIVER_OPEN: true },
   PREVENT_TRY: { TRY_PREVENTED: true },
+  GAIN_TERRITORY: { BALL_IN_FLIGHT: true },
 });
 
 // Appels que le joueur lance de lui-même selon son but (jamais un ordre).
@@ -1381,7 +1396,13 @@ const GOALS = Object.freeze([
     // Personne n'est à la base du ruck : le plus proche prend la distribution (même un 10 ou un 8).
     (s, p) => 78 * p.distribute + (s.distBalle <= 3 && !s.neufAuBallon ? (p.distribute >= 0.3 ? 20 : 10) : 0)),
   G('RETAIN_POSSESSION', 'COMMIT', (s) => s.aLeBallon && s.phase === 'PORTE', (s) => 62 + 8 * Math.min(3, s.pression) + (s.finDeMatch && s.score > 0 ? 12 : 0)),
-  G('GAIN_TERRITORY', 'OPPORTUNITY', (s) => s.aLeBallon && s.phase === 'PORTE', (s, p) => 50 + 25 * p.kick + (s.finDeMatch && s.score < 0 ? 12 : 0) - 8 * Math.min(3, s.pression)),
+  // Le pied est une décision de CONTEXTE : zone dangereuse (dégager), pression sans option de passe, fin de match.
+  // Zone = distance à MA ligne de but ; hypothèses d'ingénierie à calibrer.
+  G('GAIN_TERRITORY', 'OPPORTUNITY', (s) => s.aLeBallon && s.phase === 'PORTE', (s, p) => {
+    const dMaLigne = s.ball ? Math.abs(s.ball.lastSeen.x - (s.team === 'A' ? 0 : 100)) : 50;
+    const zone = dMaLigne < 22 ? 25 : dMaLigne < 50 ? 14 : dMaLigne > 78 ? -35 : -4;
+    return 31 + 22 * p.kick + zone + 9 * Math.min(3, s.pression) + (s.finDeMatch && s.score < 0 ? 10 : 0) - (s.finDeMatch && s.score > 0 ? 0 : 0);
+  }),
   G('SUPPORT_CARRIER', 'COMMIT', (s) => s.maPoss && s.phase === 'PORTE' && !s.aLeBallon && s.available && s.distBalle <= 30, (s, p) => 44 * (0.4 + 0.6 * p.ruck) * clamp01(1.1 - s.distBalle / 30)),
   G('BE_PASS_OPTION', 'COMMIT', (s) => s.maPoss && s.available && s.onside && (s.phase === 'PORTE' || s.phase === 'RUCK') && !s.aLeBallon, (s, p) => 46 * p.option),
   G('FORM_SCRUM_LEGALLY', 'COMMIT', (s) => s.phase === 'MELEE' && s.available, (s, p) => 80 * p.scrum),
@@ -1431,7 +1452,7 @@ function creerPiloteGOAP(options = {}) {
 function configGOAP(config, options) {
   // Rayon de contact du plaquage en mode GOAP : 3,5 m (mesuré : 2,2 m laissait passer le porteur entre deux défenseurs
   // espacés de 4 m ; 4 m supprimait presque tous les essais).
-  return Object.assign({ rayonPlaquage: 3.5 }, config || {}, { aiMode: 'GOAP', agentDriver: creerPiloteGOAP(options) });
+  return Object.assign({ rayonPlaquage: 3.5, pieds: 'AGENTS' }, config || {}, { aiMode: 'GOAP', agentDriver: creerPiloteGOAP(options) });
 }
 
 module.exports = { creerPiloteGOAP, configGOAP };

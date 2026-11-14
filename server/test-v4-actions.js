@@ -47,13 +47,13 @@ function plan(e, team, n, but, opts) {
   return { faits, resultat: planGoal(base, but, actions) };
 }
 
-test('catalogue : A01–A15 + A20 identiques au catalogue 05 (identifiants et noms), sans doublon', () => {
+test('catalogue : A01–A15 + A20 + A23 identiques au catalogue 05 (identifiants et noms), sans doublon', () => {
   const doc = fs.readFileSync(path.join(__dirname, '../docs/SIMULATION_V4/05_CATALOGUE_GOALS_ACTIONS.md'), 'utf8');
-  const lignes = [...doc.matchAll(/^\| (A(?:0[1-9]|1[0-5]|20)) \| `([A-Z0-9_]+)` \|/gm)].map((m) => [m[1], m[2]]);
-  assert.strictEqual(lignes.length, 16);
-  assert.deepStrictEqual(ACTIONS.map((a) => [a.id, a.name]), lignes);
-  assert.strictEqual(new Set(ACTIONS.map((a) => a.id)).size, 16);
-  assert.strictEqual(new Set(ACTIONS.map((a) => a.name)).size, 16);
+  const lignes = [...doc.matchAll(/^\| (A(?:0[1-9]|1[0-5]|20|23)) \| `([A-Z0-9_]+)` \|/gm)].map((m) => [m[1], m[2]]);
+  assert.strictEqual(lignes.length, 17);
+  assert.deepStrictEqual(ACTIONS.map((a) => [a.id, a.name]).sort((x, y) => x[0].localeCompare(y[0])), lignes);
+  assert.strictEqual(new Set(ACTIONS.map((a) => a.id)).size, 17);
+  assert.strictEqual(new Set(ACTIONS.map((a) => a.name)).size, 17);
 });
 
 test('intégrité : faits canoniques seulement, effets non vides, aucun conflit après application', () => {

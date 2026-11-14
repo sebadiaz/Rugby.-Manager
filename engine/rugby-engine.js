@@ -1110,6 +1110,8 @@
       // espacée de 4 m laisse sinon passer le porteur entre deux défenseurs sans contact.
       this._rayonPlaquage = (this.aiMode === 'GOAP' && config.rayonPlaquage > 0) ? config.rayonPlaquage : null;
       this._pilote = null;
+      // En GOAP, `config.pieds === 'AGENTS'` : seuls les agents décident de botter en jeu courant (A23).
+      this._piedAgents = this.aiMode === 'GOAP' && config.pieds === 'AGENTS';
       // === AGENT_INTENTS_END
       // Tactique PAR ÉQUIPE (Mode Club) : `config.attaqueA/attaqueB` et
       // `config.defenseA/defenseB`, fusionnés par-dessus this.cfg.attaque/
@@ -2576,6 +2578,8 @@
         this._typeCoupDePiedForce = null;
         action = 'RUN';
       }
+      if (action === 'KICK' && this._piedAgents && !this._pieddemande) { this._typeCoupDePiedForce = null; action = 'RUN'; } // le pied est une décision d'AGENT
+      this._pieddemande = false;
       if (action === 'KICK') { this._executerCoupDePiedJeu(porteur); return; }
       if (distDef >= 2.2 && (action === 'PASS' || action === 'JEU_LARGE') && this._tenterPasse(porteur, action === 'JEU_LARGE')) return;
 
@@ -3599,6 +3603,13 @@
       if (porteur._percussion > 0) return 'RUN';
       // Demande de passe d'un AGENT (RM4-G12) : le moteur tente la passe vers le receveur désigné
       // (légalité, couloir et interception résolus comme pour toute passe). Expire après 1,5 s.
+      const demPied = this._botteDemandee;
+      if (demPied) {
+        this._botteDemandee = null;
+        if (this.tempsMatch - demPied.t <= 1.5 && demPied.equipe === porteur.team && demPied.de === porteur.numero) {
+          this._typeCoupDePiedForce = demPied.type; this._pieddemande = true; return 'KICK';
+        }
+      }
       const dem = this._passeDemandee;
       if (dem) {
         if (this.tempsMatch - dem.t > 1.5 || dem.equipe !== porteur.team || dem.de !== porteur.numero) this._passeDemandee = null;
@@ -8513,8 +8524,10 @@
       const f = intention.vmaxFactor == null ? 1 : intention.vmaxFactor;
       if (!(f > 0 && f <= 1)) return false;
       if (!this._intentionsAgents) this._intentionsAgents = new Map();
+      const TYPES_PIED = ['TOUCHE', 'DEGAGEMENT', 'OCCUPATION', 'CHANDELLE', 'CHIP'];
+      const botte = TYPES_PIED.includes(intention.botte) ? intention.botte : null;
       const passe = Number.isInteger(intention.passe) && intention.passe >= 1 && intention.passe <= 15 ? intention.passe : null;
-      this._intentionsAgents.set(equipe + numero, { equipe, numero, tx: intention.tx, ty: intention.ty, vmaxFactor: f, passe });
+      this._intentionsAgents.set(equipe + numero, { equipe, numero, tx: intention.tx, ty: intention.ty, vmaxFactor: f, passe, botte });
       return true;
     }
     clearAgentIntent(equipe, numero) {
@@ -8540,6 +8553,9 @@
         avancer(j, p.it.tx - j.x, p.it.ty - j.y, dt, vitesseMs(j) * p.it.vmaxFactor);
         // Demande de passe d'un agent : valable seulement pour le PORTEUR ; le moteur décide seul si la passe
         // est possible, légale, interceptée ou réussie (aucun résultat n'est écrit par l'agent).
+        if (p.it.botte && this.porteur === j && !this._botteDemandee) {
+          this._botteDemandee = { equipe: j.team, de: j.numero, type: p.it.botte, t: this.tempsMatch };
+        }
         if (p.it.passe && this.porteur === j && !this._passeDemandee) {
           this._passeDemandee = { equipe: j.team, de: j.numero, vers: p.it.passe, t: this.tempsMatch };
         }

@@ -41,6 +41,7 @@ const BUTS_PLANIFIABLES = Object.freeze({
   SUPPORT_CARRIER: { SAFE_SUPPORT_LANE: true },
   BE_PASS_OPTION: { RECEIVER_OPEN: true },
   PREVENT_TRY: { TRY_PREVENTED: true },
+  GAIN_TERRITORY: { BALL_IN_FLIGHT: true },
 });
 
 // Appels que le joueur lance de lui-même selon son but (jamais un ordre).
