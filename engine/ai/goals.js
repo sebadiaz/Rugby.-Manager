@@ -94,7 +94,7 @@ const GOALS = Object.freeze([
   // L'arrière (profil cover >= 0,9) garde sa profondeur même quand son équipe attaque (menace de pied).
   G('COVER_BACKFIELD', 'COMMIT', (s, p) => s.available && s.onside && s.danger < 0.35 && (s.advPoss || s.enVol || (s.maPoss && p.cover >= 0.9)),
     (s, p) => (s.advPoss || s.enVol ? 60 : 38) * p.cover),
-  G('DEFEND', 'COMMIT', (s) => s.available && s.onside && s.advPoss && !REGROUPEMENTS.has(s.phase), (s, p) => 50 + 10 * clamp01(1 - s.distBalle / 40) - 25 * p.fatigue),
+  G('DEFEND', 'COMMIT', (s) => s.available && s.onside && s.advPoss && (!REGROUPEMENTS.has(s.phase) || s.phase === 'RUCK'), (s, p) => (s.phase === 'RUCK' ? 34 : 50) + 10 * clamp01(1 - s.distBalle / 40) - 25 * p.fatigue),
   G('CONTEST_BREAKDOWN', 'OPPORTUNITY', (s) => s.phase === 'RUCK' && s.advPoss && s.available && s.onside, (s, p) => 62 * p.contest - 18 * Math.min(2, s.partenairesPlusPres) - 20 * p.fatigue),
   G('SECURE_RUCK', 'COMMIT', (s) => s.phase === 'RUCK' && s.maPoss && s.available && s.onside, (s, p) => 66 * p.ruck - 18 * Math.min(2, s.partenairesPlusPres) - 20 * p.fatigue),
   G('DISTRIBUTE_BALL', 'COMMIT', (s, profile) => (s.phase === 'RUCK' && s.maPoss && s.available && s.onside && s.distBalle <= 6 && !s.neufAuBallon) || (s.aLeBallon && s.phase === 'PORTE' && (s.pression > 0 || (profile.distribute ?? 0) >= 0.3)),

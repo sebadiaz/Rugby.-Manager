@@ -40,7 +40,8 @@ function candidatsDefense(b, s, pb, profile) {
   const ligneX = arretee ? P.ligneDefensive(sens, bal, pb) : P.clamp(bal.x - sens * 3, 0, 100);
   const ref = { x: num === 15 ? P.referenceDefense(num, sens, bal, pb).x : ligneX, y: P.referenceDefense(num, sens, bal, pb).y };
   // HOLD_LINE : aligné sur les voisins observés, jamais en avance sur eux (on retient sa montée).
-  const voisins = voisinsDeLigne(b, ligneX, sens).filter((v) => Math.abs(v.y - ref.y) <= 15);
+  // Au ruck la ligne couvre TOUTE la largeur : un trou n'importe où doit être comblé, par celui que je vois le mieux placé.
+  const voisins = voisinsDeLigne(b, ligneX, sens).filter((v) => arretee || Math.abs(v.y - ref.y) <= 15);
   const xVoisins = voisins.length ? voisins.map((v) => v.x).sort((a, c) => a - c)[Math.floor(voisins.length / 2)] : ligneX;
   // On monte ENSEMBLE : jamais plus de 3 m devant ses voisins observés (1 m sur phase arrêtée). Avec 1 m en jeu
   // courant, une ligne en retard retenait tout le monde et le porteur gagnait 20 m sans opposition.
@@ -50,18 +51,19 @@ function candidatsDefense(b, s, pb, profile) {
   const yTenu = arretee ? ref.y : ref.y + (bal.y - ref.y) * 0.6;
   out.push({ id: 'HOLD_LINE', priority: 60, target: { x: xTenu, y: yTenu }, vmax: Math.abs(bal.y - ref.y) <= 15 ? 1 : 0.85, reason: 'ligne alignée sur ' + voisins.length + ' voisin(s) observé(s)' });
   // CLOSE_GAP : plus grand intervalle observé près de moi, si je suis le mieux placé parmi ceux que je vois.
-  const ligne = voisins.concat([{ id: 'moi', x: me.x, y: me.y, numero: num }]).sort((a, c) => a.y - c.y);
+  const bords = arretee ? [{ id: 'touche0', x: ligneX, y: 0, numero: 0 }, { id: 'touche70', x: ligneX, y: P.LARGEUR, numero: 0 }] : [];
+  const ligne = voisins.concat(bords, [{ id: 'moi', x: me.x, y: me.y, numero: num }]).sort((a, c) => a.y - c.y);
   let meilleur = null;
   for (let i = 0; i + 1 < ligne.length; i++) {
     const g = ligne[i + 1].y - ligne[i].y;
-    if (g > GAP_MIN) {
+    if (g > (arretee ? 12 : GAP_MIN)) {
       const centre = { x: ligneX, y: (ligne[i].y + ligne[i + 1].y) / 2 };
       const dMoi = P.dist(me, centre);
       const plusProche = Object.values(b.teammates).every((m) => P.dist(m.lastSeen, centre) >= dMoi - 0.01);
       if (plusProche && (!meilleur || g > meilleur.g)) meilleur = { g, centre };
     }
   }
-  if (meilleur) out.push({ id: 'CLOSE_GAP', priority: Math.min(85, 62 + (meilleur.g - GAP_MIN) * 3), target: meilleur.centre, vmax: 1, reason: 'intervalle de ' + meilleur.g.toFixed(1) + ' m, je suis le plus proche' });
+  if (meilleur) out.push({ id: 'CLOSE_GAP', priority: Math.min(88, (arretee ? 74 : 62) + (meilleur.g - GAP_MIN) * 2), target: meilleur.centre, vmax: 1, reason: 'intervalle de ' + meilleur.g.toFixed(1) + ' m, je suis le plus proche' });
   // MARK_OPPONENT : adversaire observé menaçant dans mon canal, sans partenaire visiblement plus proche.
   const menaces = Object.entries(b.opponents).filter(([, o]) => o.confidence >= 0.3 && o.threat > 0.15 && Math.abs(o.lastSeen.y - ref.y) <= 10 && P.dist(o.lastSeen, me) <= 14)
     .sort((a, c) => c[1].threat - a[1].threat || a[0].localeCompare(c[0], 'en'));
