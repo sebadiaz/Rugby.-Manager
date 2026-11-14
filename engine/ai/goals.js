@@ -77,7 +77,7 @@ function deriveSituation(b) {
   const pression = Object.values(b.opponents).filter((o) => o.age <= 1 && dist(o.lastSeen, self) <= 5).length;
   const score = b.score ? (team === 'A' ? b.score.A - b.score.B : b.score.B - b.score.A) : 0;
   const finDeMatch = b.t > 4800 * 0.8;
-  return { team, sens, phase, ball, maPoss, advPoss, pt, onside, distBalle, aLeBallon, danger,
+  return { t: b.t, numero: b.agent.numero, team, sens, phase, ball, maPoss, advPoss, pt, onside, distBalle, aLeBallon, danger,
     partenairesPlusPres, neufAuBallon, pression, score, finDeMatch, grounded: self.grounded, available: self.available,
     enVol: !!(ball && ball.state === 'AIR') || phase === 'COUP_DE_PIED_JEU' };
 }
@@ -106,7 +106,10 @@ const GOALS = Object.freeze([
   G('GAIN_TERRITORY', 'OPPORTUNITY', (s) => s.aLeBallon && s.phase === 'PORTE', (s, p) => {
     const dMaLigne = s.ball ? Math.abs(s.ball.lastSeen.x - (s.team === 'A' ? 0 : 100)) : 50;
     const zone = dMaLigne < 22 ? 25 : dMaLigne < 50 ? 14 : dMaLigne > 78 ? -35 : -4;
-    return 31 + 22 * p.kick + zone + 9 * Math.min(3, s.pression) + (s.finDeMatch && s.score < 0 ? 10 : 0) - (s.finDeMatch && s.score > 0 ? 0 : 0);
+    // Fluctuation INDIVIDUELLE déterministe (±4) : un même joueur ne bote pas à chaque fois dans la même situation ;
+    // elle adoucit le seuil de décision (sans Math.random : fonction du joueur et du temps de match).
+    const bruit = ((s.numero * 37 + Math.floor(s.t * 2) * 101) % 17 - 8) * 0.5;
+    return 31 + bruit + 22 * p.kick + zone + 9 * Math.min(3, s.pression) + (s.finDeMatch && s.score < 0 ? 10 : 0) - (s.finDeMatch && s.score > 0 ? 0 : 0);
   }),
   G('SUPPORT_CARRIER', 'COMMIT', (s) => s.maPoss && s.phase === 'PORTE' && !s.aLeBallon && s.available && s.distBalle <= 30, (s, p) => 44 * (0.4 + 0.6 * p.ruck) * clamp01(1.1 - s.distBalle / 30)),
   G('BE_PASS_OPTION', 'COMMIT', (s) => s.maPoss && s.available && s.onside && (s.phase === 'PORTE' || s.phase === 'RUCK') && !s.aLeBallon, (s, p) => 46 * p.option),
