@@ -7546,6 +7546,26 @@
     // Renvoie true quand tous les joueurs concernés ont rejoint leur place
     // (la défense sur sa ligne d'en-but, l'attaque derrière le ballon), ce qui
     // permet d'armer la frappe et de les figer ensuite.
+    // Répartit des joueurs sur UNE LIGNE (x fixe) en largeur, sans croisement : chacun garde son ordre latéral
+    // (trié par y) et prend un créneau régulier ; les créneaux du couloir du tir (autour des poteaux, y = 35)
+    // sont repoussés de part et d'autre. Tout se fait à la course (avancer), jamais de téléportation.
+    // Renvoie l'écart maximal restant (m). (Avant : tout le monde courait en x en gardant son y, donc se
+    // retrouvait groupé au centre, sous les poteaux, là où le ballon vole.)
+    _repartirSurLigne(joueurs, x, dt, vmaxFacteur, demiCouloir) {
+      const liste = joueurs.filter(j => j.sinBin <= 0).sort((a, b) => a.y - b.y || a.numero - b.numero);
+      const n = liste.length;
+      if (!n) return 0;
+      const centre = LARGEUR / 2, hc = demiCouloir == null ? 4.5 : demiCouloir;
+      let pire = 0;
+      liste.forEach((j, i) => {
+        let ty = n === 1 ? centre : 3 + i * ((LARGEUR - 6) / (n - 1));
+        if (Math.abs(ty - centre) < hc) ty = ty < centre ? centre - hc : centre + hc;
+        avancer(j, x - j.x, ty - j.y, dt, vitesseMs(j) * vmaxFacteur);
+        pire = Math.max(pire, Math.hypot(j.x - x, j.y - ty));
+      });
+      return pire;
+    }
+
     _transformationPlacerJoueurs(dt) {
       const sens = this.essaiEquipe === 'A' ? 1 : -1;
       const equipeAttaque = this.essaiEquipe === 'A' ? this.equipeA : this.equipeB;
@@ -7558,16 +7578,10 @@
       const xAttaque = Math.max(0, Math.min(LONGUEUR, this.essaiX - sens * (recul + 5)));
       const teeY = this.essaiY;
       let pireEcart = 0;
-      for (const j of equipeDefense) {
-        if (j.sinBin > 0) continue;
-        avancer(j, ligneDefense - j.x, 0, dt, vitesseMs(j) * 0.8);
-        pireEcart = Math.max(pireEcart, Math.abs(j.x - ligneDefense));
-      }
-      for (const j of equipeAttaque) {
-        if (j.sinBin > 0 || j === this.porteur || j === buteur) continue;
-        avancer(j, xAttaque - j.x, 0, dt, vitesseMs(j) * 0.8);
-        pireEcart = Math.max(pireEcart, Math.abs(j.x - xAttaque));
-      }
+      // Défense : étalée sur la ligne d'en-but (hors du couloir du tir, pas groupée sous les poteaux) ;
+      // l'équipe qui a marqué : étalée derrière le tee, prête à suivre la frappe ou le coup d'envoi.
+      pireEcart = Math.max(pireEcart, this._repartirSurLigne(equipeDefense, ligneDefense, dt, 0.8));
+      pireEcart = Math.max(pireEcart, this._repartirSurLigne(equipeAttaque.filter(j => j !== this.porteur && j !== buteur), xAttaque, dt, 0.8, 0));
       // Le buteur COURT jusqu'au tee (dans l'axe de l'essai, ~10 m en retrait), à
       // pleine vitesse, dès la célébration de l'essai (la fonction est appelée
       // pendant ESSAI puis TRANSFORMATION) : il a tout le temps d'y arriver et
@@ -7687,16 +7701,8 @@
       const ligneDefense = sens > 0 ? LONGUEUR : 0;
       const xAttaque = Math.max(0, Math.min(LONGUEUR, this.positionTir.x - sens * 15));
       let pireEcart = 0;
-      for (const j of equipeDefense) {
-        if (j.sinBin > 0) continue;
-        avancer(j, ligneDefense - j.x, 0, dt, vitesseMs(j) * 0.8);
-        pireEcart = Math.max(pireEcart, Math.abs(j.x - ligneDefense));
-      }
-      for (const j of equipeAttaque) {
-        if (j.sinBin > 0 || j === this.porteur) continue;
-        avancer(j, xAttaque - j.x, 0, dt, vitesseMs(j) * 0.8);
-        pireEcart = Math.max(pireEcart, Math.abs(j.x - xAttaque));
-      }
+      pireEcart = Math.max(pireEcart, this._repartirSurLigne(equipeDefense, ligneDefense, dt, 0.8));
+      pireEcart = Math.max(pireEcart, this._repartirSurLigne(equipeAttaque.filter(j => j !== this.porteur), xAttaque, dt, 0.8, 0));
       // Le buteur COURT jusqu'au tee (point de pénalité), à pleine vitesse — il
       // n'y est jamais téléporté. Sa présence sur le tee fait partie des
       // conditions de « tous en place » avant d'armer la frappe.
