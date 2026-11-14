@@ -76,7 +76,12 @@ function observe(state, agent, params) {
   for (const j of tous) {
     if (j === moi) continue;
     if (!p.omniscient && !dansLeChamp(moi, j, p)) continue;
-    const entree = { x: j.x, y: j.y, numero: j.numero };
+    const vitesse = j.vitesseCourante || 0;
+    const entree = {
+      x: j.x, y: j.y, numero: j.numero,
+      vx: vitesse * Math.cos(j.orientation || 0), vy: vitesse * Math.sin(j.orientation || 0),
+      available: !(j.auSol > 0) && !(j.sinBin > 0), kickOffside: j.horsJeuKick > 0,
+    };
     (j.team === moi.team ? vus.teammates : vus.opponents)[id(j)] = entree;
   }
   const b = state.ball || state.ballon;

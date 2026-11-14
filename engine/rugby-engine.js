@@ -2537,7 +2537,8 @@
       // Sans défenseur disponible, on retombe d'abord sur ceux qui sont en jeu :
       // à 2 m de l'en-but, une pénalité jouée vite met toute la défense
       // hors-jeu, et la liste complète désignait un fautif comme plaqueur.
-      const defDisponibles = def.filter(j => j.ruckRecovery <= 0 && !(j.horsJeuKick > 0));
+      const defDisponibles = def.filter(j => j.ruckRecovery <= 0 && !(j.horsJeuKick > 0)
+        && (this.aiMode !== 'GOAP' || (j.auSol <= 0 && j.missCooldown <= 0 && (j.fixeCooldown || 0) <= 0)));
       const defEnJeu = def.filter(j => !(j.horsJeuKick > 0));
       const { joueur: defenseurProche, distance: distDef } = joueurLePlusProche(
         defDisponibles.length > 0 ? defDisponibles : defEnJeu.length > 0 ? defEnJeu : def, porteur.x, porteur.y
@@ -2577,7 +2578,8 @@
         action = 'RUN';
       }
       if (action === 'KICK') { this._executerCoupDePiedJeu(porteur); return; }
-      if (distDef >= 2.2 && (action === 'PASS' || action === 'JEU_LARGE') && this._tenterPasse(porteur, action === 'JEU_LARGE')) return;
+      if (distDef >= 2.2 && (action === 'PASS' || action === 'JEU_LARGE' || action === 'PASS_AGENT')
+        && this._tenterPasse(porteur, action === 'JEU_LARGE', action === 'PASS_AGENT' ? this._intentionsAgents.get(porteur.team + porteur.numero).jeu.vers : null)) return;
 
       // Plaquage / contact : résolu AVANT le déplacement de ce tick, sur la
       // base de la distance déjà mesurée. Sinon, un porteur déjà à portée de
@@ -2589,7 +2591,7 @@
       // conséquence : il serait rejoué jusqu'à réussite quelques dixièmes de
       // seconde plus tard).
       if (!ballonEnVolPasse && distDef < (this._rayonPlaquage || 2.2) && defenseurProche.missCooldown <= 0 && (defenseurProche.fixeCooldown || 0) <= 0
-          && !(defenseurProche.horsJeuKick > 0)) {
+          && !(defenseurProche.horsJeuKick > 0) && (this.aiMode !== 'GOAP' || defenseurProche.auSol <= 0)) {
         const att0 = this.attaquants();
         this._compterCourse(porteur);
         this.stats[defenseurProche.team].tacklesAttempted++;
@@ -3021,6 +3023,9 @@
       // "gratuitement" faute de defense laterale credible ; ce n'est plus le cas.
       if (porteur.y < 1.5) evite = Math.abs(evite);
       else if (porteur.y > LARGEUR - 1.5) evite = -Math.abs(evite);
+      if (action === 'RUN_AGENT' && !(porteur._croiseTimer > 0) && porteur.y > 3 && porteur.y < LARGEUR - 3) {
+        evite = this._intentionsAgents.get(porteur.team + porteur.numero).jeu.decalage ?? evite;
+      }
       const xAvantCourse = porteur.x;
       avancer(porteur, dx, evite, dt, vitesseMs(porteur));
       // Mètres gagnés : le terrain pris AU-DELÀ du point le plus avancé de la
@@ -3619,6 +3624,15 @@
         if (veutFinir) { this._typeCoupDePiedForce = 'TOUCHE'; return 'KICK'; }
       }
 
+      // Intention du porteur pour ce tick. Une cible disparue, devant ou
+      // hors de portée ne peut pas être remplacée silencieusement par un autre joueur.
+      const jeu = this._intentionsAgents?.get(porteur.team + porteur.numero)?.jeu;
+      if (jeu && porteur.auSol <= 0 && !(porteur.horsJeuKick > 0) && !this._sonnerie && this._chandelleBaseA == null && (!this._neufLibre || this.timerPhase >= 0.15)) {
+        if (jeu.action === 'RUN') return 'RUN_AGENT';
+        if (jeu.action === 'KICK' && distDef >= 2.2) { this._typeCoupDePiedForce = jeu.type; return 'KICK'; }
+        if (jeu.action === 'PASS' && !(porteur._enchaine > 0) && distDef >= (this._rayonPlaquage || 2.2) && att.some(j => this._receveurAgentValide(porteur, j, jeu.vers))) return 'PASS_AGENT';
+      }
+
       // 0. DEMI DE MÊLÉE LIBRE à la sortie (ruck/mêlée/touche où il n'était pas
       // au contact) : en plus du lancement classique 9→10 et du jeu au pied déjà
       // gérés plus bas (sections 1 et 2b, calibrés), on ajoute ici les deux seules
@@ -4084,7 +4098,12 @@
       return this.rng() < p;
     }
 
-    _tenterPasse(porteur, jeuLarge) {
+    _receveurAgentValide(porteur, j, numero) {
+      return j.numero === numero && j !== porteur && j.auSol === 0 && j.sinBin <= 0 && !(j.horsJeuKick > 0)
+        && (j.x - porteur.x) * porteur.sensAttaque <= 0.3 && distance(j, porteur) <= 25;
+    }
+
+    _tenterPasse(porteur, jeuLarge, numeroAgent = null) {
       const att = this.attaquants();
       // Rayon de recherche du destinataire : un jeu au large vise précisément
       // un ailier/arrière qui tient son couloir à 20-30 m du regroupement, le
@@ -4093,7 +4112,9 @@
       // Rayon du jeu au large ramené de 45 à 28 m : une passe de 30-45 m
       // n'existe pas (sauf coup de pied) — même la sautée reste sous ~20 m.
       const rayon = jeuLarge ? 28 : 25;
-      let candidats = att.filter(j => j !== porteur && j.auSol === 0 && distance(j, porteur) <= rayon);
+      let candidats = numeroAgent == null
+        ? att.filter(j => j !== porteur && j.auSol === 0 && distance(j, porteur) <= rayon)
+        : att.filter(j => this._receveurAgentValide(porteur, j, numeroAgent));
       if (jeuLarge) candidats = candidats.filter(j => j.tendance <= 50);
       // Un vrai joueur ne cherche pas un soutien placé devant lui dans le sens
       // d'attaque : il sait que ce serait une passe en avant, donc il regarde
@@ -4305,7 +4326,7 @@
         // quasi toujours déjà à portée du 10 à la réception, sans la moindre
         // fenêtre pour relayer — 54 % de ces séquences restaient à moins de 5 m
         // de large. Le 9 doit fixer comme n'importe quel passeur.
-        if (porteur.numero >= 9) {
+        if (porteur.numero >= 9 && numeroAgent == null) {
           const sens = porteur.sensAttaque;
           let fixe = null, dmin = 4.6;
           for (const d of this.defenseurs()) {
@@ -4324,7 +4345,7 @@
         // grace aux champs structures ci-dessous.
         this.log(jeuLarge ? 'JEU_LARGE' : 'PASSE', this.possession,
           `${jeuLarge ? 'Jeu au large' : 'Passe'} du n°${porteur.numero} au n°${cible.numero}, equipe ${this.possession}`,
-          { de: porteur.numero, vers: cible.numero });
+          { de: porteur.numero, vers: cible.numero, ...(numeroAgent == null ? {} : { ia: true }) });
         this._lancerPasseVisuelle(porteur, cible);
         // Fenêtre d'enchaînement : le receveur a ~0,9 s pendant lesquelles il
         // relâche volontiers le ballon au suivant (le mouvement continue).
@@ -8502,19 +8523,27 @@
     // un essai, une transformation, une pénalité au but ou la mi-temps.
     // === AGENT_INTENTS_BEGIN — Intentions de mouvement d'AGENTS individuels (RM4-G07).
     // API OPT-IN pour la couche IA : sans appel à setAgentIntent, le moteur se joue
-    // exactement comme avant. Une intention ne porte QUE sur le déplacement d'UN
-    // joueur (cible x,y, fraction de sa vitesse maximale) ; elle passe par avancer()
-    // (accélération, vitesse maximale, contournement des regroupements). Elle ne
-    // peut écrire ni le porteur, ni le point de ruck, ni la possession, ni le score,
-    // ni une position hors de ces bornes : le moteur reste seul juge des lois.
+    // exactement comme avant. Chaque intention appartient à un seul joueur.
+    // Un déplacement passe par avancer(). Seul le porteur en jeu peut proposer
+    // une passe, une course ou un coup de pied ; le moteur résout le geste.
     setAgentIntent(equipe, numero, intention) {
       if ((equipe !== 'A' && equipe !== 'B') || !(numero >= 1 && numero <= 15)) return false;
-      if (!intention || !Number.isFinite(intention.tx) || !Number.isFinite(intention.ty)) return false;
+      if (!intention) return false;
+      const mouvement = Number.isFinite(intention.tx) && Number.isFinite(intention.ty);
+      const demande = intention.jeu;
+      const jeu = this.aiMode === 'GOAP' && demande && (
+        demande.action === 'RUN'
+        || (demande.action === 'PASS' && Number.isInteger(demande.vers) && demande.vers >= 1 && demande.vers <= 15)
+        || (demande.action === 'KICK' && ['TOUCHE', 'DEGAGEMENT'].includes(demande.type))
+      ) ? { action: demande.action, vers: demande.vers, type: demande.type,
+        decalage: Number.isFinite(demande.decalage) ? Math.max(-3, Math.min(3, demande.decalage)) : null,
+      } : null;
+      if (!mouvement && !jeu) return false;
       const f = intention.vmaxFactor == null ? 1 : intention.vmaxFactor;
       if (!(f > 0 && f <= 1)) return false;
       if (!this._intentionsAgents) this._intentionsAgents = new Map();
       const passe = Number.isInteger(intention.passe) && intention.passe >= 1 && intention.passe <= 15 ? intention.passe : null;
-      this._intentionsAgents.set(equipe + numero, { equipe, numero, tx: intention.tx, ty: intention.ty, vmaxFactor: f, passe });
+      this._intentionsAgents.set(equipe + numero, { equipe, numero, tx: intention.tx, ty: intention.ty, vmaxFactor: f, passe, mouvement, jeuCourant: intention.jeuCourant === true, jeu });
       return true;
     }
     clearAgentIntent(equipe, numero) {
@@ -8525,7 +8554,8 @@
       for (const cle of [...this._intentionsAgents.keys()].sort()) {
         const it = this._intentionsAgents.get(cle);
         const j = (it.equipe === 'A' ? this.equipeA : this.equipeB).find((x) => x.numero === it.numero);
-        if (!j || j.auSol > 0 || j.sinBin > 0) continue; // un joueur au sol ou exclu ne se déplace pas
+        if (!it.mouvement || !j || j.auSol > 0 || j.sinBin > 0) continue;
+        if (it.jeuCourant && (this.phase !== 'PORTE' || this.penaliteRecul || j.horsJeuKick > 0)) continue;
         out.push({ it, j, x: j.x, y: j.y, v: j.vitesseCourante, o: j.orientation, ab: j._aBouge });
       }
       return out;
@@ -8534,6 +8564,7 @@
       for (const p of pilotes) {
         const j = p.j;
         if (j.auSol > 0 || j.sinBin > 0) continue; // devenu inactif pendant le tick
+        if (p.it.jeuCourant && (this.phase !== 'PORTE' || this.penaliteRecul || j.horsJeuKick > 0)) continue;
         // Le joueur piloté n'obéit plus à la logique de phase pour son déplacement :
         // on rétablit son état d'avant le tick, puis il avance de SON intention.
         j.x = p.x; j.y = p.y; j.vitesseCourante = p.v; j.orientation = p.o; j._aBouge = p.ab;
@@ -8677,6 +8708,28 @@
       const ballonX = enVol || auSolLoose ? this.ballonVolX : enPasse ? passeX : enPhaseStatique ? ballonPhaseX : this.porteur.x;
       const ballonY = enVol || auSolLoose ? this.ballonVolY : enPasse ? passeY : enPhaseStatique ? ballonPhaseY : this.porteur.y;
       return { enVol, auSolLoose, bvx, bvy, passeX, passeY, passeH, enPasse, ballonPhaseX, ballonPhaseY, enPhaseStatique, ballonX, ballonY };
+    }
+
+    // Vue du tick pour les agents : pas de copies de l'historique ni de la
+    // feuille de match intégrale. Le pilote la lit avant la physique.
+    getAgentState() {
+      const { enVol, auSolLoose, enPasse, enPhaseStatique, ballonX, ballonY } = this._positionBallonCalculee();
+      const carrier = !(enVol || auSolLoose || enPasse || enPhaseStatique) ? this.porteur : null;
+      const ruck = this.phase === 'RUCK' ? {
+        x: this.ruckPoint.x, y: this.ruckPoint.y,
+        ballAvailable: this.timerPhase >= 1.2,
+        attackersCommitted: [...this.equipeA, ...this.equipeB]
+          .filter(j => j.team === this.possession && j !== this.porteur && distance(j, this.ruckPoint) < 8).length,
+        defendersCommitted: [...this.equipeA, ...this.equipeB]
+          .filter(j => j.team !== this.possession && j.auSol === 0 && distance(j, this.ruckPoint) < 8).length,
+      } : null;
+      return {
+        equipeA: this.equipeA, equipeB: this.equipeB,
+        ball: { x: ballonX, y: ballonY, state: enPasse ? 'AIR' : this._etatBallon(),
+          carrierTeam: carrier?.team ?? null, carrierNumber: carrier?.numero ?? null },
+        tempsMatch: this.tempsMatch, phase: this.phase, possession: this.possession, score: this.score,
+        melee: this.melee, maul: this.maul, ruck, statsJoueurs: this.statsJoueurs,
+      };
     }
 
     getState() {

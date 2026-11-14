@@ -28,6 +28,7 @@ const { factsFromBeliefs, buildPlannerActions, feasibleActions } = require('./ac
 const { deriveSituation, profilePour } = require('./goals.js');
 const { PAR_NOM } = require('./actions.js');
 const { individualPlacement } = require('./individual-placement.js');
+const { lirePorteur } = require('./open-play.js');
 
 // Condition de succès (faits désirés) de chaque but planifiable. Les autres
 // buts (DEFEND, COVER_BACKFIELD...) n'ont pas encore d'actions A16+ : le but est
@@ -76,6 +77,9 @@ class GoalBasedRugbyAgent {
     this._intent = null; this._beliefs = null; this._sit = null;
     this.usePlacement = options.placement === true; // opt-in : le placement individuel conduit le joueur hors plan
     this.placement = null;
+    this.openPlay = options.openPlay === true;
+    this.carrierDecision = null;
+    this.wasCarrier = false;
     this.placementScope = options.placementScope || 'all'; // 'all' | 'defense' | 'attack' : quelles situations le placement conduit
     this.maxExpanded = options.maxExpanded ?? 128;
     this.lastExpansions = 0;
@@ -148,8 +152,11 @@ class GoalBasedRugbyAgent {
       const cle = h.from + ':' + h.kind + ':' + (t - h.age).toFixed(2);
       if (!this.heardSeen.has(cle)) { this.heardSeen.add(cle); appelNouveau = true; }
     }
+    const reception = this.openPlay && sit.aLeBallon && !this.wasCarrier;
+    this.wasCarrier = sit.aLeBallon;
+    if (!sit.aLeBallon) this.carrierDecision = null;
     const cle = beliefs.phase + '|' + beliefs.possession;
-    const urgent = (this.lastKey !== null && cle !== this.lastKey) || appelNouveau || this._forceDecision;
+    const urgent = (this.lastKey !== null && cle !== this.lastKey) || reception || appelNouveau || this._forceDecision;
     this.lastKey = cle;
 
     // MONITOR de l'action en cours (chaque tick, sur le monde réel)
@@ -178,7 +185,9 @@ class GoalBasedRugbyAgent {
     const due = this.lastDecisionT === null || this._forceDecision || urgent || t - this.lastDecisionT >= this.decisionPeriod - 1e-9;
     if (due) {
       const dejaUrgent = this.pending ? this.pending.urgent : false;
-      this.pending = { since: this.pending ? this.pending.since : t, urgent: dejaUrgent || urgent || this._forceDecision || this.lastDecisionT === null };
+      this.pending = { since: this.pending ? this.pending.since : t,
+        urgent: dejaUrgent || urgent || this._forceDecision || this.lastDecisionT === null,
+        reception: sit.aLeBallon && (reception || this.pending?.reception === true) };
     }
     return this.pending;
   }
@@ -217,13 +226,17 @@ class GoalBasedRugbyAgent {
       if (this.executor.busy && !plaquageEnCours && !passeEnCours) { for (const e of this.executor.cancel(state, 'GOAL_CHANGED').events) this.events.push(e); this._intent = null; }
       this.plan = null;
     }
-    if (this.usePlacement) {
-      this.placement = individualPlacement(beliefs, this.goal, this.playbook, this.profile);
-      if (this.placement) this._push('PLACEMENT_CHOSEN', t, { goal: this.goal, placement: this.placement.placementGoal, target: this.placement.target });
+    if (this.openPlay) {
+      this.carrierDecision = lirePorteur(beliefs, sit, this.profile, this.playbook);
+      if (this.carrierDecision) this._push('OPEN_PLAY_CHOSEN', t, { goal: this.goal, ...this.carrierDecision });
     }
-    const faits = this._faits(beliefs, sit);
-    if (!this.plan) { const r = this.replanRaison || 'NEW'; this.replanRaison = null; this._planifier(beliefs, sit, r); }
-    else if (!this.executor.busy && !this._etapeValide(this.plan.steps[this.plan.index], faits)) {
+    if (this.usePlacement) {
+      this.placement = individualPlacement(beliefs, this.goal, this.playbook, this.profile, this.openPlay);
+      if (this.placement && !sit.aLeBallon) this._push('PLACEMENT_CHOSEN', t, { goal: this.goal, placement: this.placement.placementGoal, target: this.placement.target });
+    }
+    if (this.carrierDecision && !this.executor.busy) this.plan = null;
+    else if (!this.plan) { const r = this.replanRaison || 'NEW'; this.replanRaison = null; this._planifier(beliefs, sit, r); }
+    else if (!this.executor.busy && !this._etapeValide(this.plan.steps[this.plan.index], this._faits(beliefs, sit))) {
       // Précondition invalidée AVANT de démarrer l'étape : replanification depuis les faits actuels.
       this._planifier(beliefs, sit, 'PRECONDITION_INVALID');
     }
@@ -243,17 +256,25 @@ class GoalBasedRugbyAgent {
     // Presser le porteur = l'action TACKLE_CARRIER (acteur réel, événements réussi/manqué), pas une simple course.
     if (this.usePlacement && !this.executor.busy && !this.plan && this.placement && this.placement.placementGoal === 'PRESS_CARRIER'
       && state.phase === 'PORTE' && !(this.bans.get('TACKLE_CARRIER') > t)) {
-      const r = this.executor.start('TACKLE_CARRIER', state);
+      const r = this.executor.start('TACKLE_CARRIER', state, this.openPlay ? { cible: this.placement.target } : undefined);
       for (const e of r.events) this.events.push(e);
       if (r.started) this._intent = r.intent; else this.bans.set('TACKLE_CARRIER', t + 1);
     }
-    // Le moteur garde la main sur le porteur (aucun acteur de ballon) et sur les phases arrêtées
-    // (mêlée, touche, maul, ruck, coups de pied) : le placement individuel ne conduit qu'en jeu courant.
+    // Une décision de ballon ne peut être émise que par le porteur actuel.
     const porteur = state.ball && state.ball.carrierTeam === this.agent.team && state.ball.carrierNumber === this.agent.numero;
+    if (porteur && state.phase === 'PORTE' && this.carrierDecision && !this.executor.busy) {
+      const { action, vers, kick, decalage } = this.carrierDecision;
+      this._intent = { jeu: { action, vers, type: kick, decalage } };
+      return this._intent;
+    }
+    if (this.openPlay && this.executor.current?.name === 'TACKLE_CARRIER' && this.placement?.placementGoal === 'PRESS_CARRIER'
+      && this._intent) {
+      this.executor.current.params.cible = this.placement.target;
+    }
     const enDefense = state.possession !== this.agent.team;
     const dansPortee = this.placementScope === 'all' || (this.placementScope === 'defense') === enDefense;
     if (this.usePlacement && !this._intent && !this.executor.busy && !this.plan && this.placement && state.phase === 'PORTE' && !porteur && dansPortee) {
-      this._intent = { tx: this.placement.target.x, ty: this.placement.target.y, vmaxFactor: this.placement.vmaxFactor };
+      this._intent = { tx: this.placement.target.x, ty: this.placement.target.y, vmaxFactor: this.placement.vmaxFactor, jeuCourant: this.openPlay };
     }
     return this._intent;
   }
