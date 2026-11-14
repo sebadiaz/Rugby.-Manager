@@ -259,7 +259,13 @@ ACTEURS.PASS_TO_10 = actPasse(10);
 // KICK_FOR_TERRITORY (A23) : le porteur DEMANDE le pied (intention `botte`), le moteur le frappe (portée, hors-jeu des
 // chasseurs, touche, réception). Type choisi selon SA zone : touche depuis ses 22, occupation dans son camp,
 // chandelle dans le camp adverse. Succès = coup de pied réellement parti (phase COUP_DE_PIED_JEU, ballon en l'air).
-const typePied = (c) => { const d = c.sens > 0 ? c.me.x : 100 - c.me.x; return d < 22 ? 'TOUCHE' : d < 50 ? 'OCCUPATION' : 'CHANDELLE'; };
+// Depuis ses 22 m : touche seulement si une ligne de touche est proche (<= 22 m, facile à trouver) ; au milieu du
+// terrain on dégage en l'air. Dans son camp : occupation ; dans le camp adverse : chandelle.
+const typePied = (c) => {
+  const d = c.sens > 0 ? c.me.x : 100 - c.me.x;
+  if (d < 22) return Math.min(c.me.y, 70 - c.me.y) <= 22 ? 'TOUCHE' : 'DEGAGEMENT';
+  return d < 50 ? 'OCCUPATION' : 'CHANDELLE';
+};
 ACTEURS.KICK_FOR_TERRITORY = {
   maxSeconds: 2,
   startGuard: (c) => (!c.facts.HAS_BALL ? 'NOT_CARRIER' : !c.facts.SELF_ONSIDE ? 'OFFSIDE' : c.state.phase !== 'PORTE' ? 'NOT_OPEN_PLAY' : null),
