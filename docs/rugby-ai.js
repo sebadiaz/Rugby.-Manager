@@ -305,12 +305,38 @@ function actPasseChoisie(familles, dMax, ecartMin) {
 }
 ACTEURS.PASS_TO_POD = actPasseChoisie((n) => n <= 8, 12, 1.2);
 ACTEURS.PASS_TO_OUTSIDE = actPasseChoisie((n) => n >= 11, 28, 6);
+// « Imaginer le jeu du coéquipier » : le joueur voit où sont ses partenaires et suppose que celui qui est plus près
+// d'un point l'occupera avant lui (à égalité, le numéro le plus bas). Il décale alors SA cible de 2,2 m
+// (latéralement, puis en profondeur) au lieu de viser le même point : sans cela, tous les soutiens visaient
+// exactement la même case et se retrouvaient en grappe. Décision individuelle, aucune allocation centrale.
+function laisserLaPlace(c, cible) {
+  const E = 2.2;
+  const mates = [...c.state.equipeA, ...c.state.equipeB].filter((j) => j.team === c.me.team && j.numero !== c.me.numero && j.auSol === 0 && j.sinBin <= 0);
+  const porteur = c.state.ball && c.state.ball.carrierTeam === c.me.team ? c.state.ball.carrierNumber : null;
+  let t = { x: cible.x, y: cible.y };
+  for (let tour = 0; tour < 4; tour++) {
+    const dMoi = dist(c.me, t);
+    let gene = null, dMin = Infinity;
+    for (const m of mates) {
+      if (m.numero === porteur) { if (dist(m, t) < E && dist(m, t) < dMin) { dMin = dist(m, t); gene = m; } continue; }
+      const dm = dist(m, t);
+      if (dm >= E) continue;
+      if (dm < dMoi - 0.3 || (Math.abs(dm - dMoi) <= 0.3 && m.numero < c.me.numero)) if (dm < dMin) { dMin = dm; gene = m; }
+    }
+    if (!gene) break;
+    const cote = Math.abs(t.y - gene.y) > 0.2 ? Math.sign(t.y - gene.y) : (c.me.y >= gene.y ? 1 : -1);
+    // Une fois sur deux, on se met aussi en retrait : deux rideaux de soutien plutôt qu'un mur.
+    t = { x: t.x - c.sens * (tour % 2 ? 1.5 : 0), y: Math.max(2, Math.min(68, gene.y + cote * E)) };
+  }
+  return t;
+}
+
 for (const [nom, dy] of [['RUN_SUPPORT_INSIDE', -1], ['RUN_SUPPORT_OUTSIDE', 1]]) {
   ACTEURS[nom] = {
     maxSeconds: 10,
     startGuard: (c) => (!c.facts.SELF_AVAILABLE ? 'NOT_AVAILABLE' : !c.facts.SELF_ONSIDE ? 'OFFSIDE' : !c.facts.TEAM_POSSESSION ? 'NO_POSSESSION' : c.facts.HAS_BALL ? 'IS_CARRIER' : null),
     // Soutien : 5 m derrière le ballon, décalé vers l'intérieur ou l'extérieur du jeu (signe selon le côté du terrain).
-    intent: (c) => { const cote = c.ballon.y < 35 ? 1 : -1; return { tx: c.ballon.x - c.sens * 5, ty: c.ballon.y + dy * cote * 5, vmaxFactor: 1 }; },
+    intent: (c) => { const cote = c.ballon.y < 35 ? 1 : -1; const t = laisserLaPlace(c, { x: c.ballon.x - c.sens * 5, y: c.ballon.y + dy * cote * 5 }); return { tx: t.x, ty: t.y, vmaxFactor: 1 }; },
     successGuard: (c) => { const t = ACTEURS[nom].intent(c); return dist(c.me, { x: t.tx, y: t.ty }) <= 2 && c.facts.SELF_ONSIDE; },
     abortGuard: (c) => (!c.facts.TEAM_POSSESSION ? 'POSSESSION_LOST' : null),
   };
@@ -1578,6 +1604,33 @@ function candidatsAttaque(b, s, pb, profile) {
   return out;
 }
 
+// « Imaginer le jeu du coéquipier » (aucune IA collective, aucune parole imposée) : l'agent suppose que chaque
+// coéquipier qu'il VOIT viendra occuper l'endroit où il est déjà ou vers lequel il court, et que celui qui est
+// plus près d'un point l'atteindra avant lui. S'il convoite le même point, il lui laisse la place et se décale
+// latéralement (≥ 2,2 m), du côté où il a déjà le plus de champ. Sa décision reste la sienne.
+const ESPACE_COEQUIPIER = 2.2;
+function imaginerLeJeuDesCoequipiers(b, cible) {
+  const moi = b.self;
+  let t = { x: cible.x, y: cible.y };
+  for (let tour = 0; tour < 3; tour++) {
+    let gene = null, dMin = Infinity;
+    for (const m of Object.values(b.teammates)) {
+      if (!m.lastSeen || m.numero === moi.numero) continue;
+      const dm = P.dist(m.lastSeen, t);
+      if (dm >= ESPACE_COEQUIPIER) continue;
+      const dMoi = P.dist(moi, t);
+      // Il y sera avant moi (ou à égalité : le numéro le plus bas garde la place, convention locale connue de tous).
+      if (dm < dMoi - 0.3 || (Math.abs(dm - dMoi) <= 0.3 && m.numero < moi.numero)) { if (dm < dMin) { dMin = dm; gene = m; } }
+    }
+    if (!gene) break;
+    const cote = Math.abs(t.y - gene.lastSeen.y) > 0.2 ? Math.sign(t.y - gene.lastSeen.y) : (moi.y >= gene.lastSeen.y ? 1 : -1);
+    const ny = gene.lastSeen.y + cote * ESPACE_COEQUIPIER;
+    t = { x: t.x, y: P.clamp(ny, 2, P.LARGEUR - 2) };
+    if (Math.abs(t.y - ny) > 0.01) t.y = P.clamp(gene.lastSeen.y - cote * ESPACE_COEQUIPIER, 2, P.LARGEUR - 2); // bord de touche : de l'autre côté
+  }
+  return t;
+}
+
 // Choisit son placement. `goalId` = but retenu par le sélecteur (il restreint les familles).
 function individualPlacement(beliefs, goalId, playbook, profile = {}) {
   const pb = P.lirePlaybook(playbook);
@@ -1608,7 +1661,8 @@ function individualPlacement(beliefs, goalId, playbook, profile = {}) {
   const valides = evalues.filter((c) => c.valide);
   valides.sort((a, c) => c.score - a.score || a.id.localeCompare(c.id, 'en'));
   const choix = valides[0] || evalues.sort((a, c) => c.score - a.score)[0];
-  return Object.freeze({ placementGoal: choix.id, target: Object.freeze({ x: +P.clamp(choix.target.x, 0, 100).toFixed(3), y: +P.clamp(choix.target.y, 0, P.LARGEUR).toFixed(3) }),
+  const cible = choix.id === 'PRESS_CARRIER' ? choix.target : imaginerLeJeuDesCoequipiers(beliefs, choix.target);
+  return Object.freeze({ placementGoal: choix.id, target: Object.freeze({ x: +P.clamp(cible.x, 0, 100).toFixed(3), y: +P.clamp(cible.y, 0, P.LARGEUR).toFixed(3) }),
     vmaxFactor: choix.vmax, reason: choix.reason, candidates: Object.freeze(evalues.map((c) => Object.freeze({ id: c.id, score: +c.score.toFixed(2), valide: c.valide }))) });
 }
 

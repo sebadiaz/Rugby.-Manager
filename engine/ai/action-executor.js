@@ -170,12 +170,38 @@ function actPasseChoisie(familles, dMax, ecartMin) {
 }
 ACTEURS.PASS_TO_POD = actPasseChoisie((n) => n <= 8, 12, 1.2);
 ACTEURS.PASS_TO_OUTSIDE = actPasseChoisie((n) => n >= 11, 28, 6);
+// « Imaginer le jeu du coéquipier » : le joueur voit où sont ses partenaires et suppose que celui qui est plus près
+// d'un point l'occupera avant lui (à égalité, le numéro le plus bas). Il décale alors SA cible de 2,2 m
+// (latéralement, puis en profondeur) au lieu de viser le même point : sans cela, tous les soutiens visaient
+// exactement la même case et se retrouvaient en grappe. Décision individuelle, aucune allocation centrale.
+function laisserLaPlace(c, cible) {
+  const E = 2.2;
+  const mates = [...c.state.equipeA, ...c.state.equipeB].filter((j) => j.team === c.me.team && j.numero !== c.me.numero && j.auSol === 0 && j.sinBin <= 0);
+  const porteur = c.state.ball && c.state.ball.carrierTeam === c.me.team ? c.state.ball.carrierNumber : null;
+  let t = { x: cible.x, y: cible.y };
+  for (let tour = 0; tour < 4; tour++) {
+    const dMoi = dist(c.me, t);
+    let gene = null, dMin = Infinity;
+    for (const m of mates) {
+      if (m.numero === porteur) { if (dist(m, t) < E && dist(m, t) < dMin) { dMin = dist(m, t); gene = m; } continue; }
+      const dm = dist(m, t);
+      if (dm >= E) continue;
+      if (dm < dMoi - 0.3 || (Math.abs(dm - dMoi) <= 0.3 && m.numero < c.me.numero)) if (dm < dMin) { dMin = dm; gene = m; }
+    }
+    if (!gene) break;
+    const cote = Math.abs(t.y - gene.y) > 0.2 ? Math.sign(t.y - gene.y) : (c.me.y >= gene.y ? 1 : -1);
+    // Une fois sur deux, on se met aussi en retrait : deux rideaux de soutien plutôt qu'un mur.
+    t = { x: t.x - c.sens * (tour % 2 ? 1.5 : 0), y: Math.max(2, Math.min(68, gene.y + cote * E)) };
+  }
+  return t;
+}
+
 for (const [nom, dy] of [['RUN_SUPPORT_INSIDE', -1], ['RUN_SUPPORT_OUTSIDE', 1]]) {
   ACTEURS[nom] = {
     maxSeconds: 10,
     startGuard: (c) => (!c.facts.SELF_AVAILABLE ? 'NOT_AVAILABLE' : !c.facts.SELF_ONSIDE ? 'OFFSIDE' : !c.facts.TEAM_POSSESSION ? 'NO_POSSESSION' : c.facts.HAS_BALL ? 'IS_CARRIER' : null),
     // Soutien : 5 m derrière le ballon, décalé vers l'intérieur ou l'extérieur du jeu (signe selon le côté du terrain).
-    intent: (c) => { const cote = c.ballon.y < 35 ? 1 : -1; return { tx: c.ballon.x - c.sens * 5, ty: c.ballon.y + dy * cote * 5, vmaxFactor: 1 }; },
+    intent: (c) => { const cote = c.ballon.y < 35 ? 1 : -1; const t = laisserLaPlace(c, { x: c.ballon.x - c.sens * 5, y: c.ballon.y + dy * cote * 5 }); return { tx: t.x, ty: t.y, vmaxFactor: 1 }; },
     successGuard: (c) => { const t = ACTEURS[nom].intent(c); return dist(c.me, { x: t.tx, y: t.ty }) <= 2 && c.facts.SELF_ONSIDE; },
     abortGuard: (c) => (!c.facts.TEAM_POSSESSION ? 'POSSESSION_LOST' : null),
   };

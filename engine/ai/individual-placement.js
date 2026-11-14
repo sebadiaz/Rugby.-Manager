@@ -108,6 +108,33 @@ function candidatsAttaque(b, s, pb, profile) {
   return out;
 }
 
+// « Imaginer le jeu du coéquipier » (aucune IA collective, aucune parole imposée) : l'agent suppose que chaque
+// coéquipier qu'il VOIT viendra occuper l'endroit où il est déjà ou vers lequel il court, et que celui qui est
+// plus près d'un point l'atteindra avant lui. S'il convoite le même point, il lui laisse la place et se décale
+// latéralement (≥ 2,2 m), du côté où il a déjà le plus de champ. Sa décision reste la sienne.
+const ESPACE_COEQUIPIER = 2.2;
+function imaginerLeJeuDesCoequipiers(b, cible) {
+  const moi = b.self;
+  let t = { x: cible.x, y: cible.y };
+  for (let tour = 0; tour < 3; tour++) {
+    let gene = null, dMin = Infinity;
+    for (const m of Object.values(b.teammates)) {
+      if (!m.lastSeen || m.numero === moi.numero) continue;
+      const dm = P.dist(m.lastSeen, t);
+      if (dm >= ESPACE_COEQUIPIER) continue;
+      const dMoi = P.dist(moi, t);
+      // Il y sera avant moi (ou à égalité : le numéro le plus bas garde la place, convention locale connue de tous).
+      if (dm < dMoi - 0.3 || (Math.abs(dm - dMoi) <= 0.3 && m.numero < moi.numero)) { if (dm < dMin) { dMin = dm; gene = m; } }
+    }
+    if (!gene) break;
+    const cote = Math.abs(t.y - gene.lastSeen.y) > 0.2 ? Math.sign(t.y - gene.lastSeen.y) : (moi.y >= gene.lastSeen.y ? 1 : -1);
+    const ny = gene.lastSeen.y + cote * ESPACE_COEQUIPIER;
+    t = { x: t.x, y: P.clamp(ny, 2, P.LARGEUR - 2) };
+    if (Math.abs(t.y - ny) > 0.01) t.y = P.clamp(gene.lastSeen.y - cote * ESPACE_COEQUIPIER, 2, P.LARGEUR - 2); // bord de touche : de l'autre côté
+  }
+  return t;
+}
+
 // Choisit son placement. `goalId` = but retenu par le sélecteur (il restreint les familles).
 function individualPlacement(beliefs, goalId, playbook, profile = {}) {
   const pb = P.lirePlaybook(playbook);
@@ -138,7 +165,8 @@ function individualPlacement(beliefs, goalId, playbook, profile = {}) {
   const valides = evalues.filter((c) => c.valide);
   valides.sort((a, c) => c.score - a.score || a.id.localeCompare(c.id, 'en'));
   const choix = valides[0] || evalues.sort((a, c) => c.score - a.score)[0];
-  return Object.freeze({ placementGoal: choix.id, target: Object.freeze({ x: +P.clamp(choix.target.x, 0, 100).toFixed(3), y: +P.clamp(choix.target.y, 0, P.LARGEUR).toFixed(3) }),
+  const cible = choix.id === 'PRESS_CARRIER' ? choix.target : imaginerLeJeuDesCoequipiers(beliefs, choix.target);
+  return Object.freeze({ placementGoal: choix.id, target: Object.freeze({ x: +P.clamp(cible.x, 0, 100).toFixed(3), y: +P.clamp(cible.y, 0, P.LARGEUR).toFixed(3) }),
     vmaxFactor: choix.vmax, reason: choix.reason, candidates: Object.freeze(evalues.map((c) => Object.freeze({ id: c.id, score: +c.score.toFixed(2), valide: c.valide }))) });
 }
 
