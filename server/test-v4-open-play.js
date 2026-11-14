@@ -155,3 +155,16 @@ for (const team of ['A', 'B']) {
   assert.notEqual(touche.possession, team, 'une touche volontaire depuis les 22 rend le lancer');
 }
 console.log('OK : dégagement orienté selon la couverture, ballon relançable et touche volontaire dans les deux sens');
+
+{
+  const m = scene({ zone: 18, numero: 10 });
+  const plaqueur = m.equipeB.find(j => j.numero === 1);
+  m.rng = () => 0;
+  m._porteApresPied = true;
+  m.timerPhase = 1.2;
+  assert.notEqual(m.choisirActionPorteur(m.porteur, plaqueur, 8, 0.1), 'KICK');
+  assert.equal(m.choisirActionPorteur(m.porteur, plaqueur, 4, 0.1), 'KICK', 'un receveur sous pression peut dégager');
+  m.timerPhase = 3;
+  assert.equal(m.choisirActionPorteur(m.porteur, plaqueur, 8, 0.1), 'KICK', 'la possibilité revient après le départ de la relance');
+}
+console.log('OK : fenêtre pour relancer après réception et dégagement encore possible sous pression');
