@@ -175,20 +175,26 @@ function candidatsRenfort(b, s) {
   const def = Object.values(b.opponents).filter((o) => o.age <= 1.5 && coteOuvert(o.lastSeen)
     && (o.lastSeen.x - bal.x) * sens >= -3 && (o.lastSeen.x - bal.x) * sens <= 20).length;
   const dMaLigne = Math.abs(bal.x - (s.team === 'A' ? 0 : 100));
+  const me = b.self;
   const out = [];
-  if (num === 15 && dMaLigne >= 40 && largeurOuverte >= 25) {
+  // Engagement : un arrière déjà monté dans la ligne (≤ 16 m derrière le ballon) y reste tant que la
+  // défense n'est pas nettement plus nombreuse ; sans cela il hésitait à chaque décision sans jamais arriver.
+  const dejaDansLaLigne = num === 15 && (bal.x - me.x) * sens <= 16 && (me.y - bal.y) * ouvert > 4;
+  if (num === 15 && dMaLigne >= (dejaDansLaLigne ? 30 : 40) && largeurOuverte >= 25) {
     const surnombre = att + 1 - def;
-    if (surnombre >= 0) {
+    if (surnombre >= (dejaDansLaLigne ? -1 : 0)) {
       const treize = Object.values(b.teammates).find((m) => m.numero === 13 && m.age <= 1.5);
       const y13 = treize ? treize.lastSeen.y : bal.y + ouvert * 22;
-      out.push({ id: 'JOIN_LINE', priority: Math.min(72, 63 + 3 * surnombre),
+      out.push({ id: 'JOIN_LINE', priority: Math.min(72, 63 + 3 * surnombre) + (dejaDansLaLigne ? 6 : 0),
         target: { x: P.clamp(bal.x - sens * 12, 0, 100), y: P.clamp(y13 + ouvert * 5, 3, P.LARGEUR - 3) }, vmax: 1,
         reason: `intercalé : ${att + 1} attaquants contre ${def} défenseurs vus côté ouvert` });
     }
   }
   const fermeIci = (num === 11 && ouvert > 0) || (num === 14 && ouvert < 0);
-  if (fermeIci && largeurFermee <= 15 && largeurOuverte >= 40) {
-    out.push({ id: 'SWITCH_WING', priority: 68 + (def <= att ? 2 : 0),
+  // Engagement de l'ailier : déjà passé côté ouvert, il ne repart pas sur son aile au moindre écart.
+  const dejaPasse = fermeIci && (me.y - bal.y) * ouvert > 2;
+  if (fermeIci && largeurFermee <= (dejaPasse ? 22 : 15) && largeurOuverte >= (dejaPasse ? 30 : 40)) {
+    out.push({ id: 'SWITCH_WING', priority: 68 + (def <= att ? 2 : 0) + (dejaPasse ? 6 : 0),
       // Il entre comme coureur au milieu, derrière le 10, puis relit le jeu à chaque décision.
       target: { x: P.clamp(bal.x - sens * 12, 0, 100), y: P.clamp(bal.y + ouvert * 13, 3, P.LARGEUR - 3) }, vmax: 1,
       reason: `aile fermée de ${largeurFermee.toFixed(0)} m : renfort côté ouvert` });
