@@ -161,6 +161,14 @@ function lireCroisee(b, s) {
 //    (lui compris) que de défenseurs côté ouvert, que la largeur le permet et que son camp n'est pas menacé ;
 //  - SWITCH_WING : l'ailier du côté fermé (trop étroit pour être joué) quitte son aile et vient en renfort
 //    côté ouvert. Aucun n'est désigné : chacun compare ce renfort à ses autres placements.
+function profondeurIntercale(b, s, treize, bal, sens) {
+  const x13 = (treize ? treize.lastSeen.x : bal.x - sens * 12) - sens * 2.5;
+  const porteur = s.ball.owner && s.ball.owner[0] === s.team ? b.teammates[s.ball.owner] : null;
+  if (!porteur || s.phase !== 'PORTE') return x13;
+  const xPorteur = porteur.lastSeen.x - sens * 4;
+  return sens > 0 ? Math.min(x13, xPorteur) : Math.max(x13, xPorteur); // la plus profonde des deux
+}
+
 function candidatsRenfort(b, s) {
   const num = b.agent.numero, bal = s.ball && s.ball.lastSeen;
   if (!bal || !s.maPoss || s.aLeBallon || (s.phase !== 'PORTE' && s.phase !== 'RUCK')) return [];
@@ -188,7 +196,8 @@ function candidatsRenfort(b, s) {
       out.push({ id: 'JOIN_LINE', priority: Math.min(72, 63 + 3 * surnombre) + (dejaDansLaLigne ? 6 : 0),
         // Profondeur prise sur le 13 vu (2,5 m en retrait) : sinon l'arrière arrivait à hauteur des passeurs
         // et n'était jamais une option de passe légale (mesuré : 13,5 ballons reçus contre 20,7 avant).
-        target: { x: P.clamp((treize ? treize.lastSeen.x : bal.x - sens * 12) - sens * 2.5, 0, 100), y: P.clamp(y13 + ouvert * 5, 3, P.LARGEUR - 3) }, vmax: 1,
+        // Lancé : au moins 4 m de recul sur le porteur vu (mesuré : il arrivait à 0-2 m, à plat, sans élan).
+        target: { x: P.clamp(profondeurIntercale(b, s, treize, bal, sens), 0, 100), y: P.clamp(y13 + ouvert * 5, 3, P.LARGEUR - 3) }, vmax: 1,
         reason: `intercalé : ${att + 1} attaquants contre ${def} défenseurs vus côté ouvert` });
     }
   }
