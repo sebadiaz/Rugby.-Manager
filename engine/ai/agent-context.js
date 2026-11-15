@@ -106,7 +106,7 @@ class AgentContext {
       ruck: this.mem.ruck ? { ballAvailable: this.mem.ruck.ballAvailable, defendersCommitted: this.mem.ruck.defendersCommitted,
         age: +(t - this.mem.ruck.seenAt).toFixed(3), confidence: +clamp01(mem === 0 ? 1 : 1 - (t - this.mem.ruck.seenAt) / mem).toFixed(3) } : null,
       phase: this.mem.phase, possession: this.mem.possession, score: this.mem.score,
-      heard: this.heard.map((h) => ({ from: h.from, kind: h.kind, age: +(t - h.heardAt).toFixed(3), confidence: h.confidence, replyTo: h.replyTo })),
+      heard: this.heard.map((h) => ({ id: h.id, from: h.from, kind: h.kind, toId: h.toId, age: +(t - h.heardAt).toFixed(3), confidence: h.confidence, replyTo: h.replyTo })),
       omniscient: !!this.params.omniscient,
     });
   }

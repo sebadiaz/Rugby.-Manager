@@ -13,6 +13,14 @@
 const { AgentScheduler, creerAgents } = require('./agent-scheduler.js');
 const { LocalCommunication } = require('./local-communication.js');
 
+// Ce que l'équipe sait de son buteur : portée de tir et gain d'un coup de pied en touche (mêmes formules que le moteur).
+function porteesButeur(engine, team) {
+  const eq = team === 'A' ? engine?.equipeA : engine?.equipeB;
+  const b = eq && eq.find((j) => j.numero === engine?.buteurNumero?.[team]);
+  const jp = b && typeof b.jeuPied === 'number' ? b.jeuPied : 60;
+  return { porteeButeur: 40 + (jp - 60) * 0.25, gainTouche: 32 + (jp - 60) * 0.35 };
+}
+
 // Fabrique de pilote à passer dans config.agentDriver.
 function creerPiloteGOAP(options = {}) {
   return function fabrique(engine) {
@@ -24,6 +32,11 @@ function creerPiloteGOAP(options = {}) {
         attackWidth: attaque.ailiers === 'large' ? 1.4 : attaque.ailiers === 'repique' ? 0.7 : 1,
         sortieAvant: attaque.sortieAvant, passeCentres: attaque.passeCentres,
         tauxJeuAuPied: attaque.tauxJeuAuPied, piedOuvreur: attaque.piedOuvreur,
+        // Consigne « maul en touche » du club (lecture seule) : le 9 la pèse dans SON choix d'appel.
+        maulTouche: engine?.cfgTouche?.[team]?.tauxMaul?.proche,
+        // Consigne de pénalité du club et portée connue du buteur désigné (lecture seule).
+        choixPenalites: attaque.choixPenalites || null,
+        ...porteesButeur(engine, team),
       };
     }
     const agents = creerAgents(Object.assign({ placement: true, openPlay: true, playbooks }, options.agent));
