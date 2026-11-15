@@ -49,6 +49,10 @@ sauvegarde ancienne reçoit des valeurs dérivées de ses clés existantes et du
 
 ## 3. Catalogue détaillé des caractéristiques (0–100 sauf mention)
 
+**Catalogue OUVERT** : il s'enrichit au fil du projet (demande du propriétaire), on n'en retire rien sans décision
+explicite. Il combine des caractéristiques générales (3.1–3.10, 3.13–3.22), une **aptitude par poste et par côté**
+(3.11) et des **caractéristiques propres à chaque poste** (3.12).
+
 Chaque ligne : `clé` — ce que c'est → ce que la simulation doit en faire. Une caractéristique est **un savoir-faire
 précis**, jamais un fourre-tout : « passe » ne dit rien de la passe après contact, de la passe longue ou de la
 passe du sol. Les 12 clés existantes (section 2) restent comme valeurs de repli et servent à initialiser les
@@ -167,7 +171,7 @@ nouvelles lors de la migration.
 - `grattage` — jackal, arracher le ballon au sol → turnovers.
 - `contreRuck` — repousser l'attaquant pour reprendre le ballon.
 - `decisionRuck` — choisir d'entrer au ruck ou de rester en ligne.
-- `ralentissementRuck` — ralentir le ballon adverse (à la limite des lois, cf. 3.12).
+- `ralentissementRuck` — ralentir le ballon adverse (à la limite des lois, cf. section « Vice, triche »).
 
 ### 3.9 Mêlée (par poste)
 - `liaisonMelee` — prise de liaison, stabilité.
@@ -197,21 +201,246 @@ nouvelles lors de la migration.
 - `transmissionMaul` — faire glisser le ballon vers l'arrière du maul.
 - `defenseMaul` — stopper un maul, saquer le sauteur légalement.
 
-### 3.11 Techniques individuelles PAR POSTE
-Un joueur a une note par poste qu'il connaît (polyvalence) ; hors de ses postes, ses savoir-faire spécifiques baissent.
-- **Pilier gauche (1)** : liaison et poussée côté gauche, stabilité, levée en touche, porteur au près.
-- **Talonneur (2)** : talonnage, lancer (précision, puissance, trajectoire), rôle au maul, gratteur.
-- **Pilier droit (3)** : porter la mêlée, stabilité sous pression, levée.
-- **Deuxièmes lignes (4, 5)** : saut, levée, poussée en mêlée, maul, déblayage, plaquage de répétition.
-- **Troisièmes lignes (6, 7)** : plaquage, grattage, vitesse vers le ruck, couverture, saut en fond d'alignement, soutien.
-- **Numéro 8 (8)** : contrôle et prise de balle au pied de la mêlée, départ du 8, percussion, saut, couverture.
-- **Demi de mêlée (9)** : passe du sol, éjection, box-kick, lecture des petits côtés, départ au ras, introduction, commandement des avants.
-- **Demi d'ouverture (10)** : passe longue, lecture de la défense, jeu au pied tactique, buteur, fixation, commandement de la ligne.
-- **Centres (12, 13)** : percussion, passe sous pression, angle de course, plaquage dans le couloir, lecture défensive, interception.
-- **Ailiers (11, 14)** : vitesse, finition, réception des ballons hauts, retours défensifs, renfort sur l'autre aile.
-- **Arrière (15)** : couverture du fond, réception, relance, jeu au pied long, intercalé, dernier plaquage.
+### 3.11 Aptitude par poste et par côté (matrice)
 
-### 3.12 Vice, triche et rapport à l'arbitre
+Chaque joueur a une **aptitude 0–100 pour chacun des postes ci-dessous**. Le côté compte : un pilier gauche peut
+n'être jouable qu'à gauche (aptitude pilier droit très basse) ; un ailier gauche n'est pas forcément un ailier
+droit. Hors de ses aptitudes, les caractéristiques spécifiques du poste (3.12) chutent et ses décisions de
+placement sont moins justes (`connaissancePlan` du poste).
+
+| Clé | Poste | Remarque |
+|---|---|---|
+| `aptPilierGauche` | 1 | côté « ouvert », mêlée sur un seul adversaire |
+| `aptPilierDroit` | 3 | porte la mêlée, deux adversaires ; très peu de piliers jouent les deux côtés |
+| `aptTalonneur` | 2 | lancer et talonnage indispensables |
+| `aptDeuxiemeLigneAvant` | 4 | « sauteur de devant », poussée côté gauche |
+| `aptDeuxiemeLigneArriere` | 5 | sauteur principal, poussée côté droit |
+| `aptTroisiemeLigneAile6` | 6 | côté fermé, plaqueur, sauteur |
+| `aptTroisiemeLigneAile7` | 7 | côté ouvert, gratteur, premier au ruck |
+| `aptNumero8` | 8 | fond de mêlée, prise de balle, départ |
+| `aptDemiMelee` | 9 | |
+| `aptDemiOuverture` | 10 | |
+| `aptPremierCentre` | 12 | deuxième meneur, percussion, pied |
+| `aptSecondCentre` | 13 | défense dans le grand couloir, vitesse |
+| `aptAilierGauche` | 11 | pied et main côté gauche |
+| `aptAilierDroit` | 14 | |
+| `aptArriere` | 15 | |
+| `aptJokerBanc` | remplaçant | impact en fin de match (`impactEntree`) |
+
+### 3.12 Caractéristiques SPÉCIFIQUES de chaque poste
+
+Ces caractéristiques n'ont de sens qu'au poste (un 9 n'a pas de « tenue en mêlée fermée côté droit »). Elles
+s'ajoutent aux familles générales ; deux joueurs de même poste peuvent avoir des profils très différents
+(un 9 « buteur-passeur » contre un 9 « sniper au ras »).
+
+#### Pilier gauche (1)
+- `pg_liaisonTalonneur` — qualité de la liaison avec son talonneur.
+- `pg_tenueVisAVis` — tenir le pilier droit adverse (un seul adversaire) sans reculer.
+- `pg_angleEntree` — entrée droite et légale, ne pas « rentrer » sous l'adversaire.
+- `pg_pressionAutorisee` — mettre la pression sur le pilier droit sans écrouler.
+- `pg_resistanceAuxDeuxContre` — résister quand l'adversaire pousse de travers sur lui.
+- `pg_stabiliteSurIntroduction` — rester stable au moment de l'introduction (le talonneur lève le pied).
+- `pg_leveeAvant` — lever le sauteur de devant en touche.
+- `pg_porteurAuPres` — porter le ballon près du ruck, en pod.
+- `pg_deblayageCourt` — nettoyer le ruck tout proche.
+- `pg_plaquageRepetition` — plaquer encore à la 70e minute.
+- `pg_passeAvant` — la passe courte d'un avant dans un pod (souvent faible).
+- `pg_lectureArbitreMelee` — sentir ce que l'arbitre sanctionne en mêlée.
+
+#### Talonneur (2)
+- `ta_talonnage` — talonner vite et proprement le ballon introduit.
+- `ta_talonnageContre` — talonner sur introduction adverse (rare mais décisif).
+- `ta_liaisonPiliers` — tenir ses deux piliers liés.
+- `ta_precisionLancer` — lancer droit, sur la main du sauteur.
+- `ta_puissanceLancer` — atteindre le fond d'alignement.
+- `ta_trajectoireLancer` — hauteur/longueur adaptées à l'annonce (lob, lancer tendu).
+- `ta_rapiditeLancer` — lancer avant que la défense ne s'organise.
+- `ta_lancerSousPression` — lancer droit dans un moment décisif (touche à 5 m).
+- `ta_lancerVent` — corriger le vent et la pluie.
+- `ta_appelTouche` — choisir ou relayer l'annonce.
+- `ta_queueMaul` — prendre la queue du maul après son lancer et marquer.
+- `ta_gratteur` — jackal au sol (souvent un point fort du talonneur moderne).
+- `ta_vitesseAvant` — mobilité supérieure aux piliers.
+- `ta_jeuDansLeCouloir` — porteur et passeur dans le premier couloir.
+
+#### Pilier droit (3)
+- `pd_tenueDeuxAdversaires` — tenir le pilier gauche et le talonneur adverses.
+- `pd_porterLaMelee` — supporter le poids du paquet côté droit.
+- `pd_angleEntree` — entrée légale, ne pas tourner.
+- `pd_stabiliteSousPression` — ne pas s'effondrer, ne pas se relever.
+- `pd_poussee` — faire reculer la mêlée adverse.
+- `pd_pressionSurTalonneur` — gêner le talonnage adverse.
+- `pd_resistanceFatigue` — tenir la mêlée en fin de match.
+- `pd_leveeArriere` — lever le sauteur de milieu ou de fond.
+- `pd_porteurAuPres`, `pd_plaquageRepetition`.
+
+#### Deuxièmes lignes (4, 5)
+- `dl_detente` — hauteur de saut.
+- `dl_timingSaut` — synchronisation avec le lancer.
+- `dl_receptionHaute` — capter à bout de bras.
+- `dl_feinteSaut` — leurrer le contre-sauteur.
+- `dl_contreSaut` — contester le lancer adverse.
+- `dl_lectureAlignement` — deviner la cible adverse.
+- `dl_levee` — lever un partenaire.
+- `dl_pousseeMelee` — poussée en deuxième ligne (moteur de la mêlée).
+- `dl_liaisonPiliers` — liaison sur les piliers.
+- `dl_receptionCoupEnvoi` — prendre les coups d'envoi.
+- `dl_maulAvant` — porter et diriger le maul.
+- `dl_deblayage` — déblayer en masse.
+- `dl_plaquageRepetition` — enchaîner les plaquages.
+- `dl_leadershipAvants` — organiser le pack (souvent capitaine).
+- `dl_5_annonceTouche` (5) — sauteur principal qui « appelle » la touche.
+
+#### Troisièmes lignes ailes (6, 7)
+- `tl_vitesseVersRuck` — premier arrivé au plaquage.
+- `tl_grattage` — jackal légal, mains sur le ballon avant le ruck.
+- `tl_ralentissement` — ralentir la sortie adverse (à la limite, cf. section « Vice, triche »).
+- `tl_plaquageVolume` — nombre de plaquages possibles par match.
+- `tl_plaquageOffensif` — plaquage dominant.
+- `tl_couvertureDefensive` — couvrir derrière la ligne.
+- `tl_soutienPorteur` — suivre la percée, recevoir l'offload.
+- `tl_sautFond` — sauteur de fond d'alignement (6).
+- `tl_ralentirLe9` — gêner le 9 adverse à la sortie de mêlée/ruck.
+- `tl_7_coteOuvert` (7) — défense rapide côté ouvert.
+- `tl_6_coteFerme` (6) — défense et jeu du côté fermé.
+- `tl_porteurDansLesLignes` — courir dans l'intervalle entre les avants adverses.
+- `tl_maulDefense` — contrer le maul.
+
+#### Numéro 8
+- `n8_controleBallonPied` — garder le ballon dans les pieds en mêlée qui avance.
+- `n8_ramassagePiedMelee` — ramasser vite et proprement au fond de la mêlée.
+- `n8_departHuit` — partir avec le ballon (et prévenir le 9 : `SCRUM_8_GOING`).
+- `n8_passeAu9` — sortir le ballon au 9 depuis le pied de mêlée.
+- `n8_percussionCourte` — gagner la ligne d'avantage au près.
+- `n8_lectureMelee` — sentir si la mêlée avance ou recule pour choisir.
+- `n8_sautFond`, `n8_couvertureFond`, `n8_soutien`.
+- `n8_communicationAvec9` — dialogue 8 ↔ 9 (annonce de départ, ballon gardé).
+
+#### Demi de mêlée (9) — le roi du ramassage et de la passe rapide sous pression
+- `dm_ramassage` — ramasser le ballon au sol, quelle que soit sa position, en un geste.
+- `dm_ramassageSousPression` — ramasser avec un adversaire qui arrive dessus (3e ligne qui ralentit, gratteur).
+- `dm_passeDuSol` — passer sans se relever, ballon tendu.
+- `dm_ejection` — vitesse entre la prise et le lâcher (moins de 0,5 s pour un très bon 9).
+- `dm_precisionPasse` — ballon dans la course du receveur, à la bonne hauteur.
+- `dm_passeLongueSol` — portée de la passe du sol (sauter un joueur depuis le ruck).
+- `dm_passeDeuxCotes` — aussi bonne à gauche qu'à droite.
+- `dm_passeSousPression` — réussir avec un adversaire collé, ballon sale, ballon qui roule.
+- `dm_ballonSale` — jouer un ballon mal présenté, au fond d'un ruck lent.
+- `dm_lectureRuck` — savoir quand le ballon est jouable, ne pas se faire contrer.
+- `dm_lecturePetitCote` — voir le petit côté exploitable.
+- `dm_sniping` — partir au ras du ruck.
+- `dm_boxKick` — chandelle depuis la base, hauteur et précision.
+- `dm_boxKickSousPression` — box-kick avec la défense qui monte.
+- `dm_introductionMelee` — introduction légale et rapide.
+- `dm_jeuApresMelee` — sortir de mêlée (lecture, passe, départ).
+- `dm_relaisTouche` — recevoir du sauteur et distribuer.
+- `dm_commandementAvants` — diriger les avants à la voix (pods, ruck).
+- `dm_dialogue10` — complicité et dialogue avec le 10 (questions de touche et de mêlée).
+- `dm_rythme` — accélérer ou ralentir le jeu selon la situation.
+- `dm_couvertureRuck` — défendre au bord du ruck, plaquer le pick-and-go.
+- `dm_couvertureFond` — couvrir le pied adverse derrière la ligne.
+- `dm_gestionArbitre` — parler à l'arbitre, savoir quand le ballon « est utilisé ».
+- `dm_pressionOral` — résister à la pression verbale et physique.
+
+#### Demi d'ouverture (10)
+- `do_passeLongue`, `do_passeAPlat`, `do_passeSautee` — distribution.
+- `do_timingFixation` — attaquer la ligne et passer au dernier moment.
+- `do_lectureDefense` — défense qui monte, qui glisse, surnombre, trou.
+- `do_choixJeu` — main, pied, au près, au large selon la lecture.
+- `do_jeuPiedTactique` — occupation, touche, chandelle, passe au pied, grubber.
+- `do_buteur` — précision et distance au but.
+- `do_drop` — drop en jeu.
+- `do_commandementLigne` — placer la ligne d'attaque à la voix.
+- `do_combinaisons` — exécuter les combinaisons du plan (croisée, boucle, intercalé).
+- `do_jeuSousPression` — décisions avec la troisième ligne adverse dessus.
+- `do_defenseCanal` — défendre son couloir (souvent un point faible).
+- `do_gestionMatch` — gérer le score, le territoire, la fin de match.
+- `do_dialogue9` — complicité avec le 9.
+- `do_communication` — se faire entendre de toute la ligne.
+
+#### Premier centre (12)
+- `c12_percussion` — fixer en percussion, gagner la ligne d'avantage.
+- `c12_passeSousPression` — passer au contact.
+- `c12_offload`, `c12_deuxiemeMeneur` — relais de distribution, deuxième ouvreur.
+- `c12_jeuPied` — pied gauche/droit en relais du 10.
+- `c12_defenseFrontale` — plaquer les porteurs lourds.
+- `c12_grattage` — contester au sol en défense.
+- `c12_angleCourse` — courses à contre-pied.
+
+#### Second centre (13)
+- `c13_vitesseGrandCouloir` — attaquer l'espace large.
+- `c13_cadrageDebordement` — fixer et décaler l'ailier.
+- `c13_passeDecisive` — servir l'ailier au bon moment.
+- `c13_defenseGrandCouloir` — décider : monter, glisser, rester (le poste le plus dur en défense).
+- `c13_lectureSurnombre` — compter les attaquants extérieurs.
+- `c13_interception`, `c13_couverture`.
+
+#### Ailiers (11, 14)
+- `ai_vitesse`, `ai_acceleration` — finition et retours.
+- `ai_finitionCoin` — marquer en coin sans sortir en touche.
+- `ai_jeuLongTouche` — courir le long de la ligne de touche sans mettre le pied dehors.
+- `ai_receptionBallonHaut` — chandelles, passes au pied.
+- `ai_contestationAerienne` — sauter contre l'arrière adverse.
+- `ai_retourDefensif` — repli après un pied adverse.
+- `ai_lectureDefensiveAile` — monter, rester, couvrir le pied.
+- `ai_plaquageEnCoin` — pousser le porteur en touche.
+- `ai_renfortAutreAile` — quitter l'aile fermée et participer côté ouvert.
+- `ai_jeuPiedCourt` — petit pied à suivre le long de la touche.
+- `ai_11_gaucher` / `ai_14_droitier` — main et pied du côté de la touche.
+
+#### Arrière (15)
+- `ar_receptionBallonHaut` — chandelles et dégagements, sous pression.
+- `ar_placementFond` — être là où tombera le pied adverse.
+- `ar_relance` — choisir de relancer ou de taper.
+- `ar_jeuPiedLong` — renvoyer loin, en touche ou dans l'en-but.
+- `ar_intercale` — s'intercaler dans la ligne au bon moment.
+- `ar_dernierRideau` — dernier plaquage, couper l'angle.
+- `ar_communicationFond` — organiser le triangle arrière.
+- `ar_contreAttaque` — relance après un pied adverse mal dosé.
+- `ar_buteurSecours` — deuxième buteur.
+
+### 3.13 Conditions de jeu (sensibilité individuelle)
+Chaque joueur réagit différemment aux conditions ; la caractéristique module les gestes concernés.
+- `jeuSousPluie` — mains et appuis sur ballon et terrain mouillés.
+- `ballonGlissant` — passes et réceptions avec un ballon gras.
+- `jeuDansLeVent` — jeu au pied et lancer dans le vent.
+- `terrainLourd` — vitesse et appuis sur terrain gras ou boueux.
+- `chaleur` — fatigue par forte chaleur.
+- `froid` — raideur, mains engourdies.
+- `pressionPublic` — performance devant un public hostile.
+- `arbitreStrict` — adaptation à un arbitre pointilleux.
+- `terrainSynthetique` — appuis sur synthétique.
+
+### 3.14 Situations et transitions de jeu
+- `contreAttaque` — exploiter un ballon de récupération (turnover, mauvais pied adverse).
+- `reactionTurnover` — passer de l'attaque à la défense (et inversement) en une seconde.
+- `jeuSupNumerique` — exploiter un carton adverse.
+- `jeuInfNumerique` — défendre à 14.
+- `attaque22Adverse` — efficacité près de la ligne adverse (pick-and-go, maul, finition).
+- `defenseSaLigne` — défendre à 5 m de sa ligne (montée, plaquage bas, ne pas faire de faute).
+- `sortieDeCamp` — sortir de ses 22 m sous pression.
+- `finDeMatch` — décisions et exécution dans les 10 dernières minutes.
+- `sonnerie` — garder le ballon ou marquer après la sonnerie.
+- `relancePenaliteRapide` — jouer vite une pénalité (tap-and-go).
+- `jeuDesordonne` — performer dans un jeu cassé (ballon libre, phase désorganisée).
+- `jeuStructure` — exécuter le plan après mêlée ou touche.
+
+### 3.15 Coups d'envoi, réceptions, chasse
+- `coupEnvoiPrecision`, `coupEnvoiHauteur` — coup d'envoi contestable.
+- `receptionCoupEnvoi` — prendre le coup d'envoi au milieu de la chasse.
+- `chasseCoupDePied` — vitesse et ligne de chasse, rester en jeu.
+- `chasseEnLigne` — chasser en ligne avec ses partenaires (pas de trou).
+- `pressionReceveur` — plaquer le receveur dès la réception.
+- `renvoi22` — renvoi aux 22 m / depuis l'en-but.
+- `marque` — appeler la marque dans ses 22 m.
+
+### 3.16 Remplaçants, impact et gestion de l'effort
+- `impactEntree` — niveau d'intensité en entrant en jeu.
+- `gestionEffort` — doser son effort sur 80 minutes.
+- `tempsDeJeuIdeal` — minutes avant la baisse de rendement.
+- `polyvalenceBanc` — postes couverts depuis le banc.
+
+### 3.17 Vice, triche et rapport à l'arbitre
 La triche n'est **jamais** un résultat écrit par le joueur : elle est une **tentative** que l'arbitre voit ou ne voit
 pas (perception de l'arbitre, son placement, son profil). Pris, c'est la sanction prévue par la loi.
 - `vice` — jeu à la limite des lois → gains marginaux au ruck et au maul, pénalités si l'arbitre le voit.
@@ -222,7 +451,7 @@ pas (perception de l'arbitre, son placement, son profil). Pris, c'est la sanctio
 - `provocation` / `reactionProvocation` — chercher l'adversaire / réagir aux provocations → cartons, échauffourées.
 - `discipline` — maîtrise de soi → fréquence des fautes involontaires (existe).
 
-### 3.13 Lecture du jeu, perception et décision
+### 3.18 Lecture du jeu, perception et décision
 - `lectureJeu` — comprendre la situation → délai de réaction, erreurs d'estimation.
 - `vision` — portée et champ de vision, options vues.
 - `anticipation` — prévoir la passe, la course, le pied adverse.
@@ -234,7 +463,7 @@ pas (perception de l'arbitre, son placement, son profil). Pris, c'est la sanctio
 - `gestionTemps` — gérer le chrono et le score (fin de match, sonnerie).
 - `lectureAdversaire` — repérer le défenseur faible, l'annonce adverse.
 
-### 3.14 Connaissances tactiques et collectives
+### 3.19 Connaissances tactiques et collectives
 - `connaissancePlan` — maîtrise du plan de jeu du club (placements, consignes).
 - `annonces` — connaissance des codes de touche, mêlée, combinaisons.
 - `connaissanceRegles` — finesse des lois (hors-jeu, en-avant volontaire, ruck).
@@ -245,7 +474,7 @@ pas (perception de l'arbitre, son placement, son profil). Pris, c'est la sanctio
 - `leadership` — capitaine, orateur, choix du capitaine.
 - `leadershipDefensif` — organiser la ligne par la voix.
 
-### 3.15 Mental et caractère
+### 3.20 Mental et caractère
 - `concentration` — erreurs d'inattention (en-avants bêtes, hors-jeu).
 - `sangFroid` — gestes décisifs sous pression.
 - `confianceSoi` — niveau qui monte/descend selon les réussites.
@@ -257,10 +486,10 @@ pas (perception de l'arbitre, son placement, son profil). Pris, c'est la sanctio
 - `grandsMatchs` — performance dans les matchs à enjeu.
 - `espritEquipe` — se sacrifier pour le collectif (déblayage ingrat, course leurre).
 
-### 3.16 Latéralité
+### 3.21 Latéralité
 - `piedFort` (G/D), `piedFaible` (0–100) ; `mainForte`, `passeGauche`, `passeDroite` ; `coteDePrediction` (côté vers lequel il crochète naturellement).
 
-### 3.17 État du jour (dynamique)
+### 3.22 État du jour (dynamique)
 `fatigue` (dans le match), `forme` (semaine), `confiance` (dans le match), `blessure`, `douleur`, `carton` (en jeu ou non).
 Ils **modulent** toutes les caractéristiques ci-dessus sans les remplacer.
 
