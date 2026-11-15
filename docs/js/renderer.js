@@ -30,6 +30,7 @@
 
   let canvas, ctx;
   let W = 0, H = 0;
+  let densite = 1; // pixels physiques par pixel CSS, pour les écrans Retina
   // Sens de dessin : `paysage` = la longueur du terrain suit la largeur de l'écran.
   let paysage = true;
   // Caméra : centre (mètres terrain) et échelle (pixels par mètre).
@@ -64,31 +65,40 @@
 
   function redimensionner(hudH, seekH, ctrlH) {
     dernieresZones = [hudH || 0, seekH || 0, ctrlH || 0];
-    W = window.innerWidth;
-    H = Math.max(120, window.innerHeight - (hudH || 0) - (seekH || 0) - (ctrlH || 0));
-    canvas.width = W;
-    canvas.height = H;
+    // Le canvas suit les dimensions RÉELLES disponibles, sans étirer les joueurs.
+    // La résolution du bitmap est indépendante de la taille CSS (écrans 2x/3x).
+    const nouveauW = Math.max(1, document.documentElement.clientWidth || window.innerWidth);
+    const nouveauH = Math.max(120, window.innerHeight - (hudH || 0) - (seekH || 0) - (ctrlH || 0));
+    const nouvelleOrientation = modeOrientation === 'auto' ? window.innerWidth >= window.innerHeight : modeOrientation === 'paysage';
+    const nouveauDpr = Math.min(2.5, Math.max(1, window.devicePixelRatio || 1));
+    const changement = nouveauW !== W || nouveauH !== H || nouveauDpr !== densite || nouvelleOrientation !== paysage;
+    W = nouveauW; H = nouveauH; paysage = nouvelleOrientation; densite = nouveauDpr;
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
     canvas.style.marginTop = (hudH || 0) + 'px';
-    paysage = modeOrientation === 'auto' ? W >= H : modeOrientation === 'paysage';
-    // Échelle initiale : vue large, recalée dès la première image par la caméra.
-    cam.s = echelleCible('PORTE');
-    scale = cam.s;
+    if (changement) {
+      canvas.width = Math.round(W * densite);
+      canvas.height = Math.round(H * densite);
+      ctx.setTransform(densite, 0, 0, densite, 0, 0);
+      // Ne pas revenir à la caméra initiale quand une notification agrandit le HUD.
+      if (!cam.pret) { cam.s = echelleCible('PORTE'); scale = cam.s; }
+    }
   }
 
   // --- CAMÉRA -----------------------------------------------------------------
   // Étendue visible le long de l'axe horizontal de l'écran (mètres), par phase.
   // En paysage : longueur du terrain ; en portrait : largeur.
   const ETENDUE = {
-    paysage: { PORTE: 48, RUCK: 42, MAUL: 38, MELEE: 34, TOUCHE: 40, COUP_DE_PIED_JEU: 64, COUP_ENVOI: 66,
+    paysage: { PORTE: 64, RUCK: 53, MAUL: 50, MELEE: 51, TOUCHE: 55, COUP_DE_PIED_JEU: 79, COUP_ENVOI: 78,
       ESSAI: 48, TRANSFORMATION: 54, PENALITE_TIR: 54, MI_TEMPS: 130, TERMINE: 130 },
-    portrait: { PORTE: 38, RUCK: 33, MAUL: 30, MELEE: 27, TOUCHE: 31, COUP_DE_PIED_JEU: 52, COUP_ENVOI: 54,
+    portrait: { PORTE: 51, RUCK: 45, MAUL: 42, MELEE: 43, TOUCHE: 46, COUP_DE_PIED_JEU: 62, COUP_ENVOI: 65,
       ESSAI: 40, TRANSFORMATION: 44, PENALITE_TIR: 44, MI_TEMPS: 80, TERMINE: 80 },
   };
   // Échelle cible : une LONGUEUR de terrain visible selon la phase (le long de l'axe x du terrain) et
   // une LARGEUR minimale toujours visible, quelle que soit l'orientation de l'écran.
   function echelleCible(phase) {
-    const longueur = ETENDUE.paysage[phase] || ETENDUE.paysage.PORTE;
-    const largeurMin = paysage ? 28 : 34;
+    const longueur = (paysage ? ETENDUE.paysage : ETENDUE.portrait)[phase] || (paysage ? ETENDUE.paysage.PORTE : ETENDUE.portrait.PORTE);
+    const largeurMin = paysage ? 37 : 36;
     const ecranLongueur = paysage ? W : H / INCLINAISON;   // pixels disponibles le long de x terrain
     const ecranLargeur = paysage ? H / INCLINAISON : W;    // pixels disponibles le long de y terrain
     let s = Math.min(ecranLongueur / longueur, ecranLargeur / largeurMin);
@@ -464,9 +474,10 @@
   }
   function spriteCouche(debout) {
     const c = document.createElement('canvas');
-    c.width = SH; c.height = SW;
+    // Accepte les anciens sprites ou les nouveaux dessins HD.
+    c.width = debout.height; c.height = debout.width;
     const g = c.getContext('2d');
-    g.translate(SH, 0); g.rotate(Math.PI / 2);
+    g.translate(debout.height, 0); g.rotate(Math.PI / 2);
     g.drawImage(debout, 0, 0);
     return c;
   }
@@ -481,6 +492,118 @@
     pal.peauOmbre = assombrir(pal.peau, 0.8);
     return pal;
   }
+  // Personnages modernes : silhouettes vectorielles 2.5D rendues dans une
+  // texture haute définition puis mises en cache. Le joueur ne ressemble plus
+  // à un amas de gros pixels : tête, épaules, musculature, maillot, short,
+  // chaussettes, crampons et gestes se distinguent même sur mobile.
+  // Les poses dépendent toujours de l'état moteur, jamais d'animations fictives.
+  function fabriquerSpriteModerne(pal, vue, posture, image, massif) {
+    const c = document.createElement('canvas');
+    const definition = 4;
+    c.width = SW * definition; c.height = SH * definition;
+    const g = c.getContext('2d');
+    g.scale(definition, definition);
+    g.lineJoin = 'round';
+    g.lineCap = 'round';
+    const profil = vue === 'profil', dos = vue === 'dos';
+    const anime = posture === 'course' || posture === 'arret';
+    const avance = anime ? [3.5, 1.3, -3.5, -1.3][image % 4] : 0;
+    const penche = posture === 'melee' ? 5.2 : posture === 'penche' ? 3.8 : posture === 'frappe' ? 1.4 : 0;
+    const baisse = posture === 'melee' ? 4.8 : posture === 'penche' ? 2.4 : posture === 'releve' ? 5 : 0;
+    const saut = posture === 'saut' ? 2.5 : 0;
+    const x = 16, hanches = 18.4 + baisse - saut;
+    const haut = hanches - 11.6;
+    const torseX = x + (profil ? penche : penche * 0.34);
+    const epaule = massif ? 6.1 : 4.9, bassin = massif ? 4.25 : 3.7;
+    const peau = pal.peau, peauSombre = pal.peauOmbre;
+    function ovale(cx,cy,rx,ry,couleur) {
+      g.fillStyle=couleur; g.beginPath(); g.ellipse(cx,cy,rx,ry,0,0,Math.PI*2); g.fill();
+    }
+    function trait(x1,y1,x2,y2,largeur,couleur) {
+      g.strokeStyle=couleur; g.lineWidth=largeur; g.beginPath(); g.moveTo(x1,y1); g.lineTo(x2,y2); g.stroke();
+    }
+    function forme(points,couleur,contour,epaisseur=0.65) {
+      g.beginPath(); g.moveTo(points[0][0],points[0][1]);
+      for(let i=1;i<points.length;i++)g.lineTo(points[i][0],points[i][1]);
+      g.closePath();g.fillStyle=couleur;g.fill();
+      if(contour){g.strokeStyle=contour;g.lineWidth=epaisseur;g.stroke();}
+    }
+    // Jambe arrière, puis jambe avant : foulées distinctes, flexion au contact.
+    for (const cote of [-1,1]) {
+      const lateral = profil ? (cote*1.35) : cote*2.6;
+      let piedX = x + lateral + (profil ? cote*avance : cote*(image%2?0.7:1.4));
+      let piedY = 28.1 - saut;
+      if (posture==='frappe' && cote===1) {piedX+=7.5;piedY-=6.4;}
+      if (posture==='releve' && cote===1) {piedX+=3;piedY-=3;}
+      if (posture==='melee') {piedX-=penche*0.3+2;piedY=28.6;}
+      const hancheX = x + lateral*0.7;
+      const genouX=(hancheX+piedX)*0.53 + (profil?cote*1.2:0);
+      const genouY=hanches + (piedY-hanches)*0.52 - Math.abs(avance)*0.23;
+      const ombre=cote===-1;
+      trait(hancheX,hanches,genouX,genouY,massif?3.5:3.1,ombre?peauSombre:peau);
+      trait(genouX,genouY,piedX,piedY-1.3,massif?2.8:2.55,ombre?assombrir(pal.chaussette,.75):pal.chaussette);
+      trait(genouX,genouY+2.1,genouX+(piedX-genouX)*.2,genouY+2.1,1,pal.bande);
+      ovale(piedX+(profil?1:0),piedY,2.35,1.18,'#19252b');
+      trait(piedX-1,piedY-.2,piedX+1.5,piedY-.2,.55,'#53636a');
+    }
+    // Short technique et deux pans : taille étroite, volume aux cuisses.
+    forme([[x-bassin,hanches-4.1],[x+bassin,hanches-4.1],[x+bassin+.5,hanches+1],[x+.65,hanches+1.7],[x,hanches-.15],[x-.65,hanches+1.7],[x-bassin-.5,hanches+1]],pal.short,assombrir(pal.short,.63));
+    trait(x-bassin+.5,hanches-3,x+bassin-.5,hanches-3,.75,assombrir(pal.short,.72));
+    // Bras en arrière-plan, avec coude et main différenciés.
+    const passes=posture==='passe', leve=posture==='saut'||posture==='leveur';
+    function bras(cote,devant) {
+      const px=torseX+cote*epaule*.9,py=haut+2.2;
+      let coudeX=px+cote*(profil?1.0:2.3), coudeY=haut+6.6;
+      let mainX=coudeX+cote*.6,mainY=haut+10.6;
+      if (leve) {coudeX=px+cote*2;coudeY=haut-3.1;mainX=px+cote*1.2;mainY=haut-7.2;}
+      else if (passes) {coudeX=px+cote*3.4;coudeY=haut+2.5;mainX=px+cote*5.2;mainY=haut+1.1;}
+      else if (posture==='melee'||posture==='penche') {coudeX=px+3.2;coudeY=haut+4.5;mainX=px+5.3;mainY=haut+8;}
+      else if (posture==='frappe') {coudeX=px+cote*3.2;coudeY=haut+4;mainX=px+cote*4;mainY=haut+6.2;}
+      else if (anime) {const swing=cote*avance*.45;coudeX+=swing;mainX+=swing*1.6;mainY+=Math.abs(swing)*.5;}
+      trait(px,py,coudeX,coudeY,massif?3.75:3.25,devant?pal.maillot:pal.maillotOmbre);
+      trait(coudeX,coudeY,mainX,mainY,massif?2.6:2.15,devant?peau:peauSombre);
+      ovale(mainX,mainY,1.2,1.2,devant?peau:peauSombre);
+    }
+    bras(profil?-1:-1,false);
+    // Silhouette avec épaules larges et taille cintrée + ombre textile.
+    forme([[torseX-epaule,haut+1.5],[torseX-epaule*.79,haut-.3],
+      [torseX+epaule*.79,haut-.3],[torseX+epaule,haut+1.5],
+      [x+bassin*.98,hanches-3],[x-bassin*.98,hanches-3]],
+      pal.maillot,assombrir(pal.maillot,.56),.8);
+    forme([[torseX+epaule*.55,haut+.5],[torseX+epaule,haut+1.3],
+      [x+bassin*.97,hanches-3],[x+bassin*.48,hanches-3]],
+      assombrir(pal.maillot,.8));
+    trait(torseX-epaule+.9,haut+1.65,torseX+epaule-.9,haut+1.65,.55,'rgba(255,255,255,.35)');
+    trait(x-bassin,hanches-3,x+bassin,hanches-3,.7,pal.col);
+    // Liseré d'épaule : identité des équipes et maillot vraiment structuré.
+    trait(torseX-epaule+.6,haut+.9,torseX-epaule+1.3,haut+3.9,1.35,pal.col);
+    trait(torseX+epaule-.6,haut+.9,torseX+epaule-1.3,haut+3.9,1.35,pal.col);
+    if(dos) {
+      g.fillStyle=pal.col;g.font='bold 5px system-ui,sans-serif';g.textAlign='center';
+      // Numéro détaillé de la texture, le numéro principal reste celui affiché par le HUD.
+      g.fillText('•',torseX,haut+7.2);
+    } else {
+      ovale(torseX,haut+4,1.25,1.25,pal.col); // petit écusson
+    }
+    bras(profil?1:1,true);
+    // Cou, tête au relief doux, cheveux et expression orientée vers l'action.
+    const teteX=torseX+(profil?penche*.33:0), teteY=haut-3.45;
+    trait(teteX,haut+.4,teteX,haut-1.3,2.65,peauSombre);
+    ovale(teteX+.55,teteY+.5,3.1,3.75,peauSombre);
+    ovale(teteX-.2,teteY-.22,3,3.55,peau);
+    g.fillStyle=pal.cheveux;g.beginPath();
+    g.ellipse(teteX-.25,teteY-2.1,3.05,1.8,-.12,Math.PI,Math.PI*2.07);g.lineTo(teteX+2.8,teteY-1.05);g.quadraticCurveTo(teteX,teteY-2.45,teteX-3.1,teteY-1.1);g.fill();
+    if(!dos) {
+      if(profil){ovale(teteX+1.3,teteY-.22,.47,.5,'#2a2b26');}
+      else {ovale(teteX-1.1,teteY-.3,.37,.42,'#2c2721');ovale(teteX+1.1,teteY-.3,.37,.42,'#2c2721');}
+    }
+    if(pal.casque){
+      g.strokeStyle=pal.casque;g.lineWidth=1.8;g.beginPath();g.arc(teteX,teteY-.4,3.2,Math.PI*1.03,Math.PI*1.97);g.stroke();
+      trait(teteX-3.1,teteY-1.2,teteX+2.9,teteY-1.2,.9,pal.casque);
+    }
+    return c;
+  }
+
   function sprite(j, couleurs, vue, posture, image) {
     const pal = palette(j, couleurs);
     const massif = j.team !== 'ARB' && j.numero <= 8;
@@ -489,7 +612,7 @@
     let s = cacheSprites.get(cle);
     if (!s) {
       if (posture === 'sol') s = spriteCouche(sprite(j, couleurs, 'profil', 'arret', 0));
-      else s = fabriquerSprite(pal, vue, posture, imageCle, massif);
+      else s = fabriquerSpriteModerne(pal, vue, posture, imageCle, massif);
       cacheSprites.set(cle, s);
     }
     return s;
@@ -523,8 +646,9 @@
     // Saut en touche : le sauteur s'élève au-dessus de l'alignement.
     const hausse = p === 'saut' ? (6 + 9 * Math.sin(Math.PI * Math.min(1, (opts.prog || 0) * 1.1))) * ps : 0;
     ctx.save();
-    ctx.imageSmoothingEnabled = false;
-    ctx.translate(Math.round(sx), Math.round(sy - hausse));
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.translate(sx, sy - hausse);
     if ((p === 'sol' ? a.dirAction : sens) < 0) ctx.scale(-1, 1);
     if (p === 'sol') ctx.drawImage(spr, -SH / 2 * ps, -SW * ps * 0.55, SH * ps, SW * ps);
     else ctx.drawImage(spr, -SW / 2 * ps, -SH * ps, SW * ps, SH * ps);
@@ -709,11 +833,11 @@
 
   // --- MINI-CARTE ---------------------------------------------------------------------
   function dessinerMiniCarte(state) {
-    // Petite en portrait (téléphone) : à 30 % de la largeur elle masquait des joueurs.
-    const w = Math.round(paysage ? Math.min(190, W * 0.18) : Math.min(64, W * 0.17));
+    // Aperçu tactique ancré en bas à droite, en dehors du score.
+    const w = Math.round(paysage ? Math.min(170, W * 0.16) : Math.min(70, W * 0.19));
     const longueurTot = LONGUEUR + 2 * PROF_EN_BUT;
     const h = Math.round(paysage ? w * LARGEUR / longueurTot : w * longueurTot / LARGEUR);
-    const x0 = W - w - 10, y0 = 10;
+    const x0 = W - w - 12, y0 = H - h - 12;
     const versMini = (x, y) => paysage
       ? { x: x0 + (x + PROF_EN_BUT) / longueurTot * w, y: y0 + y / LARGEUR * h }
       : { x: x0 + y / LARGEUR * w, y: y0 + (x + PROF_EN_BUT) / longueurTot * h };
@@ -755,6 +879,9 @@
   }
 
   function dessiner(state) {
+    // L'unité de tous les dessins demeure le pixel CSS (texte, terrain, caméra).
+    // On réinitialise explicitement la matrice, y compris après un resize Retina.
+    ctx.setTransform(densite, 0, 0, densite, 0, 0);
     const maintenant = performance.now();
     const dt = dernierMs === null ? 0 : Math.min(0.1, (maintenant - dernierMs) / 1000);
     dernierMs = maintenant;
