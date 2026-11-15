@@ -1761,7 +1761,9 @@ function candidatsRenfort(b, s) {
       const treize = Object.values(b.teammates).find((m) => m.numero === 13 && m.age <= 1.5);
       const y13 = treize ? treize.lastSeen.y : bal.y + ouvert * 22;
       out.push({ id: 'JOIN_LINE', priority: Math.min(72, 63 + 3 * surnombre) + (dejaDansLaLigne ? 6 : 0),
-        target: { x: P.clamp(bal.x - sens * 12, 0, 100), y: P.clamp(y13 + ouvert * 5, 3, P.LARGEUR - 3) }, vmax: 1,
+        // Profondeur prise sur le 13 vu (2,5 m en retrait) : sinon l'arrière arrivait à hauteur des passeurs
+        // et n'était jamais une option de passe légale (mesuré : 13,5 ballons reçus contre 20,7 avant).
+        target: { x: P.clamp((treize ? treize.lastSeen.x : bal.x - sens * 12) - sens * 2.5, 0, 100), y: P.clamp(y13 + ouvert * 5, 3, P.LARGEUR - 3) }, vmax: 1,
         reason: `intercalé : ${att + 1} attaquants contre ${def} défenseurs vus côté ouvert` });
     }
   }
@@ -1771,7 +1773,11 @@ function candidatsRenfort(b, s) {
   if (fermeIci && largeurFermee <= (dejaPasse ? 22 : 15) && largeurOuverte >= (dejaPasse ? 30 : 40)) {
     out.push({ id: 'SWITCH_WING', priority: 68 + (def <= att ? 2 : 0) + (dejaPasse ? 6 : 0),
       // Il entre comme coureur au milieu, derrière le 10, puis relit le jeu à chaque décision.
-      target: { x: P.clamp(bal.x - sens * 12, 0, 100), y: P.clamp(bal.y + ouvert * 13, 3, P.LARGEUR - 3) }, vmax: 1,
+      target: (() => {
+        const dix = Object.values(b.teammates).find((m) => m.numero === 10 && m.age <= 1.5);
+        return dix ? { x: P.clamp(dix.lastSeen.x - sens * 3, 0, 100), y: P.clamp(dix.lastSeen.y + ouvert * 5, 3, P.LARGEUR - 3) }
+          : { x: P.clamp(bal.x - sens * 13, 0, 100), y: P.clamp(bal.y + ouvert * 13, 3, P.LARGEUR - 3) };
+      })(), vmax: 1,
       reason: `aile fermée de ${largeurFermee.toFixed(0)} m : renfort côté ouvert` });
   }
   return out;
