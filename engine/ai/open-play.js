@@ -45,16 +45,21 @@ function lireCouverture(b, s) {
   if (!porteur || !visibleJouable(porteur)) return null;
   const balle = porteur.lastSeen, me = b.self, sens = s.sens;
   const profondeur = (balle.x - me.x) * sens;
-  if (profondeur < 1 || profondeur > 30 || dist(me, balle) > 35) return null;
+  if (profondeur < 1 || profondeur > 27 || dist(me, balle) > 32) return null;
 
   const vx = porteur.vx || 0, vy = porteur.vy || 0;
-  if (-vx * sens < 1.25) return null;
+  if (-vx * sens < 3.5) return null;
   const enCours = projeter(porteur, porteur.age + 0.65);
   const rideau = Object.values(b.teammates).some(j => {
     if (!visibleJouable(j) || j.recovery) return false;
     const jx = j.lastSeen.x;
-    return (balle.x - jx) * sens > 0.5 && (jx - me.x) * sens > 2
-      && Math.abs(j.lastSeen.y - enCours.y) <= 6;
+    // Un partenaire encore à hauteur peut fermer l'intérieur. Sa position
+    // projetée permet de distinguer sa montée d'un retour trop tardif.
+    const avance = (balle.x - jx) * sens;
+    const projete = projeter(j, j.age + 0.45);
+    return avance >= -1 && (jx - me.x) * sens > 2
+      && (enCours.x - projete.x) * sens >= -3
+      && Math.abs(projete.y - enCours.y) <= 8;
   });
   if (rideau) return null;
 

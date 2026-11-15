@@ -215,7 +215,11 @@ for (const team of ['A', 'B']) {
   assert.equal(placement().placementGoal, 'COVER_BACKFIELD');
   ailier.missCooldown = 1;
   assert.equal(placement().placementGoal, 'COVER_BREAK', 'un défenseur battu ne compte plus comme couverture');
-  Object.assign(ailier, { x: x(53), y: 57, missCooldown: 0 });
+  Object.assign(ailier, { y: 20, missCooldown: 0, vitesseCourante: 5, orientation: -Math.PI / 2 });
+  assert.equal(placement().placementGoal, 'COVER_BACKFIELD', 'un équipier qui ferme le couloir arrive à temps');
+  ailier.orientation = Math.PI / 2;
+  assert.equal(placement().placementGoal, 'COVER_BREAK', 'le même équipier qui s’écarte ne couvre plus la percée');
+  Object.assign(ailier, { x: x(53), y: 57, vitesseCourante: 0 });
   arriere.horsJeuKick = 2;
   assert.equal(placement().placementGoal, 'COVER_BACKFIELD');
   arriere.horsJeuKick = 0;
