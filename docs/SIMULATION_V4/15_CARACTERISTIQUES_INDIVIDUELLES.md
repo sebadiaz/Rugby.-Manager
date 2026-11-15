@@ -673,5 +673,8 @@ Premières caractéristiques branchées : `lectureJeu`, `vision`, `receptionPass
 - en-avant de la chistera selon `passeApresContact`.
 Tests : `server/test-v4-caracteristiques.js` (7 : migration, valeurs explicites, tendance de lecture, geste non
 maîtrisé, portée de passe, équipe sans chistera, remplaçant qui apporte ses gestes).
+**Mesure, 12 graines complètes GOAP (dérivation par défaut → avec caractéristiques) :** chisteras 4,5 → 2,4 par match
+(réservées aux 9, 10, 12, 13), passes au pied 0,8 → 0,4, passes 419 → 397, essais 5,5 → 6,8, points 46,6 → 52,0,
+rucks 187 → 192, plaquages 226 → 235, en-avants 11,8 → 12,7 ; 0 erreur IA. Suite V4 : 30 fichiers verts.
 **À faire :** les ~360 autres caractéristiques (moteur, Mode Club, interface), saisie des valeurs propres à
 chaque joueur dans le Mode Club, remplacement des constantes de la section 6, matrice de niveaux.

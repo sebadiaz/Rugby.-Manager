@@ -545,8 +545,11 @@
     ctx.beginPath(); ctx.ellipse(sol.px, sol.py, t * 1.2, t * 0.55, 0, 0, Math.PI * 2); ctx.fill();
     ctx.restore();
     const grossi = 1 + Math.min(0.6, haut * 0.04);
+    // Le ballon haut reste à l'écran : sa hauteur affichée est plafonnée au-dessus du bord (son ombre, au sol,
+    // garde la position vraie).
+    const leve = Math.min(haut * k, Math.max(0, sol.py - Math.max(12, t * 2)));
     ctx.save();
-    ctx.translate(sol.px, sol.py - haut * k);
+    ctx.translate(sol.px, sol.py - leve);
     ctx.rotate(rotation);
     ctx.fillStyle = '#8d5524';
     ctx.beginPath(); ctx.ellipse(0, 0, t * 1.5 * grossi, t * 0.95 * grossi, 0, 0, Math.PI * 2); ctx.fill();
@@ -623,7 +626,8 @@
 
   // --- MINI-CARTE ---------------------------------------------------------------------
   function dessinerMiniCarte(state) {
-    const w = Math.round(Math.min(paysage ? 190 : 120, W * (paysage ? 0.18 : 0.3)));
+    // Petite en portrait (téléphone) : à 30 % de la largeur elle masquait des joueurs.
+    const w = Math.round(paysage ? Math.min(190, W * 0.18) : Math.min(64, W * 0.17));
     const longueurTot = LONGUEUR + 2 * PROF_EN_BUT;
     const h = Math.round(paysage ? w * LARGEUR / longueurTot : w * longueurTot / LARGEUR);
     const x0 = W - w - 10, y0 = 10;
@@ -631,7 +635,7 @@
       ? { x: x0 + (x + PROF_EN_BUT) / longueurTot * w, y: y0 + y / LARGEUR * h }
       : { x: x0 + y / LARGEUR * w, y: y0 + (x + PROF_EN_BUT) / longueurTot * h };
     ctx.save();
-    ctx.globalAlpha = 0.86;
+    ctx.globalAlpha = paysage ? 0.86 : 0.72;
     ctx.fillStyle = '#1b3d1f'; ctx.fillRect(x0 - 3, y0 - 3, w + 6, h + 6);
     ctx.fillStyle = '#3a8f3e'; ctx.fillRect(x0, y0, w, h);
     ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 1;
@@ -641,7 +645,7 @@
       for (const j of state.teams[team]) {
         if (j.sinBin > 0) continue;
         const p = versMini(j.x, j.y);
-        ctx.beginPath(); ctx.arc(p.x, p.y, 2.2, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(p.x, p.y, paysage ? 2.2 : 1.5, 0, Math.PI * 2); ctx.fill();
       }
     }
     const b = state.ballonRendu || state.ballon;
