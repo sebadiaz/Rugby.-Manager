@@ -11,9 +11,12 @@ uniquement tant que GOAP n'est pas prêt à jouer, pas parce qu'il serait la vé
 IMPORTANT — DÉCISION DU PROPRIÉTAIRE (15 novembre 2026) : **LES CARACTÉRISTIQUES INDIVIDUELLES SONT PRIMORDIALES.**
 Capacités physiques et techniques, connaissances tactiques individuelles, lecture du jeu et mental de
 chaque joueur font la simulation. Tout le monde ne sait pas faire une chistera, un drop ou une très
-longue passe : un geste non maîtrisé n'est pas une option du joueur. Chaque POSTE a ses propres
-caractéristiques et chaque joueur une aptitude par poste ET par côté (un pilier gauche peut ne jouer
-qu'à gauche ; le 9 est le roi du ramassage et de la passe rapide et précise sous forte pression).
+longue passe : un geste non maîtrisé n'est pas une option du joueur. Tous les joueurs peuvent jouer
+à tous les postes : c'est le NIVEAU de leurs caractéristiques qui les rend meilleurs à un poste
+(aucune note d'aptitude séparée, aucun poste interdit ; l'aptitude se CALCULE). Chaque poste a ses
+caractéristiques propres (un pilier gauche « ne joue qu'à gauche » parce que ses caractéristiques
+de pilier droit sont faibles ; le 9 est le roi du ramassage et de la passe rapide et précise sous
+forte pression).
 Le catalogue est OUVERT : l'enrichir, ne jamais le réduire. Les statistiques d'un match
 découlent du NIVEAU des joueurs présents ; les repères d'élite (Six Nations, Top 14) ne valent que
 pour un match entre équipes d'élite. Ne jamais régler le moteur pour que des joueurs moyens

@@ -129,22 +129,22 @@ n,famille,cle,description,effet,postes,existe_moteur
 128,Touche et maul,pousseeMaul,pousser au maul,—,"avants, talonneur",partiel : puissance
 129,Touche et maul,transmissionMaul,faire glisser le ballon vers l'arrière du maul,—,"avants, talonneur",à créer
 130,Touche et maul,defenseMaul,"stopper un maul, saquer le sauteur légalement",—,"avants, talonneur",à créer
-131,Aptitude par poste et par côté (matrice),aptPilierGauche,aptitude au poste 1,"côté « ouvert », mêlée sur un seul adversaire",—,à créer
-132,Aptitude par poste et par côté (matrice),aptPilierDroit,aptitude au poste 3,"porte la mêlée, deux adversaires ; très peu de piliers jouent les deux côtés",—,à créer
-133,Aptitude par poste et par côté (matrice),aptTalonneur,aptitude au poste 2,lancer et talonnage indispensables,—,à créer
-134,Aptitude par poste et par côté (matrice),aptDeuxiemeLigneAvant,aptitude au poste 4,"« sauteur de devant », poussée côté gauche",—,à créer
-135,Aptitude par poste et par côté (matrice),aptDeuxiemeLigneArriere,aptitude au poste 5,"sauteur principal, poussée côté droit",—,à créer
-136,Aptitude par poste et par côté (matrice),aptTroisiemeLigneAile6,aptitude au poste 6,"côté fermé, plaqueur, sauteur",—,à créer
-137,Aptitude par poste et par côté (matrice),aptTroisiemeLigneAile7,aptitude au poste 7,"côté ouvert, gratteur, premier au ruck",—,à créer
-138,Aptitude par poste et par côté (matrice),aptNumero8,aptitude au poste 8,"fond de mêlée, prise de balle, départ",—,à créer
-139,Aptitude par poste et par côté (matrice),aptDemiMelee,aptitude au poste 9,performance et placement à ce poste,—,à créer
-140,Aptitude par poste et par côté (matrice),aptDemiOuverture,aptitude au poste 10,performance et placement à ce poste,—,à créer
-141,Aptitude par poste et par côté (matrice),aptPremierCentre,aptitude au poste 12,"deuxième meneur, percussion, pied",—,à créer
-142,Aptitude par poste et par côté (matrice),aptSecondCentre,aptitude au poste 13,"défense dans le grand couloir, vitesse",—,à créer
-143,Aptitude par poste et par côté (matrice),aptAilierGauche,aptitude au poste 11,pied et main côté gauche,—,à créer
-144,Aptitude par poste et par côté (matrice),aptAilierDroit,aptitude au poste 14,performance et placement à ce poste,—,à créer
-145,Aptitude par poste et par côté (matrice),aptArriere,aptitude au poste 15,performance et placement à ce poste,—,à créer
-146,Aptitude par poste et par côté (matrice),aptJokerBanc,aptitude au poste remplaçant,impact en fin de match (`impactEntree`),—,à créer
+131,Aptitude à un poste (calculée),aptPilierGauche,aptitude CALCULÉE au poste 1,"lecture des caractéristiques : pg_*, liaisonMelee, pousseeMelee, forceBas, masse, levee",tous (tout joueur peut jouer à tout poste),"calculée, non stockée"
+132,Aptitude à un poste (calculée),aptPilierDroit,aptitude CALCULÉE au poste 3,"lecture des caractéristiques : pd_*, stabiliteMelee, forceBas, masse, resistanceRotation",tous (tout joueur peut jouer à tout poste),"calculée, non stockée"
+133,Aptitude à un poste (calculée),aptTalonneur,aptitude CALCULÉE au poste 2,"lecture des caractéristiques : ta_talonnage, ta_precisionLancer, ta_puissanceLancer, ta_trajectoireLancer, pousseeMelee, grattage",tous (tout joueur peut jouer à tout poste),"calculée, non stockée"
+134,Aptitude à un poste (calculée),aptDeuxiemeLigneAvant,aptitude CALCULÉE au poste 4,"lecture des caractéristiques : dl_detente, dl_timingSaut, taille, levee, pousseeMelee, deblayage",tous (tout joueur peut jouer à tout poste),"calculée, non stockée"
+135,Aptitude à un poste (calculée),aptDeuxiemeLigneArriere,aptitude CALCULÉE au poste 5,"lecture des caractéristiques : idem 4 + dl_5_annonceTouche, codesTouche",tous (tout joueur peut jouer à tout poste),"calculée, non stockée"
+136,Aptitude à un poste (calculée),aptTroisiemeLigneAile6,aptitude CALCULÉE au poste 6,"lecture des caractéristiques : tl_plaquageVolume, tl_6_coteFerme, tl_sautFond, techniquePlaquage, enduranceAerobie",tous (tout joueur peut jouer à tout poste),"calculée, non stockée"
+137,Aptitude à un poste (calculée),aptTroisiemeLigneAile7,aptitude CALCULÉE au poste 7,"lecture des caractéristiques : tl_vitesseVersRuck, tl_grattage, tl_7_coteOuvert, vitesseMax, enduranceAerobie",tous (tout joueur peut jouer à tout poste),"calculée, non stockée"
+138,Aptitude à un poste (calculée),aptNumero8,aptitude CALCULÉE au poste 8,"lecture des caractéristiques : n8_controleBallonPied, n8_ramassagePiedMelee, n8_departHuit, percussion, n8_sautFond",tous (tout joueur peut jouer à tout poste),"calculée, non stockée"
+139,Aptitude à un poste (calculée),aptDemiMelee,aptitude CALCULÉE au poste 9,"lecture des caractéristiques : dm_ramassage, dm_ramassageSousPression, dm_passeDuSol, dm_ejection, dm_precisionPasse, dm_passeSousPression, dm_boxKick",tous (tout joueur peut jouer à tout poste),"calculée, non stockée"
+140,Aptitude à un poste (calculée),aptDemiOuverture,aptitude CALCULÉE au poste 10,"lecture des caractéristiques : do_passeLongue, do_timingFixation, do_lectureDefense, do_jeuPiedTactique, do_buteur, vision",tous (tout joueur peut jouer à tout poste),"calculée, non stockée"
+141,Aptitude à un poste (calculée),aptPremierCentre,aptitude CALCULÉE au poste 12,"lecture des caractéristiques : c12_percussion, c12_passeSousPression, c12_deuxiemeMeneur, c12_defenseFrontale, distancePied",tous (tout joueur peut jouer à tout poste),"calculée, non stockée"
+142,Aptitude à un poste (calculée),aptSecondCentre,aptitude CALCULÉE au poste 13,"lecture des caractéristiques : c13_vitesseGrandCouloir, c13_defenseGrandCouloir, c13_lectureSurnombre, vitesseMax",tous (tout joueur peut jouer à tout poste),"calculée, non stockée"
+143,Aptitude à un poste (calculée),aptAilierGauche,aptitude CALCULÉE au poste 11,"lecture des caractéristiques : ai_vitesse, ai_finitionCoin, ai_jeuLongTouche, ai_11_gaucher, ai_receptionBallonHaut",tous (tout joueur peut jouer à tout poste),"calculée, non stockée"
+144,Aptitude à un poste (calculée),aptAilierDroit,aptitude CALCULÉE au poste 14,"lecture des caractéristiques : ai_vitesse, ai_finitionCoin, ai_jeuLongTouche, ai_14_droitier, ai_receptionBallonHaut",tous (tout joueur peut jouer à tout poste),"calculée, non stockée"
+145,Aptitude à un poste (calculée),aptArriere,aptitude CALCULÉE au poste 15,"lecture des caractéristiques : ar_receptionBallonHaut, ar_placementFond, ar_relance, ar_jeuPiedLong, ar_dernierRideau",tous (tout joueur peut jouer à tout poste),"calculée, non stockée"
+146,Aptitude à un poste (calculée),aptJokerBanc,aptitude CALCULÉE au poste remplaçant,"lecture des caractéristiques : impactEntree, gestionEffort, polyvalenceBanc",tous (tout joueur peut jouer à tout poste),"calculée, non stockée"
 147,Caractéristiques SPÉCIFIQUES de chaque poste,pg_liaisonTalonneur,qualité de la liaison avec son talonneur,—,Pilier gauche (1),à créer
 148,Caractéristiques SPÉCIFIQUES de chaque poste,pg_tenueVisAVis,tenir le pilier droit adverse (un seul adversaire) sans reculer,—,Pilier gauche (1),à créer
 149,Caractéristiques SPÉCIFIQUES de chaque poste,pg_angleEntree,"entrée droite et légale, ne pas « rentrer » sous l'adversaire",—,Pilier gauche (1),à créer
@@ -351,7 +351,7 @@ n,famille,cle,description,effet,postes,existe_moteur
 350,Connaissances tactiques et collectives,annonces,"connaissance des codes de touche, mêlée, combinaisons",—,tous,à créer
 351,Connaissances tactiques et collectives,connaissanceRegles,"finesse des lois (hors-jeu, en-avant volontaire, ruck)",—,tous,à créer
 352,Connaissances tactiques et collectives,experience,matchs joués et niveau connu,stabilité des décisions,tous,à créer
-353,Connaissances tactiques et collectives,polyvalence,postes connus et niveau à chacun,—,tous,à créer
+353,Connaissances tactiques et collectives,connaissancePoste,"connaissance du rôle à chaque poste (placements, annonces), une valeur par poste, apprise avec l'expérience",placement et appels justes à ce poste,tous,à créer
 354,Connaissances tactiques et collectives,cohesion,"habitude avec chaque partenaire (charnière 9–10, centres, triangle arrière)",timing des passes et des croisées,tous,à créer
 355,Connaissances tactiques et collectives,communication,"parler, être entendu, comprendre",portée et clarté des appels,tous,à créer
 356,Connaissances tactiques et collectives,leadership,"capitaine, orateur, choix du capitaine",—,tous,à créer

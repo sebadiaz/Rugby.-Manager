@@ -50,7 +50,7 @@ sauvegarde ancienne reçoit des valeurs dérivées de ses clés existantes et du
 ## 3. Catalogue détaillé des caractéristiques (0–100 sauf mention)
 
 **Catalogue OUVERT** : il s'enrichit au fil du projet (demande du propriétaire), on n'en retire rien sans décision
-explicite. Il combine des caractéristiques générales (3.1–3.10, 3.13–3.22), une **aptitude par poste et par côté**
+explicite. Il combine des caractéristiques générales (3.1–3.10, 3.13–3.22), une **aptitude par poste calculée à partir des caractéristiques**
 (3.11) et des **caractéristiques propres à chaque poste** (3.12).
 
 Chaque tableau : clé, description, effet attendu dans la simulation, et état dans le moteur actuel (« oui », « partiel : clé actuelle qui la couvre en partie », « à créer »). Une caractéristique est **un savoir-faire
@@ -228,37 +228,47 @@ nouvelles lors de la migration.
 | `transmissionMaul` | faire glisser le ballon vers l'arrière du maul | — | à créer |
 | `defenseMaul` | stopper un maul, saquer le sauteur légalement | — | à créer |
 
-### 3.11 Aptitude par poste et par côté (matrice)
+### 3.11 Aptitude à un poste : CALCULÉE à partir des caractéristiques (jamais stockée)
 
-Chaque joueur a une **aptitude 0–100 pour chacun des postes ci-dessous**. Le côté compte : un pilier gauche peut
-n'être jouable qu'à gauche (aptitude pilier droit très basse) ; un ailier gauche n'est pas forcément un ailier
-droit. Hors de ses aptitudes, les caractéristiques spécifiques du poste (3.12) chutent et ses décisions de
-placement sont moins justes (`connaissancePlan` du poste).
+> **Précision du propriétaire (15 novembre 2026).** Tous les joueurs peuvent jouer à tous les postes. C'est le
+> **niveau de leurs caractéristiques** qui les rend meilleurs à un poste qu'à un autre. Il n'existe donc **aucune
+> note d'aptitude séparée** ni aucun poste interdit : l'aptitude est une **lecture** des caractéristiques.
 
-| Clé | Poste | Remarque |
+Exemples : un pilier peut « ne jouer qu'à gauche » parce que ses caractéristiques de pilier droit
+(`pd_tenueDeuxAdversaires`, `pd_porterLaMelee`…) sont faibles, pas parce qu'une règle l'interdit ; un ailier
+aligné talonneur jouera, mais avec un talonnage et un lancer très bas, et le match le montrera. La connaissance du
+rôle à un poste (placements, annonces) est elle-même une caractéristique qui s'apprend (`connaissancePoste`, par
+poste, alimentée par l'expérience à ce poste en Mode Club).
+
+L'aptitude sert seulement à **afficher** et à **aider le manager** (Mode Club : suggestion de composition) ; le
+moteur, lui, ne lit que les caractéristiques. Calcul proposé : moyenne pondérée des caractéristiques qui comptent
+le plus à ce poste (poids à calibrer), plus la connaissance du poste.
+
+| Clé (calculée) | Poste | Caractéristiques qui pèsent le plus |
 |---|---|---|
-| `aptPilierGauche` | 1 | côté « ouvert », mêlée sur un seul adversaire |
-| `aptPilierDroit` | 3 | porte la mêlée, deux adversaires ; très peu de piliers jouent les deux côtés |
-| `aptTalonneur` | 2 | lancer et talonnage indispensables |
-| `aptDeuxiemeLigneAvant` | 4 | « sauteur de devant », poussée côté gauche |
-| `aptDeuxiemeLigneArriere` | 5 | sauteur principal, poussée côté droit |
-| `aptTroisiemeLigneAile6` | 6 | côté fermé, plaqueur, sauteur |
-| `aptTroisiemeLigneAile7` | 7 | côté ouvert, gratteur, premier au ruck |
-| `aptNumero8` | 8 | fond de mêlée, prise de balle, départ |
-| `aptDemiMelee` | 9 | |
-| `aptDemiOuverture` | 10 | |
-| `aptPremierCentre` | 12 | deuxième meneur, percussion, pied |
-| `aptSecondCentre` | 13 | défense dans le grand couloir, vitesse |
-| `aptAilierGauche` | 11 | pied et main côté gauche |
-| `aptAilierDroit` | 14 | |
-| `aptArriere` | 15 | |
-| `aptJokerBanc` | remplaçant | impact en fin de match (`impactEntree`) |
+| `aptPilierGauche` | 1 | `pg_*`, `liaisonMelee`, `pousseeMelee`, `forceBas`, `masse`, `levee` |
+| `aptTalonneur` | 2 | `ta_talonnage`, `ta_precisionLancer`, `ta_puissanceLancer`, `ta_trajectoireLancer`, `pousseeMelee`, `grattage` |
+| `aptPilierDroit` | 3 | `pd_*`, `stabiliteMelee`, `forceBas`, `masse`, `resistanceRotation` |
+| `aptDeuxiemeLigneAvant` | 4 | `dl_detente`, `dl_timingSaut`, `taille`, `levee`, `pousseeMelee`, `deblayage` |
+| `aptDeuxiemeLigneArriere` | 5 | idem 4 + `dl_5_annonceTouche`, `codesTouche` |
+| `aptTroisiemeLigneAile6` | 6 | `tl_plaquageVolume`, `tl_6_coteFerme`, `tl_sautFond`, `techniquePlaquage`, `enduranceAerobie` |
+| `aptTroisiemeLigneAile7` | 7 | `tl_vitesseVersRuck`, `tl_grattage`, `tl_7_coteOuvert`, `vitesseMax`, `enduranceAerobie` |
+| `aptNumero8` | 8 | `n8_controleBallonPied`, `n8_ramassagePiedMelee`, `n8_departHuit`, `percussion`, `n8_sautFond` |
+| `aptDemiMelee` | 9 | `dm_ramassage`, `dm_ramassageSousPression`, `dm_passeDuSol`, `dm_ejection`, `dm_precisionPasse`, `dm_passeSousPression`, `dm_boxKick` |
+| `aptDemiOuverture` | 10 | `do_passeLongue`, `do_timingFixation`, `do_lectureDefense`, `do_jeuPiedTactique`, `do_buteur`, `vision` |
+| `aptPremierCentre` | 12 | `c12_percussion`, `c12_passeSousPression`, `c12_deuxiemeMeneur`, `c12_defenseFrontale`, `distancePied` |
+| `aptSecondCentre` | 13 | `c13_vitesseGrandCouloir`, `c13_defenseGrandCouloir`, `c13_lectureSurnombre`, `vitesseMax` |
+| `aptAilierGauche` | 11 | `ai_vitesse`, `ai_finitionCoin`, `ai_jeuLongTouche`, `ai_11_gaucher`, `ai_receptionBallonHaut` |
+| `aptAilierDroit` | 14 | `ai_vitesse`, `ai_finitionCoin`, `ai_jeuLongTouche`, `ai_14_droitier`, `ai_receptionBallonHaut` |
+| `aptArriere` | 15 | `ar_receptionBallonHaut`, `ar_placementFond`, `ar_relance`, `ar_jeuPiedLong`, `ar_dernierRideau` |
+| `aptJokerBanc` | remplaçant | `impactEntree`, `gestionEffort`, `polyvalenceBanc` |
 
 ### 3.12 Caractéristiques SPÉCIFIQUES de chaque poste
 
-Ces caractéristiques n'ont de sens qu'au poste (un 9 n'a pas de « tenue en mêlée fermée côté droit »). Elles
-s'ajoutent aux familles générales ; deux joueurs de même poste peuvent avoir des profils très différents
-(un 9 « buteur-passeur » contre un 9 « sniper au ras »).
+**Tout joueur a une valeur pour chacune de ces caractéristiques** (un ailier a un `ta_talonnage`, simplement très
+bas). Le préfixe indique le poste où elles pèsent le plus, pas un poste réservé. Elles s'ajoutent aux familles
+générales ; deux joueurs alignés au même poste peuvent avoir des profils très différents (un 9 « buteur-passeur »
+contre un 9 « sniper au ras »).
 
 #### Pilier gauche (1)
 | Clé | Description | Effet dans la simulation | Moteur |
@@ -549,7 +559,7 @@ pas (perception de l'arbitre, son placement, son profil). Pris, c'est la sanctio
 | `annonces` | connaissance des codes de touche, mêlée, combinaisons | — | à créer |
 | `connaissanceRegles` | finesse des lois (hors-jeu, en-avant volontaire, ruck) | — | à créer |
 | `experience` | matchs joués et niveau connu | stabilité des décisions | à créer |
-| `polyvalence` | postes connus et niveau à chacun | — | à créer |
+| `connaissancePoste` | connaissance du rôle à chaque poste (placements, annonces), une valeur par poste, apprise avec l'expérience | placement et appels justes à ce poste | à créer |
 | `cohesion` | habitude avec chaque partenaire (charnière 9–10, centres, triangle arrière) | timing des passes et des croisées | à créer |
 | `communication` | parler, être entendu, comprendre | portée et clarté des appels | à créer |
 | `leadership` | capitaine, orateur, choix du capitaine | — | à créer |
