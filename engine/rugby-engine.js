@@ -507,6 +507,44 @@
     return { x: cible.x + vx * t, y: cible.y };
   }
 
+  // === CARACTÉRISTIQUES DÉTAILLÉES (docs/SIMULATION_V4/15_CARACTERISTIQUES_INDIVIDUELLES.md) ===
+  // Une valeur explicite de la configuration (`c.caracteristiques`, `c.gestes`) prime ; sinon elle est DÉRIVÉE
+  // des 12 attributs historiques (migration sans perte, aucune consommation de tirage : LEGACY inchangé).
+  // Les dérivations sont des hypothèses de départ, à remplacer par des valeurs propres à chaque joueur.
+  const borne = (v) => Math.max(0, Math.min(100, v));
+  function caracteristiquesDetaillees(j, explicites) {
+    const e = explicites || {};
+    const v = (cle, derivee) => (typeof e[cle] === 'number' ? borne(e[cle]) : borne(derivee));
+    return {
+      lectureJeu: v('lectureJeu', j.decision),
+      vision: v('vision', j.decision * 0.7 + j.passe * 0.3),
+      receptionPasse: v('receptionPasse', 30 + j.passe * 0.6),
+      passeApresContact: v('passeApresContact', j.passe * 0.8 + j.puissance * 0.2),
+      longueurPasse: v('longueurPasse', j.passe),
+      precisionPied: v('precisionPied', j.jeuPied * 0.9 + j.adresse * 0.1),
+      piedRasant: v('piedRasant', j.jeuPied),
+      distancePied: v('distancePied', j.jeuPied),
+    };
+  }
+  // Maîtrise d'un geste : 0 ne sait pas, 1 notions, 2 maîtrise, 3 spécialiste. Explicite ou dérivée des
+  // caractéristiques associées. Un geste à 0 n'est JAMAIS une option de l'agent.
+  const niveauGeste = (val, s1, s2, s3) => (val >= s3 ? 3 : val >= s2 ? 2 : val >= s1 ? 1 : 0);
+  function gestesMaitrises(car, explicites) {
+    const e = explicites || {};
+    const g = (cle, derive) => (Number.isInteger(e[cle]) ? Math.max(0, Math.min(3, e[cle])) : derive);
+    return {
+      chistera: g('chistera', niveauGeste(car.passeApresContact, 62, 75, 88)),
+      passeAuPied: g('passeAuPied', niveauGeste(car.precisionPied, 65, 78, 90)),
+      petitPied: g('petitPied', niveauGeste(car.piedRasant, 60, 75, 88)),
+      passeLongue: g('passeLongue', niveauGeste(car.longueurPasse, 60, 75, 88)),
+    };
+  }
+  function appliquerCaracteristiques(j, c) {
+    j.car = caracteristiquesDetaillees(j, c && c.caracteristiques);
+    j.gestes = gestesMaitrises(j.car, c && c.gestes);
+    return j;
+  }
+
   function creerJoueur(numero, team, sensAttaque, rng, joueursCfg) {
     const c = (joueursCfg && joueursCfg[numero]) || {};
     const p = PROFILS[numero];
@@ -563,7 +601,7 @@
 
   function creerEquipe(team, sensAttaque, rng, joueursCfg) {
     const joueurs = [];
-    for (let n = 1; n <= 15; n++) joueurs.push(creerJoueur(n, team, sensAttaque, rng, joueursCfg));
+    for (let n = 1; n <= 15; n++) joueurs.push(appliquerCaracteristiques(creerJoueur(n, team, sensAttaque, rng, joueursCfg), (joueursCfg && joueursCfg[n]) || null));
     return joueurs;
   }
 
@@ -2713,7 +2751,8 @@
       if (action === 'CHISTERA_AGENT') {
         // Geste risqué : la réussite dépend des mains du porteur ; un raté est un en-avant (mêlée adverse).
         const jeu = this._intentionsAgents.get(porteur.team + porteur.numero).jeu;
-        const mains = typeof porteur.passe === 'number' ? Math.max(0.6, Math.min(1.6, 1 + (60 - porteur.passe) / 80)) : 1;
+        const qualite = porteur.car ? porteur.car.passeApresContact : porteur.passe;
+        const mains = typeof qualite === 'number' ? Math.max(0.6, Math.min(1.6, 1 + (60 - qualite) / 80)) : 1;
         this.stats[this.possession].passesTentees++;
         if (this.rng() < 0.18 * mains) {
           this.stats[this.possession].knockOns++;
@@ -8343,6 +8382,7 @@
             discipline: c.discipline != null ? c.discipline : sortant.discipline,
             horsPoste: !!c.horsPoste,
           });
+          appliquerCaracteristiques(sortant, c);
           // _nouvelleManche (coup d'envoi après essai/pénalité/mi-temps, cf.
           // plus haut) RECRÉE entièrement equipeA/equipeB depuis this.cfg.
           // joueursA/joueursB à chaque reprise — sans cette mise à jour, le

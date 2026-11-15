@@ -50,6 +50,11 @@ class AgentContext {
     const equipe = this.agent.team === 'A' ? state.equipeA : state.equipeB;
     const moi = equipe.find(j => j.numero === this.agent.numero);
     if (!moi) throw new RangeError('agent introuvable : ' + this.id);
+    // Délai de réaction : fixé par le test (`reactionDelay`) ou, en mode `lectureAuto`, lu dans la lecture du
+    // jeu du joueur (60 → 0,20 s ; 85 → 0,15 s ; 40 → 0,24 s). Caractéristique individuelle, pas réglage d'équipe.
+    if (this.params.lectureAuto && moi.car && typeof moi.car.lectureJeu === 'number') {
+      this.params.reactionDelay = Math.max(0.1, Math.min(0.35, 0.32 - 0.002 * moi.car.lectureJeu));
+    }
     const doitObserver = this.lastObsT === null || t - this.lastObsT >= this.params.reactionDelay - 1e-9;
     let obs = null;
     if (doitObserver) {
@@ -101,7 +106,8 @@ class AgentContext {
     return deepFreeze({
       t, agent: this.agent, observedAt: this.lastObsT, refreshed: doitObserver,
       self: { x: moi.x, y: moi.y, orientation: moi.orientation || 0, grounded: moi.auSol > 0, available: !(moi.auSol > 0) && !(moi.sinBin > 0),
-        sensAttaque: moi.sensAttaque, jeuPied: moi.jeuPied, vitesse: moi.vitesse, kickOffside: moi.horsJeuKick > 0 },
+        sensAttaque: moi.sensAttaque, jeuPied: moi.jeuPied, vitesse: moi.vitesse, kickOffside: moi.horsJeuKick > 0,
+        car: moi.car ? Object.assign({}, moi.car) : null, gestes: moi.gestes ? Object.assign({}, moi.gestes) : null },
       ball: ballon, teammates: mates, opponents: adv,
       ruck: this.mem.ruck ? { ballAvailable: this.mem.ruck.ballAvailable, defendersCommitted: this.mem.ruck.defendersCommitted,
         age: +(t - this.mem.ruck.seenAt).toFixed(3), confidence: +clamp01(mem === 0 ? 1 : 1 - (t - this.mem.ruck.seenAt) / mem).toFixed(3) } : null,

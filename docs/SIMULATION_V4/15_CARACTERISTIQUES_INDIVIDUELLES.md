@@ -656,3 +656,22 @@ chiffres **d'élite**, ce qui contredit la décision ci-dessus ; à reprendre :
    jeu (délai et bruit de perception), réception/mains.
 3. Remplacer une à une les constantes de la section 6 par des fonctions des caractéristiques, avec tests de tendance.
 4. Construire la matrice de niveaux et rechercher les repères sourcés par niveau.
+
+## 9. État de la mise en œuvre
+
+**Étape 1 (15 novembre 2026) — socle livré.** Moteur : chaque joueur reçoit `car` (caractéristiques détaillées)
+et `gestes` (maîtrise 0–3) à sa création et à chaque remplacement (`appliquerCaracteristiques`). Une valeur
+explicite de la configuration (`caracteristiques`, `gestes` dans `joueursA/joueursB` ou le joueur entrant) prime ;
+sinon elle est dérivée des 12 attributs historiques, sans tirage aléatoire (LEGACY identique au tick près).
+Premières caractéristiques branchées : `lectureJeu`, `vision`, `receptionPasse`, `passeApresContact`,
+`longueurPasse`, `precisionPied`, `piedRasant`, `distancePied` ; gestes `chistera`, `passeAuPied`, `petitPied`,
+`passeLongue`. Effets dans le mode joueurs IA :
+- délai de réaction de perception individuel selon `lectureJeu` (60 → 0,20 s ; 90 → 0,14 s ; 30 → 0,26 s) ;
+- chistera, passe au pied, petit coup de pied : jamais proposés à un joueur qui ne les maîtrise pas
+  (avec les profils par défaut, aucun avant ne sait faire une chistera ni une passe au pied) ;
+- portée de passe selon la maîtrise de la passe longue (0 → 12 m, 1 → 16 m, 2 → 21 m, 3 → 24 m) ;
+- en-avant de la chistera selon `passeApresContact`.
+Tests : `server/test-v4-caracteristiques.js` (7 : migration, valeurs explicites, tendance de lecture, geste non
+maîtrisé, portée de passe, équipe sans chistera, remplaçant qui apporte ses gestes).
+**À faire :** les ~360 autres caractéristiques (moteur, Mode Club, interface), saisie des valeurs propres à
+chaque joueur dans le Mode Club, remplacement des constantes de la section 6, matrice de niveaux.
