@@ -28,7 +28,7 @@ const { factsFromBeliefs, buildPlannerActions, feasibleActions } = require('./ac
 const { deriveSituation, profilePour } = require('./goals.js');
 const { PAR_NOM } = require('./actions.js');
 const { individualPlacement } = require('./individual-placement.js');
-const { lirePorteur } = require('./open-play.js');
+const { lirePorteur, receveurPrefere } = require('./open-play.js');
 const { LineoutMind } = require('./lineout-call.js');
 const { choixPenalite } = require('./penalty-choice.js');
 
@@ -272,6 +272,12 @@ class GoalBasedRugbyAgent {
       const { action, vers, kick, decalage, cibleY, cibleX, chistera } = this.carrierDecision;
       this._intent = { jeu: { action, vers, type: kick, decalage, cibleY, cibleX, chistera } };
       return this._intent;
+    }
+    // Sans décision de geste, le porteur publie quand même SON receveur préféré : si le moteur fait partir
+    // une passe, c'est à ce joueur qu'il la donne (s'il est un receveur légal).
+    if (porteur && state.phase === 'PORTE' && this.openPlay && this._beliefs && this._sit) {
+      const vers = receveurPrefere(this._beliefs, this._sit, this.profile, this.playbook);
+      if (vers) this._intent = Object.assign({}, this._intent, { receveur: vers });
     }
     if (this.openPlay && this.executor.current?.name === 'TACKLE_CARRIER' && vaPlaquer && this._intent) {
       this.executor.current.params.cible = this.placement.target;

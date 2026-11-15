@@ -668,7 +668,7 @@ const { factsFromBeliefs, buildPlannerActions, feasibleActions } = require('./ac
 const { deriveSituation, profilePour } = require('./goals.js');
 const { PAR_NOM } = require('./actions.js');
 const { individualPlacement } = require('./individual-placement.js');
-const { lirePorteur } = require('./open-play.js');
+const { lirePorteur, receveurPrefere } = require('./open-play.js');
 const { LineoutMind } = require('./lineout-call.js');
 const { choixPenalite } = require('./penalty-choice.js');
 
@@ -912,6 +912,12 @@ class GoalBasedRugbyAgent {
       const { action, vers, kick, decalage, cibleY, cibleX, chistera } = this.carrierDecision;
       this._intent = { jeu: { action, vers, type: kick, decalage, cibleY, cibleX, chistera } };
       return this._intent;
+    }
+    // Sans décision de geste, le porteur publie quand même SON receveur préféré : si le moteur fait partir
+    // une passe, c'est à ce joueur qu'il la donne (s'il est un receveur légal).
+    if (porteur && state.phase === 'PORTE' && this.openPlay && this._beliefs && this._sit) {
+      const vers = receveurPrefere(this._beliefs, this._sit, this.profile, this.playbook);
+      if (vers) this._intent = Object.assign({}, this._intent, { receveur: vers });
     }
     if (this.openPlay && this.executor.current?.name === 'TACKLE_CARRIER' && vaPlaquer && this._intent) {
       this.executor.current.params.cible = this.placement.target;
@@ -2387,25 +2393,9 @@ function surnombreCote(me, sens, cote, mates, adv) {
   return att - def;
 }
 
-function lirePorteur(b, s, profile, playbook) {
-  if (s.phase !== 'PORTE' || !s.aLeBallon || !s.available || !s.onside || s.ball.age > 0.35) return null;
-  const me = b.self, sens = s.sens;
-  const adv = Object.values(b.opponents).filter(visibleJouable);
-  if (adv.length < 2) return null;
-  const pression = adv.reduce((min, d) => Math.min(min, dist(me, d.lastSeen)), Infinity);
-  const distanceBut = sens > 0 ? 100 - me.x : me.x;
-  const territoire = 100 - distanceBut;
-  const course = espaceDevant(me, sens, adv, 17, 0.35);
-  const chistera = lireChistera(b, me, sens, adv, pression);
-  if (chistera && chistera.score >= course + 6) return { ...chistera, options: [chistera], pression, course, age: s.ball.age };
-  const options = [{ action: 'RUN', score: course + (distanceBut < 7 ? 5 : 0) }];
-  if (course >= 8 && distanceBut <= 35) for (const decalage of [-3, 3]) {
-    const y = me.y + decalage;
-    if (y < 3 || y > LARGEUR - 3) continue;
-    const air = espaceDevant({ x: me.x, y }, sens, adv, 17, 0.35);
-    const score = air + (distanceBut < 7 ? 5 : 0) - 1;
-    if (air >= course + 3 && score > options[0].score) options[0] = { action: 'RUN', decalage, score };
-  }
+// Options de passe du porteur, notées selon SA lecture (espace, réception lancée, surnombre vu, risque).
+function optionsDePasse(b, me, sens, adv, course, pression, profile, playbook) {
+  const options = [];
   const mates = Object.values(b.teammates).filter(visibleJouable);
   const surnombre = { [1]: surnombreCote(me, sens, 1, mates, adv), [-1]: surnombreCote(me, sens, -1, mates, adv) };
   for (const m of Object.values(b.teammates)) {
@@ -2433,6 +2423,29 @@ function lirePorteur(b, s, profile, playbook) {
       + 2.5 * clamp(surnombre[cote], 0, 3);  // servir le côté où l'on voit un homme de plus
     options.push({ action: 'PASS', vers: m.numero, score, surnombre: surnombre[cote] });
   }
+  return options;
+}
+
+function lirePorteur(b, s, profile, playbook) {
+  if (s.phase !== 'PORTE' || !s.aLeBallon || !s.available || !s.onside || s.ball.age > 0.35) return null;
+  const me = b.self, sens = s.sens;
+  const adv = Object.values(b.opponents).filter(visibleJouable);
+  if (adv.length < 2) return null;
+  const pression = adv.reduce((min, d) => Math.min(min, dist(me, d.lastSeen)), Infinity);
+  const distanceBut = sens > 0 ? 100 - me.x : me.x;
+  const territoire = 100 - distanceBut;
+  const course = espaceDevant(me, sens, adv, 17, 0.35);
+  const chistera = lireChistera(b, me, sens, adv, pression);
+  if (chistera && chistera.score >= course + 6) return { ...chistera, options: [chistera], pression, course, age: s.ball.age };
+  const options = [{ action: 'RUN', score: course + (distanceBut < 7 ? 5 : 0) }];
+  if (course >= 8 && distanceBut <= 35) for (const decalage of [-3, 3]) {
+    const y = me.y + decalage;
+    if (y < 3 || y > LARGEUR - 3) continue;
+    const air = espaceDevant({ x: me.x, y }, sens, adv, 17, 0.35);
+    const score = air + (distanceBut < 7 ? 5 : 0) - 1;
+    if (air >= course + 3 && score > options[0].score) options[0] = { action: 'RUN', decalage, score };
+  }
+  for (const o of optionsDePasse(b, me, sens, adv, course, pression, profile, playbook)) options.push(o);
   // Sortie de camp quand la ligne monte et que les soutiens disponibles sont
   // couverts. La cible est une demande : le moteur applique ses lois et son vol.
   const consignePied = (playbook.tauxJeuAuPied ?? 1.5) * (b.agent.numero === 10 ? (playbook.piedOuvreur ?? 1) : 1);
@@ -2463,7 +2476,20 @@ function lirePorteur(b, s, profile, playbook) {
   return { ...choix, options, pression, course, age: s.ball.age };
 }
 
-module.exports = { lirePorteur, surnombreCote, lirePassePied, lireChistera, intercepter, visibleJouable, espaceDevant, lireCouverture };
+// Receveur préféré : même lecture que lirePorteur, sans les seuils de décision. Quand le moteur fait partir
+// une passe (cadence calibrée), il sert ce joueur s'il est un receveur légal ; sinon il reprend son choix.
+function receveurPrefere(b, s, profile, playbook) {
+  if (s.phase !== 'PORTE' || !s.aLeBallon || !s.available || s.ball.age > 0.35) return null;
+  const me = b.self, sens = s.sens;
+  const adv = Object.values(b.opponents).filter(visibleJouable);
+  const pression = adv.reduce((min, d) => Math.min(min, dist(me, d.lastSeen)), Infinity);
+  const course = espaceDevant(me, sens, adv, 17, 0.35);
+  const opts = optionsDePasse(b, me, sens, adv, course, pression, profile, playbook);
+  opts.sort((a, c) => c.score - a.score || a.vers - c.vers);
+  return opts.length ? opts[0].vers : null;
+}
+
+module.exports = { lirePorteur, receveurPrefere, optionsDePasse, surnombreCote, lirePassePied, lireChistera, intercepter, visibleJouable, espaceDevant, lireCouverture };
 
   };
   defs["penalty-choice.js"] = function (module, exports, require) {

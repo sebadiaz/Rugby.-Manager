@@ -120,6 +120,35 @@ test('moteur : une chistera demandée dans le contact donne une passe ou un en-a
   assert.ok(ok > rate, 'la plupart réussissent');
 });
 
+test('receveur choisi par le porteur : quand le moteur fait partir une passe, il sert le receveur préféré s\'il est légal', () => {
+  let demandes = 0, servis = 0, autres = 0;
+  const m = new MatchEngine(7, 4800, { aiMode: 'GOAP', agentDriver: () => ({ avantTick(e) {
+    const p = e.porteur;
+    if (e.phase !== 'PORTE' || !p) return;
+    const legaux = (p.team === 'A' ? e.equipeA : e.equipeB).filter((j) => e._receveurAgentValide(p, j, j.numero) && Math.abs(j.y - p.y) > 1.2);
+    if (!legaux.length) return;
+    // Le receveur préféré : le plus éloigné latéralement (le moteur, lui, préfère d'ordinaire le plus proche).
+    const pref = legaux.sort((a, c) => Math.abs(c.y - p.y) - Math.abs(a.y - p.y))[0];
+    e.setAgentIntent(p.team, p.numero, { receveur: pref.numero }); demandes++;
+    e._prefTest = { de: p.numero, vers: pref.numero };
+  } }) });
+  const log = m.log.bind(m);
+  m.log = (t, eq, msg, d) => {
+    if ((t === 'PASSE' || t === 'JEU_LARGE') && m._prefTest && d.de === m._prefTest.de) { if (d.vers === m._prefTest.vers) servis++; else autres++; }
+    return log(t, eq, msg, d);
+  };
+  for (let i = 0; i < 6000; i++) m.tick(0.1);
+  assert.ok(demandes > 0 && servis >= 20, `${servis} passes au receveur préféré`);
+  assert.ok(servis > 3 * autres, `${servis} servis contre ${autres} autres`);
+});
+
+test('receveur préféré : refusé en LEGACY ; en GOAP, passes: MOTEUR l\'ignore', () => {
+  const a = new MatchEngine(8, 4800);
+  assert.strictEqual(a.setAgentIntent('A', 10, { receveur: 12 }), false);
+  const g = new MatchEngine(8, 4800, { aiMode: 'GOAP', passes: 'MOTEUR', agentDriver: () => ({ avantTick() {} }) });
+  assert.strictEqual(g._passesAgents, false);
+});
+
 test('LEGACY : passe au pied et chistera refusées (setAgentIntent), jeu identique', () => {
   const a = new MatchEngine(8, 4800), b = new MatchEngine(8, 4800);
   assert.strictEqual(b.setAgentIntent('A', 10, { jeu: { action: 'KICK', type: 'PASSE_PIED', cibleX: 60, cibleY: 60 } }), false);

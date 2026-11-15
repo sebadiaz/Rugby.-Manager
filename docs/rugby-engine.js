@@ -1119,6 +1119,8 @@
       this._toucheAgents = this.aiMode === 'GOAP' && config.touches !== 'MOTEUR';
       // En GOAP, le capitaine choisit la suite d'une pénalité ; `config.penalites === 'MOTEUR'` rétablit l'ancien choix.
       this._penaliteAgents = this.aiMode === 'GOAP' && config.penalites !== 'MOTEUR';
+      // En GOAP, le porteur choisit le receveur de toute passe ; `config.passes === 'MOTEUR'` rétablit l'ancien choix.
+      this._passesAgents = this.aiMode === 'GOAP' && config.passes !== 'MOTEUR';
       this.penaliteChoix = null;
       // === AGENT_INTENTS_END
       // Tactique PAR ÉQUIPE (Mode Club) : `config.attaqueA/attaqueB` et
@@ -4259,6 +4261,12 @@
 
     _tenterPasse(porteur, jeuLarge, numeroAgent = null) {
       const att = this.attaquants();
+      // GOAP : quand le moteur fait partir une passe, le receveur est celui que le PORTEUR a choisi
+      // (sa lecture : espace, surnombre, course croisée), s'il est légal ; sinon le choix historique.
+      if (numeroAgent == null && this._passesAgents) {
+        const pref = this._intentionsAgents?.get(porteur.team + porteur.numero)?.receveur;
+        if (pref && att.some(j => this._receveurAgentValide(porteur, j, pref) && (!jeuLarge || j.tendance <= 50))) numeroAgent = pref;
+      }
       // Rayon de recherche du destinataire : un jeu au large vise précisément
       // un ailier/arrière qui tient son couloir à 20-30 m du regroupement, le
       // plafond de 25 m utilisé pour la passe courte l'exclurait presque
@@ -8759,14 +8767,15 @@
       } : null;
       const touche = this.aiMode === 'GOAP' && intention.touche === 'MAUL' ? 'MAUL' : null;
       const penalite = this.aiMode === 'GOAP' && ['TOUCHE', 'POTEAUX', 'RAPIDE'].includes(intention.penalite) ? intention.penalite : null;
-      if (!mouvement && !jeu && !touche && !penalite) return false;
+      const receveur = this.aiMode === 'GOAP' && Number.isInteger(intention.receveur) && intention.receveur >= 1 && intention.receveur <= 15 ? intention.receveur : null;
+      if (!mouvement && !jeu && !touche && !penalite && !receveur) return false;
       const f = intention.vmaxFactor == null ? 1 : intention.vmaxFactor;
       if (!(f > 0 && f <= 1)) return false;
       if (!this._intentionsAgents) this._intentionsAgents = new Map();
       const TYPES_PIED = ['TOUCHE', 'DEGAGEMENT', 'OCCUPATION', 'CHANDELLE', 'CHIP'];
       const botte = TYPES_PIED.includes(intention.botte) ? intention.botte : null;
       const passe = Number.isInteger(intention.passe) && intention.passe >= 1 && intention.passe <= 15 ? intention.passe : null;
-      this._intentionsAgents.set(equipe + numero, { equipe, numero, tx: intention.tx, ty: intention.ty, vmaxFactor: f, passe, mouvement, jeuCourant: intention.jeuCourant === true, jeu, touche, penalite });
+      this._intentionsAgents.set(equipe + numero, { equipe, numero, tx: intention.tx, ty: intention.ty, vmaxFactor: f, passe, mouvement, jeuCourant: intention.jeuCourant === true, jeu, touche, penalite, receveur });
       return true;
     }
     clearAgentIntent(equipe, numero) {
