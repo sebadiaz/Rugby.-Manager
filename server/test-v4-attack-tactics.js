@@ -43,6 +43,20 @@ test('passe au pied refusée : un défenseur couvre le point de chute, ou le bot
   assert.ok(!d2 || d2.kick !== 'PASSE_PIED');
 });
 
+test('petit coup de pied à suivre : la ligne monte vite et à plat, l\'herbe derrière est vide -> CHIP 7 m derrière elle', () => {
+  const { lirePetitPied } = require('../engine/ai/open-play.js');
+  const fiche = (n, x, y, vx) => ({ numero: n, lastSeen: { x, y }, age: 0.1, confidence: 1, vx, vy: 0, available: true });
+  const me = { x: 60, y: 35, jeuPied: 75 };
+  const ligne = [fiche(12, 67, 31, -4), fiche(13, 68, 38, -4), fiche(10, 66, 26, -3)];
+  const r = lirePetitPied({ agent: { numero: 12 } }, me, 1, ligne, 40, 2);
+  assert.ok(r && r.action === 'KICK_CHIP', 'petit coup de pied attendu');
+  assert.ok(r.cibleX >= 74 && r.cibleX <= 76, 'derrière le monteur le plus avancé : ' + r.cibleX);
+  // Un défenseur posté dans l'herbe derrière la ligne (le 15) : pas de petit coup de pied.
+  assert.strictEqual(lirePetitPied({ agent: { numero: 12 } }, me, 1, ligne.concat([fiche(15, 76, 35, 0)]), 40, 2), null);
+  // Ligne qui ne monte pas : pas de petit coup de pied.
+  assert.strictEqual(lirePetitPied({ agent: { numero: 12 } }, me, 1, ligne.map((d) => Object.assign({}, d, { vx: 0 })), 40, 2), null);
+});
+
 test('chistera : plaqueur sur moi, soutien à 3 m en retrait de l\'autre côté, espace libre -> passe chistera', () => {
   const b = croyances(12, { x: 60, y: 30 }, { mates: { A13: [13, 57, 33, 6, 0] }, opps: { B12: [12, 62, 28.5], B10: [10, 66, 20] } });
   const c = lireChistera(b, b.self, 1, Object.values(b.opponents), 2.5);

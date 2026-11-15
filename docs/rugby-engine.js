@@ -2706,7 +2706,7 @@
       }
       if (action === 'KICK_AGENT') {
         const jeu = this._intentionsAgents.get(porteur.team + porteur.numero).jeu;
-        this._tenterCoupDePiedJeu(porteur, jeu.type, jeu.cibleY, jeu.type === 'PASSE_PIED' ? { x: jeu.cibleX, y: jeu.cibleY } : null);
+        this._tenterCoupDePiedJeu(porteur, jeu.type, jeu.cibleY, (jeu.type === 'PASSE_PIED' || jeu.type === 'CHIP') && Number.isFinite(jeu.cibleX) ? { x: jeu.cibleX, y: jeu.cibleY } : null);
         return;
       }
       if (action === 'KICK') { this._executerCoupDePiedJeu(porteur); return; }
@@ -4577,7 +4577,7 @@
       // des 22 adverses ; un ouvreur ou un arrière en gagne 30 à 45.
       else if (type === 'TOUCHE') { portee = 25 + this.rng() * 20 + skillPied * 0.7; etale = true; }
       else if (type === 'CHANDELLE') { portee = 10 + this.rng() * 10 + skillPied * 0.4; etale = false; }
-      else if (type === 'PASSE_PIED' && cibleAgent) { portee = Math.abs(cibleAgent.x - porteur.x); etale = false; }
+      else if ((type === 'PASSE_PIED' || type === 'CHIP') && cibleAgent) { portee = Math.abs(cibleAgent.x - porteur.x); etale = false; }
       else { portee = 8 + this.rng() * 7 + skillPied * 0.3; etale = false; } // CHIP
       portee = Math.max(4, portee);
       // TENTATIVE DE 50:22 (P2-96). Depuis son camp, hors de ses 22 m, une
@@ -4608,13 +4608,15 @@
       // Passe au pied demandée par un agent : le ballon vise SA cible, avec une
       // erreur qui dépend de la distance et du jeu au pied du botteur (le moteur
       // tranche ; une passe ratée peut tomber sur un défenseur ou en touche).
-      if (type === 'PASSE_PIED' && cibleAgent) {
+      if ((type === 'PASSE_PIED' || type === 'CHIP') && cibleAgent) {
         const longueur = Math.hypot(cibleAgent.x - porteur.x, cibleAgent.y - porteur.y);
         const erreur = longueur * (0.06 + this.rng() * 0.08) * (1 - skillPied / 14);
         const angle = this.rng() * Math.PI * 2;
         cibleX = Math.max(1, Math.min(LONGUEUR - 1, cibleAgent.x + Math.cos(angle) * erreur));
         cibleY = Math.max(1, Math.min(LARGEUR - 1, cibleAgent.y + Math.sin(angle) * erreur));
-        this.log('PASSE_AU_PIED', this.possession, `Passe au pied du n°${porteur.numero} vers l'aile`,
+        if (type === 'CHIP') this.log('PETIT_PIED_A_SUIVRE', this.possession, `Petit coup de pied a suivre du n°${porteur.numero} par-dessus la ligne`,
+          { botteur: porteur.numero, cible: { x: +cibleAgent.x.toFixed(1), y: +cibleAgent.y.toFixed(1) }, erreur: +erreur.toFixed(1) });
+        else this.log('PASSE_AU_PIED', this.possession, `Passe au pied du n°${porteur.numero} vers l'aile`,
           { botteur: porteur.numero, cible: { x: +cibleAgent.x.toFixed(1), y: +cibleAgent.y.toFixed(1) }, erreur: +erreur.toFixed(1) });
       } else
       if (type === 'TOUCHE' && this._zoneTerrain(porteur) !== 'OWN_22') {
@@ -8758,7 +8760,7 @@
         demande.action === 'RUN'
         || (demande.action === 'PASS' && Number.isInteger(demande.vers) && demande.vers >= 1 && demande.vers <= 15)
         || (demande.action === 'KICK' && ['TOUCHE', 'DEGAGEMENT'].includes(demande.type))
-        || (demande.action === 'KICK' && demande.type === 'PASSE_PIED' && Number.isFinite(demande.cibleX) && Number.isFinite(demande.cibleY))
+        || (demande.action === 'KICK' && (demande.type === 'PASSE_PIED' || demande.type === 'CHIP') && Number.isFinite(demande.cibleX) && Number.isFinite(demande.cibleY))
       ) ? { action: demande.action, vers: demande.vers, type: demande.type,
         cibleX: Number.isFinite(demande.cibleX) ? demande.cibleX : null,
         chistera: demande.action === 'PASS' && demande.chistera === true,

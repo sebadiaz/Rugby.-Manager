@@ -2363,6 +2363,32 @@ function risqueCouloir(de, vers, adv) {
   });
 }
 
+// Petit coup de pied à suivre : la ligne adverse MONTE vite et à plat devant moi, l'herbe derrière elle est
+// vide ; je botte court par-dessus et je vais chercher le ballon (le botteur est en jeu). Le moteur résout le
+// vol, l'erreur de frappe et la réception disputée.
+function lirePetitPied(b, me, sens, adv, distanceBut, course) {
+  if (b.agent.numero < 9 || (me.jeuPied ?? 0) < 60 || distanceBut < 12 || distanceBut > 50 || course >= 6) return null;
+  const ligne = adv.filter((d) => { const av = (d.lastSeen.x - me.x) * sens; return av >= 2 && av <= 9 && Math.abs(d.lastSeen.y - me.y) <= 10; });
+  const montent = ligne.filter((d) => (d.vx || 0) * sens <= -2).length;
+  if (ligne.length < 2 || montent * 2 < ligne.length) return null;
+  // Viser l'herbe 7 m derrière le monteur le plus avancé (à 12 m fixes, la ligne était déjà sur le point de chute).
+  const profond = ligne.reduce((p, d) => Math.max(p, (d.lastSeen.x - me.x) * sens), 0);
+  const portee = Math.min(profond + 7, distanceBut - 1);
+  if (portee < profond + 4) return null;
+  const cible = { x: clamp(me.x + sens * portee, 1, 99), y: clamp(me.y, 4, LARGEUR - 4) };
+  // Le ballon retombe en 1-1,6 s (vol d'un petit coup de pied) : on y arrive au plus tôt à ce moment.
+  const vol = clamp(dist(me, cible) / 8, 1.0, 1.6);
+  const tMoi = Math.max(vol, dist(me, cible) / 8);
+  // Un monteur lancé vers moi (≥ 2 m/s) doit freiner puis repartir dans l'autre sens (~1,2 s) ; le fond court droit.
+  const tDef = adv.reduce((t, d) => {
+    const enLigne = ligne.includes(d);
+    return Math.min(t, Math.max(vol, dist(projeter(d, d.age + 0.3), cible) / 8 + (enLigne ? 1.2 : 0)));
+  }, Infinity);
+  // C'est un pari : une arrivée à quasi-égalité suffit (le moteur tranche la réception disputée).
+  if (tDef < tMoi - 0.1) return null;
+  return { action: 'KICK_CHIP', cibleX: cible.x, cibleY: cible.y, score: 8 + 2 * Math.min(3, tDef - tMoi + 0.1) + (distanceBut <= 25 ? 2 : 0) };
+}
+
 function lirePassePied(b, s, me, sens, adv, distanceBut, course) {
   const n = b.agent.numero;
   if ((n !== 10 && n !== 12 && n !== 15) || (me.jeuPied ?? 0) < 65 || distanceBut > 45 || distanceBut < 8 || course >= 8) return null;
@@ -2486,11 +2512,15 @@ function lirePorteur(b, s, profile, playbook) {
   // ballon avec son erreur propre et résout la réception disputée.
   const passePied = lirePassePied(b, s, me, sens, adv, distanceBut, course);
   if (passePied) options.push(passePied);
+  const petitPied = lirePetitPied(b, me, sens, adv, distanceBut, course);
+  if (petitPied) options.push(petitPied);
   options.sort((a, c) => c.score - a.score || (a.vers || 0) - (c.vers || 0));
   const choix = options[0];
   // Fixer avant de servir : passer dès 9 m (essayé) laissait glisser la défense, −1,7 essai par match.
   if (choix.action === 'PASS' && (pression < 2.5 || pression > 7 || course >= 7 || choix.score < course + 6 || choix.score < 9)) return null;
   if (choix.action === 'KICK' && (choix.score < course + 3 || choix.score < (options[1]?.score ?? 0) + 2)) return null;
+  if (choix.action === 'KICK_CHIP') return { action: 'KICK', kick: 'CHIP', cibleX: choix.cibleX, cibleY: choix.cibleY,
+    options, pression, course, age: s.ball.age, score: choix.score };
   if (choix.action === 'KICK_PASS') return { action: 'KICK', kick: 'PASSE_PIED', cibleX: choix.cibleX, cibleY: choix.cibleY, vers: choix.vers,
     options, pression, course, age: s.ball.age, score: choix.score };
   // Laisser le jeu de phase et ses consignes décider dans les lectures serrées.
@@ -2511,7 +2541,7 @@ function receveurPrefere(b, s, profile, playbook) {
   return opts.length ? opts[0].vers : null;
 }
 
-module.exports = { lirePorteur, receveurPrefere, optionsDePasse, surnombreCote, lirePassePied, lireChistera, intercepter, visibleJouable, espaceDevant, lireCouverture };
+module.exports = { lirePorteur, lirePetitPied, receveurPrefere, optionsDePasse, surnombreCote, lirePassePied, lireChistera, intercepter, visibleJouable, espaceDevant, lireCouverture };
 
   };
   defs["penalty-choice.js"] = function (module, exports, require) {
