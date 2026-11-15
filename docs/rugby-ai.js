@@ -2370,6 +2370,14 @@ function lireChistera(b, me, sens, adv, pression) {
   return meilleur;
 }
 
+// Surnombre PERÇU d'un côté (cote = +1 / -1 en y) : partenaires vus en retrait, à moins de 15 m,
+// contre défenseurs vus en face (de 2 m derrière à 15 m devant). Positif = un homme de plus.
+function surnombreCote(me, sens, cote, mates, adv) {
+  const att = mates.filter((m) => (m.lastSeen.y - me.y) * cote > 2 && (me.x - m.lastSeen.x) * sens >= 0 && (me.x - m.lastSeen.x) * sens <= 15).length;
+  const def = adv.filter((d) => (d.lastSeen.y - me.y) * cote > 1 && (d.lastSeen.x - me.x) * sens >= -2 && (d.lastSeen.x - me.x) * sens <= 15).length;
+  return att - def;
+}
+
 function lirePorteur(b, s, profile, playbook) {
   if (s.phase !== 'PORTE' || !s.aLeBallon || !s.available || !s.onside || s.ball.age > 0.35) return null;
   const me = b.self, sens = s.sens;
@@ -2389,10 +2397,13 @@ function lirePorteur(b, s, profile, playbook) {
     const score = air + (distanceBut < 7 ? 5 : 0) - 1;
     if (air >= course + 3 && score > options[0].score) options[0] = { action: 'RUN', decalage, score };
   }
+  const mates = Object.values(b.teammates).filter(visibleJouable);
+  const surnombre = { [1]: surnombreCote(me, sens, 1, mates, adv), [-1]: surnombreCote(me, sens, -1, mates, adv) };
   for (const m of Object.values(b.teammates)) {
     if (!visibleJouable(m)) continue;
     const p = m.lastSeen;
     const recul = (me.x - p.x) * sens;
+    const cote = Math.sign(p.y - me.y) || 1;
     const longueur = dist(me, p);
     if (recul < 0.45 || recul > 11 || longueur < 3 || longueur > 21 || Math.abs(p.y - me.y) < 2) continue;
     const enCourse = Math.max(0, (m.vx || 0) * sens);
@@ -2409,8 +2420,9 @@ function lirePorteur(b, s, profile, playbook) {
       + (m.numero === 10 ? 1.4 * profile.distribute : 0)
       + (m.numero <= 8 && b.agent.numero === 9 ? ((playbook.sortieAvant ?? 0.34) - 0.34) * 8 : 0)
       + (b.agent.numero === 12 || b.agent.numero === 13 ? clamp((playbook.passeCentres ?? 1) - 1, -1, 1) * 2 : 0)
-      + clamp((playbook.attackWidth || 1) - 1, -0.5, 0.5) * Math.abs(p.y - me.y) * 0.25;
-    options.push({ action: 'PASS', vers: m.numero, score });
+      + clamp((playbook.attackWidth || 1) - 1, -0.5, 0.5) * Math.abs(p.y - me.y) * 0.25
+      + 2.5 * clamp(surnombre[cote], 0, 3);  // servir le côté où l'on voit un homme de plus
+    options.push({ action: 'PASS', vers: m.numero, score, surnombre: surnombre[cote] });
   }
   // Sortie de camp quand la ligne monte et que les soutiens disponibles sont
   // couverts. La cible est une demande : le moteur applique ses lois et son vol.
@@ -2432,6 +2444,7 @@ function lirePorteur(b, s, profile, playbook) {
   if (passePied) options.push(passePied);
   options.sort((a, c) => c.score - a.score || (a.vers || 0) - (c.vers || 0));
   const choix = options[0];
+  // Fixer avant de servir : passer dès 9 m (essayé) laissait glisser la défense, −1,7 essai par match.
   if (choix.action === 'PASS' && (pression < 2.5 || pression > 7 || course >= 7 || choix.score < course + 6 || choix.score < 9)) return null;
   if (choix.action === 'KICK' && (choix.score < course + 3 || choix.score < (options[1]?.score ?? 0) + 2)) return null;
   if (choix.action === 'KICK_PASS') return { action: 'KICK', kick: 'PASSE_PIED', cibleX: choix.cibleX, cibleY: choix.cibleY, vers: choix.vers,
@@ -2441,7 +2454,7 @@ function lirePorteur(b, s, profile, playbook) {
   return { ...choix, options, pression, course, age: s.ball.age };
 }
 
-module.exports = { lirePorteur, lirePassePied, lireChistera, intercepter, visibleJouable, espaceDevant, lireCouverture };
+module.exports = { lirePorteur, surnombreCote, lirePassePied, lireChistera, intercepter, visibleJouable, espaceDevant, lireCouverture };
 
   };
   defs["penalty-choice.js"] = function (module, exports, require) {

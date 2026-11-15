@@ -67,6 +67,21 @@ test('course croisée : le 13 voit le 12 dériver et la défense glisser avec lu
   assert.strictEqual(lireCroisee(b2, deriveSituation(b2)), null);
 });
 
+test('surnombre : le porteur compte attaquants et défenseurs vus de chaque côté et sert le côté en surnombre', () => {
+  const { surnombreCote } = require('../engine/ai/open-play.js');
+  const mates = { A12: [12, 56, 36], A13: [13, 55, 44], A15: [15, 54, 50], A7: [7, 57, 22] };
+  const opps = { B12: [12, 66, 37], B13: [13, 66, 45], B6: [6, 65, 24], B7: [7, 66, 20], B4: [4, 64, 27] };
+  const b = croyances(10, { x: 60, y: 30 }, { mates, opps });
+  const vus = (o) => Object.values(o).map(([n, x, y]) => ({ numero: n, lastSeen: { x, y } }));
+  assert.strictEqual(surnombreCote(b.self, 1, 1, vus(mates), vus(opps)), 1, '3 attaquants contre 2 défenseurs côté +y');
+  assert.strictEqual(surnombreCote(b.self, 1, -1, vus(mates), vus(opps)), -2);
+  b.opponents.B10 = { numero: 10, lastSeen: { x: 64.5, y: 30.5 }, age: 0.1, confidence: 1, vx: 0, vy: 0, available: true };
+  const d = lirePorteur(b, deriveSituation(b), profil, {});
+  const opt = (d ? d.options : []).filter((o) => o.action === 'PASS');
+  const plus = opt.filter((o) => o.surnombre >= 1), moins = opt.filter((o) => o.surnombre < 0);
+  assert.ok(plus.length && moins.length, 'options des deux côtés évaluées');
+});
+
 // Moteur GOAP piloté à la main : le test pose les demandes du porteur.
 function matchPilote(graine, duree, demande) {
   const log = [];
