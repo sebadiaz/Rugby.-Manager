@@ -47,115 +47,237 @@ moteur actuel). Les gestes maîtrisés sont des niveaux (0 = ne sait pas, 1 = no
 Ces 12 clés restent valides (sauvegardes de carrière). Les nouvelles caractéristiques s'**ajoutent** ; une
 sauvegarde ancienne reçoit des valeurs dérivées de ses clés existantes et du poste (migration, jamais de perte).
 
-## 3. Caractéristiques continues (0–100)
+## 3. Catalogue détaillé des caractéristiques (0–100 sauf mention)
 
-### 3.1 Physique
-| Clé proposée | Description | Effet attendu dans la simulation | État |
-|---|---|---|---|
-| `vitesse` | vitesse maximale | vitesse de course, percée, couverture | existe |
-| `acceleration` | départ arrêté, changement de rythme | premiers mètres, montée défensive, prise d'intervalle | à créer |
-| `agilite` | appuis, crochet, changement de direction | éviter un plaqueur, cadrage-débordement | à créer |
-| `puissance` | force explosive | gain après contact, maul, déblayage | existe |
-| `force` | force statique | mêlée, maintien au sol, arrachage | à créer (aujourd'hui dans `melee`/`puissance`) |
-| `endurance` | capacité à répéter les efforts | fatigue, baisse des autres caractéristiques en fin de match | existe |
-| `gabarit` | taille et poids (deux valeurs) | collisions, saut en touche, levée, mêlée | à créer |
-| `resistance` | encaisser les chocs | blessures, relève après plaquage | à créer |
+Chaque ligne : `clé` — ce que c'est → ce que la simulation doit en faire. Une caractéristique est **un savoir-faire
+précis**, jamais un fourre-tout : « passe » ne dit rien de la passe après contact, de la passe longue ou de la
+passe du sol. Les 12 clés existantes (section 2) restent comme valeurs de repli et servent à initialiser les
+nouvelles lors de la migration.
 
-### 3.2 Ballon en main
-| Clé proposée | Description | Effet attendu | État |
-|---|---|---|---|
-| `passe` | qualité générale de passe | réussite, précision | existe |
-| `longueurPasse` | portée de passe vissée | passes longues (> 15 m), passe sautée ; tout le monde ne passe pas à 20 m | à créer |
-| `passeContact` | passe dans le contact, offload | offload, chistera, jeu après contact | à créer (aujourd'hui `passe`) |
-| `reception` | mains, prise de balle | en-avants à la réception, ballons hauts | à créer |
-| `conservation` | protection du ballon au contact, présentation | ballons perdus au sol, grattage subi | à créer (aujourd'hui `decision`) |
-| `percussion` | aller au contact en avançant | mètres après contact | à créer (aujourd'hui `puissance`) |
-| `evitement` | raffût, cadrage, feinte | plaquages manqués provoqués | à créer |
-| `finition` | conclure près de la ligne, aplatir sous pression | essais marqués / ballons perdus dans l'en-but | à créer |
+### 3.1 Physique — vitesse et mobilité
+- `vitesseMax` — vitesse de pointe → percées, couverture, retours défensifs (aujourd'hui `vitesse`).
+- `acceleration` — départ arrêté sur 5–10 m → prise d'intervalle, montée défensive, premier pas.
+- `vitesseAvecBallon` — vitesse en portant le ballon → certains perdent beaucoup ballon en main.
+- `vitesseReaction` — temps de démarrage après un événement (passe, coup de sifflet, ballon libre).
+- `agilite` — changements de direction, appuis → crochet, évitement, se replacer.
+- `equilibre` — rester sur ses appuis au contact → avancée après contact, rester debout au ruck.
+- `changementRythme` — ralentir puis réaccélérer → fixer puis passer, déborder.
+- `repetitionSprints` — enchaîner les efforts courts → qualité en fin de séquence longue.
+- `enduranceAerobie` — volume de course sur 80 min → fatigue (aujourd'hui `endurance`).
+- `recuperation` — récupération entre deux temps forts et après un plaquage → relève plus rapide.
 
-### 3.3 Jeu au pied
-| Clé proposée | Description | Effet attendu | État |
-|---|---|---|---|
-| `jeuPied` | portée du jeu au pied courant | longueur des dégagements | existe |
-| `precisionPied` | précision du jeu au pied courant | touche trouvée, passe au pied, chandelle bien placée | à créer |
-| `adresse` | coups de pied au but | pénalités, transformations | existe |
-| `drop` | drop en jeu courant | tentative possible seulement si maîtrisé (section 4) | à créer |
-| `piedRasant` | grubber, petit coup de pied à suivre | précision et rebond | à créer |
+### 3.2 Physique — force et gabarit
+- `taille` (cm), `masse` (kg), `envergure` (cm) — collisions, saut et levée, grattage, prise des ballons hauts.
+- `forceHaut` — force du haut du corps → arrachage, maintien du porteur debout, raffût.
+- `forceBas` — force des jambes → poussée en mêlée, maul, déblayage.
+- `puissance` — force explosive → percussion, plaquage dominant, déblayage (existe).
+- `detente` — saut vertical → touche, ballons hauts, contestation aérienne.
+- `souplesse` — mobilité articulaire → plaquages bas, ramassage, prévention des blessures.
+- `resistanceChocs` — encaisser les impacts → baisse de performance et blessures après collisions.
+- `propensionBlessure` — fragilité → risque de blessure (Mode Club).
+- `age` / `declin` — progression puis baisse des qualités physiques (Mode Club).
 
-### 3.4 Défense et contact
-| Clé proposée | Description | Effet attendu | État |
-|---|---|---|---|
-| `plaquage` | technique de plaquage | réussite, plaquage dominant | existe |
-| `placementDefensif` | tenir sa ligne, glisser au bon moment | trous dans la ligne, glissade trop tôt/trop tard | à créer |
-| `grattage` | contester au sol (jackal) | turnovers au ruck, pénalités obtenues/concédées | à créer |
-| `deblayage` | nettoyer un ruck | vitesse de libération, rucks conservés | à créer |
-| `contreMaul` | arrêter un maul, saquer le sauteur | mauls stoppés | à créer |
-| `jeuAerien` | réception et contestation des ballons hauts | chandelles regagnées/perdues | à créer |
+### 3.3 Ballon en main — passes
+- `passeCourte` — passe à 2–8 m (pop, passe au contact) → précision et vitesse d'exécution.
+- `passeLongue` — passe vissée > 15 m → portée maximale et précision au large (tout le monde ne passe pas à 20 m).
+- `passeVissee` — qualité de la rotation → passe tendue, rapide, difficile à intercepter.
+- `passeFlottante` — passe lobée → par-dessus un défenseur, risque d'interception.
+- `passeSautee` — sauter un ou deux partenaires → exige `passeLongue` et `vision`.
+- `passeSousPression` — réussite avec un défenseur au contact.
+- `passeApresContact` — offload pendant ou après le contact → offloads, jeu après plaquage.
+- `passeUneMain` — passe à une main (dont chistera) → rare, risquée.
+- `passeDuSol` — passe depuis le sol (9 au ruck) → rapidité et précision de la sortie de ruck.
+- `ejection` — vitesse de sortie du ballon du ruck par le 9 → rythme de jeu, temps laissé à la défense.
+- `passeGauche` / `passeDroite` — qualité selon le côté → la plupart ont un côté faible.
+- `timingPasse` — lâcher le ballon au bon moment → fixer le défenseur, receveur lancé.
+- `feintePasse` — dummy → fait mordre un défenseur, crée un intervalle.
+- `passeCroisee` / `redoublement` — exécution des combinaisons à deux → croisée, boucle.
 
-### 3.5 Phases statiques
-| Clé proposée | Description | Effet attendu | État |
-|---|---|---|---|
-| `melee` | technique de mêlée | domination, pénalités de mêlée | existe |
-| `touche` | saut / contestation | touches gagnées, volées | existe |
-| `lancer` | précision du lancer (talonneur) | lancers pas droits, touches perdues | à créer |
-| `levee` | lever un sauteur | timing du saut, touches gagnées | à créer |
-| `maul` | technique de maul | avancée, maul écroulé | à créer (aujourd'hui `puissance`) |
+### 3.4 Ballon en main — réception et conservation
+- `receptionPasse` — mains sur passe → en-avants à la réception.
+- `receptionSousPression` — recevoir avec un défenseur arrivant.
+- `receptionBallonHaut` — chandelles, coups d'envoi, ballons aériens.
+- `ramassage` — ramasser un ballon au sol (en course ou arrêté) → ballons libres, en-avants au ramassage.
+- `plongeonBallon` — plonger sur un ballon libre → récupérations, turnovers.
+- `conservationContact` — tenir le ballon au contact, ne pas se le faire arracher.
+- `presentationBallon` — placer le ballon au sol après plaquage → rucks propres, ballon rapide.
+- `protectionAuSol` — se placer au sol pour protéger le ballon, rouler légalement → grattages subis.
+- `releveRapide` — se relever et rejoindre le jeu après un plaquage.
+- `finition` — conclure près de la ligne, aplatir sous la pression, en coin → essais marqués/refusés.
+- `aplatissement` — aplatir proprement (bras tendu, plongeon) → en-avants dans l'en-but.
 
-### 3.6 Perception, lecture du jeu et décision (cognitif)
-| Clé proposée | Description | Effet attendu sur l'agent | État |
-|---|---|---|---|
-| `lectureJeu` | comprendre ce qui se passe | délai de réaction, erreurs d'estimation des vitesses/espaces | à créer (aujourd'hui `decision`) |
-| `vision` | voir le jeu loin, à 360° | champ de vision, portée de perception, options vues | à créer |
-| `decision` | choisir la bonne option sous pression | bruit dans la comparaison des options, choix sous pression | existe |
-| `anticipation` | prévoir la passe, l'interception | lecture des croisées, interceptions, couverture | à créer |
-| `communication` | parler, être entendu, comprendre les appels | portée et clarté des appels, réponses du 10/9/8 | à créer |
+### 3.5 Ballon en main — courses et duels
+- `percussion` — aller au contact en avançant → mètres après contact.
+- `avanceeApresContact` — continuer à pousser les jambes → gain derrière la ligne d'avantage.
+- `evitement` — esquiver un défenseur.
+- `crochet` — crochet intérieur/extérieur.
+- `cadrageDebordement` — fixer puis déborder sur l'extérieur.
+- `raffut` — repousser le plaqueur avec le bras.
+- `angleCourse` — choix de la ligne de course → intervalles trouvés, fixation.
+- `appelBalle` — se rendre disponible, demander le ballon au bon moment.
+- `courseLeurre` — course de leurre crédible → fixe un défenseur (lecture, pas script).
+- `courseSoutien` — suivre le porteur intérieur/extérieur → offloads reçus, rucks gagnés.
+- `porterCoteOppose` — porter le ballon à l'opposé du plaqueur.
+- `protegerDeuxMains` — garder le ballon à deux mains pour menacer la passe.
 
-### 3.7 Connaissances tactiques individuelles
-| Clé proposée | Description | Effet attendu | État |
-|---|---|---|---|
-| `connaissancePlan` | maîtrise du plan de jeu du club | placement de référence juste, appels compris | à créer |
-| `connaissanceRegles` | connaissance fine des lois | hors-jeu, en-avant volontaire, pénalités concédées | à créer (aujourd'hui `discipline`) |
-| `experience` | matchs joués, niveau connu | stabilité des décisions, gestion des fins de match | à créer |
-| `polyvalence` | connaissance des autres postes | performance hors de son poste | à créer |
-| `cohesion` | habitude de jouer avec ses partenaires | timing des passes et courses (croisées, intercalé) | à créer (niveau joueur ↔ équipe) |
+### 3.6 Jeu au pied (chaque type est un savoir-faire)
+- `puissancePied` — force de frappe → distance maximale.
+- `distancePied` — portée utile en jeu courant (aujourd'hui `jeuPied`).
+- `precisionPied` — atteindre la zone visée → touche trouvée, passe au pied, chandelle bien placée.
+- `effetBallon` — vissé, flottant, rebond travaillé → longueur, rebond vers la touche, difficulté de réception.
+- `piedFaible` — qualité du pied non dominant ; `piedFort` (gauche/droit).
+- `degagement` — dégagement en touche ou long → sortie de camp.
+- `chandelle` — up-and-under → hauteur, temps de suspension, contestabilité.
+- `boxKick` — chandelle du 9 depuis la base → hauteur, précision, protection.
+- `grubber` — coup de pied rasant → rebond, ballon récupérable.
+- `petitPiedPardessus` — chip à suivre.
+- `passeAuPied` — cross-kick vers l'aile.
+- `coupPied5022` — coup de pied de 50/22.
+- `penaliteEnTouche` — distance et précision de la pénalité tapée en touche.
+- `coupEnvoi` — coup d'envoi (direct, court, contestable) et renvoi aux 22 / en-but.
+- `drop` — drop en jeu courant (savoir-faire rare).
+- `buteurDistance` — portée au but (aujourd'hui partie de `adresse`).
+- `buteurPrecision` — précision au but selon l'angle (aujourd'hui `adresse`).
+- `buteurRegularite` — constance du geste, influence du vent et de la pression.
+- `jeuPiedSousPression` — frapper avec un défenseur qui arrive → contrés, pieds ratés.
+- `rapiditeFrappe` — temps de mise en place → risque de contre.
 
-### 3.8 Mental et caractère
-| Clé proposée | Description | Effet attendu | État |
-|---|---|---|---|
-| `discipline` | se contrôler, ne pas commettre de faute | pénalités, cartons | existe |
-| `sangFroid` | performer sous pression (fin de match, pénalité décisive) | réussite des gestes dans les moments chauds | à créer |
-| `courage` | s'engager dans le contact, plaquer plus fort | engagement au ruck, plaquages offensifs | à créer |
-| `leadership` | capitaine, orateur | qualité des choix du capitaine, influence des appels | à créer |
-| `agressivite` | intensité | plaquages dominants, mais fautes et cartons | à créer |
-| `regularite` | constance d'un match à l'autre | dispersion des performances | à créer |
+### 3.7 Défense individuelle
+- `techniquePlaquage` — technique générale (aujourd'hui `plaquage`).
+- `plaquageBas` — plaquer aux jambes → plaquage sûr, ballon libéré au sol.
+- `plaquageHaut` / `plaquageEtreinte` — plaquer à hauteur de ballon pour empêcher l'offload ou tenir debout (choke tackle → maul/ballon injouable).
+- `plaquageOffensif` — plaquage dominant qui fait reculer → gain défensif, turnover.
+- `plaquageRattrapage` — plaquer de côté ou par-derrière en course.
+- `plaquageADeux` — premier ou second plaqueur coordonné.
+- `timingPlaquage` — moment d'engagement → plaquages manqués, pénalités de plaquage retardé.
+- `securitePlaquage` — hauteur légale → cartons et pénalités pour plaquage haut.
+- `placementDefensif` — tenir sa place dans la ligne → trous.
+- `monteeDefensive` — vitesse et timing de la montée (rush).
+- `glissade` — glisser au bon moment sur l'homme suivant.
+- `couvertureFond` — placement et course du dernier rideau.
+- `interception` — lire et couper une passe.
+- `contrePied` — contrer un coup de pied.
+- `pressionBotteur` — gêner le botteur ou le 9.
+- `communicationDefensive` — appels en défense (« monte », « glisse »).
 
-### 3.9 État du jour (dynamique, non permanent)
-`fatigue` (dans le match), `forme` (semaine), `confiance` (après ses réussites/échecs), `blessure`. Ces états
-**modulent** les caractéristiques ci-dessus ; ils ne les remplacent pas.
+### 3.8 Jeu au sol et zone de ruck
+- `arriveeRuck` — vitesse et angle d'arrivée → ruck gagné ou perdu.
+- `deblayage` — nettoyer un défenseur au ruck.
+- `liaisonRuck` — se lier légalement, rester sur ses appuis.
+- `grattage` — jackal, arracher le ballon au sol → turnovers.
+- `contreRuck` — repousser l'attaquant pour reprendre le ballon.
+- `decisionRuck` — choisir d'entrer au ruck ou de rester en ligne.
+- `ralentissementRuck` — ralentir le ballon adverse (à la limite des lois, cf. 3.12).
 
-## 4. Gestes maîtrisés (savoir-faire)
+### 3.9 Mêlée (par poste)
+- `liaisonMelee` — prise de liaison, stabilité.
+- `entreeMelee` — engagement au signal.
+- `pousseeMelee` — poussée (aujourd'hui `melee`).
+- `stabiliteMelee` — tenir sous pression, ne pas reculer.
+- `pilierGauche` / `pilierDroit` — technique spécifique du côté (le pilier droit porte la mêlée).
+- `talonnage` — talonner le ballon introduit → mêlées gagnées sur introduction.
+- `introduction` — introduction du 9 → légalité, vitesse.
+- `controleBallonMelee` — garder le ballon aux pieds du 8.
+- `ramassage8` — prise de balle du 8 au pied de la mêlée.
+- `resistanceRotation` — ne pas faire tourner la mêlée.
+- `lectureArbitreMelee` — comprendre ce que l'arbitre veut voir.
 
-Un geste est une **option de plan** seulement s'il est maîtrisé. Niveaux : 0 ne sait pas · 1 notions · 2 maîtrise ·
-3 spécialiste. Le niveau fixe aussi la réussite (avec les caractéristiques continues associées).
+### 3.10 Touche et maul
+- `precisionLancer` — lancer droit et sur le sauteur.
+- `puissanceLancer` — portée du lancer (fond d'alignement).
+- `trajectoireLancer` — hauteur et longueur choisies → plus haut = plus sûr mais plus lent.
+- `rapiditeLancer` — lancer vite, touche rapide.
+- `detenteTouche` — hauteur de saut ; `timingSaut` — synchronisation avec le lancer.
+- `levee` — lever le sauteur ; `timingLevee`.
+- `receptionTouche` — capter en l'air, protéger, transmettre.
+- `contreTouche` — contre-saut, lecture des annonces adverses.
+- `codesTouche` — connaissance des annonces de l'équipe.
+- `formationMaul` — former le maul autour du sauteur.
+- `pousseeMaul` — pousser au maul (aujourd'hui `puissance`).
+- `transmissionMaul` — faire glisser le ballon vers l'arrière du maul.
+- `defenseMaul` — stopper un maul, saquer le sauteur légalement.
 
-| Geste | Caractéristiques associées | Remarque |
-|---|---|---|
-| Chistera | `passeContact`, `reception` (du receveur) | geste rare : la plupart des avants à 0 |
-| Offload | `passeContact`, `puissance` | |
-| Passe vissée longue (> 15 m) | `longueurPasse`, `passe` | |
-| Passe sautée | `longueurPasse`, `vision` | |
-| Passe croisée / redoublement | `passe`, `cohesion` | timing avec un partenaire |
-| Passe au pied (cross-kick) | `precisionPied`, `vision` | |
-| Petit coup de pied à suivre / grubber | `piedRasant`, `vitesse` | |
-| Chandelle (up-and-under, box-kick) | `precisionPied`, `jeuPied` | |
-| Drop en jeu courant | `drop`, `sangFroid` | tout le monde n'en tente pas |
-| Coup de pied de 50/22 | `jeuPied`, `precisionPied` | |
-| Pénalité en touche longue | `jeuPied`, `precisionPied` | |
-| Raffût, cadrage-débordement | `evitement`, `agilite`, `vitesse` | |
-| Grattage (jackal) | `grattage`, `force`, `connaissanceRegles` | |
-| Contre de coup de pied | `anticipation`, `courage` | |
-| Lancer en touche | `lancer` | talonneur, parfois un autre avant |
-| Saut / levée | `touche`, `levee`, `gabarit` | |
+### 3.11 Techniques individuelles PAR POSTE
+Un joueur a une note par poste qu'il connaît (polyvalence) ; hors de ses postes, ses savoir-faire spécifiques baissent.
+- **Pilier gauche (1)** : liaison et poussée côté gauche, stabilité, levée en touche, porteur au près.
+- **Talonneur (2)** : talonnage, lancer (précision, puissance, trajectoire), rôle au maul, gratteur.
+- **Pilier droit (3)** : porter la mêlée, stabilité sous pression, levée.
+- **Deuxièmes lignes (4, 5)** : saut, levée, poussée en mêlée, maul, déblayage, plaquage de répétition.
+- **Troisièmes lignes (6, 7)** : plaquage, grattage, vitesse vers le ruck, couverture, saut en fond d'alignement, soutien.
+- **Numéro 8 (8)** : contrôle et prise de balle au pied de la mêlée, départ du 8, percussion, saut, couverture.
+- **Demi de mêlée (9)** : passe du sol, éjection, box-kick, lecture des petits côtés, départ au ras, introduction, commandement des avants.
+- **Demi d'ouverture (10)** : passe longue, lecture de la défense, jeu au pied tactique, buteur, fixation, commandement de la ligne.
+- **Centres (12, 13)** : percussion, passe sous pression, angle de course, plaquage dans le couloir, lecture défensive, interception.
+- **Ailiers (11, 14)** : vitesse, finition, réception des ballons hauts, retours défensifs, renfort sur l'autre aile.
+- **Arrière (15)** : couverture du fond, réception, relance, jeu au pied long, intercalé, dernier plaquage.
+
+### 3.12 Vice, triche et rapport à l'arbitre
+La triche n'est **jamais** un résultat écrit par le joueur : elle est une **tentative** que l'arbitre voit ou ne voit
+pas (perception de l'arbitre, son placement, son profil). Pris, c'est la sanction prévue par la loi.
+- `vice` — jeu à la limite des lois → gains marginaux au ruck et au maul, pénalités si l'arbitre le voit.
+- `triche` — propension à la faute volontaire dissimulée : hors-jeu au ruck, mains au ruck, retenir le porteur,
+  obstruction, tirer un maillot en touche, écrouler un maul, plaquage retardé, en-avant volontaire.
+- `lectureArbitre` — savoir jusqu'où l'arbitre laisse aller → fautes commises au bon moment, moins sanctionnées.
+- `simulation` — exagérer une faute subie → avantage obtenu, ou carton si l'arbitre le voit.
+- `provocation` / `reactionProvocation` — chercher l'adversaire / réagir aux provocations → cartons, échauffourées.
+- `discipline` — maîtrise de soi → fréquence des fautes involontaires (existe).
+
+### 3.13 Lecture du jeu, perception et décision
+- `lectureJeu` — comprendre la situation → délai de réaction, erreurs d'estimation.
+- `vision` — portée et champ de vision, options vues.
+- `anticipation` — prévoir la passe, la course, le pied adverse.
+- `prisePositionnelle` — être au bon endroit avant le ballon.
+- `decision` — choisir la bonne option (existe).
+- `decisionSousPression` — garder ses choix sous pression et en fin de match.
+- `priseDeRisque` — goût du risque → gestes osés, ballons perdus.
+- `altruisme` / `egoisme` — passer ou garder → passes décisives, percées solitaires.
+- `gestionTemps` — gérer le chrono et le score (fin de match, sonnerie).
+- `lectureAdversaire` — repérer le défenseur faible, l'annonce adverse.
+
+### 3.14 Connaissances tactiques et collectives
+- `connaissancePlan` — maîtrise du plan de jeu du club (placements, consignes).
+- `annonces` — connaissance des codes de touche, mêlée, combinaisons.
+- `connaissanceRegles` — finesse des lois (hors-jeu, en-avant volontaire, ruck).
+- `experience` — matchs joués et niveau connu → stabilité des décisions.
+- `polyvalence` — postes connus et niveau à chacun.
+- `cohesion` — habitude avec chaque partenaire (charnière 9–10, centres, triangle arrière) → timing des passes et des croisées.
+- `communication` — parler, être entendu, comprendre → portée et clarté des appels.
+- `leadership` — capitaine, orateur, choix du capitaine.
+- `leadershipDefensif` — organiser la ligne par la voix.
+
+### 3.15 Mental et caractère
+- `concentration` — erreurs d'inattention (en-avants bêtes, hors-jeu).
+- `sangFroid` — gestes décisifs sous pression.
+- `confianceSoi` — niveau qui monte/descend selon les réussites.
+- `courage` — s'engager au contact, aller au sol pour un ballon.
+- `agressivite` — intensité → plaquages dominants mais fautes.
+- `resilience` — réaction après une erreur ou un essai encaissé.
+- `motivation` — engagement à l'entraînement et en match (Mode Club).
+- `regularite` — constance d'un match à l'autre.
+- `grandsMatchs` — performance dans les matchs à enjeu.
+- `espritEquipe` — se sacrifier pour le collectif (déblayage ingrat, course leurre).
+
+### 3.16 Latéralité
+- `piedFort` (G/D), `piedFaible` (0–100) ; `mainForte`, `passeGauche`, `passeDroite` ; `coteDePrediction` (côté vers lequel il crochète naturellement).
+
+### 3.17 État du jour (dynamique)
+`fatigue` (dans le match), `forme` (semaine), `confiance` (dans le match), `blessure`, `douleur`, `carton` (en jeu ou non).
+Ils **modulent** toutes les caractéristiques ci-dessus sans les remplacer.
+
+## 4. Gestes maîtrisés (savoir-faire : 0 ne sait pas · 1 notions · 2 maîtrise · 3 spécialiste)
+
+Un geste non maîtrisé n'est **pas une option du plan** du joueur. Le niveau fixe aussi la réussite, avec les
+caractéristiques continues associées.
+
+| Famille | Gestes |
+|---|---|
+| Passe | passe vissée longue, passe sautée, passe flottante, passe à une main, **chistera**, offload, passe du sol rapide, passe croisée, redoublement (boucle), feinte de passe, passe dans le dos |
+| Course | crochet, cadrage-débordement, **raffût**, changement de rythme, course leurre, course de soutien intérieure |
+| Pied | **drop**, chandelle, box-kick, grubber, petit pied par-dessus, passe au pied, coup de pied de 50/22, pénalité en touche longue, coup d'envoi court, pied faible, coup de pied vissé en touche |
+| Défense | plaquage offensif, plaquage d'étreinte (ballon tenu debout), plaquage de rattrapage, interception, contre de pied |
+| Sol | grattage (jackal), contre-ruck, plongeon sur ballon libre, présentation rapide |
+| Phases statiques | talonnage, lancer, saut avant/milieu/fond, levée, contre-saut, prise de balle du 8, introduction, transmission dans le maul, sack du sauteur |
+| Arbitre | lecture de l'arbitre, simulation, faute tactique (avec risque de carton) |
 
 ## 5. Comment l'agent s'en sert (Russell–Norvig / GOAP)
 
