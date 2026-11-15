@@ -2534,6 +2534,27 @@
       return 0.3 + 1.7 * anglePoussee + 0.2 * elanLateral >= marge;
     }
 
+    _disponiblePourPlaquer(joueur) {
+      return joueur && joueur.auSol <= 0 && joueur.sinBin <= 0 && joueur.ruckRecovery <= 0
+        && !(joueur.horsJeuKick > 0) && joueur.missCooldown <= 0 && !(joueur.fixeCooldown > 0);
+    }
+
+    _contactPlaquageGOAP(porteur, defenseur, distanceContact) {
+      if (distanceContact >= (this._rayonPlaquage || RAYON_PLAQUAGE)
+        || !this._disponiblePourPlaquer(defenseur)) return false;
+      if (distanceContact < 2.6) return true;
+
+      // À la limite de portée, l'extension des bras suppose que le duel
+      // se ferme. Si l'écart grandit déjà, le défenseur doit d'abord revenir.
+      const orientationPorteur = porteur.orientation || 0;
+      const orientationDefenseur = defenseur.orientation || 0;
+      const vitessePorteur = porteur.vitesseCourante || 0;
+      const vitesseDefenseur = defenseur.vitesseCourante || 0;
+      const vx = Math.cos(orientationPorteur) * vitessePorteur - Math.cos(orientationDefenseur) * vitesseDefenseur;
+      const vy = Math.sin(orientationPorteur) * vitessePorteur - Math.sin(orientationDefenseur) * vitesseDefenseur;
+      return (porteur.x - defenseur.x) * vx + (porteur.y - defenseur.y) * vy <= distanceContact * 0.8;
+    }
+
     _tickPorte(dt) {
       const porteur = this.porteur;
       const def = this.defenseurs();
@@ -2549,12 +2570,16 @@
       // Sans défenseur disponible, on retombe d'abord sur ceux qui sont en jeu :
       // à 2 m de l'en-but, une pénalité jouée vite met toute la défense
       // hors-jeu, et la liste complète désignait un fautif comme plaqueur.
-      const defDisponibles = def.filter(j => j.ruckRecovery <= 0 && !(j.horsJeuKick > 0)
-        && (this.aiMode !== 'GOAP' || (j.auSol <= 0 && j.missCooldown <= 0 && (j.fixeCooldown || 0) <= 0)));
+      const goap = this.aiMode === 'GOAP';
+      const defDisponibles = def.filter(j => goap ? this._disponiblePourPlaquer(j)
+        : j.ruckRecovery <= 0 && !(j.horsJeuKick > 0));
       const defEnJeu = def.filter(j => !(j.horsJeuKick > 0));
       const { joueur: defenseurProche, distance: distDef } = joueurLePlusProche(
         defDisponibles.length > 0 ? defDisponibles : defEnJeu.length > 0 ? defEnJeu : def, porteur.x, porteur.y
       );
+      const contactPlaquage = goap ? this._contactPlaquageGOAP(porteur, defenseurProche, distDef)
+        : distDef < RAYON_PLAQUAGE && defenseurProche.missCooldown <= 0 && !(defenseurProche.fixeCooldown > 0)
+          && !(defenseurProche.horsJeuKick > 0);
       this.timerPhase += dt;
 
       // BALLON EN L'AIR : une passe met un vrai temps a parcourir la distance
@@ -2581,7 +2606,7 @@
       // numéro du porteur et du score (cf. choisirActionPorteur). Le coup de
       // pied peut survenir même défenseur tout proche (dégagement sous
       // pression) ; la passe suppose de ne pas être déjà au contact.
-      let action = (this.combinaison || ballonEnVolPasse) ? 'RUN' : this.choisirActionPorteur(porteur, defenseurProche, distDef, dt);
+      let action = (this.combinaison || ballonEnVolPasse) ? 'RUN' : this.choisirActionPorteur(porteur, defenseurProche, distDef, dt, contactPlaquage);
       // Sonnerie de fin de match : l'équipe menée ou à égalité ne rend pas le
       // ballon au pied, elle garde la dernière action en main.
       if ((action === 'KICK' || action === 'KICK_AGENT') && this._sonnerie && this.miTempsJouee
@@ -2607,8 +2632,7 @@
       // suivant contre le même défenseur (sinon le raté n'aurait aucune
       // conséquence : il serait rejoué jusqu'à réussite quelques dixièmes de
       // seconde plus tard).
-      if (!ballonEnVolPasse && distDef < (this._rayonPlaquage || 2.2) && defenseurProche.missCooldown <= 0 && (defenseurProche.fixeCooldown || 0) <= 0
-          && !(defenseurProche.horsJeuKick > 0) && (this.aiMode !== 'GOAP' || defenseurProche.auSol <= 0)) {
+      if (!ballonEnVolPasse && contactPlaquage) {
         const att0 = this.attaquants();
         this._compterCourse(porteur);
         this.stats[defenseurProche.team].tacklesAttempted++;
@@ -2746,9 +2770,8 @@
         // (coupler le plaquage a deux a un plaquage DOMINANT a ete essaye et
         // rejete — il rabaissait le gain de terrain de 0,83 m a 0,67 m et
         // ramenait la part des avants dans les essais de 15 % a 7 %).
-        const soutienPlaquage = def.filter((d) => d !== defenseurProche && d.auSol === 0
-          && d.ruckRecovery <= 0 && !(d.horsJeuKick > 0)
-          && distance(d, this.porteur) < RAYON_PLAQUAGE);
+        const soutienPlaquage = def.filter(d => d !== defenseurProche && distance(d, porteur) < RAYON_PLAQUAGE
+          && (goap ? this._disponiblePourPlaquer(d) : d.auSol === 0 && d.ruckRecovery <= 0 && !(d.horsJeuKick > 0)));
         if (soutienPlaquage.length > 0) {
           const { joueur: assistant } = joueurLePlusProche(soutienPlaquage, this.porteur.x, this.porteur.y);
           this.stats[assistant.team].tacklesAttempted++;
@@ -3486,7 +3509,7 @@
         // au ras de la ligne, comme un vrai plaquage de couverture désespéré.
         // Un fautif encore hors-jeu (loi 10, loi 20.14) ne sauve pas l'essai.
         const { joueur: sauveteur, distance: distSauvetage } = joueurLePlusProche(
-          def.filter(d => !(d.horsJeuKick > 0)), porteur.x, porteur.y);
+          def.filter(d => goap ? this._disponiblePourPlaquer(d) : !(d.horsJeuKick > 0)), porteur.x, porteur.y);
         if (distSauvetage < 2.2 && sauveteur.missCooldown <= 0) {
           this._compterCourse(porteur);
           this.stats[sauveteur.team].tacklesAttempted++;
@@ -3597,7 +3620,7 @@
       return typeof v === 'number' ? v : 1;
     }
 
-    choisirActionPorteur(porteur, defenseurProche, distDef, dt) {
+    choisirActionPorteur(porteur, defenseurProche, distDef, dt, contactPlaquage = distDef < (this._rayonPlaquage || RAYON_PLAQUAGE)) {
       const zone = this._zoneTerrain(porteur);
       const pression = distDef < 5;
       const att = this.attaquants();
@@ -3638,7 +3661,7 @@
       if (jeu && porteur.auSol <= 0 && !(porteur.horsJeuKick > 0) && !this._sonnerie && this._chandelleBaseA == null && (!this._neufLibre || this.timerPhase >= 0.15)) {
         if (jeu.action === 'RUN') return 'RUN_AGENT';
         if (jeu.action === 'KICK' && distDef >= 2.2) return 'KICK_AGENT';
-        if (jeu.action === 'PASS' && !(porteur._enchaine > 0) && distDef >= (this._rayonPlaquage || 2.2) && att.some(j => this._receveurAgentValide(porteur, j, jeu.vers))) return 'PASS_AGENT';
+        if (jeu.action === 'PASS' && !(porteur._enchaine > 0) && !contactPlaquage && att.some(j => this._receveurAgentValide(porteur, j, jeu.vers))) return 'PASS_AGENT';
       }
 
       // 0. DEMI DE MÊLÉE LIBRE à la sortie (ruck/mêlée/touche où il n'était pas
