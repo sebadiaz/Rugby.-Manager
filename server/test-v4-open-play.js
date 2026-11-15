@@ -189,12 +189,12 @@ for (const y of [1.1, 68.9]) {
 console.log('OK : un plaquage vers le bord sort le ballon, un plaquage vers le terrain crée un ruck');
 
 function perceeSurAile(team) {
-  const m = scene({ team, zone: 72, numero: 14 });
+  const m = scene({ team, zone: 68, numero: 14 });
   const x = distance => team === 'A' ? distance : 100 - distance;
   const def = team === 'A' ? m.equipeB : m.equipeA;
   const att = team === 'A' ? m.equipeA : m.equipeB;
   for (const j of [...att, ...def]) Object.assign(j, { x: x(53), y: 57, vitesseCourante: 0 });
-  Object.assign(m.porteur, { x: x(72), y: 11, vitesseCourante: 7.4, vitesse: 85, orientation: team === 'A' ? 0 : Math.PI });
+  Object.assign(m.porteur, { x: x(68), y: 11, vitesseCourante: 7.4, vitesse: 85, orientation: team === 'A' ? 0 : Math.PI });
   const arriere = def.find(j => j.numero === 15);
   Object.assign(arriere, { x: x(89), y: 19, orientation: team === 'A' ? Math.PI : 0, vitesse: 83 });
   return { m, arriere, def, x };
@@ -223,6 +223,14 @@ for (const team of ['A', 'B']) {
   arriere.horsJeuKick = 2;
   assert.equal(placement().placementGoal, 'COVER_BACKFIELD');
   arriere.horsJeuKick = 0;
+  m.porteur.x = x(83);
+  arriere.x = x(97);
+  assert.equal(placement().placementGoal, 'COVER_BACKFIELD', 'près de l’en-but, la défense de ligne prend le relais');
+  m.porteur.x = x(68);
+  arriere.x = x(89);
+  m.porteur.y = 32;
+  assert.equal(placement().placementGoal, 'COVER_BACKFIELD', 'au centre le 15 garde l’axe de couverture');
+  m.porteur.y = 11;
 
   for (let i = 0; i < 60 && m.phase === 'PORTE'; i++) m.tick(0.1);
   assert.ok(m.phase === 'RUCK' || m.phase === 'TOUCHE', 'le plaquage de couverture arrête la course');

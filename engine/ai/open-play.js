@@ -44,8 +44,14 @@ function lireCouverture(b, s) {
   const porteur = b.opponents[s.ball?.owner];
   if (!porteur || !visibleJouable(porteur)) return null;
   const balle = porteur.lastSeen, me = b.self, sens = s.sens;
+  const ligne = sens > 0 ? 0 : 100;
+  const distanceEnBut = (balle.x - ligne) * sens;
+  // Sortie du dernier rideau sur les percées d'aile. Au centre, l'arrière
+  // reste dans l'axe avec la couverture habituelle et ferme au contact.
+  const distanceTouche = Math.min(balle.y, LARGEUR - balle.y);
+  if (distanceTouche > 16 || distanceEnBut < 22 || distanceEnBut > 48) return null;
   const profondeur = (balle.x - me.x) * sens;
-  if (profondeur < 1 || profondeur > 27 || dist(me, balle) > 32) return null;
+  if (profondeur < 8 || profondeur > 26 || dist(me, balle) > 32) return null;
 
   const vx = porteur.vx || 0, vy = porteur.vy || 0;
   if (-vx * sens < 3.5) return null;
@@ -63,7 +69,6 @@ function lireCouverture(b, s) {
   });
   if (rideau) return null;
 
-  const ligne = sens > 0 ? 0 : 100;
   const avantLigne = Math.max(0, (balle.x - ligne) / -vx - porteur.age);
   const horizon = Math.min(3.2, avantLigne);
   const vitesse = 3 + clamp(me.vitesse ?? 65, 0, 100) * 0.05;
