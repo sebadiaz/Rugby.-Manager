@@ -1,5 +1,4 @@
-// Lecture INDIVIDUELLE des attaques adverses par un défenseur : surnombre vu à l'extérieur (MARK_EXTRA_MAN)
-// et course croisée lue (READ_CROSS). Aucune consigne d'équipe : chacun compte ce qu'il voit.
+// Lecture INDIVIDUELLE d'une course croisée adverse par un défenseur (READ_CROSS). Aucune consigne d'équipe.
 'use strict';
 const assert = require('assert');
 const { lireAttaqueAdverse, individualPlacement } = require('../engine/ai/individual-placement.js');
@@ -20,22 +19,9 @@ function croyances(numero, moi, porteur, { mates = {}, opps = {} } = {}) {
 }
 const lire = (b) => { const s = deriveSituation(b); return lireAttaqueAdverse(b, s, b.self, s.ball.lastSeen, b.opponents[s.ball.owner], s.sens); };
 
-test('MARK_EXTRA_MAN : trois attaquants vus à mon extérieur contre un partenaire -> je glisse sur l\'attaquant libre le plus proche', () => {
+test('pas de « prise de l\'homme en plus » : un surnombre vu à l\'extérieur ne vide pas la ligne (retiré après mesure)', () => {
   const b = croyances(13, { x: 40, y: 38 }, [12, 46, 30], {
-    mates: { A14: [14, 40, 52] },
-    opps: { B13: [13, 47, 42], B15: [15, 48, 48], B14: [14, 48, 58] },
-  });
-  const c = lire(b).find((x) => x.id === 'MARK_EXTRA_MAN');
-  assert.ok(c, 'candidat attendu');
-  assert.ok(Math.abs(c.target.y - 42) < 0.01, 'le plus proche des attaquants libres : B13 (y=42), cible ' + c.target.y);
-  assert.ok(c.target.x < 47, 'entre l\'attaquant et ma ligne');
-});
-
-test('MARK_EXTRA_MAN absent quand nous sommes en nombre à l\'extérieur', () => {
-  const b = croyances(13, { x: 40, y: 38 }, [12, 46, 30], {
-    mates: { A14: [14, 40, 52], A15: [15, 38, 46], A11: [11, 40, 60] },
-    opps: { B13: [13, 47, 42], B14: [14, 48, 58] },
-  });
+    mates: { A14: [14, 40, 52] }, opps: { B13: [13, 47, 42], B15: [15, 48, 48], B14: [14, 48, 58] } });
   assert.ok(!lire(b).some((x) => x.id === 'MARK_EXTRA_MAN'));
 });
 
@@ -50,11 +36,10 @@ test('READ_CROSS : un attaquant repique à contre-sens juste derrière un porteu
   assert.ok(!lire(b2).some((x) => x.id === 'READ_CROSS'));
 });
 
-test('ces lectures restent des candidats : le défenseur les compare à ses autres placements', () => {
-  const b = croyances(13, { x: 40, y: 38 }, [12, 46, 30], {
-    mates: { A14: [14, 40, 52] }, opps: { B13: [13, 47, 42], B15: [15, 48, 48], B14: [14, 48, 58] } });
+test('la croisée lue reste un candidat : le défenseur la compare à ses autres placements', () => {
+  const b = croyances(12, { x: 40, y: 28 }, [12, 46, 30, -1, 4], { opps: { B13: [13, 48, 33, -1, -4] } });
   const p = individualPlacement(b, 'DEFEND', {}, { vitesseMs: 7 }, true);
-  assert.ok(p.candidates.some((c) => c.id === 'MARK_EXTRA_MAN'));
+  assert.ok(p.candidates.some((c) => c.id === 'READ_CROSS'));
   assert.ok(p.candidates.length >= 3);
 });
 

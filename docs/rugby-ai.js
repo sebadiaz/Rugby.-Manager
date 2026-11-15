@@ -1672,26 +1672,12 @@ function candidatsDefense(b, s, pb, jeuCourant) {
   return out;
 }
 
-// Lecture INDIVIDUELLE des attaques adverses en jeu courant (aucune consigne d'équipe) :
-//  - MARK_EXTRA_MAN : je compte, à mon extérieur, les attaquants et les partenaires que je vois ; s'ils sont
-//    plus nombreux, je glisse sur l'attaquant libre (personne à moins de 3 m) le plus proche de moi ;
-//  - READ_CROSS : je vois un attaquant courir à contre-sens de la dérive du porteur, juste derrière lui et
-//    vers moi : je coupe sa course plutôt que de glisser. La lecture peut être fausse ou tardive.
+// Lecture INDIVIDUELLE d'une course croisée adverse (READ_CROSS) : je vois un attaquant courir à contre-sens
+// de la dérive du porteur, juste derrière lui et vers moi ; je coupe sa course plutôt que de glisser. La
+// lecture peut être fausse ou tardive. (Une lecture « je prends l'homme en plus à mon extérieur » a été
+// essayée et retirée : sur 12 graines, la ligne se vidait et la défense encaissait 7,1 à 7,8 essais au lieu de 5,7.)
 function lireAttaqueAdverse(b, s, me, porteur, fiche, sens) {
   const out = [];
-  const ext = Math.sign(me.y - porteur.y) || 1;
-  const dehors = (p) => (p.y - me.y) * ext > 1 && Math.abs(p.x - porteur.x) <= 15;
-  const attDehors = Object.entries(b.opponents).filter(([id, o]) => id !== s.ball.owner && visibleJouable(o) && dehors(o.lastSeen));
-  const defDehors = Object.values(b.teammates).filter((m) => m.age <= 1.5 && dehors(m.lastSeen)).length;
-  if (attDehors.length > defDehors) {
-    const libres = attDehors.filter(([, o]) => !Object.values(b.teammates).some((m) => P.dist(m.lastSeen, o.lastSeen) < 3))
-      .sort((a, c) => Math.abs(a[1].lastSeen.y - me.y) - Math.abs(c[1].lastSeen.y - me.y) || a[0].localeCompare(c[0], 'en'));
-    if (libres.length && Math.abs(libres[0][1].lastSeen.y - me.y) <= 15) {
-      const [id, o] = libres[0];
-      out.push({ id: 'MARK_EXTRA_MAN', priority: 70, target: { x: o.lastSeen.x - sens * 2, y: o.lastSeen.y }, vmax: 1,
-        reason: `surnombre vu à l'extérieur (${attDehors.length} contre ${defDehors}) : je prends ${id}` });
-    }
-  }
   const vyP = fiche && visibleJouable(fiche) ? fiche.vy || 0 : 0;
   if (Math.abs(vyP) >= 2.5) {
     for (const [id, o] of Object.entries(b.opponents)) {
