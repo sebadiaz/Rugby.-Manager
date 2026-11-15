@@ -572,6 +572,11 @@ class AgentContext {
     const equipe = this.agent.team === 'A' ? state.equipeA : state.equipeB;
     const moi = equipe.find(j => j.numero === this.agent.numero);
     if (!moi) throw new RangeError('agent introuvable : ' + this.id);
+    // Délai de réaction : fixé par le test (`reactionDelay`) ou, en mode `lectureAuto`, lu dans la lecture du
+    // jeu du joueur (60 → 0,20 s ; 85 → 0,15 s ; 40 → 0,24 s). Caractéristique individuelle, pas réglage d'équipe.
+    if (this.params.lectureAuto && moi.car && typeof moi.car.lectureJeu === 'number') {
+      this.params.reactionDelay = Math.max(0.1, Math.min(0.35, 0.32 - 0.002 * moi.car.lectureJeu));
+    }
     const doitObserver = this.lastObsT === null || t - this.lastObsT >= this.params.reactionDelay - 1e-9;
     let obs = null;
     if (doitObserver) {
@@ -623,7 +628,8 @@ class AgentContext {
     return deepFreeze({
       t, agent: this.agent, observedAt: this.lastObsT, refreshed: doitObserver,
       self: { x: moi.x, y: moi.y, orientation: moi.orientation || 0, grounded: moi.auSol > 0, available: !(moi.auSol > 0) && !(moi.sinBin > 0),
-        sensAttaque: moi.sensAttaque, jeuPied: moi.jeuPied, vitesse: moi.vitesse, kickOffside: moi.horsJeuKick > 0 },
+        sensAttaque: moi.sensAttaque, jeuPied: moi.jeuPied, vitesse: moi.vitesse, kickOffside: moi.horsJeuKick > 0,
+        car: moi.car ? Object.assign({}, moi.car) : null, gestes: moi.gestes ? Object.assign({}, moi.gestes) : null },
       ball: ballon, teammates: mates, opponents: adv,
       ruck: this.mem.ruck ? { ballAvailable: this.mem.ruck.ballAvailable, defendersCommitted: this.mem.ruck.defendersCommitted,
         age: +(t - this.mem.ruck.seenAt).toFixed(3), confidence: +clamp01(mem === 0 ? 1 : 1 - (t - this.mem.ruck.seenAt) / mem).toFixed(3) } : null,
@@ -696,7 +702,10 @@ class GoalBasedRugbyAgent {
     this.agent = { team: agent.team, numero: agent.numero };
     this.id = agent.team + agent.numero;
     this.profile = profilePour(agent.numero, options.profile);
+    // Sans délai imposé, chaque joueur réagit selon SA lecture du jeu (caractéristique individuelle).
+    const auto = !(options.perception && options.perception.reactionDelay !== undefined);
     this.context = new AgentContext(agent, Object.assign({ reactionDelay: 0.2 }, options.perception));
+    this.context.params.lectureAuto = auto;
     this.selector = new GoalSelector(agent, Object.assign({ profile: options.profile }, options.selector));
     this.executor = new ActionExecutor(agent, options.executor);
     if (options.acteurs) this.executor.acteurs = options.acteurs; // doublures de test (acteurs de ballon)
@@ -2367,7 +2376,8 @@ function risqueCouloir(de, vers, adv) {
 // vide ; je botte court par-dessus et je vais chercher le ballon (le botteur est en jeu). Le moteur résout le
 // vol, l'erreur de frappe et la réception disputée.
 function lirePetitPied(b, me, sens, adv, distanceBut, course) {
-  if (b.agent.numero < 9 || (me.jeuPied ?? 0) < 60 || distanceBut < 12 || distanceBut > 50 || course >= 6) return null;
+  const sait = me.gestes ? me.gestes.petitPied >= 1 : b.agent.numero >= 9 && (me.jeuPied ?? 0) >= 60;
+  if (!sait || distanceBut < 12 || distanceBut > 50 || course >= 6) return null;
   const ligne = adv.filter((d) => { const av = (d.lastSeen.x - me.x) * sens; return av >= 2 && av <= 9 && Math.abs(d.lastSeen.y - me.y) <= 10; });
   const montent = ligne.filter((d) => (d.vx || 0) * sens <= -2).length;
   if (ligne.length < 2 || montent * 2 < ligne.length) return null;
@@ -2391,7 +2401,9 @@ function lirePetitPied(b, me, sens, adv, distanceBut, course) {
 
 function lirePassePied(b, s, me, sens, adv, distanceBut, course) {
   const n = b.agent.numero;
-  if ((n !== 10 && n !== 12 && n !== 15) || (me.jeuPied ?? 0) < 65 || distanceBut > 45 || distanceBut < 8 || course >= 8) return null;
+  // Savoir-faire du joueur (gestes maîtrisés) ; repli sur l'ancien seuil si les caractéristiques sont absentes.
+  const sait = me.gestes ? me.gestes.passeAuPied >= 1 : (n === 10 || n === 12 || n === 15) && (me.jeuPied ?? 0) >= 65;
+  if (!sait || distanceBut > 45 || distanceBut < 8 || course >= 8) return null;
   let meilleur = null;
   for (const m of Object.values(b.teammates)) {
     if (!visibleJouable(m)) continue;
@@ -2416,6 +2428,7 @@ function lirePassePied(b, s, me, sens, adv, distanceBut, course) {
 // reçoit dans un espace libre. Le moteur décide de la réussite (en-avant possible selon mes mains).
 function lireChistera(b, me, sens, adv, pression) {
   if (pression >= 4) return null; // dans la zone de contact (plaquage déclenché vers 3,7 m)
+  if (me.gestes && !(me.gestes.chistera >= 1)) return null; // tout le monde ne sait pas faire une chistera
   const plaqueur = adv.reduce((p, d) => (!p || dist(me, d.lastSeen) < dist(me, p.lastSeen) ? d : p), null);
   if (!plaqueur) return null;
   const cotePlaqueur = Math.sign(plaqueur.lastSeen.y - me.y) || 1;
@@ -2441,6 +2454,12 @@ function surnombreCote(me, sens, cote, mates, adv) {
   return att - def;
 }
 
+// Portée de passe selon la maîtrise de la passe longue : tout le monde ne passe pas à 20 m.
+function porteePasse(me) {
+  const n = me.gestes ? me.gestes.passeLongue : 2;
+  return [12, 16, 21, 24][Math.max(0, Math.min(3, n))];
+}
+
 // Options de passe du porteur, notées selon SA lecture (espace, réception lancée, surnombre vu, risque).
 function optionsDePasse(b, me, sens, adv, course, pression, profile, playbook) {
   const options = [];
@@ -2452,7 +2471,7 @@ function optionsDePasse(b, me, sens, adv, course, pression, profile, playbook) {
     const recul = (me.x - p.x) * sens;
     const cote = Math.sign(p.y - me.y) || 1;
     const longueur = dist(me, p);
-    if (recul < 0.45 || recul > 11 || longueur < 3 || longueur > 21 || Math.abs(p.y - me.y) < 2) continue;
+    if (recul < 0.45 || recul > 11 || longueur < 3 || longueur > porteePasse(me) || Math.abs(p.y - me.y) < 2) continue;
     const enCourse = Math.max(0, (m.vx || 0) * sens);
     const reception = projeter(m, longueur / 20 + m.age);
     const air = espaceDevant(reception, sens, adv, 17, longueur / 20);

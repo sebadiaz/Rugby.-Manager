@@ -1288,3 +1288,211 @@ select {
 /* Mobile (QA-RM-005) : les listes « remplace le … » du panneau de consigne
    mesuraient 23 px de haut — trop petit pour un pouce. */
 #panneauMiTemps select { min-height: 40px; font-size: 14px; }
+
+
+/* ==========================================================================
+   RETRANSMISSION DE MATCH — interface plein écran adaptative
+   Ne s'applique qu'à #vueMatch : aucune modification de la gestion du club.
+   ========================================================================== */
+#vueMatch {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+  isolation: isolate;
+  overflow: hidden;
+  background: #183f26;
+}
+#vueMatch #pitch {
+  display: block;
+  width: 100%;
+  max-width: none;
+  margin-left: 0;
+  margin-right: 0;
+  touch-action: manipulation;
+}
+#vueMatch #hud {
+  inset: 0 0 auto;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 8px clamp(10px, 2vw, 24px);
+  gap: 4px;
+  background: linear-gradient(180deg, rgba(8,19,19,.98), rgba(12,27,24,.94));
+  box-shadow: 0 4px 18px rgba(0,0,0,.22);
+  border-bottom: 1px solid rgba(230,250,237,.15);
+}
+#vueMatch #hud .ligne1 {
+  display: grid;
+  grid-template-columns: minmax(0,1fr) auto auto;
+  align-items: center;
+  gap: 9px 16px;
+}
+#vueMatch #hud .score {
+  display: grid;
+  grid-template-columns: minmax(0,1fr) auto minmax(0,1fr);
+  align-items: center;
+  gap: clamp(8px, 1.8vw, 25px);
+  min-width: 0;
+  font-weight: 800;
+  font-size: clamp(12px, 1.5vw, 21px);
+  letter-spacing: -.025em;
+  white-space: nowrap;
+}
+#vueMatch .scoreEquipe { min-width: 0; display:flex; align-items:center; gap:7px; }
+#vueMatch .scoreEquipe::before {
+  content: '';
+  display: inline-block;
+  width: 5px;
+  height: 21px;
+  flex: 0 0 5px;
+  border-radius: 3px;
+}
+#vueMatch .scoreEquipe.equipeA::before { background: #55b8ff; }
+#vueMatch .scoreEquipe.equipeB::before { background: #ff636c; }
+#vueMatch .scoreEquipe.equipeB { flex-direction: row-reverse; text-align:right; }
+#vueMatch .scoreEquipe .nomEquipe {
+  display: block;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+#vueMatch .scoreChiffres {
+  display: inline-flex;
+  gap: clamp(6px, 1vw, 12px);
+  align-items: center;
+  justify-content: center;
+  padding: 3px 11px;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 10px;
+  background: rgba(0,0,0,.32);
+  font-size: clamp(17px,2.1vw,26px);
+  font-weight: 850;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.045em;
+}
+#vueMatch .scoreTiret { font-size:.75em; color: #b2c2b8; }
+#vueMatch #phase {
+  max-width: 235px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: #25443c;
+  color: #effaf4;
+  border-color: rgba(255,255,255,.18);
+  font-size: 11px;
+}
+#vueMatch #hud .horloge {
+  justify-self: end;
+  font-size: 12px;
+  font-weight: 750;
+  color: #e1eae5;
+  white-space: nowrap;
+}
+#vueMatch #hud .possession {
+  width: min(100%, 420px);
+  margin-inline: auto;
+  gap: 7px;
+  font-size: 10px;
+}
+#vueMatch #hud .possession .barre { height: 4px; }
+#vueMatch #feed {
+  max-height: 24px !important;
+  overflow: hidden;
+  font-size: 11px;
+  white-space: nowrap;
+  color: #b8cec2;
+}
+#vueMatch #feed li { display:none; overflow:hidden; text-overflow:ellipsis; }
+#vueMatch #feed li:first-child { display:block; }
+#vueMatch #banner { max-width: min(560px, calc(100vw - 20px)); }
+#vueMatch #controls {
+  inset: auto 0 0;
+  width:100%;
+  max-width: none;
+  margin:0;
+  padding: 8px 12px max(8px, env(safe-area-inset-bottom));
+  background: linear-gradient(0deg, rgba(4,13,15,.98), rgba(5,18,17,.9));
+  border-top: 1px solid rgba(255,255,255,.13);
+}
+#vueMatch #controls .controlsRangee.principale {
+  display:flex;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  justify-content:center;
+  gap: 7px;
+  min-width:0;
+  max-width: 100%;
+}
+#vueMatch #controls .controlsRangee.principale button {
+  flex: 0 1 auto;
+  width: auto;
+  min-width: 74px;
+  min-height: 41px;
+  padding: 9px 14px;
+  border: 1px solid rgba(255,255,255,.13);
+  border-radius: 9px;
+  font-size: 12px;
+  white-space:nowrap;
+}
+#vueMatch #controls #btnPlay {
+  background: #f8bf43;
+  color: #182723;
+  border-color: #f8bf43;
+  font-weight: 800;
+}
+#vueMatch #controls #btnMenu { background:#233f43; }
+#vueMatch #seekZone {
+  max-width:none;
+  margin:0;
+  width:100%;
+  padding: 8px clamp(12px, 2vw, 24px);
+  gap: 11px;
+  background: #102623;
+  border-top: 1px solid rgba(255,255,255,.1);
+}
+#vueMatch #seekZone input[type=range] { min-width:0; cursor:pointer; }
+@media (max-width: 780px) {
+  #vueMatch #hud .ligne1 { grid-template-columns:minmax(0,1fr) auto; gap:5px 8px; }
+  #vueMatch #hud .score { grid-column:1 / -1; font-size:14px; gap:8px; }
+  #vueMatch #hud .scoreChiffres { font-size:19px; padding:3px 9px; }
+  #vueMatch #hud .horloge { font-size:10px; }
+  #vueMatch #hud .possession { width:100%; }
+  #vueMatch #controls { padding:6px 7px max(6px, env(safe-area-inset-bottom)); }
+  #vueMatch #controls .controlsRangee.principale {
+    justify-content:flex-start;
+    overflow-x:auto;
+    scrollbar-width:none;
+    -webkit-overflow-scrolling:touch;
+  }
+  #vueMatch #controls .controlsRangee.principale::-webkit-scrollbar { display:none; }
+  #vueMatch #controls .controlsRangee.principale button {
+    flex:0 0 auto;
+    min-width:65px;
+    min-height:43px;
+    padding:8px 11px;
+  }
+}
+@media (max-height: 520px) and (orientation: landscape) {
+  /* Le match reste le sujet principal sur téléphone horizontal : HUD 1 ligne,
+     événements et possession masqués, commandes courtes et atteignables. */
+  #vueMatch #hud { padding:5px 10px; }
+  #vueMatch #hud .ligne1 { grid-template-columns:minmax(0,1fr) auto auto; gap:7px; }
+  #vueMatch #hud .score { grid-column:auto; font-size:13px; }
+  #vueMatch #hud .scoreChiffres { font-size:17px; padding:2px 7px; }
+  #vueMatch #hud .possession, #vueMatch #feed { display:none !important; }
+  #vueMatch #phase { padding:4px 6px; font-size:10px; max-width:155px; }
+  #vueMatch #hud .horloge { font-size:10px; }
+  #vueMatch #controls { padding:4px 8px max(4px, env(safe-area-inset-bottom)); }
+  #vueMatch #controls .controlsRangee.principale button { min-height:37px; padding:6px 9px; }
+  #vueMatch #seekZone { padding:4px 11px; }
+}
+@media (max-width: 380px) {
+  #vueMatch #hud { padding:7px 8px; }
+  #vueMatch #hud .score { gap:5px; font-size:12px; }
+  #vueMatch .scoreEquipe::before { height:16px; }
+  #vueMatch #hud .scoreChiffres { font-size:17px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #vueMatch button, #vueMatch #banner { transition:none; }
+}

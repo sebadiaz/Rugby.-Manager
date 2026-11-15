@@ -56,7 +56,10 @@ class GoalBasedRugbyAgent {
     this.agent = { team: agent.team, numero: agent.numero };
     this.id = agent.team + agent.numero;
     this.profile = profilePour(agent.numero, options.profile);
+    // Sans délai imposé, chaque joueur réagit selon SA lecture du jeu (caractéristique individuelle).
+    const auto = !(options.perception && options.perception.reactionDelay !== undefined);
     this.context = new AgentContext(agent, Object.assign({ reactionDelay: 0.2 }, options.perception));
+    this.context.params.lectureAuto = auto;
     this.selector = new GoalSelector(agent, Object.assign({ profile: options.profile }, options.selector));
     this.executor = new ActionExecutor(agent, options.executor);
     if (options.acteurs) this.executor.acteurs = options.acteurs; // doublures de test (acteurs de ballon)
