@@ -100,6 +100,32 @@ function risqueCouloir(de, vers, adv) {
   });
 }
 
+// Petit coup de pied à suivre : la ligne adverse MONTE vite et à plat devant moi, l'herbe derrière elle est
+// vide ; je botte court par-dessus et je vais chercher le ballon (le botteur est en jeu). Le moteur résout le
+// vol, l'erreur de frappe et la réception disputée.
+function lirePetitPied(b, me, sens, adv, distanceBut, course) {
+  if (b.agent.numero < 9 || (me.jeuPied ?? 0) < 60 || distanceBut < 12 || distanceBut > 50 || course >= 6) return null;
+  const ligne = adv.filter((d) => { const av = (d.lastSeen.x - me.x) * sens; return av >= 2 && av <= 9 && Math.abs(d.lastSeen.y - me.y) <= 10; });
+  const montent = ligne.filter((d) => (d.vx || 0) * sens <= -2).length;
+  if (ligne.length < 2 || montent * 2 < ligne.length) return null;
+  // Viser l'herbe 7 m derrière le monteur le plus avancé (à 12 m fixes, la ligne était déjà sur le point de chute).
+  const profond = ligne.reduce((p, d) => Math.max(p, (d.lastSeen.x - me.x) * sens), 0);
+  const portee = Math.min(profond + 7, distanceBut - 1);
+  if (portee < profond + 4) return null;
+  const cible = { x: clamp(me.x + sens * portee, 1, 99), y: clamp(me.y, 4, LARGEUR - 4) };
+  // Le ballon retombe en 1-1,6 s (vol d'un petit coup de pied) : on y arrive au plus tôt à ce moment.
+  const vol = clamp(dist(me, cible) / 8, 1.0, 1.6);
+  const tMoi = Math.max(vol, dist(me, cible) / 8);
+  // Un monteur lancé vers moi (≥ 2 m/s) doit freiner puis repartir dans l'autre sens (~1,2 s) ; le fond court droit.
+  const tDef = adv.reduce((t, d) => {
+    const enLigne = ligne.includes(d);
+    return Math.min(t, Math.max(vol, dist(projeter(d, d.age + 0.3), cible) / 8 + (enLigne ? 1.2 : 0)));
+  }, Infinity);
+  // C'est un pari : une arrivée à quasi-égalité suffit (le moteur tranche la réception disputée).
+  if (tDef < tMoi - 0.1) return null;
+  return { action: 'KICK_CHIP', cibleX: cible.x, cibleY: cible.y, score: 8 + 2 * Math.min(3, tDef - tMoi + 0.1) + (distanceBut <= 25 ? 2 : 0) };
+}
+
 function lirePassePied(b, s, me, sens, adv, distanceBut, course) {
   const n = b.agent.numero;
   if ((n !== 10 && n !== 12 && n !== 15) || (me.jeuPied ?? 0) < 65 || distanceBut > 45 || distanceBut < 8 || course >= 8) return null;
@@ -144,6 +170,47 @@ function lireChistera(b, me, sens, adv, pression) {
   return meilleur;
 }
 
+// Surnombre PERÇU d'un côté (cote = +1 / -1 en y) : partenaires vus en retrait, à moins de 15 m,
+// contre défenseurs vus en face (de 2 m derrière à 15 m devant). Positif = un homme de plus.
+function surnombreCote(me, sens, cote, mates, adv) {
+  const att = mates.filter((m) => (m.lastSeen.y - me.y) * cote > 2 && (me.x - m.lastSeen.x) * sens >= 0 && (me.x - m.lastSeen.x) * sens <= 15).length;
+  const def = adv.filter((d) => (d.lastSeen.y - me.y) * cote > 1 && (d.lastSeen.x - me.x) * sens >= -2 && (d.lastSeen.x - me.x) * sens <= 15).length;
+  return att - def;
+}
+
+// Options de passe du porteur, notées selon SA lecture (espace, réception lancée, surnombre vu, risque).
+function optionsDePasse(b, me, sens, adv, course, pression, profile, playbook) {
+  const options = [];
+  const mates = Object.values(b.teammates).filter(visibleJouable);
+  const surnombre = { [1]: surnombreCote(me, sens, 1, mates, adv), [-1]: surnombreCote(me, sens, -1, mates, adv) };
+  for (const m of Object.values(b.teammates)) {
+    if (!visibleJouable(m)) continue;
+    const p = m.lastSeen;
+    const recul = (me.x - p.x) * sens;
+    const cote = Math.sign(p.y - me.y) || 1;
+    const longueur = dist(me, p);
+    if (recul < 0.45 || recul > 11 || longueur < 3 || longueur > 21 || Math.abs(p.y - me.y) < 2) continue;
+    const enCourse = Math.max(0, (m.vx || 0) * sens);
+    const reception = projeter(m, longueur / 20 + m.age);
+    const air = espaceDevant(reception, sens, adv, 17, longueur / 20);
+    const proche = adv.reduce((min, d) => Math.min(min, dist(reception, projeter(d, longueur / 20 + d.age))), Infinity);
+    const bord = Math.min(reception.y, LARGEUR - reception.y);
+    const risque = risqueCouloir(me, reception, adv);
+    // Le gain attendu rétribue une réception lancée et un défenseur fixé.
+    // Le plein large a un coût si l'ailier manque de place ou si la passe est longue.
+    const score = 0.76 * air + 0.36 * Math.min(12, proche) + 0.55 * enCourse
+      - 0.32 * recul - 0.16 * longueur - Math.max(0, 5 - bord) - (risque ? 12 : 0)
+      + (course < 8 && pression < 9 ? 3 : 0)
+      + (m.numero === 10 ? 1.4 * profile.distribute : 0)
+      + (m.numero <= 8 && b.agent.numero === 9 ? ((playbook.sortieAvant ?? 0.34) - 0.34) * 8 : 0)
+      + (b.agent.numero === 12 || b.agent.numero === 13 ? clamp((playbook.passeCentres ?? 1) - 1, -1, 1) * 2 : 0)
+      + clamp((playbook.attackWidth || 1) - 1, -0.5, 0.5) * Math.abs(p.y - me.y) * 0.25
+      + 2.5 * clamp(surnombre[cote], 0, 3);  // servir le côté où l'on voit un homme de plus
+    options.push({ action: 'PASS', vers: m.numero, score, surnombre: surnombre[cote] });
+  }
+  return options;
+}
+
 function lirePorteur(b, s, profile, playbook) {
   if (s.phase !== 'PORTE' || !s.aLeBallon || !s.available || !s.onside || s.ball.age > 0.35) return null;
   const me = b.self, sens = s.sens;
@@ -163,29 +230,7 @@ function lirePorteur(b, s, profile, playbook) {
     const score = air + (distanceBut < 7 ? 5 : 0) - 1;
     if (air >= course + 3 && score > options[0].score) options[0] = { action: 'RUN', decalage, score };
   }
-  for (const m of Object.values(b.teammates)) {
-    if (!visibleJouable(m)) continue;
-    const p = m.lastSeen;
-    const recul = (me.x - p.x) * sens;
-    const longueur = dist(me, p);
-    if (recul < 0.45 || recul > 11 || longueur < 3 || longueur > 21 || Math.abs(p.y - me.y) < 2) continue;
-    const enCourse = Math.max(0, (m.vx || 0) * sens);
-    const reception = projeter(m, longueur / 20 + m.age);
-    const air = espaceDevant(reception, sens, adv, 17, longueur / 20);
-    const proche = adv.reduce((min, d) => Math.min(min, dist(reception, projeter(d, longueur / 20 + d.age))), Infinity);
-    const bord = Math.min(reception.y, LARGEUR - reception.y);
-    const risque = risqueCouloir(me, reception, adv);
-    // Le gain attendu rétribue une réception lancée et un défenseur fixé.
-    // Le plein large a un coût si l'ailier manque de place ou si la passe est longue.
-    const score = 0.76 * air + 0.36 * Math.min(12, proche) + 0.55 * enCourse
-      - 0.32 * recul - 0.16 * longueur - Math.max(0, 5 - bord) - (risque ? 12 : 0)
-      + (course < 8 && pression < 9 ? 3 : 0)
-      + (m.numero === 10 ? 1.4 * profile.distribute : 0)
-      + (m.numero <= 8 && b.agent.numero === 9 ? ((playbook.sortieAvant ?? 0.34) - 0.34) * 8 : 0)
-      + (b.agent.numero === 12 || b.agent.numero === 13 ? clamp((playbook.passeCentres ?? 1) - 1, -1, 1) * 2 : 0)
-      + clamp((playbook.attackWidth || 1) - 1, -0.5, 0.5) * Math.abs(p.y - me.y) * 0.25;
-    options.push({ action: 'PASS', vers: m.numero, score });
-  }
+  for (const o of optionsDePasse(b, me, sens, adv, course, pression, profile, playbook)) options.push(o);
   // Sortie de camp quand la ligne monte et que les soutiens disponibles sont
   // couverts. La cible est une demande : le moteur applique ses lois et son vol.
   const consignePied = (playbook.tauxJeuAuPied ?? 1.5) * (b.agent.numero === 10 ? (playbook.piedOuvreur ?? 1) : 1);
@@ -204,10 +249,15 @@ function lirePorteur(b, s, profile, playbook) {
   // ballon avec son erreur propre et résout la réception disputée.
   const passePied = lirePassePied(b, s, me, sens, adv, distanceBut, course);
   if (passePied) options.push(passePied);
+  const petitPied = lirePetitPied(b, me, sens, adv, distanceBut, course);
+  if (petitPied) options.push(petitPied);
   options.sort((a, c) => c.score - a.score || (a.vers || 0) - (c.vers || 0));
   const choix = options[0];
+  // Fixer avant de servir : passer dès 9 m (essayé) laissait glisser la défense, −1,7 essai par match.
   if (choix.action === 'PASS' && (pression < 2.5 || pression > 7 || course >= 7 || choix.score < course + 6 || choix.score < 9)) return null;
   if (choix.action === 'KICK' && (choix.score < course + 3 || choix.score < (options[1]?.score ?? 0) + 2)) return null;
+  if (choix.action === 'KICK_CHIP') return { action: 'KICK', kick: 'CHIP', cibleX: choix.cibleX, cibleY: choix.cibleY,
+    options, pression, course, age: s.ball.age, score: choix.score };
   if (choix.action === 'KICK_PASS') return { action: 'KICK', kick: 'PASSE_PIED', cibleX: choix.cibleX, cibleY: choix.cibleY, vers: choix.vers,
     options, pression, course, age: s.ball.age, score: choix.score };
   // Laisser le jeu de phase et ses consignes décider dans les lectures serrées.
@@ -215,4 +265,17 @@ function lirePorteur(b, s, profile, playbook) {
   return { ...choix, options, pression, course, age: s.ball.age };
 }
 
-module.exports = { lirePorteur, lirePassePied, lireChistera, intercepter, visibleJouable, espaceDevant, lireCouverture };
+// Receveur préféré : même lecture que lirePorteur, sans les seuils de décision. Quand le moteur fait partir
+// une passe (cadence calibrée), il sert ce joueur s'il est un receveur légal ; sinon il reprend son choix.
+function receveurPrefere(b, s, profile, playbook) {
+  if (s.phase !== 'PORTE' || !s.aLeBallon || !s.available || s.ball.age > 0.35) return null;
+  const me = b.self, sens = s.sens;
+  const adv = Object.values(b.opponents).filter(visibleJouable);
+  const pression = adv.reduce((min, d) => Math.min(min, dist(me, d.lastSeen)), Infinity);
+  const course = espaceDevant(me, sens, adv, 17, 0.35);
+  const opts = optionsDePasse(b, me, sens, adv, course, pression, profile, playbook);
+  opts.sort((a, c) => c.score - a.score || a.vers - c.vers);
+  return opts.length ? opts[0].vers : null;
+}
+
+module.exports = { lirePorteur, lirePetitPied, receveurPrefere, optionsDePasse, surnombreCote, lirePassePied, lireChistera, intercepter, visibleJouable, espaceDevant, lireCouverture };

@@ -43,6 +43,20 @@ test('passe au pied refusée : un défenseur couvre le point de chute, ou le bot
   assert.ok(!d2 || d2.kick !== 'PASSE_PIED');
 });
 
+test('petit coup de pied à suivre : la ligne monte vite et à plat, l\'herbe derrière est vide -> CHIP 7 m derrière elle', () => {
+  const { lirePetitPied } = require('../engine/ai/open-play.js');
+  const fiche = (n, x, y, vx) => ({ numero: n, lastSeen: { x, y }, age: 0.1, confidence: 1, vx, vy: 0, available: true });
+  const me = { x: 60, y: 35, jeuPied: 75 };
+  const ligne = [fiche(12, 67, 31, -4), fiche(13, 68, 38, -4), fiche(10, 66, 26, -3)];
+  const r = lirePetitPied({ agent: { numero: 12 } }, me, 1, ligne, 40, 2);
+  assert.ok(r && r.action === 'KICK_CHIP', 'petit coup de pied attendu');
+  assert.ok(r.cibleX >= 74 && r.cibleX <= 76, 'derrière le monteur le plus avancé : ' + r.cibleX);
+  // Un défenseur posté dans l'herbe derrière la ligne (le 15) : pas de petit coup de pied.
+  assert.strictEqual(lirePetitPied({ agent: { numero: 12 } }, me, 1, ligne.concat([fiche(15, 76, 35, 0)]), 40, 2), null);
+  // Ligne qui ne monte pas : pas de petit coup de pied.
+  assert.strictEqual(lirePetitPied({ agent: { numero: 12 } }, me, 1, ligne.map((d) => Object.assign({}, d, { vx: 0 })), 40, 2), null);
+});
+
 test('chistera : plaqueur sur moi, soutien à 3 m en retrait de l\'autre côté, espace libre -> passe chistera', () => {
   const b = croyances(12, { x: 60, y: 30 }, { mates: { A13: [13, 57, 33, 6, 0] }, opps: { B12: [12, 62, 28.5], B10: [10, 66, 20] } });
   const c = lireChistera(b, b.self, 1, Object.values(b.opponents), 2.5);
@@ -65,6 +79,21 @@ test('course croisée : le 13 voit le 12 dériver et la défense glisser avec lu
   const fixes = { B12: [12, 66, 33], B13: [13, 67, 40], B10: [10, 66, 26] };
   const b2 = croyances(13, { x: 58, y: 37 }, { owner: 'A12', mates, opps: fixes });
   assert.strictEqual(lireCroisee(b2, deriveSituation(b2)), null);
+});
+
+test('surnombre : le porteur compte attaquants et défenseurs vus de chaque côté et sert le côté en surnombre', () => {
+  const { surnombreCote } = require('../engine/ai/open-play.js');
+  const mates = { A12: [12, 56, 36], A13: [13, 55, 44], A15: [15, 54, 50], A7: [7, 57, 22] };
+  const opps = { B12: [12, 66, 37], B13: [13, 66, 45], B6: [6, 65, 24], B7: [7, 66, 20], B4: [4, 64, 27] };
+  const b = croyances(10, { x: 60, y: 30 }, { mates, opps });
+  const vus = (o) => Object.values(o).map(([n, x, y]) => ({ numero: n, lastSeen: { x, y } }));
+  assert.strictEqual(surnombreCote(b.self, 1, 1, vus(mates), vus(opps)), 1, '3 attaquants contre 2 défenseurs côté +y');
+  assert.strictEqual(surnombreCote(b.self, 1, -1, vus(mates), vus(opps)), -2);
+  b.opponents.B10 = { numero: 10, lastSeen: { x: 64.5, y: 30.5 }, age: 0.1, confidence: 1, vx: 0, vy: 0, available: true };
+  const d = lirePorteur(b, deriveSituation(b), profil, {});
+  const opt = (d ? d.options : []).filter((o) => o.action === 'PASS');
+  const plus = opt.filter((o) => o.surnombre >= 1), moins = opt.filter((o) => o.surnombre < 0);
+  assert.ok(plus.length && moins.length, 'options des deux côtés évaluées');
 });
 
 // Moteur GOAP piloté à la main : le test pose les demandes du porteur.
@@ -103,6 +132,35 @@ test('moteur : une chistera demandée dans le contact donne une passe ou un en-a
   const ok = log.filter((x) => x.t === 'CHISTERA').length, rate = log.filter((x) => x.t === 'CHISTERA_RATEE').length;
   assert.ok(chist > 0 && ok + rate >= 3, `${ok} chisteras, ${rate} ratées`);
   assert.ok(ok > rate, 'la plupart réussissent');
+});
+
+test('receveur choisi par le porteur : quand le moteur fait partir une passe, il sert le receveur préféré s\'il est légal', () => {
+  let demandes = 0, servis = 0, autres = 0;
+  const m = new MatchEngine(7, 4800, { aiMode: 'GOAP', agentDriver: () => ({ avantTick(e) {
+    const p = e.porteur;
+    if (e.phase !== 'PORTE' || !p) return;
+    const legaux = (p.team === 'A' ? e.equipeA : e.equipeB).filter((j) => e._receveurAgentValide(p, j, j.numero) && Math.abs(j.y - p.y) > 1.2);
+    if (!legaux.length) return;
+    // Le receveur préféré : le plus éloigné latéralement (le moteur, lui, préfère d'ordinaire le plus proche).
+    const pref = legaux.sort((a, c) => Math.abs(c.y - p.y) - Math.abs(a.y - p.y))[0];
+    e.setAgentIntent(p.team, p.numero, { receveur: pref.numero }); demandes++;
+    e._prefTest = { de: p.numero, vers: pref.numero };
+  } }) });
+  const log = m.log.bind(m);
+  m.log = (t, eq, msg, d) => {
+    if ((t === 'PASSE' || t === 'JEU_LARGE') && m._prefTest && d.de === m._prefTest.de) { if (d.vers === m._prefTest.vers) servis++; else autres++; }
+    return log(t, eq, msg, d);
+  };
+  for (let i = 0; i < 6000; i++) m.tick(0.1);
+  assert.ok(demandes > 0 && servis >= 20, `${servis} passes au receveur préféré`);
+  assert.ok(servis > 3 * autres, `${servis} servis contre ${autres} autres`);
+});
+
+test('receveur préféré : refusé en LEGACY ; en GOAP, passes: MOTEUR l\'ignore', () => {
+  const a = new MatchEngine(8, 4800);
+  assert.strictEqual(a.setAgentIntent('A', 10, { receveur: 12 }), false);
+  const g = new MatchEngine(8, 4800, { aiMode: 'GOAP', passes: 'MOTEUR', agentDriver: () => ({ avantTick() {} }) });
+  assert.strictEqual(g._passesAgents, false);
 });
 
 test('LEGACY : passe au pied et chistera refusées (setAgentIntent), jeu identique', () => {

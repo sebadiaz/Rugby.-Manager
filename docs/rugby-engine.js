@@ -1119,6 +1119,8 @@
       this._toucheAgents = this.aiMode === 'GOAP' && config.touches !== 'MOTEUR';
       // En GOAP, le capitaine choisit la suite d'une pénalité ; `config.penalites === 'MOTEUR'` rétablit l'ancien choix.
       this._penaliteAgents = this.aiMode === 'GOAP' && config.penalites !== 'MOTEUR';
+      // En GOAP, le porteur choisit le receveur de toute passe ; `config.passes === 'MOTEUR'` rétablit l'ancien choix.
+      this._passesAgents = this.aiMode === 'GOAP' && config.passes !== 'MOTEUR';
       this.penaliteChoix = null;
       // === AGENT_INTENTS_END
       // Tactique PAR ÉQUIPE (Mode Club) : `config.attaqueA/attaqueB` et
@@ -2704,7 +2706,7 @@
       }
       if (action === 'KICK_AGENT') {
         const jeu = this._intentionsAgents.get(porteur.team + porteur.numero).jeu;
-        this._tenterCoupDePiedJeu(porteur, jeu.type, jeu.cibleY, jeu.type === 'PASSE_PIED' ? { x: jeu.cibleX, y: jeu.cibleY } : null);
+        this._tenterCoupDePiedJeu(porteur, jeu.type, jeu.cibleY, (jeu.type === 'PASSE_PIED' || jeu.type === 'CHIP') && Number.isFinite(jeu.cibleX) ? { x: jeu.cibleX, y: jeu.cibleY } : null);
         return;
       }
       if (action === 'KICK') { this._executerCoupDePiedJeu(porteur); return; }
@@ -4259,6 +4261,12 @@
 
     _tenterPasse(porteur, jeuLarge, numeroAgent = null) {
       const att = this.attaquants();
+      // GOAP : quand le moteur fait partir une passe, le receveur est celui que le PORTEUR a choisi
+      // (sa lecture : espace, surnombre, course croisée), s'il est légal ; sinon le choix historique.
+      if (numeroAgent == null && this._passesAgents) {
+        const pref = this._intentionsAgents?.get(porteur.team + porteur.numero)?.receveur;
+        if (pref && att.some(j => this._receveurAgentValide(porteur, j, pref) && (!jeuLarge || j.tendance <= 50))) numeroAgent = pref;
+      }
       // Rayon de recherche du destinataire : un jeu au large vise précisément
       // un ailier/arrière qui tient son couloir à 20-30 m du regroupement, le
       // plafond de 25 m utilisé pour la passe courte l'exclurait presque
@@ -4569,7 +4577,7 @@
       // des 22 adverses ; un ouvreur ou un arrière en gagne 30 à 45.
       else if (type === 'TOUCHE') { portee = 25 + this.rng() * 20 + skillPied * 0.7; etale = true; }
       else if (type === 'CHANDELLE') { portee = 10 + this.rng() * 10 + skillPied * 0.4; etale = false; }
-      else if (type === 'PASSE_PIED' && cibleAgent) { portee = Math.abs(cibleAgent.x - porteur.x); etale = false; }
+      else if ((type === 'PASSE_PIED' || type === 'CHIP') && cibleAgent) { portee = Math.abs(cibleAgent.x - porteur.x); etale = false; }
       else { portee = 8 + this.rng() * 7 + skillPied * 0.3; etale = false; } // CHIP
       portee = Math.max(4, portee);
       // TENTATIVE DE 50:22 (P2-96). Depuis son camp, hors de ses 22 m, une
@@ -4600,13 +4608,15 @@
       // Passe au pied demandée par un agent : le ballon vise SA cible, avec une
       // erreur qui dépend de la distance et du jeu au pied du botteur (le moteur
       // tranche ; une passe ratée peut tomber sur un défenseur ou en touche).
-      if (type === 'PASSE_PIED' && cibleAgent) {
+      if ((type === 'PASSE_PIED' || type === 'CHIP') && cibleAgent) {
         const longueur = Math.hypot(cibleAgent.x - porteur.x, cibleAgent.y - porteur.y);
         const erreur = longueur * (0.06 + this.rng() * 0.08) * (1 - skillPied / 14);
         const angle = this.rng() * Math.PI * 2;
         cibleX = Math.max(1, Math.min(LONGUEUR - 1, cibleAgent.x + Math.cos(angle) * erreur));
         cibleY = Math.max(1, Math.min(LARGEUR - 1, cibleAgent.y + Math.sin(angle) * erreur));
-        this.log('PASSE_AU_PIED', this.possession, `Passe au pied du n°${porteur.numero} vers l'aile`,
+        if (type === 'CHIP') this.log('PETIT_PIED_A_SUIVRE', this.possession, `Petit coup de pied a suivre du n°${porteur.numero} par-dessus la ligne`,
+          { botteur: porteur.numero, cible: { x: +cibleAgent.x.toFixed(1), y: +cibleAgent.y.toFixed(1) }, erreur: +erreur.toFixed(1) });
+        else this.log('PASSE_AU_PIED', this.possession, `Passe au pied du n°${porteur.numero} vers l'aile`,
           { botteur: porteur.numero, cible: { x: +cibleAgent.x.toFixed(1), y: +cibleAgent.y.toFixed(1) }, erreur: +erreur.toFixed(1) });
       } else
       if (type === 'TOUCHE' && this._zoneTerrain(porteur) !== 'OWN_22') {
@@ -8750,7 +8760,7 @@
         demande.action === 'RUN'
         || (demande.action === 'PASS' && Number.isInteger(demande.vers) && demande.vers >= 1 && demande.vers <= 15)
         || (demande.action === 'KICK' && ['TOUCHE', 'DEGAGEMENT'].includes(demande.type))
-        || (demande.action === 'KICK' && demande.type === 'PASSE_PIED' && Number.isFinite(demande.cibleX) && Number.isFinite(demande.cibleY))
+        || (demande.action === 'KICK' && (demande.type === 'PASSE_PIED' || demande.type === 'CHIP') && Number.isFinite(demande.cibleX) && Number.isFinite(demande.cibleY))
       ) ? { action: demande.action, vers: demande.vers, type: demande.type,
         cibleX: Number.isFinite(demande.cibleX) ? demande.cibleX : null,
         chistera: demande.action === 'PASS' && demande.chistera === true,
@@ -8759,14 +8769,15 @@
       } : null;
       const touche = this.aiMode === 'GOAP' && intention.touche === 'MAUL' ? 'MAUL' : null;
       const penalite = this.aiMode === 'GOAP' && ['TOUCHE', 'POTEAUX', 'RAPIDE'].includes(intention.penalite) ? intention.penalite : null;
-      if (!mouvement && !jeu && !touche && !penalite) return false;
+      const receveur = this.aiMode === 'GOAP' && Number.isInteger(intention.receveur) && intention.receveur >= 1 && intention.receveur <= 15 ? intention.receveur : null;
+      if (!mouvement && !jeu && !touche && !penalite && !receveur) return false;
       const f = intention.vmaxFactor == null ? 1 : intention.vmaxFactor;
       if (!(f > 0 && f <= 1)) return false;
       if (!this._intentionsAgents) this._intentionsAgents = new Map();
       const TYPES_PIED = ['TOUCHE', 'DEGAGEMENT', 'OCCUPATION', 'CHANDELLE', 'CHIP'];
       const botte = TYPES_PIED.includes(intention.botte) ? intention.botte : null;
       const passe = Number.isInteger(intention.passe) && intention.passe >= 1 && intention.passe <= 15 ? intention.passe : null;
-      this._intentionsAgents.set(equipe + numero, { equipe, numero, tx: intention.tx, ty: intention.ty, vmaxFactor: f, passe, mouvement, jeuCourant: intention.jeuCourant === true, jeu, touche, penalite });
+      this._intentionsAgents.set(equipe + numero, { equipe, numero, tx: intention.tx, ty: intention.ty, vmaxFactor: f, passe, mouvement, jeuCourant: intention.jeuCourant === true, jeu, touche, penalite, receveur });
       return true;
     }
     clearAgentIntent(equipe, numero) {

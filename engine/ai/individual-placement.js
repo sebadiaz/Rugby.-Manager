@@ -86,7 +86,29 @@ function candidatsDefense(b, s, pb, jeuCourant) {
     if (dMoi <= 12 && plusPres <= 1) out.push({ id: 'PRESS_CARRIER', priority: plusPres === 0 ? 74 : 68,
       target: cible, vmax: 1, reason: plusPres === 0 ? 'interception du porteur' : 'soutien au plaqueur' });
   }
+  if (jeuCourant && porteur && s.onside) for (const c of lireAttaqueAdverse(b, s, me, porteur, fiche, sens)) out.push(c);
   out.push({ id: 'RETURN_TO_PLAYBOOK', priority: 30, target: ref, vmax: 0.8, reason: 'poste nominal en défense' });
+  return out;
+}
+
+// Lecture INDIVIDUELLE d'une course croisée adverse (READ_CROSS) : je vois un attaquant courir à contre-sens
+// de la dérive du porteur, juste derrière lui et vers moi ; je coupe sa course plutôt que de glisser. La
+// lecture peut être fausse ou tardive. (Une lecture « je prends l'homme en plus à mon extérieur » a été
+// essayée et retirée : sur 12 graines, la ligne se vidait et la défense encaissait 7,1 à 7,8 essais au lieu de 5,7.)
+function lireAttaqueAdverse(b, s, me, porteur, fiche, sens) {
+  const out = [];
+  const vyP = fiche && visibleJouable(fiche) ? fiche.vy || 0 : 0;
+  if (Math.abs(vyP) >= 2.5) {
+    for (const [id, o] of Object.entries(b.opponents)) {
+      if (id === s.ball.owner || !visibleJouable(o) || (o.vy || 0) * vyP > -6.25) continue; // |vy| ≥ 2,5 à contre-sens
+      const derriere = (o.lastSeen.x - porteur.x) * sens >= -0.5 && P.dist(o.lastSeen, porteur) <= 8;
+      const futur = { x: o.lastSeen.x + (o.vx || 0) * (o.age + 0.6), y: o.lastSeen.y + (o.vy || 0) * (o.age + 0.6) };
+      if (!derriere || Math.abs(futur.y - me.y) > 6 || P.dist(me, futur) > 10) continue;
+      out.push({ id: 'READ_CROSS', priority: 72, target: { x: P.clamp(futur.x - sens * 1.5, 0, 100), y: P.clamp(futur.y, 1, P.LARGEUR - 1) }, vmax: 1,
+        reason: `croisée lue : ${id} repique derrière le porteur` });
+      break;
+    }
+  }
   return out;
 }
 
@@ -161,6 +183,14 @@ function lireCroisee(b, s) {
 //    (lui compris) que de défenseurs côté ouvert, que la largeur le permet et que son camp n'est pas menacé ;
 //  - SWITCH_WING : l'ailier du côté fermé (trop étroit pour être joué) quitte son aile et vient en renfort
 //    côté ouvert. Aucun n'est désigné : chacun compare ce renfort à ses autres placements.
+function profondeurIntercale(b, s, treize, bal, sens) {
+  const x13 = (treize ? treize.lastSeen.x : bal.x - sens * 12) - sens * 2.5;
+  const porteur = s.ball.owner && s.ball.owner[0] === s.team ? b.teammates[s.ball.owner] : null;
+  if (!porteur || s.phase !== 'PORTE') return x13;
+  const xPorteur = porteur.lastSeen.x - sens * 4;
+  return sens > 0 ? Math.min(x13, xPorteur) : Math.max(x13, xPorteur); // la plus profonde des deux
+}
+
 function candidatsRenfort(b, s) {
   const num = b.agent.numero, bal = s.ball && s.ball.lastSeen;
   if (!bal || !s.maPoss || s.aLeBallon || (s.phase !== 'PORTE' && s.phase !== 'RUCK')) return [];
@@ -188,7 +218,8 @@ function candidatsRenfort(b, s) {
       out.push({ id: 'JOIN_LINE', priority: Math.min(72, 63 + 3 * surnombre) + (dejaDansLaLigne ? 6 : 0),
         // Profondeur prise sur le 13 vu (2,5 m en retrait) : sinon l'arrière arrivait à hauteur des passeurs
         // et n'était jamais une option de passe légale (mesuré : 13,5 ballons reçus contre 20,7 avant).
-        target: { x: P.clamp((treize ? treize.lastSeen.x : bal.x - sens * 12) - sens * 2.5, 0, 100), y: P.clamp(y13 + ouvert * 5, 3, P.LARGEUR - 3) }, vmax: 1,
+        // Lancé : au moins 4 m de recul sur le porteur vu (mesuré : il arrivait à 0-2 m, à plat, sans élan).
+        target: { x: P.clamp(profondeurIntercale(b, s, treize, bal, sens), 0, 100), y: P.clamp(y13 + ouvert * 5, 3, P.LARGEUR - 3) }, vmax: 1,
         reason: `intercalé : ${att + 1} attaquants contre ${def} défenseurs vus côté ouvert` });
     }
   }
@@ -276,4 +307,4 @@ function individualPlacement(beliefs, goalId, playbook, profile = {}, jeuCourant
     vmaxFactor: choix.vmax, reason: choix.reason, candidates: Object.freeze(evalues.map((c) => Object.freeze({ id: c.id, score: +c.score.toFixed(2), valide: c.valide }))) });
 }
 
-module.exports = { individualPlacement, candidatsRenfort, lireCroisee, GAP_MIN };
+module.exports = { individualPlacement, candidatsRenfort, lireCroisee, lireAttaqueAdverse, GAP_MIN };
