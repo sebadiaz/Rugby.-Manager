@@ -144,8 +144,19 @@
   // Affiche l'état courant dans le HUD. `dureeAffichee` est utilisé pour le
   // libellé "x / y" tant que la durée réelle du match n'est pas finie (Infinity).
   function majAffichage(state, dureeAffichee) {
-    document.getElementById('score').textContent =
-      `${nomsEquipes.A} ${state.score.A} — ${state.score.B} ${nomsEquipes.B}`;
+    // Score structuré : les deux noms restent visibles même sur un écran étroit,
+    // contrairement à une longue chaîne qui coupait entièrement l'équipe B.
+    // Le client historique (client/index.html) conserve l'ancien format.
+    const scoreA = document.getElementById('scoreA');
+    if (scoreA) {
+      document.getElementById('nomEquipeA').textContent = nomsEquipes.A;
+      document.getElementById('nomEquipeB').textContent = nomsEquipes.B;
+      scoreA.textContent = state.score.A;
+      document.getElementById('scoreB').textContent = state.score.B;
+    } else {
+      document.getElementById('score').textContent =
+        `${nomsEquipes.A} ${state.score.A} — ${state.score.B} ${nomsEquipes.B}`;
+    }
     const infosPhase = PHASES[state.phase] || { label: state.phase, couleur: '#455a64' };
     const phaseEl = document.getElementById('phase');
     // Pendant un maul ou une mêlée, afficher l'état détaillé de la machine à
