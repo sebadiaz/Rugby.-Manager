@@ -1112,6 +1112,9 @@
       this._pilote = null;
       // En GOAP, `config.pieds === 'AGENTS'` : seuls les agents décident de botter en jeu courant (A23).
       this._piedAgents = this.aiMode === 'GOAP' && config.pieds === 'AGENTS';
+      // En GOAP, le maul après une touche gagnée naît de la DEMANDE du sauteur qui capte (il a entendu l'appel
+      // de son 9), plus d'un tirage du moteur. `config.touches === 'MOTEUR'` rétablit l'ancien tirage.
+      this._toucheAgents = this.aiMode === 'GOAP' && config.touches !== 'MOTEUR';
       // === AGENT_INTENTS_END
       // Tactique PAR ÉQUIPE (Mode Club) : `config.attaqueA/attaqueB` et
       // `config.defenseA/defenseB`, fusionnés par-dessus this.cfg.attaque/
@@ -7579,7 +7582,19 @@
         const distLigneTouche = this.porteur.sensAttaque > 0 ? LONGUEUR - this.porteur.x : this.porteur.x;
         const tauxMaulTouche = distLigneTouche <= 10 ? Math.min(0.95, tauxMaulCfg.proche * 1.7)
           : (zone === 'OPP_22' || zone === 'CINQ_M') ? tauxMaulCfg.proche : tauxMaulCfg.loin;
-        if (this.rng() < tauxMaulTouche) {
+        // GOAP : pas de tirage. Le sauteur qui capte demande le maul s'il a entendu l'appel de son 9 ;
+        // le moteur ne le forme que si un coéquipier est réellement à son contact (loi 16).
+        let maulTouche;
+        if (this._toucheAgents) {
+          const demande = this._intentionsAgents?.get(this.porteur.team + this.porteur.numero)?.touche === 'MAUL';
+          const lies = demande ? (L.gagnant === 'A' ? this.equipeA : this.equipeB).filter(j => j !== this.porteur
+            && j.auSol === 0 && j.sinBin <= 0 && distance(j, this.porteur) <= 3).length : 0;
+          maulTouche = demande && lies > 0;
+          if (demande) this.log(maulTouche ? 'TOUCHE_MAUL_APPELE' : 'TOUCHE_MAUL_SANS_SOUTIEN', L.lanceur, maulTouche
+            ? `Le n°${this.porteur.numero} capte et appelle le maul : ${lies} partenaire(s) lie(s)`
+            : `Le n°${this.porteur.numero} voulait monter le maul, aucun partenaire lie : ballon au 9`, { lies });
+        } else maulTouche = this.rng() < tauxMaulTouche;
+        if (maulTouche) {
           const { joueur: defenseurProche } = joueurLePlusProche(L.eqAdverse, this.porteur.x, this.porteur.y);
           // LA DÉFENSE PEUT « SAQUER » LE SAUTEUR (P2-131) : plutôt que de
           // s'engager dans le maul, elle le plaque à la réception, avant que
@@ -8621,14 +8636,15 @@
         decalage: Number.isFinite(demande.decalage) ? Math.max(-3, Math.min(3, demande.decalage)) : null,
         cibleY: Number.isFinite(demande.cibleY) ? demande.cibleY : null,
       } : null;
-      if (!mouvement && !jeu) return false;
+      const touche = this.aiMode === 'GOAP' && intention.touche === 'MAUL' ? 'MAUL' : null;
+      if (!mouvement && !jeu && !touche) return false;
       const f = intention.vmaxFactor == null ? 1 : intention.vmaxFactor;
       if (!(f > 0 && f <= 1)) return false;
       if (!this._intentionsAgents) this._intentionsAgents = new Map();
       const TYPES_PIED = ['TOUCHE', 'DEGAGEMENT', 'OCCUPATION', 'CHANDELLE', 'CHIP'];
       const botte = TYPES_PIED.includes(intention.botte) ? intention.botte : null;
       const passe = Number.isInteger(intention.passe) && intention.passe >= 1 && intention.passe <= 15 ? intention.passe : null;
-      this._intentionsAgents.set(equipe + numero, { equipe, numero, tx: intention.tx, ty: intention.ty, vmaxFactor: f, passe, mouvement, jeuCourant: intention.jeuCourant === true, jeu });
+      this._intentionsAgents.set(equipe + numero, { equipe, numero, tx: intention.tx, ty: intention.ty, vmaxFactor: f, passe, mouvement, jeuCourant: intention.jeuCourant === true, jeu, touche });
       return true;
     }
     clearAgentIntent(equipe, numero) {

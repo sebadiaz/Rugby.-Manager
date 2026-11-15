@@ -24,6 +24,8 @@ function creerPiloteGOAP(options = {}) {
         attackWidth: attaque.ailiers === 'large' ? 1.4 : attaque.ailiers === 'repique' ? 0.7 : 1,
         sortieAvant: attaque.sortieAvant, passeCentres: attaque.passeCentres,
         tauxJeuAuPied: attaque.tauxJeuAuPied, piedOuvreur: attaque.piedOuvreur,
+        // Consigne « maul en touche » du club (lecture seule) : le 9 la pèse dans SON choix d'appel.
+        maulTouche: engine?.cfgTouche?.[team]?.tauxMaul?.proche,
       };
     }
     const agents = creerAgents(Object.assign({ placement: true, openPlay: true, playbooks }, options.agent));

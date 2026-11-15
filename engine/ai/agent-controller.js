@@ -29,6 +29,7 @@ const { deriveSituation, profilePour } = require('./goals.js');
 const { PAR_NOM } = require('./actions.js');
 const { individualPlacement } = require('./individual-placement.js');
 const { lirePorteur } = require('./open-play.js');
+const { LineoutMind } = require('./lineout-call.js');
 
 // Condition de succès (faits désirés) de chaque but planifiable. Les autres
 // buts (DEFEND, COVER_BACKFIELD...) n'ont pas encore d'actions A16+ : le but est
@@ -84,6 +85,7 @@ class GoalBasedRugbyAgent {
     this.placementScope = options.placementScope || 'all'; // 'all' | 'defense' | 'attack' : quelles situations le placement conduit
     this.maxExpanded = options.maxExpanded ?? 128;
     this.lastExpansions = 0;
+    this.touche = new LineoutMind(this.agent); // dialogue de touche : question du 9, avis du 10, appel entendu
   }
 
   _push(type, t, extra) { const e = Object.freeze(Object.assign({ type, agent: this.id, t }, extra || {})); this.events.push(e); return e; }
@@ -277,11 +279,22 @@ class GoalBasedRugbyAgent {
     if (this.usePlacement && !this._intent && !this.executor.busy && !this.plan && this.placement && state.phase === 'PORTE' && !porteur && dansPortee) {
       this._intent = { tx: this.placement.target.x, ty: this.placement.target.y, vmaxFactor: this.placement.vmaxFactor, jeuCourant: this.openPlay };
     }
+    // Touche : un avant qui a entendu « Touche, maul ! » demandera le maul s'il capte (le moteur tranche).
+    if (state.phase === 'TOUCHE' && this.touche.demandeMaul()) this._intent = Object.assign({}, this._intent, { touche: 'MAUL' });
     return this._intent;
   }
 
   // Décide LOCALEMENT de parler selon son but ; renvoie le type d'appel émis ou null.
   maybeSpeak(comm, state, beliefs) {
+    if (beliefs) {
+      const me = (this.agent.team === 'A' ? state.equipeA : state.equipeB).find((j) => j.numero === this.agent.numero);
+      const dispo = me && !(me.auSol > 0) && !(me.sinBin > 0) ? me : null;
+      for (const e of this.touche.etape(beliefs, state, comm, dispo, this.playbook)) {
+        const { type, ...extra } = e;
+        this._push(type, state.tempsMatch, extra);
+        if (type === 'LINEOUT_CALLED' || type === 'LINEOUT_ADVICE' || type === 'LINEOUT_ASKED') this._push('SPOKE', state.tempsMatch, { kind: extra.appel || extra.avis || 'LINEOUT_ASK' });
+      }
+    }
     const kind = PAROLES_PAR_BUT[this.goal];
     if (!kind) return null;
     const cle = this.goal + ':' + Math.floor(state.tempsMatch / 3);
