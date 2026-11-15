@@ -31,6 +31,16 @@ function scene(equipe, { soutien, neuf, contest, hasard = 0.3 }) {
 for (const equipe of ['A', 'B']) {
   const adverse = equipe === 'A' ? 'B' : 'A';
   {
+    const { m, plaqueur } = scene(equipe, { soutien: 1.8, contest: {} });
+    const soutien = m.attaquants().find(j => j.numero === 10);
+    const sens = m.porteur.sensAttaque;
+    m.timerPhase = 0;
+    m.ruckDureeCible = 30;
+    for (let i = 0; i < 15; i++) m._tickRuck(0.1);
+    assert.ok((soutien.x - m.ruckPoint.x) * sens < 0, 'le soutien rejoint son côté du ruck');
+    assert.ok((plaqueur.x - m.ruckPoint.x) * sens > 0, 'le gratteur reste du côté défensif');
+  }
+  {
     const { m } = scene(equipe, { soutien: 1.5, neuf: 2, contest: {} });
     m._tickRuck(0.05);
     assert.equal(m.phase, 'PORTE');
@@ -73,4 +83,4 @@ for (const equipe of ['A', 'B']) {
     assert.equal(m.stats[equipe].penalitesConcedees, 0);
   }
 }
-console.log('OK : six situations de ruck vérifiées dans les deux sens du terrain');
+console.log('OK : sept situations de ruck vérifiées dans les deux sens du terrain');

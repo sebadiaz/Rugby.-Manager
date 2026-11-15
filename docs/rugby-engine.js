@@ -5004,8 +5004,11 @@
       // défensif(s) et les soutiens d'attaque) : chacun garde une position
       // décalée en rosette autour du point plutôt que de viser la même
       // coordonnée — deux joueurs ne peuvent pas occuper la même place.
+      const goap = this.aiMode === 'GOAP';
       const placerEnRosette = (j, recul, i) => {
-        const cx = pt.x - sensAttaque * recul * (0.5 + (i % 2) * 0.5);
+        // Défense côté en-but défendu, soutiens côté en-but attaquant.
+        const sensEntree = goap ? sensAttaque : -sensAttaque;
+        const cx = pt.x + sensEntree * recul * (0.5 + (i % 2) * 0.5);
         const cy = pt.y + ((i % 2) ? -1 : 1) * Math.ceil((i + 1) / 2) * 0.7;
         // Les soutiens d'attaque SE PRÉCIPITENT au ruck (pleine vitesse : chaque
         // dixième de seconde compte pour ne pas perdre le ballon) ; le contestant
@@ -5024,7 +5027,7 @@
       const soutiensRuck = new Set(
         [...this.equipeA, ...this.equipeB]
           .filter(j => j.team === this.possession && j !== this.porteur && j.auSol === 0 && j.numero !== 9
-            && (this.aiMode !== 'GOAP' || j.sinBin <= 0))
+            && (!goap || j.sinBin <= 0))
           .sort((a, b) => distance(a, pt) - distance(b, pt))
           .slice(0, 3)
       );
@@ -5291,7 +5294,6 @@
       // sortie ci-dessous, par le n°9). Tant que personne n'est arrivé, le
       // ballon reste au sol et on attend (le porteur isolé voit son risque de
       // turnover/pénalité grandir), avec un plafond pour ne jamais bloquer.
-      const goap = this.aiMode === 'GOAP';
       const peutJouerAuRuck = j => j.auSol === 0 && j.sinBin <= 0 && !(j.horsJeuKick > 0)
         && (j.x - pt.x) * j.sensAttaque <= 0.3;
       const eqAtt = this.possession === 'A' ? this.equipeA : this.equipeB;
