@@ -71,7 +71,8 @@
     const nouveauH = Math.max(120, window.innerHeight - (hudH || 0) - (seekH || 0) - (ctrlH || 0));
     const nouvelleOrientation = modeOrientation === 'auto' ? window.innerWidth >= window.innerHeight : modeOrientation === 'paysage';
     const nouveauDpr = Math.min(2.5, Math.max(1, window.devicePixelRatio || 1));
-    const changement = nouveauW !== W || nouveauH !== H || nouveauDpr !== densite || nouvelleOrientation !== paysage;
+    const orientationChange = nouvelleOrientation !== paysage;
+    const changement = nouveauW !== W || nouveauH !== H || nouveauDpr !== densite || orientationChange;
     W = nouveauW; H = nouveauH; paysage = nouvelleOrientation; densite = nouveauDpr;
     canvas.style.width = W + 'px';
     canvas.style.height = H + 'px';
@@ -80,7 +81,11 @@
       canvas.width = Math.round(W * densite);
       canvas.height = Math.round(H * densite);
       ctx.setTransform(densite, 0, 0, densite, 0, 0);
-      // Ne pas revenir à la caméra initiale quand une notification agrandit le HUD.
+      // Lors d'une rotation, recadrer tout de suite la vue (elle ne doit
+      // pas rester au zoom de l'ancien format pendant plusieurs secondes).
+      // En revanche, une notification qui agrandit le HUD ne réinitialise
+      // jamais la caméra.
+      if (orientationChange) cam.pret = false;
       if (!cam.pret) { cam.s = echelleCible('PORTE'); scale = cam.s; }
     }
   }
@@ -350,6 +355,9 @@
   // dessinée une seule fois puis mise en cache.
   const SW = 32, SH = 30; // largeur généreuse : un joueur penché (mêlée, ruck) tient dans la toile
   const cacheSprites = new Map();
+  // Le sprite HD pèse plus qu'une ancienne texture pixel art. Une limite
+  // LRU évite de saturer la mémoire des téléphones après plusieurs matchs.
+  const MAX_SPRITES = 360;
   function assombrir(hex, f) {
     const n = parseInt(hex.slice(1), 16);
     const c = (v) => Math.max(0, Math.min(255, Math.round(v * f)));
@@ -610,10 +618,16 @@
     const imageCle = posture === 'course' ? image % 4 : 0;
     const cle = [pal.maillot, pal.short, pal.chaussette, pal.peau, pal.cheveux, pal.casque, massif, vue, posture, imageCle].join('|');
     let s = cacheSprites.get(cle);
-    if (!s) {
+    if (s) {
+      // Réinsérer en dernier : les sprites utilisés dans les images récentes
+      // restent en cache, ceux des anciennes phases sont libérés.
+      cacheSprites.delete(cle);
+      cacheSprites.set(cle, s);
+    } else {
       if (posture === 'sol') s = spriteCouche(sprite(j, couleurs, 'profil', 'arret', 0));
       else s = fabriquerSpriteModerne(pal, vue, posture, imageCle, massif);
       cacheSprites.set(cle, s);
+      if (cacheSprites.size > MAX_SPRITES) cacheSprites.delete(cacheSprites.keys().next().value);
     }
     return s;
   }
@@ -673,7 +687,7 @@
       ctx.lineWidth = Math.max(1.5, ps * 0.7); ctx.strokeStyle = 'rgba(0,0,0,0.6)';
       const y = sy - hausse - 15 * ps;
       ctx.strokeText(String(j.numero), sx, y); ctx.fillStyle = '#fff'; ctx.fillText(String(j.numero), sx, y);
-    } else if (!penche && ps < 1.7) {
+    } else if (!penche && (ps < 1.7 || vueEff === 'face')) {
       ctx.font = 'bold ' + Math.max(8, Math.round(rayonJoueur())) + 'px sans-serif';
       ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,0.6)';
       const y = sy - hausse - SH * ps - 5;
