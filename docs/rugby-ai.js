@@ -909,8 +909,8 @@ class GoalBasedRugbyAgent {
     // Une décision de ballon ne peut être émise que par le porteur actuel.
     const porteur = state.ball && state.ball.carrierTeam === this.agent.team && state.ball.carrierNumber === this.agent.numero;
     if (porteur && state.phase === 'PORTE' && this.carrierDecision && !this.executor.busy) {
-      const { action, vers, kick, decalage, cibleY } = this.carrierDecision;
-      this._intent = { jeu: { action, vers, type: kick, decalage, cibleY } };
+      const { action, vers, kick, decalage, cibleY, cibleX, chistera } = this.carrierDecision;
+      this._intent = { jeu: { action, vers, type: kick, decalage, cibleY, cibleX, chistera } };
       return this._intent;
     }
     if (this.openPlay && this.executor.current?.name === 'TACKLE_CARRIER' && vaPlaquer && this._intent) {
@@ -1674,7 +1674,9 @@ function candidatsAttaque(b, s, pb, profile, jeuCourant) {
   // BE_PASS_OPTION : profondeur et angle recevables derrière le porteur.
   out.push({ id: 'BE_PASS_OPTION', priority: 46 * (profile.option ?? 0.5) + 20, target: ref, vmax: 1, reason: 'option de passe à ma profondeur de poste' });
   // PRESERVE_WIDTH : un canal très large reste tenu même si le ballon est loin.
-  if (Math.abs(ref.y - P.LARGEUR / 2) >= 22) out.push({ id: 'PRESERVE_WIDTH', priority: 64, target: { x: ref.x, y: ref.y }, vmax: 0.9, reason: 'canal large tenu (' + ref.y.toFixed(0) + ' m)' });
+  // Une aile FERMÉE trop étroite (≤ 15 m entre le ballon et la touche) ne se joue pas : la tenir vaut peu.
+  const fermeeEtroite = Math.sign(ref.y - bal.y) !== (bal.y < P.LARGEUR / 2 ? 1 : -1) && Math.min(bal.y, P.LARGEUR - bal.y) <= 15;
+  if (Math.abs(ref.y - P.LARGEUR / 2) >= 22) out.push({ id: 'PRESERVE_WIDTH', priority: fermeeEtroite ? 40 : 64, target: { x: ref.x, y: ref.y }, vmax: 0.9, reason: 'canal large tenu (' + ref.y.toFixed(0) + ' m)' });
   // SUPPORT_CARRIER : 5 m derrière le ballon, du côté où je vois le moins de partenaires.
   const mates = Object.values(b.teammates).filter((m) => P.dist(m.lastSeen, bal) <= 12);
   const gauche = mates.filter((m) => m.lastSeen.y < bal.y).length, droite = mates.length - gauche;
@@ -1699,6 +1701,84 @@ function candidatsAttaque(b, s, pb, profile, jeuCourant) {
         target: cible, vmax: 1, reason: 'course à hauteur dans un intervalle observé' };
       out.push(soutien);
     }
+  }
+  const croisee = jeuCourant ? lireCroisee(b, s) : null;
+  if (croisee) out.push(croisee);
+  return out;
+}
+
+// Course croisée : je suis à l'extérieur d'un porteur qui dérive latéralement, et je VOIS les défenseurs
+// glisser avec lui. Je repique à contre-sens, derrière lui, pour une passe croisée possible. Le porteur reste
+// seul juge de me la donner (open-play.js) ; aucun défenseur n'est « fixé » par script.
+function lireCroisee(b, s) {
+  const num = b.agent.numero;
+  if (s.phase !== 'PORTE' || s.aLeBallon || !s.ball.owner || s.ball.owner[0] !== s.team || s.ball.age > 0.45) return null;
+  if (![10, 12, 13, 15, 11, 14].includes(num)) return null;
+  const fiche = b.teammates[s.ball.owner];
+  if (!fiche || !visibleJouable(fiche)) return null;
+  const sens = s.sens, me = b.self, p = fiche.lastSeen;
+  const vy = fiche.vy || 0;
+  if (Math.abs(vy) < 2.5) return null;                              // le porteur ne dérive pas
+  const derive = Math.sign(vy);
+  const dy = (me.y - p.y) * derive, recul = (p.x - me.x) * sens;
+  if (dy < 3 || dy > 12 || recul < -0.5 || recul > 8) return null;  // je suis à l'extérieur, à hauteur ou en retrait
+  const def = Object.values(b.opponents).filter((o) => visibleJouable(o) && Math.abs(o.lastSeen.y - p.y) <= 15 && (o.lastSeen.x - p.x) * sens >= -2 && (o.lastSeen.x - p.x) * sens <= 12);
+  if (def.length < 2) return null;
+  const glissent = def.filter((o) => (o.vy || 0) * derive >= 1.5).length;
+  if (glissent * 2 < def.length) return null;                       // la défense ne glisse pas avec lui
+  const cible = { x: P.clamp(p.x - sens * 2.5, 0, 100), y: P.clamp(p.y - derive * 3.5, 2, P.LARGEUR - 2) };
+  return { id: 'CROSS_RUN', priority: 66 + Math.min(4, glissent), target: cible, vmax: 1,
+    reason: `croisée : ${glissent}/${def.length} défenseurs glissent avec le porteur` };
+}
+
+// Renforts d'attaque décidés par le joueur lui-même, d'après ce QU'IL voit côté ouvert :
+//  - JOIN_LINE : l'arrière s'intercale entre le 13 et l'aile quand il compte autant ou plus d'attaquants
+//    (lui compris) que de défenseurs côté ouvert, que la largeur le permet et que son camp n'est pas menacé ;
+//  - SWITCH_WING : l'ailier du côté fermé (trop étroit pour être joué) quitte son aile et vient en renfort
+//    côté ouvert. Aucun n'est désigné : chacun compare ce renfort à ses autres placements.
+function candidatsRenfort(b, s) {
+  const num = b.agent.numero, bal = s.ball && s.ball.lastSeen;
+  if (!bal || !s.maPoss || s.aLeBallon || (s.phase !== 'PORTE' && s.phase !== 'RUCK')) return [];
+  if (num !== 15 && num !== 11 && num !== 14) return [];
+  const sens = s.sens;
+  const ouvert = bal.y < P.LARGEUR / 2 ? 1 : -1; // le côté ouvert est vers le centre du terrain
+  const largeurOuverte = ouvert > 0 ? P.LARGEUR - bal.y : bal.y;
+  const largeurFermee = P.LARGEUR - largeurOuverte;
+  const coteOuvert = (p) => (p.y - bal.y) * ouvert > 4;
+  const att = Object.values(b.teammates).filter((m) => m.age <= 1.5 && coteOuvert(m.lastSeen)
+    && (bal.x - m.lastSeen.x) * sens >= -1 && (bal.x - m.lastSeen.x) * sens <= 18).length;
+  const def = Object.values(b.opponents).filter((o) => o.age <= 1.5 && coteOuvert(o.lastSeen)
+    && (o.lastSeen.x - bal.x) * sens >= -3 && (o.lastSeen.x - bal.x) * sens <= 20).length;
+  const dMaLigne = Math.abs(bal.x - (s.team === 'A' ? 0 : 100));
+  const me = b.self;
+  const out = [];
+  // Engagement : un arrière déjà monté dans la ligne (≤ 16 m derrière le ballon) y reste tant que la
+  // défense n'est pas nettement plus nombreuse ; sans cela il hésitait à chaque décision sans jamais arriver.
+  const dejaDansLaLigne = num === 15 && (bal.x - me.x) * sens <= 16 && (me.y - bal.y) * ouvert > 4;
+  if (num === 15 && dMaLigne >= (dejaDansLaLigne ? 30 : 40) && largeurOuverte >= 25) {
+    const surnombre = att + 1 - def;
+    if (surnombre >= (dejaDansLaLigne ? -1 : 0)) {
+      const treize = Object.values(b.teammates).find((m) => m.numero === 13 && m.age <= 1.5);
+      const y13 = treize ? treize.lastSeen.y : bal.y + ouvert * 22;
+      out.push({ id: 'JOIN_LINE', priority: Math.min(72, 63 + 3 * surnombre) + (dejaDansLaLigne ? 6 : 0),
+        // Profondeur prise sur le 13 vu (2,5 m en retrait) : sinon l'arrière arrivait à hauteur des passeurs
+        // et n'était jamais une option de passe légale (mesuré : 13,5 ballons reçus contre 20,7 avant).
+        target: { x: P.clamp((treize ? treize.lastSeen.x : bal.x - sens * 12) - sens * 2.5, 0, 100), y: P.clamp(y13 + ouvert * 5, 3, P.LARGEUR - 3) }, vmax: 1,
+        reason: `intercalé : ${att + 1} attaquants contre ${def} défenseurs vus côté ouvert` });
+    }
+  }
+  const fermeIci = (num === 11 && ouvert > 0) || (num === 14 && ouvert < 0);
+  // Engagement de l'ailier : déjà passé côté ouvert, il ne repart pas sur son aile au moindre écart.
+  const dejaPasse = fermeIci && (me.y - bal.y) * ouvert > 2;
+  if (fermeIci && largeurFermee <= (dejaPasse ? 22 : 15) && largeurOuverte >= (dejaPasse ? 30 : 40)) {
+    out.push({ id: 'SWITCH_WING', priority: 68 + (def <= att ? 2 : 0) + (dejaPasse ? 6 : 0),
+      // Il entre comme coureur au milieu, derrière le 10, puis relit le jeu à chaque décision.
+      target: (() => {
+        const dix = Object.values(b.teammates).find((m) => m.numero === 10 && m.age <= 1.5);
+        return dix ? { x: P.clamp(dix.lastSeen.x - sens * 3, 0, 100), y: P.clamp(dix.lastSeen.y + ouvert * 5, 3, P.LARGEUR - 3) }
+          : { x: P.clamp(bal.x - sens * 13, 0, 100), y: P.clamp(bal.y + ouvert * 13, 3, P.LARGEUR - 3) };
+      })(), vmax: 1,
+      reason: `aile fermée de ${largeurFermee.toFixed(0)} m : renfort côté ouvert` });
   }
   return out;
 }
@@ -1743,11 +1823,14 @@ function individualPlacement(beliefs, goalId, playbook, profile = {}, jeuCourant
     cands = [{ id: goalId === 'PREVENT_TRY' ? 'PREVENT_TRY' : 'COVER_BACKFIELD', priority: 60,
       target: bal ? (goalId === 'PREVENT_TRY' ? { x: P.clamp(bal.x - s.sens * 6, 0, 100), y: bal.y } : P.referenceFond(s.sens, bal, pb)) : { x: beliefs.self.x, y: beliefs.self.y },
       vmax: goalId === 'PREVENT_TRY' ? 1 : 0.75, reason: goalId === 'PREVENT_TRY' ? 'intercepte entre le porteur et la ligne' : 'profondeur conservée' }];
+    // En attaque, l'arrière met en balance sa profondeur et un renfort dans la ligne.
+    if (goalId === 'COVER_BACKFIELD' && jeuCourant) cands = cands.concat(candidatsRenfort(beliefs, s));
   } else if (goalId === 'DEFEND') cands = candidatsDefense(beliefs, s, pb, jeuCourant);
   else if (goalId === 'SUPPORT_CARRIER' || goalId === 'BE_PASS_OPTION' || goalId === 'RETURN_TO_PLAYBOOK' || goalId === 'GAIN_TERRITORY' || goalId === 'RETAIN_POSSESSION') {
     cands = s.maPoss || s.aLeBallon ? candidatsAttaque(beliefs, s, pb, profile, jeuCourant) : candidatsDefense(beliefs, s, pb, jeuCourant);
-    if (goalId === 'SUPPORT_CARRIER') cands = cands.filter((c) => c.id === 'SUPPORT_CARRIER' || c.id === 'ATTACK_GAP' || c.id === 'RETURN_TO_PLAYBOOK');
+    if (goalId === 'SUPPORT_CARRIER') cands = cands.filter((c) => c.id === 'SUPPORT_CARRIER' || c.id === 'ATTACK_GAP' || c.id === 'CROSS_RUN' || c.id === 'RETURN_TO_PLAYBOOK');
     if (goalId === 'BE_PASS_OPTION') cands = cands.filter((c) => c.id !== 'SUPPORT_CARRIER');
+    if (jeuCourant && (goalId === 'BE_PASS_OPTION' || goalId === 'RETURN_TO_PLAYBOOK')) cands = cands.concat(candidatsRenfort(beliefs, s));
     if (goalId === 'RETURN_TO_PLAYBOOK') cands = cands.filter((c) => c.id === 'RETURN_TO_PLAYBOOK');
   } else return null; // les autres buts (plan GOAP, mêlée, touche) conduisent le joueur autrement
   // Coût de déplacement : temps estimé + pénalité hors-jeu (un candidat hors-jeu est INVALIDE).
@@ -1768,7 +1851,7 @@ function individualPlacement(beliefs, goalId, playbook, profile = {}, jeuCourant
     vmaxFactor: choix.vmax, reason: choix.reason, candidates: Object.freeze(evalues.map((c) => Object.freeze({ id: c.id, score: +c.score.toFixed(2), valide: c.valide }))) });
 }
 
-module.exports = { individualPlacement, GAP_MIN };
+module.exports = { individualPlacement, candidatsRenfort, lireCroisee, GAP_MIN };
 
   };
   defs["lineout-call.js"] = function (module, exports, require) {
@@ -2243,6 +2326,50 @@ function risqueCouloir(de, vers, adv) {
   });
 }
 
+function lirePassePied(b, s, me, sens, adv, distanceBut, course) {
+  const n = b.agent.numero;
+  if ((n !== 10 && n !== 12 && n !== 15) || (me.jeuPied ?? 0) < 65 || distanceBut > 45 || distanceBut < 8 || course >= 8) return null;
+  let meilleur = null;
+  for (const m of Object.values(b.teammates)) {
+    if (!visibleJouable(m)) continue;
+    const p = projeter(m, m.age + 0.3);
+    const bord = Math.min(p.y, LARGEUR - p.y);
+    if (Math.abs(p.y - me.y) < 18 || bord > 16 || (me.x - p.x) * sens < 0.5) continue; // excentré, près de la touche, en retrait
+    const avance = Math.min(12, distanceBut - 3);
+    if (avance < 5) continue;
+    const cible = { x: clamp(me.x + sens * avance, 1, 99), y: clamp(p.y + Math.sign(p.y - LARGEUR / 2) * 2, 3, LARGEUR - 3) };
+    const vol = clamp(dist(me, cible) / 16, 1.3, 2.4);
+    const tMoi = dist(p, cible) / 8.5;                       // l'ailier lancé
+    const tDef = adv.reduce((t, d) => Math.min(t, dist(projeter(d, d.age + 0.3), cible) / 8), Infinity);
+    const arrivee = Math.max(tMoi, vol);
+    if (tDef < arrivee + 0.4) continue;                      // un défenseur y sera avant ou en même temps
+    const score = 9 + 2.2 * Math.min(4, tDef - arrivee) + (distanceBut <= 22 ? 3 : 0) + ((me.jeuPied ?? 65) - 65) * 0.08;
+    if (!meilleur || score > meilleur.score) meilleur = { action: 'KICK_PASS', vers: m.numero, cibleX: cible.x, cibleY: cible.y, score };
+  }
+  return meilleur;
+}
+
+// Chistera : le plaqueur est sur moi ; un soutien tout proche, légèrement en retrait, à l'opposé du plaqueur,
+// reçoit dans un espace libre. Le moteur décide de la réussite (en-avant possible selon mes mains).
+function lireChistera(b, me, sens, adv, pression) {
+  if (pression >= 4) return null; // dans la zone de contact (plaquage déclenché vers 3,7 m)
+  const plaqueur = adv.reduce((p, d) => (!p || dist(me, d.lastSeen) < dist(me, p.lastSeen) ? d : p), null);
+  if (!plaqueur) return null;
+  const cotePlaqueur = Math.sign(plaqueur.lastSeen.y - me.y) || 1;
+  let meilleur = null;
+  for (const m of Object.values(b.teammates)) {
+    if (!visibleJouable(m)) continue;
+    const p = projeter(m, m.age + 0.15);
+    const recul = (me.x - p.x) * sens, d = dist(me, p);
+    if (recul < 0.45 || recul > 4 || d < 2 || d > 6 || Math.sign(p.y - me.y) === cotePlaqueur) continue;
+    const libre = adv.reduce((t, o) => Math.min(t, dist(projeter(o, o.age + 0.3), p)), Infinity);
+    if (libre < 3) continue;
+    const score = 10 + Math.min(6, libre) + Math.max(0, (m.vx || 0) * sens) * 0.4;
+    if (!meilleur || score > meilleur.score) meilleur = { action: 'PASS', vers: m.numero, chistera: true, score };
+  }
+  return meilleur;
+}
+
 function lirePorteur(b, s, profile, playbook) {
   if (s.phase !== 'PORTE' || !s.aLeBallon || !s.available || !s.onside || s.ball.age > 0.35) return null;
   const me = b.self, sens = s.sens;
@@ -2252,6 +2379,8 @@ function lirePorteur(b, s, profile, playbook) {
   const distanceBut = sens > 0 ? 100 - me.x : me.x;
   const territoire = 100 - distanceBut;
   const course = espaceDevant(me, sens, adv, 17, 0.35);
+  const chistera = lireChistera(b, me, sens, adv, pression);
+  if (chistera && chistera.score >= course + 6) return { ...chistera, options: [chistera], pression, course, age: s.ball.age };
   const options = [{ action: 'RUN', score: course + (distanceBut < 7 ? 5 : 0) }];
   if (course >= 8 && distanceBut <= 35) for (const decalage of [-3, 3]) {
     const y = me.y + decalage;
@@ -2296,16 +2425,23 @@ function lirePorteur(b, s, profile, playbook) {
       + (me.jeuPied - 55) * 0.09 + clamp(consignePied - 1.5, -1.5, 1.5) * 2;
     options.push({ action: 'KICK', kick: touche ? 'TOUCHE' : 'DEGAGEMENT', cibleY: touche ? null : couloir.y, score });
   }
+  // Passe au pied (cross-kick) : un bon botteur dans le camp adverse voit un partenaire excentré, en retrait
+  // (donc en jeu), qui arrivera au point de chute avant tout défenseur qu'il voit. Le moteur fait voler le
+  // ballon avec son erreur propre et résout la réception disputée.
+  const passePied = lirePassePied(b, s, me, sens, adv, distanceBut, course);
+  if (passePied) options.push(passePied);
   options.sort((a, c) => c.score - a.score || (a.vers || 0) - (c.vers || 0));
   const choix = options[0];
   if (choix.action === 'PASS' && (pression < 2.5 || pression > 7 || course >= 7 || choix.score < course + 6 || choix.score < 9)) return null;
   if (choix.action === 'KICK' && (choix.score < course + 3 || choix.score < (options[1]?.score ?? 0) + 2)) return null;
+  if (choix.action === 'KICK_PASS') return { action: 'KICK', kick: 'PASSE_PIED', cibleX: choix.cibleX, cibleY: choix.cibleY, vers: choix.vers,
+    options, pression, course, age: s.ball.age, score: choix.score };
   // Laisser le jeu de phase et ses consignes décider dans les lectures serrées.
   if (choix.action === 'RUN' && (choix.decalage == null || pression < 6 || distanceBut > 25)) return null;
   return { ...choix, options, pression, course, age: s.ball.age };
 }
 
-module.exports = { lirePorteur, intercepter, visibleJouable, espaceDevant, lireCouverture };
+module.exports = { lirePorteur, lirePassePied, lireChistera, intercepter, visibleJouable, espaceDevant, lireCouverture };
 
   };
   defs["penalty-choice.js"] = function (module, exports, require) {

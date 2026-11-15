@@ -100,6 +100,50 @@ function risqueCouloir(de, vers, adv) {
   });
 }
 
+function lirePassePied(b, s, me, sens, adv, distanceBut, course) {
+  const n = b.agent.numero;
+  if ((n !== 10 && n !== 12 && n !== 15) || (me.jeuPied ?? 0) < 65 || distanceBut > 45 || distanceBut < 8 || course >= 8) return null;
+  let meilleur = null;
+  for (const m of Object.values(b.teammates)) {
+    if (!visibleJouable(m)) continue;
+    const p = projeter(m, m.age + 0.3);
+    const bord = Math.min(p.y, LARGEUR - p.y);
+    if (Math.abs(p.y - me.y) < 18 || bord > 16 || (me.x - p.x) * sens < 0.5) continue; // excentré, près de la touche, en retrait
+    const avance = Math.min(12, distanceBut - 3);
+    if (avance < 5) continue;
+    const cible = { x: clamp(me.x + sens * avance, 1, 99), y: clamp(p.y + Math.sign(p.y - LARGEUR / 2) * 2, 3, LARGEUR - 3) };
+    const vol = clamp(dist(me, cible) / 16, 1.3, 2.4);
+    const tMoi = dist(p, cible) / 8.5;                       // l'ailier lancé
+    const tDef = adv.reduce((t, d) => Math.min(t, dist(projeter(d, d.age + 0.3), cible) / 8), Infinity);
+    const arrivee = Math.max(tMoi, vol);
+    if (tDef < arrivee + 0.4) continue;                      // un défenseur y sera avant ou en même temps
+    const score = 9 + 2.2 * Math.min(4, tDef - arrivee) + (distanceBut <= 22 ? 3 : 0) + ((me.jeuPied ?? 65) - 65) * 0.08;
+    if (!meilleur || score > meilleur.score) meilleur = { action: 'KICK_PASS', vers: m.numero, cibleX: cible.x, cibleY: cible.y, score };
+  }
+  return meilleur;
+}
+
+// Chistera : le plaqueur est sur moi ; un soutien tout proche, légèrement en retrait, à l'opposé du plaqueur,
+// reçoit dans un espace libre. Le moteur décide de la réussite (en-avant possible selon mes mains).
+function lireChistera(b, me, sens, adv, pression) {
+  if (pression >= 4) return null; // dans la zone de contact (plaquage déclenché vers 3,7 m)
+  const plaqueur = adv.reduce((p, d) => (!p || dist(me, d.lastSeen) < dist(me, p.lastSeen) ? d : p), null);
+  if (!plaqueur) return null;
+  const cotePlaqueur = Math.sign(plaqueur.lastSeen.y - me.y) || 1;
+  let meilleur = null;
+  for (const m of Object.values(b.teammates)) {
+    if (!visibleJouable(m)) continue;
+    const p = projeter(m, m.age + 0.15);
+    const recul = (me.x - p.x) * sens, d = dist(me, p);
+    if (recul < 0.45 || recul > 4 || d < 2 || d > 6 || Math.sign(p.y - me.y) === cotePlaqueur) continue;
+    const libre = adv.reduce((t, o) => Math.min(t, dist(projeter(o, o.age + 0.3), p)), Infinity);
+    if (libre < 3) continue;
+    const score = 10 + Math.min(6, libre) + Math.max(0, (m.vx || 0) * sens) * 0.4;
+    if (!meilleur || score > meilleur.score) meilleur = { action: 'PASS', vers: m.numero, chistera: true, score };
+  }
+  return meilleur;
+}
+
 function lirePorteur(b, s, profile, playbook) {
   if (s.phase !== 'PORTE' || !s.aLeBallon || !s.available || !s.onside || s.ball.age > 0.35) return null;
   const me = b.self, sens = s.sens;
@@ -109,6 +153,8 @@ function lirePorteur(b, s, profile, playbook) {
   const distanceBut = sens > 0 ? 100 - me.x : me.x;
   const territoire = 100 - distanceBut;
   const course = espaceDevant(me, sens, adv, 17, 0.35);
+  const chistera = lireChistera(b, me, sens, adv, pression);
+  if (chistera && chistera.score >= course + 6) return { ...chistera, options: [chistera], pression, course, age: s.ball.age };
   const options = [{ action: 'RUN', score: course + (distanceBut < 7 ? 5 : 0) }];
   if (course >= 8 && distanceBut <= 35) for (const decalage of [-3, 3]) {
     const y = me.y + decalage;
@@ -153,13 +199,20 @@ function lirePorteur(b, s, profile, playbook) {
       + (me.jeuPied - 55) * 0.09 + clamp(consignePied - 1.5, -1.5, 1.5) * 2;
     options.push({ action: 'KICK', kick: touche ? 'TOUCHE' : 'DEGAGEMENT', cibleY: touche ? null : couloir.y, score });
   }
+  // Passe au pied (cross-kick) : un bon botteur dans le camp adverse voit un partenaire excentré, en retrait
+  // (donc en jeu), qui arrivera au point de chute avant tout défenseur qu'il voit. Le moteur fait voler le
+  // ballon avec son erreur propre et résout la réception disputée.
+  const passePied = lirePassePied(b, s, me, sens, adv, distanceBut, course);
+  if (passePied) options.push(passePied);
   options.sort((a, c) => c.score - a.score || (a.vers || 0) - (c.vers || 0));
   const choix = options[0];
   if (choix.action === 'PASS' && (pression < 2.5 || pression > 7 || course >= 7 || choix.score < course + 6 || choix.score < 9)) return null;
   if (choix.action === 'KICK' && (choix.score < course + 3 || choix.score < (options[1]?.score ?? 0) + 2)) return null;
+  if (choix.action === 'KICK_PASS') return { action: 'KICK', kick: 'PASSE_PIED', cibleX: choix.cibleX, cibleY: choix.cibleY, vers: choix.vers,
+    options, pression, course, age: s.ball.age, score: choix.score };
   // Laisser le jeu de phase et ses consignes décider dans les lectures serrées.
   if (choix.action === 'RUN' && (choix.decalage == null || pression < 6 || distanceBut > 25)) return null;
   return { ...choix, options, pression, course, age: s.ball.age };
 }
 
-module.exports = { lirePorteur, intercepter, visibleJouable, espaceDevant, lireCouverture };
+module.exports = { lirePorteur, lirePassePied, lireChistera, intercepter, visibleJouable, espaceDevant, lireCouverture };

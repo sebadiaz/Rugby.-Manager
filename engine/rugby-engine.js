@@ -37,6 +37,8 @@
   function dureeVolCoupDePied(type, dist) {
     if (type === 'CHANDELLE') return Math.max(3.6, Math.min(4.6, 3.2 + dist / 20));
     if (type === 'CHIP') return Math.max(1.0, Math.min(1.6, dist / 8));
+    if (type === 'PASSE_PIED') return Math.max(1.3, Math.min(2.4, dist / 16)); // passe au pied (cross-kick) : tendue
+
     if (type === 'OCCUPATION') return Math.max(1.8, Math.min(3.0, dist / 11));
     return Math.max(1.8, Math.min(3.8, dist / 14)); // DEGAGEMENT, TOUCHE
   }
@@ -2702,10 +2704,28 @@
       }
       if (action === 'KICK_AGENT') {
         const jeu = this._intentionsAgents.get(porteur.team + porteur.numero).jeu;
-        this._tenterCoupDePiedJeu(porteur, jeu.type, jeu.cibleY);
+        this._tenterCoupDePiedJeu(porteur, jeu.type, jeu.cibleY, jeu.type === 'PASSE_PIED' ? { x: jeu.cibleX, y: jeu.cibleY } : null);
         return;
       }
       if (action === 'KICK') { this._executerCoupDePiedJeu(porteur); return; }
+      if (action === 'CHISTERA_AGENT') {
+        // Geste risqué : la réussite dépend des mains du porteur ; un raté est un en-avant (mêlée adverse).
+        const jeu = this._intentionsAgents.get(porteur.team + porteur.numero).jeu;
+        const mains = typeof porteur.passe === 'number' ? Math.max(0.6, Math.min(1.6, 1 + (60 - porteur.passe) / 80)) : 1;
+        this.stats[this.possession].passesTentees++;
+        if (this.rng() < 0.18 * mains) {
+          this.stats[this.possession].knockOns++;
+          this._statJoueur(porteur).enAvants++;
+          this.log('CHISTERA_RATEE', this.possession, `Chistera manquee du n°${porteur.numero} : en-avant, melee adverse`, { passeur: porteur.numero, receveur: jeu.vers });
+          this._accorderMelee(this.possession, { x: porteur.x, y: porteur.y });
+          return;
+        }
+        this.stats[this.possession].passesTentees--; // la tentative est recomptée par _tenterPasse
+        if (this._tenterPasse(porteur, false, jeu.vers)) {
+          this.log('CHISTERA', this.possession, `Chistera du n°${porteur.numero} pour le n°${jeu.vers} dans le contact`, { passeur: porteur.numero, receveur: jeu.vers });
+          return;
+        }
+      }
       if (distDef >= 2.2 && (action === 'PASS' || action === 'JEU_LARGE' || action === 'PASS_AGENT')
         && this._tenterPasse(porteur, action === 'JEU_LARGE', action === 'PASS_AGENT' ? this._intentionsAgents.get(porteur.team + porteur.numero).jeu.vers : null)) return;
 
@@ -3754,6 +3774,9 @@
       if (jeu && porteur.auSol <= 0 && !(porteur.horsJeuKick > 0) && !this._sonnerie && this._chandelleBaseA == null && (!this._neufLibre || this.timerPhase >= 0.15)) {
         if (jeu.action === 'RUN') return 'RUN_AGENT';
         if (jeu.action === 'KICK' && distDef >= 2.2) return 'KICK_AGENT';
+        // Chistera : passe demandée DANS le contact (défenseur sur le porteur), vers un soutien très proche.
+        if (jeu.action === 'PASS' && jeu.chistera && distDef <= (this._rayonPlaquage || 2.2) && !(porteur._enchaine > 0)
+          && att.some(j => this._receveurAgentValide(porteur, j, jeu.vers) && distance(j, porteur) <= 7)) return 'CHISTERA_AGENT';
         if (jeu.action === 'PASS' && !(porteur._enchaine > 0) && !contactPlaquage && att.some(j => this._receveurAgentValide(porteur, j, jeu.vers))) return 'PASS_AGENT';
       }
 
@@ -4528,7 +4551,7 @@
     // Lance le ballon en vol pour un coup de pied tactique en jeu courant
     // (dégagement, occupation, chandelle contestable, touche directe ou chip) :
     // même mécanique de vol que le coup d'envoi, résolue dans _tickCoupDePiedJeu.
-    _tenterCoupDePiedJeu(porteur, type, cibleYAgent = null) {
+    _tenterCoupDePiedJeu(porteur, type, cibleYAgent = null, cibleAgent = null) {
       const equipe = this.possession;
       this.stats[equipe].kicks++;
       this._statJoueur(porteur).coupsDePied++;
@@ -4546,6 +4569,7 @@
       // des 22 adverses ; un ouvreur ou un arrière en gagne 30 à 45.
       else if (type === 'TOUCHE') { portee = 25 + this.rng() * 20 + skillPied * 0.7; etale = true; }
       else if (type === 'CHANDELLE') { portee = 10 + this.rng() * 10 + skillPied * 0.4; etale = false; }
+      else if (type === 'PASSE_PIED' && cibleAgent) { portee = Math.abs(cibleAgent.x - porteur.x); etale = false; }
       else { portee = 8 + this.rng() * 7 + skillPied * 0.3; etale = false; } // CHIP
       portee = Math.max(4, portee);
       // TENTATIVE DE 50:22 (P2-96). Depuis son camp, hors de ses 22 m, une
@@ -4571,8 +4595,20 @@
         else if (jusqua22 > 0) portee = Math.min(portee, Math.max(5, jusqua22 - 4));
       }
 
-      const cibleX = Math.max(0, Math.min(LONGUEUR, porteur.x + sens * portee));
+      let cibleX = Math.max(0, Math.min(LONGUEUR, porteur.x + sens * portee));
       let cibleY;
+      // Passe au pied demandée par un agent : le ballon vise SA cible, avec une
+      // erreur qui dépend de la distance et du jeu au pied du botteur (le moteur
+      // tranche ; une passe ratée peut tomber sur un défenseur ou en touche).
+      if (type === 'PASSE_PIED' && cibleAgent) {
+        const longueur = Math.hypot(cibleAgent.x - porteur.x, cibleAgent.y - porteur.y);
+        const erreur = longueur * (0.06 + this.rng() * 0.08) * (1 - skillPied / 14);
+        const angle = this.rng() * Math.PI * 2;
+        cibleX = Math.max(1, Math.min(LONGUEUR - 1, cibleAgent.x + Math.cos(angle) * erreur));
+        cibleY = Math.max(1, Math.min(LARGEUR - 1, cibleAgent.y + Math.sin(angle) * erreur));
+        this.log('PASSE_AU_PIED', this.possession, `Passe au pied du n°${porteur.numero} vers l'aile`,
+          { botteur: porteur.numero, cible: { x: +cibleAgent.x.toFixed(1), y: +cibleAgent.y.toFixed(1) }, erreur: +erreur.toFixed(1) });
+      } else
       if (type === 'TOUCHE' && this._zoneTerrain(porteur) !== 'OWN_22') {
         // Hors de ses 22 m, le direct en touche ne gagne aucun terrain (loi 18,
         // P2-95) : on vise la touche EN REBOND, 2 à 4 m à l'intérieur du
@@ -4891,7 +4927,7 @@
       } else if (receveurOk && !chasseurOk) {
         chasseurGagne = false;
       } else {
-        const contestable = type === 'CHANDELLE' || type === 'CHIP';
+        const contestable = type === 'CHANDELLE' || type === 'CHIP' || type === 'PASSE_PIED';
         const probaChasseurGagne = contestable
           ? Math.max(0.15, Math.min(0.55, 0.4 - (dChasseur - dReceveur) / 20))
           : Math.max(0.03, Math.min(0.2, 0.08 - (dChasseur - dReceveur) / 30));
@@ -4905,7 +4941,7 @@
       // pari, des deux côtés. Risque de base 12 %, modulé par la sûreté de
       // mains du joueur qui capte (attribut « passe », neutre 60), comme
       // l'offload. Cf. TODO_AUDIT.md P2-56.
-      const disputee = chasseurOk && receveurOk && (type === 'CHANDELLE' || type === 'CHIP');
+      const disputee = chasseurOk && receveurOk && (type === 'CHANDELLE' || type === 'CHIP' || type === 'PASSE_PIED');
       if (disputee) {
         this.log('RECEPTION_DISPUTEE', joueur.team,
           `Chandelle disputee : le n°${joueur.numero} de l'equipe ${joueur.team} s'eleve au milieu de la chasse`);
@@ -8714,7 +8750,10 @@
         demande.action === 'RUN'
         || (demande.action === 'PASS' && Number.isInteger(demande.vers) && demande.vers >= 1 && demande.vers <= 15)
         || (demande.action === 'KICK' && ['TOUCHE', 'DEGAGEMENT'].includes(demande.type))
+        || (demande.action === 'KICK' && demande.type === 'PASSE_PIED' && Number.isFinite(demande.cibleX) && Number.isFinite(demande.cibleY))
       ) ? { action: demande.action, vers: demande.vers, type: demande.type,
+        cibleX: Number.isFinite(demande.cibleX) ? demande.cibleX : null,
+        chistera: demande.action === 'PASS' && demande.chistera === true,
         decalage: Number.isFinite(demande.decalage) ? Math.max(-3, Math.min(3, demande.decalage)) : null,
         cibleY: Number.isFinite(demande.cibleY) ? demande.cibleY : null,
       } : null;
