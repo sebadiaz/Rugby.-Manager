@@ -58,6 +58,7 @@ function doublures(etatMonde) {
 test('boucle complète sur un vrai ruck : but choisi, plan créé, action démarrée puis réussie dans le moteur (B6 conteste)', () => {
   const m = ruck();
   const b6 = joueur(m, 'B', 6); b6.x = m.ruckPoint.x + 6; b6.y = m.ruckPoint.y + 5; b6.vitesseCourante = 0; b6.orientation = Math.PI;
+  for (const j of m.equipeB) if (j.numero !== 6) { j.x = m.ruckPoint.x + 22; } // aucun partenaire plus près du ruck : B6 est le contestataire naturel
   const a = new GoalBasedRugbyAgent({ team: 'B', numero: 6 });
   boucle(m, [a], 8);
   const t = types(a);

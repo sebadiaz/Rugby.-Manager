@@ -80,6 +80,19 @@ function factsFromBeliefs(b, sit) {
     f.PASS_LANE_10_OPEN = enArriere && libre;
     f.RECEIVER_OPEN = enArriere && libre && !marque;
   }
+  // Autres options de passe (carrière du porteur) : un avant (pod) ou un trois-quarts « à l'extérieur », en retrait
+  // ou à hauteur, couloir libre et receveur non marqué. Faits ABSENTS si je ne porte pas ou ne vois personne.
+  if (s.aLeBallon) {
+    const sens = s.sens;
+    const adv2 = Object.values(b.opponents).filter((o) => o.confidence >= CONFIANCE_MIN);
+    const ouvert = (m, dMax, ecartMin) => m.confidence >= CONFIANCE_MIN && (m.lastSeen.x - b.self.x) * sens <= 0.3
+      && dist(m.lastSeen, b.self) <= dMax && Math.abs(m.lastSeen.y - b.self.y) >= ecartMin
+      && !adv2.some((o) => dist(o.lastSeen, b.self) > 2.5 && distSegment(o.lastSeen, b.self, m.lastSeen) < 1.2)
+      && !adv2.some((o) => dist(o.lastSeen, m.lastSeen) < 3);
+    const mates = Object.values(b.teammates);
+    f.PASS_LANE_POD_OPEN = mates.some((m) => m.numero <= 8 && ouvert(m, 12, 1.2));
+    f.SAFE_SUPPORT_LANE = mates.some((m) => m.numero >= 11 && ouvert(m, 28, 6));
+  }
   return f;
 }
 
@@ -244,12 +257,87 @@ function actPasse(vers) {
   };
 }
 ACTEURS.PASS_TO_10 = actPasse(10);
+// KICK_FOR_TERRITORY (A23) : le porteur DEMANDE le pied (intention `botte`), le moteur le frappe (portée, hors-jeu des
+// chasseurs, touche, réception). Type choisi selon SA zone : touche depuis ses 22, occupation dans son camp,
+// chandelle dans le camp adverse. Succès = coup de pied réellement parti (phase COUP_DE_PIED_JEU, ballon en l'air).
+// Depuis ses 22 m : touche seulement si une ligne de touche est proche (<= 22 m, facile à trouver) ; au milieu du
+// terrain on dégage en l'air. Dans son camp : occupation ; dans le camp adverse : chandelle.
+const typePied = (c) => {
+  const d = c.sens > 0 ? c.me.x : 100 - c.me.x;
+  if (d < 22) return Math.min(c.me.y, 70 - c.me.y) <= 22 ? 'TOUCHE' : 'DEGAGEMENT';
+  return d < 50 ? 'OCCUPATION' : 'CHANDELLE';
+};
+ACTEURS.KICK_FOR_TERRITORY = {
+  maxSeconds: 2,
+  startGuard: (c) => (!c.facts.HAS_BALL ? 'NOT_CARRIER' : !c.facts.SELF_ONSIDE ? 'OFFSIDE' : c.state.phase !== 'PORTE' ? 'NOT_OPEN_PLAY' : null),
+  intent: (c) => ({ tx: c.me.x, ty: c.me.y, vmaxFactor: 0.4, botte: typePied(c) }),
+  successGuard: (c) => c.state.phase === 'COUP_DE_PIED_JEU' && !!(c.state.ball && c.state.ball.state === 'AIR'),
+  failGuard: (c) => (c.state.phase === 'RUCK' || c.state.phase === 'MELEE' ? 'CARRIER_LOST_BALL' : null),
+  abortGuard: () => null,
+};
+// PASS_TO_POD / PASS_TO_OUTSIDE : le receveur est choisi dans le MONDE RÉEL au départ (le meilleur candidat
+// en retrait ou à hauteur, couloir libre, éloigné des adversaires) ; la suite est identique à PASS_TO_10.
+function actPasseChoisie(familles, dMax, ecartMin) {
+  const choisir = (c) => {
+    const adv = (c.me.team === 'A' ? c.state.equipeB : c.state.equipeA).filter((j) => !(j.sinBin > 0));
+    let meilleur = null, score = -Infinity;
+    for (const r of (c.me.team === 'A' ? c.state.equipeA : c.state.equipeB)) {
+      if (r.numero === c.me.numero || !familles(r.numero) || r.auSol > 0 || r.sinBin > 0) continue;
+      const d = Math.hypot(r.x - c.me.x, r.y - c.me.y);
+      if ((r.x - c.me.x) * c.sens > 0.3 || d > dMax || Math.abs(r.y - c.me.y) < ecartMin) continue;
+      const proche = Math.min(...adv.map((o) => Math.hypot(o.x - r.x, o.y - r.y)));
+      if (proche < 3) continue;
+      const sc = proche - 0.3 * d;
+      if (sc > score) { score = sc; meilleur = r.numero; }
+    }
+    return meilleur;
+  };
+  return {
+    maxSeconds: 2.5,
+    init: (c) => ({ vers: choisir(c) }),
+    startGuard: (c) => (!c.facts.HAS_BALL ? 'NOT_CARRIER' : choisir(c) == null ? 'NO_RECEIVER' : null),
+    intent: (c) => ({ tx: c.me.x, ty: c.me.y, vmaxFactor: 0.5, passe: c.memo ? c.memo.vers : choisir(c) }),
+    successGuard: (c) => c.memo && c.memo.vers != null && carrierIs(c, c.me.team, c.memo.vers),
+    failGuard: (c) => (c.state.phase === 'MELEE' ? 'FORWARD_PASS_OR_KNOCK_ON'
+      : c.state.ball && c.state.ball.carrierTeam && c.state.ball.carrierTeam !== c.me.team ? 'INTERCEPTED'
+        : c.state.ball && c.state.ball.carrierTeam === c.me.team && c.state.ball.carrierNumber !== c.me.numero && c.state.ball.carrierNumber !== (c.memo && c.memo.vers) ? 'WRONG_RECEIVER' : null),
+    abortGuard: () => null,
+  };
+}
+ACTEURS.PASS_TO_POD = actPasseChoisie((n) => n <= 8, 12, 1.2);
+ACTEURS.PASS_TO_OUTSIDE = actPasseChoisie((n) => n >= 11, 28, 6);
+// « Imaginer le jeu du coéquipier » : le joueur voit où sont ses partenaires et suppose que celui qui est plus près
+// d'un point l'occupera avant lui (à égalité, le numéro le plus bas). Il décale alors SA cible de 2,2 m
+// (latéralement, puis en profondeur) au lieu de viser le même point : sans cela, tous les soutiens visaient
+// exactement la même case et se retrouvaient en grappe. Décision individuelle, aucune allocation centrale.
+function laisserLaPlace(c, cible) {
+  const E = 2.2;
+  const mates = [...c.state.equipeA, ...c.state.equipeB].filter((j) => j.team === c.me.team && j.numero !== c.me.numero && j.auSol === 0 && j.sinBin <= 0);
+  const porteur = c.state.ball && c.state.ball.carrierTeam === c.me.team ? c.state.ball.carrierNumber : null;
+  let t = { x: cible.x, y: cible.y };
+  for (let tour = 0; tour < 4; tour++) {
+    const dMoi = dist(c.me, t);
+    let gene = null, dMin = Infinity;
+    for (const m of mates) {
+      if (m.numero === porteur) { if (dist(m, t) < E && dist(m, t) < dMin) { dMin = dist(m, t); gene = m; } continue; }
+      const dm = dist(m, t);
+      if (dm >= E) continue;
+      if (dm < dMoi - 0.3 || (Math.abs(dm - dMoi) <= 0.3 && m.numero < c.me.numero)) if (dm < dMin) { dMin = dm; gene = m; }
+    }
+    if (!gene) break;
+    const cote = Math.abs(t.y - gene.y) > 0.2 ? Math.sign(t.y - gene.y) : (c.me.y >= gene.y ? 1 : -1);
+    // Une fois sur deux, on se met aussi en retrait : deux rideaux de soutien plutôt qu'un mur.
+    t = { x: t.x - c.sens * (tour % 2 ? 1.5 : 0), y: Math.max(2, Math.min(68, gene.y + cote * E)) };
+  }
+  return t;
+}
+
 for (const [nom, dy] of [['RUN_SUPPORT_INSIDE', -1], ['RUN_SUPPORT_OUTSIDE', 1]]) {
   ACTEURS[nom] = {
     maxSeconds: 10,
     startGuard: (c) => (!c.facts.SELF_AVAILABLE ? 'NOT_AVAILABLE' : !c.facts.SELF_ONSIDE ? 'OFFSIDE' : !c.facts.TEAM_POSSESSION ? 'NO_POSSESSION' : c.facts.HAS_BALL ? 'IS_CARRIER' : null),
     // Soutien : 5 m derrière le ballon, décalé vers l'intérieur ou l'extérieur du jeu (signe selon le côté du terrain).
-    intent: (c) => { const cote = c.ballon.y < 35 ? 1 : -1; return { tx: c.ballon.x - c.sens * 5, ty: c.ballon.y + dy * cote * 5, vmaxFactor: 1 }; },
+    intent: (c) => { const cote = c.ballon.y < 35 ? 1 : -1; const t = laisserLaPlace(c, { x: c.ballon.x - c.sens * 5, y: c.ballon.y + dy * cote * 5 }); return { tx: t.x, ty: t.y, vmaxFactor: 1 }; },
     successGuard: (c) => { const t = ACTEURS[nom].intent(c); return dist(c.me, { x: t.tx, y: t.ty }) <= 2 && c.facts.SELF_ONSIDE; },
     abortGuard: (c) => (!c.facts.TEAM_POSSESSION ? 'POSSESSION_LOST' : null),
   };
@@ -418,6 +506,8 @@ const ACTIONS = Object.freeze([
     { meters: 'ballon', fatigue: 0.3, loss: 0, fault: 0.02, extra: 0.4 }, 'loi 10 : rester en jeu derrière le porteur', 'position au temps de la passe'),
   A('A15', 'HOLD_WIDTH', { SELF_AVAILABLE: true, SELF_ONSIDE: true }, { RECEIVER_OPEN: true },
     { fixed: 0.6, fatigue: 0.05, loss: 0, fault: 0.0 }, null, 'bande latérale tenue'),
+  A('A23', 'KICK_FOR_TERRITORY', { HAS_BALL: true, SELF_ONSIDE: true, SELF_GROUNDED: false }, { BALL_IN_FLIGHT: true, HAS_BALL: false },
+    { fixed: 0.9, fatigue: 0.1, loss: 0.35, fault: 0.02 }, 'loi 10/18 : pied légal, touche directe seulement des 22 m', 'coup de pied réel du moteur, ballon en vol'),
   // A16–A19 ne sont pas encore codées ; A20 est ajoutée avec son acteur physique (RM4-G11).
   A('A20', 'TACKLE_CARRIER', { SELF_AVAILABLE: true, SELF_ONSIDE: true, OPPONENT_POSSESSION: true }, { TRY_PREVENTED: true, BREAKDOWN_CONTEST_ACTIVE: true },
     { meters: 'ballon', fatigue: 0.35, loss: 0, fault: 0.08 }, 'loi 9/14 : plaquage légal, jamais hors-jeu', 'plaquage RÉUSSI compté par le moteur pour ce joueur'),
@@ -592,6 +682,7 @@ const BUTS_PLANIFIABLES = Object.freeze({
   SUPPORT_CARRIER: { SAFE_SUPPORT_LANE: true },
   BE_PASS_OPTION: { RECEIVER_OPEN: true },
   PREVENT_TRY: { TRY_PREVENTED: true },
+  GAIN_TERRITORY: { BALL_IN_FLIGHT: true },
 });
 
 // Appels que le joueur lance de lui-même selon son but (jamais un ordre).
@@ -771,7 +862,7 @@ class GoalBasedRugbyAgent {
         && but !== 'BECOME_ONSIDE' && but !== 'RECOVER_AND_REJOIN' && this._sit.advPoss;
       // Une passe demandée au moteur n'est pas retirée parce que le but passe de DISTRIBUTE à RETAIN : tant que
       // je porte encore le ballon, la demande va à son terme (réussie, interceptée ou en-avant : le moteur tranche).
-      const passeEnCours = this.executor.busy && /^PASS_TO/.test(this.executor.current.name) && this._sit.aLeBallon
+      const passeEnCours = this.executor.busy && /^PASS_TO/.test(this.executor.current.name) // le ballon est en l'air pendant la passe : plus « porteur », la demande va à son terme
         && but !== 'RECOVER_AND_REJOIN' && but !== 'BECOME_ONSIDE';
       if (this.executor.busy && !plaquageEnCours && !passeEnCours) { for (const e of this.executor.cancel(state, 'GOAL_CHANGED').events) this.events.push(e); this._intent = null; }
       this.plan = null;
@@ -1343,7 +1434,7 @@ function deriveSituation(b) {
   const pression = Object.values(b.opponents).filter((o) => o.age <= 1 && dist(o.lastSeen, self) <= 5).length;
   const score = b.score ? (team === 'A' ? b.score.A - b.score.B : b.score.B - b.score.A) : 0;
   const finDeMatch = b.t > 4800 * 0.8;
-  return { team, sens, phase, ball, maPoss, advPoss, pt, onside, distBalle, aLeBallon, danger,
+  return { t: b.t, numero: b.agent.numero, team, sens, phase, ball, maPoss, advPoss, pt, onside, distBalle, aLeBallon, danger,
     partenairesPlusPres, neufAuBallon, pression, score, finDeMatch, grounded: self.grounded, available: self.available,
     enVol: !!(ball && ball.state === 'AIR') || phase === 'COUP_DE_PIED_JEU' };
 }
@@ -1360,14 +1451,23 @@ const GOALS = Object.freeze([
   // L'arrière (profil cover >= 0,9) garde sa profondeur même quand son équipe attaque (menace de pied).
   G('COVER_BACKFIELD', 'COMMIT', (s, p) => s.available && s.onside && s.danger < 0.35 && (s.advPoss || s.enVol || (s.maPoss && p.cover >= 0.9)),
     (s, p) => (s.advPoss || s.enVol ? 60 : 38) * p.cover),
-  G('DEFEND', 'COMMIT', (s) => s.available && s.onside && s.advPoss && !REGROUPEMENTS.has(s.phase), (s, p) => 50 + 10 * clamp01(1 - s.distBalle / 40) - 25 * p.fatigue),
+  G('DEFEND', 'COMMIT', (s) => s.available && s.onside && s.advPoss && (!REGROUPEMENTS.has(s.phase) || s.phase === 'RUCK'), (s, p) => (s.phase === 'RUCK' ? 34 : 50) + 10 * clamp01(1 - s.distBalle / 40) - 25 * p.fatigue),
   G('CONTEST_BREAKDOWN', 'OPPORTUNITY', (s) => s.phase === 'RUCK' && s.advPoss && s.available && s.onside, (s, p) => 62 * p.contest - 18 * Math.min(2, s.partenairesPlusPres) - 20 * p.fatigue),
   G('SECURE_RUCK', 'COMMIT', (s) => s.phase === 'RUCK' && s.maPoss && s.available && s.onside, (s, p) => 66 * p.ruck - 18 * Math.min(2, s.partenairesPlusPres) - 20 * p.fatigue),
   G('DISTRIBUTE_BALL', 'COMMIT', (s, profile) => (s.phase === 'RUCK' && s.maPoss && s.available && s.onside && s.distBalle <= 6 && !s.neufAuBallon) || (s.aLeBallon && s.phase === 'PORTE' && (s.pression > 0 || (profile.distribute ?? 0) >= 0.3)),
     // Personne n'est à la base du ruck : le plus proche prend la distribution (même un 10 ou un 8).
     (s, p) => 78 * p.distribute + (s.distBalle <= 3 && !s.neufAuBallon ? (p.distribute >= 0.3 ? 20 : 10) : 0)),
   G('RETAIN_POSSESSION', 'COMMIT', (s) => s.aLeBallon && s.phase === 'PORTE', (s) => 62 + 8 * Math.min(3, s.pression) + (s.finDeMatch && s.score > 0 ? 12 : 0)),
-  G('GAIN_TERRITORY', 'OPPORTUNITY', (s) => s.aLeBallon && s.phase === 'PORTE', (s, p) => 50 + 25 * p.kick + (s.finDeMatch && s.score < 0 ? 12 : 0) - 8 * Math.min(3, s.pression)),
+  // Le pied est une décision de CONTEXTE : zone dangereuse (dégager), pression sans option de passe, fin de match.
+  // Zone = distance à MA ligne de but ; hypothèses d'ingénierie à calibrer.
+  G('GAIN_TERRITORY', 'OPPORTUNITY', (s) => s.aLeBallon && s.phase === 'PORTE', (s, p) => {
+    const dMaLigne = s.ball ? Math.abs(s.ball.lastSeen.x - (s.team === 'A' ? 0 : 100)) : 50;
+    const zone = dMaLigne < 22 ? 25 : dMaLigne < 50 ? 14 : dMaLigne > 78 ? -35 : -4;
+    // Fluctuation INDIVIDUELLE déterministe (±4) : un même joueur ne bote pas à chaque fois dans la même situation ;
+    // elle adoucit le seuil de décision (sans Math.random : fonction du joueur et du temps de match).
+    const bruit = ((s.numero * 37 + Math.floor(s.t * 2) * 101) % 17 - 8) * 0.5;
+    return 31 + bruit + 22 * p.kick + zone + 9 * Math.min(3, s.pression) + (s.finDeMatch && s.score < 0 ? 10 : 0) - (s.finDeMatch && s.score > 0 ? 0 : 0);
+  }),
   G('SUPPORT_CARRIER', 'COMMIT', (s) => s.maPoss && s.phase === 'PORTE' && !s.aLeBallon && s.available && s.distBalle <= 30, (s, p) => 44 * (0.4 + 0.6 * p.ruck) * clamp01(1.1 - s.distBalle / 30)),
   G('BE_PASS_OPTION', 'COMMIT', (s) => s.maPoss && s.available && s.onside && (s.phase === 'PORTE' || s.phase === 'RUCK') && !s.aLeBallon, (s, p) => 46 * p.option),
   G('FORM_SCRUM_LEGALLY', 'COMMIT', (s) => s.phase === 'MELEE' && s.available, (s, p) => 80 * p.scrum),
@@ -1477,7 +1577,8 @@ function candidatsDefense(b, s, pb, jeuCourant) {
   const ligneX = arretee ? P.ligneDefensive(sens, bal, pb) : P.clamp(bal.x - sens * 3, 0, 100);
   const ref = { x: num === 15 ? P.referenceDefense(num, sens, bal, pb).x : ligneX, y: P.referenceDefense(num, sens, bal, pb).y };
   // HOLD_LINE : aligné sur les voisins observés, jamais en avance sur eux (on retient sa montée).
-  const voisins = voisinsDeLigne(b, ligneX, sens).filter((v) => Math.abs(v.y - ref.y) <= 15);
+  // Au ruck la ligne couvre TOUTE la largeur : un trou n'importe où doit être comblé, par celui que je vois le mieux placé.
+  const voisins = voisinsDeLigne(b, ligneX, sens).filter((v) => arretee || Math.abs(v.y - ref.y) <= 15);
   const xVoisins = voisins.length ? voisins.map((v) => v.x).sort((a, c) => a - c)[Math.floor(voisins.length / 2)] : ligneX;
   // On monte ENSEMBLE : jamais plus de 3 m devant ses voisins observés (1 m sur phase arrêtée). Avec 1 m en jeu
   // courant, une ligne en retard retenait tout le monde et le porteur gagnait 20 m sans opposition.
@@ -1487,18 +1588,19 @@ function candidatsDefense(b, s, pb, jeuCourant) {
   const yTenu = arretee ? ref.y : ref.y + (bal.y - ref.y) * 0.6;
   out.push({ id: 'HOLD_LINE', priority: 60, target: { x: xTenu, y: yTenu }, vmax: Math.abs(bal.y - ref.y) <= 15 ? 1 : 0.85, reason: 'ligne alignée sur ' + voisins.length + ' voisin(s) observé(s)' });
   // CLOSE_GAP : plus grand intervalle observé près de moi, si je suis le mieux placé parmi ceux que je vois.
-  const ligne = voisins.concat([{ id: 'moi', x: me.x, y: me.y, numero: num }]).sort((a, c) => a.y - c.y);
+  const bords = arretee ? [{ id: 'touche0', x: ligneX, y: 0, numero: 0 }, { id: 'touche70', x: ligneX, y: P.LARGEUR, numero: 0 }] : [];
+  const ligne = voisins.concat(bords, [{ id: 'moi', x: me.x, y: me.y, numero: num }]).sort((a, c) => a.y - c.y);
   let meilleur = null;
   for (let i = 0; i + 1 < ligne.length; i++) {
     const g = ligne[i + 1].y - ligne[i].y;
-    if (g > GAP_MIN) {
+    if (g > (arretee ? 12 : GAP_MIN)) {
       const centre = { x: ligneX, y: (ligne[i].y + ligne[i + 1].y) / 2 };
       const dMoi = P.dist(me, centre);
       const plusProche = Object.values(b.teammates).every((m) => P.dist(m.lastSeen, centre) >= dMoi - 0.01);
       if (plusProche && (!meilleur || g > meilleur.g)) meilleur = { g, centre };
     }
   }
-  if (meilleur) out.push({ id: 'CLOSE_GAP', priority: Math.min(85, 62 + (meilleur.g - GAP_MIN) * 3), target: meilleur.centre, vmax: 1, reason: 'intervalle de ' + meilleur.g.toFixed(1) + ' m, je suis le plus proche' });
+  if (meilleur) out.push({ id: 'CLOSE_GAP', priority: Math.min(88, (arretee ? 74 : 62) + (meilleur.g - GAP_MIN) * 2), target: meilleur.centre, vmax: 1, reason: 'intervalle de ' + meilleur.g.toFixed(1) + ' m, je suis le plus proche' });
   // MARK_OPPONENT : adversaire observé menaçant dans mon canal, sans partenaire visiblement plus proche.
   const menaces = Object.entries(b.opponents).filter(([, o]) => o.confidence >= 0.3 && o.threat > 0.15 && Math.abs(o.lastSeen.y - ref.y) <= 10 && P.dist(o.lastSeen, me) <= 14)
     .sort((a, c) => c[1].threat - a[1].threat || a[0].localeCompare(c[0], 'en'));
@@ -1562,6 +1664,33 @@ function candidatsAttaque(b, s, pb, profile, jeuCourant) {
   return out;
 }
 
+// « Imaginer le jeu du coéquipier » (aucune IA collective, aucune parole imposée) : l'agent suppose que chaque
+// coéquipier qu'il VOIT viendra occuper l'endroit où il est déjà ou vers lequel il court, et que celui qui est
+// plus près d'un point l'atteindra avant lui. S'il convoite le même point, il lui laisse la place et se décale
+// latéralement (≥ 2,2 m), du côté où il a déjà le plus de champ. Sa décision reste la sienne.
+const ESPACE_COEQUIPIER = 2.2;
+function imaginerLeJeuDesCoequipiers(b, cible) {
+  const moi = b.self;
+  let t = { x: cible.x, y: cible.y };
+  for (let tour = 0; tour < 3; tour++) {
+    let gene = null, dMin = Infinity;
+    for (const m of Object.values(b.teammates)) {
+      if (!m.lastSeen || m.numero === moi.numero) continue;
+      const dm = P.dist(m.lastSeen, t);
+      if (dm >= ESPACE_COEQUIPIER) continue;
+      const dMoi = P.dist(moi, t);
+      // Il y sera avant moi (ou à égalité : le numéro le plus bas garde la place, convention locale connue de tous).
+      if (dm < dMoi - 0.3 || (Math.abs(dm - dMoi) <= 0.3 && m.numero < moi.numero)) { if (dm < dMin) { dMin = dm; gene = m; } }
+    }
+    if (!gene) break;
+    const cote = Math.abs(t.y - gene.lastSeen.y) > 0.2 ? Math.sign(t.y - gene.lastSeen.y) : (moi.y >= gene.lastSeen.y ? 1 : -1);
+    const ny = gene.lastSeen.y + cote * ESPACE_COEQUIPIER;
+    t = { x: t.x, y: P.clamp(ny, 2, P.LARGEUR - 2) };
+    if (Math.abs(t.y - ny) > 0.01) t.y = P.clamp(gene.lastSeen.y - cote * ESPACE_COEQUIPIER, 2, P.LARGEUR - 2); // bord de touche : de l'autre côté
+  }
+  return t;
+}
+
 // Choisit son placement. `goalId` = but retenu par le sélecteur (il restreint les familles).
 function individualPlacement(beliefs, goalId, playbook, profile = {}, jeuCourant = false) {
   const pb = P.lirePlaybook(playbook);
@@ -1595,7 +1724,8 @@ function individualPlacement(beliefs, goalId, playbook, profile = {}, jeuCourant
   const valides = evalues.filter((c) => c.valide);
   valides.sort((a, c) => c.score - a.score || a.id.localeCompare(c.id, 'en'));
   const choix = valides[0] || evalues.sort((a, c) => c.score - a.score)[0];
-  return Object.freeze({ placementGoal: choix.id, target: Object.freeze({ x: +P.clamp(choix.target.x, 0, 100).toFixed(3), y: +P.clamp(choix.target.y, 0, P.LARGEUR).toFixed(3) }),
+  const cible = choix.id === 'PRESS_CARRIER' ? choix.target : imaginerLeJeuDesCoequipiers(beliefs, choix.target);
+  return Object.freeze({ placementGoal: choix.id, target: Object.freeze({ x: +P.clamp(cible.x, 0, 100).toFixed(3), y: +P.clamp(cible.y, 0, P.LARGEUR).toFixed(3) }),
     vmaxFactor: choix.vmax, reason: choix.reason, candidates: Object.freeze(evalues.map((c) => Object.freeze({ id: c.id, score: +c.score.toFixed(2), valide: c.valide }))) });
 }
 
