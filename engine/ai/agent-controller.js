@@ -269,8 +269,8 @@ class GoalBasedRugbyAgent {
     // Une décision de ballon ne peut être émise que par le porteur actuel.
     const porteur = state.ball && state.ball.carrierTeam === this.agent.team && state.ball.carrierNumber === this.agent.numero;
     if (porteur && state.phase === 'PORTE' && this.carrierDecision && !this.executor.busy) {
-      const { action, vers, kick, decalage, cibleY } = this.carrierDecision;
-      this._intent = { jeu: { action, vers, type: kick, decalage, cibleY } };
+      const { action, vers, kick, decalage, cibleY, cibleX, chistera } = this.carrierDecision;
+      this._intent = { jeu: { action, vers, type: kick, decalage, cibleY, cibleX, chistera } };
       return this._intent;
     }
     if (this.openPlay && this.executor.current?.name === 'TACKLE_CARRIER' && vaPlaquer && this._intent) {
