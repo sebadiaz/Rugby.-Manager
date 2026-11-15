@@ -19,7 +19,7 @@
  */
 'use strict';
 
-const { extractFacts, pointRegroupement } = require('./world-model.js');
+const { faitsAutoritatifs, faitsPersonnels, pointRegroupement } = require('./world-model.js');
 const { PAR_NOM } = require('./actions.js');
 
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
@@ -86,7 +86,8 @@ ACTEURS.TACKLE_CARRIER = {
   maxSeconds: 6,
   init: (c) => ({ faits: mesStats(c).tacklesMade || 0, manques: mesStats(c).plaquagesManques || 0 }),
   startGuard: (c) => (!c.facts.SELF_AVAILABLE ? 'NOT_AVAILABLE' : !c.facts.SELF_ONSIDE ? 'OFFSIDE' : !porteurAdverse(c) ? 'NO_CARRIER' : null),
-  intent: (c) => { const p = porteurAdverse(c); return p ? { tx: p.x, ty: p.y, vmaxFactor: 1 } : null; },
+  intent: (c) => { const p = porteurAdverse(c); const cible = c.params.cible && p && dist(c.me, p) > 4.5 ? c.params.cible : p;
+    return p ? { tx: cible.x, ty: cible.y, vmaxFactor: 1, jeuCourant: !!c.params.cible } : null; },
   successGuard: (c) => (mesStats(c).tacklesMade || 0) > c.memo.faits,
   failGuard: (c) => ((mesStats(c).plaquagesManques || 0) > c.memo.manques ? 'TACKLE_MISSED' : null),
   abortGuard: (c) => (!porteurAdverse(c) ? 'NO_CARRIER' : !c.facts.SELF_ONSIDE ? 'OFFSIDE' : null),
@@ -135,7 +136,9 @@ for (const [nom, dy] of [['RUN_SUPPORT_INSIDE', -1], ['RUN_SUPPORT_OUTSIDE', 1]]
 function contexte(state, agent, params) {
   const me = joueur(state, agent.team, agent.numero);
   if (!me) throw new RangeError('agent introuvable : ' + agent.team + agent.numero);
-  const facts = extractFacts(state, agent).facts; // monde RÉEL (état moteur), pas des croyances
+  // L'exécution vérifie uniquement les faits physiques utilisés par ses
+  // gardes. La géométrie des passes appartient à la perception du joueur.
+  const facts = Object.assign(faitsAutoritatifs(state, agent.team), faitsPersonnels(state, agent));
   const ballon = state.ball && Number.isFinite(state.ball.x) ? state.ball : state.ballon;
   return { state, me, facts, pt: pointRegroupement(state), sens: me.sensAttaque, params: params || {}, ballon };
 }

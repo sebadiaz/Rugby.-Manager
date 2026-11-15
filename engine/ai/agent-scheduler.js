@@ -49,13 +49,13 @@ class AgentScheduler {
     const candidats = this.agents.filter((a) => {
       if (!a.pending) return false;
       // Étalement : une décision ORDINAIRE n'est pas accordée avant l'offset de l'agent.
-      return a.pending.urgent && a.lastDecisionT !== null || t - this.t0 >= this.offset.get(a.id) - 1e-9;
+      return a.pending.reception || (a.pending.urgent && a.lastDecisionT !== null) || t - this.t0 >= this.offset.get(a.id) - 1e-9;
     });
     candidats.sort((x, y) => (y.pending.urgent - x.pending.urgent) || (x.pending.since - y.pending.since) || (cleOrdre(x) - cleOrdre(y)));
     let ordinaires = 0, urgentes = 0, expansions = 0;
     const accordes = [];
     for (const a of candidats) {
-      const urgent = a.pending.urgent && a.lastDecisionT !== null; // la 1re décision n'est pas « urgente »
+      const urgent = a.pending.reception || (a.pending.urgent && a.lastDecisionT !== null); // la 1re décision n'est pas « urgente »
       if (urgent) { if (urgentes >= this.maxUrgentPerTick) continue; urgentes++; }
       else { if (ordinaires >= this.maxDecisionsPerTick) continue; ordinaires++; }
       this.stats.maxWait = Math.max(this.stats.maxWait, t - a.pending.since);
@@ -89,7 +89,10 @@ class AgentScheduler {
 // Fabrique les 30 agents d'un match (A1..A15, B1..B15) avec les mêmes options.
 function creerAgents(options = {}, equipes = ['A', 'B']) {
   const out = [];
-  for (const team of equipes) for (let numero = 1; numero <= 15; numero++) out.push(new GoalBasedRugbyAgent({ team, numero }, options));
+  for (const team of equipes) {
+    const profil = Object.assign({}, options, { playbook: Object.assign({}, options.playbooks?.[team], options.playbook) });
+    for (let numero = 1; numero <= 15; numero++) out.push(new GoalBasedRugbyAgent({ team, numero }, profil));
+  }
   return out;
 }
 

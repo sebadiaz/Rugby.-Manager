@@ -141,7 +141,7 @@ module.exports = { factsFromBeliefs, estimateAction, buildPlannerActions, feasib
  */
 'use strict';
 
-const { extractFacts, pointRegroupement } = require('./world-model.js');
+const { faitsAutoritatifs, faitsPersonnels, pointRegroupement } = require('./world-model.js');
 const { PAR_NOM } = require('./actions.js');
 
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
@@ -208,7 +208,8 @@ ACTEURS.TACKLE_CARRIER = {
   maxSeconds: 6,
   init: (c) => ({ faits: mesStats(c).tacklesMade || 0, manques: mesStats(c).plaquagesManques || 0 }),
   startGuard: (c) => (!c.facts.SELF_AVAILABLE ? 'NOT_AVAILABLE' : !c.facts.SELF_ONSIDE ? 'OFFSIDE' : !porteurAdverse(c) ? 'NO_CARRIER' : null),
-  intent: (c) => { const p = porteurAdverse(c); return p ? { tx: p.x, ty: p.y, vmaxFactor: 1 } : null; },
+  intent: (c) => { const p = porteurAdverse(c); const cible = c.params.cible && p && dist(c.me, p) > 4.5 ? c.params.cible : p;
+    return p ? { tx: cible.x, ty: cible.y, vmaxFactor: 1, jeuCourant: !!c.params.cible } : null; },
   successGuard: (c) => (mesStats(c).tacklesMade || 0) > c.memo.faits,
   failGuard: (c) => ((mesStats(c).plaquagesManques || 0) > c.memo.manques ? 'TACKLE_MISSED' : null),
   abortGuard: (c) => (!porteurAdverse(c) ? 'NO_CARRIER' : !c.facts.SELF_ONSIDE ? 'OFFSIDE' : null),
@@ -257,7 +258,9 @@ for (const [nom, dy] of [['RUN_SUPPORT_INSIDE', -1], ['RUN_SUPPORT_OUTSIDE', 1]]
 function contexte(state, agent, params) {
   const me = joueur(state, agent.team, agent.numero);
   if (!me) throw new RangeError('agent introuvable : ' + agent.team + agent.numero);
-  const facts = extractFacts(state, agent).facts; // monde RÉEL (état moteur), pas des croyances
+  // L'exécution vérifie uniquement les faits physiques utilisés par ses
+  // gardes. La géométrie des passes appartient à la perception du joueur.
+  const facts = Object.assign(faitsAutoritatifs(state, agent.team), faitsPersonnels(state, agent));
   const ballon = state.ball && Number.isFinite(state.ball.x) ? state.ball : state.ballon;
   return { state, me, facts, pt: pointRegroupement(state), sens: me.sensAttaque, params: params || {}, ballon };
 }
@@ -476,17 +479,19 @@ class AgentContext {
   // une photo gelée. `comm` (LocalCommunication) est facultatif.
   update(state, comm) {
     const t = state.tempsMatch;
+    const equipe = this.agent.team === 'A' ? state.equipeA : state.equipeB;
+    const moi = equipe.find(j => j.numero === this.agent.numero);
+    if (!moi) throw new RangeError('agent introuvable : ' + this.id);
     const doitObserver = this.lastObsT === null || t - this.lastObsT >= this.params.reactionDelay - 1e-9;
     let obs = null;
     if (doitObserver) {
       // Regard : vers le dernier ballon connu (trace récente), sinon dans l'axe du corps.
       let gaze;
       if (this.mem.ball && t - this.mem.ball.seenAt <= 2) {
-        const moiG = [...state.equipeA, ...state.equipeB].find((j) => j.team === this.agent.team && j.numero === this.agent.numero);
-        if (moiG) gaze = Math.atan2(this.mem.ball.y - moiG.y, this.mem.ball.x - moiG.x);
+        gaze = Math.atan2(this.mem.ball.y - moi.y, this.mem.ball.x - moi.x);
       }
       // Un PORTEUR balaie le terrain avant de jouer (têtes levées) : champ de vision complet.
-      const porteur = this.mem.ball && this.mem.ball.owner === this.id && t - this.mem.ball.seenAt <= 1;
+      const porteur = state.ball?.carrierTeam === this.agent.team && state.ball.carrierNumber === this.agent.numero;
       const pv = Object.assign({}, this.params, gaze === undefined ? {} : { gaze }, porteur ? { fovDeg: 360 } : {});
       obs = observe(state, this.agent, pv);
       this.lastObsT = t;
@@ -499,8 +504,6 @@ class AgentContext {
       m.phase = obs.phase; m.possession = obs.possession; m.score = obs.score ? { A: obs.score.A, B: obs.score.B } : null;
     }
     // Proprioception : on connaît toujours sa propre position exacte.
-    const moi = [...state.equipeA, ...state.equipeB].find((j) => j.team === this.agent.team && j.numero === this.agent.numero);
-    if (!moi) throw new RangeError('agent introuvable : ' + this.id);
     if (comm) {
       const entendus = comm.hear({ listenerId: this.id, team: this.agent.team, x: moi.x, y: moi.y, time: t,
         available: !(moi.auSol > 0) && !(moi.sinBin > 0) });
@@ -513,24 +516,27 @@ class AgentContext {
     if (this.mem.ruck && vieux(this.mem.ruck.seenAt)) this.mem.ruck = null;
     this.heard = this.heard.filter((h) => t - h.heardAt <= mem);
 
-    const fiche = (e) => ({ lastSeen: { x: e.x, y: e.y }, age: +(t - e.seenAt).toFixed(3), confidence: +clamp01(1 - (t - e.seenAt) / mem).toFixed(3) });
+    const fiche = (e) => ({ lastSeen: { x: e.x, y: e.y }, age: +(t - e.seenAt).toFixed(3), confidence: +clamp01(mem === 0 ? 1 : 1 - (t - e.seenAt) / mem).toFixed(3) });
     const ballon = this.mem.ball
       ? Object.assign(fiche(this.mem.ball), { state: this.mem.ball.state, owner: this.mem.ball.owner })
       : { lastSeen: null, age: null, confidence: 0, state: null, owner: null };
+    const ficheJoueur = (e) => Object.assign(fiche(e), {
+      numero: e.numero, vx: e.vx, vy: e.vy, available: e.available, kickOffside: e.kickOffside, recovery: e.recovery,
+    });
     const mates = {}, adv = {};
-    for (const [id, e] of Object.entries(this.mem.teammates)) mates[id] = Object.assign(fiche(e), { numero: e.numero });
+    for (const [id, e] of Object.entries(this.mem.teammates)) mates[id] = ficheJoueur(e);
     for (const [id, e] of Object.entries(this.mem.opponents)) {
       const b = this.mem.ball;
       const dBalle = b ? Math.hypot(e.x - b.x, e.y - b.y) : 40;
-      adv[id] = Object.assign(fiche(e), { numero: e.numero, threat: +clamp01(1 - dBalle / 40).toFixed(3) });
+      adv[id] = Object.assign(ficheJoueur(e), { threat: +clamp01(1 - dBalle / 40).toFixed(3) });
     }
     return deepFreeze({
       t, agent: this.agent, observedAt: this.lastObsT, refreshed: doitObserver,
       self: { x: moi.x, y: moi.y, orientation: moi.orientation || 0, grounded: moi.auSol > 0, available: !(moi.auSol > 0) && !(moi.sinBin > 0),
-        sensAttaque: moi.sensAttaque, kickOffside: moi.horsJeuKick > 0 },
+        sensAttaque: moi.sensAttaque, jeuPied: moi.jeuPied, vitesse: moi.vitesse, kickOffside: moi.horsJeuKick > 0 },
       ball: ballon, teammates: mates, opponents: adv,
       ruck: this.mem.ruck ? { ballAvailable: this.mem.ruck.ballAvailable, defendersCommitted: this.mem.ruck.defendersCommitted,
-        age: +(t - this.mem.ruck.seenAt).toFixed(3), confidence: +clamp01(1 - (t - this.mem.ruck.seenAt) / mem).toFixed(3) } : null,
+        age: +(t - this.mem.ruck.seenAt).toFixed(3), confidence: +clamp01(mem === 0 ? 1 : 1 - (t - this.mem.ruck.seenAt) / mem).toFixed(3) } : null,
       phase: this.mem.phase, possession: this.mem.possession, score: this.mem.score,
       heard: this.heard.map((h) => ({ from: h.from, kind: h.kind, age: +(t - h.heardAt).toFixed(3), confidence: h.confidence, replyTo: h.replyTo })),
       omniscient: !!this.params.omniscient,
@@ -572,6 +578,7 @@ const { factsFromBeliefs, buildPlannerActions, feasibleActions } = require('./ac
 const { deriveSituation, profilePour } = require('./goals.js');
 const { PAR_NOM } = require('./actions.js');
 const { individualPlacement } = require('./individual-placement.js');
+const { lirePorteur } = require('./open-play.js');
 
 // Condition de succès (faits désirés) de chaque but planifiable. Les autres
 // buts (DEFEND, COVER_BACKFIELD...) n'ont pas encore d'actions A16+ : le but est
@@ -620,6 +627,9 @@ class GoalBasedRugbyAgent {
     this._intent = null; this._beliefs = null; this._sit = null;
     this.usePlacement = options.placement === true; // opt-in : le placement individuel conduit le joueur hors plan
     this.placement = null;
+    this.openPlay = options.openPlay === true;
+    this.carrierDecision = null;
+    this.wasCarrier = false;
     this.placementScope = options.placementScope || 'all'; // 'all' | 'defense' | 'attack' : quelles situations le placement conduit
     this.maxExpanded = options.maxExpanded ?? 128;
     this.lastExpansions = 0;
@@ -692,8 +702,11 @@ class GoalBasedRugbyAgent {
       const cle = h.from + ':' + h.kind + ':' + (t - h.age).toFixed(2);
       if (!this.heardSeen.has(cle)) { this.heardSeen.add(cle); appelNouveau = true; }
     }
+    const reception = this.openPlay && sit.aLeBallon && !this.wasCarrier;
+    this.wasCarrier = sit.aLeBallon;
+    if (!sit.aLeBallon) this.carrierDecision = null;
     const cle = beliefs.phase + '|' + beliefs.possession;
-    const urgent = (this.lastKey !== null && cle !== this.lastKey) || appelNouveau || this._forceDecision;
+    const urgent = (this.lastKey !== null && cle !== this.lastKey) || reception || appelNouveau || this._forceDecision;
     this.lastKey = cle;
 
     // MONITOR de l'action en cours (chaque tick, sur le monde réel)
@@ -722,7 +735,9 @@ class GoalBasedRugbyAgent {
     const due = this.lastDecisionT === null || this._forceDecision || urgent || t - this.lastDecisionT >= this.decisionPeriod - 1e-9;
     if (due) {
       const dejaUrgent = this.pending ? this.pending.urgent : false;
-      this.pending = { since: this.pending ? this.pending.since : t, urgent: dejaUrgent || urgent || this._forceDecision || this.lastDecisionT === null };
+      this.pending = { since: this.pending ? this.pending.since : t,
+        urgent: dejaUrgent || urgent || this._forceDecision || this.lastDecisionT === null,
+        reception: sit.aLeBallon && (reception || this.pending?.reception === true) };
     }
     return this.pending;
   }
@@ -761,13 +776,17 @@ class GoalBasedRugbyAgent {
       if (this.executor.busy && !plaquageEnCours && !passeEnCours) { for (const e of this.executor.cancel(state, 'GOAL_CHANGED').events) this.events.push(e); this._intent = null; }
       this.plan = null;
     }
-    if (this.usePlacement) {
-      this.placement = individualPlacement(beliefs, this.goal, this.playbook, this.profile);
-      if (this.placement) this._push('PLACEMENT_CHOSEN', t, { goal: this.goal, placement: this.placement.placementGoal, target: this.placement.target });
+    if (this.openPlay) {
+      this.carrierDecision = lirePorteur(beliefs, sit, this.profile, this.playbook);
+      if (this.carrierDecision) this._push('OPEN_PLAY_CHOSEN', t, { goal: this.goal, ...this.carrierDecision });
     }
-    const faits = this._faits(beliefs, sit);
-    if (!this.plan) { const r = this.replanRaison || 'NEW'; this.replanRaison = null; this._planifier(beliefs, sit, r); }
-    else if (!this.executor.busy && !this._etapeValide(this.plan.steps[this.plan.index], faits)) {
+    if (this.usePlacement) {
+      this.placement = individualPlacement(beliefs, this.goal, this.playbook, this.profile, this.openPlay);
+      if (this.placement && !sit.aLeBallon) this._push('PLACEMENT_CHOSEN', t, { goal: this.goal, placement: this.placement.placementGoal, target: this.placement.target });
+    }
+    if ((this.carrierDecision || this.placement?.placementGoal === 'COVER_BREAK') && !this.executor.busy) this.plan = null;
+    else if (!this.plan) { const r = this.replanRaison || 'NEW'; this.replanRaison = null; this._planifier(beliefs, sit, r); }
+    else if (!this.executor.busy && !this._etapeValide(this.plan.steps[this.plan.index], this._faits(beliefs, sit))) {
       // Précondition invalidée AVANT de démarrer l'étape : replanification depuis les faits actuels.
       this._planifier(beliefs, sit, 'PRECONDITION_INVALID');
     }
@@ -783,21 +802,29 @@ class GoalBasedRugbyAgent {
       if (r.started) this._intent = r.intent;
       else { this.bans.set(nom, t + this.banDuration); this.plan = null; this._forceDecision = true; }
     }
-    // Sans action en cours, c'est SON placement individuel qui le conduit (jamais celui d'un autre).
-    // Presser le porteur = l'action TACKLE_CARRIER (acteur réel, événements réussi/manqué), pas une simple course.
-    if (this.usePlacement && !this.executor.busy && !this.plan && this.placement && this.placement.placementGoal === 'PRESS_CARRIER'
+    // Le moteur valide le plaquage après la course de montée ou de couverture.
+    const placement = this.placement?.placementGoal;
+    const vaPlaquer = placement === 'PRESS_CARRIER' || placement === 'COVER_BREAK';
+    if (this.usePlacement && !this.executor.busy && !this.plan && vaPlaquer
       && state.phase === 'PORTE' && !(this.bans.get('TACKLE_CARRIER') > t)) {
-      const r = this.executor.start('TACKLE_CARRIER', state);
+      const r = this.executor.start('TACKLE_CARRIER', state, this.openPlay ? { cible: this.placement.target } : undefined);
       for (const e of r.events) this.events.push(e);
       if (r.started) this._intent = r.intent; else this.bans.set('TACKLE_CARRIER', t + 1);
     }
-    // Le moteur garde la main sur le porteur (aucun acteur de ballon) et sur les phases arrêtées
-    // (mêlée, touche, maul, ruck, coups de pied) : le placement individuel ne conduit qu'en jeu courant.
+    // Une décision de ballon ne peut être émise que par le porteur actuel.
     const porteur = state.ball && state.ball.carrierTeam === this.agent.team && state.ball.carrierNumber === this.agent.numero;
+    if (porteur && state.phase === 'PORTE' && this.carrierDecision && !this.executor.busy) {
+      const { action, vers, kick, decalage, cibleY } = this.carrierDecision;
+      this._intent = { jeu: { action, vers, type: kick, decalage, cibleY } };
+      return this._intent;
+    }
+    if (this.openPlay && this.executor.current?.name === 'TACKLE_CARRIER' && vaPlaquer && this._intent) {
+      this.executor.current.params.cible = this.placement.target;
+    }
     const enDefense = state.possession !== this.agent.team;
     const dansPortee = this.placementScope === 'all' || (this.placementScope === 'defense') === enDefense;
     if (this.usePlacement && !this._intent && !this.executor.busy && !this.plan && this.placement && state.phase === 'PORTE' && !porteur && dansPortee) {
-      this._intent = { tx: this.placement.target.x, ty: this.placement.target.y, vmaxFactor: this.placement.vmaxFactor };
+      this._intent = { tx: this.placement.target.x, ty: this.placement.target.y, vmaxFactor: this.placement.vmaxFactor, jeuCourant: this.openPlay };
     }
     return this._intent;
   }
@@ -871,13 +898,13 @@ class AgentScheduler {
     const candidats = this.agents.filter((a) => {
       if (!a.pending) return false;
       // Étalement : une décision ORDINAIRE n'est pas accordée avant l'offset de l'agent.
-      return a.pending.urgent && a.lastDecisionT !== null || t - this.t0 >= this.offset.get(a.id) - 1e-9;
+      return a.pending.reception || (a.pending.urgent && a.lastDecisionT !== null) || t - this.t0 >= this.offset.get(a.id) - 1e-9;
     });
     candidats.sort((x, y) => (y.pending.urgent - x.pending.urgent) || (x.pending.since - y.pending.since) || (cleOrdre(x) - cleOrdre(y)));
     let ordinaires = 0, urgentes = 0, expansions = 0;
     const accordes = [];
     for (const a of candidats) {
-      const urgent = a.pending.urgent && a.lastDecisionT !== null; // la 1re décision n'est pas « urgente »
+      const urgent = a.pending.reception || (a.pending.urgent && a.lastDecisionT !== null); // la 1re décision n'est pas « urgente »
       if (urgent) { if (urgentes >= this.maxUrgentPerTick) continue; urgentes++; }
       else { if (ordinaires >= this.maxDecisionsPerTick) continue; ordinaires++; }
       this.stats.maxWait = Math.max(this.stats.maxWait, t - a.pending.since);
@@ -911,7 +938,10 @@ class AgentScheduler {
 // Fabrique les 30 agents d'un match (A1..A15, B1..B15) avec les mêmes options.
 function creerAgents(options = {}, equipes = ['A', 'B']) {
   const out = [];
-  for (const team of equipes) for (let numero = 1; numero <= 15; numero++) out.push(new GoalBasedRugbyAgent({ team, numero }, options));
+  for (const team of equipes) {
+    const profil = Object.assign({}, options, { playbook: Object.assign({}, options.playbooks?.[team], options.playbook) });
+    for (let numero = 1; numero <= 15; numero++) out.push(new GoalBasedRugbyAgent({ team, numero }, profil));
+  }
   return out;
 }
 
@@ -1368,14 +1398,24 @@ const { LocalCommunication } = require('./local-communication.js');
 
 // Fabrique de pilote à passer dans config.agentDriver.
 function creerPiloteGOAP(options = {}) {
-  return function fabrique() {
-    const agents = creerAgents(Object.assign({ placement: true }, options.agent));
+  return function fabrique(engine) {
+    const playbooks = {};
+    for (const team of ['A', 'B']) {
+      const attaque = engine?.cfgAttaque?.[team] || {};
+      playbooks[team] = {
+        attackStructure: attaque.structureAvants || '1331',
+        attackWidth: attaque.ailiers === 'large' ? 1.4 : attaque.ailiers === 'repique' ? 0.7 : 1,
+        sortieAvant: attaque.sortieAvant, passeCentres: attaque.passeCentres,
+        tauxJeuAuPied: attaque.tauxJeuAuPied, piedOuvreur: attaque.piedOuvreur,
+      };
+    }
+    const agents = creerAgents(Object.assign({ placement: true, openPlay: true, playbooks }, options.agent));
     const scheduler = new AgentScheduler(agents, options.scheduler);
     const comm = options.voix === false ? null : new LocalCommunication();
     return {
       agents, scheduler, comm,
       avantTick(engine) {
-        const r = scheduler.tick(engine.getState(), comm);
+        const r = scheduler.tick(engine.getAgentState(), comm);
         scheduler.appliquer(engine, r);
         if (comm) comm.prune(engine.tempsMatch);
       },
@@ -1385,9 +1425,9 @@ function creerPiloteGOAP(options = {}) {
 
 // Configuration de match en mode GOAP (ne modifie pas `config`).
 function configGOAP(config, options) {
-  // Rayon de contact du plaquage en mode GOAP : 3,5 m (mesuré : 2,2 m laissait passer le porteur entre deux défenseurs
-  // espacés de 4 m ; 4 m supprimait presque tous les essais).
-  return Object.assign({ rayonPlaquage: 3.5 }, config || {}, { aiMode: 'GOAP', agentDriver: creerPiloteGOAP(options) });
+  // Distance de déclenchement de la tentative : elle inclut le dernier pas
+  // et l'allonge, dans le jeu courant des agents. La résolution reste au moteur.
+  return Object.assign({ rayonPlaquage: 3.7 }, config || {}, { aiMode: 'GOAP', agentDriver: creerPiloteGOAP(options) });
 }
 
 module.exports = { creerPiloteGOAP, configGOAP };
@@ -1413,6 +1453,7 @@ module.exports = { creerPiloteGOAP, configGOAP };
 
 const P = require('./position-goals.js');
 const { deriveSituation } = require('./goals.js');
+const { intercepter, visibleJouable, espaceDevant, lireCouverture } = require('./open-play.js');
 
 const GAP_MIN = 11; // m : un intervalle observé plus large est « dangereux »
 
@@ -1424,7 +1465,7 @@ function voisinsDeLigne(b, ligneX, sens) {
     .sort((a, c) => a.y - c.y || a.id.localeCompare(c.id, 'en'));
 }
 
-function candidatsDefense(b, s, pb, profile) {
+function candidatsDefense(b, s, pb, jeuCourant) {
   const me = b.self, bal = s.ball && s.ball.lastSeen;
   const sens = s.sens, num = b.agent.numero;
   const out = [];
@@ -1467,22 +1508,23 @@ function candidatsDefense(b, s, pb, profile) {
     out.push({ id: 'MARK_OPPONENT', priority: 58 + 20 * o.threat, target: { x: o.lastSeen.x - sens * 1.5, y: o.lastSeen.y }, vmax: 1, reason: 'marque ' + id });
     break;
   }
-  // PRESS_CARRIER : seulement si je suis le défenseur observé le plus proche du porteur, à moins de 7 m.
-  const porteur = s.ball.owner && s.ball.owner[0] !== s.team ? (b.opponents[s.ball.owner] ? b.opponents[s.ball.owner].lastSeen : bal) : null;
+  // Chaque défenseur évalue sa propre arrivée à la trajectoire du porteur.
+  const fiche = b.opponents[s.ball.owner];
+  const porteur = s.ball.owner && s.ball.owner[0] !== s.team ? (fiche?.lastSeen || bal) : null;
   if (porteur && s.onside) {
     const dMoi = P.dist(me, porteur);
-    // Le plaqueur ET son assistant : je presse si, parmi les partenaires que je vois, un seul au plus est
-    // plus près du porteur que moi, et que le porteur est à moins de 10 m. Jamais une ruée.
+    const predit = jeuCourant && dMoi > 4.5 && fiche && visibleJouable(fiche);
+    const cible = predit ? intercepter(me, fiche, 3 + (me.vitesse ?? 65) * 0.05)
+      : { x: P.clamp(porteur.x - sens * Math.min(4, dMoi * 0.4), 0, 100), y: porteur.y };
     const plusPres = Object.values(b.teammates).filter((m) => P.dist(m.lastSeen, porteur) < dMoi).length;
     if (dMoi <= 12 && plusPres <= 1) out.push({ id: 'PRESS_CARRIER', priority: plusPres === 0 ? 74 : 68,
-      // Interception : on vise DEVANT le porteur (il court vers ma ligne), pas sa position actuelle.
-      target: { x: P.clamp(porteur.x - sens * Math.min(4, dMoi * 0.4), 0, 100), y: porteur.y }, vmax: 1, reason: plusPres === 0 ? 'plus proche défenseur observé du porteur' : 'second défenseur observé : assiste le plaqueur' });
+      target: cible, vmax: 1, reason: plusPres === 0 ? 'interception du porteur' : 'soutien au plaqueur' });
   }
   out.push({ id: 'RETURN_TO_PLAYBOOK', priority: 30, target: ref, vmax: 0.8, reason: 'poste nominal en défense' });
   return out;
 }
 
-function candidatsAttaque(b, s, pb, profile) {
+function candidatsAttaque(b, s, pb, profile, jeuCourant) {
   const me = b.self, bal = s.ball && s.ball.lastSeen, sens = s.sens, num = b.agent.numero;
   if (!bal) return [{ id: 'RETURN_TO_PLAYBOOK', priority: 30, target: { x: me.x, y: me.y }, vmax: 0.6, reason: 'ballon inconnu' }];
   const ref = P.referenceAttaque(num, sens, bal, pb);
@@ -1499,23 +1541,44 @@ function candidatsAttaque(b, s, pb, profile) {
   const proche = P.dist(me, bal);
   if (proche <= 25) out.push({ id: 'SUPPORT_CARRIER', priority: 44 * (0.4 + 0.6 * (profile.ruck ?? 0.5)) * Math.max(0.1, 1.1 - proche / 25) + 10,
     target: { x: P.clamp(bal.x - sens * 5, 0, 100), y: P.clamp(bal.y + cote * 5, 1, P.LARGEUR - 1) }, vmax: 1, reason: 'soutien côté le moins occupé (' + (cote > 0 ? '+y' : '-y') + ')' });
+  if (jeuCourant && !s.aLeBallon && s.phase === 'PORTE' && s.ball.owner && s.ball.age <= 0.45 && proche <= 16
+    && ((num >= 4 && num <= 8) || num === 10 || num === 12 || num === 13)) {
+    const adversaires = Object.values(b.opponents).filter(visibleJouable);
+    const coequipiers = Object.values(b.teammates).filter(visibleJouable);
+    const coteNominal = Math.sign(ref.y - bal.y) || (bal.y < 35 ? 1 : -1);
+    const decalage = P.clamp(Math.abs(ref.y - bal.y), 3.5, num <= 8 ? 9 : 17);
+    for (const dy of adversaires.length ? [-3.5, 0, 3.5] : []) {
+      const cible = { x: P.clamp(bal.x - sens * (num <= 8 ? 1.8 : 2.8), 0, 100),
+        y: P.clamp(bal.y + coteNominal * decalage + dy, 3, P.LARGEUR - 3) };
+      if (Math.abs(cible.y - bal.y) < 3) continue;
+      const air = espaceDevant(cible, sens, adversaires, 13, 0.55);
+      const voisin = coequipiers.some(m => P.dist(m.lastSeen, cible) < 3);
+      if (air < 4 || voisin) continue;
+      const soutien = { id: 'ATTACK_GAP', priority: 47 + air * 1.4 - Math.abs(dy),
+        target: cible, vmax: 1, reason: 'course à hauteur dans un intervalle observé' };
+      out.push(soutien);
+    }
+  }
   return out;
 }
 
 // Choisit son placement. `goalId` = but retenu par le sélecteur (il restreint les familles).
-function individualPlacement(beliefs, goalId, playbook, profile = {}) {
+function individualPlacement(beliefs, goalId, playbook, profile = {}, jeuCourant = false) {
   const pb = P.lirePlaybook(playbook);
   const s = deriveSituation(beliefs);
+  const couverture = jeuCourant && lireCouverture(beliefs, s);
   let cands;
-  if (goalId === 'COVER_BACKFIELD' || goalId === 'PREVENT_TRY') {
+  if (couverture) {
+    cands = [{ id: 'COVER_BREAK', priority: 85, target: couverture, vmax: 1, reason: 'dernier rideau : coupe la course vers l’en-but' }];
+  } else if (goalId === 'COVER_BACKFIELD' || goalId === 'PREVENT_TRY') {
     const bal = s.ball && s.ball.lastSeen;
     cands = [{ id: goalId === 'PREVENT_TRY' ? 'PREVENT_TRY' : 'COVER_BACKFIELD', priority: 60,
       target: bal ? (goalId === 'PREVENT_TRY' ? { x: P.clamp(bal.x - s.sens * 6, 0, 100), y: bal.y } : P.referenceFond(s.sens, bal, pb)) : { x: beliefs.self.x, y: beliefs.self.y },
       vmax: goalId === 'PREVENT_TRY' ? 1 : 0.75, reason: goalId === 'PREVENT_TRY' ? 'intercepte entre le porteur et la ligne' : 'profondeur conservée' }];
-  } else if (goalId === 'DEFEND') cands = candidatsDefense(beliefs, s, pb, profile);
+  } else if (goalId === 'DEFEND') cands = candidatsDefense(beliefs, s, pb, jeuCourant);
   else if (goalId === 'SUPPORT_CARRIER' || goalId === 'BE_PASS_OPTION' || goalId === 'RETURN_TO_PLAYBOOK' || goalId === 'GAIN_TERRITORY' || goalId === 'RETAIN_POSSESSION') {
-    cands = s.maPoss || s.aLeBallon ? candidatsAttaque(beliefs, s, pb, profile) : candidatsDefense(beliefs, s, pb, profile);
-    if (goalId === 'SUPPORT_CARRIER') cands = cands.filter((c) => c.id === 'SUPPORT_CARRIER' || c.id === 'RETURN_TO_PLAYBOOK');
+    cands = s.maPoss || s.aLeBallon ? candidatsAttaque(beliefs, s, pb, profile, jeuCourant) : candidatsDefense(beliefs, s, pb, jeuCourant);
+    if (goalId === 'SUPPORT_CARRIER') cands = cands.filter((c) => c.id === 'SUPPORT_CARRIER' || c.id === 'ATTACK_GAP' || c.id === 'RETURN_TO_PLAYBOOK');
     if (goalId === 'BE_PASS_OPTION') cands = cands.filter((c) => c.id !== 'SUPPORT_CARRIER');
     if (goalId === 'RETURN_TO_PLAYBOOK') cands = cands.filter((c) => c.id === 'RETURN_TO_PLAYBOOK');
   } else return null; // les autres buts (plan GOAP, mêlée, touche) conduisent le joueur autrement
@@ -1764,6 +1827,174 @@ class LocalCommunication {
 module.exports = { CALLS, LocalCommunication };
 
   };
+  defs["open-play.js"] = function (module, exports, require) {
+// Lecture locale du jeu courant. Les vitesses et espaces sont estimés à partir
+// des joueurs récemment vus. Un couloir hors du champ de vision reste inconnu.
+'use strict';
+
+const { clamp, dist, LARGEUR } = require('./position-goals.js');
+
+function espaceDegagement(me, sens, adversaires) {
+  // Le botteur observe la couverture dans la zone où son dégagement peut
+  // tomber. Les deux cibles restent à portée latérale depuis son poste.
+  const profondeur = clamp(me.x + sens * 41, 0, 100);
+  const couloirs = [-18, 18].map(decalage => {
+    const y = clamp(me.y + decalage, 9, LARGEUR - 9);
+    const cible = { x: profondeur, y };
+    const distance = adversaires.reduce((proche, d) => Math.min(proche, dist(cible, projeter(d, d.age + 0.5))), Infinity);
+    return { y, distance };
+  });
+  return couloirs.sort((a, b) => b.distance - a.distance || Math.abs(a.y - me.y) - Math.abs(b.y - me.y))[0];
+}
+
+function visibleJouable(fiche) {
+  return fiche.age <= 0.55 && fiche.available !== false && !fiche.kickOffside;
+}
+
+function projeter(fiche, delai) {
+  const point = fiche.lastSeen;
+  return {
+    x: clamp(point.x + (fiche.vx || 0) * delai, 0, 100),
+    y: clamp(point.y + (fiche.vy || 0) * delai, 0, LARGEUR),
+  };
+}
+
+// Le plaqueur vise un point atteignable sur la course adverse. On rapproche
+// la cible quand le contact est imminent et on borne l'extrapolation.
+function intercepter(me, porteur, vitesse) {
+  const delai = clamp((dist(me, porteur.lastSeen) - 2) / vitesse, 0, 0.8);
+  return projeter(porteur, delai * 0.65 + porteur.age);
+}
+
+// Dernier rideau : l'arrière cherche un rendez-vous atteignable sur la
+// course observée et coupe l'angle avant la ligne. Les estimations restent
+// bornées : il réajuste sa course à la prochaine observation.
+function lireCouverture(b, s) {
+  if (b.agent.numero !== 15 || s.phase !== 'PORTE' || !s.advPoss || !s.available || !s.onside) return null;
+  const porteur = b.opponents[s.ball?.owner];
+  if (!porteur || !visibleJouable(porteur)) return null;
+  const balle = porteur.lastSeen, me = b.self, sens = s.sens;
+  const ligne = sens > 0 ? 0 : 100;
+  const distanceEnBut = (balle.x - ligne) * sens;
+  // Sortie du dernier rideau sur les percées d'aile. Au centre, l'arrière
+  // reste dans l'axe avec la couverture habituelle et ferme au contact.
+  const distanceTouche = Math.min(balle.y, LARGEUR - balle.y);
+  if (distanceTouche > 16 || distanceEnBut < 22 || distanceEnBut > 48) return null;
+  const profondeur = (balle.x - me.x) * sens;
+  if (profondeur < 8 || profondeur > 26 || dist(me, balle) > 32) return null;
+
+  const vx = porteur.vx || 0, vy = porteur.vy || 0;
+  if (-vx * sens < 3.5) return null;
+  const enCours = projeter(porteur, porteur.age + 0.65);
+  const rideau = Object.values(b.teammates).some(j => {
+    if (!visibleJouable(j) || j.recovery) return false;
+    const jx = j.lastSeen.x;
+    // Un partenaire encore à hauteur peut fermer l'intérieur. Sa position
+    // projetée permet de distinguer sa montée d'un retour trop tardif.
+    const avance = (balle.x - jx) * sens;
+    const projete = projeter(j, j.age + 0.45);
+    return avance >= -1 && (jx - me.x) * sens > 2
+      && (enCours.x - projete.x) * sens >= -3
+      && Math.abs(projete.y - enCours.y) <= 8;
+  });
+  if (rideau) return null;
+
+  const avantLigne = Math.max(0, (balle.x - ligne) / -vx - porteur.age);
+  const horizon = Math.min(3.2, avantLigne);
+  const vitesse = 3 + clamp(me.vitesse ?? 65, 0, 100) * 0.05;
+  for (let t = 0.25; t < horizon; t += 0.25) {
+    const cible = projeter(porteur, porteur.age + t);
+    if (dist(me, cible) <= 1 + vitesse * t) return cible;
+  }
+  return projeter(porteur, porteur.age + horizon);
+}
+
+function espaceDevant(point, sens, adv, profondeur, horizon) {
+  let libre = profondeur;
+  for (const d of adv) {
+    const p = projeter(d, horizon + d.age);
+    const avant = (p.x - point.x) * sens;
+    const lateral = Math.abs(p.y - point.y);
+    if (avant >= -1.5 && lateral < 6) libre = Math.min(libre, Math.max(0, avant) + 1.1 * lateral);
+  }
+  return libre;
+}
+
+function risqueCouloir(de, vers, adv) {
+  const dx = vers.x - de.x, dy = vers.y - de.y;
+  const d2 = dx * dx + dy * dy;
+  return adv.some((d) => {
+    const p = projeter(d, 0.18 + d.age);
+    const u = ((p.x - de.x) * dx + (p.y - de.y) * dy) / d2;
+    return u > 0.12 && u < 0.94 && Math.hypot(p.x - de.x - u * dx, p.y - de.y - u * dy) < 2;
+  });
+}
+
+function lirePorteur(b, s, profile, playbook) {
+  if (s.phase !== 'PORTE' || !s.aLeBallon || !s.available || !s.onside || s.ball.age > 0.35) return null;
+  const me = b.self, sens = s.sens;
+  const adv = Object.values(b.opponents).filter(visibleJouable);
+  if (adv.length < 2) return null;
+  const pression = adv.reduce((min, d) => Math.min(min, dist(me, d.lastSeen)), Infinity);
+  const distanceBut = sens > 0 ? 100 - me.x : me.x;
+  const territoire = 100 - distanceBut;
+  const course = espaceDevant(me, sens, adv, 17, 0.35);
+  const options = [{ action: 'RUN', score: course + (distanceBut < 7 ? 5 : 0) }];
+  if (course >= 8 && distanceBut <= 35) for (const decalage of [-3, 3]) {
+    const y = me.y + decalage;
+    if (y < 3 || y > LARGEUR - 3) continue;
+    const air = espaceDevant({ x: me.x, y }, sens, adv, 17, 0.35);
+    const score = air + (distanceBut < 7 ? 5 : 0) - 1;
+    if (air >= course + 3 && score > options[0].score) options[0] = { action: 'RUN', decalage, score };
+  }
+  for (const m of Object.values(b.teammates)) {
+    if (!visibleJouable(m)) continue;
+    const p = m.lastSeen;
+    const recul = (me.x - p.x) * sens;
+    const longueur = dist(me, p);
+    if (recul < 0.45 || recul > 11 || longueur < 3 || longueur > 21 || Math.abs(p.y - me.y) < 2) continue;
+    const enCourse = Math.max(0, (m.vx || 0) * sens);
+    const reception = projeter(m, longueur / 20 + m.age);
+    const air = espaceDevant(reception, sens, adv, 17, longueur / 20);
+    const proche = adv.reduce((min, d) => Math.min(min, dist(reception, projeter(d, longueur / 20 + d.age))), Infinity);
+    const bord = Math.min(reception.y, LARGEUR - reception.y);
+    const risque = risqueCouloir(me, reception, adv);
+    // Le gain attendu rétribue une réception lancée et un défenseur fixé.
+    // Le plein large a un coût si l'ailier manque de place ou si la passe est longue.
+    const score = 0.76 * air + 0.36 * Math.min(12, proche) + 0.55 * enCourse
+      - 0.32 * recul - 0.16 * longueur - Math.max(0, 5 - bord) - (risque ? 12 : 0)
+      + (course < 8 && pression < 9 ? 3 : 0)
+      + (m.numero === 10 ? 1.4 * profile.distribute : 0)
+      + (m.numero <= 8 && b.agent.numero === 9 ? ((playbook.sortieAvant ?? 0.34) - 0.34) * 8 : 0)
+      + (b.agent.numero === 12 || b.agent.numero === 13 ? clamp((playbook.passeCentres ?? 1) - 1, -1, 1) * 2 : 0)
+      + clamp((playbook.attackWidth || 1) - 1, -0.5, 0.5) * Math.abs(p.y - me.y) * 0.25;
+    options.push({ action: 'PASS', vers: m.numero, score });
+  }
+  // Sortie de camp quand la ligne monte et que les soutiens disponibles sont
+  // couverts. La cible est une demande : le moteur applique ses lois et son vol.
+  const consignePied = (playbook.tauxJeuAuPied ?? 1.5) * (b.agent.numero === 10 ? (playbook.piedOuvreur ?? 1) : 1);
+  if (consignePied > 0 && territoire < 30 && pression >= 3.2 && pression <= 10 && (me.jeuPied ?? 0) >= 55 && distanceBut > 68) {
+    const fond = adv.filter(d => (d.lastSeen.x - me.x) * sens >= 15);
+    const couloir = espaceDegagement(me, sens, fond);
+    // Les deux sorties ont un coût : trouver la touche rend le lancer et
+    // botter dans un fond couvert expose à une relance immédiate.
+    const touche = territoire <= 22 && couloir.distance < 12 && pression <= 6;
+    const score = (territoire <= 22 ? 9.5 : 6) + (couloir.distance >= 12 ? 2 : 0)
+      + (me.jeuPied - 55) * 0.09 + clamp(consignePied - 1.5, -1.5, 1.5) * 2;
+    options.push({ action: 'KICK', kick: touche ? 'TOUCHE' : 'DEGAGEMENT', cibleY: touche ? null : couloir.y, score });
+  }
+  options.sort((a, c) => c.score - a.score || (a.vers || 0) - (c.vers || 0));
+  const choix = options[0];
+  if (choix.action === 'PASS' && (pression < 2.5 || pression > 7 || course >= 7 || choix.score < course + 6 || choix.score < 9)) return null;
+  if (choix.action === 'KICK' && (choix.score < course + 3 || choix.score < (options[1]?.score ?? 0) + 2)) return null;
+  // Laisser le jeu de phase et ses consignes décider dans les lectures serrées.
+  if (choix.action === 'RUN' && (choix.decalage == null || pression < 6 || distanceBut > 25)) return null;
+  return { ...choix, options, pression, course, age: s.ball.age };
+}
+
+module.exports = { lirePorteur, intercepter, visibleJouable, espaceDevant, lireCouverture };
+
+  };
   defs["perception.js"] = function (module, exports, require) {
 /*
  * Rugby Manager — V4, capteurs d'un agent (RM4-G04).
@@ -1843,7 +2074,13 @@ function observe(state, agent, params) {
   for (const j of tous) {
     if (j === moi) continue;
     if (!p.omniscient && !dansLeChamp(moi, j, p)) continue;
-    const entree = { x: j.x, y: j.y, numero: j.numero };
+    const vitesse = j.vitesseCourante || 0;
+    const entree = {
+      x: j.x, y: j.y, numero: j.numero,
+      vx: vitesse * Math.cos(j.orientation || 0), vy: vitesse * Math.sin(j.orientation || 0),
+      available: !(j.auSol > 0) && !(j.sinBin > 0), kickOffside: j.horsJeuKick > 0,
+      recovery: j.ruckRecovery > 0 || j.missCooldown > 0 || j.fixeCooldown > 0,
+    };
     (j.team === moi.team ? vus.teammates : vus.opponents)[id(j)] = entree;
   }
   const b = state.ball || state.ballon;
@@ -2094,7 +2331,7 @@ function extractFacts(state, agent, options = {}) {
   });
 }
 
-module.exports = { extractFacts, pointRegroupement, FACTS };
+module.exports = { extractFacts, faitsAutoritatifs, faitsPersonnels, pointRegroupement, FACTS };
 
   };
   var mode = req('goap-mode.js');

@@ -17,6 +17,7 @@
 
 const P = require('./position-goals.js');
 const { deriveSituation } = require('./goals.js');
+const { intercepter, visibleJouable, espaceDevant, lireCouverture } = require('./open-play.js');
 
 const GAP_MIN = 11; // m : un intervalle observé plus large est « dangereux »
 
@@ -28,7 +29,7 @@ function voisinsDeLigne(b, ligneX, sens) {
     .sort((a, c) => a.y - c.y || a.id.localeCompare(c.id, 'en'));
 }
 
-function candidatsDefense(b, s, pb, profile) {
+function candidatsDefense(b, s, pb, jeuCourant) {
   const me = b.self, bal = s.ball && s.ball.lastSeen;
   const sens = s.sens, num = b.agent.numero;
   const out = [];
@@ -71,22 +72,23 @@ function candidatsDefense(b, s, pb, profile) {
     out.push({ id: 'MARK_OPPONENT', priority: 58 + 20 * o.threat, target: { x: o.lastSeen.x - sens * 1.5, y: o.lastSeen.y }, vmax: 1, reason: 'marque ' + id });
     break;
   }
-  // PRESS_CARRIER : seulement si je suis le défenseur observé le plus proche du porteur, à moins de 7 m.
-  const porteur = s.ball.owner && s.ball.owner[0] !== s.team ? (b.opponents[s.ball.owner] ? b.opponents[s.ball.owner].lastSeen : bal) : null;
+  // Chaque défenseur évalue sa propre arrivée à la trajectoire du porteur.
+  const fiche = b.opponents[s.ball.owner];
+  const porteur = s.ball.owner && s.ball.owner[0] !== s.team ? (fiche?.lastSeen || bal) : null;
   if (porteur && s.onside) {
     const dMoi = P.dist(me, porteur);
-    // Le plaqueur ET son assistant : je presse si, parmi les partenaires que je vois, un seul au plus est
-    // plus près du porteur que moi, et que le porteur est à moins de 10 m. Jamais une ruée.
+    const predit = jeuCourant && dMoi > 4.5 && fiche && visibleJouable(fiche);
+    const cible = predit ? intercepter(me, fiche, 3 + (me.vitesse ?? 65) * 0.05)
+      : { x: P.clamp(porteur.x - sens * Math.min(4, dMoi * 0.4), 0, 100), y: porteur.y };
     const plusPres = Object.values(b.teammates).filter((m) => P.dist(m.lastSeen, porteur) < dMoi).length;
     if (dMoi <= 12 && plusPres <= 1) out.push({ id: 'PRESS_CARRIER', priority: plusPres === 0 ? 74 : 68,
-      // Interception : on vise DEVANT le porteur (il court vers ma ligne), pas sa position actuelle.
-      target: { x: P.clamp(porteur.x - sens * Math.min(4, dMoi * 0.4), 0, 100), y: porteur.y }, vmax: 1, reason: plusPres === 0 ? 'plus proche défenseur observé du porteur' : 'second défenseur observé : assiste le plaqueur' });
+      target: cible, vmax: 1, reason: plusPres === 0 ? 'interception du porteur' : 'soutien au plaqueur' });
   }
   out.push({ id: 'RETURN_TO_PLAYBOOK', priority: 30, target: ref, vmax: 0.8, reason: 'poste nominal en défense' });
   return out;
 }
 
-function candidatsAttaque(b, s, pb, profile) {
+function candidatsAttaque(b, s, pb, profile, jeuCourant) {
   const me = b.self, bal = s.ball && s.ball.lastSeen, sens = s.sens, num = b.agent.numero;
   if (!bal) return [{ id: 'RETURN_TO_PLAYBOOK', priority: 30, target: { x: me.x, y: me.y }, vmax: 0.6, reason: 'ballon inconnu' }];
   const ref = P.referenceAttaque(num, sens, bal, pb);
@@ -103,23 +105,44 @@ function candidatsAttaque(b, s, pb, profile) {
   const proche = P.dist(me, bal);
   if (proche <= 25) out.push({ id: 'SUPPORT_CARRIER', priority: 44 * (0.4 + 0.6 * (profile.ruck ?? 0.5)) * Math.max(0.1, 1.1 - proche / 25) + 10,
     target: { x: P.clamp(bal.x - sens * 5, 0, 100), y: P.clamp(bal.y + cote * 5, 1, P.LARGEUR - 1) }, vmax: 1, reason: 'soutien côté le moins occupé (' + (cote > 0 ? '+y' : '-y') + ')' });
+  if (jeuCourant && !s.aLeBallon && s.phase === 'PORTE' && s.ball.owner && s.ball.age <= 0.45 && proche <= 16
+    && ((num >= 4 && num <= 8) || num === 10 || num === 12 || num === 13)) {
+    const adversaires = Object.values(b.opponents).filter(visibleJouable);
+    const coequipiers = Object.values(b.teammates).filter(visibleJouable);
+    const coteNominal = Math.sign(ref.y - bal.y) || (bal.y < 35 ? 1 : -1);
+    const decalage = P.clamp(Math.abs(ref.y - bal.y), 3.5, num <= 8 ? 9 : 17);
+    for (const dy of adversaires.length ? [-3.5, 0, 3.5] : []) {
+      const cible = { x: P.clamp(bal.x - sens * (num <= 8 ? 1.8 : 2.8), 0, 100),
+        y: P.clamp(bal.y + coteNominal * decalage + dy, 3, P.LARGEUR - 3) };
+      if (Math.abs(cible.y - bal.y) < 3) continue;
+      const air = espaceDevant(cible, sens, adversaires, 13, 0.55);
+      const voisin = coequipiers.some(m => P.dist(m.lastSeen, cible) < 3);
+      if (air < 4 || voisin) continue;
+      const soutien = { id: 'ATTACK_GAP', priority: 47 + air * 1.4 - Math.abs(dy),
+        target: cible, vmax: 1, reason: 'course à hauteur dans un intervalle observé' };
+      out.push(soutien);
+    }
+  }
   return out;
 }
 
 // Choisit son placement. `goalId` = but retenu par le sélecteur (il restreint les familles).
-function individualPlacement(beliefs, goalId, playbook, profile = {}) {
+function individualPlacement(beliefs, goalId, playbook, profile = {}, jeuCourant = false) {
   const pb = P.lirePlaybook(playbook);
   const s = deriveSituation(beliefs);
+  const couverture = jeuCourant && lireCouverture(beliefs, s);
   let cands;
-  if (goalId === 'COVER_BACKFIELD' || goalId === 'PREVENT_TRY') {
+  if (couverture) {
+    cands = [{ id: 'COVER_BREAK', priority: 85, target: couverture, vmax: 1, reason: 'dernier rideau : coupe la course vers l’en-but' }];
+  } else if (goalId === 'COVER_BACKFIELD' || goalId === 'PREVENT_TRY') {
     const bal = s.ball && s.ball.lastSeen;
     cands = [{ id: goalId === 'PREVENT_TRY' ? 'PREVENT_TRY' : 'COVER_BACKFIELD', priority: 60,
       target: bal ? (goalId === 'PREVENT_TRY' ? { x: P.clamp(bal.x - s.sens * 6, 0, 100), y: bal.y } : P.referenceFond(s.sens, bal, pb)) : { x: beliefs.self.x, y: beliefs.self.y },
       vmax: goalId === 'PREVENT_TRY' ? 1 : 0.75, reason: goalId === 'PREVENT_TRY' ? 'intercepte entre le porteur et la ligne' : 'profondeur conservée' }];
-  } else if (goalId === 'DEFEND') cands = candidatsDefense(beliefs, s, pb, profile);
+  } else if (goalId === 'DEFEND') cands = candidatsDefense(beliefs, s, pb, jeuCourant);
   else if (goalId === 'SUPPORT_CARRIER' || goalId === 'BE_PASS_OPTION' || goalId === 'RETURN_TO_PLAYBOOK' || goalId === 'GAIN_TERRITORY' || goalId === 'RETAIN_POSSESSION') {
-    cands = s.maPoss || s.aLeBallon ? candidatsAttaque(beliefs, s, pb, profile) : candidatsDefense(beliefs, s, pb, profile);
-    if (goalId === 'SUPPORT_CARRIER') cands = cands.filter((c) => c.id === 'SUPPORT_CARRIER' || c.id === 'RETURN_TO_PLAYBOOK');
+    cands = s.maPoss || s.aLeBallon ? candidatsAttaque(beliefs, s, pb, profile, jeuCourant) : candidatsDefense(beliefs, s, pb, jeuCourant);
+    if (goalId === 'SUPPORT_CARRIER') cands = cands.filter((c) => c.id === 'SUPPORT_CARRIER' || c.id === 'ATTACK_GAP' || c.id === 'RETURN_TO_PLAYBOOK');
     if (goalId === 'BE_PASS_OPTION') cands = cands.filter((c) => c.id !== 'SUPPORT_CARRIER');
     if (goalId === 'RETURN_TO_PLAYBOOK') cands = cands.filter((c) => c.id === 'RETURN_TO_PLAYBOOK');
   } else return null; // les autres buts (plan GOAP, mêlée, touche) conduisent le joueur autrement

@@ -141,4 +141,4 @@ function extractFacts(state, agent, options = {}) {
   });
 }
 
-module.exports = { extractFacts, pointRegroupement, FACTS };
+module.exports = { extractFacts, faitsAutoritatifs, faitsPersonnels, pointRegroupement, FACTS };
