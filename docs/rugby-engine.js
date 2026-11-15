@@ -1115,6 +1115,9 @@
       // En GOAP, le maul après une touche gagnée naît de la DEMANDE du sauteur qui capte (il a entendu l'appel
       // de son 9), plus d'un tirage du moteur. `config.touches === 'MOTEUR'` rétablit l'ancien tirage.
       this._toucheAgents = this.aiMode === 'GOAP' && config.touches !== 'MOTEUR';
+      // En GOAP, le capitaine choisit la suite d'une pénalité ; `config.penalites === 'MOTEUR'` rétablit l'ancien choix.
+      this._penaliteAgents = this.aiMode === 'GOAP' && config.penalites !== 'MOTEUR';
+      this.penaliteChoix = null;
       // === AGENT_INTENTS_END
       // Tactique PAR ÉQUIPE (Mode Club) : `config.attaqueA/attaqueB` et
       // `config.defenseA/defenseB`, fusionnés par-dessus this.cfg.attaque/
@@ -2086,6 +2089,17 @@
           this.log('CARTON_JAUNE', fautive, `Carton jaune pour l'equipe ${fautive} (n°${fautif.numero}) : faute deliberee sur sa ligne - a 14 pendant ${Math.round(fautif.sinBin)}s`);
         }
       }
+      // GOAP : le CAPITAINE de l'équipe bénéficiaire choisit lui-même (touche,
+      // poteaux, jeu rapide) pendant un court arrêt ; sinon, choix du moteur.
+      if (this._penaliteAgents) { this._attendreChoixPenalite(equipeBeneficiaire, position); return; }
+      this._choisirPenaliteMoteur(equipeBeneficiaire, position);
+    }
+
+    // Choix historique du moteur (LEGACY, ou GOAP quand le capitaine n'a pas
+    // décidé dans le délai) : consigne de club, score, distance et tirages.
+    _choisirPenaliteMoteur(equipeBeneficiaire, position) {
+      const sensAttaque = equipeBeneficiaire === 'A' ? 1 : -1;
+      const distanceButs = sensAttaque > 0 ? (LONGUEUR - position.x) : position.x;
       // Pénalité en touche : contrairement à une touche en jeu courant, c'est
       // ici l'équipe qui a botté qui conserve le lancer (loi 20). Utilisée pour
       // gagner du terrain quand le but est hors de portée, ou pour chercher un
@@ -2154,6 +2168,15 @@
       // ~5 tentatives réelles.
       const enZoneDeTir = distanceButs >= 5 && distanceButs <= 45;
       if (enZoneDeTir && (prendLesPoints || this.rng() < 0.85)) {
+        this._lancerTirPenalite(equipeBeneficiaire, position, distanceButs);
+        return;
+      }
+      this._jouerPenaliteRapide(equipeBeneficiaire, position);
+    }
+
+    // Tir au but sur pénalité (loi 20) : mise en place du buteur sur la marque.
+    _lancerTirPenalite(equipeBeneficiaire, position, distanceButs) {
+      {
         this.equipeAuTir = equipeBeneficiaire;
         // Le ballon est à l'équipe qui tire (loi 20), comme pour le jeu rapide
         // ci-dessous : la possession restait au camp fautif pendant tout le tir,
@@ -2175,8 +2198,10 @@
         this.timerPhase = 0;
         this.tirEnPlace = false;
         this.log('PENALITE', equipeBeneficiaire, `Penalite, equipe ${equipeBeneficiaire} tente un coup de pied au but`);
-        return;
       }
+    }
+
+    _jouerPenaliteRapide(equipeBeneficiaire, position) {
       // Jeu rapide (tap-and-go). Loi 20 : le ballon revient à l'équipe NON
       // fautive — avant ce correctif, la possession et le porteur restaient ceux
       // de l'équipe FAUTIVE (mesuré : bénéficiaire A → possession B), si bien que
@@ -2189,6 +2214,61 @@
       this.porteur = neuf || joueurLePlusProche(eqBen.filter(j => j.auSol === 0 && j.sinBin <= 0), position.x, position.y).joueur;
       this.log('PENALITE', equipeBeneficiaire, `Penalite, equipe ${equipeBeneficiaire} joue rapidement et avance`);
       this._lancerJeuRapidePenalite(equipeBeneficiaire, position);
+    }
+
+    // Choix de pénalité par le capitaine (GOAP) — arbitrage et mise en place
+    // relèvent du moteur ; l'agent ne fournit qu'une DEMANDE (intention).
+    // Le jeu s'arrête : le 9 rapporte le ballon à la marque, les fautifs
+    // reculent de 10 m. Le capitaine (brassard) DEMANDE touche, poteaux ou jeu
+    // rapide par son intention ; le moteur exécute avec ses lois. Sans demande
+    // dans le délai, le moteur choisit comme avant (PENALITE_CHOIX_DEFAUT).
+    _attendreChoixPenalite(equipe, position) {
+      this.passeVisuelle = null;
+      this._porteApresPied = false;
+      this._debutRemiseBallon();
+      this.possession = equipe;
+      const eq = equipe === 'A' ? this.equipeA : this.equipeB;
+      const neuf = eq.find(j => j.numero === 9 && j.auSol === 0 && j.sinBin <= 0);
+      this.porteur = neuf || joueurLePlusProche(eq.filter(j => j.auSol === 0 && j.sinBin <= 0), position.x, position.y).joueur;
+      if (this._remiseBallon) this._remiseBallon.marque = { x: position.x, y: position.y };
+      const cap = this._capitaine(equipe);
+      const sens = equipe === 'A' ? 1 : -1;
+      this.penaliteChoix = { equipe, x: position.x, y: position.y, sens, capitaine: cap ? cap.numero : null, t: 0,
+        delai: Math.max(2, 8 * this._echelleArret), ligne: Math.max(0, Math.min(LONGUEUR, position.x + sens * 10)),
+        eqDef: equipe === 'A' ? this.equipeB : this.equipeA };
+      this.phase = 'PORTE';
+      this.timerPhase = 0;
+      this.log('PENALITE_SIFFLEE', equipe, `Penalite pour l'equipe ${equipe} : le capitaine (n°${cap ? cap.numero : '?'}) choisit`,
+        { capitaine: cap ? cap.numero : null, x: position.x, y: position.y });
+    }
+
+    _tickPenaliteChoix(dt) {
+      const P = this.penaliteChoix;
+      P.t += dt;
+      if (this.porteur) avancer(this.porteur, P.x - this.porteur.x, P.y - this.porteur.y, dt, vitesseMs(this.porteur) * 0.6);
+      for (const j of P.eqDef) {
+        if (j.auSol > 0 || j.sinBin > 0) continue;
+        if ((j.x - P.ligne) * P.sens < -0.5) avancer(j, P.ligne - j.x, 0, dt, vitesseMs(j) * 0.7);
+      }
+      const it = P.capitaine != null ? this._intentionsAgents?.get(P.equipe + P.capitaine) : null;
+      const choix = it && it.penalite;
+      const position = { x: P.x, y: P.y };
+      const distanceButs = P.sens > 0 ? LONGUEUR - P.x : P.x;
+      const valide = choix === 'TOUCHE' || choix === 'RAPIDE' || (choix === 'POTEAUX' && distanceButs >= 5 && distanceButs <= 45);
+      if (valide && P.t >= 1) {
+        this.penaliteChoix = null;
+        this.log('PENALITE_CHOIX_CAPITAINE', P.equipe, `Le capitaine n°${P.capitaine} de l'equipe ${P.equipe} choisit : ${choix === 'TOUCHE' ? 'la touche' : choix === 'POTEAUX' ? 'les poteaux' : 'le jeu rapide'}`,
+          { capitaine: P.capitaine, choix, distanceButs: Math.round(distanceButs) });
+        if (choix === 'TOUCHE') this._accorderPenaliteTouche(P.equipe, position);
+        else if (choix === 'POTEAUX') this._lancerTirPenalite(P.equipe, position, distanceButs);
+        else this._jouerPenaliteRapide(P.equipe, position);
+        return;
+      }
+      if (P.t >= P.delai) {
+        this.penaliteChoix = null;
+        this.log('PENALITE_CHOIX_DEFAUT', P.equipe, `Pas de choix du capitaine : decision par defaut`, { capitaine: P.capitaine });
+        this._choisirPenaliteMoteur(P.equipe, position);
+      }
     }
 
     // Mise en place d'une pénalité/coup franc joué rapidement à la main (loi
@@ -2320,7 +2400,8 @@
       const buteurTouche = (equipe === 'A' ? this.equipeA : this.equipeB)
         .find(j => j.numero === this.buteurNumero[equipe] && j.sinBin <= 0);
       const jp = buteurTouche && typeof buteurTouche.jeuPied === 'number' ? buteurTouche.jeuPied : 60;
-      const portee = 22 + (jp - 60) * 0.35;
+      // GOAP : portée réelle d'une pénalité en touche (30-40 m) ; LEGACY garde sa calibration.
+      const portee = (this.aiMode === 'GOAP' ? 32 : 22) + (jp - 60) * 0.35;
       const gain = Math.max(8, portee * (0.75 + this.rng() * 0.5));
       const xTouche = Math.max(0, Math.min(LONGUEUR, position.x + sensAttaque * gain));
       const eqLanceur = equipe === 'A' ? this.equipeA : this.equipeB;
@@ -8256,7 +8337,8 @@
       else if (this.phase === 'PORTE') {
         // Mise en place d'un jeu rapide sur pénalité/coup franc (recul de 10 m
         // des fautifs, tapeur vers la marque) avant que le jeu courant reprenne.
-        if (this.penaliteRecul) this._tickJeuRapidePenalite(dt);
+        if (this.penaliteChoix) this._tickPenaliteChoix(dt);
+        else if (this.penaliteRecul) this._tickJeuRapidePenalite(dt);
         else this._tickPorte(dt);
       }
       else if (this.phase === 'COUP_ENVOI') this._tickCoupEnvoi(dt);
@@ -8637,14 +8719,15 @@
         cibleY: Number.isFinite(demande.cibleY) ? demande.cibleY : null,
       } : null;
       const touche = this.aiMode === 'GOAP' && intention.touche === 'MAUL' ? 'MAUL' : null;
-      if (!mouvement && !jeu && !touche) return false;
+      const penalite = this.aiMode === 'GOAP' && ['TOUCHE', 'POTEAUX', 'RAPIDE'].includes(intention.penalite) ? intention.penalite : null;
+      if (!mouvement && !jeu && !touche && !penalite) return false;
       const f = intention.vmaxFactor == null ? 1 : intention.vmaxFactor;
       if (!(f > 0 && f <= 1)) return false;
       if (!this._intentionsAgents) this._intentionsAgents = new Map();
       const TYPES_PIED = ['TOUCHE', 'DEGAGEMENT', 'OCCUPATION', 'CHANDELLE', 'CHIP'];
       const botte = TYPES_PIED.includes(intention.botte) ? intention.botte : null;
       const passe = Number.isInteger(intention.passe) && intention.passe >= 1 && intention.passe <= 15 ? intention.passe : null;
-      this._intentionsAgents.set(equipe + numero, { equipe, numero, tx: intention.tx, ty: intention.ty, vmaxFactor: f, passe, mouvement, jeuCourant: intention.jeuCourant === true, jeu, touche });
+      this._intentionsAgents.set(equipe + numero, { equipe, numero, tx: intention.tx, ty: intention.ty, vmaxFactor: f, passe, mouvement, jeuCourant: intention.jeuCourant === true, jeu, touche, penalite });
       return true;
     }
     clearAgentIntent(equipe, numero) {
@@ -8656,7 +8739,7 @@
         const it = this._intentionsAgents.get(cle);
         const j = (it.equipe === 'A' ? this.equipeA : this.equipeB).find((x) => x.numero === it.numero);
         if (!it.mouvement || !j || j.auSol > 0 || j.sinBin > 0) continue;
-        if (it.jeuCourant && (this.phase !== 'PORTE' || this.penaliteRecul || j.horsJeuKick > 0)) continue;
+        if (it.jeuCourant && (this.phase !== 'PORTE' || this.penaliteRecul || this.penaliteChoix || j.horsJeuKick > 0)) continue;
         out.push({ it, j, x: j.x, y: j.y, v: j.vitesseCourante, o: j.orientation, ab: j._aBouge });
       }
       return out;
@@ -8665,7 +8748,7 @@
       for (const p of pilotes) {
         const j = p.j;
         if (j.auSol > 0 || j.sinBin > 0) continue; // devenu inactif pendant le tick
-        if (p.it.jeuCourant && (this.phase !== 'PORTE' || this.penaliteRecul || j.horsJeuKick > 0)) continue;
+        if (p.it.jeuCourant && (this.phase !== 'PORTE' || this.penaliteRecul || this.penaliteChoix || j.horsJeuKick > 0)) continue;
         // Le joueur piloté n'obéit plus à la logique de phase pour son déplacement :
         // on rétablit son état d'avant le tick, puis il avance de SON intention.
         j.x = p.x; j.y = p.y; j.vitesseCourante = p.v; j.orientation = p.o; j._aBouge = p.ab;
@@ -8833,6 +8916,9 @@
           carrierTeam: carrier?.team ?? null, carrierNumber: carrier?.numero ?? null },
         tempsMatch: this.tempsMatch, phase: this.phase, possession: this.possession, score: this.score,
         melee: this.melee, maul: this.maul, ruck, statsJoueurs: this.statsJoueurs,
+        // Pénalité sifflée en attente du choix : signal public de l'arbitre (marque, bénéficiaire, capitaine).
+        penalite: this.penaliteChoix ? { equipe: this.penaliteChoix.equipe, x: this.penaliteChoix.x, y: this.penaliteChoix.y,
+          capitaine: this.penaliteChoix.capitaine, depuis: this.penaliteChoix.t } : null,
       };
     }
 

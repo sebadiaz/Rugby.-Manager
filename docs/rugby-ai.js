@@ -670,6 +670,7 @@ const { PAR_NOM } = require('./actions.js');
 const { individualPlacement } = require('./individual-placement.js');
 const { lirePorteur } = require('./open-play.js');
 const { LineoutMind } = require('./lineout-call.js');
+const { choixPenalite } = require('./penalty-choice.js');
 
 // Condition de succès (faits désirés) de chaque but planifiable. Les autres
 // buts (DEFEND, COVER_BACKFIELD...) n'ont pas encore d'actions A16+ : le but est
@@ -726,6 +727,7 @@ class GoalBasedRugbyAgent {
     this.maxExpanded = options.maxExpanded ?? 128;
     this.lastExpansions = 0;
     this.touche = new LineoutMind(this.agent); // dialogue de touche : question du 9, avis du 10, appel entendu
+    this.penalite = null; // { cle, choix } : MA décision de capitaine sur la pénalité en cours
   }
 
   _push(type, t, extra) { const e = Object.freeze(Object.assign({ type, agent: this.id, t }, extra || {})); this.events.push(e); return e; }
@@ -921,6 +923,17 @@ class GoalBasedRugbyAgent {
     }
     // Touche : un avant qui a entendu « Touche, maul ! » demandera le maul s'il capte (le moteur tranche).
     if (state.phase === 'TOUCHE' && this.touche.demandeMaul()) this._intent = Object.assign({}, this._intent, { touche: 'MAUL' });
+    // Pénalité sifflée pour mon équipe et je porte le brassard : je choisis (après un temps de lecture).
+    const pen = state.penalite;
+    if (pen && pen.equipe === this.agent.team && pen.capitaine === this.agent.numero && this._beliefs) {
+      const cle = pen.x.toFixed(1) + ':' + pen.y.toFixed(1);
+      if (!this.penalite || this.penalite.cle !== cle) {
+        const d = choixPenalite(this._beliefs, pen, this.playbook);
+        this.penalite = { cle, choix: d.choix };
+        this._push('PENALTY_CHOSEN', t, d);
+      }
+      this._intent = Object.assign({}, this._intent, { penalite: this.penalite.choix });
+    } else if (!pen) this.penalite = null;
     return this._intent;
   }
 
@@ -1509,6 +1522,14 @@ module.exports = { GOALS, GOAL_IDS, PROFILS_PAR_NUMERO, profilePour, deriveSitua
 const { AgentScheduler, creerAgents } = require('./agent-scheduler.js');
 const { LocalCommunication } = require('./local-communication.js');
 
+// Ce que l'équipe sait de son buteur : portée de tir et gain d'un coup de pied en touche (mêmes formules que le moteur).
+function porteesButeur(engine, team) {
+  const eq = team === 'A' ? engine?.equipeA : engine?.equipeB;
+  const b = eq && eq.find((j) => j.numero === engine?.buteurNumero?.[team]);
+  const jp = b && typeof b.jeuPied === 'number' ? b.jeuPied : 60;
+  return { porteeButeur: 40 + (jp - 60) * 0.25, gainTouche: 32 + (jp - 60) * 0.35 };
+}
+
 // Fabrique de pilote à passer dans config.agentDriver.
 function creerPiloteGOAP(options = {}) {
   return function fabrique(engine) {
@@ -1522,6 +1543,9 @@ function creerPiloteGOAP(options = {}) {
         tauxJeuAuPied: attaque.tauxJeuAuPied, piedOuvreur: attaque.piedOuvreur,
         // Consigne « maul en touche » du club (lecture seule) : le 9 la pèse dans SON choix d'appel.
         maulTouche: engine?.cfgTouche?.[team]?.tauxMaul?.proche,
+        // Consigne de pénalité du club et portée connue du buteur désigné (lecture seule).
+        choixPenalites: attaque.choixPenalites || null,
+        ...porteesButeur(engine, team),
       };
     }
     const agents = creerAgents(Object.assign({ placement: true, openPlay: true, playbooks }, options.agent));
@@ -2282,6 +2306,67 @@ function lirePorteur(b, s, profile, playbook) {
 }
 
 module.exports = { lirePorteur, intercepter, visibleJouable, espaceDevant, lireCouverture };
+
+  };
+  defs["penalty-choice.js"] = function (module, exports, require) {
+/*
+ * Rugby Manager — V4, choix de pénalité par le CAPITAINE (décision individuelle).
+ *
+ * L'arbitre a sifflé (signal public : marque, bénéficiaire, capitaine). Le
+ * capitaine compare lui-même trois options avec ce qu'il sait : distance et
+ * angle des poteaux, portée de son buteur, gain d'un coup de pied en touche,
+ * score, minute de jeu, consigne du club (lecture seule), défense perçue
+ * autour de la marque. Il DEMANDE son option ; le moteur l'exécute selon ses
+ * lois (portée, touche, recul des fautifs). Fonctions pures, aucun hasard.
+ * Les poids sont des hypothèses d'ingénierie à calibrer (G36/G41).
+ */
+'use strict';
+
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+// `pen` = { x, y } (marque) ; renvoie { choix, utilites, raison }.
+function choixPenalite(b, pen, playbook = {}) {
+  const team = b.agent.team;
+  const sens = b.self.sensAttaque || (team === 'A' ? 1 : -1);
+  const dl = sens > 0 ? 100 - pen.x : pen.x;                      // distance à la ligne adverse
+  const dTir = Math.hypot(dl, Math.abs(pen.y - 35) * 0.6);       // l'angle pèse moins que la distance
+  const portee = playbook.porteeButeur ?? 45;
+  const tirPossible = dl >= 5 && dl <= 45;
+  const pTir = !tirPossible || dTir > portee + 3 ? 0 : dTir <= 25 ? 0.9 : clamp(0.9 - 0.35 * (dTir - 25) / Math.max(5, portee - 25), 0.05, 0.9);
+
+  // Coup de pied en touche : point de lancer estimé avec la portée connue du buteur.
+  const gain = playbook.gainTouche ?? 32;
+  const lancer = Math.max(5, dl - gain);
+  const prefMaul = clamp((playbook.maulTouche ?? 0.45) / 0.45, 0.6, 1.5);
+  // Valeur espérée d'une touche : à 5 m, ~35 % d'essai (≈ 2,2 points) moins le risque de perdre le lancer ; décroît avec la distance.
+  const toucheValeur = lancer <= 7 ? 1.9 * prefMaul : lancer <= 15 ? 1.4 * prefMaul : lancer <= 22 ? 1.0 * prefMaul
+    : 0.5 + 0.025 * Math.min(gain, dl - 5);
+
+  // Jeu rapide : quand la défense perçue entre la marque et l'en-but, à moins de 15 m, est clairsemée
+  // (défenseurs encore au sol, partis au ruck ou en repli), tant que la ligne n'est pas trop loin.
+  const devant = Object.values(b.opponents).filter((o) => o.age <= 1.5 && (o.lastSeen.x - pen.x) * sens >= -2
+    && Math.hypot(o.lastSeen.x - pen.x, o.lastSeen.y - pen.y) <= 15).length;
+  const rapide = 0.6 + (devant <= 4 && dl <= 45 ? 1.6 : 0) - (dl > 60 ? 1 : 0);
+
+  const ecart = b.score ? (team === 'A' ? b.score.A - b.score.B : b.score.B - b.score.A) : 0;
+  const fin = b.t > 4800 * 0.75;
+  let poteaux = 3 * pTir, touche = toucheValeur;
+  if (fin && ecart < -3) { poteaux *= 0.35; touche += 0.5; }      // 3 points ne suffisent pas
+  if (fin && ecart >= 0) poteaux *= 1.4;                          // on prend les points qui sont là
+  // Fluctuation individuelle déterministe (±0,3) : deux capitaines ne lisent pas pareil.
+  const bruit = (((b.agent.numero * 53 + Math.round(pen.x * 7 + pen.y * 3)) % 13) - 6) * 0.05;
+  touche += bruit;
+
+  const utilites = { POTEAUX: +poteaux.toFixed(3), TOUCHE: +touche.toFixed(3), RAPIDE: +rapide.toFixed(3) };
+  const consigne = playbook.choixPenalites;
+  if (consigne === 'touche' && tirPossible) return { choix: 'TOUCHE', utilites, raison: 'CONSIGNE_CLUB' };
+  if (consigne === 'points' && tirPossible && pTir > 0) return { choix: 'POTEAUX', utilites, raison: 'CONSIGNE_CLUB' };
+  const ordre = ['POTEAUX', 'TOUCHE', 'RAPIDE'].filter((k) => k !== 'POTEAUX' || pTir > 0);
+  const choix = ordre.reduce((m, k) => (utilites[k] > utilites[m] ? k : m), ordre[0]);
+  return { choix, utilites, raison: 'UTILITE' };
+}
+
+module.exports = { choixPenalite };
 
   };
   defs["perception.js"] = function (module, exports, require) {
