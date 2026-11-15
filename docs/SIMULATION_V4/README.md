@@ -19,6 +19,10 @@
 - Acquis : mêlée à états, touche, maul, ruck, avantage, inertie de déplacement, interceptions, pénalités, statistiques, joueurs exclus, composition de match, 1-3-3-1 et 2-4-2 **partiels**, arbitre central et deux assistants visuels.
 - **À ne pas réécrire en C++** pour ce chantier. Les documents `docs/SPEC_MOTEUR_MATCH.md` / `docs/SPEC_JOUEUR.md` contiennent des références C++ historiques.
 
+## Caractéristiques individuelles : la base de la simulation (décision du 15 novembre 2026)
+
+**Fait autorité :** [`15_CARACTERISTIQUES_INDIVIDUELLES.md`](15_CARACTERISTIQUES_INDIVIDUELLES.md). Capacités physiques et techniques, connaissances tactiques individuelles, lecture du jeu et mental de chaque joueur sont primordiales ; tout le monde ne maîtrise pas la chistera, le drop ou la passe longue. Les statistiques découlent du niveau des joueurs : les repères d'élite ne valent que pour un match entre équipes d'élite. Le document liste les caractéristiques existantes (12) et à créer, les gestes maîtrisés, les constantes fixes à remplacer et la validation par tendances et matrice de niveaux.
+
 ## Décision d'architecture : **30 agents individuels, pas d'IA collective**
 
 **Fait autorité :** [`07_AGENT_INDIVIDUEL_PLACEMENT.md`](07_AGENT_INDIVIDUEL_PLACEMENT.md).
