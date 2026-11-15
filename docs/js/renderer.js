@@ -667,7 +667,9 @@
   }
 
   // --- OFFICIELS ---------------------------------------------------------------------
-  function etiquetteArbitre() { return rayonJoueur() >= 10; }
+  // L'étiquette « arbitre » n'est écrite que sur grand écran : sur téléphone elle chevauchait les
+  // joueurs du regroupement que l'arbitre suit de près (P2-75), quel que soit le zoom de la caméra.
+  function etiquetteArbitre() { return W >= 700 && rayonJoueur() >= 10; }
 
   function dessinerArbitre(state) {
     const arb = state.arbitre;
