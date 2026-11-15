@@ -1,0 +1,377 @@
+n,famille,cle,description,effet,postes,existe_moteur
+1,Physique — vitesse et mobilité,vitesseMax,vitesse de pointe,"percées, couverture, retours défensifs",tous,partiel : vitesse
+2,Physique — vitesse et mobilité,acceleration,départ arrêté sur 5–10 m,"prise d'intervalle, montée défensive, premier pas",tous,à créer
+3,Physique — vitesse et mobilité,vitesseAvecBallon,vitesse en portant le ballon,certains perdent beaucoup ballon en main,tous,à créer
+4,Physique — vitesse et mobilité,vitesseReaction,"temps de démarrage après un événement (passe, coup de sifflet, ballon libre)",—,tous,à créer
+5,Physique — vitesse et mobilité,agilite,"changements de direction, appuis","crochet, évitement, se replacer",tous,à créer
+6,Physique — vitesse et mobilité,equilibre,rester sur ses appuis au contact,"avancée après contact, rester debout au ruck",tous,à créer
+7,Physique — vitesse et mobilité,changementRythme,ralentir puis réaccélérer,"fixer puis passer, déborder",tous,à créer
+8,Physique — vitesse et mobilité,repetitionSprints,enchaîner les efforts courts,qualité en fin de séquence longue,tous,à créer
+9,Physique — vitesse et mobilité,enduranceAerobie,volume de course sur 80 min,fatigue,tous,partiel : endurance
+10,Physique — vitesse et mobilité,recuperation,récupération entre deux temps forts et après un plaquage,relève plus rapide,tous,à créer
+11,Physique — force et gabarit,taille,taille en cm,"collisions, saut et levée, prise des ballons hauts",tous,à créer
+12,Physique — force et gabarit,masse,masse en kg,"collisions, poussée, gain au contact",tous,à créer
+13,Physique — force et gabarit,envergure,envergure en cm,"grattage, ballons hauts, plaquage",tous,à créer
+14,Physique — force et gabarit,forceHaut,force du haut du corps,"arrachage, maintien du porteur debout, raffût",tous,à créer
+15,Physique — force et gabarit,forceBas,force des jambes,"poussée en mêlée, maul, déblayage",tous,à créer
+16,Physique — force et gabarit,puissance,force explosive,"percussion, plaquage dominant, déblayage (existe)",tous,oui
+17,Physique — force et gabarit,detente,saut vertical,"touche, ballons hauts, contestation aérienne",tous,à créer
+18,Physique — force et gabarit,souplesse,mobilité articulaire,"plaquages bas, ramassage, prévention des blessures",tous,à créer
+19,Physique — force et gabarit,resistanceChocs,encaisser les impacts,baisse de performance et blessures après collisions,tous,à créer
+20,Physique — force et gabarit,propensionBlessure,fragilité,risque de blessure (Mode Club),tous,à créer
+21,Physique — force et gabarit,age,âge,progression puis déclin (Mode Club),tous,à créer
+22,Physique — force et gabarit,declin,vitesse de déclin avec l'âge,baisse des qualités physiques en fin de carrière,tous,à créer
+23,Ballon en main — passes,passeCourte,"passe à 2–8 m (pop, passe au contact)",précision et vitesse d'exécution,tous,à créer
+24,Ballon en main — passes,passeLongue,passe vissée > 15 m,portée maximale et précision au large (tout le monde ne passe pas à 20 m),tous,à créer
+25,Ballon en main — passes,passeVissee,qualité de la rotation,"passe tendue, rapide, difficile à intercepter",tous,à créer
+26,Ballon en main — passes,passeFlottante,passe lobée,"par-dessus un défenseur, risque d'interception",tous,à créer
+27,Ballon en main — passes,passeSautee,sauter un ou deux partenaires,exige `passeLongue` et `vision`,tous,à créer
+28,Ballon en main — passes,passeSousPression,réussite avec un défenseur au contact,—,tous,à créer
+29,Ballon en main — passes,passeApresContact,offload pendant ou après le contact,"offloads, jeu après plaquage",tous,à créer
+30,Ballon en main — passes,passeUneMain,passe à une main (dont chistera),"rare, risquée",tous,à créer
+31,Ballon en main — passes,passeDuSol,passe depuis le sol (9 au ruck),rapidité et précision de la sortie de ruck,tous,à créer
+32,Ballon en main — passes,ejection,vitesse de sortie du ballon du ruck par le 9,"rythme de jeu, temps laissé à la défense",tous,à créer
+33,Ballon en main — passes,passeGauche,qualité de passe vers la gauche,côté faible fréquent,tous,à créer
+34,Ballon en main — passes,passeDroite,qualité de passe vers la droite,côté faible fréquent,tous,à créer
+35,Ballon en main — passes,timingPasse,lâcher le ballon au bon moment,"fixer le défenseur, receveur lancé",tous,à créer
+36,Ballon en main — passes,feintePasse,dummy,"fait mordre un défenseur, crée un intervalle",tous,à créer
+37,Ballon en main — passes,passeCroisee,exécuter une passe croisée,"croisées réussies, timing avec le partenaire",tous,à créer
+38,Ballon en main — passes,redoublement,exécuter un redoublement (boucle),boucles réussies,tous,à créer
+39,Ballon en main — réception et conservation,receptionPasse,mains sur passe,en-avants à la réception,tous,à créer
+40,Ballon en main — réception et conservation,receptionSousPression,recevoir avec un défenseur arrivant,—,tous,à créer
+41,Ballon en main — réception et conservation,receptionBallonHaut,"chandelles, coups d'envoi, ballons aériens",—,tous,à créer
+42,Ballon en main — réception et conservation,ramassage,ramasser un ballon au sol (en course ou arrêté),"ballons libres, en-avants au ramassage",tous,à créer
+43,Ballon en main — réception et conservation,plongeonBallon,plonger sur un ballon libre,"récupérations, turnovers",tous,à créer
+44,Ballon en main — réception et conservation,conservationContact,"tenir le ballon au contact, ne pas se le faire arracher",—,tous,à créer
+45,Ballon en main — réception et conservation,presentationBallon,placer le ballon au sol après plaquage,"rucks propres, ballon rapide",tous,à créer
+46,Ballon en main — réception et conservation,protectionAuSol,"se placer au sol pour protéger le ballon, rouler légalement",grattages subis,tous,à créer
+47,Ballon en main — réception et conservation,releveRapide,se relever et rejoindre le jeu après un plaquage,—,tous,à créer
+48,Ballon en main — réception et conservation,finition,"conclure près de la ligne, aplatir sous la pression, en coin",essais marqués/refusés,tous,à créer
+49,Ballon en main — réception et conservation,aplatissement,"aplatir proprement (bras tendu, plongeon)",en-avants dans l'en-but,tous,à créer
+50,Ballon en main — courses et duels,percussion,aller au contact en avançant,mètres après contact,tous,à créer
+51,Ballon en main — courses et duels,avanceeApresContact,continuer à pousser les jambes,gain derrière la ligne d'avantage,tous,à créer
+52,Ballon en main — courses et duels,evitement,esquiver un défenseur,—,tous,à créer
+53,Ballon en main — courses et duels,crochet,crochet intérieur/extérieur,—,tous,à créer
+54,Ballon en main — courses et duels,cadrageDebordement,fixer puis déborder sur l'extérieur,—,tous,à créer
+55,Ballon en main — courses et duels,raffut,repousser le plaqueur avec le bras,—,tous,à créer
+56,Ballon en main — courses et duels,angleCourse,choix de la ligne de course,"intervalles trouvés, fixation",tous,à créer
+57,Ballon en main — courses et duels,appelBalle,"se rendre disponible, demander le ballon au bon moment",—,tous,à créer
+58,Ballon en main — courses et duels,courseLeurre,course de leurre crédible,"fixe un défenseur (lecture, pas script)",tous,à créer
+59,Ballon en main — courses et duels,courseSoutien,suivre le porteur intérieur/extérieur,"offloads reçus, rucks gagnés",tous,à créer
+60,Ballon en main — courses et duels,porterCoteOppose,porter le ballon à l'opposé du plaqueur,—,tous,à créer
+61,Ballon en main — courses et duels,protegerDeuxMains,garder le ballon à deux mains pour menacer la passe,—,tous,à créer
+62,Jeu au pied (chaque type est un savoir-faire),puissancePied,force de frappe,distance maximale,tous,à créer
+63,Jeu au pied (chaque type est un savoir-faire),distancePied,portée utile en jeu courant,—,tous,partiel : jeuPied
+64,Jeu au pied (chaque type est un savoir-faire),precisionPied,atteindre la zone visée,"touche trouvée, passe au pied, chandelle bien placée",tous,à créer
+65,Jeu au pied (chaque type est un savoir-faire),effetBallon,"vissé, flottant, rebond travaillé","longueur, rebond vers la touche, difficulté de réception",tous,à créer
+66,Jeu au pied (chaque type est un savoir-faire),piedFaible,qualité du pied non dominant ; `piedFort` (gauche/droit),—,tous,à créer
+67,Jeu au pied (chaque type est un savoir-faire),degagement,dégagement en touche ou long,sortie de camp,tous,à créer
+68,Jeu au pied (chaque type est un savoir-faire),chandelle,up-and-under,"hauteur, temps de suspension, contestabilité",tous,à créer
+69,Jeu au pied (chaque type est un savoir-faire),boxKick,chandelle du 9 depuis la base,"hauteur, précision, protection",tous,à créer
+70,Jeu au pied (chaque type est un savoir-faire),grubber,coup de pied rasant,"rebond, ballon récupérable",tous,à créer
+71,Jeu au pied (chaque type est un savoir-faire),petitPiedPardessus,chip à suivre,—,tous,à créer
+72,Jeu au pied (chaque type est un savoir-faire),passeAuPied,cross-kick vers l'aile,—,tous,à créer
+73,Jeu au pied (chaque type est un savoir-faire),coupPied5022,coup de pied de 50/22,—,tous,à créer
+74,Jeu au pied (chaque type est un savoir-faire),penaliteEnTouche,distance et précision de la pénalité tapée en touche,—,tous,à créer
+75,Jeu au pied (chaque type est un savoir-faire),coupEnvoi,"coup d'envoi (direct, court, contestable) et renvoi aux 22 / en-but",—,tous,à créer
+76,Jeu au pied (chaque type est un savoir-faire),drop,drop en jeu courant (savoir-faire rare),—,tous,à créer
+77,Jeu au pied (chaque type est un savoir-faire),buteurDistance,portée au but,—,tous,partiel : adresse
+78,Jeu au pied (chaque type est un savoir-faire),buteurPrecision,précision au but selon l'angle,—,tous,partiel : adresse
+79,Jeu au pied (chaque type est un savoir-faire),buteurRegularite,"constance du geste, influence du vent et de la pression",—,tous,à créer
+80,Jeu au pied (chaque type est un savoir-faire),jeuPiedSousPression,frapper avec un défenseur qui arrive,"contrés, pieds ratés",tous,à créer
+81,Jeu au pied (chaque type est un savoir-faire),rapiditeFrappe,temps de mise en place,risque de contre,tous,à créer
+82,Défense individuelle,techniquePlaquage,technique générale,—,tous,partiel : plaquage
+83,Défense individuelle,plaquageBas,plaquer aux jambes,"plaquage sûr, ballon libéré au sol",tous,à créer
+84,Défense individuelle,plaquageHaut,plaquer à hauteur de ballon,empêcher l'offload,tous,à créer
+85,Défense individuelle,plaquageEtreinte,plaquer en tenant le porteur debout (choke tackle),"maul ou ballon injouable, turnover",tous,à créer
+86,Défense individuelle,plaquageOffensif,plaquage dominant qui fait reculer,"gain défensif, turnover",tous,à créer
+87,Défense individuelle,plaquageRattrapage,plaquer de côté ou par-derrière en course,—,tous,à créer
+88,Défense individuelle,plaquageADeux,premier ou second plaqueur coordonné,—,tous,à créer
+89,Défense individuelle,timingPlaquage,moment d'engagement,"plaquages manqués, pénalités de plaquage retardé",tous,à créer
+90,Défense individuelle,securitePlaquage,hauteur légale,cartons et pénalités pour plaquage haut,tous,à créer
+91,Défense individuelle,placementDefensif,tenir sa place dans la ligne,trous,tous,à créer
+92,Défense individuelle,monteeDefensive,vitesse et timing de la montée (rush),—,tous,à créer
+93,Défense individuelle,glissade,glisser au bon moment sur l'homme suivant,—,tous,à créer
+94,Défense individuelle,couvertureFond,placement et course du dernier rideau,—,tous,à créer
+95,Défense individuelle,interception,lire et couper une passe,—,tous,à créer
+96,Défense individuelle,contrePied,contrer un coup de pied,—,tous,à créer
+97,Défense individuelle,pressionBotteur,gêner le botteur ou le 9,—,tous,à créer
+98,Défense individuelle,communicationDefensive,"appels en défense (« monte », « glisse »)",—,tous,à créer
+99,Jeu au sol et zone de ruck,arriveeRuck,vitesse et angle d'arrivée,ruck gagné ou perdu,tous,à créer
+100,Jeu au sol et zone de ruck,deblayage,nettoyer un défenseur au ruck,—,tous,à créer
+101,Jeu au sol et zone de ruck,liaisonRuck,"se lier légalement, rester sur ses appuis",—,tous,à créer
+102,Jeu au sol et zone de ruck,grattage,"jackal, arracher le ballon au sol",turnovers,tous,à créer
+103,Jeu au sol et zone de ruck,contreRuck,repousser l'attaquant pour reprendre le ballon,—,tous,à créer
+104,Jeu au sol et zone de ruck,decisionRuck,choisir d'entrer au ruck ou de rester en ligne,—,tous,à créer
+105,Jeu au sol et zone de ruck,ralentissementRuck,"ralentir le ballon adverse (à la limite des lois, cf. section « Vice, triche »)",—,tous,à créer
+106,Mêlée (par poste),liaisonMelee,"prise de liaison, stabilité",—,"avants (1–8), 9",à créer
+107,Mêlée (par poste),entreeMelee,engagement au signal,—,"avants (1–8), 9",à créer
+108,Mêlée (par poste),pousseeMelee,poussée,—,"avants (1–8), 9",partiel : melee
+109,Mêlée (par poste),stabiliteMelee,"tenir sous pression, ne pas reculer",—,"avants (1–8), 9",à créer
+110,Mêlée (par poste),pilierGauche,technique spécifique du pilier gauche,tenue de mêlée côté gauche,"avants (1–8), 9",à créer
+111,Mêlée (par poste),pilierDroit,technique spécifique du pilier droit,porter la mêlée côté droit,"avants (1–8), 9",à créer
+112,Mêlée (par poste),talonnage,talonner le ballon introduit,mêlées gagnées sur introduction,"avants (1–8), 9",à créer
+113,Mêlée (par poste),introduction,introduction du 9,"légalité, vitesse","avants (1–8), 9",à créer
+114,Mêlée (par poste),controleBallonMelee,garder le ballon aux pieds du 8,—,"avants (1–8), 9",à créer
+115,Mêlée (par poste),ramassage8,prise de balle du 8 au pied de la mêlée,—,"avants (1–8), 9",à créer
+116,Mêlée (par poste),resistanceRotation,ne pas faire tourner la mêlée,—,"avants (1–8), 9",à créer
+117,Mêlée (par poste),lectureArbitreMelee,comprendre ce que l'arbitre veut voir,—,"avants (1–8), 9",à créer
+118,Touche et maul,precisionLancer,lancer droit et sur le sauteur,—,"avants, talonneur",à créer
+119,Touche et maul,puissanceLancer,portée du lancer (fond d'alignement),—,"avants, talonneur",à créer
+120,Touche et maul,trajectoireLancer,hauteur et longueur choisies,plus haut = plus sûr mais plus lent,"avants, talonneur",à créer
+121,Touche et maul,rapiditeLancer,"lancer vite, touche rapide",—,"avants, talonneur",à créer
+122,Touche et maul,detenteTouche,hauteur de saut ; `timingSaut` — synchronisation avec le lancer,—,"avants, talonneur",à créer
+123,Touche et maul,levee,lever le sauteur ; `timingLevee`,—,"avants, talonneur",à créer
+124,Touche et maul,receptionTouche,"capter en l'air, protéger, transmettre",—,"avants, talonneur",à créer
+125,Touche et maul,contreTouche,"contre-saut, lecture des annonces adverses",—,"avants, talonneur",à créer
+126,Touche et maul,codesTouche,connaissance des annonces de l'équipe,—,"avants, talonneur",à créer
+127,Touche et maul,formationMaul,former le maul autour du sauteur,—,"avants, talonneur",à créer
+128,Touche et maul,pousseeMaul,pousser au maul,—,"avants, talonneur",partiel : puissance
+129,Touche et maul,transmissionMaul,faire glisser le ballon vers l'arrière du maul,—,"avants, talonneur",à créer
+130,Touche et maul,defenseMaul,"stopper un maul, saquer le sauteur légalement",—,"avants, talonneur",à créer
+131,Aptitude par poste et par côté (matrice),aptPilierGauche,aptitude au poste 1,"côté « ouvert », mêlée sur un seul adversaire",—,à créer
+132,Aptitude par poste et par côté (matrice),aptPilierDroit,aptitude au poste 3,"porte la mêlée, deux adversaires ; très peu de piliers jouent les deux côtés",—,à créer
+133,Aptitude par poste et par côté (matrice),aptTalonneur,aptitude au poste 2,lancer et talonnage indispensables,—,à créer
+134,Aptitude par poste et par côté (matrice),aptDeuxiemeLigneAvant,aptitude au poste 4,"« sauteur de devant », poussée côté gauche",—,à créer
+135,Aptitude par poste et par côté (matrice),aptDeuxiemeLigneArriere,aptitude au poste 5,"sauteur principal, poussée côté droit",—,à créer
+136,Aptitude par poste et par côté (matrice),aptTroisiemeLigneAile6,aptitude au poste 6,"côté fermé, plaqueur, sauteur",—,à créer
+137,Aptitude par poste et par côté (matrice),aptTroisiemeLigneAile7,aptitude au poste 7,"côté ouvert, gratteur, premier au ruck",—,à créer
+138,Aptitude par poste et par côté (matrice),aptNumero8,aptitude au poste 8,"fond de mêlée, prise de balle, départ",—,à créer
+139,Aptitude par poste et par côté (matrice),aptDemiMelee,aptitude au poste 9,performance et placement à ce poste,—,à créer
+140,Aptitude par poste et par côté (matrice),aptDemiOuverture,aptitude au poste 10,performance et placement à ce poste,—,à créer
+141,Aptitude par poste et par côté (matrice),aptPremierCentre,aptitude au poste 12,"deuxième meneur, percussion, pied",—,à créer
+142,Aptitude par poste et par côté (matrice),aptSecondCentre,aptitude au poste 13,"défense dans le grand couloir, vitesse",—,à créer
+143,Aptitude par poste et par côté (matrice),aptAilierGauche,aptitude au poste 11,pied et main côté gauche,—,à créer
+144,Aptitude par poste et par côté (matrice),aptAilierDroit,aptitude au poste 14,performance et placement à ce poste,—,à créer
+145,Aptitude par poste et par côté (matrice),aptArriere,aptitude au poste 15,performance et placement à ce poste,—,à créer
+146,Aptitude par poste et par côté (matrice),aptJokerBanc,aptitude au poste remplaçant,impact en fin de match (`impactEntree`),—,à créer
+147,Caractéristiques SPÉCIFIQUES de chaque poste,pg_liaisonTalonneur,qualité de la liaison avec son talonneur,—,Pilier gauche (1),à créer
+148,Caractéristiques SPÉCIFIQUES de chaque poste,pg_tenueVisAVis,tenir le pilier droit adverse (un seul adversaire) sans reculer,—,Pilier gauche (1),à créer
+149,Caractéristiques SPÉCIFIQUES de chaque poste,pg_angleEntree,"entrée droite et légale, ne pas « rentrer » sous l'adversaire",—,Pilier gauche (1),à créer
+150,Caractéristiques SPÉCIFIQUES de chaque poste,pg_pressionAutorisee,mettre la pression sur le pilier droit sans écrouler,—,Pilier gauche (1),à créer
+151,Caractéristiques SPÉCIFIQUES de chaque poste,pg_resistanceAuxDeuxContre,résister quand l'adversaire pousse de travers sur lui,—,Pilier gauche (1),à créer
+152,Caractéristiques SPÉCIFIQUES de chaque poste,pg_stabiliteSurIntroduction,rester stable au moment de l'introduction (le talonneur lève le pied),—,Pilier gauche (1),à créer
+153,Caractéristiques SPÉCIFIQUES de chaque poste,pg_leveeAvant,lever le sauteur de devant en touche,—,Pilier gauche (1),à créer
+154,Caractéristiques SPÉCIFIQUES de chaque poste,pg_porteurAuPres,"porter le ballon près du ruck, en pod",—,Pilier gauche (1),à créer
+155,Caractéristiques SPÉCIFIQUES de chaque poste,pg_deblayageCourt,nettoyer le ruck tout proche,—,Pilier gauche (1),à créer
+156,Caractéristiques SPÉCIFIQUES de chaque poste,pg_plaquageRepetition,plaquer encore à la 70e minute,—,Pilier gauche (1),à créer
+157,Caractéristiques SPÉCIFIQUES de chaque poste,pg_passeAvant,la passe courte d'un avant dans un pod (souvent faible),—,Pilier gauche (1),à créer
+158,Caractéristiques SPÉCIFIQUES de chaque poste,pg_lectureArbitreMelee,sentir ce que l'arbitre sanctionne en mêlée,—,Pilier gauche (1),à créer
+159,Caractéristiques SPÉCIFIQUES de chaque poste,ta_talonnage,talonner vite et proprement le ballon introduit,—,Talonneur (2),à créer
+160,Caractéristiques SPÉCIFIQUES de chaque poste,ta_talonnageContre,talonner sur introduction adverse (rare mais décisif),—,Talonneur (2),à créer
+161,Caractéristiques SPÉCIFIQUES de chaque poste,ta_liaisonPiliers,tenir ses deux piliers liés,—,Talonneur (2),à créer
+162,Caractéristiques SPÉCIFIQUES de chaque poste,ta_precisionLancer,"lancer droit, sur la main du sauteur",—,Talonneur (2),à créer
+163,Caractéristiques SPÉCIFIQUES de chaque poste,ta_puissanceLancer,atteindre le fond d'alignement,—,Talonneur (2),à créer
+164,Caractéristiques SPÉCIFIQUES de chaque poste,ta_trajectoireLancer,"hauteur/longueur adaptées à l'annonce (lob, lancer tendu)",—,Talonneur (2),à créer
+165,Caractéristiques SPÉCIFIQUES de chaque poste,ta_rapiditeLancer,lancer avant que la défense ne s'organise,—,Talonneur (2),à créer
+166,Caractéristiques SPÉCIFIQUES de chaque poste,ta_lancerSousPression,lancer droit dans un moment décisif (touche à 5 m),—,Talonneur (2),à créer
+167,Caractéristiques SPÉCIFIQUES de chaque poste,ta_lancerVent,corriger le vent et la pluie,—,Talonneur (2),à créer
+168,Caractéristiques SPÉCIFIQUES de chaque poste,ta_appelTouche,choisir ou relayer l'annonce,—,Talonneur (2),à créer
+169,Caractéristiques SPÉCIFIQUES de chaque poste,ta_queueMaul,prendre la queue du maul après son lancer et marquer,—,Talonneur (2),à créer
+170,Caractéristiques SPÉCIFIQUES de chaque poste,ta_gratteur,jackal au sol (souvent un point fort du talonneur moderne),—,Talonneur (2),à créer
+171,Caractéristiques SPÉCIFIQUES de chaque poste,ta_vitesseAvant,mobilité supérieure aux piliers,—,Talonneur (2),à créer
+172,Caractéristiques SPÉCIFIQUES de chaque poste,ta_jeuDansLeCouloir,porteur et passeur dans le premier couloir,—,Talonneur (2),à créer
+173,Caractéristiques SPÉCIFIQUES de chaque poste,pd_tenueDeuxAdversaires,tenir le pilier gauche et le talonneur adverses,—,Pilier droit (3),à créer
+174,Caractéristiques SPÉCIFIQUES de chaque poste,pd_porterLaMelee,supporter le poids du paquet côté droit,—,Pilier droit (3),à créer
+175,Caractéristiques SPÉCIFIQUES de chaque poste,pd_angleEntree,"entrée légale, ne pas tourner",—,Pilier droit (3),à créer
+176,Caractéristiques SPÉCIFIQUES de chaque poste,pd_stabiliteSousPression,"ne pas s'effondrer, ne pas se relever",—,Pilier droit (3),à créer
+177,Caractéristiques SPÉCIFIQUES de chaque poste,pd_poussee,faire reculer la mêlée adverse,—,Pilier droit (3),à créer
+178,Caractéristiques SPÉCIFIQUES de chaque poste,pd_pressionSurTalonneur,gêner le talonnage adverse,—,Pilier droit (3),à créer
+179,Caractéristiques SPÉCIFIQUES de chaque poste,pd_resistanceFatigue,tenir la mêlée en fin de match,—,Pilier droit (3),à créer
+180,Caractéristiques SPÉCIFIQUES de chaque poste,pd_leveeArriere,lever le sauteur de milieu ou de fond,—,Pilier droit (3),à créer
+181,Caractéristiques SPÉCIFIQUES de chaque poste,pd_porteurAuPres,"porter le ballon au près, en pod",mètres au contact près du ruck,Pilier droit (3),à créer
+182,Caractéristiques SPÉCIFIQUES de chaque poste,pd_plaquageRepetition,plaquer encore en fin de match,plaquages tardifs réussis,Pilier droit (3),à créer
+183,Caractéristiques SPÉCIFIQUES de chaque poste,dl_5_annonceTouche,sauteur principal qui « appelle » la touche (n°5),—,"Deuxièmes lignes (4, 5)",à créer
+184,Caractéristiques SPÉCIFIQUES de chaque poste,dl_detente,hauteur de saut,—,"Deuxièmes lignes (4, 5)",à créer
+185,Caractéristiques SPÉCIFIQUES de chaque poste,dl_timingSaut,synchronisation avec le lancer,—,"Deuxièmes lignes (4, 5)",à créer
+186,Caractéristiques SPÉCIFIQUES de chaque poste,dl_receptionHaute,capter à bout de bras,—,"Deuxièmes lignes (4, 5)",à créer
+187,Caractéristiques SPÉCIFIQUES de chaque poste,dl_feinteSaut,leurrer le contre-sauteur,—,"Deuxièmes lignes (4, 5)",à créer
+188,Caractéristiques SPÉCIFIQUES de chaque poste,dl_contreSaut,contester le lancer adverse,—,"Deuxièmes lignes (4, 5)",à créer
+189,Caractéristiques SPÉCIFIQUES de chaque poste,dl_lectureAlignement,deviner la cible adverse,—,"Deuxièmes lignes (4, 5)",à créer
+190,Caractéristiques SPÉCIFIQUES de chaque poste,dl_levee,lever un partenaire,—,"Deuxièmes lignes (4, 5)",à créer
+191,Caractéristiques SPÉCIFIQUES de chaque poste,dl_pousseeMelee,poussée en deuxième ligne (moteur de la mêlée),—,"Deuxièmes lignes (4, 5)",à créer
+192,Caractéristiques SPÉCIFIQUES de chaque poste,dl_liaisonPiliers,liaison sur les piliers,—,"Deuxièmes lignes (4, 5)",à créer
+193,Caractéristiques SPÉCIFIQUES de chaque poste,dl_receptionCoupEnvoi,prendre les coups d'envoi,—,"Deuxièmes lignes (4, 5)",à créer
+194,Caractéristiques SPÉCIFIQUES de chaque poste,dl_maulAvant,porter et diriger le maul,—,"Deuxièmes lignes (4, 5)",à créer
+195,Caractéristiques SPÉCIFIQUES de chaque poste,dl_deblayage,déblayer en masse,—,"Deuxièmes lignes (4, 5)",à créer
+196,Caractéristiques SPÉCIFIQUES de chaque poste,dl_plaquageRepetition,enchaîner les plaquages,—,"Deuxièmes lignes (4, 5)",à créer
+197,Caractéristiques SPÉCIFIQUES de chaque poste,dl_leadershipAvants,organiser le pack (souvent capitaine),—,"Deuxièmes lignes (4, 5)",à créer
+198,Caractéristiques SPÉCIFIQUES de chaque poste,tl_7_coteOuvert,défense rapide côté ouvert (n°7),—,"Troisièmes lignes ailes (6, 7)",à créer
+199,Caractéristiques SPÉCIFIQUES de chaque poste,tl_6_coteFerme,défense et jeu du côté fermé (n°6),—,"Troisièmes lignes ailes (6, 7)",à créer
+200,Caractéristiques SPÉCIFIQUES de chaque poste,tl_vitesseVersRuck,premier arrivé au plaquage,—,"Troisièmes lignes ailes (6, 7)",à créer
+201,Caractéristiques SPÉCIFIQUES de chaque poste,tl_grattage,"jackal légal, mains sur le ballon avant le ruck",—,"Troisièmes lignes ailes (6, 7)",à créer
+202,Caractéristiques SPÉCIFIQUES de chaque poste,tl_ralentissement,"ralentir la sortie adverse (à la limite, cf. section « Vice, triche »)",—,"Troisièmes lignes ailes (6, 7)",à créer
+203,Caractéristiques SPÉCIFIQUES de chaque poste,tl_plaquageVolume,nombre de plaquages possibles par match,—,"Troisièmes lignes ailes (6, 7)",à créer
+204,Caractéristiques SPÉCIFIQUES de chaque poste,tl_plaquageOffensif,plaquage dominant,—,"Troisièmes lignes ailes (6, 7)",à créer
+205,Caractéristiques SPÉCIFIQUES de chaque poste,tl_couvertureDefensive,couvrir derrière la ligne,—,"Troisièmes lignes ailes (6, 7)",à créer
+206,Caractéristiques SPÉCIFIQUES de chaque poste,tl_soutienPorteur,"suivre la percée, recevoir l'offload",—,"Troisièmes lignes ailes (6, 7)",à créer
+207,Caractéristiques SPÉCIFIQUES de chaque poste,tl_sautFond,sauteur de fond d'alignement (6),—,"Troisièmes lignes ailes (6, 7)",à créer
+208,Caractéristiques SPÉCIFIQUES de chaque poste,tl_ralentirLe9,gêner le 9 adverse à la sortie de mêlée/ruck,—,"Troisièmes lignes ailes (6, 7)",à créer
+209,Caractéristiques SPÉCIFIQUES de chaque poste,tl_porteurDansLesLignes,courir dans l'intervalle entre les avants adverses,—,"Troisièmes lignes ailes (6, 7)",à créer
+210,Caractéristiques SPÉCIFIQUES de chaque poste,tl_maulDefense,contrer le maul,—,"Troisièmes lignes ailes (6, 7)",à créer
+211,Caractéristiques SPÉCIFIQUES de chaque poste,n8_controleBallonPied,garder le ballon dans les pieds en mêlée qui avance,—,Numéro 8,à créer
+212,Caractéristiques SPÉCIFIQUES de chaque poste,n8_ramassagePiedMelee,ramasser vite et proprement au fond de la mêlée,—,Numéro 8,à créer
+213,Caractéristiques SPÉCIFIQUES de chaque poste,n8_departHuit,partir avec le ballon (et prévenir le 9 : `SCRUM_8_GOING`),—,Numéro 8,à créer
+214,Caractéristiques SPÉCIFIQUES de chaque poste,n8_passeAu9,sortir le ballon au 9 depuis le pied de mêlée,—,Numéro 8,à créer
+215,Caractéristiques SPÉCIFIQUES de chaque poste,n8_percussionCourte,gagner la ligne d'avantage au près,—,Numéro 8,à créer
+216,Caractéristiques SPÉCIFIQUES de chaque poste,n8_lectureMelee,sentir si la mêlée avance ou recule pour choisir,—,Numéro 8,à créer
+217,Caractéristiques SPÉCIFIQUES de chaque poste,n8_sautFond,sauteur de fond d'alignement,touches gagnées au fond,Numéro 8,à créer
+218,Caractéristiques SPÉCIFIQUES de chaque poste,n8_couvertureFond,couvrir derrière la mêlée et la ligne,ballons au pied récupérés,Numéro 8,à créer
+219,Caractéristiques SPÉCIFIQUES de chaque poste,n8_soutien,soutenir le porteur après une percée,"offloads reçus, rucks gagnés",Numéro 8,à créer
+220,Caractéristiques SPÉCIFIQUES de chaque poste,n8_communicationAvec9,"dialogue 8 ↔ 9 (annonce de départ, ballon gardé)",—,Numéro 8,à créer
+221,Caractéristiques SPÉCIFIQUES de chaque poste,dm_ramassage,"ramasser le ballon au sol, quelle que soit sa position, en un geste",—,Demi de mêlée (9) — le roi du ramassage et de la passe rapide sous pression,à créer
+222,Caractéristiques SPÉCIFIQUES de chaque poste,dm_ramassageSousPression,"ramasser avec un adversaire qui arrive dessus (3e ligne qui ralentit, gratteur)",—,Demi de mêlée (9) — le roi du ramassage et de la passe rapide sous pression,à créer
+223,Caractéristiques SPÉCIFIQUES de chaque poste,dm_passeDuSol,"passer sans se relever, ballon tendu",—,Demi de mêlée (9) — le roi du ramassage et de la passe rapide sous pression,à créer
+224,Caractéristiques SPÉCIFIQUES de chaque poste,dm_ejection,"vitesse entre la prise et le lâcher (moins de 0,5 s pour un très bon 9)",—,Demi de mêlée (9) — le roi du ramassage et de la passe rapide sous pression,à créer
+225,Caractéristiques SPÉCIFIQUES de chaque poste,dm_precisionPasse,"ballon dans la course du receveur, à la bonne hauteur",—,Demi de mêlée (9) — le roi du ramassage et de la passe rapide sous pression,à créer
+226,Caractéristiques SPÉCIFIQUES de chaque poste,dm_passeLongueSol,portée de la passe du sol (sauter un joueur depuis le ruck),—,Demi de mêlée (9) — le roi du ramassage et de la passe rapide sous pression,à créer
+227,Caractéristiques SPÉCIFIQUES de chaque poste,dm_passeDeuxCotes,aussi bonne à gauche qu'à droite,—,Demi de mêlée (9) — le roi du ramassage et de la passe rapide sous pression,à créer
+228,Caractéristiques SPÉCIFIQUES de chaque poste,dm_passeSousPression,"réussir avec un adversaire collé, ballon sale, ballon qui roule",—,Demi de mêlée (9) — le roi du ramassage et de la passe rapide sous pression,à créer
+229,Caractéristiques SPÉCIFIQUES de chaque poste,dm_ballonSale,"jouer un ballon mal présenté, au fond d'un ruck lent",—,Demi de mêlée (9) — le roi du ramassage et de la passe rapide sous pression,à créer
+230,Caractéristiques SPÉCIFIQUES de chaque poste,dm_lectureRuck,"savoir quand le ballon est jouable, ne pas se faire contrer",—,Demi de mêlée (9) — le roi du ramassage et de la passe rapide sous pression,à créer
+231,Caractéristiques SPÉCIFIQUES de chaque poste,dm_lecturePetitCote,voir le petit côté exploitable,—,Demi de mêlée (9) — le roi du ramassage et de la passe rapide sous pression,à créer
+232,Caractéristiques SPÉCIFIQUES de chaque poste,dm_sniping,partir au ras du ruck,—,Demi de mêlée (9) — le roi du ramassage et de la passe rapide sous pression,à créer
+233,Caractéristiques SPÉCIFIQUES de chaque poste,dm_boxKick,"chandelle depuis la base, hauteur et précision",—,Demi de mêlée (9) — le roi du ramassage et de la passe rapide sous pression,à créer
+234,Caractéristiques SPÉCIFIQUES de chaque poste,dm_boxKickSousPression,box-kick avec la défense qui monte,—,Demi de mêlée (9) — le roi du ramassage et de la passe rapide sous pression,à créer
+235,Caractéristiques SPÉCIFIQUES de chaque poste,dm_introductionMelee,introduction légale et rapide,—,Demi de mêlée (9) — le roi du ramassage et de la passe rapide sous pression,à créer
+236,Caractéristiques SPÉCIFIQUES de chaque poste,dm_jeuApresMelee,"sortir de mêlée (lecture, passe, départ)",—,Demi de mêlée (9) — le roi du ramassage et de la passe rapide sous pression,à créer
+237,Caractéristiques SPÉCIFIQUES de chaque poste,dm_relaisTouche,recevoir du sauteur et distribuer,—,Demi de mêlée (9) — le roi du ramassage et de la passe rapide sous pression,à créer
+238,Caractéristiques SPÉCIFIQUES de chaque poste,dm_commandementAvants,"diriger les avants à la voix (pods, ruck)",—,Demi de mêlée (9) — le roi du ramassage et de la passe rapide sous pression,à créer
+239,Caractéristiques SPÉCIFIQUES de chaque poste,dm_dialogue10,complicité et dialogue avec le 10 (questions de touche et de mêlée),—,Demi de mêlée (9) — le roi du ramassage et de la passe rapide sous pression,à créer
+240,Caractéristiques SPÉCIFIQUES de chaque poste,dm_rythme,accélérer ou ralentir le jeu selon la situation,—,Demi de mêlée (9) — le roi du ramassage et de la passe rapide sous pression,à créer
+241,Caractéristiques SPÉCIFIQUES de chaque poste,dm_couvertureRuck,"défendre au bord du ruck, plaquer le pick-and-go",—,Demi de mêlée (9) — le roi du ramassage et de la passe rapide sous pression,à créer
+242,Caractéristiques SPÉCIFIQUES de chaque poste,dm_couvertureFond,couvrir le pied adverse derrière la ligne,—,Demi de mêlée (9) — le roi du ramassage et de la passe rapide sous pression,à créer
+243,Caractéristiques SPÉCIFIQUES de chaque poste,dm_gestionArbitre,"parler à l'arbitre, savoir quand le ballon « est utilisé »",—,Demi de mêlée (9) — le roi du ramassage et de la passe rapide sous pression,à créer
+244,Caractéristiques SPÉCIFIQUES de chaque poste,dm_pressionOral,résister à la pression verbale et physique,—,Demi de mêlée (9) — le roi du ramassage et de la passe rapide sous pression,à créer
+245,Caractéristiques SPÉCIFIQUES de chaque poste,do_passeLongue,passe longue du 10,jeu au large rapide,Demi d'ouverture (10),à créer
+246,Caractéristiques SPÉCIFIQUES de chaque poste,do_passeAPlat,passe à plat sur la ligne d'avantage,"receveur lancé, défense fixée",Demi d'ouverture (10),à créer
+247,Caractéristiques SPÉCIFIQUES de chaque poste,do_passeSautee,passe sautée du 10,surnombre exploité,Demi d'ouverture (10),à créer
+248,Caractéristiques SPÉCIFIQUES de chaque poste,do_timingFixation,attaquer la ligne et passer au dernier moment,—,Demi d'ouverture (10),à créer
+249,Caractéristiques SPÉCIFIQUES de chaque poste,do_lectureDefense,"défense qui monte, qui glisse, surnombre, trou",—,Demi d'ouverture (10),à créer
+250,Caractéristiques SPÉCIFIQUES de chaque poste,do_choixJeu,"main, pied, au près, au large selon la lecture",—,Demi d'ouverture (10),à créer
+251,Caractéristiques SPÉCIFIQUES de chaque poste,do_jeuPiedTactique,"occupation, touche, chandelle, passe au pied, grubber",—,Demi d'ouverture (10),à créer
+252,Caractéristiques SPÉCIFIQUES de chaque poste,do_buteur,précision et distance au but,—,Demi d'ouverture (10),à créer
+253,Caractéristiques SPÉCIFIQUES de chaque poste,do_drop,drop en jeu,—,Demi d'ouverture (10),à créer
+254,Caractéristiques SPÉCIFIQUES de chaque poste,do_commandementLigne,placer la ligne d'attaque à la voix,—,Demi d'ouverture (10),à créer
+255,Caractéristiques SPÉCIFIQUES de chaque poste,do_combinaisons,"exécuter les combinaisons du plan (croisée, boucle, intercalé)",—,Demi d'ouverture (10),à créer
+256,Caractéristiques SPÉCIFIQUES de chaque poste,do_jeuSousPression,décisions avec la troisième ligne adverse dessus,—,Demi d'ouverture (10),à créer
+257,Caractéristiques SPÉCIFIQUES de chaque poste,do_defenseCanal,défendre son couloir (souvent un point faible),—,Demi d'ouverture (10),à créer
+258,Caractéristiques SPÉCIFIQUES de chaque poste,do_gestionMatch,"gérer le score, le territoire, la fin de match",—,Demi d'ouverture (10),à créer
+259,Caractéristiques SPÉCIFIQUES de chaque poste,do_dialogue9,complicité avec le 9,—,Demi d'ouverture (10),à créer
+260,Caractéristiques SPÉCIFIQUES de chaque poste,do_communication,se faire entendre de toute la ligne,—,Demi d'ouverture (10),à créer
+261,Caractéristiques SPÉCIFIQUES de chaque poste,c12_percussion,"fixer en percussion, gagner la ligne d'avantage",—,Premier centre (12),à créer
+262,Caractéristiques SPÉCIFIQUES de chaque poste,c12_passeSousPression,passer au contact,—,Premier centre (12),à créer
+263,Caractéristiques SPÉCIFIQUES de chaque poste,c12_offload,offload dans le contact,continuité après contact,Premier centre (12),à créer
+264,Caractéristiques SPÉCIFIQUES de chaque poste,c12_deuxiemeMeneur,"relais de distribution, deuxième ouvreur",jeu à deux meneurs,Premier centre (12),à créer
+265,Caractéristiques SPÉCIFIQUES de chaque poste,c12_jeuPied,pied gauche/droit en relais du 10,—,Premier centre (12),à créer
+266,Caractéristiques SPÉCIFIQUES de chaque poste,c12_defenseFrontale,plaquer les porteurs lourds,—,Premier centre (12),à créer
+267,Caractéristiques SPÉCIFIQUES de chaque poste,c12_grattage,contester au sol en défense,—,Premier centre (12),à créer
+268,Caractéristiques SPÉCIFIQUES de chaque poste,c12_angleCourse,courses à contre-pied,—,Premier centre (12),à créer
+269,Caractéristiques SPÉCIFIQUES de chaque poste,c13_vitesseGrandCouloir,attaquer l'espace large,—,Second centre (13),à créer
+270,Caractéristiques SPÉCIFIQUES de chaque poste,c13_cadrageDebordement,fixer et décaler l'ailier,—,Second centre (13),à créer
+271,Caractéristiques SPÉCIFIQUES de chaque poste,c13_passeDecisive,servir l'ailier au bon moment,—,Second centre (13),à créer
+272,Caractéristiques SPÉCIFIQUES de chaque poste,c13_defenseGrandCouloir,"décider : monter, glisser, rester (le poste le plus dur en défense)",—,Second centre (13),à créer
+273,Caractéristiques SPÉCIFIQUES de chaque poste,c13_lectureSurnombre,compter les attaquants extérieurs,—,Second centre (13),à créer
+274,Caractéristiques SPÉCIFIQUES de chaque poste,c13_interception,lire et couper la passe au large,interceptions,Second centre (13),à créer
+275,Caractéristiques SPÉCIFIQUES de chaque poste,c13_couverture,couvrir derrière l'ailier,percées stoppées,Second centre (13),à créer
+276,Caractéristiques SPÉCIFIQUES de chaque poste,ai_vitesse,vitesse de l'ailier,"finition, retours","Ailiers (11, 14)",à créer
+277,Caractéristiques SPÉCIFIQUES de chaque poste,ai_acceleration,accélération de l'ailier,prise d'intervalle sur l'aile,"Ailiers (11, 14)",à créer
+278,Caractéristiques SPÉCIFIQUES de chaque poste,ai_finitionCoin,marquer en coin sans sortir en touche,—,"Ailiers (11, 14)",à créer
+279,Caractéristiques SPÉCIFIQUES de chaque poste,ai_jeuLongTouche,courir le long de la ligne de touche sans mettre le pied dehors,—,"Ailiers (11, 14)",à créer
+280,Caractéristiques SPÉCIFIQUES de chaque poste,ai_receptionBallonHaut,"chandelles, passes au pied",—,"Ailiers (11, 14)",à créer
+281,Caractéristiques SPÉCIFIQUES de chaque poste,ai_contestationAerienne,sauter contre l'arrière adverse,—,"Ailiers (11, 14)",à créer
+282,Caractéristiques SPÉCIFIQUES de chaque poste,ai_retourDefensif,repli après un pied adverse,—,"Ailiers (11, 14)",à créer
+283,Caractéristiques SPÉCIFIQUES de chaque poste,ai_lectureDefensiveAile,"monter, rester, couvrir le pied",—,"Ailiers (11, 14)",à créer
+284,Caractéristiques SPÉCIFIQUES de chaque poste,ai_plaquageEnCoin,pousser le porteur en touche,—,"Ailiers (11, 14)",à créer
+285,Caractéristiques SPÉCIFIQUES de chaque poste,ai_renfortAutreAile,quitter l'aile fermée et participer côté ouvert,—,"Ailiers (11, 14)",à créer
+286,Caractéristiques SPÉCIFIQUES de chaque poste,ai_jeuPiedCourt,petit pied à suivre le long de la touche,—,"Ailiers (11, 14)",à créer
+287,Caractéristiques SPÉCIFIQUES de chaque poste,ai_11_gaucher,ailier gauche gaucher (main et pied côté touche),jeu le long de la touche gauche,"Ailiers (11, 14)",à créer
+288,Caractéristiques SPÉCIFIQUES de chaque poste,ai_14_droitier,ailier droit droitier (main et pied côté touche),jeu le long de la touche droite,"Ailiers (11, 14)",à créer
+289,Caractéristiques SPÉCIFIQUES de chaque poste,ar_receptionBallonHaut,"chandelles et dégagements, sous pression",—,Arrière (15),à créer
+290,Caractéristiques SPÉCIFIQUES de chaque poste,ar_placementFond,être là où tombera le pied adverse,—,Arrière (15),à créer
+291,Caractéristiques SPÉCIFIQUES de chaque poste,ar_relance,choisir de relancer ou de taper,—,Arrière (15),à créer
+292,Caractéristiques SPÉCIFIQUES de chaque poste,ar_jeuPiedLong,"renvoyer loin, en touche ou dans l'en-but",—,Arrière (15),à créer
+293,Caractéristiques SPÉCIFIQUES de chaque poste,ar_intercale,s'intercaler dans la ligne au bon moment,—,Arrière (15),à créer
+294,Caractéristiques SPÉCIFIQUES de chaque poste,ar_dernierRideau,"dernier plaquage, couper l'angle",—,Arrière (15),à créer
+295,Caractéristiques SPÉCIFIQUES de chaque poste,ar_communicationFond,organiser le triangle arrière,—,Arrière (15),à créer
+296,Caractéristiques SPÉCIFIQUES de chaque poste,ar_contreAttaque,relance après un pied adverse mal dosé,—,Arrière (15),à créer
+297,Caractéristiques SPÉCIFIQUES de chaque poste,ar_buteurSecours,deuxième buteur,—,Arrière (15),à créer
+298,Conditions de jeu (sensibilité individuelle),jeuSousPluie,mains et appuis sur ballon et terrain mouillés,—,tous,à créer
+299,Conditions de jeu (sensibilité individuelle),ballonGlissant,passes et réceptions avec un ballon gras,—,tous,à créer
+300,Conditions de jeu (sensibilité individuelle),jeuDansLeVent,jeu au pied et lancer dans le vent,—,tous,à créer
+301,Conditions de jeu (sensibilité individuelle),terrainLourd,vitesse et appuis sur terrain gras ou boueux,—,tous,à créer
+302,Conditions de jeu (sensibilité individuelle),chaleur,fatigue par forte chaleur,—,tous,à créer
+303,Conditions de jeu (sensibilité individuelle),froid,"raideur, mains engourdies",—,tous,à créer
+304,Conditions de jeu (sensibilité individuelle),pressionPublic,performance devant un public hostile,—,tous,à créer
+305,Conditions de jeu (sensibilité individuelle),arbitreStrict,adaptation à un arbitre pointilleux,—,tous,à créer
+306,Conditions de jeu (sensibilité individuelle),terrainSynthetique,appuis sur synthétique,—,tous,à créer
+307,Situations et transitions de jeu,contreAttaque,"exploiter un ballon de récupération (turnover, mauvais pied adverse)",—,tous,à créer
+308,Situations et transitions de jeu,reactionTurnover,passer de l'attaque à la défense (et inversement) en une seconde,—,tous,à créer
+309,Situations et transitions de jeu,jeuSupNumerique,exploiter un carton adverse,—,tous,à créer
+310,Situations et transitions de jeu,jeuInfNumerique,défendre à 14,—,tous,à créer
+311,Situations et transitions de jeu,attaque22Adverse,"efficacité près de la ligne adverse (pick-and-go, maul, finition)",—,tous,à créer
+312,Situations et transitions de jeu,defenseSaLigne,"défendre à 5 m de sa ligne (montée, plaquage bas, ne pas faire de faute)",—,tous,à créer
+313,Situations et transitions de jeu,sortieDeCamp,sortir de ses 22 m sous pression,—,tous,à créer
+314,Situations et transitions de jeu,finDeMatch,décisions et exécution dans les 10 dernières minutes,—,tous,à créer
+315,Situations et transitions de jeu,sonnerie,garder le ballon ou marquer après la sonnerie,—,tous,à créer
+316,Situations et transitions de jeu,relancePenaliteRapide,jouer vite une pénalité (tap-and-go),—,tous,à créer
+317,Situations et transitions de jeu,jeuDesordonne,"performer dans un jeu cassé (ballon libre, phase désorganisée)",—,tous,à créer
+318,Situations et transitions de jeu,jeuStructure,exécuter le plan après mêlée ou touche,—,tous,à créer
+319,"Coups d'envoi, réceptions, chasse",coupEnvoiPrecision,précision du coup d'envoi,coup d'envoi contestable,tous,à créer
+320,"Coups d'envoi, réceptions, chasse",coupEnvoiHauteur,hauteur du coup d'envoi,temps laissé aux chasseurs,tous,à créer
+321,"Coups d'envoi, réceptions, chasse",receptionCoupEnvoi,prendre le coup d'envoi au milieu de la chasse,—,tous,à créer
+322,"Coups d'envoi, réceptions, chasse",chasseCoupDePied,"vitesse et ligne de chasse, rester en jeu",—,tous,à créer
+323,"Coups d'envoi, réceptions, chasse",chasseEnLigne,chasser en ligne avec ses partenaires (pas de trou),—,tous,à créer
+324,"Coups d'envoi, réceptions, chasse",pressionReceveur,plaquer le receveur dès la réception,—,tous,à créer
+325,"Coups d'envoi, réceptions, chasse",renvoi22,renvoi aux 22 m / depuis l'en-but,—,tous,à créer
+326,"Coups d'envoi, réceptions, chasse",marque,appeler la marque dans ses 22 m,—,tous,à créer
+327,"Remplaçants, impact et gestion de l'effort",impactEntree,niveau d'intensité en entrant en jeu,—,tous,à créer
+328,"Remplaçants, impact et gestion de l'effort",gestionEffort,doser son effort sur 80 minutes,—,tous,à créer
+329,"Remplaçants, impact et gestion de l'effort",tempsDeJeuIdeal,minutes avant la baisse de rendement,—,tous,à créer
+330,"Remplaçants, impact et gestion de l'effort",polyvalenceBanc,postes couverts depuis le banc,—,tous,à créer
+331,"Vice, triche et rapport à l'arbitre",vice,jeu à la limite des lois,"gains marginaux au ruck et au maul, pénalités si l'arbitre le voit",tous,à créer
+332,"Vice, triche et rapport à l'arbitre",triche,"propension à la faute volontaire dissimulée : hors-jeu au ruck, mains au ruck, retenir le porteur,",—,tous,à créer
+333,"Vice, triche et rapport à l'arbitre",lectureArbitre,savoir jusqu'où l'arbitre laisse aller,"fautes commises au bon moment, moins sanctionnées",tous,à créer
+334,"Vice, triche et rapport à l'arbitre",simulation,exagérer une faute subie,"avantage obtenu, ou carton si l'arbitre le voit",tous,à créer
+335,"Vice, triche et rapport à l'arbitre",provocation,chercher l'adversaire,"cartons, échauffourées",tous,à créer
+336,"Vice, triche et rapport à l'arbitre",reactionProvocation,réagir aux provocations,"cartons, fautes de représailles",tous,à créer
+337,"Vice, triche et rapport à l'arbitre",discipline,maîtrise de soi,fréquence des fautes involontaires (existe),tous,oui
+338,"Lecture du jeu, perception et décision",lectureJeu,comprendre la situation,"délai de réaction, erreurs d'estimation",tous,à créer
+339,"Lecture du jeu, perception et décision",vision,"portée et champ de vision, options vues",—,tous,à créer
+340,"Lecture du jeu, perception et décision",anticipation,"prévoir la passe, la course, le pied adverse",—,tous,à créer
+341,"Lecture du jeu, perception et décision",prisePositionnelle,être au bon endroit avant le ballon,—,tous,à créer
+342,"Lecture du jeu, perception et décision",decision,choisir la bonne option,—,tous,oui
+343,"Lecture du jeu, perception et décision",decisionSousPression,garder ses choix sous pression et en fin de match,—,tous,à créer
+344,"Lecture du jeu, perception et décision",priseDeRisque,goût du risque,"gestes osés, ballons perdus",tous,à créer
+345,"Lecture du jeu, perception et décision",altruisme,tendance à passer,passes décisives,tous,à créer
+346,"Lecture du jeu, perception et décision",egoisme,tendance à garder le ballon,"percées solitaires, ballons perdus",tous,à créer
+347,"Lecture du jeu, perception et décision",gestionTemps,"gérer le chrono et le score (fin de match, sonnerie)",—,tous,à créer
+348,"Lecture du jeu, perception et décision",lectureAdversaire,"repérer le défenseur faible, l'annonce adverse",—,tous,à créer
+349,Connaissances tactiques et collectives,connaissancePlan,"maîtrise du plan de jeu du club (placements, consignes)",—,tous,à créer
+350,Connaissances tactiques et collectives,annonces,"connaissance des codes de touche, mêlée, combinaisons",—,tous,à créer
+351,Connaissances tactiques et collectives,connaissanceRegles,"finesse des lois (hors-jeu, en-avant volontaire, ruck)",—,tous,à créer
+352,Connaissances tactiques et collectives,experience,matchs joués et niveau connu,stabilité des décisions,tous,à créer
+353,Connaissances tactiques et collectives,polyvalence,postes connus et niveau à chacun,—,tous,à créer
+354,Connaissances tactiques et collectives,cohesion,"habitude avec chaque partenaire (charnière 9–10, centres, triangle arrière)",timing des passes et des croisées,tous,à créer
+355,Connaissances tactiques et collectives,communication,"parler, être entendu, comprendre",portée et clarté des appels,tous,à créer
+356,Connaissances tactiques et collectives,leadership,"capitaine, orateur, choix du capitaine",—,tous,à créer
+357,Connaissances tactiques et collectives,leadershipDefensif,organiser la ligne par la voix,—,tous,à créer
+358,Mental et caractère,concentration,"erreurs d'inattention (en-avants bêtes, hors-jeu)",—,tous,à créer
+359,Mental et caractère,sangFroid,gestes décisifs sous pression,—,tous,à créer
+360,Mental et caractère,confianceSoi,niveau qui monte/descend selon les réussites,—,tous,à créer
+361,Mental et caractère,courage,"s'engager au contact, aller au sol pour un ballon",—,tous,à créer
+362,Mental et caractère,agressivite,intensité,plaquages dominants mais fautes,tous,à créer
+363,Mental et caractère,resilience,réaction après une erreur ou un essai encaissé,—,tous,à créer
+364,Mental et caractère,motivation,engagement à l'entraînement et en match (Mode Club),—,tous,à créer
+365,Mental et caractère,regularite,constance d'un match à l'autre,—,tous,à créer
+366,Mental et caractère,grandsMatchs,performance dans les matchs à enjeu,—,tous,à créer
+367,Mental et caractère,espritEquipe,"se sacrifier pour le collectif (déblayage ingrat, course leurre)",—,tous,à créer
+368,Latéralité,piedFort,pied fort (gauche ou droit),côté des coups de pied,tous,à créer
+369,Latéralité,mainForte,main forte,passes et raffût du bon côté,tous,à créer
+370,Latéralité,coteDePrediction,côté vers lequel il crochète naturellement,lisible par les défenseurs,tous,à créer
+371,État du jour (dynamique),fatigue,fatigue accumulée dans le match,baisse de toutes les caractéristiques physiques et techniques,tous,partiel
+372,État du jour (dynamique),forme,forme de la semaine,modulation globale (Mode Club),tous,à créer
+373,État du jour (dynamique),confiance,confiance dans le match,"monte avec les réussites, baisse avec les erreurs",tous,à créer
+374,État du jour (dynamique),blessure,blessure en cours,"caractéristiques réduites, sortie",tous,à créer
+375,État du jour (dynamique),douleur,douleur après un choc,baisse temporaire,tous,à créer
+376,État du jour (dynamique),carton,exclusion temporaire ou définitive,joueur absent du terrain,tous,à créer
