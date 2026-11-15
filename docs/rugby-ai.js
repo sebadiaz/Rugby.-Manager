@@ -1427,7 +1427,7 @@ function creerPiloteGOAP(options = {}) {
 function configGOAP(config, options) {
   // Distance de déclenchement de la tentative : elle inclut le dernier pas
   // et l'allonge, dans le jeu courant des agents. La résolution reste au moteur.
-  return Object.assign({ rayonPlaquage: 3.9 }, config || {}, { aiMode: 'GOAP', agentDriver: creerPiloteGOAP(options) });
+  return Object.assign({ rayonPlaquage: 3.7 }, config || {}, { aiMode: 'GOAP', agentDriver: creerPiloteGOAP(options) });
 }
 
 module.exports = { creerPiloteGOAP, configGOAP };
