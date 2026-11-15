@@ -145,7 +145,11 @@
 <div id="vueMatch" style="display:none;">
   <div id="hud">
     <div class="ligne1">
-      <div class="score" id="score">Equipe A 0 — 0 Equipe B</div>
+      <div class="score" id="score" aria-label="Score du match">
+        <span class="scoreEquipe equipeA"><span class="nomEquipe" id="nomEquipeA">Equipe A</span></span>
+        <span class="scoreChiffres"><span id="scoreA">0</span><span class="scoreTiret">—</span><span id="scoreB">0</span></span>
+        <span class="scoreEquipe equipeB"><span class="nomEquipe" id="nomEquipeB">Equipe B</span></span>
+      </div>
       <div id="phase">En jeu</div>
       <div class="horloge" id="horloge">0:00 / 5:00</div>
     </div>
