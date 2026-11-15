@@ -1667,7 +1667,43 @@ function candidatsDefense(b, s, pb, jeuCourant) {
     if (dMoi <= 12 && plusPres <= 1) out.push({ id: 'PRESS_CARRIER', priority: plusPres === 0 ? 74 : 68,
       target: cible, vmax: 1, reason: plusPres === 0 ? 'interception du porteur' : 'soutien au plaqueur' });
   }
+  if (jeuCourant && porteur && s.onside) for (const c of lireAttaqueAdverse(b, s, me, porteur, fiche, sens)) out.push(c);
   out.push({ id: 'RETURN_TO_PLAYBOOK', priority: 30, target: ref, vmax: 0.8, reason: 'poste nominal en défense' });
+  return out;
+}
+
+// Lecture INDIVIDUELLE des attaques adverses en jeu courant (aucune consigne d'équipe) :
+//  - MARK_EXTRA_MAN : je compte, à mon extérieur, les attaquants et les partenaires que je vois ; s'ils sont
+//    plus nombreux, je glisse sur l'attaquant libre (personne à moins de 3 m) le plus proche de moi ;
+//  - READ_CROSS : je vois un attaquant courir à contre-sens de la dérive du porteur, juste derrière lui et
+//    vers moi : je coupe sa course plutôt que de glisser. La lecture peut être fausse ou tardive.
+function lireAttaqueAdverse(b, s, me, porteur, fiche, sens) {
+  const out = [];
+  const ext = Math.sign(me.y - porteur.y) || 1;
+  const dehors = (p) => (p.y - me.y) * ext > 1 && Math.abs(p.x - porteur.x) <= 15;
+  const attDehors = Object.entries(b.opponents).filter(([id, o]) => id !== s.ball.owner && visibleJouable(o) && dehors(o.lastSeen));
+  const defDehors = Object.values(b.teammates).filter((m) => m.age <= 1.5 && dehors(m.lastSeen)).length;
+  if (attDehors.length > defDehors) {
+    const libres = attDehors.filter(([, o]) => !Object.values(b.teammates).some((m) => P.dist(m.lastSeen, o.lastSeen) < 3))
+      .sort((a, c) => Math.abs(a[1].lastSeen.y - me.y) - Math.abs(c[1].lastSeen.y - me.y) || a[0].localeCompare(c[0], 'en'));
+    if (libres.length && Math.abs(libres[0][1].lastSeen.y - me.y) <= 15) {
+      const [id, o] = libres[0];
+      out.push({ id: 'MARK_EXTRA_MAN', priority: 70, target: { x: o.lastSeen.x - sens * 2, y: o.lastSeen.y }, vmax: 1,
+        reason: `surnombre vu à l'extérieur (${attDehors.length} contre ${defDehors}) : je prends ${id}` });
+    }
+  }
+  const vyP = fiche && visibleJouable(fiche) ? fiche.vy || 0 : 0;
+  if (Math.abs(vyP) >= 2.5) {
+    for (const [id, o] of Object.entries(b.opponents)) {
+      if (id === s.ball.owner || !visibleJouable(o) || (o.vy || 0) * vyP > -6.25) continue; // |vy| ≥ 2,5 à contre-sens
+      const derriere = (o.lastSeen.x - porteur.x) * sens >= -0.5 && P.dist(o.lastSeen, porteur) <= 8;
+      const futur = { x: o.lastSeen.x + (o.vx || 0) * (o.age + 0.6), y: o.lastSeen.y + (o.vy || 0) * (o.age + 0.6) };
+      if (!derriere || Math.abs(futur.y - me.y) > 6 || P.dist(me, futur) > 10) continue;
+      out.push({ id: 'READ_CROSS', priority: 72, target: { x: P.clamp(futur.x - sens * 1.5, 0, 100), y: P.clamp(futur.y, 1, P.LARGEUR - 1) }, vmax: 1,
+        reason: `croisée lue : ${id} repique derrière le porteur` });
+      break;
+    }
+  }
   return out;
 }
 
@@ -1866,7 +1902,7 @@ function individualPlacement(beliefs, goalId, playbook, profile = {}, jeuCourant
     vmaxFactor: choix.vmax, reason: choix.reason, candidates: Object.freeze(evalues.map((c) => Object.freeze({ id: c.id, score: +c.score.toFixed(2), valide: c.valide }))) });
 }
 
-module.exports = { individualPlacement, candidatsRenfort, lireCroisee, GAP_MIN };
+module.exports = { individualPlacement, candidatsRenfort, lireCroisee, lireAttaqueAdverse, GAP_MIN };
 
   };
   defs["lineout-call.js"] = function (module, exports, require) {
