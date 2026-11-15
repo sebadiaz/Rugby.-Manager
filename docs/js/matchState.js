@@ -37,6 +37,8 @@
       // % de possession réel (temps de jeu effectif par équipe), pas une
       // valeur fixe : cf. MatchEngine.getState().
       possessionPct: rawState.possessionPct,
+      // Sauteur du lancer en touche en cours (rendu : animation de levée).
+      toucheSauteur: rawState.toucheSauteur || null,
       // % d'occupation territoriale réel (où s'est joué le match), distinct
       // de la possession (qui porte le ballon) : cf. MatchEngine.getState().
       occupationPct: rawState.occupationPct,

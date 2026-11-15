@@ -9108,6 +9108,9 @@
         blessuresMatch: this.blessuresMatch.map((b) => ({ ...b })),
         protocoles: this.protocoles.map(({ _profil, ...p }) => ({ ...p })),
         tempsJeuEffectif: this.tempsJeuEffectif,
+        // Lancer en touche en cours (pour le RENDU uniquement : qui monte au ballon, et où en est le vol).
+        toucheSauteur: this.toucheLancer && this.toucheLancer.sauteur ? { team: this.toucheLancer.sauteur.team,
+          numero: this.toucheLancer.sauteur.numero, prog: Math.min(1, this.toucheLancer.timer / (this.toucheLancer.duree || 0.8)) } : null,
         // % de possession réel, calculé à partir du temps de jeu effectif
         // accumulé par équipe (this.tempsPossession), pas un chiffre fixé :
         // 50/50 tant qu'aucune seconde de jeu effectif n'a encore eu lieu.
