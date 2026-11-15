@@ -47,17 +47,19 @@ class AgentContext {
   // une photo gelée. `comm` (LocalCommunication) est facultatif.
   update(state, comm) {
     const t = state.tempsMatch;
+    const equipe = this.agent.team === 'A' ? state.equipeA : state.equipeB;
+    const moi = equipe.find(j => j.numero === this.agent.numero);
+    if (!moi) throw new RangeError('agent introuvable : ' + this.id);
     const doitObserver = this.lastObsT === null || t - this.lastObsT >= this.params.reactionDelay - 1e-9;
     let obs = null;
     if (doitObserver) {
       // Regard : vers le dernier ballon connu (trace récente), sinon dans l'axe du corps.
       let gaze;
       if (this.mem.ball && t - this.mem.ball.seenAt <= 2) {
-        const moiG = [...state.equipeA, ...state.equipeB].find((j) => j.team === this.agent.team && j.numero === this.agent.numero);
-        if (moiG) gaze = Math.atan2(this.mem.ball.y - moiG.y, this.mem.ball.x - moiG.x);
+        gaze = Math.atan2(this.mem.ball.y - moi.y, this.mem.ball.x - moi.x);
       }
       // Un PORTEUR balaie le terrain avant de jouer (têtes levées) : champ de vision complet.
-      const porteur = this.mem.ball && this.mem.ball.owner === this.id && t - this.mem.ball.seenAt <= 1;
+      const porteur = state.ball?.carrierTeam === this.agent.team && state.ball.carrierNumber === this.agent.numero;
       const pv = Object.assign({}, this.params, gaze === undefined ? {} : { gaze }, porteur ? { fovDeg: 360 } : {});
       obs = observe(state, this.agent, pv);
       this.lastObsT = t;
@@ -70,8 +72,6 @@ class AgentContext {
       m.phase = obs.phase; m.possession = obs.possession; m.score = obs.score ? { A: obs.score.A, B: obs.score.B } : null;
     }
     // Proprioception : on connaît toujours sa propre position exacte.
-    const moi = [...state.equipeA, ...state.equipeB].find((j) => j.team === this.agent.team && j.numero === this.agent.numero);
-    if (!moi) throw new RangeError('agent introuvable : ' + this.id);
     if (comm) {
       const entendus = comm.hear({ listenerId: this.id, team: this.agent.team, x: moi.x, y: moi.y, time: t,
         available: !(moi.auSol > 0) && !(moi.sinBin > 0) });
@@ -84,24 +84,27 @@ class AgentContext {
     if (this.mem.ruck && vieux(this.mem.ruck.seenAt)) this.mem.ruck = null;
     this.heard = this.heard.filter((h) => t - h.heardAt <= mem);
 
-    const fiche = (e) => ({ lastSeen: { x: e.x, y: e.y }, age: +(t - e.seenAt).toFixed(3), confidence: +clamp01(1 - (t - e.seenAt) / mem).toFixed(3) });
+    const fiche = (e) => ({ lastSeen: { x: e.x, y: e.y }, age: +(t - e.seenAt).toFixed(3), confidence: +clamp01(mem === 0 ? 1 : 1 - (t - e.seenAt) / mem).toFixed(3) });
     const ballon = this.mem.ball
       ? Object.assign(fiche(this.mem.ball), { state: this.mem.ball.state, owner: this.mem.ball.owner })
       : { lastSeen: null, age: null, confidence: 0, state: null, owner: null };
+    const ficheJoueur = (e) => Object.assign(fiche(e), {
+      numero: e.numero, vx: e.vx, vy: e.vy, available: e.available, kickOffside: e.kickOffside, recovery: e.recovery,
+    });
     const mates = {}, adv = {};
-    for (const [id, e] of Object.entries(this.mem.teammates)) mates[id] = Object.assign(fiche(e), { numero: e.numero });
+    for (const [id, e] of Object.entries(this.mem.teammates)) mates[id] = ficheJoueur(e);
     for (const [id, e] of Object.entries(this.mem.opponents)) {
       const b = this.mem.ball;
       const dBalle = b ? Math.hypot(e.x - b.x, e.y - b.y) : 40;
-      adv[id] = Object.assign(fiche(e), { numero: e.numero, threat: +clamp01(1 - dBalle / 40).toFixed(3) });
+      adv[id] = Object.assign(ficheJoueur(e), { threat: +clamp01(1 - dBalle / 40).toFixed(3) });
     }
     return deepFreeze({
       t, agent: this.agent, observedAt: this.lastObsT, refreshed: doitObserver,
       self: { x: moi.x, y: moi.y, orientation: moi.orientation || 0, grounded: moi.auSol > 0, available: !(moi.auSol > 0) && !(moi.sinBin > 0),
-        sensAttaque: moi.sensAttaque, kickOffside: moi.horsJeuKick > 0 },
+        sensAttaque: moi.sensAttaque, jeuPied: moi.jeuPied, vitesse: moi.vitesse, kickOffside: moi.horsJeuKick > 0 },
       ball: ballon, teammates: mates, opponents: adv,
       ruck: this.mem.ruck ? { ballAvailable: this.mem.ruck.ballAvailable, defendersCommitted: this.mem.ruck.defendersCommitted,
-        age: +(t - this.mem.ruck.seenAt).toFixed(3), confidence: +clamp01(1 - (t - this.mem.ruck.seenAt) / mem).toFixed(3) } : null,
+        age: +(t - this.mem.ruck.seenAt).toFixed(3), confidence: +clamp01(mem === 0 ? 1 : 1 - (t - this.mem.ruck.seenAt) / mem).toFixed(3) } : null,
       phase: this.mem.phase, possession: this.mem.possession, score: this.mem.score,
       heard: this.heard.map((h) => ({ from: h.from, kind: h.kind, age: +(t - h.heardAt).toFixed(3), confidence: h.confidence, replyTo: h.replyTo })),
       omniscient: !!this.params.omniscient,

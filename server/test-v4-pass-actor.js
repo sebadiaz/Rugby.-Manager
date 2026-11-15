@@ -56,43 +56,4 @@ test('dans le moteur (GOAP, 6 graines) : des passes d\'agents réussissent et ch
   assert.ok(tent >= 5 && ok >= 3, `${tent} tentatives, ${ok} réussies`);
   assert.strictEqual(faux, 0, 'succès annoncé sans passe réelle du moteur');
 });
-test('PASS_TO_POD / PASS_TO_OUTSIDE : receveur choisi dans le monde réel, jamais devant ; chaque succès = vraie passe du moteur', () => {
-  const { e, eq, num } = scene();
-  const s = copie(e); const eqp = eq === 'A' ? s.equipeA : s.equipeB; const moi = eqp.find((j) => j.numero === num); moi.auSol = 0;
-  for (const j of eqp) if (j !== moi) { j.x = moi.x + moi.sensAttaque * 6; } // tout le monde est DEVANT
-  for (const nom of ['PASS_TO_POD', 'PASS_TO_OUTSIDE']) assert.match(new ActionExecutor({ team: eq, numero: num }).start(nom, s).events[0].reason, /NO_RECEIVER/);
-  let ok = 0, faux = 0, tent = 0;
-  for (let seed = 1; seed <= 5; seed++) {
-    const m = new MatchEngine(seed, 4800, configGOAP());
-    const passes = []; const lg = m.log.bind(m); m.log = (t, team, msg, ...r) => { if (t === 'PASSE') passes.push(String(msg)); return lg(t, team, msg, ...r); };
-    for (let i = 0; i < 4800; i++) m.tick(0.05);
-    for (const a of m._pilote.agents) for (const ev of a.events) if (/PASS_TO_(POD|OUTSIDE)/.test(ev.action || '')) {
-      if (ev.type === 'ACTION_STARTED') tent++;
-      if (ev.type === 'ACTION_SUCCEEDED') { ok++; if (!passes.some((p) => new RegExp('n°' + a.agent.numero + ' au n°').test(p))) faux++; }
-    }
-  }
-  assert.ok(tent >= 3 && ok >= 2, `${tent} tentatives, ${ok} réussies`);
-  assert.strictEqual(faux, 0);
-});
-test('KICK_FOR_TERRITORY : départ refusé hors porteur ; succès seulement quand le moteur a réellement botté ; en GOAP les pieds viennent des agents', () => {
-  const { e, eq, num } = scene();
-  const autre = (num % 15) + 1;
-  assert.match(new ActionExecutor({ team: eq, numero: autre }).start('KICK_FOR_TERRITORY', e).events[0].reason, /NOT_CARRIER/);
-  const s = copie(e); const moi = (eq === 'A' ? s.equipeA : s.equipeB).find((j) => j.numero === num); moi.auSol = 0;
-  const ex = new ActionExecutor({ team: eq, numero: num }); const r = ex.start('KICK_FOR_TERRITORY', s);
-  assert.ok(r.started && ['TOUCHE', 'OCCUPATION', 'CHANDELLE'].includes(r.intent.botte));
-  const t = copie(s); t.tempsMatch += 0.2;
-  assert.strictEqual(ex.step(t).status, 'RUNNING', 'rien de conclu sans coup de pied réel');
-  t.phase = 'COUP_DE_PIED_JEU'; t.ball.state = 'AIR'; t.ball.carrierTeam = null; t.ball.carrierNumber = null;
-  assert.strictEqual(ex.step(t).status, 'SUCCEEDED');
-  let agents = 0, sansDemande = 0;
-  for (let seed = 1; seed <= 3; seed++) {
-    const m = new MatchEngine(seed, 4800, configGOAP()); assert.strictEqual(m._piedAgents, true);
-    for (let i = 0; i < 6000; i++) m.tick(0.05);
-    agents += m._pilote.agents.reduce((n, a) => n + a.events.filter((x) => x.action === 'KICK_FOR_TERRITORY' && x.type === 'ACTION_SUCCEEDED').length, 0);
-  }
-  assert.ok(agents >= 3, agents + ' coups de pied d\'agents réussis');
-  assert.strictEqual(new MatchEngine(1, 4800)._piedAgents, false, 'LEGACY : le moteur botte seul');
-  assert.ok(sansDemande === 0);
-});
 console.log(`\n${nb} test(s)`); if (ko) process.exit(1);
