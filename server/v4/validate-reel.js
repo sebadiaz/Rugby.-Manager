@@ -19,9 +19,13 @@ const total = {};
 for (let graine = premiere; graine < premiere + nombre; graine++) {
   const m = new MatchEngine(graine, 4800, configGOAP());
   let passesIA = 0, degagementsEnTouche = 0, touchesVolontaires = 0, essaisLongsSansRuck = 0;
+  let penalitesRuck = 0, penalitesRuckIsolement = 0, penalitesTapeesEnTouche = 0;
   const log = m.log.bind(m);
   m.log = (type, equipe, message, data) => {
     if (type === 'PASSE' && data?.ia) passesIA++;
+    if (type === 'PENALITE_RUCK') penalitesRuck++;
+    if (type === 'PENALITE_RUCK_ISOLE') penalitesRuckIsolement++;
+    if (type === 'PENALITE_TOUCHE_FRAPPE') penalitesTapeesEnTouche++;
     if (type === 'ESSAI' && data?.depuis >= 40 && !data?.rucks) essaisLongsSansRuck++;
     if (type === 'TOUCHE' && m.phase === 'COUP_DE_PIED_JEU') {
       if (m.typeCoupDePiedJeu === 'DEGAGEMENT') degagementsEnTouche++;
@@ -36,6 +40,9 @@ for (let graine = premiere; graine < premiere + nombre; graine++) {
   if (erreurs) throw new Error(`graine ${graine} : ${erreurs} erreur(s) IA`);
   match.points = s.score.A + s.score.B;
   match.passesIA = passesIA;
+  match.penalitesRuck = penalitesRuck;
+  match.penalitesRuckIsolement = penalitesRuckIsolement;
+  match.penalitesTapeesEnTouche = penalitesTapeesEnTouche;
   match.degagementsEnTouche = degagementsEnTouche;
   match.touchesVolontaires = touchesVolontaires;
   match.essaisLongsSansRuck = essaisLongsSansRuck;

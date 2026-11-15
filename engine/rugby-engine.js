@@ -5023,7 +5023,8 @@
       // Un vrai ruck compte d'ailleurs ~5-6 corps avec le plaqué et le plaqueur.
       const soutiensRuck = new Set(
         [...this.equipeA, ...this.equipeB]
-          .filter(j => j.team === this.possession && j !== this.porteur && j.auSol === 0 && j.numero !== 9)
+          .filter(j => j.team === this.possession && j !== this.porteur && j.auSol === 0 && j.numero !== 9
+            && (this.aiMode !== 'GOAP' || j.sinBin <= 0))
           .sort((a, b) => distance(a, pt) - distance(b, pt))
           .slice(0, 3)
       );
@@ -5290,9 +5291,12 @@
       // sortie ci-dessous, par le n°9). Tant que personne n'est arrivé, le
       // ballon reste au sol et on attend (le porteur isolé voit son risque de
       // turnover/pénalité grandir), avec un plafond pour ne jamais bloquer.
+      const goap = this.aiMode === 'GOAP';
+      const peutJouerAuRuck = j => j.auSol === 0 && j.sinBin <= 0 && !(j.horsJeuKick > 0)
+        && (j.x - pt.x) * j.sensAttaque <= 0.3;
       const eqAtt = this.possession === 'A' ? this.equipeA : this.equipeB;
       const soutienArrive = eqAtt.some(j => j !== this.porteur && j.auSol === 0
-        && j.sinBin <= 0 && distance(j, pt) < 2.5);
+        && j.sinBin <= 0 && (!goap || peutJouerAuRuck(j)) && distance(j, pt) < 2.5);
       // Temps sans aucun soutien d'attaque RÉELLEMENT ARRIVÉ au ruck (porteur
       // isolé au sol) : accru ce tick tant que personne n'a encore sécurisé le
       // ballon, jamais réinitialisé tant que le ruck dure — c'est ce cumul qui
@@ -5436,7 +5440,12 @@
         // rucks, plaquages, touches, mêlées et gain de terrain sont inchangés.
         // C'est le rare levier qui ajoute un fait de jeu sans rien déséquilibrer.
         const probaTurnover = Math.max(0.048, Math.min(0.20, 0.048 + (forceDef - forceAtt) / 1600 + bonusIsolement + bonusDominant));
-        const turnover = this.rng() < probaTurnover;
+        // Un défenseur doit réellement atteindre le ballon, debout et de
+        // son côté. Le simple retard des soutiens n'est pas une faute.
+        const defenseAuBallon = goap ? equipeDef.filter(j => peutJouerAuRuck(j)
+          && this.contestants.includes(j.numero) && distance(j, pt) < 2.5) : [];
+        const contestReel = defenseAuBallon.length > 0;
+        const turnover = this.rng() < probaTurnover && (!goap || contestReel);
         this.ruckDominant = false;
         if (turnover) {
           this.stats[this.possession].turnoversConcedes++; // équipe qui PERD le ballon
@@ -5445,16 +5454,17 @@
           {
             // Le grattage revient au défenseur qui contestait le ballon.
             const eqG = this.possession === 'A' ? this.equipeA : this.equipeB;
-            const gratteur = eqG.find(j => this.contestants && j.numero === this.contestants[0]);
+            const gratteur = goap ? joueurLePlusProche(defenseAuBallon, pt.x, pt.y).joueur
+              : eqG.find(j => this.contestants && j.numero === this.contestants[0]);
             if (gratteur) this._statJoueur(gratteur).turnoversGagnes++;
           }
           this.log('TURNOVER', this.possession, `Ballon gratte au ruck, equipe ${this.possession} recupere`);
-        } else if ((this.ruckTempsSansSoutien || 0) > 1.5 * this._echelleArret && this.rng() < 0.5) {
+        } else if ((!goap || (!soutienArrive && contestReel))
+          && (this.ruckTempsSansSoutien || 0) > 1.5 * this._echelleArret && this.rng() < 0.5) {
           this.log('PENALITE_RUCK_ISOLE', equipeOriginale, `Porteur isole au ruck, ballon non rendu, penalite pour l'equipe adverse`);
           this._traiterPenalite(equipeOriginale === 'A' ? 'B' : 'A', pt);
           return;
         }
-        if (!turnover) this.stats[equipeOriginale].rucksConserves++;
         // Sortie de ruck : c'est le demi de mêlée (n°9) qui joue le ballon au
         // pied du regroupement, comme à la mêlée et à la sortie de maul — pas
         // simplement l'avant le plus proche du point de ruck. Il a couru vers
@@ -5468,7 +5478,17 @@
         // exactement comme n'importe quelle autre passe en jeu courant.
         const att = this.attaquants();
         let relayeur;
-        if (turnover) {
+        if (goap) {
+          const aPortee = turnover ? defenseAuBallon : att.filter(j => peutJouerAuRuck(j) && distance(j, pt) < 4);
+          relayeur = (!turnover && aPortee.find(j => j.numero === 9)) || joueurLePlusProche(aPortee, pt.x, pt.y).joueur;
+          if (!relayeur) {
+            this.log('MELEE_RUCK_INJOUABLE', equipeOriginale, 'Ballon injouable : aucun joueur en position pour le sortir');
+            this._accorderMeleeA(equipeOriginale, pt);
+            return;
+          }
+          this._neufLibre = !turnover && relayeur.numero === 9;
+          if (this._neufLibre) this.log('RUCK_SORTIE_9', this.possession, 'Sortie de ruck par le 9');
+        } else if (turnover) {
           // Ballon gratté : c'est le joueur qui l'a arraché (le plus proche du
           // ruck dans la nouvelle équipe, déjà sur place) qui le récupère, là
           // où il est — pas le demi de mêlée adverse resté loin, ce qui
@@ -5489,6 +5509,7 @@
             ({ joueur: relayeur } = joueurLePlusProche(debout.length ? debout : att.filter(j => j.auSol === 0), pt.x, pt.y));
           }
         }
+        if (!turnover) this.stats[equipeOriginale].rucksConserves++;
         // Le joueur qui était plaqué (ancien porteur, au sol) se relève PROMPTEMENT
         // une fois le ballon sorti et le jeu reparti : sinon il restait ~2 s au sol
         // TOUT SEUL pendant que le jeu s'éloignait de 10-15 m — c'est ce qui donnait
