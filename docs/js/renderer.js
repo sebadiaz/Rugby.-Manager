@@ -505,7 +505,7 @@
   // à un amas de gros pixels : tête, épaules, musculature, maillot, short,
   // chaussettes, crampons et gestes se distinguent même sur mobile.
   // Les poses dépendent toujours de l'état moteur, jamais d'animations fictives.
-  function fabriquerSpriteModerne(pal, vue, posture, image, massif) {
+  function fabriquerSpriteModerne(pal, vue, posture, image, massif, physique) {
     const c = document.createElement('canvas');
     const definition = 4;
     c.width = SW * definition; c.height = SH * definition;
@@ -519,10 +519,12 @@
     const penche = posture === 'melee' ? 5.2 : posture === 'penche' ? 3.8 : posture === 'frappe' ? 1.4 : 0;
     const baisse = posture === 'melee' ? 4.8 : posture === 'penche' ? 2.4 : posture === 'releve' ? 5 : 0;
     const saut = posture === 'saut' ? 2.5 : 0;
-    const x = 16, hanches = 18.4 + baisse - saut;
-    const haut = hanches - 11.6;
+    const x = 16, hanches = 18.4 + (1.84 - physique.taille) * 3 + baisse - saut;
+    const haut = hanches - 11.6 * (physique.taille / 1.84);
     const torseX = x + (profil ? penche : penche * 0.34);
-    const epaule = massif ? 6.1 : 4.9, bassin = massif ? 4.25 : 3.7;
+    // Les piliers ont un buste large et court, les deuxième-lignes sont plus
+    // hauts, les demis sont plus fins : différences visibles entre les postes.
+    const epaule = 5.1 * physique.largeur, bassin = 3.45 * physique.largeur;
     const peau = pal.peau, peauSombre = pal.peauOmbre;
     function ovale(cx,cy,rx,ry,couleur) {
       g.fillStyle=couleur; g.beginPath(); g.ellipse(cx,cy,rx,ry,0,0,Math.PI*2); g.fill();
@@ -615,8 +617,9 @@
   function sprite(j, couleurs, vue, posture, image) {
     const pal = palette(j, couleurs);
     const massif = j.team !== 'ARB' && j.numero <= 8;
+    const physique = gabarit(j);
     const imageCle = posture === 'course' ? image % 4 : 0;
-    const cle = [pal.maillot, pal.short, pal.chaussette, pal.peau, pal.cheveux, pal.casque, massif, vue, posture, imageCle].join('|');
+    const cle = [pal.maillot, pal.short, pal.chaussette, pal.peau, pal.cheveux, pal.casque, massif, physique.largeur, physique.taille, vue, posture, imageCle].join('|');
     let s = cacheSprites.get(cle);
     if (s) {
       // Réinsérer en dernier : les sprites utilisés dans les images récentes
@@ -625,7 +628,7 @@
       cacheSprites.set(cle, s);
     } else {
       if (posture === 'sol') s = spriteCouche(sprite(j, couleurs, 'profil', 'arret', 0));
-      else s = fabriquerSpriteModerne(pal, vue, posture, imageCle, massif);
+      else s = fabriquerSpriteModerne(pal, vue, posture, imageCle, massif, physique);
       cacheSprites.set(cle, s);
       if (cacheSprites.size > MAX_SPRITES) cacheSprites.delete(cacheSprites.keys().next().value);
     }
