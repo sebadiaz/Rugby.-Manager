@@ -47,13 +47,29 @@
     redimensionner(0, 0, 0);
   }
 
+  // Orientation du terrain : 'auto' (vertical sur un écran en hauteur type téléphone, horizontal
+  // sur un écran en largeur type ordinateur), ou imposée par le joueur ('portrait' / 'paysage').
+  const CLE_ORIENTATION = 'rugbyManager.orientationTerrain';
+  let modeOrientation = 'auto';
+  try { const m = window.localStorage.getItem(CLE_ORIENTATION); if (m === 'portrait' || m === 'paysage') modeOrientation = m; } catch (e) { /* stockage indisponible */ }
+  let dernieresZones = [0, 0, 0];
+  function orientation(mode) {
+    if (mode === undefined) return modeOrientation;
+    if (mode !== 'auto' && mode !== 'portrait' && mode !== 'paysage') return modeOrientation;
+    modeOrientation = mode;
+    try { window.localStorage.setItem(CLE_ORIENTATION, mode); } catch (e) { /* stockage indisponible */ }
+    if (canvas) { redimensionner(...dernieresZones); cam.pret = false; }
+    return modeOrientation;
+  }
+
   function redimensionner(hudH, seekH, ctrlH) {
+    dernieresZones = [hudH || 0, seekH || 0, ctrlH || 0];
     W = window.innerWidth;
     H = Math.max(120, window.innerHeight - (hudH || 0) - (seekH || 0) - (ctrlH || 0));
     canvas.width = W;
     canvas.height = H;
     canvas.style.marginTop = (hudH || 0) + 'px';
-    paysage = W >= H;
+    paysage = modeOrientation === 'auto' ? W >= H : modeOrientation === 'paysage';
     // Échelle initiale : vue large, recalée dès la première image par la caméra.
     cam.s = echelleCible('PORTE');
     scale = cam.s;
@@ -68,16 +84,16 @@
     portrait: { PORTE: 38, RUCK: 33, MAUL: 30, MELEE: 27, TOUCHE: 31, COUP_DE_PIED_JEU: 52, COUP_ENVOI: 54,
       ESSAI: 40, TRANSFORMATION: 44, PENALITE_TIR: 44, MI_TEMPS: 80, TERMINE: 80 },
   };
+  // Échelle cible : une LONGUEUR de terrain visible selon la phase (le long de l'axe x du terrain) et
+  // une LARGEUR minimale toujours visible, quelle que soit l'orientation de l'écran.
   function echelleCible(phase) {
-    const t = paysage ? ETENDUE.paysage : ETENDUE.portrait;
-    const etendue = t[phase] || t.PORTE;
-    let s = W / etendue;
-    // Toujours assez de profondeur visible pour lire les lignes (≥ 30 m sur l'autre axe).
-    const profondeur = H / (s * INCLINAISON);
-    if (profondeur < 30) s = H / (30 * INCLINAISON);
+    const longueur = ETENDUE.paysage[phase] || ETENDUE.paysage.PORTE;
+    const largeurMin = paysage ? 28 : 34;
+    const ecranLongueur = paysage ? W : H / INCLINAISON;   // pixels disponibles le long de x terrain
+    const ecranLargeur = paysage ? H / INCLINAISON : W;    // pixels disponibles le long de y terrain
+    let s = Math.min(ecranLongueur / longueur, ecranLargeur / largeurMin);
     // Jamais plus petit que la vue du terrain entier (les joueurs restent lisibles).
-    const sMin = paysage ? Math.min(W / (LONGUEUR + 2 * PROF_EN_BUT + 8), H / ((LARGEUR + 16) * INCLINAISON))
-      : Math.min(W / (LARGEUR + 16), H / ((LONGUEUR + 2 * PROF_EN_BUT + 8) * INCLINAISON));
+    const sMin = Math.min(ecranLongueur / (LONGUEUR + 2 * PROF_EN_BUT + 8), ecranLargeur / (LARGEUR + 16));
     return Math.max(sMin, s);
   }
 
@@ -316,169 +332,234 @@
     return estPorteur ? 'porte' : 'course';
   }
 
-  // Dessine un personnage, pieds en (sx, sy). Repère local en mètres : x vers
-  // l'avant du joueur (retourné selon `sens`), y vers le haut.
-  function dessinerPersonnage(sx, sy, j, a, posture, couleurs, opts) {
-    const k = cam.s * HAUTEUR_VUE * SPRITE;
-    if (k < 2) return;
-    const g = gabarit(j);
-    const T = g.taille / 1.85;
-    const larg = g.largeur;
+  // --- SPRITES PIXEL ART (dessinés par le code, aucun asset externe) ----------------------
+  // Chaque sprite fait 24 x 30 pixels « rétro », pieds sur la dernière ligne, puis il est
+  // agrandi sans lissage. Variantes : vue (profil/face/dos), image du cycle de course (4),
+  // posture (course, penché, mêlée, relève, saut, levée, frappe, passe), gabarit (avant
+  // massif ou trois-quarts), couleurs de l'équipe, peau et cheveux. Chaque variante est
+  // dessinée une seule fois puis mise en cache.
+  const SW = 32, SH = 30; // largeur généreuse : un joueur penché (mêlée, ruck) tient dans la toile
+  const cacheSprites = new Map();
+  function assombrir(hex, f) {
+    const n = parseInt(hex.slice(1), 16);
+    const c = (v) => Math.max(0, Math.min(255, Math.round(v * f)));
+    return '#' + [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => c(v).toString(16).padStart(2, '0')).join('');
+  }
+  function fabriquerSprite(pal, vue, posture, image, massif) {
+    const c = document.createElement('canvas');
+    c.width = SW; c.height = SH;
+    const g = c.getContext('2d');
+    const p = (x, y, w, h, col) => { g.fillStyle = col; g.fillRect(Math.round(x), Math.round(y), w, h); };
+    const membre = (x0, y0, x1, y1, ep, col) => {
+      const n = Math.max(1, Math.round(Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0))));
+      const horizontal = Math.abs(x1 - x0) > Math.abs(y1 - y0);
+      for (let i = 0; i <= n; i++) {
+        const x = x0 + (x1 - x0) * i / n, y = y0 + (y1 - y0) * i / n;
+        if (horizontal) p(x, y - Math.floor(ep / 2), 1, ep, col); else p(x - Math.floor(ep / 2), y, ep, 1, col);
+      }
+    };
+    const profil = vue === 'profil';
+    // Accroupissement (lignes) et inclinaison vers l'avant (pixels par ligne au-dessus des hanches).
+    const crouch = { penche: 2, melee: 5, releve: 6 }[posture] || 0;
+    const incl = { penche: 0.5, melee: 0.85, course: image % 2 ? 0.12 : 0.08 }[posture] || 0;
+    const hanche = 18 + crouch;
+    const dx = (y) => (profil ? Math.round((hanche - y) * incl) : 0); // décalage du haut du corps
+    // Centre de la toile ; les postures penchées sont reculées pour que le haut du corps tienne dans la toile.
+    const cx = SW / 2 - ({ melee: 5, penche: 2 }[posture] || 0);
+    const demi = profil ? (massif ? 4 : 3) : (massif ? 5 : 4);
+    // --- Jambes (de la hanche au pied) ---
+    const jambe = (hx, px, py, cote) => {
+      membre(hx, hanche + 1, (hx + px) / 2, hanche + (py - hanche) * 0.45, massif ? 3 : 2, pal.peau);          // cuisse
+      membre((hx + px) / 2, hanche + (py - hanche) * 0.45 + 1, px, py - 1, massif ? 3 : 2, pal.chaussette);     // chaussette
+      p((hx + px) / 2 - 1, hanche + (py - hanche) * 0.45 + 1, massif ? 3 : 2, 1, pal.bande);
+      p(px - 1 + (profil ? 1 : 0), py - 1, profil ? 3 : 2, 2, '#161616');                                       // crampon
+    };
+    if (profil) {
+      let avant, arriere;
+      if (posture === 'saut' || posture === 'leveur') { avant = { x: cx + 1, y: 29 }; arriere = { x: cx - 1, y: 29 }; }
+      else if (posture === 'frappe') { avant = { x: cx + 7, y: 21 }; arriere = { x: cx - 1, y: 29 }; }
+      else if (posture === 'melee') { avant = { x: cx - 3, y: 29 }; arriere = { x: cx - 6, y: 29 }; }
+      else if (posture === 'releve') { avant = { x: cx + 3, y: 29 }; arriere = { x: cx - 4, y: 29 }; }
+      else if (posture === 'penche') { avant = { x: cx + 2, y: 29 }; arriere = { x: cx - 3, y: 29 }; }
+      else {
+        const pas = [[4, 29, -4, 28], [1, 29, -1, 26], [-4, 28, 4, 29], [-1, 26, 1, 29]][image % 4];
+        avant = { x: cx + pas[0], y: pas[1] }; arriere = { x: cx + pas[2], y: pas[3] };
+        if (posture === 'arret') { avant = { x: cx + 1, y: 29 }; arriere = { x: cx - 1, y: 29 }; }
+      }
+      // Jambe arrière plus sombre (plus loin), jambe avant par-dessus.
+      const palLoin = Object.assign({}, pal, { peau: pal.peauOmbre, chaussette: assombrir(pal.chaussette, 0.75) });
+      const sauve = pal; pal = palLoin; jambe(cx, arriere.x, arriere.y, -1); pal = sauve;
+      jambe(cx + 1, avant.x, avant.y, 1);
+    } else {
+      const lever = posture === 'course' ? [[1, 0], [0, 0], [0, 1], [0, 0]][image % 4] : [0, 0];
+      const ecart = massif ? 3 : 2;
+      if (posture === 'releve') { jambe(cx - ecart, cx - ecart - 1, 29, -1); jambe(cx + ecart, cx + ecart, 26, 1); }
+      else { jambe(cx - ecart, cx - ecart, 29 - lever[0] * 2, -1); jambe(cx + ecart, cx + ecart, 29 - lever[1] * 2, 1); }
+    }
+    // --- Short ---
+    p(cx - demi + dx(hanche - 1), hanche - 2, demi * 2 + 1, 3, pal.short);
+    p(cx - demi + dx(hanche - 1), hanche, demi * 2 + 1, 1, pal.shortOmbre);
+    // --- Bras arrière (profil) ---
+    const epaule = hanche - 8;
+    const brasProfil = (versAvant, col, peau) => {
+      const ex = cx + dx(epaule), ey = epaule + 1;
+      let mx, my;
+      if (posture === 'saut' || posture === 'leveur') { mx = ex + 1; my = ey - 8; }
+      else if (posture === 'passe') { mx = ex + 7; my = ey + 2; }
+      else if (posture === 'penche' || posture === 'melee') { mx = ex + 5; my = ey + 3; }
+      else { const sw = [-2, 0, 2, 0][image % 4] * (versAvant ? 1 : -1); mx = ex + sw; my = ey + 6; }
+      membre(ex, ey, (ex + mx) / 2, (ey + my) / 2, 2, col);
+      membre((ex + mx) / 2, (ey + my) / 2, mx, my, 2, peau);
+    };
+    if (profil) brasProfil(false, assombrir(pal.maillot, 0.7), pal.peauOmbre);
+    // --- Torse (maillot) ---
+    for (let y = epaule; y <= hanche - 2; y++) {
+      const larg = demi * 2 + 1 + (y === epaule ? 0 : 0);
+      p(cx - demi + dx(y), y, larg, 1, pal.maillot);
+      p(cx - demi + dx(y), y, 1, 1, pal.maillotOmbre);                       // bord ombré
+      if (!profil) p(cx + demi + dx(y), y, 1, 1, pal.maillotOmbre);
+    }
+    // Col.
+    if (vue === 'face') { p(cx - 1, epaule, 3, 1, pal.col); p(cx, epaule + 1, 1, 1, pal.col); }
+    else if (profil) p(cx + dx(epaule) + 1, epaule, 2, 1, pal.col);
+    else p(cx - 1, epaule, 3, 1, pal.col);
+    // --- Bras ---
+    if (profil) brasProfil(true, pal.maillot, pal.peau);
+    else {
+      for (const cote of [-1, 1]) {
+        const ex = cx + cote * (demi + 1), ey = epaule + 1;
+        if (posture === 'saut' || posture === 'leveur') { membre(ex, ey, ex + cote, ey - 4, 2, pal.maillot); membre(ex + cote, ey - 4, ex + cote, ey - 8, 2, pal.peau); continue; }
+        const lev = posture === 'course' ? ([[0, 1], [0, 0], [1, 0], [0, 0]][image % 4][cote > 0 ? 1 : 0]) : 0;
+        if (posture === 'penche' || posture === 'melee' || posture === 'passe') { membre(ex, ey, ex - cote, ey + 3, 2, pal.maillot); membre(ex - cote, ey + 3, cx - cote, ey + 4, 2, pal.peau); continue; }
+        membre(ex, ey, ex, ey + 3 - lev, 2, pal.maillot);
+        membre(ex, ey + 4 - lev, ex, ey + 6 - lev, 2, pal.peau);
+      }
+    }
+    // --- Tête ---
+    const tx = cx + dx(epaule - 4) - (profil ? 2 : 3), ty = epaule - 7;
+    p(tx, ty + 1, 6, 6, pal.peau);
+    p(tx + 1, ty + 7, 4, 1, pal.peauOmbre); // cou
+    if (vue === 'dos') { p(tx, ty, 6, 5, pal.cheveux); p(tx + 1, ty + 5, 4, 1, pal.cheveux); }
+    else if (profil) {
+      p(tx, ty, 6, 2, pal.cheveux); p(tx, ty + 2, 2, 3, pal.cheveux);
+      p(tx + 4, ty + 3, 1, 1, '#1b1b1b');            // œil
+      p(tx + 6, ty + 4, 1, 1, pal.peauOmbre);       // nez
+    } else {
+      p(tx, ty, 6, 2, pal.cheveux); p(tx, ty + 2, 1, 1, pal.cheveux); p(tx + 5, ty + 2, 1, 1, pal.cheveux);
+      p(tx + 1, ty + 3, 1, 1, '#1b1b1b'); p(tx + 4, ty + 3, 1, 1, '#1b1b1b');
+      p(tx + 2, ty + 5, 2, 1, pal.peauOmbre);
+    }
+    if (pal.casque) { p(tx - 1, ty, 8, 3, pal.casque); p(tx - 1, ty + 3, 1, 3, pal.casque); p(tx + 6, ty + 3, 1, 3, pal.casque); }
+    // --- Contour sombre (lisibilité sur le gazon) ---
+    const img = g.getImageData(0, 0, SW, SH), d = img.data;
+    const plein = (x, y) => x >= 0 && y >= 0 && x < SW && y < SH && d[(y * SW + x) * 4 + 3] > 0;
+    const contour = [];
+    for (let y = 0; y < SH; y++) for (let x = 0; x < SW; x++) {
+      if (plein(x, y)) continue;
+      if (plein(x - 1, y) || plein(x + 1, y) || plein(x, y - 1) || plein(x, y + 1)) contour.push([x, y]);
+    }
+    for (const [x, y] of contour) { const i = (y * SW + x) * 4; d[i] = 20; d[i + 1] = 22; d[i + 2] = 24; d[i + 3] = 235; }
+    g.putImageData(img, 0, 0);
+    return c;
+  }
+  function spriteCouche(debout) {
+    const c = document.createElement('canvas');
+    c.width = SH; c.height = SW;
+    const g = c.getContext('2d');
+    g.translate(SH, 0); g.rotate(Math.PI / 2);
+    g.drawImage(debout, 0, 0);
+    return c;
+  }
+  function palette(j, couleurs) {
     const cle = j.team + j.numero;
-    const peau = PEAUX[hash(cle) % PEAUX.length], cheveux = CHEVEUX[hash(cle + 'h') % CHEVEUX.length];
-    const casque = j.numero <= 5 && hash(cle + 'c') % 3 === 0;
-    // Vue : profil (gauche/droite), face ou dos, selon la direction à l'écran.
+    const pal = {
+      maillot: couleurs.maillot, maillotOmbre: assombrir(couleurs.maillot, 0.72), col: couleurs.col,
+      short: couleurs.short, shortOmbre: assombrir(couleurs.short, 0.75), chaussette: couleurs.chaussette, bande: couleurs.bande,
+      peau: PEAUX[hash(cle) % PEAUX.length], cheveux: CHEVEUX[hash(cle + 'h') % CHEVEUX.length],
+      casque: j.team !== 'ARB' && j.numero <= 5 && hash(cle + 'c') % 3 === 0 ? assombrir(couleurs.maillot, 0.55) : null,
+    };
+    pal.peauOmbre = assombrir(pal.peau, 0.8);
+    return pal;
+  }
+  function sprite(j, couleurs, vue, posture, image) {
+    const pal = palette(j, couleurs);
+    const massif = j.team !== 'ARB' && j.numero <= 8;
+    const imageCle = posture === 'course' ? image % 4 : 0;
+    const cle = [pal.maillot, pal.short, pal.chaussette, pal.peau, pal.cheveux, pal.casque, massif, vue, posture, imageCle].join('|');
+    let s = cacheSprites.get(cle);
+    if (!s) {
+      if (posture === 'sol') s = spriteCouche(sprite(j, couleurs, 'profil', 'arret', 0));
+      else s = fabriquerSprite(pal, vue, posture, imageCle, massif);
+      cacheSprites.set(cle, s);
+    }
+    return s;
+  }
+
+  // Taille d'affichage d'un pixel de sprite (pixels écran) : le joueur fait ~2,6 fois sa taille
+  // au sol en mètres (exagération de lisibilité des jeux vus de haut), jamais moins de 1 px.
+  function pixelSprite() { return Math.max(1, cam.s * 0.092); }
+
+  // Dessine un joueur (sprite pixel art), pieds en (sx, sy).
+  function dessinerPersonnage(sx, sy, j, a, posture, couleurs, opts) {
+    const ps = pixelSprite();
+    if (ps * SH < 8) return null;
     const e = versEcran(a.fx, a.fy);
     const vueProfil = Math.abs(e.x) >= Math.abs(e.y) * 0.8;
     const vue = vueProfil ? 'profil' : (e.y > 0 ? 'face' : 'dos');
     const sens = (vueProfil ? Math.sign(e.x) : a.dirAction) || 1;
-    const v = Math.min(1, a.vit / 7);
-    const ph = a.phase;
-    const balanceJ = Math.sin(ph) * 0.42 * v;   // jambes
-    const balanceB = -Math.sin(ph) * 0.5 * v;   // bras (opposés)
-    const rebond = Math.abs(Math.sin(ph)) * 0.05 * v;
-
+    let p = posture;
+    if (p === 'porte' || p === 'reception') p = 'course';
+    if (p === 'course' && a.vit < 0.6) p = 'arret';
+    if (p === 'ruck' || p === 'maul') p = 'penche';
+    if (p === 'chute') p = a.chute > 0.5 ? 'sol' : 'penche';
+    const image = Math.floor(a.phase / (Math.PI / 2));
+    const vueEff = (p === 'melee' || p === 'penche' || p === 'frappe' || p === 'passe') && !vueProfil ? 'profil' : vue;
+    const spr = sprite(j, couleurs, p === 'sol' ? 'profil' : vueEff, p, image);
     // Ombre.
     ctx.save();
-    ctx.globalAlpha = 0.28;
-    ctx.fillStyle = '#000';
-    ctx.beginPath();
-    ctx.ellipse(sx, sy, 0.45 * cam.s * SPRITE * larg, 0.2 * cam.s * SPRITE, 0, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.globalAlpha = 0.3; ctx.fillStyle = '#000';
+    ctx.beginPath(); ctx.ellipse(sx, sy, (p === 'sol' ? 13 : p === 'melee' ? 10 : 7) * ps, 2.6 * ps, 0, 0, Math.PI * 2); ctx.fill();
     ctx.restore();
-
+    // Saut en touche : le sauteur s'élève au-dessus de l'alignement.
+    const hausse = p === 'saut' ? (6 + 9 * Math.sin(Math.PI * Math.min(1, (opts.prog || 0) * 1.1))) * ps : 0;
     ctx.save();
-    ctx.translate(sx, sy);
-    let incl = 0, hausse = 0, flechi = 0;
-    switch (posture) {
-      case 'sol': incl = Math.PI / 2; break;
-      case 'chute': incl = (Math.PI / 2) * Math.min(1, a.chute); break;
-      case 'releve': flechi = 0.45; break;
-      case 'ruck': incl = 0.85; flechi = 0.25; break;
-      case 'maul': incl = 0.6; flechi = 0.15; break;
-      case 'melee': incl = 1.25; flechi = 0.35; break;
-      case 'saut': hausse = 0.9 * Math.sin(Math.PI * Math.min(1, (opts.prog || 0) * 1.1)) + 0.3; break;
-      default: break;
-    }
-    if (posture === 'sol' || posture === 'chute') ctx.globalAlpha = 0.92;
-    ctx.scale(sens * k * (vue === 'profil' ? 1 : 1), -k);
-    ctx.translate(0, hausse + rebond);
-    ctx.rotate(-incl); // penché vers l'avant
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    const lw = (m) => { ctx.lineWidth = m; };
-
-    const hanche = (0.92 - flechi) * T, epaule = (1.48 - flechi * 0.6) * T, tete = (1.66 - flechi * 0.6) * T;
-    const demiCorps = (vue === 'profil' ? 0.17 : 0.25) * larg;
-    const ecartJ = vue === 'profil' ? 0.02 : 0.11 * larg;
-
-    // Jambes (chaussettes + cuisses), de la hanche au pied.
-    const jambe = (cote, ang) => {
-      const pied = vue === 'profil'
-        ? { x: Math.sin(ang) * 0.55, y: Math.max(0, Math.cos(ang + Math.PI / 2) * 0.12) }
-        : { x: cote * ecartJ, y: Math.max(0, Math.sin(ang * cote) * 0.18) };
-      if (posture === 'melee' || posture === 'ruck') { pied.x = -0.35 - cote * 0.05; }
-      if (posture === 'releve') { pied.x = cote > 0 ? 0.35 : -0.15; }
-      const genou = { x: (pied.x + cote * ecartJ) / 2 + (vue === 'profil' ? 0.06 : 0), y: hanche * 0.5 + pied.y * 0.4 };
-      lw(0.19 * larg); ctx.strokeStyle = couleurs.chaussette;
-      ctx.beginPath(); ctx.moveTo(genou.x, genou.y); ctx.lineTo(pied.x, pied.y + 0.04); ctx.stroke();
-      lw(0.2 * larg); ctx.strokeStyle = peau;
-      ctx.beginPath(); ctx.moveTo(cote * ecartJ, hanche - 0.1); ctx.lineTo(genou.x, genou.y + 0.05); ctx.stroke();
-      ctx.fillStyle = '#111';
-      ctx.fillRect(pied.x - 0.06, pied.y, 0.18, 0.07);
-    };
-    let angG = balanceJ, angD = -balanceJ;
-    if (posture === 'frappe') { angD = 1.3 * Math.sin(Math.PI * Math.min(1, 1 - a.frappe / 0.45)); angG = -0.2; }
-    jambe(-1, angG);
-    jambe(1, angD);
-
-    // Short.
-    ctx.fillStyle = couleurs.short;
-    ctx.fillRect(-demiCorps, hanche - 0.18, demiCorps * 2, 0.24);
-    // Maillot (torse).
-    ctx.fillStyle = couleurs.maillot;
-    ctx.beginPath();
-    ctx.moveTo(-demiCorps, hanche);
-    ctx.lineTo(-demiCorps * 1.08, epaule);
-    ctx.lineTo(demiCorps * 1.08, epaule);
-    ctx.lineTo(demiCorps, hanche);
-    ctx.closePath();
-    ctx.fill();
-    // Col.
-    ctx.fillStyle = couleurs.col;
-    ctx.fillRect(-0.06, epaule - 0.04, 0.12, 0.04);
-
-    // Bras.
-    const bras = (cote, ang, versHaut) => {
-      const ep = { x: (vue === 'profil' ? 0.02 : cote * demiCorps * 1.05), y: epaule - 0.04 };
-      let main;
-      if (versHaut) main = { x: ep.x + 0.05 * cote, y: ep.y + 0.62 };
-      else if (posture === 'passe') main = { x: ep.x + 0.5, y: ep.y - 0.12 };
-      else if (posture === 'porte' && cote > 0) main = { x: ep.x + 0.22, y: ep.y - 0.3 };
-      else if (posture === 'ruck' || posture === 'maul' || posture === 'melee') main = { x: ep.x + 0.42, y: ep.y - 0.1 };
-      else if (posture === 'reception') main = { x: ep.x + 0.35, y: ep.y + 0.25 };
-      else main = vue === 'profil' ? { x: ep.x + Math.sin(ang) * 0.42, y: ep.y - Math.cos(ang) * 0.5 }
-        : { x: ep.x + cote * 0.06, y: ep.y - 0.5 + Math.max(0, Math.sin(ang * cote)) * 0.12 };
-      lw(0.16 * larg); ctx.strokeStyle = couleurs.maillot;
-      const coude = { x: (ep.x + main.x) / 2, y: (ep.y + main.y) / 2 };
-      ctx.beginPath(); ctx.moveTo(ep.x, ep.y); ctx.lineTo(coude.x, coude.y); ctx.stroke();
-      lw(0.13 * larg); ctx.strokeStyle = peau;
-      ctx.beginPath(); ctx.moveTo(coude.x, coude.y); ctx.lineTo(main.x, main.y); ctx.stroke();
-      return main;
-    };
-    const brasHaut = posture === 'saut' || posture === 'leveur';
-    bras(-1, balanceB, brasHaut);
-    const mainD = bras(1, -balanceB, brasHaut);
-
-    // Tête.
-    ctx.fillStyle = peau;
-    ctx.beginPath(); ctx.arc(vue === 'profil' ? 0.02 : 0, tete + 0.02, 0.15, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = casque ? couleurs.maillot : cheveux;
-    ctx.beginPath();
-    if (vue === 'dos' || casque) ctx.arc(0, tete + 0.03, 0.155, 0, Math.PI * 2);
-    else ctx.arc(vue === 'profil' ? -0.02 : 0, tete + 0.07, 0.14, 0, Math.PI);
-    ctx.fill();
-
-    // Ballon tenu : contre la poitrine, dans la main côté avant.
+    ctx.imageSmoothingEnabled = false;
+    ctx.translate(Math.round(sx), Math.round(sy - hausse));
+    if ((p === 'sol' ? a.dirAction : sens) < 0) ctx.scale(-1, 1);
+    if (p === 'sol') ctx.drawImage(spr, -SH / 2 * ps, -SW * ps * 0.55, SH * ps, SW * ps);
+    else ctx.drawImage(spr, -SW / 2 * ps, -SH * ps, SW * ps, SH * ps);
+    ctx.restore();
+    // Ballon tenu, contre la poitrine.
     let ballon = null;
-    if (opts.porteBallon && posture !== 'sol' && posture !== 'chute') {
-      const bx = vue === 'profil' ? mainD.x + 0.06 : 0.0, by = vue === 'profil' ? mainD.y + 0.04 : epaule - 0.32;
-      ctx.save(); ctx.translate(bx, by); ctx.rotate(0.6);
-      ctx.fillStyle = '#8d5524'; ctx.beginPath(); ctx.ellipse(0, 0, 0.17, 0.11, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = '#f2e6d0'; lw(0.015); ctx.beginPath(); ctx.moveTo(-0.08, 0); ctx.lineTo(0.08, 0); ctx.stroke();
+    if (opts.porteBallon && p !== 'sol') {
+      const bx = sx + (vueEff === 'profil' ? sens * 4.5 * ps : 0), by = sy - hausse - 14 * ps;
+      ctx.save(); ctx.translate(bx, by); ctx.rotate(0.5);
+      ctx.fillStyle = '#7a4a1f'; ctx.strokeStyle = '#2a170a'; ctx.lineWidth = Math.max(1, ps * 0.6);
+      ctx.beginPath(); ctx.ellipse(0, 0, 2.6 * ps, 1.7 * ps, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
       ctx.restore();
       ballon = true;
     }
-    ctx.restore();
-
-    // Numéro (repère écran, non retourné) : dans le dos, sur le côté du maillot,
-    // ou au-dessus de la tête quand l'échelle est trop petite pour le lire sur le corps.
-    const hautCorps = (posture === 'sol' || posture === 'chute') ? 0.25 : ((1.2 - flechi) * T + hausse);
-    const tailleNum = Math.round(0.34 * k);
-    if (j.team === 'ARB') return null;
+    if (j.team === 'ARB') return ballon;
+    // Numéro : dans le dos ou sur le flanc du maillot ; au-dessus de la tête quand le sprite est trop petit.
+    const penche = p === 'melee' || p === 'penche' || p === 'sol';
     ctx.save();
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    const penche = posture === 'melee' || posture === 'ruck' || posture === 'maul';
-    if (penche && tailleNum < 14) { ctx.restore(); return ballon; }
-    if (tailleNum >= 8 && posture !== 'sol' && posture !== 'chute' && incl < 0.9) {
-      ctx.font = 'bold ' + tailleNum + 'px sans-serif';
-      ctx.fillStyle = vue === 'face' ? 'rgba(255,255,255,0.75)' : couleurs.numero;
-      ctx.fillText(String(j.numero), sx, sy - hautCorps * k);
-    } else if (posture !== 'sol') {
+    if (ps >= 1.7 && !penche && vueEff !== 'face') {
+      ctx.font = 'bold ' + Math.round(5.2 * ps) + 'px sans-serif';
+      ctx.lineWidth = Math.max(1.5, ps * 0.7); ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+      const y = sy - hausse - 15 * ps;
+      ctx.strokeText(String(j.numero), sx, y); ctx.fillStyle = '#fff'; ctx.fillText(String(j.numero), sx, y);
+    } else if (!penche && ps < 1.7) {
       ctx.font = 'bold ' + Math.max(8, Math.round(rayonJoueur())) + 'px sans-serif';
-      ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,0.55)';
-      const yNum = sy - (2.05 * T + hausse) * k - 4;
-      ctx.strokeText(String(j.numero), sx, yNum);
-      ctx.fillStyle = couleurs.maillot === '#1b1b1b' ? '#f9a825' : '#fff';
-      ctx.fillText(String(j.numero), sx, yNum);
+      ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+      const y = sy - hausse - SH * ps - 5;
+      ctx.strokeText(String(j.numero), sx, y); ctx.fillStyle = '#fff'; ctx.fillText(String(j.numero), sx, y);
     }
     ctx.restore();
-    // Porteur : discret anneau doré au sol, lisible même dans un regroupement.
     if (opts.estPorteur) {
       ctx.save();
-      ctx.strokeStyle = 'rgba(255,214,0,0.9)';
-      ctx.lineWidth = Math.max(1.5, 0.08 * cam.s);
-      ctx.beginPath(); ctx.ellipse(sx, sy, 0.62 * cam.s * SPRITE, 0.28 * cam.s * SPRITE, 0, 0, Math.PI * 2); ctx.stroke();
+      ctx.strokeStyle = 'rgba(255,214,0,0.95)'; ctx.lineWidth = Math.max(1.5, ps * 0.8);
+      ctx.beginPath(); ctx.ellipse(sx, sy, 9 * ps, 3.4 * ps, 0, 0, Math.PI * 2); ctx.stroke();
       ctx.restore();
     }
     return ballon;
@@ -713,5 +794,5 @@
   }
 
   global.RMRenderer = { init, redimensionner, versCanvas, dessiner, ordreCouches, rayonJoueur, etiquetteArbitre,
-    camera: () => ({ x: cam.x, y: cam.y, s: cam.s, paysage }), postures: () => Object.assign({}, dernieresPostures) };
+    orientation, camera: () => ({ x: cam.x, y: cam.y, s: cam.s, paysage }), postures: () => Object.assign({}, dernieresPostures) };
 })(window);

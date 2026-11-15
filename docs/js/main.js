@@ -1052,6 +1052,20 @@
   // panneau à part : la barre de contrôles reste à une seule rangée, avec des
   // boutons assez grands pour être tapés sans viser (Lecture/Vitesse toujours
   // visibles, le reste à un tap de distance plutôt qu'entassé en permanence).
+  // Orientation du terrain : auto -> vertical -> horizontal -> auto (choix mémorisé par le rendu).
+  const LIBELLES_ORIENTATION = { auto: '⤢ Terrain auto', portrait: '↕ Terrain vertical', paysage: '↔ Terrain horizontal' };
+  const btnOrientation = document.getElementById('btnOrientation');
+  function majBoutonOrientation() { if (btnOrientation) btnOrientation.textContent = LIBELLES_ORIENTATION[Renderer.orientation()] || LIBELLES_ORIENTATION.auto; }
+  if (btnOrientation) {
+    btnOrientation.addEventListener('click', () => {
+      const suivant = { auto: 'portrait', portrait: 'paysage', paysage: 'auto' }[Renderer.orientation()] || 'auto';
+      Renderer.orientation(suivant);
+      redimensionner();
+      majBoutonOrientation();
+    });
+    majBoutonOrientation();
+  }
+
   document.getElementById('btnMenu').addEventListener('click', () => {
     document.getElementById('panneauMenu').classList.add('visible');
   });
