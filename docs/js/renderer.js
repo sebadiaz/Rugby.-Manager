@@ -819,7 +819,7 @@
     suivrePosition(a, arb, 0);
     const { px, py } = versCanvas(arb.x, arb.y);
     const faux = { team: 'ARB', numero: 0 };
-    const signal = arb.signal === 'AVANTAGE' || arb.signal === 'ESSAI';
+    const signal = arb.signal === 'AVANTAGE' || arb.signal === 'ESSAI' || arb.signal === 'SIFFLET';
     dessinerPersonnage(px, py, faux, a, signal ? 'leveur' : 'course', COULEURS.ARB, {});
     if (etiquetteArbitre()) {
       ctx.save();

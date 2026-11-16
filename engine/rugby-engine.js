@@ -263,7 +263,9 @@
       // pack jusqu'aux pieds du 8 (talonnage + acheminement, tiré entre min et
       // max selon la qualité du ballon), puis attend à la base que le 9 le
       // joue (sortie).
-      durees: { introduction: 0.8, acheminementMin: 2.0, acheminementMax: 4.0, sortie: 1.0 },
+      // `formation` : temps de mise en place de la mêlée après la marque (s). Loi 19.4 : 30 s au plus ; 44 s par défaut
+      // (octroi complet, calibration du moteur) — voir la mesure dans _tickMelee.
+      durees: { introduction: 0.8, acheminementMin: 2.0, acheminementMax: 4.0, sortie: 1.0, formation: 44 },
     },
     // Organisation d'attaque : taux de jeu au large (écarter vers le centre en
     // espace) sous pression / au calme. Cadence ~1 passe/s max : un receveur
@@ -1355,6 +1357,7 @@
       this._entree22DernierePossession = null;
       this._entree22Faite = false;
       this._nouvelleManche('A');
+      this._horlogeArretee = true; // attend le coup de sifflet de l'arbitre
       this.equipeKickPremiereMiTemps = this._dernierEquipeKick;
     }
 
@@ -1546,7 +1549,9 @@
       // Mise en place : au coup d'envoi d'ouverture, les joueurs sont déjà placés ;
       // sinon (reprise après un score) ils COURENT rejoindre leur poste depuis leur
       // position réelle (pas de téléportation), cf. _tickCoupEnvoi.
-      this.envoiEnPlace = !avaitEquipes;
+      // Toute reprise (y compris le coup d'envoi d'ouverture, où les joueurs sont déjà placés) passe par le contrôle
+      // « tous en place » puis le coup de sifflet de l'arbitre (cf. _tickCoupEnvoi).
+      this.envoiEnPlace = false;
       this.possession = equipeKick;
       this.porteur = kickeur;
       this.equipeReceptriceAttendue = equipeReceptrice;
@@ -1640,12 +1645,29 @@
         // sautait de ses mains au centre. Plafond de sécurité 25 s pour lui.
         const k = this.porteur;
         const botteurEnPlace = !k || Math.hypot(this.xCoupEnvoi - k.x, LARGEUR / 2 - k.y) < 1.5;
-        if ((botteurEnPlace && !this._retourEnvoi && (pireEcart < 2 || this.timerPhase > 8)) || this.timerPhase > 25) {
-          this._retourEnvoi = null;
-          this.envoiEnPlace = true;
-          this.timerPhase = 0; // le vol du ballon repart de zéro une fois en place
-          for (const j of [...this.equipeA, ...this.equipeB]) j._cibleEnvoi = null;
+        // REPRISE RÉGLEMENTAIRE (loi 12) : l'arbitre ne siffle que lorsque TOUS les joueurs sont à leur place
+        // (l'équipe qui botte derrière le ballon, les adversaires à 10 m ou à 22 m), le botteur au centre et le
+        // ballon revenu. Plafond de sécurité 40 s pour ne jamais bloquer le match (un joueur coincé, un carton).
+        if (!this._sifflet) {
+          if ((botteurEnPlace && !this._retourEnvoi && pireEcart < 1.2) || this.timerPhase > 40) {
+            const ouverture = this._horlogeArretee === true;
+            this._sifflet = { t: 0, duree: Math.max(1.2, (ouverture ? 4 : 2) * this._echelleArret) };
+            this.arbitreSifflet = true;
+            this.log('SIFFLET_REPRISE', this.possession,
+              ouverture ? `Les deux equipes sont en place : l'arbitre siffle le coup d'envoi`
+                : `Tous les joueurs sont replaces : l'arbitre siffle la reprise du jeu`,
+              { enPlace: pireEcart < 1.2, ouverture });
+          }
+          return;
         }
+        this._sifflet.t += dt;
+        if (this._sifflet.t < this._sifflet.duree) return; // le temps du coup de sifflet : personne ne bouge
+        this._sifflet = null; this.arbitreSifflet = false;
+        this._horlogeArretee = false; // le chronomètre repart au coup d'envoi
+        this._retourEnvoi = null;
+        this.envoiEnPlace = true;
+        this.timerPhase = 0; // le vol du ballon repart de zéro une fois en place
+        for (const j of [...this.equipeA, ...this.equipeB]) j._cibleEnvoi = null;
         return;
       }
       // Le ballon est botté : il file nettement plus vite qu'un joueur ne court
@@ -5092,6 +5114,7 @@
       this.timerPhase += dt;
       if (this.timerPhase >= 1) {
         this._nouvelleManche(this.equipeKickPremiereMiTemps);
+        this._horlogeArretee = true; // la seconde période démarre au coup de sifflet, après le replacement
       }
     }
 
@@ -6554,7 +6577,14 @@
           // en quatre temps). Porte a 34 s : c'est le plus gros poste de temps
           // mort du rugby, et le raccourcir revenait a jouer 1,5 fois trop de
           // possessions.
-          if (m.timer >= dur(44) && (pret || m.timer >= m.capFormation + dur(6))) {
+          // Formation de la mêlée : `cfg.melee.durees.formation` (44 s par défaut). La LOI 19.4 (2025) exige que les
+          // équipes soient prêtes dans les 30 s qui suivent la marque de l'arbitre (sanction : coup franc) ; à 30 s,
+          // le ballon est en jeu 37,4 min au lieu de 35,0, les essais passent de 5,2 à 7,3 par match et la calibration
+          // du moteur tombe à 9/14 (mesuré sur 12 graines, cf. docs/ANALYSE_MATCH_REEL.md). Les 44 s couvrent le temps
+          // d'octroi complet (décision de l'arbitre, marche des packs, marque) : les mêlées réelles durent
+          // 59-67 s du premier coup de sifflet à l'introduction. Régler 30 pour la limite légale seule.
+          const dureeFormation = (this.cfg.melee.durees || {}).formation || 44;
+          if (m.timer >= dur(dureeFormation) && (pret || m.timer >= m.capFormation + dur(6))) {
             m.etat = E.CROUCH; m.timer = 0;
             this.log('MELEE_CROUCH', m.equipeIntroduction, 'Arbitre : "Crouch" - les premieres lignes se baissent');
           }
@@ -8268,7 +8298,9 @@
           }
         }
       }
-      this.tempsMatch += dt;
+      // Le chronomètre ne démarre qu'au COUP D'ENVOI : tant que l'arbitre n'a pas sifflé le début du match ou de
+      // la seconde période, l'horloge reste arrêtée (après un essai, elle court jusqu'au coup d'envoi).
+      if (!this._horlogeArretee) this.tempsMatch += dt;
       // Une séquence de marque déjà engagée (essai en attente de transformation,
       // tir au but en cours) doit aller à son TERME même si le temps de la
       // période ou du match expire pendant ce temps : en rugby, un essai marqué
@@ -9060,7 +9092,7 @@
         },
         arbitre: {
           x: this.arbitrePos.x, y: this.arbitrePos.y,
-          signal: this.avantage ? 'AVANTAGE' : this.phase === 'ESSAI' ? 'ESSAI' : null,
+          signal: this.avantage ? 'AVANTAGE' : this.phase === 'ESSAI' ? 'ESSAI' : this.arbitreSifflet ? 'SIFFLET' : null,
         },
         assistants: this.arbitresAssistants.map(a => ({
           ...a,
