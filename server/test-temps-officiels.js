@@ -127,7 +127,7 @@ test('mêlée : la formation réglée à 30 s respecte la limite légale de la l
   assert.ok(moy(legal) <= 31, `à 30 s la mise en place respecte la loi : ${moy(legal).toFixed(1)} s`);
 });
 
-test('pénalité jouée vite : tous les coéquipiers derrière le ballon, fautifs à 10 m, coup de sifflet, 30 s maximum', () => {
+test('pénalité jouée vite : tous les coéquipiers du tapeur derrière le ballon (loi 20.10), 30 s maximum', () => {
   let vues = 0;
   for (const g of [1, 2, 3]) {
     const m = new MatchEngine(g, 4800);
@@ -135,7 +135,7 @@ test('pénalité jouée vite : tous les coéquipiers derrière le ballon, fautif
     for (let i = 0; i < 48000 && m.phase !== 'TERMINE'; i++) {
       const R = m.penaliteRecul;
       if (R && debut === null) { debut = m.tempsMatch; sif = false; }
-      if (R && R.sifflet) sif = true;
+      if (R) sif = true;
       m.tick(0.1);
       if (!m.penaliteRecul && debut !== null) {
         const dur = m.tempsMatch - debut;

@@ -2418,33 +2418,23 @@
           pret = false;
         }
       }
-      // REPRISE RÉGLEMENTAIRE (retour joueur) : la pénalité ne se joue que lorsque TOUS les coéquipiers du tapeur sont
-      // derrière le ballon et que les fautifs ont reculé de 10 m ; l'arbitre siffle alors la reprise. Plafond de
-      // 30 s (de jeu réel, réduit comme les autres arrêts sur un match court) : passé ce délai, les fautifs encore
-      // dans les 10 m sont HORS-JEU (loi 20.14), comme sur un coup de pied.
+      // Loi 20.10 : l'équipe du tapeur reste DERRIÈRE le ballon jusqu'à ce qu'il soit botté. Le ballon ne part donc que
+      // lorsque tous ses coéquipiers sont derrière lui (retour joueur), 30 s au plus. Loi 20.12-20.14 : les adversaires
+      // reculent de 10 m mais, sur une pénalité jouée vite, on ne les attend pas : ils ne peuvent pas jouer tant qu'ils
+      // n'ont pas reculé (hors-jeu, cf. horsJeuKick).
+      pret = true;
       const eqAtt = R.eqDef === this.equipeA ? this.equipeB : this.equipeA;
       for (const j of eqAtt) {
         if (j === this.porteur || j.auSol > 0 || j.sinBin > 0) continue;
-        // Devant le ballon : on revient derrière lui en gardant sa largeur.
         if ((j.x - R.markX) * R.sens > 0.3) { avancer(j, (R.markX - R.sens * 0.5) - j.x, 0, dt, vitesseMs(j)); pret = false; }
       }
       R.attente -= dt;
       if (R.attente > 0) return;
       const tapeurPret = !this.porteur || distance(this.porteur, { x: R.markX, y: R.markY }) <= 1;
-      if (pret && tapeurPret && !R.sifflet) {
-        R.sifflet = { t: 0, duree: Math.max(1.0, 1.5 * this._echelleArret) };
-        this.arbitreSifflet = true;
-        this.log('SIFFLET_REPRISE', this.possession, `Tout le monde est en place : l'arbitre siffle la reprise de la penalite`, { penalite: true });
-      }
-      if (R.sifflet) {
-        R.sifflet.t += dt;
-        if (R.sifflet.t < R.sifflet.duree) return;
-      }
-      if ((R.sifflet && pret && tapeurPret) || R.timer <= 0) {
+      if ((pret && tapeurPret) || R.timer <= 0) {
         for (const j of R.eqDef) {
           if ((j.x - R.ligne) * R.sens < -0.5) { j.horsJeuKick = DUREE_HORS_JEU_KICK; j.horsJeuKickX = R.ligne; }
         }
-        this.arbitreSifflet = false;
         this.penaliteRecul = null;
       }
     }
