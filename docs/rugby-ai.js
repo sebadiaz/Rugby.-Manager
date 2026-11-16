@@ -1647,7 +1647,11 @@ function candidatsDefense(b, s, pb, jeuCourant) {
   const avance = arretee ? 1 : 3;
   const xTenu = sens > 0 ? Math.min(ligneX, xVoisins + avance) : Math.max(ligneX, xVoisins - avance);
   // Glissement : en jeu courant la ligne se resserre vers le ballon (60 % de l'écart latéral ; à 35 % il restait 5,7 défenseurs devant le porteur contre 7,8 en LEGACY).
-  const yTenu = arretee ? ref.y : ref.y + (bal.y - ref.y) * 0.6;
+  // L'ailier ne se laisse pas aspirer : il garde la largeur (glissement plafonné à 5 m), sinon l'aile opposée au
+  // ballon devient un boulevard dès que l'attaque change de côté.
+  const aile = num === 11 || num === 14;
+  const glisse = (bal.y - ref.y) * 0.6;
+  const yTenu = arretee ? ref.y : ref.y + (aile ? Math.max(-5, Math.min(5, glisse)) : glisse);
   out.push({ id: 'HOLD_LINE', priority: 60, target: { x: xTenu, y: yTenu }, vmax: Math.abs(bal.y - ref.y) <= 15 ? 1 : 0.85, reason: 'ligne alignée sur ' + voisins.length + ' voisin(s) observé(s)' });
   // CLOSE_GAP : plus grand intervalle observé près de moi, si je suis le mieux placé parmi ceux que je vois.
   const bords = arretee ? [{ id: 'touche0', x: ligneX, y: 0, numero: 0 }, { id: 'touche70', x: ligneX, y: P.LARGEUR, numero: 0 }] : [];
@@ -1659,6 +1663,7 @@ function candidatsDefense(b, s, pb, jeuCourant) {
       const centre = { x: ligneX, y: (ligne[i].y + ligne[i + 1].y) / 2 };
       const dMoi = P.dist(me, centre);
       const plusProche = Object.values(b.teammates).every((m) => P.dist(m.lastSeen, centre) >= dMoi - 0.01);
+      if (aile && Math.abs(centre.y - ref.y) > 12) continue; // un ailier ne quitte pas son couloir pour boucher un trou lointain
       if (plusProche && (!meilleur || g > meilleur.g)) meilleur = { g, centre };
     }
   }

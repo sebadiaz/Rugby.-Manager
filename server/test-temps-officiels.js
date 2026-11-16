@@ -17,7 +17,7 @@ function observerEnvois(graine, duree = 4800, config) {
   const envois = [];
   const sifflets = [];
   const log = m.log.bind(m);
-  m.log = (t, eq, msg, d) => { if (t === 'SIFFLET_REPRISE') sifflets.push({ t: m.tempsMatch, tick: m._numTick, d }); return log(t, eq, msg, d); };
+  m.log = (t, eq, msg, d) => { if (t === 'SIFFLET_REPRISE' && !(d && d.penalite)) sifflets.push({ t: m.tempsMatch, tick: m._numTick, d }); return log(t, eq, msg, d); };
   let avant = null;
   const tickOriginal = m._tickCoupEnvoi.bind(m);
   m._tickCoupEnvoi = (dt) => {
@@ -125,6 +125,32 @@ test('mêlée : la formation réglée à 30 s respecte la limite légale de la l
   assert.ok(defaut.length >= 8 && legal.length >= 8);
   assert.ok(moy(defaut) >= 40, `défaut inchangé (~44 s) : ${moy(defaut).toFixed(1)}`);
   assert.ok(moy(legal) <= 31, `à 30 s la mise en place respecte la loi : ${moy(legal).toFixed(1)} s`);
+});
+
+test('pénalité jouée vite : tous les coéquipiers derrière le ballon, fautifs à 10 m, coup de sifflet, 30 s maximum', () => {
+  let vues = 0;
+  for (const g of [1, 2, 3]) {
+    const m = new MatchEngine(g, 4800);
+    let debut = null, sif = false;
+    for (let i = 0; i < 48000 && m.phase !== 'TERMINE'; i++) {
+      const R = m.penaliteRecul;
+      if (R && debut === null) { debut = m.tempsMatch; sif = false; }
+      if (R && R.sifflet) sif = true;
+      m.tick(0.1);
+      if (!m.penaliteRecul && debut !== null) {
+        const dur = m.tempsMatch - debut;
+        assert.ok(dur <= 31, `reprise en ${dur.toFixed(1)} s (> 30 s)`);
+        if (sif) {
+          const eq = m.possession === 'A' ? m.equipeA : m.equipeB, sens = m.possession === 'A' ? 1 : -1;
+          const devant = eq.filter((j) => j !== m.porteur && j.auSol <= 0 && j.sinBin <= 0 && (j.x - m.porteur.x) * sens > 1.5).length;
+          assert.strictEqual(devant, 0, `graine ${g} : ${devant} coéquipier(s) devant le tapeur à la reprise`);
+          vues++;
+        }
+        debut = null;
+      }
+    }
+  }
+  assert.ok(vues >= 3, `reprises rapides avec sifflet observées : ${vues}`);
 });
 
 console.log(`\n${nb - ko}/${nb} tests OK`);

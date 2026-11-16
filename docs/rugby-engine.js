@@ -778,7 +778,10 @@
     if (d < 0.01) return;
     // Vitesse RÉELLEMENT atteinte ce tick : la vitesse courante du joueur plus
     // ce qu'il peut gagner en dt, plafonnée par sa vitesse maximale.
-    const vEff = Math.min(vmax, (j.vitesseCourante || 0) + ACCELERATION * dt);
+    // Un receveur qui vient de recevoir (fenêtre d'enchaînement) COURT SUR LE BALLON : il accélère 1,5 fois plus
+    // vite qu'un joueur qui se remet en marche dans le trafic (sinon il restait figé ~3 s après sa réception).
+    const acc = ACCELERATION * ((j._enchaine || 0) > 0 ? 1.5 : 1);
+    const vEff = Math.min(vmax, (j.vitesseCourante || 0) + acc * dt);
     j.vitesseCourante = vEff;
     j._aBouge = true;
     const pas = Math.min(d, vEff * dt);
@@ -2379,7 +2382,7 @@
       // cet excès. La condition « fautifs repliés à 10 m » reste en place, et
       // le plafond de 40 s aussi.
       this.penaliteRecul = { sens, eqDef, ligne, markX: position.x, markY: position.y,
-        timer: 40 * this._echelleArret, attente: 1 * this._echelleArret };
+        timer: 30 * this._echelleArret, attente: 1 * this._echelleArret, sifflet: null };
       // Le ballon est POSÉ sur la marque (loi 20.4) : il y va depuis là où il
       // était affiché (ruck, mêlée, porteur fautif), puis le tapeur l'y
       // rejoint. Avant, il sautait dans les mains du n°9 (~8 m, jusqu'à 14 m).
@@ -2415,21 +2418,33 @@
           pret = false;
         }
       }
-      // JEU RAPIDE = RAPIDE (retour joueur, P2-123) : on peut jouer une
-      // pénalité vite comme prendre son temps. Ici l'équipe a choisi de la
-      // jouer vite : le tapeur frappe dès qu'il est sur la marque (une seconde
-      // pour poser le ballon), sans attendre que les fautifs aient reculé. Ceux
-      // qui sont encore dans les 10 m sont HORS-JEU (loi 20.14) : ils doivent
-      // se replier et ne peuvent pas plaquer avant d'y être (même mécanisme que
-      // le hors-jeu sur coup de pied). Avant, un plancher de 8 s et l'attente du
-      // repli complet laissaient tout le monde en place, immobile.
+      // REPRISE RÉGLEMENTAIRE (retour joueur) : la pénalité ne se joue que lorsque TOUS les coéquipiers du tapeur sont
+      // derrière le ballon et que les fautifs ont reculé de 10 m ; l'arbitre siffle alors la reprise. Plafond de
+      // 30 s (de jeu réel, réduit comme les autres arrêts sur un match court) : passé ce délai, les fautifs encore
+      // dans les 10 m sont HORS-JEU (loi 20.14), comme sur un coup de pied.
+      const eqAtt = R.eqDef === this.equipeA ? this.equipeB : this.equipeA;
+      for (const j of eqAtt) {
+        if (j === this.porteur || j.auSol > 0 || j.sinBin > 0) continue;
+        // Devant le ballon : on revient derrière lui en gardant sa largeur.
+        if ((j.x - R.markX) * R.sens > 0.3) { avancer(j, (R.markX - R.sens * 0.5) - j.x, 0, dt, vitesseMs(j)); pret = false; }
+      }
       R.attente -= dt;
       if (R.attente > 0) return;
       const tapeurPret = !this.porteur || distance(this.porteur, { x: R.markX, y: R.markY }) <= 1;
-      if (tapeurPret || R.timer <= 0) {
+      if (pret && tapeurPret && !R.sifflet) {
+        R.sifflet = { t: 0, duree: Math.max(1.0, 1.5 * this._echelleArret) };
+        this.arbitreSifflet = true;
+        this.log('SIFFLET_REPRISE', this.possession, `Tout le monde est en place : l'arbitre siffle la reprise de la penalite`, { penalite: true });
+      }
+      if (R.sifflet) {
+        R.sifflet.t += dt;
+        if (R.sifflet.t < R.sifflet.duree) return;
+      }
+      if ((R.sifflet && pret && tapeurPret) || R.timer <= 0) {
         for (const j of R.eqDef) {
           if ((j.x - R.ligne) * R.sens < -0.5) { j.horsJeuKick = DUREE_HORS_JEU_KICK; j.horsJeuKickX = R.ligne; }
         }
+        this.arbitreSifflet = false;
         this.penaliteRecul = null;
       }
     }
@@ -3224,8 +3239,15 @@
       // 5,78 (+0,62 +/- 0,41, etabli) et passes 516 -> 493 (-24 +/- 9, etabli).
       // Le seuil de 8 m avait ete pose a une epoque ou le porteur sortait
       // "gratuitement" faute de defense laterale credible ; ce n'est plus le cas.
-      if (porteur.y < 1.5) evite = Math.abs(evite);
-      else if (porteur.y > LARGEUR - 1.5) evite = -Math.abs(evite);
+      // Le renversement du crochet est PROGRESSIF (pas un interrupteur à 1,5 m) : avec un seuil net, le porteur qui
+      // longe la ligne franchissait le seuil à chaque tick, son crochet changeait de signe (±3,5 m/s) et il
+      // « dansait » le long de la touche. Le crochet vers la touche s'éteint continûment, passe par zéro à
+      // 0,75 m et se retourne vers l'intérieur au ras de la ligne : un équilibre stable, sans tremblement.
+      const versTouche = porteur.y < LARGEUR / 2 ? -1 : 1;
+      const dTouche = Math.min(porteur.y, LARGEUR - porteur.y);
+      if (dTouche < 1.5 && evite * versTouche > 0) {
+        evite = -versTouche * Math.abs(evite) * (1 - 2 * Math.max(0, dTouche) / 1.5);
+      }
       if (action === 'RUN_AGENT' && !(porteur._croiseTimer > 0) && porteur.y > 3 && porteur.y < LARGEUR - 3) {
         evite = this._intentionsAgents.get(porteur.team + porteur.numero).jeu.decalage ?? evite;
       }
@@ -4289,6 +4311,9 @@
         fromY = P.fromY + (P.cible.y - P.fromY) * t;
       }
       const d = distance({ x: fromX, y: fromY }, cible);
+      // Le receveur n'attend pas le ballon à l'arrêt : il part au moment de la passe et l'aborde déjà lancé
+      // (au moins 45 % de sa vitesse maximale). Avant : 0-0,2 m/s à la réception dans un cas sur trois.
+      if (cible && !(cible.auSol > 0)) cible.vitesseCourante = Math.max(cible.vitesseCourante || 0, 0.3 * vitesseMs(cible));
       this.passeVisuelle = {
         fromX, fromY, cible,
         timer: 0,
@@ -7533,7 +7558,10 @@
         const backs = equipe.filter(j => j.numero >= 10 && j.sinBin <= 0 && j !== this.porteur);
         const xBacks = pt.x - sens * this.cfg.touche.offsideNonParticipants;
         backs.forEach((j, k) => {
-          const cyB = yLigne5 + versCentre * (8 + k * 6);
+          let cyB = yLigne5 + versCentre * (8 + k * 6);
+          // L'AILIER du côté FERMÉ (à l'opposé de la touche) garde son couloir : tous les trois-quarts s'entassaient
+          // sur le côté ouvert et le grand côté devenait un boulevard dès que la touche était gagnée et jouée vite.
+          if ((j.numero === 11 || j.numero === 14) && Math.abs(j.channelY - yTouche) > LARGEUR / 2) cyB = j.channelY;
           // Le trois-quarts jugé hors-jeu (cf. _tickTouche) part TROP TÔT : il
           // monte vers l'alignement pendant le vol du ballon, à pleine vitesse.
           // Le buteur d'une pénalité en touche court d'abord à la marque.
@@ -8887,6 +8915,9 @@
         const j = p.j;
         if (j.auSol > 0 || j.sinBin > 0) continue; // devenu inactif pendant le tick
         if (p.it.jeuCourant && (this.phase !== 'PORTE' || this.penaliteRecul || this.penaliteChoix || j.horsJeuKick > 0)) continue;
+        // Le receveur d'une passe en vol court sur le ballon : sa course est conduite par le moteur, pas par son
+        // ordre de placement (qu'il suivait encore pendant le vol : 8 à 12 % de réceptions immobiles).
+        if (p.it.jeuCourant && j === this.porteur && this.passeVisuelle) continue;
         // Le joueur piloté n'obéit plus à la logique de phase pour son déplacement :
         // on rétablit son état d'avant le tick, puis il avance de SON intention.
         j.x = p.x; j.y = p.y; j.vitesseCourante = p.v; j.orientation = p.o; j._aBouge = p.ab;
