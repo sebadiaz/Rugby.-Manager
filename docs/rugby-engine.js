@@ -8300,7 +8300,8 @@
       }
       // Le chronomètre ne démarre qu'au COUP D'ENVOI : tant que l'arbitre n'a pas sifflé le début du match ou de
       // la seconde période, l'horloge reste arrêtée (après un essai, elle court jusqu'au coup d'envoi).
-      if (!this._horlogeArretee) this.tempsMatch += dt;
+      // (L'arrêt ne vaut que pendant la reprise elle-même : un scénario injecté en plein jeu ne reste jamais figé.)
+      if (!(this._horlogeArretee && this.phase === 'COUP_ENVOI' && !this.envoiEnPlace)) this.tempsMatch += dt;
       // Une séquence de marque déjà engagée (essai en attente de transformation,
       // tir au but en cours) doit aller à son TERME même si le temps de la
       // période ou du match expire pendant ce temps : en rugby, un essai marqué
