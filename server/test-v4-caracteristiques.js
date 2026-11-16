@@ -61,11 +61,14 @@ test('tendance : sans maîtrise de la passe longue, aucun receveur au-delà de 1
 
 test('match GOAP : une équipe dont personne ne sait faire la chistera n\'en tente aucune ; l\'autre en tente', () => {
   const sansChistera = Object.fromEntries([...Array(15)].map((_, i) => [i + 1, { gestes: { chistera: 0 } }]));
-  const m = new MatchEngine(5, 4800, configGOAP({ joueursA: sansChistera }));
   const parEquipe = { A: 0, B: 0 };
-  const log = m.log.bind(m);
-  m.log = (t, eq, msg, d) => { if (t === 'CHISTERA' || t === 'CHISTERA_RATEE') parEquipe[eq]++; return log(t, eq, msg, d); };
-  m.jouerJusquAuSifflet(0.1);
+  // Plusieurs graines : la chistera est rare (un geste maîtrisé que le porteur choisit à un moment précis).
+  for (const graine of [5, 6, 7]) {
+    const m = new MatchEngine(graine, 4800, configGOAP({ joueursA: sansChistera }));
+    const log = m.log.bind(m);
+    m.log = (t, eq, msg, d) => { if (t === 'CHISTERA' || t === 'CHISTERA_RATEE') parEquipe[eq]++; return log(t, eq, msg, d); };
+    m.jouerJusquAuSifflet(0.1);
+  }
   assert.strictEqual(parEquipe.A, 0, 'aucune chistera pour A');
   assert.ok(parEquipe.B >= 1, 'B (gestes par défaut) en tente : ' + parEquipe.B);
 });

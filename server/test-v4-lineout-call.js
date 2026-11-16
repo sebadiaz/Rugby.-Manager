@@ -121,7 +121,7 @@ test('moteur : le sauteur qui capte et demande le maul l\'obtient si un partenai
 });
 
 test('moteur : demande de maul sans partenaire lié -> pas de maul, ballon transmis au 9', () => {
-  const c = matchPilote(4, 1500, { demander: true, delier: true });
+  const c = matchPilote(4, 2400, { demander: true, delier: true });
   assert.ok(c.sansSoutien >= 4, 'refus : ' + c.sansSoutien);
   assert.strictEqual(c.maulsTouche, 0);
   assert.ok(c.au9 >= c.sansSoutien - 1);
