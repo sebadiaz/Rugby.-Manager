@@ -778,9 +778,7 @@
     if (d < 0.01) return;
     // Vitesse RÉELLEMENT atteinte ce tick : la vitesse courante du joueur plus
     // ce qu'il peut gagner en dt, plafonnée par sa vitesse maximale.
-    // Un receveur qui vient de recevoir (fenêtre d'enchaînement) COURT SUR LE BALLON : il accélère 1,5 fois plus
-    // vite qu'un joueur qui se remet en marche dans le trafic (sinon il restait figé ~3 s après sa réception).
-    const acc = ACCELERATION * ((j._enchaine || 0) > 0 ? 1.5 : 1);
+    const acc = ACCELERATION;
     const vEff = Math.min(vmax, (j.vitesseCourante || 0) + acc * dt);
     j.vitesseCourante = vEff;
     j._aBouge = true;
@@ -4303,7 +4301,7 @@
       const d = distance({ x: fromX, y: fromY }, cible);
       // Le receveur n'attend pas le ballon à l'arrêt : il part au moment de la passe et l'aborde déjà lancé
       // (au moins 45 % de sa vitesse maximale). Avant : 0-0,2 m/s à la réception dans un cas sur trois.
-      if (cible && !(cible.auSol > 0)) cible.vitesseCourante = Math.max(cible.vitesseCourante || 0, 0.3 * vitesseMs(cible));
+      if (cible && !(cible.auSol > 0)) cible.vitesseCourante = Math.max(cible.vitesseCourante || 0, 0.45 * vitesseMs(cible));
       this.passeVisuelle = {
         fromX, fromY, cible,
         timer: 0,
@@ -7935,7 +7933,7 @@
       // n'en comptait que 10, ce qui raccourcissait artificiellement le temps
       // mort et gonflait d'autant le temps de jeu effectif (mesuré 42,6 min
       // pour 32-42 attendues).
-      if (this.timerPhase >= 32 * this._echelleArret) {
+      if (this.timerPhase >= 20 * this._echelleArret) {
         // Le buteur (l'ouvreur) a couru jusqu'au tee pendant la célébration
         // (cf. _transformationPlacerJoueurs) : il y est déjà, on ne le téléporte
         // plus. Il devient simplement le porteur pour la frappe.
@@ -7959,12 +7957,15 @@
       // routine (placement du tee, concentration, course d'élan), plus longue
       // sur un angle fermé — mais toujours sous le maximum réglementaire. Le
       // match étant regardé en avance rapide, ce temps réel reste confortable.
-      const DUREE_MAX_TRANSFO = 60; // secondes réglementaires (loi 8.8.c : la transformation doit être jouée sous 60 s)
+      // Loi 8 (texte 2025, 8.c) : la transformation est botée dans les 60 s de temps de jeu À PARTIR DE L'ESSAI ACCORDÉ. Le moteur
+      // comptait 32 s de célébration PUIS jusqu'à 60 s de routine (90 s, 30 s de trop par essai : ~4 min de ballon mort en plus
+      // par match). Désormais 20 s de célébration/replacement + au plus 40 s de routine = 60 s, le maximum légal.
+      const DUREE_MAX_TRANSFO = 40;
       // Routine réelle d'un buteur international : il pose le tee, recule, se
       // concentre, prend sa course. C'est 45 à 60 s, pas 26 — le maximum
       // réglementaire de 60 s est d'ailleurs atteint presque à chaque fois sur
       // un angle fermé. Le moteur bouclait la séquence en 44 s en moyenne.
-      const routine = 45 + Math.abs(this.essaiY - LARGEUR / 2) * 0.5;
+      const routine = 30 + Math.abs(this.essaiY - LARGEUR / 2) * 0.4;
       const duree = Math.min(DUREE_MAX_TRANSFO, routine) * this._echelleArret;
       // Le ballon s'envole vers les poteaux pendant la dernière fraction du
       // temps d'arrêt (le reste, c'est le placement et la course d'élan) :
