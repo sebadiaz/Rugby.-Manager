@@ -1157,6 +1157,9 @@
       this._toucheAgents = this.aiMode === 'GOAP' && config.touches !== 'MOTEUR';
       // En GOAP, le capitaine choisit la suite d'une pénalité ; `config.penalites === 'MOTEUR'` rétablit l'ancien choix.
       this._penaliteAgents = this.aiMode === 'GOAP' && config.penalites !== 'MOTEUR';
+      // En GOAP, la sortie de mêlée vient du dialogue 9 / 10 / 8 ; `config.melees === 'MOTEUR'` rétablit le tirage.
+      this._meleeAgents = this.aiMode === 'GOAP' && config.melees !== 'MOTEUR';
+      this._seqMelee = 0;
       // En GOAP, le porteur choisit le receveur de toute passe ; `config.passes === 'MOTEUR'` rétablit l'ancien choix.
       this._passesAgents = this.aiMode === 'GOAP' && config.passes !== 'MOTEUR';
       this.penaliteChoix = null;
@@ -6287,6 +6290,7 @@
         equipeIntroduction,
         equipeNonIntroduction: equipeIntroduction === 'A' ? 'B' : 'A',
         x: px, y: py, sens: equipeIntroduction === 'A' ? 1 : -1,
+        id: ++this._seqMelee,
         timer: 0, timerGlobal: 0,
         // Conditions de terrain/ballon (pelouse, météo...) propres à cette
         // mêlée, tirées une seule fois : petit facteur de contestation parmi
@@ -6623,6 +6627,11 @@
           const neufV = this._demiDeMeleeDisponible(eqV);
           const huitV = eqV.find(j => j.numero === 8 && j.sinBin <= 0 && j.auSol === 0);
           const dureeSortie = (this.cfg.melee.durees || {}).sortie || 1.0;
+          if (this._meleeAgents && huitV && m.timer >= dureeSortie * 0.6) {
+            const demande = this._intentionsAgents?.get(m.vainqueur + '8')?.melee;
+            if (demande === 'GO') return this._meleeSortieBallon(huitV);
+            if (demande === 'PASSE') return this._meleeSortieBallon(huitV, true);
+          }
           if (m.pickAndGo && huitV && m.timer >= dureeSortie * 0.6) return this._meleeSortieBallon(huitV);
           if (m.passeHuit && huitV && m.timer >= dureeSortie * 0.6) return this._meleeSortieBallon(huitV, true);
           const neufPret = neufV && Math.hypot(neufV.x - m.balle.x, neufV.y - m.balle.y) <= 1.0;
@@ -6705,10 +6714,15 @@
       const dom = m.qualite === 'DOMINANT';
       const pPick = dom ? pickAndGoHuit.dominant : pickAndGoHuit.normal;
       const pPasse = dom ? passeHuit.dominant : passeHuit.normal;
-      const r = this.rng();
       const huitDispo = !!(huit && huit.auSol === 0);
-      m.pickAndGo = huitDispo && r < pPick;
-      m.passeHuit = huitDispo && !m.pickAndGo && r < pPick + pPasse;
+      if (this._meleeAgents) {
+        // GOAP : pas de tirage. Le 8 part ou passe s'il l'a demandé APRÈS l'avoir annoncé au 9 (cf. SORTIE).
+        m.pickAndGo = false; m.passeHuit = false;
+      } else {
+        const r = this.rng();
+        m.pickAndGo = huitDispo && r < pPick;
+        m.passeHuit = huitDispo && !m.pickAndGo && r < pPick + pPasse;
+      }
       m.etat = ETATS_MELEE.SORTIE;
       m.timer = 0;
       m.timerSortie = 4 * this._echelleArret + ((this.cfg.melee.durees || {}).sortie || 1.0);
@@ -8810,14 +8824,15 @@
       const touche = this.aiMode === 'GOAP' && intention.touche === 'MAUL' ? 'MAUL' : null;
       const penalite = this.aiMode === 'GOAP' && ['TOUCHE', 'POTEAUX', 'RAPIDE'].includes(intention.penalite) ? intention.penalite : null;
       const receveur = this.aiMode === 'GOAP' && Number.isInteger(intention.receveur) && intention.receveur >= 1 && intention.receveur <= 15 ? intention.receveur : null;
-      if (!mouvement && !jeu && !touche && !penalite && !receveur) return false;
+      const melee = this.aiMode === 'GOAP' && (intention.melee === 'GO' || intention.melee === 'PASSE') ? intention.melee : null;
+      if (!mouvement && !jeu && !touche && !penalite && !receveur && !melee) return false;
       const f = intention.vmaxFactor == null ? 1 : intention.vmaxFactor;
       if (!(f > 0 && f <= 1)) return false;
       if (!this._intentionsAgents) this._intentionsAgents = new Map();
       const TYPES_PIED = ['TOUCHE', 'DEGAGEMENT', 'OCCUPATION', 'CHANDELLE', 'CHIP'];
       const botte = TYPES_PIED.includes(intention.botte) ? intention.botte : null;
       const passe = Number.isInteger(intention.passe) && intention.passe >= 1 && intention.passe <= 15 ? intention.passe : null;
-      this._intentionsAgents.set(equipe + numero, { equipe, numero, tx: intention.tx, ty: intention.ty, vmaxFactor: f, passe, mouvement, jeuCourant: intention.jeuCourant === true, jeu, touche, penalite, receveur });
+      this._intentionsAgents.set(equipe + numero, { equipe, numero, tx: intention.tx, ty: intention.ty, vmaxFactor: f, passe, mouvement, jeuCourant: intention.jeuCourant === true, jeu, touche, penalite, receveur, melee });
       return true;
     }
     clearAgentIntent(equipe, numero) {

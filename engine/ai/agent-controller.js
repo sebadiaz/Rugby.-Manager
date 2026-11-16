@@ -31,6 +31,7 @@ const { individualPlacement } = require('./individual-placement.js');
 const { lirePorteur, receveurPrefere } = require('./open-play.js');
 const { LineoutMind } = require('./lineout-call.js');
 const { choixPenalite } = require('./penalty-choice.js');
+const { ScrumMind } = require('./scrum-call.js');
 
 // Condition de succès (faits désirés) de chaque but planifiable. Les autres
 // buts (DEFEND, COVER_BACKFIELD...) n'ont pas encore d'actions A16+ : le but est
@@ -91,6 +92,7 @@ class GoalBasedRugbyAgent {
     this.lastExpansions = 0;
     this.touche = new LineoutMind(this.agent); // dialogue de touche : question du 9, avis du 10, appel entendu
     this.penalite = null; // { cle, choix } : MA décision de capitaine sur la pénalité en cours
+    this.scrum = new ScrumMind(this.agent); // dialogue de mêlée : question du 9, avis du 10, annonce du 8
   }
 
   _push(type, t, extra) { const e = Object.freeze(Object.assign({ type, agent: this.id, t }, extra || {})); this.events.push(e); return e; }
@@ -292,6 +294,8 @@ class GoalBasedRugbyAgent {
     }
     // Touche : un avant qui a entendu « Touche, maul ! » demandera le maul s'il capte (le moteur tranche).
     if (state.phase === 'TOUCHE' && this.touche.demandeMaul()) this._intent = Object.assign({}, this._intent, { touche: 'MAUL' });
+    // Mêlée : le 8 qui a ANNONCÉ son départ (« Neuf, j'y vais ! ») le demande au moteur, qui reste seul juge.
+    if (state.phase === 'MELEE') { const dm = this.scrum.demandeMoteur(); if (dm) this._intent = Object.assign({}, this._intent, { melee: dm }); }
     // Pénalité sifflée pour mon équipe et je porte le brassard : je choisis (après un temps de lecture).
     const pen = state.penalite;
     if (pen && pen.equipe === this.agent.team && pen.capitaine === this.agent.numero && this._beliefs) {
@@ -311,6 +315,10 @@ class GoalBasedRugbyAgent {
     if (beliefs) {
       const me = (this.agent.team === 'A' ? state.equipeA : state.equipeB).find((j) => j.numero === this.agent.numero);
       const dispo = me && !(me.auSol > 0) && !(me.sinBin > 0) ? me : null;
+      for (const e of this.scrum.etape(beliefs, state, comm, dispo, this.playbook)) {
+        const { type, ...extra } = e;
+        this._push(type, state.tempsMatch, extra);
+      }
       for (const e of this.touche.etape(beliefs, state, comm, dispo, this.playbook)) {
         const { type, ...extra } = e;
         this._push(type, state.tempsMatch, extra);
