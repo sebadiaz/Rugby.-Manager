@@ -331,6 +331,7 @@
     const auSol = j.auSol > 0 || j.solVisuel > 0;
     const phase = state.phase;
     const pres = (p, r) => p && Math.hypot(a.rx - p.x, a.ry - p.y) <= r;
+    if (a.plonge && a.plonge.t < 0.55 && !auSol) return 'penche';
     if (auSol) return a.chute < 1 ? 'chute' : (j.auSol > 0 && j.auSol < 0.5 ? 'releve' : 'sol');
     const ts = state.toucheSauteur;
     if (ts && phase === 'TOUCHE') {
@@ -725,7 +726,34 @@
         const e = versEcran(a.fx, a.fy);
         if (Math.abs(e.x) > 0.2) a.dirAction = Math.sign(e.x);
         const auSol = j.auSol > 0 || j.solVisuel > 0;
-        if (auSol && !a.solPrec) a.chute = 0;
+        if (auSol && !a.solPrec) {
+          a.chute = 0;
+          // PLAQUAGE : le joueur tombe dans le sens où il est poussé (du plaqueur vers lui) — et non toujours du même
+          // côté — et le plaqueur le plonge dessus au lieu de rester à plusieurs mètres.
+          const rivaux = state.teams[team === 'A' ? 'B' : 'A'];
+          let pl = null, dm = 5;
+          for (const r of rivaux) {
+            if (r.auSol > 0 || r.solVisuel > 0) continue;
+            const ar = etatAnim((team === 'A' ? 'B' : 'A') + r.numero);
+            const d = Math.hypot(ar.rx - a.rx, ar.ry - a.ry);
+            if (d < dm) { dm = d; pl = ar; }
+          }
+          if (pl) {
+            const ep = versEcran(a.rx - pl.rx, a.ry - pl.ry);
+            if (Math.abs(ep.x) > 0.15) a.dirAction = Math.sign(ep.x);
+            else { const ev = versEcran(a.vx, a.vy); if (Math.abs(ev.x) > 0.1) a.dirAction = Math.sign(ev.x); }
+            pl.plonge = { t: 0, cible: a, d0: dm };
+          }
+        }
+        if (a.plonge) {
+          const pg = a.plonge; pg.t += dt;
+          const c = pg.cible, dx = c.rx - a.rx, dy = c.ry - a.ry, d = Math.hypot(dx, dy) || 1;
+          const reste = Math.max(0, d - 0.9);
+          const p = pg.t < 0.22 ? pg.t / 0.22 : pg.t < 0.55 ? 1 : Math.max(0, 1 - (pg.t - 0.55) / 0.4);
+          a.rx += dx / d * reste * p; a.ry += dy / d * reste * p;
+          if (pg.t < 0.55) { a.fx = dx / d; a.fy = dy / d; a.vit = Math.max(a.vit, 0.7); }
+          if (pg.t >= 0.95) a.plonge = null;
+        }
         a.chute = auSol ? Math.min(1, a.chute + dt / 0.32) : 0;
         a.solPrec = auSol;
         a.passe = Math.max(0, a.passe - dt);
@@ -819,7 +847,7 @@
     suivrePosition(a, arb, 0);
     const { px, py } = versCanvas(arb.x, arb.y);
     const faux = { team: 'ARB', numero: 0 };
-    const signal = arb.signal === 'AVANTAGE' || arb.signal === 'ESSAI';
+    const signal = arb.signal === 'AVANTAGE' || arb.signal === 'ESSAI' || arb.signal === 'SIFFLET';
     dessinerPersonnage(px, py, faux, a, signal ? 'leveur' : 'course', COULEURS.ARB, {});
     if (etiquetteArbitre()) {
       ctx.save();

@@ -263,7 +263,9 @@
       // pack jusqu'aux pieds du 8 (talonnage + acheminement, tiré entre min et
       // max selon la qualité du ballon), puis attend à la base que le 9 le
       // joue (sortie).
-      durees: { introduction: 0.8, acheminementMin: 2.0, acheminementMax: 4.0, sortie: 1.0 },
+      // `formation` : temps de mise en place de la mêlée après la marque (s). Loi 19.4 : 30 s au plus ; 44 s par défaut
+      // (octroi complet, calibration du moteur) — voir la mesure dans _tickMelee.
+      durees: { introduction: 0.8, acheminementMin: 2.0, acheminementMax: 4.0, sortie: 1.0, formation: 44 },
     },
     // Organisation d'attaque : taux de jeu au large (écarter vers le centre en
     // espace) sous pression / au calme. Cadence ~1 passe/s max : un receveur
@@ -776,7 +778,10 @@
     if (d < 0.01) return;
     // Vitesse RÉELLEMENT atteinte ce tick : la vitesse courante du joueur plus
     // ce qu'il peut gagner en dt, plafonnée par sa vitesse maximale.
-    const vEff = Math.min(vmax, (j.vitesseCourante || 0) + ACCELERATION * dt);
+    // Un receveur qui vient de recevoir (fenêtre d'enchaînement) COURT SUR LE BALLON : il accélère 1,5 fois plus
+    // vite qu'un joueur qui se remet en marche dans le trafic (sinon il restait figé ~3 s après sa réception).
+    const acc = ACCELERATION * ((j._enchaine || 0) > 0 ? 1.5 : 1);
+    const vEff = Math.min(vmax, (j.vitesseCourante || 0) + acc * dt);
     j.vitesseCourante = vEff;
     j._aBouge = true;
     const pas = Math.min(d, vEff * dt);
@@ -1157,6 +1162,9 @@
       this._toucheAgents = this.aiMode === 'GOAP' && config.touches !== 'MOTEUR';
       // En GOAP, le capitaine choisit la suite d'une pénalité ; `config.penalites === 'MOTEUR'` rétablit l'ancien choix.
       this._penaliteAgents = this.aiMode === 'GOAP' && config.penalites !== 'MOTEUR';
+      // En GOAP, la sortie de mêlée vient du dialogue 9 / 10 / 8 ; `config.melees === 'MOTEUR'` rétablit le tirage.
+      this._meleeAgents = this.aiMode === 'GOAP' && config.melees !== 'MOTEUR';
+      this._seqMelee = 0;
       // En GOAP, le porteur choisit le receveur de toute passe ; `config.passes === 'MOTEUR'` rétablit l'ancien choix.
       this._passesAgents = this.aiMode === 'GOAP' && config.passes !== 'MOTEUR';
       this.penaliteChoix = null;
@@ -1352,6 +1360,7 @@
       this._entree22DernierePossession = null;
       this._entree22Faite = false;
       this._nouvelleManche('A');
+      this._horlogeArretee = true; // attend le coup de sifflet de l'arbitre
       this.equipeKickPremiereMiTemps = this._dernierEquipeKick;
     }
 
@@ -1543,7 +1552,9 @@
       // Mise en place : au coup d'envoi d'ouverture, les joueurs sont déjà placés ;
       // sinon (reprise après un score) ils COURENT rejoindre leur poste depuis leur
       // position réelle (pas de téléportation), cf. _tickCoupEnvoi.
-      this.envoiEnPlace = !avaitEquipes;
+      // Toute reprise (y compris le coup d'envoi d'ouverture, où les joueurs sont déjà placés) passe par le contrôle
+      // « tous en place » puis le coup de sifflet de l'arbitre (cf. _tickCoupEnvoi).
+      this.envoiEnPlace = false;
       this.possession = equipeKick;
       this.porteur = kickeur;
       this.equipeReceptriceAttendue = equipeReceptrice;
@@ -1637,12 +1648,29 @@
         // sautait de ses mains au centre. Plafond de sécurité 25 s pour lui.
         const k = this.porteur;
         const botteurEnPlace = !k || Math.hypot(this.xCoupEnvoi - k.x, LARGEUR / 2 - k.y) < 1.5;
-        if ((botteurEnPlace && !this._retourEnvoi && (pireEcart < 2 || this.timerPhase > 8)) || this.timerPhase > 25) {
-          this._retourEnvoi = null;
-          this.envoiEnPlace = true;
-          this.timerPhase = 0; // le vol du ballon repart de zéro une fois en place
-          for (const j of [...this.equipeA, ...this.equipeB]) j._cibleEnvoi = null;
+        // REPRISE RÉGLEMENTAIRE (loi 12) : l'arbitre ne siffle que lorsque TOUS les joueurs sont à leur place
+        // (l'équipe qui botte derrière le ballon, les adversaires à 10 m ou à 22 m), le botteur au centre et le
+        // ballon revenu. Plafond de sécurité 40 s pour ne jamais bloquer le match (un joueur coincé, un carton).
+        if (!this._sifflet) {
+          if ((botteurEnPlace && !this._retourEnvoi && pireEcart < 1.2) || this.timerPhase > 40) {
+            const ouverture = this._horlogeArretee === true;
+            this._sifflet = { t: 0, duree: Math.max(1.2, (ouverture ? 4 : 2) * this._echelleArret) };
+            this.arbitreSifflet = true;
+            this.log('SIFFLET_REPRISE', this.possession,
+              ouverture ? `Les deux equipes sont en place : l'arbitre siffle le coup d'envoi`
+                : `Tous les joueurs sont replaces : l'arbitre siffle la reprise du jeu`,
+              { enPlace: pireEcart < 1.2, ouverture });
+          }
+          return;
         }
+        this._sifflet.t += dt;
+        if (this._sifflet.t < this._sifflet.duree) return; // le temps du coup de sifflet : personne ne bouge
+        this._sifflet = null; this.arbitreSifflet = false;
+        this._horlogeArretee = false; // le chronomètre repart au coup d'envoi
+        this._retourEnvoi = null;
+        this.envoiEnPlace = true;
+        this.timerPhase = 0; // le vol du ballon repart de zéro une fois en place
+        for (const j of [...this.equipeA, ...this.equipeB]) j._cibleEnvoi = null;
         return;
       }
       // Le ballon est botté : il file nettement plus vite qu'un joueur ne court
@@ -2354,7 +2382,7 @@
       // cet excès. La condition « fautifs repliés à 10 m » reste en place, et
       // le plafond de 40 s aussi.
       this.penaliteRecul = { sens, eqDef, ligne, markX: position.x, markY: position.y,
-        timer: 40 * this._echelleArret, attente: 1 * this._echelleArret };
+        timer: 30 * this._echelleArret, attente: 1 * this._echelleArret, sifflet: null };
       // Le ballon est POSÉ sur la marque (loi 20.4) : il y va depuis là où il
       // était affiché (ruck, mêlée, porteur fautif), puis le tapeur l'y
       // rejoint. Avant, il sautait dans les mains du n°9 (~8 m, jusqu'à 14 m).
@@ -2390,18 +2418,20 @@
           pret = false;
         }
       }
-      // JEU RAPIDE = RAPIDE (retour joueur, P2-123) : on peut jouer une
-      // pénalité vite comme prendre son temps. Ici l'équipe a choisi de la
-      // jouer vite : le tapeur frappe dès qu'il est sur la marque (une seconde
-      // pour poser le ballon), sans attendre que les fautifs aient reculé. Ceux
-      // qui sont encore dans les 10 m sont HORS-JEU (loi 20.14) : ils doivent
-      // se replier et ne peuvent pas plaquer avant d'y être (même mécanisme que
-      // le hors-jeu sur coup de pied). Avant, un plancher de 8 s et l'attente du
-      // repli complet laissaient tout le monde en place, immobile.
+      // Loi 20.10 : l'équipe du tapeur reste DERRIÈRE le ballon jusqu'à ce qu'il soit botté. Le ballon ne part donc que
+      // lorsque tous ses coéquipiers sont derrière lui (retour joueur), 30 s au plus. Loi 20.12-20.14 : les adversaires
+      // reculent de 10 m mais, sur une pénalité jouée vite, on ne les attend pas : ils ne peuvent pas jouer tant qu'ils
+      // n'ont pas reculé (hors-jeu, cf. horsJeuKick).
+      pret = true;
+      const eqAtt = R.eqDef === this.equipeA ? this.equipeB : this.equipeA;
+      for (const j of eqAtt) {
+        if (j === this.porteur || j.auSol > 0 || j.sinBin > 0) continue;
+        if ((j.x - R.markX) * R.sens > 0.3) { avancer(j, (R.markX - R.sens * 0.5) - j.x, 0, dt, vitesseMs(j)); pret = false; }
+      }
       R.attente -= dt;
       if (R.attente > 0) return;
       const tapeurPret = !this.porteur || distance(this.porteur, { x: R.markX, y: R.markY }) <= 1;
-      if (tapeurPret || R.timer <= 0) {
+      if ((pret && tapeurPret) || R.timer <= 0) {
         for (const j of R.eqDef) {
           if ((j.x - R.ligne) * R.sens < -0.5) { j.horsJeuKick = DUREE_HORS_JEU_KICK; j.horsJeuKickX = R.ligne; }
         }
@@ -3199,8 +3229,15 @@
       // 5,78 (+0,62 +/- 0,41, etabli) et passes 516 -> 493 (-24 +/- 9, etabli).
       // Le seuil de 8 m avait ete pose a une epoque ou le porteur sortait
       // "gratuitement" faute de defense laterale credible ; ce n'est plus le cas.
-      if (porteur.y < 1.5) evite = Math.abs(evite);
-      else if (porteur.y > LARGEUR - 1.5) evite = -Math.abs(evite);
+      // Le renversement du crochet est PROGRESSIF (pas un interrupteur à 1,5 m) : avec un seuil net, le porteur qui
+      // longe la ligne franchissait le seuil à chaque tick, son crochet changeait de signe (±3,5 m/s) et il
+      // « dansait » le long de la touche. Le crochet vers la touche s'éteint continûment, passe par zéro à
+      // 0,75 m et se retourne vers l'intérieur au ras de la ligne : un équilibre stable, sans tremblement.
+      const versTouche = porteur.y < LARGEUR / 2 ? -1 : 1;
+      const dTouche = Math.min(porteur.y, LARGEUR - porteur.y);
+      if (dTouche < 1.5 && evite * versTouche > 0) {
+        evite = -versTouche * Math.abs(evite) * (1 - 2 * Math.max(0, dTouche) / 1.5);
+      }
       if (action === 'RUN_AGENT' && !(porteur._croiseTimer > 0) && porteur.y > 3 && porteur.y < LARGEUR - 3) {
         evite = this._intentionsAgents.get(porteur.team + porteur.numero).jeu.decalage ?? evite;
       }
@@ -4264,6 +4301,9 @@
         fromY = P.fromY + (P.cible.y - P.fromY) * t;
       }
       const d = distance({ x: fromX, y: fromY }, cible);
+      // Le receveur n'attend pas le ballon à l'arrêt : il part au moment de la passe et l'aborde déjà lancé
+      // (au moins 45 % de sa vitesse maximale). Avant : 0-0,2 m/s à la réception dans un cas sur trois.
+      if (cible && !(cible.auSol > 0)) cible.vitesseCourante = Math.max(cible.vitesseCourante || 0, 0.3 * vitesseMs(cible));
       this.passeVisuelle = {
         fromX, fromY, cible,
         timer: 0,
@@ -5089,6 +5129,7 @@
       this.timerPhase += dt;
       if (this.timerPhase >= 1) {
         this._nouvelleManche(this.equipeKickPremiereMiTemps);
+        this._horlogeArretee = true; // la seconde période démarre au coup de sifflet, après le replacement
       }
     }
 
@@ -6287,6 +6328,7 @@
         equipeIntroduction,
         equipeNonIntroduction: equipeIntroduction === 'A' ? 'B' : 'A',
         x: px, y: py, sens: equipeIntroduction === 'A' ? 1 : -1,
+        id: ++this._seqMelee,
         timer: 0, timerGlobal: 0,
         // Conditions de terrain/ballon (pelouse, météo...) propres à cette
         // mêlée, tirées une seule fois : petit facteur de contestation parmi
@@ -6550,7 +6592,14 @@
           // en quatre temps). Porte a 34 s : c'est le plus gros poste de temps
           // mort du rugby, et le raccourcir revenait a jouer 1,5 fois trop de
           // possessions.
-          if (m.timer >= dur(44) && (pret || m.timer >= m.capFormation + dur(6))) {
+          // Formation de la mêlée : `cfg.melee.durees.formation` (44 s par défaut). La LOI 19.4 (2025) exige que les
+          // équipes soient prêtes dans les 30 s qui suivent la marque de l'arbitre (sanction : coup franc) ; à 30 s,
+          // le ballon est en jeu 37,4 min au lieu de 35,0, les essais passent de 5,2 à 7,3 par match et la calibration
+          // du moteur tombe à 9/14 (mesuré sur 12 graines, cf. docs/ANALYSE_MATCH_REEL.md). Les 44 s couvrent le temps
+          // d'octroi complet (décision de l'arbitre, marche des packs, marque) : les mêlées réelles durent
+          // 59-67 s du premier coup de sifflet à l'introduction. Régler 30 pour la limite légale seule.
+          const dureeFormation = (this.cfg.melee.durees || {}).formation || 44;
+          if (m.timer >= dur(dureeFormation) && (pret || m.timer >= m.capFormation + dur(6))) {
             m.etat = E.CROUCH; m.timer = 0;
             this.log('MELEE_CROUCH', m.equipeIntroduction, 'Arbitre : "Crouch" - les premieres lignes se baissent');
           }
@@ -6623,6 +6672,11 @@
           const neufV = this._demiDeMeleeDisponible(eqV);
           const huitV = eqV.find(j => j.numero === 8 && j.sinBin <= 0 && j.auSol === 0);
           const dureeSortie = (this.cfg.melee.durees || {}).sortie || 1.0;
+          if (this._meleeAgents && huitV && m.timer >= dureeSortie * 0.6) {
+            const demande = this._intentionsAgents?.get(m.vainqueur + '8')?.melee;
+            if (demande === 'GO') return this._meleeSortieBallon(huitV);
+            if (demande === 'PASSE') return this._meleeSortieBallon(huitV, true);
+          }
           if (m.pickAndGo && huitV && m.timer >= dureeSortie * 0.6) return this._meleeSortieBallon(huitV);
           if (m.passeHuit && huitV && m.timer >= dureeSortie * 0.6) return this._meleeSortieBallon(huitV, true);
           const neufPret = neufV && Math.hypot(neufV.x - m.balle.x, neufV.y - m.balle.y) <= 1.0;
@@ -6705,10 +6759,15 @@
       const dom = m.qualite === 'DOMINANT';
       const pPick = dom ? pickAndGoHuit.dominant : pickAndGoHuit.normal;
       const pPasse = dom ? passeHuit.dominant : passeHuit.normal;
-      const r = this.rng();
       const huitDispo = !!(huit && huit.auSol === 0);
-      m.pickAndGo = huitDispo && r < pPick;
-      m.passeHuit = huitDispo && !m.pickAndGo && r < pPick + pPasse;
+      if (this._meleeAgents) {
+        // GOAP : pas de tirage. Le 8 part ou passe s'il l'a demandé APRÈS l'avoir annoncé au 9 (cf. SORTIE).
+        m.pickAndGo = false; m.passeHuit = false;
+      } else {
+        const r = this.rng();
+        m.pickAndGo = huitDispo && r < pPick;
+        m.passeHuit = huitDispo && !m.pickAndGo && r < pPick + pPasse;
+      }
       m.etat = ETATS_MELEE.SORTIE;
       m.timer = 0;
       m.timerSortie = 4 * this._echelleArret + ((this.cfg.melee.durees || {}).sortie || 1.0);
@@ -7489,7 +7548,10 @@
         const backs = equipe.filter(j => j.numero >= 10 && j.sinBin <= 0 && j !== this.porteur);
         const xBacks = pt.x - sens * this.cfg.touche.offsideNonParticipants;
         backs.forEach((j, k) => {
-          const cyB = yLigne5 + versCentre * (8 + k * 6);
+          let cyB = yLigne5 + versCentre * (8 + k * 6);
+          // L'AILIER du côté FERMÉ (à l'opposé de la touche) garde son couloir : tous les trois-quarts s'entassaient
+          // sur le côté ouvert et le grand côté devenait un boulevard dès que la touche était gagnée et jouée vite.
+          if ((j.numero === 11 || j.numero === 14) && Math.abs(j.channelY - yTouche) > LARGEUR / 2) cyB = j.channelY;
           // Le trois-quarts jugé hors-jeu (cf. _tickTouche) part TROP TÔT : il
           // monte vers l'alignement pendant le vol du ballon, à pleine vitesse.
           // Le buteur d'une pénalité en touche court d'abord à la marque.
@@ -8254,7 +8316,10 @@
           }
         }
       }
-      this.tempsMatch += dt;
+      // Le chronomètre ne démarre qu'au COUP D'ENVOI : tant que l'arbitre n'a pas sifflé le début du match ou de
+      // la seconde période, l'horloge reste arrêtée (après un essai, elle court jusqu'au coup d'envoi).
+      // (L'arrêt ne vaut que pendant la reprise elle-même : un scénario injecté en plein jeu ne reste jamais figé.)
+      if (!(this._horlogeArretee && this.phase === 'COUP_ENVOI' && !this.envoiEnPlace)) this.tempsMatch += dt;
       // Une séquence de marque déjà engagée (essai en attente de transformation,
       // tir au but en cours) doit aller à son TERME même si le temps de la
       // période ou du match expire pendant ce temps : en rugby, un essai marqué
@@ -8810,14 +8875,15 @@
       const touche = this.aiMode === 'GOAP' && intention.touche === 'MAUL' ? 'MAUL' : null;
       const penalite = this.aiMode === 'GOAP' && ['TOUCHE', 'POTEAUX', 'RAPIDE'].includes(intention.penalite) ? intention.penalite : null;
       const receveur = this.aiMode === 'GOAP' && Number.isInteger(intention.receveur) && intention.receveur >= 1 && intention.receveur <= 15 ? intention.receveur : null;
-      if (!mouvement && !jeu && !touche && !penalite && !receveur) return false;
+      const melee = this.aiMode === 'GOAP' && (intention.melee === 'GO' || intention.melee === 'PASSE') ? intention.melee : null;
+      if (!mouvement && !jeu && !touche && !penalite && !receveur && !melee) return false;
       const f = intention.vmaxFactor == null ? 1 : intention.vmaxFactor;
       if (!(f > 0 && f <= 1)) return false;
       if (!this._intentionsAgents) this._intentionsAgents = new Map();
       const TYPES_PIED = ['TOUCHE', 'DEGAGEMENT', 'OCCUPATION', 'CHANDELLE', 'CHIP'];
       const botte = TYPES_PIED.includes(intention.botte) ? intention.botte : null;
       const passe = Number.isInteger(intention.passe) && intention.passe >= 1 && intention.passe <= 15 ? intention.passe : null;
-      this._intentionsAgents.set(equipe + numero, { equipe, numero, tx: intention.tx, ty: intention.ty, vmaxFactor: f, passe, mouvement, jeuCourant: intention.jeuCourant === true, jeu, touche, penalite, receveur });
+      this._intentionsAgents.set(equipe + numero, { equipe, numero, tx: intention.tx, ty: intention.ty, vmaxFactor: f, passe, mouvement, jeuCourant: intention.jeuCourant === true, jeu, touche, penalite, receveur, melee });
       return true;
     }
     clearAgentIntent(equipe, numero) {
@@ -8839,6 +8905,9 @@
         const j = p.j;
         if (j.auSol > 0 || j.sinBin > 0) continue; // devenu inactif pendant le tick
         if (p.it.jeuCourant && (this.phase !== 'PORTE' || this.penaliteRecul || this.penaliteChoix || j.horsJeuKick > 0)) continue;
+        // Le receveur d'une passe en vol court sur le ballon : sa course est conduite par le moteur, pas par son
+        // ordre de placement (qu'il suivait encore pendant le vol : 8 à 12 % de réceptions immobiles).
+        if (p.it.jeuCourant && j === this.porteur && this.passeVisuelle) continue;
         // Le joueur piloté n'obéit plus à la logique de phase pour son déplacement :
         // on rétablit son état d'avant le tick, puis il avance de SON intention.
         j.x = p.x; j.y = p.y; j.vitesseCourante = p.v; j.orientation = p.o; j._aBouge = p.ab;
@@ -9045,7 +9114,7 @@
         },
         arbitre: {
           x: this.arbitrePos.x, y: this.arbitrePos.y,
-          signal: this.avantage ? 'AVANTAGE' : this.phase === 'ESSAI' ? 'ESSAI' : null,
+          signal: this.avantage ? 'AVANTAGE' : this.phase === 'ESSAI' ? 'ESSAI' : this.arbitreSifflet ? 'SIFFLET' : null,
         },
         assistants: this.arbitresAssistants.map(a => ({
           ...a,

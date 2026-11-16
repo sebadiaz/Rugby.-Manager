@@ -41,6 +41,26 @@ stats d'équipe du match + agrégation des 46 feuilles de stats individuelles).
 | Loi 2025 | mise en place d'une touche limitée à 30 s, comme la mêlée | règle d'arbitrage | [World Rugby, mises à jour 2025](https://resources.worldrugby-rims.pulselive.com/worldrugby/document/2025/03/21/f1e9a2d3-0510-4b03-b6e2-9002e8642f99/11.-241209-TE-Conf-Law-Updates-inc-Global-Law-Trials-2025.pdf) |
 | Ballon en jeu, Coupe du monde 2023 | 34 min 18 s | | [Stats Perform](https://www.statsperform.com/insights/the-evolution-of-rugby-a-statistical-analysis/) |
 
+## Passe sur les temps officiels (16 nov. 2026) — mêlée, reprise du jeu
+
+Références : texte des lois 2025 du dépôt (`rules/world-rugby-laws-2025.txt`) et statistiques sourcées ci-dessus.
+
+| Temps | Officiel | Moteur avant | Moteur après |
+|---|---|---|---|
+| Mise en place de la mêlée | **≤ 30 s** après la marque de l'arbitre, sinon coup franc (loi 19.4) | 44 s | 44 s par défaut, **réglable** (`config.melee.durees.formation`) ; voir ci-dessous |
+| Mêlée complète (1er sifflet → introduction, sans mêlée à refaire) | 59 s (Irlande-Géorgie 2020) ; 80 s jusqu'à la sortie (CM 2019) | 59 s (formation 44 + rituel 15) | inchangé |
+| Mise en place de la touche | ≤ 30 s après la marque (loi 18) | 30 s | inchangé |
+| Transformation | ≤ 60 s après l'essai accordé (loi 8 ; 30 s en rugby à 7) | 47 à 56 s | inchangé |
+| Pénalité au but | ≤ 60 s (loi 20) | 47 à 52 s | inchangé |
+| **Coup d'envoi** (ouverture, 2ᵉ période, après un essai ou un renvoi) | l'équipe qui botte derrière le ballon, les adversaires au-delà de leur ligne (loi 12) ; l'arbitre lance le jeu | départ sur un simple délai de 8 s, joueurs « à peu près » en place, **sans coup de sifflet** ; à l'ouverture, ballon botté dès le pas 0 | **tous les joueurs à ≤ 1,2 m de leur place** (plafond de sécurité 40 s), puis **coup de sifflet de l'arbitre** (2 s, 4 s à l'ouverture), puis coup d'envoi (`SIFFLET_REPRISE`) |
+| Chronomètre | démarre au coup d'envoi ; court après un essai | courait dès le pas 0 | **arrêté** jusqu'au coup de sifflet d'ouverture et de la 2ᵉ période ; court ensuite |
+
+**Mêlée à 30 s : mesuré, non retenu par défaut.** 12 graines complètes appariées (LEGACY) : ballon en jeu 35,0 → 37,4 min (réel ~34), essais 5,2 → 7,3, points 48,6 → 63,8, rucks 211 → 229, passes 410 → 441 ; `test-calibration-moteur` tombe à **9/14** (minimum 12). Les 44 s représentent le temps d'octroi complet (décision de l'arbitre, marche des packs, marque) que les statistiques réelles comptent du premier sifflet ; la loi ne borne que le délai qui suit la marque. Le choix entre « fidèle à la limite légale » et « calibration du moteur » reste au propriétaire : régler `formation: 30`.
+
+**Séquence de reprise (mesure, 12 graines LEGACY, avant → après) :** ballon en jeu 35,0 → 35,3 min, rucks 211 → 212, mise en place du coup d'envoi 10 s → 13 s ; calibration 13/14 → **12/14** (passes 423 pour une borne à 420, mêlées 18,9 pour une borne à 18 : à la limite). Tests : `server/test-temps-officiels.js` (6).
+
+**Temps passé devant l'écran (navigateur, vitesse x4 par défaut, mesuré avant ce changement) :** mêlée 5,8 s, touche 1,7 s, coup d'envoi 2,3 s ; à x1, une mêlée représente environ 24 s (la formation est affichée ×5).
+
 **Moteur (P2-81).** Mêlée ~58 s de la formation à l'introduction (plausible, en bas de la fourchette réelle). Touche :
 au moins **49 s** imposées (`_tickTouche`, `dureeMin`). C'est deux fois la référence ; le commentaire du code disait
 « 40 à 60 s », sans source.
