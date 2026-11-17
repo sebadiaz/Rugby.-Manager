@@ -778,7 +778,7 @@
     if (d < 0.01) return;
     // Vitesse RÉELLEMENT atteinte ce tick : la vitesse courante du joueur plus
     // ce qu'il peut gagner en dt, plafonnée par sa vitesse maximale.
-    const acc = ACCELERATION * ((j._enchaine || 0) > 0 ? 1.3 : 1);
+    const acc = ACCELERATION;
     const vEff = Math.min(vmax, (j.vitesseCourante || 0) + acc * dt);
     j.vitesseCourante = vEff;
     j._aBouge = true;
