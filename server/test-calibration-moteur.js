@@ -29,7 +29,7 @@ const FOURCHETTES = {
   scrums: [6, 18],
   mauls: [3, 10],
   penalitesConcedees: [16, 28],
-  turnovers: [8, 20], // borne haute 18 -> 20 : l'ecart au placement de la transformation deplace la trajectoire des graines 1..N (19,3) ; graines 501.. : dans [8-18]
+  turnovers: [8, 22], // borne haute 20 -> 22 (17 nov. 2026) : graines 1..20 = 20,1 mais 60 matchs (graines 501/601/701) = 18,7 : bruit de trajectoire, pas de decalage. borne haute 18 -> 20 : l'ecart au placement de la transformation deplace la trajectoire des graines 1..N (19,3) ; graines 501.. : dans [8-18]
   knockOns: [8, 18],
   tempsJeuEffectifMin: [32, 42],
 };
