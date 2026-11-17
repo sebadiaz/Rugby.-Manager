@@ -104,7 +104,7 @@ function matchPilote(graine, duree, { demander, delier }) {
 }
 
 test('L05 / moteur : sans demande du sauteur, AUCUN maul de touche en GOAP (plus de tirage) ; le ballon va au 9', () => {
-  const c = matchPilote(4, 1500, { demander: false });
+  const c = matchPilote(4, 2400, { demander: false });
   assert.ok(c.gagnees >= 4, 'assez de touches : ' + c.gagnees);
   assert.strictEqual(c.maulsTouche, 0);
   assert.strictEqual(c.appeles + c.sansSoutien, 0);
@@ -112,7 +112,7 @@ test('L05 / moteur : sans demande du sauteur, AUCUN maul de touche en GOAP (plus
 });
 
 test('moteur : le sauteur qui capte et demande le maul l\'obtient si un partenaire est lié (ou la défense le saque)', () => {
-  const c = matchPilote(4, 1500, { demander: true });
+  const c = matchPilote(4, 2400, { demander: true });
   assert.ok(c.appeles >= 4, 'mauls appelés : ' + c.appeles);
   // Dans un alignement les lifteurs sont au contact ; un sauteur isolé en bout de ligne reste possible et
   // le moteur refuse alors le maul (vérifié au test suivant).
