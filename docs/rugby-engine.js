@@ -778,7 +778,7 @@
     if (d < 0.01) return;
     // Vitesse RÉELLEMENT atteinte ce tick : la vitesse courante du joueur plus
     // ce qu'il peut gagner en dt, plafonnée par sa vitesse maximale.
-    const acc = ACCELERATION;
+    const acc = ACCELERATION * ((j._enchaine || 0) > 0 ? 1.3 : 1);
     const vEff = Math.min(vmax, (j.vitesseCourante || 0) + acc * dt);
     j.vitesseCourante = vEff;
     j._aBouge = true;
@@ -1539,7 +1539,7 @@
       // au lieu de « sauter » d'un bout à l'autre du terrain (téléportation).
       for (const j of [...this.equipeA, ...this.equipeB]) {
         const cx = j.team === equipeKick
-          ? Math.max(0, Math.min(LONGUEUR, xCentre - dirKick * (j.numero <= 8 ? 2 : 6)))
+          ? Math.max(0, Math.min(LONGUEUR, xCentre - dirKick * (j.numero <= 8 ? 2 : j.numero === 9 ? 4 : j.numero === 15 ? 12 : (j.numero === 11 || j.numero === 14) ? 8 : 6)))
           : Math.max(0, Math.min(LONGUEUR, xCentre + dirKick * profondeurReception(j.numero)));
         j._cibleEnvoi = { x: cx, y: j.channelY };
         if (!avaitEquipes) { j.x = cx; j.y = j.channelY; } // 1er coup d'envoi du match : placement direct
@@ -4300,8 +4300,8 @@
       }
       const d = distance({ x: fromX, y: fromY }, cible);
       // Le receveur n'attend pas le ballon à l'arrêt : il part au moment de la passe et l'aborde déjà lancé
-      // (au moins 45 % de sa vitesse maximale). Avant : 0-0,2 m/s à la réception dans un cas sur trois.
-      if (cible && !(cible.auSol > 0)) cible.vitesseCourante = Math.max(cible.vitesseCourante || 0, 0.45 * vitesseMs(cible));
+      // (25 % de sa vitesse maximale : un joueur ne saute pas à pleine vitesse, cf. test « un joueur ACCELERE »). Avant : 0-0,2 m/s à la réception dans un cas sur trois.
+      if (cible && !(cible.auSol > 0)) cible.vitesseCourante = Math.max(cible.vitesseCourante || 0, 0.25 * vitesseMs(cible));
       this.passeVisuelle = {
         fromX, fromY, cible,
         timer: 0,
