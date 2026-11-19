@@ -432,7 +432,9 @@
         const detail = proto && !entre
           ? `remplacement temporaire au n°${proto.numero} (${proto.nature === 'saignement' ? 'saignement' : 'protocole commotion'}, jusqu'à la ${Math.ceil(proto.fin / 60)}e minute au plus tard)`
           : demande && !entre
-          ? `en attente pour le n°${demande.numero || r.numeroSortant} : ${e.phase === 'MI_TEMPS' ? 'à la reprise' : 'au prochain arrêt de jeu'}`
+          // Le contexte (et non la seule phase du moteur) : à vitesse élevée le moteur peut déjà avoir
+          // relancé le jeu (coup d'envoi de la 2e période) quand l'écran de mi-temps s'ouvre.
+          ? `en attente pour le n°${demande.numero || r.numeroSortant} : ${e.phase === 'MI_TEMPS' || L.contexte === 'miTemps' ? 'à la reprise' : 'au prochain arrêt de jeu'}`
           : fait
           ? `entré${entre ? ' à la ' + Math.max(1, Math.round(entre.instant / 60)) + 'e minute, au n°' + entre.numero : ''}`
           : `remplace le <select class="selCibleRemplacant" data-index="${i}" aria-label="Maillot remplacé par ${r.nom}">${options}</select>`
