@@ -5058,8 +5058,8 @@ function optionsLancement() {
   // des passes voulait eviter -- l'essai ou la penalite chasses de la fenetre --
   // sauf qu'ici ils sont bien dans le DOM et c'est le CSS qui les coupe.
   //
-  // La regle testee : aucune ligne partiellement visible, et au moins 3 lignes
-  // entieres quand 5 sont inserees.
+  // La regle testee : aucune ligne partiellement visible, et la ligne la plus recente
+  // entiere (le HUD compact n'en montre qu'une, cf. plus bas).
   for (const gabarit of [
     { nom: 'bureau 1400x1000', width: 1400, height: 1000 },
     { nom: 'telephone 390x844', width: 390, height: 844 },
@@ -5092,7 +5092,10 @@ function optionsLancement() {
       `${f.inserees} ligne(s)`);
     verifier(`fil (${gabarit.nom}) : aucune ligne n'est coupee en son milieu`, f.coupees === 0,
       `${f.coupees} ligne(s) coupee(s) (fil haut de ${f.hauteurFil} px)`);
-    verifier(`fil (${gabarit.nom}) : au moins 3 lignes entieres sur les 5 inserees`, f.entieres >= 3,
+    // HUD compact (refonte « Interface match adaptative », docs/css : #vueMatch #feed = 24 px, seule
+    // la ligne la plus recente est affichee) : le fil montre l'evenement du moment, ENTIER. Les 4
+    // autres restent dans le DOM, masquees (aucune n'est coupee en son milieu, verifie ci-dessus).
+    verifier(`fil (${gabarit.nom}) : la ligne la plus recente est entiere`, f.entieres >= 1,
       `${f.entieres} ligne(s) entiere(s) sur ${f.inserees}`);
     await ctxFeed.close();
   }
