@@ -3887,13 +3887,18 @@ test('loi 20.14 : pénalité jouée vite à 2 m de la ligne, aucun fautif hors-j
     // Les avants du ruck fautif sont encore au sol, juste devant la marque.
     for (const j of m.equipeB.filter(x => x.numero <= 5)) { j.x = 98.6; j.y = 27 + j.numero; j.auSol = 6 + j.numero; j._solX = j.x; j._solY = j.y; }
     m._lancerJeuRapidePenalite('A', { x: 98, y: 30 });
+    // Le plaqueur est identifié au moment où SA statistique est incrémentée : m.contestants
+    // garde la valeur de l'échauffement (graine 15 : n°5, jamais le plaqueur réel).
+    let dernierB = null;
+    const statJ = m._statJoueur.bind(m);
+    m._statJoueur = (j) => { if (j.team === 'B') dernierB = j; return statJ(j); };
     for (let k = 0; k < 60; k++) {
       const horsJeu = new Set(m.equipeB.filter(j => j.horsJeuKick > 0).map(j => j.numero));
       const avant = m.stats.B.tacklesAttempted;
       m.tick(0.1);
       if (m.stats.B.tacklesAttempted > avant) {
         contacts++;
-        const n = m.contestants && m.contestants[0];
+        const n = dernierB && dernierB.numero;
         if (horsJeu.has(n)) fautes.push(`graine ${seed} : le n°${n}, hors-jeu, plaque`);
       }
     }
@@ -3967,6 +3972,9 @@ test('mêlée : le n°9 exclu, un autre joueur rejoint le tunnel et introduit le
   for (let seed = 1; seed <= 8; seed++) {
     const m = new MatchEngine(seed, 4800);
     for (let t = 0; t < 30; t += 0.1) m.tick(0.1);
+    // L'échauffement peut s'arrêter en plein coup de pied (graines 1 et 3) : une mêlée ne se
+    // forme jamais ballon en l'air, on attend donc le retour au jeu courant avant de la forcer.
+    for (let t = 0; t < 60 && m.phase !== 'PORTE'; t += 0.1) m.tick(0.1);
     m.avantage = null; m.passeVisuelle = null; m.combinaison = null; m.maul = null; m.toucheLancer = null;
     const neuf = m.equipeB.find(j => j.numero === 9);
     neuf.sinBin = 600;
@@ -4165,7 +4173,7 @@ test('protocole commotion : sortie 12 minutes, remplaçant temporaire, puis reto
   const banc = [[1, 50], [2, 54], [4, 58], [6, 62], [9, 65], [10, 68], [12, 71], [15, 75]].map(([numero, minute], i) => ({
     equipe: 'A', numero, minute, joueur: Object.assign({}, ref.cfg.joueurs[numero]), joueurId: 'banc' + i }));
   let protocoles = 0, retours = 0, echecs = 0, doublons = 0, relances = 0;
-  const N = 24;
+  const N = 48; // 24 graines : 13 retours pour 1 seul échec selon la trajectoire (événement rare)
   for (let seed = 1; seed <= N; seed++) {
     const m = new MatchEngine(seed, 4800, { remplacements: banc });
     const log = m.log.bind(m);
@@ -4735,7 +4743,7 @@ test('bilan des lancements (P2-153) : chaque lancement annoncé compté une fois
 test('origine d un essai : une mêlée gagnée sur introduction adverse lance une séquence « mêlée », pas « jeu courant »', () => {
   let volees = 0;
   const fautes = [];
-  for (let seed = 1; seed <= 10; seed++) {
+  for (let seed = 1; seed <= 30; seed++) { // 10 graines : 1 seule mêlée gagnée sur introduction adverse selon la trajectoire
     const m = new MatchEngine(seed, 4800);
     let intro = null, aVerifier = null;
     const log0 = m.log.bind(m);
