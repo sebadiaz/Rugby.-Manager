@@ -3111,9 +3111,9 @@ test('transformation : sur un essai excentré, le buteur recule pour ouvrir l an
   // l'essai. Le moteur le posait toujours à 10 m : 56 % de réussite au total
   // (49 % dès 10 m d'écart latéral) pour ~75 % en réel.
   let excentres = 0, recules = 0, tentees = 0, reussies = 0;
-  // 24 graines : sur 12 (~80 tirs) le taux tombait à 54 % selon le seul
-  // bruit, alors qu'il est de 67,5 % sur 100 graines (P2-147).
-  for (let seed = 1; seed <= 24; seed++) {
+  // 48 graines : sur 12 (~80 tirs) le taux tombait à 54 % selon le seul bruit, et sur 24 aussi
+  // (graines 1-24 : 54 % pour 61 % sur 60 graines, 17 nov. 2026) : le seuil de 55 % est dans le bruit.
+  for (let seed = 1; seed <= 48; seed++) {
     const m = new MatchEngine(seed, 4800);
     const brut = m.log.bind(m);
     m.log = (type, team, msg, extra) => {
@@ -4356,7 +4356,8 @@ test('consigne individuelle de l ouvreur (FUNC-RM-004) : au pied, il tape plus ;
 test('consigne individuelle de l arrière (FUNC-RM-004) : il couvre plus profond, ou monte vers la ligne ; l adversaire ne change pas', () => {
   const profondeur = (decalageArriere) => {
     let somme = 0, n = 0, sommeB = 0, nB = 0;
-    for (let seed = 1; seed <= 6; seed++) {
+    // 18 graines : sur 6, l'arrière de B variait de 1,6 m d'une consigne à l'autre par le seul déroulé.
+    for (let seed = 1; seed <= 18; seed++) {
       const m = new MatchEngine(seed, 4800, decalageArriere == null ? {} : { defenseA: { decalageArriere } });
       while (m.phase !== 'TERMINE') {
         m.tick(0.1);
@@ -4525,9 +4526,9 @@ test('banc : un tir déjà botté garde son buteur, le sifflet final annule l en
   let m = null;
   const estDernierTir = () => m.miTempsJouee && m.tempsMatch >= 400
     && m.phase === 'PENALITE_TIR' && m.ballonEnVol;
-  // Graine 1386 depuis le placement étalé de la transformation (381 avant ; une sur ~1000) ; la recherche ne sert que si
+  // Graine 779 depuis les lancements adaptés et le gardien du fond (1386 avant, 381 avant : une sur ~1000) ; la recherche ne sert que si
   // le tirage du moteur change encore.
-  const graines = [1386, 381].concat(Array.from({ length: 700 }, (_, i) => i + 1));
+  const graines = [779, 1386, 381].concat(Array.from({ length: 700 }, (_, i) => i + 1));
   for (const graine of graines) {
     if (m && estDernierTir()) break;
     m = new MatchEngine(graine, 300);
@@ -4644,7 +4645,7 @@ test('consigne des centres (FUNC-RM-004, P2-161) : percussion = plus de courses 
 test('consigne du demi de mêlée (FUNC-RM-004, P2-160) : ses chandelles depuis la base suivent la consigne, celles de l adversaire non', () => {
   const compter = (chandelleNeuf) => {
     const n = { A: 0, B: 0 };
-    for (let seed = 1; seed <= 8; seed++) {
+    for (let seed = 1; seed <= 16; seed++) {
       const m = new MatchEngine(seed, 4800, chandelleNeuf == null ? {} : { attaqueA: { chandelleNeuf } });
       while (m.phase !== 'TERMINE') {
         const avant = m._chandelleBaseA;
