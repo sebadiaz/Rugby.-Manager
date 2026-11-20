@@ -2858,7 +2858,7 @@
       // numéro du porteur et du score (cf. choisirActionPorteur). Le coup de
       // pied peut survenir même défenseur tout proche (dégagement sous
       // pression) ; la passe suppose de ne pas être déjà au contact.
-      let action = (this.combinaison || ballonEnVolPasse) ? 'RUN' : this.choisirActionPorteur(porteur, defenseurProche, distDef, dt, contactPlaquage);
+      let action = (this.combinaison || ballonEnVolPasse) ? 'RUN' : this.choisirActionPorteur(porteur, defenseurProche, distDef, dt, contactNormal); // le plaquage plongé ne change pas la décision du porteur
       // Sonnerie de fin de match : l'équipe menée ou à égalité ne rend pas le
       // ballon au pied, elle garde la dernière action en main.
       if ((action === 'KICK' || action === 'KICK_AGENT') && this._sonnerie && this.miTempsJouee
