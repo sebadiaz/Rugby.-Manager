@@ -697,6 +697,11 @@
   // Rayon de contact du plaquage (m) : distance a laquelle le contact se resout,
   // et donc aussi celle a laquelle un SECOND defenseur participe au plaquage.
   const RAYON_PLAQUAGE = 2.2;
+  // PLAQUAGE PLONGÉ : un arrière (n°10 à 15) disponible, que le porteur en pleine course dépasse à 2,2-3,2 m,
+  // se jette bras tendus au lieu de le laisser filer sans rien tenter. À la limite de portée, la réussite
+  // est réduite (x0,6 de la probabilité normale).
+  const RAYON_PLONGEON = 3.2;
+  const FACTEUR_PLONGEON = 0.6;
   // Puissance de reference au contact : MOYENNE MESUREE des porteurs amenes au
   // contact sur 10 matchs (1 666 contacts) — 75 cote avants, 44 cote
   // trois-quarts, 57 en moyenne ponderee. C'est le point neutre de
@@ -2815,9 +2820,15 @@
       const { joueur: defenseurProche, distance: distDef } = joueurLePlusProche(
         defDisponibles.length > 0 ? defDisponibles : defEnJeu.length > 0 ? defEnJeu : def, porteur.x, porteur.y
       );
-      const contactPlaquage = goap ? this._contactPlaquageGOAP(porteur, defenseurProche, distDef)
+      const contactNormal = goap ? this._contactPlaquageGOAP(porteur, defenseurProche, distDef)
         : distDef < RAYON_PLAQUAGE && defenseurProche.missCooldown <= 0 && !(defenseurProche.fixeCooldown > 0)
           && !(defenseurProche.horsJeuKick > 0);
+      const plongeon = !goap && !contactNormal && distDef >= RAYON_PLAQUAGE && distDef < RAYON_PLONGEON
+        && defenseurProche.numero >= 10 && defenseurProche.auSol <= 0 && defenseurProche.missCooldown <= 0
+        && !(defenseurProche.fixeCooldown > 0) && !(defenseurProche.horsJeuKick > 0) && defenseurProche.ruckRecovery <= 0
+        && (porteur.vitesseCourante || 0) > 3
+        && (defenseurProche.x - porteur.x) * porteur.sensAttaque > -1;
+      const contactPlaquage = contactNormal || plongeon;
       this.timerPhase += dt;
 
       // BALLON EN L'AIR : une passe met un vrai temps a parcourir la distance
@@ -2914,7 +2925,8 @@
         // manque est une tentative de plaquage EN PLUS et un porteur qui
         // continue : c'est ce qui remet le volume de plaquages du match dans sa
         // fourchette maintenant que le nombre de regroupements est realiste.
-        const probaPlaquage = Math.max(0.80, Math.min(0.95, 0.855 + bonusFraicheur + (defenseurProche.plaquage - this.porteur.vitesse) / 250));
+        const probaPlaquage = (plongeon ? FACTEUR_PLONGEON : 1)
+          * Math.max(0.80, Math.min(0.95, 0.855 + bonusFraicheur + (defenseurProche.plaquage - this.porteur.vitesse) / 250));
         if (this.rng() >= probaPlaquage) {
           // Plaquage manqué : le défenseur reste hors-jeu de contact un court
           // instant, le porteur poursuit sa course sans être inquiété par lui.
