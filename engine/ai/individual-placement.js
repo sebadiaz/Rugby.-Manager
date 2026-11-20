@@ -49,11 +49,17 @@ function candidatsDefense(b, s, pb, jeuCourant) {
   const avance = arretee ? 1 : 3;
   const xTenu = sens > 0 ? Math.min(ligneX, xVoisins + avance) : Math.max(ligneX, xVoisins - avance);
   // Glissement : en jeu courant la ligne se resserre vers le ballon (60 % de l'écart latéral ; à 35 % il restait 5,7 défenseurs devant le porteur contre 7,8 en LEGACY).
-  // L'ailier ne se laisse pas aspirer : il garde la largeur (glissement plafonné à 5 m), sinon l'aile opposée au
-  // ballon devient un boulevard dès que l'attaque change de côté.
-  const aile = num === 11 || num === 14;
-  const glisse = (bal.y - ref.y) * 0.6;
-  const yTenu = arretee ? ref.y : ref.y + (aile ? Math.max(-5, Math.min(5, glisse)) : glisse);
+  // Je glisse vers le ballon d'autant moins que je vois d'attaquants non marqués À MON EXTÉRIEUR (du côté opposé au
+  // ballon) : s'ils sont là, c'est à moi de tenir cette largeur, sinon ils passent derrière moi dès que le jeu change
+  // de côté. Aucun poste n'est désigné : l'ailier tient son bord parce qu'il VOIT du monde au-delà de lui, et
+  // glisse librement quand il n'y voit personne.
+  const coteExterieur = Math.sign(me.y - bal.y) || 1;
+  const exposition = Object.values(b.opponents).filter((o) => o.confidence >= 0.3
+    && (o.lastSeen.y - me.y) * coteExterieur > 1 && Math.abs(o.lastSeen.x - me.x) <= 15
+    && !Object.values(b.teammates).some((m) => (m.lastSeen.y - o.lastSeen.y) * coteExterieur > 0
+      && P.dist(m.lastSeen, o.lastSeen) < P.dist(me, o.lastSeen))).length;
+  const glisse = (bal.y - ref.y) * 0.6 / (1 + 1.5 * exposition);
+  const yTenu = arretee ? ref.y : ref.y + glisse;
   out.push({ id: 'HOLD_LINE', priority: 60, target: { x: xTenu, y: yTenu }, vmax: Math.abs(bal.y - ref.y) <= 15 ? 1 : 0.85, reason: 'ligne alignée sur ' + voisins.length + ' voisin(s) observé(s)' });
   // CLOSE_GAP : plus grand intervalle observé près de moi, si je suis le mieux placé parmi ceux que je vois.
   const bords = arretee ? [{ id: 'touche0', x: ligneX, y: 0, numero: 0 }, { id: 'touche70', x: ligneX, y: P.LARGEUR, numero: 0 }] : [];
@@ -65,11 +71,13 @@ function candidatsDefense(b, s, pb, jeuCourant) {
       const centre = { x: ligneX, y: (ligne[i].y + ligne[i + 1].y) / 2 };
       const dMoi = P.dist(me, centre);
       const plusProche = Object.values(b.teammates).every((m) => P.dist(m.lastSeen, centre) >= dMoi - 0.01);
-      if (aile && Math.abs(centre.y - ref.y) > 12) continue; // un ailier ne quitte pas son couloir pour boucher un trou lointain
-      if (plusProche && (!meilleur || g > meilleur.g)) meilleur = { g, centre };
+      // Quitter mon poste pour boucher un trou lointain a un COÛT qui croît avec la distance (pas d'interdiction) :
+      // seul un gros trou dont je suis le plus proche l'emporte sur ma tâche de ligne.
+      const cout = Math.max(0, Math.abs(centre.y - ref.y) - 8) * 0.8;
+      if (plusProche && (!meilleur || g - cout / 2 > meilleur.g - meilleur.cout / 2)) meilleur = { g, centre, cout };
     }
   }
-  if (meilleur) out.push({ id: 'CLOSE_GAP', priority: Math.min(88, (arretee ? 74 : 62) + (meilleur.g - GAP_MIN) * 2), target: meilleur.centre, vmax: 1, reason: 'intervalle de ' + meilleur.g.toFixed(1) + ' m, je suis le plus proche' });
+  if (meilleur) out.push({ id: 'CLOSE_GAP', priority: Math.min(88, (arretee ? 74 : 62) + (meilleur.g - GAP_MIN) * 2 - meilleur.cout), target: meilleur.centre, vmax: 1, reason: 'intervalle de ' + meilleur.g.toFixed(1) + ' m, je suis le plus proche' });
   // MARK_OPPONENT : adversaire observé menaçant dans mon canal, sans partenaire visiblement plus proche.
   const menaces = Object.entries(b.opponents).filter(([, o]) => o.confidence >= 0.3 && o.threat > 0.15 && Math.abs(o.lastSeen.y - ref.y) <= 10 && P.dist(o.lastSeen, me) <= 14)
     .sort((a, c) => c[1].threat - a[1].threat || a[0].localeCompare(c[0], 'en'));
