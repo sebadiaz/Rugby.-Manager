@@ -758,8 +758,20 @@
   // crie « marque ». À 35 % (50 % sur coup d'envoi), le moteur sifflait 5
   // marques par match ; en vrai on en voit à peine une : le plus souvent, le
   // receveur joue ou dégage directement.
-  const TAUX_MARQUE = 0.12;
-  const TAUX_MARQUE_ENVOI = 0.15;
+  // Taux de base pour un receveur de sûreté de mains moyenne, sous pression : la
+  // probabilité réelle dépend du joueur (probaMarque) et d'une réception DIRECTE.
+  const TAUX_MARQUE = 0.2;
+  const TAUX_MARQUE_ENVOI = 0.22;
+  // Qui crie « marque » (loi 17) : seulement un joueur qui capte proprement un ballon haut,
+  // donc sûr de ses mains (attribut « passe », comme l'offload et la chandelle disputée) ;
+  // un joueur maladroit (pilier à 25) ne la réclame jamais, il lâche le ballon ou le joue
+  // tout de suite. Elle se crie surtout sous la pression des chasseurs : à 3 m d'eux le
+  // receveur la demande plus volontiers qu'à 12 m.
+  function probaMarque(joueur, base, distChasseur) {
+    const mains = typeof joueur.passe === 'number' ? Math.max(0, Math.min(1.5, (joueur.passe - 35) / 40)) : 0.75;
+    const pression = Number.isFinite(distChasseur) ? Math.max(0.5, Math.min(1.5, 1.5 - distChasseur / 12)) : 1;
+    return base * mains * pression;
+  }
   // Blessure par joueur engagé dans un plaquage (porteur ou plaqueur) :
   // ~200 plaquages par match donnent ~1,5 blessé par match (bugs.md FUNC-RM-005).
   const PROBA_BLESSURE_CONTACT = 0.0028;
@@ -1759,7 +1771,7 @@
         // franc (pas de tir au but possible), pour dégager la pression.
         const sensReceveur = joueur.team === 'A' ? 1 : -1;
         const distPropreLigne = sensReceveur > 0 ? joueur.x : (LONGUEUR - joueur.x);
-        if (distPropreLigne <= 22 && this.rng() < TAUX_MARQUE_ENVOI) {
+        if (distPropreLigne <= 22 && this.rng() < probaMarque(joueur, TAUX_MARQUE_ENVOI, distChasseur)) {
           this._traiterCoupFranc(joueur.team, { x: joueur.x, y: joueur.y }, null, 'marque');
           return;
         }
@@ -2633,6 +2645,72 @@
       return dist <= 50;
     }
 
+    // GARDIEN DU FOND (dernier rideau). C'est le n°15 quand il est à son poste, c'est-à-dire
+    // disponible et à plus de 8 m derrière la ligne d'avantage. Quand il n'y est pas (intercalé dans
+    // la ligne d'attaque puis ballon perdu, au sol, exclu, monté en ligne), le trois-quart
+    // disponible LE PLUS PROFOND (10 à 14) tient le fond à sa place, comme l'ailier côté fermé qui
+    // redescend en vrai : chacun lit sa propre profondeur, le fond n'est jamais laissé vide. Près de
+    // la ligne défendue (< 25 m) on ne dégarnit pas la ligne pour un remplaçant : le 15 seul y reste
+    // arrière. `refX` : abscisse de la ligne d'avantage (porteur ou point de ruck), `sens` : sens
+    // d'attaque de l'adversaire.
+    _gardienDuFond(def, refX, sens) {
+      const prof = (j) => (j.x - refX) * sens;
+      const dispo = (j) => j.auSol === 0 && j.sinBin <= 0 && j.ruckRecovery <= 0 && !(j.horsJeuKick > 0);
+      const q = def.find((j) => j.numero === 15);
+      const memo = this._gardiensFond || (this._gardiensFond = {});
+      const equipe = def.length ? def[0].team : 'A';
+      // Le 15 est à son poste : disponible et de nouveau derrière la ligne d'avantage.
+      if (q && dispo(q) && prof(q) >= 3) { memo[equipe] = null; return q; }
+      const ligneDef = sens > 0 ? LONGUEUR : 0;
+      if (Math.abs(ligneDef - refX) < 25) return q || null;
+      // Le remplaçant en place le reste tant qu'il est disponible et derrière : pas de va-et-vient.
+      const prec = memo[equipe] != null ? def.find((j) => j.numero === memo[equipe]) : null;
+      if (prec && dispo(prec) && prof(prec) >= 6) return prec;
+      let meilleur = null;
+      for (const j of def) {
+        if (j.numero < 10 || j.numero > 14 || !dispo(j)) continue;
+        if (!meilleur || prof(j) > prof(meilleur)) meilleur = j;
+      }
+      if (q && dispo(q) && (!meilleur || prof(q) >= prof(meilleur))) return q;
+      memo[equipe] = meilleur ? meilleur.numero : null;
+      return meilleur || q || null;
+    }
+
+    // COULOIR D'UNE AILE VACANT : quand un ailier (11 ou 14) n'est plus dans sa zone (au sol, exclu,
+    // sorti de son couloir de plus de 11 m pour plaquer ou suivre le jeu), le trois-quart disponible
+    // le plus proche de ce couloir (l'autre ailier ou un centre, 12 ou 13) vient le tenir. Chacun lit
+    // sa propre distance : la place n'est jamais laissée vide, sans qu'un joueur la lui assigne d'en
+    // haut. Le remplaçant garde le couloir jusqu'au retour de l'ailier (à moins de 6 m).
+    // Renvoie une Map remplaçant -> ailier remplacé.
+    _remplacantsAile(def, gardienFond, ecartes) {
+      const res = new Map();
+      const memo = this._remplacantsAileMemo || (this._remplacantsAileMemo = {});
+      const dispo = (j) => j.auSol === 0 && j.sinBin <= 0 && j.ruckRecovery <= 0 && !(j.horsJeuKick > 0);
+      // L'effectif COMPLET : un ailier exclu n'est plus dans `def` mais son couloir reste à tenir.
+      const effectif = def.length ? (def[0].team === 'A' ? this.equipeA : this.equipeB) : [];
+      const ailiers = effectif.filter((j) => (j.numero === 11 || j.numero === 14) && j !== gardienFond);
+      for (const w of ailiers) {
+        const cle = w.team + w.numero;
+        const ecart = Math.abs(w.y - w.channelY);
+        const absent = !dispo(w) || ecart > (memo[cle] != null ? 6 : 11);
+        if (!absent) { memo[cle] = null; continue; }
+        const eligible = (j) => j !== w && j !== gardienFond && dispo(j) && !(ecartes && ecartes.includes(j))
+          && (j.numero === 12 || j.numero === 13 || ((j.numero === 11 || j.numero === 14) && Math.abs(j.y - j.channelY) <= 6))
+          && ![...res.keys()].includes(j);
+        let rempl = memo[cle] != null ? def.find((j) => j.numero === memo[cle]) : null;
+        if (!rempl || !eligible(rempl)) {
+          rempl = null;
+          for (const j of def) {
+            if (!eligible(j)) continue;
+            if (!rempl || Math.abs(j.y - w.channelY) < Math.abs(rempl.y - w.channelY)) rempl = j;
+          }
+        }
+        memo[cle] = rempl ? rempl.numero : null;
+        if (rempl) res.set(rempl, w);
+      }
+      return res;
+    }
+
     _zoneTerrain(porteur) {
       const distButs = porteur.sensAttaque > 0 ? (LONGUEUR - porteur.x) : porteur.x;
       if (distButs <= 5) return 'CINQ_M';
@@ -3493,6 +3571,8 @@
           && (d.x - porteur.x) * porteur.sensAttaque > 0.5 && Math.abs(d.y - porteur.y) < 15);
         if (devant.length) monteur = joueurLePlusProche(devant, porteur.x, porteur.y).joueur;
       }
+      const gardienFond = this._gardienDuFond(def, porteur.x, porteur.sensAttaque);
+      const remplAile = this._remplacantsAile(def, gardienFond, [monteur, defenseurProche]);
       for (const j of def) {
         // HORS-JEU sur coup de pied (loi 10) : il se retire vers la ligne du
         // coup de pied au lieu de defendre, jusqu'a etre remis en jeu.
@@ -3579,7 +3659,7 @@
         // dans la première seconde, 0,4 au bout de 3 à 4 s, et 32 % des
         // franchissements finissaient à l'essai en moins de 20 s (P2-119).
         // L'arrière garde sa propre logique de dernier rideau (ci-dessous).
-        if (premierRideauBattu && j.numero !== 15 && j.ruckRecovery <= 0
+        if (premierRideauBattu && j !== gardienFond && j.ruckRecovery <= 0
           && (j.x - porteur.x) * porteur.sensAttaque < -0.5 && distance(j, porteur) < 25) {
           const cibleX = porteur.x + porteur.sensAttaque * 2;
           avancer(j, cibleX - j.x, porteur.y - j.y, dt, vitesseMs(j) * fRampe);
@@ -3588,9 +3668,9 @@
         // L'ARRIÈRE (n°15) ne monte PAS dans la ligne : il SWEEPE en couverture
         // ~18 m derrière, au centre, pour parer le jeu au pied et les
         // débordements (dernier rideau). Il ne court jamais vers le ballon.
-        if (j.numero === 15) {
+        if (j === gardienFond) {
           const cibleX = porteur.x + porteur.sensAttaque * (cfgDef.profondeurArriereJeu + (cfgDef.decalageArriere || 0));
-          const cibleY = j.channelY * 0.7 + porteur.y * 0.3;
+          const cibleY = j.numero === 15 ? j.channelY * 0.7 + porteur.y * 0.3 : (LARGEUR / 2) * 0.5 + porteur.y * 0.5;
           // DERNIER DEFENSEUR : des que le porteur a FRANCHI la ligne de
           // defense (plus aucun defenseur devant lui dans son couloir), le
           // balayage central n'a plus de sens — l'arriere est le seul homme
@@ -3672,8 +3752,9 @@
         const cibleX = porteur.sensAttaque > 0
           ? Math.max(cibleBrute, ligneGain)
           : Math.min(cibleBrute, ligneGain);
-        const drift = ailier ? 0.06 : 0.2;
-        const cibleY = j.channelY * (1 - drift) + porteur.y * drift;
+        const aileRemplacee = remplAile.get(j);
+        const drift = ailier || aileRemplacee ? 0.06 : 0.2;
+        const cibleY = (aileRemplacee ? aileRemplacee.channelY : j.channelY) * (1 - drift) + porteur.y * drift;
         // DÉFENSE PAS REPLACÉE après un ballon éclair au ruck (_defenseTardive) :
         // la montée en ligne est nettement plus lente pendant ~1,2 s — c'est la
         // récompense du jeu rapide, le seul vrai avantage du ballon éclair.
@@ -5079,7 +5160,12 @@
       // Marque (loi 17) : réception propre dans son propre en-deçà des 22 m.
       const sensReceveur = joueur.team === 'A' ? 1 : -1;
       const distPropreLigne = sensReceveur > 0 ? joueur.x : (LONGUEUR - joueur.x);
-      if (!chasseurGagne && distPropreLigne <= 22 && this.rng() < TAUX_MARQUE) {
+      // Loi 17 : la marque se crie sur un ballon capté DIRECTEMENT, sans que le ballon ait
+      // touché le sol. Ici, au-delà de 0,35 s après la chute (le ballon a rebondi ou roulé),
+      // le joueur ne fait que ramasser : il n'y a pas de marque possible.
+      const receptionDirecte = this.timerReceptionAuSol <= 0.35;
+      if (!chasseurGagne && receptionDirecte && distPropreLigne <= 22
+        && this.rng() < probaMarque(joueur, TAUX_MARQUE, dChasseur)) {
         this._traiterCoupFranc(joueur.team, { x: joueur.x, y: joueur.y }, null, 'marque');
         return;
       }
@@ -5356,6 +5442,8 @@
         const restes = defsLigne.filter(j => !this._slotDefense.has(j)).sort((a, b) => a.y - b.y);
         restes.forEach((j, k) => { if (k < dispo.length) this._slotDefense.set(j, dispo[k]); });
       }
+      const defRuck = this.possession === 'A' ? this.equipeB : this.equipeA;
+      const gardienFondRuck = this._gardienDuFond(defRuck, pt.x, sensAttaque);
       let iContestants = 0, iSoutien = 0;
       for (const j of [...this.equipeA, ...this.equipeB]) {
         if (j === this.porteur) continue;
@@ -5514,7 +5602,7 @@
           // défense comme les autres : 97 % du temps de ruck dans le premier
           // rideau, à 3 m du ruck (cf. test R11), et la défense n'avait aucun
           // dernier rideau derrière elle.
-          if (j.numero === 15) {
+          if (j === gardienFondRuck) {
             const profondeur = this.cfgDefense[j.team].profondeurArriereJeu + (this.cfgDefense[j.team].decalageArriere || 0);
             // Près de sa propre ligne, il ne recule pas au-delà de l'en-but.
             const cibleXq = Math.max(0.5, Math.min(LONGUEUR - 0.5, pt.x + sensAttaque * profondeur));
@@ -7356,6 +7444,40 @@
     // --- Combinaisons scriptées (playbook, cf. cfg.combinaisons) --------------
     // Tire une combinaison pondérée pour le type donné ('melee' | 'touche'),
     // ou null (jeu libre) selon la probabilité configurée.
+    // ADAPTATION DES LANCEMENTS : l'équipe ne rejoue pas mécaniquement le même enchaînement. Le
+    // meneur de jeu (9, 10) se souvient de ses derniers lancements et de ce qu'ils ont rapporté,
+    // et pèse le tirage en conséquence, sans jamais interdire un scénario :
+    //  - répétition : la combinaison qui vient d'être jouée, ou un même style joué deux fois de
+    //    suite, devient moins probable (la défense a eu le temps de lire le schéma) ;
+    //  - élan : un style qui vient de gagner du terrain (6 m et plus) est rejoué plus volontiers,
+    //    un style bloqué (moins de 2 m) laisse la place aux autres ;
+    //  - contexte : après la 50e minute, une équipe menée de 8 points ou plus ouvre le jeu (large,
+    //    pied) ; une équipe qui mène de 8 points ou plus garde le ballon (au près).
+    // Renvoie une fonction combinaison -> multiplicateur de poids.
+    _adaptationLancements(equipe) {
+      const histo = (this._histoLancements && this._histoLancements[equipe]) || [];
+      const dernier = histo.length ? histo[histo.length - 1] : null;
+      const avantDernier = histo.length > 1 ? histo[histo.length - 2] : null;
+      const ecart = this.score[equipe] - this.score[equipe === 'A' ? 'B' : 'A'];
+      const tard = this.tempsMatch >= 3000;
+      return (c) => {
+        let k = 1;
+        if (dernier && c.nom === dernier.nom) k *= 0.3;
+        else if (histo.slice(-3).some((h) => h.nom === c.nom)) k *= 0.65;
+        if (c.style && dernier && avantDernier && dernier.style === c.style && avantDernier.style === c.style) k *= 0.65;
+        if (c.style && dernier && dernier.style && dernier.seq) {
+          const g = dernier.seq.credite || 0;
+          if (g >= 6) k *= dernier.style === c.style ? 1.3 : 1;
+          else if (g < 2) k *= dernier.style === c.style ? 0.7 : 1.2;
+        }
+        if (tard && c.style) {
+          if (ecart <= -8) k *= c.style === 'large' ? 1.25 : c.style === 'pied' ? 1.2 : 0.8;
+          else if (ecart >= 8) k *= c.style === 'pres' ? 1.3 : c.style === 'large' ? 0.8 : 1;
+        }
+        return k;
+      };
+    }
+
     _choisirCombinaison(type) {
       const cc = this.cfg.combinaisons;
       if (!cc || this.rng() >= (cc.proba || 0)) return null;
@@ -7373,7 +7495,8 @@
       // Style de lancement de l'équipe : pondère chaque famille (au près, au
       // large, au pied). Sans réglage, poids du playbook — tirage inchangé.
       const pref = (this.cfgAttaque[this.possession] || {}).lancements || null;
-      const poids = (c) => (c.poids || 1) * (pref && c.style && pref[c.style] != null ? pref[c.style] : 1);
+      const adapt = this._adaptationLancements(this.possession);
+      const poids = (c) => (c.poids || 1) * (pref && c.style && pref[c.style] != null ? pref[c.style] : 1) * adapt(c);
       const total = liste.reduce((s, c) => s + poids(c), 0);
       let r = this.rng() * total;
       for (const c of liste) { r -= poids(c); if (r <= 0) return c; }
@@ -7395,6 +7518,9 @@
         this.stats[this.possession]['lancements' + cle]++;
         this._sequence.lancement = { cle, team: this.possession, x0: this.porteur.x, credite: 0, fini: false };
       }
+      const histo = this._histoLancements || (this._histoLancements = { A: [], B: [] });
+      histo[this.possession].push({ nom: combo.nom, style: combo.style || null, seq: this._sequence ? this._sequence.lancement : null });
+      if (histo[this.possession].length > 4) histo[this.possession].shift();
     }
 
     // Déroule pas à pas la combinaison en cours (passes ciblées + lignes de

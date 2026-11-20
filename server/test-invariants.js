@@ -3111,9 +3111,9 @@ test('transformation : sur un essai excentré, le buteur recule pour ouvrir l an
   // l'essai. Le moteur le posait toujours à 10 m : 56 % de réussite au total
   // (49 % dès 10 m d'écart latéral) pour ~75 % en réel.
   let excentres = 0, recules = 0, tentees = 0, reussies = 0;
-  // 24 graines : sur 12 (~80 tirs) le taux tombait à 54 % selon le seul
-  // bruit, alors qu'il est de 67,5 % sur 100 graines (P2-147).
-  for (let seed = 1; seed <= 24; seed++) {
+  // 48 graines : sur 12 (~80 tirs) le taux tombait à 54 % selon le seul bruit, et sur 24 aussi
+  // (graines 1-24 : 54 % pour 61 % sur 60 graines, 17 nov. 2026) : le seuil de 55 % est dans le bruit.
+  for (let seed = 1; seed <= 48; seed++) {
     const m = new MatchEngine(seed, 4800);
     const brut = m.log.bind(m);
     m.log = (type, team, msg, extra) => {
@@ -4021,6 +4021,84 @@ test('marque : environ une par match, et un coup franc de mêlée n est pas anno
   assert.strictEqual(malAnnonces, 0, `${malAnnonces} coups francs de mêlée annoncés comme une marque`);
 });
 
+// --- Marque (loi 17) : réception DIRECTE, par un joueur sûr de ses mains --------------------
+// Avant : 12 % de marque pour n'importe quel receveur, même sur un ballon déjà rebondi (56 % des
+// marques) et même pour un avant maladroit (n°4, 6, 8).
+test('marque : seulement un joueur sûr de ses mains, sur un ballon capté sans rebond', () => {
+  const appelants = [];
+  for (let seed = 1; seed <= 24; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    const coupFranc = m._traiterCoupFranc.bind(m);
+    m._traiterCoupFranc = (equipe, pos, imp, motif) => {
+      if (motif === 'marque') {
+        const eq = equipe === 'A' ? m.equipeA : m.equipeB;
+        const j = eq.reduce((a, b) => (Math.hypot(a.x - pos.x, a.y - pos.y) < Math.hypot(b.x - pos.x, b.y - pos.y) ? a : b));
+        appelants.push({ numero: j.numero, passe: j.passe });
+      }
+      return coupFranc(equipe, pos, imp, motif);
+    };
+    m.jouerJusquAuSifflet(0.1);
+  }
+  assert.ok(appelants.length >= 4, `échantillon trop petit (${appelants.length} marques)`);
+  assert.ok(appelants.every((a) => a.passe > 35), `un joueur aux mains maladroites réclame la marque : ${JSON.stringify(appelants.filter((a) => a.passe <= 35))}`);
+  assert.ok(appelants.every((a) => a.numero >= 9 || a.passe >= 50), 'un avant réclame la marque');
+});
+
+// --- Fond de terrain : le 15 absent est remplacé -------------------------------------------
+test('fond de terrain : quand le 15 est exclu, un trois-quart disponible tient le dernier rideau', () => {
+  let ticks = 0, vides = 0;
+  for (let seed = 1; seed <= 6; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    m.equipeB.find((j) => j.numero === 15).sinBin = 1e9;
+    while (m.phase !== 'TERMINE' && m.tempsMatch < 2400) {
+      m.tick(0.1);
+      if (m.phase !== 'PORTE' || !m.porteur || m.porteur.team !== 'A' || m.passeVisuelle) continue;
+      const p = m.porteur;
+      if (Math.abs((p.sensAttaque > 0 ? LONGUEUR : 0) - p.x) < 25) continue;
+      ticks++;
+      if (!m.equipeB.some((d) => d.auSol === 0 && d.sinBin <= 0 && (d.x - p.x) * p.sensAttaque >= 12 && Math.abs(d.y - p.y) < 25)) vides++;
+    }
+  }
+  assert.ok(ticks > 3000, `échantillon trop petit (${ticks} instants)`);
+  // Avant : 77 à 81 % du temps sans personne derrière le ballon ; après : environ 30 %.
+  assert.ok(vides / ticks < 0.5, `fond vide ${(100 * vides / ticks).toFixed(0)} % du temps avec le 15 exclu`);
+});
+
+test('couloir vacant : quand le 14 est exclu, un centre ou un ailier est désigné pour tenir son couloir', () => {
+  const m = new MatchEngine(1, 4800);
+  m.equipeB.find((j) => j.numero === 14).sinBin = 1e9;
+  let desigations = 0;
+  const remplacants = new Set();
+  while (m.phase !== 'TERMINE' && m.tempsMatch < 1200) {
+    m.tick(0.1);
+    const r = m._remplacantsAileMemo && m._remplacantsAileMemo.B14;
+    if (r != null) { desigations++; remplacants.add(r); }
+  }
+  assert.ok(desigations > 100, `le couloir du 14 reste vacant (${desigations} instants avec remplaçant)`);
+  assert.ok([...remplacants].every((n) => [11, 12, 13].includes(n)), `remplaçant hors d'un centre ou d'un ailier : ${[...remplacants]}`);
+});
+
+// --- Lancements : pas de répétition mécanique ---------------------------------------------
+test('lancements : la même combinaison ne revient presque jamais deux fois de suite', () => {
+  let paires = 0, memes = 0;
+  for (let seed = 1; seed <= 12; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    const dernier = { A: null, B: null };
+    const log = m.log.bind(m);
+    m.log = (t, eq, msg, d, ...r) => {
+      if (t === 'LANCEMENT' && d && d.nom) {
+        if (dernier[eq]) { paires++; if (dernier[eq] === d.nom) memes++; }
+        dernier[eq] = d.nom;
+      }
+      return log(t, eq, msg, d, ...r);
+    };
+    m.jouerJusquAuSifflet(0.1);
+  }
+  assert.ok(paires >= 60, `échantillon trop petit (${paires} paires de lancements)`);
+  // Avant l'adaptation : 12 à 17 % ; après : 3 à 5 %.
+  assert.ok(memes / paires <= 0.09, `${(100 * memes / paires).toFixed(0)} % de lancements identiques au précédent`);
+});
+
 // --- 50:22 : un pari rare, pas la conséquence d'un dégagement ordinaire --------
 // Avec des dégagements en touche à 25-45 m (P2-130), une touche ordinaire tapée
 // du milieu de terrain tombait dans les 22 adverses : 2,4 50:22 par match, pour
@@ -4356,7 +4434,8 @@ test('consigne individuelle de l ouvreur (FUNC-RM-004) : au pied, il tape plus ;
 test('consigne individuelle de l arrière (FUNC-RM-004) : il couvre plus profond, ou monte vers la ligne ; l adversaire ne change pas', () => {
   const profondeur = (decalageArriere) => {
     let somme = 0, n = 0, sommeB = 0, nB = 0;
-    for (let seed = 1; seed <= 6; seed++) {
+    // 18 graines : sur 6, l'arrière de B variait de 1,6 m d'une consigne à l'autre par le seul déroulé.
+    for (let seed = 1; seed <= 18; seed++) {
       const m = new MatchEngine(seed, 4800, decalageArriere == null ? {} : { defenseA: { decalageArriere } });
       while (m.phase !== 'TERMINE') {
         m.tick(0.1);
@@ -4525,9 +4604,9 @@ test('banc : un tir déjà botté garde son buteur, le sifflet final annule l en
   let m = null;
   const estDernierTir = () => m.miTempsJouee && m.tempsMatch >= 400
     && m.phase === 'PENALITE_TIR' && m.ballonEnVol;
-  // Graine 1386 depuis le placement étalé de la transformation (381 avant ; une sur ~1000) ; la recherche ne sert que si
+  // Graine 779 depuis les lancements adaptés et le gardien du fond (1386 avant, 381 avant : une sur ~1000) ; la recherche ne sert que si
   // le tirage du moteur change encore.
-  const graines = [1386, 381].concat(Array.from({ length: 700 }, (_, i) => i + 1));
+  const graines = [779, 1386, 381].concat(Array.from({ length: 700 }, (_, i) => i + 1));
   for (const graine of graines) {
     if (m && estDernierTir()) break;
     m = new MatchEngine(graine, 300);
@@ -4644,7 +4723,7 @@ test('consigne des centres (FUNC-RM-004, P2-161) : percussion = plus de courses 
 test('consigne du demi de mêlée (FUNC-RM-004, P2-160) : ses chandelles depuis la base suivent la consigne, celles de l adversaire non', () => {
   const compter = (chandelleNeuf) => {
     const n = { A: 0, B: 0 };
-    for (let seed = 1; seed <= 8; seed++) {
+    for (let seed = 1; seed <= 16; seed++) {
       const m = new MatchEngine(seed, 4800, chandelleNeuf == null ? {} : { attaqueA: { chandelleNeuf } });
       while (m.phase !== 'TERMINE') {
         const avant = m._chandelleBaseA;
