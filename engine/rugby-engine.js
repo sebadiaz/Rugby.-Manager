@@ -2827,7 +2827,10 @@
         && defenseurProche.numero >= 10 && defenseurProche.auSol <= 0 && defenseurProche.missCooldown <= 0
         && !(defenseurProche.fixeCooldown > 0) && !(defenseurProche.horsJeuKick > 0) && defenseurProche.ruckRecovery <= 0
         && (porteur.vitesseCourante || 0) > 3
-        && (defenseurProche.x - porteur.x) * porteur.sensAttaque > -1;
+        // Seulement quand le porteur est À HAUTEUR du défenseur ou le dépasse (de -1 à +0,8 m en profondeur) : face à
+        // lui, la poursuite normale ferme l'écart, et toute ligne défensive est à 2-3 m du porteur.
+        && (defenseurProche.x - porteur.x) * porteur.sensAttaque > -1
+        && (defenseurProche.x - porteur.x) * porteur.sensAttaque < 0.8;
       const contactPlaquage = contactNormal || plongeon;
       this.timerPhase += dt;
 
