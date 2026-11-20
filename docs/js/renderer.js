@@ -857,21 +857,28 @@
     }
   }
 
+  // Les juges de touche sont de vrais arbitres (même personnage et même tenue que l'arbitre central),
+  // pas un drapeau : chacun longe sa touche avec un fanion à la main, bras levé quand il signale la touche.
   function dessinerAssistants(state) {
     for (const assistant of (state.assistants || [])) {
-      const { px, py } = versCanvas(assistant.x, assistant.y);
-      const k = cam.s * HAUTEUR_VUE;
+      const a = etatAnim('ASS' + assistant.cote);
+      suivrePosition(a, assistant, 0);
+      // La ligne de touche coïncide avec le bord de l'écran : à y exact, le corps disparaît sous la barre
+      // de score ou de commandes et seul le fanion dépasse. On l'affiche donc 1,3 m côté terrain (rendu
+      // seulement : la position simulée reste sur la touche).
+      const yVu = assistant.y + (assistant.y < LARGEUR / 2 ? 1.3 : -1.3);
+      const { px, py } = versCanvas(assistant.x, yVu);
       const haut = assistant.signal === 'TOUCHE';
+      dessinerPersonnage(px, py, { team: 'ARB', numero: 0 }, a, haut ? 'leveur' : 'course', COULEURS.ARB, {});
+      // Fanion tenu à la main, côté terrain : baissé le long du corps, dressé au signal.
+      const k = cam.s * HAUTEUR_VUE;
+      const mainX = px + 0.38 * k, mainY = py - (haut ? 1.55 : 0.95) * k;
+      const bout = py - (haut ? 2.7 : 1.55) * k;
       ctx.save();
-      ctx.fillStyle = '#1b1b1b';
-      ctx.fillRect(px - 0.18 * k, py - 1.5 * k, 0.36 * k, 0.9 * k);
-      ctx.fillStyle = '#e0ac69';
-      ctx.beginPath(); ctx.arc(px, py - 1.68 * k, 0.13 * k, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = '#1b1b1b'; ctx.lineWidth = Math.max(1.5, 0.1 * k);
-      ctx.beginPath(); ctx.moveTo(px + 0.15 * k, py - 1.3 * k); ctx.lineTo(px + 0.3 * k, py - (haut ? 2.6 : 1.0) * k); ctx.stroke();
+      ctx.strokeStyle = '#2b2b2b'; ctx.lineWidth = Math.max(1.2, 0.07 * k);
+      ctx.beginPath(); ctx.moveTo(mainX, mainY); ctx.lineTo(mainX, bout); ctx.stroke();
       ctx.fillStyle = '#ffdf50';
-      const fy = py - (haut ? 2.6 : 1.0) * k;
-      ctx.beginPath(); ctx.moveTo(px + 0.3 * k, fy); ctx.lineTo(px + 0.85 * k, fy + 0.18 * k); ctx.lineTo(px + 0.3 * k, fy + 0.38 * k); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(mainX, bout); ctx.lineTo(mainX + 0.6 * k, bout + 0.17 * k); ctx.lineTo(mainX, bout + 0.36 * k); ctx.closePath(); ctx.fill();
       ctx.restore();
     }
   }

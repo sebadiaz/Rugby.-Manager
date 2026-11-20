@@ -2654,6 +2654,9 @@
     // arrière. `refX` : abscisse de la ligne d'avantage (porteur ou point de ruck), `sens` : sens
     // d'attaque de l'adversaire.
     _gardienDuFond(def, refX, sens) {
+      // GOAP : chaque agent choisit seul ses buts (aucune désignation centralisée de rôle) ; seul le 15 garde
+      // sa référence nominale. La relève du fond reste une règle du jeu LEGACY.
+      if (this.aiMode === 'GOAP') return def.find((j) => j.numero === 15) || null;
       const prof = (j) => (j.x - refX) * sens;
       const dispo = (j) => j.auSol === 0 && j.sinBin <= 0 && j.ruckRecovery <= 0 && !(j.horsJeuKick > 0);
       const q = def.find((j) => j.numero === 15);
@@ -2683,6 +2686,7 @@
     // haut. Le remplaçant garde le couloir jusqu'au retour de l'ailier (à moins de 6 m).
     // Renvoie une Map remplaçant -> ailier remplacé.
     _remplacantsAile(def, gardienFond, ecartes) {
+      if (this.aiMode === 'GOAP') return new Map(); // pas de désignation centralisée en GOAP (cf. _gardienDuFond)
       const res = new Map();
       const memo = this._remplacantsAileMemo || (this._remplacantsAileMemo = {});
       const dispo = (j) => j.auSol === 0 && j.sinBin <= 0 && j.ruckRecovery <= 0 && !(j.horsJeuKick > 0);
