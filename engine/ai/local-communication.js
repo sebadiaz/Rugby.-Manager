@@ -94,6 +94,15 @@ class LocalCommunication {
     this.sequence = 0;
   }
 
+  // RÉPONSE d'un agent à une question : si la question n'est plus audible (expirée entre-temps, jamais entendue), le joueur
+  // ne dit rien — il ne fait pas planter le match. `emit` reste strict (pas de télépathie) pour tout autre usage.
+  emitReponse(msg) {
+    try { return this.emit(msg); } catch (e) {
+      if (e instanceof TypeError && /réponse sans demande/.test(e.message)) return { accepted: false, reason: 'QUESTION_PERIMEE' };
+      throw e;
+    }
+  }
+
   emit({ speakerId, team, kind, x, y, time, available = true,
          toId = null, replyTo = null, phaseId = null }) {
     checkActor(speakerId, team, x, y, time);

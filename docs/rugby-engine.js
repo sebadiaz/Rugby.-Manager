@@ -697,6 +697,11 @@
   // Rayon de contact du plaquage (m) : distance a laquelle le contact se resout,
   // et donc aussi celle a laquelle un SECOND defenseur participe au plaquage.
   const RAYON_PLAQUAGE = 2.2;
+  // PLAQUAGE PLONGÉ : un arrière (n°10 à 15) disponible, que le porteur en pleine course dépasse à 2,2-3,2 m,
+  // se jette bras tendus au lieu de le laisser filer sans rien tenter. À la limite de portée, la réussite
+  // est réduite (x0,6 de la probabilité normale).
+  const RAYON_PLONGEON = 3.2;
+  const FACTEUR_PLONGEON = 0.6;
   // Puissance de reference au contact : MOYENNE MESUREE des porteurs amenes au
   // contact sur 10 matchs (1 666 contacts) — 75 cote avants, 44 cote
   // trois-quarts, 57 en moyenne ponderee. C'est le point neutre de
@@ -2654,6 +2659,9 @@
     // arrière. `refX` : abscisse de la ligne d'avantage (porteur ou point de ruck), `sens` : sens
     // d'attaque de l'adversaire.
     _gardienDuFond(def, refX, sens) {
+      // GOAP : chaque agent choisit seul ses buts (aucune désignation centralisée de rôle) ; seul le 15 garde
+      // sa référence nominale. La relève du fond reste une règle du jeu LEGACY.
+      if (this.aiMode === 'GOAP') return def.find((j) => j.numero === 15) || null;
       const prof = (j) => (j.x - refX) * sens;
       const dispo = (j) => j.auSol === 0 && j.sinBin <= 0 && j.ruckRecovery <= 0 && !(j.horsJeuKick > 0);
       const q = def.find((j) => j.numero === 15);
@@ -2683,6 +2691,7 @@
     // haut. Le remplaçant garde le couloir jusqu'au retour de l'ailier (à moins de 6 m).
     // Renvoie une Map remplaçant -> ailier remplacé.
     _remplacantsAile(def, gardienFond, ecartes) {
+      if (this.aiMode === 'GOAP') return new Map(); // pas de désignation centralisée en GOAP (cf. _gardienDuFond)
       const res = new Map();
       const memo = this._remplacantsAileMemo || (this._remplacantsAileMemo = {});
       const dispo = (j) => j.auSol === 0 && j.sinBin <= 0 && j.ruckRecovery <= 0 && !(j.horsJeuKick > 0);
@@ -2811,9 +2820,18 @@
       const { joueur: defenseurProche, distance: distDef } = joueurLePlusProche(
         defDisponibles.length > 0 ? defDisponibles : defEnJeu.length > 0 ? defEnJeu : def, porteur.x, porteur.y
       );
-      const contactPlaquage = goap ? this._contactPlaquageGOAP(porteur, defenseurProche, distDef)
+      const contactNormal = goap ? this._contactPlaquageGOAP(porteur, defenseurProche, distDef)
         : distDef < RAYON_PLAQUAGE && defenseurProche.missCooldown <= 0 && !(defenseurProche.fixeCooldown > 0)
           && !(defenseurProche.horsJeuKick > 0);
+      const plongeon = !goap && !contactNormal && distDef >= RAYON_PLAQUAGE && distDef < RAYON_PLONGEON
+        && defenseurProche.numero >= 10 && defenseurProche.auSol <= 0 && defenseurProche.missCooldown <= 0
+        && !(defenseurProche.fixeCooldown > 0) && !(defenseurProche.horsJeuKick > 0) && defenseurProche.ruckRecovery <= 0
+        && (porteur.vitesseCourante || 0) > 3
+        // Seulement quand le porteur est À HAUTEUR du défenseur ou le dépasse (de -1 à +0,8 m en profondeur) : face à
+        // lui, la poursuite normale ferme l'écart, et toute ligne défensive est à 2-3 m du porteur.
+        && (defenseurProche.x - porteur.x) * porteur.sensAttaque > -1
+        && (defenseurProche.x - porteur.x) * porteur.sensAttaque < 0.8;
+      const contactPlaquage = contactNormal || plongeon;
       this.timerPhase += dt;
 
       // BALLON EN L'AIR : une passe met un vrai temps a parcourir la distance
@@ -2840,7 +2858,7 @@
       // numéro du porteur et du score (cf. choisirActionPorteur). Le coup de
       // pied peut survenir même défenseur tout proche (dégagement sous
       // pression) ; la passe suppose de ne pas être déjà au contact.
-      let action = (this.combinaison || ballonEnVolPasse) ? 'RUN' : this.choisirActionPorteur(porteur, defenseurProche, distDef, dt, contactPlaquage);
+      let action = (this.combinaison || ballonEnVolPasse) ? 'RUN' : this.choisirActionPorteur(porteur, defenseurProche, distDef, dt, contactNormal); // le plaquage plongé ne change pas la décision du porteur
       // Sonnerie de fin de match : l'équipe menée ou à égalité ne rend pas le
       // ballon au pied, elle garde la dernière action en main.
       if ((action === 'KICK' || action === 'KICK_AGENT') && this._sonnerie && this.miTempsJouee
@@ -2910,7 +2928,8 @@
         // manque est une tentative de plaquage EN PLUS et un porteur qui
         // continue : c'est ce qui remet le volume de plaquages du match dans sa
         // fourchette maintenant que le nombre de regroupements est realiste.
-        const probaPlaquage = Math.max(0.80, Math.min(0.95, 0.855 + bonusFraicheur + (defenseurProche.plaquage - this.porteur.vitesse) / 250));
+        const probaPlaquage = (plongeon ? FACTEUR_PLONGEON : 1)
+          * Math.max(0.80, Math.min(0.95, 0.855 + bonusFraicheur + (defenseurProche.plaquage - this.porteur.vitesse) / 250));
         if (this.rng() >= probaPlaquage) {
           // Plaquage manqué : le défenseur reste hors-jeu de contact un court
           // instant, le porteur poursuit sa course sans être inquiété par lui.

@@ -106,7 +106,7 @@ class LineoutMind {
       const du9 = h.from === this.agent.team + '9';
       if (this.agent.numero === 10 && h.kind === 'LINEOUT_ASK' && du9 && h.toId === this.id && !this.repondu.has(h.id) && comm && me) {
         const avis = avisDuDix(b);
-        const r = comm.emit({ speakerId: this.id, team: this.agent.team, kind: avis, x: me.x, y: me.y, time: t, toId: h.from, replyTo: h.id });
+        const r = comm.emitReponse({ speakerId: this.id, team: this.agent.team, kind: avis, x: me.x, y: me.y, time: t, toId: h.from, replyTo: h.id });
         if (r.accepted) { this.repondu.add(h.id); out.push({ type: 'LINEOUT_ADVICE', avis, to: h.from }); }
       } else if (this.agent.numero === 9 && h.from === this.agent.team + '10' && h.replyTo && h.replyTo === this.question) {
         this.avis = h.kind;

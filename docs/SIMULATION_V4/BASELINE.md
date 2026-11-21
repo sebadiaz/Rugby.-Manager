@@ -4,7 +4,7 @@ Mesurée par `node server/v4/measure-baseline.js 30 --ecrire` (lecture seule, au
 
 ## Paramètres
 
-- SHA mesuré : `a0354f0edbf4a4073ae559f92c2ea95f35f9a5ba` (branche `claude/sharp-faraday-2c0k9h`) ; `origin/main` au moment de la mesure : `fff5fdd6a4b1fdb31e856899a18b128ac3bda2fd`
+- SHA mesuré : `4438d73cf66967a4cf18f20f53d7affdb7e15de2` (branche `claude/sharp-faraday-2c0k9h`) ; `origin/main` au moment de la mesure : `98b2da8b4b0476264491a8675fa9ca4b3e981957`
 - Graines 1..30, durée 4800 s, pas fixe dt = 0.1 s, `jouerJusquAuSifflet`, v22.23.4.
 - Équipes par défaut du moteur, sans blessures configurées autrement que par défaut. Valeurs cumulées des deux équipes par match (possession : équipe A).
 
@@ -12,26 +12,26 @@ Mesurée par `node server/v4/measure-baseline.js 30 --ecrire` (lecture seule, au
 
 | Métrique | Moyenne | Écart-type | Min | Max |
 |---|---:|---:|---:|---:|
-| essais | 7.07 | 2.37 | 2 | 12 |
-| points | 58.07 | 14.17 | 26 | 90 |
-| passes | 409.13 | 34.55 | 341 | 472 |
-| passesTentees | 412.97 | 34.55 | 344 | 475 |
-| courses | 259.17 | 19.12 | 225 | 297 |
-| metresGagnes | 1052.33 | 103.89 | 860.016 | 1405.444 |
-| coupsDePied | 58.97 | 9.15 | 34 | 78 |
-| plaquagesTentes | 335.57 | 26.64 | 291 | 384 |
-| plaquagesReussis | 295.4 | 23.37 | 254 | 337 |
-| rucks | 208.7 | 16.53 | 173 | 247 |
-| melees | 18.13 | 2.72 | 12 | 23 |
-| touches | 28.23 | 4.75 | 15 | 35 |
-| mauls | 7.63 | 2.55 | 2 | 12 |
-| penalitesConcedees | 24.67 | 4.44 | 15 | 34 |
-| turnovers | 18.5 | 4.22 | 11 | 26 |
-| enAvants | 13.6 | 3.47 | 6 | 21 |
-| cartonsJaunes | 1 | 1.18 | 0 | 5 |
-| tempsJeuEffectifMin | 34.32 | 2.12 | 30.282 | 38.932 |
-| possessionA | 50.97 | 6.53 | 39 | 70 |
-| essaisDuN15 | 0.37 | 0.6 | 0 | 2 |
+| essais | 7.53 | 1.91 | 4 | 11 |
+| points | 62.3 | 12.03 | 39 | 86 |
+| passes | 409.7 | 32.32 | 343 | 476 |
+| passesTentees | 413.83 | 32.4 | 347 | 482 |
+| courses | 264.77 | 18.08 | 225 | 296 |
+| metresGagnes | 1086.03 | 92.55 | 850.858 | 1259.824 |
+| coupsDePied | 60.37 | 8.87 | 43 | 76 |
+| plaquagesTentes | 345.03 | 24.24 | 301 | 379 |
+| plaquagesReussis | 299.93 | 22.9 | 250 | 340 |
+| rucks | 211.37 | 16.57 | 174 | 246 |
+| melees | 18.13 | 3.33 | 10 | 26 |
+| touches | 24.4 | 3.54 | 17 | 31 |
+| mauls | 7.1 | 2.87 | 2 | 13 |
+| penalitesConcedees | 23.6 | 3.73 | 17 | 32 |
+| turnovers | 18.07 | 3.92 | 9 | 27 |
+| enAvants | 13.67 | 3.08 | 6 | 20 |
+| cartonsJaunes | 0.73 | 1.15 | 0 | 4 |
+| tempsJeuEffectifMin | 34.64 | 1.97 | 30.573 | 38.36 |
+| possessionA | 49.97 | 5.71 | 38 | 61 |
+| essaisDuN15 | 0.3 | 0.53 | 0 | 2 |
 
 ## Données brutes
 

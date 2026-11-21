@@ -29,6 +29,42 @@ function voisinsDeLigne(b, ligneX, sens) {
     .sort((a, c) => a.y - c.y || a.id.localeCompare(c.id, 'en'));
 }
 
+// PRESS_CARRIER : le défenseur que je vois le PLUS PROCHE du porteur adverse tente de le plaquer, quel que soit son but du
+// moment (tenir la ligne, empêcher l'essai, couvrir le fond) : la priorité en défense est le plaquage. Ne compte comme « plus
+// près » qu'un coéquipier OBSERVÉ disponible. Le second le plus proche vient en soutien. Chacun décide pour lui seul.
+function candidatPresse(b, s, jeuCourant) {
+  if (!s.ball || !s.ball.owner || s.ball.owner[0] === s.team || !s.onside) return null;
+  const me = b.self, sens = s.sens;
+  const fiche = b.opponents[s.ball.owner];
+  const porteur = fiche?.lastSeen || s.ball.lastSeen;
+  const dMoi = P.dist(me, porteur);
+  const plusPres = Object.values(b.teammates).filter((m) => m.available !== false && !m.recovery && P.dist(m.lastSeen, porteur) < dMoi - 0.3).length;
+  if (dMoi > 12 || plusPres > 1) return null;
+  // Je suis DEVANT le porteur (entre lui et ma ligne) : je l'attends sur sa route, juste devant lui. Le poursuivre par le
+  // côté ne sert à rien quand il court aussi vite que moi (il longe la touche et marque).
+  const devant = (porteur.x - me.x) * sens > 0 && dMoi > 3;
+  const predit = jeuCourant && dMoi > 4.5 && fiche && visibleJouable(fiche);
+  const cible = devant ? { x: P.clamp(porteur.x - sens * Math.min(6, dMoi * 0.5), 0, 100), y: porteur.y }
+    : predit ? intercepter(me, fiche, 3 + (me.vitesse ?? 65) * 0.05)
+    : { x: P.clamp(porteur.x - sens * Math.min(4, dMoi * 0.4), 0, 100), y: porteur.y };
+  return { id: 'PRESS_CARRIER', priority: plusPres === 0 ? 96 : 68, target: cible, vmax: 1, reason: plusPres === 0 ? 'je suis le plus proche du porteur : je plaque' : 'soutien au plaqueur' };
+}
+
+// MARK_OPPONENT : un attaquant menaçant (le porteur exclu : c'est le rôle du plaqueur) dans mon canal, sans partenaire
+// visiblement plus proche de lui que moi.
+function candidatMarquage(b, s, ref) {
+  const me = b.self, sens = s.sens;
+  const menaces = Object.entries(b.opponents).filter(([id, o]) => id !== s.ball?.owner && o.confidence >= 0.3 && o.threat > 0.15
+    && Math.abs(o.lastSeen.y - ref.y) <= 10 && P.dist(o.lastSeen, me) <= 14)
+    .sort((a, c) => c[1].threat - a[1].threat || a[0].localeCompare(c[0], 'en'));
+  for (const [id, o] of menaces) {
+    const dMoi = P.dist(o.lastSeen, me);
+    if (Object.values(b.teammates).some((m) => P.dist(m.lastSeen, o.lastSeen) < dMoi - 1)) continue;
+    return { id: 'MARK_OPPONENT', priority: 58 + 20 * o.threat, target: { x: o.lastSeen.x - sens * 1.5, y: o.lastSeen.y }, vmax: 1, reason: 'marque ' + id };
+  }
+  return null;
+}
+
 function candidatsDefense(b, s, pb, jeuCourant) {
   const me = b.self, bal = s.ball && s.ball.lastSeen;
   const sens = s.sens, num = b.agent.numero;
@@ -49,11 +85,17 @@ function candidatsDefense(b, s, pb, jeuCourant) {
   const avance = arretee ? 1 : 3;
   const xTenu = sens > 0 ? Math.min(ligneX, xVoisins + avance) : Math.max(ligneX, xVoisins - avance);
   // Glissement : en jeu courant la ligne se resserre vers le ballon (60 % de l'écart latéral ; à 35 % il restait 5,7 défenseurs devant le porteur contre 7,8 en LEGACY).
-  // L'ailier ne se laisse pas aspirer : il garde la largeur (glissement plafonné à 5 m), sinon l'aile opposée au
-  // ballon devient un boulevard dès que l'attaque change de côté.
-  const aile = num === 11 || num === 14;
-  const glisse = (bal.y - ref.y) * 0.6;
-  const yTenu = arretee ? ref.y : ref.y + (aile ? Math.max(-5, Math.min(5, glisse)) : glisse);
+  // Je glisse vers le ballon d'autant moins que je vois d'attaquants non marqués À MON EXTÉRIEUR (du côté opposé au
+  // ballon) : s'ils sont là, c'est à moi de tenir cette largeur, sinon ils passent derrière moi dès que le jeu change
+  // de côté. Aucun poste n'est désigné : l'ailier tient son bord parce qu'il VOIT du monde au-delà de lui, et
+  // glisse librement quand il n'y voit personne.
+  const coteExterieur = Math.sign(me.y - bal.y) || 1;
+  const exposition = Object.values(b.opponents).filter((o) => o.confidence >= 0.3
+    && (o.lastSeen.y - me.y) * coteExterieur > 1 && Math.abs(o.lastSeen.x - me.x) <= 15
+    && !Object.values(b.teammates).some((m) => (m.lastSeen.y - o.lastSeen.y) * coteExterieur > 0
+      && P.dist(m.lastSeen, o.lastSeen) < P.dist(me, o.lastSeen))).length;
+  const glisse = (bal.y - ref.y) * 0.6 / (1 + 1.5 * exposition);
+  const yTenu = arretee ? ref.y : ref.y + glisse;
   out.push({ id: 'HOLD_LINE', priority: 60, target: { x: xTenu, y: yTenu }, vmax: Math.abs(bal.y - ref.y) <= 15 ? 1 : 0.85, reason: 'ligne alignée sur ' + voisins.length + ' voisin(s) observé(s)' });
   // CLOSE_GAP : plus grand intervalle observé près de moi, si je suis le mieux placé parmi ceux que je vois.
   const bords = arretee ? [{ id: 'touche0', x: ligneX, y: 0, numero: 0 }, { id: 'touche70', x: ligneX, y: P.LARGEUR, numero: 0 }] : [];
@@ -65,32 +107,20 @@ function candidatsDefense(b, s, pb, jeuCourant) {
       const centre = { x: ligneX, y: (ligne[i].y + ligne[i + 1].y) / 2 };
       const dMoi = P.dist(me, centre);
       const plusProche = Object.values(b.teammates).every((m) => P.dist(m.lastSeen, centre) >= dMoi - 0.01);
-      if (aile && Math.abs(centre.y - ref.y) > 12) continue; // un ailier ne quitte pas son couloir pour boucher un trou lointain
-      if (plusProche && (!meilleur || g > meilleur.g)) meilleur = { g, centre };
+      // Quitter mon poste pour boucher un trou lointain a un COÛT qui croît avec la distance (pas d'interdiction) :
+      // seul un gros trou dont je suis le plus proche l'emporte sur ma tâche de ligne.
+      const cout = Math.max(0, Math.abs(centre.y - ref.y) - 8) * 0.8;
+      if (plusProche && (!meilleur || g - cout / 2 > meilleur.g - meilleur.cout / 2)) meilleur = { g, centre, cout };
     }
   }
-  if (meilleur) out.push({ id: 'CLOSE_GAP', priority: Math.min(88, (arretee ? 74 : 62) + (meilleur.g - GAP_MIN) * 2), target: meilleur.centre, vmax: 1, reason: 'intervalle de ' + meilleur.g.toFixed(1) + ' m, je suis le plus proche' });
-  // MARK_OPPONENT : adversaire observé menaçant dans mon canal, sans partenaire visiblement plus proche.
-  const menaces = Object.entries(b.opponents).filter(([, o]) => o.confidence >= 0.3 && o.threat > 0.15 && Math.abs(o.lastSeen.y - ref.y) <= 10 && P.dist(o.lastSeen, me) <= 14)
-    .sort((a, c) => c[1].threat - a[1].threat || a[0].localeCompare(c[0], 'en'));
-  for (const [id, o] of menaces) {
-    const dMoi = P.dist(o.lastSeen, me);
-    if (Object.values(b.teammates).some((m) => P.dist(m.lastSeen, o.lastSeen) < dMoi - 1)) continue;
-    out.push({ id: 'MARK_OPPONENT', priority: 58 + 20 * o.threat, target: { x: o.lastSeen.x - sens * 1.5, y: o.lastSeen.y }, vmax: 1, reason: 'marque ' + id });
-    break;
-  }
-  // Chaque défenseur évalue sa propre arrivée à la trajectoire du porteur.
+  if (meilleur) out.push({ id: 'CLOSE_GAP', priority: Math.min(88, (arretee ? 74 : 62) + (meilleur.g - GAP_MIN) * 2 - meilleur.cout), target: meilleur.centre, vmax: 1, reason: 'intervalle de ' + meilleur.g.toFixed(1) + ' m, je suis le plus proche' });
+  const marque = candidatMarquage(b, s, ref);
+  if (marque) out.push(marque);
+  const presse = candidatPresse(b, s, jeuCourant);
+  if (presse) out.push(presse);
+  // Lecture des courses croisées adverses (READ_CROSS) : voir plus bas.
   const fiche = b.opponents[s.ball.owner];
   const porteur = s.ball.owner && s.ball.owner[0] !== s.team ? (fiche?.lastSeen || bal) : null;
-  if (porteur && s.onside) {
-    const dMoi = P.dist(me, porteur);
-    const predit = jeuCourant && dMoi > 4.5 && fiche && visibleJouable(fiche);
-    const cible = predit ? intercepter(me, fiche, 3 + (me.vitesse ?? 65) * 0.05)
-      : { x: P.clamp(porteur.x - sens * Math.min(4, dMoi * 0.4), 0, 100), y: porteur.y };
-    const plusPres = Object.values(b.teammates).filter((m) => P.dist(m.lastSeen, porteur) < dMoi).length;
-    if (dMoi <= 12 && plusPres <= 1) out.push({ id: 'PRESS_CARRIER', priority: plusPres === 0 ? 74 : 68,
-      target: cible, vmax: 1, reason: plusPres === 0 ? 'interception du porteur' : 'soutien au plaqueur' });
-  }
   if (jeuCourant && porteur && s.onside) for (const c of lireAttaqueAdverse(b, s, me, porteur, fiche, sens)) out.push(c);
   out.push({ id: 'RETURN_TO_PLAYBOOK', priority: 30, target: ref, vmax: 0.8, reason: 'poste nominal en défense' });
   return out;
@@ -277,15 +307,24 @@ function individualPlacement(beliefs, goalId, playbook, profile = {}, jeuCourant
   const s = deriveSituation(beliefs);
   const couverture = jeuCourant && lireCouverture(beliefs, s);
   let cands;
+  const pressePlaq = s.advPoss ? candidatPresse(beliefs, s, jeuCourant) : null;
   if (couverture) {
     cands = [{ id: 'COVER_BREAK', priority: 85, target: couverture, vmax: 1, reason: 'dernier rideau : coupe la course vers l’en-but' }];
+    // Le dernier rideau garde son plan (COVER_BREAK déclenche déjà le plaquage) : pas de PRESS_CARRIER superposé.
   } else if (goalId === 'COVER_BACKFIELD' || goalId === 'PREVENT_TRY') {
     const bal = s.ball && s.ball.lastSeen;
-    cands = [{ id: goalId === 'PREVENT_TRY' ? 'PREVENT_TRY' : 'COVER_BACKFIELD', priority: 60,
+    cands = [{ id: goalId === 'PREVENT_TRY' ? 'PREVENT_TRY' : 'COVER_BACKFIELD', priority: goalId === 'PREVENT_TRY' ? 56 : 60,
       target: bal ? (goalId === 'PREVENT_TRY' ? { x: P.clamp(bal.x - s.sens * 6, 0, 100), y: bal.y } : P.referenceFond(s.sens, bal, pb)) : { x: beliefs.self.x, y: beliefs.self.y },
       vmax: goalId === 'PREVENT_TRY' ? 1 : 0.75, reason: goalId === 'PREVENT_TRY' ? 'intercepte entre le porteur et la ligne' : 'profondeur conservée' }];
     // En attaque, l'arrière met en balance sa profondeur et un renfort dans la ligne.
     if (goalId === 'COVER_BACKFIELD' && jeuCourant) cands = cands.concat(candidatsRenfort(beliefs, s));
+    // Le plus proche du porteur le plaque ; les autres, au lieu de converger tous vers le même point devant le porteur,
+    // marquent un attaquant menaçant qu'aucun partenaire ne tient.
+    if (s.advPoss) {
+      if (pressePlaq) cands.push(pressePlaq);
+      const m = candidatMarquage(beliefs, s, P.referenceDefense(s.numero, s.sens, bal || { x: beliefs.self.x, y: beliefs.self.y }, pb));
+      if (m && goalId === 'PREVENT_TRY') { m.priority += 6; cands.push(m); }
+    }
   } else if (goalId === 'DEFEND') cands = candidatsDefense(beliefs, s, pb, jeuCourant);
   else if (goalId === 'SUPPORT_CARRIER' || goalId === 'BE_PASS_OPTION' || goalId === 'RETURN_TO_PLAYBOOK' || goalId === 'GAIN_TERRITORY' || goalId === 'RETAIN_POSSESSION') {
     cands = s.maPoss || s.aLeBallon ? candidatsAttaque(beliefs, s, pb, profile, jeuCourant) : candidatsDefense(beliefs, s, pb, jeuCourant);
