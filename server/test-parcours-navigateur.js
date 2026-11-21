@@ -92,6 +92,13 @@ function optionsLancement() {
 (async () => {
   const chromium = resoudreChromium();
   const browser = await chromium.launch(optionsLancement());
+  // Le parcours teste le mode Club, pas l'IA : le mode agents (GOAP, défaut du jeu) met ~2 min à générer un match, donc on force
+  // l'ancien moteur (rapide) dans chaque contexte de ce parcours. Le mode agents est couvert par les tests V4.
+  const initLegacy = () => { try { localStorage.setItem('rugbyManager.aiMode', 'LEGACY'); } catch (e) { /* stockage indisponible */ } };
+  const newContextOrig = browser.newContext.bind(browser);
+  browser.newContext = async (...a) => { const c = await newContextOrig(...a); await c.addInitScript(initLegacy); return c; };
+  const newPageOrig = browser.newPage.bind(browser);
+  browser.newPage = async (...a) => { const pg = await newPageOrig(...a); await pg.addInitScript(initLegacy); return pg; };
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   const erreursConsole = [];
   page.on('pageerror', (e) => erreursConsole.push(`PAGEERROR: ${e.message}`));
