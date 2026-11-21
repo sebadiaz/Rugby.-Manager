@@ -2080,7 +2080,7 @@ class LineoutMind {
       const du9 = h.from === this.agent.team + '9';
       if (this.agent.numero === 10 && h.kind === 'LINEOUT_ASK' && du9 && h.toId === this.id && !this.repondu.has(h.id) && comm && me) {
         const avis = avisDuDix(b);
-        const r = comm.emit({ speakerId: this.id, team: this.agent.team, kind: avis, x: me.x, y: me.y, time: t, toId: h.from, replyTo: h.id });
+        const r = comm.emitReponse({ speakerId: this.id, team: this.agent.team, kind: avis, x: me.x, y: me.y, time: t, toId: h.from, replyTo: h.id });
         if (r.accepted) { this.repondu.add(h.id); out.push({ type: 'LINEOUT_ADVICE', avis, to: h.from }); }
       } else if (this.agent.numero === 9 && h.from === this.agent.team + '10' && h.replyTo && h.replyTo === this.question) {
         this.avis = h.kind;
@@ -2210,6 +2210,15 @@ class LocalCommunication {
     this.messages = [];
     this.lastBySpeaker = new Map();
     this.sequence = 0;
+  }
+
+  // RÉPONSE d'un agent à une question : si la question n'est plus audible (expirée entre-temps, jamais entendue), le joueur
+  // ne dit rien — il ne fait pas planter le match. `emit` reste strict (pas de télépathie) pour tout autre usage.
+  emitReponse(msg) {
+    try { return this.emit(msg); } catch (e) {
+      if (e instanceof TypeError && /réponse sans demande/.test(e.message)) return { accepted: false, reason: 'QUESTION_PERIMEE' };
+      throw e;
+    }
   }
 
   emit({ speakerId, team, kind, x, y, time, available = true,
@@ -2968,7 +2977,8 @@ class ScrumMind {
   demandeMoteur() { return this.agent.numero === 8 && (this.annonce === 'GO' || this.annonce === 'PASSE') ? this.annonce : null; }
 
   _emet(comm, me, t, kind, extra) {
-    const r = comm.emit(Object.assign({ speakerId: this.id, team: this.agent.team, kind, x: me.x, y: me.y, time: t, phaseId: this.phaseId }, extra));
+    const msg = Object.assign({ speakerId: this.id, team: this.agent.team, kind, x: me.x, y: me.y, time: t, phaseId: this.phaseId }, extra);
+    const r = extra && extra.replyTo ? comm.emitReponse(msg) : comm.emit(msg);
     if (r.accepted) this.dernierEmis = t;
     return r;
   }

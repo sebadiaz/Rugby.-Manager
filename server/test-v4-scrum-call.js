@@ -119,7 +119,8 @@ test('moteur : sans demande du 8, le 9 ramasse toujours ; un départ n\'est jama
   const sorties = {};
   const log = m.log.bind(m);
   m.log = (t, eq, msg, d) => { if (/^MELEE_(PICK_AND_GO|PASSE_HUIT|BALLON_SORTI)$/.test(t)) sorties[t] = (sorties[t] || 0) + 1; return log(t, eq, msg, d); };
-  for (let t = 0; t < 2400; t += 0.1) m.tick(0.1);
+  // 4800 s : sur 2400 s, la graine 2 ne donnait que 3 sorties selon le déroulé (nombre de mêlées d'une seule graine).
+  for (let t = 0; t < 4800; t += 0.1) m.tick(0.1);
   assert.ok((sorties.MELEE_BALLON_SORTI || 0) >= 4, JSON.stringify(sorties));
   assert.strictEqual((sorties.MELEE_PICK_AND_GO || 0) + (sorties.MELEE_PASSE_HUIT || 0), 0, JSON.stringify(sorties));
 });

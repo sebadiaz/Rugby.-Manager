@@ -78,7 +78,8 @@ class ScrumMind {
   demandeMoteur() { return this.agent.numero === 8 && (this.annonce === 'GO' || this.annonce === 'PASSE') ? this.annonce : null; }
 
   _emet(comm, me, t, kind, extra) {
-    const r = comm.emit(Object.assign({ speakerId: this.id, team: this.agent.team, kind, x: me.x, y: me.y, time: t, phaseId: this.phaseId }, extra));
+    const msg = Object.assign({ speakerId: this.id, team: this.agent.team, kind, x: me.x, y: me.y, time: t, phaseId: this.phaseId }, extra);
+    const r = extra && extra.replyTo ? comm.emitReponse(msg) : comm.emit(msg);
     if (r.accepted) this.dernierEmis = t;
     return r;
   }

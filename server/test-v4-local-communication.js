@@ -361,4 +361,19 @@ test('un accusé de la mêlée précédente ne vaut pas pour la nouvelle',()=>{
   assert.strictEqual(com.emit(speaker('A9','SCRUM_9_ACK',51,35,.3,
     {toId:'A8',replyTo:q.id,phaseId:'S-18'})).accepted,true);
 });
+test('emitReponse : une réponse à une question jamais entendue ou périmée ne lève pas (le joueur se tait), emit reste strict', () => {
+  const com=new LocalCommunication({cooldownSeconds:0});
+  const q=com.emit(speaker('A9','LINEOUT_ASK',40,20,0,{toId:'A10'}));
+  // Jamais entendue par le 10 : emit lève, emitReponse se tait.
+  assert.throws(()=>com.emit(speaker('A10','LINEOUT_MIDDLE',41,20,.2,{toId:'A9',replyTo:q.id})),/réponse sans demande/);
+  const muet=com.emitReponse(speaker('A10','LINEOUT_MIDDLE',41,20,.2,{toId:'A9',replyTo:q.id}));
+  assert.strictEqual(muet.accepted,false);
+  // Entendue puis périmée (réponse très tard) : même comportement, sans exception.
+  com.hear(actor('A10',41,20,.15));
+  const tard=com.emitReponse(speaker('A10','LINEOUT_MIDDLE',41,20,500,{toId:'A9',replyTo:q.id}));
+  assert.strictEqual(tard.accepted,false);
+  // Une réponse valide passe par emitReponse comme par emit.
+  const ok=com.emitReponse(speaker('A10','LINEOUT_MIDDLE',41,20,.3,{toId:'A9',replyTo:q.id}));
+  assert.strictEqual(ok.accepted,true);
+});
 console.log(tests+' tests de communication locale réussis (transport seul)');
