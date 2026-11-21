@@ -71,8 +71,10 @@ executer('arbitre central et deux assistants dans une simulation', () => {
     assert.ok(etat.arbitre.y >= 0 && etat.arbitre.y <= LARGEUR);
     assert.strictEqual(etat.assistants.length, 2);
     etat.assistants.forEach((a, k) => {
-      assert.ok(a.x >= 0 && a.x <= LONGUEUR);
-      assert.strictEqual(a.y, k === 0 ? 0 : LARGEUR);
+      // Hors du terrain : le long de la touche (1,2 m en dehors) ; derrière l'en-but, un à chaque pied de poteau, pendant un tir au but.
+      assert.ok(a.x >= -3 && a.x <= LONGUEUR + 3);
+      assert.ok(k === 0 ? a.y <= 0 : a.y >= LARGEUR || Math.abs(a.y - LARGEUR / 2) < 3.5, 'un assistant dans le terrain');
+      assert.ok(!(a.x > 0 && a.x < LONGUEUR && a.y > 0 && a.y < LARGEUR), 'un assistant est entré dans le terrain');
       assert.ok(Math.abs(a.x - precedent.assistants[k].x) < 0.36);
       mouvement += Math.abs(a.x - precedent.assistants[k].x);
     });

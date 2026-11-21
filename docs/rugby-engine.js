@@ -697,6 +697,8 @@
   // Rayon de contact du plaquage (m) : distance a laquelle le contact se resout,
   // et donc aussi celle a laquelle un SECOND defenseur participe au plaquage.
   const RAYON_PLAQUAGE = 2.2;
+  // Les arbitres assistants (juges de touche) se tiennent HORS du terrain, à 1,2 m de la ligne de touche.
+  const ECART_ASSISTANT = 1.2;
   // PLAQUAGE PLONGÉ : un arrière (n°10 à 15) disponible, que le porteur en pleine course dépasse à 2,2-3,2 m,
   // se jette bras tendus au lieu de le laisser filer sans rien tenter. À la limite de portée, la réussite
   // est réduite (x0,6 de la probabilité normale).
@@ -791,6 +793,8 @@
   const PROBA_SAIGNEMENT_CONTACT = 0.0010;
 
   function avancer(j, dx, dy, dt, vmax) {
+    // RUCK : tant que le ballon n'est pas sorti, les joueurs du ruck ne bougent pas (cf. _retenirJoueursDuRuck).
+    if (j._tenuRuck) { j.vitesseCourante = 0; return; }
     const d = Math.hypot(dx, dy);
     if (d < 0.01) return;
     // Vitesse RÉELLEMENT atteinte ce tick : la vitesse courante du joueur plus
@@ -1335,9 +1339,12 @@
       // Deux arbitres assistants mobiles : ils suivent la ligne du ballon le
       // long de leur propre touche, sans pénétrer dans l'aire de jeu.
       this.arbitresAssistants = [
-        { x: LONGUEUR / 2, y: 0, cote: 'gauche' },
-        { x: LONGUEUR / 2, y: LARGEUR, cote: 'droite' },
+        { x: LONGUEUR / 2, y: -ECART_ASSISTANT, cote: 'gauche' },
+        { x: LONGUEUR / 2, y: LARGEUR + ECART_ASSISTANT, cote: 'droite' },
       ];
+      // Tir au but en cours (transformation ou pénalité) : les deux assistants se placent derrière l'en-but, un à chaque pied de
+      // poteau ; une fois le tir joué, ils lèvent le drapeau si le ballon passe, le laissent baissé sinon (cf. _majAssistants).
+      this._tirAuBut = null;
       // Compteur d'infractions de maul par équipe sur l'ensemble du match
       // (persiste d'un maul à l'autre) : sert à siffler un carton jaune pour
       // fautes répétées, comme l'arbitrage réel.
@@ -1374,6 +1381,9 @@
       // tick passé dans la zone, ni une par phase/ruck).
       this._entree22DernierePossession = null;
       this._entree22Faite = false;
+      // État de module remis à zéro : `_fatCourant` et `_obstacle` restent sur la valeur du MATCH PRÉCÉDENT du même processus ; le
+      // coup d'envoi d'ouverture (choisi ici, avant tout tick) lisait des vitesses de joueurs fatigués.
+      _fatCourant = 0; _obstacle = null;
       this._nouvelleManche('A');
       this._horlogeArretee = true; // attend le coup de sifflet de l'arbitre
       this.equipeKickPremiereMiTemps = this._dernierEquipeKick;
@@ -1483,6 +1493,171 @@
     // défendue par l'équipe qui botte pour une remise en 22m). L'équipe qui
     // botte doit rester derrière le ballon, l'équipe receptrice à 10m minimum :
     // le ballon est donc réellement botté et contestable, pas remis en main.
+    // DISPOSITIF DU COUP D'ENVOI ET DU RENVOI AUX 22 M (même code : seul le point de frappe `kx` change).
+    // Le botteur peut viser n'importe où : l'équipe qui REÇOIT ne connaît pas la cible et se répartit donc pour couvrir un
+    // MAXIMUM de terrain, en trois étages (distances depuis le point de frappe, au moins 10 m, loi 12) :
+    //  - étage avancé (11 à 15 m) : DEUX groupes d'avants (sauteur + leveurs) sur les tiers du terrain, le talonneur et le
+    //    8 au centre : ils couvrent les coups courts et contestables ;
+    //  - étage médian (20 à 25 m) : les centres écartés, le 9 au centre et le 10 entre eux, pour les ballons au milieu
+    //    et les seconds ballons ;
+    //  - fond (28 à 38 m) : les ailiers sur leurs bords, le 15 au centre en profondeur.
+    _formationReception(rec, kx, dirKick, avaitEquipes) {
+      const clampX = (x) => Math.max(0.5, Math.min(LONGUEUR - 0.5, x));
+      const clampY = (y) => Math.max(1.5, Math.min(LARGEUR - 1.5, y));
+      const pose = (j, x, y) => { if (!j) return; j._cibleEnvoi = { x: clampX(x), y: clampY(y) }; if (!avaitEquipes) { j.x = j._cibleEnvoi.x; j.y = j._cibleEnvoi.y; } };
+      const par = (num) => rec.find((j) => j.numero === num);
+      const d = (m) => kx + dirKick * m;
+      const m = LARGEUR / 2;
+      // Groupe gauche (y = m - 15) : 5 saute, 4 et 1 lèvent. Groupe droit (y = m + 15) : 6 saute, 7 et 3 lèvent.
+      pose(par(5), d(12.0), m - 15); pose(par(4), d(12.8), m - 17.2); pose(par(1), d(11.4), m - 12.8);
+      pose(par(6), d(12.0), m + 15); pose(par(7), d(12.8), m + 17.2); pose(par(3), d(11.4), m + 12.8);
+      pose(par(2), d(11.0), m); pose(par(8), d(15.0), m);
+      pose(par(9), d(21.0), m); pose(par(10), d(25.0), m - 7);
+      const c = [par(12), par(13)].filter(Boolean).sort((a, b) => a.channelY - b.channelY);
+      if (c[0]) pose(c[0], d(21.0), m - 21); if (c[1]) pose(c[1], d(21.0), m + 21);
+      for (const num of [11, 14]) { const j = par(num); if (j) pose(j, d(28.0), j.channelY < m ? 8 : LARGEUR - 8); }
+      pose(par(15), d(38.0), m);
+    }
+
+    // Temps mis par un chasseur pour couvrir `D` mètres depuis la ligne de chasse : il a pris son élan dans la seconde qui précède la
+    // frappe (≈ 2,2 m/s), puis accélère (ACCELERATION) jusqu'à sa vitesse de chasse (≈ 5,8 m/s).
+    _tempsChasse(D) {
+      const v0 = 2.2, vmax = 5.8, a = ACCELERATION;
+      const tAcc = (vmax - v0) / a, dAcc = (v0 + vmax) / 2 * tAcc;
+      return D <= dAcc ? (-v0 + Math.sqrt(v0 * v0 + 2 * a * D)) / a : tAcc + (D - dAcc) / vmax;
+    }
+
+    // CHOIX DE LA CIBLE PAR LE BOTTEUR. Il lit le dispositif des receveurs et choisit le point où le ballon est le plus
+    // difficile à capter pour eux (leur temps d'arrivée comparé à la durée du vol) alors que SES chasseurs arrivent à temps ;
+    // il y gagne du terrain (profondeur), évite les bords (marge = sa propre imprécision) et reste dans sa portée. Sa
+    // lucidité (`decision`) règle le bruit de son jugement, sa précision (`jeuPied`) l'erreur de sa frappe : un botteur
+    // moyen vise moins juste et moins loin qu'un bon.
+    _choisirCibleCoupEnvoi(kickeur, kx, ky, dirKick, equipeKick) {
+      const jp = typeof kickeur.jeuPied === 'number' ? kickeur.jeuPied : 60;
+      const dec = typeof kickeur.decision === 'number' ? kickeur.decision : 60;
+      const sigma = Math.max(1.2, 6 - 0.055 * jp);
+      const portee = 34 + (jp - 60) * 0.3;
+      // Depuis SES 22 m (renvoi), l'équipe cherche le TERRITOIRE : renvoyer le ballon le plus loin possible dans le camp adverse
+      // pour faire reculer l'adversaire ; la récupération du ballon passe au second plan. Au coup d'envoi, elle veut le récupérer.
+      const enVingtDeux = kx !== LONGUEUR / 2;
+      const envieRecup = enVingtDeux ? 0.35 : 1;
+      const poidsTerrain = enVingtDeux ? 0.3 : 0.04;
+      const rec = (equipeKick === 'A' ? this.equipeB : this.equipeA).filter((j) => j.sinBin <= 0 && j._cibleEnvoi);
+      const nChasse = (equipeKick === 'A' ? this.equipeA : this.equipeB).filter((j) => j.sinBin <= 0).length - 1;
+      const pasC = (LARGEUR - 8) / Math.max(1, nChasse);
+      const candidats = [];
+      for (let dm = 12; dm <= 42; dm += 3) {
+        const x = kx + dirKick * dm;
+        if (x < 2 || x > LONGUEUR - 2) continue;
+        for (let y = 6; y <= LARGEUR - 6; y += 4) {
+          // Durée du vol. Une cloche haute et courte (≤ 24 m) laisse du temps aux chasseurs : c'est la seule qui se récupère ;
+          // au-delà, le ballon file à plat (distance / 18 m/s, comme avant).
+          const dist = Math.hypot(dm, y - ky);
+          const contestable = dm <= 24;
+          const tVol = contestable ? 2.6 + 0.08 * (dm - 10) : Math.max(0.9, Math.min(2.0, dist / 18));
+          let tRec = Infinity;
+          for (const r of rec) tRec = Math.min(tRec, Math.hypot(r._cibleEnvoi.x - x, r._cibleEnvoi.y - y) / (vitesseMs(r) * 0.9));
+          // Arrivée des chasseurs : sur une cible contestable d'un côté, tous les avants s'y regroupent (distance latérale réduite).
+          const iC = Math.max(0, Math.min(nChasse, Math.round((y - 4) / pasC)));
+          const lat = contestable && Math.abs(y - LARGEUR / 2) >= 8 ? 3 : Math.abs(y - (4 + iC * pasC));
+          const tCh = this._tempsChasse(Math.hypot(dm + 0.5, lat));
+          const ecart = tCh - tVol; // > 0 : le chasseur arrive APRÈS le ballon ; < 0 : AVANT (faute probable)
+          // Fenêtre idéale : arriver à l'instant où le ballon retombe (de 0 à +0,5 s). Trop tard, le ballon est perdu ; trop tôt
+          // (avant le ballon de plus de 0,4 s), c'est de l'obstruction ou une charge sur le receveur : faute.
+          const chanceRecup = Math.max(0, 1 - Math.abs(ecart - 0.2) / 1.3);
+          const risqueFaute = Math.max(0, Math.min(0.6, (-0.4 - ecart) / 1.5));
+          let score = envieRecup * (-1.4 * (tVol - tRec) + 4.3 * chanceRecup) - 5 * risqueFaute + poidsTerrain * dm;
+          const bord = Math.min(y, LARGEUR - y);
+          if (bord < sigma + 2) score -= (sigma + 2 - bord) * 0.8;
+          if (dm > portee) score -= (dm - portee) * 0.7;
+          candidats.push({ score, dm, y, tVol, avance: Math.max(0, -ecart) });
+        }
+      }
+      // Il ne vise pas toujours le même point : il tire sa cible parmi les bonnes options, avec une probabilité qui croît
+      // avec leur valeur (température : un botteur moins lucide hésite davantage). D'un coup d'envoi à l'autre, la cible varie.
+      const T = 1.6 - Math.max(0, Math.min(100, dec)) / 100 * 0.9;
+      let meilleur = null;
+      if (candidats.length) {
+        const max = Math.max(...candidats.map((c) => c.score));
+        const poids = candidats.map((c) => Math.exp((c.score - max) / T));
+        let r = this.rng() * poids.reduce((x, y) => x + y, 0);
+        for (let i = 0; i < candidats.length; i++) { r -= poids[i]; if (r <= 0) { meilleur = candidats[i]; break; } }
+        if (!meilleur) meilleur = candidats[candidats.length - 1];
+      }
+      if (!meilleur) meilleur = { dm: 20, y: LARGEUR / 2, tVol: 1.5, avance: 0 };
+      // Frappe : le ballon retombe à l'endroit visé, à l'erreur du botteur près.
+      const bruit = () => (this.rng() + this.rng() + this.rng() - 1.5) * 1.4;
+      const dmReel = meilleur.dm + bruit() * sigma * 0.9;
+      const yReel = Math.max(3, Math.min(LARGEUR - 3, meilleur.y + bruit() * sigma * 0.8));
+      // Avance des chasseurs sur le ballon, au point de chute RÉEL : un ballon retombé plus près que visé (frappe imprécise) les
+      // fait arriver avant lui (faute possible) ; un ballon plus loin les laisse en retard (cf. _tickCoupEnvoi).
+      const avance = meilleur.dm <= 24 ? Math.max(0, meilleur.tVol - this._tempsChasse(Math.hypot(dmReel + 0.5, 3))) : 0;
+      return { dm: dmReel, y: yReel, vise: meilleur, tVol: meilleur.tVol, avance };
+    }
+
+    // L'équipe qui BOTTE : le botteur à son point de frappe ; les 14 autres en LIGNE DE CHASSE à hauteur du ballon ou 1 à 3 m
+    // derrière. Par défaut la ligne est étalée de touche à touche (dans l'ordre habituel des postes). Quand le botteur vise un
+    // ballon CONTESTABLE sur un côté (`yRegroupe`), l'équipe REGROUPE TOUS SES AVANTS de ce côté, serrés autour de la cible, pour
+    // avoir plus de chances de récupérer le ballon ; les arrières se répartissent sur le reste de la largeur.
+    _formationBotteur(equipeKick, kickeur, kx, ky, dirKick, avaitEquipes, yRegroupe = null) {
+      // Derrière le ballon, y compris dans l'en-but (renvoi depuis la ligne d'en-but).
+      const clampX = (x) => Math.max(-7.5, Math.min(LONGUEUR + 7.5, x));
+      const clampY = (y) => Math.max(1.5, Math.min(LARGEUR - 1.5, y));
+      const pose = (j, x, y) => { j._cibleEnvoi = { x: clampX(x), y: clampY(y) }; if (!avaitEquipes) { j.x = j._cibleEnvoi.x; j.y = j._cibleEnvoi.y; } };
+      const botte = (equipeKick === 'A' ? this.equipeA : this.equipeB).filter((j) => j.sinBin <= 0);
+      const autres = botte.filter((j) => j !== kickeur).sort((a, b) => a.channelY - b.channelY || a.numero - b.numero);
+      pose(kickeur, kx, ky);
+      const xLigne = (k) => kx - dirKick * (1.2 + (k % 2) * 1.6);
+      if (yRegroupe == null) {
+        const n = autres.length + 1, pas = (LARGEUR - 8) / Math.max(1, n - 1);
+        const slotBotteur = Math.max(0, Math.min(n - 1, Math.round((ky - 4) / pas)));
+        let k = 0, slot = 0;
+        for (const j of autres) {
+          if (slot === slotBotteur) slot++;
+          k++;
+          pose(j, xLigne(k), 4 + slot * pas);
+          slot++;
+        }
+        return;
+      }
+      // Regroupement : les avants (1 à 8) en bande serrée centrée sur la cible, les arrières sur le reste de la largeur.
+      const avants = autres.filter((j) => j.numero <= 8);
+      const arrieres = autres.filter((j) => j.numero > 8);
+      const ecart = 2.4, demi = ((avants.length - 1) * ecart) / 2;
+      const centre = Math.max(4 + demi, Math.min(LARGEUR - 4 - demi, yRegroupe));
+      const bas = centre - demi, haut = centre + demi;
+      avants.forEach((j, i) => pose(j, xLigne(i + 1), bas + i * ecart));
+      // Les arrières : espacés régulièrement sur la largeur libre (la bande des avants est sautée).
+      const longueur = (LARGEUR - 8) - (haut - bas) - 3;
+      arrieres.forEach((j, i) => {
+        let u = ((i + 0.5) / Math.max(1, arrieres.length)) * longueur; // abscisse sur la largeur libre
+        let y = 4 + u;
+        if (y >= bas - 1.5) y += (haut - bas) + 3; // saute la bande des avants
+        pose(j, xLigne(avants.length + i + 1), y);
+      });
+    }
+
+    // LECTURE PAR LES RECEVEURS. Ils voient comment l'équipe qui botte s'est disposée : si ses avants sont regroupés d'un côté,
+    // le ballon sera disputé de ce côté et ils se décalent en conséquence (les avants et le milieu en plein, les ailiers et le
+    // 15 en partie). Une ligne de chasse étalée ne les fait pas bouger. Chacun reste à au moins 10 m du point de frappe.
+    _adapterReception(equipeKick, kx, dirKick, avaitEquipes) {
+      const kicking = (equipeKick === 'A' ? this.equipeA : this.equipeB).filter((j) => j.sinBin <= 0 && j._cibleEnvoi && j.numero <= 8 && j !== this.porteur);
+      if (!kicking.length) return 0;
+      const cy = kicking.reduce((a, j) => a + j._cibleEnvoi.y, 0) / kicking.length;
+      const sigma = Math.sqrt(kicking.reduce((a, j) => a + (j._cibleEnvoi.y - cy) ** 2, 0) / kicking.length);
+      if (sigma > 9) return 0; // ligne étalée : rien à lire
+      const decalage = Math.max(-16, Math.min(16, (cy - LARGEUR / 2) * 0.75));
+      const facteur = (num) => (num <= 8 || num === 9 || num === 10 || num === 12 || num === 13 ? 1 : 0.4);
+      for (const j of (equipeKick === 'A' ? this.equipeB : this.equipeA)) {
+        if (j.sinBin > 0 || !j._cibleEnvoi) continue;
+        let y = j._cibleEnvoi.y + decalage * facteur(j.numero);
+        y = Math.max(3, Math.min(LARGEUR - 3, y));
+        j._cibleEnvoi = { x: j._cibleEnvoi.x, y };
+        if (!avaitEquipes) j.y = y;
+      }
+      return decalage;
+    }
+
     _nouvelleManche(equipeReceptrice, xCentre = LONGUEUR / 2) {
       // Où le ballon est-il AFFICHÉ au moment de la reprise (P2-84) ? Il revient
       // de là jusqu'au botteur, à vue, pendant la mise en place (cf.
@@ -1562,8 +1737,6 @@
         if (!avaitEquipes) { j.x = cx; j.y = j.channelY; } // 1er coup d'envoi du match : placement direct
       }
       const kickeur = this._buteurDisponible(equipeKick === 'A' ? this.equipeA : this.equipeB); // ouvreur, n.10 (ou un présent)
-      kickeur._cibleEnvoi = { x: xCentre, y: LARGEUR / 2 };
-      if (!avaitEquipes) { kickeur.x = xCentre; kickeur.y = LARGEUR / 2; }
       // Mise en place : au coup d'envoi d'ouverture, les joueurs sont déjà placés ;
       // sinon (reprise après un score) ils COURENT rejoindre leur poste depuis leur
       // position réelle (pas de téléportation), cf. _tickCoupEnvoi.
@@ -1575,32 +1748,52 @@
       this.equipeReceptriceAttendue = equipeReceptrice;
       this.xCoupEnvoi = xCentre;
       this.dirCoupEnvoi = dirKick;
-      // Cible : au-delà de la ligne des 10m adverses (obligation légale), assez
-      // loin pour rendre le ballon réellement contestable à la réception.
-      // Exception (loi 12) : un coup d'envoi mal frappé qui ne franchit pas les
-      // 10m est sanctionné par une mêlée au centre pour l'équipe qui n'a pas
-      // botté (cf. _tickCoupEnvoi). Simplifié : pas d'option de retaper.
-      this.coupEnvoiCourt = this.rng() < 0.06;
-      // Coup d'envoi profond : botté loin vers les 22 m adverses pour mettre la
-      // pression sur la réception (au prix d'une chasse plus difficile). C'est
-      // le seul cas où le receveur capte le ballon dans son propre en-deçà des
-      // 22 m et peut donc demander une marque (loi 17).
-      this.coupEnvoiProfond = !this.coupEnvoiCourt && this.rng() < 0.18;
+      // 1. Les receveurs se répartissent pour couvrir un maximum de terrain (ils ne connaissent pas la cible).
+      const recepteurs = (equipeKick === 'A' ? this.equipeB : this.equipeA).filter((j) => j.sinBin <= 0);
+      this._formationReception(recepteurs, xCentre, dirKick, avaitEquipes);
+      // 2. Le botteur CHOISIT sa cible d'après ce dispositif (cf. _choisirCibleCoupEnvoi). Un coup d'envoi mal frappé qui ne
+      // franchit pas les 10 m est sanctionné par une mêlée au centre (loi 12) ; il découle de l'imprécision du botteur
+      // (cible proche des 10 m, erreur de frappe) plus un raté pur, plus fréquent pour un mauvais botteur.
+      const jpBotteur = typeof kickeur.jeuPied === 'number' ? kickeur.jeuPied : 60;
+      let cible = this._choisirCibleCoupEnvoi(kickeur, xCentre, LARGEUR / 2, dirKick, equipeKick);
+      // 3. Point de frappe : au coup d'envoi, au centre de la ligne de milieu (loi 12). Sur un renvoi aux 22 m, le botteur
+      // frappe d'où il veut sur la ligne ; il se place du côté opposé à sa cible pour ouvrir l'angle (une fois sur deux).
+      let ky = LARGEUR / 2;
+      if (xCentre !== LONGUEUR / 2 && this.rng() < 0.6) {
+        const versCible = cible.y >= LARGEUR / 2 ? 1 : -1;
+        ky = Math.max(6, Math.min(LARGEUR - 6, LARGEUR / 2 - versCible * (8 + this.rng() * 14)));
+      }
+      this.yCoupEnvoi = ky;
+      // 4. Son équipe se dispose : sur un ballon contestable visé d'un côté (court ou moyen, pas au centre), TOUS les avants se
+      // regroupent de ce côté pour augmenter les chances de récupérer le ballon ; sinon, ligne de chasse étalée.
+      const regroupe = cible.dm < 27 && Math.abs(cible.y - LARGEUR / 2) >= 8 && this.rng() < 0.7;
+      this._formationBotteur(equipeKick, kickeur, xCentre, ky, dirKick, avaitEquipes, regroupe ? cible.y : null);
+      // 5. La défense LIT ce dispositif et se décale en conséquence. Le botteur, lui, peut en profiter : une fois sur cinq il
+      // retape de l'autre côté, là où la défense s'est dégarnie (cf. _choisirCibleCoupEnvoi, relancé sur le dispositif décalé).
+      const decalage = this._adapterReception(equipeKick, xCentre, dirKick, avaitEquipes);
+      if (regroupe && Math.abs(decalage) > 3 && this.rng() < 0.2) cible = this._choisirCibleCoupEnvoi(kickeur, xCentre, LARGEUR / 2, dirKick, equipeKick);
+      // Un coup d'envoi mal frappé qui ne franchit pas les 10 m est sanctionné par une mêlée au centre (loi 12) ; il découle de
+      // l'imprécision du botteur (cible proche des 10 m, erreur de frappe) plus un raté pur, plus fréquent pour un mauvais botteur.
+      this.coupEnvoiCourt = cible.dm < 10 || this.rng() < 0.045 + Math.max(0, 60 - jpBotteur) * 0.0015;
+      // Coup d'envoi profond : botté loin vers les 22 m adverses pour mettre la pression sur la réception. C'est le seul
+      // cas où le receveur capte le ballon dans son propre en-deçà des 22 m et peut donc demander une marque (loi 17).
+      this.coupEnvoiProfond = !this.coupEnvoiCourt && cible.dm >= 27;
       this.ballonCibleX = this.coupEnvoiCourt
         ? Math.max(0, Math.min(LONGUEUR, xCentre + dirKick * (3 + this.rng() * 6)))
-        : this.coupEnvoiProfond
-          ? Math.max(0, Math.min(LONGUEUR, xCentre + dirKick * (28 + this.rng() * 9)))
-          : Math.max(0, Math.min(LONGUEUR, xCentre + dirKick * (12 + this.rng() * 15)));
-      this.ballonCibleY = Math.max(5, Math.min(LARGEUR - 5, LARGEUR / 2 + (this.rng() * 30 - 15)));
+        : Math.max(0, Math.min(LONGUEUR, xCentre + dirKick * cible.dm));
+      this.ballonCibleY = Math.max(3, Math.min(LARGEUR - 3, cible.y));
+      // Durée du vol et avance des chasseurs sur le ballon (une cloche haute dure plus longtemps ; cf. _tickCoupEnvoi).
+      this.dureeVolEnvoi = this.coupEnvoiCourt ? null : cible.tVol;
+      this._avanceChasse = this.coupEnvoiCourt ? 0 : (cible.avance || 0);
       this.phase = 'COUP_ENVOI';
       this.timerPhase = 0;
-      this.ruckPoint = { x: xCentre, y: LARGEUR / 2 };
+      this.ruckPoint = { x: xCentre, y: this.yCoupEnvoi };
       this.contestants = [];
       // Le ballon part en cloche depuis le point de coup d'envoi : il vole seul,
       // le botteur reste sur place (suivi de jeu), il n'est pas "porté".
       this.ballonEnVol = true;
       this.ballonVolX = xCentre;
-      this.ballonVolY = LARGEUR / 2;
+      this.ballonVolY = this.yCoupEnvoi;
       this.ballonVolHauteur = 0;
       // Dès la première image, le ballon est encore là où il était : il revient
       // ensuite au botteur (cf. _tickCoupEnvoi, P2-84).
@@ -1662,7 +1855,7 @@
         // dans 84 % des cas (il revient de son en-but après un essai) et le ballon
         // sautait de ses mains au centre. Plafond de sécurité 25 s pour lui.
         const k = this.porteur;
-        const botteurEnPlace = !k || Math.hypot(this.xCoupEnvoi - k.x, LARGEUR / 2 - k.y) < 1.5;
+        const botteurEnPlace = !k || Math.hypot(this.xCoupEnvoi - k.x, (this.yCoupEnvoi ?? LARGEUR / 2) - k.y) < 1.5;
         // REPRISE RÉGLEMENTAIRE (loi 12) : l'arbitre ne siffle que lorsque TOUS les joueurs sont à leur place
         // (l'équipe qui botte derrière le ballon, les adversaires à 10 m ou à 22 m), le botteur au centre et le
         // ballon revenu. Plafond de sécurité 40 s pour ne jamais bloquer le match (un joueur coincé, un carton).
@@ -1679,7 +1872,18 @@
           return;
         }
         this._sifflet.t += dt;
-        if (this._sifflet.t < this._sifflet.duree) return; // le temps du coup de sifflet : personne ne bouge
+        if (this._sifflet.t < this._sifflet.duree) {
+          // Le temps du coup de sifflet : personne ne bouge, sauf l'ÉLAN de la ligne de chasse dans la dernière seconde avant la
+          // frappe (comme le botteur prend sa course) ; elle ne dépasse jamais la ligne du ballon (hors-jeu).
+          if (this._sifflet.duree - this._sifflet.t <= 1.0) {
+            const kx = this.xCoupEnvoi, dir = this.dirCoupEnvoi;
+            for (const j of (this.possession === 'A' ? this.equipeA : this.equipeB)) {
+              if (j === this.porteur || j.sinBin > 0) continue;
+              avancer(j, (kx - dir * 0.3) - j.x, 0, dt, vitesseMs(j) * 0.75);
+            }
+          }
+          return;
+        }
         this._sifflet = null; this.arbitreSifflet = false;
         this._horlogeArretee = false; // le chronomètre repart au coup d'envoi
         this._retourEnvoi = null;
@@ -1693,10 +1897,11 @@
       // de vol découle donc de la distance bottée et d'une vitesse de ballon
       // élevée (bornée pour garder un minimum de temps de chandelle visible).
       const dxVol = this.ballonCibleX - this.xCoupEnvoi;
-      const dyVol = this.ballonCibleY - LARGEUR / 2;
+      const yDepart = this.yCoupEnvoi ?? LARGEUR / 2;
+      const dyVol = this.ballonCibleY - yDepart;
       const distVol = Math.hypot(dxVol, dyVol);
       const VITESSE_BALLON = 18;
-      const duree = Math.max(0.9, Math.min(2.0, distVol / VITESSE_BALLON));
+      const duree = this.dureeVolEnvoi || Math.max(0.9, Math.min(2.0, distVol / VITESSE_BALLON));
       const t = Math.min(1, this.timerPhase / duree);
       // Le ballon vole seul du point de coup d'envoi vers sa cible, en cloche :
       // hauteur en sinus (0 au départ, maximale à mi-parcours, 0 à la chute).
@@ -1706,7 +1911,7 @@
       // receveur (6 % seulement des pas de vol affichés en l'air).
       this.ballonEnVol = true;
       this.ballonVolX = this.xCoupEnvoi + dxVol * t;
-      this.ballonVolY = LARGEUR / 2 + dyVol * t;
+      this.ballonVolY = yDepart + dyVol * t;
       this.ballonVolHauteur = Math.sin(Math.PI * t);
 
       for (const j of [...this.equipeA, ...this.equipeB]) {
@@ -1754,6 +1959,17 @@
           return;
         }
         const { joueur: chasseurProche, distance: distChasseur } = joueurLePlusProche(chasseurs, this.ballonCibleX, this.ballonCibleY);
+        // FAUTE DES CHASSEURS : un chasseur arrivé AVANT le ballon sur le receveur (le botteur a visé trop près pour ses
+        // chasseurs : ils sont déjà là quand le ballon retombe) l'obstrue ou le charge sans ballon : pénalité pour l'équipe
+        // qui reçoit. Le risque croît avec l'avance prise sur le ballon (0,4 s d'avance : 20 %, au plus 60 %).
+        // Risque de base 12 % dès qu'un chasseur est collé au receveur à la retombée (il était là avant le ballon), plus l'avance
+        // prévue par le botteur (cf. _choisirCibleCoupEnvoi) : un botteur qui vise trop près fait plus de fautes.
+        if (distChasseur < 2.0 && this.rng() < Math.min(0.6, 0.12 + 0.5 * (this._avanceChasse || 0))) {
+          const fautive = this.equipeReceptriceAttendue === 'A' ? 'B' : 'A';
+          this.log('PENALITE_ENVOI', this.equipeReceptriceAttendue, `Faute des chasseurs (equipe ${fautive}) : arrives avant le ballon, obstruction sur le receveur, penalite pour l'equipe ${this.equipeReceptriceAttendue}`);
+          this._traiterPenalite(this.equipeReceptriceAttendue, { x: receveurProche.x, y: receveurProche.y });
+          return;
+        }
         const chasseurGagne = distChasseur < 3 && this.rng() < 0.15;
         const joueur = chasseurGagne ? chasseurProche : receveurProche;
         // Le réceptionneur capte le ballon LÀ OÙ IL EST (le joueur le plus proche
@@ -1837,10 +2053,44 @@
         ? this.ballonVolX
         : (this.phase === 'MELEE' || this.phase === 'RUCK' || this.phase === 'MAUL' || this.phase === 'TOUCHE')
           ? this.ruckPoint.x : this.porteur.x;
-      for (const assistant of this.arbitresAssistants) {
-        const delta = Math.max(0, Math.min(LONGUEUR, xBallon)) - assistant.x;
-        assistant.x += Math.sign(delta) * Math.min(Math.abs(delta), 7 * dt);
+      this._majAssistants(dt, xBallon);
+    }
+
+    // ARBITRES ASSISTANTS (juges de touche). Hors du terrain, ils suivent la ligne du ballon le long de leur touche. Pendant un tir
+    // au but, ils se placent DERRIÈRE L'EN-BUT concerné, un à chaque pied de poteau, puis lèvent le drapeau si le ballon passe entre
+    // les poteaux ou le laissent baissé s'il ne passe pas ; ils regagnent leur touche quelques secondes après. Ils ne traversent
+    // jamais le terrain : ils longent la touche jusqu'au niveau de l'en-but, puis passent derrière la ligne d'en-but.
+    _majAssistants(dt, xBallon) {
+      const T = this._tirAuBut;
+      if (T) {
+        T.age += dt;
+        if (T.resultat && T.age - T.resultat.age > 4.5) this._tirAuBut = null;
       }
+      const tir = this._tirAuBut;
+      const v = 7 * dt;
+      const vers = (a, axe, cible) => { const d = cible - a[axe]; a[axe] += Math.sign(d) * Math.min(Math.abs(d), v); };
+      this.arbitresAssistants.forEach((a, i) => {
+        const piste = a.cote === 'gauche' ? -ECART_ASSISTANT : LARGEUR + ECART_ASSISTANT;
+        const surPiste = Math.abs(a.y - piste) < 0.05;
+        if (tir) {
+          const fin = tir.x > LONGUEUR / 2 ? 1 : -1;
+          const cx = tir.x + fin * 1.5, cy = LARGEUR / 2 + (i === 0 ? -2.8 : 2.8);
+          if (Math.abs(a.x - cx) > 0.3) { if (surPiste) vers(a, 'x', cx); else vers(a, 'y', piste); }
+          else vers(a, 'y', cy);
+        } else {
+          const cx = Math.max(0, Math.min(LONGUEUR, xBallon));
+          if (!surPiste) vers(a, 'y', piste); else vers(a, 'x', cx);
+        }
+      });
+    }
+
+    // Annonce d'un tir au but (début de la routine du buteur) et de son résultat.
+    _annoncerTirAuBut(xFin) {
+      if (!this._tirAuBut) this._tirAuBut = { x: xFin, age: 0, resultat: null };
+    }
+
+    _resultatTirAuBut(ok) {
+      if (this._tirAuBut && !this._tirAuBut.resultat) this._tirAuBut.resultat = { ok, age: this._tirAuBut.age };
     }
 
     // Cible de placement de l'arbitre : suit le point de ruck/mêlée pendant les
@@ -2586,6 +2836,30 @@
     // environ deux fois plus de temps ; la fenetre est donc doublee (2 -> 4 s).
     // `dureeDefense` (optionnelle) : récupération propre aux défenseurs (cf.
     // sortie de maul, où ils n'ont qu'à se délier).
+    // SORTIE DE RUCK : le ballon n'est « sorti » que lorsqu'il a quitté le point de ruck ; tant qu'il y est, les joueurs
+    // du ruck (attaquants comme défenseurs, dans le corps du ruck : à moins de 2,2 m) attendent au lieu de courir déjà vers leur ligne. Seul le
+    // porteur est libre. Libération dès que le ballon affiché est à plus de 1,5 m du ruck, au plus tard après 1,5 s (garde-fou).
+    _retenirJoueursDuRuck(pt) {
+      let n = 0;
+      for (const j of [...this.equipeA, ...this.equipeB]) {
+        if (j === this.porteur || j.auSol > 0 || j.sinBin > 0) continue;
+        if (Math.hypot(j.x - pt.x, j.y - pt.y) <= 2.2) { j._tenuRuck = true; n++; }
+      }
+      this._ruckTenu = n ? { pt: { x: pt.x, y: pt.y }, t: 0 } : null;
+    }
+
+    _libererJoueursDuRuck(dt) {
+      const R = this._ruckTenu;
+      if (!R) return;
+      R.t += dt;
+      const b = this._ballonAffiche;
+      const sorti = b && Math.hypot(b.x - R.pt.x, b.y - R.pt.y) > 1.5;
+      if (sorti || R.t >= 1.5 * this._echelleArret || this.phase !== 'PORTE') {
+        for (const j of [...this.equipeA, ...this.equipeB]) j._tenuRuck = false;
+        this._ruckTenu = null;
+      }
+    }
+
     _imposerRecuperationRuck(pt, rayon = 6, duree = 4, dureeDefense = duree) {
       // Tout près de sa propre ligne d'en-but, la défense est naturellement
       // massée sur un espace réduit (peu de place pour se replier) : un rayon
@@ -5890,6 +6164,7 @@
           this._lancerPasseVisuelle({ x: pt.x, y: pt.y }, this.porteur);
         }
         this._imposerRecuperationRuck(pt);
+        this._retenirJoueursDuRuck(pt);
       }
     }
 
@@ -7473,7 +7748,7 @@
     //  - contexte : après la 50e minute, une équipe menée de 8 points ou plus ouvre le jeu (large,
     //    pied) ; une équipe qui mène de 8 points ou plus garde le ballon (au près).
     // Renvoie une fonction combinaison -> multiplicateur de poids.
-    _adaptationLancements(equipe) {
+    _adaptationLancements(equipe, pref = null) {
       const histo = (this._histoLancements && this._histoLancements[equipe]) || [];
       const dernier = histo.length ? histo[histo.length - 1] : null;
       const avantDernier = histo.length > 1 ? histo[histo.length - 2] : null;
@@ -7483,7 +7758,9 @@
         let k = 1;
         if (dernier && c.nom === dernier.nom) k *= 0.3;
         else if (histo.slice(-3).some((h) => h.nom === c.nom)) k *= 0.65;
-        if (c.style && dernier && avantDernier && dernier.style === c.style && avantDernier.style === c.style) k *= 0.65;
+        // Pas de pénalité de répétition sur un style que l'équipe a choisi de favoriser (consigne « au pied », « au près »...).
+        const favorise = pref && c.style && pref[c.style] != null && pref[c.style] > 1;
+        if (!favorise && c.style && dernier && avantDernier && dernier.style === c.style && avantDernier.style === c.style) k *= 0.65;
         if (c.style && dernier && dernier.style && dernier.seq) {
           const g = dernier.seq.credite || 0;
           if (g >= 6) k *= dernier.style === c.style ? 1.3 : 1;
@@ -7514,7 +7791,7 @@
       // Style de lancement de l'équipe : pondère chaque famille (au près, au
       // large, au pied). Sans réglage, poids du playbook — tirage inchangé.
       const pref = (this.cfgAttaque[this.possession] || {}).lancements || null;
-      const adapt = this._adaptationLancements(this.possession);
+      const adapt = this._adaptationLancements(this.possession, pref);
       const poids = (c) => (c.poids || 1) * (pref && c.style && pref[c.style] != null ? pref[c.style] : 1) * adapt(c);
       const total = liste.reduce((s, c) => s + poids(c), 0);
       let r = this.rng() * total;
@@ -8097,6 +8374,7 @@
     // frappe prennent ~20-25 s en match réel, pas 2 s.
     _tickTransformation(dt) {
       this.timerPhase += dt;
+      this._annoncerTirAuBut(this.essaiEquipe === 'A' ? LONGUEUR : 0);
       // Loi 8.21 : la transformation doit être JOUÉE dans les 90 secondes qui
       // suivent l'essai, sinon elle est refusée. Le buteur prend une vraie
       // routine (placement du tee, concentration, course d'élan), plus longue
@@ -8148,8 +8426,10 @@
           this.stats[equipe].transformationsReussies++;
           this._statJoueur(this.porteur).pointsAuPied += 2;
           this.score[equipe] += 2;
+          this._resultatTirAuBut(true);
           this.log('TRANSFORMATION_REUSSIE', equipe, `Transformation reussie a ${tirT.distance} m par le n°${tirT.buteur}, equipe ${equipe} +2`, tirT);
         } else {
+          this._resultatTirAuBut(false);
           this.log('TRANSFORMATION_RATEE', equipe, `Transformation ratee a ${tirT.distance} m par le n°${tirT.buteur}, equipe ${equipe}`, tirT);
         }
         // Loi 12 : qu'elle soit réussie ou ratée, la transformation est suivie
@@ -8195,6 +8475,7 @@
     // un angle fermé, mais toujours sous le maximum réglementaire.
     _tickPenaliteTir(dt) {
       this.timerPhase += dt;
+      this._annoncerTirAuBut(this.equipeAuTir === 'A' ? LONGUEUR : 0);
       const DUREE_MAX_PENALITE = 60; // secondes réglementaires (loi 20)
       const offsetTir = this.positionTir ? Math.abs(this.positionTir.y - LARGEUR / 2) : 0;
       // Même routine réelle qu'à la transformation (45-60 s) : sur une pénalité,
@@ -8236,11 +8517,13 @@
           this.stats[equipe].penalitesButReussies++;
           this._statJoueur(this.porteur).pointsAuPied += 3;
           this.score[equipe] += 3;
+          this._resultatTirAuBut(true);
           this.log('PENALITE_REUSSIE', equipe, `Coup de pied au but reussi a ${tirP.distance} m par le n°${tirP.buteur}, equipe ${equipe} +3`, tirP);
           // Comme après un essai : coup d'envoi à la mi-terrain, botté par
           // l'équipe qui vient d'encaisser la pénalité.
           this._nouvelleManche(equipe);
         } else {
+          this._resultatTirAuBut(false);
           this.log('PENALITE_RATEE', equipe, `Coup de pied au but rate a ${tirP.distance} m par le n°${tirP.buteur}, equipe ${equipe}`, tirP);
           // Un tir manqué part en général au-delà de la ligne d'en-but adverse
           // et y meurt : remise en jeu en 22m (loi 12), botté par l'équipe
@@ -8265,6 +8548,7 @@
         this._pilote.avantTick(this, dt);
       }
       // === AGENT_INTENTS_END
+      this._libererJoueursDuRuck(dt);
       const r = this._tickInterne(dt);
       try {
         const b = this._positionBallonCalculee();
@@ -9264,8 +9548,10 @@
         },
         assistants: this.arbitresAssistants.map(a => ({
           ...a,
-          signal: this.phase === 'TOUCHE' && Math.abs(a.y - this.ruckPoint.y) < 2
-            ? 'TOUCHE' : null,
+          signal: (this._tirAuBut && this._tirAuBut.resultat)
+            ? (this._tirAuBut.resultat.ok ? 'DRAPEAU_HAUT' : 'DRAPEAU_BAS')
+            : this.phase === 'TOUCHE' && Math.abs((a.cote === 'gauche' ? 0 : LARGEUR) - this.ruckPoint.y) < 2
+              ? 'TOUCHE' : null,
         })),
         possession: this.possession,
         phase: this.phase,

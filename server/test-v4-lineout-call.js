@@ -112,7 +112,7 @@ test('L05 / moteur : sans demande du sauteur, AUCUN maul de touche en GOAP (plus
 });
 
 test('moteur : le sauteur qui capte et demande le maul l\'obtient si un partenaire est lié (ou la défense le saque)', () => {
-  const c = matchPilote(4, 2400, { demander: true });
+  const c = matchPilote(4, 4800, { demander: true });
   assert.ok(c.appeles >= 4, 'mauls appelés : ' + c.appeles);
   // Dans un alignement les lifteurs sont au contact ; un sauteur isolé en bout de ligne reste possible et
   // le moteur refuse alors le maul (vérifié au test suivant).

@@ -864,28 +864,32 @@
     }
   }
 
-  // Les juges de touche sont de vrais arbitres (même personnage et même tenue que l'arbitre central),
-  // pas un drapeau : chacun longe sa touche avec un fanion à la main, bras levé quand il signale la touche.
+  // Les juges de touche sont de vrais arbitres (même personnage et même tenue que l'arbitre central), HORS du terrain : ils
+  // longent leur touche, fanion à la main, bras levé quand ils signalent la touche. Sur un tir au but, ils se tiennent derrière
+  // l'en-but, un à chaque pied de poteau : drapeau LEVÉ si le ballon passe, laissé BAS (pendant le long du corps) s'il ne passe pas.
   function dessinerAssistants(state) {
     for (const assistant of (state.assistants || [])) {
       const a = etatAnim('ASS' + assistant.cote);
       suivrePosition(a, assistant, 0);
-      // La ligne de touche coïncide avec le bord de l'écran : à y exact, le corps disparaît sous la barre
-      // de score ou de commandes et seul le fanion dépasse. On l'affiche donc 1,3 m côté terrain (rendu
-      // seulement : la position simulée reste sur la touche).
-      const yVu = assistant.y + (assistant.y < LARGEUR / 2 ? 1.3 : -1.3);
-      const { px, py } = versCanvas(assistant.x, yVu);
-      const haut = assistant.signal === 'TOUCHE';
+      const { px, py } = versCanvas(assistant.x, assistant.y);
+      const haut = assistant.signal === 'TOUCHE' || assistant.signal === 'DRAPEAU_HAUT';
+      const bas = assistant.signal === 'DRAPEAU_BAS';
       dessinerPersonnage(px, py, { team: 'ARB', numero: 0 }, a, haut ? 'leveur' : 'course', COULEURS.ARB, {});
-      // Fanion tenu à la main, côté terrain : baissé le long du corps, dressé au signal.
+      // Fanion tenu à la main, côté terrain : DRESSÉ au signal (levé), BAISSÉ (pend vers le sol) après un tir manqué, relevé
+      // à mi-hauteur au repos.
       const k = cam.s * HAUTEUR_VUE;
-      const mainX = px + 0.38 * k, mainY = py - (haut ? 1.55 : 0.95) * k;
-      const bout = py - (haut ? 2.7 : 1.55) * k;
+      const mainX = px + 0.38 * k;
+      let mainY, boutY, tissu;
+      if (bas) { mainY = py - 0.95 * k; boutY = py - 0.3 * k; tissu = [[0, 0.12], [0.5, 0.25], [0, 0.38]].map(([dx, dy]) => [mainX + dx * k, mainY + dy * k + 0.3 * k]); }
+      else {
+        mainY = py - (haut ? 1.55 : 0.95) * k; boutY = py - (haut ? 2.7 : 1.55) * k;
+        tissu = [[0, 0], [0.6, 0.17], [0, 0.36]].map(([dx, dy]) => [mainX + dx * k, boutY + dy * k]);
+      }
       ctx.save();
       ctx.strokeStyle = '#2b2b2b'; ctx.lineWidth = Math.max(1.2, 0.07 * k);
-      ctx.beginPath(); ctx.moveTo(mainX, mainY); ctx.lineTo(mainX, bout); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(mainX, mainY); ctx.lineTo(mainX, boutY); ctx.stroke();
       ctx.fillStyle = '#ffdf50';
-      ctx.beginPath(); ctx.moveTo(mainX, bout); ctx.lineTo(mainX + 0.6 * k, bout + 0.17 * k); ctx.lineTo(mainX, bout + 0.36 * k); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(tissu[0][0], tissu[0][1]); ctx.lineTo(tissu[1][0], tissu[1][1]); ctx.lineTo(tissu[2][0], tissu[2][1]); ctx.closePath(); ctx.fill();
       ctx.restore();
     }
   }
