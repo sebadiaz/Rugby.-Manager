@@ -4167,6 +4167,19 @@ test('coup d envoi et renvoi aux 22 m : le botteur choisit sa cible, regroupe se
   assert.strictEqual(devantBallon, 0, `${devantBallon}/${ligne} chasseurs devant le ballon`);
 });
 
+// --- Reproductibilité : un match ne dépend pas des matchs joués avant lui dans le même processus ------------
+test('reproductibilité : un moteur neuf joue le même début de match avant et après un match complet', () => {
+  const debut = () => {
+    const m = new MatchEngine(11, 4800);
+    for (let t = 0; t < 60; t += 0.1) m.tick(0.1);
+    const s = m.getState();
+    return JSON.stringify([s.score, m.ballonCibleX, m.ballonCibleY, s.equipeA.map((j) => [j.x, j.y]), s.equipeB.map((j) => [j.x, j.y])]);
+  };
+  const avant = debut();
+  new MatchEngine(12, 4800).jouerJusquAuSifflet(0.1); // laisse l'état de module (fatigue, obstacle) du match précédent
+  assert.strictEqual(debut(), avant, 'le coup d\'envoi d\'ouverture dépend du match précédent (état de module non remis à zéro)');
+});
+
 // --- 50:22 : un pari rare, pas la conséquence d'un dégagement ordinaire --------
 // Avec des dégagements en touche à 25-45 m (P2-130), une touche ordinaire tapée
 // du milieu de terrain tombait dans les 22 adverses : 2,4 50:22 par match, pour

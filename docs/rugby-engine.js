@@ -1376,6 +1376,9 @@
       // tick passé dans la zone, ni une par phase/ruck).
       this._entree22DernierePossession = null;
       this._entree22Faite = false;
+      // État de module remis à zéro : `_fatCourant` et `_obstacle` restent sur la valeur du MATCH PRÉCÉDENT du même processus ; le
+      // coup d'envoi d'ouverture (choisi ici, avant tout tick) lisait des vitesses de joueurs fatigués.
+      _fatCourant = 0; _obstacle = null;
       this._nouvelleManche('A');
       this._horlogeArretee = true; // attend le coup de sifflet de l'arbitre
       this.equipeKickPremiereMiTemps = this._dernierEquipeKick;
