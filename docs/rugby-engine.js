@@ -1485,6 +1485,52 @@
     // défendue par l'équipe qui botte pour une remise en 22m). L'équipe qui
     // botte doit rester derrière le ballon, l'équipe receptrice à 10m minimum :
     // le ballon est donc réellement botté et contestable, pas remis en main.
+    // DISPOSITIF DU COUP D'ENVOI ET DU RENVOI AUX 22 M (même code : seul le point de frappe `kx` change).
+    //  - Équipe qui BOTTE : le botteur au centre ; les 14 autres en LIGNE DE CHASSE, étalés sur toute la largeur (même
+    //    espacement, dans l'ordre habituel de leur poste), à hauteur du ballon ou 1 à 3 m derrière (hors-jeu au départ).
+    //  - Équipe qui REÇOIT (au moins 10 m du point de frappe, loi 12) : un GROUPE d'avants (sauteur et leveurs : 4, 5, 6,
+    //    7, 8) serré là où le ballon doit tomber ; les piliers et le talonneur (1, 2, 3) juste devant, sur la ligne des
+    //    10 m ; le 9 puis le 10 derrière le groupe ; les centres (12, 13) écartés de part et d'autre ; les ailiers sur
+    //    leurs bords vers les 22 m ; le 15 en profondeur, légèrement côté ballon.
+    _formationCoupEnvoi(equipeKick, kickeur, kx, dirKick, avaitEquipes) {
+      const clampX = (x) => Math.max(0.5, Math.min(LONGUEUR - 0.5, x));
+      const clampY = (y) => Math.max(1.5, Math.min(LARGEUR - 1.5, y));
+      const pose = (j, x, y) => { j._cibleEnvoi = { x: clampX(x), y: clampY(y) }; if (!avaitEquipes) { j.x = j._cibleEnvoi.x; j.y = j._cibleEnvoi.y; } };
+      const equipes = { A: this.equipeA, B: this.equipeB };
+      const botte = equipes[equipeKick].filter((j) => j.sinBin <= 0);
+      // 1. Ligne de chasse : 15 emplacements espacés de touche à touche, le botteur au milieu.
+      const autres = botte.filter((j) => j !== kickeur).sort((a, b) => a.channelY - b.channelY || a.numero - b.numero);
+      const n = autres.length + 1, pas = (LARGEUR - 8) / Math.max(1, n - 1);
+      pose(kickeur, kx, LARGEUR / 2);
+      let k = 0;
+      autres.forEach((j, i) => {
+        let slot = i; // emplacement i parmi n ; le centre revient au botteur
+        if (slot >= (n - 1) / 2) slot++;
+        const y = 4 + slot * pas;
+        k++;
+        pose(j, kx - dirKick * (1.2 + (k % 2) * 1.6), y);
+      });
+      // 2. Équipe qui reçoit.
+      const rec = equipes[equipeKick === 'A' ? 'B' : 'A'].filter((j) => j.sinBin <= 0);
+      const tx = this.ballonCibleX, ty = this.ballonCibleY;
+      const dist = Math.max(0, (tx - kx) * dirKick); // profondeur de la cible depuis le point de frappe
+      const groupeX = kx + dirKick * Math.max(11, Math.min(26, dist - 3));
+      const par = (num) => rec.find((j) => j.numero === num);
+      const cote = ty >= LARGEUR / 2 ? -1 : 1; // le 10 se tient du côté le plus ouvert
+      const groupe = [[5, -2.2], [4, 0], [6, 2.2], [8, -4.4], [7, 4.4]];
+      for (const [num, dy] of groupe) { const j = par(num); if (j) pose(j, groupeX + dirKick * ((Math.abs(dy) > 3 ? 0.9 : 0)), ty + dy); }
+      const devant = [[1, -9], [2, 0], [3, 9]];
+      for (const [num, dy] of devant) { const j = par(num); if (j) pose(j, kx + dirKick * 10.8, ty + dy); }
+      const neuf = par(9); if (neuf) pose(neuf, groupeX + dirKick * 6, ty - cote * 2);
+      const dix = par(10); if (dix) pose(dix, groupeX + dirKick * 10, ty + cote * 6);
+      const c12 = par(12), c13 = par(13);
+      const bas = (c12 && c13 && c12.channelY <= c13.channelY) ? [c12, c13] : [c13, c12].filter(Boolean);
+      if (bas[0]) pose(bas[0], groupeX + dirKick * 12, ty - 15);
+      if (bas[1]) pose(bas[1], groupeX + dirKick * 12, ty + 15);
+      for (const num of [11, 14]) { const j = par(num); if (j) pose(j, kx + dirKick * 27, j.channelY < LARGEUR / 2 ? 9 : LARGEUR - 9); }
+      const q = par(15); if (q) pose(q, kx + dirKick * 38, LARGEUR / 2 + (ty - LARGEUR / 2) * 0.3);
+    }
+
     _nouvelleManche(equipeReceptrice, xCentre = LONGUEUR / 2) {
       // Où le ballon est-il AFFICHÉ au moment de la reprise (P2-84) ? Il revient
       // de là jusqu'au botteur, à vue, pendant la mise en place (cf.
@@ -1594,6 +1640,9 @@
           ? Math.max(0, Math.min(LONGUEUR, xCentre + dirKick * (28 + this.rng() * 9)))
           : Math.max(0, Math.min(LONGUEUR, xCentre + dirKick * (12 + this.rng() * 15)));
       this.ballonCibleY = Math.max(5, Math.min(LARGEUR - 5, LARGEUR / 2 + (this.rng() * 30 - 15)));
+      // Dispositif réel du coup d'envoi / du renvoi aux 22 m (cf. _formationCoupEnvoi) : posé une fois la cible connue,
+      // car l'équipe qui reçoit se groupe là où le ballon doit tomber.
+      this._formationCoupEnvoi(equipeKick, kickeur, xCentre, dirKick, avaitEquipes);
       this.phase = 'COUP_ENVOI';
       this.timerPhase = 0;
       this.ruckPoint = { x: xCentre, y: LARGEUR / 2 };
