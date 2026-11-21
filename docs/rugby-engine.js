@@ -7706,7 +7706,7 @@
     //  - contexte : après la 50e minute, une équipe menée de 8 points ou plus ouvre le jeu (large,
     //    pied) ; une équipe qui mène de 8 points ou plus garde le ballon (au près).
     // Renvoie une fonction combinaison -> multiplicateur de poids.
-    _adaptationLancements(equipe) {
+    _adaptationLancements(equipe, pref = null) {
       const histo = (this._histoLancements && this._histoLancements[equipe]) || [];
       const dernier = histo.length ? histo[histo.length - 1] : null;
       const avantDernier = histo.length > 1 ? histo[histo.length - 2] : null;
@@ -7716,7 +7716,9 @@
         let k = 1;
         if (dernier && c.nom === dernier.nom) k *= 0.3;
         else if (histo.slice(-3).some((h) => h.nom === c.nom)) k *= 0.65;
-        if (c.style && dernier && avantDernier && dernier.style === c.style && avantDernier.style === c.style) k *= 0.65;
+        // Pas de pénalité de répétition sur un style que l'équipe a choisi de favoriser (consigne « au pied », « au près »...).
+        const favorise = pref && c.style && pref[c.style] != null && pref[c.style] > 1;
+        if (!favorise && c.style && dernier && avantDernier && dernier.style === c.style && avantDernier.style === c.style) k *= 0.65;
         if (c.style && dernier && dernier.style && dernier.seq) {
           const g = dernier.seq.credite || 0;
           if (g >= 6) k *= dernier.style === c.style ? 1.3 : 1;
@@ -7747,7 +7749,7 @@
       // Style de lancement de l'équipe : pondère chaque famille (au près, au
       // large, au pied). Sans réglage, poids du playbook — tirage inchangé.
       const pref = (this.cfgAttaque[this.possession] || {}).lancements || null;
-      const adapt = this._adaptationLancements(this.possession);
+      const adapt = this._adaptationLancements(this.possession, pref);
       const poids = (c) => (c.poids || 1) * (pref && c.style && pref[c.style] != null ? pref[c.style] : 1) * adapt(c);
       const total = liste.reduce((s, c) => s + poids(c), 0);
       let r = this.rng() * total;
