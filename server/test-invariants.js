@@ -1453,6 +1453,8 @@ test('loi 20.14 : jeu rapide joué vite, le fautif encore dans les 10 m est hors
   m.possession = 'A';
   const tapeur = m.equipeA.find(j => j.numero === 9);
   m.porteur = tapeur; tapeur.auSol = 0; tapeur.x = 50; tapeur.y = 35;
+  // Les coéquipiers du tapeur derrière le ballon (loi 20.10) : le test porte sur les défenseurs, pas sur leur repli.
+  for (const j of m.equipeA) if (j !== tapeur) { j.auSol = 0; j.x = 44; }
   for (const j of m.equipeB) { j.auSol = 0; j.sinBin = 0; j.x = 75; j.y = j.channelY; }
   const fautif = m.equipeB.find(j => j.numero === 6);
   fautif.x = 55; fautif.y = 36; fautif.auSol = 12; fautif._solX = 55; fautif._solY = 36;
