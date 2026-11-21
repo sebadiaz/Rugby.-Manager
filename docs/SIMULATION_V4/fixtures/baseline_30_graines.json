@@ -1,132 +1,132 @@
 {
  "entete": {
-  "sha": "26522ffbb321b2602f4658f58ab9ab568cd571ac",
+  "sha": "ae41a87459dbfa03a27ebda3998e4ce71e3ca83c",
   "shaMain": "2c110568049efb28f28b83a238a42d0ec43b9271",
   "branche": "claude/sharp-faraday-2c0k9h",
   "graines": "1..30",
   "dureeSecondes": 4800,
   "dt": 0.1,
   "node": "v22.23.4",
-  "dureeCalculS": 112
+  "dureeCalculS": 106
  },
  "resume": {
   "essais": {
-   "moyenne": 6.6,
-   "ecartType": 1.8,
-   "min": 3,
+   "moyenne": 6.8,
+   "ecartType": 1.62,
+   "min": 4,
    "max": 11
   },
   "points": {
-   "moyenne": 55.77,
-   "ecartType": 11.3,
+   "moyenne": 57.07,
+   "ecartType": 11.2,
    "min": 33,
-   "max": 77
+   "max": 79
   },
   "passes": {
-   "moyenne": 412.3,
-   "ecartType": 45.56,
-   "min": 344,
-   "max": 513
+   "moyenne": 407.43,
+   "ecartType": 41.3,
+   "min": 321,
+   "max": 499
   },
   "passesTentees": {
-   "moyenne": 415.5,
-   "ecartType": 44.95,
-   "min": 347,
-   "max": 514
+   "moyenne": 410.93,
+   "ecartType": 41.27,
+   "min": 323,
+   "max": 503
   },
   "courses": {
-   "moyenne": 267.43,
-   "ecartType": 24.93,
-   "min": 226,
-   "max": 318
+   "moyenne": 270.13,
+   "ecartType": 24.23,
+   "min": 238,
+   "max": 333
   },
   "metresGagnes": {
-   "moyenne": 1034.24,
-   "ecartType": 93.03,
-   "min": 811.296,
-   "max": 1247.562
+   "moyenne": 1064.69,
+   "ecartType": 101.53,
+   "min": 911.364,
+   "max": 1312.173
   },
   "coupsDePied": {
-   "moyenne": 60.67,
-   "ecartType": 7.29,
-   "min": 41,
-   "max": 75
+   "moyenne": 59.9,
+   "ecartType": 7.42,
+   "min": 49,
+   "max": 78
   },
   "plaquagesTentes": {
-   "moyenne": 349,
-   "ecartType": 32.92,
-   "min": 295,
-   "max": 411
+   "moyenne": 354.7,
+   "ecartType": 33.32,
+   "min": 310,
+   "max": 423
   },
   "plaquagesReussis": {
-   "moyenne": 301.4,
-   "ecartType": 31.02,
-   "min": 246,
-   "max": 353
+   "moyenne": 306.47,
+   "ecartType": 27.92,
+   "min": 268,
+   "max": 369
   },
   "rucks": {
-   "moyenne": 213.33,
-   "ecartType": 22.7,
-   "min": 176,
-   "max": 256
+   "moyenne": 215.13,
+   "ecartType": 20.09,
+   "min": 186,
+   "max": 268
   },
   "melees": {
-   "moyenne": 18.57,
-   "ecartType": 3.18,
-   "min": 13,
-   "max": 26
+   "moyenne": 17.27,
+   "ecartType": 3.19,
+   "min": 12,
+   "max": 25
   },
   "touches": {
-   "moyenne": 26.1,
-   "ecartType": 4.42,
-   "min": 16,
-   "max": 35
+   "moyenne": 27.3,
+   "ecartType": 4.83,
+   "min": 18,
+   "max": 39
   },
   "mauls": {
-   "moyenne": 7.17,
-   "ecartType": 2.53,
-   "min": 3,
+   "moyenne": 8.37,
+   "ecartType": 2.96,
+   "min": 4,
    "max": 14
   },
   "penalitesConcedees": {
-   "moyenne": 22.53,
-   "ecartType": 4.67,
-   "min": 11,
+   "moyenne": 23.53,
+   "ecartType": 3.55,
+   "min": 16,
    "max": 30
   },
   "turnovers": {
-   "moyenne": 18.47,
-   "ecartType": 4.54,
-   "min": 10,
-   "max": 26
+   "moyenne": 20.03,
+   "ecartType": 3.97,
+   "min": 11,
+   "max": 28
   },
   "enAvants": {
-   "moyenne": 14.67,
-   "ecartType": 2.94,
+   "moyenne": 13.37,
+   "ecartType": 2.7,
    "min": 9,
-   "max": 20
+   "max": 19
   },
   "cartonsJaunes": {
-   "moyenne": 0.87,
-   "ecartType": 1.06,
+   "moyenne": 1,
+   "ecartType": 1.26,
    "min": 0,
    "max": 4
   },
   "tempsJeuEffectifMin": {
-   "moyenne": 35.09,
-   "ecartType": 2.38,
-   "min": 30.997,
-   "max": 39.263
+   "moyenne": 35.02,
+   "ecartType": 2.18,
+   "min": 31.517,
+   "max": 40.03
   },
   "possessionA": {
-   "moyenne": 49.97,
-   "ecartType": 5.84,
-   "min": 37,
-   "max": 60
+   "moyenne": 49.67,
+   "ecartType": 4.33,
+   "min": 42,
+   "max": 59
   },
   "essaisDuN15": {
-   "moyenne": 0.5,
-   "ecartType": 0.67,
+   "moyenne": 0.4,
+   "ecartType": 0.66,
    "min": 0,
    "max": 2
   }
@@ -134,692 +134,692 @@
  "parGraine": [
   {
    "seed": 1,
-   "essais": 3,
-   "points": 33,
-   "passes": 480,
-   "passesTentees": 484,
-   "courses": 277,
-   "metresGagnes": 909.421,
-   "coupsDePied": 56,
-   "plaquagesTentes": 362,
-   "plaquagesReussis": 311,
-   "rucks": 216,
+   "essais": 6,
+   "points": 53,
+   "passes": 402,
+   "passesTentees": 405,
+   "courses": 244,
+   "metresGagnes": 953.815,
+   "coupsDePied": 55,
+   "plaquagesTentes": 310,
+   "plaquagesReussis": 271,
+   "rucks": 205,
    "melees": 23,
-   "touches": 26,
-   "mauls": 8,
-   "penalitesConcedees": 23,
-   "turnovers": 17,
-   "enAvants": 16,
-   "cartonsJaunes": 0,
-   "tempsJeuEffectifMin": 35.93,
-   "possessionA": 54,
-   "essaisDuN15": 0
+   "touches": 31,
+   "mauls": 4,
+   "penalitesConcedees": 26,
+   "turnovers": 15,
+   "enAvants": 19,
+   "cartonsJaunes": 4,
+   "tempsJeuEffectifMin": 31.517,
+   "possessionA": 49,
+   "essaisDuN15": 1
   },
   {
    "seed": 2,
-   "essais": 4,
-   "points": 47,
-   "passes": 405,
-   "passesTentees": 409,
-   "courses": 242,
-   "metresGagnes": 951.64,
-   "coupsDePied": 50,
-   "plaquagesTentes": 301,
-   "plaquagesReussis": 263,
-   "rucks": 197,
-   "melees": 22,
-   "touches": 26,
-   "mauls": 4,
-   "penalitesConcedees": 23,
-   "turnovers": 22,
-   "enAvants": 20,
+   "essais": 6,
+   "points": 55,
+   "passes": 444,
+   "passesTentees": 449,
+   "courses": 291,
+   "metresGagnes": 1204.003,
+   "coupsDePied": 62,
+   "plaquagesTentes": 375,
+   "plaquagesReussis": 321,
+   "rucks": 227,
+   "melees": 23,
+   "touches": 19,
+   "mauls": 6,
+   "penalitesConcedees": 19,
+   "turnovers": 20,
+   "enAvants": 17,
    "cartonsJaunes": 0,
-   "tempsJeuEffectifMin": 32.435,
-   "possessionA": 56,
+   "tempsJeuEffectifMin": 35.398,
+   "possessionA": 52,
    "essaisDuN15": 0
   },
   {
    "seed": 3,
-   "essais": 7,
-   "points": 73,
-   "passes": 454,
-   "passesTentees": 460,
-   "courses": 282,
-   "metresGagnes": 1178.359,
-   "coupsDePied": 56,
-   "plaquagesTentes": 358,
-   "plaquagesReussis": 303,
-   "rucks": 229,
-   "melees": 14,
-   "touches": 25,
-   "mauls": 4,
-   "penalitesConcedees": 27,
-   "turnovers": 23,
-   "enAvants": 11,
-   "cartonsJaunes": 0,
-   "tempsJeuEffectifMin": 36.307,
-   "possessionA": 48,
+   "essais": 9,
+   "points": 77,
+   "passes": 419,
+   "passesTentees": 423,
+   "courses": 262,
+   "metresGagnes": 1166.449,
+   "coupsDePied": 52,
+   "plaquagesTentes": 348,
+   "plaquagesReussis": 301,
+   "rucks": 199,
+   "melees": 17,
+   "touches": 29,
+   "mauls": 5,
+   "penalitesConcedees": 28,
+   "turnovers": 28,
+   "enAvants": 15,
+   "cartonsJaunes": 3,
+   "tempsJeuEffectifMin": 32.583,
+   "possessionA": 52,
    "essaisDuN15": 0
   },
   {
    "seed": 4,
    "essais": 6,
-   "points": 50,
-   "passes": 423,
-   "passesTentees": 427,
-   "courses": 265,
-   "metresGagnes": 1128.224,
+   "points": 47,
+   "passes": 402,
+   "passesTentees": 408,
+   "courses": 244,
+   "metresGagnes": 946.495,
    "coupsDePied": 62,
-   "plaquagesTentes": 343,
-   "plaquagesReussis": 301,
-   "rucks": 201,
-   "melees": 23,
-   "touches": 23,
-   "mauls": 8,
-   "penalitesConcedees": 21,
+   "plaquagesTentes": 323,
+   "plaquagesReussis": 283,
+   "rucks": 194,
+   "melees": 20,
+   "touches": 26,
+   "mauls": 6,
+   "penalitesConcedees": 22,
    "turnovers": 18,
-   "enAvants": 20,
-   "cartonsJaunes": 4,
-   "tempsJeuEffectifMin": 34.832,
-   "possessionA": 55,
+   "enAvants": 16,
+   "cartonsJaunes": 2,
+   "tempsJeuEffectifMin": 32.937,
+   "possessionA": 50,
    "essaisDuN15": 2
   },
   {
    "seed": 5,
-   "essais": 8,
-   "points": 70,
-   "passes": 454,
-   "passesTentees": 457,
-   "courses": 293,
-   "metresGagnes": 1031.902,
-   "coupsDePied": 62,
-   "plaquagesTentes": 360,
-   "plaquagesReussis": 321,
-   "rucks": 241,
-   "melees": 17,
-   "touches": 16,
-   "mauls": 10,
-   "penalitesConcedees": 25,
-   "turnovers": 10,
-   "enAvants": 15,
-   "cartonsJaunes": 1,
-   "tempsJeuEffectifMin": 38.443,
-   "possessionA": 58,
-   "essaisDuN15": 0
+   "essais": 4,
+   "points": 46,
+   "passes": 476,
+   "passesTentees": 477,
+   "courses": 299,
+   "metresGagnes": 1161.096,
+   "coupsDePied": 74,
+   "plaquagesTentes": 402,
+   "plaquagesReussis": 358,
+   "rucks": 255,
+   "melees": 12,
+   "touches": 35,
+   "mauls": 5,
+   "penalitesConcedees": 28,
+   "turnovers": 22,
+   "enAvants": 10,
+   "cartonsJaunes": 0,
+   "tempsJeuEffectifMin": 38.582,
+   "possessionA": 53,
+   "essaisDuN15": 1
   },
   {
    "seed": 6,
-   "essais": 8,
-   "points": 70,
-   "passes": 475,
-   "passesTentees": 476,
-   "courses": 290,
-   "metresGagnes": 916.709,
-   "coupsDePied": 66,
-   "plaquagesTentes": 395,
-   "plaquagesReussis": 338,
-   "rucks": 229,
-   "melees": 14,
-   "touches": 34,
-   "mauls": 10,
-   "penalitesConcedees": 24,
-   "turnovers": 13,
-   "enAvants": 11,
-   "cartonsJaunes": 1,
-   "tempsJeuEffectifMin": 36.668,
-   "possessionA": 37,
-   "essaisDuN15": 2
+   "essais": 7,
+   "points": 66,
+   "passes": 421,
+   "passesTentees": 423,
+   "courses": 264,
+   "metresGagnes": 1028.134,
+   "coupsDePied": 62,
+   "plaquagesTentes": 326,
+   "plaquagesReussis": 296,
+   "rucks": 207,
+   "melees": 18,
+   "touches": 22,
+   "mauls": 13,
+   "penalitesConcedees": 16,
+   "turnovers": 15,
+   "enAvants": 14,
+   "cartonsJaunes": 0,
+   "tempsJeuEffectifMin": 36.99,
+   "possessionA": 50,
+   "essaisDuN15": 0
   },
   {
    "seed": 7,
    "essais": 5,
    "points": 48,
-   "passes": 451,
-   "passesTentees": 452,
-   "courses": 309,
-   "metresGagnes": 1017.085,
-   "coupsDePied": 66,
-   "plaquagesTentes": 397,
-   "plaquagesReussis": 353,
-   "rucks": 253,
-   "melees": 17,
-   "touches": 27,
-   "mauls": 6,
-   "penalitesConcedees": 24,
-   "turnovers": 13,
-   "enAvants": 12,
+   "passes": 321,
+   "passesTentees": 323,
+   "courses": 239,
+   "metresGagnes": 967.184,
+   "coupsDePied": 61,
+   "plaquagesTentes": 313,
+   "plaquagesReussis": 268,
+   "rucks": 186,
+   "melees": 16,
+   "touches": 30,
+   "mauls": 13,
+   "penalitesConcedees": 26,
+   "turnovers": 21,
+   "enAvants": 9,
    "cartonsJaunes": 0,
-   "tempsJeuEffectifMin": 36.768,
-   "possessionA": 57,
+   "tempsJeuEffectifMin": 34.865,
+   "possessionA": 46,
    "essaisDuN15": 0
   },
   {
    "seed": 8,
    "essais": 8,
-   "points": 73,
-   "passes": 344,
-   "passesTentees": 349,
-   "courses": 232,
-   "metresGagnes": 1034.804,
-   "coupsDePied": 65,
-   "plaquagesTentes": 313,
-   "plaquagesReussis": 269,
-   "rucks": 189,
+   "points": 61,
+   "passes": 367,
+   "passesTentees": 372,
+   "courses": 243,
+   "metresGagnes": 1122.306,
+   "coupsDePied": 54,
+   "plaquagesTentes": 323,
+   "plaquagesReussis": 273,
+   "rucks": 198,
    "melees": 16,
-   "touches": 25,
-   "mauls": 6,
-   "penalitesConcedees": 16,
-   "turnovers": 14,
-   "enAvants": 11,
-   "cartonsJaunes": 1,
-   "tempsJeuEffectifMin": 32.03,
-   "possessionA": 54,
+   "touches": 26,
+   "mauls": 9,
+   "penalitesConcedees": 26,
+   "turnovers": 17,
+   "enAvants": 12,
+   "cartonsJaunes": 0,
+   "tempsJeuEffectifMin": 32.555,
+   "possessionA": 52,
    "essaisDuN15": 0
   },
   {
    "seed": 9,
-   "essais": 11,
-   "points": 77,
-   "passes": 355,
-   "passesTentees": 357,
-   "courses": 241,
-   "metresGagnes": 1037.453,
-   "coupsDePied": 66,
-   "plaquagesTentes": 304,
-   "plaquagesReussis": 270,
-   "rucks": 189,
-   "melees": 19,
-   "touches": 22,
+   "essais": 7,
+   "points": 64,
+   "passes": 499,
+   "passesTentees": 503,
+   "courses": 333,
+   "metresGagnes": 1074.186,
+   "coupsDePied": 60,
+   "plaquagesTentes": 421,
+   "plaquagesReussis": 369,
+   "rucks": 268,
+   "melees": 15,
+   "touches": 18,
    "mauls": 5,
-   "penalitesConcedees": 15,
-   "turnovers": 16,
-   "enAvants": 15,
-   "cartonsJaunes": 0,
-   "tempsJeuEffectifMin": 32.147,
-   "possessionA": 56,
-   "essaisDuN15": 1
+   "penalitesConcedees": 26,
+   "turnovers": 22,
+   "enAvants": 11,
+   "cartonsJaunes": 1,
+   "tempsJeuEffectifMin": 40.03,
+   "possessionA": 59,
+   "essaisDuN15": 0
   },
   {
    "seed": 10,
    "essais": 7,
-   "points": 54,
-   "passes": 426,
-   "passesTentees": 431,
-   "courses": 266,
-   "metresGagnes": 1013.482,
-   "coupsDePied": 41,
-   "plaquagesTentes": 342,
-   "plaquagesReussis": 290,
-   "rucks": 208,
-   "melees": 19,
-   "touches": 26,
-   "mauls": 10,
-   "penalitesConcedees": 28,
-   "turnovers": 24,
-   "enAvants": 14,
-   "cartonsJaunes": 3,
-   "tempsJeuEffectifMin": 34.782,
-   "possessionA": 49,
+   "points": 59,
+   "passes": 466,
+   "passesTentees": 469,
+   "courses": 300,
+   "metresGagnes": 1069.437,
+   "coupsDePied": 66,
+   "plaquagesTentes": 390,
+   "plaquagesReussis": 332,
+   "rucks": 228,
+   "melees": 18,
+   "touches": 22,
+   "mauls": 4,
+   "penalitesConcedees": 19,
+   "turnovers": 19,
+   "enAvants": 13,
+   "cartonsJaunes": 1,
+   "tempsJeuEffectifMin": 36.772,
+   "possessionA": 42,
    "essaisDuN15": 0
   },
   {
    "seed": 11,
-   "essais": 7,
-   "points": 55,
-   "passes": 417,
-   "passesTentees": 420,
-   "courses": 256,
-   "metresGagnes": 1015.994,
-   "coupsDePied": 57,
-   "plaquagesTentes": 336,
-   "plaquagesReussis": 280,
-   "rucks": 204,
-   "melees": 22,
-   "touches": 26,
-   "mauls": 4,
-   "penalitesConcedees": 18,
-   "turnovers": 17,
-   "enAvants": 18,
-   "cartonsJaunes": 1,
-   "tempsJeuEffectifMin": 33.417,
-   "possessionA": 43,
-   "essaisDuN15": 0
+   "essais": 8,
+   "points": 60,
+   "passes": 372,
+   "passesTentees": 376,
+   "courses": 255,
+   "metresGagnes": 984.181,
+   "coupsDePied": 52,
+   "plaquagesTentes": 331,
+   "plaquagesReussis": 291,
+   "rucks": 190,
+   "melees": 18,
+   "touches": 25,
+   "mauls": 14,
+   "penalitesConcedees": 22,
+   "turnovers": 21,
+   "enAvants": 14,
+   "cartonsJaunes": 0,
+   "tempsJeuEffectifMin": 33.248,
+   "possessionA": 44,
+   "essaisDuN15": 2
   },
   {
    "seed": 12,
    "essais": 9,
-   "points": 66,
-   "passes": 466,
-   "passesTentees": 469,
-   "courses": 306,
-   "metresGagnes": 1134.727,
-   "coupsDePied": 58,
-   "plaquagesTentes": 411,
-   "plaquagesReussis": 346,
-   "rucks": 244,
-   "melees": 13,
+   "points": 71,
+   "passes": 374,
+   "passesTentees": 378,
+   "courses": 248,
+   "metresGagnes": 1038.715,
+   "coupsDePied": 56,
+   "plaquagesTentes": 328,
+   "plaquagesReussis": 281,
+   "rucks": 197,
+   "melees": 16,
    "touches": 27,
-   "mauls": 8,
-   "penalitesConcedees": 27,
-   "turnovers": 25,
-   "enAvants": 11,
-   "cartonsJaunes": 1,
-   "tempsJeuEffectifMin": 39.263,
+   "mauls": 7,
+   "penalitesConcedees": 24,
+   "turnovers": 11,
+   "enAvants": 12,
+   "cartonsJaunes": 0,
+   "tempsJeuEffectifMin": 32.225,
    "possessionA": 43,
    "essaisDuN15": 0
   },
   {
    "seed": 13,
-   "essais": 8,
-   "points": 71,
-   "passes": 377,
-   "passesTentees": 380,
-   "courses": 246,
-   "metresGagnes": 1032.306,
-   "coupsDePied": 63,
-   "plaquagesTentes": 326,
-   "plaquagesReussis": 270,
-   "rucks": 192,
-   "melees": 20,
-   "touches": 23,
-   "mauls": 4,
-   "penalitesConcedees": 17,
-   "turnovers": 16,
-   "enAvants": 17,
+   "essais": 7,
+   "points": 62,
+   "passes": 406,
+   "passesTentees": 410,
+   "courses": 267,
+   "metresGagnes": 1162.639,
+   "coupsDePied": 52,
+   "plaquagesTentes": 335,
+   "plaquagesReussis": 295,
+   "rucks": 226,
+   "melees": 15,
+   "touches": 25,
+   "mauls": 7,
+   "penalitesConcedees": 23,
+   "turnovers": 24,
+   "enAvants": 11,
    "cartonsJaunes": 0,
-   "tempsJeuEffectifMin": 31.772,
-   "possessionA": 43,
+   "tempsJeuEffectifMin": 35.505,
+   "possessionA": 47,
    "essaisDuN15": 0
   },
   {
    "seed": 14,
-   "essais": 6,
-   "points": 48,
-   "passes": 442,
-   "passesTentees": 444,
-   "courses": 283,
-   "metresGagnes": 1090.687,
-   "coupsDePied": 72,
-   "plaquagesTentes": 383,
-   "plaquagesReussis": 333,
-   "rucks": 227,
-   "melees": 17,
-   "touches": 32,
-   "mauls": 5,
-   "penalitesConcedees": 28,
-   "turnovers": 25,
-   "enAvants": 14,
+   "essais": 5,
+   "points": 46,
+   "passes": 413,
+   "passesTentees": 415,
+   "courses": 276,
+   "metresGagnes": 983.628,
+   "coupsDePied": 56,
+   "plaquagesTentes": 361,
+   "plaquagesReussis": 321,
+   "rucks": 225,
+   "melees": 13,
+   "touches": 31,
+   "mauls": 11,
+   "penalitesConcedees": 30,
+   "turnovers": 18,
+   "enAvants": 9,
    "cartonsJaunes": 0,
-   "tempsJeuEffectifMin": 36.513,
-   "possessionA": 53,
+   "tempsJeuEffectifMin": 35.602,
+   "possessionA": 44,
    "essaisDuN15": 0
   },
   {
    "seed": 15,
-   "essais": 6,
-   "points": 55,
-   "passes": 382,
-   "passesTentees": 386,
-   "courses": 240,
-   "metresGagnes": 942.718,
-   "coupsDePied": 68,
-   "plaquagesTentes": 310,
-   "plaquagesReussis": 273,
-   "rucks": 202,
-   "melees": 26,
-   "touches": 20,
-   "mauls": 3,
-   "penalitesConcedees": 16,
-   "turnovers": 12,
-   "enAvants": 19,
+   "essais": 5,
+   "points": 43,
+   "passes": 418,
+   "passesTentees": 421,
+   "courses": 267,
+   "metresGagnes": 1016.192,
+   "coupsDePied": 51,
+   "plaquagesTentes": 362,
+   "plaquagesReussis": 309,
+   "rucks": 212,
+   "melees": 21,
+   "touches": 25,
+   "mauls": 5,
+   "penalitesConcedees": 20,
+   "turnovers": 14,
+   "enAvants": 16,
    "cartonsJaunes": 1,
-   "tempsJeuEffectifMin": 32.198,
-   "possessionA": 48,
-   "essaisDuN15": 1
+   "tempsJeuEffectifMin": 33.602,
+   "possessionA": 49,
+   "essaisDuN15": 0
   },
   {
    "seed": 16,
    "essais": 7,
-   "points": 60,
-   "passes": 381,
-   "passesTentees": 386,
-   "courses": 266,
-   "metresGagnes": 1187.672,
-   "coupsDePied": 58,
-   "plaquagesTentes": 358,
-   "plaquagesReussis": 304,
-   "rucks": 214,
-   "melees": 16,
-   "touches": 25,
-   "mauls": 10,
-   "penalitesConcedees": 21,
-   "turnovers": 25,
-   "enAvants": 9,
-   "cartonsJaunes": 1,
-   "tempsJeuEffectifMin": 35.567,
-   "possessionA": 45,
-   "essaisDuN15": 0
+   "points": 54,
+   "passes": 368,
+   "passesTentees": 373,
+   "courses": 260,
+   "metresGagnes": 1101.724,
+   "coupsDePied": 61,
+   "plaquagesTentes": 353,
+   "plaquagesReussis": 295,
+   "rucks": 201,
+   "melees": 25,
+   "touches": 26,
+   "mauls": 7,
+   "penalitesConcedees": 19,
+   "turnovers": 21,
+   "enAvants": 18,
+   "cartonsJaunes": 0,
+   "tempsJeuEffectifMin": 34.15,
+   "possessionA": 51,
+   "essaisDuN15": 1
   },
   {
    "seed": 17,
-   "essais": 5,
-   "points": 39,
-   "passes": 420,
-   "passesTentees": 421,
-   "courses": 260,
-   "metresGagnes": 811.296,
-   "coupsDePied": 66,
+   "essais": 6,
+   "points": 47,
+   "passes": 424,
+   "passesTentees": 431,
+   "courses": 267,
+   "metresGagnes": 967.328,
+   "coupsDePied": 50,
    "plaquagesTentes": 339,
-   "plaquagesReussis": 306,
-   "rucks": 211,
-   "melees": 18,
-   "touches": 35,
-   "mauls": 9,
-   "penalitesConcedees": 28,
-   "turnovers": 17,
-   "enAvants": 13,
+   "plaquagesReussis": 299,
+   "rucks": 214,
+   "melees": 19,
+   "touches": 30,
+   "mauls": 7,
+   "penalitesConcedees": 23,
+   "turnovers": 16,
+   "enAvants": 12,
    "cartonsJaunes": 0,
-   "tempsJeuEffectifMin": 35.963,
-   "possessionA": 56,
-   "essaisDuN15": 1
+   "tempsJeuEffectifMin": 34.17,
+   "possessionA": 47,
+   "essaisDuN15": 0
   },
   {
    "seed": 18,
-   "essais": 6,
-   "points": 61,
-   "passes": 374,
-   "passesTentees": 377,
-   "courses": 254,
-   "metresGagnes": 1089.563,
-   "coupsDePied": 75,
-   "plaquagesTentes": 336,
-   "plaquagesReussis": 284,
-   "rucks": 203,
-   "melees": 15,
-   "touches": 31,
-   "mauls": 9,
-   "penalitesConcedees": 25,
-   "turnovers": 26,
-   "enAvants": 12,
-   "cartonsJaunes": 1,
-   "tempsJeuEffectifMin": 35.495,
+   "essais": 9,
+   "points": 79,
+   "passes": 473,
+   "passesTentees": 475,
+   "courses": 316,
+   "metresGagnes": 1153.143,
+   "coupsDePied": 61,
+   "plaquagesTentes": 421,
+   "plaquagesReussis": 350,
+   "rucks": 245,
+   "melees": 12,
+   "touches": 25,
+   "mauls": 8,
+   "penalitesConcedees": 23,
+   "turnovers": 17,
+   "enAvants": 10,
+   "cartonsJaunes": 0,
+   "tempsJeuEffectifMin": 36.877,
    "possessionA": 50,
-   "essaisDuN15": 1
+   "essaisDuN15": 0
   },
   {
    "seed": 19,
    "essais": 5,
-   "points": 41,
-   "passes": 441,
-   "passesTentees": 447,
-   "courses": 318,
-   "metresGagnes": 1023.456,
-   "coupsDePied": 58,
-   "plaquagesTentes": 401,
-   "plaquagesReussis": 353,
-   "rucks": 256,
+   "points": 56,
+   "passes": 403,
+   "passesTentees": 406,
+   "courses": 276,
+   "metresGagnes": 941.088,
+   "coupsDePied": 62,
+   "plaquagesTentes": 369,
+   "plaquagesReussis": 319,
+   "rucks": 227,
    "melees": 16,
-   "touches": 24,
-   "mauls": 7,
-   "penalitesConcedees": 29,
-   "turnovers": 23,
+   "touches": 30,
+   "mauls": 8,
+   "penalitesConcedees": 30,
+   "turnovers": 28,
    "enAvants": 11,
-   "cartonsJaunes": 0,
-   "tempsJeuEffectifMin": 38.755,
-   "possessionA": 51,
-   "essaisDuN15": 0
-  },
-  {
-   "seed": 20,
-   "essais": 5,
-   "points": 52,
-   "passes": 456,
-   "passesTentees": 457,
-   "courses": 296,
-   "metresGagnes": 1073.807,
-   "coupsDePied": 58,
-   "plaquagesTentes": 373,
-   "plaquagesReussis": 334,
-   "rucks": 245,
-   "melees": 19,
-   "touches": 21,
-   "mauls": 5,
-   "penalitesConcedees": 21,
-   "turnovers": 19,
-   "enAvants": 17,
-   "cartonsJaunes": 0,
-   "tempsJeuEffectifMin": 36.86,
-   "possessionA": 42,
-   "essaisDuN15": 0
-  },
-  {
-   "seed": 21,
-   "essais": 8,
-   "points": 54,
-   "passes": 373,
-   "passesTentees": 379,
-   "courses": 226,
-   "metresGagnes": 1044.159,
-   "coupsDePied": 63,
-   "plaquagesTentes": 295,
-   "plaquagesReussis": 246,
-   "rucks": 176,
-   "melees": 22,
-   "touches": 33,
-   "mauls": 9,
-   "penalitesConcedees": 21,
-   "turnovers": 12,
-   "enAvants": 19,
-   "cartonsJaunes": 0,
-   "tempsJeuEffectifMin": 34.115,
-   "possessionA": 56,
-   "essaisDuN15": 0
-  },
-  {
-   "seed": 22,
-   "essais": 6,
-   "points": 58,
-   "passes": 412,
-   "passesTentees": 414,
-   "courses": 267,
-   "metresGagnes": 1247.562,
-   "coupsDePied": 55,
-   "plaquagesTentes": 353,
-   "plaquagesReussis": 301,
-   "rucks": 214,
-   "melees": 15,
-   "touches": 22,
-   "mauls": 7,
-   "penalitesConcedees": 27,
-   "turnovers": 17,
-   "enAvants": 13,
-   "cartonsJaunes": 1,
-   "tempsJeuEffectifMin": 35.135,
+   "cartonsJaunes": 2,
+   "tempsJeuEffectifMin": 35.12,
    "possessionA": 52,
    "essaisDuN15": 1
   },
   {
-   "seed": 23,
+   "seed": 20,
+   "essais": 4,
+   "points": 33,
+   "passes": 359,
+   "passesTentees": 360,
+   "courses": 238,
+   "metresGagnes": 911.364,
+   "coupsDePied": 49,
+   "plaquagesTentes": 323,
+   "plaquagesReussis": 279,
+   "rucks": 191,
+   "melees": 19,
+   "touches": 39,
+   "mauls": 9,
+   "penalitesConcedees": 26,
+   "turnovers": 24,
+   "enAvants": 14,
+   "cartonsJaunes": 0,
+   "tempsJeuEffectifMin": 31.933,
+   "possessionA": 45,
+   "essaisDuN15": 0
+  },
+  {
+   "seed": 21,
+   "essais": 6,
+   "points": 41,
+   "passes": 389,
+   "passesTentees": 391,
+   "courses": 276,
+   "metresGagnes": 1245.491,
+   "coupsDePied": 75,
+   "plaquagesTentes": 378,
+   "plaquagesReussis": 322,
+   "rucks": 220,
+   "melees": 19,
+   "touches": 30,
+   "mauls": 9,
+   "penalitesConcedees": 18,
+   "turnovers": 22,
+   "enAvants": 18,
+   "cartonsJaunes": 0,
+   "tempsJeuEffectifMin": 36.79,
+   "possessionA": 59,
+   "essaisDuN15": 0
+  },
+  {
+   "seed": 22,
    "essais": 5,
-   "points": 46,
-   "passes": 344,
-   "passesTentees": 347,
-   "courses": 235,
-   "metresGagnes": 1002.143,
-   "coupsDePied": 62,
-   "plaquagesTentes": 311,
-   "plaquagesReussis": 266,
-   "rucks": 180,
-   "melees": 21,
-   "touches": 28,
+   "points": 45,
+   "passes": 403,
+   "passesTentees": 406,
+   "courses": 251,
+   "metresGagnes": 1001.397,
+   "coupsDePied": 54,
+   "plaquagesTentes": 321,
+   "plaquagesReussis": 275,
+   "rucks": 196,
+   "melees": 17,
+   "touches": 34,
    "mauls": 7,
-   "penalitesConcedees": 22,
+   "penalitesConcedees": 25,
    "turnovers": 18,
-   "enAvants": 17,
+   "enAvants": 15,
+   "cartonsJaunes": 1,
+   "tempsJeuEffectifMin": 32.958,
+   "possessionA": 48,
+   "essaisDuN15": 0
+  },
+  {
+   "seed": 23,
+   "essais": 9,
+   "points": 62,
+   "passes": 391,
+   "passesTentees": 396,
+   "courses": 253,
+   "metresGagnes": 1059.969,
+   "coupsDePied": 55,
+   "plaquagesTentes": 336,
+   "plaquagesReussis": 291,
+   "rucks": 208,
+   "melees": 15,
+   "touches": 33,
+   "mauls": 7,
+   "penalitesConcedees": 24,
+   "turnovers": 22,
+   "enAvants": 13,
    "cartonsJaunes": 3,
-   "tempsJeuEffectifMin": 31.807,
-   "possessionA": 51,
+   "tempsJeuEffectifMin": 34.507,
+   "possessionA": 50,
    "essaisDuN15": 0
   },
   {
    "seed": 24,
-   "essais": 6,
-   "points": 60,
-   "passes": 353,
-   "passesTentees": 359,
-   "courses": 242,
-   "metresGagnes": 1052.976,
-   "coupsDePied": 51,
-   "plaquagesTentes": 308,
-   "plaquagesReussis": 265,
-   "rucks": 192,
-   "melees": 20,
-   "touches": 20,
-   "mauls": 4,
-   "penalitesConcedees": 25,
-   "turnovers": 22,
-   "enAvants": 15,
+   "essais": 8,
+   "points": 70,
+   "passes": 470,
+   "passesTentees": 475,
+   "courses": 311,
+   "metresGagnes": 1041.123,
+   "coupsDePied": 78,
+   "plaquagesTentes": 423,
+   "plaquagesReussis": 365,
+   "rucks": 242,
+   "melees": 13,
+   "touches": 31,
+   "mauls": 11,
+   "penalitesConcedees": 19,
+   "turnovers": 17,
+   "enAvants": 11,
    "cartonsJaunes": 2,
-   "tempsJeuEffectifMin": 30.997,
-   "possessionA": 38,
+   "tempsJeuEffectifMin": 39.085,
+   "possessionA": 51,
    "essaisDuN15": 0
   },
   {
    "seed": 25,
-   "essais": 5,
-   "points": 42,
-   "passes": 447,
-   "passesTentees": 447,
-   "courses": 287,
-   "metresGagnes": 934.848,
-   "coupsDePied": 55,
+   "essais": 7,
+   "points": 64,
+   "passes": 404,
+   "passesTentees": 406,
+   "courses": 281,
+   "metresGagnes": 1204.124,
+   "coupsDePied": 60,
    "plaquagesTentes": 376,
-   "plaquagesReussis": 335,
-   "rucks": 240,
-   "melees": 16,
-   "touches": 32,
-   "mauls": 8,
-   "penalitesConcedees": 30,
-   "turnovers": 16,
-   "enAvants": 15,
-   "cartonsJaunes": 2,
-   "tempsJeuEffectifMin": 37.997,
-   "possessionA": 49,
-   "essaisDuN15": 1
-  },
-  {
-   "seed": 26,
-   "essais": 5,
-   "points": 46,
-   "passes": 376,
-   "passesTentees": 378,
-   "courses": 283,
-   "metresGagnes": 968.461,
-   "coupsDePied": 74,
-   "plaquagesTentes": 390,
-   "plaquagesReussis": 338,
-   "rucks": 226,
-   "melees": 16,
-   "touches": 31,
-   "mauls": 14,
-   "penalitesConcedees": 21,
-   "turnovers": 25,
+   "plaquagesReussis": 317,
+   "rucks": 215,
+   "melees": 15,
+   "touches": 22,
+   "mauls": 13,
+   "penalitesConcedees": 24,
+   "turnovers": 18,
    "enAvants": 13,
    "cartonsJaunes": 1,
-   "tempsJeuEffectifMin": 37.985,
-   "possessionA": 49,
-   "essaisDuN15": 1
-  },
-  {
-   "seed": 27,
-   "essais": 5,
-   "points": 41,
-   "passes": 513,
-   "passesTentees": 514,
-   "courses": 300,
-   "metresGagnes": 981.966,
-   "coupsDePied": 51,
-   "plaquagesTentes": 385,
-   "plaquagesReussis": 341,
-   "rucks": 239,
-   "melees": 22,
-   "touches": 23,
-   "mauls": 6,
-   "penalitesConcedees": 18,
-   "turnovers": 19,
-   "enAvants": 17,
-   "cartonsJaunes": 0,
-   "tempsJeuEffectifMin": 36.543,
-   "possessionA": 60,
+   "tempsJeuEffectifMin": 36.735,
+   "possessionA": 56,
    "essaisDuN15": 2
   },
   {
-   "seed": 28,
-   "essais": 8,
-   "points": 57,
-   "passes": 349,
-   "passesTentees": 352,
-   "courses": 249,
-   "metresGagnes": 1001.363,
-   "coupsDePied": 57,
-   "plaquagesTentes": 339,
-   "plaquagesReussis": 287,
-   "rucks": 194,
-   "melees": 18,
-   "touches": 27,
-   "mauls": 11,
+   "seed": 26,
+   "essais": 6,
+   "points": 47,
+   "passes": 360,
+   "passesTentees": 362,
+   "courses": 260,
+   "metresGagnes": 1000.115,
+   "coupsDePied": 61,
+   "plaquagesTentes": 340,
+   "plaquagesReussis": 304,
+   "rucks": 204,
+   "melees": 19,
+   "touches": 30,
+   "mauls": 14,
    "penalitesConcedees": 26,
-   "turnovers": 13,
+   "turnovers": 20,
+   "enAvants": 16,
+   "cartonsJaunes": 4,
+   "tempsJeuEffectifMin": 33.932,
+   "possessionA": 51,
+   "essaisDuN15": 0
+  },
+  {
+   "seed": 27,
+   "essais": 7,
+   "points": 59,
+   "passes": 417,
+   "passesTentees": 420,
+   "courses": 293,
+   "metresGagnes": 1312.173,
+   "coupsDePied": 57,
+   "plaquagesTentes": 388,
+   "plaquagesReussis": 328,
+   "rucks": 238,
+   "melees": 15,
+   "touches": 22,
+   "mauls": 8,
+   "penalitesConcedees": 27,
+   "turnovers": 25,
    "enAvants": 13,
-   "cartonsJaunes": 2,
-   "tempsJeuEffectifMin": 32.578,
-   "possessionA": 53,
+   "cartonsJaunes": 1,
+   "tempsJeuEffectifMin": 36.863,
+   "possessionA": 44,
+   "essaisDuN15": 0
+  },
+  {
+   "seed": 28,
+   "essais": 11,
+   "points": 72,
+   "passes": 396,
+   "passesTentees": 399,
+   "courses": 261,
+   "metresGagnes": 986.682,
+   "coupsDePied": 60,
+   "plaquagesTentes": 324,
+   "plaquagesReussis": 282,
+   "rucks": 215,
+   "melees": 19,
+   "touches": 30,
+   "mauls": 9,
+   "penalitesConcedees": 21,
+   "turnovers": 24,
+   "enAvants": 14,
+   "cartonsJaunes": 1,
+   "tempsJeuEffectifMin": 33.988,
+   "possessionA": 57,
    "essaisDuN15": 0
   },
   {
    "seed": 29,
-   "essais": 10,
-   "points": 62,
-   "passes": 420,
-   "passesTentees": 422,
-   "courses": 271,
-   "metresGagnes": 1192.736,
-   "coupsDePied": 64,
-   "plaquagesTentes": 352,
-   "plaquagesReussis": 299,
-   "rucks": 213,
-   "melees": 19,
-   "touches": 26,
-   "mauls": 7,
-   "penalitesConcedees": 11,
-   "turnovers": 18,
-   "enAvants": 16,
-   "cartonsJaunes": 0,
-   "tempsJeuEffectifMin": 37.062,
-   "possessionA": 47,
+   "essais": 7,
+   "points": 54,
+   "passes": 431,
+   "passesTentees": 435,
+   "courses": 287,
+   "metresGagnes": 1163.937,
+   "coupsDePied": 67,
+   "plaquagesTentes": 377,
+   "plaquagesReussis": 322,
+   "rucks": 227,
+   "melees": 20,
+   "touches": 25,
+   "mauls": 12,
+   "penalitesConcedees": 21,
+   "turnovers": 19,
+   "enAvants": 15,
+   "cartonsJaunes": 3,
+   "tempsJeuEffectifMin": 37.5,
+   "possessionA": 48,
    "essaisDuN15": 1
   },
   {
    "seed": 30,
-   "essais": 9,
-   "points": 64,
-   "passes": 359,
-   "passesTentees": 364,
-   "courses": 241,
-   "metresGagnes": 979.641,
-   "coupsDePied": 65,
-   "plaquagesTentes": 313,
-   "plaquagesReussis": 262,
-   "rucks": 176,
-   "melees": 22,
-   "touches": 27,
-   "mauls": 7,
-   "penalitesConcedees": 19,
-   "turnovers": 19,
-   "enAvants": 16,
+   "essais": 8,
+   "points": 71,
+   "passes": 335,
+   "passesTentees": 341,
+   "courses": 242,
+   "metresGagnes": 972.695,
+   "coupsDePied": 72,
+   "plaquagesTentes": 325,
+   "plaquagesReussis": 277,
+   "rucks": 194,
+   "melees": 14,
+   "touches": 21,
+   "mauls": 8,
+   "penalitesConcedees": 25,
+   "turnovers": 25,
+   "enAvants": 10,
    "cartonsJaunes": 0,
-   "tempsJeuEffectifMin": 32.193,
-   "possessionA": 46,
+   "tempsJeuEffectifMin": 33.505,
+   "possessionA": 49,
    "essaisDuN15": 1
   }
  ],
@@ -827,575 +827,575 @@
   {
    "seed": 1,
    "phase": "RUCK",
-   "temps": 432.7,
+   "temps": 300.9,
    "joueurs": [
     {
      "eq": "A",
      "n": 1,
-     "x": 43.51,
-     "y": 48.78
+     "x": 20.4,
+     "y": 27.89
     },
     {
      "eq": "A",
      "n": 2,
-     "x": 42.3,
-     "y": 46.55
+     "x": 21.37,
+     "y": 36.93
     },
     {
      "eq": "A",
      "n": 3,
-     "x": 47.9,
-     "y": 43.63
+     "x": 20.67,
+     "y": 42.45
     },
     {
      "eq": "A",
      "n": 4,
-     "x": 39.66,
-     "y": 34.92
+     "x": 20.36,
+     "y": 31.74
     },
     {
      "eq": "A",
      "n": 5,
-     "x": 37.21,
-     "y": 48.4
+     "x": 21.38,
+     "y": 49.14
     },
     {
      "eq": "A",
      "n": 6,
-     "x": 37.52,
-     "y": 30.83
+     "x": 24.9,
+     "y": 42.14
     },
     {
      "eq": "A",
      "n": 7,
-     "x": 35.85,
-     "y": 49.11
+     "x": 25.4,
+     "y": 42.84
     },
     {
      "eq": "A",
      "n": 8,
-     "x": 35.98,
-     "y": 41.12
+     "x": 25.9,
+     "y": 41.44
     },
     {
      "eq": "A",
      "n": 9,
-     "x": 36.3,
-     "y": 48.77
+     "x": 23.9,
+     "y": 42.14
     },
     {
      "eq": "A",
      "n": 10,
-     "x": 34.3,
-     "y": 38.18
+     "x": 25.4,
+     "y": 43.54
     },
     {
      "eq": "A",
      "n": 11,
-     "x": 26.11,
-     "y": 15.51
+     "x": 14.67,
+     "y": 11.24
     },
     {
      "eq": "A",
      "n": 12,
-     "x": 37.9,
-     "y": 49.11
+     "x": 18.57,
+     "y": 22.83
     },
     {
      "eq": "A",
      "n": 13,
-     "x": 34.94,
-     "y": 34.75
+     "x": 18,
+     "y": 39.99
     },
     {
      "eq": "A",
      "n": 14,
-     "x": 26.85,
+     "x": 16.9,
      "y": 63
     },
     {
      "eq": "A",
      "n": 15,
-     "x": 34.85,
-     "y": 49.81
+     "x": 11.03,
+     "y": 35.81
     },
     {
      "eq": "B",
      "n": 1,
-     "x": 42.75,
-     "y": 55.28
+     "x": 27.9,
+     "y": 29.64
     },
     {
      "eq": "B",
      "n": 2,
-     "x": 43.18,
-     "y": 57.15
+     "x": 27.87,
+     "y": 12.75
     },
     {
      "eq": "B",
      "n": 3,
-     "x": 48.78,
-     "y": 45.35
+     "x": 27.65,
+     "y": 40.21
     },
     {
      "eq": "B",
      "n": 4,
-     "x": 48.53,
-     "y": 34.01
+     "x": 27.9,
+     "y": 34.64
     },
     {
      "eq": "B",
      "n": 5,
-     "x": 48.41,
-     "y": 43.88
+     "x": 24.4,
+     "y": 42.84
     },
     {
      "eq": "B",
      "n": 6,
-     "x": 48.06,
-     "y": 29.84
+     "x": 27.9,
+     "y": 49.64
     },
     {
      "eq": "B",
      "n": 7,
-     "x": 46.15,
-     "y": 51.99
+     "x": 25.32,
+     "y": 39.06
     },
     {
      "eq": "B",
      "n": 8,
-     "x": 47.52,
-     "y": 38.71
+     "x": 27.49,
+     "y": 52.17
     },
     {
      "eq": "B",
      "n": 9,
-     "x": 45.59,
-     "y": 43.58
+     "x": 26.73,
+     "y": 40.05
     },
     {
      "eq": "B",
      "n": 10,
-     "x": 49.77,
-     "y": 39.27
+     "x": 22.45,
+     "y": 43.06
     },
     {
      "eq": "B",
      "n": 11,
-     "x": 41,
-     "y": 16.73
+     "x": 31.54,
+     "y": 11.04
     },
     {
      "eq": "B",
      "n": 12,
-     "x": 45.56,
-     "y": 27.26
+     "x": 23.43,
+     "y": 36.15
     },
     {
      "eq": "B",
      "n": 13,
-     "x": 46.12,
-     "y": 49.12
+     "x": 23.75,
+     "y": 44.38
     },
     {
      "eq": "B",
      "n": 14,
-     "x": 34.35,
-     "y": 50.51
+     "x": 27.9,
+     "y": 67.5
     },
     {
      "eq": "B",
      "n": 15,
-     "x": 52.85,
-     "y": 39.44
+     "x": 42.31,
+     "y": 37.03
     }
    ],
    "ballon": {
-    "x": 34.85,
-    "y": 49.81
+    "x": 24.9,
+    "y": 42.14
    },
    "possession": "A"
   },
   {
    "seed": 2,
    "phase": "MELEE",
-   "temps": 524.7,
+   "temps": 369.4,
    "joueurs": [
     {
      "eq": "A",
      "n": 1,
-     "x": 65.77,
-     "y": 8.67
+     "x": 55.36,
+     "y": 21.35
     },
     {
      "eq": "A",
      "n": 2,
-     "x": 66.06,
-     "y": 10.77
+     "x": 53.48,
+     "y": 21.86
     },
     {
      "eq": "A",
      "n": 3,
-     "x": 65.66,
-     "y": 10.63
+     "x": 53.64,
+     "y": 24.16
     },
     {
      "eq": "A",
      "n": 4,
-     "x": 67.19,
-     "y": 13.9
+     "x": 56.28,
+     "y": 19.8
     },
     {
      "eq": "A",
      "n": 5,
-     "x": 64.73,
-     "y": 20.67
+     "x": 53.1,
+     "y": 22.55
     },
     {
      "eq": "A",
      "n": 6,
-     "x": 64.77,
-     "y": 8.07
+     "x": 57.79,
+     "y": 17.33
     },
     {
      "eq": "A",
      "n": 7,
-     "x": 65.91,
-     "y": 14.1
+     "x": 51.64,
+     "y": 36.37
     },
     {
      "eq": "A",
      "n": 8,
-     "x": 63.95,
-     "y": 9.97
+     "x": 52.89,
+     "y": 23.58
     },
     {
      "eq": "A",
      "n": 9,
-     "x": 67.37,
-     "y": 12.27
+     "x": 60.39,
+     "y": 21.53
     },
     {
      "eq": "A",
      "n": 10,
-     "x": 71.77,
-     "y": 4.15
+     "x": 52.59,
+     "y": 22.18
     },
     {
      "eq": "A",
      "n": 11,
-     "x": 60.08,
-     "y": 3.95
+     "x": 52.88,
+     "y": 11.85
     },
     {
      "eq": "A",
      "n": 12,
-     "x": 60.13,
-     "y": 28.79
+     "x": 49.68,
+     "y": 30.79
     },
     {
      "eq": "A",
      "n": 13,
-     "x": 59.77,
-     "y": 39.62
+     "x": 45.01,
+     "y": 42.09
     },
     {
      "eq": "A",
      "n": 14,
-     "x": 58.3,
-     "y": 47.91
+     "x": 41.89,
+     "y": 57
     },
     {
      "eq": "A",
      "n": 15,
-     "x": 47.89,
-     "y": 33.36
+     "x": 45.07,
+     "y": 35
     },
     {
      "eq": "B",
      "n": 1,
-     "x": 68.97,
-     "y": 8.67
+     "x": 61.4,
+     "y": 18.35
     },
     {
      "eq": "B",
      "n": 2,
-     "x": 68.97,
-     "y": 9.67
+     "x": 61.02,
+     "y": 19.4
     },
     {
      "eq": "B",
      "n": 3,
-     "x": 68.97,
-     "y": 10.67
+     "x": 61.99,
+     "y": 19.93
     },
     {
      "eq": "B",
      "n": 4,
-     "x": 71.52,
-     "y": 17.79
+     "x": 62.3,
+     "y": 18.27
     },
     {
      "eq": "B",
      "n": 5,
-     "x": 69.31,
-     "y": 12.8
+     "x": 56.1,
+     "y": 21.44
     },
     {
      "eq": "B",
      "n": 6,
-     "x": 69.58,
-     "y": 10.26
+     "x": 62.99,
+     "y": 17.33
     },
     {
      "eq": "B",
      "n": 7,
-     "x": 71.6,
-     "y": 19.54
+     "x": 60.75,
+     "y": 41.53
     },
     {
      "eq": "B",
      "n": 8,
-     "x": 72.6,
-     "y": 22.43
+     "x": 61.39,
+     "y": 22.82
     },
     {
      "eq": "B",
      "n": 9,
-     "x": 68.47,
-     "y": 12.27
+     "x": 61.49,
+     "y": 21.53
     },
     {
      "eq": "B",
      "n": 10,
-     "x": 73.4,
-     "y": 16.55
+     "x": 64.45,
+     "y": 23.78
     },
     {
      "eq": "B",
      "n": 11,
-     "x": 74.87,
-     "y": 2.67
+     "x": 67.89,
+     "y": 11.93
     },
     {
      "eq": "B",
      "n": 12,
-     "x": 73.92,
-     "y": 20.62
+     "x": 67.89,
+     "y": 33.93
     },
     {
      "eq": "B",
      "n": 13,
-     "x": 74.87,
-     "y": 32.67
+     "x": 67.89,
+     "y": 41.93
     },
     {
      "eq": "B",
      "n": 14,
-     "x": 74.87,
+     "x": 67.89,
      "y": 57
     },
     {
      "eq": "B",
      "n": 15,
-     "x": 84.16,
-     "y": 34.67
+     "x": 68.68,
+     "y": 22.36
     }
    ],
    "ballon": {
-    "x": 67.37,
-    "y": 12.27
+    "x": 60.39,
+    "y": 21.53
    },
    "possession": "A"
   },
   {
    "seed": 3,
    "phase": "TOUCHE",
-   "temps": 458.8,
+   "temps": 420.8,
    "joueurs": [
     {
      "eq": "A",
      "n": 1,
-     "x": 46.87,
-     "y": 32.33
+     "x": 70.06,
+     "y": 36.22
     },
     {
      "eq": "A",
      "n": 2,
-     "x": 47.72,
-     "y": 39.55
+     "x": 70.47,
+     "y": 45
     },
     {
      "eq": "A",
      "n": 3,
-     "x": 48.17,
-     "y": 47.99
+     "x": 70.18,
+     "y": 45.42
     },
     {
      "eq": "A",
      "n": 4,
-     "x": 44.87,
-     "y": 30.55
+     "x": 71.52,
+     "y": 34.72
     },
     {
      "eq": "A",
      "n": 5,
-     "x": 42.94,
-     "y": 56.75
+     "x": 69.95,
+     "y": 48.08
     },
     {
      "eq": "A",
      "n": 6,
-     "x": 45.31,
-     "y": 27.73
+     "x": 72.68,
+     "y": 33.05
     },
     {
      "eq": "A",
      "n": 7,
-     "x": 40.22,
-     "y": 66.96
+     "x": 78.85,
+     "y": 57.5
     },
     {
      "eq": "A",
      "n": 8,
-     "x": 45.37,
-     "y": 42.23
+     "x": 74.05,
+     "y": 46.4
     },
     {
      "eq": "A",
      "n": 9,
-     "x": 46.83,
-     "y": 43.86
+     "x": 72.81,
+     "y": 45.53
     },
     {
      "eq": "A",
      "n": 10,
-     "x": 31.9,
-     "y": 39.43
+     "x": 71.51,
+     "y": 43.87
     },
     {
      "eq": "A",
      "n": 11,
-     "x": 34,
-     "y": 8.26
+     "x": 69.35,
+     "y": 7
     },
     {
      "eq": "A",
      "n": 12,
-     "x": 39.74,
-     "y": 31.58
+     "x": 70.08,
+     "y": 45.96
     },
     {
      "eq": "A",
      "n": 13,
-     "x": 45.94,
-     "y": 45.8
+     "x": 69.35,
+     "y": 38.5
     },
     {
      "eq": "A",
      "n": 14,
-     "x": 45.82,
-     "y": 56.01
+     "x": 75.76,
+     "y": 58.92
     },
     {
      "eq": "A",
      "n": 15,
-     "x": 35.54,
-     "y": 33.24
+     "x": 67.2,
+     "y": 33.6
     },
     {
      "eq": "B",
      "n": 1,
-     "x": 61.06,
-     "y": 34.07
+     "x": 76.66,
+     "y": 33.62
     },
     {
      "eq": "B",
      "n": 2,
-     "x": 59.53,
-     "y": 41.07
+     "x": 80.5,
+     "y": 46.02
     },
     {
      "eq": "B",
      "n": 3,
-     "x": 55.21,
-     "y": 56.88
+     "x": 76.78,
+     "y": 44.5
     },
     {
      "eq": "B",
      "n": 4,
-     "x": 61.27,
-     "y": 30.71
+     "x": 79.27,
+     "y": 32.05
     },
     {
      "eq": "B",
      "n": 5,
-     "x": 75.69,
-     "y": 31.78
+     "x": 80,
+     "y": 49.03
     },
     {
      "eq": "B",
      "n": 6,
-     "x": 52.98,
-     "y": 56.74
+     "x": 80.32,
+     "y": 28.96
     },
     {
      "eq": "B",
      "n": 7,
-     "x": 55.34,
-     "y": 50.57
+     "x": 79.86,
+     "y": 55.87
     },
     {
      "eq": "B",
      "n": 8,
-     "x": 56.88,
-     "y": 41.64
+     "x": 79.94,
+     "y": 42.86
     },
     {
      "eq": "B",
      "n": 9,
-     "x": 60.53,
-     "y": 46.39
+     "x": 81.21,
+     "y": 47.45
     },
     {
      "eq": "B",
      "n": 10,
-     "x": 60.9,
-     "y": 39.51
+     "x": 86.38,
+     "y": 61.1
     },
     {
      "eq": "B",
      "n": 11,
-     "x": 56.85,
-     "y": 9.84
+     "x": 89.35,
+     "y": 7
     },
     {
      "eq": "B",
      "n": 12,
-     "x": 57.09,
-     "y": 31.96
+     "x": 89.06,
+     "y": 38.63
     },
     {
      "eq": "B",
      "n": 13,
-     "x": 57.12,
-     "y": 42.58
+     "x": 89.56,
+     "y": 38.41
     },
     {
      "eq": "B",
      "n": 14,
-     "x": 51.19,
-     "y": 50.14
+     "x": 81.84,
+     "y": 60.11
     },
     {
      "eq": "B",
      "n": 15,
-     "x": 58.64,
-     "y": 35.71
+     "x": 90.25,
+     "y": 29.23
     }
    ],
    "ballon": {
-    "x": 34.22,
+    "x": 79.35,
     "y": 69.5
    },
    "possession": "A"
@@ -1403,960 +1403,960 @@
   {
    "seed": 4,
    "phase": "MAUL",
-   "temps": 949.1,
+   "temps": 984,
    "joueurs": [
     {
      "eq": "A",
      "n": 1,
-     "x": 42.08,
-     "y": 62.17
+     "x": 38.12,
+     "y": 35.75
     },
     {
      "eq": "A",
      "n": 2,
-     "x": 40.75,
-     "y": 69.5
+     "x": 36.73,
+     "y": 38.19
     },
     {
      "eq": "A",
      "n": 3,
-     "x": 42.05,
-     "y": 60.78
+     "x": 38.7,
+     "y": 35.31
     },
     {
      "eq": "A",
      "n": 4,
-     "x": 41.98,
-     "y": 59.4
+     "x": 35.75,
+     "y": 32.19
     },
     {
      "eq": "A",
      "n": 5,
-     "x": 41.89,
-     "y": 58.03
+     "x": 38.75,
+     "y": 35.7
     },
     {
      "eq": "A",
      "n": 6,
-     "x": 41.51,
-     "y": 56.8
+     "x": 31.24,
+     "y": 23.01
     },
     {
      "eq": "A",
      "n": 7,
-     "x": 41.51,
-     "y": 55.4
+     "x": 38.04,
+     "y": 35.28
     },
     {
      "eq": "A",
      "n": 8,
-     "x": 41.26,
-     "y": 56.1
+     "x": 38.37,
+     "y": 35.89
     },
     {
      "eq": "A",
      "n": 9,
-     "x": 40.14,
-     "y": 57.31
+     "x": 37.67,
+     "y": 35.86
     },
     {
      "eq": "A",
      "n": 10,
-     "x": 33.15,
-     "y": 56.5
+     "x": 31.61,
+     "y": 49.29
     },
     {
      "eq": "A",
      "n": 11,
-     "x": 33.15,
-     "y": 7
+     "x": 22.97,
+     "y": 10.77
     },
     {
      "eq": "A",
      "n": 12,
-     "x": 33.15,
-     "y": 44.5
+     "x": 31.14,
+     "y": 41.5
     },
     {
      "eq": "A",
      "n": 13,
-     "x": 33.15,
-     "y": 38.5
+     "x": 32.32,
+     "y": 27.75
     },
     {
      "eq": "A",
      "n": 14,
-     "x": 33.15,
-     "y": 32.5
+     "x": 26.48,
+     "y": 60.99
     },
     {
      "eq": "A",
      "n": 15,
-     "x": 33.15,
-     "y": 26.5
+     "x": 29.97,
+     "y": 35.07
     },
     {
      "eq": "B",
      "n": 1,
-     "x": 45.15,
-     "y": 64.5
+     "x": 39.89,
+     "y": 35.3
     },
     {
      "eq": "B",
      "n": 2,
-     "x": 43.77,
-     "y": 60.7
+     "x": 39.85,
+     "y": 36.56
     },
     {
      "eq": "B",
      "n": 3,
-     "x": 43.53,
-     "y": 59.3
+     "x": 38.08,
+     "y": 34.86
     },
     {
      "eq": "B",
      "n": 4,
-     "x": 43.51,
-     "y": 57.91
+     "x": 39.86,
+     "y": 35.81
     },
     {
      "eq": "B",
      "n": 5,
-     "x": 43.47,
-     "y": 56.51
+     "x": 40.45,
+     "y": 35.86
     },
     {
      "eq": "B",
      "n": 6,
-     "x": 42.71,
-     "y": 56.1
+     "x": 42.5,
+     "y": 24.06
     },
     {
      "eq": "B",
      "n": 7,
-     "x": 42.71,
-     "y": 55.4
+     "x": 39.77,
+     "y": 34.9
     },
     {
      "eq": "B",
      "n": 8,
-     "x": 42.72,
-     "y": 56.78
+     "x": 38.02,
+     "y": 36.15
     },
     {
      "eq": "B",
      "n": 9,
-     "x": 45.45,
-     "y": 66.5
+     "x": 39.09,
+     "y": 32.77
     },
     {
      "eq": "B",
      "n": 10,
-     "x": 53.15,
-     "y": 56.5
+     "x": 42.7,
+     "y": 37.73
     },
     {
      "eq": "B",
      "n": 11,
-     "x": 53.15,
-     "y": 7
+     "x": 45.56,
+     "y": 7.16
     },
     {
      "eq": "B",
      "n": 12,
-     "x": 53.15,
-     "y": 44.5
+     "x": 42.9,
+     "y": 45.68
     },
     {
      "eq": "B",
      "n": 13,
-     "x": 53.15,
-     "y": 38.5
+     "x": 36.96,
+     "y": 32.83
     },
     {
      "eq": "B",
      "n": 14,
-     "x": 53.15,
-     "y": 32.5
+     "x": 44.48,
+     "y": 63.27
     },
     {
      "eq": "B",
      "n": 15,
-     "x": 53.15,
-     "y": 26.5
+     "x": 49.1,
+     "y": 51.64
     }
    ],
    "ballon": {
-    "x": 41.26,
-    "y": 56.1
+    "x": 38.37,
+    "y": 35.89
    },
    "possession": "A"
   },
   {
    "seed": 5,
    "phase": "COUP_ENVOI",
-   "temps": 369.1,
+   "temps": 355.4,
    "joueurs": [
     {
      "eq": "A",
      "n": 1,
-     "x": 2.4,
-     "y": 21.2
+     "x": 65.61,
+     "y": 15.22
     },
     {
      "eq": "A",
      "n": 2,
-     "x": 2.26,
-     "y": 38.46
+     "x": 66.65,
+     "y": 34.51
     },
     {
      "eq": "A",
      "n": 3,
-     "x": 2.26,
-     "y": 43.34
+     "x": 65.85,
+     "y": 44.72
     },
     {
      "eq": "A",
      "n": 4,
-     "x": 2.4,
-     "y": 16.74
+     "x": 65.2,
+     "y": 17.8
     },
     {
      "eq": "A",
      "n": 5,
-     "x": 2.14,
-     "y": 52.2
+     "x": 65.38,
+     "y": 35.06
     },
     {
      "eq": "A",
      "n": 6,
-     "x": 2.34,
-     "y": 25.31
+     "x": 65.32,
+     "y": 10.32
     },
     {
      "eq": "A",
      "n": 7,
-     "x": 2.12,
-     "y": 56.72
+     "x": 65.26,
+     "y": 59.68
     },
     {
      "eq": "A",
      "n": 8,
-     "x": 2.28,
-     "y": 39.07
+     "x": 64.84,
+     "y": 25.05
     },
     {
      "eq": "A",
      "n": 9,
-     "x": 2.37,
-     "y": 48.35
+     "x": 63.49,
+     "y": 29.21
     },
     {
      "eq": "A",
      "n": 10,
-     "x": 2.18,
-     "y": 13.14
+     "x": 78,
+     "y": 19.64
     },
     {
      "eq": "A",
      "n": 11,
-     "x": 2.39,
-     "y": 3.23
+     "x": 63,
+     "y": 3.75
     },
     {
      "eq": "A",
      "n": 12,
-     "x": 2.1,
-     "y": 8.73
+     "x": 64.7,
+     "y": 44.98
     },
     {
      "eq": "A",
      "n": 13,
-     "x": 2.37,
-     "y": 62.08
+     "x": 63.09,
+     "y": 53.23
     },
     {
      "eq": "A",
      "n": 14,
-     "x": 2.39,
-     "y": 66.78
+     "x": 63,
+     "y": 66.25
     },
     {
      "eq": "A",
      "n": 15,
-     "x": 2.25,
-     "y": 31.26
+     "x": 63.47,
+     "y": 55.57
     },
     {
      "eq": "B",
      "n": 1,
-     "x": 44.17,
-     "y": 21.66
+     "x": 97.78,
+     "y": 24.94
     },
     {
      "eq": "B",
      "n": 2,
-     "x": 44.28,
-     "y": 31.78
+     "x": 98.2,
+     "y": 13.73
     },
     {
      "eq": "B",
      "n": 3,
-     "x": 44.36,
-     "y": 41.97
+     "x": 98.18,
+     "y": 31.99
     },
     {
      "eq": "B",
      "n": 4,
-     "x": 44.36,
-     "y": 12.41
+     "x": 97.71,
+     "y": 36.81
     },
     {
      "eq": "B",
      "n": 5,
-     "x": 43.05,
-     "y": 50.07
+     "x": 97.65,
+     "y": 49.2
     },
     {
      "eq": "B",
      "n": 6,
-     "x": 43.24,
-     "y": 9.98
+     "x": 97.6,
+     "y": 7.67
     },
     {
      "eq": "B",
      "n": 7,
-     "x": 43.79,
-     "y": 60.47
+     "x": 97.69,
+     "y": 66.35
     },
     {
      "eq": "B",
      "n": 8,
-     "x": 44.16,
-     "y": 36.41
+     "x": 97.83,
+     "y": 43.11
     },
     {
      "eq": "B",
      "n": 9,
-     "x": 44.3,
-     "y": 18.44
+     "x": 98.38,
+     "y": 18.48
     },
     {
      "eq": "B",
      "n": 10,
-     "x": 39.16,
-     "y": 1.8
+     "x": 97.95,
+     "y": 38.32
     },
     {
      "eq": "B",
      "n": 11,
-     "x": 43.62,
-     "y": 3.06
+     "x": 97.6,
+     "y": 3.12
     },
     {
      "eq": "B",
      "n": 12,
-     "x": 43.9,
-     "y": 26.15
+     "x": 98.75,
+     "y": 51.24
     },
     {
      "eq": "B",
      "n": 13,
-     "x": 44.27,
-     "y": 56.38
+     "x": 97.6,
+     "y": 57.77
     },
     {
      "eq": "B",
      "n": 14,
-     "x": 44.34,
-     "y": 66.45
+     "x": 97.63,
+     "y": 62.83
     },
     {
      "eq": "B",
      "n": 15,
-     "x": 44.27,
-     "y": 46.53
+     "x": 98.44,
+     "y": 23.11
     }
    ],
    "ballon": {
-    "x": 2.18,
-    "y": 13.14
+    "x": 97.95,
+    "y": 38.32
    },
-   "possession": "A"
+   "possession": "B"
   },
   {
    "seed": 6,
    "phase": "PORTE",
-   "temps": 302.8,
+   "temps": 301.9,
    "joueurs": [
     {
      "eq": "A",
      "n": 1,
-     "x": 67.3,
-     "y": 12.9
+     "x": 79.77,
+     "y": 12.3
     },
     {
      "eq": "A",
      "n": 2,
-     "x": 61.61,
-     "y": 18.5
-    },
-    {
-     "eq": "A",
-     "n": 3,
-     "x": 60.83,
-     "y": 18.89
-    },
-    {
-     "eq": "A",
-     "n": 4,
-     "x": 62.47,
+     "x": 78.75,
      "y": 23
     },
     {
      "eq": "A",
+     "n": 3,
+     "x": 83.5,
+     "y": 17.76
+    },
+    {
+     "eq": "A",
+     "n": 4,
+     "x": 83.73,
+     "y": 16.17
+    },
+    {
+     "eq": "A",
      "n": 5,
-     "x": 59.29,
-     "y": 63
-    },
-    {
-     "eq": "A",
-     "n": 6,
-     "x": 65.47,
-     "y": 12.04
-    },
-    {
-     "eq": "A",
-     "n": 7,
-     "x": 62.15,
+     "x": 78.57,
      "y": 27
     },
     {
      "eq": "A",
+     "n": 6,
+     "x": 81.98,
+     "y": 12.41
+    },
+    {
+     "eq": "A",
+     "n": 7,
+     "x": 83.65,
+     "y": 18.76
+    },
+    {
+     "eq": "A",
      "n": 8,
-     "x": 62.31,
+     "x": 78.66,
      "y": 25
     },
     {
      "eq": "A",
      "n": 9,
-     "x": 63.9,
-     "y": 12.52
+     "x": 82.4,
+     "y": 16.14
     },
     {
      "eq": "A",
      "n": 10,
-     "x": 58.32,
-     "y": 21.79
+     "x": 83.53,
+     "y": 16.66
     },
     {
      "eq": "A",
      "n": 11,
-     "x": 65.01,
-     "y": 13.55
+     "x": 75.32,
+     "y": 7.06
     },
     {
      "eq": "A",
      "n": 12,
-     "x": 57.2,
-     "y": 25.18
+     "x": 76.07,
+     "y": 30.1
     },
     {
      "eq": "A",
      "n": 13,
-     "x": 55.38,
-     "y": 37.79
+     "x": 73.94,
+     "y": 38.95
     },
     {
      "eq": "A",
      "n": 14,
-     "x": 53.23,
-     "y": 45.8
+     "x": 72.63,
+     "y": 47.6
     },
     {
      "eq": "A",
      "n": 15,
-     "x": 54.55,
-     "y": 37.07
+     "x": 73.62,
+     "y": 42.02
     },
     {
      "eq": "B",
      "n": 1,
-     "x": 65.07,
-     "y": 10
+     "x": 85.25,
+     "y": 12.5
     },
     {
      "eq": "B",
      "n": 2,
-     "x": 67.21,
-     "y": 12.35
-    },
-    {
-     "eq": "B",
-     "n": 3,
-     "x": 65.07,
-     "y": 7.5
-    },
-    {
-     "eq": "B",
-     "n": 4,
-     "x": 67.45,
-     "y": 7.35
-    },
-    {
-     "eq": "B",
-     "n": 5,
-     "x": 65.07,
+     "x": 85.25,
      "y": 15
     },
     {
      "eq": "B",
+     "n": 3,
+     "x": 85.25,
+     "y": 18.82
+    },
+    {
+     "eq": "B",
+     "n": 4,
+     "x": 85.95,
+     "y": 11.14
+    },
+    {
+     "eq": "B",
+     "n": 5,
+     "x": 86.61,
+     "y": 8.93
+    },
+    {
+     "eq": "B",
      "n": 6,
-     "x": 64.27,
-     "y": 13.14
+     "x": 86.53,
+     "y": 6.42
     },
     {
      "eq": "B",
      "n": 7,
-     "x": 67.61,
-     "y": 17.62
+     "x": 83.15,
+     "y": 17.06
     },
     {
      "eq": "B",
      "n": 8,
-     "x": 65.07,
-     "y": 17.5
+     "x": 86.38,
+     "y": 25.22
     },
     {
      "eq": "B",
      "n": 9,
-     "x": 63.77,
-     "y": 11.74
+     "x": 89.24,
+     "y": 17.67
     },
     {
      "eq": "B",
      "n": 10,
-     "x": 68.71,
-     "y": 28.03
+     "x": 86.35,
+     "y": 32.43
     },
     {
      "eq": "B",
      "n": 11,
-     "x": 68.17,
-     "y": 4.76
+     "x": 86.26,
+     "y": 3.87
     },
     {
      "eq": "B",
      "n": 12,
-     "x": 69.13,
-     "y": 23.5
+     "x": 86.29,
+     "y": 27.45
     },
     {
      "eq": "B",
      "n": 13,
-     "x": 67.6,
-     "y": 37.34
+     "x": 86.58,
+     "y": 40.25
     },
     {
      "eq": "B",
      "n": 14,
-     "x": 67.63,
-     "y": 42.34
+     "x": 86.55,
+     "y": 45.24
     },
     {
      "eq": "B",
      "n": 15,
-     "x": 84.86,
-     "y": 28.35
+     "x": 99.9,
+     "y": 28.94
     }
    ],
    "ballon": {
-    "x": 67.3,
-    "y": 12.9
+    "x": 82.4,
+    "y": 16.14
    },
    "possession": "A"
   },
   {
    "seed": 7,
    "phase": "RUCK",
-   "temps": 383,
+   "temps": 305.5,
    "joueurs": [
     {
      "eq": "A",
      "n": 1,
-     "x": 54.11,
-     "y": 33.14
+     "x": 48.71,
+     "y": 31.62
     },
     {
      "eq": "A",
      "n": 2,
-     "x": 55.1,
-     "y": 35.11
+     "x": 48.76,
+     "y": 38.18
     },
     {
      "eq": "A",
      "n": 3,
-     "x": 54.42,
-     "y": 41.27
+     "x": 48.63,
+     "y": 44.45
     },
     {
      "eq": "A",
      "n": 4,
-     "x": 55.32,
-     "y": 30.2
+     "x": 48.3,
+     "y": 30.94
     },
     {
      "eq": "A",
      "n": 5,
-     "x": 53.88,
-     "y": 41.19
+     "x": 50.65,
+     "y": 42.52
     },
     {
      "eq": "A",
      "n": 6,
-     "x": 55.14,
-     "y": 26.47
+     "x": 48.84,
+     "y": 27.96
     },
     {
      "eq": "A",
      "n": 7,
-     "x": 55.4,
-     "y": 41.39
+     "x": 56.6,
+     "y": 41.87
     },
     {
      "eq": "A",
      "n": 8,
-     "x": 54.55,
-     "y": 35.05
+     "x": 56.1,
+     "y": 43.97
     },
     {
      "eq": "A",
      "n": 9,
-     "x": 56.55,
-     "y": 8.13
+     "x": 55.6,
+     "y": 42.57
     },
     {
      "eq": "A",
      "n": 10,
-     "x": 52.23,
-     "y": 33.97
+     "x": 49.77,
+     "y": 35.38
     },
     {
      "eq": "A",
      "n": 11,
-     "x": 62.73,
-     "y": 5.35
+     "x": 44.8,
+     "y": 11.57
     },
     {
      "eq": "A",
      "n": 12,
-     "x": 63.05,
-     "y": 8.83
+     "x": 48.18,
+     "y": 27.57
     },
     {
      "eq": "A",
      "n": 13,
-     "x": 59.55,
-     "y": 25.63
+     "x": 44.85,
+     "y": 30.96
     },
     {
      "eq": "A",
      "n": 14,
-     "x": 58.97,
-     "y": 33.14
+     "x": 47.6,
+     "y": 63
     },
     {
      "eq": "A",
      "n": 15,
-     "x": 53.35,
-     "y": 18.87
+     "x": 46.3,
+     "y": 26.26
     },
     {
      "eq": "B",
      "n": 1,
-     "x": 66.51,
-     "y": 25
+     "x": 55.62,
+     "y": 36.4
     },
     {
      "eq": "B",
      "n": 2,
-     "x": 64.22,
-     "y": 31.22
+     "x": 57.69,
+     "y": 33.86
     },
     {
      "eq": "B",
      "n": 3,
-     "x": 63.61,
-     "y": 49.06
+     "x": 53.87,
+     "y": 44.71
     },
     {
      "eq": "B",
      "n": 4,
-     "x": 62.4,
-     "y": 10.96
+     "x": 57.92,
+     "y": 29.45
     },
     {
      "eq": "B",
      "n": 5,
-     "x": 62.57,
-     "y": 15.64
+     "x": 55.79,
+     "y": 49.35
     },
     {
      "eq": "B",
      "n": 6,
-     "x": 63.93,
-     "y": 48.43
+     "x": 58.6,
+     "y": 25.07
     },
     {
      "eq": "B",
      "n": 7,
-     "x": 64.4,
-     "y": 48.14
+     "x": 57.58,
+     "y": 55.83
     },
     {
      "eq": "B",
      "n": 8,
-     "x": 66.3,
-     "y": 29.3
+     "x": 45.94,
+     "y": 44.42
     },
     {
      "eq": "B",
      "n": 9,
-     "x": 67.04,
-     "y": 26.52
+     "x": 61.6,
+     "y": 42.57
     },
     {
      "eq": "B",
      "n": 10,
-     "x": 69.56,
-     "y": 20.56
+     "x": 58.54,
+     "y": 20.17
     },
     {
      "eq": "B",
      "n": 11,
-     "x": 62.55,
-     "y": 8.13
+     "x": 66.73,
+     "y": 12.72
     },
     {
      "eq": "B",
      "n": 12,
-     "x": 62.05,
-     "y": 9.53
+     "x": 53.98,
+     "y": 48.04
     },
     {
      "eq": "B",
      "n": 13,
-     "x": 70.61,
-     "y": 42.7
+     "x": 55.93,
+     "y": 58.1
     },
     {
      "eq": "B",
      "n": 14,
-     "x": 73.96,
-     "y": 43.36
+     "x": 58.6,
+     "y": 70
     },
     {
      "eq": "B",
      "n": 15,
-     "x": 72.71,
-     "y": 34.36
+     "x": 55.1,
+     "y": 43.27
     }
    ],
    "ballon": {
-    "x": 62.55,
-    "y": 8.13
+    "x": 55.6,
+    "y": 42.57
    },
-   "possession": "B"
+   "possession": "A"
   },
   {
    "seed": 8,
    "phase": "MELEE",
-   "temps": 487.7,
+   "temps": 490.1,
    "joueurs": [
     {
      "eq": "A",
      "n": 1,
-     "x": 43.93,
-     "y": 31.28
+     "x": 41.8,
+     "y": 21.51
     },
     {
      "eq": "A",
      "n": 2,
-     "x": 47.11,
-     "y": 37.72
+     "x": 42.21,
+     "y": 21.88
     },
     {
      "eq": "A",
      "n": 3,
-     "x": 45.47,
-     "y": 40.13
+     "x": 38.21,
+     "y": 35.07
     },
     {
      "eq": "A",
      "n": 4,
-     "x": 41.86,
-     "y": 28.67
+     "x": 42.26,
+     "y": 21.22
     },
     {
      "eq": "A",
      "n": 5,
-     "x": 43.52,
-     "y": 42.19
+     "x": 41.84,
+     "y": 20.76
     },
     {
      "eq": "A",
      "n": 6,
-     "x": 43.23,
-     "y": 26.67
+     "x": 42.26,
+     "y": 15.96
     },
     {
      "eq": "A",
      "n": 7,
-     "x": 43.56,
-     "y": 46.3
+     "x": 37.74,
+     "y": 35.67
     },
     {
      "eq": "A",
      "n": 8,
-     "x": 45.14,
-     "y": 37.75
+     "x": 38.75,
+     "y": 29.11
     },
     {
      "eq": "A",
      "n": 9,
-     "x": 48.74,
-     "y": 35.15
+     "x": 42.56,
+     "y": 23.28
     },
     {
      "eq": "A",
      "n": 10,
-     "x": 33.54,
-     "y": 28.47
+     "x": 34.01,
+     "y": 27.97
     },
     {
      "eq": "A",
      "n": 11,
-     "x": 30.24,
-     "y": 13
+     "x": 32.55,
+     "y": 17.2
     },
     {
      "eq": "A",
      "n": 12,
-     "x": 37.94,
-     "y": 24.71
+     "x": 31.69,
+     "y": 34.72
     },
     {
      "eq": "A",
      "n": 13,
-     "x": 40.22,
-     "y": 39.1
+     "x": 30.47,
+     "y": 46.94
     },
     {
      "eq": "A",
      "n": 14,
-     "x": 41.65,
-     "y": 53.05
+     "x": 27.43,
+     "y": 59.17
     },
     {
      "eq": "A",
      "n": 15,
-     "x": 38.07,
-     "y": 37.48
+     "x": 19.81,
+     "y": 35
     },
     {
      "eq": "B",
      "n": 1,
-     "x": 50.07,
-     "y": 33.23
+     "x": 45.03,
+     "y": 27.43
     },
     {
      "eq": "B",
      "n": 2,
-     "x": 50.34,
-     "y": 37.75
+     "x": 43.91,
+     "y": 30
     },
     {
      "eq": "B",
      "n": 3,
-     "x": 50.37,
-     "y": 39.07
+     "x": 46.55,
+     "y": 30.61
     },
     {
      "eq": "B",
      "n": 4,
-     "x": 50.83,
-     "y": 30.32
+     "x": 46.21,
+     "y": 27.14
     },
     {
      "eq": "B",
      "n": 5,
-     "x": 50.92,
-     "y": 36.29
+     "x": 43.8,
+     "y": 32.05
     },
     {
      "eq": "B",
      "n": 6,
-     "x": 51.34,
-     "y": 36.15
+     "x": 45.69,
+     "y": 26.93
     },
     {
      "eq": "B",
      "n": 7,
-     "x": 52.23,
-     "y": 42.17
+     "x": 46.37,
+     "y": 56.84
     },
     {
      "eq": "B",
      "n": 8,
-     "x": 52.34,
-     "y": 37.75
+     "x": 45.17,
+     "y": 28.75
     },
     {
      "eq": "B",
      "n": 9,
-     "x": 49.84,
-     "y": 35.15
+     "x": 41.79,
+     "y": 35.38
     },
     {
      "eq": "B",
      "n": 10,
-     "x": 56.24,
-     "y": 30.75
+     "x": 47.85,
+     "y": 38.94
     },
     {
      "eq": "B",
      "n": 11,
-     "x": 56.24,
-     "y": 13
+     "x": 47.31,
+     "y": 27.07
     },
     {
      "eq": "B",
      "n": 12,
-     "x": 56.24,
-     "y": 22.75
+     "x": 48.56,
+     "y": 35.47
     },
     {
      "eq": "B",
      "n": 13,
-     "x": 57.9,
-     "y": 36.18
+     "x": 44.99,
+     "y": 41.16
     },
     {
      "eq": "B",
      "n": 14,
-     "x": 58.39,
-     "y": 51.74
+     "x": 46.83,
+     "y": 44.99
     },
     {
      "eq": "B",
      "n": 15,
-     "x": 58.04,
-     "y": 36.71
+     "x": 52.39,
+     "y": 33.25
     }
    ],
    "ballon": {
-    "x": 48.74,
-    "y": 35.15
+    "x": 42.56,
+    "y": 23.28
    },
    "possession": "A"
   }
