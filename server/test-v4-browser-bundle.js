@@ -35,10 +35,11 @@ test('même résultat que sous Node (déterminisme navigateur / serveur)', () =>
   assert.strictEqual(pos(nav), pos(srv));
 });
 
-test('index.html charge le bundle ; main.js : LEGACY par défaut, GOAP seulement sur ?ai=goap ou réglage', () => {
+test('index.html charge le bundle ; main.js : GOAP par défaut, LEGACY seulement sur ?ai=legacy ou réglage', () => {
   assert.ok(lire('docs/index.html').includes('<script src="rugby-ai.js"></script>'));
   const m = lire('docs/js/main.js');
   assert.ok(m.includes("get('ai')") && m.includes('cfgAvecIA(configMatch)') && m.includes("'rugbyManager.aiMode'"));
+  assert.ok(m.includes("!== 'legacy'") && m.includes("!== 'LEGACY'"), 'GOAP par défaut');
 });
 test('accueil : case « Joueurs IA individuels » présente et branchée', () => {
   assert.ok(lire('docs/index.html').includes('id="chkIAAgents"'));

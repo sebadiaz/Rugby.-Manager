@@ -61,16 +61,16 @@
   // Chargée de façon asynchrone au démarrage ; si le chargement échoue (ex.
   // ouverture en file://), on garde le comportement par défaut.
   let configMatch = null;
-  // Mode d'IA (RM4-G11) : LEGACY par défaut. « ?ai=goap » dans l'adresse (ou localStorage
-  // 'rugbyManager.aiMode' = 'GOAP') fait jouer les 30 agents individuels (expérimental).
+  // Mode d'IA (RM4-G11) : les 30 agents individuels (GOAP) sont le mode PAR DÉFAUT. « ?ai=legacy » dans l'adresse
+  // (ou localStorage 'rugbyManager.aiMode' = 'LEGACY', case de l'accueil décochée) rétablit l'ancien moteur.
   function modeIAgoap() {
     try {
       const q = new URLSearchParams(location.search).get('ai');
-      if (q) return q.toLowerCase() === 'goap';
-      return localStorage.getItem('rugbyManager.aiMode') === 'GOAP';
-    } catch (e) { return false; }
+      if (q) return q.toLowerCase() !== 'legacy';
+      return localStorage.getItem('rugbyManager.aiMode') !== 'LEGACY';
+    } catch (e) { return true; }
   }
-  // Case à cocher de l'accueil : mémorise le choix (localStorage) ; « ?ai=goap » reste prioritaire.
+  // Case à cocher de l'accueil : mémorise le choix (localStorage) ; « ?ai=legacy » / « ?ai=goap » restent prioritaires.
   (function brancherCaseIA() {
     const c = document.getElementById('chkIAAgents');
     if (!c) return;
