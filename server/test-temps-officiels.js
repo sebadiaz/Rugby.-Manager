@@ -54,7 +54,7 @@ test('chaque coup d\'envoi suit un coup de sifflet de l\'arbitre, une fois tous 
   assert.ok(total >= 18);
 });
 
-test('le coup de sifflet dure un temps réel (≥ 1,2 s de jeu) ; les joueurs ne font que finir de se placer (≤ 1,2 m)', () => {
+test('le coup de sifflet dure un temps réel (≥ 1,2 s de jeu) ; les joueurs ne font que finir de se placer, l\'équipe qui botte prend son élan (≤ 2,6 m)', () => {
   const m = new MatchEngine(2, 4800);
   let pasSifflet = 0, positions = null, deplacement = 0, mesures = 0;
   for (let i = 0; i < 40000 && mesures < 3; i++) {
@@ -69,7 +69,8 @@ test('le coup de sifflet dure un temps réel (≥ 1,2 s de jeu) ; les joueurs ne
     }
   }
   assert.strictEqual(mesures, 3, 'trois coups de sifflet observés (ouverture comprise)');
-  assert.ok(deplacement <= 1.25, `les joueurs bougent de ${deplacement.toFixed(2)} m pendant le sifflet`);
+  // 2,6 m (et non 1,25 m) : dans la dernière seconde avant la frappe, la ligne de chasse prend son élan sans dépasser le ballon.
+  assert.ok(deplacement <= 2.6, `les joueurs bougent de ${deplacement.toFixed(2)} m pendant le sifflet`);
 });
 
 test('le chronomètre ne démarre qu\'au coup d\'envoi d\'ouverture : 0:00 pendant le placement et le sifflet', () => {
