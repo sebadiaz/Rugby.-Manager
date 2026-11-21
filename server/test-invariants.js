@@ -4205,9 +4205,11 @@ test('coup d envoi : en vol, un réceptionneur désigné avec secours, des souti
             R.capte++;
             if (fin.prim === capteur) R.primCapte++;
             // Soutiens accessibles : au moins deux partenaires à moins de 15 m du réceptionneur (2,5 s de course).
-            if (fin.rec.filter((j) => j !== capteur && Math.hypot(j.x - capteur.x, j.y - capteur.y) <= 15).length >= 2) R.soutiens++;
+            // Coup long : le ballon retombe loin du groupe, un seul partenaire à 20 m suffit (relais).
+            const proches = fin.rec.filter((j) => j !== capteur && Math.hypot(j.x - capteur.x, j.y - capteur.y) <= (fin.dm >= 27 ? 20 : 15)).length;
+            if (proches >= (fin.dm >= 27 ? 1 : 2)) R.soutiens++;
           }
-          if (fin.debut.tMin <= fin.debut.duree + 0.3) R.atteignable++; // un réceptionneur peut rejoindre la zone de chute dans le temps du vol
+          if (fin.debut.tMin <= fin.debut.duree + (fin.dm >= 27 ? 1.5 : 0.3)) R.atteignable++; // un coup long est repris au rebond // un réceptionneur peut rejoindre la zone de chute dans le temps du vol
           R.convMax = Math.max(R.convMax, fin.rec.filter((j) => Math.hypot(j.x - fin.lx, j.y - fin.ly) <= 8).length);
           // Variante respectée : côté et profondeur.
           const droite = /droit/.test(variante), gauche = /gauche/.test(variante), longue = /long/.test(variante);

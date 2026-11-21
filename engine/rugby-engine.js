@@ -710,7 +710,8 @@
   const ENVOI_RECEVEUR = { 1: [15, 12], 2: [22, 12], 3: [55, 12], 4: [18, 18], 5: [50, 18], 6: [8, 12], 7: [62, 12], 8: [35, 19], 9: [43, 23],
     10: [38, 28], 11: [4, 34], 12: [28, 22], 13: [59, 23], 14: [66, 34], 15: [35, 40] };
   // Aptitude à capter un ballon haut (saut, mains, placement) : sert à désigner le réceptionneur et le contestataire principal.
-  const APT_AERIENNE = { 1: 0.15, 2: 0.15, 3: 0.15, 4: 0.9, 5: 0.9, 6: 0.6, 7: 0.6, 8: 0.7, 9: 0.3, 10: 0.55, 11: 0.85, 12: 0.4, 13: 0.4, 14: 0.85, 15: 1 };
+  // Aptitude aérienne INDIVIDUELLE (0-1) : mains sûres (adresse), saut (touche), lecture (décision) ; pas de table par poste.
+  const aptAerienne = (j) => Math.max(0, Math.min(1, (0.4 * (j.adresse || 0) + 0.35 * (j.touche || 0) + 0.25 * (j.decision || 0)) / 100 + 0.12));
   // Variantes d'engagement : zone visée (largeur y, profondeur dm depuis le point de frappe) ; `cote` = côté du groupe de poursuite
   // (+1 droite comme dans le cahier, -1 gauche, 0 centre) ; `haute` = cloche haute contestable.
   const VARIANTES_ENVOI = {
@@ -1519,7 +1520,7 @@
     // DISPOSITIF DU COUP D'ENVOI ET DU RENVOI AUX 22 M (même code : seul le point de frappe `kx` change). Équipe qui REÇOIT : positions de
     // départ du cahier des charges (ENVOI_RECEVEUR) — deux groupes de réception (4 à gauche, 5 à droite, avec leurs soutiens), le 8 et le 12
     // au centre, le 9 et le 10 derrière, les centres écartés, les ailiers et le 15 en couverture profonde ; tous à au moins 10 m de la
-    // ligne de frappe (loi 12). Elle ne connaît pas la cible : sa réception s'adapte ensuite à ce qu'elle lit (cf. _adapterReception).
+    // ligne de frappe (loi 12). Elle ne connaît pas la cible : chacun décide ensuite seul, en vol (cf. _comportementsVolEnvoi).
     _formationReception(rec, kx, dirKick, avaitEquipes) {
       const clampX = (x) => Math.max(0.5, Math.min(LONGUEUR - 0.5, x));
       const clampY = (y) => Math.max(1.5, Math.min(LARGEUR - 1.5, y));
@@ -1633,29 +1634,6 @@
       }
     }
 
-    // LECTURE PAR LES RECEVEURS. Ils voient comment l'équipe qui botte s'est disposée : si son groupe de poursuite (3, 4, 5, 7, 13) est
-    // porté d'un côté, le ballon sera disputé de ce côté et leurs groupes se déplacent vers lui sans reconstruire leur formation : chacun
-    // se rapproche du centre du groupe adverse (contraction, qui conserve l'ordre et l'espacement des joueurs : aucune superposition,
-    // aucun joueur plaqué contre la touche). Plein effet pour les avants et le milieu, partiel pour les ailiers et le 15. Chacun reste
-    // à au moins 10 m du point de frappe. Renvoie le décalage perçu du dispositif (0 si rien à lire).
-    _adapterReception(equipeKick, kx, dirKick, avaitEquipes) {
-      const kicking = (equipeKick === 'A' ? this.equipeA : this.equipeB).filter((j) => j.sinBin <= 0 && j._cibleEnvoi && GROUPE_POURSUITE.includes(j.numero) && j !== this.porteur);
-      if (!kicking.length) return 0;
-      const cy = kicking.reduce((a, j) => a + j._cibleEnvoi.y, 0) / kicking.length;
-      const sigma = Math.sqrt(kicking.reduce((a, j) => a + (j._cibleEnvoi.y - cy) ** 2, 0) / kicking.length);
-      if (sigma > 12) return 0; // poursuivants dispersés : rien à lire
-      const perçu = (cy - LARGEUR / 2) * 0.75;
-      if (Math.abs(perçu) < 1) return perçu;
-      for (const j of (equipeKick === 'A' ? this.equipeB : this.equipeA)) {
-        if (j.sinBin > 0 || !j._cibleEnvoi) continue;
-        const c = (j.numero === 11 || j.numero === 14 || j.numero === 15) ? 0.15 : 0.35;
-        const y = Math.max(3, Math.min(LARGEUR - 3, cy + (j._cibleEnvoi.y - cy) * (1 - c)));
-        j._cibleEnvoi = { x: j._cibleEnvoi.x, y };
-        if (!avaitEquipes) j.y = y;
-      }
-      return perçu;
-    }
-
     _nouvelleManche(equipeReceptrice, xCentre = LONGUEUR / 2) {
       // Où le ballon est-il AFFICHÉ au moment de la reprise (P2-84) ? Il revient
       // de là jusqu'au botteur, à vue, pendant la mise en place (cf.
@@ -1762,10 +1740,8 @@
       this.yCoupEnvoi = ky;
       // 4. Son équipe se dispose selon la variante : le groupe de poursuite se déplace du côté visé (miroir à gauche, resserré au centre).
       this._formationBotteur(equipeKick, kickeur, xCentre, ky, dirKick, avaitEquipes, cible.variante);
-      // 5. La réception LIT ce dispositif et déplace ses groupes en conséquence, sans reconstruire sa formation. Le botteur peut en
-      // profiter : une fois sur cinq il choisit à nouveau, sur le dispositif décalé, et peut donc changer de variante (feinte).
-      const decalage = this._adapterReception(equipeKick, xCentre, dirKick, avaitEquipes);
-      if (Math.abs(decalage) > 3 && !this.cfg.varianteEnvoi && this.rng() < 0.2) cible = this._choisirCibleCoupEnvoi(kickeur, xCentre, LARGEUR / 2, dirKick, equipeKick);
+      // 5. Rien d'autre n'est imposé : les positions ci-dessus ne sont que des points de départ. La réception se lit en vol,
+      // joueur par joueur (cf. _comportementsVolEnvoi).
       this.varianteEnvoi = cible.variante;
       this._planEnvoi = null;
       // Un coup d'envoi mal frappé qui ne franchit pas les 10 m est sanctionné par une mêlée au centre (loi 12) ; il découle de
@@ -1825,16 +1801,11 @@
     // décide SEUL de sa course d'après le point de chute et le temps restant, sa vitesse et sa distance, son aptitude à jouer un ballon
     // haut et sa référence de poste. Les rangs (« suis-je le mieux placé ? ») se calculent avec ce que chacun voit de ses partenaires,
     // par la même règle connue de tous (note, puis numéro le plus bas) : aucune affectation de rôle par un coordinateur d'équipe.
-    //  RÉCEPTION : un seul réceptionneur prioritaire (le mieux noté) annonce « J'ai ! » et attaque le ballon ; un secours se tient derrière
-    //  lui et reprend la main si le réceptionneur n'arrive plus (réévalué à chaque pas, avec hystérésis) ; les soutiens proches (piliers,
-    //  talonneur, deuxième ligne, flankers, 8) se placent autour du point de chute ; le 9 se place derrière pour récupérer ou distribuer, le
-    //  10 se rend disponible pour dégager, les centres couvrent l'intermédiaire, les ailiers et le 15 gardent la profondeur (ils reculent
-    //  derrière un coup long). Les autres ne convergent PAS : ils tiennent leur place en se décalant un peu vers le ballon.
-    //  POURSUITE : le meilleur des deux sauteurs (4, 5) est le contestataire principal (« Chasse ! ») ; l'autre presse, un peu en retrait ;
-    //  le 7 vient intervenir légalement à la réception ou au plaquage ; les piliers et le talonneur arrivent en deuxième vague ; le 6 et le 8
-    //  tiennent la ligne ; les centres poursuivent à l'intérieur et à l'extérieur ; les ailiers ferment les couloirs ; le 9, le 10 (le
-    //  botteur) et le 15 couvrent un retour au pied. Chacun règle son allure pour ARRIVER à l'instant de la retombée, jamais avant
-    //  (obstruction) et sans s'approcher à moins de 2,4 m du point de chute avant que le ballon ne l'atteigne, hors le contestataire principal.
+    //  AUCUN RÔLE PAR NUMÉRO : les positions de départ sont de simples informations de placement. En vol, chaque joueur lit la trajectoire
+    //  (point de chute, temps restant) et décide seul d'après SES caractéristiques (vitesse, mains, saut, passe, décision, puissance) et ce
+    //  qu'il voit de ses coéquipiers : se proposer au ballon (« J'ai ! » / « Chasse ! », repris par un autre si son jugement est nettement
+    //  meilleur), soutenir, relayer, presser ou couvrir un retour au pied. Chacun règle son allure pour ARRIVER à l'instant de la retombée,
+    //  jamais avant (obstruction) ; il s'écarte de ceux qui sont déjà plus près (pas de meute).
     _comportementsVolEnvoi(dt, duree) {
       const lx = this.ballonCibleX, ly = this.ballonCibleY, kx = this.xCoupEnvoi, dir = this.dirCoupEnvoi;
       const tRest = Math.max(0.15, duree - this.timerPhase);
@@ -1848,64 +1819,78 @@
       };
       // Allure qui fait arriver au bon moment : distance / (temps restant + retard), bornée.
       const allure = (j, tx, ty, retard, frac) => Math.max(2.2, Math.min(vitesseMs(j) * frac, Math.hypot(tx - j.x, ty - j.y) / (tRest + retard)));
+      // Mémoire des appels ENTENDUS : « J'ai ! » (équipe qui reçoit) et « Chasse ! » (équipe qui botte). Ce n'est pas une affectation : un
+      // joueur ne l'annonce que s'il se juge lui-même le mieux placé parmi ceux qu'il voit, et tout autre peut la reprendre si son propre
+      // jugement est nettement meilleur (la trajectoire change, un autre est arrivé).
       const P = this._planEnvoi || (this._planEnvoi = { primaire: null, secours: null, principal: null });
-      // --- RÉCEPTION ---
+      const cotePerso = (j) => (j.y < ly ? -1 : 1);
+      // Rang d'un joueur parmi ses coéquipiers du même côté du point de chute : il s'écarte de ceux qui sont déjà plus près (pas de
+      // superposition, pas de meute).
+      const rangCote = (j, equipe, dist) => equipe.filter((k) => k !== j && cotePerso(k) === cotePerso(j) && dist(k) < dist(j)).length;
+      // --- RÉCEPTION : chacun juge sa marge d'arrivée (temps restant - temps de course) et son aptitude aérienne.
       const tArr = (j) => Math.hypot(lx - j.x, ly - j.y) / (vitesseMs(j) * 0.95);
-      const note = (j) => (tRest - tArr(j)) + 1.2 * (APT_AERIENNE[j.numero] || 0.3)
-        + (longue ? ([15, 11, 14].includes(j.numero) ? 0.6 : 0) : ([4, 5, 6, 7, 8].includes(j.numero) ? 0.5 : 0));
-      const classes = rec.slice().sort((a, b) => note(b) - note(a) || a.numero - b.numero);
-      if (classes.length) {
-        let prim = P.primaire && classes.includes(P.primaire) ? P.primaire : classes[0];
-        if (prim !== classes[0] && note(classes[0]) > note(prim) + 0.4) prim = classes[0]; // hystérésis : il ne change que si un autre devient nettement meilleur
+      const dLand = (j) => Math.hypot(lx - j.x, ly - j.y);
+      const note = (j) => (tRest - tArr(j)) + 1.2 * aptAerienne(j);
+      if (rec.length) {
+        const classes = rec.slice().sort((a, b) => note(b) - note(a) || a.numero - b.numero);
+        let prim = P.primaire && rec.includes(P.primaire) ? P.primaire : null;
+        const meilleur = classes[0];
+        if (!prim || (meilleur !== prim && note(meilleur) > note(prim) + 0.4)) prim = meilleur;
         const second = classes.find((j) => j !== prim) || null;
         if (prim !== P.primaire) this.log('APPEL_ENVOI', prim.team, `Le n°${prim.numero} de l'equipe ${prim.team} annonce « J'ai ! » sur le ballon`, { joueur: prim.numero, appel: 'J_AI' });
         P.primaire = prim; P.secours = second;
         for (const j of rec) {
-          const proche = Math.hypot(lx - j.x, ly - j.y) <= 16;
-          const cote = j.y < ly ? -1 : 1;
-          const tenir = () => vers(j, j.x, j.y + 0.3 * (ly - j.y), vitesseMs(j) * 0.6);
-          const aller = (tx, ty) => vers(j, tx, ty, allure(j, tx, ty, 0, 0.9));
+          const d = dLand(j), profondeur = (j.x - lx) * dir; // > 0 : derrière le point de chute vu de la réception
+          const allureJ = (tx, ty) => allure(j, tx, ty, 0, 0.9);
+          const s = cotePerso(j);
           if (j === prim) { vers(j, lx, ly, vitesseMs(j)); continue; }
-          if (j === second) { aller(lx + dir * 3.5, ly + (ly < milieu ? 3 : -3)); continue; }
-          switch (j.numero) {
-            case 1: case 3: if (proche) aller(lx + dir * 0.4, ly + (j.numero === 1 ? -1.5 : 1.5)); else tenir(); break;
-            case 2: if (proche) aller(lx + dir * 2.0, ly); else tenir(); break;
-            case 4: case 5: if (proche) aller(lx + dir * 1.8, ly + (j.numero === 4 ? -2 : 2)); else tenir(); break;
-            case 6: case 7: if (proche) aller(lx + dir * 0.5, ly + cote * 5.5); else tenir(); break;
-            case 8: if (proche) aller(lx + dir * 3, ly + 2); else tenir(); break;
-            case 9: aller(lx + dir * 6, ly); break;
-            case 10: aller(lx + dir * 10, ly + (ly < milieu ? 7 : -7)); break;
-            case 12: case 13: aller(lx + dir * 8, ly + cote * 10); break;
-            case 11: case 14: aller(kx + dir * Math.max(28, dm + 2), j.y + 0.35 * (ly - j.y)); break;
-            case 15: aller(kx + dir * Math.max(38, dm + 6), milieu + (ly - milieu) * 0.4); break;
-            default: tenir();
+          // Trois envies, évaluées avec ses propres caractéristiques : soutenir le sauteur, relayer le jeu, couvrir le fond.
+          const envieSoutien = d <= 18 ? (1 - d / 18) * (0.5 + 0.5 * (j.puissance || 50) / 100) : 0;
+          const envieRelais = (d <= 26 && profondeur > -2 && profondeur < 16) ? 0.55 * ((j.passe || 40) + (j.decision || 40)) / 200 * (1 - Math.abs(profondeur - 7) / 20) : 0;
+          const envieCouverture = profondeur >= 6 ? Math.min(1, profondeur / 14) * (0.5 + 0.5 * ((j.vitesse || 50) + (j.jeuPied || 20)) / 200) : 0;
+          const envieSecours = j === second ? 0.75 : 0;
+          const mieux = Math.max(envieSoutien, envieRelais, envieCouverture, envieSecours);
+          if (mieux <= 0.05) { vers(j, j.x, j.y + 0.3 * (ly - j.y), vitesseMs(j) * 0.6); continue; } // rien à faire : il tient sa place en se décalant vers le ballon
+          if (mieux === envieSecours) { const tx = lx + dir * 3.5, ty = ly - s * 3; vers(j, tx, ty, allureJ(tx, ty)); continue; }
+          if (mieux === envieSoutien) {
+            const r = rangCote(j, rec, dLand);
+            const tx = lx + dir * (0.6 + 1.2 * r), ty = ly + s * (2.2 + 1.8 * r);
+            vers(j, tx, ty, allureJ(tx, ty)); continue;
           }
+          if (mieux === envieRelais) {
+            const r = rangCote(j, rec, dLand);
+            const tx = lx + dir * (5 + 2 * r), ty = ly + s * (4.5 + 2 * r);
+            vers(j, tx, ty, allureJ(tx, ty)); continue;
+          }
+          // Couverture : il se tient derrière le point de chute, assez loin pour jouer un retour au pied, et suit le ballon latéralement.
+          const tx = lx + dir * Math.max(6, Math.min(profondeur, 16)), ty = j.y + 0.35 * (ly - j.y);
+          vers(j, tx, ty, allureJ(tx, ty) * 0.9);
         }
       }
-      // --- POURSUITE ---
-      const noteC = (j) => (tRest - this._tempsChasse(Math.hypot(lx - j.x, ly - j.y))) + (APT_AERIENNE[j.numero] || 0.3);
-      const sauteurs = kicking.filter((j) => j.numero === 4 || j.numero === 5).sort((a, b) => noteC(b) - noteC(a) || a.numero - b.numero);
-      let principal = P.principal && sauteurs.includes(P.principal) ? P.principal : sauteurs[0] || null;
-      if (sauteurs[0] && principal !== sauteurs[0] && noteC(sauteurs[0]) > noteC(principal) + 0.4) principal = sauteurs[0];
+      // --- POURSUITE : chacun juge s'il peut arriver à temps (sa marge), et son aptitude aérienne.
+      const marge = (j) => tRest - this._tempsChasse(dLand(j));
+      const noteC = (j) => marge(j) + 1.2 * aptAerienne(j);
+      const ligne = kicking.filter((j) => marge(j) >= -0.5);
+      const classesC = ligne.slice().sort((a, b) => noteC(b) - noteC(a) || a.numero - b.numero);
+      let principal = P.principal && classesC.includes(P.principal) ? P.principal : null;
+      if (classesC[0] && (!principal || (classesC[0] !== principal && noteC(classesC[0]) > noteC(principal) + 0.4))) principal = classesC[0];
       if (principal && principal !== P.principal) this.log('APPEL_ENVOI', principal.team, `Le n°${principal.numero} de l'equipe ${principal.team} annonce « Chasse ! » et conteste le ballon`, { joueur: principal.numero, appel: 'CHASSE' });
       P.principal = principal;
       for (const j of kicking) {
-        const cote = ly < milieu ? -1 : 1;
-        // Allure majorée de 35 % : un joueur lancé à l'arrêt met du temps à atteindre sa vitesse (ACCELERATION). Le contestataire principal court à fond.
+        // Allure majorée de 35 % : un joueur lancé à l'arrêt met du temps à atteindre sa vitesse (ACCELERATION). Le contestataire court à fond.
         const courir = (tx, ty, retard, fond) => vers(j, tx, ty, fond ? vitesseMs(j) * 0.9 : Math.min(vitesseMs(j) * 0.9, allure(j, tx, ty, retard, 0.85) * 1.35));
-        if (j === this.porteur) { courir(kx + dir * Math.max(-6, dm - 22), 0.3 * ly + 0.7 * milieu, 0.5); continue; } // le botteur couvre
-        switch (j.numero) {
-          case 4: case 5: if (j === principal) courir(lx, ly, 0.2, true); else courir(lx - dir * 3.2, ly + cote * -2.5, 0.4); break;
-          case 7: courir(lx - dir * 2.4, ly + cote * 2.6, 0.5); break;
-          case 3: courir(lx - dir * 6, ly + 2.5, 0.3); break;
-          case 2: courir(lx - dir * 7.5, ly - 2.5, 0.3); break;
-          case 1: courir(lx - dir * 9, ly + (j.y < ly ? -5 : 5), 0.3); break;
-          case 6: case 8: courir(lx - dir * 5.5, j.y + 0.4 * (ly - j.y), 0.3); break;
-          case 12: case 13: courir(lx - dir * 4.5, ly + (j.y < ly ? -7 : 7), 0.3); break;
-          case 11: case 14: courir(lx - dir * 5, j.y + 0.15 * (ly - j.y), 0.3); break;
-          case 9: courir(kx + dir * Math.max(-8, dm - 16), 0.5 * ly + 0.5 * j.y, 0.3); break;
-          case 15: courir(kx + dir * Math.max(-12, dm - 30), milieu + (ly - milieu) * 0.3, 0.3); break;
-          default: courir(lx - dir * 6, ly, 0.3);
+        const s = ly < milieu ? -1 : 1, sj = cotePerso(j);
+        if (j === principal) { courir(lx, ly, 0.2, true); continue; }
+        // Il presse si son temps de course le permet et s'il fait partie des mieux placés qu'il voit (au plus quatre) ; sinon il couvre.
+        const meilleursQueMoi = kicking.filter((k) => k !== j && marge(k) > marge(j)).length;
+        if (marge(j) >= -1.2 && meilleursQueMoi < 5) {
+          const r = rangCote(j, kicking, dLand);
+          const profPression = 2.4 + 2.2 * Math.min(r + (meilleursQueMoi > 0 ? 1 : 0), 3);
+          courir(lx - dir * profPression, ly + sj * (2.2 + 1.6 * r), 0.3);
+        } else {
+          // Couverture d'un retour au pied : il tient derrière sa ligne de poursuite, d'autant plus loin qu'il est lent, et suit le ballon.
+          const recul = 8 + 14 * (1 - Math.max(0, Math.min(100, j.vitesse)) / 100);
+          courir(lx - dir * recul, (j.y + ly) / 2 + 0 * s, 0.3);
         }
       }
     }
