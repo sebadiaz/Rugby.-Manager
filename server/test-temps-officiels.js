@@ -23,7 +23,12 @@ function observerEnvois(graine, duree = 4800, config) {
   m._tickCoupEnvoi = (dt) => {
     const enPlaceAvant = m.envoiEnPlace;
     let pire = 0;
-    for (const j of [...m.equipeA, ...m.equipeB]) if (j._cibleEnvoi) pire = Math.max(pire, Math.hypot(j._cibleEnvoi.x - j.x, j._cibleEnvoi.y - j.y));
+    // L'équipe qui botte prend son élan dans la dernière seconde avant la frappe (elle avance vers la ligne du ballon sans la
+    // dépasser, vérifié plus bas) : pour elle on ne compte que l'écart LATÉRAL à sa place.
+    for (const j of [...m.equipeA, ...m.equipeB]) if (j._cibleEnvoi) {
+      const dy = j._cibleEnvoi.y - j.y, dx = j._cibleEnvoi.x - j.x;
+      pire = Math.max(pire, j.team === m.possession ? Math.abs(dy) : Math.hypot(dx, dy));
+    }
     const sifflet = !!m._sifflet;
     const horloge = m.tempsMatch;
     const r = tickOriginal(dt);
