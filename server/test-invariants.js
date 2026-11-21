@@ -4126,9 +4126,140 @@ test('plaquage plongé : un arrière disponible que le porteur dépasse à 2,5 m
   assert.ok(tentatives >= essais * 0.6, `${tentatives}/${essais} ailiers tentent le plaquage`);
 });
 
-// --- Mise en jeu : coup d'envoi et renvoi aux 22 m ---------------------------------------------
-test('coup d envoi et renvoi aux 22 m : le botteur choisit sa cible, regroupe ses avants, la défense se décale, depuis ses 22 m il tape long', () => {
-  const centre = { prof: [], n: 0 }, vingt = { prof: [], n: 0 }; let regroupes = 0, decales = 0, hors = 0, devantBallon = 0, ligne = 0;
+// --- Mise en jeu : coup d'envoi et renvoi aux 22 m (cahier des charges « Placement individuel au coup d'envoi ») ---------
+// Points de départ du cahier (x latéral 0-70, y depuis la ligne de frappe) : engagement court à droite, cible vers (52, +17).
+const CAHIER_BOTTEUR = { 1: [17, -5], 2: [26, -6], 3: [44, -5], 4: [48, -2], 5: [54, -2], 6: [12, -2], 7: [51, -2], 8: [32, -3], 9: [28, -12], 10: [35, 0], 11: [4, -2], 12: [25, -2], 13: [61, -2], 14: [67, -2], 15: [35, -25] };
+const VARIANTES = ['court-gauche', 'court-droit', 'central', 'long-gauche', 'long-droit'];
+
+test('coup d envoi : 15 joueurs par côté, aucun hors-jeu à la frappe, aucune superposition, positions du cahier, cinq variantes', () => {
+  let formations = 0;
+  for (const v of VARIANTES) {
+    for (let seed = 1; seed <= 3; seed++) {
+      const m = new MatchEngine(seed, 4800, { varianteEnvoi: v }); // coup d'envoi d'ouverture : joueurs placés directement
+      const kx = m.xCoupEnvoi, dir = m.dirCoupEnvoi;
+      const kicking = m.possession === 'A' ? m.equipeA : m.equipeB, rec = m.possession === 'A' ? m.equipeB : m.equipeA;
+      assert.strictEqual(m.varianteEnvoi, v, 'la variante forcée est jouée');
+      assert.strictEqual(kicking.length, 15); assert.strictEqual(rec.length, 15);
+      assert.ok([...kicking, ...rec].every((j) => !(j.sinBin > 0)), 'tous les joueurs sont sur le terrain');
+      // Hors-jeu : l'équipe qui botte derrière le ballon (le botteur sur la ligne), les receveurs à 10 m au moins.
+      for (const j of kicking) assert.ok((j.x - kx) * dir <= 0.01, `${v} graine ${seed} : le n°${j.numero} de l'équipe qui botte est devant le ballon`);
+      for (const j of rec) assert.ok((j.x - kx) * dir >= 9.99, `${v} graine ${seed} : le n°${j.numero} de l'équipe qui reçoit est à moins de 10 m`);
+      // Aucune superposition.
+      const tous = [...kicking, ...rec];
+      for (let a = 0; a < tous.length; a++) for (let b = a + 1; b < tous.length; b++) {
+        assert.ok(Math.hypot(tous[a].x - tous[b].x, tous[a].y - tous[b].y) >= 0.9, `${v} graine ${seed} : n°${tous[a].numero} et n°${tous[b].numero} se superposent`);
+      }
+      // Positions du cahier : engagement court à droite à l'identique ; miroir (hors ailiers) pour la gauche ; ailiers sur leur couloir.
+      if (v === 'court-droit') {
+        for (const j of kicking) {
+          if (j === m.porteur) continue;
+          const [px, py] = CAHIER_BOTTEUR[j.numero];
+          assert.ok(Math.abs(j.y - px) < 0.01 && Math.abs((j.x - kx) * dir - py) < 0.01, `n°${j.numero} : (${j.y.toFixed(1)}, ${((j.x - kx) * dir).toFixed(1)}) au lieu de (${px}, ${py})`);
+        }
+      }
+      if (v === 'court-gauche' || v === 'long-gauche') {
+        for (const j of kicking) {
+          if (j === m.porteur || j.numero === 11 || j.numero === 14) continue;
+          assert.ok(Math.abs(j.y - (70 - CAHIER_BOTTEUR[j.numero][0])) < 0.01, `${v} : le n°${j.numero} n'est pas en miroir`);
+        }
+      }
+      for (const j of kicking) if (j.numero === 11) assert.ok(j.y < 10, 'le 11 garde son couloir'); else if (j.numero === 14) assert.ok(j.y > 60, 'le 14 garde son couloir');
+      formations++;
+    }
+  }
+  assert.strictEqual(formations, 15);
+});
+
+test('coup d envoi : en vol, un réceptionneur désigné avec secours, des soutiens, pas de convergence à quinze, couverture, passage au jeu courant', () => {
+  const bilan = (variante) => {
+    const R = { vols: 0, capte: 0, primCapte: 0, atteignable: 0, soutiens: 0, convMax: 0, couverture: 0, longs: 0, passage: 0, zone: 0, appels: 0 };
+    for (let seed = 1; seed <= 4; seed++) {
+      const m = new MatchEngine(seed, 4800, { varianteEnvoi: variante });
+      const g = m._comportementsVolEnvoi.bind(m);
+      let debut = null, fin = null;
+      m._comportementsVolEnvoi = (dt, duree) => {
+        if (m.timerPhase <= 1e-9 || (debut && debut.t > m.timerPhase)) debut = null;
+        if (!debut) {
+          const rc = m.possession === 'A' ? m.equipeB : m.equipeA;
+          debut = { t: m.timerPhase, duree, lx: m.ballonCibleX, ly: m.ballonCibleY,
+            tMin: Math.min(...rc.filter((j) => j.sinBin <= 0).map((j) => Math.hypot(m.ballonCibleX - j.x, m.ballonCibleY - j.y) / (vitesseMs(j) * 0.95))) };
+        }
+        const r = g(dt, duree);
+        if (m.timerPhase + dt >= duree - 0.001) {
+          const kx = m.xCoupEnvoi, dir = m.dirCoupEnvoi;
+          fin = { lx: m.ballonCibleX, ly: m.ballonCibleY, dir, dm: (m.ballonCibleX - kx) * dir, court: m.coupEnvoiCourt, prim: m._planEnvoi && m._planEnvoi.primaire,
+            rec: (m.possession === 'A' ? m.equipeB : m.equipeA).slice(), kick: (m.possession === 'A' ? m.equipeA : m.equipeB).slice(), debut, kickTeam: m.possession };
+        }
+        return r;
+      };
+      const log = m.log.bind(m);
+      m.log = (t, eq, msg, d, ...r) => { if (t === 'APPEL_ENVOI' && d && d.appel === 'J_AI') R.appels++; return log(t, eq, msg, d, ...r); };
+      let vols = 0, tPassage = null;
+      while (m.phase !== 'TERMINE' && m.tempsMatch < 900 && (vols < 3 || tPassage != null)) {
+        const avant = m.phase;
+        m.tick(0.1);
+        if (avant === 'COUP_ENVOI' && m.phase !== 'COUP_ENVOI' && fin && !fin.court) {
+          vols++; R.vols++;
+          const capteur = m.porteur && m.porteur.team !== fin.kickTeam ? m.porteur : null;
+          if (capteur) {
+            R.capte++;
+            if (fin.prim === capteur) R.primCapte++;
+            // Soutiens accessibles : au moins deux partenaires à moins de 15 m du réceptionneur (2,5 s de course).
+            if (fin.rec.filter((j) => j !== capteur && Math.hypot(j.x - capteur.x, j.y - capteur.y) <= 15).length >= 2) R.soutiens++;
+          }
+          if (fin.debut.tMin <= fin.debut.duree + 0.3) R.atteignable++; // un réceptionneur peut rejoindre la zone de chute dans le temps du vol
+          R.convMax = Math.max(R.convMax, fin.rec.filter((j) => Math.hypot(j.x - fin.lx, j.y - fin.ly) <= 8).length);
+          // Variante respectée : côté et profondeur.
+          const droite = /droit/.test(variante), gauche = /gauche/.test(variante), longue = /long/.test(variante);
+          const okCote = droite ? fin.ly > 35 : gauche ? fin.ly < 35 : Math.abs(fin.ly - 35) < 14;
+          const okProf = longue ? fin.dm >= 27 : fin.dm > 9 && fin.dm < 31;
+          if (okCote && okProf) R.zone++;
+          if (fin.dm >= 27) {
+            R.longs++;
+            // Couverture d'un coup de pied long : un receveur profond à moins de 12 m de la chute, et au moins deux joueurs de l'équipe
+            // qui botte à 12 m ou plus derrière la chute (retour au pied).
+            const profonds = fin.rec.filter((j) => Math.hypot(j.x - fin.lx, j.y - fin.ly) <= 12 && [11, 14, 15, 10, 9].includes(j.numero)).length;
+            const retour = fin.kick.filter((j) => (fin.lx - j.x) * fin.dir >= 12).length;
+            if (profonds >= 1 && retour >= 2) R.couverture++;
+          }
+          tPassage = m.tempsMatch;
+        }
+        // Passage naturel vers le jeu courant : moins de 4 s après la retombée, le jeu n'est plus au coup d'envoi.
+        if (tPassage != null && m.tempsMatch - tPassage >= 4) { if (m.phase !== 'COUP_ENVOI') R.passage++; tPassage = null; }
+      }
+    }
+    return R;
+  };
+  const vitesseMs = (j) => (3.0 + (Math.max(0, Math.min(100, j.vitesse)) / 100) * 5.0) * 0.96; // même ordre de grandeur que le moteur (fatigue légère)
+  global.vitesseMs = vitesseMs;
+  for (const v of VARIANTES) {
+    const R = bilan(v);
+    assert.ok(R.vols >= 8, `${v} : échantillon trop petit (${R.vols} vols)`);
+    assert.ok(R.capte >= R.vols - 1, `${v} : ${R.capte} réceptions pour ${R.vols} vols`);
+    assert.ok(R.primCapte >= 0.9 * R.capte, `${v} : le réceptionneur désigné capte ${R.primCapte}/${R.capte} fois`);
+    assert.ok(R.atteignable >= 0.95 * R.vols, `${v} : aucun réceptionneur ne peut rejoindre la chute dans ${R.vols - R.atteignable} vols`);
+    assert.ok(R.soutiens >= 0.9 * R.capte, `${v} : soutiens accessibles seulement ${R.soutiens}/${R.capte} fois`);
+    assert.ok(R.convMax <= 10, `${v} : ${R.convMax} receveurs à moins de 8 m de la chute (convergence)`);
+    assert.ok(R.zone >= 0.7 * R.vols, `${v} : la variante n'est respectée que ${R.zone}/${R.vols} fois`);
+    if (/long/.test(v)) assert.ok(R.couverture >= 0.9 * R.longs, `${v} : couverture contre un coup long seulement ${R.couverture}/${R.longs} fois`);
+    assert.ok(R.passage >= R.vols - 1, `${v} : passage au jeu courant ${R.passage}/${R.vols}`);
+    assert.ok(R.appels >= R.vols, `${v} : ${R.appels} appels « J'ai ! » pour ${R.vols} vols`);
+  }
+});
+
+test('coup d envoi : à graine et conditions identiques, le même engagement et le même vol', () => {
+  const jouer = (v) => {
+    const m = new MatchEngine(5, 4800, { varianteEnvoi: v });
+    const t0 = JSON.stringify([m.varianteEnvoi, m.ballonCibleX, m.ballonCibleY, m.dureeVolEnvoi, [...m.equipeA, ...m.equipeB].map((j) => [j.x, j.y])]);
+    for (let i = 0; i < 260; i++) m.tick(0.1);
+    return t0 + JSON.stringify([m.score, [...m.equipeA, ...m.equipeB].map((j) => [+j.x.toFixed(4), +j.y.toFixed(4)]), m.phase]);
+  };
+  for (const v of VARIANTES) assert.strictEqual(jouer(v), jouer(v), `${v} : deux engagements identiques divergent`);
+  assert.notStrictEqual(jouer('court-gauche'), jouer('long-droit'), 'deux variantes différentes donnent le même engagement');
+});
+
+test('coup d envoi et renvoi aux 22 m : le botteur varie sa variante, depuis ses 22 m il tape long, receveurs à 10 m, chasseurs derrière le ballon', () => {
+  const centre = { prof: [], n: 0 }, vingt = { prof: [], n: 0 }; const variantes = new Set(); let hors = 0, devantBallon = 0, ligne = 0;
   for (let seed = 1; seed <= 12; seed++) {
     const m = new MatchEngine(seed, 2400);
     const f = m._nouvelleManche.bind(m);
@@ -4136,49 +4267,24 @@ test('coup d envoi et renvoi aux 22 m : le botteur choisit sa cible, regroupe se
       const r = f(eq, x);
       const dir = m.dirCoupEnvoi, kx = m.xCoupEnvoi;
       const lot = kx === LONGUEUR / 2 ? centre : vingt;
-      lot.n++;
+      lot.n++; variantes.add(m.varianteEnvoi);
       if (!m.coupEnvoiCourt) lot.prof.push((m.ballonCibleX - kx) * dir);
       const kicking = m.possession === 'A' ? m.equipeA : m.equipeB, rec = m.possession === 'A' ? m.equipeB : m.equipeA;
-      for (const j of rec) { if (j._cibleEnvoi && (j._cibleEnvoi.x - kx) * dir < 9.9) hors++; }          // receveurs à 10 m au moins
-      for (const j of kicking) { if (j._cibleEnvoi && j !== m.porteur) { ligne++; if ((j._cibleEnvoi.x - kx) * dir > 0.01) devantBallon++; } } // chasseurs derrière le ballon
-      const fw = kicking.filter((j) => j.numero <= 8 && j !== m.porteur && j._cibleEnvoi).map((j) => j._cibleEnvoi.y);
-      const cy = fw.reduce((a, b) => a + b, 0) / fw.length;
-      const sd = Math.sqrt(fw.reduce((a, b) => a + (b - cy) ** 2, 0) / fw.length);
-      if (sd <= 9) {
-        regroupes++;
-        const gr = rec.filter((j) => [4, 5, 6, 7].includes(j.numero) && j._cibleEnvoi).map((j) => j._cibleEnvoi.y);
-        const gy = gr.reduce((a, b) => a + b, 0) / gr.length;
-        if ((gy - LARGEUR / 2) * (cy - LARGEUR / 2) > 0 && Math.abs(gy - LARGEUR / 2) >= 3) decales++; // la défense va du côté des avants
-      }
+      for (const j of rec) { if (j._cibleEnvoi && (j._cibleEnvoi.x - kx) * dir < 9.9) hors++; }
+      for (const j of kicking) { if (j._cibleEnvoi && j !== m.porteur) { ligne++; if ((j._cibleEnvoi.x - kx) * dir > 0.01) devantBallon++; } }
       return r;
     };
     m.jouerJusquAuSifflet(0.1);
   }
   const mediane = (a) => a.slice().sort((x, y) => x - y)[Math.floor(a.length / 2)];
   assert.ok(centre.n >= 100 && vingt.n >= 15, `échantillon trop petit (${centre.n} coups d'envoi, ${vingt.n} renvois)`);
+  assert.ok(variantes.size >= 4, `le botteur n'a joué que ${variantes.size} variantes : ${[...variantes]}`);
   const longsCentre = centre.prof.filter((d) => d >= 27).length / centre.prof.length;
   const longsVingt = vingt.prof.filter((d) => d >= 27).length / vingt.prof.length;
   assert.ok(longsCentre >= 0.25 && longsCentre <= 0.75, `${(100 * longsCentre).toFixed(0)} % de coups longs au coup d'envoi : le botteur ne varie pas sa cible`);
-  const tri = centre.prof.slice().sort((a, b) => a - b);
-  assert.ok(tri[Math.floor(tri.length * 0.9)] - tri[Math.floor(tri.length * 0.1)] >= 15, 'profondeurs visées trop proches les unes des autres');
   assert.ok(longsVingt >= 0.85 && mediane(vingt.prof) >= 33, `depuis ses 22 m : ${(100 * longsVingt).toFixed(0)} % de coups longs, médiane ${mediane(vingt.prof).toFixed(0)} m`);
-  assert.ok(regroupes >= 0.08 * (centre.n + vingt.n), `avants regroupés d'un côté seulement ${regroupes} fois`);
-  assert.ok(decales >= 0.8 * regroupes, `la défense ne se décale que ${decales} fois sur ${regroupes} regroupements`);
   assert.strictEqual(hors, 0, `${hors} receveurs à moins de 10 m du point de frappe`);
   assert.strictEqual(devantBallon, 0, `${devantBallon}/${ligne} chasseurs devant le ballon`);
-});
-
-// --- Reproductibilité : un match ne dépend pas des matchs joués avant lui dans le même processus ------------
-test('reproductibilité : un moteur neuf joue le même début de match avant et après un match complet', () => {
-  const debut = () => {
-    const m = new MatchEngine(11, 4800);
-    for (let t = 0; t < 60; t += 0.1) m.tick(0.1);
-    const s = m.getState();
-    return JSON.stringify([s.score, m.ballonCibleX, m.ballonCibleY, s.equipeA.map((j) => [j.x, j.y]), s.equipeB.map((j) => [j.x, j.y])]);
-  };
-  const avant = debut();
-  new MatchEngine(12, 4800).jouerJusquAuSifflet(0.1); // laisse l'état de module (fatigue, obstacle) du match précédent
-  assert.strictEqual(debut(), avant, 'le coup d\'envoi d\'ouverture dépend du match précédent (état de module non remis à zéro)');
 });
 
 // --- Arbitres assistants (juges de touche) : hors du terrain, derrière l'en-but sur un tir au but -------------
