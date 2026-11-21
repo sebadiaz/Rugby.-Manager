@@ -1511,6 +1511,14 @@
       pose(par(15), d(38.0), m);
     }
 
+    // Temps mis par un chasseur pour couvrir `D` mètres depuis la ligne de chasse : il a pris son élan dans la seconde qui précède la
+    // frappe (≈ 2,2 m/s), puis accélère (ACCELERATION) jusqu'à sa vitesse de chasse (≈ 5,8 m/s).
+    _tempsChasse(D) {
+      const v0 = 2.2, vmax = 5.8, a = ACCELERATION;
+      const tAcc = (vmax - v0) / a, dAcc = (v0 + vmax) / 2 * tAcc;
+      return D <= dAcc ? (-v0 + Math.sqrt(v0 * v0 + 2 * a * D)) / a : tAcc + (D - dAcc) / vmax;
+    }
+
     // CHOIX DE LA CIBLE PAR LE BOTTEUR. Il lit le dispositif des receveurs et choisit le point où le ballon est le plus
     // difficile à capter pour eux (leur temps d'arrivée comparé à la durée du vol) alors que SES chasseurs arrivent à temps ;
     // il y gagne du terrain (profondeur), évite les bords (marge = sa propre imprécision) et reste dans sa portée. Sa
@@ -1521,6 +1529,11 @@
       const dec = typeof kickeur.decision === 'number' ? kickeur.decision : 60;
       const sigma = Math.max(1.2, 6 - 0.055 * jp);
       const portee = 34 + (jp - 60) * 0.3;
+      // Depuis SES 22 m (renvoi), l'équipe cherche le TERRITOIRE : renvoyer le ballon le plus loin possible dans le camp adverse
+      // pour faire reculer l'adversaire ; la récupération du ballon passe au second plan. Au coup d'envoi, elle veut le récupérer.
+      const enVingtDeux = kx !== LONGUEUR / 2;
+      const envieRecup = enVingtDeux ? 0.35 : 1;
+      const poidsTerrain = enVingtDeux ? 0.3 : 0.04;
       const rec = (equipeKick === 'A' ? this.equipeB : this.equipeA).filter((j) => j.sinBin <= 0 && j._cibleEnvoi);
       const nChasse = (equipeKick === 'A' ? this.equipeA : this.equipeB).filter((j) => j.sinBin <= 0).length - 1;
       const pasC = (LARGEUR - 8) / Math.max(1, nChasse);
@@ -1529,16 +1542,27 @@
         const x = kx + dirKick * dm;
         if (x < 2 || x > LONGUEUR - 2) continue;
         for (let y = 6; y <= LARGEUR - 6; y += 4) {
-          const tVol = Math.max(0.9, Math.min(2.0, Math.hypot(dm, y - ky) / 18));
+          // Durée du vol. Une cloche haute et courte (≤ 24 m) laisse du temps aux chasseurs : c'est la seule qui se récupère ;
+          // au-delà, le ballon file à plat (distance / 18 m/s, comme avant).
+          const dist = Math.hypot(dm, y - ky);
+          const contestable = dm <= 24;
+          const tVol = contestable ? 2.6 + 0.08 * (dm - 10) : Math.max(0.9, Math.min(2.0, dist / 18));
           let tRec = Infinity;
           for (const r of rec) tRec = Math.min(tRec, Math.hypot(r._cibleEnvoi.x - x, r._cibleEnvoi.y - y) / (vitesseMs(r) * 0.9));
+          // Arrivée des chasseurs : sur une cible contestable d'un côté, tous les avants s'y regroupent (distance latérale réduite).
           const iC = Math.max(0, Math.min(nChasse, Math.round((y - 4) / pasC)));
-          const tCh = Math.hypot(dm + 2, y - (4 + iC * pasC)) / 5.4;
+          const lat = contestable && Math.abs(y - LARGEUR / 2) >= 8 ? 3 : Math.abs(y - (4 + iC * pasC));
+          const tCh = this._tempsChasse(Math.hypot(dm + 0.5, lat));
+          const ecart = tCh - tVol; // > 0 : le chasseur arrive APRÈS le ballon ; < 0 : AVANT (faute probable)
+          // Fenêtre idéale : arriver à l'instant où le ballon retombe (de 0 à +0,5 s). Trop tard, le ballon est perdu ; trop tôt
+          // (avant le ballon de plus de 0,4 s), c'est de l'obstruction ou une charge sur le receveur : faute.
+          const chanceRecup = Math.max(0, 1 - Math.abs(ecart - 0.2) / 1.3);
+          const risqueFaute = Math.max(0, Math.min(0.6, (-0.4 - ecart) / 1.5));
+          let score = envieRecup * (-1.4 * (tVol - tRec) + 4.3 * chanceRecup) - 5 * risqueFaute + poidsTerrain * dm;
           const bord = Math.min(y, LARGEUR - y);
-          let score = -1.4 * (tVol - tRec) + 0.9 * Math.max(-3, Math.min(1.5, tVol + 1.5 - tCh)) + 0.1 * dm;
           if (bord < sigma + 2) score -= (sigma + 2 - bord) * 0.8;
           if (dm > portee) score -= (dm - portee) * 0.7;
-          candidats.push({ score, dm, y });
+          candidats.push({ score, dm, y, tVol, avance: Math.max(0, -ecart) });
         }
       }
       // Il ne vise pas toujours le même point : il tire sa cible parmi les bonnes options, avec une probabilité qui croît
@@ -1552,12 +1576,15 @@
         for (let i = 0; i < candidats.length; i++) { r -= poids[i]; if (r <= 0) { meilleur = candidats[i]; break; } }
         if (!meilleur) meilleur = candidats[candidats.length - 1];
       }
-      if (!meilleur) meilleur = { dm: 20, y: LARGEUR / 2 };
+      if (!meilleur) meilleur = { dm: 20, y: LARGEUR / 2, tVol: 1.5, avance: 0 };
       // Frappe : le ballon retombe à l'endroit visé, à l'erreur du botteur près.
       const bruit = () => (this.rng() + this.rng() + this.rng() - 1.5) * 1.4;
       const dmReel = meilleur.dm + bruit() * sigma * 0.9;
       const yReel = Math.max(3, Math.min(LARGEUR - 3, meilleur.y + bruit() * sigma * 0.8));
-      return { dm: dmReel, y: yReel, vise: meilleur };
+      // Avance des chasseurs sur le ballon, au point de chute RÉEL : un ballon retombé plus près que visé (frappe imprécise) les
+      // fait arriver avant lui (faute possible) ; un ballon plus loin les laisse en retard (cf. _tickCoupEnvoi).
+      const avance = meilleur.dm <= 24 ? Math.max(0, meilleur.tVol - this._tempsChasse(Math.hypot(dmReel + 0.5, 3))) : 0;
+      return { dm: dmReel, y: yReel, vise: meilleur, tVol: meilleur.tVol, avance };
     }
 
     // L'équipe qui BOTTE : le botteur à son point de frappe ; les 14 autres en LIGNE DE CHASSE à hauteur du ballon ou 1 à 3 m
@@ -1565,7 +1592,8 @@
     // ballon CONTESTABLE sur un côté (`yRegroupe`), l'équipe REGROUPE TOUS SES AVANTS de ce côté, serrés autour de la cible, pour
     // avoir plus de chances de récupérer le ballon ; les arrières se répartissent sur le reste de la largeur.
     _formationBotteur(equipeKick, kickeur, kx, ky, dirKick, avaitEquipes, yRegroupe = null) {
-      const clampX = (x) => Math.max(0.5, Math.min(LONGUEUR - 0.5, x));
+      // Derrière le ballon, y compris dans l'en-but (renvoi depuis la ligne d'en-but).
+      const clampX = (x) => Math.max(-7.5, Math.min(LONGUEUR + 7.5, x));
       const clampY = (y) => Math.max(1.5, Math.min(LARGEUR - 1.5, y));
       const pose = (j, x, y) => { j._cibleEnvoi = { x: clampX(x), y: clampY(y) }; if (!avaitEquipes) { j.x = j._cibleEnvoi.x; j.y = j._cibleEnvoi.y; } };
       const botte = (equipeKick === 'A' ? this.equipeA : this.equipeB).filter((j) => j.sinBin <= 0);
@@ -1746,6 +1774,9 @@
         ? Math.max(0, Math.min(LONGUEUR, xCentre + dirKick * (3 + this.rng() * 6)))
         : Math.max(0, Math.min(LONGUEUR, xCentre + dirKick * cible.dm));
       this.ballonCibleY = Math.max(3, Math.min(LARGEUR - 3, cible.y));
+      // Durée du vol et avance des chasseurs sur le ballon (une cloche haute dure plus longtemps ; cf. _tickCoupEnvoi).
+      this.dureeVolEnvoi = this.coupEnvoiCourt ? null : cible.tVol;
+      this._avanceChasse = this.coupEnvoiCourt ? 0 : (cible.avance || 0);
       this.phase = 'COUP_ENVOI';
       this.timerPhase = 0;
       this.ruckPoint = { x: xCentre, y: this.yCoupEnvoi };
@@ -1833,7 +1864,18 @@
           return;
         }
         this._sifflet.t += dt;
-        if (this._sifflet.t < this._sifflet.duree) return; // le temps du coup de sifflet : personne ne bouge
+        if (this._sifflet.t < this._sifflet.duree) {
+          // Le temps du coup de sifflet : personne ne bouge, sauf l'ÉLAN de la ligne de chasse dans la dernière seconde avant la
+          // frappe (comme le botteur prend sa course) ; elle ne dépasse jamais la ligne du ballon (hors-jeu).
+          if (this._sifflet.duree - this._sifflet.t <= 1.0) {
+            const kx = this.xCoupEnvoi, dir = this.dirCoupEnvoi;
+            for (const j of (this.possession === 'A' ? this.equipeA : this.equipeB)) {
+              if (j === this.porteur || j.sinBin > 0) continue;
+              avancer(j, (kx - dir * 0.3) - j.x, 0, dt, vitesseMs(j) * 0.75);
+            }
+          }
+          return;
+        }
         this._sifflet = null; this.arbitreSifflet = false;
         this._horlogeArretee = false; // le chronomètre repart au coup d'envoi
         this._retourEnvoi = null;
@@ -1851,7 +1893,7 @@
       const dyVol = this.ballonCibleY - yDepart;
       const distVol = Math.hypot(dxVol, dyVol);
       const VITESSE_BALLON = 18;
-      const duree = Math.max(0.9, Math.min(2.0, distVol / VITESSE_BALLON));
+      const duree = this.dureeVolEnvoi || Math.max(0.9, Math.min(2.0, distVol / VITESSE_BALLON));
       const t = Math.min(1, this.timerPhase / duree);
       // Le ballon vole seul du point de coup d'envoi vers sa cible, en cloche :
       // hauteur en sinus (0 au départ, maximale à mi-parcours, 0 à la chute).
@@ -1909,6 +1951,17 @@
           return;
         }
         const { joueur: chasseurProche, distance: distChasseur } = joueurLePlusProche(chasseurs, this.ballonCibleX, this.ballonCibleY);
+        // FAUTE DES CHASSEURS : un chasseur arrivé AVANT le ballon sur le receveur (le botteur a visé trop près pour ses
+        // chasseurs : ils sont déjà là quand le ballon retombe) l'obstrue ou le charge sans ballon : pénalité pour l'équipe
+        // qui reçoit. Le risque croît avec l'avance prise sur le ballon (0,4 s d'avance : 20 %, au plus 60 %).
+        // Risque de base 12 % dès qu'un chasseur est collé au receveur à la retombée (il était là avant le ballon), plus l'avance
+        // prévue par le botteur (cf. _choisirCibleCoupEnvoi) : un botteur qui vise trop près fait plus de fautes.
+        if (distChasseur < 2.0 && this.rng() < Math.min(0.6, 0.12 + 0.5 * (this._avanceChasse || 0))) {
+          const fautive = this.equipeReceptriceAttendue === 'A' ? 'B' : 'A';
+          this.log('PENALITE_ENVOI', this.equipeReceptriceAttendue, `Faute des chasseurs (equipe ${fautive}) : arrives avant le ballon, obstruction sur le receveur, penalite pour l'equipe ${this.equipeReceptriceAttendue}`);
+          this._traiterPenalite(this.equipeReceptriceAttendue, { x: receveurProche.x, y: receveurProche.y });
+          return;
+        }
         const chasseurGagne = distChasseur < 3 && this.rng() < 0.15;
         const joueur = chasseurGagne ? chasseurProche : receveurProche;
         // Le réceptionneur capte le ballon LÀ OÙ IL EST (le joueur le plus proche

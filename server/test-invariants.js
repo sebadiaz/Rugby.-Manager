@@ -4123,6 +4123,48 @@ test('plaquage plongé : un arrière disponible que le porteur dépasse à 2,5 m
   assert.ok(tentatives >= essais * 0.6, `${tentatives}/${essais} ailiers tentent le plaquage`);
 });
 
+// --- Mise en jeu : coup d'envoi et renvoi aux 22 m ---------------------------------------------
+test('coup d envoi et renvoi aux 22 m : le botteur choisit sa cible, regroupe ses avants, la défense se décale, depuis ses 22 m il tape long', () => {
+  const centre = { prof: [], n: 0 }, vingt = { prof: [], n: 0 }; let regroupes = 0, decales = 0, hors = 0, devantBallon = 0, ligne = 0;
+  for (let seed = 1; seed <= 12; seed++) {
+    const m = new MatchEngine(seed, 2400);
+    const f = m._nouvelleManche.bind(m);
+    m._nouvelleManche = (eq, x) => {
+      const r = f(eq, x);
+      const dir = m.dirCoupEnvoi, kx = m.xCoupEnvoi;
+      const lot = kx === LONGUEUR / 2 ? centre : vingt;
+      lot.n++;
+      if (!m.coupEnvoiCourt) lot.prof.push((m.ballonCibleX - kx) * dir);
+      const kicking = m.possession === 'A' ? m.equipeA : m.equipeB, rec = m.possession === 'A' ? m.equipeB : m.equipeA;
+      for (const j of rec) { if (j._cibleEnvoi && (j._cibleEnvoi.x - kx) * dir < 9.9) hors++; }          // receveurs à 10 m au moins
+      for (const j of kicking) { if (j._cibleEnvoi && j !== m.porteur) { ligne++; if ((j._cibleEnvoi.x - kx) * dir > 0.01) devantBallon++; } } // chasseurs derrière le ballon
+      const fw = kicking.filter((j) => j.numero <= 8 && j !== m.porteur && j._cibleEnvoi).map((j) => j._cibleEnvoi.y);
+      const cy = fw.reduce((a, b) => a + b, 0) / fw.length;
+      const sd = Math.sqrt(fw.reduce((a, b) => a + (b - cy) ** 2, 0) / fw.length);
+      if (sd <= 9) {
+        regroupes++;
+        const gr = rec.filter((j) => [4, 5, 6, 7].includes(j.numero) && j._cibleEnvoi).map((j) => j._cibleEnvoi.y);
+        const gy = gr.reduce((a, b) => a + b, 0) / gr.length;
+        if ((gy - LARGEUR / 2) * (cy - LARGEUR / 2) > 0 && Math.abs(gy - LARGEUR / 2) >= 3) decales++; // la défense va du côté des avants
+      }
+      return r;
+    };
+    m.jouerJusquAuSifflet(0.1);
+  }
+  const mediane = (a) => a.slice().sort((x, y) => x - y)[Math.floor(a.length / 2)];
+  assert.ok(centre.n >= 100 && vingt.n >= 15, `échantillon trop petit (${centre.n} coups d'envoi, ${vingt.n} renvois)`);
+  const longsCentre = centre.prof.filter((d) => d >= 27).length / centre.prof.length;
+  const longsVingt = vingt.prof.filter((d) => d >= 27).length / vingt.prof.length;
+  assert.ok(longsCentre >= 0.25 && longsCentre <= 0.75, `${(100 * longsCentre).toFixed(0)} % de coups longs au coup d'envoi : le botteur ne varie pas sa cible`);
+  const tri = centre.prof.slice().sort((a, b) => a - b);
+  assert.ok(tri[Math.floor(tri.length * 0.9)] - tri[Math.floor(tri.length * 0.1)] >= 15, 'profondeurs visées trop proches les unes des autres');
+  assert.ok(longsVingt >= 0.85 && mediane(vingt.prof) >= 33, `depuis ses 22 m : ${(100 * longsVingt).toFixed(0)} % de coups longs, médiane ${mediane(vingt.prof).toFixed(0)} m`);
+  assert.ok(regroupes >= 0.08 * (centre.n + vingt.n), `avants regroupés d'un côté seulement ${regroupes} fois`);
+  assert.ok(decales >= 0.8 * regroupes, `la défense ne se décale que ${decales} fois sur ${regroupes} regroupements`);
+  assert.strictEqual(hors, 0, `${hors} receveurs à moins de 10 m du point de frappe`);
+  assert.strictEqual(devantBallon, 0, `${devantBallon}/${ligne} chasseurs devant le ballon`);
+});
+
 // --- 50:22 : un pari rare, pas la conséquence d'un dégagement ordinaire --------
 // Avec des dégagements en touche à 25-45 m (P2-130), une touche ordinaire tapée
 // du milieu de terrain tombait dans les 22 adverses : 2,4 50:22 par match, pour
