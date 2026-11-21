@@ -697,6 +697,8 @@
   // Rayon de contact du plaquage (m) : distance a laquelle le contact se resout,
   // et donc aussi celle a laquelle un SECOND defenseur participe au plaquage.
   const RAYON_PLAQUAGE = 2.2;
+  // Les arbitres assistants (juges de touche) se tiennent HORS du terrain, à 1,2 m de la ligne de touche.
+  const ECART_ASSISTANT = 1.2;
   // PLAQUAGE PLONGÉ : un arrière (n°10 à 15) disponible, que le porteur en pleine course dépasse à 2,2-3,2 m,
   // se jette bras tendus au lieu de le laisser filer sans rien tenter. À la limite de portée, la réussite
   // est réduite (x0,6 de la probabilité normale).
@@ -1337,9 +1339,12 @@
       // Deux arbitres assistants mobiles : ils suivent la ligne du ballon le
       // long de leur propre touche, sans pénétrer dans l'aire de jeu.
       this.arbitresAssistants = [
-        { x: LONGUEUR / 2, y: 0, cote: 'gauche' },
-        { x: LONGUEUR / 2, y: LARGEUR, cote: 'droite' },
+        { x: LONGUEUR / 2, y: -ECART_ASSISTANT, cote: 'gauche' },
+        { x: LONGUEUR / 2, y: LARGEUR + ECART_ASSISTANT, cote: 'droite' },
       ];
+      // Tir au but en cours (transformation ou pénalité) : les deux assistants se placent derrière l'en-but, un à chaque pied de
+      // poteau ; une fois le tir joué, ils lèvent le drapeau si le ballon passe, le laissent baissé sinon (cf. _majAssistants).
+      this._tirAuBut = null;
       // Compteur d'infractions de maul par équipe sur l'ensemble du match
       // (persiste d'un maul à l'autre) : sert à siffler un carton jaune pour
       // fautes répétées, comme l'arbitrage réel.
@@ -2048,10 +2053,44 @@
         ? this.ballonVolX
         : (this.phase === 'MELEE' || this.phase === 'RUCK' || this.phase === 'MAUL' || this.phase === 'TOUCHE')
           ? this.ruckPoint.x : this.porteur.x;
-      for (const assistant of this.arbitresAssistants) {
-        const delta = Math.max(0, Math.min(LONGUEUR, xBallon)) - assistant.x;
-        assistant.x += Math.sign(delta) * Math.min(Math.abs(delta), 7 * dt);
+      this._majAssistants(dt, xBallon);
+    }
+
+    // ARBITRES ASSISTANTS (juges de touche). Hors du terrain, ils suivent la ligne du ballon le long de leur touche. Pendant un tir
+    // au but, ils se placent DERRIÈRE L'EN-BUT concerné, un à chaque pied de poteau, puis lèvent le drapeau si le ballon passe entre
+    // les poteaux ou le laissent baissé s'il ne passe pas ; ils regagnent leur touche quelques secondes après. Ils ne traversent
+    // jamais le terrain : ils longent la touche jusqu'au niveau de l'en-but, puis passent derrière la ligne d'en-but.
+    _majAssistants(dt, xBallon) {
+      const T = this._tirAuBut;
+      if (T) {
+        T.age += dt;
+        if (T.resultat && T.age - T.resultat.age > 4.5) this._tirAuBut = null;
       }
+      const tir = this._tirAuBut;
+      const v = 7 * dt;
+      const vers = (a, axe, cible) => { const d = cible - a[axe]; a[axe] += Math.sign(d) * Math.min(Math.abs(d), v); };
+      this.arbitresAssistants.forEach((a, i) => {
+        const piste = a.cote === 'gauche' ? -ECART_ASSISTANT : LARGEUR + ECART_ASSISTANT;
+        const surPiste = Math.abs(a.y - piste) < 0.05;
+        if (tir) {
+          const fin = tir.x > LONGUEUR / 2 ? 1 : -1;
+          const cx = tir.x + fin * 1.5, cy = LARGEUR / 2 + (i === 0 ? -2.8 : 2.8);
+          if (Math.abs(a.x - cx) > 0.3) { if (surPiste) vers(a, 'x', cx); else vers(a, 'y', piste); }
+          else vers(a, 'y', cy);
+        } else {
+          const cx = Math.max(0, Math.min(LONGUEUR, xBallon));
+          if (!surPiste) vers(a, 'y', piste); else vers(a, 'x', cx);
+        }
+      });
+    }
+
+    // Annonce d'un tir au but (début de la routine du buteur) et de son résultat.
+    _annoncerTirAuBut(xFin) {
+      if (!this._tirAuBut) this._tirAuBut = { x: xFin, age: 0, resultat: null };
+    }
+
+    _resultatTirAuBut(ok) {
+      if (this._tirAuBut && !this._tirAuBut.resultat) this._tirAuBut.resultat = { ok, age: this._tirAuBut.age };
     }
 
     // Cible de placement de l'arbitre : suit le point de ruck/mêlée pendant les
@@ -8335,6 +8374,7 @@
     // frappe prennent ~20-25 s en match réel, pas 2 s.
     _tickTransformation(dt) {
       this.timerPhase += dt;
+      this._annoncerTirAuBut(this.essaiEquipe === 'A' ? LONGUEUR : 0);
       // Loi 8.21 : la transformation doit être JOUÉE dans les 90 secondes qui
       // suivent l'essai, sinon elle est refusée. Le buteur prend une vraie
       // routine (placement du tee, concentration, course d'élan), plus longue
@@ -8386,8 +8426,10 @@
           this.stats[equipe].transformationsReussies++;
           this._statJoueur(this.porteur).pointsAuPied += 2;
           this.score[equipe] += 2;
+          this._resultatTirAuBut(true);
           this.log('TRANSFORMATION_REUSSIE', equipe, `Transformation reussie a ${tirT.distance} m par le n°${tirT.buteur}, equipe ${equipe} +2`, tirT);
         } else {
+          this._resultatTirAuBut(false);
           this.log('TRANSFORMATION_RATEE', equipe, `Transformation ratee a ${tirT.distance} m par le n°${tirT.buteur}, equipe ${equipe}`, tirT);
         }
         // Loi 12 : qu'elle soit réussie ou ratée, la transformation est suivie
@@ -8433,6 +8475,7 @@
     // un angle fermé, mais toujours sous le maximum réglementaire.
     _tickPenaliteTir(dt) {
       this.timerPhase += dt;
+      this._annoncerTirAuBut(this.equipeAuTir === 'A' ? LONGUEUR : 0);
       const DUREE_MAX_PENALITE = 60; // secondes réglementaires (loi 20)
       const offsetTir = this.positionTir ? Math.abs(this.positionTir.y - LARGEUR / 2) : 0;
       // Même routine réelle qu'à la transformation (45-60 s) : sur une pénalité,
@@ -8474,11 +8517,13 @@
           this.stats[equipe].penalitesButReussies++;
           this._statJoueur(this.porteur).pointsAuPied += 3;
           this.score[equipe] += 3;
+          this._resultatTirAuBut(true);
           this.log('PENALITE_REUSSIE', equipe, `Coup de pied au but reussi a ${tirP.distance} m par le n°${tirP.buteur}, equipe ${equipe} +3`, tirP);
           // Comme après un essai : coup d'envoi à la mi-terrain, botté par
           // l'équipe qui vient d'encaisser la pénalité.
           this._nouvelleManche(equipe);
         } else {
+          this._resultatTirAuBut(false);
           this.log('PENALITE_RATEE', equipe, `Coup de pied au but rate a ${tirP.distance} m par le n°${tirP.buteur}, equipe ${equipe}`, tirP);
           // Un tir manqué part en général au-delà de la ligne d'en-but adverse
           // et y meurt : remise en jeu en 22m (loi 12), botté par l'équipe
@@ -9503,8 +9548,10 @@
         },
         assistants: this.arbitresAssistants.map(a => ({
           ...a,
-          signal: this.phase === 'TOUCHE' && Math.abs(a.y - this.ruckPoint.y) < 2
-            ? 'TOUCHE' : null,
+          signal: (this._tirAuBut && this._tirAuBut.resultat)
+            ? (this._tirAuBut.resultat.ok ? 'DRAPEAU_HAUT' : 'DRAPEAU_BAS')
+            : this.phase === 'TOUCHE' && Math.abs((a.cote === 'gauche' ? 0 : LARGEUR) - this.ruckPoint.y) < 2
+              ? 'TOUCHE' : null,
         })),
         possession: this.possession,
         phase: this.phase,

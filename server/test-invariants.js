@@ -4180,6 +4180,42 @@ test('reproductibilité : un moteur neuf joue le même début de match avant et 
   assert.strictEqual(debut(), avant, 'le coup d\'envoi d\'ouverture dépend du match précédent (état de module non remis à zéro)');
 });
 
+// --- Arbitres assistants (juges de touche) : hors du terrain, derrière l'en-but sur un tir au but -------------
+test('juges de touche : hors du terrain ; sur un tir au but, derrière l en-but à chaque pied de poteau, drapeau levé si ça passe, baissé sinon', () => {
+  let tirs = 0, enPlace = 0, haut = 0, bas = 0, reussis = 0, rates = 0, dansTerrain = 0;
+  for (let seed = 1; seed <= 6; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    let attente = null;
+    const log = m.log.bind(m);
+    m.log = (t, eq, msg, d, ...r) => {
+      if (/^(TRANSFORMATION|PENALITE)_(REUSSIE|RATEE)$/.test(t)) {
+        tirs++;
+        const fin = m._tirAuBut ? m._tirAuBut.x : null;
+        const A = m.getState().assistants;
+        if (fin != null && A.every((a, i) => Math.abs(a.x - (fin + (fin > LONGUEUR / 2 ? 1.5 : -1.5))) < 0.8 && Math.abs(Math.abs(a.y - LARGEUR / 2) - 2.8) < 0.8)) enPlace++;
+        attente = /REUSSIE$/.test(t) ? 'haut' : 'bas';
+        if (attente === 'haut') reussis++; else rates++;
+      }
+      return log(t, eq, msg, d, ...r);
+    };
+    while (m.phase !== 'TERMINE' && m.tempsMatch < 4800) {
+      m.tick(0.1);
+      const st = m.getState();
+      for (const a of st.assistants) if (a.x > 0 && a.x < LONGUEUR && a.y > 0 && a.y < LARGEUR) dansTerrain++;
+      if (attente) {
+        const sg = st.assistants.map((a) => a.signal);
+        if (attente === 'haut' && sg.every((x) => x === 'DRAPEAU_HAUT')) { haut++; attente = null; }
+        else if (attente === 'bas' && sg.every((x) => x === 'DRAPEAU_BAS')) { bas++; attente = null; }
+      }
+    }
+  }
+  assert.ok(tirs >= 40, `échantillon trop petit (${tirs} tirs au but)`);
+  assert.strictEqual(dansTerrain, 0, `${dansTerrain} instants avec un assistant DANS le terrain`);
+  assert.ok(enPlace >= 0.95 * tirs, `assistants derrière l'en-but, un à chaque pied de poteau, seulement ${enPlace}/${tirs} fois`);
+  assert.ok(haut >= 0.95 * reussis, `drapeau levé seulement ${haut}/${reussis} fois après un tir réussi`);
+  assert.ok(bas >= 0.95 * rates, `drapeau baissé seulement ${bas}/${rates} fois après un tir manqué`);
+});
+
 // --- 50:22 : un pari rare, pas la conséquence d'un dégagement ordinaire --------
 // Avec des dégagements en touche à 25-45 m (P2-130), une touche ordinaire tapée
 // du milieu de terrain tombait dans les 22 adverses : 2,4 50:22 par match, pour
