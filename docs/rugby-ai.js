@@ -1657,8 +1657,12 @@ function candidatPresse(b, s, jeuCourant) {
   const dMoi = P.dist(me, porteur);
   const plusPres = Object.values(b.teammates).filter((m) => m.available !== false && !m.recovery && P.dist(m.lastSeen, porteur) < dMoi - 0.3).length;
   if (dMoi > 12 || plusPres > 1) return null;
+  // Je suis DEVANT le porteur (entre lui et ma ligne) : je l'attends sur sa route, juste devant lui. Le poursuivre par le
+  // côté ne sert à rien quand il court aussi vite que moi (il longe la touche et marque).
+  const devant = (porteur.x - me.x) * sens > 0 && dMoi > 3;
   const predit = jeuCourant && dMoi > 4.5 && fiche && visibleJouable(fiche);
-  const cible = predit ? intercepter(me, fiche, 3 + (me.vitesse ?? 65) * 0.05)
+  const cible = devant ? { x: P.clamp(porteur.x - sens * Math.min(6, dMoi * 0.5), 0, 100), y: porteur.y }
+    : predit ? intercepter(me, fiche, 3 + (me.vitesse ?? 65) * 0.05)
     : { x: P.clamp(porteur.x - sens * Math.min(4, dMoi * 0.4), 0, 100), y: porteur.y };
   return { id: 'PRESS_CARRIER', priority: plusPres === 0 ? 96 : 68, target: cible, vmax: 1, reason: plusPres === 0 ? 'je suis le plus proche du porteur : je plaque' : 'soutien au plaqueur' };
 }
@@ -1923,7 +1927,7 @@ function individualPlacement(beliefs, goalId, playbook, profile = {}, jeuCourant
   const pressePlaq = s.advPoss ? candidatPresse(beliefs, s, jeuCourant) : null;
   if (couverture) {
     cands = [{ id: 'COVER_BREAK', priority: 85, target: couverture, vmax: 1, reason: 'dernier rideau : coupe la course vers l’en-but' }];
-    if (pressePlaq) cands.push(pressePlaq);
+    // Le dernier rideau garde son plan (COVER_BREAK déclenche déjà le plaquage) : pas de PRESS_CARRIER superposé.
   } else if (goalId === 'COVER_BACKFIELD' || goalId === 'PREVENT_TRY') {
     const bal = s.ball && s.ball.lastSeen;
     cands = [{ id: goalId === 'PREVENT_TRY' ? 'PREVENT_TRY' : 'COVER_BACKFIELD', priority: goalId === 'PREVENT_TRY' ? 56 : 60,
