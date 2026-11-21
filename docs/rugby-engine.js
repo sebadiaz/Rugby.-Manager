@@ -1805,7 +1805,7 @@
     //  (point de chute, temps restant) et décide seul d'après SES caractéristiques (vitesse, mains, saut, passe, décision, puissance) et ce
     //  qu'il voit de ses coéquipiers : se proposer au ballon (« J'ai ! » / « Chasse ! », repris par un autre si son jugement est nettement
     //  meilleur), soutenir, relayer, presser ou couvrir un retour au pied. Chacun règle son allure pour ARRIVER à l'instant de la retombée,
-    //  jamais avant (obstruction) ; il s'écarte de ceux qui sont déjà plus près (pas de meute).
+    //  sans charger le réceptionneur avant le ballon (obstruction) ; il s'écarte de ceux qui sont déjà plus près (pas de meute).
     _comportementsVolEnvoi(dt, duree) {
       const lx = this.ballonCibleX, ly = this.ballonCibleY, kx = this.xCoupEnvoi, dir = this.dirCoupEnvoi;
       const tRest = Math.max(0.15, duree - this.timerPhase);
@@ -2023,16 +2023,20 @@
         }
         this._planEnvoi = null; // le ballon est retombé : le plan de vol est terminé
         const { joueur: chasseurProche, distance: distChasseur } = joueurLePlusProche(chasseurs, this.ballonCibleX, this.ballonCibleY);
-        // FAUTE DES CHASSEURS : un chasseur arrivé AVANT le ballon sur le receveur (le botteur a visé trop près pour ses
-        // chasseurs : ils sont déjà là quand le ballon retombe) l'obstrue ou le charge sans ballon : pénalité pour l'équipe
-        // qui reçoit. Le risque croît avec l'avance prise sur le ballon (0,4 s d'avance : 20 %, au plus 60 %).
-        // Risque de base 12 % dès qu'un chasseur est collé au receveur à la retombée (il était là avant le ballon), plus l'avance
-        // prévue par le botteur (cf. _choisirCibleCoupEnvoi) : un botteur qui vise trop près fait plus de fautes.
-        if (distChasseur < 2.0 && this.rng() < Math.min(0.6, 0.12 + 0.5 * (this._avanceChasse || 0))) {
-          const fautive = this.equipeReceptriceAttendue === 'A' ? 'B' : 'A';
-          this.log('PENALITE_ENVOI', this.equipeReceptriceAttendue, `Faute des chasseurs (equipe ${fautive}) : arrives avant le ballon, obstruction sur le receveur, penalite pour l'equipe ${this.equipeReceptriceAttendue}`);
-          this._traiterPenalite(this.equipeReceptriceAttendue, { x: receveurProche.x, y: receveurProche.y });
-          return;
+        // ARRIVER AVANT LE BALLON N'EST PAS UNE FAUTE : un chasseur peut attendre sous le ballon et sauter pour le disputer. La faute est
+        // un GESTE : charger, bloquer ou soulever le réceptionneur avant que le ballon l'atteigne, sans jouer le ballon (obstruction,
+        // jeu déloyal). Seul un chasseur arrivé en avance (le botteur a visé trop près pour ses chasseurs, cf. _avanceChasse) et collé au
+        // receveur peut le commettre ; il le commet selon sa discipline (un joueur discipliné attend, un autre se sent obligé de
+        // « prendre » le receveur) et d'autant plus que l'avance est grande. Sans avance, aucun geste fautif n'est possible.
+        const avance = this._avanceChasse || 0;
+        if (distChasseur < 2.0 && avance > 0 && chasseurProche) {
+          const disc = typeof chasseurProche.discipline === 'number' ? chasseurProche.discipline : 55;
+          const probaGeste = Math.min(0.5, (0.03 + 0.3 * avance) * (1.4 - disc / 100));
+          if (this.rng() < probaGeste) {
+            this.log('PENALITE_ENVOI', this.equipeReceptriceAttendue, `Faute du n°${chasseurProche.numero} (equipe ${chasseurProche.team}) : charge sur le receveur avant l'arrivee du ballon, penalite pour l'equipe ${this.equipeReceptriceAttendue}`, { joueur: chasseurProche.numero });
+            this._traiterPenalite(this.equipeReceptriceAttendue, { x: receveurProche.x, y: receveurProche.y });
+            return;
+          }
         }
         const chasseurGagne = distChasseur < 3 && this.rng() < 0.15;
         const joueur = chasseurGagne ? chasseurProche : receveurProche;

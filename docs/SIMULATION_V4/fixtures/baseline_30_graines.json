@@ -1,83 +1,83 @@
 {
  "entete": {
-  "sha": "4781d945051eec6cdd8917638151053717f4a1e3",
+  "sha": "44688dc0f197f978da44695b1d959618b6ab17c4",
   "shaMain": "b61ade69f1eeb4b7ad4d5746f9a221c796bca15c",
   "branche": "claude/sharp-faraday-2c0k9h",
   "graines": "1..30",
   "dureeSecondes": 4800,
   "dt": 0.1,
   "node": "v22.23.4",
-  "dureeCalculS": 107
+  "dureeCalculS": 108
  },
  "resume": {
   "essais": {
-   "moyenne": 7.07,
-   "ecartType": 2.29,
+   "moyenne": 6.93,
+   "ecartType": 2.35,
    "min": 1,
    "max": 12
   },
   "points": {
-   "moyenne": 59.13,
-   "ecartType": 12.81,
+   "moyenne": 58.87,
+   "ecartType": 12.91,
    "min": 28,
    "max": 85
   },
   "passes": {
-   "moyenne": 409.47,
-   "ecartType": 45.12,
+   "moyenne": 407.03,
+   "ecartType": 45.11,
    "min": 312,
    "max": 491
   },
   "passesTentees": {
-   "moyenne": 413.17,
-   "ecartType": 45.77,
+   "moyenne": 410.7,
+   "ecartType": 45.82,
    "min": 316,
    "max": 500
   },
   "courses": {
-   "moyenne": 261.97,
-   "ecartType": 25.62,
+   "moyenne": 261,
+   "ecartType": 26,
    "min": 208,
    "max": 318
   },
   "metresGagnes": {
-   "moyenne": 1045.68,
-   "ecartType": 99.78,
+   "moyenne": 1043.26,
+   "ecartType": 100.8,
    "min": 760.56,
    "max": 1233.366
   },
   "coupsDePied": {
-   "moyenne": 59.57,
-   "ecartType": 8.7,
+   "moyenne": 59.3,
+   "ecartType": 8.65,
    "min": 44,
    "max": 83
   },
   "plaquagesTentes": {
-   "moyenne": 336.73,
-   "ecartType": 35.38,
+   "moyenne": 334.8,
+   "ecartType": 35.85,
    "min": 259,
    "max": 421
   },
   "plaquagesReussis": {
-   "moyenne": 291.1,
-   "ecartType": 30.83,
+   "moyenne": 289.77,
+   "ecartType": 31.19,
    "min": 221,
    "max": 361
   },
   "rucks": {
-   "moyenne": 208.73,
-   "ecartType": 23.5,
+   "moyenne": 208.07,
+   "ecartType": 23.71,
    "min": 169,
    "max": 258
   },
   "melees": {
-   "moyenne": 16.8,
-   "ecartType": 2.41,
+   "moyenne": 16.93,
+   "ecartType": 2.37,
    "min": 11,
    "max": 22
   },
   "touches": {
-   "moyenne": 26.77,
+   "moyenne": 26.73,
    "ecartType": 4.86,
    "min": 19,
    "max": 43
@@ -89,43 +89,43 @@
    "max": 12
   },
   "penalitesConcedees": {
-   "moyenne": 21.7,
-   "ecartType": 4.69,
+   "moyenne": 21.9,
+   "ecartType": 4.66,
    "min": 13,
    "max": 34
   },
   "turnovers": {
-   "moyenne": 17.53,
-   "ecartType": 4.08,
+   "moyenne": 17.7,
+   "ecartType": 4.16,
    "min": 11,
    "max": 27
   },
   "enAvants": {
-   "moyenne": 12.97,
-   "ecartType": 2.29,
+   "moyenne": 13.07,
+   "ecartType": 2.39,
    "min": 8,
    "max": 17
   },
   "cartonsJaunes": {
-   "moyenne": 0.63,
-   "ecartType": 0.71,
+   "moyenne": 0.67,
+   "ecartType": 0.7,
    "min": 0,
    "max": 2
   },
   "tempsJeuEffectifMin": {
-   "moyenne": 34.66,
-   "ecartType": 2.54,
+   "moyenne": 34.49,
+   "ecartType": 2.66,
    "min": 30.17,
    "max": 39.778
   },
   "possessionA": {
-   "moyenne": 50.97,
-   "ecartType": 4.69,
+   "moyenne": 50.9,
+   "ecartType": 4.63,
    "min": 39,
    "max": 60
   },
   "essaisDuN15": {
-   "moyenne": 0.5,
+   "moyenne": 0.47,
    "ecartType": 0.56,
    "min": 0,
    "max": 2
@@ -525,26 +525,26 @@
   },
   {
    "seed": 18,
-   "essais": 8,
-   "points": 58,
-   "passes": 445,
-   "passesTentees": 448,
-   "courses": 266,
-   "metresGagnes": 1038.58,
-   "coupsDePied": 65,
-   "plaquagesTentes": 356,
-   "plaquagesReussis": 302,
-   "rucks": 211,
-   "melees": 14,
-   "touches": 27,
+   "essais": 4,
+   "points": 50,
+   "passes": 372,
+   "passesTentees": 374,
+   "courses": 237,
+   "metresGagnes": 965.973,
+   "coupsDePied": 57,
+   "plaquagesTentes": 298,
+   "plaquagesReussis": 262,
+   "rucks": 191,
+   "melees": 18,
+   "touches": 26,
    "mauls": 4,
-   "penalitesConcedees": 18,
-   "turnovers": 17,
-   "enAvants": 14,
-   "cartonsJaunes": 0,
-   "tempsJeuEffectifMin": 35.302,
-   "possessionA": 56,
-   "essaisDuN15": 1
+   "penalitesConcedees": 24,
+   "turnovers": 22,
+   "enAvants": 17,
+   "cartonsJaunes": 1,
+   "tempsJeuEffectifMin": 30.227,
+   "possessionA": 54,
+   "essaisDuN15": 0
   },
   {
    "seed": 19,
