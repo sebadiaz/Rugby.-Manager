@@ -3147,7 +3147,8 @@ test('50:22 : tapé de son camp, rebond dans le terrain, touche dans les 22 adve
   // le lancer à l'équipe qui a botté. Sinon, la touche en rebond revient à
   // l'adversaire, comme toute touche en jeu courant.
   let n5022 = 0, lancerBotteur = 0;
-  for (let seed = 1; seed <= 12; seed++) {
+  // 24 matchs : le 50:22 est rare (1 seul en 12 matchs selon le déroulé).
+  for (let seed = 1; seed <= 24; seed++) {
     const m = new MatchEngine(seed, 4800);
     const brut = m.log.bind(m);
     let attendu = null;
@@ -3157,7 +3158,7 @@ test('50:22 : tapé de son camp, rebond dans le terrain, touche dans les 22 adve
       if (attendu) { n5022++; if (m.phase === 'TOUCHE' && m.possession === attendu) lancerBotteur++; attendu = null; }
     }
   }
-  assert.ok(n5022 >= 2, `seulement ${n5022} 50:22 en 12 matchs`);
+  assert.ok(n5022 >= 2, `seulement ${n5022} 50:22 en 24 matchs`);
   assert.strictEqual(lancerBotteur, n5022, `${lancerBotteur}/${n5022} 50:22 donnent le lancer au botteur`);
   // Cas construits : l'équipe A tape, le ballon rebondit dans le terrain et
   // sort en touche à 85 m (dans les 22 de B). Depuis 45 m (son camp) : 50:22.
@@ -4577,26 +4578,30 @@ test('consigne individuelle de l arrière (FUNC-RM-004) : il couvre plus profond
   }
 });
 
-test('consigne des ailiers (FUNC-RM-004) : « repique » leur donne plus de ballons, « reste large » moins', () => {
-  const ballons = (ailiers) => {
-    let n = 0;
-    // 24 graines : sur 12, « repique » tombait à 1,19 x le neutre (seuil 1,2) selon le seul déroulé.
-    for (let seed = 1; seed <= 24; seed++) {
+test('consigne des ailiers (FUNC-RM-004) : « repique » rapproche l ailier côté fermé du jeu, « reste large » l en éloigne', () => {
+  // Mesure de POSITION (distance de l'ailier côté fermé au point de ruck, ruck de l'équipe A, plus d'une seconde après la
+  // plaque) et non plus un compte de ballons reçus : le rapport de ballons variait de 1,04 à 1,23 selon le déroulé (±0,06 sur
+  // 24 matchs), la position se mesure sur ~12 000 relevés et varie de moins de 1 m d'un lot à l'autre.
+  const distance = (ailiers) => {
+    let somme = 0, n = 0;
+    for (let seed = 1; seed <= 4; seed++) {
       const m = new MatchEngine(seed, 4800, ailiers == null ? {} : { attaqueA: { ailiers } });
-      const log = m.log.bind(m);
-      m.log = (t, team, msg, extra, ...r) => {
-        if ((t === 'PASSE' || t === 'JEU_LARGE') && team === 'A' && extra && (extra.vers === 11 || extra.vers === 14)) n++;
-        return log(t, team, msg, extra, ...r);
-      };
-      m.jouerJusquAuSifflet(0.1);
+      while (m.phase !== 'TERMINE' && m.tempsMatch < 4800) {
+        m.tick(0.1);
+        if (m.phase !== 'RUCK' || !m.ruckPoint || m.possession !== 'A' || m.timerPhase <= 1.0) continue;
+        const pt = m.ruckPoint, coteBalle = Math.sign(pt.y - LARGEUR / 2) || 1;
+        for (const w of m.equipeA.filter((j) => j.numero === 11 || j.numero === 14)) {
+          if (w.sinBin > 0 || Math.sign(w.channelY - LARGEUR / 2) === coteBalle) continue; // côté fermé seulement
+          somme += Math.abs(w.y - pt.y); n++;
+        }
+      }
     }
-    return n;
+    return { d: somme / n, n };
   };
-  const neutre = ballons(null), repique = ballons('repique'), large = ballons('large');
-  // Seuil 1,1 (et non 1,2) : l'effet mesuré sur 24 graines vaut 1,15 à 1,23 selon le déroulé ; 1,2 tombait sur la moyenne.
-  assert.ok(repique >= 1.1 * neutre, `repique : ${repique} ballons reçus par les ailiers de A, pour ${neutre} sans consigne`);
-  // 0,92 (et non 0,85) : l'effet mesuré sur 24 graines vaut 0,85 à 0,87 selon le déroulé ; 0,85 tombait sur la moyenne.
-  assert.ok(large <= 0.92 * neutre, `reste large : ${large} ballons reçus, pour ${neutre} sans consigne`);
+  const neutre = distance(null), repique = distance('repique'), large = distance('large');
+  assert.ok(neutre.n >= 3000 && repique.n >= 3000 && large.n >= 3000, `échantillon trop petit (${neutre.n}/${repique.n}/${large.n} relevés)`);
+  assert.ok(repique.d <= neutre.d - 2, `repique : l'ailier fermé est à ${repique.d.toFixed(1)} m du ruck, pour ${neutre.d.toFixed(1)} sans consigne`);
+  assert.ok(large.d >= neutre.d + 6, `reste large : ${large.d.toFixed(1)} m du ruck, pour ${neutre.d.toFixed(1)} sans consigne`);
 });
 
 test('lancements de jeu : mêlée, touche et maul ont chacun plusieurs scénarios, aucun ne domine, et chaque équipe varie', () => {

@@ -2837,13 +2837,13 @@
     // `dureeDefense` (optionnelle) : récupération propre aux défenseurs (cf.
     // sortie de maul, où ils n'ont qu'à se délier).
     // SORTIE DE RUCK : le ballon n'est « sorti » que lorsqu'il a quitté le point de ruck ; tant qu'il y est, les joueurs
-    // du ruck (attaquants comme défenseurs, à moins de 3,5 m) attendent au lieu de courir déjà vers leur ligne. Seul le
+    // du ruck (attaquants comme défenseurs, dans le corps du ruck : à moins de 2,2 m) attendent au lieu de courir déjà vers leur ligne. Seul le
     // porteur est libre. Libération dès que le ballon affiché est à plus de 1,5 m du ruck, au plus tard après 1,5 s (garde-fou).
     _retenirJoueursDuRuck(pt) {
       let n = 0;
       for (const j of [...this.equipeA, ...this.equipeB]) {
         if (j === this.porteur || j.auSol > 0 || j.sinBin > 0) continue;
-        if (Math.hypot(j.x - pt.x, j.y - pt.y) <= 3.5) { j._tenuRuck = true; n++; }
+        if (Math.hypot(j.x - pt.x, j.y - pt.y) <= 2.2) { j._tenuRuck = true; n++; }
       }
       this._ruckTenu = n ? { pt: { x: pt.x, y: pt.y }, t: 0 } : null;
     }
