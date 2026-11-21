@@ -699,6 +699,30 @@
   const RAYON_PLAQUAGE = 2.2;
   // Les arbitres assistants (juges de touche) se tiennent HORS du terrain, à 1,2 m de la ligne de touche.
   const ECART_ASSISTANT = 1.2;
+
+  // PLACEMENT DU COUP D'ENVOI (cahier des charges « Placement individuel au coup d'envoi »). Coordonnées du cahier : `x` latéral de 0 à
+  // 70 m (de gauche à droite depuis l'équipe qui engage), `y` longitudinal depuis la ligne de frappe, positif vers l'équipe qui reçoit.
+  // Dans le moteur : y = x du cahier ; x = point de frappe + sens du coup de pied × y du cahier. Ce sont des POINTS DE DÉPART : dès que
+  // le ballon est botté, chaque joueur décide seul de sa course (cf. _comportementsVolEnvoi). Ces positions sont celles d'un engagement
+  // court à droite (cible vers (52, +17)) ; les autres variantes déplacent les groupes concernés.
+  const ENVOI_BOTTEUR = { 1: [17, -5], 2: [26, -6], 3: [44, -5], 4: [48, -2], 5: [54, -2], 6: [12, -2], 7: [51, -2], 8: [32, -3], 9: [28, -12],
+    10: [35, 0], 11: [4, -2], 12: [25, -2], 13: [61, -2], 14: [67, -2], 15: [35, -25] };
+  const ENVOI_RECEVEUR = { 1: [15, 12], 2: [22, 12], 3: [55, 12], 4: [18, 18], 5: [50, 18], 6: [8, 12], 7: [62, 12], 8: [35, 19], 9: [43, 23],
+    10: [38, 28], 11: [4, 34], 12: [28, 22], 13: [59, 23], 14: [66, 34], 15: [35, 40] };
+  // Aptitude à capter un ballon haut (saut, mains, placement) : sert à désigner le réceptionneur et le contestataire principal.
+  // Aptitude aérienne INDIVIDUELLE (0-1) : mains sûres (adresse), saut (touche), lecture (décision) ; pas de table par poste.
+  const aptAerienne = (j) => Math.max(0, Math.min(1, (0.4 * (j.adresse || 0) + 0.35 * (j.touche || 0) + 0.25 * (j.decision || 0)) / 100 + 0.12));
+  // Variantes d'engagement : zone visée (largeur y, profondeur dm depuis le point de frappe) ; `cote` = côté du groupe de poursuite
+  // (+1 droite comme dans le cahier, -1 gauche, 0 centre) ; `haute` = cloche haute contestable.
+  const VARIANTES_ENVOI = {
+    'court-gauche': { y: [12, 24], dm: [13, 22], cote: -1, haute: true },
+    'court-droit': { y: [46, 58], dm: [13, 22], cote: 1, haute: true },
+    'central': { y: [29, 41], dm: [16, 26], cote: 0, haute: true },
+    'long-gauche': { y: [10, 22], dm: [32, 43], cote: -1, haute: false },
+    'long-droit': { y: [48, 60], dm: [32, 43], cote: 1, haute: false },
+  };
+  // Les cinq poursuivants du groupe de contestation (déplacés ensemble selon la variante) et les deux couloirs.
+  const GROUPE_POURSUITE = [3, 4, 5, 7, 13];
   // PLAQUAGE PLONGÉ : un arrière (n°10 à 15) disponible, que le porteur en pleine course dépasse à 2,2-3,2 m,
   // se jette bras tendus au lieu de le laisser filer sans rien tenter. À la limite de portée, la réussite
   // est réduite (x0,6 de la probabilité normale).
@@ -1493,32 +1517,26 @@
     // défendue par l'équipe qui botte pour une remise en 22m). L'équipe qui
     // botte doit rester derrière le ballon, l'équipe receptrice à 10m minimum :
     // le ballon est donc réellement botté et contestable, pas remis en main.
-    // DISPOSITIF DU COUP D'ENVOI ET DU RENVOI AUX 22 M (même code : seul le point de frappe `kx` change).
-    // Le botteur peut viser n'importe où : l'équipe qui REÇOIT ne connaît pas la cible et se répartit donc pour couvrir un
-    // MAXIMUM de terrain, en trois étages (distances depuis le point de frappe, au moins 10 m, loi 12) :
-    //  - étage avancé (11 à 15 m) : DEUX groupes d'avants (sauteur + leveurs) sur les tiers du terrain, le talonneur et le
-    //    8 au centre : ils couvrent les coups courts et contestables ;
-    //  - étage médian (20 à 25 m) : les centres écartés, le 9 au centre et le 10 entre eux, pour les ballons au milieu
-    //    et les seconds ballons ;
-    //  - fond (28 à 38 m) : les ailiers sur leurs bords, le 15 au centre en profondeur.
+    // DISPOSITIF DU COUP D'ENVOI ET DU RENVOI AUX 22 M (même code : seul le point de frappe `kx` change). Équipe qui REÇOIT : positions de
+    // départ du cahier des charges (ENVOI_RECEVEUR) — deux groupes de réception (4 à gauche, 5 à droite, avec leurs soutiens), le 8 et le 12
+    // au centre, le 9 et le 10 derrière, les centres écartés, les ailiers et le 15 en couverture profonde ; tous à au moins 10 m de la
+    // ligne de frappe (loi 12). Elle ne connaît pas la cible : chacun décide ensuite seul, en vol (cf. _comportementsVolEnvoi).
     _formationReception(rec, kx, dirKick, avaitEquipes) {
       const clampX = (x) => Math.max(0.5, Math.min(LONGUEUR - 0.5, x));
       const clampY = (y) => Math.max(1.5, Math.min(LARGEUR - 1.5, y));
-      const pose = (j, x, y) => { if (!j) return; j._cibleEnvoi = { x: clampX(x), y: clampY(y) }; if (!avaitEquipes) { j.x = j._cibleEnvoi.x; j.y = j._cibleEnvoi.y; } };
-      const par = (num) => rec.find((j) => j.numero === num);
-      const d = (m) => kx + dirKick * m;
-      const m = LARGEUR / 2;
-      // Groupe gauche (y = m - 15) : 5 saute, 4 et 1 lèvent. Groupe droit (y = m + 15) : 6 saute, 7 et 3 lèvent.
-      pose(par(5), d(12.0), m - 15); pose(par(4), d(12.8), m - 17.2); pose(par(1), d(11.4), m - 12.8);
-      pose(par(6), d(12.0), m + 15); pose(par(7), d(12.8), m + 17.2); pose(par(3), d(11.4), m + 12.8);
-      pose(par(2), d(11.0), m); pose(par(8), d(15.0), m);
-      pose(par(9), d(21.0), m); pose(par(10), d(25.0), m - 7);
-      const c = [par(12), par(13)].filter(Boolean).sort((a, b) => a.channelY - b.channelY);
-      if (c[0]) pose(c[0], d(21.0), m - 21); if (c[1]) pose(c[1], d(21.0), m + 21);
-      for (const num of [11, 14]) { const j = par(num); if (j) pose(j, d(28.0), j.channelY < m ? 8 : LARGEUR - 8); }
-      pose(par(15), d(38.0), m);
+      for (const j of rec) {
+        const p = ENVOI_RECEVEUR[j.numero];
+        if (!p) continue;
+        j._cibleEnvoi = { x: clampX(kx + dirKick * p[1]), y: clampY(p[0]) };
+        if (!avaitEquipes) { j.x = j._cibleEnvoi.x; j.y = j._cibleEnvoi.y; }
+      }
     }
 
+    // CHOIX DE LA CIBLE PAR LE BOTTEUR : une des cinq variantes (court gauche / droit, central, long gauche / droit), puis un point dans la
+    // zone de la variante. Il lit le dispositif des receveurs et évalue chaque point : où le ballon est le plus difficile à capter pour eux
+    // alors que SES chasseurs arrivent à temps, sans arriver avant le ballon (faute) ; il y gagne du terrain, évite les bords (marge = sa
+    // propre imprécision) et reste dans sa portée. Sa lucidité (`decision`) règle le bruit de son jugement, sa précision (`jeuPied`) l'erreur
+    // de sa frappe. `config.varianteEnvoi` force la variante (tests).
     // Temps mis par un chasseur pour couvrir `D` mètres depuis la ligne de chasse : il a pris son élan dans la seconde qui précède la
     // frappe (≈ 2,2 m/s), puis accélère (ACCELERATION) jusqu'à sa vitesse de chasse (≈ 5,8 m/s).
     _tempsChasse(D) {
@@ -1527,11 +1545,6 @@
       return D <= dAcc ? (-v0 + Math.sqrt(v0 * v0 + 2 * a * D)) / a : tAcc + (D - dAcc) / vmax;
     }
 
-    // CHOIX DE LA CIBLE PAR LE BOTTEUR. Il lit le dispositif des receveurs et choisit le point où le ballon est le plus
-    // difficile à capter pour eux (leur temps d'arrivée comparé à la durée du vol) alors que SES chasseurs arrivent à temps ;
-    // il y gagne du terrain (profondeur), évite les bords (marge = sa propre imprécision) et reste dans sa portée. Sa
-    // lucidité (`decision`) règle le bruit de son jugement, sa précision (`jeuPied`) l'erreur de sa frappe : un botteur
-    // moyen vise moins juste et moins loin qu'un bon.
     _choisirCibleCoupEnvoi(kickeur, kx, ky, dirKick, equipeKick) {
       const jp = typeof kickeur.jeuPied === 'number' ? kickeur.jeuPied : 60;
       const dec = typeof kickeur.decision === 'number' ? kickeur.decision : 60;
@@ -1542,39 +1555,39 @@
       const enVingtDeux = kx !== LONGUEUR / 2;
       const envieRecup = enVingtDeux ? 0.35 : 1;
       const poidsTerrain = enVingtDeux ? 0.3 : 0.04;
+      const forcee = this.cfg.varianteEnvoi && VARIANTES_ENVOI[this.cfg.varianteEnvoi] ? this.cfg.varianteEnvoi : null;
       const rec = (equipeKick === 'A' ? this.equipeB : this.equipeA).filter((j) => j.sinBin <= 0 && j._cibleEnvoi);
-      const nChasse = (equipeKick === 'A' ? this.equipeA : this.equipeB).filter((j) => j.sinBin <= 0).length - 1;
-      const pasC = (LARGEUR - 8) / Math.max(1, nChasse);
       const candidats = [];
-      for (let dm = 12; dm <= 42; dm += 3) {
-        const x = kx + dirKick * dm;
-        if (x < 2 || x > LONGUEUR - 2) continue;
-        for (let y = 6; y <= LARGEUR - 6; y += 4) {
-          // Durée du vol. Une cloche haute et courte (≤ 24 m) laisse du temps aux chasseurs : c'est la seule qui se récupère ;
-          // au-delà, le ballon file à plat (distance / 18 m/s, comme avant).
-          const dist = Math.hypot(dm, y - ky);
-          const contestable = dm <= 24;
-          const tVol = contestable ? 2.6 + 0.08 * (dm - 10) : Math.max(0.9, Math.min(2.0, dist / 18));
-          let tRec = Infinity;
-          for (const r of rec) tRec = Math.min(tRec, Math.hypot(r._cibleEnvoi.x - x, r._cibleEnvoi.y - y) / (vitesseMs(r) * 0.9));
-          // Arrivée des chasseurs : sur une cible contestable d'un côté, tous les avants s'y regroupent (distance latérale réduite).
-          const iC = Math.max(0, Math.min(nChasse, Math.round((y - 4) / pasC)));
-          const lat = contestable && Math.abs(y - LARGEUR / 2) >= 8 ? 3 : Math.abs(y - (4 + iC * pasC));
-          const tCh = this._tempsChasse(Math.hypot(dm + 0.5, lat));
-          const ecart = tCh - tVol; // > 0 : le chasseur arrive APRÈS le ballon ; < 0 : AVANT (faute probable)
-          // Fenêtre idéale : arriver à l'instant où le ballon retombe (de 0 à +0,5 s). Trop tard, le ballon est perdu ; trop tôt
-          // (avant le ballon de plus de 0,4 s), c'est de l'obstruction ou une charge sur le receveur : faute.
-          const chanceRecup = Math.max(0, 1 - Math.abs(ecart - 0.2) / 1.3);
-          const risqueFaute = Math.max(0, Math.min(0.6, (-0.4 - ecart) / 1.5));
-          let score = envieRecup * (-1.4 * (tVol - tRec) + 4.3 * chanceRecup) - 5 * risqueFaute + poidsTerrain * dm;
-          const bord = Math.min(y, LARGEUR - y);
-          if (bord < sigma + 2) score -= (sigma + 2 - bord) * 0.8;
-          if (dm > portee) score -= (dm - portee) * 0.7;
-          candidats.push({ score, dm, y, tVol, avance: Math.max(0, -ecart) });
+      for (const [nom, V] of Object.entries(VARIANTES_ENVOI)) {
+        if (forcee && nom !== forcee) continue;
+        for (let dm = V.dm[0]; dm <= V.dm[1] + 0.01; dm += 3) {
+          const x = kx + dirKick * dm;
+          if (x < 2 || x > LONGUEUR - 2) continue;
+          for (let y = V.y[0]; y <= V.y[1] + 0.01; y += 4) {
+            // Durée du vol. Une cloche haute et courte laisse du temps aux chasseurs : c'est la seule qui se récupère ; un coup long
+            // file à plat (distance / 18 m/s).
+            const dist = Math.hypot(dm, y - ky);
+            const tVol = V.haute ? 2.6 + 0.08 * (dm - 10) : Math.max(0.9, Math.min(2.0, dist / 18));
+            let tRec = Infinity;
+            for (const r of rec) tRec = Math.min(tRec, Math.hypot(r._cibleEnvoi.x - x, r._cibleEnvoi.y - y) / (vitesseMs(r) * 0.9));
+            // Arrivée des chasseurs : le groupe de poursuite (3, 4, 5, 7, 13) est regroupé du côté de la cible.
+            const lat = V.haute ? 3 : Math.abs(y - LARGEUR / 2);
+            const tCh = this._tempsChasse(Math.hypot(dm + 0.5, lat));
+            const ecart = tCh - tVol; // > 0 : le chasseur arrive APRÈS le ballon ; < 0 : AVANT (faute probable)
+            // Fenêtre idéale : arriver à l'instant où le ballon retombe (de 0 à +0,5 s). Trop tard, le ballon est perdu ; trop tôt
+            // (avant le ballon de plus de 0,4 s), c'est de l'obstruction ou une charge sur le receveur : faute.
+            const chanceRecup = Math.max(0, 1 - Math.abs(ecart - 0.2) / 1.3);
+            const risqueFaute = Math.max(0, Math.min(0.6, (-0.4 - ecart) / 1.5));
+            let score = envieRecup * (-1.4 * (tVol - tRec) + 4.3 * chanceRecup) - 5 * risqueFaute + poidsTerrain * dm;
+            const bord = Math.min(y, LARGEUR - y);
+            if (bord < sigma + 2) score -= (sigma + 2 - bord) * 0.8;
+            if (dm > portee) score -= (dm - portee) * 0.7;
+            candidats.push({ score, dm, y, tVol, variante: nom });
+          }
         }
       }
-      // Il ne vise pas toujours le même point : il tire sa cible parmi les bonnes options, avec une probabilité qui croît
-      // avec leur valeur (température : un botteur moins lucide hésite davantage). D'un coup d'envoi à l'autre, la cible varie.
+      // Il ne vise pas toujours le même point : il tire sa cible parmi les bonnes options, avec une probabilité qui croît avec leur
+      // valeur (température : un botteur moins lucide hésite davantage). D'un coup d'envoi à l'autre, la variante et le point varient.
       const T = 1.6 - Math.max(0, Math.min(100, dec)) / 100 * 0.9;
       let meilleur = null;
       if (candidats.length) {
@@ -1584,78 +1597,41 @@
         for (let i = 0; i < candidats.length; i++) { r -= poids[i]; if (r <= 0) { meilleur = candidats[i]; break; } }
         if (!meilleur) meilleur = candidats[candidats.length - 1];
       }
-      if (!meilleur) meilleur = { dm: 20, y: LARGEUR / 2, tVol: 1.5, avance: 0 };
+      if (!meilleur) meilleur = { dm: 20, y: LARGEUR / 2, tVol: 2.8, variante: 'central', score: 0 };
       // Frappe : le ballon retombe à l'endroit visé, à l'erreur du botteur près.
       const bruit = () => (this.rng() + this.rng() + this.rng() - 1.5) * 1.4;
       const dmReel = meilleur.dm + bruit() * sigma * 0.9;
       const yReel = Math.max(3, Math.min(LARGEUR - 3, meilleur.y + bruit() * sigma * 0.8));
-      // Avance des chasseurs sur le ballon, au point de chute RÉEL : un ballon retombé plus près que visé (frappe imprécise) les
-      // fait arriver avant lui (faute possible) ; un ballon plus loin les laisse en retard (cf. _tickCoupEnvoi).
-      const avance = meilleur.dm <= 24 ? Math.max(0, meilleur.tVol - this._tempsChasse(Math.hypot(dmReel + 0.5, 3))) : 0;
-      return { dm: dmReel, y: yReel, vise: meilleur, tVol: meilleur.tVol, avance };
+      // Avance des chasseurs sur le ballon, au point de chute RÉEL : un ballon retombé plus près que visé les fait arriver avant lui.
+      const haute = VARIANTES_ENVOI[meilleur.variante].haute;
+      const avance = haute ? Math.max(0, meilleur.tVol - this._tempsChasse(Math.hypot(dmReel + 0.5, 3))) : 0;
+      return { dm: dmReel, y: yReel, vise: meilleur, tVol: meilleur.tVol, avance, variante: meilleur.variante };
     }
 
-    // L'équipe qui BOTTE : le botteur à son point de frappe ; les 14 autres en LIGNE DE CHASSE à hauteur du ballon ou 1 à 3 m
-    // derrière. Par défaut la ligne est étalée de touche à touche (dans l'ordre habituel des postes). Quand le botteur vise un
-    // ballon CONTESTABLE sur un côté (`yRegroupe`), l'équipe REGROUPE TOUS SES AVANTS de ce côté, serrés autour de la cible, pour
-    // avoir plus de chances de récupérer le ballon ; les arrières se répartissent sur le reste de la largeur.
-    _formationBotteur(equipeKick, kickeur, kx, ky, dirKick, avaitEquipes, yRegroupe = null) {
+    // L'équipe qui BOTTE : positions de départ du cahier des charges (ENVOI_BOTTEUR), toutes derrière la ligne du ballon (hors-jeu
+    // sinon) : le groupe de poursuite (3, 4, 5, 7, 13) du côté de la cible, le 6, le 1 et le 12 de l'autre côté, le 9 et le 15 en
+    // couverture. Variante à gauche : le groupe est repris en miroir ; au centre : il se resserre vers l'axe. Les ailiers (11, 14) gardent
+    // leur couloir. Si le botteur n'est pas le 10, il prend la place du 10 et le 10 la sienne. Le botteur se tient à son point de frappe.
+    _formationBotteur(equipeKick, kickeur, kx, ky, dirKick, avaitEquipes, variante = 'court-droit') {
       // Derrière le ballon, y compris dans l'en-but (renvoi depuis la ligne d'en-but).
       const clampX = (x) => Math.max(-7.5, Math.min(LONGUEUR + 7.5, x));
       const clampY = (y) => Math.max(1.5, Math.min(LARGEUR - 1.5, y));
       const pose = (j, x, y) => { j._cibleEnvoi = { x: clampX(x), y: clampY(y) }; if (!avaitEquipes) { j.x = j._cibleEnvoi.x; j.y = j._cibleEnvoi.y; } };
+      const cote = (VARIANTES_ENVOI[variante] || VARIANTES_ENVOI['court-droit']).cote;
+      const lateral = (j, x) => {
+        if (j.numero === 11 || j.numero === 14) return x;
+        if (cote === -1) return LARGEUR - x;
+        if (cote === 0 && GROUPE_POURSUITE.includes(j.numero)) return LARGEUR / 2 + (x - LARGEUR / 2) * 0.45;
+        return x;
+      };
       const botte = (equipeKick === 'A' ? this.equipeA : this.equipeB).filter((j) => j.sinBin <= 0);
-      const autres = botte.filter((j) => j !== kickeur).sort((a, b) => a.channelY - b.channelY || a.numero - b.numero);
+      const emplacement = (j) => (j.numero === 10 && kickeur.numero !== 10 ? kickeur.numero : j.numero);
       pose(kickeur, kx, ky);
-      const xLigne = (k) => kx - dirKick * (1.2 + (k % 2) * 1.6);
-      if (yRegroupe == null) {
-        const n = autres.length + 1, pas = (LARGEUR - 8) / Math.max(1, n - 1);
-        const slotBotteur = Math.max(0, Math.min(n - 1, Math.round((ky - 4) / pas)));
-        let k = 0, slot = 0;
-        for (const j of autres) {
-          if (slot === slotBotteur) slot++;
-          k++;
-          pose(j, xLigne(k), 4 + slot * pas);
-          slot++;
-        }
-        return;
+      for (const j of botte) {
+        if (j === kickeur) continue;
+        const p = ENVOI_BOTTEUR[emplacement(j)];
+        if (p) pose(j, kx + dirKick * p[1], lateral(j, p[0]));
       }
-      // Regroupement : les avants (1 à 8) en bande serrée centrée sur la cible, les arrières sur le reste de la largeur.
-      const avants = autres.filter((j) => j.numero <= 8);
-      const arrieres = autres.filter((j) => j.numero > 8);
-      const ecart = 2.4, demi = ((avants.length - 1) * ecart) / 2;
-      const centre = Math.max(4 + demi, Math.min(LARGEUR - 4 - demi, yRegroupe));
-      const bas = centre - demi, haut = centre + demi;
-      avants.forEach((j, i) => pose(j, xLigne(i + 1), bas + i * ecart));
-      // Les arrières : espacés régulièrement sur la largeur libre (la bande des avants est sautée).
-      const longueur = (LARGEUR - 8) - (haut - bas) - 3;
-      arrieres.forEach((j, i) => {
-        let u = ((i + 0.5) / Math.max(1, arrieres.length)) * longueur; // abscisse sur la largeur libre
-        let y = 4 + u;
-        if (y >= bas - 1.5) y += (haut - bas) + 3; // saute la bande des avants
-        pose(j, xLigne(avants.length + i + 1), y);
-      });
-    }
-
-    // LECTURE PAR LES RECEVEURS. Ils voient comment l'équipe qui botte s'est disposée : si ses avants sont regroupés d'un côté,
-    // le ballon sera disputé de ce côté et ils se décalent en conséquence (les avants et le milieu en plein, les ailiers et le
-    // 15 en partie). Une ligne de chasse étalée ne les fait pas bouger. Chacun reste à au moins 10 m du point de frappe.
-    _adapterReception(equipeKick, kx, dirKick, avaitEquipes) {
-      const kicking = (equipeKick === 'A' ? this.equipeA : this.equipeB).filter((j) => j.sinBin <= 0 && j._cibleEnvoi && j.numero <= 8 && j !== this.porteur);
-      if (!kicking.length) return 0;
-      const cy = kicking.reduce((a, j) => a + j._cibleEnvoi.y, 0) / kicking.length;
-      const sigma = Math.sqrt(kicking.reduce((a, j) => a + (j._cibleEnvoi.y - cy) ** 2, 0) / kicking.length);
-      if (sigma > 9) return 0; // ligne étalée : rien à lire
-      const decalage = Math.max(-16, Math.min(16, (cy - LARGEUR / 2) * 0.75));
-      const facteur = (num) => (num <= 8 || num === 9 || num === 10 || num === 12 || num === 13 ? 1 : 0.4);
-      for (const j of (equipeKick === 'A' ? this.equipeB : this.equipeA)) {
-        if (j.sinBin > 0 || !j._cibleEnvoi) continue;
-        let y = j._cibleEnvoi.y + decalage * facteur(j.numero);
-        y = Math.max(3, Math.min(LARGEUR - 3, y));
-        j._cibleEnvoi = { x: j._cibleEnvoi.x, y };
-        if (!avaitEquipes) j.y = y;
-      }
-      return decalage;
     }
 
     _nouvelleManche(equipeReceptrice, xCentre = LONGUEUR / 2) {
@@ -1748,12 +1724,10 @@
       this.equipeReceptriceAttendue = equipeReceptrice;
       this.xCoupEnvoi = xCentre;
       this.dirCoupEnvoi = dirKick;
-      // 1. Les receveurs se répartissent pour couvrir un maximum de terrain (ils ne connaissent pas la cible).
+      // 1. Les receveurs prennent leurs positions de départ (cahier des charges) : ils ne connaissent pas la cible.
       const recepteurs = (equipeKick === 'A' ? this.equipeB : this.equipeA).filter((j) => j.sinBin <= 0);
       this._formationReception(recepteurs, xCentre, dirKick, avaitEquipes);
-      // 2. Le botteur CHOISIT sa cible d'après ce dispositif (cf. _choisirCibleCoupEnvoi). Un coup d'envoi mal frappé qui ne
-      // franchit pas les 10 m est sanctionné par une mêlée au centre (loi 12) ; il découle de l'imprécision du botteur
-      // (cible proche des 10 m, erreur de frappe) plus un raté pur, plus fréquent pour un mauvais botteur.
+      // 2. Le botteur CHOISIT sa variante et sa cible d'après ce dispositif (cf. _choisirCibleCoupEnvoi).
       const jpBotteur = typeof kickeur.jeuPied === 'number' ? kickeur.jeuPied : 60;
       let cible = this._choisirCibleCoupEnvoi(kickeur, xCentre, LARGEUR / 2, dirKick, equipeKick);
       // 3. Point de frappe : au coup d'envoi, au centre de la ligne de milieu (loi 12). Sur un renvoi aux 22 m, le botteur
@@ -1764,14 +1738,12 @@
         ky = Math.max(6, Math.min(LARGEUR - 6, LARGEUR / 2 - versCible * (8 + this.rng() * 14)));
       }
       this.yCoupEnvoi = ky;
-      // 4. Son équipe se dispose : sur un ballon contestable visé d'un côté (court ou moyen, pas au centre), TOUS les avants se
-      // regroupent de ce côté pour augmenter les chances de récupérer le ballon ; sinon, ligne de chasse étalée.
-      const regroupe = cible.dm < 27 && Math.abs(cible.y - LARGEUR / 2) >= 8 && this.rng() < 0.7;
-      this._formationBotteur(equipeKick, kickeur, xCentre, ky, dirKick, avaitEquipes, regroupe ? cible.y : null);
-      // 5. La défense LIT ce dispositif et se décale en conséquence. Le botteur, lui, peut en profiter : une fois sur cinq il
-      // retape de l'autre côté, là où la défense s'est dégarnie (cf. _choisirCibleCoupEnvoi, relancé sur le dispositif décalé).
-      const decalage = this._adapterReception(equipeKick, xCentre, dirKick, avaitEquipes);
-      if (regroupe && Math.abs(decalage) > 3 && this.rng() < 0.2) cible = this._choisirCibleCoupEnvoi(kickeur, xCentre, LARGEUR / 2, dirKick, equipeKick);
+      // 4. Son équipe se dispose selon la variante : le groupe de poursuite se déplace du côté visé (miroir à gauche, resserré au centre).
+      this._formationBotteur(equipeKick, kickeur, xCentre, ky, dirKick, avaitEquipes, cible.variante);
+      // 5. Rien d'autre n'est imposé : les positions ci-dessus ne sont que des points de départ. La réception se lit en vol,
+      // joueur par joueur (cf. _comportementsVolEnvoi).
+      this.varianteEnvoi = cible.variante;
+      this._planEnvoi = null;
       // Un coup d'envoi mal frappé qui ne franchit pas les 10 m est sanctionné par une mêlée au centre (loi 12) ; il découle de
       // l'imprécision du botteur (cible proche des 10 m, erreur de frappe) plus un raté pur, plus fréquent pour un mauvais botteur.
       this.coupEnvoiCourt = cible.dm < 10 || this.rng() < 0.045 + Math.max(0, 60 - jpBotteur) * 0.0015;
@@ -1825,6 +1797,104 @@
     // récupéré par l'une ou l'autre équipe (contest aérien), pas systématiquement
     // par l'équipe "attendue" — conformément au fait qu'un coup d'envoi est
     // réellement disputé en l'air, pas une simple remise en main.
+    // COMPORTEMENTS EN VOL (coup d'envoi et renvoi aux 22 m). Le ballon est en l'air et sa trajectoire est visible de tous : chaque joueur
+    // décide SEUL de sa course d'après le point de chute et le temps restant, sa vitesse et sa distance, son aptitude à jouer un ballon
+    // haut et sa référence de poste. Les rangs (« suis-je le mieux placé ? ») se calculent avec ce que chacun voit de ses partenaires,
+    // par la même règle connue de tous (note, puis numéro le plus bas) : aucune affectation de rôle par un coordinateur d'équipe.
+    //  AUCUN RÔLE PAR NUMÉRO : les positions de départ sont de simples informations de placement. En vol, chaque joueur lit la trajectoire
+    //  (point de chute, temps restant) et décide seul d'après SES caractéristiques (vitesse, mains, saut, passe, décision, puissance) et ce
+    //  qu'il voit de ses coéquipiers : se proposer au ballon (« J'ai ! » / « Chasse ! », repris par un autre si son jugement est nettement
+    //  meilleur), soutenir, relayer, presser ou couvrir un retour au pied. Chacun règle son allure pour ARRIVER à l'instant de la retombée,
+    //  jamais avant (obstruction) ; il s'écarte de ceux qui sont déjà plus près (pas de meute).
+    _comportementsVolEnvoi(dt, duree) {
+      const lx = this.ballonCibleX, ly = this.ballonCibleY, kx = this.xCoupEnvoi, dir = this.dirCoupEnvoi;
+      const tRest = Math.max(0.15, duree - this.timerPhase);
+      const dm = (lx - kx) * dir, longue = dm >= 27, milieu = LARGEUR / 2;
+      const equipeKick = this.possession;
+      const kicking = (equipeKick === 'A' ? this.equipeA : this.equipeB).filter((j) => j.sinBin <= 0);
+      const rec = (equipeKick === 'A' ? this.equipeB : this.equipeA).filter((j) => j.sinBin <= 0);
+      const vers = (j, tx, ty, plafond) => {
+        tx = Math.max(0.5, Math.min(LONGUEUR - 0.5, tx)); ty = Math.max(1, Math.min(LARGEUR - 1, ty));
+        avancer(j, tx - j.x, ty - j.y, dt, Math.max(1, Math.min(plafond, vitesseMs(j))));
+      };
+      // Allure qui fait arriver au bon moment : distance / (temps restant + retard), bornée.
+      const allure = (j, tx, ty, retard, frac) => Math.max(2.2, Math.min(vitesseMs(j) * frac, Math.hypot(tx - j.x, ty - j.y) / (tRest + retard)));
+      // Mémoire des appels ENTENDUS : « J'ai ! » (équipe qui reçoit) et « Chasse ! » (équipe qui botte). Ce n'est pas une affectation : un
+      // joueur ne l'annonce que s'il se juge lui-même le mieux placé parmi ceux qu'il voit, et tout autre peut la reprendre si son propre
+      // jugement est nettement meilleur (la trajectoire change, un autre est arrivé).
+      const P = this._planEnvoi || (this._planEnvoi = { primaire: null, secours: null, principal: null });
+      const cotePerso = (j) => (j.y < ly ? -1 : 1);
+      // Rang d'un joueur parmi ses coéquipiers du même côté du point de chute : il s'écarte de ceux qui sont déjà plus près (pas de
+      // superposition, pas de meute).
+      const rangCote = (j, equipe, dist) => equipe.filter((k) => k !== j && cotePerso(k) === cotePerso(j) && dist(k) < dist(j)).length;
+      // --- RÉCEPTION : chacun juge sa marge d'arrivée (temps restant - temps de course) et son aptitude aérienne.
+      const tArr = (j) => Math.hypot(lx - j.x, ly - j.y) / (vitesseMs(j) * 0.95);
+      const dLand = (j) => Math.hypot(lx - j.x, ly - j.y);
+      const note = (j) => (tRest - tArr(j)) + 1.2 * aptAerienne(j);
+      if (rec.length) {
+        const classes = rec.slice().sort((a, b) => note(b) - note(a) || a.numero - b.numero);
+        let prim = P.primaire && rec.includes(P.primaire) ? P.primaire : null;
+        const meilleur = classes[0];
+        if (!prim || (meilleur !== prim && note(meilleur) > note(prim) + 0.4)) prim = meilleur;
+        const second = classes.find((j) => j !== prim) || null;
+        if (prim !== P.primaire) this.log('APPEL_ENVOI', prim.team, `Le n°${prim.numero} de l'equipe ${prim.team} annonce « J'ai ! » sur le ballon`, { joueur: prim.numero, appel: 'J_AI' });
+        P.primaire = prim; P.secours = second;
+        for (const j of rec) {
+          const d = dLand(j), profondeur = (j.x - lx) * dir; // > 0 : derrière le point de chute vu de la réception
+          const allureJ = (tx, ty) => allure(j, tx, ty, 0, 0.9);
+          const s = cotePerso(j);
+          if (j === prim) { vers(j, lx, ly, vitesseMs(j)); continue; }
+          // Trois envies, évaluées avec ses propres caractéristiques : soutenir le sauteur, relayer le jeu, couvrir le fond.
+          const envieSoutien = d <= 18 ? (1 - d / 18) * (0.5 + 0.5 * (j.puissance || 50) / 100) : 0;
+          const envieRelais = (d <= 26 && profondeur > -2 && profondeur < 16) ? 0.55 * ((j.passe || 40) + (j.decision || 40)) / 200 * (1 - Math.abs(profondeur - 7) / 20) : 0;
+          const envieCouverture = profondeur >= 6 ? Math.min(1, profondeur / 14) * (0.5 + 0.5 * ((j.vitesse || 50) + (j.jeuPied || 20)) / 200) : 0;
+          const envieSecours = j === second ? 0.75 : 0;
+          const mieux = Math.max(envieSoutien, envieRelais, envieCouverture, envieSecours);
+          if (mieux <= 0.05) { vers(j, j.x, j.y + 0.3 * (ly - j.y), vitesseMs(j) * 0.6); continue; } // rien à faire : il tient sa place en se décalant vers le ballon
+          if (mieux === envieSecours) { const tx = lx + dir * 3.5, ty = ly - s * 3; vers(j, tx, ty, allureJ(tx, ty)); continue; }
+          if (mieux === envieSoutien) {
+            const r = rangCote(j, rec, dLand);
+            const tx = lx + dir * (0.6 + 1.2 * r), ty = ly + s * (2.2 + 1.8 * r);
+            vers(j, tx, ty, allureJ(tx, ty)); continue;
+          }
+          if (mieux === envieRelais) {
+            const r = rangCote(j, rec, dLand);
+            const tx = lx + dir * (5 + 2 * r), ty = ly + s * (4.5 + 2 * r);
+            vers(j, tx, ty, allureJ(tx, ty)); continue;
+          }
+          // Couverture : il se tient derrière le point de chute, assez loin pour jouer un retour au pied, et suit le ballon latéralement.
+          const tx = lx + dir * Math.max(6, Math.min(profondeur, 16)), ty = j.y + 0.35 * (ly - j.y);
+          vers(j, tx, ty, allureJ(tx, ty) * 0.9);
+        }
+      }
+      // --- POURSUITE : chacun juge s'il peut arriver à temps (sa marge), et son aptitude aérienne.
+      const marge = (j) => tRest - this._tempsChasse(dLand(j));
+      const noteC = (j) => marge(j) + 1.2 * aptAerienne(j);
+      const ligne = kicking.filter((j) => marge(j) >= -0.5);
+      const classesC = ligne.slice().sort((a, b) => noteC(b) - noteC(a) || a.numero - b.numero);
+      let principal = P.principal && classesC.includes(P.principal) ? P.principal : null;
+      if (classesC[0] && (!principal || (classesC[0] !== principal && noteC(classesC[0]) > noteC(principal) + 0.4))) principal = classesC[0];
+      if (principal && principal !== P.principal) this.log('APPEL_ENVOI', principal.team, `Le n°${principal.numero} de l'equipe ${principal.team} annonce « Chasse ! » et conteste le ballon`, { joueur: principal.numero, appel: 'CHASSE' });
+      P.principal = principal;
+      for (const j of kicking) {
+        // Allure majorée de 35 % : un joueur lancé à l'arrêt met du temps à atteindre sa vitesse (ACCELERATION). Le contestataire court à fond.
+        const courir = (tx, ty, retard, fond) => vers(j, tx, ty, fond ? vitesseMs(j) * 0.9 : Math.min(vitesseMs(j) * 0.9, allure(j, tx, ty, retard, 0.85) * 1.35));
+        const s = ly < milieu ? -1 : 1, sj = cotePerso(j);
+        if (j === principal) { courir(lx, ly, 0.2, true); continue; }
+        // Il presse si son temps de course le permet et s'il fait partie des mieux placés qu'il voit (au plus quatre) ; sinon il couvre.
+        const meilleursQueMoi = kicking.filter((k) => k !== j && marge(k) > marge(j)).length;
+        if (marge(j) >= -1.2 && meilleursQueMoi < 5) {
+          const r = rangCote(j, kicking, dLand);
+          const profPression = 2.4 + 2.2 * Math.min(r + (meilleursQueMoi > 0 ? 1 : 0), 3);
+          courir(lx - dir * profPression, ly + sj * (2.2 + 1.6 * r), 0.3);
+        } else {
+          // Couverture d'un retour au pied : il tient derrière sa ligne de poursuite, d'autant plus loin qu'il est lent, et suit le ballon.
+          const recul = 8 + 14 * (1 - Math.max(0, Math.min(100, j.vitesse)) / 100);
+          courir(lx - dir * recul, (j.y + ly) / 2 + 0 * s, 0.3);
+        }
+      }
+    }
+
     _tickCoupEnvoi(dt) {
       this.timerPhase += dt;
       // MISE EN PLACE : après un essai/une pénalité, les joueurs REJOIGNENT le
@@ -1914,20 +1984,7 @@
       this.ballonVolY = yDepart + dyVol * t;
       this.ballonVolHauteur = Math.sin(Math.PI * t);
 
-      for (const j of [...this.equipeA, ...this.equipeB]) {
-        if (j === this.porteur) continue;
-        if (j.team === this.possession) {
-          // L'équipe qui botte chasse en remontant le terrain : elle part de
-          // derrière le ballon et n'a pas une course directe, d'où une vitesse
-          // de poursuite réduite (elle arrive rarement la première en pratique).
-          avancer(j, this.ballonCibleX - j.x, this.ballonCibleY - j.y, dt, vitesseMs(j) * 0.75);
-        } else {
-          // L'équipe receveuse part déjà positionnée dans sa zone de réception
-          // (au-delà de sa ligne des 10m) : elle converge à pleine vitesse sur
-          // le point de chute pour s'organiser et capter le ballon.
-          avancer(j, this.ballonCibleX - j.x, this.ballonCibleY - j.y, dt, vitesseMs(j));
-        }
-      }
+      this._comportementsVolEnvoi(dt, duree);
 
       if (this.timerPhase >= duree) {
         // Le ballon retombe et est capté (ou contré) : fin du vol, il est de
@@ -1949,7 +2006,13 @@
         // reste l'exception, pas une course à égalité de chances.
         const receveurs = this.equipeReceptriceAttendue === 'A' ? this.equipeA : this.equipeB;
         const chasseurs = this.equipeReceptriceAttendue === 'A' ? this.equipeB : this.equipeA;
-        const { joueur: receveurProche, distance: distReceveur } = joueurLePlusProche(receveurs, this.ballonCibleX, this.ballonCibleY);
+        // Le réceptionneur désigné en vol (« J'ai ! ») capte s'il est arrivé ; sinon le plus proche, comme avant.
+        const prim = this._planEnvoi && this._planEnvoi.primaire;
+        let { joueur: receveurProche, distance: distReceveur } = joueurLePlusProche(receveurs, this.ballonCibleX, this.ballonCibleY);
+        if (prim && prim.team === (receveurs[0] && receveurs[0].team) && prim.sinBin <= 0) {
+          const dPrim = Math.hypot(prim.x - this.ballonCibleX, prim.y - this.ballonCibleY);
+          if (dPrim <= Math.max(1.5, distReceveur + 1.2)) { receveurProche = prim; distReceveur = dPrim; }
+        }
         // Le ballon reste AU POINT DE CHUTE tant que le receveur ne l'a pas
         // rejoint (1,5 s au plus) : sinon il sautait de 3 à 7 m jusque dans ses
         // mains à la réception (P2-80).
@@ -1958,6 +2021,7 @@
           this.ballonVolX = this.ballonCibleX; this.ballonVolY = this.ballonCibleY; this.ballonVolHauteur = 0;
           return;
         }
+        this._planEnvoi = null; // le ballon est retombé : le plan de vol est terminé
         const { joueur: chasseurProche, distance: distChasseur } = joueurLePlusProche(chasseurs, this.ballonCibleX, this.ballonCibleY);
         // FAUTE DES CHASSEURS : un chasseur arrivé AVANT le ballon sur le receveur (le botteur a visé trop près pour ses
         // chasseurs : ils sont déjà là quand le ballon retombe) l'obstrue ou le charge sans ballon : pénalité pour l'équipe

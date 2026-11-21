@@ -47,6 +47,15 @@ résolution et le contest du paquet.
 
 ## 2. Coup d'envoi et remises en jeu (Law 12 — Kick-off and restart kicks)
 
+> **Placement individuel au coup d'envoi (novembre 2026).** Les 30 joueurs partent des
+> positions du cahier (x latéral 0-70, y depuis la ligne de frappe ; équipe qui botte
+> derrière le ballon, receveurs à 10 m au moins), rejoignent leur point sans téléportation
+> et décident seuls ensuite. Cinq variantes (court gauche/droit, central, long gauche/droit)
+> déplacent les groupes concernés sans refaire la formation (miroir, ailiers sur leur couloir).
+> En vol : un réceptionneur désigné annonce « J'ai ! » (secours si la trajectoire change),
+> les soutiens se placent sans gêner le sauteur, les poursuivants se répartissent entre
+> contestation, pression et couverture. Tests : `server/test-invariants.js` (« coup d envoi … »).
+
 Règles réelles :
 - En début de match : coup d'envoi depuis le centre du terrain.
 - **Mi-temps : les adversaires de l'équipe qui a donné le coup d'envoi en
