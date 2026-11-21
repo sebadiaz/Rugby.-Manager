@@ -16,6 +16,7 @@
 const REGROUPEMENTS = new Set(['RUCK', 'MAUL', 'MELEE']);
 const TOLERANCE_LIGNE = 0.3;
 const clamp01 = (v) => Math.max(0, Math.min(1, v));
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 
 // Profils : poids [0..1] d'un poste pour chaque famille de buts. Pas un rôle imposé.
@@ -71,6 +72,23 @@ function deriveSituation(b) {
     for (const m of Object.values(b.teammates)) if (entre(m.lastSeen)) defenseurs++;
     danger = clamp01(1 - d / 40) * (defenseurs >= 2 ? 0.3 : defenseurs === 1 ? 0.65 : 1);
   }
+  // FOND DE TERRAIN : personne d'AUTRE ne couvre la profondeur derrière le ballon, et je suis le mieux placé pour le
+  // faire (le plus près du point de fond, en pénalisant ceux qui sont engagés près du ballon : l'ailier éloigné du jeu
+  // est libre, le centre en plein plaquage ne l'est pas). Aucun poste n'est désigné : chacun fait ce calcul pour soi,
+  // avec ce qu'il voit, et le 15 qui revient à son poste libère naturellement le remplaçant.
+  let fondVide = false, moiPlusPresDuFond = false;
+  if (ball && (advPoss || (ball.state === 'AIR') || phase === 'COUP_DE_PIED_JEU')) {
+    const bl = ball.lastSeen;
+    const fondRef = { x: clamp(bl.x - sens * 20, 2, 98), y: 34 + (bl.y - 34) * 0.4 };
+    const autres = Object.values(b.teammates).filter((m) => m.available !== false && !m.recovery);
+    const couvre = (p) => dist(p, fondRef) <= 10 || ((bl.x - p.x) * sens >= 14 && Math.abs(p.y - fondRef.y) <= 22);
+    fondVide = !autres.some((m) => couvre(m.lastSeen));
+    if (fondVide) {
+      const cout = (p) => dist(p, fondRef) + (dist(p, bl) < 12 ? 15 : 0);
+      const moiCout = cout(self);
+      moiPlusPresDuFond = autres.every((m) => { const c = cout(m.lastSeen); return c > moiCout + 0.5 || (Math.abs(c - moiCout) <= 0.5 && m.numero > b.agent.numero); });
+    }
+  }
   const partenairesPlusPres = Object.values(b.teammates).filter((m) => ball && dist(m.lastSeen, ball.lastSeen) < distBalle - 0.5).length;
   const neuf = Object.entries(b.teammates).find(([, m]) => m.numero === 9);
   const neufAuBallon = !!(neuf && ball && dist(neuf[1].lastSeen, ball.lastSeen) <= 4);
@@ -78,7 +96,7 @@ function deriveSituation(b) {
   const score = b.score ? (team === 'A' ? b.score.A - b.score.B : b.score.B - b.score.A) : 0;
   const finDeMatch = b.t > 4800 * 0.8;
   return { t: b.t, numero: b.agent.numero, team, sens, phase, ball, maPoss, advPoss, pt, onside, distBalle, aLeBallon, danger,
-    partenairesPlusPres, neufAuBallon, pression, score, finDeMatch, grounded: self.grounded, available: self.available,
+    partenairesPlusPres, neufAuBallon, pression, score, finDeMatch, fondVide, moiPlusPresDuFond, grounded: self.grounded, available: self.available,
     enVol: !!(ball && ball.state === 'AIR') || phase === 'COUP_DE_PIED_JEU' };
 }
 
@@ -93,7 +111,8 @@ const GOALS = Object.freeze([
   G('CONTEST_AERIAL_BALL', 'OPPORTUNITY', (s) => s.enVol && s.available && s.onside, (s, p) => 70 * p.aerial * clamp01(1.2 - s.distBalle / 35)),
   // L'arrière (profil cover >= 0,9) garde sa profondeur même quand son équipe attaque (menace de pied).
   G('COVER_BACKFIELD', 'COMMIT', (s, p) => s.available && s.onside && s.danger < 0.35 && (s.advPoss || s.enVol || (s.maPoss && p.cover >= 0.9)),
-    (s, p) => (s.advPoss || s.enVol ? 60 : 38) * p.cover),
+    // Quand personne d'autre ne tient le fond et que je suis le mieux placé, je le couvre quel que soit mon poste.
+    (s, p) => (s.advPoss || s.enVol ? 60 : 38) * p.cover + (s.fondVide && s.moiPlusPresDuFond && (s.advPoss || s.enVol) ? 34 : 0)),
   G('DEFEND', 'COMMIT', (s) => s.available && s.onside && s.advPoss && (!REGROUPEMENTS.has(s.phase) || s.phase === 'RUCK'), (s, p) => (s.phase === 'RUCK' ? 34 : 50) + 10 * clamp01(1 - s.distBalle / 40) - 25 * p.fatigue),
   G('CONTEST_BREAKDOWN', 'OPPORTUNITY', (s) => s.phase === 'RUCK' && s.advPoss && s.available && s.onside, (s, p) => 62 * p.contest - 18 * Math.min(2, s.partenairesPlusPres) - 20 * p.fatigue),
   G('SECURE_RUCK', 'COMMIT', (s) => s.phase === 'RUCK' && s.maPoss && s.available && s.onside, (s, p) => 66 * p.ruck - 18 * Math.min(2, s.partenairesPlusPres) - 20 * p.fatigue),

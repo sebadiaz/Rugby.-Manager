@@ -666,8 +666,14 @@
     ctx.save();
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
-    ctx.translate(sx, sy - hausse);
+    // Un joueur à l'arrêt ne reste pas figé : il respire et reporte son poids d'un pied sur l'autre (déphasé par joueur,
+    // il avance avec le temps de jeu, donc s'arrête en pause).
+    const phi = p === 'arret' ? (hash(j.team + j.numero + 'i') % 628) / 100 : 0;
+    const balance = p === 'arret' ? Math.sin((a.idle || 0) * 2.2 + phi) * 0.6 * ps : 0;
+    const respire = p === 'arret' ? 1 + 0.014 * Math.sin((a.idle || 0) * 3.1 + phi) : 1;
+    ctx.translate(sx + balance, sy - hausse);
     if ((p === 'sol' ? a.dirAction : sens) < 0) ctx.scale(-1, 1);
+    if (respire !== 1) ctx.scale(1, respire);
     if (p === 'sol') ctx.drawImage(spr, -SH / 2 * ps, -SW * ps * 0.55, SH * ps, SW * ps);
     else ctx.drawImage(spr, -SW / 2 * ps, -SH * ps, SW * ps, SH * ps);
     ctx.restore();
@@ -757,6 +763,7 @@
         a.chute = auSol ? Math.min(1, a.chute + dt / 0.32) : 0;
         a.solPrec = auSol;
         a.passe = Math.max(0, a.passe - dt);
+        a.idle = (a.idle || 0) + dt; // temps de jeu écoulé : anime un joueur à l'arrêt (cf. dessinerPersonnage)
         a.frappe = Math.max(0, a.frappe - dt);
         a.reception = Math.max(0, a.reception - dt);
       }
