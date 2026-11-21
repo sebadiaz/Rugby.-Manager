@@ -791,6 +791,8 @@
   const PROBA_SAIGNEMENT_CONTACT = 0.0010;
 
   function avancer(j, dx, dy, dt, vmax) {
+    // RUCK : tant que le ballon n'est pas sorti, les joueurs du ruck ne bougent pas (cf. _retenirJoueursDuRuck).
+    if (j._tenuRuck) { j.vitesseCourante = 0; return; }
     const d = Math.hypot(dx, dy);
     if (d < 0.01) return;
     // Vitesse RÉELLEMENT atteinte ce tick : la vitesse courante du joueur plus
@@ -2586,6 +2588,30 @@
     // environ deux fois plus de temps ; la fenetre est donc doublee (2 -> 4 s).
     // `dureeDefense` (optionnelle) : récupération propre aux défenseurs (cf.
     // sortie de maul, où ils n'ont qu'à se délier).
+    // SORTIE DE RUCK : le ballon n'est « sorti » que lorsqu'il a quitté le point de ruck ; tant qu'il y est, les joueurs
+    // du ruck (attaquants comme défenseurs, à moins de 3,5 m) attendent au lieu de courir déjà vers leur ligne. Seul le
+    // porteur est libre. Libération dès que le ballon affiché est à plus de 1,5 m du ruck, au plus tard après 1,5 s (garde-fou).
+    _retenirJoueursDuRuck(pt) {
+      let n = 0;
+      for (const j of [...this.equipeA, ...this.equipeB]) {
+        if (j === this.porteur || j.auSol > 0 || j.sinBin > 0) continue;
+        if (Math.hypot(j.x - pt.x, j.y - pt.y) <= 3.5) { j._tenuRuck = true; n++; }
+      }
+      this._ruckTenu = n ? { pt: { x: pt.x, y: pt.y }, t: 0 } : null;
+    }
+
+    _libererJoueursDuRuck(dt) {
+      const R = this._ruckTenu;
+      if (!R) return;
+      R.t += dt;
+      const b = this._ballonAffiche;
+      const sorti = b && Math.hypot(b.x - R.pt.x, b.y - R.pt.y) > 1.5;
+      if (sorti || R.t >= 1.5 * this._echelleArret || this.phase !== 'PORTE') {
+        for (const j of [...this.equipeA, ...this.equipeB]) j._tenuRuck = false;
+        this._ruckTenu = null;
+      }
+    }
+
     _imposerRecuperationRuck(pt, rayon = 6, duree = 4, dureeDefense = duree) {
       // Tout près de sa propre ligne d'en-but, la défense est naturellement
       // massée sur un espace réduit (peu de place pour se replier) : un rayon
@@ -5890,6 +5916,7 @@
           this._lancerPasseVisuelle({ x: pt.x, y: pt.y }, this.porteur);
         }
         this._imposerRecuperationRuck(pt);
+        this._retenirJoueursDuRuck(pt);
       }
     }
 
@@ -8265,6 +8292,7 @@
         this._pilote.avantTick(this, dt);
       }
       // === AGENT_INTENTS_END
+      this._libererJoueursDuRuck(dt);
       const r = this._tickInterne(dt);
       try {
         const b = this._positionBallonCalculee();
