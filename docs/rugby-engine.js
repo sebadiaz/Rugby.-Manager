@@ -9391,6 +9391,17 @@
     clearAgentIntent(equipe, numero) {
       if (this._intentionsAgents) this._intentionsAgents.delete(equipe + numero);
     }
+    // MISE EN PLACE D'UNE PÉNALITÉ OU D'UN COUP FRANC JOUÉS VITE (penaliteRecul) : le tapeur doit rejoindre la marque et ses partenaires
+    // placés devant le ballon doivent repasser derrière (loi 20.10). Ces déplacements imposés par la loi sont conduits par le moteur
+    // (_tickJeuRapidePenalite) ; une intention de placement d'agent les écrasait (le tapeur restait sur place, le moteur attendait
+    // jusqu'à 30 s : porteur figé avec le ballon). Les autres joueurs restent libres de leurs décisions.
+    _deplacementImposeParLaLoi(j) {
+      const R = this.penaliteRecul;
+      if (!R) return false;
+      if (j === this.porteur) return true;
+      const eqAtt = R.eqDef === this.equipeA ? this.equipeB : this.equipeA;
+      return eqAtt.includes(j) && (j.x - R.markX) * R.sens > 0.3;
+    }
     _avantIntentionsAgents() {
       const out = [];
       for (const cle of [...this._intentionsAgents.keys()].sort()) {
@@ -9398,6 +9409,7 @@
         const j = (it.equipe === 'A' ? this.equipeA : this.equipeB).find((x) => x.numero === it.numero);
         if (!it.mouvement || !j || j.auSol > 0 || j.sinBin > 0) continue;
         if (it.jeuCourant && (this.phase !== 'PORTE' || this.penaliteRecul || this.penaliteChoix || j.horsJeuKick > 0)) continue;
+        if (this._deplacementImposeParLaLoi(j)) continue;
         out.push({ it, j, x: j.x, y: j.y, v: j.vitesseCourante, o: j.orientation, ab: j._aBouge });
       }
       return out;
@@ -9407,6 +9419,7 @@
         const j = p.j;
         if (j.auSol > 0 || j.sinBin > 0) continue; // devenu inactif pendant le tick
         if (p.it.jeuCourant && (this.phase !== 'PORTE' || this.penaliteRecul || this.penaliteChoix || j.horsJeuKick > 0)) continue;
+        if (this._deplacementImposeParLaLoi(j)) continue;
         // Le receveur d'une passe en vol court sur le ballon : sa course est conduite par le moteur, pas par son
         // ordre de placement (qu'il suivait encore pendant le vol : 8 à 12 % de réceptions immobiles).
         if (p.it.jeuCourant && j === this.porteur && this.passeVisuelle) continue;

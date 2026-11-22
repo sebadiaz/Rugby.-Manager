@@ -147,6 +147,26 @@ test('sauvegarde / relecture : getState() en mode GOAP reste sérialisable et ga
   assert.ok(typeof creerPiloteGOAP === 'function');
 });
 
+test('GOAP : le porteur ne reste jamais figé avec le ballon (jeu courant < 4 s ; coup franc joué vite remis en jeu en moins de 8 s)', () => {
+  // Régression : pendant la mise en place d'un coup franc joué vite, l'intention de placement de l'agent écrasait la marche du
+  // tapeur vers la marque ; le moteur attendait jusqu'à 30 s (graines 3 et 6 : porteur immobile 26 à 28 s).
+  for (const seed of [3, 6, 7]) {
+    const m = new MatchEngine(seed, 4800, configGOAP({}));
+    let fige = 0, pire = 0, recul = 0, pireRecul = 0, prev = null;
+    for (let t = 0; t < 400; t += 0.1) {
+      m.tick(0.1);
+      const p = m.porteur;
+      recul = m.penaliteRecul ? recul + 0.1 : 0; pireRecul = Math.max(pireRecul, recul);
+      const jeu = m.phase === 'PORTE' && p && !m.passeVisuelle && !m.ballonEnVol && !m.penaliteRecul && !m.penaliteChoix;
+      if (jeu && prev && prev.j === p && Math.hypot(p.x - prev.x, p.y - prev.y) < 0.02) fige += 0.1; else fige = 0;
+      pire = Math.max(pire, fige);
+      prev = jeu ? { j: p, x: p.x, y: p.y } : null;
+    }
+    assert.ok(pire < 4, `graine ${seed} : porteur immobile ${pire.toFixed(1)} s en jeu courant`);
+    assert.ok(pireRecul < 8, `graine ${seed} : mise en place d'un coup franc/pénalité joué vite pendant ${pireRecul.toFixed(1)} s`);
+  }
+});
+
 console.log(`\n${nb} test(s) exécuté(s).`);
 if (echecs) { console.error(`ECHEC : ${echecs} test(s) en échec.`); process.exit(1); }
 console.log('OK : 30 agents instanciés derrière aiMode ; LEGACY inchangé.');

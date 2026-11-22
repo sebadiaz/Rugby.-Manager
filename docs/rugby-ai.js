@@ -270,7 +270,8 @@ const typePied = (c) => {
 ACTEURS.KICK_FOR_TERRITORY = {
   maxSeconds: 2,
   startGuard: (c) => (!c.facts.HAS_BALL ? 'NOT_CARRIER' : !c.facts.SELF_ONSIDE ? 'OFFSIDE' : c.state.phase !== 'PORTE' ? 'NOT_OPEN_PLAY' : null),
-  intent: (c) => ({ tx: c.me.x, ty: c.me.y, vmaxFactor: 0.4, botte: typePied(c) }),
+  // Il tape EN COURANT : il garde son élan vers l'avant pendant que le moteur arme la frappe (il ne se fige plus sur place).
+  intent: (c) => ({ tx: c.me.x + c.sens * 3, ty: c.me.y, vmaxFactor: 0.6, botte: typePied(c) }),
   successGuard: (c) => c.state.phase === 'COUP_DE_PIED_JEU' && !!(c.state.ball && c.state.ball.state === 'AIR'),
   failGuard: (c) => (c.state.phase === 'RUCK' || c.state.phase === 'MELEE' ? 'CARRIER_LOST_BALL' : null),
   abortGuard: () => null,
@@ -296,7 +297,8 @@ function actPasseChoisie(familles, dMax, ecartMin) {
     maxSeconds: 2.5,
     init: (c) => ({ vers: choisir(c) }),
     startGuard: (c) => (!c.facts.HAS_BALL ? 'NOT_CARRIER' : choisir(c) == null ? 'NO_RECEIVER' : null),
-    intent: (c) => ({ tx: c.me.x, ty: c.me.y, vmaxFactor: 0.5, passe: c.memo ? c.memo.vers : choisir(c) }),
+    // Il passe EN COURANT : il garde son élan vers l'avant pendant que la passe part (il ne se fige plus sur place).
+    intent: (c) => ({ tx: c.me.x + c.sens * 2.5, ty: c.me.y, vmaxFactor: 0.6, passe: c.memo ? c.memo.vers : choisir(c) }),
     successGuard: (c) => c.memo && c.memo.vers != null && carrierIs(c, c.me.team, c.memo.vers),
     failGuard: (c) => (c.state.phase === 'MELEE' ? 'FORWARD_PASS_OR_KNOCK_ON'
       : c.state.ball && c.state.ball.carrierTeam && c.state.ball.carrierTeam !== c.me.team ? 'INTERCEPTED'
