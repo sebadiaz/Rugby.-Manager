@@ -78,7 +78,8 @@
     c.disabled = !window.RugbyAI;
     c.addEventListener('change', () => { try { localStorage.setItem('rugbyManager.aiMode', c.checked ? 'GOAP' : 'LEGACY'); } catch (e) { /* stockage indisponible */ } });
   })();
-  function cfgAvecIA(cfg) { return modeIAgoap() && window.RugbyAI ? window.RugbyAI.configGOAP(cfg) : cfg; }
+  // Gel des photos de croyances désactivé dans le jeu (plus d'un cinquième du temps de calcul) ; les tests le gardent actif.
+  function cfgAvecIA(cfg) { return modeIAgoap() && window.RugbyAI ? window.RugbyAI.configGOAP(cfg, { agent: { perception: { gel: false } } }) : cfg; }
 
   // Réglages tactiques PAR ÉQUIPE (Mode Club) que configMatch peut accumuler
   // au fil des matchs successifs — cf. simulerMatchEnArrierePlan, qui les

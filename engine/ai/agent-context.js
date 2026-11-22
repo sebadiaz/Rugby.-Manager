@@ -26,6 +26,7 @@ function deepFreeze(o) {
   return o;
 }
 const clamp01 = (v) => Math.max(0, Math.min(1, v));
+const r3 = (v) => Math.round(v * 1000) / 1000;
 
 class AgentContext {
   constructor(agent, params = {}) {
@@ -41,6 +42,9 @@ class AgentContext {
     this.lastObsT = null;
     this.mem = { ball: null, teammates: {}, opponents: {}, phase: null, possession: null, score: null, ruck: null };
     this.heard = [];
+    // Gel de la photo des croyances : actif par défaut (tests, garde-fou contre toute écriture) ; le jeu peut le désactiver (gel: false)
+    // car il coûte plus d'un cinquième du temps de calcul d'un match.
+    this.gel = params.gel !== false;
   }
 
   // Met à jour les croyances à partir de l'état (lecture seule) puis renvoie
@@ -89,21 +93,26 @@ class AgentContext {
     if (this.mem.ruck && vieux(this.mem.ruck.seenAt)) this.mem.ruck = null;
     this.heard = this.heard.filter((h) => t - h.heardAt <= mem);
 
-    const fiche = (e) => ({ lastSeen: { x: e.x, y: e.y }, age: +(t - e.seenAt).toFixed(3), confidence: +clamp01(mem === 0 ? 1 : 1 - (t - e.seenAt) / mem).toFixed(3) });
+    const confiance = (e) => r3(clamp01(mem === 0 ? 1 : 1 - (t - e.seenAt) / mem));
+    const fiche = (e) => ({ lastSeen: { x: e.x, y: e.y }, age: r3(t - e.seenAt), confidence: confiance(e) });
     const ballon = this.mem.ball
       ? Object.assign(fiche(this.mem.ball), { state: this.mem.ball.state, owner: this.mem.ball.owner })
       : { lastSeen: null, age: null, confidence: 0, state: null, owner: null };
-    const ficheJoueur = (e) => Object.assign(fiche(e), {
-      numero: e.numero, vx: e.vx, vy: e.vy, available: e.available, kickOffside: e.kickOffside, recovery: e.recovery,
-    });
     const mates = {}, adv = {};
-    for (const [id, e] of Object.entries(this.mem.teammates)) mates[id] = ficheJoueur(e);
-    for (const [id, e] of Object.entries(this.mem.opponents)) {
-      const b = this.mem.ball;
-      const dBalle = b ? Math.hypot(e.x - b.x, e.y - b.y) : 40;
-      adv[id] = Object.assign(ficheJoueur(e), { threat: +clamp01(1 - dBalle / 40).toFixed(3) });
+    for (const id in this.mem.teammates) {
+      const e = this.mem.teammates[id];
+      mates[id] = { lastSeen: { x: e.x, y: e.y }, age: r3(t - e.seenAt), confidence: confiance(e),
+        numero: e.numero, vx: e.vx, vy: e.vy, available: e.available, kickOffside: e.kickOffside, recovery: e.recovery };
     }
-    return deepFreeze({
+    const b = this.mem.ball;
+    for (const id in this.mem.opponents) {
+      const e = this.mem.opponents[id];
+      const dBalle = b ? Math.hypot(e.x - b.x, e.y - b.y) : 40;
+      adv[id] = { lastSeen: { x: e.x, y: e.y }, age: r3(t - e.seenAt), confidence: confiance(e),
+        numero: e.numero, vx: e.vx, vy: e.vy, available: e.available, kickOffside: e.kickOffside, recovery: e.recovery,
+        threat: r3(clamp01(1 - dBalle / 40)) };
+    }
+    const photo = {
       t, agent: this.agent, observedAt: this.lastObsT, refreshed: doitObserver,
       self: { x: moi.x, y: moi.y, orientation: moi.orientation || 0, grounded: moi.auSol > 0, available: !(moi.auSol > 0) && !(moi.sinBin > 0),
         sensAttaque: moi.sensAttaque, jeuPied: moi.jeuPied, vitesse: moi.vitesse, kickOffside: moi.horsJeuKick > 0,
@@ -114,7 +123,8 @@ class AgentContext {
       phase: this.mem.phase, possession: this.mem.possession, score: this.mem.score,
       heard: this.heard.map((h) => ({ id: h.id, from: h.from, kind: h.kind, toId: h.toId, phaseId: h.phaseId, age: +(t - h.heardAt).toFixed(3), confidence: h.confidence, replyTo: h.replyTo })),
       omniscient: !!this.params.omniscient,
-    });
+    };
+    return this.gel ? deepFreeze(photo) : photo;
   }
 }
 

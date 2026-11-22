@@ -4,6 +4,51 @@ Audit initial du **23 octobre 2026**. Sources examinées sur `main` au commit `4
 
 Ce fichier donne une liste opérationnelle à partir du code, de reproductions isolées, de simulations et d'un parcours de la démo. Il complète [TODO_AUDIT.md](TODO_AUDIT.md), qui conserve les preuves et l'historique détaillés, et [ROADMAP_FOOTBALL_MANAGER.md](ROADMAP_FOOTBALL_MANAGER.md), qui suit la profondeur de gestion. Ne pas supprimer leurs historiques, recréer une fonction déjà livrée ou interpréter une ancienne mesure comme l'état actuel.
 
+## Audit du 22 novembre 2026 — arbitrage et IA individuelle
+
+**Version jouée et périmètre.** Moteur de [main à 37e16ba](https://github.com/sebadiaz/Rugby.-Manager/commit/37e16ba1b8765fb6fbf41dbbeea5fe83116a417e). Exécution de `node server/audit-regles-simulation.js GRAINE MODE` pour les graines 1 à 6 dans chacun des deux modes, au pas de 0,1 s. Sur la démo publique, le parcours « Match rapide » de 5 minutes avec les 30 agents cochés a produit une feuille de match à 0–7, puis la relecture s'est ouverte au coup d'envoi. Le parcours Club avec remplacement et rechargement reste à vérifier en GOAP (QA-RM-004/005).
+
+| Événements observés par le script | LEGACY | GOAP |
+| --- | ---: | ---: |
+| Placements au coup d'envoi | 103 | 97 |
+| Événements de passe avec passeur et receveur identifiés | 2 166 | 1 885 |
+| Essais ordinaires / transformations | 48 / 48 | 42 / 42 |
+| Alertes de position au ruck, avant dédoublonnage | 38 | 2 |
+
+**Interprétation.** Aucune transformation signalée sans essai préalable. Au ruck, le détecteur compare le joueur au centre du regroupement et peut compter deux pas successifs pour le même joueur (GOAP 4, B8 à 4 848 s). Pour qualifier une faute, mesurer le dernier pied, l'appartenance au ruck, le repli et l'intervention effective. Le script ne vérifie pas systématiquement le lâcher du ballon au plaquage, les liaisons du maul, la légalité d'une marque ni le geste dessiné du juge de touche.
+
+### [ ] BUG-RM-013 — Le n°15 obtient un marque sur le coup d’envoi — P2
+
+**Reproduit.** À partir de `new MatchEngine(8, 4800)`, avancer au pas de 0,1 s depuis l'ouverture. B botte de la médiane, A15 reçoit dans ses 22. À 3,5 s, le journal accorde un coup franc pour marque à A. La branche de réception de [`_tickCoupEnvoi`](https://github.com/sebadiaz/Rugby.-Manager/blob/37e16ba/engine/rugby-engine.js#L2058-L2066) applique le tirage de marque à cette reprise. La [loi 17.4](https://passport.world.rugby/fr/les-regles-du-jeu/regles-du-jeu-par-numero/17-le-marque/) exclut le coup d'envoi et le renvoi après un score.
+
+**Acceptation.** Rejouer la réception à l'ouverture, après un score et sur un coup de pied adverse en jeu courant. Les deux premières se poursuivent en jeu. Dans le troisième cas, une réception directe admissible accompagnée de l'appel donne le coup franc au réceptionneur.
+
+### [ ] BUG-RM-014 — Un renvoi aux 22 valable est sanctionné comme un engagement trop court — P2
+
+**Reproduit sur une reprise isolée.** `new MatchEngine(7, 4800)`, puis `m._nouvelleManche('B', 22)`. Avancer au pas de 0,1 s pendant `COUP_ENVOI`. A10 frappe de x=22 vers x=26,04. À 2 s, le journal émet `COUP_ENVOI_COURT` et la phase devient `MELEE`. Pour ce renvoi, le ballon a bien franchi la ligne des 22. La [loi 12.13 et son tableau](https://passport.world.rugby/fr/les-regles-du-jeu/regles-du-jeu-par-numero/12-coup-d-envoi-et-renvois/) distingue la ligne des 22, celle des 5 m pour un renvoi d'en-but, et la distance de 10 m applicable depuis la médiane. Le [moteur](https://github.com/sebadiaz/Rugby.-Manager/blob/37e16ba/engine/rugby-engine.js#L1993-L2002) emploie le même indicateur pour ces reprises.
+
+**Acceptation.** Tester dans les deux sens un ballon qui avance de 4 m depuis chacune des trois lignes. Depuis les 22, laisser jouer. Pour les autres reprises, vérifier les options de l'équipe adverse selon la loi 12, y compris le cas où un adversaire joue un engagement avant les 10 m.
+
+### [ ] QA-RM-008 — Le skill d’arbitrage et son script peuvent produire un verdict erroné — P2
+
+Le [skill rapport-regles-rugby à a990f94](https://github.com/sebadiaz/Rugby.-Manager/blob/a990f94/.claude/skills/rapport-regles-rugby/SKILL.md) se trouve sur la branche de travail. Son tableau mélange les numéros des lois. Le [règlement conservé dans le dépôt](rules/world-rugby-laws-2025.txt) classe les points en loi 8, le jeu déloyal en 9, le hors-jeu de jeu courant en 10 et l'en-avant en 11. Son raccourci « moins de 10 m → mêlée » omet le choix de refaire jouer et l'exception de la loi 12.7.
+
+Le [script d'audit](server/audit-regles-simulation.js) recompose les points en accordant cinq points à tous les essais, y compris ceux de pénalité déjà comptés dans `essais`. Il omet leur supplément de deux points. Exemples GOAP : graine 4, score moteur 26–19, recomposition 22–19 ; graine 5, 21–34 contre 21–32. Le script imprime les deux scores sans vérifier leur égalité ni indiquer si la limite de pas a été atteinte. **Acceptation.** Ajouter un cas à 7 points sans transformation, un cas ordinaire à 5 + 2, contrôler la phase finale et signaler explicitement les règles non couvertes.
+
+**Assistant de touche, sur la branche a990f94.** Sur le match LEGACY de graine 1 terminé, 30 entrées en touche ont produit un signal unique portant la bonne équipe (A 12, B 18). Le test générique de rendu passe sur cinq formats mais utilise `assistants: []`. La direction du bras et la visibilité du drapeau restent à contrôler visuellement pour les deux équipes et les deux orientations.
+
+### [ ] QA-RM-009 — Trois scénarios de test échouent sur main — P1
+
+Échecs reproduits localement et visibles dans le [journal de CI](https://github.com/sebadiaz/Rugby.-Manager/actions/runs/45003254478/job/137149177342).
+
+| Scénario | Observation | Critère de réception |
+| --- | --- | --- |
+| `test-v4-facts.js`, S08 | Au 5e pas, le ballon est en vol et les 30 joueurs ont `HAS_BALL=false`. Le test exige un porteur. | Vérifier zéro porteur pendant le vol et l'identité de l'unique porteur après réception. |
+| `test-v4-budget.js`, D08 | Le 9 crée un plan pour se relever. Le scénario n'atteint plus le dépassement du budget de recherche. | Imposer un problème qui exige plus d'une expansion, vérifier le repli sûr puis la reprise des décisions. |
+| `test-v4-attack-tactics.js`, chistera | Graine 6, 1 200 s : une réussite et deux échecs. Le test exige une majorité de réussites. | Isoler le geste réussi et le raté, vérifier passe légale ou mêlée adverse, puis mesurer la fréquence sur plusieurs graines. |
+
+**Ordre proposé.** Corriger le marque sur engagement, distinguer les lignes de renvoi, puis fiabiliser les contrôles d'arbitrage et d'IA. Garder les réglages de l'IA inchangés tant qu'un défaut en jeu repose uniquement sur une assertion fragile.
+
 ## Audit du 7 novembre 2026 — match joué, banc et réalisme
 
 La [démo publique](https://sebadiaz.github.io/Rugby.-Manager/) servait [`c9b85c3`](https://github.com/sebadiaz/Rugby.-Manager/commit/c9b85c3c6c1f73abea3d94d6e387c00dfd75528d) au moment de l’essai. La branche de travail mesurée était [`cf01357`](https://github.com/sebadiaz/Rugby.-Manager/commit/cf01357673015b3108aa084512923cc42854b367). Le parcours navigateur sur la démo a couvert la création d’un club, les écrans Compétitions et Préparer le match, un remplacement manuel, la feuille de match et le retour au tableau de bord avec la victoire **41–15** enregistrée. Les suites Node `test-feuille-de-match.js`, `test-match-interactif.js` et `test-parcours-club.js` ont passé sur les deux versions. Le parcours navigateur de la branche et la reprise d’un match après rechargement restent à valider.
@@ -54,7 +99,7 @@ Deux séries de 25 matchs de 80 minutes, graines 1–25, deux effectifs Club gé
 - **ÉCART MESURÉ** : écart à une cible interne ou à un repère réel identifié ; ne constitue pas à lui seul une infraction aux lois du rugby.
 - **À CONSTRUIRE / À VALIDER** : fonctionnalité ou réception ouverte ; pas un défaut présenté comme déjà reproduit.
 
-Tous les tickets ci-dessous sont ouverts. Une fermeture exige une preuve sur le chemin réellement utilisé par le joueur, les contrôles appropriés et la conservation des anciennes carrières. Toute modification importante du moteur suit les validations rugby, statistiques et QA de `AGENTS.md` : au moins dix matchs complets, statistiques issues des actions, contrôle visuel et tests concernés. Une amélioration de score ne doit pas masquer la disparition de phases de rugby.
+La case du titre donne le statut du ticket. Les mesures et comptes rendus datés conservent leur valeur historique. Une fermeture exige une preuve sur le chemin réellement utilisé par le joueur, les contrôles appropriés et la conservation des anciennes carrières. Toute modification importante du moteur suit les validations rugby, statistiques et QA de `AGENTS.md` : au moins dix matchs complets, statistiques issues des actions, contrôle visuel et tests concernés. Une amélioration de score ne doit pas masquer la disparition de phases de rugby.
 
 ## Ce qui existe déjà
 
@@ -563,4 +608,4 @@ Ce bilan ne valide pas toutes les règles ni la qualité du placement à l'écra
 4. QA-RM-001/002 puis BUG-RM-005 + QA-RM-003 : validation visuelle, passes utiles, conquête et options d'avants près de la ligne ; comparer avant/après sur les mêmes graines.
 5. FUNC-RM-011 puis FUNC-RM-002/003 : feuilles détaillées fiables, continuité/relecture, puis enrichissement de gestion.
 
-Pour chaque lot : une correction cohérente, sa reproduction/test et son effet observable. Pas de refonte générale du moteur ni d'annonce de fermeture sur la seule présence d'un bouton. **28 tickets ouverts : 10 bugs/écarts, 11 fonctions, 7 réceptions QA.** Cette mise à jour documente les constats et propositions ; aucun bug de jeu n'a été corrigé par cet audit.
+Pour chaque lot : une correction cohérente, sa reproduction/test et son effet observable. Pas de refonte générale du moteur ni d'annonce de fermeture sur la seule présence d'un bouton. Le décompte de 28 tickets appartenait à l’audit initial du 23 octobre. Pour le suivi actuel, compter les titres dont la case est vide. Cette mise à jour documente les constats et propositions ; aucun bug de jeu n'a été corrigé par cet audit.
