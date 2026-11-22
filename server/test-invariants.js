@@ -4833,18 +4833,18 @@ test('remplacement tactique ballon mort (loi 3.6, BUG-RM-012) : demandé en jeu,
 });
 
 test('banc : un tir déjà botté garde son buteur, le sifflet final annule l entrée en attente', () => {
-  // On cherche une graine où une pénalité est bottée après la sonnerie de fin
-  // de match (la 28 avant la fusion de la PR n°21, dont le tirage a changé).
+  // On CONSTRUIT le cas au lieu de le chercher parmi ~700 graines (il dépendait du tirage du moteur et disparaissait à chaque
+  // changement du coup d'envoi) : après la sonnerie de fin de match, ballon en jeu, l'équipe en possession obtient une pénalité
+  // qu'elle tente au but ; on avance jusqu'à ce que le ballon soit en vol.
   let m = null;
-  const estDernierTir = () => m.miTempsJouee && m.tempsMatch >= 400
-    && m.phase === 'PENALITE_TIR' && m.ballonEnVol;
-  // Graine 779 depuis les lancements adaptés et le gardien du fond (1386 avant, 381 avant : une sur ~1000) ; la recherche ne sert que si
-  // le tirage du moteur change encore.
-  const graines = [779, 1386, 381].concat(Array.from({ length: 700 }, (_, i) => i + 1));
-  for (const graine of graines) {
-    if (m && estDernierTir()) break;
+  const estDernierTir = () => m && m.miTempsJouee && m.phase === 'PENALITE_TIR' && m.ballonEnVol;
+  for (let graine = 1; graine <= 40 && !estDernierTir(); graine++) {
     m = new MatchEngine(graine, 300);
-    while (m.phase !== 'TERMINE' && m.tempsMatch < 500 && !estDernierTir()) m.tick(0.1);
+    while (m.phase !== 'TERMINE' && !(m.miTempsJouee && m._sonnerie && m.phase === 'PORTE')) m.tick(0.1);
+    if (m.phase === 'TERMINE') continue;
+    const eq = m.possession, x = eq === 'A' ? 75 : 25;
+    m._lancerTirPenalite(eq, { x, y: 35 }, 25);
+    for (let n = 0; n < 400 && m.phase !== 'TERMINE' && !estDernierTir(); n++) m.tick(0.1);
   }
   assert.ok(estDernierTir(), 'le ballon est en vol sur le dernier tir');
   const buteur = m.porteur;
