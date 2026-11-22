@@ -60,4 +60,12 @@ for(const name of ['SCRUM_8_PICK_FROM_BACK','MAUL_RELEASE_TO_9',
   'TRANSITION_TO_DEFENSE_ON_LOST_KICK']){
   assert.ok(actions.some(a=>a.name===name),'action absente : '+name);
 }
+// La règle permanente « rien n'est scripté » et la spécification des personnalités ne doivent pas disparaître en silence.
+{
+  const fs2=require('fs'), path2=require('path');
+  const racine=path2.join(__dirname,'..');
+  const claude=fs2.readFileSync(path2.join(racine,'CLAUDE.md'),'utf8');
+  assert.ok(claude.includes("RIEN N'EST SCRIPTÉ DANS LES AGENTS"),'CLAUDE.md : règle « rien n\'est scripté » absente');
+  assert.ok(fs2.existsSync(path2.join(racine,'docs/SIMULATION_V4/16_PERSONNALITE_DES_AGENTS.md')),'spécification des personnalités absente');
+}
 console.log('Catalogue GOAP valide : 51 buts uniques et 66 actions uniques ; moteur non raccordé.');

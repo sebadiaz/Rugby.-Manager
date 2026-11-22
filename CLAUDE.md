@@ -1,5 +1,22 @@
 CLAUDE.md
 
+IMPORTANT — RÈGLE PERMANENTE DU PROPRIÉTAIRE (rappelée plusieurs fois, NE JAMAIS L'OUBLIER) :
+**RIEN N'EST SCRIPTÉ DANS LES AGENTS.** Aucun comportement d'agent n'est une séquence écrite d'avance, une table
+« poste → cible fixe », un `switch (numero)` qui donne une position ou une action, un rôle attribué par une
+coordination centrale, ni une règle « si ceci alors tout le monde fait cela ». Un agent PERÇOIT (champ de vision,
+mémoire, appels entendus), CHOISIT ses buts parmi ceux que les circonstances rendent applicables, PLANIFIE, AGIT et
+REPLANIFIE seul. Le numéro de poste ne donne qu'un **point de départ de placement** et des **préférences pondérées**
+(jamais exclusives). Avant d'ajouter ou de modifier du code dans engine/ai/ ou dans les comportements de joueurs du
+moteur, vérifier cette liste :
+  1. Le comportement dépend-il des CARACTÉRISTIQUES du joueur et de CE QU'IL PERÇOIT, et non de son numéro ? (sinon : refuser)
+  2. N'importe quel joueur pourrait-il faire ce choix si ses caractéristiques et les circonstances s'y prêtent ? (sinon : refuser)
+  3. Une décision est-elle prise PAR le joueur (jamais pour lui par une fonction centrale qui désigne qui fait quoi) ? (sinon : refuser)
+  4. Le résultat d'une action est-il décidé par le moteur selon les lois et les caractéristiques, jamais écrit par l'agent ? (sinon : refuser)
+  5. Un coup de pouce sur une statistique (« pour que ça ressemble à ») est-il évité ? (on calibre les gestes, pas les résultats)
+Si une solution rapide viole l'un de ces points, ne pas la livrer : la dire à l'utilisateur et proposer une version
+sans script. Les réglages d'ingénierie (poids, seuils) sont des HYPOTHÈSES à calibrer, jamais des vérités de jeu.
+Voir aussi docs/SIMULATION_V4/16_PERSONNALITE_DES_AGENTS.md (personnalités : même règle).
+
 IMPORTANT — DÉCISION DU PROPRIÉTAIRE (11 novembre 2026) : **L'ANCIEN MODÈLE (LEGACY) EST FAUX.**
 Le nouveau modèle d'agents (GOAP) ne doit PAS être calibré pour ressembler au moteur LEGACY, et
 l'écart avec LEGACY n'est PAS un critère de rejet. Ne pas multiplier les restrictions pour
