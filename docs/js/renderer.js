@@ -403,7 +403,7 @@
       else {
         const pas = [[4, 29, -4, 28], [1, 29, -1, 26], [-4, 28, 4, 29], [-1, 26, 1, 29]][image % 4];
         avant = { x: cx + pas[0], y: pas[1] }; arriere = { x: cx + pas[2], y: pas[3] };
-        if (posture === 'arret') { avant = { x: cx + 1, y: 29 }; arriere = { x: cx - 1, y: 29 }; }
+        if (posture === 'arret' || posture === 'touche') { avant = { x: cx + 1, y: 29 }; arriere = { x: cx - 1, y: 29 }; }
       }
       // Jambe arrière plus sombre (plus loin), jambe avant par-dessus.
       const palLoin = Object.assign({}, pal, { peau: pal.peauOmbre, chaussette: assombrir(pal.chaussette, 0.75) });
@@ -430,7 +430,8 @@
       membre(ex, ey, (ex + mx) / 2, (ey + my) / 2, 2, col);
       membre((ex + mx) / 2, (ey + my) / 2, mx, my, 2, peau);
     };
-    if (profil) brasProfil(false, assombrir(pal.maillot, 0.7), pal.peauOmbre);
+    const sansBras = posture === 'touche'; // l'assistant de touche : ses deux bras sont dessinés à part (cf. dessinerAssistants)
+    if (profil && !sansBras) brasProfil(false, assombrir(pal.maillot, 0.7), pal.peauOmbre);
     // --- Torse (maillot) ---
     for (let y = epaule; y <= hanche - 2; y++) {
       const larg = demi * 2 + 1 + (y === epaule ? 0 : 0);
@@ -443,7 +444,8 @@
     else if (profil) p(cx + dx(epaule) + 1, epaule, 2, 1, pal.col);
     else p(cx - 1, epaule, 3, 1, pal.col);
     // --- Bras ---
-    if (profil) brasProfil(true, pal.maillot, pal.peau);
+    if (sansBras) { /* pas de bras de sprite */ }
+    else if (profil) brasProfil(true, pal.maillot, pal.peau);
     else {
       for (const cote of [-1, 1]) {
         const ex = cx + cote * (demi + 1), ey = epaule + 1;
@@ -563,6 +565,7 @@
     // Bras en arrière-plan, avec coude et main différenciés.
     const passes=posture==='passe', leve=posture==='saut'||posture==='leveur';
     function bras(cote,devant) {
+      if (posture==='touche') return; // assistant de touche : ses bras sont dessinés à part (cf. dessinerAssistants), pas ceux du sprite
       const px=torseX+cote*epaule*.9,py=haut+2.2;
       let coudeX=px+cote*(profil?1.0:2.3), coudeY=haut+6.6;
       let mainX=coudeX+cote*.6,mainY=haut+10.6;
@@ -874,10 +877,44 @@
       const { px, py } = versCanvas(assistant.x, assistant.y);
       const haut = assistant.signal === 'TOUCHE' || assistant.signal === 'DRAPEAU_HAUT';
       const bas = assistant.signal === 'DRAPEAU_BAS';
+      const k = cam.s * HAUTEUR_VUE;
+      // TOUCHE : l'assistant lève le drapeau d'un bras et TEND L'AUTRE BRAS vers l'équipe qui lance (sa direction d'attaque).
+      if (assistant.signal === 'TOUCHE' && (assistant.pour === 'A' || assistant.pour === 'B')) {
+        dessinerPersonnage(px, py, { team: 'ARB', numero: 0 }, a, 'touche', COULEURS.ARB, {});
+        const sens = assistant.pour === 'A' ? 1 : -1;
+        const q = versCanvas(assistant.x + sens, assistant.y);
+        let dx = q.px - px, dy = q.py - py; const n = Math.hypot(dx, dy) || 1; dx /= n; dy /= n;
+        const Hs = pixelSprite() * SH; // hauteur réelle du sprite en pixels
+        // Orientation portrait : la direction d'attaque est quasi verticale à l'écran et le bras se confondrait avec le corps ;
+        // on l'écarte alors en diagonale (vers l'avant de l'équipe qui lance) pour qu'il reste lisible.
+        if (Math.abs(dx) < 0.5) { dy = (dy >= 0 ? 1 : -1) * Math.sqrt(0.75); dx = dx < 0 ? -0.5 : 0.5; }
+        const cote = dx > 0.15 ? 1 : dx < -0.15 ? -1 : 1;
+        const epaule = { x: px + cote * 0.11 * Hs, y: py - 0.69 * Hs }; // épaule du bras tendu
+        const epauleDrap = { x: px - cote * 0.11 * Hs, y: py - 0.69 * Hs }; // épaule du bras qui tient le drapeau
+        const bout = { x: epaule.x + dx * 0.5 * Hs, y: epaule.y + dy * 0.5 * Hs + 0.02 * Hs };
+        // Le bras tendu part du côté vers lequel il montre ; le drapeau est levé de l'AUTRE bras, côté opposé.
+        const flag = { x: epauleDrap.x - cote * 0.1 * Hs, y: py - 1.08 * Hs };
+        const manche = COULEURS.ARB.maillot, peau = '#f2c9a0';
+        ctx.save();
+        ctx.lineCap = 'round';
+        ctx.strokeStyle = manche; ctx.lineWidth = Math.max(2, 0.085 * Hs);
+        ctx.beginPath(); ctx.moveTo(epaule.x, epaule.y); ctx.lineTo(bout.x, bout.y); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(epauleDrap.x, epauleDrap.y); ctx.lineTo(flag.x, flag.y); ctx.stroke();
+        ctx.fillStyle = peau;
+        ctx.beginPath(); ctx.arc(bout.x, bout.y, Math.max(1.6, 0.05 * Hs), 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(flag.x, flag.y, Math.max(1.6, 0.05 * Hs), 0, Math.PI * 2); ctx.fill();
+        const haut2 = flag.y - 0.55 * Hs;
+        ctx.strokeStyle = '#2b2b2b'; ctx.lineWidth = Math.max(1.2, 0.035 * Hs);
+        ctx.beginPath(); ctx.moveTo(flag.x, flag.y); ctx.lineTo(flag.x, haut2); ctx.stroke();
+        ctx.fillStyle = '#ffdf50';
+        const sensDrap = -cote; // le fanion flotte à l'opposé du bras tendu
+        ctx.beginPath(); ctx.moveTo(flag.x, haut2); ctx.lineTo(flag.x + sensDrap * 0.32 * Hs, haut2 + 0.09 * Hs); ctx.lineTo(flag.x, haut2 + 0.2 * Hs); ctx.closePath(); ctx.fill();
+        ctx.restore();
+        continue;
+      }
       dessinerPersonnage(px, py, { team: 'ARB', numero: 0 }, a, haut ? 'leveur' : 'course', COULEURS.ARB, {});
       // Fanion tenu à la main, côté terrain : DRESSÉ au signal (levé), BAISSÉ (pend vers le sol) après un tir manqué, relevé
       // à mi-hauteur au repos.
-      const k = cam.s * HAUTEUR_VUE;
       const mainX = px + 0.38 * k;
       let mainY, boutY, tissu;
       if (bas) { mainY = py - 0.95 * k; boutY = py - 0.3 * k; tissu = [[0, 0.12], [0.5, 0.25], [0, 0.38]].map(([dx, dy]) => [mainX + dx * k, mainY + dy * k + 0.3 * k]); }

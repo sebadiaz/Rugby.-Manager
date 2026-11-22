@@ -452,7 +452,8 @@ test('remplacement planifié : un remplacement prévu APRÈS la fin du match cho
   // la config source (jamais touchée) et l'absence d'événement.
   assert.strictEqual(m._remplacements[0].applique, false, 'un remplacement dont l\'instant dépasse la durée du match ne doit jamais s\'appliquer');
   assert.ok(!(m.cfg.joueursB && m.cfg.joueursB[5] && m.cfg.joueursB[5].vitesse === 99), 'la config source ne doit pas non plus être modifiée');
-  assert.ok(!m.events.some((e) => e.type === 'REMPLACEMENT'), 'aucun événement de remplacement ne doit être généré');
+  // (un retour de joueur après le protocole commotion est aussi journalisé REMPLACEMENT : il n'est pas le remplacement planifié)
+  assert.ok(!m.events.some((e) => e.type === 'REMPLACEMENT' && !/protocole commotion/.test(e.message || '')), 'aucun événement de remplacement planifié ne doit être généré');
 });
 
 // --- P0-1 : le RYTHME du jeu courant ---------------------------------------
@@ -5235,6 +5236,88 @@ test('franchissement : les défenseurs dépassés poursuivent le perceur à plei
   }
   const moyen = ecartFinal / n;
   assert.ok(moyen < 5.5, `les dépassés finissent à ${moyen.toFixed(1)} m du perceur en 2 s (ils doivent revenir sur lui)`);
+});
+
+test('touche : l assistant du côté de la sortie lève le drapeau et désigne l équipe qui lance (pour = possession)', () => {
+  let vus = 0, ok = 0;
+  for (let seed = 1; seed <= 6; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    let ticks = 0;
+    while (m.phase !== 'TERMINE' && ticks < 30000 && vus < 12) {
+      m.tick(0.1); ticks++;
+      if (m.phase !== 'TOUCHE') continue;
+      const st = m.getState();
+      const signaux = st.assistants.filter((a) => a.signal === 'TOUCHE');
+      if (!signaux.length) continue;
+      vus++;
+      if (signaux.length === 1 && signaux[0].pour === st.possession && (st.possession === 'A' || st.possession === 'B')) ok++;
+      // L'autre assistant ne signale rien.
+      assert.ok(st.assistants.filter((a) => a.signal !== 'TOUCHE').every((a) => a.pour === st.possession || a.pour === null || a.signal === null), 'assistant sans signal de touche');
+      while (m.phase === 'TOUCHE' && ticks < 30000) { m.tick(0.1); ticks++; }
+    }
+  }
+  assert.ok(vus >= 8, `échantillon : ${vus} touches observées`);
+  assert.strictEqual(ok, vus, `${ok}/${vus} touches où l'assistant désigne l'équipe qui lance`);
+});
+
+// --- BUG-RM-013 : loi 17.4 — aucune marque sur un coup d'envoi ni sur une reprise après un score -----------------------------------
+test('marque (loi 17.4) : jamais sur un coup d envoi ni sur une reprise au centre après un score, même un coup long réceptionné dans ses 22 m', () => {
+  let receptionsDansLes22 = 0, marques = 0, essais = 0;
+  for (const variante of ['long-gauche', 'long-droit']) {
+    for (let seed = 1; seed <= 40; seed++) {
+      const m = new MatchEngine(seed, 4800, { varianteEnvoi: variante });
+      const cf = m._traiterCoupFranc.bind(m);
+      m._traiterCoupFranc = (team, pos, ...r) => { if (r[1] === 'marque') marques++; return cf(team, pos, ...r); };
+      // Coup d'envoi d'ouverture, puis reprise au centre après un score (autre équipe qui reçoit).
+      for (const reprise of [false, true]) {
+        if (reprise) m._nouvelleManche(m.possession === 'A' ? 'B' : 'A');
+        let n = 0;
+        while (m.phase === 'COUP_ENVOI' && n++ < 400) m.tick(0.1);
+        const p = m.porteur;
+        if (p) { const sens = p.team === 'A' ? 1 : -1; const dist = sens > 0 ? p.x : 100 - p.x; if (dist <= 22) receptionsDansLes22++; }
+        essais++;
+      }
+    }
+  }
+  assert.ok(receptionsDansLes22 >= 15, `échantillon : ${receptionsDansLes22} réceptions dans les 22 m sur ${essais} reprises`);
+  assert.strictEqual(marques, 0, `${marques} marque(s) accordée(s) sur coup d'envoi ou reprise après un score`);
+});
+
+// --- BUG-RM-014 : loi 12 — la ligne à franchir dépend du type de reprise -----------------------------------------------------------
+test('reprise (loi 12) : 10 m au coup d envoi, ligne des 22 m franchie dès que le ballon avance au renvoi aux 22 m, 5 m au renvoi d en-but', () => {
+  const court = (xCentre, dm, graines) => {
+    let n = 0;
+    for (let seed = 1; seed <= graines; seed++) {
+      const m = new MatchEngine(seed, 4800);
+      m._choisirCibleCoupEnvoi = () => ({ dm, y: 35, vise: { dm, y: 35, tVol: 2.5, variante: 'central', score: 0 }, tVol: 2.5, avance: 0, variante: 'central' });
+      m._nouvelleManche('B', xCentre);
+      if (m.coupEnvoiCourt) n++;
+    }
+    return n;
+  };
+  const N = 40;
+  // Un ballon qui avance de 4 m : trop court au coup d'envoi et au renvoi d'en-but, valable au renvoi aux 22 m.
+  assert.strictEqual(court(50, 4, N), N, 'coup d envoi : 4 m < 10 m');
+  assert.strictEqual(court(22, 4, N), 0, 'renvoi aux 22 m : 4 m franchit la ligne des 22 m');
+  assert.strictEqual(court(100 - 22, 4, N), 0, 'renvoi aux 22 m (autre camp)');
+  // (un raté pur retombe 3 à 9 m devant : il dépasse parfois la ligne des 5 m, d'où la marge)
+  assert.ok(court(0, 4, N) >= 0.9 * N, 'renvoi d en-but : 4 m < 5 m');
+  assert.ok(court(100, 4, N) >= 0.9 * N, 'renvoi d en-but (autre camp) : 4 m < 5 m');
+  // Un ballon qui avance de 11 m : valable partout, sauf raté pur (rare).
+  for (const x of [50, 22, 0]) assert.ok(court(x, 11, N) <= 0.25 * N, `11 m depuis ${x} : ${court(x, 11, N)}/${N} courts`);
+});
+
+test('audit : le score recomposé compte 7 points pour un essai de pénalité et 5 + 2 pour un essai transformé (loi 8)', () => {
+  const { recomposerScore } = require('./audit-score.js');
+  const z = { essais: 0, essaisPenalite: 0, transformationsReussies: 0, penalitesButReussies: 0, dropsReussis: 0 };
+  assert.strictEqual(recomposerScore({ ...z, essais: 1, essaisPenalite: 1 }), 7, 'essai de pénalité : 7 points sans transformation');
+  assert.strictEqual(recomposerScore({ ...z, essais: 1, transformationsReussies: 1 }), 7, 'essai ordinaire transformé : 5 + 2');
+  assert.strictEqual(recomposerScore({ ...z, essais: 2, essaisPenalite: 1, transformationsReussies: 1, penalitesButReussies: 2, dropsReussis: 1 }), 5 * 2 + 2 + 2 + 6 + 3);
+  // Et sur de vrais matchs : le score du moteur égale le score recomposé.
+  for (const seed of [4, 5, 9]) {
+    const m = new MatchEngine(seed, 4800); m.jouerJusquAuSifflet(0.1);
+    for (const e of ['A', 'B']) assert.strictEqual(recomposerScore(m.stats[e]), m.score[e], `graine ${seed}, équipe ${e}`);
+  }
 });
 
 console.log(`\n${nbTests} test(s) exécuté(s).`);

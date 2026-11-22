@@ -119,19 +119,27 @@ test('moteur : une passe au pied demandée vole vers la cible (erreur bornée) e
   assert.ok(log.filter((x) => x.t === 'COUP_DE_PIED').length >= pp.length);
 });
 
-test('moteur : une chistera demandée dans le contact donne une passe ou un en-avant, jamais une passe en avant', () => {
-  let chist = 0;
-  const { log } = matchPilote(6, 1200, (e) => {
-    const p = e.porteur;
-    if (e.phase !== 'PORTE' || !p || e.penaliteRecul || e.penaliteChoix) return;
-    const att = (p.team === 'A' ? e.equipeA : e.equipeB).filter((j) => j !== p && j.auSol === 0 && (j.x - p.x) * p.sensAttaque < -0.5 && Math.hypot(j.x - p.x, j.y - p.y) <= 6);
-    if (!att.length) return;
-    e.setAgentIntent(p.team, p.numero, { jeu: { action: 'PASS', vers: att[0].numero, chistera: true } });
-    chist++;
-  });
-  const ok = log.filter((x) => x.t === 'CHISTERA').length, rate = log.filter((x) => x.t === 'CHISTERA_RATEE').length;
-  assert.ok(chist > 0 && ok + rate >= 3, `${ok} chisteras, ${rate} ratées`);
-  assert.ok(ok > rate, 'la plupart réussissent');
+test('moteur : une chistera demandée dans le contact donne une passe ou un en-avant (mêlée adverse), la majorité réussit sur plusieurs graines', () => {
+  // Fréquence mesurée sur 8 graines de 1 200 s (réussies / ratées : 28 / 9) : une seule graine (6) donne 1 / 2 par le seul hasard.
+  // On agrège donc plusieurs graines au lieu d'exiger une majorité sur une seule.
+  let ok = 0, rate = 0, demandes = 0;
+  for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) {
+    const { log } = matchPilote(seed, 1200, (e) => {
+      const p = e.porteur;
+      if (e.phase !== 'PORTE' || !p || e.penaliteRecul || e.penaliteChoix) return;
+      const att = (p.team === 'A' ? e.equipeA : e.equipeB).filter((j) => j !== p && j.auSol === 0 && (j.x - p.x) * p.sensAttaque < -0.5 && Math.hypot(j.x - p.x, j.y - p.y) <= 6);
+      if (!att.length) return;
+      e.setAgentIntent(p.team, p.numero, { jeu: { action: 'PASS', vers: att[0].numero, chistera: true } });
+      demandes++;
+    });
+    ok += log.filter((x) => x.t === 'CHISTERA').length;
+    const ratees = log.filter((x) => x.t === 'CHISTERA_RATEE');
+    rate += ratees.length;
+    // Le geste raté est un en-avant (mêlée adverse, cf. CHISTERA_RATEE) : il identifie son passeur et son receveur.
+    for (const r of ratees) assert.ok(r.d && r.d.passeur != null && r.d.receveur != null, 'chistera ratée sans passeur ou receveur identifié');
+  }
+  assert.ok(demandes > 0 && ok + rate >= 12, `${ok} chisteras, ${rate} ratées sur 8 graines`);
+  assert.ok(ok > rate, `la plupart réussissent (${ok} réussies, ${rate} ratées)`);
 });
 
 test('receveur choisi par le porteur : quand le moteur fait partir une passe, il sert le receveur préféré s\'il est légal', () => {

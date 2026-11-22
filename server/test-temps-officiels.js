@@ -50,7 +50,8 @@ test('chaque coup d\'envoi suit un coup de sifflet de l\'arbitre, une fois tous 
     assert.ok(envois.length >= 6, `graine ${g} : ${envois.length} coups d'envoi`);
     assert.strictEqual(sifflets.length, envois.length, `un sifflet par reprise (${sifflets.length} / ${envois.length})`);
     for (const e of envois) {
-      assert.ok(e.pire <= 1.5, `graine ${g} : un joueur encore à ${e.pire.toFixed(1)} m de sa place au coup d'envoi (t=${e.t.toFixed(0)})`);
+      // Le moteur frappe quand l'écart restant est < 1,2 m APRÈS le pas ; la mesure est faite AVANT ce pas (au plus 0,8 m à 8 m/s) : 2,0 m.
+      assert.ok(e.pire <= 2.0, `graine ${g} : un joueur encore à ${e.pire.toFixed(1)} m de sa place au coup d'envoi (t=${e.t.toFixed(0)})`);
       assert.ok(e.sifflet, 'le ballon part pendant/après le coup de sifflet');
       assert.strictEqual(e.derriere, 0, `graine ${g} : un partenaire du botteur devant le ballon`);
     }

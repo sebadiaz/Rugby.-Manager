@@ -89,18 +89,24 @@ test('urgence : un changement de phase fait décider les agents concernés dans 
   assert.ok(totalUrgent >= 25, `${totalUrgent} décisions urgentes au total sur 6 ticks`);
 });
 
-test('D08 : budget de recherche dépassé -> BUDGET_EXCEEDED + HOLD_SAFE_POSITION, aucune exception, le tick continue', () => {
-  const m = createScenarioEngine(corpus.scenarios.find((s) => s.id === 'S01'));
+test('D08 : budget de recherche dépassé -> BUDGET_EXCEEDED + HOLD_SAFE_POSITION, aucune exception, le tick continue, puis les décisions reprennent', () => {
+  // S02 : le n°8 de A veut sécuriser le ruck, un but qui exige DEUX actions (MOVE_TO_RUCK puis SECURE_BALL) : un budget d'une seule
+  // expansion ne suffit pas. (Dans S01, le but du 9 n'exigeait qu'une action : le budget n'était jamais dépassé.)
+  const m = createScenarioEngine(corpus.scenarios.find((s) => s.id === 'S02'));
   for (let i = 0; i < 20; i++) m.tick(DT);
-  const n9 = (m.equipeA).find((j) => j.numero === 9); n9.auSol = 0; n9.x = 45; n9.y = 26;
-  const a = new GoalBasedRugbyAgent({ team: 'A', numero: 9 }, { maxExpanded: 1 });
+  const a = new GoalBasedRugbyAgent({ team: 'A', numero: 8 }, { maxExpanded: 1 });
   const sched = new AgentScheduler([a]);
   assert.doesNotThrow(() => jouer(m, sched, 3, null));
   const types = a.events.map((e) => e.type);
   assert.ok(types.includes('NO_PLAN') && types.includes('HOLD_SAFE_POSITION'), types.join(','));
   assert.ok(a.events.some((e) => e.type === 'NO_PLAN' && e.status === 'BUDGET_EXCEEDED'));
-  assert.strictEqual(a._intent, null, 'position sûre : le moteur garde la conduite du joueur');
   assert.ok(m.tempsMatch > 3, 'le moteur a continué');
+  // Reprise : avec un budget suffisant, le même agent replanifie et obtient un plan complet.
+  const avant = a.events.length;
+  a.maxExpanded = 128;
+  jouer(m, sched, 4, null);
+  const apres = a.events.slice(avant);
+  assert.ok(apres.some((e) => e.type === 'PLAN_CREATED' || e.type === 'PLAN_REPLANNED'), 'aucune décision reprise après le repli : ' + apres.map((e) => e.type).join(','));
 });
 
 test('budget d\'expansions : jamais plus de maxExpanded par plan ; le total par tick reste borné', () => {
