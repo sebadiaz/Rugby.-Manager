@@ -1,6 +1,11 @@
 // Lecture locale du jeu courant. Les vitesses et espaces sont estimés à partir
 // des joueurs récemment vus. Un couloir hors du champ de vision reste inconnu.
 'use strict';
+const { lireTraits, decalage } = require('./personality.js');
+// Personnalité (RM4-G46, docs/SIMULATION_V4/16_PERSONNALITE_DES_AGENTS.md) : décalages de score BORNÉS (±2,5 à ±3 points) sur des choix
+// que le porteur fait déjà, lus dans SES propres caractéristiques (trait absent = 50 = aucun effet). Aucun choix n'est ajouté ni
+// interdit ; un geste non maîtrisé (me.gestes) reste hors de ses options quelle que soit sa personnalité.
+const K_ALTRUISME = 2.5, K_EGOISME = 2.5, K_RISQUE = 3;
 
 const { clamp, dist, LARGEUR } = require('./position-goals.js');
 
@@ -167,7 +172,9 @@ function lireChistera(b, me, sens, adv, pression) {
     const recul = (me.x - p.x) * sens, d = dist(me, p);
     if (recul < 0.45 || recul > 4 || d < 2 || d > 6 || Math.sign(p.y - me.y) === cotePlaqueur) continue;
     const libre = adv.reduce((t, o) => Math.min(t, dist(projeter(o, o.age + 0.3), p)), Infinity);
-    if (libre < 3) continue;
+    // Marge d'espace exigée autour du receveur : 3 m, abaissée jusqu'à 1,8 m par un joueur qui aime le risque (relevée jusqu'à 4,2 m par un
+    // prudent). Le moteur résout la passe et son interception selon les compétences, pas selon la personnalité.
+    if (libre < 3 - decalage(lireTraits(me.car).priseDeRisque, 1.2)) continue;
     const score = 10 + Math.min(6, libre) + Math.max(0, (m.vx || 0) * sens) * 0.4;
     if (!meilleur || score > meilleur.score) meilleur = { action: 'PASS', vers: m.numero, chistera: true, score };
   }
@@ -230,14 +237,21 @@ function lirePorteur(b, s, profile, playbook) {
   const distanceBut = sens > 0 ? 100 - me.x : me.x;
   const territoire = 100 - distanceBut;
   const course = espaceDevant(me, sens, adv, 17, 0.35);
+  const traits = lireTraits(me.car);
+  // L'attrait perçu de GARDER le ballon : l'égoïsme le relève, l'altruisme le baisse. Il entre dans le score de la course et dans
+  // toutes les marges que les alternatives (passe, pied, chistera) doivent franchir : un altruiste se contente d'une marge plus
+  // faible pour servir un partenaire, un égoïste en exige une plus forte avant de se délester.
+  const gardeLeBallon = decalage(traits.egoisme, K_EGOISME) - decalage(traits.altruisme, K_ALTRUISME);
+  const courseEff = course + gardeLeBallon;
   const chistera = lireChistera(b, me, sens, adv, pression);
-  if (chistera && chistera.score >= course + 6) return { ...chistera, options: [chistera], pression, course, age: s.ball.age };
-  const options = [{ action: 'RUN', score: course + (distanceBut < 7 ? 5 : 0) }];
+  // Le goût du risque abaisse (ou relève) la marge exigée pour tenter la chistera : seul un joueur qui MAÎTRISE le geste y arrive (lireChistera).
+  if (chistera && chistera.score >= courseEff + 6 - decalage(traits.priseDeRisque, K_RISQUE)) return { ...chistera, options: [chistera], pression, course, age: s.ball.age };
+  const options = [{ action: 'RUN', score: course + (distanceBut < 7 ? 5 : 0) + gardeLeBallon }];
   if (course >= 8 && distanceBut <= 35) for (const decalage of [-3, 3]) {
     const y = me.y + decalage;
     if (y < 3 || y > LARGEUR - 3) continue;
     const air = espaceDevant({ x: me.x, y }, sens, adv, 17, 0.35);
-    const score = air + (distanceBut < 7 ? 5 : 0) - 1;
+    const score = air + (distanceBut < 7 ? 5 : 0) - 1 + gardeLeBallon;
     if (air >= course + 3 && score > options[0].score) options[0] = { action: 'RUN', decalage, score };
   }
   for (const o of optionsDePasse(b, me, sens, adv, course, pression, profile, playbook)) options.push(o);
@@ -258,14 +272,15 @@ function lirePorteur(b, s, profile, playbook) {
   // (donc en jeu), qui arrivera au point de chute avant tout défenseur qu'il voit. Le moteur fait voler le
   // ballon avec son erreur propre et résout la réception disputée.
   const passePied = lirePassePied(b, s, me, sens, adv, distanceBut, course);
-  if (passePied) options.push(passePied);
+  const audace = decalage(traits.priseDeRisque, K_RISQUE); // gestes osés : passe au pied, petit coup de pied
+  if (passePied) options.push({ ...passePied, score: passePied.score + audace });
   const petitPied = lirePetitPied(b, me, sens, adv, distanceBut, course);
-  if (petitPied) options.push(petitPied);
+  if (petitPied) options.push({ ...petitPied, score: petitPied.score + audace });
   options.sort((a, c) => c.score - a.score || (a.vers || 0) - (c.vers || 0));
   const choix = options[0];
   // Fixer avant de servir : passer dès 9 m (essayé) laissait glisser la défense, −1,7 essai par match.
-  if (choix.action === 'PASS' && (pression < 2.5 || pression > 7 || course >= 7 || choix.score < course + 6 || choix.score < 9)) return null;
-  if (choix.action === 'KICK' && (choix.score < course + 3 || choix.score < (options[1]?.score ?? 0) + 2)) return null;
+  if (choix.action === 'PASS' && (pression < 2.5 || pression > 7 || courseEff >= 7 || choix.score < courseEff + 6 || choix.score < 9)) return null;
+  if (choix.action === 'KICK' && (choix.score < courseEff + 3 || choix.score < (options[1]?.score ?? 0) + 2)) return null;
   if (choix.action === 'KICK_CHIP') return { action: 'KICK', kick: 'CHIP', cibleX: choix.cibleX, cibleY: choix.cibleY,
     options, pression, course, age: s.ball.age, score: choix.score };
   if (choix.action === 'KICK_PASS') return { action: 'KICK', kick: 'PASSE_PIED', cibleX: choix.cibleX, cibleY: choix.cibleY, vers: choix.vers,

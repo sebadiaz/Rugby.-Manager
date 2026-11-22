@@ -1,6 +1,6 @@
 // RM4-G45 — personnalité des agents : fonctions pures, trait neutre = aucun effet (PERS-01), déterminisme (PERS-08),
 // lecture par l'agent de SES propres traits, garde statique « rien n'est scripté » (PERS-11, partie lecture).
-// Spécification : docs/SIMULATION_V4/16_PERSONNALITE_DES_AGENTS.md. AUCUN comportement n'est encore raccordé.
+// Spécification : docs/SIMULATION_V4/16_PERSONNALITE_DES_AGENTS.md. G45 : lecture et fonctions pures ; G46 : choix du porteur (open-play.js).
 'use strict';
 const assert = require('assert');
 const fs = require('fs');
@@ -10,6 +10,8 @@ const { MatchEngine } = E;
 const { configGOAP } = require('../engine/ai/goap-mode.js');
 const { AgentContext } = require('../engine/ai/agent-context.js');
 const P = require('../engine/ai/personality.js');
+const { lirePorteur } = require('../engine/ai/open-play.js');
+const { deriveSituation } = require('../engine/ai/goals.js');
 let nb = 0, ko = 0;
 function test(n, f) { nb++; try { f(); console.log('OK   ' + n); } catch (e) { ko++; console.error('FAIL ' + n + '\n' + e.stack.split('\n').slice(0, 4).join('\n')); } }
 
@@ -107,6 +109,72 @@ test('PERS-01 (matchs) : des traits explicitement NEUTRES (50) rejouent exacteme
   assert.strictEqual(sig(g1), sig(g2), 'GOAP 300 s');
 });
 
+// --- RM4-G46 : le porteur décide selon SA personnalité (altruisme, égoïsme, prise de risque) -----------------------------------
+// Situations générées de façon déterministe (générateur congruentiel, aucune source d'aléa cachée) : un porteur, quatre partenaires,
+// cinq défenseurs, à des positions variées. Seules changent les valeurs de trait du porteur.
+function lcg(seed) { let s = seed >>> 0; return () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 4294967296; }; }
+const fiche = (n, x, y, vx = 0) => ({ numero: n, lastSeen: { x, y }, age: 0.1, confidence: 1, vx, vy: 0, available: true });
+const GESTES = { chistera: 2, passeAuPied: 2, petitPied: 2, passeLongue: 2 };
+function situationAleatoire(rng, car, gestes) {
+  const x = 35 + rng() * 35, y = 12 + rng() * 46, numero = [9, 10, 12, 13, 15][Math.floor(rng() * 5)];
+  const mates = {}, opps = {};
+  [1, 2, 3, 4].forEach((k) => { mates['A' + (k + 8)] = fiche(k + 8, x - 1.5 - rng() * 8, y + (rng() < 0.5 ? -1 : 1) * (3 + rng() * 13), rng() * 3); });
+  [[2.2 + rng() * 7, (rng() - 0.5) * 3], [4 + rng() * 5, (rng() - 0.5) * 18], [5 + rng() * 6, (rng() - 0.5) * 26], [6 + rng() * 8, (rng() - 0.5) * 30], [10 + rng() * 10, (rng() - 0.5) * 20]]
+    .forEach((d, i) => { opps['B' + (i + 1)] = fiche(i + 1, Math.min(99, x + d[0]), Math.max(2, Math.min(68, y + d[1])), -rng() * 4); });
+  return { t: 900, agent: { team: 'A', numero }, phase: 'PORTE', possession: 'A', score: { A: 0, B: 0 }, heard: [],
+    self: { x, y, sensAttaque: 1, vitesse: 70, jeuPied: 80, available: true, grounded: false, car, gestes },
+    ball: { lastSeen: { x, y }, age: 0.1, state: 'HELD', owner: 'A' + numero }, teammates: mates, opponents: opps, ruck: null };
+}
+function decisions(car, N = 600, gestes = GESTES) {
+  const rng = lcg(12345), out = [];
+  for (let i = 0; i < N; i++) {
+    const b = situationAleatoire(rng, car, gestes);
+    const d = lirePorteur(b, deriveSituation(b), { distribute: 0.6 }, {});
+    out.push(!d ? 'AUTRE' : d.chistera ? 'CHISTERA' : d.action === 'PASS' ? 'PASSE' : d.action === 'KICK' ? 'PIED' : 'AUTRE');
+  }
+  return out;
+}
+const nPasses = (d) => d.filter((x) => x === 'PASSE' || x === 'CHISTERA').length;
+
+test('PERS-01 (décisions) : tous traits à 50 = mêmes décisions que sans trait, sur 600 situations', () => {
+  const neutres = Object.fromEntries(P.TRAITS.map((k) => [k, 50]));
+  assert.deepStrictEqual(decisions(neutres), decisions({}));
+  assert.deepStrictEqual(decisions({ altruisme: 50, egoisme: 50, priseDeRisque: 50 }), decisions(undefined));
+});
+
+test('PERS-02 : plus d\'altruisme, plus de passes ; plus d\'égoïsme, moins de passes (mêmes 600 situations, mêmes compétences)', () => {
+  const a = [10, 50, 90].map((v) => nPasses(decisions({ altruisme: v })));
+  const e = [10, 50, 90].map((v) => nPasses(decisions({ egoisme: v })));
+  assert.ok(a[0] < a[1] && a[1] < a[2], `altruisme 10/50/90 : ${a}`);
+  assert.ok(e[0] > e[1] && e[1] > e[2], `égoïsme 10/50/90 : ${e}`);
+  assert.ok(a[2] - a[0] >= 30, `écart trop faible : ${a}`);
+  // Un joueur à la fois très altruiste et peu égoïste passe nettement plus que son contraire.
+  const pour = nPasses(decisions({ altruisme: 90, egoisme: 10 })), contre = nPasses(decisions({ altruisme: 10, egoisme: 90 }));
+  assert.ok(pour > contre + 100, `${pour} contre ${contre}`);
+});
+
+test('PERS-02 (pas de script) : même numéro, mêmes compétences, même situation : des personnalités différentes choisissent parfois autrement', () => {
+  const x = decisions({ altruisme: 10, egoisme: 90 }), y = decisions({ altruisme: 90, egoisme: 10 });
+  const different = x.filter((v, i) => v !== y[i]).length;
+  assert.ok(different >= 50, `${different} situations sur 600 où les deux joueurs choisissent autrement`);
+  assert.ok(different < 600, 'et la plupart du temps ils choisissent pareil : on ne bascule pas le jeu');
+});
+
+test('PERS-03 : plus de goût du risque, la chistera est tentée dans un espace plus étroit ; un geste NON maîtrisé reste hors des options', () => {
+  const b = (L, car, gestes = { chistera: 2, passeAuPied: 0, petitPied: 0, passeLongue: 2 }) => ({
+    t: 900, agent: { team: 'A', numero: 12 }, phase: 'PORTE', possession: 'A', score: { A: 0, B: 0 }, heard: [],
+    self: { x: 60, y: 35, sensAttaque: 1, vitesse: 70, jeuPied: 60, available: true, grounded: false, car, gestes },
+    ball: { lastSeen: { x: 60, y: 35 }, age: 0.1, state: 'HELD', owner: 'A12' }, teammates: { A11: fiche(11, 58.5, 40) },
+    opponents: { B1: fiche(1, 63, 33), B7: fiche(7, 58.4, 40 + L), B8: fiche(8, 75, 20), B9: fiche(9, 75, 50) }, ruck: null });
+  const ensemble = (v, gestes) => { const r = []; for (let L = 1; L <= 5.01; L += 0.25) { const bb = b(L, { priseDeRisque: v }, gestes); const d = lirePorteur(bb, deriveSituation(bb), { distribute: 0.6 }, {}); if (d && d.chistera) r.push(L); } return r; };
+  const [prudent, neutre, audacieux] = [10, 50, 90].map((v) => ensemble(v));
+  assert.ok(prudent.length < neutre.length && neutre.length < audacieux.length, `${prudent.length}/${neutre.length}/${audacieux.length} espaces acceptés`);
+  assert.ok(Math.min(...audacieux) < Math.min(...neutre) && Math.min(...neutre) < Math.min(...prudent), 'marge d\'espace exigée décroissante avec le risque');
+  assert.ok(prudent.every((l) => neutre.includes(l)) && neutre.every((l) => audacieux.includes(l)), 'inclusion : qui tente prudent tente aussi audacieux');
+  assert.deepStrictEqual(ensemble(100, { chistera: 0, passeAuPied: 0, petitPied: 0, passeLongue: 2 }), [], 'jamais de chistera sans maîtriser le geste, même à risque 100');
+  assert.deepStrictEqual(ensemble(0, { chistera: 0, passeAuPied: 0, petitPied: 0, passeLongue: 2 }), []);
+});
+
 console.log(`\n${nb} test(s) exécuté(s).`);
 if (ko) { console.error(`ECHEC : ${ko} test(s) en échec.`); process.exit(1); }
-console.log('OK : personnalité des agents (fonctions pures, neutre = aucun effet, déterminisme) ; aucun comportement raccordé.');
+console.log('OK : personnalité des agents (neutre = aucun effet, déterminisme, G46 : altruisme, égoïsme, prise de risque du porteur).');
