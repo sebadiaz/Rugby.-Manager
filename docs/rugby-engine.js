@@ -9620,6 +9620,8 @@
             ? (this._tirAuBut.resultat.ok ? 'DRAPEAU_HAUT' : 'DRAPEAU_BAS')
             : this.phase === 'TOUCHE' && Math.abs((a.cote === 'gauche' ? 0 : LARGEUR) - this.ruckPoint.y) < 2
               ? 'TOUCHE' : null,
+          // Équipe qui a le ballon à la touche : l'assistant tend le bras vers elle (cf. renderer.dessinerAssistants).
+          pour: this.phase === 'TOUCHE' ? this.possession : null,
         })),
         possession: this.possession,
         phase: this.phase,

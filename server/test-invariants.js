@@ -5237,6 +5237,28 @@ test('franchissement : les défenseurs dépassés poursuivent le perceur à plei
   assert.ok(moyen < 5.5, `les dépassés finissent à ${moyen.toFixed(1)} m du perceur en 2 s (ils doivent revenir sur lui)`);
 });
 
+test('touche : l assistant du côté de la sortie lève le drapeau et désigne l équipe qui lance (pour = possession)', () => {
+  let vus = 0, ok = 0;
+  for (let seed = 1; seed <= 6; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    let ticks = 0;
+    while (m.phase !== 'TERMINE' && ticks < 30000 && vus < 12) {
+      m.tick(0.1); ticks++;
+      if (m.phase !== 'TOUCHE') continue;
+      const st = m.getState();
+      const signaux = st.assistants.filter((a) => a.signal === 'TOUCHE');
+      if (!signaux.length) continue;
+      vus++;
+      if (signaux.length === 1 && signaux[0].pour === st.possession && (st.possession === 'A' || st.possession === 'B')) ok++;
+      // L'autre assistant ne signale rien.
+      assert.ok(st.assistants.filter((a) => a.signal !== 'TOUCHE').every((a) => a.pour === st.possession || a.pour === null || a.signal === null), 'assistant sans signal de touche');
+      while (m.phase === 'TOUCHE' && ticks < 30000) { m.tick(0.1); ticks++; }
+    }
+  }
+  assert.ok(vus >= 8, `échantillon : ${vus} touches observées`);
+  assert.strictEqual(ok, vus, `${ok}/${vus} touches où l'assistant désigne l'équipe qui lance`);
+});
+
 console.log(`\n${nbTests} test(s) exécuté(s).`);
 if (process.exitCode) {
   console.error('ECHEC : au moins un invariant violé.');
