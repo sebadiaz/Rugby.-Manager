@@ -144,7 +144,9 @@ test('moteur : une chistera demandée dans le contact donne une passe ou un en-a
 
 test('receveur choisi par le porteur : quand le moteur fait partir une passe, il sert le receveur préféré s\'il est légal', () => {
   let demandes = 0, servis = 0, autres = 0;
-  const m = new MatchEngine(7, 4800, { aiMode: 'GOAP', agentDriver: () => ({ avantTick(e) {
+  // Deux graines : un comptage sur une seule (19 contre 20 exigés) bascule au moindre changement du déroulé du match.
+  for (const graine of [7, 8]) {
+  const m = new MatchEngine(graine, 4800, { aiMode: 'GOAP', agentDriver: () => ({ avantTick(e) {
     const p = e.porteur;
     if (e.phase !== 'PORTE' || !p) return;
     const legaux = (p.team === 'A' ? e.equipeA : e.equipeB).filter((j) => e._receveurAgentValide(p, j, j.numero) && Math.abs(j.y - p.y) > 1.2);
@@ -160,6 +162,7 @@ test('receveur choisi par le porteur : quand le moteur fait partir une passe, il
     return log(t, eq, msg, d);
   };
   for (let i = 0; i < 6000; i++) m.tick(0.1);
+  }
   assert.ok(demandes > 0 && servis >= 20, `${servis} passes au receveur préféré`);
   assert.ok(servis > 3 * autres, `${servis} servis contre ${autres} autres`);
 });

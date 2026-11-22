@@ -6279,7 +6279,7 @@
         // ballon au début du maul — sauf si le maul a suivi une réception directe
         // d'un coup de pied adverse, auquel cas la mêlée revient au réceptionneur.
         equipeMeleeSiInjouable: this._receptionDirecte ? poss : (poss === 'A' ? 'B' : 'A'),
-        x: porteur.x, y: porteur.y, sens,
+        x: porteur.x, y: porteur.y, x0: porteur.x, sens,
         timer: 0, timerGlobal: 0, timerUseIt: -1,
         nbArrets: 0, tempsImmobile: 0, tempsMouvement: 0,
         timerHorsJeu: 0, vitesse: 0,
@@ -6384,6 +6384,30 @@
             }
           }
           break;
+      }
+      // DÉCISION DU DEMI DE MÊLÉE : sortir le ballon d'un maul qui avance. Rien ne le permettait : tant que le maul avançait, même
+      // à 0,2 m/s, le ballon ne sortait qu'après deux arrêts ou au garde-fou de 35 s (mauls de 33 à 38 s, une vingtaine de joueurs
+      // figés en bloc). Le n°9 de l'équipe en possession, à la base, juge SEUL : il libère le ballon d'autant plus vite que le maul
+      // ralentit et qu'il a déjà gagné du terrain et du temps ; près de la ligne adverse, tant que le maul avance franchement,
+      // on pousse pour marquer. Sa lucidité (`decision`) règle sa rapidité de lecture.
+      if ((m.etat === ETATS_MAUL.ACTIF || m.etat === ETATS_MAUL.AVANCE) && m.timerGlobal > 2.5) {
+        // Le n°9 à la base juge ; s'il porte lui-même le ballon dans le maul, c'est lui, porteur, qui décide.
+        const neufM = (poss === 'A' ? this.equipeA : this.equipeB).find((j) => j.numero === 9 && j.auSol === 0 && j.sinBin <= 0 && j !== this.porteur) || this.porteur;
+        const distLigne = m.sens > 0 ? LONGUEUR - m.x : m.x;
+        const pousserPourMarquer = distLigne < 8 && m.vitesse >= 0.35;
+        if (neufM && !pousserPourMarquer) {
+          const lecture = 0.6 + (typeof neufM.decision === 'number' ? neufM.decision : 60) / 150;
+          // Il lit une TENDANCE, pas un instant : le maul doit piétiner depuis 1,5 s pour qu'il le juge mort.
+          m.tempsLent = m.vitesse < 0.3 ? (m.tempsLent || 0) + dt : 0;
+          const ralenti = m.tempsLent >= 1.5 ? 0.5 : 0;
+          const usure = Math.max(0, m.timerGlobal - 10) * 0.1;
+          const gain = Math.abs(m.x - (m.x0 != null ? m.x0 : m.x)) >= 10 ? 0.15 : 0;
+          if (this.rng() < (0.02 + ralenti + usure + gain) * lecture * dt) {
+            return this._maulSortieBallon(); // journalisé MAUL_BALLON_SORTI
+          }
+        }
+      }
+      switch (m.etat) {
         case ETATS_MAUL.PREMIER_ARRET:
           // Une seule relance autorisée : s'il repart clairement, on laisse jouer.
           if (m.tempsMouvement >= 0.4) { m.etat = ETATS_MAUL.AVANCE; }
@@ -6518,8 +6542,11 @@
       for (const j of att) if (j.auSol === 0 && Math.hypot(j.x - m.x, j.y - m.y) < 4) fAtt += forceMaul(j);
       for (const j of def) if (j.auSol === 0 && Math.hypot(j.x - m.x, j.y - m.y) < 4) fDef += forceMaul(j);
       const net = (fAtt - fDef) / 70 + (this.rng() - 0.5) * 0.15;
-      m.vitesse = Math.max(-0.5, Math.min(0.8, net));
-      return m.vitesse * dt;
+      // Un maul porté avance plus franchement (jusqu'à 1 m/s) : borné à 0,8 m/s, il se traînait 25 à 35 s, vingt joueurs figés.
+      m.vitesse = Math.max(-0.5, Math.min(1.2, net * 1.6));
+      // Le pack se lie AVANT de pousser : le déplacement monte en 2 s (l'état avance/arrêt reste lu sur la force du pack).
+      const montee = Math.min(1, (m.timerGlobal || 0) / 2);
+      return m.vitesse * dt * montee;
     }
 
     // Hors-jeu au maul : un défenseur non lié, debout, passé du côté de la sortie
