@@ -96,7 +96,15 @@ prudent et un 14 audacieux voient ainsi leurs préférences de poste déformées
 - **RM4-G45 — FAIT** — `engine/ai/personality.js` (fonctions pures : `lireTraits`, `decalage`, `multiplicateur`, `ponderer`,
   `amplitudeBruit`, `bruit`) ; le moteur ne crée un trait dans `car` que s'il est fourni explicitement (`TRAITS_PERSONNALITE`) ;
   tests `server/test-v4-personnalite.js` (PERS-01, PERS-08, PERS-11 côté lecture). **Aucun comportement raccordé.**
-- **RM4-G46** — `altruisme`/`egoisme` et `priseDeRisque` dans les choix du porteur (`lirePorteur`) : PERS-02, PERS-03.
+- **RM4-G46 — FAIT (porteur)** — `engine/ai/open-play.js` : `altruisme` et `egoisme` règlent l'attrait perçu de garder le ballon
+  (`gardeLeBallon`, ±2,5 chacun, qui entre dans le score de la course et dans les marges `course + 6`, `+ 3` des passes, pieds et
+  chistera) ; `priseDeRisque` abaisse jusqu'à 1,8 m (relève jusqu'à 4,2 m) la marge d'espace exigée autour du receveur de la chistera
+  et décale le score de la passe au pied et du petit coup de pied. Un geste non maîtrisé (`me.gestes`) reste hors des options. Tests
+  PERS-01 (décisions), PERS-02, PERS-03 dans `server/test-v4-personnalite.js` (600 situations déterministes).
+  **Mesure en match (24 matchs GOAP de 15 min, équipe A seule porteuse du trait) :** passes par course 1,32 ± 0,09 (altruistes),
+  1,21 ± 0,06 (égoïstes), 1,38 ± 0,08 (neutres). Le sens est celui attendu entre altruistes et égoïstes mais **l'écart n'est pas
+  significatif à 8 matchs** : la cadence de passes du moteur (calibrée) dilue l'effet des décisions du porteur. Ne pas annoncer un
+  effet visible en match sans campagne plus large (30 graines au moins) ; ne pas gonfler les constantes pour le faire apparaître.
 - **RM4-G47** — `sangFroid`/`concentration` : bruit de jugement et erreurs d'inattention : PERS-04.
 - **RM4-G48** — `agressivite`/`courage` en défense et au contact : PERS-05.
 - **RM4-G49** — `espritEquipe` et préférences de buts par joueur (`profilePour(numero, extra)`) : PERS-06, PERS-10.
