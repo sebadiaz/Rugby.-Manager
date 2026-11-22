@@ -1,6 +1,6 @@
 # 16 — Personnalité des agents (cahier des charges, à coder par petites tâches)
 
-> **Statut : spécification préparée, RIEN n'est codé.** Demande du propriétaire (novembre 2026) : donner aux agents
+> **Statut : spécification ; seule la tâche G45 est codée (lecture et fonctions pures, aucun comportement raccordé).** Demande du propriétaire (novembre 2026) : donner aux agents
 > des **personnalités qui influencent leur prise de décision**.
 >
 > **RÈGLE PERMANENTE — RIEN N'EST SCRIPTÉ.** Une personnalité n'est ni un scénario, ni un rôle, ni une table de
@@ -54,9 +54,10 @@ prudent et un 14 audacieux voient ainsi leurs préférences de poste déformées
 - **Décalage de score** : `score' = score + k × (trait − 50) / 50`, `k` borné (±2,5 points sur l'échelle actuelle des
   options, dont les valeurs sont de l’ordre de la dizaine dans `lirePorteur`). Même forme partout, une seule fonction utilitaire pure, des constantes **nommées**.
 - **Multiplicateur de préférence** : `poids' = poids × (1 + c × (trait − 50) / 50)`, `c ≤ 0,35`, borné à [0,05 ; 1].
-- **Bruit de jugement déterministe** : à chaque comparaison d'options, un bruit dont l'amplitude diminue avec `decision`,
-  `sangFroid` et le calme du moment, tiré **sans `Math.random()`** : fonction pure de (graine du match, identifiant de
-  l'agent, instant quantifié). Même graine, même résultat.
+- **Bruit de jugement déterministe** : à chaque comparaison d'options, un bruit centré, tiré **sans `Math.random()`** :
+  fonction pure de (graine du match, identifiant de l'agent, instant quantifié à 0,2 s). Même graine, même résultat. Il
+  n'existe que **sous le neutre** (`sangFroid`, `concentration` bas : le joueur hésite sous pression) et le calme du moment
+  le réduit ; à 50 ou plus il vaut 0, pour que « neutre = comportement actuel » reste vrai (PERS-01).
 - **État individuel** (`confianceSoi`) : un petit nombre dans l'objet de l'agent, mis à jour par **ses seuls** événements
   (sa passe réussie, son plaquage manqué, l'essai encaissé). Personne ne le lit à sa place.
 - **Aucune lecture croisée** : un agent ne lit jamais la personnalité d'un autre. Il peut en avoir une **impression** par ce
@@ -66,8 +67,9 @@ prudent et un 14 audacieux voient ainsi leurs préférences de poste déformées
 
 - Stockage dans `caracteristiques` du joueur (déjà migré par `appliquerCaracteristiques`) ; valeur absente = 50 : les
   sauvegardes et le Mode Club existants restent valides.
-- Génération : valeurs initiales **dérivées** des caractéristiques existantes (`tendance`, `decision`, `discipline`) et d'un
-  tirage stable par joueur, jamais d'un tableau « poste → personnalité ». Pas de personnalité imposée par le numéro.
+- Génération (G52, **à valider avec le propriétaire**) : valeurs initiales proposées à partir des caractéristiques existantes
+  (`tendance`, `decision`, `discipline`) et d'un tirage stable par joueur, jamais d'un tableau « poste → personnalité ». En
+  G45, **aucune valeur n'est dérivée** : un trait absent vaut 50 (neutre).
 - Mode Club : fiche joueur avec les traits et une étiquette **calculée** (affichage seul) ; évolution lente avec l'expérience
   et les événements de carrière (à définir plus tard).
 - Aucune donnée de joueur réel : les personnalités sont des **données de jeu**, pas des portraits de joueurs réels. Les
@@ -91,8 +93,9 @@ prudent et un 14 audacieux voient ainsi leurs préférences de poste déformées
 
 ## 6. Tâches proposées (une par session, preuve sur un scénario avant le moteur complet)
 
-- **RM4-G45** — fonction utilitaire pure (décalage, multiplicateur, bruit déterministe) + lecture des traits dans
-  `beliefs.self.car` + tests PERS-01 et PERS-08. Aucun changement de comportement.
+- **RM4-G45 — FAIT** — `engine/ai/personality.js` (fonctions pures : `lireTraits`, `decalage`, `multiplicateur`, `ponderer`,
+  `amplitudeBruit`, `bruit`) ; le moteur ne crée un trait dans `car` que s'il est fourni explicitement (`TRAITS_PERSONNALITE`) ;
+  tests `server/test-v4-personnalite.js` (PERS-01, PERS-08, PERS-11 côté lecture). **Aucun comportement raccordé.**
 - **RM4-G46** — `altruisme`/`egoisme` et `priseDeRisque` dans les choix du porteur (`lirePorteur`) : PERS-02, PERS-03.
 - **RM4-G47** — `sangFroid`/`concentration` : bruit de jugement et erreurs d'inattention : PERS-04.
 - **RM4-G48** — `agressivite`/`courage` en défense et au contact : PERS-05.

@@ -514,10 +514,15 @@
   // des 12 attributs historiques (migration sans perte, aucune consommation de tirage : LEGACY inchangé).
   // Les dérivations sont des hypothèses de départ, à remplacer par des valeurs propres à chaque joueur.
   const borne = (v) => Math.max(0, Math.min(100, v));
+  // Traits de caractère (docs/SIMULATION_V4/16_PERSONNALITE_DES_AGENTS.md) : présents dans `car` UNIQUEMENT s'ils sont fournis
+  // explicitement. Absent = neutre (50) pour l'agent, donc comportement inchangé. Aucune valeur dérivée du numéro de poste.
+  // Même liste que engine/ai/personality.js (un test les compare).
+  const TRAITS_PERSONNALITE = ['priseDeRisque', 'altruisme', 'egoisme', 'agressivite', 'courage', 'sangFroid', 'concentration',
+    'confianceSoi', 'resilience', 'regularite', 'espritEquipe', 'leadership', 'communication', 'constance'];
   function caracteristiquesDetaillees(j, explicites) {
     const e = explicites || {};
     const v = (cle, derivee) => (typeof e[cle] === 'number' ? borne(e[cle]) : borne(derivee));
-    return {
+    const car = {
       lectureJeu: v('lectureJeu', j.decision),
       vision: v('vision', j.decision * 0.7 + j.passe * 0.3),
       receptionPasse: v('receptionPasse', 30 + j.passe * 0.6),
@@ -527,6 +532,8 @@
       piedRasant: v('piedRasant', j.jeuPied),
       distancePied: v('distancePied', j.jeuPied),
     };
+    for (const cle of TRAITS_PERSONNALITE) if (typeof e[cle] === 'number' && Number.isFinite(e[cle])) car[cle] = borne(e[cle]);
+    return car;
   }
   // Maîtrise d'un geste : 0 ne sait pas, 1 notions, 2 maîtrise, 3 spécialiste. Explicite ou dérivée des
   // caractéristiques associées. Un geste à 0 n'est JAMAIS une option de l'agent.
@@ -9749,7 +9756,7 @@
   // en supprimant la sanction de la passe en avant, la suite restait verte
   // parce que le seul test concerne ne posait qu'une borne HAUTE (« pas plus
   // de 4 passes en avant par match »), satisfaite a zero.
-  return { MatchEngine, Referee, LONGUEUR, LARGEUR, creerRng, distance, DEFAULT_CONFIG, fusionnerConfig,
+  return { MatchEngine, Referee, LONGUEUR, LARGEUR, creerRng, distance, DEFAULT_CONFIG, fusionnerConfig, TRAITS_PERSONNALITE,
     tirerSauteurPondere, forceTouche, probaVolTouche, COEF_LISIBILITE_TOUCHE,
     effetPousseeMelee, dureeSortieRuck, GAIN_SERVICE_RAPIDE_RUCK,
     CHRONOLOGIE_MAX, TYPES_CHRONOLOGIE, organiserAvantsRuck };
