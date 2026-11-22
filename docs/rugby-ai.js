@@ -593,7 +593,10 @@ class AgentContext {
       }
       // Un PORTEUR balaie le terrain avant de jouer (têtes levées) : champ de vision complet.
       const porteur = state.ball?.carrierTeam === this.agent.team && state.ball.carrierNumber === this.agent.numero;
-      const pv = Object.assign({}, this.params, gaze === undefined ? {} : { gaze }, porteur ? { fovDeg: 360 } : {});
+      // Ballon perdu de vue depuis plus de 1,5 s (après au moins une observation) : le joueur tourne la tête et balaie le terrain pour le retrouver (il ne reste
+      // plus planté à regarder devant lui, ballon « inconnu », pendant que le jeu se déroule ailleurs).
+      const cherche = this.lastObsT !== null && (!this.mem.ball || t - this.mem.ball.seenAt > 1.5);
+      const pv = Object.assign({}, this.params, gaze === undefined ? {} : { gaze }, porteur || cherche ? { fovDeg: 360 } : {});
       obs = observe(state, this.agent, pv);
       this.lastObsT = t;
       const m = this.mem;
@@ -2733,6 +2736,7 @@ module.exports = { choixPenalite };
 
 const DEFAUTS = Object.freeze({
   visionRange: 45,        // m : portée de la vue
+  ballRange: 100,         // m : le BALLON, que tout le monde suit, se voit de tout le terrain (dans le champ, s'il n'est pas caché)
   fovDeg: 200,            // champ de vision horizontal
   peripheralRadius: 6,    // m : on sent les joueurs tout proches, même dans le dos
   occlusionBodies: 3,     // nombre de joueurs alignés qui cachent le ballon
@@ -2745,7 +2749,7 @@ function id(j) { return j.team + j.numero; }
 
 function normaliserParams(params) {
   const p = Object.assign({}, DEFAUTS, params || {});
-  for (const k of ['visionRange', 'fovDeg', 'peripheralRadius', 'occlusionBodies', 'occlusionWidth']) {
+  for (const k of ['visionRange', 'ballRange', 'fovDeg', 'peripheralRadius', 'occlusionBodies', 'occlusionWidth']) {
     if (!Number.isFinite(p[k]) || p[k] < 0) throw new RangeError('paramètre de perception invalide : ' + k);
   }
   if (p.fovDeg > 360) throw new RangeError('fovDeg > 360');
@@ -2806,7 +2810,7 @@ function observe(state, agent, params) {
   }
   const b = state.ball || state.ballon;
   if (b && Number.isFinite(b.x)) {
-    const visible = p.omniscient || (dansLeChamp(moi, b, p) && !ballonCache(moi, b, tous, p));
+    const visible = p.omniscient || (dansLeChamp(moi, b, Object.assign({}, p, { visionRange: Math.max(p.visionRange, p.ballRange) })) && !ballonCache(moi, b, tous, p));
     if (visible) {
       vus.ball = {
         x: b.x, y: b.y, state: state.ball ? state.ball.state : null,
