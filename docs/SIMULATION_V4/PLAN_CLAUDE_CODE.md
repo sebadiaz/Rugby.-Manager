@@ -454,6 +454,13 @@ Ces trois tâches étendent l'architecture **individuelle** des tâches G04–G2
 - **Tests :** `MIC-01..12`, `STYLE-01..10`, `TOP14-01..19`, invariants, décisions multi-graines ; signaux 8/9 avec perte/expiration/annulation.
 - **Rejet si :** l'agent dispose de coordonnées/historiques cachés, si une passe est encore jouée après que le porteur a perdu le ballon, ou si la distribution correspond à une ligne de score déterministe.
 
+### RM4-G45 à G52 — Personnalité des agents (spécification : `16_PERSONNALITE_DES_AGENTS.md`)
+
+- **Règle :** rien n'est scripté (règle permanente en tête de `CLAUDE.md`). Une personnalité règle la FAÇON de décider (décalages bornés sur des choix déjà existants) ; elle ne crée aucun rôle, ne désigne personne, ne décide aucun résultat.
+- **Tâches (une par session, preuve sur un scénario d'abord) :** G45 fonction utilitaire pure et lecture des traits (aucun changement de comportement, PERS-01 et PERS-08) ; G46 altruisme/égoïsme et prise de risque du porteur ; G47 sang-froid et concentration ; G48 agressivité et courage ; G49 esprit d'équipe et préférences de buts par joueur ; G50 confiance en soi et résilience ; G51 leadership, communication, constance ; G52 données Club, étiquette calculée, matrice de niveaux.
+- **Tests :** `PERS-01..11` (tendances, jamais de chiffres d'élite imposés) ; PERS-10 et PERS-11 gardent « rien n'est scripté ».
+- **Rejet si :** une valeur de personnalité dépend du numéro seul, si un agent lit la personnalité d'un autre, si un test impose un taux d'élite, ou si PERS-01 (traits neutres = comportement actuel) échoue.
+
 **Ordre de réalisation recommandé** : une **seule séquence complète** du début à la fin (Jelonch) avec les défenseurs autonomes et preuve par contre-factuel, puis départ Hughes (8↔9), puis pied Lucu→Penaud et touche Dupont–Mauvaka. Ne pas multiplier les catalogues de scénarios moteur sans avoir un agent réellement branché à `MatchEngine`.
 
 ## 2. Commandes générales de garde (sur chaque tranche pertinente)

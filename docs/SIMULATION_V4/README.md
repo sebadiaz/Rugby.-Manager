@@ -23,6 +23,8 @@
 
 **Fait autorité :** [`15_CARACTERISTIQUES_INDIVIDUELLES.md`](15_CARACTERISTIQUES_INDIVIDUELLES.md). Capacités physiques et techniques, connaissances tactiques individuelles, lecture du jeu et mental de chaque joueur sont primordiales ; tout le monde ne maîtrise pas la chistera, le drop ou la passe longue. Les statistiques découlent du niveau des joueurs : les repères d'élite ne valent que pour un match entre équipes d'élite. Le document liste les caractéristiques existantes (12) et à créer, les gestes maîtrisés, les constantes fixes à remplacer et la validation par tendances et matrice de niveaux.
 
+**Personnalité des agents (spécification, rien de codé) :** [`16_PERSONNALITE_DES_AGENTS.md`](16_PERSONNALITE_DES_AGENTS.md). Traits de caractère qui règlent la façon de décider (risque, altruisme, agressivité, sang-froid…), lus par chaque agent dans SES caractéristiques. **Rien n'est scripté** : règle permanente en tête de `CLAUDE.md`.
+
 ## Décision d'architecture : **30 agents individuels, pas d'IA collective**
 
 **Fait autorité :** [`07_AGENT_INDIVIDUEL_PLACEMENT.md`](07_AGENT_INDIVIDUEL_PLACEMENT.md).
