@@ -26,7 +26,7 @@ let ruckT=0, envoiVu=false; const devantDepuis={};
 for(let i=0;i<60000&&m.phase!=='TERMINE';i++){
   m.tick(0.1);
   if(i%10===0){ const b=m.getState().ballon||{}; if(!(Number.isFinite(b.x)&&Number.isFinite(b.y))) viol('ballon à coordonnées invalides',''); else ok('ballon ok'); }
-  if(m.phase==='COUP_ENVOI'&&m.envoiEnPlace&&!envoiVu){ envoiVu=true; ok('coups d\'envoi (placement)'); const kick=m.possession; const opp=kick==='A'?m.equipeB:m.equipeA; const pres=opp.filter(j=>j.sinBin<=0&&Math.abs(j.x-m.xCoupEnvoi)<9.5).length; const dev=(kick==='A'?m.equipeA:m.equipeB).filter(j=>j!==m.porteur&&j.sinBin<=0&&(j.x-m.xCoupEnvoi)*(kick==='A'?1:-1)>0.8).length; if(pres) viol('L10 adversaire à moins de 10 m au coup d\'envoi',pres+' joueur(s)'); if(dev) viol('L10 partenaire du botteur devant le ballon',dev+' joueur(s)'); }
+  if(m.phase==='COUP_ENVOI'&&m.envoiEnPlace&&!envoiVu){ envoiVu=true; ok('coups d\'envoi (placement)'); const kick=m.possession; const opp=kick==='A'?m.equipeB:m.equipeA; const pres=opp.filter(j=>j.sinBin<=0&&Math.abs(j.x-m.xCoupEnvoi)<9.5).length; const dev=(kick==='A'?m.equipeA:m.equipeB).filter(j=>j!==m.porteur&&j.sinBin<=0&&(j.x-m.xCoupEnvoi)*(kick==='A'?1:-1)>0.8).length; if(pres) viol('L12 adversaire à moins de 10 m au coup d\'envoi',pres+' joueur(s)'); if(dev) viol('L12 partenaire du botteur devant le ballon',dev+' joueur(s)'); }
   if(m.phase!=='COUP_ENVOI') envoiVu=false;
   if(m.porteur&&m.porteur.auSol>0&&m.phase==='PORTE'&&!m.passeVisuelle&&!m.penaliteRecul) viol('porteur au sol pendant le jeu courant',m.porteur.team+m.porteur.numero);
   for(const eq of ['A','B']){ const L=eq==='A'?m.equipeA:m.equipeB; const sur=L.filter(j=>j.sinBin<=0).length; if(sur<12) viol('moins de 12 joueurs sur le terrain',eq+':'+sur); }
@@ -40,5 +40,12 @@ for(let i=0;i<60000&&m.phase!=='TERMINE';i++){
       if(ecart<-1.5&&loin&&!(j.sinBin>0)&&!(j.auSol>0)&&!(j.horsJeuKick>0)){ if(!devantDepuis[k]){ devantDepuis[k]=0.1; devantDepuis[k+'e']=ecart; } else devantDepuis[k]+=0.1; if(devantDepuis[k]>4.0&&Math.abs(devantDepuis[k]-4.05)<0.06&&(ecart-devantDepuis[k+'e'])<2) viol('L15 joueur hors-jeu actif au ruck (immobile devant le pied arrière > 4 s)',`${k} ${(-ecart).toFixed(1)} m devant`); } else devantDepuis[k]=0; } } else for(const k in devantDepuis) devantDepuis[k]=0;
 }
 const st=m.stats;
-const sc={A:5*st.A.essais+2*st.A.transformationsReussies+3*st.A.penalitesButReussies+3*st.A.dropsReussis,B:5*st.B.essais+2*st.B.transformationsReussies+3*st.B.penalitesButReussies+3*st.B.dropsReussis};
-console.log(JSON.stringify({g:graine,mode,score:m.score,recompose:sc,essais:[st.A.essais,st.B.essais],violations:Object.fromEntries(Object.entries(V).filter(([k])=>!k.endsWith('_ex')&&true).map(([k,v])=>[k,{n:v,ex:V[k+'_ex']}])),verifie:N}));
+const { recomposerScore } = require('./audit-score.js');
+const sc={A:recomposerScore(st.A),B:recomposerScore(st.B)};
+const termine=m.phase==='TERMINE';
+const scoreEgal=sc.A===m.score.A&&sc.B===m.score.B;
+// Règles que ce script NE contrôle PAS : à ne jamais déclarer conformes sur la seule foi de ce rapport.
+const nonCouvert=['L14 lâcher du ballon au plaquage','L16 liaisons du maul','L17 légalité d\'une marque (et loi 17.4 : aucune sur coup d\'envoi)','L12 ligne à franchir d\'un renvoi (10 m / 22 m / 5 m)','L6 geste dessiné de l\'assistant de touche'];
+console.log(JSON.stringify({g:graine,mode,termine,scoreEgal,score:m.score,recompose:sc,essais:[st.A.essais,st.B.essais],violations:Object.fromEntries(Object.entries(V).filter(([k])=>!k.endsWith('_ex')&&true).map(([k,v])=>[k,{n:v,ex:V[k+'_ex']}])),verifie:N,nonCouvert}));
+if(!termine){ console.error('ATTENTION : la limite de pas a été atteinte avant la fin du match (phase '+m.phase+') ; rapport incomplet'); process.exitCode=2; }
+if(!scoreEgal){ console.error('ATTENTION : score recomposé '+sc.A+'-'+sc.B+' différent du score du moteur '+m.score.A+'-'+m.score.B); process.exitCode=1; }

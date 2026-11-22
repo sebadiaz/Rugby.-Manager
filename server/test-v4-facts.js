@@ -150,15 +150,20 @@ test('pas de second moteur de possession : le fait suit uniquement state.possess
   }
 });
 
-test('S08 : le porteur HAS_BALL est cohérent avec sa possession ; un seul porteur sur 30 joueurs', () => {
-  const e = scenario('S08', 5).getState();
-  let porteurs = 0;
-  for (const team of ['A', 'B']) for (let n = 1; n <= 15; n++) {
-    const r = extractFacts(e, { team, numero: n });
-    if (r.facts.HAS_BALL) { porteurs++; assert.strictEqual(r.facts.TEAM_POSSESSION, true); }
-    assert.deepStrictEqual(detectConflicts(r.facts), []);
+test('S08 : zéro porteur HAS_BALL pendant le vol, puis un seul porteur identifié (celui de ball.carrier) une fois le ballon réceptionné', () => {
+  let vol = 0, tenu = 0;
+  for (const pas of [1, 3, 5, 8, 12, 20, 30, 45, 60, 90]) {
+    const e = scenario('S08', pas).getState();
+    const porteurs = [];
+    for (const team of ['A', 'B']) for (let n = 1; n <= 15; n++) {
+      const r = extractFacts(e, { team, numero: n });
+      if (r.facts.HAS_BALL) { porteurs.push(team + n); assert.strictEqual(r.facts.TEAM_POSSESSION, true, `${team}${n} porteur sans possession`); }
+      assert.deepStrictEqual(detectConflicts(r.facts), [], `${team}${n} au pas ${pas}`);
+    }
+    if (e.ball.carrierTeam == null) { vol++; assert.deepStrictEqual(porteurs, [], `ballon en vol/au sol au pas ${pas} : aucun porteur attendu`); }
+    else { tenu++; assert.deepStrictEqual(porteurs, [e.ball.carrierTeam + e.ball.carrierNumber], `ballon tenu au pas ${pas}`); }
   }
-  assert.strictEqual(porteurs, 1);
+  assert.ok(vol >= 1 && tenu >= 1, `le scénario doit montrer un vol (${vol}) puis un ballon tenu (${tenu})`);
 });
 
 test('aucun conflit sur 30 joueurs x états d\'un vrai match (graine 11, un état toutes les 5 s)', () => {

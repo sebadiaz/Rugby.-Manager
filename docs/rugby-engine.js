@@ -1744,15 +1744,19 @@
       // joueur par joueur (cf. _comportementsVolEnvoi).
       this.varianteEnvoi = cible.variante;
       this._planEnvoi = null;
-      // Un coup d'envoi mal frappé qui ne franchit pas les 10 m est sanctionné par une mêlée au centre (loi 12) ; il découle de
-      // l'imprécision du botteur (cible proche des 10 m, erreur de frappe) plus un raté pur, plus fréquent pour un mauvais botteur.
-      this.coupEnvoiCourt = cible.dm < 10 || this.rng() < 0.045 + Math.max(0, 60 - jpBotteur) * 0.0015;
-      // Coup d'envoi profond : botté loin vers les 22 m adverses pour mettre la pression sur la réception. C'est le seul
-      // cas où le receveur capte le ballon dans son propre en-deçà des 22 m et peut donc demander une marque (loi 17).
-      this.coupEnvoiProfond = !this.coupEnvoiCourt && cible.dm >= 27;
-      this.ballonCibleX = this.coupEnvoiCourt
-        ? Math.max(0, Math.min(LONGUEUR, xCentre + dirKick * (3 + this.rng() * 6)))
-        : Math.max(0, Math.min(LONGUEUR, xCentre + dirKick * cible.dm));
+      // Type de reprise (loi 12) : coup d'envoi au centre (le ballon doit atteindre la ligne des 10 m, 12.6), renvoi aux 22 m (il doit
+      // franchir la ligne des 22 m, 12.13c, soit toute frappe vers l'avant depuis cette ligne) ou renvoi d'en-but (ligne des 5 m).
+      this.renvoi22 = Math.abs(xCentre - LONGUEUR / 2) > 0.5;
+      this.renvoiEnBut = xCentre <= 0.5 || xCentre >= LONGUEUR - 0.5;
+      const distLigne = this.renvoiEnBut ? 5 : this.renvoi22 ? 0 : 10;
+      // Un coup mal frappé (raté pur, plus fréquent pour un mauvais botteur) retombe 3 à 9 m devant lui ; il est « court » seulement s'il
+      // n'atteint pas SA ligne : toujours au coup d'envoi, jamais au renvoi aux 22 m (la ligne est déjà franchie), parfois d'en-but.
+      const rate = this.rng() < 0.045 + Math.max(0, 60 - jpBotteur) * 0.0015;
+      const dmReel = rate ? 3 + this.rng() * 6 : cible.dm;
+      this.coupEnvoiCourt = dmReel < distLigne;
+      // Coup d'envoi profond : botté loin vers les 22 m adverses pour mettre la pression sur la réception.
+      this.coupEnvoiProfond = !this.coupEnvoiCourt && !rate && cible.dm >= 27;
+      this.ballonCibleX = Math.max(0, Math.min(LONGUEUR, xCentre + dirKick * dmReel));
       this.ballonCibleY = Math.max(3, Math.min(LARGEUR - 3, cible.y));
       // Durée du vol et avance des chasseurs sur le ballon (une cloche haute dure plus longtemps ; cf. _tickCoupEnvoi).
       this.dureeVolEnvoi = this.coupEnvoiCourt ? null : cible.tVol;
@@ -1781,9 +1785,7 @@
       // 22 m, les adversaires ne doivent pas franchir la ligne des 22 m avant le
       // coup de pied. `renvoi22` est expose par getState pour que l'interface
       // affiche aussi la bonne phase.
-      this.renvoi22 = Math.abs(xCentre - LONGUEUR / 2) > 0.5;
-      // Renvoi depuis la ligne d'en-but (ballon tenu dans l'en-but, P2-99).
-      this.renvoiEnBut = xCentre <= 0.5 || xCentre >= LONGUEUR - 0.5;
+      // Renvoi depuis la ligne d'en-but (ballon tenu dans l'en-but, P2-99) : cf. plus haut (renvoi22 / renvoiEnBut).
       if (this.renvoiEnBut) {
         this.log('RENVOI_EN_BUT', equipeKick, `Renvoi depuis l'en-but botte par l'equipe ${equipeKick}`);
       } else if (this.renvoi22) {
@@ -1996,7 +1998,7 @@
         // botté, qu'il ait été repris ou non par un chasseur.
         if (this.coupEnvoiCourt) {
           const equipeKick = this._dernierEquipeKick;
-          this.log('COUP_ENVOI_COURT', equipeKick, `Coup d'envoi trop court par l'equipe ${equipeKick}, melee au centre pour l'equipe adverse`);
+          this.log('COUP_ENVOI_COURT', equipeKick, this.renvoiEnBut ? `Renvoi d'en-but trop court (ligne des 5 m) par l'equipe ${equipeKick}, melee pour l'equipe adverse` : `Coup d'envoi trop court par l'equipe ${equipeKick}, melee au centre pour l'equipe adverse`);
           this._accorderMelee(equipeKick, { x: this.xCoupEnvoi, y: LARGEUR / 2 });
           return;
         }
@@ -2060,7 +2062,9 @@
         // franc (pas de tir au but possible), pour dégager la pression.
         const sensReceveur = joueur.team === 'A' ? 1 : -1;
         const distPropreLigne = sensReceveur > 0 ? joueur.x : (LONGUEUR - joueur.x);
-        if (distPropreLigne <= 22 && this.rng() < probaMarque(joueur, TAUX_MARQUE_ENVOI, distChasseur)) {
+        // Loi 17.4 : aucune marque sur un coup d'envoi ni sur une reprise après un score (centre) ; elle reste possible sur un renvoi aux 22 m.
+        const repriseAuCentre = !this.renvoi22 && !this.renvoiEnBut;
+        if (!repriseAuCentre && distPropreLigne <= 22 && this.rng() < probaMarque(joueur, TAUX_MARQUE_ENVOI, distChasseur)) {
           this._traiterCoupFranc(joueur.team, { x: joueur.x, y: joueur.y }, null, 'marque');
           return;
         }

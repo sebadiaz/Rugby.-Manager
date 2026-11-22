@@ -17,19 +17,25 @@ Ce fichier donne une liste opérationnelle à partir du code, de reproductions i
 
 **Interprétation.** Aucune transformation signalée sans essai préalable. Au ruck, le détecteur compare le joueur au centre du regroupement et peut compter deux pas successifs pour le même joueur (GOAP 4, B8 à 4 848 s). Pour qualifier une faute, mesurer le dernier pied, l'appartenance au ruck, le repli et l'intervention effective. Le script ne vérifie pas systématiquement le lâcher du ballon au plaquage, les liaisons du maul, la légalité d'une marque ni le geste dessiné du juge de touche.
 
-### [ ] BUG-RM-013 — Le n°15 obtient un marque sur le coup d’envoi — P2
+### [x] BUG-RM-013 — Le n°15 obtient un marque sur le coup d’envoi — P2
+
+**Traité (22 nov.).** `_tickCoupEnvoi` ne tire plus de marque sur une reprise au centre (coup d'envoi, reprise après un score : loi 17.4 du règlement 2025 conservé dans `rules/`). La marque reste possible sur un coup de pied adverse en jeu courant et sur un renvoi aux 22 m. Test : « marque (loi 17.4) » dans `server/test-invariants.js` (80 reprises, coups longs réceptionnés dans les 22 m, 0 marque).
 
 **Reproduit.** À partir de `new MatchEngine(8, 4800)`, avancer au pas de 0,1 s depuis l'ouverture. B botte de la médiane, A15 reçoit dans ses 22. À 3,5 s, le journal accorde un coup franc pour marque à A. La branche de réception de [`_tickCoupEnvoi`](https://github.com/sebadiaz/Rugby.-Manager/blob/37e16ba/engine/rugby-engine.js#L2058-L2066) applique le tirage de marque à cette reprise. La [loi 17.4](https://passport.world.rugby/fr/les-regles-du-jeu/regles-du-jeu-par-numero/17-le-marque/) exclut le coup d'envoi et le renvoi après un score.
 
 **Acceptation.** Rejouer la réception à l'ouverture, après un score et sur un coup de pied adverse en jeu courant. Les deux premières se poursuivent en jeu. Dans le troisième cas, une réception directe admissible accompagnée de l'appel donne le coup franc au réceptionneur.
 
-### [ ] BUG-RM-014 — Un renvoi aux 22 valable est sanctionné comme un engagement trop court — P2
+### [x] BUG-RM-014 — Un renvoi aux 22 valable est sanctionné comme un engagement trop court — P2
+
+**Traité (22 nov.).** La ligne à franchir dépend du type de reprise (loi 12.6 et 12.13) : 10 m au coup d'envoi, ligne des 22 m franchie dès que le ballon avance au renvoi aux 22 m, 5 m au renvoi d'en-but. Test : « reprise (loi 12) » (4 m depuis chaque ligne, dans les deux camps). Le cas où un adversaire joue le ballon avant les 10 m (12.7) et le choix « refaire jouer ou mêlée » (12.6) n'ont pas été retravaillés ici : la mêlée reste la seule suite donnée à un engagement court.
 
 **Reproduit sur une reprise isolée.** `new MatchEngine(7, 4800)`, puis `m._nouvelleManche('B', 22)`. Avancer au pas de 0,1 s pendant `COUP_ENVOI`. A10 frappe de x=22 vers x=26,04. À 2 s, le journal émet `COUP_ENVOI_COURT` et la phase devient `MELEE`. Pour ce renvoi, le ballon a bien franchi la ligne des 22. La [loi 12.13 et son tableau](https://passport.world.rugby/fr/les-regles-du-jeu/regles-du-jeu-par-numero/12-coup-d-envoi-et-renvois/) distingue la ligne des 22, celle des 5 m pour un renvoi d'en-but, et la distance de 10 m applicable depuis la médiane. Le [moteur](https://github.com/sebadiaz/Rugby.-Manager/blob/37e16ba/engine/rugby-engine.js#L1993-L2002) emploie le même indicateur pour ces reprises.
 
 **Acceptation.** Tester dans les deux sens un ballon qui avance de 4 m depuis chacune des trois lignes. Depuis les 22, laisser jouer. Pour les autres reprises, vérifier les options de l'équipe adverse selon la loi 12, y compris le cas où un adversaire joue un engagement avant les 10 m.
 
-### [ ] QA-RM-008 — Le skill d’arbitrage et son script peuvent produire un verdict erroné — P2
+### [x] QA-RM-008 — Le skill d’arbitrage et son script peuvent produire un verdict erroné — P2
+
+**Traité (22 nov.).** Skill : numérotation 2025 (8 points, 9 jeu déloyal, 10 hors-jeu, 11 en-avant, 12 reprises), choix « refaire jouer ou mêlée » (12.6) et exception 12.7. Script : score recomposé avec le supplément de l'essai de pénalité (`server/audit-score.js`), égalité vérifiée (code de sortie 1), fin de match vérifiée (code 2), règles non couvertes listées. Tests : « audit : le score recomposé… ». Assistant de touche : pose vérifiée visuellement pour les deux équipes et les deux orientations ; bras de sprite retirés (plus de « quatre bras »).
 
 Le [skill rapport-regles-rugby à a990f94](https://github.com/sebadiaz/Rugby.-Manager/blob/a990f94/.claude/skills/rapport-regles-rugby/SKILL.md) se trouve sur la branche de travail. Son tableau mélange les numéros des lois. Le [règlement conservé dans le dépôt](rules/world-rugby-laws-2025.txt) classe les points en loi 8, le jeu déloyal en 9, le hors-jeu de jeu courant en 10 et l'en-avant en 11. Son raccourci « moins de 10 m → mêlée » omet le choix de refaire jouer et l'exception de la loi 12.7.
 
@@ -37,7 +43,9 @@ Le [script d'audit](server/audit-regles-simulation.js) recompose les points en a
 
 **Assistant de touche, sur la branche a990f94.** Sur le match LEGACY de graine 1 terminé, 30 entrées en touche ont produit un signal unique portant la bonne équipe (A 12, B 18). Le test générique de rendu passe sur cinq formats mais utilise `assistants: []`. La direction du bras et la visibilité du drapeau restent à contrôler visuellement pour les deux équipes et les deux orientations.
 
-### [ ] QA-RM-009 — Trois scénarios de test échouent sur main — P1
+### [x] QA-RM-009 — Trois scénarios de test échouent sur main — P1
+
+**Traité (22 nov.).** `test-v4-facts` S08 : zéro porteur pendant le vol puis un seul porteur identifié. `test-v4-budget` D08 : scénario S02 (n°8, deux actions nécessaires) et reprise des décisions après le repli. `test-v4-attack-tactics` : fréquence agrégée sur 8 graines (28 réussies / 9 ratées), plus une seule graine. Aucun réglage d'IA modifié.
 
 Échecs reproduits localement et visibles dans le [journal de CI](https://github.com/sebadiaz/Rugby.-Manager/actions/runs/45003254478/job/137149177342).
 
