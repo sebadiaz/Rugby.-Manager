@@ -69,7 +69,10 @@ class AgentContext {
       }
       // Un PORTEUR balaie le terrain avant de jouer (têtes levées) : champ de vision complet.
       const porteur = state.ball?.carrierTeam === this.agent.team && state.ball.carrierNumber === this.agent.numero;
-      const pv = Object.assign({}, this.params, gaze === undefined ? {} : { gaze }, porteur ? { fovDeg: 360 } : {});
+      // Ballon perdu de vue depuis plus de 1,5 s (après au moins une observation) : le joueur tourne la tête et balaie le terrain pour le retrouver (il ne reste
+      // plus planté à regarder devant lui, ballon « inconnu », pendant que le jeu se déroule ailleurs).
+      const cherche = this.lastObsT !== null && (!this.mem.ball || t - this.mem.ball.seenAt > 1.5);
+      const pv = Object.assign({}, this.params, gaze === undefined ? {} : { gaze }, porteur || cherche ? { fovDeg: 360 } : {});
       obs = observe(state, this.agent, pv);
       this.lastObsT = t;
       const m = this.mem;

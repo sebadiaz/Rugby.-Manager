@@ -14,6 +14,7 @@
 
 const DEFAUTS = Object.freeze({
   visionRange: 45,        // m : portée de la vue
+  ballRange: 100,         // m : le BALLON, que tout le monde suit, se voit de tout le terrain (dans le champ, s'il n'est pas caché)
   fovDeg: 200,            // champ de vision horizontal
   peripheralRadius: 6,    // m : on sent les joueurs tout proches, même dans le dos
   occlusionBodies: 3,     // nombre de joueurs alignés qui cachent le ballon
@@ -26,7 +27,7 @@ function id(j) { return j.team + j.numero; }
 
 function normaliserParams(params) {
   const p = Object.assign({}, DEFAUTS, params || {});
-  for (const k of ['visionRange', 'fovDeg', 'peripheralRadius', 'occlusionBodies', 'occlusionWidth']) {
+  for (const k of ['visionRange', 'ballRange', 'fovDeg', 'peripheralRadius', 'occlusionBodies', 'occlusionWidth']) {
     if (!Number.isFinite(p[k]) || p[k] < 0) throw new RangeError('paramètre de perception invalide : ' + k);
   }
   if (p.fovDeg > 360) throw new RangeError('fovDeg > 360');
@@ -87,7 +88,7 @@ function observe(state, agent, params) {
   }
   const b = state.ball || state.ballon;
   if (b && Number.isFinite(b.x)) {
-    const visible = p.omniscient || (dansLeChamp(moi, b, p) && !ballonCache(moi, b, tous, p));
+    const visible = p.omniscient || (dansLeChamp(moi, b, Object.assign({}, p, { visionRange: Math.max(p.visionRange, p.ballRange) })) && !ballonCache(moi, b, tous, p));
     if (visible) {
       vus.ball = {
         x: b.x, y: b.y, state: state.ball ? state.ball.state : null,
