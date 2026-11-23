@@ -118,7 +118,10 @@ prudent et un 14 audacieux voient ainsi leurs préférences de poste déformées
   numéro de maillot, identité éventuelle, trait) : **elle ne consomme pas le générateur du match** (LEGACY identique), reste la même à
   chaque reprise de jeu, et le numéro ne sert que de clé de tirage (aucune moyenne par poste, vérifié sur 200 graines). L'égoïsme est
   anti-corrélé à l'altruisme. Une valeur explicite l'emporte. `config.personnalites: 'NEUTRE'` désactive le tirage (scénarios de
-  test à décision figée). **Reste à faire :** persistance Club (valeur stockée avec le joueur et évolution), fiche joueur avec étiquette
+  test à décision figée). **Contrôle des statistiques d'ensemble (23 nov. 2026, 30 matchs GOAP de 15 min avec tirage contre 30
+  sans, mêmes graines) :** points 7,7 contre 7,2 ; essais 0,9 contre 0,8 ; passes 76 contre 80 ; courses 54 contre 57 ; rucks 43,5
+  contre 46,7 ; plaquages 60,5 contre 64,1 ; pieds 7,8 contre 8,5 ; aucun écart significatif (|z| ≤ 1,1), mais un léger recul
+  systématique de l'activité (−4 à −7 %) à surveiller : à 30 matchs il reste sous le bruit. **Reste à faire :** persistance Club (valeur stockée avec le joueur et évolution), fiche joueur avec étiquette
   CALCULÉE (affichage seul), remplaçants (sans identité propre ils reprennent le tirage du maillot), matrice de niveaux (PERS-09).
 
 ## 7. Risques et garde-fous
