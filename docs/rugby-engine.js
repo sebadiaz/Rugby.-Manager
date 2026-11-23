@@ -1193,6 +1193,7 @@
       // mêlée, attaque, défense) fusionnée par-dessus les défauts : cf.
       // DEFAULT_CONFIG. `null` => comportement historique exact.
       this.cfg = fusionnerConfig(DEFAULT_CONFIG, config);
+      this.graine = seed; // graine du match : les agents en tirent leur bruit de jugement individuel (cf. engine/ai/personality.js)
       // === AGENT_INTENTS_BEGIN (RM4-G11) — mode d'IA : 'LEGACY' (défaut, comportement historique exact)
       // ou 'GOAP' (30 agents individuels). Le moteur ne contient PAS l'IA : en mode GOAP l'appelant
       // fournit `config.agentDriver` (fabrique d'un pilote, cf. engine/ai/goap-mode.js). Pas de repli

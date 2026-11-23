@@ -105,7 +105,11 @@ prudent et un 14 audacieux voient ainsi leurs préférences de poste déformées
   1,21 ± 0,06 (égoïstes), 1,38 ± 0,08 (neutres). Le sens est celui attendu entre altruistes et égoïstes mais **l'écart n'est pas
   significatif à 8 matchs** : la cadence de passes du moteur (calibrée) dilue l'effet des décisions du porteur. Ne pas annoncer un
   effet visible en match sans campagne plus large (30 graines au moins) ; ne pas gonfler les constantes pour le faire apparaître.
-- **RM4-G47** — `sangFroid`/`concentration` : bruit de jugement et erreurs d'inattention : PERS-04.
+- **RM4-G47 — FAIT pour `sangFroid` (porteur)** — `lirePorteur` ajoute à chaque option un bruit déterministe (graine du match fournie au
+  profil de l'agent par `creerPiloteGOAP`, identifiant, option, instant à 0,2 s) d'amplitude `amplitudeBruit(sangFroid, calme)` :
+  nulle à 50 ou plus, croissante quand le trait baisse, réduite de moitié au plus quand aucun défenseur n'est proche. Tests PERS-04
+  (neutre inchangé, écart croissant, plus fort sous pression) et PERS-08 (décisions) dans `server/test-v4-personnalite.js`.
+  **Reste à faire (G47b) :** `concentration` (appel manqué, erreurs d'inattention) et le sang-froid hors du porteur (défenseur, 9, 10).
 - **RM4-G48** — `agressivite`/`courage` en défense et au contact : PERS-05.
 - **RM4-G49** — `espritEquipe` et préférences de buts par joueur (`profilePour(numero, extra)`) : PERS-06, PERS-10.
 - **RM4-G50** — état `confianceSoi` et `resilience` : PERS-07.

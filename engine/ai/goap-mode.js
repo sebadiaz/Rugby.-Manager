@@ -39,7 +39,10 @@ function creerPiloteGOAP(options = {}) {
         ...porteesButeur(engine, team),
       };
     }
-    const agents = creerAgents(Object.assign({ placement: true, openPlay: true, playbooks }, options.agent));
+    // Chaque agent reçoit la graine du match dans son profil : elle ne sert qu'à son bruit de jugement personnel (aucune information de jeu).
+    const optAgent = Object.assign({ placement: true, openPlay: true, playbooks }, options.agent);
+    optAgent.profile = Object.assign({ graine: engine ? engine.graine : 0 }, optAgent.profile);
+    const agents = creerAgents(optAgent);
     const scheduler = new AgentScheduler(agents, options.scheduler);
     const comm = options.voix === false ? null : new LocalCommunication();
     return {

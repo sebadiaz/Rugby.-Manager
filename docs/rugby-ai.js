@@ -1605,7 +1605,10 @@ function creerPiloteGOAP(options = {}) {
         ...porteesButeur(engine, team),
       };
     }
-    const agents = creerAgents(Object.assign({ placement: true, openPlay: true, playbooks }, options.agent));
+    // Chaque agent reçoit la graine du match dans son profil : elle ne sert qu'à son bruit de jugement personnel (aucune information de jeu).
+    const optAgent = Object.assign({ placement: true, openPlay: true, playbooks }, options.agent);
+    optAgent.profile = Object.assign({ graine: engine ? engine.graine : 0 }, optAgent.profile);
+    const agents = creerAgents(optAgent);
     const scheduler = new AgentScheduler(agents, options.scheduler);
     const comm = options.voix === false ? null : new LocalCommunication();
     return {
@@ -2368,7 +2371,7 @@ module.exports = { CALLS, LocalCommunication };
 // Lecture locale du jeu courant. Les vitesses et espaces sont estimés à partir
 // des joueurs récemment vus. Un couloir hors du champ de vision reste inconnu.
 'use strict';
-const { lireTraits, decalage } = require('./personality.js');
+const { lireTraits, decalage, amplitudeBruit, bruit } = require('./personality.js');
 // Personnalité (RM4-G46, docs/SIMULATION_V4/16_PERSONNALITE_DES_AGENTS.md) : décalages de score BORNÉS (±2,5 à ±3 points) sur des choix
 // que le porteur fait déjà, lus dans SES propres caractéristiques (trait absent = 50 = aucun effet). Aucun choix n'est ajouté ni
 // interdit ; un geste non maîtrisé (me.gestes) reste hors de ses options quelle que soit sa personnalité.
@@ -2643,6 +2646,13 @@ function lirePorteur(b, s, profile, playbook) {
   if (passePied) options.push({ ...passePied, score: passePied.score + audace });
   const petitPied = lirePetitPied(b, me, sens, adv, distanceBut, course);
   if (petitPied) options.push({ ...petitPied, score: petitPied.score + audace });
+  // Sang-froid (RM4-G47) : sous la valeur neutre, le jugement se brouille quand l'adversaire est proche. Le bruit est déterministe
+  // (graine du match, identifiant du joueur, instant, option), nul à 50 ou plus et réduit quand le joueur est loin de tout défenseur.
+  const amplitude = amplitudeBruit(traits.sangFroid, clamp((pression - 2.5) / 6, 0, 1));
+  if (amplitude > 0) {
+    const id = b.agent.team + b.agent.numero;
+    for (const o of options) o.score += bruit(profile && profile.graine != null ? profile.graine : 0, id + ':' + o.action + (o.vers || '') + (o.kick || ''), b.t, amplitude);
+  }
   options.sort((a, c) => c.score - a.score || (a.vers || 0) - (c.vers || 0));
   const choix = options[0];
   // Fixer avant de servir : passer dès 9 m (essayé) laissait glisser la défense, −1,7 essai par match.

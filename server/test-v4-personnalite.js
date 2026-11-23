@@ -175,6 +175,44 @@ test('PERS-03 : plus de goût du risque, la chistera est tentée dans un espace 
   assert.deepStrictEqual(ensemble(0, { chistera: 0, passeAuPied: 0, petitPied: 0, passeLongue: 2 }), []);
 });
 
+// --- RM4-G47 : sang-froid — le jugement du porteur se brouille sous pression quand le trait est BAS ---------------------------------
+function decisionsBruitees(car, graine, N = 600) {
+  const rng = lcg(12345), out = [];
+  for (let i = 0; i < N; i++) {
+    const b = situationAleatoire(rng, car, GESTES);
+    const d = lirePorteur(b, deriveSituation(b), { distribute: 0.6, graine }, {});
+    const pression = Object.values(b.opponents).reduce((m, o) => Math.min(m, Math.hypot(o.lastSeen.x - b.self.x, o.lastSeen.y - b.self.y)), Infinity);
+    out.push({ choix: !d ? 'AUTRE' : d.chistera ? 'CHISTERA' : d.action === 'PASS' ? 'PASSE:' + d.vers : d.action === 'KICK' ? 'PIED' : 'AUTRE', pression });
+  }
+  return out;
+}
+const ecartAuNeutre = (car, graine, filtre = () => true) => {
+  const ref = decisionsBruitees({}, graine), x = decisionsBruitees(car, graine);
+  let n = 0, diff = 0;
+  ref.forEach((r, i) => { if (!filtre(r)) return; n++; if (r.choix !== x[i].choix) diff++; });
+  return { n, diff, taux: diff / Math.max(1, n) };
+};
+
+test('PERS-04 : le sang-froid au neutre ou au-dessus ne change aucune décision ; plus il est bas, plus le jugement s\'écarte', () => {
+  for (const v of [50, 70, 100]) assert.strictEqual(ecartAuNeutre({ sangFroid: v }, 5).diff, 0, 'sang-froid ' + v);
+  const t = [40, 25, 10, 0].map((v) => ecartAuNeutre({ sangFroid: v }, 5).taux);
+  assert.ok(t[0] < t[1] && t[1] < t[2] && t[2] <= t[3] + 1e-9, 'écart croissant quand le sang-froid baisse : ' + t.map((x) => x.toFixed(3)));
+  assert.ok(t[2] >= 0.05, 'l\'effet doit exister : ' + t[2].toFixed(3));
+  assert.ok(t[3] < 0.6, 'sans basculer le jeu : ' + t[3].toFixed(3));
+});
+
+test('PERS-04 (pression) : le brouillage est plus fort quand le défenseur est proche que lorsqu\'il est loin', () => {
+  const proche = ecartAuNeutre({ sangFroid: 5 }, 5, (r) => r.pression < 4.5), loin = ecartAuNeutre({ sangFroid: 5 }, 5, (r) => r.pression >= 7);
+  assert.ok(proche.n >= 60 && loin.n >= 60, `échantillons ${proche.n}/${loin.n}`);
+  assert.ok(proche.taux > loin.taux, `proche ${proche.taux.toFixed(3)} contre loin ${loin.taux.toFixed(3)}`);
+});
+
+test('PERS-08 (décisions) : même graine, mêmes décisions ; une autre graine brouille autrement ; le bruit ne dépend pas du numéro de poste', () => {
+  const a = decisionsBruitees({ sangFroid: 5 }, 5).map((d) => d.choix), b = decisionsBruitees({ sangFroid: 5 }, 5).map((d) => d.choix), c = decisionsBruitees({ sangFroid: 5 }, 6).map((d) => d.choix);
+  assert.deepStrictEqual(a, b);
+  assert.ok(a.some((v, i) => v !== c[i]), 'deux graines identiques : le bruit ignore la graine');
+});
+
 console.log(`\n${nb} test(s) exécuté(s).`);
 if (ko) { console.error(`ECHEC : ${ko} test(s) en échec.`); process.exit(1); }
 console.log('OK : personnalité des agents (neutre = aucun effet, déterminisme, G46 : altruisme, égoïsme, prise de risque du porteur).');
