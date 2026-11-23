@@ -70,8 +70,8 @@ test('PERS-11 (lecture) : le module ne connaît ni numéro de poste, ni table pa
   assert.ok(!/numero|switch\s*\(|PROFILS|audacieux|prudent|meneur|tete.?brulee/i.test(src), 'script déguisé');
 });
 
-test('le moteur ne crée un trait que s\'il est fourni explicitement ; la valeur est bornée ; aucun trait dérivé du poste', () => {
-  const m = new MatchEngine(1, 4800, { joueursA: { 10: { caracteristiques: { priseDeRisque: 85, sangFroid: 250, altruisme: -4 } } } });
+test('config.personnalites = \'NEUTRE\' : seuls les traits fournis explicitement existent (bornés) ; aucun trait dérivé du poste', () => {
+  const m = new MatchEngine(1, 4800, { personnalites: 'NEUTRE', joueursA: { 10: { caracteristiques: { priseDeRisque: 85, sangFroid: 250, altruisme: -4 } } } });
   const a = (n) => m.equipeA.find((j) => j.numero === n);
   assert.strictEqual(a(10).car.priseDeRisque, 85);
   assert.strictEqual(a(10).car.sangFroid, 100, 'borné à 100');
@@ -81,7 +81,7 @@ test('le moteur ne crée un trait que s\'il est fourni explicitement ; la valeur
 });
 
 test('l\'agent lit SES propres traits dans ses croyances ; les autres joueurs restent neutres', () => {
-  const m = new MatchEngine(1, 4800, { joueursA: { 9: { caracteristiques: { altruisme: 90, agressivite: 20 } } } });
+  const m = new MatchEngine(1, 4800, { personnalites: 'NEUTRE', joueursA: { 9: { caracteristiques: { altruisme: 90, agressivite: 20 } } } });
   const e = JSON.parse(JSON.stringify(m.getAgentState ? m.getAgentState() : m.getState()));
   const b9 = new AgentContext({ team: 'A', numero: 9 }, { reactionDelay: 0 }).update(e);
   const t9 = P.lireTraits(b9.self.car);
@@ -92,21 +92,68 @@ test('l\'agent lit SES propres traits dans ses croyances ; les autres joueurs re
   assert.ok(Object.values(b9.teammates).concat(Object.values(b9.opponents)).every((f) => !('car' in f)));
 });
 
-test('PERS-01 (matchs) : des traits explicitement NEUTRES (50) rejouent exactement le même match que la même configuration sans trait', () => {
-  // Le témoin porte la MÊME configuration de joueurs (une configuration `joueursA` change déjà d'autres comportements du
-  // moteur) : seule la présence des 14 traits à 50 diffère.
+test('PERS-01 (matchs) : des traits explicitement NEUTRES (50) rejouent exactement le même match que la même configuration sans tirage', () => {
+  // Les deux équipes portent la MÊME configuration de joueurs (une configuration `joueursA` change déjà d'autres comportements du
+  // moteur) ; seule diffère la source des traits : 14 traits explicites à 50, contre aucun trait (tirage désactivé).
   const neutres = Object.fromEntries(P.TRAITS.map((k) => [k, 50]));
   const cfg = (car) => Object.fromEntries([...Array(15).keys()].map((i) => [i + 1, { caracteristiques: car }]));
   const sig = (m) => JSON.stringify([m.score, m.stats, [...m.equipeA, ...m.equipeB].map((j) => [+j.x.toFixed(3), +j.y.toFixed(3)])]);
   for (const seed of [1, 2, 3]) {
-    const a = new MatchEngine(seed, 4800, { joueursA: cfg({}), joueursB: cfg({}) }); a.jouerJusquAuSifflet(0.1);
+    const a = new MatchEngine(seed, 4800, { personnalites: 'NEUTRE', joueursA: cfg({}), joueursB: cfg({}) }); a.jouerJusquAuSifflet(0.1);
     const b = new MatchEngine(seed, 4800, { joueursA: cfg(neutres), joueursB: cfg(neutres) }); b.jouerJusquAuSifflet(0.1);
     assert.strictEqual(sig(a), sig(b), 'LEGACY graine ' + seed);
   }
-  const g1 = new MatchEngine(3, 4800, configGOAP({ joueursA: cfg({}), joueursB: cfg({}) }));
+  const g1 = new MatchEngine(3, 4800, configGOAP({ personnalites: 'NEUTRE', joueursA: cfg({}), joueursB: cfg({}) }));
   const g2 = new MatchEngine(3, 4800, configGOAP({ joueursA: cfg(neutres), joueursB: cfg(neutres) }));
   for (let i = 0; i < 3000; i++) { g1.tick(0.1); g2.tick(0.1); }
   assert.strictEqual(sig(g1), sig(g2), 'GOAP 300 s');
+});
+
+// --- RM4-G52 : valeurs initiales tirées au hasard, de façon stable ---------------------------------------------------------------
+test('G52 : tirage déterministe (même graine, mêmes traits), différent d\'une graine à l\'autre, identique à chaque reprise de jeu', () => {
+  const tous = (m) => [...m.equipeA, ...m.equipeB].map((j) => P.TRAITS.map((k) => j.car[k]).join(','));
+  const a = new MatchEngine(7, 4800), b = new MatchEngine(7, 4800), c = new MatchEngine(8, 4800);
+  assert.deepStrictEqual(tous(a), tous(b));
+  assert.notDeepStrictEqual(tous(a), tous(c));
+  const avant = tous(a); a._nouvelleManche('B'); a._nouvelleManche('A');
+  assert.deepStrictEqual(tous(a), avant, 'les traits ne changent pas à une reprise de jeu');
+  for (const j of a.equipeA.concat(a.equipeB)) for (const k of P.TRAITS) assert.ok(j.car[k] >= 5 && j.car[k] <= 95, `${j.team}${j.numero}.${k} = ${j.car[k]}`);
+});
+
+test('G52 : le tirage ne consomme pas le générateur du match : le déroulé LEGACY est identique avec ou sans tirage', () => {
+  const sig = (m) => JSON.stringify([m.score, m.stats, [...m.equipeA, ...m.equipeB].map((j) => [+j.x.toFixed(3), +j.y.toFixed(3)])]);
+  for (const seed of [1, 2]) {
+    const a = new MatchEngine(seed, 4800); a.jouerJusquAuSifflet(0.1);
+    const b = new MatchEngine(seed, 4800, { personnalites: 'NEUTRE' }); b.jouerJusquAuSifflet(0.1);
+    assert.strictEqual(sig(a), sig(b), 'graine ' + seed);
+  }
+});
+
+test('G52 (pas de script) : moyenne ~50 et écart-type ~15 pour chaque trait ; AUCUNE différence systématique entre numéros de maillot', () => {
+  const parTrait = Object.fromEntries(P.TRAITS.map((k) => [k, []])), parNumero = {};
+  for (let seed = 1; seed <= 200; seed++) {
+    const m = new MatchEngine(seed, 4800);
+    for (const j of m.equipeA.concat(m.equipeB)) for (const k of P.TRAITS) { parTrait[k].push(j.car[k]); (parNumero[j.numero] = parNumero[j.numero] || []).push(j.car[k]); }
+  }
+  const moy = (a) => a.reduce((x, y) => x + y, 0) / a.length, sd = (a) => { const m = moy(a); return Math.sqrt(a.reduce((x, y) => x + (y - m) ** 2, 0) / a.length); };
+  for (const k of P.TRAITS) {
+    if (k === 'egoisme') continue; // anti-corrélé à l'altruisme : sa moyenne est la même mais sa forme dépend de l'altruisme
+    assert.ok(Math.abs(moy(parTrait[k]) - 50) < 1.5, `${k} : moyenne ${moy(parTrait[k]).toFixed(1)}`);
+    assert.ok(sd(parTrait[k]) > 12 && sd(parTrait[k]) < 16.5, `${k} : écart-type ${sd(parTrait[k]).toFixed(1)}`);
+  }
+  assert.ok(Math.abs(moy(parTrait.egoisme) - 50) < 2, 'égoïsme : moyenne ' + moy(parTrait.egoisme).toFixed(1));
+  for (let n = 1; n <= 15; n++) assert.ok(Math.abs(moy(parNumero[n]) - 50) < 2.5, `n°${n} : moyenne de tous traits ${moy(parNumero[n]).toFixed(1)} (un poste ne doit pas avoir une personnalité type)`);
+  // Altruisme et égoïsme : anti-corrélés.
+  const al = parTrait.altruisme, eg = parTrait.egoisme, ma = moy(al), me = moy(eg);
+  const corr = al.reduce((s, v, i) => s + (v - ma) * (eg[i] - me), 0) / al.length / (sd(al) * sd(eg));
+  assert.ok(corr < -0.6 && corr > -0.95, 'corrélation altruisme/égoïsme ' + corr.toFixed(2));
+});
+
+test('G52 : une valeur explicite l\'emporte sur le tirage ; les autres traits du même joueur sont tirés', () => {
+  const m = new MatchEngine(3, 4800, { joueursA: { 9: { caracteristiques: { altruisme: 91 } } } });
+  const n9 = m.equipeA.find((j) => j.numero === 9);
+  assert.strictEqual(n9.car.altruisme, 91);
+  assert.ok(Number.isFinite(n9.car.priseDeRisque) && n9.car.priseDeRisque !== 50);
 });
 
 // --- RM4-G46 : le porteur décide selon SA personnalité (altruisme, égoïsme, prise de risque) -----------------------------------
