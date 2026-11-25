@@ -109,7 +109,20 @@ prudent et un 14 audacieux voient ainsi leurs préférences de poste déformées
   nulle à 50 ou plus, croissante quand le trait baisse, réduite de moitié au plus quand aucun défenseur n'est proche. Tests PERS-04
   (neutre inchangé, écart croissant, plus fort sous pression) et PERS-08 (décisions) dans `server/test-v4-personnalite.js`.
   **Reste à faire (G47b) :** `concentration` (appel manqué, erreurs d'inattention) et le sang-froid hors du porteur (défenseur, 9, 10).
-- **RM4-G48** — `agressivite`/`courage` en défense et au contact : PERS-05.
+- **RM4-G48 — FAIT (décisions)** — `agressivite` : un défenseur agressif s'engage de plus loin (rayon 12 m ± 3), vient plus fort en soutien du
+  plaqueur (priorité 68 ± 8) et monte davantage devant ses voisins en jeu courant (3 m ± 1,5) ; **le plus proche du porteur plaque
+  toujours (96), quelle que soit sa personnalité**. `courage` : déforme (±30 %, borné) les poids de préférence `ruck`, `contest` et
+  `defendTry` du profil, lus par le sélecteur de buts (`personnaliserProfil`). Neutre = profil inchangé. Les scénarios de test du banc
+  V4 partent en personnalités NEUTRES (`scenario-harness.js`). Tests PERS-05 (soutien, rayon, montée de la ligne, courage, pas de
+  script : même décalage pour le n°2 ou le n°4 en deuxième position). **Reste à faire :** l'effet « plus de plaquages dominants ET plus
+  de fautes » (résolution par le moteur selon `discipline`) n'est pas branché.
+  **Campagne (25 nov. 2026) : 3 profils × 30 matchs GOAP de 15 min, défense de A seule porteuse du profil, B neutre :** plaquages tentés
+  29,2 ± 2,0 (neutre), 31,3 ± 1,8 (agressif : agressivité et courage 90), 28,7 ± 2,5 (prudent : 10) ; essais concédés 0,33 ± 0,10
+  (neutre), 0,23 ± 0,08 (agressif), **0,67 ± 0,10 (prudent)** ; pénalités concédées 1,9 / 2,3 / 1,9 ; rucks et défenseurs battus sans
+  écart net. Lecture : les défenseurs prudents concèdent davantage d'essais (+0,33 contre neutre, environ 2,4 écarts-types ; +0,43
+  contre agressif, environ 3,3), ce qui va dans le sens attendu (ligne en retrait, intervalles). Les autres écarts sont sous le bruit :
+  plaquages (+2,1 ± 2,7) et pénalités (+0,43 ± 0,34) des agressifs vont dans le bon sens sans être significatifs. Six comparaisons
+  ont été faites : à confirmer sur une campagne plus large avant de s'y fier.
 - **RM4-G49** — `espritEquipe` et préférences de buts par joueur (`profilePour(numero, extra)`) : PERS-06, PERS-10.
 - **RM4-G50** — état `confianceSoi` et `resilience` : PERS-07.
 - **RM4-G51** — `leadership`/`communication` dans les appels ; `constance` dans le sélecteur de buts.
