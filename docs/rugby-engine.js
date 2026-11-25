@@ -1649,7 +1649,9 @@
     // leur couloir. Si le botteur n'est pas le 10, il prend la place du 10 et le 10 la sienne. Le botteur se tient à son point de frappe.
     _formationBotteur(equipeKick, kickeur, kx, ky, dirKick, avaitEquipes, variante = 'court-droit') {
       // Derrière le ballon, y compris dans l'en-but (renvoi depuis la ligne d'en-but).
-      const clampX = (x) => Math.max(-7.5, Math.min(LONGUEUR + 7.5, x));
+      // Les joueurs ne se déplacent que dans [0, LONGUEUR] (cf. avancer) : une place hors du terrain (en-but) serait INATTEIGNABLE, le moteur
+      // attendrait « tout le monde en place » jusqu'au plafond de 40 s (renvoi aux 22 m : 42 s au lieu d'une quinzaine).
+      const clampX = (x) => Math.max(0, Math.min(LONGUEUR, x));
       const clampY = (y) => Math.max(1.5, Math.min(LARGEUR - 1.5, y));
       const pose = (j, x, y) => { j._cibleEnvoi = { x: clampX(x), y: clampY(y) }; if (!avaitEquipes) { j.x = j._cibleEnvoi.x; j.y = j._cibleEnvoi.y; } };
       const cote = (VARIANTES_ENVOI[variante] || VARIANTES_ENVOI['court-droit']).cote;
@@ -3269,7 +3271,9 @@
         }
         this.stats[this.possession].passesTentees--; // la tentative est recomptée par _tenterPasse
         if (this._tenterPasse(porteur, false, jeu.vers)) {
-          this.log('CHISTERA', this.possession, `Chistera du n°${porteur.numero} pour le n°${jeu.vers} dans le contact`, { passeur: porteur.numero, receveur: jeu.vers });
+          // L'équipe du PASSEUR, pas la possession d'après coup : une passe en avant ou interceptée change la possession (mêlée pour
+          // l'adversaire) et la chistera était alors attribuée à l'équipe qui en profite.
+          this.log('CHISTERA', porteur.team, `Chistera du n°${porteur.numero} pour le n°${jeu.vers} dans le contact`, { passeur: porteur.numero, receveur: jeu.vers });
           return;
         }
       }
