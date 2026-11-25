@@ -12,6 +12,11 @@ const { AgentContext } = require('../engine/ai/agent-context.js');
 const P = require('../engine/ai/personality.js');
 const { lirePorteur } = require('../engine/ai/open-play.js');
 const { deriveSituation } = require('../engine/ai/goals.js');
+const { candidatPresse, candidatsDefense } = require('../engine/ai/individual-placement.js');
+const { GoalSelector } = require('../engine/ai/goal-selector.js');
+const corpus = require('../docs/SIMULATION_V4/fixtures/scenarios.json');
+const { createScenarioEngine } = require('./v4/scenario-harness.js');
+const PP = require('../engine/ai/position-goals.js');
 let nb = 0, ko = 0;
 function test(n, f) { nb++; try { f(); console.log('OK   ' + n); } catch (e) { ko++; console.error('FAIL ' + n + '\n' + e.stack.split('\n').slice(0, 4).join('\n')); } }
 
@@ -258,6 +263,93 @@ test('PERS-08 (décisions) : même graine, mêmes décisions ; une autre graine 
   const a = decisionsBruitees({ sangFroid: 5 }, 5).map((d) => d.choix), b = decisionsBruitees({ sangFroid: 5 }, 5).map((d) => d.choix), c = decisionsBruitees({ sangFroid: 5 }, 6).map((d) => d.choix);
   assert.deepStrictEqual(a, b);
   assert.ok(a.some((v, i) => v !== c[i]), 'deux graines identiques : le bruit ignore la graine');
+});
+
+// --- RM4-G48 : agressivité et courage en défense et au contact -----------------------------------------------------------------------
+const copie = (e) => JSON.parse(JSON.stringify(e));
+// Scène S06 : B12 porte le ballon ; `dists` donne la distance (en m, derrière le porteur sur l'axe de jeu) de chaque défenseur A ; ceux qui
+// n'y figurent pas sont éloignés de 40 m (hors de la scène).
+function sceneDefense(dists = { 1: 2, 2: 3.5, 3: 5, 4: 6.5, 5: 8, 6: 9.5 }) {
+  const m = createScenarioEngine(corpus.scenarios.find((s) => s.id === 'S06'));
+  for (let i = 0; i < 10; i++) m.tick(0.05);
+  const e = copie(m.getState());
+  const j = (team, n) => (team === 'A' ? e.equipeA : e.equipeB).find((q) => q.numero === n);
+  const c = j('B', 12); const cx = c.x, cy = c.y;
+  e.possession = 'B'; e.phase = 'PORTE';
+  e.ball = Object.assign({}, e.ball, { x: cx, y: cy, state: 'CARRIED', carrierTeam: 'B', carrierNumber: 12 });
+  for (let n = 1; n <= 15; n++) {
+    const q = j('A', n); q.orientation = 0; q.auSol = 0;
+    const d = dists[n] != null ? dists[n] : 40;
+    q.x = Math.max(1, cx - d); q.y = cy + ((n % 5) - 2) * 0.9;
+  }
+  return { e, j };
+}
+function croyancesDe(e, j, team, numero, car) {
+  const q = j(team, numero);
+  // Repart d'un joueur SANS trait (les essais précédents ne doivent pas s'accumuler sur le même état), puis applique les traits demandés.
+  const base = Object.assign({}, q.car); for (const k of P.TRAITS) delete base[k];
+  q.car = Object.assign(base, car);
+  return new AgentContext({ team, numero }, { reactionDelay: 0, fovDeg: 360 }).update(e);
+}
+
+test('PERS-05 (soutien au plaqueur) : l\'agressivité fait venir plus fort en soutien, MAIS le plus proche du porteur plaque toujours (96)', () => {
+  const { e, j } = sceneDefense();
+  const prio = (n, v) => { const b = croyancesDe(e, j, 'A', n, v == null ? {} : { agressivite: v }); const c = candidatPresse(b, deriveSituation(b), true); return c && c.priority; };
+  assert.strictEqual(prio(2, 50), 68, 'deuxième plus proche, neutre : 68');
+  assert.ok(prio(2, 10) < 68 && prio(2, 50) < prio(2, 90), `${prio(2, 10)} < 68 < ${prio(2, 90)}`);
+  for (const v of [0, 10, 50, 90, 100]) assert.strictEqual(prio(1, v), 96, 'le plus proche plaque quelle que soit la personnalité (' + v + ')');
+  assert.strictEqual(prio(2, undefined), prio(2, 50), 'trait absent = neutre');
+});
+
+test('PERS-05 (rayon d\'engagement) : un défenseur agressif s\'engage de plus loin qu\'un prudent', () => {
+  const { e, j } = sceneDefense({ 1: 5, 7: 13 });
+  const engage = (v) => { const b = croyancesDe(e, j, 'A', 7, { agressivite: v }); return !!candidatPresse(b, deriveSituation(b), true); };
+  assert.ok(!engage(10) && !engage(50) && engage(90), `10:${engage(10)} 50:${engage(50)} 90:${engage(90)}`);
+});
+
+test('PERS-05 (montée de la ligne) : plus d\'agressivité, la ligne défensive monte davantage devant les voisins ; neutre inchangé', () => {
+  const { e, j } = sceneDefense();
+  const xTenu = (v) => {
+    const b = croyancesDe(e, j, 'A', 3, v == null ? {} : { agressivite: v }); const s = deriveSituation(b);
+    return candidatsDefense(b, s, PP.lirePlaybook({}), true).find((c) => c.id === 'HOLD_LINE').target.x;
+  };
+  const sens = 1; // l'équipe A attaque vers x croissant : « monter » = x plus grand
+  const [prudent, neutre, agressif] = [10, 50, 90].map(xTenu);
+  assert.ok(prudent * sens <= neutre * sens && neutre * sens <= agressif * sens, `x tenu : ${prudent} ≤ ${neutre} ≤ ${agressif}`);
+  assert.ok(agressif - prudent > 0.5 || prudent === neutre, 'au moins un effet mesurable sur la montée');
+  assert.strictEqual(xTenu(undefined), xTenu(50));
+});
+
+test('PERS-05 (courage) : le courage pèse sur l\'engagement au ruck et à la contestation, jamais sur un autre but ; neutre = profil inchangé', () => {
+  const profil = { ruck: 0.8, contest: 0.5, defendTry: 0.6, cover: 0.3, distribute: 0.2 };
+  assert.strictEqual(P.personnaliserProfil(profil, { courage: 50 }), profil, 'même objet quand le courage est neutre');
+  const brave = P.personnaliserProfil(profil, { courage: 100 }), timide = P.personnaliserProfil(profil, { courage: 0 });
+  for (const f of P.FAMILLES_COURAGE) assert.ok(timide[f] < profil[f] && profil[f] < brave[f] + 1e-9, f);
+  assert.strictEqual(brave.cover, 0.3); assert.strictEqual(brave.distribute, 0.2);
+  assert.ok(brave.ruck <= 1 && timide.contest >= 0.05, 'bornes');
+  // Sur un vrai ruck : la priorité de contestation suit le courage du joueur (même scène, même situation).
+  const m = createScenarioEngine(corpus.scenarios.find((s) => s.id === 'S01'));
+  for (let i = 0; i < 10; i++) m.tick(0.05);
+  const e = copie(m.getState());
+  const poids = { 4: 0.6, 5: 0.6, 6: 0.8, 8: 0.8 };
+  const prioContest = (num, v) => {
+    const q = e.equipeB.find((x) => x.numero === num); q.car = Object.assign({}, q.car, { courage: v });
+    const b = new AgentContext({ team: 'B', numero: num }, { reactionDelay: 0 }).update(e);
+    const r = new GoalSelector({ team: 'B', numero: num }).select(b);
+    const c = r.candidates.find((x) => x.id === 'CONTEST_BREAKDOWN'); return c ? c.priority : null;
+  };
+  const num = [4, 5, 6, 8].find((k) => prioContest(k, 50) !== null);
+  assert.ok(num, 'CONTEST_BREAKDOWN non applicable dans la scène S01');
+  const [a, n, c] = [10, 50, 90].map((v) => prioContest(num, v));
+  assert.ok(a < n && n < c, `B${num} : contestation ${a} < ${n} < ${c}`);
+});
+
+test('PERS-05 (pas de script) : l\'agressivité ne dépend pas du numéro : deuxième du porteur, n°2 ou n°4, même trait, même priorité', () => {
+  const prio = (dists, n) => { const { e, j } = sceneDefense(dists); const b = croyancesDe(e, j, 'A', n, { agressivite: 90 }); const c = candidatPresse(b, deriveSituation(b), true); return c && c.priority; };
+  const attendu = 68 + P.decalage(90, 8);
+  assert.strictEqual(prio({ 1: 2, 2: 3.5, 3: 5 }, 2), attendu, 'n°2 deuxième');
+  assert.strictEqual(prio({ 1: 2, 4: 3.5, 3: 5 }, 4), attendu, 'n°4 deuxième : même décalage');
+  assert.strictEqual(prio({ 1: 2, 4: 3.5, 2: 5 }, 2), null, 'n°2 troisième : ne vient pas, quelle que soit son agressivité');
 });
 
 console.log(`\n${nb} test(s) exécuté(s).`);

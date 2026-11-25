@@ -79,7 +79,8 @@ function createScenarioEngine(fixture, options = {}) {
     ecarts.push(Object.assign({ type, id, metres: +metres.toFixed(1) }, detail || {}));
   };
   const { setup } = fixture;
-  const m = new MatchEngine(fixture.seed, options.duree || DUREE_MATCH, Object.assign({ blessures: false }, options.config || {}));
+  // Situation contrôlée : personnalités NEUTRES par défaut (un test peut les activer via options.config.personnalites).
+  const m = new MatchEngine(fixture.seed, options.duree || DUREE_MATCH, Object.assign({ blessures: false, personnalites: 'NEUTRE' }, options.config || {}));
 
   // 1) Poser les 30 joueurs ; vitesse nulle, personne au sol, pas d'exclusion.
   for (const f of setup.players) {

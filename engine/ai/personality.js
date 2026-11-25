@@ -80,4 +80,16 @@ function bruit(graine, agentId, t, amplitude) {
   return (u - 0.5) * 2 * a;
 }
 
-module.exports = { TRAITS, NEUTRE, K_MAX, C_MAX, POIDS_MIN, POIDS_MAX, AMPLITUDE_BRUIT_MAX, lireTraits, ecart, decalage, multiplicateur, ponderer, amplitudeBruit, bruit };
+// Profil de préférences d'un joueur déformé par son COURAGE (RM4-G48) : s'engager au regroupement (ruck, contestation) et au
+// plaquage d'un essai se pèse davantage chez un joueur courageux, moins chez un timoré. Ne touche que ces trois familles de buts
+// (jamais un poste, jamais une action interdite) ; un courage neutre ou absent renvoie le MÊME profil (objet inchangé).
+const FAMILLES_COURAGE = Object.freeze(['ruck', 'contest', 'defendTry']);
+const C_COURAGE = 0.3;
+function personnaliserProfil(profil, traits) {
+  if (!profil || !traits || traits.courage === NEUTRE) return profil;
+  const out = Object.assign({}, profil);
+  for (const f of FAMILLES_COURAGE) if (typeof profil[f] === 'number') out[f] = ponderer(profil[f], traits.courage, C_COURAGE);
+  return out;
+}
+
+module.exports = { personnaliserProfil, FAMILLES_COURAGE, C_COURAGE, TRAITS, NEUTRE, K_MAX, C_MAX, POIDS_MIN, POIDS_MAX, AMPLITUDE_BRUIT_MAX, lireTraits, ecart, decalage, multiplicateur, ponderer, amplitudeBruit, bruit };
