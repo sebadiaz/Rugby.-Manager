@@ -519,7 +519,7 @@
   // Même liste que engine/ai/personality.js (un test les compare).
   const TRAITS_PERSONNALITE = ['priseDeRisque', 'altruisme', 'egoisme', 'agressivite', 'courage', 'sangFroid', 'concentration',
     'confianceSoi', 'resilience', 'regularite', 'espritEquipe', 'leadership', 'communication', 'constance'];
-  function caracteristiquesDetaillees(j, explicites) {
+  function caracteristiquesDetaillees(j, explicites, tirage) {
     const e = explicites || {};
     const v = (cle, derivee) => (typeof e[cle] === 'number' ? borne(e[cle]) : borne(derivee));
     const car = {
@@ -532,7 +532,10 @@
       piedRasant: v('piedRasant', j.jeuPied),
       distancePied: v('distancePied', j.jeuPied),
     };
-    for (const cle of TRAITS_PERSONNALITE) if (typeof e[cle] === 'number' && Number.isFinite(e[cle])) car[cle] = borne(e[cle]);
+    for (const cle of TRAITS_PERSONNALITE) {
+      if (typeof e[cle] === 'number' && Number.isFinite(e[cle])) car[cle] = borne(e[cle]);   // explicite : prioritaire
+      else if (tirage) car[cle] = Math.round(tirage[cle] * 10) / 10;                         // sinon tirage stable
+    }
     return car;
   }
   // Maîtrise d'un geste : 0 ne sait pas, 1 notions, 2 maîtrise, 3 spécialiste. Explicite ou dérivée des
@@ -548,8 +551,32 @@
       passeLongue: g('passeLongue', niveauGeste(car.longueurPasse, 60, 75, 88)),
     };
   }
-  function appliquerCaracteristiques(j, c) {
-    j.car = caracteristiquesDetaillees(j, c && c.caracteristiques);
+  // PERSONNALITÉ INITIALE (RM4-G52, docs/SIMULATION_V4/16_PERSONNALITE_DES_AGENTS.md) : chaque joueur reçoit, pour chaque trait non
+  // fourni, une valeur TIRÉE AU HASARD de façon stable : fonction pure de (graine du match, équipe, numéro de maillot, identité
+  // éventuelle, trait). Elle ne consomme PAS le générateur du match (le déroulé LEGACY reste identique) et reste la même à chaque
+  // reprise de jeu. Le numéro ne sert que de clé de tirage : AUCUNE valeur n'est attachée à un poste (moyenne ~50 à tous les
+  // numéros, vérifié par test). Loi gaussienne de moyenne 50 et d'écart-type 15, bornée à [5, 95] ; l'égoïsme est anti-corrélé à
+  // l'altruisme (un joueur très altruiste est rarement très égoïste). `config.personnalites: 'NEUTRE'` désactive le tirage (tests).
+  function hash32(txt) {
+    let h = 0x811c9dc5;
+    for (let i = 0; i < txt.length; i++) { h ^= txt.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+    h ^= h >>> 15; h = Math.imul(h, 0x2c1b3c6d) >>> 0; h ^= h >>> 12; h = Math.imul(h, 0x297a2d39) >>> 0; h ^= h >>> 15;
+    return h >>> 0;
+  }
+  function gaussien(cle) {
+    const u1 = (hash32(cle + '|a') + 1) / 4294967297, u2 = hash32(cle + '|b') / 4294967296;
+    return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+  }
+  function tirerPersonnalite(graine, team, numero, identite) {
+    const base = String(graine) + '|' + team + '|' + numero + '|' + String(identite == null ? '' : identite);
+    const v = {};
+    for (const t of TRAITS_PERSONNALITE) v[t] = Math.max(5, Math.min(95, 50 + 15 * gaussien(base + '|' + t)));
+    v.egoisme = Math.max(5, Math.min(95, 100 - v.altruisme + 12 * gaussien(base + '|egoisme-ecart')));
+    return v;
+  }
+  function appliquerCaracteristiques(j, c, graine) {
+    const tirage = graine == null ? null : tirerPersonnalite(graine, j.team, j.numero, c && (c.joueurId != null ? c.joueurId : c.id));
+    j.car = caracteristiquesDetaillees(j, c && c.caracteristiques, tirage);
     j.gestes = gestesMaitrises(j.car, c && c.gestes);
     return j;
   }
@@ -608,9 +635,9 @@
     };
   }
 
-  function creerEquipe(team, sensAttaque, rng, joueursCfg) {
+  function creerEquipe(team, sensAttaque, rng, joueursCfg, graine) {
     const joueurs = [];
-    for (let n = 1; n <= 15; n++) joueurs.push(appliquerCaracteristiques(creerJoueur(n, team, sensAttaque, rng, joueursCfg), (joueursCfg && joueursCfg[n]) || null));
+    for (let n = 1; n <= 15; n++) joueurs.push(appliquerCaracteristiques(creerJoueur(n, team, sensAttaque, rng, joueursCfg), (joueursCfg && joueursCfg[n]) || null, graine));
     return joueurs;
   }
 
@@ -1680,8 +1707,9 @@
         if (j.sinBin > 0) sinBinRestant.set(j.team + '-' + j.numero, j.sinBin);
         posRestante.set(j.team + '-' + j.numero, { x: j.x, y: j.y });
       }
-      this.equipeA = creerEquipe('A', sens.A, this.rng, this.cfg.joueursA || this.cfg.joueurs);
-      this.equipeB = creerEquipe('B', sens.B, this.rng, this.cfg.joueursB || this.cfg.joueurs);
+      const graineP = this.cfg.personnalites === 'NEUTRE' ? null : this.graine; // tirage de personnalité stable (cf. tirerPersonnalite)
+      this.equipeA = creerEquipe('A', sens.A, this.rng, this.cfg.joueursA || this.cfg.joueurs, graineP);
+      this.equipeB = creerEquipe('B', sens.B, this.rng, this.cfg.joueursB || this.cfg.joueurs, graineP);
       for (const j of [...this.equipeA, ...this.equipeB]) {
         const restant = sinBinRestant.get(j.team + '-' + j.numero);
         if (restant) j.sinBin = restant;
@@ -8984,7 +9012,7 @@
             discipline: c.discipline != null ? c.discipline : sortant.discipline,
             horsPoste: !!c.horsPoste,
           });
-          appliquerCaracteristiques(sortant, c);
+          appliquerCaracteristiques(sortant, c, this.cfg.personnalites === 'NEUTRE' ? null : this.graine);
           // _nouvelleManche (coup d'envoi après essai/pénalité/mi-temps, cf.
           // plus haut) RECRÉE entièrement equipeA/equipeB depuis this.cfg.
           // joueursA/joueursB à chaque reprise — sans cette mise à jour, le

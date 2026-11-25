@@ -1,6 +1,6 @@
 # 16 — Personnalité des agents (cahier des charges, à coder par petites tâches)
 
-> **Statut : spécification ; seule la tâche G45 est codée (lecture et fonctions pures, aucun comportement raccordé).** Demande du propriétaire (novembre 2026) : donner aux agents
+> **Statut : spécification ; codé : G45 (fonctions pures), G46 (porteur : altruisme, égoïsme, risque), G47 partiel (sang-froid), G52 partiel (valeurs initiales au hasard).** Demande du propriétaire (novembre 2026) : donner aux agents
 > des **personnalités qui influencent leur prise de décision**.
 >
 > **RÈGLE PERMANENTE — RIEN N'EST SCRIPTÉ.** Une personnalité n'est ni un scénario, ni un rôle, ni une table de
@@ -67,9 +67,8 @@ prudent et un 14 audacieux voient ainsi leurs préférences de poste déformées
 
 - Stockage dans `caracteristiques` du joueur (déjà migré par `appliquerCaracteristiques`) ; valeur absente = 50 : les
   sauvegardes et le Mode Club existants restent valides.
-- Génération (G52, **à valider avec le propriétaire**) : valeurs initiales proposées à partir des caractéristiques existantes
-  (`tendance`, `decision`, `discipline`) et d'un tirage stable par joueur, jamais d'un tableau « poste → personnalité ». En
-  G45, **aucune valeur n'est dérivée** : un trait absent vaut 50 (neutre).
+- Génération (G52, **décidée : au hasard**) : tirage gaussien stable par joueur (cf. G52 plus bas), jamais un tableau « poste →
+  personnalité » ; un trait fourni explicitement l'emporte ; `config.personnalites: 'NEUTRE'` désactive le tirage.
 - Mode Club : fiche joueur avec les traits et une étiquette **calculée** (affichage seul) ; évolution lente avec l'expérience
   et les événements de carrière (à définir plus tard).
 - Aucune donnée de joueur réel : les personnalités sont des **données de jeu**, pas des portraits de joueurs réels. Les
@@ -114,7 +113,16 @@ prudent et un 14 audacieux voient ainsi leurs préférences de poste déformées
 - **RM4-G49** — `espritEquipe` et préférences de buts par joueur (`profilePour(numero, extra)`) : PERS-06, PERS-10.
 - **RM4-G50** — état `confianceSoi` et `resilience` : PERS-07.
 - **RM4-G51** — `leadership`/`communication` dans les appels ; `constance` dans le sélecteur de buts.
-- **RM4-G52** — données Club (génération, fiche, étiquette calculée) ; PERS-09, PERS-11 ; calibration par matrice de niveaux.
+- **RM4-G52 — valeurs initiales FAITES (tirage stable, décision du propriétaire : « au hasard »)** — chaque joueur reçoit, pour chaque
+  trait non fourni, une valeur gaussienne (moyenne 50, écart-type 15, bornée à [5, 95]) fonction pure de (graine du match, équipe,
+  numéro de maillot, identité éventuelle, trait) : **elle ne consomme pas le générateur du match** (LEGACY identique), reste la même à
+  chaque reprise de jeu, et le numéro ne sert que de clé de tirage (aucune moyenne par poste, vérifié sur 200 graines). L'égoïsme est
+  anti-corrélé à l'altruisme. Une valeur explicite l'emporte. `config.personnalites: 'NEUTRE'` désactive le tirage (scénarios de
+  test à décision figée). **Contrôle des statistiques d'ensemble (23 nov. 2026, 30 matchs GOAP de 15 min avec tirage contre 30
+  sans, mêmes graines) :** points 7,7 contre 7,2 ; essais 0,9 contre 0,8 ; passes 76 contre 80 ; courses 54 contre 57 ; rucks 43,5
+  contre 46,7 ; plaquages 60,5 contre 64,1 ; pieds 7,8 contre 8,5 ; aucun écart significatif (|z| ≤ 1,1), mais un léger recul
+  systématique de l'activité (−4 à −7 %) à surveiller : à 30 matchs il reste sous le bruit. **Reste à faire :** persistance Club (valeur stockée avec le joueur et évolution), fiche joueur avec étiquette
+  CALCULÉE (affichage seul), remplaçants (sans identité propre ils reprennent le tirage du maillot), matrice de niveaux (PERS-09).
 
 ## 7. Risques et garde-fous
 

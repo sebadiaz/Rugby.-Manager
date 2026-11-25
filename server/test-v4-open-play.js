@@ -26,7 +26,8 @@ function scene({ marque = 'interieur', team = 'A', zone = 48, numero = 4 } = {})
   const m = createScenarioEngine({
     id: 'lecture locale', seed: 7, phase: 'PORTE',
     setup: { possession: team, ball: { x: x(zone), y: 35, carrier: team + numero }, players },
-  }, { strict: true, config: configGOAP() });
+  // Scénario de LECTURE de la défense : personnalités neutres (le choix d'un porteur à l'altruisme ou au sang-froid aléatoire peut légitimement différer).
+  }, { strict: true, config: configGOAP({ personnalites: 'NEUTRE' }) });
   m.rng = () => 0.5;
   return m;
 }
