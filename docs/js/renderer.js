@@ -498,7 +498,13 @@
       maillot: couleurs.maillot, maillotOmbre: assombrir(couleurs.maillot, 0.72), col: couleurs.col,
       short: couleurs.short, shortOmbre: assombrir(couleurs.short, 0.75), chaussette: couleurs.chaussette, bande: couleurs.bande,
       peau: PEAUX[hash(cle) % PEAUX.length], cheveux: CHEVEUX[hash(cle + 'h') % CHEVEUX.length],
-      casque: j.team !== 'ARB' && j.numero <= 5 && hash(cle + 'c') % 3 === 0 ? assombrir(couleurs.maillot, 0.55) : null,
+      // Casque de mêlée : fréquent chez les avants de devant, plus rare en troisième ligne, exceptionnel derrière.
+      casque: j.team !== 'ARB' && hash(cle + 'c') % 100 < (j.numero <= 5 ? 38 : j.numero <= 8 ? 18 : 4) ? assombrir(couleurs.maillot, 0.55) : null,
+      // Coiffure, barbe, strapping : variété purement visuelle, stable pour un même joueur (tirée de son équipe et de son numéro).
+      coiffure: j.team === 'ARB' ? 'court' : ['court', 'court', 'rase', 'chignon', 'bandeau', 'court'][hash(cle + 'f') % 6],
+      barbe: j.team !== 'ARB' && hash(cle + 'b') % 100 < 30,
+      strapping: j.team !== 'ARB' && (j.numero === 4 || j.numero === 5 || hash(cle + 's') % 100 < 12),
+      bandeau: couleurs.bande || couleurs.col,
     };
     pal.peauOmbre = assombrir(pal.peau, 0.8);
     return pal;
@@ -554,6 +560,10 @@
       const genouY=hanches + (piedY-hanches)*0.52 - Math.abs(avance)*0.23;
       const ombre=cote===-1;
       trait(hancheX,hanches,genouX,genouY,massif?3.5:3.1,ombre?peauSombre:peau);
+      if (pal.strapping) { // strapping blanc à mi-cuisse (sauteurs de touche, soulevés par les cuisses)
+        const mx=(hancheX+genouX)/2, my=(hanches+genouY)/2;
+        trait(mx-(massif?1.9:1.6),my-.15,mx+(massif?1.9:1.6),my+.15,.9,ombre?'#c9c9c4':'#f4f3ee');
+      }
       trait(genouX,genouY,piedX,piedY-1.3,massif?2.8:2.55,ombre?assombrir(pal.chaussette,.75):pal.chaussette);
       trait(genouX,genouY+2.1,genouX+(piedX-genouX)*.2,genouY+2.1,1,pal.bande);
       ovale(piedX+(profil?1:0),piedY,2.35,1.18,'#19252b');
@@ -605,8 +615,20 @@
     trait(teteX,haut+.4,teteX,haut-1.3,2.65,peauSombre);
     ovale(teteX+.55,teteY+.5,3.1,3.75,peauSombre);
     ovale(teteX-.2,teteY-.22,3,3.55,peau);
-    g.fillStyle=pal.cheveux;g.beginPath();
-    g.ellipse(teteX-.25,teteY-2.1,3.05,1.8,-.12,Math.PI,Math.PI*2.07);g.lineTo(teteX+2.8,teteY-1.05);g.quadraticCurveTo(teteX,teteY-2.45,teteX-3.1,teteY-1.1);g.fill();
+    // Cheveux selon la coiffure du joueur.
+    if (pal.coiffure === 'rase') {
+      g.globalAlpha=.35; g.fillStyle=pal.cheveux; g.beginPath(); g.ellipse(teteX-.25,teteY-1.6,2.95,1.5,-.12,Math.PI,Math.PI*2.07); g.fill(); g.globalAlpha=1;
+    } else {
+      g.fillStyle=pal.cheveux;g.beginPath();
+      g.ellipse(teteX-.25,teteY-2.1,3.05,1.8,-.12,Math.PI,Math.PI*2.07);g.lineTo(teteX+2.8,teteY-1.05);g.quadraticCurveTo(teteX,teteY-2.45,teteX-3.1,teteY-1.1);g.fill();
+      if (pal.coiffure === 'chignon') ovale(teteX-(profil?1.6:0),teteY-3.55,1.25,1.05,pal.cheveux);
+    }
+    if (pal.coiffure === 'bandeau') trait(teteX-3,teteY-1.55,teteX+2.85,teteY-1.55,.95,pal.bandeau);
+    // Barbe : ombre de la mâchoire, côté visage (pas de dos).
+    if (pal.barbe && !dos) {
+      g.globalAlpha=.78; g.fillStyle=pal.cheveux; g.beginPath();
+      g.ellipse(teteX+(profil?.7:-.1),teteY+1.55,profil?2.1:2.45,1.25,0,0,Math.PI); g.fill(); g.globalAlpha=1;
+    }
     if(!dos) {
       if(profil){ovale(teteX+1.3,teteY-.22,.47,.5,'#2a2b26');}
       else {ovale(teteX-1.1,teteY-.3,.37,.42,'#2c2721');ovale(teteX+1.1,teteY-.3,.37,.42,'#2c2721');}
@@ -623,7 +645,7 @@
     const massif = j.team !== 'ARB' && j.numero <= 8;
     const physique = gabarit(j);
     const imageCle = posture === 'course' ? image % 4 : 0;
-    const cle = [pal.maillot, pal.short, pal.chaussette, pal.peau, pal.cheveux, pal.casque, massif, physique.largeur, physique.taille, vue, posture, imageCle].join('|');
+    const cle = [pal.maillot, pal.short, pal.chaussette, pal.peau, pal.cheveux, pal.casque, pal.coiffure, pal.barbe, pal.strapping, massif, physique.largeur, physique.taille, vue, posture, imageCle].join('|');
     let s = cacheSprites.get(cle);
     if (s) {
       // Réinsérer en dernier : les sprites utilisés dans les images récentes
@@ -739,14 +761,18 @@
           a.chute = 0;
           // PLAQUAGE : le joueur tombe dans le sens où il est poussé (du plaqueur vers lui) — et non toujours du même
           // côté — et le plaqueur le plonge dessus au lieu de rester à plusieurs mètres.
+          // Le PLAQUEUR est l'adversaire qui vient de plaquer (solVisuel, posé par le moteur au plaquage) ; à défaut, le plus proche debout.
+          // L'exclure (comme avant) faisait plonger un AUTRE défenseur pendant que le vrai plaqueur restait couché à 2-4 m du porteur.
           const rivaux = state.teams[team === 'A' ? 'B' : 'A'];
-          let pl = null, dm = 5;
+          let pl = null, dm = 5, plDebout = null, dmDebout = 5;
           for (const r of rivaux) {
-            if (r.auSol > 0 || r.solVisuel > 0) continue;
+            if (r.auSol > 0) continue;
             const ar = etatAnim((team === 'A' ? 'B' : 'A') + r.numero);
             const d = Math.hypot(ar.rx - a.rx, ar.ry - a.ry);
-            if (d < dm) { dm = d; pl = ar; }
+            if (r.solVisuel > 0) { if (d < dm) { dm = d; pl = ar; } }
+            else if (d < dmDebout) { dmDebout = d; plDebout = ar; }
           }
+          if (!pl) { pl = plDebout; dm = dmDebout; }
           if (pl) {
             const ep = versEcran(a.rx - pl.rx, a.ry - pl.ry);
             if (Math.abs(ep.x) > 0.15) a.dirAction = Math.sign(ep.x);
@@ -755,13 +781,19 @@
           }
         }
         if (a.plonge) {
+          // PLONGEON DU PLAQUEUR : il fond sur le porteur en 0,22 s et RESTE au contact (0,65 m, les corps se touchent) tant qu'il est au
+          // sol ; il ne se détache qu'en se relevant, en 0,4 s. Purement visuel : la simulation garde ses positions.
           const pg = a.plonge; pg.t += dt;
+          const auSolMoi = j.auSol > 0 || j.solVisuel > 0;
           const c = pg.cible, dx = c.rx - a.rx, dy = c.ry - a.ry, d = Math.hypot(dx, dy) || 1;
-          const reste = Math.max(0, d - 0.9);
-          const p = pg.t < 0.22 ? pg.t / 0.22 : pg.t < 0.55 ? 1 : Math.max(0, 1 - (pg.t - 0.55) / 0.4);
+          const reste = Math.max(0, d - 0.65);
+          let p;
+          if (pg.t < 0.22) p = pg.t / 0.22;
+          else if ((auSolMoi && pg.t < 4) || pg.t < 0.55) { p = 1; pg.lache = 0; }
+          else { pg.lache = (pg.lache || 0) + dt; p = Math.max(0, 1 - pg.lache / 0.4); }
           a.rx += dx / d * reste * p; a.ry += dy / d * reste * p;
           if (pg.t < 0.55) { a.fx = dx / d; a.fy = dy / d; a.vit = Math.max(a.vit, 0.7); }
-          if (pg.t >= 0.95) a.plonge = null;
+          if (pg.lache >= 0.4) a.plonge = null;
         }
         a.chute = auSol ? Math.min(1, a.chute + dt / 0.32) : 0;
         a.solPrec = auSol;

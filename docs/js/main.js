@@ -19,6 +19,41 @@
   const canvas = document.getElementById('pitch');
   Renderer.init(canvas);
 
+  // INFO-BULLE JOUEUR : survoler (ou toucher) un joueur affiche son numéro, son poste et son caractère (étiquette calculée à partir de
+  // ses traits, pour l'affichage seulement : cf. UI.caractere). Aucun effet sur le match.
+  const bulle = document.createElement('div');
+  bulle.id = 'bulleJoueur';
+  bulle.style.cssText = 'position:fixed;z-index:12;pointer-events:none;display:none;background:rgba(15,25,18,.9);color:#fff;'
+    + 'font:600 12px system-ui,sans-serif;padding:5px 8px;border-radius:6px;border:1px solid rgba(255,255,255,.25);max-width:220px';
+  document.body.appendChild(bulle);
+  function joueurSous(clientX, clientY) {
+    const etat = etatCourant;
+    if (!etat || !etat.teams) return null;
+    const r = canvas.getBoundingClientRect();
+    const x = clientX - r.left, y = clientY - r.top;
+    let meilleur = null, dMin = 26;
+    for (const team of ['A', 'B']) for (const j of etat.teams[team] || []) {
+      if (j.sinBin > 0) continue;
+      const c = Renderer.versCanvas(j.x, j.y);
+      const d = Math.hypot(c.px - x, (c.py - 14) - y); // le centre du sprite est au-dessus des pieds
+      if (d < dMin) { dMin = d; meilleur = j; }
+    }
+    return meilleur;
+  }
+  function montrerBulle(e) {
+    const j = joueurSous(e.clientX, e.clientY);
+    if (!j) { bulle.style.display = 'none'; return; }
+    const nom = UI.nomEquipe ? UI.nomEquipe(j.team) : 'Équipe ' + j.team;
+    const car = UI.caractere(j.car);
+    bulle.innerHTML = `${nom} — n°${j.numero}${j.label ? ' (' + j.label + ')' : ''}<br><span style="font-weight:400;opacity:.9">${car ? 'Caractère : ' + car : 'Caractère équilibré'}</span>`;
+    bulle.style.left = Math.min(window.innerWidth - 230, e.clientX + 14) + 'px';
+    bulle.style.top = Math.max(4, e.clientY - 46) + 'px';
+    bulle.style.display = 'block';
+  }
+  canvas.addEventListener('pointermove', montrerBulle);
+  canvas.addEventListener('pointerdown', montrerBulle);
+  canvas.addEventListener('pointerleave', () => { bulle.style.display = 'none'; });
+
   function tailleZones() {
     return {
       hudH: document.getElementById('hud').offsetHeight,
