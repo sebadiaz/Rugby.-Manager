@@ -352,6 +352,47 @@ test('PERS-05 (pas de script) : l\'agressivité ne dépend pas du numéro : deux
   assert.strictEqual(prio({ 1: 2, 4: 3.5, 2: 5 }, 2), null, 'n°2 troisième : ne vient pas, quelle que soit son agressivité');
 });
 
+// --- RM4-G49 : esprit d'équipe — goût des tâches ingrates (soutien, ruck, fond) ------------------------------------------------------
+test('PERS-06 (profil) : l\'esprit d\'équipe donne un multiplicateur « ingrat » ; neutre = même profil ; il ne touche à aucun autre poids', () => {
+  const profil = { ruck: 0.8, contest: 0.5, defendTry: 0.6, cover: 0.3, option: 0.9 };
+  assert.strictEqual(P.personnaliserProfil(profil, { courage: 50, espritEquipe: 50 }), profil);
+  const collectif = P.personnaliserProfil(profil, { espritEquipe: 90 }), solitaire = P.personnaliserProfil(profil, { espritEquipe: 10 });
+  assert.ok(collectif.ingrat > 1 && solitaire.ingrat < 1 && Math.abs(collectif.ingrat - 1 - (1 - solitaire.ingrat)) < 1e-12);
+  for (const k of Object.keys(profil)) { assert.strictEqual(collectif[k], profil[k], k); assert.strictEqual(solitaire[k], profil[k], k); }
+});
+
+test('PERS-06 (buts) : soutien du porteur, sécurisation du ruck et couverture du fond suivent l\'esprit d\'équipe ; les autres buts non', () => {
+  const prio = (scene, team, num, v, but, prepare) => {
+    const m = createScenarioEngine(corpus.scenarios.find((x) => x.id === scene));
+    for (let i = 0; i < 10; i++) m.tick(0.05);
+    const e = copie(m.getState());
+    if (prepare) prepare(e);
+    const q = (team === 'A' ? e.equipeA : e.equipeB).find((x) => x.numero === num);
+    const base = Object.assign({}, q.car); for (const k of P.TRAITS) delete base[k];
+    q.car = Object.assign(base, v == null ? {} : { espritEquipe: v });
+    const b = new AgentContext({ team, numero: num }, { reactionDelay: 0, fovDeg: 360 }).update(e);
+    const r = new GoalSelector({ team, numero: num }).select(b);
+    const c = r.candidates.find((x) => x.id === but); return c ? c.priority : null;
+  };
+  const tendance = (scene, team, num, but, prepare) => {
+    const [a, n, c] = [10, 50, 90].map((v) => prio(scene, team, num, v, but, prepare));
+    assert.ok(a !== null, `${but} non applicable pour ${team}${num} (${scene})`);
+    assert.ok(a < n && n < c, `${but} ${team}${num} : ${a} < ${n} < ${c}`);
+    assert.strictEqual(prio(scene, team, num, undefined, but, prepare), n, 'absent = neutre');
+  };
+  // Ruck tenu par A dans S01 : un avant de A peut le sécuriser.
+  const ruckA = [6, 7, 8, 4, 5].find((n) => prio('S01', 'A', n, 50, 'SECURE_RUCK') !== null);
+  tendance('S01', 'A', ruckA, 'SECURE_RUCK');
+  // S06, B porte le ballon : un partenaire non porteur le soutient ; un défenseur de A tient le fond.
+  const porteB = (e) => { const c = e.equipeB.find((x) => x.numero === 12); e.possession = 'B'; e.phase = 'PORTE'; e.ball = Object.assign({}, e.ball, { x: c.x, y: c.y, state: 'CARRIED', carrierTeam: 'B', carrierNumber: 12 }); };
+  const soutienB = [13, 10, 7, 6, 8].find((n) => prio('S06', 'B', n, 50, 'SUPPORT_CARRIER', porteB) !== null);
+  tendance('S06', 'B', soutienB, 'SUPPORT_CARRIER', porteB);
+  tendance('S06', 'A', 15, 'COVER_BACKFIELD', porteB);
+  // Un but qui n'est pas ingrat ne bouge pas.
+  const opt = (v) => prio('S06', 'B', soutienB, v, 'BE_PASS_OPTION', porteB);
+  assert.strictEqual(opt(10), opt(90), 'option de passe : indépendante de l\'esprit d\'équipe');
+});
+
 console.log(`\n${nb} test(s) exécuté(s).`);
 if (ko) { console.error(`ECHEC : ${ko} test(s) en échec.`); process.exit(1); }
 console.log('OK : personnalité des agents (neutre = aucun effet, déterminisme, G46 : altruisme, égoïsme, prise de risque du porteur).');

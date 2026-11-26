@@ -123,7 +123,10 @@ prudent et un 14 audacieux voient ainsi leurs préférences de poste déformées
   contre agressif, environ 3,3), ce qui va dans le sens attendu (ligne en retrait, intervalles). Les autres écarts sont sous le bruit :
   plaquages (+2,1 ± 2,7) et pénalités (+0,43 ± 0,34) des agressifs vont dans le bon sens sans être significatifs. Six comparaisons
   ont été faites : à confirmer sur une campagne plus large avant de s'y fier.
-- **RM4-G49** — `espritEquipe` et préférences de buts par joueur (`profilePour(numero, extra)`) : PERS-06, PERS-10.
+- **RM4-G49 — FAIT (`espritEquipe`)** — `personnaliserProfil` ajoute au profil un multiplicateur `ingrat` (1 ± 0,3) que les buts des
+  tâches ingrates appliquent à leur priorité : `SUPPORT_CARRIER`, `SECURE_RUCK`, `COVER_BACKFIELD`. Neutre ou absent : pas de clé,
+  priorité strictement inchangée. Les autres buts (option de passe, etc.) ne bougent pas. Tests PERS-06 (profil ; trois buts sur de
+  vraies scènes S01 et S06 ; option de passe indépendante). Caractère affiché : « collectif » / « solitaire ».
 - **RM4-G50** — état `confianceSoi` et `resilience` : PERS-07.
 - **RM4-G51** — `leadership`/`communication` dans les appels ; `constance` dans le sélecteur de buts.
 - **RM4-G52 — valeurs initiales FAITES (tirage stable, décision du propriétaire : « au hasard »)** — chaque joueur reçoit, pour chaque
