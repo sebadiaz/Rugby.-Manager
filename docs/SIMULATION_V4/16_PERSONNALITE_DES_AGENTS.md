@@ -127,6 +127,12 @@ prudent et un 14 audacieux voient ainsi leurs préférences de poste déformées
   tâches ingrates appliquent à leur priorité : `SUPPORT_CARRIER`, `SECURE_RUCK`, `COVER_BACKFIELD`. Neutre ou absent : pas de clé,
   priorité strictement inchangée. Les autres buts (option de passe, etc.) ne bougent pas. Tests PERS-06 (profil ; trois buts sur de
   vraies scènes S01 et S06 ; option de passe indépendante). Caractère affiché : « collectif » / « solitaire ».
+  **Campagne (26 nov. 2026, 3 profils × 30 matchs GOAP de 15 min, équipe A seule porteuse) :** rucks 24,0 / 25,3 / 27,6 (neutre /
+  collectif / solitaire) ; rucks conservés 84,8 % / 82,4 % / 85,6 % ; turnovers concédés 1,6 / 1,5 / 1,7 ; mètres gagnés 91 / 91 / 73 ;
+  essais concédés 0,37 / 0,47 / 0,13. **Aucun effet net** : tous les écarts restent sous deux erreurs-types, et l'écart sur les essais
+  concédés par les solitaires va même dans le sens inverse de l'attente (bruit). Comme pour l'altruisme, le trait modifie bien des
+  décisions (PERS-06) mais leur poids sur le match est faible devant les autres déterminants ; ne pas gonfler la constante pour le
+  faire apparaître.
 - **RM4-G50** — état `confianceSoi` et `resilience` : PERS-07.
 - **RM4-G51** — `leadership`/`communication` dans les appels ; `constance` dans le sélecteur de buts.
 - **RM4-G52 — valeurs initiales FAITES (tirage stable, décision du propriétaire : « au hasard »)** — chaque joueur reçoit, pour chaque
