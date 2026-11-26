@@ -3381,6 +3381,16 @@
         // défense et faisait monter les essais (4,8 -> 5,9 mesuré). Ce marqueur
         // n'a AUCUN effet sur la simulation — il illustre juste la définition.
         defenseurProche.solVisuel = 0.9;
+        // CONTACT RÉEL : le plaquage se DÉCLENCHE à portée de plongeon (2,2 m, 3,7 m en GOAP), mais le plaqueur finit AU CONTACT du porteur
+        // (0,7 m, de son côté), comme un vrai plaquage qui ceinture. Avant, il restait couché à 2-4 m : le ruck se formait sans lui.
+        {
+          const dx = defenseurProche.x - porteur.x, dy = defenseurProche.y - porteur.y, d = Math.hypot(dx, dy);
+          if (d > 0.7) {
+            defenseurProche.x = Math.max(0, Math.min(LONGUEUR, porteur.x + dx / d * 0.7));
+            defenseurProche.y = Math.max(0, Math.min(LARGEUR, porteur.y + dy / d * 0.7));
+            defenseurProche.vitesseCourante = 0;
+          }
+        }
         this.timerPhase = 0;
         // En-avant au contact : conséquence directe et distincte du plaquage
         // réussi, pas seulement un succès/échec binaire ruck-ou-rien. Taux
