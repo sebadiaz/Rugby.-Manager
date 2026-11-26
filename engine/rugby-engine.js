@@ -3382,14 +3382,12 @@
         // n'a AUCUN effet sur la simulation — il illustre juste la définition.
         defenseurProche.solVisuel = 0.9;
         // CONTACT RÉEL : le plaquage se DÉCLENCHE à portée de plongeon (2,2 m, 3,7 m en GOAP), mais le plaqueur finit AU CONTACT du porteur
-        // (0,7 m, de son côté), comme un vrai plaquage qui ceinture. Avant, il restait couché à 2-4 m : le ruck se formait sans lui.
+        // (0,7 m, de son côté), comme un vrai plaquage qui ceinture. Avant, il restait couché à 2-4 m : le ruck se formait sans lui. Il y
+        // va en PLONGEANT, jamais par téléportation : au plus 8 m/s (0,8 m par pas de 0,1 s), cf. la boucle de tick (_plongeon).
         {
           const dx = defenseurProche.x - porteur.x, dy = defenseurProche.y - porteur.y, d = Math.hypot(dx, dy);
-          if (d > 0.7) {
-            defenseurProche.x = Math.max(0, Math.min(LONGUEUR, porteur.x + dx / d * 0.7));
-            defenseurProche.y = Math.max(0, Math.min(LARGEUR, porteur.y + dy / d * 0.7));
-            defenseurProche.vitesseCourante = 0;
-          }
+          if (d > 0.7) defenseurProche._plongeon = { x: porteur.x + dx / d * 0.7, y: porteur.y + dy / d * 0.7, t: 0.6 };
+          defenseurProche.vitesseCourante = 0;
         }
         this.timerPhase = 0;
         // En-avant au contact : conséquence directe et distincte du plaquage
@@ -8820,6 +8818,13 @@
         if (j.solVisuel > 0) {
           j.solVisuel = (this.phase === 'PORTE' || this.phase === 'RUCK' || this.phase === 'MAUL')
             ? Math.max(0, j.solVisuel - dt) : 0;
+        }
+        // PLONGEON DU PLAQUEUR jusqu'au contact du porteur (cf. résolution du plaquage) : 8 m/s au plus, 0,6 s au plus.
+        if (j._plongeon) {
+          const pg = j._plongeon, ddx = pg.x - j.x, ddy = pg.y - j.y, dd = Math.hypot(ddx, ddy), pas = Math.min(dd, 8 * dt);
+          if (dd > 1e-3) { j.x = Math.max(0, Math.min(LONGUEUR, j.x + ddx / dd * pas)); j.y = Math.max(0, Math.min(LARGEUR, j.y + ddy / dd * pas)); }
+          pg.t -= dt;
+          if (dd - pas <= 0.01 || pg.t <= 0) j._plongeon = null;
         }
         if (j.sinBin > 0) j.sinBin = Math.max(0, j.sinBin - dt);
       }
