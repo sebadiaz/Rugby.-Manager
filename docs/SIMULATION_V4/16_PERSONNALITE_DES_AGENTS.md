@@ -1,6 +1,6 @@
 # 16 — Personnalité des agents (cahier des charges, à coder par petites tâches)
 
-> **Statut : spécification ; codé : G45 (fonctions pures), G46 (porteur : altruisme, égoïsme, risque), G47 partiel (sang-froid), G52 partiel (valeurs initiales au hasard).** Demande du propriétaire (novembre 2026) : donner aux agents
+> **Statut : spécification ; codé : G45 (fonctions pures), G46 (porteur : altruisme, égoïsme, risque), G47 (sang-froid du porteur, concentration), G52 partiel (valeurs initiales au hasard).** Demande du propriétaire (novembre 2026) : donner aux agents
 > des **personnalités qui influencent leur prise de décision**.
 >
 > **RÈGLE PERMANENTE — RIEN N'EST SCRIPTÉ.** Une personnalité n'est ni un scénario, ni un rôle, ni une table de
@@ -89,6 +89,7 @@ prudent et un 14 audacieux voient ainsi leurs préférences de poste déformées
 | PERS-09 | matrice de niveaux inchangée : une équipe de joueurs moyens ne produit pas de statistiques d'élite |
 | PERS-10 | **garde « rien n'est scripté »** : deux joueurs du même numéro mais de personnalités différentes, dans la même situation, ne choisissent pas toujours pareil ; deux joueurs de numéros différents et de même personnalité font le même choix quand ils ont la même situation et les mêmes compétences |
 | PERS-11 | garde statique : aucun `switch`/table par numéro ou par étiquette dans le code de personnalité |
+| PERS-12 | `concentration` ↓ ⇒ appels entendus de moins loin et plus de fautes de main d'inattention (résolution moteur) ; neutre inchangé |
 
 ## 6. Tâches proposées (une par session, preuve sur un scénario avant le moteur complet)
 
@@ -108,7 +109,15 @@ prudent et un 14 audacieux voient ainsi leurs préférences de poste déformées
   profil de l'agent par `creerPiloteGOAP`, identifiant, option, instant à 0,2 s) d'amplitude `amplitudeBruit(sangFroid, calme)` :
   nulle à 50 ou plus, croissante quand le trait baisse, réduite de moitié au plus quand aucun défenseur n'est proche. Tests PERS-04
   (neutre inchangé, écart croissant, plus fort sous pression) et PERS-08 (décisions) dans `server/test-v4-personnalite.js`.
-  **Reste à faire (G47b) :** `concentration` (appel manqué, erreurs d'inattention) et le sang-froid hors du porteur (défenseur, 9, 10).
+  **G47b — FAIT pour `concentration`** : (1) **appel manqué** — un joueur distrait n'entend un appel de partenaire que de plus
+  près (`ecoute(concentration)` = portée relative 1 à 50 ou plus, jusqu'à 0,6 à 0 ; branché dans `AgentContext` sur
+  `LocalCommunication.hear`) ; (2) **erreurs d'inattention résolues par le MOTEUR** — le risque d'en-avant au contact, de ballon
+  échappé à la réception d'une passe et à la réception disputée d'une chandelle est multiplié par `inattention(joueur)` = 1 ± 0,35
+  selon SA concentration (neutre ou absente = 1, symétrique donc moyenne ~1 sur une équipe tirée au hasard). C'est une
+  caractéristique du joueur : elle agit dans tous les modes, LEGACY compris. Tests PERS-12 (écoute, appel manqué à 13 m d'un appel
+  de 17 m, facteur moteur) dans `server/test-v4-personnalite.js` ; le test G52 vérifie désormais que le tirage ne consomme pas le
+  générateur (état initial et suite aléatoire identiques), le déroulé LEGACY changeant par la concentration tirée.
+  **Reste à faire :** le sang-froid hors du porteur (défenseur, 9, 10).
 - **RM4-G48 — FAIT (décisions)** — `agressivite` : un défenseur agressif s'engage de plus loin (rayon 12 m ± 3), vient plus fort en soutien du
   plaqueur (priorité 68 ± 8) et monte davantage devant ses voisins en jeu courant (3 m ± 1,5) ; **le plus proche du porteur plaque
   toujours (96), quelle que soit sa personnalité**. `courage` : déforme (±30 %, borné) les poids de préférence `ruck`, `contest` et

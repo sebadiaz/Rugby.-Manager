@@ -542,6 +542,7 @@ module.exports = { ACTIONS, PAR_NOM, FAITS_VALIDES };
 'use strict';
 
 const { observe, normaliserParams } = require('./perception.js');
+const { ecoute } = require('./personality.js');
 
 const DEFAUTS_CONTEXTE = Object.freeze({ reactionDelay: 0.2, memorySeconds: 6 });
 
@@ -610,7 +611,9 @@ class AgentContext {
     // Proprioception : on connaît toujours sa propre position exacte.
     if (comm) {
       const entendus = comm.hear({ listenerId: this.id, team: this.agent.team, x: moi.x, y: moi.y, time: t,
-        available: !(moi.auSol > 0) && !(moi.sinBin > 0) });
+        available: !(moi.auSol > 0) && !(moi.sinBin > 0),
+        // Concentration (RM4-G47b) : un joueur distrait n'entend un appel que de plus près ; neutre ou absent : portée inchangée.
+        hearing: ecoute(moi.car ? moi.car.concentration : null) });
       for (const h of entendus) this.heard.push(h);
     }
     const mem = this.params.memorySeconds;
@@ -2972,7 +2975,15 @@ function personnaliserProfil(profil, traits) {
   return out;
 }
 
-module.exports = { personnaliserProfil, FAMILLES_COURAGE, C_COURAGE, C_ESPRIT_EQUIPE, TRAITS, NEUTRE, K_MAX, C_MAX, POIDS_MIN, POIDS_MAX, AMPLITUDE_BRUIT_MAX, lireTraits, ecart, decalage, multiplicateur, ponderer, amplitudeBruit, bruit };
+// CONCENTRATION (RM4-G47b) : portée d'écoute relative d'un joueur distrait. Un appel de partenaire n'est entendu que dans
+// `rayon × écoute` ; à 50 ou plus l'écoute vaut 1 (comportement inchangé), elle descend jusqu'à 1 − C_ECOUTE pour un trait à 0.
+// Un seul sens : une grande concentration n'agrandit pas la portée de la voix d'un autre.
+const C_ECOUTE = 0.4;
+function ecoute(valeur) {
+  return 1 - C_ECOUTE * Math.max(0, -ecart(valeur));
+}
+
+module.exports = { ecoute, C_ECOUTE, personnaliserProfil, FAMILLES_COURAGE, C_COURAGE, C_ESPRIT_EQUIPE, TRAITS, NEUTRE, K_MAX, C_MAX, POIDS_MIN, POIDS_MAX, AMPLITUDE_BRUIT_MAX, lireTraits, ecart, decalage, multiplicateur, ponderer, amplitudeBruit, bruit };
 
   };
   defs["position-goals.js"] = function (module, exports, require) {
