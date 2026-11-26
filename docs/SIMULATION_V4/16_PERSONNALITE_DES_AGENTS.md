@@ -117,6 +117,11 @@ prudent et un 14 audacieux voient ainsi leurs préférences de poste déformées
   caractéristique du joueur : elle agit dans tous les modes, LEGACY compris. Tests PERS-12 (écoute, appel manqué à 13 m d'un appel
   de 17 m, facteur moteur) dans `server/test-v4-personnalite.js` ; le test G52 vérifie désormais que le tirage ne consomme pas le
   générateur (état initial et suite aléatoire identiques), le déroulé LEGACY changeant par la concentration tirée.
+  **Campagne (26 nov. 2026, 3 profils × 30 matchs GOAP de 15 min, équipe A seule porteuse, B neutre) :** en-avants de A
+  1,30 ± 0,18 (neutre), 1,03 ± 0,16 (concentré, 90), **2,03 ± 0,23 (distrait, 10)** ; passes 41,7 / 43,5 / 38,7 ; turnovers concédés
+  et essais sans écart net. Lecture : l'équipe distraite commet nettement plus d'en-avants (+0,73 contre neutre, environ 2,5
+  erreurs-types ; +1,0 contre concentrée, environ 3,6), dans le sens attendu ; les autres écarts sont sous le bruit. Premier trait
+  dont l'effet se voit nettement en match : il agit sur un résultat tiré par le moteur, pas seulement sur une décision.
   **Reste à faire :** le sang-froid hors du porteur (défenseur, 9, 10).
 - **RM4-G48 — FAIT (décisions)** — `agressivite` : un défenseur agressif s'engage de plus loin (rayon 12 m ± 3), vient plus fort en soutien du
   plaqueur (priorité 68 ± 8) et monte davantage devant ses voisins en jeu courant (3 m ± 1,5) ; **le plus proche du porteur plaque
