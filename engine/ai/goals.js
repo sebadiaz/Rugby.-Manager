@@ -112,10 +112,11 @@ const GOALS = Object.freeze([
   // L'arrière (profil cover >= 0,9) garde sa profondeur même quand son équipe attaque (menace de pied).
   G('COVER_BACKFIELD', 'COMMIT', (s, p) => s.available && s.onside && s.danger < 0.35 && (s.advPoss || s.enVol || (s.maPoss && p.cover >= 0.9)),
     // Quand personne d'autre ne tient le fond et que je suis le mieux placé, je le couvre quel que soit mon poste.
-    (s, p) => (s.advPoss || s.enVol ? 60 : 38) * p.cover + (s.fondVide && s.moiPlusPresDuFond && (s.advPoss || s.enVol) ? 34 : 0)),
+    // `p.ingrat` : esprit d'équipe du joueur (tâche ingrate ; absent = 1, cf. personality.personnaliserProfil).
+    (s, p) => ((s.advPoss || s.enVol ? 60 : 38) * p.cover + (s.fondVide && s.moiPlusPresDuFond && (s.advPoss || s.enVol) ? 34 : 0)) * (p.ingrat ?? 1)),
   G('DEFEND', 'COMMIT', (s) => s.available && s.onside && s.advPoss && (!REGROUPEMENTS.has(s.phase) || s.phase === 'RUCK'), (s, p) => (s.phase === 'RUCK' ? 34 : 50) + 10 * clamp01(1 - s.distBalle / 40) - 25 * p.fatigue),
   G('CONTEST_BREAKDOWN', 'OPPORTUNITY', (s) => s.phase === 'RUCK' && s.advPoss && s.available && s.onside, (s, p) => 62 * p.contest - 18 * Math.min(2, s.partenairesPlusPres) - 20 * p.fatigue),
-  G('SECURE_RUCK', 'COMMIT', (s) => s.phase === 'RUCK' && s.maPoss && s.available && s.onside, (s, p) => 66 * p.ruck - 18 * Math.min(2, s.partenairesPlusPres) - 20 * p.fatigue),
+  G('SECURE_RUCK', 'COMMIT', (s) => s.phase === 'RUCK' && s.maPoss && s.available && s.onside, (s, p) => (66 * p.ruck - 18 * Math.min(2, s.partenairesPlusPres) - 20 * p.fatigue) * (p.ingrat ?? 1)),
   G('DISTRIBUTE_BALL', 'COMMIT', (s, profile) => (s.phase === 'RUCK' && s.maPoss && s.available && s.onside && s.distBalle <= 6 && !s.neufAuBallon) || (s.aLeBallon && s.phase === 'PORTE' && (s.pression > 0 || (profile.distribute ?? 0) >= 0.3)),
     // Personne n'est à la base du ruck : le plus proche prend la distribution (même un 10 ou un 8).
     (s, p) => 78 * p.distribute + (s.distBalle <= 3 && !s.neufAuBallon ? (p.distribute >= 0.3 ? 20 : 10) : 0)),
@@ -130,7 +131,7 @@ const GOALS = Object.freeze([
     const bruit = ((s.numero * 37 + Math.floor(s.t * 2) * 101) % 17 - 8) * 0.5;
     return 31 + bruit + 22 * p.kick + zone + 9 * Math.min(3, s.pression) + (s.finDeMatch && s.score < 0 ? 10 : 0) - (s.finDeMatch && s.score > 0 ? 0 : 0);
   }),
-  G('SUPPORT_CARRIER', 'COMMIT', (s) => s.maPoss && s.phase === 'PORTE' && !s.aLeBallon && s.available && s.distBalle <= 30, (s, p) => 44 * (0.4 + 0.6 * p.ruck) * clamp01(1.1 - s.distBalle / 30)),
+  G('SUPPORT_CARRIER', 'COMMIT', (s) => s.maPoss && s.phase === 'PORTE' && !s.aLeBallon && s.available && s.distBalle <= 30, (s, p) => 44 * (0.4 + 0.6 * p.ruck) * clamp01(1.1 - s.distBalle / 30) * (p.ingrat ?? 1)),
   G('BE_PASS_OPTION', 'COMMIT', (s) => s.maPoss && s.available && s.onside && (s.phase === 'PORTE' || s.phase === 'RUCK') && !s.aLeBallon, (s, p) => 46 * p.option),
   G('FORM_SCRUM_LEGALLY', 'COMMIT', (s) => s.phase === 'MELEE' && s.available, (s, p) => 80 * p.scrum),
   G('FORM_LINEOUT_LEGALLY', 'COMMIT', (s) => s.phase === 'TOUCHE' && s.available, (s, p) => 78 * p.lineout),

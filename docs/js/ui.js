@@ -329,6 +329,7 @@
   const MOTS_CARACTERE = {
     priseDeRisque: ['audacieux', 'prudent'], altruisme: ['altruiste', 'personnel'], egoisme: ['individualiste', 'désintéressé'],
     sangFroid: ['sang-froid', 'nerveux'], agressivite: ['agressif', 'placide'], courage: ['courageux', 'timoré'],
+    espritEquipe: ['collectif', 'solitaire'],
   };
   function caractere(car) {
     if (!car) return '';

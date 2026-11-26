@@ -85,11 +85,18 @@ function bruit(graine, agentId, t, amplitude) {
 // (jamais un poste, jamais une action interdite) ; un courage neutre ou absent renvoie le MÊME profil (objet inchangé).
 const FAMILLES_COURAGE = Object.freeze(['ruck', 'contest', 'defendTry']);
 const C_COURAGE = 0.3;
+// ESPRIT D'ÉQUIPE (RM4-G49) : goût des tâches INGRATES — soutenir le porteur, déblayer au ruck, tenir le fond. Il donne au profil un
+// multiplicateur `ingrat` (1 ± 0,3) que les buts correspondants appliquent à leur priorité ; neutre ou absent : pas de clé, priorité inchangée.
+const C_ESPRIT_EQUIPE = 0.3;
 function personnaliserProfil(profil, traits) {
-  if (!profil || !traits || traits.courage === NEUTRE) return profil;
+  if (!profil || !traits) return profil;
+  const courage = traits.courage !== NEUTRE && traits.courage != null;
+  const esprit = traits.espritEquipe !== NEUTRE && traits.espritEquipe != null;
+  if (!courage && !esprit) return profil;
   const out = Object.assign({}, profil);
-  for (const f of FAMILLES_COURAGE) if (typeof profil[f] === 'number') out[f] = ponderer(profil[f], traits.courage, C_COURAGE);
+  if (courage) for (const f of FAMILLES_COURAGE) if (typeof profil[f] === 'number') out[f] = ponderer(profil[f], traits.courage, C_COURAGE);
+  if (esprit) out.ingrat = multiplicateur(traits.espritEquipe, C_ESPRIT_EQUIPE);
   return out;
 }
 
-module.exports = { personnaliserProfil, FAMILLES_COURAGE, C_COURAGE, TRAITS, NEUTRE, K_MAX, C_MAX, POIDS_MIN, POIDS_MAX, AMPLITUDE_BRUIT_MAX, lireTraits, ecart, decalage, multiplicateur, ponderer, amplitudeBruit, bruit };
+module.exports = { personnaliserProfil, FAMILLES_COURAGE, C_COURAGE, C_ESPRIT_EQUIPE, TRAITS, NEUTRE, K_MAX, C_MAX, POIDS_MIN, POIDS_MAX, AMPLITUDE_BRUIT_MAX, lireTraits, ecart, decalage, multiplicateur, ponderer, amplitudeBruit, bruit };
