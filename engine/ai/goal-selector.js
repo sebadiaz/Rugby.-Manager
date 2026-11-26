@@ -13,6 +13,7 @@
 'use strict';
 
 const { GOALS, profilePour, deriveSituation } = require('./goals.js');
+const { lireTraits, personnaliserProfil } = require('./personality.js');
 
 class GoalSelector {
   constructor(agent, options = {}) {
@@ -29,10 +30,12 @@ class GoalSelector {
   select(beliefs, playbook = {}) {
     const t = beliefs.t;
     const s = deriveSituation(beliefs);
+    // Les préférences de poste sont déformées par le COURAGE du joueur (lu dans SES caractéristiques ; neutre = profil inchangé).
+    const profil = personnaliserProfil(this.profile, lireTraits(beliefs.self && beliefs.self.car));
     const candidats = [];
     for (const g of GOALS) {
-      if (!g.applicable(s, this.profile, playbook)) continue;
-      const p = Math.max(0, +g.priority(s, this.profile, playbook).toFixed(3));
+      if (!g.applicable(s, profil, playbook)) continue;
+      const p = Math.max(0, +g.priority(s, profil, playbook).toFixed(3));
       candidats.push({ id: g.id, priority: p, interrupt: g.interrupt });
     }
     // Tri stable : priorité décroissante, puis ordre du catalogue.

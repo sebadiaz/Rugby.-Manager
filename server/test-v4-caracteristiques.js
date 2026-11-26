@@ -64,13 +64,15 @@ test('match GOAP : une équipe dont personne ne sait faire la chistera n\'en ten
   const parEquipe = { A: 0, B: 0 };
   // Plusieurs graines : la chistera est rare (un geste maîtrisé que le porteur choisit à un moment précis).
   for (const graine of [5, 6, 7]) {
-    const m = new MatchEngine(graine, 4800, configGOAP({ joueursA: sansChistera }));
+    // B : chistera maîtrisée (niveau 3) et goût du risque élevé, pour que ce geste rare (environ 0,7 par équipe et par match) ne tombe pas à zéro par hasard.
+    const maitrise = Object.fromEntries([...Array(15)].map((_, i) => [i + 1, { gestes: { chistera: 3 }, caracteristiques: { priseDeRisque: 90, egoisme: 10, altruisme: 90 } }]));
+    const m = new MatchEngine(graine, 4800, configGOAP({ joueursA: sansChistera, joueursB: maitrise }));
     const log = m.log.bind(m);
     m.log = (t, eq, msg, d) => { if (t === 'CHISTERA' || t === 'CHISTERA_RATEE') parEquipe[eq]++; return log(t, eq, msg, d); };
     m.jouerJusquAuSifflet(0.1);
   }
   assert.strictEqual(parEquipe.A, 0, 'aucune chistera pour A');
-  assert.ok(parEquipe.B >= 1, 'B (gestes par défaut) en tente : ' + parEquipe.B);
+  assert.ok(parEquipe.B >= 1, 'B (chistera maîtrisée) en tente : ' + parEquipe.B);
 });
 
 test('remplacement : le joueur entrant apporte SES caractéristiques et SES gestes', () => {

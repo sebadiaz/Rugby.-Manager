@@ -323,6 +323,30 @@
   // « réussis/tentés ». Un match enregistré avant que le moteur ne compte la
   // donnée (P2-63) affiche « – » plutôt que « undefined ».
   function ratio(r, t) { return (r == null || t == null) ? '–' : `${r}/${t}`; }
+  // CARACTÈRE AFFICHÉ (docs/SIMULATION_V4/16_PERSONNALITE_DES_AGENTS.md) : étiquette CALCULÉE à partir des traits du joueur, pour
+  // l'affichage seulement (jamais lue par une décision). Seuls les traits qui pèsent réellement sur ses choix sont montrés ; un trait
+  // compte s'il s'écarte d'au moins 15 points de la valeur neutre (50), et l'on garde les deux plus marqués.
+  const MOTS_CARACTERE = {
+    priseDeRisque: ['audacieux', 'prudent'], altruisme: ['altruiste', 'personnel'], egoisme: ['individualiste', 'désintéressé'],
+    sangFroid: ['sang-froid', 'nerveux'], agressivite: ['agressif', 'placide'], courage: ['courageux', 'timoré'],
+  };
+  function caractere(car) {
+    if (!car) return '';
+    const marques = Object.keys(MOTS_CARACTERE)
+      .filter((k) => typeof car[k] === 'number' && Math.abs(car[k] - 50) >= 15)
+      .sort((a, b) => Math.abs(car[b] - 50) - Math.abs(car[a] - 50) || a.localeCompare(b));
+    // Altruisme et égoïsme disent la même chose vue de deux côtés : on ne garde que le plus marqué des deux.
+    const sansDoublon = marques.filter((k, i) => !((k === 'altruisme' || k === 'egoisme') && marques.slice(0, i).some((x) => x === 'altruisme' || x === 'egoisme')));
+    return sansDoublon.slice(0, 2).map((k) => MOTS_CARACTERE[k][car[k] >= 50 ? 0 : 1]).join(', ');
+  }
+  function lignesCaracteres(state) {
+    const t = state.teams || { A: state.equipeA, B: state.equipeB };
+    if (!t || !t.A || !t.B) return '';
+    const par = (eq, n) => { const j = eq.find((x) => x.numero === n); return (j && caractere(j.car)) || '—'; };
+    let html = '<div class="ligneStat" style="margin-top:10px"><span class="valA"></span><span class="labelStat"><b>Caractères en jeu</b></span><span class="valB"></span></div>';
+    for (let n = 1; n <= 15; n++) html += ligneStat('n°' + n, par(t.A, n), par(t.B, n));
+    return html;
+  }
   function rafraichirPanneauStats(state) {
     const s = state.stats;
     if (!s) return;
@@ -371,7 +395,8 @@
       ligneStat('Turnovers concédés', s.A.turnoversConcedes, s.B.turnoversConcedes) +
       ligneStat('En-avants', s.A.knockOns, s.B.knockOns) +
       ligneStat('Pénalités concédées', s.A.penalitesConcedees, s.B.penalitesConcedees) +
-      ligneStat('Cartons jaunes', s.A.cartonsJaunes, s.B.cartonsJaunes);
+      ligneStat('Cartons jaunes', s.A.cartonsJaunes, s.B.cartonsJaunes) +
+      lignesCaracteres(state);
   }
 
   // Version de l'instantané de configuration enregistré avec un match. À
@@ -483,7 +508,7 @@
     return { ok: true, deja: false, message: 'Résultat enregistré dans l\'historique.' };
   }
 
-  global.RMUI = {
+  global.RMUI = { caractere, nomEquipe: (l) => nomsEquipes[l],
     // Coutures de test : le regroupement des passes du fil se verifie sur des
     // journaux fabriques, sans dependre d'un chronometrage dans le navigateur.
     regrouperPasses, texteEvenement,

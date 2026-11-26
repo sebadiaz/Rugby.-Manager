@@ -454,7 +454,7 @@ Ces trois tâches étendent l'architecture **individuelle** des tâches G04–G2
 - **Tests :** `MIC-01..12`, `STYLE-01..10`, `TOP14-01..19`, invariants, décisions multi-graines ; signaux 8/9 avec perte/expiration/annulation.
 - **Rejet si :** l'agent dispose de coordonnées/historiques cachés, si une passe est encore jouée après que le porteur a perdu le ballon, ou si la distribution correspond à une ligne de score déterministe.
 
-### RM4-G45 à G52 — Personnalité des agents (G45, G46, G47 partiel, G52 valeurs initiales faits) (spécification : `16_PERSONNALITE_DES_AGENTS.md`)
+### RM4-G45 à G52 — Personnalité des agents (G45, G46, G47 partiel, G48, G52 valeurs initiales faits) (spécification : `16_PERSONNALITE_DES_AGENTS.md`)
 
 - **Règle :** rien n'est scripté (règle permanente en tête de `CLAUDE.md`). Une personnalité règle la FAÇON de décider (décalages bornés sur des choix déjà existants) ; elle ne crée aucun rôle, ne désigne personne, ne décide aucun résultat.
 - **Tâches (une par session, preuve sur un scénario d'abord) :** G45 fonction utilitaire pure et lecture des traits (aucun changement de comportement, PERS-01 et PERS-08) ; G46 altruisme/égoïsme et prise de risque du porteur ; G47 sang-froid et concentration ; G48 agressivité et courage ; G49 esprit d'équipe et préférences de buts par joueur ; G50 confiance en soi et résilience ; G51 leadership, communication, constance ; G52 données Club, étiquette calculée, matrice de niveaux.

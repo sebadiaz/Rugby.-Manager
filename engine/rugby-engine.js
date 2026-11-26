@@ -1649,7 +1649,9 @@
     // leur couloir. Si le botteur n'est pas le 10, il prend la place du 10 et le 10 la sienne. Le botteur se tient à son point de frappe.
     _formationBotteur(equipeKick, kickeur, kx, ky, dirKick, avaitEquipes, variante = 'court-droit') {
       // Derrière le ballon, y compris dans l'en-but (renvoi depuis la ligne d'en-but).
-      const clampX = (x) => Math.max(-7.5, Math.min(LONGUEUR + 7.5, x));
+      // Les joueurs ne se déplacent que dans [0, LONGUEUR] (cf. avancer) : une place hors du terrain (en-but) serait INATTEIGNABLE, le moteur
+      // attendrait « tout le monde en place » jusqu'au plafond de 40 s (renvoi aux 22 m : 42 s au lieu d'une quinzaine).
+      const clampX = (x) => Math.max(0, Math.min(LONGUEUR, x));
       const clampY = (y) => Math.max(1.5, Math.min(LARGEUR - 1.5, y));
       const pose = (j, x, y) => { j._cibleEnvoi = { x: clampX(x), y: clampY(y) }; if (!avaitEquipes) { j.x = j._cibleEnvoi.x; j.y = j._cibleEnvoi.y; } };
       const cote = (VARIANTES_ENVOI[variante] || VARIANTES_ENVOI['court-droit']).cote;
@@ -3269,7 +3271,9 @@
         }
         this.stats[this.possession].passesTentees--; // la tentative est recomptée par _tenterPasse
         if (this._tenterPasse(porteur, false, jeu.vers)) {
-          this.log('CHISTERA', this.possession, `Chistera du n°${porteur.numero} pour le n°${jeu.vers} dans le contact`, { passeur: porteur.numero, receveur: jeu.vers });
+          // L'équipe du PASSEUR, pas la possession d'après coup : une passe en avant ou interceptée change la possession (mêlée pour
+          // l'adversaire) et la chistera était alors attribuée à l'équipe qui en profite.
+          this.log('CHISTERA', porteur.team, `Chistera du n°${porteur.numero} pour le n°${jeu.vers} dans le contact`, { passeur: porteur.numero, receveur: jeu.vers });
           return;
         }
       }
@@ -3377,6 +3381,14 @@
         // défense et faisait monter les essais (4,8 -> 5,9 mesuré). Ce marqueur
         // n'a AUCUN effet sur la simulation — il illustre juste la définition.
         defenseurProche.solVisuel = 0.9;
+        // CONTACT RÉEL : le plaquage se DÉCLENCHE à portée de plongeon (2,2 m, 3,7 m en GOAP), mais le plaqueur finit AU CONTACT du porteur
+        // (0,7 m, de son côté), comme un vrai plaquage qui ceinture. Avant, il restait couché à 2-4 m : le ruck se formait sans lui. Il y
+        // va en PLONGEANT, jamais par téléportation : au plus 8 m/s (0,8 m par pas de 0,1 s), cf. la boucle de tick (_plongeon).
+        {
+          const dx = defenseurProche.x - porteur.x, dy = defenseurProche.y - porteur.y, d = Math.hypot(dx, dy);
+          if (d > 0.7) defenseurProche._plongeon = { x: porteur.x + dx / d * 0.7, y: porteur.y + dy / d * 0.7, t: 0.6 };
+          defenseurProche.vitesseCourante = 0;
+        }
         this.timerPhase = 0;
         // En-avant au contact : conséquence directe et distincte du plaquage
         // réussi, pas seulement un succès/échec binaire ruck-ou-rien. Taux
@@ -8806,6 +8818,13 @@
         if (j.solVisuel > 0) {
           j.solVisuel = (this.phase === 'PORTE' || this.phase === 'RUCK' || this.phase === 'MAUL')
             ? Math.max(0, j.solVisuel - dt) : 0;
+        }
+        // PLONGEON DU PLAQUEUR jusqu'au contact du porteur (cf. résolution du plaquage) : 8 m/s au plus, 0,6 s au plus.
+        if (j._plongeon) {
+          const pg = j._plongeon, ddx = pg.x - j.x, ddy = pg.y - j.y, dd = Math.hypot(ddx, ddy), pas = Math.min(dd, 8 * dt);
+          if (dd > 1e-3) { j.x = Math.max(0, Math.min(LONGUEUR, j.x + ddx / dd * pas)); j.y = Math.max(0, Math.min(LARGEUR, j.y + ddy / dd * pas)); }
+          pg.t -= dt;
+          if (dd - pas <= 0.01 || pg.t <= 0) j._plongeon = null;
         }
         if (j.sinBin > 0) j.sinBin = Math.max(0, j.sinBin - dt);
       }

@@ -1361,6 +1361,7 @@ module.exports = { stableKey, satisfies, planGoal, selectFeasibleGoal };
 'use strict';
 
 const { GOALS, profilePour, deriveSituation } = require('./goals.js');
+const { lireTraits, personnaliserProfil } = require('./personality.js');
 
 class GoalSelector {
   constructor(agent, options = {}) {
@@ -1377,10 +1378,12 @@ class GoalSelector {
   select(beliefs, playbook = {}) {
     const t = beliefs.t;
     const s = deriveSituation(beliefs);
+    // Les préférences de poste sont déformées par le COURAGE du joueur (lu dans SES caractéristiques ; neutre = profil inchangé).
+    const profil = personnaliserProfil(this.profile, lireTraits(beliefs.self && beliefs.self.car));
     const candidats = [];
     for (const g of GOALS) {
-      if (!g.applicable(s, this.profile, playbook)) continue;
-      const p = Math.max(0, +g.priority(s, this.profile, playbook).toFixed(3));
+      if (!g.applicable(s, profil, playbook)) continue;
+      const p = Math.max(0, +g.priority(s, profil, playbook).toFixed(3));
       candidats.push({ id: g.id, priority: p, interrupt: g.interrupt });
     }
     // Tri stable : priorité décroissante, puis ordre du catalogue.
@@ -1649,6 +1652,7 @@ module.exports = { creerPiloteGOAP, configGOAP };
  * Pure, déterministe. Zéro Date.now() / Math.random().
  */
 'use strict';
+const { lireTraits, decalage, ecart } = require('./personality.js');
 
 const P = require('./position-goals.js');
 const { deriveSituation } = require('./goals.js');
@@ -1674,7 +1678,10 @@ function candidatPresse(b, s, jeuCourant) {
   const porteur = fiche?.lastSeen || s.ball.lastSeen;
   const dMoi = P.dist(me, porteur);
   const plusPres = Object.values(b.teammates).filter((m) => m.available !== false && !m.recovery && P.dist(m.lastSeen, porteur) < dMoi - 0.3).length;
-  if (dMoi > 12 || plusPres > 1) return null;
+  // Agressivité (RM4-G48) : un défenseur agressif s'engage de plus loin (12 m ± 3) et, quand un partenaire est plus proche que lui,
+  // vient davantage en soutien du plaqueur (priorité 68 ± 8). Le plus proche du porteur plaque TOUJOURS (96), quelle que soit sa personnalité.
+  const agr = lireTraits(me.car).agressivite;
+  if (dMoi > 12 + 3 * ecart(agr) || plusPres > 1) return null;
   // Je suis DEVANT le porteur (entre lui et ma ligne) : je l'attends sur sa route, juste devant lui. Le poursuivre par le
   // côté ne sert à rien quand il court aussi vite que moi (il longe la touche et marque).
   const devant = (porteur.x - me.x) * sens > 0 && dMoi > 3;
@@ -1682,7 +1689,7 @@ function candidatPresse(b, s, jeuCourant) {
   const cible = devant ? { x: P.clamp(porteur.x - sens * Math.min(6, dMoi * 0.5), 0, 100), y: porteur.y }
     : predit ? intercepter(me, fiche, 3 + (me.vitesse ?? 65) * 0.05)
     : { x: P.clamp(porteur.x - sens * Math.min(4, dMoi * 0.4), 0, 100), y: porteur.y };
-  return { id: 'PRESS_CARRIER', priority: plusPres === 0 ? 96 : 68, target: cible, vmax: 1, reason: plusPres === 0 ? 'je suis le plus proche du porteur : je plaque' : 'soutien au plaqueur' };
+  return { id: 'PRESS_CARRIER', priority: plusPres === 0 ? 96 : 68 + decalage(agr, 8), target: cible, vmax: 1, reason: plusPres === 0 ? 'je suis le plus proche du porteur : je plaque' : 'soutien au plaqueur' };
 }
 
 // MARK_OPPONENT : un attaquant menaçant (le porteur exclu : c'est le rôle du plaqueur) dans mon canal, sans partenaire
@@ -1717,7 +1724,8 @@ function candidatsDefense(b, s, pb, jeuCourant) {
   const xVoisins = voisins.length ? voisins.map((v) => v.x).sort((a, c) => a - c)[Math.floor(voisins.length / 2)] : ligneX;
   // On monte ENSEMBLE : jamais plus de 3 m devant ses voisins observés (1 m sur phase arrêtée). Avec 1 m en jeu
   // courant, une ligne en retard retenait tout le monde et le porteur gagnait 20 m sans opposition.
-  const avance = arretee ? 1 : 3;
+  // Agressivité : un défenseur agressif monte davantage devant ses voisins (3 m ± 1,5), un prudent reste en retrait ; aux phases arrêtées la loi borne (1 m).
+  const avance = arretee ? 1 : 3 + decalage(lireTraits(me.car).agressivite, 1.5);
   const xTenu = sens > 0 ? Math.min(ligneX, xVoisins + avance) : Math.max(ligneX, xVoisins - avance);
   // Glissement : en jeu courant la ligne se resserre vers le ballon (60 % de l'écart latéral ; à 35 % il restait 5,7 défenseurs devant le porteur contre 7,8 en LEGACY).
   // Je glisse vers le ballon d'autant moins que je vois d'attaquants non marqués À MON EXTÉRIEUR (du côté opposé au
@@ -1986,7 +1994,7 @@ function individualPlacement(beliefs, goalId, playbook, profile = {}, jeuCourant
     vmaxFactor: choix.vmax, reason: choix.reason, candidates: Object.freeze(evalues.map((c) => Object.freeze({ id: c.id, score: +c.score.toFixed(2), valide: c.valide }))) });
 }
 
-module.exports = { individualPlacement, candidatsRenfort, lireCroisee, lireAttaqueAdverse, GAP_MIN };
+module.exports = { individualPlacement, candidatPresse, candidatsDefense, candidatsRenfort, lireCroisee, lireAttaqueAdverse, GAP_MIN };
 
   };
   defs["lineout-call.js"] = function (module, exports, require) {
@@ -2944,7 +2952,19 @@ function bruit(graine, agentId, t, amplitude) {
   return (u - 0.5) * 2 * a;
 }
 
-module.exports = { TRAITS, NEUTRE, K_MAX, C_MAX, POIDS_MIN, POIDS_MAX, AMPLITUDE_BRUIT_MAX, lireTraits, ecart, decalage, multiplicateur, ponderer, amplitudeBruit, bruit };
+// Profil de préférences d'un joueur déformé par son COURAGE (RM4-G48) : s'engager au regroupement (ruck, contestation) et au
+// plaquage d'un essai se pèse davantage chez un joueur courageux, moins chez un timoré. Ne touche que ces trois familles de buts
+// (jamais un poste, jamais une action interdite) ; un courage neutre ou absent renvoie le MÊME profil (objet inchangé).
+const FAMILLES_COURAGE = Object.freeze(['ruck', 'contest', 'defendTry']);
+const C_COURAGE = 0.3;
+function personnaliserProfil(profil, traits) {
+  if (!profil || !traits || traits.courage === NEUTRE) return profil;
+  const out = Object.assign({}, profil);
+  for (const f of FAMILLES_COURAGE) if (typeof profil[f] === 'number') out[f] = ponderer(profil[f], traits.courage, C_COURAGE);
+  return out;
+}
+
+module.exports = { personnaliserProfil, FAMILLES_COURAGE, C_COURAGE, TRAITS, NEUTRE, K_MAX, C_MAX, POIDS_MIN, POIDS_MAX, AMPLITUDE_BRUIT_MAX, lireTraits, ecart, decalage, multiplicateur, ponderer, amplitudeBruit, bruit };
 
   };
   defs["position-goals.js"] = function (module, exports, require) {
