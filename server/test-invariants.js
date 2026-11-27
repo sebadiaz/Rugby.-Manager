@@ -3219,7 +3219,7 @@ test('loi 18 : coup de pied direct en touche, lancer adverse, et pas de terrain 
   assert.ok(Math.abs(m.ruckPoint.x - 40) <= 1, `touche au niveau du point de frappe (40 m), pas du point de sortie (65 m) : ${m.ruckPoint.x.toFixed(1)} m`);
 });
 
-test('coup de pied dans l en-but : le défenseur aplatit (renvoi aux 22 m) ou le chasseur marque', () => {
+test('coup de pied dans l en-but : le défenseur aplatit (renvoi depuis la ligne d essai, loi 12.12b) ou le chasseur marque', () => {
   // P2-93 : un ballon qui roulait jusqu'à la ligne d'en-but s'y arrêtait, et
   // le receveur repartait de là en jeu courant. En vrai, un ballon dans l'en-but
   // est aplati par le défenseur (renvoi aux 22 m, loi 12) ou par un chasseur
@@ -3236,7 +3236,7 @@ test('coup de pied dans l en-but : le défenseur aplatit (renvoi aux 22 m) ou le
       if (avant && !m._ballonEnBut) {
         enBut++;
         const defense = kick === 'A' ? 'B' : 'A';
-        if (m.phase === 'COUP_ENVOI' && m.renvoi22 && m.possession === defense) renvois++;
+        if (m.phase === 'COUP_ENVOI' && m.renvoiEnBut && m.possession === defense) renvois++; // loi 12.12b (BUG-RM-016)
         else if (m.phase === 'ESSAI' && m.score[kick] === s0[kick] + 5) essais++;
         else if (m.phase === 'MELEE') { /* en-avant sur ballon disputé : mêlée */ }
         else autres++;
@@ -3265,8 +3265,8 @@ test('coup de pied dans l en-but : le défenseur aplatit (renvoi aux 22 m) ou le
     const s0 = m.score.A;
     for (let t = 0; t < 20 && m.phase === 'COUP_DE_PIED_JEU'; t += 0.1) m.tick(0.1);
     if (premier === 'defenseur') {
-      assert.ok(m.phase === 'COUP_ENVOI' && m.renvoi22 && m.possession === 'B',
-        `ballon aplati par la défense dans son en-but : renvoi aux 22 m attendu (phase ${m.phase}, possession ${m.possession})`);
+      assert.ok(m.phase === 'COUP_ENVOI' && m.renvoiEnBut && m.possession === 'B',
+        `ballon aplati par la défense dans son en-but : renvoi depuis la ligne d'essai attendu, loi 12.12b (phase ${m.phase}, possession ${m.possession})`);
     } else {
       assert.ok(m.phase === 'ESSAI' && m.score.A === s0 + 5,
         `ballon aplati par un chasseur dans l'en-but : essai attendu (phase ${m.phase}, score ${s0} -> ${m.score.A})`);
@@ -3347,7 +3347,7 @@ test('ballon au sol après un coup de pied : il est ramassé par un joueur arriv
       // En-avant sous la chandelle -> mêlée : le porteur est le n°9 adverse,
       // le ballon rejoint la mêlée à vue (cf. M24, P2-81). Ballon roulé en
       // touche (P2-92) : le porteur est le talonneur qui va lancer. Ballon
-      // aplati dans l'en-but (P2-93) : renvoi aux 22 m, le botteur du renvoi.
+      // aplati dans l'en-but (P2-93) : renvoi depuis la ligne d'essai, le botteur du renvoi.
       if (attente && !m._receptionEnAttente && m.porteur && !['MELEE', 'TOUCHE', 'COUP_ENVOI'].includes(m.phase)) {
         const d = Math.hypot(m.porteur.x - bx, m.porteur.y - by);
         cas++; if (d <= 1.6) propres++; pire = Math.max(pire, d);
@@ -5370,7 +5370,11 @@ test('loi 11 : ballon échappé en arrière à la réception, pas d en-avant ; i
     m._ballonEchappe(rec);
     const bx = m.ballonVolX, by = m.ballonVolY, sens = rec.sensAttaque;
     assert.ok((bx - rec.x) * sens <= 0, 'le ballon tombe derrière le receveur, jamais devant');
-    for (const j of eq) if (j !== rec && (j.x - bx) * sens > 1) assert.ok(j.horsJeuKick > 0, `${j.team}${j.numero} devant le ballon : hors-jeu`);
+    // Loi 10.1 (BUG-RM-015) : hors-jeu = DEVANT LE RECEVEUR qui a joué le ballon en dernier, pas devant le point de rebond.
+    for (const j of eq) if (j !== rec) {
+      if ((j.x - rec.x) * sens > 0) assert.ok(j.horsJeuKick > 0, `${j.team}${j.numero} devant le receveur : hors-jeu`);
+      else assert.strictEqual(j.horsJeuKick, 0, `${j.team}${j.numero} derrière ou à hauteur du receveur : en jeu`);
+    }
     let k = 0, ramasse = null;
     while (m.phase === 'COUP_DE_PIED_JEU' && k++ < 200) { m.tick(0.1); if (m.phase !== 'COUP_DE_PIED_JEU') ramasse = m.porteur; }
     assert.ok(ramasse, 'le ballon est ramassé en moins de 20 s');
@@ -5407,6 +5411,63 @@ test('loi 11 : ballon échappé en arrière à la réception, pas d en-avant ; i
     if (m.possession === fautive) assert.ok(types.some((t) => /PENALITE/.test(t)) || m.avantage, 'ballon perdu au profit du fautif : retour à la faute');
   }
   assert.ok(vus >= 4, 'scénarios avantage joués : ' + vus);
+});
+
+// --- Bilan du 27 novembre 2026 (bugs.md) : BUG-RM-015, 016, 017 -------------------
+function scenePorte(seed, possession) {
+  const m = new MatchEngine(seed, 4800, { personnalites: 'NEUTRE' });
+  for (let t = 0; t < 30; t += 0.1) m.tick(0.1);
+  m.avantage = null; m.passeVisuelle = null; m.penaliteRecul = null; m.penaliteChoix = null; m.combinaison = null; m.toucheRapide = null;
+  m.possession = possession; m.phase = 'PORTE';
+  for (const j of [...m.equipeA, ...m.equipeB]) { j.horsJeuKick = 0; j.auSol = 0; j.sinBin = 0; }
+  return m;
+}
+test('BUG-RM-015 (loi 10.1) : le 9 en soutien derrière le 10 qui échappe le ballon en arrière reste en jeu ; un partenaire devant le 10 est hors-jeu', () => {
+  for (const eq of ['A', 'B']) {
+    const m = scenePorte(4, eq);
+    const sens = eq === 'A' ? 1 : -1, L = eq === 'A' ? m.equipeA : m.equipeB;
+    const dix = L.find((j) => j.numero === 10), neuf = L.find((j) => j.numero === 9), devant = L.find((j) => j.numero === 12);
+    dix.x = 50; dix.y = 35; neuf.x = 50 - sens * 0.2; neuf.y = 35; devant.x = 50 + sens * 3; devant.y = 40;
+    m.porteur = dix;
+    m._ballonEchappe(dix);
+    assert.ok((m.ballonVolX - dix.x) * sens < 0, eq + ' : le ballon rebondit derrière le 10');
+    assert.strictEqual(neuf.horsJeuKick, 0, eq + ' : le 9 juste derrière le 10 est en jeu et peut disputer le ramassage');
+    assert.ok(devant.horsJeuKick > 0, eq + ' : le 12 devant le 10 est hors-jeu jusqu\'à sa remise en jeu');
+  }
+});
+test('BUG-RM-016 (loi 12.12b) : coup de pied à suivre aplati par la défense -> renvoi depuis la ligne d essai, dans les deux camps', () => {
+  for (const [kick, def] of [['A', 'B'], ['B', 'A']]) {
+    const m = scenePorte(5, kick);
+    const sens = kick === 'A' ? 1 : -1, ligne = kick === 'A' ? LONGUEUR : 0;
+    const botteur = (kick === 'A' ? m.equipeA : m.equipeB).find((j) => j.numero === 10);
+    botteur.x = ligne - sens * 15; botteur.y = 35; m.porteur = botteur;
+    m._tenterCoupDePiedJeu(botteur, 'CHIP');
+    m.cibleCoupDePiedX = ligne + sens * 2; m.cibleCoupDePiedY = 35;
+    for (const j of [...m.equipeA, ...m.equipeB]) { j.x = 50; j.y = 10 + (j.numero % 15) * 3; j.horsJeuKick = 0; }
+    const arriere = (def === 'A' ? m.equipeA : m.equipeB).find((j) => j.numero === 15);
+    arriere.x = ligne - sens * 3; arriere.y = 35;
+    const types = []; const log = m.log.bind(m); m.log = (t, ...r) => { types.push(t); return log(t, ...r); };
+    for (let t = 0; t < 20 && m.phase === 'COUP_DE_PIED_JEU'; t += 0.1) m.tick(0.1);
+    assert.ok(types.includes('EN_BUT_APLATI'), kick + ' : la défense aplatit (' + types.join(' ') + ')');
+    assert.ok(!types.includes('RENVOI_22'), kick + ' : pas de renvoi aux 22 m');
+    assert.ok(m.phase === 'COUP_ENVOI' && m.renvoiEnBut && m.possession === def, `${kick} : renvoi d'en-but par ${def} (phase ${m.phase}, possession ${m.possession})`);
+  }
+});
+test('BUG-RM-017 (loi 18) : une touche rapide ne part jamais vers l avant ; à hauteur ou en retrait, elle est jouée', () => {
+  for (const eq of ['A', 'B']) {
+    const sens = eq === 'A' ? 1 : -1;
+    for (const [nom, dx, attendu] of [['devant', 1.5, false], ['à hauteur', 0, true], ['en retrait', -3, true]]) {
+      const m = scenePorte(4, eq);
+      const L = eq === 'A' ? m.equipeA : m.equipeB, adv = eq === 'A' ? m.equipeB : m.equipeA;
+      for (const j of [...L, ...adv]) { j.x = 40 - sens * 30; j.y = 50; }
+      const lanceur = L.find((j) => j.numero === 11), cible = L.find((j) => j.numero === 2);
+      lanceur.x = 40; lanceur.y = 0.5; cible.x = 40 + sens * dx; cible.y = 8;
+      m.toucheRapide = { equipe: eq, lanceur, x: 40, y: 0, t: 0 };
+      const joue = m._tickToucheRapide(0.1);
+      assert.strictEqual(!!joue, attendu, `${eq}, partenaire ${nom} : touche rapide ${attendu ? 'jouée' : 'refusée'}`);
+      if (attendu) assert.strictEqual(m.porteur, cible);
+    }
+  }
 });
 
 console.log(`\n${nbTests} test(s) exécuté(s).`);

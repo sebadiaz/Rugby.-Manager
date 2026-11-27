@@ -118,9 +118,11 @@ Implémenté (`_nouvelleManche`, `_tickCoupEnvoi`, phase `COUP_ENVOI`) :
   envoyé directement en touche (seule la conséquence « mêlée au centre » est
   modélisée, pas le choix entre les deux), pas de cas spécifique pour un
   coup d'envoi qui atterrit directement dans l'en-but.
-- ❌ **Non implémenté : le « goal-line drop-out »**, remise en jeu depuis la
-  ligne d'en-but (distincte du 22 m drop-out) après certaines actions
-  d'attaque bloquées dans l'en-but adverse. Écart connu, non traité ici.
+- ✅ **Renvoi depuis la ligne d'essai (loi 12.12)** : ballon tenu dans
+  l'en-but (P2-99) et coup de pied d'attaque en jeu courant aplati par la
+  défense dans son en-but (BUG-RM-016, loi 12.12b). Le renvoi aux 22 m
+  (loi 12.11) reste réservé à une pénalité ou un drop manqués aplatis ou
+  rendus morts dans l'en-but.
 - ⚠️ Changement de camp à la mi-temps : non modélisé (les deux équipes
   continuent d'attaquer dans le même sens après la pause), volontairement
   hors du périmètre de cette correction centrée sur la loi 12 (qui régit le

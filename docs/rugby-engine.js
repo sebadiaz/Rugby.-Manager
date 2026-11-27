@@ -2417,7 +2417,8 @@
       const sens = R.equipe === 'A' ? 1 : -1;
       const receveurs = eq.filter(j => j !== L && j.auSol === 0 && j.sinBin <= 0
         && Math.abs(j.y - R.y) >= 5
-        && (j.x - R.x) * sens <= 2
+        // Loi 18 : la remise rapide ne va jamais vers l'en-but adverse — partenaire à hauteur ou en retrait (BUG-RM-017).
+        && (j.x - R.x) * sens <= 0
         && Math.hypot(j.x - R.x, j.y - R.y) <= 20
         && !adv.some(d => d.auSol === 0 && d.sinBin <= 0 && distance(d, j) < 5));
       this.toucheRapide = null;
@@ -5159,10 +5160,13 @@
       this.log('BALLON_ECHAPPE', equipe,
         `Le n°${receveur.numero} de l'equipe ${equipe} echappe le ballon en arriere : pas d'en-avant, ballon au sol, le jeu continue`,
         { joueur: receveur.numero });
+      // Loi 10.1 : est hors-jeu le partenaire DEVANT le joueur qui a joué le ballon en dernier, au moment où il l'a joué —
+      // donc devant le RECEVEUR (BUG-RM-015), pas devant le point de rebond : le 9 en soutien juste derrière le 10 reste en
+      // jeu et peut disputer le ramassage. Le hors-jeu se replie derrière le receveur.
       for (const j of (equipe === 'A' ? this.equipeA : this.equipeB)) {
         if (j === receveur) { j.horsJeuKick = 0; continue; }
-        j.horsJeuKick = (j.x - x) * sens > 1 ? DUREE_HORS_JEU_KICK : 0;
-        j.horsJeuKickX = x;
+        j.horsJeuKick = (j.x - receveur.x) * sens > 0 ? DUREE_HORS_JEU_KICK : 0;
+        j.horsJeuKickX = receveur.x;
       }
       this.porteur = receveur;
       this.typeCoupDePiedJeu = 'BALLON_ECHAPPE';
@@ -5440,7 +5444,7 @@
     // Ballon dans l'en-but de l'équipe qui reçoit le coup de pied (P2-93). Les
     // joueurs ne franchissent pas la ligne dans ce moteur : le ballon est posé
     // à 0,8 m derrière elle, à portée de bras, et le premier arrivé décide —
-    // le défenseur aplatit (renvoi aux 22 m, loi 12), le chasseur marque
+    // le défenseur aplatit (renvoi depuis la ligne d'essai, loi 12.12b), le chasseur marque
     // (essai sur coup de pied à suivre, loi 8).
     _entrerEnBut() {
       const ligne = this.ballonVolX < LONGUEUR / 2 ? 0 : LONGUEUR;
@@ -5640,11 +5644,11 @@
       // BALLON DANS L'EN-BUT (P2-93) : le premier arrivé l'aplatit.
       if (enBut) {
         if (joueur.team === enBut.defense) {
-          // Loi 12 : ballon botté par l'attaque et aplati par la défense dans
-          // son en-but -> renvoi aux 22 m par la défense.
+          // Loi 12.12b : un coup de pied d'attaque en jeu courant aplati par la défense dans son en-but -> renvoi depuis la
+          // LIGNE D'ESSAI par la défense (BUG-RM-016). Le renvoi aux 22 m (12.11) est réservé à une pénalité ou un drop manqués.
           this.log('EN_BUT_APLATI', joueur.team,
-            `Le n°${joueur.numero} de l'equipe ${joueur.team} aplatit dans son en-but : renvoi aux 22 m`);
-          this._nouvelleManche(equipeKick, enBut.ligne === 0 ? 22 : LONGUEUR - 22);
+            `Le n°${joueur.numero} de l'equipe ${joueur.team} aplatit dans son en-but : renvoi depuis la ligne d'essai`);
+          this._nouvelleManche(equipeKick, enBut.ligne === 0 ? 0 : LONGUEUR);
           return;
         }
         // Loi 8 : un chasseur en position régulière aplatit le premier -> essai.
