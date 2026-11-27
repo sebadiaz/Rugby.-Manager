@@ -125,12 +125,15 @@ test('G52 : tirage déterministe (même graine, mêmes traits), différent d\'un
   for (const j of a.equipeA.concat(a.equipeB)) for (const k of P.TRAITS) assert.ok(j.car[k] >= 5 && j.car[k] <= 95, `${j.team}${j.numero}.${k} = ${j.car[k]}`);
 });
 
-test('G52 : le tirage ne consomme pas le générateur du match : le déroulé LEGACY est identique avec ou sans tirage', () => {
-  const sig = (m) => JSON.stringify([m.score, m.stats, [...m.equipeA, ...m.equipeB].map((j) => [+j.x.toFixed(3), +j.y.toFixed(3)])]);
-  for (const seed of [1, 2]) {
-    const a = new MatchEngine(seed, 4800); a.jouerJusquAuSifflet(0.1);
-    const b = new MatchEngine(seed, 4800, { personnalites: 'NEUTRE' }); b.jouerJusquAuSifflet(0.1);
-    assert.strictEqual(sig(a), sig(b), 'graine ' + seed);
+test('G52 : le tirage ne consomme pas le générateur du match : même état initial et même suite aléatoire avec ou sans tirage', () => {
+  // Depuis G47b, la concentration tirée agit sur la résolution MOTEUR des fautes de main dans tous les modes (c'est une
+  // caractéristique du joueur) : le déroulé d'un match LEGACY change donc avec le tirage, comme voulu. La propriété garantie
+  // reste que le tirage ne CONSOMME PAS le générateur : composition, attributs tirés et suite des nombres aléatoires identiques.
+  const base = (m) => JSON.stringify([...m.equipeA, ...m.equipeB].map((j) => [j.numero, j.x, j.y, j.vitesse, j.plaquage]));
+  for (const seed of [1, 2, 7]) {
+    const a = new MatchEngine(seed, 4800), b = new MatchEngine(seed, 4800, { personnalites: 'NEUTRE' });
+    assert.strictEqual(base(a), base(b), 'état initial, graine ' + seed);
+    for (let k = 0; k < 20; k++) assert.strictEqual(a.rng(), b.rng(), `tirage ${k}, graine ${seed}`);
   }
 });
 
@@ -393,6 +396,41 @@ test('PERS-06 (buts) : soutien du porteur, sécurisation du ruck et couverture d
   assert.strictEqual(opt(10), opt(90), 'option de passe : indépendante de l\'esprit d\'équipe');
 });
 
+
+// --- RM4-G47b : concentration ---
+const { LocalCommunication } = require('../engine/ai/local-communication.js');
+test('PERS-12 (écoute) : la concentration règle la portée d\'écoute ; neutre, élevée ou absente = 1 ; monotone', () => {
+  for (const v of [50, 70, 100, undefined, null, NaN]) assert.strictEqual(P.ecoute(v), 1, 'écoute ' + v);
+  assert.ok(Math.abs(P.ecoute(0) - (1 - P.C_ECOUTE)) < 1e-12);
+  let prec = 0;
+  for (let v = 0; v <= 50; v += 5) { const e = P.ecoute(v); assert.ok(e >= prec, 'monotone'); prec = e; }
+});
+test('PERS-12 (appel manqué) : à la même distance, un joueur distrait n\'entend pas l\'appel qu\'un joueur concentré entend', () => {
+  const entend = (conc) => {
+    const m = new MatchEngine(1, 4800, { personnalites: 'NEUTRE', joueursA: { 10: { caracteristiques: conc == null ? {} : { concentration: conc } } } });
+    const e = JSON.parse(JSON.stringify(m.getAgentState ? m.getAgentState() : m.getState()));
+    e.tempsMatch = 10; // instant d'observation arbitraire (copie de l'état) : l'appel a eu le temps de se propager
+    const moi = e.equipeA.find((j) => j.numero === 10);
+    const com = new LocalCommunication();
+    // Le 9 crie « Ballon ! » (portée 17 m) à 13 m du 10, une seconde avant l'instant observé.
+    com.emit({ speakerId: 'A9', team: 'A', kind: 'BALL', x: moi.x - 13, y: moi.y, time: e.tempsMatch - 0.5 });
+    const ctx = new AgentContext({ team: 'A', numero: 10 }, { reactionDelay: 0 });
+    ctx.update(e, com);
+    return ctx.heard.some((h) => h.kind === 'BALL');
+  };
+  assert.strictEqual(entend(null), true, 'sans trait : entendu (comportement inchangé)');
+  assert.strictEqual(entend(50), true, 'neutre : entendu');
+  assert.strictEqual(entend(90), true, 'concentré : entendu');
+  assert.strictEqual(entend(5), false, 'distrait (5) : portée 17 × 0,64 ≈ 11 m < 13 m, appel manqué');
+});
+test('PERS-12 (moteur) : l\'inattention ne modifie le risque de faute de main que selon la concentration du joueur ; neutre = 1', () => {
+  assert.strictEqual(E.inattention({ car: {} }), 1);
+  assert.strictEqual(E.inattention({}), 1);
+  assert.strictEqual(E.inattention({ car: { concentration: 50 } }), 1);
+  assert.ok(E.inattention({ car: { concentration: 10 } }) > 1.2);
+  assert.ok(E.inattention({ car: { concentration: 90 } }) < 0.8);
+  assert.ok(Math.abs(E.inattention({ car: { concentration: 10 } }) + E.inattention({ car: { concentration: 90 } }) - 2) < 1e-12, 'symétrique : moyenne 1 sur une équipe tirée au hasard');
+});
 console.log(`\n${nb} test(s) exécuté(s).`);
 if (ko) { console.error(`ECHEC : ${ko} test(s) en échec.`); process.exit(1); }
 console.log('OK : personnalité des agents (neutre = aucun effet, déterminisme, G46 : altruisme, égoïsme, prise de risque du porteur).');

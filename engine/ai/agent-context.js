@@ -18,6 +18,7 @@
 'use strict';
 
 const { observe, normaliserParams } = require('./perception.js');
+const { ecoute } = require('./personality.js');
 
 const DEFAUTS_CONTEXTE = Object.freeze({ reactionDelay: 0.2, memorySeconds: 6 });
 
@@ -86,7 +87,9 @@ class AgentContext {
     // Proprioception : on connaît toujours sa propre position exacte.
     if (comm) {
       const entendus = comm.hear({ listenerId: this.id, team: this.agent.team, x: moi.x, y: moi.y, time: t,
-        available: !(moi.auSol > 0) && !(moi.sinBin > 0) });
+        available: !(moi.auSol > 0) && !(moi.sinBin > 0),
+        // Concentration (RM4-G47b) : un joueur distrait n'entend un appel que de plus près ; neutre ou absent : portée inchangée.
+        hearing: ecoute(moi.car ? moi.car.concentration : null) });
       for (const h of entendus) this.heard.push(h);
     }
     const mem = this.params.memorySeconds;

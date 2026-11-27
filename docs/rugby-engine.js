@@ -553,7 +553,7 @@
   }
   // PERSONNALITÉ INITIALE (RM4-G52, docs/SIMULATION_V4/16_PERSONNALITE_DES_AGENTS.md) : chaque joueur reçoit, pour chaque trait non
   // fourni, une valeur TIRÉE AU HASARD de façon stable : fonction pure de (graine du match, équipe, numéro de maillot, identité
-  // éventuelle, trait). Elle ne consomme PAS le générateur du match (le déroulé LEGACY reste identique) et reste la même à chaque
+  // éventuelle, trait). Elle ne consomme PAS le générateur du match (composition et suite aléatoire identiques ; depuis G47b la concentration tirée change en revanche la résolution des fautes de main, LEGACY compris) et reste la même à chaque
   // reprise de jeu. Le numéro ne sert que de clé de tirage : AUCUNE valeur n'est attachée à un poste (moyenne ~50 à tous les
   // numéros, vérifié par test). Loi gaussienne de moyenne 50 et d'écart-type 15, bornée à [5, 95] ; l'égoïsme est anti-corrélé à
   // l'altruisme (un joueur très altruiste est rarement très égoïste). `config.personnalites: 'NEUTRE'` désactive le tirage (tests).
@@ -573,6 +573,13 @@
     for (const t of TRAITS_PERSONNALITE) v[t] = Math.max(5, Math.min(95, 50 + 15 * gaussien(base + '|' + t)));
     v.egoisme = Math.max(5, Math.min(95, 100 - v.altruisme + 12 * gaussien(base + '|egoisme-ecart')));
     return v;
+  }
+  // INATTENTION (RM4-G47b) : facteur appliqué par le MOTEUR au risque d'une faute de main d'inattention (en-avant au contact,
+  // ballon échappé à la réception) du joueur concerné, selon SA concentration : 1 ± 0,35, neutre (50) ou absente = 1 (risque
+  // inchangé). Résultat tiré par le moteur, jamais écrit par l'agent ; moyenne ~1 sur une équipe au caractère tiré au hasard.
+  function inattention(j) {
+    const c = j && j.car ? j.car.concentration : null;
+    return typeof c === 'number' && Number.isFinite(c) ? 1 + 0.35 * Math.max(-1, Math.min(1, (50 - c) / 50)) : 1;
   }
   function appliquerCaracteristiques(j, c, graine) {
     const tirage = graine == null ? null : tirerPersonnalite(graine, j.team, j.numero, c && (c.joueurId != null ? c.joueurId : c.id));
@@ -3408,7 +3415,7 @@
         // taux est PAR PLAQUAGE : il a ete remonte une seconde fois (0,028 ->
         // 0,034) quand le nombre de plaquages par match a baisse vers le reel,
         // pour garder le total de fautes de main dans sa fourchette.
-        if (this.rng() < 0.040 * facteurDecision) {
+        if (this.rng() < 0.040 * facteurDecision * inattention(porteur)) {
           this.stats[this.possession].knockOns++;
           this._statJoueur(this.porteur).enAvants++;
           this.log('MELEE_ENAVANT', this.possession, `En-avant au contact, equipe ${this.possession} - melee adverse`);
@@ -5040,7 +5047,8 @@
         ? Math.max(-0.02, Math.min(0.015, (porteur.passe - 60) * 0.0003)) : 0;
       const probaReussite = Math.max(0.94, Math.min(0.999,
         Math.max(0.97, Math.min(0.998, 1.0 - distancePasse / 1500)) + skillPasse));
-      if (this.rng() < probaReussite) {
+      // Réception : un receveur distrait échappe plus souvent le ballon (inattention : risque d'échec × 1 ± 0,35).
+      if (this.rng() < 1 - (1 - probaReussite) * inattention(cible)) {
         this.stats[this.possession].passes++;
         this._statJoueur(porteur).passes++;
         // FIXAGE / SURNOMBRE : si le passeur (n'importe qui, 9 compris — sa
@@ -5528,7 +5536,7 @@
           `Chandelle disputee : le n°${joueur.numero} de l'equipe ${joueur.team} s'eleve au milieu de la chasse`);
         const mains = typeof joueur.passe === 'number'
           ? Math.max(0.5, Math.min(1.6, 1 + (60 - joueur.passe) / 90)) : 1;
-        if (this.rng() < 0.12 * mains) {
+        if (this.rng() < 0.12 * mains * inattention(joueur)) {
           this.stats[joueur.team].knockOns++;
           this._statJoueur(joueur).enAvants++;
           this.log('MELEE_ENAVANT', joueur.team,
@@ -9804,7 +9812,7 @@
   // en supprimant la sanction de la passe en avant, la suite restait verte
   // parce que le seul test concerne ne posait qu'une borne HAUTE (« pas plus
   // de 4 passes en avant par match »), satisfaite a zero.
-  return { MatchEngine, Referee, LONGUEUR, LARGEUR, creerRng, distance, DEFAULT_CONFIG, fusionnerConfig, TRAITS_PERSONNALITE,
+  return { MatchEngine, Referee, LONGUEUR, LARGEUR, creerRng, distance, DEFAULT_CONFIG, fusionnerConfig, TRAITS_PERSONNALITE, inattention,
     tirerSauteurPondere, forceTouche, probaVolTouche, COEF_LISIBILITE_TOUCHE,
     effetPousseeMelee, dureeSortieRuck, GAIN_SERVICE_RAPIDE_RUCK,
     CHRONOLOGIE_MAX, TYPES_CHRONOLOGIE, organiserAvantsRuck };
