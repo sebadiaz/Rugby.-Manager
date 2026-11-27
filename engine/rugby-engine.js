@@ -581,6 +581,14 @@
     const c = j && j.car ? j.car.concentration : null;
     return typeof c === 'number' && Number.isFinite(c) ? 1 + 0.35 * Math.max(-1, Math.min(1, (50 - c) / 50)) : 1;
   }
+  // DIRECTION D'UN BALLON ÉCHAPPÉ À LA RÉCEPTION (loi 11) : probabilité qu'il parte VERS L'AVANT (en-avant). Hypothèse de
+  // départ à calibrer : 0,7 pour une réception moyenne (60) ; un receveur aux mains sûres garde plus souvent le ballon contre
+  // lui ou le laisse filer en arrière, un receveur maladroit le repousse devant lui. Bornée à [0,5 ; 0,85].
+  const P_ECHAPPE_AVANT = 0.7;
+  function probaEchappeVersAvant(j) {
+    const r = j && j.car && typeof j.car.receptionPasse === 'number' ? j.car.receptionPasse : 60;
+    return Math.max(0.5, Math.min(0.85, P_ECHAPPE_AVANT - (r - 60) / 200));
+  }
   function appliquerCaracteristiques(j, c, graine) {
     const tirage = graine == null ? null : tirerPersonnalite(graine, j.team, j.numero, c && (c.joueurId != null ? c.joueurId : c.id));
     j.car = caracteristiquesDetaillees(j, c && c.caracteristiques, tirage);
@@ -2473,7 +2481,9 @@
       // ensuite de camp sur la réception — sinon on reviendrait à la pénalité
       // alors qu'elle a délibérément choisi de jouer (et on téléporterait le
       // buteur sur la marque en plein vol de balle).
-      if (this.phase === 'COUP_DE_PIED_JEU' || this.ballonEnVol
+      // Un ballon ÉCHAPPÉ en arrière (loi 11) n'est pas un avantage joué : il passe par la même mécanique de ballon au sol
+      // qu'un coup de pied, mais personne n'a choisi de jouer (loi 7 : avantage réel et clair) ; s'il est perdu, retour à la faute.
+      if ((this.phase === 'COUP_DE_PIED_JEU' && this.typeCoupDePiedJeu !== 'BALLON_ECHAPPE') || this.ballonEnVol
         || this.phase === 'ESSAI' || this.phase === 'TRANSFORMATION' || this.phase === 'PENALITE_TIR') {
         this.avantage = null;
         this.log('AVANTAGE_JOUE', a.equipeBeneficiaire, `Avantage joue pour l'equipe ${a.equipeBeneficiaire}`);
@@ -5095,13 +5105,50 @@
         this.porteur = cible;
         this._receptionDirecte = false;
         this._neufLibre = false; // le ballon a quitté le 9 : la fenêtre de décision de sortie est close
-      } else {
+      } else if (this.rng() < probaEchappeVersAvant(cible)) {
+        // LOI 11 : le ballon échappé part VERS L'AVANT -> en-avant, mêlée pour l'adversaire.
         this.stats[this.possession].knockOns++;
         this._statJoueur(cible).enAvants++;
         this.log('PASSE_RATEE', this.possession, `Passe ratee, equipe ${this.possession} - melee adverse`);
         this._accorderMelee(this.possession, cible);
+      } else {
+        // LOI 11 : échappé en ARRIÈRE ou sur le côté, ce n'est PAS un en-avant : le ballon reste au sol, en jeu.
+        this._ballonEchappe(cible);
       }
       return true;
+    }
+
+    // BALLON ÉCHAPPÉ EN ARRIÈRE (loi 11 : seul un ballon perdu vers l'avant est un en-avant). Le ballon tombe juste
+    // derrière le receveur et reste EN JEU : personne n'est posé dessus, les plus proches des deux camps courent le
+    // ramasser (même mécanique que le ballon au sol après un coup de pied : _tickReceptionCoupDePied) et le premier
+    // arrivé repart avec. Les partenaires DEVANT le ballon sont hors-jeu (loi 10) : ils se replient et ne le jouent pas.
+    _ballonEchappe(receveur) {
+      const equipe = receveur.team, sens = receveur.sensAttaque;
+      // Le ballon rebondit de 1,5 à 3,5 m en arrière (et un peu de côté) : il faut courir le ramasser, rien n'est collé au receveur.
+      const recul = 1.5 + this.rng() * 2, cote = (this.rng() - 0.5) * 2;
+      const x = Math.max(0.5, Math.min(LONGUEUR - 0.5, receveur.x - sens * recul));
+      const y = Math.max(1, Math.min(LARGEUR - 1, receveur.y + cote));
+      this.log('BALLON_ECHAPPE', equipe,
+        `Le n°${receveur.numero} de l'equipe ${equipe} echappe le ballon en arriere : pas d'en-avant, ballon au sol, le jeu continue`,
+        { joueur: receveur.numero });
+      for (const j of (equipe === 'A' ? this.equipeA : this.equipeB)) {
+        if (j === receveur) { j.horsJeuKick = 0; continue; }
+        j.horsJeuKick = (j.x - x) * sens > 1 ? DUREE_HORS_JEU_KICK : 0;
+        j.horsJeuKickX = x;
+      }
+      this.porteur = receveur;
+      this.typeCoupDePiedJeu = 'BALLON_ECHAPPE';
+      this.equipeCoupDePiedJeu = equipe;
+      this.xCoupDePiedJeu = x; this.yCoupDePiedJeu = y;
+      this.cibleCoupDePiedX = x; this.cibleCoupDePiedY = y;
+      this.ballonEnVol = false;
+      this.ballonVolX = x; this.ballonVolY = y; this.ballonVolHauteur = 0;
+      this._receptionEnAttente = true;
+      this.timerReceptionAuSol = 0;
+      this._rouleBallon = null;
+      this._ballonEnBut = null;
+      this.phase = 'COUP_DE_PIED_JEU';
+      this.timerPhase = 0;
     }
 
     // Sélectionne le type de coup de pied tactique selon la zone (déjà
@@ -5517,7 +5564,10 @@
         chasseurGagne = false;
       } else {
         const contestable = type === 'CHANDELLE' || type === 'CHIP' || type === 'PASSE_PIED';
-        const probaChasseurGagne = contestable
+        // Ballon échappé en arrière : un ballon libre au sol, le plus près a l'avantage, sans prime au camp qui « reçoit ».
+        const probaChasseurGagne = type === 'BALLON_ECHAPPE'
+          ? Math.max(0.1, Math.min(0.9, 0.5 - (dChasseur - dReceveur) / 4))
+          : contestable
           ? Math.max(0.15, Math.min(0.55, 0.4 - (dChasseur - dReceveur) / 20))
           : Math.max(0.03, Math.min(0.2, 0.08 - (dChasseur - dReceveur) / 30));
         chasseurGagne = this.rng() < probaChasseurGagne;
@@ -5547,7 +5597,13 @@
       }
       // Coup de pied REGAGNÉ : l'équipe qui a botté récupère son propre coup de
       // pied (motif discriminant de l'étude).
-      if (chasseurGagne) this.stats[equipeKick].kicksRegagnes++;
+      if (chasseurGagne && type !== 'BALLON_ECHAPPE') this.stats[equipeKick].kicksRegagnes++;
+      // Ballon échappé ramassé par l'adversaire : c'est un ballon perdu (turnover), comme une interception.
+      if (type === 'BALLON_ECHAPPE' && joueur.team !== equipeKick) {
+        this.stats[equipeKick].turnoversConcedes++;
+        this.stats[joueur.team].turnovers++;
+        this._statJoueur(joueur).turnoversGagnes++;
+      }
       // BALLON DANS L'EN-BUT (P2-93) : le premier arrivé l'aplatit.
       if (enBut) {
         if (joueur.team === enBut.defense) {
@@ -5585,7 +5641,8 @@
       // touché le sol. Ici, au-delà de 0,35 s après la chute (le ballon a rebondi ou roulé),
       // le joueur ne fait que ramasser : il n'y a pas de marque possible.
       const receptionDirecte = this.timerReceptionAuSol <= 0.35;
-      if (!chasseurGagne && receptionDirecte && distPropreLigne <= 22
+      // Pas de marque sur un ballon échappé par un adversaire : ce n'est pas un coup de pied (loi 17).
+      if (type !== 'BALLON_ECHAPPE' && !chasseurGagne && receptionDirecte && distPropreLigne <= 22
         && this.rng() < probaMarque(joueur, TAUX_MARQUE, dChasseur)) {
         this._traiterCoupFranc(joueur.team, { x: joueur.x, y: joueur.y }, null, 'marque');
         return;
@@ -9812,7 +9869,7 @@
   // en supprimant la sanction de la passe en avant, la suite restait verte
   // parce que le seul test concerne ne posait qu'une borne HAUTE (« pas plus
   // de 4 passes en avant par match »), satisfaite a zero.
-  return { MatchEngine, Referee, LONGUEUR, LARGEUR, creerRng, distance, DEFAULT_CONFIG, fusionnerConfig, TRAITS_PERSONNALITE, inattention,
+  return { MatchEngine, Referee, LONGUEUR, LARGEUR, creerRng, distance, DEFAULT_CONFIG, fusionnerConfig, TRAITS_PERSONNALITE, inattention, probaEchappeVersAvant,
     tirerSauteurPondere, forceTouche, probaVolTouche, COEF_LISIBILITE_TOUCHE,
     effetPousseeMelee, dureeSortieRuck, GAIN_SERVICE_RAPIDE_RUCK,
     CHRONOLOGIE_MAX, TYPES_CHRONOLOGIE, organiserAvantsRuck };

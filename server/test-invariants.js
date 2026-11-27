@@ -5343,7 +5343,69 @@ test('renvoi aux 22 m et d en-but : la reprise ne dépend jamais du plafond de 4
   assert.ok(pire < 25, `un renvoi a pris ${pire.toFixed(1)} s avant la frappe`);
 });
 
+// --- Loi 11 : ballon échappé à la réception d'une passe -----------------------
+// Seul un ballon perdu VERS L'AVANT est un en-avant (mêlée adverse). Échappé en arrière, il reste en jeu : les joueurs
+// courent le ramasser (pas de téléportation), les partenaires devant le ballon sont hors-jeu (loi 10).
+test('loi 11 : ballon échappé en arrière à la réception, pas d en-avant ; il reste en jeu et le plus près le ramasse en courant', () => {
+  const p = require('../engine/rugby-engine.js').probaEchappeVersAvant;
+  assert.ok(Math.abs(p({ car: { receptionPasse: 60 } }) - 0.7) < 1e-12 && Math.abs(p({}) - 0.7) < 1e-12, 'réception moyenne : 0,7');
+  assert.ok(p({ car: { receptionPasse: 95 } }) < p({ car: { receptionPasse: 30 } }), 'mains sûres : moins souvent vers l avant');
+  for (const r of [0, 20, 50, 80, 100]) { const v = p({ car: { receptionPasse: r } }); assert.ok(v >= 0.5 && v <= 0.85, 'bornée : ' + v); }
+  let essais = 0;
+  for (let seed = 1; seed <= 6; seed++) {
+    const m = new MatchEngine(seed, 4800, { personnalites: 'NEUTRE' });
+    let n = 0;
+    while (m.phase !== 'PORTE' && n++ < 3000) m.tick(0.1);
+    if (m.phase !== 'PORTE' || !m.porteur) continue;
+    essais++;
+    const eq = m.possession === 'A' ? m.equipeA : m.equipeB;
+    const rec = eq.find((j) => j !== m.porteur) || m.porteur;
+    const kn = m.stats.A.knockOns + m.stats.B.knockOns, melees = m.stats.A.scrums + m.stats.B.scrums;
+    const types = []; const log = m.log.bind(m); m.log = (t, ...r) => { types.push(t); return log(t, ...r); };
+    m._ballonEchappe(rec);
+    const bx = m.ballonVolX, by = m.ballonVolY, sens = rec.sensAttaque;
+    assert.ok((bx - rec.x) * sens <= 0, 'le ballon tombe derrière le receveur, jamais devant');
+    for (const j of eq) if (j !== rec && (j.x - bx) * sens > 1) assert.ok(j.horsJeuKick > 0, `${j.team}${j.numero} devant le ballon : hors-jeu`);
+    let k = 0, ramasse = null;
+    while (m.phase === 'COUP_DE_PIED_JEU' && k++ < 200) { m.tick(0.1); if (m.phase !== 'COUP_DE_PIED_JEU') ramasse = m.porteur; }
+    assert.ok(ramasse, 'le ballon est ramassé en moins de 20 s');
+    assert.ok(Math.hypot(ramasse.x - bx, ramasse.y - by) <= 1.6, `ramassé au contact du ballon, pas à distance (${Math.hypot(ramasse.x - bx, ramasse.y - by).toFixed(2)} m)`);
+    assert.ok(!types.includes('MELEE') && !types.includes('PASSE_RATEE'), 'pas de mêlée ni d en-avant : ' + types.slice(0, 4).join(' '));
+    assert.strictEqual(m.stats.A.knockOns + m.stats.B.knockOns, kn, 'aucun en-avant compté');
+    assert.strictEqual(m.stats.A.scrums + m.stats.B.scrums, melees, 'aucune mêlée');
+    assert.strictEqual(m.possession, ramasse.team, 'le ramasseur a le ballon');
+  }
+  assert.ok(essais >= 4, 'scénarios joués : ' + essais);
+  // Loi 7 : un avantage en cours n'est PAS déclaré joué parce que le ballon a été échappé ; si l'adversaire (fautif)
+  // ramasse, l'arbitre revient à la faute.
+  let vus = 0;
+  for (let seed = 1; seed <= 12; seed++) {
+    const m = new MatchEngine(seed, 4800, { personnalites: 'NEUTRE' });
+    let n = 0;
+    while (m.phase !== 'PORTE' && n++ < 3000) m.tick(0.1);
+    if (m.phase !== 'PORTE' || !m.porteur || m.avantage) continue;
+    const ben = m.possession, fautive = ben === 'A' ? 'B' : 'A';
+    m._jouerAvantage('PENALITE', fautive, ben, { x: m.porteur.x, y: m.porteur.y }, 'test');
+    const types = []; const log = m.log.bind(m); m.log = (t, ...r) => { types.push(t); return log(t, ...r); };
+    const eq = ben === 'A' ? m.equipeA : m.equipeB;
+    // Receveur réaliste : le partenaire le plus proche du porteur, à sa hauteur ou derrière lui (une passe ne va pas en avant).
+    const sensB = ben === 'A' ? 1 : -1;
+    const derriere = eq.filter((j) => j !== m.porteur && (j.x - m.porteur.x) * sensB <= 0);
+    if (!derriere.length) continue;
+    const dP = (j) => Math.hypot(j.x - m.porteur.x, j.y - m.porteur.y);
+    m._ballonEchappe(derriere.reduce((b, j) => (dP(j) < dP(b) ? j : b)));
+    let k = 0;
+    while (m.phase === 'COUP_DE_PIED_JEU' && k++ < 200) m.tick(0.1);
+    vus++;
+    const iJoue = types.indexOf('AVANTAGE_JOUE');
+    assert.ok(iJoue < 0 || types.slice(0, iJoue).some((t) => t !== 'BALLON_ECHAPPE'), 'avantage déclaré joué sur le seul ballon échappé : ' + types.slice(0, 4).join(' '));
+    if (m.possession === fautive) assert.ok(types.some((t) => /PENALITE/.test(t)) || m.avantage, 'ballon perdu au profit du fautif : retour à la faute');
+  }
+  assert.ok(vus >= 4, 'scénarios avantage joués : ' + vus);
+});
+
 console.log(`\n${nbTests} test(s) exécuté(s).`);
+
 if (process.exitCode) {
   console.error('ECHEC : au moins un invariant violé.');
 } else {

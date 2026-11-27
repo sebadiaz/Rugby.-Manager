@@ -8,13 +8,16 @@ const V={}, N={}; const viol=(k,msg)=>{ V[k]=(V[k]||0)+1; (V[k+'_ex']=V[k+'_ex']
 const ok=(k)=>{N[k]=(N[k]||0)+1;};
 const tous=()=>m.equipeA.concat(m.equipeB);
 const sensDe=(eq)=>eq==='A'?1:-1;
-let dernierFaute=null, avantageOuvert=null, essaiAttente=null, ptsAvant={A:0,B:0};
+let echappe=null, dernierFaute=null, avantageOuvert=null, essaiAttente=null, ptsAvant={A:0,B:0};
 const l=m.log.bind(m);
 m.log=(t,e,msg,d)=>{
   const sens=sensDe(e);
   if(t==='PASSE'&&d){ const eq=e==='A'?m.equipeA:m.equipeB; const p=eq.find(j=>j.numero===d.de), r=eq.find(j=>j.numero===d.vers);
     if(p&&r){ ok('passes'); if((r.x-p.x)*sens>3) viol('L11 passe vers l\'avant acceptée (>3 m)',`${e}${d.de}->${d.vers} +${((r.x-p.x)*sens).toFixed(1)} m`);} }
   if(t==='MELEE_AVANT'||t==='MELEE_ENAVANT'||t==='PASSE_RATEE'){ dernierFaute=e; ok('en-avants/passes avant sanctionnés'); }
+  if(t==='BALLON_ECHAPPE'){ ok('ballons échappés en arrière laissés en jeu (L11)'); echappe=e; }
+  if(t==='MELEE'&&echappe&&!dernierFaute) viol('L11 mêlée sur un ballon échappé en arrière (pas un en-avant)',msg);
+  if(t!=='BALLON_ECHAPPE'&&t!=='MELEE') echappe=null;
   if(t==='MELEE'){ if(dernierFaute){ ok('melee apres en-avant'); if(e===dernierFaute&&!/passe en avant|en-avant/i.test(msg)) viol('L11/12 mêlée après en-avant introduite par le fautif',e+' '+msg); dernierFaute=null; } }
   if(t==='ESSAI'){ ok('essais'); const p=m.porteur; if(p){ const dansBut=(p.team==='A'&&p.x>=98.5)||(p.team==='B'&&p.x<=1.5); if(!dansBut) viol('L8 essai hors de l\'en-but adverse',`x=${p.x.toFixed(1)} equipe ${p.team}`);} essaiAttente=m.tempsMatch; }
   if(t==='AVANTAGE'){ avantageOuvert={t:m.tempsMatch,e}; }
