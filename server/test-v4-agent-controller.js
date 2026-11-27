@@ -33,9 +33,9 @@ function ruck() {
 }
 const etat = (m) => { const e = copie(m.getState()); if (m.phase === 'RUCK' && e.ruck) e.ruck.ballAvailable = true; return e; };
 // Boucle : le moteur avance, chaque agent décide et transmet son intention.
-function boucle(m, agents, secondes, comm, apres) {
+function boucle(m, agents, secondes, comm, apres, lire = etat) {
   for (let t = 0; t < secondes; t += DT) {
-    const e = etat(m);
+    const e = lire(m);
     for (const a of agents) {
       const r = a.tick(e, comm);
       if (r.intent) m.setAgentIntent(a.agent.team, a.agent.numero, r.intent); else m.clearAgentIntent(a.agent.team, a.agent.numero);
@@ -57,10 +57,15 @@ function doublures(etatMonde) {
 
 test('boucle complète sur un vrai ruck : but choisi, plan créé, action démarrée puis réussie dans le moteur (B6 conteste)', () => {
   const m = ruck();
-  const b6 = joueur(m, 'B', 6); b6.x = m.ruckPoint.x + 6; b6.y = m.ruckPoint.y + 5; b6.vitesseCourante = 0; b6.orientation = Math.PI;
+  // B6 à ~3 m du ballon (G53) : plus loin, les déblayeurs arrivent avant lui et il renonce, à raison (scénario 13, doc 17).
+  const b6 = joueur(m, 'B', 6); b6.x = m.ruckPoint.x + 2.5; b6.y = m.ruckPoint.y + 2; b6.vitesseCourante = 0; b6.orientation = Math.PI;
   for (const j of m.equipeB) if (j.numero !== 6) { j.x = m.ruckPoint.x + 22; } // aucun partenaire plus près du ruck : B6 est le contestataire naturel
+  // Une VRAIE occasion de contester (G53) : seul face à quatre déblayeurs, un défenseur renonce désormais (scénario 13 de
+  // doc 17). On éloigne donc les attaquants qui ne sont pas sur le ballon (le plaqué et le 9 restent).
+  for (const j of m.equipeA) if (j.numero !== 9 && Math.hypot(j.x - m.ruckPoint.x, j.y - m.ruckPoint.y) > 1.5) j.x = m.ruckPoint.x - 14;
   const a = new GoalBasedRugbyAgent({ team: 'B', numero: 6 });
-  boucle(m, [a], 8);
+  // Ruck tout juste formé : le ballon reste disputable (le harnais le marque « disponible » pour les tests de distribution).
+  boucle(m, [a], 8, undefined, undefined, (mm) => copie(mm.getState()));
   const t = types(a);
   assert.ok(t.indexOf('GOAL_CHANGED') < t.indexOf('PLAN_CREATED') && t.indexOf('PLAN_CREATED') < t.indexOf('ACTION_STARTED'), t.join(','));
   assert.strictEqual(a.goal === 'CONTEST_BREAKDOWN' || a.goal === 'DEFEND' || !!a.goal, true);

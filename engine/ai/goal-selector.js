@@ -14,6 +14,7 @@
 
 const { GOALS, profilePour, deriveSituation } = require('./goals.js');
 const { lireTraits, personnaliserProfil } = require('./personality.js');
+const { appliquerAptitudes } = require('./aptitudes.js');
 
 class GoalSelector {
   constructor(agent, options = {}) {
@@ -31,7 +32,9 @@ class GoalSelector {
     const t = beliefs.t;
     const s = deriveSituation(beliefs);
     // Les préférences de poste sont déformées par le COURAGE du joueur (lu dans SES caractéristiques ; neutre = profil inchangé).
-    const profil = personnaliserProfil(this.profile, lireTraits(beliefs.self && beliefs.self.car));
+    // … puis par ses APTITUDES (grattage, arrivée au ruck, course de soutien : caractéristiques individuelles, jamais le numéro).
+    const car = beliefs.self && beliefs.self.car;
+    const profil = appliquerAptitudes(personnaliserProfil(this.profile, lireTraits(car)), car);
     const candidats = [];
     for (const g of GOALS) {
       if (!g.applicable(s, profil, playbook)) continue;

@@ -189,6 +189,14 @@
   // `new MatchEngine(seed, duree, config)` (cf. docs/rugby-config.json chargé par
   // l'interface). Les valeurs par défaut ci-dessous reproduisent exactement le
   // comportement historique.
+  // Jeu au sol et soutien d'un joueur GÉNÉRÉ (doc 15 § 3.8, doc 17) : données de son profil de formation, comme PROFILS.
+  const DEFAUTS_JEU_AU_SOL = {
+    grattage:      [45, 62, 45, 40, 40, 62, 78, 55, 35, 25, 20, 40, 35, 20, 30],
+    arriveeRuck:   [45, 55, 45, 50, 50, 66, 76, 62, 60, 35, 35, 50, 45, 35, 35],
+    courseSoutien: [40, 50, 40, 45, 45, 58, 72, 68, 65, 55, 60, 55, 60, 60, 65],
+  };
+  const defautJeuAuSol = (cle, numero) => { const t = DEFAUTS_JEU_AU_SOL[cle]; return t[(numero >= 1 && numero <= 15 ? numero : 8) - 1]; };
+
   const DEFAULT_CONFIG = {
     // Caractéristiques de chaque joueur (par numéro de maillot) : poste, vitesse,
     // plaquage (proxy de puissance), tendance (proximité au ballon), couloir
@@ -216,6 +224,8 @@
           decision: PROFILS[n].decision,
           discipline: PROFILS[n].discipline,
           couloir: COULOIR_BASE[n],
+          // Données du joueur généré (explicites) ; un joueur de club ne les a pas et les tire de ses propres attributs.
+          caracteristiques: { grattage: defautJeuAuSol('grattage', n), arriveeRuck: defautJeuAuSol('arriveeRuck', n), courseSoutien: defautJeuAuSol('courseSoutien', n) },
         };
       }
       return j;
@@ -519,7 +529,17 @@
   // Même liste que engine/ai/personality.js (un test les compare).
   const TRAITS_PERSONNALITE = ['priseDeRisque', 'altruisme', 'egoisme', 'agressivite', 'courage', 'sangFroid', 'concentration',
     'confianceSoi', 'resilience', 'regularite', 'espritEquipe', 'leadership', 'communication', 'constance'];
-  function caracteristiquesDetaillees(j, explicites, tirage) {
+  // JEU AU SOL ET SOUTIEN (doc 15, § 3.8 ; doc 17). Ces valeurs appartiennent au JOUEUR, jamais au maillot :
+  //  - valeur explicite (`caracteristiques`) : prioritaire ;
+  //  - joueur venu avec SES attributs (Mode Club, remplaçant) : dérivées de ses propres attributs (un deuxième ligne aligné
+  //    en 7 garde son grattage de deuxième ligne ; un 7 lent n'arrive pas le premier au ruck) ;
+  //  - joueur GÉNÉRÉ par le moteur (match rapide) : défaut de son poste de formation — c'est le profil qui l'a créé, comme
+  //    ses 12 attributs (PROFILS) ; ce sont des DONNÉES de joueur, pas une règle de comportement. Hypothèses à calibrer.
+  // Dérivation depuis les attributs PROPRES du joueur (aucun numéro lu).
+  const deriveJeuAuSol = (cle, j) => cle === 'grattage' ? 0.4 * j.plaquage + 0.3 * j.puissance + 0.3 * j.decision - 8
+    : cle === 'arriveeRuck' ? 0.5 * j.vitesse + 0.3 * j.endurance + 0.2 * j.decision
+      : 0.4 * j.vitesse + 0.3 * j.endurance + 0.3 * j.decision; // courseSoutien
+  function caracteristiquesDetaillees(j, explicites, tirage, attributsPropres) {
     const e = explicites || {};
     const v = (cle, derivee) => (typeof e[cle] === 'number' ? borne(e[cle]) : borne(derivee));
     const car = {
@@ -531,6 +551,9 @@
       precisionPied: v('precisionPied', j.jeuPied * 0.9 + j.adresse * 0.1),
       piedRasant: v('piedRasant', j.jeuPied),
       distancePied: v('distancePied', j.jeuPied),
+      grattage: v('grattage', attributsPropres ? deriveJeuAuSol('grattage', j) : defautJeuAuSol('grattage', j.numero)),
+      arriveeRuck: v('arriveeRuck', attributsPropres ? deriveJeuAuSol('arriveeRuck', j) : defautJeuAuSol('arriveeRuck', j.numero)),
+      courseSoutien: v('courseSoutien', attributsPropres ? deriveJeuAuSol('courseSoutien', j) : defautJeuAuSol('courseSoutien', j.numero)),
     };
     for (const cle of TRAITS_PERSONNALITE) {
       if (typeof e[cle] === 'number' && Number.isFinite(e[cle])) car[cle] = borne(e[cle]);   // explicite : prioritaire
@@ -591,7 +614,9 @@
   }
   function appliquerCaracteristiques(j, c, graine) {
     const tirage = graine == null ? null : tirerPersonnalite(graine, j.team, j.numero, c && (c.joueurId != null ? c.joueurId : c.id));
-    j.car = caracteristiquesDetaillees(j, c && c.caracteristiques, tirage);
+    // Joueur venu avec ses propres attributs (club, remplaçant) : ses valeurs de jeu au sol se dérivent de LUI, pas du maillot.
+    const attributsPropres = !!(c && c.vitesse != null && c.plaquage != null);
+    j.car = caracteristiquesDetaillees(j, c && c.caracteristiques, tirage, attributsPropres);
     j.gestes = gestesMaitrises(j.car, c && c.gestes);
     return j;
   }
@@ -6261,7 +6286,13 @@
         const defenseAuBallon = goap ? equipeDef.filter(j => peutJouerAuRuck(j)
           && this.contestants.includes(j.numero) && distance(j, pt) < 2.5) : [];
         const contestReel = defenseAuBallon.length > 0;
-        const turnover = this.rng() < probaTurnover && (!goap || contestReel);
+        // GESTE DU GRATTEUR (GOAP) : la réussite dépend du grattage du meilleur défenseur au ballon parmi ceux que le moteur
+        // retient comme contestataires (× 0,6 à 1,4 ; 50, joueur moyen, = inchangé). Le moteur tranche ; l'agent n'a fait que
+        // choisir de contester. Référence 50 et non 60 : le contestataire est souvent le plaqueur, un trois-quarts au grattage
+        // bas ; centré sur 60, le geste faisait baisser les turnovers de tout le monde (16 -> 11 par match, mesure de l'arbitre).
+        const meilleurGrattage = contestReel ? Math.max(...defenseAuBallon.map((j) => (j.car && typeof j.car.grattage === 'number' ? j.car.grattage : 50))) : 50;
+        const facteurGrattage = Math.max(0.6, Math.min(1.4, 1 + (meilleurGrattage - 50) / 50));
+        const turnover = this.rng() < probaTurnover * facteurGrattage && (!goap || contestReel);
         this.ruckDominant = false;
         if (turnover) {
           this.stats[this.possession].turnoversConcedes++; // équipe qui PERD le ballon

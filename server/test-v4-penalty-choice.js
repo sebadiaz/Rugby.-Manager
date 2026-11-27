@@ -77,7 +77,9 @@ function matchPilote(graine, duree, demande) {
 }
 
 test('moteur : la demande du capitaine est exécutée (touche) ; celle d\'un autre joueur est ignorée', () => {
-  const c = matchPilote(3, 1500, 'TOUCHE');
+  // Graine 4 : depuis G53 (grattage selon le gratteur), la graine 3 ne siffle plus qu'une pénalité en 25 min (graines 4-7 :
+  // 6 à 7, toutes décidées par le capitaine) ; le test porte sur le choix, pas sur le nombre de fautes d'une graine.
+  const c = matchPilote(4, 1500, 'TOUCHE');
   assert.ok(c.sifflees >= 3, 'pénalités : ' + c.sifflees);
   assert.strictEqual(c.defaut, 0);
   assert.ok(c.capitaine >= c.sifflees - 1, `${c.capitaine} choix pour ${c.sifflees} pénalités`); // la dernière peut être en attente

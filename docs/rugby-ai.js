@@ -667,6 +667,7 @@ class AgentContext {
         car: moi.car ? Object.assign({}, moi.car) : null, gestes: moi.gestes ? Object.assign({}, moi.gestes) : null },
       ball: ballon, teammates: mates, opponents: adv,
       ruck: this.mem.ruck ? { ballAvailable: this.mem.ruck.ballAvailable, defendersCommitted: this.mem.ruck.defendersCommitted,
+        attackersCommitted: this.mem.ruck.attackersCommitted ?? 0,
         age: +(t - this.mem.ruck.seenAt).toFixed(3), confidence: +clamp01(mem === 0 ? 1 : 1 - (t - this.mem.ruck.seenAt) / mem).toFixed(3) } : null,
       phase: this.mem.phase, possession: this.mem.possession, score: this.mem.score,
       heard: this.heard.map((h) => ({ id: h.id, from: h.from, kind: h.kind, toId: h.toId, phaseId: h.phaseId, age: +(t - h.heardAt).toFixed(3), confidence: h.confidence, replyTo: h.replyTo })),
@@ -1130,6 +1131,47 @@ function creerAgents(options = {}, equipes = ['A', 'B']) {
 module.exports = { AgentScheduler, creerAgents };
 
   };
+  defs["aptitudes.js"] = function (module, exports, require) {
+/*
+ * Rugby Manager — V4, APTITUDES : ce que les caractéristiques INDIVIDUELLES d'un joueur changent à ses préférences de buts.
+ * Spécification : docs/SIMULATION_V4/17_TROISIEMES_LIGNES.md (et 15_CARACTERISTIQUES_INDIVIDUELLES.md, § 3.8).
+ *
+ * RIEN N'EST SCRIPTÉ (CLAUDE.md) : on ne lit que `beliefs.self.car` (les caractéristiques du joueur LUI-MÊME), jamais son
+ * numéro. Un 7 conteste plus souvent au sol PARCE QUE son grattage est élevé ; un pilier qui gratte aussi bien en ferait
+ * autant. Valeur de référence 60 = préférence de poste inchangée ; caractéristique absente = inchangée.
+ * Les coefficients sont des hypothèses à calibrer (tendances), jamais des réglages de statistiques.
+ */
+'use strict';
+
+const REFERENCE = 60;
+const C_GRATTAGE = 0.6;      // envie de contester au sol : × (1 ± 0,6 × écart)
+const C_ARRIVEE_RUCK = 0.4;  // engagement au ruck offensif
+const C_SOUTIEN = 0.5;       // soutien du porteur
+const BORNES = [0.4, 1.6];
+
+const nombre = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+const facteur = (v, c) => {
+  const n = nombre(v);
+  if (n === null) return 1;
+  const e = Math.max(-1, Math.min(1, (n - REFERENCE) / 40));
+  return Math.max(BORNES[0], Math.min(BORNES[1], 1 + c * e));
+};
+
+// Profil de préférences déformé par les aptitudes du joueur. Renvoie le MÊME objet si rien ne change.
+function appliquerAptitudes(profil, car) {
+  if (!profil || !car) return profil;
+  const fg = facteur(car.grattage, C_GRATTAGE), fa = facteur(car.arriveeRuck, C_ARRIVEE_RUCK), fs = facteur(car.courseSoutien, C_SOUTIEN);
+  if (fg === 1 && fa === 1 && fs === 1) return profil;
+  const out = Object.assign({}, profil);
+  if (typeof profil.contest === 'number') out.contest = profil.contest * fg;
+  if (typeof profil.ruck === 'number') out.ruck = profil.ruck * fa;
+  out.soutien = (profil.soutien ?? 1) * fs;
+  return out;
+}
+
+module.exports = { appliquerAptitudes, facteur, REFERENCE, C_GRATTAGE, C_ARRIVEE_RUCK, C_SOUTIEN };
+
+  };
   defs["facts.js"] = function (module, exports, require) {
 /*
  * Rugby Manager — V4, ontologie canonique des faits (RM4-G03).
@@ -1389,6 +1431,7 @@ module.exports = { stableKey, satisfies, planGoal, selectFeasibleGoal };
 
 const { GOALS, profilePour, deriveSituation } = require('./goals.js');
 const { lireTraits, personnaliserProfil } = require('./personality.js');
+const { appliquerAptitudes } = require('./aptitudes.js');
 
 class GoalSelector {
   constructor(agent, options = {}) {
@@ -1406,7 +1449,9 @@ class GoalSelector {
     const t = beliefs.t;
     const s = deriveSituation(beliefs);
     // Les préférences de poste sont déformées par le COURAGE du joueur (lu dans SES caractéristiques ; neutre = profil inchangé).
-    const profil = personnaliserProfil(this.profile, lireTraits(beliefs.self && beliefs.self.car));
+    // … puis par ses APTITUDES (grattage, arrivée au ruck, course de soutien : caractéristiques individuelles, jamais le numéro).
+    const car = beliefs.self && beliefs.self.car;
+    const profil = appliquerAptitudes(personnaliserProfil(this.profile, lireTraits(car)), car);
     const candidats = [];
     for (const g of GOALS) {
       if (!g.applicable(s, profil, playbook)) continue;
@@ -1543,6 +1588,8 @@ function deriveSituation(b) {
   const partenairesPlusPres = Object.values(b.teammates).filter((m) => ball && dist(m.lastSeen, ball.lastSeen) < distBalle - 0.5).length;
   // Rang au ballon (comparaison STRICTE, sans tolérance) : sert au ballon au sol, où deux joueurs presque à égalité ne doivent
   // pas se croire tous deux « deuxièmes ». Calculé par chacun avec les partenaires qu'il voit.
+  // Le regroupement tel que JE le vois (si je vois le ballon) : défenseurs et attaquants engagés, ballon jouable ou non.
+  const ruckVu = b.ruck || null;
   const rangAuBallon = Object.values(b.teammates).filter((m) => ball && dist(m.lastSeen, ball.lastSeen) < distBalle).length;
   // Coup de pied en vol : mon estimation du point de chute, ma distance à ce point et mon rang (partenaires VUS strictement
   // plus près de MON estimation). Rien d'autre que ma lecture : chacun peut se tromper de point de chute.
@@ -1555,8 +1602,20 @@ function deriveSituation(b) {
   const score = b.score ? (team === 'A' ? b.score.A - b.score.B : b.score.B - b.score.A) : 0;
   const finDeMatch = b.t > 4800 * 0.8;
   return { t: b.t, numero: b.agent.numero, team, sens, phase, ball, maPoss, advPoss, pt, onside, distBalle, aLeBallon, danger,
-    partenairesPlusPres, rangAuBallon, chute, distChute, rangChute, neufAuBallon, pression, score, finDeMatch, fondVide, moiPlusPresDuFond, grounded: self.grounded, available: self.available,
+    partenairesPlusPres, rangAuBallon, ruckVu, chute, distChute, rangChute, neufAuBallon, pression, score, finDeMatch, fondVide, moiPlusPresDuFond, grounded: self.grounded, available: self.available,
     enVol: !!(ball && ball.state === 'AIR') || phase === 'COUP_DE_PIED_JEU' };
+}
+
+// Attaquants que je vois autour du ballon au-delà du premier, NON contrebalancés par mes partenaires déjà engagés : seul
+// contre trois déblayeurs, je n'y vais pas ; à trois contre trois, la contestation reste jouable.
+function risqueContestation(s) {
+  return s.ruckVu ? Math.max(0, (s.ruckVu.attackersCommitted || 0) - 1 - (s.ruckVu.defendersCommitted || 0)) : 0;
+}
+// Ruck déjà tenu À MES YEUX : partenaires engagés (moi exclu si j'y suis) >= défenseurs engagés + 2.
+function ruckDejaTenu(s) {
+  if (!s.ruckVu) return false;
+  const autres = (s.ruckVu.attackersCommitted || 0) - (s.distBalle < 8 ? 1 : 0);
+  return autres >= (s.ruckVu.defendersCommitted || 0) + 2;
 }
 
 // --- Catalogue ---------------------------------------------------------------
@@ -1583,8 +1642,15 @@ const GOALS = Object.freeze([
     // `p.ingrat` : esprit d'équipe du joueur (tâche ingrate ; absent = 1, cf. personality.personnaliserProfil).
     (s, p) => ((s.advPoss || s.enVol ? 60 : 38) * p.cover + (s.fondVide && s.moiPlusPresDuFond && (s.advPoss || s.enVol) ? 34 : 0)) * (p.ingrat ?? 1)),
   G('DEFEND', 'COMMIT', (s) => s.available && s.onside && s.advPoss && (!REGROUPEMENTS.has(s.phase) || s.phase === 'RUCK'), (s, p) => (s.phase === 'RUCK' ? 34 : 50) + 10 * clamp01(1 - s.distBalle / 40) - 25 * p.fatigue),
-  G('CONTEST_BREAKDOWN', 'OPPORTUNITY', (s) => s.phase === 'RUCK' && s.advPoss && s.available && s.onside, (s, p) => 62 * p.contest - 18 * Math.min(2, s.partenairesPlusPres) - 20 * p.fatigue),
-  G('SECURE_RUCK', 'COMMIT', (s) => s.phase === 'RUCK' && s.maPoss && s.available && s.onside, (s, p) => (66 * p.ruck - 18 * Math.min(2, s.partenairesPlusPres) - 20 * p.fatigue) * (p.ingrat ?? 1)),
+  // CONTESTER AU SOL (jackal avant la formation, contre-ruck en poussant ensuite : tous deux légaux, loi 15 ; c'est le moteur
+  // qui tranche) : le risque grandit avec le nombre d'attaquants que JE vois autour du ballon sans partenaire pour les
+  // contrebalancer, et je renonce quand il devient trop grand (pénalité ou déblayage presque sûrs). `p.contest` porte mon grattage.
+  G('CONTEST_BREAKDOWN', 'OPPORTUNITY', (s) => s.phase === 'RUCK' && s.advPoss && s.available && s.onside && risqueContestation(s) < 3,
+    (s, p) => 62 * p.contest - 18 * Math.min(2, s.partenairesPlusPres) - 14 * risqueContestation(s) - 20 * p.fatigue),
+  // SÉCURISER LE RUCK : seulement si mon arrivée est utile. Un ruck que JE vois déjà tenu (au moins deux partenaires de plus
+  // que de défenseurs engagés) ne m'attire presque plus : je reste disponible pour la phase suivante.
+  G('SECURE_RUCK', 'COMMIT', (s) => s.phase === 'RUCK' && s.maPoss && s.available && s.onside,
+    (s, p) => (66 * p.ruck - 18 * Math.min(2, s.partenairesPlusPres) - 20 * p.fatigue) * (ruckDejaTenu(s) ? 0.15 : 1) * (p.ingrat ?? 1)),
   G('DISTRIBUTE_BALL', 'COMMIT', (s, profile) => (s.phase === 'RUCK' && s.maPoss && s.available && s.onside && s.distBalle <= 6 && !s.neufAuBallon) || (s.aLeBallon && s.phase === 'PORTE' && (s.pression > 0 || (profile.distribute ?? 0) >= 0.3)),
     // Personne n'est à la base du ruck : le plus proche prend la distribution (même un 10 ou un 8).
     (s, p) => 78 * p.distribute + (s.distBalle <= 3 && !s.neufAuBallon ? (p.distribute >= 0.3 ? 20 : 10) : 0)),
@@ -1599,7 +1665,7 @@ const GOALS = Object.freeze([
     const bruit = ((s.numero * 37 + Math.floor(s.t * 2) * 101) % 17 - 8) * 0.5;
     return 31 + bruit + 22 * p.kick + zone + 9 * Math.min(3, s.pression) + (s.finDeMatch && s.score < 0 ? 10 : 0) - (s.finDeMatch && s.score > 0 ? 0 : 0);
   }),
-  G('SUPPORT_CARRIER', 'COMMIT', (s) => s.maPoss && s.phase === 'PORTE' && !s.aLeBallon && s.available && s.distBalle <= 30, (s, p) => 44 * (0.4 + 0.6 * p.ruck) * clamp01(1.1 - s.distBalle / 30) * (p.ingrat ?? 1)),
+  G('SUPPORT_CARRIER', 'COMMIT', (s) => s.maPoss && s.phase === 'PORTE' && !s.aLeBallon && s.available && s.distBalle <= 30, (s, p) => 44 * (0.4 + 0.6 * p.ruck) * clamp01(1.1 - s.distBalle / 30) * (p.ingrat ?? 1) * (p.soutien ?? 1)),
   G('BE_PASS_OPTION', 'COMMIT', (s) => s.maPoss && s.available && s.onside && (s.phase === 'PORTE' || s.phase === 'RUCK') && !s.aLeBallon, (s, p) => 46 * p.option),
   G('FORM_SCRUM_LEGALLY', 'COMMIT', (s) => s.phase === 'MELEE' && s.available, (s, p) => 80 * p.scrum),
   G('FORM_LINEOUT_LEGALLY', 'COMMIT', (s) => s.phase === 'TOUCHE' && s.available, (s, p) => 78 * p.lineout),
@@ -1608,7 +1674,7 @@ const GOALS = Object.freeze([
 ]);
 const GOAL_IDS = Object.freeze(GOALS.map((g) => g.id));
 
-module.exports = { GOALS, GOAL_IDS, PROFILS_PAR_NUMERO, profilePour, deriveSituation, REGROUPEMENTS };
+module.exports = { risqueContestation, ruckDejaTenu, GOALS, GOAL_IDS, PROFILS_PAR_NUMERO, profilePour, deriveSituation, REGROUPEMENTS };
 
   };
   defs["goap-mode.js"] = function (module, exports, require) {
