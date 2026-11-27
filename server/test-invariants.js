@@ -2284,7 +2284,9 @@ test('loi 10 : les joueurs devant le botteur sont hors-jeu et ne peuvent pas pla
       m.tick(0.2);
       // Coup de pied qui vient d'etre frappe : on compte qui est devant le
       // botteur, et on verifie que ceux-la sont bien marques hors-jeu.
-      if (phaseAvant !== 'COUP_DE_PIED_JEU' && m.phase === 'COUP_DE_PIED_JEU' && botteur) {
+      // Un ballon ÉCHAPPÉ en arrière (loi 11) passe par la même phase sans être un coup de pied : pas de botteur, et le
+      // receveur qui l'a lâché, joueur ayant joué le ballon en dernier, n'est pas hors-jeu (loi 10.1). Exclu ici.
+      if (phaseAvant !== 'COUP_DE_PIED_JEU' && m.phase === 'COUP_DE_PIED_JEU' && botteur && m.typeCoupDePiedJeu !== 'BALLON_ECHAPPE') {
         const equipe = botteur.team === 'A' ? m.equipeA : m.equipeB;
         // Position AU MOMENT DE LA FRAPPE (loi 10), enregistree par le moteur :
         // le botteur peut encore bouger de quelques centimetres dans le meme
@@ -2320,7 +2322,7 @@ test('loi 10 : les joueurs devant le botteur sont hors-jeu et ne peuvent pas pla
       // si une relance est possible ou si le ballon tombe dans une melee
       // ouverte de vingt joueurs.
       if (m.phase === 'COUP_DE_PIED_JEU') typeCoup = m.typeCoupDePiedJeu;
-      if (phaseAvant === 'COUP_DE_PIED_JEU' && m.phase === 'PORTE' && m.porteur) {
+      if (phaseAvant === 'COUP_DE_PIED_JEU' && m.phase === 'PORTE' && m.porteur && typeCoup !== 'BALLON_ECHAPPE') {
         let n = 0;
         for (const j of [...m.equipeA, ...m.equipeB]) {
           if (Math.hypot(j.x - m.porteur.x, j.y - m.porteur.y) < 8) n++;
