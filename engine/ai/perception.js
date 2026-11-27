@@ -93,6 +93,8 @@ function observe(state, agent, params) {
       vus.ball = {
         x: b.x, y: b.y, state: state.ball ? state.ball.state : null,
         owner: state.ball && state.ball.carrierTeam ? state.ball.carrierTeam + state.ball.carrierNumber : null,
+        // Point de chute d'un coup de pied : ce que la trajectoire montre à qui VOIT le ballon (lu avec erreur ensuite).
+        chute: state.ball && state.ball.chute ? { x: state.ball.chute.x, y: state.ball.chute.y, reste: state.ball.chute.reste ?? 1 } : null,
       };
     }
   }

@@ -1257,8 +1257,8 @@
       this._penaliteAgents = this.aiMode === 'GOAP' && config.penalites !== 'MOTEUR';
       // En GOAP, la sortie de mêlée vient du dialogue 9 / 10 / 8 ; `config.melees === 'MOTEUR'` rétablit le tirage.
       this._meleeAgents = this.aiMode === 'GOAP' && config.melees !== 'MOTEUR';
-      // Ballon au sol (coup de pied retombé, ballon échappé) : en GOAP, le moteur ne DÉSIGNE plus qui va au ballon ; chaque
-      // agent décide d'y aller (CLAUDE.md : rien n'est scripté). 'MOTEUR' rétablit l'ancienne désignation des plus proches.
+      // Ballon au sol ou en vol après un coup de pied (et ballon échappé) : en GOAP, le moteur ne DÉSIGNE plus qui va au
+      // ballon ; chaque agent décide d'y aller (CLAUDE.md : rien n'est scripté). 'MOTEUR' rétablit l'ancienne désignation.
       this._ballonAuSolAgents = this.aiMode === 'GOAP' && config.ballonsAuSol !== 'MOTEUR';
       this._seqMelee = 0;
       // En GOAP, le porteur choisit le receveur de toute passe ; `config.passes === 'MOTEUR'` rétablit l'ancien choix.
@@ -5330,7 +5330,9 @@
       const equipeKick = this.equipeCoupDePiedJeu;
       const chasseurs = equipeKick === 'A' ? this.equipeA : this.equipeB;
       const receveurs = equipeKick === 'A' ? this.equipeB : this.equipeA;
-      const versBallonVol = new Set([
+      // En GOAP, personne n'est désigné pendant le vol non plus : chacun lit la trajectoire et décide d'aller disputer le
+      // ballon ou de tenir sa place (son intention remplace ce déplacement).
+      const versBallonVol = this._ballonAuSolAgents ? new Set() : new Set([
         ...this._groupeVersBallon(chasseurs, this.cibleCoupDePiedX, this.cibleCoupDePiedY, 3),
         ...this._groupeVersBallon(receveurs, this.cibleCoupDePiedX, this.cibleCoupDePiedY, 2),
       ]);
@@ -9742,7 +9744,13 @@
       return {
         equipeA: this.equipeA, equipeB: this.equipeB,
         ball: { x: ballonX, y: ballonY, state: enPasse ? 'AIR' : this._etatBallon(),
-          carrierTeam: carrier?.team ?? null, carrierNumber: carrier?.numero ?? null },
+          carrierTeam: carrier?.team ?? null, carrierNumber: carrier?.numero ?? null,
+          // Coup de pied en vol : point de chute que révèle la trajectoire. Chaque agent le LIT avec sa propre erreur
+          // (lecture du jeu) ; personne n'est désigné pour y aller.
+          // `reste` : part du vol qui reste (1 au départ du pied, 0 à la chute) — le ballon qui redescend se lit mieux.
+          chute: this.phase === 'COUP_DE_PIED_JEU' && this.ballonEnVol ? { x: this.cibleCoupDePiedX, y: this.cibleCoupDePiedY,
+            reste: Math.max(0, 1 - this.timerPhase / Math.max(0.1, dureeVolCoupDePied(this.typeCoupDePiedJeu,
+              Math.hypot(this.cibleCoupDePiedX - this.xCoupDePiedJeu, this.cibleCoupDePiedY - this.yCoupDePiedJeu)))) } : null },
         tempsMatch: this.tempsMatch, phase: this.phase, possession: this.possession, score: this.score,
         melee: this.melee, maul: this.maul, ruck, statsJoueurs: this.statsJoueurs,
         // Pénalité sifflée en attente du choix : signal public de l'arbitre (marque, bénéficiaire, capitaine).

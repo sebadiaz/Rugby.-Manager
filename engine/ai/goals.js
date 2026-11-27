@@ -93,13 +93,18 @@ function deriveSituation(b) {
   // Rang au ballon (comparaison STRICTE, sans tolérance) : sert au ballon au sol, où deux joueurs presque à égalité ne doivent
   // pas se croire tous deux « deuxièmes ». Calculé par chacun avec les partenaires qu'il voit.
   const rangAuBallon = Object.values(b.teammates).filter((m) => ball && dist(m.lastSeen, ball.lastSeen) < distBalle).length;
+  // Coup de pied en vol : mon estimation du point de chute, ma distance à ce point et mon rang (partenaires VUS strictement
+  // plus près de MON estimation). Rien d'autre que ma lecture : chacun peut se tromper de point de chute.
+  const chute = ball && ball.state === 'AIR' && ball.chute ? ball.chute : null;
+  const distChute = chute ? dist(self, chute) : Infinity;
+  const rangChute = chute ? Object.values(b.teammates).filter((m) => dist(m.lastSeen, chute) < distChute).length : Infinity;
   const neuf = Object.entries(b.teammates).find(([, m]) => m.numero === 9);
   const neufAuBallon = !!(neuf && ball && dist(neuf[1].lastSeen, ball.lastSeen) <= 4);
   const pression = Object.values(b.opponents).filter((o) => o.age <= 1 && dist(o.lastSeen, self) <= 5).length;
   const score = b.score ? (team === 'A' ? b.score.A - b.score.B : b.score.B - b.score.A) : 0;
   const finDeMatch = b.t > 4800 * 0.8;
   return { t: b.t, numero: b.agent.numero, team, sens, phase, ball, maPoss, advPoss, pt, onside, distBalle, aLeBallon, danger,
-    partenairesPlusPres, rangAuBallon, neufAuBallon, pression, score, finDeMatch, fondVide, moiPlusPresDuFond, grounded: self.grounded, available: self.available,
+    partenairesPlusPres, rangAuBallon, chute, distChute, rangChute, neufAuBallon, pression, score, finDeMatch, fondVide, moiPlusPresDuFond, grounded: self.grounded, available: self.available,
     enVol: !!(ball && ball.state === 'AIR') || phase === 'COUP_DE_PIED_JEU' };
 }
 
@@ -113,10 +118,14 @@ const GOALS = Object.freeze([
   G('PREVENT_TRY', 'SAFETY', (s, p) => s.available && s.onside && s.danger >= 0.35, (s, p) => 55 + 45 * s.danger * p.defendTry, (s) => s.danger < 0.2),
   // Ballon AU SOL (coup de pied retombé, ballon échappé) : j'y vais si, d'après ce que je vois, au plus un partenaire en est
   // plus près que moi (le plus proche y fonce, le deuxième suit) ; les autres ne se ruent pas dessus, quelle que soit la distance.
-  G('CONTEST_AERIAL_BALL', 'OPPORTUNITY', (s) => s.enVol && s.available && s.onside && !(s.ball && s.ball.state === 'LOOSE' && s.rangAuBallon >= 2),
+  // Coup de pied en VOL : même logique, sur MON estimation du point de chute (le plus proche y va, le deuxième suit ; le
+  // goût du duel aérien — profil `aerial` — module l'envie). Ballon en l'air sans point de chute (passe) : comme avant.
+  G('CONTEST_AERIAL_BALL', 'OPPORTUNITY', (s) => s.enVol && s.available && s.onside
+      && !(s.ball && s.ball.state === 'LOOSE' && s.rangAuBallon >= 2) && !(s.chute && s.rangChute >= 2),
     (s, p) => (s.ball && s.ball.state === 'LOOSE'
       ? (s.rangAuBallon === 0 ? 92 : 74) + 10 * clamp01(1 - s.distBalle / 10) // ballon à mes pieds : rien de plus pressant
-      : 70 * p.aerial * clamp01(1.2 - s.distBalle / 35))),
+      : s.chute ? (s.rangChute === 0 ? 88 : 72) * (0.8 + 0.2 * Math.min(1, p.aerial ?? 1))
+        : 70 * p.aerial * clamp01(1.2 - s.distBalle / 35))),
   // L'arrière (profil cover >= 0,9) garde sa profondeur même quand son équipe attaque (menace de pied).
   G('COVER_BACKFIELD', 'COMMIT', (s, p) => s.available && s.onside && s.danger < 0.35 && (s.advPoss || s.enVol || (s.maPoss && p.cover >= 0.9)),
     // Quand personne d'autre ne tient le fond et que je suis le mieux placé, je le couvre quel que soit mon poste.
