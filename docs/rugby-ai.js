@@ -956,6 +956,11 @@ class GoalBasedRugbyAgent {
     if (this.usePlacement && !this._intent && !this.executor.busy && !this.plan && this.placement && state.phase === 'PORTE' && !porteur && dansPortee) {
       this._intent = { tx: this.placement.target.x, ty: this.placement.target.y, vmaxFactor: this.placement.vmaxFactor, jeuCourant: this.openPlay };
     }
+    // Ballon au sol (coup de pied retombé, ballon échappé) : le joueur qui a CHOISI d'aller le disputer y court ; le moteur
+    // ne désigne personne et décide seul qui le touche en premier.
+    if (this.usePlacement && !porteur && state.phase === 'COUP_DE_PIED_JEU' && this.placement?.placementGoal === 'RECOVER_LOOSE_BALL') {
+      this._intent = { tx: this.placement.target.x, ty: this.placement.target.y, vmaxFactor: this.placement.vmaxFactor, jeuCourant: false };
+    }
     // Touche : un avant qui a entendu « Touche, maul ! » demandera le maul s'il capte (le moteur tranche).
     if (state.phase === 'TOUCHE' && this.touche.demandeMaul()) this._intent = Object.assign({}, this._intent, { touche: 'MAUL' });
     // Mêlée : le 8 qui a ANNONCÉ son départ (« Neuf, j'y vais ! ») le demande au moteur, qui reste seul juge.
@@ -1517,13 +1522,16 @@ function deriveSituation(b) {
     }
   }
   const partenairesPlusPres = Object.values(b.teammates).filter((m) => ball && dist(m.lastSeen, ball.lastSeen) < distBalle - 0.5).length;
+  // Rang au ballon (comparaison STRICTE, sans tolérance) : sert au ballon au sol, où deux joueurs presque à égalité ne doivent
+  // pas se croire tous deux « deuxièmes ». Calculé par chacun avec les partenaires qu'il voit.
+  const rangAuBallon = Object.values(b.teammates).filter((m) => ball && dist(m.lastSeen, ball.lastSeen) < distBalle).length;
   const neuf = Object.entries(b.teammates).find(([, m]) => m.numero === 9);
   const neufAuBallon = !!(neuf && ball && dist(neuf[1].lastSeen, ball.lastSeen) <= 4);
   const pression = Object.values(b.opponents).filter((o) => o.age <= 1 && dist(o.lastSeen, self) <= 5).length;
   const score = b.score ? (team === 'A' ? b.score.A - b.score.B : b.score.B - b.score.A) : 0;
   const finDeMatch = b.t > 4800 * 0.8;
   return { t: b.t, numero: b.agent.numero, team, sens, phase, ball, maPoss, advPoss, pt, onside, distBalle, aLeBallon, danger,
-    partenairesPlusPres, neufAuBallon, pression, score, finDeMatch, fondVide, moiPlusPresDuFond, grounded: self.grounded, available: self.available,
+    partenairesPlusPres, rangAuBallon, neufAuBallon, pression, score, finDeMatch, fondVide, moiPlusPresDuFond, grounded: self.grounded, available: self.available,
     enVol: !!(ball && ball.state === 'AIR') || phase === 'COUP_DE_PIED_JEU' };
 }
 
@@ -1535,7 +1543,12 @@ const GOALS = Object.freeze([
   G('RECOVER_AND_REJOIN', 'SAFETY', (s) => s.grounded, () => 95, (s) => !s.grounded),
   G('BECOME_ONSIDE', 'SAFETY', (s) => !s.grounded && !s.onside && (REGROUPEMENTS.has(s.phase) || s.phase === 'COUP_DE_PIED_JEU'), () => 90, (s) => s.onside),
   G('PREVENT_TRY', 'SAFETY', (s, p) => s.available && s.onside && s.danger >= 0.35, (s, p) => 55 + 45 * s.danger * p.defendTry, (s) => s.danger < 0.2),
-  G('CONTEST_AERIAL_BALL', 'OPPORTUNITY', (s) => s.enVol && s.available && s.onside, (s, p) => 70 * p.aerial * clamp01(1.2 - s.distBalle / 35)),
+  // Ballon AU SOL (coup de pied retombé, ballon échappé) : j'y vais si, d'après ce que je vois, au plus un partenaire en est
+  // plus près que moi (le plus proche y fonce, le deuxième suit) ; les autres ne se ruent pas dessus, quelle que soit la distance.
+  G('CONTEST_AERIAL_BALL', 'OPPORTUNITY', (s) => s.enVol && s.available && s.onside && !(s.ball && s.ball.state === 'LOOSE' && s.rangAuBallon >= 2),
+    (s, p) => (s.ball && s.ball.state === 'LOOSE'
+      ? (s.rangAuBallon === 0 ? 92 : 74) + 10 * clamp01(1 - s.distBalle / 10) // ballon à mes pieds : rien de plus pressant
+      : 70 * p.aerial * clamp01(1.2 - s.distBalle / 35))),
   // L'arrière (profil cover >= 0,9) garde sa profondeur même quand son équipe attaque (menace de pied).
   G('COVER_BACKFIELD', 'COMMIT', (s, p) => s.available && s.onside && s.danger < 0.35 && (s.advPoss || s.enVol || (s.maPoss && p.cover >= 0.9)),
     // Quand personne d'autre ne tient le fond et que je suis le mieux placé, je le couvre quel que soit mon poste.
@@ -1972,6 +1985,12 @@ function individualPlacement(beliefs, goalId, playbook, profile = {}, jeuCourant
       const m = candidatMarquage(beliefs, s, P.referenceDefense(s.numero, s.sens, bal || { x: beliefs.self.x, y: beliefs.self.y }, pb));
       if (m && goalId === 'PREVENT_TRY') { m.priority += 6; cands.push(m); }
     }
+  } else if (goalId === 'CONTEST_AERIAL_BALL') {
+    // BALLON AU SOL (coup de pied retombé, ballon échappé) : le joueur qui a choisi de le disputer court DESSUS, là où il
+    // l'a vu. Ballon encore en l'air : pas de cible ici (la lecture de trajectoire n'est pas encore modélisée).
+    const bal = s.ball && s.ball.lastSeen;
+    if (!bal || s.ball.state !== 'LOOSE') return null;
+    cands = [{ id: 'RECOVER_LOOSE_BALL', priority: 80, target: { x: bal.x, y: bal.y }, vmax: 1, reason: 'ballon au sol : je vais le ramasser' }];
   } else if (goalId === 'DEFEND') cands = candidatsDefense(beliefs, s, pb, jeuCourant);
   else if (goalId === 'SUPPORT_CARRIER' || goalId === 'BE_PASS_OPTION' || goalId === 'RETURN_TO_PLAYBOOK' || goalId === 'GAIN_TERRITORY' || goalId === 'RETAIN_POSSESSION') {
     cands = s.maPoss || s.aLeBallon ? candidatsAttaque(beliefs, s, pb, profile, jeuCourant) : candidatsDefense(beliefs, s, pb, jeuCourant);

@@ -1257,6 +1257,9 @@
       this._penaliteAgents = this.aiMode === 'GOAP' && config.penalites !== 'MOTEUR';
       // En GOAP, la sortie de mêlée vient du dialogue 9 / 10 / 8 ; `config.melees === 'MOTEUR'` rétablit le tirage.
       this._meleeAgents = this.aiMode === 'GOAP' && config.melees !== 'MOTEUR';
+      // Ballon au sol (coup de pied retombé, ballon échappé) : en GOAP, le moteur ne DÉSIGNE plus qui va au ballon ; chaque
+      // agent décide d'y aller (CLAUDE.md : rien n'est scripté). 'MOTEUR' rétablit l'ancienne désignation des plus proches.
+      this._ballonAuSolAgents = this.aiMode === 'GOAP' && config.ballonsAuSol !== 'MOTEUR';
       this._seqMelee = 0;
       // En GOAP, le porteur choisit le receveur de toute passe ; `config.passes === 'MOTEUR'` rétablit l'ancien choix.
       this._passesAgents = this.aiMode === 'GOAP' && config.passes !== 'MOTEUR';
@@ -5510,6 +5513,8 @@
     // la cible. Délai de grâce borné (4 s) pour ne jamais laisser le ballon
     // mort au sol indéfiniment si un dégagement profond atterrit loin de tout
     // le monde : on force alors l'arrivée du joueur le plus proche.
+    // En GOAP (_ballonAuSolAgents), personne n'est désigné ni accéléré par le moteur : chaque agent décide seul d'aller au
+    // ballon (but CONTEST_AERIAL_BALL, placement RECOVER_LOOSE_BALL) ; le moteur ne fait qu'arbitrer qui le touche en premier.
     _tickReceptionCoupDePied(dt) {
       this.timerReceptionAuSol += dt;
       const type = this.typeCoupDePiedJeu;
@@ -5518,7 +5523,8 @@
       const receveurs = equipeKick === 'A' ? this.equipeB : this.equipeA;
       const cibleX = this.ballonVolX, cibleY = this.ballonVolY;
 
-      const versBallon = new Set([
+      // En GOAP, personne n'est désigné : ceux qui y vont l'ont décidé eux-mêmes (leur intention remplace ce déplacement).
+      const versBallon = this._ballonAuSolAgents ? new Set() : new Set([
         ...this._groupeVersBallon(chasseurs, cibleX, cibleY, 3),
         ...this._groupeVersBallon(receveurs, cibleX, cibleY, 2),
       ]);
@@ -9543,6 +9549,8 @@
     // (_tickJeuRapidePenalite) ; une intention de placement d'agent les écrasait (le tapeur restait sur place, le moteur attendait
     // jusqu'à 30 s : porteur figé avec le ballon). Les autres joueurs restent libres de leurs décisions.
     _deplacementImposeParLaLoi(j) {
+      // Loi 10 : un joueur hors-jeu sur un coup de pied (ou devant un ballon échappé) se replie ; son intention n'y change rien.
+      if (this.phase === 'COUP_DE_PIED_JEU' && j.horsJeuKick > 0) return true;
       const R = this.penaliteRecul;
       if (!R) return false;
       if (j === this.porteur) return true;

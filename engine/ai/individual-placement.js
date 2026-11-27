@@ -330,6 +330,12 @@ function individualPlacement(beliefs, goalId, playbook, profile = {}, jeuCourant
       const m = candidatMarquage(beliefs, s, P.referenceDefense(s.numero, s.sens, bal || { x: beliefs.self.x, y: beliefs.self.y }, pb));
       if (m && goalId === 'PREVENT_TRY') { m.priority += 6; cands.push(m); }
     }
+  } else if (goalId === 'CONTEST_AERIAL_BALL') {
+    // BALLON AU SOL (coup de pied retombé, ballon échappé) : le joueur qui a choisi de le disputer court DESSUS, là où il
+    // l'a vu. Ballon encore en l'air : pas de cible ici (la lecture de trajectoire n'est pas encore modélisée).
+    const bal = s.ball && s.ball.lastSeen;
+    if (!bal || s.ball.state !== 'LOOSE') return null;
+    cands = [{ id: 'RECOVER_LOOSE_BALL', priority: 80, target: { x: bal.x, y: bal.y }, vmax: 1, reason: 'ballon au sol : je vais le ramasser' }];
   } else if (goalId === 'DEFEND') cands = candidatsDefense(beliefs, s, pb, jeuCourant);
   else if (goalId === 'SUPPORT_CARRIER' || goalId === 'BE_PASS_OPTION' || goalId === 'RETURN_TO_PLAYBOOK' || goalId === 'GAIN_TERRITORY' || goalId === 'RETAIN_POSSESSION') {
     cands = s.maPoss || s.aLeBallon ? candidatsAttaque(beliefs, s, pb, profile, jeuCourant) : candidatsDefense(beliefs, s, pb, jeuCourant);
