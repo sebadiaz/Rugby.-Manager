@@ -292,6 +292,11 @@ class GoalBasedRugbyAgent {
     if (this.usePlacement && !this._intent && !this.executor.busy && !this.plan && this.placement && state.phase === 'PORTE' && !porteur && dansPortee) {
       this._intent = { tx: this.placement.target.x, ty: this.placement.target.y, vmaxFactor: this.placement.vmaxFactor, jeuCourant: this.openPlay };
     }
+    // Ballon au sol (coup de pied retombé, ballon échappé) : le joueur qui a CHOISI d'aller le disputer y court ; le moteur
+    // ne désigne personne et décide seul qui le touche en premier.
+    if (this.usePlacement && !porteur && state.phase === 'COUP_DE_PIED_JEU' && this.placement?.placementGoal === 'RECOVER_LOOSE_BALL') {
+      this._intent = { tx: this.placement.target.x, ty: this.placement.target.y, vmaxFactor: this.placement.vmaxFactor, jeuCourant: false };
+    }
     // Touche : un avant qui a entendu « Touche, maul ! » demandera le maul s'il capte (le moteur tranche).
     if (state.phase === 'TOUCHE' && this.touche.demandeMaul()) this._intent = Object.assign({}, this._intent, { touche: 'MAUL' });
     // Mêlée : le 8 qui a ANNONCÉ son départ (« Neuf, j'y vais ! ») le demande au moteur, qui reste seul juge.

@@ -50,7 +50,9 @@ test('la consigne du club est lue : « touche » ou « points » à portée', ()
 // Moteur GOAP piloté à la main : seul le test pose (ou non) la demande du capitaine.
 function matchPilote(graine, duree, demande) {
   const c = { sifflees: 0, capitaine: 0, defaut: 0, tirs: 0, touches: 0, rapides: 0, choix: [], horsCapitaine: 0 };
-  const m = new MatchEngine(graine, 4800, { aiMode: 'GOAP', agentDriver: () => ({
+  // Pilote factice : il ne déplace aucun joueur. Les ballons au sol gardent donc la désignation du moteur (sinon personne
+  // n'irait les ramasser, faute d'agents) ; ce test ne porte que sur le choix de pénalité.
+  const m = new MatchEngine(graine, 4800, { aiMode: 'GOAP', ballonsAuSol: 'MOTEUR', agentDriver: () => ({
     avantTick(e) {
       const P = e.penaliteChoix;
       if (!P || !demande) return;

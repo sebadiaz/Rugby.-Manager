@@ -221,6 +221,64 @@ test('architecture : aucune fonction ne calcule les cibles de plusieurs joueurs 
   }
 });
 
+
+// --- Ballon au sol : chacun décide d'y aller (aucune désignation centrale) ---
+function scèneBallonAuSol(seed) {
+  const m = new MatchEngine(seed, 4800, { personnalites: 'NEUTRE' });
+  let n = 0;
+  while (m.phase !== 'PORTE' && n++ < 3000) m.tick(0.1);
+  const eq = m.possession === 'A' ? m.equipeA : m.equipeB, sens = m.possession === 'A' ? 1 : -1;
+  const rec = eq.filter((j) => j !== m.porteur && (j.x - m.porteur.x) * sens <= 0)[0];
+  if (!rec) return null;
+  m._ballonEchappe(rec);
+  return { m, e: copie(m.getAgentState()) };
+}
+test('BALLON AU SOL : le plus proche va le ramasser, sur le ballon ; deux ou trois par équipe selon ce que chacun voit, pas de ruée', () => {
+  let vus = 0;
+  for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) {
+    const sc = scèneBallonAuSol(seed);
+    if (!sc) continue;
+    vus++;
+    const { m, e } = sc;
+    const bx = m.ballonVolX, by = m.ballonVolY;
+    for (const team of ['A', 'B']) {
+      const eq = team === 'A' ? m.equipeA : m.equipeB;
+      const dispo = eq.filter((j) => !(j.horsJeuKick > 0) && j.auSol === 0 && j.sinBin <= 0);
+      const plusProche = dispo.reduce((b, j) => (Math.hypot(j.x - bx, j.y - by) < Math.hypot(b.x - bx, b.y - by) ? j : b));
+      const decs = eq.map((j) => decision(e, team, j.numero));
+      const vont = decs.filter((d) => d.placement && d.placement.placementGoal === 'RECOVER_LOOSE_BALL');
+      // Chacun juge avec CE QU'IL VOIT : un joueur qui ne voit pas un partenaire plus proche (hors de son champ de vision)
+      // peut se croire parmi les deux premiers. Au plus trois, donc, jamais la ruée de toute une ligne.
+      assert.ok(vont.length <= 3, `${team} : ${vont.length} joueurs vont au ballon (pas de ruée)`);
+      // Le plus proche de l'équipe qui a lâché le ballon y va toujours ; celui d'en face s'il est à portée (≤ 10 m) — plus loin,
+      // couvrir le fond plutôt que foncer reste un choix légitime de sa part.
+      if (team !== m.equipeCoupDePiedJeu && Math.hypot(plusProche.x - bx, plusProche.y - by) > 10) continue;
+      const dP = decision(e, team, plusProche.numero);
+      assert.strictEqual(dP.goal, 'CONTEST_AERIAL_BALL', `${team}${plusProche.numero}, le plus proche, dispute le ballon (but ${dP.goal})`);
+      assert.strictEqual(dP.placement.placementGoal, 'RECOVER_LOOSE_BALL');
+      assert.ok(Math.hypot(dP.placement.target.x - bx, dP.placement.target.y - by) < 0.5, 'il court sur le ballon');
+    }
+  }
+  assert.ok(vus >= 4, 'scènes : ' + vus);
+});
+test('BALLON AU SOL (moteur GOAP) : aucune désignation centrale ; ceux qui y vont l\'ont décidé ; le ballon est ramassé', () => {
+  const { configGOAP } = require('../engine/ai/goap-mode.js');
+  assert.strictEqual(new MatchEngine(3, 4800, configGOAP({}))._ballonAuSolAgents, true, 'GOAP : le moteur ne désigne plus qui va au ballon');
+  assert.strictEqual(new MatchEngine(3, 4800, configGOAP({ ballonsAuSol: 'MOTEUR' }))._ballonAuSolAgents, false);
+  let episodes = 0, enCours = null, maxDuree = 0;
+  for (const seed of [1, 3]) {
+  const m = new MatchEngine(seed, 4800, configGOAP({}));
+  for (let t = 0; t < 900; t += 0.1) {
+    m.tick(0.1);
+    const auSol = m.phase === 'COUP_DE_PIED_JEU' && !m.ballonEnVol && m._receptionEnAttente;
+    if (auSol && enCours == null) enCours = m.tempsMatch;
+    if (!auSol && enCours != null) { episodes++; maxDuree = Math.max(maxDuree, m.tempsMatch - enCours); enCours = null; }
+  }
+  }
+  assert.ok(episodes >= 4, 'ballons au sol observés : ' + episodes);
+  assert.ok(maxDuree < 10, `un ballon au sol finit toujours ramassé par un joueur arrivé dessus (max ${maxDuree.toFixed(1)} s)`);
+});
+
 console.log(`\n${nb} test(s) exécuté(s).`);
 if (echecs) { console.error(`ECHEC : ${echecs} test(s) en échec.`); process.exit(1); }
 console.log('OK : le placement individuel V4 naît des buts et des croyances de chaque joueur.');
