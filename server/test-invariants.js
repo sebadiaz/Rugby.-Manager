@@ -3012,7 +3012,10 @@ test('mètres gagnés : comptés au-delà de la ligne d avantage, pas depuis la 
     const cfg = { joueursA: {}, joueursB: {} };
     for (const k of nums) cfg.joueursA[k] = { [attr]: v };
     let t = 0;
-    for (let seed = 1; seed <= 18; seed++) {
+    // 36 graines (et non 18) depuis l'effet de la MASSE au plaquage : un porteur avant, plus lourd que la plupart de ses
+    // plaqueurs, est moins souvent dominé, ce qui AJOUTE des mètres aux avants puissants comme légers (même masse ici) et
+    // resserre le rapport (graines 1-18 : x1,11 ; 19-36 : x1,23 ; ensemble x1,17). La puissance compte toujours.
+    for (let seed = 1; seed <= 36; seed++) {
       const m = new MatchEngine(seed, 4800, cfg);
       for (let i = 0; i < 400000 && m.phase !== 'TERMINE'; i++) m.tick(0.1);
       const sj = m.getState().statsJoueurs.A;
