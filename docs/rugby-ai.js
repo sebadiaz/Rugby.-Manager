@@ -2899,11 +2899,24 @@ function choixPenalite(b, pen, playbook = {}) {
   const toucheValeur = lancer <= 7 ? 1.9 * prefMaul : lancer <= 15 ? 1.4 * prefMaul : lancer <= 22 ? 1.0 * prefMaul
     : 0.5 + 0.025 * Math.min(gain, dl - 5);
 
-  // Jeu rapide : quand la défense perçue entre la marque et l'en-but, à moins de 15 m, est clairsemée
-  // (défenseurs encore au sol, partis au ruck ou en repli), tant que la ligne n'est pas trop loin.
-  const devant = Object.values(b.opponents).filter((o) => o.age <= 1.5 && (o.lastSeen.x - pen.x) * sens >= -2
-    && Math.hypot(o.lastSeen.x - pen.x, o.lastSeen.y - pen.y) <= 15).length;
-  const rapide = 0.6 + (devant <= 4 && dl <= 45 ? 1.6 : 0) - (dl > 60 ? 1 : 0);
+  // Jeu rapide : on joue tout de suite quand la défense N'EST PAS EN PLACE — peu de défenseurs déjà repliés à leur
+  // distance (7 à 22 m devant la marque) et répartis sur la largeur (à 25 m de part et d'autre) : les autres sont encore
+  // collés au regroupement, au sol ou en train de reculer, et on les prend de vitesse. Le joueur le plus proche de la
+  // marque (souvent le 9) tape (moteur). N'importe où sur le terrain, c'est même surtout une arme du milieu de terrain ;
+  // dans sa propre moitié, jouer vite expose à une contre-attaque près de sa ligne : malus croissant (jusqu'à -1,2 dans
+  // ses 22 m). Avant, l'option exigeait d'être à moins de 45 m de l'en-but, où les poteaux l'emportaient presque
+  // toujours : aucune pénalité n'était jouée vite (0 en 240 min de jeu GOAP).
+  const enPlace = Object.values(b.opponents).filter((o) => {
+    if (o.age > 1.5) return false;
+    const devantM = (o.lastSeen.x - pen.x) * sens;
+    return devantM >= 7 && devantM <= 22 && Math.abs(o.lastSeen.y - pen.y) <= 25;
+  }).length;
+  const chezSoi = Math.max(0, Math.min(1, (dl - 50) / 30));
+  // Bonus seulement si presque PERSONNE n'est replacé (0 ou 1), et seulement dans la moitié adverse : au coup de sifflet,
+  // la défense est presque toujours encore autour du regroupement, et un bonus plus large faisait jouer vite plus d'une
+  // pénalité sur deux (54 %) — invraisemblable ; ordre de grandeur supposé en pratique : de l'ordre d'une sur dix (hypothèse non sourcée,
+  // à vérifier sur les matchs des docs 11-14).
+  const rapide = 0.6 + (enPlace <= 1 && dl <= 50 ? 1.2 : 0) - 1.2 * chezSoi;
 
   const ecart = b.score ? (team === 'A' ? b.score.A - b.score.B : b.score.B - b.score.A) : 0;
   const fin = b.t > 4800 * 0.75;
