@@ -768,6 +768,8 @@ class GoalBasedRugbyAgent {
     this.usePlacement = options.placement === true; // opt-in : le placement individuel conduit le joueur hors plan
     this.placement = null;
     this.openPlay = options.openPlay === true;
+    // Placement des défenseurs pendant le ruck décidé par l'agent (G54) ; false rétablit le créneau du moteur.
+    this.ruckAgents = options.ruckAgents !== false;
     this.carrierDecision = null;
     this.wasCarrier = false;
     this.placementScope = options.placementScope || 'all'; // 'all' | 'defense' | 'attack' : quelles situations le placement conduit
@@ -974,6 +976,13 @@ class GoalBasedRugbyAgent {
     const dansPortee = this.placementScope === 'all' || (this.placementScope === 'defense') === enDefense;
     if (this.usePlacement && !this._intent && !this.executor.busy && !this.plan && this.placement && state.phase === 'PORTE' && !porteur && dansPortee) {
       this._intent = { tx: this.placement.target.x, ty: this.placement.target.y, vmaxFactor: this.placement.vmaxFactor, jeuCourant: this.openPlay };
+    }
+    // DÉFENSE AU RUCK (G54) : le défenseur se place lui-même (zones de garde, ligne, trou à boucher) au lieu du créneau que
+    // lui attribuait le moteur. Ses cibles sont toutes derrière la ligne de hors-jeu (placement) ; hors-jeu, il n'a pas de
+    // placement de défense mais le but BECOME_ONSIDE. Le moteur garde son placement pour qui n'a pas d'intention.
+    if (this.usePlacement && this.ruckAgents && !this._intent && !this.executor.busy && !this.plan && this.placement
+      && state.phase === 'RUCK' && enDefense && !porteur && this._sit && this._sit.onside) {
+      this._intent = { tx: this.placement.target.x, ty: this.placement.target.y, vmaxFactor: this.placement.vmaxFactor, jeuCourant: false };
     }
     // Ballon au sol (coup de pied retombé, ballon échappé) : le joueur qui a CHOISI d'aller le disputer y court ; le moteur
     // ne désigne personne et décide seul qui le touche en premier.
@@ -1818,6 +1827,49 @@ function candidatMarquage(b, s, ref) {
   return null;
 }
 
+// DÉFENSE AUTOUR DU RUCK (RM4-G54, doc 17) : chaque défenseur lit LUI-MÊME les zones à tenir autour du regroupement
+// — pilier côté fermé, pilier côté ouvert, deuxième garde côté ouvert, petit côté s'il reste de la place jusqu'à la
+// touche — et la menace qu'il y voit (attaquants en face, porteur potentiel au pied du ruck). Il prend la zone la plus
+// utile que personne ne tient : une zone qu'un partenaire VU occupe déjà ne m'attire
+// pas (deux joueurs ne défendent pas le même espace) ; un partenaire plus près que moi la rend moins tentante. Aucun numéro ne désigne une zone ; toutes sont derrière la ligne
+// de hors-jeu (loi 15.4-15.5). Les poids sont des hypothèses à calibrer.
+const ZONE_OCCUPEE = 1.6;
+function candidatsGardeRuck(b, s, ligneX, sens) {
+  const me = b.self, pt = s.pt;
+  if (!pt) return [];
+  const ferme = pt.y <= P.LARGEUR / 2 ? -1 : 1;             // côté de la touche la plus proche
+  const dTouche = ferme < 0 ? pt.y : P.LARGEUR - pt.y;
+  // Les PILIERS se tiennent juste derrière le pied arrière du ruck (2,5 m derrière le ballon : un ruck à trois ou quatre
+  // joueurs s'étend jusque-là, loi 15.4) : à la profondeur de la ligne (5 à 8 m), le 9 aurait toute la place pour partir
+  // au ras. Jamais plus loin que la ligne de défense. La 2e garde et le petit côté restent sur la ligne de défense.
+  const xPilier = sens > 0 ? Math.max(ligneX, pt.x - 2.5) : Math.min(ligneX, pt.x + 2.5);
+  const zones = [
+    { id: 'GUARD_PILLAR_BLIND', y: pt.y + ferme * 1.5, x: xPilier, base: 78, raison: 'pilier côté fermé' },
+    { id: 'GUARD_PILLAR_OPEN', y: pt.y - ferme * 1.5, x: xPilier, base: 80, raison: 'pilier côté ouvert' },
+    { id: 'GUARD_SECOND_OPEN', y: pt.y - ferme * 4.5, x: ligneX, base: 70, raison: 'deuxième garde côté ouvert' },
+  ];
+  if (dTouche > 6) zones.push({ id: 'GUARD_BLINDSIDE', y: pt.y + ferme * Math.min(9, dTouche * 0.55), x: ligneX, base: 58, raison: 'petit côté', petitCote: true });
+  // Les attaquants LIÉS au ruck (à moins de 2,5 m du ballon) ne menacent pas une zone : ils sont engagés.
+  const adv = Object.values(b.opponents).filter((o) => o.confidence >= 0.3 && P.dist(o.lastSeen, pt) <= 25 && P.dist(o.lastSeen, pt) > 2.5);
+  const coequipiers = Object.values(b.teammates).filter((m) => m.lastSeen && m.available !== false && !m.kickOffside);
+  const out = [];
+  for (const z of zones) {
+    const cible = { x: P.clamp(z.x, 0, 100), y: P.clamp(z.y, 1, P.LARGEUR - 1) };
+    const dMoi = P.dist(me, cible);
+    // Zone OCCUPÉE (un partenaire y est déjà) : je n'y vais pas. Chaque partenaire plus près que moi en diminue l'attrait
+    // (il y va peut-être) sans l'exclure : sinon une zone reste vide parce que le plus proche fait autre chose.
+    if (coequipiers.some((m) => P.dist(m.lastSeen, cible) <= ZONE_OCCUPEE && dMoi > ZONE_OCCUPEE)) continue;
+    const plusPres = coequipiers.filter((m) => P.dist(m.lastSeen, cible) < dMoi - 0.3).length;
+    // Menace que JE vois dans cette zone : attaquants entre elle et la touche (petit côté) ou à moins de 4 m d'elle.
+    const menace = adv.filter((o) => z.petitCote
+      ? (o.lastSeen.y - pt.y) * ferme > 2
+      : Math.abs(o.lastSeen.y - cible.y) <= 4).length;
+    const prio = z.base + Math.min(3, menace) * (z.petitCote ? 9 : 4) - 14 * Math.min(3, plusPres);
+    out.push({ id: z.id, priority: prio, target: cible, vmax: 1, reason: z.raison + (menace ? ` (${menace} attaquant(s) vu(s))` : '') + ', personne ne la tient' });
+  }
+  return out;
+}
+
 function candidatsDefense(b, s, pb, jeuCourant) {
   const me = b.self, bal = s.ball && s.ball.lastSeen;
   const sens = s.sens, num = b.agent.numero;
@@ -1851,6 +1903,7 @@ function candidatsDefense(b, s, pb, jeuCourant) {
   const glisse = (bal.y - ref.y) * 0.6 / (1 + 1.5 * exposition);
   const yTenu = arretee ? ref.y : ref.y + glisse;
   out.push({ id: 'HOLD_LINE', priority: 60, target: { x: xTenu, y: yTenu }, vmax: Math.abs(bal.y - ref.y) <= 15 ? 1 : 0.85, reason: 'ligne alignée sur ' + voisins.length + ' voisin(s) observé(s)' });
+  if (s.phase === 'RUCK' && s.advPoss && s.onside) for (const c of candidatsGardeRuck(b, s, ligneX, sens)) out.push(c);
   // CLOSE_GAP : plus grand intervalle observé près de moi, si je suis le mieux placé parmi ceux que je vois.
   const bords = arretee ? [{ id: 'touche0', x: ligneX, y: 0, numero: 0 }, { id: 'touche70', x: ligneX, y: P.LARGEUR, numero: 0 }] : [];
   const ligne = voisins.concat(bords, [{ id: 'moi', x: me.x, y: me.y, numero: num }]).sort((a, c) => a.y - c.y);
@@ -2112,7 +2165,7 @@ function individualPlacement(beliefs, goalId, playbook, profile = {}, jeuCourant
     vmaxFactor: choix.vmax, reason: choix.reason, candidates: Object.freeze(evalues.map((c) => Object.freeze({ id: c.id, score: +c.score.toFixed(2), valide: c.valide }))) });
 }
 
-module.exports = { individualPlacement, candidatPresse, candidatsDefense, candidatsRenfort, lireCroisee, lireAttaqueAdverse, GAP_MIN };
+module.exports = { candidatsGardeRuck, individualPlacement, candidatPresse, candidatsDefense, candidatsRenfort, lireCroisee, lireAttaqueAdverse, GAP_MIN };
 
   };
   defs["lineout-call.js"] = function (module, exports, require) {

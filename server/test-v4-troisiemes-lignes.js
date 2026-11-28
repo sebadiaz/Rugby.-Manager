@@ -144,6 +144,67 @@ test('moteur (tendance, GOAP) : des défenseurs bons gratteurs récupèrent plus
   assert.ok(forts > faibles, `turnovers gagnés : gratteurs 90 -> ${forts}, gratteurs 10 -> ${faibles}`);
 });
 
+
+// --- G54 : défense autour du ruck (zones de garde lues par chacun) ---------------
+const { individualPlacement: placer, candidatsGardeRuck } = require('../engine/ai/individual-placement.js');
+const { deriveSituation } = require('../engine/ai/goals.js');
+function sceneGarde(seed = 1) {
+  const { m, e } = etatRuck(seed);
+  const def = m.possession === 'A' ? 'B' : 'A', att = m.possession;
+  const s = copie(e);
+  const sens = def === 'A' ? 1 : -1, pt = s.ruck;
+  // Défense : tout le monde loin, sauf ceux que le test place.
+  for (const j of (def === 'A' ? s.equipeA : s.equipeB)) { j.x = pt.x - sens * 25; j.y = 35; j.auSol = 0; j.horsJeuKick = 0; }
+  return { s, def, att, sens, pt };
+}
+const zonesDe = (s, team, numero) => {
+  const b = new AgentContext({ team, numero }, { reactionDelay: 0, fovDeg: 360, occlusionBodies: 99 }).update(s);
+  const si = deriveSituation(b);
+  return { b, si, zones: Object.fromEntries(candidatsGardeRuck(b, si, si.pt ? si.pt.x - si.sens * 2 : 0, si.sens).map((c) => [c.id, c])) };
+};
+test('G54 / scénario 11 : une zone de garde déjà tenue par un partenaire que je vois ne m\'attire pas', () => {
+  const { s, def, sens, pt } = sceneGarde(1);
+  const eq = def === 'A' ? s.equipeA : s.equipeB, ferme = pt.y <= 35 ? -1 : 1;
+  const moi = eq.find((j) => j.numero === 7), lui = eq.find((j) => j.numero === 4);
+  moi.x = pt.x - sens * 4; moi.y = pt.y - ferme * 3;
+  const libre = zonesDe(s, def, 7).zones;
+  assert.ok('GUARD_PILLAR_OPEN' in libre, 'pilier ouvert libre : candidat');
+  lui.x = pt.x - sens * 2; lui.y = pt.y - ferme * 1.5; // le 4 est déjà au pilier ouvert
+  const tenu = zonesDe(s, def, 7).zones;
+  assert.ok(!('GUARD_PILLAR_OPEN' in tenu), 'pilier ouvert tenu par le 4 : le 7 ne s\'y met pas');
+  assert.ok('GUARD_SECOND_OPEN' in tenu, 'il garde d\'autres zones à prendre');
+});
+test('G54 / scénario 4 : des attaquants vus au petit côté rendent cette zone prioritaire, pour quiconque est le mieux placé', () => {
+  const { s, def, att, sens, pt } = sceneGarde(2);
+  const ferme = pt.y <= 35 ? -1 : 1, dT = ferme < 0 ? pt.y : 70 - pt.y;
+  if (dT <= 6) return; // ruck contre la touche : pas de petit côté
+  const eq = def === 'A' ? s.equipeA : s.equipeB, adv = att === 'A' ? s.equipeA : s.equipeB;
+  for (const n of [6, 12]) { const j = eq.find((x) => x.numero === n); j.x = pt.x - sens * 4; j.y = pt.y + ferme * 3; }
+  for (const o of adv) { o.x = pt.x - 25 * (att === 'A' ? 1 : -1); o.y = 35; }
+  const calme = zonesDe(s, def, 6).zones.GUARD_BLINDSIDE;
+  adv.slice(0, 3).forEach((o, i) => { o.x = pt.x + sens * 3; o.y = pt.y + ferme * (3 + i * 1.5); });
+  const menace = zonesDe(s, def, 6).zones.GUARD_BLINDSIDE;
+  assert.ok(calme && menace && menace.priority > calme.priority + 15, `petit côté : ${calme && calme.priority} sans menace, ${menace && menace.priority} avec trois attaquants`);
+  // Le même raisonnement vaut pour le 12 au même endroit : aucune zone n'appartient à un numéro.
+  assert.strictEqual(zonesDe(s, def, 12).zones.GUARD_BLINDSIDE.priority, menace.priority);
+});
+test('G54 / scénario 15 : toutes les zones de garde sont derrière la ligne de hors-jeu du ruck', () => {
+  for (const seed of [1, 2, 3]) {
+    const { s, def, sens, pt } = sceneGarde(seed);
+    const eq = def === 'A' ? s.equipeA : s.equipeB;
+    const j = eq.find((x) => x.numero === 6); j.x = pt.x - sens * 4; j.y = pt.y;
+    const b = new AgentContext({ team: def, numero: 6 }, { reactionDelay: 0, fovDeg: 360, occlusionBodies: 99 }).update(s);
+    const p = placer(b, 'DEFEND', null, profilePour(6));
+    for (const c of p.candidates.filter((c) => c.id.startsWith('GUARD'))) assert.ok(c.valide, c.id + ' valide');
+    // Profondeur : piliers juste derrière le pied arrière (2,5 m derrière le ballon), garde et petit côté sur la ligne.
+    const si = deriveSituation(b), ligneX = 0;
+    const z = Object.fromEntries(candidatsGardeRuck(b, si, pt.x - sens * 6, sens).map((c) => [c.id, c]));
+    for (const id of ['GUARD_PILLAR_BLIND', 'GUARD_PILLAR_OPEN']) if (z[id]) assert.ok(Math.abs((pt.x - z[id].target.x) * sens - 2.5) < 0.01, `${id} à 2,5 m derrière le ballon (${((pt.x - z[id].target.x) * sens).toFixed(2)})`);
+    if (z.GUARD_SECOND_OPEN) assert.ok(Math.abs((pt.x - z.GUARD_SECOND_OPEN.target.x) * sens - 6) < 0.01, 'deuxième garde sur la ligne de défense');
+    if (p.placementGoal.startsWith('GUARD')) assert.ok((p.target.x - pt.x) * sens <= 0.3, `cible ${p.placementGoal} derrière le ballon`);
+  }
+});
+
 console.log(`\n${nb} test(s) exécuté(s).`);
 if (echecs) { console.error(`ECHEC : ${echecs} test(s) en échec.`); process.exit(1); }
 console.log('OK : au regroupement, les troisièmes lignes décident selon leurs aptitudes et ce qu\'ils voient.');
