@@ -299,7 +299,9 @@ test('COUP DE PIED EN VOL : chacun estime le point de chute selon SA lecture du 
       assert.ok(vont.length <= 3, `${team} : ${vont.length} joueurs sous le ballon (pas de ruée)`);
       for (const d of vont) {
         const est = d.beliefs.ball.chute;
-        assert.ok(Math.hypot(d.placement.target.x - est.x, d.placement.target.y - est.y) < 0.5, 'il court vers SON estimation');
+        // Une estimation hors du terrain (ballon qui file en touche ou dans l'en-but) est ramenée sur la ligne : on y court.
+        const estT = { x: Math.max(0, Math.min(100, est.x)), y: Math.max(0, Math.min(70, est.y)) };
+        assert.ok(Math.hypot(d.placement.target.x - estT.x, d.placement.target.y - estT.y) < 0.5, `il court vers SON estimation : cible ${JSON.stringify(d.placement.target)}, estimation ${JSON.stringify(est)}`);
         assert.ok(Math.hypot(est.x - vrai.x, est.y - vrai.y) <= 7 + 1e-9, 'erreur de lecture bornée à 7 m');
       }
     }

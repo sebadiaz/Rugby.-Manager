@@ -42,9 +42,11 @@ test('PASS_TO_10 : refusé au départ si l\'on n\'est pas porteur ou si le 10 es
   dix.x = moi.x + moi.sensAttaque * 5; dix.auSol = 0; moi.auSol = 0;
   assert.match(new ActionExecutor({ team: eq, numero: num }).start('PASS_TO_10', s).events[0].reason, /RECEIVER_AHEAD/);
 });
-test('dans le moteur (GOAP, 6 graines) : des passes d\'agents réussissent et chaque succès correspond à une vraie passe du moteur', () => {
+test('dans le moteur (GOAP, 10 graines) : des passes d\'agents réussissent et chaque succès correspond à une vraie passe du moteur', () => {
+  // 10 graines (et non 6) : la passe demandée au 10 est rare et le moteur sert souvent un autre receveur légal
+  // (WRONG_RECEIVER) ; sur 6 graines le nombre de réussites dépendait du seul déroulé (2 à 4 selon les versions).
   let ok = 0, tent = 0, faux = 0;
-  for (let seed = 1; seed <= 6; seed++) {
+  for (let seed = 1; seed <= 10; seed++) {
     const m = new MatchEngine(seed, 4800, configGOAP());
     const passes = []; const lg = m.log.bind(m); m.log = (t, team, msg, ...r) => { if (t === 'PASSE') passes.push(String(msg)); return lg(t, team, msg, ...r); };
     for (let i = 0; i < 4800; i++) m.tick(0.05);

@@ -402,7 +402,10 @@ function individualPlacement(beliefs, goalId, playbook, profile = {}, jeuCourant
   const valides = evalues.filter((c) => c.valide);
   valides.sort((a, c) => c.score - a.score || a.id.localeCompare(c.id, 'en'));
   const choix = valides[0] || evalues.sort((a, c) => c.score - a.score)[0];
-  const cible = choix.id === 'PRESS_CARRIER' ? choix.target : imaginerLeJeuDesCoequipiers(beliefs, choix.target);
+  // Aller AU BALLON (plaquer, disputer un coup de pied, ramasser un ballon au sol) vise un point précis : on n'en est pas
+  // écarté parce qu'un partenaire est proche (l'espacement ne vaut que pour les places de ligne et de soutien).
+  const surLeBallon = choix.id === 'PRESS_CARRIER' || choix.id === 'CONTEST_KICK' || choix.id === 'RECOVER_LOOSE_BALL';
+  const cible = surLeBallon ? choix.target : imaginerLeJeuDesCoequipiers(beliefs, choix.target);
   return Object.freeze({ placementGoal: choix.id, target: Object.freeze({ x: +P.clamp(cible.x, 0, 100).toFixed(3), y: +P.clamp(cible.y, 0, P.LARGEUR).toFixed(3) }),
     vmaxFactor: choix.vmax, reason: choix.reason, candidates: Object.freeze(evalues.map((c) => Object.freeze({ id: c.id, score: +c.score.toFixed(2), valide: c.valide }))) });
 }
