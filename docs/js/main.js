@@ -45,7 +45,9 @@
     if (!j) { bulle.style.display = 'none'; return; }
     const nom = UI.nomEquipe ? UI.nomEquipe(j.team) : 'Équipe ' + j.team;
     const car = UI.caractere(j.car);
-    bulle.innerHTML = `${nom} — n°${j.numero}${j.label ? ' (' + j.label + ')' : ''}<br><span style="font-weight:400;opacity:.9">${car ? 'Caractère : ' + car : 'Caractère équilibré'}</span>`;
+    // Morphologie du joueur (taille, masse) : chacun la sienne.
+    const morpho = j.car && j.car.taille && j.car.masse ? `${(j.car.taille / 100).toFixed(2).replace('.', ',')} m · ${j.car.masse} kg<br>` : '';
+    bulle.innerHTML = `${nom} — n°${j.numero}${j.label ? ' (' + j.label + ')' : ''}<br><span style="font-weight:400;opacity:.9">${morpho}${car ? 'Caractère : ' + car : 'Caractère équilibré'}</span>`;
     bulle.style.left = Math.min(window.innerWidth - 230, e.clientX + 14) + 'px';
     bulle.style.top = Math.max(4, e.clientY - 46) + 'px';
     bulle.style.display = 'block';

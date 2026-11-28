@@ -296,9 +296,18 @@
   const CHEVEUX = ['#2b1b0f', '#4a3020', '#1a1a1a', '#7a5230', '#c9a86a', '#3b2a1e'];
   const hash = (k) => { let h = 7; for (const c of k) h = (h * 31 + c.charCodeAt(0)) | 0; return Math.abs(h); };
 
-  // Gabarit selon le poste (et le profil connu du joueur) : les avants plus massifs.
+  // Gabarit du JOUEUR : sa taille (cm) et sa masse (kg) réelles (caractéristiques du moteur) donnent la hauteur et la
+  // carrure de la silhouette — deux n°7 ne se ressemblent plus. Largeur ∝ racine de masse/taille, calée pour qu'un pilier
+  // de 118 kg pour 1,85 m fasse ~1,30 et un 9 de 82 kg pour 1,74 m ~0,92 (valeurs de l'ancien gabarit par poste).
+  // Sans morphologie (ancienne sauvegarde), repli sur l'ancien gabarit par poste.
   function gabarit(j) {
     if (j.team === 'ARB') return { largeur: 0.95, taille: 1.8 };
+    const c = j.car;
+    if (c && typeof c.taille === 'number' && typeof c.masse === 'number') {
+      const t = c.taille / 100;
+      const largeur = Math.max(0.8, Math.min(1.45, 1 + (Math.sqrt(c.masse / t) - 7.09) * 0.33));
+      return { largeur: Math.round(largeur * 50) / 50, taille: Math.round(Math.max(1.6, Math.min(2.1, t)) * 50) / 50 };
+    }
     const n = j.numero;
     const massif = n === 1 || n === 3 ? 1.32 : n <= 5 ? 1.22 : n <= 8 ? 1.15 : n === 9 ? 0.92 : 1.0;
     const taille = n === 4 || n === 5 ? 1.98 : n <= 3 ? 1.84 : n <= 8 ? 1.92 : n === 9 ? 1.74 : 1.84;
