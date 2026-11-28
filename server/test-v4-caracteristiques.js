@@ -125,5 +125,34 @@ test('morphologie : un joueur de club garde la sienne (dérivée de SES attribut
   assert.ok(Math.abs(j3.masse - j7.masse) <= 1 && Math.abs(j3.taille - j7.taille) <= 1, 'même joueur au 3 ou au 7 : même morphologie');
 });
 
+test('morphologie (geste, tendance) : un pack plus grand gagne plus de touches ; un plaqueur plus lourd domine plus souvent', () => {
+  const E = require('../engine/rugby-engine.js');
+  const avants = (taille, masse) => { const c = {}; for (let n = 1; n <= 8; n++) c[n] = { caracteristiques: Object.assign({}, taille ? { taille } : {}, masse ? { masse } : {}) }; return c; };
+  const touches = (taille) => {
+    let g = 0, t = 0;
+    for (let seed = 1; seed <= 10; seed++) {
+      const m = new E.MatchEngine(seed, 4800, { personnalites: 'NEUTRE', joueursA: avants(taille) });
+      m.jouerJusquAuSifflet(0.1);
+      g += m.stats.A.lineoutsGagnesLancer; t += m.stats.A.lineouts;
+    }
+    return { g, t, taux: g / Math.max(1, t) };
+  };
+  const grands = touches(205), petits = touches(180);
+  assert.ok(grands.taux > petits.taux, `touches gagnées sur son lancer : pack de 2,05 m ${grands.g}/${grands.t}, pack de 1,80 m ${petits.g}/${petits.t}`);
+  // Plaquage dominant : défense de A très lourde contre très légère (tous ses joueurs).
+  const tous = (masse) => { const c = {}; for (let n = 1; n <= 15; n++) c[n] = { caracteristiques: { masse } }; return c; };
+  const dominants = (masse) => {
+    let d = 0;
+    for (let seed = 1; seed <= 8; seed++) {
+      const m = new E.MatchEngine(seed, 4800, { personnalites: 'NEUTRE', joueursA: tous(masse) });
+      const reculs = []; const log = m.log.bind(m);
+      for (let t = 0; t < 2400; t += 0.1) { const avant = m.ruckDominant; m.tick(0.1); if (!avant && m.ruckDominant && m.possession === 'B') d++; }
+    }
+    return d;
+  };
+  const lourds = dominants(130), legers = dominants(75);
+  assert.ok(lourds > legers, `plaquages dominants de A : défense de 130 kg ${lourds}, de 75 kg ${legers}`);
+});
+
 console.log(`\n${nb - ko}/${nb} tests OK`);
 if (ko) process.exit(1);
