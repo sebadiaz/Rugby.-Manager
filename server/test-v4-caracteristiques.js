@@ -85,5 +85,45 @@ test('remplacement : le joueur entrant apporte SES caractéristiques et SES gest
   assert.strictEqual(dix().car.lectureJeu, 35);
 });
 
+// --- Morphologie : chaque joueur a SA taille et SA masse (jamais celles du maillot) --------------------------------
+test('morphologie : deux joueurs du même numéro ne sont pas identiques ; les moyennes par poste restent plausibles', () => {
+  const E = require('../engine/rugby-engine.js');
+  const par = {};
+  for (let g = 1; g <= 60; g++) {
+    const m = new E.MatchEngine(g, 4800);
+    for (const j of m.equipeA.concat(m.equipeB)) (par[j.numero] = par[j.numero] || []).push(j.car);
+  }
+  const moy = (a, k) => a.reduce((x, c) => x + c[k], 0) / a.length;
+  for (const n of [1, 4, 7, 9, 11]) {
+    const tailles = new Set(par[n].map((c) => c.taille)), masses = new Set(par[n].map((c) => c.masse));
+    assert.ok(tailles.size >= 8 && masses.size >= 10, `n°${n} : ${tailles.size} tailles et ${masses.size} masses différentes sur 120 joueurs`);
+  }
+  assert.ok(moy(par[4], 'taille') > moy(par[9], 'taille') + 18, 'un deuxième ligne est en moyenne bien plus grand qu\'un demi de mêlée');
+  assert.ok(moy(par[1], 'masse') > moy(par[11], 'masse') + 18, 'un pilier est en moyenne bien plus lourd qu\'un ailier');
+  for (const n in par) for (const c of par[n]) assert.ok(c.taille >= 150 && c.taille <= 215 && c.masse >= 55 && c.masse <= 150, `n°${n} borné`);
+});
+test('morphologie : stable (même graine, même joueur), sans consommer le hasard du match ; explicite prioritaire', () => {
+  const E = require('../engine/rugby-engine.js');
+  const a = new E.MatchEngine(9, 4800), b = new E.MatchEngine(9, 4800);
+  assert.deepStrictEqual(a.equipeA.map((j) => [j.car.taille, j.car.masse]), b.equipeA.map((j) => [j.car.taille, j.car.masse]));
+  const c = new E.MatchEngine(9, 4800, { personnalites: 'NEUTRE' }), d = new E.MatchEngine(9, 4800, { personnalites: 'NEUTRE' });
+  for (let k = 0; k < 10; k++) assert.strictEqual(c.rng(), d.rng());
+  const x = new E.MatchEngine(9, 4800, { joueursA: { 7: { caracteristiques: { taille: 178, masse: 96 } } } });
+  const j7 = x.equipeA.find((j) => j.numero === 7).car;
+  assert.strictEqual(j7.taille, 178); assert.strictEqual(j7.masse, 96);
+});
+test('morphologie : un joueur de club garde la sienne (dérivée de SES attributs), quel que soit le maillot', () => {
+  const E = require('../engine/rugby-engine.js');
+  const club = {};
+  for (let n = 1; n <= 15; n++) club[n] = { vitesse: 70, plaquage: 60, puissance: 55, melee: 20, touche: 20, decision: 60, endurance: 70 };
+  club[7] = { vitesse: 40, plaquage: 75, puissance: 90, melee: 85, touche: 60, decision: 50, endurance: 60 }; // profil de pilier
+  const m = new E.MatchEngine(1, 4800, { personnalites: 'NEUTRE', joueursA: club });
+  const j7 = m.equipeA.find((j) => j.numero === 7).car, j6 = m.equipeA.find((j) => j.numero === 6).car;
+  assert.ok(j7.masse > j6.masse + 15, `le pilier aligné en 7 reste lourd (${j7.masse} kg contre ${j6.masse} kg pour le 6)`);
+  const club2 = Object.assign({}, club, { 3: club[7], 7: club[3] });
+  const j3 = new E.MatchEngine(1, 4800, { personnalites: 'NEUTRE', joueursA: club2 }).equipeA.find((j) => j.numero === 3).car;
+  assert.ok(Math.abs(j3.masse - j7.masse) <= 1 && Math.abs(j3.taille - j7.taille) <= 1, 'même joueur au 3 ou au 7 : même morphologie');
+});
+
 console.log(`\n${nb - ko}/${nb} tests OK`);
 if (ko) process.exit(1);

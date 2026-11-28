@@ -195,6 +195,12 @@
     arriveeRuck:   [45, 55, 45, 50, 50, 66, 76, 62, 60, 35, 35, 50, 45, 35, 35],
     courseSoutien: [40, 50, 40, 45, 45, 58, 72, 68, 65, 55, 60, 55, 60, 60, 65],
   };
+  // MORPHOLOGIE d'un joueur GÉNÉRÉ (doc 15 § 3.1) : taille (cm) et masse (kg) moyennes du profil de son poste de formation
+  // (ordres de grandeur du rugby d'élite), autour desquelles chaque joueur varie (écart-type 4 cm et 6 kg). Des DONNÉES de
+  // joueur, comme ses autres attributs ; un joueur de club tire les siennes de ses propres attributs.
+  const PROFILS_MORPHO = [[183, 115], [180, 106], [185, 120], [199, 117], [199, 116], [191, 108], [187, 104], [191, 112],
+    [174, 82], [180, 88], [182, 91], [184, 98], [184, 96], [183, 92], [185, 93]];
+  const morphoProfil = (numero) => { const m = PROFILS_MORPHO[(numero >= 1 && numero <= 15 ? numero : 8) - 1]; return { taille: m[0], masse: m[1] }; };
   const defautJeuAuSol = (cle, numero) => { const t = DEFAUTS_JEU_AU_SOL[cle]; return t[(numero >= 1 && numero <= 15 ? numero : 8) - 1]; };
 
   const DEFAULT_CONFIG = {
@@ -226,6 +232,8 @@
           couloir: COULOIR_BASE[n],
           // Données du joueur généré (explicites) ; un joueur de club ne les a pas et les tire de ses propres attributs.
           caracteristiques: { grattage: defautJeuAuSol('grattage', n), arriveeRuck: defautJeuAuSol('arriveeRuck', n), courseSoutien: defautJeuAuSol('courseSoutien', n) },
+          // Profil morphologique du joueur généré (moyennes du poste ; chaque joueur varie autour).
+          morphoProfil: morphoProfil(n),
         };
       }
       return j;
@@ -539,7 +547,7 @@
   const deriveJeuAuSol = (cle, j) => cle === 'grattage' ? 0.4 * j.plaquage + 0.3 * j.puissance + 0.3 * j.decision - 8
     : cle === 'arriveeRuck' ? 0.5 * j.vitesse + 0.3 * j.endurance + 0.2 * j.decision
       : 0.4 * j.vitesse + 0.3 * j.endurance + 0.3 * j.decision; // courseSoutien
-  function caracteristiquesDetaillees(j, explicites, tirage, attributsPropres) {
+  function caracteristiquesDetaillees(j, explicites, tirage, attributsPropres, defautsMorpho) {
     const e = explicites || {};
     const v = (cle, derivee) => (typeof e[cle] === 'number' ? borne(e[cle]) : borne(derivee));
     const car = {
@@ -555,6 +563,11 @@
       arriveeRuck: v('arriveeRuck', attributsPropres ? deriveJeuAuSol('arriveeRuck', j) : defautJeuAuSol('arriveeRuck', j.numero)),
       courseSoutien: v('courseSoutien', attributsPropres ? deriveJeuAuSol('courseSoutien', j) : defautJeuAuSol('courseSoutien', j.numero)),
     };
+    // Morphologie (cm, kg) : hors de l'échelle 0-100, donc pas de `v()` (qui borne) ; explicite > défaut calculé ailleurs.
+    const mesure = (cle, lo, hi, defaut) => (typeof e[cle] === 'number' && Number.isFinite(e[cle]) ? Math.max(lo, Math.min(hi, e[cle])) : defaut);
+    const dm = defautsMorpho || morphoProfil(j.numero);
+    car.taille = Math.round(mesure('taille', 150, 215, dm.taille));
+    car.masse = Math.round(mesure('masse', 55, 150, dm.masse));
     for (const cle of TRAITS_PERSONNALITE) {
       if (typeof e[cle] === 'number' && Number.isFinite(e[cle])) car[cle] = borne(e[cle]);   // explicite : prioritaire
       else if (tirage) car[cle] = Math.round(tirage[cle] * 10) / 10;                         // sinon tirage stable
@@ -612,11 +625,29 @@
     const r = j && j.car && typeof j.car.receptionPasse === 'number' ? j.car.receptionPasse : 60;
     return Math.max(0.5, Math.min(0.85, P_ECHAPPE_AVANT - (r - 60) / 200));
   }
+  // Morphologie par défaut du JOUEUR (jamais du maillot) : profil de formation d'un joueur généré + variation individuelle
+  // stable (fonction pure de la graine et de l'identité : ne consomme pas le générateur du match ; sans graine — tests en
+  // personnalités NEUTRES — la moyenne du profil) ; joueur de club : dérivée de ses propres attributs (puissance, mêlée,
+  // touche, vitesse), aucun numéro lu.
+  function defautMorpho(j, c, graine) {
+    if (c && c.morphoProfil) {
+      const cle = String(graine) + '|' + j.team + '|' + j.numero + '|' + String(c.joueurId != null ? c.joueurId : (c.id ?? '')) + '|morpho';
+      const g = (k) => (graine == null ? 0 : Math.max(-2.5, Math.min(2.5, gaussien(cle + k))));
+      // Taille et masse corrélées (un grand joueur est en général plus lourd) : 60 % de la variation de masse suit la taille.
+      const gt = g('|taille'), gm = 0.6 * gt + 0.8 * g('|masse');
+      return { taille: c.morphoProfil.taille + 4 * gt, masse: c.morphoProfil.masse + 6 * gm };
+    }
+    if (c && c.vitesse != null && c.plaquage != null) {
+      const pu = j.puissance ?? 60, me = j.melee ?? 40, to = j.touche ?? 30, vi = j.vitesse ?? 60;
+      return { taille: 166 + 0.22 * to + 0.1 * me + 0.08 * pu, masse: 52 + 0.45 * pu + 0.25 * me - 0.1 * vi + 0.1 * to };
+    }
+    return morphoProfil(j.numero);
+  }
   function appliquerCaracteristiques(j, c, graine) {
     const tirage = graine == null ? null : tirerPersonnalite(graine, j.team, j.numero, c && (c.joueurId != null ? c.joueurId : c.id));
     // Joueur venu avec ses propres attributs (club, remplaçant) : ses valeurs de jeu au sol se dérivent de LUI, pas du maillot.
     const attributsPropres = !!(c && c.vitesse != null && c.plaquage != null);
-    j.car = caracteristiquesDetaillees(j, c && c.caracteristiques, tirage, attributsPropres);
+    j.car = caracteristiquesDetaillees(j, c && c.caracteristiques, tirage, attributsPropres, defautMorpho(j, c, graine));
     j.gestes = gestesMaitrises(j.car, c && c.gestes);
     return j;
   }
