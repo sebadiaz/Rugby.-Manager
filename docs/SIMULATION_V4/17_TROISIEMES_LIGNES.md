@@ -1,6 +1,6 @@
 # 17 — Troisièmes lignes (6, 7, 8) : agents autonomes reconnaissables
 
-> **Statut : spécification du propriétaire (27 novembre 2026), découpée en tâches RM4-G53 à G62 ; G53 codé.**
+> **Statut : spécification du propriétaire (27 novembre 2026), découpée en tâches RM4-G53 à G62 ; G53 et G54 codés.**
 > Objectif final : qu'un connaisseur reconnaisse un 6, un 7 et un 8 **à leurs déplacements et à leurs décisions**, sans voir
 > les maillots — sans IA collective, sans quotas statistiques.
 
@@ -40,7 +40,7 @@ au ballon, présence au ruck à 2,2 m, part du temps par but, statistiques indiv
 | Tâche | Contenu | Scénarios de la spec | Statut |
 |---|---|---|---|
 | **G53** | Jeu au sol par aptitudes : `grattage`, `arriveeRuck`, `courseSoutien` (moteur + `aptitudes.js`) ; ruck déjà tenu → on reste disponible ; contestation seulement avant que le ballon soit jouable, abandonnée si trop risquée ; réussite du grattage selon le gratteur (moteur) | 2, 3, 13, 14 (partiel) | **FAIT** |
-| G54 | Défense autour du ruck : menaces (départ du 9, pick and go, petit côté) lues par chacun ; « si un partenaire tient déjà cette zone, j'en prends une autre » (appels « je prends le petit côté », « je couvre l'intérieur ») | 4, 11, 15 | à faire |
+| G54 | Défense autour du ruck : zones de garde (piliers fermé et ouvert, deuxième garde, petit côté) lues par chacun ; « si un partenaire tient déjà cette zone, j'en prends une autre » ; placement des défenseurs au ruck décidé par l'agent et non plus par les créneaux du moteur | 4, 11, 15 | **FAIT** (appels « je prends le petit côté » : à faire) |
 | G55 | Courses de soutien vers une position FUTURE probable (anticipation du prochain point de contact, pas la position actuelle du porteur) ; `courseSoutien`, `lectureJeu` | 1, 8, 12 | à faire |
 | G56 | Porteur avant : percuter, attaquer l'intervalle, fixer-passer, passe après contact, rester debout ; `percussion` (doc 15) ; un joueur puissant ne percute pas systématiquement | — | à faire |
 | G57 | Mêlée : 6 et 7 restent liés jusqu'à la fin (loi 19) ; sortie : options du 8 (laisser au 9, partir fermé/ouvert, fixer-passer) déjà annoncées (`SCRUM_8_GOING`, doc 12) ; rôle des flankers en sortie choisi par chacun | 5, 6 | partiellement existant (G37) |
@@ -86,6 +86,30 @@ au ballon, présence au ruck à 2,2 m, part du temps par but, statistiques indiv
 
 **À surveiller (hors G53)** : avec ou sans ce patch, le mode GOAP produit environ 17 turnovers par 40 min (~35 par
 match), au-dessus du repère de 12 à 18 par match ; à traiter dans la validation G62, sans quota.
+
+## 4 bis. G54 — défense autour du ruck
+
+- **Constat** : pendant un ruck, en GOAP aussi, le moteur attribuait lui-même des créneaux de ligne aux défenseurs (dont
+  certains selon le numéro : avants près du ruck, 11 et 14 au large) ; le contrôleur des agents ne publiait d'intention de
+  placement qu'en jeu courant. C'était une désignation centrale.
+- **Agents** :
+  - `individual-placement.js`, `candidatsGardeRuck` : zones pilier côté fermé (1,5 m), pilier côté ouvert (1,5 m) — à
+    2,5 m derrière le ballon, juste derrière le pied arrière d'un ruck à 3-4 joueurs —, deuxième garde côté ouvert (4,5 m) et
+    petit côté (si plus de 6 m jusqu'à la touche) sur la ligne de défense ; toutes en position régulière (loi 15.4).
+    Les attaquants liés au ruck (à moins de 2,5 m du ballon) ne comptent pas comme menace.
+    Une zone qu'un partenaire VU occupe déjà (≤ 1,6 m) est écartée ; chaque partenaire plus près que moi en retire 14 ;
+    chaque attaquant vu en face y ajoute 4 (9 au petit côté). Aucun numéro ne désigne une zone.
+  - `agent-controller.js` : le défenseur en position régulière publie son intention de placement pendant le ruck (option
+    `ruckAgents`, vraie par défaut) ; le créneau du moteur ne reste que pour qui n'en a pas.
+- **Mesure (16 + 16 matchs GOAP de 15 min, HEAD contre G54)** : pilier côté ouvert tenu 89 % → 99 % ; deux défenseurs au
+  même pilier 118 → 70 pour 100 rucks (indicateur sur les deux piliers) ; pilier fermé 86 % → 80 % ; petit côté menacé tenu
+  100 % → 92 % ; essais 0,9 → 0,4, mètres 153 → 172, franchissements 4,0 → 4,7, rucks 50 → 44 (écarts dans le bruit de 16
+  matchs ; mesure faite AVANT le rapprochement des piliers à 2,5 m, à refaire). Le pilier fermé et le petit côté sont un
+  peu moins bien tenus : à surveiller (poids à calibrer, appels à venir). Limite : écart fixe de 2,5 m ; un ruck plus profond
+  demanderait de se caler derrière le dernier participant vu. Le créneau moteur par numéro reste en repli pour un défenseur
+  sans intention (hors-jeu, plan en cours) : dette à résorber.
+- **Tests** : `server/test-v4-troisiemes-lignes.js`, scénarios 11 (zone déjà tenue), 4 (petit côté menacé, même priorité
+  quel que soit le numéro) et 15 (zones derrière la ligne de hors-jeu).
 
 ## 5. Ce qui reste hors de portée de G53
 

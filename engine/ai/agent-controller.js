@@ -85,6 +85,8 @@ class GoalBasedRugbyAgent {
     this.usePlacement = options.placement === true; // opt-in : le placement individuel conduit le joueur hors plan
     this.placement = null;
     this.openPlay = options.openPlay === true;
+    // Placement des défenseurs pendant le ruck décidé par l'agent (G54) ; false rétablit le créneau du moteur.
+    this.ruckAgents = options.ruckAgents !== false;
     this.carrierDecision = null;
     this.wasCarrier = false;
     this.placementScope = options.placementScope || 'all'; // 'all' | 'defense' | 'attack' : quelles situations le placement conduit
@@ -291,6 +293,13 @@ class GoalBasedRugbyAgent {
     const dansPortee = this.placementScope === 'all' || (this.placementScope === 'defense') === enDefense;
     if (this.usePlacement && !this._intent && !this.executor.busy && !this.plan && this.placement && state.phase === 'PORTE' && !porteur && dansPortee) {
       this._intent = { tx: this.placement.target.x, ty: this.placement.target.y, vmaxFactor: this.placement.vmaxFactor, jeuCourant: this.openPlay };
+    }
+    // DÉFENSE AU RUCK (G54) : le défenseur se place lui-même (zones de garde, ligne, trou à boucher) au lieu du créneau que
+    // lui attribuait le moteur. Ses cibles sont toutes derrière la ligne de hors-jeu (placement) ; hors-jeu, il n'a pas de
+    // placement de défense mais le but BECOME_ONSIDE. Le moteur garde son placement pour qui n'a pas d'intention.
+    if (this.usePlacement && this.ruckAgents && !this._intent && !this.executor.busy && !this.plan && this.placement
+      && state.phase === 'RUCK' && enDefense && !porteur && this._sit && this._sit.onside) {
+      this._intent = { tx: this.placement.target.x, ty: this.placement.target.y, vmaxFactor: this.placement.vmaxFactor, jeuCourant: false };
     }
     // Ballon au sol (coup de pied retombé, ballon échappé) : le joueur qui a CHOISI d'aller le disputer y court ; le moteur
     // ne désigne personne et décide seul qui le touche en premier.
