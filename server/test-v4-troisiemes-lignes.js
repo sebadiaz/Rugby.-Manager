@@ -133,9 +133,11 @@ test('moteur (tendance, GOAP) : des défenseurs bons gratteurs récupèrent plus
   const gratte = (g) => {
     let to = 0;
     const cfg = {}; for (let n = 1; n <= 15; n++) cfg[n] = { caracteristiques: { grattage: g } };
-    for (const seed of [1, 2, 3, 4, 5, 6]) {
+    // 10 graines de 15 min (et non 6 de 10 min) : le grattage est rare (environ 1 par tranche de 10 min) ; à 6 x 10 min, les
+    // deux camps étaient à égalité (5 contre 5) selon le seul déroulé.
+    for (const seed of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]) {
       const m = new MatchEngine(seed, 4800, configGOAP({ personnalites: 'NEUTRE', joueursB: cfg }));
-      for (let t = 0; t < 600; t += 0.1) m.tick(0.1);
+      for (let t = 0; t < 900; t += 0.1) m.tick(0.1);
       to += m.stats.B.turnovers;
     }
     return to;

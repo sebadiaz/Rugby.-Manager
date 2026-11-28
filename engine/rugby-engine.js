@@ -630,16 +630,21 @@
   // personnalités NEUTRES — la moyenne du profil) ; joueur de club : dérivée de ses propres attributs (puissance, mêlée,
   // touche, vitesse), aucun numéro lu.
   function defautMorpho(j, c, graine) {
+    const identite = c && (c.joueurId != null ? c.joueurId : c.id);
     if (c && c.morphoProfil) {
-      const cle = String(graine) + '|' + j.team + '|' + j.numero + '|' + String(c.joueurId != null ? c.joueurId : (c.id ?? '')) + '|morpho';
+      // Clé de tirage : l'IDENTITÉ du joueur quand il en a une (la morphologie ne dépend alors jamais du maillot) ; sinon le
+      // couple équipe/numéro d'un joueur généré anonyme (son poste de formation est celui de ce maillot).
+      const cle = String(graine) + '|' + j.team + '|' + (identite != null ? 'id:' + identite : j.numero) + '|morpho';
       const g = (k) => (graine == null ? 0 : Math.max(-2.5, Math.min(2.5, gaussien(cle + k))));
       // Taille et masse corrélées (un grand joueur est en général plus lourd) : 60 % de la variation de masse suit la taille.
       const gt = g('|taille'), gm = 0.6 * gt + 0.8 * g('|masse');
       return { taille: c.morphoProfil.taille + 4 * gt, masse: c.morphoProfil.masse + 6 * gm };
     }
     if (c && c.vitesse != null && c.plaquage != null) {
-      const pu = j.puissance ?? 60, me = j.melee ?? 40, to = j.touche ?? 30, vi = j.vitesse ?? 60;
-      return { taille: 166 + 0.22 * to + 0.1 * me + 0.08 * pu, masse: 52 + 0.45 * pu + 0.25 * me - 0.1 * vi + 0.1 * to };
+      // Attributs PROPRES (la config du joueur), pas ceux du moteur qui portent la forme du jour (±5 tirés à chaque reprise).
+      const pu = c.puissance ?? 60, me = c.melee ?? 40, to = c.touche ?? 30, vi = c.vitesse ?? 60;
+      return { taille: Math.max(160, Math.min(210, 166 + 0.22 * to + 0.1 * me + 0.08 * pu)),
+        masse: Math.max(62, Math.min(140, 52 + 0.45 * pu + 0.25 * me - 0.1 * vi + 0.1 * to)) };
     }
     return morphoProfil(j.numero);
   }
@@ -1147,7 +1152,10 @@
   function forceTouche(j) {
     const base = j.numero <= 8 ? 80 : 40;
     const touche = typeof j.touche === 'number' ? j.touche : 60;
-    return base + (j.plaquage - 60) * 0.1 + (touche - 60) * 0.4;
+    // MORPHOLOGIE : un sauteur (et un pack) plus grand prend plus haut — +0,5 par cm au-dessus de 1,92 m (référence d'un
+    // avant moyen ; -0,5 en dessous). Geste calibré sur la taille du joueur, sans effet si elle est inconnue.
+    const taille = j.car && typeof j.car.taille === 'number' ? j.car.taille : 192;
+    return base + (j.plaquage - 60) * 0.1 + (touche - 60) * 0.4 + (taille - 192) * 0.5;
   }
 
   // Tirage du sauteur PONDÉRÉ par son attribut `touche` (TODO_AUDIT.md P1-50).
@@ -3553,7 +3561,12 @@
           && (d.x - this.porteur.x) * this.porteur.sensAttaque > -1
           && (d.x - this.porteur.x) * this.porteur.sensAttaque < 7
           && Math.abs(d.y - this.porteur.y) < 5).length;
-        const margePlaquage = defenseurProche.plaquage - this.porteur.vitesse;
+        // MORPHOLOGIE : le plus lourd des deux gagne plus souvent le duel au contact (+0,2 par kg d'écart en faveur du
+        // plaqueur, borné à ±6) ; masses inconnues : sans effet. À 0,4 et ±12, les porteurs avants, plus lourds que la
+        // plupart de leurs plaqueurs, ne subissaient presque plus de plaquage dominant (+1,2 essai par match).
+        const masseP = this.porteur.car && this.porteur.car.masse, masseD = defenseurProche.car && defenseurProche.car.masse;
+        const ecartMasse = typeof masseP === 'number' && typeof masseD === 'number' ? Math.max(-6, Math.min(6, (masseD - masseP) * 0.2)) : 0;
+        const margePlaquage = defenseurProche.plaquage - this.porteur.vitesse + ecartMasse;
         this.ruckDominant = margePlaquage > 12 && this.rng() < 0.3;
         if (this.ruckDominant) {
           // Plaquage dominant : la défense repousse le porteur (~1,2 m perdus).
@@ -9153,7 +9166,12 @@
           this.remplacementsEffectues.push(Object.assign({ equipe: r.equipe, numero: r.numero, instant: this.tempsMatch, joueurId: r.joueurId },
             r.temporaire ? { temporaire: true } : null, r.retour ? { retour: true } : null));
           this._occupants[r.equipe][r.numero] = r.joueurId;
-          const c = r.joueur || {};
+          // Identité de l'entrant : un remplaçant sans identifiant (équipe sans banc déclaré) n'est PAS le titulaire —
+          // sans identité propre, sa personnalité et sa morphologie seraient tirées avec la clé du titulaire. Le joueur
+          // qui revient d'un protocole reste, lui, le titulaire d'origine.
+          const c0 = r.joueur || {};
+          const c = r.retour || c0.joueurId != null || c0.id != null ? c0
+            : Object.assign({}, c0, r.joueurId != null ? { joueurId: r.joueurId } : { id: 'entrant-' + r.equipe + '-' + this.remplacementsEffectues.length });
           Object.assign(sortant, {
             label: c.poste || sortant.label,
             vitesse: (c.vitesse != null ? c.vitesse : sortant.vitesse) + (this.rng() * 10 - 5),
