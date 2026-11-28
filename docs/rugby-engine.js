@@ -189,6 +189,14 @@
   // `new MatchEngine(seed, duree, config)` (cf. docs/rugby-config.json chargé par
   // l'interface). Les valeurs par défaut ci-dessous reproduisent exactement le
   // comportement historique.
+  // Jeu au sol et soutien d'un joueur GÉNÉRÉ (doc 15 § 3.8, doc 17) : données de son profil de formation, comme PROFILS.
+  const DEFAUTS_JEU_AU_SOL = {
+    grattage:      [45, 62, 45, 40, 40, 62, 78, 55, 35, 25, 20, 40, 35, 20, 30],
+    arriveeRuck:   [45, 55, 45, 50, 50, 66, 76, 62, 60, 35, 35, 50, 45, 35, 35],
+    courseSoutien: [40, 50, 40, 45, 45, 58, 72, 68, 65, 55, 60, 55, 60, 60, 65],
+  };
+  const defautJeuAuSol = (cle, numero) => { const t = DEFAUTS_JEU_AU_SOL[cle]; return t[(numero >= 1 && numero <= 15 ? numero : 8) - 1]; };
+
   const DEFAULT_CONFIG = {
     // Caractéristiques de chaque joueur (par numéro de maillot) : poste, vitesse,
     // plaquage (proxy de puissance), tendance (proximité au ballon), couloir
@@ -216,6 +224,8 @@
           decision: PROFILS[n].decision,
           discipline: PROFILS[n].discipline,
           couloir: COULOIR_BASE[n],
+          // Données du joueur généré (explicites) ; un joueur de club ne les a pas et les tire de ses propres attributs.
+          caracteristiques: { grattage: defautJeuAuSol('grattage', n), arriveeRuck: defautJeuAuSol('arriveeRuck', n), courseSoutien: defautJeuAuSol('courseSoutien', n) },
         };
       }
       return j;
@@ -519,7 +529,17 @@
   // Même liste que engine/ai/personality.js (un test les compare).
   const TRAITS_PERSONNALITE = ['priseDeRisque', 'altruisme', 'egoisme', 'agressivite', 'courage', 'sangFroid', 'concentration',
     'confianceSoi', 'resilience', 'regularite', 'espritEquipe', 'leadership', 'communication', 'constance'];
-  function caracteristiquesDetaillees(j, explicites, tirage) {
+  // JEU AU SOL ET SOUTIEN (doc 15, § 3.8 ; doc 17). Ces valeurs appartiennent au JOUEUR, jamais au maillot :
+  //  - valeur explicite (`caracteristiques`) : prioritaire ;
+  //  - joueur venu avec SES attributs (Mode Club, remplaçant) : dérivées de ses propres attributs (un deuxième ligne aligné
+  //    en 7 garde son grattage de deuxième ligne ; un 7 lent n'arrive pas le premier au ruck) ;
+  //  - joueur GÉNÉRÉ par le moteur (match rapide) : défaut de son poste de formation — c'est le profil qui l'a créé, comme
+  //    ses 12 attributs (PROFILS) ; ce sont des DONNÉES de joueur, pas une règle de comportement. Hypothèses à calibrer.
+  // Dérivation depuis les attributs PROPRES du joueur (aucun numéro lu).
+  const deriveJeuAuSol = (cle, j) => cle === 'grattage' ? 0.4 * j.plaquage + 0.3 * j.puissance + 0.3 * j.decision - 8
+    : cle === 'arriveeRuck' ? 0.5 * j.vitesse + 0.3 * j.endurance + 0.2 * j.decision
+      : 0.4 * j.vitesse + 0.3 * j.endurance + 0.3 * j.decision; // courseSoutien
+  function caracteristiquesDetaillees(j, explicites, tirage, attributsPropres) {
     const e = explicites || {};
     const v = (cle, derivee) => (typeof e[cle] === 'number' ? borne(e[cle]) : borne(derivee));
     const car = {
@@ -531,6 +551,9 @@
       precisionPied: v('precisionPied', j.jeuPied * 0.9 + j.adresse * 0.1),
       piedRasant: v('piedRasant', j.jeuPied),
       distancePied: v('distancePied', j.jeuPied),
+      grattage: v('grattage', attributsPropres ? deriveJeuAuSol('grattage', j) : defautJeuAuSol('grattage', j.numero)),
+      arriveeRuck: v('arriveeRuck', attributsPropres ? deriveJeuAuSol('arriveeRuck', j) : defautJeuAuSol('arriveeRuck', j.numero)),
+      courseSoutien: v('courseSoutien', attributsPropres ? deriveJeuAuSol('courseSoutien', j) : defautJeuAuSol('courseSoutien', j.numero)),
     };
     for (const cle of TRAITS_PERSONNALITE) {
       if (typeof e[cle] === 'number' && Number.isFinite(e[cle])) car[cle] = borne(e[cle]);   // explicite : prioritaire
@@ -591,7 +614,9 @@
   }
   function appliquerCaracteristiques(j, c, graine) {
     const tirage = graine == null ? null : tirerPersonnalite(graine, j.team, j.numero, c && (c.joueurId != null ? c.joueurId : c.id));
-    j.car = caracteristiquesDetaillees(j, c && c.caracteristiques, tirage);
+    // Joueur venu avec ses propres attributs (club, remplaçant) : ses valeurs de jeu au sol se dérivent de LUI, pas du maillot.
+    const attributsPropres = !!(c && c.vitesse != null && c.plaquage != null);
+    j.car = caracteristiquesDetaillees(j, c && c.caracteristiques, tirage, attributsPropres);
     j.gestes = gestesMaitrises(j.car, c && c.gestes);
     return j;
   }
@@ -1257,8 +1282,8 @@
       this._penaliteAgents = this.aiMode === 'GOAP' && config.penalites !== 'MOTEUR';
       // En GOAP, la sortie de mêlée vient du dialogue 9 / 10 / 8 ; `config.melees === 'MOTEUR'` rétablit le tirage.
       this._meleeAgents = this.aiMode === 'GOAP' && config.melees !== 'MOTEUR';
-      // Ballon au sol (coup de pied retombé, ballon échappé) : en GOAP, le moteur ne DÉSIGNE plus qui va au ballon ; chaque
-      // agent décide d'y aller (CLAUDE.md : rien n'est scripté). 'MOTEUR' rétablit l'ancienne désignation des plus proches.
+      // Ballon au sol ou en vol après un coup de pied (et ballon échappé) : en GOAP, le moteur ne DÉSIGNE plus qui va au
+      // ballon ; chaque agent décide d'y aller (CLAUDE.md : rien n'est scripté). 'MOTEUR' rétablit l'ancienne désignation.
       this._ballonAuSolAgents = this.aiMode === 'GOAP' && config.ballonsAuSol !== 'MOTEUR';
       this._seqMelee = 0;
       // En GOAP, le porteur choisit le receveur de toute passe ; `config.passes === 'MOTEUR'` rétablit l'ancien choix.
@@ -2392,7 +2417,8 @@
       const sens = R.equipe === 'A' ? 1 : -1;
       const receveurs = eq.filter(j => j !== L && j.auSol === 0 && j.sinBin <= 0
         && Math.abs(j.y - R.y) >= 5
-        && (j.x - R.x) * sens <= 2
+        // Loi 18 : la remise rapide ne va jamais vers l'en-but adverse — partenaire à hauteur ou en retrait (BUG-RM-017).
+        && (j.x - R.x) * sens <= 0
         && Math.hypot(j.x - R.x, j.y - R.y) <= 20
         && !adv.some(d => d.auSol === 0 && d.sinBin <= 0 && distance(d, j) < 5));
       this.toucheRapide = null;
@@ -5134,10 +5160,13 @@
       this.log('BALLON_ECHAPPE', equipe,
         `Le n°${receveur.numero} de l'equipe ${equipe} echappe le ballon en arriere : pas d'en-avant, ballon au sol, le jeu continue`,
         { joueur: receveur.numero });
+      // Loi 10.1 : est hors-jeu le partenaire DEVANT le joueur qui a joué le ballon en dernier, au moment où il l'a joué —
+      // donc devant le RECEVEUR (BUG-RM-015), pas devant le point de rebond : le 9 en soutien juste derrière le 10 reste en
+      // jeu et peut disputer le ramassage. Le hors-jeu se replie derrière le receveur.
       for (const j of (equipe === 'A' ? this.equipeA : this.equipeB)) {
         if (j === receveur) { j.horsJeuKick = 0; continue; }
-        j.horsJeuKick = (j.x - x) * sens > 1 ? DUREE_HORS_JEU_KICK : 0;
-        j.horsJeuKickX = x;
+        j.horsJeuKick = (j.x - receveur.x) * sens > 0 ? DUREE_HORS_JEU_KICK : 0;
+        j.horsJeuKickX = receveur.x;
       }
       this.porteur = receveur;
       this.typeCoupDePiedJeu = 'BALLON_ECHAPPE';
@@ -5330,7 +5359,9 @@
       const equipeKick = this.equipeCoupDePiedJeu;
       const chasseurs = equipeKick === 'A' ? this.equipeA : this.equipeB;
       const receveurs = equipeKick === 'A' ? this.equipeB : this.equipeA;
-      const versBallonVol = new Set([
+      // En GOAP, personne n'est désigné pendant le vol non plus : chacun lit la trajectoire et décide d'aller disputer le
+      // ballon ou de tenir sa place (son intention remplace ce déplacement).
+      const versBallonVol = this._ballonAuSolAgents ? new Set() : new Set([
         ...this._groupeVersBallon(chasseurs, this.cibleCoupDePiedX, this.cibleCoupDePiedY, 3),
         ...this._groupeVersBallon(receveurs, this.cibleCoupDePiedX, this.cibleCoupDePiedY, 2),
       ]);
@@ -5413,7 +5444,7 @@
     // Ballon dans l'en-but de l'équipe qui reçoit le coup de pied (P2-93). Les
     // joueurs ne franchissent pas la ligne dans ce moteur : le ballon est posé
     // à 0,8 m derrière elle, à portée de bras, et le premier arrivé décide —
-    // le défenseur aplatit (renvoi aux 22 m, loi 12), le chasseur marque
+    // le défenseur aplatit (renvoi depuis la ligne d'essai, loi 12.12b), le chasseur marque
     // (essai sur coup de pied à suivre, loi 8).
     _entrerEnBut() {
       const ligne = this.ballonVolX < LONGUEUR / 2 ? 0 : LONGUEUR;
@@ -5613,11 +5644,11 @@
       // BALLON DANS L'EN-BUT (P2-93) : le premier arrivé l'aplatit.
       if (enBut) {
         if (joueur.team === enBut.defense) {
-          // Loi 12 : ballon botté par l'attaque et aplati par la défense dans
-          // son en-but -> renvoi aux 22 m par la défense.
+          // Loi 12.12b : un coup de pied d'attaque en jeu courant aplati par la défense dans son en-but -> renvoi depuis la
+          // LIGNE D'ESSAI par la défense (BUG-RM-016). Le renvoi aux 22 m (12.11) est réservé à une pénalité ou un drop manqués.
           this.log('EN_BUT_APLATI', joueur.team,
-            `Le n°${joueur.numero} de l'equipe ${joueur.team} aplatit dans son en-but : renvoi aux 22 m`);
-          this._nouvelleManche(equipeKick, enBut.ligne === 0 ? 22 : LONGUEUR - 22);
+            `Le n°${joueur.numero} de l'equipe ${joueur.team} aplatit dans son en-but : renvoi depuis la ligne d'essai`);
+          this._nouvelleManche(equipeKick, enBut.ligne === 0 ? 0 : LONGUEUR);
           return;
         }
         // Loi 8 : un chasseur en position régulière aplatit le premier -> essai.
@@ -6259,7 +6290,13 @@
         const defenseAuBallon = goap ? equipeDef.filter(j => peutJouerAuRuck(j)
           && this.contestants.includes(j.numero) && distance(j, pt) < 2.5) : [];
         const contestReel = defenseAuBallon.length > 0;
-        const turnover = this.rng() < probaTurnover && (!goap || contestReel);
+        // GESTE DU GRATTEUR (GOAP) : la réussite dépend du grattage du meilleur défenseur au ballon parmi ceux que le moteur
+        // retient comme contestataires (× 0,6 à 1,4 ; 50, joueur moyen, = inchangé). Le moteur tranche ; l'agent n'a fait que
+        // choisir de contester. Référence 50 et non 60 : le contestataire est souvent le plaqueur, un trois-quarts au grattage
+        // bas ; centré sur 60, le geste faisait baisser les turnovers de tout le monde (16 -> 11 par match, mesure de l'arbitre).
+        const meilleurGrattage = contestReel ? Math.max(...defenseAuBallon.map((j) => (j.car && typeof j.car.grattage === 'number' ? j.car.grattage : 50))) : 50;
+        const facteurGrattage = Math.max(0.6, Math.min(1.4, 1 + (meilleurGrattage - 50) / 50));
+        const turnover = this.rng() < probaTurnover * facteurGrattage && (!goap || contestReel);
         this.ruckDominant = false;
         if (turnover) {
           this.stats[this.possession].turnoversConcedes++; // équipe qui PERD le ballon
@@ -9742,7 +9779,13 @@
       return {
         equipeA: this.equipeA, equipeB: this.equipeB,
         ball: { x: ballonX, y: ballonY, state: enPasse ? 'AIR' : this._etatBallon(),
-          carrierTeam: carrier?.team ?? null, carrierNumber: carrier?.numero ?? null },
+          carrierTeam: carrier?.team ?? null, carrierNumber: carrier?.numero ?? null,
+          // Coup de pied en vol : point de chute que révèle la trajectoire. Chaque agent le LIT avec sa propre erreur
+          // (lecture du jeu) ; personne n'est désigné pour y aller.
+          // `reste` : part du vol qui reste (1 au départ du pied, 0 à la chute) — le ballon qui redescend se lit mieux.
+          chute: this.phase === 'COUP_DE_PIED_JEU' && this.ballonEnVol ? { x: this.cibleCoupDePiedX, y: this.cibleCoupDePiedY,
+            reste: Math.max(0, 1 - this.timerPhase / Math.max(0.1, dureeVolCoupDePied(this.typeCoupDePiedJeu,
+              Math.hypot(this.cibleCoupDePiedX - this.xCoupDePiedJeu, this.cibleCoupDePiedY - this.yCoupDePiedJeu)))) } : null },
         tempsMatch: this.tempsMatch, phase: this.phase, possession: this.possession, score: this.score,
         melee: this.melee, maul: this.maul, ruck, statsJoueurs: this.statsJoueurs,
         // Pénalité sifflée en attente du choix : signal public de l'arbitre (marque, bénéficiaire, capitaine).

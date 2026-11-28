@@ -76,7 +76,8 @@ test('L01/L02/L04 : question du 9 au 10, réponse liée, appel du 9 ; un avant h
 // Moteur GOAP piloté à la main : seul le test pose (ou non) la demande du sauteur.
 function matchPilote(graine, duree, { demander, delier }) {
   const compte = { gagnees: 0, maulsTouche: 0, appeles: 0, sansSoutien: 0, saquees: 0, au9: 0 };
-  const m = new MatchEngine(graine, 4800, { aiMode: 'GOAP', agentDriver: () => ({
+  // Pilote factice : il ne déplace aucun joueur ; les ballons au sol gardent la désignation du moteur (cf. test des pénalités).
+  const m = new MatchEngine(graine, 4800, { aiMode: 'GOAP', ballonsAuSol: 'MOTEUR', agentDriver: () => ({
     avantTick(e) {
       const L = e.toucheLancer;
       if (!L || L.vole || L.pasDroit || !L.sauteur) return;

@@ -454,6 +454,12 @@ Ces trois tâches étendent l'architecture **individuelle** des tâches G04–G2
 - **Tests :** `MIC-01..12`, `STYLE-01..10`, `TOP14-01..19`, invariants, décisions multi-graines ; signaux 8/9 avec perte/expiration/annulation.
 - **Rejet si :** l'agent dispose de coordonnées/historiques cachés, si une passe est encore jouée après que le porteur a perdu le ballon, ou si la distribution correspond à une ligne de score déterministe.
 
+### RM4-G53 à G62 — Troisièmes lignes (G53 fait) (spécification : `17_TROISIEMES_LIGNES.md`)
+- **Règle :** aucun comportement par numéro ; caractéristiques individuelles, préférences pondérées, perception.
+- **Tâches :** G53 jeu au sol par aptitudes (fait) ; G54 défense autour du ruck ; G55 soutien vers une position future ;
+  G56 porteur avant ; G57 mêlée et sortie ; G58 touche et maul ; G59 transitions ; G60 fatigue ; G61 instrumentation des
+  décisions ; G62 validation 6/7/8 sur 30 graines.
+
 ### RM4-G45 à G52 — Personnalité des agents (G45, G46, G47 sang-froid du porteur et concentration, G48, G49, G52 valeurs initiales faits) (spécification : `16_PERSONNALITE_DES_AGENTS.md`)
 
 - **Règle :** rien n'est scripté (règle permanente en tête de `CLAUDE.md`). Une personnalité règle la FAÇON de décider (décalages bornés sur des choix déjà existants) ; elle ne crée aucun rôle, ne désigne personne, ne décide aucun résultat.

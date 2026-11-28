@@ -8,23 +8,29 @@ Ce fichier donne une liste opérationnelle à partir du code, de reproductions i
 
 Scénarios moteur isolés en mode GOAP, graine 4, sur [420aab2](https://github.com/sebadiaz/Rugby.-Manager/commit/420aab2). La fréquence de ces défauts en match complet reste à mesurer.
 
-### [ ] BUG-RM-015 — Le 9 en soutien est déclaré hors-jeu sur un ballon échappé en arrière — P1
+### [x] BUG-RM-015 — Le 9 en soutien est déclaré hors-jeu sur un ballon échappé en arrière — P1
 
 **Régression introduite par la [PR #53](https://github.com/sebadiaz/Rugby.-Manager/pull/53).** Placer A10 à x = 50 et A9 à x = 49,8, tous deux à y = 35. Quand le 10 échappe le ballon en arrière, il rebondit à x = 46,79. Le 9 reçoit un indicateur de hors-jeu de 6 s. Le scénario miroir donne le même résultat pour B9 à x = 50,2 avec un rebond à x = 53,21. [Traitement du ballon échappé](https://github.com/sebadiaz/Rugby.-Manager/blob/420aab2/engine/rugby-engine.js#L5128-L5143)
 
 **Acceptation.** Évaluer le placement au moment où le 10 joue le ballon. Dans les deux sens, le soutien derrière le 10 peut disputer le ramassage. Un partenaire initialement devant le 10 doit être remis en jeu avant d’intervenir. [Loi 10.1](https://passport.world.rugby/laws-of-the-game/laws-by-number/10-offside-and-onside-in-open-play/)
 
-### [ ] BUG-RM-016 — Un coup de pied à suivre aplati par la défense donne un renvoi aux 22 — P2
+**Corrigé (27 novembre 2026).** `_ballonEchappe` évalue le hors-jeu devant le RECEVEUR qui a joué le ballon (sa position au moment de l'échappé), plus devant le point de rebond ; le hors-jeu se replie derrière lui. Test `BUG-RM-015 (loi 10.1)` de `server/test-invariants.js`, dans les deux sens : 9 juste derrière le 10 en jeu, 12 devant le 10 hors-jeu.
+
+### [x] BUG-RM-016 — Un coup de pied à suivre aplati par la défense donne un renvoi aux 22 — P2
 
 **Reproduit.** A botte en jeu courant dans l’en-but de B. B15, seul à portée, aplatit. Le journal émet `RENVOI_22` et place le renvoi de B à x = 78. BUG-RM-014 couvre la distance que doit franchir un renvoi déjà choisi. Ici, l’erreur survient lors du choix de la reprise. [Réception dans l’en-but](https://github.com/sebadiaz/Rugby.-Manager/blob/420aab2/engine/rugby-engine.js#L5614-L5622)
 
 **Acceptation.** Rejouer dans les deux camps. Après ce coup de pied en jeu courant, la défense effectue le renvoi sur sa ligne d’essai. Comme témoin, après une pénalité au but manquée puis aplatie par la défense, accorder le renvoi aux 22. [Lois 12.11–12.12](https://passport.world.rugby/fr/les-regles-du-jeu/regles-du-jeu-par-numero/12-coup-d-envoi-et-renvois/)
 
-### [ ] BUG-RM-017 — Une touche rapide vers l’avant est validée — P2
+**Corrigé (27 novembre 2026).** Coup de pied d'attaque en jeu courant aplati par la défense dans son en-but : renvoi depuis la ligne d'essai (`_nouvelleManche` sur la ligne, `renvoiEnBut`), loi 12.12b. Le renvoi aux 22 m après pénalité ou drop manqués (12.11) n'est pas touché. Test `BUG-RM-016 (loi 12.12b)` dans les deux camps ; le test P2-93 attend désormais le renvoi d'en-but.
+
+### [x] BUG-RM-017 — Une touche rapide vers l’avant est validée — P2
 
 **Reproduit.** Placer le lanceur A en (40, 0) et A2 en (41,5, 8), sans défenseur à proximité. La remise rapide aboutit en phase `PORTE` avec A2 porteur, malgré un lancer de 1,5 m vers l’en-but adverse. Le filtre autorise jusqu’à 2 m d’avance. [Sélection du partenaire](https://github.com/sebadiaz/Rugby.-Manager/blob/420aab2/engine/rugby-engine.js#L2388-L2405)
 
 **Acceptation.** Tester les deux sens d’attaque avec un partenaire devant, à hauteur puis en retrait. Le lanceur écarte la cible devant lui et peut servir chacune des deux autres si le ballon parcourt au moins 5 m et que les autres conditions de remise rapide sont réunies. [Loi 18.4](https://passport.world.rugby/laws-of-the-game/laws-by-number/18-touch-quick-throw-and-lineout/)
+
+**Corrigé (27 novembre 2026).** Le filtre de `_tickToucheRapide` n'accepte plus qu'un partenaire à hauteur ou en retrait du lanceur (au lieu de 2 m devant), toujours à 5 m ou plus de la touche. Test `BUG-RM-017 (loi 18)` dans les deux sens : partenaire devant refusé, à hauteur et en retrait servis.
 
 ## Audit du 22 novembre 2026 — arbitrage et IA individuelle
 

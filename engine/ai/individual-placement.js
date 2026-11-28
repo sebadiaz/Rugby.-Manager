@@ -332,10 +332,11 @@ function individualPlacement(beliefs, goalId, playbook, profile = {}, jeuCourant
     }
   } else if (goalId === 'CONTEST_AERIAL_BALL') {
     // BALLON AU SOL (coup de pied retombé, ballon échappé) : le joueur qui a choisi de le disputer court DESSUS, là où il
-    // l'a vu. Ballon encore en l'air : pas de cible ici (la lecture de trajectoire n'est pas encore modélisée).
+    // l'a vu. Coup de pied en l'air : il court vers SON estimation du point de chute (lecture de trajectoire).
     const bal = s.ball && s.ball.lastSeen;
-    if (!bal || s.ball.state !== 'LOOSE') return null;
-    cands = [{ id: 'RECOVER_LOOSE_BALL', priority: 80, target: { x: bal.x, y: bal.y }, vmax: 1, reason: 'ballon au sol : je vais le ramasser' }];
+    if (s.chute) cands = [{ id: 'CONTEST_KICK', priority: 80, target: { x: s.chute.x, y: s.chute.y }, vmax: 1, reason: 'je lis la trajectoire : je vais sous le ballon' }];
+    else if (bal && s.ball.state === 'LOOSE') cands = [{ id: 'RECOVER_LOOSE_BALL', priority: 80, target: { x: bal.x, y: bal.y }, vmax: 1, reason: 'ballon au sol : je vais le ramasser' }];
+    else return null;
   } else if (goalId === 'DEFEND') cands = candidatsDefense(beliefs, s, pb, jeuCourant);
   else if (goalId === 'SUPPORT_CARRIER' || goalId === 'BE_PASS_OPTION' || goalId === 'RETURN_TO_PLAYBOOK' || goalId === 'GAIN_TERRITORY' || goalId === 'RETAIN_POSSESSION') {
     cands = s.maPoss || s.aLeBallon ? candidatsAttaque(beliefs, s, pb, profile, jeuCourant) : candidatsDefense(beliefs, s, pb, jeuCourant);

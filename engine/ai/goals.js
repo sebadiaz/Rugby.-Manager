@@ -92,15 +92,34 @@ function deriveSituation(b) {
   const partenairesPlusPres = Object.values(b.teammates).filter((m) => ball && dist(m.lastSeen, ball.lastSeen) < distBalle - 0.5).length;
   // Rang au ballon (comparaison STRICTE, sans tolérance) : sert au ballon au sol, où deux joueurs presque à égalité ne doivent
   // pas se croire tous deux « deuxièmes ». Calculé par chacun avec les partenaires qu'il voit.
+  // Le regroupement tel que JE le vois (si je vois le ballon) : défenseurs et attaquants engagés, ballon jouable ou non.
+  const ruckVu = b.ruck || null;
   const rangAuBallon = Object.values(b.teammates).filter((m) => ball && dist(m.lastSeen, ball.lastSeen) < distBalle).length;
+  // Coup de pied en vol : mon estimation du point de chute, ma distance à ce point et mon rang (partenaires VUS strictement
+  // plus près de MON estimation). Rien d'autre que ma lecture : chacun peut se tromper de point de chute.
+  const chute = ball && ball.state === 'AIR' && ball.chute ? ball.chute : null;
+  const distChute = chute ? dist(self, chute) : Infinity;
+  const rangChute = chute ? Object.values(b.teammates).filter((m) => dist(m.lastSeen, chute) < distChute).length : Infinity;
   const neuf = Object.entries(b.teammates).find(([, m]) => m.numero === 9);
   const neufAuBallon = !!(neuf && ball && dist(neuf[1].lastSeen, ball.lastSeen) <= 4);
   const pression = Object.values(b.opponents).filter((o) => o.age <= 1 && dist(o.lastSeen, self) <= 5).length;
   const score = b.score ? (team === 'A' ? b.score.A - b.score.B : b.score.B - b.score.A) : 0;
   const finDeMatch = b.t > 4800 * 0.8;
   return { t: b.t, numero: b.agent.numero, team, sens, phase, ball, maPoss, advPoss, pt, onside, distBalle, aLeBallon, danger,
-    partenairesPlusPres, rangAuBallon, neufAuBallon, pression, score, finDeMatch, fondVide, moiPlusPresDuFond, grounded: self.grounded, available: self.available,
+    partenairesPlusPres, rangAuBallon, ruckVu, chute, distChute, rangChute, neufAuBallon, pression, score, finDeMatch, fondVide, moiPlusPresDuFond, grounded: self.grounded, available: self.available,
     enVol: !!(ball && ball.state === 'AIR') || phase === 'COUP_DE_PIED_JEU' };
+}
+
+// Attaquants que je vois autour du ballon au-delà du premier, NON contrebalancés par mes partenaires déjà engagés : seul
+// contre trois déblayeurs, je n'y vais pas ; à trois contre trois, la contestation reste jouable.
+function risqueContestation(s) {
+  return s.ruckVu ? Math.max(0, (s.ruckVu.attackersCommitted || 0) - 1 - (s.ruckVu.defendersCommitted || 0)) : 0;
+}
+// Ruck déjà tenu À MES YEUX : partenaires engagés (moi exclu si j'y suis) >= défenseurs engagés + 2.
+function ruckDejaTenu(s) {
+  if (!s.ruckVu) return false;
+  const autres = (s.ruckVu.attackersCommitted || 0) - (s.distBalle < 8 ? 1 : 0);
+  return autres >= (s.ruckVu.defendersCommitted || 0) + 2;
 }
 
 // --- Catalogue ---------------------------------------------------------------
@@ -113,18 +132,29 @@ const GOALS = Object.freeze([
   G('PREVENT_TRY', 'SAFETY', (s, p) => s.available && s.onside && s.danger >= 0.35, (s, p) => 55 + 45 * s.danger * p.defendTry, (s) => s.danger < 0.2),
   // Ballon AU SOL (coup de pied retombé, ballon échappé) : j'y vais si, d'après ce que je vois, au plus un partenaire en est
   // plus près que moi (le plus proche y fonce, le deuxième suit) ; les autres ne se ruent pas dessus, quelle que soit la distance.
-  G('CONTEST_AERIAL_BALL', 'OPPORTUNITY', (s) => s.enVol && s.available && s.onside && !(s.ball && s.ball.state === 'LOOSE' && s.rangAuBallon >= 2),
+  // Coup de pied en VOL : même logique, sur MON estimation du point de chute (le plus proche y va, le deuxième suit ; le
+  // goût du duel aérien — profil `aerial` — module l'envie). Ballon en l'air sans point de chute (passe) : comme avant.
+  G('CONTEST_AERIAL_BALL', 'OPPORTUNITY', (s) => s.enVol && s.available && s.onside
+      && !(s.ball && s.ball.state === 'LOOSE' && s.rangAuBallon >= 2) && !(s.chute && s.rangChute >= 2),
     (s, p) => (s.ball && s.ball.state === 'LOOSE'
       ? (s.rangAuBallon === 0 ? 92 : 74) + 10 * clamp01(1 - s.distBalle / 10) // ballon à mes pieds : rien de plus pressant
-      : 70 * p.aerial * clamp01(1.2 - s.distBalle / 35))),
+      : s.chute ? (s.rangChute === 0 ? 88 : 72) * (0.8 + 0.2 * Math.min(1, p.aerial ?? 1))
+        : 70 * p.aerial * clamp01(1.2 - s.distBalle / 35))),
   // L'arrière (profil cover >= 0,9) garde sa profondeur même quand son équipe attaque (menace de pied).
   G('COVER_BACKFIELD', 'COMMIT', (s, p) => s.available && s.onside && s.danger < 0.35 && (s.advPoss || s.enVol || (s.maPoss && p.cover >= 0.9)),
     // Quand personne d'autre ne tient le fond et que je suis le mieux placé, je le couvre quel que soit mon poste.
     // `p.ingrat` : esprit d'équipe du joueur (tâche ingrate ; absent = 1, cf. personality.personnaliserProfil).
     (s, p) => ((s.advPoss || s.enVol ? 60 : 38) * p.cover + (s.fondVide && s.moiPlusPresDuFond && (s.advPoss || s.enVol) ? 34 : 0)) * (p.ingrat ?? 1)),
   G('DEFEND', 'COMMIT', (s) => s.available && s.onside && s.advPoss && (!REGROUPEMENTS.has(s.phase) || s.phase === 'RUCK'), (s, p) => (s.phase === 'RUCK' ? 34 : 50) + 10 * clamp01(1 - s.distBalle / 40) - 25 * p.fatigue),
-  G('CONTEST_BREAKDOWN', 'OPPORTUNITY', (s) => s.phase === 'RUCK' && s.advPoss && s.available && s.onside, (s, p) => 62 * p.contest - 18 * Math.min(2, s.partenairesPlusPres) - 20 * p.fatigue),
-  G('SECURE_RUCK', 'COMMIT', (s) => s.phase === 'RUCK' && s.maPoss && s.available && s.onside, (s, p) => (66 * p.ruck - 18 * Math.min(2, s.partenairesPlusPres) - 20 * p.fatigue) * (p.ingrat ?? 1)),
+  // CONTESTER AU SOL (jackal avant la formation, contre-ruck en poussant ensuite : tous deux légaux, loi 15 ; c'est le moteur
+  // qui tranche) : le risque grandit avec le nombre d'attaquants que JE vois autour du ballon sans partenaire pour les
+  // contrebalancer, et je renonce quand il devient trop grand (pénalité ou déblayage presque sûrs). `p.contest` porte mon grattage.
+  G('CONTEST_BREAKDOWN', 'OPPORTUNITY', (s) => s.phase === 'RUCK' && s.advPoss && s.available && s.onside && risqueContestation(s) < 3,
+    (s, p) => 62 * p.contest - 18 * Math.min(2, s.partenairesPlusPres) - 14 * risqueContestation(s) - 20 * p.fatigue),
+  // SÉCURISER LE RUCK : seulement si mon arrivée est utile. Un ruck que JE vois déjà tenu (au moins deux partenaires de plus
+  // que de défenseurs engagés) ne m'attire presque plus : je reste disponible pour la phase suivante.
+  G('SECURE_RUCK', 'COMMIT', (s) => s.phase === 'RUCK' && s.maPoss && s.available && s.onside,
+    (s, p) => (66 * p.ruck - 18 * Math.min(2, s.partenairesPlusPres) - 20 * p.fatigue) * (ruckDejaTenu(s) ? 0.15 : 1) * (p.ingrat ?? 1)),
   G('DISTRIBUTE_BALL', 'COMMIT', (s, profile) => (s.phase === 'RUCK' && s.maPoss && s.available && s.onside && s.distBalle <= 6 && !s.neufAuBallon) || (s.aLeBallon && s.phase === 'PORTE' && (s.pression > 0 || (profile.distribute ?? 0) >= 0.3)),
     // Personne n'est à la base du ruck : le plus proche prend la distribution (même un 10 ou un 8).
     (s, p) => 78 * p.distribute + (s.distBalle <= 3 && !s.neufAuBallon ? (p.distribute >= 0.3 ? 20 : 10) : 0)),
@@ -139,7 +169,7 @@ const GOALS = Object.freeze([
     const bruit = ((s.numero * 37 + Math.floor(s.t * 2) * 101) % 17 - 8) * 0.5;
     return 31 + bruit + 22 * p.kick + zone + 9 * Math.min(3, s.pression) + (s.finDeMatch && s.score < 0 ? 10 : 0) - (s.finDeMatch && s.score > 0 ? 0 : 0);
   }),
-  G('SUPPORT_CARRIER', 'COMMIT', (s) => s.maPoss && s.phase === 'PORTE' && !s.aLeBallon && s.available && s.distBalle <= 30, (s, p) => 44 * (0.4 + 0.6 * p.ruck) * clamp01(1.1 - s.distBalle / 30) * (p.ingrat ?? 1)),
+  G('SUPPORT_CARRIER', 'COMMIT', (s) => s.maPoss && s.phase === 'PORTE' && !s.aLeBallon && s.available && s.distBalle <= 30, (s, p) => 44 * (0.4 + 0.6 * p.ruck) * clamp01(1.1 - s.distBalle / 30) * (p.ingrat ?? 1) * (p.soutien ?? 1)),
   G('BE_PASS_OPTION', 'COMMIT', (s) => s.maPoss && s.available && s.onside && (s.phase === 'PORTE' || s.phase === 'RUCK') && !s.aLeBallon, (s, p) => 46 * p.option),
   G('FORM_SCRUM_LEGALLY', 'COMMIT', (s) => s.phase === 'MELEE' && s.available, (s, p) => 80 * p.scrum),
   G('FORM_LINEOUT_LEGALLY', 'COMMIT', (s) => s.phase === 'TOUCHE' && s.available, (s, p) => 78 * p.lineout),
@@ -148,4 +178,4 @@ const GOALS = Object.freeze([
 ]);
 const GOAL_IDS = Object.freeze(GOALS.map((g) => g.id));
 
-module.exports = { GOALS, GOAL_IDS, PROFILS_PAR_NUMERO, profilePour, deriveSituation, REGROUPEMENTS };
+module.exports = { risqueContestation, ruckDejaTenu, GOALS, GOAL_IDS, PROFILS_PAR_NUMERO, profilePour, deriveSituation, REGROUPEMENTS };

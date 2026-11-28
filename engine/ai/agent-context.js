@@ -20,6 +20,23 @@
 const { observe, normaliserParams } = require('./perception.js');
 const { ecoute } = require('./personality.js');
 
+// LECTURE DE LA TRAJECTOIRE d'un coup de pied : le joueur estime le point de chute avec une erreur qui dépend de SA lecture
+// du jeu (car.lectureJeu, 0-100 ; absente : 60) : jusqu'à ~7 m au départ du pied, puis elle se resserre à mesure que le
+// ballon redescend (25 % de l'erreur initiale à la chute). Même direction d'erreur pendant tout le coup de pied (fonction
+// pure de l'agent et du point réel : pas de hasard du match consommé). Hypothèses d'ingénierie à calibrer.
+const ERREUR_CHUTE_MAX = 7;
+function lireChute(chute, id, car) {
+  const lecture = car && typeof car.lectureJeu === 'number' ? car.lectureJeu : 60;
+  const reste = typeof chute.reste === 'number' ? Math.max(0, Math.min(1, chute.reste)) : 1;
+  const amp = ERREUR_CHUTE_MAX * Math.max(0, Math.min(1, 1 - lecture / 100)) * (0.25 + 0.75 * reste);
+  let h = 0x811c9dc5;
+  const cle = String(id) + '|' + Math.round(chute.x * 2) + '|' + Math.round(chute.y * 2);
+  for (let i = 0; i < cle.length; i++) { h ^= cle.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+  const u = (h >>> 0) / 4294967296, v = ((Math.imul(h, 0x2c1b3c6d) >>> 0) >>> 0) / 4294967296;
+  const r = amp * u, a = 2 * Math.PI * v;
+  return { x: +(chute.x + r * Math.cos(a)).toFixed(2), y: +(chute.y + r * Math.sin(a)).toFixed(2) };
+}
+
 const DEFAUTS_CONTEXTE = Object.freeze({ reactionDelay: 0.2, memorySeconds: 6 });
 
 function deepFreeze(o) {
@@ -102,8 +119,9 @@ class AgentContext {
     const confiance = (e) => r3(clamp01(mem === 0 ? 1 : 1 - (t - e.seenAt) / mem));
     const fiche = (e) => ({ lastSeen: { x: e.x, y: e.y }, age: r3(t - e.seenAt), confidence: confiance(e) });
     const ballon = this.mem.ball
-      ? Object.assign(fiche(this.mem.ball), { state: this.mem.ball.state, owner: this.mem.ball.owner })
-      : { lastSeen: null, age: null, confidence: 0, state: null, owner: null };
+      ? Object.assign(fiche(this.mem.ball), { state: this.mem.ball.state, owner: this.mem.ball.owner,
+        chute: this.mem.ball.chute ? lireChute(this.mem.ball.chute, this.id, moi.car) : null })
+      : { lastSeen: null, age: null, confidence: 0, state: null, owner: null, chute: null };
     const mates = {}, adv = {};
     for (const id in this.mem.teammates) {
       const e = this.mem.teammates[id];
@@ -125,6 +143,7 @@ class AgentContext {
         car: moi.car ? Object.assign({}, moi.car) : null, gestes: moi.gestes ? Object.assign({}, moi.gestes) : null },
       ball: ballon, teammates: mates, opponents: adv,
       ruck: this.mem.ruck ? { ballAvailable: this.mem.ruck.ballAvailable, defendersCommitted: this.mem.ruck.defendersCommitted,
+        attackersCommitted: this.mem.ruck.attackersCommitted ?? 0,
         age: +(t - this.mem.ruck.seenAt).toFixed(3), confidence: +clamp01(mem === 0 ? 1 : 1 - (t - this.mem.ruck.seenAt) / mem).toFixed(3) } : null,
       phase: this.mem.phase, possession: this.mem.possession, score: this.mem.score,
       heard: this.heard.map((h) => ({ id: h.id, from: h.from, kind: h.kind, toId: h.toId, phaseId: h.phaseId, age: +(t - h.heardAt).toFixed(3), confidence: h.confidence, replyTo: h.replyTo })),

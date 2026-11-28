@@ -279,6 +279,43 @@ test('BALLON AU SOL (moteur GOAP) : aucune désignation centrale ; ceux qui y vo
   assert.ok(maxDuree < 10, `un ballon au sol finit toujours ramassé par un joueur arrivé dessus (max ${maxDuree.toFixed(1)} s)`);
 });
 
+
+// --- Coup de pied en vol : chacun lit la trajectoire (erreur selon sa lecture du jeu) et décide ---
+test('COUP DE PIED EN VOL : chacun estime le point de chute selon SA lecture du jeu ; le plus proche de son estimation y va, pas de ruée', () => {
+  const { MatchEngine: ME } = require('../engine/rugby-engine.js');
+  let vus = 0;
+  for (let seed = 1; seed <= 12 && vus < 4; seed++) {
+    const m = new ME(seed, 4800, { personnalites: 'NEUTRE' });
+    let n = 0;
+    while (!(m.phase === 'COUP_DE_PIED_JEU' && m.ballonEnVol && m.typeCoupDePiedJeu !== 'TOUCHE') && n++ < 20000) m.tick(0.1);
+    if (!(m.phase === 'COUP_DE_PIED_JEU' && m.ballonEnVol)) continue;
+    vus++;
+    const e = copie(m.getAgentState());
+    const vrai = e.ball.chute;
+    assert.ok(vrai && Number.isFinite(vrai.x), 'le point de chute est perceptible pendant le vol');
+    for (const team of ['A', 'B']) {
+      const decs = (team === 'A' ? m.equipeA : m.equipeB).map((j) => decision(e, team, j.numero));
+      const vont = decs.filter((d) => d.placement && d.placement.placementGoal === 'CONTEST_KICK');
+      assert.ok(vont.length <= 3, `${team} : ${vont.length} joueurs sous le ballon (pas de ruée)`);
+      for (const d of vont) {
+        const est = d.beliefs.ball.chute;
+        assert.ok(Math.hypot(d.placement.target.x - est.x, d.placement.target.y - est.y) < 0.5, 'il court vers SON estimation');
+        assert.ok(Math.hypot(est.x - vrai.x, est.y - vrai.y) <= 7 + 1e-9, 'erreur de lecture bornée à 7 m');
+      }
+    }
+  }
+  assert.ok(vus >= 3, 'coups de pied observés : ' + vus);
+  // L'erreur dépend de la lecture du jeu du joueur, jamais de son numéro : 100 = lecture parfaite.
+  const m = new MatchEngine(1, 4800, { personnalites: 'NEUTRE', joueursA: { 7: { caracteristiques: { lectureJeu: 100 } }, 12: { caracteristiques: { lectureJeu: 10 } } } });
+  let n = 0;
+  while (!(m.phase === 'COUP_DE_PIED_JEU' && m.ballonEnVol) && n++ < 20000) m.tick(0.1);
+  const e = copie(m.getAgentState());
+  const b7 = new AgentContext({ team: 'A', numero: 7 }, { reactionDelay: 0, fovDeg: 360 }).update(e);
+  const b12 = new AgentContext({ team: 'A', numero: 12 }, { reactionDelay: 0, fovDeg: 360 }).update(e);
+  assert.deepStrictEqual({ x: b7.ball.chute.x, y: b7.ball.chute.y }, { x: +e.ball.chute.x.toFixed(2), y: +e.ball.chute.y.toFixed(2) }, 'lecture parfaite : point exact');
+  assert.ok(Math.hypot(b12.ball.chute.x - e.ball.chute.x, b12.ball.chute.y - e.ball.chute.y) <= 6.3 + 1e-9, 'lecture 10 : erreur ≤ 6,3 m');
+});
+
 console.log(`\n${nb} test(s) exécuté(s).`);
 if (echecs) { console.error(`ECHEC : ${echecs} test(s) en échec.`); process.exit(1); }
 console.log('OK : le placement individuel V4 naît des buts et des croyances de chaque joueur.');
