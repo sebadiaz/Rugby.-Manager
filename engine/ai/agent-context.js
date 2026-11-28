@@ -100,6 +100,7 @@ class AgentContext {
       for (const [id, e] of Object.entries(obs.vus.opponents)) m.opponents[id] = Object.assign({}, e, { seenAt: t });
       if (obs.vus.ruck) m.ruck = Object.assign({}, obs.vus.ruck, { seenAt: t }); else if (obs.phase !== 'RUCK') m.ruck = null;
       m.phase = obs.phase; m.possession = obs.possession; m.score = obs.score ? { A: obs.score.A, B: obs.score.B } : null;
+      if (Number.isFinite(obs.dureeMatch)) m.dureeMatch = obs.dureeMatch; // la durée du match est connue de tous (tableau d'affichage)
     }
     // Proprioception : on connaît toujours sa propre position exacte.
     if (comm) {
@@ -145,7 +146,7 @@ class AgentContext {
       ruck: this.mem.ruck ? { ballAvailable: this.mem.ruck.ballAvailable, defendersCommitted: this.mem.ruck.defendersCommitted,
         attackersCommitted: this.mem.ruck.attackersCommitted ?? 0,
         age: +(t - this.mem.ruck.seenAt).toFixed(3), confidence: +clamp01(mem === 0 ? 1 : 1 - (t - this.mem.ruck.seenAt) / mem).toFixed(3) } : null,
-      phase: this.mem.phase, possession: this.mem.possession, score: this.mem.score,
+      phase: this.mem.phase, possession: this.mem.possession, score: this.mem.score, dureeMatch: this.mem.dureeMatch ?? null,
       heard: this.heard.map((h) => ({ id: h.id, from: h.from, kind: h.kind, toId: h.toId, phaseId: h.phaseId, age: +(t - h.heardAt).toFixed(3), confidence: h.confidence, replyTo: h.replyTo })),
       omniscient: !!this.params.omniscient,
     };

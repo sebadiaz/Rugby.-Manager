@@ -108,7 +108,7 @@ function observe(state, agent, params) {
     t, agent: { team: moi.team, numero: moi.numero },
     self: { x: moi.x, y: moi.y, orientation: moi.orientation || 0, vitesse: moi.vitesseCourante || 0,
       auSol: moi.auSol > 0, sinBin: moi.sinBin > 0, sensAttaque: moi.sensAttaque },
-    phase: state.phase, possession: state.possession, score: state.score,
+    phase: state.phase, possession: state.possession, score: state.score, dureeMatch: state.dureeMatch,
     vus,
   };
 }

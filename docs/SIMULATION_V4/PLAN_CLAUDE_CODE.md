@@ -460,6 +460,11 @@ Ces trois tâches étendent l'architecture **individuelle** des tâches G04–G2
   G56 porteur avant ; G57 mêlée et sortie ; G58 touche et maul ; G59 transitions ; G60 fatigue ; G61 instrumentation des
   décisions ; G62 validation 6/7/8 sur 30 graines.
 
+### RM4-G63 à G70 — Demis et talonneur (G63, G64 faits) (spécification : `18_DEMIS_ET_TALONNEUR.md`)
+- **Règle :** aucun comportement par numéro ; caractéristiques individuelles, gestes maîtrisés, perception.
+- **Tâches :** G63 pénalité jouée vite (fait) ; G64 drop décidé par le porteur (fait) ; G65 sortie de regroupement ;
+  G66 coups de pied d'attaque ; G67 feinte de passe ; G68 montée sur le joueur dangereux ; G69 talonneur ; G70 commandement.
+
 ### RM4-G45 à G52 — Personnalité des agents (G45, G46, G47 sang-froid du porteur et concentration, G48, G49, G52 valeurs initiales faits) (spécification : `16_PERSONNALITE_DES_AGENTS.md`)
 
 - **Règle :** rien n'est scripté (règle permanente en tête de `CLAUDE.md`). Une personnalité règle la FAÇON de décider (décalages bornés sur des choix déjà existants) ; elle ne crée aucun rôle, ne désigne personne, ne décide aucun résultat.

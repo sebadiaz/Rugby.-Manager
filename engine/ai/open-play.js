@@ -132,6 +132,30 @@ function lirePetitPied(b, me, sens, adv, distanceBut, course) {
   return { action: 'KICK_CHIP', cibleX: cible.x, cibleY: cible.y, score: 8 + 2 * Math.min(3, tDef - tMoi + 0.1) + (distanceBut <= 25 ? 2 : 0) };
 }
 
+// DROP-GOAL (lois 8.1e et 8.28) : le porteur se voit à portée et dans un angle jouable, avec le temps de lâcher le ballon
+// (aucun défenseur sur lui) ; il estime SA chance selon sa précision et sa portée au pied. L'envie dépend du
+// match tel qu'il le lit au tableau : trois points qui égalisent ou font passer devant dans le dernier quart d'un
+// match serré valent beaucoup ; ailleurs, l'essai reste le but et le drop ne sort que d'une attaque bloquée.
+// Un joueur qui ne maîtrise pas le geste ne l'envisage jamais. Le moteur tranche la réussite (_executerDrop).
+function lireDrop(b, me, sens, distanceBut, pression) {
+  if (!me.gestes || !(me.gestes.drop >= 1) || !me.car) return null;
+  const lateral = Math.abs(me.y - LARGEUR / 2);
+  const portee = 22 + 0.25 * (me.car.distancePied ?? 50); // 47 m pour un pied de 100, 37 m pour 60
+  if (distanceBut < 8 || distanceBut > portee || pression < 3) return null;
+  const angle = Math.atan2(lateral, Math.max(distanceBut, 1)) * 180 / Math.PI;
+  if (angle > 40) return null;
+  // Chance PERÇUE (une estimation du joueur, pas le résultat) : distance, angle, précision et temps devant le défenseur.
+  const chance = clamp((1 - Math.hypot(distanceBut, lateral) / 60 - angle / 120) * (0.55 + (me.car.precisionPied - 60) / 80)
+    * clamp((pression - 2) / 4, 0.5, 1), 0, 0.95);
+  const ecart = b.score ? (b.agent.team === 'A' ? b.score.A - b.score.B : b.score.B - b.score.A) : 0;
+  const duree = Number.isFinite(b.dureeMatch) && b.dureeMatch > 0 ? b.dureeMatch : 4800;
+  const finDeMatch = b.t >= duree * 0.8;
+  // Trois points qui changent le résultat : derrière de 1 à 3, à égalité, ou devant de 1 à 2 (passer à plus d'un essai transformé = 3+ points d'avance).
+  const decisif = finDeMatch && ecart >= -3 && ecart <= 2;
+  const score = 10 * chance * (decisif ? 1.6 : 0.6) + (decisif ? 6 : 0) + (me.gestes.drop - 1);
+  return { action: 'KICK', kick: 'DROP', score, chance };
+}
+
 function lirePassePied(b, s, me, sens, adv, distanceBut, course) {
   const n = b.agent.numero;
   // Savoir-faire du joueur (gestes maîtrisés) ; repli sur l'ancien seuil si les caractéristiques sont absentes.
@@ -276,6 +300,8 @@ function lirePorteur(b, s, profile, playbook) {
   if (passePied) options.push({ ...passePied, score: passePied.score + audace });
   const petitPied = lirePetitPied(b, me, sens, adv, distanceBut, course);
   if (petitPied) options.push({ ...petitPied, score: petitPied.score + audace });
+  const drop = lireDrop(b, me, sens, distanceBut, pression);
+  if (drop) options.push(drop);
   // Sang-froid (RM4-G47) : sous la valeur neutre, le jugement se brouille quand l'adversaire est proche. Le bruit est déterministe
   // (graine du match, identifiant du joueur, instant, option), nul à 50 ou plus et réduit quand le joueur est loin de tout défenseur.
   const amplitude = amplitudeBruit(traits.sangFroid, clamp((pression - 2.5) / 6, 0, 1));
@@ -310,4 +336,4 @@ function receveurPrefere(b, s, profile, playbook) {
   return opts.length ? opts[0].vers : null;
 }
 
-module.exports = { lirePorteur, lirePetitPied, receveurPrefere, optionsDePasse, surnombreCote, lirePassePied, lireChistera, intercepter, visibleJouable, espaceDevant, lireCouverture };
+module.exports = { lirePorteur, lirePetitPied, lireDrop, receveurPrefere, optionsDePasse, surnombreCote, lirePassePied, lireChistera, intercepter, visibleJouable, espaceDevant, lireCouverture };

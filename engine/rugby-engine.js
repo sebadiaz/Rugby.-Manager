@@ -585,6 +585,8 @@
       passeAuPied: g('passeAuPied', niveauGeste(car.precisionPied, 65, 78, 90)),
       petitPied: g('petitPied', niveauGeste(car.piedRasant, 60, 75, 88)),
       passeLongue: g('passeLongue', niveauGeste(car.longueurPasse, 60, 75, 88)),
+      // Drop (loi 8.28) : lâcher le ballon, le frapper au rebond, en pleine action. Précision au pied du joueur.
+      drop: g('drop', niveauGeste(car.precisionPied, 66, 78, 88)),
     };
   }
   // PERSONNALITÉ INITIALE (RM4-G52, docs/SIMULATION_V4/16_PERSONNALITE_DES_AGENTS.md) : chaque joueur reçoit, pour chaque trait non
@@ -2220,6 +2222,9 @@
       this.log('COUP_FRANC', equipe, motif === 'marque'
         ? `Marque, equipe ${equipe} obtient un coup franc et joue rapidement`
         : `Coup franc pour l'equipe ${equipe}, joue rapidement`);
+      // Loi 8.29 : l'équipe qui a obtenu le coup franc ne peut pas marquer de drop avant que le ballon soit mort ou qu'un
+      // adversaire l'ait joué, touché ou ait plaqué le porteur (levée dans tick, cf. _leverInterdictionDrop).
+      this._dropInterditCF = equipe;
       // Loi 20.12 : l'équipe non bénéficiaire recule de 10 m, comme sur pénalité.
       this._lancerJeuRapidePenalite(equipe, position);
     }
@@ -3337,6 +3342,7 @@
       }
       if (action === 'KICK_AGENT') {
         const jeu = this._intentionsAgents.get(porteur.team + porteur.numero).jeu;
+        if (jeu.type === 'DROP') { this._executerDrop(porteur); return; }
         this._tenterCoupDePiedJeu(porteur, jeu.type, jeu.cibleY, (jeu.type === 'PASSE_PIED' || jeu.type === 'CHIP') && Number.isFinite(jeu.cibleX) ? { x: jeu.cibleX, y: jeu.cibleY } : null);
         return;
       }
@@ -4327,7 +4333,7 @@
         return;
       }
 
-      // Drop-goal (loi 9.A) : dans la zone de tir (8–38 m), l'équipe en
+      // Drop-goal (lois 8.1e et 8.28) : dans la zone de tir (8–38 m), l'équipe en
       // possession peut choisir de travailler le ballon pour son ouvreur, qui
       // tente un drop en jeu courant (ballon lâché qui rebondit puis botté entre
       // les poteaux). Choix tactique rare ; la réussite est calculée comme un
@@ -4343,30 +4349,12 @@
         // dans les dernières minutes d'un match serré (cf. _facteurContexteDrop).
         // Avant, un taux fixe faisait tenter 1,5 drop par match à n'importe quel
         // moment, y compris par les ailiers avec 20 points d'avance.
-        if (porteur.tendance <= 55 && (porteur.jeuPied || 0) >= 60
+        // En mode agents (GOAP), le drop n'est plus tiré au hasard par le moteur : c'est le PORTEUR qui le décide (open-play.js,
+        // lireDrop) et le moteur ne fait qu'en trancher la réussite (_executerDrop).
+        if (this.aiMode !== 'GOAP' && this._dropInterditCF !== this.possession && porteur.tendance <= 55 && (porteur.jeuPied || 0) >= 60
           && distanceButsDrop >= 8 && distanceButsDrop <= 38
           && this.rng() < 0.012 * this._facteurContexteDrop(this.possession) * dt) {
-          const offsetLateralDrop = Math.abs(porteur.y - LARGEUR / 2);
-          const equipe = this.possession;
-          this.stats[equipe].kicks++;
-          this.stats[equipe].dropsTentes++;
-          this._statJoueur(porteur).coupsDePied++;
-          if (this.rng() < probaReussiteTir(distanceButsDrop, offsetLateralDrop, porteur.adresse) * 0.7) {
-            this.stats[equipe].dropsReussis++;
-            this._statJoueur(porteur).pointsAuPied += 3;
-            this.score[equipe] += 3;
-            this.log('DROP_GOAL_REUSSI', equipe, `Drop-goal reussi, equipe ${equipe} +3`);
-            this._nouvelleManche(equipe);
-          } else {
-            this.log('DROP_GOAL_RATE', equipe, `Drop-goal rate, equipe ${equipe}`);
-            // Comme une pénalité au but ratée : le ballon part au-delà de la
-            // ligne d'en-but adverse, remise en 22m pour l'équipe défenseure.
-            const sens = { A: 1, B: -1 };
-            const sensEquipe = sens[equipe];
-            const ligneEssaiAdverse = sensEquipe > 0 ? LONGUEUR : 0;
-            const x22 = ligneEssaiAdverse - sensEquipe * 22;
-            this._nouvelleManche(equipe, x22);
-          }
+          this._executerDrop(porteur);
           return;
         }
       }
@@ -7966,6 +7954,41 @@
       return p;
     }
 
+    // DROP-GOAL (lois 8.1e et 8.28) : ballon lâché, frappé au rebond. Le moteur tranche la réussite selon la distance, l'angle et l'adresse
+    // du botteur, minorée car le geste se fait en pleine action ; un drop raté repart comme une pénalité manquée (renvoi aux 22 m).
+    _executerDrop(porteur) {
+      const sensAttaqueDrop = porteur.sensAttaque;
+      const distanceButsDrop = sensAttaqueDrop > 0 ? (LONGUEUR - porteur.x) : porteur.x;
+      const offsetLateralDrop = Math.abs(porteur.y - LARGEUR / 2);
+      const equipe = this.possession;
+      this.stats[equipe].kicks++;
+      this.stats[equipe].dropsTentes++;
+      this._statJoueur(porteur).coupsDePied++;
+      if (this.rng() < probaReussiteTir(distanceButsDrop, offsetLateralDrop, porteur.adresse) * 0.7) {
+        this.stats[equipe].dropsReussis++;
+        this._statJoueur(porteur).pointsAuPied += 3;
+        this.score[equipe] += 3;
+        this.log('DROP_GOAL_REUSSI', equipe, `Drop-goal reussi, equipe ${equipe} +3`);
+        this._nouvelleManche(equipe);
+      } else {
+        this.log('DROP_GOAL_RATE', equipe, `Drop-goal rate, equipe ${equipe}`);
+        // Comme une pénalité au but ratée : le ballon part au-delà de la
+        // ligne d'en-but adverse, remise en 22m pour l'équipe défenseure.
+        const sens = { A: 1, B: -1 };
+        const sensEquipe = sens[equipe];
+        const ligneEssaiAdverse = sensEquipe > 0 ? LONGUEUR : 0;
+        const x22 = ligneEssaiAdverse - sensEquipe * 22;
+        this._nouvelleManche(equipe, x22);
+      }
+    }
+
+    // Loi 8.29 : l'interdiction du drop après un coup franc tombe quand l'adversaire a le ballon, quand le porteur est plaqué
+    // ou pris en maul (ruck, maul) et quand le ballon est mort (toute autre phase que le jeu courant ou un coup de pied en vol).
+    _leverInterdictionDrop() {
+      const eq = this._dropInterditCF;
+      if (eq && (this.possession !== eq || (this.phase !== 'PORTE' && this.phase !== 'COUP_DE_PIED_JEU'))) this._dropInterditCF = null;
+    }
+
     _facteurContexteDrop(equipe) {
       const adv = equipe === 'A' ? 'B' : 'A';
       const ecart = Math.abs(this.score[equipe] - this.score[adv]);
@@ -8849,6 +8872,7 @@
       // === AGENT_INTENTS_END
       this._libererJoueursDuRuck(dt);
       const r = this._tickInterne(dt);
+      this._leverInterdictionDrop();
       try {
         const b = this._positionBallonCalculee();
         this._ballonAffiche = { x: b.ballonX, y: b.ballonY, n: this._numTick || 0 };
@@ -9606,6 +9630,7 @@
         demande.action === 'RUN'
         || (demande.action === 'PASS' && Number.isInteger(demande.vers) && demande.vers >= 1 && demande.vers <= 15)
         || (demande.action === 'KICK' && ['TOUCHE', 'DEGAGEMENT'].includes(demande.type))
+        || (demande.action === 'KICK' && demande.type === 'DROP' && this._dropInterditCF !== equipe) // loi 8.29
         || (demande.action === 'KICK' && (demande.type === 'PASSE_PIED' || demande.type === 'CHIP') && Number.isFinite(demande.cibleX) && Number.isFinite(demande.cibleY))
       ) ? { action: demande.action, vers: demande.vers, type: demande.type,
         cibleX: Number.isFinite(demande.cibleX) ? demande.cibleX : null,
@@ -9835,7 +9860,7 @@
           chute: this.phase === 'COUP_DE_PIED_JEU' && this.ballonEnVol ? { x: this.cibleCoupDePiedX, y: this.cibleCoupDePiedY,
             reste: Math.max(0, 1 - this.timerPhase / Math.max(0.1, dureeVolCoupDePied(this.typeCoupDePiedJeu,
               Math.hypot(this.cibleCoupDePiedX - this.xCoupDePiedJeu, this.cibleCoupDePiedY - this.yCoupDePiedJeu)))) } : null },
-        tempsMatch: this.tempsMatch, phase: this.phase, possession: this.possession, score: this.score,
+        tempsMatch: this.tempsMatch, dureeMatch: this.dureeMatch, phase: this.phase, possession: this.possession, score: this.score,
         melee: this.melee, maul: this.maul, ruck, statsJoueurs: this.statsJoueurs,
         // Pénalité sifflée en attente du choix : signal public de l'arbitre (marque, bénéficiaire, capitaine).
         penalite: this.penaliteChoix ? { equipe: this.penaliteChoix.equipe, x: this.penaliteChoix.x, y: this.penaliteChoix.y,

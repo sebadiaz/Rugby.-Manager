@@ -27,6 +27,8 @@
 
 **Troisièmes lignes 6, 7, 8 (spécification du propriétaire, G53 codé) :** [`17_TROISIEMES_LIGNES.md`](17_TROISIEMES_LIGNES.md). Reconnaître un 6, un 7 et un 8 à leurs décisions, obtenues par leurs caractéristiques (grattage, arrivée au ruck, course de soutien…), des préférences pondérées et ce qu'ils perçoivent — jamais par leur numéro.
 
+**Demis et talonneur 9, 10, 2 (spécification du propriétaire, G63 et G64 codés) :** [`18_DEMIS_ET_TALONNEUR.md`](18_DEMIS_ET_TALONNEUR.md). Pénalité jouée vite, drop décidé par le porteur, sortie de regroupement, coups de pied d'attaque, talonnage et lancer, tous obtenus par les caractéristiques et la perception, jamais par le numéro.
+
 ## Décision d'architecture : **30 agents individuels, pas d'IA collective**
 
 **Fait autorité :** [`07_AGENT_INDIVIDUEL_PLACEMENT.md`](07_AGENT_INDIVIDUEL_PLACEMENT.md).
